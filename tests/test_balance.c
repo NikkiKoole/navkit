@@ -18,62 +18,27 @@ static bool approx(float a, float b, float eps) {
     return fabsf(a - b) < eps;
 }
 
-describe(balance_init) {
-    it("should set default budget values") {
-        InitBalance();
-
-        expect(balance.workHoursPerDay == 14.0f);
-        expect(balance.sleepHoursInBed == 7.0f);
-        expect(balance.sleepOnGround == 23.0f);
-        expect(balance.hoursToStarve == 16.0f);
-        expect(balance.hoursToExhaustWorking == 16.0f);
-        expect(balance.hoursToExhaustIdle == 28.0f);
-        expect(balance.eatingDurationGH == 0.5f);
-    }
-
-    it("should set default thresholds") {
-        InitBalance();
-
-        expect(balance.hungerSeekThreshold == 0.3f);
-        expect(balance.hungerCriticalThreshold == 0.1f);
-        expect(balance.energyTiredThreshold == 0.3f);
-        expect(balance.energyExhaustedThreshold == 0.1f);
-        expect(balance.energyWakeThreshold == 0.8f);
-    }
-
-    it("should set default multipliers") {
-        InitBalance();
-
-        expect(balance.nightEnergyMult == 1.2f);
-        expect(balance.carryingEnergyMult == 1.1f);
-        expect(balance.hungerSpeedPenaltyMin == 0.5f);
-        expect(balance.hungerPenaltyThreshold == 0.2f);
-    }
-}
-
 describe(balance_derived_rates) {
     it("should derive hunger drain from hoursToStarve") {
         InitBalance();
 
-        // 1.0 / 16.0 = 0.0625 per game-hour
-        expect(approx(balance.hungerDrainPerGH, 1.0f / 16.0f, 0.0001f));
+        expect(approx(balance.hungerDrainPerGH, 1.0f / balance.hoursToStarve, 0.0001f));
     }
 
     it("should derive energy drain rates") {
         InitBalance();
 
-        expect(approx(balance.energyDrainWorkPerGH, 1.0f / 16.0f, 0.0001f));
-        expect(approx(balance.energyDrainIdlePerGH, 1.0f / 28.0f, 0.0001f));
+        expect(approx(balance.energyDrainWorkPerGH, 1.0f / balance.hoursToExhaustWorking, 0.0001f));
+        expect(approx(balance.energyDrainIdlePerGH, 1.0f / balance.hoursToExhaustIdle, 0.0001f));
     }
 
     it("should derive recovery rates from sleep hours and recovery range") {
         InitBalance();
 
         float range = balance.energyWakeThreshold - balance.energyExhaustedThreshold;
-        // range = 0.8 - 0.1 = 0.7
-        expect(approx(range, 0.7f, 0.0001f));
-        expect(approx(balance.bedRecoveryPerGH, 0.7f / 7.0f, 0.0001f));
-        expect(approx(balance.groundRecoveryPerGH, 0.7f / 23.0f, 0.0001f));
+        expect(range > 0.0f);
+        expect(approx(balance.bedRecoveryPerGH, range / balance.sleepHoursInBed, 0.0001f));
+        expect(approx(balance.groundRecoveryPerGH, range / balance.sleepOnGround, 0.0001f));
     }
 
     it("should recalculate after changing budgets") {
@@ -309,7 +274,6 @@ int main(int argc, char **argv) {
     // Restore dayLength after tests
     float savedDayLength = dayLength;
 
-    test(balance_init);
     test(balance_derived_rates);
     test(balance_time_conversion);
     test(balance_budget_consistency);

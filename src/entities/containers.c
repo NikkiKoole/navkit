@@ -283,7 +283,8 @@ int FindItemInContainers(ItemType type, int z, int searchCenterX, int searchCent
         if (!items[i].active) continue;
         if (!GetContainerDef(items[i].type)) continue;
         if (items[i].contentCount <= 0) continue;
-        if ((int)items[i].z != z) continue;
+        int iz = (int)items[i].z;
+        if (iz < z - 1 || iz > z + 1) continue;
 
         // Only search top-level containers (not nested ones — those are reached via recursion)
         if (items[i].containedIn != -1) continue;

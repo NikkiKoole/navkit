@@ -435,28 +435,34 @@ static int IterateItemsInRadius(int tileX, int tileY, int z, int radiusTiles,
     int minTy = clampi_item(tileY - radiusTiles, 0, itemGrid.gridH - 1);
     int maxTy = clampi_item(tileY + radiusTiles, 0, itemGrid.gridH - 1);
     
-    for (int ty = minTy; ty <= maxTy; ty++) {
-        for (int tx = minTx; tx <= maxTx; tx++) {
-            int cellIdx = z * (itemGrid.gridW * itemGrid.gridH) + ty * itemGrid.gridW + tx;
-            int start = itemGrid.cellStarts[cellIdx];
-            int end = itemGrid.cellStarts[cellIdx + 1];
-            
-            for (int t = start; t < end; t++) {
-                int itemIdx = itemGrid.itemIndices[t];
-                Item* item = &items[itemIdx];
+    // Search z-1, z, z+1 to support hilly terrain where items may be one z-level off
+    int zMin = (z > 0) ? z - 1 : 0;
+    int zMax = (z < itemGrid.gridD - 1) ? z + 1 : z;
+    
+    for (int sz = zMin; sz <= zMax; sz++) {
+        for (int ty = minTy; ty <= maxTy; ty++) {
+            for (int tx = minTx; tx <= maxTx; tx++) {
+                int cellIdx = sz * (itemGrid.gridW * itemGrid.gridH) + ty * itemGrid.gridW + tx;
+                int start = itemGrid.cellStarts[cellIdx];
+                int end = itemGrid.cellStarts[cellIdx + 1];
                 
-                if (!item->active || item->state != ITEM_ON_GROUND) continue;
-                
-                int itemTileX = (int)(item->x / CELL_SIZE);
-                int itemTileY = (int)(item->y / CELL_SIZE);
-                float dx = (float)(itemTileX - tileX);
-                float dy = (float)(itemTileY - tileY);
-                float distSq = dx * dx + dy * dy;
-                
-                if (distSq <= radiusSq) {
-                    visited++;
-                    if (!iterator(itemIdx, distSq, userData)) {
-                        return visited;
+                for (int t = start; t < end; t++) {
+                    int itemIdx = itemGrid.itemIndices[t];
+                    Item* item = &items[itemIdx];
+                    
+                    if (!item->active || item->state != ITEM_ON_GROUND) continue;
+                    
+                    int itemTileX = (int)(item->x / CELL_SIZE);
+                    int itemTileY = (int)(item->y / CELL_SIZE);
+                    float dx = (float)(itemTileX - tileX);
+                    float dy = (float)(itemTileY - tileY);
+                    float distSq = dx * dx + dy * dy;
+                    
+                    if (distSq <= radiusSq) {
+                        visited++;
+                        if (!iterator(itemIdx, distSq, userData)) {
+                            return visited;
+                        }
                     }
                 }
             }

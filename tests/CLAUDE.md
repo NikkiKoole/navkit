@@ -61,7 +61,12 @@ Always clean state at the start of each test:
 - `-q` (quiet): suppress test output, only show summary
 - `-v` (verbose): show raylib logs and detailed output
 
+## State Audit in Tests
+
+The state audit (`core/state_audit.c`) can be used in tests to verify data consistency after complex operations. The audit checks item↔stockpile, reservation↔job, and mover↔job invariants. See `tests/test_jobs.c` for examples of tests that exercise blueprint delivery with stacked items (a bug caught by the audit system).
+
 ## Gotchas
 
 - **Test state leaks**: if a test doesn't call `ClearMovers()` etc., leftover state from previous tests causes flaky failures
 - **Grid size**: tests typically use small grids (32x32x4) — don't assume 512x512x16
+- **Cutscene/UI code** (`src/ui/cutscene.c`) is NOT included in `test_unity.c` — it's render-only with no testable game logic

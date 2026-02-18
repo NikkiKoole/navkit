@@ -1523,6 +1523,7 @@ bool DesignateGatherGrass(int x, int y, int z) {
     designations[z][y][x].progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_GATHER_GRASS);
+    EventLog("Designated GATHER_GRASS at (%d,%d,z%d) walkable=%d", x, y, z, IsCellWalkableAt(z, y, x));
     
     return true;
 }

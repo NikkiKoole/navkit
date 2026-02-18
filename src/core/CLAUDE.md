@@ -4,7 +4,7 @@ Save/load, input handling, time, inspector, simulation manager.
 
 ## Save System
 
-**Save version**: v54 (see `CURRENT_SAVE_VERSION` in `save_migrations.h`). Strict version matching during dev — old saves error out cleanly.
+**Save version**: v55 (see `CURRENT_SAVE_VERSION` in `save_migrations.h`). Strict version matching during dev — old saves error out cleanly.
 
 ### Grid Write Order (saveload.c)
 
@@ -55,6 +55,33 @@ Save files use hex markers for readability: `MARKER_GRIDS` (0x47524944), `MARKER
 - `dayNumber`: integer day count
 - `currentTick`: 60fps fixed timestep counter
 - Fixed timestep uses accumulator pattern — don't call `Tick()` from render loop
+
+## Event Log (`event_log.c` / `event_log.h`)
+
+Ring buffer (4096 entries × 200 chars) with game-time timestamps (`[Season Day HH:MM]`).
+
+- `EventLog(fmt, ...)` — record an event
+- `EventLogDump(filepath)` — write all entries oldest→newest to file
+- `EventLogClear()` / `EventLogCount()` / `EventLogGet(index)` — query API
+- **Instrumented** (Phase 1): job lifecycle (create/done/fail/cancel), item deletion, mover death/starvation, needs transitions (seeking food/rest, eating, waking), stockpile create/delete/place
+- **Not yet instrumented**: item state transitions, blueprint stages, pathfinding failures, weather transitions
+- F8 dumps to `navkit_events.log`, F5 auto-dumps on save
+
+## State Audit (`state_audit.c` / `state_audit.h`)
+
+6 invariant checks that return violation counts:
+
+1. `AuditItemStockpileConsistency()` — ITEM_IN_STOCKPILE items match active stockpile slots
+2. `AuditItemReservations()` — reserved items have matching active jobs
+3. `AuditMoverJobConsistency()` — mover↔job pointers are bidirectional
+4. `AuditBlueprintReservations()` — blueprint reservedCount matches active haul-to-blueprint jobs
+5. `AuditStockpileSlotReservations()` — slot reservedBy matches active haul jobs
+6. `AuditStockpileFreeSlotCounts()` — recomputed freeSlotCount matches stored value
+
+- `SetAuditOutputStdout(bool)` — toggles CLI printf vs in-game TraceLog output
+- `RunStateAudit(bool verbose)` — runs all 6, returns total violations
+- CLI: `--inspect save.bin --audit` (restores save data into globals, runs audits)
+- Runtime: F7 key, also auto-runs on F5 save
 
 ## Gotchas
 

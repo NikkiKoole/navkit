@@ -2830,12 +2830,14 @@ void RebuildIdleMoverList(void) {
 
 typedef struct {
     float itemX, itemY;
-    int itemZ;              // Z-level of item — skip movers on different z-levels
+    int itemZ;              // Z-level of item (unused for filtering, kept for context)
     int bestMoverIdx;
     float bestDistSq;
     bool requireCanHaul;
     bool requireCanMine;
     bool requireCanBuild;
+    int excludeMovers[3];   // Movers to skip (failed pathfinding), -1 = unused
+    int excludeCount;
 } IdleMoverSearchContext;
 
 static void IdleMoverSearchCallback(int moverIdx, float distSq, void* userData) {
@@ -2844,9 +2846,12 @@ static void IdleMoverSearchCallback(int moverIdx, float distSq, void* userData) 
     // Skip if not in idle list (already has a job or not active)
     if (!moverIsInIdleList || !moverIsInIdleList[moverIdx]) return;
 
-    // Skip movers on different z-level (prevents cross-z-level cooldown poisoning)
+    // Skip excluded movers (failed pathfinding on previous attempts)
+    for (int i = 0; i < ctx->excludeCount; i++) {
+        if (ctx->excludeMovers[i] == moverIdx) return;
+    }
+
     Mover* m = &movers[moverIdx];
-    if (ctx->itemZ >= 0 && (int)m->z != ctx->itemZ) return;
 
     // Check capabilities
     if (ctx->requireCanHaul && !m->capabilities.canHaul) return;
@@ -2928,12 +2933,20 @@ void CancelJob(void* moverPtr, int moverIdx) {
                     if (recipe) {
                         const ConstructionStage* stage = &recipe->stages[bp->stage];
                         ItemType itemType = items[job->targetItem].type;
+                        bool decremented = false;
                         for (int s = 0; s < stage->inputCount; s++) {
                             StageDelivery* sd = &bp->stageDeliveries[s];
                             if (sd->reservedCount <= 0) continue;
                             if (!ConstructionInputAcceptsItem(&stage->inputs[s], itemType)) continue;
                             sd->reservedCount--;
+                            decremented = true;
                             break;
+                        }
+                        if (!decremented) {
+                            EventLog("WARNING: CancelJob bp %d slot reservedCount NOT decremented! item=%d type=%s active=%d",
+                                     job->targetBlueprint, job->targetItem,
+                                     items[job->targetItem].active ? ItemName(itemType) : "DELETED",
+                                     items[job->targetItem].active);
                         }
                     }
                 }
@@ -3039,12 +3052,20 @@ void UnassignJob(void* moverPtr, int moverIdx) {
                     if (recipe) {
                         const ConstructionStage* stage = &recipe->stages[bp->stage];
                         ItemType itemType = items[job->targetItem].type;
+                        bool decremented = false;
                         for (int s = 0; s < stage->inputCount; s++) {
                             StageDelivery* sd = &bp->stageDeliveries[s];
                             if (sd->reservedCount <= 0) continue;
                             if (!ConstructionInputAcceptsItem(&stage->inputs[s], itemType)) continue;
                             sd->reservedCount--;
+                            decremented = true;
                             break;
+                        }
+                        if (!decremented) {
+                            EventLog("WARNING: UnassignJob bp %d slot reservedCount NOT decremented! item=%d type=%s active=%d",
+                                     job->targetBlueprint, job->targetItem,
+                                     items[job->targetItem].active ? ItemName(itemType) : "DELETED",
+                                     items[job->targetItem].active);
                         }
                     }
                 }
@@ -3110,98 +3131,113 @@ void UnassignJob(void* moverPtr, int moverIdx) {
 // Returns true if assignment succeeded, false otherwise
 static bool TryAssignItemToMover(int itemIdx, int spIdx, int slotX, int slotY, bool safeDrop) {
     Item* item = &items[itemIdx];
+    Point itemCell = { (int)(item->x / CELL_SIZE), (int)(item->y / CELL_SIZE), (int)item->z };
 
-    int moverIdx = -1;
+    // Try up to 3 movers: if the nearest can't path, try the next-nearest.
+    // Only set unreachableCooldown if ALL candidates fail.
+    #define MAX_MOVER_RETRIES 3
+    int excludeMovers[MAX_MOVER_RETRIES];
+    int excludeCount = 0;
 
-    // Use MoverSpatialGrid if available and built (has indexed movers)
-    if (moverGrid.cellCounts && moverGrid.cellStarts[moverGrid.cellCount] > 0) {
-        IdleMoverSearchContext ctx = {
-            .itemX = item->x,
-            .itemY = item->y,
-            .itemZ = (int)item->z,
-            .bestMoverIdx = -1,
-            .bestDistSq = 1e30f,
-            .requireCanHaul = true,
-            .requireCanMine = false,
-            .requireCanBuild = false
-        };
+    for (int attempt = 0; attempt < MAX_MOVER_RETRIES; attempt++) {
+        int moverIdx = -1;
 
-        QueryMoverNeighbors(item->x, item->y, MOVER_SEARCH_RADIUS, -1, IdleMoverSearchCallback, &ctx);
-        moverIdx = ctx.bestMoverIdx;
-    } else {
-        // Fallback: find first idle mover (for tests without spatial grid)
-        float bestDistSq = 1e30f;
-        int itemZ = (int)item->z;
-        for (int i = 0; i < idleMoverCount; i++) {
-            int idx = idleMoverList[i];
-            // Skip movers on different z-level
-            if ((int)movers[idx].z != itemZ) continue;
-            // Check capability
-            if (!movers[idx].capabilities.canHaul) continue;
-            float dx = movers[idx].x - item->x;
-            float dy = movers[idx].y - item->y;
-            float distSq = dx * dx + dy * dy;
-            if (distSq < bestDistSq) {
-                bestDistSq = distSq;
-                moverIdx = idx;
+        // Use MoverSpatialGrid if available and built
+        if (moverGrid.cellCounts && moverGrid.cellStarts[moverGrid.cellCount] > 0) {
+            IdleMoverSearchContext ctx = {
+                .itemX = item->x,
+                .itemY = item->y,
+                .itemZ = (int)item->z,
+                .bestMoverIdx = -1,
+                .bestDistSq = 1e30f,
+                .requireCanHaul = true,
+                .requireCanMine = false,
+                .requireCanBuild = false,
+                .excludeMovers = {-1, -1, -1},
+                .excludeCount = excludeCount
+            };
+            for (int e = 0; e < excludeCount; e++) ctx.excludeMovers[e] = excludeMovers[e];
+
+            QueryMoverNeighbors(item->x, item->y, MOVER_SEARCH_RADIUS, -1, IdleMoverSearchCallback, &ctx);
+            moverIdx = ctx.bestMoverIdx;
+        } else {
+            // Fallback: find nearest idle mover (for tests without spatial grid)
+            float bestDistSq = 1e30f;
+            for (int i = 0; i < idleMoverCount; i++) {
+                int idx = idleMoverList[i];
+                // Skip excluded movers
+                bool excluded = false;
+                for (int e = 0; e < excludeCount; e++) {
+                    if (excludeMovers[e] == idx) { excluded = true; break; }
+                }
+                if (excluded) continue;
+                if (!movers[idx].capabilities.canHaul) continue;
+                float dx = movers[idx].x - item->x;
+                float dy = movers[idx].y - item->y;
+                float distSq = dx * dx + dy * dy;
+                if (distSq < bestDistSq) {
+                    bestDistSq = distSq;
+                    moverIdx = idx;
+                }
             }
         }
-    }
 
-    if (moverIdx < 0) return false;  // No idle mover found
-    Mover* m = &movers[moverIdx];
+        if (moverIdx < 0) break;  // No more candidate movers
+        Mover* m = &movers[moverIdx];
 
-    // Reserve item
-    if (!ReserveItem(itemIdx, moverIdx)) return false;
+        // Reserve item
+        if (!ReserveItem(itemIdx, moverIdx)) return false;
 
-    // Reserve stockpile slot (unless safeDrop)
-    if (!safeDrop) {
-        if (!ReserveStockpileSlot(spIdx, slotX, slotY, moverIdx, item->type, item->material)) {
-            ReleaseItemReservation(itemIdx);
-            return false;
-        }
-    }
-
-    // Quick reachability check
-    Point itemCell = { (int)(item->x / CELL_SIZE), (int)(item->y / CELL_SIZE), (int)item->z };
-    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
-
-    PROFILE_ACCUM_BEGIN(Jobs_ReachabilityCheck);
-    Point tempPath[MAX_PATH];
-    int tempLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
-    PROFILE_ACCUM_END(Jobs_ReachabilityCheck);
-
-    if (tempLen == 0) {
-        // Can't reach - release reservations
-        ReleaseItemReservation(itemIdx);
+        // Reserve stockpile slot (unless safeDrop)
         if (!safeDrop) {
-            ReleaseStockpileSlot(spIdx, slotX, slotY);
+            if (!ReserveStockpileSlot(spIdx, slotX, slotY, moverIdx, item->type, item->material)) {
+                ReleaseItemReservation(itemIdx);
+                return false;
+            }
         }
+
+        // Quick reachability check
+        Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+
+        PROFILE_ACCUM_BEGIN(Jobs_ReachabilityCheck);
+        Point tempPath[MAX_PATH];
+        int tempLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
+        PROFILE_ACCUM_END(Jobs_ReachabilityCheck);
+
+        if (tempLen == 0) {
+            // This mover can't reach — release and try next
+            ReleaseItemReservation(itemIdx);
+            if (!safeDrop) {
+                ReleaseStockpileSlot(spIdx, slotX, slotY);
+            }
+            excludeMovers[excludeCount++] = moverIdx;
+            continue;
+        }
+
+        // Success — create job
+        int jobId = CreateJob(safeDrop ? JOBTYPE_CLEAR : JOBTYPE_HAUL);
+        if (jobId >= 0) {
+            Job* job = GetJob(jobId);
+            job->assignedMover = moverIdx;
+            job->targetItem = itemIdx;
+            job->targetStockpile = spIdx;
+            job->targetSlotX = safeDrop ? -1 : slotX;
+            job->targetSlotY = safeDrop ? -1 : slotY;
+            job->step = 0;  // STEP_MOVING_TO_PICKUP
+            m->currentJobId = jobId;
+        }
+
+        m->goal = itemCell;
+        m->needsRepath = true;
+        RemoveMoverFromIdleList(moverIdx);
+        return true;
+    }
+
+    // All candidate movers failed to path — mark item unreachable
+    if (excludeCount > 0) {
         SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
-        return false;
     }
-
-    // Create Job entry
-    int jobId = CreateJob(safeDrop ? JOBTYPE_CLEAR : JOBTYPE_HAUL);
-    if (jobId >= 0) {
-        Job* job = GetJob(jobId);
-        job->assignedMover = moverIdx;
-        job->targetItem = itemIdx;
-        job->targetStockpile = spIdx;
-        job->targetSlotX = safeDrop ? -1 : slotX;
-        job->targetSlotY = safeDrop ? -1 : slotY;
-        job->step = 0;  // STEP_MOVING_TO_PICKUP
-        m->currentJobId = jobId;
-    }
-
-    // Set mover goal
-    m->goal = itemCell;
-    m->needsRepath = true;
-
-    // Remove mover from idle list
-    RemoveMoverFromIdleList(moverIdx);
-
-    return true;
+    return false;
 }
 
 
@@ -3651,14 +3687,12 @@ void AssignJobs(void) {
 // Filter context for WorkGiver_Haul spatial search
 typedef struct {
     bool (*typeMatHasStockpile)[MAT_COUNT];  // Pointer to 2D array
-    int moverZ;                               // Z-level of mover — skip items on different z-levels
 } HaulFilterContext;
 
 static bool HaulItemFilter(int itemIdx, void* userData) {
     HaulFilterContext* ctx = (HaulFilterContext*)userData;
     Item* item = &items[itemIdx];
     if (!IsItemHaulable(item, itemIdx)) return false;
-    if ((int)item->z != ctx->moverZ) return false;
     uint8_t mat = ResolveItemMaterialForJobs(item);
     if (!ctx->typeMatHasStockpile[item->type][mat]) return false;
     return true;
@@ -3710,7 +3744,7 @@ int WorkGiver_Haul(int moverIdx) {
 
     // Use spatial grid with expanding radius if available
     if (itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
-        HaulFilterContext ctx = { .typeMatHasStockpile = typeMatHasStockpile, .moverZ = moverZ };
+        HaulFilterContext ctx = { .typeMatHasStockpile = typeMatHasStockpile };
 
         // Expanding radius search - find closest items first
         int radii[] = {10, 25, 50, 100};
@@ -3726,7 +3760,6 @@ int WorkGiver_Haul(int moverIdx) {
         for (int j = 0; j < itemHighWaterMark; j++) {
             Item* item = &items[j];
             if (!IsItemHaulable(item, j)) continue;
-            if ((int)item->z != moverZ) continue;
             uint8_t mat = ResolveItemMaterialForJobs(item);
             if (!typeMatHasStockpile[item->type][mat]) continue;
 
@@ -3806,7 +3839,6 @@ int WorkGiver_DeliverToPassiveWorkshop(int moverIdx) {
     for (int w = 0; w < MAX_WORKSHOPS; w++) {
         Workshop* ws = &workshops[w];
         if (!ws->active) continue;
-        if (ws->z != moverZ) continue;
         if (!workshopDefs[ws->type].passive) continue;
         if (ws->passiveReady) continue;  // Skip workshops that are already burning
         if (ws->billCount == 0) continue;
@@ -3866,7 +3898,6 @@ int WorkGiver_DeliverToPassiveWorkshop(int moverIdx) {
             if (item->reservedBy != -1) continue;
             if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
             if (item->unreachableCooldown > 0.0f) continue;
-            if ((int)item->z != moverZ) continue;
             if (!RecipeInputMatches(recipe, item)) continue;
 
             int cellX = (int)(item->x / CELL_SIZE);
@@ -3948,7 +3979,6 @@ int WorkGiver_IgniteWorkshop(int moverIdx) {
     for (int w = 0; w < MAX_WORKSHOPS; w++) {
         Workshop* ws = &workshops[w];
         if (!ws->active) continue;
-        if (ws->z != moverZ) continue;
         if (!workshopDefs[ws->type].passive) continue;
         if (ws->passiveReady) continue;           // Already ignited
         if (ws->assignedCrafter >= 0) continue;   // Someone already assigned
@@ -3979,7 +4009,6 @@ int WorkGiver_IgniteWorkshop(int moverIdx) {
             int tileX = (int)(item->x / CELL_SIZE);
             int tileY = (int)(item->y / CELL_SIZE);
             if (tileX != ws->workTileX || tileY != ws->workTileY) continue;
-            if ((int)item->z != ws->z) continue;
             if (!RecipeInputMatches(recipe, item)) continue;
             inputCount++;
             if (inputCount >= recipe->inputCount) break;
@@ -4027,7 +4056,6 @@ int WorkGiver_GatherSapling(int moverIdx) {
     // Check capability - uses plant skill for gathering too
     if (!m->capabilities.canPlant) return -1;
 
-    int moverZ = (int)m->z;
 
     // Find nearest unassigned gather sapling designation from cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
@@ -4037,8 +4065,7 @@ int WorkGiver_GatherSapling(int moverIdx) {
     for (int i = 0; i < gatherSaplingCacheCount; i++) {
         AdjacentDesignationEntry* entry = &gatherSaplingCache[i];
 
-        // Only same z-level for now
-        if (entry->z != moverZ) continue;
+
 
         // Check if still unassigned and correct type
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
@@ -4111,8 +4138,6 @@ int WorkGiver_PlantSapling(int moverIdx) {
     // Check capability
     if (!m->capabilities.canPlant) return -1;
 
-    int moverZ = (int)m->z;
-
     // Find nearest unassigned plant sapling designation from cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
     float bestDesigDistSq = 1e30f;
@@ -4120,8 +4145,7 @@ int WorkGiver_PlantSapling(int moverIdx) {
     for (int i = 0; i < plantSaplingCacheCount; i++) {
         OnTileDesignationEntry* entry = &plantSaplingCache[i];
 
-        // Only same z-level for now
-        if (entry->z != moverZ) continue;
+
 
         // Check if still unassigned and correct type
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
@@ -4156,7 +4180,6 @@ int WorkGiver_PlantSapling(int moverIdx) {
         if (item->reservedBy != -1) continue;
         if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
         if (item->unreachableCooldown > 0.0f) continue;
-        if ((int)item->z != moverZ) continue;
 
         float dx = item->x - m->x;
         float dy = item->y - m->y;
@@ -4233,7 +4256,6 @@ int WorkGiver_GatherGrass(int moverIdx) {
 
     if (!m->capabilities.canPlant) return -1;
 
-    int moverZ = (int)m->z;
 
     // Find nearest unassigned gather grass designation from cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
@@ -4241,8 +4263,6 @@ int WorkGiver_GatherGrass(int moverIdx) {
 
     for (int i = 0; i < gatherGrassCacheCount; i++) {
         OnTileDesignationEntry* entry = &gatherGrassCache[i];
-
-        if (entry->z != moverZ) continue;
 
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
         if (!d || d->type != DESIGNATION_GATHER_GRASS || d->assignedMover != -1) continue;
@@ -4262,7 +4282,12 @@ int WorkGiver_GatherGrass(int moverIdx) {
         }
     }
 
-    if (bestDesigX < 0) return -1;
+    if (bestDesigX < 0) {
+        if (gatherGrassCacheCount > 0) {
+            EventLog("WorkGiver_GatherGrass: mover %d at z%d, %d cached desigs (none matched)", moverIdx, (int)m->z, gatherGrassCacheCount);
+        }
+        return -1;
+    }
 
     // Check reachability
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
@@ -4272,6 +4297,7 @@ int WorkGiver_GatherGrass(int moverIdx) {
     if (tempLen <= 0) {
         Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
         if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        EventLog("WorkGiver_GatherGrass: desig (%d,%d,z%d) unreachable from mover %d at z%d", bestDesigX, bestDesigY, bestDesigZ, moverIdx, (int)m->z);
         return -1;
     }
 
@@ -4307,15 +4333,12 @@ int WorkGiver_HarvestBerry(int moverIdx) {
 
     if (!m->capabilities.canPlant) return -1;
 
-    int moverZ = (int)m->z;
 
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
     float bestDistSq = 1e30f;
 
     for (int i = 0; i < harvestBerryCacheCount; i++) {
         OnTileDesignationEntry* entry = &harvestBerryCache[i];
-
-        if (entry->z != moverZ) continue;
 
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
         if (!d || d->type != DESIGNATION_HARVEST_BERRY || d->assignedMover != -1) continue;
@@ -4376,7 +4399,6 @@ int WorkGiver_GatherTree(int moverIdx) {
 
     if (!m->capabilities.canPlant) return -1;
 
-    int moverZ = (int)m->z;
 
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
     int bestAdjX = -1, bestAdjY = -1;
@@ -4384,8 +4406,6 @@ int WorkGiver_GatherTree(int moverIdx) {
 
     for (int i = 0; i < gatherTreeCacheCount; i++) {
         AdjacentDesignationEntry* entry = &gatherTreeCache[i];
-
-        if (entry->z != moverZ) continue;
 
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
         if (!d || d->type != DESIGNATION_GATHER_TREE || d->assignedMover != -1) continue;
@@ -4449,7 +4469,6 @@ int WorkGiver_GatherTree(int moverIdx) {
 static int WorkGiver_CleanDesignation(int moverIdx) {
     Mover* m = &movers[moverIdx];
 
-    int moverZ = (int)m->z;
 
     // Find nearest unassigned clean designation from cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
@@ -4457,8 +4476,6 @@ static int WorkGiver_CleanDesignation(int moverIdx) {
 
     for (int i = 0; i < cleanCacheCount; i++) {
         OnTileDesignationEntry* entry = &cleanCache[i];
-
-        if (entry->z != moverZ) continue;
 
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
         if (!d || d->type != DESIGNATION_CLEAN || d->assignedMover != -1) continue;
@@ -4526,16 +4543,14 @@ int WorkGiver_Clean(int moverIdx) {
 // Returns job ID if successful, -1 if no job available
 int WorkGiver_Craft(int moverIdx) {
     Mover* m = &movers[moverIdx];
-    int moverZ = (int)m->z;
 
     // Note: no canCraft capability check for now - any mover can craft
 
-    // Early exit: check if any workshops need crafters on this z-level
+    // Early exit: check if any workshops need crafters
     bool anyAvailable = false;
     for (int w = 0; w < MAX_WORKSHOPS; w++) {
         Workshop* ws = &workshops[w];
         if (!ws->active) continue;
-        if (ws->z != moverZ) continue;
         if (workshopDefs[ws->type].passive) continue;
         if (ws->assignedCrafter >= 0) continue;
         if (ws->billCount > 0) {
@@ -4548,7 +4563,6 @@ int WorkGiver_Craft(int moverIdx) {
     for (int w = 0; w < MAX_WORKSHOPS; w++) {
         Workshop* ws = &workshops[w];
         if (!ws->active) continue;
-        if (ws->z != moverZ) continue;  // Same z-level
         if (workshopDefs[ws->type].passive) continue;  // Passive workshops don't use crafters
         if (ws->assignedCrafter >= 0) continue;  // Already has crafter
 
@@ -4567,7 +4581,6 @@ int WorkGiver_Craft(int moverIdx) {
                         if (!items[i].active) continue;
                         if (!RecipeInputMatches(resumeRecipe, &items[i])) continue;
                         if (items[i].reservedBy != -1) continue;
-                        if ((int)items[i].z != ws->z) continue;
                         uint8_t mat = items[i].material;
                         if (mat == MAT_NONE) mat = DefaultMaterialForItemType(items[i].type);
                         int outSlotX, outSlotY;
@@ -4607,7 +4620,6 @@ int WorkGiver_Craft(int moverIdx) {
                 if (!RecipeInputMatches(recipe, item)) continue;
                 if (item->reservedBy != -1) continue;
                 if (item->unreachableCooldown > 0.0f) continue;
-                if ((int)item->z != ws->z) continue;
                 if (item->stackCount < recipe->inputCount) continue;
 
                 // Check distance from workshop
@@ -4678,7 +4690,6 @@ int WorkGiver_Craft(int moverIdx) {
                     if (item2->type != recipe->inputType2) continue;
                     if (item2->reservedBy != -1) continue;
                     if (item2->unreachableCooldown > 0.0f) continue;
-                    if ((int)item2->z != ws->z) continue;
                     if (i == itemIdx) continue;  // Can't use same item as first input
 
                     int item2TileX = (int)(item2->x / CELL_SIZE);
@@ -4877,8 +4888,6 @@ int WorkGiver_Rehaul(int moverIdx) {
     // Check capability
     if (!m->capabilities.canHaul) return -1;
 
-    int moverZ = (int)m->z;
-
     // Find an item in a stockpile that needs re-hauling
     int bestItemIdx = -1;
     int bestDestSp = -1;
@@ -4889,7 +4898,6 @@ int WorkGiver_Rehaul(int moverIdx) {
         if (!items[j].active) continue;
         if (items[j].reservedBy != -1) continue;
         if (items[j].state != ITEM_IN_STOCKPILE) continue;
-        if ((int)items[j].z != moverZ) continue;  // Same z-level for now
 
         int currentSp = -1;
         if (!IsPositionInStockpile(items[j].x, items[j].y, (int)items[j].z, &currentSp)) continue;
@@ -4992,7 +5000,6 @@ int WorkGiver_Mining(int moverIdx) {
     // Check capability
     if (!m->capabilities.canMine) return -1;
 
-    int moverZ = (int)m->z;
 
     // Find nearest unassigned mine designation from the pre-built cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
@@ -5002,8 +5009,7 @@ int WorkGiver_Mining(int moverIdx) {
     for (int i = 0; i < mineCacheCount; i++) {
         AdjacentDesignationEntry* entry = &mineCache[i];
 
-        // Only same z-level for now
-        if (entry->z != moverZ) continue;
+
 
         // Check if still unassigned, correct type, and not marked unreachable
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
@@ -5072,7 +5078,6 @@ int WorkGiver_Channel(int moverIdx) {
     // Check capability - channeling uses the same skill as mining
     if (!m->capabilities.canMine) return -1;
 
-    int moverZ = (int)m->z;
 
     // Find nearest unassigned channel designation from the pre-built cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
@@ -5081,8 +5086,7 @@ int WorkGiver_Channel(int moverIdx) {
     for (int i = 0; i < channelCacheCount; i++) {
         OnTileDesignationEntry* entry = &channelCache[i];
 
-        // Same z-level only for now (mover walks to the tile)
-        if (entry->z != moverZ) continue;
+
 
         // Check if still unassigned, correct type, and not marked unreachable
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
@@ -5154,7 +5158,6 @@ int WorkGiver_DigRamp(int moverIdx) {
     // Check capability - uses mining skill
     if (!m->capabilities.canMine) return -1;
 
-    int moverZ = (int)m->z;
 
     // Find nearest unassigned dig ramp designation from the pre-built cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
@@ -5164,8 +5167,7 @@ int WorkGiver_DigRamp(int moverIdx) {
     for (int i = 0; i < digRampCacheCount; i++) {
         AdjacentDesignationEntry* entry = &digRampCache[i];
 
-        // Only same z-level for now
-        if (entry->z != moverZ) continue;
+
 
         // Check if still unassigned, correct type, and not marked unreachable
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
@@ -5235,7 +5237,6 @@ int WorkGiver_RemoveFloor(int moverIdx) {
     // Check capability - uses mining skill
     if (!m->capabilities.canMine) return -1;
 
-    int moverZ = (int)m->z;
 
     // Find nearest unassigned remove floor designation from the pre-built cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
@@ -5244,8 +5245,7 @@ int WorkGiver_RemoveFloor(int moverIdx) {
     for (int i = 0; i < removeFloorCacheCount; i++) {
         OnTileDesignationEntry* entry = &removeFloorCache[i];
 
-        // Same z-level only for now (mover walks to the tile)
-        if (entry->z != moverZ) continue;
+
 
         // Check if still unassigned, correct type, and not marked unreachable
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
@@ -5317,7 +5317,6 @@ int WorkGiver_RemoveRamp(int moverIdx) {
     // Check capability - uses mining skill
     if (!m->capabilities.canMine) return -1;
 
-    int moverZ = (int)m->z;
 
     // Find nearest unassigned remove ramp designation from the pre-built cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
@@ -5327,8 +5326,7 @@ int WorkGiver_RemoveRamp(int moverIdx) {
     for (int i = 0; i < removeRampCacheCount; i++) {
         AdjacentDesignationEntry* entry = &removeRampCache[i];
 
-        // Same z-level only for now
-        if (entry->z != moverZ) continue;
+
 
         // Check if still unassigned, correct type, and not marked unreachable
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
@@ -5398,7 +5396,6 @@ int WorkGiver_Chop(int moverIdx) {
     // Check capability - uses mining skill for chopping
     if (!m->capabilities.canMine) return -1;
 
-    int moverZ = (int)m->z;
 
     // Find nearest unassigned chop designation from cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
@@ -5408,8 +5405,7 @@ int WorkGiver_Chop(int moverIdx) {
     for (int i = 0; i < chopCacheCount; i++) {
         AdjacentDesignationEntry* entry = &chopCache[i];
 
-        // Only same z-level for now
-        if (entry->z != moverZ) continue;
+
 
         // Check if still unassigned and correct type
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
@@ -5478,7 +5474,6 @@ int WorkGiver_ChopFelled(int moverIdx) {
 
     if (!m->capabilities.canMine) return -1;
 
-    int moverZ = (int)m->z;
 
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
     int bestAdjX = -1, bestAdjY = -1;
@@ -5487,8 +5482,7 @@ int WorkGiver_ChopFelled(int moverIdx) {
     for (int i = 0; i < chopFelledCacheCount; i++) {
         AdjacentDesignationEntry* entry = &chopFelledCache[i];
 
-        // Only same z-level for now
-        if (entry->z != moverZ) continue;
+
 
         // Check if still unassigned and correct type
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
@@ -5557,8 +5551,6 @@ int WorkGiver_Build(int moverIdx) {
     // Check capability
     if (!m->capabilities.canBuild) return -1;
 
-    int moverZ = (int)m->z;
-
     // Find nearest blueprint ready to build
     int bestBpIdx = -1;
     float bestDistSq = 1e30f;
@@ -5568,7 +5560,6 @@ int WorkGiver_Build(int moverIdx) {
         if (!bp->active) continue;
         if (bp->state != BLUEPRINT_READY_TO_BUILD) continue;
         if (bp->assignedBuilder >= 0) continue;  // Already has a builder
-        if (bp->z != moverZ) continue;  // Same z-level for now
 
         float bpX = bp->x * CELL_SIZE + CELL_SIZE * 0.5f;
         float bpY = bp->y * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -5804,7 +5795,6 @@ static int FindNearestRecipeItem(int moverTileX, int moverTileY, int moverZ, flo
         if (item->reservedBy != -1) continue;
         if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
         if (item->unreachableCooldown > 0.0f) continue;
-        if ((int)item->z != moverZ) continue;
         if (!ConstructionInputAcceptsItem(input, item->type)) continue;
 
         // Check locking
@@ -5968,7 +5958,21 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     // Create job
     int jobId = CreateJob(JOBTYPE_HAUL_TO_BLUEPRINT);
     if (jobId < 0) {
+        // Undo the reservedCount++ we did above
+        const ConstructionRecipe* undoRecipe = GetConstructionRecipe(bp->recipeIndex);
+        if (undoRecipe) {
+            const ConstructionStage* undoStage = &undoRecipe->stages[bp->stage];
+            ItemType undoItemType = items[bestItemIdx].type;
+            for (int s = 0; s < undoStage->inputCount; s++) {
+                StageDelivery* sd = &bp->stageDeliveries[s];
+                if (sd->reservedCount <= 0) continue;
+                if (!ConstructionInputAcceptsItem(&undoStage->inputs[s], undoItemType)) continue;
+                sd->reservedCount--;
+                break;
+            }
+        }
         ReleaseItemReservation(bestItemIdx);
+        EventLog("WARNING: CreateJob HAUL_TO_BLUEPRINT failed for bp %d, reservations rolled back", bestBpIdx);
         return -1;
     }
 

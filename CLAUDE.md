@@ -65,20 +65,44 @@ A cell is walkable if:
 
 See `IsCellWalkableAt_Standard()` in `src/world/cell_defs.h`.
 
-## Save/Load & Inspector
+## Save/Load, Inspector & Debugging
 
 ```bash
 # In-game
-F5                    # Quick save
+F5                    # Quick save (+ auto event log dump + state audit)
 F6                    # Quick load
+F7                    # Run state audit on demand (prints to console)
+F8                    # Dump event log to navkit_events.log
+TAB                   # Toggle dev UI vs play HUD
 
 # CLI inspection
 ./build/bin/path --inspect save.bin              # Summary
+./build/bin/path --inspect save.bin --audit       # Run 6 state consistency checks
 ./build/bin/path --inspect save.bin --mover 0    # Mover details
 ./build/bin/path --inspect save.bin --stuck       # Movers stuck > 2s
 ./build/bin/path --inspect save.bin --jobs-active
 ./build/bin/path --inspect save.bin --path 8,17,1 12,16,1 --algo hpa
 ```
+
+### Debugging Workflow
+
+1. Play → hit bug → F5 (saves + dumps event log + runs audit)
+2. Hand `.bin.gz` + `navkit_events.log` to AI
+3. AI runs `--inspect save.bin --audit` to find invariant violations
+4. Event log shows timestamped trail of state-changing events
+
+### Event Log (`core/event_log.c`)
+
+Ring buffer (4096 entries), game-time timestamped. Records job lifecycle, item deletion, mover death/starvation, needs transitions, stockpile operations. Use `EventLog(fmt, ...)` to instrument new events.
+
+### State Audit (`core/state_audit.c`)
+
+6 invariant checks: item↔stockpile consistency, item reservations↔jobs, mover↔job bidirectional, blueprint reservations, stockpile slot reservations, freeSlotCount recompute. Returns violation count.
+
+## Game Modes
+
+- **Sandbox** (`GAME_MODE_SANDBOX`): full dev UI, all tools available
+- **Survival** (`GAME_MODE_SURVIVAL`): progressive HUD, starvation death, intro/game-over cutscenes
 
 ## Headless Mode
 

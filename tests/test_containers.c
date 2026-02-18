@@ -1109,11 +1109,11 @@ describe(container_search) {
 
     it("should respect z-level") {
         SearchSetup();
-        int basket = SpawnItemWithMaterial(3 * CELL_SIZE + 16, 3 * CELL_SIZE + 16, 1, ITEM_RED, MAT_NONE);
+        // Container at z=3, search from z=0 — more than 1 z-level apart
+        int basket = SpawnItemWithMaterial(3 * CELL_SIZE + 16, 3 * CELL_SIZE + 16, 3, ITEM_RED, MAT_NONE);
         int blue = SpawnItemWithMaterial(0, 0, 0, ITEM_BLUE, MAT_NONE);
         PutItemInContainer(blue, basket);
 
-        // Search z=0, container is at z=1
         int containerIdx = -1;
         int found = FindItemInContainers(ITEM_BLUE, 0, 3, 3, 50, -1, NULL, NULL, &containerIdx);
         expect(found == -1);

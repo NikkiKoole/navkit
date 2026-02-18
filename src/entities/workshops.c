@@ -195,7 +195,8 @@ static bool WorkshopHasInputForRecipe(Workshop* ws, const Recipe* recipe, int se
         if (!RecipeInputMatches(recipe, item)) continue;
         if (item->reservedBy != -1) continue;
         if (item->unreachableCooldown > 0.0f) continue;
-        if ((int)item->z != ws->z) continue;
+        int iz = (int)item->z;
+        if (iz < ws->z - 1 || iz > ws->z + 1) continue;
 
         int itemTileX = (int)(item->x / CELL_SIZE);
         int itemTileY = (int)(item->y / CELL_SIZE);
@@ -231,7 +232,8 @@ bool WorkshopHasFuelForRecipe(Workshop* ws, int searchRadius) {
         if (!(ItemFlags(item->type) & IF_FUEL)) continue;
         if (item->reservedBy != -1) continue;
         if (item->unreachableCooldown > 0.0f) continue;
-        if ((int)item->z != ws->z) continue;
+        int iz = (int)item->z;
+        if (iz < ws->z - 1 || iz > ws->z + 1) continue;
 
         int itemTileX = (int)(item->x / CELL_SIZE);
         int itemTileY = (int)(item->y / CELL_SIZE);
@@ -269,7 +271,8 @@ int FindNearestFuelItem(Workshop* ws, int searchRadius) {
         if (!(ItemFlags(item->type) & IF_FUEL)) continue;
         if (item->reservedBy != -1) continue;
         if (item->unreachableCooldown > 0.0f) continue;
-        if ((int)item->z != ws->z) continue;
+        int iz = (int)item->z;
+        if (iz < ws->z - 1 || iz > ws->z + 1) continue;
 
         int itemTileX = (int)(item->x / CELL_SIZE);
         int itemTileY = (int)(item->y / CELL_SIZE);

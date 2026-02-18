@@ -49,7 +49,14 @@ Movers, items, jobs, stockpiles, workshops, animals, trains, containers, stackin
 - Semi-passive: crafter does short active work (`JOBTYPE_IGNITE_WORKSHOP`), then passive timer runs
 - `CELL_FLAG_WORKSHOP_BLOCK` set on `'#'` tiles, cleared on workshop delete
 
+## Mover Needs & Death
+
+- **Starvation**: `mover.starvationTimer` tracks game-seconds at hunger==0, resets when hunger > 0
+- **Death**: movers deactivated on starvation timeout or trapped-in-wall detection
+- **Needs transitions** are logged to event log (seeking food/rest, eating complete, waking up)
+
 ## Gotchas
 
 - **Enum shifts**: adding ItemType/MaterialType shifts `ITEM_TYPE_COUNT`/`MAT_COUNT` — stockpile `allowedTypes[]` array sizes change, breaking save compat. Always add migration.
 - **Mover struct is ~12.4KB** due to embedded `path[1024]` (Point = 12 bytes). See `docs/todo/architecture/simd-optimization-candidates.md`.
+- **Stacked item blueprint delivery**: `DeliverMaterialToBlueprint` must increment `deliveredCount` by `stackCount`, not 1 — otherwise excess items silently destroyed
