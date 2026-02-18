@@ -72,6 +72,8 @@ typedef enum {
     COMP_GRABBER,        // Logistics inserter: moves cargo from back to front, signal-controlled
     COMP_SPLITTER,       // Logistics: alternates cargo left/right
     COMP_FILTER,         // Logistics: only passes cargo matching set type (click to set)
+    COMP_COMPRESSOR,     // Logistics: merges two side inputs into dual cargo on forward belt
+    COMP_DECOMPRESSOR,   // Logistics: splits dual cargo into forward + side outputs
     COMP_COUNT
 } ComponentType;
 
@@ -113,6 +115,7 @@ typedef struct {
     int delayBuf[4];    // repeater: circular buffer of delayed signal values
     int fluidLevel;     // 0-255 pressure for pipes (0-1024 for tanks)
     int cargo;          // 0 = empty, 1-15 = item type/color on belt
+    int cargo2;         // 0 = empty, second cargo slot for compressed belts
     bool altToggle;     // splitter: alternates left/right each item
 } Cell;
 
@@ -196,6 +199,8 @@ static const char *CompName(ComponentType t) {
         case COMP_GRABBER:    return "Grabber";
         case COMP_SPLITTER:   return "Splitter";
         case COMP_FILTER:     return "Filter";
+        case COMP_COMPRESSOR: return "Compress";
+        case COMP_DECOMPRESSOR: return "Decomp";
         default:              return "?";
     }
 }
@@ -655,17 +660,62 @@ static void BuildPresetBeltLine(int ox, int oy) {
     }
     // Splitter at the end
     PlaceAt(ox + 5, oy + 1, COMP_SPLITTER, DIR_EAST);
-    // Top output belt -> unloader
+    // Top output belt -> unloader (belt at splitter output to bridge gap)
+    PlaceAt(ox + 5, oy, COMP_BELT, DIR_EAST);
     PlaceAt(ox + 6, oy, COMP_BELT, DIR_EAST);
     PlaceAt(ox + 7, oy, COMP_BELT, DIR_EAST);
     PlaceAt(ox + 8, oy, COMP_UNLOADER, DIR_EAST);
-    // Bottom output belt -> unloader
+    // Bottom output belt -> unloader (belt at splitter output to bridge gap)
+    PlaceAt(ox + 5, oy + 2, COMP_BELT, DIR_EAST);
     PlaceAt(ox + 6, oy + 2, COMP_BELT, DIR_EAST);
     PlaceAt(ox + 7, oy + 2, COMP_BELT, DIR_EAST);
     PlaceAt(ox + 8, oy + 2, COMP_UNLOADER, DIR_EAST);
     // Wire from top unloader to display
     PlaceWire(ox + 9, oy);
     PlaceAt(ox + 9, oy + 1, COMP_DISPLAY, DIR_NORTH);
+}
+
+// Preset 13: Compress — two loaders -> compressor -> compressed belt -> decompressor -> two unloaders
+// Preset 13: Compress — 2 loaders -> compressor -> compressed belt -> decompressor -> 2 unloaders
+// Layout (13x5):
+//   Row 0: Loader1(red) -> belt -> belt ──┐
+//   Row 1:                     compressor → belt belt belt → decompressor → belt → Unloader1
+//   Row 2: Loader2(green) -> belt -> belt ─┘                     ↓
+//   Row 3:                                                      belt
+//   Row 4:                                                    Unloader2
+static void BuildPresetCompress(int ox, int oy) {
+    // Top loader (type 1 = red) feeds south into compressor's left side
+    PlaceAt(ox, oy, COMP_LOADER, DIR_EAST);
+    grid[oy][ox].setting = 1;
+    PlaceAt(ox + 1, oy, COMP_BELT, DIR_EAST);
+    PlaceAt(ox + 2, oy, COMP_BELT, DIR_SOUTH);
+
+    // Bottom loader (type 2 = green) feeds north into compressor's right side
+    PlaceAt(ox, oy + 2, COMP_LOADER, DIR_EAST);
+    grid[oy + 2][ox].setting = 2;
+    PlaceAt(ox + 1, oy + 2, COMP_BELT, DIR_EAST);
+    PlaceAt(ox + 2, oy + 2, COMP_BELT, DIR_NORTH);
+
+    // Compressor facing east, inputs from north (left) and south (right)
+    PlaceAt(ox + 2, oy + 1, COMP_COMPRESSOR, DIR_EAST);
+
+    // Compressed belt chain going east
+    for (int i = 3; i <= 6; i++) {
+        PlaceAt(ox + i, oy + 1, COMP_BELT, DIR_EAST);
+    }
+
+    // Decompressor facing east
+    PlaceAt(ox + 7, oy + 1, COMP_DECOMPRESSOR, DIR_EAST);
+
+    // Forward output (cargo) -> belt -> unloader
+    PlaceAt(ox + 8, oy + 1, COMP_BELT, DIR_EAST);
+    PlaceAt(ox + 9, oy + 1, COMP_BELT, DIR_EAST);
+    PlaceAt(ox + 10, oy + 1, COMP_UNLOADER, DIR_EAST);
+
+    // Side output (cargo2) -> belt going south -> unloader
+    PlaceAt(ox + 7, oy + 2, COMP_BELT, DIR_SOUTH);
+    PlaceAt(ox + 7, oy + 3, COMP_BELT, DIR_SOUTH);
+    PlaceAt(ox + 7, oy + 4, COMP_UNLOADER, DIR_SOUTH);
 }
 
 static Preset presets[] = {
@@ -680,7 +730,8 @@ static Preset presets[] = {
     { "Pump Loop",    "Pump -> pipes -> drain + light",      BuildPresetPumpLoop,    8, 2 },
     { "Sig Valve",    "Switch controls valve, fluid->light", BuildPresetSignalValve, 9, 2 },
     { "Analog",       "Dial -> display + comparator -> light", BuildPresetAnalog,    6, 2 },
-    { "Belt Line",    "Loader -> belts -> splitter -> unload", BuildPresetBeltLine,  10, 4 },
+    { "Belt Line",    "Loader -> belts -> splitter -> unload", BuildPresetBeltLine,  11, 4 },
+    { "Compress",     "Compress 2 belts -> decompress to 2",  BuildPresetCompress,  11, 5 },
 };
 #define PRESET_COUNT (sizeof(presets) / sizeof(presets[0]))
 
@@ -1236,9 +1287,12 @@ static Color CargoColor(int cargo) {
 static void UpdateBelts(void) {
     // Snapshot cargo to avoid order-dependent movement
     int oldCargo[GRID_H][GRID_W];
+    int oldCargo2[GRID_H][GRID_W];
     for (int y = 0; y < GRID_H; y++)
-        for (int x = 0; x < GRID_W; x++)
+        for (int x = 0; x < GRID_W; x++) {
             oldCargo[y][x] = grid[y][x].cargo;
+            oldCargo2[y][x] = grid[y][x].cargo2;
+        }
 
     // Phase 1: Belts move cargo in facing direction
     for (int y = 0; y < GRID_H; y++) {
@@ -1255,7 +1309,9 @@ static void UpdateBelts(void) {
             // Can push to belt, unloader, splitter, or filter
             if (IsBeltTarget(next->type) && next->cargo == 0) {
                 next->cargo = oldCargo[y][x];
+                next->cargo2 = oldCargo2[y][x];
                 grid[y][x].cargo = 0;
+                grid[y][x].cargo2 = 0;
             }
         }
     }
@@ -1312,6 +1368,122 @@ static void UpdateBelts(void) {
                     grid[y][x].cargo = 0;
                     grid[y][x].altToggle = !grid[y][x].altToggle;
                 }
+            }
+        }
+    }
+
+    // Phase 3.5: Compressors — merge two side inputs into dual cargo forward
+    for (int y = 0; y < GRID_H; y++) {
+        for (int x = 0; x < GRID_W; x++) {
+            if (grid[y][x].type != COMP_COMPRESSOR) continue;
+
+            Direction rightDir, leftDir;
+            GateInputDirs(grid[y][x].facing, &rightDir, &leftDir);
+
+            // Check left input
+            int ldx, ldy;
+            DirOffset(leftDir, &ldx, &ldy);
+            int lx = x + ldx, ly = y + ldy;
+            int leftCargo = 0;
+            if (InGrid(lx, ly) && grid[ly][lx].cargo > 0)
+                leftCargo = grid[ly][lx].cargo;
+
+            // Check right input
+            int rdx, rdy;
+            DirOffset(rightDir, &rdx, &rdy);
+            int rx = x + rdx, ry = y + rdy;
+            int rightCargo = 0;
+            if (InGrid(rx, ry) && grid[ry][rx].cargo > 0)
+                rightCargo = grid[ry][rx].cargo;
+
+            // Need at least one input
+            if (leftCargo == 0 && rightCargo == 0) continue;
+
+            // Check if each side has a belt-type neighbor (potential input)
+            bool leftHasBelt = InGrid(lx, ly) && grid[ly][lx].type != COMP_EMPTY;
+            bool rightHasBelt = InGrid(rx, ry) && grid[ry][rx].type != COMP_EMPTY;
+
+            // If both sides have belts, wait for both to have cargo before acting
+            if (leftHasBelt && rightHasBelt && (leftCargo == 0 || rightCargo == 0)) continue;
+
+            // Check forward output
+            int fdx, fdy;
+            DirOffset(grid[y][x].facing, &fdx, &fdy);
+            int fx = x + fdx, fy = y + fdy;
+            if (!InGrid(fx, fy)) continue;
+            Cell *fwd = &grid[fy][fx];
+            if (!IsBeltTarget(fwd->type) || fwd->cargo != 0) continue;
+
+            if (leftCargo > 0 && rightCargo > 0) {
+                // Both sides: compress into dual cargo
+                fwd->cargo = leftCargo;
+                fwd->cargo2 = rightCargo;
+                grid[ly][lx].cargo = 0;
+                grid[ry][rx].cargo = 0;
+            } else if (leftCargo > 0) {
+                // Only left side connected: pass through as single cargo
+                fwd->cargo = leftCargo;
+                grid[ly][lx].cargo = 0;
+            } else {
+                // Only right side connected: pass through as single cargo
+                fwd->cargo = rightCargo;
+                grid[ry][rx].cargo = 0;
+            }
+        }
+    }
+
+    // Phase 3.6: Decompressors — split dual cargo into forward + side
+    for (int y = 0; y < GRID_H; y++) {
+        for (int x = 0; x < GRID_W; x++) {
+            if (grid[y][x].type != COMP_DECOMPRESSOR) continue;
+
+            // Check back input
+            int bdx, bdy;
+            DirOffset(OppositeDir(grid[y][x].facing), &bdx, &bdy);
+            int bx = x + bdx, by = y + bdy;
+            if (!InGrid(bx, by)) continue;
+            Cell *back = &grid[by][bx];
+            if (back->cargo == 0) continue;
+
+            // Check forward output
+            int fdx, fdy;
+            DirOffset(grid[y][x].facing, &fdx, &fdy);
+            int fx = x + fdx, fy = y + fdy;
+            if (!InGrid(fx, fy)) continue;
+            Cell *fwd = &grid[fy][fx];
+            if (!IsBeltTarget(fwd->type) || fwd->cargo != 0) continue;
+
+            if (back->cargo2 > 0) {
+                // Dual cargo: split forward + side (try preferred side, fall back to other)
+                Direction rightDir, leftDir;
+                GateInputDirs(grid[y][x].facing, &rightDir, &leftDir);
+                Direction first = grid[y][x].altToggle ? leftDir : rightDir;
+                Direction second = grid[y][x].altToggle ? rightDir : leftDir;
+
+                Cell *side = NULL;
+                int sdx, sdy;
+                DirOffset(first, &sdx, &sdy);
+                int sx = x + sdx, sy = y + sdy;
+                if (InGrid(sx, sy) && IsBeltTarget(grid[sy][sx].type) && grid[sy][sx].cargo == 0) {
+                    side = &grid[sy][sx];
+                } else {
+                    DirOffset(second, &sdx, &sdy);
+                    sx = x + sdx; sy = y + sdy;
+                    if (InGrid(sx, sy) && IsBeltTarget(grid[sy][sx].type) && grid[sy][sx].cargo == 0) {
+                        side = &grid[sy][sx];
+                    }
+                }
+                if (!side) continue;
+
+                fwd->cargo = back->cargo;
+                side->cargo = back->cargo2;
+                back->cargo = 0;
+                back->cargo2 = 0;
+                grid[y][x].altToggle = !grid[y][x].altToggle;
+            } else {
+                // Single cargo: just pass through forward
+                fwd->cargo = back->cargo;
+                back->cargo = 0;
             }
         }
     }
@@ -1439,6 +1611,8 @@ static Color CompColor(ComponentType t, bool state) {
         case COMP_GRABBER:   return state ? (Color){160, 140, 40, 255} : (Color){80, 70, 20, 255};
         case COMP_SPLITTER:  return (Color){80, 80, 120, 255};
         case COMP_FILTER:    return (Color){120, 80, 100, 255};
+        case COMP_COMPRESSOR:   return (Color){100, 80, 120, 255};
+        case COMP_DECOMPRESSOR: return (Color){80, 100, 120, 255};
         default:             return DARKGRAY;
     }
 }
@@ -1791,8 +1965,15 @@ static void DrawComponents(void) {
                         DrawLineEx((Vector2){px + perpX * 3 - dx * 2, py + perpY * 3 - dy * 2},
                                    (Vector2){px, py}, 1.5f, chevCol);
                     }
-                    // Draw cargo dot
-                    if (c->cargo > 0) {
+                    // Draw cargo dot(s)
+                    if (c->cargo > 0 && c->cargo2 > 0) {
+                        // Dual cargo: offset along perpendicular to belt direction
+                        int pdx = -dy, pdy = dx;
+                        DrawCircle(cx - pdx * 3, cy - pdy * 3, 3, CargoColor(c->cargo));
+                        DrawCircleLines(cx - pdx * 3, cy - pdy * 3, 3, BLACK);
+                        DrawCircle(cx + pdx * 3, cy + pdy * 3, 3, CargoColor(c->cargo2));
+                        DrawCircleLines(cx + pdx * 3, cy + pdy * 3, 3, BLACK);
+                    } else if (c->cargo > 0) {
                         DrawCircle(cx, cy, 4, CargoColor(c->cargo));
                         DrawCircleLines(cx, cy, 4, BLACK);
                     }
@@ -1873,6 +2054,60 @@ static void DrawComponents(void) {
                     break;
                 }
 
+                case COMP_COMPRESSOR: {
+                    DrawRectangleRec(r, col);
+                    int dx, dy;
+                    int edge = CELL_SIZE / 2 - 2;
+                    // Draw reverse-Y: two side inputs merging to one forward output
+                    Direction rightDir, leftDir;
+                    GateInputDirs(c->facing, &rightDir, &leftDir);
+                    DirOffset(leftDir, &dx, &dy);
+                    DrawLineEx((Vector2){(float)(cx + dx * edge), (float)(cy + dy * edge)},
+                               (Vector2){(float)cx, (float)cy}, 2.0f, WHITE);
+                    DirOffset(rightDir, &dx, &dy);
+                    DrawLineEx((Vector2){(float)(cx + dx * edge), (float)(cy + dy * edge)},
+                               (Vector2){(float)cx, (float)cy}, 2.0f, WHITE);
+                    DirOffset(c->facing, &dx, &dy);
+                    DrawLineEx((Vector2){(float)cx, (float)cy},
+                               (Vector2){(float)(cx + dx * edge), (float)(cy + dy * edge)}, 2.0f, WHITE);
+                    // Port dots
+                    DirOffset(leftDir, &dx, &dy);
+                    DrawCircle(cx + dx * edge, cy + dy * edge, 3, ORANGE);
+                    DirOffset(rightDir, &dx, &dy);
+                    DrawCircle(cx + dx * edge, cy + dy * edge, 3, ORANGE);
+                    DirOffset(c->facing, &dx, &dy);
+                    DrawCircle(cx + dx * edge, cy + dy * edge, 3, GREEN);
+                    DrawTextShadow("><", cx - 5, cy - 5, 10, WHITE);
+                    break;
+                }
+
+                case COMP_DECOMPRESSOR: {
+                    DrawRectangleRec(r, col);
+                    int dx, dy;
+                    int edge = CELL_SIZE / 2 - 2;
+                    // Draw Y: one back input splitting to forward + side
+                    DirOffset(OppositeDir(c->facing), &dx, &dy);
+                    DrawLineEx((Vector2){(float)(cx + dx * edge), (float)(cy + dy * edge)},
+                               (Vector2){(float)cx, (float)cy}, 2.0f, WHITE);
+                    DirOffset(c->facing, &dx, &dy);
+                    DrawLineEx((Vector2){(float)cx, (float)cy},
+                               (Vector2){(float)(cx + dx * edge), (float)(cy + dy * edge)}, 2.0f, WHITE);
+                    Direction rightDir, leftDir;
+                    GateInputDirs(c->facing, &rightDir, &leftDir);
+                    DirOffset(rightDir, &dx, &dy);
+                    DrawLineEx((Vector2){(float)cx, (float)cy},
+                               (Vector2){(float)(cx + dx * edge), (float)(cy + dy * edge)}, 2.0f, WHITE);
+                    // Port dots
+                    DirOffset(OppositeDir(c->facing), &dx, &dy);
+                    DrawCircle(cx + dx * edge, cy + dy * edge, 3, ORANGE);
+                    DirOffset(c->facing, &dx, &dy);
+                    DrawCircle(cx + dx * edge, cy + dy * edge, 3, GREEN);
+                    DirOffset(rightDir, &dx, &dy);
+                    DrawCircle(cx + dx * edge, cy + dy * edge, 3, GREEN);
+                    DrawTextShadow("<>", cx - 5, cy - 5, 10, WHITE);
+                    break;
+                }
+
                 default:
                     break;
             }
@@ -1906,9 +2141,10 @@ static const char *fluidKeys[] = { "S", "D", "G", "H", "J", "K" };
 
 // Row 3: Belt/logistics components
 static const ComponentType beltItems[] = {
-    COMP_BELT, COMP_LOADER, COMP_UNLOADER, COMP_GRABBER, COMP_SPLITTER, COMP_FILTER
+    COMP_BELT, COMP_LOADER, COMP_UNLOADER, COMP_GRABBER, COMP_SPLITTER, COMP_FILTER,
+    COMP_COMPRESSOR, COMP_DECOMPRESSOR
 };
-static const char *beltKeys[] = { ",", ".", "/", ";", "'", "\\" };
+static const char *beltKeys[] = { ",", ".", "/", ";", "'", "\\", "[", "]" };
 #define BELT_COUNT (int)(sizeof(beltItems) / sizeof(beltItems[0]))
 
 // Row 4: Processor + Display + Eraser
@@ -2216,6 +2452,13 @@ static void DrawCellTooltip(int gx, int gy) {
     } else if (c->type == COMP_FILTER) {
         snprintf(buf, sizeof(buf), "%s [%d,%d] pass=%d dir=%s cargo=%d (click to change)",
                  CompName(c->type), gx, gy, c->setting, DirName(c->facing), c->cargo);
+    } else if (c->type == COMP_COMPRESSOR) {
+        snprintf(buf, sizeof(buf), "%s [%d,%d] dir=%s (merges 2 side inputs into dual cargo)",
+                 CompName(c->type), gx, gy, DirName(c->facing));
+    } else if (c->type == COMP_DECOMPRESSOR) {
+        snprintf(buf, sizeof(buf), "%s [%d,%d] dir=%s side=%s (splits dual cargo to fwd+side)",
+                 CompName(c->type), gx, gy, DirName(c->facing),
+                 c->altToggle ? "LEFT" : "RIGHT");
     } else {
         snprintf(buf, sizeof(buf), "%s [%d,%d] state=%s sigIn=%d sigOut=%d dir=%s",
                  CompName(c->type), gx, gy,
@@ -2309,6 +2552,8 @@ static void HandleInput(void) {
         if (IsKeyPressed(KEY_SEMICOLON))  selectedComp = COMP_GRABBER;
         if (IsKeyPressed(KEY_APOSTROPHE)) selectedComp = COMP_SPLITTER;
         if (IsKeyPressed(KEY_BACKSLASH))  selectedComp = COMP_FILTER;
+        if (IsKeyPressed(KEY_LEFT_BRACKET))  selectedComp = COMP_COMPRESSOR;
+        if (IsKeyPressed(KEY_RIGHT_BRACKET)) selectedComp = COMP_DECOMPRESSOR;
         if (IsKeyPressed(KEY_ZERO))  selectedComp = COMP_EMPTY;
     }
 
@@ -2417,9 +2662,18 @@ static void HandleInput(void) {
                     }
                 }
             }
-            // Right click: remove
-            if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) && InGrid(gx, gy)) {
-                PlaceComponent(gx, gy, COMP_EMPTY);
+            // Right click: remove if occupied, rotate if empty
+            if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) && InGrid(gx, gy)) {
+                if (grid[gy][gx].type == COMP_EMPTY) {
+                    placingDir = (Direction)((placingDir + 1) % 4);
+                } else {
+                    PlaceComponent(gx, gy, COMP_EMPTY);
+                }
+            }
+            if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) && !IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) && InGrid(gx, gy)) {
+                if (grid[gy][gx].type != COMP_EMPTY) {
+                    PlaceComponent(gx, gy, COMP_EMPTY);
+                }
             }
             break;
         }
@@ -2532,6 +2786,40 @@ int main(void) {
                 } else {
                     Rectangle r = CellRect(gx, gy);
                     DrawRectangleLinesEx(r, 2, (Color){255, 255, 255, 80});
+
+                    // Ghost preview of selected component
+                    if (selectedComp != COMP_EMPTY && grid[gy][gx].type == COMP_EMPTY) {
+                        int cx = (int)(r.x + r.width / 2);
+                        int cy = (int)(r.y + r.height / 2);
+                        Color ghostCol = CompColor(selectedComp, false);
+                        ghostCol.a = 80;
+
+                        // Background fill
+                        Color ghostBg = ghostCol;
+                        ghostBg.a = 40;
+                        DrawRectangleRec(r, ghostBg);
+
+                        // Direction arrow for directional components
+                        bool directional = (selectedComp == COMP_BELT || selectedComp == COMP_LOADER ||
+                            selectedComp == COMP_GRABBER || selectedComp == COMP_SPLITTER ||
+                            selectedComp == COMP_FILTER || selectedComp == COMP_NOT ||
+                            selectedComp == COMP_AND || selectedComp == COMP_OR ||
+                            selectedComp == COMP_XOR || selectedComp == COMP_NOR ||
+                            selectedComp == COMP_LATCH || selectedComp == COMP_REPEATER ||
+                            selectedComp == COMP_PULSE || selectedComp == COMP_VALVE ||
+                            selectedComp == COMP_COMPARATOR || selectedComp == COMP_COMPRESSOR ||
+                            selectedComp == COMP_DECOMPRESSOR || selectedComp == COMP_UNLOADER);
+                        if (directional) {
+                            DrawArrow(cx, cy, placingDir, (Color){255, 255, 255, 200});
+                        }
+
+                        // Label
+                        const char *label = CompName(selectedComp);
+                        int tw = MeasureTextUI(label, 10);
+                        Color textGhost = WHITE;
+                        textGhost.a = 100;
+                        DrawTextShadow(label, cx - tw / 2, cy - 5, 10, textGhost);
+                    }
                 }
             }
             DrawCellTooltip(gx, gy);
