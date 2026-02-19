@@ -31,6 +31,18 @@ void InitBalance(void) {
     balance.baseMoverSpeed       = 200.0f;
     balance.moverSpeedVariance   = 0.25f;
 
+    // Body temperature
+    balance.bodyTempNormal           = 37.0f;
+    balance.bodyTempChangeRatePerGH  =  8.0f;
+    balance.mildColdThreshold        = 35.0f;
+    balance.moderateColdThreshold    = 33.0f;
+    balance.severeColdThreshold      = 30.0f;
+    balance.coldSpeedPenaltyMin      =  0.6f;
+    balance.coldEnergyDrainMult      =  2.0f;
+    balance.hypothermiaDeathGH       =  4.0f;
+    balance.heatThreshold            = 40.0f;
+    balance.heatSpeedPenaltyMin      =  0.7f;
+
     // Multipliers
     balance.nightEnergyMult       = 1.2f;
     balance.carryingEnergyMult    = 1.1f;

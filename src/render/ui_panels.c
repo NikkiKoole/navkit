@@ -1455,6 +1455,32 @@ void DrawUI(void) {
                 "Minimum speed multiplier when starving.");
             y += 22;
 
+            // Body Temperature
+            y += 4;
+            DrawTextShadow("Body Temperature:", ix, y, 14, GRAY);
+            y += 18;
+            changed |= DraggableFloatT(ix, y, "Temp Change Rate", &balance.bodyTempChangeRatePerGH, 0.5f, 1.0f, 20.0f,
+                "Degrees C per game-hour toward ambient.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Mild Cold", &balance.mildColdThreshold, 0.5f, 30.0f, 37.0f,
+                "Body temp below this = speed penalty.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Moderate Cold", &balance.moderateColdThreshold, 0.5f, 28.0f, 36.0f,
+                "Body temp below this = 2x energy drain.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Severe Cold", &balance.severeColdThreshold, 0.5f, 25.0f, 34.0f,
+                "Body temp below this = hypothermia death timer.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Cold Speed Min", &balance.coldSpeedPenaltyMin, 0.05f, 0.1f, 1.0f,
+                "Minimum speed multiplier when cold.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Cold Energy Mult", &balance.coldEnergyDrainMult, 0.1f, 1.0f, 5.0f,
+                "Energy drain multiplier when moderately cold.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Hypothermia Death", &balance.hypothermiaDeathGH, 0.5f, 1.0f, 12.0f,
+                "Game-hours at severe cold before death.");
+            y += 22;
+
             // Recalc derived rates if anything changed
             if (changed) RecalcBalanceTable();
 

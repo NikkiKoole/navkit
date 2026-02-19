@@ -371,6 +371,19 @@ static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
         }
     }
 
+    // Body temperature
+    {
+        const char* tempLabel;
+        Color tempColor;
+        if (m->bodyTemp < balance.severeColdThreshold) { tempLabel = "Hypothermic"; tempColor = BLUE; }
+        else if (m->bodyTemp < balance.moderateColdThreshold) { tempLabel = "Freezing"; tempColor = BLUE; }
+        else if (m->bodyTemp < balance.mildColdThreshold) { tempLabel = "Cold"; tempColor = SKYBLUE; }
+        else if (m->bodyTemp > balance.heatThreshold) { tempLabel = "Overheating"; tempColor = RED; }
+        else { tempLabel = "Normal"; tempColor = GREEN; }
+        snprintf(lines[lineCount], sizeof(lines[0]), "Body Temp: %.1fC (%s)", m->bodyTemp, tempLabel);
+        lineColors[lineCount++] = tempColor;
+    }
+
     // Job info
     snprintf(lines[lineCount], sizeof(lines[0]), "Job: %s (step %d)", jobTypeName, jobStep);
     lineColors[lineCount++] = job ? GREEN : GRAY;

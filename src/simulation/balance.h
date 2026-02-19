@@ -44,6 +44,18 @@ typedef struct {
     float baseMoverSpeed;           // 200.0 (pixels/sec, before variance)
     float moverSpeedVariance;       // 0.25 (±25% random per mover)
 
+    // === BODY TEMPERATURE (Celsius) ===
+    float bodyTempNormal;            // 37.0
+    float bodyTempChangeRatePerGH;   // 8.0 (°C per game-hour toward ambient)
+    float mildColdThreshold;         // 35.0
+    float moderateColdThreshold;     // 33.0
+    float severeColdThreshold;       // 30.0
+    float coldSpeedPenaltyMin;       // 0.6
+    float coldEnergyDrainMult;       // 2.0 (energy drains 2x when moderate cold)
+    float hypothermiaDeathGH;        // 4.0
+    float heatThreshold;             // 40.0
+    float heatSpeedPenaltyMin;       // 0.7
+
     // === MULTIPLIERS (for system interactions) ===
     float nightEnergyMult;          // 1.2
     float carryingEnergyMult;       // 1.1

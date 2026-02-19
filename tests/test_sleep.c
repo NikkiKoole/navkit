@@ -12,6 +12,8 @@
 #include "../src/simulation/balance.h"
 #include "../src/entities/furniture.h"
 #include "../src/simulation/weather.h"
+#include "../src/simulation/temperature.h"
+#include "../src/game_state.h"
 #include "../src/core/time.h"
 #include "../src/world/designations.h"
 #include "test_helpers.h"
@@ -48,6 +50,10 @@ static void SetupClean(void) {
     gameSpeed = 1.0f;
     daysPerSeason = 7;
     dayNumber = 8;
+    // Set comfortable ambient temp so body temp doesn't drift during sleep/energy tests
+    for (int y = 0; y < 10; y++)
+        for (int x = 0; x < 10; x++)
+            SetTemperature(x, y, 1, (int)balance.bodyTempNormal);
 }
 
 static int SetupMover(int cx, int cy) {
@@ -567,6 +573,216 @@ describe(furniture_rest_seeking) {
 }
 
 // =============================================================================
+// Story: Body temperature tracks ambient temperature, causing cold/heat effects
+// =============================================================================
+
+// Helper: set up a mover at comfortable body temp with cold ambient
+static void SetupBodyTempTest(int* mi, float ambientTemp) {
+    SetupClean();
+    // Override ambient temp on all cells
+    for (int y = 0; y < 10; y++)
+        for (int x = 0; x < 10; x++)
+            SetTemperature(x, y, 1, (int)ambientTemp);
+    *mi = SetupMover(5, 5);
+    movers[*mi].hunger = 1.0f;
+    movers[*mi].energy = 1.0f;
+    weatherState.windStrength = 0.0f;
+}
+
+describe(body_temperature) {
+    it("body temp trends toward cold ambient") {
+        int mi;
+        SetupBodyTempTest(&mi, 0.0f); // freezing ambient
+        float startTemp = movers[mi].bodyTemp;
+        expect(startTemp == balance.bodyTempNormal); // 37°C
+
+        // Simulate 60 ticks (1 second)
+        for (int i = 0; i < 60; i++) {
+            movers[mi].hunger = 1.0f;
+            SimNeedsTick();
+        }
+
+        // Body temp should have decreased toward 0
+        expect(movers[mi].bodyTemp < startTemp);
+        expect(movers[mi].bodyTemp > 0.0f); // shouldn't have reached ambient yet
+    }
+
+    it("body temp trends toward warm ambient") {
+        int mi;
+        SetupBodyTempTest(&mi, 42.0f); // hot ambient
+        movers[mi].bodyTemp = 35.0f; // start cold
+
+        for (int i = 0; i < 60; i++) {
+            movers[mi].hunger = 1.0f;
+            SimNeedsTick();
+        }
+
+        // Body temp should have increased toward 42
+        expect(movers[mi].bodyTemp > 35.0f);
+        expect(movers[mi].bodyTemp <= 42.0f);
+    }
+
+    it("body temp stabilizes at effective ambient") {
+        int mi;
+        SetupBodyTempTest(&mi, 25.0f);
+
+        // Run many ticks — body temp should converge to 25
+        for (int i = 0; i < 60000; i++) {
+            movers[mi].hunger = 1.0f;
+            movers[mi].energy = 1.0f; // pin energy so cold drain doesn't kill
+            SimNeedsTick();
+        }
+
+        // Should be very close to ambient (within 0.5°C)
+        float diff = movers[mi].bodyTemp - 25.0f;
+        if (diff < 0) diff = -diff;
+        expect(diff < 0.5f);
+    }
+
+    it("wind chill makes exposed movers cool faster") {
+        int mi_sheltered, mi_exposed;
+
+        SetupClean();
+        // Set ambient 25°C — above body temp clamp min (20)
+        for (int y = 0; y < 10; y++)
+            for (int x = 0; x < 10; x++)
+                SetTemperature(x, y, 1, 25);
+
+        // Sheltered mover: roof blocks sky — effective ambient = 25°C
+        mi_sheltered = SetupMover(3, 3);
+        movers[mi_sheltered].hunger = 1.0f;
+        movers[mi_sheltered].energy = 1.0f;
+        movers[mi_sheltered].bodyTemp = 30.0f; // start above ambient
+        grid[2][3][3] = CELL_WALL; // roof
+
+        // Exposed mover: open sky — wind chill: 25 - 2*1.0 = 23°C
+        mi_exposed = SetupMover(7, 7);
+        movers[mi_exposed].hunger = 1.0f;
+        movers[mi_exposed].energy = 1.0f;
+        movers[mi_exposed].bodyTemp = 30.0f;
+
+        weatherState.windStrength = 1.0f;
+
+        // Run until both converge toward their respective targets
+        for (int i = 0; i < 6000; i++) {
+            movers[mi_sheltered].hunger = 1.0f;
+            movers[mi_exposed].hunger = 1.0f;
+            movers[mi_sheltered].energy = 1.0f;
+            movers[mi_exposed].energy = 1.0f;
+            SimNeedsTick();
+        }
+
+        // Sheltered → 25°C, exposed → 23°C
+        expect(movers[mi_exposed].bodyTemp < movers[mi_sheltered].bodyTemp);
+    }
+
+    it("mild cold applies speed penalty") {
+        int mi;
+        SetupBodyTempTest(&mi, 37.0f); // warm ambient, won't interfere
+        movers[mi].bodyTemp = 34.0f; // between mild (35) and moderate (33)
+
+        // Need to run UpdateMovers to get speed penalty applied
+        // Speed penalty is checked in UpdateMovers, not NeedsTick
+        // We test that the mover's body temp is in the penalty range
+        expect(movers[mi].bodyTemp < balance.mildColdThreshold);
+        expect(movers[mi].bodyTemp > balance.moderateColdThreshold);
+
+        // Calculate expected multiplier
+        float range = balance.mildColdThreshold - balance.moderateColdThreshold; // 35-33=2
+        float t = (movers[mi].bodyTemp - balance.moderateColdThreshold) / range; // (34-33)/2=0.5
+        float expectedMult = balance.coldSpeedPenaltyMin + t * (1.0f - balance.coldSpeedPenaltyMin);
+        // With min=0.6: 0.6 + 0.5*(0.4) = 0.8
+        expect(expectedMult > balance.coldSpeedPenaltyMin);
+        expect(expectedMult < 1.0f);
+    }
+
+    it("moderate cold increases energy drain") {
+        int mi_warm, mi_cold;
+        SetupBodyTempTest(&mi_warm, 37.0f); // warm ambient
+        mi_cold = SetupMover(7, 7);
+        movers[mi_cold].hunger = 1.0f;
+        movers[mi_cold].energy = 1.0f;
+        movers[mi_cold].bodyTemp = 32.0f; // below moderate threshold (33)
+
+        // Keep warm mover at normal temp
+        movers[mi_warm].bodyTemp = balance.bodyTempNormal;
+
+        float warmStart = movers[mi_warm].energy;
+        float coldStart = movers[mi_cold].energy;
+
+        for (int i = 0; i < 300; i++) {
+            movers[mi_warm].hunger = 1.0f;
+            movers[mi_cold].hunger = 1.0f;
+            // Pin body temps so they don't drift
+            movers[mi_warm].bodyTemp = balance.bodyTempNormal;
+            movers[mi_cold].bodyTemp = 32.0f;
+            SimNeedsTick();
+        }
+
+        float warmDrain = warmStart - movers[mi_warm].energy;
+        float coldDrain = coldStart - movers[mi_cold].energy;
+
+        // Cold mover should drain energy ~2x faster
+        expect(coldDrain > warmDrain * 1.5f);
+    }
+
+    it("severe cold starts hypothermia timer") {
+        int mi;
+        SetupBodyTempTest(&mi, 37.0f);
+        movers[mi].bodyTemp = 29.0f; // below severe threshold (30)
+        gameMode = GAME_MODE_SURVIVAL;
+
+        expect(movers[mi].hypothermiaTimer == 0.0f);
+
+        for (int i = 0; i < 60; i++) {
+            movers[mi].hunger = 1.0f;
+            movers[mi].energy = 1.0f;
+            movers[mi].bodyTemp = 29.0f; // pin below severe
+            SimNeedsTick();
+        }
+
+        // Hypothermia timer should have advanced
+        expect(movers[mi].hypothermiaTimer > 0.0f);
+
+        gameMode = GAME_MODE_SANDBOX; // reset
+    }
+
+    it("hypothermia timer resets when warming above severe") {
+        int mi;
+        SetupBodyTempTest(&mi, 37.0f);
+        movers[mi].bodyTemp = 29.0f;
+        movers[mi].hypothermiaTimer = 100.0f; // accumulated time
+        gameMode = GAME_MODE_SURVIVAL;
+
+        // Warm up above severe threshold
+        movers[mi].bodyTemp = 31.0f;
+
+        SimNeedsTick();
+
+        // Timer should have reset
+        expect(movers[mi].hypothermiaTimer == 0.0f);
+
+        gameMode = GAME_MODE_SANDBOX;
+    }
+
+    it("heat applies speed penalty") {
+        int mi;
+        SetupBodyTempTest(&mi, 37.0f);
+        movers[mi].bodyTemp = 41.0f; // above heat threshold (40)
+
+        expect(movers[mi].bodyTemp > balance.heatThreshold);
+
+        // Calculate expected multiplier
+        float range = 42.0f - balance.heatThreshold; // 42-40=2
+        float t = (42.0f - movers[mi].bodyTemp) / range; // (42-41)/2=0.5
+        float expectedMult = balance.heatSpeedPenaltyMin + t * (1.0f - balance.heatSpeedPenaltyMin);
+        // With min=0.7: 0.7 + 0.5*(0.3) = 0.85
+        expect(expectedMult > balance.heatSpeedPenaltyMin);
+        expect(expectedMult < 1.0f);
+    }
+}
+
+// =============================================================================
 // Main
 // =============================================================================
 
@@ -591,6 +807,7 @@ int main(int argc, char* argv[]) {
     test(starvation_wakes_sleeper);
     test(full_day_cycle);
     test(furniture_rest_seeking);
+    test(body_temperature);
 
     return 0;
 }

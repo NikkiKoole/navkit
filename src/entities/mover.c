@@ -658,6 +658,8 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->needProgress = 0.0f;
     m->needSearchCooldown = 0.0f;
     m->starvationTimer = 0.0f;
+    m->bodyTemp = balance.bodyTempNormal;
+    m->hypothermiaTimer = 0.0f;
     // Job system
     m->currentJobId = -1;
     // Capabilities - default to all enabled
@@ -807,8 +809,48 @@ void NeedsTick(void) {
         // Drain energy (not while resting)
         if (m->freetimeState != FREETIME_RESTING) {
             float drainPerGH = (m->currentJobId >= 0) ? balance.energyDrainWorkPerGH : balance.energyDrainIdlePerGH;
+            // Moderate cold makes energy drain faster
+            if (m->bodyTemp < balance.moderateColdThreshold) {
+                drainPerGH *= balance.coldEnergyDrainMult;
+            }
             m->energy -= RatePerGameSecond(drainPerGH) * dt;
             if (m->energy < 0.0f) m->energy = 0.0f;
+        }
+
+        // Update body temperature — trend toward effective ambient
+        {
+            int cx = (int)(m->x / CELL_SIZE);
+            int cy = (int)(m->y / CELL_SIZE);
+            int cz = (int)m->z;
+            float cellTemp = (float)GetTemperature(cx, cy, cz);
+            bool exposed = IsExposedToSky(cx, cy, cz);
+            float effectiveAmbient = GetWindChillTemp(cellTemp, weatherState.windStrength, exposed);
+
+            float diff = effectiveAmbient - m->bodyTemp;
+            float maxChange = RatePerGameSecond(balance.bodyTempChangeRatePerGH) * dt;
+            if (diff > 0) {
+                m->bodyTemp += (diff < maxChange) ? diff : maxChange;
+            } else if (diff < 0) {
+                m->bodyTemp += (diff > -maxChange) ? diff : -maxChange;
+            }
+            if (m->bodyTemp < 20.0f) m->bodyTemp = 20.0f;
+            if (m->bodyTemp > 42.0f) m->bodyTemp = 42.0f;
+        }
+
+        // Hypothermia death (survival mode only)
+        if (m->bodyTemp < balance.severeColdThreshold && gameMode == GAME_MODE_SURVIVAL) {
+            m->hypothermiaTimer += dt;
+            if (m->hypothermiaTimer >= GameHoursToGameSeconds(balance.hypothermiaDeathGH)) {
+                if (m->currentJobId >= 0) CancelJob(m, i);
+                m->freetimeState = FREETIME_NONE;
+                m->active = false;
+                EventLog("Mover %d died of hypothermia (bodyTemp=%.1f)", i, m->bodyTemp);
+                TraceLog(LOG_WARNING, "Mover %d died of hypothermia", i);
+                AddMessage("Your mover froze to death.", RED);
+                continue;
+            }
+        } else {
+            m->hypothermiaTimer = 0.0f;
         }
 
         // Tick search cooldown
@@ -1213,7 +1255,27 @@ void UpdateMovers(void) {
                 float hungerMult = balance.hungerSpeedPenaltyMin + t * (1.0f - balance.hungerSpeedPenaltyMin);
                 terrainSpeedMult *= hungerMult;
             }
-            
+
+            // Cold speed penalty (linear 1.0→min as bodyTemp goes mild→moderate)
+            if (m->bodyTemp < balance.mildColdThreshold) {
+                float range = balance.mildColdThreshold - balance.moderateColdThreshold;
+                float t = (m->bodyTemp - balance.moderateColdThreshold) / range;  // 1..0
+                if (t < 0.0f) t = 0.0f;
+                if (t > 1.0f) t = 1.0f;
+                float coldMult = balance.coldSpeedPenaltyMin + t * (1.0f - balance.coldSpeedPenaltyMin);
+                terrainSpeedMult *= coldMult;
+            }
+
+            // Heat speed penalty (linear 1.0→min as bodyTemp goes heat→42)
+            if (m->bodyTemp > balance.heatThreshold) {
+                float range = 42.0f - balance.heatThreshold;
+                float t = (42.0f - m->bodyTemp) / range;  // 1..0
+                if (t < 0.0f) t = 0.0f;
+                if (t > 1.0f) t = 1.0f;
+                float heatMult = balance.heatSpeedPenaltyMin + t * (1.0f - balance.heatSpeedPenaltyMin);
+                terrainSpeedMult *= heatMult;
+            }
+
             // Base velocity toward waypoint
             float effectiveSpeed = m->speed * dayLengthSpeedScale * terrainSpeedMult;
             float vx = dxf * invDist * effectiveSpeed;
