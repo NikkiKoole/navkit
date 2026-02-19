@@ -390,6 +390,7 @@ describe(wear_decay) {
         InitTestGridFromAscii(
             "dddd\n");
         seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
         
         // Set up dirt at multiple z-levels
         for (int x = 0; x < gridWidth; x++) {
@@ -430,6 +431,7 @@ describe(groundwear_full_cycle) {
         InitTestGridFromAscii(
             "dddd\n");
         seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
         
         for (int x = 0; x < gridWidth; x++) {
             grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);

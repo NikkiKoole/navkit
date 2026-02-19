@@ -227,6 +227,7 @@ describe(seasonal_temperature) {
     it("should return flat temp when amplitude is 0") {
         SetupSeasonTest();
         seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
         // When amplitude is 0, GetSeasonalSurfaceTemp() returns ambientSurfaceTemp
         // for backward compatibility with the temperature system
         int surfaceZ = gridDepth - 1;
@@ -253,6 +254,7 @@ describe(seasonal_temperature) {
     it("should respect custom amplitude") {
         SetupSeasonTest();
         seasonalAmplitude = 5;  // mild seasons
+        diurnalAmplitude = 0;
         int surfaceZ = gridDepth - 1;
         int maxTemp = -999;
         int minTemp = 999;

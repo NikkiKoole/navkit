@@ -393,6 +393,8 @@ bool SaveWorld(const char* filename) {
     SETTINGS_TABLE(WRITE_SETTING)
     BALANCE_SETTINGS_TABLE(WRITE_SETTING)
     #undef WRITE_SETTING
+    // v60+: diurnal amplitude
+    fwrite(&diurnalAmplitude, sizeof(int), 1, f);
 
     // Simulation accumulators (static locals, saved via getters)
     float accum;
@@ -1347,6 +1349,13 @@ bool LoadWorld(const char* filename) {
             BALANCE_SETTINGS_TABLE(READ_SETTING)
         }
         #undef READ_SETTING
+    }
+
+    // v60+: diurnal amplitude
+    if (version >= 60) {
+        fread(&diurnalAmplitude, sizeof(int), 1, f);
+    } else {
+        diurnalAmplitude = 5;
     }
 
     // v56 and earlier: balance table not saved, use defaults

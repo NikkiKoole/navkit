@@ -84,6 +84,7 @@ describe(snow_accumulation) {
         InitSnow();
         InitWeather();
         seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
         
         // Set up exposed dirt cell (CELL_WALL with dirt material)
         grid[0][5][5] = CELL_WALL;

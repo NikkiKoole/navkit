@@ -321,6 +321,7 @@ describe(temperature_underground_ambient) {
         InitTestGrid(8, 8);
         gridDepth = 16;  // Multiple z-levels
         seasonalAmplitude = 0;  // Flat ambient for predictable tests
+        diurnalAmplitude = 0;
         
         // Initialize all as walkable
         for (int z = 0; z < gridDepth; z++) {
@@ -348,6 +349,7 @@ describe(temperature_underground_ambient) {
         InitTestGrid(8, 8);
         gridDepth = 16;
         seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
         
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
@@ -378,6 +380,7 @@ describe(temperature_heated_room) {
         InitTestGrid(8, 8);
         gridDepth = 16;
         seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
         
         // Create room at z=0
         for (int z = 0; z < gridDepth; z++) {
@@ -567,6 +570,7 @@ describe(temperature_depth_gradient) {
         InitTestGrid(4, 4);
         gridDepth = 16;
         seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
         
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {

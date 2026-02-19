@@ -1302,6 +1302,7 @@ describe(water_freezing) {
         InitTestGridFromAscii(
             "....\n");
         seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
         
         InitWater();
         InitTemperature();

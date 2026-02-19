@@ -21,6 +21,7 @@ typedef enum {
 extern int daysPerSeason;           // Days per season (default 7, year = 4 * daysPerSeason)
 extern int baseSurfaceTemp;         // Base surface temperature in Celsius (default 15)
 extern int seasonalAmplitude;       // Temperature swing above/below base (default 20)
+extern int diurnalAmplitude;        // Day/night temperature swing (default 5)
 
 // Season calculation (pure functions, derived from dayNumber)
 int GetYearDay(void);               // (dayNumber-1) % (daysPerSeason*4), range 0..daysPerYear-1

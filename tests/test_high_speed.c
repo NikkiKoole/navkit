@@ -331,6 +331,7 @@ describe(high_speed_simulation_stability) {
     it("temperature should remain bounded at extreme speeds") {
         SetupOpenGrid();
         ResetTestState(12345);
+        diurnalAmplitude = 0;
         
         SetAmbientSurfaceTemp(20);
         heatTransferInterval = 0.04f;

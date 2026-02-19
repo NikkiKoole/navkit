@@ -401,6 +401,7 @@ describe(steam_spreading) {
         
         InitSteam();
         seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
         InitTemperature();
         
         // Set ambient hot so steam doesn't condense (need >= 96C / index 73)

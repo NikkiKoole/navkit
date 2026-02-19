@@ -21,6 +21,7 @@
 int daysPerSeason = 7;
 int baseSurfaceTemp = 15;  // Center of seasonal range: 15 ± 25 = -10C to 40C
 int seasonalAmplitude = 25;                  // Temp swing ±25 from base (winter ~-5C, summer ~45C)
+int diurnalAmplitude = 5;                    // Day/night temp swing ±5C (peak 14:00, trough 02:00)
 
 // =============================================================================
 // Weather State
@@ -131,6 +132,7 @@ void InitWeather(void) {
     daysPerSeason = 7;
     baseSurfaceTemp = 15;
     seasonalAmplitude = 25;
+    diurnalAmplitude = 5;
 
     memset(&weatherState, 0, sizeof(weatherState));
     weatherState.current = WEATHER_CLEAR;
@@ -201,10 +203,26 @@ static float GetYearPhase(void) {
 }
 
 int GetSeasonalSurfaceTemp(void) {
-    if (seasonalAmplitude == 0) return ambientSurfaceTemp;
-    float yearPhase = GetYearPhase();
-    float offset = sinf(yearPhase * 2.0f * (float)M_PI) * (float)seasonalAmplitude;
-    return baseSurfaceTemp + (int)offset;
+    // When both amplitudes are 0, use ambientSurfaceTemp (backward compatible)
+    if (seasonalAmplitude == 0 && diurnalAmplitude == 0) return ambientSurfaceTemp;
+
+    int temp = baseSurfaceTemp;
+
+    // Seasonal cycle: sine over the year (peak summer, trough winter)
+    if (seasonalAmplitude != 0) {
+        float yearPhase = GetYearPhase();
+        float seasonalOffset = sinf(yearPhase * 2.0f * (float)M_PI) * (float)seasonalAmplitude;
+        temp += (int)seasonalOffset;
+    }
+
+    // Diurnal cycle: sine over the day, peak at 14:00, trough at 02:00
+    if (diurnalAmplitude != 0) {
+        float dayPhase = (timeOfDay - 8.0f) / 24.0f; // 0 at 08:00, peak at 14:00
+        float diurnalOffset = sinf(dayPhase * 2.0f * (float)M_PI) * (float)diurnalAmplitude;
+        temp += (int)diurnalOffset;
+    }
+
+    return temp;
 }
 
 float GetSeasonalDawn(void) {

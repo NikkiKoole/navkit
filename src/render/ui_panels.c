@@ -1368,6 +1368,9 @@ void DrawUI(void) {
             DraggableIntT(ix, y, "Seasonal Amplitude", &seasonalAmplitude, 1.0f, 0, 40,
                 TextFormat("Temperature swing above/below base. 0=flat. Range: %dC to %dC.",
                            baseSurfaceTemp - seasonalAmplitude, baseSurfaceTemp + seasonalAmplitude));
+            y += 22;
+            DraggableIntT(ix, y, "Diurnal Amplitude", &diurnalAmplitude, 1.0f, 0, 15,
+                TextFormat("Day/night temperature swing. Peak at 14:00, trough at 02:00. 0=flat."));
         }
         y += 22;
 

@@ -269,6 +269,8 @@ describe(spec_temperature_decay) {
     it("temperature should decay toward ambient over time") {
         SetupTestGrid();
         ResetTestState(12345);
+        seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
         
         SetAmbientSurfaceTemp(20);
         tempDecayInterval = 0.2f;
@@ -292,6 +294,8 @@ describe(spec_temperature_decay) {
     it("cold should warm toward ambient over time") {
         SetupTestGrid();
         ResetTestState(12345);
+        seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
         
         SetAmbientSurfaceTemp(20);
         tempDecayInterval = 0.2f;
@@ -315,6 +319,8 @@ describe(spec_temperature_decay) {
     it("higher heatDecayPercent should decay faster") {
         // Test slow decay
         SetupTestGrid();
+        seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
         SetAmbientSurfaceTemp(20);
         tempDecayInterval = 0.2f;
         heatTransferInterval = 40.0f;
@@ -329,6 +335,8 @@ describe(spec_temperature_decay) {
         
         // Test fast decay
         SetupTestGrid();
+        seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
         SetAmbientSurfaceTemp(20);
         tempDecayInterval = 0.2f;
         heatTransferInterval = 40.0f;
@@ -355,6 +363,7 @@ describe(spec_heat_physics) {
         SetupTestGrid();
         ResetTestState(12345);
         seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
         InitTemperature();  // Re-init so cells start at correct ambient (20)
         
         SetAmbientSurfaceTemp(20);
