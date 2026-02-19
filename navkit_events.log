@@ -1,0 +1,19 @@
+[Spr D1 07:45] Job 0 created type=HARVEST_BERRY
+[Spr D1 08:51] Job 0 DONE type=HARVEST_BERRY mover=0
+[Spr D1 08:51] Job 0 released type=HARVEST_BERRY mover=0
+[Spr D1 08:52] Job 0 created type=HARVEST_BERRY
+[Spr D1 10:06] Job 0 DONE type=HARVEST_BERRY mover=0
+[Spr D1 10:06] Job 0 released type=HARVEST_BERRY mover=0
+[Spr D1 10:21] Stockpile 0 created at (8,115,z8) 1x1
+[Spr D1 10:22] Job 0 created type=HAUL
+[Spr D1 10:48] Item 279 (Berries x1) picked up by mover 0 for job 0
+[Spr D1 11:08] Item 279 (Berries) placed in stockpile 0 slot (8,115)
+[Spr D1 11:08] Job 0 DONE type=HAUL mover=0
+[Spr D1 11:08] Job 0 released type=HAUL mover=0
+[Spr D1 11:09] Job 0 created type=HAUL
+[Spr D1 11:57] Item 280 (Berries x1) picked up by mover 0 for job 0
+[Spr D1 12:44] Stack merge: item 279 (Berries) absorbed item 280 (x1), now x2
+[Spr D1 12:44] DeleteItem 280 (Berries) at (272,3696,z8) state=1
+[Spr D1 12:44] Item 280 (Berries) placed in stockpile 0 slot (8,115)
+[Spr D1 12:44] Job 0 DONE type=HAUL mover=0
+[Spr D1 12:44] Job 0 released type=HAUL mover=0
