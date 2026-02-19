@@ -705,11 +705,14 @@ void DrawUI(void) {
         // --- Trees ---
         if (SectionHeader(ix, y, "Trees", &sectionTrees)) {
             y += 18;
-            DraggableFloatT(ix, y, "Sapling Grow", &saplingGrowGH, 0.05f, 0.01f, 100.0f,
-                TextFormat("Time for sapling to become trunk: %.2f game-hours (%.1fs)", saplingGrowGH, GameHoursToGameSeconds(saplingGrowGH)));
+            DraggableFloatT(ix, y, "Sapling Grow", &saplingGrowGH, 5.0f, 0.01f, 1000.0f,
+                TextFormat("Sapling to young tree: %.0f game-hours (%.1f days)", saplingGrowGH, saplingGrowGH / 24.0f));
             y += 22;
-            DraggableFloatT(ix, y, "Trunk Grow", &trunkGrowGH, 0.02f, 0.01f, 50.0f,
-                TextFormat("Time between trunk growth stages: %.2f game-hours (%.1fs)", trunkGrowGH, GameHoursToGameSeconds(trunkGrowGH)));
+            DraggableFloatT(ix, y, "Trunk Grow", &trunkGrowGH, 5.0f, 0.01f, 1000.0f,
+                TextFormat("Per growth stage: %.0f game-hours (%.1f days)", trunkGrowGH, trunkGrowGH / 24.0f));
+            y += 22;
+            DraggableFloatT(ix, y, "Young→Mature", &youngToMatureGH, 10.0f, 0.01f, 2000.0f,
+                TextFormat("Young tree maturation wait: %.0f game-hours (%.1f days)", youngToMatureGH, youngToMatureGH / 24.0f));
             y += 22;
             ToggleBoolT(ix, y, "Sapling Regrowth", &saplingRegrowthEnabled,
                 "Enable natural sapling spawning on untrampled grass. Saplings appear over time in wilderness areas.");
@@ -1462,8 +1465,14 @@ void DrawUI(void) {
             y += 4;
             DrawTextShadow("Body Temperature:", ix, y, 14, GRAY);
             y += 18;
-            changed |= DraggableFloatT(ix, y, "Temp Change Rate", &balance.bodyTempChangeRatePerGH, 0.5f, 1.0f, 20.0f,
-                "Degrees C per game-hour toward ambient.");
+            changed |= DraggableFloatT(ix, y, "Cooling Rate", &balance.bodyTempCoolingRatePerGH, 0.5f, 0.5f, 20.0f,
+                "Degrees C per game-hour when losing heat.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Warming Rate", &balance.bodyTempWarmingRatePerGH, 0.5f, 0.5f, 20.0f,
+                "Degrees C per game-hour when gaining heat.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Metabolic Heat", &balance.metabolicHeatBonus, 1.0f, 0.0f, 40.0f,
+                "Degrees C added to ambient from metabolism. Scaled by hunger.");
             y += 22;
             changed |= DraggableFloatT(ix, y, "Mild Cold", &balance.mildColdThreshold, 0.5f, 30.0f, 37.0f,
                 "Body temp below this = speed penalty.");

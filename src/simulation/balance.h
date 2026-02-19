@@ -46,7 +46,9 @@ typedef struct {
 
     // === BODY TEMPERATURE (Celsius) ===
     float bodyTempNormal;            // 37.0
-    float bodyTempChangeRatePerGH;   // 8.0 (°C per game-hour toward ambient)
+    float bodyTempCoolingRatePerGH;  // 3.0 (°C per game-hour when cooling)
+    float bodyTempWarmingRatePerGH;  // 8.0 (°C per game-hour when warming)
+    float metabolicHeatBonus;        // 20.0 (°C added to ambient, scaled by hunger)
     float mildColdThreshold;         // 35.0
     float moderateColdThreshold;     // 33.0
     float severeColdThreshold;       // 30.0

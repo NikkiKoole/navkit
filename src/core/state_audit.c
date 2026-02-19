@@ -22,7 +22,10 @@ static void AuditLog(const char* fmt, ...) {
     char buf[256];
     va_list args;
     va_start(args, fmt);
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
     vsnprintf(buf, sizeof(buf), fmt, args);
+#pragma clang diagnostic pop
     va_end(args);
     if (auditUseStdout) {
         printf("[AUDIT] %s\n", buf);

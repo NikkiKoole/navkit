@@ -625,7 +625,7 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
 
             item->state = ITEM_CARRIED;
             EventLog("Item %d (%s x%d) picked up by mover %d for job %d",
-                     itemIdx, ItemName(item->type), item->stackCount, mover - movers, job - jobs);
+                     itemIdx, ItemName(item->type), item->stackCount, (int)(mover - movers), (int)(job - jobs));
             job->carryingItem = itemIdx;
             job->targetItem = -1;
             job->step = STEP_CARRYING;
@@ -757,7 +757,7 @@ JobRunResult RunJob_Clear(Job* job, void* moverPtr, float dt) {
             }
             item->state = ITEM_CARRIED;
             EventLog("Item %d (%s x%d) picked up by mover %d for job %d",
-                     itemIdx, ItemName(item->type), item->stackCount, mover - movers, job - jobs);
+                     itemIdx, ItemName(item->type), item->stackCount, (int)(mover - movers), (int)(job - jobs));
             job->carryingItem = itemIdx;
             job->targetItem = -1;
             job->step = STEP_CARRYING;
@@ -1268,8 +1268,9 @@ JobRunResult RunJob_Chop(Job* job, void* moverPtr, float dt) {
         return JOBRUN_RUNNING;
     }
     else if (job->step == STEP_WORKING) {
-        // Progress tree chopping
-        job->progress += dt / GameHoursToGameSeconds(CHOP_WORK_TIME);
+        // Progress tree chopping — young trees are faster
+        float workTime = IsYoungTreeBase(tx, ty, tz) ? CHOP_YOUNG_WORK_TIME : CHOP_WORK_TIME;
+        job->progress += dt / GameHoursToGameSeconds(workTime);
         d->progress = job->progress;
 
         if (job->progress >= 1.0f) {

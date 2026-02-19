@@ -34,7 +34,10 @@ void EventLog(const char* fmt, ...) {
     // User message
     va_list args;
     va_start(args, fmt);
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
     vsnprintf(entry + prefixLen, EVENT_LOG_MAX_LENGTH - prefixLen, fmt, args);
+#pragma clang diagnostic pop
     va_end(args);
 
     entry[EVENT_LOG_MAX_LENGTH - 1] = '\0';

@@ -877,32 +877,38 @@ bool DesignateChop(int x, int y, int z) {
         return false;
     }
     
-    // Accept trunk or branch — trace down to find trunk base
+    // Accept trunk, branch, or leaves — trace to find tree base
     CellType cell = grid[z][y][x];
     if (cell == CELL_TREE_BRANCH || cell == CELL_TREE_LEAVES) {
-        // Find trunk column: branches are always adjacent to trunk at same z
-        // Scan cardinal neighbors for trunk
-        int trunkX = -1, trunkY = -1;
-        static const int dx[] = {0, 1, 0, -1};
-        static const int dy[] = {-1, 0, 1, 0};
-        for (int d = 0; d < 4; d++) {
-            int nx = x + dx[d], ny = y + dy[d];
-            if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
-            if (grid[z][ny][nx] == CELL_TREE_TRUNK) { trunkX = nx; trunkY = ny; break; }
+        // Check if this is a young tree (branch column on ground)
+        if (cell == CELL_TREE_BRANCH && IsYoungTreeBase(x, y, z)) {
+            // Already at young tree base — proceed directly
+        } else {
+            // Find trunk column: branches are always adjacent to trunk at same z
+            int trunkX = -1, trunkY = -1;
+            static const int dx[] = {0, 1, 0, -1};
+            static const int dy[] = {-1, 0, 1, 0};
+            for (int d = 0; d < 4; d++) {
+                int nx = x + dx[d], ny = y + dy[d];
+                if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+                if (grid[z][ny][nx] == CELL_TREE_TRUNK) { trunkX = nx; trunkY = ny; break; }
+            }
+            if (trunkX < 0) return false;
+            x = trunkX;
+            y = trunkY;
         }
-        if (trunkX < 0) return false;
-        x = trunkX;
-        y = trunkY;
     }
     
-    // Must be a tree trunk cell (not felled)
-    if (grid[z][y][x] != CELL_TREE_TRUNK) {
+    // Must be a tree trunk or young tree branch base (not felled)
+    if (grid[z][y][x] == CELL_TREE_TRUNK) {
+        // Trace down to trunk base (lowest trunk cell)
+        while (z > 0 && grid[z - 1][y][x] == CELL_TREE_TRUNK) {
+            z--;
+        }
+    } else if (IsYoungTreeBase(x, y, z)) {
+        // Already at young tree base
+    } else {
         return false;
-    }
-    
-    // Trace down to trunk base (lowest trunk cell)
-    while (z > 0 && grid[z - 1][y][x] == CELL_TREE_TRUNK) {
-        z--;
     }
     
     // Already designated?
@@ -1025,8 +1031,19 @@ static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
     MaterialType type = NormalizeTreeTypeLocal(treeMat);
     int leafCount = 0;
 
-    int baseZ = FindTrunkBaseZAt(x, y, z);
-    int trunkHeight = GetTrunkHeightAt(x, y, baseZ);
+    // Check if this is a young tree (CELL_TREE_BRANCH base on ground)
+    bool isYoungTree = IsYoungTreeBase(x, y, z);
+
+    int baseZ, trunkHeight;
+    if (isYoungTree) {
+        baseZ = z;
+        trunkHeight = 0;
+        for (int cz = z; cz < gridDepth && grid[cz][y][x] == CELL_TREE_BRANCH; cz++)
+            trunkHeight++;
+    } else {
+        baseZ = FindTrunkBaseZAt(x, y, z);
+        trunkHeight = GetTrunkHeightAt(x, y, baseZ);
+    }
     if (trunkHeight <= 0) trunkHeight = 1;
 
     // Remove all connected trunk cells (trunk/branch/root) for this tree type
@@ -1127,142 +1144,164 @@ static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
     // Validate ramps that may have lost solid support from removed trunks
     ValidateAndCleanupRamps(minX - 1, minY - 1, minZ - 1, maxX + 1, maxY + 1, maxZ + 1);
 
-    // Calculate fall direction (away from chopper), quantized to 22.5° steps
-    float treeCenterX = (float)x + 0.5f;
-    float treeCenterY = (float)y + 0.5f;
-    float fallDirX = treeCenterX - chopperX;
-    float fallDirY = treeCenterY - chopperY;
-    float fallLen = sqrtf(fallDirX * fallDirX + fallDirY * fallDirY);
-    const float kPi = 3.14159265f;
-    float angle = 0.0f;
-    if (fallLen < 0.01f) {
-        unsigned int h = PositionHashLocal(x, y, baseZ);
-        angle = (float)(h % 16) * (kPi / 8.0f);
-    } else {
-        angle = atan2f(fallDirY, fallDirX);
-        // If near-cardinal, nudge to a diagonal for variety
-        float cardinal = kPi * 0.5f;
-        float nearest = roundf(angle / cardinal) * cardinal;
-        if (fabsf(angle - nearest) < (kPi / 32.0f)) {
-            unsigned int h = PositionHashLocal(x, y, baseZ);
-            float jitter = (h & 1u) ? (kPi / 8.0f) : -(kPi / 8.0f);
-            angle = nearest + jitter;
+    if (isYoungTree) {
+        // Young tree: drop poles and sticks directly (no felled trunk segments)
+        float spawnX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float spawnY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+        int itemZ = FindItemSpawnZAtLocal(x, y, baseZ);
+
+        // 1 pole per branch cell
+        for (int i = 0; i < trunkHeight; i++) {
+            SpawnItemWithMaterial(spawnX, spawnY, (float)itemZ, ITEM_POLES, (uint8_t)treeMat);
         }
-    }
-    float angleStep = kPi / 8.0f; // 22.5 degrees
-    angle = roundf(angle / angleStep) * angleStep;
-    float dirX = cosf(angle);
-    float dirY = sinf(angle);
+        // 1-2 bonus sticks
+        int stickCount = 1 + (trunkHeight > 1 ? 1 : 0);
+        for (int i = 0; i < stickCount; i++) {
+            SpawnItemWithMaterial(spawnX, spawnY, (float)itemZ, ITEM_STICKS, (uint8_t)treeMat);
+        }
 
-    int endX = x + (int)roundf(dirX * (float)(trunkHeight - 1));
-    int endY = y + (int)roundf(dirY * (float)(trunkHeight - 1));
+        // Decrement active cells (young tree was tracked)
+        treeActiveCells--;
+    } else {
+        // Mature tree: fall direction, felled trunk segments, leaf/sapling drops
 
-    int lineX = x;
-    int lineY = y;
-    int dx = abs(endX - x);
-    int sx = x < endX ? 1 : -1;
-    int dy = -abs(endY - y);
-    int sy = y < endY ? 1 : -1;
-    int err = dx + dy;
+        // Calculate fall direction (away from chopper), quantized to 22.5° steps
+        float treeCenterX = (float)x + 0.5f;
+        float treeCenterY = (float)y + 0.5f;
+        float fallDirX = treeCenterX - chopperX;
+        float fallDirY = treeCenterY - chopperY;
+        float fallLen = sqrtf(fallDirX * fallDirX + fallDirY * fallDirY);
+        const float kPi = 3.14159265f;
+        float angle = 0.0f;
+        if (fallLen < 0.01f) {
+            unsigned int h = PositionHashLocal(x, y, baseZ);
+            angle = (float)(h % 16) * (kPi / 8.0f);
+        } else {
+            angle = atan2f(fallDirY, fallDirX);
+            // If near-cardinal, nudge to a diagonal for variety
+            float cardinal = kPi * 0.5f;
+            float nearest = roundf(angle / cardinal) * cardinal;
+            if (fabsf(angle - nearest) < (kPi / 32.0f)) {
+                unsigned int h = PositionHashLocal(x, y, baseZ);
+                float jitter = (h & 1u) ? (kPi / 8.0f) : -(kPi / 8.0f);
+                angle = nearest + jitter;
+            }
+        }
+        float angleStep = kPi / 8.0f; // 22.5 degrees
+        angle = roundf(angle / angleStep) * angleStep;
+        float dirX = cosf(angle);
+        float dirY = sinf(angle);
 
-    int placedSegments = 0;
-    for (int i = 0; i < trunkHeight; i++) {
-        int tx = lineX;
-        int ty = lineY;
-        if (tx < 0 || tx >= gridWidth || ty < 0 || ty >= gridHeight) break;
+        int endX = x + (int)roundf(dirX * (float)(trunkHeight - 1));
+        int endY = y + (int)roundf(dirY * (float)(trunkHeight - 1));
 
-        int surfaceZ = FindSurfaceZAtLocal(tx, ty);
-        if (surfaceZ < 0) break;
-        int placeZ = surfaceZ + 1;
-        if (placeZ < 0 || placeZ >= gridDepth) break;
-        if (grid[placeZ][ty][tx] != CELL_AIR) break;
+        int lineX = x;
+        int lineY = y;
+        int dx = abs(endX - x);
+        int sx = x < endX ? 1 : -1;
+        int dy = -abs(endY - y);
+        int sy = y < endY ? 1 : -1;
+        int err = dx + dy;
 
-        grid[placeZ][ty][tx] = CELL_TREE_FELLED;
-        SetWallMaterial(tx, ty, placeZ, treeMat);
-        MarkChunkDirty(tx, ty, placeZ);
-        placedSegments++;
+        int placedSegments = 0;
+        for (int i = 0; i < trunkHeight; i++) {
+            int tx = lineX;
+            int ty = lineY;
+            if (tx < 0 || tx >= gridWidth || ty < 0 || ty >= gridHeight) break;
 
-        if (lineX == endX && lineY == endY) break;
-        int e2 = 2 * err;
-        if (e2 >= dy) { err += dy; lineX += sx; }
-        if (e2 <= dx) { err += dx; lineY += sy; }
-    }
+            int surfaceZ = FindSurfaceZAtLocal(tx, ty);
+            if (surfaceZ < 0) break;
+            int placeZ = surfaceZ + 1;
+            if (placeZ < 0 || placeZ >= gridDepth) break;
+            if (grid[placeZ][ty][tx] != CELL_AIR) break;
 
-    if (placedSegments < trunkHeight) {
-        TraceLog(LOG_WARNING, "FellTree: placed %d/%d fallen segments at (%d,%d,z%d)",
-                 placedSegments, trunkHeight, x, y, baseZ);
-    }
+            grid[placeZ][ty][tx] = CELL_TREE_FELLED;
+            SetWallMaterial(tx, ty, placeZ, treeMat);
+            MarkChunkDirty(tx, ty, placeZ);
+            placedSegments++;
 
-    int remainingTrunks = 0;
-    for (int sz = minZ; sz <= maxZ; sz++) {
-        for (int sy = minY; sy <= maxY; sy++) {
-            for (int sx = minX; sx <= maxX; sx++) {
-                CellType ct = grid[sz][sy][sx];
-                if ((ct == CELL_TREE_TRUNK || ct == CELL_TREE_BRANCH || ct == CELL_TREE_ROOT) &&
-                    GetWallMaterial(sx, sy, sz) == treeMat) {
-                    remainingTrunks++;
+            if (lineX == endX && lineY == endY) break;
+            int e2 = 2 * err;
+            if (e2 >= dy) { err += dy; lineX += sx; }
+            if (e2 <= dx) { err += dx; lineY += sy; }
+        }
+
+        if (placedSegments < trunkHeight) {
+            TraceLog(LOG_WARNING, "FellTree: placed %d/%d fallen segments at (%d,%d,z%d)",
+                     placedSegments, trunkHeight, x, y, baseZ);
+        }
+
+        int remainingTrunks = 0;
+        for (int sz = minZ; sz <= maxZ; sz++) {
+            for (int sy = minY; sy <= maxY; sy++) {
+                for (int sx = minX; sx <= maxX; sx++) {
+                    CellType ct = grid[sz][sy][sx];
+                    if ((ct == CELL_TREE_TRUNK || ct == CELL_TREE_BRANCH || ct == CELL_TREE_ROOT) &&
+                        GetWallMaterial(sx, sy, sz) == treeMat) {
+                        remainingTrunks++;
+                    }
                 }
             }
         }
-    }
-    if (remainingTrunks > 0) {
-        TraceLog(LOG_WARNING, "FellTree: %d trunk cells remain after removal at (%d,%d,z%d)",
-                 remainingTrunks, x, y, baseZ);
-    }
+        if (remainingTrunks > 0) {
+            TraceLog(LOG_WARNING, "FellTree: %d trunk cells remain after removal at (%d,%d,z%d)",
+                     remainingTrunks, x, y, baseZ);
+        }
 
-    // Spawn leaf items (~1 per 8 leaves, minimum 1 if any leaves)
-    int leafItemCount = leafCount / 8;
-    if (leafCount > 0 && leafItemCount == 0) leafItemCount = 1;
+        // Spawn leaf items (~1 per 8 leaves, minimum 1 if any leaves)
+        int leafItemCount = leafCount / 8;
+        if (leafCount > 0 && leafItemCount == 0) leafItemCount = 1;
 
-    // Spawn saplings (~1 per 5 leaves, minimum 1 if any leaves)
-    int saplingCount = leafCount / 5;
-    if (leafCount > 0 && saplingCount == 0) saplingCount = 1;
+        // Spawn saplings (~1 per 5 leaves, minimum 1 if any leaves)
+        int saplingCount = leafCount / 5;
+        if (leafCount > 0 && saplingCount == 0) saplingCount = 1;
 
-    float treeBaseX = x * CELL_SIZE + CELL_SIZE * 0.5f;
-    float treeBaseY = y * CELL_SIZE + CELL_SIZE * 0.5f;
-    float minXf = CELL_SIZE * 0.5f;
-    float minYf = CELL_SIZE * 0.5f;
-    float maxXf = (gridWidth - 1) * CELL_SIZE + CELL_SIZE * 0.5f;
-    float maxYf = (gridHeight - 1) * CELL_SIZE + CELL_SIZE * 0.5f;
+        float treeBaseX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float treeBaseY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float minXf = CELL_SIZE * 0.5f;
+        float minYf = CELL_SIZE * 0.5f;
+        float maxXf = (gridWidth - 1) * CELL_SIZE + CELL_SIZE * 0.5f;
+        float maxYf = (gridHeight - 1) * CELL_SIZE + CELL_SIZE * 0.5f;
 
-    ItemType leafItem = LeafItemFromTreeType(type);
-    for (int i = 0; i < leafItemCount; i++) {
-        float angle = (float)i * 2.4f;
-        float dist = CELL_SIZE * (0.4f + (float)(i % 3) * 0.4f);
-        float spawnX = treeBaseX + cosf(angle) * dist;
-        float spawnY = treeBaseY + sinf(angle) * dist;
-        if (spawnX < minXf) spawnX = minXf;
-        if (spawnX > maxXf) spawnX = maxXf;
-        if (spawnY < minYf) spawnY = minYf;
-        if (spawnY > maxYf) spawnY = maxYf;
-        int cellX = (int)(spawnX / CELL_SIZE);
-        int cellY = (int)(spawnY / CELL_SIZE);
-        if (cellX < 0) cellX = 0;
-        if (cellX >= gridWidth) cellX = gridWidth - 1;
-        if (cellY < 0) cellY = 0;
-        if (cellY >= gridHeight) cellY = gridHeight - 1;
-        int itemZ = FindItemSpawnZAtLocal(cellX, cellY, baseZ);
-        SpawnItemWithMaterial(spawnX, spawnY, (float)itemZ, leafItem, (uint8_t)treeMat);
-    }
+        ItemType leafItem = LeafItemFromTreeType(type);
+        for (int i = 0; i < leafItemCount; i++) {
+            float angle = (float)i * 2.4f;
+            float dist = CELL_SIZE * (0.4f + (float)(i % 3) * 0.4f);
+            float spawnX = treeBaseX + cosf(angle) * dist;
+            float spawnY = treeBaseY + sinf(angle) * dist;
+            if (spawnX < minXf) spawnX = minXf;
+            if (spawnX > maxXf) spawnX = maxXf;
+            if (spawnY < minYf) spawnY = minYf;
+            if (spawnY > maxYf) spawnY = maxYf;
+            int cellX = (int)(spawnX / CELL_SIZE);
+            int cellY = (int)(spawnY / CELL_SIZE);
+            if (cellX < 0) cellX = 0;
+            if (cellX >= gridWidth) cellX = gridWidth - 1;
+            if (cellY < 0) cellY = 0;
+            if (cellY >= gridHeight) cellY = gridHeight - 1;
+            int itemZ = FindItemSpawnZAtLocal(cellX, cellY, baseZ);
+            SpawnItemWithMaterial(spawnX, spawnY, (float)itemZ, leafItem, (uint8_t)treeMat);
+        }
 
-    ItemType saplingItem = SaplingItemFromTreeType(type);
-    for (int i = 0; i < saplingCount; i++) {
-        float angle = (float)i * 2.4f;
-        float dist = CELL_SIZE * (0.5f + (float)(i % 3) * 0.5f);
-        float spawnX = treeBaseX + cosf(angle) * dist;
-        float spawnY = treeBaseY + sinf(angle) * dist;
-        if (spawnX < minXf) spawnX = minXf;
-        if (spawnX > maxXf) spawnX = maxXf;
-        if (spawnY < minYf) spawnY = minYf;
-        if (spawnY > maxYf) spawnY = maxYf;
-        int cellX = (int)(spawnX / CELL_SIZE);
-        int cellY = (int)(spawnY / CELL_SIZE);
-        if (cellX < 0) cellX = 0;
-        if (cellX >= gridWidth) cellX = gridWidth - 1;
-        if (cellY < 0) cellY = 0;
-        if (cellY >= gridHeight) cellY = gridHeight - 1;
-        int itemZ = FindItemSpawnZAtLocal(cellX, cellY, baseZ);
-        SpawnItemWithMaterial(spawnX, spawnY, (float)itemZ, saplingItem, (uint8_t)treeMat);
+        ItemType saplingItem = SaplingItemFromTreeType(type);
+        for (int i = 0; i < saplingCount; i++) {
+            float angle = (float)i * 2.4f;
+            float dist = CELL_SIZE * (0.5f + (float)(i % 3) * 0.5f);
+            float spawnX = treeBaseX + cosf(angle) * dist;
+            float spawnY = treeBaseY + sinf(angle) * dist;
+            if (spawnX < minXf) spawnX = minXf;
+            if (spawnX > maxXf) spawnX = maxXf;
+            if (spawnY < minYf) spawnY = minYf;
+            if (spawnY > maxYf) spawnY = maxYf;
+            int cellX = (int)(spawnX / CELL_SIZE);
+            int cellY = (int)(spawnY / CELL_SIZE);
+            if (cellX < 0) cellX = 0;
+            if (cellX >= gridWidth) cellX = gridWidth - 1;
+            if (cellY < 0) cellY = 0;
+            if (cellY >= gridHeight) cellY = gridHeight - 1;
+            int itemZ = FindItemSpawnZAtLocal(cellX, cellY, baseZ);
+            SpawnItemWithMaterial(spawnX, spawnY, (float)itemZ, saplingItem, (uint8_t)treeMat);
+        }
     }
 }
 

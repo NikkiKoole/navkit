@@ -11,17 +11,32 @@
 ## Current Loop (what works)
 
 - Forage berries, eat, build grass pile bed, sleep, repeat
-- Weather exists but doesn't threaten the mover
-- No tools, no fire dependency, no temperature pressure
+- Temperature is a real threat — cold nights drain energy faster and slow you down
+- Fire heats nearby cells, making it a survival necessity for cold seasons
+- Shelter blocks wind chill and rain, helping maintain body temperature
+- No tools, no clothing, no fire dependency loop yet (fire exists but no fuel pressure)
 
-## Temperature & Cold (next up)
+## Temperature & Cold (implemented)
 
-- **Night is cold**: temperature drops after sunset, rises after dawn
-- **Body temperature**: mover has a body temp that trends toward ambient (modified by shelter, clothing, fire proximity)
-- **Hypothermia**: when body temp drops too low, movement penalty → shivering (can't work) → death if prolonged
-- **Fire matters**: sitting near a fire warms you. Fire needs fuel (sticks, logs). This makes fire a survival necessity, not decoration.
-- **Shelter helps**: being indoors (enclosed walls + roof) slows heat loss. Even a simple windbreak helps.
-- **Seasons**: winter is deadly without shelter + fire. Summer is easy. Spring/autumn are the building seasons.
+- **Diurnal cycle**: temperature swings ±5°C over the day (peak 14:00, trough 02:00), with ±25°C seasonal amplitude around 15°C base
+- **Body temperature**: mover has `bodyTemp` (normal 37°C, range 20-42°C) that drifts toward ambient at 8°C/game-hour
+- **Wind chill**: -2°C per wind strength level when exposed to sky
+- **Shelter**: `IsExposedToSky()` check — any solid cell or constructed floor above blocks wind chill and rain
+- **Fire warming**: fire heats cells (100°C + 20°C per fire level), heat spreads via 3D diffusion with insulation tiers (air 100%, wood 20%, stone 5%)
+- **Hypothermia stages**:
+  - Mild (< 35°C): movement slowdown begins (linear 1.0x → 0.6x)
+  - Moderate (< 33°C): 2x energy drain, max movement penalty (0.6x)
+  - Severe (< 30°C): death timer starts (4 game-hours), survival mode only
+- **Heat penalty**: above 40°C, movement slows (1.0x → 0.7x at 42°C cap). No heat death.
+- All thresholds tunable via balance parameters in `balance.h`
+
+### Temperature — not yet done
+
+- **Shivering**: visual effect + can't-work state at moderate cold (currently only slowdown)
+- **Clothing/warmth**: no insulation items or warmth modifiers on movers
+- **Temperature HUD**: no indicator for body temp or hypothermia warning
+- **Heat death**: overheating only slows, never kills
+- **Indoor heating bonus**: shelter blocks wind chill but doesn't provide warmth bonus beyond that
 
 ## Tools & Progression
 
@@ -52,8 +67,8 @@
 ## Shelter
 
 - Enclosed space = "indoors" (walls on all sides + roof/floor above)
-- Indoor bonus: slower heat loss, rest bonus, no rain/snow effects
-- Even partial shelter (3 walls, no roof) gives some wind protection
+- Indoor bonus: blocks wind chill, blocks rain/snow, no direct warmth bonus yet
+- Even partial shelter (roof only) blocks precipitation and wind chill
 - Doors needed to make real enclosed spaces (currently buildings are mazes)
 
 ## Day/Night Rhythm (goal feel)

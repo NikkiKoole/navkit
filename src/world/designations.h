@@ -60,7 +60,8 @@ typedef struct {
 #define DIG_RAMP_WORK_TIME 0.8f      // Similar to mining - carving a ramp
 #define REMOVE_FLOOR_WORK_TIME 0.4f  // Faster than mining - just removing
 #define REMOVE_RAMP_WORK_TIME 0.4f   // Similar to floor removal
-#define CHOP_WORK_TIME 1.2f          // Chopping trees takes longer
+#define CHOP_WORK_TIME 1.2f          // Chopping mature trees takes longer
+#define CHOP_YOUNG_WORK_TIME 0.4f    // Young trees are quick to chop
 #define CHOP_FELLED_WORK_TIME 0.8f   // Chopping fallen trunks
 #define GATHER_SAPLING_WORK_TIME 0.4f // Quick to dig up a sapling
 #define PLANT_SAPLING_WORK_TIME 0.6f  // Planting takes a bit longer

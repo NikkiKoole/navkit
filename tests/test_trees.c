@@ -125,7 +125,7 @@ static bool ChopFirstFelledTrunk(void) {
 // =============================================================================
 
 describe(tree_basic_growth) {
-    it("should grow sapling into trunk after enough time") {
+    it("should grow sapling into young tree after enough time") {
         SetupBasicGrid();
         InitTrees();
         ClearItems();
@@ -134,18 +134,45 @@ describe(tree_basic_growth) {
         PlaceSapling(5, 5, 1, MAT_OAK);
         expect(grid[1][5][5] == CELL_SAPLING);
 
-        // Run growth ticks until sapling becomes trunk
+        // Run growth ticks until sapling becomes young tree (CELL_TREE_BRANCH)
         float originalGH = saplingGrowGH;
-        saplingGrowGH = 0.01f;  // Speed up for test (~0.025s threshold)
+        saplingGrowGH = 0.01f;  // Speed up for test
 
         for (int i = 0; i < 15; i++) {
             TreesTick(1.0f);
         }
 
-        // Sapling should have become trunk
-        expect(grid[1][5][5] == CELL_TREE_TRUNK);
+        // Sapling should have become young tree (branch cell)
+        expect(grid[1][5][5] == CELL_TREE_BRANCH);
 
         saplingGrowGH = originalGH;
+    }
+
+    it("should mature young tree into trunk after enough time") {
+        SetupBasicGrid();
+        InitTrees();
+        ClearItems();
+
+        // Place sapling and fast-forward through all growth stages
+        PlaceSapling(5, 5, 1, MAT_OAK);
+
+        float originalSapGH = saplingGrowGH;
+        float originalTrunkGH = trunkGrowGH;
+        float originalYoungGH = youngToMatureGH;
+        saplingGrowGH = 0.01f;
+        trunkGrowGH = 0.01f;
+        youngToMatureGH = 0.01f;
+
+        for (int i = 0; i < 200; i++) {
+            TreesTick(1.0f);
+        }
+
+        // Should have matured into trunk
+        expect(grid[1][5][5] == CELL_TREE_TRUNK);
+
+        saplingGrowGH = originalSapGH;
+        trunkGrowGH = originalTrunkGH;
+        youngToMatureGH = originalYoungGH;
     }
     
     it("should grow full tree with TreeGrowFull") {
@@ -158,15 +185,31 @@ describe(tree_basic_growth) {
         // Should have trunk
         expect(grid[1][5][5] == CELL_TREE_TRUNK);
         
-        // Should have some trunk height
+        // Should have some trunk height (count trunk + tapered branch cells)
         int trunkHeight = 0;
         for (int z = 1; z < gridDepth; z++) {
-            if (grid[z][5][5] == CELL_TREE_TRUNK) trunkHeight++;
+            CellType c = grid[z][5][5];
+            if (c == CELL_TREE_TRUNK || c == CELL_TREE_BRANCH) trunkHeight++;
             else break;
         }
         expect(trunkHeight >= 3);  // MIN_TREE_HEIGHT
         
         // Should have leaves somewhere
+        int leafCount = CountCellType(CELL_TREE_LEAVES);
+        expect(leafCount > 0);
+    }
+
+    it("should grow young tree with TreeGrowYoung") {
+        SetupBasicGrid();
+        InitTrees();
+
+        TreeGrowYoung(5, 5, 1, MAT_OAK);
+
+        // Should have branch (young trunk)
+        expect(grid[1][5][5] == CELL_TREE_BRANCH);
+        expect(IsYoungTreeBase(5, 5, 1) == true);
+
+        // Should have some leaves
         int leafCount = CountCellType(CELL_TREE_LEAVES);
         expect(leafCount > 0);
     }
@@ -472,10 +515,11 @@ describe(tree_organic_shapes) {
             int x = 1 + i * 2;
             TreeGrowFull(x, 4, 1, MAT_OAK);
             
-            // Measure trunk height
+            // Measure trunk height (includes tapered branch cells at top)
             int h = 0;
             for (int z = 1; z < gridDepth; z++) {
-                if (grid[z][4][x] == CELL_TREE_TRUNK) h++;
+                CellType c = grid[z][4][x];
+                if (c == CELL_TREE_TRUNK || c == CELL_TREE_BRANCH) h++;
                 else break;
             }
             heights[i] = h;
@@ -638,7 +682,7 @@ describe(sapling_growth_blocking) {
         saplingGrowGH = originalGH;
     }
 
-    it("should grow sapling into trunk after item is removed") {
+    it("should grow sapling into young tree after item is removed") {
         SetupBasicGrid();
         InitTrees();
 
@@ -662,11 +706,11 @@ describe(sapling_growth_blocking) {
         DeleteItem(itemIdx);
         BuildItemSpatialGrid();
 
-        // Run more ticks - should grow now
+        // Run more ticks - should grow into young tree (branch)
         for (int i = 0; i < 20; i++) {
             TreesTick(1.0f);
         }
-        expect(grid[1][5][5] == CELL_TREE_TRUNK);
+        expect(grid[1][5][5] == CELL_TREE_BRANCH);
 
         saplingGrowGH = originalGH;
     }
@@ -837,20 +881,23 @@ describe(tree_full_lifecycle) {
         CompletePlantSaplingDesignation(5, 5, 1, MAT_OAK, -1);
         expect(grid[1][5][5] == CELL_SAPLING);
         
-        // 2. Fast-forward tree growth
+        // 2. Fast-forward tree growth (through young tree stage to mature)
         float originalGH = saplingGrowGH;
         float originalTrunkGH = trunkGrowGH;
+        float originalYoungGH = youngToMatureGH;
         saplingGrowGH = 0.001f;
         trunkGrowGH = 0.001f;
+        youngToMatureGH = 0.001f;
 
-        for (int i = 0; i < 50; i++) {
+        for (int i = 0; i < 200; i++) {
             TreesTick(1.0f);
         }
 
         saplingGrowGH = originalGH;
         trunkGrowGH = originalTrunkGH;
+        youngToMatureGH = originalYoungGH;
         
-        // Tree should have grown
+        // Tree should have grown into mature trunk
         expect(grid[1][5][5] == CELL_TREE_TRUNK);
         int leafCount = CountCellType(CELL_TREE_LEAVES);
         expect(leafCount > 0);

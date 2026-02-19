@@ -1640,6 +1640,8 @@ void RunAStar(void) {
     int* dy = use8Dir ? dy8 : dy4;
     int numDirs = use8Dir ? 8 : 4;
 
+    int maxIterations = gridWidth * gridHeight * gridDepth;
+    int iterations = 0;
     while (1) {
         // Find best open node across all z-levels
         int bestX = -1, bestY = -1, bestZ = -1, bestF = COST_INF;
@@ -1653,6 +1655,7 @@ void RunAStar(void) {
                         bestZ = z;
                     }
         if (bestX < 0) break;
+        if (++iterations > maxIterations) break;
         
         // Check if we reached the goal (must match z too!)
         if (bestX == goalPos.x && bestY == goalPos.y && bestZ == goalPos.z) {

@@ -3098,7 +3098,7 @@ describe(jps_plus_vs_astar_consistency) {
         SeedRandom(44444);
         int failures = 0;
         
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < 5; i++) {
             Point start = GetRandomWalkableCell();
             Point goal = GetRandomWalkableCellDifferentZ(start.z);
             

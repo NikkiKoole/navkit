@@ -560,6 +560,7 @@ static void DrawCellGrid(void) {
 
 // Draw ramps as a late pass — after grass, mud, snow, clouds so they're always visible
 // Covers all visible depths (same range as DrawDeeperLevelCells + ground + current)
+void DrawRampOverlay(void);
 void DrawRampOverlay(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;

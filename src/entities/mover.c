@@ -825,9 +825,13 @@ void NeedsTick(void) {
             float cellTemp = (float)GetTemperature(cx, cy, cz);
             bool exposed = IsExposedToSky(cx, cy, cz);
             float effectiveAmbient = GetWindChillTemp(cellTemp, weatherState.windStrength, exposed);
+            float metaboTarget = effectiveAmbient + balance.metabolicHeatBonus * m->hunger;
+            if (metaboTarget > balance.bodyTempNormal) metaboTarget = balance.bodyTempNormal;
+            if (metaboTarget > effectiveAmbient) effectiveAmbient = metaboTarget;
 
             float diff = effectiveAmbient - m->bodyTemp;
-            float maxChange = RatePerGameSecond(balance.bodyTempChangeRatePerGH) * dt;
+            float rate = (diff > 0) ? balance.bodyTempWarmingRatePerGH : balance.bodyTempCoolingRatePerGH;
+            float maxChange = RatePerGameSecond(rate) * dt;
             if (diff > 0) {
                 m->bodyTemp += (diff < maxChange) ? diff : maxChange;
             } else if (diff < 0) {
