@@ -582,142 +582,211 @@ Job* GetJob(int jobId) {
 static void ClearSourceStockpileSlot(Item* item);
 static void ExtractItemFromContainer(int itemIdx);
 
+// =============================================================================
+// Shared Job Step Helpers
+// =============================================================================
+
+// Walk to item, pick it up, advance to STEP_CARRYING, set next goal.
+// Returns JOBRUN_RUNNING while walking, JOBRUN_FAIL on error.
+// On successful pickup: sets step=STEP_CARRYING, mover->goal=nextGoal, returns JOBRUN_RUNNING.
+static JobRunResult RunPickupStep(Job* job, Mover* mover, Point nextGoal) {
+    int itemIdx = job->targetItem;
+    if (itemIdx < 0 || !items[itemIdx].active) return JOBRUN_FAIL;
+
+    Item* item = &items[itemIdx];
+    int itemCellX = (int)(item->x / CELL_SIZE);
+    int itemCellY = (int)(item->y / CELL_SIZE);
+    int itemCellZ = (int)(item->z);
+
+    if (!IsCellWalkableAt(itemCellZ, itemCellY, itemCellX)) {
+        SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+        return JOBRUN_FAIL;
+    }
+
+    float dx = mover->x - item->x;
+    float dy = mover->y - item->y;
+    float distSq = dx * dx + dy * dy;
+
+    if (IsPathExhausted(mover) && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
+        mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
+        mover->needsRepath = true;
+    }
+
+    TryFinalApproach(mover, item->x, item->y, itemCellX, itemCellY, PICKUP_RADIUS);
+
+    if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+        return JOBRUN_FAIL;
+    }
+
+    if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+        if (item->state == ITEM_IN_STOCKPILE) {
+            ClearSourceStockpileSlot(item);
+        }
+        item->state = ITEM_CARRIED;
+        EventLog("Item %d (%s x%d) picked up by mover %d for job %d",
+                 itemIdx, ItemName(item->type), item->stackCount,
+                 (int)(mover - movers), (int)(job - jobs));
+        job->carryingItem = itemIdx;
+        job->targetItem = -1;
+        job->step = STEP_CARRYING;
+
+        mover->goal = nextGoal;
+        mover->needsRepath = true;
+    }
+
+    return JOBRUN_RUNNING;
+}
+
+// Carry item toward destination, updating item position.
+// Returns JOBRUN_RUNNING while walking, JOBRUN_FAIL on error, JOBRUN_DONE on arrival.
+static JobRunResult RunCarryStep(Job* job, Mover* mover, int destX, int destY, int destZ) {
+    int itemIdx = job->carryingItem;
+    if (itemIdx < 0 || !items[itemIdx].active) return JOBRUN_FAIL;
+
+    float targetX = destX * CELL_SIZE + CELL_SIZE * 0.5f;
+    float targetY = destY * CELL_SIZE + CELL_SIZE * 0.5f;
+    float dx = mover->x - targetX;
+    float dy = mover->y - targetY;
+    float distSq = dx * dx + dy * dy;
+
+    if (IsPathExhausted(mover) && distSq >= DROP_RADIUS * DROP_RADIUS) {
+        mover->goal = (Point){destX, destY, destZ};
+        mover->needsRepath = true;
+    }
+
+    bool correctZ = (int)mover->z == destZ;
+    if (correctZ) TryFinalApproach(mover, targetX, targetY, destX, destY, DROP_RADIUS);
+
+    if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        return JOBRUN_FAIL;
+    }
+
+    // Update carried item position (including container contents)
+    items[itemIdx].x = mover->x;
+    items[itemIdx].y = mover->y;
+    items[itemIdx].z = mover->z;
+    if (items[itemIdx].contentCount > 0) MoveContainer(itemIdx, mover->x, mover->y, mover->z);
+
+    if (correctZ && distSq < DROP_RADIUS * DROP_RADIUS) {
+        return JOBRUN_DONE;
+    }
+
+    return JOBRUN_RUNNING;
+}
+
+// Walk to adjacent tile (targetAdjX/Y at targetMineZ) for wall-adjacent jobs.
+// Returns JOBRUN_RUNNING while walking, JOBRUN_FAIL if stuck.
+// On arrival: sets step=STEP_WORKING, returns JOBRUN_RUNNING.
+static JobRunResult RunWalkToAdjacentStep(Job* job, Mover* mover) {
+    int adjX = job->targetAdjX;
+    int adjY = job->targetAdjY;
+    int z = job->targetMineZ;
+
+    if (mover->goal.x != adjX || mover->goal.y != adjY || mover->goal.z != z) {
+        mover->goal = (Point){adjX, adjY, z};
+        mover->needsRepath = true;
+    }
+
+    float goalX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+    float goalY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+    float dx = mover->x - goalX;
+    float dy = mover->y - goalY;
+    float distSq = dx * dx + dy * dy;
+
+    bool correctZ = (int)mover->z == z;
+    if (correctZ) TryFinalApproach(mover, goalX, goalY, adjX, adjY, PICKUP_RADIUS);
+
+    if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        Designation* d = GetDesignation(job->targetMineX, job->targetMineY, z);
+        if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        return JOBRUN_FAIL;
+    }
+
+    if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+        job->step = STEP_WORKING;
+    }
+
+    return JOBRUN_RUNNING;
+}
+
+// Walk to tile (targetMineX/Y at targetMineZ) for on-tile jobs.
+// Returns JOBRUN_RUNNING while walking, JOBRUN_FAIL if stuck.
+// On arrival: sets step=STEP_WORKING, returns JOBRUN_RUNNING.
+static JobRunResult RunWalkToTileStep(Job* job, Mover* mover) {
+    int tx = job->targetMineX;
+    int ty = job->targetMineY;
+    int tz = job->targetMineZ;
+
+    if (mover->goal.x != tx || mover->goal.y != ty || mover->goal.z != tz) {
+        mover->goal = (Point){tx, ty, tz};
+        mover->needsRepath = true;
+    }
+
+    float goalX = tx * CELL_SIZE + CELL_SIZE * 0.5f;
+    float goalY = ty * CELL_SIZE + CELL_SIZE * 0.5f;
+    float dx = mover->x - goalX;
+    float dy = mover->y - goalY;
+    float distSq = dx * dx + dy * dy;
+
+    bool correctZ = (int)mover->z == tz;
+    if (correctZ) TryFinalApproach(mover, goalX, goalY, tx, ty, PICKUP_RADIUS);
+
+    if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        Designation* d = GetDesignation(tx, ty, tz);
+        if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        return JOBRUN_FAIL;
+    }
+
+    if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+        job->step = STEP_WORKING;
+    }
+
+    return JOBRUN_RUNNING;
+}
+
+// Progress work accumulation. Returns JOBRUN_DONE when complete, JOBRUN_RUNNING otherwise.
+static JobRunResult RunWorkProgress(Job* job, Designation* d, Mover* mover,
+                                     float dt, float workTimeGH, bool resetStuck) {
+    if (resetStuck) mover->timeWithoutProgress = 0.0f;
+    job->progress += dt / GameHoursToGameSeconds(workTimeGH);
+    if (d) d->progress = job->progress;
+    return (job->progress >= 1.0f) ? JOBRUN_DONE : JOBRUN_RUNNING;
+}
+
+// =============================================================================
+// Job Drivers
+// =============================================================================
+
 // Haul job driver: pick up item -> carry to stockpile -> drop
 JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
     (void)dt;
+    int spIdx = job->targetStockpile;
 
     if (job->step == STEP_MOVING_TO_PICKUP) {
-        int itemIdx = job->targetItem;
-
-        // Check if item still exists
-        if (itemIdx < 0 || !items[itemIdx].active) {
-            return JOBRUN_FAIL;
-        }
-
-        // Check if stockpile still valid
-        if (job->targetStockpile >= 0 && !stockpiles[job->targetStockpile].active) {
-            return JOBRUN_FAIL;
-        }
-
-        // Check if item's cell became a wall
-        Item* item = &items[itemIdx];
-        int itemCellX = (int)(item->x / CELL_SIZE);
-        int itemCellY = (int)(item->y / CELL_SIZE);
-        int itemCellZ = (int)item->z;
-        if (!IsCellWalkableAt(itemCellZ, itemCellY, itemCellX)) {
-            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
-            return JOBRUN_FAIL;
-        }
-
-        // Check if arrived at item
-        float dx = mover->x - item->x;
-        float dy = mover->y - item->y;
-        float distSq = dx*dx + dy*dy;
-
-        // Set goal to item if not already moving there
-        if (IsPathExhausted(mover) && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
-            mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
-            mover->needsRepath = true;
-        }
-
-        // Final approach - move directly toward item when close but path exhausted
-        TryFinalApproach(mover, item->x, item->y, itemCellX, itemCellY, PICKUP_RADIUS);
-
-        // Check if stuck
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
-            return JOBRUN_FAIL;
-        }
-
-        if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-            // Pick up the item
-            if (item->state == ITEM_IN_STOCKPILE) {
-                // Clear source stockpile slot when re-hauling
-                RemoveItemFromStockpileSlot(item->x, item->y, (int)item->z);
-            }
-
-            item->state = ITEM_CARRIED;
-            EventLog("Item %d (%s x%d) picked up by mover %d for job %d",
-                     itemIdx, ItemName(item->type), item->stackCount, (int)(mover - movers), (int)(job - jobs));
-            job->carryingItem = itemIdx;
-            job->targetItem = -1;
-            job->step = STEP_CARRYING;
-
-            // Set goal to stockpile slot
-            mover->goal.x = job->targetSlotX;
-            mover->goal.y = job->targetSlotY;
-            mover->goal.z = stockpiles[job->targetStockpile].z;
-            mover->needsRepath = true;
-        }
-
-        return JOBRUN_RUNNING;
+        if (spIdx >= 0 && !stockpiles[spIdx].active) return JOBRUN_FAIL;
+        return RunPickupStep(job, mover, (Point){job->targetSlotX, job->targetSlotY, stockpiles[spIdx].z});
     }
-    else if (job->step == STEP_CARRYING) {
+    if (job->step == STEP_CARRYING) {
+        if (!stockpiles[spIdx].active) return JOBRUN_FAIL;
         int itemIdx = job->carryingItem;
+        if (itemIdx < 0 || !items[itemIdx].active) return JOBRUN_FAIL;
+        if (!StockpileAcceptsItem(spIdx, items[itemIdx].type, items[itemIdx].material)) return JOBRUN_FAIL;
 
-        // Check if still carrying
-        if (itemIdx < 0 || !items[itemIdx].active) {
-            return JOBRUN_FAIL;
-        }
-
-        // Check if stockpile still valid
-        if (!stockpiles[job->targetStockpile].active) {
-            return JOBRUN_FAIL;
-        }
-
-        // Check if stockpile still accepts this item type
-        if (!StockpileAcceptsItem(job->targetStockpile, items[itemIdx].type, items[itemIdx].material)) {
-            return JOBRUN_FAIL;
-        }
-
-        // Check if arrived at target slot
-        float targetX = job->targetSlotX * CELL_SIZE + CELL_SIZE * 0.5f;
-        float targetY = job->targetSlotY * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - targetX;
-        float dy = mover->y - targetY;
-        float distSq = dx*dx + dy*dy;
-
-        // Request repath if no path and not at destination
-        if (IsPathExhausted(mover) && distSq >= DROP_RADIUS * DROP_RADIUS) {
-            mover->goal.x = job->targetSlotX;
-            mover->goal.y = job->targetSlotY;
-            mover->goal.z = stockpiles[job->targetStockpile].z;
-            mover->needsRepath = true;
-        }
-
-        // Final approach - move directly toward drop location when close but path exhausted
-        TryFinalApproach(mover, targetX, targetY, job->targetSlotX, job->targetSlotY, DROP_RADIUS);
-
-        // Check if stuck
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            return JOBRUN_FAIL;
-        }
-
-        // Update carried item position (including container contents)
-        items[itemIdx].x = mover->x;
-        items[itemIdx].y = mover->y;
-        items[itemIdx].z = mover->z;
-        if (items[itemIdx].contentCount > 0) MoveContainer(itemIdx, mover->x, mover->y, mover->z);
-
-        if (distSq < DROP_RADIUS * DROP_RADIUS) {
+        JobRunResult r = RunCarryStep(job, mover, job->targetSlotX, job->targetSlotY, stockpiles[spIdx].z);
+        if (r == JOBRUN_DONE) {
             Item* item = &items[itemIdx];
-
-            // Release reservation before placing (PlaceItemInStockpile may merge/delete)
+            float targetX = job->targetSlotX * CELL_SIZE + CELL_SIZE * 0.5f;
+            float targetY = job->targetSlotY * CELL_SIZE + CELL_SIZE * 0.5f;
             item->x = targetX;
             item->y = targetY;
             item->reservedBy = -1;
-
-            // Place in stockpile (handles merge into existing stack or new slot)
-            PlaceItemInStockpile(job->targetStockpile, job->targetSlotX, job->targetSlotY, itemIdx);
-
+            PlaceItemInStockpile(spIdx, job->targetSlotX, job->targetSlotY, itemIdx);
             job->carryingItem = -1;
-            return JOBRUN_DONE;
         }
-
-        return JOBRUN_RUNNING;
+        return r;
     }
-
     return JOBRUN_FAIL;
 }
 
@@ -728,18 +797,12 @@ JobRunResult RunJob_Clear(Job* job, void* moverPtr, float dt) {
 
     if (job->step == STEP_MOVING_TO_PICKUP) {
         int itemIdx = job->targetItem;
-
-        // Check if item still exists
-        if (itemIdx < 0 || !items[itemIdx].active) {
-            return JOBRUN_FAIL;
-        }
+        if (itemIdx < 0 || !items[itemIdx].active) return JOBRUN_FAIL;
 
         Item* item = &items[itemIdx];
         int itemCellX = (int)(item->x / CELL_SIZE);
         int itemCellY = (int)(item->y / CELL_SIZE);
         int itemCellZ = (int)(item->z);
-
-        // Check if item's cell became a wall
         if (!IsCellWalkableAt(itemCellZ, itemCellY, itemCellX)) {
             SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
             return JOBRUN_FAIL;
@@ -749,26 +812,18 @@ JobRunResult RunJob_Clear(Job* job, void* moverPtr, float dt) {
         float dy = mover->y - item->y;
         float distSq = dx*dx + dy*dy;
 
-        // Request repath if path exhausted and not at destination
         if (IsPathExhausted(mover) && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
             mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
             mover->needsRepath = true;
         }
-
-        // Final approach - move directly toward item when close but path exhausted
         TryFinalApproach(mover, item->x, item->y, itemCellX, itemCellY, PICKUP_RADIUS);
-
-        // Check if stuck
         if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
             return JOBRUN_FAIL;
         }
 
         if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-            // Pick up the item
-            if (item->state == ITEM_IN_STOCKPILE) {
-                ClearSourceStockpileSlot(item);
-            }
+            if (item->state == ITEM_IN_STOCKPILE) ClearSourceStockpileSlot(item);
             item->state = ITEM_CARRIED;
             EventLog("Item %d (%s x%d) picked up by mover %d for job %d",
                      itemIdx, ItemName(item->type), item->stackCount, (int)(mover - movers), (int)(job - jobs));
@@ -779,18 +834,14 @@ JobRunResult RunJob_Clear(Job* job, void* moverPtr, float dt) {
             // Find drop location outside stockpile
             int moverTileX = (int)(mover->x / CELL_SIZE);
             int moverTileY = (int)(mover->y / CELL_SIZE);
-
             bool foundDrop = false;
             for (int radius = 1; radius <= 5 && !foundDrop; radius++) {
                 for (int dy2 = -radius; dy2 <= radius && !foundDrop; dy2++) {
                     for (int dx2 = -radius; dx2 <= radius && !foundDrop; dx2++) {
                         if (abs(dx2) != radius && abs(dy2) != radius) continue;
-                        int checkX = moverTileX + dx2;
-                        int checkY = moverTileY + dy2;
-                        if (checkX < 0 || checkY < 0) continue;
-                        if (checkX >= gridWidth || checkY >= gridHeight) continue;
+                        int checkX = moverTileX + dx2, checkY = moverTileY + dy2;
+                        if (checkX < 0 || checkY < 0 || checkX >= gridWidth || checkY >= gridHeight) continue;
                         if (!IsCellWalkableAt((int)mover->z, checkY, checkX)) continue;
-
                         int tempSpIdx;
                         if (IsPositionInStockpile(checkX * CELL_SIZE + CELL_SIZE * 0.5f,
                                                   checkY * CELL_SIZE + CELL_SIZE * 0.5f,
@@ -801,958 +852,240 @@ JobRunResult RunJob_Clear(Job* job, void* moverPtr, float dt) {
                     }
                 }
             }
+            if (!foundDrop) { job->targetSlotX = moverTileX; job->targetSlotY = moverTileY; }
 
-            if (!foundDrop) {
-                job->targetSlotX = moverTileX;
-                job->targetSlotY = moverTileY;
-            }
-
-            mover->goal.x = job->targetSlotX;
-            mover->goal.y = job->targetSlotY;
-            mover->goal.z = (int)mover->z;
+            mover->goal = (Point){job->targetSlotX, job->targetSlotY, (int)mover->z};
             mover->needsRepath = true;
         }
-
         return JOBRUN_RUNNING;
     }
-    else if (job->step == STEP_CARRYING) {
-        int itemIdx = job->carryingItem;
-
-        // Check if still carrying
-        if (itemIdx < 0 || !items[itemIdx].active) {
-            return JOBRUN_FAIL;
-        }
-
-        // Check if arrived at drop location
-        float targetX = job->targetSlotX * CELL_SIZE + CELL_SIZE * 0.5f;
-        float targetY = job->targetSlotY * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - targetX;
-        float dy = mover->y - targetY;
-        float distSq = dx*dx + dy*dy;
-
-        // Request repath if path exhausted and not at destination
-        if (IsPathExhausted(mover) && distSq >= DROP_RADIUS * DROP_RADIUS) {
-            mover->goal.x = job->targetSlotX;
-            mover->goal.y = job->targetSlotY;
-            mover->goal.z = (int)mover->z;
-            mover->needsRepath = true;
-        }
-
-        // Final approach - move directly toward drop location when close but path exhausted
-        TryFinalApproach(mover, targetX, targetY, job->targetSlotX, job->targetSlotY, DROP_RADIUS);
-
-        // Check if stuck
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            return JOBRUN_FAIL;
-        }
-
-        // Update carried item position (including container contents)
-        items[itemIdx].x = mover->x;
-        items[itemIdx].y = mover->y;
-        items[itemIdx].z = mover->z;
-        if (items[itemIdx].contentCount > 0) MoveContainer(itemIdx, mover->x, mover->y, mover->z);
-
-        if (distSq < DROP_RADIUS * DROP_RADIUS) {
+    if (job->step == STEP_CARRYING) {
+        JobRunResult r = RunCarryStep(job, mover, job->targetSlotX, job->targetSlotY, (int)mover->z);
+        if (r == JOBRUN_DONE) {
+            int itemIdx = job->carryingItem;
             Item* item = &items[itemIdx];
-
-            // Drop on ground
             item->state = ITEM_ON_GROUND;
-            item->x = targetX;
-            item->y = targetY;
+            item->x = job->targetSlotX * CELL_SIZE + CELL_SIZE * 0.5f;
+            item->y = job->targetSlotY * CELL_SIZE + CELL_SIZE * 0.5f;
             item->reservedBy = -1;
-
             job->carryingItem = -1;
-            return JOBRUN_DONE;
         }
-
-        return JOBRUN_RUNNING;
+        return r;
     }
-
     return JOBRUN_FAIL;
 }
 
 // Mine job driver: move to adjacent tile -> mine wall
 JobRunResult RunJob_Mine(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
-    (void)job->assignedMover;  // Currently unused but available if needed
-
-    // Check if designation still exists
     Designation* d = GetDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
-    if (!d || d->type != DESIGNATION_MINE) {
-        return JOBRUN_FAIL;
-    }
-
-    // Check if the wall was already mined
-    CellType ct = grid[job->targetMineZ][job->targetMineY][job->targetMineX];
-    if (!CellIsSolid(ct)) {
+    if (!d || d->type != DESIGNATION_MINE) return JOBRUN_FAIL;
+    if (!CellIsSolid(grid[job->targetMineZ][job->targetMineY][job->targetMineX])) {
         CancelDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
         return JOBRUN_FAIL;
     }
-
-    if (job->step == STEP_MOVING_TO_WORK) {
-        // Use cached adjacent tile (set when job was created)
-        int adjX = job->targetAdjX;
-        int adjY = job->targetAdjY;
-
-        // Set goal if not already moving there
-        if (mover->goal.x != adjX || mover->goal.y != adjY || mover->goal.z != job->targetMineZ) {
-            mover->goal = (Point){adjX, adjY, job->targetMineZ};
-            mover->needsRepath = true;
-        }
-
-        // Check if arrived at adjacent tile
-        float goalX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
-        float goalY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - goalX;
-        float dy = mover->y - goalY;
-        float distSq = dx*dx + dy*dy;
-
-        bool correctZ = (int)mover->z == job->targetMineZ;
-
-        // Final approach - move directly toward work location when close but path exhausted
-        if (correctZ) TryFinalApproach(mover, goalX, goalY, adjX, adjY, PICKUP_RADIUS);
-
-        // Check if stuck
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            Designation* desig = GetDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
-            if (desig) desig->unreachableCooldown = UNREACHABLE_COOLDOWN;
-            return JOBRUN_FAIL;
-        }
-
-        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-            job->step = STEP_WORKING;
-        }
-
-        return JOBRUN_RUNNING;
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, MINE_WORK_TIME, false);
+        if (r == JOBRUN_DONE) CompleteMineDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
+        return r;
     }
-    else if (job->step == STEP_WORKING) {
-        // Progress mining
-        job->progress += dt / GameHoursToGameSeconds(MINE_WORK_TIME);
-        d->progress = job->progress;
-
-        if (job->progress >= 1.0f) {
-            // Mining complete!
-            CompleteMineDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
-            return JOBRUN_DONE;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-
     return JOBRUN_FAIL;
 }
 
 // Channel job driver: move to tile -> channel (remove floor, mine below, create ramp)
 JobRunResult RunJob_Channel(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
-
-    int tx = job->targetMineX;  // Reusing mine target fields for channel coordinates
-    int ty = job->targetMineY;
-    int tz = job->targetMineZ;
-
-    // Check if designation still exists
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
-    if (!d || d->type != DESIGNATION_CHANNEL) {
-        return JOBRUN_FAIL;
-    }
-
-    // Check if floor still exists
-    // Either has explicit floor flag or standing on solid below
+    if (!d || d->type != DESIGNATION_CHANNEL) return JOBRUN_FAIL;
     bool hasFloor = HAS_FLOOR(tx, ty, tz) || (tz > 0 && CellIsSolid(grid[tz-1][ty][tx]));
-    if (!hasFloor) {
-        CancelDesignation(tx, ty, tz);
-        return JOBRUN_FAIL;
+    if (!hasFloor) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToTileStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, CHANNEL_WORK_TIME, false);
+        if (r == JOBRUN_DONE) CompleteChannelDesignation(tx, ty, tz, job->assignedMover);
+        return r;
     }
-
-    if (job->step == STEP_MOVING_TO_WORK) {
-        // Channel: mover stands ON the tile (not adjacent like mining)
-        if (mover->goal.x != tx || mover->goal.y != ty || mover->goal.z != tz) {
-            mover->goal = (Point){tx, ty, tz};
-            mover->needsRepath = true;
-        }
-
-        // Check if arrived at target tile
-        float goalX = tx * CELL_SIZE + CELL_SIZE * 0.5f;
-        float goalY = ty * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - goalX;
-        float dy = mover->y - goalY;
-        float distSq = dx*dx + dy*dy;
-
-        bool correctZ = (int)mover->z == tz;
-
-        // Final approach - move directly toward work location when close but path exhausted
-        if (correctZ) TryFinalApproach(mover, goalX, goalY, tx, ty, PICKUP_RADIUS);
-
-        // Check if stuck
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
-            return JOBRUN_FAIL;
-        }
-
-        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-            job->step = STEP_WORKING;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-    else if (job->step == STEP_WORKING) {
-        // Progress channeling
-        job->progress += dt / GameHoursToGameSeconds(CHANNEL_WORK_TIME);
-        d->progress = job->progress;
-
-        if (job->progress >= 1.0f) {
-            // Channeling complete!
-            // Pass mover index so CompleteChannelDesignation can handle their descent
-            CompleteChannelDesignation(tx, ty, tz, job->assignedMover);
-            return JOBRUN_DONE;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-
     return JOBRUN_FAIL;
 }
 
 // Dig ramp job driver: move adjacent to wall -> carve into ramp
 JobRunResult RunJob_DigRamp(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
-
-    int tx = job->targetMineX;  // Reusing mine target fields
-    int ty = job->targetMineY;
-    int tz = job->targetMineZ;
-
-    // Check if designation still exists
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
-    if (!d || d->type != DESIGNATION_DIG_RAMP) {
-        return JOBRUN_FAIL;
+    if (!d || d->type != DESIGNATION_DIG_RAMP) return JOBRUN_FAIL;
+    if (!CellIsSolid(grid[tz][ty][tx])) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, DIG_RAMP_WORK_TIME, false);
+        if (r == JOBRUN_DONE) CompleteDigRampDesignation(tx, ty, tz, job->assignedMover);
+        return r;
     }
-
-    // Check if the wall still exists
-    CellType ct = grid[tz][ty][tx];
-    if (!CellIsSolid(ct)) {
-        CancelDesignation(tx, ty, tz);
-        return JOBRUN_FAIL;
-    }
-
-    if (job->step == STEP_MOVING_TO_WORK) {
-        // Use cached adjacent tile (set when job was created)
-        int adjX = job->targetAdjX;
-        int adjY = job->targetAdjY;
-
-        // Set goal if not already moving there
-        if (mover->goal.x != adjX || mover->goal.y != adjY || mover->goal.z != tz) {
-            mover->goal = (Point){adjX, adjY, tz};
-            mover->needsRepath = true;
-        }
-
-        // Check if arrived at adjacent tile
-        float goalX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
-        float goalY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - goalX;
-        float dy = mover->y - goalY;
-        float distSq = dx*dx + dy*dy;
-
-        bool correctZ = (int)mover->z == tz;
-
-        // Final approach
-        if (correctZ) TryFinalApproach(mover, goalX, goalY, adjX, adjY, PICKUP_RADIUS);
-
-        // Check if stuck
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
-            return JOBRUN_FAIL;
-        }
-
-        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-            job->step = STEP_WORKING;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-    else if (job->step == STEP_WORKING) {
-        // Progress digging
-        job->progress += dt / GameHoursToGameSeconds(DIG_RAMP_WORK_TIME);
-        d->progress = job->progress;
-
-        if (job->progress >= 1.0f) {
-            // Dig ramp complete!
-            CompleteDigRampDesignation(tx, ty, tz, job->assignedMover);
-            return JOBRUN_DONE;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-
     return JOBRUN_FAIL;
 }
 
 // Remove floor job driver: move to tile -> remove floor (mover may fall!)
 JobRunResult RunJob_RemoveFloor(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
-
-    int tx = job->targetMineX;  // Reusing mine target fields
-    int ty = job->targetMineY;
-    int tz = job->targetMineZ;
-
-    // Check if designation still exists
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
-    if (!d || d->type != DESIGNATION_REMOVE_FLOOR) {
-        return JOBRUN_FAIL;
+    if (!d || d->type != DESIGNATION_REMOVE_FLOOR) return JOBRUN_FAIL;
+    if (!HAS_FLOOR(tx, ty, tz)) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToTileStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, REMOVE_FLOOR_WORK_TIME, false);
+        if (r == JOBRUN_DONE) CompleteRemoveFloorDesignation(tx, ty, tz, job->assignedMover);
+        return r;
     }
-
-    // Check if floor still exists
-    if (!HAS_FLOOR(tx, ty, tz)) {
-        CancelDesignation(tx, ty, tz);
-        return JOBRUN_FAIL;
-    }
-
-    if (job->step == STEP_MOVING_TO_WORK) {
-        // Mover stands ON the tile to remove the floor
-        if (mover->goal.x != tx || mover->goal.y != ty || mover->goal.z != tz) {
-            mover->goal = (Point){tx, ty, tz};
-            mover->needsRepath = true;
-        }
-
-        // Check if arrived at target tile
-        float goalX = tx * CELL_SIZE + CELL_SIZE * 0.5f;
-        float goalY = ty * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - goalX;
-        float dy = mover->y - goalY;
-        float distSq = dx*dx + dy*dy;
-
-        bool correctZ = (int)mover->z == tz;
-
-        // Final approach - move directly toward work location when close but path exhausted
-        if (correctZ) TryFinalApproach(mover, goalX, goalY, tx, ty, PICKUP_RADIUS);
-
-        // Check if stuck
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
-            return JOBRUN_FAIL;
-        }
-
-        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-            job->step = STEP_WORKING;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-    else if (job->step == STEP_WORKING) {
-        // Progress floor removal
-        job->progress += dt / GameHoursToGameSeconds(REMOVE_FLOOR_WORK_TIME);
-        d->progress = job->progress;
-
-        if (job->progress >= 1.0f) {
-            // Floor removal complete!
-            CompleteRemoveFloorDesignation(tx, ty, tz, job->assignedMover);
-            return JOBRUN_DONE;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-
     return JOBRUN_FAIL;
 }
 
 // Remove ramp job driver: move to adjacent tile -> remove ramp
 JobRunResult RunJob_RemoveRamp(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
-
-    int tx = job->targetMineX;  // Reusing mine target fields
-    int ty = job->targetMineY;
-    int tz = job->targetMineZ;
-
-    // Check if designation still exists
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
-    if (!d || d->type != DESIGNATION_REMOVE_RAMP) {
-        return JOBRUN_FAIL;
+    if (!d || d->type != DESIGNATION_REMOVE_RAMP) return JOBRUN_FAIL;
+    if (!CellIsRamp(grid[tz][ty][tx])) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, REMOVE_RAMP_WORK_TIME, false);
+        if (r == JOBRUN_DONE) CompleteRemoveRampDesignation(tx, ty, tz, job->assignedMover);
+        return r;
     }
-
-    // Check if ramp still exists
-    if (!CellIsRamp(grid[tz][ty][tx])) {
-        CancelDesignation(tx, ty, tz);
-        return JOBRUN_FAIL;
-    }
-
-    if (job->step == STEP_MOVING_TO_WORK) {
-        // Use cached adjacent tile (set when job was created)
-        int adjX = job->targetAdjX;
-        int adjY = job->targetAdjY;
-
-        // Set goal if not already moving there
-        if (mover->goal.x != adjX || mover->goal.y != adjY || mover->goal.z != tz) {
-            mover->goal = (Point){adjX, adjY, tz};
-            mover->needsRepath = true;
-        }
-
-        // Check if arrived at adjacent tile
-        float goalX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
-        float goalY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - goalX;
-        float dy = mover->y - goalY;
-        float distSq = dx*dx + dy*dy;
-
-        bool correctZ = (int)mover->z == tz;
-
-        // Final approach - move directly toward work location when close but path exhausted
-        if (correctZ) TryFinalApproach(mover, goalX, goalY, adjX, adjY, PICKUP_RADIUS);
-
-        // Check if stuck
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
-            return JOBRUN_FAIL;
-        }
-
-        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-            job->step = STEP_WORKING;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-    else if (job->step == STEP_WORKING) {
-        // Progress ramp removal
-        job->progress += dt / GameHoursToGameSeconds(REMOVE_RAMP_WORK_TIME);
-        d->progress = job->progress;
-
-        if (job->progress >= 1.0f) {
-            // Ramp removal complete!
-            CompleteRemoveRampDesignation(tx, ty, tz, job->assignedMover);
-            return JOBRUN_DONE;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-
     return JOBRUN_FAIL;
 }
 
 // Chop tree job driver: move to adjacent tile -> chop down tree
 JobRunResult RunJob_Chop(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
-
-    int tx = job->targetMineX;  // Reusing mine target fields
-    int ty = job->targetMineY;
-    int tz = job->targetMineZ;
-
-    // Check if designation still exists
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
-    if (!d || d->type != DESIGNATION_CHOP) {
-        return JOBRUN_FAIL;
-    }
-
-    // Check if trunk still exists
-    if (grid[tz][ty][tx] != CELL_TREE_TRUNK) {
-        CancelDesignation(tx, ty, tz);
-        return JOBRUN_FAIL;
-    }
-
-    if (job->step == STEP_MOVING_TO_WORK) {
-        // Use cached adjacent tile (set when job was created)
-        int adjX = job->targetAdjX;
-        int adjY = job->targetAdjY;
-
-        // Set goal if not already moving there
-        if (mover->goal.x != adjX || mover->goal.y != adjY || mover->goal.z != tz) {
-            mover->goal = (Point){adjX, adjY, tz};
-            mover->needsRepath = true;
-        }
-
-        // Check if arrived at adjacent tile
-        float goalX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
-        float goalY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - goalX;
-        float dy = mover->y - goalY;
-        float distSq = dx*dx + dy*dy;
-
-        bool correctZ = (int)mover->z == tz;
-
-        // Final approach - move directly toward work location when close but path exhausted
-        if (correctZ) TryFinalApproach(mover, goalX, goalY, adjX, adjY, PICKUP_RADIUS);
-
-        // Check if stuck
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
-            return JOBRUN_FAIL;
-        }
-
-        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-            job->step = STEP_WORKING;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-    else if (job->step == STEP_WORKING) {
-        // Progress tree chopping — young trees are faster
+    if (!d || d->type != DESIGNATION_CHOP) return JOBRUN_FAIL;
+    if (grid[tz][ty][tx] != CELL_TREE_TRUNK) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
+    if (job->step == STEP_WORKING) {
         float workTime = IsYoungTreeBase(tx, ty, tz) ? CHOP_YOUNG_WORK_TIME : CHOP_WORK_TIME;
-        job->progress += dt / GameHoursToGameSeconds(workTime);
-        d->progress = job->progress;
-
-        if (job->progress >= 1.0f) {
-            // Chopping complete!
-            CompleteChopDesignation(tx, ty, tz, job->assignedMover);
-            return JOBRUN_DONE;
-        }
-
-        return JOBRUN_RUNNING;
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, workTime, false);
+        if (r == JOBRUN_DONE) CompleteChopDesignation(tx, ty, tz, job->assignedMover);
+        return r;
     }
-
     return JOBRUN_FAIL;
 }
 
 // Chop felled trunk job driver: move to adjacent tile -> chop up fallen trunk
 JobRunResult RunJob_ChopFelled(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
-
-    int tx = job->targetMineX;
-    int ty = job->targetMineY;
-    int tz = job->targetMineZ;
-
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
-    if (!d || d->type != DESIGNATION_CHOP_FELLED) {
-        return JOBRUN_FAIL;
+    if (!d || d->type != DESIGNATION_CHOP_FELLED) return JOBRUN_FAIL;
+    if (grid[tz][ty][tx] != CELL_TREE_FELLED) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, CHOP_FELLED_WORK_TIME, false);
+        if (r == JOBRUN_DONE) CompleteChopFelledDesignation(tx, ty, tz, job->assignedMover);
+        return r;
     }
-
-    if (grid[tz][ty][tx] != CELL_TREE_FELLED) {
-        CancelDesignation(tx, ty, tz);
-        return JOBRUN_FAIL;
-    }
-
-    if (job->step == STEP_MOVING_TO_WORK) {
-        int adjX = job->targetAdjX;
-        int adjY = job->targetAdjY;
-
-        if (mover->goal.x != adjX || mover->goal.y != adjY || mover->goal.z != tz) {
-            mover->goal = (Point){adjX, adjY, tz};
-            mover->needsRepath = true;
-        }
-
-        float goalX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
-        float goalY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - goalX;
-        float dy = mover->y - goalY;
-        float distSq = dx*dx + dy*dy;
-
-        bool correctZ = (int)mover->z == tz;
-
-        if (correctZ) TryFinalApproach(mover, goalX, goalY, adjX, adjY, PICKUP_RADIUS);
-
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
-            return JOBRUN_FAIL;
-        }
-
-        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-            job->step = STEP_WORKING;
-        }
-
-        return JOBRUN_RUNNING;
-    } else if (job->step == STEP_WORKING) {
-        job->progress += dt / GameHoursToGameSeconds(CHOP_FELLED_WORK_TIME);
-        d->progress = job->progress;
-
-        if (job->progress >= 1.0f) {
-            CompleteChopFelledDesignation(tx, ty, tz, job->assignedMover);
-            return JOBRUN_DONE;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-
     return JOBRUN_FAIL;
 }
 
 // Plant sapling job driver: pick up sapling -> carry to designation -> plant
 JobRunResult RunJob_PlantSapling(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
-
-    int tx = job->targetMineX;  // Reusing mine target fields for designation location
-    int ty = job->targetMineY;
-    int tz = job->targetMineZ;
-
-    // Check if designation still exists
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
-    if (!d || d->type != DESIGNATION_PLANT_SAPLING) {
-        return JOBRUN_FAIL;
-    }
+    if (!d || d->type != DESIGNATION_PLANT_SAPLING) return JOBRUN_FAIL;
 
-    if (job->step == STEP_MOVING_TO_PICKUP) {
-        int itemIdx = job->targetItem;
-
-        // Check if item still exists
-        if (itemIdx < 0 || !items[itemIdx].active) {
-            return JOBRUN_FAIL;
-        }
-
-        Item* item = &items[itemIdx];
-        int itemCellX = (int)(item->x / CELL_SIZE);
-        int itemCellY = (int)(item->y / CELL_SIZE);
-        int itemCellZ = (int)(item->z);
-
-        // Check if item's cell became a wall
-        if (!IsCellWalkableAt(itemCellZ, itemCellY, itemCellX)) {
-            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
-            return JOBRUN_FAIL;
-        }
-
-        float dx = mover->x - item->x;
-        float dy = mover->y - item->y;
-        float distSq = dx*dx + dy*dy;
-
-        // Request repath if path exhausted and not at destination
-        if (IsPathExhausted(mover) && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
-            mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
-            mover->needsRepath = true;
-        }
-
-        // Final approach - move directly toward item when close but path exhausted
-        TryFinalApproach(mover, item->x, item->y, itemCellX, itemCellY, PICKUP_RADIUS);
-
-        // Check if stuck
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
-            return JOBRUN_FAIL;
-        }
-
-        if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-            // Pick up the item
-            if (item->state == ITEM_IN_STOCKPILE) {
-                ClearSourceStockpileSlot(item);
-            }
-            item->state = ITEM_CARRIED;
-            job->carryingItem = itemIdx;
-            job->targetItem = -1;
-            job->step = STEP_CARRYING;
-
-            // Set goal to designation tile (it should be walkable - it's AIR)
-            mover->goal = (Point){ tx, ty, tz };
-            mover->needsRepath = true;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-    else if (job->step == STEP_CARRYING) {
-        int itemIdx = job->carryingItem;
-
-        // Check if still carrying
-        if (itemIdx < 0 || !items[itemIdx].active) {
-            return JOBRUN_FAIL;
-        }
-
-        // Update carried item position (including container contents)
-        items[itemIdx].x = mover->x;
-        items[itemIdx].y = mover->y;
-        items[itemIdx].z = mover->z;
-        if (items[itemIdx].contentCount > 0) MoveContainer(itemIdx, mover->x, mover->y, mover->z);
-
-        // Check if arrived at designation
-        int moverCellX = (int)(mover->x / CELL_SIZE);
-        int moverCellY = (int)(mover->y / CELL_SIZE);
-        int moverCellZ = (int)mover->z;
-
-        bool onTarget = (moverCellX == tx && moverCellY == ty && moverCellZ == tz);
-
-        // If on target, advance to planting (check this BEFORE stuck detection)
-        if (onTarget) {
+    if (job->step == STEP_MOVING_TO_PICKUP)
+        return RunPickupStep(job, mover, (Point){tx, ty, tz});
+    if (job->step == STEP_CARRYING) {
+        JobRunResult r = RunCarryStep(job, mover, tx, ty, tz);
+        if (r == JOBRUN_DONE) {
             job->step = STEP_PLANTING;
             job->progress = 0.0f;
             return JOBRUN_RUNNING;
         }
-
-        // Final approach
-        if (IsPathExhausted(mover)) {
-            float goalX = tx * CELL_SIZE + CELL_SIZE * 0.5f;
-            float goalY = ty * CELL_SIZE + CELL_SIZE * 0.5f;
-            TryFinalApproach(mover, goalX, goalY, tx, ty, PICKUP_RADIUS);
-        }
-
-        // Check if stuck (only if not on target)
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
-            return JOBRUN_FAIL;
-        }
-
-        return JOBRUN_RUNNING;
+        return r;
     }
-    else if (job->step == STEP_PLANTING) {
+    if (job->step == STEP_PLANTING) {
         int itemIdx = job->carryingItem;
-
-        // Progress planting
-        job->progress += dt / GameHoursToGameSeconds(PLANT_SAPLING_WORK_TIME);
-        d->progress = job->progress;
-
-        if (job->progress >= 1.0f) {
-            // Planting complete - place sapling cell
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, PLANT_SAPLING_WORK_TIME, false);
+        if (r == JOBRUN_DONE) {
             if (itemIdx >= 0 && items[itemIdx].active) {
-                MaterialType treeMat = (MaterialType)items[itemIdx].material;
-                PlaceSapling(tx, ty, tz, treeMat);
+                PlaceSapling(tx, ty, tz, (MaterialType)items[itemIdx].material);
+                DeleteItem(itemIdx);
             } else {
                 return JOBRUN_FAIL;
             }
-
-            // Consume the sapling item
-            if (itemIdx >= 0 && items[itemIdx].active) {
-                DeleteItem(itemIdx);
-            }
             job->carryingItem = -1;
-
-            // Clear the designation
             CancelDesignation(tx, ty, tz);
-
-            return JOBRUN_DONE;
         }
-
-        return JOBRUN_RUNNING;
+        return r;
     }
-
     return JOBRUN_FAIL;
 }
 
 // Gather sapling job driver: move to sapling cell -> dig up -> creates item
 JobRunResult RunJob_GatherSapling(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
-
-    int tx = job->targetMineX;
-    int ty = job->targetMineY;
-    int tz = job->targetMineZ;
-
-    // Check if designation still exists
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
-    if (!d || d->type != DESIGNATION_GATHER_SAPLING) {
-        return JOBRUN_FAIL;
+    if (!d || d->type != DESIGNATION_GATHER_SAPLING) return JOBRUN_FAIL;
+    if (grid[tz][ty][tx] != CELL_SAPLING) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, GATHER_SAPLING_WORK_TIME, false);
+        if (r == JOBRUN_DONE) CompleteGatherSaplingDesignation(tx, ty, tz, job->assignedMover);
+        return r;
     }
-
-    // Check if sapling cell still exists
-    if (grid[tz][ty][tx] != CELL_SAPLING) {
-        CancelDesignation(tx, ty, tz);
-        return JOBRUN_FAIL;
-    }
-
-    if (job->step == STEP_MOVING_TO_WORK) {
-        int adjX = job->targetAdjX;
-        int adjY = job->targetAdjY;
-
-        // Set goal if not already moving there
-        if (mover->goal.x != adjX || mover->goal.y != adjY || mover->goal.z != tz) {
-            mover->goal = (Point){adjX, adjY, tz};
-            mover->needsRepath = true;
-        }
-
-        // Check if arrived at adjacent tile
-        float goalX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
-        float goalY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - goalX;
-        float dy = mover->y - goalY;
-        float distSq = dx*dx + dy*dy;
-
-        bool correctZ = (int)mover->z == tz;
-
-        // Final approach
-        if (correctZ) TryFinalApproach(mover, goalX, goalY, adjX, adjY, PICKUP_RADIUS);
-
-        // Check if stuck
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
-            return JOBRUN_FAIL;
-        }
-
-        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-            job->step = STEP_WORKING;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-    else if (job->step == STEP_WORKING) {
-        // Progress gathering
-        job->progress += dt / GameHoursToGameSeconds(GATHER_SAPLING_WORK_TIME);
-        d->progress = job->progress;
-
-        if (job->progress >= 1.0f) {
-            // Gathering complete - convert sapling cell to item
-            CompleteGatherSaplingDesignation(tx, ty, tz, job->assignedMover);
-            return JOBRUN_DONE;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-
     return JOBRUN_FAIL;
 }
 
 // Gather grass job driver: walk to grass cell, work, spawn item
 JobRunResult RunJob_GatherGrass(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
-
-    int tx = job->targetMineX;
-    int ty = job->targetMineY;
-    int tz = job->targetMineZ;
-
-    // Check if designation still exists
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
-    if (!d || d->type != DESIGNATION_GATHER_GRASS) {
-        return JOBRUN_FAIL;
+    if (!d || d->type != DESIGNATION_GATHER_GRASS) return JOBRUN_FAIL;
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToTileStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, GATHER_GRASS_WORK_TIME, false);
+        if (r == JOBRUN_DONE) CompleteGatherGrassDesignation(tx, ty, tz, job->assignedMover);
+        return r;
     }
-
-    if (job->step == STEP_MOVING_TO_WORK) {
-        // Set goal to the tile itself (it's walkable)
-        if (mover->goal.x != tx || mover->goal.y != ty || mover->goal.z != tz) {
-            mover->goal = (Point){tx, ty, tz};
-            mover->needsRepath = true;
-        }
-
-        float goalX = tx * CELL_SIZE + CELL_SIZE * 0.5f;
-        float goalY = ty * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - goalX;
-        float dy = mover->y - goalY;
-        float distSq = dx*dx + dy*dy;
-
-        bool correctZ = (int)mover->z == tz;
-
-        if (correctZ) TryFinalApproach(mover, goalX, goalY, tx, ty, PICKUP_RADIUS);
-
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
-            return JOBRUN_FAIL;
-        }
-
-        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-            job->step = STEP_WORKING;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-    else if (job->step == STEP_WORKING) {
-        job->progress += dt / GameHoursToGameSeconds(GATHER_GRASS_WORK_TIME);
-        d->progress = job->progress;
-
-        if (job->progress >= 1.0f) {
-            CompleteGatherGrassDesignation(tx, ty, tz, job->assignedMover);
-            return JOBRUN_DONE;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-
     return JOBRUN_FAIL;
 }
 
 // Harvest berry job driver: walk to tile, work, harvest plant
 JobRunResult RunJob_HarvestBerry(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
-
-    int tx = job->targetMineX;
-    int ty = job->targetMineY;
-    int tz = job->targetMineZ;
-
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
-    if (!d || d->type != DESIGNATION_HARVEST_BERRY) {
-        return JOBRUN_FAIL;
+    if (!d || d->type != DESIGNATION_HARVEST_BERRY) return JOBRUN_FAIL;
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToTileStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, HARVEST_BERRY_WORK_TIME, false);
+        if (r == JOBRUN_DONE) CompleteHarvestBerryDesignation(tx, ty, tz);
+        return r;
     }
-
-    if (job->step == STEP_MOVING_TO_WORK) {
-        if (mover->goal.x != tx || mover->goal.y != ty || mover->goal.z != tz) {
-            mover->goal = (Point){tx, ty, tz};
-            mover->needsRepath = true;
-        }
-
-        float goalX = tx * CELL_SIZE + CELL_SIZE * 0.5f;
-        float goalY = ty * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - goalX;
-        float dy = mover->y - goalY;
-        float distSq = dx*dx + dy*dy;
-
-        bool correctZ = (int)mover->z == tz;
-
-        if (correctZ) TryFinalApproach(mover, goalX, goalY, tx, ty, PICKUP_RADIUS);
-
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
-            return JOBRUN_FAIL;
-        }
-
-        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-            job->step = STEP_WORKING;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-    else if (job->step == STEP_WORKING) {
-        job->progress += dt / GameHoursToGameSeconds(HARVEST_BERRY_WORK_TIME);
-        d->progress = job->progress;
-
-        if (job->progress >= 1.0f) {
-            CompleteHarvestBerryDesignation(tx, ty, tz);
-            return JOBRUN_DONE;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-
     return JOBRUN_FAIL;
 }
 
 // Gather tree job driver: walk to adjacent tile, work, spawn items
 JobRunResult RunJob_GatherTree(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
-
-    int tx = job->targetMineX;
-    int ty = job->targetMineY;
-    int tz = job->targetMineZ;
-
-    // Check if designation still exists
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
-    if (!d || d->type != DESIGNATION_GATHER_TREE) {
-        return JOBRUN_FAIL;
+    if (!d || d->type != DESIGNATION_GATHER_TREE) return JOBRUN_FAIL;
+    if (grid[tz][ty][tx] != CELL_TREE_TRUNK) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, GATHER_TREE_WORK_TIME, true);
+        if (r == JOBRUN_DONE) CompleteGatherTreeDesignation(tx, ty, tz, job->assignedMover);
+        return r;
     }
-
-    // Check if trunk still exists
-    if (grid[tz][ty][tx] != CELL_TREE_TRUNK) {
-        CancelDesignation(tx, ty, tz);
-        return JOBRUN_FAIL;
-    }
-
-    if (job->step == STEP_MOVING_TO_WORK) {
-        int adjX = job->targetAdjX;
-        int adjY = job->targetAdjY;
-
-        if (mover->goal.x != adjX || mover->goal.y != adjY || mover->goal.z != tz) {
-            mover->goal = (Point){adjX, adjY, tz};
-            mover->needsRepath = true;
-        }
-
-        float goalX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
-        float goalY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - goalX;
-        float dy = mover->y - goalY;
-        float distSq = dx*dx + dy*dy;
-
-        bool correctZ = (int)mover->z == tz;
-
-        if (correctZ) TryFinalApproach(mover, goalX, goalY, adjX, adjY, PICKUP_RADIUS);
-
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
-            return JOBRUN_FAIL;
-        }
-
-        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-            job->step = STEP_WORKING;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-    else if (job->step == STEP_WORKING) {
-        mover->timeWithoutProgress = 0;  // Intentionally still while working
-        job->progress += dt / GameHoursToGameSeconds(GATHER_TREE_WORK_TIME);
-        d->progress = job->progress;
-
-        if (job->progress >= 1.0f) {
-            CompleteGatherTreeDesignation(tx, ty, tz, job->assignedMover);
-            return JOBRUN_DONE;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-
     return JOBRUN_FAIL;
 }
 
@@ -2614,63 +1947,19 @@ JobRunResult RunJob_IgniteWorkshop(Job* job, void* moverPtr, float dt) {
 // Clean floor job driver: walk to dirty floor -> clean it
 JobRunResult RunJob_Clean(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
-    int tx = job->targetMineX;
-    int ty = job->targetMineY;
-    int tz = job->targetMineZ;
-
-    // Check if designation still exists
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
-    if (!d || d->type != DESIGNATION_CLEAN) {
-        return JOBRUN_FAIL;
-    }
-
-    // Check if still dirty enough to clean
+    if (!d || d->type != DESIGNATION_CLEAN) return JOBRUN_FAIL;
     if (GetFloorDirt(tx, ty, tz) < DIRT_CLEAN_THRESHOLD) {
         CompleteCleanDesignation(tx, ty, tz);
         return JOBRUN_DONE;
     }
-
-    if (job->step == STEP_MOVING_TO_WORK) {
-        // Walk directly to the dirty tile (floors are walkable)
-        if (mover->goal.x != tx || mover->goal.y != ty || mover->goal.z != tz) {
-            mover->goal = (Point){tx, ty, tz};
-            mover->needsRepath = true;
-        }
-
-        float goalX = tx * CELL_SIZE + CELL_SIZE * 0.5f;
-        float goalY = ty * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - goalX;
-        float dy = mover->y - goalY;
-        float distSq = dx*dx + dy*dy;
-        bool correctZ = (int)mover->z == tz;
-
-        if (correctZ) TryFinalApproach(mover, goalX, goalY, tx, ty, PICKUP_RADIUS);
-
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
-            return JOBRUN_FAIL;
-        }
-
-        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-            job->step = STEP_WORKING;
-            job->progress = 0.0f;
-        }
-
-        return JOBRUN_RUNNING;
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToTileStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, CLEAN_WORK_TIME, true);
+        if (r == JOBRUN_DONE) CompleteCleanDesignation(tx, ty, tz);
+        return r;
     }
-    else if (job->step == STEP_WORKING) {
-        mover->timeWithoutProgress = 0.0f;  // Intentionally stationary while cleaning
-        job->progress += dt / GameHoursToGameSeconds(CLEAN_WORK_TIME);
-        d->progress = job->progress;  // Sync to designation for progress bar rendering
-
-        if (job->progress >= 1.0f) {
-            CompleteCleanDesignation(tx, ty, tz);
-            return JOBRUN_DONE;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-
     return JOBRUN_FAIL;
 }
 
@@ -3848,142 +3137,37 @@ int WorkGiver_Haul(int moverIdx) {
 
 JobRunResult RunJob_Knap(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
-
-    int tx = job->targetMineX;  // Stone wall coordinates
-    int ty = job->targetMineY;
-    int tz = job->targetMineZ;
-
-    // Check if designation still exists
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
-    if (!d || d->type != DESIGNATION_KNAP) {
-        return JOBRUN_FAIL;
-    }
-
-    // Check if wall still exists and is stone
+    if (!d || d->type != DESIGNATION_KNAP) return JOBRUN_FAIL;
     if (!CellIsSolid(grid[tz][ty][tx]) || !IsStoneMaterial(GetWallMaterial(tx, ty, tz))) {
         CancelDesignation(tx, ty, tz);
         return JOBRUN_FAIL;
     }
 
-    if (job->step == STEP_MOVING_TO_PICKUP) {
-        int itemIdx = job->targetItem;
-
-        if (itemIdx < 0 || !items[itemIdx].active) {
-            return JOBRUN_FAIL;
-        }
-
-        Item* item = &items[itemIdx];
-        int itemCellX = (int)(item->x / CELL_SIZE);
-        int itemCellY = (int)(item->y / CELL_SIZE);
-        int itemCellZ = (int)(item->z);
-
-        if (!IsCellWalkableAt(itemCellZ, itemCellY, itemCellX)) {
-            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
-            return JOBRUN_FAIL;
-        }
-
-        float dx = mover->x - item->x;
-        float dy = mover->y - item->y;
-        float distSq = dx*dx + dy*dy;
-
-        if (IsPathExhausted(mover) && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
-            mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
-            mover->needsRepath = true;
-        }
-
-        TryFinalApproach(mover, item->x, item->y, itemCellX, itemCellY, PICKUP_RADIUS);
-
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
-            return JOBRUN_FAIL;
-        }
-
-        if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-            if (item->state == ITEM_IN_STOCKPILE) {
-                ClearSourceStockpileSlot(item);
-            }
-            item->state = ITEM_CARRIED;
-            job->carryingItem = itemIdx;
-            job->targetItem = -1;
-            job->step = STEP_CARRYING;
-
-            // Navigate to adjacent tile next to the stone wall
-            mover->goal = (Point){ job->targetAdjX, job->targetAdjY, tz };
-            mover->needsRepath = true;
-        }
-
-        return JOBRUN_RUNNING;
-    }
-    else if (job->step == STEP_CARRYING) {
-        int itemIdx = job->carryingItem;
-
-        if (itemIdx < 0 || !items[itemIdx].active) {
-            return JOBRUN_FAIL;
-        }
-
-        // Update carried item position
-        items[itemIdx].x = mover->x;
-        items[itemIdx].y = mover->y;
-        items[itemIdx].z = mover->z;
-
-        int adjX = job->targetAdjX;
-        int adjY = job->targetAdjY;
-
-        float goalX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
-        float goalY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - goalX;
-        float dy = mover->y - goalY;
-        float distSq = dx*dx + dy*dy;
-
-        bool correctZ = (int)mover->z == tz;
-
-        if (correctZ) TryFinalApproach(mover, goalX, goalY, adjX, adjY, PICKUP_RADIUS);
-
-        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-            job->step = STEP_PLANTING;  // Reuse step 2 for knapping work
+    if (job->step == STEP_MOVING_TO_PICKUP)
+        return RunPickupStep(job, mover, (Point){job->targetAdjX, job->targetAdjY, tz});
+    if (job->step == STEP_CARRYING) {
+        JobRunResult r = RunCarryStep(job, mover, job->targetAdjX, job->targetAdjY, tz);
+        if (r == JOBRUN_DONE) {
+            job->step = STEP_PLANTING;
             job->progress = 0.0f;
             return JOBRUN_RUNNING;
         }
-
-        if (IsPathExhausted(mover) && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
-            mover->goal = (Point){adjX, adjY, tz};
-            mover->needsRepath = true;
-        }
-
-        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
-            return JOBRUN_FAIL;
-        }
-
-        return JOBRUN_RUNNING;
+        return r;
     }
-    else if (job->step == STEP_PLANTING) {
-        // Knapping work phase
-        job->progress += dt / GameHoursToGameSeconds(KNAP_WORK_TIME);
-        d->progress = job->progress;
-
-        if (job->progress >= 1.0f) {
-            // Consume the carried rock
-            int itemIdx = job->carryingItem;
+    if (job->step == STEP_PLANTING) {
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, KNAP_WORK_TIME, false);
+        if (r == JOBRUN_DONE) {
             MaterialType wallMat = GetWallMaterial(tx, ty, tz);
-
-            if (itemIdx >= 0 && items[itemIdx].active) {
-                DeleteItem(itemIdx);
-            }
+            int itemIdx = job->carryingItem;
+            if (itemIdx >= 0 && items[itemIdx].active) DeleteItem(itemIdx);
             job->carryingItem = -1;
-
-            // Spawn sharp stone at mover position
             SpawnItemWithMaterial(mover->x, mover->y, mover->z, ITEM_SHARP_STONE, (uint8_t)wallMat);
-
-            // Clear designation (wall stays intact)
             CompleteKnapDesignation(tx, ty, tz, job->assignedMover);
-
-            return JOBRUN_DONE;
         }
-
-        return JOBRUN_RUNNING;
+        return r;
     }
-
     return JOBRUN_FAIL;
 }
 
