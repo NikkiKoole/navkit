@@ -9,9 +9,9 @@ void InitBalance(void) {
     // Time budgets (game-hours)
     balance.workHoursPerDay       = 14.0f;
     balance.sleepHoursInBed       =  7.0f;
-    balance.sleepOnGround         = 23.0f;
+    balance.sleepOnGround         = 17.0f;
     balance.hoursToStarve         = 24.0f;
-    balance.hoursToExhaustWorking = 16.0f;
+    balance.hoursToExhaustWorking = 20.0f;
     balance.hoursToExhaustIdle    = 28.0f;
     balance.eatingDurationGH      =  0.5f;
     balance.foodSearchCooldownGH  =  0.25f;
@@ -23,7 +23,7 @@ void InitBalance(void) {
     // Thresholds (0-1 scale)
     balance.hungerSeekThreshold      = 0.3f;
     balance.hungerCriticalThreshold  = 0.1f;
-    balance.energyTiredThreshold     = 0.3f;
+    balance.energyTiredThreshold     = 0.2f;
     balance.energyExhaustedThreshold = 0.1f;
     balance.energyWakeThreshold      = 0.8f;
 

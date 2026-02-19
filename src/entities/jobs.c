@@ -5680,15 +5680,11 @@ int WorkGiver_BlueprintClear(int moverIdx) {
 
         if (foundItem < 0) continue;  // all items reserved, skip
 
-        // Find stockpile for this item
+        // Find stockpile for this item, or safe-drop
         uint8_t mat = ResolveItemMaterialForJobs(&items[foundItem]);
         int slotX, slotY;
         int spIdx = FindStockpileForItem(items[foundItem].type, mat, &slotX, &slotY);
-        if (spIdx < 0) {
-            // No stockpile — just drop it on a walkable neighbor instead
-            // For now, skip (item stays, blueprint stays in CLEARING)
-            continue;
-        }
+        bool safeDrop = (spIdx < 0);
 
         // Check item reachability
         Point itemCell = { (int)(items[foundItem].x / CELL_SIZE),
@@ -5697,28 +5693,30 @@ int WorkGiver_BlueprintClear(int moverIdx) {
         int pathLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
         if (pathLen == 0) continue;
 
-        // Reserve item and stockpile slot
+        // Reserve item and stockpile slot (unless safe-drop)
         if (!ReserveItem(foundItem, moverIdx)) continue;
-        if (!ReserveStockpileSlot(spIdx, slotX, slotY, moverIdx,
-                                   items[foundItem].type, items[foundItem].material)) {
-            ReleaseItemReservation(foundItem);
-            continue;
+        if (!safeDrop) {
+            if (!ReserveStockpileSlot(spIdx, slotX, slotY, moverIdx,
+                                       items[foundItem].type, items[foundItem].material)) {
+                ReleaseItemReservation(foundItem);
+                continue;
+            }
         }
 
-        // Create haul job
-        int jobId = CreateJob(JOBTYPE_HAUL);
+        // Create haul or clear job
+        int jobId = CreateJob(safeDrop ? JOBTYPE_CLEAR : JOBTYPE_HAUL);
         if (jobId < 0) {
             ReleaseItemReservation(foundItem);
-            ReleaseStockpileSlot(spIdx, slotX, slotY);
+            if (!safeDrop) ReleaseStockpileSlot(spIdx, slotX, slotY);
             continue;
         }
 
         Job* job = GetJob(jobId);
         job->assignedMover = moverIdx;
         job->targetItem = foundItem;
-        job->targetStockpile = spIdx;
-        job->targetSlotX = slotX;
-        job->targetSlotY = slotY;
+        job->targetStockpile = safeDrop ? -1 : spIdx;
+        job->targetSlotX = safeDrop ? -1 : slotX;
+        job->targetSlotY = safeDrop ? -1 : slotY;
         job->step = 0;
 
         m->currentJobId = jobId;

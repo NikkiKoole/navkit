@@ -9,9 +9,9 @@ uint8_t furnitureMoveCostGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 static const FurnitureDef furnitureDefs[FURNITURE_TYPE_COUNT] = {
     [FURNITURE_NONE]       = { "None",       0.0f,   false, 0  },
-    [FURNITURE_LEAF_PILE]  = { "Leaf Pile",  0.020f, false, 12 },
-    [FURNITURE_GRASS_PILE] = { "Grass Pile", 0.015f, false, 12 },
-    [FURNITURE_PLANK_BED]  = { "Plank Bed",  0.040f, true,  0  },
+    [FURNITURE_LEAF_PILE]  = { "Leaf Pile",  0.028f, false, 12 },
+    [FURNITURE_GRASS_PILE] = { "Grass Pile", 0.028f, false, 12 },
+    [FURNITURE_PLANK_BED]  = { "Plank Bed",  0.040f, false, 12 },
     [FURNITURE_CHAIR]      = { "Chair",      0.015f, false, 11 },
 };
 

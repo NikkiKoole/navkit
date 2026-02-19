@@ -268,15 +268,20 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                     break;
                 }
 
-                // Check arrival — adjacent to furniture cell (blocking furniture can't be entered)
-                float fx = furniture[fi].x * CELL_SIZE + CELL_SIZE / 2.0f;
-                float fy = furniture[fi].y * CELL_SIZE + CELL_SIZE / 2.0f;
-                float dx = m->x - fx;
-                float dy = m->y - fy;
-                float distSq = dx * dx + dy * dy;
-                float arrivalR = CELL_SIZE * 1.5f;  // Adjacent cell distance
+                // Check arrival — on the furniture cell, or adjacent if blocking
+                int moverCellX = (int)(m->x / CELL_SIZE);
+                int moverCellY = (int)(m->y / CELL_SIZE);
+                int moverCellZ = (int)m->z;
+                const FurnitureDef* fdef = GetFurnitureDef(furniture[fi].type);
+                bool onCell = (moverCellX == furniture[fi].x && moverCellY == furniture[fi].y && moverCellZ == furniture[fi].z);
+                bool adjacent = (moverCellZ == furniture[fi].z &&
+                    abs(moverCellX - furniture[fi].x) <= 1 && abs(moverCellY - furniture[fi].y) <= 1);
+                bool arrived = fdef->blocking ? adjacent : onCell;
 
-                if ((int)m->z == furniture[fi].z && distSq < arrivalR * arrivalR) {
+                if (arrived) {
+                    // Snap to furniture cell center
+                    m->x = furniture[fi].x * CELL_SIZE + CELL_SIZE / 2.0f;
+                    m->y = furniture[fi].y * CELL_SIZE + CELL_SIZE / 2.0f;
                     m->freetimeState = FREETIME_RESTING;
                     m->needProgress = 0.0f;
                     m->pathLength = 0;

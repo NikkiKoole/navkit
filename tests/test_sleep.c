@@ -114,7 +114,7 @@ describe(mover_gets_tired_and_sleeps) {
         SetupClean();
         int mi = SetupMover(5, 5);
         movers[mi].hunger = 1.0f;
-        movers[mi].energy = 0.29f; // just below tired threshold (0.3)
+        movers[mi].energy = 0.19f; // just below tired threshold (0.2)
 
         SimNeedsTick();
 
@@ -420,7 +420,7 @@ describe(furniture_rest_seeking) {
         SetupClean();
         int mi = SetupMover(5, 5);
         movers[mi].hunger = 1.0f;
-        movers[mi].energy = 0.29f; // just below tired threshold
+        movers[mi].energy = 0.19f; // just below tired threshold
 
         // Place a plank bed nearby
         int fi = SpawnFurniture(7, 5, 1, FURNITURE_PLANK_BED, 0);
@@ -438,7 +438,7 @@ describe(furniture_rest_seeking) {
         SetupClean();
         int mi = SetupMover(5, 5);
         movers[mi].hunger = 1.0f;
-        movers[mi].energy = 0.29f;
+        movers[mi].energy = 0.19f;
 
         // Place a chair and a bed at similar distances
         int chair = SpawnFurniture(7, 5, 1, FURNITURE_CHAIR, 0);
@@ -461,8 +461,8 @@ describe(furniture_rest_seeking) {
         int mi2 = SetupMover(6, 5);
         movers[mi1].hunger = 1.0f;
         movers[mi2].hunger = 1.0f;
-        movers[mi1].energy = 0.29f;
-        movers[mi2].energy = 0.29f;
+        movers[mi1].energy = 0.19f;
+        movers[mi2].energy = 0.19f;
 
         // Only one bed
         int bed = SpawnFurniture(8, 5, 1, FURNITURE_PLANK_BED, 0);

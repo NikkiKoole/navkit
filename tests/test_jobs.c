@@ -13604,6 +13604,55 @@ describe(construction_site_clearing) {
         int jobId = WorkGiver_BlueprintHaul(0);
         expect(jobId == -1);
     }
+
+    it("should clear blueprint site even without stockpile by dropping nearby") {
+        InitTestGridFromAscii(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n");
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        // NO stockpile — this is the bug scenario
+
+        // Place grass at (5,5) — this is where the blueprint will go
+        int grassIdx = SpawnItemWithMaterial(5 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_GRASS, MAT_NONE);
+        expect(grassIdx >= 0);
+
+        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_GRASS_PILE);
+        expect(bpIdx >= 0);
+        expect(blueprints[bpIdx].state == BLUEPRINT_CLEARING);
+
+        // Mover at (0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // WorkGiver_BlueprintClear should still create a job to move the item
+        int jobId = WorkGiver_BlueprintClear(0);
+        expect(jobId >= 0);
+
+        // Should be a CLEAR (safe-drop) job since there's no stockpile
+        Job* job = GetJob(jobId);
+        expect(job->type == JOBTYPE_CLEAR);
+        expect(job->targetItem == grassIdx);
+        expect(job->targetStockpile == -1);
+    }
 }
 
 // Phase 4: OR-materials + locking tests

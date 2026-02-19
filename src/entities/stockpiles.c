@@ -836,11 +836,13 @@ void DecrementStockpileSlot(Stockpile* sp, int slotIdx) {
 
 __attribute__((noinline))
 void ClearStockpileSlot(Stockpile* sp, int slotIdx) {
+    bool wasOccupied = (sp->slots[slotIdx] >= 0);
     sp->slots[slotIdx] = -1;
     sp->slotTypes[slotIdx] = -1;
     sp->slotMaterials[slotIdx] = MAT_NONE;
     sp->slotCounts[slotIdx] = 0;
     sp->slotIsContainer[slotIdx] = false;
+    if (wasOccupied) sp->freeSlotCount++;
 }
 
 // Remove an item from a stockpile slot at world position (x, y, z)

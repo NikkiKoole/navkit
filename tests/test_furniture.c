@@ -23,19 +23,21 @@ static void Setup(void) {
 }
 
 describe(furniture_blocking) {
-    it("a placed bed blocks the cell it occupies") {
+    it("a placed bed slows movement but does not block") {
         Setup();
         // Cell (5,5,0) should be walkable before placing furniture
         expect(IsCellWalkableAt(0, 5, 5) == true);
+        int baseCost = GetCellMoveCost(5, 5, 0);
 
         int fi = SpawnFurniture(5, 5, 0, FURNITURE_PLANK_BED, 0);
         expect(fi >= 0);
         expect(furniture[fi].active == true);
         expect(furniture[fi].type == FURNITURE_PLANK_BED);
 
-        // Bed is blocking — cell should no longer be walkable
-        expect(IsCellWalkableAt(0, 5, 5) == false);
-        expect(HAS_CELL_FLAG(5, 5, 0, CELL_FLAG_WORKSHOP_BLOCK) == true);
+        // Bed is non-blocking — still walkable but more expensive
+        expect(IsCellWalkableAt(0, 5, 5) == true);
+        expect(GetCellMoveCost(5, 5, 0) == 12);
+        expect(GetCellMoveCost(5, 5, 0) > baseCost);
     }
 
     it("a placed leaf pile slows movement but does not block") {
@@ -55,12 +57,12 @@ describe(furniture_blocking) {
     it("removing furniture restores the cell to normal") {
         Setup();
 
-        // Test blocking furniture
+        // Test bed furniture (non-blocking with move cost)
         int bed = SpawnFurniture(5, 5, 0, FURNITURE_PLANK_BED, 0);
-        expect(IsCellWalkableAt(0, 5, 5) == false);
-        RemoveFurniture(bed);
         expect(IsCellWalkableAt(0, 5, 5) == true);
-        expect(HAS_CELL_FLAG(5, 5, 0, CELL_FLAG_WORKSHOP_BLOCK) == false);
+        expect(GetCellMoveCost(5, 5, 0) == 12);
+        RemoveFurniture(bed);
+        expect(GetCellMoveCost(5, 5, 0) < 12);
 
         // Test non-blocking furniture
         int pile = SpawnFurniture(6, 6, 0, FURNITURE_LEAF_PILE, 0);
@@ -158,7 +160,8 @@ describe(furniture_defs) {
     it("furniture defs have correct properties") {
         Setup();
         const FurnitureDef* bed = GetFurnitureDef(FURNITURE_PLANK_BED);
-        expect(bed->blocking == true);
+        expect(bed->blocking == false);
+        expect(bed->moveCost == 12);
         expect(bed->restRate > 0.0f);
 
         const FurnitureDef* pile = GetFurnitureDef(FURNITURE_LEAF_PILE);
