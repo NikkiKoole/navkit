@@ -829,6 +829,33 @@ static void ExecuteCancelHarvestBerry(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecuteDesignateKnap(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (DesignateKnap(dx, dy, z)) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Designated %d stone%s for knapping", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
+static void ExecuteCancelKnap(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (HasKnapDesignation(dx, dy, z)) {
+                CancelDesignation(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Cancelled %d knap designation%s", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
 static void ExecuteDesignateBuild(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -2576,6 +2603,10 @@ void HandleInput(void) {
             case ACTION_WORK_HARVEST_BERRY:
                 if (leftClick) ExecuteDesignateHarvestBerry(x1, y1, x2, y2, z);
                 else ExecuteCancelHarvestBerry(x1, y1, x2, y2, z);
+                break;
+            case ACTION_WORK_KNAP:
+                if (leftClick) ExecuteDesignateKnap(x1, y1, x2, y2, z);
+                else ExecuteCancelKnap(x1, y1, x2, y2, z);
                 break;
             // Sandbox actions
             case ACTION_SANDBOX_WATER:

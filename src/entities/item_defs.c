@@ -44,5 +44,6 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_CHEST]        = { "Chest",        SPRITE_crate_blue,   IF_CONTAINER, 1, MAT_NONE, 8.0f, 0.0f },
     [ITEM_PLANK_BED]    = { "Plank Bed",   SPRITE_block_wood,   MN, 1, MAT_OAK, 15.0f, 0.0f },
     [ITEM_CHAIR]        = { "Chair",       SPRITE_block_wood,   MN, 1, MAT_OAK, 8.0f, 0.0f },
+    [ITEM_SHARP_STONE]  = { "Sharp Stone", SPRITE_loose_rock,   IF_STACKABLE | MN, 20, MAT_GRANITE, 1.0f, 0.0f },
 };
 #undef MN

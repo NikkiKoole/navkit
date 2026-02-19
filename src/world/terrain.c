@@ -81,7 +81,7 @@ static void PlaceWorldGenTree(int x, int y, int baseZ, MaterialType treeMat, boo
         // ~30% chance of young tree instead of mature
         unsigned int hash = (unsigned int)(x * 374761393 + y * 668265263 + baseZ * 2147483647);
         hash = (hash ^ (hash >> 13)) * 1274126177;
-        if ((hash % 100) < 30) {
+        if ((hash % 100) < 50) {
             TreeGrowYoung(x, y, z, treeMat);
         } else {
             TreeGrowFull(x, y, z, treeMat);

@@ -40,6 +40,7 @@ typedef enum {
     ITEM_CHEST,         // Wooden chest (planks container)
     ITEM_PLANK_BED,     // Crafted bed (furniture, placed via construction)
     ITEM_CHAIR,         // Crafted chair (furniture, placed via construction)
+    ITEM_SHARP_STONE,   // Knapped stone tool/sharp edge
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 

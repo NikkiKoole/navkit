@@ -2338,6 +2338,7 @@ static const Color designationOverlayColors[DESIGNATION_TYPE_COUNT] = {
     [DESIGNATION_GATHER_TREE]    = {160, 180, 80, 200},
     [DESIGNATION_CLEAN]          = {180, 220, 255, 200},
     [DESIGNATION_HARVEST_BERRY]  = {200, 100, 220, 200},
+    [DESIGNATION_KNAP]           = {200, 150, 100, 200},
 };
 
 static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
@@ -2355,6 +2356,7 @@ static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
     [DESIGNATION_GATHER_TREE]    = {130, 160, 50, 255},
     [DESIGNATION_CLEAN]          = {150, 200, 240, 255},
     [DESIGNATION_HARVEST_BERRY]  = {220, 120, 240, 255},
+    [DESIGNATION_KNAP]           = {180, 130, 80, 255},
 };
 
 // Active job overlay colors, indexed by JobType

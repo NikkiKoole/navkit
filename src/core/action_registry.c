@@ -372,6 +372,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = true,
         .canErase = true
     },
+    {
+        .action = ACTION_WORK_KNAP,
+        .name = "KNAP",
+        .barDisplayText = "Knap stone",
+        .barText = "L-drag designate  R-drag cancel  [ESC]Back",
+        .barKey = 'k',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_HARVEST,
+        .parentAction = ACTION_NONE,
+        .canDrag = true,
+        .canErase = true
+    },
     
     // ========================================================================
     // MODE_WORK > SUBMODE_DIG actions

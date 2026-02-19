@@ -1844,6 +1844,69 @@ int CountHarvestBerryDesignations(void) {
 }
 
 // =============================================================================
+// Knap designation functions
+// =============================================================================
+
+bool DesignateKnap(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        return false;
+    }
+
+    // Must be a solid wall made of stone
+    if (!CellIsSolid(grid[z][y][x])) {
+        return false;
+    }
+
+    MaterialType mat = GetWallMaterial(x, y, z);
+    if (!IsStoneMaterial(mat)) {
+        return false;
+    }
+
+    designations[z][y][x].type = DESIGNATION_KNAP;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_KNAP);
+
+    return true;
+}
+
+bool HasKnapDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    return designations[z][y][x].type == DESIGNATION_KNAP;
+}
+
+void CompleteKnapDesignation(int x, int y, int z, int moverIdx) {
+    (void)moverIdx;
+    // Wall is NOT consumed — just clear the designation
+    designations[z][y][x].type = DESIGNATION_NONE;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount--;
+    InvalidateDesignationCache(DESIGNATION_KNAP);
+}
+
+int CountKnapDesignations(void) {
+    int count = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type == DESIGNATION_KNAP) {
+                    count++;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// =============================================================================
 // Blueprint functions
 // =============================================================================
 

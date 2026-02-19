@@ -269,11 +269,12 @@ static void DrawPlayerHUD(void) {
 
     // Count items for progressive UI (show buttons only when relevant)
     bool hasAnyItems = (itemCount > 0);
-    bool hasGrass = false, hasLeaves = false;
-    for (int i = 0; i < itemHighWaterMark && (!hasGrass || !hasLeaves); i++) {
+    bool hasGrass = false, hasLeaves = false, hasRocks = false;
+    for (int i = 0; i < itemHighWaterMark && (!hasGrass || !hasLeaves || !hasRocks); i++) {
         if (!items[i].active) continue;
         if (items[i].type == ITEM_GRASS) hasGrass = true;
         if (items[i].type == ITEM_LEAVES) hasLeaves = true;
+        if (items[i].type == ITEM_ROCK) hasRocks = true;
     }
 
     // Designation buttons
@@ -302,6 +303,20 @@ static void DrawPlayerHUD(void) {
         }
     }
     y += 22;
+
+    if (hasRocks) {
+        bool knapActive = (inputAction == ACTION_WORK_KNAP);
+        if (PushButton(10, y, knapActive ? "* Knap Stone *" : "Knap Stone")) {
+            if (knapActive) {
+                InputMode_ExitToNormal();
+            } else {
+                inputMode = MODE_WORK;
+                workSubMode = SUBMODE_HARVEST;
+                inputAction = ACTION_WORK_KNAP;
+            }
+        }
+        y += 22;
+    }
 
     if (hasAnyItems) {
         bool stockpileActive = (inputAction == ACTION_DRAW_STOCKPILE);

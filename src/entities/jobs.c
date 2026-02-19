@@ -137,6 +137,9 @@ static int cleanCacheCount = 0;
 static OnTileDesignationEntry harvestBerryCache[MAX_DESIGNATION_CACHE];
 static int harvestBerryCacheCount = 0;
 
+static AdjacentDesignationEntry knapCache[MAX_DESIGNATION_CACHE];
+static int knapCacheCount = 0;
+
 // Dirty flags - mark caches that need rebuilding
 static bool mineCacheDirty = true;
 static bool channelCacheDirty = true;
@@ -151,6 +154,7 @@ static bool gatherGrassCacheDirty = true;
 static bool gatherTreeCacheDirty = true;
 static bool cleanCacheDirty = true;
 static bool harvestBerryCacheDirty = true;
+static bool knapCacheDirty = true;
 
 // Forward declarations for designation cache rebuild functions
 static void RebuildChannelDesignationCache(void);
@@ -165,11 +169,13 @@ static void RebuildGatherGrassDesignationCache(void);
 static void RebuildGatherTreeDesignationCache(void);
 static void RebuildCleanDesignationCache(void);
 static void RebuildHarvestBerryDesignationCache(void);
+static void RebuildKnapDesignationCache(void);
 
 // Forward declarations for WorkGivers (needed for designationSpecs table)
 static int WorkGiver_CleanDesignation(int moverIdx);
 static int WorkGiver_HarvestBerry(int moverIdx);
 JobRunResult RunJob_HarvestBerry(Job* job, void* moverPtr, float dt);
+static int WorkGiver_KnapDesignation(int moverIdx);
 
 // Designation Job Specification - consolidates designation type with job handling
 typedef struct {
@@ -210,6 +216,8 @@ static DesignationJobSpec designationSpecs[] = {
      cleanCache, &cleanCacheCount, &cleanCacheDirty},
     {DESIGNATION_HARVEST_BERRY, JOBTYPE_HARVEST_BERRY, RebuildHarvestBerryDesignationCache, WorkGiver_HarvestBerry,
      harvestBerryCache, &harvestBerryCacheCount, &harvestBerryCacheDirty},
+    {DESIGNATION_KNAP, JOBTYPE_KNAP, RebuildKnapDesignationCache, WorkGiver_KnapDesignation,
+     knapCache, &knapCacheCount, &knapCacheDirty},
 };
 
 // Helper: Find first adjacent walkable tile. Returns true if found.
@@ -349,6 +357,12 @@ static void RebuildHarvestBerryDesignationCache(void) {
     if (!harvestBerryCacheDirty) return;
     RebuildOnTileDesignationCache(DESIGNATION_HARVEST_BERRY, harvestBerryCache, &harvestBerryCacheCount);
     harvestBerryCacheDirty = false;
+}
+
+static void RebuildKnapDesignationCache(void) {
+    if (!knapCacheDirty) return;
+    RebuildAdjacentDesignationCache(DESIGNATION_KNAP, knapCache, &knapCacheCount);
+    knapCacheDirty = false;
 }
 
 // Invalidate designation caches - call when designations are added/removed/completed
@@ -2683,10 +2697,11 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_IGNITE_WORKSHOP] = RunJob_IgniteWorkshop,
     [JOBTYPE_CLEAN] = RunJob_Clean,
     [JOBTYPE_HARVEST_BERRY] = RunJob_HarvestBerry,
+    [JOBTYPE_KNAP] = RunJob_Knap,
 };
 
 // Compile-time check: ensure jobDrivers[] covers all job types
-_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_HARVEST_BERRY,
+_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_KNAP,
                "jobDrivers[] must have an entry for every JobType");
 
 // Tick function - runs job drivers for active jobs
@@ -3825,6 +3840,273 @@ int WorkGiver_Haul(int moverIdx) {
     RemoveMoverFromIdleList(moverIdx);
 
     return jobId;
+}
+
+// =============================================================================
+// Knap stone job (pick up rock → walk to stone wall → knap → sharp stone)
+// =============================================================================
+
+JobRunResult RunJob_Knap(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+
+    int tx = job->targetMineX;  // Stone wall coordinates
+    int ty = job->targetMineY;
+    int tz = job->targetMineZ;
+
+    // Check if designation still exists
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || d->type != DESIGNATION_KNAP) {
+        return JOBRUN_FAIL;
+    }
+
+    // Check if wall still exists and is stone
+    if (!CellIsSolid(grid[tz][ty][tx]) || !IsStoneMaterial(GetWallMaterial(tx, ty, tz))) {
+        CancelDesignation(tx, ty, tz);
+        return JOBRUN_FAIL;
+    }
+
+    if (job->step == STEP_MOVING_TO_PICKUP) {
+        int itemIdx = job->targetItem;
+
+        if (itemIdx < 0 || !items[itemIdx].active) {
+            return JOBRUN_FAIL;
+        }
+
+        Item* item = &items[itemIdx];
+        int itemCellX = (int)(item->x / CELL_SIZE);
+        int itemCellY = (int)(item->y / CELL_SIZE);
+        int itemCellZ = (int)(item->z);
+
+        if (!IsCellWalkableAt(itemCellZ, itemCellY, itemCellX)) {
+            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+            return JOBRUN_FAIL;
+        }
+
+        float dx = mover->x - item->x;
+        float dy = mover->y - item->y;
+        float distSq = dx*dx + dy*dy;
+
+        if (IsPathExhausted(mover) && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
+            mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
+            mover->needsRepath = true;
+        }
+
+        TryFinalApproach(mover, item->x, item->y, itemCellX, itemCellY, PICKUP_RADIUS);
+
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+            return JOBRUN_FAIL;
+        }
+
+        if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            if (item->state == ITEM_IN_STOCKPILE) {
+                ClearSourceStockpileSlot(item);
+            }
+            item->state = ITEM_CARRIED;
+            job->carryingItem = itemIdx;
+            job->targetItem = -1;
+            job->step = STEP_CARRYING;
+
+            // Navigate to adjacent tile next to the stone wall
+            mover->goal = (Point){ job->targetAdjX, job->targetAdjY, tz };
+            mover->needsRepath = true;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+    else if (job->step == STEP_CARRYING) {
+        int itemIdx = job->carryingItem;
+
+        if (itemIdx < 0 || !items[itemIdx].active) {
+            return JOBRUN_FAIL;
+        }
+
+        // Update carried item position
+        items[itemIdx].x = mover->x;
+        items[itemIdx].y = mover->y;
+        items[itemIdx].z = mover->z;
+
+        int adjX = job->targetAdjX;
+        int adjY = job->targetAdjY;
+
+        float goalX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float goalY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = mover->x - goalX;
+        float dy = mover->y - goalY;
+        float distSq = dx*dx + dy*dy;
+
+        bool correctZ = (int)mover->z == tz;
+
+        if (correctZ) TryFinalApproach(mover, goalX, goalY, adjX, adjY, PICKUP_RADIUS);
+
+        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            job->step = STEP_PLANTING;  // Reuse step 2 for knapping work
+            job->progress = 0.0f;
+            return JOBRUN_RUNNING;
+        }
+
+        if (IsPathExhausted(mover) && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
+            mover->goal = (Point){adjX, adjY, tz};
+            mover->needsRepath = true;
+        }
+
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+            return JOBRUN_FAIL;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+    else if (job->step == STEP_PLANTING) {
+        // Knapping work phase
+        job->progress += dt / GameHoursToGameSeconds(KNAP_WORK_TIME);
+        d->progress = job->progress;
+
+        if (job->progress >= 1.0f) {
+            // Consume the carried rock
+            int itemIdx = job->carryingItem;
+            MaterialType wallMat = GetWallMaterial(tx, ty, tz);
+
+            if (itemIdx >= 0 && items[itemIdx].active) {
+                DeleteItem(itemIdx);
+            }
+            job->carryingItem = -1;
+
+            // Spawn sharp stone at mover position
+            SpawnItemWithMaterial(mover->x, mover->y, mover->z, ITEM_SHARP_STONE, (uint8_t)wallMat);
+
+            // Clear designation (wall stays intact)
+            CompleteKnapDesignation(tx, ty, tz, job->assignedMover);
+
+            return JOBRUN_DONE;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+
+    return JOBRUN_FAIL;
+}
+
+// WorkGiver_KnapDesignation: Find a knap designation + an ITEM_ROCK to carry
+static int WorkGiver_KnapDesignation(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+
+    // Find nearest unassigned knap designation from cache
+    int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
+    int bestAdjX = -1, bestAdjY = -1;
+    float bestDesigDistSq = 1e30f;
+
+    for (int i = 0; i < knapCacheCount; i++) {
+        AdjacentDesignationEntry* entry = &knapCache[i];
+
+        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+        if (!d || d->type != DESIGNATION_KNAP || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
+
+        float tileX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float tileY = entry->adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float distX = tileX - m->x;
+        float distY = tileY - m->y;
+        float distSq = distX * distX + distY * distY;
+
+        if (distSq < bestDesigDistSq) {
+            bestDesigDistSq = distSq;
+            bestDesigX = entry->x;
+            bestDesigY = entry->y;
+            bestDesigZ = entry->z;
+            bestAdjX = entry->adjX;
+            bestAdjY = entry->adjY;
+        }
+    }
+
+    if (bestDesigX < 0) return -1;
+
+    // Find nearest available ITEM_ROCK
+    int bestItemIdx = -1;
+    float bestItemDistSq = 1e30f;
+
+    for (int j = 0; j < itemHighWaterMark; j++) {
+        Item* item = &items[j];
+        if (!item->active) continue;
+        if (item->type != ITEM_ROCK) continue;
+        if (item->reservedBy != -1) continue;
+        if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
+        if (item->unreachableCooldown > 0.0f) continue;
+
+        float dx = item->x - m->x;
+        float dy = item->y - m->y;
+        float distSq = dx * dx + dy * dy;
+
+        if (distSq < bestItemDistSq) {
+            bestItemDistSq = distSq;
+            bestItemIdx = j;
+        }
+    }
+
+    if (bestItemIdx < 0) return -1;
+
+    // Check reachability to item
+    Item* item = &items[bestItemIdx];
+    int itemCellX = (int)(item->x / CELL_SIZE);
+    int itemCellY = (int)(item->y / CELL_SIZE);
+    int itemCellZ = (int)item->z;
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    Point itemCell = { itemCellX, itemCellY, itemCellZ };
+    Point tempPath[MAX_PATH];
+    int tempLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
+    if (tempLen <= 0) {
+        SetItemUnreachableCooldown(bestItemIdx, UNREACHABLE_COOLDOWN);
+        return -1;
+    }
+
+    // Check reachability from item to adjacent tile
+    Point adjCell = { bestAdjX, bestAdjY, bestDesigZ };
+    tempLen = FindPath(moverPathAlgorithm, itemCell, adjCell, tempPath, MAX_PATH);
+    if (tempLen <= 0) {
+        Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+        if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        return -1;
+    }
+
+    // Reserve the item
+    ReserveItem(bestItemIdx, moverIdx);
+
+    // Reserve the designation
+    Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+    d->assignedMover = moverIdx;
+
+    // Create job
+    int jobId = CreateJob(JOBTYPE_KNAP);
+    if (jobId < 0) {
+        ReleaseItemReservation(bestItemIdx);
+        d->assignedMover = -1;
+        return -1;
+    }
+
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetItem = bestItemIdx;
+    job->targetMineX = bestDesigX;
+    job->targetMineY = bestDesigY;
+    job->targetMineZ = bestDesigZ;
+    job->targetAdjX = bestAdjX;
+    job->targetAdjY = bestAdjY;
+    job->step = STEP_MOVING_TO_PICKUP;
+    job->progress = 0.0f;
+
+    // Update mover
+    m->currentJobId = jobId;
+    m->goal = (Point){ itemCellX, itemCellY, itemCellZ };
+    m->needsRepath = true;
+
+    RemoveMoverFromIdleList(moverIdx);
+
+    return jobId;
+}
+
+// Public wrapper for WorkGiver_Knap (declared in jobs.h)
+int WorkGiver_Knap(int moverIdx) {
+    return WorkGiver_KnapDesignation(moverIdx);
 }
 
 // WorkGiver_DeliverToPassiveWorkshop: Find passive workshop needing input items

@@ -23,6 +23,7 @@ typedef enum {
     DESIGNATION_GATHER_TREE,    // Gather materials from living tree (sticks, leaves)
     DESIGNATION_CLEAN,          // Clean a dirty floor tile
     DESIGNATION_HARVEST_BERRY,  // Harvest ripe berry bush
+    DESIGNATION_KNAP,           // Knap stone at rock wall surface
     DESIGNATION_TYPE_COUNT
 } DesignationType;
 
@@ -42,6 +43,7 @@ static inline const char* DesignationTypeName(int type) {
         [DESIGNATION_GATHER_TREE]    = "GATHER_TREE",
         [DESIGNATION_CLEAN]          = "CLEAN",
         [DESIGNATION_HARVEST_BERRY]  = "HARVEST_BERRY",
+        [DESIGNATION_KNAP]           = "KNAP",
     };
     return (type >= 0 && type < DESIGNATION_TYPE_COUNT) ? names[type] : "?";
 }
@@ -69,6 +71,7 @@ typedef struct {
 #define GATHER_TREE_WORK_TIME 0.8f   // Gather materials from living tree
 #define CLEAN_WORK_TIME 1.2f          // Cleaning a dirty floor
 #define HARVEST_BERRY_WORK_TIME 0.4f  // Picking berries from bush
+#define KNAP_WORK_TIME 0.8f           // Knapping stone against wall
 
 // Storage: one designation per cell (sparse would be better for huge maps, but this is simple)
 extern Designation designations[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
@@ -343,6 +346,22 @@ void CompleteHarvestBerryDesignation(int x, int y, int z);
 
 // Count active harvest berry designations
 int CountHarvestBerryDesignations(void);
+
+// =============================================================================
+// Knap designation functions
+// =============================================================================
+
+// Designate a stone wall for knapping (mover stands adjacent)
+bool DesignateKnap(int x, int y, int z);
+
+// Check if a cell has a knap designation
+bool HasKnapDesignation(int x, int y, int z);
+
+// Complete a knap designation (clears designation, wall is NOT consumed)
+void CompleteKnapDesignation(int x, int y, int z, int moverIdx);
+
+// Count active knap designations
+int CountKnapDesignations(void);
 
 // =============================================================================
 // Blueprint functions
