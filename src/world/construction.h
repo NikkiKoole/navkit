@@ -107,5 +107,6 @@ const ConstructionRecipe* GetConstructionRecipe(int recipeIndex);
 bool ConstructionInputAcceptsItem(const ConstructionInput* input, ItemType type);
 int GetConstructionRecipeCountForCategory(BuildCategory cat);
 int GetConstructionRecipeIndicesForCategory(BuildCategory cat, int* outIndices, int maxOut);
+int GetConstructionRecipeForWorkshopType(int workshopType);  // Maps WorkshopType → ConstructionRecipeIndex, -1 if none
 
 #endif // CONSTRUCTION_H

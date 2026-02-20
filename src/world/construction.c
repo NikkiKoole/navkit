@@ -542,6 +542,23 @@ int GetConstructionRecipeCountForCategory(BuildCategory cat) {
     return count;
 }
 
+// Maps WorkshopType enum → ConstructionRecipeIndex. Uses int to avoid
+// circular dependency (workshops.h includes construction.h).
+int GetConstructionRecipeForWorkshopType(int workshopType) {
+    switch (workshopType) {
+        case WORKSHOP_CAMPFIRE:     return CONSTRUCTION_WORKSHOP_CAMPFIRE;
+        case WORKSHOP_DRYING_RACK:  return CONSTRUCTION_WORKSHOP_DRYING_RACK;
+        case WORKSHOP_ROPE_MAKER:   return CONSTRUCTION_WORKSHOP_ROPE_MAKER;
+        case WORKSHOP_CHARCOAL_PIT: return CONSTRUCTION_WORKSHOP_CHARCOAL_PIT;
+        case WORKSHOP_HEARTH:       return CONSTRUCTION_WORKSHOP_HEARTH;
+        case WORKSHOP_STONECUTTER:  return CONSTRUCTION_WORKSHOP_STONECUTTER;
+        case WORKSHOP_SAWMILL:      return CONSTRUCTION_WORKSHOP_SAWMILL;
+        case WORKSHOP_KILN:         return CONSTRUCTION_WORKSHOP_KILN;
+        case WORKSHOP_CARPENTER:    return CONSTRUCTION_WORKSHOP_CARPENTER;
+        default: return -1;
+    }
+}
+
 int GetConstructionRecipeIndicesForCategory(BuildCategory cat, int* outIndices, int maxOut) {
     int count = 0;
     for (int i = 0; i < CONSTRUCTION_RECIPE_COUNT && count < maxOut; i++) {
