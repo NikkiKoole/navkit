@@ -16,7 +16,7 @@ NavKit's design docs (naked-in-the-grass-details.md) already propose this exact 
 
 ---
 
-## Current Codebase State (as of save v62)
+## Current Codebase State (as of save v64)
 
 ### Already Implemented
 - **ITEM_SHARP_STONE** — exists (save v61), first tool item, spawned by knapping
@@ -25,8 +25,10 @@ NavKit's design docs (naked-in-the-grass-details.md) already propose this exact 
 - **All tool recipe inputs exist**: ITEM_ROCK, ITEM_STICKS, ITEM_CORDAGE
 - **9 workshop types** including WORKSHOP_CAMPFIRE
 - **Survival systems**: hunger, energy, body temperature, weather/seasons
-- **34 item types**, 22 job types, 15 designation types
+- **34 item types**, 23 job types, 16 designation types
 - **Item flags**: bits 0-6 used (IF_STACKABLE through IF_CONTAINER), bit 7 free
+- **Workshop construction costs** — blueprint-based building with material requirements (v63)
+- **Workshop deconstruction** — tear down workshops for material refund (v64)
 
 ### NOT Implemented (the gap)
 - No tool quality enum (QUALITY_CUTTING, QUALITY_DIGGING, etc.)
@@ -40,6 +42,86 @@ NavKit's design docs (naked-in-the-grass-details.md) already propose this exact 
 
 ### Key Observation
 Sharp stones exist but are **inert** — they don't speed up any job. The entire tool quality framework from feature-04 is unbuilt.
+
+### Survival vs Sandbox
+- **Sandbox**: MODE_DRAW allows instant terrain/workshop placement (creative cheat mode). Tool speed is irrelevant since workers are bypassed.
+- **Survival**: Should use MODE_WORK exclusively (designation → job → mover). Tool speed matters here — it's the core progression mechanic.
+- **Current gap**: MODE_DRAW and MODE_SANDBOX are not gated by game mode. Survival players can press `D` and bypass the entire worker/material system. This should be restricted (separate concern from tool quality, but worth noting — MODE_DRAW/MODE_SANDBOX should be hidden from keyboard when `gameMode == GAME_MODE_SURVIVAL`).
+- **Sandbox workers**: When sandbox players do use workshops/designations, movers should work at 1.0x baseline regardless of tools (no penalty for missing tools in sandbox).
+
+---
+
+## Open Questions (RESOLVE BEFORE IMPLEMENTING)
+
+### 1. How does "requires cutting:1 to craft" actually work mechanically? RESOLVED
+
+The tool must be the mover's **carried tool**. Movers carry one tool at a time (no clothes/inventory yet). For a recipe requiring cutting:1, the mover must be carrying a sharp stone (or better) when they craft.
+
+**Crafting flow**: mover checks recipe's required quality → if their carried tool doesn't satisfy it, they search for a suitable tool on the ground or in stockpiles → walk to pick it up → then proceed to the workshop with the tool.
+
+Tools are **never consumed** by crafting — only input items and fuel are consumed. The tool stays in the mover's hand after crafting completes.
+
+### 2. Tool lifecycle — equip, carry, drop, return RESOLVED
+
+**Carry model**: A mover carries one tool at a time (`equippedTool` item index, -1 = none). No inventory/clothing yet — just one hand slot.
+
+**Lifecycle**:
+- **Pick up**: When assigned a job that needs a tool quality they don't have, mover detours to grab a suitable tool from the ground or stockpile (nearest first). Tool gets reserved on pickup (like item hauling).
+- **Carry**: Mover keeps the tool across jobs. If the next job needs the same tool, no detour needed.
+- **Drop**: When the mover needs a *different* tool (e.g. had a pick, now needs a sharp stone for cutting), they drop the current tool at their feet and go pick up the new one.
+- **Death**: Tool drops at mover's position (like any carried item).
+- **Save/load**: `equippedTool` is saved/loaded as part of Mover struct. Migration from v64 sets it to -1.
+- **Contention**: Tools use the existing item reservation system (`reservedBy`). If a tool is already reserved, the mover skips it and searches for another. If none available, proceed bare-handed (0.5x).
+
+### 3. No durability — intentionally deferred
+
+Tools are **permanent** for now. No wear, no breakage. This keeps the initial implementation simple and avoids adding a material sink before the crafting economy is fleshed out. Durability can be added in a later phase once the base tool system is stable and there are enough recipes to make replacement feel fair rather than tedious.
+
+### 4. Speed formula only covers designation jobs — what about craft/build jobs?
+
+The doc maps qualities to MINE/CHANNEL/DIG_RAMP/CHOP, but what about:
+- **JOBTYPE_CRAFT**: Workshop crafting has `workRequired` on recipes. Does a sharp stone speed up crafting at a stonecutter? Does QUALITY_FINE affect carpentry recipes?
+- **JOBTYPE_BUILD**: Construction has a work duration. Does a stone hammer speed up building walls?
+- **JOBTYPE_CHOP_FELLED**: Chopping felled trunks — does cutting quality apply?
+- **JOBTYPE_GATHER_***: Gathering grass, saplings, berries — any quality check?
+
+The full job-type-to-quality mapping needs to be spelled out for every existing job type, not just the digging-related ones.
+
+### 5. ITEM_ROCK having QUALITY_HAMMERING:1 undercuts progression
+
+The doc proposes rocks get hammering:1. But rocks are everywhere from minute zero — every mover can just pick one up and mine at 1.0x immediately. That makes the "bare hands = 0.5x" penalty meaningless for mining, since rocks are the most common item in the game. The stone hammer (crafted, requires cordage chain) becomes pointless at level 1.
+
+Options:
+- (a) Rocks get NO quality (they're raw material, not tools)
+- (b) Rocks get hammering:1 but the bare-hands penalty doesn't apply to mining (only to cutting/digging)
+- (c) Accept that mining is easy from the start, progression is about *speed* (1.0x → 1.5x → 2.0x)
+
+This directly affects how the early game feels.
+
+### 6. No interaction with the existing mover capabilities system
+
+Movers already have a `Capabilities` struct (`canHaul`, `canMine`, `canBuild`, `canPlant`). How does tool quality interact?
+- Can a mover with `canMine=false` mine if they have a pick? (Probably not — capabilities are role restrictions, tools are speed modifiers)
+- Does `canMine=true` but no tool mean 0.5x speed?
+- Should capabilities be mentioned in this doc to avoid confusion during implementation?
+
+Needs at least a sentence clarifying that capabilities and tool quality are orthogonal systems.
+
+### 7. Stockpile and hauling behavior for tools
+
+- Are tools hauled to stockpiles like normal items? If so, movers will haul away tools that other movers left on the ground after finishing a job.
+- Should tools have a special reservation state ("in use as equipment") that prevents hauling?
+- The doc proposes IF_TOOL + IF_STACKABLE together with max stack 5. But if movers need to grab individual tools, stacking means a mover grabs a stack of 5 digging sticks when they only need 1. Should tools be non-stackable, or should tool-seeking use SplitStack?
+- Is there a dedicated "tool" stockpile filter, or do tools go in a general category?
+
+### 8. Knapping spot workshop overlaps with existing knapping designation
+
+Knapping sharp stones already works as a designation (DESIGNATION_KNAP → JOBTYPE_KNAP: walk to stone wall, knap). Adding WORKSHOP_KNAPPING_SPOT creates two ways to make sharp stones:
+- (a) Keep both — designation for sharp stones at walls, workshop for crafting composite tools (axe, pick, etc.)
+- (b) Remove the designation, move all knapping to the workshop
+- (c) Keep the designation but don't add a "sharp stone" recipe to the workshop (avoid redundancy)
+
+Also: the existing knapping designation requires a *stone wall* to knap against. A 1x1 workshop on flat ground is thematically different. Should the knapping spot require placement adjacent to a stone wall? Or is it a freestanding workbench?
 
 ---
 
@@ -151,8 +233,8 @@ typedef struct {
 - `mover.h`: Add `int equippedTool;` field (item index, -1 = none)
 - `jobs.c`: In `RunWorkProgress()`, look up equipped tool quality vs job's required quality, apply speed formula: `effectiveTime = baseTime / (0.5 + 0.5 * toolLevel)`
 - `designations.h`: Add `QualityType requiredQuality` per designation/job type
-- `save_migrations.h`: Bump to v63 for new Mover field
-- `saveload.c` + `inspect.c`: Save/load equippedTool, migration from v62
+- `save_migrations.h`: Bump to v65 for new Mover field + new item types
+- `saveload.c` + `inspect.c`: Save/load equippedTool, migration from v64
 - `unity.c` + `test_unity.c`: Include new .c file
 
 **Quality assignments for existing items**:
@@ -185,7 +267,9 @@ Add 4 new item types (save version bump already done in Phase 1):
 
 All require QUALITY_CUTTING >= 1 to craft (need sharp stone or better).
 
-**Files**: items.h (enum), item_defs.c (definitions), stockpiles (filter keys), save_migrations.h (item count update), tooltips (show qualities)
+**Recipe struct change**: Add `QualityType requiredQuality; int requiredQualityLevel;` to Recipe. The crafter (or a nearby stockpile item) must provide the required quality level. This is a new concept — current recipes only check input items and fuel, not tool quality.
+
+**Files**: items.h (enum), item_defs.c (definitions), stockpiles (filter keys), save_migrations.h (item count update), tooltips (show qualities), workshops.h (Recipe struct)
 
 ### Phase 3: Knapping Spot Workshop + Recipes (~0.5 session)
 
@@ -225,10 +309,10 @@ Once the quality system + digging stick exist:
 
 | Phase | Effort | Save bump? | New files? |
 |-------|--------|-----------|-----------|
-| Phase 1: Quality framework | ~1 session | Yes (v63) | tool_quality.h/c |
+| Phase 1: Quality framework | ~1 session | Yes (v65) | tool_quality.h/c |
 | Phase 2: Tool items | ~0.5 session | No (same bump) | — |
 | Phase 3: Knapping spot recipes | ~0.5 session | No | — |
 | Phase 4: Tool seeking | ~0.5 session | No | — |
 | **Total** | **~2.5 sessions** | **1 bump** | **1 new module** |
 
-Test expectations: ~40-50 new assertions covering speed multiplier math, quality lookups, tool item creation, knapping recipes, and tool-seeking behavior.
+Test expectations: ~80-120 new assertions covering speed multiplier math, quality lookups, tool item creation, knapping recipes, tool-seeking behavior, sandbox vs survival speed policy, and save migration.
