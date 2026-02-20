@@ -134,12 +134,21 @@ static inline bool IsCellWalkableAt(int z, int y, int x) {
 static inline bool IsValidDestination(int z, int y, int x) {
     if (!IsCellWalkableAt(z, y, x)) return false;
     
-    if (z > 0 && rampCount == 0) {
-        // Without ramps, skip "wall tops" (air above constructed wall) as destinations
-        // Natural terrain below is fine (that's normal DF-style ground)
-        // When ramps exist, these could be valid platforms reachable via ramps
-        if (grid[z][y][x] == CELL_AIR && grid[z-1][y][x] == CELL_WALL && !IsWallNatural(x, y, z-1)) {
+    if (z > 0) {
+        CellType below = grid[z-1][y][x];
+        
+        // Reject cells on top of trees — walkable but isolated (no ladders/ramps on trees)
+        if (below == CELL_TREE_TRUNK || below == CELL_TREE_BRANCH || below == CELL_TREE_ROOT) {
             return false;
+        }
+        
+        if (rampCount == 0) {
+            // Without ramps, skip "wall tops" (air above constructed wall) as destinations
+            // Natural terrain below is fine (that's normal DF-style ground)
+            // When ramps exist, these could be valid platforms reachable via ramps
+            if (grid[z][y][x] == CELL_AIR && below == CELL_WALL && !IsWallNatural(x, y, z-1)) {
+                return false;
+            }
         }
     }
     return true;
