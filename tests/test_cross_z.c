@@ -408,5 +408,5 @@ int main(int argc, char* argv[]) {
     test(cross_z_blueprint_haul);
     test(cross_z_ignite_workshop);
 
-    return 0;
+    return summary();
 }

@@ -10,6 +10,12 @@ CFLAGS  := -std=c11 -pedantic -O2 -g -I. -Ivendor -Wall -Wextra \
            -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Wnested-externs \
            -Wno-shadow
 
+# Test files compile at -O0 for speed (game logic in test_unity.o stays at -O2)
+TCFLAGS := -std=c11 -pedantic -O0 -g -I. -Ivendor -Wall -Wextra \
+           -Wcast-qual -Wcast-align -Wwrite-strings -Wundef -Wformat=2 \
+           -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Wnested-externs \
+           -Wno-shadow
+
 BINDIR := build/bin
 
 # ---------------------------------------------------------------------------
@@ -131,198 +137,198 @@ $(BINDIR)/soundsystem-demo: $(soundsystem-demo_SRC) | $(BINDIR)
 # Pathing test - links raylib for GetTime() etc used in pathfinding.c
 test_pathing: $(TEST_UNITY_OBJ)
 	@echo "Running pathfinding tests..."
-	@$(CC) $(CFLAGS) -Wno-overlength-strings -o $(BINDIR)/$@ $(test_pathing_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -Wno-overlength-strings -o $(BINDIR)/$@ $(test_pathing_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_pathing -q
 
 # Mover test
 test_mover: $(TEST_UNITY_OBJ)
 	@echo "Running mover tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_mover_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_mover_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_mover -q
 
 # Steering test (doesn't use test_unity)
 test_steering: $(BINDIR)
 	@echo "Running steering tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_steering_SRC) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_steering_SRC) $(LDFLAGS)
 	-@./$(BINDIR)/test_steering -q
 
 # Jobs test
 test_jobs: $(TEST_UNITY_OBJ)
 	@echo "Running jobs tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_jobs_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_jobs_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_jobs -q
 
 # Water test
 test_water: $(TEST_UNITY_OBJ)
 	@echo "Running water tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_water_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_water_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_water -q
 
 # Ground wear test
 test_groundwear: $(TEST_UNITY_OBJ)
 	@echo "Running groundwear tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_groundwear_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_groundwear_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_groundwear -q
 
 # Fire test
 test_fire: $(TEST_UNITY_OBJ)
 	@echo "Running fire tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_fire_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_fire_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_fire -q
 
 # Temperature test
 test_temperature: $(TEST_UNITY_OBJ)
 	@echo "Running temperature tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_temperature_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_temperature_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_temperature -q
 
 # Steam test
 test_steam: $(TEST_UNITY_OBJ)
 	@echo "Running steam tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_steam_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_steam_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_steam -q
 
 # Materials test
 test_materials: $(TEST_UNITY_OBJ)
 	@echo "Running materials tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_materials_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_materials_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_materials -q
 
 # Time test
 test_time: $(TEST_UNITY_OBJ)
 	@echo "Running time tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_time_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_time_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_time -q
 
 # Time specification tests
 test_time_specs: $(TEST_UNITY_OBJ)
 	@echo "Running time specs tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_time_specs_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_time_specs_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_time_specs -q
 
 # High game speed safety tests
 test_high_speed: $(TEST_UNITY_OBJ)
 	@echo "Running high speed tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_high_speed_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_high_speed_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_high_speed -q
 
 # Trees test
 test_trees: $(TEST_UNITY_OBJ)
 	@echo "Running trees tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_trees_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_trees_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_trees -q
 
 # Terrain test
 test_terrain: $(TEST_UNITY_OBJ)
 	@echo "Running terrain tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_terrain_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_terrain_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_terrain -q
 
 # Grid audit test (grid.md findings)
 test_grid_audit: $(TEST_UNITY_OBJ)
 	@echo "Running grid audit tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_grid_audit_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_grid_audit_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_grid_audit -q
 
 # Floor dirt test
 test_floordirt: $(TEST_UNITY_OBJ)
 	@echo "Running floordirt tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_floordirt_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_floordirt_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_floordirt -q
 
 # Mud test
 test_mud: $(TEST_UNITY_OBJ)
 	@echo "Running mud tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_mud_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_mud_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_mud -q
 
 # Seasons test
 test_seasons: $(TEST_UNITY_OBJ)
 	@echo "Running season tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_seasons_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_seasons_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_seasons -q
 
 # Weather test
 test_weather: $(TEST_UNITY_OBJ)
 	@echo "Running weather tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_weather_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_weather_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_weather -q
 
 # Wind test
 test_wind: $(TEST_UNITY_OBJ)
 	@echo "Running wind tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_wind_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_wind_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_wind -q
 
 # Snow test
 test_snow: $(TEST_UNITY_OBJ)
 	@echo "Running snow tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_snow_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_snow_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_snow -q
 
 # Thunderstorm test
 test_thunderstorm: $(TEST_UNITY_OBJ)
 	@echo "Running thunderstorm tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_thunderstorm_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_thunderstorm_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_thunderstorm -q
 
 # Lighting test
 test_lighting: $(TEST_UNITY_OBJ)
 	@echo "Running lighting tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_lighting_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_lighting_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_lighting -q
 
 test_workshop_linking: $(TEST_UNITY_OBJ)
 	@echo "Running workshop-stockpile linking tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_workshop_linking_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_workshop_linking_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_workshop_linking -q
 
 # Hunger test
 test_hunger: $(TEST_UNITY_OBJ)
 	@echo "Running hunger tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_hunger_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_hunger_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_hunger -q
 
 test_stacking: $(TEST_UNITY_OBJ)
 	@echo "Running stacking tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_stacking_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_stacking_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_stacking -q
 
 test_containers: $(TEST_UNITY_OBJ)
 	@echo "Running container tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_containers_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_containers_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_containers -q
 
 test_sleep: $(TEST_UNITY_OBJ)
 	@echo "Running sleep tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_sleep_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_sleep_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_sleep -q
 
 test_furniture: $(TEST_UNITY_OBJ)
 	@echo "Running furniture tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_furniture_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_furniture_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_furniture -q
 
 test_balance: $(TEST_UNITY_OBJ)
 	@echo "Running balance tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_balance_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_balance_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_balance -q
 
 test_cross_z: $(TEST_UNITY_OBJ)
 	@echo "Running cross-z-level tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_cross_z_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_cross_z_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_cross_z -q
 
 # Soundsystem tests - standalone audio library tests
 test_soundsystem: $(BINDIR)
 	@echo "Running soundsystem tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_soundsystem_SRC) -lm
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_soundsystem_SRC) -lm
 	-@./$(BINDIR)/test_soundsystem -q
 
 # Mechanisms tests - standalone automation sandbox tests
 test_mechanisms: $(BINDIR)
 	@echo "Running mechanisms tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_mechanisms_SRC) -lm
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_mechanisms_SRC) -lm
 	-@./$(BINDIR)/test_mechanisms -q
 
 # Run all tests (mover uses 5 stress iterations by default)
@@ -331,7 +337,7 @@ test: test_pathing test_mover test_steering test_jobs test_water test_groundwear
 
 # Full stress tests - mover tests use 20 iterations
 test-full: $(TEST_UNITY_OBJ)
-	$(CC) $(CFLAGS) -DSTRESS_TEST_ITERATIONS=20 -o $(BINDIR)/test_mover $(test_mover_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	$(CC) $(TCFLAGS) -DSTRESS_TEST_ITERATIONS=20 -o $(BINDIR)/test_mover $(test_mover_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/test_mover
 	$(MAKE) test_pathing test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed test_soundsystem
 
@@ -342,6 +348,7 @@ test-quick: test_pathing test_steering test_jobs test_water test_groundwear test
 bench_jobs_SRC := tests/bench_jobs.c
 bench_items_SRC := tests/bench_items.c
 bench_rehaul_mini_SRC := tests/bench_rehaul_mini.c
+bench_pathfinding_SRC := tests/bench_pathfinding.c
 
 # Job system benchmark
 bench_jobs: $(TEST_UNITY_OBJ)
@@ -358,8 +365,13 @@ bench_rehaul_mini: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(bench_rehaul_mini_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/bench_rehaul_mini
 
+# Pathfinding benchmark (A* and HPA* variable cost overhead)
+bench_pathfinding: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(bench_pathfinding_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	./$(BINDIR)/bench_pathfinding
+
 # Run all benchmarks
-bench: bench_jobs bench_items
+bench: bench_jobs bench_items bench_pathfinding
 
 # Aliases for convenience (make path, make steer, make crowd, make soundsystem-demo)
 path: $(BINDIR) $(BINDIR)/path
