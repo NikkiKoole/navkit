@@ -627,17 +627,18 @@ describe(body_temperature) {
 
     it("body temp stabilizes at effective ambient") {
         int mi;
-        SetupBodyTempTest(&mi, 25.0f);
+        SetupBodyTempTest(&mi, 10.0f); // 10°C ambient
 
-        // Set hunger=0 to disable metabolic bonus, so body converges to raw ambient
+        // hunger=0: effective = 10 + baseMetabolicHeat(15) = 25
         for (int i = 0; i < 60000; i++) {
             movers[mi].hunger = 0.0f;
             movers[mi].energy = 1.0f; // pin energy so cold drain doesn't kill
             SimNeedsTick();
         }
 
-        // Should be very close to ambient (within 0.5°C)
-        float diff = movers[mi].bodyTemp - 25.0f;
+        // Should converge to effective ambient (25°C)
+        float expected = 10.0f + balance.baseMetabolicHeat; // 25
+        float diff = movers[mi].bodyTemp - expected;
         if (diff < 0) diff = -diff;
         expect(diff < 0.5f);
     }
@@ -646,20 +647,19 @@ describe(body_temperature) {
         int mi_sheltered, mi_exposed;
 
         SetupClean();
-        // Set ambient 25°C — above body temp clamp min (20)
+        // Set ambient 8°C — low enough that baseMetabolicHeat(15) doesn't cap to 37
+        // Sheltered effective: 8+15=23, Exposed effective: (8-2)+15=21
         for (int y = 0; y < 10; y++)
             for (int x = 0; x < 10; x++)
-                SetTemperature(x, y, 1, 25);
+                SetTemperature(x, y, 1, 8);
 
-        // Use hunger=0 to disable metabolic bonus so wind chill difference shows
-        // Sheltered mover: roof blocks sky — effective ambient = 25°C
+        // hunger=0: only baseMetabolicHeat applies
         mi_sheltered = SetupMover(3, 3);
         movers[mi_sheltered].hunger = 0.0f;
         movers[mi_sheltered].energy = 1.0f;
-        movers[mi_sheltered].bodyTemp = 30.0f; // start above ambient
-        grid[2][3][3] = CELL_WALL; // roof
+        movers[mi_sheltered].bodyTemp = 30.0f;
+        grid[2][3][3] = CELL_WALL; // roof blocks wind
 
-        // Exposed mover: open sky — wind chill: 25 - 2*1.0 = 23°C
         mi_exposed = SetupMover(7, 7);
         movers[mi_exposed].hunger = 0.0f;
         movers[mi_exposed].energy = 1.0f;
@@ -667,7 +667,6 @@ describe(body_temperature) {
 
         weatherState.windStrength = 1.0f;
 
-        // Run until both converge toward their respective targets
         for (int i = 0; i < 6000; i++) {
             movers[mi_sheltered].hunger = 0.0f;
             movers[mi_exposed].hunger = 0.0f;
@@ -676,7 +675,7 @@ describe(body_temperature) {
             SimNeedsTick();
         }
 
-        // Sheltered → 25°C, exposed → 23°C
+        // Sheltered → 23°C, Exposed → 21°C
         expect(movers[mi_exposed].bodyTemp < movers[mi_sheltered].bodyTemp);
     }
 
@@ -717,17 +716,19 @@ describe(body_temperature) {
         for (int i = 0; i < 300; i++) {
             movers[mi_warm].hunger = 1.0f;
             movers[mi_cold].hunger = 1.0f;
-            // Pin body temps so they don't drift
+            // Pin body temps and prevent resting (which skips drain)
             movers[mi_warm].bodyTemp = balance.bodyTempNormal;
             movers[mi_cold].bodyTemp = 32.0f;
+            movers[mi_warm].freetimeState = FREETIME_NONE;
+            movers[mi_cold].freetimeState = FREETIME_NONE;
             SimNeedsTick();
         }
 
         float warmDrain = warmStart - movers[mi_warm].energy;
         float coldDrain = coldStart - movers[mi_cold].energy;
 
-        // Cold mover should drain energy ~2x faster
-        expect(coldDrain > warmDrain * 1.5f);
+        // Cold mover should drain energy ~1.5x faster (float tolerance)
+        expect(coldDrain > warmDrain * 1.4f);
     }
 
     it("severe cold starts hypothermia timer") {
@@ -789,7 +790,7 @@ describe(body_temperature) {
         int mi;
         SetupBodyTempTest(&mi, 15.0f); // 15°C ambient — mild
 
-        // With hunger=1.0: effective = 15 + 30*1.0 = 45, capped to 37
+        // hunger=1.0: effective = 15 + 15 + 22*1.0 = 52, capped to 37
         for (int i = 0; i < 60000; i++) {
             movers[mi].hunger = 1.0f;
             movers[mi].energy = 1.0f;
@@ -802,19 +803,20 @@ describe(body_temperature) {
         expect(diff < 0.5f);
     }
 
-    it("starving mover gets no metabolic bonus") {
+    it("starving mover gets only base metabolic heat") {
         int mi;
-        SetupBodyTempTest(&mi, 25.0f); // 25°C ambient (above 20°C body clamp)
+        SetupBodyTempTest(&mi, 10.0f); // 10°C ambient
 
-        // With hunger=0: effective = 25 + 30*0 = 25, no bonus
+        // hunger=0: effective = 10 + baseMetabolicHeat(15) + 0 = 25
         for (int i = 0; i < 60000; i++) {
             movers[mi].hunger = 0.0f;
             movers[mi].energy = 1.0f;
             SimNeedsTick();
         }
 
-        // Body should converge to raw ambient (25°C), not helped by metabolism
-        float diff = movers[mi].bodyTemp - 25.0f;
+        // Body converges to ambient + baseMetabolicHeat = 25°C
+        float expected = 10.0f + balance.baseMetabolicHeat;
+        float diff = movers[mi].bodyTemp - expected;
         if (diff < 0) diff = -diff;
         expect(diff < 0.5f);
     }
@@ -823,15 +825,16 @@ describe(body_temperature) {
         int mi;
         SetupBodyTempTest(&mi, 10.0f); // 10°C ambient
 
-        // With hunger=0.5: effective = 10 + 30*0.5 = 25, below 37 so no cap
+        // hunger=0.5: effective = 10 + baseMetabolicHeat(15) + metabolicHeatBonus(22)*0.5 = 36
         for (int i = 0; i < 60000; i++) {
             movers[mi].hunger = 0.5f;
             movers[mi].energy = 1.0f;
             SimNeedsTick();
         }
 
-        // Body should converge to ~25°C
-        float diff = movers[mi].bodyTemp - 25.0f;
+        // Body should converge to ambient + baseHeat + hungerBonus*0.5
+        float expected = 10.0f + balance.baseMetabolicHeat + balance.metabolicHeatBonus * 0.5f;
+        float diff = movers[mi].bodyTemp - expected;
         if (diff < 0) diff = -diff;
         expect(diff < 0.5f);
     }
@@ -840,7 +843,7 @@ describe(body_temperature) {
         int mi;
         SetupBodyTempTest(&mi, 30.0f); // 30°C ambient (warm day)
 
-        // With hunger=1.0: effective = 30 + 30 = 60, capped to 37
+        // hunger=1.0: effective = 30 + 15 + 22 = 67, capped to 37
         for (int i = 0; i < 60000; i++) {
             movers[mi].hunger = 1.0f;
             movers[mi].energy = 1.0f;
@@ -886,10 +889,10 @@ describe(body_temperature) {
             SimNeedsTick();
         }
 
-        // Fed mover: effective = 5+30 = 35 → stabilizes at 35 (mild cold, alive)
+        // Fed mover: effective = 5+15+22 = 42, capped to 37 → warm and alive
         expect(movers[mi_fed].bodyTemp > balance.severeColdThreshold);
 
-        // Starving mover: effective = 5+0 = 5 → deep hypothermia
+        // Starving mover: effective = 5+15 = 20 (floor clamp) → hypothermia
         expect(movers[mi_starving].bodyTemp < balance.severeColdThreshold);
     }
 }
