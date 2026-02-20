@@ -742,6 +742,7 @@ void PassiveWorkshopsTick(float dt) {
                 AddSmoke(ws->fuelTileX, ws->fuelTileY, ws->z, 3);
             }
             AddLightSource(ws->fuelTileX, ws->fuelTileY, ws->z, 255, 140, 50, 8);
+            ApplyFireHeat(ws->fuelTileX, ws->fuelTileY, ws->z, 5);
         }
 
         if (ws->passiveProgress >= 1.0f) {

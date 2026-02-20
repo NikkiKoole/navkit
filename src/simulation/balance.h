@@ -59,6 +59,11 @@ typedef struct {
     float heatThreshold;             // 40.0
     float heatSpeedPenaltyMin;       // 0.7
 
+    // === WARMTH-SEEKING ===
+    float warmthSeekTimeoutGH;       // 2.0 (give up walking after this)
+    float warmthSearchCooldownGH;    // 0.5 (wait before re-searching)
+    float warmthSatisfiedTemp;       // 36.0 (leave fire when this warm)
+
     // === MULTIPLIERS (for system interactions) ===
     float nightEnergyMult;          // 1.2
     float carryingEnergyMult;       // 1.1

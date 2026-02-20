@@ -368,6 +368,12 @@ static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
                 snprintf(lines[lineCount], sizeof(lines[0]), "  Resting (ground)");
             }
             lineColors[lineCount++] = GREEN;
+        } else if (m->freetimeState == FREETIME_SEEKING_WARMTH) {
+            snprintf(lines[lineCount], sizeof(lines[0]), "  Seeking warmth...");
+            lineColors[lineCount++] = ORANGE;
+        } else if (m->freetimeState == FREETIME_WARMING) {
+            snprintf(lines[lineCount], sizeof(lines[0]), "  Warming up by fire");
+            lineColors[lineCount++] = YELLOW;
         }
     }
 

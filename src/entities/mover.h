@@ -39,6 +39,8 @@ typedef enum {
     FREETIME_EATING,         // Consuming food item
     FREETIME_SEEKING_REST,   // Walking to furniture/ground spot
     FREETIME_RESTING,        // Sleeping/sitting, recovering energy
+    FREETIME_SEEKING_WARMTH, // Walking to heat source (campfire, etc.)
+    FREETIME_WARMING,        // Standing near heat source, warming up
 } FreetimeState;
 
 

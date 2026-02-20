@@ -18,7 +18,9 @@
 #include "../entities/jobs.h"
 #include "../entities/stockpiles.h"
 #include "../entities/furniture.h"
+#include "../entities/workshops.h"
 #include "../world/pathfinding.h"
+#include "../world/cell_defs.h"
 #include "../core/time.h"
 #include <math.h>
 
@@ -106,6 +108,75 @@ static void StartFoodSearch(Mover* m, int moverIdx) {
     m->needsRepath = true;
 }
 
+// Find nearest actively burning workshop (heat source) on same z-level.
+// Returns workshop index or -1.
+static int FindNearestBurningWorkshop(float x, float y, int z) {
+    int bestIdx = -1;
+    float bestDistSq = 1e30f;
+
+    for (int i = 0; i < workshopCount; i++) {
+        Workshop* ws = &workshops[i];
+        if (!ws->active) continue;
+        if (ws->z != z) continue;
+        if (ws->fuelTileX < 0) continue;
+        // Must be actively burning (passive timer running)
+        if (ws->passiveProgress <= 0.0f || ws->passiveProgress >= 1.0f) continue;
+        if (!ws->passiveReady) continue;
+
+        float fx = ws->fuelTileX * CELL_SIZE + CELL_SIZE / 2.0f;
+        float fy = ws->fuelTileY * CELL_SIZE + CELL_SIZE / 2.0f;
+        float dx = x - fx;
+        float dy = y - fy;
+        float distSq = dx * dx + dy * dy;
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestIdx = i;
+        }
+    }
+    return bestIdx;
+}
+
+// Find a walkable cell adjacent to the workshop's fuel tile
+static bool FindWalkableNearFuel(Workshop* ws, int* outX, int* outY) {
+    int fx = ws->fuelTileX;
+    int fy = ws->fuelTileY;
+    int z = ws->z;
+    int dirs[4][2] = {{0,-1},{0,1},{-1,0},{1,0}};
+    for (int d = 0; d < 4; d++) {
+        int nx = fx + dirs[d][0];
+        int ny = fy + dirs[d][1];
+        if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight &&
+            IsCellWalkableAt(z, ny, nx)) {
+            *outX = nx;
+            *outY = ny;
+            return true;
+        }
+    }
+    return false;
+}
+
+static void StartWarmthSearch(Mover* m, int moverIdx) {
+    int wsIdx = FindNearestBurningWorkshop(m->x, m->y, (int)m->z);
+    if (wsIdx < 0) {
+        m->needSearchCooldown = GameHoursToGameSeconds(balance.warmthSearchCooldownGH);
+        return;
+    }
+
+    Workshop* ws = &workshops[wsIdx];
+    int goalX, goalY;
+    if (!FindWalkableNearFuel(ws, &goalX, &goalY)) {
+        m->needSearchCooldown = GameHoursToGameSeconds(balance.warmthSearchCooldownGH);
+        return;
+    }
+
+    EventLog("Mover %d SEEKING_WARMTH workshop=%d (%s)", moverIdx, wsIdx, workshopDefs[ws->type].name);
+    m->freetimeState = FREETIME_SEEKING_WARMTH;
+    m->needTarget = wsIdx;
+    m->needProgress = 0.0f;
+    m->goal = (Point){goalX, goalY, ws->z};
+    m->needsRepath = true;
+}
+
 static void StartRestSearch(Mover* m, int moverIdx) {
     // Scan furniture pool for best unoccupied furniture
     // Prefer highest restRate, weight by distance
@@ -168,6 +239,11 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
         m->freetimeState = FREETIME_NONE;
         m->needTarget = -1;
     }
+    // Cancel warmth-seeking if bodyTemp disabled
+    if (!bodyTempEnabled && (m->freetimeState == FREETIME_SEEKING_WARMTH || m->freetimeState == FREETIME_WARMING)) {
+        m->freetimeState = FREETIME_NONE;
+        m->needTarget = -1;
+    }
     // Cancel rest-seeking if energy disabled
     if (!energyEnabled && (m->freetimeState == FREETIME_SEEKING_REST || m->freetimeState == FREETIME_RESTING)) {
         if (m->needTarget >= 0) {
@@ -179,7 +255,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
 
     switch (m->freetimeState) {
         case FREETIME_NONE: {
-            // Priority: starving > exhausted > hungry > tired
+            // Priority: starving > exhausted > freezing > hungry > tired > chilly
             if (hungerEnabled && m->hunger < balance.hungerCriticalThreshold) {
                 // STARVING — unassign job (preserves designation progress), seek food
                 // But don't interrupt food-producing jobs (harvest berry)
@@ -194,12 +270,19 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 // EXHAUSTED — unassign job (preserves designation progress), seek rest
                 if (m->currentJobId >= 0) UnassignJob(m, moverIdx);
                 if (m->needSearchCooldown <= 0.0f) StartRestSearch(m, moverIdx);
+            } else if (bodyTempEnabled && m->bodyTemp < balance.severeColdThreshold) {
+                // FREEZING — unassign job, seek warmth urgently
+                if (m->currentJobId >= 0) UnassignJob(m, moverIdx);
+                if (m->needSearchCooldown <= 0.0f) StartWarmthSearch(m, moverIdx);
             } else if (hungerEnabled && m->hunger < balance.hungerSeekThreshold && m->currentJobId < 0) {
                 // HUNGRY — seek food (don't cancel jobs)
                 if (m->needSearchCooldown <= 0.0f) StartFoodSearch(m, moverIdx);
             } else if (energyEnabled && m->energy < balance.energyTiredThreshold && m->currentJobId < 0) {
                 // TIRED — seek rest (don't cancel jobs)
                 if (m->needSearchCooldown <= 0.0f) StartRestSearch(m, moverIdx);
+            } else if (bodyTempEnabled && m->bodyTemp < balance.mildColdThreshold && m->currentJobId < 0) {
+                // CHILLY — seek warmth (don't cancel jobs)
+                if (m->needSearchCooldown <= 0.0f) StartWarmthSearch(m, moverIdx);
             }
             break;
         }
@@ -346,6 +429,59 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 m->needTarget = -1;
                 m->freetimeState = FREETIME_NONE;
                 // Next tick: hunger check will trigger SEEKING_FOOD
+            }
+            break;
+        }
+
+        case FREETIME_SEEKING_WARMTH: {
+            int wi = m->needTarget;
+            // Validate workshop still burning
+            if (wi < 0 || wi >= workshopCount || !workshops[wi].active ||
+                workshops[wi].passiveProgress <= 0.0f || !workshops[wi].passiveReady) {
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needSearchCooldown = GameHoursToGameSeconds(balance.warmthSearchCooldownGH);
+                break;
+            }
+
+            // Check arrival (within 1 cell of goal)
+            int mx = (int)(m->x / CELL_SIZE);
+            int my = (int)(m->y / CELL_SIZE);
+            if ((int)m->z == m->goal.z && abs(mx - m->goal.x) <= 1 && abs(my - m->goal.y) <= 1) {
+                EventLog("Mover %d WARMING at workshop %d", moverIdx, wi);
+                m->freetimeState = FREETIME_WARMING;
+                m->needProgress = 0.0f;
+                m->pathLength = 0;
+                m->pathIndex = -1;
+                break;
+            }
+
+            // Timeout
+            m->needProgress += gameDeltaTime;
+            if (m->needProgress > GameHoursToGameSeconds(balance.warmthSeekTimeoutGH)) {
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needSearchCooldown = GameHoursToGameSeconds(balance.warmthSearchCooldownGH);
+            }
+            break;
+        }
+
+        case FREETIME_WARMING: {
+            m->timeWithoutProgress = 0.0f;
+
+            int wi = m->needTarget;
+            // Check if heat source still active
+            bool sourceGone = (wi < 0 || wi >= workshopCount || !workshops[wi].active ||
+                               workshops[wi].passiveProgress <= 0.0f || !workshops[wi].passiveReady);
+
+            // Warm enough — return to normal
+            if (m->bodyTemp >= balance.warmthSatisfiedTemp || sourceGone) {
+                if (!sourceGone) {
+                    EventLog("Mover %d warmed up (%.1f°C), leaving fire", moverIdx, m->bodyTemp);
+                }
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needProgress = 0.0f;
             }
             break;
         }

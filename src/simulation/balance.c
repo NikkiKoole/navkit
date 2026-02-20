@@ -46,6 +46,11 @@ void InitBalance(void) {
     balance.heatThreshold            = 40.0f;
     balance.heatSpeedPenaltyMin      =  0.7f;
 
+    // Warmth-seeking
+    balance.warmthSeekTimeoutGH      =  2.0f;
+    balance.warmthSearchCooldownGH   =  0.5f;
+    balance.warmthSatisfiedTemp      = 36.0f;
+
     // Multipliers
     balance.nightEnergyMult       = 1.2f;
     balance.carryingEnergyMult    = 1.1f;
