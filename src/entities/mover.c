@@ -782,43 +782,51 @@ void NeedsTick(void) {
         Mover* m = &movers[i];
         if (!m->active) continue;
 
-        // Drain hunger (rate in game-hours, converted to per-game-second)
-        m->hunger -= RatePerGameSecond(balance.hungerDrainPerGH) * dt;
-        if (m->hunger < 0.0f) m->hunger = 0.0f;
+        // Drain hunger
+        if (hungerEnabled) {
+            m->hunger -= RatePerGameSecond(balance.hungerDrainPerGH) * dt;
+            if (m->hunger < 0.0f) m->hunger = 0.0f;
 
-        // Starvation death (survival mode only)
-        if (m->hunger == 0.0f && gameMode == GAME_MODE_SURVIVAL) {
-            m->starvationTimer += dt;
-            if (m->starvationTimer >= GameHoursToGameSeconds(balance.starvationDeathGH)) {
-                if (m->currentJobId >= 0) CancelJob(m, i);
-                if (m->needTarget >= 0) {
-                    items[m->needTarget].reservedBy = -1;
-                    m->needTarget = -1;
+            // Starvation death (survival mode only)
+            if (m->hunger == 0.0f && gameMode == GAME_MODE_SURVIVAL) {
+                m->starvationTimer += dt;
+                if (m->starvationTimer >= GameHoursToGameSeconds(balance.starvationDeathGH)) {
+                    if (m->currentJobId >= 0) CancelJob(m, i);
+                    if (m->needTarget >= 0) {
+                        items[m->needTarget].reservedBy = -1;
+                        m->needTarget = -1;
+                    }
+                    m->freetimeState = FREETIME_NONE;
+                    m->active = false;
+                    EventLog("Mover %d died of starvation (timer=%.1fs)", i, m->starvationTimer);
+                    TraceLog(LOG_WARNING, "Mover %d died of starvation", i);
+                    AddMessage("Your mover starved to death.", RED);
+                    continue;
                 }
-                m->freetimeState = FREETIME_NONE;
-                m->active = false;
-                EventLog("Mover %d died of starvation (timer=%.1fs)", i, m->starvationTimer);
-                TraceLog(LOG_WARNING, "Mover %d died of starvation", i);
-                AddMessage("Your mover starved to death.", RED);
-                continue;
+            } else {
+                m->starvationTimer = 0.0f;
             }
         } else {
+            m->hunger = 1.0f;
             m->starvationTimer = 0.0f;
         }
 
-        // Drain energy (not while resting)
-        if (m->freetimeState != FREETIME_RESTING) {
-            float drainPerGH = (m->currentJobId >= 0) ? balance.energyDrainWorkPerGH : balance.energyDrainIdlePerGH;
-            // Moderate cold makes energy drain faster
-            if (m->bodyTemp < balance.moderateColdThreshold) {
-                drainPerGH *= balance.coldEnergyDrainMult;
+        // Drain energy
+        if (energyEnabled) {
+            if (m->freetimeState != FREETIME_RESTING) {
+                float drainPerGH = (m->currentJobId >= 0) ? balance.energyDrainWorkPerGH : balance.energyDrainIdlePerGH;
+                if (m->bodyTemp < balance.moderateColdThreshold) {
+                    drainPerGH *= balance.coldEnergyDrainMult;
+                }
+                m->energy -= RatePerGameSecond(drainPerGH) * dt;
+                if (m->energy < 0.0f) m->energy = 0.0f;
             }
-            m->energy -= RatePerGameSecond(drainPerGH) * dt;
-            if (m->energy < 0.0f) m->energy = 0.0f;
+        } else {
+            m->energy = 1.0f;
         }
 
-        // Update body temperature — trend toward effective ambient
-        {
+        // Update body temperature
+        if (bodyTempEnabled) {
             int cx = (int)(m->x / CELL_SIZE);
             int cy = (int)(m->y / CELL_SIZE);
             int cz = (int)m->z;
@@ -839,21 +847,24 @@ void NeedsTick(void) {
             }
             if (m->bodyTemp < 20.0f) m->bodyTemp = 20.0f;
             if (m->bodyTemp > 42.0f) m->bodyTemp = 42.0f;
-        }
 
-        // Hypothermia death (survival mode only)
-        if (m->bodyTemp < balance.severeColdThreshold && gameMode == GAME_MODE_SURVIVAL) {
-            m->hypothermiaTimer += dt;
-            if (m->hypothermiaTimer >= GameHoursToGameSeconds(balance.hypothermiaDeathGH)) {
-                if (m->currentJobId >= 0) CancelJob(m, i);
-                m->freetimeState = FREETIME_NONE;
-                m->active = false;
-                EventLog("Mover %d died of hypothermia (bodyTemp=%.1f)", i, m->bodyTemp);
-                TraceLog(LOG_WARNING, "Mover %d died of hypothermia", i);
-                AddMessage("Your mover froze to death.", RED);
-                continue;
+            // Hypothermia death (survival mode only)
+            if (m->bodyTemp < balance.severeColdThreshold && gameMode == GAME_MODE_SURVIVAL) {
+                m->hypothermiaTimer += dt;
+                if (m->hypothermiaTimer >= GameHoursToGameSeconds(balance.hypothermiaDeathGH)) {
+                    if (m->currentJobId >= 0) CancelJob(m, i);
+                    m->freetimeState = FREETIME_NONE;
+                    m->active = false;
+                    EventLog("Mover %d died of hypothermia (bodyTemp=%.1f)", i, m->bodyTemp);
+                    TraceLog(LOG_WARNING, "Mover %d died of hypothermia", i);
+                    AddMessage("Your mover froze to death.", RED);
+                    continue;
+                }
+            } else {
+                m->hypothermiaTimer = 0.0f;
             }
         } else {
+            m->bodyTemp = balance.bodyTempNormal;
             m->hypothermiaTimer = 0.0f;
         }
 

@@ -103,6 +103,11 @@ bool gameOverTriggered = false;
 double survivalStartTime = 0.0;
 double survivalDuration = 0.0;
 
+// Mover needs toggles (default: off in sandbox)
+bool hungerEnabled = false;
+bool energyEnabled = false;
+bool bodyTempEnabled = false;
+
 // UI mode: dev (full panels) vs play (minimal HUD)
 bool devUI = true;
 
@@ -126,6 +131,7 @@ bool sectionSteamAdvanced = false;
 bool sectionPathfinding = false;
 bool sectionMapEditing = false;
 bool sectionMovers = false;
+bool sectionMoverNeeds = false;
 bool sectionMoverAvoidance = false;
 bool sectionWater = false;
 bool sectionFire = false;

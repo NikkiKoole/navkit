@@ -219,6 +219,9 @@ static void StartNewGame(void) {
 
     ResetTime();
     gameMode = GAME_MODE_SURVIVAL;
+    hungerEnabled = true;
+    energyEnabled = true;
+    bodyTempEnabled = true;
     gameOverTriggered = false;
     survivalStartTime = 0.0;
     survivalDuration = 0.0;
@@ -818,6 +821,17 @@ void DrawUI(void) {
             ToggleBool(ix, y, "Prefer Diff Z", &preferDifferentZ);
             y += 22;
             ToggleBool(ix, y, "Allow Falling", &allowFallingFromAvoidance);
+
+            // Needs subsection
+            y += 22;
+            if (SectionHeader(ix + 10, y, "Needs", &sectionMoverNeeds)) {
+                y += 18;
+                ToggleBool(ix + 10, y, "Hunger", &hungerEnabled);
+                y += 22;
+                ToggleBool(ix + 10, y, "Energy", &energyEnabled);
+                y += 22;
+                ToggleBool(ix + 10, y, "Body Temp", &bodyTempEnabled);
+            }
 
             // Avoidance subsection
             y += 22;

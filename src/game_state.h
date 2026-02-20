@@ -140,6 +140,11 @@ extern bool gameOverTriggered;
 extern double survivalStartTime;
 extern double survivalDuration;
 
+// Mover needs toggles (default: off in sandbox, on in survival)
+extern bool hungerEnabled;
+extern bool energyEnabled;
+extern bool bodyTempEnabled;
+
 // UI mode: dev (full panels) vs play (minimal HUD)
 extern bool devUI;
 
@@ -164,6 +169,7 @@ extern bool sectionSteamAdvanced;
 extern bool sectionPathfinding;
 extern bool sectionMapEditing;
 extern bool sectionMovers;
+extern bool sectionMoverNeeds;
 extern bool sectionMoverAvoidance;
 extern bool sectionWater;
 extern bool sectionFire;

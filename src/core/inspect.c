@@ -1136,6 +1136,16 @@ int InspectSaveFile(int argc, char** argv) {
     fread(&insp_chunkW, 4, 1, f);
     fread(&insp_chunkH, 4, 1, f);
     
+    // Game mode and needs toggles (v62+)
+    uint8_t insp_gameMode = 0;
+    bool insp_hungerEnabled = false, insp_energyEnabled = false, insp_bodyTempEnabled = false;
+    if (version >= 62) {
+        fread(&insp_gameMode, sizeof(insp_gameMode), 1, f);
+        fread(&insp_hungerEnabled, sizeof(bool), 1, f);
+        fread(&insp_energyEnabled, sizeof(bool), 1, f);
+        fread(&insp_bodyTempEnabled, sizeof(bool), 1, f);
+    }
+    
     int totalCells = insp_gridW * insp_gridH * insp_gridD;
     
     // === GRIDS SECTION ===
@@ -1751,6 +1761,11 @@ int InspectSaveFile(int argc, char** argv) {
         printf("Save file: %s (%ld bytes)\n", filename, fileSize);
         printf("World seed: %llu\n", (unsigned long long)insp_worldSeed);
         printf("Grid: %dx%dx%d, Chunks: %dx%d\n", insp_gridW, insp_gridH, insp_gridD, insp_chunkW, insp_chunkH);
+        printf("Game mode: %s\n", insp_gameMode == 1 ? "Survival" : "Sandbox");
+        printf("Needs: hunger=%s, energy=%s, temperature=%s\n",
+               insp_hungerEnabled ? "on" : "off",
+               insp_energyEnabled ? "on" : "off",
+               insp_bodyTempEnabled ? "on" : "off");
         
         // Count stats
         int activeItems = 0, activeMovers = 0, activeStockpiles = 0, activeBP = 0;

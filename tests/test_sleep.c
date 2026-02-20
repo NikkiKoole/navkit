@@ -46,6 +46,9 @@ static void SetupClean(void) {
     ClearPlants();
     InitDesignations();
     InitBalance();
+    hungerEnabled = true;
+    energyEnabled = true;
+    bodyTempEnabled = true;
     gameDeltaTime = TICK_DT;
     gameSpeed = 1.0f;
     daysPerSeason = 7;

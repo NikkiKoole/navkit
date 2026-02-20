@@ -1,5 +1,6 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
+#include "../src/game_state.h"
 #include "../src/world/grid.h"
 #include "../src/entities/mover.h"
 #include "../src/entities/items.h"
@@ -44,6 +45,9 @@ static void SetupClean(void) {
     ClearPlants();
     InitDesignations();
     InitBalance();
+    hungerEnabled = true;
+    energyEnabled = true;
+    bodyTempEnabled = true;
     gameDeltaTime = TICK_DT;
     gameSpeed = 1.0f;
     dayLength = 60.0f;

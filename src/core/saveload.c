@@ -154,6 +154,15 @@ bool SaveWorld(const char* filename) {
     fwrite(&chunkWidth, sizeof(chunkWidth), 1, f);
     fwrite(&chunkHeight, sizeof(chunkHeight), 1, f);
     
+    // Game mode and needs toggles (v62+)
+    {
+        uint8_t gm = (uint8_t)gameMode;
+        fwrite(&gm, sizeof(gm), 1, f);
+        fwrite(&hungerEnabled, sizeof(bool), 1, f);
+        fwrite(&energyEnabled, sizeof(bool), 1, f);
+        fwrite(&bodyTempEnabled, sizeof(bool), 1, f);
+    }
+    
     // === GRIDS SECTION ===
     uint32_t marker = MARKER_GRIDS;
     fwrite(&marker, sizeof(marker), 1, f);
@@ -505,6 +514,21 @@ bool LoadWorld(const char* filename) {
     fread(&newDepth, sizeof(newDepth), 1, f);
     fread(&newChunkW, sizeof(newChunkW), 1, f);
     fread(&newChunkH, sizeof(newChunkH), 1, f);
+    
+    // Game mode and needs toggles (v62+)
+    if (version >= 62) {
+        uint8_t gm;
+        fread(&gm, sizeof(gm), 1, f);
+        gameMode = (GameMode)gm;
+        fread(&hungerEnabled, sizeof(bool), 1, f);
+        fread(&energyEnabled, sizeof(bool), 1, f);
+        fread(&bodyTempEnabled, sizeof(bool), 1, f);
+    } else {
+        gameMode = GAME_MODE_SANDBOX;
+        hungerEnabled = false;
+        energyEnabled = false;
+        bodyTempEnabled = false;
+    }
     
     // Reinitialize grid if dimensions don't match
     if (newWidth != gridWidth || newHeight != gridHeight || 

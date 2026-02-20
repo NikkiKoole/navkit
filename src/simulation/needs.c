@@ -160,10 +160,27 @@ static void StartRestSearch(Mover* m, int moverIdx) {
 }
 
 static void ProcessMoverFreetime(Mover* m, int moverIdx) {
+    // Cancel food-seeking if hunger disabled
+    if (!hungerEnabled && (m->freetimeState == FREETIME_SEEKING_FOOD || m->freetimeState == FREETIME_EATING)) {
+        if (m->needTarget >= 0 && m->needTarget < MAX_ITEMS && items[m->needTarget].reservedBy == moverIdx) {
+            ReleaseItemReservation(m->needTarget);
+        }
+        m->freetimeState = FREETIME_NONE;
+        m->needTarget = -1;
+    }
+    // Cancel rest-seeking if energy disabled
+    if (!energyEnabled && (m->freetimeState == FREETIME_SEEKING_REST || m->freetimeState == FREETIME_RESTING)) {
+        if (m->needTarget >= 0) {
+            ReleaseFurniture(m->needTarget, moverIdx);
+            m->needTarget = -1;
+        }
+        m->freetimeState = FREETIME_NONE;
+    }
+
     switch (m->freetimeState) {
         case FREETIME_NONE: {
             // Priority: starving > exhausted > hungry > tired
-            if (m->hunger < balance.hungerCriticalThreshold) {
+            if (hungerEnabled && m->hunger < balance.hungerCriticalThreshold) {
                 // STARVING — unassign job (preserves designation progress), seek food
                 // But don't interrupt food-producing jobs (harvest berry)
                 bool jobProducesFood = false;
@@ -173,14 +190,14 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 }
                 if (m->currentJobId >= 0 && !jobProducesFood) UnassignJob(m, moverIdx);
                 if (!jobProducesFood && m->needSearchCooldown <= 0.0f) StartFoodSearch(m, moverIdx);
-            } else if (m->energy < balance.energyExhaustedThreshold) {
+            } else if (energyEnabled && m->energy < balance.energyExhaustedThreshold) {
                 // EXHAUSTED — unassign job (preserves designation progress), seek rest
                 if (m->currentJobId >= 0) UnassignJob(m, moverIdx);
                 if (m->needSearchCooldown <= 0.0f) StartRestSearch(m, moverIdx);
-            } else if (m->hunger < balance.hungerSeekThreshold && m->currentJobId < 0) {
+            } else if (hungerEnabled && m->hunger < balance.hungerSeekThreshold && m->currentJobId < 0) {
                 // HUNGRY — seek food (don't cancel jobs)
                 if (m->needSearchCooldown <= 0.0f) StartFoodSearch(m, moverIdx);
-            } else if (m->energy < balance.energyTiredThreshold && m->currentJobId < 0) {
+            } else if (energyEnabled && m->energy < balance.energyTiredThreshold && m->currentJobId < 0) {
                 // TIRED — seek rest (don't cancel jobs)
                 if (m->needSearchCooldown <= 0.0f) StartRestSearch(m, moverIdx);
             }

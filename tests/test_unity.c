@@ -57,6 +57,9 @@ GameMode gameMode = GAME_MODE_SANDBOX;
 bool gameOverTriggered = false;
 double survivalStartTime = 0.0;
 double survivalDuration = 0.0;
+bool hungerEnabled = false;
+bool energyEnabled = false;
+bool bodyTempEnabled = false;
 
 // World systems
 #include "../src/world/cell_defs.c"
