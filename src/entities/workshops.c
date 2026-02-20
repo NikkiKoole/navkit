@@ -367,6 +367,8 @@ void ClearWorkshops(void) {
         workshops[i].passiveProgress = 0.0f;
         workshops[i].passiveBillIdx = -1;
         workshops[i].passiveReady = false;
+        workshops[i].markedForDeconstruct = false;
+        workshops[i].assignedDeconstructor = -1;
     }
     workshopCount = 0;
 }
@@ -390,6 +392,8 @@ int CreateWorkshop(int x, int y, int z, WorkshopType type) {
             ws->passiveProgress = 0.0f;
             ws->passiveBillIdx = -1;
             ws->passiveReady = false;
+            ws->markedForDeconstruct = false;
+            ws->assignedDeconstructor = -1;
             
             // Get footprint from workshop definition
             ws->width = workshopDefs[type].width;
@@ -451,6 +455,14 @@ int CreateWorkshop(int x, int y, int z, WorkshopType type) {
 void DeleteWorkshop(int index) {
     if (index >= 0 && index < MAX_WORKSHOPS && workshops[index].active) {
         Workshop* ws = &workshops[index];
+        
+        // Cancel all jobs targeting this workshop (craft, deliver, ignite, deconstruct)
+        for (int ji = activeJobCount - 1; ji >= 0; ji--) {
+            Job* j = &jobs[activeJobList[ji]];
+            if (j->targetWorkshop == index && j->assignedMover >= 0) {
+                CancelJob(&movers[j->assignedMover], j->assignedMover);
+            }
+        }
         
         // Clear blocking flags for machinery tiles and mark HPA* chunks dirty
         for (int ty = 0; ty < ws->height; ty++) {

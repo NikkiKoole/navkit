@@ -141,6 +141,10 @@ typedef struct {
     // Linked stockpiles (optional, for future)
     int linkedInputStockpiles[MAX_LINKED_STOCKPILES];
     int linkedInputCount;
+    
+    // Deconstruction state
+    bool markedForDeconstruct;     // true = awaiting deconstruction job
+    int assignedDeconstructor;     // mover index doing teardown (-1 = none)
 } Workshop;
 
 extern Workshop workshops[MAX_WORKSHOPS];

@@ -944,20 +944,8 @@ static void ExecuteDesignateFurniture(int x1, int y1, int x2, int y2, int z) {
 }
 
 static void ExecutePlaceWorkshopBlueprint(int x, int y, int z, WorkshopType type) {
-    // Map workshop type to construction recipe
-    int recipeIndex = -1;
-    switch (type) {
-        case WORKSHOP_CAMPFIRE:     recipeIndex = CONSTRUCTION_WORKSHOP_CAMPFIRE; break;
-        case WORKSHOP_DRYING_RACK:  recipeIndex = CONSTRUCTION_WORKSHOP_DRYING_RACK; break;
-        case WORKSHOP_ROPE_MAKER:   recipeIndex = CONSTRUCTION_WORKSHOP_ROPE_MAKER; break;
-        case WORKSHOP_CHARCOAL_PIT: recipeIndex = CONSTRUCTION_WORKSHOP_CHARCOAL_PIT; break;
-        case WORKSHOP_HEARTH:       recipeIndex = CONSTRUCTION_WORKSHOP_HEARTH; break;
-        case WORKSHOP_STONECUTTER:  recipeIndex = CONSTRUCTION_WORKSHOP_STONECUTTER; break;
-        case WORKSHOP_SAWMILL:      recipeIndex = CONSTRUCTION_WORKSHOP_SAWMILL; break;
-        case WORKSHOP_KILN:         recipeIndex = CONSTRUCTION_WORKSHOP_KILN; break;
-        case WORKSHOP_CARPENTER:    recipeIndex = CONSTRUCTION_WORKSHOP_CARPENTER; break;
-        default: return;
-    }
+    int recipeIndex = GetConstructionRecipeForWorkshopType(type);
+    if (recipeIndex < 0) return;
 
     int idx = CreateWorkshopBlueprint(x, y, z, recipeIndex);
     if (idx >= 0) {
@@ -1893,10 +1881,31 @@ void HandleInput(void) {
             return;
         }
         
-        // D = Delete workshop
+        // D = Mark/unmark workshop for deconstruction
         if (IsKeyPressed(KEY_D)) {
-            DeleteWorkshop(hoveredWorkshop);
-            AddMessage("Workshop deleted", ORANGE);
+            Workshop* ws = &workshops[hoveredWorkshop];
+            if (ws->markedForDeconstruct) {
+                // Cancel deconstruction
+                if (ws->assignedDeconstructor >= 0) {
+                    Mover* dm = &movers[ws->assignedDeconstructor];
+                    if (dm->active && dm->currentJobId >= 0) {
+                        CancelJob(dm, ws->assignedDeconstructor);
+                    }
+                    ws->assignedDeconstructor = -1;
+                }
+                ws->markedForDeconstruct = false;
+                AddMessage("Deconstruction cancelled", YELLOW);
+            } else {
+                // Cancel all active craft/deliver/ignite jobs at this workshop
+                for (int ji = activeJobCount - 1; ji >= 0; ji--) {
+                    Job* j = &jobs[activeJobList[ji]];
+                    if (j->targetWorkshop == hoveredWorkshop && j->assignedMover >= 0) {
+                        CancelJob(&movers[j->assignedMover], j->assignedMover);
+                    }
+                }
+                ws->markedForDeconstruct = true;
+                AddMessage("Marked for deconstruction", ORANGE);
+            }
             hoveredWorkshop = -1;
             return;
         }

@@ -1533,7 +1533,37 @@ int InspectSaveFile(int argc, char** argv) {
     
     // Workshops
     insp_workshops = malloc(MAX_WORKSHOPS * sizeof(Workshop));
-    fread(insp_workshops, sizeof(Workshop), MAX_WORKSHOPS, f);
+    if (version >= 64) {
+        fread(insp_workshops, sizeof(Workshop), MAX_WORKSHOPS, f);
+    } else {
+        for (int i = 0; i < MAX_WORKSHOPS; i++) {
+            WorkshopV63 old;
+            fread(&old, sizeof(WorkshopV63), 1, f);
+            Workshop* ws = &insp_workshops[i];
+            ws->x = old.x; ws->y = old.y; ws->z = old.z;
+            ws->width = old.width; ws->height = old.height;
+            ws->active = old.active;
+            ws->type = old.type;
+            memcpy(ws->template, old.template, sizeof(old.template));
+            memcpy(ws->bills, old.bills, sizeof(old.bills));
+            ws->billCount = old.billCount;
+            ws->assignedCrafter = old.assignedCrafter;
+            ws->passiveProgress = old.passiveProgress;
+            ws->passiveBillIdx = old.passiveBillIdx;
+            ws->passiveReady = old.passiveReady;
+            ws->visualState = old.visualState;
+            ws->inputStarvationTime = old.inputStarvationTime;
+            ws->outputBlockedTime = old.outputBlockedTime;
+            ws->lastWorkTime = old.lastWorkTime;
+            ws->workTileX = old.workTileX; ws->workTileY = old.workTileY;
+            ws->outputTileX = old.outputTileX; ws->outputTileY = old.outputTileY;
+            ws->fuelTileX = old.fuelTileX; ws->fuelTileY = old.fuelTileY;
+            memcpy(ws->linkedInputStockpiles, old.linkedInputStockpiles, sizeof(old.linkedInputStockpiles));
+            ws->linkedInputCount = old.linkedInputCount;
+            ws->markedForDeconstruct = false;
+            ws->assignedDeconstructor = -1;
+        }
+    }
     
     // Movers
     fread(&insp_moverCount, 4, 1, f);

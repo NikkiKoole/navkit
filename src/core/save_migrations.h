@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 63
+#define CURRENT_SAVE_VERSION 64
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)
@@ -339,5 +339,31 @@ typedef struct {
     float progress;
     // No workshopOriginX/Y, workshopType in V62
 } BlueprintV62;
+
+// V63 Workshop struct (before markedForDeconstruct/assignedDeconstructor fields added in v64)
+#include "../entities/workshops.h"
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    WorkshopType type;
+    char template[MAX_WORKSHOP_SIZE * MAX_WORKSHOP_SIZE];
+    Bill bills[MAX_BILLS_PER_WORKSHOP];
+    int billCount;
+    int assignedCrafter;
+    float passiveProgress;
+    int passiveBillIdx;
+    bool passiveReady;
+    WorkshopVisualState visualState;
+    float inputStarvationTime;
+    float outputBlockedTime;
+    float lastWorkTime;
+    int workTileX, workTileY;
+    int outputTileX, outputTileY;
+    int fuelTileX, fuelTileY;
+    int linkedInputStockpiles[MAX_LINKED_STOCKPILES];
+    int linkedInputCount;
+    // No markedForDeconstruct, assignedDeconstructor in V63
+} WorkshopV63;
 
 #endif

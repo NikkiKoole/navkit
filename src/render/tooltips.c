@@ -908,6 +908,17 @@ static void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
     lineColors[lineCount] = WHITE;
     lineCount++;
 
+    // Deconstruction status
+    if (ws->markedForDeconstruct && lineCount < 28) {
+        if (ws->assignedDeconstructor >= 0) {
+            snprintf(lines[lineCount], sizeof(lines[0]), "DECONSTRUCTING (Mover #%d)", ws->assignedDeconstructor);
+        } else {
+            snprintf(lines[lineCount], sizeof(lines[0]), "MARKED FOR DECONSTRUCTION");
+        }
+        lineColors[lineCount] = RED;
+        lineCount++;
+    }
+
     // Crafter status
     if (ws->assignedCrafter >= 0) {
         snprintf(lines[lineCount], sizeof(lines[0]), "Crafter: Mover #%d", ws->assignedCrafter);

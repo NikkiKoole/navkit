@@ -2129,6 +2129,10 @@ static void DrawWorkshops(void) {
                 Color lightTint = GetLightColor(gx, gy, ws->z, skyColor);
                 tint = MultiplyColor(tint, lightTint);
 
+                if (ws->markedForDeconstruct) {
+                    tint = MultiplyColor(tint, (Color){255, 80, 80, 255});
+                }
+
                 if (belowView) {
                     tint = MultiplyColor(tint, GetDepthTint(ws->z, viewZ));
                     tint = FloorDarkenTint(tint);
@@ -2157,6 +2161,16 @@ static void DrawWorkshops(void) {
         if (progress < 0.0f && ws->passiveProgress > 0.0f) {
             progress = ws->passiveProgress;
             barColor = ORANGE;
+        }
+        if (progress < 0.0f && ws->assignedDeconstructor >= 0) {
+            Mover* dm = &movers[ws->assignedDeconstructor];
+            if (dm->currentJobId >= 0) {
+                Job* dj = GetJob(dm->currentJobId);
+                if (dj && dj->type == JOBTYPE_DECONSTRUCT_WORKSHOP && dj->step == STEP_WORKING && dj->workRequired > 0) {
+                    progress = dj->progress / dj->workRequired;
+                    barColor = RED;
+                }
+            }
         }
 
         if (progress > 0.0f) {

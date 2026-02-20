@@ -1963,6 +1963,93 @@ JobRunResult RunJob_Clean(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// Deconstruct workshop driver: walk to work tile, tear down, refund materials
+JobRunResult RunJob_DeconstructWorkshop(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    int wsIdx = job->targetWorkshop;
+
+    if (wsIdx < 0 || wsIdx >= MAX_WORKSHOPS || !workshops[wsIdx].active) {
+        return JOBRUN_FAIL;
+    }
+
+    Workshop* ws = &workshops[wsIdx];
+
+    if (job->step == STEP_MOVING_TO_WORK) {
+        int moverCellX = (int)(mover->x / CELL_SIZE);
+        int moverCellY = (int)(mover->y / CELL_SIZE);
+        int moverCellZ = (int)mover->z;
+
+        bool atWorkTile = (moverCellX == ws->workTileX && moverCellY == ws->workTileY && moverCellZ == ws->z);
+        bool adjacent = (moverCellZ == ws->z &&
+            ((abs(moverCellX - ws->workTileX) + abs(moverCellY - ws->workTileY)) == 1));
+
+        if (IsPathExhausted(mover) && !atWorkTile && !adjacent) {
+            float goalX = mover->goal.x * CELL_SIZE + CELL_SIZE * 0.5f;
+            float goalY = mover->goal.y * CELL_SIZE + CELL_SIZE * 0.5f;
+            TryFinalApproach(mover, goalX, goalY, mover->goal.x, mover->goal.y, PICKUP_RADIUS);
+        }
+
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            return JOBRUN_FAIL;
+        }
+
+        if (atWorkTile || adjacent) {
+            job->step = STEP_WORKING;
+            job->progress = 0.0f;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+    else if (job->step == STEP_WORKING) {
+        if (ws->assignedDeconstructor != job->assignedMover) {
+            return JOBRUN_FAIL;
+        }
+
+        mover->timeWithoutProgress = 0.0f;
+        job->progress += dt;
+
+        if (job->progress >= job->workRequired) {
+            // Deconstruction complete — refund materials
+            int recipeIdx = GetConstructionRecipeForWorkshopType(ws->type);
+            if (recipeIdx >= 0) {
+                const ConstructionRecipe* recipe = GetConstructionRecipe(recipeIdx);
+                if (recipe) {
+                    for (int s = 0; s < recipe->stageCount; s++) {
+                        const ConstructionStage* stage = &recipe->stages[s];
+                        for (int inp = 0; inp < stage->inputCount; inp++) {
+                            const ConstructionInput* input = &stage->inputs[inp];
+                            ItemType refundType = input->alternatives[0].itemType;
+                            for (int c = 0; c < input->count; c++) {
+                                if ((GetRandomValue(0, 99)) < CONSTRUCTION_REFUND_CHANCE) {
+                                    float sx = ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f;
+                                    float sy = ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f;
+                                    SpawnItem(sx, sy, (float)ws->z, refundType);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            EventLog("Workshop %d (%s) deconstructed by mover %d at (%d,%d,z%d)",
+                     wsIdx, workshopDefs[ws->type].displayName, job->assignedMover,
+                     ws->x, ws->y, ws->z);
+
+            ws->assignedDeconstructor = -1;
+            ws->markedForDeconstruct = false;
+            // Clear targetWorkshop before DeleteWorkshop so the job cancellation
+            // loop inside DeleteWorkshop won't try to cancel this completing job
+            job->targetWorkshop = -1;
+            DeleteWorkshop(wsIdx);
+            return JOBRUN_DONE;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+
+    return JOBRUN_FAIL;
+}
+
 // Driver lookup table
 static JobDriver jobDrivers[] = {
     [JOBTYPE_NONE] = NULL,
@@ -1987,10 +2074,11 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_CLEAN] = RunJob_Clean,
     [JOBTYPE_HARVEST_BERRY] = RunJob_HarvestBerry,
     [JOBTYPE_KNAP] = RunJob_Knap,
+    [JOBTYPE_DECONSTRUCT_WORKSHOP] = RunJob_DeconstructWorkshop,
 };
 
 // Compile-time check: ensure jobDrivers[] covers all job types
-_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_KNAP,
+_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_DECONSTRUCT_WORKSHOP,
                "jobDrivers[] must have an entry for every JobType");
 
 // Tick function - runs job drivers for active jobs
@@ -2292,6 +2380,9 @@ void CancelJob(void* moverPtr, int moverIdx) {
             if (ws->active) {
                 if (ws->assignedCrafter == moverIdx) {
                     ws->assignedCrafter = -1;
+                }
+                if (job->type == JOBTYPE_DECONSTRUCT_WORKSHOP && ws->assignedDeconstructor == moverIdx) {
+                    ws->assignedDeconstructor = -1;
                 }
                 // Remove fire light if workshop was actively burning
                 bool isFire = (ws->type == WORKSHOP_KILN ||
@@ -2899,7 +2990,14 @@ static void AssignJobs_P4_Designations(void) {
         }
     }
 
-    if (hasDesignationWork || hasBlueprintWork) {
+    bool hasDeconstructWork = false;
+    for (int w = 0; w < MAX_WORKSHOPS && !hasDeconstructWork; w++) {
+        if (workshops[w].active && workshops[w].markedForDeconstruct && workshops[w].assignedDeconstructor < 0) {
+            hasDeconstructWork = true;
+        }
+    }
+
+    if (hasDesignationWork || hasBlueprintWork || hasDeconstructWork) {
         int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
         if (!idleCopy) return;
         int idleCopyCount = idleMoverCount;
@@ -2921,6 +3019,10 @@ static void AssignJobs_P4_Designations(void) {
                 jobId = WorkGiver_BlueprintClear(moverIdx);
                 if (jobId < 0) jobId = WorkGiver_BlueprintHaul(moverIdx);
                 if (jobId < 0) jobId = WorkGiver_Build(moverIdx);
+            }
+
+            if (jobId < 0 && hasDeconstructWork) {
+                jobId = WorkGiver_DeconstructWorkshop(moverIdx);
             }
 
             (void)jobId;
@@ -3295,6 +3397,83 @@ static int WorkGiver_KnapDesignation(int moverIdx) {
 // Public wrapper for WorkGiver_Knap (declared in jobs.h)
 int WorkGiver_Knap(int moverIdx) {
     return WorkGiver_KnapDesignation(moverIdx);
+}
+
+// WorkGiver_DeconstructWorkshop: Find workshop marked for deconstruction
+int WorkGiver_DeconstructWorkshop(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    if (!m->capabilities.canBuild) return -1;
+
+    int bestWsIdx = -1;
+    float bestDistSq = 1e30f;
+
+    for (int w = 0; w < MAX_WORKSHOPS; w++) {
+        Workshop* ws = &workshops[w];
+        if (!ws->active) continue;
+        if (!ws->markedForDeconstruct) continue;
+        if (ws->assignedDeconstructor >= 0) continue;
+
+        float wx = ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float wy = ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = wx - m->x;
+        float dy = wy - m->y;
+        float distSq = dx * dx + dy * dy;
+
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestWsIdx = w;
+        }
+    }
+
+    if (bestWsIdx < 0) return -1;
+
+    Workshop* ws = &workshops[bestWsIdx];
+
+    // Check reachability to work tile
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    Point goalCell = { ws->workTileX, ws->workTileY, ws->z };
+
+    Point tempPath[MAX_PATH];
+    int tempLen = FindPath(moverPathAlgorithm, moverCell, goalCell, tempPath, MAX_PATH);
+    if (tempLen == 0) return -1;
+
+    // Get deconstruct time = half build time
+    float deconstructTime = 1.0f;
+    int recipeIdx = GetConstructionRecipeForWorkshopType(ws->type);
+    if (recipeIdx >= 0) {
+        const ConstructionRecipe* recipe = GetConstructionRecipe(recipeIdx);
+        if (recipe && recipe->stageCount > 0) {
+            float totalBuildTime = 0.0f;
+            for (int s = 0; s < recipe->stageCount; s++) {
+                totalBuildTime += recipe->stages[s].buildTime;
+            }
+            deconstructTime = totalBuildTime * 0.5f;
+            if (deconstructTime < 0.5f) deconstructTime = 0.5f;
+        }
+    }
+
+    int jobId = CreateJob(JOBTYPE_DECONSTRUCT_WORKSHOP);
+    if (jobId < 0) return -1;
+
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetWorkshop = bestWsIdx;
+    job->step = STEP_MOVING_TO_WORK;
+    job->progress = 0.0f;
+    job->workRequired = deconstructTime;
+
+    ws->assignedDeconstructor = moverIdx;
+
+    m->currentJobId = jobId;
+    m->goal = goalCell;
+    m->needsRepath = true;
+
+    RemoveMoverFromIdleList(moverIdx);
+
+    EventLog("Workshop %d (%s) deconstruction assigned to mover %d",
+             bestWsIdx, workshopDefs[ws->type].displayName, moverIdx);
+
+    return jobId;
 }
 
 // WorkGiver_DeliverToPassiveWorkshop: Find passive workshop needing input items

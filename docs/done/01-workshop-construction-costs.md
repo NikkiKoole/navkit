@@ -2,6 +2,8 @@
 
 > Workshops shouldn't materialize from thin air. Building one should cost materials, time, and sometimes tools.
 
+**Status: COMPLETE. Construction done at save version 63. Deconstruction done at save version 64 — see `02-workshop-deconstruction.md`.**
+
 ---
 
 ## The Problem
@@ -12,9 +14,9 @@ This also affects the survival bootstrap. The primitive shelter plan (`primitive
 
 ---
 
-## Design
+## Design (DONE)
 
-### Construction via Blueprint (same as walls/floors)
+### Construction via Blueprint (same as walls/floors) — DONE
 
 Workshops should use the **existing blueprint/construction system**. When the player places a workshop:
 
@@ -25,7 +27,7 @@ Workshops should use the **existing blueprint/construction system**. When the pl
 
 This reuses `JOBTYPE_HAUL_TO_BLUEPRINT` + `JOBTYPE_BUILD` — no new job types needed. The workshop just doesn't activate until construction finishes.
 
-### Material Costs Per Workshop
+### Material Costs Per Workshop — DONE (Option C chosen)
 
 Costs should reflect what the workshop physically *is*:
 
@@ -42,7 +44,7 @@ Costs should reflect what the workshop physically *is*:
 | **Kiln** | 8x ROCK + 2x CLAY | 6s | HAMMERING:1 | Enclosed stone oven |
 | **Carpenter** | 4x PLANKS + 2x CORDAGE | 4s | CUTTING:1 | Proper workbench, needs saw |
 
-### Key Design Choices
+### Key Design Choices — DONE (tool quality NOT yet implemented)
 
 **Campfire is almost free.** 5 sticks, 1 second. A naked survivor can build a campfire in the first minutes. This is critical — fire is the first survival tool. Don't gate it behind anything.
 
@@ -56,7 +58,7 @@ Costs should reflect what the workshop physically *is*:
 
 ---
 
-## The Bootstrap Problem
+## The Bootstrap Problem — RESOLVED (Option C chosen)
 
 The cordage chain is:
 
@@ -98,9 +100,9 @@ If Option C feels too cheap, Option B is the next best — hand-crafting adds on
 
 ---
 
-## Codebase Analysis & UI Integration
+## Codebase Analysis & UI Integration — DONE
 
-### Current State: Two Placement Paths
+### Current State: Two Placement Paths — DONE
 
 The codebase has two separate UI paths for placing things:
 
@@ -116,7 +118,7 @@ The codebase has two separate UI paths for placing things:
 - Recipe selection via R key cycling (e.g. `selectedWallRecipe` cycles through `BUILD_WALL` recipes)
 - **Workshop placement goes HERE** — new category action alongside the existing ones
 
-### Action Registry Changes
+### Action Registry Changes — DONE
 
 New entries in `src/core/input_mode.h` (enum) and `src/core/action_registry.c` (registry):
 
@@ -169,7 +171,7 @@ This creates a submenu: **Work (W) → Build (B) → Workshop (T) → Campfire (
 
 Same depth as the Draw mode workshop menu. Without this, the Build menu would have Wall + Floor + Ladder + Ramp + Furniture + 9 workshop types all flat — far too crowded.
 
-### Placement Handler
+### Placement Handler — DONE
 
 New function in `src/core/input.c`:
 
@@ -202,7 +204,7 @@ case ACTION_BUILD_WORKSHOP_CAMPFIRE:
 // ... same for each workshop type
 ```
 
-### Workshop Build Cost Data
+### Workshop Build Cost Data — DONE (via construction recipes, not WorkshopDef)
 
 Add to `WorkshopDef` in `src/entities/workshops.h`:
 
@@ -220,7 +222,7 @@ int buildInputCount;     // 0 = free (knapping spot), >0 = needs construction
 float buildTime;         // game-hours (converted via GameHoursToGameSeconds)
 ```
 
-### Workshop Blueprint State
+### Workshop Blueprint State — DONE (via Blueprint struct, not Workshop struct)
 
 Add to `Workshop` struct in `src/entities/workshops.h`:
 
@@ -232,7 +234,7 @@ int assignedBuilder;                           // Mover doing the build (-1 = no
 float buildProgress;                           // 0.0 to 1.0
 ```
 
-### New Functions in `src/entities/workshops.c`
+### New Functions in `src/entities/workshops.c` — DONE (via designations.c, not workshops.c)
 
 ```c
 int CreateWorkshopBlueprint(int x, int y, int z, WorkshopType type);
@@ -248,7 +250,7 @@ void CancelWorkshopBlueprint(int workshopIdx);
 // Removes blueprint, drops delivered items, cleans up jobs
 ```
 
-### Job Integration
+### Job Integration — DONE (Approach A: reuse existing Blueprint system)
 
 Two approaches, from simplest to most reusable:
 
@@ -267,21 +269,21 @@ Two approaches, from simplest to most reusable:
 
 **Recommendation**: Approach A if we can make it work with the existing Blueprint at the workshop's work tile position. The haul destination is the work tile, and the build happens there. Multi-cell footprint doesn't matter for haul/build — movers walk to the work tile either way. Try Approach A first, fall back to B only if Blueprint assumptions break.
 
-### Rendering
+### Rendering — DONE
 
 In `src/render/rendering.c`:
 - Blueprint workshops: render template tiles with alpha ~0.4 (ghost), same tint as construction blueprints
 - Check `workshops[i].constructed` — if false, use ghost rendering
 - Show delivery progress in tooltip (e.g. "Campfire [3/5 sticks]")
 
-### Save Version
+### Save Version — DONE
 
 - Bump `CURRENT_SAVE_VERSION` (62 → 63) in `src/core/save_migrations.h`
 - Save new Workshop fields: `constructed`, `deliveredCounts[]`, `assignedBuilder`, `buildProgress`
 - Migration: existing saves set `constructed = true` for all workshops (backward compatible)
 - Update both `src/core/saveload.c` AND `src/core/inspect.c`
 
-### Key Files Summary
+### Key Files Summary — DONE
 
 | File | Changes |
 |------|---------|
@@ -298,7 +300,7 @@ In `src/render/rendering.c`:
 
 ---
 
-## Interaction With Workshop Evolution Plan
+## Interaction With Workshop Evolution Plan (reference only, no action needed)
 
 From `workshop-evolution-plan.md`: the current template system stays for primitive-era workshops, and stations come later for freeform industrial stuff.
 
@@ -354,7 +356,7 @@ Stone Age workshops (first 4) cost only sticks or nothing — achievable in the 
 
 ---
 
-## Workshop Deconstruction
+## Workshop Deconstruction — TODO (see `docs/todo/02-workshop-deconstruction.md`)
 
 ### The Problem
 
