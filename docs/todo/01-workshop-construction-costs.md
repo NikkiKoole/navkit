@@ -108,7 +108,7 @@ The codebase has two separate UI paths for placing things:
 - `ACTION_DRAW_WORKSHOP` (T key) → category with children like `ACTION_DRAW_WORKSHOP_STONECUTTER`, `ACTION_DRAW_WORKSHOP_CAMPFIRE`, etc.
 - Handler: `ExecutePlaceWorkshop()` in `src/core/input.c` — calls `CreateWorkshop()` directly, instant, free
 - **Keep this as-is.** It's the sandbox cheat tool.
-- Bug: `ExecutePlaceWorkshop()` hardcodes 3x3 validation but campfire is 2x1. Should use `workshopDefs[type].width/height`.
+- ~~Bug: `ExecutePlaceWorkshop()` hardcodes 3x3 validation but campfire is 2x1.~~ Fixed — now uses `workshopDefs[type].width/height`.
 
 **2. MODE_WORK (W key) → SUBMODE_BUILD (B key) — Real construction**
 - Currently has: Wall (W), Floor (F), Ladder (L), Ramp (R), Furniture (U)
