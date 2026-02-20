@@ -18,6 +18,58 @@ The loop: hunt → butcher → cook → eat. Each step uses an existing system.
 
 ## Design
 
+### Root Foraging (pre-hunting food)
+
+Before animals can be hunted, the survivor needs a food source beyond berries that makes fire and tools worthwhile. **Roots** fill this gap — they're dug from soil, roasted on a fire with a stick as a skewer, and provide decent nutrition.
+
+**Digging up roots**:
+- New designation: DESIGNATION_DIG_ROOTS (or extend DESIGNATION_MINE on soil cells)
+- Works on natural soil cells: MAT_DIRT, MAT_CLAY, MAT_PEAT (not sand, not gravel — too dry/rocky)
+- Bare-handed: very slow (0.5x, scraping with fingers)
+- With digging stick (QUALITY_DIGGING:1): normal speed
+- With stone pick (QUALITY_DIGGING:2): fast
+- Produces: ITEM_ROOT × 1-2 per cell
+- Soil cell is NOT consumed (roots regrow, like berry bushes — maybe a cooldown per cell)
+- Peat soil could yield more roots (richer organic soil)
+
+**Root items**:
+
+| Item | Flags | Stack | Hunger | Notes |
+|------|-------|-------|--------|-------|
+| ITEM_ROOT | IF_EDIBLE, IF_STACKABLE | 20 | +0.1 | Edible raw but barely nutritious, tastes terrible |
+| ITEM_ROASTED_ROOT | IF_EDIBLE, IF_STACKABLE | 20 | +0.35 | Roasted on a stick over fire, decent food |
+| ITEM_DRIED_ROOT | IF_EDIBLE, IF_STACKABLE | 20 | +0.2 | Dried at drying rack, preserved for winter |
+
+**Roasting**:
+- Recipe at campfire/fire pit: 1x ROOT + 1x STICKS (skewer) → 1x ROASTED_ROOT
+- The stick is consumed (burned up as skewer)
+- Passive cooking (like drying rack pattern) — place root near fire, it roasts over time
+- Also works at hearth (faster, batch-capable)
+
+**Drying**:
+- Recipe at drying rack: 2x ROOT → 1x DRIED_ROOT
+- Preserved, doesn't spoil — winter food alongside dried berries
+
+**Why this matters for progression**:
+- Berries are seasonal and limited (bush needs regrowth time)
+- Roots are available year-round in soil (except frozen ground in deep winter)
+- Raw roots are barely worth eating (+0.1) — cooking doubles the value (+0.35)
+- This makes fire useful for food BEFORE hunting exists
+- The digging stick's second purpose (after fire pit): food production
+- Soil type now matters for foraging: peat is best, dirt is fine, sand/gravel have no roots
+
+**The food arc before hunting**:
+```
+Day 1:  Eat raw berries (+0.3) — easy, no tools needed
+Day 1:  Dig roots bare-handed, eat raw (+0.1) — desperate
+Day 1:  Build ground fire, roast roots on a stick (+0.35) — first cooking!
+Day 2:  Craft digging stick — dig roots faster
+Day 2:  Dry roots at drying rack — winter food stockpile
+Day 3+: Hunt animals — cooked meat (+0.5) replaces roots as main food
+```
+
+Roots don't replace berries or meat — they fill the gap between "I can only forage berries" and "I can hunt and cook meat." They're the food that makes the digging stick and campfire feel essential.
+
 ### Hunting Job
 
 New job type: JOBTYPE_HUNT
