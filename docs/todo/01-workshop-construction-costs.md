@@ -351,3 +351,97 @@ The first 7 minutes are just picking up sticks. That's intentional — sticks ar
 | Carpenter | 4x PLANKS + 2x CORDAGE | Colony | Needs sawmill first |
 
 Stone Age workshops (first 4) cost only sticks or nothing — achievable in the first minutes. Colony-era workshops need processed materials and represent real investment.
+
+---
+
+## Workshop Deconstruction
+
+### The Problem
+
+Currently `DeleteWorkshop()` (D key while hovering) instantly removes a workshop with:
+- No material return
+- No job cancellation (active craft/haul/ignite jobs fail lazily on next tick)
+- No item handling (items on workshop tiles are orphaned)
+- No confirmation dialog
+
+With construction costs, instant free deletion would let players cheese materials: build a sawmill (3 logs + 2 cordage), use it, delete it, rebuild it elsewhere for free. Deconstruction should cost time and return materials with some loss.
+
+### Design
+
+**Two cases:**
+
+**1. Cancel unfinished blueprint (instant)**
+- If the workshop is still a blueprint (not yet fully constructed), cancel it immediately
+- Already-delivered materials: 100% refund (dropped at work tile)
+- In-transit haul jobs: cancelled, movers drop items where they stand
+- No mover action needed — same as cancelling a wall blueprint
+
+**2. Deconstruct built workshop (job-based)**
+- Player presses D while hovering a constructed workshop → marks it for deconstruction
+- Visual indicator: red tint or X overlay on the workshop (like demolition designation)
+- A mover walks to the work tile and performs the teardown
+
+**Deconstruction job flow:**
+
+1. `DESIGNATION_DECONSTRUCT_WORKSHOP` placed on workshop
+2. WorkGiver scans for workshops marked for deconstruction
+3. Cancel all active craft/deliver/ignite jobs targeting this workshop
+4. Assign `JOBTYPE_DECONSTRUCT_WORKSHOP` to an idle mover
+5. Mover walks to work tile (STEP_MOVING_TO_WORK)
+6. Mover works for `deconstructTime` (STEP_WORKING) — half the original build time
+7. On completion:
+   - Each build input rolls `CONSTRUCTION_REFUND_CHANCE` (75%) per item to spawn
+   - Refunded items spawn at the work tile (or adjacent walkable cell)
+   - `DeleteWorkshop()` is called (existing cleanup: cell flags, HPA*, lighting)
+   - Designation cleared
+
+### Cleanup Improvements to DeleteWorkshop()
+
+Regardless of deconstruction, `DeleteWorkshop()` should be improved:
+
+```c
+void DeleteWorkshop(int index) {
+    // ... existing cell flag / HPA* / lighting cleanup ...
+    
+    // NEW: Cancel all jobs targeting this workshop
+    for (int i = 0; i < activeJobCount; i++) {
+        Job* job = &jobs[activeJobList[i]];
+        if (job->targetWorkshop == index) {
+            CancelJob(&movers[job->assignedMover], job->assignedMover);
+        }
+    }
+    
+    // NEW: Drop items on workshop tiles to adjacent walkable cells
+    // (items in output/work/fuel tiles that aren't reserved by other jobs)
+}
+```
+
+This follows the pattern already used in `RemoveBill()` for job cancellation.
+
+### Cheat Tool vs Regular Play
+
+- **MODE_DRAW (cheat tool)**: Instant delete, no refunds. This is already a cheat placement tool — consistency doesn't matter here.
+- **MODE_NORMAL (regular play)**: D key marks for deconstruction job, mover does the work, materials refunded at 75%. Same behavior in both GAME_MODE_SANDBOX and GAME_MODE_SURVIVAL.
+
+### Knapping Spot Exception
+
+Knapping spot costs nothing to build (it's a designation), so deconstruction is instant and free — no job, no materials. Just remove it.
+
+### Key Additions
+
+| Item | Details |
+|------|---------|
+| New enum | `DESIGNATION_DECONSTRUCT_WORKSHOP` in designations.h |
+| New job type | `JOBTYPE_DECONSTRUCT_WORKSHOP` in jobs.h |
+| New WorkGiver | `WorkGiver_DeconstructWorkshop()` in jobs.c |
+| Workshop field | `bool markedForDeconstruct` on Workshop struct |
+| Rendering | Red tint / X overlay for workshops marked for teardown |
+| Input change | D key in MODE_NORMAL marks for deconstruct instead of instant delete (sandbox D key unchanged) |
+| DeleteWorkshop fix | Add job cancellation + item drop to existing function |
+
+### Interaction With Blueprint Cancellation
+
+If a workshop blueprint is marked for deconstruction before construction finishes:
+- Treat it as blueprint cancellation (case 1 above)
+- 100% refund on delivered materials, instant, no job needed
+- Cancel in-progress build job if one is assigned

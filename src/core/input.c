@@ -999,9 +999,11 @@ static void ExecuteEraseStockpile(int x1, int y1, int x2, int y2, int z) {
 }
 
 static void ExecutePlaceWorkshop(int x, int y, int z, WorkshopType type) {
-    // Check if area is clear (3x3 walkable, no other workshops)
-    for (int dy = 0; dy < 3; dy++) {
-        for (int dx = 0; dx < 3; dx++) {
+    // Check if area is clear (walkable, no other workshops)
+    int w = workshopDefs[type].width;
+    int h = workshopDefs[type].height;
+    for (int dy = 0; dy < h; dy++) {
+        for (int dx = 0; dx < w; dx++) {
             int cx = x + dx;
             int cy = y + dy;
             if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) {
