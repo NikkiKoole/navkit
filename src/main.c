@@ -1652,23 +1652,50 @@ int main(int argc, char** argv) {
         // Input mode bar at bottom - individual buttons (after DrawUI so ui_begin_frame has run)
         if (devUI) {
             int barH = 28;
-            int barY = GetScreenHeight() - barH - 6;
             int barX = 150;  // After Z level display
             int padding = 12;
             int spacing = 12;
             int fontSize = 16;
+            int screenW = GetScreenWidth();
+            int rightMargin = 10;
 
             BarItem items[MAX_BAR_ITEMS];
             int itemCount = InputMode_GetBarItems(items);
 
+            // Pre-measure to determine how many rows we need
+            int rowCount = 1;
+            {
+                int testX = barX;
+                for (int i = 0; i < itemCount; i++) {
+                    int textW = MeasureTextUI(items[i].text, fontSize);
+                    int btnW = textW + padding * 2 + 8;
+                    if (testX + btnW > screenW - rightMargin && testX > barX) {
+                        rowCount++;
+                        testX = barX;
+                    }
+                    testX += btnW + spacing;
+                }
+            }
+
+            int barY = GetScreenHeight() - (barH + 4) * rowCount - 2;
             int x = barX;
+            int currentRow = 0;
+
             for (int i = 0; i < itemCount; i++) {
                 int textW = MeasureTextUI(items[i].text, fontSize);
                 int btnW = textW + padding * 2 + 8;  // Extra width for right margin
-                int textY = barY + (barH - fontSize) / 2 - 4;  // Shift up more for bottom margin
+
+                // Wrap to next row if this item would overflow
+                if (x + btnW > screenW - rightMargin && x > barX) {
+                    currentRow++;
+                    x = barX;
+                }
+
+                int rowY = barY + currentRow * (barH + 4);
+                int textY = rowY + (barH - fontSize) / 2 - 4;  // Shift up more for bottom margin
 
                 bool isClickable = (items[i].key != 0 || items[i].backSteps > 0) && !items[i].isHint;
-                Rectangle btnRect = {x, barY, btnW, barH};
+                Rectangle btnRect = {x, rowY, btnW, barH};
                 bool hovered = isClickable && CheckCollisionPointRec(GetMousePosition(), btnRect);
 
                 // Choose colors based on type
@@ -1689,7 +1716,7 @@ int main(int argc, char** argv) {
 
                 // Draw button background for clickable items
                 if (isClickable) {
-                    DrawRectangle(x, barY, btnW, barH, bgColor);
+                    DrawRectangle(x, rowY, btnW, barH, bgColor);
                     DrawRectangleLinesEx(btnRect, 1, hovered ? WHITE : (items[i].isHeader ? (Color){80, 80, 40, 255} : GRAY));
                 }
 
@@ -1735,8 +1762,9 @@ int main(int argc, char** argv) {
             
             // Pile radius control (show when in soil drawing mode)
             if (inputAction >= ACTION_DRAW_SOIL_DIRT && inputAction <= ACTION_DRAW_SOIL_PEAT) {
+                int lastRowY = barY + currentRow * (barH + 4);
                 x += 40;  // Extra spacing before control
-                DraggableFloatT(x, barY + 5, "Pile Radius", &soilPileRadius, 0.5f, 1.0f, 10.0f,
+                DraggableFloatT(x, lastRowY + 5, "Pile Radius", &soilPileRadius, 0.5f, 1.0f, 10.0f,
                     "Shift+draw: How far soil spreads when piling (1-10)");
             }
         }
