@@ -1852,6 +1852,11 @@ bool DesignateKnap(int x, int y, int z) {
         return false;
     }
 
+    // If viewing walkable layer (air above boulder), target the cell below
+    if (!CellIsSolid(grid[z][y][x]) && z > 0 && CellIsSolid(grid[z-1][y][x])) {
+        z = z - 1;
+    }
+
     if (designations[z][y][x].type != DESIGNATION_NONE) {
         return false;
     }
@@ -1879,7 +1884,10 @@ bool HasKnapDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_KNAP;
+    if (designations[z][y][x].type == DESIGNATION_KNAP) return true;
+    // Check cell below (designation targets the wall, not the air above)
+    if (z > 0 && designations[z-1][y][x].type == DESIGNATION_KNAP) return true;
+    return false;
 }
 
 void CompleteKnapDesignation(int x, int y, int z, int moverIdx) {

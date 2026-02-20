@@ -845,8 +845,12 @@ static void ExecuteCancelKnap(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (HasKnapDesignation(dx, dy, z)) {
+            // Check both z and z-1 (designation lives on the wall, not the air above)
+            if (z >= 0 && z < gridDepth && designations[z][dy][dx].type == DESIGNATION_KNAP) {
                 CancelDesignation(dx, dy, z);
+                count++;
+            } else if (z > 0 && designations[z-1][dy][dx].type == DESIGNATION_KNAP) {
+                CancelDesignation(dx, dy, z - 1);
                 count++;
             }
         }
@@ -2479,6 +2483,9 @@ void HandleInput(void) {
                 break;
             case ACTION_DRAW_WORKSHOP_CARPENTER:
                 if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_CARPENTER);
+                break;
+            case ACTION_DRAW_WORKSHOP_CAMPFIRE:
+                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_CAMPFIRE);
                 break;
             case ACTION_DRAW_SOIL_DIRT:
                 if (leftClick) {

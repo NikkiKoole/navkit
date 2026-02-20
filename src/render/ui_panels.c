@@ -218,6 +218,14 @@ static void StartNewGame(void) {
     }
 
     ResetTime();
+    dayLength = 120.0f;  // Slower day cycle for survival
+    balance.baseMoverSpeed = 400.0f;  // Faster movement for survival
+    // Update already-spawned movers to new speed
+    for (int i = 0; i < moverCount; i++) {
+        if (movers[i].active) {
+            movers[i].speed = balance.baseMoverSpeed * (1.0f + balance.moverSpeedVariance * (GetRandomValue(-100, 100) / 100.0f));
+        }
+    }
     gameMode = GAME_MODE_SURVIVAL;
     hungerEnabled = true;
     energyEnabled = true;
@@ -329,6 +337,31 @@ static void DrawPlayerHUD(void) {
             } else {
                 inputMode = MODE_DRAW;
                 inputAction = ACTION_DRAW_STOCKPILE;
+            }
+        }
+        y += 22;
+
+        bool gatherZoneActive = (inputAction == ACTION_WORK_GATHER);
+        if (PushButton(10, y, gatherZoneActive ? "* Gather Zone *" : "Gather Zone")) {
+            if (gatherZoneActive) {
+                InputMode_ExitToNormal();
+            } else {
+                inputMode = MODE_WORK;
+                inputAction = ACTION_WORK_GATHER;
+            }
+        }
+        y += 22;
+    }
+
+    // Campfire (available when sticks or logs exist)
+    if (hasAnyItems) {
+        bool campfireActive = (inputAction == ACTION_DRAW_WORKSHOP_CAMPFIRE);
+        if (PushButton(10, y, campfireActive ? "* Build Campfire *" : "Build Campfire")) {
+            if (campfireActive) {
+                InputMode_ExitToNormal();
+            } else {
+                inputMode = MODE_DRAW;
+                inputAction = ACTION_DRAW_WORKSHOP_CAMPFIRE;
             }
         }
         y += 22;
@@ -1361,7 +1394,7 @@ void DrawUI(void) {
                 bool clicked = false;
                 bx += PushButtonInline(bx, y, "Fast", &clicked); if (clicked) dayLength = 24.0f;
                 clicked = false;
-                bx += PushButtonInline(bx, y, "Normal", &clicked); if (clicked) dayLength = 60.0f;
+                bx += PushButtonInline(bx, y, "Normal", &clicked); if (clicked) dayLength = 120.0f;
                 clicked = false;
                 PushButtonInline(bx, y, "Slow", &clicked); if (clicked) dayLength = 720.0f;
             }

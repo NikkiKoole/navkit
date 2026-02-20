@@ -3234,6 +3234,10 @@ static int WorkGiver_KnapDesignation(int moverIdx) {
     int itemCellX = (int)(item->x / CELL_SIZE);
     int itemCellY = (int)(item->y / CELL_SIZE);
     int itemCellZ = (int)item->z;
+    if (!IsCellWalkableAt(itemCellZ, itemCellY, itemCellX)) {
+        SetItemUnreachableCooldown(bestItemIdx, UNREACHABLE_COOLDOWN);
+        return -1;
+    }
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
     Point itemCell = { itemCellX, itemCellY, itemCellZ };
     Point tempPath[MAX_PATH];

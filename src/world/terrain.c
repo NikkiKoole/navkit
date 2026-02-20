@@ -2747,9 +2747,11 @@ void GenerateHillsSoilsWater(void) {
         TraceLog(LOG_INFO, "GenerateHillsSoilsWater: placed %d berry bushes", bushPlaced);
 
         // ----------------------------------------------------------------
-        // Scatter loose rocks and sticks on the ground
+        // Scatter boulders, loose rocks, and sticks on the ground
         // ----------------------------------------------------------------
-        int rocksPlaced = 0, sticksPlaced = 0;
+        int bouldersPlaced = 0, rocksPlaced = 0, sticksPlaced = 0, logsPlaced = 0, driedGrassPlaced = 0;
+
+        // Pass 1: Place granite boulders on surface
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 int idx = y * gridWidth + x;
@@ -2761,39 +2763,109 @@ void GenerateHillsSoilsWater(void) {
                 if (!CellIsSolid(grid[baseZ][y][x])) continue;
                 if (grid[walkZ][y][x] != CELL_AIR) continue;
 
-                // Rocks: ~1.5% chance, prefer rocky/high terrain
-                MaterialType mat = GetWallMaterial(x, y, baseZ);
-                float rockChance = 0.015f;
-                if (mat == MAT_GRANITE || mat == MAT_SANDSTONE || mat == MAT_SLATE) rockChance = 0.04f;
-                if (heightmap[idx] > (maxHeight * 2 / 3)) rockChance *= 1.5f;
+                // Find the stone material beneath this location
+                MaterialType stoneMat = MAT_NONE;
+                for (int z = baseZ; z >= 0; z--) {
+                    if (CellIsSolid(grid[z][y][x])) {
+                        MaterialType m = GetWallMaterial(x, y, z);
+                        if (IsStoneMaterial(m)) { stoneMat = m; break; }
+                    }
+                }
+                if (stoneMat == MAT_NONE) continue;
 
-                if ((GetRandomValue(0, 999) / 1000.0f) < rockChance) {
-                    SpawnItemWithMaterial(x * CELL_SIZE + CELL_SIZE / 2.0f,
-                                         y * CELL_SIZE + CELL_SIZE / 2.0f,
-                                         walkZ * CELL_SIZE, ITEM_ROCK, (uint8_t)mat);
-                    rocksPlaced++;
-                    continue;  // Don't place both rock and sticks on same cell
+                // ~0.5% chance, higher on elevated terrain
+                float boulderChance = 0.005f;
+                if (heightmap[idx] > (maxHeight * 2 / 3)) boulderChance = 0.012f;
+
+                if ((GetRandomValue(0, 999) / 1000.0f) < boulderChance) {
+                    grid[walkZ][y][x] = CELL_WALL;
+                    SetWallMaterial(x, y, walkZ, stoneMat);
+                    bouldersPlaced++;
+                }
+            }
+        }
+
+        // Pass 2: Scatter loose rocks and sticks
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                int idx = y * gridWidth + x;
+                if (waterMask[idx]) continue;
+
+                int baseZ = surface[idx];
+                int walkZ = baseZ + 1;
+                if (walkZ >= gridDepth) continue;
+                if (!CellIsSolid(grid[baseZ][y][x])) continue;
+                if (grid[walkZ][y][x] != CELL_AIR) continue;
+
+                // Rocks: spawn next to adjacent stone walls/boulders (fallen debris)
+                {
+                    MaterialType stoneMat = MAT_NONE;
+                    int dirs[4][2] = {{-1,0},{1,0},{0,-1},{0,1}};
+                    for (int d = 0; d < 4; d++) {
+                        int nx = x + dirs[d][0], ny = y + dirs[d][1];
+                        if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+                        // Check wall at walk level (boulder or cliff face)
+                        if (CellIsSolid(grid[walkZ][ny][nx])) {
+                            MaterialType m = GetWallMaterial(nx, ny, walkZ);
+                            if (IsStoneMaterial(m)) { stoneMat = m; break; }
+                        }
+                    }
+                    if (stoneMat != MAT_NONE) {
+                        float rockChance = 0.15f;
+                        if ((GetRandomValue(0, 999) / 1000.0f) < rockChance) {
+                            SpawnItemWithMaterial(x * CELL_SIZE + CELL_SIZE / 2.0f,
+                                                 y * CELL_SIZE + CELL_SIZE / 2.0f,
+                                                 (float)walkZ, ITEM_ROCK, (uint8_t)stoneMat);
+                            rocksPlaced++;
+                            continue;
+                        }
+                    }
                 }
 
-                // Sticks: ~1% near trees
+                // Sticks and logs: near trees
                 int nearTrees = 0;
+                MaterialType nearTreeMat = MAT_OAK;
                 for (int dy = -2; dy <= 2; dy++) {
                     for (int dx = -2; dx <= 2; dx++) {
                         int nx = x + dx, ny = y + dy;
                         if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
                         int nz = surface[ny * gridWidth + nx] + 1;
-                        if (nz < gridDepth && grid[nz][ny][nx] == CELL_TREE_TRUNK) nearTrees++;
+                        if (nz < gridDepth && grid[nz][ny][nx] == CELL_TREE_TRUNK) {
+                            nearTrees++;
+                            nearTreeMat = GetWallMaterial(nx, ny, nz);
+                        }
                     }
                 }
-                if (nearTrees > 0 && (GetRandomValue(0, 999) / 1000.0f) < 0.01f) {
-                    SpawnItem(x * CELL_SIZE + CELL_SIZE / 2.0f,
-                              y * CELL_SIZE + CELL_SIZE / 2.0f,
-                              walkZ * CELL_SIZE, ITEM_STICKS);
-                    sticksPlaced++;
+                if (nearTrees > 0) {
+                    float roll = GetRandomValue(0, 999) / 1000.0f;
+                    if (roll < 0.003f) {
+                        // Loose logs: ~0.3% chance (deadfall)
+                        SpawnItemWithMaterial(x * CELL_SIZE + CELL_SIZE / 2.0f,
+                                             y * CELL_SIZE + CELL_SIZE / 2.0f,
+                                             (float)walkZ, ITEM_LOG, (uint8_t)nearTreeMat);
+                        logsPlaced++;
+                    } else if (roll < 0.013f) {
+                        // Sticks: ~1% chance
+                        SpawnItem(x * CELL_SIZE + CELL_SIZE / 2.0f,
+                                  y * CELL_SIZE + CELL_SIZE / 2.0f,
+                                  (float)walkZ, ITEM_STICKS);
+                        sticksPlaced++;
+                    }
+                }
+
+                // Dried grass: ~0.5% on higher, drier ground (away from water)
+                if (nearTrees == 0 && heightmap[idx] > (maxHeight / 2)) {
+                    if ((GetRandomValue(0, 999) / 1000.0f) < 0.005f) {
+                        SpawnItem(x * CELL_SIZE + CELL_SIZE / 2.0f,
+                                  y * CELL_SIZE + CELL_SIZE / 2.0f,
+                                  (float)walkZ, ITEM_DRIED_GRASS);
+                        driedGrassPlaced++;
+                    }
                 }
             }
         }
-        TraceLog(LOG_INFO, "GenerateHillsSoilsWater: scattered %d rocks, %d sticks", rocksPlaced, sticksPlaced);
+        TraceLog(LOG_INFO, "GenerateHillsSoilsWater: placed %d boulders, scattered %d rocks, %d sticks, %d logs, %d dried grass",
+                 bouldersPlaced, rocksPlaced, sticksPlaced, logsPlaced, driedGrassPlaced);
 
         free(surface);
     }

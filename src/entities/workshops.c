@@ -51,6 +51,13 @@ Recipe charcoalPitRecipes[] = {
 };
 int charcoalPitRecipeCount = sizeof(charcoalPitRecipes) / sizeof(charcoalPitRecipes[0]);
 
+// Campfire recipes: semi-passive (short ignition + passive burn)
+Recipe campfireRecipes[] = {
+    { "Burn Sticks", ITEM_STICKS, 2, ITEM_NONE, 0, ITEM_ASH, 1, ITEM_NONE, 0, 3.0f, 30.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Burn Log",    ITEM_LOG,    1, ITEM_NONE, 0, ITEM_ASH, 1, ITEM_NONE, 0, 3.0f, 60.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+};
+int campfireRecipeCount = sizeof(campfireRecipes) / sizeof(campfireRecipes[0]);
+
 // Hearth recipes: burn any fuel to produce ash (fuel sink)
 Recipe hearthRecipes[] = {
     { "Burn Fuel", ITEM_NONE, 1, ITEM_NONE, 0, ITEM_ASH, 1, ITEM_NONE, 0, 1.6f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_ANY_FUEL },
@@ -177,6 +184,17 @@ const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
         .recipes = carpenterRecipes,
         .recipeCount = sizeof(carpenterRecipes) / sizeof(carpenterRecipes[0]),
         .passive = false
+    },
+    [WORKSHOP_CAMPFIRE] = {
+        .type = WORKSHOP_CAMPFIRE,
+        .name = "CAMPFIRE",
+        .displayName = "Campfire",
+        .width = 2,
+        .height = 1,
+        .template = "FX",
+        .recipes = campfireRecipes,
+        .recipeCount = sizeof(campfireRecipes) / sizeof(campfireRecipes[0]),
+        .passive = true
     },
 };
 

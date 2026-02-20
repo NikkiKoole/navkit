@@ -29,6 +29,7 @@ typedef enum {
     WORKSHOP_DRYING_RACK,
     WORKSHOP_ROPE_MAKER,
     WORKSHOP_CARPENTER,
+    WORKSHOP_CAMPFIRE,
     WORKSHOP_TYPE_COUNT,
 } WorkshopType;
 
@@ -163,6 +164,8 @@ extern Recipe dryingRackRecipes[];
 extern int dryingRackRecipeCount;
 extern Recipe ropeMakerRecipes[];
 extern int ropeMakerRecipeCount;
+extern Recipe campfireRecipes[];
+extern int campfireRecipeCount;
 
 // Core functions
 void ClearWorkshops(void);

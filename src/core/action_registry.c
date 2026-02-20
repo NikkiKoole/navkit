@@ -328,7 +328,20 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = true,
         .canErase = false
     },
-    
+    {
+        .action = ACTION_DRAW_WORKSHOP_CAMPFIRE,
+        .name = "CAMPFIRE",
+        .barDisplayText = "Campfire",
+        .barText = "L-click place  [ESC]Back",
+        .barKey = 'f',
+        .barUnderlinePos = 4,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_WORKSHOP,
+        .canDrag = true,
+        .canErase = false
+    },
+
     // ========================================================================
     // MODE_DRAW > TRANSPORT children
     // ========================================================================
