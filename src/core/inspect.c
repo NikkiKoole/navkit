@@ -1509,7 +1509,27 @@ int InspectSaveFile(int argc, char** argv) {
     
     // Blueprints
     insp_blueprints = malloc(MAX_BLUEPRINTS * sizeof(Blueprint));
-    fread(insp_blueprints, sizeof(Blueprint), MAX_BLUEPRINTS, f);
+    if (version >= 63) {
+        fread(insp_blueprints, sizeof(Blueprint), MAX_BLUEPRINTS, f);
+    } else {
+        for (int i = 0; i < MAX_BLUEPRINTS; i++) {
+            BlueprintV62 old;
+            fread(&old, sizeof(BlueprintV62), 1, f);
+            Blueprint* bp = &insp_blueprints[i];
+            bp->x = old.x; bp->y = old.y; bp->z = old.z;
+            bp->active = old.active;
+            bp->state = old.state;
+            bp->recipeIndex = old.recipeIndex;
+            bp->stage = old.stage;
+            memcpy(bp->stageDeliveries, old.stageDeliveries, sizeof(old.stageDeliveries));
+            memcpy(bp->consumedItems, old.consumedItems, sizeof(old.consumedItems));
+            bp->assignedBuilder = old.assignedBuilder;
+            bp->progress = old.progress;
+            bp->workshopOriginX = 0;
+            bp->workshopOriginY = 0;
+            bp->workshopType = 0;
+        }
+    }
     
     // Workshops
     insp_workshops = malloc(MAX_WORKSHOPS * sizeof(Workshop));

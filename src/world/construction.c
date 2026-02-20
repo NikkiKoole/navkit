@@ -320,6 +320,203 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = 0,
         .materialFromSlot = 0,
     },
+    // =========================================================================
+    // Workshop construction recipes
+    // =========================================================================
+    [CONSTRUCTION_WORKSHOP_CAMPFIRE] = {
+        .name = "Campfire",
+        .buildCategory = BUILD_WORKSHOP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_STICKS }},
+                .altCount = 1,
+                .count = 5,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 1.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
+    [CONSTRUCTION_WORKSHOP_DRYING_RACK] = {
+        .name = "Drying Rack",
+        .buildCategory = BUILD_WORKSHOP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_STICKS }},
+                .altCount = 1,
+                .count = 4,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 2.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
+    [CONSTRUCTION_WORKSHOP_ROPE_MAKER] = {
+        .name = "Rope Maker",
+        .buildCategory = BUILD_WORKSHOP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_STICKS }},
+                .altCount = 1,
+                .count = 4,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 2.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
+    [CONSTRUCTION_WORKSHOP_CHARCOAL_PIT] = {
+        .name = "Charcoal Pit",
+        .buildCategory = BUILD_WORKSHOP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_LOG }},
+                .altCount = 1,
+                .count = 2,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 3.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
+    [CONSTRUCTION_WORKSHOP_HEARTH] = {
+        .name = "Hearth",
+        .buildCategory = BUILD_WORKSHOP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_ROCK }},
+                .altCount = 1,
+                .count = 5,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 4.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
+    [CONSTRUCTION_WORKSHOP_STONECUTTER] = {
+        .name = "Stonecutter",
+        .buildCategory = BUILD_WORKSHOP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_ROCK }},
+                    .altCount = 1,
+                    .count = 5,
+                    .anyBuildingMat = false,
+                },
+                {
+                    .alternatives = {{ .itemType = ITEM_LOG }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 5.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
+    [CONSTRUCTION_WORKSHOP_SAWMILL] = {
+        .name = "Sawmill",
+        .buildCategory = BUILD_WORKSHOP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_LOG }},
+                    .altCount = 1,
+                    .count = 3,
+                    .anyBuildingMat = false,
+                },
+                {
+                    .alternatives = {{ .itemType = ITEM_CORDAGE }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 5.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
+    [CONSTRUCTION_WORKSHOP_KILN] = {
+        .name = "Kiln",
+        .buildCategory = BUILD_WORKSHOP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_ROCK }},
+                    .altCount = 1,
+                    .count = 8,
+                    .anyBuildingMat = false,
+                },
+                {
+                    .alternatives = {{ .itemType = ITEM_CLAY }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 6.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
+    [CONSTRUCTION_WORKSHOP_CARPENTER] = {
+        .name = "Carpenter",
+        .buildCategory = BUILD_WORKSHOP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_PLANKS }},
+                    .altCount = 1,
+                    .count = 4,
+                    .anyBuildingMat = false,
+                },
+                {
+                    .alternatives = {{ .itemType = ITEM_CORDAGE }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 4.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
 };
 
 const ConstructionRecipe* GetConstructionRecipe(int recipeIndex) {

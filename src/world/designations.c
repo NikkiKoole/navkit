@@ -13,6 +13,7 @@
 #include "../core/sim_manager.h"
 #include "../entities/jobs.h"    // for CancelJob, GetJob forward declarations
 #include "../entities/furniture.h"
+#include "../entities/workshops.h"
 #include "../entities/stacking.h"
 #include "../core/event_log.h"
 #include "../game_state.h"
@@ -1962,6 +1963,10 @@ int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex) {
     } else if (recipe->buildCategory == BUILD_FURNITURE) {
         if (!IsCellWalkableAt(z, y, x)) return -1;
         if (GetFurnitureAt(x, y, z) >= 0) return -1;
+    } else if (recipe->buildCategory == BUILD_WORKSHOP) {
+        // Workshop blueprints are placed at the work tile via CreateWorkshopBlueprint()
+        // which handles full footprint validation. Just check work tile is walkable.
+        if (!IsCellWalkableAt(z, y, x)) return -1;
     }
 
     // Already has a blueprint?
@@ -1996,6 +2001,92 @@ int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex) {
     }
 
     blueprintCount++;
+    return idx;
+}
+
+// Helper: check if any blueprint overlaps a rectangular area
+static bool HasBlueprintInArea(int x1, int y1, int x2, int y2, int z) {
+    for (int i = 0; i < MAX_BLUEPRINTS; i++) {
+        if (!blueprints[i].active) continue;
+        if (blueprints[i].z != z) continue;
+        int bx = blueprints[i].x;
+        int by = blueprints[i].y;
+        // Check if this blueprint's cell is within the area
+        if (bx >= x1 && bx <= x2 && by >= y1 && by <= y2) return true;
+        // Also check if this is a workshop blueprint whose footprint overlaps
+        const ConstructionRecipe* r = GetConstructionRecipe(blueprints[i].recipeIndex);
+        if (r && r->buildCategory == BUILD_WORKSHOP) {
+            int ox = blueprints[i].workshopOriginX;
+            int oy = blueprints[i].workshopOriginY;
+            const WorkshopDef* def = &workshopDefs[blueprints[i].workshopType];
+            // Check rectangle overlap
+            if (ox <= x2 && ox + def->width - 1 >= x1 &&
+                oy <= y2 && oy + def->height - 1 >= y1) return true;
+        }
+    }
+    return false;
+}
+
+int CreateWorkshopBlueprint(int originX, int originY, int z, int recipeIndex) {
+    const ConstructionRecipe* recipe = GetConstructionRecipe(recipeIndex);
+    if (!recipe || recipe->buildCategory != BUILD_WORKSHOP) return -1;
+
+    // Map recipe to workshop type
+    int workshopType = -1;
+    switch (recipeIndex) {
+        case CONSTRUCTION_WORKSHOP_CAMPFIRE:     workshopType = WORKSHOP_CAMPFIRE; break;
+        case CONSTRUCTION_WORKSHOP_DRYING_RACK:  workshopType = WORKSHOP_DRYING_RACK; break;
+        case CONSTRUCTION_WORKSHOP_ROPE_MAKER:   workshopType = WORKSHOP_ROPE_MAKER; break;
+        case CONSTRUCTION_WORKSHOP_CHARCOAL_PIT: workshopType = WORKSHOP_CHARCOAL_PIT; break;
+        case CONSTRUCTION_WORKSHOP_HEARTH:       workshopType = WORKSHOP_HEARTH; break;
+        case CONSTRUCTION_WORKSHOP_STONECUTTER:  workshopType = WORKSHOP_STONECUTTER; break;
+        case CONSTRUCTION_WORKSHOP_SAWMILL:      workshopType = WORKSHOP_SAWMILL; break;
+        case CONSTRUCTION_WORKSHOP_KILN:         workshopType = WORKSHOP_KILN; break;
+        case CONSTRUCTION_WORKSHOP_CARPENTER:    workshopType = WORKSHOP_CARPENTER; break;
+        default: return -1;
+    }
+
+    const WorkshopDef* def = &workshopDefs[workshopType];
+
+    // Validate entire workshop footprint
+    for (int dy = 0; dy < def->height; dy++) {
+        for (int dx = 0; dx < def->width; dx++) {
+            int cx = originX + dx;
+            int cy = originY + dy;
+            if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight || z < 0 || z >= gridDepth) {
+                return -1;
+            }
+            if (!IsCellWalkableAt(z, cy, cx)) return -1;
+            if (FindWorkshopAt(cx, cy, z) >= 0) return -1;
+        }
+    }
+
+    // Check no blueprint overlaps the footprint
+    if (HasBlueprintInArea(originX, originY,
+                           originX + def->width - 1, originY + def->height - 1, z)) {
+        return -1;
+    }
+
+    // Find the work tile position (where blueprint cell goes)
+    int workTileX = originX, workTileY = originY;
+    for (int ty = 0; ty < def->height; ty++) {
+        for (int tx = 0; tx < def->width; tx++) {
+            if (def->template[ty * def->width + tx] == WT_WORK) {
+                workTileX = originX + tx;
+                workTileY = originY + ty;
+            }
+        }
+    }
+
+    // Create blueprint at the work tile
+    int idx = CreateRecipeBlueprint(workTileX, workTileY, z, recipeIndex);
+    if (idx < 0) return -1;
+
+    // Set workshop-specific fields
+    blueprints[idx].workshopOriginX = originX;
+    blueprints[idx].workshopOriginY = originY;
+    blueprints[idx].workshopType = workshopType;
+
     return idx;
 }
 
@@ -2375,6 +2466,20 @@ void CompleteBlueprint(int blueprintIdx) {
         else if (bp->recipeIndex == CONSTRUCTION_CHAIR) ft = FURNITURE_CHAIR;
         if (ft != FURNITURE_NONE) {
             SpawnFurniture(x, y, z, ft, (uint8_t)finalMat);
+        }
+        bp->active = false;
+        bp->assignedBuilder = -1;
+        blueprintCount--;
+        return;
+    }
+
+    if (recipe->buildCategory == BUILD_WORKSHOP) {
+        int wsIdx = CreateWorkshop(bp->workshopOriginX, bp->workshopOriginY, bp->z,
+                                   (WorkshopType)bp->workshopType);
+        if (wsIdx >= 0) {
+            EventLog("Workshop %d (%s) constructed at (%d,%d,z%d)",
+                     wsIdx, workshopDefs[bp->workshopType].displayName,
+                     bp->workshopOriginX, bp->workshopOriginY, bp->z);
         }
         bp->active = false;
         bp->assignedBuilder = -1;

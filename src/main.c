@@ -633,6 +633,7 @@ void DrawHaulDestinations(void);
 void DrawMiningDesignations(void);
 void DrawBlueprints(void);
 void DrawTerrainBrushPreview(void);
+void DrawWorkshopPlacementPreview(void);
 void DrawMaterialHelp(void);
 void DrawLightPreview(void);
 
@@ -1297,6 +1298,7 @@ int main(int argc, char** argv) {
         DrawMiningDesignations();
         DrawBlueprints();
         DrawTerrainBrushPreview();
+        DrawWorkshopPlacementPreview();
         if (showChunkBoundaries) {
             DrawChunkBoundaries();
         }

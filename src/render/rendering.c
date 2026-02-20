@@ -2494,6 +2494,29 @@ static void DrawBlueprints(void) {
                 const char* stageText = TextFormat("S%d", bp->stage + 1);
                 DrawTextShadow(stageText, (int)(sx + size - 14), (int)(sy + size - 12), 8, YELLOW);
             }
+
+            // Workshop blueprint: draw ghost footprint over all template tiles
+            if (recipe && recipe->buildCategory == BUILD_WORKSHOP) {
+                const WorkshopDef* def = &workshopDefs[bp->workshopType];
+                int ox = bp->workshopOriginX;
+                int oy = bp->workshopOriginY;
+                for (int ty = 0; ty < def->height; ty++) {
+                    for (int tx = 0; tx < def->width; tx++) {
+                        int wx = ox + tx;
+                        int wy = oy + ty;
+                        if (wx == bp->x && wy == bp->y) continue; // skip work tile (already drawn)
+                        char c = def->template[ty * def->width + tx];
+                        float tsx = offset.x + wx * size;
+                        float tsy = offset.y + wy * size;
+                        Color ghost = (c == WT_BLOCK)
+                            ? (Color){tint.r, tint.g, tint.b, 120}
+                            : (Color){tint.r, tint.g, tint.b, 80};
+                        Rectangle gsrc = SpriteGetRect(SPRITE_stockpile);
+                        Rectangle gdest = { tsx, tsy, size, size };
+                        DrawTexturePro(atlas, gsrc, gdest, (Vector2){0, 0}, 0, ghost);
+                    }
+                }
+            }
         }
     }
 
@@ -2572,6 +2595,75 @@ static void DrawTerrainBrushPreview(void) {
     float centerY = offset.y + (mouseY + 0.5f) * size;
     float circleRadius = (radius + 0.5f) * size;
     DrawCircleLines((int)centerX, (int)centerY, circleRadius, lineColor);
+}
+
+static void DrawWorkshopPlacementPreview(void) {
+    // Only show when a specific workshop build action is selected
+    WorkshopType type = -1;
+    switch (inputAction) {
+        case ACTION_WORK_WORKSHOP_CAMPFIRE:     type = WORKSHOP_CAMPFIRE; break;
+        case ACTION_WORK_WORKSHOP_DRYING_RACK:  type = WORKSHOP_DRYING_RACK; break;
+        case ACTION_WORK_WORKSHOP_ROPE_MAKER:   type = WORKSHOP_ROPE_MAKER; break;
+        case ACTION_WORK_WORKSHOP_CHARCOAL_PIT: type = WORKSHOP_CHARCOAL_PIT; break;
+        case ACTION_WORK_WORKSHOP_HEARTH:       type = WORKSHOP_HEARTH; break;
+        case ACTION_WORK_WORKSHOP_STONECUTTER:  type = WORKSHOP_STONECUTTER; break;
+        case ACTION_WORK_WORKSHOP_SAWMILL:      type = WORKSHOP_SAWMILL; break;
+        case ACTION_WORK_WORKSHOP_KILN:         type = WORKSHOP_KILN; break;
+        case ACTION_WORK_WORKSHOP_CARPENTER:    type = WORKSHOP_CARPENTER; break;
+        // Also show for sandbox draw workshop actions
+        case ACTION_DRAW_WORKSHOP_CAMPFIRE:     type = WORKSHOP_CAMPFIRE; break;
+        case ACTION_DRAW_WORKSHOP_DRYING_RACK:  type = WORKSHOP_DRYING_RACK; break;
+        case ACTION_DRAW_WORKSHOP_ROPE_MAKER:   type = WORKSHOP_ROPE_MAKER; break;
+        case ACTION_DRAW_WORKSHOP_CHARCOAL_PIT: type = WORKSHOP_CHARCOAL_PIT; break;
+        case ACTION_DRAW_WORKSHOP_HEARTH:       type = WORKSHOP_HEARTH; break;
+        case ACTION_DRAW_WORKSHOP_STONECUTTER:  type = WORKSHOP_STONECUTTER; break;
+        case ACTION_DRAW_WORKSHOP_SAWMILL:      type = WORKSHOP_SAWMILL; break;
+        case ACTION_DRAW_WORKSHOP_KILN:         type = WORKSHOP_KILN; break;
+        case ACTION_DRAW_WORKSHOP_CARPENTER:    type = WORKSHOP_CARPENTER; break;
+        default: return;
+    }
+
+    const WorkshopDef* def = &workshopDefs[type];
+    Vector2 gp = ScreenToGrid(GetMousePosition());
+    int mouseX = (int)gp.x;
+    int mouseY = (int)gp.y;
+    int z = currentViewZ;
+    float size = CELL_SIZE * zoom;
+
+    for (int ty = 0; ty < def->height; ty++) {
+        for (int tx = 0; tx < def->width; tx++) {
+            int cx = mouseX + tx;
+            int cy = mouseY + ty;
+            if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) continue;
+
+            float px = offset.x + cx * size;
+            float py = offset.y + cy * size;
+
+            char c = def->template[ty * def->width + tx];
+
+            // Check if placement is valid at this cell
+            bool valid = IsCellWalkableAt(z, cy, cx) && FindWorkshopAt(cx, cy, z) < 0;
+
+            Color fillColor;
+            if (!valid) {
+                fillColor = (Color){220, 60, 60, 80};   // Red = blocked
+            } else if (c == WT_BLOCK) {
+                fillColor = (Color){80, 140, 220, 100};  // Blue = machinery
+            } else if (c == WT_WORK) {
+                fillColor = (Color){80, 220, 80, 100};   // Green = work tile
+            } else if (c == WT_OUTPUT) {
+                fillColor = (Color){220, 200, 80, 100};  // Yellow = output
+            } else if (c == WT_FUEL) {
+                fillColor = (Color){220, 140, 60, 100};  // Orange = fuel
+            } else {
+                fillColor = (Color){150, 150, 150, 60};  // Gray = floor
+            }
+
+            DrawRectangle((int)px, (int)py, (int)size, (int)size, fillColor);
+            DrawRectangleLines((int)px, (int)py, (int)size, (int)size,
+                              (Color){fillColor.r, fillColor.g, fillColor.b, 180});
+        }
+    }
 }
 
 // =============================================================================

@@ -943,6 +943,54 @@ static void ExecuteDesignateFurniture(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecutePlaceWorkshopBlueprint(int x, int y, int z, WorkshopType type) {
+    // Map workshop type to construction recipe
+    int recipeIndex = -1;
+    switch (type) {
+        case WORKSHOP_CAMPFIRE:     recipeIndex = CONSTRUCTION_WORKSHOP_CAMPFIRE; break;
+        case WORKSHOP_DRYING_RACK:  recipeIndex = CONSTRUCTION_WORKSHOP_DRYING_RACK; break;
+        case WORKSHOP_ROPE_MAKER:   recipeIndex = CONSTRUCTION_WORKSHOP_ROPE_MAKER; break;
+        case WORKSHOP_CHARCOAL_PIT: recipeIndex = CONSTRUCTION_WORKSHOP_CHARCOAL_PIT; break;
+        case WORKSHOP_HEARTH:       recipeIndex = CONSTRUCTION_WORKSHOP_HEARTH; break;
+        case WORKSHOP_STONECUTTER:  recipeIndex = CONSTRUCTION_WORKSHOP_STONECUTTER; break;
+        case WORKSHOP_SAWMILL:      recipeIndex = CONSTRUCTION_WORKSHOP_SAWMILL; break;
+        case WORKSHOP_KILN:         recipeIndex = CONSTRUCTION_WORKSHOP_KILN; break;
+        case WORKSHOP_CARPENTER:    recipeIndex = CONSTRUCTION_WORKSHOP_CARPENTER; break;
+        default: return;
+    }
+
+    int idx = CreateWorkshopBlueprint(x, y, z, recipeIndex);
+    if (idx >= 0) {
+        AddMessage(TextFormat("Placed %s blueprint", workshopDefs[type].displayName), BLUE);
+    } else {
+        AddMessage("Cannot place workshop here", RED);
+    }
+}
+
+static void ExecuteCancelWorkshopBlueprint(int x, int y, int z) {
+    // Check if clicking on any cell that's part of a workshop blueprint's footprint
+    for (int i = 0; i < MAX_BLUEPRINTS; i++) {
+        if (!blueprints[i].active) continue;
+        if (blueprints[i].z != z) continue;
+        const ConstructionRecipe* r = GetConstructionRecipe(blueprints[i].recipeIndex);
+        if (!r || r->buildCategory != BUILD_WORKSHOP) continue;
+        int ox = blueprints[i].workshopOriginX;
+        int oy = blueprints[i].workshopOriginY;
+        const WorkshopDef* def = &workshopDefs[blueprints[i].workshopType];
+        if (x >= ox && x < ox + def->width && y >= oy && y < oy + def->height) {
+            CancelBlueprint(i);
+            AddMessage(TextFormat("Cancelled %s blueprint", def->displayName), ORANGE);
+            return;
+        }
+    }
+    // Fall back to regular single-cell cancel
+    int bpIdx = GetBlueprintAt(x, y, z);
+    if (bpIdx >= 0) {
+        CancelBlueprint(bpIdx);
+        AddMessage("Cancelled blueprint", ORANGE);
+    }
+}
+
 static void ExecuteCancelBuild(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -2599,6 +2647,42 @@ void HandleInput(void) {
             case ACTION_WORK_FURNITURE:
                 if (leftClick) ExecuteDesignateFurniture(x1, y1, x2, y2, z);
                 else ExecuteCancelBuild(x1, y1, x2, y2, z);  // Reuse cancel logic
+                break;
+            case ACTION_WORK_WORKSHOP_CAMPFIRE:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_CAMPFIRE);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
+                break;
+            case ACTION_WORK_WORKSHOP_DRYING_RACK:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_DRYING_RACK);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
+                break;
+            case ACTION_WORK_WORKSHOP_ROPE_MAKER:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_ROPE_MAKER);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
+                break;
+            case ACTION_WORK_WORKSHOP_CHARCOAL_PIT:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_CHARCOAL_PIT);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
+                break;
+            case ACTION_WORK_WORKSHOP_HEARTH:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_HEARTH);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
+                break;
+            case ACTION_WORK_WORKSHOP_STONECUTTER:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_STONECUTTER);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
+                break;
+            case ACTION_WORK_WORKSHOP_SAWMILL:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_SAWMILL);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
+                break;
+            case ACTION_WORK_WORKSHOP_KILN:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_KILN);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
+                break;
+            case ACTION_WORK_WORKSHOP_CARPENTER:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_CARPENTER);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
                 break;
             case ACTION_WORK_GATHER:
                 if (leftClick) ExecuteCreateGatherZone(x1, y1, x2, y2, z);

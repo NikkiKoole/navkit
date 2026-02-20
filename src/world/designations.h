@@ -101,6 +101,10 @@ typedef struct {
     // Construction progress
     int assignedBuilder;        // Mover index doing the building (-1 = none)
     float progress;             // 0.0 to 1.0
+
+    // Workshop construction (only used when recipe buildCategory == BUILD_WORKSHOP)
+    int workshopOriginX, workshopOriginY;  // top-left corner for workshop spawning
+    int workshopType;                       // WorkshopType enum value
 } Blueprint;
 
 #define MAX_BLUEPRINTS 1000
@@ -369,6 +373,9 @@ int CountKnapDesignations(void);
 
 // Create a blueprint using a specific construction recipe
 int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex);
+
+// Create a workshop blueprint (validates full footprint, places blueprint at work tile)
+int CreateWorkshopBlueprint(int originX, int originY, int z, int recipeIndex);
 
 // Check if all delivery slots for current stage are filled
 bool BlueprintStageFilled(const Blueprint* bp);

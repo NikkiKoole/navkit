@@ -1240,9 +1240,9 @@ static void DrawBlueprintTooltip(int bpIdx, Vector2 mouse) {
     Blueprint* bp = &blueprints[bpIdx];
     if (!bp->active) return;
 
-    const char* stateNames[] = {"Awaiting materials", "Ready to build", "Building"};
+    const char* stateNames[] = {"Awaiting materials", "Ready to build", "Building", "Clearing"};
 
-    char lines[12][64];
+    char lines[16][64];
     int lineCount = 0;
 
     // Header
@@ -1251,13 +1251,28 @@ static void DrawBlueprintTooltip(int bpIdx, Vector2 mouse) {
     snprintf(lines[lineCount++], sizeof(lines[0]), "%s (%d,%d,%d)", name, bp->x, bp->y, bp->z);
 
     // State
-    const char* stateName = (bp->state < 3) ? stateNames[bp->state] : "?";
+    const char* stateName = (bp->state < 4) ? stateNames[bp->state] : "?";
     snprintf(lines[lineCount++], sizeof(lines[0]), "Status: %s", stateName);
 
-    // Materials
-    int delivered = BlueprintStageDeliveredCount(bp);
-    int required = BlueprintStageRequiredCount(bp);
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Materials: %d/%d", delivered, required);
+    // Per-slot material detail for current stage
+    if (headerRecipe && bp->stage < headerRecipe->stageCount) {
+        const ConstructionStage* stage = &headerRecipe->stages[bp->stage];
+        for (int s = 0; s < stage->inputCount && lineCount < 14; s++) {
+            const ConstructionInput* input = &stage->inputs[s];
+            StageDelivery* sd = &bp->stageDeliveries[s];
+            const char* itemName;
+            if (input->anyBuildingMat) {
+                itemName = "Building Mat";
+            } else if (input->altCount == 1) {
+                itemName = ItemName(input->alternatives[0].itemType);
+            } else {
+                // Multiple alternatives — show first with "/.."
+                itemName = ItemName(input->alternatives[0].itemType);
+            }
+            snprintf(lines[lineCount++], sizeof(lines[0]), "  %s: %d/%d",
+                     itemName, sd->deliveredCount, input->count);
+        }
+    }
 
     // Show stage info for multi-stage recipes
     if (headerRecipe && headerRecipe->stageCount > 1) {
@@ -1265,7 +1280,9 @@ static void DrawBlueprintTooltip(int bpIdx, Vector2 mouse) {
     }
 
     // What it's waiting for
-    if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
+    if (bp->state == BLUEPRINT_CLEARING) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Clearing items from site");
+    } else if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
         snprintf(lines[lineCount++], sizeof(lines[0]), "Waiting for hauler");
     } else if (bp->state == BLUEPRINT_READY_TO_BUILD) {
         snprintf(lines[lineCount++], sizeof(lines[0]), "Waiting for builder");
@@ -1303,8 +1320,10 @@ static void DrawBlueprintTooltip(int bpIdx, Vector2 mouse) {
     for (int i = 0; i < lineCount; i++) {
         Color col = WHITE;
         if (i == 0) col = YELLOW;  // Header
+        else if (lines[i][0] == ' ' && lines[i][1] == ' ') col = (Color){180, 200, 255, 255};  // Material lines
         else if (strstr(lines[i], "Requires:")) col = SKYBLUE;
         else if (strstr(lines[i], "Awaiting")) col = ORANGE;
+        else if (strstr(lines[i], "Clearing")) col = ORANGE;
         else if (strstr(lines[i], "Ready")) col = GREEN;
         else if (strstr(lines[i], "Building")) col = SKYBLUE;
         else if (strstr(lines[i], "Waiting")) col = GRAY;

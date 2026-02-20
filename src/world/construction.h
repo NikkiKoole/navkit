@@ -17,6 +17,7 @@ typedef enum {
     BUILD_LADDER,
     BUILD_RAMP,
     BUILD_FURNITURE,
+    BUILD_WORKSHOP,
     BUILD_CATEGORY_COUNT,
 } BuildCategory;
 
@@ -67,6 +68,16 @@ typedef enum {
     CONSTRUCTION_GRASS_PILE,        // 1 stage: 10 grass (furniture)
     CONSTRUCTION_PLANK_BED,         // 1 stage: 1 plank bed item (furniture)
     CONSTRUCTION_CHAIR,             // 1 stage: 1 chair item (furniture)
+    // Workshop construction recipes
+    CONSTRUCTION_WORKSHOP_CAMPFIRE,      // 1 stage: 5 sticks
+    CONSTRUCTION_WORKSHOP_DRYING_RACK,   // 1 stage: 4 sticks
+    CONSTRUCTION_WORKSHOP_ROPE_MAKER,    // 1 stage: 4 sticks
+    CONSTRUCTION_WORKSHOP_CHARCOAL_PIT,  // 1 stage: 2 logs
+    CONSTRUCTION_WORKSHOP_HEARTH,        // 1 stage: 5 rocks
+    CONSTRUCTION_WORKSHOP_STONECUTTER,   // 1 stage: 5 rocks + 2 logs
+    CONSTRUCTION_WORKSHOP_SAWMILL,       // 1 stage: 3 logs + 2 cordage
+    CONSTRUCTION_WORKSHOP_KILN,          // 1 stage: 8 rocks + 2 clay
+    CONSTRUCTION_WORKSHOP_CARPENTER,     // 1 stage: 4 planks + 2 cordage
     CONSTRUCTION_RECIPE_COUNT,
 } ConstructionRecipeIndex;
 

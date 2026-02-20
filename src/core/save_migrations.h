@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 62
+#define CURRENT_SAVE_VERSION 63
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)
@@ -321,5 +321,23 @@ typedef struct {
     int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int freeSlotCount;
 } StockpileV60;
+
+// V62 Blueprint struct (before workshop construction fields added in v63)
+// Must match exact layout: no workshopOriginX/Y, workshopType fields
+#include "../world/construction.h"
+typedef struct {
+    int x, y, z;
+    bool active;
+    int state;  // BlueprintState enum
+
+    int recipeIndex;
+    int stage;
+    StageDelivery stageDeliveries[MAX_INPUTS_PER_STAGE];
+    ConsumedRecord consumedItems[MAX_CONSTRUCTION_STAGES][MAX_INPUTS_PER_STAGE];
+
+    int assignedBuilder;
+    float progress;
+    // No workshopOriginX/Y, workshopType in V62
+} BlueprintV62;
 
 #endif

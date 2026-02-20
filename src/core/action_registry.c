@@ -539,6 +539,137 @@ const ActionDef ACTION_REGISTRY[] = {
         .canErase = true
     },
     
+    {
+        .action = ACTION_WORK_WORKSHOP,
+        .name = "WORKSHOP",
+        .barDisplayText = "Workshop",
+        .barText = "[C]ampfire [D]rying rack [M]aker [H]earth ...",
+        .barKey = 't',
+        .barUnderlinePos = 5,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_NONE,
+        .canDrag = false,
+        .canErase = false
+    },
+    {
+        .action = ACTION_WORK_WORKSHOP_CAMPFIRE,
+        .name = "CAMPFIRE",
+        .barDisplayText = "Campfire",
+        .barText = "L-click place  R-click cancel  [ESC]Back",
+        .barKey = 'c',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_WORK_WORKSHOP,
+        .canDrag = false,
+        .canErase = true
+    },
+    {
+        .action = ACTION_WORK_WORKSHOP_DRYING_RACK,
+        .name = "DRYING RACK",
+        .barDisplayText = "Drying Rack",
+        .barText = "L-click place  R-click cancel  [ESC]Back",
+        .barKey = 'd',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_WORK_WORKSHOP,
+        .canDrag = false,
+        .canErase = true
+    },
+    {
+        .action = ACTION_WORK_WORKSHOP_ROPE_MAKER,
+        .name = "ROPE MAKER",
+        .barDisplayText = "Rope Maker",
+        .barText = "L-click place  R-click cancel  [ESC]Back",
+        .barKey = 'm',
+        .barUnderlinePos = 5,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_WORK_WORKSHOP,
+        .canDrag = false,
+        .canErase = true
+    },
+    {
+        .action = ACTION_WORK_WORKSHOP_CHARCOAL_PIT,
+        .name = "CHARCOAL PIT",
+        .barDisplayText = "Charcoal Pit",
+        .barText = "L-click place  R-click cancel  [ESC]Back",
+        .barKey = 'a',
+        .barUnderlinePos = 2,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_WORK_WORKSHOP,
+        .canDrag = false,
+        .canErase = true
+    },
+    {
+        .action = ACTION_WORK_WORKSHOP_HEARTH,
+        .name = "HEARTH",
+        .barDisplayText = "Hearth",
+        .barText = "L-click place  R-click cancel  [ESC]Back",
+        .barKey = 'h',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_WORK_WORKSHOP,
+        .canDrag = false,
+        .canErase = true
+    },
+    {
+        .action = ACTION_WORK_WORKSHOP_STONECUTTER,
+        .name = "STONECUTTER",
+        .barDisplayText = "Stonecutter",
+        .barText = "L-click place  R-click cancel  [ESC]Back",
+        .barKey = 's',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_WORK_WORKSHOP,
+        .canDrag = false,
+        .canErase = true
+    },
+    {
+        .action = ACTION_WORK_WORKSHOP_SAWMILL,
+        .name = "SAWMILL",
+        .barDisplayText = "Sawmill",
+        .barText = "L-click place  R-click cancel  [ESC]Back",
+        .barKey = 'w',
+        .barUnderlinePos = 2,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_WORK_WORKSHOP,
+        .canDrag = false,
+        .canErase = true
+    },
+    {
+        .action = ACTION_WORK_WORKSHOP_KILN,
+        .name = "KILN",
+        .barDisplayText = "Kiln",
+        .barText = "L-click place  R-click cancel  [ESC]Back",
+        .barKey = 'k',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_WORK_WORKSHOP,
+        .canDrag = false,
+        .canErase = true
+    },
+    {
+        .action = ACTION_WORK_WORKSHOP_CARPENTER,
+        .name = "CARPENTER",
+        .barDisplayText = "Carpenter",
+        .barText = "L-click place  R-click cancel  [ESC]Back",
+        .barKey = 'p',
+        .barUnderlinePos = 3,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_WORK_WORKSHOP,
+        .canDrag = false,
+        .canErase = true
+    },
+    
     // ========================================================================
     // MODE_WORK > SUBMODE_HARVEST actions
     // ========================================================================

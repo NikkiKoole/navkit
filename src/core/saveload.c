@@ -1116,7 +1116,28 @@ bool LoadWorld(const char* filename) {
     fread(gatherZones, sizeof(GatherZone), MAX_GATHER_ZONES, f);
     
     // Blueprints
-    fread(blueprints, sizeof(Blueprint), MAX_BLUEPRINTS, f);
+    if (version >= 63) {
+        fread(blueprints, sizeof(Blueprint), MAX_BLUEPRINTS, f);
+    } else {
+        // V62 and earlier: Blueprint without workshop fields
+        for (int i = 0; i < MAX_BLUEPRINTS; i++) {
+            BlueprintV62 old;
+            fread(&old, sizeof(BlueprintV62), 1, f);
+            Blueprint* bp = &blueprints[i];
+            bp->x = old.x; bp->y = old.y; bp->z = old.z;
+            bp->active = old.active;
+            bp->state = old.state;
+            bp->recipeIndex = old.recipeIndex;
+            bp->stage = old.stage;
+            memcpy(bp->stageDeliveries, old.stageDeliveries, sizeof(old.stageDeliveries));
+            memcpy(bp->consumedItems, old.consumedItems, sizeof(old.consumedItems));
+            bp->assignedBuilder = old.assignedBuilder;
+            bp->progress = old.progress;
+            bp->workshopOriginX = 0;
+            bp->workshopOriginY = 0;
+            bp->workshopType = 0;
+        }
+    }
     
     // Workshops
     fread(workshops, sizeof(Workshop), MAX_WORKSHOPS, f);
