@@ -170,6 +170,9 @@ void UpdateGroundWear(void) {
     if (wearRecoveryAccum < wearIntervalGS) return;
     wearRecoveryAccum -= wearIntervalGS;
     
+    // Cache seasonal growth rate (uses cosf — don't call per-cell)
+    float vegRate = GetVegetationGrowthRate();
+
     // Process all cells at all z-levels
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
@@ -185,7 +188,6 @@ void UpdateGroundWear(void) {
                 
                 if (isDirt) {
                     // Decay wear (modulated by seasonal vegetation growth)
-                    float vegRate = GetVegetationGrowthRate();
                     int effectiveDecay = (int)(wearDecayRate * vegRate);
                     int oldWear = wearGrid[z][y][x];
                     if (effectiveDecay > 0 && oldWear > effectiveDecay) {

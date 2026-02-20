@@ -1945,7 +1945,15 @@ void HandleInput(void) {
     // Toggle dev/play UI
     if (IsKeyPressed(KEY_TAB)) {
         devUI = !devUI;
-        if (!devUI) InputMode_ExitToNormal();  // Exit any active mode
+        if (!devUI) {
+            InputMode_ExitToNormal();  // Exit any active mode
+        } else {
+            // Returning to dev UI — switch to sandbox mode
+            gameMode = GAME_MODE_SANDBOX;
+            hungerEnabled = false;
+            energyEnabled = false;
+            bodyTempEnabled = false;
+        }
     }
 
     // Pause
