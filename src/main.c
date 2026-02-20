@@ -1665,7 +1665,7 @@ int main(int argc, char** argv) {
                 int btnW = textW + padding * 2 + 8;  // Extra width for right margin
                 int textY = barY + (barH - fontSize) / 2 - 4;  // Shift up more for bottom margin
 
-                bool isClickable = items[i].key != 0 && !items[i].isHint;
+                bool isClickable = (items[i].key != 0 || items[i].backSteps > 0) && !items[i].isHint;
                 Rectangle btnRect = {x, barY, btnW, barH};
                 bool hovered = isClickable && CheckCollisionPointRec(GetMousePosition(), btnRect);
 
@@ -1716,7 +1716,14 @@ int main(int argc, char** argv) {
                 if (hovered) {
                     ui_set_hovered();
                     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-                        InputMode_TriggerKey(items[i].key);
+                        if (items[i].backSteps > 0) {
+                            // Header click: go back N levels directly
+                            for (int b = 0; b < items[i].backSteps; b++) {
+                                InputMode_Back();
+                            }
+                        } else if (items[i].key != 0) {
+                            InputMode_TriggerKey(items[i].key);
+                        }
                         ui_consume_click();
                     }
                 }

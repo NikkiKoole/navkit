@@ -98,11 +98,113 @@ If Option C feels too cheap, Option B is the next best — hand-crafting adds on
 
 ---
 
-## Implementation
+## Codebase Analysis & UI Integration
+
+### Current State: Two Placement Paths
+
+The codebase has two separate UI paths for placing things:
+
+**1. MODE_DRAW (D key) — Sandbox cheat placement**
+- `ACTION_DRAW_WORKSHOP` (T key) → category with children like `ACTION_DRAW_WORKSHOP_STONECUTTER`, `ACTION_DRAW_WORKSHOP_CAMPFIRE`, etc.
+- Handler: `ExecutePlaceWorkshop()` in `src/core/input.c` — calls `CreateWorkshop()` directly, instant, free
+- **Keep this as-is.** It's the sandbox cheat tool.
+- Bug: `ExecutePlaceWorkshop()` hardcodes 3x3 validation but campfire is 2x1. Should use `workshopDefs[type].width/height`.
+
+**2. MODE_WORK (W key) → SUBMODE_BUILD (B key) — Real construction**
+- Currently has: Wall (W), Floor (F), Ladder (L), Ramp (R), Furniture (U)
+- Uses `ConstructionRecipe` system with blueprints, haul jobs, and build jobs
+- Recipe selection via R key cycling (e.g. `selectedWallRecipe` cycles through `BUILD_WALL` recipes)
+- **Workshop placement goes HERE** — new category action alongside the existing ones
+
+### Action Registry Changes
+
+New entries in `src/core/input_mode.h` (enum) and `src/core/action_registry.c` (registry):
+
+```c
+// New InputAction enum values:
+ACTION_BUILD_WORKSHOP,                    // Category (like ACTION_DRAW_WORKSHOP)
+ACTION_BUILD_WORKSHOP_CAMPFIRE,           // Children
+ACTION_BUILD_WORKSHOP_DRYING_RACK,
+ACTION_BUILD_WORKSHOP_ROPE_MAKER,
+ACTION_BUILD_WORKSHOP_CHARCOAL_PIT,
+ACTION_BUILD_WORKSHOP_HEARTH,
+ACTION_BUILD_WORKSHOP_STONECUTTER,
+ACTION_BUILD_WORKSHOP_SAWMILL,
+ACTION_BUILD_WORKSHOP_KILN,
+ACTION_BUILD_WORKSHOP_CARPENTER,
+// ... one per WorkshopType that has buildInputCount > 0
+// Knapping spot excluded (it's a free designation, not a built workshop)
+```
+
+Registry entries follow the existing pattern:
+```c
+// Category action under Work → Build
+{
+    .action = ACTION_BUILD_WORKSHOP,
+    .name = "WORKSHOP",
+    .barDisplayText = "workshop(T)",
+    .barKey = 't',
+    .requiredMode = MODE_WORK,
+    .requiredSubMode = SUBMODE_BUILD,
+    .parentAction = ACTION_NONE,  // Top-level in build submode
+    .canDrag = false,
+    .canErase = false
+},
+// Child action
+{
+    .action = ACTION_BUILD_WORKSHOP_CAMPFIRE,
+    .name = "CAMPFIRE",
+    .barDisplayText = "Campfire",
+    .barKey = 'c',
+    .requiredMode = MODE_WORK,
+    .requiredSubMode = SUBMODE_BUILD,
+    .parentAction = ACTION_BUILD_WORKSHOP,
+    .canDrag = false,    // Single-click placement, not drag
+    .canErase = true     // Right-click to cancel blueprint
+},
+// ... same pattern for each workshop type
+```
+
+This creates a submenu: **Work (W) → Build (B) → Workshop (T) → Campfire (C) / Drying Rack (D) / ...**
+
+Same depth as the Draw mode workshop menu. Without this, the Build menu would have Wall + Floor + Ladder + Ramp + Furniture + 9 workshop types all flat — far too crowded.
+
+### Placement Handler
+
+New function in `src/core/input.c`:
+
+```c
+static void ExecutePlaceWorkshopBlueprint(int x, int y, int z, WorkshopType type) {
+    const WorkshopDef* def = &workshopDefs[type];
+    
+    // Validate footprint using def->width/height (NOT hardcoded 3x3)
+    for (int dy = 0; dy < def->height; dy++) {
+        for (int dx = 0; dx < def->width; dx++) {
+            int cx = x + dx, cy = y + dy;
+            if (!InBounds(cx, cy, z)) return;
+            if (!IsCellWalkableAt(z, cy, cx)) return;
+            if (FindWorkshopAt(cx, cy, z) >= 0) return;
+        }
+    }
+    
+    // Create workshop in blueprint state
+    int idx = CreateWorkshopBlueprint(x, y, z, type);
+    // Job system picks up haul/build jobs automatically via AssignJobs
+}
+```
+
+Input handling switch case (alongside existing build actions):
+```c
+case ACTION_BUILD_WORKSHOP_CAMPFIRE:
+    if (leftClick) ExecutePlaceWorkshopBlueprint(dragStartX, dragStartY, z, WORKSHOP_CAMPFIRE);
+    else ExecuteCancelWorkshopBlueprint(dragStartX, dragStartY, z);
+    break;
+// ... same for each workshop type
+```
 
 ### Workshop Build Cost Data
 
-Add to `WorkshopDef`:
+Add to `WorkshopDef` in `src/entities/workshops.h`:
 
 ```c
 typedef struct {
@@ -112,49 +214,87 @@ typedef struct {
 
 #define MAX_WORKSHOP_BUILD_INPUTS 3
 
-typedef struct {
-    // ... existing fields ...
-    WorkshopBuildInput buildInputs[MAX_WORKSHOP_BUILD_INPUTS];
-    int buildInputCount;
-    float buildTime;           // game-hours
-    // QualityType requiredQuality;  // future: tool quality for speed bonus
-} WorkshopDef;
+// Add to existing WorkshopDef struct:
+WorkshopBuildInput buildInputs[MAX_WORKSHOP_BUILD_INPUTS];
+int buildInputCount;     // 0 = free (knapping spot), >0 = needs construction
+float buildTime;         // game-hours (converted via GameHoursToGameSeconds)
 ```
 
-### Workshop Placement Flow (changed)
+### Workshop Blueprint State
 
-Currently: player clicks → `CreateWorkshop()` → workshop is active immediately.
-
-New flow:
-1. Player clicks placement → `CreateWorkshopBlueprint()` (new function)
-2. Blueprint stores: workshop type, position, build inputs needed
-3. System creates `JOBTYPE_HAUL_TO_BLUEPRINT` jobs for each input
-4. When all materials delivered, creates `JOBTYPE_BUILD` job
-5. Build job completes → `ActivateWorkshop()` — workshop becomes functional
-
-This mirrors the existing wall/floor construction flow exactly. The workshop exists in a "blueprint" state (ghost rendering, not functional) until built.
-
-### Workshop Struct Changes
+Add to `Workshop` struct in `src/entities/workshops.h`:
 
 ```c
-typedef struct {
-    // ... existing fields ...
-    bool constructed;           // false = blueprint, true = active
-    // Delivery tracking (same pattern as construction blueprints)
-    int deliveredCounts[MAX_WORKSHOP_BUILD_INPUTS];
-} Workshop;
+// Add to existing Workshop struct:
+bool constructed;                              // false = blueprint, true = active
+int deliveredCounts[MAX_WORKSHOP_BUILD_INPUTS]; // How many of each input delivered
+int assignedBuilder;                           // Mover doing the build (-1 = none)
+float buildProgress;                           // 0.0 to 1.0
 ```
+
+### New Functions in `src/entities/workshops.c`
+
+```c
+int CreateWorkshopBlueprint(int x, int y, int z, WorkshopType type);
+// Like CreateWorkshop but sets constructed=false, doesn't set CELL_FLAG_WORKSHOP_BLOCK yet
+
+void ActivateWorkshop(int workshopIdx);
+// Sets constructed=true, applies CELL_FLAG_WORKSHOP_BLOCK, pushes movers out of machinery tiles
+
+bool IsWorkshopBlueprint(int workshopIdx);
+// Returns !workshops[workshopIdx].constructed
+
+void CancelWorkshopBlueprint(int workshopIdx);
+// Removes blueprint, drops delivered items, cleans up jobs
+```
+
+### Job Integration
+
+Two approaches, from simplest to most reusable:
+
+**Approach A: Reuse existing Blueprint system directly**
+- Create a `Blueprint` (from `designations.h`) at the workshop's work tile
+- Map `WorkshopBuildInput` → `ConstructionInput` equivalents
+- The existing `JOBTYPE_HAUL_TO_BLUEPRINT` + `JOBTYPE_BUILD` flow handles everything
+- On build complete, call `ActivateWorkshop()` instead of placing a wall/floor
+- **Pro**: Zero new job types. **Con**: Blueprint system is cell-based (one cell), workshops span multiple cells.
+
+**Approach B: Workshop-specific jobs**
+- New `JOBTYPE_HAUL_TO_WORKSHOP` and `JOBTYPE_BUILD_WORKSHOP`
+- WorkGiver scans for unconstructed workshops, assigns haul/build jobs
+- More control over multi-cell footprint, delivery to specific tiles
+- **Pro**: Cleaner separation. **Con**: New job types + WorkGiver code.
+
+**Recommendation**: Approach A if we can make it work with the existing Blueprint at the workshop's work tile position. The haul destination is the work tile, and the build happens there. Multi-cell footprint doesn't matter for haul/build — movers walk to the work tile either way. Try Approach A first, fall back to B only if Blueprint assumptions break.
 
 ### Rendering
 
-- Blueprint state: render workshop template as ghost/transparent overlay (same as construction blueprints)
-- Under construction: show partially built (optional, could just use ghost until done)
-- Complete: normal rendering
+In `src/render/rendering.c`:
+- Blueprint workshops: render template tiles with alpha ~0.4 (ghost), same tint as construction blueprints
+- Check `workshops[i].constructed` — if false, use ghost rendering
+- Show delivery progress in tooltip (e.g. "Campfire [3/5 sticks]")
 
 ### Save Version
 
-- Save version bump for new Workshop fields (`constructed`, `deliveredCounts`)
+- Bump `CURRENT_SAVE_VERSION` (62 → 63) in `src/core/save_migrations.h`
+- Save new Workshop fields: `constructed`, `deliveredCounts[]`, `assignedBuilder`, `buildProgress`
 - Migration: existing saves set `constructed = true` for all workshops (backward compatible)
+- Update both `src/core/saveload.c` AND `src/core/inspect.c`
+
+### Key Files Summary
+
+| File | Changes |
+|------|---------|
+| `src/core/input_mode.h` | New `ACTION_BUILD_WORKSHOP*` enum values |
+| `src/core/action_registry.c` | New registry entries for workshop build actions |
+| `src/core/input.c` | `ExecutePlaceWorkshopBlueprint()`, case handlers |
+| `src/entities/workshops.h` | `WorkshopBuildInput`, build cost fields on `WorkshopDef`, blueprint state on `Workshop` |
+| `src/entities/workshops.c` | `CreateWorkshopBlueprint()`, `ActivateWorkshop()`, build cost data in `workshopDefs[]` |
+| `src/render/rendering.c` | Ghost rendering for workshop blueprints |
+| `src/render/tooltips.c` | Delivery progress display |
+| `src/core/saveload.c` | Save version bump + new Workshop fields |
+| `src/core/inspect.c` | Parallel save migration |
+| `src/core/save_migrations.h` | Version constant |
 
 ---
 

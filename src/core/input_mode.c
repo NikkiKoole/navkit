@@ -38,7 +38,13 @@ void InputMode_Back(void) {
     if (isDragging) return;  // Don't back out while dragging
     
     if (inputAction != ACTION_NONE) {
-        inputAction = ACTION_NONE;
+        // If this action has a parent action, go back to the parent (not to ACTION_NONE)
+        const ActionDef* def = GetActionDef(inputAction);
+        if (def->parentAction != ACTION_NONE) {
+            inputAction = def->parentAction;
+        } else {
+            inputAction = ACTION_NONE;
+        }
         selectedMaterial = 1;
     } else if (workSubMode != SUBMODE_NONE) {
         workSubMode = SUBMODE_NONE;
@@ -171,20 +177,22 @@ static int AddItem(BarItem* items, int count, const char* text, int key, int und
     items[count].isHint = isHint;
     items[count].isSelected = isSelected;
     items[count].isExit = false;
+    items[count].backSteps = 0;
     return count + 1;
 }
 
-// Helper to add a header with exit key
-static int AddExitHeader(BarItem* items, int count, const char* text, int key, int underlinePos) {
+// Helper to add a clickable header that calls InputMode_Back() N times when clicked
+static int AddBackHeader(BarItem* items, int count, const char* text, int backSteps) {
     if (count >= MAX_BAR_ITEMS) return count;
     strncpy(items[count].text, text, sizeof(items[count].text) - 1);
     items[count].text[sizeof(items[count].text) - 1] = '\0';
-    items[count].key = key;
-    items[count].underlinePos = underlinePos;
+    items[count].key = 0;  // No key — click calls Back() directly
+    items[count].underlinePos = -1;
     items[count].isHeader = true;
     items[count].isHint = false;
     items[count].isSelected = false;
     items[count].isExit = true;
+    items[count].backSteps = backSteps;
     return count + 1;
 }
 
@@ -213,12 +221,12 @@ int InputMode_GetBarItems(BarItem* items) {
         // In a mode, no action selected — generate menu from registry
         switch (inputMode) {
             case MODE_DRAW:
-                n = AddExitHeader(items, n, "DRAW:", KEY_D, 0);
+                n = AddBackHeader(items, n, "DRAW:", 1);
                 n = AddRegistryItems(items, n, MODE_DRAW, SUBMODE_NONE, ACTION_NONE);
                 break;
             case MODE_WORK:
                 if (workSubMode == SUBMODE_NONE) {
-                    n = AddExitHeader(items, n, "WORK:", KEY_W, 0);
+                    n = AddBackHeader(items, n, "WORK:", 1);
                     // Submodes are hardcoded (not actions)
                     n = AddItem(items, n, "Dig", KEY_D, 0, false, false, false);
                     n = AddItem(items, n, "Build", KEY_B, 0, false, false, false);
@@ -226,16 +234,16 @@ int InputMode_GetBarItems(BarItem* items) {
                     // Top-level WORK actions from registry (Clean, Gather, etc.)
                     n = AddRegistryItems(items, n, MODE_WORK, SUBMODE_NONE, ACTION_NONE);
                 } else {
-                    n = AddExitHeader(items, n, "WORK >", KEY_W, 0);
+                    n = AddBackHeader(items, n, "WORK >", 2);  // back past submode to WORK:
                     switch (workSubMode) {
                         case SUBMODE_DIG:
-                            n = AddItem(items, n, "DIG:", KEY_D, 0, true, false, false);
+                            n = AddBackHeader(items, n, "DIG:", 1);
                             break;
                         case SUBMODE_BUILD:
-                            n = AddItem(items, n, "BUILD:", KEY_B, 0, true, false, false);
+                            n = AddBackHeader(items, n, "BUILD:", 1);
                             break;
                         case SUBMODE_HARVEST:
-                            n = AddItem(items, n, "HARVEST:", KEY_H, 0, true, false, false);
+                            n = AddBackHeader(items, n, "HARVEST:", 1);
                             break;
                         default:
                             break;
@@ -244,7 +252,7 @@ int InputMode_GetBarItems(BarItem* items) {
                 }
                 break;
             case MODE_SANDBOX:
-                n = AddExitHeader(items, n, "SANDBOX:", KEY_S, 0);
+                n = AddBackHeader(items, n, "SANDBOX:", 1);
                 n = AddRegistryItems(items, n, MODE_SANDBOX, SUBMODE_NONE, ACTION_NONE);
                 break;
             default:
@@ -255,36 +263,48 @@ int InputMode_GetBarItems(BarItem* items) {
     }
     
     // Action selected — show mode header, submode header, action header from registry
+    // Count depth to calculate backSteps for each header
+    const ActionDef* def = GetActionDef(inputAction);
+    bool hasParentAction = (def->parentAction != ACTION_NONE);
+    bool hasSubmode = (workSubMode != SUBMODE_NONE);
+    
+    // Mode header: backs out to mode level (past action, parent action, and submode)
+    int modeBackSteps = 1 + (hasParentAction ? 1 : 0) + (hasSubmode ? 1 : 0);
     switch (inputMode) {
-        case MODE_DRAW:    n = AddExitHeader(items, n, "DRAW >", KEY_D, 0); break;
-        case MODE_WORK:    n = AddExitHeader(items, n, "WORK >", KEY_W, 0); break;
-        case MODE_SANDBOX: n = AddExitHeader(items, n, "SANDBOX >", KEY_S, 0); break;
+        case MODE_DRAW:    n = AddBackHeader(items, n, "DRAW >", modeBackSteps); break;
+        case MODE_WORK:    n = AddBackHeader(items, n, "WORK >", modeBackSteps); break;
+        case MODE_SANDBOX: n = AddBackHeader(items, n, "SANDBOX >", modeBackSteps); break;
         default: break;
     }
     
-    // Submode header for WORK mode
-    if (workSubMode != SUBMODE_NONE) {
-        int subKey = 0;
+    // Submode header for WORK mode: backs out to submode level (past action and parent action)
+    if (hasSubmode) {
+        int subBackSteps = 1 + (hasParentAction ? 1 : 0);
         const char* subName = NULL;
         switch (workSubMode) {
-            case SUBMODE_DIG:     subKey = KEY_D; subName = "DIG >"; break;
-            case SUBMODE_BUILD:   subKey = KEY_B; subName = "BUILD >"; break;
-            case SUBMODE_HARVEST: subKey = KEY_H; subName = "HARVEST >"; break;
+            case SUBMODE_DIG:     subName = "DIG >"; break;
+            case SUBMODE_BUILD:   subName = "BUILD >"; break;
+            case SUBMODE_HARVEST: subName = "HARVEST >"; break;
             default: break;
         }
         if (subName) {
-            n = AddItem(items, n, subName, subKey, 0, true, false, false);
+            n = AddBackHeader(items, n, subName, subBackSteps);
         }
     }
     
-    // Action header — key and underline from registry
-    const ActionDef* def = GetActionDef(inputAction);
-    int actionKey = KeyFromChar(def->barKey);
-    int actionUnderline = def->barUnderlinePos;
+    // Parent action header (e.g. "SOIL >" when in DRAW > SOIL > DIRT)
+    if (hasParentAction) {
+        const ActionDef* parentDef = GetActionDef(def->parentAction);
+        char parentHeader[32];
+        snprintf(parentHeader, sizeof(parentHeader), "%s >", parentDef->name);
+        n = AddBackHeader(items, n, parentHeader, 1);  // back to parent category
+    }
+    
+    // Action header — backs out one level (to parent action or to action=NONE)
     const char* actionName = GetActionName();
     char actionHeader[32];
     snprintf(actionHeader, sizeof(actionHeader), "%s:", actionName);
-    n = AddItem(items, n, actionHeader, actionKey, actionUnderline, true, false, false);
+    n = AddBackHeader(items, n, actionHeader, 1);
     
     // Check if this action has children (is a category like WORKSHOP/SOIL)
     const ActionDef* children[MAX_BAR_ITEMS];

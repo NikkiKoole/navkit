@@ -142,6 +142,7 @@ typedef struct {
     bool isHint;        // True if this is a hint like "L-drag place"
     bool isSelected;    // True if this option is currently selected
     bool isExit;        // True if this key exits the current mode (show in red)
+    int backSteps;      // >0: clicking calls InputMode_Back() this many times (for headers)
 } BarItem;
 
 #define MAX_BAR_ITEMS 16

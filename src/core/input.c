@@ -2121,6 +2121,21 @@ void HandleInput(void) {
     // ========================================================================
     
     if (inputAction == ACTION_NONE) {
+        // Re-tap submode key to go back (e.g. WORK > DIG -> press D -> WORK)
+        if (inputMode == MODE_WORK && workSubMode != SUBMODE_NONE) {
+            bool backFromSubmode = false;
+            switch (workSubMode) {
+                case SUBMODE_DIG:     backFromSubmode = CheckKey(KEY_D); break;
+                case SUBMODE_BUILD:   backFromSubmode = CheckKey(KEY_B); break;
+                case SUBMODE_HARVEST: backFromSubmode = CheckKey(KEY_H); break;
+                default: break;
+            }
+            if (backFromSubmode) {
+                workSubMode = SUBMODE_NONE;
+                return;
+            }
+        }
+
         // Action selection — data-driven from registry
         if (inputMode == MODE_WORK && workSubMode == SUBMODE_NONE) {
             // Submodes are hardcoded (not actions)
@@ -2173,7 +2188,7 @@ void HandleInput(void) {
         return;
     }
     
-    // Check if pressing the submode key to go back to submode selection
+    // Re-tap submode key to go back to submode selection
     // (e.g., pressing D while in WORK > DIG > MINE goes back to WORK > DIG)
     if (inputMode == MODE_WORK && workSubMode != SUBMODE_NONE && inputAction != ACTION_NONE) {
         bool backToSubmode = false;
