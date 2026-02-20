@@ -733,7 +733,7 @@ describe(body_temperature) {
     it("severe cold starts hypothermia timer") {
         int mi;
         SetupBodyTempTest(&mi, 37.0f);
-        movers[mi].bodyTemp = 29.0f; // below severe threshold (30)
+        movers[mi].bodyTemp = 29.0f; // below severe threshold (32)
         gameMode = GAME_MODE_SURVIVAL;
 
         expect(movers[mi].hypothermiaTimer == 0.0f);
@@ -758,8 +758,8 @@ describe(body_temperature) {
         movers[mi].hypothermiaTimer = 100.0f; // accumulated time
         gameMode = GAME_MODE_SURVIVAL;
 
-        // Warm up above severe threshold
-        movers[mi].bodyTemp = 31.0f;
+        // Warm up above severe threshold (32)
+        movers[mi].bodyTemp = 33.0f;
 
         SimNeedsTick();
 

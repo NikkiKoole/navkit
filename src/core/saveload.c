@@ -475,6 +475,19 @@ void RebuildPostLoadState(void) {
             items[i].reservedBy = -1;
         }
     }
+
+    // Rebuild waterActiveCells from loaded water grid
+    waterActiveCells = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                WaterCell* c = &waterGrid[z][y][x];
+                if (c->level > 0 || c->isSource || c->isDrain) {
+                    waterActiveCells++;
+                }
+            }
+        }
+    }
 }
 
 bool LoadWorld(const char* filename) {

@@ -1808,6 +1808,22 @@ int InspectSaveFile(int argc, char** argv) {
                 }
             }
         }
+        // Water statistics (from insp_waterCells, not the global waterGrid)
+        int waterWithLevel = 0, waterSources = 0, waterDrains = 0;
+        int waterFrozen = 0, waterUnstable = 0, waterPressured = 0;
+        for (int i = 0; i < totalCells; i++) {
+            WaterCell* c = &insp_waterCells[i];
+            if (c->level > 0) waterWithLevel++;
+            if (c->isSource) waterSources++;
+            if (c->isDrain) waterDrains++;
+            if (c->isFrozen) waterFrozen++;
+            if (!c->stable) waterUnstable++;
+            if (c->hasPressure) waterPressured++;
+        }
+        printf("\nWater: %d cells with water, %d unstable, %d sources, %d drains\n",
+               waterWithLevel, waterUnstable, waterSources, waterDrains);
+        printf("  Frozen: %d, Pressured: %d\n", waterFrozen, waterPressured);
+
         printf("\nTemperature: min=%d, max=%d\n", tempMin, tempMax);
         printf("  At 0C: %d cells (%.1f%%)\n", tempAt0, 100.0f * tempAt0 / totalCells);
         printf("  At 20C: %d cells (%.1f%%)\n", tempAt20, 100.0f * tempAt20 / totalCells);

@@ -28,7 +28,8 @@
 //   hasPressure:    1 bit
 //   pressureSourceZ: 4 bits (0-15)
 //   isFrozen:       1 bit
-//   (2 bits spare)
+//   pressureDirty:  1 bit
+//   (1 bit spare)
 typedef struct {
     uint16_t level          : 3;   // 0-7 water depth (0 = dry, 7 = full)
     uint16_t stable         : 1;   // true = skip processing (no recent changes)
@@ -37,6 +38,7 @@ typedef struct {
     uint16_t hasPressure    : 1;   // true = this water was placed under pressure (can push up)
     uint16_t pressureSourceZ: 4;   // z-level of the pressure source (water can rise to sourceZ - 1)
     uint16_t isFrozen       : 1;   // true = water is frozen (blocks flow, can be harvested as ice)
+    uint16_t pressureDirty  : 1;   // true = pressure BFS needs to run (water moved nearby)
 } WaterCell;
 
 // Water grid (same dimensions as main grid)

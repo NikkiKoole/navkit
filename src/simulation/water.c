@@ -51,7 +51,15 @@ void InitWater(void) {
 
 // Clear all water
 void ClearWater(void) {
-    memset(waterGrid, 0, sizeof(waterGrid));
+    // Initialize with stable=1 so empty cells are skipped in UpdateWater.
+    // WaterCell is a uint16_t bitfield: stable is bit 3, so value 0x0008.
+    WaterCell emptyStable = {0};
+    emptyStable.stable = 1;
+    uint16_t pattern;
+    memcpy(&pattern, &emptyStable, sizeof(pattern));
+    uint16_t* grid16 = (uint16_t*)waterGrid;
+    size_t count = sizeof(waterGrid) / sizeof(uint16_t);
+    for (size_t i = 0; i < count; i++) grid16[i] = pattern;
     waterUpdateCount = 0;
     waterEvapAccum = 0.0f;
     wetnessSyncAccum = 0.0f;
@@ -155,6 +163,7 @@ void SetWaterLevel(int x, int y, int z, int level) {
     }
     
     if (oldLevel != level) {
+        waterGrid[z][y][x].pressureDirty = 1;
         DestabilizeWater(x, y, z);
     }
 }
@@ -188,6 +197,7 @@ void SetWaterSource(int x, int y, int z, bool isSource) {
     }
     
     if (isSource) {
+        waterGrid[z][y][x].pressureDirty = 1;
         DestabilizeWater(x, y, z);
     }
 }
@@ -207,6 +217,7 @@ void SetWaterDrain(int x, int y, int z, bool isDrain) {
     }
     
     if (isDrain) {
+        waterGrid[z][y][x].pressureDirty = 1;
         DestabilizeWater(x, y, z);
     }
 }
@@ -277,6 +288,7 @@ static int TryFall(int x, int y, int z) {
     if (space <= 0) {
         // Cell below is full - create pressure (water wants to fall but can't)
         dst->hasPressure = true;
+        dst->pressureDirty = 1;
         dst->pressureSourceZ = z;
         DestabilizeWater(x, y, z - 1);
         return 0;
@@ -303,9 +315,13 @@ static int TryFall(int x, int y, int z) {
     // Falling water onto full water creates pressure
     if (dst->level == WATER_MAX_LEVEL) {
         dst->hasPressure = true;
+        dst->pressureDirty = 1;
         dst->pressureSourceZ = z;
     }
     
+    // Water moved — mark both cells pressure-dirty for nearby pressure recalc
+    src->pressureDirty = 1;
+    dst->pressureDirty = 1;
     DestabilizeWater(x, y, z);
     DestabilizeWater(x, y, z - 1);
     
@@ -360,6 +376,8 @@ static bool WaterTrySpread(int x, int y, int z) {
                 waterActiveCells++;
             }
             
+            cell->pressureDirty = 1;
+            neighbor->pressureDirty = 1;
             DestabilizeWater(x, y, z);
             DestabilizeWater(nx, ny, z);
             moved = true;
@@ -378,6 +396,8 @@ static bool WaterTrySpread(int x, int y, int z) {
                 waterActiveCells++;
             }
             
+            cell->pressureDirty = 1;
+            neighbor->pressureDirty = 1;
             DestabilizeWater(x, y, z);
             DestabilizeWater(nx, ny, z);
             moved = true;
@@ -462,9 +482,12 @@ static bool TryPressure(int x, int y, int z) {
                 // Propagate pressure info
                 if (current->level == WATER_MAX_LEVEL) {
                     current->hasPressure = true;
+                    current->pressureDirty = 1;
                     current->pressureSourceZ = cell->pressureSourceZ;
                 }
                 
+                cell->pressureDirty = 1;
+                current->pressureDirty = 1;
                 DestabilizeWater(x, y, z);
                 DestabilizeWater(pos.x, pos.y, pos.z);
                 
@@ -511,6 +534,7 @@ static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
         if (cell->level < WATER_MAX_LEVEL) {
             cell->level = WATER_MAX_LEVEL;
             cell->hasPressure = true;
+            cell->pressureDirty = 1;
             cell->pressureSourceZ = z;
             DestabilizeWater(x, y, z);
             moved = true;
@@ -543,9 +567,10 @@ static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
         if (WaterTrySpread(x, y, z)) moved = true;
     }
     
-    // Phase 3: Try pressure propagation (if full and pressurized)
-    if (cell->level >= WATER_MAX_LEVEL && cell->hasPressure) {
+    // Phase 3: Try pressure propagation (if full, pressurized, and dirty)
+    if (cell->level >= WATER_MAX_LEVEL && cell->hasPressure && cell->pressureDirty) {
         if (TryPressure(x, y, z)) moved = true;
+        cell->pressureDirty = 0;
     }
     
     // Sources refill AFTER spreading to maintain level 7
@@ -707,6 +732,7 @@ void FreezeWater(int x, int y, int z) {
     
     cell->isFrozen = true;
     cell->stable = true;  // Frozen water doesn't need processing
+    cell->pressureDirty = 1;
     DestabilizeWater(x, y, z);  // But neighbors might be affected
 }
 
@@ -720,6 +746,7 @@ void ThawWater(int x, int y, int z) {
     
     cell->isFrozen = false;
     cell->stable = false;  // Water can flow again
+    cell->pressureDirty = 1;
     DestabilizeWater(x, y, z);
 }
 

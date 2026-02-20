@@ -833,7 +833,11 @@ void NeedsTick(void) {
             float cellTemp = (float)GetTemperature(cx, cy, cz);
             bool exposed = IsExposedToSky(cx, cy, cz);
             float effectiveAmbient = GetWindChillTemp(cellTemp, weatherState.windStrength, exposed);
-            float metaboTarget = effectiveAmbient + balance.metabolicHeatBonus * m->hunger;
+            // Baseline body heat (even starving bodies generate some warmth)
+            // plus hunger-scaled metabolic bonus on top
+            float baseHeat = balance.baseMetabolicHeat;
+            float hungerHeat = balance.metabolicHeatBonus * m->hunger;
+            float metaboTarget = effectiveAmbient + baseHeat + hungerHeat;
             if (metaboTarget > balance.bodyTempNormal) metaboTarget = balance.bodyTempNormal;
             if (metaboTarget > effectiveAmbient) effectiveAmbient = metaboTarget;
 

@@ -33,15 +33,16 @@ void InitBalance(void) {
 
     // Body temperature
     balance.bodyTempNormal           = 37.0f;
-    balance.bodyTempCoolingRatePerGH =  3.0f;
+    balance.bodyTempCoolingRatePerGH =  2.0f;
     balance.bodyTempWarmingRatePerGH =  8.0f;
-    balance.metabolicHeatBonus       = 30.0f;
+    balance.baseMetabolicHeat        = 15.0f;
+    balance.metabolicHeatBonus       = 22.0f;
     balance.mildColdThreshold        = 35.0f;
     balance.moderateColdThreshold    = 33.0f;
-    balance.severeColdThreshold      = 30.0f;
+    balance.severeColdThreshold      = 32.0f;
     balance.coldSpeedPenaltyMin      =  0.6f;
-    balance.coldEnergyDrainMult      =  2.0f;
-    balance.hypothermiaDeathGH       =  4.0f;
+    balance.coldEnergyDrainMult      =  1.5f;
+    balance.hypothermiaDeathGH       =  8.0f;
     balance.heatThreshold            = 40.0f;
     balance.heatSpeedPenaltyMin      =  0.7f;
 
