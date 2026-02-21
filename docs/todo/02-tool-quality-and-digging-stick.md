@@ -444,27 +444,32 @@ Once the quality system + digging stick exist:
 
 Each "context" = one Claude conversation session focused on a coherent chunk of work. Estimated 5 contexts total.
 
-### Context 1: Quality data model + speed formula + unit tests
+### Context 1: Quality data model + speed formula + unit tests — COMPLETE ✅
+
+**Commit**: `ba69ce3` — Tool quality framework: data model, speed formula, IF_TOOL flag (save v65)
 
 **Goal**: The data layer exists and the math works. No behavior changes yet — movers still ignore tools.
 
+**Delivered**:
 - New files: `tool_quality.h`, `tool_quality.c`, `tests/test_tool_quality.c`
-- Quality enum, ItemQuality struct, MAX_ITEM_QUALITIES
-- `GetItemQualityLevel(itemType, qualityType)` lookup function
-- Quality assignments for existing items (ITEM_ROCK → hammer:1, ITEM_SHARP_STONE → cutting:1 + fine:1)
-- `IF_TOOL` flag (bit 7)
-- `equippedTool` field on Mover struct (-1 = none)
-- `toolRequirementsEnabled` global toggle
-- Speed formula function: `GetToolSpeedMultiplier(qualityType, toolLevel, minLevel, isSoft)`
-- Job-to-quality mapping table (hardcoded: MINE rock → HAMMER min 2, MINE soil → DIG soft, CHOP → CUT min 1, etc.)
-- Save version bump to v65, migration for equippedTool (-1 default) in saveload.c + inspect.c
-- Inspector updates (`inspect.c`):
-  - `--mover N` shows equipped tool name + qualities (e.g. "Equipped: Stone Pick [dig:2, hammer:2]")
-  - `--items` or item summary shows tool qualities for IF_TOOL items
-  - `--audit` gets new check: equippedTool points to valid active item with correct reservedBy
+- Quality enum (CUTTING, HAMMERING, DIGGING, SAWING, FINE), ItemQuality struct, MAX_ITEM_QUALITIES=3
+- `GetItemQualityLevel(itemType, qualityType)` lookup from static table
+- `ItemHasAnyQuality(itemType)` helper
+- `GetToolSpeedMultiplier(toolLevel, minLevel, isSoft)` — soft/hard gate model
+- Quality assignments: ITEM_ROCK → hammer:1, ITEM_SHARP_STONE → cutting:1 + fine:1
+- `IF_TOOL` flag (bit 7) on item_defs.h, `ItemIsTool()` macro
+- `equippedTool` field on Mover struct (-1 = none), initialized in `InitMover()`
+- `toolRequirementsEnabled` global toggle (saved/loaded with game settings)
+- Save version bump to v65, `MoverV64` legacy struct, migration in saveload.c + inspect.c
+- Inspector: `--mover N` shows equipped tool name, summary shows tools toggle status
 - Unity includes for new files
-- **Unit tests**: speed formula math (all combos of soft/hard/bare/tool), quality lookups, toggle bypass
-- **Stories covered**: none yet (data only, no behavior)
+- Makefile: `test_tool_quality` target added to test suite
+- **31 tests, 51 assertions**: quality lookups, IF_TOOL flag, speed formula (soft/hard/bare/tool), mover init, game scenarios
+
+**Deferred to Context 2**:
+- Job-to-quality mapping table (which job type needs which quality)
+- Inspector `--audit` check for equippedTool validity (needs tool seeking first)
+- Inspector item quality display (nice-to-have, not blocking)
 
 ### Context 2: Speed scaling wired into jobs + hard gates
 
@@ -520,7 +525,7 @@ Each "context" = one Claude conversation session focused on a coherent chunk of 
 
 | Context | Focus | Stories | Key risk |
 |---------|-------|---------|----------|
-| 1 | Data model + math | (unit tests only) | Low — pure data, no behavior change |
+| 1 | Data model + math | (unit tests only) | ✅ DONE — `ba69ce3` |
 | 2 | Speed + hard gates | 1-5, 9 | Medium — touching job execution core |
 | 3 | Tool items + recipes | 11 | Low — follows existing item/recipe patterns |
 | 4 | Tool seeking + lifecycle | 6-8, 12 | **High** — new job steps, reservation complexity |
