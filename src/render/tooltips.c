@@ -1046,6 +1046,28 @@ static void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
                         }
                     }
                     
+                    // Check input 3 if needed
+                    if (recipe->inputType3 != ITEM_NONE) {
+                        bool hasInput3 = false;
+                        for (int i = 0; i < itemHighWaterMark; i++) {
+                            Item* item = &items[i];
+                            if (!item->active || item->reservedBy != -1) continue;
+                            if ((int)item->z != ws->z) continue;
+                            if (item->type == recipe->inputType3) {
+                                hasInput3 = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!hasInput3 && lineCount < 28) {
+                            snprintf(lines[lineCount], sizeof(lines[0]), 
+                                "  Waiting for: %s (x%d)", 
+                                ItemName(recipe->inputType3), recipe->inputCount3);
+                            lineColors[lineCount] = (Color){255, 200, 100, 255};
+                            lineCount++;
+                        }
+                    }
+
                     // Check fuel if needed
                     if (recipe->fuelRequired > 0) {
                         bool hasFuel = WorkshopHasFuelForRecipe(ws, 100);
@@ -1135,24 +1157,41 @@ static void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
                         if (item->type == recipe->inputType2) { hasInput2 = true; break; }
                     }
                 }
+                bool hasInput3 = (recipe->inputType3 == ITEM_NONE);  // true if not needed
+                if (!hasInput3) {
+                    for (int i = 0; i < itemHighWaterMark; i++) {
+                        Item* item = &items[i];
+                        if (!item->active) continue;
+                        if ((int)item->z != ws->z) continue;
+                        if (item->type == recipe->inputType3) { hasInput3 = true; break; }
+                    }
+                }
                 bool needsFuel = recipe->fuelRequired > 0;
                 bool hasFuel = !needsFuel || WorkshopHasFuelForRecipe(ws, 100);
 
                 // Build "Needs:" string with missing items
-                if (!hasInput || !hasInput2 || !hasFuel) {
+                if (!hasInput || !hasInput2 || !hasInput3 || !hasFuel) {
                     char needsStr[128] = "    Needs:";
+                    bool hasPrev = false;
                     if (!hasInput) {
                         strcat(needsStr, " ");
                         const char* inputName = (recipe->inputItemMatch == ITEM_MATCH_ANY_FUEL)
                             ? "Any Fuel" : ItemName(recipe->inputType);
                         strcat(needsStr, inputName);
+                        hasPrev = true;
                     }
                     if (!hasInput2) {
-                        strcat(needsStr, !hasInput ? " +" : " ");
+                        strcat(needsStr, hasPrev ? " +" : " ");
                         strcat(needsStr, ItemName(recipe->inputType2));
+                        hasPrev = true;
+                    }
+                    if (!hasInput3) {
+                        strcat(needsStr, hasPrev ? " +" : " ");
+                        strcat(needsStr, ItemName(recipe->inputType3));
+                        hasPrev = true;
                     }
                     if (!hasFuel) {
-                        strcat(needsStr, (!hasInput || !hasInput2) ? " + fuel" : " fuel");
+                        strcat(needsStr, hasPrev ? " + fuel" : " fuel");
                     }
                     snprintf(lines[lineCount], sizeof(lines[0]), "%s", needsStr);
                     lineColors[lineCount] = (Color){255, 120, 120, 255};
@@ -1208,7 +1247,12 @@ static void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
             } else {
                 snprintf(outputStr, sizeof(outputStr), "%s", ItemName(recipes[r].outputType));
             }
-            if (recipes[r].inputType2 != ITEM_NONE) {
+            if (recipes[r].inputType3 != ITEM_NONE) {
+                snprintf(lines[lineCount], sizeof(lines[0]), " %d: %s (%s+%s+%s -> %s)",
+                    r + 1, recipes[r].name, inputName,
+                    ItemName(recipes[r].inputType2),
+                    ItemName(recipes[r].inputType3), outputStr);
+            } else if (recipes[r].inputType2 != ITEM_NONE) {
                 snprintf(lines[lineCount], sizeof(lines[0]), " %d: %s (%s+%s -> %s)",
                     r + 1, recipes[r].name, inputName,
                     ItemName(recipes[r].inputType2), outputStr);

@@ -1632,6 +1632,486 @@ describe(story5_regression_no_tool) {
     }
 }
 
+// ===========================================================================
+// Story 10: Full bootstrap — knap, craft digging stick, dig soil (Context 5)
+// ===========================================================================
+
+static bool g_sharpStoneFound = false;
+static int g_sharpStoneIdx = -1;
+
+static bool SharpStoneExists(void) {
+    for (int i = 0; i < MAX_ITEMS; i++) {
+        if (items[i].active && items[i].type == ITEM_SHARP_STONE) {
+            g_sharpStoneFound = true;
+            g_sharpStoneIdx = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool g_diggingStickFound = false;
+static int g_diggingStickIdx = -1;
+
+static bool DiggingStickExists(void) {
+    for (int i = 0; i < MAX_ITEMS; i++) {
+        if (items[i].active && items[i].type == ITEM_DIGGING_STICK) {
+            g_diggingStickFound = true;
+            g_diggingStickIdx = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+describe(story10_full_bootstrap) {
+    it("knap sharp stone, craft digging stick, dig soil — full progression chain") {
+        toolRequirementsEnabled = true;
+
+        // 16x16 flat grid
+        InitTestGridFromAscii(
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n");
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+        InitDesignations();
+
+        // Stone wall at (3,5) for knapping
+        grid[0][5][3] = CELL_WALL;
+        SetWallMaterial(3, 5, 0, MAT_GRANITE);
+        SetWallNatural(3, 5, 0);
+
+        // Dirt wall at (12,5) to dig later
+        grid[0][5][12] = CELL_WALL;
+        SetWallMaterial(12, 5, 0, MAT_DIRT);
+        SetWallNatural(12, 5, 0);
+
+        // Carpenter workshop at (7,3) — 3x3 template ".O." / "#X#" / "..."
+        // Output tile at (8,3), work tile at (8,4)
+        int wsIdx = CreateWorkshop(7, 3, 0, WORKSHOP_CARPENTER);
+        expect(wsIdx >= 0);
+
+        // Bill: recipe index 2 = "Craft Digging Stick" (1x sticks, requires cutting:1)
+        int billIdx = AddBill(wsIdx, 2, BILL_DO_X_TIMES, 1);
+        expect(billIdx >= 0);
+
+        // Stockpile for output — required by WorkGiver_Craft storage check
+        int sp = CreateStockpile(13, 1, 0, 2, 2);
+        SetStockpileFilter(sp, ITEM_DIGGING_STICK, true);
+
+        // Rock on ground at (2,5) — knapping input
+        int rockIdx = SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                5 * CELL_SIZE + CELL_SIZE * 0.5f, 0, ITEM_ROCK);
+        items[rockIdx].state = ITEM_ON_GROUND;
+        items[rockIdx].reservedBy = -1;
+
+        // Sticks on ground at (7,2) — crafting input
+        int sticksIdx = SpawnItem(7 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                  2 * CELL_SIZE + CELL_SIZE * 0.5f, 0, ITEM_STICKS);
+        items[sticksIdx].state = ITEM_ON_GROUND;
+        items[sticksIdx].reservedBy = -1;
+
+        // Mover at (1,5), no tool
+        Point goal = {1, 5, 0};
+        InitMover(&movers[0], 1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, MOVER_SPEED);
+        moverCount = 1;
+        movers[0].equippedTool = -1;
+
+        // ---- PHASE 1: Knap sharp stone ----
+        bool desigOk = DesignateKnap(3, 5, 0);
+        expect(desigOk == true);
+
+        g_sharpStoneFound = false;
+        g_sharpStoneIdx = -1;
+        int knapTicks = RunSimUntil(SharpStoneExists, 5000);
+        expect(g_sharpStoneFound == true);
+        if (test_verbose) {
+            printf("  Phase 1 (knap): sharp stone created at tick %d\n", knapTicks);
+        }
+
+        // Stone wall should still exist (knapping doesn't consume it)
+        expect(grid[0][5][3] == CELL_WALL);
+
+        // ---- PHASE 2: Craft digging stick ----
+        // The carpenter bill is already queued. AssignJobs will pick it up.
+        // Mover needs cutting:1 → should seek the sharp stone as a tool.
+        g_diggingStickFound = false;
+        g_diggingStickIdx = -1;
+        int craftTicks = RunSimUntil(DiggingStickExists, 10000);
+        expect(g_diggingStickFound == true);
+        if (test_verbose) {
+            printf("  Phase 2 (craft): digging stick created at tick %d\n", craftTicks);
+        }
+
+        // Mover should have the sharp stone equipped (used as tool for crafting)
+        expect(movers[0].equippedTool >= 0);
+        expect(items[movers[0].equippedTool].type == ITEM_SHARP_STONE);
+
+        // ---- PHASE 3: Dig soil with digging stick ----
+        // Designate the dirt wall for mining
+        DesignateMine(12, 5, 0);
+
+        // Mover currently holds sharp stone (cutting:1) but needs digging quality.
+        // Digging stick (dig:1) is on the ground at the output tile.
+        // For soft soil mining, bare hands work at 0.5x.
+        // If mover seeks digging stick, it gets 1.0x.
+        g_wallCheckX = 12; g_wallCheckY = 5;
+        int mineTicks = RunSimUntil(WallIsGone, 8000);
+        expect(grid[0][5][12] != CELL_WALL);
+        if (test_verbose) {
+            printf("  Phase 3 (mine): dirt wall removed at tick %d\n", mineTicks);
+        }
+
+        // Verify the full chain completed
+        expect(g_sharpStoneFound == true);
+        expect(g_diggingStickFound == true);
+        expect(grid[0][5][12] != CELL_WALL);
+    }
+}
+
+// ===========================================================================
+// Edge case: Soft job proceeds bare-handed when all tools reserved (Context 5)
+// ===========================================================================
+describe(edge_soft_job_no_tool_available) {
+    it("mover mines dirt bare-handed when only tool is reserved") {
+        toolRequirementsEnabled = true;
+
+        SetupMiningTest(5, 3, MAT_DIRT, 4, 3);
+
+        // Spawn a second mover that holds the only digging tool
+        Point goal2 = {8, 3, 0};
+        InitMover(&movers[1], 8 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal2, MOVER_SPEED);
+        moverCount = 2;
+
+        int stickIdx = SpawnItem(movers[1].x, movers[1].y, 0, ITEM_DIGGING_STICK);
+        items[stickIdx].state = ITEM_CARRIED;
+        items[stickIdx].reservedBy = 1;
+        movers[1].equippedTool = stickIdx;
+
+        // First mover has no tool
+        movers[0].equippedTool = -1;
+
+        DesignateMine(5, 3, 0);
+
+        // Run sim — mover 0 should still mine dirt bare-handed (soft job, 0.5x)
+        g_wallCheckX = 5; g_wallCheckY = 3;
+        int ticks = RunSimUntil(WallIsGone, 3000);
+        expect(grid[0][3][5] != CELL_WALL);
+
+        // Mover 0 did the work without a tool
+        expect(movers[0].equippedTool == -1);
+
+        if (test_verbose) {
+            printf("  Bare-handed mining completed at tick %d (soft job, no tool available)\n", ticks);
+        }
+    }
+}
+
+// ===========================================================================
+// Edge case: Multiple movers competing for one tool (Context 5)
+// ===========================================================================
+describe(edge_tool_contention) {
+    it("two movers, one tool — only one mover ever holds the tool at a time") {
+        toolRequirementsEnabled = true;
+
+        InitTestGridFromAscii(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n");
+
+        // Two trees
+        grid[0][3][5] = CELL_TREE_TRUNK;
+        grid[0][3][8] = CELL_TREE_TRUNK;
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+        InitDesignations();
+
+        // Mover 0 at (1,3)
+        Point goal0 = {1, 3, 0};
+        InitMover(&movers[0], 1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal0, MOVER_SPEED);
+        movers[0].equippedTool = -1;
+
+        // Mover 1 at (1,6)
+        Point goal1 = {1, 6, 0};
+        InitMover(&movers[1], 1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  6 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal1, MOVER_SPEED);
+        movers[1].equippedTool = -1;
+        moverCount = 2;
+
+        // Only one sharp stone
+        int ssIdx = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f,
+                              3 * CELL_SIZE + CELL_SIZE * 0.5f, 0, ITEM_SHARP_STONE);
+        items[ssIdx].state = ITEM_ON_GROUND;
+        items[ssIdx].reservedBy = -1;
+
+        // Designate both trees for chopping (hard-gated: needs cutting:1)
+        DesignateChop(5, 3, 0);
+        DesignateChop(8, 3, 0);
+
+        // Run sim — verify that at no point do both movers hold the tool
+        bool bothHeldTool = false;
+        for (int i = 0; i < 5000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+
+            // Check invariant: at most one mover has the tool
+            if (movers[0].equippedTool == ssIdx && movers[1].equippedTool == ssIdx) {
+                bothHeldTool = true;
+            }
+        }
+
+        // Invariant: tool was never held by both movers simultaneously
+        expect(bothHeldTool == false);
+
+        // Both trees should eventually be chopped (one mover does all the work)
+        int treesChopped = 0;
+        if (grid[0][3][5] != CELL_TREE_TRUNK) treesChopped++;
+        if (grid[0][3][8] != CELL_TREE_TRUNK) treesChopped++;
+        expect(treesChopped == 2);
+
+        // Exactly one mover should hold the tool
+        bool mover0HasTool = (movers[0].equippedTool == ssIdx);
+        bool mover1HasTool = (movers[1].equippedTool == ssIdx);
+        expect(mover0HasTool || mover1HasTool);
+
+        if (test_verbose) {
+            printf("  Trees chopped: %d, Mover 0 tool: %d, Mover 1 tool: %d\n",
+                   treesChopped, movers[0].equippedTool, movers[1].equippedTool);
+        }
+    }
+}
+
+// ===========================================================================
+// Tri-input crafting: stone hammer requires rock + sticks + cordage
+// ===========================================================================
+static bool g_stoneHammerFound;
+static int g_stoneHammerIdx;
+static bool StoneHammerExists(void) {
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (items[i].active && items[i].type == ITEM_STONE_HAMMER) {
+            g_stoneHammerFound = true;
+            g_stoneHammerIdx = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+describe(tri_input_craft_stone_hammer) {
+    it("crafts stone hammer from rock + sticks + cordage (3 inputs)") {
+        toolRequirementsEnabled = true;
+
+        InitTestGridFromAscii(
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n");
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+        InitDesignations();
+
+        // Carpenter workshop at (7,3)
+        int wsIdx = CreateWorkshop(7, 3, 0, WORKSHOP_CARPENTER);
+        expect(wsIdx >= 0);
+
+        // Bill: recipe index 3 = "Craft Stone Hammer" (rock + sticks + cordage, requires cutting:1)
+        int billIdx = AddBill(wsIdx, 3, BILL_DO_X_TIMES, 1);
+        expect(billIdx >= 0);
+
+        // Output stockpile for stone hammer
+        int sp = CreateStockpile(13, 1, 0, 2, 2);
+        SetStockpileFilter(sp, ITEM_STONE_HAMMER, true);
+
+        // Input items on ground near workshop
+        int rockIdx = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                3 * CELL_SIZE + CELL_SIZE * 0.5f, 0, ITEM_ROCK);
+        items[rockIdx].state = ITEM_ON_GROUND;
+        items[rockIdx].reservedBy = -1;
+
+        int sticksIdx = SpawnItem(6 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                  2 * CELL_SIZE + CELL_SIZE * 0.5f, 0, ITEM_STICKS);
+        items[sticksIdx].state = ITEM_ON_GROUND;
+        items[sticksIdx].reservedBy = -1;
+
+        int cordageIdx = SpawnItem(9 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                   3 * CELL_SIZE + CELL_SIZE * 0.5f, 0, ITEM_CORDAGE);
+        items[cordageIdx].state = ITEM_ON_GROUND;
+        items[cordageIdx].reservedBy = -1;
+
+        // Sharp stone for the cutting:1 requirement
+        int ssIdx = SpawnItem(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                              4 * CELL_SIZE + CELL_SIZE * 0.5f, 0, ITEM_SHARP_STONE);
+        items[ssIdx].state = ITEM_ON_GROUND;
+        items[ssIdx].reservedBy = -1;
+
+        // Mover at (2,3), no tool
+        Point goal = {2, 3, 0};
+        InitMover(&movers[0], 2 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, MOVER_SPEED);
+        moverCount = 1;
+        movers[0].equippedTool = -1;
+
+        // Run sim — hammer should be crafted
+        g_stoneHammerFound = false;
+        g_stoneHammerIdx = -1;
+        int craftTicks = RunSimUntil(StoneHammerExists, 10000);
+        expect(g_stoneHammerFound == true);
+        if (test_verbose) {
+            printf("  Stone hammer crafted at tick %d\n", craftTicks);
+        }
+
+        // All 3 inputs should be consumed (slots may be reused by SpawnItem, so
+        // check that the original item type is gone or the slot was reused)
+        expect(!items[rockIdx].active || items[rockIdx].type != ITEM_ROCK);
+        expect(!items[sticksIdx].active || items[sticksIdx].type != ITEM_STICKS);
+        expect(!items[cordageIdx].active || items[cordageIdx].type != ITEM_CORDAGE);
+    }
+
+    it("cancel craft releases all 3 input reservations") {
+        toolRequirementsEnabled = true;
+
+        InitTestGridFromAscii(
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n");
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+        InitDesignations();
+
+        // Carpenter workshop at (7,3)
+        int wsIdx = CreateWorkshop(7, 3, 0, WORKSHOP_CARPENTER);
+        expect(wsIdx >= 0);
+
+        // Bill: stone hammer
+        int billIdx = AddBill(wsIdx, 3, BILL_DO_X_TIMES, 1);
+        expect(billIdx >= 0);
+
+        // Output stockpile
+        int sp = CreateStockpile(13, 1, 0, 2, 2);
+        SetStockpileFilter(sp, ITEM_STONE_HAMMER, true);
+
+        // Input items
+        int rockIdx = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                3 * CELL_SIZE + CELL_SIZE * 0.5f, 0, ITEM_ROCK);
+        items[rockIdx].state = ITEM_ON_GROUND;
+        items[rockIdx].reservedBy = -1;
+
+        int sticksIdx = SpawnItem(6 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                  2 * CELL_SIZE + CELL_SIZE * 0.5f, 0, ITEM_STICKS);
+        items[sticksIdx].state = ITEM_ON_GROUND;
+        items[sticksIdx].reservedBy = -1;
+
+        int cordageIdx = SpawnItem(9 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                   3 * CELL_SIZE + CELL_SIZE * 0.5f, 0, ITEM_CORDAGE);
+        items[cordageIdx].state = ITEM_ON_GROUND;
+        items[cordageIdx].reservedBy = -1;
+
+        // Sharp stone tool
+        int ssIdx = SpawnItem(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                              4 * CELL_SIZE + CELL_SIZE * 0.5f, 0, ITEM_SHARP_STONE);
+        items[ssIdx].state = ITEM_ON_GROUND;
+        items[ssIdx].reservedBy = -1;
+
+        // Mover
+        Point goal = {2, 3, 0};
+        InitMover(&movers[0], 2 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, MOVER_SPEED);
+        moverCount = 1;
+        movers[0].equippedTool = -1;
+
+        // Run a few ticks so the job gets assigned and items get reserved
+        for (int i = 0; i < 50; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+
+        // Verify mover has a craft job
+        expect(movers[0].currentJobId >= 0);
+        Job* job = GetJob(movers[0].currentJobId);
+        expect(job != NULL);
+        expect(job->type == JOBTYPE_CRAFT);
+
+        // Cancel the job
+        CancelJob(&movers[0], 0);
+
+        // All items should be unreserved
+        expect(items[rockIdx].reservedBy == -1);
+        expect(items[sticksIdx].reservedBy == -1);
+        expect(items[cordageIdx].reservedBy == -1);
+    }
+}
+
 int main(int argc, char* argv[]) {
     if (argc > 1 && strcmp(argv[1], "-v") == 0) test_verbose = true;
     if (argc > 1 && strcmp(argv[1], "-q") == 0) set_quiet_mode(1);
@@ -1666,6 +2146,10 @@ int main(int argc, char* argv[]) {
     test(story12_death_drops_tool);
     test(cancel_mid_fetch);
     test(story5_regression_no_tool);
+    test(story10_full_bootstrap);
+    test(edge_soft_job_no_tool_available);
+    test(edge_tool_contention);
+    test(tri_input_craft_stone_hammer);
 
     return summary();
 }

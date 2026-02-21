@@ -73,9 +73,10 @@ static inline const char* JobTypeName(int type) {
 #define STEP_WORKING           1  // Dig/Build: performing work
 #define STEP_PLANTING          2  // PlantSapling: working after carrying
 
-// Craft job steps (10-step state machine)
+// Craft job steps (13-step state machine)
 // Steps 4-6 only used when recipe has second input
-// Steps 7-9 only used when recipe needs fuel
+// Steps 7-9 only used when recipe has third input
+// Steps 10-12 only used when recipe needs fuel
 #define CRAFT_STEP_MOVING_TO_INPUT   0  // Walking to first input item
 #define CRAFT_STEP_PICKING_UP        1  // At first input, picking up
 #define CRAFT_STEP_MOVING_TO_WORKSHOP 2 // Carrying first input to workshop
@@ -83,13 +84,16 @@ static inline const char* JobTypeName(int type) {
 #define CRAFT_STEP_MOVING_TO_INPUT2  4  // Walking to second input (after depositing first)
 #define CRAFT_STEP_PICKING_UP_INPUT2 5  // At second input, picking up
 #define CRAFT_STEP_CARRYING_INPUT2   6  // Carrying second input to workshop
-#define CRAFT_STEP_MOVING_TO_FUEL    7  // Walking to fuel item
-#define CRAFT_STEP_PICKING_UP_FUEL   8  // At fuel item, picking up
-#define CRAFT_STEP_CARRYING_FUEL     9  // Carrying fuel to workshop
+#define CRAFT_STEP_MOVING_TO_INPUT3  7  // Walking to third input
+#define CRAFT_STEP_PICKING_UP_INPUT3 8  // At third input, picking up
+#define CRAFT_STEP_CARRYING_INPUT3   9  // Carrying third input to workshop
+#define CRAFT_STEP_MOVING_TO_FUEL   10  // Walking to fuel item
+#define CRAFT_STEP_PICKING_UP_FUEL  11  // At fuel item, picking up
+#define CRAFT_STEP_CARRYING_FUEL    12  // Carrying fuel to workshop
 
 // Tool fetch step (shared by designation and craft jobs)
 // High value to avoid collision with existing step numbering
-#define STEP_FETCHING_TOOL          10 // Walking to tool item, equips on arrival
+#define STEP_FETCHING_TOOL          13 // Walking to tool item, equips on arrival
 
 // Job struct - contains all data for a single job
 typedef struct {
@@ -126,6 +130,9 @@ typedef struct {
 
     // Second input item (for craft jobs with two inputs)
     int targetItem2;  // reserved second input item index, -1 = none
+
+    // Third input item (for craft jobs with three inputs)
+    int targetItem3;  // reserved third input item index, -1 = none
 
     // Tool item (for jobs that need a tool fetch before starting)
     int toolItem;  // reserved tool item to pick up, -1 = none/already equipped

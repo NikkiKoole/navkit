@@ -62,6 +62,8 @@ typedef struct {
     int inputCount;
     ItemType inputType2;         // second input type (ITEM_NONE = no second input)
     int inputCount2;             // count of second input
+    ItemType inputType3;         // third input type (ITEM_NONE = no third input)
+    int inputCount3;             // count of third input
     ItemType outputType;
     int outputCount;
     ItemType outputType2;        // second output type (ITEM_NONE = no second output)

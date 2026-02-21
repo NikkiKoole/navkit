@@ -537,6 +537,7 @@ int CreateJob(JobType type) {
     job->carryingItem = -1;
     job->fuelItem = -1;
     job->targetItem2 = -1;
+    job->targetItem3 = -1;
     job->toolItem = -1;
 
     // Add to active list
@@ -1543,6 +1544,10 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
                 if (recipe->inputType2 != ITEM_NONE && job->targetItem2 >= 0) {
                     job->step = CRAFT_STEP_MOVING_TO_INPUT2;
                 }
+                // Check if we need to fetch a third input (skip input2)
+                else if (recipe->inputType3 != ITEM_NONE && job->targetItem3 >= 0) {
+                    job->step = CRAFT_STEP_MOVING_TO_INPUT3;
+                }
                 // Otherwise, check if recipe needs fuel
                 else if (recipe->fuelRequired > 0 && job->fuelItem >= 0) {
                     job->step = CRAFT_STEP_MOVING_TO_FUEL;
@@ -1654,6 +1659,123 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
                 }
                 // Store second input in targetItem2 for consumption
                 job->targetItem2 = job->carryingItem;
+                job->carryingItem = -1;
+
+                // Check if we need to fetch a third input
+                if (recipe->inputType3 != ITEM_NONE && job->targetItem3 >= 0) {
+                    job->step = CRAFT_STEP_MOVING_TO_INPUT3;
+                }
+                // Check if we need fuel
+                else if (recipe->fuelRequired > 0 && job->fuelItem >= 0) {
+                    job->step = CRAFT_STEP_MOVING_TO_FUEL;
+                } else {
+                    job->step = CRAFT_STEP_WORKING;
+                    job->progress = 0.0f;
+                    job->workRequired = recipe->workRequired;
+                    mover->timeWithoutProgress = 0.0f;
+                }
+            }
+            break;
+        }
+
+        case CRAFT_STEP_MOVING_TO_INPUT3: {
+            // Walk to third input item
+            int item3Idx = job->targetItem3;
+            if (item3Idx < 0 || !items[item3Idx].active) {
+                return JOBRUN_FAIL;
+            }
+            Item* item3 = &items[item3Idx];
+            if (item3->reservedBy != moverIdx) {
+                return JOBRUN_FAIL;
+            }
+
+            int item3CellX = (int)(item3->x / CELL_SIZE);
+            int item3CellY = (int)(item3->y / CELL_SIZE);
+            int item3CellZ = (int)(item3->z);
+
+            if (mover->goal.x != item3CellX || mover->goal.y != item3CellY || mover->goal.z != item3CellZ) {
+                mover->goal = (Point){item3CellX, item3CellY, item3CellZ};
+                mover->needsRepath = true;
+            }
+
+            float dx3m = mover->x - item3->x;
+            float dy3m = mover->y - item3->y;
+            float distSq3 = dx3m*dx3m + dy3m*dy3m;
+
+            TryFinalApproach(mover, item3->x, item3->y, item3CellX, item3CellY, PICKUP_RADIUS);
+
+            if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+                SetItemUnreachableCooldown(item3Idx, UNREACHABLE_COOLDOWN);
+                return JOBRUN_FAIL;
+            }
+
+            if (distSq3 < PICKUP_RADIUS * PICKUP_RADIUS) {
+                job->step = CRAFT_STEP_PICKING_UP_INPUT3;
+            }
+            break;
+        }
+
+        case CRAFT_STEP_PICKING_UP_INPUT3: {
+            int item3Idx = job->targetItem3;
+            if (item3Idx < 0 || !items[item3Idx].active) {
+                return JOBRUN_FAIL;
+            }
+            Item* item3 = &items[item3Idx];
+
+            // Take only what the recipe needs (splits stack if necessary)
+            item3Idx = TakeFromStockpileSlot(item3Idx, recipe->inputCount3);
+            if (item3Idx < 0) return JOBRUN_FAIL;
+            item3 = &items[item3Idx];
+
+            // Extract from container if needed
+            if (item3->containedIn != -1) {
+                ExtractItemFromContainer(item3Idx);
+            }
+
+            item3->state = ITEM_CARRIED;
+            job->carryingItem = item3Idx;
+            job->targetItem3 = -1;  // Clear target now that we're carrying
+            job->step = CRAFT_STEP_CARRYING_INPUT3;
+            break;
+        }
+
+        case CRAFT_STEP_CARRYING_INPUT3: {
+            // Walk back to workshop work tile
+            if (mover->goal.x != ws->workTileX || mover->goal.y != ws->workTileY || mover->goal.z != ws->z) {
+                mover->goal = (Point){ws->workTileX, ws->workTileY, ws->z};
+                mover->needsRepath = true;
+            }
+
+            // Update carried item position
+            if (job->carryingItem >= 0 && items[job->carryingItem].active) {
+                items[job->carryingItem].x = mover->x;
+                items[job->carryingItem].y = mover->y;
+                items[job->carryingItem].z = mover->z;
+            }
+
+            float targetX3 = ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f;
+            float targetY3 = ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f;
+            float dx3c = mover->x - targetX3;
+            float dy3c = mover->y - targetY3;
+            float distSq3c = dx3c*dx3c + dy3c*dy3c;
+
+            TryFinalApproach(mover, targetX3, targetY3, ws->workTileX, ws->workTileY, PICKUP_RADIUS);
+
+            if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+                return JOBRUN_FAIL;
+            }
+
+            if (distSq3c < PICKUP_RADIUS * PICKUP_RADIUS) {
+                // Deposit third input at workshop
+                if (job->carryingItem >= 0 && items[job->carryingItem].active) {
+                    Item* carried = &items[job->carryingItem];
+                    carried->state = ITEM_ON_GROUND;
+                    carried->x = ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f;
+                    carried->y = ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f;
+                    carried->z = (float)ws->z;
+                }
+                // Store third input in targetItem3 for consumption
+                job->targetItem3 = job->carryingItem;
                 job->carryingItem = -1;
 
                 // Check if we need fuel
@@ -1806,6 +1928,12 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
                     DeleteItem(job->targetItem2);
                 }
                 job->targetItem2 = -1;
+
+                // Consume third input item (if any)
+                if (job->targetItem3 >= 0 && items[job->targetItem3].active) {
+                    DeleteItem(job->targetItem3);
+                }
+                job->targetItem3 = -1;
 
                 // Consume fuel item (if any - don't preserve its material)
                 if (job->fuelItem >= 0 && items[job->fuelItem].active) {
@@ -2454,6 +2582,15 @@ void CancelJob(void* moverPtr, int moverIdx) {
             }
         }
 
+        // Release third input item reservation (for tri-input craft jobs)
+        if (job->targetItem3 >= 0 && items[job->targetItem3].active) {
+            if (items[job->targetItem3].state == ITEM_CARRIED) {
+                SafeDropItemNearMover(job->targetItem3, m);
+            } else {
+                items[job->targetItem3].reservedBy = -1;
+            }
+        }
+
         // Release fuel item reservation (for craft jobs with fuel)
         if (job->fuelItem >= 0 && items[job->fuelItem].active) {
             // Only safe-drop if carried; otherwise just release reservation
@@ -2578,6 +2715,15 @@ void UnassignJob(void* moverPtr, int moverIdx) {
                 SafeDropItemNearMover(job->targetItem2, m);
             } else {
                 items[job->targetItem2].reservedBy = -1;
+            }
+        }
+
+        // Release third input item reservation
+        if (job->targetItem3 >= 0 && items[job->targetItem3].active) {
+            if (items[job->targetItem3].state == ITEM_CARRIED) {
+                SafeDropItemNearMover(job->targetItem3, m);
+            } else {
+                items[job->targetItem3].reservedBy = -1;
             }
         }
 
@@ -4489,6 +4635,51 @@ int WorkGiver_Craft(int moverIdx) {
                 }
             }
 
+            // Find third input item if recipe requires it
+            int item3Idx = -1;
+            if (recipe->inputType3 != ITEM_NONE && recipe->inputCount3 > 0) {
+                int best3DistSq = searchRadius * searchRadius;
+                for (int i = 0; i < itemHighWaterMark; i++) {
+                    Item* item3 = &items[i];
+                    if (!item3->active) continue;
+                    if (item3->state == ITEM_IN_CONTAINER) continue;
+                    if (item3->type != recipe->inputType3) continue;
+                    if (item3->reservedBy != -1) continue;
+                    if (item3->unreachableCooldown > 0.0f) continue;
+                    if (i == itemIdx) continue;      // Can't use same item as first input
+                    if (i == item2Idx) continue;     // Can't use same item as second input
+
+                    int item3TileX = (int)(item3->x / CELL_SIZE);
+                    int item3TileY = (int)(item3->y / CELL_SIZE);
+                    int dx3 = item3TileX - ws->x;
+                    int dy3 = item3TileY - ws->y;
+                    int dist3Sq = dx3 * dx3 + dy3 * dy3;
+                    if (dist3Sq > best3DistSq) continue;
+
+                    best3DistSq = dist3Sq;
+                    item3Idx = i;
+                }
+
+                // Fallback: search inside containers for third input
+                if (item3Idx < 0) {
+                    int containerIdx = -1;
+                    item3Idx = FindItemInContainers(recipe->inputType3, ws->z, ws->x, ws->y,
+                                                    searchRadius, itemIdx, NULL, NULL, &containerIdx);
+                    // Also exclude item2Idx
+                    if (item3Idx == item2Idx) item3Idx = -1;
+                }
+
+                if (item3Idx < 0) continue;  // Third input not available
+
+                // Verify third input is reachable from workshop
+                Point item3Cell = { (int)(items[item3Idx].x / CELL_SIZE), (int)(items[item3Idx].y / CELL_SIZE), (int)items[item3Idx].z };
+                int item3PathLen = FindPath(moverPathAlgorithm, workCell, item3Cell, tempPath, MAX_PATH);
+                if (item3PathLen == 0) {
+                    SetItemUnreachableCooldown(item3Idx, UNREACHABLE_COOLDOWN);
+                    continue;
+                }
+            }
+
             // Check fuel availability for fuel-requiring recipes
             int fuelIdx = -1;
             if (recipe->fuelRequired > 0) {
@@ -4506,6 +4697,7 @@ int WorkGiver_Craft(int moverIdx) {
             item->reservedBy = moverIdx;
             ws->assignedCrafter = moverIdx;
             if (item2Idx >= 0) items[item2Idx].reservedBy = moverIdx;
+            if (item3Idx >= 0) items[item3Idx].reservedBy = moverIdx;
             if (fuelIdx >= 0) items[fuelIdx].reservedBy = moverIdx;
 
             // Create job
@@ -4514,6 +4706,7 @@ int WorkGiver_Craft(int moverIdx) {
                 item->reservedBy = -1;
                 ws->assignedCrafter = -1;
                 if (item2Idx >= 0) items[item2Idx].reservedBy = -1;
+                if (item3Idx >= 0) items[item3Idx].reservedBy = -1;
                 if (fuelIdx >= 0) items[fuelIdx].reservedBy = -1;
                 return -1;
             }
@@ -4524,6 +4717,7 @@ int WorkGiver_Craft(int moverIdx) {
             job->targetBillIdx = b;
             job->targetItem = itemIdx;
             job->targetItem2 = item2Idx;
+            job->targetItem3 = item3Idx;
             job->progress = 0.0f;
             job->carryingItem = -1;
             job->fuelItem = fuelIdx;

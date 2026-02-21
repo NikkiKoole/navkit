@@ -135,8 +135,8 @@ int AuditItemReservations(bool verbose) {
             Job* job = &jobs[jobId];
             if (!job->active) continue;
             if (job->targetItem == i || job->carryingItem == i ||
-                job->targetItem2 == i || job->fuelItem == i ||
-                job->toolItem == i) {
+                job->targetItem2 == i || job->targetItem3 == i ||
+                job->fuelItem == i || job->toolItem == i) {
                 foundJob = true;
                 break;
             }
@@ -193,6 +193,17 @@ int AuditItemReservations(bool verbose) {
                 if (verbose) {
                     AUDIT_LOG("Job %d (%s) targetItem2=%d is inactive",
                               jobId, JobTypeName(job->type), job->targetItem2);
+                }
+            }
+        }
+
+        // targetItem3
+        if (job->targetItem3 >= 0 && job->targetItem3 < MAX_ITEMS) {
+            if (!items[job->targetItem3].active) {
+                violations++;
+                if (verbose) {
+                    AUDIT_LOG("Job %d (%s) targetItem3=%d is inactive",
+                              jobId, JobTypeName(job->type), job->targetItem3);
                 }
             }
         }
