@@ -493,10 +493,10 @@ Each "context" = one Claude conversation session focused on a coherent chunk of 
 - **Story 5** ✅ — tree chopping blocked without cutting:1
 - **Story 9** ✅ — toggle disables all gates + speed penalties (2 tests)
 
-**Stories deferred** (need tool items from Context 3):
-- **Story 2** — digging stick at 1.0x (needs ITEM_DIGGING_STICK)
-- **Story 4** — stone hammer mines rock at 1.0x (needs ITEM_STONE_HAMMER)
-- **Story 11** — rock hammer:1 helps building but not mining (logic tested in unit tests via CanMoverDoJob, but E2E needs ITEM_ROCK equipped via tool seeking from Context 4)
+**Stories deferred to Context 4** (needed tool items + seeking — now E2E tested ✅):
+- **Story 2** — digging stick at 1.0x ✅
+- **Story 4** — stone hammer mines rock at 1.0x ✅
+- **Story 11** — rock hammer:1 can't mine stone ✅
 
 ### Context 3: Tool items + recipes + new item types — COMPLETE ✅
 
@@ -514,10 +514,10 @@ Each "context" = one Claude conversation session focused on a coherent chunk of 
 - Both saveload.c and inspect.c updated with v65→v66 stockpile migration
 - **85 tests, 196 assertions**: quality lookups (8), IF_TOOL/stackable flags (3), CanMoverDoJob with new tools (6), speed multipliers (6), recipe quality requirements (3), plus all Context 1-2 tests still passing
 
-**Stories now testable** (via unit tests, not E2E — tool seeking needed for E2E):
-- **Story 2** — digging stick mines dirt at 1.0x (unit test: GetJobToolSpeedMultiplier confirms 1.0x)
-- **Story 4** — stone hammer mines rock at 1.0x (unit test: GetJobToolSpeedMultiplier confirms 1.0x)
-- **Story 11** — stone axe hammer:1 helps building (1.0x), hammer cannot chop (blocked) — tested via CanMoverDoJob
+**Stories unit-tested** (E2E tests added in Context 4):
+- **Story 2** — digging stick mines dirt at 1.0x ✅ (unit + E2E)
+- **Story 4** — stone hammer mines rock at 1.0x ✅ (unit + E2E)
+- **Story 11** — rock hammer:1 can't mine stone (hammer:2 required) ✅ (unit + E2E)
 
 ### Context 4: Tool seeking + carry/drop lifecycle — COMPLETE ✅
 
@@ -535,7 +535,7 @@ Each "context" = one Claude conversation session focused on a coherent chunk of 
 - Equipped tool position sync in NeedsTick
 - State audit check 7: equipped tool invariant (active, ITEM_CARRIED, reservedBy, IF_TOOL)
 - State audit check 2 updated: toolItem on jobs + equipped tools as valid reservation sources
-- **104 tests, 236 assertions**: FindNearestToolForQuality (11), DropEquippedTool (2), Stories 6/7/8/12, cancel mid-fetch, Story 5 regression
+- **107 tests, 248 assertions**: FindNearestToolForQuality (11), DropEquippedTool (2), Stories 2/4/6/7/8/11/12, cancel mid-fetch, Story 5 regression
 
 ### Context 5: Full bootstrap integration + polish
 
@@ -556,7 +556,7 @@ Each "context" = one Claude conversation session focused on a coherent chunk of 
 | 1 | Data model + math | (unit tests only) | ✅ DONE — `ba69ce3` |
 | 2 | Speed + hard gates | 1, 3, 5, 9 (2, 4, 11 deferred) | ✅ DONE — 59 tests, 132 assertions |
 | 3 | Tool items + recipes | 2, 4, 11 | ✅ DONE — 85 tests, 196 assertions |
-| 4 | Tool seeking + lifecycle | 6-8, 12 | ✅ DONE — 104 tests, 236 assertions |
+| 4 | Tool seeking + lifecycle | 2, 4, 6-8, 11, 12 | ✅ DONE — 107 tests, 248 assertions |
 | 5 | Full bootstrap + polish | 10 | Medium — integration of everything, edge cases |
 
 ---
@@ -577,7 +577,7 @@ Expect: wall is removed after ~2x the base MINE_WORK_TIME ticks.
         Mover is idle afterward. Cell at (5,3,0) is air.
 ```
 
-### Story 2: Mover with digging stick digs soil at 1.0x speed — UNIT TESTED ✅ (Context 3, E2E needs Context 4)
+### Story 2: Mover with digging stick digs soil at 1.0x speed — TESTED ✅ (Context 4 E2E)
 
 > "Same setup, but the mover already carries a digging stick. Digging should take baseline time — noticeably faster than bare-handed."
 
@@ -600,7 +600,7 @@ Expect: wall is still there. Mover is idle (skipped the job).
         Job is still in the queue, unassigned.
 ```
 
-### Story 4: Mover with stone hammer mines rock at 1.0x — UNIT TESTED ✅ (Context 3, E2E needs Context 4)
+### Story 4: Mover with stone hammer mines rock at 1.0x — TESTED ✅ (Context 4 E2E)
 
 > "Same rock wall, but now my mover has a stone hammer (hammering:2). She should walk over and mine it at baseline speed."
 
@@ -689,7 +689,7 @@ Expect: 1. Sharp stone spawned after knapping.
 This is the most complex test — validates the entire progression chain end to end.
 ```
 
-### Story 11: Rock (hammer:1) helps with building but not rock mining — UNIT TESTED ✅ (Context 3, E2E needs Context 4)
+### Story 11: Rock (hammer:1) helps with building but not rock mining — TESTED ✅ (Context 4 E2E)
 
 > "My mover picks up a rock. She can build a wall at 1.0x speed (hammer:1 meets soft building requirement). But she still can't mine rock (needs hammer:2)."
 

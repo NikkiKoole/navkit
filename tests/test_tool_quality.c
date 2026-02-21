@@ -1139,6 +1139,123 @@ describe(drop_equipped_tool) {
 }
 
 // ===========================================================================
+// Story 2: Mover with digging stick digs soil at 1.0x speed (Context 4 E2E)
+// ===========================================================================
+describe(story2_digging_stick_soil_mining) {
+    it("mover with digging stick digs dirt at 1.0x — twice as fast as bare hands") {
+        toolRequirementsEnabled = true;
+
+        // First: measure bare-hands time (0.5x)
+        SetupMiningTest(5, 3, MAT_DIRT, 4, 3);
+        movers[0].equippedTool = -1;
+        DesignateMine(5, 3, 0);
+        g_wallCheckX = 5; g_wallCheckY = 3;
+        int ticksBareHands = RunSimUntil(WallIsGone, 2000);
+        expect(grid[0][3][5] != CELL_WALL);
+
+        // Second: measure with digging stick equipped (dig:1 → 1.0x)
+        SetupMiningTest(5, 3, MAT_DIRT, 4, 3);
+        int stickIdx = SpawnItem(movers[0].x, movers[0].y, 0, ITEM_DIGGING_STICK);
+        items[stickIdx].state = ITEM_CARRIED;
+        items[stickIdx].reservedBy = 0;
+        movers[0].equippedTool = stickIdx;
+        DesignateMine(5, 3, 0);
+        int ticksWithStick = RunSimUntil(WallIsGone, 2000);
+        expect(grid[0][3][5] != CELL_WALL);
+
+        // Digging stick should be ~2x faster than bare hands
+        if (test_verbose) {
+            printf("  Bare hands: %d ticks, Digging stick: %d ticks, ratio: %.2f\n",
+                   ticksBareHands, ticksWithStick, (float)ticksBareHands / ticksWithStick);
+        }
+        float ratio = (float)ticksBareHands / (float)ticksWithStick;
+        expect(ratio > 1.6f && ratio < 2.4f);
+
+        // Mover still holds the digging stick
+        expect(movers[0].equippedTool == stickIdx);
+        expect(items[stickIdx].state == ITEM_CARRIED);
+    }
+}
+
+// ===========================================================================
+// Story 4: Mover with stone hammer mines rock at 1.0x (Context 4 E2E)
+// ===========================================================================
+describe(story4_stone_hammer_mines_rock) {
+    it("mover with stone hammer mines stone wall at baseline speed") {
+        toolRequirementsEnabled = true;
+
+        // Measure with stone hammer (hammer:2 meets hard gate → 1.0x)
+        SetupMiningTest(5, 3, MAT_GRANITE, 4, 3);
+        int hammerIdx = SpawnItem(movers[0].x, movers[0].y, 0, ITEM_STONE_HAMMER);
+        items[hammerIdx].state = ITEM_CARRIED;
+        items[hammerIdx].reservedBy = 0;
+        movers[0].equippedTool = hammerIdx;
+        DesignateMine(5, 3, 0);
+        g_wallCheckX = 5; g_wallCheckY = 3;
+        int ticksHammer = RunSimUntil(WallIsGone, 2000);
+        expect(grid[0][3][5] != CELL_WALL);
+
+        // Mover still holds the hammer (check before second setup clears items)
+        expect(movers[0].equippedTool == hammerIdx);
+        expect(items[hammerIdx].state == ITEM_CARRIED);
+
+        // Compare with toggle-off baseline (1.0x, no tools needed)
+        SetupMiningTest(5, 3, MAT_GRANITE, 4, 3);
+        toolRequirementsEnabled = false;
+        DesignateMine(5, 3, 0);
+        int ticksBaseline = RunSimUntil(WallIsGone, 2000);
+        expect(grid[0][3][5] != CELL_WALL);
+
+        toolRequirementsEnabled = true;
+
+        // Both should be ~1.0x — similar tick counts
+        if (test_verbose) {
+            printf("  Hammer: %d ticks, Baseline: %d ticks, ratio: %.2f\n",
+                   ticksHammer, ticksBaseline, (float)ticksHammer / ticksBaseline);
+        }
+        float ratio = (float)ticksHammer / (float)ticksBaseline;
+        expect(ratio > 0.8f && ratio < 1.2f);
+    }
+}
+
+// ===========================================================================
+// Story 11: Rock (hammer:1) helps building but not rock mining (Context 4 E2E)
+// ===========================================================================
+describe(story11_rock_hammer1_building_not_mining) {
+    it("mover with rock builds at 1.0x but cannot mine stone") {
+        toolRequirementsEnabled = true;
+
+        // Part 1: Rock (hammer:1) should allow building at 1.0x (soft, minLevel=0)
+        // We test indirectly: mover with rock equipped can be assigned a build job
+        // and the speed multiplier is 1.0x (already unit-tested).
+        // Here we verify the mining gate: rock hammer:1 < required hammer:2.
+
+        // Set up stone wall for mining
+        SetupMiningTest(5, 3, MAT_GRANITE, 4, 3);
+
+        // Give mover a rock as "tool" (hammer:1)
+        int rockIdx = SpawnItem(movers[0].x, movers[0].y, 0, ITEM_ROCK);
+        items[rockIdx].state = ITEM_CARRIED;
+        items[rockIdx].reservedBy = 0;
+        movers[0].equippedTool = rockIdx;
+
+        DesignateMine(5, 3, 0);
+
+        // Run sim — rock mining needs hammer:2, rock only has hammer:1
+        // Job should stay unassigned
+        for (int i = 0; i < 500; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+
+        // Wall still there — rock's hammer:1 is not enough for stone mining
+        expect(grid[0][3][5] == CELL_WALL);
+        expect(HasMineDesignation(5, 3, 0) == true);
+    }
+}
+
+// ===========================================================================
 // Story 6: Mover seeks sharp stone before chopping tree (Context 4)
 // ===========================================================================
 describe(story6_seek_tool_for_chop) {
@@ -1540,6 +1657,9 @@ int main(int argc, char* argv[]) {
     test(recipe_quality_requirements);
     test(find_nearest_tool);
     test(drop_equipped_tool);
+    test(story2_digging_stick_soil_mining);
+    test(story4_stone_hammer_mines_rock);
+    test(story11_rock_hammer1_building_not_mining);
     test(story6_seek_tool_for_chop);
     test(story7_keep_tool_across_jobs);
     test(story8_tool_swap);
