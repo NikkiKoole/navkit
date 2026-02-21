@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 64
+#define CURRENT_SAVE_VERSION 65
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)
@@ -339,6 +339,41 @@ typedef struct {
     float progress;
     // No workshopOriginX/Y, workshopType in V62
 } BlueprintV62;
+
+// V64 Mover struct (before equippedTool field added in v65)
+typedef struct {
+    float x, y, z;
+    Point goal;
+    Point path[MAX_MOVER_PATH];
+    int pathLength;
+    int pathIndex;
+    bool active;
+    bool needsRepath;
+    int repathCooldown;
+    float speed;
+    float timeNearWaypoint;
+    float lastX, lastY, lastZ;
+    float timeWithoutProgress;
+    float fallTimer;
+    float workAnimPhase;
+    float hunger;
+    float energy;
+    int freetimeState;
+    int needTarget;
+    float needProgress;
+    float needSearchCooldown;
+    float starvationTimer;
+    float bodyTemp;
+    float hypothermiaTimer;
+    float avoidX, avoidY;
+    int currentJobId;
+    int lastJobType;
+    int lastJobResult;
+    int lastJobTargetX, lastJobTargetY, lastJobTargetZ;
+    unsigned long lastJobEndTick;
+    MoverCapabilities capabilities;
+    // No equippedTool in V64
+} MoverV64;
 
 // V63 Workshop struct (before markedForDeconstruct/assignedDeconstructor fields added in v64)
 #include "../entities/workshops.h"

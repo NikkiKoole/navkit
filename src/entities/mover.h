@@ -84,6 +84,8 @@ typedef struct Mover {
     unsigned long lastJobEndTick;
     // Capabilities
     MoverCapabilities capabilities;
+    // Tool system
+    int equippedTool;    // Item index of carried tool, -1 = none
 } Mover;
 
 // Stuck detection thresholds

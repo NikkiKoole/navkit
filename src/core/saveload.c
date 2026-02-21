@@ -19,6 +19,7 @@ void RebuildPostLoadState(void);
 #include "../simulation/balance.h"
 #include "../core/sim_manager.h"
 #include "../world/material.h"
+#include "../entities/tool_quality.h"
 #include "save_migrations.h"
 
 #define V21_MAT_COUNT 10  // MAT_COUNT before clay/gravel/sand/peat materials
@@ -161,6 +162,7 @@ bool SaveWorld(const char* filename) {
         fwrite(&hungerEnabled, sizeof(bool), 1, f);
         fwrite(&energyEnabled, sizeof(bool), 1, f);
         fwrite(&bodyTempEnabled, sizeof(bool), 1, f);
+        fwrite(&toolRequirementsEnabled, sizeof(bool), 1, f);
     }
     
     // === GRIDS SECTION ===
@@ -536,11 +538,17 @@ bool LoadWorld(const char* filename) {
         fread(&hungerEnabled, sizeof(bool), 1, f);
         fread(&energyEnabled, sizeof(bool), 1, f);
         fread(&bodyTempEnabled, sizeof(bool), 1, f);
+        if (version >= 65) {
+            fread(&toolRequirementsEnabled, sizeof(bool), 1, f);
+        } else {
+            toolRequirementsEnabled = false;
+        }
     } else {
         gameMode = GAME_MODE_SANDBOX;
         hungerEnabled = false;
         energyEnabled = false;
         bodyTempEnabled = false;
+        toolRequirementsEnabled = false;
     }
     
     // Reinitialize grid if dimensions don't match
@@ -1174,8 +1182,47 @@ bool LoadWorld(const char* filename) {
     
     // Movers
     fread(&moverCount, sizeof(moverCount), 1, f);
-    if (version >= 59) {
+    if (version >= 65) {
         fread(movers, sizeof(Mover), moverCount, f);
+    } else if (version >= 59) {
+        // V59-V64 movers don't have equippedTool field
+        for (int i = 0; i < moverCount; i++) {
+            MoverV64 old;
+            fread(&old, sizeof(MoverV64), 1, f);
+            Mover* m = &movers[i];
+            m->x = old.x; m->y = old.y; m->z = old.z;
+            m->goal = old.goal;
+            memcpy(m->path, old.path, sizeof(old.path));
+            m->pathLength = old.pathLength;
+            m->pathIndex = old.pathIndex;
+            m->active = old.active;
+            m->needsRepath = old.needsRepath;
+            m->repathCooldown = old.repathCooldown;
+            m->speed = old.speed;
+            m->timeNearWaypoint = old.timeNearWaypoint;
+            m->lastX = old.lastX; m->lastY = old.lastY; m->lastZ = old.lastZ;
+            m->timeWithoutProgress = old.timeWithoutProgress;
+            m->fallTimer = old.fallTimer;
+            m->workAnimPhase = old.workAnimPhase;
+            m->hunger = old.hunger;
+            m->energy = old.energy;
+            m->freetimeState = old.freetimeState;
+            m->needTarget = old.needTarget;
+            m->needProgress = old.needProgress;
+            m->needSearchCooldown = old.needSearchCooldown;
+            m->starvationTimer = old.starvationTimer;
+            m->bodyTemp = old.bodyTemp;
+            m->hypothermiaTimer = old.hypothermiaTimer;
+            m->avoidX = old.avoidX; m->avoidY = old.avoidY;
+            m->currentJobId = old.currentJobId;
+            m->lastJobType = old.lastJobType;
+            m->lastJobResult = old.lastJobResult;
+            m->lastJobTargetX = old.lastJobTargetX;
+            m->lastJobTargetY = old.lastJobTargetY;
+            m->lastJobTargetZ = old.lastJobTargetZ;
+            m->lastJobEndTick = old.lastJobEndTick;
+            m->capabilities = old.capabilities;
+        }
     } else if (version >= 58) {
         // V58 movers don't have bodyTemp/hypothermiaTimer fields
         for (int i = 0; i < moverCount; i++) {
@@ -1338,6 +1385,13 @@ bool LoadWorld(const char* filename) {
     // Initialize canPlant for old saves (field added later)
     for (int i = 0; i < moverCount; i++) {
         movers[i].capabilities.canPlant = true;
+    }
+
+    // Initialize equippedTool for old saves (v65+)
+    if (version < 65) {
+        for (int i = 0; i < moverCount; i++) {
+            movers[i].equippedTool = -1;
+        }
     }
 
     // Animals (v42+)

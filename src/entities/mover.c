@@ -662,6 +662,8 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->hypothermiaTimer = 0.0f;
     // Job system
     m->currentJobId = -1;
+    // Tool system
+    m->equippedTool = -1;
     // Capabilities - default to all enabled
     m->capabilities.canHaul = true;
     m->capabilities.canMine = true;

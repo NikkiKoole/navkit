@@ -15,7 +15,7 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_RED]          = { "Red Crate",    SPRITE_crate_red,    IF_STACKABLE, 10, MAT_NONE, 1.0f, 0.0f },
     [ITEM_GREEN]        = { "Green Crate",  SPRITE_crate_green,  IF_STACKABLE, 10, MAT_NONE, 1.0f, 0.0f },
     [ITEM_BLUE]         = { "Blue Crate",   SPRITE_crate_blue,   IF_STACKABLE, 10, MAT_NONE, 1.0f, 0.0f },
-    [ITEM_ROCK]         = { "Raw Stone",    SPRITE_loose_rock,   IF_STACKABLE | MN, 20, MAT_GRANITE, 25.0f, 0.0f },
+    [ITEM_ROCK]         = { "Raw Stone",    SPRITE_loose_rock,   IF_STACKABLE | IF_TOOL | MN, 20, MAT_GRANITE, 25.0f, 0.0f },
     [ITEM_BLOCKS]       = { "Blocks",       SPRITE_block_stone,  IF_STACKABLE | IF_BUILDING_MAT | MN, 20, MAT_GRANITE, 20.0f, 0.0f },
     [ITEM_LOG]          = { "Log",          SPRITE_block_wood,   IF_STACKABLE | IF_BUILDING_MAT | IF_FUEL | MN, 20, MAT_OAK, 20.0f, 0.0f },
     [ITEM_SAPLING]      = { "Sapling",      SPRITE_tree_sapling_oak, IF_STACKABLE | MN, 20, MAT_OAK, 2.0f, 0.0f },
@@ -44,6 +44,6 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_CHEST]        = { "Chest",        SPRITE_crate_blue,   IF_CONTAINER, 1, MAT_NONE, 8.0f, 0.0f },
     [ITEM_PLANK_BED]    = { "Plank Bed",   SPRITE_block_wood,   MN, 1, MAT_OAK, 15.0f, 0.0f },
     [ITEM_CHAIR]        = { "Chair",       SPRITE_block_wood,   MN, 1, MAT_OAK, 8.0f, 0.0f },
-    [ITEM_SHARP_STONE]  = { "Sharp Stone", SPRITE_loose_rock,   IF_STACKABLE | MN, 20, MAT_GRANITE, 1.0f, 0.0f },
+    [ITEM_SHARP_STONE]  = { "Sharp Stone", SPRITE_loose_rock,   IF_STACKABLE | IF_TOOL | MN, 20, MAT_GRANITE, 1.0f, 0.0f },
 };
 #undef MN

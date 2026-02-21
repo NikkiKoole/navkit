@@ -154,6 +154,13 @@ static void print_mover(int idx) {
     if (m->needProgress > 0.0f) printf("Need progress: %.2f sec\n", m->needProgress);
     if (m->needSearchCooldown > 0.0f) printf("Need search cooldown: %.2f sec\n", m->needSearchCooldown);
     if (m->starvationTimer > 0.0f) printf("Starvation timer: %.2f sec\n", m->starvationTimer);
+    if (m->equippedTool >= 0) {
+        printf("Equipped tool: item %d", m->equippedTool);
+        if (m->equippedTool < insp_itemHWM && insp_items[m->equippedTool].active) {
+            printf(" (%s)", ItemName(insp_items[m->equippedTool].type));
+        }
+        printf("\n");
+    }
 }
 
 static void print_item(int idx) {
@@ -1139,11 +1146,15 @@ int InspectSaveFile(int argc, char** argv) {
     // Game mode and needs toggles (v62+)
     uint8_t insp_gameMode = 0;
     bool insp_hungerEnabled = false, insp_energyEnabled = false, insp_bodyTempEnabled = false;
+    bool insp_toolRequirementsEnabled = false;
     if (version >= 62) {
         fread(&insp_gameMode, sizeof(insp_gameMode), 1, f);
         fread(&insp_hungerEnabled, sizeof(bool), 1, f);
         fread(&insp_energyEnabled, sizeof(bool), 1, f);
         fread(&insp_bodyTempEnabled, sizeof(bool), 1, f);
+        if (version >= 65) {
+            fread(&insp_toolRequirementsEnabled, sizeof(bool), 1, f);
+        }
     }
     
     int totalCells = insp_gridW * insp_gridH * insp_gridD;
@@ -1568,8 +1579,47 @@ int InspectSaveFile(int argc, char** argv) {
     // Movers
     fread(&insp_moverCount, 4, 1, f);
     insp_movers = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Mover) : sizeof(Mover));
-    if (version >= 59) {
+    if (version >= 65) {
         if (insp_moverCount > 0) fread(insp_movers, sizeof(Mover), insp_moverCount, f);
+    } else if (version >= 59) {
+        // V59-V64 movers don't have equippedTool field
+        for (int i = 0; i < insp_moverCount; i++) {
+            MoverV64 old;
+            fread(&old, sizeof(MoverV64), 1, f);
+            Mover* m = &insp_movers[i];
+            m->x = old.x; m->y = old.y; m->z = old.z;
+            m->goal = old.goal;
+            memcpy(m->path, old.path, sizeof(old.path));
+            m->pathLength = old.pathLength;
+            m->pathIndex = old.pathIndex;
+            m->active = old.active;
+            m->needsRepath = old.needsRepath;
+            m->repathCooldown = old.repathCooldown;
+            m->speed = old.speed;
+            m->timeNearWaypoint = old.timeNearWaypoint;
+            m->lastX = old.lastX; m->lastY = old.lastY; m->lastZ = old.lastZ;
+            m->timeWithoutProgress = old.timeWithoutProgress;
+            m->fallTimer = old.fallTimer;
+            m->workAnimPhase = old.workAnimPhase;
+            m->hunger = old.hunger;
+            m->energy = old.energy;
+            m->freetimeState = old.freetimeState;
+            m->needTarget = old.needTarget;
+            m->needProgress = old.needProgress;
+            m->needSearchCooldown = old.needSearchCooldown;
+            m->starvationTimer = old.starvationTimer;
+            m->bodyTemp = old.bodyTemp;
+            m->hypothermiaTimer = old.hypothermiaTimer;
+            m->avoidX = old.avoidX; m->avoidY = old.avoidY;
+            m->currentJobId = old.currentJobId;
+            m->lastJobType = old.lastJobType;
+            m->lastJobResult = old.lastJobResult;
+            m->lastJobTargetX = old.lastJobTargetX;
+            m->lastJobTargetY = old.lastJobTargetY;
+            m->lastJobTargetZ = old.lastJobTargetZ;
+            m->lastJobEndTick = old.lastJobEndTick;
+            m->capabilities = old.capabilities;
+        }
     } else if (version >= 58) {
         // V58 movers don't have bodyTemp/hypothermiaTimer fields
         for (int i = 0; i < insp_moverCount; i++) {
@@ -1732,6 +1782,13 @@ int InspectSaveFile(int argc, char** argv) {
         insp_movers[i].capabilities.canPlant = true;
     }
 
+    // Initialize equippedTool for old saves (v65+)
+    if (version < 65) {
+        for (int i = 0; i < insp_moverCount; i++) {
+            insp_movers[i].equippedTool = -1;
+        }
+    }
+
     // Animals (v42+)
     if (version >= 42) {
         fread(&insp_animalCount, 4, 1, f);
@@ -1812,10 +1869,11 @@ int InspectSaveFile(int argc, char** argv) {
         printf("World seed: %llu\n", (unsigned long long)insp_worldSeed);
         printf("Grid: %dx%dx%d, Chunks: %dx%d\n", insp_gridW, insp_gridH, insp_gridD, insp_chunkW, insp_chunkH);
         printf("Game mode: %s\n", insp_gameMode == 1 ? "Survival" : "Sandbox");
-        printf("Needs: hunger=%s, energy=%s, temperature=%s\n",
+        printf("Needs: hunger=%s, energy=%s, temperature=%s, tools=%s\n",
                insp_hungerEnabled ? "on" : "off",
                insp_energyEnabled ? "on" : "off",
-               insp_bodyTempEnabled ? "on" : "off");
+               insp_bodyTempEnabled ? "on" : "off",
+               insp_toolRequirementsEnabled ? "on" : "off");
         
         // Count stats
         int activeItems = 0, activeMovers = 0, activeStockpiles = 0, activeBP = 0;

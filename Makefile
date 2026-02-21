@@ -95,6 +95,7 @@ test_furniture_SRC   := tests/test_furniture.c
 test_balance_SRC     := tests/test_balance.c
 test_cross_z_SRC     := tests/test_cross_z.c
 test_workshop_deconstruction_SRC := tests/test_workshop_deconstruction.c
+test_tool_quality_SRC := tests/test_tool_quality.c
 
 # ---------------------------------------------------------------------------
 # Unity build dependency tracking
@@ -325,6 +326,11 @@ test_workshop_deconstruction: $(TEST_UNITY_OBJ)
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_workshop_deconstruction_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_workshop_deconstruction -q
 
+test_tool_quality: $(TEST_UNITY_OBJ)
+	@echo "Running tool quality tests..."
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_tool_quality_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	-@./$(BINDIR)/test_tool_quality -q
+
 # Soundsystem tests - standalone audio library tests
 test_soundsystem: $(BINDIR)
 	@echo "Running soundsystem tests..."
@@ -339,7 +345,7 @@ test_mechanisms: $(BINDIR)
 
 # Run all tests (mover uses 5 stress iterations by default)
 .IGNORE: test
-test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_seasons test_weather test_wind test_snow test_thunderstorm test_lighting test_workshop_linking test_hunger test_stacking test_containers test_sleep test_furniture test_balance test_soundsystem test_cross_z test_workshop_deconstruction
+test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_seasons test_weather test_wind test_snow test_thunderstorm test_lighting test_workshop_linking test_hunger test_stacking test_containers test_sleep test_furniture test_balance test_soundsystem test_cross_z test_workshop_deconstruction test_tool_quality
 
 # Full stress tests - mover tests use 20 iterations
 test-full: $(TEST_UNITY_OBJ)
