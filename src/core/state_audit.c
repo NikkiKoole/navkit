@@ -135,16 +135,24 @@ int AuditItemReservations(bool verbose) {
             Job* job = &jobs[jobId];
             if (!job->active) continue;
             if (job->targetItem == i || job->carryingItem == i ||
-                job->targetItem2 == i || job->fuelItem == i) {
+                job->targetItem2 == i || job->fuelItem == i ||
+                job->toolItem == i) {
                 foundJob = true;
                 break;
             }
         }
 
-        if (!foundJob) {
+        // Also check if this item is a mover's equipped tool (no job needed)
+        bool isEquippedTool = false;
+        if (reservedBy >= 0 && reservedBy < MAX_MOVERS && movers[reservedBy].active &&
+            movers[reservedBy].equippedTool == i) {
+            isEquippedTool = true;
+        }
+
+        if (!foundJob && !isEquippedTool) {
             violations++;
             if (verbose) {
-                AUDIT_LOG("Item %d (%s) at (%.0f,%.0f,z%.0f) reservedBy=%d but no active job references it",
+                AUDIT_LOG("Item %d (%s) at (%.0f,%.0f,z%.0f) reservedBy=%d but no active job references it and not equipped",
                           i, ItemName(items[i].type), items[i].x, items[i].y, items[i].z, reservedBy);
             }
         }
@@ -196,6 +204,17 @@ int AuditItemReservations(bool verbose) {
                 if (verbose) {
                     AUDIT_LOG("Job %d (%s) fuelItem=%d is inactive",
                               jobId, JobTypeName(job->type), job->fuelItem);
+                }
+            }
+        }
+
+        // toolItem
+        if (job->toolItem >= 0 && job->toolItem < MAX_ITEMS) {
+            if (!items[job->toolItem].active) {
+                violations++;
+                if (verbose) {
+                    AUDIT_LOG("Job %d (%s) toolItem=%d is inactive",
+                              jobId, JobTypeName(job->type), job->toolItem);
                 }
             }
         }
@@ -399,6 +418,73 @@ int AuditStockpileFreeSlotCounts(bool verbose) {
 }
 
 // ---------------------------------------------------------------------------
+// 7. Equipped tool consistency
+// ---------------------------------------------------------------------------
+static int AuditEquippedTools(bool verbose) {
+    int violations = 0;
+
+    for (int i = 0; i < moverCount; i++) {
+        Mover* m = &movers[i];
+
+        if (!m->active) {
+            if (m->equippedTool >= 0) {
+                violations++;
+                if (verbose) {
+                    AUDIT_LOG("Inactive mover %d has equippedTool=%d (should be -1)", i, m->equippedTool);
+                }
+            }
+            continue;
+        }
+
+        int toolIdx = m->equippedTool;
+        if (toolIdx < 0) continue;
+
+        if (toolIdx >= MAX_ITEMS) {
+            violations++;
+            if (verbose) {
+                AUDIT_LOG("Mover %d equippedTool=%d (out of range)", i, toolIdx);
+            }
+            continue;
+        }
+
+        Item* tool = &items[toolIdx];
+        if (!tool->active) {
+            violations++;
+            if (verbose) {
+                AUDIT_LOG("Mover %d equippedTool=%d but item is inactive", i, toolIdx);
+            }
+            continue;
+        }
+
+        if (tool->state != ITEM_CARRIED) {
+            violations++;
+            if (verbose) {
+                AUDIT_LOG("Mover %d equippedTool=%d but item state is %d (expected ITEM_CARRIED=%d)",
+                          i, toolIdx, tool->state, ITEM_CARRIED);
+            }
+        }
+
+        if (tool->reservedBy != i) {
+            violations++;
+            if (verbose) {
+                AUDIT_LOG("Mover %d equippedTool=%d but item.reservedBy=%d (expected %d)",
+                          i, toolIdx, tool->reservedBy, i);
+            }
+        }
+
+        if (!(itemDefs[tool->type].flags & IF_TOOL)) {
+            violations++;
+            if (verbose) {
+                AUDIT_LOG("Mover %d equippedTool=%d (%s) but item lacks IF_TOOL flag",
+                          i, toolIdx, ItemName(tool->type));
+            }
+        }
+    }
+
+    return violations;
+}
+
+// ---------------------------------------------------------------------------
 // Run all audits
 // ---------------------------------------------------------------------------
 int RunStateAudit(bool verbose) {
@@ -410,6 +496,7 @@ int RunStateAudit(bool verbose) {
     total += AuditBlueprintReservations(verbose);
     total += AuditStockpileSlotReservations(verbose);
     total += AuditStockpileFreeSlotCounts(verbose);
+    total += AuditEquippedTools(verbose);
 
     if (verbose) {
         if (auditUseStdout) {

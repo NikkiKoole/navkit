@@ -798,6 +798,7 @@ void NeedsTick(void) {
                         items[m->needTarget].reservedBy = -1;
                         m->needTarget = -1;
                     }
+                    DropEquippedTool(i);
                     m->freetimeState = FREETIME_NONE;
                     m->active = false;
                     EventLog("Mover %d died of starvation (timer=%.1fs)", i, m->starvationTimer);
@@ -859,6 +860,7 @@ void NeedsTick(void) {
                 m->hypothermiaTimer += dt;
                 if (m->hypothermiaTimer >= GameHoursToGameSeconds(balance.hypothermiaDeathGH)) {
                     if (m->currentJobId >= 0) CancelJob(m, i);
+                    DropEquippedTool(i);
                     m->freetimeState = FREETIME_NONE;
                     m->active = false;
                     EventLog("Mover %d died of hypothermia (bodyTemp=%.1f)", i, m->bodyTemp);
@@ -872,6 +874,13 @@ void NeedsTick(void) {
         } else {
             m->bodyTemp = balance.bodyTempNormal;
             m->hypothermiaTimer = 0.0f;
+        }
+
+        // Sync equipped tool position with mover
+        if (m->equippedTool >= 0 && items[m->equippedTool].active) {
+            items[m->equippedTool].x = m->x;
+            items[m->equippedTool].y = m->y;
+            items[m->equippedTool].z = m->z;
         }
 
         // Tick search cooldown

@@ -41,6 +41,10 @@ typedef enum {
     ITEM_PLANK_BED,     // Crafted bed (furniture, placed via construction)
     ITEM_CHAIR,         // Crafted chair (furniture, placed via construction)
     ITEM_SHARP_STONE,   // Knapped stone tool/sharp edge
+    ITEM_DIGGING_STICK, // Crude digging tool (digging:1)
+    ITEM_STONE_AXE,     // Stone axe (cutting:2, hammering:1)
+    ITEM_STONE_PICK,    // Stone pickaxe (digging:2, hammering:2)
+    ITEM_STONE_HAMMER,  // Stone hammer (hammering:2)
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 

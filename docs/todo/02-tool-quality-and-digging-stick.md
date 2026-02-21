@@ -471,43 +471,71 @@ Each "context" = one Claude conversation session focused on a coherent chunk of 
 - Inspector `--audit` check for equippedTool validity (needs tool seeking first)
 - Inspector item quality display (nice-to-have, not blocking)
 
-### Context 2: Speed scaling wired into jobs + hard gates
+### Context 2: Speed scaling wired into jobs + hard gates — COMPLETE ✅
 
 **Goal**: Tool quality actually affects job speed. Hard-gated jobs are skippable. The game plays differently.
 
-- Wire speed formula into `RunWorkProgress()` — check mover's equippedTool quality vs job requirement
-- Material check for MINE/CHANNEL/DIG_RAMP: `IsStoneMaterial()` → HAMMERING hard, else DIGGING soft
-- Hard gate logic in job assignment: mover skips jobs it can't fulfill (no tool for hard-gated)
-- Soft job bare-hands penalty: 0.5x when no tool and toolRequirementsEnabled
-- Toggle: `toolRequirementsEnabled = false` → all jobs 1.0x, no gates
-- Tooltip: show "Equipped: [tool name]" in mover tooltip
-- **E2E tests**: Stories 1-5 (bare hands slow, digging stick fast, rock mining blocked, rock mining with hammer, chop blocked)
-- **Story 9** (toggle disables everything)
+**Delivered**:
+- New in `tool_quality.h/c`: `JobToolReq` struct, `GetJobToolRequirement()`, `GetJobToolSpeedMultiplier()`, `CanMoverDoJob()`
+- Job-to-quality mapping: MINE/CHANNEL/DIG_RAMP check `IsStoneMaterial()` → HAMMERING:2 hard or DIGGING soft; CHOP/CHOP_FELLED → CUTTING:1 hard; BUILD → HAMMERING soft; all others tool-free
+- `RunWorkProgress()` takes `speedMultiplier` param — all 14 call sites updated
+- MINE/CHANNEL/DIG_RAMP/CHOP/CHOP_FELLED/BUILD job drivers query equipped tool and apply speed
+- Hard gate checks in 5 WorkGivers: Mining, Channel, DigRamp (per-designation inside loop), Chop, ChopFelled (early return)
+- Channel material check uses z-1 (cell being excavated below the mover)
+- Build job uses `dt * speed` directly (own progress system, not RunWorkProgress)
+- Tooltip: "Equipped: [tool name]" or "Equipped: none" in mover tooltip
+- `toolRequirementsEnabled = false` → all jobs 1.0x, no gates (toggle works)
+- **59 tests, 132 assertions**: job-to-quality mapping (11), CanMoverDoJob (6), GetJobToolSpeedMultiplier (6), plus E2E stories
 
-### Context 3: Tool items + recipes + new item types
+**E2E stories tested**:
+- **Story 1** ✅ — bare-handed dirt mining at 0.5x (ratio test vs baseline)
+- **Story 3** ✅ — stone mining blocked without hammer:2, designation stays unassigned
+- **Story 5** ✅ — tree chopping blocked without cutting:1
+- **Story 9** ✅ — toggle disables all gates + speed penalties (2 tests)
+
+**Stories deferred** (need tool items from Context 3):
+- **Story 2** — digging stick at 1.0x (needs ITEM_DIGGING_STICK)
+- **Story 4** — stone hammer mines rock at 1.0x (needs ITEM_STONE_HAMMER)
+- **Story 11** — rock hammer:1 helps building but not mining (logic tested in unit tests via CanMoverDoJob, but E2E needs ITEM_ROCK equipped via tool seeking from Context 4)
+
+### Context 3: Tool items + recipes + new item types — COMPLETE ✅
 
 **Goal**: The 4 new tool items exist and can be crafted at a workshop.
 
-- 4 new item types: ITEM_DIGGING_STICK, ITEM_STONE_AXE, ITEM_STONE_PICK, ITEM_STONE_HAMMER
-- Item definitions: names, sprites, IF_TOOL flag, quality assignments
-- Recipe struct change: add `requiredQuality` + `requiredQualityLevel` fields
-- Tool recipes on campfire (or crafting spot): digging stick (sticks), hammer/axe/pick (rock+sticks+cordage), all need cutting:1
-- Stockpile filter: "Tools" category with filter keys for each tool type
-- Save migration: new item type count
-- **Tests**: item spawning, quality lookups for new types, recipe requires cutting:1 check
-- **Story 11** (rock helps building but not mining — tests rock's hammer:1 vs hammer:2 gate)
+**Delivered**:
+- 4 new item types: ITEM_DIGGING_STICK, ITEM_STONE_AXE, ITEM_STONE_PICK, ITEM_STONE_HAMMER (ITEM_TYPE_COUNT: 34 → 38)
+- Item definitions: names, sprites, IF_TOOL flag (non-stackable), quality assignments per design doc
+- Quality assignments: digging stick (dig:1), stone axe (cut:2, hammer:1), stone pick (dig:2, hammer:2), stone hammer (hammer:2)
+- Recipe struct: added `requiredQuality` + `requiredQualityLevel` fields (0,0 = no requirement via zero-init)
+- All existing recipes updated with explicit `0, 0` trailing fields (no warnings)
+- Tool recipes on carpenter workshop: digging stick (1x sticks), hammer/axe/pick (1x rock + 1x cordage), all require cutting:1
+- Stockpile filters: keys 6-9 for new tool types
+- Save version bump to v66, StockpileV65 migration struct in save_migrations.h
+- Both saveload.c and inspect.c updated with v65→v66 stockpile migration
+- **85 tests, 196 assertions**: quality lookups (8), IF_TOOL/stackable flags (3), CanMoverDoJob with new tools (6), speed multipliers (6), recipe quality requirements (3), plus all Context 1-2 tests still passing
 
-### Context 4: Tool seeking + carry/drop lifecycle
+**Stories now testable** (via unit tests, not E2E — tool seeking needed for E2E):
+- **Story 2** — digging stick mines dirt at 1.0x (unit test: GetJobToolSpeedMultiplier confirms 1.0x)
+- **Story 4** — stone hammer mines rock at 1.0x (unit test: GetJobToolSpeedMultiplier confirms 1.0x)
+- **Story 11** — stone axe hammer:1 helps building (1.0x), hammer cannot chop (blocked) — tested via CanMoverDoJob
+
+### Context 4: Tool seeking + carry/drop lifecycle — COMPLETE ✅
 
 **Goal**: Movers autonomously find, pick up, carry, and swap tools. This is the hardest context — new job steps.
 
-- Tool seeking in job assignment: before accepting a hard-gated job, check equipped tool or search nearby
-- New craft/designation job steps: STEP_SEEK_TOOL, STEP_PICKUP_TOOL (or piggyback on existing walk-to-item)
-- Tool carry across jobs: mover keeps tool, no drop between same-quality jobs
-- Tool swap: drop current tool (unreserve, place on ground), seek new one
-- Death drops equipped tool (unreserve, place at mover position)
-- Reservation: equipped tool is reserved via existing `reservedBy` system
-- **E2E tests**: Stories 6 (seek tool before chop), 7 (keep tool across jobs), 8 (drop and swap), 12 (death drops tool)
+**Delivered**:
+- `STEP_FETCHING_TOOL (10)` constant + `toolItem` field on Job struct (not saved — jobs are transient)
+- `FindNearestToolForQuality()` — O(n) scan for nearest unreserved IF_TOOL item with required quality
+- `DropEquippedTool()` — drops tool at mover position, clears reservation
+- `RunToolFetchStep()` — shared helper: walk to reserved tool, equip on arrival, advance to next step
+- 6 job drivers updated (Mine, Channel, DigRamp, Chop, ChopFelled, Craft) to handle STEP_FETCHING_TOOL
+- 6 WorkGivers updated with two-pass pattern: pass 0 finds work doable with current tool, pass 1 searches for tools via FindNearestToolForQuality
+- CancelJob/UnassignJob release tool reservations
+- Death drops (starvation + hypothermia) in mover.c
+- Equipped tool position sync in NeedsTick
+- State audit check 7: equipped tool invariant (active, ITEM_CARRIED, reservedBy, IF_TOOL)
+- State audit check 2 updated: toolItem on jobs + equipped tools as valid reservation sources
+- **104 tests, 236 assertions**: FindNearestToolForQuality (11), DropEquippedTool (2), Stories 6/7/8/12, cancel mid-fetch, Story 5 regression
 
 ### Context 5: Full bootstrap integration + polish
 
@@ -516,8 +544,8 @@ Each "context" = one Claude conversation session focused on a coherent chunk of 
 - **Story 10** (full bootstrap: knap → craft digging stick → dig soil)
 - Edge cases: all tools reserved (mover proceeds bare-handed on soft, skips hard), multiple movers competing for same tool, tool on different z-level
 - Sandbox mode: verify toolRequirementsEnabled=false works for full gameplay
-- State audit: add tool-related invariant checks (equippedTool points to valid reserved item, dead movers don't hold tools)
-- Event log: instrument tool pickup/drop/swap events
+- ~~State audit: add tool-related invariant checks~~ (done in Context 4 — check 7)
+- ~~Event log: instrument tool pickup/drop/swap events~~ (done in Context 4 — EventLog calls in DropEquippedTool, RunToolFetchStep)
 - Play-test in survival mode: verify the bootstrap loop feels right timing-wise
 - Final test sweep: run all 31+ test suites, confirm no regressions
 
@@ -526,12 +554,10 @@ Each "context" = one Claude conversation session focused on a coherent chunk of 
 | Context | Focus | Stories | Key risk |
 |---------|-------|---------|----------|
 | 1 | Data model + math | (unit tests only) | ✅ DONE — `ba69ce3` |
-| 2 | Speed + hard gates | 1-5, 9 | Medium — touching job execution core |
-| 3 | Tool items + recipes | 11 | Low — follows existing item/recipe patterns |
-| 4 | Tool seeking + lifecycle | 6-8, 12 | **High** — new job steps, reservation complexity |
+| 2 | Speed + hard gates | 1, 3, 5, 9 (2, 4, 11 deferred) | ✅ DONE — 59 tests, 132 assertions |
+| 3 | Tool items + recipes | 2, 4, 11 | ✅ DONE — 85 tests, 196 assertions |
+| 4 | Tool seeking + lifecycle | 6-8, 12 | ✅ DONE — 104 tests, 236 assertions |
 | 5 | Full bootstrap + polish | 10 | Medium — integration of everything, edge cases |
-
-Contexts 1-3 can likely be done in quick succession. Context 4 is the most complex and may need the most back-and-forth. Context 5 is where things either come together or reveal hidden issues.
 
 ---
 
@@ -539,7 +565,7 @@ Contexts 1-3 can likely be done in quick succession. Context 4 is the most compl
 
 Player-facing scenarios that exercise the full tool system. Each test sets up a grid, movers, items, and workshops, then runs the simulation loop and checks the outcome. Written in the test-story style (expect failure first, fix code, verify green).
 
-### Story 1: Mover digs soil bare-handed at 0.5x speed
+### Story 1: Mover digs soil bare-handed at 0.5x speed — TESTED ✅ (Context 2)
 
 > "I designate a dirt wall for mining. My mover has no tools. She should still dig it out, but it should take twice as long as baseline."
 
@@ -551,7 +577,7 @@ Expect: wall is removed after ~2x the base MINE_WORK_TIME ticks.
         Mover is idle afterward. Cell at (5,3,0) is air.
 ```
 
-### Story 2: Mover with digging stick digs soil at 1.0x speed
+### Story 2: Mover with digging stick digs soil at 1.0x speed — UNIT TESTED ✅ (Context 3, E2E needs Context 4)
 
 > "Same setup, but the mover already carries a digging stick. Digging should take baseline time — noticeably faster than bare-handed."
 
@@ -563,7 +589,7 @@ Expect: wall removed in ~1x base MINE_WORK_TIME (half the ticks of Story 1).
         Mover still holds the digging stick after.
 ```
 
-### Story 3: Mover cannot mine rock without hammer:2
+### Story 3: Mover cannot mine rock without hammer:2 — TESTED ✅ (Context 2)
 
 > "I designate a stone wall for mining. My mover has no tools. The job should sit there unassigned — nobody can do it."
 
@@ -574,7 +600,7 @@ Expect: wall is still there. Mover is idle (skipped the job).
         Job is still in the queue, unassigned.
 ```
 
-### Story 4: Mover with stone hammer mines rock at 1.0x
+### Story 4: Mover with stone hammer mines rock at 1.0x — UNIT TESTED ✅ (Context 3, E2E needs Context 4)
 
 > "Same rock wall, but now my mover has a stone hammer (hammering:2). She should walk over and mine it at baseline speed."
 
@@ -585,7 +611,7 @@ Action: create MINE designation, run sim loop.
 Expect: wall removed in ~1x base MINE_WORK_TIME. Mover idle, still holds hammer.
 ```
 
-### Story 5: Mover cannot chop tree without cutting:1
+### Story 5: Mover cannot chop tree without cutting:1 — TESTED ✅ (Context 2)
 
 > "I designate a tree for chopping. Mover has no tools. The job should be skipped — you can't chop a tree bare-handed."
 
@@ -595,7 +621,7 @@ Action: create CHOP designation, run sim loop for 200 ticks.
 Expect: tree still standing. Mover idle. Job unassigned.
 ```
 
-### Story 6: Mover seeks out a tool before starting a hard-gated job
+### Story 6: Mover seeks out a tool before starting a hard-gated job — TESTED ✅ (Context 4)
 
 > "I designate a tree for chopping. There's a sharp stone on the ground nearby. The mover should walk to the sharp stone, pick it up, then go chop the tree."
 
@@ -607,7 +633,7 @@ Expect: mover walks to (3,3) first, picks up sharp stone (equippedTool set),
         then walks to tree, chops it. Tree removed. Mover holds sharp stone.
 ```
 
-### Story 7: Mover keeps tool across consecutive jobs
+### Story 7: Mover keeps tool across consecutive jobs — TESTED ✅ (Context 4)
 
 > "My mover has a sharp stone and chops a tree. Then I designate another tree. She should go chop it immediately — no detour to pick up another tool."
 
@@ -618,7 +644,7 @@ Expect: both trees chopped. Mover never dropped the sharp stone.
         No tool-seeking detour between jobs (track mover path or tick count).
 ```
 
-### Story 8: Mover drops current tool when a different quality is needed
+### Story 8: Mover drops current tool when a different quality is needed — TESTED ✅ (Context 4)
 
 > "My mover has a sharp stone (cutting:1) and I designate a stone wall for mining. She needs hammering:2 and there's a stone hammer on the ground. She should drop the sharp stone and pick up the hammer."
 
@@ -631,7 +657,7 @@ Expect: sharp stone dropped near mover's position (on ground, unreserved).
         Mover holds stone hammer. Sharp stone is on ground somewhere.
 ```
 
-### Story 9: Tool toggle disables all tool requirements
+### Story 9: Tool toggle disables all tool requirements — TESTED ✅ (Context 2)
 
 > "I toggle off toolRequirementsEnabled. Now movers should mine rock, chop trees, and do everything at 1.0x with no tools at all."
 
@@ -643,7 +669,7 @@ Expect: both wall and tree removed at ~1x speed. No tool seeking.
         Mover idle at end, equippedTool still -1.
 ```
 
-### Story 10: Full bootstrap — knap, craft digging stick, dig soil
+### Story 10: Full bootstrap — knap, craft digging stick, dig soil — DEFERRED (Context 5)
 
 > "Starting from nothing: mover knaps a sharp stone at a rock wall, then crafts a digging stick at a workshop, then digs a dirt wall. The complete early-game loop."
 
@@ -663,7 +689,7 @@ Expect: 1. Sharp stone spawned after knapping.
 This is the most complex test — validates the entire progression chain end to end.
 ```
 
-### Story 11: Rock (hammer:1) helps with building but not rock mining
+### Story 11: Rock (hammer:1) helps with building but not rock mining — UNIT TESTED ✅ (Context 3, E2E needs Context 4)
 
 > "My mover picks up a rock. She can build a wall at 1.0x speed (hammer:1 meets soft building requirement). But she still can't mine rock (needs hammer:2)."
 
@@ -677,7 +703,7 @@ Expect: mover picks up rock, builds wall at (5,3,0) at 1.0x speed.
         Stone wall still there.
 ```
 
-### Story 12: Dead mover drops equipped tool
+### Story 12: Dead mover drops equipped tool — TESTED ✅ (Context 4)
 
 > "A mover carrying a stone pick starves to death. The pick should drop on the ground at her position, unreserved and haulable."
 

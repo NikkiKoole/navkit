@@ -405,6 +405,17 @@ static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
         lineColors[lineCount++] = GRAY;
     }
 
+    // Equipped tool
+    if (m->equippedTool >= 0 && m->equippedTool < MAX_ITEMS && items[m->equippedTool].active) {
+        char toolName[64];
+        FormatItemName(&items[m->equippedTool], toolName, sizeof(toolName));
+        snprintf(lines[lineCount], sizeof(lines[0]), "Equipped: %s", toolName);
+        lineColors[lineCount++] = SKYBLUE;
+    } else {
+        snprintf(lines[lineCount], sizeof(lines[0]), "Equipped: none");
+        lineColors[lineCount++] = GRAY;
+    }
+
     // Path info
     snprintf(lines[lineCount], sizeof(lines[0]), "Path: %d/%d, Goal: (%d,%d,z%d)",
         m->pathIndex >= 0 ? m->pathIndex + 1 : 0, m->pathLength, m->goal.x, m->goal.y, m->goal.z);

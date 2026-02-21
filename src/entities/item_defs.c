@@ -45,5 +45,9 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_PLANK_BED]    = { "Plank Bed",   SPRITE_block_wood,   MN, 1, MAT_OAK, 15.0f, 0.0f },
     [ITEM_CHAIR]        = { "Chair",       SPRITE_block_wood,   MN, 1, MAT_OAK, 8.0f, 0.0f },
     [ITEM_SHARP_STONE]  = { "Sharp Stone", SPRITE_loose_rock,   IF_STACKABLE | IF_TOOL | MN, 20, MAT_GRANITE, 1.0f, 0.0f },
+    [ITEM_DIGGING_STICK]= { "Digging Stick", SPRITE_tree_stick,  IF_TOOL, 1, MAT_NONE, 1.5f, 0.0f },
+    [ITEM_STONE_AXE]    = { "Stone Axe",   SPRITE_loose_rock,   IF_TOOL | MN, 1, MAT_GRANITE, 3.0f, 0.0f },
+    [ITEM_STONE_PICK]   = { "Stone Pick",  SPRITE_loose_rock,   IF_TOOL | MN, 1, MAT_GRANITE, 3.5f, 0.0f },
+    [ITEM_STONE_HAMMER] = { "Stone Hammer", SPRITE_loose_rock,  IF_TOOL | MN, 1, MAT_GRANITE, 2.5f, 0.0f },
 };
 #undef MN

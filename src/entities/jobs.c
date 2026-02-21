@@ -18,6 +18,7 @@
 #include "../../vendor/raylib.h"
 #include "../simulation/lighting.h"
 #include "../simulation/balance.h"
+#include "tool_quality.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -482,6 +483,7 @@ void ClearJobs(void) {
         jobs[i].targetBlueprint = -1;
         jobs[i].progress = 0.0f;
         jobs[i].carryingItem = -1;
+        jobs[i].toolItem = -1;
     }
 
     // Reset tracking
@@ -535,6 +537,7 @@ int CreateJob(JobType type) {
     job->carryingItem = -1;
     job->fuelItem = -1;
     job->targetItem2 = -1;
+    job->toolItem = -1;
 
     // Add to active list
     activeJobList[activeJobCount++] = jobId;
@@ -585,6 +588,68 @@ static void ExtractItemFromContainer(int itemIdx);
 // =============================================================================
 // Shared Job Step Helpers
 // =============================================================================
+
+// Tool fetch step: walk to reserved tool item, equip on arrival.
+// On arrival: drops old tool if different, clears stockpile slot if needed,
+// sets mover->equippedTool, clears job->toolItem, advances to nextStep.
+static JobRunResult RunToolFetchStep(Job* job, Mover* mover, int moverIdx, int nextStep) {
+    int toolIdx = job->toolItem;
+    if (toolIdx < 0 || !items[toolIdx].active) return JOBRUN_FAIL;
+    if (items[toolIdx].reservedBy != moverIdx) return JOBRUN_FAIL;
+
+    Item* tool = &items[toolIdx];
+    int toolCellX = (int)(tool->x / CELL_SIZE);
+    int toolCellY = (int)(tool->y / CELL_SIZE);
+    int toolCellZ = (int)(tool->z);
+
+    // Set goal to tool position
+    if (mover->goal.x != toolCellX || mover->goal.y != toolCellY || mover->goal.z != toolCellZ) {
+        mover->goal = (Point){toolCellX, toolCellY, toolCellZ};
+        mover->needsRepath = true;
+    }
+
+    float dx = mover->x - tool->x;
+    float dy = mover->y - tool->y;
+    float distSq = dx * dx + dy * dy;
+
+    TryFinalApproach(mover, tool->x, tool->y, toolCellX, toolCellY, PICKUP_RADIUS);
+
+    if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        SetItemUnreachableCooldown(toolIdx, UNREACHABLE_COOLDOWN);
+        return JOBRUN_FAIL;
+    }
+
+    if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+        // Drop old tool if mover has a different one
+        if (mover->equippedTool >= 0 && mover->equippedTool != toolIdx) {
+            DropEquippedTool(moverIdx);
+        }
+
+        // Clear stockpile slot if tool was in stockpile
+        if (tool->state == ITEM_IN_STOCKPILE) {
+            ClearSourceStockpileSlot(tool);
+        }
+
+        // Equip the tool
+        tool->state = ITEM_CARRIED;
+        tool->reservedBy = moverIdx;
+        tool->x = mover->x;
+        tool->y = mover->y;
+        tool->z = mover->z;
+        mover->equippedTool = toolIdx;
+
+        job->toolItem = -1;  // No longer tracking — it's equipped now
+        job->step = nextStep;
+
+        // Set goal for the actual job (mover->goal will be set by the next step's logic)
+        mover->needsRepath = true;
+
+        EventLog("Mover %d equipped tool item %d (%s)", moverIdx, toolIdx,
+                 itemDefs[tool->type].name);
+    }
+
+    return JOBRUN_RUNNING;
+}
 
 // Walk to item, pick it up, advance to STEP_CARRYING, set next goal.
 // Returns JOBRUN_RUNNING while walking, JOBRUN_FAIL on error.
@@ -746,10 +811,12 @@ static JobRunResult RunWalkToTileStep(Job* job, Mover* mover) {
 }
 
 // Progress work accumulation. Returns JOBRUN_DONE when complete, JOBRUN_RUNNING otherwise.
+// speedMultiplier: 1.0 = normal, 0.5 = half speed (bare hands), 2.0 = double speed, etc.
 static JobRunResult RunWorkProgress(Job* job, Designation* d, Mover* mover,
-                                     float dt, float workTimeGH, bool resetStuck) {
+                                     float dt, float workTimeGH, bool resetStuck,
+                                     float speedMultiplier) {
     if (resetStuck) mover->timeWithoutProgress = 0.0f;
-    job->progress += dt / GameHoursToGameSeconds(workTimeGH);
+    job->progress += (dt * speedMultiplier) / GameHoursToGameSeconds(workTimeGH);
     if (d) d->progress = job->progress;
     return (job->progress >= 1.0f) ? JOBRUN_DONE : JOBRUN_RUNNING;
 }
@@ -878,6 +945,8 @@ JobRunResult RunJob_Clear(Job* job, void* moverPtr, float dt) {
 // Mine job driver: move to adjacent tile -> mine wall
 JobRunResult RunJob_Mine(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
+    int moverIdx = (int)(mover - movers);
+    if (job->step == STEP_FETCHING_TOOL) return RunToolFetchStep(job, mover, moverIdx, STEP_MOVING_TO_WORK);
     Designation* d = GetDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
     if (!d || d->type != DESIGNATION_MINE) return JOBRUN_FAIL;
     if (!CellIsSolid(grid[job->targetMineZ][job->targetMineY][job->targetMineX])) {
@@ -886,7 +955,9 @@ JobRunResult RunJob_Mine(Job* job, void* moverPtr, float dt) {
     }
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
     if (job->step == STEP_WORKING) {
-        JobRunResult r = RunWorkProgress(job, d, mover, dt, MINE_WORK_TIME, false);
+        MaterialType mat = GetWallMaterial(job->targetMineX, job->targetMineY, job->targetMineZ);
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_MINE, mat, mover->equippedTool);
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, MINE_WORK_TIME, false, speed);
         if (r == JOBRUN_DONE) CompleteMineDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
         return r;
     }
@@ -896,6 +967,8 @@ JobRunResult RunJob_Mine(Job* job, void* moverPtr, float dt) {
 // Channel job driver: move to tile -> channel (remove floor, mine below, create ramp)
 JobRunResult RunJob_Channel(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
+    int moverIdx = (int)(mover - movers);
+    if (job->step == STEP_FETCHING_TOOL) return RunToolFetchStep(job, mover, moverIdx, STEP_MOVING_TO_WORK);
     int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
     if (!d || d->type != DESIGNATION_CHANNEL) return JOBRUN_FAIL;
@@ -903,7 +976,10 @@ JobRunResult RunJob_Channel(Job* job, void* moverPtr, float dt) {
     if (!hasFloor) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToTileStep(job, mover);
     if (job->step == STEP_WORKING) {
-        JobRunResult r = RunWorkProgress(job, d, mover, dt, CHANNEL_WORK_TIME, false);
+        // Channel digs into cell below — check material at z-1 for the quality requirement
+        MaterialType mat = (tz > 0) ? GetWallMaterial(tx, ty, tz - 1) : MAT_DIRT;
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_CHANNEL, mat, mover->equippedTool);
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, CHANNEL_WORK_TIME, false, speed);
         if (r == JOBRUN_DONE) CompleteChannelDesignation(tx, ty, tz, job->assignedMover);
         return r;
     }
@@ -913,13 +989,17 @@ JobRunResult RunJob_Channel(Job* job, void* moverPtr, float dt) {
 // Dig ramp job driver: move adjacent to wall -> carve into ramp
 JobRunResult RunJob_DigRamp(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
+    int moverIdx = (int)(mover - movers);
+    if (job->step == STEP_FETCHING_TOOL) return RunToolFetchStep(job, mover, moverIdx, STEP_MOVING_TO_WORK);
     int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
     if (!d || d->type != DESIGNATION_DIG_RAMP) return JOBRUN_FAIL;
     if (!CellIsSolid(grid[tz][ty][tx])) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
     if (job->step == STEP_WORKING) {
-        JobRunResult r = RunWorkProgress(job, d, mover, dt, DIG_RAMP_WORK_TIME, false);
+        MaterialType mat = GetWallMaterial(tx, ty, tz);
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_DIG_RAMP, mat, mover->equippedTool);
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, DIG_RAMP_WORK_TIME, false, speed);
         if (r == JOBRUN_DONE) CompleteDigRampDesignation(tx, ty, tz, job->assignedMover);
         return r;
     }
@@ -935,7 +1015,7 @@ JobRunResult RunJob_RemoveFloor(Job* job, void* moverPtr, float dt) {
     if (!HAS_FLOOR(tx, ty, tz)) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToTileStep(job, mover);
     if (job->step == STEP_WORKING) {
-        JobRunResult r = RunWorkProgress(job, d, mover, dt, REMOVE_FLOOR_WORK_TIME, false);
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, REMOVE_FLOOR_WORK_TIME, false, 1.0f);
         if (r == JOBRUN_DONE) CompleteRemoveFloorDesignation(tx, ty, tz, job->assignedMover);
         return r;
     }
@@ -951,7 +1031,7 @@ JobRunResult RunJob_RemoveRamp(Job* job, void* moverPtr, float dt) {
     if (!CellIsRamp(grid[tz][ty][tx])) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
     if (job->step == STEP_WORKING) {
-        JobRunResult r = RunWorkProgress(job, d, mover, dt, REMOVE_RAMP_WORK_TIME, false);
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, REMOVE_RAMP_WORK_TIME, false, 1.0f);
         if (r == JOBRUN_DONE) CompleteRemoveRampDesignation(tx, ty, tz, job->assignedMover);
         return r;
     }
@@ -961,6 +1041,8 @@ JobRunResult RunJob_RemoveRamp(Job* job, void* moverPtr, float dt) {
 // Chop tree job driver: move to adjacent tile -> chop down tree
 JobRunResult RunJob_Chop(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
+    int moverIdx = (int)(mover - movers);
+    if (job->step == STEP_FETCHING_TOOL) return RunToolFetchStep(job, mover, moverIdx, STEP_MOVING_TO_WORK);
     int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
     if (!d || d->type != DESIGNATION_CHOP) return JOBRUN_FAIL;
@@ -968,7 +1050,8 @@ JobRunResult RunJob_Chop(Job* job, void* moverPtr, float dt) {
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
     if (job->step == STEP_WORKING) {
         float workTime = IsYoungTreeBase(tx, ty, tz) ? CHOP_YOUNG_WORK_TIME : CHOP_WORK_TIME;
-        JobRunResult r = RunWorkProgress(job, d, mover, dt, workTime, false);
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_CHOP, MAT_NONE, mover->equippedTool);
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, workTime, false, speed);
         if (r == JOBRUN_DONE) CompleteChopDesignation(tx, ty, tz, job->assignedMover);
         return r;
     }
@@ -978,13 +1061,16 @@ JobRunResult RunJob_Chop(Job* job, void* moverPtr, float dt) {
 // Chop felled trunk job driver: move to adjacent tile -> chop up fallen trunk
 JobRunResult RunJob_ChopFelled(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
+    int moverIdx = (int)(mover - movers);
+    if (job->step == STEP_FETCHING_TOOL) return RunToolFetchStep(job, mover, moverIdx, STEP_MOVING_TO_WORK);
     int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
     if (!d || d->type != DESIGNATION_CHOP_FELLED) return JOBRUN_FAIL;
     if (grid[tz][ty][tx] != CELL_TREE_FELLED) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
     if (job->step == STEP_WORKING) {
-        JobRunResult r = RunWorkProgress(job, d, mover, dt, CHOP_FELLED_WORK_TIME, false);
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_CHOP_FELLED, MAT_NONE, mover->equippedTool);
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, CHOP_FELLED_WORK_TIME, false, speed);
         if (r == JOBRUN_DONE) CompleteChopFelledDesignation(tx, ty, tz, job->assignedMover);
         return r;
     }
@@ -1011,7 +1097,7 @@ JobRunResult RunJob_PlantSapling(Job* job, void* moverPtr, float dt) {
     }
     if (job->step == STEP_PLANTING) {
         int itemIdx = job->carryingItem;
-        JobRunResult r = RunWorkProgress(job, d, mover, dt, PLANT_SAPLING_WORK_TIME, false);
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, PLANT_SAPLING_WORK_TIME, false, 1.0f);
         if (r == JOBRUN_DONE) {
             if (itemIdx >= 0 && items[itemIdx].active) {
                 PlaceSapling(tx, ty, tz, (MaterialType)items[itemIdx].material);
@@ -1036,7 +1122,7 @@ JobRunResult RunJob_GatherSapling(Job* job, void* moverPtr, float dt) {
     if (grid[tz][ty][tx] != CELL_SAPLING) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
     if (job->step == STEP_WORKING) {
-        JobRunResult r = RunWorkProgress(job, d, mover, dt, GATHER_SAPLING_WORK_TIME, false);
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, GATHER_SAPLING_WORK_TIME, false, 1.0f);
         if (r == JOBRUN_DONE) CompleteGatherSaplingDesignation(tx, ty, tz, job->assignedMover);
         return r;
     }
@@ -1051,7 +1137,7 @@ JobRunResult RunJob_GatherGrass(Job* job, void* moverPtr, float dt) {
     if (!d || d->type != DESIGNATION_GATHER_GRASS) return JOBRUN_FAIL;
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToTileStep(job, mover);
     if (job->step == STEP_WORKING) {
-        JobRunResult r = RunWorkProgress(job, d, mover, dt, GATHER_GRASS_WORK_TIME, false);
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, GATHER_GRASS_WORK_TIME, false, 1.0f);
         if (r == JOBRUN_DONE) CompleteGatherGrassDesignation(tx, ty, tz, job->assignedMover);
         return r;
     }
@@ -1066,7 +1152,7 @@ JobRunResult RunJob_HarvestBerry(Job* job, void* moverPtr, float dt) {
     if (!d || d->type != DESIGNATION_HARVEST_BERRY) return JOBRUN_FAIL;
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToTileStep(job, mover);
     if (job->step == STEP_WORKING) {
-        JobRunResult r = RunWorkProgress(job, d, mover, dt, HARVEST_BERRY_WORK_TIME, false);
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, HARVEST_BERRY_WORK_TIME, false, 1.0f);
         if (r == JOBRUN_DONE) CompleteHarvestBerryDesignation(tx, ty, tz);
         return r;
     }
@@ -1082,7 +1168,7 @@ JobRunResult RunJob_GatherTree(Job* job, void* moverPtr, float dt) {
     if (grid[tz][ty][tx] != CELL_TREE_TRUNK) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
     if (job->step == STEP_WORKING) {
-        JobRunResult r = RunWorkProgress(job, d, mover, dt, GATHER_TREE_WORK_TIME, true);
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, GATHER_TREE_WORK_TIME, true, 1.0f);
         if (r == JOBRUN_DONE) CompleteGatherTreeDesignation(tx, ty, tz, job->assignedMover);
         return r;
     }
@@ -1295,10 +1381,11 @@ JobRunResult RunJob_Build(Job* job, void* moverPtr, float dt) {
             return JOBRUN_FAIL;
         }
 
-        // Progress building using recipe buildTime
+        // Progress building using recipe buildTime, scaled by tool quality
         const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
         float buildTime = recipe ? recipe->stages[bp->stage].buildTime : 2.0f;
-        job->progress += dt;
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_BUILD, MAT_NONE, mover->equippedTool);
+        job->progress += dt * speed;
         bp->progress = job->progress / buildTime;
 
         if (job->progress >= buildTime) {
@@ -1317,6 +1404,9 @@ JobRunResult RunJob_Build(Job* job, void* moverPtr, float dt) {
 JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
     int moverIdx = job->assignedMover;
+
+    // Tool fetch phase (before any workshop/bill validation)
+    if (job->step == STEP_FETCHING_TOOL) return RunToolFetchStep(job, mover, moverIdx, CRAFT_STEP_MOVING_TO_INPUT);
 
     // Check if workshop still exists
     if (job->targetWorkshop < 0 || job->targetWorkshop >= MAX_WORKSHOPS) {
@@ -1956,7 +2046,7 @@ JobRunResult RunJob_Clean(Job* job, void* moverPtr, float dt) {
     }
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToTileStep(job, mover);
     if (job->step == STEP_WORKING) {
-        JobRunResult r = RunWorkProgress(job, d, mover, dt, CLEAN_WORK_TIME, true);
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, CLEAN_WORK_TIME, true, 1.0f);
         if (r == JOBRUN_DONE) CompleteCleanDesignation(tx, ty, tz);
         return r;
     }
@@ -2374,6 +2464,13 @@ void CancelJob(void* moverPtr, int moverIdx) {
             }
         }
 
+        // Release tool item reservation (if mover hasn't picked it up yet)
+        if (job->toolItem >= 0 && items[job->toolItem].active) {
+            if (m->equippedTool != job->toolItem) {
+                items[job->toolItem].reservedBy = -1;
+            }
+        }
+
         // Release workshop reservation (for craft jobs)
         if (job->targetWorkshop >= 0 && job->targetWorkshop < MAX_WORKSHOPS) {
             Workshop* ws = &workshops[job->targetWorkshop];
@@ -2490,6 +2587,13 @@ void UnassignJob(void* moverPtr, int moverIdx) {
                 SafeDropItemNearMover(job->fuelItem, m);
             } else {
                 items[job->fuelItem].reservedBy = -1;
+            }
+        }
+
+        // Release tool item reservation (if mover hasn't picked it up yet)
+        if (job->toolItem >= 0 && items[job->toolItem].active) {
+            if (m->equippedTool != job->toolItem) {
+                items[job->toolItem].reservedBy = -1;
             }
         }
 
@@ -3259,7 +3363,7 @@ JobRunResult RunJob_Knap(Job* job, void* moverPtr, float dt) {
         return r;
     }
     if (job->step == STEP_PLANTING) {
-        JobRunResult r = RunWorkProgress(job, d, mover, dt, KNAP_WORK_TIME, false);
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, KNAP_WORK_TIME, false, 1.0f);
         if (r == JOBRUN_DONE) {
             MaterialType wallMat = GetWallMaterial(tx, ty, tz);
             int itemIdx = job->carryingItem;
@@ -4255,6 +4359,20 @@ int WorkGiver_Craft(int moverIdx) {
             if (bill->recipeIdx < 0 || bill->recipeIdx >= recipeCount) continue;
             const Recipe* recipe = &recipes[bill->recipeIdx];
 
+            // Check tool requirement for this recipe
+            int neededToolIdx = -1;
+            if (recipe->requiredQualityLevel > 0 && toolRequirementsEnabled) {
+                QualityType reqQuality = (QualityType)recipe->requiredQuality;
+                int reqLevel = recipe->requiredQualityLevel;
+                int currentLevel = (m->equippedTool >= 0)
+                    ? GetItemQualityLevel(items[m->equippedTool].type, reqQuality) : 0;
+                if (currentLevel < reqLevel) {
+                    neededToolIdx = FindNearestToolForQuality(reqQuality, reqLevel,
+                        (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z, 50, -1);
+                    if (neededToolIdx < 0) continue;  // No tool, skip this bill
+                }
+            }
+
             // Find an input item first (search nearby or all if radius = 0)
             int searchRadius = bill->ingredientSearchRadius;
             if (searchRadius == 0) searchRadius = 100;  // Large default
@@ -4406,14 +4524,25 @@ int WorkGiver_Craft(int moverIdx) {
             job->targetBillIdx = b;
             job->targetItem = itemIdx;
             job->targetItem2 = item2Idx;
-            job->step = CRAFT_STEP_MOVING_TO_INPUT;
             job->progress = 0.0f;
             job->carryingItem = -1;
             job->fuelItem = fuelIdx;
 
+            // Set up tool fetch or go directly to input pickup
+            if (neededToolIdx >= 0) {
+                items[neededToolIdx].reservedBy = moverIdx;
+                job->toolItem = neededToolIdx;
+                job->step = STEP_FETCHING_TOOL;
+                m->goal = (Point){ (int)(items[neededToolIdx].x / CELL_SIZE),
+                                    (int)(items[neededToolIdx].y / CELL_SIZE),
+                                    (int)items[neededToolIdx].z };
+            } else {
+                job->step = CRAFT_STEP_MOVING_TO_INPUT;
+                m->goal = itemCell;
+            }
+
             // Update mover
             m->currentJobId = jobId;
-            m->goal = itemCell;
             m->needsRepath = true;
 
             RemoveMoverFromIdleList(moverIdx);
@@ -4650,39 +4779,59 @@ int WorkGiver_Mining(int moverIdx) {
     // Check capability
     if (!m->capabilities.canMine) return -1;
 
-
     // Find nearest unassigned mine designation from the pre-built cache
+    // First pass: entries the mover can do with current tool
+    // Second pass: hard-gated entries the mover could do with a nearby tool
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
     int bestAdjX = -1, bestAdjY = -1;
     float bestDistSq = 1e30f;
+    bool bestNeedsTool = false;
 
-    for (int i = 0; i < mineCacheCount; i++) {
-        AdjacentDesignationEntry* entry = &mineCache[i];
+    for (int pass = 0; pass < 2 && bestDesigX < 0; pass++) {
+        for (int i = 0; i < mineCacheCount; i++) {
+            AdjacentDesignationEntry* entry = &mineCache[i];
 
+            // Check if still unassigned, correct type, and not marked unreachable
+            Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+            if (!d || d->type != DESIGNATION_MINE || d->assignedMover != -1) continue;
+            if (d->unreachableCooldown > 0.0f) continue;
 
+            MaterialType mat = GetWallMaterial(entry->x, entry->y, entry->z);
+            bool canDo = CanMoverDoJob(JOBTYPE_MINE, mat, m->equippedTool);
 
-        // Check if still unassigned, correct type, and not marked unreachable
-        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
-        if (!d || d->type != DESIGNATION_MINE || d->assignedMover != -1) continue;
-        if (d->unreachableCooldown > 0.0f) continue;
+            if (pass == 0 && !canDo) continue;       // First pass: skip what we can't do
+            if (pass == 1 && canDo) continue;         // Second pass: skip what we already could do
+            if (pass == 1 && !toolRequirementsEnabled) continue;
 
-        float minePosX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;
-        float minePosY = entry->adjY * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = minePosX - m->x;
-        float dy = minePosY - m->y;
-        float distSq = dx * dx + dy * dy;
+            float minePosX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+            float minePosY = entry->adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+            float dx = minePosX - m->x;
+            float dy = minePosY - m->y;
+            float distSq = dx * dx + dy * dy;
 
-        if (distSq < bestDistSq) {
-            bestDistSq = distSq;
-            bestDesigX = entry->x;
-            bestDesigY = entry->y;
-            bestDesigZ = entry->z;
-            bestAdjX = entry->adjX;
-            bestAdjY = entry->adjY;
+            if (distSq < bestDistSq) {
+                bestDistSq = distSq;
+                bestDesigX = entry->x;
+                bestDesigY = entry->y;
+                bestDesigZ = entry->z;
+                bestAdjX = entry->adjX;
+                bestAdjY = entry->adjY;
+                bestNeedsTool = (pass == 1);
+            }
         }
     }
 
     if (bestDesigX < 0) return -1;
+
+    // If second-pass result, find a tool for it
+    int neededToolIdx = -1;
+    if (bestNeedsTool) {
+        MaterialType mat = GetWallMaterial(bestDesigX, bestDesigY, bestDesigZ);
+        JobToolReq req = GetJobToolRequirement(JOBTYPE_MINE, mat);
+        neededToolIdx = FindNearestToolForQuality(req.qualityType, req.minLevel,
+            (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z, 50, -1);
+        if (neededToolIdx < 0) return -1;  // No tool available
+    }
 
     // Check reachability - try all adjacent walkable tiles until we find one with a valid path
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
@@ -4703,16 +4852,27 @@ int WorkGiver_Mining(int moverIdx) {
     job->targetMineZ = bestDesigZ;
     job->targetAdjX = bestAdjX;  // Cache adjacent tile
     job->targetAdjY = bestAdjY;
-    job->step = 0;  // STEP_MOVING_TO_WORK
     job->progress = 0.0f;
 
     // Reserve designation
     Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
     d->assignedMover = moverIdx;
 
+    // Set up tool fetch or go directly to work
+    if (neededToolIdx >= 0) {
+        items[neededToolIdx].reservedBy = moverIdx;
+        job->toolItem = neededToolIdx;
+        job->step = STEP_FETCHING_TOOL;
+        m->goal = (Point){ (int)(items[neededToolIdx].x / CELL_SIZE),
+                            (int)(items[neededToolIdx].y / CELL_SIZE),
+                            (int)items[neededToolIdx].z };
+    } else {
+        job->step = STEP_MOVING_TO_WORK;
+        m->goal = (Point){ bestAdjX, bestAdjY, bestDesigZ };
+    }
+
     // Update mover
     m->currentJobId = jobId;
-    m->goal = (Point){ bestAdjX, bestAdjY, bestDesigZ };
     m->needsRepath = true;
 
     RemoveMoverFromIdleList(moverIdx);
@@ -4728,37 +4888,54 @@ int WorkGiver_Channel(int moverIdx) {
     // Check capability - channeling uses the same skill as mining
     if (!m->capabilities.canMine) return -1;
 
-
     // Find nearest unassigned channel designation from the pre-built cache
+    // Two-pass: first try doable with current tool, then try with tool seeking
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
     float bestDistSq = 1e30f;
+    bool bestNeedsTool = false;
 
-    for (int i = 0; i < channelCacheCount; i++) {
-        OnTileDesignationEntry* entry = &channelCache[i];
+    for (int pass = 0; pass < 2 && bestDesigX < 0; pass++) {
+        for (int i = 0; i < channelCacheCount; i++) {
+            OnTileDesignationEntry* entry = &channelCache[i];
 
+            Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+            if (!d || d->type != DESIGNATION_CHANNEL || d->assignedMover != -1) continue;
+            if (d->unreachableCooldown > 0.0f) continue;
 
+            MaterialType mat = (entry->z > 0) ? GetWallMaterial(entry->x, entry->y, entry->z - 1) : MAT_DIRT;
+            bool canDo = CanMoverDoJob(JOBTYPE_CHANNEL, mat, m->equippedTool);
 
-        // Check if still unassigned, correct type, and not marked unreachable
-        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
-        if (!d || d->type != DESIGNATION_CHANNEL || d->assignedMover != -1) continue;
-        if (d->unreachableCooldown > 0.0f) continue;
+            if (pass == 0 && !canDo) continue;
+            if (pass == 1 && canDo) continue;
+            if (pass == 1 && !toolRequirementsEnabled) continue;
 
-        // Distance to the tile itself (mover stands on it)
-        float tileX = entry->x * CELL_SIZE + CELL_SIZE * 0.5f;
-        float tileY = entry->y * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = tileX - m->x;
-        float dy = tileY - m->y;
-        float distSq = dx * dx + dy * dy;
+            float tileX = entry->x * CELL_SIZE + CELL_SIZE * 0.5f;
+            float tileY = entry->y * CELL_SIZE + CELL_SIZE * 0.5f;
+            float dx = tileX - m->x;
+            float dy = tileY - m->y;
+            float distSq = dx * dx + dy * dy;
 
-        if (distSq < bestDistSq) {
-            bestDistSq = distSq;
-            bestDesigX = entry->x;
-            bestDesigY = entry->y;
-            bestDesigZ = entry->z;
+            if (distSq < bestDistSq) {
+                bestDistSq = distSq;
+                bestDesigX = entry->x;
+                bestDesigY = entry->y;
+                bestDesigZ = entry->z;
+                bestNeedsTool = (pass == 1);
+            }
         }
     }
 
     if (bestDesigX < 0) return -1;
+
+    // If second-pass result, find a tool for it
+    int neededToolIdx = -1;
+    if (bestNeedsTool) {
+        MaterialType mat = (bestDesigZ > 0) ? GetWallMaterial(bestDesigX, bestDesigY, bestDesigZ - 1) : MAT_DIRT;
+        JobToolReq req = GetJobToolRequirement(JOBTYPE_CHANNEL, mat);
+        neededToolIdx = FindNearestToolForQuality(req.qualityType, req.minLevel,
+            (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z, 50, -1);
+        if (neededToolIdx < 0) return -1;
+    }
 
     // Check reachability - mover walks TO the tile (not adjacent)
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
@@ -4782,16 +4959,27 @@ int WorkGiver_Channel(int moverIdx) {
     job->targetMineX = bestDesigX;  // Reusing mine target fields
     job->targetMineY = bestDesigY;
     job->targetMineZ = bestDesigZ;
-    job->step = 0;  // STEP_MOVING_TO_WORK
     job->progress = 0.0f;
 
     // Reserve designation
     Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
     d->assignedMover = moverIdx;
 
+    // Set up tool fetch or go directly to work
+    if (neededToolIdx >= 0) {
+        items[neededToolIdx].reservedBy = moverIdx;
+        job->toolItem = neededToolIdx;
+        job->step = STEP_FETCHING_TOOL;
+        m->goal = (Point){ (int)(items[neededToolIdx].x / CELL_SIZE),
+                            (int)(items[neededToolIdx].y / CELL_SIZE),
+                            (int)items[neededToolIdx].z };
+    } else {
+        job->step = STEP_MOVING_TO_WORK;
+        m->goal = targetCell;
+    }
+
     // Update mover
     m->currentJobId = jobId;
-    m->goal = targetCell;  // Walk to the tile itself
     m->needsRepath = true;
 
     RemoveMoverFromIdleList(moverIdx);
@@ -4808,39 +4996,57 @@ int WorkGiver_DigRamp(int moverIdx) {
     // Check capability - uses mining skill
     if (!m->capabilities.canMine) return -1;
 
-
     // Find nearest unassigned dig ramp designation from the pre-built cache
+    // Two-pass: first try doable with current tool, then try with tool seeking
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
     int bestAdjX = -1, bestAdjY = -1;
     float bestDistSq = 1e30f;
+    bool bestNeedsTool = false;
 
-    for (int i = 0; i < digRampCacheCount; i++) {
-        AdjacentDesignationEntry* entry = &digRampCache[i];
+    for (int pass = 0; pass < 2 && bestDesigX < 0; pass++) {
+        for (int i = 0; i < digRampCacheCount; i++) {
+            AdjacentDesignationEntry* entry = &digRampCache[i];
 
+            Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+            if (!d || d->type != DESIGNATION_DIG_RAMP || d->assignedMover != -1) continue;
+            if (d->unreachableCooldown > 0.0f) continue;
 
+            MaterialType mat = GetWallMaterial(entry->x, entry->y, entry->z);
+            bool canDo = CanMoverDoJob(JOBTYPE_DIG_RAMP, mat, m->equippedTool);
 
-        // Check if still unassigned, correct type, and not marked unreachable
-        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
-        if (!d || d->type != DESIGNATION_DIG_RAMP || d->assignedMover != -1) continue;
-        if (d->unreachableCooldown > 0.0f) continue;
+            if (pass == 0 && !canDo) continue;
+            if (pass == 1 && canDo) continue;
+            if (pass == 1 && !toolRequirementsEnabled) continue;
 
-        float workPosX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;
-        float workPosY = entry->adjY * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = workPosX - m->x;
-        float dy = workPosY - m->y;
-        float distSq = dx * dx + dy * dy;
+            float workPosX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+            float workPosY = entry->adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+            float dx = workPosX - m->x;
+            float dy = workPosY - m->y;
+            float distSq = dx * dx + dy * dy;
 
-        if (distSq < bestDistSq) {
-            bestDistSq = distSq;
-            bestDesigX = entry->x;
-            bestDesigY = entry->y;
-            bestDesigZ = entry->z;
-            bestAdjX = entry->adjX;
-            bestAdjY = entry->adjY;
+            if (distSq < bestDistSq) {
+                bestDistSq = distSq;
+                bestDesigX = entry->x;
+                bestDesigY = entry->y;
+                bestDesigZ = entry->z;
+                bestAdjX = entry->adjX;
+                bestAdjY = entry->adjY;
+                bestNeedsTool = (pass == 1);
+            }
         }
     }
 
     if (bestDesigX < 0) return -1;
+
+    // If second-pass result, find a tool for it
+    int neededToolIdx = -1;
+    if (bestNeedsTool) {
+        MaterialType mat = GetWallMaterial(bestDesigX, bestDesigY, bestDesigZ);
+        JobToolReq req = GetJobToolRequirement(JOBTYPE_DIG_RAMP, mat);
+        neededToolIdx = FindNearestToolForQuality(req.qualityType, req.minLevel,
+            (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z, 50, -1);
+        if (neededToolIdx < 0) return -1;
+    }
 
     // Check reachability - try all adjacent walkable tiles until we find one with a valid path
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
@@ -4861,16 +5067,27 @@ int WorkGiver_DigRamp(int moverIdx) {
     job->targetMineZ = bestDesigZ;
     job->targetAdjX = bestAdjX;
     job->targetAdjY = bestAdjY;
-    job->step = 0;  // STEP_MOVING_TO_WORK
     job->progress = 0.0f;
 
     // Reserve designation
     Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
     d->assignedMover = moverIdx;
 
+    // Set up tool fetch or go directly to work
+    if (neededToolIdx >= 0) {
+        items[neededToolIdx].reservedBy = moverIdx;
+        job->toolItem = neededToolIdx;
+        job->step = STEP_FETCHING_TOOL;
+        m->goal = (Point){ (int)(items[neededToolIdx].x / CELL_SIZE),
+                            (int)(items[neededToolIdx].y / CELL_SIZE),
+                            (int)items[neededToolIdx].z };
+    } else {
+        job->step = STEP_MOVING_TO_WORK;
+        m->goal = (Point){ bestAdjX, bestAdjY, bestDesigZ };
+    }
+
     // Update mover
     m->currentJobId = jobId;
-    m->goal = (Point){ bestAdjX, bestAdjY, bestDesigZ };
     m->needsRepath = true;
 
     RemoveMoverFromIdleList(moverIdx);
@@ -5046,6 +5263,16 @@ int WorkGiver_Chop(int moverIdx) {
     // Check capability - uses mining skill for chopping
     if (!m->capabilities.canMine) return -1;
 
+    // Tool gate: chopping requires cutting:1
+    // If mover lacks tool, try to find one nearby
+    int neededToolIdx = -1;
+    if (!CanMoverDoJob(JOBTYPE_CHOP, MAT_NONE, m->equippedTool)) {
+        if (!toolRequirementsEnabled) return -1;
+        JobToolReq req = GetJobToolRequirement(JOBTYPE_CHOP, MAT_NONE);
+        neededToolIdx = FindNearestToolForQuality(req.qualityType, req.minLevel,
+            (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z, 50, -1);
+        if (neededToolIdx < 0) return -1;
+    }
 
     // Find nearest unassigned chop designation from cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
@@ -5054,8 +5281,6 @@ int WorkGiver_Chop(int moverIdx) {
 
     for (int i = 0; i < chopCacheCount; i++) {
         AdjacentDesignationEntry* entry = &chopCache[i];
-
-
 
         // Check if still unassigned and correct type
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
@@ -5100,16 +5325,27 @@ int WorkGiver_Chop(int moverIdx) {
     job->targetMineZ = bestDesigZ;
     job->targetAdjX = bestAdjX;
     job->targetAdjY = bestAdjY;
-    job->step = 0;  // STEP_MOVING_TO_WORK
     job->progress = 0.0f;
 
     // Reserve designation
     Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
     d->assignedMover = moverIdx;
 
+    // Set up tool fetch or go directly to work
+    if (neededToolIdx >= 0) {
+        items[neededToolIdx].reservedBy = moverIdx;
+        job->toolItem = neededToolIdx;
+        job->step = STEP_FETCHING_TOOL;
+        m->goal = (Point){ (int)(items[neededToolIdx].x / CELL_SIZE),
+                            (int)(items[neededToolIdx].y / CELL_SIZE),
+                            (int)items[neededToolIdx].z };
+    } else {
+        job->step = STEP_MOVING_TO_WORK;
+        m->goal = (Point){ bestAdjX, bestAdjY, bestDesigZ };
+    }
+
     // Update mover
     m->currentJobId = jobId;
-    m->goal = (Point){ bestAdjX, bestAdjY, bestDesigZ };
     m->needsRepath = true;
 
     RemoveMoverFromIdleList(moverIdx);
@@ -5124,6 +5360,16 @@ int WorkGiver_ChopFelled(int moverIdx) {
 
     if (!m->capabilities.canMine) return -1;
 
+    // Tool gate: chopping felled trunks requires cutting:1
+    // If mover lacks tool, try to find one nearby
+    int neededToolIdx = -1;
+    if (!CanMoverDoJob(JOBTYPE_CHOP_FELLED, MAT_NONE, m->equippedTool)) {
+        if (!toolRequirementsEnabled) return -1;
+        JobToolReq req = GetJobToolRequirement(JOBTYPE_CHOP_FELLED, MAT_NONE);
+        neededToolIdx = FindNearestToolForQuality(req.qualityType, req.minLevel,
+            (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z, 50, -1);
+        if (neededToolIdx < 0) return -1;
+    }
 
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
     int bestAdjX = -1, bestAdjY = -1;
@@ -5131,8 +5377,6 @@ int WorkGiver_ChopFelled(int moverIdx) {
 
     for (int i = 0; i < chopFelledCacheCount; i++) {
         AdjacentDesignationEntry* entry = &chopFelledCache[i];
-
-
 
         // Check if still unassigned and correct type
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
@@ -5178,14 +5422,25 @@ int WorkGiver_ChopFelled(int moverIdx) {
     job->targetMineZ = bestDesigZ;
     job->targetAdjX = bestAdjX;
     job->targetAdjY = bestAdjY;
-    job->step = 0;
     job->progress = 0.0f;
 
     Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
     d->assignedMover = moverIdx;
 
+    // Set up tool fetch or go directly to work
+    if (neededToolIdx >= 0) {
+        items[neededToolIdx].reservedBy = moverIdx;
+        job->toolItem = neededToolIdx;
+        job->step = STEP_FETCHING_TOOL;
+        m->goal = (Point){ (int)(items[neededToolIdx].x / CELL_SIZE),
+                            (int)(items[neededToolIdx].y / CELL_SIZE),
+                            (int)items[neededToolIdx].z };
+    } else {
+        job->step = STEP_MOVING_TO_WORK;
+        m->goal = (Point){ bestAdjX, bestAdjY, bestDesigZ };
+    }
+
     m->currentJobId = jobId;
-    m->goal = (Point){ bestAdjX, bestAdjY, bestDesigZ };
     m->needsRepath = true;
 
     RemoveMoverFromIdleList(moverIdx);

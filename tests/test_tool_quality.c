@@ -4,6 +4,18 @@
 #include "../src/entities/item_defs.h"
 #include "../src/entities/tool_quality.h"
 #include "../src/entities/mover.h"
+#include "../src/entities/jobs.h"
+#include "../src/entities/stockpiles.h"
+#include "../src/entities/workshops.h"
+#include "../src/world/grid.h"
+#include "../src/world/cell_defs.h"
+#include "../src/world/material.h"
+#include "../src/world/pathfinding.h"
+#include "../src/world/designations.h"
+#include "../src/simulation/trees.h"
+#include "../src/simulation/balance.h"
+#include "../src/core/time.h"
+#include "../src/game_state.h"
 #include "test_helpers.h"
 #include <string.h>
 
@@ -241,6 +253,1268 @@ describe(game_scenarios) {
     }
 }
 
+// ===========================================================================
+// Job-to-quality mapping tests
+// ===========================================================================
+describe(job_tool_requirement) {
+    it("should require DIGGING for mining dirt") {
+        JobToolReq req = GetJobToolRequirement(JOBTYPE_MINE, MAT_DIRT);
+        expect(req.hasRequirement == true);
+        expect(req.qualityType == QUALITY_DIGGING);
+        expect(req.isSoft == true);
+        expect(req.minLevel == 0);
+    }
+
+    it("should require HAMMERING:2 for mining stone") {
+        JobToolReq req = GetJobToolRequirement(JOBTYPE_MINE, MAT_GRANITE);
+        expect(req.hasRequirement == true);
+        expect(req.qualityType == QUALITY_HAMMERING);
+        expect(req.isSoft == false);
+        expect(req.minLevel == 2);
+    }
+
+    it("should require CUTTING:1 for chopping") {
+        JobToolReq req = GetJobToolRequirement(JOBTYPE_CHOP, MAT_NONE);
+        expect(req.hasRequirement == true);
+        expect(req.qualityType == QUALITY_CUTTING);
+        expect(req.isSoft == false);
+        expect(req.minLevel == 1);
+    }
+
+    it("should require CUTTING:1 for chopping felled") {
+        JobToolReq req = GetJobToolRequirement(JOBTYPE_CHOP_FELLED, MAT_NONE);
+        expect(req.hasRequirement == true);
+        expect(req.qualityType == QUALITY_CUTTING);
+        expect(req.isSoft == false);
+        expect(req.minLevel == 1);
+    }
+
+    it("should require soft HAMMERING for building") {
+        JobToolReq req = GetJobToolRequirement(JOBTYPE_BUILD, MAT_NONE);
+        expect(req.hasRequirement == true);
+        expect(req.qualityType == QUALITY_HAMMERING);
+        expect(req.isSoft == true);
+        expect(req.minLevel == 0);
+    }
+
+    it("should have no requirement for hauling") {
+        JobToolReq req = GetJobToolRequirement(JOBTYPE_HAUL, MAT_NONE);
+        expect(req.hasRequirement == false);
+    }
+
+    it("should have no requirement for knapping") {
+        JobToolReq req = GetJobToolRequirement(JOBTYPE_KNAP, MAT_NONE);
+        expect(req.hasRequirement == false);
+    }
+
+    it("should require DIGGING for channeling soil") {
+        JobToolReq req = GetJobToolRequirement(JOBTYPE_CHANNEL, MAT_CLAY);
+        expect(req.hasRequirement == true);
+        expect(req.qualityType == QUALITY_DIGGING);
+        expect(req.isSoft == true);
+    }
+
+    it("should require HAMMERING:2 for channeling stone") {
+        JobToolReq req = GetJobToolRequirement(JOBTYPE_CHANNEL, MAT_GRANITE);
+        expect(req.hasRequirement == true);
+        expect(req.qualityType == QUALITY_HAMMERING);
+        expect(req.isSoft == false);
+        expect(req.minLevel == 2);
+    }
+
+    it("should require DIGGING for ramp carving in dirt") {
+        JobToolReq req = GetJobToolRequirement(JOBTYPE_DIG_RAMP, MAT_DIRT);
+        expect(req.hasRequirement == true);
+        expect(req.qualityType == QUALITY_DIGGING);
+        expect(req.isSoft == true);
+    }
+
+    it("should require HAMMERING:2 for ramp carving in stone") {
+        JobToolReq req = GetJobToolRequirement(JOBTYPE_DIG_RAMP, MAT_SANDSTONE);
+        expect(req.hasRequirement == true);
+        expect(req.qualityType == QUALITY_HAMMERING);
+        expect(req.isSoft == false);
+        expect(req.minLevel == 2);
+    }
+}
+
+// ===========================================================================
+// CanMoverDoJob tests
+// ===========================================================================
+describe(can_mover_do_job) {
+    it("should allow anyone to do tool-free jobs") {
+        toolRequirementsEnabled = true;
+        expect(CanMoverDoJob(JOBTYPE_HAUL, MAT_NONE, -1) == true);
+        expect(CanMoverDoJob(JOBTYPE_KNAP, MAT_NONE, -1) == true);
+        expect(CanMoverDoJob(JOBTYPE_CLEAN, MAT_NONE, -1) == true);
+    }
+
+    it("should allow anyone to do soft jobs (even bare-handed)") {
+        toolRequirementsEnabled = true;
+        expect(CanMoverDoJob(JOBTYPE_MINE, MAT_DIRT, -1) == true);
+        expect(CanMoverDoJob(JOBTYPE_BUILD, MAT_NONE, -1) == true);
+    }
+
+    it("should block hard-gated jobs without the right tool") {
+        toolRequirementsEnabled = true;
+        // No tool → can't chop
+        expect(CanMoverDoJob(JOBTYPE_CHOP, MAT_NONE, -1) == false);
+        // No tool → can't mine stone
+        expect(CanMoverDoJob(JOBTYPE_MINE, MAT_GRANITE, -1) == false);
+    }
+
+    it("should allow hard-gated jobs with the right tool") {
+        toolRequirementsEnabled = true;
+        InitTestGrid(8, 8);
+        ClearItems();
+
+        // Spawn a sharp stone (cutting:1)
+        int ssIdx = SpawnItem(1 * CELL_SIZE, 1 * CELL_SIZE, 0, ITEM_SHARP_STONE);
+        expect(ssIdx >= 0);
+        expect(CanMoverDoJob(JOBTYPE_CHOP, MAT_NONE, ssIdx) == true);
+
+        // Sharp stone has no hammering → can't mine stone
+        expect(CanMoverDoJob(JOBTYPE_MINE, MAT_GRANITE, ssIdx) == false);
+    }
+
+    it("should allow rock mining with rock that only has hammer:1 — NOT enough for stone") {
+        toolRequirementsEnabled = true;
+        InitTestGrid(8, 8);
+        ClearItems();
+
+        int rockIdx = SpawnItem(1 * CELL_SIZE, 1 * CELL_SIZE, 0, ITEM_ROCK);
+        expect(rockIdx >= 0);
+        // Rock has hammer:1, stone mining needs hammer:2 → blocked
+        expect(CanMoverDoJob(JOBTYPE_MINE, MAT_GRANITE, rockIdx) == false);
+        // Rock has hammer:1, building is soft → allowed
+        expect(CanMoverDoJob(JOBTYPE_BUILD, MAT_NONE, rockIdx) == true);
+    }
+
+    it("should bypass all gates when toolRequirementsEnabled is false") {
+        toolRequirementsEnabled = false;
+        expect(CanMoverDoJob(JOBTYPE_CHOP, MAT_NONE, -1) == true);
+        expect(CanMoverDoJob(JOBTYPE_MINE, MAT_GRANITE, -1) == true);
+        expect(CanMoverDoJob(JOBTYPE_CHOP_FELLED, MAT_NONE, -1) == true);
+    }
+}
+
+// ===========================================================================
+// GetJobToolSpeedMultiplier tests
+// ===========================================================================
+describe(job_tool_speed) {
+    it("should return 0.5x for bare-handed soft dirt mining") {
+        toolRequirementsEnabled = true;
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_MINE, MAT_DIRT, -1);
+        expect(speed > 0.49f && speed < 0.51f);
+    }
+
+    it("should return 1.0x for tool-free jobs regardless of tool") {
+        toolRequirementsEnabled = true;
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_HAUL, MAT_NONE, -1);
+        expect(speed > 0.99f && speed < 1.01f);
+    }
+
+    it("should return 0.0 for hard-gated stone mining without tool") {
+        toolRequirementsEnabled = true;
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_MINE, MAT_GRANITE, -1);
+        expect(speed < 0.01f);
+    }
+
+    it("should return 1.0x when toggle is off") {
+        toolRequirementsEnabled = false;
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_MINE, MAT_GRANITE, -1);
+        expect(speed > 0.99f && speed < 1.01f);
+    }
+
+    it("should return 1.0x for sharp stone chopping trees") {
+        toolRequirementsEnabled = true;
+        InitTestGrid(8, 8);
+        ClearItems();
+        int ssIdx = SpawnItem(1 * CELL_SIZE, 1 * CELL_SIZE, 0, ITEM_SHARP_STONE);
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_CHOP, MAT_NONE, ssIdx);
+        expect(speed > 0.99f && speed < 1.01f);
+    }
+
+    it("should return 1.0x for rock soft-building") {
+        toolRequirementsEnabled = true;
+        InitTestGrid(8, 8);
+        ClearItems();
+        int rockIdx = SpawnItem(1 * CELL_SIZE, 1 * CELL_SIZE, 0, ITEM_ROCK);
+        // Rock has hammer:1, building is soft (minLevel=0): level 1 → 1.0x
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_BUILD, MAT_NONE, rockIdx);
+        expect(speed > 0.99f && speed < 1.01f);
+    }
+}
+
+// ===========================================================================
+// E2E Story tests: tool quality affecting actual job execution
+// ===========================================================================
+
+// Helper: set up a flat grid with one wall, a mover, and designations
+static void SetupMiningTest(int wallX, int wallY, MaterialType wallMat, int moverX, int moverY) {
+    InitTestGridFromAscii(
+        "..........\n"
+        "..........\n"
+        "..........\n"
+        "..........\n"
+        "..........\n"
+        "..........\n"
+        "..........\n"
+        "..........\n"
+        "..........\n"
+        "..........\n");
+
+    // Place a wall at the target position
+    grid[0][wallY][wallX] = CELL_WALL;
+    SetWallMaterial(wallX, wallY, 0, wallMat);
+    SetWallNatural(wallX, wallY, 0);
+
+    moverPathAlgorithm = PATH_ALGO_ASTAR;
+    ClearMovers();
+    ClearItems();
+    ClearStockpiles();
+    ClearWorkshops();
+    ClearJobs();
+    InitDesignations();
+
+    // Create mover
+    Point goal = {moverX, moverY, 0};
+    InitMover(&movers[0], moverX * CELL_SIZE + CELL_SIZE * 0.5f,
+              moverY * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, MOVER_SPEED);
+    moverCount = 1;
+}
+
+// Run simulation ticks until condition is met or max ticks reached.
+// Returns the number of ticks run.
+static int RunSimUntil(bool (*condition)(void), int maxTicks) {
+    for (int i = 0; i < maxTicks; i++) {
+        Tick();
+        AssignJobs();
+        JobsTick();
+        if (condition()) return i + 1;
+    }
+    return maxTicks;
+}
+
+static int g_wallCheckX, g_wallCheckY;
+static bool WallIsGone(void) {
+    return grid[0][g_wallCheckY][g_wallCheckX] != CELL_WALL;
+}
+
+describe(story1_bare_hands_soil_mining) {
+    it("mover digs dirt bare-handed at 0.5x speed (slower than with tool)") {
+        toolRequirementsEnabled = true;
+        SetupMiningTest(5, 3, MAT_DIRT, 4, 3);  // dirt wall at (5,3), mover at (4,3) adjacent
+
+        // Confirm wall is there
+        expect(grid[0][3][5] == CELL_WALL);
+        expect(GetWallMaterial(5, 3, 0) == MAT_DIRT);
+
+        // Mover has no tool
+        expect(movers[0].equippedTool == -1);
+
+        // Designate mine
+        bool desig = DesignateMine(5, 3, 0);
+        expect(desig == true);
+
+        // Run sim until wall is gone
+        g_wallCheckX = 5; g_wallCheckY = 3;
+        int ticksBareHands = RunSimUntil(WallIsGone, 2000);
+        expect(grid[0][3][5] != CELL_WALL);  // Wall should be mined
+
+        // Now do the same test with toolRequirementsEnabled=false (baseline speed)
+        SetupMiningTest(5, 3, MAT_DIRT, 4, 3);
+        toolRequirementsEnabled = false;
+        DesignateMine(5, 3, 0);
+        int ticksBaseline = RunSimUntil(WallIsGone, 2000);
+        expect(grid[0][3][5] != CELL_WALL);
+
+        // Bare hands should take roughly 2x baseline ticks
+        // Allow some tolerance for walking time (mover starts adjacent)
+        if (test_verbose) {
+            printf("  Bare hands ticks: %d, Baseline ticks: %d, ratio: %.2f\n",
+                   ticksBareHands, ticksBaseline, (float)ticksBareHands / ticksBaseline);
+        }
+        // The work portion should be 2x. Walking is same. So ratio should be > 1.5
+        expect(ticksBareHands > ticksBaseline);
+        // With mover starting adjacent, walk time is minimal — ratio should be close to 2.0
+        float ratio = (float)ticksBareHands / (float)ticksBaseline;
+        expect(ratio > 1.6f && ratio < 2.4f);
+    }
+}
+
+describe(story3_cannot_mine_rock_without_hammer) {
+    it("mover cannot mine stone wall without hammer:2 — job stays unassigned") {
+        toolRequirementsEnabled = true;
+        SetupMiningTest(5, 3, MAT_GRANITE, 4, 3);  // stone wall at (5,3)
+
+        expect(movers[0].equippedTool == -1);
+
+        DesignateMine(5, 3, 0);
+
+        // Run sim for a while — wall should NOT be mined
+        g_wallCheckX = 5; g_wallCheckY = 3;
+        RunSimUntil(WallIsGone, 500);
+
+        // Wall still there
+        expect(grid[0][3][5] == CELL_WALL);
+
+        // Mover should be idle (skipped the job)
+        expect(movers[0].currentJobId < 0);
+
+        // Designation still exists, unassigned
+        expect(HasMineDesignation(5, 3, 0) == true);
+        Designation* d = GetDesignation(5, 3, 0);
+        expect(d != NULL);
+        expect(d->assignedMover == -1);
+    }
+}
+
+describe(story5_cannot_chop_without_cutting) {
+    it("mover cannot chop tree without cutting:1 — job stays unassigned") {
+        toolRequirementsEnabled = true;
+
+        // Set up a grid with a tree
+        InitTestGridFromAscii(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n");
+
+        // Place a tree trunk at (5,3)
+        grid[0][3][5] = CELL_TREE_TRUNK;
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+        InitDesignations();
+
+        Point goal = {4, 3, 0};
+        InitMover(&movers[0], 4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, MOVER_SPEED);
+        moverCount = 1;
+        movers[0].equippedTool = -1;
+
+        bool desig = DesignateChop(5, 3, 0);
+        expect(desig == true);
+
+        // Run sim — tree should not be chopped
+        for (int i = 0; i < 500; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+
+        expect(grid[0][3][5] == CELL_TREE_TRUNK);
+        expect(movers[0].currentJobId < 0);
+        expect(HasChopDesignation(5, 3, 0) == true);
+    }
+}
+
+describe(story9_toggle_disables_everything) {
+    it("toolRequirementsEnabled=false lets movers mine stone and chop without tools") {
+        toolRequirementsEnabled = false;
+
+        // Test 1: Mine stone without tools
+        SetupMiningTest(5, 3, MAT_GRANITE, 4, 3);
+        toolRequirementsEnabled = false;  // ensure it's off after SetupMiningTest
+
+        DesignateMine(5, 3, 0);
+
+        g_wallCheckX = 5; g_wallCheckY = 3;
+        int ticks = RunSimUntil(WallIsGone, 2000);
+
+        expect(grid[0][3][5] != CELL_WALL);  // Stone wall should be mined
+        expect(ticks < 2000);  // Should complete
+
+        // Test 2: Chop tree without tools
+        InitTestGridFromAscii(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n");
+        grid[0][3][5] = CELL_TREE_TRUNK;
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+        InitDesignations();
+        toolRequirementsEnabled = false;
+
+        Point goal2 = {4, 3, 0};
+        InitMover(&movers[0], 4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal2, MOVER_SPEED);
+        moverCount = 1;
+
+        DesignateChop(5, 3, 0);
+
+        bool chopDone = false;
+        for (int i = 0; i < 2000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (grid[0][3][5] != CELL_TREE_TRUNK) {
+                chopDone = true;
+                break;
+            }
+        }
+        expect(chopDone == true);
+    }
+
+    it("speed is 1.0x when toggle off, not 0.5x") {
+        // Compare mining speed with toggle on (bare hands → 0.5x) vs off (→ 1.0x)
+        toolRequirementsEnabled = true;
+        SetupMiningTest(5, 3, MAT_DIRT, 4, 3);
+        DesignateMine(5, 3, 0);
+        g_wallCheckX = 5; g_wallCheckY = 3;
+        int ticksSlow = RunSimUntil(WallIsGone, 2000);
+
+        toolRequirementsEnabled = false;
+        SetupMiningTest(5, 3, MAT_DIRT, 4, 3);
+        DesignateMine(5, 3, 0);
+        int ticksFast = RunSimUntil(WallIsGone, 2000);
+
+        // With toggle off, should be ~2x faster than bare hands
+        if (test_verbose) {
+            printf("  Toggle on (bare hands): %d ticks, Toggle off: %d ticks\n", ticksSlow, ticksFast);
+        }
+        expect(ticksSlow > ticksFast);
+        float ratio = (float)ticksSlow / (float)ticksFast;
+        expect(ratio > 1.6f && ratio < 2.4f);
+    }
+}
+
+// ===========================================================================
+// New tool items: quality lookups (Context 3)
+// ===========================================================================
+describe(new_tool_quality_lookup) {
+    it("digging stick has digging:1") {
+        expect(GetItemQualityLevel(ITEM_DIGGING_STICK, QUALITY_DIGGING) == 1);
+    }
+
+    it("digging stick has no other qualities") {
+        expect(GetItemQualityLevel(ITEM_DIGGING_STICK, QUALITY_CUTTING) == 0);
+        expect(GetItemQualityLevel(ITEM_DIGGING_STICK, QUALITY_HAMMERING) == 0);
+        expect(GetItemQualityLevel(ITEM_DIGGING_STICK, QUALITY_SAWING) == 0);
+        expect(GetItemQualityLevel(ITEM_DIGGING_STICK, QUALITY_FINE) == 0);
+    }
+
+    it("stone axe has cutting:2 and hammering:1") {
+        expect(GetItemQualityLevel(ITEM_STONE_AXE, QUALITY_CUTTING) == 2);
+        expect(GetItemQualityLevel(ITEM_STONE_AXE, QUALITY_HAMMERING) == 1);
+    }
+
+    it("stone axe has no digging or fine") {
+        expect(GetItemQualityLevel(ITEM_STONE_AXE, QUALITY_DIGGING) == 0);
+        expect(GetItemQualityLevel(ITEM_STONE_AXE, QUALITY_FINE) == 0);
+    }
+
+    it("stone pick has digging:2 and hammering:2") {
+        expect(GetItemQualityLevel(ITEM_STONE_PICK, QUALITY_DIGGING) == 2);
+        expect(GetItemQualityLevel(ITEM_STONE_PICK, QUALITY_HAMMERING) == 2);
+    }
+
+    it("stone pick has no cutting or fine") {
+        expect(GetItemQualityLevel(ITEM_STONE_PICK, QUALITY_CUTTING) == 0);
+        expect(GetItemQualityLevel(ITEM_STONE_PICK, QUALITY_FINE) == 0);
+    }
+
+    it("stone hammer has hammering:2") {
+        expect(GetItemQualityLevel(ITEM_STONE_HAMMER, QUALITY_HAMMERING) == 2);
+    }
+
+    it("stone hammer has no other qualities") {
+        expect(GetItemQualityLevel(ITEM_STONE_HAMMER, QUALITY_CUTTING) == 0);
+        expect(GetItemQualityLevel(ITEM_STONE_HAMMER, QUALITY_DIGGING) == 0);
+        expect(GetItemQualityLevel(ITEM_STONE_HAMMER, QUALITY_FINE) == 0);
+    }
+}
+
+// ===========================================================================
+// New tool items: IF_TOOL flag (Context 3)
+// ===========================================================================
+describe(new_tool_flag) {
+    it("all new tool items have IF_TOOL") {
+        expect(ItemIsTool(ITEM_DIGGING_STICK) != 0);
+        expect(ItemIsTool(ITEM_STONE_AXE) != 0);
+        expect(ItemIsTool(ITEM_STONE_PICK) != 0);
+        expect(ItemIsTool(ITEM_STONE_HAMMER) != 0);
+    }
+
+    it("new tool items have ItemHasAnyQuality") {
+        expect(ItemHasAnyQuality(ITEM_DIGGING_STICK) == true);
+        expect(ItemHasAnyQuality(ITEM_STONE_AXE) == true);
+        expect(ItemHasAnyQuality(ITEM_STONE_PICK) == true);
+        expect(ItemHasAnyQuality(ITEM_STONE_HAMMER) == true);
+    }
+
+    it("new tools are non-stackable") {
+        expect((ItemFlags(ITEM_DIGGING_STICK) & IF_STACKABLE) == 0);
+        expect((ItemFlags(ITEM_STONE_AXE) & IF_STACKABLE) == 0);
+        expect((ItemFlags(ITEM_STONE_PICK) & IF_STACKABLE) == 0);
+        expect((ItemFlags(ITEM_STONE_HAMMER) & IF_STACKABLE) == 0);
+    }
+}
+
+// ===========================================================================
+// New tool items: CanMoverDoJob with new tools (Context 3)
+// ===========================================================================
+describe(new_tool_can_do_job) {
+    it("stone hammer unlocks rock mining") {
+        toolRequirementsEnabled = true;
+        InitTestGrid(8, 8);
+        ClearItems();
+        int hammerIdx = SpawnItem(1 * CELL_SIZE, 1 * CELL_SIZE, 0, ITEM_STONE_HAMMER);
+        expect(CanMoverDoJob(JOBTYPE_MINE, MAT_GRANITE, hammerIdx) == true);
+    }
+
+    it("stone pick unlocks rock mining") {
+        toolRequirementsEnabled = true;
+        InitTestGrid(8, 8);
+        ClearItems();
+        int pickIdx = SpawnItem(1 * CELL_SIZE, 1 * CELL_SIZE, 0, ITEM_STONE_PICK);
+        expect(CanMoverDoJob(JOBTYPE_MINE, MAT_GRANITE, pickIdx) == true);
+    }
+
+    it("digging stick cannot mine rock") {
+        toolRequirementsEnabled = true;
+        InitTestGrid(8, 8);
+        ClearItems();
+        int digIdx = SpawnItem(1 * CELL_SIZE, 1 * CELL_SIZE, 0, ITEM_DIGGING_STICK);
+        expect(CanMoverDoJob(JOBTYPE_MINE, MAT_GRANITE, digIdx) == false);
+    }
+
+    it("stone axe can chop trees at cutting:2") {
+        toolRequirementsEnabled = true;
+        InitTestGrid(8, 8);
+        ClearItems();
+        int axeIdx = SpawnItem(1 * CELL_SIZE, 1 * CELL_SIZE, 0, ITEM_STONE_AXE);
+        expect(CanMoverDoJob(JOBTYPE_CHOP, MAT_NONE, axeIdx) == true);
+    }
+
+    it("stone hammer cannot chop trees") {
+        toolRequirementsEnabled = true;
+        InitTestGrid(8, 8);
+        ClearItems();
+        int hammerIdx = SpawnItem(1 * CELL_SIZE, 1 * CELL_SIZE, 0, ITEM_STONE_HAMMER);
+        expect(CanMoverDoJob(JOBTYPE_CHOP, MAT_NONE, hammerIdx) == false);
+    }
+
+    it("digging stick helps with soft soil mining") {
+        toolRequirementsEnabled = true;
+        InitTestGrid(8, 8);
+        ClearItems();
+        int digIdx = SpawnItem(1 * CELL_SIZE, 1 * CELL_SIZE, 0, ITEM_DIGGING_STICK);
+        // Soft job, always doable
+        expect(CanMoverDoJob(JOBTYPE_MINE, MAT_DIRT, digIdx) == true);
+    }
+}
+
+// ===========================================================================
+// New tool items: speed multiplier (Context 3)
+// ===========================================================================
+describe(new_tool_speed) {
+    it("digging stick mines dirt at 1.0x") {
+        toolRequirementsEnabled = true;
+        InitTestGrid(8, 8);
+        ClearItems();
+        int digIdx = SpawnItem(1 * CELL_SIZE, 1 * CELL_SIZE, 0, ITEM_DIGGING_STICK);
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_MINE, MAT_DIRT, digIdx);
+        expect(speed > 0.99f && speed < 1.01f);
+    }
+
+    it("stone pick mines dirt at 1.5x") {
+        toolRequirementsEnabled = true;
+        InitTestGrid(8, 8);
+        ClearItems();
+        int pickIdx = SpawnItem(1 * CELL_SIZE, 1 * CELL_SIZE, 0, ITEM_STONE_PICK);
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_MINE, MAT_DIRT, pickIdx);
+        expect(speed > 1.49f && speed < 1.51f);
+    }
+
+    it("stone hammer mines rock at 1.0x") {
+        toolRequirementsEnabled = true;
+        InitTestGrid(8, 8);
+        ClearItems();
+        int hammerIdx = SpawnItem(1 * CELL_SIZE, 1 * CELL_SIZE, 0, ITEM_STONE_HAMMER);
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_MINE, MAT_GRANITE, hammerIdx);
+        expect(speed > 0.99f && speed < 1.01f);
+    }
+
+    it("stone pick mines rock at 1.0x") {
+        toolRequirementsEnabled = true;
+        InitTestGrid(8, 8);
+        ClearItems();
+        int pickIdx = SpawnItem(1 * CELL_SIZE, 1 * CELL_SIZE, 0, ITEM_STONE_PICK);
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_MINE, MAT_GRANITE, pickIdx);
+        expect(speed > 0.99f && speed < 1.01f);
+    }
+
+    it("stone axe chops trees at 1.5x") {
+        toolRequirementsEnabled = true;
+        InitTestGrid(8, 8);
+        ClearItems();
+        int axeIdx = SpawnItem(1 * CELL_SIZE, 1 * CELL_SIZE, 0, ITEM_STONE_AXE);
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_CHOP, MAT_NONE, axeIdx);
+        expect(speed > 1.49f && speed < 1.51f);
+    }
+
+    it("stone axe builds at 1.0x (hammer:1 on soft job)") {
+        toolRequirementsEnabled = true;
+        InitTestGrid(8, 8);
+        ClearItems();
+        int axeIdx = SpawnItem(1 * CELL_SIZE, 1 * CELL_SIZE, 0, ITEM_STONE_AXE);
+        // Stone axe has hammering:1, building is soft (minLevel=0): level 1 → 1.0x
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_BUILD, MAT_NONE, axeIdx);
+        expect(speed > 0.99f && speed < 1.01f);
+    }
+}
+
+// ===========================================================================
+// Recipe quality requirements (Context 3)
+// ===========================================================================
+describe(recipe_quality_requirements) {
+    it("carpenter tool recipes require cutting:1") {
+        int recipeCount;
+        const Recipe* recipes = GetRecipesForWorkshop(WORKSHOP_CARPENTER, &recipeCount);
+        expect(recipeCount >= 6);  // 2 existing + 4 tool recipes
+
+        // Find digging stick recipe
+        bool foundDigStick = false;
+        bool foundHammer = false;
+        bool foundAxe = false;
+        bool foundPick = false;
+        for (int i = 0; i < recipeCount; i++) {
+            if (recipes[i].outputType == ITEM_DIGGING_STICK) {
+                expect(recipes[i].requiredQuality == QUALITY_CUTTING);
+                expect(recipes[i].requiredQualityLevel == 1);
+                foundDigStick = true;
+            }
+            if (recipes[i].outputType == ITEM_STONE_HAMMER) {
+                expect(recipes[i].requiredQuality == QUALITY_CUTTING);
+                expect(recipes[i].requiredQualityLevel == 1);
+                foundHammer = true;
+            }
+            if (recipes[i].outputType == ITEM_STONE_AXE) {
+                expect(recipes[i].requiredQuality == QUALITY_CUTTING);
+                expect(recipes[i].requiredQualityLevel == 1);
+                foundAxe = true;
+            }
+            if (recipes[i].outputType == ITEM_STONE_PICK) {
+                expect(recipes[i].requiredQuality == QUALITY_CUTTING);
+                expect(recipes[i].requiredQualityLevel == 1);
+                foundPick = true;
+            }
+        }
+        expect(foundDigStick == true);
+        expect(foundHammer == true);
+        expect(foundAxe == true);
+        expect(foundPick == true);
+    }
+
+    it("existing recipes have no quality requirement") {
+        int recipeCount;
+        const Recipe* recipes = GetRecipesForWorkshop(WORKSHOP_STONECUTTER, &recipeCount);
+        for (int i = 0; i < recipeCount; i++) {
+            expect(recipes[i].requiredQualityLevel == 0);
+        }
+
+        recipes = GetRecipesForWorkshop(WORKSHOP_SAWMILL, &recipeCount);
+        for (int i = 0; i < recipeCount; i++) {
+            expect(recipes[i].requiredQualityLevel == 0);
+        }
+    }
+
+    it("carpenter bed/chair recipes have no quality requirement") {
+        int recipeCount;
+        const Recipe* recipes = GetRecipesForWorkshop(WORKSHOP_CARPENTER, &recipeCount);
+        // First two recipes are bed and chair
+        expect(recipes[0].requiredQualityLevel == 0);
+        expect(recipes[1].requiredQualityLevel == 0);
+    }
+}
+
+// ===========================================================================
+// FindNearestToolForQuality unit tests (Context 4)
+// ===========================================================================
+describe(find_nearest_tool) {
+    it("should find unreserved tool with matching quality on same z-level") {
+        InitTestGrid(16, 16);
+        ClearItems();
+
+        int axeIdx = SpawnItem(5 * CELL_SIZE, 5 * CELL_SIZE, 0, ITEM_SHARP_STONE);
+        expect(axeIdx >= 0);
+        items[axeIdx].state = ITEM_ON_GROUND;
+        items[axeIdx].reservedBy = -1;
+
+        int found = FindNearestToolForQuality(QUALITY_CUTTING, 1, 3, 3, 0, 50, -1);
+        expect(found == axeIdx);
+    }
+
+    it("should not find tool on different z-level") {
+        InitTestGrid(16, 16);
+        ClearItems();
+
+        int axeIdx = SpawnItem(5 * CELL_SIZE, 5 * CELL_SIZE, 1, ITEM_SHARP_STONE);
+        items[axeIdx].state = ITEM_ON_GROUND;
+        items[axeIdx].reservedBy = -1;
+
+        int found = FindNearestToolForQuality(QUALITY_CUTTING, 1, 3, 3, 0, 50, -1);
+        expect(found == -1);
+    }
+
+    it("should not find reserved tool") {
+        InitTestGrid(16, 16);
+        ClearItems();
+
+        int axeIdx = SpawnItem(5 * CELL_SIZE, 5 * CELL_SIZE, 0, ITEM_SHARP_STONE);
+        items[axeIdx].state = ITEM_ON_GROUND;
+        items[axeIdx].reservedBy = 0;  // reserved
+
+        int found = FindNearestToolForQuality(QUALITY_CUTTING, 1, 3, 3, 0, 50, -1);
+        expect(found == -1);
+    }
+
+    it("should not find tool that lacks required quality") {
+        InitTestGrid(16, 16);
+        ClearItems();
+
+        // Rock has hammering:1 but no cutting
+        int rockIdx = SpawnItem(5 * CELL_SIZE, 5 * CELL_SIZE, 0, ITEM_ROCK);
+        items[rockIdx].state = ITEM_ON_GROUND;
+        items[rockIdx].reservedBy = -1;
+
+        int found = FindNearestToolForQuality(QUALITY_CUTTING, 1, 3, 3, 0, 50, -1);
+        expect(found == -1);
+    }
+
+    it("should find closest tool when multiple available") {
+        InitTestGrid(16, 16);
+        ClearItems();
+
+        int farIdx = SpawnItem(10 * CELL_SIZE, 10 * CELL_SIZE, 0, ITEM_SHARP_STONE);
+        items[farIdx].state = ITEM_ON_GROUND;
+        items[farIdx].reservedBy = -1;
+
+        int nearIdx = SpawnItem(4 * CELL_SIZE, 4 * CELL_SIZE, 0, ITEM_SHARP_STONE);
+        items[nearIdx].state = ITEM_ON_GROUND;
+        items[nearIdx].reservedBy = -1;
+
+        int found = FindNearestToolForQuality(QUALITY_CUTTING, 1, 3, 3, 0, 50, -1);
+        expect(found == nearIdx);
+    }
+
+    it("should exclude specified item index") {
+        InitTestGrid(16, 16);
+        ClearItems();
+
+        int onlyIdx = SpawnItem(5 * CELL_SIZE, 5 * CELL_SIZE, 0, ITEM_SHARP_STONE);
+        items[onlyIdx].state = ITEM_ON_GROUND;
+        items[onlyIdx].reservedBy = -1;
+
+        int found = FindNearestToolForQuality(QUALITY_CUTTING, 1, 3, 3, 0, 50, onlyIdx);
+        expect(found == -1);
+    }
+
+    it("should find tool in stockpile") {
+        InitTestGrid(16, 16);
+        ClearItems();
+
+        int toolIdx = SpawnItem(5 * CELL_SIZE, 5 * CELL_SIZE, 0, ITEM_SHARP_STONE);
+        items[toolIdx].state = ITEM_IN_STOCKPILE;
+        items[toolIdx].reservedBy = -1;
+
+        int found = FindNearestToolForQuality(QUALITY_CUTTING, 1, 3, 3, 0, 50, -1);
+        expect(found == toolIdx);
+    }
+
+    it("should not find carried tool") {
+        InitTestGrid(16, 16);
+        ClearItems();
+
+        int toolIdx = SpawnItem(5 * CELL_SIZE, 5 * CELL_SIZE, 0, ITEM_SHARP_STONE);
+        items[toolIdx].state = ITEM_CARRIED;
+        items[toolIdx].reservedBy = 0;
+
+        int found = FindNearestToolForQuality(QUALITY_CUTTING, 1, 3, 3, 0, 50, -1);
+        expect(found == -1);
+    }
+
+    it("should respect search radius") {
+        InitTestGrid(16, 16);
+        ClearItems();
+
+        int toolIdx = SpawnItem(14 * CELL_SIZE, 14 * CELL_SIZE, 0, ITEM_SHARP_STONE);
+        items[toolIdx].state = ITEM_ON_GROUND;
+        items[toolIdx].reservedBy = -1;
+
+        // Search radius 5 tiles from (1,1) — tool at (14,14) is way out of range
+        int found = FindNearestToolForQuality(QUALITY_CUTTING, 1, 1, 1, 0, 5, -1);
+        expect(found == -1);
+    }
+
+    it("should find stone hammer for hammering:2") {
+        InitTestGrid(16, 16);
+        ClearItems();
+
+        int hammerIdx = SpawnItem(5 * CELL_SIZE, 5 * CELL_SIZE, 0, ITEM_STONE_HAMMER);
+        items[hammerIdx].state = ITEM_ON_GROUND;
+        items[hammerIdx].reservedBy = -1;
+
+        int found = FindNearestToolForQuality(QUALITY_HAMMERING, 2, 3, 3, 0, 50, -1);
+        expect(found == hammerIdx);
+    }
+
+    it("should not find rock for hammering:2 (only has hammer:1)") {
+        InitTestGrid(16, 16);
+        ClearItems();
+
+        int rockIdx = SpawnItem(5 * CELL_SIZE, 5 * CELL_SIZE, 0, ITEM_ROCK);
+        items[rockIdx].state = ITEM_ON_GROUND;
+        items[rockIdx].reservedBy = -1;
+
+        int found = FindNearestToolForQuality(QUALITY_HAMMERING, 2, 3, 3, 0, 50, -1);
+        expect(found == -1);
+    }
+}
+
+// ===========================================================================
+// DropEquippedTool unit tests (Context 4)
+// ===========================================================================
+describe(drop_equipped_tool) {
+    it("should drop tool and clear equippedTool") {
+        InitTestGrid(8, 8);
+        ClearMovers();
+        ClearItems();
+
+        Point goal = {4, 4, 0};
+        InitMover(&movers[0], 4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, MOVER_SPEED);
+        moverCount = 1;
+
+        int toolIdx = SpawnItem(movers[0].x, movers[0].y, 0, ITEM_SHARP_STONE);
+        items[toolIdx].state = ITEM_CARRIED;
+        items[toolIdx].reservedBy = 0;
+        movers[0].equippedTool = toolIdx;
+
+        DropEquippedTool(0);
+
+        expect(movers[0].equippedTool == -1);
+        expect(items[toolIdx].state == ITEM_ON_GROUND);
+        expect(items[toolIdx].reservedBy == -1);
+    }
+
+    it("should be no-op when equippedTool is -1") {
+        InitTestGrid(8, 8);
+        ClearMovers();
+        ClearItems();
+
+        Point goal = {4, 4, 0};
+        InitMover(&movers[0], 4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, MOVER_SPEED);
+        moverCount = 1;
+        movers[0].equippedTool = -1;
+
+        DropEquippedTool(0);  // should not crash
+        expect(movers[0].equippedTool == -1);
+    }
+}
+
+// ===========================================================================
+// Story 6: Mover seeks sharp stone before chopping tree (Context 4)
+// ===========================================================================
+describe(story6_seek_tool_for_chop) {
+    it("mover finds sharp stone, picks it up, then chops tree") {
+        toolRequirementsEnabled = true;
+
+        InitTestGridFromAscii(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n");
+
+        // Place a tree trunk at (7,3)
+        grid[0][3][7] = CELL_TREE_TRUNK;
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+        InitDesignations();
+
+        // Mover at (1,3) with no tool
+        Point goal = {1, 3, 0};
+        InitMover(&movers[0], 1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, MOVER_SPEED);
+        moverCount = 1;
+        movers[0].equippedTool = -1;
+
+        // Sharp stone at (3,3)
+        int ssIdx = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f,
+                              3 * CELL_SIZE + CELL_SIZE * 0.5f, 0, ITEM_SHARP_STONE);
+        items[ssIdx].state = ITEM_ON_GROUND;
+        items[ssIdx].reservedBy = -1;
+
+        // Designate chop
+        bool desig = DesignateChop(7, 3, 0);
+        expect(desig == true);
+
+        // Run simulation
+        bool chopDone = false;
+        bool pickedUpTool = false;
+        for (int i = 0; i < 3000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+
+            // Track when tool is picked up
+            if (movers[0].equippedTool == ssIdx && !pickedUpTool) {
+                pickedUpTool = true;
+                if (test_verbose) printf("  Tool picked up at tick %d\n", i);
+            }
+
+            if (grid[0][3][7] != CELL_TREE_TRUNK) {
+                chopDone = true;
+                if (test_verbose) printf("  Tree chopped at tick %d\n", i);
+                break;
+            }
+        }
+
+        expect(pickedUpTool == true);
+        expect(chopDone == true);
+        expect(movers[0].equippedTool == ssIdx);
+        expect(items[ssIdx].state == ITEM_CARRIED);
+    }
+}
+
+// ===========================================================================
+// Story 7: Mover keeps tool across consecutive chop jobs (Context 4)
+// ===========================================================================
+describe(story7_keep_tool_across_jobs) {
+    it("mover keeps sharp stone across two chop jobs") {
+        toolRequirementsEnabled = true;
+
+        InitTestGridFromAscii(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n");
+
+        // Two trees
+        grid[0][3][5] = CELL_TREE_TRUNK;
+        grid[0][3][8] = CELL_TREE_TRUNK;
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+        InitDesignations();
+
+        // Mover at (3,3) with sharp stone already equipped
+        Point goal = {3, 3, 0};
+        InitMover(&movers[0], 3 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, MOVER_SPEED);
+        moverCount = 1;
+
+        int ssIdx = SpawnItem(movers[0].x, movers[0].y, 0, ITEM_SHARP_STONE);
+        items[ssIdx].state = ITEM_CARRIED;
+        items[ssIdx].reservedBy = 0;
+        movers[0].equippedTool = ssIdx;
+
+        // Designate both trees
+        DesignateChop(5, 3, 0);
+        DesignateChop(8, 3, 0);
+
+        // Run until both trees chopped
+        int treesChopped = 0;
+        for (int i = 0; i < 5000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+
+            if (grid[0][3][5] != CELL_TREE_TRUNK && grid[0][3][8] != CELL_TREE_TRUNK) {
+                treesChopped = 2;
+                break;
+            }
+        }
+
+        expect(treesChopped == 2);
+        // Mover still holds the same tool
+        expect(movers[0].equippedTool == ssIdx);
+        expect(items[ssIdx].state == ITEM_CARRIED);
+        expect(items[ssIdx].reservedBy == 0);
+    }
+}
+
+// ===========================================================================
+// Story 8: Mover swaps cutting tool for hammer when mining rock (Context 4)
+// ===========================================================================
+describe(story8_tool_swap) {
+    it("mover drops cutting tool and picks up hammer for rock mining") {
+        toolRequirementsEnabled = true;
+
+        InitTestGridFromAscii(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n");
+
+        // Stone wall at (7,3)
+        grid[0][3][7] = CELL_WALL;
+        SetWallMaterial(7, 3, 0, MAT_GRANITE);
+        SetWallNatural(7, 3, 0);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+        InitDesignations();
+
+        // Mover at (1,3) with sharp stone equipped
+        Point goal = {1, 3, 0};
+        InitMover(&movers[0], 1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, MOVER_SPEED);
+        moverCount = 1;
+
+        int ssIdx = SpawnItem(movers[0].x, movers[0].y, 0, ITEM_SHARP_STONE);
+        items[ssIdx].state = ITEM_CARRIED;
+        items[ssIdx].reservedBy = 0;
+        movers[0].equippedTool = ssIdx;
+
+        // Stone hammer at (3,3)
+        int hammerIdx = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                  3 * CELL_SIZE + CELL_SIZE * 0.5f, 0, ITEM_STONE_HAMMER);
+        items[hammerIdx].state = ITEM_ON_GROUND;
+        items[hammerIdx].reservedBy = -1;
+
+        // Designate mine on stone wall
+        DesignateMine(7, 3, 0);
+
+        // Run simulation
+        g_wallCheckX = 7; g_wallCheckY = 3;
+        RunSimUntil(WallIsGone, 5000);
+
+        expect(grid[0][3][7] != CELL_WALL);  // Wall mined
+        expect(movers[0].equippedTool == hammerIdx);  // Now holds hammer
+        expect(items[hammerIdx].state == ITEM_CARRIED);
+        // Sharp stone was dropped
+        expect(items[ssIdx].state == ITEM_ON_GROUND);
+        expect(items[ssIdx].reservedBy == -1);
+    }
+}
+
+// ===========================================================================
+// Story 12: Dead mover drops equipped tool (Context 4)
+// ===========================================================================
+describe(story12_death_drops_tool) {
+    it("mover drops tool on starvation death") {
+        toolRequirementsEnabled = true;
+
+        InitTestGrid(8, 8);
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+        InitDesignations();
+
+        GameMode savedMode = gameMode;
+        bool savedHunger = hungerEnabled;
+        float savedDt = gameDeltaTime;
+        gameMode = GAME_MODE_SURVIVAL;
+        hungerEnabled = true;
+        gameDeltaTime = 0.016f;
+
+        Point goal = {4, 4, 0};
+        InitMover(&movers[0], 4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, MOVER_SPEED);
+        moverCount = 1;
+
+        int pickIdx = SpawnItem(movers[0].x, movers[0].y, 0, ITEM_STONE_PICK);
+        items[pickIdx].state = ITEM_CARRIED;
+        items[pickIdx].reservedBy = 0;
+        movers[0].equippedTool = pickIdx;
+
+        // Set mover to starving, push past threshold
+        movers[0].hunger = 0.0f;
+        movers[0].starvationTimer = GameHoursToGameSeconds(balance.starvationDeathGH) + 1.0f;
+
+        // Tick to trigger death
+        NeedsTick();
+
+        expect(movers[0].active == false);
+        expect(items[pickIdx].active == true);
+        expect(items[pickIdx].state == ITEM_ON_GROUND);
+        expect(items[pickIdx].reservedBy == -1);
+
+        gameMode = savedMode;
+        hungerEnabled = savedHunger;
+        gameDeltaTime = savedDt;
+    }
+}
+
+// ===========================================================================
+// Edge case: cancel job mid-fetch releases tool reservation (Context 4)
+// ===========================================================================
+describe(cancel_mid_fetch) {
+    it("cancelling a job releases toolItem reservation") {
+        toolRequirementsEnabled = true;
+
+        InitTestGridFromAscii(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n");
+
+        grid[0][3][7] = CELL_TREE_TRUNK;
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+        InitDesignations();
+
+        // Mover at (1,3)
+        Point goal = {1, 3, 0};
+        InitMover(&movers[0], 1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, MOVER_SPEED);
+        moverCount = 1;
+        movers[0].equippedTool = -1;
+
+        // Sharp stone at (4,3)
+        int ssIdx = SpawnItem(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                              3 * CELL_SIZE + CELL_SIZE * 0.5f, 0, ITEM_SHARP_STONE);
+        items[ssIdx].state = ITEM_ON_GROUND;
+        items[ssIdx].reservedBy = -1;
+
+        DesignateChop(7, 3, 0);
+
+        // Run a few ticks to get the job assigned
+        for (int i = 0; i < 10; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+
+        // Mover should have a job and tool should be reserved
+        int jobId = movers[0].currentJobId;
+        if (jobId >= 0) {
+            // Tool should be reserved
+            expect(items[ssIdx].reservedBy == 0);
+
+            // Cancel the job
+            CancelJob(&movers[0], 0);
+
+            expect(movers[0].currentJobId < 0);
+            // If mover hasn't picked up the tool yet, reservation should be released
+            if (movers[0].equippedTool != ssIdx) {
+                expect(items[ssIdx].reservedBy == -1);
+            }
+        }
+    }
+}
+
+// ===========================================================================
+// Story 5 regression: no tool available, job stays unassigned (Context 4)
+// ===========================================================================
+describe(story5_regression_no_tool) {
+    it("chop designation stays unassigned when no cutting tool exists") {
+        toolRequirementsEnabled = true;
+
+        InitTestGridFromAscii(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n");
+
+        grid[0][3][5] = CELL_TREE_TRUNK;
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+        InitDesignations();
+
+        Point goal = {4, 3, 0};
+        InitMover(&movers[0], 4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, MOVER_SPEED);
+        moverCount = 1;
+        movers[0].equippedTool = -1;
+
+        // No tools spawned!
+        DesignateChop(5, 3, 0);
+
+        for (int i = 0; i < 200; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+
+        // Tree should still be standing
+        expect(grid[0][3][5] == CELL_TREE_TRUNK);
+        expect(movers[0].currentJobId < 0);
+        expect(HasChopDesignation(5, 3, 0) == true);
+    }
+}
+
 int main(int argc, char* argv[]) {
     if (argc > 1 && strcmp(argv[1], "-v") == 0) test_verbose = true;
     if (argc > 1 && strcmp(argv[1], "-q") == 0) set_quiet_mode(1);
@@ -252,6 +1526,26 @@ int main(int argc, char* argv[]) {
     test(speed_multiplier_hard);
     test(mover_equipped_tool);
     test(game_scenarios);
+    test(job_tool_requirement);
+    test(can_mover_do_job);
+    test(job_tool_speed);
+    test(story1_bare_hands_soil_mining);
+    test(story3_cannot_mine_rock_without_hammer);
+    test(story5_cannot_chop_without_cutting);
+    test(story9_toggle_disables_everything);
+    test(new_tool_quality_lookup);
+    test(new_tool_flag);
+    test(new_tool_can_do_job);
+    test(new_tool_speed);
+    test(recipe_quality_requirements);
+    test(find_nearest_tool);
+    test(drop_equipped_tool);
+    test(story6_seek_tool_for_chop);
+    test(story7_keep_tool_across_jobs);
+    test(story8_tool_swap);
+    test(story12_death_drops_tool);
+    test(cancel_mid_fetch);
+    test(story5_regression_no_tool);
 
     return summary();
 }

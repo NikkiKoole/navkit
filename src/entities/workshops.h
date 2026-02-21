@@ -72,6 +72,8 @@ typedef struct {
     MaterialType inputMaterial;  // used when inputMaterialMatch == MAT_MATCH_EXACT
     int fuelRequired;            // number of fuel items consumed (0 = no fuel needed)
     ItemMatchType inputItemMatch; // how to match input (ITEM_MATCH_EXACT or ITEM_MATCH_ANY_FUEL)
+    int requiredQuality;         // QualityType enum value, or QUALITY_COUNT (5) = no requirement
+    int requiredQualityLevel;    // minimum quality level needed (0 = no requirement)
 } Recipe;
 
 // Workshop definition (consolidates template, recipes, and metadata)

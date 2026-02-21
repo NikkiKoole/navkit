@@ -87,6 +87,10 @@ static inline const char* JobTypeName(int type) {
 #define CRAFT_STEP_PICKING_UP_FUEL   8  // At fuel item, picking up
 #define CRAFT_STEP_CARRYING_FUEL     9  // Carrying fuel to workshop
 
+// Tool fetch step (shared by designation and craft jobs)
+// High value to avoid collision with existing step numbering
+#define STEP_FETCHING_TOOL          10 // Walking to tool item, equips on arrival
+
 // Job struct - contains all data for a single job
 typedef struct {
     bool active;
@@ -122,6 +126,9 @@ typedef struct {
 
     // Second input item (for craft jobs with two inputs)
     int targetItem2;  // reserved second input item index, -1 = none
+
+    // Tool item (for jobs that need a tool fetch before starting)
+    int toolItem;  // reserved tool item to pick up, -1 = none/already equipped
 } Job;
 
 #define MAX_JOBS 10000
