@@ -230,6 +230,7 @@ static void StartNewGame(void) {
     hungerEnabled = true;
     energyEnabled = true;
     bodyTempEnabled = true;
+    toolRequirementsEnabled = true;
     gameOverTriggered = false;
     survivalStartTime = 0.0;
     survivalDuration = 0.0;
@@ -864,6 +865,8 @@ void DrawUI(void) {
                 ToggleBool(ix + 10, y, "Energy", &energyEnabled);
                 y += 22;
                 ToggleBool(ix + 10, y, "Body Temp", &bodyTempEnabled);
+                y += 22;
+                ToggleBool(ix + 10, y, "Tool Reqs", &toolRequirementsEnabled);
             }
 
             // Avoidance subsection

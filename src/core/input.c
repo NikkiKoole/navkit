@@ -2016,6 +2016,7 @@ void HandleInput(void) {
             hungerEnabled = false;
             energyEnabled = false;
             bodyTempEnabled = false;
+            toolRequirementsEnabled = false;
         }
     }
 

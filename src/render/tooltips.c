@@ -1475,7 +1475,7 @@ static void DrawDesignationTooltip(int cellX, int cellY, int cellZ, Vector2 mous
             break;
     }
 
-    char lines[6][64];
+    char lines[7][80];
     int lineCount = 0;
 
     // Header
@@ -1494,6 +1494,38 @@ static void DrawDesignationTooltip(int cellX, int cellY, int cellZ, Vector2 mous
         snprintf(lines[lineCount++], sizeof(lines[0]), "Unreachable (%.1fs)", des->unreachableCooldown);
     } else {
         snprintf(lines[lineCount++], sizeof(lines[0]), "Waiting for %s", workerName);
+
+        // Show tool requirement hint for hard-gated jobs
+        if (toolRequirementsEnabled) {
+            static const char* qualityNames[] = {
+                [QUALITY_CUTTING]   = "cutting",
+                [QUALITY_HAMMERING] = "hammering",
+                [QUALITY_DIGGING]   = "digging",
+                [QUALITY_SAWING]    = "sawing",
+                [QUALITY_FINE]      = "fine",
+            };
+            // Map designation type to job type
+            int jobType = -1;
+            switch (des->type) {
+                case DESIGNATION_MINE:        jobType = JOBTYPE_MINE; break;
+                case DESIGNATION_CHANNEL:     jobType = JOBTYPE_CHANNEL; break;
+                case DESIGNATION_DIG_RAMP:    jobType = JOBTYPE_DIG_RAMP; break;
+                case DESIGNATION_CHOP:        jobType = JOBTYPE_CHOP; break;
+                case DESIGNATION_CHOP_FELLED: jobType = JOBTYPE_CHOP_FELLED; break;
+                default: break;
+            }
+            if (jobType >= 0) {
+                MaterialType mat = GetWallMaterial(cellX, cellY, cellZ);
+                // Channel checks z-1 material
+                if (des->type == DESIGNATION_CHANNEL && cellZ > 0)
+                    mat = GetWallMaterial(cellX, cellY, cellZ - 1);
+                JobToolReq req = GetJobToolRequirement(jobType, mat);
+                if (req.hasRequirement && !req.isSoft && req.minLevel > 0) {
+                    snprintf(lines[lineCount++], sizeof(lines[0]),
+                             "Needs %s:%d tool", qualityNames[req.qualityType], req.minLevel);
+                }
+            }
+        }
     }
 
     // Calculate box dimensions

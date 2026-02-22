@@ -556,8 +556,16 @@ static void Cmd_Spawn(int argc, const char** argv) {
         return;
     }
 
-    // Find item by name (case-insensitive substring match)
-    const char* itemName = argv[2];
+    // Join all args after count into a single item name (e.g. "stone hammer")
+    char itemNameBuf[128] = {0};
+    int off = 0;
+    for (int a = 2; a < argc && off < (int)sizeof(itemNameBuf) - 1; a++) {
+        if (a > 2) itemNameBuf[off++] = ' ';
+        for (const char* p = argv[a]; *p && off < (int)sizeof(itemNameBuf) - 1; p++)
+            itemNameBuf[off++] = *p;
+    }
+    itemNameBuf[off] = '\0';
+    const char* itemName = itemNameBuf;
     ItemType foundType = ITEM_NONE;
 
     for (int i = 0; i < ITEM_TYPE_COUNT; i++) {
