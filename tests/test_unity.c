@@ -97,6 +97,7 @@ bool bodyTempEnabled = false;
 #include "../src/entities/items.c"
 #include "../src/entities/item_defs.c"
 #include "../src/entities/tool_quality.c"
+#include "../src/entities/butchering.c"
 #include "../src/entities/stacking.c"
 #include "../src/entities/containers.c"
 #include "../src/entities/stockpiles.c"

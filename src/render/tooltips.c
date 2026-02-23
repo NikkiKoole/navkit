@@ -979,17 +979,19 @@ static void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
                 if (bill->recipeIdx >= 0 && bill->recipeIdx < recipeCount) {
                     const Recipe* recipe = &recipes[bill->recipeIdx];
                     
-                    snprintf(lines[lineCount], sizeof(lines[0]), 
-                        "  Output blocked: %s (x%d)",
-                        ItemName(recipe->outputType), recipe->outputCount);
-                    lineColors[lineCount] = (Color){255, 150, 100, 255};
-                    lineCount++;
-                    
-                    if (lineCount < 28) {
+                    if (recipe->outputType != ITEM_NONE) {
                         snprintf(lines[lineCount], sizeof(lines[0]), 
-                            "  Hint: Build stockpile accepting %s", ItemName(recipe->outputType));
-                        lineColors[lineCount] = (Color){200, 200, 100, 255};
+                            "  Output blocked: %s (x%d)",
+                            ItemName(recipe->outputType), recipe->outputCount);
+                        lineColors[lineCount] = (Color){255, 150, 100, 255};
                         lineCount++;
+                        
+                        if (lineCount < 28) {
+                            snprintf(lines[lineCount], sizeof(lines[0]), 
+                                "  Hint: Build stockpile accepting %s", ItemName(recipe->outputType));
+                            lineColors[lineCount] = (Color){200, 200, 100, 255};
+                            lineCount++;
+                        }
                     }
                 }
             }
@@ -1241,7 +1243,9 @@ static void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
             const char* inputName = (recipes[r].inputItemMatch == ITEM_MATCH_ANY_FUEL)
                 ? "Any Fuel" : ItemName(recipes[r].inputType);
             char outputStr[64];
-            if (recipes[r].outputType2 != ITEM_NONE) {
+            if (recipes[r].outputType == ITEM_NONE) {
+                snprintf(outputStr, sizeof(outputStr), "Products");
+            } else if (recipes[r].outputType2 != ITEM_NONE) {
                 snprintf(outputStr, sizeof(outputStr), "%s+%s",
                     ItemName(recipes[r].outputType), ItemName(recipes[r].outputType2));
             } else {

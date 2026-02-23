@@ -1963,6 +1963,23 @@ int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex) {
     } else if (recipe->buildCategory == BUILD_FURNITURE) {
         if (!IsCellWalkableAt(z, y, x)) return -1;
         if (GetFurnitureAt(x, y, z) >= 0) return -1;
+    } else if (recipe->buildCategory == BUILD_DOOR) {
+        if (!IsCellWalkableAt(z, y, x)) return -1;
+        // Door must be adjacent to at least one wall
+        bool hasWallNeighbor = false;
+        static const int dx4[] = {0, 0, -1, 1};
+        static const int dy4[] = {-1, 1, 0, 0};
+        for (int d = 0; d < 4; d++) {
+            int nx = x + dx4[d], ny = y + dy4[d];
+            if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight) {
+                CellType nc = grid[z][ny][nx];
+                if (CellBlocksMovement(nc) || nc == CELL_DOOR) {
+                    hasWallNeighbor = true;
+                    break;
+                }
+            }
+        }
+        if (!hasWallNeighbor) return -1;
     } else if (recipe->buildCategory == BUILD_WORKSHOP) {
         // Workshop blueprints are placed at the work tile via CreateWorkshopBlueprint()
         // which handles full footprint validation. Just check work tile is walkable.
@@ -2043,6 +2060,8 @@ int CreateWorkshopBlueprint(int originX, int originY, int z, int recipeIndex) {
         case CONSTRUCTION_WORKSHOP_SAWMILL:      workshopType = WORKSHOP_SAWMILL; break;
         case CONSTRUCTION_WORKSHOP_KILN:         workshopType = WORKSHOP_KILN; break;
         case CONSTRUCTION_WORKSHOP_CARPENTER:    workshopType = WORKSHOP_CARPENTER; break;
+        case CONSTRUCTION_WORKSHOP_GROUND_FIRE:  workshopType = WORKSHOP_GROUND_FIRE; break;
+        case CONSTRUCTION_WORKSHOP_BUTCHER:     workshopType = WORKSHOP_BUTCHER; break;
         default: return -1;
     }
 
@@ -2456,6 +2475,20 @@ void CompleteBlueprint(int blueprintIdx) {
 
         MarkChunkDirty(x, y, z);
         if (z + 1 < gridDepth) MarkChunkDirty(x, y, z + 1);
+    }
+
+    if (recipe->buildCategory == BUILD_DOOR) {
+        PushItemsOutOfCell(x, y, z);
+        ClearCellCleanup(x, y, z);
+        DisplaceWater(x, y, z);
+        grid[z][y][x] = CELL_DOOR;
+        SetWallMaterial(x, y, z, finalMat);
+        SetWallSourceItem(x, y, z, finalSource);
+        ClearWallNatural(x, y, z);
+        SetWallFinish(x, y, z, FINISH_SMOOTH);
+        CLEAR_FLOOR(x, y, z);
+        MarkChunkDirty(x, y, z);
+        InvalidatePathsThroughCell(x, y, z);
     }
 
     if (recipe->buildCategory == BUILD_FURNITURE) {

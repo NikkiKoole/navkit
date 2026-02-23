@@ -55,12 +55,14 @@ int charcoalPitRecipeCount = sizeof(charcoalPitRecipes) / sizeof(charcoalPitReci
 Recipe campfireRecipes[] = {
     { "Burn Sticks", ITEM_STICKS, 2, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_ASH, 1, ITEM_NONE, 0, 3.0f, 30.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Burn Log",    ITEM_LOG,    1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_ASH, 1, ITEM_NONE, 0, 3.0f, 60.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    { "Cook Meat",   ITEM_RAW_MEAT, 1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_COOKED_MEAT, 1, ITEM_NONE, 0, 1.0f, 15.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
 };
 int campfireRecipeCount = sizeof(campfireRecipes) / sizeof(campfireRecipes[0]);
 
 // Hearth recipes: burn any fuel to produce ash (fuel sink)
 Recipe hearthRecipes[] = {
     { "Burn Fuel", ITEM_NONE, 1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_ASH, 1, ITEM_NONE, 0, 1.6f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_ANY_FUEL, 0, 0 },
+    { "Cook Meat", ITEM_RAW_MEAT, 2, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_COOKED_MEAT, 2, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
 };
 int hearthRecipeCount = sizeof(hearthRecipes) / sizeof(hearthRecipes[0]);
 
@@ -79,6 +81,12 @@ Recipe ropeMakerRecipes[] = {
     { "Weave Basket",  ITEM_CORDAGE, 2,      ITEM_NONE, 0, ITEM_NONE, 0, ITEM_BASKET, 1,      ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
 };
 int ropeMakerRecipeCount = sizeof(ropeMakerRecipes) / sizeof(ropeMakerRecipes[0]);
+
+// Butcher recipes: carcass processing (output handled by yield table, not recipe)
+Recipe butcherRecipes[] = {
+    { "Butcher Carcass", ITEM_CARCASS, 1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_NONE, 0, 3.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+};
+int butcherRecipeCount = sizeof(butcherRecipes) / sizeof(butcherRecipes[0]);
 
 Recipe carpenterRecipes[] = {
     { "Craft Plank Bed",   ITEM_PLANKS, 4, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_PLANK_BED, 1, ITEM_NONE, 0, 8.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
@@ -191,14 +199,36 @@ const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
     },
     [WORKSHOP_CAMPFIRE] = {
         .type = WORKSHOP_CAMPFIRE,
-        .name = "CAMPFIRE",
-        .displayName = "Campfire",
+        .name = "FIRE_PIT",
+        .displayName = "Fire Pit",
         .width = 2,
         .height = 1,
         .template = "FX",
         .recipes = campfireRecipes,
         .recipeCount = sizeof(campfireRecipes) / sizeof(campfireRecipes[0]),
         .passive = true
+    },
+    [WORKSHOP_GROUND_FIRE] = {
+        .type = WORKSHOP_GROUND_FIRE,
+        .name = "GROUND_FIRE",
+        .displayName = "Ground Fire",
+        .width = 1,
+        .height = 1,
+        .template = "F",
+        .recipes = campfireRecipes,
+        .recipeCount = sizeof(campfireRecipes) / sizeof(campfireRecipes[0]),
+        .passive = true
+    },
+    [WORKSHOP_BUTCHER] = {
+        .type = WORKSHOP_BUTCHER,
+        .name = "BUTCHER",
+        .displayName = "Butcher",
+        .width = 1,
+        .height = 1,
+        .template = "X",
+        .recipes = butcherRecipes,
+        .recipeCount = sizeof(butcherRecipes) / sizeof(butcherRecipes[0]),
+        .passive = false
     },
 };
 

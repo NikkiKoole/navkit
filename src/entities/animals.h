@@ -52,5 +52,6 @@ void SpawnAnimal(AnimalType type, int z, AnimalBehavior behavior);
 void AnimalsTick(float dt);
 void ClearAnimals(void);
 int CountActiveAnimals(void);
+void KillAnimal(int animalIdx);  // Deactivates animal + spawns carcass at position
 
 #endif // ANIMALS_H

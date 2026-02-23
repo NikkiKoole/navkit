@@ -1,4 +1,5 @@
 #include "animals.h"
+#include "items.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../core/time.h"
@@ -72,6 +73,18 @@ int CountActiveAnimals(void) {
         if (animals[i].active) count++;
     }
     return count;
+}
+
+void KillAnimal(int animalIdx) {
+    if (animalIdx < 0 || animalIdx >= animalCount) return;
+    Animal* a = &animals[animalIdx];
+    if (!a->active) return;
+    float x = a->x;
+    float y = a->y;
+    float z = a->z;
+    a->active = false;
+    // Spawn carcass at animal's death position
+    SpawnItem(x, y, z, ITEM_CARCASS);
 }
 
 // Scan nearby cells for highest vegetation walkable cell
@@ -663,7 +676,7 @@ static void BehaviorPredator(Animal* a, float dt) {
         float dx = animals[bestPrey].x - a->x;
         float dy = animals[bestPrey].y - a->y;
         if (dx * dx + dy * dy < PREDATOR_CATCH_DIST * PREDATOR_CATCH_DIST) {
-            animals[bestPrey].active = false;
+            KillAnimal(bestPrey);
             a->state = ANIMAL_IDLE;
             a->stateTimer = 0.0f;
             a->targetAnimalIdx = -1;

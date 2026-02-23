@@ -49,5 +49,9 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_STONE_AXE]    = { "Stone Axe",   SPRITE_loose_rock,   IF_TOOL | MN, 1, MAT_GRANITE, 3.0f, 0.0f },
     [ITEM_STONE_PICK]   = { "Stone Pick",  SPRITE_loose_rock,   IF_TOOL | MN, 1, MAT_GRANITE, 3.5f, 0.0f },
     [ITEM_STONE_HAMMER] = { "Stone Hammer", SPRITE_loose_rock,  IF_TOOL | MN, 1, MAT_GRANITE, 2.5f, 0.0f },
+    [ITEM_CARCASS]      = { "Carcass",      SPRITE_loose_rock,   0, 1, MAT_NONE, 25.0f, 0.0f },
+    [ITEM_RAW_MEAT]     = { "Raw Meat",     SPRITE_division,     IF_STACKABLE | IF_EDIBLE, 5, MAT_NONE, 1.0f, 0.2f },
+    [ITEM_COOKED_MEAT]  = { "Cooked Meat",  SPRITE_division,     IF_STACKABLE | IF_EDIBLE, 5, MAT_NONE, 0.8f, 0.5f },
+    [ITEM_HIDE]         = { "Hide",         SPRITE_grass_trampled, IF_STACKABLE, 5, MAT_NONE, 2.0f, 0.0f },
 };
 #undef MN

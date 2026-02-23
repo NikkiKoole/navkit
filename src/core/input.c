@@ -30,6 +30,7 @@ static int selectedWallRecipe = CONSTRUCTION_DRY_STONE_WALL;
 static int selectedFloorRecipe = CONSTRUCTION_PLANK_FLOOR;
 static int selectedLadderRecipe = CONSTRUCTION_LADDER;
 static int selectedFurnitureRecipe = CONSTRUCTION_LEAF_PILE;
+static int selectedDoorRecipe = CONSTRUCTION_LEAF_DOOR;
 
 void SetSelectedFurnitureRecipe(int recipeIndex) {
     selectedFurnitureRecipe = recipeIndex;
@@ -62,6 +63,11 @@ const char* GetSelectedLadderRecipeName(void) {
 
 const char* GetSelectedFurnitureRecipeName(void) {
     const ConstructionRecipe* recipe = GetConstructionRecipe(selectedFurnitureRecipe);
+    return recipe ? recipe->name : "?";
+}
+
+const char* GetSelectedDoorRecipeName(void) {
+    const ConstructionRecipe* recipe = GetConstructionRecipe(selectedDoorRecipe);
     return recipe ? recipe->name : "?";
 }
 
@@ -940,6 +946,23 @@ static void ExecuteDesignateFurniture(int x1, int y1, int x2, int y2, int z) {
         const ConstructionRecipe* recipe = GetConstructionRecipe(selectedFurnitureRecipe);
         AddMessage(TextFormat("Created %d %s blueprint%s", count,
                    recipe ? recipe->name : "furniture", count > 1 ? "s" : ""), BLUE);
+    }
+}
+
+static void ExecuteDesignateDoor(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            int bpIdx = CreateRecipeBlueprint(dx, dy, z, selectedDoorRecipe);
+            if (bpIdx >= 0) {
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        const ConstructionRecipe* recipe = GetConstructionRecipe(selectedDoorRecipe);
+        AddMessage(TextFormat("Created %d %s blueprint%s", count,
+                   recipe ? recipe->name : "door", count > 1 ? "s" : ""), BLUE);
     }
 }
 
@@ -2401,6 +2424,23 @@ void HandleInput(void) {
         }
     }
 
+    if (inputAction == ACTION_WORK_DOOR) {
+        if (IsKeyPressed(KEY_R)) {
+            int indices[16];
+            int count = GetConstructionRecipeIndicesForCategory(BUILD_DOOR, indices, 16);
+            if (count > 0) {
+                int cur = -1;
+                for (int i = 0; i < count; i++) {
+                    if (indices[i] == selectedDoorRecipe) { cur = i; break; }
+                }
+                selectedDoorRecipe = indices[(cur + 1) % count];
+                const ConstructionRecipe* recipe = GetConstructionRecipe(selectedDoorRecipe);
+                AddMessage(TextFormat("Door recipe: %s", recipe ? recipe->name : "?"), BLUE);
+            }
+            return;
+        }
+    }
+
     // ========================================================================
     // Sandbox tree type cycling
     // ========================================================================
@@ -2562,6 +2602,12 @@ void HandleInput(void) {
             case ACTION_DRAW_WORKSHOP_CAMPFIRE:
                 if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_CAMPFIRE);
                 break;
+            case ACTION_DRAW_WORKSHOP_GROUND_FIRE:
+                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_GROUND_FIRE);
+                break;
+            case ACTION_DRAW_WORKSHOP_BUTCHER:
+                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_BUTCHER);
+                break;
             case ACTION_DRAW_SOIL_DIRT:
                 if (leftClick) {
                     if (shift) {
@@ -2658,8 +2704,20 @@ void HandleInput(void) {
                 if (leftClick) ExecuteDesignateFurniture(x1, y1, x2, y2, z);
                 else ExecuteCancelBuild(x1, y1, x2, y2, z);  // Reuse cancel logic
                 break;
+            case ACTION_WORK_DOOR:
+                if (leftClick) ExecuteDesignateDoor(x1, y1, x2, y2, z);
+                else ExecuteCancelBuild(x1, y1, x2, y2, z);
+                break;
             case ACTION_WORK_WORKSHOP_CAMPFIRE:
                 if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_CAMPFIRE);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
+                break;
+            case ACTION_WORK_WORKSHOP_GROUND_FIRE:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_GROUND_FIRE);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
+                break;
+            case ACTION_WORK_WORKSHOP_BUTCHER:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_BUTCHER);
                 else ExecuteCancelWorkshopBlueprint(x1, y1, z);
                 break;
             case ACTION_WORK_WORKSHOP_DRYING_RACK:

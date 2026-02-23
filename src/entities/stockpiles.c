@@ -52,6 +52,10 @@ const StockpileFilterDef STOCKPILE_FILTERS[] = {
     {ITEM_STONE_AXE,    '7', "Stone Axe",     "7", GRAY},
     {ITEM_STONE_PICK,   '8', "Stone Pick",    "8", GRAY},
     {ITEM_STONE_HAMMER, '9', "Stone Hammer",  "9", GRAY},
+    {ITEM_CARCASS,      ',', "Carcass",       ",", RED},
+    {ITEM_RAW_MEAT,     '.', "Raw Meat",      ".", RED},
+    {ITEM_COOKED_MEAT,  ';', "Cooked Meat",   ";", MAROON},
+    {ITEM_HIDE,         '\'', "Hide",          "'", BEIGE},
 };
 const int STOCKPILE_FILTER_COUNT = sizeof(STOCKPILE_FILTERS) / sizeof(STOCKPILE_FILTERS[0]);
 

@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 66
+#define CURRENT_SAVE_VERSION 68
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)
@@ -347,6 +347,9 @@ typedef struct {
     int freeSlotCount;
 } StockpileV65;
 
+// Version 66 constants (before CELL_DOOR and WORKSHOP_GROUND_FIRE)
+#define V66_CELL_TYPE_COUNT 17
+
 // V62 Blueprint struct (before workshop construction fields added in v63)
 // Must match exact layout: no workshopOriginX/Y, workshopType fields
 #include "../world/construction.h"
@@ -399,6 +402,31 @@ typedef struct {
     MoverCapabilities capabilities;
     // No equippedTool in V64
 } MoverV64;
+
+// Version 67 constants (before butchering items: carcass, raw meat, cooked meat, hide)
+#define V67_ITEM_TYPE_COUNT 38
+
+// V67 Stockpile struct (before butchering item types added)
+// v67 had 38 item types, v68 adds ITEM_CARCASS, ITEM_RAW_MEAT, ITEM_COOKED_MEAT, ITEM_HIDE (indices 38-41)
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V67_ITEM_TYPE_COUNT];
+    bool allowedMaterials[MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int maxContainers;
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+} StockpileV67;
 
 // V63 Workshop struct (before markedForDeconstruct/assignedDeconstructor fields added in v64)
 #include "../entities/workshops.h"

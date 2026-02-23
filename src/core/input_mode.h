@@ -40,6 +40,8 @@ typedef enum {
     ACTION_DRAW_WORKSHOP_ROPE_MAKER,
     ACTION_DRAW_WORKSHOP_CARPENTER,
     ACTION_DRAW_WORKSHOP_CAMPFIRE,
+    ACTION_DRAW_WORKSHOP_GROUND_FIRE,
+    ACTION_DRAW_WORKSHOP_BUTCHER,
     ACTION_DRAW_SOIL,      // Soil category - sub-actions for each type
     ACTION_DRAW_SOIL_DIRT,
     ACTION_DRAW_SOIL_CLAY,
@@ -62,6 +64,7 @@ typedef enum {
     ACTION_WORK_LADDER,
     ACTION_WORK_RAMP,
     ACTION_WORK_FURNITURE,
+    ACTION_WORK_DOOR,
     ACTION_WORK_WORKSHOP,  // Workshop category - sub-actions for each type
     ACTION_WORK_WORKSHOP_CAMPFIRE,
     ACTION_WORK_WORKSHOP_DRYING_RACK,
@@ -72,6 +75,8 @@ typedef enum {
     ACTION_WORK_WORKSHOP_SAWMILL,
     ACTION_WORK_WORKSHOP_KILN,
     ACTION_WORK_WORKSHOP_CARPENTER,
+    ACTION_WORK_WORKSHOP_GROUND_FIRE,
+    ACTION_WORK_WORKSHOP_BUTCHER,
     // Work > Harvest actions
     ACTION_WORK_CHOP,
     ACTION_WORK_CHOP_FELLED,
@@ -163,6 +168,7 @@ const char* GetSelectedWallRecipeName(void);
 const char* GetSelectedFloorRecipeName(void);
 const char* GetSelectedLadderRecipeName(void);
 const char* GetSelectedFurnitureRecipeName(void);
+const char* GetSelectedDoorRecipeName(void);
 
 // Trigger a bar item action (called when button clicked)
 void InputMode_TriggerKey(int key);

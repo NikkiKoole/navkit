@@ -45,6 +45,10 @@ typedef enum {
     ITEM_STONE_AXE,     // Stone axe (cutting:2, hammering:1)
     ITEM_STONE_PICK,    // Stone pickaxe (digging:2, hammering:2)
     ITEM_STONE_HAMMER,  // Stone hammer (hammering:2)
+    ITEM_CARCASS,       // Animal carcass (must be butchered)
+    ITEM_RAW_MEAT,      // Raw meat (edible, poor nutrition)
+    ITEM_COOKED_MEAT,   // Cooked meat (edible, good nutrition)
+    ITEM_HIDE,          // Animal hide (for clothing later)
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 

@@ -390,6 +390,11 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
                 n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
                 break;
+            case ACTION_WORK_DOOR:
+                n = AddItem(items, n, TextFormat("Recipe: %s", GetSelectedDoorRecipeName()), KEY_R, 0, false, false, false);
+                n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
+                n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
+                break;
             case ACTION_WORK_RAMP:
                 n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
                 n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);

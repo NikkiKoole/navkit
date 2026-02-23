@@ -18,6 +18,7 @@
 #include "../../vendor/raylib.h"
 #include "../simulation/lighting.h"
 #include "../simulation/balance.h"
+#include "butchering.h"
 #include "tool_quality.h"
 #include <math.h>
 #include <stdlib.h>
@@ -1944,30 +1945,39 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
                 // Spawn output items at workshop output tile
                 float outX = ws->outputTileX * CELL_SIZE + CELL_SIZE * 0.5f;
                 float outY = ws->outputTileY * CELL_SIZE + CELL_SIZE * 0.5f;
-                {
-                    uint8_t outMat;
-                    if (ItemTypeUsesMaterialName(recipe->outputType) && inputMat != MAT_NONE) {
-                        outMat = (uint8_t)inputMat;
-                    } else {
-                        outMat = DefaultMaterialForItemType(recipe->outputType);
+                if (ws->type == WORKSHOP_BUTCHER) {
+                    // Butcher workshop: use yield table instead of recipe output
+                    const ButcherYieldDef* yield = GetButcherYield(inputMat);
+                    for (int yi = 0; yi < yield->productCount; yi++) {
+                        int outIdx = SpawnItem(outX, outY, (float)ws->z, yield->products[yi].type);
+                        if (outIdx >= 0) items[outIdx].stackCount = yield->products[yi].count;
                     }
-                    int outIdx = SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType, outMat);
-                    if (outIdx >= 0) items[outIdx].stackCount = recipe->outputCount;
-                }
-                // Spawn second output if recipe has one (e.g., Strip Bark -> stripped log + bark)
-                if (recipe->outputType2 != ITEM_NONE) {
-                    uint8_t outMat2;
-                    if (ItemTypeUsesMaterialName(recipe->outputType2) && inputMat != MAT_NONE) {
-                        outMat2 = (uint8_t)inputMat;
-                    } else {
-                        outMat2 = DefaultMaterialForItemType(recipe->outputType2);
+                } else {
+                    {
+                        uint8_t outMat;
+                        if (ItemTypeUsesMaterialName(recipe->outputType) && inputMat != MAT_NONE) {
+                            outMat = (uint8_t)inputMat;
+                        } else {
+                            outMat = DefaultMaterialForItemType(recipe->outputType);
+                        }
+                        int outIdx = SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType, outMat);
+                        if (outIdx >= 0) items[outIdx].stackCount = recipe->outputCount;
                     }
-                    int outIdx2 = SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType2, outMat2);
-                    if (outIdx2 >= 0) items[outIdx2].stackCount = recipe->outputCount2;
+                    // Spawn second output if recipe has one (e.g., Strip Bark -> stripped log + bark)
+                    if (recipe->outputType2 != ITEM_NONE) {
+                        uint8_t outMat2;
+                        if (ItemTypeUsesMaterialName(recipe->outputType2) && inputMat != MAT_NONE) {
+                            outMat2 = (uint8_t)inputMat;
+                        } else {
+                            outMat2 = DefaultMaterialForItemType(recipe->outputType2);
+                        }
+                        int outIdx2 = SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType2, outMat2);
+                        if (outIdx2 >= 0) items[outIdx2].stackCount = recipe->outputCount2;
+                    }
                 }
 
                 // Auto-suspend bill if output storage is now full
-                {
+                if (ws->type != WORKSHOP_BUTCHER && recipe->outputType != ITEM_NONE) {
                     int outSlotX, outSlotY;
                     uint8_t outMat = (inputMat != MAT_NONE) ? (uint8_t)inputMat
                         : DefaultMaterialForItemType(recipe->outputType);
@@ -4565,16 +4575,18 @@ int WorkGiver_Craft(int moverIdx) {
                 outputMat = DefaultMaterialForItemType(item->type);
             }
             int outSlotX, outSlotY;
-            if (FindStockpileForItem(recipe->outputType, outputMat, &outSlotX, &outSlotY) < 0) {
-                bill->suspended = true;
-                bill->suspendedNoStorage = true;
-                continue;
-            }
-            if (recipe->outputType2 != ITEM_NONE &&
-                FindStockpileForItem(recipe->outputType2, outputMat, &outSlotX, &outSlotY) < 0) {
-                bill->suspended = true;
-                bill->suspendedNoStorage = true;
-                continue;
+            if (recipe->outputType != ITEM_NONE) {
+                if (FindStockpileForItem(recipe->outputType, outputMat, &outSlotX, &outSlotY) < 0) {
+                    bill->suspended = true;
+                    bill->suspendedNoStorage = true;
+                    continue;
+                }
+                if (recipe->outputType2 != ITEM_NONE &&
+                    FindStockpileForItem(recipe->outputType2, outputMat, &outSlotX, &outSlotY) < 0) {
+                    bill->suspended = true;
+                    bill->suspendedNoStorage = true;
+                    continue;
+                }
             }
 
             // Check if mover can reach the item
