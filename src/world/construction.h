@@ -18,6 +18,7 @@ typedef enum {
     BUILD_RAMP,
     BUILD_FURNITURE,
     BUILD_WORKSHOP,
+    BUILD_DOOR,
     BUILD_CATEGORY_COUNT,
 } BuildCategory;
 
@@ -78,6 +79,16 @@ typedef enum {
     CONSTRUCTION_WORKSHOP_SAWMILL,       // 1 stage: 3 logs + 2 cordage
     CONSTRUCTION_WORKSHOP_KILN,          // 1 stage: 8 rocks + 2 clay
     CONSTRUCTION_WORKSHOP_CARPENTER,     // 1 stage: 4 planks + 2 cordage
+    CONSTRUCTION_WORKSHOP_GROUND_FIRE,   // 1 stage: 3 sticks
+    CONSTRUCTION_WORKSHOP_BUTCHER,       // 1 stage: 2 sticks + 1 rock
+    // Primitive construction recipes
+    CONSTRUCTION_LEAF_WALL,              // 1 stage: 4 sticks + 4 leaves
+    CONSTRUCTION_STICK_WALL,             // 1 stage: 4 sticks + 2 cordage
+    CONSTRUCTION_LEAF_ROOF,              // 1 stage: 2 poles + 3 leaves (BUILD_FLOOR)
+    CONSTRUCTION_BARK_ROOF,              // 1 stage: 2 poles + 2 bark (BUILD_FLOOR)
+    // Door construction recipes
+    CONSTRUCTION_LEAF_DOOR,              // 1 stage: 2 poles + 2 leaves
+    CONSTRUCTION_PLANK_DOOR,             // 1 stage: 3 planks
     CONSTRUCTION_RECIPE_COUNT,
 } ConstructionRecipeIndex;
 

@@ -72,8 +72,8 @@ void InitSpriteOverrides(void) {
 }
 
 int GetSpriteForCellMat(CellType cell, MaterialType mat) {
-    // Ramps always use their directional triangle sprite (tinted by material color)
-    if (CellIsRamp(cell)) return CellSprite(cell);
+    // Ramps and doors always use their own sprite (tinted by material color)
+    if (CellIsRamp(cell) || cell == CELL_DOOR) return CellSprite(cell);
 
     int sprite = spriteOverrides[cell][mat];
     if (sprite) return sprite;

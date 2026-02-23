@@ -337,7 +337,7 @@ static void DrawDeeperLevelCells(float size, int z, int minX, int minY, int maxX
                         Rectangle src = SpriteGetRect(sprite);
                         Color lightTint = GetLightColor(x, y, zDepth + 1, skyColor);
                         Color tint = MultiplyColor(GetDepthTintDarkened(zDepth, z), lightTint);
-                        if (cellAtDepth == CELL_WALL && !IsWallNatural(x, y, zDepth)) {
+                        if ((cellAtDepth == CELL_WALL && !IsWallNatural(x, y, zDepth)) || cellAtDepth == CELL_DOOR) {
                             tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, zDepth)));
                         }
                         if (CellIsRamp(cellAtDepth)) {
@@ -493,7 +493,7 @@ static void DrawCellGrid(void) {
             Rectangle src = SpriteGetRect(sprite);
             Color lightTint = GetLightColor(x, y, z, skyColor);
             Color tint = lightTint;
-            if (cell == CELL_WALL && !IsWallNatural(x, y, z)) {
+            if ((cell == CELL_WALL && !IsWallNatural(x, y, z)) || cell == CELL_DOOR) {
                 tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, z)));
             }
             if (CellIsRamp(cell)) {

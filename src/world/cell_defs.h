@@ -108,6 +108,9 @@ static inline bool IsCellWalkableAt(int z, int y, int x) {
     // Ramps are always walkable (special case)
     if (CellIsRamp(cellHere)) return true;
     
+    // Doors are walkable (solid for support, but passable)
+    if (cellHere == CELL_DOOR) return true;
+    
     // Can't walk inside solid blocks (dirt, walls, etc.)
     if (CellIsSolid(cellHere)) return false;
     

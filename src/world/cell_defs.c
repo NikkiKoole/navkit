@@ -30,6 +30,8 @@ CellDef cellDefs[] = {
     [CELL_BUSH]        = {"bush",        SPRITE_bush,            0,                    INSULATION_TIER_AIR,    0, CELL_AIR,         ITEM_NONE, 0},     // Walkable ground vegetation - slows movement (future: variable terrain cost)
     // === TRANSPORT ===
     [CELL_TRACK]       = {"track",       SPRITE_track_isolated,  0,                    INSULATION_TIER_AIR,    0, CELL_AIR,         ITEM_NONE, 0},     // Train track - autotiled based on neighbors
+    // === DOORS ===
+    [CELL_DOOR]        = {"door",        SPRITE_door,            CF_BLOCKS_FLUIDS|CF_SOLID, INSULATION_TIER_WOOD, 64, CELL_AIR, ITEM_NONE, 0},  // Walkable, blocks fluids/light, solid for support, burns
 };
 
 // 4-bit cardinal bitmask: N=1, E=2, S=4, W=8

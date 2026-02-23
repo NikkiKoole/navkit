@@ -324,18 +324,26 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
     // Workshop construction recipes
     // =========================================================================
     [CONSTRUCTION_WORKSHOP_CAMPFIRE] = {
-        .name = "Campfire",
+        .name = "Fire Pit",
         .buildCategory = BUILD_WORKSHOP,
         .stageCount = 1,
         .stages = {{
-            .inputs = {{
-                .alternatives = {{ .itemType = ITEM_STICKS }},
-                .altCount = 1,
-                .count = 5,
-                .anyBuildingMat = false,
-            }},
-            .inputCount = 1,
-            .buildTime = 1.0f,
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_STICKS }},
+                    .altCount = 1,
+                    .count = 5,
+                    .anyBuildingMat = false,
+                },
+                {
+                    .alternatives = {{ .itemType = ITEM_ROCK }},
+                    .altCount = 1,
+                    .count = 3,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 2.0f,
         }},
         .resultMaterial = MAT_NONE,
         .materialFromStage = -1,
@@ -517,6 +525,200 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = -1,
         .materialFromSlot = -1,
     },
+    [CONSTRUCTION_WORKSHOP_GROUND_FIRE] = {
+        .name = "Ground Fire",
+        .buildCategory = BUILD_WORKSHOP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_STICKS }},
+                .altCount = 1,
+                .count = 3,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 1.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
+    [CONSTRUCTION_WORKSHOP_BUTCHER] = {
+        .name = "Butcher",
+        .buildCategory = BUILD_WORKSHOP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_STICKS }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+                {
+                    .alternatives = {{ .itemType = ITEM_ROCK }},
+                    .altCount = 1,
+                    .count = 1,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 1.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
+    // === PRIMITIVE RECIPES ===
+    [CONSTRUCTION_LEAF_WALL] = {
+        .name = "Leaf Wall",
+        .buildCategory = BUILD_WALL,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_STICKS }},
+                    .altCount = 1,
+                    .count = 4,
+                    .anyBuildingMat = false,
+                },
+                {
+                    .alternatives = {{ .itemType = ITEM_LEAVES }},
+                    .altCount = 1,
+                    .count = 4,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 2.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = 0,
+        .materialFromSlot = 0,
+    },
+    [CONSTRUCTION_STICK_WALL] = {
+        .name = "Stick Wall",
+        .buildCategory = BUILD_WALL,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_STICKS }},
+                    .altCount = 1,
+                    .count = 4,
+                    .anyBuildingMat = false,
+                },
+                {
+                    .alternatives = {{ .itemType = ITEM_CORDAGE }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 2.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = 0,
+        .materialFromSlot = 0,
+    },
+    [CONSTRUCTION_LEAF_ROOF] = {
+        .name = "Leaf Roof",
+        .buildCategory = BUILD_FLOOR,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_POLES }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+                {
+                    .alternatives = {{ .itemType = ITEM_LEAVES }},
+                    .altCount = 1,
+                    .count = 3,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 2.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = 0,
+        .materialFromSlot = 0,
+    },
+    [CONSTRUCTION_BARK_ROOF] = {
+        .name = "Bark Roof",
+        .buildCategory = BUILD_FLOOR,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_POLES }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+                {
+                    .alternatives = {{ .itemType = ITEM_BARK }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 2.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = 0,
+        .materialFromSlot = 0,
+    },
+    // === DOOR RECIPES ===
+    [CONSTRUCTION_LEAF_DOOR] = {
+        .name = "Leaf Door",
+        .buildCategory = BUILD_DOOR,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_POLES }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+                {
+                    .alternatives = {{ .itemType = ITEM_LEAVES }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 2.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = 0,
+        .materialFromSlot = 0,
+    },
+    [CONSTRUCTION_PLANK_DOOR] = {
+        .name = "Plank Door",
+        .buildCategory = BUILD_DOOR,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_PLANKS }},
+                .altCount = 1,
+                .count = 3,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 3.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = 0,
+        .materialFromSlot = 0,
+    },
 };
 
 const ConstructionRecipe* GetConstructionRecipe(int recipeIndex) {
@@ -555,6 +757,8 @@ int GetConstructionRecipeForWorkshopType(int workshopType) {
         case WORKSHOP_SAWMILL:      return CONSTRUCTION_WORKSHOP_SAWMILL;
         case WORKSHOP_KILN:         return CONSTRUCTION_WORKSHOP_KILN;
         case WORKSHOP_CARPENTER:    return CONSTRUCTION_WORKSHOP_CARPENTER;
+        case WORKSHOP_GROUND_FIRE:  return CONSTRUCTION_WORKSHOP_GROUND_FIRE;
+        case WORKSHOP_BUTCHER:      return CONSTRUCTION_WORKSHOP_BUTCHER;
         default: return -1;
     }
 }

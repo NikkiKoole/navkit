@@ -81,6 +81,7 @@
     #define SPRITE_train_loc SPRITE8X8_train_loc
     #define SPRITE_full_block SPRITE8X8_full_block
     #define SPRITE_head SPRITE8X8_head
+    #define SPRITE_door SPRITE8X8_door
     #define SPRITE_lower_half SPRITE8X8_lower_half
     #define SPRITE_wall SPRITE8X8_wall
     #define SPRITE_generic SPRITE8X8_generic
@@ -187,6 +188,7 @@
     #define SPRITE_train_loc SPRITE16X16_train_loc
     #define SPRITE_full_block SPRITE16X16_full_block
     #define SPRITE_head SPRITE16X16_head
+    #define SPRITE_door SPRITE16X16_door
     #define SPRITE_lower_half SPRITE16X16_lower_half
     #define SPRITE_wall SPRITE16X16_wall
     #define SPRITE_generic SPRITE16X16_generic
