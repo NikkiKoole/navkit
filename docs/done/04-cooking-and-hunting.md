@@ -1,3 +1,12 @@
+> **SUPERSEDED** — This document has been split into smaller focused docs:
+> - `docs/todo/04a-butchering-and-cooking.md` — carcass → butcher → cook → eat chain
+> - `docs/todo/04b-hunting.md` — hunt job, animal targeting
+> - `docs/todo/04c-root-foraging.md` — root digging, roasting, drying
+> - `docs/todo/04d-spoilage.md` — item spoilage timers
+> - `docs/todo/04e-animal-respawn.md` — wildlife population management
+>
+> Kept in `docs/done/` for historical reference. The split docs are the source of truth.
+
 # Feature 05: Cooking & Hunting
 
 > **Priority**: Tier 2 — Tool & Production Loop

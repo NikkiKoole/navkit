@@ -1,6 +1,6 @@
 # Survival Feature Priority Order
 
-> Master priority list for the survival mode feature roadmap. Updated 2026-02-20.
+> Master priority list for the survival mode feature roadmap. Updated 2026-02-22.
 
 ---
 
@@ -9,6 +9,9 @@
 - **debugging-workflow.md** — Event log + state audit + F5/F7/F8 keys
 - **medium-features-backlog.md** — Mud + cleaning done (weeding needs farming)
 - **hunger-and-food.md** — Core hunger, auto-eat, starvation death, berries
+- **01-workshop-construction-costs.md** — Workshop material costs + build time + deconstruction (save v63-v64)
+- **02-tool-quality-and-digging-stick.md** — Quality framework (5 types, 3 levels), 4 tool items, speed scaling, tool seeking, full bootstrap (save v65-v66, 112 tests)
+- **03-primitive-shelter-and-doors.md** — CELL_DOOR, leaf/stick walls, leaf/bark roofs, leaf/plank doors, ground fire + fire pit workshops (save v67, 30 tests). Deferred: fire spread + fire pit tool gate → `docs/todo/environmental/fire-improvements.md`
 
 ## Reference Docs (not actionable tasks)
 
@@ -20,19 +23,23 @@
 
 ## Build Order
 
-### Tier 0: Prerequisites (unblock everything)
+### ~~Tier 0: Prerequisites (unblock everything)~~ — COMPLETE ✅
 
-| # | Doc | Effort | Deps | What It Does |
-|---|-----|--------|------|-------------|
-| 01 | `01-workshop-construction-costs.md` | ~1 session | None | Workshops cost materials + build time. Fixes free-workshop problem. Resolves bootstrap chicken-and-egg (primitive workshops = sticks only). |
-| 02 | `02-tool-quality-and-digging-stick.md` | ~2.5 sessions | None | Quality framework (5 types, 3 levels), IF_TOOL flag, equippedTool on Mover, speed formula. Tool items: sharp stone gains qualities, + digging stick, stone axe, stone pick, stone hammer. Every job gets speed scaling. |
+| # | Doc | Effort | Deps | Status |
+|---|-----|--------|------|--------|
+| 01 | `01-workshop-construction-costs.md` | ~1 session | None | ✅ Done (save v63-v64) |
+| 02 | `02-tool-quality-and-digging-stick.md` | ~2.5 sessions | None | ✅ Done (save v65-v66) |
 
-### Tier 1: Core Survival Loop (playable day-1)
+### ~~Tier 1: Core Survival Loop (playable day-1)~~ — IN PROGRESS
 
-| # | Doc | Effort | Deps | What It Does |
-|---|-----|--------|------|-------------|
-| 03 | `03-primitive-shelter-and-doors.md` | ~2 sessions | 01, 02 | CELL_DOOR + stick walls, leaf roofs, leaf doors. Ground fire (risky, no tools) vs fire pit (safe, needs digging stick). Completes shelter + warmth loop. |
-| 04 | `04-cooking-and-hunting.md` | ~2 sessions | 02 | Animals become food: hunt → butcher → cook → eat. Raw/cooked meat, carcass, hide. Cutting quality gates butchering. |
+| # | Doc | Effort | Deps | Status |
+|---|-----|--------|------|--------|
+| 03 | `03-primitive-shelter-and-doors.md` | ~2 sessions | ~~01, 02~~ ✅ | ✅ Done (save v67) |
+| 04a | `04a-butchering-and-cooking.md` | ~1 session | 03 ✅ | ← **NEXT** Carcass → butcher → raw meat → cook → eat. Butcher workshop, cooking at fire pit. |
+| 04b | `04b-hunting.md` | ~1 session | 04a | Hunt designation, hunt job, mover kills animal → carcass. |
+| 04c | `04c-root-foraging.md` | ~1 session | 03 ✅ | Dig roots from soil, roast/dry. Fills gap between berries and meat. |
+| 04d | `04d-spoilage.md` | ~0.5 session | 04a | Spoilage timer on items, decay tick, container modifiers. |
+| 04e | `04e-animal-respawn.md` | ~0.5 session | None | Edge-spawn animals on timer, population cap. |
 | 05 | `05-fog-of-war-exploration.md` | ~3.5 sessions | None* | Map starts hidden in survival. Vision radius reveals terrain. Straight-line explore designation. Pathfinding untouched (exploration = job assignment filter only). *Best after 01-04 exist. |
 
 ### Tier 2: Expansion (deeper gameplay)
@@ -55,32 +62,36 @@
 
 | Doc | Notes |
 |-----|-------|
-| `feature-03-doors-shelter.md` | Original F03 design. Superseded by `03-primitive-shelter-and-doors.md` which adds primitive tier. Keep as reference for CELL_DOOR technical design. |
-| `feature-04-tools-knapping.md` | Original F04 design. Superseded by `02-tool-quality-and-digging-stick.md` which includes CDDA analysis. Keep as reference for phase details. |
+| `feature-03-doors-shelter.md` | Original F03 design. Superseded by `docs/done/03-primitive-shelter-and-doors.md`. Keep as reference. |
+| `feature-04-tools-knapping.md` | Original F04 design. Superseded by `02-tool-quality-and-digging-stick.md`. Keep as reference. |
+| `04-cooking-and-hunting.md` | Original F04-food design. Split into 04a-04e on 2026-02-22. Keep as reference. |
 
 ---
 
 ## Session Plan
 
 ```
-Session 1-2:    Workshop construction costs
+Session 1-2:    Workshop construction costs                        ✅ DONE
                 → Workshops require materials + build time
                 → Primitive workshops (campfire, drying rack, rope maker) cost only sticks
 
-Session 2-4:    Tool quality framework + tool items
+Session 2-4:    Tool quality framework + tool items                ✅ DONE
                 → Quality enum, IF_TOOL, equippedTool on Mover, speed formula
                 → Sharp stone gains cutting:1, craft digging stick/axe/pick/hammer
                 → Every existing job immediately benefits from tools
 
-Session 5-6:    Primitive shelter + CELL_DOOR + ground fire / fire pit
+Session 5-6:    Primitive shelter + CELL_DOOR + ground fire / fire pit  ✅ DONE
                 → Stick walls, leaf roofs, leaf doors from gathered materials
-                → Ground fire (3 sticks, dangerous) vs fire pit (needs digging stick, safe)
+                → Ground fire (3 sticks) + fire pit (5 sticks + 3 rocks)
                 → Day-1 loop complete: gather → shelter → fire → sleep → survive
 
-Session 7-8:    Cooking & hunting
-                → Hunt animals → carcass → butcher (needs cutting tool) → raw meat
-                → Cook at hearth/campfire → cooked meat (best food)
-                → Animals are now a food source, fire is useful
+Session 7:      Butchering & cooking (04a)  ← NEXT
+                → Carcass → butcher workshop → raw meat → cook at fire pit → eat
+                → 4 new items (carcass, raw meat, cooked meat, hide)
+
+Session 7-8:    Hunting + root foraging + spoilage (04b, 04c, 04d, 04e)
+                → Hunt designation, dig roots from soil, roast/dry roots
+                → Spoilage timer, animal respawn
 
 Session 9-12:   Fog of war
                 → Map starts hidden, vision radius reveals terrain
