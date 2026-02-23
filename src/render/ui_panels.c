@@ -1742,7 +1742,7 @@ void DrawProfilerPanel(float rightEdge, float y) {
     Vector2 mouse = GetMousePosition();
 
     // Block click-through for entire panel area
-    float panelH = sectionProfiler ? 300 : 20;
+    float panelH = sectionProfiler ? (300 + (sectionCounters ? profilerCounterCount * 16 + 24 : 24)) : 20;
     if (mouse.x >= x && mouse.x < rightEdge && mouse.y >= y && mouse.y < y + panelH) {
         ui_set_hovered();
     }
@@ -1762,6 +1762,65 @@ void DrawProfilerPanel(float rightEdge, float y) {
 
     if (sectionProfiler) {
         y += 18;
+
+        // Counters section
+        if (profilerCounterCount > 0) {
+            const char* ctrHeader = sectionCounters ? "[-] Counters" : "[+] Counters";
+            int ctrHeaderWidth = MeasureText(ctrHeader, 14);
+            float ctrHeaderX = rightEdge - ctrHeaderWidth;
+            bool ctrHovered = mouse.x >= ctrHeaderX && mouse.x < ctrHeaderX + ctrHeaderWidth + 10 &&
+                              mouse.y >= y && mouse.y < y + 18;
+            DrawTextShadow(ctrHeader, (int)ctrHeaderX, (int)y, 14, ctrHovered ? YELLOW : GRAY);
+            if (ctrHovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                sectionCounters = !sectionCounters;
+            }
+            y += 18;
+
+            if (sectionCounters) {
+                float nameW = 120;
+                float valueW = 60;
+                float sparkW = 60;
+                float sparkH = 12;
+
+                for (int i = 0; i < profilerCounterCount; i++) {
+                    ProfileCounter* c = &profilerCounters[i];
+
+                    // Name (left-aligned)
+                    DrawTextShadow(c->name, (int)x, (int)y, 12, LIGHTGRAY);
+
+                    // Last value (right-aligned)
+                    const char* valStr = TextFormat("%llu", (unsigned long long)ProfileCountGetLast(i));
+                    int valW = MeasureText(valStr, 12);
+                    DrawTextShadow(valStr, (int)(x + nameW + valueW - valW), (int)y, 12, WHITE);
+
+                    // Mini sparkline
+                    float sparkX = x + nameW + valueW + 4;
+                    float sparkY = y;
+
+                    // Find local max for scaling
+                    uint64_t localMax = 1;
+                    for (int f = 0; f < c->historyCount; f++) {
+                        if (c->countHistory[f] > localMax) localMax = c->countHistory[f];
+                    }
+
+                    // Draw sparkline bars
+                    float barW = sparkW / (float)PROFILER_HISTORY_FRAMES;
+                    if (barW < 1.0f) barW = 1.0f;
+
+                    for (int f = 0; f < c->historyCount && f < PROFILER_HISTORY_FRAMES; f++) {
+                        int idx = (c->historyIndex + f) % PROFILER_HISTORY_FRAMES;
+                        float val = (float)c->countHistory[idx] / (float)localMax;
+                        float barH = val * sparkH;
+                        if (barH < 1.0f && c->countHistory[idx] > 0) barH = 1.0f;
+
+                        float bx = sparkX + f * (sparkW / PROFILER_HISTORY_FRAMES);
+                        DrawRectangle((int)bx, (int)(sparkY + sparkH - barH), (int)barW, (int)barH, SKYBLUE);
+                    }
+
+                    y += 16;
+                }
+            }
+        }
 
         // Memory section
         const char* memHeader = sectionMemory ? "[-] Memory" : "[+] Memory";

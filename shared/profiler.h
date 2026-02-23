@@ -2,12 +2,13 @@
 #define PROFILER_H
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <time.h>
 
 // Compile-time toggle - set to 0 to completely remove profiler overhead
 #define PROFILER_ENABLED 1
 
-#define PROFILER_MAX_SECTIONS 32
+#define PROFILER_MAX_SECTIONS 64
 #define PROFILER_HISTORY_FRAMES 120
 
 typedef struct {
@@ -25,11 +26,24 @@ typedef struct {
     bool collapsed;    // If true, children are hidden in UI
 } ProfileSection;
 
+#define PROFILER_MAX_COUNTERS 32
+
+typedef struct {
+    const char* name;
+    uint64_t frameCount;      // accumulates this frame
+    uint64_t lastCount;       // final value from previous frame
+    uint64_t countHistory[PROFILER_HISTORY_FRAMES];
+    int historyIndex;
+    int historyCount;
+} ProfileCounter;
+
 #if PROFILER_ENABLED
 
 // Global state
 extern ProfileSection profilerSections[PROFILER_MAX_SECTIONS];
 extern int profilerSectionCount;
+extern ProfileCounter profilerCounters[PROFILER_MAX_COUNTERS];
+extern int profilerCounterCount;
 
 void ProfileBegin(const char* name);
 void ProfileEnd(const char* name);
@@ -37,6 +51,13 @@ void ProfileAccumBegin(const char* name);
 void ProfileAccumEnd(const char* name);
 void ProfileFrameEnd(void);
 void ProfileReset(void);
+
+void ProfileCount(const char* name, int n);
+void ProfileCountSet(const char* name, int n);
+uint64_t ProfileCountGetLast(int counterIndex);
+uint64_t ProfileCountGetMin(int counterIndex);
+uint64_t ProfileCountGetMax(int counterIndex);
+double ProfileCountGetAvg(int counterIndex);
 
 double ProfileGetMin(int sectionIndex);
 double ProfileGetMax(int sectionIndex);
@@ -50,6 +71,8 @@ bool ProfileHasChildren(int sectionIndex);  // Returns true if this section has 
 #define PROFILE_ACCUM_BEGIN(name) ProfileAccumBegin(#name)
 #define PROFILE_ACCUM_END(name) ProfileAccumEnd(#name)
 #define PROFILE_FRAME_END() ProfileFrameEnd()
+#define PROFILE_COUNT(name, n) ProfileCount(#name, n)
+#define PROFILE_COUNT_SET(name, n) ProfileCountSet(#name, n)
 
 #else
 
@@ -59,6 +82,8 @@ bool ProfileHasChildren(int sectionIndex);  // Returns true if this section has 
 #define PROFILE_ACCUM_BEGIN(name) ((void)0)
 #define PROFILE_ACCUM_END(name) ((void)0)
 #define PROFILE_FRAME_END() ((void)0)
+#define PROFILE_COUNT(name, n) ((void)0)
+#define PROFILE_COUNT_SET(name, n) ((void)0)
 
 #endif
 
@@ -73,6 +98,8 @@ bool ProfileHasChildren(int sectionIndex);  // Returns true if this section has 
 
 ProfileSection profilerSections[PROFILER_MAX_SECTIONS];
 int profilerSectionCount = 0;
+ProfileCounter profilerCounters[PROFILER_MAX_COUNTERS];
+int profilerCounterCount = 0;
 static int profilerCurrentDepth = 0;
 static int profilerParentStack[PROFILER_MAX_SECTIONS];  // Stack of parent indices
 
@@ -147,6 +174,76 @@ void ProfileAccumEnd(const char* name) {
     }
 }
 
+static int ProfileCounterFindOrCreate(const char* name) {
+    for (int i = 0; i < profilerCounterCount; i++) {
+        if (profilerCounters[i].name == name) return i;  // Pointer comparison
+    }
+    if (profilerCounterCount < PROFILER_MAX_COUNTERS) {
+        int idx = profilerCounterCount++;
+        profilerCounters[idx].name = name;
+        profilerCounters[idx].frameCount = 0;
+        profilerCounters[idx].lastCount = 0;
+        profilerCounters[idx].historyIndex = 0;
+        profilerCounters[idx].historyCount = 0;
+        for (int i = 0; i < PROFILER_HISTORY_FRAMES; i++) {
+            profilerCounters[idx].countHistory[i] = 0;
+        }
+        return idx;
+    }
+    return -1;
+}
+
+void ProfileCount(const char* name, int n) {
+    int idx = ProfileCounterFindOrCreate(name);
+    if (idx >= 0) profilerCounters[idx].frameCount += (uint64_t)n;
+}
+
+void ProfileCountSet(const char* name, int n) {
+    int idx = ProfileCounterFindOrCreate(name);
+    if (idx >= 0) profilerCounters[idx].frameCount = (uint64_t)n;
+}
+
+uint64_t ProfileCountGetLast(int counterIndex) {
+    if (counterIndex < 0 || counterIndex >= profilerCounterCount) return 0;
+    ProfileCounter* c = &profilerCounters[counterIndex];
+    if (c->historyCount == 0) return 0;
+    int lastIdx = (c->historyIndex - 1 + PROFILER_HISTORY_FRAMES) % PROFILER_HISTORY_FRAMES;
+    return c->countHistory[lastIdx];
+}
+
+uint64_t ProfileCountGetMin(int counterIndex) {
+    if (counterIndex < 0 || counterIndex >= profilerCounterCount) return 0;
+    ProfileCounter* c = &profilerCounters[counterIndex];
+    if (c->historyCount == 0) return 0;
+    uint64_t minVal = c->countHistory[0];
+    for (int i = 1; i < c->historyCount; i++) {
+        if (c->countHistory[i] < minVal) minVal = c->countHistory[i];
+    }
+    return minVal;
+}
+
+uint64_t ProfileCountGetMax(int counterIndex) {
+    if (counterIndex < 0 || counterIndex >= profilerCounterCount) return 0;
+    ProfileCounter* c = &profilerCounters[counterIndex];
+    if (c->historyCount == 0) return 0;
+    uint64_t maxVal = c->countHistory[0];
+    for (int i = 1; i < c->historyCount; i++) {
+        if (c->countHistory[i] > maxVal) maxVal = c->countHistory[i];
+    }
+    return maxVal;
+}
+
+double ProfileCountGetAvg(int counterIndex) {
+    if (counterIndex < 0 || counterIndex >= profilerCounterCount) return 0.0;
+    ProfileCounter* c = &profilerCounters[counterIndex];
+    if (c->historyCount == 0) return 0.0;
+    double sum = 0.0;
+    for (int i = 0; i < c->historyCount; i++) {
+        sum += (double)c->countHistory[i];
+    }
+    return sum / c->historyCount;
+}
+
 void ProfileFrameEnd(void) {
     // Store lastTimeMs (or accumTimeMs) into history for each section
     for (int i = 0; i < profilerSectionCount; i++) {
@@ -161,10 +258,22 @@ void ProfileFrameEnd(void) {
         s->lastTimeMs = 0.0;    // Reset for next frame
         s->accumTimeMs = 0.0;   // Reset accumulator for next frame
     }
+    // Store counter history and reset for next frame
+    for (int i = 0; i < profilerCounterCount; i++) {
+        ProfileCounter* c = &profilerCounters[i];
+        c->lastCount = c->frameCount;
+        c->countHistory[c->historyIndex] = c->frameCount;
+        c->historyIndex = (c->historyIndex + 1) % PROFILER_HISTORY_FRAMES;
+        if (c->historyCount < PROFILER_HISTORY_FRAMES) {
+            c->historyCount++;
+        }
+        c->frameCount = 0;
+    }
 }
 
 void ProfileReset(void) {
     profilerSectionCount = 0;
+    profilerCounterCount = 0;
 }
 
 double ProfileGetMin(int sectionIndex) {

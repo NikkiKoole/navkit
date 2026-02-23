@@ -187,6 +187,7 @@ extern bool sectionDebugPathfinding;
 extern bool sectionDebugMovers;
 extern bool sectionDebugOverlays;
 extern bool sectionProfiler;
+extern bool sectionCounters;
 extern bool sectionMemory;
 extern bool sectionMemGrid;
 extern bool sectionMemPath;

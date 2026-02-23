@@ -389,6 +389,7 @@ static bool FindReachableAdjacentTile(int targetX, int targetY, int targetZ,
         if (!IsCellWalkableAt(targetZ, ay, ax)) continue;
 
         Point adjCell = { ax, ay, targetZ };
+        PROFILE_COUNT(pathfinds, 1);
         if (FindPath(moverPathAlgorithm, moverCell, adjCell, tempPath, MAX_PATH) > 0) {
             *outX = ax;
             *outY = ay;
@@ -546,6 +547,7 @@ int CreateJob(JobType type) {
     jobIsActive[jobId] = true;
 
     EventLog("Job %d created type=%s", jobId, JobTypeName(type));
+    PROFILE_COUNT(jobs_created, 1);
     return jobId;
 }
 
@@ -2516,6 +2518,7 @@ void CancelJob(void* moverPtr, int moverIdx) {
     Job* job = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
 
     if (job) {
+        PROFILE_COUNT(jobs_cancelled, 1);
         EventLog("CancelJob %d type=%s mover=%d item=%d stockpile=%d blueprint=%d",
                  m->currentJobId, JobTypeName(job->type), moverIdx,
                  job->targetItem, job->targetStockpile, job->targetBlueprint);
@@ -2857,6 +2860,7 @@ static bool TryAssignItemToMover(int itemIdx, int spIdx, int slotX, int slotY, b
 
         PROFILE_ACCUM_BEGIN(Jobs_ReachabilityCheck);
         Point tempPath[MAX_PATH];
+        PROFILE_COUNT(pathfinds, 1);
         int tempLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
         PROFILE_ACCUM_END(Jobs_ReachabilityCheck);
 
@@ -3056,6 +3060,7 @@ __attribute__((noinline))
 static void AssignJobs_P3_ItemHaul(bool typeMatHasStockpile[][MAT_COUNT]) {
     if (itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
         int totalIndexed = itemGrid.cellStarts[itemGrid.cellCount];
+        PROFILE_COUNT(items_scanned, totalIndexed);
 
         for (int t = 0; t < totalIndexed && idleMoverCount > 0; t++) {
             int itemIdx = itemGrid.itemIndices[t];
@@ -3073,6 +3078,7 @@ static void AssignJobs_P3_ItemHaul(bool typeMatHasStockpile[][MAT_COUNT]) {
             InvalidateStockpileSlotCache(item->type, item->material);
         }
     } else {
+        PROFILE_COUNT(items_scanned, itemHighWaterMark);
         for (int j = 0; j < itemHighWaterMark && idleMoverCount > 0; j++) {
             Item* item = &items[j];
 
@@ -3300,11 +3306,13 @@ void AssignJobs(void) {
 
     // Rebuild idle list each frame
     RebuildIdleMoverList();
+    PROFILE_COUNT_SET(idle_movers, idleMoverCount);
 
     // Early exit: no idle movers means no work to do
     if (idleMoverCount == 0) return;
 
     // Rebuild caches once per frame (same as legacy)
+    PROFILE_BEGIN(Jobs_CacheRebuild);
     RebuildStockpileGroundItemCache();
     RebuildStockpileFreeSlotCounts();
     RebuildStockpileSlotCache();  // O(1) FindStockpileForItem lookups
@@ -3320,26 +3328,54 @@ void AssignJobs(void) {
             }
         }
     }
+    PROFILE_COUNT(cache_rebuilds, 1);
+    PROFILE_END(Jobs_CacheRebuild);
 
+    PROFILE_BEGIN(Jobs_P1_Maintenance);
     AssignJobs_P1_StockpileMaintenance();
+    PROFILE_END(Jobs_P1_Maintenance);
     if (idleMoverCount == 0) return;
+
+    PROFILE_BEGIN(Jobs_P2_Crafting);
     AssignJobs_P2_Crafting();
+    PROFILE_END(Jobs_P2_Crafting);
     if (idleMoverCount == 0) return;
+
+    PROFILE_BEGIN(Jobs_P2b_PassiveDelivery);
     AssignJobs_P2b_PassiveDelivery();
+    PROFILE_END(Jobs_P2b_PassiveDelivery);
     if (idleMoverCount == 0) return;
+
+    PROFILE_BEGIN(Jobs_P2c_Ignition);
     AssignJobs_P2c_Ignition();
+    PROFILE_END(Jobs_P2c_Ignition);
     if (idleMoverCount == 0) return;
+
+    PROFILE_BEGIN(Jobs_P3_ItemHaul);
     if (anyTypeHasSlot) {
         AssignJobs_P3_ItemHaul(typeMatHasStockpile);
-        if (idleMoverCount == 0) return;
     }
+    PROFILE_END(Jobs_P3_ItemHaul);
+    if (idleMoverCount == 0) return;
+
+    PROFILE_BEGIN(Jobs_P3c_Rehaul);
     AssignJobs_P3c_Rehaul();
+    PROFILE_END(Jobs_P3c_Rehaul);
     if (idleMoverCount == 0) return;
+
+    PROFILE_BEGIN(Jobs_P3e_ContainerCleanup);
     AssignJobs_P3e_ContainerCleanup();
+    PROFILE_END(Jobs_P3e_ContainerCleanup);
     if (idleMoverCount == 0) return;
+
+    PROFILE_BEGIN(Jobs_P3d_Consolidate);
     AssignJobs_P3d_Consolidate();
+    PROFILE_END(Jobs_P3d_Consolidate);
     if (idleMoverCount == 0) return;
+
+    PROFILE_BEGIN(Jobs_P4_Designations);
     AssignJobs_P4_Designations();
+    PROFILE_END(Jobs_P4_Designations);
 }
 
 
@@ -3454,6 +3490,7 @@ int WorkGiver_Haul(int moverIdx) {
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
 
     Point tempPath[MAX_PATH];
+    PROFILE_COUNT(pathfinds, 1);
     int tempLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
     if (tempLen == 0) {
         SetItemUnreachableCooldown(bestItemIdx, UNREACHABLE_COOLDOWN);

@@ -149,6 +149,7 @@ bool sectionDebugPathfinding = false;
 bool sectionDebugMovers = false;
 bool sectionDebugOverlays = false;
 bool sectionProfiler = false;
+bool sectionCounters = false;
 bool sectionMemory = false;
 bool sectionMemGrid = false;
 bool sectionMemPath = false;

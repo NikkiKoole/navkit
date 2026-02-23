@@ -12,6 +12,8 @@ void ProfileAccumBegin(const char* name);
 void ProfileAccumEnd(const char* name);
 void ProfileFrameEnd(void);
 void ProfileReset(void);
+void ProfileCount(const char* name, int n);
+void ProfileCountSet(const char* name, int n);
 void AddMessage(const char* text, Color color);
 void TriggerScreenShake(float intensity, float duration);
 
@@ -22,6 +24,8 @@ void ProfileAccumBegin(const char* name) { (void)name; }
 void ProfileAccumEnd(const char* name) { (void)name; }
 void ProfileFrameEnd(void) {}
 void ProfileReset(void) {}
+void ProfileCount(const char* name, int n) { (void)name; (void)n; }
+void ProfileCountSet(const char* name, int n) { (void)name; (void)n; }
 
 // Stub UI functions - tests don't need real UI
 void AddMessage(const char* text, Color color) { (void)text; (void)color; }
