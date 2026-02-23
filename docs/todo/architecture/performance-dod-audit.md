@@ -6,27 +6,17 @@ Codebase analysis through the lens of Casey Muratori-style performance-oriented 
 
 ## CRITICAL
 
-### 1. Mover Struct is 12.4KB (99% Cache Waste)
+### 1. ~~Mover Struct is 12.4KB (99% Cache Waste)~~ DONE (Phase 1)
 
-**Location:** `src/entities/mover.h:48-89`
+**Status:** Path extraction complete (save v69). Mover struct reduced from 12.4KB to ~152B. Paths in separate `moverPaths[MAX_MOVERS][MAX_MOVER_PATH]` array.
 
-The `Mover` struct embeds `Point path[MAX_MOVER_PATH]` (1024 × 12 bytes = 12,288 bytes) inline. With `MAX_MOVERS=10000`, the movers array is **124 MB**.
+**Remaining: Phase 2 — Hot/Cold Split**
 
-Every loop that touches movers (spatial grid build, avoidance, movement, rendering) only needs ~30 bytes (position, speed, active flag) but fetches 12.4KB per mover. That's a **387× waste factor** — 194 cache line misses just to read one mover's position.
+Split the ~152B Mover into MoverHot (~40B) + MoverCold (~116B) so the tightest loops (spatial grid, avoidance, rendering) iterate <1 cache line per mover.
 
-**Affected hot paths:**
-- `BuildMoverSpatialGrid()` — reads `active`, `x`, `y`, `z`
-- `ComputeMoverAvoidance()` — reads position + avoidance fields
-- `UpdateMovers()` movement phase — reads position, speed, pathIndex
-- Rendering — reads position + visual fields
-- `RebuildIdleMoverList()` — reads active, jobId, freetimeState
-
-**Fix:** Extract paths to a separate array. Mover hot data drops to ~200 bytes, fitting 3+ movers per cache line. Estimated **10-50× cache improvement** for mover iteration loops.
-
-**Optional further split:**
 ```
-MoverHot (~34 bytes, 1 cache line):
-  x, y, z, speed, pathIndex, avoidX, avoidY, active, needsRepath
+MoverHot (~40 bytes, 1 cache line):
+  x, y, z, speed, pathIndex, pathLength, avoidX, avoidY, active, needsRepath
 
 MoverCold (~120 bytes, rarely accessed per-frame):
   goal, currentJobId, hunger, energy, bodyTemp, starvationTimer, etc.
@@ -170,7 +160,8 @@ These patterns align well with performance-oriented design:
 
 | # | Issue | Memory/Cache Impact | Effort |
 |---|-------|-------------------|--------|
-| 1 | Mover path extraction | 124MB → 2MB, 10-50× cache improvement | Medium |
+| 1 | ~~Mover path extraction~~ DONE | ~~124MB → 2MB, 10-50× cache improvement~~ | ~~Medium~~ |
+| 1b | Mover hot/cold split (Phase 2) | 1.5MB → 400KB hot + 1.1MB cold | Medium |
 | 2 | Sparse A* nodes | 117MB → <1MB per search | Small-Medium |
 | 3 | Designation dirty lists | 14 grid scans → 0 (when clean) | Medium |
 | 4 | Static job buffers | 4+ malloc/free per frame → 0 | Small |
