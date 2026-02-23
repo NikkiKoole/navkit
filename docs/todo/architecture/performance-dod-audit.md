@@ -10,20 +10,15 @@ Codebase analysis through the lens of Casey Muratori-style performance-oriented 
 
 **Status:** Path extraction complete (save v69). Mover struct reduced from 12.4KB to ~152B. Paths in separate `moverPaths[MAX_MOVERS][MAX_MOVER_PATH]` array.
 
-**Remaining: Phase 2 — Hot/Cold Split**
+**Deferred: Phase 2 — Hot/Cold Split**
 
-Split the ~152B Mover into MoverHot (~40B) + MoverCold (~116B) so the tightest loops (spatial grid, avoidance, rendering) iterate <1 cache line per mover.
+At 152B the struct already fits ~2.5 cache lines, and the hot fields (active, x, y) are at the top of the struct (first cache line). The ~4x improvement from splitting into MoverHot (~40B) + MoverCold (~112B) doesn't justify the code churn (~70+ call sites across 18 files, new save version). Revisit only if profiling shows mover iteration as an actual bottleneck.
 
-```
-MoverHot (~40 bytes, 1 cache line):
-  x, y, z, speed, pathIndex, pathLength, avoidX, avoidY, active, needsRepath
+---
 
-MoverCold (~120 bytes, rarely accessed per-frame):
-  goal, currentJobId, hunger, energy, bodyTemp, starvationTimer, etc.
+> **NOTE:** All items below are theoretical — identified by code reading, not profiling. Before implementing any fix, profile with a heavy save (many movers, active sims) using the existing `PROFILE_BEGIN`/`PROFILE_END` instrumentation to confirm it's an actual bottleneck. The profiler counters added in `c1cf836` cover AssignJobs phases; add more as needed.
 
-MoverPath (separate pool, variable length):
-  path points, only accessed during movement phase
-```
+---
 
 ### 2. AStarNode Dense 3D Grid (~117 MB)
 
@@ -161,7 +156,7 @@ These patterns align well with performance-oriented design:
 | # | Issue | Memory/Cache Impact | Effort |
 |---|-------|-------------------|--------|
 | 1 | ~~Mover path extraction~~ DONE | ~~124MB → 2MB, 10-50× cache improvement~~ | ~~Medium~~ |
-| 1b | Mover hot/cold split (Phase 2) | 1.5MB → 400KB hot + 1.1MB cold | Medium |
+| 1b | ~~Mover hot/cold split~~ DEFERRED | 1.5MB → 400KB hot + 1.1MB cold | Medium — not worth churn without profiling data |
 | 2 | Sparse A* nodes | 117MB → <1MB per search | Small-Medium |
 | 3 | Designation dirty lists | 14 grid scans → 0 (when clean) | Medium |
 | 4 | Static job buffers | 4+ malloc/free per frame → 0 | Small |
