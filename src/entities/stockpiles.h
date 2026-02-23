@@ -10,13 +10,30 @@
 #define MAX_STOCKPILE_SIZE 32  // max width/height
 #define MAX_STACK_SIZE 10      // max items per slot
 
-// Stockpile filter definition (shared between input keybindings and tooltip display)
+// Filter categories for hierarchical UI
+typedef enum {
+    FILTER_CAT_STONE,
+    FILTER_CAT_WOOD,
+    FILTER_CAT_PLANT,
+    FILTER_CAT_EARTH,
+    FILTER_CAT_CRAFT,
+    FILTER_CAT_CONTAINER,
+    FILTER_CAT_TOOL,
+    FILTER_CAT_FOOD,
+    FILTER_CAT_DEBUG,
+    FILTER_CAT_COUNT
+} StockpileFilterCategory;
+
+extern const char* FILTER_CATEGORY_NAMES[FILTER_CAT_COUNT];
+extern const char FILTER_CATEGORY_KEYS[FILTER_CAT_COUNT];
+extern int activeFilterCategory;  // -1 = top level, 0..FILTER_CAT_COUNT-1 = inside category
+
+// Stockpile filter definition (one per item type)
 typedef struct {
     ItemType itemType;
-    char key;                // Keyboard key for toggling (e.g., 'r' for Red)
-    const char* displayName; // Display name (e.g., "Red")
-    const char* shortName;   // Short abbreviation for tooltip (e.g., "R")
-    Color color;             // Display color
+    StockpileFilterCategory category;
+    const char* displayName;
+    Color color;
 } StockpileFilterDef;
 
 extern const StockpileFilterDef STOCKPILE_FILTERS[];

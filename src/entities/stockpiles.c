@@ -13,49 +13,86 @@ int stockpileCount = 0;
 GatherZone gatherZones[MAX_GATHER_ZONES];
 int gatherZoneCount = 0;
 
-// Stockpile filter definitions (shared between input.c keybindings and tooltips.c display)
-// This table is the single source of truth for all item type filters.
-// To add a new filterable item: just add a row here with a unique key.
+// Category display names
+const char* FILTER_CATEGORY_NAMES[FILTER_CAT_COUNT] = {
+    [FILTER_CAT_STONE]     = "Stone",
+    [FILTER_CAT_WOOD]      = "Wood",
+    [FILTER_CAT_PLANT]     = "Plant",
+    [FILTER_CAT_EARTH]     = "Earth",
+    [FILTER_CAT_CRAFT]     = "Craft",
+    [FILTER_CAT_CONTAINER] = "Container",
+    [FILTER_CAT_TOOL]      = "Tool",
+    [FILTER_CAT_FOOD]      = "Food",
+    [FILTER_CAT_DEBUG]     = "Debug",
+};
+
+// Category keyboard shortcuts
+const char FILTER_CATEGORY_KEYS[FILTER_CAT_COUNT] = {
+    [FILTER_CAT_STONE]     = 'S',
+    [FILTER_CAT_WOOD]      = 'W',
+    [FILTER_CAT_PLANT]     = 'P',
+    [FILTER_CAT_EARTH]     = 'E',
+    [FILTER_CAT_CRAFT]     = 'C',
+    [FILTER_CAT_CONTAINER] = 'N',
+    [FILTER_CAT_TOOL]      = 'T',
+    [FILTER_CAT_FOOD]      = 'F',
+    [FILTER_CAT_DEBUG]     = 'D',
+};
+
+// Active filter category (-1 = top level)
+int activeFilterCategory = -1;
+
+// Stockpile filter definitions — grouped by category.
+// To add a new filterable item: add a row in the appropriate category group.
 const StockpileFilterDef STOCKPILE_FILTERS[] = {
-    {ITEM_RED,          'r', "Red",          "R", RED},
-    {ITEM_GREEN,        'g', "Green",        "G", GREEN},
-    {ITEM_BLUE,         'b', "Blue",         "B", BLUE},
-    {ITEM_ROCK,         'o', "Rock",         "O", ORANGE},
-    {ITEM_BLOCKS,       's', "Blocks",       "S", GRAY},
-    {ITEM_LOG,          'w', "Wood",         "W", BROWN},
-    {ITEM_DIRT,         'd', "Dirt",         "D", BROWN},
-    {ITEM_PLANKS,       'p', "Planks",       "P", BROWN},
-    {ITEM_STICKS,       'k', "Sticks",       "K", BROWN},
-    {ITEM_POLES,        'l', "Poles",         "L", BROWN},
-    {ITEM_GRASS,        'm', "Grass",        "M", GREEN},
-    {ITEM_DRIED_GRASS,  'h', "Dried Grass",  "H", YELLOW},
-    {ITEM_BRICKS,       'i', "Bricks",       "I", ORANGE},
-    {ITEM_CHARCOAL,     'c', "Charcoal",     "C", GRAY},
-    {ITEM_BARK,         'a', "Bark",         "A", BROWN},
-    {ITEM_STRIPPED_LOG,  'e', "Stripped Log",  "E", BROWN},
-    {ITEM_SHORT_STRING, 'n', "String",        "N", BEIGE},
-    {ITEM_CORDAGE,      'j', "Cordage",       "J", BEIGE},
-    {ITEM_SAPLING,      't', "Saplings",      "T", GREEN},
-    {ITEM_LEAVES,       'v', "Leaves",        "V", GREEN},
-    {ITEM_CLAY,         'y', "Clay",          "Y", BROWN},
-    {ITEM_GRAVEL,       'q', "Gravel",        "Q", GRAY},
-    {ITEM_SAND,         'z', "Sand",          "Z", YELLOW},
-    {ITEM_PEAT,         'u', "Peat",          "U", BROWN},
-    {ITEM_ASH,          'f', "Ash",           "F", GRAY},
-    {ITEM_BERRIES,      'x', "Berries",       "X", PURPLE},
-    {ITEM_DRIED_BERRIES,'1', "Dried Berries", "1", PURPLE},
-    {ITEM_BASKET,       '2', "Baskets",       "2", BEIGE},
-    {ITEM_CLAY_POT,     '3', "Clay Pots",     "3", ORANGE},
-    {ITEM_CHEST,        '4', "Chests",        "4", BROWN},
-    {ITEM_SHARP_STONE,  '5', "Sharp Stone",   "5", GRAY},
-    {ITEM_DIGGING_STICK,'6', "Digging Stick", "6", BROWN},
-    {ITEM_STONE_AXE,    '7', "Stone Axe",     "7", GRAY},
-    {ITEM_STONE_PICK,   '8', "Stone Pick",    "8", GRAY},
-    {ITEM_STONE_HAMMER, '9', "Stone Hammer",  "9", GRAY},
-    {ITEM_CARCASS,      ',', "Carcass",       ",", RED},
-    {ITEM_RAW_MEAT,     '.', "Raw Meat",      ".", RED},
-    {ITEM_COOKED_MEAT,  ';', "Cooked Meat",   ";", MAROON},
-    {ITEM_HIDE,         '\'', "Hide",          "'", BEIGE},
+    // Stone
+    {ITEM_ROCK,         FILTER_CAT_STONE,     "Rock",         ORANGE},
+    {ITEM_BLOCKS,       FILTER_CAT_STONE,     "Blocks",       GRAY},
+    {ITEM_BRICKS,       FILTER_CAT_STONE,     "Bricks",       ORANGE},
+    {ITEM_SHARP_STONE,  FILTER_CAT_STONE,     "Sharp Stone",  GRAY},
+    {ITEM_GRAVEL,       FILTER_CAT_STONE,     "Gravel",       GRAY},
+    {ITEM_SAND,         FILTER_CAT_STONE,     "Sand",         YELLOW},
+    // Wood
+    {ITEM_LOG,          FILTER_CAT_WOOD,      "Log",          BROWN},
+    {ITEM_PLANKS,       FILTER_CAT_WOOD,      "Planks",       BROWN},
+    {ITEM_STICKS,       FILTER_CAT_WOOD,      "Sticks",       BROWN},
+    {ITEM_POLES,        FILTER_CAT_WOOD,      "Poles",        BROWN},
+    {ITEM_BARK,         FILTER_CAT_WOOD,      "Bark",         BROWN},
+    {ITEM_STRIPPED_LOG,  FILTER_CAT_WOOD,     "Stripped Log",  BROWN},
+    // Plant
+    {ITEM_GRASS,        FILTER_CAT_PLANT,     "Grass",        GREEN},
+    {ITEM_DRIED_GRASS,  FILTER_CAT_PLANT,     "Dried Grass",  YELLOW},
+    {ITEM_LEAVES,       FILTER_CAT_PLANT,     "Leaves",       GREEN},
+    {ITEM_SAPLING,      FILTER_CAT_PLANT,     "Saplings",     GREEN},
+    {ITEM_BERRIES,      FILTER_CAT_PLANT,     "Berries",      PURPLE},
+    {ITEM_DRIED_BERRIES,FILTER_CAT_PLANT,     "Dried Berries",PURPLE},
+    // Earth
+    {ITEM_DIRT,         FILTER_CAT_EARTH,     "Dirt",         BROWN},
+    {ITEM_CLAY,         FILTER_CAT_EARTH,     "Clay",         BROWN},
+    {ITEM_PEAT,         FILTER_CAT_EARTH,     "Peat",         BROWN},
+    {ITEM_ASH,          FILTER_CAT_EARTH,     "Ash",          GRAY},
+    {ITEM_CHARCOAL,     FILTER_CAT_EARTH,     "Charcoal",     GRAY},
+    // Craft
+    {ITEM_SHORT_STRING, FILTER_CAT_CRAFT,     "String",       BEIGE},
+    {ITEM_CORDAGE,      FILTER_CAT_CRAFT,     "Cordage",      BEIGE},
+    // Container
+    {ITEM_BASKET,       FILTER_CAT_CONTAINER, "Basket",       BEIGE},
+    {ITEM_CLAY_POT,     FILTER_CAT_CONTAINER, "Clay Pot",     ORANGE},
+    {ITEM_CHEST,        FILTER_CAT_CONTAINER, "Chest",        BROWN},
+    // Tool
+    {ITEM_DIGGING_STICK,FILTER_CAT_TOOL,      "Digging Stick",BROWN},
+    {ITEM_STONE_AXE,    FILTER_CAT_TOOL,      "Stone Axe",    GRAY},
+    {ITEM_STONE_PICK,   FILTER_CAT_TOOL,      "Stone Pick",   GRAY},
+    {ITEM_STONE_HAMMER, FILTER_CAT_TOOL,      "Stone Hammer", GRAY},
+    // Food
+    {ITEM_CARCASS,      FILTER_CAT_FOOD,      "Carcass",      RED},
+    {ITEM_RAW_MEAT,     FILTER_CAT_FOOD,      "Raw Meat",     RED},
+    {ITEM_COOKED_MEAT,  FILTER_CAT_FOOD,      "Cooked Meat",  MAROON},
+    {ITEM_HIDE,         FILTER_CAT_FOOD,      "Hide",         BEIGE},
+    // Debug
+    {ITEM_RED,          FILTER_CAT_DEBUG,     "Red",          RED},
+    {ITEM_GREEN,        FILTER_CAT_DEBUG,     "Green",        GREEN},
+    {ITEM_BLUE,         FILTER_CAT_DEBUG,     "Blue",         BLUE},
 };
 const int STOCKPILE_FILTER_COUNT = sizeof(STOCKPILE_FILTERS) / sizeof(STOCKPILE_FILTERS[0]);
 

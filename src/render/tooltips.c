@@ -118,69 +118,38 @@ static void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     } else {
         snprintf(cellBuf, sizeof(cellBuf), "Cell (%d,%d): %d/%d items", cellX, cellY, cellCount, sp->maxStackSize);
     }
-    const char* helpText = sp->maxContainers > 0
-        ? "+/- priority, [/] stack, {/} containers, X toggle all"
-        : "+/- priority, [/] stack, X toggle all, 1-4 wood";
-
-    // Pre-build filter entry strings ("k:Name") and measure widths
-    char filterEntries[32][20];  // "k:DisplayName" per filter
-    int filterEntryWidths[32];
-    int filterGap = MeasureTextUI(" ", 14) * 2;  // gap between entries
-    for (int i = 0; i < STOCKPILE_FILTER_COUNT && i < 32; i++) {
-        snprintf(filterEntries[i], sizeof(filterEntries[0]), "%c:%s",
-                 STOCKPILE_FILTERS[i].key, STOCKPILE_FILTERS[i].displayName);
-        filterEntryWidths[i] = MeasureTextUI(filterEntries[i], 14);
-    }
+    const char* helpText = activeFilterCategory < 0
+        ? "+/- priority, [/] stack, X toggle all, 1-4 wood"
+        : "A-F toggle, X all in category, ESC back";
 
     // Pre-build material entry strings
     char matEntries[8][16];
     int matEntryWidths[8];
+    int filterGap = MeasureTextUI(" ", 14) * 2;
     for (int i = 0; i < STOCKPILE_MATERIAL_FILTER_COUNT && i < 8; i++) {
         snprintf(matEntries[i], sizeof(matEntries[0]), "%c:%s",
                  STOCKPILE_MATERIAL_FILTERS[i].key, STOCKPILE_MATERIAL_FILTERS[i].displayName);
         matEntryWidths[i] = MeasureTextUI(matEntries[i], 14);
     }
 
-    // Calculate box width: use a target content width, capped to keep tooltip reasonable
-    int maxContentW = 420;
-    bool showContainerLine = containerBuf[0] != '\0';
-    int headerWidths[] = {
-        MeasureTextUI(titleBuf, 14),
-        MeasureTextUI(priorityBuf, 14),
-        MeasureTextUI(stackBuf, 14),
-        showContainerLine ? MeasureTextUI(containerBuf, 14) : 0,
-        MeasureTextUI(storageBuf, 14),
-        MeasureTextUI(fillBuf, 14),
-        MeasureTextUI(cellBuf, 14),
-        MeasureTextUI(helpText, 12),
-    };
-    int maxW = 0;
-    for (int i = 0; i < (int)(sizeof(headerWidths)/sizeof(headerWidths[0])); i++) {
-        if (headerWidths[i] > maxW) maxW = headerWidths[i];
-    }
-    if (maxW > maxContentW) maxContentW = maxW;
-
-    // Count how many filter rows we need by simulating wrapping
-    int filterRows = 1;
-    {
-        int fx = 0;
+    // Count filter lines based on active category level
+    int filterLines = 0;
+    if (activeFilterCategory < 0) {
+        // Top level: one line per category
+        filterLines = FILTER_CAT_COUNT;
+    } else {
+        // Inside category: count items in this category
         for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
-            int entryW = filterEntryWidths[i] + filterGap;
-            if (fx > 0 && fx + filterEntryWidths[i] > maxContentW) {
-                filterRows++;
-                fx = 0;
-            }
-            fx += entryW;
+            if ((int)STOCKPILE_FILTERS[i].category == activeFilterCategory) filterLines++;
         }
     }
 
-    // Material row (always fits on one line)
-    int matRows = 1;
-
+    int maxContentW = 300;
+    bool showContainerLine = containerBuf[0] != '\0';
     int padding = 6;
     int lineH = 16;
-    // header lines + optional container line + "Filters:" label + filterRows + "Wood:" label + matRows + help
-    int totalLines = 6 + (showContainerLine ? 1 : 0) + 1 + filterRows + 1 + matRows + 1;
+    // header(7) + container? + "Filters:" + filterLines + "Wood:" + matRow + help
+    int totalLines = 7 + (showContainerLine ? 1 : 0) + 1 + filterLines + 1 + 1 + 1;
     int boxW = maxContentW + padding * 2;
     int boxH = lineH * totalLines + padding * 2;
 
@@ -189,6 +158,7 @@ static void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     int ty = (int)mouse.y + 15;
     if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
     if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
+    if (ty < 0) ty = 0;
 
     // Draw background
     DrawRectangle(tx, ty, boxW, boxH, (Color){20, 20, 20, 220});
@@ -228,25 +198,53 @@ static void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     DrawTextShadow(cellBuf, tx + padding, y, 14, cellFull ? ORANGE : WHITE);
     y += lineH;
 
-    // Draw "Filters:" label
-    DrawTextShadow("Filters:", tx + padding, y, 14, WHITE);
-    y += lineH;
-
-    // Draw filter entries with wrapping (key:Name format)
-    {
-        int fx = 0;
-        for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
-            int entryW = filterEntryWidths[i];
-            if (fx > 0 && fx + entryW > maxContentW) {
-                y += lineH;
-                fx = 0;
-            }
-            bool allowed = sp->allowedTypes[STOCKPILE_FILTERS[i].itemType];
-            DrawTextShadow(filterEntries[i], tx + padding + fx, y, 14,
-                allowed ? STOCKPILE_FILTERS[i].color : DARKGRAY);
-            fx += entryW + filterGap;
-        }
+    // Draw filters — two-level keyboard navigation
+    if (activeFilterCategory < 0) {
+        // Top level: show categories with keys
+        DrawTextShadow("Filters:", tx + padding, y, 14, WHITE);
         y += lineH;
+
+        for (StockpileFilterCategory cat = 0; cat < FILTER_CAT_COUNT; cat++) {
+            int catTotal = 0, catEnabled = 0;
+            for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
+                if (STOCKPILE_FILTERS[i].category == cat) {
+                    catTotal++;
+                    if (sp->allowedTypes[STOCKPILE_FILTERS[i].itemType]) catEnabled++;
+                }
+            }
+            if (catTotal == 0) continue;
+
+            char catBuf[64];
+            snprintf(catBuf, sizeof(catBuf), "%c: %s [%d/%d]",
+                     FILTER_CATEGORY_KEYS[cat], FILTER_CATEGORY_NAMES[cat], catEnabled, catTotal);
+
+            Color catColor = (catEnabled == catTotal) ? GREEN :
+                             (catEnabled > 0) ? YELLOW : DARKGRAY;
+            DrawTextShadow(catBuf, tx + padding, y, 14, catColor);
+            y += lineH;
+        }
+    } else {
+        // Inside category: show items with keys
+        char headerBuf[64];
+        snprintf(headerBuf, sizeof(headerBuf), "Filters: %s (ESC back)",
+                 FILTER_CATEGORY_NAMES[activeFilterCategory]);
+        DrawTextShadow(headerBuf, tx + padding, y, 14, WHITE);
+        y += lineH;
+
+        char itemKey = 'A';
+        for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
+            if ((int)STOCKPILE_FILTERS[i].category != activeFilterCategory) continue;
+
+            bool allowed = sp->allowedTypes[STOCKPILE_FILTERS[i].itemType];
+            char itemBuf[48];
+            snprintf(itemBuf, sizeof(itemBuf), "%c: %s [%c]",
+                     itemKey, STOCKPILE_FILTERS[i].displayName, allowed ? 'X' : ' ');
+
+            Color itemColor = allowed ? STOCKPILE_FILTERS[i].color : DARKGRAY;
+            DrawTextShadow(itemBuf, tx + padding, y, 14, itemColor);
+            y += lineH;
+            itemKey++;
+        }
     }
 
     // Draw "Wood:" label + material entries

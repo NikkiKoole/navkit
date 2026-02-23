@@ -1630,7 +1630,9 @@ void HandleInput(void) {
     int z = currentViewZ;
     
     // Update hover states
+    int prevHoveredStockpile = hoveredStockpile;
     hoveredStockpile = GetStockpileAtGrid((int)mouseGrid.x, (int)mouseGrid.y, z);
+    if (hoveredStockpile != prevHoveredStockpile) activeFilterCategory = -1;
     hoveredWorkshop = FindWorkshopAt((int)mouseGrid.x, (int)mouseGrid.y, z);
     if (paused) {
         Vector2 mouseWorld = ScreenToWorld(GetMousePosition());
@@ -1745,23 +1747,12 @@ void HandleInput(void) {
             }
             return;
         }
-        // Filter toggles - only in normal mode (R/G/B/O aren't used by other modes)
+        // Filter toggles - only in normal mode (two-level keyboard navigation)
         if (inputMode == MODE_NORMAL) {
-            // Item type filters (data-driven from STOCKPILE_FILTERS table)
-            for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
-                const StockpileFilterDef* filter = &STOCKPILE_FILTERS[i];
-                int rayKey = KEY_A + (filter->key - 'a');  // Convert 'a'-'z' to KEY_A-KEY_Z
-                if (IsKeyPressed(rayKey)) {
-                    sp->allowedTypes[filter->itemType] = !sp->allowedTypes[filter->itemType];
-                    InvalidateStockpileSlotCacheAll();
-                    AddMessage(TextFormat("%s: %s", filter->displayName, sp->allowedTypes[filter->itemType] ? "ON" : "OFF"), filter->color);
-                    return;
-                }
-            }
             // Material sub-filters (data-driven from STOCKPILE_MATERIAL_FILTERS table)
             for (int i = 0; i < STOCKPILE_MATERIAL_FILTER_COUNT; i++) {
                 const StockpileMaterialFilterDef* mf = &STOCKPILE_MATERIAL_FILTERS[i];
-                int rayKey = KEY_ZERO + (mf->key - '0');  // Convert '0'-'9' to KEY_ZERO-KEY_NINE
+                int rayKey = KEY_ZERO + (mf->key - '0');
                 if (IsKeyPressed(rayKey)) {
                     bool newVal = !sp->allowedMaterials[mf->material];
                     sp->allowedMaterials[mf->material] = newVal;
@@ -1771,20 +1762,70 @@ void HandleInput(void) {
                     return;
                 }
             }
-            if (IsKeyPressed(KEY_X)) {
-                // Check if any filter is on
-                bool anyOn = false;
-                for (int i = 0; i < ITEM_TYPE_COUNT; i++) {
-                    if (sp->allowedTypes[i]) { anyOn = true; break; }
+
+            if (activeFilterCategory < 0) {
+                // Top level: category keys enter a category
+                for (int cat = 0; cat < FILTER_CAT_COUNT; cat++) {
+                    int rayKey = KEY_A + (FILTER_CATEGORY_KEYS[cat] - 'A');
+                    if (IsKeyPressed(rayKey)) {
+                        activeFilterCategory = cat;
+                        AddMessage(TextFormat("Filter: %s", FILTER_CATEGORY_NAMES[cat]), WHITE);
+                        return;
+                    }
                 }
-                // Toggle: if any on -> all off, if all off -> all on
-                bool newVal = !anyOn;
-                for (int i = 0; i < ITEM_TYPE_COUNT; i++) {
-                    sp->allowedTypes[i] = newVal;
+                // X toggles all filters globally
+                if (IsKeyPressed(KEY_X)) {
+                    bool anyOn = false;
+                    for (int i = 0; i < ITEM_TYPE_COUNT; i++) {
+                        if (sp->allowedTypes[i]) { anyOn = true; break; }
+                    }
+                    bool newVal = !anyOn;
+                    for (int i = 0; i < ITEM_TYPE_COUNT; i++) {
+                        sp->allowedTypes[i] = newVal;
+                    }
+                    InvalidateStockpileSlotCacheAll();
+                    AddMessage(newVal ? "All filters ON" : "All filters OFF", WHITE);
+                    return;
                 }
-                InvalidateStockpileSlotCacheAll();
-                AddMessage(newVal ? "All filters ON" : "All filters OFF", WHITE);
-                return;
+            } else {
+                // Inside category: ESC/Backspace goes back
+                if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE)) {
+                    activeFilterCategory = -1;
+                    return;
+                }
+                // X toggles all items in this category
+                if (IsKeyPressed(KEY_X)) {
+                    int catTotal = 0, catEnabled = 0;
+                    for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
+                        if ((int)STOCKPILE_FILTERS[i].category == activeFilterCategory) {
+                            catTotal++;
+                            if (sp->allowedTypes[STOCKPILE_FILTERS[i].itemType]) catEnabled++;
+                        }
+                    }
+                    bool newVal = !(catEnabled == catTotal);
+                    for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
+                        if ((int)STOCKPILE_FILTERS[i].category == activeFilterCategory) {
+                            sp->allowedTypes[STOCKPILE_FILTERS[i].itemType] = newVal;
+                        }
+                    }
+                    InvalidateStockpileSlotCacheAll();
+                    AddMessage(TextFormat("%s: %s", FILTER_CATEGORY_NAMES[activeFilterCategory], newVal ? "all ON" : "all OFF"), WHITE);
+                    return;
+                }
+                // A/B/C/... toggle individual items in this category
+                int itemIdx = 0;
+                for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
+                    if ((int)STOCKPILE_FILTERS[i].category != activeFilterCategory) continue;
+                    if (IsKeyPressed(KEY_A + itemIdx)) {
+                        sp->allowedTypes[STOCKPILE_FILTERS[i].itemType] = !sp->allowedTypes[STOCKPILE_FILTERS[i].itemType];
+                        InvalidateStockpileSlotCacheAll();
+                        AddMessage(TextFormat("%s: %s", STOCKPILE_FILTERS[i].displayName,
+                                   sp->allowedTypes[STOCKPILE_FILTERS[i].itemType] ? "ON" : "OFF"),
+                                   STOCKPILE_FILTERS[i].color);
+                        return;
+                    }
+                    itemIdx++;
+                }
             }
         }
     }
