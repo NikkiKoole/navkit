@@ -1283,20 +1283,20 @@ static void DrawAgents(void) {
     }
 }
 
-static void DrawMoverPath(const Mover* m, float sx, float sy, int viewZ,
+static void DrawMoverPath(int moverIdx, const Mover* m, float sx, float sy, int viewZ,
                           Color color, float lineWidth, float segmentWidth, float segmentFade) {
-    Point next = m->path[m->pathIndex];
+    Point next = moverPaths[moverIdx][m->pathIndex];
     if (next.z == viewZ) {
         float tx = offset.x + (next.x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
         float ty = offset.y + (next.y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
         DrawLineEx((Vector2){sx, sy}, (Vector2){tx, ty}, lineWidth, color);
     }
     for (int j = m->pathIndex; j > 0; j--) {
-        if (m->path[j].z != viewZ || m->path[j-1].z != viewZ) continue;
-        float px1 = offset.x + (m->path[j].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-        float py1 = offset.y + (m->path[j].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-        float px2 = offset.x + (m->path[j-1].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-        float py2 = offset.y + (m->path[j-1].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+        if (moverPaths[moverIdx][j].z != viewZ || moverPaths[moverIdx][j-1].z != viewZ) continue;
+        float px1 = offset.x + (moverPaths[moverIdx][j].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+        float py1 = offset.y + (moverPaths[moverIdx][j].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+        float px2 = offset.x + (moverPaths[moverIdx][j-1].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+        float py2 = offset.y + (moverPaths[moverIdx][j-1].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
         DrawLineEx((Vector2){px1, py1}, (Vector2){px2, py2}, segmentWidth, Fade(color, segmentFade));
     }
 }
@@ -1524,7 +1524,7 @@ static void DrawMovers(void) {
 
             float sx = offset.x + m->x * zoom;
             float sy = offset.y + m->y * zoom;
-            DrawMoverPath(m, sx, sy, viewZ, moverRenderData[i].color, 2.0f, 1.0f, 0.4f);
+            DrawMoverPath(i, m, sx, sy, viewZ, moverRenderData[i].color, 2.0f, 1.0f, 0.4f);
         }
         PROFILE_END(MoverPaths);
     }
@@ -1535,7 +1535,7 @@ static void DrawMovers(void) {
         if (m->active && m->pathIndex >= 0) {
             float sx = offset.x + m->x * zoom;
             float sy = offset.y + m->y * zoom;
-            DrawMoverPath(m, sx, sy, viewZ, YELLOW, 2.0f, 2.0f, 0.6f);
+            DrawMoverPath(hoveredMover, m, sx, sy, viewZ, YELLOW, 2.0f, 2.0f, 0.6f);
         }
     }
 }
@@ -2190,7 +2190,7 @@ static void DrawWorkshops(void) {
             if (m->active && m->pathIndex >= 0) {
                 float msx = offset.x + m->x * zoom;
                 float msy = offset.y + m->y * zoom;
-                DrawMoverPath(m, msx, msy, viewZ, YELLOW, 2.0f, 2.0f, 0.6f);
+                DrawMoverPath(ws->assignedCrafter, m, msx, msy, viewZ, YELLOW, 2.0f, 2.0f, 0.6f);
                 DrawCircle((int)msx, (int)msy, 4.0f * zoom, YELLOW);
             }
         }
@@ -2447,7 +2447,7 @@ static void DrawMiningDesignations(void) {
             if (m->active && m->pathIndex >= 0) {
                 float msx = offset.x + m->x * zoom;
                 float msy = offset.y + m->y * zoom;
-                DrawMoverPath(m, msx, msy, viewZ, ORANGE, 2.0f, 2.0f, 0.6f);
+                DrawMoverPath(d->assignedMover, m, msx, msy, viewZ, ORANGE, 2.0f, 2.0f, 0.6f);
                 DrawCircle((int)msx, (int)msy, 4.0f * zoom, ORANGE);
             }
         }

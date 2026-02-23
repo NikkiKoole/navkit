@@ -58,7 +58,7 @@ describe(mover_initialization) {
 
         expect(GetMoverPathLength(0) == 5);
         expect(GetMoverPathIndex(0) == 4);  // Points to last element (start)
-        expect(m->path[0].x == 4 && m->path[0].y == 0);  // Goal
+        expect(moverPaths[0][0].x == 4 && moverPaths[0][0].y == 0);  // Goal
     }
 }
 
@@ -918,13 +918,13 @@ describe(path_truncation) {
         
         // First waypoint (path[pathLength-1]) should be at or near the start position (0,0)
         // not somewhere in the middle of the path
-        Point firstWaypoint = m->path[GetMoverPathIndex(0)];
+        Point firstWaypoint = moverPaths[0][GetMoverPathIndex(0)];
         expect(firstWaypoint.x == 0);
         expect(firstWaypoint.y == 0);
         
         // The truncated path should contain the start portion, not the goal portion
         // So path[0] should be around x=1023 (1024 steps from start), not x=1999 (goal)
-        expect(m->path[0].x < 1500);  // Should be ~1023, definitely not 1999
+        expect(moverPaths[0][0].x < 1500);  // Should be ~1023, definitely not 1999
     }
 }
 
@@ -2258,7 +2258,7 @@ describe(mover_ramp_transitions) {
         // Set the path
         m->pathLength = len;
         for (int i = 0; i < len; i++) {
-            m->path[i] = path[i];
+            moverPaths[0][i] = path[i];
         }
         m->pathIndex = len - 1;
 

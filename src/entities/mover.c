@@ -44,6 +44,7 @@ static inline float fastInvSqrt(float x) {
 
 // Globals
 Mover movers[MAX_MOVERS];
+Point moverPaths[MAX_MOVERS][MAX_MOVER_PATH];
 int moverCount = 0;
 int repathFallbackCount = 0;
 int repathHpaSuccessCount = 0;
@@ -677,9 +678,10 @@ void InitMoverWithPath(Mover* m, float x, float y, float z, Point goal, float sp
     
     // Path is stored goal-to-start: path[0]=goal, path[pathLen-1]=start
     // If truncating, keep the START end (high indices), not the goal end
+    int moverIdx = (int)(m - movers);
     int srcOffset = pathLen - m->pathLength;
     for (int i = 0; i < m->pathLength; i++) {
-        m->path[i] = pathArr[srcOffset + i];
+        moverPaths[moverIdx][i] = pathArr[srcOffset + i];
     }
     m->pathIndex = m->pathLength - 1;
 }
@@ -923,7 +925,7 @@ void InvalidatePathsThroughCell(int x, int y, int z) {
         
         // Check if any waypoint in the path goes through this cell
         for (int j = 0; j <= m->pathIndex; j++) {
-            if (m->path[j].x == x && m->path[j].y == y && m->path[j].z == z) {
+            if (moverPaths[i][j].x == x && moverPaths[i][j].y == y && moverPaths[i][j].z == z) {
                 m->needsRepath = true;
                 break;
             }
@@ -954,16 +956,17 @@ static void AssignNewMoverGoal(Mover* m) {
     Point tempPath[MAX_PATH];
     int len = FindPath(algo, start, newGoal, tempPath, MAX_PATH);
 
+    int moverIdx = (int)(m - movers);
     m->pathLength = (len > MAX_MOVER_PATH) ? MAX_MOVER_PATH : len;
     // Path is stored goal-to-start: path[0]=goal, path[pathLen-1]=start
     // If truncating, keep the START end (high indices), not the goal end
     int srcOffset = len - m->pathLength;
     for (int j = 0; j < m->pathLength; j++) {
-        m->path[j] = tempPath[srcOffset + j];
+        moverPaths[moverIdx][j] = tempPath[srcOffset + j];
     }
 
     if (useStringPulling && m->pathLength > 2) {
-        StringPullPath(m->path, &m->pathLength);
+        StringPullPath(moverPaths[moverIdx], &m->pathLength);
     }
 
     m->pathIndex = m->pathLength - 1;
@@ -992,7 +995,7 @@ void UpdateMovers(void) {
         // In DF mode, air cells above solid ARE walkable, so check walkability
         if (!IsCellWalkableAt(currentZ, currentY, currentX)) continue;
         
-        Point target = m->path[m->pathIndex];
+        Point target = moverPaths[i][m->pathIndex];
         if (target.z == currentZ) {
             if (!HasLineOfSightLenient(currentX, currentY, target.x, target.y, currentZ)) {
                 m->needsRepath = true;
@@ -1189,7 +1192,7 @@ void UpdateMovers(void) {
             continue;
         }
 
-        Point target = m->path[m->pathIndex];
+        Point target = moverPaths[i][m->pathIndex];
 
         // Skip if marked for repath (by LOS check in phase 1, or wall-push above)
         if (m->needsRepath) continue;
@@ -1524,7 +1527,7 @@ void ProcessMoverRepaths(void) {
         // If truncating, keep the START end (high indices), not the goal end
         int srcOffset = len - m->pathLength;
         for (int j = 0; j < m->pathLength; j++) {
-            m->path[j] = tempPath[srcOffset + j];
+            moverPaths[i][j] = tempPath[srcOffset + j];
         }
 
         if (m->pathLength == 0) {
@@ -1559,7 +1562,7 @@ void ProcessMoverRepaths(void) {
         }
 
         if (useStringPulling && m->pathLength > 2) {
-            StringPullPath(m->path, &m->pathLength);
+            StringPullPath(moverPaths[i], &m->pathLength);
         }
 
         m->pathIndex = m->pathLength - 1;

@@ -503,7 +503,7 @@ void AddMoversDemo(int count) {
         if (pathLength > 0) {
             InitMoverWithPath(m, x, y, z, goal, speed, path, pathLength);
             if (useStringPulling && m->pathLength > 2) {
-                StringPullPath(m->path, &m->pathLength);
+                StringPullPath(moverPaths[moverCount], &m->pathLength);
                 m->pathIndex = m->pathLength - 1;
             }
         } else {
@@ -554,7 +554,7 @@ void SpawnMoversDemo(int count) {
             InitMoverWithPath(m, x, y, z, goal, speed, path, pathLength);
 
             if (useStringPulling && m->pathLength > 2) {
-                StringPullPath(m->path, &m->pathLength);
+                StringPullPath(moverPaths[moverCount], &m->pathLength);
                 m->pathIndex = m->pathLength - 1;
             }
 

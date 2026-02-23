@@ -351,9 +351,12 @@ bool SaveWorld(const char* filename) {
     // Workshops
     fwrite(workshops, sizeof(Workshop), MAX_WORKSHOPS, f);
     
-    // Movers
+    // Movers (v69+: struct without path, then paths separately)
     fwrite(&moverCount, sizeof(moverCount), 1, f);
     fwrite(movers, sizeof(Mover), moverCount, f);
+    for (int i = 0; i < moverCount; i++) {
+        fwrite(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+    }
 
     // Animals (v42+)
     fwrite(&animalCount, sizeof(animalCount), 1, f);
@@ -1244,8 +1247,52 @@ bool LoadWorld(const char* filename) {
     
     // Movers
     fread(&moverCount, sizeof(moverCount), 1, f);
-    if (version >= 65) {
+    if (version >= 69) {
+        // v69+: Mover struct without path, then paths separately
         fread(movers, sizeof(Mover), moverCount, f);
+        for (int i = 0; i < moverCount; i++) {
+            fread(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+        }
+    } else if (version >= 65) {
+        // V65-V68: old Mover with path[] inline
+        for (int i = 0; i < moverCount; i++) {
+            MoverV68 old;
+            fread(&old, sizeof(MoverV68), 1, f);
+            Mover* m = &movers[i];
+            m->x = old.x; m->y = old.y; m->z = old.z;
+            m->goal = old.goal;
+            memcpy(moverPaths[i], old.path, sizeof(old.path));
+            m->pathLength = old.pathLength;
+            m->pathIndex = old.pathIndex;
+            m->active = old.active;
+            m->needsRepath = old.needsRepath;
+            m->repathCooldown = old.repathCooldown;
+            m->speed = old.speed;
+            m->timeNearWaypoint = old.timeNearWaypoint;
+            m->lastX = old.lastX; m->lastY = old.lastY; m->lastZ = old.lastZ;
+            m->timeWithoutProgress = old.timeWithoutProgress;
+            m->fallTimer = old.fallTimer;
+            m->workAnimPhase = old.workAnimPhase;
+            m->hunger = old.hunger;
+            m->energy = old.energy;
+            m->freetimeState = old.freetimeState;
+            m->needTarget = old.needTarget;
+            m->needProgress = old.needProgress;
+            m->needSearchCooldown = old.needSearchCooldown;
+            m->starvationTimer = old.starvationTimer;
+            m->bodyTemp = old.bodyTemp;
+            m->hypothermiaTimer = old.hypothermiaTimer;
+            m->avoidX = old.avoidX; m->avoidY = old.avoidY;
+            m->currentJobId = old.currentJobId;
+            m->lastJobType = old.lastJobType;
+            m->lastJobResult = old.lastJobResult;
+            m->lastJobTargetX = old.lastJobTargetX;
+            m->lastJobTargetY = old.lastJobTargetY;
+            m->lastJobTargetZ = old.lastJobTargetZ;
+            m->lastJobEndTick = old.lastJobEndTick;
+            m->capabilities = old.capabilities;
+            m->equippedTool = old.equippedTool;
+        }
     } else if (version >= 59) {
         // V59-V64 movers don't have equippedTool field
         for (int i = 0; i < moverCount; i++) {
@@ -1254,7 +1301,7 @@ bool LoadWorld(const char* filename) {
             Mover* m = &movers[i];
             m->x = old.x; m->y = old.y; m->z = old.z;
             m->goal = old.goal;
-            memcpy(m->path, old.path, sizeof(old.path));
+            memcpy(moverPaths[i], old.path, sizeof(old.path));
             m->pathLength = old.pathLength;
             m->pathIndex = old.pathIndex;
             m->active = old.active;
@@ -1293,7 +1340,7 @@ bool LoadWorld(const char* filename) {
             Mover* m = &movers[i];
             m->x = old.x; m->y = old.y; m->z = old.z;
             m->goal = old.goal;
-            memcpy(m->path, old.path, sizeof(old.path));
+            memcpy(moverPaths[i], old.path, sizeof(old.path));
             m->pathLength = old.pathLength;
             m->pathIndex = old.pathIndex;
             m->active = old.active;
@@ -1332,7 +1379,7 @@ bool LoadWorld(const char* filename) {
             Mover* m = &movers[i];
             m->x = old.x; m->y = old.y; m->z = old.z;
             m->goal = old.goal;
-            memcpy(m->path, old.path, sizeof(old.path));
+            memcpy(moverPaths[i], old.path, sizeof(old.path));
             m->pathLength = old.pathLength;
             m->pathIndex = old.pathIndex;
             m->active = old.active;
@@ -1371,7 +1418,7 @@ bool LoadWorld(const char* filename) {
             Mover* m = &movers[i];
             m->x = old.x; m->y = old.y; m->z = old.z;
             m->goal = old.goal;
-            memcpy(m->path, old.path, sizeof(old.path));
+            memcpy(moverPaths[i], old.path, sizeof(old.path));
             m->pathLength = old.pathLength;
             m->pathIndex = old.pathIndex;
             m->active = old.active;
@@ -1410,7 +1457,7 @@ bool LoadWorld(const char* filename) {
             Mover* m = &movers[i];
             m->x = old.x; m->y = old.y; m->z = old.z;
             m->goal = old.goal;
-            memcpy(m->path, old.path, sizeof(old.path));
+            memcpy(moverPaths[i], old.path, sizeof(old.path));
             m->pathLength = old.pathLength;
             m->pathIndex = old.pathIndex;
             m->active = old.active;

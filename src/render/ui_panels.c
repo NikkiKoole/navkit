@@ -1863,6 +1863,7 @@ void DrawProfilerPanel(float rightEdge, float y) {
 
             // Entities
             size_t moversSize = sizeof(Mover) * MAX_MOVERS;
+            size_t moverPathsSize = sizeof(Point) * MAX_MOVER_PATH * MAX_MOVERS;
             size_t moverRenderSize = sizeof(MoverRenderData) * MAX_MOVERS;
             size_t itemsSize = sizeof(Item) * MAX_ITEMS;
             size_t jobsSize = sizeof(Job) * MAX_JOBS;
@@ -1877,7 +1878,7 @@ void DrawProfilerPanel(float rightEdge, float y) {
 
             size_t totalGrid = gridSize + designationsSize + waterSize + fireSize + smokeSize + steamSize + temperatureSize + cellFlagsSize + groundWearSize;
             size_t totalPathfinding = entrancesSize + pathSize + edgesSize + nodeDataSize + chunkDirtySize + ladderLinksSize + rampLinksSize + abstractNodesSize + abstractPathSize + adjListSize + adjListCountSize + entranceHashSize;
-            size_t totalEntities = moversSize + moverRenderSize + itemsSize + jobsSize + stockpilesSize + blueprintsSize + gatherZonesSize + workshopsSize;
+            size_t totalEntities = moversSize + moverPathsSize + moverRenderSize + itemsSize + jobsSize + stockpilesSize + blueprintsSize + gatherZonesSize + workshopsSize;
             size_t totalSpatial = moverSpatialGrid + itemSpatialGrid;
             size_t total = totalGrid + totalPathfinding + totalEntities + totalSpatial;
 
@@ -1927,6 +1928,7 @@ void DrawProfilerPanel(float rightEdge, float y) {
             MEM_SUBSECTION("Entities", totalEntities, sectionMemEntities);
             if (sectionMemEntities) {
                 DrawTextShadow(TextFormat("  Movers:       %5.1f MB", moversSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  MoverPaths:   %5.1f MB", moverPathsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
                 DrawTextShadow(TextFormat("  MoverRender:  %5.1f KB", moverRenderSize / 1024.0f), x, y, 14, WHITE); y += 16;
                 DrawTextShadow(TextFormat("  Items:        %5.1f MB", itemsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
                 DrawTextShadow(TextFormat("  Jobs:         %5.1f MB", jobsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;

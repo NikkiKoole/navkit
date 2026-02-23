@@ -48,7 +48,6 @@ typedef enum {
 typedef struct Mover {
     float x, y, z;              // z for future multi-level support (always 0 for now)
     Point goal;
-    Point path[MAX_MOVER_PATH];
     int pathLength;
     int pathIndex;
     bool active;
@@ -111,6 +110,7 @@ extern bool useWallSliding;             // Toggle for wall sliding
 
 // Globals
 extern Mover movers[MAX_MOVERS];
+extern Point moverPaths[MAX_MOVERS][MAX_MOVER_PATH];
 extern int moverCount;
 extern unsigned long currentTick;
 extern bool useStringPulling;

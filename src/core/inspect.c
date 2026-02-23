@@ -87,6 +87,7 @@ static Blueprint* insp_blueprints = NULL;
 static Workshop* insp_workshops = NULL;
 static int insp_moverCount = 0;
 static Mover* insp_movers = NULL;
+static Point (*insp_moverPaths)[MAX_MOVER_PATH] = NULL;
 static int insp_animalCount = 0;
 static Animal* insp_animals = NULL;
 static int insp_trainCount = 0;
@@ -110,9 +111,9 @@ static void print_mover(int idx) {
     printf("Path: length=%d, index=%d\n", m->pathLength, m->pathIndex);
     if (m->pathLength > 0 && m->pathIndex >= 0 && m->pathIndex < m->pathLength) {
         printf("  Next waypoint: (%d, %d, z%d)\n", 
-               m->path[m->pathIndex].x, m->path[m->pathIndex].y, m->path[m->pathIndex].z);
+               insp_moverPaths[idx][m->pathIndex].x, insp_moverPaths[idx][m->pathIndex].y, insp_moverPaths[idx][m->pathIndex].z);
         printf("  Final waypoint: (%d, %d, z%d)\n",
-               m->path[0].x, m->path[0].y, m->path[0].z);
+               insp_moverPaths[idx][0].x, insp_moverPaths[idx][0].y, insp_moverPaths[idx][0].z);
     }
     printf("Needs repath: %s\n", m->needsRepath ? "YES" : "no");
     printf("Repath cooldown: %d frames\n", m->repathCooldown);
@@ -1004,6 +1005,7 @@ static void cleanup(void) {
     free(insp_blueprints);
     free(insp_workshops);
     free(insp_movers);
+    free(insp_moverPaths);
     free(insp_animals);
     free(insp_trains);
     free(insp_jobs);
@@ -1641,8 +1643,53 @@ int InspectSaveFile(int argc, char** argv) {
     // Movers
     fread(&insp_moverCount, 4, 1, f);
     insp_movers = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Mover) : sizeof(Mover));
-    if (version >= 65) {
+    insp_moverPaths = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Point) * MAX_MOVER_PATH : sizeof(Point) * MAX_MOVER_PATH);
+    if (version >= 69) {
+        // v69+: Mover struct without path, then paths separately
         if (insp_moverCount > 0) fread(insp_movers, sizeof(Mover), insp_moverCount, f);
+        for (int i = 0; i < insp_moverCount; i++) {
+            fread(insp_moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+        }
+    } else if (version >= 65) {
+        // V65-V68: old Mover with path[] inline
+        for (int i = 0; i < insp_moverCount; i++) {
+            MoverV68 old;
+            fread(&old, sizeof(MoverV68), 1, f);
+            Mover* m = &insp_movers[i];
+            m->x = old.x; m->y = old.y; m->z = old.z;
+            m->goal = old.goal;
+            memcpy(insp_moverPaths[i], old.path, sizeof(old.path));
+            m->pathLength = old.pathLength;
+            m->pathIndex = old.pathIndex;
+            m->active = old.active;
+            m->needsRepath = old.needsRepath;
+            m->repathCooldown = old.repathCooldown;
+            m->speed = old.speed;
+            m->timeNearWaypoint = old.timeNearWaypoint;
+            m->lastX = old.lastX; m->lastY = old.lastY; m->lastZ = old.lastZ;
+            m->timeWithoutProgress = old.timeWithoutProgress;
+            m->fallTimer = old.fallTimer;
+            m->workAnimPhase = old.workAnimPhase;
+            m->hunger = old.hunger;
+            m->energy = old.energy;
+            m->freetimeState = old.freetimeState;
+            m->needTarget = old.needTarget;
+            m->needProgress = old.needProgress;
+            m->needSearchCooldown = old.needSearchCooldown;
+            m->starvationTimer = old.starvationTimer;
+            m->bodyTemp = old.bodyTemp;
+            m->hypothermiaTimer = old.hypothermiaTimer;
+            m->avoidX = old.avoidX; m->avoidY = old.avoidY;
+            m->currentJobId = old.currentJobId;
+            m->lastJobType = old.lastJobType;
+            m->lastJobResult = old.lastJobResult;
+            m->lastJobTargetX = old.lastJobTargetX;
+            m->lastJobTargetY = old.lastJobTargetY;
+            m->lastJobTargetZ = old.lastJobTargetZ;
+            m->lastJobEndTick = old.lastJobEndTick;
+            m->capabilities = old.capabilities;
+            m->equippedTool = old.equippedTool;
+        }
     } else if (version >= 59) {
         // V59-V64 movers don't have equippedTool field
         for (int i = 0; i < insp_moverCount; i++) {
@@ -1651,7 +1698,7 @@ int InspectSaveFile(int argc, char** argv) {
             Mover* m = &insp_movers[i];
             m->x = old.x; m->y = old.y; m->z = old.z;
             m->goal = old.goal;
-            memcpy(m->path, old.path, sizeof(old.path));
+            memcpy(insp_moverPaths[i], old.path, sizeof(old.path));
             m->pathLength = old.pathLength;
             m->pathIndex = old.pathIndex;
             m->active = old.active;
@@ -1690,7 +1737,7 @@ int InspectSaveFile(int argc, char** argv) {
             Mover* m = &insp_movers[i];
             m->x = old.x; m->y = old.y; m->z = old.z;
             m->goal = old.goal;
-            memcpy(m->path, old.path, sizeof(old.path));
+            memcpy(insp_moverPaths[i], old.path, sizeof(old.path));
             m->pathLength = old.pathLength;
             m->pathIndex = old.pathIndex;
             m->active = old.active;
@@ -1729,7 +1776,7 @@ int InspectSaveFile(int argc, char** argv) {
             Mover* m = &insp_movers[i];
             m->x = old.x; m->y = old.y; m->z = old.z;
             m->goal = old.goal;
-            memcpy(m->path, old.path, sizeof(old.path));
+            memcpy(insp_moverPaths[i], old.path, sizeof(old.path));
             m->pathLength = old.pathLength;
             m->pathIndex = old.pathIndex;
             m->active = old.active;
@@ -1768,7 +1815,7 @@ int InspectSaveFile(int argc, char** argv) {
             Mover* m = &insp_movers[i];
             m->x = old.x; m->y = old.y; m->z = old.z;
             m->goal = old.goal;
-            memcpy(m->path, old.path, sizeof(old.path));
+            memcpy(insp_moverPaths[i], old.path, sizeof(old.path));
             m->pathLength = old.pathLength;
             m->pathIndex = old.pathIndex;
             m->active = old.active;
@@ -1806,7 +1853,7 @@ int InspectSaveFile(int argc, char** argv) {
             Mover* m = &insp_movers[i];
             m->x = old.x; m->y = old.y; m->z = old.z;
             m->goal = old.goal;
-            memcpy(m->path, old.path, sizeof(old.path));
+            memcpy(insp_moverPaths[i], old.path, sizeof(old.path));
             m->pathLength = old.pathLength;
             m->pathIndex = old.pathIndex;
             m->active = old.active;
@@ -2036,6 +2083,7 @@ int InspectSaveFile(int argc, char** argv) {
         itemHighWaterMark = insp_itemHWM;
         memcpy(stockpiles, insp_stockpiles, sizeof(Stockpile) * MAX_STOCKPILES);
         memcpy(movers, insp_movers, sizeof(Mover) * insp_moverCount);
+        memcpy(moverPaths, insp_moverPaths, sizeof(Point) * MAX_MOVER_PATH * insp_moverCount);
         moverCount = insp_moverCount;
         // Init job pool (allocates activeJobList) then copy data
         InitJobPool();

@@ -2203,7 +2203,7 @@ void HandleInput(void) {
                                 Mover* m = &movers[i];
                                 if (!m->active) continue;
                                 for (int j = m->pathIndex; j >= 0; j--) {
-                                    if (m->path[j].x == x && m->path[j].y == y && m->path[j].z == z) {
+                                    if (moverPaths[i][j].x == x && moverPaths[i][j].y == y && moverPaths[i][j].z == z) {
                                         m->needsRepath = true;
                                         break;
                                     }

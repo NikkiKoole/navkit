@@ -8899,7 +8899,7 @@ describe(workshop_lifecycle) {
         // Compute initial path (will go around workshop)
         m->needsRepath = true;
         Point moverCell = {(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
-        m->pathLength = FindPath(moverPathAlgorithm, moverCell, m->goal, m->path, MAX_PATH);
+        m->pathLength = FindPath(moverPathAlgorithm, moverCell, m->goal, moverPaths[0], MAX_PATH);
         int pathLengthWithWorkshop = m->pathLength;
         
         // Now DELETE the workshop
@@ -8912,7 +8912,7 @@ describe(workshop_lifecycle) {
         
         // After repath, the path should be shorter (can go through former workshop area)
         Point moverCell2 = {(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
-        int newPathLength = FindPath(moverPathAlgorithm, moverCell2, m->goal, m->path, MAX_PATH);
+        int newPathLength = FindPath(moverPathAlgorithm, moverCell2, m->goal, moverPaths[0], MAX_PATH);
         
         // With workshop: must detour around. Without: straight line possible.
         // Path should be noticeably shorter
@@ -9160,8 +9160,8 @@ describe(designation_lifecycle) {
         m->active = true;
 
         // Give the mover a fake path through (5,2,0)
-        m->path[0].x = 5; m->path[0].y = 2; m->path[0].z = 0;
-        m->path[1].x = 6; m->path[1].y = 2; m->path[1].z = 0;
+        moverPaths[0][0].x = 5; moverPaths[0][0].y = 2; moverPaths[0][0].z = 0;
+        moverPaths[0][1].x = 6; moverPaths[0][1].y = 2; moverPaths[0][1].z = 0;
         m->pathLength = 2;
         m->pathIndex = 1;
         m->needsRepath = false;
@@ -10392,8 +10392,8 @@ describe(input_audit_soil_repath) {
         moverCount = 1;
         Mover* m = &movers[0];
         m->active = true;
-        m->path[0].x = 5; m->path[0].y = 2; m->path[0].z = 0;
-        m->path[1].x = 6; m->path[1].y = 2; m->path[1].z = 0;
+        moverPaths[0][0].x = 5; moverPaths[0][0].y = 2; moverPaths[0][0].z = 0;
+        moverPaths[0][1].x = 6; moverPaths[0][1].y = 2; moverPaths[0][1].z = 0;
         m->pathLength = 2;
         m->pathIndex = 1;
         m->needsRepath = false;
@@ -10464,8 +10464,8 @@ describe(input_audit_grass_placement) {
         moverCount = 1;
         Mover* m = &movers[0];
         m->active = true;
-        m->path[0].x = 5; m->path[0].y = 2; m->path[0].z = 0;
-        m->path[1].x = 6; m->path[1].y = 2; m->path[1].z = 0;
+        moverPaths[0][0].x = 5; moverPaths[0][0].y = 2; moverPaths[0][0].z = 0;
+        moverPaths[0][1].x = 6; moverPaths[0][1].y = 2; moverPaths[0][1].z = 0;
         m->pathLength = 2;
         m->pathIndex = 1;
         m->needsRepath = false;
