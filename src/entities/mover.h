@@ -30,6 +30,7 @@ typedef struct {
     bool canMine;       // Can dig/mine walls
     bool canBuild;      // Can construct blueprints
     bool canPlant;      // Can plant saplings
+    bool canHunt;       // Can hunt animals
 } MoverCapabilities;
 
 // Freetime state machine (for autonomous needs like eating/sleeping)

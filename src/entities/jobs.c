@@ -541,6 +541,7 @@ int CreateJob(JobType type) {
     job->targetItem2 = -1;
     job->targetItem3 = -1;
     job->toolItem = -1;
+    job->targetAnimalIdx = -1;
 
     // Add to active list
     activeJobList[activeJobCount++] = jobId;
@@ -2280,6 +2281,95 @@ JobRunResult RunJob_DeconstructWorkshop(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// Hunt job steps
+#define HUNT_STEP_CHASING  0
+#define HUNT_STEP_ATTACKING 1
+#define HUNT_CHASE_TIMEOUT 30.0f  // Fail if can't reach animal in 30s
+#define HUNT_RETARGET_INTERVAL 1.0f  // Re-path every 1s while chasing
+
+// Hunt job driver: chase animal -> attack when adjacent -> kill
+JobRunResult RunJob_Hunt(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    int animalIdx = job->targetAnimalIdx;
+
+    // Validate target animal
+    if (animalIdx < 0 || animalIdx >= animalCount || !animals[animalIdx].active) {
+        return JOBRUN_FAIL;  // Animal died or was removed
+    }
+
+    Animal* target = &animals[animalIdx];
+    int animalCellX = (int)(target->x / CELL_SIZE);
+    int animalCellY = (int)(target->y / CELL_SIZE);
+    int animalCellZ = (int)target->z;
+
+    if (job->step == HUNT_STEP_CHASING) {
+        // Update goal to animal's current position
+        if (mover->goal.x != animalCellX || mover->goal.y != animalCellY || mover->goal.z != animalCellZ) {
+            mover->goal = (Point){animalCellX, animalCellY, animalCellZ};
+            mover->needsRepath = true;
+        }
+        // Periodic re-path even if goal cell hasn't changed (animal may have moved within cell)
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > HUNT_RETARGET_INTERVAL) {
+            mover->needsRepath = true;
+            mover->timeWithoutProgress = 0.0f;
+        }
+
+        // Check proximity — adjacent (within CELL_SIZE) triggers attack
+        float dx = mover->x - target->x;
+        float dy = mover->y - target->y;
+        float distSq = dx * dx + dy * dy;
+        bool correctZ = (int)mover->z == animalCellZ;
+
+        if (correctZ) {
+            float goalX = animalCellX * CELL_SIZE + CELL_SIZE * 0.5f;
+            float goalY = animalCellY * CELL_SIZE + CELL_SIZE * 0.5f;
+            TryFinalApproach(mover, goalX, goalY, animalCellX, animalCellY, CELL_SIZE);
+        }
+
+        if (correctZ && distSq < (float)CELL_SIZE * (float)CELL_SIZE) {
+            // Adjacent — start attack
+            job->step = HUNT_STEP_ATTACKING;
+            job->progress = 0.0f;
+            target->state = ANIMAL_BEING_HUNTED;
+            target->velX = 0.0f;
+            target->velY = 0.0f;
+            return JOBRUN_RUNNING;
+        }
+
+        // Chase timeout
+        if (mover->timeWithoutProgress > HUNT_CHASE_TIMEOUT) {
+            return JOBRUN_FAIL;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+
+    if (job->step == HUNT_STEP_ATTACKING) {
+        // Re-validate animal is still alive
+        if (!target->active) return JOBRUN_FAIL;
+
+        // Keep animal frozen
+        target->state = ANIMAL_BEING_HUNTED;
+        target->velX = 0.0f;
+        target->velY = 0.0f;
+
+        // Work progress with tool speed
+        mover->timeWithoutProgress = 0.0f;
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_HUNT, MAT_NONE, mover->equippedTool);
+        job->progress += (dt * speed) / GameHoursToGameSeconds(HUNT_ATTACK_WORK_TIME);
+
+        if (job->progress >= 1.0f) {
+            // Kill the animal — spawns carcass
+            KillAnimal(animalIdx);
+            job->targetAnimalIdx = -1;
+            return JOBRUN_DONE;
+        }
+        return JOBRUN_RUNNING;
+    }
+
+    return JOBRUN_FAIL;
+}
+
 // Driver lookup table
 static JobDriver jobDrivers[] = {
     [JOBTYPE_NONE] = NULL,
@@ -2305,6 +2395,7 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_HARVEST_BERRY] = RunJob_HarvestBerry,
     [JOBTYPE_KNAP] = RunJob_Knap,
     [JOBTYPE_DECONSTRUCT_WORKSHOP] = RunJob_DeconstructWorkshop,
+    [JOBTYPE_HUNT] = RunJob_Hunt,
 };
 
 // Compile-time check: ensure jobDrivers[] covers all job types
@@ -2535,6 +2626,18 @@ void CancelJob(void* moverPtr, int moverIdx) {
         // If carrying, safe-drop the item at a walkable cell
         SafeDropItemNearMover(job->carryingItem, m);
 
+        // Release animal hunt reservation
+        if (job->type == JOBTYPE_HUNT && job->targetAnimalIdx >= 0 && job->targetAnimalIdx < animalCount) {
+            Animal* huntTarget = &animals[job->targetAnimalIdx];
+            if (huntTarget->active && huntTarget->reservedByHunter == moverIdx) {
+                huntTarget->reservedByHunter = -1;
+                if (huntTarget->state == ANIMAL_BEING_HUNTED) {
+                    huntTarget->state = ANIMAL_IDLE;
+                    huntTarget->stateTimer = 0.0f;
+                }
+            }
+        }
+
         // Release mine designation reservation
         if (job->targetMineX >= 0 && job->targetMineY >= 0 && job->targetMineZ >= 0) {
             Designation* d = GetDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
@@ -2673,6 +2776,18 @@ void UnassignJob(void* moverPtr, int moverIdx) {
 
         // If carrying, safe-drop the item at a walkable cell
         SafeDropItemNearMover(job->carryingItem, m);
+
+        // Release animal hunt reservation
+        if (job->type == JOBTYPE_HUNT && job->targetAnimalIdx >= 0 && job->targetAnimalIdx < animalCount) {
+            Animal* huntTarget = &animals[job->targetAnimalIdx];
+            if (huntTarget->active && huntTarget->reservedByHunter == moverIdx) {
+                huntTarget->reservedByHunter = -1;
+                if (huntTarget->state == ANIMAL_BEING_HUNTED) {
+                    huntTarget->state = ANIMAL_IDLE;
+                    huntTarget->stateTimer = 0.0f;
+                }
+            }
+        }
 
         // Release mine designation reservation — but PRESERVE progress
         if (job->targetMineX >= 0 && job->targetMineY >= 0 && job->targetMineZ >= 0) {
@@ -3349,6 +3464,31 @@ void AssignJobs(void) {
     PROFILE_BEGIN(Jobs_P2c_Ignition);
     AssignJobs_P2c_Ignition();
     PROFILE_END(Jobs_P2c_Ignition);
+    if (idleMoverCount == 0) return;
+
+    // Priority 2d: Hunting (between crafting and hauling)
+    {
+        bool anyMarked = false;
+        for (int i = 0; i < animalCount; i++) {
+            if (animals[i].active && animals[i].markedForHunt && animals[i].reservedByHunter < 0) {
+                anyMarked = true;
+                break;
+            }
+        }
+        if (anyMarked) {
+            int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+            if (idleCopy) {
+                int idleCopyCount = idleMoverCount;
+                memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+                for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+                    int moverIdx = idleCopy[i];
+                    if (!moverIsInIdleList[moverIdx]) continue;
+                    WorkGiver_Hunt(moverIdx);
+                }
+                free(idleCopy);
+            }
+        }
+    }
     if (idleMoverCount == 0) return;
 
     PROFILE_BEGIN(Jobs_P3_ItemHaul);
@@ -6133,6 +6273,70 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     Point itemCell = { (int)(items[bestItemIdx].x / CELL_SIZE), (int)(items[bestItemIdx].y / CELL_SIZE), (int)items[bestItemIdx].z };
     m->currentJobId = jobId;
     m->goal = itemCell;
+    m->needsRepath = true;
+
+    RemoveMoverFromIdleList(moverIdx);
+
+    return jobId;
+}
+
+// WorkGiver_Hunt: Find a marked animal to hunt
+// Returns job ID if successful, -1 if no job available
+int WorkGiver_Hunt(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    if (!m->capabilities.canHunt) return -1;
+
+    // Find nearest marked, unreserved animal
+    int bestIdx = -1;
+    float bestDistSq = 1e30f;
+    int moverZ = (int)m->z;
+
+    for (int i = 0; i < animalCount; i++) {
+        Animal* a = &animals[i];
+        if (!a->active) continue;
+        if (!a->markedForHunt) continue;
+        if (a->reservedByHunter >= 0) continue;
+        if ((int)a->z != moverZ) continue;
+
+        float dx = a->x - m->x;
+        float dy = a->y - m->y;
+        float distSq = dx * dx + dy * dy;
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestIdx = i;
+        }
+    }
+
+    if (bestIdx < 0) return -1;
+
+    Animal* target = &animals[bestIdx];
+
+    // Check reachability
+    int animalCellX = (int)(target->x / CELL_SIZE);
+    int animalCellY = (int)(target->y / CELL_SIZE);
+    int animalCellZ = (int)target->z;
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), moverZ };
+    Point goalCell = { animalCellX, animalCellY, animalCellZ };
+
+    Point tempPath[MAX_PATH];
+    int tempLen = FindPath(moverPathAlgorithm, moverCell, goalCell, tempPath, MAX_PATH);
+    if (tempLen == 0) return -1;
+
+    // Create job
+    int jobId = CreateJob(JOBTYPE_HUNT);
+    if (jobId < 0) return -1;
+
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetAnimalIdx = bestIdx;
+    job->step = 0;  // HUNT_STEP_CHASING
+
+    // Reserve animal
+    target->reservedByHunter = moverIdx;
+
+    // Set mover goal
+    m->currentJobId = jobId;
+    m->goal = goalCell;
     m->needsRepath = true;
 
     RemoveMoverFromIdleList(moverIdx);

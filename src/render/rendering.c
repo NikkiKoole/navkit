@@ -1623,6 +1623,17 @@ static void DrawAnimals(void) {
         Rectangle headSrc = SpriteGetRect(headSprite);
         Rectangle headDest = { headX, headY, headSize, headSize };
         DrawTexturePro(atlas, headSrc, headDest, (Vector2){0, 0}, 0, animalColor);
+
+        // Hunt designation overlay: red X mark
+        if (a->markedForHunt) {
+            Color huntColor = (Color){ 255, 50, 50, 200 };
+            float markSize = animalSize * 0.5f;
+            float cx = sx;
+            float cy = sy - animalSize * 0.15f;
+            float half = markSize * 0.5f;
+            DrawLineEx((Vector2){ cx - half, cy - half }, (Vector2){ cx + half, cy + half }, 2.0f * zoom, huntColor);
+            DrawLineEx((Vector2){ cx - half, cy + half }, (Vector2){ cx + half, cy - half }, 2.0f * zoom, huntColor);
+        }
     }
 }
 

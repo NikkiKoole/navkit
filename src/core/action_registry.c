@@ -849,7 +849,20 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = true,
         .canErase = true
     },
-    
+    {
+        .action = ACTION_WORK_HUNT,
+        .name = "HUNT",
+        .barDisplayText = "hUnt",
+        .barText = "L-drag mark animals  R-drag unmark  [ESC]Back",
+        .barKey = 'u',
+        .barUnderlinePos = 1,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
+        .canDrag = true,
+        .canErase = true
+    },
+
     // ========================================================================
     // MODE_SANDBOX actions
     // ========================================================================

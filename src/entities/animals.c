@@ -54,6 +54,8 @@ void SpawnAnimal(AnimalType type, int spawnZ, AnimalBehavior behavior) {
             a->velY = 0.0f;
             a->wanderAngle = (float)(rand() % 1000) / 1000.0f * 6.28f;
             a->targetAnimalIdx = -1;
+            a->markedForHunt = false;
+            a->reservedByHunter = -1;
             if (type == ANIMAL_PREDATOR) a->speed = 80.0f;
             return;
         }
@@ -85,6 +87,19 @@ void KillAnimal(int animalIdx) {
     a->active = false;
     // Spawn carcass at animal's death position
     SpawnItem(x, y, z, ITEM_CARCASS);
+}
+
+int GetAnimalAtGrid(int x, int y, int z) {
+    for (int i = 0; i < animalCount; i++) {
+        Animal* a = &animals[i];
+        if (!a->active) continue;
+        if ((int)a->z != z) continue;
+        int ax = (int)(a->x / CELL_SIZE);
+        int ay = (int)(a->y / CELL_SIZE);
+        // Tolerance of 1 cell for animals between cells
+        if (abs(ax - x) <= 1 && abs(ay - y) <= 1) return i;
+    }
+    return -1;
 }
 
 // Scan nearby cells for highest vegetation walkable cell
@@ -130,7 +145,19 @@ static bool IsTargetValid(int tx, int ty, int tz) {
 // Simple Grazer Behavior (original state machine)
 // ============================================================================
 
+// Check if a specific mover is actively on a hunt job
+static bool IsMoverHunting(int moverIdx) {
+    if (moverIdx < 0 || moverIdx >= moverCount) return false;
+    Mover* m = &movers[moverIdx];
+    if (!m->active || m->currentJobId < 0) return false;
+    Job* job = GetJob(m->currentJobId);
+    return job && job->active && job->type == JOBTYPE_HUNT;
+}
+
 static void BehaviorSimpleGrazer(Animal* a, float dt) {
+    // Frozen while being attacked by hunter
+    if (a->state == ANIMAL_BEING_HUNTED) return;
+
     int cz = (int)a->z;
     int cx = (int)(a->x / CELL_SIZE);
     int cy = (int)(a->y / CELL_SIZE);
@@ -138,6 +165,32 @@ static void BehaviorSimpleGrazer(Animal* a, float dt) {
     // Trample ground
     if (cx >= 0 && cx < gridWidth && cy >= 0 && cy < gridHeight) {
         TrampleGround(cx, cy, cz);
+    }
+
+    // Flee from hunter if being actively hunted
+    if (a->reservedByHunter >= 0 && IsMoverHunting(a->reservedByHunter)) {
+        Mover* hunter = &movers[a->reservedByHunter];
+        if ((int)hunter->z == cz) {
+            float dx = hunter->x - a->x;
+            float dy = hunter->y - a->y;
+            float distSq = dx * dx + dy * dy;
+            float detectRadius = CELL_SIZE * 10.0f;
+            if (distSq < detectRadius * detectRadius && distSq > 0.01f) {
+                // Flee: move away from hunter
+                float dist = sqrtf(distSq);
+                float fleeSpeed = a->speed * 1.3f * (60.0f / dayLength) * dt;
+                a->x -= (dx / dist) * fleeSpeed;
+                a->y -= (dy / dist) * fleeSpeed;
+                // Clamp to grid bounds
+                float margin = CELL_SIZE * 0.5f;
+                if (a->x < margin) a->x = margin;
+                if (a->y < margin) a->y = margin;
+                if (a->x > (gridWidth - 0.5f) * CELL_SIZE) a->x = (gridWidth - 0.5f) * CELL_SIZE;
+                if (a->y > (gridHeight - 0.5f) * CELL_SIZE) a->y = (gridHeight - 0.5f) * CELL_SIZE;
+                a->state = ANIMAL_WALKING;
+                return;
+            }
+        }
     }
 
     switch (a->state) {
@@ -304,6 +357,9 @@ static int SampleNearbyWalls(Animal* a, Wall* outWalls, int maxWalls) {
 }
 
 static void BehaviorSteeringGrazer(Animal* a, float dt) {
+    // Frozen while being attacked by hunter
+    if (a->state == ANIMAL_BEING_HUNTED) return;
+
     if (!steeringCtxInitialized) {
         ctx_init(&steeringCtx, 8);
         steeringCtxInitialized = true;
@@ -318,7 +374,7 @@ static void BehaviorSteeringGrazer(Animal* a, float dt) {
         TrampleGround(cx, cy, cz);
     }
 
-    // Pre-scan for nearby predators (need count before building boid for speed boost)
+    // Pre-scan for nearby predators AND hunters (need count before building boid for speed boost)
     Vector2 predatorPositions[MAX_ANIMALS];
     int predatorCount = 0;
     float nearestPredatorDistSq = 1e18f;
@@ -333,6 +389,20 @@ static void BehaviorSteeringGrazer(Animal* a, float dt) {
         if (distSq < awareRadiusSq) {
             predatorPositions[predatorCount++] = (Vector2){ other->x, other->y };
             if (distSq < nearestPredatorDistSq) nearestPredatorDistSq = distSq;
+        }
+    }
+    // Detect hunter mover as predator-level threat
+    if (a->reservedByHunter >= 0 && IsMoverHunting(a->reservedByHunter)) {
+        Mover* hunter = &movers[a->reservedByHunter];
+        if ((int)hunter->z == cz) {
+            float dx = hunter->x - a->x;
+            float dy = hunter->y - a->y;
+            float distSq = dx * dx + dy * dy;
+            float awareRadiusSq = (CELL_SIZE * 10.0f) * (CELL_SIZE * 10.0f);
+            if (distSq < awareRadiusSq && predatorCount < MAX_ANIMALS) {
+                predatorPositions[predatorCount++] = (Vector2){ hunter->x, hunter->y };
+                if (distSq < nearestPredatorDistSq) nearestPredatorDistSq = distSq;
+            }
         }
     }
     bool panicked = predatorCount > 0;

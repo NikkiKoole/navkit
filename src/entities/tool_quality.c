@@ -71,6 +71,11 @@ JobToolReq GetJobToolRequirement(int jobType, MaterialType targetMaterial) {
             req = (JobToolReq){ QUALITY_CUTTING, 1, false, true };
             break;
 
+        // Hunting — soft, cutting helps
+        case JOBTYPE_HUNT:
+            req = (JobToolReq){ QUALITY_CUTTING, 0, true, true };
+            break;
+
         // Building — soft, hammering helps
         case JOBTYPE_BUILD:
             req = (JobToolReq){ QUALITY_HAMMERING, 0, true, true };

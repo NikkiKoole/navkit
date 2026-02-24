@@ -34,6 +34,7 @@ typedef enum {
     JOBTYPE_HARVEST_BERRY,       // Harvest ripe berry bush
     JOBTYPE_KNAP,                // Knap stone at rock wall
     JOBTYPE_DECONSTRUCT_WORKSHOP,  // Tear down a workshop for material refund
+    JOBTYPE_HUNT,                    // Hunt a designated animal
     JOBTYPE_COUNT
 } JobType;
 
@@ -62,6 +63,7 @@ static inline const char* JobTypeName(int type) {
         [JOBTYPE_HARVEST_BERRY]       = "HARVEST_BERRY",
         [JOBTYPE_KNAP]                = "KNAP",
         [JOBTYPE_DECONSTRUCT_WORKSHOP] = "DECONSTRUCT_WS",
+        [JOBTYPE_HUNT]                 = "HUNT",
     };
     return (type >= 0 && type < JOBTYPE_COUNT) ? names[type] : "?";
 }
@@ -136,6 +138,9 @@ typedef struct {
 
     // Tool item (for jobs that need a tool fetch before starting)
     int toolItem;  // reserved tool item to pick up, -1 = none/already equipped
+
+    // Hunt target
+    int targetAnimalIdx;  // Animal index for hunt jobs, -1 = none
 } Job;
 
 #define MAX_JOBS 10000
@@ -199,6 +204,7 @@ JobRunResult RunJob_IgniteWorkshop(Job* job, void* mover, float dt);
 JobRunResult RunJob_Clean(Job* job, void* mover, float dt);
 JobRunResult RunJob_Knap(Job* job, void* mover, float dt);
 JobRunResult RunJob_DeconstructWorkshop(Job* job, void* mover, float dt);
+JobRunResult RunJob_Hunt(Job* job, void* mover, float dt);
 
 
 
@@ -259,6 +265,7 @@ int WorkGiver_IgniteWorkshop(int moverIdx);
 int WorkGiver_Clean(int moverIdx);
 int WorkGiver_Knap(int moverIdx);
 int WorkGiver_DeconstructWorkshop(int moverIdx);
+int WorkGiver_Hunt(int moverIdx);
 
 // Job cancellation (releases all reservations, safe-drops carried items, returns mover to idle)
 void CancelJob(void* mover, int moverIdx);  // void* to avoid circular dependency with mover.h

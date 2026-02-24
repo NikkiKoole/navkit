@@ -72,6 +72,7 @@ typedef struct {
 #define CLEAN_WORK_TIME 1.2f          // Cleaning a dirty floor
 #define HARVEST_BERRY_WORK_TIME 0.4f  // Picking berries from bush
 #define KNAP_WORK_TIME 0.8f           // Knapping stone against wall
+#define HUNT_ATTACK_WORK_TIME 0.8f    // Attack duration (~4s bare-handed, ~2s with cutting tool)
 
 // Storage: one designation per cell (sparse would be better for huge maps, but this is simple)
 extern Designation designations[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];

@@ -19,6 +19,7 @@ typedef enum {
     ANIMAL_WALKING,
     ANIMAL_GRAZING,
     ANIMAL_HUNTING,
+    ANIMAL_BEING_HUNTED,
 } AnimalState;
 
 typedef enum {
@@ -41,6 +42,8 @@ typedef struct {
     float velX, velY;        // Velocity for steering behavior
     float wanderAngle;       // Persistent wander state for steering
     int targetAnimalIdx;     // Prey index for predators (-1 if none)
+    bool markedForHunt;      // Player designation
+    int reservedByHunter;    // Mover index, -1 = none
 } Animal;
 
 // Globals
@@ -53,5 +56,6 @@ void AnimalsTick(float dt);
 void ClearAnimals(void);
 int CountActiveAnimals(void);
 void KillAnimal(int animalIdx);  // Deactivates animal + spawns carcass at position
+int GetAnimalAtGrid(int x, int y, int z);  // Returns animal index at grid cell, or -1
 
 #endif // ANIMALS_H

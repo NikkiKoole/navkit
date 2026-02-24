@@ -808,6 +808,43 @@ static void ExecuteCancelClean(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecuteMarkHunt(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int i = 0; i < animalCount; i++) {
+        Animal* a = &animals[i];
+        if (!a->active || (int)a->z != z) continue;
+        if (a->markedForHunt) continue;
+        int ax = (int)(a->x / CELL_SIZE);
+        int ay = (int)(a->y / CELL_SIZE);
+        if (ax >= x1 && ax <= x2 && ay >= y1 && ay <= y2) {
+            a->markedForHunt = true;
+            count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Marked %d animal%s for hunting", count, count > 1 ? "s" : ""), RED);
+    }
+}
+
+static void ExecuteUnmarkHunt(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int i = 0; i < animalCount; i++) {
+        Animal* a = &animals[i];
+        if (!a->active || (int)a->z != z) continue;
+        if (!a->markedForHunt) continue;
+        int ax = (int)(a->x / CELL_SIZE);
+        int ay = (int)(a->y / CELL_SIZE);
+        if (ax >= x1 && ax <= x2 && ay >= y1 && ay <= y2) {
+            a->markedForHunt = false;
+            a->reservedByHunter = -1;
+            count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Unmarked %d animal%s", count, count > 1 ? "s" : ""), RED);
+    }
+}
+
 static void ExecuteDesignateHarvestBerry(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -2832,6 +2869,10 @@ void HandleInput(void) {
             case ACTION_WORK_KNAP:
                 if (leftClick) ExecuteDesignateKnap(x1, y1, x2, y2, z);
                 else ExecuteCancelKnap(x1, y1, x2, y2, z);
+                break;
+            case ACTION_WORK_HUNT:
+                if (leftClick) ExecuteMarkHunt(x1, y1, x2, y2, z);
+                else ExecuteUnmarkHunt(x1, y1, x2, y2, z);
                 break;
             // Sandbox actions
             case ACTION_SANDBOX_WATER:

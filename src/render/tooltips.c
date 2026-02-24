@@ -508,12 +508,12 @@ static void DrawAnimalTooltip(int animalIdx, Vector2 mouse) {
     Animal* a = &animals[animalIdx];
     if (!a->active) return;
 
-    const char* stateNames[] = { "Idle", "Walking", "Grazing", "Hunting" };
+    const char* stateNames[] = { "Idle", "Walking", "Grazing", "Hunting", "Being Hunted" };
     const char* typeNames[] = { "Grazer", "Predator" };
     const char* behaviorNames[] = { "Simple", "Steering", "Predator" };
 
-    char lines[8][80];
-    Color lineColors[8];
+    char lines[10][80];
+    Color lineColors[10];
     int lineCount = 0;
 
     snprintf(lines[lineCount], sizeof(lines[0]), "Animal #%d (%s, %s)", animalIdx, typeNames[a->type], behaviorNames[a->behavior]);
@@ -537,6 +537,15 @@ static void DrawAnimalTooltip(int animalIdx, Vector2 mouse) {
     } else if (a->state == ANIMAL_HUNTING) {
         snprintf(lines[lineCount], sizeof(lines[0]), "Prey: %s", a->targetAnimalIdx >= 0 ? TextFormat("#%d", a->targetAnimalIdx) : "none");
         lineColors[lineCount++] = RED;
+    }
+
+    if (a->markedForHunt) {
+        snprintf(lines[lineCount], sizeof(lines[0]), "Marked for Hunt");
+        lineColors[lineCount++] = RED;
+    }
+    if (a->reservedByHunter >= 0) {
+        snprintf(lines[lineCount], sizeof(lines[0]), "Hunter: Mover #%d", a->reservedByHunter);
+        lineColors[lineCount++] = (Color){255, 100, 100, 255};
     }
 
     int maxW = 0;

@@ -90,6 +90,8 @@ typedef enum {
     ACTION_WORK_CLEAN,
     // Work > Gather (top-level, no submode)
     ACTION_WORK_GATHER,
+    // Work > Hunt (top-level, entity-based designation)
+    ACTION_WORK_HUNT,
     // Sandbox actions (sim systems)
     ACTION_SANDBOX_WATER,
     ACTION_SANDBOX_FIRE,
