@@ -654,6 +654,21 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     if (cellX < 0 || cellX >= gridWidth || cellY < 0 || cellY >= gridHeight) return;
     if (cellZ < 0 || cellZ >= gridDepth) return;
 
+    if (!IsExplored(cellX, cellY, cellZ)) {
+        int padding = 6;
+        int lineH = 16;
+        int boxW = MeasureText("Unexplored", 14) + padding * 2;
+        int boxH = lineH + padding * 2;
+        int tx = (int)mouse.x + 15;
+        int ty = (int)mouse.y + 15;
+        if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
+        if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
+        DrawRectangle(tx, ty, boxW, boxH, (Color){30, 30, 40, 230});
+        DrawRectangleLines(tx, ty, boxW, boxH, (Color){80, 80, 100, 255});
+        DrawTextShadow("Unexplored", tx + padding, ty + padding, 14, GRAY);
+        return;
+    }
+
     char lines[20][64];
     int lineCount = 0;
 
@@ -857,6 +872,7 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
 
 // Draw water tooltip when hovering over water
 static void DrawWaterTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
+    if (!IsExplored(cellX, cellY, cellZ)) return;
     WaterCell* cell = &waterGrid[cellZ][cellY][cellX];
     if (cell->level == 0 && !cell->isSource && !cell->isDrain) return;
 
@@ -1424,6 +1440,7 @@ static void DrawBlueprintTooltip(int bpIdx, Vector2 mouse) {
 
 // Draw designation tooltip (generic for all designation types)
 static void DrawDesignationTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
+    if (!IsExplored(cellX, cellY, cellZ)) return;
     Designation* des = GetDesignation(cellX, cellY, cellZ);
     if (!des || des->type == DESIGNATION_NONE) return;
 

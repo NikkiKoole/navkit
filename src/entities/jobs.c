@@ -256,7 +256,8 @@ static bool FindAdjacentWalkable(int x, int y, int z, int* outAdjX, int* outAdjY
 // Rebuild cache for designations requiring adjacent standing position
 static void RebuildAdjacentDesignationCache(DesignationType type,
                                             AdjacentDesignationEntry* cache,
-                                            int* count) {
+                                            int* count,
+                                            bool requireExplored) {
     *count = 0;
     if (activeDesignationCount == 0) return;
 
@@ -267,6 +268,7 @@ static void RebuildAdjacentDesignationCache(DesignationType type,
                 if (!d || d->type != type) continue;
                 if (d->assignedMover != -1) continue;
                 if (d->unreachableCooldown > 0.0f) continue;
+                if (requireExplored && !IsExplored(x, y, z)) continue;
 
                 int adjX, adjY;
                 if (!FindAdjacentWalkable(x, y, z, &adjX, &adjY)) continue;
@@ -280,7 +282,8 @@ static void RebuildAdjacentDesignationCache(DesignationType type,
 // Rebuild cache for designations where mover stands on the tile
 static void RebuildOnTileDesignationCache(DesignationType type,
                                           OnTileDesignationEntry* cache,
-                                          int* count) {
+                                          int* count,
+                                          bool requireExplored) {
     *count = 0;
     if (activeDesignationCount == 0) return;
 
@@ -291,6 +294,7 @@ static void RebuildOnTileDesignationCache(DesignationType type,
                 if (!d || d->type != type) continue;
                 if (d->assignedMover != -1) continue;
                 if (d->unreachableCooldown > 0.0f) continue;
+                if (requireExplored && !IsExplored(x, y, z)) continue;
 
                 cache[(*count)++] = (OnTileDesignationEntry){x, y, z};
             }
@@ -300,97 +304,97 @@ static void RebuildOnTileDesignationCache(DesignationType type,
 
 void RebuildMineDesignationCache(void) {
     if (!mineCacheDirty) return;
-    RebuildAdjacentDesignationCache(DESIGNATION_MINE, mineCache, &mineCacheCount);
+    RebuildAdjacentDesignationCache(DESIGNATION_MINE, mineCache, &mineCacheCount, true);
     mineCacheDirty = false;
 }
 
 static void RebuildChannelDesignationCache(void) {
     if (!channelCacheDirty) return;
-    RebuildOnTileDesignationCache(DESIGNATION_CHANNEL, channelCache, &channelCacheCount);
+    RebuildOnTileDesignationCache(DESIGNATION_CHANNEL, channelCache, &channelCacheCount, true);
     channelCacheDirty = false;
 }
 
 static void RebuildRemoveFloorDesignationCache(void) {
     if (!removeFloorCacheDirty) return;
-    RebuildOnTileDesignationCache(DESIGNATION_REMOVE_FLOOR, removeFloorCache, &removeFloorCacheCount);
+    RebuildOnTileDesignationCache(DESIGNATION_REMOVE_FLOOR, removeFloorCache, &removeFloorCacheCount, true);
     removeFloorCacheDirty = false;
 }
 
 static void RebuildRemoveRampDesignationCache(void) {
     if (!removeRampCacheDirty) return;
-    RebuildAdjacentDesignationCache(DESIGNATION_REMOVE_RAMP, removeRampCache, &removeRampCacheCount);
+    RebuildAdjacentDesignationCache(DESIGNATION_REMOVE_RAMP, removeRampCache, &removeRampCacheCount, true);
     removeRampCacheDirty = false;
 }
 
 static void RebuildDigRampDesignationCache(void) {
     if (!digRampCacheDirty) return;
-    RebuildAdjacentDesignationCache(DESIGNATION_DIG_RAMP, digRampCache, &digRampCacheCount);
+    RebuildAdjacentDesignationCache(DESIGNATION_DIG_RAMP, digRampCache, &digRampCacheCount, true);
     digRampCacheDirty = false;
 }
 
 static void RebuildChopDesignationCache(void) {
     if (!chopCacheDirty) return;
-    RebuildAdjacentDesignationCache(DESIGNATION_CHOP, chopCache, &chopCacheCount);
+    RebuildAdjacentDesignationCache(DESIGNATION_CHOP, chopCache, &chopCacheCount, true);
     chopCacheDirty = false;
 }
 
 static void RebuildChopFelledDesignationCache(void) {
     if (!chopFelledCacheDirty) return;
-    RebuildAdjacentDesignationCache(DESIGNATION_CHOP_FELLED, chopFelledCache, &chopFelledCacheCount);
+    RebuildAdjacentDesignationCache(DESIGNATION_CHOP_FELLED, chopFelledCache, &chopFelledCacheCount, true);
     chopFelledCacheDirty = false;
 }
 
 static void RebuildGatherSaplingDesignationCache(void) {
     if (!gatherSaplingCacheDirty) return;
-    RebuildAdjacentDesignationCache(DESIGNATION_GATHER_SAPLING, gatherSaplingCache, &gatherSaplingCacheCount);
+    RebuildAdjacentDesignationCache(DESIGNATION_GATHER_SAPLING, gatherSaplingCache, &gatherSaplingCacheCount, true);
     gatherSaplingCacheDirty = false;
 }
 
 static void RebuildPlantSaplingDesignationCache(void) {
     if (!plantSaplingCacheDirty) return;
-    RebuildOnTileDesignationCache(DESIGNATION_PLANT_SAPLING, plantSaplingCache, &plantSaplingCacheCount);
+    RebuildOnTileDesignationCache(DESIGNATION_PLANT_SAPLING, plantSaplingCache, &plantSaplingCacheCount, true);
     plantSaplingCacheDirty = false;
 }
 
 static void RebuildGatherGrassDesignationCache(void) {
     if (!gatherGrassCacheDirty) return;
-    RebuildOnTileDesignationCache(DESIGNATION_GATHER_GRASS, gatherGrassCache, &gatherGrassCacheCount);
+    RebuildOnTileDesignationCache(DESIGNATION_GATHER_GRASS, gatherGrassCache, &gatherGrassCacheCount, true);
     gatherGrassCacheDirty = false;
 }
 
 static void RebuildGatherTreeDesignationCache(void) {
     if (!gatherTreeCacheDirty) return;
-    RebuildAdjacentDesignationCache(DESIGNATION_GATHER_TREE, gatherTreeCache, &gatherTreeCacheCount);
+    RebuildAdjacentDesignationCache(DESIGNATION_GATHER_TREE, gatherTreeCache, &gatherTreeCacheCount, true);
     gatherTreeCacheDirty = false;
 }
 
 static void RebuildCleanDesignationCache(void) {
     if (!cleanCacheDirty) return;
-    RebuildOnTileDesignationCache(DESIGNATION_CLEAN, cleanCache, &cleanCacheCount);
+    RebuildOnTileDesignationCache(DESIGNATION_CLEAN, cleanCache, &cleanCacheCount, true);
     cleanCacheDirty = false;
 }
 
 static void RebuildHarvestBerryDesignationCache(void) {
     if (!harvestBerryCacheDirty) return;
-    RebuildOnTileDesignationCache(DESIGNATION_HARVEST_BERRY, harvestBerryCache, &harvestBerryCacheCount);
+    RebuildOnTileDesignationCache(DESIGNATION_HARVEST_BERRY, harvestBerryCache, &harvestBerryCacheCount, true);
     harvestBerryCacheDirty = false;
 }
 
 static void RebuildKnapDesignationCache(void) {
     if (!knapCacheDirty) return;
-    RebuildAdjacentDesignationCache(DESIGNATION_KNAP, knapCache, &knapCacheCount);
+    RebuildAdjacentDesignationCache(DESIGNATION_KNAP, knapCache, &knapCacheCount, true);
     knapCacheDirty = false;
 }
 
 static void RebuildDigRootsDesignationCache(void) {
     if (!digRootsCacheDirty) return;
-    RebuildOnTileDesignationCache(DESIGNATION_DIG_ROOTS, digRootsCache, &digRootsCacheCount);
+    RebuildOnTileDesignationCache(DESIGNATION_DIG_ROOTS, digRootsCache, &digRootsCacheCount, true);
     digRootsCacheDirty = false;
 }
 
 static void RebuildExploreDesignationCache(void) {
     if (!exploreCacheDirty) return;
-    RebuildOnTileDesignationCache(DESIGNATION_EXPLORE, exploreCache, &exploreCacheCount);
+    RebuildOnTileDesignationCache(DESIGNATION_EXPLORE, exploreCache, &exploreCacheCount, false);
     exploreCacheDirty = false;
 }
 
@@ -3188,6 +3192,7 @@ static bool IsItemHaulable(Item* item, int itemIdx) {
     int cellY = (int)(item->y / CELL_SIZE);
     int cellZ = (int)(item->z);
     if (!IsCellWalkableAt(cellZ, cellY, cellX)) return false;
+    if (!IsExplored(cellX, cellY, cellZ)) return false;
     if (IsPassiveWorkshopWorkTile(cellX, cellY, cellZ)) return false;
     return true;
 }
@@ -3918,6 +3923,9 @@ static int WorkGiver_KnapDesignation(int moverIdx) {
         if (item->reservedBy != -1) continue;
         if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
         if (item->unreachableCooldown > 0.0f) continue;
+        int ix = (int)(item->x / CELL_SIZE);
+        int iy = (int)(item->y / CELL_SIZE);
+        if (!IsExplored(ix, iy, (int)item->z)) continue;
 
         float dx = item->x - m->x;
         float dy = item->y - m->y;
@@ -4285,6 +4293,7 @@ int WorkGiver_DeliverToPassiveWorkshop(int moverIdx) {
             int cellX = (int)(item->x / CELL_SIZE);
             int cellY = (int)(item->y / CELL_SIZE);
             if (!IsCellWalkableAt((int)item->z, cellY, cellX)) continue;
+            if (!IsExplored(cellX, cellY, (int)item->z)) continue;
 
             // Skip items on passive workshop work tiles (they're in use or waiting for ignition)
             if (IsPassiveWorkshopWorkTile(cellX, cellY, (int)item->z)) continue;
@@ -4562,6 +4571,9 @@ int WorkGiver_PlantSapling(int moverIdx) {
         if (item->reservedBy != -1) continue;
         if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
         if (item->unreachableCooldown > 0.0f) continue;
+        int ix = (int)(item->x / CELL_SIZE);
+        int iy = (int)(item->y / CELL_SIZE);
+        if (!IsExplored(ix, iy, (int)item->z)) continue;
 
         float dx = item->x - m->x;
         float dy = item->y - m->y;
@@ -5021,6 +5033,7 @@ int WorkGiver_Craft(int moverIdx) {
                 // Check distance from workshop
                 int itemTileX = (int)(item->x / CELL_SIZE);
                 int itemTileY = (int)(item->y / CELL_SIZE);
+                if (!IsExplored(itemTileX, itemTileY, (int)item->z)) continue;
                 int dx = itemTileX - ws->x;
                 int dy = itemTileY - ws->y;
                 int distSq = dx * dx + dy * dy;
@@ -6246,6 +6259,7 @@ int WorkGiver_BlueprintClear(int moverIdx) {
             int ix = (int)(items[i].x / CELL_SIZE);
             int iy = (int)(items[i].y / CELL_SIZE);
             if (ix != bp->x || iy != bp->y) continue;
+            if (!IsExplored(ix, iy, (int)items[i].z)) continue;
             anyItemsLeft = true;
             if (items[i].reservedBy != -1) continue;
             if (items[i].unreachableCooldown > 0.0f) continue;
@@ -6329,6 +6343,11 @@ static bool RecipeHaulItemFilter(int itemIdx, void* userData) {
     if (item->reservedBy != -1) return false;
     if (item->state != ITEM_ON_GROUND) return false;
     if (item->unreachableCooldown > 0.0f) return false;
+    {
+        int ix = (int)(item->x / CELL_SIZE);
+        int iy = (int)(item->y / CELL_SIZE);
+        if (!IsExplored(ix, iy, (int)item->z)) return false;
+    }
 
     // Check if item type matches this input slot
     if (!ConstructionInputAcceptsItem(data->input, item->type)) return false;
@@ -6376,6 +6395,11 @@ static int FindNearestRecipeItem(int moverTileX, int moverTileY, int moverZ, flo
         if (item->reservedBy != -1) continue;
         if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
         if (item->unreachableCooldown > 0.0f) continue;
+        {
+            int ix = (int)(item->x / CELL_SIZE);
+            int iy = (int)(item->y / CELL_SIZE);
+            if (!IsExplored(ix, iy, (int)item->z)) continue;
+        }
         if (!ConstructionInputAcceptsItem(input, item->type)) continue;
 
         // Check locking
@@ -6592,6 +6616,11 @@ int WorkGiver_Hunt(int moverIdx) {
         if (!a->markedForHunt) continue;
         if (a->reservedByHunter >= 0) continue;
         if ((int)a->z != moverZ) continue;
+        {
+            int ax = (int)(a->x / CELL_SIZE);
+            int ay = (int)(a->y / CELL_SIZE);
+            if (!IsExplored(ax, ay, (int)a->z)) continue;
+        }
 
         float dx = a->x - m->x;
         float dy = a->y - m->y;
