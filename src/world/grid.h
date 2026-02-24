@@ -103,8 +103,8 @@ extern uint8_t vegetationGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 // Exploration grid — fog of war (0=unexplored, 1=explored)
 extern uint8_t exploredGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
-#define MOVER_VISION_RADIUS  10
-#define SPAWN_VISION_RADIUS  12
+#define DEFAULT_MOVER_VISION_RADIUS  10
+#define DEFAULT_SPAWN_VISION_RADIUS  12
 
 // Check if cell is explored (OOB = true for safety, sandbox = always true)
 #ifndef GAME_MODE_DEFINED

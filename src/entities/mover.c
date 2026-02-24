@@ -1446,7 +1446,7 @@ void UpdateMovers(void) {
 
             // Fog of war: reveal around mover when entering a new cell
             if (trampleCellX != currentX || trampleCellY != currentY || trampleCellZ != currentZ) {
-                RevealAroundPoint(trampleCellX, trampleCellY, trampleCellZ, MOVER_VISION_RADIUS);
+                RevealAroundPoint(trampleCellX, trampleCellY, trampleCellZ, balance.moverVisionRadius);
             }
             
             // Track progress for stuck detection

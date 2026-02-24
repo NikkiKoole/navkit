@@ -575,11 +575,16 @@ void DrawFogOfWar(void) {
 
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
-            // If any visible z-level at this column is unexplored, draw fog
-            // Use the current view z-level as the primary check
             if (!IsExplored(x, y, z)) {
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                DrawRectangleRec(dest, BLACK);
+                // Frontier cell (adjacent to explored) gets semi-transparent fog
+                // Use raw grid check — IsExplored returns true for OOB, which
+                // would make map edges always appear as frontier
+                bool frontier = (x > 0 && exploredGrid[z][y][x-1]) ||
+                                (x < gridWidth-1 && exploredGrid[z][y][x+1]) ||
+                                (y > 0 && exploredGrid[z][y-1][x]) ||
+                                (y < gridHeight-1 && exploredGrid[z][y+1][x]);
+                DrawRectangleRec(dest, frontier ? (Color){0, 0, 0, 180} : BLACK);
             }
         }
     }

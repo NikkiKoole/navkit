@@ -2,6 +2,9 @@
 #include "cell_defs.h"
 #include "material.h"
 #include "pathfinding.h"
+#include "../simulation/water.h"
+#include "../simulation/fire.h"
+#include "../core/event_log.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -700,6 +703,42 @@ int InitMultiFloorGridFromAscii(const char* ascii, int chunkW, int chunkH) {
     return 1;
 }
 
+// Discovery tracking for RevealAroundPoint
+typedef struct {
+    int waterSources;
+    int firstWaterX, firstWaterY, firstWaterZ;
+    int bushes;
+    int fires;
+    int firstFireX, firstFireY, firstFireZ;
+} RevealDiscoveries;
+
+static void CheckDiscoveriesAtCell(int x, int y, int z, RevealDiscoveries *d) {
+    if (waterGrid[z][y][x].isSource) {
+        if (d->waterSources == 0) { d->firstWaterX = x; d->firstWaterY = y; d->firstWaterZ = z; }
+        d->waterSources++;
+    }
+    if (grid[z][y][x] == CELL_BUSH) {
+        d->bushes++;
+    }
+    if (fireGrid[z][y][x].fuel > 0) {
+        if (d->fires == 0) { d->firstFireX = x; d->firstFireY = y; d->firstFireZ = z; }
+        d->fires++;
+    }
+}
+
+static void LogDiscoveries(const RevealDiscoveries *d) {
+    if (d->waterSources > 0)
+        EventLog("Discovered water source at (%d,%d,z%d)%s",
+                 d->firstWaterX, d->firstWaterY, d->firstWaterZ,
+                 d->waterSources > 1 ? " (and more)" : "");
+    if (d->bushes > 0)
+        EventLog("Discovered %d berry bush%s", d->bushes, d->bushes > 1 ? "es" : "");
+    if (d->fires > 0)
+        EventLog("Discovered fire at (%d,%d,z%d)%s",
+                 d->firstFireX, d->firstFireY, d->firstFireZ,
+                 d->fires > 1 ? " (and more)" : "");
+}
+
 // Reveal cells around a point — circular x,y within radius,
 // then extends vertically through air (upward and downward until solid)
 void RevealAroundPoint(int cx, int cy, int cz, int radius) {
@@ -708,6 +747,8 @@ void RevealAroundPoint(int cx, int cy, int cz, int radius) {
     int maxX = cx + radius; if (maxX >= gridWidth) maxX = gridWidth - 1;
     int minY = cy - radius; if (minY < 0) minY = 0;
     int maxY = cy + radius; if (maxY >= gridHeight) maxY = gridHeight - 1;
+
+    RevealDiscoveries disc = {0};
 
     for (int y = minY; y <= maxY; y++) {
         int dy = y - cy;
@@ -719,6 +760,7 @@ void RevealAroundPoint(int cx, int cy, int cz, int radius) {
             if (!exploredGrid[cz][y][x]) {
                 exploredGrid[cz][y][x] = 1;
                 MarkChunkDirty(x, y, cz);
+                CheckDiscoveriesAtCell(x, y, cz, &disc);
             }
 
             // Reveal upward through air until solid or top
@@ -726,6 +768,7 @@ void RevealAroundPoint(int cx, int cy, int cz, int radius) {
                 if (!exploredGrid[z][y][x]) {
                     exploredGrid[z][y][x] = 1;
                     MarkChunkDirty(x, y, z);
+                    CheckDiscoveriesAtCell(x, y, z, &disc);
                 }
                 if (CellIsSolid(grid[z][y][x])) break;
             }
@@ -735,9 +778,12 @@ void RevealAroundPoint(int cx, int cy, int cz, int radius) {
                 if (!exploredGrid[z][y][x]) {
                     exploredGrid[z][y][x] = 1;
                     MarkChunkDirty(x, y, z);
+                    CheckDiscoveriesAtCell(x, y, z, &disc);
                 }
                 if (CellIsSolid(grid[z][y][x])) break;
             }
         }
     }
+
+    LogDiscoveries(&disc);
 }

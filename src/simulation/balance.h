@@ -69,6 +69,10 @@ typedef struct {
     float carryingEnergyMult;       // 1.1
     float hungerSpeedPenaltyMin;    // 0.5
     float hungerPenaltyThreshold;   // 0.2
+
+    // === VISION (fog of war) ===
+    int moverVisionRadius;          // 10
+    int spawnVisionRadius;          // 12
 } BalanceTable;
 
 extern BalanceTable balance;

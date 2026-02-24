@@ -1254,7 +1254,43 @@ static int BresenhamTrace(int cx, int cy, int tx, int ty, int z, Point* outPath,
     return count;
 }
 
-// Explore job driver: trace Bresenham line, string-pull, walk toward target
+// Find the first unexplored cell along the Bresenham line from (cx,cy) to (tx,ty).
+// Returns the last explored walkable cell before fog in *outEdge, or false if all explored.
+static bool FindFogEdge(int cx, int cy, int tx, int ty, int z, Point* outEdge) {
+    int dx = abs(tx - cx);
+    int dy = abs(ty - cy);
+    int sx = (cx < tx) ? 1 : -1;
+    int sy = (cy < ty) ? 1 : -1;
+    int err = dx - dy;
+    int x = cx, y = cy;
+    int prevX = cx, prevY = cy;
+
+    for (int i = 0; i < MAX_MOVER_PATH; i++) {
+        if (x == tx && y == ty) break;
+
+        int e2 = 2 * err;
+        int nx = x, ny = y;
+        if (e2 > -dy) { nx += sx; err -= dy; }
+        if (e2 < dx)  { ny += sy; err += dx; }
+
+        if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) break;
+        if (!IsCellWalkableAt(z, ny, nx)) break;
+
+        if (!IsExplored(nx, ny, z)) {
+            // Found fog — return the last explored cell
+            *outEdge = (Point){ prevX, prevY, z };
+            return true;
+        }
+
+        prevX = nx;
+        prevY = ny;
+        x = nx;
+        y = ny;
+    }
+    return false;  // entire line is explored (or blocked)
+}
+
+// Explore job driver: pathfind through explored terrain, then Bresenham into fog
 JobRunResult RunJob_Explore(Job* job, void* moverPtr, float dt) {
     (void)dt;
     Mover* mover = (Mover*)moverPtr;
@@ -1268,8 +1304,8 @@ JobRunResult RunJob_Explore(Job* job, void* moverPtr, float dt) {
     int cy = (int)(mover->y / CELL_SIZE);
     int cz = (int)mover->z;
 
-    // Already at target?
-    if (cx == tx && cy == ty && cz == tz) {
+    // Designation fulfilled when target cell has been revealed (not just when mover stands on it)
+    if (IsExplored(tx, ty, tz)) {
         CompleteExploreDesignation(tx, ty, tz);
         return JOBRUN_DONE;
     }
@@ -1279,14 +1315,38 @@ JobRunResult RunJob_Explore(Job* job, void* moverPtr, float dt) {
         return JOBRUN_RUNNING;
     }
 
-    // Trace the full Bresenham line from current position to target
+    // Reveal around current position each time we re-trace
+    RevealAroundPoint(cx, cy, cz, balance.moverVisionRadius);
+
+    // Find where the Bresenham line enters fog
+    Point fogEdge;
+    bool hasFogEdge = FindFogEdge(cx, cy, tx, ty, cz, &fogEdge);
+
+    if (hasFogEdge && (fogEdge.x != cx || fogEdge.y != cy)) {
+        // Mover is in explored territory — use real pathfinding to reach the fog edge
+        Point start = { cx, cy, cz };
+        int pathLen = FindPath(moverPathAlgorithm, start, fogEdge, moverPaths[moverIdx], MAX_MOVER_PATH);
+        if (pathLen > 0) {
+            mover->pathLength = pathLen;
+            mover->pathIndex = 0;
+            if (mover->pathLength > 2) {
+                StringPullPath(moverPaths[moverIdx], &mover->pathLength);
+            }
+            return JOBRUN_RUNNING;
+        }
+        // Pathfinding failed — mark unreachable
+        d->unreachableCooldown = 10.0f;
+        return JOBRUN_FAIL;
+    }
+
+    // Mover is at or past the fog edge — use Bresenham into the unknown
     Point tracePath[MAX_MOVER_PATH];
     int traceLen = BresenhamTrace(cx, cy, tx, ty, cz, tracePath, MAX_MOVER_PATH);
 
     if (traceLen == 0) {
-        // First step is blocked — done
-        CompleteExploreDesignation(tx, ty, tz);
-        return JOBRUN_DONE;
+        // First step is blocked — can't proceed toward target
+        d->unreachableCooldown = 10.0f;
+        return JOBRUN_FAIL;
     }
 
     // Copy into mover path
@@ -1296,17 +1356,9 @@ JobRunResult RunJob_Explore(Job* job, void* moverPtr, float dt) {
     mover->pathLength = traceLen;
     mover->pathIndex = 0;
 
-    // Reveal around current position each time we re-trace
-    RevealAroundPoint(cx, cy, cz, MOVER_VISION_RADIUS);
-
-    // Apply string pulling for smooth movement
     if (mover->pathLength > 2) {
         StringPullPath(moverPaths[moverIdx], &mover->pathLength);
     }
-
-    // If trace stopped short (hit a wall before target), complete the designation
-    // once mover arrives at the last walkable cell (path exhausted next tick
-    // will re-enter, traceLen==0, and complete)
 
     return JOBRUN_RUNNING;
 }

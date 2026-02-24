@@ -215,7 +215,7 @@ static void StartNewGame(void) {
         int spawnX = (int)(m->x / CELL_SIZE);
         int spawnY = (int)(m->y / CELL_SIZE);
         int spawnZ = (int)m->z;
-        RevealAroundPoint(spawnX, spawnY, spawnZ, SPAWN_VISION_RADIUS);
+        RevealAroundPoint(spawnX, spawnY, spawnZ, balance.spawnVisionRadius);
     }
 
     // Center camera on the mover and follow it

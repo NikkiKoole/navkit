@@ -57,6 +57,10 @@ void InitBalance(void) {
     balance.hungerSpeedPenaltyMin = 0.5f;
     balance.hungerPenaltyThreshold = 0.2f;
 
+    // Vision (fog of war)
+    balance.moverVisionRadius    = DEFAULT_MOVER_VISION_RADIUS;
+    balance.spawnVisionRadius    = DEFAULT_SPAWN_VISION_RADIUS;
+
     RecalcBalanceTable();
 }
 
