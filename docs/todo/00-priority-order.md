@@ -1,6 +1,6 @@
 # Survival Feature Priority Order
 
-> Master priority list for the survival mode feature roadmap. Updated 2026-02-22.
+> Master priority list for the survival mode feature roadmap. Updated 2026-02-24.
 
 ---
 
@@ -12,6 +12,8 @@
 - **01-workshop-construction-costs.md** — Workshop material costs + build time + deconstruction (save v63-v64)
 - **02-tool-quality-and-digging-stick.md** — Quality framework (5 types, 3 levels), 4 tool items, speed scaling, tool seeking, full bootstrap (save v65-v66, 112 tests)
 - **03-primitive-shelter-and-doors.md** — CELL_DOOR, leaf/stick walls, leaf/bark roofs, leaf/plank doors, ground fire + fire pit workshops (save v67, 30 tests). Deferred: fire spread + fire pit tool gate → `docs/todo/environmental/fire-improvements.md`
+- **04a-butchering-and-cooking.md** — Carcass → butcher workshop → raw meat → cook at fire pit → eat. 4 new items (carcass, raw meat, cooked meat, hide)
+- **04b-hunting.md** — Hunt designation (W→U), chase & kill job driver, flee behavior, WorkGiver + 14 tests
 
 ## Reference Docs (not actionable tasks)
 
@@ -35,10 +37,10 @@
 | # | Doc | Effort | Deps | Status |
 |---|-----|--------|------|--------|
 | 03 | `03-primitive-shelter-and-doors.md` | ~2 sessions | ~~01, 02~~ ✅ | ✅ Done (save v67) |
-| 04a | `04a-butchering-and-cooking.md` | ~1 session | 03 ✅ | ← **NEXT** Carcass → butcher → raw meat → cook → eat. Butcher workshop, cooking at fire pit. |
-| 04b | `04b-hunting.md` | ~1 session | 04a | Hunt designation, hunt job, mover kills animal → carcass. |
-| 04c | `04c-root-foraging.md` | ~1 session | 03 ✅ | Dig roots from soil, roast/dry. Fills gap between berries and meat. |
-| 04d | `04d-spoilage.md` | ~0.5 session | 04a | Spoilage timer on items, decay tick, container modifiers. |
+| 04a | `04a-butchering-and-cooking.md` | ~1 session | 03 ✅ | ✅ Done. Carcass → butcher → raw meat → cook → eat. |
+| 04b | `04b-hunting.md` | ~1 session | 04a ✅ | ✅ Done. Hunt designation (W→U), chase & kill, flee behavior, 14 tests. |
+| 04c | `04c-root-foraging.md` | ~1 session | 03 ✅ | ← **NEXT** Dig roots from soil, roast/dry. Fills gap between berries and meat. |
+| 04d | `04d-spoilage.md` | ~0.5 session | 04a ✅ | Spoilage timer on items, decay tick, container modifiers. |
 | 04e | `04e-animal-respawn.md` | ~0.5 session | None | Edge-spawn animals on timer, population cap. |
 | 05 | `05-fog-of-war-exploration.md` | ~3.5 sessions | None* | Map starts hidden in survival. Vision radius reveals terrain. Straight-line explore designation. Pathfinding untouched (exploration = job assignment filter only). *Best after 01-04 exist. |
 
@@ -85,12 +87,15 @@ Session 5-6:    Primitive shelter + CELL_DOOR + ground fire / fire pit  ✅ DONE
                 → Ground fire (3 sticks) + fire pit (5 sticks + 3 rocks)
                 → Day-1 loop complete: gather → shelter → fire → sleep → survive
 
-Session 7:      Butchering & cooking (04a)  ← NEXT
+Session 7:      Butchering & cooking (04a)                             ✅ DONE
                 → Carcass → butcher workshop → raw meat → cook at fire pit → eat
                 → 4 new items (carcass, raw meat, cooked meat, hide)
 
-Session 7-8:    Hunting + root foraging + spoilage (04b, 04c, 04d, 04e)
-                → Hunt designation, dig roots from soil, roast/dry roots
+Session 7-8:    Hunting (04b)                                          ✅ DONE
+                → Hunt designation (W→U), chase & kill job, flee behavior, 14 tests
+
+Session 8-9:    Root foraging + spoilage + animal respawn (04c, 04d, 04e)  ← NEXT
+                → Dig roots from soil, roast/dry roots
                 → Spoilage timer, animal respawn
 
 Session 9-12:   Fog of war
