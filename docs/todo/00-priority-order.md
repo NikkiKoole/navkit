@@ -14,6 +14,7 @@
 - **03-primitive-shelter-and-doors.md** — CELL_DOOR, leaf/stick walls, leaf/bark roofs, leaf/plank doors, ground fire + fire pit workshops (save v67, 30 tests). Deferred: fire spread + fire pit tool gate → `docs/todo/environmental/fire-improvements.md`
 - **04a-butchering-and-cooking.md** — Carcass → butcher workshop → raw meat → cook at fire pit → eat. 4 new items (carcass, raw meat, cooked meat, hide)
 - **04b-hunting.md** — Hunt designation (W→U), chase & kill job driver, flee behavior, WorkGiver + 14 tests
+- **04c-root-foraging.md** — 3 root items (raw/roasted/dried), dig designation on dirt/clay/peat, roast at fire pit, dry at drying rack (save v70)
 
 ## Reference Docs (not actionable tasks)
 
@@ -39,8 +40,8 @@
 | 03 | `03-primitive-shelter-and-doors.md` | ~2 sessions | ~~01, 02~~ ✅ | ✅ Done (save v67) |
 | 04a | `04a-butchering-and-cooking.md` | ~1 session | 03 ✅ | ✅ Done. Carcass → butcher → raw meat → cook → eat. |
 | 04b | `04b-hunting.md` | ~1 session | 04a ✅ | ✅ Done. Hunt designation (W→U), chase & kill, flee behavior, 14 tests. |
-| 04c | `04c-root-foraging.md` | ~1 session | 03 ✅ | ← **NEXT** Dig roots from soil, roast/dry. Fills gap between berries and meat. |
-| 04d | `04d-spoilage.md` | ~0.5 session | 04a ✅ | Spoilage timer on items, decay tick, container modifiers. |
+| 04c | `04c-root-foraging.md` | ~1 session | 03 ✅ | ✅ Done. 3 root items, dig designation on soil, roast at fire pit, dry at drying rack. |
+| 04d | `04d-spoilage.md` | ~0.5 session | 04a ✅ | ← **NEXT** Spoilage timer on items, decay tick, container modifiers. |
 | 04e | `04e-animal-respawn.md` | ~0.5 session | None | Edge-spawn animals on timer, population cap. |
 | 05 | `05-fog-of-war-exploration.md` | ~3.5 sessions | None* | Map starts hidden in survival. Vision radius reveals terrain. Straight-line explore designation. Pathfinding untouched (exploration = job assignment filter only). *Best after 01-04 exist. |
 
@@ -94,8 +95,10 @@ Session 7:      Butchering & cooking (04a)                             ✅ DONE
 Session 7-8:    Hunting (04b)                                          ✅ DONE
                 → Hunt designation (W→U), chase & kill job, flee behavior, 14 tests
 
-Session 8-9:    Root foraging + spoilage + animal respawn (04c, 04d, 04e)  ← NEXT
-                → Dig roots from soil, roast/dry roots
+Session 8:      Root foraging (04c)                                      ✅ DONE
+                → 3 root items, dig designation on soil, roast/dry roots
+
+Session 8-9:    Spoilage + animal respawn (04d, 04e)                     ← NEXT
                 → Spoilage timer, animal respawn
 
 Session 9-12:   Fog of war
