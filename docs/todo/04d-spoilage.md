@@ -1,15 +1,16 @@
 # 04d: Spoilage
 
 > Split from 04-cooking-and-hunting.md on 2026-02-22.
+> **Status**: ✅ Done (save v71 for timer, v72 for ITEM_ROT, v73 for ItemCondition refactor)
 > **Deps**: None (infrastructure feature), but most useful after 04a adds meat
 > **Opens**: Preservation pressure (drying, cooking, container quality)
-> **Estimated effort**: ~0.5 session
+> **See also**: `04d2-item-rot.md` — ItemCondition refactoring that replaced ITEM_ROT
 
 ---
 
 ## Goal
 
-Items with IF_SPOILS decay over time and eventually get deleted. This creates pressure to cook, dry, and store food properly. Containers with lower spoilageModifier preserve food longer.
+Items with IF_SPOILS decay over time and transition through condition states (FRESH → STALE → ROTTEN). Rotten items keep their original type but can't be eaten and are accepted as fuel. This creates pressure to cook, dry, and store food properly. Containers with lower spoilageModifier preserve food longer.
 
 ---
 
@@ -64,17 +65,19 @@ Add to `items.c` (inside `ItemsTick`, or as a separate function called from `mai
 SpoilageTick(float dt):
   For each active item (i < itemHighWaterMark):
     Skip if !IF_SPOILS or spoilageLimit == 0
+    Skip if condition == CONDITION_ROTTEN (already done)
     Skip if state == ITEM_CARRIED (don't spoil mid-job, see Design Notes)
 
     rate = dt
     If containedIn >= 0:
       Walk containedIn chain to outermost container
+      If outermost is ITEM_CARRIED → skip
       rate *= GetContainerDef(outermost.type).spoilageModifier
 
     spoilageTimer += rate
-    If spoilageTimer >= spoilageLimit:
-      EventLog("Item %d (%s x%d) spoiled after %.0fs", ...)
-      DeleteItem(idx)
+    ratio = spoilageTimer / spoilageLimit
+    If ratio >= 1.0: condition = CONDITION_ROTTEN, EventLog(...)
+    Else if ratio >= 0.5: condition = CONDITION_STALE
 ```
 
 **Tick frequency**: Call every frame with `dt` (same as `ItemsTick` which already iterates items). No need for a separate interval — the per-item work is trivial (flag check + float add).
@@ -353,9 +356,9 @@ describe(spoilage_e2e)
 
 ## Deferred (not in this feature)
 
-- **ITEM_ROT / composting**: Spoiled items just delete. Rot item comes with 09 (loop closers).
+- **Composting**: Rotten items could be composted into fertilizer. Comes with 09 (loop closers).
 - **Weather modifier**: Rain accelerating spoilage needs weather integration. Future.
 - **Temperature modifier**: Hot weather accelerating spoilage. Future.
 - **Eat-oldest-first priority**: Movers could prefer eating food closest to spoiling. Nice optimization but not needed now.
 - **Spoilage UI bar**: A visual freshness bar on items. Tooltip label is enough for now.
-- **Wood/clay seasoning states**: Broader material conditioning in `gameplay/seasoning-curing.md`. Different system.
+- **Wood/clay seasoning states**: Broader material conditioning in `gameplay/seasoning-curing.md`. Different system (curing would add more ItemCondition states).
