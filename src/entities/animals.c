@@ -13,6 +13,9 @@
 // Globals
 Animal animals[MAX_ANIMALS];
 int animalCount = 0;
+bool animalRespawnEnabled = true;
+int animalTargetPopulation = 8;
+float animalSpawnInterval = 180.0f;  // 3 game-minutes
 
 // Shared context steering instance (cleared per-animal per-tick)
 static ContextSteering steeringCtx;
@@ -755,10 +758,97 @@ static void BehaviorPredator(Animal* a, float dt) {
 }
 
 // ============================================================================
+// Edge spawning + respawn tick
+// ============================================================================
+
+void SpawnAnimalAtEdge(AnimalType type, int spawnZ, AnimalBehavior behavior) {
+    int slot = -1;
+    for (int i = 0; i < animalCount; i++) {
+        if (!animals[i].active) { slot = i; break; }
+    }
+    if (slot < 0) {
+        if (animalCount >= MAX_ANIMALS) return;
+        slot = animalCount++;
+    }
+
+    int attempts = 200;
+    while (attempts-- > 0) {
+        int cx, cy;
+        // Pick random edge cell
+        int edge = rand() % 4;
+        switch (edge) {
+            case 0: cx = 0;               cy = rand() % gridHeight; break;
+            case 1: cx = gridWidth - 1;    cy = rand() % gridHeight; break;
+            case 2: cx = rand() % gridWidth; cy = 0;               break;
+            default: cx = rand() % gridWidth; cy = gridHeight - 1;  break;
+        }
+        if (IsCellWalkableAt(spawnZ, cy, cx) && GetWaterLevel(cx, cy, spawnZ) == 0) {
+            Animal* a = &animals[slot];
+            a->x = (cx + 0.5f) * CELL_SIZE;
+            a->y = (cy + 0.5f) * CELL_SIZE;
+            a->z = (float)spawnZ;
+            a->type = type;
+            a->state = ANIMAL_IDLE;
+            a->behavior = behavior;
+            a->active = true;
+            a->speed = ANIMAL_SPEED;
+            a->stateTimer = 0.0f;
+            a->grazeTimer = 0.0f;
+            a->animPhase = (float)(rand() % 1000) / 1000.0f * 6.28f;
+            a->targetCellX = cx;
+            a->targetCellY = cy;
+            a->velX = 0.0f;
+            a->velY = 0.0f;
+            a->wanderAngle = (float)(rand() % 1000) / 1000.0f * 6.28f;
+            a->targetAnimalIdx = -1;
+            a->markedForHunt = false;
+            a->reservedByHunter = -1;
+            if (type == ANIMAL_PREDATOR) a->speed = 80.0f;
+            return;
+        }
+    }
+}
+
+static void AnimalRespawnTick(float dt) {
+    static float respawnTimer = 0.0f;
+
+    if (!animalRespawnEnabled) return;
+
+    respawnTimer += dt;
+    if (respawnTimer < animalSpawnInterval) return;
+    respawnTimer = 0.0f;
+
+    int active = CountActiveAnimals();
+    if (active >= animalTargetPopulation) return;
+
+    // Count predators
+    int predatorCount = 0;
+    for (int i = 0; i < animalCount; i++) {
+        if (animals[i].active && animals[i].type == ANIMAL_PREDATOR) predatorCount++;
+    }
+
+    // Doubled spawn rate when below 50% of target
+    int spawnCount = (active < animalTargetPopulation / 2) ? 2 : 1;
+
+    for (int s = 0; s < spawnCount && active + s < animalTargetPopulation; s++) {
+        // 80% grazer, 20% predator (capped at 2 predators)
+        bool spawnPredator = (rand() % 5 == 0) && predatorCount < 2;
+        if (spawnPredator) {
+            SpawnAnimalAtEdge(ANIMAL_PREDATOR, 1, BEHAVIOR_PREDATOR);
+            predatorCount++;
+        } else {
+            SpawnAnimalAtEdge(ANIMAL_GRAZER, 1, BEHAVIOR_STEERING_GRAZER);
+        }
+    }
+}
+
+// ============================================================================
 // Main tick dispatch
 // ============================================================================
 
 void AnimalsTick(float dt) {
+    AnimalRespawnTick(dt);
+
     for (int i = 0; i < animalCount; i++) {
         Animal* a = &animals[i];
         if (!a->active) continue;

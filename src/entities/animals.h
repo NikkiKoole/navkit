@@ -49,9 +49,13 @@ typedef struct {
 // Globals
 extern Animal animals[MAX_ANIMALS];
 extern int animalCount;
+extern bool animalRespawnEnabled;
+extern int animalTargetPopulation;
+extern float animalSpawnInterval;
 
 // Core functions
 void SpawnAnimal(AnimalType type, int z, AnimalBehavior behavior);
+void SpawnAnimalAtEdge(AnimalType type, int z, AnimalBehavior behavior);
 void AnimalsTick(float dt);
 void ClearAnimals(void);
 int CountActiveAnimals(void);

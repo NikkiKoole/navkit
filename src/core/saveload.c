@@ -110,7 +110,11 @@ void RebuildPostLoadState(void);
     X(float, snowAccumulationRate) \
     X(float, snowMeltingRate) \
     /* Lightning */ \
-    X(float, lightningInterval)
+    X(float, lightningInterval) \
+    /* Animals */ \
+    X(bool, animalRespawnEnabled) \
+    X(int, animalTargetPopulation) \
+    X(float, animalSpawnInterval)
 
 #define BALANCE_SETTINGS_TABLE(X) \
     X(float, balance.baseMoverSpeed) \
@@ -1803,6 +1807,13 @@ bool LoadWorld(const char* filename) {
             BALANCE_SETTINGS_TABLE(READ_SETTING)
         }
         #undef READ_SETTING
+    }
+
+    // v73 and earlier: animal respawn settings not saved, use defaults
+    if (version < 74) {
+        animalRespawnEnabled = true;
+        animalTargetPopulation = 8;
+        animalSpawnInterval = 180.0f;
     }
 
     // v60+: diurnal amplitude

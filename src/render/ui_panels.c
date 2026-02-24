@@ -915,6 +915,14 @@ void DrawUI(void) {
             if (clicked) ClearAnimals();
         }
         y += 22;
+        ToggleBoolT(ix + 10, y, "Respawn", &animalRespawnEnabled, "Animals respawn from map edges");
+        y += 22;
+        DraggableIntT(ix + 10, y, "Target Pop", &animalTargetPopulation, 1.0f, 1, 50,
+            TextFormat("Target: %d  Current: %d", animalTargetPopulation, CountActiveAnimals()));
+        y += 22;
+        DraggableFloatT(ix + 10, y, "Spawn Interval", &animalSpawnInterval, 1.0f, 10.0f, 600.0f,
+            TextFormat("%.0fs between spawn attempts", animalSpawnInterval));
+        y += 22;
 
         // --- Agents (inline — no own accordion) ---
         DrawTextShadow("Agents:", ix, y, 14, GRAY);
