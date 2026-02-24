@@ -208,6 +208,16 @@ static void StartNewGame(void) {
     // Spawn 1 mover at a walkable cell
     SpawnMoversDemo(1);
 
+    // Fog of war: start with everything unexplored, then reveal around spawn
+    memset(exploredGrid, 0, sizeof(exploredGrid));
+    if (moverCount > 0) {
+        Mover* m = &movers[0];
+        int spawnX = (int)(m->x / CELL_SIZE);
+        int spawnY = (int)(m->y / CELL_SIZE);
+        int spawnZ = (int)m->z;
+        RevealAroundPoint(spawnX, spawnY, spawnZ, SPAWN_VISION_RADIUS);
+    }
+
     // Center camera on the mover and follow it
     if (moverCount > 0) {
         Mover* m = &movers[0];
@@ -291,6 +301,22 @@ static void DrawPlayerHUD(void) {
 
     // Designation buttons
     y += 4;
+
+    // Explore button (survival fog of war — always available)
+    if (gameMode == GAME_MODE_SURVIVAL) {
+        bool exploreActive = (inputAction == ACTION_WORK_EXPLORE);
+        if (PushButton(10, y, exploreActive ? "* Explore *" : "Explore")) {
+            if (exploreActive) {
+                InputMode_ExitToNormal();
+            } else {
+                inputMode = MODE_WORK;
+                workSubMode = SUBMODE_NONE;
+                inputAction = ACTION_WORK_EXPLORE;
+            }
+        }
+        y += 22;
+    }
+
     clicked = false;
     bool harvestActive = (inputAction == ACTION_WORK_HARVEST_BERRY);
     if (PushButton(10, y, harvestActive ? "* Harvest Berries *" : "Harvest Berries")) {

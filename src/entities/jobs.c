@@ -144,6 +144,8 @@ static int knapCacheCount = 0;
 
 static OnTileDesignationEntry digRootsCache[MAX_DESIGNATION_CACHE];
 static int digRootsCacheCount = 0;
+static OnTileDesignationEntry exploreCache[MAX_DESIGNATION_CACHE];
+static int exploreCacheCount = 0;
 
 // Dirty flags - mark caches that need rebuilding
 static bool mineCacheDirty = true;
@@ -161,6 +163,7 @@ static bool cleanCacheDirty = true;
 static bool harvestBerryCacheDirty = true;
 static bool knapCacheDirty = true;
 static bool digRootsCacheDirty = true;
+static bool exploreCacheDirty = true;
 
 // Forward declarations for designation cache rebuild functions
 static void RebuildChannelDesignationCache(void);
@@ -177,6 +180,7 @@ static void RebuildCleanDesignationCache(void);
 static void RebuildHarvestBerryDesignationCache(void);
 static void RebuildKnapDesignationCache(void);
 static void RebuildDigRootsDesignationCache(void);
+static void RebuildExploreDesignationCache(void);
 
 // Forward declarations for WorkGivers (needed for designationSpecs table)
 static int WorkGiver_CleanDesignation(int moverIdx);
@@ -184,6 +188,7 @@ static int WorkGiver_HarvestBerry(int moverIdx);
 JobRunResult RunJob_HarvestBerry(Job* job, void* moverPtr, float dt);
 static int WorkGiver_KnapDesignation(int moverIdx);
 static int WorkGiver_DigRootsDesignation(int moverIdx);
+static int WorkGiver_ExploreDesignation(int moverIdx);
 
 // Designation Job Specification - consolidates designation type with job handling
 typedef struct {
@@ -228,6 +233,8 @@ static DesignationJobSpec designationSpecs[] = {
      knapCache, &knapCacheCount, &knapCacheDirty},
     {DESIGNATION_DIG_ROOTS, JOBTYPE_DIG_ROOTS, RebuildDigRootsDesignationCache, WorkGiver_DigRootsDesignation,
      digRootsCache, &digRootsCacheCount, &digRootsCacheDirty},
+    {DESIGNATION_EXPLORE, JOBTYPE_EXPLORE, RebuildExploreDesignationCache, WorkGiver_ExploreDesignation,
+     exploreCache, &exploreCacheCount, &exploreCacheDirty},
 };
 
 // Helper: Find first adjacent walkable tile. Returns true if found.
@@ -379,6 +386,12 @@ static void RebuildDigRootsDesignationCache(void) {
     if (!digRootsCacheDirty) return;
     RebuildOnTileDesignationCache(DESIGNATION_DIG_ROOTS, digRootsCache, &digRootsCacheCount);
     digRootsCacheDirty = false;
+}
+
+static void RebuildExploreDesignationCache(void) {
+    if (!exploreCacheDirty) return;
+    RebuildOnTileDesignationCache(DESIGNATION_EXPLORE, exploreCache, &exploreCacheCount);
+    exploreCacheDirty = false;
 }
 
 // Invalidate designation caches - call when designations are added/removed/completed
@@ -1194,6 +1207,104 @@ JobRunResult RunJob_DigRoots(Job* job, void* moverPtr, float dt) {
         return r;
     }
     return JOBRUN_FAIL;
+}
+
+// Trace full Bresenham line from (cx,cy) toward (tx,ty), stopping at first blocked cell.
+// Writes walkable cells into outPath, returns count (0 if first step is blocked).
+static int BresenhamTrace(int cx, int cy, int tx, int ty, int z, Point* outPath, int maxLen) {
+    int dx = abs(tx - cx);
+    int dy = abs(ty - cy);
+    int sx = (cx < tx) ? 1 : -1;
+    int sy = (cy < ty) ? 1 : -1;
+    int err = dx - dy;
+    int x = cx, y = cy;
+    int count = 0;
+
+    while (count < maxLen) {
+        if (x == tx && y == ty) break;  // reached target
+
+        int e2 = 2 * err;
+        int nx = x, ny = y;
+        if (e2 > -dy) { nx += sx; err -= dy; }
+        if (e2 < dx)  { ny += sy; err += dx; }
+
+        // Check if next cell is walkable
+        if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) break;
+        if (!IsCellWalkableAt(z, ny, nx)) break;
+
+        outPath[count++] = (Point){ nx, ny, z };
+        x = nx;
+        y = ny;
+    }
+
+    // Include the target itself if we reached it and it's walkable
+    if (x == tx && y == ty && count < maxLen) {
+        // Target already added as last step, or we need to add it
+        if (count == 0 || outPath[count-1].x != tx || outPath[count-1].y != ty) {
+            if (IsCellWalkableAt(z, ty, tx)) {
+                outPath[count++] = (Point){ tx, ty, z };
+            }
+        }
+    }
+
+    return count;
+}
+
+// Explore job driver: trace Bresenham line, string-pull, walk toward target
+JobRunResult RunJob_Explore(Job* job, void* moverPtr, float dt) {
+    (void)dt;
+    Mover* mover = (Mover*)moverPtr;
+    int moverIdx = (int)(mover - movers);
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
+
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || d->type != DESIGNATION_EXPLORE) return JOBRUN_FAIL;
+
+    int cx = (int)(mover->x / CELL_SIZE);
+    int cy = (int)(mover->y / CELL_SIZE);
+    int cz = (int)mover->z;
+
+    // Already at target?
+    if (cx == tx && cy == ty && cz == tz) {
+        CompleteExploreDesignation(tx, ty, tz);
+        return JOBRUN_DONE;
+    }
+
+    // If mover still has path waypoints to walk, let UpdateMovers handle it
+    if (mover->pathLength > 0 && mover->pathIndex >= 0 && mover->pathIndex < mover->pathLength) {
+        return JOBRUN_RUNNING;
+    }
+
+    // Trace the full Bresenham line from current position to target
+    Point tracePath[MAX_MOVER_PATH];
+    int traceLen = BresenhamTrace(cx, cy, tx, ty, cz, tracePath, MAX_MOVER_PATH);
+
+    if (traceLen == 0) {
+        // First step is blocked — done
+        CompleteExploreDesignation(tx, ty, tz);
+        return JOBRUN_DONE;
+    }
+
+    // Copy into mover path
+    for (int i = 0; i < traceLen; i++) {
+        moverPaths[moverIdx][i] = tracePath[i];
+    }
+    mover->pathLength = traceLen;
+    mover->pathIndex = 0;
+
+    // Reveal around current position each time we re-trace
+    RevealAroundPoint(cx, cy, cz, MOVER_VISION_RADIUS);
+
+    // Apply string pulling for smooth movement
+    if (mover->pathLength > 2) {
+        StringPullPath(moverPaths[moverIdx], &mover->pathLength);
+    }
+
+    // If trace stopped short (hit a wall before target), complete the designation
+    // once mover arrives at the last walkable cell (path exhausted next tick
+    // will re-enter, traceLen==0, and complete)
+
+    return JOBRUN_RUNNING;
 }
 
 // Gather tree job driver: walk to adjacent tile, work, spawn items
@@ -2429,10 +2540,11 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_DECONSTRUCT_WORKSHOP] = RunJob_DeconstructWorkshop,
     [JOBTYPE_HUNT] = RunJob_Hunt,
     [JOBTYPE_DIG_ROOTS] = RunJob_DigRoots,
+    [JOBTYPE_EXPLORE] = RunJob_Explore,
 };
 
 // Compile-time check: ensure jobDrivers[] covers all job types
-_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_DECONSTRUCT_WORKSHOP,
+_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_EXPLORE,
                "jobDrivers[] must have an entry for every JobType");
 
 // Tick function - runs job drivers for active jobs
@@ -3955,6 +4067,68 @@ static int WorkGiver_DigRootsDesignation(int moverIdx) {
 // Public wrapper for WorkGiver_DigRoots (declared in jobs.h)
 int WorkGiver_DigRoots(int moverIdx) {
     return WorkGiver_DigRootsDesignation(moverIdx);
+}
+
+// WorkGiver_ExploreDesignation: Find an explore designation — no pathfinding, no capability check
+static int WorkGiver_ExploreDesignation(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+
+    int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
+    float bestDistSq = 1e30f;
+
+    for (int i = 0; i < exploreCacheCount; i++) {
+        OnTileDesignationEntry* entry = &exploreCache[i];
+
+        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+        if (!d || d->type != DESIGNATION_EXPLORE || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
+
+        // Only same z-level
+        if (entry->z != (int)m->z) continue;
+
+        float tileX = entry->x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float tileY = entry->y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float distX = tileX - m->x;
+        float distY = tileY - m->y;
+        float distSq = distX * distX + distY * distY;
+
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestDesigX = entry->x;
+            bestDesigY = entry->y;
+            bestDesigZ = entry->z;
+        }
+    }
+
+    if (bestDesigX < 0) return -1;
+
+    // No pathfinding reachability check — walking blind is the whole point
+    int jobId = CreateJob(JOBTYPE_EXPLORE);
+    if (jobId < 0) return -1;
+
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetMineX = bestDesigX;
+    job->targetMineY = bestDesigY;
+    job->targetMineZ = bestDesigZ;
+    job->step = STEP_MOVING_TO_WORK;
+    job->progress = 0.0f;
+
+    Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+    d->assignedMover = moverIdx;
+
+    m->currentJobId = jobId;
+    // Do NOT set needsRepath — RunJob_Explore handles movement manually
+    m->goal = (Point){ bestDesigX, bestDesigY, bestDesigZ };
+
+    RemoveMoverFromIdleList(moverIdx);
+
+    return jobId;
+}
+
+// Public wrapper for WorkGiver_Explore (declared in jobs.h)
+int WorkGiver_Explore(int moverIdx) {
+    return WorkGiver_ExploreDesignation(moverIdx);
 }
 
 // WorkGiver_DeconstructWorkshop: Find workshop marked for deconstruction

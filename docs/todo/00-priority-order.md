@@ -15,6 +15,8 @@
 - **04a-butchering-and-cooking.md** — Carcass → butcher workshop → raw meat → cook at fire pit → eat. 4 new items (carcass, raw meat, cooked meat, hide)
 - **04b-hunting.md** — Hunt designation (W→U), chase & kill job driver, flee behavior, WorkGiver + 14 tests
 - **04c-root-foraging.md** — 3 root items (raw/roasted/dried), dig designation on dirt/clay/peat, roast at fire pit, dry at drying rack (save v70)
+- **04d-spoilage.md** — Spoilage timer, ItemCondition (FRESH/STALE/ROTTEN), container modifiers, rotten=fuel, refuse pile (save v71-v73)
+- **04e-animal-respawn.md** — Edge-spawn from map edges on timer, population cap + UI toggle (save v74)
 
 ## Reference Docs (not actionable tasks)
 
@@ -33,7 +35,7 @@
 | 01 | `01-workshop-construction-costs.md` | ~1 session | None | ✅ Done (save v63-v64) |
 | 02 | `02-tool-quality-and-digging-stick.md` | ~2.5 sessions | None | ✅ Done (save v65-v66) |
 
-### ~~Tier 1: Core Survival Loop (playable day-1)~~ — IN PROGRESS
+### ~~Tier 1: Core Survival Loop (playable day-1)~~ — COMPLETE ✅
 
 | # | Doc | Effort | Deps | Status |
 |---|-----|--------|------|--------|
@@ -42,8 +44,9 @@
 | 04b | `04b-hunting.md` | ~1 session | 04a ✅ | ✅ Done. Hunt designation (W→U), chase & kill, flee behavior, 14 tests. |
 | 04c | `04c-root-foraging.md` | ~1 session | 03 ✅ | ✅ Done. 3 root items, dig designation on soil, roast at fire pit, dry at drying rack. |
 | 04d | `04d-spoilage.md` | ~0.5 session | 04a ✅ | ✅ Done. Spoilage timer, ItemCondition (FRESH/STALE/ROTTEN), container modifiers, rotten=fuel, rejectsRotten stockpile + refuse pile shortcut (save v71-v73). See also `gameplay/seasoning-curing.md` for broader material conditioning — future work. |
-| 04e | `04e-animal-respawn.md` | ~0.5 session | None | Edge-spawn animals on timer, population cap. |
-| 05 | `05-fog-of-war-exploration.md` | ~3.5 sessions | None* | Map starts hidden in survival. Vision radius reveals terrain. Straight-line explore designation. Pathfinding untouched (exploration = job assignment filter only). *Best after 01-04 exist. |
+| 04e | `04e-animal-respawn.md` | ~0.5 session | None | ✅ Done. Edge-spawn from map edges, population cap, UI toggle, save v74. |
+| 05a | `05a-explore-designation.md` | ~1 session | None | ✅ Done. Straight-line Bresenham scouting job. Click → mover walks blind toward target, stops at obstacles. No pathfinding. |
+| 05b | `05-fog-of-war-exploration.md` | ~2.5 sessions | 05a ✅ | **In progress** — Phase 1 (grid + rendering + save/load) ✅, Phase 2 (block designations) ✅, Phase 3-5 remaining. |
 
 ### Tier 2: Expansion (deeper gameplay)
 
@@ -98,13 +101,17 @@ Session 7-8:    Hunting (04b)                                          ✅ DONE
 Session 8:      Root foraging (04c)                                      ✅ DONE
                 → 3 root items, dig designation on soil, roast/dry roots
 
-Session 8-9:    Spoilage + animal respawn (04d, 04e)                     04d ✅ DONE
-                → Spoilage timer + ItemCondition done, animal respawn next
+Session 8-9:    Spoilage + animal respawn (04d, 04e)                     ✅ DONE
+                → Spoilage timer + ItemCondition + animal respawn all complete
 
-Session 9-12:   Fog of war
-                → Map starts hidden, vision radius reveals terrain
-                → Straight-line explore designation (no pathfinding)
-                → Job assignment filters by explored state, HPA* untouched
+Session 9:      Explore designation (05a)                                    ✅ DONE
+                → Straight-line Bresenham scouting, no pathfinding
+
+Session 10-11:  Fog of war (05b)                                             🔧 IN PROGRESS
+                → Phase 1: exploredGrid + rendering + save v75               ✅ DONE
+                → Phase 2: block designations on unexplored                  ✅ DONE
+                → Phase 3: block hauling + job assignment                    ⬜ TODO
+                → Phase 5: polish (frontier edge, discovery events)          ⬜ TODO
 
 Session 13+:    Farming → clothing → thirst → loop closers → personality
 ```

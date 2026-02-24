@@ -605,6 +605,7 @@ void DrawCellGrid(void);
 void DrawGrassOverlay(void);
 void DrawPlantOverlay(void);
 void DrawRampOverlay(void);
+void DrawFogOfWar(void);
 void DrawMud(void);
 void DrawWater(void);
 void DrawFire(void);
@@ -1326,6 +1327,7 @@ int main(int argc, char** argv) {
         
         // Phase 5: Mist overlay (after all world elements, before UI)
         DrawMist();
+        DrawFogOfWar();
 
         // Draw workshop preview when in workshop placement mode
         // Workshop actions and WorkshopType enums are in the same order, so derive directly

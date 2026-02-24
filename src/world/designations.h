@@ -25,6 +25,7 @@ typedef enum {
     DESIGNATION_HARVEST_BERRY,  // Harvest ripe berry bush
     DESIGNATION_KNAP,           // Knap stone at rock wall surface
     DESIGNATION_DIG_ROOTS,      // Dig roots from natural soil
+    DESIGNATION_EXPLORE,        // Walk straight line toward target (scouting)
     DESIGNATION_TYPE_COUNT
 } DesignationType;
 
@@ -46,6 +47,7 @@ static inline const char* DesignationTypeName(int type) {
         [DESIGNATION_HARVEST_BERRY]  = "HARVEST_BERRY",
         [DESIGNATION_KNAP]           = "KNAP",
         [DESIGNATION_DIG_ROOTS]      = "DIG_ROOTS",
+        [DESIGNATION_EXPLORE]        = "EXPLORE",
     };
     return (type >= 0 && type < DESIGNATION_TYPE_COUNT) ? names[type] : "?";
 }
@@ -386,6 +388,22 @@ void CompleteDigRootsDesignation(int x, int y, int z, int moverIdx);
 
 // Count active dig roots designations
 int CountDigRootsDesignations(void);
+
+// =============================================================================
+// Explore designation functions
+// =============================================================================
+
+// Designate a target cell for exploration (walk straight line toward it)
+bool DesignateExplore(int x, int y, int z);
+
+// Check if a cell has an explore designation
+bool HasExploreDesignation(int x, int y, int z);
+
+// Complete an explore designation (clears designation)
+void CompleteExploreDesignation(int x, int y, int z);
+
+// Count active explore designations
+int CountExploreDesignations(void);
 
 // =============================================================================
 // Blueprint functions

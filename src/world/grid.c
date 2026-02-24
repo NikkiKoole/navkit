@@ -8,6 +8,7 @@
 CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 uint8_t vegetationGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+uint8_t exploredGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool needsRebuild = false;
 bool hpaNeedsRebuild = false;
 bool jpsNeedsRebuild = false;
@@ -48,6 +49,7 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
     // Clear the grid (all z-levels), cell flags, vegetation, and materials
     memset(cellFlags, 0, sizeof(cellFlags));
     memset(vegetationGrid, 0, sizeof(vegetationGrid));
+    memset(exploredGrid, 1, sizeof(exploredGrid));  // Default: all explored (sandbox)
     InitMaterials();
     
     for (int z = 0; z < gridDepth; z++) {
@@ -693,7 +695,49 @@ int InitMultiFloorGridFromAscii(const char* ascii, int chunkW, int chunkH) {
         }
         p++;
     }
-    
+
     SyncMaterialsToTerrain();
     return 1;
+}
+
+// Reveal cells around a point — circular x,y within radius,
+// then extends vertically through air (upward and downward until solid)
+void RevealAroundPoint(int cx, int cy, int cz, int radius) {
+    int r2 = radius * radius;
+    int minX = cx - radius; if (minX < 0) minX = 0;
+    int maxX = cx + radius; if (maxX >= gridWidth) maxX = gridWidth - 1;
+    int minY = cy - radius; if (minY < 0) minY = 0;
+    int maxY = cy + radius; if (maxY >= gridHeight) maxY = gridHeight - 1;
+
+    for (int y = minY; y <= maxY; y++) {
+        int dy = y - cy;
+        for (int x = minX; x <= maxX; x++) {
+            int dx = x - cx;
+            if (dx * dx + dy * dy > r2) continue;
+
+            // Reveal at mover's z-level
+            if (!exploredGrid[cz][y][x]) {
+                exploredGrid[cz][y][x] = 1;
+                MarkChunkDirty(x, y, cz);
+            }
+
+            // Reveal upward through air until solid or top
+            for (int z = cz + 1; z < gridDepth; z++) {
+                if (!exploredGrid[z][y][x]) {
+                    exploredGrid[z][y][x] = 1;
+                    MarkChunkDirty(x, y, z);
+                }
+                if (CellIsSolid(grid[z][y][x])) break;
+            }
+
+            // Reveal downward through air until solid or bottom
+            for (int z = cz - 1; z >= 0; z--) {
+                if (!exploredGrid[z][y][x]) {
+                    exploredGrid[z][y][x] = 1;
+                    MarkChunkDirty(x, y, z);
+                }
+                if (CellIsSolid(grid[z][y][x])) break;
+            }
+        }
+    }
 }

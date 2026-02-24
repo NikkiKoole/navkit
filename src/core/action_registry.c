@@ -876,6 +876,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canErase = true
     },
     {
+        .action = ACTION_WORK_EXPLORE,
+        .name = "EXPLORE",
+        .barDisplayText = "Explore",
+        .barText = "L-click designate  R-click cancel  [ESC]Back",
+        .barKey = 'e',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
+        .canDrag = false,
+        .canErase = true
+    },
+    {
         .action = ACTION_WORK_HUNT,
         .name = "HUNT",
         .barDisplayText = "hUnt",

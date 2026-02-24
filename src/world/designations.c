@@ -66,7 +66,8 @@ bool DesignateMine(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    
+    if (!IsExplored(x, y, z)) return false;
+
     // Can mine walls and terrain (DF-style: any solid)
     CellType ct = grid[z][y][x];
     if (!CellIsSolid(ct)) {
@@ -252,7 +253,8 @@ bool DesignateChannel(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    
+    if (!IsExplored(x, y, z)) return false;
+
     // Can't channel at z=0 (nothing below)
     if (z == 0) {
         return false;
@@ -558,7 +560,8 @@ bool DesignateDigRamp(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    
+    if (!IsExplored(x, y, z)) return false;
+
     // Can only dig ramps from solid cells
     CellType ct = grid[z][y][x];
     if (!CellIsSolid(ct)) {
@@ -669,7 +672,8 @@ bool DesignateRemoveFloor(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    
+    if (!IsExplored(x, y, z)) return false;
+
     // Already designated?
     if (designations[z][y][x].type != DESIGNATION_NONE) {
         return false;
@@ -769,7 +773,8 @@ bool DesignateRemoveRamp(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    
+    if (!IsExplored(x, y, z)) return false;
+
     // Already designated?
     if (designations[z][y][x].type != DESIGNATION_NONE) {
         return false;
@@ -877,7 +882,8 @@ bool DesignateChop(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    
+    if (!IsExplored(x, y, z)) return false;
+
     // Accept trunk, branch, or leaves — trace to find tree base
     CellType cell = grid[z][y][x];
     if (cell == CELL_TREE_BRANCH || cell == CELL_TREE_LEAVES) {
@@ -937,6 +943,7 @@ bool DesignateChopFelled(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
+    if (!IsExplored(x, y, z)) return false;
 
     if (designations[z][y][x].type != DESIGNATION_NONE) {
         return false;
@@ -1384,7 +1391,8 @@ bool DesignateGatherSapling(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    
+    if (!IsExplored(x, y, z)) return false;
+
     // Already designated?
     if (designations[z][y][x].type != DESIGNATION_NONE) {
         return false;
@@ -1459,7 +1467,8 @@ bool DesignatePlantSapling(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    
+    if (!IsExplored(x, y, z)) return false;
+
     // Already designated?
     if (designations[z][y][x].type != DESIGNATION_NONE) {
         return false;
@@ -1543,7 +1552,8 @@ bool DesignateGatherGrass(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    
+    if (!IsExplored(x, y, z)) return false;
+
     if (designations[z][y][x].type != DESIGNATION_NONE) {
         return false;
     }
@@ -1621,6 +1631,7 @@ bool DesignateGatherTree(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
+    if (!IsExplored(x, y, z)) return false;
 
     if (designations[z][y][x].type != DESIGNATION_NONE) {
         return false;
@@ -1707,6 +1718,7 @@ bool DesignateClean(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
+    if (!IsExplored(x, y, z)) return false;
 
     if (designations[z][y][x].type != DESIGNATION_NONE) {
         return false;
@@ -1777,6 +1789,7 @@ bool DesignateHarvestBerry(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
+    if (!IsExplored(x, y, z)) return false;
 
     // Auto-correct z-level: if no plant here but there's one at z-1 (bush visible from above)
     if (!IsPlantRipe(x, y, z) && z > 0 && IsPlantRipe(x, y, z - 1)) {
@@ -1852,6 +1865,7 @@ bool DesignateKnap(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
+    if (!IsExplored(x, y, z)) return false;
 
     // If viewing walkable layer (air above boulder), target the cell below
     if (!CellIsSolid(grid[z][y][x]) && z > 0 && CellIsSolid(grid[z-1][y][x])) {
@@ -1923,6 +1937,7 @@ bool DesignateDigRoots(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
+    if (!IsExplored(x, y, z)) return false;
 
     if (designations[z][y][x].type != DESIGNATION_NONE) {
         return false;
@@ -1999,6 +2014,64 @@ int CountDigRootsDesignations(void) {
 }
 
 // =============================================================================
+// Explore designation functions
+// =============================================================================
+
+bool DesignateExplore(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        return false;
+    }
+
+    // Target cell CAN be unwalkable (wall you're scouting toward) — minimal validation
+    designations[z][y][x].type = DESIGNATION_EXPLORE;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_EXPLORE);
+
+    return true;
+}
+
+bool HasExploreDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    return designations[z][y][x].type == DESIGNATION_EXPLORE;
+}
+
+void CompleteExploreDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return;
+    }
+
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        activeDesignationCount--;
+    }
+    designations[z][y][x].type = DESIGNATION_NONE;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    InvalidateDesignationCache(DESIGNATION_EXPLORE);
+}
+
+int CountExploreDesignations(void) {
+    int count = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type == DESIGNATION_EXPLORE) {
+                    count++;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// =============================================================================
 // Blueprint functions
 // =============================================================================
 
@@ -2029,6 +2102,7 @@ int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return -1;
     }
+    if (!IsExplored(x, y, z)) return -1;
 
     // Category-specific preconditions
     if (recipe->buildCategory == BUILD_WALL || recipe->buildCategory == BUILD_LADDER) {
@@ -2156,6 +2230,9 @@ int CreateWorkshopBlueprint(int originX, int originY, int z, int recipeIndex) {
             int cx = originX + dx;
             int cy = originY + dy;
             if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight || z < 0 || z >= gridDepth) {
+                return -1;
+            }
+            if (!IsExplored(cx, cy, z)) {
                 return -1;
             }
             if (!IsCellWalkableAt(z, cy, cx)) return -1;

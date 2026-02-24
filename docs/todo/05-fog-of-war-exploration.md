@@ -214,43 +214,41 @@ Spawn reveal radius: ~10-15 tiles. Enough to see your immediate surroundings, a 
 
 ## Implementation Phases
 
-### Phase 1: Exploration Grid + Rendering (~1 session)
+### Phase 1: Exploration Grid + Rendering — ✅ DONE (save v75)
 
-1. Add `exploredGrid[z][y][x]` (uint8_t, alongside other grids)
-2. Add `IsExplored(x, y, z)` / `SetExplored(x, y, z)` helpers
-3. Sandbox mode: init all explored. Survival mode: init all unexplored.
-4. Reveal spawn area on new game
-5. Mover movement: on each step, reveal cells within vision radius
-6. Rendering: draw black overlay on unexplored cells
-7. Save/load the explored grid (save version bump)
-8. **Test**: Grid init, reveal function, radius calculation
+1. ✅ `exploredGrid[z][y][x]` (uint8_t) in `grid.h` / `grid.c`
+2. ✅ `IsExplored(x, y, z)` / `SetExplored(x, y, z)` inline helpers (sandbox = always true)
+3. ✅ Sandbox mode: init all explored. Survival mode: init all unexplored in `StartNewGame()`.
+4. ✅ `RevealAroundPoint()` — circular x,y reveal + vertical extension through air until solid
+5. ✅ Spawn reveal (`SPAWN_VISION_RADIUS 12`) in `StartNewGame()` before first tick
+6. ✅ Mover movement reveal (`MOVER_VISION_RADIUS 10`) on cell change in `UpdateMovers()` Phase 3
+7. ✅ Explore job reveal in `RunJob_Explore()` each Bresenham re-trace
+8. ✅ `DrawFogOfWar()` — black rectangles over unexplored cells (survival only), called after `DrawMist()`
+9. ✅ Save/load `exploredGrid` (v75+), old saves default all-explored
+10. ✅ Inspector `fseek` skip for v75+
+11. ✅ `IsCellWalkableAt()` returns false for unexplored cells (pathfinding blocking)
+12. ✅ `RevealAroundPoint()` calls `MarkChunkDirty()` for HPA* chunk invalidation
 
-### Phase 2: Block Designations + Pathfinding (~0.5 session)
+### Phase 2: Block Designations — ✅ DONE
 
-1. Designation placement: reject if target cell is unexplored
-2. Pathfinding: treat unexplored cells as impassable (add check to walkability)
-3. Invalidate HPA* chunks when cells become explored (same as terrain change)
-4. **Test**: Can't designate unexplored, pathfinding avoids unexplored
+1. ✅ `IsExplored` check in all 14 `Designate*` functions (except `DesignateExplore`)
+2. ✅ `CreateRecipeBlueprint()` rejects unexplored cells (construction)
+3. ✅ `CreateWorkshopBlueprint()` rejects unexplored footprint cells
+4. ✅ `CreateStockpile()` rejects unexplored footprint cells
+5. ✅ "Explore" button added to survival player HUD
+6. Note: pathfinding blocking + HPA* invalidation done in Phase 1
 
-### Phase 3: Block Hauling + Job Assignment (~0.5 session)
+### Phase 3: Block Hauling + Job Assignment (~0.5 session) — TODO
 
 1. `IsItemHaulable()`: add `IsExplored()` check
 2. Berry harvest WorkGiver: skip unexplored bushes
 3. All WorkGiver functions: skip targets in unexplored areas
-4. Stockpile/workshop placement: reject in unexplored areas
-5. Tooltips: no info for unexplored cells
-6. **Test**: Items in unexplored areas ignored by haul, jobs don't target unexplored
+4. Tooltips: no info for unexplored cells
+5. **Test**: Items in unexplored areas ignored by haul, jobs don't target unexplored
 
-### Phase 4: Explore Designation (~1 session)
+### Phase 4: Explore Designation — ✅ DONE (05a, implemented separately)
 
-1. Add `DESIGNATION_EXPLORE` and `JOBTYPE_EXPLORE`
-2. Add `ACTION_WORK_EXPLORE` to action registry (under work submenu)
-3. Player clicks on dark/frontier area → system computes direction vector from mover to click
-4. Explore job: mover walks cell-by-cell along straight line (Bresenham), no A*/HPA*
-5. Each step reveals cells within vision radius
-6. Job ends when: next cell is blocked (wall/water/cliff) OR target reached
-7. Visual feedback: dotted line from mover toward cursor in explore mode
-8. **Test**: Mover walks straight line, reveals cells, stops at walls
+Extracted into its own card. The straight-line Bresenham explore job is independent of the fog grid and can be built first. When fog of war lands, each explore step also reveals cells within vision radius.
 
 ### Phase 5: Polish (~0.5 session)
 

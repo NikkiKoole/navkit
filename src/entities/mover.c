@@ -1443,6 +1443,11 @@ void UpdateMovers(void) {
             int trampleCellZ = (int)m->z;
             TrampleGround(trampleCellX, trampleCellY, trampleCellZ);
             MoverTrackDirt(i, trampleCellX, trampleCellY, trampleCellZ);
+
+            // Fog of war: reveal around mover when entering a new cell
+            if (trampleCellX != currentX || trampleCellY != currentY || trampleCellZ != currentZ) {
+                RevealAroundPoint(trampleCellX, trampleCellY, trampleCellZ, MOVER_VISION_RADIUS);
+            }
             
             // Track progress for stuck detection
             float dx = m->x - m->lastX;

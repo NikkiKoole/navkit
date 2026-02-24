@@ -100,6 +100,33 @@ extern uint8_t vegetationGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 #define GetVegetation(x,y,z)      ((VegetationType)vegetationGrid[z][y][x])
 #define SetVegetation(x,y,z,v)    (vegetationGrid[z][y][x] = (uint8_t)(v))
 
+// Exploration grid — fog of war (0=unexplored, 1=explored)
+extern uint8_t exploredGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
+#define MOVER_VISION_RADIUS  10
+#define SPAWN_VISION_RADIUS  12
+
+// Check if cell is explored (OOB = true for safety, sandbox = always true)
+#ifndef GAME_MODE_DEFINED
+#define GAME_MODE_DEFINED
+typedef enum { GAME_MODE_SANDBOX, GAME_MODE_SURVIVAL } GameMode;
+#endif
+extern GameMode gameMode;
+
+static inline bool IsExplored(int x, int y, int z) {
+    if (gameMode == GAME_MODE_SANDBOX) return true;
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return true;
+    return exploredGrid[z][y][x] != 0;
+}
+
+static inline void SetExplored(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
+    exploredGrid[z][y][x] = 1;
+}
+
+// Reveal all cells within radius of a point, extending vertically through air
+void RevealAroundPoint(int cx, int cy, int cz, int radius);
+
 // Cell flag helpers
 #define HAS_CELL_FLAG(x,y,z,f)     (!!(cellFlags[z][y][x] & (f)))
 #define SET_CELL_FLAG(x,y,z,f)     (cellFlags[z][y][x] |= (f))

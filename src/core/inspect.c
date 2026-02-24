@@ -1236,6 +1236,11 @@ int InspectSaveFile(int argc, char** argv) {
         fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);  // snowGrid
     }
 
+    // Explored grid (v75+, skip - not inspected)
+    if (version >= 75) {
+        fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);  // exploredGrid
+    }
+
     // === ENTITIES SECTION ===
     fread(&marker, 4, 1, f);
     if (marker != MARKER_ENTITIES) {

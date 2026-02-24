@@ -558,6 +558,33 @@ static void DrawCellGrid(void) {
     }
 }
 
+// Draw fog of war overlay — black rectangles over unexplored cells (survival mode only)
+void DrawFogOfWar(void);
+void DrawFogOfWar(void) {
+    if (gameMode != GAME_MODE_SURVIVAL) return;
+
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
+
+    // Cover all visible depths with fog where unexplored
+    int zStart = z - MAX_VISIBLE_DEPTH;
+    if (zStart < 0) zStart = 0;
+
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            // If any visible z-level at this column is unexplored, draw fog
+            // Use the current view z-level as the primary check
+            if (!IsExplored(x, y, z)) {
+                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                DrawRectangleRec(dest, BLACK);
+            }
+        }
+    }
+}
+
 // Draw ramps as a late pass — after grass, mud, snow, clouds so they're always visible
 // Covers all visible depths (same range as DrawDeeperLevelCells + ground + current)
 void DrawRampOverlay(void);
@@ -2365,6 +2392,7 @@ static const Color designationOverlayColors[DESIGNATION_TYPE_COUNT] = {
     [DESIGNATION_HARVEST_BERRY]  = {200, 100, 220, 200},
     [DESIGNATION_KNAP]           = {200, 150, 100, 200},
     [DESIGNATION_DIG_ROOTS]      = {160, 120, 60, 200},
+    [DESIGNATION_EXPLORE]        = {100, 200, 255, 200},
 };
 
 static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
@@ -2384,6 +2412,7 @@ static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
     [DESIGNATION_HARVEST_BERRY]  = {220, 120, 240, 255},
     [DESIGNATION_KNAP]           = {180, 130, 80, 255},
     [DESIGNATION_DIG_ROOTS]      = {140, 100, 40, 255},
+    [DESIGNATION_EXPLORE]        = {80, 180, 240, 255},
 };
 
 // Active job overlay colors, indexed by JobType

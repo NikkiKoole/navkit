@@ -334,6 +334,13 @@ bool SaveWorld(const char* filename) {
         }
     }
 
+    // Explored grid (fog of war, v75+)
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(exploredGrid[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+
     // === ENTITIES SECTION ===
     marker = MARKER_ENTITIES;
     fwrite(&marker, sizeof(marker), 1, f);
@@ -789,6 +796,17 @@ bool LoadWorld(const char* filename) {
         }
     } else {
         memset(floorDirtGrid, 0, sizeof(floorDirtGrid));
+    }
+
+    // Explored grid (fog of war, v75+)
+    if (version >= 75) {
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                fread(exploredGrid[z][y], sizeof(uint8_t), gridWidth, f);
+            }
+        }
+    } else {
+        memset(exploredGrid, 1, sizeof(exploredGrid));  // Old saves: all explored
     }
 
     // === ENTITIES SECTION ===

@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 74
+#define CURRENT_SAVE_VERSION 75
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)

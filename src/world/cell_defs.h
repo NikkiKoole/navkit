@@ -89,7 +89,10 @@ static inline bool IsWallCell(CellType cell) {
 static inline bool IsCellWalkableAt(int z, int y, int x) {
     // Bounds check
     if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
-    
+
+    // Unexplored cells are impassable (fog of war)
+    if (!IsExplored(x, y, z)) return false;
+
     CellType cellHere = grid[z][y][x];
     
     // Can't walk through solid blocks (walls)

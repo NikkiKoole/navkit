@@ -286,6 +286,13 @@ void InvalidateStockpileSlotCacheAll(void) {
 }
 
 int CreateStockpile(int x, int y, int z, int width, int height) {
+    // Block placement on unexplored cells (fog of war)
+    for (int dy = 0; dy < height && dy < MAX_STOCKPILE_SIZE; dy++) {
+        for (int dx = 0; dx < width && dx < MAX_STOCKPILE_SIZE; dx++) {
+            if (!IsExplored(x + dx, y + dy, z)) return -1;
+        }
+    }
+
     // Find first inactive slot
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         if (!stockpiles[i].active) {

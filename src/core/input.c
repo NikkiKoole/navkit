@@ -930,6 +930,27 @@ static void ExecuteCancelDigRoots(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecuteDesignateExplore(int x, int y, int z) {
+    if (DesignateExplore(x, y, z)) {
+        AddMessage(TextFormat("Designated (%d,%d,z%d) for exploration", x, y, z), (Color){180, 220, 100, 255});
+    }
+}
+
+static void ExecuteCancelExplore(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (HasExploreDesignation(dx, dy, z)) {
+                CancelDesignation(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Cancelled %d explore designation%s", count, count > 1 ? "s" : ""), (Color){180, 220, 100, 255});
+    }
+}
+
 static void ExecuteDesignateBuild(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -2929,6 +2950,10 @@ void HandleInput(void) {
             case ACTION_WORK_DIG_ROOTS:
                 if (leftClick) ExecuteDesignateDigRoots(x1, y1, x2, y2, z);
                 else ExecuteCancelDigRoots(x1, y1, x2, y2, z);
+                break;
+            case ACTION_WORK_EXPLORE:
+                if (leftClick) ExecuteDesignateExplore(x1, y1, z);
+                else ExecuteCancelExplore(x1, y1, x2, y2, z);
                 break;
             case ACTION_WORK_HUNT:
                 if (leftClick) ExecuteMarkHunt(x1, y1, x2, y2, z);
