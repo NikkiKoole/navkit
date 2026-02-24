@@ -30,6 +30,7 @@ typedef enum {
     ACTION_DRAW_LADDER,
     ACTION_DRAW_RAMP,
     ACTION_DRAW_STOCKPILE,
+    ACTION_DRAW_REFUSE_PILE,  // Stockpile with rejectsRotten=false for rotten items
     ACTION_DRAW_WORKSHOP,  // Workshop category - sub-actions for each type
     ACTION_DRAW_WORKSHOP_STONECUTTER,
     ACTION_DRAW_WORKSHOP_SAWMILL,

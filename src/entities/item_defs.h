@@ -23,6 +23,7 @@ typedef struct {
     uint8_t defaultMaterial; // Default MaterialType when spawned without explicit material
     float weight;         // Weight in kg (affects carry speed)
     float nutrition;      // Hunger restored when eaten (0=not food)
+    float spoilageLimit;  // Game-seconds until spoiled (0 = doesn't spoil, only if IF_SPOILS)
 } ItemDef;
 
 // Item definitions table (indexed by ItemType)
@@ -46,5 +47,6 @@ extern const ItemDef itemDefs[];
 #define ItemDefaultMaterial(t)  (itemDefs[t].defaultMaterial)
 #define ItemWeight(t)           (itemDefs[t].weight)
 #define ItemNutrition(t)        (itemDefs[t].nutrition)
+#define ItemSpoilageLimit(t)    (itemDefs[t].spoilageLimit)
 
 #endif

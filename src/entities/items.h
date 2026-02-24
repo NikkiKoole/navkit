@@ -63,6 +63,13 @@ typedef enum {
     ITEM_IN_CONTAINER     // inside another item
 } ItemState;
 
+// Item condition (spoilage progression)
+typedef enum {
+    CONDITION_FRESH = 0,   // Timer < 50% of limit
+    CONDITION_STALE,       // Timer 50-80% of limit
+    CONDITION_ROTTEN       // Timer >= 100% of limit
+} ItemCondition;
+
 // Item struct
 typedef struct {
     float x, y, z;
@@ -77,6 +84,8 @@ typedef struct {
     int containedIn;          // item index of container (-1 = not contained)
     int contentCount;         // items directly inside this container (0 if not container)
     uint32_t contentTypeMask; // bitmask of ItemTypes inside (bloom filter, never cleared on remove)
+    float spoilageTimer;      // game-seconds elapsed since spawn (0 = fresh, only used if IF_SPOILS)
+    uint8_t condition;        // ItemCondition (CONDITION_FRESH/STALE/ROTTEN)
 } Item;
 
 #define MAX_ITEMS 25000
@@ -164,6 +173,10 @@ static inline int GetItemZ(int itemIdx) { return (int)items[itemIdx].z; }
 static inline ItemType GetItemType(int itemIdx) { return items[itemIdx].type; }
 static inline int GetItemReservedBy(int itemIdx) { return items[itemIdx].reservedBy; }
 static inline int GetItemStackCount(int itemIdx) { return items[itemIdx].stackCount; }
+
+static inline bool IsItemRotten(int itemIdx) {
+    return items[itemIdx].condition == CONDITION_ROTTEN;
+}
 
 static inline bool IsSaplingItem(ItemType type) {
     return type == ITEM_SAPLING;

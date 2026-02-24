@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 70
+#define CURRENT_SAVE_VERSION 73
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)
@@ -487,6 +487,94 @@ typedef struct {
     int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int freeSlotCount;
 } StockpileV67;
+
+// V70 Item struct (before spoilageTimer field added in v71)
+typedef struct {
+    float x, y, z;
+    ItemType type;
+    ItemState state;
+    uint8_t material;
+    bool natural;
+    bool active;
+    int reservedBy;
+    float unreachableCooldown;
+    int stackCount;
+    int containedIn;
+    int contentCount;
+    uint32_t contentTypeMask;
+} ItemV70;
+
+// Version 71 constants (before ITEM_ROT + MAT_ROTTEN_MEAT/PLANT in v72)
+#define V71_ITEM_TYPE_COUNT 45
+#define V71_MAT_COUNT 17
+
+// V71 Stockpile struct (before ITEM_ROT and rot materials added in v72)
+// v71 had 45 item types and 17 materials
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V71_ITEM_TYPE_COUNT];
+    bool allowedMaterials[V71_MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int maxContainers;
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+} StockpileV71;
+
+// Version 72 constants (before condition field on Item, before ITEM_ROT/MAT_ROTTEN removal in v73)
+#define V72_ITEM_TYPE_COUNT 46
+#define V72_MAT_COUNT 19
+
+// V72 Item struct (before condition field added in v73)
+typedef struct {
+    float x, y, z;
+    ItemType type;
+    ItemState state;
+    uint8_t material;
+    bool natural;
+    bool active;
+    int reservedBy;
+    float unreachableCooldown;
+    int stackCount;
+    int containedIn;
+    int contentCount;
+    uint32_t contentTypeMask;
+    float spoilageTimer;
+    // No condition field in V72
+} ItemV72;
+
+// V72 Stockpile struct (before ITEM_ROT removal + rejectsRotten addition in v73)
+// v72 had 46 item types (including ITEM_ROT at index 45) and 19 materials
+// (including MAT_ROTTEN_MEAT at 16 and MAT_ROTTEN_PLANT at 17)
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V72_ITEM_TYPE_COUNT];
+    bool allowedMaterials[V72_MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int maxContainers;
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+    // No rejectsRotten in V72
+} StockpileV72;
 
 // V63 Workshop struct (before markedForDeconstruct/assignedDeconstructor fields added in v64)
 #include "../entities/workshops.h"

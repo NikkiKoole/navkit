@@ -595,10 +595,17 @@ static void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int 
         char typeName[64];
         FormatItemName(item, typeName, sizeof(typeName));
         const char* stateName = (item->state >= 0 && item->state < 3) ? stateNames[item->state] : "?";
+        // Freshness label for spoilable items
+        const char* freshness = "";
+        if (ItemSpoils(item->type)) {
+            if (item->condition == CONDITION_ROTTEN) freshness = " Rotten";
+            else if (item->condition == CONDITION_STALE) freshness = " Stale";
+            else freshness = " Fresh";
+        }
         if (item->stackCount > 1) {
-            snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s x%d (%s)", idx, typeName, item->stackCount, stateName);
+            snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s x%d (%s%s)", idx, typeName, item->stackCount, stateName, freshness);
         } else {
-            snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s (%s)", idx, typeName, stateName);
+            snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s (%s%s)", idx, typeName, stateName, freshness);
         }
         lineCount++;
     }
@@ -632,6 +639,11 @@ static void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int 
         if (items[idx].type == ITEM_RED) col = RED;
         else if (items[idx].type == ITEM_GREEN) col = GREEN;
         else if (items[idx].type == ITEM_BLUE) col = (Color){100, 150, 255, 255};
+        // Tint spoiling items
+        if (ItemSpoils(items[idx].type)) {
+            if (items[idx].condition == CONDITION_ROTTEN) col = (Color){255, 100, 100, 255};       // red — rotten
+            else if (items[idx].condition == CONDITION_STALE) col = (Color){255, 200, 100, 255};  // orange — stale
+        }
         DrawTextShadow(lines[i], tx + padding, y, 14, col);
         y += lineH;
     }

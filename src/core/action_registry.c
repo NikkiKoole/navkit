@@ -91,7 +91,20 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = true,
         .canErase = true
     },
-    
+    {
+        .action = ACTION_DRAW_REFUSE_PILE,
+        .name = "REFUSE_PILE",
+        .barDisplayText = "Refuse pile",
+        .barText = "L-drag create  R-drag erase  [ESC]Back",
+        .barKey = 'r',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
+        .canDrag = true,
+        .canErase = true
+    },
+
     // DRAW > SOIL (category)
     {
         .action = ACTION_DRAW_SOIL,

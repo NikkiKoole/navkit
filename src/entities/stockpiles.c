@@ -336,6 +336,7 @@ int CreateStockpile(int x, int y, int z, int width, int height) {
             sp->priority = 5;
             sp->maxStackSize = MAX_STACK_SIZE;
             sp->maxContainers = 0;
+            sp->rejectsRotten = true;
             
             stockpileCount++;
             InvalidateStockpileSlotCacheAll();  // New stockpile added

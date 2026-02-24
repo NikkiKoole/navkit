@@ -8,7 +8,7 @@
 
 // Item definitions indexed by ItemType enum
 // Order must match ItemType enum in items.h
-// Fields: name, sprite, flags, maxStack, defaultMaterial, weight(kg), nutrition
+// Fields: name, sprite, flags, maxStack, defaultMaterial, weight(kg), nutrition, spoilageLimit(s)
 // Use IF_MATERIAL_NAME for items that display their material (e.g. "Oak Log")
 #define MN IF_MATERIAL_NAME
 const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
@@ -37,7 +37,7 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_STRIPPED_LOG] = { "Stripped Log",  SPRITE_tree_stripped_log_oak, IF_STACKABLE | IF_BUILDING_MAT | IF_FUEL | MN, 20, MAT_OAK, 18.0f, 0.0f },
     [ITEM_SHORT_STRING] = { "Short String", SPRITE_short_string, IF_STACKABLE, 20, MAT_NONE, 0.2f, 0.0f },
     [ITEM_CORDAGE]      = { "Cordage",      SPRITE_cordage,      IF_STACKABLE, 20, MAT_NONE, 0.5f, 0.0f },
-    [ITEM_BERRIES]      = { "Berries",      SPRITE_division,     IF_STACKABLE | IF_EDIBLE, 20, MAT_NONE, 0.3f, 0.3f },
+    [ITEM_BERRIES]      = { "Berries",      SPRITE_division,     IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 20, MAT_NONE, 0.3f, 0.3f, 480.0f },
     [ITEM_DRIED_BERRIES]= { "Dried Berries",SPRITE_grass_trampled,IF_STACKABLE | IF_EDIBLE, 20, MAT_NONE, 0.2f, 0.25f },
     [ITEM_BASKET]       = { "Basket",       SPRITE_crate_green,  IF_STACKABLE | IF_CONTAINER, 10, MAT_NONE, 1.0f, 0.0f },
     [ITEM_CLAY_POT]     = { "Clay Pot",     SPRITE_crate_red,    IF_STACKABLE | IF_CONTAINER, 10, MAT_NONE, 3.0f, 0.0f },
@@ -49,12 +49,12 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_STONE_AXE]    = { "Stone Axe",   SPRITE_loose_rock,   IF_TOOL | MN, 1, MAT_GRANITE, 3.0f, 0.0f },
     [ITEM_STONE_PICK]   = { "Stone Pick",  SPRITE_loose_rock,   IF_TOOL | MN, 1, MAT_GRANITE, 3.5f, 0.0f },
     [ITEM_STONE_HAMMER] = { "Stone Hammer", SPRITE_loose_rock,  IF_TOOL | MN, 1, MAT_GRANITE, 2.5f, 0.0f },
-    [ITEM_CARCASS]      = { "Carcass",      SPRITE_loose_rock,   0, 1, MAT_NONE, 25.0f, 0.0f },
-    [ITEM_RAW_MEAT]     = { "Raw Meat",     SPRITE_division,     IF_STACKABLE | IF_EDIBLE, 5, MAT_NONE, 1.0f, 0.2f },
-    [ITEM_COOKED_MEAT]  = { "Cooked Meat",  SPRITE_division,     IF_STACKABLE | IF_EDIBLE, 5, MAT_NONE, 0.8f, 0.5f },
+    [ITEM_CARCASS]      = { "Carcass",      SPRITE_loose_rock,   IF_SPOILS, 1, MAT_NONE, 25.0f, 0.0f, 60.0f },
+    [ITEM_RAW_MEAT]     = { "Raw Meat",     SPRITE_division,     IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 5, MAT_NONE, 1.0f, 0.2f, 120.0f },
+    [ITEM_COOKED_MEAT]  = { "Cooked Meat",  SPRITE_division,     IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 5, MAT_NONE, 0.8f, 0.5f, 300.0f },
     [ITEM_HIDE]         = { "Hide",         SPRITE_grass_trampled, IF_STACKABLE, 5, MAT_NONE, 2.0f, 0.0f },
-    [ITEM_ROOT]         = { "Root",         SPRITE_tree_stick,   IF_STACKABLE | IF_EDIBLE, 20, MAT_NONE, 0.4f, 0.1f },
-    [ITEM_ROASTED_ROOT] = { "Roasted Root", SPRITE_tree_stick,   IF_STACKABLE | IF_EDIBLE, 20, MAT_NONE, 0.3f, 0.35f },
+    [ITEM_ROOT]         = { "Root",         SPRITE_tree_stick,   IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 20, MAT_NONE, 0.4f, 0.1f, 480.0f },
+    [ITEM_ROASTED_ROOT] = { "Roasted Root", SPRITE_tree_stick,   IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 20, MAT_NONE, 0.3f, 0.35f, 300.0f },
     [ITEM_DRIED_ROOT]   = { "Dried Root",   SPRITE_tree_stick,   IF_STACKABLE | IF_EDIBLE, 20, MAT_NONE, 0.2f, 0.2f },
 };
 #undef MN

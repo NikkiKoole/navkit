@@ -3261,12 +3261,28 @@ static void AssignJobs_P3c_Rehaul(void) {
         int destSlotX, destSlotY;
         int destSp = -1;
 
-        bool noLongerAllowed = !StockpileAcceptsItem(currentSp, items[j].type, items[j].material);
+        bool noLongerAllowed = !StockpileAcceptsItem(currentSp, items[j].type, items[j].material)
+            || (stockpiles[currentSp].rejectsRotten && items[j].condition == CONDITION_ROTTEN);
         bool isOverfull = IsSlotOverfull(currentSp, itemSlotX, itemSlotY);
         int haulItemIdx = j;
 
         if (noLongerAllowed) {
-            destSp = FindStockpileForItemCached(items[j].type, items[j].material, &destSlotX, &destSlotY);
+            // For rotten items, find a stockpile that accepts rotten (rejectsRotten=false)
+            if (items[j].condition == CONDITION_ROTTEN) {
+                destSp = -1;
+                for (int sp = 0; sp < MAX_STOCKPILES; sp++) {
+                    if (!stockpiles[sp].active) continue;
+                    if (stockpiles[sp].rejectsRotten) continue;
+                    if (!StockpileAcceptsItem(sp, items[j].type, items[j].material)) continue;
+                    if (stockpiles[sp].freeSlotCount <= 0) continue;
+                    if (FindFreeStockpileSlot(sp, items[j].type, items[j].material, &destSlotX, &destSlotY)) {
+                        destSp = sp;
+                        break;
+                    }
+                }
+            } else {
+                destSp = FindStockpileForItemCached(items[j].type, items[j].material, &destSlotX, &destSlotY);
+            }
         } else if (isOverfull) {
             destSp = FindStockpileForOverfullItem(j, currentSp, &destSlotX, &destSlotY);
             // Split off the excess from the overfull stack
@@ -3319,7 +3335,9 @@ static void AssignJobs_P3e_ContainerCleanup(void) {
                 if (items[j].containedIn != containerIdx) continue;
                 if (items[j].reservedBy != -1) continue;
 
-                if (!StockpileAcceptsItem(spIdx, items[j].type, items[j].material)) {
+                bool illegal = !StockpileAcceptsItem(spIdx, items[j].type, items[j].material)
+                    || (sp->rejectsRotten && items[j].condition == CONDITION_ROTTEN);
+                if (illegal) {
                     // Extract from container — item becomes ITEM_ON_GROUND at container pos
                     ExtractItemFromContainer(j);
 

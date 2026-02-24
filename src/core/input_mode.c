@@ -347,6 +347,7 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
                 break;
             case ACTION_DRAW_STOCKPILE:
+            case ACTION_DRAW_REFUSE_PILE:
                 n = AddItem(items, n, "L-drag create", 0, -1, false, true, false);
                 n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
                 break;

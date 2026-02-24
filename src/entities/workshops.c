@@ -275,6 +275,11 @@ static bool WorkshopHasInputForRecipe(Workshop* ws, const Recipe* recipe, int se
 }
 
 // Check if any unreserved fuel item (IF_FUEL flag) exists within search radius
+// Helper: item is usable as fuel (has IF_FUEL flag OR is rotten)
+static inline bool ItemIsFuelOrRotten(const Item* item) {
+    return (ItemFlags(item->type) & IF_FUEL) || item->condition == CONDITION_ROTTEN;
+}
+
 bool WorkshopHasFuelForRecipe(Workshop* ws, int searchRadius) {
     if (searchRadius == 0) searchRadius = 100;
     int bestDistSq = searchRadius * searchRadius;
@@ -283,7 +288,7 @@ bool WorkshopHasFuelForRecipe(Workshop* ws, int searchRadius) {
         Item* item = &items[i];
         if (!item->active) continue;
         if (item->state == ITEM_IN_CONTAINER) continue;
-        if (!(ItemFlags(item->type) & IF_FUEL)) continue;
+        if (!ItemIsFuelOrRotten(item)) continue;
         if (item->reservedBy != -1) continue;
         if (item->unreachableCooldown > 0.0f) continue;
         int iz = (int)item->z;
@@ -322,7 +327,7 @@ int FindNearestFuelItem(Workshop* ws, int searchRadius) {
         Item* item = &items[i];
         if (!item->active) continue;
         if (item->state == ITEM_IN_CONTAINER) continue;
-        if (!(ItemFlags(item->type) & IF_FUEL)) continue;
+        if (!ItemIsFuelOrRotten(item)) continue;
         if (item->reservedBy != -1) continue;
         if (item->unreachableCooldown > 0.0f) continue;
         int iz = (int)item->z;
@@ -361,8 +366,8 @@ bool RecipeInputMatches(const Recipe* recipe, const Item* item) {
 
     // Check item type matching
     if (recipe->inputItemMatch == ITEM_MATCH_ANY_FUEL) {
-        // Match any item with IF_FUEL flag
-        if (!(ItemFlags(item->type) & IF_FUEL)) return false;
+        // Match any item with IF_FUEL flag or rotten condition
+        if (!ItemIsFuelOrRotten(item)) return false;
     } else {
         // Exact item type match (default)
         if (item->type != recipe->inputType) return false;

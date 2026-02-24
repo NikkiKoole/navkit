@@ -36,6 +36,7 @@ static int FindNearestEdibleInStockpile(float x, float y, int z) {
         if (items[i].state != ITEM_IN_STOCKPILE) continue;
         if (items[i].reservedBy != -1) continue;
         if (!ItemIsEdible(items[i].type)) continue;
+        if (items[i].condition == CONDITION_ROTTEN) continue;
 
         float dx = items[i].x - x;
         float dy = items[i].y - y;
@@ -61,6 +62,7 @@ static int FindNearestEdibleOnGround(float x, float y, int z) {
         if (items[i].state != ITEM_ON_GROUND) continue;
         if (items[i].reservedBy != -1) continue;
         if (!ItemIsEdible(items[i].type)) continue;
+        if (items[i].condition == CONDITION_ROTTEN) continue;
 
         float dx = items[i].x - x;
         float dy = items[i].y - y;

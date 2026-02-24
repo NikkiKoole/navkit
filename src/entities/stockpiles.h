@@ -75,6 +75,8 @@ typedef struct {
     int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // item index on this slot, -1 if none
     // Free slot cache (avoids scanning all tiles when stockpile is full)
     int freeSlotCount;     // number of unreserved slots with room for items (rebuilt each frame)
+    // Rotten item rejection (default true — most stockpiles reject rotten food)
+    bool rejectsRotten;
 } Stockpile;
 
 // Gather zones

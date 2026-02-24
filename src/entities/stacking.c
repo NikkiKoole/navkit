@@ -13,6 +13,14 @@ int MergeItemIntoStack(int existingIdx, int incomingIdx) {
     if (room <= 0) return 0;
 
     int toMerge = items[incomingIdx].stackCount;
+    // Spoilage: take the worse (higher) timer on merge
+    if (items[incomingIdx].spoilageTimer > items[existingIdx].spoilageTimer) {
+        items[existingIdx].spoilageTimer = items[incomingIdx].spoilageTimer;
+    }
+    // Condition: take the worse (higher) condition on merge
+    if (items[incomingIdx].condition > items[existingIdx].condition) {
+        items[existingIdx].condition = items[incomingIdx].condition;
+    }
     if (toMerge <= room) {
         // Full merge — incoming item is consumed
         items[existingIdx].stackCount += toMerge;
@@ -44,6 +52,8 @@ int SplitStack(int itemIdx, int count) {
     if (newIdx < 0) return -1;
 
     items[newIdx].stackCount = count;
+    items[newIdx].spoilageTimer = items[itemIdx].spoilageTimer;
+    items[newIdx].condition = items[itemIdx].condition;
     items[newIdx].natural = items[itemIdx].natural;
     // New item inherits state from original (ground, stockpile, etc.)
     items[newIdx].state = items[itemIdx].state;

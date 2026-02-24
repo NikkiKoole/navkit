@@ -1498,6 +1498,10 @@ int main(int argc, char** argv) {
                             fillColor = (Color){0, 200, 0, 80};
                             lineColor = GREEN;
                             break;
+                        case ACTION_DRAW_REFUSE_PILE:
+                            fillColor = (Color){139, 90, 43, 80};
+                            lineColor = BROWN;
+                            break;
                         case ACTION_WORK_MINE:
                             fillColor = (Color){255, 150, 0, 80};
                             lineColor = ORANGE;

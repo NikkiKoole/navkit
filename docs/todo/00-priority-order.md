@@ -41,7 +41,7 @@
 | 04a | `04a-butchering-and-cooking.md` | ~1 session | 03 ✅ | ✅ Done. Carcass → butcher → raw meat → cook → eat. |
 | 04b | `04b-hunting.md` | ~1 session | 04a ✅ | ✅ Done. Hunt designation (W→U), chase & kill, flee behavior, 14 tests. |
 | 04c | `04c-root-foraging.md` | ~1 session | 03 ✅ | ✅ Done. 3 root items, dig designation on soil, roast at fire pit, dry at drying rack. |
-| 04d | `04d-spoilage.md` | ~0.5 session | 04a ✅ | ← **NEXT** Spoilage timer on items, decay tick, container modifiers. |
+| 04d | `04d-spoilage.md` | ~0.5 session | 04a ✅ | ✅ Done. Spoilage timer, decay tick, container modifiers, ITEM_ROT conversion (04d2), refuse pile shortcut. See also `gameplay/seasoning-curing.md` for broader material conditioning — future work. |
 | 04e | `04e-animal-respawn.md` | ~0.5 session | None | Edge-spawn animals on timer, population cap. |
 | 05 | `05-fog-of-war-exploration.md` | ~3.5 sessions | None* | Map starts hidden in survival. Vision radius reveals terrain. Straight-line explore designation. Pathfinding untouched (exploration = job assignment filter only). *Best after 01-04 exist. |
 

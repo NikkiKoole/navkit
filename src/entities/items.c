@@ -6,6 +6,7 @@
 #include "../core/event_log.h"
 #include "../world/cell_defs.h"  // for IsCellWalkableAt
 #include "stockpiles.h"  // for MarkStockpileGroundItem
+#include "containers.h"  // for ContainerDef, GetContainerDef, GetOutermostContainer
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +26,8 @@ void ClearItems(void) {
         items[i].containedIn = -1;
         items[i].contentCount = 0;
         items[i].contentTypeMask = 0;
+        items[i].spoilageTimer = 0.0f;
+        items[i].condition = CONDITION_FRESH;
     }
     itemCount = 0;
     itemHighWaterMark = 0;
@@ -53,6 +56,8 @@ int SpawnItem(float x, float y, float z, ItemType type) {
             items[i].containedIn = -1;
             items[i].contentCount = 0;
             items[i].contentTypeMask = 0;
+            items[i].spoilageTimer = 0.0f;
+            items[i].condition = CONDITION_FRESH;
             itemCount++;
             if (i + 1 > itemHighWaterMark) {
                 itemHighWaterMark = i + 1;
@@ -238,6 +243,42 @@ void ItemsTickNaive(float dt) {
     }
 }
 
+// Advance spoilage timers and update item condition
+static void SpoilageTick(float dt) {
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (!items[i].active) continue;
+        if (!ItemSpoils(items[i].type)) continue;
+        if (items[i].condition == CONDITION_ROTTEN) continue;  // Already rotten, stop
+        float limit = ItemSpoilageLimit(items[i].type);
+        if (limit <= 0.0f) continue;
+        // Don't spoil carried items (prevents mid-job deletion)
+        if (items[i].state == ITEM_CARRIED) continue;
+
+        // Container modifier: walk to outermost container
+        float rate = dt;
+        if (items[i].containedIn != -1) {
+            int outermost = GetOutermostContainer(i);
+            // Skip items in a carried container
+            if (items[outermost].state == ITEM_CARRIED) continue;
+            const ContainerDef* cdef = GetContainerDef(items[outermost].type);
+            if (cdef) rate = dt * cdef->spoilageModifier;
+        }
+
+        items[i].spoilageTimer += rate;
+
+        // Update condition based on timer ratio
+        float ratio = items[i].spoilageTimer / limit;
+        if (ratio >= 1.0f) {
+            items[i].condition = CONDITION_ROTTEN;
+            EventLog("SPOILED item %d (%s x%d) at (%.0f,%.0f,z%.0f) after %.0fs → rotten",
+                     i, ItemName(items[i].type), items[i].stackCount,
+                     items[i].x, items[i].y, items[i].z, items[i].spoilageTimer);
+        } else if (ratio >= 0.5f) {
+            items[i].condition = CONDITION_STALE;
+        }
+    }
+}
+
 // Optimized - only iterates up to high water mark
 void ItemsTick(float dt) {
     for (int i = 0; i < itemHighWaterMark; i++) {
@@ -249,6 +290,7 @@ void ItemsTick(float dt) {
             }
         }
     }
+    SpoilageTick(dt);
 }
 
 void SetItemUnreachableCooldown(int itemIndex, float cooldown) {

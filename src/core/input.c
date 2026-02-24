@@ -1102,6 +1102,31 @@ static void ExecuteCreateStockpile(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecuteCreateRefusePile(int x1, int y1, int x2, int y2, int z) {
+    int width = x2 - x1 + 1;
+    int height = y2 - y1 + 1;
+    if (width > MAX_STOCKPILE_SIZE) width = MAX_STOCKPILE_SIZE;
+    if (height > MAX_STOCKPILE_SIZE) height = MAX_STOCKPILE_SIZE;
+
+    if (width > 0 && height > 0) {
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            if (!stockpiles[i].active || stockpiles[i].z != z) continue;
+            RemoveStockpileCells(i, x1, y1, x2, y2);
+        }
+        int idx = CreateStockpile(x1, y1, z, width, height);
+        if (idx >= 0) {
+            // Refuse pile: accepts rotten items, only spoilable food types
+            stockpiles[idx].rejectsRotten = false;
+            for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
+                stockpiles[idx].allowedTypes[t] = ItemSpoils(t);
+            }
+            AddMessage(TextFormat("Created refuse pile %d (%dx%d)", idx, width, height), GREEN);
+        } else {
+            AddMessage(TextFormat("Failed to create refuse pile (max %d)", MAX_STOCKPILES), RED);
+        }
+    }
+}
+
 static void ExecuteEraseStockpile(int x1, int y1, int x2, int y2, int z) {
     int erasedCells = 0;
     for (int i = MAX_STOCKPILES - 1; i >= 0; i--) {
@@ -2678,6 +2703,10 @@ void HandleInput(void) {
                 break;
             case ACTION_DRAW_STOCKPILE:
                 if (leftClick) ExecuteCreateStockpile(x1, y1, x2, y2, z);
+                else ExecuteEraseStockpile(x1, y1, x2, y2, z);
+                break;
+            case ACTION_DRAW_REFUSE_PILE:
+                if (leftClick) ExecuteCreateRefusePile(x1, y1, x2, y2, z);
                 else ExecuteEraseStockpile(x1, y1, x2, y2, z);
                 break;
             case ACTION_DRAW_WORKSHOP_STONECUTTER:
