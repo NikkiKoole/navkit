@@ -1476,6 +1476,12 @@ static void DrawDesignationTooltip(int cellX, int cellY, int cellZ, Vector2 mous
             borderColor = (Color){200, 230, 100, 255};
             workerName = "Gatherer";
             break;
+        case DESIGNATION_DIG_ROOTS:
+            desName = "Dig Roots";
+            bgColor = (Color){50, 40, 20, 230};
+            borderColor = (Color){160, 120, 60, 255};
+            workerName = "Digger";
+            break;
         case DESIGNATION_GATHER_TREE:
             desName = "Gather Tree";
             bgColor = (Color){40, 35, 20, 230};

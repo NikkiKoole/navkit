@@ -903,6 +903,33 @@ static void ExecuteCancelKnap(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecuteDesignateDigRoots(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (DesignateDigRoots(dx, dy, z)) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Designated %d cell%s for root digging", count, count > 1 ? "s" : ""), GREEN);
+    }
+}
+
+static void ExecuteCancelDigRoots(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (HasDigRootsDesignation(dx, dy, z)) {
+                CancelDesignation(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Cancelled %d dig roots designation%s", count, count > 1 ? "s" : ""), GREEN);
+    }
+}
+
 static void ExecuteDesignateBuild(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -2869,6 +2896,10 @@ void HandleInput(void) {
             case ACTION_WORK_KNAP:
                 if (leftClick) ExecuteDesignateKnap(x1, y1, x2, y2, z);
                 else ExecuteCancelKnap(x1, y1, x2, y2, z);
+                break;
+            case ACTION_WORK_DIG_ROOTS:
+                if (leftClick) ExecuteDesignateDigRoots(x1, y1, x2, y2, z);
+                else ExecuteCancelDigRoots(x1, y1, x2, y2, z);
                 break;
             case ACTION_WORK_HUNT:
                 if (leftClick) ExecuteMarkHunt(x1, y1, x2, y2, z);

@@ -86,6 +86,7 @@ typedef enum {
     ACTION_WORK_GATHER_TREE,
     ACTION_WORK_HARVEST_BERRY,
     ACTION_WORK_KNAP,
+    ACTION_WORK_DIG_ROOTS,
     // Work > Clean (top-level, no submode)
     ACTION_WORK_CLEAN,
     // Work > Gather (top-level, no submode)

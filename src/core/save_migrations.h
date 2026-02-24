@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 69
+#define CURRENT_SAVE_VERSION 70
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)
@@ -437,6 +437,31 @@ typedef struct {
     MoverCapabilities capabilities;
     int equippedTool;
 } MoverV68;
+
+// Version 69 constants (before root items: root, roasted root, dried root)
+#define V69_ITEM_TYPE_COUNT 42
+
+// V69 Stockpile struct (before root item types added)
+// v69 had 42 item types, v70 adds ITEM_ROOT, ITEM_ROASTED_ROOT, ITEM_DRIED_ROOT (indices 42-44)
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V69_ITEM_TYPE_COUNT];
+    bool allowedMaterials[MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int maxContainers;
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+} StockpileV69;
 
 // Version 67 constants (before butchering items: carcass, raw meat, cooked meat, hide)
 #define V67_ITEM_TYPE_COUNT 38

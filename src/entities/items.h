@@ -49,6 +49,9 @@ typedef enum {
     ITEM_RAW_MEAT,      // Raw meat (edible, poor nutrition)
     ITEM_COOKED_MEAT,   // Cooked meat (edible, good nutrition)
     ITEM_HIDE,          // Animal hide (for clothing later)
+    ITEM_ROOT,          // Raw root (barely edible)
+    ITEM_ROASTED_ROOT,  // Roasted root (decent food)
+    ITEM_DRIED_ROOT,    // Dried root (preserved winter food)
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 

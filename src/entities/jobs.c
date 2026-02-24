@@ -142,6 +142,9 @@ static int harvestBerryCacheCount = 0;
 static AdjacentDesignationEntry knapCache[MAX_DESIGNATION_CACHE];
 static int knapCacheCount = 0;
 
+static OnTileDesignationEntry digRootsCache[MAX_DESIGNATION_CACHE];
+static int digRootsCacheCount = 0;
+
 // Dirty flags - mark caches that need rebuilding
 static bool mineCacheDirty = true;
 static bool channelCacheDirty = true;
@@ -157,6 +160,7 @@ static bool gatherTreeCacheDirty = true;
 static bool cleanCacheDirty = true;
 static bool harvestBerryCacheDirty = true;
 static bool knapCacheDirty = true;
+static bool digRootsCacheDirty = true;
 
 // Forward declarations for designation cache rebuild functions
 static void RebuildChannelDesignationCache(void);
@@ -172,12 +176,14 @@ static void RebuildGatherTreeDesignationCache(void);
 static void RebuildCleanDesignationCache(void);
 static void RebuildHarvestBerryDesignationCache(void);
 static void RebuildKnapDesignationCache(void);
+static void RebuildDigRootsDesignationCache(void);
 
 // Forward declarations for WorkGivers (needed for designationSpecs table)
 static int WorkGiver_CleanDesignation(int moverIdx);
 static int WorkGiver_HarvestBerry(int moverIdx);
 JobRunResult RunJob_HarvestBerry(Job* job, void* moverPtr, float dt);
 static int WorkGiver_KnapDesignation(int moverIdx);
+static int WorkGiver_DigRootsDesignation(int moverIdx);
 
 // Designation Job Specification - consolidates designation type with job handling
 typedef struct {
@@ -220,6 +226,8 @@ static DesignationJobSpec designationSpecs[] = {
      harvestBerryCache, &harvestBerryCacheCount, &harvestBerryCacheDirty},
     {DESIGNATION_KNAP, JOBTYPE_KNAP, RebuildKnapDesignationCache, WorkGiver_KnapDesignation,
      knapCache, &knapCacheCount, &knapCacheDirty},
+    {DESIGNATION_DIG_ROOTS, JOBTYPE_DIG_ROOTS, RebuildDigRootsDesignationCache, WorkGiver_DigRootsDesignation,
+     digRootsCache, &digRootsCacheCount, &digRootsCacheDirty},
 };
 
 // Helper: Find first adjacent walkable tile. Returns true if found.
@@ -365,6 +373,12 @@ static void RebuildKnapDesignationCache(void) {
     if (!knapCacheDirty) return;
     RebuildAdjacentDesignationCache(DESIGNATION_KNAP, knapCache, &knapCacheCount);
     knapCacheDirty = false;
+}
+
+static void RebuildDigRootsDesignationCache(void) {
+    if (!digRootsCacheDirty) return;
+    RebuildOnTileDesignationCache(DESIGNATION_DIG_ROOTS, digRootsCache, &digRootsCacheCount);
+    digRootsCacheDirty = false;
 }
 
 // Invalidate designation caches - call when designations are added/removed/completed
@@ -1159,6 +1173,24 @@ JobRunResult RunJob_HarvestBerry(Job* job, void* moverPtr, float dt) {
     if (job->step == STEP_WORKING) {
         JobRunResult r = RunWorkProgress(job, d, mover, dt, HARVEST_BERRY_WORK_TIME, false, 1.0f);
         if (r == JOBRUN_DONE) CompleteHarvestBerryDesignation(tx, ty, tz);
+        return r;
+    }
+    return JOBRUN_FAIL;
+}
+
+// Dig roots job driver: walk to soil cell, work, spawn root items
+JobRunResult RunJob_DigRoots(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || d->type != DESIGNATION_DIG_ROOTS) return JOBRUN_FAIL;
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToTileStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        int moverIdx = (int)(mover - movers);
+        MaterialType targetMat = (tz > 0) ? GetWallMaterial(tx, ty, tz - 1) : MAT_DIRT;
+        float speedMul = GetJobToolSpeedMultiplier(JOBTYPE_DIG_ROOTS, targetMat, mover->equippedTool);
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, DIG_ROOTS_WORK_TIME, false, speedMul);
+        if (r == JOBRUN_DONE) CompleteDigRootsDesignation(tx, ty, tz, moverIdx);
         return r;
     }
     return JOBRUN_FAIL;
@@ -2396,6 +2428,7 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_KNAP] = RunJob_Knap,
     [JOBTYPE_DECONSTRUCT_WORKSHOP] = RunJob_DeconstructWorkshop,
     [JOBTYPE_HUNT] = RunJob_Hunt,
+    [JOBTYPE_DIG_ROOTS] = RunJob_DigRoots,
 };
 
 // Compile-time check: ensure jobDrivers[] covers all job types
@@ -3834,6 +3867,76 @@ static int WorkGiver_KnapDesignation(int moverIdx) {
 // Public wrapper for WorkGiver_Knap (declared in jobs.h)
 int WorkGiver_Knap(int moverIdx) {
     return WorkGiver_KnapDesignation(moverIdx);
+}
+
+// WorkGiver_DigRootsDesignation: Find a dig roots designation to work on (on-tile pattern)
+static int WorkGiver_DigRootsDesignation(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+
+    if (!m->capabilities.canPlant) return -1;
+
+    int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
+    float bestDistSq = 1e30f;
+
+    for (int i = 0; i < digRootsCacheCount; i++) {
+        OnTileDesignationEntry* entry = &digRootsCache[i];
+
+        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+        if (!d || d->type != DESIGNATION_DIG_ROOTS || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
+
+        float tileX = entry->x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float tileY = entry->y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float distX = tileX - m->x;
+        float distY = tileY - m->y;
+        float distSq = distX * distX + distY * distY;
+
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestDesigX = entry->x;
+            bestDesigY = entry->y;
+            bestDesigZ = entry->z;
+        }
+    }
+
+    if (bestDesigX < 0) return -1;
+
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    Point desigCell = { bestDesigX, bestDesigY, bestDesigZ };
+    Point tempPath[MAX_PATH];
+    int tempLen = FindPath(moverPathAlgorithm, moverCell, desigCell, tempPath, MAX_PATH);
+    if (tempLen <= 0) {
+        Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+        if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        return -1;
+    }
+
+    int jobId = CreateJob(JOBTYPE_DIG_ROOTS);
+    if (jobId < 0) return -1;
+
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetMineX = bestDesigX;
+    job->targetMineY = bestDesigY;
+    job->targetMineZ = bestDesigZ;
+    job->step = STEP_MOVING_TO_WORK;
+    job->progress = 0.0f;
+
+    Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+    d->assignedMover = moverIdx;
+
+    m->currentJobId = jobId;
+    m->goal = (Point){ bestDesigX, bestDesigY, bestDesigZ };
+    m->needsRepath = true;
+
+    RemoveMoverFromIdleList(moverIdx);
+
+    return jobId;
+}
+
+// Public wrapper for WorkGiver_DigRoots (declared in jobs.h)
+int WorkGiver_DigRoots(int moverIdx) {
+    return WorkGiver_DigRootsDesignation(moverIdx);
 }
 
 // WorkGiver_DeconstructWorkshop: Find workshop marked for deconstruction

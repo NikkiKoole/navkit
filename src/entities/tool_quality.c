@@ -76,6 +76,11 @@ JobToolReq GetJobToolRequirement(int jobType, MaterialType targetMaterial) {
             req = (JobToolReq){ QUALITY_CUTTING, 0, true, true };
             break;
 
+        // Root digging — soft, digging helps (bare-hand 0.5x, digging stick 1.0x+)
+        case JOBTYPE_DIG_ROOTS:
+            req = (JobToolReq){ QUALITY_DIGGING, 0, true, true };
+            break;
+
         // Building — soft, hammering helps
         case JOBTYPE_BUILD:
             req = (JobToolReq){ QUALITY_HAMMERING, 0, true, true };

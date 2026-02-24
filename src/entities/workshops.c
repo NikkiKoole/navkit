@@ -56,6 +56,7 @@ Recipe campfireRecipes[] = {
     { "Burn Sticks", ITEM_STICKS, 2, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_ASH, 1, ITEM_NONE, 0, 3.0f, 30.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Burn Log",    ITEM_LOG,    1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_ASH, 1, ITEM_NONE, 0, 3.0f, 60.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Cook Meat",   ITEM_RAW_MEAT, 1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_COOKED_MEAT, 1, ITEM_NONE, 0, 1.0f, 15.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    { "Roast Roots", ITEM_ROOT, 1, ITEM_STICKS, 1, ITEM_NONE, 0, ITEM_ROASTED_ROOT, 1, ITEM_NONE, 0, 1.0f, 10.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
 };
 int campfireRecipeCount = sizeof(campfireRecipes) / sizeof(campfireRecipes[0]);
 
@@ -70,6 +71,7 @@ int hearthRecipeCount = sizeof(hearthRecipes) / sizeof(hearthRecipes[0]);
 Recipe dryingRackRecipes[] = {
     { "Dry Grass", ITEM_GRASS, 1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_DRIED_GRASS, 1, ITEM_NONE, 0, 0, 4.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Dry Berries", ITEM_BERRIES, 3, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_DRIED_BERRIES, 2, ITEM_NONE, 0, 0, 4.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    { "Dry Roots",   ITEM_ROOT,    2, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_DRIED_ROOT,    1, ITEM_NONE, 0, 0, 4.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
 };
 int dryingRackRecipeCount = sizeof(dryingRackRecipes) / sizeof(dryingRackRecipes[0]);
 

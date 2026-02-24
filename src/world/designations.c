@@ -1916,6 +1916,89 @@ int CountKnapDesignations(void) {
 }
 
 // =============================================================================
+// Dig roots designation functions
+// =============================================================================
+
+bool DesignateDigRoots(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        return false;
+    }
+
+    // Must be walkable (mover stands on this cell)
+    if (!IsCellWalkableAt(z, y, x)) {
+        return false;
+    }
+
+    // Check z-1 for natural soil (dirt/clay/peat — NOT sand/gravel, too dry/rocky)
+    if (z <= 0) return false;
+    if (!CellIsSolid(grid[z - 1][y][x])) return false;
+    if (!IsWallNatural(x, y, z - 1)) return false;
+    MaterialType belowMat = GetWallMaterial(x, y, z - 1);
+    if (belowMat != MAT_DIRT && belowMat != MAT_CLAY && belowMat != MAT_PEAT) {
+        return false;
+    }
+
+    designations[z][y][x].type = DESIGNATION_DIG_ROOTS;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_DIG_ROOTS);
+    EventLog("Designated DIG_ROOTS at (%d,%d,z%d) mat=%s", x, y, z, MaterialName(belowMat));
+
+    return true;
+}
+
+bool HasDigRootsDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    return designations[z][y][x].type == DESIGNATION_DIG_ROOTS;
+}
+
+void CompleteDigRootsDesignation(int x, int y, int z, int moverIdx) {
+    (void)moverIdx;
+
+    // Determine yield based on soil type
+    int rootCount = 1;
+    if (z > 0) {
+        MaterialType belowMat = GetWallMaterial(x, y, z - 1);
+        if (belowMat == MAT_PEAT) rootCount = 2;  // peat is richer
+    }
+
+    // Spawn root items at the walking position
+    float spawnX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+    float spawnY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+    for (int i = 0; i < rootCount; i++) {
+        SpawnItem(spawnX, spawnY, (float)z, ITEM_ROOT);
+    }
+
+    // Clear designation
+    designations[z][y][x].type = DESIGNATION_NONE;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount--;
+    InvalidateDesignationCache(DESIGNATION_DIG_ROOTS);
+}
+
+int CountDigRootsDesignations(void) {
+    int count = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type == DESIGNATION_DIG_ROOTS) {
+                    count++;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// =============================================================================
 // Blueprint functions
 // =============================================================================
 

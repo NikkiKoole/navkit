@@ -35,6 +35,7 @@ typedef enum {
     JOBTYPE_KNAP,                // Knap stone at rock wall
     JOBTYPE_DECONSTRUCT_WORKSHOP,  // Tear down a workshop for material refund
     JOBTYPE_HUNT,                    // Hunt a designated animal
+    JOBTYPE_DIG_ROOTS,               // Dig roots from natural soil
     JOBTYPE_COUNT
 } JobType;
 
@@ -64,6 +65,7 @@ static inline const char* JobTypeName(int type) {
         [JOBTYPE_KNAP]                = "KNAP",
         [JOBTYPE_DECONSTRUCT_WORKSHOP] = "DECONSTRUCT_WS",
         [JOBTYPE_HUNT]                 = "HUNT",
+        [JOBTYPE_DIG_ROOTS]            = "DIG_ROOTS",
     };
     return (type >= 0 && type < JOBTYPE_COUNT) ? names[type] : "?";
 }
@@ -205,6 +207,7 @@ JobRunResult RunJob_Clean(Job* job, void* mover, float dt);
 JobRunResult RunJob_Knap(Job* job, void* mover, float dt);
 JobRunResult RunJob_DeconstructWorkshop(Job* job, void* mover, float dt);
 JobRunResult RunJob_Hunt(Job* job, void* mover, float dt);
+JobRunResult RunJob_DigRoots(Job* job, void* mover, float dt);
 
 
 
@@ -266,6 +269,7 @@ int WorkGiver_Clean(int moverIdx);
 int WorkGiver_Knap(int moverIdx);
 int WorkGiver_DeconstructWorkshop(int moverIdx);
 int WorkGiver_Hunt(int moverIdx);
+int WorkGiver_DigRoots(int moverIdx);
 
 // Job cancellation (releases all reservations, safe-drops carried items, returns mover to idle)
 void CancelJob(void* mover, int moverIdx);  // void* to avoid circular dependency with mover.h

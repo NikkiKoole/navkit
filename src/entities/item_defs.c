@@ -53,5 +53,8 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_RAW_MEAT]     = { "Raw Meat",     SPRITE_division,     IF_STACKABLE | IF_EDIBLE, 5, MAT_NONE, 1.0f, 0.2f },
     [ITEM_COOKED_MEAT]  = { "Cooked Meat",  SPRITE_division,     IF_STACKABLE | IF_EDIBLE, 5, MAT_NONE, 0.8f, 0.5f },
     [ITEM_HIDE]         = { "Hide",         SPRITE_grass_trampled, IF_STACKABLE, 5, MAT_NONE, 2.0f, 0.0f },
+    [ITEM_ROOT]         = { "Root",         SPRITE_tree_stick,   IF_STACKABLE | IF_EDIBLE, 20, MAT_NONE, 0.4f, 0.1f },
+    [ITEM_ROASTED_ROOT] = { "Roasted Root", SPRITE_tree_stick,   IF_STACKABLE | IF_EDIBLE, 20, MAT_NONE, 0.3f, 0.35f },
+    [ITEM_DRIED_ROOT]   = { "Dried Root",   SPRITE_tree_stick,   IF_STACKABLE | IF_EDIBLE, 20, MAT_NONE, 0.2f, 0.2f },
 };
 #undef MN

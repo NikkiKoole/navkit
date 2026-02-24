@@ -424,6 +424,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = true,
         .canErase = true
     },
+    {
+        .action = ACTION_WORK_DIG_ROOTS,
+        .name = "DIG ROOTS",
+        .barDisplayText = "dig Roots",
+        .barText = "L-drag designate  R-drag cancel  [ESC]Back",
+        .barKey = 'r',
+        .barUnderlinePos = 4,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_HARVEST,
+        .parentAction = ACTION_NONE,
+        .canDrag = true,
+        .canErase = true
+    },
     
     // ========================================================================
     // MODE_WORK > SUBMODE_DIG actions
