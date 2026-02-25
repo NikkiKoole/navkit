@@ -22,6 +22,7 @@
 #include "../simulation/lighting.h"
 #include "../simulation/weather.h"
 #include "../simulation/plants.h"
+#include "../simulation/farming.h"
 #include "../simulation/balance.h"
 #include "../../shared/profiler.h"
 #include "../../shared/ui.h"
@@ -1643,7 +1644,10 @@ void TickWithDt(float dt) {
     
     // Plant growth (berry bushes, future crops)
     PlantsTick(dt);
-    
+
+    // Farm tick (weed accumulation)
+    FarmTick(dt);
+
     PROFILE_BEGIN(Grid);
     BuildMoverSpatialGrid();
     BuildItemSpatialGrid();

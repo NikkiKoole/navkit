@@ -81,6 +81,7 @@ typedef enum {
     CONSTRUCTION_WORKSHOP_CARPENTER,     // 1 stage: 4 planks + 2 cordage
     CONSTRUCTION_WORKSHOP_GROUND_FIRE,   // 1 stage: 3 sticks
     CONSTRUCTION_WORKSHOP_BUTCHER,       // 1 stage: 2 sticks + 1 rock
+    CONSTRUCTION_WORKSHOP_COMPOST_PILE,  // 1 stage: 4 sticks
     // Primitive construction recipes
     CONSTRUCTION_LEAF_WALL,              // 1 stage: 4 sticks + 4 leaves
     CONSTRUCTION_STICK_WALL,             // 1 stage: 4 sticks + 2 cordage

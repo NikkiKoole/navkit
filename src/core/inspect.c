@@ -10,6 +10,7 @@
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
 #include "../simulation/temperature.h"
+#include "../simulation/farming.h"
 #include "../entities/items.h"
 #include "../entities/item_defs.h"
 #include "../entities/stockpiles.h"
@@ -1241,6 +1242,12 @@ int InspectSaveFile(int argc, char** argv) {
         fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);  // exploredGrid
     }
 
+    // Farm grid (v76+, skip - not inspected)
+    if (version >= 76) {
+        fseek(f, totalCells * sizeof(FarmCell), SEEK_CUR);  // farmGrid
+        fseek(f, sizeof(int), SEEK_CUR);  // farmActiveCells
+    }
+
     // === ENTITIES SECTION ===
     fread(&marker, 4, 1, f);
     if (marker != MARKER_ENTITIES) {
@@ -1753,8 +1760,40 @@ int InspectSaveFile(int argc, char** argv) {
             insp_stockpiles[i].freeSlotCount = v72_sp.freeSlotCount;
             insp_stockpiles[i].rejectsRotten = true;
         }
+    } else if (version < 76) {
+        // v73-v75: 45 item types, migrate to 46 (adding ITEM_COMPOST)
+        StockpileV75 v75_sp;
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            fread(&v75_sp, sizeof(StockpileV75), 1, f);
+            insp_stockpiles[i].x = v75_sp.x;
+            insp_stockpiles[i].y = v75_sp.y;
+            insp_stockpiles[i].z = v75_sp.z;
+            insp_stockpiles[i].width = v75_sp.width;
+            insp_stockpiles[i].height = v75_sp.height;
+            insp_stockpiles[i].active = v75_sp.active;
+            memcpy(insp_stockpiles[i].allowedTypes, v75_sp.allowedTypes,
+                   sizeof(v75_sp.allowedTypes));
+            for (int t = V75_ITEM_TYPE_COUNT; t < ITEM_TYPE_COUNT; t++) {
+                insp_stockpiles[i].allowedTypes[t] = true;
+            }
+            memcpy(insp_stockpiles[i].allowedMaterials, v75_sp.allowedMaterials,
+                   sizeof(v75_sp.allowedMaterials));
+            memcpy(insp_stockpiles[i].cells, v75_sp.cells, sizeof(v75_sp.cells));
+            memcpy(insp_stockpiles[i].slots, v75_sp.slots, sizeof(v75_sp.slots));
+            memcpy(insp_stockpiles[i].reservedBy, v75_sp.reservedBy, sizeof(v75_sp.reservedBy));
+            memcpy(insp_stockpiles[i].slotCounts, v75_sp.slotCounts, sizeof(v75_sp.slotCounts));
+            memcpy(insp_stockpiles[i].slotTypes, v75_sp.slotTypes, sizeof(v75_sp.slotTypes));
+            memcpy(insp_stockpiles[i].slotMaterials, v75_sp.slotMaterials, sizeof(v75_sp.slotMaterials));
+            insp_stockpiles[i].maxStackSize = v75_sp.maxStackSize;
+            insp_stockpiles[i].priority = v75_sp.priority;
+            insp_stockpiles[i].maxContainers = v75_sp.maxContainers;
+            memcpy(insp_stockpiles[i].slotIsContainer, v75_sp.slotIsContainer, sizeof(v75_sp.slotIsContainer));
+            memcpy(insp_stockpiles[i].groundItemIdx, v75_sp.groundItemIdx, sizeof(v75_sp.groundItemIdx));
+            insp_stockpiles[i].freeSlotCount = v75_sp.freeSlotCount;
+            insp_stockpiles[i].rejectsRotten = v75_sp.rejectsRotten;
+        }
     } else {
-        // v73+ format - direct read
+        // v76+ format - direct read
         fread(insp_stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
     }
 

@@ -10,6 +10,7 @@
 #include "../simulation/groundwear.h"
 #include "../simulation/floordirt.h"
 #include "../simulation/plants.h"
+#include "../simulation/farming.h"
 #include "../core/sim_manager.h"
 #include "../entities/jobs.h"    // for CancelJob, GetJob forward declarations
 #include "../entities/furniture.h"
@@ -2072,6 +2073,84 @@ int CountExploreDesignations(void) {
 }
 
 // =============================================================================
+// Farm designation functions
+// =============================================================================
+
+bool DesignateFarm(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    if (!IsExplored(x, y, z)) return false;
+    if (!IsFarmableSoil(x, y, z)) return false;
+    if (designations[z][y][x].type != DESIGNATION_NONE) return false;
+    // Don't designate already-tilled cells
+    if (farmGrid[z][y][x].tilled) return false;
+
+    designations[z][y][x].type = DESIGNATION_FARM;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    designations[z][y][x].unreachableCooldown = 0.0f;
+    activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_FARM);
+    return true;
+}
+
+bool HasFarmDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    return designations[z][y][x].type == DESIGNATION_FARM;
+}
+
+void CompleteFarmDesignation(int x, int y, int z, int moverIdx) {
+    (void)moverIdx;
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return;
+    }
+
+    // Set farm cell state
+    MaterialType mat = (z > 0) ? GetWallMaterial(x, y, z - 1) : MAT_DIRT;
+    farmGrid[z][y][x].tilled = 1;
+    farmGrid[z][y][x].fertility = InitialFertilityForSoil(mat);
+    farmGrid[z][y][x].weedLevel = 0;
+    farmGrid[z][y][x].desiredCropType = 0;
+    farmActiveCells++;
+
+    // Clear grass/vegetation — drop grass item if there was grass
+    VegetationType veg = (z > 0) ? GetVegetation(x, y, z - 1) : GetVegetation(x, y, z);
+    if (veg >= VEG_GRASS_SHORT) {
+        float spawnX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float spawnY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+        SpawnItem(spawnX, spawnY, (float)z, ITEM_GRASS);
+    }
+    SetVegetation(x, y, z, VEG_NONE);
+    if (z > 0) SetVegetation(x, y, z - 1, VEG_NONE);
+
+    // Clear designation
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        activeDesignationCount--;
+    }
+    designations[z][y][x].type = DESIGNATION_NONE;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    InvalidateDesignationCache(DESIGNATION_FARM);
+}
+
+int CountFarmDesignations(void) {
+    int count = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type == DESIGNATION_FARM) {
+                    count++;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// =============================================================================
 // Blueprint functions
 // =============================================================================
 
@@ -2218,7 +2297,8 @@ int CreateWorkshopBlueprint(int originX, int originY, int z, int recipeIndex) {
         case CONSTRUCTION_WORKSHOP_KILN:         workshopType = WORKSHOP_KILN; break;
         case CONSTRUCTION_WORKSHOP_CARPENTER:    workshopType = WORKSHOP_CARPENTER; break;
         case CONSTRUCTION_WORKSHOP_GROUND_FIRE:  workshopType = WORKSHOP_GROUND_FIRE; break;
-        case CONSTRUCTION_WORKSHOP_BUTCHER:     workshopType = WORKSHOP_BUTCHER; break;
+        case CONSTRUCTION_WORKSHOP_BUTCHER:      workshopType = WORKSHOP_BUTCHER; break;
+        case CONSTRUCTION_WORKSHOP_COMPOST_PILE: workshopType = WORKSHOP_COMPOST_PILE; break;
         default: return -1;
     }
 

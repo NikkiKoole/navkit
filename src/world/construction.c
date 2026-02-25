@@ -569,6 +569,26 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = -1,
         .materialFromSlot = -1,
     },
+    [CONSTRUCTION_WORKSHOP_COMPOST_PILE] = {
+        .name = "Compost Pile",
+        .buildCategory = BUILD_WORKSHOP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_STICKS }},
+                    .altCount = 1,
+                    .count = 4,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 1,
+            .buildTime = 0.5f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
     // === PRIMITIVE RECIPES ===
     [CONSTRUCTION_LEAF_WALL] = {
         .name = "Leaf Wall",
@@ -759,6 +779,7 @@ int GetConstructionRecipeForWorkshopType(int workshopType) {
         case WORKSHOP_CARPENTER:    return CONSTRUCTION_WORKSHOP_CARPENTER;
         case WORKSHOP_GROUND_FIRE:  return CONSTRUCTION_WORKSHOP_GROUND_FIRE;
         case WORKSHOP_BUTCHER:      return CONSTRUCTION_WORKSHOP_BUTCHER;
+        case WORKSHOP_COMPOST_PILE: return CONSTRUCTION_WORKSHOP_COMPOST_PILE;
         default: return -1;
     }
 }

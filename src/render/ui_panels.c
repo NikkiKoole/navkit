@@ -182,6 +182,7 @@ static void StartNewGame(void) {
     ClearAnimals();
     ClearFurniture();
     InitPlants();
+    ClearFarming();
 
     // Generate HillsSoilsWater terrain (calls InitGrid internally, which clears movers/items/etc)
     currentTerrain = 19;
@@ -591,6 +592,7 @@ void DrawUI(void) {
             y += 22;
             if (PushButton(ix, y, "Generate Terrain")) {
                 InitPlants();
+                ClearFarming();
                 GenerateCurrentTerrain();
                 InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
                 InitDesignations();

@@ -32,6 +32,7 @@ typedef enum {
     WORKSHOP_CAMPFIRE,
     WORKSHOP_GROUND_FIRE,
     WORKSHOP_BUTCHER,
+    WORKSHOP_COMPOST_PILE,
     WORKSHOP_TYPE_COUNT,
 } WorkshopType;
 
@@ -56,6 +57,7 @@ typedef enum {
 typedef enum {
     ITEM_MATCH_EXACT = 0,   // Match specific inputType
     ITEM_MATCH_ANY_FUEL,    // Match any item with IF_FUEL flag
+    ITEM_MATCH_ANY_COMPOSTABLE,  // Match rotten food, leaves, or grass
 } ItemMatchType;
 
 typedef struct {
@@ -178,6 +180,8 @@ extern Recipe campfireRecipes[];
 extern int campfireRecipeCount;
 extern Recipe butcherRecipes[];
 extern int butcherRecipeCount;
+extern Recipe compostPileRecipes[];
+extern int compostPileRecipeCount;
 
 // Core functions
 void ClearWorkshops(void);

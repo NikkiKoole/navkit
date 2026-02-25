@@ -78,6 +78,7 @@
     #define SPRITE_tree_trunk_oak SPRITE8X8_tree_trunk_oak
     #define SPRITE_ladder_up SPRITE8X8_ladder_up
     #define SPRITE_medium_shade SPRITE8X8_medium_shade
+    #define SPRITE_tilled SPRITE8X8_tilled
     #define SPRITE_train_loc SPRITE8X8_train_loc
     #define SPRITE_full_block SPRITE8X8_full_block
     #define SPRITE_head SPRITE8X8_head
@@ -114,6 +115,7 @@
     #define SPRITE_tree_stripped_log_pine SPRITE8X8_tree_stripped_log_pine
     #define SPRITE_crate_green SPRITE8X8_crate_green
     #define SPRITE_crate_red SPRITE8X8_crate_red
+    #define SPRITE_weedy SPRITE8X8_weedy
     #define SPRITE_track_nsw SPRITE8X8_track_nsw
     #define SpriteGetRect SPRITE8X8GetRect
 #elif TILE_SIZE == 16
@@ -185,6 +187,7 @@
     #define SPRITE_tree_trunk_oak SPRITE16X16_tree_trunk_oak
     #define SPRITE_ladder_up SPRITE16X16_ladder_up
     #define SPRITE_medium_shade SPRITE16X16_medium_shade
+    #define SPRITE_tilled SPRITE16X16_tilled
     #define SPRITE_train_loc SPRITE16X16_train_loc
     #define SPRITE_full_block SPRITE16X16_full_block
     #define SPRITE_head SPRITE16X16_head
@@ -221,6 +224,7 @@
     #define SPRITE_tree_stripped_log_pine SPRITE16X16_tree_stripped_log_pine
     #define SPRITE_crate_green SPRITE16X16_crate_green
     #define SPRITE_crate_red SPRITE16X16_crate_red
+    #define SPRITE_weedy SPRITE16X16_weedy
     #define SPRITE_track_nsw SPRITE16X16_track_nsw
     #define SpriteGetRect SPRITE16X16GetRect
 #else

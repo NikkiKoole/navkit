@@ -88,6 +88,7 @@ bool bodyTempEnabled = false;
 #include "../src/simulation/trees.c"
 #include "../src/simulation/lighting.c"
 #include "../src/simulation/plants.c"
+#include "../src/simulation/farming.c"
 #include "../src/simulation/balance.c"
 #include "../src/simulation/needs.c"
 

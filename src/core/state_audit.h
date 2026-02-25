@@ -14,6 +14,7 @@ int AuditMoverJobConsistency(bool verbose);
 int AuditBlueprintReservations(bool verbose);
 int AuditStockpileSlotReservations(bool verbose);
 int AuditStockpileFreeSlotCounts(bool verbose);
+int AuditFarmConsistency(bool verbose);
 
 // Set output mode: false = TraceLog (runtime), true = printf (inspect CLI)
 void SetAuditOutputStdout(bool useStdout);

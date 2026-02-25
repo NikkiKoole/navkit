@@ -46,7 +46,11 @@
 | 04d | `04d-spoilage.md` | ~0.5 session | 04a ✅ | ✅ Done. Spoilage timer, ItemCondition (FRESH/STALE/ROTTEN), container modifiers, rotten=fuel, rejectsRotten stockpile + refuse pile shortcut (save v71-v73). See also `gameplay/seasoning-curing.md` for broader material conditioning — future work. |
 | 04e | `04e-animal-respawn.md` | ~0.5 session | None | ✅ Done. Edge-spawn from map edges, population cap, UI toggle, save v74. |
 | 05a | `05a-explore-designation.md` | ~1 session | None | ✅ Done. Straight-line Bresenham scouting job. Click → mover walks blind toward target, stops at obstacles. No pathfinding. |
-| 05b | `05-fog-of-war-exploration.md` | ~2.5 sessions | 05a ✅ | **In progress** — Phase 1 (grid + rendering + save/load) ✅, Phase 2 (block designations) ✅, Phase 3-5 remaining. |
+| 05b | `05-fog-of-war-exploration.md` | ~2.5 sessions | 05a ✅ | ✅ Done. exploredGrid, soft borders, discovery events, blocks jobs/hauling in unexplored areas (save v75). |
+
+### ~~Tier 1: Core Survival Loop (playable day-1)~~ — COMPLETE ✅
+
+(All 05a/05b entries moved to done.)
 
 ### Tier 2: Expansion (deeper gameplay)
 
@@ -107,11 +111,8 @@ Session 8-9:    Spoilage + animal respawn (04d, 04e)                     ✅ DON
 Session 9:      Explore designation (05a)                                    ✅ DONE
                 → Straight-line Bresenham scouting, no pathfinding
 
-Session 10-11:  Fog of war (05b)                                             🔧 IN PROGRESS
-                → Phase 1: exploredGrid + rendering + save v75               ✅ DONE
-                → Phase 2: block designations on unexplored                  ✅ DONE
-                → Phase 3: block hauling + job assignment                    ⬜ TODO
-                → Phase 5: polish (frontier edge, discovery events)          ⬜ TODO
+Session 10-11:  Fog of war (05b)                                             ✅ DONE
+                → All phases complete (grid, rendering, designations, hauling, soft borders, discovery events)
 
 Session 13+:    Farming → clothing → thirst → loop closers → personality
 ```

@@ -7,6 +7,7 @@
 #include "../world/designations.h"
 #include "../world/construction.h"
 #include "../world/grid.h"
+#include "../simulation/farming.h"
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
@@ -497,6 +498,32 @@ static int AuditEquippedTools(bool verbose) {
 
 // ---------------------------------------------------------------------------
 // Run all audits
+// 8. Farm consistency: farmActiveCells matches actual tilled count
+int AuditFarmConsistency(bool verbose) {
+    int violations = 0;
+    int actualTilled = 0;
+
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (farmGrid[z][y][x].tilled) {
+                    actualTilled++;
+                }
+            }
+        }
+    }
+
+    if (actualTilled != farmActiveCells) {
+        violations++;
+        if (verbose) {
+            AUDIT_LOG("Farm: farmActiveCells=%d but actual tilled=%d",
+                     farmActiveCells, actualTilled);
+        }
+    }
+
+    return violations;
+}
+
 // ---------------------------------------------------------------------------
 int RunStateAudit(bool verbose) {
     int total = 0;
@@ -508,6 +535,7 @@ int RunStateAudit(bool verbose) {
     total += AuditStockpileSlotReservations(verbose);
     total += AuditStockpileFreeSlotCounts(verbose);
     total += AuditEquippedTools(verbose);
+    total += AuditFarmConsistency(verbose);
 
     if (verbose) {
         if (auditUseStdout) {

@@ -20,6 +20,7 @@
 #include "../simulation/balance.h"
 #include "butchering.h"
 #include "tool_quality.h"
+#include "../simulation/farming.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -146,6 +147,8 @@ static OnTileDesignationEntry digRootsCache[MAX_DESIGNATION_CACHE];
 static int digRootsCacheCount = 0;
 static OnTileDesignationEntry exploreCache[MAX_DESIGNATION_CACHE];
 static int exploreCacheCount = 0;
+static OnTileDesignationEntry tillCache[MAX_DESIGNATION_CACHE];
+static int tillCacheCount = 0;
 
 // Dirty flags - mark caches that need rebuilding
 static bool mineCacheDirty = true;
@@ -164,6 +167,7 @@ static bool harvestBerryCacheDirty = true;
 static bool knapCacheDirty = true;
 static bool digRootsCacheDirty = true;
 static bool exploreCacheDirty = true;
+static bool tillCacheDirty = true;
 
 // Forward declarations for designation cache rebuild functions
 static void RebuildChannelDesignationCache(void);
@@ -181,8 +185,10 @@ static void RebuildHarvestBerryDesignationCache(void);
 static void RebuildKnapDesignationCache(void);
 static void RebuildDigRootsDesignationCache(void);
 static void RebuildExploreDesignationCache(void);
+static void RebuildTillDesignationCache(void);
 
 // Forward declarations for WorkGivers (needed for designationSpecs table)
+static int WorkGiver_TillDesignation(int moverIdx);
 static int WorkGiver_CleanDesignation(int moverIdx);
 static int WorkGiver_HarvestBerry(int moverIdx);
 JobRunResult RunJob_HarvestBerry(Job* job, void* moverPtr, float dt);
@@ -235,6 +241,8 @@ static DesignationJobSpec designationSpecs[] = {
      digRootsCache, &digRootsCacheCount, &digRootsCacheDirty},
     {DESIGNATION_EXPLORE, JOBTYPE_EXPLORE, RebuildExploreDesignationCache, WorkGiver_ExploreDesignation,
      exploreCache, &exploreCacheCount, &exploreCacheDirty},
+    {DESIGNATION_FARM, JOBTYPE_TILL, RebuildTillDesignationCache, WorkGiver_TillDesignation,
+     tillCache, &tillCacheCount, &tillCacheDirty},
 };
 
 // Helper: Find first adjacent walkable tile. Returns true if found.
@@ -396,6 +404,12 @@ static void RebuildExploreDesignationCache(void) {
     if (!exploreCacheDirty) return;
     RebuildOnTileDesignationCache(DESIGNATION_EXPLORE, exploreCache, &exploreCacheCount, false);
     exploreCacheDirty = false;
+}
+
+static void RebuildTillDesignationCache(void) {
+    if (!tillCacheDirty) return;
+    RebuildOnTileDesignationCache(DESIGNATION_FARM, tillCache, &tillCacheCount, true);
+    tillCacheDirty = false;
 }
 
 // Invalidate designation caches - call when designations are added/removed/completed
@@ -2569,6 +2583,79 @@ JobRunResult RunJob_Hunt(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// Till farm designation job driver: walk to farm cell -> till soil
+JobRunResult RunJob_Till(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || d->type != DESIGNATION_FARM) return JOBRUN_FAIL;
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToTileStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_TILL, MAT_NONE, mover->equippedTool);
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, TILL_WORK_TIME, true, speed);
+        if (r == JOBRUN_DONE) {
+            int moverIdx = (int)(mover - movers);
+            CompleteFarmDesignation(tx, ty, tz, moverIdx);
+        }
+        return r;
+    }
+    return JOBRUN_FAIL;
+}
+
+// Tend crop job driver: walk to weedy farm cell -> weed it
+JobRunResult RunJob_TendCrop(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
+    FarmCell* fc = GetFarmCell(tx, ty, tz);
+    if (!fc || !fc->tilled) return JOBRUN_FAIL;
+    if (fc->weedLevel < WEED_THRESHOLD) return JOBRUN_DONE;  // weeds already cleared
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToTileStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        JobRunResult r = RunWorkProgress(job, NULL, mover, dt, TEND_WORK_TIME, true, 1.0f);
+        if (r == JOBRUN_DONE) {
+            fc->weedLevel = 0;
+        }
+        return r;
+    }
+    return JOBRUN_FAIL;
+}
+
+// Fertilize job driver: pick up compost -> walk to farm cell -> apply
+JobRunResult RunJob_Fertilize(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
+
+    if (job->step == STEP_MOVING_TO_PICKUP) {
+        return RunPickupStep(job, mover, (Point){tx, ty, tz});
+    }
+    if (job->step == STEP_CARRYING) {
+        JobRunResult r = RunCarryStep(job, mover, tx, ty, tz);
+        if (r == JOBRUN_DONE) {
+            job->step = STEP_PLANTING;
+            job->progress = 0.0f;
+            return JOBRUN_RUNNING;
+        }
+        return r;
+    }
+    if (job->step == STEP_PLANTING) {
+        FarmCell* fc = GetFarmCell(tx, ty, tz);
+        if (!fc || !fc->tilled) return JOBRUN_FAIL;
+
+        JobRunResult r = RunWorkProgress(job, NULL, mover, dt, FERTILIZE_WORK_TIME, true, 1.0f);
+        if (r == JOBRUN_DONE) {
+            int newFert = fc->fertility + FERTILIZE_AMOUNT;
+            fc->fertility = (newFert > 255) ? 255 : (uint8_t)newFert;
+            // Consume compost
+            if (job->carryingItem >= 0) {
+                DeleteItem(job->carryingItem);
+                job->carryingItem = -1;
+            }
+        }
+        return r;
+    }
+    return JOBRUN_FAIL;
+}
+
 // Driver lookup table
 static JobDriver jobDrivers[] = {
     [JOBTYPE_NONE] = NULL,
@@ -2597,10 +2684,13 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_HUNT] = RunJob_Hunt,
     [JOBTYPE_DIG_ROOTS] = RunJob_DigRoots,
     [JOBTYPE_EXPLORE] = RunJob_Explore,
+    [JOBTYPE_TILL] = RunJob_Till,
+    [JOBTYPE_TEND_CROP] = RunJob_TendCrop,
+    [JOBTYPE_FERTILIZE] = RunJob_Fertilize,
 };
 
 // Compile-time check: ensure jobDrivers[] covers all job types
-_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_EXPLORE,
+_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_FERTILIZE,
                "jobDrivers[] must have an entry for every JobType");
 
 // Tick function - runs job drivers for active jobs
@@ -3736,6 +3826,24 @@ void AssignJobs(void) {
     PROFILE_BEGIN(Jobs_P4_Designations);
     AssignJobs_P4_Designations();
     PROFILE_END(Jobs_P4_Designations);
+    if (idleMoverCount == 0) return;
+
+    // Priority 5: Farm maintenance (tend weedy cells, fertilize depleted cells)
+    if (farmActiveCells > 0) {
+        int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+        if (idleCopy) {
+            int idleCopyCount = idleMoverCount;
+            memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+            for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+                int moverIdx = idleCopy[i];
+                if (!moverIsInIdleList[moverIdx]) continue;
+                int jobId = WorkGiver_TendCrop(moverIdx);
+                if (jobId < 0) jobId = WorkGiver_Fertilize(moverIdx);
+                (void)jobId;
+            }
+            free(idleCopy);
+        }
+    }
 }
 
 
@@ -4189,6 +4297,225 @@ static int WorkGiver_ExploreDesignation(int moverIdx) {
 // Public wrapper for WorkGiver_Explore (declared in jobs.h)
 int WorkGiver_Explore(int moverIdx) {
     return WorkGiver_ExploreDesignation(moverIdx);
+}
+
+// WorkGiver_TillDesignation: Find a farm designation to till (on-tile, canPlant)
+static int WorkGiver_TillDesignation(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    if (!m->capabilities.canPlant) return -1;
+
+    int bestX = -1, bestY = -1, bestZ = -1;
+    float bestDistSq = 1e30f;
+
+    for (int i = 0; i < tillCacheCount; i++) {
+        OnTileDesignationEntry* entry = &tillCache[i];
+        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+        if (!d || d->type != DESIGNATION_FARM || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
+
+        float tileX = entry->x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float tileY = entry->y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = tileX - m->x;
+        float dy = tileY - m->y;
+        float distSq = dx * dx + dy * dy;
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestX = entry->x;
+            bestY = entry->y;
+            bestZ = entry->z;
+        }
+    }
+    if (bestX < 0) return -1;
+
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    Point desigCell = { bestX, bestY, bestZ };
+    Point tempPath[MAX_PATH];
+    int tempLen = FindPath(moverPathAlgorithm, moverCell, desigCell, tempPath, MAX_PATH);
+    if (tempLen <= 0) {
+        Designation* d = GetDesignation(bestX, bestY, bestZ);
+        if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        return -1;
+    }
+
+    int jobId = CreateJob(JOBTYPE_TILL);
+    if (jobId < 0) return -1;
+
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetMineX = bestX;
+    job->targetMineY = bestY;
+    job->targetMineZ = bestZ;
+    job->step = STEP_MOVING_TO_WORK;
+    job->progress = 0.0f;
+
+    Designation* d = GetDesignation(bestX, bestY, bestZ);
+    d->assignedMover = moverIdx;
+
+    m->currentJobId = jobId;
+    m->goal = (Point){ bestX, bestY, bestZ };
+    m->needsRepath = true;
+    RemoveMoverFromIdleList(moverIdx);
+    return jobId;
+}
+
+// Public wrapper for WorkGiver_Till (declared in jobs.h)
+int WorkGiver_Till(int moverIdx) {
+    return WorkGiver_TillDesignation(moverIdx);
+}
+
+// WorkGiver_TendCrop: Auto-find weedy farm cells that need tending
+int WorkGiver_TendCrop(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    if (!m->capabilities.canPlant) return -1;
+    if (farmActiveCells == 0) return -1;
+
+    int bestX = -1, bestY = -1, bestZ = -1;
+    float bestDistSq = 1e30f;
+
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                FarmCell* fc = &farmGrid[z][y][x];
+                if (!fc->tilled) continue;
+                if (fc->weedLevel < WEED_THRESHOLD) continue;
+                if (!IsExplored(x, y, z)) continue;
+
+                float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+                float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+                float dx = tileX - m->x;
+                float dy = tileY - m->y;
+                float distSq = dx * dx + dy * dy;
+                if (distSq < bestDistSq) {
+                    bestDistSq = distSq;
+                    bestX = x;
+                    bestY = y;
+                    bestZ = z;
+                }
+            }
+        }
+    }
+    if (bestX < 0) return -1;
+
+    // Check no other mover is already tending this cell
+    for (int i = 0; i < activeJobCount; i++) {
+        Job* j = GetJob(activeJobList[i]);
+        if (j && j->type == JOBTYPE_TEND_CROP &&
+            j->targetMineX == bestX && j->targetMineY == bestY && j->targetMineZ == bestZ) {
+            return -1;
+        }
+    }
+
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    Point desigCell = { bestX, bestY, bestZ };
+    Point tempPath[MAX_PATH];
+    int tempLen = FindPath(moverPathAlgorithm, moverCell, desigCell, tempPath, MAX_PATH);
+    if (tempLen <= 0) return -1;
+
+    int jobId = CreateJob(JOBTYPE_TEND_CROP);
+    if (jobId < 0) return -1;
+
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetMineX = bestX;
+    job->targetMineY = bestY;
+    job->targetMineZ = bestZ;
+    job->step = STEP_MOVING_TO_WORK;
+    job->progress = 0.0f;
+
+    m->currentJobId = jobId;
+    m->goal = (Point){ bestX, bestY, bestZ };
+    m->needsRepath = true;
+    RemoveMoverFromIdleList(moverIdx);
+    return jobId;
+}
+
+// WorkGiver_Fertilize: Find low-fertility farm cell + available compost
+int WorkGiver_Fertilize(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    if (!m->capabilities.canPlant) return -1;
+    if (farmActiveCells == 0) return -1;
+
+    // Find nearest available compost item
+    int bestCompostIdx = -1;
+    float bestCompostDistSq = 1e30f;
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        Item* item = &items[i];
+        if (!item->active) continue;
+        if (item->type != ITEM_COMPOST) continue;
+        if (item->state != ITEM_ON_GROUND) continue;
+        if (item->reservedBy != -1) continue;
+        float dx = item->x - m->x;
+        float dy = item->y - m->y;
+        float distSq = dx * dx + dy * dy;
+        if (distSq < bestCompostDistSq) {
+            bestCompostDistSq = distSq;
+            bestCompostIdx = i;
+        }
+    }
+    if (bestCompostIdx < 0) return -1;
+
+    // Find nearest low-fertility farm cell
+    int bestX = -1, bestY = -1, bestZ = -1;
+    float bestDistSq = 1e30f;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                FarmCell* fc = &farmGrid[z][y][x];
+                if (!fc->tilled) continue;
+                if (fc->fertility >= FERTILITY_LOW) continue;
+                if (!IsExplored(x, y, z)) continue;
+
+                float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+                float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+                float dx = tileX - m->x;
+                float dy = tileY - m->y;
+                float distSq = dx * dx + dy * dy;
+                if (distSq < bestDistSq) {
+                    bestDistSq = distSq;
+                    bestX = x;
+                    bestY = y;
+                    bestZ = z;
+                }
+            }
+        }
+    }
+    if (bestX < 0) return -1;
+
+    // Check no other mover is already fertilizing this cell
+    for (int i = 0; i < activeJobCount; i++) {
+        Job* j = GetJob(activeJobList[i]);
+        if (j && j->type == JOBTYPE_FERTILIZE &&
+            j->targetMineX == bestX && j->targetMineY == bestY && j->targetMineZ == bestZ) {
+            return -1;
+        }
+    }
+
+    // Reserve compost
+    ReserveItem(bestCompostIdx, moverIdx);
+
+    int jobId = CreateJob(JOBTYPE_FERTILIZE);
+    if (jobId < 0) {
+        ReleaseItemReservation(bestCompostIdx);
+        return -1;
+    }
+
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetItem = bestCompostIdx;
+    job->targetMineX = bestX;
+    job->targetMineY = bestY;
+    job->targetMineZ = bestZ;
+    job->step = STEP_MOVING_TO_PICKUP;
+    job->progress = 0.0f;
+    job->carryingItem = -1;
+
+    m->currentJobId = jobId;
+    m->goal = (Point){ (int)(items[bestCompostIdx].x / CELL_SIZE),
+                        (int)(items[bestCompostIdx].y / CELL_SIZE),
+                        (int)items[bestCompostIdx].z };
+    m->needsRepath = true;
+    RemoveMoverFromIdleList(moverIdx);
+    return jobId;
 }
 
 // WorkGiver_DeconstructWorkshop: Find workshop marked for deconstruction

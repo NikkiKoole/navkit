@@ -52,6 +52,7 @@ typedef enum {
     ITEM_ROOT,          // Raw root (barely edible)
     ITEM_ROASTED_ROOT,  // Roasted root (decent food)
     ITEM_DRIED_ROOT,    // Dried root (preserved winter food)
+    ITEM_COMPOST,       // Compost (fertilizer from organic waste)
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 

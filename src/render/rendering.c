@@ -11,6 +11,7 @@
 #include "../simulation/floordirt.h"
 #include "../simulation/lighting.h"
 #include "../simulation/plants.h"
+#include "../simulation/farming.h"
 #include "../core/sim_manager.h"
 #include <math.h>
 
@@ -477,6 +478,33 @@ static void DrawCellGrid(void) {
                         DrawTexturePro(atlas, dirtSrc, dest, (Vector2){0,0}, 0, dirtTint);
                     }
                 }
+
+            }
+        }
+    }
+
+    // Draw farm overlays (tilled soil + weeds) — independent of HAS_FLOOR
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            if (z == 0) continue;  // No farming at z=0
+            FarmCell* fc = &farmGrid[z][y][x];
+            if (fc->tilled) {
+                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                // Tilled soil overlay — tinted by soil material
+                Rectangle tillSrc = SpriteGetRect(SPRITE_tilled);
+                MaterialType soilMat = GetWallMaterial(x, y, z - 1);
+                Color tillTint = MaterialTint(soilMat);
+                tillTint.a = 180;
+                DrawTexturePro(atlas, tillSrc, dest, (Vector2){0,0}, 0, tillTint);
+
+                // Weed overlay if weedy
+                if (fc->weedLevel > WEED_THRESHOLD) {
+                    Rectangle weedSrc = SpriteGetRect(SPRITE_weedy);
+                    float wt = (float)(fc->weedLevel - WEED_THRESHOLD) / (float)(255 - WEED_THRESHOLD);
+                    unsigned char weedAlpha = (unsigned char)(60 + wt * 140);
+                    Color weedTint = {60, 120, 40, weedAlpha};
+                    DrawTexturePro(atlas, weedSrc, dest, (Vector2){0,0}, 0, weedTint);
+                }
             }
         }
     }
@@ -689,6 +717,7 @@ static void DrawGrassOverlay(void) {
                 // Allow grass under air only, skip walls/ladders/ramps/etc.
                 if (cellHere != CELL_AIR) continue;
                 if (HAS_FLOOR(x, y, z)) continue;    // Don't draw grass under constructed floors
+                if (farmGrid[z][y][x].tilled) continue;  // No grass on tilled farm plots
                 
                 VegetationType veg = GetVegetation(x, y, zBelow);
                 int surface = GET_CELL_SURFACE(x, y, zBelow);
@@ -2398,6 +2427,7 @@ static const Color designationOverlayColors[DESIGNATION_TYPE_COUNT] = {
     [DESIGNATION_KNAP]           = {200, 150, 100, 200},
     [DESIGNATION_DIG_ROOTS]      = {160, 120, 60, 200},
     [DESIGNATION_EXPLORE]        = {100, 200, 255, 200},
+    [DESIGNATION_FARM]           = {120, 80, 40, 200},
 };
 
 static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
@@ -2418,6 +2448,7 @@ static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
     [DESIGNATION_KNAP]           = {180, 130, 80, 255},
     [DESIGNATION_DIG_ROOTS]      = {140, 100, 40, 255},
     [DESIGNATION_EXPLORE]        = {80, 180, 240, 255},
+    [DESIGNATION_FARM]           = {100, 60, 20, 255},
 };
 
 // Active job overlay colors, indexed by JobType

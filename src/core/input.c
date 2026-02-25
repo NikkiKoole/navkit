@@ -11,6 +11,7 @@
 #include "../simulation/trees.h"
 #include "../simulation/lighting.h"
 #include "../simulation/plants.h"
+#include "../simulation/farming.h"
 #include "input_mode.h"
 #include "action_registry.h"
 #include "pie_menu.h"
@@ -927,6 +928,34 @@ static void ExecuteCancelDigRoots(int x1, int y1, int x2, int y2, int z) {
     }
     if (count > 0) {
         AddMessage(TextFormat("Cancelled %d dig roots designation%s", count, count > 1 ? "s" : ""), GREEN);
+    }
+}
+
+static void ExecuteDesignateFarm(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (DesignateFarm(dx, dy, z)) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Designated %d cell%s for farming", count, count > 1 ? "s" : ""), GREEN);
+    }
+}
+
+static void ExecuteCancelFarm(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (HasFarmDesignation(dx, dy, z)) {
+                CancelDesignation(dx, dy, z);
+                count++;
+            }
+            // Already-tilled ground stays tilled — weeds will reclaim it naturally
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Cancelled %d farm designation%s", count, count > 1 ? "s" : ""), GREEN);
     }
 }
 
@@ -2763,6 +2792,9 @@ void HandleInput(void) {
             case ACTION_DRAW_WORKSHOP_BUTCHER:
                 if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_BUTCHER);
                 break;
+            case ACTION_DRAW_WORKSHOP_COMPOST_PILE:
+                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_COMPOST_PILE);
+                break;
             case ACTION_DRAW_SOIL_DIRT:
                 if (leftClick) {
                     if (shift) {
@@ -2875,6 +2907,10 @@ void HandleInput(void) {
                 if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_BUTCHER);
                 else ExecuteCancelWorkshopBlueprint(x1, y1, z);
                 break;
+            case ACTION_WORK_WORKSHOP_COMPOST_PILE:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_COMPOST_PILE);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
+                break;
             case ACTION_WORK_WORKSHOP_DRYING_RACK:
                 if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_DRYING_RACK);
                 else ExecuteCancelWorkshopBlueprint(x1, y1, z);
@@ -2958,6 +2994,10 @@ void HandleInput(void) {
             case ACTION_WORK_HUNT:
                 if (leftClick) ExecuteMarkHunt(x1, y1, x2, y2, z);
                 else ExecuteUnmarkHunt(x1, y1, x2, y2, z);
+                break;
+            case ACTION_WORK_FARM:
+                if (leftClick) ExecuteDesignateFarm(x1, y1, x2, y2, z);
+                else ExecuteCancelFarm(x1, y1, x2, y2, z);
                 break;
             // Sandbox actions
             case ACTION_SANDBOX_WATER:

@@ -380,6 +380,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = true,
         .canErase = false
     },
+    {
+        .action = ACTION_DRAW_WORKSHOP_COMPOST_PILE,
+        .name = "COMPOST_PILE",
+        .barDisplayText = "Compost Pile",
+        .barText = "L-click place  [ESC]Back",
+        .barKey = 'o',
+        .barUnderlinePos = 1,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_WORKSHOP,
+        .canDrag = true,
+        .canErase = false
+    },
 
     // ========================================================================
     // MODE_DRAW > TRANSPORT children
@@ -608,9 +621,9 @@ const ActionDef ACTION_REGISTRY[] = {
     {
         .action = ACTION_WORK_WORKSHOP,
         .name = "WORKSHOP",
-        .barDisplayText = "Workshop",
+        .barDisplayText = "worksHop",
         .barText = "[C]ampfire [D]rying rack [M]aker [H]earth ...",
-        .barKey = 't',
+        .barKey = 'h',
         .barUnderlinePos = 5,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_BUILD,
@@ -651,6 +664,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .barText = "L-click place  R-click cancel  [ESC]Back",
         .barKey = 'b',
         .barUnderlinePos = 0,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_WORK_WORKSHOP,
+        .canDrag = false,
+        .canErase = true
+    },
+    {
+        .action = ACTION_WORK_WORKSHOP_COMPOST_PILE,
+        .name = "COMPOST PILE",
+        .barDisplayText = "Compost Pile",
+        .barText = "L-click place  R-click cancel  [ESC]Back",
+        .barKey = 'o',
+        .barUnderlinePos = 1,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_BUILD,
         .parentAction = ACTION_WORK_WORKSHOP,
@@ -895,6 +921,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .barText = "L-drag mark animals  R-drag unmark  [ESC]Back",
         .barKey = 'u',
         .barUnderlinePos = 1,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
+        .canDrag = true,
+        .canErase = true
+    },
+    {
+        .action = ACTION_WORK_FARM,
+        .name = "FARM",
+        .barDisplayText = "Farm",
+        .barText = "L-drag designate  R-drag cancel  [ESC]Back",
+        .barKey = 'f',
+        .barUnderlinePos = 0,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_NONE,
         .parentAction = ACTION_NONE,

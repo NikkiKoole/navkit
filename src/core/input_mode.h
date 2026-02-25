@@ -43,6 +43,7 @@ typedef enum {
     ACTION_DRAW_WORKSHOP_CAMPFIRE,
     ACTION_DRAW_WORKSHOP_GROUND_FIRE,
     ACTION_DRAW_WORKSHOP_BUTCHER,
+    ACTION_DRAW_WORKSHOP_COMPOST_PILE,
     ACTION_DRAW_SOIL,      // Soil category - sub-actions for each type
     ACTION_DRAW_SOIL_DIRT,
     ACTION_DRAW_SOIL_CLAY,
@@ -78,6 +79,7 @@ typedef enum {
     ACTION_WORK_WORKSHOP_CARPENTER,
     ACTION_WORK_WORKSHOP_GROUND_FIRE,
     ACTION_WORK_WORKSHOP_BUTCHER,
+    ACTION_WORK_WORKSHOP_COMPOST_PILE,
     // Work > Harvest actions
     ACTION_WORK_CHOP,
     ACTION_WORK_CHOP_FELLED,
@@ -96,6 +98,8 @@ typedef enum {
     ACTION_WORK_EXPLORE,
     // Work > Hunt (top-level, entity-based designation)
     ACTION_WORK_HUNT,
+    // Work > Farm (top-level, drag-designate)
+    ACTION_WORK_FARM,
     // Sandbox actions (sim systems)
     ACTION_SANDBOX_WATER,
     ACTION_SANDBOX_FIRE,

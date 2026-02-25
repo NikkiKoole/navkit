@@ -26,6 +26,7 @@ typedef enum {
     DESIGNATION_KNAP,           // Knap stone at rock wall surface
     DESIGNATION_DIG_ROOTS,      // Dig roots from natural soil
     DESIGNATION_EXPLORE,        // Walk straight line toward target (scouting)
+    DESIGNATION_FARM,           // Till soil for farming
     DESIGNATION_TYPE_COUNT
 } DesignationType;
 
@@ -48,6 +49,7 @@ static inline const char* DesignationTypeName(int type) {
         [DESIGNATION_KNAP]           = "KNAP",
         [DESIGNATION_DIG_ROOTS]      = "DIG_ROOTS",
         [DESIGNATION_EXPLORE]        = "EXPLORE",
+        [DESIGNATION_FARM]           = "FARM",
     };
     return (type >= 0 && type < DESIGNATION_TYPE_COUNT) ? names[type] : "?";
 }
@@ -404,6 +406,22 @@ void CompleteExploreDesignation(int x, int y, int z);
 
 // Count active explore designations
 int CountExploreDesignations(void);
+
+// =============================================================================
+// Farm designation functions
+// =============================================================================
+
+// Designate a soil cell for farming (tilling)
+bool DesignateFarm(int x, int y, int z);
+
+// Check if a cell has a farm designation
+bool HasFarmDesignation(int x, int y, int z);
+
+// Complete a farm designation (called when tilling finishes)
+void CompleteFarmDesignation(int x, int y, int z, int moverIdx);
+
+// Count active farm designations
+int CountFarmDesignations(void);
 
 // =============================================================================
 // Blueprint functions

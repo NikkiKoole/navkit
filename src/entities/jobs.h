@@ -37,6 +37,9 @@ typedef enum {
     JOBTYPE_HUNT,                    // Hunt a designated animal
     JOBTYPE_DIG_ROOTS,               // Dig roots from natural soil
     JOBTYPE_EXPLORE,                 // Walk straight line toward target (scouting)
+    JOBTYPE_TILL,                    // Till soil for farming
+    JOBTYPE_TEND_CROP,               // Weed a farm cell
+    JOBTYPE_FERTILIZE,               // Apply compost to farm cell
     JOBTYPE_COUNT
 } JobType;
 
@@ -68,6 +71,9 @@ static inline const char* JobTypeName(int type) {
         [JOBTYPE_HUNT]                 = "HUNT",
         [JOBTYPE_DIG_ROOTS]            = "DIG_ROOTS",
         [JOBTYPE_EXPLORE]              = "EXPLORE",
+        [JOBTYPE_TILL]                 = "TILL",
+        [JOBTYPE_TEND_CROP]            = "TEND_CROP",
+        [JOBTYPE_FERTILIZE]            = "FERTILIZE",
     };
     return (type >= 0 && type < JOBTYPE_COUNT) ? names[type] : "?";
 }
@@ -211,6 +217,9 @@ JobRunResult RunJob_DeconstructWorkshop(Job* job, void* mover, float dt);
 JobRunResult RunJob_Hunt(Job* job, void* mover, float dt);
 JobRunResult RunJob_DigRoots(Job* job, void* mover, float dt);
 JobRunResult RunJob_Explore(Job* job, void* mover, float dt);
+JobRunResult RunJob_Till(Job* job, void* mover, float dt);
+JobRunResult RunJob_TendCrop(Job* job, void* mover, float dt);
+JobRunResult RunJob_Fertilize(Job* job, void* mover, float dt);
 
 
 
@@ -274,6 +283,9 @@ int WorkGiver_DeconstructWorkshop(int moverIdx);
 int WorkGiver_Hunt(int moverIdx);
 int WorkGiver_DigRoots(int moverIdx);
 int WorkGiver_Explore(int moverIdx);
+int WorkGiver_Till(int moverIdx);
+int WorkGiver_TendCrop(int moverIdx);
+int WorkGiver_Fertilize(int moverIdx);
 
 // Job cancellation (releases all reservations, safe-drops carried items, returns mover to idle)
 void CancelJob(void* mover, int moverIdx);  // void* to avoid circular dependency with mover.h

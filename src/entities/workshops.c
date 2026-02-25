@@ -90,6 +90,12 @@ Recipe butcherRecipes[] = {
 };
 int butcherRecipeCount = sizeof(butcherRecipes) / sizeof(butcherRecipes[0]);
 
+// Compost pile recipes: convert compostable materials into compost (semi-passive)
+Recipe compostPileRecipes[] = {
+    { "Compost", ITEM_NONE, 3, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_COMPOST, 1, ITEM_NONE, 0, 0.5f, 2.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_ANY_COMPOSTABLE, 0, 0 },
+};
+int compostPileRecipeCount = sizeof(compostPileRecipes) / sizeof(compostPileRecipes[0]);
+
 Recipe carpenterRecipes[] = {
     { "Craft Plank Bed",   ITEM_PLANKS, 4, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_PLANK_BED, 1, ITEM_NONE, 0, 8.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Craft Chair",       ITEM_PLANKS, 2, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_CHAIR, 1,     ITEM_NONE, 0, 5.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
@@ -232,6 +238,17 @@ const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
         .recipeCount = sizeof(butcherRecipes) / sizeof(butcherRecipes[0]),
         .passive = false
     },
+    [WORKSHOP_COMPOST_PILE] = {
+        .type = WORKSHOP_COMPOST_PILE,
+        .name = "COMPOST_PILE",
+        .displayName = "Compost Pile",
+        .width = 2,
+        .height = 1,
+        .template = "XO",
+        .recipes = compostPileRecipes,
+        .recipeCount = sizeof(compostPileRecipes) / sizeof(compostPileRecipes[0]),
+        .passive = true
+    },
 };
 
 // Compile-time check: ensure workshopDefs[] has an entry for every WorkshopType
@@ -278,6 +295,13 @@ static bool WorkshopHasInputForRecipe(Workshop* ws, const Recipe* recipe, int se
 // Helper: item is usable as fuel (has IF_FUEL flag OR is rotten)
 static inline bool ItemIsFuelOrRotten(const Item* item) {
     return (ItemFlags(item->type) & IF_FUEL) || item->condition == CONDITION_ROTTEN;
+}
+
+static inline bool ItemIsCompostable(const Item* item) {
+    // Rotten food items, leaves, or grass
+    if (item->condition == CONDITION_ROTTEN) return true;
+    if (item->type == ITEM_LEAVES || item->type == ITEM_GRASS) return true;
+    return false;
 }
 
 bool WorkshopHasFuelForRecipe(Workshop* ws, int searchRadius) {
@@ -368,6 +392,9 @@ bool RecipeInputMatches(const Recipe* recipe, const Item* item) {
     if (recipe->inputItemMatch == ITEM_MATCH_ANY_FUEL) {
         // Match any item with IF_FUEL flag or rotten condition
         if (!ItemIsFuelOrRotten(item)) return false;
+    } else if (recipe->inputItemMatch == ITEM_MATCH_ANY_COMPOSTABLE) {
+        // Match rotten food, leaves, or grass
+        if (!ItemIsCompostable(item)) return false;
     } else {
         // Exact item type match (default)
         if (item->type != recipe->inputType) return false;

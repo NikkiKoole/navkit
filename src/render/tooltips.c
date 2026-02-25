@@ -7,6 +7,7 @@
 #include "../entities/item_defs.h"
 #include "../entities/containers.h"
 #include "../entities/jobs.h"
+#include "../simulation/farming.h"
 #include "../world/designations.h"
 #include "../simulation/trees.h"
 #include "../simulation/floordirt.h"
@@ -743,6 +744,21 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
             snprintf(lines[lineCount++], sizeof(lines[0]), "Cleanliness: %s (%d, stone: 50%% rate)", dirtDesc, dirtLevel);
         } else {
             snprintf(lines[lineCount++], sizeof(lines[0]), "Cleanliness: %s (%d)", dirtDesc, dirtLevel);
+        }
+    }
+
+    // Farm plot info
+    {
+        FarmCell* fc = &farmGrid[cellZ][cellY][cellX];
+        if (fc->tilled) {
+            MaterialType soilMat = GetWallMaterial(cellX, cellY, cellZ - 1);
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Farm Plot (%s)", MaterialName(soilMat));
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Fertility: %d/255", fc->fertility);
+            if (fc->weedLevel > WEED_THRESHOLD) {
+                snprintf(lines[lineCount++], sizeof(lines[0]), "Weeds: heavy (%d)", fc->weedLevel);
+            } else if (fc->weedLevel > 0) {
+                snprintf(lines[lineCount++], sizeof(lines[0]), "Weeds: light (%d)", fc->weedLevel);
+            }
         }
     }
 

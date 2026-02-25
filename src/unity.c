@@ -33,6 +33,7 @@
 #include "simulation/trees.c"
 #include "simulation/lighting.c"
 #include "simulation/plants.c"
+#include "simulation/farming.c"
 #include "simulation/balance.c"
 #include "simulation/needs.c"
 

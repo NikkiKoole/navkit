@@ -16,6 +16,7 @@ void RebuildPostLoadState(void);
 #include "../simulation/lighting.h"
 #include "../simulation/weather.h"
 #include "../simulation/plants.h"
+#include "../simulation/farming.h"
 #include "../simulation/balance.h"
 #include "../core/sim_manager.h"
 #include "../world/material.h"
@@ -340,6 +341,14 @@ bool SaveWorld(const char* filename) {
             fwrite(exploredGrid[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
+
+    // Farm grid (v76+)
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(farmGrid[z][y], sizeof(FarmCell), gridWidth, f);
+        }
+    }
+    fwrite(&farmActiveCells, sizeof(farmActiveCells), 1, f);
 
     // === ENTITIES SECTION ===
     marker = MARKER_ENTITIES;
@@ -807,6 +816,19 @@ bool LoadWorld(const char* filename) {
         }
     } else {
         memset(exploredGrid, 1, sizeof(exploredGrid));  // Old saves: all explored
+    }
+
+    // Farm grid (v76+)
+    if (version >= 76) {
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                fread(farmGrid[z][y], sizeof(FarmCell), gridWidth, f);
+            }
+        }
+        fread(&farmActiveCells, sizeof(farmActiveCells), 1, f);
+    } else {
+        memset(farmGrid, 0, sizeof(farmGrid));
+        farmActiveCells = 0;
     }
 
     // === ENTITIES SECTION ===
@@ -1322,8 +1344,40 @@ bool LoadWorld(const char* filename) {
             stockpiles[i].freeSlotCount = v72_sp.freeSlotCount;
             stockpiles[i].rejectsRotten = true;
         }
+    } else if (version < 76) {
+        // v73-v75: 45 item types, migrate to 46 (adding ITEM_COMPOST)
+        StockpileV75 v75_sp;
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            fread(&v75_sp, sizeof(StockpileV75), 1, f);
+            stockpiles[i].x = v75_sp.x;
+            stockpiles[i].y = v75_sp.y;
+            stockpiles[i].z = v75_sp.z;
+            stockpiles[i].width = v75_sp.width;
+            stockpiles[i].height = v75_sp.height;
+            stockpiles[i].active = v75_sp.active;
+            memcpy(stockpiles[i].allowedTypes, v75_sp.allowedTypes,
+                   sizeof(v75_sp.allowedTypes));
+            for (int t = V75_ITEM_TYPE_COUNT; t < ITEM_TYPE_COUNT; t++) {
+                stockpiles[i].allowedTypes[t] = true;
+            }
+            memcpy(stockpiles[i].allowedMaterials, v75_sp.allowedMaterials,
+                   sizeof(v75_sp.allowedMaterials));
+            memcpy(stockpiles[i].cells, v75_sp.cells, sizeof(v75_sp.cells));
+            memcpy(stockpiles[i].slots, v75_sp.slots, sizeof(v75_sp.slots));
+            memcpy(stockpiles[i].reservedBy, v75_sp.reservedBy, sizeof(v75_sp.reservedBy));
+            memcpy(stockpiles[i].slotCounts, v75_sp.slotCounts, sizeof(v75_sp.slotCounts));
+            memcpy(stockpiles[i].slotTypes, v75_sp.slotTypes, sizeof(v75_sp.slotTypes));
+            memcpy(stockpiles[i].slotMaterials, v75_sp.slotMaterials, sizeof(v75_sp.slotMaterials));
+            stockpiles[i].maxStackSize = v75_sp.maxStackSize;
+            stockpiles[i].priority = v75_sp.priority;
+            stockpiles[i].maxContainers = v75_sp.maxContainers;
+            memcpy(stockpiles[i].slotIsContainer, v75_sp.slotIsContainer, sizeof(v75_sp.slotIsContainer));
+            memcpy(stockpiles[i].groundItemIdx, v75_sp.groundItemIdx, sizeof(v75_sp.groundItemIdx));
+            stockpiles[i].freeSlotCount = v75_sp.freeSlotCount;
+            stockpiles[i].rejectsRotten = v75_sp.rejectsRotten;
+        }
     } else {
-        // v73+ format - direct read
+        // v76+ format - direct read
         fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
     }
 

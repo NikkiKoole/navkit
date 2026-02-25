@@ -7,6 +7,7 @@
 #include "../simulation/trees.h"
 #include "../simulation/groundwear.h"
 #include "../simulation/floordirt.h"
+#include "../simulation/farming.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "vendor/raylib.h"
@@ -48,7 +49,8 @@ void RebuildSimActivityCounts(void) {
     treeRegenCells = 0;
     wearActiveCells = 0;
     dirtActiveCells = 0;
-    
+    farmActiveCells = 0;
+
     for (int z = 0; z < gridDepth; z++) {
         int ambient = GetAmbientTemperature(z);
         for (int y = 0; y < gridHeight; y++) {
@@ -99,6 +101,10 @@ void RebuildSimActivityCounts(void) {
                 if (floorDirtGrid[z][y][x] > 0) {
                     dirtActiveCells++;
                 }
+                // Farm: tilled cells
+                if (farmGrid[z][y][x].tilled) {
+                    farmActiveCells++;
+                }
             }
         }
     }
@@ -108,7 +114,7 @@ void RebuildSimActivityCounts(void) {
 // Returns true if counters are valid, false if drift was detected and corrected
 bool ValidateSimActivityCounts(void) {
     int actualWater = 0, actualSteam = 0, actualFire = 0, actualSmoke = 0;
-    int actualTempSource = 0, actualTempUnstable = 0, actualTree = 0, actualTreeRegen = 0, actualWear = 0, actualDirt = 0;
+    int actualTempSource = 0, actualTempUnstable = 0, actualTree = 0, actualTreeRegen = 0, actualWear = 0, actualDirt = 0, actualFarm = 0;
     
     // Count actual active cells from grids (same logic as RebuildSimActivityCounts)
     for (int z = 0; z < gridDepth; z++) {
@@ -131,10 +137,11 @@ bool ValidateSimActivityCounts(void) {
                     treeHarvestState[z][y][x] < TREE_HARVEST_MAX) actualTreeRegen++;
                 if (cell == CELL_WALL && IsWallNatural(x, y, z) && GetWallMaterial(x, y, z) == MAT_DIRT && GetGroundWear(x, y, z) > 0) actualWear++;
                 if (floorDirtGrid[z][y][x] > 0) actualDirt++;
+                if (farmGrid[z][y][x].tilled) actualFarm++;
             }
         }
     }
-    
+
     bool valid = true;
     
     #define CHECK_COUNTER(name, actual) \
@@ -154,7 +161,8 @@ bool ValidateSimActivityCounts(void) {
     CHECK_COUNTER(treeRegenCells, actualTreeRegen);
     CHECK_COUNTER(wearActiveCells, actualWear);
     CHECK_COUNTER(dirtActiveCells, actualDirt);
-    
+    CHECK_COUNTER(farmActiveCells, actualFarm);
+
     #undef CHECK_COUNTER
     
     return valid;

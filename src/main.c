@@ -691,6 +691,7 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
     InitSteam();
     InitLighting();
     InitPlants();
+    InitFarming();
 
     // Handle .gz decompression
     const char* actualFile = loadFile;
@@ -1039,6 +1040,7 @@ int main(int argc, char** argv) {
     InitSteam();
     InitLighting();
     InitPlants();
+    InitFarming();
     BuildEntrances();
     BuildGraph();
     offset.x = (GetScreenWidth() - gridWidth * CELL_SIZE * zoom) / 2.0f;
