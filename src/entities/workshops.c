@@ -57,6 +57,8 @@ Recipe campfireRecipes[] = {
     { "Burn Log",    ITEM_LOG,    1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_ASH, 1, ITEM_NONE, 0, 3.0f, 60.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Cook Meat",   ITEM_RAW_MEAT, 1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_COOKED_MEAT, 1, ITEM_NONE, 0, 1.0f, 15.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Roast Roots", ITEM_ROOT, 1, ITEM_STICKS, 1, ITEM_NONE, 0, ITEM_ROASTED_ROOT, 1, ITEM_NONE, 0, 1.0f, 10.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    { "Bake Bread",  ITEM_FLOUR, 1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_BREAD, 1, ITEM_NONE, 0, 1.0f, 15.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    { "Cook Lentils", ITEM_LENTILS, 2, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_COOKED_LENTILS, 1, ITEM_NONE, 0, 0.5f, 10.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
 };
 int campfireRecipeCount = sizeof(campfireRecipes) / sizeof(campfireRecipes[0]);
 
@@ -64,6 +66,8 @@ int campfireRecipeCount = sizeof(campfireRecipes) / sizeof(campfireRecipes[0]);
 Recipe hearthRecipes[] = {
     { "Burn Fuel", ITEM_NONE, 1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_ASH, 1, ITEM_NONE, 0, 1.6f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_ANY_FUEL, 0, 0 },
     { "Cook Meat", ITEM_RAW_MEAT, 2, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_COOKED_MEAT, 2, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    { "Bake Bread", ITEM_FLOUR, 2, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_BREAD, 2, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    { "Cook Lentils", ITEM_LENTILS, 4, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_COOKED_LENTILS, 2, ITEM_NONE, 0, 1.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
 };
 int hearthRecipeCount = sizeof(hearthRecipes) / sizeof(hearthRecipes[0]);
 
@@ -95,6 +99,12 @@ Recipe compostPileRecipes[] = {
     { "Compost", ITEM_NONE, 3, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_COMPOST, 1, ITEM_NONE, 0, 0.5f, 2.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_ANY_COMPOSTABLE, 0, 0 },
 };
 int compostPileRecipeCount = sizeof(compostPileRecipes) / sizeof(compostPileRecipes[0]);
+
+// Quern recipes: grind grain into flour
+Recipe quernRecipes[] = {
+    { "Grind Wheat", ITEM_WHEAT, 2, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_FLOUR, 1, ITEM_NONE, 0, 1.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+};
+int quernRecipeCount = sizeof(quernRecipes) / sizeof(quernRecipes[0]);
 
 Recipe carpenterRecipes[] = {
     { "Craft Plank Bed",   ITEM_PLANKS, 4, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_PLANK_BED, 1, ITEM_NONE, 0, 8.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
@@ -248,6 +258,17 @@ const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
         .recipes = compostPileRecipes,
         .recipeCount = sizeof(compostPileRecipes) / sizeof(compostPileRecipes[0]),
         .passive = true
+    },
+    [WORKSHOP_QUERN] = {
+        .type = WORKSHOP_QUERN,
+        .name = "QUERN",
+        .displayName = "Quern",
+        .width = 1,
+        .height = 1,
+        .template = "X",
+        .recipes = quernRecipes,
+        .recipeCount = sizeof(quernRecipes) / sizeof(quernRecipes[0]),
+        .passive = false
     },
 };
 

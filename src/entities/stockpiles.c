@@ -23,6 +23,7 @@ const char* FILTER_CATEGORY_NAMES[FILTER_CAT_COUNT] = {
     [FILTER_CAT_CONTAINER] = "Container",
     [FILTER_CAT_TOOL]      = "Tool",
     [FILTER_CAT_FOOD]      = "Food",
+    [FILTER_CAT_FARM]      = "Farm",
     [FILTER_CAT_DEBUG]     = "Debug",
 };
 
@@ -36,6 +37,7 @@ const char FILTER_CATEGORY_KEYS[FILTER_CAT_COUNT] = {
     [FILTER_CAT_CONTAINER] = 'N',
     [FILTER_CAT_TOOL]      = 'T',
     [FILTER_CAT_FOOD]      = 'F',
+    [FILTER_CAT_FARM]      = 'A',
     [FILTER_CAT_DEBUG]     = 'D',
 };
 
@@ -89,6 +91,17 @@ const StockpileFilterDef STOCKPILE_FILTERS[] = {
     {ITEM_RAW_MEAT,     FILTER_CAT_FOOD,      "Raw Meat",     RED},
     {ITEM_COOKED_MEAT,  FILTER_CAT_FOOD,      "Cooked Meat",  MAROON},
     {ITEM_HIDE,         FILTER_CAT_FOOD,      "Hide",         BEIGE},
+    // Farm
+    {ITEM_WHEAT_SEEDS,  FILTER_CAT_FARM,      "Wheat Seeds",  YELLOW},
+    {ITEM_LENTIL_SEEDS, FILTER_CAT_FARM,      "Lentil Seeds", GREEN},
+    {ITEM_FLAX_SEEDS,   FILTER_CAT_FARM,      "Flax Seeds",   SKYBLUE},
+    {ITEM_WHEAT,        FILTER_CAT_FARM,      "Wheat",        GOLD},
+    {ITEM_LENTILS,      FILTER_CAT_FARM,      "Lentils",      BROWN},
+    {ITEM_FLAX_FIBER,   FILTER_CAT_FARM,      "Flax Fiber",   SKYBLUE},
+    {ITEM_FLOUR,        FILTER_CAT_FARM,      "Flour",        BEIGE},
+    {ITEM_BREAD,        FILTER_CAT_FARM,      "Bread",        ORANGE},
+    {ITEM_COOKED_LENTILS,FILTER_CAT_FARM,     "Cooked Lentils",MAROON},
+    {ITEM_COMPOST,      FILTER_CAT_FARM,      "Compost",      BROWN},
     // Debug
     {ITEM_RED,          FILTER_CAT_DEBUG,     "Red",          RED},
     {ITEM_GREEN,        FILTER_CAT_DEBUG,     "Green",        GREEN},

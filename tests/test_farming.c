@@ -9,7 +9,10 @@
 #include "../src/entities/mover.h"
 #include "../src/entities/jobs.h"
 #include "../src/simulation/farming.h"
+#include "../src/simulation/plants.h"
 #include "../src/simulation/balance.h"
+#include "../src/simulation/temperature.h"
+#include "../src/entities/workshops.h"
 #include "../src/core/time.h"
 #include "../src/game_state.h"
 #include "test_helpers.h"
@@ -247,6 +250,554 @@ describe(farming) {
         // Winter
         dayNumber = daysPerSeason * 3 + 1;
         expect(GetSeasonalWeedRate() < 0.01f);
+    }
+
+    // =========================================================================
+    // 9. Crop growth modifiers
+    // =========================================================================
+    it("crop season modifier returns correct values") {
+        // Wheat in summer = 1.5
+        expect(CropSeasonModifier(CROP_WHEAT, SEASON_SUMMER) > 1.4f);
+        expect(CropSeasonModifier(CROP_WHEAT, SEASON_SUMMER) < 1.6f);
+        // Wheat in winter = 0.0
+        expect(CropSeasonModifier(CROP_WHEAT, SEASON_WINTER) < 0.01f);
+        // Lentils in spring = 1.2
+        expect(CropSeasonModifier(CROP_LENTILS, SEASON_SPRING) > 1.1f);
+        // Lentils in autumn = 0.0 (die)
+        expect(CropSeasonModifier(CROP_LENTILS, SEASON_AUTUMN) < 0.01f);
+        // Flax in autumn = 0.0 (die)
+        expect(CropSeasonModifier(CROP_FLAX, SEASON_AUTUMN) < 0.01f);
+    }
+
+    it("crop temperature modifier returns correct ranges") {
+        expect(CropTemperatureModifier(-5.0f) < 0.01f);  // Freeze
+        expect(CropTemperatureModifier(3.0f) > 0.2f && CropTemperatureModifier(3.0f) < 0.4f);  // Cold
+        expect(CropTemperatureModifier(10.0f) > 0.6f && CropTemperatureModifier(10.0f) < 0.8f);  // Cool
+        expect(CropTemperatureModifier(15.0f) > 0.9f);  // Ideal
+        expect(CropTemperatureModifier(30.0f) > 0.6f && CropTemperatureModifier(30.0f) < 0.8f);  // Hot
+        expect(CropTemperatureModifier(40.0f) < 0.4f);  // Very hot
+    }
+
+    it("crop wetness modifier returns correct values") {
+        expect(CropWetnessModifier(0) > 0.2f && CropWetnessModifier(0) < 0.4f);  // Dry
+        expect(CropWetnessModifier(1) > 0.6f && CropWetnessModifier(1) < 0.8f);  // Damp
+        expect(CropWetnessModifier(2) > 0.9f);  // Ideal
+        expect(CropWetnessModifier(3) > 0.4f && CropWetnessModifier(3) < 0.6f);  // Waterlogged
+    }
+
+    it("crop fertility modifier scales correctly") {
+        // 0 fertility → 0.25
+        expect(CropFertilityModifier(0) > 0.24f && CropFertilityModifier(0) < 0.26f);
+        // 255 fertility → 1.0
+        expect(CropFertilityModifier(255) > 0.99f);
+        // 128 fertility → ~0.625
+        float mid = CropFertilityModifier(128);
+        expect(mid > 0.6f && mid < 0.65f);
+    }
+
+    it("crop weed modifier penalizes growth") {
+        expect(CropWeedModifier(0) > 0.99f);      // No weeds
+        expect(CropWeedModifier(100) > 0.99f);     // Below threshold
+        expect(CropWeedModifier(150) < 0.6f);      // Above threshold
+        expect(CropWeedModifier(220) < 0.3f);      // Severe
+    }
+
+    // =========================================================================
+    // 10. Seed/crop type conversion
+    // =========================================================================
+    it("SeedTypeForCrop returns correct seed types") {
+        expect(SeedTypeForCrop(CROP_WHEAT) == ITEM_WHEAT_SEEDS);
+        expect(SeedTypeForCrop(CROP_LENTILS) == ITEM_LENTIL_SEEDS);
+        expect(SeedTypeForCrop(CROP_FLAX) == ITEM_FLAX_SEEDS);
+        expect(SeedTypeForCrop(CROP_NONE) == ITEM_NONE);
+    }
+
+    it("CropTypeForSeed returns correct crop types") {
+        expect(CropTypeForSeed(ITEM_WHEAT_SEEDS) == CROP_WHEAT);
+        expect(CropTypeForSeed(ITEM_LENTIL_SEEDS) == CROP_LENTILS);
+        expect(CropTypeForSeed(ITEM_FLAX_SEEDS) == CROP_FLAX);
+        expect(CropTypeForSeed(ITEM_ROCK) == CROP_NONE);
+    }
+
+    // =========================================================================
+    // 11. Crop growth stages advance under ideal conditions
+    // =========================================================================
+    it("crops advance through growth stages") {
+        SetupFarmGrid();
+
+        farmGrid[1][5][5].tilled = 1;
+        farmGrid[1][5][5].fertility = 200;
+        farmGrid[1][5][5].weedLevel = 0;
+        farmGrid[1][5][5].cropType = CROP_WHEAT;
+        farmGrid[1][5][5].growthStage = CROP_STAGE_SPROUTED;
+        farmGrid[1][5][5].growthProgress = 0;
+        farmGrid[1][5][5].frostDamaged = 0;
+        farmActiveCells = 1;
+
+        // Set ideal temperature (15°C) and wetness (2=wet)
+        temperatureGrid[1][5][5].current = 15;
+        SET_CELL_WETNESS(5, 5, 1, 2);
+
+        // Summer day
+        dayNumber = daysPerSeason + 1;  // Summer
+
+        // Tick many times to advance growth
+        float tickInterval = GameHoursToGameSeconds(FARM_TICK_INTERVAL);
+        for (int i = 0; i < 500; i++) {
+            FarmTick(tickInterval + 0.01f);
+        }
+
+        FarmCell* fc = GetFarmCell(5, 5, 1);
+        // After many ticks in ideal conditions, should have progressed past sprouted
+        expect(fc->growthStage >= CROP_STAGE_GROWING);
+    }
+
+    // =========================================================================
+    // 12. Season kill resets crop
+    // =========================================================================
+    it("season kill removes crop when season modifier is 0") {
+        SetupFarmGrid();
+
+        farmGrid[1][5][5].tilled = 1;
+        farmGrid[1][5][5].fertility = 128;
+        farmGrid[1][5][5].weedLevel = 0;
+        farmGrid[1][5][5].cropType = CROP_LENTILS;
+        farmGrid[1][5][5].growthStage = CROP_STAGE_GROWING;
+        farmGrid[1][5][5].growthProgress = 100;
+        farmActiveCells = 1;
+
+        // Autumn — lentils have 0.0 season modifier
+        dayNumber = daysPerSeason * 2 + 1;
+
+        float dt = GameHoursToGameSeconds(FARM_TICK_INTERVAL) + 0.01f;
+        FarmTick(dt);
+
+        FarmCell* fc = GetFarmCell(5, 5, 1);
+        expect(fc->cropType == CROP_NONE);
+        expect(fc->growthStage == CROP_STAGE_BARE);
+        expect(fc->growthProgress == 0);
+    }
+
+    // =========================================================================
+    // 13. RunJob_PlantCrop sets correct crop state on completion
+    // =========================================================================
+    it("RunJob_PlantCrop plants seed and sets crop type") {
+        SetupFarmGrid();
+
+        farmGrid[1][5][5].tilled = 1;
+        farmGrid[1][5][5].fertility = 128;
+        farmGrid[1][5][5].desiredCropType = CROP_WHEAT;
+        farmActiveCells = 1;
+
+        // Spawn a wheat seed on ground
+        float px = 5.5f * CELL_SIZE;
+        float py = 5.5f * CELL_SIZE;
+        int seedIdx = SpawnItem(px, py, 1.0f, ITEM_WHEAT_SEEDS);
+        expect(seedIdx >= 0);
+
+        // Create mover standing at the target cell
+        Mover* m = &movers[0];
+        Point goal = {5, 5, 1};
+        InitMover(m, px, py, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        m->capabilities.canPlant = true;
+
+        // Create plant job in PLANTING step (seed already "carried")
+        int jobId = CreateJob(JOBTYPE_PLANT_CROP);
+        expect(jobId >= 0);
+        Job* job = GetJob(jobId);
+        job->assignedMover = 0;
+        job->targetMineX = 5;
+        job->targetMineY = 5;
+        job->targetMineZ = 1;
+        job->step = STEP_PLANTING;
+        job->progress = 0.0f;
+        job->carryingItem = seedIdx;
+
+        // Run job to completion
+        for (int i = 0; i < 1000; i++) {
+            JobRunResult r = RunJob_PlantCrop(job, m, 0.016f);
+            if (r == JOBRUN_DONE) break;
+        }
+
+        FarmCell* fc = GetFarmCell(5, 5, 1);
+        expect(fc->cropType == CROP_WHEAT);
+        expect(fc->growthStage == CROP_STAGE_SPROUTED);
+        // Seed should be consumed
+        expect(!items[seedIdx].active);
+    }
+
+    // =========================================================================
+    // 14. RunJob_PlantCrop fails on untilled cell
+    // =========================================================================
+    it("RunJob_PlantCrop fails on untilled cell") {
+        SetupFarmGrid();
+
+        // Cell NOT tilled
+        float px = 5.5f * CELL_SIZE;
+        float py = 5.5f * CELL_SIZE;
+        int seedIdx = SpawnItem(px, py, 1.0f, ITEM_WHEAT_SEEDS);
+        expect(seedIdx >= 0);
+
+        Mover* m = &movers[0];
+        Point goal = {5, 5, 1};
+        InitMover(m, px, py, 1.0f, goal, 100.0f);
+        moverCount = 1;
+
+        int jobId = CreateJob(JOBTYPE_PLANT_CROP);
+        expect(jobId >= 0);
+        Job* job = GetJob(jobId);
+        job->assignedMover = 0;
+        job->targetMineX = 5;
+        job->targetMineY = 5;
+        job->targetMineZ = 1;
+        job->step = STEP_PLANTING;
+        job->progress = 0.0f;
+        job->carryingItem = seedIdx;
+
+        JobRunResult r = RunJob_PlantCrop(job, m, 0.016f);
+        expect(r == JOBRUN_FAIL);
+
+        // Crop should NOT be set
+        FarmCell* fc = GetFarmCell(5, 5, 1);
+        expect(fc->cropType == CROP_NONE);
+    }
+
+    // =========================================================================
+    // 15. Harvest yields vary by crop type
+    // =========================================================================
+    it("harvest spawns correct items for wheat (normal)") {
+        SetupFarmGrid();
+
+        // Set up ripe wheat cell
+        farmGrid[1][5][5].tilled = 1;
+        farmGrid[1][5][5].fertility = 128;
+        farmGrid[1][5][5].cropType = CROP_WHEAT;
+        farmGrid[1][5][5].growthStage = CROP_STAGE_RIPE;
+        farmGrid[1][5][5].frostDamaged = 0;
+        farmActiveCells = 1;
+
+        // Create mover at tile (5,5,1)
+        Mover* m = &movers[0];
+        Point goal = {5, 5, 1};
+        InitMover(m, 5.5f * CELL_SIZE, 5.5f * CELL_SIZE, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        m->capabilities.canPlant = true;
+
+        int jobId = CreateJob(JOBTYPE_HARVEST_CROP);
+        expect(jobId >= 0);
+        Job* job = GetJob(jobId);
+        job->assignedMover = 0;
+        job->targetMineX = 5;
+        job->targetMineY = 5;
+        job->targetMineZ = 1;
+        job->step = STEP_WORKING;
+        job->progress = 0.0f;
+
+        temperatureGrid[1][5][5].current = 15;
+
+        // Fast-forward the job to completion
+        for (int i = 0; i < 1000; i++) {
+            JobRunResult r = RunJob_HarvestCrop(job, m, 0.016f);
+            if (r == JOBRUN_DONE) break;
+        }
+
+        // Count spawned items
+        int wheatCount = 0, seedCount = 0;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (!items[i].active) continue;
+            if (items[i].type == ITEM_WHEAT) wheatCount++;
+            if (items[i].type == ITEM_WHEAT_SEEDS) seedCount++;
+        }
+        expect(wheatCount == 4);  // Normal wheat yield
+        expect(seedCount == 1);   // Self-sustaining seed
+
+        // Cell should be reset
+        FarmCell* fc = GetFarmCell(5, 5, 1);
+        expect(fc->cropType == CROP_NONE);
+        expect(fc->growthStage == CROP_STAGE_BARE);
+        expect(fc->tilled == 1);  // Stays tilled
+    }
+
+    it("harvest halves yield when frost damaged") {
+        SetupFarmGrid();
+
+        farmGrid[1][6][6].tilled = 1;
+        farmGrid[1][6][6].fertility = 128;
+        farmGrid[1][6][6].cropType = CROP_WHEAT;
+        farmGrid[1][6][6].growthStage = CROP_STAGE_RIPE;
+        farmGrid[1][6][6].frostDamaged = 1;  // Frost damage!
+        farmActiveCells = 1;
+
+        Mover* m = &movers[0];
+        Point goal = {6, 6, 1};
+        InitMover(m, 6.5f * CELL_SIZE, 6.5f * CELL_SIZE, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        m->capabilities.canPlant = true;
+
+        int jobId = CreateJob(JOBTYPE_HARVEST_CROP);
+        expect(jobId >= 0);
+        Job* job = GetJob(jobId);
+        job->assignedMover = 0;
+        job->targetMineX = 6;
+        job->targetMineY = 6;
+        job->targetMineZ = 1;
+        job->step = STEP_WORKING;
+        job->progress = 0.0f;
+
+        temperatureGrid[1][6][6].current = 15;
+        for (int i = 0; i < 1000; i++) {
+            JobRunResult r = RunJob_HarvestCrop(job, m, 0.016f);
+            if (r == JOBRUN_DONE) break;
+        }
+
+        int wheatCount = 0, seedCount = 0;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (!items[i].active) continue;
+            if (items[i].type == ITEM_WHEAT) wheatCount++;
+            if (items[i].type == ITEM_WHEAT_SEEDS) seedCount++;
+        }
+        expect(wheatCount == 2);  // Frost halves: 4 -> 2
+        expect(seedCount == 1);   // Still get 1 seed
+    }
+
+    // =========================================================================
+    // 16. Harvest applies fertility delta via actual job execution
+    // =========================================================================
+    it("wheat harvest reduces fertility by WHEAT_FERTILITY_DELTA") {
+        SetupFarmGrid();
+
+        // Ripe wheat at known fertility
+        farmGrid[1][7][7].tilled = 1;
+        farmGrid[1][7][7].fertility = 128;
+        farmGrid[1][7][7].cropType = CROP_WHEAT;
+        farmGrid[1][7][7].growthStage = CROP_STAGE_RIPE;
+        farmGrid[1][7][7].frostDamaged = 0;
+        farmActiveCells = 1;
+
+        Mover* m = &movers[0];
+        Point goal = {7, 7, 1};
+        InitMover(m, 7.5f * CELL_SIZE, 7.5f * CELL_SIZE, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        m->capabilities.canPlant = true;
+
+        int jobId = CreateJob(JOBTYPE_HARVEST_CROP);
+        Job* job = GetJob(jobId);
+        job->assignedMover = 0;
+        job->targetMineX = 7;
+        job->targetMineY = 7;
+        job->targetMineZ = 1;
+        job->step = STEP_WORKING;
+        job->progress = 0.0f;
+
+        temperatureGrid[1][7][7].current = 15;
+        for (int i = 0; i < 1000; i++) {
+            JobRunResult r = RunJob_HarvestCrop(job, m, 0.016f);
+            if (r == JOBRUN_DONE) break;
+        }
+
+        FarmCell* fc = GetFarmCell(7, 7, 1);
+        expect(fc->fertility == 128 + WHEAT_FERTILITY_DELTA);  // 108
+    }
+
+    it("lentil harvest boosts fertility by LENTIL_FERTILITY_DELTA") {
+        SetupFarmGrid();
+
+        farmGrid[1][8][8].tilled = 1;
+        farmGrid[1][8][8].fertility = 128;
+        farmGrid[1][8][8].cropType = CROP_LENTILS;
+        farmGrid[1][8][8].growthStage = CROP_STAGE_RIPE;
+        farmGrid[1][8][8].frostDamaged = 0;
+        farmActiveCells = 1;
+
+        Mover* m = &movers[0];
+        Point goal = {8, 8, 1};
+        InitMover(m, 8.5f * CELL_SIZE, 8.5f * CELL_SIZE, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        m->capabilities.canPlant = true;
+
+        int jobId = CreateJob(JOBTYPE_HARVEST_CROP);
+        Job* job = GetJob(jobId);
+        job->assignedMover = 0;
+        job->targetMineX = 8;
+        job->targetMineY = 8;
+        job->targetMineZ = 1;
+        job->step = STEP_WORKING;
+        job->progress = 0.0f;
+
+        temperatureGrid[1][8][8].current = 15;
+        for (int i = 0; i < 1000; i++) {
+            JobRunResult r = RunJob_HarvestCrop(job, m, 0.016f);
+            if (r == JOBRUN_DONE) break;
+        }
+
+        FarmCell* fc = GetFarmCell(8, 8, 1);
+        expect(fc->fertility == 128 + LENTIL_FERTILITY_DELTA);  // 188
+    }
+
+    it("fertility clamps at 0 and 255") {
+        SetupFarmGrid();
+
+        // Low fertility wheat harvest → should clamp at 0
+        farmGrid[1][9][9].tilled = 1;
+        farmGrid[1][9][9].fertility = 10;  // 10 + (-20) = -10 → clamp 0
+        farmGrid[1][9][9].cropType = CROP_WHEAT;
+        farmGrid[1][9][9].growthStage = CROP_STAGE_RIPE;
+        farmGrid[1][9][9].frostDamaged = 0;
+        farmActiveCells = 1;
+
+        Mover* m = &movers[0];
+        Point goal = {9, 9, 1};
+        InitMover(m, 9.5f * CELL_SIZE, 9.5f * CELL_SIZE, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        m->capabilities.canPlant = true;
+
+        int jobId = CreateJob(JOBTYPE_HARVEST_CROP);
+        Job* job = GetJob(jobId);
+        job->assignedMover = 0;
+        job->targetMineX = 9;
+        job->targetMineY = 9;
+        job->targetMineZ = 1;
+        job->step = STEP_WORKING;
+        job->progress = 0.0f;
+
+        temperatureGrid[1][9][9].current = 15;
+        for (int i = 0; i < 1000; i++) {
+            JobRunResult r = RunJob_HarvestCrop(job, m, 0.016f);
+            if (r == JOBRUN_DONE) break;
+        }
+
+        FarmCell* fc = GetFarmCell(9, 9, 1);
+        expect(fc->fertility == 0);  // Clamped, not underflowed
+    }
+
+    // =========================================================================
+    // 17. Wild plant harvest gives seeds
+    // =========================================================================
+    it("wild plant harvest spawns correct seed type") {
+        SetupFarmGrid();
+        ClearPlants();
+
+        int idx = SpawnPlant(5, 5, 1, PLANT_WILD_WHEAT);
+        expect(idx >= 0);
+        plants[idx].stage = PLANT_STAGE_RIPE;
+
+        int itemsBefore = itemCount;
+        HarvestPlant(5, 5, 1);
+
+        // Plant reset to bare
+        expect(plants[idx].stage == PLANT_STAGE_BARE);
+        // Should have spawned wheat seeds
+        expect(itemCount > itemsBefore);
+        // Find spawned item
+        bool foundSeed = false;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (items[i].active && items[i].type == ITEM_WHEAT_SEEDS) {
+                foundSeed = true;
+                break;
+            }
+        }
+        expect(foundSeed);
+    }
+
+    it("wild lentil harvest spawns lentil seeds") {
+        SetupFarmGrid();
+        ClearPlants();
+
+        int idx = SpawnPlant(6, 6, 1, PLANT_WILD_LENTILS);
+        expect(idx >= 0);
+        plants[idx].stage = PLANT_STAGE_RIPE;
+
+        HarvestPlant(6, 6, 1);
+
+        expect(plants[idx].stage == PLANT_STAGE_BARE);
+        bool foundSeed = false;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (items[i].active && items[i].type == ITEM_LENTIL_SEEDS) {
+                foundSeed = true;
+                break;
+            }
+        }
+        expect(foundSeed);
+    }
+
+    it("wild flax harvest spawns flax seeds") {
+        SetupFarmGrid();
+        ClearPlants();
+
+        int idx = SpawnPlant(7, 7, 1, PLANT_WILD_FLAX);
+        expect(idx >= 0);
+        plants[idx].stage = PLANT_STAGE_RIPE;
+
+        HarvestPlant(7, 7, 1);
+
+        expect(plants[idx].stage == PLANT_STAGE_BARE);
+        bool foundSeed = false;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (items[i].active && items[i].type == ITEM_FLAX_SEEDS) {
+                foundSeed = true;
+                break;
+            }
+        }
+        expect(foundSeed);
+    }
+
+    // =========================================================================
+    // 18. Quern recipe defined correctly
+    // =========================================================================
+    it("quern has grind wheat recipe") {
+        int count = 0;
+        const Recipe* recipes = GetRecipesForWorkshop(WORKSHOP_QUERN, &count);
+        expect(count == 1);
+        expect(recipes != NULL);
+        expect(recipes[0].inputType == ITEM_WHEAT);
+        expect(recipes[0].inputCount == 2);
+        expect(recipes[0].outputType == ITEM_FLOUR);
+        expect(recipes[0].outputCount == 1);
+    }
+
+    // =========================================================================
+    // 19. Campfire has bread and lentil recipes
+    // =========================================================================
+    it("campfire has bread and lentil cooking recipes") {
+        int count = 0;
+        const Recipe* recipes = GetRecipesForWorkshop(WORKSHOP_CAMPFIRE, &count);
+        expect(count >= 6);  // 4 original + 2 new (bread, lentils)
+
+        // Find bread recipe
+        bool foundBread = false, foundLentils = false;
+        for (int i = 0; i < count; i++) {
+            if (recipes[i].outputType == ITEM_BREAD) foundBread = true;
+            if (recipes[i].outputType == ITEM_COOKED_LENTILS) foundLentils = true;
+        }
+        expect(foundBread);
+        expect(foundLentils);
+    }
+
+    // =========================================================================
+    // 20. Hearth has bread and lentil recipes
+    // =========================================================================
+    it("hearth has bread and lentil cooking recipes") {
+        int count = 0;
+        const Recipe* recipes = GetRecipesForWorkshop(WORKSHOP_HEARTH, &count);
+        expect(count >= 4);  // 2 original + 2 new
+
+        bool foundBread = false, foundLentils = false;
+        for (int i = 0; i < count; i++) {
+            if (recipes[i].outputType == ITEM_BREAD) foundBread = true;
+            if (recipes[i].outputType == ITEM_COOKED_LENTILS) foundLentils = true;
+        }
+        expect(foundBread);
+        expect(foundLentils);
+    }
+
+    // =========================================================================
+    // 21. CropGrowthTimeGH returns correct values
+    // =========================================================================
+    it("CropGrowthTimeGH returns per-crop values") {
+        expect(CropGrowthTimeGH(CROP_WHEAT) > 71.0f && CropGrowthTimeGH(CROP_WHEAT) < 73.0f);
+        expect(CropGrowthTimeGH(CROP_LENTILS) > 47.0f && CropGrowthTimeGH(CROP_LENTILS) < 49.0f);
+        expect(CropGrowthTimeGH(CROP_FLAX) > 59.0f && CropGrowthTimeGH(CROP_FLAX) < 61.0f);
     }
 }
 

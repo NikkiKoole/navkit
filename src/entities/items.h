@@ -53,6 +53,15 @@ typedef enum {
     ITEM_ROASTED_ROOT,  // Roasted root (decent food)
     ITEM_DRIED_ROOT,    // Dried root (preserved winter food)
     ITEM_COMPOST,       // Compost (fertilizer from organic waste)
+    ITEM_WHEAT_SEEDS,   // Wheat seeds (plantable)
+    ITEM_LENTIL_SEEDS,  // Lentil seeds (plantable)
+    ITEM_FLAX_SEEDS,    // Flax seeds (plantable)
+    ITEM_WHEAT,         // Harvested wheat grain
+    ITEM_LENTILS,       // Harvested lentils
+    ITEM_FLAX_FIBER,    // Harvested flax fiber
+    ITEM_FLOUR,         // Ground wheat flour
+    ITEM_BREAD,         // Baked bread (edible)
+    ITEM_COOKED_LENTILS, // Cooked lentils (edible)
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 

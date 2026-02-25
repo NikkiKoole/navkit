@@ -932,14 +932,32 @@ static void ExecuteCancelDigRoots(int x1, int y1, int x2, int y2, int z) {
 }
 
 static void ExecuteDesignateFarm(int x1, int y1, int x2, int y2, int z) {
+    // Map selectedMaterial to CropType (1=wheat, 2=lentils, 3=flax)
+    CropType cropType = CROP_WHEAT;  // default
+    if (selectedMaterial == 2) cropType = CROP_LENTILS;
+    else if (selectedMaterial == 3) cropType = CROP_FLAX;
+
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (DesignateFarm(dx, dy, z)) count++;
+            // For already-tilled cells: just update desired crop type
+            FarmCell* fc = GetFarmCell(dx, dy, z);
+            if (fc && fc->tilled && fc->cropType == CROP_NONE) {
+                fc->desiredCropType = (uint8_t)cropType;
+                count++;
+                continue;
+            }
+            // For untilled cells: designate for tilling + set desired crop
+            if (DesignateFarm(dx, dy, z)) {
+                FarmCell* fc2 = GetFarmCell(dx, dy, z);
+                if (fc2) fc2->desiredCropType = (uint8_t)cropType;
+                count++;
+            }
         }
     }
+    static const char* cropNames[] = {"None", "Wheat", "Lentils", "Flax"};
     if (count > 0) {
-        AddMessage(TextFormat("Designated %d cell%s for farming", count, count > 1 ? "s" : ""), GREEN);
+        AddMessage(TextFormat("Designated %d cell%s for %s", count, count > 1 ? "s" : "", cropNames[cropType]), GREEN);
     }
 }
 
@@ -2795,6 +2813,9 @@ void HandleInput(void) {
             case ACTION_DRAW_WORKSHOP_COMPOST_PILE:
                 if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_COMPOST_PILE);
                 break;
+            case ACTION_DRAW_WORKSHOP_QUERN:
+                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_QUERN);
+                break;
             case ACTION_DRAW_SOIL_DIRT:
                 if (leftClick) {
                     if (shift) {
@@ -2909,6 +2930,10 @@ void HandleInput(void) {
                 break;
             case ACTION_WORK_WORKSHOP_COMPOST_PILE:
                 if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_COMPOST_PILE);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
+                break;
+            case ACTION_WORK_WORKSHOP_QUERN:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_QUERN);
                 else ExecuteCancelWorkshopBlueprint(x1, y1, z);
                 break;
             case ACTION_WORK_WORKSHOP_DRYING_RACK:

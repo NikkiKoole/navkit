@@ -10,6 +10,9 @@
 
 typedef enum {
     PLANT_BERRY_BUSH,
+    PLANT_WILD_WHEAT,
+    PLANT_WILD_LENTILS,
+    PLANT_WILD_FLAX,
     PLANT_TYPE_COUNT
 } PlantType;
 
@@ -36,7 +39,7 @@ int SpawnPlant(int x, int y, int z, PlantType type);
 void DeletePlant(int idx);
 Plant* GetPlantAt(int x, int y, int z);
 bool IsPlantRipe(int x, int y, int z);
-void HarvestPlant(int x, int y, int z);  // Reset to bare, spawn ITEM_BERRIES
+void HarvestPlant(int x, int y, int z);  // Reset to bare, spawn items based on plant type
 void PlantsTick(float dt);               // Advance growth, season-modulated
 
 #endif

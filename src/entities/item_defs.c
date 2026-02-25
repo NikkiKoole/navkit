@@ -57,5 +57,14 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_ROASTED_ROOT] = { "Roasted Root", SPRITE_tree_stick,   IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 20, MAT_NONE, 0.3f, 0.35f, 300.0f },
     [ITEM_DRIED_ROOT]   = { "Dried Root",   SPRITE_tree_stick,   IF_STACKABLE | IF_EDIBLE, 20, MAT_NONE, 0.2f, 0.2f, 0.0f },
     [ITEM_COMPOST]      = { "Compost",      SPRITE_finish_messy, IF_STACKABLE, 10, MAT_NONE, 1.0f, 0.0f, 0.0f },
+    [ITEM_WHEAT_SEEDS]  = { "Wheat Seeds",  SPRITE_division,     IF_STACKABLE, 20, MAT_NONE, 0.1f, 0.0f, 0.0f },
+    [ITEM_LENTIL_SEEDS] = { "Lentil Seeds", SPRITE_division,     IF_STACKABLE, 20, MAT_NONE, 0.1f, 0.0f, 0.0f },
+    [ITEM_FLAX_SEEDS]   = { "Flax Seeds",   SPRITE_division,     IF_STACKABLE, 20, MAT_NONE, 0.1f, 0.0f, 0.0f },
+    [ITEM_WHEAT]        = { "Wheat",        SPRITE_grass_tall,   IF_STACKABLE, 20, MAT_NONE, 0.3f, 0.0f, 0.0f },
+    [ITEM_LENTILS]      = { "Lentils",      SPRITE_division,     IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 20, MAT_NONE, 0.3f, 0.15f, 480.0f },
+    [ITEM_FLAX_FIBER]   = { "Flax Fiber",   SPRITE_short_string, IF_STACKABLE, 20, MAT_NONE, 0.2f, 0.0f, 0.0f },
+    [ITEM_FLOUR]        = { "Flour",        SPRITE_gravel,       IF_STACKABLE, 20, MAT_NONE, 0.4f, 0.0f, 0.0f },
+    [ITEM_BREAD]        = { "Bread",        SPRITE_block_wood,   IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 10, MAT_NONE, 0.3f, 0.6f, 300.0f },
+    [ITEM_COOKED_LENTILS] = { "Cooked Lentils", SPRITE_division, IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 10, MAT_NONE, 0.3f, 0.4f, 300.0f },
 };
 #undef MN

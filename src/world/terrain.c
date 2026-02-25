@@ -2747,6 +2747,66 @@ void GenerateHillsSoilsWater(void) {
         TraceLog(LOG_INFO, "GenerateHillsSoilsWater: placed %d berry bushes", bushPlaced);
 
         // ----------------------------------------------------------------
+        // Scatter wild crop plants on the ground
+        // ----------------------------------------------------------------
+        int wildCropsPlaced = 0;
+        int maxWildCrops = 100;
+        for (int y = 0; y < gridHeight && wildCropsPlaced < maxWildCrops; y++) {
+            for (int x = 0; x < gridWidth && wildCropsPlaced < maxWildCrops; x++) {
+                int idx = y * gridWidth + x;
+                if (waterMask[idx]) continue;
+
+                int baseZ = surface[idx];
+                int walkZ = baseZ + 1;
+                if (walkZ >= gridDepth) continue;
+                if (!CellIsSolid(grid[baseZ][y][x])) continue;
+                if (grid[walkZ][y][x] != CELL_AIR) continue;
+
+                MaterialType soilMat = GetWallMaterial(x, y, baseZ);
+
+                // Wild wheat: 2% on dirt/clay in grass areas
+                // Wild lentils: 1% on clay/gravel
+                // Wild flax: 1.5% on dirt/peat near water
+                PlantType wildType = PLANT_TYPE_COUNT;  // sentinel
+                float chance = 0.0f;
+
+                if ((soilMat == MAT_DIRT || soilMat == MAT_CLAY) &&
+                    vegetationGrid[walkZ][y][x] > 0) {
+                    wildType = PLANT_WILD_WHEAT;
+                    chance = 0.02f;
+                } else if (soilMat == MAT_CLAY || soilMat == MAT_GRAVEL) {
+                    wildType = PLANT_WILD_LENTILS;
+                    chance = 0.01f;
+                } else if ((soilMat == MAT_DIRT || soilMat == MAT_PEAT)) {
+                    // Check near water
+                    bool nearWater = false;
+                    for (int dy2 = -3; dy2 <= 3 && !nearWater; dy2++) {
+                        for (int dx2 = -3; dx2 <= 3 && !nearWater; dx2++) {
+                            int nx2 = x + dx2, ny2 = y + dy2;
+                            if (nx2 >= 0 && nx2 < gridWidth && ny2 >= 0 && ny2 < gridHeight) {
+                                if (waterMask[ny2 * gridWidth + nx2]) nearWater = true;
+                            }
+                        }
+                    }
+                    if (nearWater) {
+                        wildType = PLANT_WILD_FLAX;
+                        chance = 0.015f;
+                    }
+                }
+
+                if (wildType >= PLANT_TYPE_COUNT) continue;
+                if ((GetRandomValue(0, 999) / 1000.0f) > chance) continue;
+
+                int plantIdx = SpawnPlant(x, y, walkZ, wildType);
+                if (plantIdx >= 0) {
+                    plants[plantIdx].stage = PLANT_STAGE_RIPE;  // Immediately harvestable
+                    wildCropsPlaced++;
+                }
+            }
+        }
+        TraceLog(LOG_INFO, "GenerateHillsSoilsWater: placed %d wild crop plants", wildCropsPlaced);
+
+        // ----------------------------------------------------------------
         // Scatter boulders, loose rocks, and sticks on the ground
         // ----------------------------------------------------------------
         int bouldersPlaced = 0, rocksPlaced = 0, sticksPlaced = 0, logsPlaced = 0, driedGrassPlaced = 0;

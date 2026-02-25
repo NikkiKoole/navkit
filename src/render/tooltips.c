@@ -754,6 +754,20 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
             MaterialType soilMat = GetWallMaterial(cellX, cellY, cellZ - 1);
             snprintf(lines[lineCount++], sizeof(lines[0]), "Farm Plot (%s)", MaterialName(soilMat));
             snprintf(lines[lineCount++], sizeof(lines[0]), "Fertility: %d/255", fc->fertility);
+            if (fc->cropType != CROP_NONE) {
+                static const char* cropNames[] = { "None", "Wheat", "Lentils", "Flax" };
+                static const char* stageNames[] = { "Bare", "Sprouted", "Growing", "Mature", "Ripe" };
+                const char* cname = (fc->cropType < CROP_TYPE_COUNT) ? cropNames[fc->cropType] : "?";
+                const char* sname = (fc->growthStage <= CROP_STAGE_RIPE) ? stageNames[fc->growthStage] : "?";
+                snprintf(lines[lineCount++], sizeof(lines[0]), "Crop: %s (%s)", cname, sname);
+                if (fc->frostDamaged) {
+                    snprintf(lines[lineCount++], sizeof(lines[0]), "Frost damaged!");
+                }
+            } else if (fc->desiredCropType != CROP_NONE) {
+                static const char* cropNames2[] = { "None", "Wheat", "Lentils", "Flax" };
+                const char* cname2 = (fc->desiredCropType < CROP_TYPE_COUNT) ? cropNames2[fc->desiredCropType] : "?";
+                snprintf(lines[lineCount++], sizeof(lines[0]), "Queued: %s", cname2);
+            }
             if (fc->weedLevel > WEED_THRESHOLD) {
                 snprintf(lines[lineCount++], sizeof(lines[0]), "Weeds: heavy (%d)", fc->weedLevel);
             } else if (fc->weedLevel > 0) {

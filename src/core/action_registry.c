@@ -393,6 +393,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = true,
         .canErase = false
     },
+    {
+        .action = ACTION_DRAW_WORKSHOP_QUERN,
+        .name = "QUERN",
+        .barDisplayText = "Quern",
+        .barText = "L-click place  [ESC]Back",
+        .barKey = 'q',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_WORKSHOP,
+        .canDrag = true,
+        .canErase = false
+    },
 
     // ========================================================================
     // MODE_DRAW > TRANSPORT children
@@ -684,6 +697,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canErase = true
     },
     {
+        .action = ACTION_WORK_WORKSHOP_QUERN,
+        .name = "QUERN",
+        .barDisplayText = "Quern",
+        .barText = "L-click place  R-click cancel  [ESC]Back",
+        .barKey = 'q',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_WORK_WORKSHOP,
+        .canDrag = false,
+        .canErase = true
+    },
+    {
         .action = ACTION_WORK_WORKSHOP_DRYING_RACK,
         .name = "DRYING RACK",
         .barDisplayText = "Drying Rack",
@@ -931,7 +957,7 @@ const ActionDef ACTION_REGISTRY[] = {
         .action = ACTION_WORK_FARM,
         .name = "FARM",
         .barDisplayText = "Farm",
-        .barText = "L-drag designate  R-drag cancel  [ESC]Back",
+        .barText = "[1]Wheat [2]Lentils [3]Flax    L-drag designate  R-drag cancel  [ESC]Back",
         .barKey = 'f',
         .barUnderlinePos = 0,
         .requiredMode = MODE_WORK,

@@ -505,6 +505,35 @@ static void DrawCellGrid(void) {
                     Color weedTint = {60, 120, 40, weedAlpha};
                     DrawTexturePro(atlas, weedSrc, dest, (Vector2){0,0}, 0, weedTint);
                 }
+
+                // Crop overlay by growth stage
+                if (fc->cropType != CROP_NONE && fc->growthStage > CROP_STAGE_BARE) {
+                    int cropSprite = SPRITE_small_triangle;  // default sprout
+                    switch (fc->growthStage) {
+                        case CROP_STAGE_SPROUTED: cropSprite = SPRITE_small_triangle; break;
+                        case CROP_STAGE_GROWING:  cropSprite = SPRITE_grass; break;
+                        case CROP_STAGE_MATURE:   cropSprite = SPRITE_grass_tall; break;
+                        case CROP_STAGE_RIPE:     cropSprite = SPRITE_grass_taller; break;
+                        default: break;
+                    }
+                    // Tint by crop type: wheat=golden, lentils=dark green, flax=pale blue
+                    Color cropTint = {200, 200, 100, 200};  // wheat default
+                    switch ((CropType)fc->cropType) {
+                        case CROP_WHEAT:   cropTint = (Color){220, 190, 80, 200}; break;
+                        case CROP_LENTILS: cropTint = (Color){60, 140, 60, 200}; break;
+                        case CROP_FLAX:    cropTint = (Color){140, 180, 220, 200}; break;
+                        default: break;
+                    }
+                    // Frost damage: white-ish tint overlay
+                    if (fc->frostDamaged) {
+                        cropTint.r = (cropTint.r + 255) / 2;
+                        cropTint.g = (cropTint.g + 255) / 2;
+                        cropTint.b = (cropTint.b + 255) / 2;
+                        cropTint.a = 120;
+                    }
+                    Rectangle cropSrc = SpriteGetRect(cropSprite);
+                    DrawTexturePro(atlas, cropSrc, dest, (Vector2){0,0}, 0, cropTint);
+                }
             }
         }
     }
@@ -753,9 +782,32 @@ static void DrawPlantOverlay(void) {
 
         Rectangle dest = {offset.x + p->x * size, offset.y + p->y * size, size, size};
         Color lightTint = GetLightColor(p->x, p->y, z, skyColor);
-        Color berryTint = MultiplyColor(lightTint, (Color){220, 50, 50, 255});
         float inset = size * 0.25f;
-        DrawInsetSprite(SPRITE_division, dest, inset, berryTint);
+
+        switch (p->type) {
+            case PLANT_BERRY_BUSH: {
+                Color berryTint = MultiplyColor(lightTint, (Color){220, 50, 50, 255});
+                DrawInsetSprite(SPRITE_division, dest, inset, berryTint);
+                break;
+            }
+            case PLANT_WILD_WHEAT: {
+                Color wheatTint = MultiplyColor(lightTint, (Color){220, 190, 80, 255});
+                DrawInsetSprite(SPRITE_grass_taller, dest, inset, wheatTint);
+                break;
+            }
+            case PLANT_WILD_LENTILS: {
+                Color lentilTint = MultiplyColor(lightTint, (Color){100, 160, 60, 255});
+                DrawInsetSprite(SPRITE_grass_tall, dest, inset, lentilTint);
+                break;
+            }
+            case PLANT_WILD_FLAX: {
+                Color flaxTint = MultiplyColor(lightTint, (Color){140, 180, 220, 255});
+                DrawInsetSprite(SPRITE_grass_tall, dest, inset, flaxTint);
+                break;
+            }
+            default:
+                break;
+        }
     }
 }
 

@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 76
+#define CURRENT_SAVE_VERSION 77
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)
@@ -627,5 +627,39 @@ typedef struct {
     int freeSlotCount;
     bool rejectsRotten;
 } StockpileV75;
+
+// Version 76 constants (before 9 farming crop items added in v77)
+#define V76_ITEM_TYPE_COUNT 46
+
+// V76 FarmCell struct (4 bytes, before crop fields added in v77)
+typedef struct {
+    uint8_t fertility;
+    uint8_t weedLevel;
+    uint8_t tilled;
+    uint8_t desiredCropType;
+} FarmCellV76;
+
+// V76 Stockpile struct (before 9 farming items addition)
+// v76 had 46 item types, v77 adds ITEM_WHEAT_SEEDS through ITEM_COOKED_LENTILS (indices 46-54)
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V76_ITEM_TYPE_COUNT];
+    bool allowedMaterials[MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int maxContainers;
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+    bool rejectsRotten;
+} StockpileV76;
 
 #endif

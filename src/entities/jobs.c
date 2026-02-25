@@ -2656,6 +2656,127 @@ JobRunResult RunJob_Fertilize(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// Plant crop job driver: pick up seed -> carry to tilled cell -> plant
+JobRunResult RunJob_PlantCrop(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
+
+    if (job->step == STEP_MOVING_TO_PICKUP)
+        return RunPickupStep(job, mover, (Point){tx, ty, tz});
+    if (job->step == STEP_CARRYING) {
+        JobRunResult r = RunCarryStep(job, mover, tx, ty, tz);
+        if (r == JOBRUN_DONE) {
+            job->step = STEP_PLANTING;
+            job->progress = 0.0f;
+            return JOBRUN_RUNNING;
+        }
+        return r;
+    }
+    if (job->step == STEP_PLANTING) {
+        FarmCell* fc = GetFarmCell(tx, ty, tz);
+        if (!fc || !fc->tilled || fc->cropType != CROP_NONE) return JOBRUN_FAIL;
+
+        JobRunResult r = RunWorkProgress(job, NULL, mover, dt, PLANT_CROP_WORK_TIME, true, 1.0f);
+        if (r == JOBRUN_DONE) {
+            int itemIdx = job->carryingItem;
+            if (itemIdx >= 0 && items[itemIdx].active) {
+                CropType crop = CropTypeForSeed(items[itemIdx].type);
+                if (crop == CROP_NONE) return JOBRUN_FAIL;
+                fc->cropType = (uint8_t)crop;
+                fc->growthStage = CROP_STAGE_SPROUTED;  // Start at sprouted
+                fc->growthProgress = 0;
+                fc->frostDamaged = 0;
+                DeleteItem(itemIdx);
+                job->carryingItem = -1;
+                EventLog("Planted crop %d at (%d,%d,z%d)", crop, tx, ty, tz);
+            } else {
+                return JOBRUN_FAIL;
+            }
+        }
+        return r;
+    }
+    return JOBRUN_FAIL;
+}
+
+// Harvest crop job driver: walk to ripe cell -> harvest -> spawn items
+JobRunResult RunJob_HarvestCrop(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
+
+    FarmCell* fc = GetFarmCell(tx, ty, tz);
+    if (!fc || !fc->tilled || fc->growthStage != CROP_STAGE_RIPE) return JOBRUN_FAIL;
+
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToTileStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        float speed = GetJobToolSpeedMultiplier(JOBTYPE_HARVEST_CROP, MAT_NONE, mover->equippedTool);
+        JobRunResult r = RunWorkProgress(job, NULL, mover, dt, HARVEST_CROP_WORK_TIME, true, speed);
+        if (r == JOBRUN_DONE) {
+            CropType crop = (CropType)fc->cropType;
+            bool frost = fc->frostDamaged;
+            float px = tx * CELL_SIZE + CELL_SIZE * 0.5f;
+            float py = ty * CELL_SIZE + CELL_SIZE * 0.5f;
+
+            // Spawn yield items based on crop type
+            // Normal yields / frost yields:
+            //   Wheat:   4/2 ITEM_WHEAT + 1 seed
+            //   Lentils: 3/1 ITEM_LENTILS + 1 seed
+            //   Flax:    2/1 ITEM_FLAX_FIBER + 1 seed
+            int yieldType = ITEM_NONE;
+            int seedType = ITEM_NONE;
+            int yieldCount = 0;
+            int fertDelta = 0;
+
+            switch (crop) {
+                case CROP_WHEAT:
+                    yieldType = ITEM_WHEAT;
+                    seedType = ITEM_WHEAT_SEEDS;
+                    yieldCount = frost ? 2 : 4;
+                    fertDelta = WHEAT_FERTILITY_DELTA;
+                    break;
+                case CROP_LENTILS:
+                    yieldType = ITEM_LENTILS;
+                    seedType = ITEM_LENTIL_SEEDS;
+                    yieldCount = frost ? 1 : 3;
+                    fertDelta = LENTIL_FERTILITY_DELTA;
+                    break;
+                case CROP_FLAX:
+                    yieldType = ITEM_FLAX_FIBER;
+                    seedType = ITEM_FLAX_SEEDS;
+                    yieldCount = frost ? 1 : 2;
+                    fertDelta = FLAX_FERTILITY_DELTA;
+                    break;
+                default:
+                    break;
+            }
+
+            // Spawn yield
+            for (int i = 0; i < yieldCount; i++) {
+                SpawnItem(px, py, (float)tz, yieldType);
+            }
+            // Always spawn 1 seed (self-sustaining)
+            if (seedType != ITEM_NONE) {
+                SpawnItem(px, py, (float)tz, seedType);
+            }
+
+            // Apply fertility delta
+            int newFert = (int)fc->fertility + fertDelta;
+            if (newFert < 0) newFert = 0;
+            if (newFert > 255) newFert = 255;
+            fc->fertility = (uint8_t)newFert;
+
+            // Reset cell (stays tilled)
+            fc->cropType = CROP_NONE;
+            fc->growthStage = CROP_STAGE_BARE;
+            fc->growthProgress = 0;
+            fc->frostDamaged = 0;
+
+            EventLog("Harvested crop %d at (%d,%d,z%d) yield=%d frost=%d", crop, tx, ty, tz, yieldCount, frost);
+        }
+        return r;
+    }
+    return JOBRUN_FAIL;
+}
+
 // Driver lookup table
 static JobDriver jobDrivers[] = {
     [JOBTYPE_NONE] = NULL,
@@ -2687,10 +2808,12 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_TILL] = RunJob_Till,
     [JOBTYPE_TEND_CROP] = RunJob_TendCrop,
     [JOBTYPE_FERTILIZE] = RunJob_Fertilize,
+    [JOBTYPE_PLANT_CROP] = RunJob_PlantCrop,
+    [JOBTYPE_HARVEST_CROP] = RunJob_HarvestCrop,
 };
 
 // Compile-time check: ensure jobDrivers[] covers all job types
-_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_FERTILIZE,
+_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_HARVEST_CROP,
                "jobDrivers[] must have an entry for every JobType");
 
 // Tick function - runs job drivers for active jobs
@@ -3828,7 +3951,7 @@ void AssignJobs(void) {
     PROFILE_END(Jobs_P4_Designations);
     if (idleMoverCount == 0) return;
 
-    // Priority 5: Farm maintenance (tend weedy cells, fertilize depleted cells)
+    // Priority 5: Farm work (harvest ripe > plant > tend weeds > fertilize)
     if (farmActiveCells > 0) {
         int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
         if (idleCopy) {
@@ -3837,7 +3960,9 @@ void AssignJobs(void) {
             for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
                 int moverIdx = idleCopy[i];
                 if (!moverIsInIdleList[moverIdx]) continue;
-                int jobId = WorkGiver_TendCrop(moverIdx);
+                int jobId = WorkGiver_HarvestCrop(moverIdx);
+                if (jobId < 0) jobId = WorkGiver_PlantCrop(moverIdx);
+                if (jobId < 0) jobId = WorkGiver_TendCrop(moverIdx);
                 if (jobId < 0) jobId = WorkGiver_Fertilize(moverIdx);
                 (void)jobId;
             }
@@ -4513,6 +4638,168 @@ int WorkGiver_Fertilize(int moverIdx) {
     m->goal = (Point){ (int)(items[bestCompostIdx].x / CELL_SIZE),
                         (int)(items[bestCompostIdx].y / CELL_SIZE),
                         (int)items[bestCompostIdx].z };
+    m->needsRepath = true;
+    RemoveMoverFromIdleList(moverIdx);
+    return jobId;
+}
+
+// WorkGiver_PlantCrop: Find tilled cells with desiredCropType set and no crop, find matching seed
+int WorkGiver_PlantCrop(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    if (!m->capabilities.canPlant) return -1;
+    if (farmActiveCells == 0) return -1;
+
+    // Find nearest tilled cell that wants a crop but has none
+    int bestX = -1, bestY = -1, bestZ = -1;
+    CropType bestCrop = CROP_NONE;
+    float bestDistSq = 1e30f;
+
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                FarmCell* fc = &farmGrid[z][y][x];
+                if (!fc->tilled) continue;
+                if (fc->desiredCropType == CROP_NONE) continue;
+                if (fc->cropType != CROP_NONE) continue;  // Already has a crop
+                if (!IsExplored(x, y, z)) continue;
+
+                float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+                float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+                float dx = tileX - m->x;
+                float dy = tileY - m->y;
+                float distSq = dx * dx + dy * dy;
+                if (distSq < bestDistSq) {
+                    bestDistSq = distSq;
+                    bestX = x;
+                    bestY = y;
+                    bestZ = z;
+                    bestCrop = (CropType)fc->desiredCropType;
+                }
+            }
+        }
+    }
+    if (bestX < 0) return -1;
+
+    // Check no other mover is already planting this cell
+    for (int i = 0; i < activeJobCount; i++) {
+        Job* j = GetJob(activeJobList[i]);
+        if (j && j->type == JOBTYPE_PLANT_CROP &&
+            j->targetMineX == bestX && j->targetMineY == bestY && j->targetMineZ == bestZ) {
+            return -1;
+        }
+    }
+
+    // Find matching seed item
+    int seedType = SeedTypeForCrop(bestCrop);
+    if (seedType == ITEM_NONE) return -1;
+
+    int bestSeedIdx = -1;
+    float bestSeedDistSq = 1e30f;
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        Item* item = &items[i];
+        if (!item->active) continue;
+        if (item->type != seedType) continue;
+        if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
+        if (item->reservedBy != -1) continue;
+        float dx = item->x - m->x;
+        float dy = item->y - m->y;
+        float distSq = dx * dx + dy * dy;
+        if (distSq < bestSeedDistSq) {
+            bestSeedDistSq = distSq;
+            bestSeedIdx = i;
+        }
+    }
+    if (bestSeedIdx < 0) return -1;
+
+    // Reserve seed
+    ReserveItem(bestSeedIdx, moverIdx);
+
+    int jobId = CreateJob(JOBTYPE_PLANT_CROP);
+    if (jobId < 0) {
+        ReleaseItemReservation(bestSeedIdx);
+        return -1;
+    }
+
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetItem = bestSeedIdx;
+    job->targetMineX = bestX;
+    job->targetMineY = bestY;
+    job->targetMineZ = bestZ;
+    job->step = STEP_MOVING_TO_PICKUP;
+    job->progress = 0.0f;
+    job->carryingItem = -1;
+
+    m->currentJobId = jobId;
+    m->goal = (Point){ (int)(items[bestSeedIdx].x / CELL_SIZE),
+                        (int)(items[bestSeedIdx].y / CELL_SIZE),
+                        (int)items[bestSeedIdx].z };
+    m->needsRepath = true;
+    RemoveMoverFromIdleList(moverIdx);
+    return jobId;
+}
+
+// WorkGiver_HarvestCrop: Auto-find ripe farm cells
+int WorkGiver_HarvestCrop(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    if (!m->capabilities.canPlant) return -1;
+    if (farmActiveCells == 0) return -1;
+
+    int bestX = -1, bestY = -1, bestZ = -1;
+    float bestDistSq = 1e30f;
+
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                FarmCell* fc = &farmGrid[z][y][x];
+                if (!fc->tilled) continue;
+                if (fc->growthStage != CROP_STAGE_RIPE) continue;
+                if (!IsExplored(x, y, z)) continue;
+
+                float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+                float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+                float dx = tileX - m->x;
+                float dy = tileY - m->y;
+                float distSq = dx * dx + dy * dy;
+                if (distSq < bestDistSq) {
+                    bestDistSq = distSq;
+                    bestX = x;
+                    bestY = y;
+                    bestZ = z;
+                }
+            }
+        }
+    }
+    if (bestX < 0) return -1;
+
+    // Check no other mover is already harvesting this cell
+    for (int i = 0; i < activeJobCount; i++) {
+        Job* j = GetJob(activeJobList[i]);
+        if (j && j->type == JOBTYPE_HARVEST_CROP &&
+            j->targetMineX == bestX && j->targetMineY == bestY && j->targetMineZ == bestZ) {
+            return -1;
+        }
+    }
+
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    Point desigCell = { bestX, bestY, bestZ };
+    Point tempPath[MAX_PATH];
+    int tempLen = FindPath(moverPathAlgorithm, moverCell, desigCell, tempPath, MAX_PATH);
+    if (tempLen <= 0) return -1;
+
+    int jobId = CreateJob(JOBTYPE_HARVEST_CROP);
+    if (jobId < 0) return -1;
+
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetMineX = bestX;
+    job->targetMineY = bestY;
+    job->targetMineZ = bestZ;
+    job->step = STEP_MOVING_TO_WORK;
+    job->progress = 0.0f;
+
+    m->currentJobId = jobId;
+    m->goal = (Point){ bestX, bestY, bestZ };
     m->needsRepath = true;
     RemoveMoverFromIdleList(moverIdx);
     return jobId;

@@ -81,22 +81,49 @@ void HarvestPlant(int x, int y, int z) {
     p->stage = PLANT_STAGE_BARE;
     p->growthProgress = 0.0f;
 
-    // Spawn berries at cell center
+    // Spawn items based on plant type
     float px = x * CELL_SIZE + CELL_SIZE * 0.5f;
     float py = y * CELL_SIZE + CELL_SIZE * 0.5f;
-    SpawnItem(px, py, (float)z, ITEM_BERRIES);
+    switch (p->type) {
+        case PLANT_BERRY_BUSH:
+            SpawnItem(px, py, (float)z, ITEM_BERRIES);
+            break;
+        case PLANT_WILD_WHEAT:
+            SpawnItem(px, py, (float)z, ITEM_WHEAT_SEEDS);
+            break;
+        case PLANT_WILD_LENTILS:
+            SpawnItem(px, py, (float)z, ITEM_LENTIL_SEEDS);
+            break;
+        case PLANT_WILD_FLAX:
+            SpawnItem(px, py, (float)z, ITEM_FLAX_SEEDS);
+            break;
+        default:
+            break;
+    }
+}
+
+// Growth time in game-hours per stage for wild crop plants
+static float WildPlantGrowthGH(PlantType type) {
+    switch (type) {
+        case PLANT_BERRY_BUSH:   return BERRY_BUSH_GROWTH_GH;
+        case PLANT_WILD_WHEAT:   return 96.0f;   // Slower than farmed wheat (72 GH)
+        case PLANT_WILD_LENTILS: return 72.0f;   // Slower than farmed lentils (48 GH)
+        case PLANT_WILD_FLAX:    return 84.0f;   // Slower than farmed flax (60 GH)
+        default:                 return 48.0f;
+    }
 }
 
 void PlantsTick(float dt) {
     float rate = SeasonalGrowthRate();
     if (rate <= 0.0f) return;  // No growth in winter
 
-    float increment = (dt * rate) / GameHoursToGameSeconds(BERRY_BUSH_GROWTH_GH);
-
     for (int i = 0; i < plantCount; i++) {
         Plant* p = &plants[i];
         if (!p->active) continue;
         if (p->stage == PLANT_STAGE_RIPE) continue;  // Already ripe, wait for harvest
+
+        float growthGH = WildPlantGrowthGH(p->type);
+        float increment = (dt * rate) / GameHoursToGameSeconds(growthGH);
 
         p->growthProgress += increment;
         if (p->growthProgress >= 1.0f) {
