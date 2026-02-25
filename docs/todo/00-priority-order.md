@@ -1,6 +1,6 @@
 # Survival Feature Priority Order
 
-> Master priority list for the survival mode feature roadmap. Updated 2026-02-24.
+> Master priority list for the survival mode feature roadmap. Updated 2026-02-25.
 
 ---
 
@@ -17,6 +17,10 @@
 - **04c-root-foraging.md** — 3 root items (raw/roasted/dried), dig designation on dirt/clay/peat, roast at fire pit, dry at drying rack (save v70)
 - **04d-spoilage.md** — Spoilage timer, ItemCondition (FRESH/STALE/ROTTEN), container modifiers, rotten=fuel, refuse pile (save v71-v73)
 - **04e-animal-respawn.md** — Edge-spawn from map edges on timer, population cap + UI toggle (save v74)
+- **05a-explore-designation.md** — Straight-line Bresenham scouting job (save v75)
+- **05b-fog-of-war-exploration.md** — exploredGrid, soft borders, discovery events, blocks jobs/hauling in unexplored areas (save v75)
+- **06a-farming-land-work.md** — Farm grid, tilling, weeding, composting, fertilizing. FarmCell struct, 5 soil types, compost pile workshop (save v76, 35 tests)
+- **06b-farming-crops-processing.md** — 3 crops (wheat/lentils/flax), growth system with 5 modifiers, planting+harvesting jobs, wild plants in worldgen, quern workshop, cooking recipes. 9 new items, seed stack splitting (save v77, 35 farming tests)
 
 ## Reference Docs (not actionable tasks)
 
@@ -43,22 +47,25 @@
 | 04a | `04a-butchering-and-cooking.md` | ~1 session | 03 ✅ | ✅ Done. Carcass → butcher → raw meat → cook → eat. |
 | 04b | `04b-hunting.md` | ~1 session | 04a ✅ | ✅ Done. Hunt designation (W→U), chase & kill, flee behavior, 14 tests. |
 | 04c | `04c-root-foraging.md` | ~1 session | 03 ✅ | ✅ Done. 3 root items, dig designation on soil, roast at fire pit, dry at drying rack. |
-| 04d | `04d-spoilage.md` | ~0.5 session | 04a ✅ | ✅ Done. Spoilage timer, ItemCondition (FRESH/STALE/ROTTEN), container modifiers, rotten=fuel, rejectsRotten stockpile + refuse pile shortcut (save v71-v73). See also `gameplay/seasoning-curing.md` for broader material conditioning — future work. |
-| 04e | `04e-animal-respawn.md` | ~0.5 session | None | ✅ Done. Edge-spawn from map edges, population cap, UI toggle, save v74. |
-| 05a | `05a-explore-designation.md` | ~1 session | None | ✅ Done. Straight-line Bresenham scouting job. Click → mover walks blind toward target, stops at obstacles. No pathfinding. |
-| 05b | `05-fog-of-war-exploration.md` | ~2.5 sessions | 05a ✅ | ✅ Done. exploredGrid, soft borders, discovery events, blocks jobs/hauling in unexplored areas (save v75). |
+| 04d | `04d-spoilage.md` | ~0.5 session | 04a ✅ | ✅ Done. Spoilage timer, ItemCondition, container modifiers, rotten=fuel, refuse pile (save v71-v73). |
+| 04e | `04e-animal-respawn.md` | ~0.5 session | None | ✅ Done. Edge-spawn, population cap, UI toggle (save v74). |
+| 05a | `05a-explore-designation.md` | ~1 session | None | ✅ Done. Bresenham scouting job. |
+| 05b | `05-fog-of-war-exploration.md` | ~2.5 sessions | 05a ✅ | ✅ Done. exploredGrid, soft borders, discovery events (save v75). |
 
-### ~~Tier 1: Core Survival Loop (playable day-1)~~ — COMPLETE ✅
+### ~~Tier 2a: Farming~~ — COMPLETE ✅
 
-(All 05a/05b entries moved to done.)
+| # | Doc | Effort | Deps | Status |
+|---|-----|--------|------|--------|
+| 06a | `06a-farming-land-work.md` | ~1.5 sessions | 02, 04d | ✅ Done. Farm grid, tilling, weeding, compost pile, fertilizing (save v76). |
+| 06b | `06b-farming-crops-processing.md` | ~2 sessions | 06a | ✅ Done. 3 crops, growth, plant/harvest jobs, wild plants, quern, cooking (save v77). |
 
-### Tier 2: Expansion (deeper gameplay)
+### Tier 2b: Expansion (next up)
 
-| # | Doc | Effort | Deps | What It Does |
-|---|-----|--------|------|-------------|
-| 06 | `06-farming-and-crops.md` | ~2.5 sessions | 02, 04 | Farm plots, tilling (needs digging quality), planting, growth stages. Seasons affect crops. Scalable food source. |
-| 07 | `07-clothing-and-textiles.md` | ~2 sessions | 03, 04 | Loom + tailor. Grass/cordage → cloth → clothing. Hides → leather. Cold resistance on movers. |
-| 08 | `08-thirst-and-water.md` | ~1.5 sessions | 02 | Thirst need + water carrying in pots. Containers already done — just needs thirst mechanic + water item. |
+| # | Doc | Effort | Deps | What It Does | Status |
+|---|-----|--------|------|-------------|--------|
+| 06c | `06c-farm-watering.md` | ~0.5 session | 06a | Manual water collection + carrying to farms. Optional — rain works for now. | Todo |
+| 07 | `07-clothing-and-textiles.md` | ~2 sessions | 03, 06b | Loom + tailor. Grass/cordage → cloth → clothing. Hides → leather. Flax fiber from 06b → linen. Cold resistance on movers. | Todo |
+| 08 | `08-thirst-and-water.md` | ~1.5 sessions | 02 | Thirst need + water carrying in pots. Containers already done — just needs thirst mechanic + water item. | Todo |
 
 ### Tier 3: Polish & Depth
 
@@ -114,7 +121,12 @@ Session 9:      Explore designation (05a)                                    ✅
 Session 10-11:  Fog of war (05b)                                             ✅ DONE
                 → All phases complete (grid, rendering, designations, hauling, soft borders, discovery events)
 
-Session 13+:    Farming → clothing → thirst → loop closers → personality
+Session 12-13:  Farming land work (06a) + crops & processing (06b)           ✅ DONE
+                → Farm grid, tilling, weeding, compost pile, fertilizing (06a)
+                → 3 crops (wheat/lentils/flax), growth system, wild plants, quern, cooking (06b)
+                → 9 new items, 35 farming tests, save v76-v77
+
+Session 14+:    Clothing → thirst → loop closers → personality
 ```
 
 ## The Day-1 Survival Arc (after sessions 1-6)
