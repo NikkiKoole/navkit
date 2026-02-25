@@ -62,6 +62,13 @@ typedef enum {
     ITEM_FLOUR,         // Ground wheat flour
     ITEM_BREAD,         // Baked bread (edible)
     ITEM_COOKED_LENTILS, // Cooked lentils (edible)
+    ITEM_CLOTH,          // Woven cloth (from dried grass or cordage)
+    ITEM_LINEN,          // Linen fabric (from flax fiber)
+    ITEM_LEATHER,        // Tanned leather (from hide)
+    ITEM_GRASS_TUNIC,    // Grass cloth tunic (basic clothing)
+    ITEM_FLAX_TUNIC,     // Linen tunic (medium clothing)
+    ITEM_LEATHER_VEST,   // Leather vest (good clothing)
+    ITEM_LEATHER_COAT,   // Leather coat (best clothing)
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 

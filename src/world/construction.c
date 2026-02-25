@@ -609,6 +609,78 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = -1,
         .materialFromSlot = -1,
     },
+    [CONSTRUCTION_WORKSHOP_LOOM] = {
+        .name = "Loom",
+        .buildCategory = BUILD_WORKSHOP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_STICKS }},
+                    .altCount = 1,
+                    .count = 4,
+                    .anyBuildingMat = false,
+                },
+                {
+                    .alternatives = {{ .itemType = ITEM_CORDAGE }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 1.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
+    [CONSTRUCTION_WORKSHOP_TANNING_RACK] = {
+        .name = "Tanning Rack",
+        .buildCategory = BUILD_WORKSHOP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_STICKS }},
+                    .altCount = 1,
+                    .count = 4,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 1,
+            .buildTime = 0.5f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
+    [CONSTRUCTION_WORKSHOP_TAILOR] = {
+        .name = "Tailor",
+        .buildCategory = BUILD_WORKSHOP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_STICKS }},
+                    .altCount = 1,
+                    .count = 4,
+                    .anyBuildingMat = false,
+                },
+                {
+                    .alternatives = {{ .itemType = ITEM_PLANKS }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 1.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
     // === PRIMITIVE RECIPES ===
     [CONSTRUCTION_LEAF_WALL] = {
         .name = "Leaf Wall",
@@ -800,7 +872,10 @@ int GetConstructionRecipeForWorkshopType(int workshopType) {
         case WORKSHOP_GROUND_FIRE:  return CONSTRUCTION_WORKSHOP_GROUND_FIRE;
         case WORKSHOP_BUTCHER:      return CONSTRUCTION_WORKSHOP_BUTCHER;
         case WORKSHOP_COMPOST_PILE: return CONSTRUCTION_WORKSHOP_COMPOST_PILE;
-        case WORKSHOP_QUERN:       return CONSTRUCTION_WORKSHOP_QUERN;
+        case WORKSHOP_QUERN:        return CONSTRUCTION_WORKSHOP_QUERN;
+        case WORKSHOP_LOOM:         return CONSTRUCTION_WORKSHOP_LOOM;
+        case WORKSHOP_TANNING_RACK: return CONSTRUCTION_WORKSHOP_TANNING_RACK;
+        case WORKSHOP_TAILOR:       return CONSTRUCTION_WORKSHOP_TAILOR;
         default: return -1;
     }
 }

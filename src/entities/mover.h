@@ -86,6 +86,8 @@ typedef struct Mover {
     MoverCapabilities capabilities;
     // Tool system
     int equippedTool;    // Item index of carried tool, -1 = none
+    // Clothing system
+    int equippedClothing; // Item index of worn clothing, -1 = none
 } Mover;
 
 // Stuck detection thresholds

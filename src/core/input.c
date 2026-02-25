@@ -2816,6 +2816,15 @@ void HandleInput(void) {
             case ACTION_DRAW_WORKSHOP_QUERN:
                 if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_QUERN);
                 break;
+            case ACTION_DRAW_WORKSHOP_LOOM:
+                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_LOOM);
+                break;
+            case ACTION_DRAW_WORKSHOP_TANNING_RACK:
+                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_TANNING_RACK);
+                break;
+            case ACTION_DRAW_WORKSHOP_TAILOR:
+                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_TAILOR);
+                break;
             case ACTION_DRAW_SOIL_DIRT:
                 if (leftClick) {
                     if (shift) {
@@ -2934,6 +2943,18 @@ void HandleInput(void) {
                 break;
             case ACTION_WORK_WORKSHOP_QUERN:
                 if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_QUERN);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
+                break;
+            case ACTION_WORK_WORKSHOP_LOOM:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_LOOM);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
+                break;
+            case ACTION_WORK_WORKSHOP_TANNING_RACK:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_TANNING_RACK);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
+                break;
+            case ACTION_WORK_WORKSHOP_TAILOR:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_TAILOR);
                 else ExecuteCancelWorkshopBlueprint(x1, y1, z);
                 break;
             case ACTION_WORK_WORKSHOP_DRYING_RACK:

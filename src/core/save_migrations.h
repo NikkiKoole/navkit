@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 77
+#define CURRENT_SAVE_VERSION 78
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)
@@ -661,5 +661,66 @@ typedef struct {
     int freeSlotCount;
     bool rejectsRotten;
 } StockpileV76;
+
+// Version 77 constants (before 7 clothing/textile items added in v78)
+#define V77_ITEM_TYPE_COUNT 55
+
+// V77 Stockpile struct (before clothing items addition)
+// v77 had 55 item types, v78 adds ITEM_CLOTH through ITEM_LEATHER_COAT (indices 55-61)
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V77_ITEM_TYPE_COUNT];
+    bool allowedMaterials[MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int maxContainers;
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+    bool rejectsRotten;
+} StockpileV77;
+
+// V77 Mover struct (before equippedClothing field added in v78)
+typedef struct {
+    float x, y, z;
+    Point goal;
+    int pathLength;
+    int pathIndex;
+    bool active;
+    bool needsRepath;
+    int repathCooldown;
+    float speed;
+    float timeNearWaypoint;
+    float lastX, lastY, lastZ;
+    float timeWithoutProgress;
+    float fallTimer;
+    float workAnimPhase;
+    float hunger;
+    float energy;
+    int freetimeState;
+    int needTarget;
+    float needProgress;
+    float needSearchCooldown;
+    float starvationTimer;
+    float bodyTemp;
+    float hypothermiaTimer;
+    float avoidX, avoidY;
+    int currentJobId;
+    int lastJobType;
+    int lastJobResult;
+    int lastJobTargetX, lastJobTargetY, lastJobTargetZ;
+    unsigned long lastJobEndTick;
+    MoverCapabilities capabilities;
+    int equippedTool;
+    // No equippedClothing in V77
+} MoverV77;
 
 #endif

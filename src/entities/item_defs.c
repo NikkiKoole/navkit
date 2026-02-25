@@ -66,5 +66,14 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_FLOUR]        = { "Flour",        SPRITE_gravel,       IF_STACKABLE, 20, MAT_NONE, 0.4f, 0.0f, 0.0f },
     [ITEM_BREAD]        = { "Bread",        SPRITE_block_wood,   IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 10, MAT_NONE, 0.3f, 0.6f, 300.0f },
     [ITEM_COOKED_LENTILS] = { "Cooked Lentils", SPRITE_division, IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 10, MAT_NONE, 0.3f, 0.4f, 300.0f },
+    // Textiles (materials)
+    [ITEM_CLOTH]          = { "Cloth",         SPRITE_grass_trampled, IF_STACKABLE, 10, MAT_NONE, 0.5f, 0.0f, 0.0f },
+    [ITEM_LINEN]          = { "Linen",         SPRITE_grass_trampled, IF_STACKABLE, 10, MAT_NONE, 0.4f, 0.0f, 0.0f },
+    [ITEM_LEATHER]        = { "Leather",       SPRITE_grass_trampled, IF_STACKABLE, 10, MAT_NONE, 1.0f, 0.0f, 0.0f },
+    // Clothing
+    [ITEM_GRASS_TUNIC]    = { "Grass Tunic",   SPRITE_grass_tall,     IF_CLOTHING, 1, MAT_NONE, 1.0f, 0.0f, 0.0f },
+    [ITEM_FLAX_TUNIC]     = { "Flax Tunic",    SPRITE_grass_tall,     IF_CLOTHING, 1, MAT_NONE, 0.8f, 0.0f, 0.0f },
+    [ITEM_LEATHER_VEST]   = { "Leather Vest",  SPRITE_grass_trampled, IF_CLOTHING, 1, MAT_NONE, 2.0f, 0.0f, 0.0f },
+    [ITEM_LEATHER_COAT]   = { "Leather Coat",  SPRITE_grass_trampled, IF_CLOTHING, 1, MAT_NONE, 3.0f, 0.0f, 0.0f },
 };
 #undef MN

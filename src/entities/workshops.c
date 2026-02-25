@@ -106,6 +106,29 @@ Recipe quernRecipes[] = {
 };
 int quernRecipeCount = sizeof(quernRecipes) / sizeof(quernRecipes[0]);
 
+// Loom recipes: weave fibers into cloth/linen
+Recipe loomRecipes[] = {
+    { "Weave Cloth",        ITEM_DRIED_GRASS, 4, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_CLOTH, 1, ITEM_NONE, 0, 1.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    { "Weave from Cordage", ITEM_CORDAGE, 2,     ITEM_NONE, 0, ITEM_NONE, 0, ITEM_CLOTH, 1, ITEM_NONE, 0, 0.8f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    { "Weave Linen",        ITEM_FLAX_FIBER, 3,  ITEM_NONE, 0, ITEM_NONE, 0, ITEM_LINEN, 1, ITEM_NONE, 0, 1.2f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+};
+int loomRecipeCount = sizeof(loomRecipes) / sizeof(loomRecipes[0]);
+
+// Tanning rack recipes: passive hide → leather conversion
+Recipe tanningRackRecipes[] = {
+    { "Tan Hide", ITEM_HIDE, 1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_LEATHER, 1, ITEM_NONE, 0, 0.3f, 4.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+};
+int tanningRackRecipeCount = sizeof(tanningRackRecipes) / sizeof(tanningRackRecipes[0]);
+
+// Tailor bench recipes: sew clothing from textiles
+Recipe tailorRecipes[] = {
+    { "Sew Grass Tunic",  ITEM_CLOTH, 3,   ITEM_NONE, 0,  ITEM_NONE, 0, ITEM_GRASS_TUNIC, 1,  ITEM_NONE, 0, 1.5f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    { "Sew Flax Tunic",   ITEM_LINEN, 2,   ITEM_NONE, 0,  ITEM_NONE, 0, ITEM_FLAX_TUNIC, 1,   ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    { "Sew Leather Vest", ITEM_LEATHER, 2,  ITEM_NONE, 0,  ITEM_NONE, 0, ITEM_LEATHER_VEST, 1, ITEM_NONE, 0, 2.5f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    { "Sew Leather Coat", ITEM_LEATHER, 2,  ITEM_CLOTH, 1, ITEM_NONE, 0, ITEM_LEATHER_COAT, 1, ITEM_NONE, 0, 3.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+};
+int tailorRecipeCount = sizeof(tailorRecipes) / sizeof(tailorRecipes[0]);
+
 Recipe carpenterRecipes[] = {
     { "Craft Plank Bed",   ITEM_PLANKS, 4, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_PLANK_BED, 1, ITEM_NONE, 0, 8.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Craft Chair",       ITEM_PLANKS, 2, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_CHAIR, 1,     ITEM_NONE, 0, 5.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
@@ -268,6 +291,39 @@ const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
         .template = "X",
         .recipes = quernRecipes,
         .recipeCount = sizeof(quernRecipes) / sizeof(quernRecipes[0]),
+        .passive = false
+    },
+    [WORKSHOP_LOOM] = {
+        .type = WORKSHOP_LOOM,
+        .name = "LOOM",
+        .displayName = "Loom",
+        .width = 2,
+        .height = 1,
+        .template = "XO",
+        .recipes = loomRecipes,
+        .recipeCount = sizeof(loomRecipes) / sizeof(loomRecipes[0]),
+        .passive = false
+    },
+    [WORKSHOP_TANNING_RACK] = {
+        .type = WORKSHOP_TANNING_RACK,
+        .name = "TANNING_RACK",
+        .displayName = "Tanning Rack",
+        .width = 2,
+        .height = 1,
+        .template = "XO",
+        .recipes = tanningRackRecipes,
+        .recipeCount = sizeof(tanningRackRecipes) / sizeof(tanningRackRecipes[0]),
+        .passive = true
+    },
+    [WORKSHOP_TAILOR] = {
+        .type = WORKSHOP_TAILOR,
+        .name = "TAILOR",
+        .displayName = "Tailor",
+        .width = 2,
+        .height = 1,
+        .template = "XO",
+        .recipes = tailorRecipes,
+        .recipeCount = sizeof(tailorRecipes) / sizeof(tailorRecipes[0]),
         .passive = false
     },
 };

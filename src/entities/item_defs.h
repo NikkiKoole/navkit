@@ -14,11 +14,12 @@
 #define IF_MATERIAL_NAME  (1 << 5)  // Display material name (e.g. "Oak Log" not just "Log")
 #define IF_CONTAINER      (1 << 6)  // Item can hold other items
 #define IF_TOOL           (1 << 7)  // Item is a tool (has quality levels)
+#define IF_CLOTHING       (1 << 8)  // Item is wearable clothing
 
 typedef struct {
     const char* name;     // Display name for tooltips
     int sprite;           // Sprite index from atlas
-    uint8_t flags;        // IF_* flags
+    uint16_t flags;       // IF_* flags (widened from uint8_t for IF_CLOTHING)
     uint8_t maxStack;     // Max items per stockpile slot
     uint8_t defaultMaterial; // Default MaterialType when spawned without explicit material
     float weight;         // Weight in kg (affects carry speed)
@@ -44,6 +45,7 @@ extern const ItemDef itemDefs[];
 #define ItemUsesMaterialName(t) (itemDefs[t].flags & IF_MATERIAL_NAME)
 #define ItemIsContainer(t)    (itemDefs[t].flags & IF_CONTAINER)
 #define ItemIsTool(t)         (itemDefs[t].flags & IF_TOOL)
+#define ItemIsClothing(t)     (itemDefs[t].flags & IF_CLOTHING)
 #define ItemDefaultMaterial(t)  (itemDefs[t].defaultMaterial)
 #define ItemWeight(t)           (itemDefs[t].weight)
 #define ItemNutrition(t)        (itemDefs[t].nutrition)

@@ -2300,7 +2300,10 @@ int CreateWorkshopBlueprint(int originX, int originY, int z, int recipeIndex) {
         case CONSTRUCTION_WORKSHOP_GROUND_FIRE:  workshopType = WORKSHOP_GROUND_FIRE; break;
         case CONSTRUCTION_WORKSHOP_BUTCHER:      workshopType = WORKSHOP_BUTCHER; break;
         case CONSTRUCTION_WORKSHOP_COMPOST_PILE: workshopType = WORKSHOP_COMPOST_PILE; break;
-        case CONSTRUCTION_WORKSHOP_QUERN:       workshopType = WORKSHOP_QUERN; break;
+        case CONSTRUCTION_WORKSHOP_QUERN:        workshopType = WORKSHOP_QUERN; break;
+        case CONSTRUCTION_WORKSHOP_LOOM:         workshopType = WORKSHOP_LOOM; break;
+        case CONSTRUCTION_WORKSHOP_TANNING_RACK: workshopType = WORKSHOP_TANNING_RACK; break;
+        case CONSTRUCTION_WORKSHOP_TAILOR:       workshopType = WORKSHOP_TAILOR; break;
         default: return -1;
     }
 

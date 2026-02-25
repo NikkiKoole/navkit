@@ -21,6 +21,7 @@ typedef enum {
     FILTER_CAT_TOOL,
     FILTER_CAT_FOOD,
     FILTER_CAT_FARM,
+    FILTER_CAT_TEXTILE,
     FILTER_CAT_DEBUG,
     FILTER_CAT_COUNT
 } StockpileFilterCategory;

@@ -406,6 +406,45 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = true,
         .canErase = false
     },
+    {
+        .action = ACTION_DRAW_WORKSHOP_LOOM,
+        .name = "LOOM",
+        .barDisplayText = "Loom",
+        .barText = "L-click place  [ESC]Back",
+        .barKey = 'l',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_WORKSHOP,
+        .canDrag = true,
+        .canErase = false
+    },
+    {
+        .action = ACTION_DRAW_WORKSHOP_TANNING_RACK,
+        .name = "TANNING_RACK",
+        .barDisplayText = "Tanning Rack",
+        .barText = "L-click place  [ESC]Back",
+        .barKey = 'n',
+        .barUnderlinePos = 2,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_WORKSHOP,
+        .canDrag = true,
+        .canErase = false
+    },
+    {
+        .action = ACTION_DRAW_WORKSHOP_TAILOR,
+        .name = "TAILOR",
+        .barDisplayText = "Tailor",
+        .barText = "L-click place  [ESC]Back",
+        .barKey = 'a',
+        .barUnderlinePos = 1,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_WORKSHOP,
+        .canDrag = true,
+        .canErase = false
+    },
 
     // ========================================================================
     // MODE_DRAW > TRANSPORT children
@@ -703,6 +742,45 @@ const ActionDef ACTION_REGISTRY[] = {
         .barText = "L-click place  R-click cancel  [ESC]Back",
         .barKey = 'q',
         .barUnderlinePos = 0,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_WORK_WORKSHOP,
+        .canDrag = false,
+        .canErase = true
+    },
+    {
+        .action = ACTION_WORK_WORKSHOP_LOOM,
+        .name = "LOOM",
+        .barDisplayText = "Loom",
+        .barText = "L-click place  R-click cancel  [ESC]Back",
+        .barKey = 'l',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_WORK_WORKSHOP,
+        .canDrag = false,
+        .canErase = true
+    },
+    {
+        .action = ACTION_WORK_WORKSHOP_TANNING_RACK,
+        .name = "TANNING_RACK",
+        .barDisplayText = "Tanning Rack",
+        .barText = "L-click place  R-click cancel  [ESC]Back",
+        .barKey = 'n',
+        .barUnderlinePos = 2,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_WORK_WORKSHOP,
+        .canDrag = false,
+        .canErase = true
+    },
+    {
+        .action = ACTION_WORK_WORKSHOP_TAILOR,
+        .name = "TAILOR",
+        .barDisplayText = "Tailor",
+        .barText = "L-click place  R-click cancel  [ESC]Back",
+        .barKey = 'a',
+        .barUnderlinePos = 1,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_BUILD,
         .parentAction = ACTION_WORK_WORKSHOP,

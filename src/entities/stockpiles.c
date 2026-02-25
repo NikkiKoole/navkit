@@ -24,6 +24,7 @@ const char* FILTER_CATEGORY_NAMES[FILTER_CAT_COUNT] = {
     [FILTER_CAT_TOOL]      = "Tool",
     [FILTER_CAT_FOOD]      = "Food",
     [FILTER_CAT_FARM]      = "Farm",
+    [FILTER_CAT_TEXTILE]   = "Textile",
     [FILTER_CAT_DEBUG]     = "Debug",
 };
 
@@ -38,6 +39,7 @@ const char FILTER_CATEGORY_KEYS[FILTER_CAT_COUNT] = {
     [FILTER_CAT_TOOL]      = 'T',
     [FILTER_CAT_FOOD]      = 'F',
     [FILTER_CAT_FARM]      = 'A',
+    [FILTER_CAT_TEXTILE]   = 'X',
     [FILTER_CAT_DEBUG]     = 'D',
 };
 
@@ -102,6 +104,14 @@ const StockpileFilterDef STOCKPILE_FILTERS[] = {
     {ITEM_BREAD,        FILTER_CAT_FARM,      "Bread",        ORANGE},
     {ITEM_COOKED_LENTILS,FILTER_CAT_FARM,     "Cooked Lentils",MAROON},
     {ITEM_COMPOST,      FILTER_CAT_FARM,      "Compost",      BROWN},
+    // Textile
+    {ITEM_CLOTH,         FILTER_CAT_TEXTILE,   "Cloth",         BEIGE},
+    {ITEM_LINEN,         FILTER_CAT_TEXTILE,   "Linen",         BEIGE},
+    {ITEM_LEATHER,       FILTER_CAT_TEXTILE,   "Leather",       BROWN},
+    {ITEM_GRASS_TUNIC,   FILTER_CAT_TEXTILE,   "Grass Tunic",   GREEN},
+    {ITEM_FLAX_TUNIC,    FILTER_CAT_TEXTILE,   "Flax Tunic",    SKYBLUE},
+    {ITEM_LEATHER_VEST,  FILTER_CAT_TEXTILE,   "Leather Vest",  BROWN},
+    {ITEM_LEATHER_COAT,  FILTER_CAT_TEXTILE,   "Leather Coat",  BROWN},
     // Debug
     {ITEM_RED,          FILTER_CAT_DEBUG,     "Red",          RED},
     {ITEM_GREEN,        FILTER_CAT_DEBUG,     "Green",        GREEN},

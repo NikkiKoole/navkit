@@ -1428,8 +1428,40 @@ bool LoadWorld(const char* filename) {
             stockpiles[i].freeSlotCount = v76_sp.freeSlotCount;
             stockpiles[i].rejectsRotten = v76_sp.rejectsRotten;
         }
+    } else if (version < 78) {
+        // v77: 55 item types, migrate to 62 (adding 7 clothing/textile items)
+        StockpileV77 v77_sp;
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            fread(&v77_sp, sizeof(StockpileV77), 1, f);
+            stockpiles[i].x = v77_sp.x;
+            stockpiles[i].y = v77_sp.y;
+            stockpiles[i].z = v77_sp.z;
+            stockpiles[i].width = v77_sp.width;
+            stockpiles[i].height = v77_sp.height;
+            stockpiles[i].active = v77_sp.active;
+            memcpy(stockpiles[i].allowedTypes, v77_sp.allowedTypes,
+                   sizeof(v77_sp.allowedTypes));
+            for (int t = V77_ITEM_TYPE_COUNT; t < ITEM_TYPE_COUNT; t++) {
+                stockpiles[i].allowedTypes[t] = true;
+            }
+            memcpy(stockpiles[i].allowedMaterials, v77_sp.allowedMaterials,
+                   sizeof(v77_sp.allowedMaterials));
+            memcpy(stockpiles[i].cells, v77_sp.cells, sizeof(v77_sp.cells));
+            memcpy(stockpiles[i].slots, v77_sp.slots, sizeof(v77_sp.slots));
+            memcpy(stockpiles[i].reservedBy, v77_sp.reservedBy, sizeof(v77_sp.reservedBy));
+            memcpy(stockpiles[i].slotCounts, v77_sp.slotCounts, sizeof(v77_sp.slotCounts));
+            memcpy(stockpiles[i].slotTypes, v77_sp.slotTypes, sizeof(v77_sp.slotTypes));
+            memcpy(stockpiles[i].slotMaterials, v77_sp.slotMaterials, sizeof(v77_sp.slotMaterials));
+            stockpiles[i].maxStackSize = v77_sp.maxStackSize;
+            stockpiles[i].priority = v77_sp.priority;
+            stockpiles[i].maxContainers = v77_sp.maxContainers;
+            memcpy(stockpiles[i].slotIsContainer, v77_sp.slotIsContainer, sizeof(v77_sp.slotIsContainer));
+            memcpy(stockpiles[i].groundItemIdx, v77_sp.groundItemIdx, sizeof(v77_sp.groundItemIdx));
+            stockpiles[i].freeSlotCount = v77_sp.freeSlotCount;
+            stockpiles[i].rejectsRotten = v77_sp.rejectsRotten;
+        }
     } else {
-        // v77+ format - direct read
+        // v78+ format - direct read
         fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
     }
 
@@ -1547,11 +1579,52 @@ bool LoadWorld(const char* filename) {
     
     // Movers
     fread(&moverCount, sizeof(moverCount), 1, f);
-    if (version >= 69) {
-        // v69+: Mover struct without path, then paths separately
+    if (version >= 78) {
+        // v78+: Mover struct with equippedClothing, paths separate
         fread(movers, sizeof(Mover), moverCount, f);
         for (int i = 0; i < moverCount; i++) {
             fread(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+        }
+    } else if (version >= 69) {
+        // v69-v77: Mover without equippedClothing, paths separate
+        for (int i = 0; i < moverCount; i++) {
+            MoverV77 old;
+            fread(&old, sizeof(MoverV77), 1, f);
+            fread(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+            Mover* m = &movers[i];
+            m->x = old.x; m->y = old.y; m->z = old.z;
+            m->goal = old.goal;
+            m->pathLength = old.pathLength;
+            m->pathIndex = old.pathIndex;
+            m->active = old.active;
+            m->needsRepath = old.needsRepath;
+            m->repathCooldown = old.repathCooldown;
+            m->speed = old.speed;
+            m->timeNearWaypoint = old.timeNearWaypoint;
+            m->lastX = old.lastX; m->lastY = old.lastY; m->lastZ = old.lastZ;
+            m->timeWithoutProgress = old.timeWithoutProgress;
+            m->fallTimer = old.fallTimer;
+            m->workAnimPhase = old.workAnimPhase;
+            m->hunger = old.hunger;
+            m->energy = old.energy;
+            m->freetimeState = old.freetimeState;
+            m->needTarget = old.needTarget;
+            m->needProgress = old.needProgress;
+            m->needSearchCooldown = old.needSearchCooldown;
+            m->starvationTimer = old.starvationTimer;
+            m->bodyTemp = old.bodyTemp;
+            m->hypothermiaTimer = old.hypothermiaTimer;
+            m->avoidX = old.avoidX; m->avoidY = old.avoidY;
+            m->currentJobId = old.currentJobId;
+            m->lastJobType = old.lastJobType;
+            m->lastJobResult = old.lastJobResult;
+            m->lastJobTargetX = old.lastJobTargetX;
+            m->lastJobTargetY = old.lastJobTargetY;
+            m->lastJobTargetZ = old.lastJobTargetZ;
+            m->lastJobEndTick = old.lastJobEndTick;
+            m->capabilities = old.capabilities;
+            m->equippedTool = old.equippedTool;
+            m->equippedClothing = -1;
         }
     } else if (version >= 65) {
         // V65-V68: old Mover with path[] inline
@@ -1592,6 +1665,7 @@ bool LoadWorld(const char* filename) {
             m->lastJobEndTick = old.lastJobEndTick;
             m->capabilities = old.capabilities;
             m->equippedTool = old.equippedTool;
+            m->equippedClothing = -1;
         }
     } else if (version >= 59) {
         // V59-V64 movers don't have equippedTool field
@@ -1800,6 +1874,13 @@ bool LoadWorld(const char* filename) {
     if (version < 65) {
         for (int i = 0; i < moverCount; i++) {
             movers[i].equippedTool = -1;
+        }
+    }
+
+    // Initialize equippedClothing for old saves (v78+)
+    if (version < 78) {
+        for (int i = 0; i < moverCount; i++) {
+            movers[i].equippedClothing = -1;
         }
     }
 
