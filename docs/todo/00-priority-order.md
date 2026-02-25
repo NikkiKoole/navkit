@@ -21,6 +21,8 @@
 - **05b-fog-of-war-exploration.md** — exploredGrid, soft borders, discovery events, blocks jobs/hauling in unexplored areas (save v75)
 - **06a-farming-land-work.md** — Farm grid, tilling, weeding, composting, fertilizing. FarmCell struct, 5 soil types, compost pile workshop (save v76, 35 tests)
 - **06b-farming-crops-processing.md** — 3 crops (wheat/lentils/flax), growth system with 5 modifiers, planting+harvesting jobs, wild plants in worldgen, quern workshop, cooking recipes. 9 new items, seed stack splitting (save v77, 35 farming tests)
+- **07-clothing-and-textiles.md** — Loom + tailor workshops, 7 clothing items (grass/hide/cloth/linen), equip system, temperature integration, upgrade logic (save v78, 30+ tests)
+- **08-thirst-and-water.md** — Thirst need, 3 liquid items (water/tea/juice), drink from pots + natural water fallback, fill water pot job, beverage recipes at campfire/hearth (save v79, 43 tests)
 
 ## Reference Docs (not actionable tasks)
 
@@ -59,19 +61,20 @@
 | 06a | `06a-farming-land-work.md` | ~1.5 sessions | 02, 04d | ✅ Done. Farm grid, tilling, weeding, compost pile, fertilizing (save v76). |
 | 06b | `06b-farming-crops-processing.md` | ~2 sessions | 06a | ✅ Done. 3 crops, growth, plant/harvest jobs, wild plants, quern, cooking (save v77). |
 
-### Tier 2b: Expansion (next up)
+### ~~Tier 2b: Expansion~~ — COMPLETE ✅
 
 | # | Doc | Effort | Deps | What It Does | Status |
 |---|-----|--------|------|-------------|--------|
-| 06c | `06c-farm-watering.md` | ~0.5 session | 06a | Manual water collection + carrying to farms. Optional — rain works for now. | Todo |
-| 07 | `07-clothing-and-textiles.md` | ~2 sessions | 03, 06b | Loom + tailor. Grass/cordage → cloth → clothing. Hides → leather. Flax fiber from 06b → linen. Cold resistance on movers. | Todo |
-| 08 | `08-thirst-and-water.md` | ~1.5 sessions | 02 | Thirst need + water carrying in pots. Containers already done — just needs thirst mechanic + water item. | Todo |
+| 06c | `06c-farm-watering.md` | ~0.5 session | 06a | Manual water collection + carrying to farms. Optional — rain works for now. | Todo (deferred) |
+| 07 | `07-clothing-and-textiles.md` | ~2 sessions | 03, 06b | Loom + tailor. Grass/cordage → cloth → clothing. Hides → leather. Flax fiber from 06b → linen. Cold resistance on movers. | ✅ Done (save v78) |
+| 08 | `08-thirst-and-water.md` | ~1.5 sessions | 02 | Thirst need + water carrying in pots + beverages (tea, juice) + natural water fallback. | ✅ Done (save v79) |
 
 ### Tier 3: Polish & Depth
 
 | # | Doc | Effort | Deps | What It Does |
 |---|-----|--------|------|-------------|
-| 09 | `09-loop-closers.md` | ~2 sessions | 06 | Glass, compost, ash/lye, scaffolding. Closes open material loops. |
+| 09a | `09-loop-closers.md` | ~2 sessions | 06 | Glass, compost, ash/lye, scaffolding. Closes open material loops. |
+| 09b | `09-onboarding-and-progression.md` | ~1-2 sessions | 07, 08 | Starting scenarios, progressive need unlocks, difficulty, visual priority. Reduces early-game overwhelm. |
 | 10 | `10-personality-and-skills.md` | ~3 sessions | All | Names, skill progression (8 types), moods. The "character" layer. |
 | 11 | `11-stockpile-filter-redesign.md` | ~1 session | More items | Hierarchical filter UI. Only matters with many more item types. |
 
@@ -126,7 +129,13 @@ Session 12-13:  Farming land work (06a) + crops & processing (06b)           ✅
                 → 3 crops (wheat/lentils/flax), growth system, wild plants, quern, cooking (06b)
                 → 9 new items, 35 farming tests, save v76-v77
 
-Session 14+:    Clothing → thirst → loop closers → personality
+Session 14:     Clothing & textiles (07)                                        ✅ DONE
+                → Loom + tailor, 7 clothing items, equip system, temp integration
+
+Session 15:     Thirst & water (08)                                             ✅ DONE
+                → Thirst need, 3 liquids, drink from pots/nature, fill pot job, beverages
+
+Session 16+:    Onboarding → loop closers → personality
 ```
 
 ## The Day-1 Survival Arc (after sessions 1-6)
