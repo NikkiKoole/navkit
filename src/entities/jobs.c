@@ -2686,7 +2686,18 @@ JobRunResult RunJob_PlantCrop(Job* job, void* moverPtr, float dt) {
                 fc->growthStage = CROP_STAGE_SPROUTED;  // Start at sprouted
                 fc->growthProgress = 0;
                 fc->frostDamaged = 0;
-                DeleteItem(itemIdx);
+                // Consume 1 seed from stack (or delete if last one)
+                if (items[itemIdx].stackCount > 1) {
+                    items[itemIdx].stackCount--;
+                    // Drop remaining seeds at planting location
+                    items[itemIdx].x = tx * CELL_SIZE + CELL_SIZE * 0.5f;
+                    items[itemIdx].y = ty * CELL_SIZE + CELL_SIZE * 0.5f;
+                    items[itemIdx].z = (float)tz;
+                    items[itemIdx].state = ITEM_ON_GROUND;
+                    items[itemIdx].reservedBy = -1;
+                } else {
+                    DeleteItem(itemIdx);
+                }
                 job->carryingItem = -1;
                 EventLog("Planted crop %d at (%d,%d,z%d)", crop, tx, ty, tz);
             } else {

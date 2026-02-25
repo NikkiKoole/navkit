@@ -792,7 +792,98 @@ describe(farming) {
     }
 
     // =========================================================================
-    // 21. CropGrowthTimeGH returns correct values
+    // 21. Planting from seed stack consumes 1 seed per cell, not entire stack
+    // =========================================================================
+    it("planting from seed stack of 10 consumes only 1 seed per plant") {
+        SetupFarmGrid();
+
+        // Set up 10 tilled cells in a row, all wanting wheat
+        for (int x = 2; x < 12; x++) {
+            farmGrid[1][5][x].tilled = 1;
+            farmGrid[1][5][x].fertility = 128;
+            farmGrid[1][5][x].desiredCropType = CROP_WHEAT;
+        }
+        farmActiveCells = 10;
+
+        // Spawn a single seed stack of 10 on ground
+        float seedX = 2.5f * CELL_SIZE;
+        float seedY = 5.5f * CELL_SIZE;
+        int seedIdx = SpawnItem(seedX, seedY, 1.0f, ITEM_WHEAT_SEEDS);
+        expect(seedIdx >= 0);
+        items[seedIdx].stackCount = 10;
+
+        // Plant all 10 cells one by one using the same seed stack
+        int planted = 0;
+        for (int x = 2; x < 12; x++) {
+            // Find the seed item (may be same index, dropped back after each plant)
+            int curSeed = -1;
+            for (int i = 0; i < itemHighWaterMark; i++) {
+                if (items[i].active && items[i].type == ITEM_WHEAT_SEEDS) {
+                    curSeed = i;
+                    break;
+                }
+            }
+            if (curSeed < 0) break;
+
+            int prevStack = items[curSeed].stackCount;
+
+            // Create mover at the target cell
+            Mover* m = &movers[0];
+            Point goal = {x, 5, 1};
+            float px = x * CELL_SIZE + CELL_SIZE * 0.5f;
+            float py = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+            InitMover(m, px, py, 1.0f, goal, 100.0f);
+            moverCount = 1;
+            m->capabilities.canPlant = true;
+
+            // Create plant job already at PLANTING step
+            ClearJobs();
+            int jobId = CreateJob(JOBTYPE_PLANT_CROP);
+            expect(jobId >= 0);
+            Job* job = GetJob(jobId);
+            job->assignedMover = 0;
+            job->targetMineX = x;
+            job->targetMineY = 5;
+            job->targetMineZ = 1;
+            job->step = STEP_PLANTING;
+            job->progress = 0.0f;
+            job->carryingItem = curSeed;
+
+            // Run to completion
+            for (int i = 0; i < 1000; i++) {
+                JobRunResult r = RunJob_PlantCrop(job, m, 0.016f);
+                if (r == JOBRUN_DONE) break;
+            }
+
+            FarmCell* fc = GetFarmCell(x, 5, 1);
+            expect(fc->cropType == CROP_WHEAT);
+            expect(fc->growthStage == CROP_STAGE_SPROUTED);
+            planted++;
+
+            // Check stack decremented (or item deleted if last seed)
+            if (prevStack > 1) {
+                expect(items[curSeed].active);
+                expect(items[curSeed].stackCount == prevStack - 1);
+            } else {
+                expect(!items[curSeed].active);
+            }
+        }
+
+        // All 10 cells should be planted
+        expect(planted == 10);
+
+        // No remaining seeds should exist
+        int remainingSeeds = 0;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (items[i].active && items[i].type == ITEM_WHEAT_SEEDS) {
+                remainingSeeds += items[i].stackCount;
+            }
+        }
+        expect(remainingSeeds == 0);
+    }
+
+    // =========================================================================
+    // 22. CropGrowthTimeGH returns correct values
     // =========================================================================
     it("CropGrowthTimeGH returns per-crop values") {
         expect(CropGrowthTimeGH(CROP_WHEAT) > 71.0f && CropGrowthTimeGH(CROP_WHEAT) < 73.0f);
