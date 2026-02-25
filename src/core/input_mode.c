@@ -138,7 +138,6 @@ const char* InputMode_GetBarText(void) {
     if (inputAction == ACTION_DRAW_WALL || inputAction == ACTION_DRAW_FLOOR) {
         // Material selection with markers
         snprintf(barTextBuffer, sizeof(barTextBuffer), "%s: ", prefix);
-        // barText is a data-driven format string (e.g. "Stone%s Plank%s Clay%s")
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wformat-nonliteral"
         snprintf(barTextBuffer + strlen(barTextBuffer), sizeof(barTextBuffer) - strlen(barTextBuffer),
@@ -431,6 +430,13 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "5:White", KEY_FIVE, 0, false, false, currentTorchPreset == TORCH_PRESET_WHITE);
                 n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
                 n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
+                break;
+            case ACTION_WORK_FARM:
+                n = AddItem(items, n, "1:Wheat", KEY_ONE, 0, false, false, selectedMaterial == 1);
+                n = AddItem(items, n, "2:Lentils", KEY_TWO, 0, false, false, selectedMaterial == 2);
+                n = AddItem(items, n, "3:Flax", KEY_THREE, 0, false, false, selectedMaterial == 3);
+                n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
+                n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
                 break;
             default:
                 // Generic: show drag/cancel hints based on registry canDrag/canErase
