@@ -906,6 +906,325 @@ describe(farming) {
         expect(CropGrowthTimeGH(CROP_LENTILS) > 47.0f && CropGrowthTimeGH(CROP_LENTILS) < 49.0f);
         expect(CropGrowthTimeGH(CROP_FLAX) > 59.0f && CropGrowthTimeGH(CROP_FLAX) < 61.0f);
     }
+
+    // =========================================================================
+    // 23. Watering: RunJob_WaterCrop completes and sets wetness
+    // =========================================================================
+    it("watering sets cell wetness and consumes water item") {
+        SetupFarmGrid();
+
+        // Set up dry tilled farm cell at (5,5,1)
+        farmGrid[1][5][5].tilled = 1;
+        farmGrid[1][5][5].fertility = 128;
+        farmActiveCells = 1;
+        SET_CELL_WETNESS(5, 5, 0, 0);  // Dry soil at z-1
+
+        // Spawn water item on ground near mover
+        int waterIdx = SpawnItem(4.5f * CELL_SIZE, 4.5f * CELL_SIZE, 1, ITEM_WATER);
+        expect(waterIdx >= 0);
+
+        // Create mover
+        Mover* m = &movers[0];
+        Point goal = {5, 5, 1};
+        InitMover(m, 5.5f * CELL_SIZE, 5.5f * CELL_SIZE, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        m->capabilities.canPlant = true;
+
+        // Create water crop job directly at STEP_PLANTING (mover already at target)
+        int jobId = CreateJob(JOBTYPE_WATER_CROP);
+        expect(jobId >= 0);
+        Job* job = GetJob(jobId);
+        job->assignedMover = 0;
+        job->targetItem = waterIdx;
+        job->targetMineX = 5;
+        job->targetMineY = 5;
+        job->targetMineZ = 1;
+        job->step = STEP_PLANTING;
+        job->progress = 0.0f;
+        job->carryingItem = waterIdx;
+        items[waterIdx].state = ITEM_CARRIED;
+
+        // Fast-forward to completion
+        JobRunResult r = JOBRUN_RUNNING;
+        for (int i = 0; i < 1000 && r == JOBRUN_RUNNING; i++) {
+            r = RunJob_WaterCrop(job, m, 0.016f);
+        }
+        expect(r == JOBRUN_DONE);
+
+        // Wetness should be set on the soil cell at z-1
+        expect(GET_CELL_WETNESS(5, 5, 0) == WATER_POUR_WETNESS);
+
+        // Water item should be consumed
+        expect(!items[waterIdx].active);
+    }
+
+    // =========================================================================
+    // 24. WorkGiver_WaterCrop assigns job when dry farm cell + water available
+    // =========================================================================
+    it("WorkGiver_WaterCrop assigns job for dry farm cell") {
+        SetupFarmGrid();
+        RebuildIdleMoverList();
+
+        farmGrid[1][5][5].tilled = 1;
+        farmGrid[1][5][5].fertility = 128;
+        farmActiveCells = 1;
+        SET_CELL_WETNESS(5, 5, 0, 0);  // Dry
+
+        int waterIdx = SpawnItem(3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1, ITEM_WATER);
+        expect(waterIdx >= 0);
+
+        Mover* m = &movers[0];
+        Point goal = {3, 3, 1};
+        InitMover(m, 3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        m->capabilities.canPlant = true;
+        m->currentJobId = -1;
+        AddMoverToIdleList(0);
+
+        int jobId = WorkGiver_WaterCrop(0);
+        expect(jobId >= 0);
+
+        Job* job = GetJob(jobId);
+        expect(job->type == JOBTYPE_WATER_CROP);
+        expect(job->targetItem == waterIdx);
+        expect(job->targetMineX == 5);
+        expect(job->targetMineY == 5);
+        expect(job->targetMineZ == 1);
+        expect(items[waterIdx].reservedBy == 0);
+    }
+
+    // =========================================================================
+    // 25. No water job when all farm cells are wet
+    // =========================================================================
+    it("no water job when cells are already wet") {
+        SetupFarmGrid();
+        RebuildIdleMoverList();
+
+        farmGrid[1][5][5].tilled = 1;
+        farmGrid[1][5][5].fertility = 128;
+        farmActiveCells = 1;
+        SET_CELL_WETNESS(5, 5, 0, 2);  // Already wet
+
+        int waterIdx = SpawnItem(3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1, ITEM_WATER);
+        expect(waterIdx >= 0);
+
+        Mover* m = &movers[0];
+        Point goal = {3, 3, 1};
+        InitMover(m, 3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        m->capabilities.canPlant = true;
+        m->currentJobId = -1;
+        AddMoverToIdleList(0);
+
+        int jobId = WorkGiver_WaterCrop(0);
+        expect(jobId < 0);  // No job — not dry
+    }
+
+    // =========================================================================
+    // 26. No water job when no water items available
+    // =========================================================================
+    it("no water job when no water items") {
+        SetupFarmGrid();
+        RebuildIdleMoverList();
+
+        farmGrid[1][5][5].tilled = 1;
+        farmGrid[1][5][5].fertility = 128;
+        farmActiveCells = 1;
+        SET_CELL_WETNESS(5, 5, 0, 0);  // Dry
+
+        // No water items spawned
+
+        Mover* m = &movers[0];
+        Point goal = {3, 3, 1};
+        InitMover(m, 3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        m->capabilities.canPlant = true;
+        m->currentJobId = -1;
+        AddMoverToIdleList(0);
+
+        int jobId = WorkGiver_WaterCrop(0);
+        expect(jobId < 0);  // No water available
+    }
+
+    // =========================================================================
+    // 27. No water job for untilled cells
+    // =========================================================================
+    it("no water job for untilled cells") {
+        SetupFarmGrid();
+        RebuildIdleMoverList();
+
+        // Cell is NOT tilled
+        farmActiveCells = 0;
+        SET_CELL_WETNESS(5, 5, 0, 0);
+
+        int waterIdx = SpawnItem(3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1, ITEM_WATER);
+        expect(waterIdx >= 0);
+
+        Mover* m = &movers[0];
+        Point goal = {3, 3, 1};
+        InitMover(m, 3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        m->capabilities.canPlant = true;
+        m->currentJobId = -1;
+        AddMoverToIdleList(0);
+
+        int jobId = WorkGiver_WaterCrop(0);
+        expect(jobId < 0);  // farmActiveCells == 0
+    }
+
+    // =========================================================================
+    // 28. Cancel water job releases reservation
+    // =========================================================================
+    it("cancel water job releases water item reservation") {
+        SetupFarmGrid();
+        RebuildIdleMoverList();
+
+        farmGrid[1][5][5].tilled = 1;
+        farmGrid[1][5][5].fertility = 128;
+        farmActiveCells = 1;
+        SET_CELL_WETNESS(5, 5, 0, 0);
+
+        int waterIdx = SpawnItem(3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1, ITEM_WATER);
+        expect(waterIdx >= 0);
+
+        Mover* m = &movers[0];
+        Point goal = {3, 3, 1};
+        InitMover(m, 3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        m->capabilities.canPlant = true;
+        m->currentJobId = -1;
+        AddMoverToIdleList(0);
+
+        int jobId = WorkGiver_WaterCrop(0);
+        expect(jobId >= 0);
+        expect(items[waterIdx].reservedBy == 0);
+
+        CancelJob(m, 0);
+        expect(items[waterIdx].reservedBy == -1);
+        expect(m->currentJobId == -1);
+    }
+
+    // =========================================================================
+    // 29. Dedup: no second water job for same cell
+    // =========================================================================
+    it("no duplicate water jobs for same cell") {
+        SetupFarmGrid();
+        RebuildIdleMoverList();
+
+        farmGrid[1][5][5].tilled = 1;
+        farmGrid[1][5][5].fertility = 128;
+        farmActiveCells = 1;
+        SET_CELL_WETNESS(5, 5, 0, 0);
+
+        // Two water items
+        int w1 = SpawnItem(3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1, ITEM_WATER);
+        int w2 = SpawnItem(4.5f * CELL_SIZE, 4.5f * CELL_SIZE, 1, ITEM_WATER);
+        expect(w1 >= 0);
+        expect(w2 >= 0);
+
+        // Two movers
+        Mover* m0 = &movers[0];
+        Point g0 = {3, 3, 1};
+        InitMover(m0, 3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1.0f, g0, 100.0f);
+        m0->capabilities.canPlant = true;
+        m0->currentJobId = -1;
+
+        Mover* m1 = &movers[1];
+        Point g1 = {4, 4, 1};
+        InitMover(m1, 4.5f * CELL_SIZE, 4.5f * CELL_SIZE, 1.0f, g1, 100.0f);
+        m1->capabilities.canPlant = true;
+        m1->currentJobId = -1;
+        moverCount = 2;
+
+        AddMoverToIdleList(0);
+        AddMoverToIdleList(1);
+
+        int jobId1 = WorkGiver_WaterCrop(0);
+        expect(jobId1 >= 0);
+
+        // Second mover tries same cell — should be rejected (dedup)
+        int jobId2 = WorkGiver_WaterCrop(1);
+        expect(jobId2 < 0);
+    }
+
+    // =========================================================================
+    // 30. Multiple dry cells get separate water jobs
+    // =========================================================================
+    it("multiple dry cells get separate water jobs") {
+        SetupFarmGrid();
+
+        // Two dry tilled cells far apart
+        farmGrid[1][3][3].tilled = 1;
+        farmGrid[1][3][3].fertility = 128;
+        farmGrid[1][12][12].tilled = 1;
+        farmGrid[1][12][12].fertility = 128;
+        farmActiveCells = 2;
+        SET_CELL_WETNESS(3, 3, 0, 0);
+        SET_CELL_WETNESS(12, 12, 0, 0);
+
+        // Two water items near each mover
+        int w1 = SpawnItem(2.5f * CELL_SIZE, 2.5f * CELL_SIZE, 1, ITEM_WATER);
+        int w2 = SpawnItem(11.5f * CELL_SIZE, 11.5f * CELL_SIZE, 1, ITEM_WATER);
+        expect(w1 >= 0);
+        expect(w2 >= 0);
+
+        // Mover 0 near cell (3,3), mover 1 near cell (12,12)
+        Mover* m0 = &movers[0];
+        Point g0 = {2, 2, 1};
+        InitMover(m0, 2.5f * CELL_SIZE, 2.5f * CELL_SIZE, 1.0f, g0, 100.0f);
+        m0->capabilities.canPlant = true;
+        m0->currentJobId = -1;
+
+        Mover* m1 = &movers[1];
+        Point g1 = {11, 11, 1};
+        InitMover(m1, 11.5f * CELL_SIZE, 11.5f * CELL_SIZE, 1.0f, g1, 100.0f);
+        m1->capabilities.canPlant = true;
+        m1->currentJobId = -1;
+        moverCount = 2;
+
+        RebuildIdleMoverList();
+
+        int jobId1 = WorkGiver_WaterCrop(0);
+        expect(jobId1 >= 0);
+
+        // Second mover gets a different cell (nearest to them is (12,12))
+        int jobId2 = WorkGiver_WaterCrop(1);
+        expect(jobId2 >= 0);
+
+        // Should be different jobs targeting different cells
+        Job* j1 = GetJob(jobId1);
+        Job* j2 = GetJob(jobId2);
+        expect(j1->targetMineX != j2->targetMineX || j1->targetMineY != j2->targetMineY);
+    }
+
+    // =========================================================================
+    // 31. Water from stockpile is also found
+    // =========================================================================
+    it("WorkGiver_WaterCrop finds water in stockpile") {
+        SetupFarmGrid();
+        RebuildIdleMoverList();
+
+        farmGrid[1][5][5].tilled = 1;
+        farmGrid[1][5][5].fertility = 128;
+        farmActiveCells = 1;
+        SET_CELL_WETNESS(5, 5, 0, 0);
+
+        // Water item in stockpile state
+        int waterIdx = SpawnItem(3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1, ITEM_WATER);
+        expect(waterIdx >= 0);
+        items[waterIdx].state = ITEM_IN_STOCKPILE;
+
+        Mover* m = &movers[0];
+        Point goal = {3, 3, 1};
+        InitMover(m, 3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        m->capabilities.canPlant = true;
+        m->currentJobId = -1;
+        AddMoverToIdleList(0);
+
+        int jobId = WorkGiver_WaterCrop(0);
+        expect(jobId >= 0);
+    }
 }
 
 int main(int argc, char* argv[]) {

@@ -62,6 +62,10 @@ extern int farmActiveCells;  // count of tilled cells (for sim tick skipping)
 // Fertilize amount
 #define FERTILIZE_AMOUNT    80
 
+// Watering
+#define WATER_CROP_WORK_TIME 0.3f   // Game-hours to pour water
+#define WATER_POUR_WETNESS   2      // Sets cell to "wet" = ideal 1.0x growth
+
 // Growth times (game-hours per full growth cycle at 1.0x rate)
 #define WHEAT_GROWTH_GH     72.0f
 #define LENTIL_GROWTH_GH    48.0f

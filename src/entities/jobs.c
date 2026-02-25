@@ -2656,6 +2656,43 @@ JobRunResult RunJob_Fertilize(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// Water crop job driver: pick up water -> carry to dry farm cell -> pour
+JobRunResult RunJob_WaterCrop(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
+
+    if (job->step == STEP_MOVING_TO_PICKUP) {
+        return RunPickupStep(job, mover, (Point){tx, ty, tz});
+    }
+    if (job->step == STEP_CARRYING) {
+        JobRunResult r = RunCarryStep(job, mover, tx, ty, tz);
+        if (r == JOBRUN_DONE) {
+            job->step = STEP_PLANTING;
+            job->progress = 0.0f;
+            return JOBRUN_RUNNING;
+        }
+        return r;
+    }
+    if (job->step == STEP_PLANTING) {
+        FarmCell* fc = GetFarmCell(tx, ty, tz);
+        if (!fc || !fc->tilled) return JOBRUN_FAIL;
+
+        JobRunResult r = RunWorkProgress(job, NULL, mover, dt, WATER_CROP_WORK_TIME, true, 1.0f);
+        if (r == JOBRUN_DONE) {
+            // Wetness is on the soil cell at z-1
+            SET_CELL_WETNESS(tx, ty, tz - 1, WATER_POUR_WETNESS);
+            // Consume water
+            if (job->carryingItem >= 0) {
+                DeleteItem(job->carryingItem);
+                job->carryingItem = -1;
+            }
+            EventLog("Watered farm cell at (%d,%d,z%d)", tx, ty, tz);
+        }
+        return r;
+    }
+    return JOBRUN_FAIL;
+}
+
 // Plant crop job driver: pick up seed -> carry to tilled cell -> plant
 JobRunResult RunJob_PlantCrop(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
@@ -3199,10 +3236,11 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_HARVEST_CROP] = RunJob_HarvestCrop,
     [JOBTYPE_EQUIP_CLOTHING] = RunJob_EquipClothing,
     [JOBTYPE_FILL_WATER_POT] = RunJob_FillWaterPot,
+    [JOBTYPE_WATER_CROP] = RunJob_WaterCrop,
 };
 
 // Compile-time check: ensure jobDrivers[] covers all job types
-_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_FILL_WATER_POT,
+_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_WATER_CROP,
                "jobDrivers[] must have an entry for every JobType");
 
 // Tick function - runs job drivers for active jobs
@@ -4385,6 +4423,7 @@ void AssignJobs(void) {
                 if (jobId < 0) jobId = WorkGiver_PlantCrop(moverIdx);
                 if (jobId < 0) jobId = WorkGiver_TendCrop(moverIdx);
                 if (jobId < 0) jobId = WorkGiver_Fertilize(moverIdx);
+                if (jobId < 0) jobId = WorkGiver_WaterCrop(moverIdx);
                 (void)jobId;
             }
             free(idleCopy);
@@ -5059,6 +5098,96 @@ int WorkGiver_Fertilize(int moverIdx) {
     m->goal = (Point){ (int)(items[bestCompostIdx].x / CELL_SIZE),
                         (int)(items[bestCompostIdx].y / CELL_SIZE),
                         (int)items[bestCompostIdx].z };
+    m->needsRepath = true;
+    RemoveMoverFromIdleList(moverIdx);
+    return jobId;
+}
+
+// WorkGiver_WaterCrop: Find dry farm cells + available water items
+int WorkGiver_WaterCrop(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    if (!m->capabilities.canPlant) return -1;
+    if (farmActiveCells == 0) return -1;
+
+    // Find nearest available water item (on ground or in stockpile)
+    int bestWaterIdx = -1;
+    float bestWaterDistSq = 1e30f;
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        Item* item = &items[i];
+        if (!item->active) continue;
+        if (item->type != ITEM_WATER) continue;
+        if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
+        if (item->reservedBy != -1) continue;
+        float dx = item->x - m->x;
+        float dy = item->y - m->y;
+        float distSq = dx * dx + dy * dy;
+        if (distSq < bestWaterDistSq) {
+            bestWaterDistSq = distSq;
+            bestWaterIdx = i;
+        }
+    }
+    if (bestWaterIdx < 0) return -1;
+
+    // Find nearest dry farm cell (wetness == 0 on soil at z-1)
+    int bestX = -1, bestY = -1, bestZ = -1;
+    float bestDistSq = 1e30f;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                FarmCell* fc = &farmGrid[z][y][x];
+                if (!fc->tilled) continue;
+                if (z == 0) continue;  // need z-1 for wetness
+                if (GET_CELL_WETNESS(x, y, z - 1) != 0) continue;  // not dry
+                if (!IsExplored(x, y, z)) continue;
+
+                float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+                float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+                float dx = tileX - m->x;
+                float dy = tileY - m->y;
+                float distSq = dx * dx + dy * dy;
+                if (distSq < bestDistSq) {
+                    bestDistSq = distSq;
+                    bestX = x;
+                    bestY = y;
+                    bestZ = z;
+                }
+            }
+        }
+    }
+    if (bestX < 0) return -1;
+
+    // Check no other mover is already watering this cell
+    for (int i = 0; i < activeJobCount; i++) {
+        Job* j = GetJob(activeJobList[i]);
+        if (j && j->type == JOBTYPE_WATER_CROP &&
+            j->targetMineX == bestX && j->targetMineY == bestY && j->targetMineZ == bestZ) {
+            return -1;
+        }
+    }
+
+    // Reserve water
+    ReserveItem(bestWaterIdx, moverIdx);
+
+    int jobId = CreateJob(JOBTYPE_WATER_CROP);
+    if (jobId < 0) {
+        ReleaseItemReservation(bestWaterIdx);
+        return -1;
+    }
+
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetItem = bestWaterIdx;
+    job->targetMineX = bestX;
+    job->targetMineY = bestY;
+    job->targetMineZ = bestZ;
+    job->step = STEP_MOVING_TO_PICKUP;
+    job->progress = 0.0f;
+    job->carryingItem = -1;
+
+    m->currentJobId = jobId;
+    m->goal = (Point){ (int)(items[bestWaterIdx].x / CELL_SIZE),
+                        (int)(items[bestWaterIdx].y / CELL_SIZE),
+                        (int)items[bestWaterIdx].z };
     m->needsRepath = true;
     RemoveMoverFromIdleList(moverIdx);
     return jobId;

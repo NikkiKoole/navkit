@@ -44,6 +44,7 @@ typedef enum {
     JOBTYPE_HARVEST_CROP,            // Harvest ripe crop from farm cell
     JOBTYPE_EQUIP_CLOTHING,          // Pick up clothing item and equip it
     JOBTYPE_FILL_WATER_POT,          // Pick up empty pot, carry to water, fill, return to stockpile
+    JOBTYPE_WATER_CROP,              // Pick up water, carry to dry farm cell, pour
     JOBTYPE_COUNT
 } JobType;
 
@@ -82,6 +83,7 @@ static inline const char* JobTypeName(int type) {
         [JOBTYPE_HARVEST_CROP]         = "HARVEST_CROP",
         [JOBTYPE_EQUIP_CLOTHING]       = "EQUIP_CLOTHING",
         [JOBTYPE_FILL_WATER_POT]       = "FILL_WATER_POT",
+        [JOBTYPE_WATER_CROP]           = "WATER_CROP",
     };
     return (type >= 0 && type < JOBTYPE_COUNT) ? names[type] : "?";
 }
@@ -233,6 +235,7 @@ JobRunResult RunJob_PlantCrop(Job* job, void* mover, float dt);
 JobRunResult RunJob_HarvestCrop(Job* job, void* mover, float dt);
 JobRunResult RunJob_EquipClothing(Job* job, void* mover, float dt);
 JobRunResult RunJob_FillWaterPot(Job* job, void* mover, float dt);
+JobRunResult RunJob_WaterCrop(Job* job, void* mover, float dt);
 
 // Idle mover cache - maintained incrementally instead of scanning all movers
 extern int* idleMoverList;      // Array of mover indices that are idle
@@ -301,6 +304,7 @@ int WorkGiver_PlantCrop(int moverIdx);
 int WorkGiver_HarvestCrop(int moverIdx);
 int WorkGiver_EquipClothing(int moverIdx);
 int WorkGiver_FillWaterPot(int moverIdx);
+int WorkGiver_WaterCrop(int moverIdx);
 
 // Job cancellation (releases all reservations, safe-drops carried items, returns mover to idle)
 void CancelJob(void* mover, int moverIdx);  // void* to avoid circular dependency with mover.h
