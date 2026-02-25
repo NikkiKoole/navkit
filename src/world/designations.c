@@ -2108,12 +2108,13 @@ void CompleteFarmDesignation(int x, int y, int z, int moverIdx) {
         return;
     }
 
-    // Set farm cell state
+    // Set farm cell state (preserve desiredCropType set during designation)
     MaterialType mat = (z > 0) ? GetWallMaterial(x, y, z - 1) : MAT_DIRT;
+    uint8_t savedCrop = farmGrid[z][y][x].desiredCropType;
     farmGrid[z][y][x].tilled = 1;
     farmGrid[z][y][x].fertility = InitialFertilityForSoil(mat);
     farmGrid[z][y][x].weedLevel = 0;
-    farmGrid[z][y][x].desiredCropType = 0;
+    farmGrid[z][y][x].desiredCropType = savedCrop;
     farmActiveCells++;
 
     // Clear grass/vegetation — drop grass item if there was grass
