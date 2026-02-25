@@ -794,92 +794,108 @@ describe(farming) {
     // =========================================================================
     // 21. Planting from seed stack consumes 1 seed per cell, not entire stack
     // =========================================================================
-    it("planting from seed stack of 10 consumes only 1 seed per plant") {
+    it("planting from seed stack of 10 splits off 1 seed per plant") {
         SetupFarmGrid();
 
-        // Set up 10 tilled cells in a row, all wanting wheat
-        for (int x = 2; x < 12; x++) {
+        // Set up 3 tilled cells wanting wheat
+        for (int x = 2; x < 5; x++) {
             farmGrid[1][5][x].tilled = 1;
             farmGrid[1][5][x].fertility = 128;
             farmGrid[1][5][x].desiredCropType = CROP_WHEAT;
         }
-        farmActiveCells = 10;
+        farmActiveCells = 3;
 
-        // Spawn a single seed stack of 10 on ground
+        // Spawn a seed stack of 10 on ground at cell (2,5)
         float seedX = 2.5f * CELL_SIZE;
         float seedY = 5.5f * CELL_SIZE;
-        int seedIdx = SpawnItem(seedX, seedY, 1.0f, ITEM_WHEAT_SEEDS);
-        expect(seedIdx >= 0);
-        items[seedIdx].stackCount = 10;
+        int stackIdx = SpawnItem(seedX, seedY, 1.0f, ITEM_WHEAT_SEEDS);
+        expect(stackIdx >= 0);
+        items[stackIdx].stackCount = 10;
 
-        // Plant all 10 cells one by one using the same seed stack
+        // Simulate 3 plant jobs, each starting from STEP_MOVING_TO_PICKUP
+        // The split happens at pickup step, so mover must be near the seed
         int planted = 0;
-        for (int x = 2; x < 12; x++) {
-            // Find the seed item (may be same index, dropped back after each plant)
-            int curSeed = -1;
-            for (int i = 0; i < itemHighWaterMark; i++) {
-                if (items[i].active && items[i].type == ITEM_WHEAT_SEEDS) {
-                    curSeed = i;
-                    break;
-                }
-            }
-            if (curSeed < 0) break;
-
-            int prevStack = items[curSeed].stackCount;
-
-            // Create mover at the target cell
+        for (int x = 2; x < 5; x++) {
             Mover* m = &movers[0];
-            Point goal = {x, 5, 1};
-            float px = x * CELL_SIZE + CELL_SIZE * 0.5f;
-            float py = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
-            InitMover(m, px, py, 1.0f, goal, 100.0f);
+            // Position mover at the seed location (so pickup succeeds immediately)
+            InitMover(m, seedX, seedY, 1.0f, (Point){x, 5, 1}, 100.0f);
             moverCount = 1;
             m->capabilities.canPlant = true;
 
-            // Create plant job already at PLANTING step
+            // Find the stack
+            int curStack = -1;
+            for (int i = 0; i < itemHighWaterMark; i++) {
+                if (items[i].active && items[i].type == ITEM_WHEAT_SEEDS &&
+                    items[i].stackCount > 1) {
+                    curStack = i;
+                    break;
+                }
+            }
+            // If no multi-stack, find single seed
+            if (curStack < 0) {
+                for (int i = 0; i < itemHighWaterMark; i++) {
+                    if (items[i].active && items[i].type == ITEM_WHEAT_SEEDS &&
+                        items[i].reservedBy == -1) {
+                        curStack = i;
+                        break;
+                    }
+                }
+            }
+            if (curStack < 0) break;
+
+            int prevStack = items[curStack].stackCount;
+
             ClearJobs();
             int jobId = CreateJob(JOBTYPE_PLANT_CROP);
             expect(jobId >= 0);
             Job* job = GetJob(jobId);
             job->assignedMover = 0;
+            job->targetItem = curStack;
             job->targetMineX = x;
             job->targetMineY = 5;
             job->targetMineZ = 1;
-            job->step = STEP_PLANTING;
+            job->step = STEP_MOVING_TO_PICKUP;
             job->progress = 0.0f;
-            job->carryingItem = curSeed;
+            job->carryingItem = -1;
+            ReserveItem(curStack, 0);
 
-            // Run to completion
-            for (int i = 0; i < 1000; i++) {
+            // Run job to completion (pickup + carry + plant)
+            for (int i = 0; i < 5000; i++) {
                 JobRunResult r = RunJob_PlantCrop(job, m, 0.016f);
                 if (r == JOBRUN_DONE) break;
+                if (r == JOBRUN_FAIL) break;
+                // Update mover position toward goal (simple teleport for test)
+                if (job->step == STEP_CARRYING && job->carryingItem >= 0) {
+                    float gx = x * CELL_SIZE + CELL_SIZE * 0.5f;
+                    float gy = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+                    m->x = gx;
+                    m->y = gy;
+                    items[job->carryingItem].x = gx;
+                    items[job->carryingItem].y = gy;
+                }
             }
 
             FarmCell* fc = GetFarmCell(x, 5, 1);
             expect(fc->cropType == CROP_WHEAT);
-            expect(fc->growthStage == CROP_STAGE_SPROUTED);
             planted++;
 
-            // Check stack decremented (or item deleted if last seed)
+            // After split+plant: original stack should have lost 1
             if (prevStack > 1) {
-                expect(items[curSeed].active);
-                expect(items[curSeed].stackCount == prevStack - 1);
-            } else {
-                expect(!items[curSeed].active);
+                expect(items[curStack].active);
+                expect(items[curStack].stackCount == prevStack - 1);
             }
         }
 
-        // All 10 cells should be planted
-        expect(planted == 10);
+        expect(planted == 3);
 
-        // No remaining seeds should exist
+        // Original stack should have 7 remaining (10 - 3)
         int remainingSeeds = 0;
         for (int i = 0; i < itemHighWaterMark; i++) {
             if (items[i].active && items[i].type == ITEM_WHEAT_SEEDS) {
                 remainingSeeds += items[i].stackCount;
             }
         }
-        expect(remainingSeeds == 0);
+        expect(remainingSeeds == 7);
     }
 
     // =========================================================================

@@ -2661,8 +2661,19 @@ JobRunResult RunJob_PlantCrop(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
     int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
 
-    if (job->step == STEP_MOVING_TO_PICKUP)
+    if (job->step == STEP_MOVING_TO_PICKUP) {
+        // Split off 1 seed from stack so mover only carries 1
+        int seedIdx = job->targetItem;
+        if (seedIdx >= 0 && items[seedIdx].active && items[seedIdx].stackCount > 1) {
+            int singleIdx = SplitStack(seedIdx, 1);
+            if (singleIdx >= 0) {
+                ReleaseItemReservation(seedIdx);
+                ReserveItem(singleIdx, (int)(mover - movers));
+                job->targetItem = singleIdx;
+            }
+        }
         return RunPickupStep(job, mover, (Point){tx, ty, tz});
+    }
     if (job->step == STEP_CARRYING) {
         JobRunResult r = RunCarryStep(job, mover, tx, ty, tz);
         if (r == JOBRUN_DONE) {
@@ -2686,18 +2697,7 @@ JobRunResult RunJob_PlantCrop(Job* job, void* moverPtr, float dt) {
                 fc->growthStage = CROP_STAGE_SPROUTED;  // Start at sprouted
                 fc->growthProgress = 0;
                 fc->frostDamaged = 0;
-                // Consume 1 seed from stack (or delete if last one)
-                if (items[itemIdx].stackCount > 1) {
-                    items[itemIdx].stackCount--;
-                    // Drop remaining seeds at planting location
-                    items[itemIdx].x = tx * CELL_SIZE + CELL_SIZE * 0.5f;
-                    items[itemIdx].y = ty * CELL_SIZE + CELL_SIZE * 0.5f;
-                    items[itemIdx].z = (float)tz;
-                    items[itemIdx].state = ITEM_ON_GROUND;
-                    items[itemIdx].reservedBy = -1;
-                } else {
-                    DeleteItem(itemIdx);
-                }
+                DeleteItem(itemIdx);
                 job->carryingItem = -1;
                 EventLog("Planted crop %d at (%d,%d,z%d)", crop, tx, ty, tz);
             } else {
