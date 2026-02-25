@@ -93,6 +93,9 @@ const StockpileFilterDef STOCKPILE_FILTERS[] = {
     {ITEM_RAW_MEAT,     FILTER_CAT_FOOD,      "Raw Meat",     RED},
     {ITEM_COOKED_MEAT,  FILTER_CAT_FOOD,      "Cooked Meat",  MAROON},
     {ITEM_HIDE,         FILTER_CAT_FOOD,      "Hide",         BEIGE},
+    {ITEM_WATER,        FILTER_CAT_FOOD,      "Water",        SKYBLUE},
+    {ITEM_HERBAL_TEA,   FILTER_CAT_FOOD,      "Herbal Tea",   GREEN},
+    {ITEM_BERRY_JUICE,  FILTER_CAT_FOOD,      "Berry Juice",  PURPLE},
     // Farm
     {ITEM_WHEAT_SEEDS,  FILTER_CAT_FARM,      "Wheat Seeds",  YELLOW},
     {ITEM_LENTIL_SEEDS, FILTER_CAT_FARM,      "Lentil Seeds", GREEN},

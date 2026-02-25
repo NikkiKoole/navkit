@@ -19,10 +19,13 @@
 #include "../entities/stockpiles.h"
 #include "../entities/furniture.h"
 #include "../entities/workshops.h"
+#include "../entities/containers.h"
 #include "../world/pathfinding.h"
 #include "../world/cell_defs.h"
+#include "../simulation/water.h"
 #include "../core/time.h"
 #include <math.h>
+#include <limits.h>
 
 
 // Find nearest edible item in a stockpile (reserved by nobody)
@@ -179,6 +182,125 @@ static void StartWarmthSearch(Mover* m, int moverIdx) {
     m->needsRepath = true;
 }
 
+// Find best drinkable item (prefers tea > juice > water)
+// Searches stockpiles first, then containers, then ground
+// Returns item index or -1
+static int FindBestDrinkableItem(float x, float y, int z) {
+    int bestIdx = -1;
+    float bestScore = -1.0f;
+
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (!items[i].active) continue;
+        if (items[i].reservedBy != -1) continue;
+        if (!ItemIsDrinkable(items[i].type)) continue;
+        if (items[i].condition == CONDITION_ROTTEN) continue;
+        // Must be accessible (in stockpile, on ground, or in accessible container)
+        if (items[i].state != ITEM_IN_STOCKPILE && items[i].state != ITEM_ON_GROUND &&
+            items[i].state != ITEM_IN_CONTAINER) continue;
+        if (items[i].state == ITEM_IN_CONTAINER && !IsItemAccessible(i)) continue;
+
+        float hydration = GetItemHydration(items[i].type);
+        float dx = items[i].x - x;
+        float dy = items[i].y - y;
+        float dz = ((int)items[i].z - z) * CELL_SIZE;
+        float dist = sqrtf(dx * dx + dy * dy + dz * dz);
+        // Score: higher hydration, closer distance
+        float score = hydration / (1.0f + dist / CELL_SIZE);
+        if (score > bestScore) {
+            bestScore = score;
+            bestIdx = i;
+        }
+    }
+    return bestIdx;
+}
+
+// Find nearest water cell with an adjacent walkable cell
+// Returns true if found, sets outWaterX/Y/Z and outStandX/Y
+static bool FindNearestWaterCell(float x, float y, int z, int* outWaterX, int* outWaterY, int* outWaterZ, int* outStandX, int* outStandY) {
+    int cx = (int)(x / CELL_SIZE);
+    int cy = (int)(y / CELL_SIZE);
+    int bestDistSq = INT_MAX;
+    bool found = false;
+
+    // Spiral search up to 20 tiles
+    for (int r = 1; r <= 20; r++) {
+        for (int dy = -r; dy <= r; dy++) {
+            for (int dx = -r; dx <= r; dx++) {
+                if (abs(dx) != r && abs(dy) != r) continue; // Only search ring
+                int wx = cx + dx;
+                int wy = cy + dy;
+                if (wx < 0 || wx >= gridWidth || wy < 0 || wy >= gridHeight) continue;
+                if (!HasWater(wx, wy, z)) continue;
+
+                int distSq = dx * dx + dy * dy;
+                if (distSq >= bestDistSq) continue;
+
+                // Find walkable neighbor
+                int dirs[4][2] = {{0,-1},{0,1},{-1,0},{1,0}};
+                for (int d = 0; d < 4; d++) {
+                    int sx = wx + dirs[d][0];
+                    int sy = wy + dirs[d][1];
+                    if (sx >= 0 && sx < gridWidth && sy >= 0 && sy < gridHeight &&
+                        IsCellWalkableAt(z, sy, sx)) {
+                        bestDistSq = distSq;
+                        *outWaterX = wx; *outWaterY = wy; *outWaterZ = z;
+                        *outStandX = sx; *outStandY = sy;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (found) break;
+    }
+    return found;
+}
+
+static void StartDrinkSearch(Mover* m, int moverIdx) {
+    // Try to find a drinkable item (in stockpile, container, or on ground)
+    int itemIdx = FindBestDrinkableItem(m->x, m->y, (int)m->z);
+
+    if (itemIdx >= 0) {
+        if (!ReserveItem(itemIdx, moverIdx)) {
+            m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);
+            return;
+        }
+
+        EventLog("Mover %d SEEKING_DRINK item=%d (%s)", moverIdx, itemIdx, ItemName(items[itemIdx].type));
+        m->freetimeState = FREETIME_SEEKING_DRINK;
+        m->needTarget = itemIdx;
+        m->needProgress = 0.0f;
+
+        // Set goal to item position (or container position if contained)
+        float goalX, goalY;
+        int goalZ;
+        if (items[itemIdx].containedIn >= 0 && items[items[itemIdx].containedIn].active) {
+            int ci = items[itemIdx].containedIn;
+            goalX = items[ci].x; goalY = items[ci].y; goalZ = (int)items[ci].z;
+        } else {
+            goalX = items[itemIdx].x; goalY = items[itemIdx].y; goalZ = (int)items[itemIdx].z;
+        }
+        m->goal = (Point){(int)(goalX / CELL_SIZE), (int)(goalY / CELL_SIZE), goalZ};
+        m->needsRepath = true;
+        return;
+    }
+
+    // No items — try natural water
+    int waterX, waterY, waterZ, standX, standY;
+    if (FindNearestWaterCell(m->x, m->y, (int)m->z, &waterX, &waterY, &waterZ, &standX, &standY)) {
+        EventLog("Mover %d SEEKING_NATURAL_WATER at (%d,%d,%d)", moverIdx, waterX, waterY, waterZ);
+        m->freetimeState = FREETIME_SEEKING_NATURAL_WATER;
+        m->needTarget = waterX + waterY * gridWidth; // encode water cell position
+        m->needProgress = 0.0f;
+        m->goal = (Point){standX, standY, waterZ};
+        m->needsRepath = true;
+        return;
+    }
+
+    // Nothing found at all
+    m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);
+}
+
 static void StartRestSearch(Mover* m, int moverIdx) {
     // Scan furniture pool for best unoccupied furniture
     // Prefer highest restRate, weight by distance
@@ -241,6 +363,17 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
         m->freetimeState = FREETIME_NONE;
         m->needTarget = -1;
     }
+    // Cancel drink-seeking if thirst disabled
+    if (!thirstEnabled && (m->freetimeState == FREETIME_SEEKING_DRINK || m->freetimeState == FREETIME_DRINKING ||
+                           m->freetimeState == FREETIME_SEEKING_NATURAL_WATER || m->freetimeState == FREETIME_DRINKING_NATURAL)) {
+        if (m->needTarget >= 0 && m->needTarget < MAX_ITEMS &&
+            (m->freetimeState == FREETIME_SEEKING_DRINK || m->freetimeState == FREETIME_DRINKING) &&
+            items[m->needTarget].reservedBy == moverIdx) {
+            ReleaseItemReservation(m->needTarget);
+        }
+        m->freetimeState = FREETIME_NONE;
+        m->needTarget = -1;
+    }
     // Cancel warmth-seeking if bodyTemp disabled
     if (!bodyTempEnabled && (m->freetimeState == FREETIME_SEEKING_WARMTH || m->freetimeState == FREETIME_WARMING)) {
         m->freetimeState = FREETIME_NONE;
@@ -268,6 +401,10 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 }
                 if (m->currentJobId >= 0 && !jobProducesFood) UnassignJob(m, moverIdx);
                 if (!jobProducesFood && m->needSearchCooldown <= 0.0f) StartFoodSearch(m, moverIdx);
+            } else if (thirstEnabled && m->thirst < balance.thirstCriticalThreshold) {
+                // DEHYDRATING — unassign job, seek drink urgently
+                if (m->currentJobId >= 0) UnassignJob(m, moverIdx);
+                if (m->needSearchCooldown <= 0.0f) StartDrinkSearch(m, moverIdx);
             } else if (energyEnabled && m->energy < balance.energyExhaustedThreshold) {
                 // EXHAUSTED — unassign job (preserves designation progress), seek rest
                 if (m->currentJobId >= 0) UnassignJob(m, moverIdx);
@@ -279,6 +416,9 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             } else if (hungerEnabled && m->hunger < balance.hungerSeekThreshold && m->currentJobId < 0) {
                 // HUNGRY — seek food (don't cancel jobs)
                 if (m->needSearchCooldown <= 0.0f) StartFoodSearch(m, moverIdx);
+            } else if (thirstEnabled && m->thirst < balance.thirstSeekThreshold && m->currentJobId < 0) {
+                // THIRSTY — seek drink (don't cancel jobs)
+                if (m->needSearchCooldown <= 0.0f) StartDrinkSearch(m, moverIdx);
             } else if (energyEnabled && m->energy < balance.energyTiredThreshold && m->currentJobId < 0) {
                 // TIRED — seek rest (don't cancel jobs)
                 if (m->needSearchCooldown <= 0.0f) StartRestSearch(m, moverIdx);
@@ -481,6 +621,133 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 if (!sourceGone) {
                     EventLog("Mover %d warmed up (%.1f°C), leaving fire", moverIdx, m->bodyTemp);
                 }
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needProgress = 0.0f;
+            }
+            break;
+        }
+
+        case FREETIME_SEEKING_DRINK: {
+            // Validate target still exists and is reserved by us
+            int ti = m->needTarget;
+            if (ti < 0 || ti >= MAX_ITEMS || !items[ti].active || items[ti].reservedBy != moverIdx) {
+                if (ti >= 0 && ti < MAX_ITEMS && items[ti].reservedBy == moverIdx) {
+                    ReleaseItemReservation(ti);
+                }
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);
+                break;
+            }
+
+            // Get target position (item or its container)
+            float targetX, targetY;
+            int targetZ;
+            if (items[ti].containedIn >= 0 && items[items[ti].containedIn].active) {
+                int ci = items[ti].containedIn;
+                targetX = items[ci].x; targetY = items[ci].y; targetZ = (int)items[ci].z;
+            } else {
+                targetX = items[ti].x; targetY = items[ti].y; targetZ = (int)items[ti].z;
+            }
+
+            // Check if arrived
+            float dx = m->x - targetX;
+            float dy = m->y - targetY;
+            float distSq = dx * dx + dy * dy;
+            float pickupR = CELL_SIZE * 0.75f;
+
+            if ((int)m->z == targetZ && distSq < pickupR * pickupR) {
+                // Arrived — start drinking
+                m->freetimeState = FREETIME_DRINKING;
+                m->needProgress = 0.0f;
+                m->pathLength = 0;
+                m->pathIndex = -1;
+                break;
+            }
+
+            // Timeout
+            m->needProgress += gameDeltaTime;
+            if (m->needProgress > GameHoursToGameSeconds(balance.waterSeekTimeoutGH)) {
+                ReleaseItemReservation(ti);
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);
+            }
+            break;
+        }
+
+        case FREETIME_DRINKING: {
+            int ti = m->needTarget;
+            if (ti < 0 || ti >= MAX_ITEMS || !items[ti].active) {
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                break;
+            }
+
+            m->timeWithoutProgress = 0.0f;
+
+            m->needProgress += gameDeltaTime;
+            if (m->needProgress >= GameHoursToGameSeconds(balance.drinkingDurationGH)) {
+                // Consume drink: restore thirst, delete item
+                float hydration = GetItemHydration(items[ti].type);
+                m->thirst += hydration;
+                if (m->thirst > 1.0f) m->thirst = 1.0f;
+                EventLog("Mover %d drank item %d (%s), thirst=%.0f%%", moverIdx, ti, ItemName(items[ti].type), m->thirst * 100.0f);
+                DeleteItem(ti);
+
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needProgress = 0.0f;
+            }
+            break;
+        }
+
+        case FREETIME_SEEKING_NATURAL_WATER: {
+            // needTarget encodes water cell as waterX + waterY * gridWidth
+            int waterX = m->needTarget % gridWidth;
+            int waterY = m->needTarget / gridWidth;
+
+            // Validate water still exists
+            if (!HasWater(waterX, waterY, (int)m->z)) {
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);
+                break;
+            }
+
+            // Check arrival (within 1 cell of goal — we're standing adjacent to water)
+            int mx = (int)(m->x / CELL_SIZE);
+            int my = (int)(m->y / CELL_SIZE);
+            if ((int)m->z == m->goal.z && abs(mx - m->goal.x) <= 1 && abs(my - m->goal.y) <= 1) {
+                EventLog("Mover %d DRINKING_NATURAL at (%d,%d)", moverIdx, waterX, waterY);
+                m->freetimeState = FREETIME_DRINKING_NATURAL;
+                m->needProgress = 0.0f;
+                m->pathLength = 0;
+                m->pathIndex = -1;
+                break;
+            }
+
+            // Timeout
+            m->needProgress += gameDeltaTime;
+            if (m->needProgress > GameHoursToGameSeconds(balance.waterSeekTimeoutGH)) {
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);
+            }
+            break;
+        }
+
+        case FREETIME_DRINKING_NATURAL: {
+            m->timeWithoutProgress = 0.0f;
+
+            m->needProgress += gameDeltaTime;
+            if (m->needProgress >= GameHoursToGameSeconds(balance.naturalDrinkDurationGH)) {
+                // Natural water: slower, less hydrating, no item consumed
+                m->thirst += balance.naturalDrinkHydration;
+                if (m->thirst > 1.0f) m->thirst = 1.0f;
+                EventLog("Mover %d drank natural water, thirst=%.0f%%", moverIdx, m->thirst * 100.0f);
+
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
                 m->needProgress = 0.0f;

@@ -75,5 +75,9 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_FLAX_TUNIC]     = { "Flax Tunic",    SPRITE_grass_tall,     IF_CLOTHING, 1, MAT_NONE, 0.8f, 0.0f, 0.0f },
     [ITEM_LEATHER_VEST]   = { "Leather Vest",  SPRITE_grass_trampled, IF_CLOTHING, 1, MAT_NONE, 2.0f, 0.0f, 0.0f },
     [ITEM_LEATHER_COAT]   = { "Leather Coat",  SPRITE_grass_trampled, IF_CLOTHING, 1, MAT_NONE, 3.0f, 0.0f, 0.0f },
+    // Liquids (drinkable)
+    [ITEM_WATER]          = { "Water",         SPRITE_division,       IF_STACKABLE | IF_DRINKABLE, 5, MAT_NONE, 0.5f, 0.0f, 0.0f },
+    [ITEM_HERBAL_TEA]     = { "Herbal Tea",    SPRITE_division,       IF_STACKABLE | IF_DRINKABLE, 5, MAT_NONE, 0.5f, 0.0f, 0.0f },
+    [ITEM_BERRY_JUICE]    = { "Berry Juice",   SPRITE_division,       IF_STACKABLE | IF_DRINKABLE | IF_SPOILS, 5, MAT_NONE, 0.5f, 0.0f, 480.0f },
 };
 #undef MN

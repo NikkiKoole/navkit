@@ -320,6 +320,35 @@ static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
         }
     }
 
+    // Thirst
+    {
+        const char* thirstLabel;
+        Color thirstColor;
+        if (m->thirst > 0.5f) { thirstLabel = "Hydrated"; thirstColor = GREEN; }
+        else if (m->thirst > 0.3f) { thirstLabel = "Parched"; thirstColor = YELLOW; }
+        else if (m->thirst > 0.1f) { thirstLabel = "Thirsty"; thirstColor = ORANGE; }
+        else { thirstLabel = "Dehydrating"; thirstColor = RED; }
+        float hoursToDehydrate = (balance.thirstDrainPerGH > 0)
+            ? m->thirst / balance.thirstDrainPerGH : 999.0f;
+        snprintf(lines[lineCount], sizeof(lines[0]), "Thirst: %.0f%% (%s) — dehydrating in %.1fh",
+                 m->thirst * 100.0f, thirstLabel, hoursToDehydrate);
+        lineColors[lineCount++] = thirstColor;
+
+        if (m->freetimeState == FREETIME_SEEKING_DRINK) {
+            snprintf(lines[lineCount], sizeof(lines[0]), "  Seeking drink...");
+            lineColors[lineCount++] = ORANGE;
+        } else if (m->freetimeState == FREETIME_DRINKING) {
+            snprintf(lines[lineCount], sizeof(lines[0]), "  Drinking (%.0f%%)", (m->needProgress / GameHoursToGameSeconds(balance.drinkingDurationGH)) * 100.0f);
+            lineColors[lineCount++] = (Color){80, 140, 220, 255};
+        } else if (m->freetimeState == FREETIME_SEEKING_NATURAL_WATER) {
+            snprintf(lines[lineCount], sizeof(lines[0]), "  Seeking natural water...");
+            lineColors[lineCount++] = ORANGE;
+        } else if (m->freetimeState == FREETIME_DRINKING_NATURAL) {
+            snprintf(lines[lineCount], sizeof(lines[0]), "  Drinking from water (%.0f%%)", (m->needProgress / GameHoursToGameSeconds(balance.naturalDrinkDurationGH)) * 100.0f);
+            lineColors[lineCount++] = (Color){80, 140, 220, 255};
+        }
+    }
+
     // Energy
     {
         const char* energyLabel;
@@ -615,10 +644,18 @@ static void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int 
             else if (item->condition == CONDITION_STALE) freshness = " Stale";
             else freshness = " Fresh";
         }
+        // Hydration label for drinkable items
+        const char* hydrationStr = "";
+        char hydrationBuf[32] = "";
+        float hydration = GetItemHydration(item->type);
+        if (hydration > 0.0f) {
+            snprintf(hydrationBuf, sizeof(hydrationBuf), " +%.0f%% hydration", hydration * 100.0f);
+            hydrationStr = hydrationBuf;
+        }
         if (item->stackCount > 1) {
-            snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s x%d (%s%s)", idx, typeName, item->stackCount, stateName, freshness);
+            snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s x%d (%s%s%s)", idx, typeName, item->stackCount, stateName, freshness, hydrationStr);
         } else {
-            snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s (%s%s)", idx, typeName, stateName, freshness);
+            snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s (%s%s%s)", idx, typeName, stateName, freshness, hydrationStr);
         }
         lineCount++;
     }

@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 78
+#define CURRENT_SAVE_VERSION 79
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)
@@ -722,5 +722,67 @@ typedef struct {
     int equippedTool;
     // No equippedClothing in V77
 } MoverV77;
+
+// Version 78 constants (before 3 liquid item types added in v79)
+#define V78_ITEM_TYPE_COUNT 62
+
+// V78 Stockpile struct (before liquid item types added)
+// v78 had 62 item types, v79 adds ITEM_WATER, ITEM_HERBAL_TEA, ITEM_BERRY_JUICE (indices 62-64)
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V78_ITEM_TYPE_COUNT];
+    bool allowedMaterials[MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int maxContainers;
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+    bool rejectsRotten;
+} StockpileV78;
+
+// V78 Mover struct (before thirst/dehydrationTimer fields added in v79)
+typedef struct {
+    float x, y, z;
+    Point goal;
+    int pathLength;
+    int pathIndex;
+    bool active;
+    bool needsRepath;
+    int repathCooldown;
+    float speed;
+    float timeNearWaypoint;
+    float lastX, lastY, lastZ;
+    float timeWithoutProgress;
+    float fallTimer;
+    float workAnimPhase;
+    float hunger;
+    float energy;
+    int freetimeState;
+    int needTarget;
+    float needProgress;
+    float needSearchCooldown;
+    float starvationTimer;
+    float bodyTemp;
+    float hypothermiaTimer;
+    float avoidX, avoidY;
+    int currentJobId;
+    int lastJobType;
+    int lastJobResult;
+    int lastJobTargetX, lastJobTargetY, lastJobTargetZ;
+    unsigned long lastJobEndTick;
+    MoverCapabilities capabilities;
+    int equippedTool;
+    int equippedClothing;
+    // No thirst/dehydrationTimer in V78
+} MoverV78;
 
 #endif

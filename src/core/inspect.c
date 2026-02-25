@@ -145,17 +145,22 @@ static void print_mover(int idx) {
 
     // Needs / freetime
     printf("Hunger: %.1f%%\n", m->hunger * 100.0f);
+    printf("Thirst: %.1f%%\n", m->thirst * 100.0f);
     printf("Energy: %.1f%%\n", m->energy * 100.0f);
     printf("Body Temp: %.1f°C\n", m->bodyTemp);
     {
-        const char* ftNames[] = {"NONE", "SEEKING_FOOD", "EATING", "SEEKING_REST", "RESTING"};
+        const char* ftNames[] = {"NONE", "SEEKING_FOOD", "EATING", "SEEKING_REST", "RESTING",
+                                 "SEEKING_WARMTH", "WARMING", "SEEKING_DRINK", "DRINKING",
+                                 "SEEKING_NATURAL_WATER", "DRINKING_NATURAL"};
         int fs = m->freetimeState;
-        printf("Freetime state: %s (%d)\n", (fs >= 0 && fs <= 4) ? ftNames[fs] : "?", fs);
+        int ftCount = (int)(sizeof(ftNames)/sizeof(ftNames[0]));
+        printf("Freetime state: %s (%d)\n", (fs >= 0 && fs < ftCount) ? ftNames[fs] : "?", fs);
     }
     if (m->needTarget >= 0) printf("Need target: %d\n", m->needTarget);
     if (m->needProgress > 0.0f) printf("Need progress: %.2f sec\n", m->needProgress);
     if (m->needSearchCooldown > 0.0f) printf("Need search cooldown: %.2f sec\n", m->needSearchCooldown);
     if (m->starvationTimer > 0.0f) printf("Starvation timer: %.2f sec\n", m->starvationTimer);
+    if (m->dehydrationTimer > 0.0f) printf("Dehydration timer: %.2f sec\n", m->dehydrationTimer);
     if (m->equippedTool >= 0) {
         printf("Equipped tool: item %d", m->equippedTool);
         if (m->equippedTool < insp_itemHWM && insp_items[m->equippedTool].active) {
@@ -1158,6 +1163,7 @@ int InspectSaveFile(int argc, char** argv) {
     uint8_t insp_gameMode = 0;
     bool insp_hungerEnabled = false, insp_energyEnabled = false, insp_bodyTempEnabled = false;
     bool insp_toolRequirementsEnabled = false;
+    bool insp_thirstEnabled = false;
     if (version >= 62) {
         fread(&insp_gameMode, sizeof(insp_gameMode), 1, f);
         fread(&insp_hungerEnabled, sizeof(bool), 1, f);
@@ -1165,6 +1171,9 @@ int InspectSaveFile(int argc, char** argv) {
         fread(&insp_bodyTempEnabled, sizeof(bool), 1, f);
         if (version >= 65) {
             fread(&insp_toolRequirementsEnabled, sizeof(bool), 1, f);
+        }
+        if (version >= 79) {
+            fread(&insp_thirstEnabled, sizeof(bool), 1, f);
         }
     }
     
@@ -1867,8 +1876,40 @@ int InspectSaveFile(int argc, char** argv) {
             insp_stockpiles[i].freeSlotCount = v77_sp.freeSlotCount;
             insp_stockpiles[i].rejectsRotten = v77_sp.rejectsRotten;
         }
+    } else if (version < 79) {
+        // v78: 62 item types, migrate to 65 (adding 3 liquid items)
+        StockpileV78 v78_sp;
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            fread(&v78_sp, sizeof(StockpileV78), 1, f);
+            insp_stockpiles[i].x = v78_sp.x;
+            insp_stockpiles[i].y = v78_sp.y;
+            insp_stockpiles[i].z = v78_sp.z;
+            insp_stockpiles[i].width = v78_sp.width;
+            insp_stockpiles[i].height = v78_sp.height;
+            insp_stockpiles[i].active = v78_sp.active;
+            memcpy(insp_stockpiles[i].allowedTypes, v78_sp.allowedTypes,
+                   sizeof(v78_sp.allowedTypes));
+            for (int t = V78_ITEM_TYPE_COUNT; t < ITEM_TYPE_COUNT; t++) {
+                insp_stockpiles[i].allowedTypes[t] = true;
+            }
+            memcpy(insp_stockpiles[i].allowedMaterials, v78_sp.allowedMaterials,
+                   sizeof(v78_sp.allowedMaterials));
+            memcpy(insp_stockpiles[i].cells, v78_sp.cells, sizeof(v78_sp.cells));
+            memcpy(insp_stockpiles[i].slots, v78_sp.slots, sizeof(v78_sp.slots));
+            memcpy(insp_stockpiles[i].reservedBy, v78_sp.reservedBy, sizeof(v78_sp.reservedBy));
+            memcpy(insp_stockpiles[i].slotCounts, v78_sp.slotCounts, sizeof(v78_sp.slotCounts));
+            memcpy(insp_stockpiles[i].slotTypes, v78_sp.slotTypes, sizeof(v78_sp.slotTypes));
+            memcpy(insp_stockpiles[i].slotMaterials, v78_sp.slotMaterials, sizeof(v78_sp.slotMaterials));
+            insp_stockpiles[i].maxStackSize = v78_sp.maxStackSize;
+            insp_stockpiles[i].priority = v78_sp.priority;
+            insp_stockpiles[i].maxContainers = v78_sp.maxContainers;
+            memcpy(insp_stockpiles[i].slotIsContainer, v78_sp.slotIsContainer, sizeof(v78_sp.slotIsContainer));
+            memcpy(insp_stockpiles[i].groundItemIdx, v78_sp.groundItemIdx, sizeof(v78_sp.groundItemIdx));
+            insp_stockpiles[i].freeSlotCount = v78_sp.freeSlotCount;
+            insp_stockpiles[i].rejectsRotten = v78_sp.rejectsRotten;
+        }
     } else {
-        // v78+ format - direct read
+        // v79+ format - direct read
         fread(insp_stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
     }
 
@@ -1939,11 +1980,54 @@ int InspectSaveFile(int argc, char** argv) {
     fread(&insp_moverCount, 4, 1, f);
     insp_movers = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Mover) : sizeof(Mover));
     insp_moverPaths = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Point) * MAX_MOVER_PATH : sizeof(Point) * MAX_MOVER_PATH);
-    if (version >= 78) {
-        // v78+: Mover struct with equippedClothing, paths separate
+    if (version >= 79) {
+        // v79+: Mover struct with thirst/dehydrationTimer, paths separate
         if (insp_moverCount > 0) fread(insp_movers, sizeof(Mover), insp_moverCount, f);
         for (int i = 0; i < insp_moverCount; i++) {
             fread(insp_moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+        }
+    } else if (version >= 78) {
+        // v78: Mover without thirst/dehydrationTimer, paths separate
+        for (int i = 0; i < insp_moverCount; i++) {
+            MoverV78 old;
+            fread(&old, sizeof(MoverV78), 1, f);
+            fread(insp_moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+            Mover* m = &insp_movers[i];
+            m->x = old.x; m->y = old.y; m->z = old.z;
+            m->goal = old.goal;
+            m->pathLength = old.pathLength;
+            m->pathIndex = old.pathIndex;
+            m->active = old.active;
+            m->needsRepath = old.needsRepath;
+            m->repathCooldown = old.repathCooldown;
+            m->speed = old.speed;
+            m->timeNearWaypoint = old.timeNearWaypoint;
+            m->lastX = old.lastX; m->lastY = old.lastY; m->lastZ = old.lastZ;
+            m->timeWithoutProgress = old.timeWithoutProgress;
+            m->fallTimer = old.fallTimer;
+            m->workAnimPhase = old.workAnimPhase;
+            m->hunger = old.hunger;
+            m->energy = old.energy;
+            m->freetimeState = old.freetimeState;
+            m->needTarget = old.needTarget;
+            m->needProgress = old.needProgress;
+            m->needSearchCooldown = old.needSearchCooldown;
+            m->starvationTimer = old.starvationTimer;
+            m->thirst = 1.0f;
+            m->dehydrationTimer = 0.0f;
+            m->bodyTemp = old.bodyTemp;
+            m->hypothermiaTimer = old.hypothermiaTimer;
+            m->avoidX = old.avoidX; m->avoidY = old.avoidY;
+            m->currentJobId = old.currentJobId;
+            m->lastJobType = old.lastJobType;
+            m->lastJobResult = old.lastJobResult;
+            m->lastJobTargetX = old.lastJobTargetX;
+            m->lastJobTargetY = old.lastJobTargetY;
+            m->lastJobTargetZ = old.lastJobTargetZ;
+            m->lastJobEndTick = old.lastJobEndTick;
+            m->capabilities = old.capabilities;
+            m->equippedTool = old.equippedTool;
+            m->equippedClothing = old.equippedClothing;
         }
     } else if (version >= 69) {
         // v69-v77: Mover without equippedClothing, paths separate
@@ -1972,6 +2056,8 @@ int InspectSaveFile(int argc, char** argv) {
             m->needProgress = old.needProgress;
             m->needSearchCooldown = old.needSearchCooldown;
             m->starvationTimer = old.starvationTimer;
+            m->thirst = 1.0f;
+            m->dehydrationTimer = 0.0f;
             m->bodyTemp = old.bodyTemp;
             m->hypothermiaTimer = old.hypothermiaTimer;
             m->avoidX = old.avoidX; m->avoidY = old.avoidY;
@@ -2242,6 +2328,14 @@ int InspectSaveFile(int argc, char** argv) {
         }
     }
 
+    // Initialize thirst for old saves (v79+)
+    if (version < 79) {
+        for (int i = 0; i < insp_moverCount; i++) {
+            insp_movers[i].thirst = 1.0f;
+            insp_movers[i].dehydrationTimer = 0.0f;
+        }
+    }
+
     // Animals (v42+)
     if (version >= 42) {
         fread(&insp_animalCount, 4, 1, f);
@@ -2322,8 +2416,9 @@ int InspectSaveFile(int argc, char** argv) {
         printf("World seed: %llu\n", (unsigned long long)insp_worldSeed);
         printf("Grid: %dx%dx%d, Chunks: %dx%d\n", insp_gridW, insp_gridH, insp_gridD, insp_chunkW, insp_chunkH);
         printf("Game mode: %s\n", insp_gameMode == 1 ? "Survival" : "Sandbox");
-        printf("Needs: hunger=%s, energy=%s, temperature=%s, tools=%s\n",
+        printf("Needs: hunger=%s, thirst=%s, energy=%s, temperature=%s, tools=%s\n",
                insp_hungerEnabled ? "on" : "off",
+               insp_thirstEnabled ? "on" : "off",
                insp_energyEnabled ? "on" : "off",
                insp_bodyTempEnabled ? "on" : "off",
                insp_toolRequirementsEnabled ? "on" : "off");

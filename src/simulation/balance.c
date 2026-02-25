@@ -20,12 +20,23 @@ void InitBalance(void) {
     balance.restSearchCooldownGH  =  2.0f;
     balance.restSeekTimeoutGH     =  4.0f;
 
+    // Thirst
+    balance.hoursToDehydrate      = 16.0f;
+    balance.drinkingDurationGH    =  0.3f;
+    balance.waterSearchCooldownGH =  0.25f;
+    balance.waterSeekTimeoutGH    =  0.5f;
+    balance.dehydrationDeathGH    =  8.0f;
+    balance.naturalDrinkDurationGH = 0.6f;
+    balance.naturalDrinkHydration  = 0.2f;
+
     // Thresholds (0-1 scale)
     balance.hungerSeekThreshold      = 0.3f;
     balance.hungerCriticalThreshold  = 0.1f;
     balance.energyTiredThreshold     = 0.2f;
     balance.energyExhaustedThreshold = 0.1f;
     balance.energyWakeThreshold      = 0.8f;
+    balance.thirstSeekThreshold      = 0.4f;
+    balance.thirstCriticalThreshold  = 0.15f;
 
     // Movement
     balance.baseMoverSpeed       = 200.0f;
@@ -66,6 +77,7 @@ void InitBalance(void) {
 
 void RecalcBalanceTable(void) {
     balance.hungerDrainPerGH     = 1.0f / balance.hoursToStarve;
+    balance.thirstDrainPerGH     = 1.0f / balance.hoursToDehydrate;
     balance.energyDrainWorkPerGH = 1.0f / balance.hoursToExhaustWorking;
     balance.energyDrainIdlePerGH = 1.0f / balance.hoursToExhaustIdle;
 

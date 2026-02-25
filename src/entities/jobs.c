@@ -2914,6 +2914,256 @@ int WorkGiver_EquipClothing(int moverIdx) {
     return jobId;
 }
 
+// Fill water pot: pick up empty pot → carry to water → fill → carry to stockpile
+JobRunResult RunJob_FillWaterPot(Job* job, void* moverPtr, float dt) {
+    (void)dt;
+    Mover* mover = (Mover*)moverPtr;
+
+    if (job->step == STEP_MOVING_TO_PICKUP) {
+        // Walk to empty pot, pick it up
+        // targetAdjX/Y stores the water cell destination
+        int waterX = job->targetAdjX;
+        int waterY = job->targetAdjY;
+        int waterZ = job->targetMineZ;
+
+        // Find a walkable cell adjacent to the water cell for next goal
+        int standX = waterX, standY = waterY;
+        int dirs[4][2] = {{0,-1},{0,1},{-1,0},{1,0}};
+        for (int d = 0; d < 4; d++) {
+            int nx = waterX + dirs[d][0];
+            int ny = waterY + dirs[d][1];
+            if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight &&
+                IsCellWalkableAt(waterZ, ny, nx)) {
+                standX = nx; standY = ny;
+                break;
+            }
+        }
+
+        return RunPickupStep(job, mover, (Point){standX, standY, waterZ});
+    }
+    if (job->step == STEP_CARRYING) {
+        // Carry pot toward water cell
+        int waterX = job->targetAdjX;
+        int waterY = job->targetAdjY;
+        int waterZ = job->targetMineZ;
+
+        // Find walkable cell adjacent to water
+        int standX = waterX, standY = waterY;
+        int dirs[4][2] = {{0,-1},{0,1},{-1,0},{1,0}};
+        for (int d = 0; d < 4; d++) {
+            int nx = waterX + dirs[d][0];
+            int ny = waterY + dirs[d][1];
+            if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight &&
+                IsCellWalkableAt(waterZ, ny, nx)) {
+                standX = nx; standY = ny;
+                break;
+            }
+        }
+
+        int potIdx = job->carryingItem;
+        if (potIdx < 0 || !items[potIdx].active) return JOBRUN_FAIL;
+        if (!HasWater(waterX, waterY, waterZ)) return JOBRUN_FAIL;
+
+        JobRunResult r = RunCarryStep(job, mover, standX, standY, waterZ);
+        if (r == JOBRUN_DONE) {
+            // Arrived at water — fill the pot with water items
+            const ContainerDef* cdef = GetContainerDef(items[potIdx].type);
+            int fillCount = cdef ? cdef->maxContents : 5;
+
+            // Spawn water items inside pot
+            for (int i = 0; i < fillCount; i++) {
+                int waterItem = SpawnItem(mover->x, mover->y, mover->z, ITEM_WATER);
+                if (waterItem >= 0) {
+                    items[waterItem].state = ITEM_IN_CONTAINER;
+                    items[waterItem].containedIn = potIdx;
+                    items[potIdx].contentCount++;
+                    items[potIdx].contentTypeMask |= (1u << (ITEM_WATER & 31));
+                }
+            }
+
+            EventLog("Mover %d filled pot %d with %d water", (int)(mover - movers), potIdx, fillCount);
+
+            // Now carry back to stockpile
+            int spIdx = job->targetStockpile;
+            if (spIdx >= 0 && stockpiles[spIdx].active) {
+                job->step = STEP_CARRYING_BACK;
+                mover->goal = (Point){job->targetSlotX, job->targetSlotY, stockpiles[spIdx].z};
+                mover->needsRepath = true;
+                return JOBRUN_RUNNING;
+            }
+            // No stockpile — just drop the pot
+            items[potIdx].state = ITEM_ON_GROUND;
+            items[potIdx].x = mover->x;
+            items[potIdx].y = mover->y;
+            items[potIdx].z = mover->z;
+            items[potIdx].reservedBy = -1;
+            job->carryingItem = -1;
+            return JOBRUN_DONE;
+        }
+        return r;
+    }
+    if (job->step == STEP_CARRYING_BACK) {
+        // Carry filled pot back to stockpile
+        int potIdx = job->carryingItem;
+        if (potIdx < 0 || !items[potIdx].active) return JOBRUN_FAIL;
+        int spIdx = job->targetStockpile;
+        if (spIdx < 0 || !stockpiles[spIdx].active) {
+            // Stockpile gone — drop pot
+            items[potIdx].state = ITEM_ON_GROUND;
+            items[potIdx].x = mover->x;
+            items[potIdx].y = mover->y;
+            items[potIdx].z = mover->z;
+            items[potIdx].reservedBy = -1;
+            job->carryingItem = -1;
+            return JOBRUN_DONE;
+        }
+
+        JobRunResult r = RunCarryStep(job, mover, job->targetSlotX, job->targetSlotY, stockpiles[spIdx].z);
+        if (r == JOBRUN_DONE) {
+            Item* pot = &items[potIdx];
+            float targetX = job->targetSlotX * CELL_SIZE + CELL_SIZE * 0.5f;
+            float targetY = job->targetSlotY * CELL_SIZE + CELL_SIZE * 0.5f;
+            pot->x = targetX;
+            pot->y = targetY;
+            pot->reservedBy = -1;
+            PlaceItemInStockpile(spIdx, job->targetSlotX, job->targetSlotY, potIdx);
+            job->carryingItem = -1;
+        }
+        return r;
+    }
+    return JOBRUN_FAIL;
+}
+
+// WorkGiver_FillWaterPot: Find an empty clay pot and a water source, create fill job
+int WorkGiver_FillWaterPot(int moverIdx) {
+    if (!thirstEnabled) return -1;
+
+    Mover* m = &movers[moverIdx];
+    int mz = (int)m->z;
+    int mcx = (int)(m->x / CELL_SIZE);
+    int mcy = (int)(m->y / CELL_SIZE);
+
+    // Find an empty clay pot (contentCount == 0, unreserved, accessible)
+    int bestPot = -1;
+    int bestPotDistSq = 999999;
+
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (!items[i].active) continue;
+        if (items[i].type != ITEM_CLAY_POT) continue;
+        if (items[i].reservedBy >= 0) continue;
+        if (items[i].contentCount > 0) continue;  // Must be empty
+        if (items[i].state != ITEM_ON_GROUND && items[i].state != ITEM_IN_STOCKPILE) continue;
+        if ((int)items[i].z != mz) continue;
+
+        int ix = (int)(items[i].x / CELL_SIZE);
+        int iy = (int)(items[i].y / CELL_SIZE);
+        int dx = ix - mcx;
+        int dy = iy - mcy;
+        int distSq = dx * dx + dy * dy;
+        if (distSq < bestPotDistSq) {
+            bestPotDistSq = distSq;
+            bestPot = i;
+        }
+    }
+
+    if (bestPot < 0) return -1;
+
+    // Find nearest water cell
+    int waterX = -1, waterY = -1;
+    int bestWaterDistSq = 999999;
+    for (int r = 1; r <= 30; r++) {
+        for (int dy = -r; dy <= r; dy++) {
+            for (int dx = -r; dx <= r; dx++) {
+                if (abs(dx) != r && abs(dy) != r) continue;
+                int wx = mcx + dx;
+                int wy = mcy + dy;
+                if (wx < 0 || wx >= gridWidth || wy < 0 || wy >= gridHeight) continue;
+                if (!HasWater(wx, wy, mz)) continue;
+
+                int distSq = dx * dx + dy * dy;
+                if (distSq >= bestWaterDistSq) continue;
+
+                // Check for adjacent walkable cell
+                int dirs[4][2] = {{0,-1},{0,1},{-1,0},{1,0}};
+                for (int d = 0; d < 4; d++) {
+                    int nx = wx + dirs[d][0];
+                    int ny = wy + dirs[d][1];
+                    if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight &&
+                        IsCellWalkableAt(mz, ny, nx)) {
+                        bestWaterDistSq = distSq;
+                        waterX = wx; waterY = wy;
+                        break;
+                    }
+                }
+            }
+        }
+        if (waterX >= 0) break;
+    }
+
+    if (waterX < 0) return -1;
+
+    // Find a stockpile slot for the filled pot (to return it after filling)
+    int spIdx = -1, slotX = 0, slotY = 0;
+    for (int s = 0; s < stockpileCount; s++) {
+        if (!stockpiles[s].active) continue;
+        if (stockpiles[s].z != mz) continue;
+        if (!StockpileAcceptsItem(s, ITEM_CLAY_POT, items[bestPot].material)) continue;
+        if (stockpiles[s].freeSlotCount == 0) continue;
+
+        // Find a free slot
+        for (int sy2 = 0; sy2 < stockpiles[s].height; sy2++) {
+            for (int sx2 = 0; sx2 < stockpiles[s].width; sx2++) {
+                int worldX = stockpiles[s].x + sx2;
+                int worldY = stockpiles[s].y + sy2;
+                if (stockpiles[s].slots[sy2 * stockpiles[s].width + sx2] < 0) {
+                    spIdx = s;
+                    slotX = worldX;
+                    slotY = worldY;
+                    goto found_slot;
+                }
+            }
+        }
+    }
+    found_slot:;
+
+    // Create job
+    int jobId = CreateJob(JOBTYPE_FILL_WATER_POT);
+    if (jobId < 0) return -1;
+
+    Job* job = GetJob(jobId);
+    job->targetItem = bestPot;
+    job->step = STEP_MOVING_TO_PICKUP;
+    job->targetAdjX = waterX;
+    job->targetAdjY = waterY;
+    job->targetMineZ = mz;
+    job->targetStockpile = spIdx;
+    job->targetSlotX = slotX;
+    job->targetSlotY = slotY;
+
+    items[bestPot].reservedBy = moverIdx;
+
+    // Reserve stockpile slot if we found one
+    if (spIdx >= 0) {
+        int localSX = slotX - stockpiles[spIdx].x;
+        int localSY = slotY - stockpiles[spIdx].y;
+        int slotIdx2 = localSY * stockpiles[spIdx].width + localSX;
+        IncrementStockpileSlot(&stockpiles[spIdx], slotIdx2, bestPot, items[bestPot].type, items[bestPot].material);
+    }
+
+    // Assign to mover
+    job->assignedMover = moverIdx;
+    m->currentJobId = jobId;
+    RemoveMoverFromIdleList(moverIdx);
+
+    int potCellX = (int)(items[bestPot].x / CELL_SIZE);
+    int potCellY = (int)(items[bestPot].y / CELL_SIZE);
+    m->goal = (Point){potCellX, potCellY, mz};
+    m->needsRepath = true;
+
+    EventLog("WorkGiver_FillWaterPot: mover %d -> pot %d, water at (%d,%d)", moverIdx, bestPot, waterX, waterY);
+    return jobId;
+}
+
 // Driver lookup table
 static JobDriver jobDrivers[] = {
     [JOBTYPE_NONE] = NULL,
@@ -2948,10 +3198,11 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_PLANT_CROP] = RunJob_PlantCrop,
     [JOBTYPE_HARVEST_CROP] = RunJob_HarvestCrop,
     [JOBTYPE_EQUIP_CLOTHING] = RunJob_EquipClothing,
+    [JOBTYPE_FILL_WATER_POT] = RunJob_FillWaterPot,
 };
 
 // Compile-time check: ensure jobDrivers[] covers all job types
-_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_EQUIP_CLOTHING,
+_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_FILL_WATER_POT,
                "jobDrivers[] must have an entry for every JobType");
 
 // Tick function - runs job drivers for active jobs
@@ -4072,6 +4323,22 @@ void AssignJobs(void) {
                 int moverIdx = idleCopy[i];
                 if (!moverIsInIdleList[moverIdx]) continue;
                 WorkGiver_EquipClothing(moverIdx);
+            }
+            free(idleCopy);
+        }
+    }
+    if (idleMoverCount == 0) return;
+
+    // Priority 2f: Fill water pots (between equipping and hauling)
+    if (thirstEnabled) {
+        int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+        if (idleCopy) {
+            int idleCopyCount = idleMoverCount;
+            memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+            for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+                int moverIdx = idleCopy[i];
+                if (!moverIsInIdleList[moverIdx]) continue;
+                WorkGiver_FillWaterPot(moverIdx);
             }
             free(idleCopy);
         }

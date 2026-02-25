@@ -107,6 +107,7 @@ double survivalDuration = 0.0;
 bool hungerEnabled = false;
 bool energyEnabled = false;
 bool bodyTempEnabled = false;
+bool thirstEnabled = false;
 
 // UI mode: dev (full panels) vs play (minimal HUD)
 bool devUI = true;

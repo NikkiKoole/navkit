@@ -42,6 +42,10 @@ typedef enum {
     FREETIME_RESTING,        // Sleeping/sitting, recovering energy
     FREETIME_SEEKING_WARMTH, // Walking to heat source (campfire, etc.)
     FREETIME_WARMING,        // Standing near heat source, warming up
+    FREETIME_SEEKING_DRINK,  // Walking to drinkable item
+    FREETIME_DRINKING,       // Consuming drinkable item
+    FREETIME_SEEKING_NATURAL_WATER, // Walking to natural water cell
+    FREETIME_DRINKING_NATURAL,      // Drinking from natural water (slower)
 } FreetimeState;
 
 
@@ -70,6 +74,9 @@ typedef struct Mover {
     float needProgress;         // Eating timer (seconds)
     float needSearchCooldown;   // Cooldown between food searches (seconds)
     float starvationTimer;      // Game-seconds at hunger==0, resets when hunger > 0
+    // Thirst
+    float thirst;               // 1.0=hydrated, 0.0=severe dehydration
+    float dehydrationTimer;     // Game-seconds at thirst==0, resets when thirst > 0
     // Body temperature
     float bodyTemp;             // Celsius, normal 37°C
     float hypothermiaTimer;     // Game-seconds at severe cold, resets when warming

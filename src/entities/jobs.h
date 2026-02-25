@@ -43,6 +43,7 @@ typedef enum {
     JOBTYPE_PLANT_CROP,              // Plant seed on tilled farm cell
     JOBTYPE_HARVEST_CROP,            // Harvest ripe crop from farm cell
     JOBTYPE_EQUIP_CLOTHING,          // Pick up clothing item and equip it
+    JOBTYPE_FILL_WATER_POT,          // Pick up empty pot, carry to water, fill, return to stockpile
     JOBTYPE_COUNT
 } JobType;
 
@@ -80,6 +81,7 @@ static inline const char* JobTypeName(int type) {
         [JOBTYPE_PLANT_CROP]           = "PLANT_CROP",
         [JOBTYPE_HARVEST_CROP]         = "HARVEST_CROP",
         [JOBTYPE_EQUIP_CLOTHING]       = "EQUIP_CLOTHING",
+        [JOBTYPE_FILL_WATER_POT]       = "FILL_WATER_POT",
     };
     return (type >= 0 && type < JOBTYPE_COUNT) ? names[type] : "?";
 }
@@ -90,6 +92,7 @@ static inline const char* JobTypeName(int type) {
 #define STEP_MOVING_TO_WORK    0  // Dig/Build: moving to work site
 #define STEP_WORKING           1  // Dig/Build: performing work
 #define STEP_PLANTING          2  // PlantSapling: working after carrying
+#define STEP_CARRYING_BACK     2  // FillWaterPot: carrying filled pot back to stockpile
 
 // Craft job steps (13-step state machine)
 // Steps 4-6 only used when recipe has second input
@@ -229,6 +232,7 @@ JobRunResult RunJob_Fertilize(Job* job, void* mover, float dt);
 JobRunResult RunJob_PlantCrop(Job* job, void* mover, float dt);
 JobRunResult RunJob_HarvestCrop(Job* job, void* mover, float dt);
 JobRunResult RunJob_EquipClothing(Job* job, void* mover, float dt);
+JobRunResult RunJob_FillWaterPot(Job* job, void* mover, float dt);
 
 // Idle mover cache - maintained incrementally instead of scanning all movers
 extern int* idleMoverList;      // Array of mover indices that are idle
@@ -296,6 +300,7 @@ int WorkGiver_Fertilize(int moverIdx);
 int WorkGiver_PlantCrop(int moverIdx);
 int WorkGiver_HarvestCrop(int moverIdx);
 int WorkGiver_EquipClothing(int moverIdx);
+int WorkGiver_FillWaterPot(int moverIdx);
 
 // Job cancellation (releases all reservations, safe-drops carried items, returns mover to idle)
 void CancelJob(void* mover, int moverIdx);  // void* to avoid circular dependency with mover.h

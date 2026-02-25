@@ -151,6 +151,9 @@ static Color ItemTypeTint(ItemType type) {
     switch (type) {
         case ITEM_BERRIES:      return (Color){220, 50, 50, 255};   // Red like on the bush
         case ITEM_DRIED_BERRIES: return (Color){140, 40, 60, 255};  // Darker, dried
+        case ITEM_WATER:        return (Color){80, 140, 220, 255};  // Blue water
+        case ITEM_HERBAL_TEA:   return (Color){80, 180, 80, 255};   // Green tea
+        case ITEM_BERRY_JUICE:  return (Color){160, 50, 160, 255};  // Purple juice
         default:                return WHITE;
     }
 }

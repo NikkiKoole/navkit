@@ -144,6 +144,7 @@ extern double survivalDuration;
 extern bool hungerEnabled;
 extern bool energyEnabled;
 extern bool bodyTempEnabled;
+extern bool thirstEnabled;
 
 // UI mode: dev (full panels) vs play (minimal HUD)
 extern bool devUI;

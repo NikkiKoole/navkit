@@ -64,6 +64,7 @@ double survivalDuration = 0.0;
 bool hungerEnabled = false;
 bool energyEnabled = false;
 bool bodyTempEnabled = false;
+bool thirstEnabled = false;
 
 // World systems
 #include "../src/world/cell_defs.c"

@@ -660,6 +660,8 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->needProgress = 0.0f;
     m->needSearchCooldown = 0.0f;
     m->starvationTimer = 0.0f;
+    m->thirst = 1.0f;
+    m->dehydrationTimer = 0.0f;
     m->bodyTemp = balance.bodyTempNormal;
     m->hypothermiaTimer = 0.0f;
     // Job system
@@ -819,6 +821,37 @@ void NeedsTick(void) {
         } else {
             m->hunger = 1.0f;
             m->starvationTimer = 0.0f;
+        }
+
+        // Drain thirst
+        if (thirstEnabled) {
+            m->thirst -= RatePerGameSecond(balance.thirstDrainPerGH) * dt;
+            if (m->thirst < 0.0f) m->thirst = 0.0f;
+
+            // Dehydration death (survival mode only)
+            if (m->thirst == 0.0f && gameMode == GAME_MODE_SURVIVAL) {
+                m->dehydrationTimer += dt;
+                if (m->dehydrationTimer >= GameHoursToGameSeconds(balance.dehydrationDeathGH)) {
+                    if (m->currentJobId >= 0) CancelJob(m, i);
+                    if (m->needTarget >= 0) {
+                        items[m->needTarget].reservedBy = -1;
+                        m->needTarget = -1;
+                    }
+                    DropEquippedTool(i);
+                    DropEquippedClothing(i);
+                    m->freetimeState = FREETIME_NONE;
+                    m->active = false;
+                    EventLog("Mover %d died of dehydration (timer=%.1fs)", i, m->dehydrationTimer);
+                    TraceLog(LOG_WARNING, "Mover %d died of dehydration", i);
+                    AddMessage("Your mover died of thirst.", RED);
+                    continue;
+                }
+            } else {
+                m->dehydrationTimer = 0.0f;
+            }
+        } else {
+            m->thirst = 1.0f;
+            m->dehydrationTimer = 0.0f;
         }
 
         // Drain energy

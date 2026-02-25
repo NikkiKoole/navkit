@@ -241,6 +241,7 @@ static void StartNewGame(void) {
     hungerEnabled = true;
     energyEnabled = true;
     bodyTempEnabled = true;
+    thirstEnabled = true;
     toolRequirementsEnabled = true;
     gameOverTriggered = false;
     survivalStartTime = 0.0;
@@ -894,6 +895,8 @@ void DrawUI(void) {
                 y += 22;
                 ToggleBool(ix + 10, y, "Body Temp", &bodyTempEnabled);
                 y += 22;
+                ToggleBool(ix + 10, y, "Thirst", &thirstEnabled);
+                y += 22;
                 ToggleBool(ix + 10, y, "Tool Reqs", &toolRequirementsEnabled);
             }
 
@@ -1527,6 +1530,21 @@ void DrawUI(void) {
             changed |= DraggableFloatT(ix, y, "Eating Duration", &balance.eatingDurationGH, 0.05f, 0.05f, 4.0f,
                 "Game-hours spent eating a meal.");
             y += 22;
+            changed |= DraggableFloatT(ix, y, "Hours to Dehydrate", &balance.hoursToDehydrate, 0.5f, 1.0f, 48.0f,
+                "Game-hours from full thirst to dehydration.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Drinking Duration", &balance.drinkingDurationGH, 0.05f, 0.05f, 4.0f,
+                "Game-hours spent drinking from a pot.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Natural Drink Duration", &balance.naturalDrinkDurationGH, 0.05f, 0.05f, 4.0f,
+                "Game-hours spent drinking from natural water.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Natural Drink Hydration", &balance.naturalDrinkHydration, 0.05f, 0.05f, 1.0f,
+                "Hydration restored by drinking natural water.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Dehydration Death", &balance.dehydrationDeathGH, 0.5f, 1.0f, 24.0f,
+                "Game-hours at zero thirst before death.");
+            y += 22;
 
             // Thresholds
             y += 4;
@@ -1543,6 +1561,12 @@ void DrawUI(void) {
             y += 22;
             changed |= DraggableFloatT(ix, y, "Energy Exhausted", &balance.energyExhaustedThreshold, 0.01f, 0.01f, 0.5f,
                 "Cancel current job to find rest.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Thirst Seek", &balance.thirstSeekThreshold, 0.05f, 0.05f, 0.9f,
+                "Seek drink when thirst drops below this (idle).");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Thirst Critical", &balance.thirstCriticalThreshold, 0.01f, 0.01f, 0.5f,
+                "Cancel current job to find drink.");
             y += 22;
             changed |= DraggableFloatT(ix, y, "Energy Wake", &balance.energyWakeThreshold, 0.05f, 0.3f, 1.0f,
                 "Stop sleeping when energy reaches this.");
@@ -1610,6 +1634,8 @@ void DrawUI(void) {
             DrawTextShadow(TextFormat("Bed recovery:      %.4f/gh", balance.bedRecoveryPerGH), ix, y, 14, WHITE);
             y += 16;
             DrawTextShadow(TextFormat("Ground recovery:   %.4f/gh", balance.groundRecoveryPerGH), ix, y, 14, WHITE);
+            y += 16;
+            DrawTextShadow(TextFormat("Thirst drain:      %.4f/gh", balance.thirstDrainPerGH), ix, y, 14, WHITE);
             y += 22;
 
             // Reset button

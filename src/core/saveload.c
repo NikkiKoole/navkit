@@ -135,7 +135,14 @@ void RebuildPostLoadState(void);
     X(float, balance.nightEnergyMult) \
     X(float, balance.carryingEnergyMult) \
     X(float, balance.hungerSpeedPenaltyMin) \
-    X(float, balance.hungerPenaltyThreshold)
+    X(float, balance.hungerPenaltyThreshold) \
+    X(float, balance.hoursToDehydrate) \
+    X(float, balance.thirstSeekThreshold) \
+    X(float, balance.thirstCriticalThreshold) \
+    X(float, balance.drinkingDurationGH) \
+    X(float, balance.dehydrationDeathGH) \
+    X(float, balance.naturalDrinkDurationGH) \
+    X(float, balance.naturalDrinkHydration)
 
 bool SaveWorld(const char* filename) {
     FILE* f = fopen(filename, "wb");
@@ -168,6 +175,7 @@ bool SaveWorld(const char* filename) {
         fwrite(&energyEnabled, sizeof(bool), 1, f);
         fwrite(&bodyTempEnabled, sizeof(bool), 1, f);
         fwrite(&toolRequirementsEnabled, sizeof(bool), 1, f);
+        fwrite(&thirstEnabled, sizeof(bool), 1, f);
     }
     
     // === GRIDS SECTION ===
@@ -566,12 +574,18 @@ bool LoadWorld(const char* filename) {
         } else {
             toolRequirementsEnabled = false;
         }
+        if (version >= 79) {
+            fread(&thirstEnabled, sizeof(bool), 1, f);
+        } else {
+            thirstEnabled = false;
+        }
     } else {
         gameMode = GAME_MODE_SANDBOX;
         hungerEnabled = false;
         energyEnabled = false;
         bodyTempEnabled = false;
         toolRequirementsEnabled = false;
+        thirstEnabled = false;
     }
     
     // Reinitialize grid if dimensions don't match
@@ -1460,8 +1474,40 @@ bool LoadWorld(const char* filename) {
             stockpiles[i].freeSlotCount = v77_sp.freeSlotCount;
             stockpiles[i].rejectsRotten = v77_sp.rejectsRotten;
         }
+    } else if (version < 79) {
+        // v78: 62 item types, migrate to 65 (adding 3 liquid items)
+        StockpileV78 v78_sp;
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            fread(&v78_sp, sizeof(StockpileV78), 1, f);
+            stockpiles[i].x = v78_sp.x;
+            stockpiles[i].y = v78_sp.y;
+            stockpiles[i].z = v78_sp.z;
+            stockpiles[i].width = v78_sp.width;
+            stockpiles[i].height = v78_sp.height;
+            stockpiles[i].active = v78_sp.active;
+            memcpy(stockpiles[i].allowedTypes, v78_sp.allowedTypes,
+                   sizeof(v78_sp.allowedTypes));
+            for (int t = V78_ITEM_TYPE_COUNT; t < ITEM_TYPE_COUNT; t++) {
+                stockpiles[i].allowedTypes[t] = true;
+            }
+            memcpy(stockpiles[i].allowedMaterials, v78_sp.allowedMaterials,
+                   sizeof(v78_sp.allowedMaterials));
+            memcpy(stockpiles[i].cells, v78_sp.cells, sizeof(v78_sp.cells));
+            memcpy(stockpiles[i].slots, v78_sp.slots, sizeof(v78_sp.slots));
+            memcpy(stockpiles[i].reservedBy, v78_sp.reservedBy, sizeof(v78_sp.reservedBy));
+            memcpy(stockpiles[i].slotCounts, v78_sp.slotCounts, sizeof(v78_sp.slotCounts));
+            memcpy(stockpiles[i].slotTypes, v78_sp.slotTypes, sizeof(v78_sp.slotTypes));
+            memcpy(stockpiles[i].slotMaterials, v78_sp.slotMaterials, sizeof(v78_sp.slotMaterials));
+            stockpiles[i].maxStackSize = v78_sp.maxStackSize;
+            stockpiles[i].priority = v78_sp.priority;
+            stockpiles[i].maxContainers = v78_sp.maxContainers;
+            memcpy(stockpiles[i].slotIsContainer, v78_sp.slotIsContainer, sizeof(v78_sp.slotIsContainer));
+            memcpy(stockpiles[i].groundItemIdx, v78_sp.groundItemIdx, sizeof(v78_sp.groundItemIdx));
+            stockpiles[i].freeSlotCount = v78_sp.freeSlotCount;
+            stockpiles[i].rejectsRotten = v78_sp.rejectsRotten;
+        }
     } else {
-        // v78+ format - direct read
+        // v79+ format - direct read
         fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
     }
 
@@ -1579,11 +1625,54 @@ bool LoadWorld(const char* filename) {
     
     // Movers
     fread(&moverCount, sizeof(moverCount), 1, f);
-    if (version >= 78) {
-        // v78+: Mover struct with equippedClothing, paths separate
+    if (version >= 79) {
+        // v79+: Mover struct with thirst/dehydrationTimer, paths separate
         fread(movers, sizeof(Mover), moverCount, f);
         for (int i = 0; i < moverCount; i++) {
             fread(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+        }
+    } else if (version >= 78) {
+        // v78: Mover without thirst/dehydrationTimer, paths separate
+        for (int i = 0; i < moverCount; i++) {
+            MoverV78 old;
+            fread(&old, sizeof(MoverV78), 1, f);
+            fread(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+            Mover* m = &movers[i];
+            m->x = old.x; m->y = old.y; m->z = old.z;
+            m->goal = old.goal;
+            m->pathLength = old.pathLength;
+            m->pathIndex = old.pathIndex;
+            m->active = old.active;
+            m->needsRepath = old.needsRepath;
+            m->repathCooldown = old.repathCooldown;
+            m->speed = old.speed;
+            m->timeNearWaypoint = old.timeNearWaypoint;
+            m->lastX = old.lastX; m->lastY = old.lastY; m->lastZ = old.lastZ;
+            m->timeWithoutProgress = old.timeWithoutProgress;
+            m->fallTimer = old.fallTimer;
+            m->workAnimPhase = old.workAnimPhase;
+            m->hunger = old.hunger;
+            m->energy = old.energy;
+            m->freetimeState = old.freetimeState;
+            m->needTarget = old.needTarget;
+            m->needProgress = old.needProgress;
+            m->needSearchCooldown = old.needSearchCooldown;
+            m->starvationTimer = old.starvationTimer;
+            m->thirst = 1.0f;
+            m->dehydrationTimer = 0.0f;
+            m->bodyTemp = old.bodyTemp;
+            m->hypothermiaTimer = old.hypothermiaTimer;
+            m->avoidX = old.avoidX; m->avoidY = old.avoidY;
+            m->currentJobId = old.currentJobId;
+            m->lastJobType = old.lastJobType;
+            m->lastJobResult = old.lastJobResult;
+            m->lastJobTargetX = old.lastJobTargetX;
+            m->lastJobTargetY = old.lastJobTargetY;
+            m->lastJobTargetZ = old.lastJobTargetZ;
+            m->lastJobEndTick = old.lastJobEndTick;
+            m->capabilities = old.capabilities;
+            m->equippedTool = old.equippedTool;
+            m->equippedClothing = old.equippedClothing;
         }
     } else if (version >= 69) {
         // v69-v77: Mover without equippedClothing, paths separate
@@ -1612,6 +1701,8 @@ bool LoadWorld(const char* filename) {
             m->needProgress = old.needProgress;
             m->needSearchCooldown = old.needSearchCooldown;
             m->starvationTimer = old.starvationTimer;
+            m->thirst = 1.0f;
+            m->dehydrationTimer = 0.0f;
             m->bodyTemp = old.bodyTemp;
             m->hypothermiaTimer = old.hypothermiaTimer;
             m->avoidX = old.avoidX; m->avoidY = old.avoidY;
@@ -1881,6 +1972,14 @@ bool LoadWorld(const char* filename) {
     if (version < 78) {
         for (int i = 0; i < moverCount; i++) {
             movers[i].equippedClothing = -1;
+        }
+    }
+
+    // Initialize thirst for old saves (v79+)
+    if (version < 79) {
+        for (int i = 0; i < moverCount; i++) {
+            movers[i].thirst = 1.0f;
+            movers[i].dehydrationTimer = 0.0f;
         }
     }
 

@@ -15,6 +15,7 @@
 #define IF_CONTAINER      (1 << 6)  // Item can hold other items
 #define IF_TOOL           (1 << 7)  // Item is a tool (has quality levels)
 #define IF_CLOTHING       (1 << 8)  // Item is wearable clothing
+#define IF_DRINKABLE      (1 << 9)  // Item is a drinkable liquid
 
 typedef struct {
     const char* name;     // Display name for tooltips
@@ -46,10 +47,23 @@ extern const ItemDef itemDefs[];
 #define ItemIsContainer(t)    (itemDefs[t].flags & IF_CONTAINER)
 #define ItemIsTool(t)         (itemDefs[t].flags & IF_TOOL)
 #define ItemIsClothing(t)     (itemDefs[t].flags & IF_CLOTHING)
+#define ItemIsDrinkable(t)    (itemDefs[t].flags & IF_DRINKABLE)
 #define ItemDefaultMaterial(t)  (itemDefs[t].defaultMaterial)
 #define ItemWeight(t)           (itemDefs[t].weight)
 #define ItemNutrition(t)        (itemDefs[t].nutrition)
 #define ItemSpoilageLimit(t)    (itemDefs[t].spoilageLimit)
+
+// Hydration values for drinkable items (0.0 = not drinkable, 1.0 = full hydration)
+// Note: uses hardcoded enum values because item_defs.h cannot include items.h
+// ITEM_WATER=61, ITEM_HERBAL_TEA=62, ITEM_BERRY_JUICE=63
+static inline float GetItemHydration(int itemType) {
+    switch (itemType) {
+        case 61: return 0.3f;   // ITEM_WATER
+        case 62: return 0.6f;   // ITEM_HERBAL_TEA
+        case 63: return 0.5f;   // ITEM_BERRY_JUICE
+        default: return 0.0f;
+    }
+}
 
 // Clothing cooling reduction values (0.0 = no reduction, 1.0 = full insulation)
 // Note: uses hardcoded enum values because item_defs.h cannot include items.h

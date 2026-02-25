@@ -26,15 +26,27 @@ typedef struct {
     float restSearchCooldownGH;     //  2.0
     float restSeekTimeoutGH;        //  4.0
 
+    // === THIRST ===
+    float hoursToDehydrate;         // 16.0
+    float drinkingDurationGH;       //  0.3
+    float waterSearchCooldownGH;    //  0.25
+    float waterSeekTimeoutGH;       //  0.5
+    float dehydrationDeathGH;       //  8.0
+    float naturalDrinkDurationGH;   //  0.6
+    float naturalDrinkHydration;    //  0.2
+
     // === THRESHOLDS (0-1 scale, not time-dependent) ===
     float hungerSeekThreshold;      // 0.3
     float hungerCriticalThreshold;  // 0.1
     float energyTiredThreshold;     // 0.3
     float energyExhaustedThreshold; // 0.1
     float energyWakeThreshold;      // 0.8
+    float thirstSeekThreshold;      // 0.4
+    float thirstCriticalThreshold;  // 0.15
 
     // === DERIVED RATES (per game-hour, set by RecalcBalanceTable) ===
     float hungerDrainPerGH;
+    float thirstDrainPerGH;
     float energyDrainWorkPerGH;
     float energyDrainIdlePerGH;
     float bedRecoveryPerGH;
