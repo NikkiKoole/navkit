@@ -2871,7 +2871,7 @@ int WorkGiver_EquipClothing(int moverIdx) {
         if ((int)items[i].z != moverZ) continue;
 
         float reduction = GetClothingCoolingReduction(items[i].type);
-        if (reduction < minReduction) continue;
+        if (reduction <= minReduction) continue;
 
         int ix = (int)(items[i].x / CELL_SIZE);
         int iy = (int)(items[i].y / CELL_SIZE);
