@@ -1622,6 +1622,23 @@ static void DrawMovers(void) {
         float moverSize = size * MOVER_SIZE;
         Rectangle src = SpriteGetRect(SPRITE_head);
         Rectangle dest = { sx - moverSize/2, sy - moverSize/2, moverSize, moverSize };
+
+        // Draw clothing outline behind mover (larger tinted sprite)
+        if (m->equippedClothing >= 0 && m->equippedClothing < MAX_ITEMS
+            && items[m->equippedClothing].active) {
+            Color clothColor;
+            switch (items[m->equippedClothing].type) {
+                case ITEM_GRASS_TUNIC:   clothColor = (Color){120, 160, 80, 200}; break;  // green
+                case ITEM_FLAX_TUNIC:    clothColor = (Color){180, 170, 130, 200}; break; // tan
+                case ITEM_LEATHER_VEST:  clothColor = (Color){140, 90, 50, 200}; break;   // brown
+                case ITEM_LEATHER_COAT:  clothColor = (Color){100, 60, 30, 200}; break;   // dark brown
+                default:                 clothColor = (Color){150, 150, 150, 200}; break;
+            }
+            float outlineSize = moverSize * 1.35f;
+            Rectangle outlineDest = { sx - outlineSize/2, sy - outlineSize/2, outlineSize, outlineSize };
+            DrawTexturePro(atlas, src, outlineDest, (Vector2){0, 0}, 0, clothColor);
+        }
+
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, moverColor);
 
         DrawCarriedItem(m, sx, sy, viewZ, skyColor);

@@ -83,4 +83,8 @@ int FindNearestToolForQuality(QualityType quality, int minLevel,
 // No-op if mover has no equipped tool.
 void DropEquippedTool(int moverIdx);
 
+// Drop mover's equipped clothing at their feet (unreserve, set ITEM_ON_GROUND).
+// No-op if mover has no equipped clothing.
+void DropEquippedClothing(int moverIdx);
+
 #endif

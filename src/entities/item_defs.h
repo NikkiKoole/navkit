@@ -51,4 +51,15 @@ extern const ItemDef itemDefs[];
 #define ItemNutrition(t)        (itemDefs[t].nutrition)
 #define ItemSpoilageLimit(t)    (itemDefs[t].spoilageLimit)
 
+// Clothing cooling reduction values (0.0 = no reduction, 1.0 = full insulation)
+static inline float GetClothingCoolingReduction(int itemType) {
+    switch (itemType) {
+        case 58: return 0.25f;  // ITEM_GRASS_TUNIC
+        case 59: return 0.40f;  // ITEM_FLAX_TUNIC
+        case 60: return 0.50f;  // ITEM_LEATHER_VEST
+        case 61: return 0.65f;  // ITEM_LEATHER_COAT
+        default: return 0.0f;
+    }
+}
+
 #endif

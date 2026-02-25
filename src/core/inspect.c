@@ -163,6 +163,14 @@ static void print_mover(int idx) {
         }
         printf("\n");
     }
+    if (m->equippedClothing >= 0) {
+        printf("Equipped clothing: item %d", m->equippedClothing);
+        if (m->equippedClothing < insp_itemHWM && insp_items[m->equippedClothing].active) {
+            float reduction = GetClothingCoolingReduction(insp_items[m->equippedClothing].type);
+            printf(" (%s, %.0f%% insulation)", ItemName(insp_items[m->equippedClothing].type), reduction * 100.0f);
+        }
+        printf("\n");
+    }
 }
 
 static void print_item(int idx) {

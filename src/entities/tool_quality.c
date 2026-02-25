@@ -170,3 +170,15 @@ void DropEquippedTool(int moverIdx) {
                  itemDefs[items[toolIdx].type].name);
     }
 }
+
+void DropEquippedClothing(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    if (m->equippedClothing < 0) return;
+    int clothIdx = m->equippedClothing;
+    m->equippedClothing = -1;
+    if (clothIdx < MAX_ITEMS && items[clothIdx].active) {
+        SafeDropItem(clothIdx, m->x, m->y, (int)m->z);
+        EventLog("Mover %d dropped clothing item %d (%s)", moverIdx, clothIdx,
+                 itemDefs[items[clothIdx].type].name);
+    }
+}

@@ -2788,6 +2788,132 @@ JobRunResult RunJob_HarvestCrop(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// EquipClothing job driver: walk to clothing item -> pick up and equip
+JobRunResult RunJob_EquipClothing(Job* job, void* moverPtr, float dt) {
+    (void)dt;
+    Mover* mover = (Mover*)moverPtr;
+    int moverIdx = (int)(mover - movers);
+    int itemIdx = job->targetItem;
+
+    if (itemIdx < 0 || !items[itemIdx].active) return JOBRUN_FAIL;
+    Item* clothing = &items[itemIdx];
+
+    if (job->step == STEP_MOVING_TO_PICKUP) {
+        // Walk to item
+        int itemCellX = (int)(clothing->x / CELL_SIZE);
+        int itemCellY = (int)(clothing->y / CELL_SIZE);
+
+        TryFinalApproach(mover, clothing->x, clothing->y, itemCellX, itemCellY, PICKUP_RADIUS);
+
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+            return JOBRUN_FAIL;
+        }
+
+        float dx = mover->x - clothing->x;
+        float dy = mover->y - clothing->y;
+        if (dx * dx + dy * dy < PICKUP_RADIUS * PICKUP_RADIUS) {
+            // Drop old clothing if any
+            if (mover->equippedClothing >= 0) {
+                DropEquippedClothing(moverIdx);
+            }
+
+            // Clear stockpile slot if clothing was in stockpile
+            if (clothing->state == ITEM_IN_STOCKPILE) {
+                ClearSourceStockpileSlot(clothing);
+            }
+
+            // Equip the clothing
+            clothing->state = ITEM_CARRIED;
+            clothing->reservedBy = moverIdx;
+            clothing->x = mover->x;
+            clothing->y = mover->y;
+            clothing->z = mover->z;
+            mover->equippedClothing = itemIdx;
+
+            EventLog("Mover %d equipped clothing item %d (%s)", moverIdx, itemIdx,
+                     itemDefs[clothing->type].name);
+            return JOBRUN_DONE;
+        }
+        return JOBRUN_RUNNING;
+    }
+    return JOBRUN_FAIL;
+}
+
+// WorkGiver_EquipClothing: Find clothing for a mover to equip
+// Returns job ID if successful, -1 if no job available
+int WorkGiver_EquipClothing(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+
+    // Current clothing reduction (0.0 if naked)
+    float currentReduction = 0.0f;
+    if (m->equippedClothing >= 0 && m->equippedClothing < MAX_ITEMS
+        && items[m->equippedClothing].active) {
+        currentReduction = GetClothingCoolingReduction(items[m->equippedClothing].type);
+    }
+
+    int moverCellX = (int)(m->x / CELL_SIZE);
+    int moverCellY = (int)(m->y / CELL_SIZE);
+    int moverZ = (int)m->z;
+
+    // Find best available clothing item (highest cooling reduction)
+    // Must be better than current by at least 0.1 to trigger upgrade
+    float minReduction = currentReduction + 0.1f;
+    int bestIdx = -1;
+    float bestReduction = 0.0f;
+    int bestDistSq = 999999;
+
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (!items[i].active) continue;
+        if (!ItemIsClothing(items[i].type)) continue;
+        if (items[i].reservedBy >= 0) continue;
+        if (items[i].state != ITEM_ON_GROUND && items[i].state != ITEM_IN_STOCKPILE) continue;
+        if ((int)items[i].z != moverZ) continue;
+
+        float reduction = GetClothingCoolingReduction(items[i].type);
+        if (reduction < minReduction) continue;
+
+        int ix = (int)(items[i].x / CELL_SIZE);
+        int iy = (int)(items[i].y / CELL_SIZE);
+        int dx = ix - moverCellX;
+        int dy = iy - moverCellY;
+        int distSq = dx * dx + dy * dy;
+
+        // Prefer higher reduction, then closer distance
+        if (reduction > bestReduction || (reduction == bestReduction && distSq < bestDistSq)) {
+            bestIdx = i;
+            bestReduction = reduction;
+            bestDistSq = distSq;
+        }
+    }
+
+    if (bestIdx < 0) return -1;
+
+    // Create the job
+    int jobId = CreateJob(JOBTYPE_EQUIP_CLOTHING);
+    if (jobId < 0) return -1;
+
+    Job* job = GetJob(jobId);
+    job->targetItem = bestIdx;
+    job->step = STEP_MOVING_TO_PICKUP;
+    items[bestIdx].reservedBy = moverIdx;
+
+    // Assign to mover
+    job->assignedMover = moverIdx;
+    m->currentJobId = jobId;
+    RemoveMoverFromIdleList(moverIdx);
+
+    // Set goal toward item
+    int itemCellX = (int)(items[bestIdx].x / CELL_SIZE);
+    int itemCellY = (int)(items[bestIdx].y / CELL_SIZE);
+    m->goal = (Point){itemCellX, itemCellY, moverZ};
+    m->needsRepath = true;
+
+    EventLog("WorkGiver_EquipClothing: mover %d -> item %d (%s)", moverIdx, bestIdx,
+             itemDefs[items[bestIdx].type].name);
+    return jobId;
+}
+
 // Driver lookup table
 static JobDriver jobDrivers[] = {
     [JOBTYPE_NONE] = NULL,
@@ -2821,10 +2947,11 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_FERTILIZE] = RunJob_Fertilize,
     [JOBTYPE_PLANT_CROP] = RunJob_PlantCrop,
     [JOBTYPE_HARVEST_CROP] = RunJob_HarvestCrop,
+    [JOBTYPE_EQUIP_CLOTHING] = RunJob_EquipClothing,
 };
 
 // Compile-time check: ensure jobDrivers[] covers all job types
-_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_HARVEST_CROP,
+_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_EQUIP_CLOTHING,
                "jobDrivers[] must have an entry for every JobType");
 
 // Tick function - runs job drivers for active jobs
@@ -3931,6 +4058,22 @@ void AssignJobs(void) {
                 }
                 free(idleCopy);
             }
+        }
+    }
+    if (idleMoverCount == 0) return;
+
+    // Priority 2e: Equip clothing (between hunting and hauling)
+    {
+        int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+        if (idleCopy) {
+            int idleCopyCount = idleMoverCount;
+            memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+            for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+                int moverIdx = idleCopy[i];
+                if (!moverIsInIdleList[moverIdx]) continue;
+                WorkGiver_EquipClothing(moverIdx);
+            }
+            free(idleCopy);
         }
     }
     if (idleMoverCount == 0) return;

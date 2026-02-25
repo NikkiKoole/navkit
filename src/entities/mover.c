@@ -805,6 +805,7 @@ void NeedsTick(void) {
                         m->needTarget = -1;
                     }
                     DropEquippedTool(i);
+                    DropEquippedClothing(i);
                     m->freetimeState = FREETIME_NONE;
                     m->active = false;
                     EventLog("Mover %d died of starvation (timer=%.1fs)", i, m->starvationTimer);
@@ -852,6 +853,12 @@ void NeedsTick(void) {
 
             float diff = effectiveAmbient - m->bodyTemp;
             float rate = (diff > 0) ? balance.bodyTempWarmingRatePerGH : balance.bodyTempCoolingRatePerGH;
+            // Clothing slows heat loss (cooling only)
+            if (diff < 0 && m->equippedClothing >= 0 && m->equippedClothing < MAX_ITEMS
+                && items[m->equippedClothing].active) {
+                float reduction = GetClothingCoolingReduction(items[m->equippedClothing].type);
+                rate *= (1.0f - reduction);
+            }
             float maxChange = RatePerGameSecond(rate) * dt;
             if (diff > 0) {
                 m->bodyTemp += (diff < maxChange) ? diff : maxChange;
@@ -867,6 +874,7 @@ void NeedsTick(void) {
                 if (m->hypothermiaTimer >= GameHoursToGameSeconds(balance.hypothermiaDeathGH)) {
                     if (m->currentJobId >= 0) CancelJob(m, i);
                     DropEquippedTool(i);
+                    DropEquippedClothing(i);
                     m->freetimeState = FREETIME_NONE;
                     m->active = false;
                     EventLog("Mover %d died of hypothermia (bodyTemp=%.1f)", i, m->bodyTemp);

@@ -415,6 +415,18 @@ static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
         lineColors[lineCount++] = GRAY;
     }
 
+    // Equipped clothing
+    if (m->equippedClothing >= 0 && m->equippedClothing < MAX_ITEMS && items[m->equippedClothing].active) {
+        char clothName[64];
+        FormatItemName(&items[m->equippedClothing], clothName, sizeof(clothName));
+        float reduction = GetClothingCoolingReduction(items[m->equippedClothing].type);
+        snprintf(lines[lineCount], sizeof(lines[0]), "Clothing: %s (%.0f%% insulation)", clothName, reduction * 100.0f);
+        lineColors[lineCount++] = SKYBLUE;
+    } else {
+        snprintf(lines[lineCount], sizeof(lines[0]), "Clothing: none");
+        lineColors[lineCount++] = GRAY;
+    }
+
     // Path info
     snprintf(lines[lineCount], sizeof(lines[0]), "Path: %d/%d, Goal: (%d,%d,z%d)",
         m->pathIndex >= 0 ? m->pathIndex + 1 : 0, m->pathLength, m->goal.x, m->goal.y, m->goal.z);

@@ -143,14 +143,19 @@ int AuditItemReservations(bool verbose) {
             }
         }
 
-        // Also check if this item is a mover's equipped tool (no job needed)
+        // Also check if this item is a mover's equipped tool or clothing (no job needed)
         bool isEquippedTool = false;
         if (reservedBy >= 0 && reservedBy < MAX_MOVERS && movers[reservedBy].active &&
             movers[reservedBy].equippedTool == i) {
             isEquippedTool = true;
         }
+        bool isEquippedClothing = false;
+        if (reservedBy >= 0 && reservedBy < MAX_MOVERS && movers[reservedBy].active &&
+            movers[reservedBy].equippedClothing == i) {
+            isEquippedClothing = true;
+        }
 
-        if (!foundJob && !isEquippedTool) {
+        if (!foundJob && !isEquippedTool && !isEquippedClothing) {
             violations++;
             if (verbose) {
                 AUDIT_LOG("Item %d (%s) at (%.0f,%.0f,z%.0f) reservedBy=%d but no active job references it and not equipped",
@@ -489,6 +494,64 @@ static int AuditEquippedTools(bool verbose) {
             if (verbose) {
                 AUDIT_LOG("Mover %d equippedTool=%d (%s) but item lacks IF_TOOL flag",
                           i, toolIdx, ItemName(tool->type));
+            }
+        }
+    }
+
+    // Check equipped clothing consistency
+    for (int i = 0; i < moverCount; i++) {
+        Mover* m = &movers[i];
+        if (!m->active) {
+            if (m->equippedClothing >= 0) {
+                violations++;
+                if (verbose) {
+                    AUDIT_LOG("Inactive mover %d has equippedClothing=%d (should be -1)", i, m->equippedClothing);
+                }
+            }
+            continue;
+        }
+
+        int clothIdx = m->equippedClothing;
+        if (clothIdx < 0) continue;
+
+        if (clothIdx >= MAX_ITEMS) {
+            violations++;
+            if (verbose) {
+                AUDIT_LOG("Mover %d equippedClothing=%d (out of range)", i, clothIdx);
+            }
+            continue;
+        }
+
+        Item* cloth = &items[clothIdx];
+        if (!cloth->active) {
+            violations++;
+            if (verbose) {
+                AUDIT_LOG("Mover %d equippedClothing=%d but item is inactive", i, clothIdx);
+            }
+            continue;
+        }
+
+        if (cloth->state != ITEM_CARRIED) {
+            violations++;
+            if (verbose) {
+                AUDIT_LOG("Mover %d equippedClothing=%d but item state is %d (expected ITEM_CARRIED=%d)",
+                          i, clothIdx, cloth->state, ITEM_CARRIED);
+            }
+        }
+
+        if (cloth->reservedBy != i) {
+            violations++;
+            if (verbose) {
+                AUDIT_LOG("Mover %d equippedClothing=%d but item.reservedBy=%d (expected %d)",
+                          i, clothIdx, cloth->reservedBy, i);
+            }
+        }
+
+        if (!(itemDefs[cloth->type].flags & IF_CLOTHING)) {
+            violations++;
+            if (verbose) {
+                AUDIT_LOG("Mover %d equippedClothing=%d (%s) but item lacks IF_CLOTHING flag",
+                          i, clothIdx, ItemName(cloth->type));
             }
         }
     }
