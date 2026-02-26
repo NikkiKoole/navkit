@@ -79,5 +79,8 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_WATER]          = { "Water",         SPRITE_division,       IF_STACKABLE | IF_DRINKABLE, 5, MAT_NONE, 0.5f, 0.0f, 0.0f },
     [ITEM_HERBAL_TEA]     = { "Herbal Tea",    SPRITE_division,       IF_STACKABLE | IF_DRINKABLE, 5, MAT_NONE, 0.5f, 0.0f, 0.0f },
     [ITEM_BERRY_JUICE]    = { "Berry Juice",   SPRITE_division,       IF_STACKABLE | IF_DRINKABLE | IF_SPOILS, 5, MAT_NONE, 0.5f, 0.0f, 480.0f },
+    // Mud/cob building materials
+    [ITEM_MUD]            = { "Mud",           SPRITE_dirt,           IF_STACKABLE | IF_BUILDING_MAT, 20, MAT_MUD, 10.0f, 0.0f, 0.0f },
+    [ITEM_COB]            = { "Cob",           SPRITE_clay,           IF_STACKABLE | IF_BUILDING_MAT, 20, MAT_COB, 8.0f, 0.0f, 0.0f },
 };
 #undef MN

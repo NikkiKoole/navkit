@@ -445,6 +445,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = true,
         .canErase = false
     },
+    {
+        .action = ACTION_DRAW_WORKSHOP_MUD_MIXER,
+        .name = "MUD MIXER",
+        .barDisplayText = "Mud mixer",
+        .barText = "L-click place  [ESC]Back",
+        .barKey = 'm',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_WORKSHOP,
+        .canDrag = true,
+        .canErase = false
+    },
 
     // ========================================================================
     // MODE_DRAW > TRANSPORT children
@@ -891,7 +904,20 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = false,
         .canErase = true
     },
-    
+    {
+        .action = ACTION_WORK_WORKSHOP_MUD_MIXER,
+        .name = "MUD MIXER",
+        .barDisplayText = "mUd mixer",
+        .barText = "L-click place  R-click cancel  [ESC]Back",
+        .barKey = 'u',
+        .barUnderlinePos = 1,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_WORK_WORKSHOP,
+        .canDrag = false,
+        .canErase = true
+    },
+
     // ========================================================================
     // MODE_WORK > SUBMODE_HARVEST actions
     // ========================================================================

@@ -37,6 +37,7 @@ typedef enum {
     WORKSHOP_LOOM,
     WORKSHOP_TANNING_RACK,
     WORKSHOP_TAILOR,
+    WORKSHOP_MUD_MIXER,
     WORKSHOP_TYPE_COUNT,
 } WorkshopType;
 
@@ -194,6 +195,8 @@ extern Recipe tanningRackRecipes[];
 extern int tanningRackRecipeCount;
 extern Recipe tailorRecipes[];
 extern int tailorRecipeCount;
+extern Recipe mudMixerRecipes[];
+extern int mudMixerRecipeCount;
 
 // Core functions
 void ClearWorkshops(void);

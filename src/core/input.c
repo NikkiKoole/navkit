@@ -1098,9 +1098,37 @@ static void ExecuteDesignateDoor(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+// Check if any cardinal neighbor of a workshop footprint has water
+static bool HasWaterNearWorkshop(int x, int y, int z, int w, int h) {
+    for (int dy = 0; dy < h; dy++) {
+        for (int dx = 0; dx < w; dx++) {
+            int cx = x + dx;
+            int cy = y + dy;
+            int dirs[4][2] = {{-1,0},{1,0},{0,-1},{0,1}};
+            for (int d = 0; d < 4; d++) {
+                int nx = cx + dirs[d][0];
+                int ny = cy + dirs[d][1];
+                if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+                if (HasWater(nx, ny, z)) return true;
+            }
+        }
+    }
+    return false;
+}
+
 static void ExecutePlaceWorkshopBlueprint(int x, int y, int z, WorkshopType type) {
     int recipeIndex = GetConstructionRecipeForWorkshopType(type);
     if (recipeIndex < 0) return;
+
+    // Water proximity check for mud mixer
+    if (type == WORKSHOP_MUD_MIXER) {
+        int w = workshopDefs[type].width;
+        int h = workshopDefs[type].height;
+        if (!HasWaterNearWorkshop(x, y, z, w, h)) {
+            AddMessage("Mud Mixer must be placed adjacent to water", RED);
+            return;
+        }
+    }
 
     int idx = CreateWorkshopBlueprint(x, y, z, recipeIndex);
     if (idx >= 0) {
@@ -1237,6 +1265,14 @@ static void ExecutePlaceWorkshop(int x, int y, int z, WorkshopType type) {
         }
     }
     
+    // Water proximity check for mud mixer
+    if (type == WORKSHOP_MUD_MIXER) {
+        if (!HasWaterNearWorkshop(x, y, z, w, h)) {
+            AddMessage("Mud Mixer must be placed adjacent to water", RED);
+            return;
+        }
+    }
+
     int idx = CreateWorkshop(x, y, z, type);
     if (idx >= 0) {
         AddMessage(TextFormat("Built %s workshop #%d", workshopDefs[type].displayName, idx), GREEN);
@@ -2825,6 +2861,9 @@ void HandleInput(void) {
             case ACTION_DRAW_WORKSHOP_TAILOR:
                 if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_TAILOR);
                 break;
+            case ACTION_DRAW_WORKSHOP_MUD_MIXER:
+                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_MUD_MIXER);
+                break;
             case ACTION_DRAW_SOIL_DIRT:
                 if (leftClick) {
                     if (shift) {
@@ -2955,6 +2994,10 @@ void HandleInput(void) {
                 break;
             case ACTION_WORK_WORKSHOP_TAILOR:
                 if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_TAILOR);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
+                break;
+            case ACTION_WORK_WORKSHOP_MUD_MIXER:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_MUD_MIXER);
                 else ExecuteCancelWorkshopBlueprint(x1, y1, z);
                 break;
             case ACTION_WORK_WORKSHOP_DRYING_RACK:

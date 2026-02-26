@@ -72,6 +72,8 @@ typedef enum {
     ITEM_WATER,          // Water (drinkable liquid, stored in containers)
     ITEM_HERBAL_TEA,     // Herbal tea (best hydration, brewed at campfire)
     ITEM_BERRY_JUICE,    // Berry juice (good hydration, spoils)
+    ITEM_MUD,            // Mud (dirt + clay, wet building material)
+    ITEM_COB,            // Cob (mud + dried grass, strong building material)
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 

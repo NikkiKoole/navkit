@@ -883,6 +883,79 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = 0,
         .materialFromSlot = 0,
     },
+    // Mud/cob construction recipes
+    [CONSTRUCTION_MUD_WALL] = {
+        .name = "Mud Wall",
+        .buildCategory = BUILD_WALL,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_MUD }},
+                .altCount = 1,
+                .count = 4,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 3.0f,
+        }},
+        .resultMaterial = MAT_MUD,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
+    [CONSTRUCTION_COB_WALL] = {
+        .name = "Cob Wall",
+        .buildCategory = BUILD_WALL,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_COB }},
+                .altCount = 1,
+                .count = 3,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 4.0f,
+        }},
+        .resultMaterial = MAT_COB,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
+    [CONSTRUCTION_MUD_FLOOR] = {
+        .name = "Mud Floor",
+        .buildCategory = BUILD_FLOOR,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_MUD }},
+                .altCount = 1,
+                .count = 2,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 2.0f,
+        }},
+        .resultMaterial = MAT_MUD,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
+    [CONSTRUCTION_WORKSHOP_MUD_MIXER] = {
+        .name = "Mud Mixer",
+        .buildCategory = BUILD_WORKSHOP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_STICKS }},
+                .altCount = 1,
+                .count = 4,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 2.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
 };
 
 const ConstructionRecipe* GetConstructionRecipe(int recipeIndex) {
@@ -928,6 +1001,7 @@ int GetConstructionRecipeForWorkshopType(int workshopType) {
         case WORKSHOP_LOOM:         return CONSTRUCTION_WORKSHOP_LOOM;
         case WORKSHOP_TANNING_RACK: return CONSTRUCTION_WORKSHOP_TANNING_RACK;
         case WORKSHOP_TAILOR:       return CONSTRUCTION_WORKSHOP_TAILOR;
+        case WORKSHOP_MUD_MIXER:   return CONSTRUCTION_WORKSHOP_MUD_MIXER;
         default: return -1;
     }
 }

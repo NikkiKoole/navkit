@@ -40,6 +40,8 @@ MaterialDef materialDefs[MAT_COUNT] = {
     [MAT_GRAVEL]  = {"Gravel",   SPRITE_gravel,            0,            0,    0,      ITEM_GRAVEL,  INSULATION_TIER_AIR,   MAT_GRAVEL},
     [MAT_SAND]    = {"Sand",     SPRITE_sand,              0,            0,    0,      ITEM_SAND,    INSULATION_TIER_AIR,   MAT_SAND},
     [MAT_PEAT]    = {"Peat",     SPRITE_peat,              0,            6,    0,      ITEM_PEAT,    INSULATION_TIER_AIR,   MAT_DIRT},
+    [MAT_MUD]     = {"Mud",      SPRITE_dirt,              0,            0,    0,      ITEM_MUD,     INSULATION_TIER_AIR,   MAT_MUD},
+    [MAT_COB]     = {"Cob",      SPRITE_clay,              0,            0,    0,      ITEM_COB,     INSULATION_TIER_STONE, MAT_COB},
     [MAT_BEDROCK] = {"Bedrock",  SPRITE_bedrock,           MF_UNMINEABLE,0,    0,      ITEM_NONE,    INSULATION_TIER_STONE, MAT_BEDROCK},
 };
 

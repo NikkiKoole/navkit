@@ -112,8 +112,8 @@ describe(door_construction_recipes) {
         expect(recipe->buildCategory == BUILD_DOOR);
     }
 
-    it("should have 2 door recipes in BUILD_DOOR category") {
-        expect(GetConstructionRecipeCountForCategory(BUILD_DOOR) == 2);
+    it("should have 3 door recipes in BUILD_DOOR category") {
+        expect(GetConstructionRecipeCountForCategory(BUILD_DOOR) == 3);
     }
 
     it("leaf door should require poles and leaves") {

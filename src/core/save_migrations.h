@@ -6,7 +6,10 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 79
+#define CURRENT_SAVE_VERSION 80
+
+// Material count constant used by ALL legacy stockpile structs (MAT_COUNT was 17 from v31-v79)
+#define V79_MAT_COUNT 17
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)
@@ -35,7 +38,7 @@ typedef struct {
     int width, height;
     bool active;
     bool allowedTypes[V31_ITEM_TYPE_COUNT];  // OLD: 28 bools
-    bool allowedMaterials[MAT_COUNT];
+    bool allowedMaterials[V79_MAT_COUNT];   // MAT_COUNT was 17 at v31
     int maxStackSize;
 } StockpileV31;
 
@@ -49,7 +52,7 @@ typedef struct {
     int width, height;
     bool active;
     bool allowedTypes[V32_ITEM_TYPE_COUNT];  // OLD: 22 bools
-    bool allowedMaterials[MAT_COUNT];
+    bool allowedMaterials[V79_MAT_COUNT];
     int maxStackSize;
 } StockpileV32;
 
@@ -90,7 +93,7 @@ typedef struct {
     int width, height;
     bool active;
     bool allowedTypes[V47_ITEM_TYPE_COUNT];
-    bool allowedMaterials[MAT_COUNT];
+    bool allowedMaterials[V79_MAT_COUNT];
     int maxStackSize;
 } StockpileV47;
 
@@ -129,7 +132,7 @@ typedef struct {
     int width, height;
     bool active;
     bool allowedTypes[V50_ITEM_TYPE_COUNT];
-    bool allowedMaterials[MAT_COUNT];
+    bool allowedMaterials[V79_MAT_COUNT];
     bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
@@ -142,14 +145,17 @@ typedef struct {
     int freeSlotCount;
 } StockpileV50;
 
+// V51 constants
+#define V51_ITEM_TYPE_COUNT 31
+
 // V51 Stockpile struct (before maxContainers field added in v52)
 // Same as current Stockpile minus maxContainers field
 typedef struct {
     int x, y, z;
     int width, height;
     bool active;
-    bool allowedTypes[ITEM_TYPE_COUNT];
-    bool allowedMaterials[MAT_COUNT];
+    bool allowedTypes[V51_ITEM_TYPE_COUNT];
+    bool allowedMaterials[V79_MAT_COUNT];
     bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
@@ -203,7 +209,7 @@ typedef struct {
     int width, height;
     bool active;
     bool allowedTypes[V54_ITEM_TYPE_COUNT];
-    bool allowedMaterials[MAT_COUNT];
+    bool allowedMaterials[V79_MAT_COUNT];
     bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
@@ -293,7 +299,7 @@ typedef struct {
     int width, height;
     bool active;
     bool allowedTypes[V34_ITEM_TYPE_COUNT];  // OLD: 24 bools
-    bool allowedMaterials[MAT_COUNT];
+    bool allowedMaterials[V79_MAT_COUNT];
     int maxStackSize;
 } StockpileV34;
 
@@ -307,7 +313,7 @@ typedef struct {
     int width, height;
     bool active;
     bool allowedTypes[V60_ITEM_TYPE_COUNT];
-    bool allowedMaterials[MAT_COUNT];
+    bool allowedMaterials[V79_MAT_COUNT];
     bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
@@ -332,7 +338,7 @@ typedef struct {
     int width, height;
     bool active;
     bool allowedTypes[V65_ITEM_TYPE_COUNT];
-    bool allowedMaterials[MAT_COUNT];
+    bool allowedMaterials[V79_MAT_COUNT];
     bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
@@ -448,7 +454,7 @@ typedef struct {
     int width, height;
     bool active;
     bool allowedTypes[V69_ITEM_TYPE_COUNT];
-    bool allowedMaterials[MAT_COUNT];
+    bool allowedMaterials[V79_MAT_COUNT];
     bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
@@ -473,7 +479,7 @@ typedef struct {
     int width, height;
     bool active;
     bool allowedTypes[V67_ITEM_TYPE_COUNT];
-    bool allowedMaterials[MAT_COUNT];
+    bool allowedMaterials[V79_MAT_COUNT];
     bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
@@ -612,7 +618,7 @@ typedef struct {
     int width, height;
     bool active;
     bool allowedTypes[V75_ITEM_TYPE_COUNT];
-    bool allowedMaterials[MAT_COUNT];
+    bool allowedMaterials[V79_MAT_COUNT];
     bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
@@ -646,7 +652,7 @@ typedef struct {
     int width, height;
     bool active;
     bool allowedTypes[V76_ITEM_TYPE_COUNT];
-    bool allowedMaterials[MAT_COUNT];
+    bool allowedMaterials[V79_MAT_COUNT];
     bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
@@ -672,7 +678,7 @@ typedef struct {
     int width, height;
     bool active;
     bool allowedTypes[V77_ITEM_TYPE_COUNT];
-    bool allowedMaterials[MAT_COUNT];
+    bool allowedMaterials[V79_MAT_COUNT];
     bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
@@ -723,6 +729,9 @@ typedef struct {
     // No equippedClothing in V77
 } MoverV77;
 
+// Version 79 constants (before ITEM_MUD/ITEM_COB and MAT_MUD/MAT_COB added in v80)
+#define V79_ITEM_TYPE_COUNT 65
+
 // Version 78 constants (before 3 liquid item types added in v79)
 #define V78_ITEM_TYPE_COUNT 62
 
@@ -733,7 +742,7 @@ typedef struct {
     int width, height;
     bool active;
     bool allowedTypes[V78_ITEM_TYPE_COUNT];
-    bool allowedMaterials[MAT_COUNT];
+    bool allowedMaterials[V79_MAT_COUNT];
     bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
@@ -748,6 +757,29 @@ typedef struct {
     int freeSlotCount;
     bool rejectsRotten;
 } StockpileV78;
+
+// V79 Stockpile struct (before ITEM_MUD/ITEM_COB and MAT_MUD/MAT_COB added in v80)
+// v79 had 65 item types and 17 materials, v80 adds 2 items and 2 materials
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V79_ITEM_TYPE_COUNT];
+    bool allowedMaterials[V79_MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int maxContainers;
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+    bool rejectsRotten;
+} StockpileV79;
 
 // V78 Mover struct (before thirst/dehydrationTimer fields added in v79)
 typedef struct {

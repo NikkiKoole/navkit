@@ -76,6 +76,8 @@ const StockpileFilterDef STOCKPILE_FILTERS[] = {
     {ITEM_PEAT,         FILTER_CAT_EARTH,     "Peat",         BROWN},
     {ITEM_ASH,          FILTER_CAT_EARTH,     "Ash",          GRAY},
     {ITEM_CHARCOAL,     FILTER_CAT_EARTH,     "Charcoal",     GRAY},
+    {ITEM_MUD,          FILTER_CAT_EARTH,     "Mud",          BROWN},
+    {ITEM_COB,          FILTER_CAT_EARTH,     "Cob",          BROWN},
     // Craft
     {ITEM_SHORT_STRING, FILTER_CAT_CRAFT,     "String",       BEIGE},
     {ITEM_CORDAGE,      FILTER_CAT_CRAFT,     "Cordage",      BEIGE},

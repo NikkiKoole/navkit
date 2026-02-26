@@ -96,6 +96,11 @@ typedef enum {
     CONSTRUCTION_LEAF_DOOR,              // 1 stage: 2 poles + 2 leaves
     CONSTRUCTION_POLE_DOOR,              // 1 stage: 3 poles + 1 cordage
     CONSTRUCTION_PLANK_DOOR,             // 1 stage: 3 planks
+    // Mud/cob construction recipes
+    CONSTRUCTION_MUD_WALL,               // 1 stage: 4 mud
+    CONSTRUCTION_COB_WALL,               // 1 stage: 3 cob
+    CONSTRUCTION_MUD_FLOOR,              // 1 stage: 2 mud
+    CONSTRUCTION_WORKSHOP_MUD_MIXER,     // 1 stage: 4 sticks
     CONSTRUCTION_RECIPE_COUNT,
 } ConstructionRecipeIndex;
 

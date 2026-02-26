@@ -28,6 +28,9 @@ typedef enum {
     MAT_GRAVEL,        // Gravel soil
     MAT_SAND,          // Sand soil
     MAT_PEAT,          // Peat soil
+    // Crafted building materials
+    MAT_MUD,           // Mud (dirt + clay + water)
+    MAT_COB,           // Cob (mud + dried grass)
     // Special materials
     MAT_BEDROCK,       // Unmineable bedrock
     MAT_COUNT

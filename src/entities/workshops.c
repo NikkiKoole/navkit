@@ -133,6 +133,13 @@ Recipe tailorRecipes[] = {
 };
 int tailorRecipeCount = sizeof(tailorRecipes) / sizeof(tailorRecipes[0]);
 
+// Mud Mixer recipes: mix dirt+clay into mud, combine mud+dried grass into cob
+Recipe mudMixerRecipes[] = {
+    { "Mix Mud",   ITEM_DIRT, 2, ITEM_CLAY, 1, ITEM_NONE, 0, ITEM_MUD, 3, ITEM_NONE, 0, 3.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    { "Make Cob",  ITEM_MUD, 2, ITEM_DRIED_GRASS, 1, ITEM_NONE, 0, ITEM_COB, 2, ITEM_NONE, 0, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+};
+int mudMixerRecipeCount = sizeof(mudMixerRecipes) / sizeof(mudMixerRecipes[0]);
+
 Recipe carpenterRecipes[] = {
     { "Craft Plank Bed",   ITEM_PLANKS, 4, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_PLANK_BED, 1, ITEM_NONE, 0, 8.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Craft Chair",       ITEM_PLANKS, 2, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_CHAIR, 1,     ITEM_NONE, 0, 5.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
@@ -328,6 +335,17 @@ const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
         .template = "XO",
         .recipes = tailorRecipes,
         .recipeCount = sizeof(tailorRecipes) / sizeof(tailorRecipes[0]),
+        .passive = false
+    },
+    [WORKSHOP_MUD_MIXER] = {
+        .type = WORKSHOP_MUD_MIXER,
+        .name = "MUD_MIXER",
+        .displayName = "Mud Mixer",
+        .width = 2,
+        .height = 1,
+        .template = "XO",
+        .recipes = mudMixerRecipes,
+        .recipeCount = sizeof(mudMixerRecipes) / sizeof(mudMixerRecipes[0]),
         .passive = false
     },
 };
