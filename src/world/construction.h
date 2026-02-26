@@ -91,8 +91,10 @@ typedef enum {
     CONSTRUCTION_STICK_WALL,             // 1 stage: 4 sticks + 2 cordage
     CONSTRUCTION_LEAF_ROOF,              // 1 stage: 2 poles + 3 leaves (BUILD_FLOOR)
     CONSTRUCTION_BARK_ROOF,              // 1 stage: 2 poles + 2 bark (BUILD_FLOOR)
+    CONSTRUCTION_POLE_WALL,                  // 1 stage: 4 poles + 1 cordage
     // Door construction recipes
     CONSTRUCTION_LEAF_DOOR,              // 1 stage: 2 poles + 2 leaves
+    CONSTRUCTION_POLE_DOOR,              // 1 stage: 3 poles + 1 cordage
     CONSTRUCTION_PLANK_DOOR,             // 1 stage: 3 planks
     CONSTRUCTION_RECIPE_COUNT,
 } ConstructionRecipeIndex;
