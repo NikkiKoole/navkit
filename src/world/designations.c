@@ -1625,6 +1625,92 @@ int CountGatherGrassDesignations(void) {
 }
 
 // =============================================================================
+// Gather reeds designations
+// =============================================================================
+
+// Find the z-level that has reeds for a given walking position
+static int FindReedsZ(int x, int y, int z) {
+    if (GetVegetation(x, y, z) == VEG_REEDS) return z;
+    if (z > 0 && GetVegetation(x, y, z - 1) == VEG_REEDS) return z - 1;
+    return -1;
+}
+
+bool DesignateGatherReeds(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    if (!IsExplored(x, y, z)) return false;
+
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        return false;
+    }
+
+    // Must have reeds below (or at) this position
+    if (FindReedsZ(x, y, z) < 0) {
+        return false;
+    }
+
+    // Must be walkable (so movers can reach)
+    if (!IsCellWalkableAt(z, y, x)) {
+        return false;
+    }
+
+    designations[z][y][x].type = DESIGNATION_GATHER_REEDS;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_GATHER_REEDS);
+    EventLog("Designated GATHER_REEDS at (%d,%d,z%d)", x, y, z);
+
+    return true;
+}
+
+bool HasGatherReedsDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    return designations[z][y][x].type == DESIGNATION_GATHER_REEDS;
+}
+
+void CompleteGatherReedsDesignation(int x, int y, int z, int moverIdx) {
+    (void)moverIdx;
+
+    // Find where the reeds actually are
+    int vegZ = FindReedsZ(x, y, z);
+    if (vegZ >= 0) {
+        SetVegetation(x, y, vegZ, VEG_NONE);
+        SET_CELL_SURFACE(x, y, vegZ, SURFACE_TRAMPLED);
+        wearGrid[vegZ][y][x] = wearNormalToTrampled;
+    }
+
+    // Spawn reeds item at the walking position
+    float spawnX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+    float spawnY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+    SpawnItem(spawnX, spawnY, (float)z, ITEM_REEDS);
+
+    // Clear designation
+    designations[z][y][x].type = DESIGNATION_NONE;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount--;
+    InvalidateDesignationCache(DESIGNATION_GATHER_REEDS);
+}
+
+int CountGatherReedsDesignations(void) {
+    int count = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type == DESIGNATION_GATHER_REEDS) {
+                    count++;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// =============================================================================
 // Gather tree designations
 // =============================================================================
 

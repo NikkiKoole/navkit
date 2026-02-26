@@ -2467,7 +2467,14 @@ void GenerateHillsSoilsWater(void) {
             if (surfaceMat == MAT_DIRT && !nearWater) {
                 SetVegetation(x, y, height, VEG_GRASS_TALLER);
             } else if (surfaceMat == MAT_DIRT) {
-                SetVegetation(x, y, height, VEG_GRASS);
+                // Check if directly adjacent to water (cardinal neighbors)
+                bool adjacentWater = false;
+                int idx2 = y * gridWidth + x;
+                if (x > 0 && waterMask[idx2 - 1]) adjacentWater = true;
+                if (x < gridWidth - 1 && waterMask[idx2 + 1]) adjacentWater = true;
+                if (y > 0 && waterMask[idx2 - gridWidth]) adjacentWater = true;
+                if (y < gridHeight - 1 && waterMask[idx2 + gridWidth]) adjacentWater = true;
+                SetVegetation(x, y, height, adjacentWater ? VEG_REEDS : VEG_GRASS);
             }
 
             float clayN = OctavePerlin(x * clayScale, y * clayScale, 3, 0.5f);

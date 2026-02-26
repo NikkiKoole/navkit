@@ -70,6 +70,8 @@ const StockpileFilterDef STOCKPILE_FILTERS[] = {
     {ITEM_SAPLING,      FILTER_CAT_PLANT,     "Saplings",     GREEN},
     {ITEM_BERRIES,      FILTER_CAT_PLANT,     "Berries",      PURPLE},
     {ITEM_DRIED_BERRIES,FILTER_CAT_PLANT,     "Dried Berries",PURPLE},
+    {ITEM_REEDS,        FILTER_CAT_PLANT,     "Reeds",        GREEN},
+    {ITEM_REED_MAT,     FILTER_CAT_PLANT,     "Reed Mat",     GREEN},
     // Earth
     {ITEM_DIRT,         FILTER_CAT_EARTH,     "Dirt",         BROWN},
     {ITEM_CLAY,         FILTER_CAT_EARTH,     "Clay",         BROWN},

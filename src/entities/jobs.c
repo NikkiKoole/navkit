@@ -131,6 +131,9 @@ static int plantSaplingCacheCount = 0;
 static OnTileDesignationEntry gatherGrassCache[MAX_DESIGNATION_CACHE];
 static int gatherGrassCacheCount = 0;
 
+static OnTileDesignationEntry gatherReedsCache[MAX_DESIGNATION_CACHE];
+static int gatherReedsCacheCount = 0;
+
 static AdjacentDesignationEntry gatherTreeCache[MAX_DESIGNATION_CACHE];
 static int gatherTreeCacheCount = 0;
 
@@ -161,6 +164,7 @@ static bool chopFelledCacheDirty = true;
 static bool gatherSaplingCacheDirty = true;
 static bool plantSaplingCacheDirty = true;
 static bool gatherGrassCacheDirty = true;
+static bool gatherReedsCacheDirty = true;
 static bool gatherTreeCacheDirty = true;
 static bool cleanCacheDirty = true;
 static bool harvestBerryCacheDirty = true;
@@ -179,6 +183,7 @@ static void RebuildChopFelledDesignationCache(void);
 static void RebuildGatherSaplingDesignationCache(void);
 static void RebuildPlantSaplingDesignationCache(void);
 static void RebuildGatherGrassDesignationCache(void);
+static void RebuildGatherReedsDesignationCache(void);
 static void RebuildGatherTreeDesignationCache(void);
 static void RebuildCleanDesignationCache(void);
 static void RebuildHarvestBerryDesignationCache(void);
@@ -229,6 +234,8 @@ static DesignationJobSpec designationSpecs[] = {
      plantSaplingCache, &plantSaplingCacheCount, &plantSaplingCacheDirty},
     {DESIGNATION_GATHER_GRASS, JOBTYPE_GATHER_GRASS, RebuildGatherGrassDesignationCache, WorkGiver_GatherGrass,
      gatherGrassCache, &gatherGrassCacheCount, &gatherGrassCacheDirty},
+    {DESIGNATION_GATHER_REEDS, JOBTYPE_GATHER_REEDS, RebuildGatherReedsDesignationCache, WorkGiver_GatherReeds,
+     gatherReedsCache, &gatherReedsCacheCount, &gatherReedsCacheDirty},
     {DESIGNATION_GATHER_TREE, JOBTYPE_GATHER_TREE, RebuildGatherTreeDesignationCache, WorkGiver_GatherTree,
      gatherTreeCache, &gatherTreeCacheCount, &gatherTreeCacheDirty},
     {DESIGNATION_CLEAN, JOBTYPE_CLEAN, RebuildCleanDesignationCache, WorkGiver_CleanDesignation,
@@ -368,6 +375,12 @@ static void RebuildGatherGrassDesignationCache(void) {
     if (!gatherGrassCacheDirty) return;
     RebuildOnTileDesignationCache(DESIGNATION_GATHER_GRASS, gatherGrassCache, &gatherGrassCacheCount, true);
     gatherGrassCacheDirty = false;
+}
+
+static void RebuildGatherReedsDesignationCache(void) {
+    if (!gatherReedsCacheDirty) return;
+    RebuildOnTileDesignationCache(DESIGNATION_GATHER_REEDS, gatherReedsCache, &gatherReedsCacheCount, true);
+    gatherReedsCacheDirty = false;
 }
 
 static void RebuildGatherTreeDesignationCache(void) {
@@ -1189,6 +1202,21 @@ JobRunResult RunJob_GatherGrass(Job* job, void* moverPtr, float dt) {
     if (job->step == STEP_WORKING) {
         JobRunResult r = RunWorkProgress(job, d, mover, dt, GATHER_GRASS_WORK_TIME, false, 1.0f);
         if (r == JOBRUN_DONE) CompleteGatherGrassDesignation(tx, ty, tz, job->assignedMover);
+        return r;
+    }
+    return JOBRUN_FAIL;
+}
+
+// Gather reeds job driver: walk to reeds cell, work, spawn item
+JobRunResult RunJob_GatherReeds(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || d->type != DESIGNATION_GATHER_REEDS) return JOBRUN_FAIL;
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToTileStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, GATHER_REEDS_WORK_TIME, false, 1.0f);
+        if (r == JOBRUN_DONE) CompleteGatherReedsDesignation(tx, ty, tz, job->assignedMover);
         return r;
     }
     return JOBRUN_FAIL;
@@ -3237,10 +3265,11 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_EQUIP_CLOTHING] = RunJob_EquipClothing,
     [JOBTYPE_FILL_WATER_POT] = RunJob_FillWaterPot,
     [JOBTYPE_WATER_CROP] = RunJob_WaterCrop,
+    [JOBTYPE_GATHER_REEDS] = RunJob_GatherReeds,
 };
 
 // Compile-time check: ensure jobDrivers[] covers all job types
-_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_WATER_CROP,
+_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_GATHER_REEDS,
                "jobDrivers[] must have an entry for every JobType");
 
 // Tick function - runs job drivers for active jobs
@@ -5913,6 +5942,78 @@ int WorkGiver_GatherGrass(int moverIdx) {
 
     // Create job
     int jobId = CreateJob(JOBTYPE_GATHER_GRASS);
+    if (jobId < 0) return -1;
+
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetMineX = bestDesigX;
+    job->targetMineY = bestDesigY;
+    job->targetMineZ = bestDesigZ;
+    job->step = STEP_MOVING_TO_WORK;
+    job->progress = 0.0f;
+
+    // Reserve designation
+    Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+    d->assignedMover = moverIdx;
+
+    // Update mover
+    m->currentJobId = jobId;
+    m->goal = (Point){ bestDesigX, bestDesigY, bestDesigZ };
+    m->needsRepath = true;
+
+    RemoveMoverFromIdleList(moverIdx);
+
+    return jobId;
+}
+
+// WorkGiver_GatherReeds: Find a reed gathering designation to work on
+int WorkGiver_GatherReeds(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+
+    if (!m->capabilities.canPlant) return -1;
+
+    // Find nearest unassigned gather reeds designation from cache
+    int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
+    float bestDistSq = 1e30f;
+
+    for (int i = 0; i < gatherReedsCacheCount; i++) {
+        OnTileDesignationEntry* entry = &gatherReedsCache[i];
+
+        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+        if (!d || d->type != DESIGNATION_GATHER_REEDS || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
+
+        float tileX = entry->x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float tileY = entry->y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float distX = tileX - m->x;
+        float distY = tileY - m->y;
+        float distSq = distX * distX + distY * distY;
+
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestDesigX = entry->x;
+            bestDesigY = entry->y;
+            bestDesigZ = entry->z;
+        }
+    }
+
+    if (bestDesigX < 0) {
+        return -1;
+    }
+
+    // Check reachability
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    Point desigCell = { bestDesigX, bestDesigY, bestDesigZ };
+    Point tempPath[MAX_PATH];
+    int tempLen = FindPath(moverPathAlgorithm, moverCell, desigCell, tempPath, MAX_PATH);
+    if (tempLen <= 0) {
+        Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+        if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        return -1;
+    }
+
+    // Create job
+    int jobId = CreateJob(JOBTYPE_GATHER_REEDS);
     if (jobId < 0) return -1;
 
     Job* job = GetJob(jobId);

@@ -89,6 +89,8 @@ Recipe ropeMakerRecipes[] = {
     { "Twist Grass",   ITEM_DRIED_GRASS, 4,  ITEM_NONE, 0, ITEM_NONE, 0, ITEM_SHORT_STRING, 2, ITEM_NONE, 0, 1.2f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Braid Cordage", ITEM_SHORT_STRING, 3, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_CORDAGE, 1,     ITEM_NONE, 0, 1.6f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Weave Basket",  ITEM_CORDAGE, 2,      ITEM_NONE, 0, ITEM_NONE, 0, ITEM_BASKET, 1,      ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    { "Weave Reed Mat",    ITEM_REEDS, 4,    ITEM_NONE, 0, ITEM_NONE, 0, ITEM_REED_MAT, 1,  ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    { "Weave Reed Basket", ITEM_REEDS, 6,    ITEM_CORDAGE, 1, ITEM_NONE, 0, ITEM_BASKET, 1,  ITEM_NONE, 0, 2.5f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
 };
 int ropeMakerRecipeCount = sizeof(ropeMakerRecipes) / sizeof(ropeMakerRecipes[0]);
 

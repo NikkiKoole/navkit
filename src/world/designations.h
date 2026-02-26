@@ -20,6 +20,7 @@ typedef enum {
     DESIGNATION_GATHER_SAPLING, // Gather a sapling cell into an item
     DESIGNATION_PLANT_SAPLING,  // Plant a sapling item at this location
     DESIGNATION_GATHER_GRASS,   // Gather tall grass into an item
+    DESIGNATION_GATHER_REEDS,   // Gather reeds into an item
     DESIGNATION_GATHER_TREE,    // Gather materials from living tree (sticks, leaves)
     DESIGNATION_CLEAN,          // Clean a dirty floor tile
     DESIGNATION_HARVEST_BERRY,  // Harvest ripe berry bush
@@ -43,6 +44,7 @@ static inline const char* DesignationTypeName(int type) {
         [DESIGNATION_GATHER_SAPLING] = "GATHER_SAPLING",
         [DESIGNATION_PLANT_SAPLING]  = "PLANT_SAPLING",
         [DESIGNATION_GATHER_GRASS]   = "GATHER_GRASS",
+        [DESIGNATION_GATHER_REEDS]   = "GATHER_REEDS",
         [DESIGNATION_GATHER_TREE]    = "GATHER_TREE",
         [DESIGNATION_CLEAN]          = "CLEAN",
         [DESIGNATION_HARVEST_BERRY]  = "HARVEST_BERRY",
@@ -74,6 +76,7 @@ typedef struct {
 #define GATHER_SAPLING_WORK_TIME 0.4f // Quick to dig up a sapling
 #define PLANT_SAPLING_WORK_TIME 0.6f  // Planting takes a bit longer
 #define GATHER_GRASS_WORK_TIME 0.4f   // Quick to gather grass
+#define GATHER_REEDS_WORK_TIME 0.5f   // Gathering reeds takes slightly longer
 #define GATHER_TREE_WORK_TIME 0.8f   // Gather materials from living tree
 #define CLEAN_WORK_TIME 1.2f          // Cleaning a dirty floor
 #define HARVEST_BERRY_WORK_TIME 0.4f  // Picking berries from bush
@@ -310,6 +313,22 @@ void CompleteGatherGrassDesignation(int x, int y, int z, int moverIdx);
 
 // Count active gather grass designations
 int CountGatherGrassDesignations(void);
+
+// =============================================================================
+// Gather reeds designation functions
+// =============================================================================
+
+// Designate a cell for reed gathering (checks VEG_REEDS below walking level)
+bool DesignateGatherReeds(int x, int y, int z);
+
+// Check if a cell has a gather reeds designation
+bool HasGatherReedsDesignation(int x, int y, int z);
+
+// Complete a gather reeds designation (called when work finishes)
+void CompleteGatherReedsDesignation(int x, int y, int z, int moverIdx);
+
+// Count active gather reeds designations
+int CountGatherReedsDesignations(void);
 
 // =============================================================================
 // Gather tree designation functions

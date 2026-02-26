@@ -956,6 +956,36 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = -1,
         .materialFromSlot = -1,
     },
+    [CONSTRUCTION_REED_ROOF] = {
+        .name = "Reed Roof",
+        .buildCategory = BUILD_FLOOR,
+        .stageCount = 2,
+        .stages = {
+            {   // Stage 0: Pole frame
+                .inputs = {{
+                    .alternatives = {{ .itemType = ITEM_POLES }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                }},
+                .inputCount = 1,
+                .buildTime = 1.5f,
+            },
+            {   // Stage 1: Reed thatching
+                .inputs = {{
+                    .alternatives = {{ .itemType = ITEM_REEDS }},
+                    .altCount = 1,
+                    .count = 4,
+                    .anyBuildingMat = false,
+                }},
+                .inputCount = 1,
+                .buildTime = 2.0f,
+            },
+        },
+        .resultMaterial = MAT_DIRT,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
 };
 
 const ConstructionRecipe* GetConstructionRecipe(int recipeIndex) {

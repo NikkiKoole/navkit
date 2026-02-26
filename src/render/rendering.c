@@ -722,16 +722,19 @@ static void DrawGrassOverlay(void) {
                 VegetationType veg = GetVegetation(x, y, zDepth);
                 int surface = GET_CELL_SURFACE(x, y, zDepth);
                 int sprite;
-                if (veg >= VEG_GRASS_TALLER)     sprite = SPRITE_grass_taller;
-                else if (veg >= VEG_GRASS_TALL)  sprite = SPRITE_grass_tall;
-                else if (veg >= VEG_GRASS_SHORT) sprite = SPRITE_grass;
+                bool isReeds = (veg == VEG_REEDS);
+                if (isReeds)                         sprite = SPRITE_grass_taller;
+                else if (veg >= VEG_GRASS_TALLER)    sprite = SPRITE_grass_taller;
+                else if (veg >= VEG_GRASS_TALL)      sprite = SPRITE_grass_tall;
+                else if (veg >= VEG_GRASS_SHORT)     sprite = SPRITE_grass;
                 else if (surface == SURFACE_TRAMPLED) sprite = SPRITE_grass_trampled;
                 else continue;
-                
+
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 Rectangle src = SpriteGetRect(sprite);
                 // Grass is on top of solid, lit from the air above (zDepth+1)
                 Color tint = MultiplyColor(depthTint, GetLightColor(x, y, zDepth + 1, skyColor));
+                if (isReeds) tint = MultiplyColor(tint, (Color){120, 200, 180, 255});
                 DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
             }
         }
@@ -754,15 +757,18 @@ static void DrawGrassOverlay(void) {
                 VegetationType veg = GetVegetation(x, y, zBelow);
                 int surface = GET_CELL_SURFACE(x, y, zBelow);
                 int sprite;
-                if (veg >= VEG_GRASS_TALLER)     sprite = SPRITE_grass_taller;
-                else if (veg >= VEG_GRASS_TALL)  sprite = SPRITE_grass_tall;
-                else if (veg >= VEG_GRASS_SHORT) sprite = SPRITE_grass;
+                bool isReeds2 = (veg == VEG_REEDS);
+                if (isReeds2)                        sprite = SPRITE_grass_taller;
+                else if (veg >= VEG_GRASS_TALLER)    sprite = SPRITE_grass_taller;
+                else if (veg >= VEG_GRASS_TALL)      sprite = SPRITE_grass_tall;
+                else if (veg >= VEG_GRASS_SHORT)     sprite = SPRITE_grass;
                 else if (surface == SURFACE_TRAMPLED) sprite = SPRITE_grass_trampled;
                 else continue;
-                
+
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 Rectangle src = SpriteGetRect(sprite);
                 Color lightTint = GetLightColor(x, y, z, skyColor);
+                if (isReeds2) lightTint = MultiplyColor(lightTint, (Color){120, 200, 180, 255});
                 DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, lightTint);
             }
         }

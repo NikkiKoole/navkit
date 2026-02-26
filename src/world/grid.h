@@ -93,6 +93,7 @@ typedef enum {
     VEG_GRASS,          // Normal grass
     VEG_GRASS_TALL,     // Tall grass (undisturbed)
     VEG_GRASS_TALLER,   // Very tall grass (harvestable)
+    VEG_REEDS,          // Reeds (waterside, harvestable)
 } VegetationType;
 
 extern uint8_t vegetationGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];

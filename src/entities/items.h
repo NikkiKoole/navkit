@@ -74,6 +74,8 @@ typedef enum {
     ITEM_BERRY_JUICE,    // Berry juice (good hydration, spoils)
     ITEM_MUD,            // Mud (dirt + clay, wet building material)
     ITEM_COB,            // Cob (mud + dried grass, strong building material)
+    ITEM_REEDS,          // Harvested reeds (waterside plant)
+    ITEM_REED_MAT,       // Woven reed mat (building material)
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 

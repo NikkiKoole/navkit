@@ -728,6 +728,33 @@ static void ExecuteCancelGatherGrass(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecuteDesignateGatherReeds(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (DesignateGatherReeds(dx, dy, z)) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Designated %d reed cell%s for gathering", count, count > 1 ? "s" : ""), GREEN);
+    }
+}
+
+static void ExecuteCancelGatherReeds(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (HasGatherReedsDesignation(dx, dy, z)) {
+                CancelDesignation(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Cancelled %d gather reeds designation%s", count, count > 1 ? "s" : ""), GREEN);
+    }
+}
+
 static void ExecuteDesignateGatherTree(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -3051,6 +3078,10 @@ void HandleInput(void) {
             case ACTION_WORK_GATHER_GRASS:
                 if (leftClick) ExecuteDesignateGatherGrass(x1, y1, x2, y2, z);
                 else ExecuteCancelGatherGrass(x1, y1, x2, y2, z);
+                break;
+            case ACTION_WORK_GATHER_REEDS:
+                if (leftClick) ExecuteDesignateGatherReeds(x1, y1, x2, y2, z);
+                else ExecuteCancelGatherReeds(x1, y1, x2, y2, z);
                 break;
             case ACTION_WORK_GATHER_TREE:
                 if (leftClick) ExecuteDesignateGatherTree(x1, y1, x2, y2, z);

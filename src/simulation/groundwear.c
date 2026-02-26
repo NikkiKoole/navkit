@@ -200,7 +200,21 @@ void UpdateGroundWear(void) {
                     // Update surface overlay based on new wear
                     UpdateSurfaceFromWear(x, y, z);
                 }
-                
+
+                // Reed regrowth: bare soil adjacent to water regrows reeds
+                if (isDirt && GetVegetation(x, y, z) == VEG_NONE && wearGrid[z][y][x] == 0) {
+                    bool hasAdjacentWater = false;
+                    if (z + 1 < gridDepth) {
+                        if (x > 0 && GetWaterLevel(x - 1, y, z + 1) > 0) hasAdjacentWater = true;
+                        if (x < gridWidth - 1 && GetWaterLevel(x + 1, y, z + 1) > 0) hasAdjacentWater = true;
+                        if (y > 0 && GetWaterLevel(x, y - 1, z + 1) > 0) hasAdjacentWater = true;
+                        if (y < gridHeight - 1 && GetWaterLevel(x, y + 1, z + 1) > 0) hasAdjacentWater = true;
+                    }
+                    if (hasAdjacentWater) {
+                        SetVegetation(x, y, z, VEG_REEDS);
+                    }
+                }
+
                 // Sapling regrowth: spawn sapling on tall grass with some chance
                 if (saplingRegrowthEnabled && wearGrid[z][y][x] == 0) {
                     // For dirt, require fully recovered grass; for other soils, just require no wear

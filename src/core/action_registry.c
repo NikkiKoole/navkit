@@ -962,6 +962,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canErase = true
     },
     {
+        .action = ACTION_WORK_GATHER_REEDS,
+        .name = "GATHER REEDS",
+        .barDisplayText = "gather rEeds",
+        .barText = "L-click designate  R-click cancel  [ESC]Back",
+        .barKey = 'e',
+        .barUnderlinePos = 8,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_HARVEST,
+        .parentAction = ACTION_NONE,
+        .canDrag = true,
+        .canErase = true
+    },
+    {
         .action = ACTION_WORK_GATHER_SAPLING,
         .name = "GATHER SAPLING",
         .barDisplayText = "gather Sapling",
