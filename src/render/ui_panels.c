@@ -219,6 +219,37 @@ static void StartNewGame(void) {
         RevealAroundPoint(spawnX, spawnY, spawnZ, balance.spawnVisionRadius);
     }
 
+    // Spawn starting supplies near the mover
+    if (moverCount > 0) {
+        Mover* m = &movers[0];
+        float sx = m->x, sy = m->y, sz = m->z;
+
+        // 5 berries (immediate food)
+        for (int i = 0; i < 5; i++) {
+            SpawnItem(sx + CELL_SIZE * (i % 3), sy + CELL_SIZE, sz, ITEM_BERRIES);
+        }
+
+        // 5 sticks (basic crafting material)
+        for (int i = 0; i < 5; i++) {
+            SpawnItem(sx + CELL_SIZE * (i % 3), sy + CELL_SIZE * 2, sz, ITEM_STICKS);
+        }
+
+        // 1 clay pot filled with water
+        int potIdx = SpawnItem(sx + CELL_SIZE * 3, sy + CELL_SIZE, sz, ITEM_CLAY_POT);
+        if (potIdx >= 0) {
+            int fillCount = 5; // clay pot maxContents
+            for (int i = 0; i < fillCount; i++) {
+                int waterIdx = SpawnItem(sx, sy, sz, ITEM_WATER);
+                if (waterIdx >= 0) {
+                    items[waterIdx].state = ITEM_IN_CONTAINER;
+                    items[waterIdx].containedIn = potIdx;
+                    items[potIdx].contentCount++;
+                    items[potIdx].contentTypeMask |= (1u << (ITEM_WATER & 31));
+                }
+            }
+        }
+    }
+
     // Center camera on the mover and follow it
     if (moverCount > 0) {
         Mover* m = &movers[0];
