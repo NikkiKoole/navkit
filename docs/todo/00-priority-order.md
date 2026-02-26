@@ -23,6 +23,7 @@
 - **06b-farming-crops-processing.md** — 3 crops (wheat/lentils/flax), growth system with 5 modifiers, planting+harvesting jobs, wild plants in worldgen, quern workshop, cooking recipes. 9 new items, seed stack splitting (save v77, 35 farming tests)
 - **07-clothing-and-textiles.md** — Loom + tailor workshops, 7 clothing items (grass/hide/cloth/linen), equip system, temperature integration, upgrade logic (save v78, 30+ tests)
 - **08-thirst-and-water.md** — Thirst need, 3 liquid items (water/tea/juice), drink from pots + natural water fallback, fill water pot job, beverage recipes at campfire/hearth (save v79, 43 tests)
+- **09-loop-closers.md** — Glass (sand→kiln→window), lye (ash→hearth), mortar (lye+sand→stonecutter→wall). Mud/cob crafting, reeds. CELL_WINDOW transmits light. (save v80-v82, 14+18+15 tests)
 
 ## Reference Docs (not actionable tasks)
 
@@ -73,7 +74,7 @@
 
 | # | Doc | Effort | Deps | What It Does |
 |---|-----|--------|------|-------------|
-| 09a | `09-loop-closers.md` | ~2 sessions | 06 | Glass, compost, ash/lye, scaffolding. Closes open material loops. |
+| 09a | `09-loop-closers.md` | ~2 sessions | 06 | ✅ Done. Glass (sand→kiln→window), lye (ash→hearth), mortar (lye+sand→stonecutter→wall). CELL_WINDOW transmits light. Save v80-v82. |
 | 09b | `09-onboarding-and-progression.md` | ~1-2 sessions | 07, 08 | Starting scenarios, progressive need unlocks, difficulty, visual priority. Reduces early-game overwhelm. |
 | 10 | `10-personality-and-skills.md` | ~3 sessions | All | Names, skill progression (8 types), moods. The "character" layer. |
 | 11 | `11-stockpile-filter-redesign.md` | ~1 session | More items | Hierarchical filter UI. Only matters with many more item types. |
@@ -135,7 +136,10 @@ Session 14:     Clothing & textiles (07)                                        
 Session 15:     Thirst & water (08)                                             ✅ DONE
                 → Thirst need, 3 liquids, drink from pots/nature, fill pot job, beverages
 
-Session 16+:    Onboarding → loop closers → personality
+Session 16:     Loop closers (09a)                                                ✅ DONE
+                → Mud/cob crafting, reeds, glass/lye/mortar. CELL_WINDOW. Save v80-v82.
+
+Session 17+:    Onboarding → personality
 ```
 
 ## The Day-1 Survival Arc (after sessions 1-6)

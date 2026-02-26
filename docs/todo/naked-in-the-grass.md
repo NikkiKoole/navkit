@@ -120,53 +120,76 @@ The game has an excellent *industrial* simulation. What it's missing is *life* �
 
 ## Addendum: What's Changed Since This Was Written
 
-Several gaps identified above have since been addressed:
+> Updated 2026-02-26. Nearly all original gaps have been addressed.
 
-### Weather & Seasons (Chapters 4 & 6) — DONE
-- **Full weather system**: rain, heavy rain, thunderstorms, snow, mist, cloud shadows
-- **Four seasons** with configurable day length, seasonal temperature curves, dawn/dusk shifts
-- **Wind** that biases fire/smoke spread and accelerates drying
-- **Snow** accumulates on exposed cells, melts into mud, extinguishes fire
-- **Mud** from rain/snowmelt with movement penalties
-- Rain now correctly stops at roofs and constructed floors
-- **Fire/smoke wetness interaction**: wet cells suppress fire spread, rain extinguishes exposed fires, wet fuel smolders with extra smoke
+### Chapter 1 Gaps — Basic Needs — MOSTLY DONE
 
-### Animals (Chapters 2 & 6) — IN PROGRESS
-- **Three behavior types**: simple grazers, steering grazers (with flocking), and predators
-- **Context steering** with wall avoidance, separation, predator fleeing, herd cohesion
-- **Predator-prey dynamics**: wolves hunt grazers, grazers panic and flee
-- **World interaction**: grazers consume vegetation, all animals trample ground
-- Up to 256 animals, saved/loaded, rendered with tooltips
-- Still missing: species diversity, animal sprites, hunting, taming, livestock production
+- **Hunger** — DONE. Hunger (0-1), starvation timer, starvation death. Auto-eat when hungry.
+- **Thirst** — DONE. Thirst (0-1), dehydration timer/death. Drink from clay pots or natural water. 3 beverages (water, herbal tea, berry juice).
+- **Body temperature** — DONE. bodyTemp on movers, hypothermia timer/death. Clothing provides insulation. Shelter + fire warm you up.
+- **Fatigue/sleep** — DONE. Energy (0-1), night penalty, freetime states. Beds (leaf pile, plank bed), chairs. Movers seek rest autonomously.
+- **Health/injury** — NOT DONE. No HP, bleeding, or illness.
 
-### Lighting (Chapter 6) — DONE
-- **Sky light** with column scanning and BFS spread
-- **Block light** from torches (5 color presets) and active fires
-- Day/night cycle affects ambient light levels
+### Chapter 2 Gaps — Gathering — DONE
 
-### Bushes (Chapter 6) — NEW
-- Walkable ground vegetation cell type (CELL_BUSH)
+- **Foraging for food** — DONE. Berries from bushes, roots from digging soil, grass harvesting.
+- **Hunting** — DONE. Hunt designation (W→U), chase & kill job driver, butchering (carcass → raw meat + hide). Animal respawn from map edges.
+- **Water collection** — DONE. Fill water pot job, drink from pots, natural water fallback.
+- **Flint/sharp stones** — DONE. Sharp stone (knapping at stone walls, cutting:1), then digging stick, stone axe, stone pick, stone hammer. 5 quality types, 3 levels, speed scaling.
 
-### Containers (Chapters 3 & 5) — DONE
-- **Three container types**: ITEM_BASKET (15 stacks), ITEM_CHEST (20 stacks), ITEM_CLAY_POT (5 stacks)
-- **Stockpile integration**: containers install as slot storage, auto-route items into containers
-- **Container-aware search**: crafting and hauling jobs find items inside containers
-- **Container hauling**: full weight calculation, contents move with container
+### Chapter 3 Gaps — Crafting — DONE
 
-### Hunger & Foraging (Chapters 1 & 2) — PARTIAL
-- **Hunger system**: Mover.hunger (0-1), drain rate, speed penalty when starving, balance-tunable thresholds
-- **Berry foraging**: DESIGNATION_HARVEST_BERRY, berry bushes via plant entity system
-- **Food items**: ITEM_BERRIES (0.3 nutrition), ITEM_DRIED_BERRIES (0.25 nutrition), IF_EDIBLE flag
-- Still missing: cooking, farming, hunting/butchering, thirst/drinking
+- **Workshops** — 17 types: stonecutter, sawmill, kiln, charcoal pit, hearth, drying rack, rope maker, carpenter, campfire, ground fire, butcher, compost pile, quern, loom, tanning rack, tailor, mud mixer.
+- **Tools** — DONE. 5 quality types (cutting, hammering, digging, sawing, fine work), 4 tool items. Tools equipped on movers, speed bonus scales with quality.
+- **Clothing** — DONE. Loom + tailor workshops. 4 clothing items (grass tunic, flax tunic, leather vest, leather coat). Equip system with temperature integration.
+- **Containers** — DONE. Basket (15), clay pot (5), chest (20). Stockpile integration, container-aware search, container hauling with weight.
+- **Furniture** — DONE. Plank bed, leaf pile, grass pile, chair. Construction recipes, occupant tracking.
+- **Doors** — DONE. CELL_DOOR, 3 door recipes (leaf, pole, plank). Blocks fluids/light, walkable.
 
-### Fatigue & Furniture (Chapters 1 & 5) — PARTIAL
-- **Energy system**: Mover.energy (0-1), drain rates for working/idle, night penalty, balance-tunable
-- **Furniture**: FURNITURE_PLANK_BED, FURNITURE_LEAF_PILE, FURNITURE_CHAIR with occupant tracking
-- **Freetime states**: movers seek rest autonomously when energy drops
-- Still missing: tables, shelves, full sleep/wake cycle gameplay
+### Chapter 4 Gaps — Building — MOSTLY DONE
 
-### Workshops (Chapter 3) — 8 TYPES
-- Added **WORKSHOP_CARPENTER** since original doc (was 7, now 8)
+- **Roofs** — DONE (as floors). Leaf roof, bark roof, reed roof, thatch floor, plank floor, brick floor.
+- **Weather** — DONE. Rain, heavy rain, thunderstorms, snow, mist, wind, cloud shadows. Four seasons with temperature curves.
+- **Windows** — DONE. CELL_WINDOW transmits sky light. Glass from sand at kiln.
+- **Doors** — DONE. 3 recipes, blocks fluids/light.
+- **Construction** — 16+ wall/floor/furniture recipes. Mud wall, cob wall, mortar wall, glass window, dry stone, wattle & daub, plank, log, brick, pole, leaf, stick walls. Multi-stage construction with material delivery.
+- **Stairs** — NOT DONE. Still ladders only.
+
+### Chapter 5 Gaps — The Colony — PARTIAL
+
+- **Equipment** — DONE. Movers equip tools (speed bonus) and clothing (temperature protection). Auto-upgrade to better gear.
+- **Personality/moods** — NOT DONE. Planned as feature 10.
+- **Skill progression** — NOT DONE. Planned as feature 10.
+- **Social system** — NOT DONE.
+- **Scheduling** — NOT DONE.
+- **Recruitment** — NOT DONE.
+
+### Chapter 6 Gaps — The World — MOSTLY DONE
+
+- **Creatures** — DONE. 3 behavior types (simple grazers, steering grazers with flocking, predators). Predator-prey dynamics, vegetation consumption, trampling. Hunt + butcher + cook chain. Animal respawn from map edges.
+- **Weather/seasons** — DONE. Full weather system, 4 seasons, wind, snow accumulation/melt, mud from rain.
+- **Lighting** — DONE. Sky light (column scan + BFS spread), block light (torches, fires). Day/night cycle. Windows transmit light.
+- **Threats** — PARTIAL. Predators attack movers. No raiders, no natural disasters.
+- **Biomes** — NOT DONE. Materials exist (sandstone, slate) but no worldgen variation.
+- **Map edges/trade** — NOT DONE. Animals spawn from edges, but no caravans or trading.
+
+### Wishlist Scorecard
+
+| # | Item | Status |
+|---|------|--------|
+| 1 | Food & hunger | DONE — Berries, roots, meat, bread, lentils, farming, cooking, spoilage |
+| 2 | Basic tools | DONE — Knapping, 4 tool items, 5 quality types, speed scaling |
+| 3 | Clothing | DONE — 4 garments, loom + tailor, temperature integration |
+| 4 | Doors | DONE — CELL_DOOR, 3 recipes |
+| 5 | Containers | DONE — 3 types, stockpile integration, container-aware hauling |
+| 6 | Furniture | DONE — Beds, chairs, piles |
+| 7 | Animals | DONE — 3 behavior types, hunting, butchering, respawn |
+| 8 | Seasons/weather | DONE — Full system |
+| 9 | Skill growth | NOT DONE — Planned (feature 10) |
+| 10 | Threats | PARTIAL — Predators only, no raiders |
+
+**8/10 fully done, 1 partial, 1 not started.**
 
 ### Remaining Big Gaps
-The core survival loop is partially in place (hunger, energy, foraging) but still missing: **thirst, health/HP, tools/knapping, clothing, doors, hunting/butchering, and skill progression**. These remain the highest-impact features for turning the simulation into a game.
+
+The core survival loop is complete: hunger, thirst, temperature, fatigue, foraging, hunting, farming, cooking, crafting, building, clothing, tools, containers. The missing pieces are the **"character" layer** (personality, skills, moods, social) and the **"external world" layer** (biomes, trade, raids, recruitment). These would add depth and replayability but the game is already playable as a survival colony sim.
