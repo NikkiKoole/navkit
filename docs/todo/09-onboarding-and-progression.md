@@ -304,6 +304,114 @@ These are triggered by game state (no food stockpiled → show food hint, no wat
 
 ---
 
+## Playtesting Scenarios (Feature Stress-Tests)
+
+*The existing scenarios above are player-facing difficulty options. These are developer playtesting scenarios designed to expose gaps in upcoming features (F10 personality/skills, F11 stockpile filters, F12 biomes). Each scenario puts pressure on a different system.*
+
+### "The Settlers" — Colony Management (tests F10: Personality & Skills)
+
+*A small group arrives with supplies. The survival scramble is over — now delegate.*
+
+| Aspect | Details |
+|--------|---------|
+| Movers | 4-5 |
+| Pre-built | Campfire, drying rack, rope maker |
+| Starting items | 10 berries, 2 water pots, 5 sticks, 3 cordage, 1 stone axe, 1 digging stick |
+| Spawn rules | Near river, flat terrain, trees nearby |
+| Needs | All active (survival basics are covered by supplies) |
+| Drain rates | 1.0x base |
+
+**Why this scenario**: With 4-5 movers, you immediately feel the absence of F10. All movers are identical — you can't tell them apart, can't specialize them, can't see who's good at what. You want to say "you mine, you build, you cook" but there's no skill system to make that meaningful. It also tests job prioritization with multiple workers competing for the same tasks.
+
+**What it exposes**:
+- No names on movers (who is who?)
+- No skill differentiation (everyone is equally good at everything)
+- No mood system (movers don't care about conditions)
+- Job contention (3 movers trying to haul the same item)
+- No scheduling (everyone works/sleeps at random times)
+
+### "The Village" — Mid-Game Systems (tests F11: Stockpile Filters + polish)
+
+*An established colony with infrastructure. Focus is on logistics, not survival.*
+
+| Aspect | Details |
+|--------|---------|
+| Movers | 6-8 |
+| Pre-built | Full shelter (walls, door, roof), fire pit, kiln, stonecutter, 2 sawmills, 3 stockpiles (food, materials, tools), farm plot (tilled, 2x2) |
+| Starting items | 20 berries, 4 water pots, 10 logs, 10 rocks, 20 sticks, 10 cordage, 5 dried grass, 2 stone axes, 1 stone pick, 1 stone hammer, seeds (wheat, lentils) |
+| Spawn rules | River valley, trees on both sides |
+| Needs | All active |
+| Drain rates | 0.8x base |
+
+**Why this scenario**: Skips the bootstrap entirely. With 6-8 movers, many item types, and multiple workshops, this puts maximum pressure on the stockpile system. Are items ending up where they should? Is hauling efficient? Do movers eat/drink/sleep without micromanagement? The sheer item variety (food, tools, materials, clothing, containers) will make stockpile filter pain obvious.
+
+**What it exposes**:
+- Stockpile filter limitations (too many item types for current flat filter)
+- Hauling efficiency with many movers + many items
+- Whether workshops stay supplied when demand is high
+- Whether movers self-manage needs when work is available
+- Missing furniture/room quality (all rooms feel the same)
+
+### "The Expedition" — Biome Pressure (tests F12: Biomes)
+
+*A small party in a harsh biome. Different land, different strategy.*
+
+| Aspect | Details |
+|--------|---------|
+| Movers | 3 |
+| Pre-built | None |
+| Starting items | 5 berries, 1 water pot, 1 stone axe |
+| Spawn rules | Biome-dependent (see variants below) |
+| Needs | All active immediately |
+| Drain rates | 1.0x base |
+
+**Biome variants**:
+
+| Variant | Biome | Key challenge | Tests |
+|---------|-------|---------------|-------|
+| Boreal Expedition | Boreal / Taiga | Cold + short growing season | Temperature system pressure, peat as fuel, clothing urgency |
+| Desert Expedition | Desert | No water, extreme heat | Oasis-seeking gameplay, water scarcity, temperature extremes |
+| Beach Expedition | Beach / Coastal | No wood (palm only), sand farmland | Resource scarcity in new biome, palm tree as sole wood source |
+| Highland Expedition | Highland / Rocky | Steep terrain, thin soil | Building site scarcity, stone-heavy construction, vertical navigation |
+
+**Why this scenario**: Tests whether different biomes actually create different gameplay strategies, not just different colors. If you play the same way in boreal as temperate, the biome system isn't working. Each variant should force a fundamentally different opening: in desert you rush for the oasis, in boreal you rush for fire + clothing, on the beach you scavenge driftwood.
+
+**What it exposes**:
+- Whether biome temperature/climate creates real survival pressure
+- Whether soil/tree distribution forces different material strategies
+- Whether grass tinting + stone type actually make biomes feel distinct
+- Water scarcity in arid biomes (is the thirst system meaningful?)
+- Whether palm/cactus feel like real alternatives to oak/pine
+
+### Implementation Notes
+
+These are **dev-only scenarios** — not shipped to players, just used for internal testing. Implementation is simple:
+
+```c
+typedef enum {
+    // Player-facing scenarios (from above)
+    SCENARIO_SETTLED_CAMP,
+    SCENARIO_FRESH_START,
+    SCENARIO_NAKED_IN_THE_GRASS,
+    SCENARIO_RIVER_VALLEY,
+    // Dev testing scenarios
+    SCENARIO_TEST_SETTLERS,     // 5 movers, basic supplies
+    SCENARIO_TEST_VILLAGE,      // 8 movers, full camp
+    SCENARIO_TEST_EXPEDITION,   // 3 movers, harsh biome
+    SCENARIO_COUNT
+} StartScenario;
+```
+
+Dev scenarios show in sandbox mode only (or behind a debug flag). The key value is having reproducible test setups that don't require 20 minutes of bootstrapping before you reach the system you actually want to test.
+
+### Priority for Playtesting
+
+1. **"The Settlers" first** — simplest to implement (just spawn 5 movers + items), immediately validates whether F10 is needed next
+2. **"The Expedition" second** — needs biome presets (F12) to be meaningful, but even with just temperate-vs-boreal it's useful
+3. **"The Village" third** — most setup work (pre-built structures), but most valuable for stockpile/logistics testing
+
+---
+
 ## Open Questions
 
 1. **Condition-based vs time-based unlocks?** Condition-based is more elegant (unlock thirst when you eat) but harder to implement and test. Time-based is dead simple.
