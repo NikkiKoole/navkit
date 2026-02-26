@@ -241,10 +241,7 @@ static void StartNewGame(void) {
             for (int i = 0; i < fillCount; i++) {
                 int waterIdx = SpawnItem(sx, sy, sz, ITEM_WATER);
                 if (waterIdx >= 0) {
-                    items[waterIdx].state = ITEM_IN_CONTAINER;
-                    items[waterIdx].containedIn = potIdx;
-                    items[potIdx].contentCount++;
-                    items[potIdx].contentTypeMask |= (1u << (ITEM_WATER & 31));
+                    PutItemInContainer(waterIdx, potIdx);
                 }
             }
         }
