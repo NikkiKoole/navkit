@@ -21,6 +21,7 @@ Recipe stonecutterRecipes[] = {
     { "Cut Stone Blocks", ITEM_ROCK, 1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_BLOCKS, 2, ITEM_NONE, 0, 1.2f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Crush Gravel",     ITEM_ROCK, 1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_GRAVEL, 3, ITEM_NONE, 0, 0.8f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Bind Gravel",      ITEM_GRAVEL, 2, ITEM_CLAY, 1, ITEM_NONE, 0, ITEM_BLOCKS, 1, ITEM_NONE, 0, 1.6f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    { "Mix Mortar",       ITEM_LYE, 1, ITEM_SAND, 1, ITEM_NONE, 0, ITEM_MORTAR, 2, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
 };
 int stonecutterRecipeCount = sizeof(stonecutterRecipes) / sizeof(stonecutterRecipes[0]);
 
@@ -40,6 +41,7 @@ Recipe kilnRecipes[] = {
     { "Make Charcoal", ITEM_LOG,  1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_CHARCOAL, 3, ITEM_NONE, 0, 2.4f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Burn Peat",     ITEM_PEAT, 1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_CHARCOAL, 3, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Fire Pot",      ITEM_CLAY, 2, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_CLAY_POT, 1, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 1, ITEM_MATCH_EXACT, 0, 0 },
+    { "Make Glass",    ITEM_SAND, 3, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_GLASS,   1, ITEM_NONE, 0, 8.0f, 0, MAT_MATCH_ANY, MAT_NONE, 1, ITEM_MATCH_EXACT, 0, 0 },
 };
 int kilnRecipeCount = sizeof(kilnRecipes) / sizeof(kilnRecipes[0]);
 
@@ -72,6 +74,7 @@ Recipe hearthRecipes[] = {
     { "Cook Lentils", ITEM_LENTILS, 4, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_COOKED_LENTILS, 2, ITEM_NONE, 0, 1.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Brew Tea",     ITEM_WATER, 2, ITEM_DRIED_GRASS, 4, ITEM_NONE, 0, ITEM_HERBAL_TEA, 2, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Press Juice",  ITEM_WATER, 2, ITEM_BERRIES, 6, ITEM_NONE, 0, ITEM_BERRY_JUICE, 4, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    { "Make Lye",     ITEM_ASH, 2, ITEM_WATER, 1, ITEM_NONE, 0, ITEM_LYE, 1, ITEM_NONE, 0, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
 };
 int hearthRecipeCount = sizeof(hearthRecipes) / sizeof(hearthRecipes[0]);
 

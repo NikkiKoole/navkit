@@ -73,6 +73,11 @@ void InvalidateLighting(void) {
     lightingDirty = true;
 }
 
+// Windows are solid but transmit light
+static inline bool CellBlocksLight(CellType c) {
+    return CellIsSolid(c) && c != CELL_WINDOW;
+}
+
 // --------------------------------------------------------------------------
 // Sky light: column scan
 // --------------------------------------------------------------------------
@@ -85,8 +90,8 @@ static void ComputeSkyColumns(void) {
             for (int z = gridDepth - 1; z >= 0; z--) {
                 lightGrid[z][y][x].skyLevel = level;
 
-                // If this cell is solid or has a floor, block sky light below
-                if (CellIsSolid(grid[z][y][x]) || HAS_FLOOR(x, y, z)) {
+                // If this cell blocks light or has a floor, block sky light below
+                if (CellBlocksLight(grid[z][y][x]) || HAS_FLOOR(x, y, z)) {
                     level = 0;
                 }
             }
@@ -109,7 +114,7 @@ static void SpreadSkyLight(void) {
             for (int x = 0; x < gridWidth; x++) {
                 uint8_t level = lightGrid[z][y][x].skyLevel;
                 if (level <= 1) continue;  // No light to spread
-                if (CellIsSolid(grid[z][y][x])) continue;  // Can't spread from inside solid
+                if (CellBlocksLight(grid[z][y][x])) continue;  // Can't spread from inside solid
 
                 // Check if any neighbor is darker — if so, this cell is a seed
                 static const int dx[] = {1, -1, 0, 0};
@@ -118,7 +123,7 @@ static void SpreadSkyLight(void) {
                     int nx = x + dx[d];
                     int ny = y + dy[d];
                     if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
-                    if (CellIsSolid(grid[z][ny][nx])) continue;
+                    if (CellBlocksLight(grid[z][ny][nx])) continue;
                     if (lightGrid[z][ny][nx].skyLevel < level - 1) {
                         if (tail < LIGHT_BFS_MAX) {
                             bfsQueue[tail++] = (LightBfsNode){ x, y, z, level };
@@ -142,7 +147,7 @@ static void SpreadSkyLight(void) {
             int nx = node.x + dx[d];
             int ny = node.y + dy[d];
             if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
-            if (CellIsSolid(grid[node.z][ny][nx])) continue;
+            if (CellBlocksLight(grid[node.z][ny][nx])) continue;
 
             if (lightGrid[node.z][ny][nx].skyLevel < newLevel) {
                 lightGrid[node.z][ny][nx].skyLevel = newLevel;

@@ -76,6 +76,9 @@ typedef enum {
     ITEM_COB,            // Cob (mud + dried grass, strong building material)
     ITEM_REEDS,          // Harvested reeds (waterside plant)
     ITEM_REED_MAT,       // Woven reed mat (building material)
+    ITEM_GLASS,          // Glass pane (from sand at kiln)
+    ITEM_LYE,            // Lye (from ash at hearth)
+    ITEM_MORTAR,         // Mortar (from lye + sand at stonecutter)
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 

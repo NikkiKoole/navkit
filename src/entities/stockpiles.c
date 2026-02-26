@@ -56,6 +56,7 @@ const StockpileFilterDef STOCKPILE_FILTERS[] = {
     {ITEM_SHARP_STONE,  FILTER_CAT_STONE,     "Sharp Stone",  GRAY},
     {ITEM_GRAVEL,       FILTER_CAT_STONE,     "Gravel",       GRAY},
     {ITEM_SAND,         FILTER_CAT_STONE,     "Sand",         YELLOW},
+    {ITEM_GLASS,        FILTER_CAT_STONE,     "Glass",        SKYBLUE},
     // Wood
     {ITEM_LOG,          FILTER_CAT_WOOD,      "Log",          BROWN},
     {ITEM_PLANKS,       FILTER_CAT_WOOD,      "Planks",       BROWN},
@@ -80,9 +81,11 @@ const StockpileFilterDef STOCKPILE_FILTERS[] = {
     {ITEM_CHARCOAL,     FILTER_CAT_EARTH,     "Charcoal",     GRAY},
     {ITEM_MUD,          FILTER_CAT_EARTH,     "Mud",          BROWN},
     {ITEM_COB,          FILTER_CAT_EARTH,     "Cob",          BROWN},
+    {ITEM_MORTAR,       FILTER_CAT_EARTH,     "Mortar",       GRAY},
     // Craft
     {ITEM_SHORT_STRING, FILTER_CAT_CRAFT,     "String",       BEIGE},
     {ITEM_CORDAGE,      FILTER_CAT_CRAFT,     "Cordage",      BEIGE},
+    {ITEM_LYE,          FILTER_CAT_CRAFT,     "Lye",          BEIGE},
     // Container
     {ITEM_BASKET,       FILTER_CAT_CONTAINER, "Basket",       BEIGE},
     {ITEM_CLAY_POT,     FILTER_CAT_CONTAINER, "Clay Pot",     ORANGE},

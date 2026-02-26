@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 81
+#define CURRENT_SAVE_VERSION 82
 
 // Material count constant used by ALL legacy stockpile structs (MAT_COUNT was 17 from v31-v79)
 #define V79_MAT_COUNT 17
@@ -729,6 +729,9 @@ typedef struct {
     // No equippedClothing in V77
 } MoverV77;
 
+// Version 81 constants (before ITEM_GLASS/ITEM_LYE/ITEM_MORTAR added in v82)
+#define V81_ITEM_TYPE_COUNT 69
+
 // Version 80 constants (before ITEM_REEDS/ITEM_REED_MAT added in v81)
 #define V80_ITEM_TYPE_COUNT 67
 
@@ -806,6 +809,29 @@ typedef struct {
     int freeSlotCount;
     bool rejectsRotten;
 } StockpileV80;
+
+// V81 Stockpile struct (before ITEM_GLASS/ITEM_LYE/ITEM_MORTAR added in v82)
+// v81 had 69 item types, v82 adds 3 items (no material changes)
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V81_ITEM_TYPE_COUNT];
+    bool allowedMaterials[MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int maxContainers;
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+    bool rejectsRotten;
+} StockpileV81;
 
 // V78 Mover struct (before thirst/dehydrationTimer fields added in v79)
 typedef struct {

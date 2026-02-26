@@ -341,8 +341,11 @@ static void DrawDeeperLevelCells(float size, int z, int minX, int minY, int maxX
                         Rectangle src = SpriteGetRect(sprite);
                         Color lightTint = GetLightColor(x, y, zDepth + 1, skyColor);
                         Color tint = MultiplyColor(GetDepthTintDarkened(zDepth, z), lightTint);
-                        if ((cellAtDepth == CELL_WALL && !IsWallNatural(x, y, zDepth)) || cellAtDepth == CELL_DOOR) {
+                        if ((cellAtDepth == CELL_WALL && !IsWallNatural(x, y, zDepth)) || cellAtDepth == CELL_DOOR || cellAtDepth == CELL_WINDOW) {
                             tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, zDepth)));
+                        }
+                        if (cellAtDepth == CELL_WINDOW) {
+                            tint = MultiplyColor(tint, (Color){180, 220, 255, 200});
                         }
                         if (CellIsRamp(cellAtDepth)) {
                             MaterialType rampMat = GetWallMaterial(x, y, zDepth);
@@ -553,8 +556,11 @@ static void DrawCellGrid(void) {
             Rectangle src = SpriteGetRect(sprite);
             Color lightTint = GetLightColor(x, y, z, skyColor);
             Color tint = lightTint;
-            if ((cell == CELL_WALL && !IsWallNatural(x, y, z)) || cell == CELL_DOOR) {
+            if ((cell == CELL_WALL && !IsWallNatural(x, y, z)) || cell == CELL_DOOR || cell == CELL_WINDOW) {
                 tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, z)));
+            }
+            if (cell == CELL_WINDOW) {
+                tint = MultiplyColor(tint, (Color){180, 220, 255, 200});
             }
             if (CellIsRamp(cell)) {
                 MaterialType rampMat = GetWallMaterial(x, y, z);

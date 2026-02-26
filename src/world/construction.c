@@ -986,6 +986,59 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = -1,
         .materialFromSlot = -1,
     },
+    // Glass & mortar construction recipes
+    [CONSTRUCTION_GLASS_WINDOW] = {
+        .name = "Glass Window",
+        .buildCategory = BUILD_WALL,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_GLASS }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+                {
+                    .alternatives = {{ .itemType = ITEM_STICKS }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 3.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
+    [CONSTRUCTION_MORTAR_WALL] = {
+        .name = "Mortar Wall",
+        .buildCategory = BUILD_WALL,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_MORTAR }},
+                    .altCount = 1,
+                    .count = 3,
+                    .anyBuildingMat = false,
+                },
+                {
+                    .alternatives = {{ .itemType = ITEM_ROCK }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 4.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = 0,
+        .materialFromSlot = 1,  // Rock material determines wall appearance
+    },
 };
 
 const ConstructionRecipe* GetConstructionRecipe(int recipeIndex) {

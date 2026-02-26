@@ -2743,7 +2743,13 @@ void CompleteBlueprint(int blueprintIdx) {
         if (IsCellWalkableAt(z, y, x)) {
             ClearCellCleanup(x, y, z);
             DisplaceWater(x, y, z);
-            if (finalMat == MAT_DIRT) {
+            if (bp->recipeIndex == CONSTRUCTION_GLASS_WINDOW) {
+                grid[z][y][x] = CELL_WINDOW;
+                SetWallMaterial(x, y, z, MAT_NONE);
+                SetWallSourceItem(x, y, z, ITEM_GLASS);
+                ClearWallNatural(x, y, z);
+                SetWallFinish(x, y, z, FINISH_SMOOTH);
+            } else if (finalMat == MAT_DIRT) {
                 grid[z][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, z, MAT_DIRT);
                 SetWallSourceItem(x, y, z, ITEM_DIRT);
