@@ -2,6 +2,7 @@
 #include "../game_state.h"
 #include "../world/cell_defs.h"
 #include "../world/material.h"
+#include "../world/biome.h"
 #include "../simulation/trees.h"
 #include "../simulation/groundwear.h"
 #include "../simulation/lighting.h"
@@ -317,6 +318,24 @@ static void DrawPlayerHUD(void) {
             }
         }
         y += 18;
+
+        // Mover name buttons (click to follow)
+        for (int i = 0; i < moverCount && i < 20; i++) {
+            if (!movers[i].active) continue;
+            const char* mname = MoverDisplayName(i);
+            const char* label = movers[i].isDrafted
+                ? TextFormat("[D] %s", mname) : mname;
+            clicked = false;
+            PushButtonInline(10, y, label, &clicked);
+            if (clicked) {
+                followMoverIdx = i;
+                currentViewZ = (int)movers[i].z;
+                offset.x = GetScreenWidth() / 2.0f - movers[i].x * zoom;
+                offset.y = GetScreenHeight() / 2.0f - movers[i].y * zoom;
+            }
+            y += 16;
+        }
+        y += 2;
     }
 
     // Count items for progressive UI (show buttons only when relevant)
@@ -613,6 +632,18 @@ void DrawUI(void) {
                 DraggableIntT(ix, y, "Tiny Size", &hillsWaterConnectivitySmallThreshold, 1.0f, 5, 200,
                     "Size threshold for tiny pocket fill (cells).");
                 y += 22;
+                ToggleBoolT(ix, y, "Skip Buildings", &hillsSkipBuildings,
+                    "Skip placing ruined buildings during terrain generation.");
+                y += 22;
+                int prevBiome = selectedBiome;
+                CycleOption(ix, y, "Biome", biomeNames, BIOME_COUNT, &selectedBiome);
+                y += 22;
+                DrawTextShadow(biomePresets[selectedBiome].description, ix, y, 11, GRAY);
+                y += 16;
+                if (selectedBiome != prevBiome) {
+                    hillsWaterRiverCount = biomePresets[selectedBiome].riverCount;
+                    hillsWaterLakeCount = biomePresets[selectedBiome].lakeCount;
+                }
             }
             if (PushButton(ix, y, "Randomize Seed")) {
                 worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);

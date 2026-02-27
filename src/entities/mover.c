@@ -1,4 +1,5 @@
 #include "mover.h"
+#include "namegen.h"
 #include "animals.h"
 #include "../core/time.h"
 #include "../world/grid.h"
@@ -670,6 +671,12 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->equippedTool = -1;
     // Clothing system
     m->equippedClothing = -1;
+    // Identity
+    m->name[0] = '\0';
+    m->gender = 0;
+    m->age = 0;
+    m->appearanceSeed = 0;
+    m->isDrafted = false;
     // Capabilities - default to all enabled
     m->capabilities.canHaul = true;
     m->capabilities.canMine = true;
@@ -810,8 +817,8 @@ void NeedsTick(void) {
                     DropEquippedClothing(i);
                     m->freetimeState = FREETIME_NONE;
                     m->active = false;
-                    EventLog("Mover %d died of starvation (timer=%.1fs)", i, m->starvationTimer);
-                    TraceLog(LOG_WARNING, "Mover %d died of starvation", i);
+                    EventLog("%s (#%d) died of starvation (timer=%.1fs)", MoverDisplayName(i), i, m->starvationTimer);
+                    TraceLog(LOG_WARNING, "%s (#%d) died of starvation", MoverDisplayName(i), i);
                     AddMessage("Your mover starved to death.", RED);
                     continue;
                 }
@@ -841,8 +848,8 @@ void NeedsTick(void) {
                     DropEquippedClothing(i);
                     m->freetimeState = FREETIME_NONE;
                     m->active = false;
-                    EventLog("Mover %d died of dehydration (timer=%.1fs)", i, m->dehydrationTimer);
-                    TraceLog(LOG_WARNING, "Mover %d died of dehydration", i);
+                    EventLog("%s (#%d) died of dehydration (timer=%.1fs)", MoverDisplayName(i), i, m->dehydrationTimer);
+                    TraceLog(LOG_WARNING, "%s (#%d) died of dehydration", MoverDisplayName(i), i);
                     AddMessage("Your mover died of thirst.", RED);
                     continue;
                 }
@@ -910,8 +917,8 @@ void NeedsTick(void) {
                     DropEquippedClothing(i);
                     m->freetimeState = FREETIME_NONE;
                     m->active = false;
-                    EventLog("Mover %d died of hypothermia (bodyTemp=%.1f)", i, m->bodyTemp);
-                    TraceLog(LOG_WARNING, "Mover %d died of hypothermia", i);
+                    EventLog("%s (#%d) died of hypothermia (bodyTemp=%.1f)", MoverDisplayName(i), i, m->bodyTemp);
+                    TraceLog(LOG_WARNING, "%s (#%d) died of hypothermia", MoverDisplayName(i), i);
                     AddMessage("Your mover froze to death.", RED);
                     continue;
                 }
@@ -1175,7 +1182,7 @@ void UpdateMovers(void) {
                 }
                 if (!pushed) {
                     m->active = false;
-                    EventLog("Mover %d deactivated: trapped in wall at (%d,%d,%d)", i, currentX, currentY, currentZ);
+                    EventLog("%s (#%d) deactivated: trapped in wall at (%d,%d,%d)", MoverDisplayName(i), i, currentX, currentY, currentZ);
                     TraceLog(LOG_WARNING, "Mover %d deactivated: stuck in blocked cell with no escape", i);
                     AddMessage(TextFormat("Mover %d lost: trapped in wall at (%d,%d,%d)",
                                          i, currentX, currentY, currentZ), RED);

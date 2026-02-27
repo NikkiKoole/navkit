@@ -14,6 +14,7 @@
 #include "world/cell_defs.c"
 #include "world/material.c"
 #include "world/grid.c"
+#include "world/biome.c"
 #include "world/terrain.c"
 #include "world/pathfinding.c"
 #include "world/designations.c"
@@ -53,6 +54,7 @@
 #include "entities/animals.c"
 #include "entities/trains.c"
 #include "entities/mover.c"
+#include "entities/namegen.c"
 #include "entities/jobs.c"
 #include "core/state_audit.c"
 

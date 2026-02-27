@@ -3396,7 +3396,7 @@ void RebuildIdleMoverList(void) {
     memset(moverIsInIdleList, 0, idleMoverCapacity * sizeof(bool));
 
     for (int i = 0; i < moverCount; i++) {
-        if (movers[i].active && movers[i].currentJobId < 0 && movers[i].freetimeState == FREETIME_NONE) {
+        if (movers[i].active && movers[i].currentJobId < 0 && movers[i].freetimeState == FREETIME_NONE && !movers[i].isDrafted) {
             // Skip movers stuck in unwalkable cells (e.g. built themselves into a wall)
             int mx = (int)(movers[i].x / CELL_SIZE);
             int my = (int)(movers[i].y / CELL_SIZE);

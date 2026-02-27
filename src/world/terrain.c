@@ -1,6 +1,8 @@
 #include "terrain.h"
+#include "biome.h"
 #include "cell_defs.h"
 #include "material.h"
+#include "../simulation/weather.h"
 #include "../../vendor/raylib.h"
 #include "../entities/workshops.h"
 #include "../entities/stockpiles.h"
@@ -34,7 +36,7 @@ static bool CanPlaceWorldGenTreeAt(int x, int y, int baseZ) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return false;
     if (baseZ < 0 || baseZ + 1 >= gridDepth) return false;
     if (!CellIsSolid(grid[baseZ][y][x])) return false;
-    if (GetWallMaterial(x, y, baseZ) == MAT_GRANITE) return false;  // Trees avoid rock
+    if (IsStoneMaterial(GetWallMaterial(x, y, baseZ))) return false;  // Trees avoid rock
     if (grid[baseZ + 1][y][x] != CELL_AIR) return false;
     return true;
 }
@@ -50,29 +52,7 @@ static MaterialType PickTreeTypeForSoilSimple(MaterialType mat) {
     }
 }
 
-static MaterialType PickTreeTypeForWorldGen(MaterialType mat, float wetness, int slope, bool nearWater, float noise) {
-    if (nearWater || wetness > 0.7f) {
-        if (mat == MAT_PEAT || mat == MAT_DIRT) return MAT_WILLOW;
-    }
-
-    if ((mat == MAT_GRAVEL || slope >= 1) && wetness < 0.45f) {
-        return MAT_PINE;
-    }
-
-    if (mat == MAT_SAND || mat == MAT_GRAVEL) {
-        return MAT_BIRCH;
-    }
-
-    if (mat == MAT_CLAY || mat == MAT_DIRT) {
-        return MAT_OAK;
-    }
-
-    if (mat == MAT_PEAT) {
-        return MAT_WILLOW;
-    }
-
-    return (noise < 0.5f) ? MAT_OAK : MAT_BIRCH;
-}
+// PickTreeTypeForWorldGen replaced by PickTreeTypeForBiome (biome-aware)
 
 static void PlaceWorldGenTree(int x, int y, int baseZ, MaterialType treeMat, bool growFull) {
     if (!CanPlaceWorldGenTreeAt(x, y, baseZ)) return;
@@ -2015,6 +1995,53 @@ void GenerateHillsSoils(void) {
 }
 
 // ============================================================================
+// Biome-aware soil and tree selection helpers
+// ============================================================================
+
+static MaterialType PickSoilForBiome(const BiomePreset* bp, float wetness, int slope, bool nearWater, float noise) {
+    float w[5] = { bp->soilDirt, bp->soilClay, bp->soilSand, bp->soilGravel, bp->soilPeat };
+
+    // Environmental modifiers
+    if (wetness > 0.6f)  w[4] *= 2.0f;   // peat near water
+    if (wetness < 0.3f)  w[2] *= 2.0f;   // sand on dry ground
+    if (slope >= 2)      w[3] *= 2.5f;   // gravel on slopes
+    if (nearWater)       w[1] *= 1.5f;   // clay near water
+
+    float total = w[0] + w[1] + w[2] + w[3] + w[4];
+    if (total <= 0.0f) return MAT_DIRT;
+
+    float pick = noise * total;
+    float accum = 0.0f;
+    static const MaterialType soilTypes[5] = { MAT_DIRT, MAT_CLAY, MAT_SAND, MAT_GRAVEL, MAT_PEAT };
+    for (int i = 0; i < 5; i++) {
+        accum += w[i];
+        if (pick < accum) return soilTypes[i];
+    }
+    return MAT_DIRT;
+}
+
+static MaterialType PickTreeTypeForBiome(const BiomePreset* bp, MaterialType soil, float wetness, int slope, bool nearWater, float noise) {
+    float w[4] = { bp->treeOak, bp->treePine, bp->treeBirch, bp->treeWillow };
+
+    // Environmental modifiers
+    if (nearWater || wetness > 0.7f) w[3] *= 3.0f;   // willow near water
+    if (slope >= 1 && wetness < 0.45f) w[1] *= 2.0f;  // pine on slopes
+    if (soil == MAT_SAND) w[2] *= 2.0f;               // birch on sand
+
+    float total = w[0] + w[1] + w[2] + w[3];
+    if (total <= 0.0f) return MAT_OAK;
+
+    float pick = noise * total;
+    float accum = 0.0f;
+    static const MaterialType treeSpecies[4] = { MAT_OAK, MAT_PINE, MAT_BIRCH, MAT_WILLOW };
+    for (int i = 0; i < 4; i++) {
+        accum += w[i];
+        if (pick < accum) return treeSpecies[i];
+    }
+    return MAT_OAK;
+}
+
+// ============================================================================
 // Hills + Soils + Water (Rivers/Lakes) Generator
 // Adds rivers and shallow lakes, and biases clay/peat toward wetter areas
 // ============================================================================
@@ -2024,12 +2051,46 @@ void GenerateHillsSoilsWater(void) {
     SeedTerrain();
     InitPerlin((int)worldSeed);
 
-    float scale = 0.01f + (GetRandomValue(0, 40) / 1000.0f);          // 0.01 to 0.05
-    int octaves = 2 + GetRandomValue(0, 4);                           // 2 to 6
-    float persistence = 0.3f + (GetRandomValue(0, 40) / 100.0f);      // 0.3 to 0.7
+    const BiomePreset* bp = &biomePresets[selectedBiome];
 
-    int maxHeight = gridDepth - 3 - GetRandomValue(0, 3);            // Leave 3-6 at top
-    int minHeight = 2 + GetRandomValue(0, 2);                        // 2 to 4
+    // Set climate from biome preset
+    baseSurfaceTemp = bp->baseSurfaceTemp;
+    seasonalAmplitude = bp->seasonalAmplitude;
+    diurnalAmplitude = bp->diurnalAmplitude;
+
+    // Height parameters driven by biome heightVariation
+    float scale, persistence;
+    int octaves, maxHeight, minHeight;
+    switch (bp->heightVariation) {
+        case 0: // flat
+            scale = 0.005f + (GetRandomValue(0, 10) / 1000.0f);
+            octaves = 2 + GetRandomValue(0, 1);
+            persistence = 0.3f + (GetRandomValue(0, 40) / 100.0f);
+            minHeight = gridDepth - 5 + GetRandomValue(0, 1);
+            maxHeight = minHeight + 2;
+            break;
+        case 2: // hilly
+            scale = 0.02f + (GetRandomValue(0, 40) / 1000.0f);
+            octaves = 3 + GetRandomValue(0, 3);
+            persistence = 0.3f + (GetRandomValue(0, 40) / 100.0f);
+            minHeight = 2 + GetRandomValue(0, 2);
+            maxHeight = gridDepth - 2;
+            break;
+        case 3: // mountainous
+            scale = 0.03f + (GetRandomValue(0, 40) / 1000.0f);
+            octaves = 4 + GetRandomValue(0, 4);
+            persistence = 0.3f + (GetRandomValue(0, 40) / 100.0f);
+            minHeight = 2;
+            maxHeight = gridDepth - 1;
+            break;
+        default: // 1 = rolling (current defaults — preserve exact RNG call order)
+            scale = 0.01f + (GetRandomValue(0, 40) / 1000.0f);
+            octaves = 2 + GetRandomValue(0, 4);
+            persistence = 0.3f + (GetRandomValue(0, 40) / 100.0f);
+            maxHeight = gridDepth - 3 - GetRandomValue(0, 3);
+            minHeight = 2 + GetRandomValue(0, 2);
+            break;
+    }
     if (maxHeight <= minHeight) maxHeight = minHeight + 3;
 
     TraceLog(LOG_INFO, "GenerateHillsSoilsWater: scale=%.3f, octaves=%d, persistence=%.2f, height=%d-%d",
@@ -2069,13 +2130,8 @@ void GenerateHillsSoilsWater(void) {
 
     // Soil distribution parameters
     float clayScale = 0.03f;
-    float sandScale = 0.02f;
     float gravelScale = 0.02f;
-    float peatScale = 0.02f;
     float clayThreshold = 0.58f;
-    float sandNoise = 0.55f;
-    float gravelNoise = 0.62f;
-    float peatNoise = 0.55f;
     int topsoilDepth = 2;
     int clayDepth = 2;
     int soilDepth = topsoilDepth + clayDepth;
@@ -2088,7 +2144,7 @@ void GenerateHillsSoilsWater(void) {
             int rockStartZ = height - soilDepth;
             for (int z = 0; z <= rockStartZ; z++) {
                 grid[z][y][x] = CELL_WALL;
-                SetWallMaterial(x, y, z, MAT_GRANITE);
+                SetWallMaterial(x, y, z, bp->stoneType);
             }
         }
     }
@@ -2442,30 +2498,24 @@ void GenerateHillsSoilsWater(void) {
             if (nearWater) wetness += hillsWaterWetnessBias;
             wetness = Clamp01(wetness);
 
-            float sandN = OctavePerlin(x * sandScale, y * sandScale, 3, 0.5f);
             float gravelN = OctavePerlin(x * gravelScale, y * gravelScale, 3, 0.5f);
-            float peatN = OctavePerlin(x * peatScale, y * peatScale, 3, 0.5f);
 
-            MaterialType surfaceMat = MAT_DIRT;
+            // Use per-cell noise as deterministic random for soil selection
+            float soilNoise = OctavePerlin(x * 0.037f + 50.0f, y * 0.037f + 50.0f, 2, 0.5f);
+            MaterialType surfaceMat;
             if (waterMask[idx]) {
+                // Riverbeds/lakebeds stay gravel/sand regardless of biome
                 surfaceMat = (riverMask[idx] || slope >= 2 || gravelN > 0.55f) ? MAT_GRAVEL : MAT_SAND;
-            } else if (wetness > 0.7f && peatN > peatNoise) {
-                surfaceMat = MAT_PEAT;
-            } else if (wetness < 0.35f && sandN > sandNoise) {
-                surfaceMat = MAT_SAND;
             } else {
-                bool rockBelow = (height >= soilDepth);
-                float gravelThreshold = gravelNoise - (rockBelow ? 0.08f : 0.0f);
-                if (gravelThreshold < 0.4f) gravelThreshold = 0.4f;
-                if (slope >= 2 || gravelN > gravelThreshold) {
-                    surfaceMat = MAT_GRAVEL;
-                }
+                surfaceMat = PickSoilForBiome(bp, wetness, slope, nearWater, soilNoise);
             }
 
             grid[height][y][x] = CELL_WALL;
             SetWallMaterial(x, y, height, surfaceMat);
             if (surfaceMat == MAT_DIRT && !nearWater) {
-                SetVegetation(x, y, height, VEG_GRASS_TALLER);
+                if (bp->grassDensity >= 1.0f || (GetRandomValue(0, 999) / 1000.0f) < bp->grassDensity) {
+                    SetVegetation(x, y, height, VEG_GRASS_TALLER);
+                }
             } else if (surfaceMat == MAT_DIRT) {
                 // Check if directly adjacent to water (cardinal neighbors)
                 bool adjacentWater = false;
@@ -2680,9 +2730,12 @@ void GenerateHillsSoilsWater(void) {
                 if (wetness < 0.30f) chance *= 0.65f;
                 if (slope >= 2) chance *= 0.6f;
 
+                // Apply biome tree density multiplier
+                chance *= bp->treeDensity;
+
                 if ((GetRandomValue(0, 999) / 1000.0f) > chance) { treeSkipDensity++; continue; }
 
-                MaterialType treeMat = PickTreeTypeForWorldGen(GetWallMaterial(x, y, baseZ), wetness, slope, nearWater, n);
+                MaterialType treeMat = PickTreeTypeForBiome(bp, GetWallMaterial(x, y, baseZ), wetness, slope, nearWater, n);
                 PlaceWorldGenTree(x, y, baseZ, treeMat, true);
                 treePlaced++;
             }
@@ -2709,8 +2762,8 @@ void GenerateHillsSoilsWater(void) {
                 if (!CellIsSolid(grid[baseZ][y][x])) continue;
                 if (grid[walkZ][y][x] != CELL_AIR) continue;
 
-                // Skip granite (rocky ground)
-                if (GetWallMaterial(x, y, baseZ) == MAT_GRANITE) continue;
+                // Skip stone (rocky ground)
+                if (IsStoneMaterial(GetWallMaterial(x, y, baseZ))) continue;
 
                 // Count nearby trees — prefer forest edges (1-3 trees nearby, not deep forest)
                 int nearbyTrees = 0;
@@ -2729,6 +2782,7 @@ void GenerateHillsSoilsWater(void) {
                 else if (nearbyTrees == 0) bushChance = 0.02f;  // Rare in open field
                 // Skip dense forest (>4 trees)
                 if (bushChance <= 0.0f) continue;
+                bushChance *= bp->bushDensity;
 
                 // Use noise for clustering (only place in low-noise patches)
                 float n = OctavePerlin((x + bushNoiseOffset) * bushScale, (y + bushNoiseOffset) * bushScale, 2, 0.5f);
@@ -2757,7 +2811,7 @@ void GenerateHillsSoilsWater(void) {
         // Scatter wild crop plants on the ground
         // ----------------------------------------------------------------
         int wildCropsPlaced = 0;
-        int maxWildCrops = 100;
+        int maxWildCrops = (int)(100 * bp->wildCropDensity);
         for (int y = 0; y < gridHeight && wildCropsPlaced < maxWildCrops; y++) {
             for (int x = 0; x < gridWidth && wildCropsPlaced < maxWildCrops; x++) {
                 int idx = y * gridWidth + x;
@@ -2802,6 +2856,7 @@ void GenerateHillsSoilsWater(void) {
                 }
 
                 if (wildType >= PLANT_TYPE_COUNT) continue;
+                chance *= bp->wildCropDensity;
                 if ((GetRandomValue(0, 999) / 1000.0f) > chance) continue;
 
                 int plantIdx = SpawnPlant(x, y, walkZ, wildType);
@@ -2843,6 +2898,7 @@ void GenerateHillsSoilsWater(void) {
                 // ~0.5% chance, higher on elevated terrain
                 float boulderChance = 0.005f;
                 if (heightmap[idx] > (maxHeight * 2 / 3)) boulderChance = 0.012f;
+                boulderChance *= bp->boulderDensity;
 
                 if ((GetRandomValue(0, 999) / 1000.0f) < boulderChance) {
                     grid[walkZ][y][x] = CELL_WALL;

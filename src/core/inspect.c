@@ -24,6 +24,7 @@
 #include "save_migrations.h"
 #include "../world/cell_defs.h"
 #include "../world/material.h"
+#include "../world/biome.h"
 #include "../simulation/trees.h"
 #include "../simulation/lighting.h"
 #include "../simulation/plants.h"
@@ -103,8 +104,11 @@ static void print_mover(int idx) {
         return;
     }
     Mover* m = &insp_movers[idx];
-    printf("\n=== MOVER %d ===\n", idx);
-    printf("Position: (%.2f, %.2f, z%.0f) -> cell (%d, %d)\n", 
+    printf("\n=== MOVER %d: %s ===\n", idx, m->name[0] ? m->name : "(unnamed)");
+    printf("Gender: %s, Age: %d, AppearanceSeed: %u\n",
+           m->gender == 1 ? "F" : "M", m->age, m->appearanceSeed);
+    printf("Drafted: %s\n", m->isDrafted ? "YES" : "no");
+    printf("Position: (%.2f, %.2f, z%.0f) -> cell (%d, %d)\n",
            m->x, m->y, m->z, (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE));
     printf("Active: %s\n", m->active ? "YES" : "no");
     printf("Speed: %.1f\n", m->speed);
@@ -1175,6 +1179,12 @@ int InspectSaveFile(int argc, char** argv) {
         if (version >= 79) {
             fread(&insp_thirstEnabled, sizeof(bool), 1, f);
         }
+        if (version >= 84) {
+            int insp_selectedBiome = 0;
+            fread(&insp_selectedBiome, sizeof(int), 1, f);
+            if (insp_selectedBiome >= 0 && insp_selectedBiome < BIOME_COUNT)
+                selectedBiome = insp_selectedBiome;
+        }
     }
     
     int totalCells = insp_gridW * insp_gridH * insp_gridD;
@@ -2079,11 +2089,61 @@ int InspectSaveFile(int argc, char** argv) {
     fread(&insp_moverCount, 4, 1, f);
     insp_movers = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Mover) : sizeof(Mover));
     insp_moverPaths = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Point) * MAX_MOVER_PATH : sizeof(Point) * MAX_MOVER_PATH);
-    if (version >= 79) {
-        // v79+: Mover struct with thirst/dehydrationTimer, paths separate
+    if (version >= 83) {
+        // v83+: Mover struct with name/gender/age/appearanceSeed/isDrafted
         if (insp_moverCount > 0) fread(insp_movers, sizeof(Mover), insp_moverCount, f);
         for (int i = 0; i < insp_moverCount; i++) {
             fread(insp_moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+        }
+    } else if (version >= 79) {
+        // v79-v82: Mover without identity fields, paths separate
+        for (int i = 0; i < insp_moverCount; i++) {
+            MoverV82 old;
+            fread(&old, sizeof(MoverV82), 1, f);
+            fread(insp_moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+            Mover* m = &insp_movers[i];
+            m->x = old.x; m->y = old.y; m->z = old.z;
+            m->goal = old.goal;
+            m->pathLength = old.pathLength;
+            m->pathIndex = old.pathIndex;
+            m->active = old.active;
+            m->needsRepath = old.needsRepath;
+            m->repathCooldown = old.repathCooldown;
+            m->speed = old.speed;
+            m->timeNearWaypoint = old.timeNearWaypoint;
+            m->lastX = old.lastX; m->lastY = old.lastY; m->lastZ = old.lastZ;
+            m->timeWithoutProgress = old.timeWithoutProgress;
+            m->fallTimer = old.fallTimer;
+            m->workAnimPhase = old.workAnimPhase;
+            m->hunger = old.hunger;
+            m->energy = old.energy;
+            m->freetimeState = old.freetimeState;
+            m->needTarget = old.needTarget;
+            m->needProgress = old.needProgress;
+            m->needSearchCooldown = old.needSearchCooldown;
+            m->starvationTimer = old.starvationTimer;
+            m->thirst = old.thirst;
+            m->dehydrationTimer = old.dehydrationTimer;
+            m->bodyTemp = old.bodyTemp;
+            m->hypothermiaTimer = old.hypothermiaTimer;
+            m->avoidX = old.avoidX; m->avoidY = old.avoidY;
+            m->currentJobId = old.currentJobId;
+            m->lastJobType = old.lastJobType;
+            m->lastJobResult = old.lastJobResult;
+            m->lastJobTargetX = old.lastJobTargetX;
+            m->lastJobTargetY = old.lastJobTargetY;
+            m->lastJobTargetZ = old.lastJobTargetZ;
+            m->lastJobEndTick = old.lastJobEndTick;
+            m->capabilities = old.capabilities;
+            m->equippedTool = old.equippedTool;
+            m->equippedClothing = old.equippedClothing;
+            // Generate identity for migrated movers
+            uint32_t seed = (uint32_t)(worldSeed ^ (uint64_t)i ^ 0xDEADBEEF);
+            m->appearanceSeed = seed;
+            m->gender = (seed & 1) ? GENDER_FEMALE : GENDER_MALE;
+            m->age = 50 + (seed >> 1) % 21;
+            m->isDrafted = false;
+            GenerateMoverName(m->name, m->gender, seed);
         }
     } else if (version >= 78) {
         // v78: Mover without thirst/dehydrationTimer, paths separate
@@ -2515,6 +2575,7 @@ int InspectSaveFile(int argc, char** argv) {
         printf("World seed: %llu\n", (unsigned long long)insp_worldSeed);
         printf("Grid: %dx%dx%d, Chunks: %dx%d\n", insp_gridW, insp_gridH, insp_gridD, insp_chunkW, insp_chunkH);
         printf("Game mode: %s\n", insp_gameMode == 1 ? "Survival" : "Sandbox");
+        printf("Biome: %s\n", biomePresets[selectedBiome].name);
         printf("Needs: hunger=%s, thirst=%s, energy=%s, temperature=%s, tools=%s\n",
                insp_hungerEnabled ? "on" : "off",
                insp_thirstEnabled ? "on" : "off",

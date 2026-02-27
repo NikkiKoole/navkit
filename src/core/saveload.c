@@ -20,7 +20,9 @@ void RebuildPostLoadState(void);
 #include "../simulation/balance.h"
 #include "../core/sim_manager.h"
 #include "../world/material.h"
+#include "../world/biome.h"
 #include "../entities/tool_quality.h"
+#include "../entities/namegen.h"
 #include "save_migrations.h"
 
 #define V21_MAT_COUNT 10  // MAT_COUNT before clay/gravel/sand/peat materials
@@ -176,8 +178,9 @@ bool SaveWorld(const char* filename) {
         fwrite(&bodyTempEnabled, sizeof(bool), 1, f);
         fwrite(&toolRequirementsEnabled, sizeof(bool), 1, f);
         fwrite(&thirstEnabled, sizeof(bool), 1, f);
+        fwrite(&selectedBiome, sizeof(int), 1, f);
     }
-    
+
     // === GRIDS SECTION ===
     uint32_t marker = MARKER_GRIDS;
     fwrite(&marker, sizeof(marker), 1, f);
@@ -579,6 +582,12 @@ bool LoadWorld(const char* filename) {
         } else {
             thirstEnabled = false;
         }
+        if (version >= 84) {
+            fread(&selectedBiome, sizeof(int), 1, f);
+            if (selectedBiome < 0 || selectedBiome >= BIOME_COUNT) selectedBiome = 0;
+        } else {
+            selectedBiome = 0;
+        }
     } else {
         gameMode = GAME_MODE_SANDBOX;
         hungerEnabled = false;
@@ -586,6 +595,7 @@ bool LoadWorld(const char* filename) {
         bodyTempEnabled = false;
         toolRequirementsEnabled = false;
         thirstEnabled = false;
+        selectedBiome = 0;
     }
     
     // Reinitialize grid if dimensions don't match
@@ -1724,11 +1734,61 @@ bool LoadWorld(const char* filename) {
     
     // Movers
     fread(&moverCount, sizeof(moverCount), 1, f);
-    if (version >= 79) {
-        // v79+: Mover struct with thirst/dehydrationTimer, paths separate
+    if (version >= 83) {
+        // v83+: Mover struct with name/gender/age/appearanceSeed/isDrafted
         fread(movers, sizeof(Mover), moverCount, f);
         for (int i = 0; i < moverCount; i++) {
             fread(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+        }
+    } else if (version >= 79) {
+        // v79-v82: Mover without identity fields, paths separate
+        for (int i = 0; i < moverCount; i++) {
+            MoverV82 old;
+            fread(&old, sizeof(MoverV82), 1, f);
+            fread(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+            Mover* m = &movers[i];
+            m->x = old.x; m->y = old.y; m->z = old.z;
+            m->goal = old.goal;
+            m->pathLength = old.pathLength;
+            m->pathIndex = old.pathIndex;
+            m->active = old.active;
+            m->needsRepath = old.needsRepath;
+            m->repathCooldown = old.repathCooldown;
+            m->speed = old.speed;
+            m->timeNearWaypoint = old.timeNearWaypoint;
+            m->lastX = old.lastX; m->lastY = old.lastY; m->lastZ = old.lastZ;
+            m->timeWithoutProgress = old.timeWithoutProgress;
+            m->fallTimer = old.fallTimer;
+            m->workAnimPhase = old.workAnimPhase;
+            m->hunger = old.hunger;
+            m->energy = old.energy;
+            m->freetimeState = old.freetimeState;
+            m->needTarget = old.needTarget;
+            m->needProgress = old.needProgress;
+            m->needSearchCooldown = old.needSearchCooldown;
+            m->starvationTimer = old.starvationTimer;
+            m->thirst = old.thirst;
+            m->dehydrationTimer = old.dehydrationTimer;
+            m->bodyTemp = old.bodyTemp;
+            m->hypothermiaTimer = old.hypothermiaTimer;
+            m->avoidX = old.avoidX; m->avoidY = old.avoidY;
+            m->currentJobId = old.currentJobId;
+            m->lastJobType = old.lastJobType;
+            m->lastJobResult = old.lastJobResult;
+            m->lastJobTargetX = old.lastJobTargetX;
+            m->lastJobTargetY = old.lastJobTargetY;
+            m->lastJobTargetZ = old.lastJobTargetZ;
+            m->lastJobEndTick = old.lastJobEndTick;
+            m->capabilities = old.capabilities;
+            m->equippedTool = old.equippedTool;
+            m->equippedClothing = old.equippedClothing;
+            // Generate identity for migrated movers
+            uint32_t seed = (uint32_t)(worldSeed ^ (uint64_t)i ^ 0xDEADBEEF);
+            m->appearanceSeed = seed;
+            m->gender = (seed & 1) ? GENDER_FEMALE : GENDER_MALE;
+            m->age = 50 + (seed >> 1) % 21;
+            m->isDrafted = false;
+            GenerateMoverName(m->name, m->gender, seed);
         }
     } else if (version >= 78) {
         // v78: Mover without thirst/dehydrationTimer, paths separate

@@ -2247,14 +2247,30 @@ void HandleInput(void) {
             } else {
                 followMoverIdx = hoveredMover;
                 currentViewZ = (int)movers[hoveredMover].z;
-                AddMessage(TextFormat("Follow: Mover #%d", hoveredMover), GREEN);
+                AddMessage(TextFormat("Follow: %s", MoverDisplayName(hoveredMover)), GREEN);
             }
         } else if (followMoverIdx >= 0) {
             followMoverIdx = -1;
             AddMessage("Follow: off", GRAY);
         }
     }
-    
+
+    // Click-to-move for drafted movers (right-click while following a drafted mover)
+    if (followMoverIdx >= 0 && followMoverIdx < moverCount
+        && movers[followMoverIdx].isDrafted
+        && IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+        Vector2 gp = ScreenToGrid(GetMousePosition());
+        int gx = (int)gp.x, gy = (int)gp.y;
+        int gz = currentViewZ;
+        if (gx >= 0 && gx < gridWidth && gy >= 0 && gy < gridHeight
+            && IsCellWalkableAt(gz, gy, gx)) {
+            Mover* dm = &movers[followMoverIdx];
+            dm->goal = (Point){gx, gy, gz};
+            dm->needsRepath = true;
+            AddMessage(TextFormat("%s: move to (%d,%d)", MoverDisplayName(followMoverIdx), gx, gy), YELLOW);
+        }
+    }
+
     // Zoom
     float wheel = GetMouseWheelMove();
     if (wheel != 0) {
@@ -2394,6 +2410,18 @@ void HandleInput(void) {
     // ========================================================================
     
     if (inputMode == MODE_NORMAL) {
+        // Draft toggle: D while hovering a mover drafts/undrafts (consumes D before draw mode)
+        if (CheckKey(KEY_D) && hoveredMover >= 0 && hoveredMover < moverCount) {
+            Mover* dm = &movers[hoveredMover];
+            dm->isDrafted = !dm->isDrafted;
+            if (dm->isDrafted && dm->currentJobId >= 0) {
+                CancelJob(dm, hoveredMover);
+            }
+            AddMessage(TextFormat("%s: %s", MoverDisplayName(hoveredMover),
+                       dm->isDrafted ? "DRAFTED" : "Undrafted"),
+                       dm->isDrafted ? RED : GREEN);
+            return;
+        }
         if (devUI && CheckKey(KEY_D)) { inputMode = MODE_DRAW; return; }
         if (devUI && CheckKey(KEY_W)) { inputMode = MODE_WORK; return; }
         if (devUI && CheckKey(KEY_S)) { inputMode = MODE_SANDBOX; return; }

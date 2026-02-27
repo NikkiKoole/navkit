@@ -2,6 +2,7 @@
 #include "../game_state.h"
 #include "../world/cell_defs.h"
 #include "../world/material.h"
+#include "../world/biome.h"
 #include "../world/designations.h"
 #include "../core/input_mode.h"
 #include "../core/time.h"
@@ -741,6 +742,7 @@ static void DrawGrassOverlay(void) {
                 // Grass is on top of solid, lit from the air above (zDepth+1)
                 Color tint = MultiplyColor(depthTint, GetLightColor(x, y, zDepth + 1, skyColor));
                 if (isReeds) tint = MultiplyColor(tint, (Color){120, 200, 180, 255});
+                else tint = MultiplyColor(tint, biomePresets[selectedBiome].grassTint);
                 DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
             }
         }
@@ -775,6 +777,7 @@ static void DrawGrassOverlay(void) {
                 Rectangle src = SpriteGetRect(sprite);
                 Color lightTint = GetLightColor(x, y, z, skyColor);
                 if (isReeds2) lightTint = MultiplyColor(lightTint, (Color){120, 200, 180, 255});
+                else lightTint = MultiplyColor(lightTint, biomePresets[selectedBiome].grassTint);
                 DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, lightTint);
             }
         }
@@ -1652,6 +1655,13 @@ static void DrawMovers(void) {
             float outlineSize = moverSize * 1.35f;
             Rectangle outlineDest = { sx - outlineSize/2, sy - outlineSize/2, outlineSize, outlineSize };
             DrawTexturePro(atlas, src, outlineDest, (Vector2){0, 0}, 0, clothColor);
+        }
+
+        // Draft indicator: red border
+        if (m->isDrafted) {
+            float draftSize = moverSize * 1.5f;
+            Rectangle draftDest = { sx - draftSize/2, sy - draftSize/2, draftSize, draftSize };
+            DrawRectangleLinesEx(draftDest, 1.0f, (Color){255, 60, 60, 180});
         }
 
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, moverColor);

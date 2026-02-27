@@ -298,6 +298,25 @@ Color GetRandomColor(void) {
     };
 }
 
+// Warm skin-tone range with seed-based variation
+static Color ColorFromSeed(uint32_t seed) {
+    uint32_t h = seed * 2654435761u;  // Knuth multiplicative hash
+    int r = 160 + (int)(h % 80);         // 160-239
+    int g = 120 + (int)((h >> 8) % 60);  // 120-179
+    int b = 90  + (int)((h >> 16) % 50); // 90-139
+    return (Color){(unsigned char)r, (unsigned char)g, (unsigned char)b, 255};
+}
+
+static void AssignMoverIdentity(int idx) {
+    uint32_t seed = (uint32_t)(worldSeed ^ (uint64_t)idx ^ (uint64_t)GetRandomValue(0, 0x7FFFFFFF));
+    Mover* m = &movers[idx];
+    m->appearanceSeed = seed;
+    m->gender = (seed & 1) ? GENDER_FEMALE : GENDER_MALE;
+    m->age = 50 + (seed >> 1) % 21;
+    GenerateMoverName(m->name, m->gender, seed);
+    moverRenderData[idx].color = ColorFromSeed(seed);
+}
+
 Vector2 ScreenToGrid(Vector2 screen) {
     float size = CELL_SIZE * zoom;
     return (Vector2){(screen.x - offset.x) / size, (screen.y - offset.y) / size};
@@ -511,7 +530,7 @@ void AddMoversDemo(int count) {
             InitMover(m, x, y, z, goal, speed);
         }
 
-        moverRenderData[moverCount].color = GetRandomColor();
+        AssignMoverIdentity(moverCount);
         moverCount++;
     }
 
@@ -564,7 +583,7 @@ void SpawnMoversDemo(int count) {
             TraceLog(LOG_WARNING, "Mover %d spawned without path: (%d,%d,%d) to (%d,%d,%d)", moverCount, start.x, start.y, start.z, goal.x, goal.y, goal.z);
         }
 
-        moverRenderData[moverCount].color = GetRandomColor();
+        AssignMoverIdentity(moverCount);
         moverCount++;
     }
 

@@ -95,6 +95,12 @@ typedef struct Mover {
     int equippedTool;    // Item index of carried tool, -1 = none
     // Clothing system
     int equippedClothing; // Item index of worn clothing, -1 = none
+    // Identity (F10 Phase 1)
+    char name[16];
+    uint8_t gender;         // GENDER_MALE=0, GENDER_FEMALE=1
+    uint8_t age;            // Cosmetic (50-70)
+    uint32_t appearanceSeed;
+    bool isDrafted;
 } Mover;
 
 // Stuck detection thresholds

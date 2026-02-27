@@ -287,9 +287,17 @@ static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     Color lineColors[16];
     int lineCount = 0;
 
-    // Header
-    snprintf(lines[lineCount], sizeof(lines[0]), "Mover #%d", moverIdx);
-    lineColors[lineCount++] = YELLOW;
+    // Header: name or "Mover #N" fallback
+    {
+        const char* draftStr = m->isDrafted ? " [DRAFTED]" : "";
+        if (m->name[0]) {
+            snprintf(lines[lineCount], sizeof(lines[0]), "%s%s", m->name, draftStr);
+        } else {
+            snprintf(lines[lineCount], sizeof(lines[0]), "Mover #%d%s", moverIdx, draftStr);
+        }
+    }
+    lineColors[lineCount++] = (m->gender == GENDER_FEMALE)
+        ? (Color){255, 150, 180, 255} : (Color){130, 180, 255, 255};
 
     // Position
     int cellX = (int)(m->x / CELL_SIZE);
