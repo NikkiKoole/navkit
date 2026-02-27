@@ -397,6 +397,51 @@ This is Phase 2 from `workshop-evolution-plan.md`. Single-tile station entities 
 
 ---
 
+## Design Risks & Mitigations
+
+### Risk: New Player Legibility
+
+The workshop system teaches players what's possible — build a Hearth, open its menu, see the recipes. The capability system is intuition-driven ("fire + meat = cooking") but risks the **CDDA wiki problem**: the game is deep but players bounce off it because they can't figure out what's possible without external help.
+
+**Mitigations (actionable):**
+- [ ] **Tools as discovery points.** Hovering any tool or capability provider shows the recipes it enables. Hover a saw: "Saw Planks, Saw Beams, Cut Firewood." Hover a campfire: "Cook Meat, Boil Water, Roast Roots." This works better than workshops for teaching because tools are things players pick up early and carry around — discovery happens sooner and more naturally than "build a building first, then click it."
+- [ ] **Instant reward loop.** When a player crafts a new tool, hovering it immediately shows what new recipes they just unlocked. "You made a stone axe — now you can: Chop Tree, Split Kindling, Carve Bowl." The tool is both the reward and the teaser for what's next. Workshops can't do this because they're static once placed.
+- [ ] **Combined view at stations.** When tools are placed at or near a station, hovering shows the *union* of what everything there can do together. Anvil alone: "Hammer Nails, Flatten Plate." Anvil next to forge: those PLUS "Forge Blade, Smelt Iron." This is where spatial clustering becomes visible — the player sees new recipes appear as they arrange their workspace.
+- [ ] **Handle tool mobility.** Tools move around (carried, hauled, dropped), so the recipe list is position-dependent. The hover tooltip must recalculate based on what's *currently nearby*, not a static list. Show this clearly: "Recipes here (with nearby forge):" vs "Recipes (this tool alone):". If a tool gets carried away from a station, the combined recipes disappear from that station's tooltip — which teaches the player that layout matters.
+- [ ] **Workshops as curated bundles.** Workshops still have value as pre-arranged capability clusters with a bill menu. Think of them as "starter kits" — a Hearth is a campfire + flat surface + output spot bundled into one placement. The bill menu is a curated subset of what the capabilities allow. New players use workshops, experienced players freeform.
+- [ ] **Pinned tools.** Since tools move around (hauled, borrowed, dropped), players need a way to say "this saw stays at the carpenter station." A pin/lock action on a placed tool marks it as spatially reserved — movers skip pinned tools when looking for haulable items or crafting inputs elsewhere. Think of it as a stockpile filter but for individual tools at a location. If a mover takes a pinned tool for a job, they return it when done (like borrowing from a stockpile). This solves the mobility problem: freeform layout works because players can stabilize it once they're happy with the arrangement.
+- [ ] **Unmet requirement feedback.** When a recipe fails capability check, tell the player exactly what's missing: "Needs heat_source:3, best available: campfire (heat_source:1)." Never just "can't craft."
+
+### Risk: Level 0 Makes Workshops Feel Pointless
+
+If a campfire + flat rock does everything a Hearth does (just slower), why build the Hearth? The capability system must make the quality/speed difference dramatic enough that upgrades feel like genuine relief, not minor optimization.
+
+**Mitigations (actionable):**
+- [ ] **Steep speed curve.** Level 0 = 50% speed, level 1 = 67%, level 2 = 83%, level 3 = 100%. Working at level 0 should feel *painful* — your crafter spends twice as long on every job. Players should actively want to upgrade.
+- [ ] **Failure chance at low levels** (future). Level 0 has a chance to waste inputs. Knapping stone on the ground sometimes shatters it. This makes level 0 viable for emergencies but punishing for sustained use.
+- [ ] **Quality tiers on output** (future). Level 0 produces "crude" items, level 2 produces "standard." A crude stone axe breaks faster. This cascades — bad tools make future crafting worse.
+- [ ] **Need satisfaction scaling.** Sleeping on dirt (level 0) restores 50% as much energy per hour as a plank bed (level 2). Eating on the ground gives less satisfaction than eating at a table. Players feel the difference in how often movers interrupt work for needs.
+
+### Risk: Invisible Cluster Scoring
+
+The spatial puzzle ("put the anvil near the forge for faster crafting") is the system's best emergent feature — but only if players know it exists. Hidden scoring means hidden gameplay.
+
+**Mitigations (actionable):**
+- [ ] **Workspace efficiency overlay.** A debug/planning view that color-codes tiles by aggregate capability score. Bright = good workshop spot, dim = isolated. Toggle with a key in sandbox mode.
+- [ ] **Crafter feedback.** When a crafter starts a multi-step job, brief floating text: "Good workspace (+15% speed)" or "Scattered tools (-20% speed)." Teaches spatial layout through play, not menus.
+- [ ] **Proximity indicator on placement.** When placing furniture/stations, show which nearby capabilities it complements. Placing an anvil near a forge: "Near heat_source:2 — enables iron working." This turns placement into an informed decision.
+
+### Risk: Resolver Performance (Implicit Level-0 Everywhere)
+
+If every walkable tile is `flat_surface:0` and every river cell is `water_source:1`, the resolver could score thousands of candidates per query.
+
+**Mitigations (actionable):**
+- [ ] **Explicit-first search.** Only check implicit (world-cell) providers if no explicit provider (workshop, furniture, placed item) found within search radius. Most of the time, explicit providers exist.
+- [ ] **Bounded search radius.** Needs use a tight radius (16 tiles), jobs use a wider one (32 tiles). Don't scan the whole map.
+- [ ] **Provider registry.** Maintain a spatial index of placed capability providers (workshops + furniture). This is a small list (maybe 50-100 entries in a mid-game colony). Implicit providers only checked as fallback.
+
+---
+
 ## Open Questions
 
 1. **Tool-as-provider:** Does a stone axe in inventory provide `CAP_CUTTING_SURFACE:1` wherever the mover stands? Or must it be placed/held at a specific spot? Leaning toward: equipped tool adds its caps to the mover's current position.
@@ -405,4 +450,4 @@ This is Phase 2 from `workshop-evolution-plan.md`. Single-tile station entities 
 
 3. **Need chains vs single resolution:** Current needs are single-step (find food, eat). Multi-step chains ("cook then eat at table") are a quality-of-life upgrade, not a survival necessity. Phase C should start with single-step resolver, add chains later.
 
-4. **Implicit level-0 everywhere:** If every flat surface is `CAP_FLAT_SURFACE:0`, the resolver might waste time scoring thousands of cells. Solution: only check implicit providers when no explicit provider found within search radius, OR only check cells near the mover.
+4. **Implicit level-0 everywhere:** If every flat surface is `CAP_FLAT_SURFACE:0`, the resolver might waste time scoring thousands of cells. Solution: only check implicit providers when no explicit provider found within search radius, OR only check cells near the mover. (See "Resolver Performance" risk above for concrete plan.)
