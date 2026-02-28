@@ -192,6 +192,16 @@ static void RebuildDigRootsDesignationCache(void);
 static void RebuildExploreDesignationCache(void);
 static void RebuildTillDesignationCache(void);
 void RebuildFarmWorkCache(void);
+void RebuildBlueprintWorkCache(void);
+
+// Blueprint work cache — built once per frame, avoids N×MAX_BLUEPRINTS scans
+#define MAX_BP_CACHE 256
+static int bpCacheClearing[MAX_BP_CACHE];
+static int bpCacheClearingCount = 0;
+static int bpCacheNeedsMaterials[MAX_BP_CACHE];
+static int bpCacheNeedsMaterialsCount = 0;
+static int bpCacheReadyToBuild[MAX_BP_CACHE];
+static int bpCacheReadyToBuildCount = 0;
 
 // Forward declarations for WorkGivers (needed for designationSpecs table)
 static int WorkGiver_TillDesignation(int moverIdx);
@@ -4239,27 +4249,8 @@ static void AssignJobs_P4_Designations(void) {
         }
     }
 
-    bool hasBlueprintWork = false;
-    for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS && !hasBlueprintWork; bpIdx++) {
-        Blueprint* bp = &blueprints[bpIdx];
-        if (!bp->active) continue;
-        if (bp->state == BLUEPRINT_CLEARING) {
-            hasBlueprintWork = true;
-        } else if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
-            const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
-            if (recipe) {
-                const ConstructionStage* stage = &recipe->stages[bp->stage];
-                for (int s = 0; s < stage->inputCount; s++) {
-                    if (bp->stageDeliveries[s].deliveredCount + bp->stageDeliveries[s].reservedCount < stage->inputs[s].count) {
-                        hasBlueprintWork = true;
-                        break;
-                    }
-                }
-            }
-        } else if (bp->state == BLUEPRINT_READY_TO_BUILD && bp->assignedBuilder < 0) {
-            hasBlueprintWork = true;
-        }
-    }
+    RebuildBlueprintWorkCache();
+    bool hasBlueprintWork = (bpCacheClearingCount + bpCacheNeedsMaterialsCount + bpCacheReadyToBuildCount) > 0;
 
     bool hasDeconstructWork = false;
     for (int w = 0; w < MAX_WORKSHOPS && !hasDeconstructWork; w++) {
@@ -4987,6 +4978,41 @@ static int WorkGiver_TillDesignation(int moverIdx) {
 // Public wrapper for WorkGiver_Till (declared in jobs.h)
 int WorkGiver_Till(int moverIdx) {
     return WorkGiver_TillDesignation(moverIdx);
+}
+
+// =============================================================================
+// Blueprint work cache — built once per frame, avoids N×MAX_BLUEPRINTS scans
+// =============================================================================
+
+void RebuildBlueprintWorkCache(void) {
+    bpCacheClearingCount = 0;
+    bpCacheNeedsMaterialsCount = 0;
+    bpCacheReadyToBuildCount = 0;
+
+    for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS; bpIdx++) {
+        Blueprint* bp = &blueprints[bpIdx];
+        if (!bp->active) continue;
+
+        if (bp->state == BLUEPRINT_CLEARING) {
+            if (bpCacheClearingCount < MAX_BP_CACHE)
+                bpCacheClearing[bpCacheClearingCount++] = bpIdx;
+        } else if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
+            const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
+            if (recipe) {
+                const ConstructionStage* stage = &recipe->stages[bp->stage];
+                for (int s = 0; s < stage->inputCount; s++) {
+                    if (bp->stageDeliveries[s].deliveredCount + bp->stageDeliveries[s].reservedCount < stage->inputs[s].count) {
+                        if (bpCacheNeedsMaterialsCount < MAX_BP_CACHE)
+                            bpCacheNeedsMaterials[bpCacheNeedsMaterialsCount++] = bpIdx;
+                        break;
+                    }
+                }
+            }
+        } else if (bp->state == BLUEPRINT_READY_TO_BUILD && bp->assignedBuilder < 0) {
+            if (bpCacheReadyToBuildCount < MAX_BP_CACHE)
+                bpCacheReadyToBuild[bpCacheReadyToBuildCount++] = bpIdx;
+        }
+    }
 }
 
 // =============================================================================
@@ -7483,15 +7509,16 @@ int WorkGiver_Build(int moverIdx) {
     // Check capability
     if (!m->capabilities.canBuild) return -1;
 
+    if (bpCacheReadyToBuildCount == 0) return -1;
+
     // Find nearest blueprint ready to build
     int bestBpIdx = -1;
     float bestDistSq = 1e30f;
 
-    for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS; bpIdx++) {
+    for (int i = 0; i < bpCacheReadyToBuildCount; i++) {
+        int bpIdx = bpCacheReadyToBuild[i];
         Blueprint* bp = &blueprints[bpIdx];
-        if (!bp->active) continue;
-        if (bp->state != BLUEPRINT_READY_TO_BUILD) continue;
-        if (bp->assignedBuilder >= 0) continue;  // Already has a builder
+        if (bp->assignedBuilder >= 0) continue;  // Already claimed since cache was built
 
         float bpX = bp->x * CELL_SIZE + CELL_SIZE * 0.5f;
         float bpY = bp->y * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -7573,6 +7600,7 @@ int WorkGiver_Build(int moverIdx) {
 int WorkGiver_BlueprintClear(int moverIdx) {
     Mover* m = &movers[moverIdx];
     if (!m->capabilities.canHaul) return -1;
+    if (bpCacheClearingCount == 0) return -1;
 
     int moverZ = (int)m->z;
     int moverTileX = (int)(m->x / CELL_SIZE);
@@ -7580,10 +7608,9 @@ int WorkGiver_BlueprintClear(int moverIdx) {
     Point moverCell = { moverTileX, moverTileY, moverZ };
     Point tempPath[MAX_PATH];
 
-    for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS; bpIdx++) {
+    for (int ci = 0; ci < bpCacheClearingCount; ci++) {
+        int bpIdx = bpCacheClearing[ci];
         Blueprint* bp = &blueprints[bpIdx];
-        if (!bp->active) continue;
-        if (bp->state != BLUEPRINT_CLEARING) continue;
 
         // Find an unreserved item at this blueprint's cell
         int foundItem = -1;
@@ -7815,6 +7842,7 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
 
     // Check capability
     if (!m->capabilities.canHaul) return -1;
+    if (bpCacheNeedsMaterialsCount == 0) return -1;
 
     int moverZ = (int)m->z;
     int moverTileX = (int)(m->x / CELL_SIZE);
@@ -7826,10 +7854,9 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     int bestBpIdx = -1;
     int bestItemIdx = -1;
 
-    for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS; bpIdx++) {
+    for (int ci = 0; ci < bpCacheNeedsMaterialsCount; ci++) {
+        int bpIdx = bpCacheNeedsMaterials[ci];
         Blueprint* bp = &blueprints[bpIdx];
-        if (!bp->active) continue;
-        if (bp->state != BLUEPRINT_AWAITING_MATERIALS) continue;
 
         // Find an unfilled slot, then find a matching item
         const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
