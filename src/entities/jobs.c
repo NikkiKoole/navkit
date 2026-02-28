@@ -191,6 +191,7 @@ static void RebuildKnapDesignationCache(void);
 static void RebuildDigRootsDesignationCache(void);
 static void RebuildExploreDesignationCache(void);
 static void RebuildTillDesignationCache(void);
+void RebuildFarmWorkCache(void);
 
 // Forward declarations for WorkGivers (needed for designationSpecs table)
 static int WorkGiver_TillDesignation(int moverIdx);
@@ -4309,7 +4310,9 @@ void AssignJobs(void) {
     }
 
     // Rebuild idle list each frame
+    PROFILE_BEGIN(Jobs_IdleList);
     RebuildIdleMoverList();
+    PROFILE_END(Jobs_IdleList);
     PROFILE_COUNT_SET(idle_movers, idleMoverCount);
 
     // Early exit: no idle movers means no work to do
@@ -4356,6 +4359,7 @@ void AssignJobs(void) {
     if (idleMoverCount == 0) return;
 
     // Priority 2d: Hunting (between crafting and hauling)
+    PROFILE_BEGIN(Jobs_P2d_Hunt);
     {
         bool anyMarked = false;
         for (int i = 0; i < animalCount; i++) {
@@ -4378,9 +4382,11 @@ void AssignJobs(void) {
             }
         }
     }
+    PROFILE_END(Jobs_P2d_Hunt);
     if (idleMoverCount == 0) return;
 
     // Priority 2e: Equip clothing (between hunting and hauling)
+    PROFILE_BEGIN(Jobs_P2e_Clothing);
     {
         int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
         if (idleCopy) {
@@ -4394,9 +4400,11 @@ void AssignJobs(void) {
             free(idleCopy);
         }
     }
+    PROFILE_END(Jobs_P2e_Clothing);
     if (idleMoverCount == 0) return;
 
     // Priority 2f: Fill water pots (between equipping and hauling)
+    PROFILE_BEGIN(Jobs_P2f_WaterPot);
     if (thirstEnabled) {
         int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
         if (idleCopy) {
@@ -4410,6 +4418,7 @@ void AssignJobs(void) {
             free(idleCopy);
         }
     }
+    PROFILE_END(Jobs_P2f_WaterPot);
     if (idleMoverCount == 0) return;
 
     PROFILE_BEGIN(Jobs_P3_ItemHaul);
@@ -4440,7 +4449,9 @@ void AssignJobs(void) {
     if (idleMoverCount == 0) return;
 
     // Priority 5: Farm work (harvest ripe > plant > tend weeds > fertilize)
+    PROFILE_BEGIN(Jobs_P5_Farming);
     if (farmActiveCells > 0) {
+        RebuildFarmWorkCache();
         int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
         if (idleCopy) {
             int idleCopyCount = idleMoverCount;
@@ -4458,6 +4469,7 @@ void AssignJobs(void) {
             free(idleCopy);
         }
     }
+    PROFILE_END(Jobs_P5_Farming);
 }
 
 
@@ -4977,35 +4989,83 @@ int WorkGiver_Till(int moverIdx) {
     return WorkGiver_TillDesignation(moverIdx);
 }
 
-// WorkGiver_TendCrop: Auto-find weedy farm cells that need tending
-int WorkGiver_TendCrop(int moverIdx) {
-    Mover* m = &movers[moverIdx];
-    if (!m->capabilities.canPlant) return -1;
-    if (farmActiveCells == 0) return -1;
+// =============================================================================
+// Farm work cache — built once per frame, avoids N×grid scans
+// =============================================================================
+#define MAX_FARM_CACHE 4096
 
-    int bestX = -1, bestY = -1, bestZ = -1;
-    float bestDistSq = 1e30f;
+typedef struct { int x, y, z; } FarmCacheEntry;
+
+static FarmCacheEntry farmCacheRipe[MAX_FARM_CACHE];
+static int farmCacheRipeCount = 0;
+
+static FarmCacheEntry farmCacheNeedsPlant[MAX_FARM_CACHE];
+static int farmCacheNeedsPlantCount = 0;
+
+static FarmCacheEntry farmCacheWeedy[MAX_FARM_CACHE];
+static int farmCacheWeedyCount = 0;
+
+static FarmCacheEntry farmCacheLowFertility[MAX_FARM_CACHE];
+static int farmCacheLowFertilityCount = 0;
+
+static FarmCacheEntry farmCacheDry[MAX_FARM_CACHE];
+static int farmCacheDryCount = 0;
+
+void RebuildFarmWorkCache(void) {
+    farmCacheRipeCount = 0;
+    farmCacheNeedsPlantCount = 0;
+    farmCacheWeedyCount = 0;
+    farmCacheLowFertilityCount = 0;
+    farmCacheDryCount = 0;
 
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 FarmCell* fc = &farmGrid[z][y][x];
                 if (!fc->tilled) continue;
-                if (fc->weedLevel < WEED_THRESHOLD) continue;
                 if (!IsExplored(x, y, z)) continue;
 
-                float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
-                float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
-                float dx = tileX - m->x;
-                float dy = tileY - m->y;
-                float distSq = dx * dx + dy * dy;
-                if (distSq < bestDistSq) {
-                    bestDistSq = distSq;
-                    bestX = x;
-                    bestY = y;
-                    bestZ = z;
+                if (fc->growthStage == CROP_STAGE_RIPE && farmCacheRipeCount < MAX_FARM_CACHE) {
+                    farmCacheRipe[farmCacheRipeCount++] = (FarmCacheEntry){x, y, z};
+                }
+                if (fc->desiredCropType != CROP_NONE && fc->cropType == CROP_NONE && farmCacheNeedsPlantCount < MAX_FARM_CACHE) {
+                    farmCacheNeedsPlant[farmCacheNeedsPlantCount++] = (FarmCacheEntry){x, y, z};
+                }
+                if (fc->weedLevel >= WEED_THRESHOLD && farmCacheWeedyCount < MAX_FARM_CACHE) {
+                    farmCacheWeedy[farmCacheWeedyCount++] = (FarmCacheEntry){x, y, z};
+                }
+                if (fc->fertility < FERTILITY_LOW && farmCacheLowFertilityCount < MAX_FARM_CACHE) {
+                    farmCacheLowFertility[farmCacheLowFertilityCount++] = (FarmCacheEntry){x, y, z};
+                }
+                if (z > 0 && GET_CELL_WETNESS(x, y, z - 1) == 0 && farmCacheDryCount < MAX_FARM_CACHE) {
+                    farmCacheDry[farmCacheDryCount++] = (FarmCacheEntry){x, y, z};
                 }
             }
+        }
+    }
+}
+
+// =============================================================================
+
+// WorkGiver_TendCrop: Auto-find weedy farm cells that need tending
+int WorkGiver_TendCrop(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    if (!m->capabilities.canPlant) return -1;
+    if (farmCacheWeedyCount == 0) return -1;
+
+    int bestX = -1, bestY = -1, bestZ = -1;
+    float bestDistSq = 1e30f;
+
+    for (int i = 0; i < farmCacheWeedyCount; i++) {
+        int x = farmCacheWeedy[i].x, y = farmCacheWeedy[i].y, z = farmCacheWeedy[i].z;
+        float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = tileX - m->x;
+        float dy = tileY - m->y;
+        float distSq = dx * dx + dy * dy;
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestX = x; bestY = y; bestZ = z;
         }
     }
     if (bestX < 0) return -1;
@@ -5047,7 +5107,7 @@ int WorkGiver_TendCrop(int moverIdx) {
 int WorkGiver_Fertilize(int moverIdx) {
     Mover* m = &movers[moverIdx];
     if (!m->capabilities.canPlant) return -1;
-    if (farmActiveCells == 0) return -1;
+    if (farmCacheLowFertilityCount == 0) return -1;
 
     // Find nearest available compost item
     int bestCompostIdx = -1;
@@ -5071,26 +5131,16 @@ int WorkGiver_Fertilize(int moverIdx) {
     // Find nearest low-fertility farm cell
     int bestX = -1, bestY = -1, bestZ = -1;
     float bestDistSq = 1e30f;
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                FarmCell* fc = &farmGrid[z][y][x];
-                if (!fc->tilled) continue;
-                if (fc->fertility >= FERTILITY_LOW) continue;
-                if (!IsExplored(x, y, z)) continue;
-
-                float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
-                float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
-                float dx = tileX - m->x;
-                float dy = tileY - m->y;
-                float distSq = dx * dx + dy * dy;
-                if (distSq < bestDistSq) {
-                    bestDistSq = distSq;
-                    bestX = x;
-                    bestY = y;
-                    bestZ = z;
-                }
-            }
+    for (int i = 0; i < farmCacheLowFertilityCount; i++) {
+        int x = farmCacheLowFertility[i].x, y = farmCacheLowFertility[i].y, z = farmCacheLowFertility[i].z;
+        float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = tileX - m->x;
+        float dy = tileY - m->y;
+        float distSq = dx * dx + dy * dy;
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestX = x; bestY = y; bestZ = z;
         }
     }
     if (bestX < 0) return -1;
@@ -5136,7 +5186,7 @@ int WorkGiver_Fertilize(int moverIdx) {
 int WorkGiver_WaterCrop(int moverIdx) {
     Mover* m = &movers[moverIdx];
     if (!m->capabilities.canPlant) return -1;
-    if (farmActiveCells == 0) return -1;
+    if (farmCacheDryCount == 0) return -1;
 
     // Find nearest available water item (on ground or in stockpile)
     int bestWaterIdx = -1;
@@ -5157,30 +5207,19 @@ int WorkGiver_WaterCrop(int moverIdx) {
     }
     if (bestWaterIdx < 0) return -1;
 
-    // Find nearest dry farm cell (wetness == 0 on soil at z-1)
+    // Find nearest dry farm cell from cache
     int bestX = -1, bestY = -1, bestZ = -1;
     float bestDistSq = 1e30f;
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                FarmCell* fc = &farmGrid[z][y][x];
-                if (!fc->tilled) continue;
-                if (z == 0) continue;  // need z-1 for wetness
-                if (GET_CELL_WETNESS(x, y, z - 1) != 0) continue;  // not dry
-                if (!IsExplored(x, y, z)) continue;
-
-                float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
-                float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
-                float dx = tileX - m->x;
-                float dy = tileY - m->y;
-                float distSq = dx * dx + dy * dy;
-                if (distSq < bestDistSq) {
-                    bestDistSq = distSq;
-                    bestX = x;
-                    bestY = y;
-                    bestZ = z;
-                }
-            }
+    for (int i = 0; i < farmCacheDryCount; i++) {
+        int x = farmCacheDry[i].x, y = farmCacheDry[i].y, z = farmCacheDry[i].z;
+        float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = tileX - m->x;
+        float dy = tileY - m->y;
+        float distSq = dx * dx + dy * dy;
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestX = x; bestY = y; bestZ = z;
         }
     }
     if (bestX < 0) return -1;
@@ -5226,35 +5265,25 @@ int WorkGiver_WaterCrop(int moverIdx) {
 int WorkGiver_PlantCrop(int moverIdx) {
     Mover* m = &movers[moverIdx];
     if (!m->capabilities.canPlant) return -1;
-    if (farmActiveCells == 0) return -1;
+    if (farmCacheNeedsPlantCount == 0) return -1;
 
     // Find nearest tilled cell that wants a crop but has none
     int bestX = -1, bestY = -1, bestZ = -1;
     CropType bestCrop = CROP_NONE;
     float bestDistSq = 1e30f;
 
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                FarmCell* fc = &farmGrid[z][y][x];
-                if (!fc->tilled) continue;
-                if (fc->desiredCropType == CROP_NONE) continue;
-                if (fc->cropType != CROP_NONE) continue;  // Already has a crop
-                if (!IsExplored(x, y, z)) continue;
-
-                float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
-                float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
-                float dx = tileX - m->x;
-                float dy = tileY - m->y;
-                float distSq = dx * dx + dy * dy;
-                if (distSq < bestDistSq) {
-                    bestDistSq = distSq;
-                    bestX = x;
-                    bestY = y;
-                    bestZ = z;
-                    bestCrop = (CropType)fc->desiredCropType;
-                }
-            }
+    for (int i = 0; i < farmCacheNeedsPlantCount; i++) {
+        int x = farmCacheNeedsPlant[i].x, y = farmCacheNeedsPlant[i].y, z = farmCacheNeedsPlant[i].z;
+        FarmCell* fc = &farmGrid[z][y][x];
+        float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = tileX - m->x;
+        float dy = tileY - m->y;
+        float distSq = dx * dx + dy * dy;
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestX = x; bestY = y; bestZ = z;
+            bestCrop = (CropType)fc->desiredCropType;
         }
     }
     if (bestX < 0) return -1;
@@ -5322,31 +5351,21 @@ int WorkGiver_PlantCrop(int moverIdx) {
 int WorkGiver_HarvestCrop(int moverIdx) {
     Mover* m = &movers[moverIdx];
     if (!m->capabilities.canPlant) return -1;
-    if (farmActiveCells == 0) return -1;
+    if (farmCacheRipeCount == 0) return -1;
 
     int bestX = -1, bestY = -1, bestZ = -1;
     float bestDistSq = 1e30f;
 
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                FarmCell* fc = &farmGrid[z][y][x];
-                if (!fc->tilled) continue;
-                if (fc->growthStage != CROP_STAGE_RIPE) continue;
-                if (!IsExplored(x, y, z)) continue;
-
-                float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
-                float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
-                float dx = tileX - m->x;
-                float dy = tileY - m->y;
-                float distSq = dx * dx + dy * dy;
-                if (distSq < bestDistSq) {
-                    bestDistSq = distSq;
-                    bestX = x;
-                    bestY = y;
-                    bestZ = z;
-                }
-            }
+    for (int i = 0; i < farmCacheRipeCount; i++) {
+        int x = farmCacheRipe[i].x, y = farmCacheRipe[i].y, z = farmCacheRipe[i].z;
+        float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = tileX - m->x;
+        float dy = tileY - m->y;
+        float distSq = dx * dx + dy * dy;
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestX = x; bestY = y; bestZ = z;
         }
     }
     if (bestX < 0) return -1;

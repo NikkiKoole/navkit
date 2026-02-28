@@ -310,6 +310,9 @@ int WorkGiver_FillWaterPot(int moverIdx);
 int WorkGiver_WaterCrop(int moverIdx);
 int WorkGiver_GatherReeds(int moverIdx);
 
+// Farm work cache — call before WorkGiver_*Crop/Fertilize/WaterCrop in tests
+void RebuildFarmWorkCache(void);
+
 // Job cancellation (releases all reservations, safe-drops carried items, returns mover to idle)
 void CancelJob(void* mover, int moverIdx);  // void* to avoid circular dependency with mover.h
 

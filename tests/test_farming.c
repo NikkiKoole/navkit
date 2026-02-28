@@ -981,6 +981,7 @@ describe(farming) {
         m->currentJobId = -1;
         AddMoverToIdleList(0);
 
+        RebuildFarmWorkCache();
         int jobId = WorkGiver_WaterCrop(0);
         expect(jobId >= 0);
 
@@ -1016,6 +1017,7 @@ describe(farming) {
         m->currentJobId = -1;
         AddMoverToIdleList(0);
 
+        RebuildFarmWorkCache();
         int jobId = WorkGiver_WaterCrop(0);
         expect(jobId < 0);  // No job — not dry
     }
@@ -1042,6 +1044,7 @@ describe(farming) {
         m->currentJobId = -1;
         AddMoverToIdleList(0);
 
+        RebuildFarmWorkCache();
         int jobId = WorkGiver_WaterCrop(0);
         expect(jobId < 0);  // No water available
     }
@@ -1068,6 +1071,7 @@ describe(farming) {
         m->currentJobId = -1;
         AddMoverToIdleList(0);
 
+        RebuildFarmWorkCache();
         int jobId = WorkGiver_WaterCrop(0);
         expect(jobId < 0);  // farmActiveCells == 0
     }
@@ -1095,6 +1099,7 @@ describe(farming) {
         m->currentJobId = -1;
         AddMoverToIdleList(0);
 
+        RebuildFarmWorkCache();
         int jobId = WorkGiver_WaterCrop(0);
         expect(jobId >= 0);
         expect(items[waterIdx].reservedBy == 0);
@@ -1139,6 +1144,7 @@ describe(farming) {
         AddMoverToIdleList(0);
         AddMoverToIdleList(1);
 
+        RebuildFarmWorkCache();
         int jobId1 = WorkGiver_WaterCrop(0);
         expect(jobId1 >= 0);
 
@@ -1184,6 +1190,7 @@ describe(farming) {
 
         RebuildIdleMoverList();
 
+        RebuildFarmWorkCache();
         int jobId1 = WorkGiver_WaterCrop(0);
         expect(jobId1 >= 0);
 
@@ -1222,6 +1229,7 @@ describe(farming) {
         m->currentJobId = -1;
         AddMoverToIdleList(0);
 
+        RebuildFarmWorkCache();
         int jobId = WorkGiver_WaterCrop(0);
         expect(jobId >= 0);
     }
