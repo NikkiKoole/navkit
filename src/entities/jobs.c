@@ -202,6 +202,7 @@ static int bpCacheNeedsMaterials[MAX_BP_CACHE];
 static int bpCacheNeedsMaterialsCount = 0;
 static int bpCacheReadyToBuild[MAX_BP_CACHE];
 static int bpCacheReadyToBuildCount = 0;
+static bool bpHaulItemsExhausted = false;  // set when no items found for any blueprint
 
 // Forward declarations for WorkGivers (needed for designationSpecs table)
 static int WorkGiver_TillDesignation(int moverIdx);
@@ -4379,16 +4380,28 @@ void AssignJobs(void) {
     // Priority 2e: Equip clothing (between hunting and hauling)
     PROFILE_BEGIN(Jobs_P2e_Clothing);
     {
-        int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
-        if (idleCopy) {
-            int idleCopyCount = idleMoverCount;
-            memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
-            for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
-                int moverIdx = idleCopy[i];
-                if (!moverIsInIdleList[moverIdx]) continue;
-                WorkGiver_EquipClothing(moverIdx);
+        // Quick pre-check: any unreserved clothing items on ground/stockpile?
+        bool anyClothing = false;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (!items[i].active) continue;
+            if (!ItemIsClothing(items[i].type)) continue;
+            if (items[i].reservedBy >= 0) continue;
+            if (items[i].state != ITEM_ON_GROUND && items[i].state != ITEM_IN_STOCKPILE) continue;
+            anyClothing = true;
+            break;
+        }
+        if (anyClothing) {
+            int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+            if (idleCopy) {
+                int idleCopyCount = idleMoverCount;
+                memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+                for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+                    int moverIdx = idleCopy[i];
+                    if (!moverIsInIdleList[moverIdx]) continue;
+                    WorkGiver_EquipClothing(moverIdx);
+                }
+                free(idleCopy);
             }
-            free(idleCopy);
         }
     }
     PROFILE_END(Jobs_P2e_Clothing);
@@ -4443,6 +4456,18 @@ void AssignJobs(void) {
     PROFILE_BEGIN(Jobs_P5_Farming);
     if (farmActiveCells > 0) {
         RebuildFarmWorkCache();
+
+        // Pre-check: any unreserved water items? (one scan, shared across all movers)
+        bool anyWaterItems = false;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (!items[i].active) continue;
+            if (items[i].type != ITEM_WATER) continue;
+            if (items[i].reservedBy != -1) continue;
+            if (items[i].state != ITEM_ON_GROUND && items[i].state != ITEM_IN_STOCKPILE) continue;
+            anyWaterItems = true;
+            break;
+        }
+
         int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
         if (idleCopy) {
             int idleCopyCount = idleMoverCount;
@@ -4454,7 +4479,7 @@ void AssignJobs(void) {
                 if (jobId < 0) jobId = WorkGiver_PlantCrop(moverIdx);
                 if (jobId < 0) jobId = WorkGiver_TendCrop(moverIdx);
                 if (jobId < 0) jobId = WorkGiver_Fertilize(moverIdx);
-                if (jobId < 0) jobId = WorkGiver_WaterCrop(moverIdx);
+                if (jobId < 0 && anyWaterItems) jobId = WorkGiver_WaterCrop(moverIdx);
                 (void)jobId;
             }
             free(idleCopy);
@@ -4988,6 +5013,7 @@ void RebuildBlueprintWorkCache(void) {
     bpCacheClearingCount = 0;
     bpCacheNeedsMaterialsCount = 0;
     bpCacheReadyToBuildCount = 0;
+    bpHaulItemsExhausted = false;
 
     for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS; bpIdx++) {
         Blueprint* bp = &blueprints[bpIdx];
@@ -5214,7 +5240,33 @@ int WorkGiver_WaterCrop(int moverIdx) {
     if (!m->capabilities.canPlant) return -1;
     if (farmCacheDryCount == 0) return -1;
 
-    // Find nearest available water item (on ground or in stockpile)
+    // Find nearest dry farm cell from cache (cheap — small cache)
+    int bestX = -1, bestY = -1, bestZ = -1;
+    float bestDistSq = 1e30f;
+    for (int i = 0; i < farmCacheDryCount; i++) {
+        int x = farmCacheDry[i].x, y = farmCacheDry[i].y, z = farmCacheDry[i].z;
+        float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = tileX - m->x;
+        float dy = tileY - m->y;
+        float distSq = dx * dx + dy * dy;
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestX = x; bestY = y; bestZ = z;
+        }
+    }
+    if (bestX < 0) return -1;
+
+    // Check no other mover is already watering this cell (cheap)
+    for (int i = 0; i < activeJobCount; i++) {
+        Job* j = GetJob(activeJobList[i]);
+        if (j && j->type == JOBTYPE_WATER_CROP &&
+            j->targetMineX == bestX && j->targetMineY == bestY && j->targetMineZ == bestZ) {
+            return -1;
+        }
+    }
+
+    // Only now scan items for water (expensive — deferred until we know there's work)
     int bestWaterIdx = -1;
     float bestWaterDistSq = 1e30f;
     for (int i = 0; i < itemHighWaterMark; i++) {
@@ -5232,32 +5284,6 @@ int WorkGiver_WaterCrop(int moverIdx) {
         }
     }
     if (bestWaterIdx < 0) return -1;
-
-    // Find nearest dry farm cell from cache
-    int bestX = -1, bestY = -1, bestZ = -1;
-    float bestDistSq = 1e30f;
-    for (int i = 0; i < farmCacheDryCount; i++) {
-        int x = farmCacheDry[i].x, y = farmCacheDry[i].y, z = farmCacheDry[i].z;
-        float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
-        float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = tileX - m->x;
-        float dy = tileY - m->y;
-        float distSq = dx * dx + dy * dy;
-        if (distSq < bestDistSq) {
-            bestDistSq = distSq;
-            bestX = x; bestY = y; bestZ = z;
-        }
-    }
-    if (bestX < 0) return -1;
-
-    // Check no other mover is already watering this cell
-    for (int i = 0; i < activeJobCount; i++) {
-        Job* j = GetJob(activeJobList[i]);
-        if (j && j->type == JOBTYPE_WATER_CROP &&
-            j->targetMineX == bestX && j->targetMineY == bestY && j->targetMineZ == bestZ) {
-            return -1;
-        }
-    }
 
     // Reserve water
     ReserveItem(bestWaterIdx, moverIdx);
@@ -7751,7 +7777,8 @@ static int FindNearestRecipeItem(int moverTileX, int moverTileY, int moverZ, flo
         }
     }
 
-    // Linear scan fallback
+    // Linear scan fallback — only if spatial grid didn't find anything
+    if (bestItemIdx >= 0) return bestItemIdx;
     for (int j = 0; j < itemHighWaterMark; j++) {
         Item* item = &items[j];
         if (!item->active) continue;
@@ -7843,6 +7870,7 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     // Check capability
     if (!m->capabilities.canHaul) return -1;
     if (bpCacheNeedsMaterialsCount == 0) return -1;
+    if (bpHaulItemsExhausted) return -1;  // no items found for any blueprint this frame
 
     int moverZ = (int)m->z;
     int moverTileX = (int)(m->x / CELL_SIZE);
@@ -7885,7 +7913,12 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
         if (bestBpIdx >= 0) break;
     }
 
-    if (bestBpIdx < 0 || bestItemIdx < 0) return -1;
+    if (bestBpIdx < 0 || bestItemIdx < 0) {
+        // No items found for any blueprint — subsequent movers won't find any either
+        // (items only get reserved, never spawned, during the assignment loop)
+        bpHaulItemsExhausted = true;
+        return -1;
+    }
 
     Blueprint* bp = &blueprints[bestBpIdx];
 

@@ -742,6 +742,25 @@ static void LogDiscoveries(const RevealDiscoveries *d) {
 // Reveal cells around a point — circular x,y within radius,
 // then extends vertically through air (upward and downward until solid)
 void RevealAroundPoint(int cx, int cy, int cz, int radius) {
+    // Fast path: sample 8 boundary points at cz level.
+    // If all already explored, the area was revealed on a previous call — skip.
+    {
+        int r7 = radius * 7 / 10;  // ~cos(45°) * radius
+        const int offsets[8][2] = {
+            {radius, 0}, {-radius, 0}, {0, radius}, {0, -radius},
+            {r7, r7}, {-r7, r7}, {r7, -r7}, {-r7, -r7}
+        };
+        bool allExplored = true;
+        for (int i = 0; i < 8; i++) {
+            int sx = cx + offsets[i][0];
+            int sy = cy + offsets[i][1];
+            if (sx >= 0 && sx < gridWidth && sy >= 0 && sy < gridHeight) {
+                if (!exploredGrid[cz][sy][sx]) { allExplored = false; break; }
+            }
+        }
+        if (allExplored) return;
+    }
+
     int r2 = radius * radius;
     int minX = cx - radius; if (minX < 0) minX = 0;
     int maxX = cx + radius; if (maxX >= gridWidth) maxX = gridWidth - 1;
