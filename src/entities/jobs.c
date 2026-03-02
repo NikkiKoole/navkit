@@ -1121,7 +1121,7 @@ JobRunResult RunJob_Chop(Job* job, void* moverPtr, float dt) {
     int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
     if (!d || d->type != DESIGNATION_CHOP) return JOBRUN_FAIL;
-    if (grid[tz][ty][tx] != CELL_TREE_TRUNK) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
+    if (grid[tz][ty][tx] != CELL_TREE_TRUNK && !IsYoungTreeBase(tx, ty, tz)) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
     if (job->step == STEP_WORKING) {
         float workTime = IsYoungTreeBase(tx, ty, tz) ? CHOP_YOUNG_WORK_TIME : CHOP_WORK_TIME;

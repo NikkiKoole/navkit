@@ -1237,6 +1237,11 @@ int InspectSaveFile(int argc, char** argv) {
     // Vegetation grid (skip - not inspected)
     fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);
 
+    // Snow grid (skip - not inspected)
+    if (version >= 45) {
+        fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);
+    }
+
     fread(insp_tempCells, sizeof(TempCell), totalCells, f);
     fread(insp_designations, sizeof(Designation), totalCells, f);
     
@@ -1257,11 +1262,6 @@ int InspectSaveFile(int argc, char** argv) {
     // Floor dirt grid (v36+, skip - not inspected)
     if (version >= 36) {
         fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);  // floorDirtGrid
-    }
-
-    // Snow grid (v45+, skip - not inspected)
-    if (version >= 45) {
-        fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);  // snowGrid
     }
 
     // Explored grid (v75+, skip - not inspected)

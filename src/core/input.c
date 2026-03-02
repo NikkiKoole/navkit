@@ -2411,7 +2411,7 @@ void HandleInput(void) {
     
     if (inputMode == MODE_NORMAL) {
         // Draft toggle: D while hovering a mover drafts/undrafts (consumes D before draw mode)
-        if (CheckKey(KEY_D) && hoveredMover >= 0 && hoveredMover < moverCount) {
+        if (hoveredMover >= 0 && hoveredMover < moverCount && CheckKey(KEY_D)) {
             Mover* dm = &movers[hoveredMover];
             dm->isDrafted = !dm->isDrafted;
             if (dm->isDrafted && dm->currentJobId >= 0) {
