@@ -1,5 +1,7 @@
 # Survival Feature Priority Order
 
+> Status: research
+
 > Master priority list for the survival mode feature roadmap. Updated 2026-02-25.
 
 ---

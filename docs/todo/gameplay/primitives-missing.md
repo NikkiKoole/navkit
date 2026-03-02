@@ -1,5 +1,7 @@
 # Primitive Ingredients Missing (Survival-Build Enablers)
 
+> Status: research
+
 Date: 2026-02-07
 Updated: 2026-02-12
 Scope: Identify the *smallest set* of primitive items/cells needed to unlock early survival builds, grounded in the current codebase.

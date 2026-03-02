@@ -1,5 +1,7 @@
 # Transient State: Save/Load Gaps
 
+> Status: spec
+
 > Notes on runtime state that doesn't persist across save/load.
 > Low priority — batch fix when it becomes annoying.
 > Updated 2026-02-24 after investigation.

@@ -1,5 +1,7 @@
 # Pie Menu Research & Design
 
+> Status: research
+
 ## Why Pie Menus
 
 Pie menus replace the current bottom bar with a radial context menu. Benefits:

@@ -1,5 +1,7 @@
 # Water Placement Tools
 
+> Status: spec
+
 Date: 2026-02-11
 Status: Design proposal - needed for water-dependent workshops
 

@@ -4,6 +4,9 @@ To build a compelling progression for a colony sim that evolves from a primitive
 Here is a list of tiles categorized by their role in your game’s economy and growth:
 
 ### 1. Survival & Village Foundation (The Primitive Tier)
+
+> Status: idea
+
 *Focus: Immediate survival, basic shelter, and raw resource gathering.*
 *   **Shelter:** Mud Hut, Lean-to, Thatch Cabin, Communal Longhouse.
 *   **Food:** Foraged Bush (Wild Berries), Fishing Pier, Hunter’s Blind, Pit Trap.

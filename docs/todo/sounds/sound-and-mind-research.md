@@ -1,5 +1,7 @@
 # Sound and Mind - Research Index
 
+> Status: research
+
 Context
 - This is a split of the earlier combined note so each track stays focused.
 - The project already has a synth engine in `soundsystem/engines/synth.h` for agent vocal output.

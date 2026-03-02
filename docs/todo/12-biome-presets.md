@@ -1,5 +1,7 @@
 # Feature 12: Biome Presets
 
+> Status: implemented
+
 > **Priority**: Tier 3 — World Variety
 > **Why now**: All 5 soils, 4 tree species, 3 stone types, weather/seasons, and temperature already exist. Worldgen distributes them by elevation+noise. Most biomes are just named presets for knobs that already work. A few (beach, desert) need new sprites to feel right.
 > **Systems used**: Terrain generation, material system, weather, temperature, vegetation, tree placement

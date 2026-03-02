@@ -1,5 +1,7 @@
 # Feature 03: Doors & Shelter
 
+> Status: superseded
+
 > **Priority**: Tier 1 — Survival Loop
 > **Why now**: Buildings are open mazes. Weather/temperature exist but have no gameplay impact on colonists.
 > **Systems used**: Construction, weather, temperature, lighting, wind

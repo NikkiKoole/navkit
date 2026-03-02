@@ -1,5 +1,7 @@
 # Feature 10: Personality, Skills & Moods
 
+> Status: partial
+
 > **Priority**: Tier 4 — Living Colony
 > **Why now**: After features 1-9, colonists eat, sleep, use tools, wear clothes, farm, and live in shelters — but they're identical, nameless, and emotionless. This is what turns logistics into storytelling.
 > **Systems used**: All needs (F1, F2, F8), all jobs, all workshops, shelter (F3)

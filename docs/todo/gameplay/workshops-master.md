@@ -1,5 +1,7 @@
 # Workshops & Item Loops - Master Document
 
+> Status: research
+
 Date: 2026-02-09
 Updated: 2026-02-12
 Status: Living document - update as implementation progresses

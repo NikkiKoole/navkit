@@ -1,5 +1,7 @@
 # Flow Simulation Systems: Water Flow Field + Wind Field
 
+> Status: idea
+
 Date: 2026-02-07
 Scope: Add two vector‑field systems that bias existing simulations without rewriting them.
 

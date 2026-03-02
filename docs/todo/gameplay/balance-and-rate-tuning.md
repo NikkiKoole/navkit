@@ -1,5 +1,7 @@
 # Balance & Rate Tuning — Systems Design Guide
 
+> Status: research
+
 Date: 2026-02-16
 Scope: Patterns for tuning interconnected rate-based systems (hunger, energy, curing, growth, decay) without breaking balance when adding new systems or changing time settings.
 

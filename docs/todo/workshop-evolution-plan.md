@@ -1,5 +1,7 @@
 # Workshop Evolution: From Templates to Stations
 
+> Status: idea
+
 ## The Tension
 
 We have two competing design directions for how "production" works in the game:

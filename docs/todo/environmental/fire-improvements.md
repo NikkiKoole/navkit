@@ -1,5 +1,7 @@
 # Fire Improvements — Deferred from Primitive Shelter (03)
 
+> Status: spec
+
 > Deferred 2026-02-22. These were scoped out of the primitive shelter feature to keep it focused.
 
 ---

@@ -1,5 +1,7 @@
 # A Character's Story: Waking Up in the Grassy Plains
 
+> Status: idea
+
 *A feature gap analysis told through the eyes of a single character waking up naked in the world.*
 
 ---

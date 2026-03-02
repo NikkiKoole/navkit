@@ -1,5 +1,7 @@
 # Train Tracks & Stations
 
+> Status: partial
+
 Horizontal multi-stop transport system. Conceptually: a horizontal elevator with a fixed track and multiple stations.
 
 Part of the unified transport layer — see `pathfinding/transport-layer.md` for the shared abstraction (concrete-first approach: build trains end-to-end, extract pattern later).

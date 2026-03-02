@@ -1,5 +1,7 @@
 # Seasoning & Curing System (State‑Based Materials)
 
+> Status: spec
+
 Date: 2026-02-07
 Scope: Turn time into a resource by adding **material states** (seasoning/curing) that integrate with stockpiles and staged construction.
 

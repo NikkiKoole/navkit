@@ -1,5 +1,7 @@
 # Sims-Inspired Priorities
 
+> Status: idea
+
 > What makes The Sims work, what navkit already has, and a reordered plan to get the Sims feel fastest.
 
 ---

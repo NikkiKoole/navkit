@@ -1,5 +1,7 @@
 # Pathfinding — Future Ideas
 
+> Status: idea
+
 Small ideas not yet fleshed out. Each could become its own doc when implementation starts.
 
 ---

@@ -6,6 +6,9 @@ Hi so about my colony survival game, I want hinge to be a thing,thirst a separat
 In your 8x8 pixel world, you can turn biological waste into a high-efficiency production loop. Here is a concise design for integrating these needs and the specific "liquid gold" utility of urine.
 
 ### 1. The Core Survival Loop[[1](https://www.google.com/url?sa=E&q=https%3A%2F%2Fvertexaisearch.cloud.google.com%2Fgrounding-api-redirect%2FAUZIYQFu0hOh9lmD_nzN_DQuxJUa2WYWnpH24BQ31K4LgYlqQCiUsxHtjVXq_PlSi0N9BeIImp4VFpul-8SbYj_pO1wdDetrKFHldFz3j71JGikWpz93arCxM79DcsP06d_31WCA4STpZ6U%3D)]
+
+> Status: discussion
+
 *   **Needs:** **Hunger** (solid food), **Thirst** (clean water), **Bladder** (liquid waste), and **Bowel** (solid waste). 
 *   **Hygiene (The "Hinge"):** Your "Hinge" (likely Hygiene) acts as the connection point.[[1](https://www.google.com/url?sa=E&q=https%3A%2F%2Fvertexaisearch.cloud.google.com%2Fgrounding-api-redirect%2FAUZIYQFu0hOh9lmD_nzN_DQuxJUa2WYWnpH24BQ31K4LgYlqQCiUsxHtjVXq_PlSi0N9BeIImp4VFpul-8SbYj_pO1wdDetrKFHldFz3j71JGikWpz93arCxM79DcsP06d_31WCA4STpZ6U%3D)] Low hygiene from not using a sink or being near waste increases the rate at which other needs deplete or introduces a "Sickness" debuff.[[1](https://www.google.com/url?sa=E&q=https%3A%2F%2Fvertexaisearch.cloud.google.com%2Fgrounding-api-redirect%2FAUZIYQFu0hOh9lmD_nzN_DQuxJUa2WYWnpH24BQ31K4LgYlqQCiUsxHtjVXq_PlSi0N9BeIImp4VFpul-8SbYj_pO1wdDetrKFHldFz3j71JGikWpz93arCxM79DcsP06d_31WCA4STpZ6U%3D)]
 

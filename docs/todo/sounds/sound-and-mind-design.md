@@ -1,5 +1,7 @@
 # Sound and Mind - System Design
 
+> Status: research
+
 Purpose
 - Enable agent communication that surprises the player without heavy ML.
 - Keep the system learnable, debuggable, and cheap to run.

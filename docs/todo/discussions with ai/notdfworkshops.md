@@ -9,6 +9,9 @@ You aren't confused; you are touching on a transition that happens in real histo
 Here is how to bridge **Freeform Construction** with **Colony Job Logic**:
 
 ### 1. The Solution: "Entity-Based" Task Logic
+
+> Status: discussion
+
 In *Dwarf Fortress*, the "Workshop" is the boss. It holds the queue. In your game, make the **Tools** the boss.
 
 *   **CDDA Style:** You place an "Anvil" on a tile. You place a "Forge" on the tile next to it. 

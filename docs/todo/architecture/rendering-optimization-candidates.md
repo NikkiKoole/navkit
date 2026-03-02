@@ -1,5 +1,7 @@
 # Rendering Optimization Candidates
 
+> Status: research
+
 Date: 2026-02-16
 Status: Reference — no active bottleneck, general analysis for when needed
 

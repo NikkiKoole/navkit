@@ -1,5 +1,7 @@
 # Endgame Village Vision
 
+> Status: idea
+
 > What does a 20th-century big village look like? Working backward from the destination to find what systems we need.
 
 ## The Picture

@@ -1,5 +1,7 @@
 # 09 — Onboarding & Progressive Complexity
 
+> Status: spec
+
 *The game is getting overwhelming to start. Every need (hunger, thirst, energy, temperature, clothing) hits at once. This doc plans how to ease players into survival systems gradually.*
 
 ---

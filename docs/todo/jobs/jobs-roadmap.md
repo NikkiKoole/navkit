@@ -1,5 +1,7 @@
 # Jobs System — Future Ideas
 
+> Status: idea
+
 Extracted from the original roadmap (now in `docs/done/jobs/jobs-roadmap.md`).
 Everything below is **not yet implemented**.
 

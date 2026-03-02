@@ -1,5 +1,7 @@
 # Elevators
 
+> Status: spec
+
 Full simulation elevators for colony sim: moving platforms with state, queuing, capacity, and wait times.
 
 ---

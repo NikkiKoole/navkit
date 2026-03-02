@@ -7,6 +7,9 @@ To make farming a "super cool" centerpiece of your survival colony game, you sho
 By using a multi-variable matrix, you transform farming from a "click and wait" chore into a deep strategic puzzle of chemistry, engineering, and environmental adaptation.
 
 ### 1. The Soil Matrix: 5 Layers of Depth
+
+> Status: discussion
+
 Instead of one "Fertility" bar, each soil tile should track a matrix of data. This allows for specialized crops and high-level optimization.
 
 | Layer | Variables | Gameplay Effect |

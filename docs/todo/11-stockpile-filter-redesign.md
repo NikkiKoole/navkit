@@ -1,5 +1,7 @@
 # Stockpile Filter Redesign
 
+> Status: spec
+
 > **Status**: Design / brainstorm
 > **Why**: Filter list is 30+ flat entries and growing. Containers, curing states, more materials incoming. Keyboard keys running out. UI becoming a wall of text.
 

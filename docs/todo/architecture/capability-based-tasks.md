@@ -1,5 +1,7 @@
 # Capability-Based Task Resolution
 
+> Status: spec
+
 Unified system for workshop crafting AND daily life activities. Extends [workshop-evolution-plan.md](../../todo/workshop-evolution-plan.md) with a concrete capability model that covers both job-driven production and need-driven survival.
 
 ## Core Principle

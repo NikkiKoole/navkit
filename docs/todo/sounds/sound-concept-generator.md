@@ -1,5 +1,7 @@
 # Sound and Mind - Concept Generator Spec
 
+> Status: research
+
 Purpose
 - Prevent missing concepts as new objects, jobs, and materials are added.
 - Provide a small, reliable inventory of "things we could talk about."

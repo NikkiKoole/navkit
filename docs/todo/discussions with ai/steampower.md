@@ -8,6 +8,8 @@ For a wilderness colony sim with a deep simulation of weather, heat, and fluids,
 
 ### 1. Gameplay Systems for Steam Automation
 
+> Status: discussion
+
 To make steam engines feel like a part of your simulation, you should treat them as a **Fluid-to-Kinetic energy loop.**[[1](https://www.google.com/url?sa=E&q=https%3A%2F%2Fvertexaisearch.cloud.google.com%2Fgrounding-api-redirect%2FAUZIYQG7usH3d7H0EY83X50noCbpuUbmS-uA-oxhs7ja1eSQgQRYbBrCur30ZRhfkia_VE67bk7cFv9B8upcJFMACIHk9cyvMsx7rD0cPgJNxvANVM_n4K8bJqIiUMpA1BydvJKVS1mC1hc%3D)]
 
 #### A. The Thermodynamic Loop

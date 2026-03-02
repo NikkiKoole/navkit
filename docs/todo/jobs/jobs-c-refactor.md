@@ -1,5 +1,7 @@
 # jobs.c Refactor Analysis
 
+> Status: spec
+
 **Date:** 2026-02-21
 **File:** `src/entities/jobs.c` — 6,044 lines, ~85 functions
 

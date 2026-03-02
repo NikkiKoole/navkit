@@ -1,5 +1,7 @@
 # Unified Spatial Queries Layer
 
+> Status: spec
+
 Unified interface for "find nearest X", k-nearest neighbors, range queries.
 
 ## Current State (Feb 2026)

@@ -1,5 +1,7 @@
 # Mover Control & Work Radius
 
+> Status: idea
+
 > **Status**: Design brainstorm
 > **Why**: In survival mode, movers wander across the entire map doing jobs. No way to keep them local or override their behavior.
 

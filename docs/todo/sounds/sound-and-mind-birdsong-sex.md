@@ -1,5 +1,7 @@
 # Sound and Mind - Birdsong and Sexual Selection
 
+> Status: research
+
 Scope
 - Goal: evolving or culturally learned song used for mate choice.
 - World: discrete 3D grid with agents, home sites, danger, and resources.

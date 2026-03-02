@@ -8,6 +8,8 @@
 
 ## Goal
 
+> Status: spec
+
 Decouple the pathfinding simulation from rendering so that:
 - The simulation runs as a "headless backend" in grid-cell coordinates
 - Multiple views can observe the same simulation from different perspectives

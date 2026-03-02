@@ -1,5 +1,7 @@
 # Sound and Mind - Speech and Communication
 
+> Status: research
+
 Scope
 - Goal: agent-to-agent communication that can surprise you.
 - World: discrete 3D grid, with needs like food, danger, home, jobs, and social goals.

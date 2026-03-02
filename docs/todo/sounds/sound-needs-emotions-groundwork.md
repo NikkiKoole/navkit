@@ -1,5 +1,7 @@
 # Sound and Mind - Needs and Emotions Groundwork
 
+> Status: research
+
 Purpose
 - Provide a light, stable foundation for meaningful communication later.
 - Keep the system small enough to ship early.

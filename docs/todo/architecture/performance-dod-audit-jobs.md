@@ -1,5 +1,7 @@
 # Performance & DOD Audit: Job System (`src/entities/jobs.c`)
 
+> Status: research
+
 Deep-dive audit of `jobs.c` through Casey Muratori's data-oriented design lens. This file supplements the main `performance-dod-audit.md` with jobs-specific findings.
 
 **File size:** ~3,800 lines (largest file in the codebase)

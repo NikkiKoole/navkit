@@ -1,5 +1,7 @@
 # Fire Ignition + Material Fuel Rules
 
+> Status: spec
+
 ## Goal
 Make fire behavior match player intuition:
 - Wood constructions burn (walls, floors, ladders/ramps).

@@ -1,5 +1,7 @@
 # Items — Future Ideas
 
+> Status: idea
+
 Small ideas not yet fleshed out.
 
 ---

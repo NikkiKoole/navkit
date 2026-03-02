@@ -1,5 +1,7 @@
 # Instant Reassignment
 
+> Status: spec
+
 When a mover completes a job mid-tick, immediately assign the next job instead of waiting for next `AssignJobs()` call.
 
 ## Implementation

@@ -1,5 +1,7 @@
 # Naked in the Grass — Design Details
 
+> Status: idea
+
 Companion to `naked-in-the-grass.md`. Deep dives into specific systems.
 
 ---

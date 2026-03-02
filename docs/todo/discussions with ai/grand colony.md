@@ -8,6 +8,9 @@ That is a massive and exciting scope.[[1](https://www.google.com/url?sa=E&q=http
 To make this work without the game collapsing under its own weight, here is advice on structuring your loops, tech progression, and the "Autarky" (self-sufficiency) challenge.
 
 ### 1. The Core Scaling Loop (Micro to Macro)
+
+> Status: discussion
+
 The biggest challenge is moving from a single person (Micromanagement) to a 20th-century city (Macromanagement).
 *   **The "Shadow" Labor System:** In the beginning, you control every action (CDDA style). As you gain colonists, you must transition to a **Work Order** system (Dwarf Fortress style).
 *   **Automation of Survival:** Survival needs must become "background noise."[[2](https://www.google.com/url?sa=E&q=https%3A%2F%2Fvertexaisearch.cloud.google.com%2Fgrounding-api-redirect%2FAUZIYQFTaPcrs4vIZ6XokMg7qtLbEX0CmSjKKroZT7TkzdJQxPwOwAlKWYqaJgjMC2OfrVg7-AnDYcqsxxHTjKilizBsX7ZyYAU4lFqSiJeKlBpG4eG90nkJjDczLSXbgRSwbztTckxTag%3D%3D)] At first, finding one clean water bottle is a victory. By the "Steam Era," your loop should be: *Build Pump -> Build Pipes -> Automated Water Access*. If a 20th-century player still has to manually click to make someone drink, the game will feel tedious.

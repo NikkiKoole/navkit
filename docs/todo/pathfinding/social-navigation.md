@@ -1,5 +1,7 @@
 # Social Navigation
 
+> Status: spec
+
 Crowd behavior and social movement features.
 
 ---

@@ -1,5 +1,7 @@
 # Performance & Data-Oriented Design Audit
 
+> Status: research
+
 Codebase analysis through the lens of Casey Muratori-style performance-oriented programming. Findings ranked by impact.
 
 ---

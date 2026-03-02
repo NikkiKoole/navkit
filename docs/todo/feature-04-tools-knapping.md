@@ -1,5 +1,7 @@
 # Feature 04: Tools & Knapping
 
+> Status: superseded
+
 > **Priority**: Tier 2 — Tool & Production Loop
 > **Why now**: Every job runs at the same speed. Rocks, sticks, and cordage exist but have no tool use. No progression.
 > **Systems used**: Rocks, sticks, cordage (all existing items), all job types

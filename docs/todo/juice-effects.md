@@ -1,5 +1,7 @@
 # Juice Effects
 
+> Status: partial
+
 > Small feedback effects that make interactions feel satisfying. No gameplay impact — pure feel.
 
 ## What Already Exists

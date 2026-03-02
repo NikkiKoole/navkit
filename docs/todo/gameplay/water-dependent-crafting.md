@@ -1,5 +1,7 @@
 # Water-Dependent Crafting System
 
+> Status: spec
+
 Date: 2026-02-11
 Status: Design proposal - requires multiple new systems
 

@@ -1,5 +1,7 @@
 # Unified Architecture Roadmap
 
+> Status: idea
+
 > How seven design documents become one build order for Era 2: "The Village."
 
 ---

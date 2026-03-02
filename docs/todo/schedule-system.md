@@ -1,5 +1,7 @@
 # Schedule System
 
+> Status: spec
+
 > Clock-driven daily routines layered on top of the existing need/job system. The shift from "do whatever's urgent" to "it's 8am, time for work."
 
 ## Current System
