@@ -2,6 +2,8 @@
 
 Horizontal multi-stop transport system. Conceptually: a horizontal elevator with a fixed track and multiple stations.
 
+Part of the unified transport layer — see `pathfinding/transport-layer.md` for the shared abstraction (concrete-first approach: build trains end-to-end, extract pattern later).
+
 ---
 
 ## Core Concept
@@ -15,6 +17,24 @@ Walking network:  [station Y]  --walk--> [destination B]
 ```
 
 The mover's decision: is walk(A->B) cheaper than walk(A->X) + wait + ride(X->Y) + walk(Y->B)?
+
+---
+
+## Current State (Phase 1 — done)
+
+What's already in the codebase (`src/entities/trains.h`, `src/entities/trains.c`):
+
+- **Train struct**: pixel position (smooth interpolation), z-level, current/prev cell, speed, progress, locomotive light
+- **CELL_TRACK**: walkable cell type with 16-sprite autotiling (N/E/S/W connectivity)
+- **FindNextTrackCell()**: follows track, prefers straight (90%), random at junctions (10%), reverses at dead ends
+- **TrainsTick()**: advances trains each frame, interpolates position, updates locomotive light
+- **SpawnTrain()**: places train on track cell, validates bounds
+- **Track drawing UI**: ACTION_DRAW_TRACK (place/remove), ACTION_DRAW_TRAIN (spawn/remove)
+- **Save/load**: v46+ (v47 added lightCellX/lightCellY)
+- **Rendering**: SPRITE_train_loc with rotation based on heading, depth tint, viewport culling
+- **Limits**: MAX_TRAINS 32, TRAIN_DEFAULT_SPEED 3.0 cells/sec
+
+What trains **don't** do yet: no stations, no stopping, no mover interaction, no pathfinder integration, no cargo. Trains are decorative rolling lights that bounce along track.
 
 ---
 
@@ -41,8 +61,8 @@ Both systems share the same mover state machine (wait/board/ride/exit) and the s
 ### New Cell Types
 
 ```c
-CELL_TRACK      // Walkable, drawn as rails, cart travels along these
-CELL_STATION    // Walkable, drawn as platform, movers board/exit here
+CELL_TRACK      // Done — walkable, drawn as rails, cart travels along these
+CELL_STATION    // Needed — walkable, drawn as platform, movers board/exit here
 ```
 
 ### Train Line
@@ -62,21 +82,31 @@ typedef struct {
 
 ### Train Cart
 
-The physical entity that moves along the track.
+The physical entity that moves along the track. Evolves from the existing `Train` struct.
 
 ```c
+// Current Train struct (trains.h) becomes this:
 typedef struct {
-    int lineIndex;                       // which TrainLine
-    float trackPosition;                 // float position along trackPath
-    int direction;                       // +1 or -1 along track
+    // --- existing fields ---
+    float x, y;                          // Pixel position (smooth interpolation)
+    int z;
+    int cellX, cellY;
+    int prevCellX, prevCellY;
+    float speed;
+    float progress;
+    int lightCellX, lightCellY;
+    bool active;
+
+    // --- Phase 2 additions ---
     TrainCartState state;
     float stateTimer;
     float doorTime;                      // how long doors stay open at station
 
+    // --- Phase 3 additions ---
     int capacity;
     int ridingMovers[MAX_CART_CAPACITY];
     int ridingCount;
-} TrainCart;
+} Train;
 
 typedef enum {
     CART_MOVING,
@@ -184,7 +214,7 @@ Don't check all station pairs. Only consider stations within reasonable walking 
 
 ## Cart Scheduling
 
-### Simple: Bounce
+### Simple: Bounce (current behavior, keep for Phase 2)
 
 Cart moves forward along track, stops at each station, reverses at the end. No call system needed.
 
@@ -200,6 +230,17 @@ Track forms a loop. Cart always moves in one direction. Movers can predict arriv
 ### Advanced: On-Demand
 
 Cart idles until called (like elevator). Moves to nearest caller, services stations along the way (SCAN algorithm from elevator doc).
+
+### Timetable (late game — requires schedule system)
+
+Cart runs on a daily schedule with operating hours:
+
+- **Service hours**: e.g. 6am–10pm. Outside those hours, cart parks at a depot station.
+- **Pathfinder impact**: `EstimateWait()` checks game clock against timetable. Outside service hours, transport edge cost = infinity → pathfinder picks walking. Near end of service, cost spikes (long wait until morning).
+- **Mover planning**: a mover at 9:45pm might walk because the last train is about to stop. A mover who works late might prefer housing near their workplace because the train doesn't run at night.
+- **Gameplay effect**: creates daily rhythm — morning rush at stations, evening last-train pressure. Ties into `schedule-system.md` — commute planning around transport availability.
+
+**Why it's late-game**: requires schedule system, and requires movers to reason about future time ("will the train run when I need to come home?"). Current movers are reactive (pick best option now), not predictive. Start with 24/7 bounce, add timetables when daily rhythm matters.
 
 Start with bounce. It's simple and creates interesting decisions (do I wait for the return trip or just walk?).
 
@@ -226,11 +267,11 @@ Station placement: player marks specific track cells as stations (like designati
 
 ### Track
 
-Rail sprites on ground. Could reuse floor-layer rendering. Two parallel lines or a simple rail texture in the 8x8 atlas.
+Rail sprites on ground. Could reuse floor-layer rendering. Two parallel lines or a simple rail texture in the 8x8 atlas. **Already implemented** — 16 autotile sprites for all cardinal connectivity combos.
 
 ### Cart
 
-Small sprite that moves along the track. Could show riding movers on top (stacked sprites).
+Small sprite that moves along the track. Could show riding movers on top (stacked sprites). **Already implemented** — SPRITE_train_loc with rotation, locomotive light.
 
 ### Station
 
@@ -259,25 +300,32 @@ Currently moveCost is uniform (10/14) in the pathfinder. Speed modifiers (mud, f
 
 ## Implementation Phases
 
-### Phase 1: Track & Cart Entity
-- [ ] CELL_TRACK cell type
-- [ ] Track drawing in input (similar to wall drawing)
-- [ ] TrainCart struct with position along track
-- [ ] Cart moves back and forth at fixed speed
-- [ ] Cart rendering (sprite sliding along track)
+### Phase 1: Track & Cart Entity — DONE
+- [x] CELL_TRACK cell type with 16-sprite autotiling
+- [x] Track drawing in input (ACTION_DRAW_TRACK, ACTION_DRAW_TRAIN)
+- [x] Train struct with pixel position, speed, smooth interpolation
+- [x] Cart moves along track (FindNextTrackCell: straight preference, junction randomness, dead-end reversal)
+- [x] Cart rendering (SPRITE_train_loc with rotation + depth tint)
+- [x] Locomotive light (AddLightSource/RemoveLightSource as cart moves)
+- [x] Save/load (v46+, v47 struct upgrade for light fields)
 
 ### Phase 2: Stations
 - [ ] CELL_STATION cell type (mark track cells as stations)
-- [ ] Cart stops at stations (DOORS_OPEN state, timer)
-- [ ] Station rendering
+- [ ] Cart state machine: MOVING → ARRIVING → DOORS_OPEN → DEPARTING
+- [ ] Cart detects station cells and stops (doorTime timer)
+- [ ] Station rendering (platform sprite)
+- [ ] Station drawing UI (designate track cell as station)
+- [ ] Save/load for station data
 
-### Phase 3: Mover Boarding (requires queuing)
+### Phase 3: Mover Boarding (requires queuing prerequisite)
+- [ ] Queuing system at stations (from social-navigation.md Phase 1)
+- [ ] Multi-leg journey support (walk → wait → ride → walk)
 - [ ] Mover states: WAITING / BOARDING / RIDING / EXITING
-- [ ] Movers can walk to station and wait
-- [ ] Movers board when cart doors open (capacity check)
+- [ ] Movers can walk to station and wait in queue
+- [ ] Movers board when cart doors open (capacity check, FIFO)
 - [ ] Riding movers locked to cart position
-- [ ] Movers exit at target station
-- [ ] Manual usage: player orders mover to take train
+- [ ] Movers exit at target station, resume walking
+- [ ] Manual usage: player orders drafted mover to take train
 
 ### Phase 4: Pathfinder Decision
 - [ ] Station graph with ride costs
@@ -291,6 +339,7 @@ Currently moveCost is uniform (10/14) in the pathfinder. Speed modifiers (mud, f
 - [ ] Multiple carts per line
 - [ ] Cart capacity UI
 - [ ] Station queue visualization
+- [ ] Timetables / service hours (requires schedule system)
 
 ---
 
@@ -299,10 +348,11 @@ Currently moveCost is uniform (10/14) in the pathfinder. Speed modifiers (mud, f
 - **Cart full**: Mover stays in queue, waits for next pass
 - **Mover's job changes while waiting**: Leave queue, repath
 - **Mover's job changes while riding**: Exit at nearest useful station, or ride to end
-- **Track destroyed while cart moving**: Cart stops, riding movers dismount
+- **Track destroyed while cart moving**: Cart stops, riding movers dismount (current: cart deactivates)
 - **Station removed**: Movers in queue repath, cart skips that stop
 - **No path to any station**: Fall back to direct walking
 - **Train slower than walking**: Pathfinder should never pick it (cost comparison handles this)
+- **Train not running (timetable)**: Transport edge cost = infinity, pathfinder picks walking
 
 ---
 
@@ -313,9 +363,12 @@ Early game:    Haulers walk everywhere
 Mid game:      Train tracks for long horizontal distances
                Elevators for vertical transport
 Late game:     Multiple lines, express routes, freight trains (items only)
+               Timetables, personal vehicles (see transport-layer.md)
 ```
 
 This matches the logistics progression from vision/logistics-influences.md: haulers -> conveyors/trains -> elevators.
+
+See also: `pathfinding/transport-layer.md` for the unified abstraction covering trains, elevators, ferries, personal vehicles, and other transport types.
 
 ---
 

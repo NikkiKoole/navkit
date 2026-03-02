@@ -54,6 +54,7 @@
 - `world/more-tiles.md` — Tier progression inventory (Survival → Farming → Industrial → Urban)
 - `items/future-ideas.md` — Containers, tool durability, scattered brainstorm
 - `pathfinding/future-ideas.md` — Flow fields, formations, territory costs
+- `pathfinding/transport-layer.md` — Unified abstraction for vehicles, queues & multi-leg pathfinding (CapacityNode pattern)
 - `pathfinding/social-navigation.md` — Queuing and crowd behavior (prerequisite for elevators/trains)
 - `pathfinding/unified-spatial-queries.md` — Consolidate duplicated "find nearest" patterns
 - `ui/pie-menu.md` — Radial context menu research (Fitts's Law, mark-ahead)

@@ -70,6 +70,8 @@ Not a city. Not industrial. A village where everyone knows each other and life h
 
 **Electricity** (late) — Generator → wire → outlet. Powers: lights (replace torches), appliances (powered workshops), comfort items (fans, heaters). Big infrastructure project but transforms the village feel.
 
+**Transport network** — The village outgrows walking. A 200-mover village with farms on the outskirts, mines in the hills, and apartments in the center needs transport. Trains connect distant areas (farm stop → village center → mine). Elevators move movers and cargo vertically in tall buildings. Timetables create daily rhythm — morning rush, last train home. Personal carts/horses for movers who live far out. Transport quality directly affects commute time, which directly affects mood and leisure budget. A mover with a 2-minute train commute has 30 more minutes of pub time than one who walks 15 minutes. See `pathfinding/transport-layer.md` for unified design, `world/trains.md` and `world/elevators.md` for specifics.
+
 #### Economy & Work
 
 **Occupations** — Not just "do nearest task" but assigned roles with schedules. See `schedule-system.md`. Baker, farmer, builder, guard, doctor, teacher. Movers have a job they *go to*.
@@ -86,7 +88,7 @@ Not a city. Not industrial. A village where everyone knows each other and life h
 
 **Schedules** — Clock-driven daily routines. See `schedule-system.md` for full design. The foundational shift from need-driven to time-driven behavior.
 
-**Commute** — Home → workplace pathfinding happens daily. Distance matters for mood and time budget. A mover who lives above the bakery has 30 extra minutes of leisure. Urban planning matters.
+**Commute** — Home → workplace pathfinding happens daily. Distance matters for mood and time budget. A mover who lives above the bakery has 30 extra minutes of leisure. Urban planning matters. With transport: movers choose walk vs train based on cost. Train timetables constrain late-shift workers. Building a station near the housing district is an urban planning decision with real mood consequences.
 
 **Leisure activities** — Sitting in park, visiting pub, reading, playing games, walking, socializing. Each satisfies different sub-needs (social, fun, relaxation). Leisure venues are as important as workplaces.
 
@@ -137,7 +139,8 @@ The transition from survival to quality-of-life is the arc of the whole game.
 
 - **Movers have downtime.** They're not working 24/7. They sit, wander, chat, sleep.
 - **Spaces have purpose.** The pub is for evenings. The park is for sunny days. The kitchen is for mornings.
-- **Time has rhythm.** Morning bustle, quiet afternoon work, evening socializing, night silence.
+- **Time has rhythm.** Morning bustle, quiet afternoon work, evening socializing, night silence. The train runs from 6am to 10pm. The last train home is a real thing.
+- **Infrastructure shapes life.** Where you put the train station, the stairwell, the elevator — it determines who lives where, who eats with whom, who has time for the pub.
 - **Movers have preferences.** Kira likes the bench by the river. Torvald always eats at the pub. Enna is the first one up every morning.
 - **Buildings have character.** The bakery smells of bread (particles?). The smithy glows orange. The pub is noisy.
 - **Weather matters socially.** Rainy day → movers stay inside → pub is crowded. Sunny day → park is full. Snow → everyone by the fire.
