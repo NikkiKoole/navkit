@@ -18,6 +18,8 @@
 - `environmental/fire-improvements.md` — Ground fire spread + fire pit tool requirement (deferred from shelter)
 - `gameplay/water-placement-tools.md` — Player actions to place/remove water sources, springs, pumps, drains
 - `mover-control-and-work-radius.md` — Constrain mover movement (leash radius, distance weighting, draft mode)
+- `juice-effects.md` — Screen shake, sprite tweens, particles, screen flashes for game feel
+- `schedule-system.md` — Clock-driven daily routines (work/meal/leisure/sleep blocks) layered on existing job system
 - `transient-state-save.md` — Known save/load gaps (designation progress lost, etc.)
 
 ## Architecture / Performance
@@ -42,6 +44,7 @@
 
 ## Vision / Long-term
 
+- `endgame-village-vision.md` — 20th-century village destination picture: systems inventory, daily life, economy, social, housing
 - `sims-inspired-priorities.md` — What makes The Sims work; reorder next sessions for "Sims feel"
 - `naked-in-the-grass.md` — Gap analysis: 8/10 survival features complete, what's next
 - `naked-in-the-grass-details.md` — Deep dive on tool qualities and animals design
