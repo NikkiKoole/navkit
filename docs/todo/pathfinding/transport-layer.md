@@ -1,4 +1,4 @@
-# Transport Layer — Unified Abstraction for Vehicles, Queues & Multi-Leg Pathfinding
+# Transport Layer — Unified Abstraction for Vehicles & Multi-Leg Pathfinding
 
 > Status: spec
 
@@ -11,8 +11,8 @@ Shared foundation for all systems where movers (or items) use infrastructure ins
 Every transport system follows the same shape:
 
 1. Mover walks to an **entry point**
-2. Mover **waits** (queue, schedule, availability)
-3. Mover **boards** (capacity check)
+2. Mover **waits** (idles nearby, avoidance spreads them out)
+3. Mover **boards** (capacity check, FIFO or proximity)
 4. Mover is **transported** (position locked to vehicle / instant transition)
 5. Mover **exits** at destination
 6. Mover resumes walking
@@ -21,9 +21,92 @@ The pathfinder's job: decide whether `walk(A→B)` is cheaper than `walk(A→ent
 
 ---
 
-## CapacityNode — The Shared Abstraction
+## Waiting Model — No Explicit Queues (for transport)
 
-Every transport instance is a **CapacityNode**: a point (or pair of points) in the world with limited throughput.
+Research into real-world queuing (pedestrian dynamics, train platforms, elevator lobbies) and how other games handle it (DF, RimWorld, Theme Hospital, SimAirport, Planet Zoo) leads to a key simplification:
+
+**Transport doesn't need spatial queues.** What looks like a "queue" at a train platform or elevator lobby is actually just a **waiting set** — a list of movers waiting for a resource, with timestamps. The spatial layout (where movers stand while waiting) emerges from existing steering/avoidance behavior, not from assigned queue positions.
+
+> **Note: real queues do exist — just not here.** Ordered single-file lines form in real life (and would look great in-game) when service is 1-at-a-time, face-to-face, and takes non-trivial time: food stalls, merchant counters, tavern bars, barbers, doctors. The pattern is "wait your turn → get served → step aside for the next person." This is a different system from transport — it's about **service buildings**, not movement infrastructure. Transport is either batch (elevator, train) or near-instant (door, ladder), so spatial lines don't form naturally. A dedicated service-queue design doc may be needed later when service buildings are implemented, but it's out of scope for the transport layer.
+
+### Why this works
+
+- **Elevator lobbies**: People mill around, not in a line. When doors open, they board roughly FIFO. The "queue" is just who's been waiting longest.
+- **Train platforms**: People spread along the platform edge near where doors will stop. This is just "idle near goal + avoidance" — no queue struct needed.
+- **Doors**: In DF and RimWorld, movers just crowd at doors. Neither game has explicit queues. Players learn to build wider corridors. The bottleneck is the design pressure.
+- **Workshops**: The queue is purely logical (job reservation). Only the assigned mover walks to the work tile. Others do different jobs. This is what we already have.
+- **Wells/shared resources**: People form a loose arc. Next user = longest waiting. Again, just a waiting set.
+
+### The actual primitive
+
+```c
+typedef struct {
+    int waitingMovers[MAX_WAITING];  // mover indices
+    float waitingSince[MAX_WAITING]; // arrival timestamps (game time)
+    int waitingCount;
+    int capacity;                    // how many can use/board at once
+    TransportTrigger trigger;        // ALWAYS, PERIODIC, ON_DEMAND
+} WaitingSet;
+```
+
+Operations:
+- `AddWaiter(set, moverIdx)` — mover starts waiting, timestamp recorded
+- `RemoveWaiter(set, moverIdx)` — mover cancelled/repathed/died
+- `GetNextBoarders(set, count)` — returns oldest N waiters (FIFO)
+- `EstimateWait(set)` — waitingCount × averageServiceTime (for pathfinder cost)
+
+Spatial behavior is handled entirely by steering: waiting movers idle near the entry point, avoidance keeps them from stacking. No `GetQueuePosition()` needed.
+
+### Per-context spatial behavior
+
+The waiting set is context-free. What differs per transport type is where movers choose to idle:
+
+| Context | Idle behavior | How it emerges |
+|---------|--------------|----------------|
+| **Door** | Stand 1 tile back, wait for it to clear | Mover avoidance — can't walk into occupied cell |
+| **Ladder** | Wait at top or bottom | 1-per-segment limit, avoidance handles the rest |
+| **Elevator** | Mill around lobby area | Idle near entry + avoidance spreads them out |
+| **Train platform** | Spread along platform edge near door positions | Each mover picks nearest door cell as idle target, avoidance spreads them |
+| **Well/resource** | Loose arc around access point | Idle near resource + avoidance from multiple approach directions |
+| **Workshop** | No spatial waiting at all | Job system handles reservation, mover does other work |
+
+---
+
+## Passive Bottlenecks — Doors, Ladders, Stairs
+
+These don't need the full transport state machine. They're just cells with limited throughput.
+
+### Ladders
+
+**1 mover per ladder segment.** If a ladder cell is occupied, other movers wait at the top or bottom until it clears. This mostly works already via mover avoidance (movers don't walk into occupied cells).
+
+What's needed:
+- Pathfinder cost increase when a ladder is occupied (so movers prefer alternate routes if available)
+- Possibly: brief "claim" on the ladder so a mover ascending doesn't collide with one descending (one-at-a-time)
+- The player's design pressure: if a ladder is a bottleneck, build a second one or use stairs/ramps
+
+Bidirectional traffic on a single-tile ladder is inherently low-throughput. Research shows alternating direction batches don't help much — it's better to just have separate up/down paths (which is a player layout decision, not a system one).
+
+### Doors
+
+Doors already have a throughput limit (one mover at a time while the door is opening/closing). The main issue is movers crowding on both sides.
+
+What's needed:
+- Pathfinder cost based on door congestion (movers waiting nearby)
+- Avoidance already prevents stacking, so movers will naturally spread behind the door
+- Player design pressure: 2-wide doorways, double doors, alternate routes
+
+### Stairs (future)
+
+No stair cell type yet. Stairs would be a 2-3 capacity passive bottleneck — faster than ladders, wider throughput. Essentially a "wide ladder" from the transport perspective.
+
+---
+
+## CapacityNode — The Shared Abstraction (extract later)
+
+**Decision: concrete first.** Build the first vehicle (train stations or elevator) with hardcoded structs. Extract this abstraction only after a second vehicle proves the pattern generalizes.
+
+The eventual shape, for reference:
 
 ```c
 typedef struct {
@@ -39,8 +122,7 @@ typedef struct {
     float throughputTime;   // seconds per use (0 for instant, 3.0 for elevator ride)
 
     // Availability
-    Availability availability;  // ALWAYS, PERIODIC, ON_DEMAND
-    float waitEstimate;         // current estimated wait (dynamic, updated each tick)
+    TransportTrigger trigger;   // ALWAYS, PERIODIC, ON_DEMAND
 
     // Directionality
     Directionality direction;   // BIDIRECTIONAL, ONE_WAY_FORWARD, ONE_WAY_DOWN
@@ -48,16 +130,15 @@ typedef struct {
     // What it moves
     TransportPayload payload;   // MOVERS, ITEMS, BOTH
 
-    // Queue
-    int waitingMovers[MAX_QUEUE];
-    int waitingCount;
+    // Waiting
+    WaitingSet waiters;
 } CapacityNode;
 ```
 
 ### Concrete Instances
 
-| System | Type | Entries | Capacity | Throughput | Availability | Direction | Payload |
-|--------|------|---------|----------|------------|--------------|-----------|---------|
+| System | Type | Entries | Capacity | Throughput | Trigger | Direction | Payload |
+|--------|------|---------|----------|------------|---------|-----------|---------|
 | **Elevator** | vehicle | N floors (same x,y) | 4-8 | ~1 floor/sec + door time | on-demand (call) | bidirectional | both |
 | **Train** | vehicle | N stations (track path) | 8-12 | ~3 cells/sec + stop time | periodic (bounce/loop) | bidirectional | both |
 | **Ferry** | vehicle | 2 docks (across water) | 4-6 | ~2 cells/sec + dock time | periodic (shuttle) | bidirectional | both |
@@ -80,7 +161,7 @@ All vehicle-type transport uses the same 5 states:
 typedef enum {
     TRANSPORT_NONE,
     TRANSPORT_WALKING_TO_ENTRY,    // normal pathfinding to entry point
-    TRANSPORT_WAITING,             // in queue at entry, vehicle not here yet
+    TRANSPORT_WAITING,             // idling near entry, in waiting set
     TRANSPORT_BOARDING,            // entering vehicle (short transition)
     TRANSPORT_RIDING,              // position locked to vehicle
     TRANSPORT_EXITING,             // leaving vehicle (short transition)
@@ -92,12 +173,12 @@ Stored on the mover:
 ```c
 // added to Mover struct
 TransportState transportState;
-int transportNodeId;        // which CapacityNode we're using
+int transportNodeId;        // which node we're using
 int transportEntryIdx;      // which entry we're waiting at
 int transportExitIdx;       // which entry we're exiting at
 ```
 
-Passive nodes (doors, ladders, stairs) don't need the full state machine — they just need queue-aware throughput limiting.
+Passive bottlenecks (doors, ladders, stairs) don't need this state machine — throughput limiting + avoidance handles them.
 
 ---
 
@@ -128,7 +209,7 @@ At pathfind time, for a given start→goal:
 2. for each CapacityNode reachable from start:
      for each entry pair (entryA, entryB) where entryB is closer to goal:
        legCost = walkCost(start → entryA)
-               + node.waitEstimate
+               + EstimateWait(node.waiters)
                + rideCost(entryA → entryB)
                + walkCost(entryB → goal)
        if legCost < bestCost: bestCost = legCost, bestRoute = this
@@ -137,67 +218,89 @@ At pathfind time, for a given start→goal:
    else: walk directly
 ```
 
-### Cost Estimation
+The comparison itself is simple. The hard part is **getting reliable inputs**, and this depends heavily on whether vehicle routes are deterministic:
 
-The dynamic part is `waitEstimate`. Different availability types compute this differently:
+#### The deterministic route prerequisite
+
+With **deterministic routes** (train follows a fixed path, visits stations in a known order):
+- `rideCost(station1→station2)` is precomputable (known track distance / speed)
+- `waitEstimate` can be computed from train position on its fixed loop (known ETA at each station)
+- `walkCost` calls are just standard A*
+- The whole comparison becomes straightforward — just arithmetic on known values
+
+With **random routes** (current train behavior: 90% straight, 10% random at junctions):
+- `rideCost` is unpredictable — you don't know which path the train will take between stations
+- `waitEstimate` is fuzzy — the train could wander off at any junction
+- Re-evaluation is needed when the train takes an unexpected turn (does the mover give up and walk?)
+- Station visit order isn't even guaranteed
+
+**Implication: deterministic train routes are essentially a prerequisite for pathfinder integration.** The current random-bounce behavior is fine for a decorative train but can't support route planning. Before Layer 3, trains need fixed routes (or at minimum, deterministic junction behavior when stations are involved).
+
+#### Other costs of route comparison
+
+- **Multiple pathfind calls**: each station pair near start × each station pair near goal. With 5 stations that's up to 25 combinations, though distance pruning cuts this down heavily.
+- **Staleness**: a mover picks "take the train," but conditions change (train breaks down, gets delayed). Need a re-evaluation policy — timeout? periodic recheck? abandon on job change?
+
+### Simple heuristic first (defer full cost comparison)
+
+In practice, people don't compute optimal routes — they just think "that's far and there's a station nearby, I'll take the train." Even if walking would have been marginally faster, avoiding the long walk has value. Nobody does the math.
+
+This means a simple distance-threshold heuristic is good enough for initial train usage:
+
+```
+if (walkDistance(start, goal) > FAR_THRESHOLD
+    && nearestStation(start) exists within STATION_RADIUS
+    && nearestStation(goal) exists within STATION_RADIUS):
+    take the train
+else:
+    walk directly
+```
+
+This works even with random-bounce trains — the mover doesn't need to predict the route. They walk to the nearest station, wait, ride until the train reaches the station closest to their goal, and get off. If the train takes a weird detour at a junction, whatever — the mover is sitting on the train, not walking.
+
+The full cost comparison (Layer 3) becomes an **optimization for later**, not a prerequisite for usable trains. Layer 2 can ship with the simple heuristic and still feel right.
+
+### Cost Estimation (Layer 3 — deferred)
 
 ```c
-float EstimateWait(CapacityNode* node) {
-    switch (node->availability) {
+float EstimateWait(WaitingSet* set) {
+    switch (set->trigger) {
         case ALWAYS:
-            // Queue delay only: how many movers ahead of us × throughputTime
-            return node->waitingCount * node->throughputTime;
+            // Passive throughput: how many ahead × service time
+            return set->waitingCount * averageServiceTime;
 
         case PERIODIC: {
-            // Vehicle on a schedule: time until next arrival at this entry
+            // Vehicle on a fixed route: time until next arrival (precomputed from position on loop)
             float timeToArrival = EstimateArrivalTime(node, entryIdx);
-            float queueDelay = node->waitingCount * node->throughputTime;
-            return timeToArrival + queueDelay;
+            return timeToArrival + (set->waitingCount / capacity) * stopTime;
         }
 
         case ON_DEMAND: {
-            // Vehicle must be summoned: travel time to us + queue
-            float travelToUs = DistanceToEntry(node, entryIdx) / node->speed;
-            float queueDelay = node->waitingCount * node->throughputTime;
-            return travelToUs + queueDelay;
+            // Vehicle must be summoned: travel time + boarding
+            float travelToUs = DistanceToEntry(node, entryIdx) / speed;
+            return travelToUs + (set->waitingCount / capacity) * stopTime;
         }
     }
 }
 ```
 
+### Congestion Cost for Passive Bottlenecks
+
+Doors, ladders, and stairs don't use the full transport graph. Instead, their congestion feeds back as **increased pathfinding edge costs**:
+
+```
+ladderCost = baseLadderCost + (moversNearby * congestionPenalty)
+doorCost   = baseDoorCost   + (moversNearby * congestionPenalty)
+```
+
+This makes movers prefer alternate routes when a bottleneck is busy — "that doorway is crowded, go around."
+
 ### Pruning
 
-Don't check all CapacityNodes for every pathfind call. Use spatial hashing or distance thresholds:
+Don't check all CapacityNodes for every pathfind call:
 - Only consider entries within `walkRadius` of start/goal (e.g. 30 cells)
 - Skip nodes whose minimum ride distance is shorter than just walking
 - Skip item-only nodes when pathfinding for movers (and vice versa)
-
----
-
-## Queuing System (prerequisite — from social-navigation.md)
-
-All of this requires a generic queuing primitive:
-
-```c
-typedef struct {
-    int nodeId;
-    int entryIdx;
-    int movers[MAX_QUEUE_SIZE];
-    int count;
-    int capacity;           // physical space limit
-} TransportQueue;
-
-// Queue positions: movers line up near the entry, not stacked on one cell
-Vector2 GetQueuePosition(TransportQueue* q, int positionInQueue);
-
-// Queue operations
-void   EnqueueMover(TransportQueue* q, int moverIdx);
-void   DequeueMover(TransportQueue* q);              // FIFO
-void   RemoveMover(TransportQueue* q, int moverIdx); // mover cancelled/repathed
-int    QueuePosition(TransportQueue* q, int moverIdx);
-```
-
-Queuing also applies to non-transport bottlenecks (wells, workshops) — same data structure, different context.
 
 ---
 
@@ -254,59 +357,61 @@ The interesting decision: does the **job system** route items via transport, or 
 | Doors (single cell, no queue) | done | cell_defs.h |
 | Mover avoidance (basic) | done | mover.c |
 | HPA* portal graph | done | hpa.c |
-| Queuing system | **not started** | — |
+| Waiting set primitive | **not started** | — |
 | Multi-leg journey | **not started** | — |
 | Transport overlay graph | **not started** | — |
 | Stations / mover boarding | **not started** | — |
 | Elevators | **not started** | — |
+| Ladder congestion cost | **not started** | — |
+| Door congestion cost | **not started** | — |
 | Ferry / drawbridge / hoist | **not started** | — |
 
 ---
 
 ## Implementation Order
 
-### Layer 0: Queuing Primitive
-**Prerequisite for everything else.** Generic queue at a cell. Movers wait in line instead of crowding. Apply to existing bottlenecks first (ladders, doors) for immediate value.
+### Layer 0: Passive Bottleneck Improvements
+Ladders: 1 mover per segment, others wait. Doors: congestion-aware pathfinding cost. No new data structures needed — just pathfinder cost adjustments and letting existing avoidance do the spatial work. Immediate value, no transport dependency.
 
-See: `pathfinding/social-navigation.md` Phase 1.
+### Layer 1: WaitingSet + Multi-Leg Journey
+The `WaitingSet` primitive (mover list + timestamps + FIFO boarding). Mover can execute a `Journey` with multiple legs. State machine handles transitions between WALK and WAIT_AND_RIDE legs. No pathfinder changes yet — journeys are manually constructed.
 
-### Layer 1: Multi-Leg Journey
-Mover can execute a `Journey` with multiple legs. State machine handles transitions between WALK and WAIT_AND_RIDE legs. No pathfinder changes yet — journeys are manually constructed (e.g., player orders mover to take elevator).
+### Layer 2: First Vehicle (train stations)
+Train already exists and bounces. Add: stations (stop points on track), waiting sets at platforms, boarding/exiting, mover riding state. Build end-to-end with hardcoded structs. This validates the waiting set + state machine. Movers decide to use the train via a **simple distance-threshold heuristic** ("it's far and there's a station nearby"), no pathfinder integration needed yet. Works fine even with random-bounce trains.
 
-### Layer 2: First Vehicle (elevator or train Phase 2-3)
-Pick one and build it end-to-end: entity + stations + boarding + riding. This validates the CapacityNode abstraction and the mover state machine. Elevator is simpler (fewer entries, no track path), train is already half-built.
+### Layer 3: Optimal Route Comparison in Pathfinder (deferred, optional)
+Full cost comparison: `walkCost` vs `walkCost + waitEstimate + rideCost + walkCost`. Requires deterministic train routes to be useful (random bounce makes ride cost unpredictable). Transport nodes become portal edges in the pathfinding graph. This is an optimization — the simple heuristic from Layer 2 already gives good-enough behavior. Only build this if movers are making noticeably bad decisions about when to take the train.
 
-### Layer 3: Transport Graph in Pathfinder
-CapacityNodes become portal edges in the pathfinding graph. Route decision algorithm. Dynamic cost estimation. Movers automatically choose transport when beneficial.
+### Layer 4: Second Vehicle (elevator)
+Build elevator end-to-end. Should be fast — reuses Layer 1-3. Validates that the pattern generalizes. Extract CapacityNode abstraction if it makes sense.
 
-### Layer 4: Second Vehicle
-Build the other one (train or elevator). Should be fast — reuses all of Layer 0-1-3. Validates that the abstraction actually generalizes.
-
-### Layer 5: Passive Node Upgrades
-Retrofit doors, ladders, stairs with queue-aware throughput. Pathfinder accounts for congestion at bottlenecks. "That doorway is busy, go around."
+### Layer 5: Congestion Feedback
+Passive bottleneck congestion (doors, ladders) feeds back into pathfinder costs. Movers route around busy bottlenecks. "That doorway is crowded, go around."
 
 ### Layer 6: Item Transport
 Hoists, chutes, canals, pack animals. Two-haul-job pattern with transport step in between. Job system routes items via transport nodes.
 
 ### Layer 7: Exotic Transport
-Ferries (water crossing), drawbridges (periodic availability), ziplines (one-way fast). Each is a new CapacityNode type but reuses all existing infrastructure.
+Ferries (water crossing), drawbridges (periodic availability), ziplines (one-way fast). Each is a new node type but reuses all existing infrastructure.
 
 ### Layer 8: Personal Vehicles & Timetables (late game)
-See "Future Concepts" section below — personal carts/cars with parking and collision, train timetables with service hours.
+See "Future Concepts" section below.
 
 ---
 
-## Design Decisions to Make
+## Design Decisions
 
-1. **Generic first or concrete first?** ~~Build CapacityNode abstraction upfront, or build elevator concretely and extract the pattern after?~~ **Decision: concrete first.** Build elevator (or train Phase 2+) end-to-end with hardcoded structs. Extract the CapacityNode abstraction only after the second vehicle proves the pattern generalizes. Avoids premature abstraction.
+1. **Generic first or concrete first?** ~~Build CapacityNode abstraction upfront, or build elevator concretely and extract the pattern after?~~ **Decision: concrete first.** Build train stations end-to-end with hardcoded structs. Extract the CapacityNode abstraction only after the second vehicle (elevator) proves the pattern generalizes.
 
-2. **Pathfinder coupling.** Does the transport graph live inside the pathfinder (new edge type in A*/HPA*) or outside it (post-processing step that compares walk vs ride)? Outside is simpler. Inside is more accurate.
+2. **Explicit queues or emergent waiting?** ~~Build TransportQueue with assigned positions, or let steering handle spatial layout?~~ **Decision: emergent.** A `WaitingSet` tracks who's waiting and when they arrived. Movers idle near entry points using existing steering/avoidance. No assigned queue positions, no `GetQueuePosition()`. Research shows real-world queues at elevators, train platforms, and doorways are unstructured — people mill around and board in rough FIFO order.
 
-3. **When does a mover give up waiting?** Timeout? Re-evaluate cost periodically? What if their job changes?
+3. **Pathfinder coupling.** Does the transport graph live inside the pathfinder (new edge type in A*/HPA*) or outside it (post-processing step that compares walk vs ride)? Outside is simpler. Inside is more accurate. Decide at Layer 3.
 
-4. **Congestion feedback.** Should high queue counts propagate back as pathfinder costs? This creates adaptive routing (movers avoid busy elevators) but might oscillate.
+4. **When does a mover give up waiting?** Timeout? Re-evaluate cost periodically? What if their job changes?
 
-5. **Item routing.** Does a hauler know to use a hoist, or does the job system discover item-transport as a plan? Former is simpler, latter is more emergent.
+5. **Congestion feedback.** Should high waiter counts propagate back as pathfinder costs? This creates adaptive routing (movers avoid busy elevators) but might oscillate.
+
+6. **Item routing.** Does a hauler know to use a hoist, or does the job system discover item-transport as a plan? Former is simpler, latter is more emergent.
 
 ---
 
@@ -314,7 +419,7 @@ See "Future Concepts" section below — personal carts/cars with parking and col
 
 - `world/elevators.md` — Concrete elevator design (instance of this pattern)
 - `world/trains.md` — Concrete train design (instance of this pattern)
-- `pathfinding/social-navigation.md` — Queuing prerequisite (Layer 0)
+- `pathfinding/social-navigation.md` — Social navigation (yielding, lanes, personal space)
 - `endgame-village-vision.md` — Vertical circulation, commute distance, infrastructure
 - `schedule-system.md` — Commute time matters for mood (transport = quality of life)
 - `architecture/capability-based-tasks.md` — Provider registry pattern could serve transport node lookup
@@ -324,7 +429,7 @@ See "Future Concepts" section below — personal carts/cars with parking and col
 
 ## Open Questions
 
-1. **Stairs.** Currently no stair cell type. Stairs would be a wide (2-3 capacity), fast ladder — a passive CapacityNode. Design needed before elevators make sense (elevators compete with stairs, not ladders).
+1. **Stairs.** Currently no stair cell type. Stairs would be a wide (2-3 capacity), fast ladder. Design needed before elevators make sense (elevators compete with stairs, not ladders).
 
 2. **Multiple vehicles per node.** Two elevator cars in one shaft? Two carts on one track? Collision avoidance, or just disallow?
 
@@ -333,6 +438,36 @@ See "Future Concepts" section below — personal carts/cars with parking and col
 4. **Power source.** Manual, animal, water, steam? Affects availability and era gating. Cosmetic or gameplay-relevant?
 
 5. **Construction.** How does a player build an elevator shaft? Multi-cell vertical designation? Blueprint that spans z-levels?
+
+---
+
+## Research Notes — Real-World & Game Queuing Behavior
+
+Captured during design research. Informed the "no explicit queues" decision.
+
+### Real-world queue formations
+
+- **Single-file line**: Only forms when physically constrained (narrow corridor). Otherwise people naturally spread out.
+- **Fan-out / semicircle**: Default formation in open space around a single service point. People minimize distance to service while maintaining personal space.
+- **Lobby / distributed waiting**: Elevators, airports. No line at all — people spread out and respond when called. The queue is logical (FIFO by arrival), not spatial.
+- **Platform spread**: Train platforms — people distribute along the platform edge near predicted door positions. Two short columns per door in the most structured version (Japanese stations).
+- **Funnel**: Wide area narrowing to a bottleneck. Self-organizing, optimal angle 46-65 degrees.
+
+### How other games handle it
+
+- **Dwarf Fortress / RimWorld / Prison Architect**: No explicit queues. Movers crowd at bottlenecks. Player learns to build wider corridors and alternate routes. Traffic designation system (DF) lets players adjust pathfinding costs per tile.
+- **Theme Hospital / Two Point Hospital**: Logical queue decoupled from spatial position — patients keep their place while wandering to eat/drink. Benches near rooms serve as informal waiting areas.
+- **SimAirport / Planet Zoo / Parkitect**: Explicit player-placed queue paths (serpentine). Guests line up along the path. This is a theme-park-specific pattern — doesn't fit a colony sim.
+
+### Academic findings
+
+- **Social Force Model** (Helbing 1995): Queue-like formations emerge naturally from goal attraction + collision avoidance. No explicit queue data structure needed.
+- **Bottleneck research**: Arch shapes form in front of narrow exits. A column placed slightly before a bottleneck can actually improve flow (breaks up the arch, prevents clogging).
+- **Bidirectional narrow passage**: Extremely low throughput. Separate up/down paths are much better than alternating direction.
+
+### Key takeaway
+
+For a colony sim: don't build queue infrastructure. Build good steering/avoidance and let waiting behavior emerge. The player's job is to design layouts that minimize bottlenecks. Explicit queues are only needed for batch-processing transport (elevator arrives, N movers board) — and even there it's a waiting set, not a spatial line.
 
 ---
 

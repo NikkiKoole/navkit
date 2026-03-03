@@ -1,28 +1,16 @@
 # Docs Workflow
 
-## Folder Structure
+## Structure
 
-```
-docs/
-├── todo/           # Actionable tasks (pick anything)
-│   └── architecture/  # Optimization research, structural plans
-├── doing/          # Active work (one thing at a time)
-├── done/           # Completed features
-├── bugs/           # Known bugs
-├── vision/         # Future ideas
-└── checklists/     # Completion checklists
-```
-
-## Workflow
-
-1. **Check `doing/`** — if something is there, continue working on it
-2. **If `doing/` is empty** — show summary of `todo/` items, let user pick
-3. **Move picked item to `doing/`** — work on it, update doc as you go
-4. **When done** — ask user permission, then move to `done/<category>/`
+- `docs/todo/` — All planned work. Each doc has a status line (`spec`, `partial`, `idea`, etc.)
+- `docs/todo/INDEX.md` — Categorized overview of all todo items, grouped by status
+- `docs/todo/architecture/` — Optimization research, structural plans (reference, not active tasks unless explicitly picked)
+- `docs/done/` — Completed features
+- `docs/bugs/` — Known bugs
+- `docs/vision/` — Future ideas
 
 ## Guidelines
 
-- Only one thing in `doing/` at a time
-- Never move to `done/` without user permission
-- See `docs/checklists/feature-completion.md` before completing features
-- Architecture docs in `todo/architecture/` are reference/research — not active tasks unless explicitly picked
+- Check `todo/INDEX.md` first when picking what to work on
+- Each doc's status line is the source of truth for its state
+- Never move a doc to `done/` without user permission
