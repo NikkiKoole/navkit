@@ -318,6 +318,7 @@ describe(cross_z_build_blueprint) {
 
         // Force to ready-to-build state
         blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
+        RebuildBlueprintWorkCache();
 
         int jobId = WorkGiver_Build(0);
         expect(jobId >= 0);
@@ -343,6 +344,8 @@ describe(cross_z_blueprint_haul) {
                                 2.0f, ITEM_ROCK);
             items[idx].material = MAT_GRANITE;
         }
+
+        RebuildBlueprintWorkCache();
 
         int jobId = WorkGiver_BlueprintHaul(0);
         expect(jobId >= 0);

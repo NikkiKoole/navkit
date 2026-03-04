@@ -125,7 +125,7 @@ const ActionDef ACTION_REGISTRY[] = {
         .action = ACTION_DRAW_TRANSPORT,
         .name = "TRANSPORT",
         .barDisplayText = "traiN",
-        .barText = "[T]rack  trai[N]    [ESC]Back",
+        .barText = "[T]rack  trai[N]  [P]latform  [ESC]Back",
         .barKey = 'n',
         .barUnderlinePos = 4,
         .requiredMode = MODE_DRAW,
@@ -487,6 +487,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .requiredSubMode = SUBMODE_NONE,
         .parentAction = ACTION_DRAW_TRANSPORT,
         .canDrag = false,
+        .canErase = true
+    },
+    {
+        .action = ACTION_DRAW_PLATFORM,
+        .name = "PLATFORM",
+        .barDisplayText = "Platform",
+        .barText = "L-drag place  R-drag remove  [ESC]Back",
+        .barKey = 'p',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_TRANSPORT,
+        .canDrag = true,
         .canErase = true
     },
     {

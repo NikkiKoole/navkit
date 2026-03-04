@@ -6249,7 +6249,8 @@ describe(workgivers) {
         // Create blueprint ready to build
         int bpIdx = CreateRecipeBlueprint(4, 1, 0, CONSTRUCTION_DRY_STONE_WALL);
         FillBlueprintStage(bpIdx, MAT_GRANITE);
-        
+        RebuildBlueprintWorkCache();
+
         // Call WorkGiver_Build directly
         int jobId = WorkGiver_Build(0);
         
@@ -6289,7 +6290,8 @@ describe(workgivers) {
         
         // Spawn a stone blocks item (building material)
         SpawnItem(CELL_SIZE * 2.5f, CELL_SIZE * 1.5f, 0.0f, ITEM_BLOCKS);
-        
+        RebuildBlueprintWorkCache();
+
         // Call WorkGiver_BlueprintHaul directly
         int jobId = WorkGiver_BlueprintHaul(0);
         
@@ -13446,6 +13448,7 @@ describe(construction_site_clearing) {
         moverCount = 1;
 
         // WorkGiver_BlueprintClear scans and finds no items → transitions
+        RebuildBlueprintWorkCache();
         WorkGiver_BlueprintClear(0);
         expect(blueprints[bpIdx].state == BLUEPRINT_AWAITING_MATERIALS);
     }
@@ -13490,6 +13493,7 @@ describe(construction_site_clearing) {
                   0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
         moverCount = 1;
 
+        RebuildBlueprintWorkCache();
         int jobId = WorkGiver_BlueprintClear(0);
         expect(jobId >= 0);
 
@@ -13601,6 +13605,7 @@ describe(construction_site_clearing) {
         moverCount = 1;
 
         // BlueprintHaul should not create a job — bp is still CLEARING
+        RebuildBlueprintWorkCache();
         int jobId = WorkGiver_BlueprintHaul(0);
         expect(jobId == -1);
     }
@@ -13644,6 +13649,7 @@ describe(construction_site_clearing) {
         moverCount = 1;
 
         // WorkGiver_BlueprintClear should still create a job to move the item
+        RebuildBlueprintWorkCache();
         int jobId = WorkGiver_BlueprintClear(0);
         expect(jobId >= 0);
 
@@ -13870,6 +13876,7 @@ describe(construction_alternative_locking) {
         moverCount = 1;
 
         // Try to assign — should fail since only blocks available and slot locked to rocks
+        RebuildBlueprintWorkCache();
         int jobId = WorkGiver_BlueprintHaul(0);
         expect(jobId == -1);
         expect(bp->stageDeliveries[0].reservedCount == 0);
@@ -13916,6 +13923,7 @@ describe(construction_alternative_locking) {
                   0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
         moverCount = 1;
 
+        RebuildBlueprintWorkCache();
         int jobId = WorkGiver_BlueprintHaul(0);
         expect(jobId == -1);
     }
@@ -14014,6 +14022,7 @@ describe(construction_alternative_locking) {
         moverCount = 1;
 
         // Blueprint stays stuck — no haul job created
+        RebuildBlueprintWorkCache();
         int jobId = WorkGiver_BlueprintHaul(0);
         expect(jobId == -1);
         expect(bp->state == BLUEPRINT_AWAITING_MATERIALS);
@@ -14560,6 +14569,7 @@ describe(construction_cancellation) {
 
         // Run a few ticks to let mover pick up a haul job
         RebuildStockpileFreeSlotCounts();
+        RebuildBlueprintWorkCache();
         int jobId = WorkGiver_BlueprintHaul(0);
         expect(jobId >= 0);
         expect(items[r1].reservedBy == 0 || items[r2].reservedBy == 0 || items[r3].reservedBy == 0);

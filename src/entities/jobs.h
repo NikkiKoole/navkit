@@ -310,6 +310,9 @@ int WorkGiver_FillWaterPot(int moverIdx);
 int WorkGiver_WaterCrop(int moverIdx);
 int WorkGiver_GatherReeds(int moverIdx);
 
+// Blueprint work cache — call before WorkGiver_Build/BlueprintHaul in tests
+void RebuildBlueprintWorkCache(void);
+
 // Farm work cache — call before WorkGiver_*Crop/Fertilize/WaterCrop in tests
 void RebuildFarmWorkCache(void);
 

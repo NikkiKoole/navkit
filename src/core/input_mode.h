@@ -59,6 +59,7 @@ typedef enum {
     ACTION_DRAW_TRANSPORT,  // Transport category - sub-actions for track/train
     ACTION_DRAW_TRACK,      // Place/remove train tracks
     ACTION_DRAW_TRAIN,      // Place/remove trains on tracks
+    ACTION_DRAW_PLATFORM,   // Place/remove platforms next to tracks
     // Work > Dig actions
     ACTION_WORK_MINE,
     ACTION_WORK_CHANNEL,

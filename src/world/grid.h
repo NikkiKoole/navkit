@@ -45,6 +45,7 @@ typedef enum {
     CELL_TREE_LEAVES,  // Tree canopy - blocks movement, decays without trunk
     CELL_BUSH,         // Bush - walkable ground vegetation, slows movement
     CELL_TRACK,        // Train track - walkable, autotiled based on neighbors
+    CELL_PLATFORM,     // Platform - walkable surface next to tracks (station)
     CELL_DOOR,         // Door - walkable, blocks fluids/light, solid for support
     CELL_WINDOW,       // Window - wall that transmits light
     CELL_TYPE_COUNT
@@ -55,7 +56,7 @@ static inline const char* CellTypeName(int type) {
         "WALL", "AIR", "LADDER_UP", "LADDER_DOWN", "LADDER_BOTH",
         "RAMP_N", "RAMP_E", "RAMP_S", "RAMP_W",
         "SAPLING", "TREE_TRUNK", "TREE_BRANCH", "TREE_ROOT", "TREE_FELLED", "TREE_LEAVES",
-        "BUSH", "TRACK", "DOOR", "WINDOW"
+        "BUSH", "TRACK", "PLATFORM", "DOOR", "WINDOW"
     };
     _Static_assert(sizeof(names)/sizeof(names[0]) == CELL_TYPE_COUNT,
                    "CellTypeName out of sync with CellType enum");

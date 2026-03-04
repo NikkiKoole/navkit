@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 84
+#define CURRENT_SAVE_VERSION 85
 
 // Material count constant used by ALL legacy stockpile structs (MAT_COUNT was 17 from v31-v79)
 #define V79_MAT_COUNT 17

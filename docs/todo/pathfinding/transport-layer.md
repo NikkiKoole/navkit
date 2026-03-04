@@ -383,7 +383,24 @@ Train already exists and bounces. Add: stations (stop points on track), waiting 
 Full cost comparison: `walkCost` vs `walkCost + waitEstimate + rideCost + walkCost`. Requires deterministic train routes to be useful (random bounce makes ride cost unpredictable). Transport nodes become portal edges in the pathfinding graph. This is an optimization — the simple heuristic from Layer 2 already gives good-enough behavior. Only build this if movers are making noticeably bad decisions about when to take the train.
 
 ### Layer 4: Second Vehicle (elevator)
-Build elevator end-to-end. Should be fast — reuses Layer 1-3. Validates that the pattern generalizes. Extract CapacityNode abstraction if it makes sense.
+Build elevator end-to-end. Validates that the pattern generalizes. Extract CapacityNode abstraction if it makes sense.
+
+**What carries over from trains (reuse directly):**
+- WaitingSet — same struct, same FIFO boarding
+- Transport state machine — WALKING_TO_ENTRY → WAITING → BOARDING → RIDING → EXITING, identical
+- Multi-leg Journey struct — walk → ride → walk, same shape
+- Mover riding state — position locked to vehicle
+- Distance heuristic — "it's far vertically and there's an elevator nearby"
+- Save/load pattern — same shape (entity + waiting set + mover transport fields)
+
+**What's actually new:**
+- **Vertical movement** — train moves on 2D track at one z-level, elevator moves through z-levels. Entity tracks current z, moves between floors. This is the big difference.
+- **On-demand vs periodic** — train bounces constantly, elevator sits idle until called (or runs a simple floor loop). Needs call/dispatch logic.
+- **Shaft construction** — vertical column spanning multiple z-levels, new placement UI. Train tracks are 2D.
+- **No track pathfinding** — elevator just goes up and down in a shaft. Much simpler movement than train junction navigation.
+- **Entry points at different z-levels** — train doors are on the side at one z. Elevator doors are at each floor — same x,y but different z. This is conceptually different but the WaitingSet doesn't care.
+
+**What's surprisingly the same:** the mover's experience is almost identical. Walk to entry, wait, get on, ride, get off, walk away. The transport state machine and WaitingSet are reused wholesale. The elevator is really just: new vehicle entity (vertical shaft) + new placement UI + call/dispatch. All mover-side infrastructure transfers directly. This is exactly what "concrete first, extract later" is betting on — after building both, the shared parts become obvious.
 
 ### Layer 5: Congestion Feedback
 Passive bottleneck congestion (doors, ladders) feeds back into pathfinder costs. Movers route around busy bottlenecks. "That doorway is crowded, go around."

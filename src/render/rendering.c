@@ -256,6 +256,7 @@ static int PlankSpriteForMaterial(MaterialType mat) {
 }
 
 static int GetWallSpriteAt(int x, int y, int z, CellType cell) {
+    if (cell == CELL_PLATFORM) return SPRITE_dark_shade;
     if (cell == CELL_TRACK) return GetTrackSpriteAt(x, y, z);
     MaterialType mat = GetWallMaterial(x, y, z);
     if (cell == CELL_WALL && GetWallSourceItem(x, y, z) == ITEM_PLANKS) {

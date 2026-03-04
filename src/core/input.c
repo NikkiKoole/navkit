@@ -1656,6 +1656,44 @@ static void ExecutePlaceTrack(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static bool TryPlacePlatformAt(int x, int y, int z) {
+    if (IsCellWalkableAt(z, y, x) && grid[z][y][x] == CELL_AIR) {
+        grid[z][y][x] = CELL_PLATFORM;
+        InvalidatePathsThroughCell(x, y, z);
+        return true;
+    }
+    return false;
+}
+
+static void ExecutePlacePlatform(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    // Fill mode: place on ALL cells in rectangle
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (TryPlacePlatformAt(dx, dy, z)) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Placed %d platform%s", count, count > 1 ? "s" : ""), GREEN);
+    }
+}
+
+static void ExecuteRemovePlatform(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (grid[z][dy][dx] == CELL_PLATFORM) {
+                grid[z][dy][dx] = CELL_AIR;
+                InvalidatePathsThroughCell(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Removed %d platform%s", count, count > 1 ? "s" : ""), YELLOW);
+    }
+}
+
 static void ExecuteRemoveTrack(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -3201,6 +3239,10 @@ void HandleInput(void) {
             case ACTION_DRAW_TRACK:
                 if (leftClick) ExecutePlaceTrack(x1, y1, x2, y2, z);
                 else ExecuteRemoveTrack(x1, y1, x2, y2, z);
+                break;
+            case ACTION_DRAW_PLATFORM:
+                if (leftClick) ExecutePlacePlatform(x1, y1, x2, y2, z);
+                else ExecuteRemovePlatform(x1, y1, x2, y2, z);
                 break;
             case ACTION_DRAW_TRAIN:
                 if (leftClick) {
