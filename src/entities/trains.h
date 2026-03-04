@@ -81,6 +81,7 @@ int  SpawnTrainWithCars(int x, int y, int z, int carCount);
 void RebuildStations(void);
 int  GetStationAt(int x, int y, int z);
 int  FindNearestStation(int x, int y, int z, int maxRadius);
+void GetNearestPlatformCell(int stationIdx, int x, int y, int* outX, int* outY);
 
 // WaitingSet operations
 void StationAddWaiter(int stationIdx, int moverIdx);

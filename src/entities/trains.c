@@ -233,8 +233,17 @@ void RebuildStations(void) {
 
 int GetStationAt(int x, int y, int z) {
     for (int i = 0; i < stationCount; i++) {
-        if (stations[i].active && stations[i].trackX == x && stations[i].trackY == y && stations[i].z == z)
-            return i;
+        TrainStation* s = &stations[i];
+        if (!s->active || s->z != z) continue;
+        // Check if (x,y) is the track cell adjacent to any platform cell
+        // awayDir: from track to platform, so track = platform - awayDir
+        int awayX = s->platX - s->trackX;
+        int awayY = s->platY - s->trackY;
+        for (int p = 0; p < s->platformCellCount; p++) {
+            int tx = s->platformCells[p][0] - awayX;
+            int ty = s->platformCells[p][1] - awayY;
+            if (tx == x && ty == y) return i;
+        }
     }
     return -1;
 }
@@ -243,14 +252,34 @@ int FindNearestStation(int x, int y, int z, int maxRadius) {
     int best = -1;
     int bestDist = maxRadius + 1;
     for (int i = 0; i < stationCount; i++) {
-        if (!stations[i].active || stations[i].z != z) continue;
-        int dist = abs(stations[i].platX - x) + abs(stations[i].platY - y);
-        if (dist < bestDist) {
-            bestDist = dist;
-            best = i;
+        TrainStation* s = &stations[i];
+        if (!s->active || s->z != z) continue;
+        // Check distance to nearest platform cell
+        for (int p = 0; p < s->platformCellCount; p++) {
+            int dist = abs(s->platformCells[p][0] - x) + abs(s->platformCells[p][1] - y);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = i;
+            }
         }
     }
     return best;
+}
+
+// Find the nearest platform cell of a station to a given position
+void GetNearestPlatformCell(int stationIdx, int x, int y, int* outX, int* outY) {
+    TrainStation* s = &stations[stationIdx];
+    int bestDist = 999999;
+    *outX = s->platX;
+    *outY = s->platY;
+    for (int p = 0; p < s->platformCellCount; p++) {
+        int dist = abs(s->platformCells[p][0] - x) + abs(s->platformCells[p][1] - y);
+        if (dist < bestDist) {
+            bestDist = dist;
+            *outX = s->platformCells[p][0];
+            *outY = s->platformCells[p][1];
+        }
+    }
 }
 
 // ============================================================================
@@ -564,11 +593,17 @@ void TrainsTick(float dt) {
                     }
                 }
                 if (hasWaiters || hasExiters) {
-                    t->cartState = CART_DOORS_OPEN;
-                    t->stateTimer = TRAIN_DOOR_TIME;
-                    t->atStation = stIdx;
-                    t->progress = 0.0f;
-                    break;
+                    // Pull forward: only stop if the next track cell is NOT part of this station
+                    int peekX, peekY;
+                    bool hasNext = FindNextTrackCell(t, &peekX, &peekY);
+                    bool nextIsStation = hasNext && GetStationAt(peekX, peekY, t->z) == stIdx;
+                    if (!nextIsStation) {
+                        t->cartState = CART_DOORS_OPEN;
+                        t->stateTimer = TRAIN_DOOR_TIME;
+                        t->atStation = stIdx;
+                        t->progress = 0.0f;
+                        break;
+                    }
                 }
             }
 

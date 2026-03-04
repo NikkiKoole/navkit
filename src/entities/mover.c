@@ -1749,9 +1749,10 @@ void ProcessMoverRepaths(void) {
                 m->transportStation = entryStation;
                 m->transportExitStation = exitStation;
                 m->transportTrainIdx = -1;
-                // Redirect goal to platform cell
-                TrainStation* s = &stations[entryStation];
-                m->goal = (Point){s->platX, s->platY, s->z};
+                // Redirect goal to nearest platform cell
+                int nearPlatX, nearPlatY;
+                GetNearestPlatformCell(entryStation, mx, my, &nearPlatX, &nearPlatY);
+                m->goal = (Point){nearPlatX, nearPlatY, stations[entryStation].z};
                 // Repath to new goal
                 m->needsRepath = true;
                 m->repathCooldown = 0;

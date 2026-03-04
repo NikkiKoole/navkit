@@ -1889,14 +1889,47 @@ static void DrawTrains(void) {
             DrawTexturePro(atlas, cartSrc, cartDest, cartOrigin, carRot, carColor);
         }
 
-        // Draw riding movers on this train with small Y offsets for stacking
+        // Collect screen positions for each vehicle (loco + trailing cars)
+        // Use carCount (not trailCount) so distribution is stable even before trail fills up
+        int totalVehicles = t->carCount;
+        if (totalVehicles < 1) totalVehicles = 1;
+        float vehicleScreenX[MAX_TRAIL_LENGTH + 1];
+        float vehicleScreenY[MAX_TRAIL_LENGTH + 1];
+        vehicleScreenX[0] = sx;  // locomotive
+        vehicleScreenY[0] = sy;
+        for (int c = 0; c < totalVehicles - 1; c++) {
+            if (c < t->trailCount) {
+                float carFromX = t->trailCellX[c] * CELL_SIZE + CELL_SIZE * 0.5f;
+                float carFromY = t->trailCellY[c] * CELL_SIZE + CELL_SIZE * 0.5f;
+                float carToX2, carToY2;
+                if (c == 0) {
+                    carToX2 = t->prevCellX * CELL_SIZE + CELL_SIZE * 0.5f;
+                    carToY2 = t->prevCellY * CELL_SIZE + CELL_SIZE * 0.5f;
+                } else {
+                    carToX2 = t->trailCellX[c - 1] * CELL_SIZE + CELL_SIZE * 0.5f;
+                    carToY2 = t->trailCellY[c - 1] * CELL_SIZE + CELL_SIZE * 0.5f;
+                }
+                float cx2 = carFromX + (carToX2 - carFromX) * t->progress;
+                float cy2 = carFromY + (carToY2 - carFromY) * t->progress;
+                vehicleScreenX[c + 1] = roundf(offset.x + cx2 * zoom);
+                vehicleScreenY[c + 1] = roundf(offset.y + cy2 * zoom);
+            } else {
+                // Trail not yet populated for this car — place at locomotive
+                vehicleScreenX[c + 1] = sx;
+                vehicleScreenY[c + 1] = sy;
+            }
+        }
+
+        // Draw riding movers distributed across vehicles
         for (int r = 0; r < t->ridingCount; r++) {
             int mIdx = t->ridingMovers[r];
             if (mIdx < 0 || mIdx >= moverCount || !movers[mIdx].active) continue;
 
-            float riderOffY = -size * 0.15f * (r + 1);  // Stack upward
-            float rsx = sx;
-            float rsy = sy + riderOffY;
+            int vehicleIdx = r % totalVehicles;
+            int seatInVehicle = r / totalVehicles;
+            float riderOffY = -size * 0.15f * (seatInVehicle + 1);
+            float rsx = vehicleScreenX[vehicleIdx];
+            float rsy = vehicleScreenY[vehicleIdx] + riderOffY;
 
             Color riderColor = WHITE;
             if (t->z < viewZ) {
