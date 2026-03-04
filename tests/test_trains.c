@@ -709,30 +709,35 @@ describe(track_destroyed) {
 // ============================================================================
 
 describe(multi_cell_platform) {
-    it("detects 3 platform cells in a line") {
+    it("detects 3 platform cells parallel to horizontal track") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        // 3 platforms extending east from track
-        grid[1][5][11] = CELL_PLATFORM;
-        grid[1][5][12] = CELL_PLATFORM;
-        grid[1][5][13] = CELL_PLATFORM;
+        // Horizontal track at y=5
+        for (int x = 8; x <= 14; x++) grid[1][5][x] = CELL_TRACK;
+        // Platform row at y=6 (south of track), parallel: x=10,11,12
+        grid[1][6][10] = CELL_PLATFORM;
+        grid[1][6][11] = CELL_PLATFORM;
+        grid[1][6][12] = CELL_PLATFORM;
         RebuildStations();
         expect(stationCount == 1);
         expect(stations[0].platformCellCount == 3);
-        expect(stations[0].platformCells[0][0] == 11);
-        expect(stations[0].platformCells[1][0] == 12);
-        expect(stations[0].platformCells[2][0] == 13);
+        // platformCells[0] is the boarding cell (adjacent to detecting track cell)
+        // All cells should be at y=6
+        for (int c = 0; c < 3; c++) {
+            expect(stations[0].platformCells[c][1] == 6);
+        }
     }
 
-    it("queue direction north of track") {
+    it("queue direction along horizontal track") {
         SetupClean();
-        grid[1][10][5] = CELL_TRACK;
-        grid[1][9][5] = CELL_PLATFORM;
-        grid[1][8][5] = CELL_PLATFORM;
+        for (int x = 8; x <= 14; x++) grid[1][5][x] = CELL_TRACK;
+        grid[1][6][10] = CELL_PLATFORM;
+        grid[1][6][11] = CELL_PLATFORM;
         RebuildStations();
         expect(stationCount == 1);
-        expect(stations[0].queueDirX == 0);
-        expect(stations[0].queueDirY == -1);
+        // Platform is south of track → away=(0,1), trackDir=(−1,0) or (1,0)
+        // queueDir should be along x-axis (parallel to track)
+        expect(stations[0].queueDirY == 0);
+        expect(stations[0].queueDirX != 0);
         expect(stations[0].platformCellCount == 2);
     }
 
@@ -747,14 +752,14 @@ describe(multi_cell_platform) {
         expect(stations[0].platformCells[0][1] == 5);
     }
 
-    it("stops at non-platform cell") {
+    it("stops at non-platform cell in parallel direction") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
-        grid[1][5][12] = CELL_AIR;  // gap
-        grid[1][5][13] = CELL_PLATFORM;
+        for (int x = 8; x <= 14; x++) grid[1][5][x] = CELL_TRACK;
+        grid[1][6][10] = CELL_PLATFORM;
+        grid[1][6][11] = CELL_AIR;  // gap stops parallel walk
         RebuildStations();
         expect(stationCount == 1);
+        // Should only find 1 platform (gap breaks the line)
         expect(stations[0].platformCellCount == 1);
     }
 }
@@ -811,38 +816,46 @@ describe(fifo_shift_down) {
 // ============================================================================
 
 describe(queue_positions) {
-    it("slot 1 further from track than slot 0") {
+    it("slot 1 further along platform than slot 0") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
-        grid[1][5][12] = CELL_PLATFORM;
-        grid[1][5][13] = CELL_PLATFORM;
+        // Horizontal track, platform south of it (parallel)
+        for (int x = 8; x <= 14; x++) grid[1][5][x] = CELL_TRACK;
+        grid[1][6][10] = CELL_PLATFORM;
+        grid[1][6][11] = CELL_PLATFORM;
+        grid[1][6][12] = CELL_PLATFORM;
         RebuildStations();
         expect(stationCount == 1);
-        expect(stations[0].queueDirX == 1);  // east from track
+        // Queue extends along x-axis (parallel to track)
+        expect(stations[0].queueDirY == 0);
 
         float x0, y0, x1, y1;
         StationGetQueuePosition(0, 0, &x0, &y0);
         StationGetQueuePosition(0, 1, &x1, &y1);
-        // Slot 1 should be further east (larger x)
-        expect(x1 > x0);
-        // Both should be on same y
+        // Slot 1 should be offset from slot 0 along the platform
+        float dist = fabsf(x1 - x0) + fabsf(y1 - y0);
+        expect(dist > 1.0f);
+        // Both on same y (along the platform)
         expect(fabsf(y0 - y1) < 0.1f);
     }
 
-    it("positions extend in queue direction") {
+    it("positions extend along platform for vertical track") {
         SetupClean();
-        grid[1][10][5] = CELL_TRACK;
-        grid[1][9][5] = CELL_PLATFORM;
-        grid[1][8][5] = CELL_PLATFORM;
+        // Vertical track, platform east of it (parallel)
+        for (int y = 5; y <= 15; y++) grid[1][y][10] = CELL_TRACK;
+        grid[1][8][11] = CELL_PLATFORM;
+        grid[1][9][11] = CELL_PLATFORM;
+        grid[1][10][11] = CELL_PLATFORM;
         RebuildStations();
-        expect(stations[0].queueDirY == -1);  // north
+        expect(stationCount == 1);
+        // Queue extends along y-axis (parallel to vertical track)
+        expect(stations[0].queueDirX == 0);
 
         float x0, y0, x2, y2;
         StationGetQueuePosition(0, 0, &x0, &y0);
         StationGetQueuePosition(0, 2, &x2, &y2);
-        // Slot 2 should be further north (smaller y)
-        expect(y2 < y0);
+        // Slot 2 should be offset from slot 0 along y
+        float dist = fabsf(y2 - y0);
+        expect(dist > 1.0f);
     }
 }
 

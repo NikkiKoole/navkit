@@ -4718,13 +4718,11 @@ void GenerateTrainTest(void) {
         grid[1][y][70] = CELL_TRACK;
     }
 
-    // ── Station A (left end): platform at (10, 7), adjacent to track (10, 8) ──
-    grid[1][7][10] = CELL_PLATFORM;
-    // Also make the platform walkable by ensuring ground below
-    // (z=0 is already solid)
+    // ── Station A (left end): platform parallel to track at y=7, x=8..12 ──
+    for (int px = 8; px <= 12; px++) grid[1][7][px] = CELL_PLATFORM;
 
-    // ── Station B (right end): platform at (70, 7), adjacent to track (70, 8) ──
-    grid[1][7][70] = CELL_PLATFORM;
+    // ── Station B (right end): platform parallel to track at y=7, x=68..72 ──
+    for (int px = 68; px <= 72; px++) grid[1][7][px] = CELL_PLATFORM;
 
     // Rebuild stations so they're detected
     RebuildStations();
@@ -4787,20 +4785,14 @@ void GenerateTrainTestLong(void) {
         grid[1][y][90] = CELL_TRACK;
     }
 
-    // ── Station A (left): 5 platform cells extending north from track ──
-    for (int dy = 0; dy < 5; dy++) {
-        grid[1][9 - dy][15] = CELL_PLATFORM;
-    }
+    // ── Station A (left): 6 platform cells parallel to top track at y=9, x=12..17 ──
+    for (int px = 12; px <= 17; px++) grid[1][9][px] = CELL_PLATFORM;
 
-    // ── Station B (right): 5 platform cells extending north from track ──
-    for (int dy = 0; dy < 5; dy++) {
-        grid[1][9 - dy][80] = CELL_PLATFORM;
-    }
+    // ── Station B (right): 6 platform cells parallel to top track at y=9, x=77..82 ──
+    for (int px = 77; px <= 82; px++) grid[1][9][px] = CELL_PLATFORM;
 
-    // ── Station C (middle-bottom): 4 platform cells extending south from bottom track ──
-    for (int dy = 0; dy < 4; dy++) {
-        grid[1][21 + dy][50] = CELL_PLATFORM;
-    }
+    // ── Station C (middle-bottom): 5 platform cells parallel to bottom track at y=21, x=48..52 ──
+    for (int px = 48; px <= 52; px++) grid[1][21][px] = CELL_PLATFORM;
 
     RebuildStations();
 

@@ -121,6 +121,18 @@ void RebuildStations(void) {
                     int py = y + dy[d];
                     if (px < 0 || px >= gridWidth || py < 0 || py >= gridHeight) continue;
                     if (grid[z][py][px] != CELL_PLATFORM) continue;
+                    // Check if this platform cell is already claimed by another station
+                    bool alreadyClaimed = false;
+                    for (int si = 0; si < stationCount && !alreadyClaimed; si++) {
+                        if (stations[si].z != z) continue;
+                        for (int pc = 0; pc < stations[si].platformCellCount; pc++) {
+                            if (stations[si].platformCells[pc][0] == px && stations[si].platformCells[pc][1] == py) {
+                                alreadyClaimed = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (alreadyClaimed) continue;
                     // Found a station: track at (x,y), platform at (px,py)
                     TrainStation* s = &stations[stationCount];
                     s->trackX = x;
@@ -131,19 +143,44 @@ void RebuildStations(void) {
                     s->active = true;
                     s->waitingCount = 0;
 
-                    // Multi-cell platform: walk in queue direction collecting contiguous platforms
-                    s->queueDirX = px - x;
-                    s->queueDirY = py - y;
-                    s->platformCellCount = 0;
-                    int cx = px, cy = py;
+                    // Multi-cell platform: walk parallel to track collecting contiguous platforms
+                    // Away direction (track → platform, perpendicular to track)
+                    int awayX = px - x;
+                    int awayY = py - y;
+                    // Track runs perpendicular to away direction
+                    int trackDirX = -awayY;
+                    int trackDirY = awayX;
+                    // Queue extends along the platform (parallel to track)
+                    s->queueDirX = trackDirX;
+                    s->queueDirY = trackDirY;
+
+                    // Start with the boarding cell (adjacent to this track cell)
+                    s->platformCells[0][0] = px;
+                    s->platformCells[0][1] = py;
+                    s->platformCellCount = 1;
+
+                    // Walk in +trackDir
+                    int cx = px + trackDirX, cy = py + trackDirY;
                     while (s->platformCellCount < MAX_PLATFORM_CELLS) {
                         if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) break;
                         if (grid[z][cy][cx] != CELL_PLATFORM) break;
                         s->platformCells[s->platformCellCount][0] = cx;
                         s->platformCells[s->platformCellCount][1] = cy;
                         s->platformCellCount++;
-                        cx += s->queueDirX;
-                        cy += s->queueDirY;
+                        cx += trackDirX;
+                        cy += trackDirY;
+                    }
+                    // Walk in -trackDir
+                    cx = px - trackDirX;
+                    cy = py - trackDirY;
+                    while (s->platformCellCount < MAX_PLATFORM_CELLS) {
+                        if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) break;
+                        if (grid[z][cy][cx] != CELL_PLATFORM) break;
+                        s->platformCells[s->platformCellCount][0] = cx;
+                        s->platformCells[s->platformCellCount][1] = cy;
+                        s->platformCellCount++;
+                        cx -= trackDirX;
+                        cy -= trackDirY;
                     }
 
                     // Restore waiters from old station at same location
