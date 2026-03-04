@@ -4679,6 +4679,75 @@ void GenerateCraftingTest(void) {
     
     // Create wall blueprint at (6, 10)
     CreateRecipeBlueprint(6, 10, 1, CONSTRUCTION_DRY_STONE_WALL);
-    
+
+    needsRebuild = true;
+}
+
+void GenerateTrainTest(void) {
+    // Wide flat map: track loop connecting two stations ~50 cells apart
+    InitGridWithSizeAndChunkSize(80, 20, 16, 16);
+
+    ClearWorkshops();
+    ClearStockpiles();
+    ClearItems();
+    ClearTrains();
+    InitDesignations();
+    for (int i = 0; i < MAX_BLUEPRINTS; i++) {
+        blueprints[i].active = false;
+    }
+    blueprintCount = 0;
+
+    // Fill z=0 with dirt (solid ground), z=1 is the walkable level
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][y][x] = CELL_WALL;
+            SetWallMaterial(x, y, 0, MAT_DIRT);
+            SetVegetation(x, y, 0, VEG_GRASS);
+        }
+    }
+
+    // ── Track loop at z=1 ──
+    // Horizontal runs: y=8 and y=12, from x=10 to x=70
+    for (int x = 10; x <= 70; x++) {
+        grid[1][8][x] = CELL_TRACK;
+        grid[1][12][x] = CELL_TRACK;
+    }
+    // Vertical connections at both ends
+    for (int y = 8; y <= 12; y++) {
+        grid[1][y][10] = CELL_TRACK;
+        grid[1][y][70] = CELL_TRACK;
+    }
+
+    // ── Station A (left end): platform at (10, 7), adjacent to track (10, 8) ──
+    grid[1][7][10] = CELL_PLATFORM;
+    // Also make the platform walkable by ensuring ground below
+    // (z=0 is already solid)
+
+    // ── Station B (right end): platform at (70, 7), adjacent to track (70, 8) ──
+    grid[1][7][70] = CELL_PLATFORM;
+
+    // Rebuild stations so they're detected
+    RebuildStations();
+
+    // ── Spawn a train on the track ──
+    SpawnTrain(20, 8, 1);
+
+    // ── Items near station A (left) — scattered rocks on ground near platform ──
+    for (int i = 0; i < 8; i++) {
+        float ix = (5 + i % 4) * CELL_SIZE + CELL_SIZE * 0.5f;
+        float iy = (6 + i / 4) * CELL_SIZE + CELL_SIZE * 0.5f;
+        SpawnItem(ix, iy, 1.0f, ITEM_ROCK);
+    }
+
+    // ── Stockpile near station B (right) — accepts rocks ──
+    int sp = CreateStockpile(65, 6, 1, 3, 3);
+    if (sp >= 0) {
+        for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
+            SetStockpileFilter(sp, t, false);
+        }
+        SetStockpileFilter(sp, ITEM_ROCK, true);
+        SetStockpilePriority(sp, 7);
+    }
+
     needsRebuild = true;
 }

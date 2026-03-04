@@ -12,6 +12,7 @@
 #include "../simulation/trees.h"
 #include "../simulation/floordirt.h"
 #include "../simulation/balance.h"
+#include "../entities/trains.h"
 
 static void FormatItemName(const Item* item, char* out, size_t outSize) {
     const char* base = (item->type < ITEM_TYPE_COUNT) ? ItemName(item->type) : "?";
@@ -1691,6 +1692,48 @@ static void DrawDesignationTooltip(int cellX, int cellY, int cellZ, Vector2 mous
         else if (strstr(lines[i], workerName)) col = GREEN;
         else if (strstr(lines[i], "Unreachable")) col = RED;
         else if (strstr(lines[i], "Waiting")) col = GRAY;
+        DrawTextShadow(lines[i], tx + padding, y, 14, col);
+        y += lineH;
+    }
+}
+
+// Draw tooltip for train station at a track cell
+static void DrawStationTooltip(int stationIdx, Vector2 mouse) {
+    if (stationIdx < 0 || stationIdx >= stationCount) return;
+    TrainStation* st = &stations[stationIdx];
+    if (!st->active) return;
+
+    char lines[8][128];
+    int lineCount = 0;
+
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Station #%d", stationIdx);
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Track: (%d, %d, %d)", st->trackX, st->trackY, st->z);
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Platform: (%d, %d)", st->platX, st->platY);
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Waiting: %d", st->waitingCount);
+
+    int maxW = 0;
+    for (int i = 0; i < lineCount; i++) {
+        int w = MeasureText(lines[i], 14);
+        if (w > maxW) maxW = w;
+    }
+
+    int padding = 6;
+    int lineH = 16;
+    int boxW = maxW + padding * 2;
+    int boxH = lineH * lineCount + padding * 2;
+
+    int tx = (int)mouse.x + 15;
+    int ty = (int)mouse.y + 15;
+    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
+    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
+
+    DrawRectangle(tx, ty, boxW, boxH, (Color){ 20, 20, 30, 220 });
+    DrawRectangleLines(tx, ty, boxW, boxH, (Color){ 80, 200, 255, 255 });
+
+    int y = ty + padding;
+    for (int i = 0; i < lineCount; i++) {
+        Color col = (i == 0) ? (Color){ 80, 200, 255, 255 } : WHITE;
+        if (i == 3 && st->waitingCount > 0) col = YELLOW;
         DrawTextShadow(lines[i], tx + padding, y, 14, col);
         y += lineH;
     }

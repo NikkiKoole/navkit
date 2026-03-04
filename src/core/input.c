@@ -3239,10 +3239,12 @@ void HandleInput(void) {
             case ACTION_DRAW_TRACK:
                 if (leftClick) ExecutePlaceTrack(x1, y1, x2, y2, z);
                 else ExecuteRemoveTrack(x1, y1, x2, y2, z);
+                RebuildStations();
                 break;
             case ACTION_DRAW_PLATFORM:
                 if (leftClick) ExecutePlacePlatform(x1, y1, x2, y2, z);
                 else ExecuteRemovePlatform(x1, y1, x2, y2, z);
+                RebuildStations();
                 break;
             case ACTION_DRAW_TRAIN:
                 if (leftClick) {

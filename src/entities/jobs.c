@@ -784,6 +784,16 @@ static JobRunResult RunCarryStep(Job* job, Mover* mover, int destX, int destY, i
     int itemIdx = job->carryingItem;
     if (itemIdx < 0 || !items[itemIdx].active) return JOBRUN_FAIL;
 
+    // Transport: mover is en route via train — don't override goal or detect stuck
+    if (mover->transportState != TRANSPORT_NONE) {
+        // Still update carried item position
+        items[itemIdx].x = mover->x;
+        items[itemIdx].y = mover->y;
+        items[itemIdx].z = mover->z;
+        if (items[itemIdx].contentCount > 0) MoveContainer(itemIdx, mover->x, mover->y, mover->z);
+        return JOBRUN_RUNNING;
+    }
+
     float targetX = destX * CELL_SIZE + CELL_SIZE * 0.5f;
     float targetY = destY * CELL_SIZE + CELL_SIZE * 0.5f;
     float dx = mover->x - targetX;
@@ -3409,6 +3419,8 @@ void RebuildIdleMoverList(void) {
 
     for (int i = 0; i < moverCount; i++) {
         if (movers[i].active && movers[i].currentJobId < 0 && movers[i].freetimeState == FREETIME_NONE && !movers[i].isDrafted) {
+            // Skip movers in transport (walking to station, waiting, riding)
+            if (movers[i].transportState != TRANSPORT_NONE) continue;
             // Skip movers stuck in unwalkable cells (e.g. built themselves into a wall)
             int mx = (int)(movers[i].x / CELL_SIZE);
             int my = (int)(movers[i].y / CELL_SIZE);
@@ -3487,6 +3499,34 @@ static void SafeDropItemNearMover(int itemIdx, Mover* m) {
 // Cancel job and release all reservations (public, called from workshops.c and internally)
 void CancelJob(void* moverPtr, int moverIdx) {
     Mover* m = (Mover*)moverPtr;
+
+    // Clean up transport state if active
+    if (m->transportState != TRANSPORT_NONE) {
+        if (m->transportState == TRANSPORT_WAITING && m->transportStation >= 0) {
+            StationRemoveWaiter(m->transportStation, moverIdx);
+        }
+        if (m->transportState == TRANSPORT_RIDING && m->transportTrainIdx >= 0) {
+            Train* t = &trains[m->transportTrainIdx];
+            for (int r = 0; r < t->ridingCount; r++) {
+                if (t->ridingMovers[r] == moverIdx) {
+                    t->ridingMovers[r] = t->ridingMovers[t->ridingCount - 1];
+                    t->ridingCount--;
+                    break;
+                }
+            }
+            // Place mover at train position
+            m->x = t->x;
+            m->y = t->y;
+            m->z = (float)t->z;
+        }
+        m->goal = m->transportFinalGoal;
+        m->transportState = TRANSPORT_NONE;
+        m->transportStation = -1;
+        m->transportExitStation = -1;
+        m->transportTrainIdx = -1;
+        m->needsRepath = true;
+    }
+
     // Get job data (all job-specific data now comes from Job struct)
     Job* job = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
 

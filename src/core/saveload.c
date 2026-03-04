@@ -393,9 +393,13 @@ bool SaveWorld(const char* filename) {
     fwrite(&animalCount, sizeof(animalCount), 1, f);
     fwrite(animals, sizeof(Animal), animalCount, f);
 
-    // Trains (v46+)
+    // Trains (v86+: expanded struct with station/transport fields)
     fwrite(&trainCount, sizeof(trainCount), 1, f);
     fwrite(trains, sizeof(Train), trainCount, f);
+
+    // Stations (v86+)
+    fwrite(&stationCount, sizeof(stationCount), 1, f);
+    fwrite(stations, sizeof(TrainStation), stationCount, f);
 
     // Jobs
     fwrite(&jobHighWaterMark, sizeof(jobHighWaterMark), 1, f);
@@ -1734,11 +1738,65 @@ bool LoadWorld(const char* filename) {
     
     // Movers
     fread(&moverCount, sizeof(moverCount), 1, f);
-    if (version >= 83) {
-        // v83+: Mover struct with name/gender/age/appearanceSeed/isDrafted
+    if (version >= 86) {
+        // v86+: Mover struct with transport fields
         fread(movers, sizeof(Mover), moverCount, f);
         for (int i = 0; i < moverCount; i++) {
             fread(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+        }
+    } else if (version >= 83) {
+        // v83-v85: Mover without transport fields
+        for (int i = 0; i < moverCount; i++) {
+            MoverV85 old;
+            fread(&old, sizeof(MoverV85), 1, f);
+            fread(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+            Mover* m = &movers[i];
+            m->x = old.x; m->y = old.y; m->z = old.z;
+            m->goal = old.goal;
+            m->pathLength = old.pathLength;
+            m->pathIndex = old.pathIndex;
+            m->active = old.active;
+            m->needsRepath = old.needsRepath;
+            m->repathCooldown = old.repathCooldown;
+            m->speed = old.speed;
+            m->timeNearWaypoint = old.timeNearWaypoint;
+            m->lastX = old.lastX; m->lastY = old.lastY; m->lastZ = old.lastZ;
+            m->timeWithoutProgress = old.timeWithoutProgress;
+            m->fallTimer = old.fallTimer;
+            m->workAnimPhase = old.workAnimPhase;
+            m->hunger = old.hunger;
+            m->energy = old.energy;
+            m->freetimeState = old.freetimeState;
+            m->needTarget = old.needTarget;
+            m->needProgress = old.needProgress;
+            m->needSearchCooldown = old.needSearchCooldown;
+            m->starvationTimer = old.starvationTimer;
+            m->thirst = old.thirst;
+            m->dehydrationTimer = old.dehydrationTimer;
+            m->bodyTemp = old.bodyTemp;
+            m->hypothermiaTimer = old.hypothermiaTimer;
+            m->avoidX = old.avoidX; m->avoidY = old.avoidY;
+            m->currentJobId = old.currentJobId;
+            m->lastJobType = old.lastJobType;
+            m->lastJobResult = old.lastJobResult;
+            m->lastJobTargetX = old.lastJobTargetX;
+            m->lastJobTargetY = old.lastJobTargetY;
+            m->lastJobTargetZ = old.lastJobTargetZ;
+            m->lastJobEndTick = old.lastJobEndTick;
+            m->capabilities = old.capabilities;
+            m->equippedTool = old.equippedTool;
+            m->equippedClothing = old.equippedClothing;
+            memcpy(m->name, old.name, sizeof(old.name));
+            m->gender = old.gender;
+            m->age = old.age;
+            m->appearanceSeed = old.appearanceSeed;
+            m->isDrafted = old.isDrafted;
+            // Default transport fields
+            m->transportState = TRANSPORT_NONE;
+            m->transportStation = -1;
+            m->transportExitStation = -1;
+            m->transportTrainIdx = -1;
+            m->transportFinalGoal = (Point){0, 0, 0};
         }
     } else if (version >= 79) {
         // v79-v82: Mover without identity fields, paths separate
@@ -2142,6 +2200,17 @@ bool LoadWorld(const char* filename) {
         }
     }
 
+    // Initialize transport fields for old saves (v86+)
+    if (version < 86) {
+        for (int i = 0; i < moverCount; i++) {
+            movers[i].transportState = TRANSPORT_NONE;
+            movers[i].transportStation = -1;
+            movers[i].transportExitStation = -1;
+            movers[i].transportTrainIdx = -1;
+            movers[i].transportFinalGoal = (Point){0, 0, 0};
+        }
+    }
+
     // Animals (v42+)
     if (version >= 42) {
         fread(&animalCount, sizeof(animalCount), 1, f);
@@ -2152,23 +2221,51 @@ bool LoadWorld(const char* filename) {
         animalCount = 0;
     }
 
-    // Trains (v47+, struct changed from v46)
-    if (version >= 47) {
+    // Trains (v86+: expanded struct with station/transport fields)
+    if (version >= 86) {
         fread(&trainCount, sizeof(trainCount), 1, f);
         if (trainCount > 0) {
             fread(trains, sizeof(Train), trainCount, f);
         }
+        // Stations (v86+)
+        fread(&stationCount, sizeof(stationCount), 1, f);
+        if (stationCount > 0) {
+            fread(stations, sizeof(TrainStation), stationCount, f);
+        }
+    } else if (version >= 47) {
+        fread(&trainCount, sizeof(trainCount), 1, f);
+        if (trainCount > 0) {
+            for (int ti = 0; ti < trainCount; ti++) {
+                TrainV85 old;
+                fread(&old, sizeof(TrainV85), 1, f);
+                Train* t = &trains[ti];
+                t->x = old.x; t->y = old.y;
+                t->z = old.z;
+                t->cellX = old.cellX; t->cellY = old.cellY;
+                t->prevCellX = old.prevCellX; t->prevCellY = old.prevCellY;
+                t->speed = old.speed;
+                t->progress = old.progress;
+                t->lightCellX = old.lightCellX; t->lightCellY = old.lightCellY;
+                t->active = old.active;
+                t->cartState = CART_MOVING;
+                t->stateTimer = 0.0f;
+                t->atStation = -1;
+                t->ridingCount = 0;
+            }
+        }
+        stationCount = 0;
     } else if (version == 46) {
         // v46 had trains with smaller struct (no lightCellX/Y) — skip the data
         int oldCount;
         fread(&oldCount, sizeof(oldCount), 1, f);
         if (oldCount > 0) {
-            // Old struct was 40 bytes (Train without lightCellX/lightCellY)
-            fseek(f, oldCount * (sizeof(Train) - 2 * sizeof(int)), SEEK_CUR);
+            fseek(f, oldCount * (sizeof(TrainV85) - 2 * sizeof(int)), SEEK_CUR);
         }
         trainCount = 0;
+        stationCount = 0;
     } else {
         trainCount = 0;
+        stationCount = 0;
     }
 
     // Jobs
@@ -2324,7 +2421,12 @@ bool LoadWorld(const char* filename) {
     fclose(f);
     
     RebuildPostLoadState();
-    
+
+    // Rebuild stations from grid (for old saves and to verify loaded stations)
+    if (version < 86) {
+        RebuildStations();
+    }
+
     // Rebuild active cell counters from loaded simulation grids
     RebuildSimActivityCounts();
     

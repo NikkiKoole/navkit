@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 85
+#define CURRENT_SAVE_VERSION 86
 
 // Material count constant used by ALL legacy stockpile structs (MAT_COUNT was 17 from v31-v79)
 #define V79_MAT_COUNT 17
@@ -906,5 +906,61 @@ typedef struct {
     int equippedClothing;
     // No name/gender/age/appearanceSeed/isDrafted in V82
 } MoverV82;
+
+// V85 Train struct (before station/transport fields added in v86)
+typedef struct {
+    float x, y;
+    int z;
+    int cellX, cellY;
+    int prevCellX, prevCellY;
+    float speed;
+    float progress;
+    int lightCellX, lightCellY;
+    bool active;
+    // No cartState, stateTimer, atStation, ridingMovers, ridingCount in V85
+} TrainV85;
+
+// V85 Mover struct (before transport fields added in v86)
+typedef struct {
+    float x, y, z;
+    Point goal;
+    int pathLength;
+    int pathIndex;
+    bool active;
+    bool needsRepath;
+    int repathCooldown;
+    float speed;
+    float timeNearWaypoint;
+    float lastX, lastY, lastZ;
+    float timeWithoutProgress;
+    float fallTimer;
+    float workAnimPhase;
+    float hunger;
+    float energy;
+    int freetimeState;
+    int needTarget;
+    float needProgress;
+    float needSearchCooldown;
+    float starvationTimer;
+    float thirst;
+    float dehydrationTimer;
+    float bodyTemp;
+    float hypothermiaTimer;
+    float avoidX, avoidY;
+    int currentJobId;
+    int lastJobType;
+    int lastJobResult;
+    int lastJobTargetX, lastJobTargetY, lastJobTargetZ;
+    unsigned long lastJobEndTick;
+    MoverCapabilities capabilities;
+    int equippedTool;
+    int equippedClothing;
+    char name[16];
+    uint8_t gender;
+    uint8_t age;
+    uint32_t appearanceSeed;
+    bool isDrafted;
+    // No transport fields in V85
+} MoverV85;
 
 #endif

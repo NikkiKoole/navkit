@@ -2089,11 +2089,64 @@ int InspectSaveFile(int argc, char** argv) {
     fread(&insp_moverCount, 4, 1, f);
     insp_movers = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Mover) : sizeof(Mover));
     insp_moverPaths = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Point) * MAX_MOVER_PATH : sizeof(Point) * MAX_MOVER_PATH);
-    if (version >= 83) {
-        // v83+: Mover struct with name/gender/age/appearanceSeed/isDrafted
+    if (version >= 86) {
+        // v86+: Mover struct with transport fields
         if (insp_moverCount > 0) fread(insp_movers, sizeof(Mover), insp_moverCount, f);
         for (int i = 0; i < insp_moverCount; i++) {
             fread(insp_moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+        }
+    } else if (version >= 83) {
+        // v83-v85: Mover without transport fields
+        for (int i = 0; i < insp_moverCount; i++) {
+            MoverV85 old;
+            fread(&old, sizeof(MoverV85), 1, f);
+            fread(insp_moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+            Mover* m = &insp_movers[i];
+            m->x = old.x; m->y = old.y; m->z = old.z;
+            m->goal = old.goal;
+            m->pathLength = old.pathLength;
+            m->pathIndex = old.pathIndex;
+            m->active = old.active;
+            m->needsRepath = old.needsRepath;
+            m->repathCooldown = old.repathCooldown;
+            m->speed = old.speed;
+            m->timeNearWaypoint = old.timeNearWaypoint;
+            m->lastX = old.lastX; m->lastY = old.lastY; m->lastZ = old.lastZ;
+            m->timeWithoutProgress = old.timeWithoutProgress;
+            m->fallTimer = old.fallTimer;
+            m->workAnimPhase = old.workAnimPhase;
+            m->hunger = old.hunger;
+            m->energy = old.energy;
+            m->freetimeState = old.freetimeState;
+            m->needTarget = old.needTarget;
+            m->needProgress = old.needProgress;
+            m->needSearchCooldown = old.needSearchCooldown;
+            m->starvationTimer = old.starvationTimer;
+            m->thirst = old.thirst;
+            m->dehydrationTimer = old.dehydrationTimer;
+            m->bodyTemp = old.bodyTemp;
+            m->hypothermiaTimer = old.hypothermiaTimer;
+            m->avoidX = old.avoidX; m->avoidY = old.avoidY;
+            m->currentJobId = old.currentJobId;
+            m->lastJobType = old.lastJobType;
+            m->lastJobResult = old.lastJobResult;
+            m->lastJobTargetX = old.lastJobTargetX;
+            m->lastJobTargetY = old.lastJobTargetY;
+            m->lastJobTargetZ = old.lastJobTargetZ;
+            m->lastJobEndTick = old.lastJobEndTick;
+            m->capabilities = old.capabilities;
+            m->equippedTool = old.equippedTool;
+            m->equippedClothing = old.equippedClothing;
+            memcpy(m->name, old.name, sizeof(old.name));
+            m->gender = old.gender;
+            m->age = old.age;
+            m->appearanceSeed = old.appearanceSeed;
+            m->isDrafted = old.isDrafted;
+            m->transportState = TRANSPORT_NONE;
+            m->transportStation = -1;
+            m->transportExitStation = -1;
+            m->transportTrainIdx = -1;
+            m->transportFinalGoal = (Point){0, 0, 0};
         }
     } else if (version >= 79) {
         // v79-v82: Mover without identity fields, paths separate
@@ -2505,16 +2558,44 @@ int InspectSaveFile(int argc, char** argv) {
         insp_animals = NULL;
     }
 
-    // Trains (v47+, struct changed from v46)
-    if (version >= 47) {
+    // Trains (v86+: expanded struct with station/transport fields)
+    if (version >= 86) {
         fread(&insp_trainCount, 4, 1, f);
         insp_trains = malloc(insp_trainCount > 0 ? insp_trainCount * sizeof(Train) : sizeof(Train));
         if (insp_trainCount > 0) fread(insp_trains, sizeof(Train), insp_trainCount, f);
+        // Stations (v86+)
+        int insp_stationCount;
+        fread(&insp_stationCount, 4, 1, f);
+        if (insp_stationCount > 0) {
+            fseek(f, insp_stationCount * (long)sizeof(TrainStation), SEEK_CUR);
+        }
+    } else if (version >= 47) {
+        fread(&insp_trainCount, 4, 1, f);
+        insp_trains = malloc(insp_trainCount > 0 ? insp_trainCount * sizeof(Train) : sizeof(Train));
+        if (insp_trainCount > 0) {
+            for (int ti = 0; ti < insp_trainCount; ti++) {
+                TrainV85 old;
+                fread(&old, sizeof(TrainV85), 1, f);
+                Train* t = &insp_trains[ti];
+                t->x = old.x; t->y = old.y;
+                t->z = old.z;
+                t->cellX = old.cellX; t->cellY = old.cellY;
+                t->prevCellX = old.prevCellX; t->prevCellY = old.prevCellY;
+                t->speed = old.speed;
+                t->progress = old.progress;
+                t->lightCellX = old.lightCellX; t->lightCellY = old.lightCellY;
+                t->active = old.active;
+                t->cartState = CART_MOVING;
+                t->stateTimer = 0.0f;
+                t->atStation = -1;
+                t->ridingCount = 0;
+            }
+        }
     } else if (version == 46) {
         int oldCount;
         fread(&oldCount, 4, 1, f);
         if (oldCount > 0) {
-            fseek(f, oldCount * (sizeof(Train) - 2 * sizeof(int)), SEEK_CUR);
+            fseek(f, oldCount * (long)sizeof(TrainV85) - oldCount * 2 * (long)sizeof(int), SEEK_CUR);
         }
         insp_trainCount = 0;
         insp_trains = NULL;

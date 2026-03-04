@@ -14,6 +14,7 @@
 #include "../simulation/plants.h"
 #include "../simulation/farming.h"
 #include "../core/sim_manager.h"
+#include "../entities/trains.h"
 #include <math.h>
 
 #define MAX_VISIBLE_DEPTH    9
@@ -1541,8 +1542,11 @@ static void DrawMovers(void) {
         Mover* m = &movers[i];
         if (!m->active) continue;
 
+        // Riding movers are rendered at train position in DrawTrains loop
+        if (m->transportState == TRANSPORT_RIDING) continue;
+
         int moverZ = (int)m->z;
-        
+
         // Only draw movers within visible depth range (current z and up to 9 levels below)
         if (moverZ > viewZ || moverZ < viewZ - MAX_VISIBLE_DEPTH) continue;
         
@@ -1846,6 +1850,57 @@ static void DrawTrains(void) {
         Rectangle dest = { sx, sy, trainSize, trainSize };
         Vector2 origin = { trainSize / 2, trainSize / 2 };
         DrawTexturePro(atlas, src, dest, origin, rotation, trainColor);
+
+        // Draw riding movers on this train with small Y offsets for stacking
+        for (int r = 0; r < t->ridingCount; r++) {
+            int mIdx = t->ridingMovers[r];
+            if (mIdx < 0 || mIdx >= moverCount || !movers[mIdx].active) continue;
+
+            float riderOffY = -size * 0.15f * (r + 1);  // Stack upward
+            float rsx = sx;
+            float rsy = sy + riderOffY;
+
+            Color riderColor = WHITE;
+            if (t->z < viewZ) {
+                riderColor = MultiplyColor(riderColor, GetDepthTint(t->z, viewZ));
+                riderColor = FloorDarkenTint(riderColor);
+            }
+            riderColor = MultiplyColor(riderColor, GetLightColor(
+                (int)(t->x / CELL_SIZE), (int)(t->y / CELL_SIZE), t->z, skyColor));
+
+            float moverSize = size * MOVER_SIZE;
+            Rectangle moverSrc = SpriteGetRect(SPRITE_head);
+            Rectangle moverDest = { rsx - moverSize/2, rsy - moverSize/2, moverSize, moverSize };
+            DrawTexturePro(atlas, moverSrc, moverDest, (Vector2){0, 0}, 0, riderColor);
+        }
+    }
+
+    // Draw station markers on track cells adjacent to platforms
+    for (int i = 0; i < stationCount; i++) {
+        TrainStation* st = &stations[i];
+        if (!st->active) continue;
+        if (st->z > viewZ || st->z < viewZ - MAX_VISIBLE_DEPTH) continue;
+
+        if (st->z < viewZ) {
+            if (!IsCellVisibleFromAbove(st->trackX, st->trackY, st->z + 1, viewZ)) continue;
+        }
+
+        float sx = roundf(offset.x + (st->trackX + 0.5f) * size);
+        float sy = roundf(offset.y + (st->trackY + 0.5f) * size);
+
+        if (sx < minScreenX || sx > maxScreenX || sy < minScreenY || sy > maxScreenY) continue;
+
+        Color markerColor = (Color){ 80, 200, 255, 180 };
+        if (st->z < viewZ) {
+            markerColor = MultiplyColor(markerColor, GetDepthTint(st->z, viewZ));
+            markerColor = FloorDarkenTint(markerColor);
+        }
+        markerColor = MultiplyColor(markerColor, GetLightColor(st->trackX, st->trackY, st->z, skyColor));
+
+        float dotSize = size * 0.4f;
+        Rectangle dotSrc = SpriteGetRect(SPRITE_middle_dot);
+        Rectangle dotDest = { sx - dotSize/2, sy - dotSize/2, dotSize, dotSize };
+        DrawTexturePro(atlas, dotSrc, dotDest, (Vector2){0, 0}, 0, markerColor);
     }
 }
 

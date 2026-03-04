@@ -1,4 +1,5 @@
 #include "mover.h"
+#include "trains.h"
 #include "namegen.h"
 #include "animals.h"
 #include "../core/time.h"
@@ -677,6 +678,12 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->age = 0;
     m->appearanceSeed = 0;
     m->isDrafted = false;
+    // Transport system
+    m->transportState = TRANSPORT_NONE;
+    m->transportStation = -1;
+    m->transportExitStation = -1;
+    m->transportTrainIdx = -1;
+    m->transportFinalGoal = (Point){0, 0, 0};
     // Capabilities - default to all enabled
     m->capabilities.canHaul = true;
     m->capabilities.canMine = true;
@@ -798,6 +805,9 @@ void NeedsTick(void) {
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         if (!m->active) continue;
+
+        // Skip freetime transitions for movers riding trains (they can't seek food/rest/etc.)
+        if (m->transportState == TRANSPORT_RIDING) continue;
 
         // Drain hunger
         if (hungerEnabled) {
@@ -1073,7 +1083,7 @@ void UpdateMovers(void) {
                 avoidVectors[i] = (Vec2){0, 0};
                 continue;
             }
-            if (m->pathIndex < 0 || m->pathLength == 0) {
+            if ((m->pathIndex < 0 || m->pathLength == 0) && m->transportState != TRANSPORT_WAITING) {
                 avoidVectors[i] = (Vec2){0, 0};
                 continue;
             }
@@ -1207,19 +1217,98 @@ void UpdateMovers(void) {
             m->timeWithoutProgress = 0.0f;
         }
 
+        // Transport: RIDING movers are moved by TrainsTick — skip all normal movement
+        if (m->transportState == TRANSPORT_RIDING) {
+            m->timeWithoutProgress = 0.0f;
+            continue;
+        }
+
+        // Transport: WAITING movers mill around on platform using avoidance
+        if (m->transportState == TRANSPORT_WAITING) {
+            m->timeWithoutProgress = 0.0f;
+            // Check timeout
+            if (m->transportStation >= 0 && m->transportStation < stationCount) {
+                TrainStation* s = &stations[m->transportStation];
+                for (int w = 0; w < s->waitingCount; w++) {
+                    if (s->waitingMovers[w] == i) {
+                        float waited = (float)gameTime - s->waitingSince[w];
+                        if (waited > TRANSPORT_WAIT_TIMEOUT) {
+                            // Timeout — abandon transport, walk directly
+                            StationRemoveWaiter(m->transportStation, i);
+                            m->goal = m->transportFinalGoal;
+                            m->transportState = TRANSPORT_NONE;
+                            m->transportStation = -1;
+                            m->transportExitStation = -1;
+                            m->transportTrainIdx = -1;
+                            m->needsRepath = true;
+                        }
+                        break;
+                    }
+                }
+            }
+            // Apply avoidance + gentle tether to platform center
+            if (m->transportStation >= 0 && m->transportStation < stationCount) {
+                TrainStation* s = &stations[m->transportStation];
+                float platCX = s->platX * CELL_SIZE + CELL_SIZE * 0.5f;
+                float platCY = s->platY * CELL_SIZE + CELL_SIZE * 0.5f;
+                // Tether: gentle pull toward platform center
+                float tetherX = (platCX - m->x) * 0.5f;
+                float tetherY = (platCY - m->y) * 0.5f;
+                // Avoidance from other movers
+                float ax = avoidVectors[i].x * m->speed * 0.8f;
+                float ay = avoidVectors[i].y * m->speed * 0.8f;
+                float newX = m->x + (tetherX + ax) * dt;
+                float newY = m->y + (tetherY + ay) * dt;
+                // Clamp to within platform cell
+                float minX = s->platX * CELL_SIZE + CELL_SIZE * 0.1f;
+                float maxX = (s->platX + 1) * CELL_SIZE - CELL_SIZE * 0.1f;
+                float minY = s->platY * CELL_SIZE + CELL_SIZE * 0.1f;
+                float maxY = (s->platY + 1) * CELL_SIZE - CELL_SIZE * 0.1f;
+                if (newX < minX) newX = minX;
+                if (newX > maxX) newX = maxX;
+                if (newY < minY) newY = minY;
+                if (newY > maxY) newY = maxY;
+                m->x = newX;
+                m->y = newY;
+            }
+            continue;
+        }
+
         // Handle movers that need a new goal (reached destination or have no path)
         if (m->pathIndex < 0 || m->pathLength == 0) {
+            // Transport: WALKING_TO_STATION mover arrived at platform → transition to WAITING
+            if (m->transportState == TRANSPORT_WALKING_TO_STATION) {
+                int stIdx = m->transportStation;
+                if (stIdx >= 0 && stIdx < stationCount && stations[stIdx].active) {
+                    m->transportState = TRANSPORT_WAITING;
+                    StationAddWaiter(stIdx, i);
+                    // Position mover on platform (avoidance will spread them out)
+                    TrainStation* s = &stations[stIdx];
+                    m->x = s->platX * CELL_SIZE + CELL_SIZE * 0.5f;
+                    m->y = s->platY * CELL_SIZE + CELL_SIZE * 0.5f;
+                } else {
+                    // Station gone — abandon transport
+                    m->goal = m->transportFinalGoal;
+                    m->transportState = TRANSPORT_NONE;
+                    m->transportStation = -1;
+                    m->transportExitStation = -1;
+                    m->transportTrainIdx = -1;
+                    m->needsRepath = true;
+                }
+                continue;
+            }
+
             // Track stuck time for movers with jobs but no path
             // This allows job stuck detection to work (it checks timeWithoutProgress > JOB_STUCK_TIME)
             if (m->currentJobId >= 0) {
                 m->timeWithoutProgress += dt;
                 // Trigger periodic repaths while stuck
-                if (m->timeWithoutProgress > STUCK_REPATH_TIME && 
+                if (m->timeWithoutProgress > STUCK_REPATH_TIME &&
                     fmodf(m->timeWithoutProgress, STUCK_REPATH_TIME) < dt) {
                     m->needsRepath = true;
                 }
             }
-            
+
             if (endlessMoverMode && m->currentJobId < 0 && m->freetimeState == FREETIME_NONE) {
                 // Only assign random goals to idle movers without jobs or active needs
                 if (m->repathCooldown > 0) {
@@ -1625,6 +1714,29 @@ void ProcessMoverRepaths(void) {
         m->pathIndex = m->pathLength - 1;
         m->needsRepath = false;
         m->repathCooldown = REPATH_COOLDOWN_FRAMES;
+
+        // Transport check: after successful pathfind, consider using train
+        if (m->transportState == TRANSPORT_NONE && ShouldUseTrain(i)) {
+            int mx = (int)(m->x / CELL_SIZE);
+            int my = (int)(m->y / CELL_SIZE);
+            int mz = (int)m->z;
+            int entryStation = FindNearestStation(mx, my, mz, TRANSPORT_STATION_RADIUS);
+            int exitStation = FindNearestStation(m->goal.x, m->goal.y, mz, TRANSPORT_STATION_RADIUS);
+            if (entryStation >= 0 && exitStation >= 0 && entryStation != exitStation) {
+                // Save original goal, redirect to platform
+                m->transportFinalGoal = m->goal;
+                m->transportState = TRANSPORT_WALKING_TO_STATION;
+                m->transportStation = entryStation;
+                m->transportExitStation = exitStation;
+                m->transportTrainIdx = -1;
+                // Redirect goal to platform cell
+                TrainStation* s = &stations[entryStation];
+                m->goal = (Point){s->platX, s->platY, s->z};
+                // Repath to new goal
+                m->needsRepath = true;
+                m->repathCooldown = 0;
+            }
+        }
 
         repathsThisFrame++;
     }

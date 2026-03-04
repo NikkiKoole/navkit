@@ -79,7 +79,7 @@ const char* toolNames[] = {"Draw Wall", "Draw Floor", "Draw Ladder", "Erase", "S
 
 int currentTerrain = 0;
 // NOTE: When adding new terrains, also update the count in ui_panels.c CycleOption() for "Terrain"
-const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D", "Council", "Hills", "HillsSoils", "HillsSoilsWater", "CraftTest"};
+const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D", "Council", "Hills", "HillsSoils", "HillsSoilsWater", "CraftTest", "TrainTest"};
 
 MaterialType currentTreeType = MAT_OAK;
 
@@ -419,6 +419,7 @@ void GenerateCurrentTerrain(void) {
         case 18: GenerateHillsSoils(); break;
         case 19: GenerateHillsSoilsWater(); break;
         case 20: GenerateCraftingTest(); break;
+        case 21: GenerateTrainTest(); break;
     }
     SyncMaterialsToTerrain();
 }
@@ -667,6 +668,7 @@ void DrawAnimalTooltip(int animalIdx, Vector2 mouse);
 void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, int cellY);
 void DrawWaterTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
 void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
+void DrawStationTooltip(int stationIdx, Vector2 mouse);
 void DrawBlueprintTooltip(int bpIdx, Vector2 mouse);
 void DrawDesignationTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
 
@@ -1829,10 +1831,14 @@ int main(int argc, char** argv) {
             int cellX = (int)mouseGrid.x;
             int cellY = (int)mouseGrid.y;
             if (cellX >= 0 && cellX < gridWidth && cellY >= 0 && cellY < gridHeight) {
+                // Check for train station at this cell
+                int stIdx = GetStationAt(cellX, cellY, currentViewZ);
+                if (stIdx >= 0) {
+                    DrawStationTooltip(stIdx, GetMousePosition());
+                }
                 // Check for blueprint at this cell
-                int bpIdx = GetBlueprintAt(cellX, cellY, currentViewZ);
-                if (bpIdx >= 0) {
-                    DrawBlueprintTooltip(bpIdx, GetMousePosition());
+                else if (GetBlueprintAt(cellX, cellY, currentViewZ) >= 0) {
+                    DrawBlueprintTooltip(GetBlueprintAt(cellX, cellY, currentViewZ), GetMousePosition());
                 }
                 // Check for any designation at this cell
                 else if (GetDesignation(cellX, cellY, currentViewZ) != NULL) {

@@ -101,6 +101,12 @@ typedef struct Mover {
     uint8_t age;            // Cosmetic (50-70)
     uint32_t appearanceSeed;
     bool isDrafted;
+    // Transport system (train riding)
+    int transportState;        // TransportState (NONE/WALKING/WAITING/RIDING)
+    int transportStation;      // Entry station idx, -1 = none
+    int transportExitStation;  // Exit station idx, -1 = none
+    int transportTrainIdx;     // Train idx when riding, -1 = none
+    Point transportFinalGoal;  // Original goal before redirect
 } Mover;
 
 // Stuck detection thresholds
