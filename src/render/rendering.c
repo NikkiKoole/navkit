@@ -1851,6 +1851,43 @@ static void DrawTrains(void) {
         Vector2 origin = { trainSize / 2, trainSize / 2 };
         DrawTexturePro(atlas, src, dest, origin, rotation, trainColor);
 
+        // Draw trailing cars
+        for (int c = 0; c < t->trailCount; c++) {
+            // Car c interpolates between trail[c+1] (or trail[c] if last) and trail[c]
+            // using locomotive's progress for smooth following
+            float carFromX, carFromY, carToX, carToY;
+            carToX = t->trailCellX[c] * CELL_SIZE + CELL_SIZE * 0.5f;
+            carToY = t->trailCellY[c] * CELL_SIZE + CELL_SIZE * 0.5f;
+            if (c + 1 < t->trailCount) {
+                carFromX = t->trailCellX[c + 1] * CELL_SIZE + CELL_SIZE * 0.5f;
+                carFromY = t->trailCellY[c + 1] * CELL_SIZE + CELL_SIZE * 0.5f;
+            } else {
+                carFromX = carToX;
+                carFromY = carToY;
+            }
+            float carX = carFromX + (carToX - carFromX) * t->progress;
+            float carY = carFromY + (carToY - carFromY) * t->progress;
+
+            float csx = roundf(offset.x + carX * zoom);
+            float csy = roundf(offset.y + carY * zoom);
+            if (csx < minScreenX || csx > maxScreenX || csy < minScreenY || csy > maxScreenY) continue;
+
+            // Car rotation from its own direction
+            int cdx = t->trailCellX[c] - ((c + 1 < t->trailCount) ? t->trailCellX[c + 1] : t->trailCellX[c]);
+            int cdy = t->trailCellY[c] - ((c + 1 < t->trailCount) ? t->trailCellY[c + 1] : t->trailCellY[c]);
+            float carRot = 0;
+            if (cdx == 1 && cdy == 0) carRot = 180;
+            else if (cdx == -1 && cdy == 0) carRot = 0;
+            else if (cdx == 0 && cdy == -1) carRot = 90;
+            else if (cdx == 0 && cdy == 1) carRot = 270;
+
+            Color carColor = trainColor;
+            Rectangle cartSrc = SpriteGetRect(SPRITE_train_cart);
+            Rectangle cartDest = { csx, csy, trainSize, trainSize };
+            Vector2 cartOrigin = { trainSize / 2, trainSize / 2 };
+            DrawTexturePro(atlas, cartSrc, cartDest, cartOrigin, carRot, carColor);
+        }
+
         // Draw riding movers on this train with small Y offsets for stacking
         for (int r = 0; r < t->ridingCount; r++) {
             int mIdx = t->ridingMovers[r];

@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 87
+#define CURRENT_SAVE_VERSION 88
 
 // Material count constant used by ALL legacy stockpile structs (MAT_COUNT was 17 from v31-v79)
 #define V79_MAT_COUNT 17
@@ -917,6 +917,24 @@ typedef struct {
     float waitingSince[MAX_STATION_WAITING];
     int waitingCount;
 } TrainStationV86;
+
+// V87 Train struct (before multi-car trail fields added in v88)
+typedef struct {
+    float x, y;
+    int z;
+    int cellX, cellY;
+    int prevCellX, prevCellY;
+    float speed;
+    float progress;
+    int lightCellX, lightCellY;
+    bool active;
+    int cartState;
+    float stateTimer;
+    int atStation;
+    int ridingMovers[MAX_CART_CAPACITY];
+    int ridingCount;
+    // No carCount, trail fields in V87
+} TrainV87;
 
 // V85 Train struct (before station/transport fields added in v86)
 typedef struct {

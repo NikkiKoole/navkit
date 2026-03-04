@@ -395,11 +395,11 @@ bool SaveWorld(const char* filename) {
     fwrite(&animalCount, sizeof(animalCount), 1, f);
     fwrite(animals, sizeof(Animal), animalCount, f);
 
-    // Trains (v87+: TrainStation has multi-cell platform fields)
+    // Trains (v88+: Train has multi-car trail fields)
     fwrite(&trainCount, sizeof(trainCount), 1, f);
     fwrite(trains, sizeof(Train), trainCount, f);
 
-    // Stations (v87+)
+    // Stations (v88+)
     fwrite(&stationCount, sizeof(stationCount), 1, f);
     fwrite(stations, sizeof(TrainStation), stationCount, f);
 
@@ -2223,8 +2223,8 @@ bool LoadWorld(const char* filename) {
         animalCount = 0;
     }
 
-    // Trains (v87+: TrainStation has multi-cell platform fields)
-    if (version >= 87) {
+    // Trains (v88+: Train has multi-car trail fields)
+    if (version >= 88) {
         fread(&trainCount, sizeof(trainCount), 1, f);
         if (trainCount > 0) {
             fread(trains, sizeof(Train), trainCount, f);
@@ -2233,10 +2233,61 @@ bool LoadWorld(const char* filename) {
         if (stationCount > 0) {
             fread(stations, sizeof(TrainStation), stationCount, f);
         }
+    } else if (version >= 87) {
+        fread(&trainCount, sizeof(trainCount), 1, f);
+        if (trainCount > 0) {
+            for (int ti = 0; ti < trainCount; ti++) {
+                TrainV87 old;
+                fread(&old, sizeof(TrainV87), 1, f);
+                Train* t = &trains[ti];
+                t->x = old.x; t->y = old.y;
+                t->z = old.z;
+                t->cellX = old.cellX; t->cellY = old.cellY;
+                t->prevCellX = old.prevCellX; t->prevCellY = old.prevCellY;
+                t->speed = old.speed;
+                t->progress = old.progress;
+                t->lightCellX = old.lightCellX; t->lightCellY = old.lightCellY;
+                t->active = old.active;
+                t->cartState = old.cartState;
+                t->stateTimer = old.stateTimer;
+                t->atStation = old.atStation;
+                t->ridingCount = old.ridingCount;
+                for (int r = 0; r < old.ridingCount; r++) {
+                    t->ridingMovers[r] = old.ridingMovers[r];
+                }
+                t->carCount = 1;
+                t->trailCount = 0;
+            }
+        }
+        fread(&stationCount, sizeof(stationCount), 1, f);
+        if (stationCount > 0) {
+            fread(stations, sizeof(TrainStation), stationCount, f);
+        }
     } else if (version >= 86) {
         fread(&trainCount, sizeof(trainCount), 1, f);
         if (trainCount > 0) {
-            fread(trains, sizeof(Train), trainCount, f);
+            for (int ti = 0; ti < trainCount; ti++) {
+                TrainV87 old;
+                fread(&old, sizeof(TrainV87), 1, f);
+                Train* t = &trains[ti];
+                t->x = old.x; t->y = old.y;
+                t->z = old.z;
+                t->cellX = old.cellX; t->cellY = old.cellY;
+                t->prevCellX = old.prevCellX; t->prevCellY = old.prevCellY;
+                t->speed = old.speed;
+                t->progress = old.progress;
+                t->lightCellX = old.lightCellX; t->lightCellY = old.lightCellY;
+                t->active = old.active;
+                t->cartState = old.cartState;
+                t->stateTimer = old.stateTimer;
+                t->atStation = old.atStation;
+                t->ridingCount = old.ridingCount;
+                for (int r = 0; r < old.ridingCount; r++) {
+                    t->ridingMovers[r] = old.ridingMovers[r];
+                }
+                t->carCount = 1;
+                t->trailCount = 0;
+            }
         }
         // v86 stations: old struct without multi-cell platform fields
         fread(&stationCount, sizeof(stationCount), 1, f);
@@ -2405,8 +2456,8 @@ bool LoadWorld(const char* filename) {
         animalSpawnInterval = 180.0f;
     }
 
-    // v86 and earlier: train queue toggle not saved, default to enabled
-    if (version < 87) {
+    // v87 and earlier: train queue toggle not saved, default to enabled
+    if (version < 88) {
         trainQueueEnabled = true;
     }
 

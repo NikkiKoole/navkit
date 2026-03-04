@@ -595,7 +595,7 @@ void DrawUI(void) {
             y += 18;
             CycleOption(ix, y, "Tool", toolNames, 6, &currentTool);
             y += 22;
-            CycleOption(ix, y, "Terrain", terrainNames, 22, &currentTerrain);
+            CycleOption(ix, y, "Terrain", terrainNames, 23, &currentTerrain);
             y += 22;
             bool isHillsTerrain = (currentTerrain == 17 || currentTerrain == 18 || currentTerrain == 19);
             bool isHillsWater = (currentTerrain == 19);

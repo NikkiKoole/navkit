@@ -64,7 +64,19 @@ int SpawnTrain(int x, int y, int z) {
     t->stateTimer = 0.0f;
     t->atStation = -1;
     t->ridingCount = 0;
+    t->carCount = 1;
+    t->trailCount = 0;
     trainCount++;
+    return idx;
+}
+
+int SpawnTrainWithCars(int x, int y, int z, int cars) {
+    int idx = SpawnTrain(x, y, z);
+    if (idx >= 0) {
+        if (cars < 1) cars = 1;
+        if (cars > MAX_TRAIL_LENGTH + 1) cars = MAX_TRAIL_LENGTH + 1;
+        trains[idx].carCount = cars;
+    }
     return idx;
 }
 
@@ -526,6 +538,19 @@ void TrainsTick(float dt) {
             // Pick next cell
             int nextX, nextY;
             if (FindNextTrackCell(t, &nextX, &nextY)) {
+                // Push current prevCell onto trail for trailing cars
+                int maxTrail = t->carCount - 1;
+                if (maxTrail > MAX_TRAIL_LENGTH) maxTrail = MAX_TRAIL_LENGTH;
+                if (maxTrail > 0) {
+                    // Shift trail down
+                    for (int k = MAX_TRAIL_LENGTH - 1; k > 0; k--) {
+                        t->trailCellX[k] = t->trailCellX[k - 1];
+                        t->trailCellY[k] = t->trailCellY[k - 1];
+                    }
+                    t->trailCellX[0] = t->prevCellX;
+                    t->trailCellY[0] = t->prevCellY;
+                    if (t->trailCount < maxTrail) t->trailCount++;
+                }
                 t->prevCellX = t->cellX;
                 t->prevCellY = t->cellY;
                 t->cellX = nextX;

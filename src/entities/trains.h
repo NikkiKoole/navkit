@@ -9,6 +9,7 @@
 #define MAX_STATION_WAITING 16
 #define MAX_CART_CAPACITY 8
 #define MAX_PLATFORM_CELLS 8
+#define MAX_TRAIL_LENGTH 8
 #define TRAIN_DOOR_TIME 3.0f
 #define TRAIN_DEFAULT_SPEED 3.0f  // Cells per second
 
@@ -55,6 +56,11 @@ typedef struct {
     int atStation;             // Station index when stopped, -1 when moving
     int ridingMovers[MAX_CART_CAPACITY];
     int ridingCount;
+    // Multi-car train (v88+)
+    int carCount;                       // 1 = just locomotive, 2+ = locomotive + trailing cars
+    int trailCellX[MAX_TRAIL_LENGTH];   // Previous cell positions (trail[0] = most recent)
+    int trailCellY[MAX_TRAIL_LENGTH];
+    int trailCount;                     // How many trail entries are filled (builds up from 0)
 } Train;
 
 extern Train trains[MAX_TRAINS];
@@ -69,6 +75,7 @@ void InitTrains(void);
 void ClearTrains(void);
 void TrainsTick(float dt);
 int  SpawnTrain(int x, int y, int z);
+int  SpawnTrainWithCars(int x, int y, int z, int carCount);
 
 // Station management
 void RebuildStations(void);

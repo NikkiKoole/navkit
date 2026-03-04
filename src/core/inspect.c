@@ -2558,8 +2558,8 @@ int InspectSaveFile(int argc, char** argv) {
         insp_animals = NULL;
     }
 
-    // Trains (v87+: TrainStation has multi-cell platform fields)
-    if (version >= 87) {
+    // Trains (v88+: Train has multi-car trail fields)
+    if (version >= 88) {
         fread(&insp_trainCount, 4, 1, f);
         insp_trains = malloc(insp_trainCount > 0 ? insp_trainCount * sizeof(Train) : sizeof(Train));
         if (insp_trainCount > 0) fread(insp_trains, sizeof(Train), insp_trainCount, f);
@@ -2571,12 +2571,39 @@ int InspectSaveFile(int argc, char** argv) {
     } else if (version >= 86) {
         fread(&insp_trainCount, 4, 1, f);
         insp_trains = malloc(insp_trainCount > 0 ? insp_trainCount * sizeof(Train) : sizeof(Train));
-        if (insp_trainCount > 0) fread(insp_trains, sizeof(Train), insp_trainCount, f);
-        // v86 stations: old struct without multi-cell platform fields — skip
+        if (insp_trainCount > 0) {
+            for (int ti = 0; ti < insp_trainCount; ti++) {
+                TrainV87 old;
+                fread(&old, sizeof(TrainV87), 1, f);
+                Train* t = &insp_trains[ti];
+                t->x = old.x; t->y = old.y;
+                t->z = old.z;
+                t->cellX = old.cellX; t->cellY = old.cellY;
+                t->prevCellX = old.prevCellX; t->prevCellY = old.prevCellY;
+                t->speed = old.speed;
+                t->progress = old.progress;
+                t->lightCellX = old.lightCellX; t->lightCellY = old.lightCellY;
+                t->active = old.active;
+                t->cartState = old.cartState;
+                t->stateTimer = old.stateTimer;
+                t->atStation = old.atStation;
+                t->ridingCount = old.ridingCount;
+                for (int r = 0; r < old.ridingCount; r++) {
+                    t->ridingMovers[r] = old.ridingMovers[r];
+                }
+                t->carCount = 1;
+                t->trailCount = 0;
+            }
+        }
+        // v86/v87 stations
         int insp_stationCount;
         fread(&insp_stationCount, 4, 1, f);
         if (insp_stationCount > 0) {
-            fseek(f, insp_stationCount * (long)sizeof(TrainStationV86), SEEK_CUR);
+            if (version >= 87) {
+                fseek(f, insp_stationCount * (long)sizeof(TrainStation), SEEK_CUR);
+            } else {
+                fseek(f, insp_stationCount * (long)sizeof(TrainStationV86), SEEK_CUR);
+            }
         }
     } else if (version >= 47) {
         fread(&insp_trainCount, 4, 1, f);

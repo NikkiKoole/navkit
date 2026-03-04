@@ -4751,3 +4751,78 @@ void GenerateTrainTest(void) {
 
     needsRebuild = true;
 }
+
+void GenerateTrainTestLong(void) {
+    // Larger map with longer platforms, multi-car train, more movers
+    InitGridWithSizeAndChunkSize(100, 30, 16, 16);
+
+    ClearWorkshops();
+    ClearStockpiles();
+    ClearItems();
+    ClearTrains();
+    InitDesignations();
+    for (int i = 0; i < MAX_BLUEPRINTS; i++) {
+        blueprints[i].active = false;
+    }
+    blueprintCount = 0;
+
+    // Fill z=0 with dirt (solid ground), z=1 is walkable
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][y][x] = CELL_WALL;
+            SetWallMaterial(x, y, 0, MAT_DIRT);
+            SetVegetation(x, y, 0, VEG_GRASS);
+        }
+    }
+
+    // ── Track loop at z=1 ──
+    // Horizontal runs: y=10 and y=20, from x=5 to x=90
+    for (int x = 5; x <= 90; x++) {
+        grid[1][10][x] = CELL_TRACK;
+        grid[1][20][x] = CELL_TRACK;
+    }
+    // Vertical connections at both ends
+    for (int y = 10; y <= 20; y++) {
+        grid[1][y][5] = CELL_TRACK;
+        grid[1][y][90] = CELL_TRACK;
+    }
+
+    // ── Station A (left): 5 platform cells extending north from track ──
+    for (int dy = 0; dy < 5; dy++) {
+        grid[1][9 - dy][15] = CELL_PLATFORM;
+    }
+
+    // ── Station B (right): 5 platform cells extending north from track ──
+    for (int dy = 0; dy < 5; dy++) {
+        grid[1][9 - dy][80] = CELL_PLATFORM;
+    }
+
+    // ── Station C (middle-bottom): 4 platform cells extending south from bottom track ──
+    for (int dy = 0; dy < 4; dy++) {
+        grid[1][21 + dy][50] = CELL_PLATFORM;
+    }
+
+    RebuildStations();
+
+    // ── Spawn a 4-car train ──
+    SpawnTrainWithCars(25, 10, 1, 4);
+
+    // ── Items near station A ──
+    for (int i = 0; i < 12; i++) {
+        float ix = (10 + i % 4) * CELL_SIZE + CELL_SIZE * 0.5f;
+        float iy = (3 + i / 4) * CELL_SIZE + CELL_SIZE * 0.5f;
+        SpawnItem(ix, iy, 1.0f, ITEM_ROCK);
+    }
+
+    // ── Stockpile near station B ──
+    int sp = CreateStockpile(75, 3, 1, 4, 4);
+    if (sp >= 0) {
+        for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
+            SetStockpileFilter(sp, t, false);
+        }
+        SetStockpileFilter(sp, ITEM_ROCK, true);
+        SetStockpilePriority(sp, 7);
+    }
+
+    needsRebuild = true;
+}
