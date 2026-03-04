@@ -1708,7 +1708,7 @@ static void DrawStationTooltip(int stationIdx, Vector2 mouse) {
 
     snprintf(lines[lineCount++], sizeof(lines[0]), "Station #%d", stationIdx);
     snprintf(lines[lineCount++], sizeof(lines[0]), "Track: (%d, %d, %d)", st->trackX, st->trackY, st->z);
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Platform: (%d, %d)", st->platX, st->platY);
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Platform: %d cell%s", st->platformCellCount, st->platformCellCount != 1 ? "s" : "");
     snprintf(lines[lineCount++], sizeof(lines[0]), "Waiting: %d", st->waitingCount);
 
     int maxW = 0;

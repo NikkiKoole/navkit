@@ -704,6 +704,148 @@ describe(track_destroyed) {
     }
 }
 
+// ============================================================================
+// Multi-Cell Platform Detection
+// ============================================================================
+
+describe(multi_cell_platform) {
+    it("detects 3 platform cells in a line") {
+        SetupClean();
+        grid[1][5][10] = CELL_TRACK;
+        // 3 platforms extending east from track
+        grid[1][5][11] = CELL_PLATFORM;
+        grid[1][5][12] = CELL_PLATFORM;
+        grid[1][5][13] = CELL_PLATFORM;
+        RebuildStations();
+        expect(stationCount == 1);
+        expect(stations[0].platformCellCount == 3);
+        expect(stations[0].platformCells[0][0] == 11);
+        expect(stations[0].platformCells[1][0] == 12);
+        expect(stations[0].platformCells[2][0] == 13);
+    }
+
+    it("queue direction north of track") {
+        SetupClean();
+        grid[1][10][5] = CELL_TRACK;
+        grid[1][9][5] = CELL_PLATFORM;
+        grid[1][8][5] = CELL_PLATFORM;
+        RebuildStations();
+        expect(stationCount == 1);
+        expect(stations[0].queueDirX == 0);
+        expect(stations[0].queueDirY == -1);
+        expect(stations[0].platformCellCount == 2);
+    }
+
+    it("single platform backward compat") {
+        SetupClean();
+        grid[1][5][10] = CELL_TRACK;
+        grid[1][5][11] = CELL_PLATFORM;
+        RebuildStations();
+        expect(stationCount == 1);
+        expect(stations[0].platformCellCount == 1);
+        expect(stations[0].platformCells[0][0] == 11);
+        expect(stations[0].platformCells[0][1] == 5);
+    }
+
+    it("stops at non-platform cell") {
+        SetupClean();
+        grid[1][5][10] = CELL_TRACK;
+        grid[1][5][11] = CELL_PLATFORM;
+        grid[1][5][12] = CELL_AIR;  // gap
+        grid[1][5][13] = CELL_PLATFORM;
+        RebuildStations();
+        expect(stationCount == 1);
+        expect(stations[0].platformCellCount == 1);
+    }
+}
+
+// ============================================================================
+// FIFO Shift-Down
+// ============================================================================
+
+describe(fifo_shift_down) {
+    it("remove middle waiter preserves order") {
+        SetupClean();
+        grid[1][5][10] = CELL_TRACK;
+        grid[1][5][11] = CELL_PLATFORM;
+        RebuildStations();
+
+        gameTime = 1.0;
+        StationAddWaiter(0, 5);
+        gameTime = 2.0;
+        StationAddWaiter(0, 8);
+        gameTime = 3.0;
+        StationAddWaiter(0, 2);
+
+        // Remove middle waiter (8)
+        StationRemoveWaiter(0, 8);
+        expect(stations[0].waitingCount == 2);
+        expect(stations[0].waitingMovers[0] == 5);
+        expect(stations[0].waitingMovers[1] == 2);
+    }
+
+    it("remove front waiter shifts all down") {
+        SetupClean();
+        grid[1][5][10] = CELL_TRACK;
+        grid[1][5][11] = CELL_PLATFORM;
+        RebuildStations();
+
+        gameTime = 1.0;
+        StationAddWaiter(0, 5);
+        gameTime = 2.0;
+        StationAddWaiter(0, 8);
+        gameTime = 3.0;
+        StationAddWaiter(0, 2);
+
+        StationRemoveWaiter(0, 5);
+        expect(stations[0].waitingCount == 2);
+        expect(stations[0].waitingMovers[0] == 8);
+        expect(stations[0].waitingMovers[1] == 2);
+        // Next boarder should be 8 (new front)
+        expect(StationGetNextBoarder(0) == 8);
+    }
+}
+
+// ============================================================================
+// Queue Positions
+// ============================================================================
+
+describe(queue_positions) {
+    it("slot 1 further from track than slot 0") {
+        SetupClean();
+        grid[1][5][10] = CELL_TRACK;
+        grid[1][5][11] = CELL_PLATFORM;
+        grid[1][5][12] = CELL_PLATFORM;
+        grid[1][5][13] = CELL_PLATFORM;
+        RebuildStations();
+        expect(stationCount == 1);
+        expect(stations[0].queueDirX == 1);  // east from track
+
+        float x0, y0, x1, y1;
+        StationGetQueuePosition(0, 0, &x0, &y0);
+        StationGetQueuePosition(0, 1, &x1, &y1);
+        // Slot 1 should be further east (larger x)
+        expect(x1 > x0);
+        // Both should be on same y
+        expect(fabsf(y0 - y1) < 0.1f);
+    }
+
+    it("positions extend in queue direction") {
+        SetupClean();
+        grid[1][10][5] = CELL_TRACK;
+        grid[1][9][5] = CELL_PLATFORM;
+        grid[1][8][5] = CELL_PLATFORM;
+        RebuildStations();
+        expect(stations[0].queueDirY == -1);  // north
+
+        float x0, y0, x2, y2;
+        StationGetQueuePosition(0, 0, &x0, &y0);
+        StationGetQueuePosition(0, 2, &x2, &y2);
+        // Slot 2 should be further north (smaller y)
+        expect(y2 < y0);
+    }
+}
+
 int main(int argc, char* argv[]) {
     bool verbose = false;
     bool quiet = false;
@@ -728,6 +870,9 @@ int main(int argc, char* argv[]) {
     test(cancel_job_transport);
     test(platform_destroyed);
     test(track_destroyed);
+    test(multi_cell_platform);
+    test(fifo_shift_down);
+    test(queue_positions);
 
     return summary();
 }

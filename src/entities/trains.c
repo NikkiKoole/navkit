@@ -14,6 +14,8 @@ int trainCount = 0;
 TrainStation stations[MAX_STATIONS];
 int stationCount = 0;
 
+bool trainQueueEnabled = true;
+
 void InitTrains(void) {
     ClearTrains();
 }
@@ -117,6 +119,21 @@ void RebuildStations(void) {
                     s->active = true;
                     s->waitingCount = 0;
 
+                    // Multi-cell platform: walk in queue direction collecting contiguous platforms
+                    s->queueDirX = px - x;
+                    s->queueDirY = py - y;
+                    s->platformCellCount = 0;
+                    int cx = px, cy = py;
+                    while (s->platformCellCount < MAX_PLATFORM_CELLS) {
+                        if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) break;
+                        if (grid[z][cy][cx] != CELL_PLATFORM) break;
+                        s->platformCells[s->platformCellCount][0] = cx;
+                        s->platformCells[s->platformCellCount][1] = cy;
+                        s->platformCellCount++;
+                        cx += s->queueDirX;
+                        cy += s->queueDirY;
+                    }
+
                     // Restore waiters from old station at same location
                     for (int oi = 0; oi < oldCount; oi++) {
                         if (oldStations[oi].trackX == x && oldStations[oi].trackY == y && oldStations[oi].z == z) {
@@ -209,9 +226,11 @@ void StationRemoveWaiter(int stationIdx, int moverIdx) {
     TrainStation* s = &stations[stationIdx];
     for (int i = 0; i < s->waitingCount; i++) {
         if (s->waitingMovers[i] == moverIdx) {
-            // Swap-last remove
-            s->waitingMovers[i] = s->waitingMovers[s->waitingCount - 1];
-            s->waitingSince[i] = s->waitingSince[s->waitingCount - 1];
+            // Shift-down to preserve FIFO order
+            for (int j = i; j < s->waitingCount - 1; j++) {
+                s->waitingMovers[j] = s->waitingMovers[j + 1];
+                s->waitingSince[j] = s->waitingSince[j + 1];
+            }
             s->waitingCount--;
             return;
         }
@@ -222,12 +241,18 @@ int StationGetNextBoarder(int stationIdx) {
     if (stationIdx < 0 || stationIdx >= stationCount) return -1;
     TrainStation* s = &stations[stationIdx];
     if (s->waitingCount == 0) return -1;
-    // FIFO: find waiter with earliest waitingSince
-    int oldest = 0;
-    for (int i = 1; i < s->waitingCount; i++) {
-        if (s->waitingSince[i] < s->waitingSince[oldest]) oldest = i;
-    }
-    return s->waitingMovers[oldest];
+    // FIFO: array[0] is always the front of the queue
+    return s->waitingMovers[0];
+}
+
+void StationGetQueuePosition(int stationIdx, int slotIndex, float* outX, float* outY) {
+    TrainStation* s = &stations[stationIdx];
+    float spacing = CELL_SIZE * 0.6f;
+    float startX = s->platformCells[0][0] * CELL_SIZE + CELL_SIZE * 0.5f;
+    float startY = s->platformCells[0][1] * CELL_SIZE + CELL_SIZE * 0.5f;
+    float offset = slotIndex * spacing;
+    *outX = startX + s->queueDirX * offset;
+    *outY = startY + s->queueDirY * offset;
 }
 
 // ============================================================================

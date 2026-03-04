@@ -2558,16 +2558,25 @@ int InspectSaveFile(int argc, char** argv) {
         insp_animals = NULL;
     }
 
-    // Trains (v86+: expanded struct with station/transport fields)
-    if (version >= 86) {
+    // Trains (v87+: TrainStation has multi-cell platform fields)
+    if (version >= 87) {
         fread(&insp_trainCount, 4, 1, f);
         insp_trains = malloc(insp_trainCount > 0 ? insp_trainCount * sizeof(Train) : sizeof(Train));
         if (insp_trainCount > 0) fread(insp_trains, sizeof(Train), insp_trainCount, f);
-        // Stations (v86+)
         int insp_stationCount;
         fread(&insp_stationCount, 4, 1, f);
         if (insp_stationCount > 0) {
             fseek(f, insp_stationCount * (long)sizeof(TrainStation), SEEK_CUR);
+        }
+    } else if (version >= 86) {
+        fread(&insp_trainCount, 4, 1, f);
+        insp_trains = malloc(insp_trainCount > 0 ? insp_trainCount * sizeof(Train) : sizeof(Train));
+        if (insp_trainCount > 0) fread(insp_trains, sizeof(Train), insp_trainCount, f);
+        // v86 stations: old struct without multi-cell platform fields — skip
+        int insp_stationCount;
+        fread(&insp_stationCount, 4, 1, f);
+        if (insp_stationCount > 0) {
+            fseek(f, insp_stationCount * (long)sizeof(TrainStationV86), SEEK_CUR);
         }
     } else if (version >= 47) {
         fread(&insp_trainCount, 4, 1, f);

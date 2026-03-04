@@ -1083,7 +1083,8 @@ void UpdateMovers(void) {
                 avoidVectors[i] = (Vec2){0, 0};
                 continue;
             }
-            if ((m->pathIndex < 0 || m->pathLength == 0) && m->transportState != TRANSPORT_WAITING) {
+            if ((m->pathIndex < 0 || m->pathLength == 0) &&
+                !(m->transportState == TRANSPORT_WAITING && !trainQueueEnabled)) {
                 avoidVectors[i] = (Vec2){0, 0};
                 continue;
             }
@@ -1246,30 +1247,42 @@ void UpdateMovers(void) {
                     }
                 }
             }
-            // Apply avoidance + gentle tether to platform center
             if (m->transportStation >= 0 && m->transportStation < stationCount) {
                 TrainStation* s = &stations[m->transportStation];
-                float platCX = s->platX * CELL_SIZE + CELL_SIZE * 0.5f;
-                float platCY = s->platY * CELL_SIZE + CELL_SIZE * 0.5f;
-                // Tether: gentle pull toward platform center
-                float tetherX = (platCX - m->x) * 0.5f;
-                float tetherY = (platCY - m->y) * 0.5f;
-                // Avoidance from other movers
-                float ax = avoidVectors[i].x * m->speed * 0.8f;
-                float ay = avoidVectors[i].y * m->speed * 0.8f;
-                float newX = m->x + (tetherX + ax) * dt;
-                float newY = m->y + (tetherY + ay) * dt;
-                // Clamp to within platform cell
-                float minX = s->platX * CELL_SIZE + CELL_SIZE * 0.1f;
-                float maxX = (s->platX + 1) * CELL_SIZE - CELL_SIZE * 0.1f;
-                float minY = s->platY * CELL_SIZE + CELL_SIZE * 0.1f;
-                float maxY = (s->platY + 1) * CELL_SIZE - CELL_SIZE * 0.1f;
-                if (newX < minX) newX = minX;
-                if (newX > maxX) newX = maxX;
-                if (newY < minY) newY = minY;
-                if (newY > maxY) newY = maxY;
-                m->x = newX;
-                m->y = newY;
+                if (trainQueueEnabled) {
+                    // Queue position targeting: lerp to assigned slot
+                    int queueIdx = -1;
+                    for (int w = 0; w < s->waitingCount; w++) {
+                        if (s->waitingMovers[w] == i) { queueIdx = w; break; }
+                    }
+                    if (queueIdx >= 0) {
+                        float targetX, targetY;
+                        StationGetQueuePosition(m->transportStation, queueIdx, &targetX, &targetY);
+                        float lerpRate = 3.0f;
+                        m->x += (targetX - m->x) * lerpRate * dt;
+                        m->y += (targetY - m->y) * lerpRate * dt;
+                    }
+                } else {
+                    // Spread-out avoidance: gentle tether to platform center
+                    float platCX = s->platX * CELL_SIZE + CELL_SIZE * 0.5f;
+                    float platCY = s->platY * CELL_SIZE + CELL_SIZE * 0.5f;
+                    float tetherX = (platCX - m->x) * 0.5f;
+                    float tetherY = (platCY - m->y) * 0.5f;
+                    float ax = avoidVectors[i].x * m->speed * 0.8f;
+                    float ay = avoidVectors[i].y * m->speed * 0.8f;
+                    float newX = m->x + (tetherX + ax) * dt;
+                    float newY = m->y + (tetherY + ay) * dt;
+                    float minX = s->platX * CELL_SIZE + CELL_SIZE * 0.1f;
+                    float maxX = (s->platX + 1) * CELL_SIZE - CELL_SIZE * 0.1f;
+                    float minY = s->platY * CELL_SIZE + CELL_SIZE * 0.1f;
+                    float maxY = (s->platY + 1) * CELL_SIZE - CELL_SIZE * 0.1f;
+                    if (newX < minX) newX = minX;
+                    if (newX > maxX) newX = maxX;
+                    if (newY < minY) newY = minY;
+                    if (newY > maxY) newY = maxY;
+                    m->x = newX;
+                    m->y = newY;
+                }
             }
             continue;
         }
@@ -1282,10 +1295,17 @@ void UpdateMovers(void) {
                 if (stIdx >= 0 && stIdx < stationCount && stations[stIdx].active) {
                     m->transportState = TRANSPORT_WAITING;
                     StationAddWaiter(stIdx, i);
-                    // Position mover on platform (avoidance will spread them out)
-                    TrainStation* s = &stations[stIdx];
-                    m->x = s->platX * CELL_SIZE + CELL_SIZE * 0.5f;
-                    m->y = s->platY * CELL_SIZE + CELL_SIZE * 0.5f;
+                    // Position mover at arrival point
+                    if (trainQueueEnabled) {
+                        float qx, qy;
+                        StationGetQueuePosition(stIdx, stations[stIdx].waitingCount - 1, &qx, &qy);
+                        m->x = qx;
+                        m->y = qy;
+                    } else {
+                        TrainStation* s = &stations[stIdx];
+                        m->x = s->platX * CELL_SIZE + CELL_SIZE * 0.5f;
+                        m->y = s->platY * CELL_SIZE + CELL_SIZE * 0.5f;
+                    }
                 } else {
                     // Station gone — abandon transport
                     m->goal = m->transportFinalGoal;

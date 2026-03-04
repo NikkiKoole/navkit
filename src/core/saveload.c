@@ -117,7 +117,9 @@ void RebuildPostLoadState(void);
     /* Animals */ \
     X(bool, animalRespawnEnabled) \
     X(int, animalTargetPopulation) \
-    X(float, animalSpawnInterval)
+    X(float, animalSpawnInterval) \
+    /* Trains */ \
+    X(bool, trainQueueEnabled)
 
 #define BALANCE_SETTINGS_TABLE(X) \
     X(float, balance.baseMoverSpeed) \
@@ -393,11 +395,11 @@ bool SaveWorld(const char* filename) {
     fwrite(&animalCount, sizeof(animalCount), 1, f);
     fwrite(animals, sizeof(Animal), animalCount, f);
 
-    // Trains (v86+: expanded struct with station/transport fields)
+    // Trains (v87+: TrainStation has multi-cell platform fields)
     fwrite(&trainCount, sizeof(trainCount), 1, f);
     fwrite(trains, sizeof(Train), trainCount, f);
 
-    // Stations (v86+)
+    // Stations (v87+)
     fwrite(&stationCount, sizeof(stationCount), 1, f);
     fwrite(stations, sizeof(TrainStation), stationCount, f);
 
@@ -2221,17 +2223,44 @@ bool LoadWorld(const char* filename) {
         animalCount = 0;
     }
 
-    // Trains (v86+: expanded struct with station/transport fields)
-    if (version >= 86) {
+    // Trains (v87+: TrainStation has multi-cell platform fields)
+    if (version >= 87) {
         fread(&trainCount, sizeof(trainCount), 1, f);
         if (trainCount > 0) {
             fread(trains, sizeof(Train), trainCount, f);
         }
-        // Stations (v86+)
         fread(&stationCount, sizeof(stationCount), 1, f);
         if (stationCount > 0) {
             fread(stations, sizeof(TrainStation), stationCount, f);
         }
+    } else if (version >= 86) {
+        fread(&trainCount, sizeof(trainCount), 1, f);
+        if (trainCount > 0) {
+            fread(trains, sizeof(Train), trainCount, f);
+        }
+        // v86 stations: old struct without multi-cell platform fields
+        fread(&stationCount, sizeof(stationCount), 1, f);
+        if (stationCount > 0) {
+            for (int si = 0; si < stationCount; si++) {
+                TrainStationV86 old;
+                fread(&old, sizeof(TrainStationV86), 1, f);
+                TrainStation* s = &stations[si];
+                s->trackX = old.trackX; s->trackY = old.trackY; s->z = old.z;
+                s->platX = old.platX; s->platY = old.platY;
+                s->active = old.active;
+                s->waitingCount = old.waitingCount;
+                for (int j = 0; j < old.waitingCount; j++) {
+                    s->waitingMovers[j] = old.waitingMovers[j];
+                    s->waitingSince[j] = old.waitingSince[j];
+                }
+                // Zero new fields — RebuildStations will fill them
+                s->platformCellCount = 0;
+                s->queueDirX = 0; s->queueDirY = 0;
+                memset(s->platformCells, 0, sizeof(s->platformCells));
+            }
+        }
+        // Rebuild to fill multi-cell platform data
+        RebuildStations();
     } else if (version >= 47) {
         fread(&trainCount, sizeof(trainCount), 1, f);
         if (trainCount > 0) {
@@ -2374,6 +2403,11 @@ bool LoadWorld(const char* filename) {
         animalRespawnEnabled = true;
         animalTargetPopulation = 8;
         animalSpawnInterval = 180.0f;
+    }
+
+    // v86 and earlier: train queue toggle not saved, default to enabled
+    if (version < 87) {
+        trainQueueEnabled = true;
     }
 
     // v60+: diurnal amplitude

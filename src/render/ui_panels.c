@@ -1036,6 +1036,13 @@ void DrawUI(void) {
         }
         y += 22;
 
+        // --- Trains ---
+        DrawTextShadow("Trains:", ix, y, 14, GRAY);
+        y += 18;
+        ToggleBoolT(ix + 10, y, "Queue Line", &trainQueueEnabled,
+            "Movers form a visible queue line at stations instead of spreading out");
+        y += 22;
+
         // --- Jobs ---
         if (SectionHeader(ix, y, TextFormat("Jobs (%d items)", itemCount), &sectionJobs)) {
             y += 18;

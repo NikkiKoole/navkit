@@ -8,6 +8,7 @@
 #define MAX_STATIONS 64
 #define MAX_STATION_WAITING 16
 #define MAX_CART_CAPACITY 8
+#define MAX_PLATFORM_CELLS 8
 #define TRAIN_DOOR_TIME 3.0f
 #define TRAIN_DEFAULT_SPEED 3.0f  // Cells per second
 
@@ -29,6 +30,10 @@ typedef struct {
     int trackX, trackY, z;    // The track cell
     int platX, platY;         // Adjacent platform cell (mover entry/exit point)
     bool active;
+    // Multi-cell platform data
+    int platformCells[MAX_PLATFORM_CELLS][2];  // (x,y) pairs, ordered front-to-back
+    int platformCellCount;
+    int queueDirX, queueDirY;                 // Unit vector away from track (-1/0/1)
     // WaitingSet (inline)
     int waitingMovers[MAX_STATION_WAITING];
     float waitingSince[MAX_STATION_WAITING];
@@ -58,6 +63,8 @@ extern int trainCount;
 extern TrainStation stations[MAX_STATIONS];
 extern int stationCount;
 
+extern bool trainQueueEnabled;  // Toggle: queue line vs spread-out avoidance
+
 void InitTrains(void);
 void ClearTrains(void);
 void TrainsTick(float dt);
@@ -72,6 +79,9 @@ int  FindNearestStation(int x, int y, int z, int maxRadius);
 void StationAddWaiter(int stationIdx, int moverIdx);
 void StationRemoveWaiter(int stationIdx, int moverIdx);
 int  StationGetNextBoarder(int stationIdx);
+
+// Queue position
+void StationGetQueuePosition(int stationIdx, int slotIndex, float* outX, float* outY);
 
 // Transport heuristic
 bool ShouldUseTrain(int moverIdx);

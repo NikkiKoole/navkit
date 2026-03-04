@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 86
+#define CURRENT_SAVE_VERSION 87
 
 // Material count constant used by ALL legacy stockpile structs (MAT_COUNT was 17 from v31-v79)
 #define V79_MAT_COUNT 17
@@ -906,6 +906,17 @@ typedef struct {
     int equippedClothing;
     // No name/gender/age/appearanceSeed/isDrafted in V82
 } MoverV82;
+
+// V86 TrainStation struct (before multi-cell platform fields added in v87)
+typedef struct {
+    int trackX, trackY, z;
+    int platX, platY;
+    bool active;
+    // No platformCells, platformCellCount, queueDirX/Y in V86
+    int waitingMovers[MAX_STATION_WAITING];
+    float waitingSince[MAX_STATION_WAITING];
+    int waitingCount;
+} TrainStationV86;
 
 // V85 Train struct (before station/transport fields added in v86)
 typedef struct {
