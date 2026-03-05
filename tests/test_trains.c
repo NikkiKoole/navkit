@@ -2,6 +2,7 @@
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
 #include "../src/world/cell_defs.h"
+#include "../assets/atlas.h"
 #include "../src/entities/mover.h"
 #include "../src/entities/trains.h"
 #include "../src/entities/items.h"
@@ -868,6 +869,142 @@ describe(queue_positions) {
     }
 }
 
+// ============================================================================
+// Track Connections
+// ============================================================================
+
+// Helper: place vertical track line with proper NS connections
+static void PlaceTrackLineVertical(int y1, int y2, int x, int z) {
+    for (int y = y1; y <= y2; y++) {
+        grid[z][y][x] = CELL_TRACK;
+        trackConnections[z][y][x] = TRACK_N | TRACK_S;
+    }
+    trackConnections[z][y1][x] &= ~TRACK_N;
+    trackConnections[z][y2][x] &= ~TRACK_S;
+}
+
+describe(track_connections) {
+    it("horizontal track has EW connections only") {
+        SetupClean();
+        PlaceTrackLine(5, 10, 5, 1);
+        // Middle cells should be EW
+        expect(trackConnections[1][5][7] == (TRACK_E | TRACK_W));
+        // End caps: left has E only, right has W only
+        expect(trackConnections[1][5][5] == TRACK_E);
+        expect(trackConnections[1][5][10] == TRACK_W);
+        // Should NOT have N or S
+        expect((trackConnections[1][5][7] & (TRACK_N | TRACK_S)) == 0);
+    }
+
+    it("vertical track has NS connections only") {
+        SetupClean();
+        PlaceTrackLineVertical(5, 10, 5, 1);
+        expect(trackConnections[1][7][5] == (TRACK_N | TRACK_S));
+        expect(trackConnections[1][5][5] == TRACK_S);
+        expect(trackConnections[1][10][5] == TRACK_N);
+        expect((trackConnections[1][7][5] & (TRACK_E | TRACK_W)) == 0);
+    }
+
+    it("parallel horizontal tracks do not cross-connect") {
+        SetupClean();
+        PlaceTrackLine(5, 15, 5, 1);   // top line at y=5
+        PlaceTrackLine(5, 15, 6, 1);   // bottom line at y=6 (adjacent)
+        // Top line should have NO south connections
+        for (int x = 5; x <= 15; x++) {
+            expect((trackConnections[1][5][x] & TRACK_S) == 0);
+        }
+        // Bottom line should have NO north connections
+        for (int x = 5; x <= 15; x++) {
+            expect((trackConnections[1][6][x] & TRACK_N) == 0);
+        }
+    }
+
+    it("parallel vertical tracks do not cross-connect") {
+        SetupClean();
+        PlaceTrackLineVertical(5, 15, 10, 1);  // left line at x=10
+        PlaceTrackLineVertical(5, 15, 11, 1);  // right line at x=11
+        for (int y = 5; y <= 15; y++) {
+            expect((trackConnections[1][y][10] & TRACK_E) == 0);
+            expect((trackConnections[1][y][11] & TRACK_W) == 0);
+        }
+    }
+
+    it("sprite reflects connections not adjacency") {
+        SetupClean();
+        PlaceTrackLine(5, 15, 5, 1);
+        PlaceTrackLine(5, 15, 6, 1);
+        // Middle of top line should be EW sprite, NOT a crossroads
+        int sprite = GetTrackSpriteAt(10, 5, 1);
+        expect(sprite == SPRITE_track_ew);
+        int sprite2 = GetTrackSpriteAt(10, 6, 1);
+        expect(sprite2 == SPRITE_track_ew);
+    }
+
+    it("track removal disconnects from neighbors") {
+        SetupClean();
+        PlaceTrackLine(5, 10, 5, 1);
+        expect(trackConnections[1][5][7] == (TRACK_E | TRACK_W));
+        // Simulate DisconnectTrackFromNeighbors for cell (7,5)
+        uint8_t conn = trackConnections[1][5][7];
+        if (conn & TRACK_W) trackConnections[1][5][6] &= ~TRACK_E;
+        if (conn & TRACK_E) trackConnections[1][5][8] &= ~TRACK_W;
+        trackConnections[1][5][7] = 0;
+        grid[1][5][7] = CELL_AIR;
+        // Neighbors lost their inward connection
+        expect((trackConnections[1][5][6] & TRACK_E) == 0);
+        expect((trackConnections[1][5][8] & TRACK_W) == 0);
+        // But keep their other connections
+        expect((trackConnections[1][5][6] & TRACK_W) != 0);
+        expect((trackConnections[1][5][8] & TRACK_E) != 0);
+    }
+
+    it("rectangle outline creates proper corners") {
+        SetupClean();
+        // Build a track rectangle like terrain generators do
+        // Top edge EW
+        for (int x = 5; x <= 10; x++) {
+            grid[1][5][x] = CELL_TRACK;
+            trackConnections[1][5][x] = TRACK_E | TRACK_W;
+        }
+        // Bottom edge EW
+        for (int x = 5; x <= 10; x++) {
+            grid[1][8][x] = CELL_TRACK;
+            trackConnections[1][8][x] = TRACK_E | TRACK_W;
+        }
+        // Left edge NS
+        for (int y = 5; y <= 8; y++) {
+            grid[1][y][5] = CELL_TRACK;
+            trackConnections[1][y][5] = TRACK_N | TRACK_S;
+        }
+        // Right edge NS
+        for (int y = 5; y <= 8; y++) {
+            grid[1][y][10] = CELL_TRACK;
+            trackConnections[1][y][10] = TRACK_N | TRACK_S;
+        }
+        // Fix corners
+        trackConnections[1][5][5]  = TRACK_E | TRACK_S;
+        trackConnections[1][5][10] = TRACK_W | TRACK_S;
+        trackConnections[1][8][5]  = TRACK_E | TRACK_N;
+        trackConnections[1][8][10] = TRACK_W | TRACK_N;
+
+        // Verify corners
+        expect(trackConnections[1][5][5] == (TRACK_E | TRACK_S));
+        expect(trackConnections[1][5][10] == (TRACK_W | TRACK_S));
+        expect(trackConnections[1][8][5] == (TRACK_E | TRACK_N));
+        expect(trackConnections[1][8][10] == (TRACK_W | TRACK_N));
+        // Verify mid-edges
+        expect(trackConnections[1][5][7] == (TRACK_E | TRACK_W));
+        expect(trackConnections[1][7][5] == (TRACK_N | TRACK_S));
+    }
+
+    it("isolated single track cell has no connections") {
+        SetupClean();
+        grid[1][10][10] = CELL_TRACK;
+        trackConnections[1][10][10] = 0;
+        expect(GetTrackSpriteAt(10, 10, 1) == SPRITE_track_isolated);
+    }
+}
+
 int main(int argc, char* argv[]) {
     bool verbose = false;
     bool quiet = false;
@@ -895,6 +1032,7 @@ int main(int argc, char* argv[]) {
     test(multi_cell_platform);
     test(fifo_shift_down);
     test(queue_positions);
+    test(track_connections);
 
     return summary();
 }
