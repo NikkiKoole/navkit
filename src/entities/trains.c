@@ -447,16 +447,19 @@ void DismountAllRiders(int trainIdx) {
 // Track Cell Navigation
 // ============================================================================
 
-// Find the next track cell to move to
+// Find the next track cell to move to (uses trackConnections grid)
 // Returns true if a next cell was found, writes to outX/outY
 static bool FindNextTrackCell(Train* t, int* outX, int* outY) {
     static const int dx[] = { 0, 1, 0, -1 };  // N, E, S, W
     static const int dy[] = { -1, 0, 1, 0 };
+    static const uint8_t dirBit[] = { TRACK_N, TRACK_E, TRACK_S, TRACK_W };
 
+    uint8_t conn = trackConnections[t->z][t->cellY][t->cellX];
     int options[4][2];
     int optionCount = 0;
 
     for (int d = 0; d < 4; d++) {
+        if (!(conn & dirBit[d])) continue;  // Only follow connected directions
         int nx = t->cellX + dx[d];
         int ny = t->cellY + dy[d];
         if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;

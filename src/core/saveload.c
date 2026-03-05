@@ -363,6 +363,13 @@ bool SaveWorld(const char* filename) {
     }
     fwrite(&farmActiveCells, sizeof(farmActiveCells), 1, f);
 
+    // Track connections grid (v89+)
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(trackConnections[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+
     // === ENTITIES SECTION ===
     marker = MARKER_ENTITIES;
     fwrite(&marker, sizeof(marker), 1, f);
@@ -879,6 +886,17 @@ bool LoadWorld(const char* filename) {
     } else {
         memset(farmGrid, 0, sizeof(farmGrid));
         farmActiveCells = 0;
+    }
+
+    // Track connections grid (v89+)
+    if (version >= 89) {
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                fread(trackConnections[z][y], sizeof(uint8_t), gridWidth, f);
+            }
+        }
+    } else {
+        memset(trackConnections, 0, sizeof(trackConnections));
     }
 
     // === ENTITIES SECTION ===

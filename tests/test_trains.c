@@ -54,7 +54,11 @@ static void SetupClean(void) {
 static void PlaceTrackLine(int x1, int x2, int y, int z) {
     for (int x = x1; x <= x2; x++) {
         grid[z][y][x] = CELL_TRACK;
+        trackConnections[z][y][x] = TRACK_E | TRACK_W;
     }
+    // End caps: remove outward connections
+    trackConnections[z][y][x1] &= ~TRACK_W;
+    trackConnections[z][y][x2] &= ~TRACK_E;
 }
 
 // Helper: place platform at (x,y,z)
@@ -841,7 +845,12 @@ describe(queue_positions) {
     it("positions extend along platform for vertical track") {
         SetupClean();
         // Vertical track, platform east of it (parallel)
-        for (int y = 5; y <= 15; y++) grid[1][y][10] = CELL_TRACK;
+        for (int y = 5; y <= 15; y++) {
+            grid[1][y][10] = CELL_TRACK;
+            trackConnections[1][y][10] = TRACK_N | TRACK_S;
+        }
+        trackConnections[1][5][10] &= ~TRACK_N;
+        trackConnections[1][15][10] &= ~TRACK_S;
         grid[1][8][11] = CELL_PLATFORM;
         grid[1][9][11] = CELL_PLATFORM;
         grid[1][10][11] = CELL_PLATFORM;

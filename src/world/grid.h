@@ -103,6 +103,15 @@ extern uint8_t vegetationGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 #define GetVegetation(x,y,z)      ((VegetationType)vegetationGrid[z][y][x])
 #define SetVegetation(x,y,z,v)    (vegetationGrid[z][y][x] = (uint8_t)(v))
 
+// Track connections grid — 4-bit bitmask per cell: N=1, E=2, S=4, W=8
+// Stores which directions a track cell is connected to (intent-aware, not just adjacency)
+extern uint8_t trackConnections[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
+#define TRACK_N 1
+#define TRACK_E 2
+#define TRACK_S 4
+#define TRACK_W 8
+
 // Exploration grid — fog of war (0=unexplored, 1=explored)
 extern uint8_t exploredGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 

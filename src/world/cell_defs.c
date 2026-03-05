@@ -38,29 +38,19 @@ CellDef cellDefs[] = {
 };
 
 // 4-bit cardinal bitmask: N=1, E=2, S=4, W=8
-static bool IsTrackAt(int x, int y, int z) {
-    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth)
-        return false;
-    return grid[z][y][x] == CELL_TRACK;
-}
-
 int GetTrackSpriteAt(int x, int y, int z) {
-    int mask = 0;
-    if (IsTrackAt(x, y - 1, z)) mask |= 1;  // N
-    if (IsTrackAt(x + 1, y, z)) mask |= 2;  // E
-    if (IsTrackAt(x, y + 1, z)) mask |= 4;  // S
-    if (IsTrackAt(x - 1, y, z)) mask |= 8;  // W
+    int mask = trackConnections[z][y][x] & 0x0F;
 
     static const int trackSprites[16] = {
         [0]  = SPRITE_track_isolated,  // none
-        [1]  = SPRITE_track_isolated,  // N only (end cap)
-        [2]  = SPRITE_track_isolated,  // E only (end cap)
+        [1]  = SPRITE_track_ns,        // N only → show as NS stub
+        [2]  = SPRITE_track_ew,        // E only → show as EW stub
         [3]  = SPRITE_track_ne,        // N+E
-        [4]  = SPRITE_track_isolated,  // S only (end cap)
+        [4]  = SPRITE_track_ns,        // S only → show as NS stub
         [5]  = SPRITE_track_ns,        // N+S
         [6]  = SPRITE_track_se,        // S+E
         [7]  = SPRITE_track_nse,       // N+E+S (T-junction)
-        [8]  = SPRITE_track_isolated,  // W only (end cap)
+        [8]  = SPRITE_track_ew,        // W only → show as EW stub
         [9]  = SPRITE_track_nw,        // N+W
         [10] = SPRITE_track_ew,        // E+W
         [11] = SPRITE_track_new,       // N+E+W (T-junction)

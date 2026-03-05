@@ -4710,13 +4710,22 @@ void GenerateTrainTest(void) {
     // Horizontal runs: y=8 and y=12, from x=10 to x=70
     for (int x = 10; x <= 70; x++) {
         grid[1][8][x] = CELL_TRACK;
+        trackConnections[1][8][x] = TRACK_E | TRACK_W;
         grid[1][12][x] = CELL_TRACK;
+        trackConnections[1][12][x] = TRACK_E | TRACK_W;
     }
     // Vertical connections at both ends
     for (int y = 8; y <= 12; y++) {
         grid[1][y][10] = CELL_TRACK;
+        trackConnections[1][y][10] = TRACK_N | TRACK_S;
         grid[1][y][70] = CELL_TRACK;
+        trackConnections[1][y][70] = TRACK_N | TRACK_S;
     }
+    // Fix corners
+    trackConnections[1][8][10]  = TRACK_E | TRACK_S;  // top-left
+    trackConnections[1][8][70]  = TRACK_W | TRACK_S;  // top-right
+    trackConnections[1][12][10] = TRACK_E | TRACK_N;  // bottom-left
+    trackConnections[1][12][70] = TRACK_W | TRACK_N;  // bottom-right
 
     // ── Station A (left end): platform parallel to track at y=7, x=8..12 ──
     for (int px = 8; px <= 12; px++) grid[1][7][px] = CELL_PLATFORM;
@@ -4777,13 +4786,22 @@ void GenerateTrainTestLong(void) {
     // Horizontal runs: y=10 and y=20, from x=5 to x=90
     for (int x = 5; x <= 90; x++) {
         grid[1][10][x] = CELL_TRACK;
+        trackConnections[1][10][x] = TRACK_E | TRACK_W;
         grid[1][20][x] = CELL_TRACK;
+        trackConnections[1][20][x] = TRACK_E | TRACK_W;
     }
     // Vertical connections at both ends
     for (int y = 10; y <= 20; y++) {
         grid[1][y][5] = CELL_TRACK;
+        trackConnections[1][y][5] = TRACK_N | TRACK_S;
         grid[1][y][90] = CELL_TRACK;
+        trackConnections[1][y][90] = TRACK_N | TRACK_S;
     }
+    // Fix corners
+    trackConnections[1][10][5]  = TRACK_E | TRACK_S;  // top-left
+    trackConnections[1][10][90] = TRACK_W | TRACK_S;  // top-right
+    trackConnections[1][20][5]  = TRACK_E | TRACK_N;  // bottom-left
+    trackConnections[1][20][90] = TRACK_W | TRACK_N;  // bottom-right
 
     // ── Station A (left): 6 platform cells parallel to top track at y=9, x=12..17 ──
     for (int px = 12; px <= 17; px++) grid[1][9][px] = CELL_PLATFORM;

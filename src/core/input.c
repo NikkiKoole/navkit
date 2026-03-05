@@ -1635,15 +1635,34 @@ static void ExecuteRemoveBush(int x1, int y1, int x2, int y2, int z) {
 static bool TryPlaceTrackAt(int x, int y, int z) {
     if (IsCellWalkableAt(z, y, x) && grid[z][y][x] == CELL_AIR) {
         grid[z][y][x] = CELL_TRACK;
+        trackConnections[z][y][x] = 0;
         InvalidatePathsThroughCell(x, y, z);
         return true;
     }
     return false;
 }
 
+// Connect two adjacent track cells bidirectionally
+static void ConnectTrack(int x1, int y1, int x2, int y2, int z) {
+    int ddx = x2 - x1;
+    int ddy = y2 - y1;
+    // Must be cardinal neighbors
+    if (ddx * ddx + ddy * ddy != 1) return;
+    if (grid[z][y1][x1] != CELL_TRACK || grid[z][y2][x2] != CELL_TRACK) return;
+
+    // From (x1,y1) toward (x2,y2)
+    if (ddy == -1) { trackConnections[z][y1][x1] |= TRACK_N; trackConnections[z][y2][x2] |= TRACK_S; }
+    if (ddx ==  1) { trackConnections[z][y1][x1] |= TRACK_E; trackConnections[z][y2][x2] |= TRACK_W; }
+    if (ddy ==  1) { trackConnections[z][y1][x1] |= TRACK_S; trackConnections[z][y2][x2] |= TRACK_N; }
+    if (ddx == -1) { trackConnections[z][y1][x1] |= TRACK_W; trackConnections[z][y2][x2] |= TRACK_E; }
+}
+
 static void ExecutePlaceTrack(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
-    // Outline mode: only place on the 4 edges of the rectangle
+    int w = x2 - x1;
+    int h = y2 - y1;
+
+    // Step 1: Place all track cells on the outline
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
             if (dy == y1 || dy == y2 || dx == x1 || dx == x2) {
@@ -1651,6 +1670,23 @@ static void ExecutePlaceTrack(int x1, int y1, int x2, int y2, int z) {
             }
         }
     }
+
+    // Step 2: Connect tracks sequentially along each edge
+    // Top edge (E-W connections)
+    for (int dx = x1; dx < x2; dx++)
+        ConnectTrack(dx, y1, dx + 1, y1, z);
+    // Bottom edge (E-W connections)
+    if (h > 0)
+        for (int dx = x1; dx < x2; dx++)
+            ConnectTrack(dx, y2, dx + 1, y2, z);
+    // Left edge (N-S connections)
+    for (int dy = y1; dy < y2; dy++)
+        ConnectTrack(x1, dy, x1, dy + 1, z);
+    // Right edge (N-S connections)
+    if (w > 0)
+        for (int dy = y1; dy < y2; dy++)
+            ConnectTrack(x2, dy, x2, dy + 1, z);
+
     if (count > 0) {
         AddMessage(TextFormat("Placed %d track%s", count, count > 1 ? "s" : ""), GREEN);
     }
@@ -1694,11 +1730,22 @@ static void ExecuteRemovePlatform(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void DisconnectTrackFromNeighbors(int x, int y, int z) {
+    // Remove this cell's connections from its neighbors
+    uint8_t conn = trackConnections[z][y][x];
+    if ((conn & TRACK_N) && y > 0)              trackConnections[z][y-1][x] &= ~TRACK_S;
+    if ((conn & TRACK_E) && x < gridWidth - 1)  trackConnections[z][y][x+1] &= ~TRACK_W;
+    if ((conn & TRACK_S) && y < gridHeight - 1) trackConnections[z][y+1][x] &= ~TRACK_N;
+    if ((conn & TRACK_W) && x > 0)              trackConnections[z][y][x-1] &= ~TRACK_E;
+    trackConnections[z][y][x] = 0;
+}
+
 static void ExecuteRemoveTrack(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
             if (grid[z][dy][dx] == CELL_TRACK) {
+                DisconnectTrackFromNeighbors(dx, dy, z);
                 grid[z][dy][dx] = CELL_AIR;
                 InvalidatePathsThroughCell(dx, dy, z);
                 count++;

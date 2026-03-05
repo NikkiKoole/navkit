@@ -1278,6 +1278,11 @@ int InspectSaveFile(int argc, char** argv) {
         fseek(f, sizeof(int), SEEK_CUR);  // farmActiveCells
     }
 
+    // Track connections grid (v89+, skip - not inspected)
+    if (version >= 89) {
+        fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);  // trackConnections
+    }
+
     // === ENTITIES SECTION ===
     fread(&marker, 4, 1, f);
     if (marker != MARKER_ENTITIES) {
