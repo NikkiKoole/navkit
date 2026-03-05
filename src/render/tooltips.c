@@ -284,15 +284,15 @@ static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     int jobStep = job ? job->step : 0;
 
     // Build lines dynamically
-    char lines[16][80];
-    Color lineColors[16];
+    char lines[20][80];
+    Color lineColors[20];
     int lineCount = 0;
 
-    // Header: name or "Mover #N" fallback
+    // Header: index + name or "Mover #N" fallback
     {
         const char* draftStr = m->isDrafted ? " [DRAFTED]" : "";
         if (m->name[0]) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "%s%s", m->name, draftStr);
+            snprintf(lines[lineCount], sizeof(lines[0]), "#%d %s%s", moverIdx, m->name, draftStr);
         } else {
             snprintf(lines[lineCount], sizeof(lines[0]), "Mover #%d%s", moverIdx, draftStr);
         }
@@ -524,6 +524,19 @@ static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
         snprintf(lines[lineCount], sizeof(lines[0]), "Blueprint: #%d at (%d,%d,z%d)",
             job->targetBlueprint, bp->x, bp->y, bp->z);
         lineColors[lineCount++] = SKYBLUE;
+    }
+
+    // Transport state (only show when non-NONE)
+    if (m->transportState != TRANSPORT_NONE) {
+        const char* tsNames[] = {"NONE", "WALK_TO_STN", "WAITING", "RIDING"};
+        int ts = m->transportState;
+        snprintf(lines[lineCount], sizeof(lines[0]), "Transport: %s (stn=%d, exit=%d)",
+                 (ts >= 0 && ts < 4) ? tsNames[ts] : "?",
+                 m->transportStation, m->transportExitStation);
+        lineColors[lineCount++] = YELLOW;
+        snprintf(lines[lineCount], sizeof(lines[0]), "  FinalGoal: (%d,%d,z%d)",
+                 m->transportFinalGoal.x, m->transportFinalGoal.y, m->transportFinalGoal.z);
+        lineColors[lineCount++] = YELLOW;
     }
 
     // Calculate box dimensions

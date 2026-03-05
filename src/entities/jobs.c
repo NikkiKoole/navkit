@@ -771,6 +771,21 @@ static JobRunResult RunPickupStep(Job* job, Mover* mover, Point nextGoal) {
         job->targetItem = -1;
         job->step = STEP_CARRYING;
 
+        // Clear transport state on pickup — the pickup-leg transport is done,
+        // ShouldUseTrain will re-evaluate for the delivery leg with the correct goal
+        if (mover->transportState != TRANSPORT_NONE) {
+            int moverIdx = (int)(mover - movers);
+            EventLog("Mover %d pickup clears stale transport (was %d, station=%d)",
+                     moverIdx, mover->transportState, mover->transportStation);
+            if (mover->transportState == TRANSPORT_WAITING && mover->transportStation >= 0) {
+                StationRemoveWaiter(mover->transportStation, moverIdx);
+            }
+            mover->transportState = TRANSPORT_NONE;
+            mover->transportStation = -1;
+            mover->transportExitStation = -1;
+            mover->transportTrainIdx = -1;
+        }
+
         mover->goal = nextGoal;
         mover->needsRepath = true;
     }
@@ -3337,6 +3352,11 @@ void JobsTick(void) {
             m->currentJobId = -1;
             m->needsRepath = false;
             m->timeWithoutProgress = 0.0f;
+            // Clear stale transport state so next job starts fresh
+            m->transportState = TRANSPORT_NONE;
+            m->transportStation = -1;
+            m->transportExitStation = -1;
+            m->transportTrainIdx = -1;
             AddMoverToIdleList(i);
         }
         else if (result == JOBRUN_FAIL) {
@@ -3419,8 +3439,16 @@ void RebuildIdleMoverList(void) {
 
     for (int i = 0; i < moverCount; i++) {
         if (movers[i].active && movers[i].currentJobId < 0 && movers[i].freetimeState == FREETIME_NONE && !movers[i].isDrafted) {
-            // Skip movers in transport (walking to station, waiting, riding)
-            if (movers[i].transportState != TRANSPORT_NONE) continue;
+            // Clear stale transport state on jobless movers
+            if (movers[i].transportState != TRANSPORT_NONE && movers[i].currentJobId < 0) {
+                if (movers[i].transportState == TRANSPORT_WAITING && movers[i].transportStation >= 0) {
+                    StationRemoveWaiter(movers[i].transportStation, i);
+                }
+                movers[i].transportState = TRANSPORT_NONE;
+                movers[i].transportStation = -1;
+                movers[i].transportExitStation = -1;
+                movers[i].transportTrainIdx = -1;
+            }
             // Skip movers stuck in unwalkable cells (e.g. built themselves into a wall)
             int mx = (int)(movers[i].x / CELL_SIZE);
             int my = (int)(movers[i].y / CELL_SIZE);

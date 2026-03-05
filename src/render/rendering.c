@@ -1943,6 +1943,9 @@ static void DrawTrains(void) {
             Rectangle moverSrc = SpriteGetRect(SPRITE_head);
             Rectangle moverDest = { rsx - moverSize/2, rsy - moverSize/2, moverSize, moverSize };
             DrawTexturePro(atlas, moverSrc, moverDest, (Vector2){0, 0}, 0, riderColor);
+
+            // Draw carried item above rider
+            DrawCarriedItem(&movers[mIdx], rsx, rsy, viewZ, skyColor);
         }
     }
 

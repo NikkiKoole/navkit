@@ -342,6 +342,15 @@ bool ShouldUseTrain(int moverIdx) {
     Mover* m = &movers[moverIdx];
     if (m->transportState != TRANSPORT_NONE) return false;
 
+    // Don't use train for pickup walks — only for carrying/delivery legs.
+    // During pickup (step 0), the goal is the item location. After picking up,
+    // the mover will repath to the delivery destination, and THAT is when
+    // transport should be considered.
+    if (m->currentJobId >= 0) {
+        Job* j = GetJob(m->currentJobId);
+        if (j && j->step == STEP_MOVING_TO_PICKUP) return false;
+    }
+
     int mx = (int)(m->x / CELL_SIZE);
     int my = (int)(m->y / CELL_SIZE);
     int mz = (int)m->z;
@@ -429,6 +438,7 @@ void DismountAllRiders(int trainIdx) {
         m->lastY = m->y;
         m->lastZ = m->z;
 
+        EventLog("Mover %d dismounted from train %d (DismountAll)", moverIdx, trainIdx);
         m->goal = m->transportFinalGoal;
         m->transportState = TRANSPORT_NONE;
         m->transportStation = -1;

@@ -540,7 +540,7 @@ describe(boarding_exiting) {
 // ============================================================================
 
 describe(mover_transport_state) {
-    it("waiting mover not assigned jobs") {
+    it("waiting mover with active job not assigned new jobs") {
         SetupClean();
         grid[1][5][10] = CELL_TRACK;
         grid[1][5][11] = CELL_PLATFORM;
@@ -550,9 +550,27 @@ describe(mover_transport_state) {
         InitMover(&movers[0], 11 * CELL_SIZE + 16, 5 * CELL_SIZE + 16, 1.0f,
                    (Point){30, 30, 1}, MOVER_SPEED);
         movers[0].transportState = TRANSPORT_WAITING;
+        movers[0].currentJobId = 0;  // has active job
 
         RebuildIdleMoverList();
         expect(idleMoverCount == 0);
+    }
+
+    it("jobless mover with stale transport state gets cleared and becomes idle") {
+        SetupClean();
+        grid[1][5][10] = CELL_TRACK;
+        grid[1][5][11] = CELL_PLATFORM;
+        RebuildStations();
+
+        moverCount = 1;
+        InitMover(&movers[0], 11 * CELL_SIZE + 16, 5 * CELL_SIZE + 16, 1.0f,
+                   (Point){30, 30, 1}, MOVER_SPEED);
+        movers[0].transportState = TRANSPORT_WALKING_TO_STATION;
+        movers[0].currentJobId = -1;  // no job — stale transport
+
+        RebuildIdleMoverList();
+        expect(idleMoverCount == 1);
+        expect(movers[0].transportState == TRANSPORT_NONE);
     }
 
     it("riding mover resets stuck timer") {
@@ -591,6 +609,221 @@ describe(mover_transport_state) {
 
         expect(movers[0].transportState == TRANSPORT_WAITING);
         expect(stations[0].waitingCount == 1);
+    }
+}
+
+// ============================================================================
+// Transport + Haul Job Integration
+// ============================================================================
+
+// Helper: 80x20 flat grid for transport tests
+static void SetupWideGrid(void) {
+    InitTestGrid(80, 20);
+    for (int y = 0; y < 20; y++)
+        for (int x = 0; x < 80; x++) {
+            grid[0][y][x] = CELL_WALL;
+            SetWallMaterial(x, y, 0, MAT_DIRT);
+            grid[1][y][x] = CELL_AIR;
+            SET_FLOOR(x, y, 1);
+        }
+    ClearMovers();
+    ClearItems();
+    ClearStockpiles();
+    ClearWorkshops();
+    ClearJobs();
+    ClearTrains();
+    InitDesignations();
+    InitLighting();
+    gameMode = GAME_MODE_SANDBOX;
+    gameDeltaTime = TICK_DT;
+    gameSpeed = 1.0f;
+    dayLength = 60.0f;
+    gameTime = 0.0;
+    useStringPulling = false;
+    endlessMoverMode = false;
+    useRandomizedCooldowns = false;
+    useStaggeredUpdates = false;
+}
+
+describe(transport_haul_integration) {
+    // Layout (z=1, 80 wide):
+    //   Station A: track(5,10), platform(5,11)   — left side
+    //   Station B: track(75,10), platform(75,11)  — right side
+    //   Items: at (5,5) — near station A
+    //   Stockpile: at (75,5) — near station B
+    //
+    // Mover positions vary per test, always within TRANSPORT_STATION_RADIUS of a station.
+    // Key constraint: mover and goal must each be within 20 cells of a station,
+    // and manhattan distance between them must be > 40.
+
+    it("haul step 0 (pickup walk) should not trigger transport") {
+        // Mover near station B (right), item near station A (left).
+        // Mover's goal is the item at (5,5). Without the fix, ShouldUseTrain
+        // would redirect mover to station B, ride to station A, pick up item,
+        // then need to carry it all the way back RIGHT — defeating the purpose.
+        SetupWideGrid();
+
+        grid[1][10][5] = CELL_TRACK;
+        grid[1][10][6] = CELL_PLATFORM;  // Station A platform
+        grid[1][10][75] = CELL_TRACK;
+        grid[1][10][76] = CELL_PLATFORM; // Station B platform
+        RebuildStations();
+        expect(stationCount == 2);
+
+        int itemIdx = SpawnItem(5 * CELL_SIZE + 16, 5 * CELL_SIZE + 16, 1.0f, ITEM_ROCK);
+        items[itemIdx].material = MAT_GRANITE;
+
+        CreateStockpile(75, 5, 1, 2, 2);
+
+        // Mover near station B at (70,10), goal = item at (5,5)
+        // Manhattan = 65+5 = 70 > 40, entry station = B (dist 6), exit station = A (dist 6)
+        moverCount = 1;
+        InitMover(&movers[0], 70 * CELL_SIZE + 16, 10 * CELL_SIZE + 16, 1.0f,
+                   (Point){5, 5, 1}, MOVER_SPEED);
+        movers[0].currentJobId = 0;
+
+        int jobId = CreateJob(JOBTYPE_HAUL);
+        Job* job = GetJob(jobId);
+        job->targetItem = itemIdx;
+        job->targetStockpile = 0;
+        job->targetSlotX = 75;
+        job->targetSlotY = 5;
+        job->step = STEP_MOVING_TO_PICKUP;
+        job->assignedMover = 0;
+        items[itemIdx].reservedBy = 0;
+
+        // Verify the scenario would normally trigger transport (distance and stations match)
+        // but should NOT because this is the pickup leg (step 0)
+        expect(ShouldUseTrain(0) == false);
+    }
+
+    it("haul step 1 (carrying to stockpile) should trigger transport") {
+        // Mover near station A (left) carrying item, goal = stockpile near station B (right).
+        // This IS the delivery leg — train should be used.
+        SetupWideGrid();
+
+        grid[1][10][5] = CELL_TRACK;
+        grid[1][10][6] = CELL_PLATFORM;
+        grid[1][10][75] = CELL_TRACK;
+        grid[1][10][76] = CELL_PLATFORM;
+        RebuildStations();
+        expect(stationCount == 2);
+
+        int itemIdx = SpawnItem(5 * CELL_SIZE + 16, 5 * CELL_SIZE + 16, 1.0f, ITEM_ROCK);
+        items[itemIdx].material = MAT_GRANITE;
+        items[itemIdx].state = ITEM_CARRIED;
+
+        CreateStockpile(75, 5, 1, 2, 2);
+
+        // Mover near station A at (6,10), goal = stockpile at (75,5)
+        // Manhattan = 69+5 = 74 > 40, entry = A (dist 0), exit = B (dist 6)
+        moverCount = 1;
+        InitMover(&movers[0], 6 * CELL_SIZE + 16, 10 * CELL_SIZE + 16, 1.0f,
+                   (Point){75, 5, 1}, MOVER_SPEED);
+        movers[0].currentJobId = 0;
+
+        int jobId = CreateJob(JOBTYPE_HAUL);
+        Job* job = GetJob(jobId);
+        job->targetItem = itemIdx;
+        job->carryingItem = itemIdx;
+        job->targetStockpile = 0;
+        job->targetSlotX = 75;
+        job->targetSlotY = 5;
+        job->step = STEP_CARRYING;
+        job->assignedMover = 0;
+        items[itemIdx].reservedBy = 0;
+
+        expect(ShouldUseTrain(0) == true);
+    }
+
+    it("craft job carrying input should trigger transport") {
+        // Mover carrying a crafting input to a distant workshop — train is useful.
+        // This is a carrying step, not a pickup walk.
+        SetupWideGrid();
+
+        grid[1][10][5] = CELL_TRACK;
+        grid[1][10][6] = CELL_PLATFORM;
+        grid[1][10][75] = CELL_TRACK;
+        grid[1][10][76] = CELL_PLATFORM;
+        RebuildStations();
+
+        // Mover near station A at (6,10), goal = workshop near station B at (75,10)
+        moverCount = 1;
+        InitMover(&movers[0], 6 * CELL_SIZE + 16, 10 * CELL_SIZE + 16, 1.0f,
+                   (Point){75, 10, 1}, MOVER_SPEED);
+        movers[0].currentJobId = 0;
+
+        int jobId = CreateJob(JOBTYPE_CRAFT);
+        Job* job = GetJob(jobId);
+        job->step = CRAFT_STEP_MOVING_TO_WORKSHOP;
+        job->assignedMover = 0;
+
+        expect(ShouldUseTrain(0) == true);
+    }
+
+    it("stale transport from step 0 is cleared when item is picked up") {
+        // Reproduces the real bug: save file had movers already WALKING_TO_STATION
+        // from a step-0 transport decision. They pick up item, transition to step 1,
+        // but the stale transport (wrong finalGoal, wrong stations) persists.
+        // After pickup, transport state must be cleared so ShouldUseTrain
+        // can re-evaluate with the correct delivery destination.
+        SetupWideGrid();
+
+        grid[1][10][5] = CELL_TRACK;
+        grid[1][10][6] = CELL_PLATFORM;   // Station A (left)
+        grid[1][10][75] = CELL_TRACK;
+        grid[1][10][76] = CELL_PLATFORM;  // Station B (right)
+        RebuildStations();
+        expect(stationCount == 2);
+
+        // Item near station A
+        int itemIdx = SpawnItem(6 * CELL_SIZE + 16, 5 * CELL_SIZE + 16, 1.0f, ITEM_ROCK);
+        items[itemIdx].material = MAT_GRANITE;
+        items[itemIdx].reservedBy = 0;
+
+        // Stockpile near station B
+        int spIdx = CreateStockpile(75, 5, 1, 2, 2);
+        expect(spIdx >= 0);
+
+        // Mover right next to item (will pick it up this tick)
+        moverCount = 1;
+        InitMover(&movers[0], 6 * CELL_SIZE + 16, 5 * CELL_SIZE + 16, 1.0f,
+                   (Point){6, 5, 1}, MOVER_SPEED);
+        movers[0].pathLength = 0;
+        movers[0].pathIndex = -1;
+
+        // Haul job at step 0 — mover is at the item
+        int jobId = CreateJob(JOBTYPE_HAUL);
+        Job* job = GetJob(jobId);
+        job->targetItem = itemIdx;
+        job->targetStockpile = spIdx;
+        job->targetSlotX = 75;
+        job->targetSlotY = 5;
+        job->step = STEP_MOVING_TO_PICKUP;
+        job->assignedMover = 0;
+        movers[0].currentJobId = jobId;
+
+        // Simulate stale transport state (as if loaded from old save)
+        movers[0].transportState = TRANSPORT_WALKING_TO_STATION;
+        movers[0].transportStation = 1;       // wrong station
+        movers[0].transportExitStation = 0;   // wrong exit
+        movers[0].transportFinalGoal = (Point){6, 5, 1}; // stale: item location, not stockpile
+
+        // Verify item is in pickup range
+        float dx = movers[0].x - items[itemIdx].x;
+        float dy = movers[0].y - items[itemIdx].y;
+        float distSq = dx*dx + dy*dy;
+        float pickupR = CELL_SIZE * 0.75f;
+        expect(distSq < pickupR * pickupR);
+
+        // Run one tick of the haul job — mover is close enough to pick up
+        JobRunResult result = RunJob_Haul(job, &movers[0], TICK_DT);
+        expect(result == JOBRUN_RUNNING);
+        expect(job->step == STEP_CARRYING);       // item was picked up
+
+        // After pickup, stale transport must be cleared
+        expect(movers[0].transportState == TRANSPORT_NONE);
+        expect(movers[0].transportStation == -1);
     }
 }
 
@@ -1026,6 +1259,7 @@ int main(int argc, char* argv[]) {
     test(should_use_train);
     test(boarding_exiting);
     test(mover_transport_state);
+    test(transport_haul_integration);
     test(cancel_job_transport);
     test(platform_destroyed);
     test(track_destroyed);

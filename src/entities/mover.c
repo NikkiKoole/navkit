@@ -1235,6 +1235,7 @@ void UpdateMovers(void) {
                         float waited = (float)gameTime - s->waitingSince[w];
                         if (waited > TRANSPORT_WAIT_TIMEOUT) {
                             // Timeout — abandon transport, walk directly
+                            EventLog("Mover %d (%s) transport TIMEOUT at station %d (waited %.1fs)", i, m->name, m->transportStation, waited);
                             StationRemoveWaiter(m->transportStation, i);
                             m->goal = m->transportFinalGoal;
                             m->transportState = TRANSPORT_NONE;
@@ -1294,6 +1295,7 @@ void UpdateMovers(void) {
                 int stIdx = m->transportStation;
                 if (stIdx >= 0 && stIdx < stationCount && stations[stIdx].active) {
                     m->transportState = TRANSPORT_WAITING;
+                    EventLog("Mover %d (%s) arrived at station %d, now WAITING", i, m->name, stIdx);
                     StationAddWaiter(stIdx, i);
                     // Position mover at arrival point
                     if (trainQueueEnabled) {
@@ -1308,6 +1310,7 @@ void UpdateMovers(void) {
                     }
                 } else {
                     // Station gone — abandon transport
+                    EventLog("Mover %d (%s) station %d gone, abandoning transport", i, m->name, stIdx);
                     m->goal = m->transportFinalGoal;
                     m->transportState = TRANSPORT_NONE;
                     m->transportStation = -1;
@@ -1749,6 +1752,9 @@ void ProcessMoverRepaths(void) {
                 m->transportStation = entryStation;
                 m->transportExitStation = exitStation;
                 m->transportTrainIdx = -1;
+                EventLog("Mover %d (%s) using train: entry=%d exit=%d, goal=(%d,%d,z%d)",
+                         i, m->name, entryStation, exitStation,
+                         m->transportFinalGoal.x, m->transportFinalGoal.y, m->transportFinalGoal.z);
                 // Redirect goal to nearest platform cell
                 int nearPlatX, nearPlatY;
                 GetNearestPlatformCell(entryStation, mx, my, &nearPlatX, &nearPlatY);

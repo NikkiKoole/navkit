@@ -94,6 +94,8 @@ static int insp_animalCount = 0;
 static Animal* insp_animals = NULL;
 static int insp_trainCount = 0;
 static Train* insp_trains = NULL;
+static int insp_stationCount = 0;
+static TrainStation* insp_stations = NULL;
 static int insp_jobHWM = 0, insp_activeJobCnt = 0;
 static Job* insp_jobs = NULL;
 static int* insp_activeJobList = NULL;
@@ -128,7 +130,20 @@ static void print_mover(int idx) {
     printf("Last position: (%.2f, %.2f)\n", m->lastX, m->lastY);
     printf("Fall timer: %.2f\n", m->fallTimer);
     printf("Job ID: %d\n", m->currentJobId);
-    
+
+    // Transport state
+    {
+        const char* tsNames[] = {"NONE", "WALKING_TO_STATION", "WAITING", "RIDING"};
+        int ts = m->transportState;
+        printf("Transport: %s", (ts >= 0 && ts < 4) ? tsNames[ts] : "?");
+        if (ts != TRANSPORT_NONE) {
+            printf(" (station=%d, exitStation=%d, trainIdx=%d, finalGoal=(%d,%d,z%d))",
+                   m->transportStation, m->transportExitStation, m->transportTrainIdx,
+                   m->transportFinalGoal.x, m->transportFinalGoal.y, m->transportFinalGoal.z);
+        }
+        printf("\n");
+    }
+
     if (m->currentJobId >= 0 && m->currentJobId < insp_jobHWM) {
         Job* job = &insp_jobs[m->currentJobId];
         printf("\n  --- Job %d ---\n", m->currentJobId);
@@ -786,6 +801,76 @@ static void print_stuck_movers(void) {
     if (!found) printf("No stuck movers found.\n");
 }
 
+static void print_transport(void) {
+    static const char* tsNames[] = {"NONE", "WALKING_TO_STATION", "WAITING", "RIDING"};
+
+    printf("\n=== TRANSPORT STATE ===\n");
+
+    // Movers with non-NONE transport
+    printf("\n-- Movers with active transport --\n");
+    int moverFound = 0;
+    for (int i = 0; i < insp_moverCount; i++) {
+        Mover* m = &insp_movers[i];
+        if (!m->active || m->transportState == TRANSPORT_NONE) continue;
+        int ts = m->transportState;
+        printf("Mover %d (%s): %s, station=%d, exitStation=%d, trainIdx=%d\n",
+               i, m->name[0] ? m->name : "?",
+               (ts >= 0 && ts < 4) ? tsNames[ts] : "?",
+               m->transportStation, m->transportExitStation, m->transportTrainIdx);
+        printf("  Goal: (%d,%d,z%d), FinalGoal: (%d,%d,z%d)\n",
+               m->goal.x, m->goal.y, m->goal.z,
+               m->transportFinalGoal.x, m->transportFinalGoal.y, m->transportFinalGoal.z);
+        if (m->currentJobId >= 0 && m->currentJobId < insp_jobHWM) {
+            Job* j = &insp_jobs[m->currentJobId];
+            printf("  Job: %d (%s step=%d)\n", m->currentJobId, JobTypeName(j->type), j->step);
+        } else {
+            printf("  Job: NONE (jobless)\n");
+        }
+        moverFound++;
+    }
+    if (!moverFound) printf("  (none)\n");
+
+    // Stations
+    printf("\n-- Stations (%d) --\n", insp_stationCount);
+    for (int i = 0; i < insp_stationCount; i++) {
+        TrainStation* s = &insp_stations[i];
+        if (!s->active) continue;
+        printf("Station %d: track=(%d,%d,z%d), plat=(%d,%d), waiting=%d",
+               i, s->trackX, s->trackY, s->z, s->platX, s->platY, s->waitingCount);
+        if (s->platformCellCount > 0) {
+            printf(", platformCells=%d", s->platformCellCount);
+        }
+        printf("\n");
+        for (int w = 0; w < s->waitingCount; w++) {
+            int mi = s->waitingMovers[w];
+            printf("  Waiting: mover %d (%s) since %.1fs\n",
+                   mi, (mi >= 0 && mi < insp_moverCount && insp_movers[mi].name[0]) ? insp_movers[mi].name : "?",
+                   s->waitingSince[w]);
+        }
+    }
+
+    // Trains
+    printf("\n-- Trains (%d) --\n", insp_trainCount);
+    for (int i = 0; i < insp_trainCount; i++) {
+        Train* t = &insp_trains[i];
+        if (!t->active) continue;
+        printf("Train %d: cell=(%d,%d,z%d), pos=(%.1f,%.1f), speed=%.1f, state=%s",
+               i, t->cellX, t->cellY, t->z, t->x, t->y, t->speed,
+               t->cartState == CART_DOORS_OPEN ? "DOORS_OPEN" : "MOVING");
+        if (t->atStation >= 0) printf(", atStation=%d", t->atStation);
+        printf(", riders=%d", t->ridingCount);
+        if (t->ridingCount > 0) {
+            printf(" [");
+            for (int r = 0; r < t->ridingCount; r++) {
+                int mi = t->ridingMovers[r];
+                printf("%s%d", r > 0 ? "," : "", mi);
+            }
+            printf("]");
+        }
+        printf("\n");
+    }
+}
+
 static void print_reserved_items(void) {
     printf("\n=== RESERVED ITEMS ===\n");
     int found = 0;
@@ -1026,6 +1111,7 @@ static void cleanup(void) {
     free(insp_moverPaths);
     free(insp_animals);
     free(insp_trains);
+    free(insp_stations);
     free(insp_jobs);
     free(insp_activeJobList);
 }
@@ -1058,7 +1144,7 @@ int InspectSaveFile(int argc, char** argv) {
     int opt_path_algo = PATH_ALGO_ASTAR;  // default to A* for backwards compat
     int opt_map_x = -1, opt_map_y = -1, opt_map_z = -1, opt_map_r = 10;
     bool opt_stuck = false, opt_reserved = false, opt_jobs_active = false, opt_designations = false;
-    bool opt_entrances = false, opt_items = false, opt_temp = false, opt_orphaned = false, opt_audit = false;
+    bool opt_entrances = false, opt_items = false, opt_temp = false, opt_orphaned = false, opt_audit = false, opt_transport = false;
     int opt_entrances_z = -1, opt_temp_z = -1;
     const char* opt_items_filter = NULL;
     
@@ -1093,6 +1179,7 @@ int InspectSaveFile(int argc, char** argv) {
         else if (strcmp(argv[i], "--reserved") == 0) opt_reserved = true;
         else if (strcmp(argv[i], "--jobs-active") == 0) opt_jobs_active = true;
         else if (strcmp(argv[i], "--orphaned") == 0) opt_orphaned = true;
+        else if (strcmp(argv[i], "--transport") == 0) opt_transport = true;
         else if (strcmp(argv[i], "--audit") == 0) opt_audit = true;
         else if (strcmp(argv[i], "--entrances") == 0) {
             opt_entrances = true;
@@ -2568,11 +2655,9 @@ int InspectSaveFile(int argc, char** argv) {
         fread(&insp_trainCount, 4, 1, f);
         insp_trains = malloc(insp_trainCount > 0 ? insp_trainCount * sizeof(Train) : sizeof(Train));
         if (insp_trainCount > 0) fread(insp_trains, sizeof(Train), insp_trainCount, f);
-        int insp_stationCount;
         fread(&insp_stationCount, 4, 1, f);
-        if (insp_stationCount > 0) {
-            fseek(f, insp_stationCount * (long)sizeof(TrainStation), SEEK_CUR);
-        }
+        insp_stations = malloc(insp_stationCount > 0 ? insp_stationCount * sizeof(TrainStation) : sizeof(TrainStation));
+        if (insp_stationCount > 0) fread(insp_stations, sizeof(TrainStation), insp_stationCount, f);
     } else if (version >= 86) {
         fread(&insp_trainCount, 4, 1, f);
         insp_trains = malloc(insp_trainCount > 0 ? insp_trainCount * sizeof(Train) : sizeof(Train));
@@ -2601,13 +2686,25 @@ int InspectSaveFile(int argc, char** argv) {
             }
         }
         // v86/v87 stations
-        int insp_stationCount;
         fread(&insp_stationCount, 4, 1, f);
+        insp_stations = malloc(insp_stationCount > 0 ? insp_stationCount * sizeof(TrainStation) : sizeof(TrainStation));
         if (insp_stationCount > 0) {
             if (version >= 87) {
-                fseek(f, insp_stationCount * (long)sizeof(TrainStation), SEEK_CUR);
+                fread(insp_stations, sizeof(TrainStation), insp_stationCount, f);
             } else {
-                fseek(f, insp_stationCount * (long)sizeof(TrainStationV86), SEEK_CUR);
+                // v86 stations need migration
+                for (int si = 0; si < insp_stationCount; si++) {
+                    TrainStationV86 old;
+                    fread(&old, sizeof(TrainStationV86), 1, f);
+                    insp_stations[si].trackX = old.trackX;
+                    insp_stations[si].trackY = old.trackY;
+                    insp_stations[si].z = old.z;
+                    insp_stations[si].platX = old.platX;
+                    insp_stations[si].platY = old.platY;
+                    insp_stations[si].active = old.active;
+                    insp_stations[si].platformCellCount = 0;
+                    insp_stations[si].waitingCount = 0;
+                }
             }
         }
     } else if (version >= 47) {
@@ -2690,7 +2787,7 @@ int InspectSaveFile(int argc, char** argv) {
                      opt_stockpile >= 0 || opt_workshop >= 0 || opt_blueprint >= 0 ||
                      opt_cell_x >= 0 || opt_path_x1 >= 0 || opt_map_x >= 0 || 
                      opt_designations || opt_stuck || opt_reserved || opt_jobs_active ||
-                     opt_entrances || opt_items || opt_temp || opt_orphaned || opt_audit);
+                     opt_entrances || opt_items || opt_temp || opt_orphaned || opt_transport || opt_audit);
     
     if (!anyQuery) {
         printf("Save file: %s (%ld bytes)\n", filename, fileSize);
@@ -2770,7 +2867,7 @@ int InspectSaveFile(int argc, char** argv) {
         printf("\nOptions: --mover N, --item N, --job N, --stockpile N, --workshop N, --blueprint N\n");
         printf("         --cell X,Y,Z, --path X1,Y1,Z1 X2,Y2,Z2 [--algo astar|hpa|jps|jps+]\n");
         printf("         --map X,Y,Z [R], --designations, --stuck, --reserved, --jobs-active\n");
-        printf("         --entrances [Z], --items [TYPE], --temp [Z], --orphaned, --audit\n");
+        printf("         --entrances [Z], --items [TYPE], --temp [Z], --orphaned, --transport, --audit\n");
     }
     
     // Handle queries
@@ -2796,7 +2893,8 @@ int InspectSaveFile(int argc, char** argv) {
     if (opt_items) print_items(opt_items_filter);
     if (opt_temp) print_temp(opt_temp_z);
     if (opt_orphaned) print_orphaned();
-    
+    if (opt_transport) print_transport();
+
     if (opt_audit) {
         // Bridge inspect data to game globals so audit functions work
         setup_pathfinding_globals();
