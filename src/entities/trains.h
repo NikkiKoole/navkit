@@ -11,7 +11,7 @@
 #define MAX_PLATFORM_CELLS 8
 #define MAX_TRAIL_LENGTH 8
 #define TRAIN_DOOR_TIME 3.0f
-#define TRAIN_DEFAULT_SPEED 3.0f  // Cells per second
+#define TRAIN_DEFAULT_SPEED 9.0f  // Cells per second
 
 // Transport thresholds
 #define TRANSPORT_FAR_THRESHOLD 40

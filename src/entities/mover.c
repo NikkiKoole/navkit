@@ -278,6 +278,41 @@ Vec2 ComputeMoverAvoidance(int moverIndex) {
         found++;
     }
 
+    // Avoid trains (skip if mover is waiting to board or riding)
+    if (m->transportState != TRANSPORT_WAITING && m->transportState != TRANSPORT_RIDING) {
+        for (int j = 0; j < MAX_TRAINS && found < AVOID_MAX_NEIGHBORS; j++) {
+            Train* t = &trains[j];
+            if (!t->active || t->z != (int)m->z) continue;
+
+            // Check locomotive + each trailing car
+            for (int car = -1; car < t->trailCount && found < AVOID_MAX_NEIGHBORS; car++) {
+                float carX, carY;
+                if (car < 0) {
+                    carX = t->x;
+                    carY = t->y;
+                } else {
+                    carX = t->trailCellX[car] * CELL_SIZE + CELL_SIZE * 0.5f;
+                    carY = t->trailCellY[car] * CELL_SIZE + CELL_SIZE * 0.5f;
+                }
+
+                float dx = m->x - carX;
+                float dy = m->y - carY;
+                float distSq = dx * dx + dy * dy;
+
+                if (distSq < 1e-10f || distSq >= radiusSq) continue;
+
+                float invDist = fastInvSqrt(distSq);
+                float dist = distSq * invDist;
+                float u = 1.0f - dist * invRadius;
+                float strength = u * u;
+                float k = strength * invDist * 8.0f;  // 8x stronger — get off the tracks!
+                avoidance.x += dx * k;
+                avoidance.y += dy * k;
+                found++;
+            }
+        }
+    }
+
     return avoidance;
 }
 

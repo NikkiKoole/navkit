@@ -588,7 +588,7 @@ void TrainsTick(float dt) {
         }
 
         // CART_MOVING state
-        t->progress += t->speed * (60.0f / dayLength) * gdt;
+        t->progress += TRAIN_DEFAULT_SPEED * (60.0f / dayLength) * gdt;
 
         while (t->progress >= 1.0f) {
             t->progress -= 1.0f;
@@ -597,7 +597,7 @@ void TrainsTick(float dt) {
             int stIdx = GetStationAt(t->cellX, t->cellY, t->z);
             if (stIdx >= 0) {
                 // Check if anyone wants to board or exit here
-                bool hasWaiters = stations[stIdx].waitingCount > 0;
+                bool hasWaiters = stations[stIdx].waitingCount > 0 && t->ridingCount < MAX_CART_CAPACITY;
                 bool hasExiters = false;
                 for (int r = 0; r < t->ridingCount && !hasExiters; r++) {
                     int mi = t->ridingMovers[r];
@@ -654,6 +654,33 @@ void TrainsTick(float dt) {
         float toY = t->cellY * CELL_SIZE + CELL_SIZE * 0.5f;
         t->x = fromX + (toX - fromX) * t->progress;
         t->y = fromY + (toY - fromY) * t->progress;
+
+        // Push movers out of the way if train is moving
+        if (t->cartState == CART_MOVING) {
+            float pushRadius = CELL_SIZE * 0.8f;
+            float pushRadiusSq = pushRadius * pushRadius;
+            float pushStrength = CELL_SIZE * 4.0f;  // Strong shove
+
+            for (int mi = 0; mi < moverCount; mi++) {
+                Mover* m = &movers[mi];
+                if (!m->active || (int)m->z != t->z) continue;
+                // Don't push riders or movers waiting to board
+                if (m->transportState == TRANSPORT_RIDING || m->transportState == TRANSPORT_WAITING) continue;
+
+                float dx = m->x - t->x;
+                float dy = m->y - t->y;
+                float distSq = dx * dx + dy * dy;
+
+                if (distSq < 1e-10f || distSq >= pushRadiusSq) continue;
+
+                float dist = sqrtf(distSq);
+                float push = pushStrength * (1.0f - dist / pushRadius) * gdt;
+                float nx = dx / dist;
+                float ny = dy / dist;
+                m->x += nx * push;
+                m->y += ny * push;
+            }
+        }
 
         // Update riding mover positions
         for (int r = 0; r < t->ridingCount; r++) {
