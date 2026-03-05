@@ -403,10 +403,18 @@ void ExitMoverFromTrain(int trainIdx, int riderSlot, int stationIdx) {
     t->ridingMovers[riderSlot] = t->ridingMovers[t->ridingCount - 1];
     t->ridingCount--;
 
-    // Place mover at exit station's platform cell
+    // Place mover on a spread-out platform cell (cycle through available cells)
     TrainStation* s = &stations[stationIdx];
-    m->x = s->platX * CELL_SIZE + CELL_SIZE * 0.5f;
-    m->y = s->platY * CELL_SIZE + CELL_SIZE * 0.5f;
+    static int exitSpreadIdx = 0;
+    int cellSlot = exitSpreadIdx % (s->platformCellCount > 0 ? s->platformCellCount : 1);
+    int exitX = s->platX, exitY = s->platY;
+    if (s->platformCellCount > 0) {
+        exitX = s->platformCells[cellSlot][0];
+        exitY = s->platformCells[cellSlot][1];
+    }
+    exitSpreadIdx++;
+    m->x = exitX * CELL_SIZE + CELL_SIZE * 0.5f;
+    m->y = exitY * CELL_SIZE + CELL_SIZE * 0.5f;
     m->z = (float)s->z;
     m->lastX = m->x;
     m->lastY = m->y;
