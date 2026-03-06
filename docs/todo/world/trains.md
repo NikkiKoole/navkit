@@ -22,21 +22,62 @@ The mover's decision: is walk(A->B) cheaper than walk(A->X) + wait + ride(X->Y) 
 
 ---
 
-## Current State (Phase 1 — done)
+## Current State (Phases 1–4 — done)
 
-What's already in the codebase (`src/entities/trains.h`, `src/entities/trains.c`):
+What's already in the codebase (`src/entities/trains.h`, `src/entities/trains.c`, `src/entities/mover.c`):
 
+### Phase 1: Track & Cart Entity
 - **Train struct**: pixel position (smooth interpolation), z-level, current/prev cell, speed, progress, locomotive light
 - **CELL_TRACK**: walkable cell type with 16-sprite autotiling (N/E/S/W connectivity)
 - **FindNextTrackCell()**: follows track, prefers straight (90%), random at junctions (10%), reverses at dead ends
 - **TrainsTick()**: advances trains each frame, interpolates position, updates locomotive light
-- **SpawnTrain()**: places train on track cell, validates bounds
+- **SpawnTrain()** / **SpawnTrainWithCars()**: places train on track cell, validates bounds
 - **Track drawing UI**: ACTION_DRAW_TRACK (place/remove), ACTION_DRAW_TRAIN (spawn/remove)
-- **Save/load**: v46+ (v47 added lightCellX/lightCellY)
+- **Save/load**: v46+ (v47 light fields, v86 station/transport fields, v88 multi-car)
 - **Rendering**: SPRITE_train_loc with rotation based on heading, depth tint, viewport culling
-- **Limits**: MAX_TRAINS 32, TRAIN_DEFAULT_SPEED 3.0 cells/sec
+- **Limits**: MAX_TRAINS 32, TRAIN_DEFAULT_SPEED 9.0 cells/sec
 
-What trains **don't** do yet: no stations, no stopping, no mover interaction, no pathfinder integration, no cargo. Trains are decorative rolling lights that bounce along track.
+### Phase 2: Stations
+- **CELL_PLATFORM**: walkable cell type adjacent to track, auto-detected as station
+- **RebuildStations()**: scans grid for track+platform adjacency, builds station list, preserves waiters across rebuilds
+- **Multi-cell platforms**: contiguous CELL_PLATFORM cells parallel to track (up to MAX_PLATFORM_CELLS=8), with directional queue layout
+- **Cart state machine**: CART_MOVING → CART_DOORS_OPEN (TRAIN_DOOR_TIME=3s timer)
+- **Station detection during movement**: cart checks `GetStationAt()` each cell, stops only if waiters or riders want this station
+- **Pull-forward logic**: cart continues through multi-cell stations, only stops at the last track cell adjacent to the platform
+- **Station ejection**: movers waiting at destroyed stations get transport state reset and repath
+- **Worldgen stations**: terrain.c places example platforms in generated worlds
+
+### Phase 3: Mover Boarding
+- **WaitingSet** (inline on TrainStation): `StationAddWaiter/RemoveWaiter/GetNextBoarder` with FIFO ordering
+- **Transport state machine on Mover**: `TRANSPORT_NONE → TRANSPORT_WALKING_TO_STATION → TRANSPORT_WAITING → TRANSPORT_RIDING`
+- **Mover struct fields**: `transportState`, `transportStation`, `transportExitStation`, `transportTrainIdx`, `transportFinalGoal`
+- **BoardMoverOnTrain()**: removes from waiting set, adds to riding list, clears path
+- **ExitMoverFromTrain()**: places mover on spread-out platform cell, restores original goal, triggers repath
+- **DismountAllRiders()**: emergency dismount when track destroyed
+- **Riding movers locked to cart position** (updated every tick in TrainsTick)
+- **Capacity limit**: MAX_CART_CAPACITY=8, excess waiters remain in queue
+- **Train-mover collision**: moving trains push non-riding movers out of the way
+- **Queue positions**: `StationGetQueuePosition()` for visual queue layout along platform
+- **Multi-car trains**: `carCount` field, trailing cars follow via trail cell history (MAX_TRAIL_LENGTH=8)
+- **Haul integration**: transport only triggers on carry/delivery legs (`STEP_MOVING_TO_PICKUP` excluded)
+- **Cancel job cleanup**: CancelJob properly resets transport state (waiting or riding)
+
+### Phase 4: Pathfinder Decision (heuristic)
+- **ShouldUseTrain()**: distance-threshold heuristic (TRANSPORT_FAR_THRESHOLD=40, TRANSPORT_STATION_RADIUS=20)
+- **Auto-triggers in mover.c**: idle/walking movers automatically evaluate train usage each tick
+- **Same-z only**: cross-z goals skip train consideration
+- **Entry/exit station selection**: FindNearestStation() for both mover position and goal
+- Uses the simple heuristic from transport-layer.md, not full pathfinder cost comparison (deferred to Layer 3)
+
+### What trains don't do yet
+- No multiple independent train lines (all trains share all tracks)
+- No loop tracks (bounce only)
+- No timetables / service hours
+- No freight/item transport
+- No full pathfinder cost comparison (heuristic works well enough)
+
+### Test Coverage
+58+ tests in `tests/test_trains.c` covering: station detection, waiting set FIFO, train stopping/resuming, ShouldUseTrain heuristic, boarding/exiting, capacity limits, mover transport state machine, haul integration, cancel job cleanup, platform/track destruction, multi-cell platforms, queue positions, track connections.
 
 ---
 
@@ -311,37 +352,45 @@ Currently moveCost is uniform (10/14) in the pathfinder. Speed modifiers (mud, f
 - [x] Locomotive light (AddLightSource/RemoveLightSource as cart moves)
 - [x] Save/load (v46+, v47 struct upgrade for light fields)
 
-### Phase 2: Stations
-- [ ] CELL_STATION cell type (mark track cells as stations)
-- [ ] Cart state machine: MOVING → ARRIVING → DOORS_OPEN → DEPARTING
-- [ ] Cart detects station cells and stops (doorTime timer)
-- [ ] Station rendering (platform sprite)
-- [ ] Station drawing UI (designate track cell as station)
-- [ ] Save/load for station data
+### Phase 2: Stations — DONE
+- [x] CELL_PLATFORM cell type (walkable, auto-detected as station when adjacent to track)
+- [x] Cart state machine: CART_MOVING → CART_DOORS_OPEN (simplified from 4-state design)
+- [x] Cart detects station cells and stops (TRAIN_DOOR_TIME=3s timer)
+- [x] Multi-cell platform detection (contiguous platforms parallel to track, up to 8 cells)
+- [x] Pull-forward logic (cart continues through multi-cell stations, stops at last track cell)
+- [x] Station rendering (platform sprite) + worldgen placement
+- [x] RebuildStations() with waiter preservation across rebuilds
+- [x] Save/load for station data (v86+)
 
-### Phase 3: Mover Boarding (requires queuing prerequisite)
-- [ ] Queuing system at stations (from social-navigation.md Phase 1)
-- [ ] Multi-leg journey support (walk → wait → ride → walk)
-- [ ] Mover states: WAITING / BOARDING / RIDING / EXITING
-- [ ] Movers can walk to station and wait in queue
-- [ ] Movers board when cart doors open (capacity check, FIFO)
-- [ ] Riding movers locked to cart position
-- [ ] Movers exit at target station, resume walking
+### Phase 3: Mover Boarding — DONE
+- [x] WaitingSet at stations (inline: waitingMovers[], waitingSince[], FIFO)
+- [x] Transport state machine on Mover (NONE → WALKING_TO_STATION → WAITING → RIDING)
+- [x] Movers walk to nearest platform cell and wait in queue
+- [x] Movers board when cart doors open (capacity check, FIFO via StationGetNextBoarder)
+- [x] Riding movers locked to cart position (updated every tick)
+- [x] Movers exit at target station, placed on spread-out platform cells, resume walking
+- [x] DismountAllRiders for emergency dismount (track destroyed)
+- [x] Train-mover collision push (non-riders shoved out of way)
+- [x] Multi-car trains (SpawnTrainWithCars, trailing car rendering via trail history)
+- [x] Haul integration (transport only on carry/delivery legs, not pickup walks)
+- [x] Cancel job cleanup (transport state properly reset)
 - [ ] Manual usage: player orders drafted mover to take train
 
-### Phase 4: Pathfinder Decision
-- [ ] Station graph with ride costs
-- [ ] At pathfind time: compare walk vs train
-- [ ] Mover automatically chooses train when beneficial
-- [ ] Cost estimation includes wait time based on cart position
+### Phase 4: Pathfinder Decision — DONE (heuristic)
+- [x] ShouldUseTrain() distance-threshold heuristic (far enough + stations near both ends)
+- [x] Movers automatically choose train when beneficial (auto-triggers in mover.c)
+- [x] Same-z-only constraint (cross-z goals skip train)
+- [ ] Full pathfinder cost comparison with ride time estimation (deferred — heuristic works well)
+- [ ] Dynamic cost edges based on cart position (Layer 3 optimization)
 
-### Phase 5: Polish
-- [ ] Multiple train lines
-- [ ] Loop tracks
-- [ ] Multiple carts per line
+### Phase 5: Polish — PARTIAL
+- [ ] Multiple train lines (all trains share all tracks currently)
+- [ ] Loop tracks (bounce only)
+- [x] Multiple carts per line (multi-car trains with trailing cars)
 - [ ] Cart capacity UI
-- [ ] Station queue visualization
+- [x] Station queue visualization (StationGetQueuePosition)
 - [ ] Timetables / service hours (requires schedule system)
+- [ ] Freight mode (item transport without movers)
 
 ---
 

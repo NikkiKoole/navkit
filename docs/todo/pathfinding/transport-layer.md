@@ -350,17 +350,25 @@ The interesting decision: does the **job system** route items via transport, or 
 | Component | Status | Location |
 |-----------|--------|----------|
 | CELL_TRACK + autotile | done | cell_defs.c |
-| Train entity (bounce, no stations) | done | trains.c, trains.h |
-| Train rendering + save/load | done | rendering.c, saveload.c |
+| Train entity (bounce + stations) | done | trains.c, trains.h |
+| CELL_PLATFORM + station auto-detect | done | trains.c (RebuildStations) |
+| Multi-cell platforms | done | trains.c (platformCells, queueDir) |
+| Cart state machine (moving/doors-open) | done | trains.c (TrainsTick) |
+| Train rendering + save/load | done | rendering.c, saveload.c (v86+, v88 multi-car) |
+| Waiting set (inline on station) | done | trains.c (StationAddWaiter etc.) |
+| Multi-leg journey (walk→wait→ride→walk) | done | mover.c (transportState machine) |
+| Mover boarding/exiting/riding | done | trains.c (Board/Exit/DismountAll) |
+| Transport heuristic (ShouldUseTrain) | done | trains.c + mover.c |
+| Multi-car trains (trailing cars) | done | trains.c (carCount, trail history) |
+| Train-mover collision push | done | trains.c (TrainsTick) |
+| Haul + cancel job integration | done | mover.c, jobs.c |
 | Ladders (single-file vertical) | done | cell_defs.h, pathfinding |
 | Ramps (directional vertical) | done | cell_defs.h, pathfinding |
 | Doors (single cell, no queue) | done | cell_defs.h |
 | Mover avoidance (basic) | done | mover.c |
 | HPA* portal graph | done | hpa.c |
-| Waiting set primitive | **not started** | — |
-| Multi-leg journey | **not started** | — |
 | Transport overlay graph | **not started** | — |
-| Stations / mover boarding | **not started** | — |
+| Full pathfinder cost comparison | **not started** | — (heuristic works for now) |
 | Elevators | **not started** | — |
 | Ladder congestion cost | **not started** | — |
 | Door congestion cost | **not started** | — |
@@ -373,11 +381,11 @@ The interesting decision: does the **job system** route items via transport, or 
 ### Layer 0: Passive Bottleneck Improvements
 Ladders: 1 mover per segment, others wait. Doors: congestion-aware pathfinding cost. No new data structures needed — just pathfinder cost adjustments and letting existing avoidance do the spatial work. Immediate value, no transport dependency.
 
-### Layer 1: WaitingSet + Multi-Leg Journey
-The `WaitingSet` primitive (mover list + timestamps + FIFO boarding). Mover can execute a `Journey` with multiple legs. State machine handles transitions between WALK and WAIT_AND_RIDE legs. No pathfinder changes yet — journeys are manually constructed.
+### Layer 1: WaitingSet + Multi-Leg Journey — DONE
+The `WaitingSet` primitive (mover list + timestamps + FIFO boarding). Mover can execute a `Journey` with multiple legs. State machine handles transitions between WALK and WAIT_AND_RIDE legs. Built inline on TrainStation struct. Mover transport state machine in mover.c handles walk→wait→ride→walk transitions.
 
-### Layer 2: First Vehicle (train stations)
-Train already exists and bounces. Add: stations (stop points on track), waiting sets at platforms, boarding/exiting, mover riding state. Build end-to-end with hardcoded structs. This validates the waiting set + state machine. Movers decide to use the train via a **simple distance-threshold heuristic** ("it's far and there's a station nearby"), no pathfinder integration needed yet. Works fine even with random-bounce trains.
+### Layer 2: First Vehicle (train stations) — DONE
+Train stations (CELL_PLATFORM adjacent to CELL_TRACK), waiting sets at platforms, boarding/exiting, mover riding state — all built end-to-end with hardcoded structs. Multi-cell platforms, pull-forward logic, multi-car trains, train-mover collision push, haul/cancel integration. Movers decide to use the train via a **simple distance-threshold heuristic** (`ShouldUseTrain()` in trains.c). 58+ tests in test_trains.c.
 
 ### Layer 3: Optimal Route Comparison in Pathfinder (deferred, optional)
 Full cost comparison: `walkCost` vs `walkCost + waitEstimate + rideCost + walkCost`. Requires deterministic train routes to be useful (random bounce makes ride cost unpredictable). Transport nodes become portal edges in the pathfinding graph. This is an optimization — the simple heuristic from Layer 2 already gives good-enough behavior. Only build this if movers are making noticeably bad decisions about when to take the train.

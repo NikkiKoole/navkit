@@ -1,6 +1,6 @@
 # Todo Index
 
-> One-line summaries of everything in `docs/todo/`, grouped by status. Updated 2026-03-02.
+> One-line summaries of everything in `docs/todo/`, grouped by status. Updated 2026-03-06.
 
 ---
 
@@ -12,10 +12,11 @@
 
 - `10-personality-and-skills.md` — Names, skill progression (8 types), moods — the "character" layer
 - `juice-effects.md` — Screen shake, sprite tweens, particles, screen flashes for game feel
-- `world/trains.md` — Horizontal multi-stop transport (track + station)
+- `world/trains.md` — Horizontal multi-stop transport: track, stations, mover boarding, auto-decision (phases 1–4 done, phase 5 partial)
 
 ## Specs (ready to build)
 
+- `village-next-steps.md` — Bridge from survival to settlement: room quality, mood, distance weighting, elevators, occupations, furniture (6-step build order)
 - `09-onboarding-and-progression.md` — Starting scenarios, progressive need unlocks, difficulty tuning
 - `11-stockpile-filter-redesign.md` — Hierarchical filter UI for growing item count
 - `schedule-system.md` — Clock-driven daily routines (work/meal/leisure/sleep blocks) layered on existing job system
