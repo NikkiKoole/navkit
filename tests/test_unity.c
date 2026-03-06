@@ -92,6 +92,7 @@ bool thirstEnabled = false;
 #include "../src/simulation/plants.c"
 #include "../src/simulation/farming.c"
 #include "../src/simulation/balance.c"
+#include "../src/simulation/mood.c"
 #include "../src/simulation/needs.c"
 
 // Core systems

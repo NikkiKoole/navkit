@@ -1244,6 +1244,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = true,
         .canErase = true
     },
+    {
+        .action = ACTION_SANDBOX_MOVER,
+        .name = "MOVER",
+        .barDisplayText = "Mover",
+        .barText = "L-click place mover  R-click remove  [ESC]Back",
+        .barKey = 'n',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_SANDBOX,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
+        .canDrag = false,
+        .canErase = true
+    },
 
 };
 

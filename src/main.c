@@ -79,7 +79,7 @@ const char* toolNames[] = {"Draw Wall", "Draw Floor", "Draw Ladder", "Erase", "S
 
 int currentTerrain = 0;
 // NOTE: When adding new terrains, also update the count in ui_panels.c CycleOption() for "Terrain"
-const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D", "Council", "Hills", "HillsSoils", "HillsSoilsWater", "CraftTest", "TrainTest", "TrainLong"};
+const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D", "Council", "Hills", "HillsSoils", "HillsSoilsWater", "CraftTest", "TrainTest", "TrainLong", "MoodTest"};
 
 MaterialType currentTreeType = MAT_OAK;
 
@@ -421,6 +421,7 @@ void GenerateCurrentTerrain(void) {
         case 20: GenerateCraftingTest(); break;
         case 21: GenerateTrainTest(); break;
         case 22: GenerateTrainTestLong(); break;
+        case 23: GenerateMoodTest(); break;
     }
     SyncMaterialsToTerrain();
 }
@@ -533,6 +534,7 @@ void AddMoversDemo(int count) {
         }
 
         AssignMoverIdentity(moverCount);
+        AssignRandomTraits(&movers[moverCount]);
         moverCount++;
     }
 
@@ -586,6 +588,7 @@ void SpawnMoversDemo(int count) {
         }
 
         AssignMoverIdentity(moverCount);
+        AssignRandomTraits(&movers[moverCount]);
         moverCount++;
     }
 
@@ -595,6 +598,22 @@ void SpawnMoversDemo(int count) {
 
     double elapsed = (GetTime() - startTime) * 1000.0;
     TraceLog(LOG_INFO, "SpawnMovers: %d movers in %.2fms", moverCount, elapsed);
+}
+
+void SpawnMoverAt(int cx, int cy, int cz) {
+    if (moverCount >= MAX_MOVERS) return;
+    if (!IsCellWalkableAt(cz, cy, cx)) return;
+
+    Mover* m = &movers[moverCount];
+    float x = cx * CELL_SIZE + CELL_SIZE * 0.5f;
+    float y = cy * CELL_SIZE + CELL_SIZE * 0.5f;
+    float speed = balance.baseMoverSpeed;
+    Point goal = {cx, cy, cz};
+
+    InitMover(m, x, y, (float)cz, goal, speed);
+    AssignMoverIdentity(moverCount);
+    AssignRandomTraits(&movers[moverCount]);
+    moverCount++;
 }
 
 void SpawnStockpileWithFilters(bool allowRed, bool allowGreen, bool allowBlue) {
@@ -768,6 +787,7 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
         DesignationsTick(TICK_DT);
         NeedsTick();
         ProcessFreetimeNeeds();
+        MoodTick(TICK_DT);
         AssignJobs();
         JobsTick();
         PROFILE_FRAME_END();  // Store profiler data for this tick
@@ -1239,6 +1259,7 @@ int main(int argc, char** argv) {
                 DesignationsTick(tickDt);
                 NeedsTick();
                 ProcessFreetimeNeeds();
+                MoodTick(tickDt);
                 PROFILE_BEGIN(AssignJobs);
                 AssignJobs();
                 PROFILE_END(AssignJobs);

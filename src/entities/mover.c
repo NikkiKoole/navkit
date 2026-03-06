@@ -713,6 +713,12 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->age = 0;
     m->appearanceSeed = 0;
     m->isDrafted = false;
+    // Mood system
+    m->mood = 0.0f;
+    m->moodletCount = 0;
+    memset(m->moodlets, 0, sizeof(m->moodlets));
+    m->traits[0] = TRAIT_NONE;
+    m->traits[1] = TRAIT_NONE;
     // Transport system
     m->transportState = TRANSPORT_NONE;
     m->transportStation = -1;

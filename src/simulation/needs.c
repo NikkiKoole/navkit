@@ -12,6 +12,7 @@
 
 #include "needs.h"
 #include "balance.h"
+#include "mood.h"
 #include "../entities/mover.h"
 #include "../entities/items.h"
 #include "../entities/item_defs.h"
@@ -354,6 +355,23 @@ static void StartRestSearch(Mover* m, int moverIdx) {
     }
 }
 
+// Classify food for moodlets: cooked/prepared = good, raw/unprocessed = raw
+static bool IsGoodFood(ItemType type) {
+    return type == ITEM_COOKED_MEAT || type == ITEM_BREAD ||
+           type == ITEM_COOKED_LENTILS || type == ITEM_ROASTED_ROOT;
+}
+
+static bool IsRawFood(ItemType type) {
+    return type == ITEM_RAW_MEAT || type == ITEM_BERRIES ||
+           type == ITEM_ROOT || type == ITEM_LENTILS ||
+           type == ITEM_DRIED_BERRIES || type == ITEM_DRIED_ROOT;
+}
+
+// Classify drink for moodlets: tea/juice = good, plain water = neutral
+static bool IsGoodDrink(ItemType type) {
+    return type == ITEM_HERBAL_TEA || type == ITEM_BERRY_JUICE;
+}
+
 static void ProcessMoverFreetime(Mover* m, int moverIdx) {
     // Cancel food-seeking if hunger disabled
     if (!hungerEnabled && (m->freetimeState == FREETIME_SEEKING_FOOD || m->freetimeState == FREETIME_EATING)) {
@@ -488,6 +506,10 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 m->hunger += nutrition;
                 if (m->hunger > 1.0f) m->hunger = 1.0f;
                 EventLog("Mover %d ate item %d (%s), hunger=%.0f%%", moverIdx, ti, ItemName(items[ti].type), m->hunger * 100.0f);
+                // Mood: food quality moodlet
+                ItemType foodType = items[ti].type;
+                if (IsGoodFood(foodType)) AddMoodlet(m, MOODLET_ATE_GOOD_FOOD);
+                else if (IsRawFood(foodType)) AddMoodlet(m, MOODLET_ATE_RAW_FOOD);
                 DeleteItem(ti);
 
                 m->freetimeState = FREETIME_NONE;
@@ -559,6 +581,16 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             // Wake condition: energy recovered enough
             if (m->energy >= balance.energyWakeThreshold) {
                 EventLog("Mover %d woke up, energy=%.0f%%", moverIdx, m->energy * 100.0f);
+                // Mood: sleep quality moodlet
+                if (m->needTarget < 0) {
+                    AddMoodlet(m, MOODLET_SLEPT_ON_GROUND);
+                } else if (m->needTarget < MAX_FURNITURE && furniture[m->needTarget].active) {
+                    FurnitureType ft = furniture[m->needTarget].type;
+                    if (ft == FURNITURE_PLANK_BED)
+                        AddMoodlet(m, MOODLET_SLEPT_WELL);
+                    else
+                        AddMoodlet(m, MOODLET_SLEPT_POORLY);
+                }
                 ReleaseFurniture(m->needTarget, moverIdx);
                 m->needTarget = -1;
                 m->freetimeState = FREETIME_NONE;
@@ -620,6 +652,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             if (m->bodyTemp >= balance.warmthSatisfiedTemp || sourceGone) {
                 if (!sourceGone) {
                     EventLog("Mover %d warmed up (%.1f°C), leaving fire", moverIdx, m->bodyTemp);
+                    AddMoodlet(m, MOODLET_WARM_AND_COZY);
                 }
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
@@ -694,6 +727,8 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 m->thirst += hydration;
                 if (m->thirst > 1.0f) m->thirst = 1.0f;
                 EventLog("Mover %d drank item %d (%s), thirst=%.0f%%", moverIdx, ti, ItemName(items[ti].type), m->thirst * 100.0f);
+                // Mood: drink quality moodlet
+                if (IsGoodDrink(items[ti].type)) AddMoodlet(m, MOODLET_DRANK_GOOD);
                 DeleteItem(ti);
 
                 m->freetimeState = FREETIME_NONE;
@@ -747,6 +782,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 m->thirst += balance.naturalDrinkHydration;
                 if (m->thirst > 1.0f) m->thirst = 1.0f;
                 EventLog("Mover %d drank natural water, thirst=%.0f%%", moverIdx, m->thirst * 100.0f);
+                AddMoodlet(m, MOODLET_DRANK_DIRTY_WATER);
 
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;

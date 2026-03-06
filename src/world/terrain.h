@@ -27,6 +27,7 @@ void GenerateHillsSoilsWater(void); // Hills + soils + rivers/lakes
 void GenerateCraftingTest(void);  // Crafting system test scenario
 void GenerateTrainTest(void);      // Train station transport test scenario
 void GenerateTrainTestLong(void);  // Long platforms + multi-car train test
+void GenerateMoodTest(void);       // Mood system showcase (comfort vs rough camps)
 
 // Perlin noise utilities
 void InitPerlin(int seed);

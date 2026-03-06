@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 89
+#define CURRENT_SAVE_VERSION 90
 
 // Material count constant used by ALL legacy stockpile structs (MAT_COUNT was 17 from v31-v79)
 #define V79_MAT_COUNT 17
@@ -948,6 +948,54 @@ typedef struct {
     bool active;
     // No cartState, stateTimer, atStation, ridingMovers, ridingCount in V85
 } TrainV85;
+
+// V89 Mover struct (before mood fields added in v90)
+typedef struct {
+    float x, y, z;
+    Point goal;
+    int pathLength;
+    int pathIndex;
+    bool active;
+    bool needsRepath;
+    int repathCooldown;
+    float speed;
+    float timeNearWaypoint;
+    float lastX, lastY, lastZ;
+    float timeWithoutProgress;
+    float fallTimer;
+    float workAnimPhase;
+    float hunger;
+    float energy;
+    int freetimeState;
+    int needTarget;
+    float needProgress;
+    float needSearchCooldown;
+    float starvationTimer;
+    float thirst;
+    float dehydrationTimer;
+    float bodyTemp;
+    float hypothermiaTimer;
+    float avoidX, avoidY;
+    int currentJobId;
+    int lastJobType;
+    int lastJobResult;
+    int lastJobTargetX, lastJobTargetY, lastJobTargetZ;
+    unsigned long lastJobEndTick;
+    MoverCapabilities capabilities;
+    int equippedTool;
+    int equippedClothing;
+    char name[16];
+    uint8_t gender;
+    uint8_t age;
+    uint32_t appearanceSeed;
+    bool isDrafted;
+    // No mood fields in V89
+    int transportState;
+    int transportStation;
+    int transportExitStation;
+    int transportTrainIdx;
+    Point transportFinalGoal;
+} MoverV89;
 
 // V85 Mover struct (before transport fields added in v86)
 typedef struct {

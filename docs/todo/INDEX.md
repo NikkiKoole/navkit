@@ -10,6 +10,7 @@
 
 ## Partial (code exists, more to build)
 
+- `mood-moodlets-personality.md` — Mood system foundation shipped (mood.h/c, 5 traits, squared-curve, 31 tests). 8 phases: wire into game, hook needs triggers, weather/light/dirt/food/activity/room moodlets, more traits
 - `10-personality-and-skills.md` — Names, skill progression (8 types), moods — the "character" layer
 - `juice-effects.md` — Screen shake, sprite tweens, particles, screen flashes for game feel
 - `world/trains.md` — Horizontal multi-stop transport: track, stations, mover boarding, auto-decision (phases 1–4 done, phase 5 partial)

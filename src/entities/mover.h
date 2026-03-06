@@ -3,6 +3,7 @@
 
 #include "../world/grid.h"
 #include "../world/pathfinding.h"
+#include "../simulation/mood.h"
 #include <stdbool.h>
 
 // Cell size in pixels (for position calculations)
@@ -101,6 +102,11 @@ typedef struct Mover {
     uint8_t age;            // Cosmetic (50-70)
     uint32_t appearanceSeed;
     bool isDrafted;
+    // Mood system
+    float mood;                    // -1.0 (miserable) to 1.0 (happy)
+    Moodlet moodlets[MAX_MOODLETS]; // active moodlets
+    int moodletCount;              // number of active moodlets
+    uint8_t traits[MAX_TRAITS];    // TraitType personality traits
     // Transport system (train riding)
     int transportState;        // TransportState (NONE/WALKING/WAITING/RIDING)
     int transportStation;      // Entry station idx, -1 = none

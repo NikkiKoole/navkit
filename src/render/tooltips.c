@@ -12,6 +12,7 @@
 #include "../simulation/trees.h"
 #include "../simulation/floordirt.h"
 #include "../simulation/balance.h"
+#include "../simulation/mood.h"
 #include "../entities/trains.h"
 
 static void FormatItemName(const Item* item, char* out, size_t outSize) {
@@ -284,8 +285,8 @@ static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     int jobStep = job ? job->step : 0;
 
     // Build lines dynamically
-    char lines[20][80];
-    Color lineColors[20];
+    char lines[28][80];
+    Color lineColors[28];
     int lineCount = 0;
 
     // Header: index + name or "Mover #N" fallback
@@ -425,6 +426,43 @@ static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
         else { tempLabel = "Normal"; tempColor = GREEN; }
         snprintf(lines[lineCount], sizeof(lines[0]), "Body Temp: %.1fC (%s)", m->bodyTemp, tempLabel);
         lineColors[lineCount++] = tempColor;
+    }
+
+    // Mood
+    if (moodEnabled) {
+        Color moodColor;
+        if (m->mood < -0.5f) moodColor = RED;
+        else if (m->mood < -0.2f) moodColor = ORANGE;
+        else if (m->mood < 0.2f) moodColor = YELLOW;
+        else if (m->mood < 0.5f) moodColor = GREEN;
+        else moodColor = (Color){100, 255, 100, 255};
+        snprintf(lines[lineCount], sizeof(lines[0]), "Mood: %.0f%% (%s)",
+                 (m->mood + 1.0f) * 50.0f, MoodLevelName(m->mood));
+        lineColors[lineCount++] = moodColor;
+
+        // Active moodlets
+        for (int mi = 0; mi < m->moodletCount && lineCount < 26; mi++) {
+            if (m->moodlets[mi].remainingTime <= 0.0f) continue;
+            float hoursLeft = m->moodlets[mi].remainingTime / GameHoursToGameSeconds(1.0f);
+            snprintf(lines[lineCount], sizeof(lines[0]), "  %s %+.0f (%.1fh)",
+                     moodletDefs[m->moodlets[mi].type].name,
+                     m->moodlets[mi].value, hoursLeft);
+            lineColors[lineCount++] = (m->moodlets[mi].value >= 0) ? GREEN : ORANGE;
+        }
+
+        // Traits
+        if (m->traits[0] != TRAIT_NONE || m->traits[1] != TRAIT_NONE) {
+            char traitBuf[64] = "Traits: ";
+            if (m->traits[0] != TRAIT_NONE) {
+                strncat(traitBuf, traitDefs[m->traits[0]].name, sizeof(traitBuf) - strlen(traitBuf) - 1);
+            }
+            if (m->traits[1] != TRAIT_NONE) {
+                strncat(traitBuf, ", ", sizeof(traitBuf) - strlen(traitBuf) - 1);
+                strncat(traitBuf, traitDefs[m->traits[1]].name, sizeof(traitBuf) - strlen(traitBuf) - 1);
+            }
+            snprintf(lines[lineCount], sizeof(lines[0]), "%s", traitBuf);
+            lineColors[lineCount++] = SKYBLUE;
+        }
     }
 
     // Job info

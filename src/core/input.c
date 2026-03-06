@@ -22,6 +22,7 @@ void HandleInput(void);
 // Forward declarations
 bool SaveWorld(const char* filename);
 bool LoadWorld(const char* filename);
+void SpawnMoverAt(int cx, int cy, int cz);
 
 // Pile mode configuration
 float soilPileRadius = 3.0f;  // How far soil can spread in pile mode
@@ -3282,6 +3283,9 @@ void HandleInput(void) {
             case ACTION_SANDBOX_BUSH:
                 if (leftClick) ExecutePlaceBush(x1, y1, x2, y2, z);
                 else ExecuteRemoveBush(x1, y1, x2, y2, z);
+                break;
+            case ACTION_SANDBOX_MOVER:
+                if (leftClick) SpawnMoverAt(x1, y1, z);
                 break;
             case ACTION_DRAW_TRACK:
                 if (leftClick) ExecutePlaceTrack(x1, y1, x2, y2, z);

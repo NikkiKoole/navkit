@@ -8,10 +8,13 @@
 #include "../entities/stockpiles.h"
 #include "../entities/items.h"
 #include "../entities/mover.h"
+#include "../entities/furniture.h"
 #include "designations.h"
 #include "../simulation/water.h"
 #include "../simulation/trees.h"
 #include "../simulation/plants.h"
+#include "../simulation/lighting.h"
+#include "../simulation/mood.h"
 #include "../game_state.h"
 #include <math.h>
 #include <string.h>
@@ -4832,6 +4835,121 @@ void GenerateTrainTestLong(void) {
         }
         SetStockpileFilter(sp, ITEM_ROCK, true);
         SetStockpilePriority(sp, 7);
+    }
+
+    needsRebuild = true;
+}
+
+void GenerateMoodTest(void) {
+    // Mood system showcase: two camps side by side
+    // Left = comfort camp (beds, good food, tea, torches)
+    // Right = rough camp (leaf piles, raw food, pond water)
+    // Spawn movers via UI to watch personality-driven mood differences
+    InitGridWithSizeAndChunkSize(40, 30, 16, 16);
+
+    ClearWorkshops();
+    ClearStockpiles();
+    ClearItems();
+    ClearFurniture();
+    InitDesignations();
+    for (int i = 0; i < MAX_BLUEPRINTS; i++) {
+        blueprints[i].active = false;
+    }
+    blueprintCount = 0;
+
+    // Fill z=0 with dirt (ground), z=1 is walking level
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][y][x] = CELL_WALL;
+            SetWallMaterial(x, y, 0, MAT_DIRT);
+            SetVegetation(x, y, 0, VEG_GRASS);
+        }
+    }
+
+    // ── Comfort camp (left side, x=3..10) ──
+
+    // Wood floor under beds (shelter area)
+    for (int y = 5; y <= 10; y++) {
+        for (int x = 3; x <= 10; x++) {
+            SET_FLOOR(x, y, 1);
+            SetFloorMaterial(x, y, 1, MAT_OAK);
+        }
+    }
+
+    // Plank beds
+    SpawnFurniture(4, 6, 1, FURNITURE_PLANK_BED, MAT_OAK);
+    SpawnFurniture(6, 6, 1, FURNITURE_PLANK_BED, MAT_OAK);
+    SpawnFurniture(8, 6, 1, FURNITURE_PLANK_BED, MAT_OAK);
+    SpawnFurniture(4, 9, 1, FURNITURE_PLANK_BED, MAT_OAK);
+    SpawnFurniture(6, 9, 1, FURNITURE_PLANK_BED, MAT_OAK);
+    SpawnFurniture(8, 9, 1, FURNITURE_PLANK_BED, MAT_OAK);
+
+    // Good food stockpile (cooked meat + bread) — large 4x4
+    int moodFoodSp = CreateStockpile(3, 13, 1, 4, 4);
+    if (moodFoodSp >= 0) {
+        for (int t = 0; t < ITEM_TYPE_COUNT; t++)
+            SetStockpileFilter(moodFoodSp, t, false);
+        SetStockpileFilter(moodFoodSp, ITEM_COOKED_MEAT, true);
+        SetStockpileFilter(moodFoodSp, ITEM_BREAD, true);
+        SetStockpileFilter(moodFoodSp, ITEM_ROASTED_ROOT, true);
+        SetStockpileFilter(moodFoodSp, ITEM_COOKED_LENTILS, true);
+        SetStockpilePriority(moodFoodSp, 7);
+    }
+    // Spawn lots of good food on ground for hauling
+    {
+        ItemType goodFoods[] = {ITEM_COOKED_MEAT, ITEM_BREAD, ITEM_ROASTED_ROOT, ITEM_COOKED_LENTILS};
+        for (int i = 0; i < 30; i++) {
+            float ix = (3 + i % 6) * CELL_SIZE + CELL_SIZE * 0.5f;
+            float iy = (18 + i / 6) * CELL_SIZE + CELL_SIZE * 0.5f;
+            SpawnItem(ix, iy, 1.0f, goodFoods[i % 4]);
+        }
+    }
+
+    // Good drink stockpile (tea + juice) — large 3x3
+    int moodDrinkSp = CreateStockpile(9, 13, 1, 3, 3);
+    if (moodDrinkSp >= 0) {
+        for (int t = 0; t < ITEM_TYPE_COUNT; t++)
+            SetStockpileFilter(moodDrinkSp, t, false);
+        SetStockpileFilter(moodDrinkSp, ITEM_HERBAL_TEA, true);
+        SetStockpileFilter(moodDrinkSp, ITEM_BERRY_JUICE, true);
+        SetStockpilePriority(moodDrinkSp, 7);
+    }
+    for (int i = 0; i < 20; i++) {
+        float ix = (9 + i % 4) * CELL_SIZE + CELL_SIZE * 0.5f;
+        float iy = (18 + i / 4) * CELL_SIZE + CELL_SIZE * 0.5f;
+        SpawnItem(ix, iy, 1.0f, (i % 2 == 0) ? ITEM_HERBAL_TEA : ITEM_BERRY_JUICE);
+    }
+
+    // Torches for lighting
+    AddLightSource(5, 5, 1, 255, 180, 80, 12);
+    AddLightSource(9, 10, 1, 255, 180, 80, 12);
+    AddLightSource(5, 13, 1, 255, 180, 80, 12);
+
+    // ── Rough camp (right side, x=24..30) ──
+
+    // Leaf piles on bare ground (no floor)
+    SpawnFurniture(25, 6, 1, FURNITURE_LEAF_PILE, 0);
+    SpawnFurniture(27, 6, 1, FURNITURE_LEAF_PILE, 0);
+    SpawnFurniture(29, 6, 1, FURNITURE_LEAF_PILE, 0);
+    SpawnFurniture(25, 9, 1, FURNITURE_LEAF_PILE, 0);
+    SpawnFurniture(27, 9, 1, FURNITURE_LEAF_PILE, 0);
+    SpawnFurniture(29, 9, 1, FURNITURE_LEAF_PILE, 0);
+
+    // Lots of raw food scattered on ground (no stockpile)
+    {
+        ItemType rawFoods[] = {ITEM_RAW_MEAT, ITEM_BERRIES, ITEM_ROOT, ITEM_LENTILS};
+        for (int i = 0; i < 30; i++) {
+            float ix = (24 + i % 6) * CELL_SIZE + CELL_SIZE * 0.5f;
+            float iy = (13 + i / 6) * CELL_SIZE + CELL_SIZE * 0.5f;
+            SpawnItem(ix, iy, 1.0f, rawFoods[i % 4]);
+        }
+    }
+
+    // Large natural water pond (right side, for dirty water drinking)
+    for (int y = 20; y <= 26; y++) {
+        for (int x = 25; x <= 32; x++) {
+            SetWaterLevel(x, y, 1, WATER_MAX_LEVEL);
+        }
     }
 
     needsRebuild = true;

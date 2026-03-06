@@ -916,6 +916,7 @@ static JobRunResult RunWorkProgress(Job* job, Designation* d, Mover* mover,
                                      float dt, float workTimeGH, bool resetStuck,
                                      float speedMultiplier) {
     if (resetStuck) mover->timeWithoutProgress = 0.0f;
+    speedMultiplier *= GetMoodSpeedMult(mover);
     job->progress += (dt * speedMultiplier) / GameHoursToGameSeconds(workTimeGH);
     if (d) d->progress = job->progress;
     return (job->progress >= 1.0f) ? JOBRUN_DONE : JOBRUN_RUNNING;

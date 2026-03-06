@@ -29,6 +29,7 @@
 #include "../simulation/lighting.h"
 #include "../simulation/plants.h"
 #include "../entities/furniture.h"
+#include "../simulation/mood.h"
 #include "save_migrations.h"
 
 #define INSPECT_V21_MAT_COUNT 10
@@ -142,6 +143,25 @@ static void print_mover(int idx) {
                    m->transportFinalGoal.x, m->transportFinalGoal.y, m->transportFinalGoal.z);
         }
         printf("\n");
+    }
+
+    // Mood
+    printf("Mood: %.2f (%s), speed mult: %.2fx\n", m->mood, MoodLevelName(m->mood), GetMoodSpeedMult(m));
+    if (m->traits[0] != TRAIT_NONE || m->traits[1] != TRAIT_NONE) {
+        printf("Traits:");
+        for (int t = 0; t < MAX_TRAITS; t++) {
+            if (m->traits[t] != TRAIT_NONE)
+                printf(" %s", traitDefs[m->traits[t]].name);
+        }
+        printf("\n");
+    }
+    if (m->moodletCount > 0) {
+        printf("Moodlets (%d):\n", m->moodletCount);
+        for (int ml = 0; ml < m->moodletCount; ml++) {
+            Moodlet* mlt = &m->moodlets[ml];
+            printf("  %s: %+.1f (%.0fs remaining)\n",
+                   moodletDefs[mlt->type].name, mlt->value, mlt->remainingTime);
+        }
     }
 
     if (m->currentJobId >= 0 && m->currentJobId < insp_jobHWM) {
@@ -2181,11 +2201,64 @@ int InspectSaveFile(int argc, char** argv) {
     fread(&insp_moverCount, 4, 1, f);
     insp_movers = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Mover) : sizeof(Mover));
     insp_moverPaths = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Point) * MAX_MOVER_PATH : sizeof(Point) * MAX_MOVER_PATH);
-    if (version >= 86) {
-        // v86+: Mover struct with transport fields
+    if (version >= 90) {
+        // v90+: Mover struct with mood fields
         if (insp_moverCount > 0) fread(insp_movers, sizeof(Mover), insp_moverCount, f);
         for (int i = 0; i < insp_moverCount; i++) {
             fread(insp_moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+        }
+    } else if (version >= 86) {
+        // v86-v89: Mover without mood fields
+        for (int i = 0; i < insp_moverCount; i++) {
+            MoverV89 old;
+            fread(&old, sizeof(MoverV89), 1, f);
+            fread(insp_moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+            Mover* m = &insp_movers[i];
+            m->x = old.x; m->y = old.y; m->z = old.z;
+            m->goal = old.goal;
+            m->pathLength = old.pathLength;
+            m->pathIndex = old.pathIndex;
+            m->active = old.active;
+            m->needsRepath = old.needsRepath;
+            m->repathCooldown = old.repathCooldown;
+            m->speed = old.speed;
+            m->timeNearWaypoint = old.timeNearWaypoint;
+            m->lastX = old.lastX; m->lastY = old.lastY; m->lastZ = old.lastZ;
+            m->timeWithoutProgress = old.timeWithoutProgress;
+            m->fallTimer = old.fallTimer;
+            m->workAnimPhase = old.workAnimPhase;
+            m->hunger = old.hunger;
+            m->energy = old.energy;
+            m->freetimeState = old.freetimeState;
+            m->needTarget = old.needTarget;
+            m->needProgress = old.needProgress;
+            m->needSearchCooldown = old.needSearchCooldown;
+            m->starvationTimer = old.starvationTimer;
+            m->thirst = old.thirst;
+            m->dehydrationTimer = old.dehydrationTimer;
+            m->bodyTemp = old.bodyTemp;
+            m->hypothermiaTimer = old.hypothermiaTimer;
+            m->avoidX = old.avoidX; m->avoidY = old.avoidY;
+            m->currentJobId = old.currentJobId;
+            m->lastJobType = old.lastJobType;
+            m->lastJobResult = old.lastJobResult;
+            m->lastJobTargetX = old.lastJobTargetX;
+            m->lastJobTargetY = old.lastJobTargetY;
+            m->lastJobTargetZ = old.lastJobTargetZ;
+            m->lastJobEndTick = old.lastJobEndTick;
+            m->capabilities = old.capabilities;
+            m->equippedTool = old.equippedTool;
+            m->equippedClothing = old.equippedClothing;
+            memcpy(m->name, old.name, sizeof(old.name));
+            m->gender = old.gender;
+            m->age = old.age;
+            m->appearanceSeed = old.appearanceSeed;
+            m->isDrafted = old.isDrafted;
+            m->transportState = old.transportState;
+            m->transportStation = old.transportStation;
+            m->transportExitStation = old.transportExitStation;
+            m->transportTrainIdx = old.transportTrainIdx;
+            m->transportFinalGoal = old.transportFinalGoal;
         }
     } else if (version >= 83) {
         // v83-v85: Mover without transport fields
@@ -2637,6 +2710,17 @@ int InspectSaveFile(int argc, char** argv) {
         for (int i = 0; i < insp_moverCount; i++) {
             insp_movers[i].thirst = 1.0f;
             insp_movers[i].dehydrationTimer = 0.0f;
+        }
+    }
+
+    // Initialize mood fields for old saves (v90+)
+    if (version < 90) {
+        for (int i = 0; i < insp_moverCount; i++) {
+            insp_movers[i].mood = 0.0f;
+            insp_movers[i].moodletCount = 0;
+            memset(insp_movers[i].moodlets, 0, sizeof(insp_movers[i].moodlets));
+            insp_movers[i].traits[0] = TRAIT_NONE;
+            insp_movers[i].traits[1] = TRAIT_NONE;
         }
     }
 

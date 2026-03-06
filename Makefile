@@ -110,6 +110,7 @@ test_loop_closers_SRC := tests/test_loop_closers.c
 test_namegen_SRC     := tests/test_namegen.c
 test_biome_presets_SRC := tests/test_biome_presets.c
 test_trains_SRC      := tests/test_trains.c
+test_mood_SRC        := tests/test_mood.c
 
 # ---------------------------------------------------------------------------
 # Unity build dependency tracking
@@ -415,6 +416,11 @@ test_trains: $(TEST_UNITY_OBJ)
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_trains_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_trains -q
 
+test_mood: $(TEST_UNITY_OBJ)
+	@echo "Running mood tests..."
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_mood_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	-@./$(BINDIR)/test_mood -q
+
 # Soundsystem tests - standalone audio library tests
 test_soundsystem: $(BINDIR)
 	@echo "Running soundsystem tests..."
@@ -429,7 +435,7 @@ test_mechanisms: $(BINDIR)
 
 # Run all tests (mover uses 5 stress iterations by default)
 .IGNORE: test
-test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_seasons test_weather test_wind test_snow test_thunderstorm test_lighting test_workshop_linking test_hunger test_stacking test_containers test_sleep test_furniture test_balance test_soundsystem test_cross_z test_workshop_deconstruction test_tool_quality test_doors test_butchering test_hunting test_spoilage test_fog test_farming test_clothing test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains
+test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_seasons test_weather test_wind test_snow test_thunderstorm test_lighting test_workshop_linking test_hunger test_stacking test_containers test_sleep test_furniture test_balance test_soundsystem test_cross_z test_workshop_deconstruction test_tool_quality test_doors test_butchering test_hunting test_spoilage test_fog test_farming test_clothing test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood
 
 # Full stress tests - mover tests use 20 iterations
 test-full: $(TEST_UNITY_OBJ)
@@ -587,4 +593,4 @@ asan: $(RAYLIB_LIB) | $(BINDIR)
 release: $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-raylib clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains path steer crowd soundsystem-demo mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs bench_items windows
+.PHONY: all clean clean-raylib clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood path steer crowd soundsystem-demo mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs bench_items windows

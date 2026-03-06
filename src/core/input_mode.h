@@ -126,6 +126,7 @@ typedef enum {
     ACTION_SANDBOX_RAISE,       // Raise terrain (build up)
     ACTION_SANDBOX_LIGHT,       // Place/remove light sources
     ACTION_SANDBOX_BUSH,        // Place/remove bushes
+    ACTION_SANDBOX_MOVER,       // Place mover at clicked cell
 } InputAction;
 
 // Current input state
