@@ -169,6 +169,7 @@ void RepathAgents(void);
 void AddMoversDemo(int count);
 void SpawnMoversDemo(int count);
 void SpawnStockpileWithFilters(bool allowRed, bool allowGreen, bool allowBlue);
+void SpawnMoverAt(int cx, int cy, int cz);
 
 
 // Start a new game: randomize seed, generate 128x128 HillsSoilsWater, spawn 1 mover
@@ -668,6 +669,38 @@ void DrawUI(void) {
                 BuildEntrances();
                 BuildGraph();
                 AddMessage(TextFormat("Generated terrain: %s", terrainNames[currentTerrain]), GREEN);
+            }
+            y += 22;
+            if (PushButton(ix, y, "Mood Scenario")) {
+                // One-click setup: terrain + movers + needs
+                currentTerrain = 23;
+                InitPlants();
+                ClearFarming();
+                GenerateCurrentTerrain();
+                InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+                InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
+                InitDesignations();
+                RebuildSimActivityCounts();
+                InitFire();
+                InitSmoke();
+                InitSteam();
+                InitTemperature();
+                InitGroundWear();
+                InitFloorDirt();
+                InitSnow();
+                InitLighting();
+                BuildEntrances();
+                BuildGraph();
+                // Enable needs
+                hungerEnabled = true;
+                thirstEnabled = true;
+                energyEnabled = true;
+                // Spawn 10 movers spread across both camps
+                for (int mi = 0; mi < 5; mi++) {
+                    SpawnMoverAt(4 + mi, 8, 1);   // comfort camp
+                    SpawnMoverAt(25 + mi, 8, 1);   // rough camp
+                }
+                AddMessage("Mood scenario: 10 movers, needs ON", GREEN);
             }
             y += 22;
             // Grid size buttons — inline row
