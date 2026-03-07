@@ -4945,12 +4945,25 @@ void GenerateMoodTest(void) {
         }
     }
 
-    // Large natural water pond (right side, for dirty water drinking)
-    for (int y = 20; y <= 26; y++) {
-        for (int x = 25; x <= 32; x++) {
-            SetWaterLevel(x, y, 1, WATER_MAX_LEVEL);
+    // Walled pond at z=1 — 2-thick walls so ramps can carve outer layer
+    // Inner wall: y=20,y=26,x=25,x=32  Outer wall: y=19,y=27,x=24,x=33
+    for (int y = 19; y <= 27; y++) {
+        for (int x = 24; x <= 33; x++) {
+            bool outer = (y == 19 || y == 27 || x == 24 || x == 33);
+            bool inner = (y == 20 || y == 26 || x == 25 || x == 32);
+            if (outer || inner) {
+                grid[1][y][x] = CELL_WALL;
+                SetWallMaterial(x, y, 1, MAT_GRANITE);
+                SetWallNatural(x, y, 1);
+            } else {
+                SetWaterLevel(x, y, 1, WATER_MAX_LEVEL);
+            }
         }
     }
+    // Carve ramps into outer north wall — inner wall still holds water
+    grid[1][19][26] = CELL_RAMP_S;
+    grid[1][19][28] = CELL_RAMP_S;
+    grid[1][19][30] = CELL_RAMP_S;
 
     needsRebuild = true;
 }

@@ -217,7 +217,7 @@ static int FindBestDrinkableItem(float x, float y, int z) {
 
 // Find nearest water cell with an adjacent walkable cell
 // Returns true if found, sets outWaterX/Y/Z and outStandX/Y
-static bool FindNearestWaterCell(float x, float y, int z, int* outWaterX, int* outWaterY, int* outWaterZ, int* outStandX, int* outStandY) {
+static bool FindNearestWaterCell(float x, float y, int z, int* outWaterX, int* outWaterY, int* outWaterZ, int* outStandX, int* outStandY, int* outStandZ) {
     int cx = (int)(x / CELL_SIZE);
     int cy = (int)(y / CELL_SIZE);
     int bestDistSq = INT_MAX;
@@ -236,19 +236,22 @@ static bool FindNearestWaterCell(float x, float y, int z, int* outWaterX, int* o
                 int distSq = dx * dx + dy * dy;
                 if (distSq >= bestDistSq) continue;
 
-                // Find walkable neighbor
+                // Find walkable neighbor at z or z+1 (wall-top access to walled ponds)
                 int dirs[4][2] = {{0,-1},{0,1},{-1,0},{1,0}};
-                for (int d = 0; d < 4; d++) {
-                    int sx = wx + dirs[d][0];
-                    int sy = wy + dirs[d][1];
-                    if (sx >= 0 && sx < gridWidth && sy >= 0 && sy < gridHeight &&
-                        IsCellWalkableAt(z, sy, sx)) {
-                        bestDistSq = distSq;
-                        *outWaterX = wx; *outWaterY = wy; *outWaterZ = z;
-                        *outStandX = sx; *outStandY = sy;
-                        found = true;
-                        break;
+                for (int sz = z; sz <= z + 1 && sz < gridDepth; sz++) {
+                    for (int d = 0; d < 4; d++) {
+                        int sx = wx + dirs[d][0];
+                        int sy = wy + dirs[d][1];
+                        if (sx >= 0 && sx < gridWidth && sy >= 0 && sy < gridHeight &&
+                            IsCellWalkableAt(sz, sy, sx)) {
+                            bestDistSq = distSq;
+                            *outWaterX = wx; *outWaterY = wy; *outWaterZ = z;
+                            *outStandX = sx; *outStandY = sy; *outStandZ = sz;
+                            found = true;
+                            break;
+                        }
                     }
+                    if (found && bestDistSq == distSq) break;
                 }
             }
         }
@@ -287,13 +290,13 @@ static void StartDrinkSearch(Mover* m, int moverIdx) {
     }
 
     // No items — try natural water
-    int waterX, waterY, waterZ, standX, standY;
-    if (FindNearestWaterCell(m->x, m->y, (int)m->z, &waterX, &waterY, &waterZ, &standX, &standY)) {
-        EventLog("Mover %d SEEKING_NATURAL_WATER at (%d,%d,%d)", moverIdx, waterX, waterY, waterZ);
+    int waterX, waterY, waterZ, standX, standY, standZ;
+    if (FindNearestWaterCell(m->x, m->y, (int)m->z, &waterX, &waterY, &waterZ, &standX, &standY, &standZ)) {
+        EventLog("Mover %d SEEKING_NATURAL_WATER at (%d,%d,%d) stand (%d,%d,%d)", moverIdx, waterX, waterY, waterZ, standX, standY, standZ);
         m->freetimeState = FREETIME_SEEKING_NATURAL_WATER;
         m->needTarget = waterX + waterY * gridWidth; // encode water cell position
         m->needProgress = 0.0f;
-        m->goal = (Point){standX, standY, waterZ};
+        m->goal = (Point){standX, standY, standZ};
         m->needsRepath = true;
         return;
     }
@@ -743,8 +746,9 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             int waterX = m->needTarget % gridWidth;
             int waterY = m->needTarget / gridWidth;
 
-            // Validate water still exists
-            if (!HasWater(waterX, waterY, (int)m->z)) {
+            // Validate water still exists (check mover z and z-1 for walled ponds)
+            int mz = (int)m->z;
+            if (!HasWater(waterX, waterY, mz) && !(mz > 0 && HasWater(waterX, waterY, mz - 1))) {
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
                 m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);
