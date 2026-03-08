@@ -17,7 +17,7 @@ void SoundSynthPlayPhrase(SoundSynth* synth, const SoundPhrase* phrase);
 void SoundSynthPlaySongPhrases(SoundSynth* synth, const SoundSong* song);
 void SoundSynthUpdate(SoundSynth* synth, float dt);
 
-// Song playback
+// Song playback (individual)
 void SoundSynthPlaySongDormitory(SoundSynth* synth);
 void SoundSynthPlaySongSuspense(SoundSynth* synth);
 void SoundSynthPlaySongJazz(SoundSynth* synth);
@@ -28,5 +28,14 @@ void SoundSynthPlaySongMrLucky(SoundSynth* synth);
 void SoundSynthPlaySongAtmosphere(SoundSynth* synth);
 void SoundSynthStopSong(SoundSynth* synth);
 bool SoundSynthIsSongPlaying(SoundSynth* synth);
+
+// Jukebox — browse and play songs by index
+int SoundSynthGetSongCount(void);
+const char* SoundSynthGetSongName(int index);
+int SoundSynthGetCurrentSong(SoundSynth* synth);
+void SoundSynthJukeboxPlay(SoundSynth* synth, int songIndex);
+void SoundSynthJukeboxNext(SoundSynth* synth);
+void SoundSynthJukeboxPrev(SoundSynth* synth);
+void SoundSynthJukeboxToggle(SoundSynth* synth);
 
 #endif

@@ -1147,7 +1147,8 @@ int main(int argc, char** argv) {
             HandleInput();
         }
 
-        // Sound debug toggles (independent from input modes)
+        // Sound debug (independent from input modes)
+        // KP1 = toggle sound on/off, KP2 = cycle voice demos, KP4 = auto-play
         if (IsKeyPressed(KEY_KP_1)) {
             SoundDebugToggle();
         }
@@ -1157,108 +1158,50 @@ int main(int argc, char** argv) {
                        soundDebugAuto ? GREEN : GRAY);
         }
         if (IsKeyPressed(KEY_KP_2)) {
-            SoundDebugPlayCall();
-        }
-        if (IsKeyPressed(KEY_KP_3)) {
-            SoundDebugPlaySong();
-        }
-        if (IsKeyPressed(KEY_KP_5)) {
-            SoundDebugPlayBirdOnly();
-        }
-        if (IsKeyPressed(KEY_KP_6)) {
-            SoundDebugPlayVowelOnly();
-        }
-        if (IsKeyPressed(KEY_KP_7)) {
+            static int voiceDemoIndex = 0;
+            static const char* voiceDemoNames[] = {
+                "Call", "Bird", "Vowel", "Phrase Song",
+                "Call+Response Variation", "Call+Response Contrast", "Call+Response Mirror"
+            };
             soundDebugAuto = false;
-            SoundDebugCallResponseVariation();
+            switch (voiceDemoIndex) {
+                case 0: SoundDebugPlayCall(); break;
+                case 1: SoundDebugPlayBirdOnly(); break;
+                case 2: SoundDebugPlayVowelOnly(); break;
+                case 3: SoundDebugPlaySong(); break;
+                case 4: SoundDebugCallResponseVariation(); break;
+                case 5: SoundDebugCallResponseContrast(); break;
+                case 6: SoundDebugCallResponseMirror(); break;
+            }
+            AddMessage(TextFormat("Voice: %s [%d/7] (KP2 next)",
+                voiceDemoNames[voiceDemoIndex], voiceDemoIndex + 1), GREEN);
+            voiceDemoIndex = (voiceDemoIndex + 1) % 7;
         }
-        if (IsKeyPressed(KEY_KP_8)) {
-            soundDebugAuto = false;
-            SoundDebugCallResponseContrast();
-        }
-        if (IsKeyPressed(KEY_KP_9)) {
-            soundDebugAuto = false;
-            SoundDebugCallResponseMirror();
-        }
+        // Jukebox: KP0 = play/stop, KP+ = next song, KP- = prev song
         if (IsKeyPressed(KEY_KP_0)) {
             SoundDebugEnsure();
+            SoundSynthJukeboxToggle(soundDebugSynth);
             if (SoundSynthIsSongPlaying(soundDebugSynth)) {
-                SoundSynthStopSong(soundDebugSynth);
-                AddMessage("Song: stopped", GRAY);
+                int idx = SoundSynthGetCurrentSong(soundDebugSynth);
+                AddMessage(TextFormat("Jukebox: %s [%d/%d] (KP0 stop, KP+/- browse)",
+                    SoundSynthGetSongName(idx), idx + 1, SoundSynthGetSongCount()), GREEN);
             } else {
-                SoundSynthPlaySongDormitory(soundDebugSynth);
-                AddMessage("Song: Dormitory Ambient (KP0 stop, KP. suspense)", GREEN);
-            }
-        }
-        if (IsKeyPressed(KEY_KP_DECIMAL)) {
-            SoundDebugEnsure();
-            if (SoundSynthIsSongPlaying(soundDebugSynth)) {
-                SoundSynthStopSong(soundDebugSynth);
-                AddMessage("Song: stopped", GRAY);
-            } else {
-                SoundSynthPlaySongSuspense(soundDebugSynth);
-                AddMessage("Song: Suspense (KP. stop)", GREEN);
-            }
-        }
-        if (IsKeyPressed(KEY_KP_ENTER)) {
-            SoundDebugEnsure();
-            if (SoundSynthIsSongPlaying(soundDebugSynth)) {
-                SoundSynthStopSong(soundDebugSynth);
-                AddMessage("Song: stopped", GRAY);
-            } else {
-                SoundSynthPlaySongJazz(soundDebugSynth);
-                AddMessage("Song: Jazz Call & Response (KP_Enter stop)", GREEN);
+                AddMessage("Jukebox: stopped", GRAY);
             }
         }
         if (IsKeyPressed(KEY_KP_ADD)) {
             SoundDebugEnsure();
-            if (SoundSynthIsSongPlaying(soundDebugSynth)) {
-                SoundSynthStopSong(soundDebugSynth);
-                AddMessage("Song: stopped", GRAY);
-            } else {
-                SoundSynthPlaySongHouse(soundDebugSynth);
-                AddMessage("Song: House (KP+ stop)", GREEN);
-            }
+            SoundSynthJukeboxNext(soundDebugSynth);
+            int idx = SoundSynthGetCurrentSong(soundDebugSynth);
+            AddMessage(TextFormat("Jukebox: %s [%d/%d]",
+                SoundSynthGetSongName(idx), idx + 1, SoundSynthGetSongCount()), GREEN);
         }
         if (IsKeyPressed(KEY_KP_SUBTRACT)) {
             SoundDebugEnsure();
-            if (SoundSynthIsSongPlaying(soundDebugSynth)) {
-                SoundSynthStopSong(soundDebugSynth);
-                AddMessage("Song: stopped", GRAY);
-            } else {
-                SoundSynthPlaySongDeepHouse(soundDebugSynth);
-                AddMessage("Song: Deep House (KP- stop)", GREEN);
-            }
-        }
-        if (IsKeyPressed(KEY_KP_MULTIPLY)) {
-            SoundDebugEnsure();
-            if (SoundSynthIsSongPlaying(soundDebugSynth)) {
-                SoundSynthStopSong(soundDebugSynth);
-                AddMessage("Song: stopped", GRAY);
-            } else {
-                SoundSynthPlaySongDilla(soundDebugSynth);
-                AddMessage("Song: Dilla Hip-Hop (KP* stop)", GREEN);
-            }
-        }
-        if (IsKeyPressed(KEY_KP_DIVIDE)) {
-            SoundDebugEnsure();
-            if (SoundSynthIsSongPlaying(soundDebugSynth)) {
-                SoundSynthStopSong(soundDebugSynth);
-                AddMessage("Song: stopped", GRAY);
-            } else {
-                SoundSynthPlaySongAtmosphere(soundDebugSynth);
-                AddMessage("Song: Atmosphere (KP/ stop)", GREEN);
-            }
-        }
-        if (IsKeyPressed(KEY_F12)) {
-            SoundDebugEnsure();
-            if (SoundSynthIsSongPlaying(soundDebugSynth)) {
-                SoundSynthStopSong(soundDebugSynth);
-                AddMessage("Song: stopped", GRAY);
-            } else {
-                SoundSynthPlaySongMrLucky(soundDebugSynth);
-                AddMessage("Song: Mr Lucky (F12 stop)", GREEN);
-            }
+            SoundSynthJukeboxPrev(soundDebugSynth);
+            int idx = SoundSynthGetCurrentSong(soundDebugSynth);
+            AddMessage(TextFormat("Jukebox: %s [%d/%d]",
+                SoundSynthGetSongName(idx), idx + 1, SoundSynthGetSongCount()), GREEN);
         }
 
         // Handle drag-and-drop of save files

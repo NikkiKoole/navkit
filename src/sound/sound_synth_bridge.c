@@ -43,6 +43,8 @@ typedef struct {
     // Filter sweep state — accumulates across bars for long sweeps
     float sweepPhase;       // 0.0 to 1.0, wraps (sine LFO position)
     float sweepRate;        // how fast the sweep moves per second (e.g. 0.02 = 50s cycle)
+    // Jukebox
+    int jukeboxIndex;       // which song is selected (-1 = none)
 } SongPlayer;
 
 // ============================================================================
@@ -50,7 +52,7 @@ typedef struct {
 // ============================================================================
 
 struct SoundSynth {
-    SoundSystem ss;         // full: synth + drums + effects + sequencer + sampler
+    SoundSystem ss;         // single sound system (shared voice pool)
     AudioStream stream;
     int sampleRate;
     int bufferFrames;
@@ -70,17 +72,45 @@ static void SoundSynthCallback(void* buffer, unsigned int frames) {
     if (!g_soundSynth) return;
     short* out = (short*)buffer;
     float sr = (float)g_soundSynth->sampleRate;
+    float bufferDt = (float)frames / sr;
 
-    // Point global contexts to our instance
     useSoundSystem(&g_soundSynth->ss);
 
+    // Update sequencer on the audio thread — melody triggers and voice
+    // processing share the same thread, so no context pointer races.
+    if (g_soundSynth->songPlayer.active) {
+        SongPlayer* sp = &g_soundSynth->songPlayer;
+
+        // Advance filter sweep phase
+        if (sp->sweepRate > 0.0f) {
+            sp->sweepPhase += sp->sweepRate * bufferDt;
+            if (sp->sweepPhase > 1.0f) sp->sweepPhase -= 1.0f;
+        }
+
+        // Track pattern loops via sequencer playCount
+        int prevPlayCount = seq.playCount;
+        updateSequencer(bufferDt);
+
+        // Detect when the sequencer loops (playCount incremented)
+        if (seq.playCount > prevPlayCount) {
+            sp->loopsOnCurrent++;
+
+            // Cycle to next pattern after loopsPerPattern repeats
+            if (sp->patternCount > 1 && sp->loopsOnCurrent >= sp->loopsPerPattern) {
+                int nextPat = (sp->currentPattern + 1) % sp->patternCount;
+                sp->currentPattern = nextPat;
+                sp->loopsOnCurrent = 0;
+                Pattern* seqPat = seqCurrentPattern();
+                *seqPat = sp->patterns[nextPat];
+            }
+        }
+    }
+
     for (unsigned int i = 0; i < frames; i++) {
-        // Synth voices
         float sample = 0.0f;
         for (int v = 0; v < NUM_VOICES; v++) {
             sample += processVoice(&synthVoices[v], sr);
         }
-        // Drums
         sample += processDrums(1.0f / sr);
 
         sample *= masterVolume;
@@ -685,7 +715,7 @@ bool SoundSynthInitAudio(SoundSynth* synth, int sampleRate, int bufferFrames) {
     SetAudioStreamCallback(synth->stream, SoundSynthCallback);
     PlayAudioStream(synth->stream);
 
-    // Initialize the full sound system
+    // Initialize song system (sequencer + melody + drums)
     initSoundSystem(&synth->ss);
     useSoundSystem(&synth->ss);
 
@@ -705,6 +735,7 @@ bool SoundSynthInitAudio(SoundSynth* synth, int sampleRate, int bufferFrames) {
 
     // Init song player
     synth->songPlayer.active = false;
+    synth->songPlayer.jukeboxIndex = 0;
     for (int i = 0; i < SEQ_MELODY_TRACKS; i++) {
         synth->songPlayer.melodyVoice[i] = -1;
     }
@@ -963,6 +994,37 @@ void SoundSynthPlaySongAtmosphere(SoundSynth* synth) {
     startSongPlayback(synth, sp->bpm);
 }
 
+void SoundSynthPlaySongHappyBirthday(SoundSynth* synth) {
+    if (!synth || !synth->audioReady) return;
+    useSoundSystem(&synth->ss);
+
+    SoundSynthStopSong(synth);
+
+    // Jazz waltz: pluck bass, FM keys melody, FM keys chords
+    setMelodyCallbacks(0, melodyTriggerPluckBass, melodyReleaseBass);
+    setMelodyCallbacks(1, melodyTriggerFMKeys, melodyReleaseLead);
+    setMelodyCallbacks(2, melodyTriggerFMKeys, melodyReleaseChord);
+
+    Song_HappyBirthday_ConfigureVoices();
+
+    SongPlayer* sp = &synth->songPlayer;
+    Song_HappyBirthday_Load(sp->patterns);
+    sp->patternCount = 4;
+    sp->currentPattern = 0;
+    sp->loopsOnCurrent = 0;
+    sp->loopsPerPattern = 1;  // A B C D — one pass each, then loop the whole chorus
+    sp->bpm = SONG_HAPPY_BIRTHDAY_BPM;
+    sp->sweepPhase = 0.0f;
+    sp->sweepRate = 0.0f;
+
+    // Light swing for jazz waltz feel
+    seq.dilla.swing = 4;
+    seq.dilla.snareDelay = 0;
+    seq.dilla.jitter = 1;
+
+    startSongPlayback(synth, sp->bpm);
+}
+
 void SoundSynthStopSong(SoundSynth* synth) {
     if (!synth || !synth->audioReady) return;
     useSoundSystem(&synth->ss);
@@ -970,12 +1032,14 @@ void SoundSynthStopSong(SoundSynth* synth) {
     stopSequencer();
     synth->songPlayer.active = false;
 
-    // Release any held melody voices
-    for (int i = 0; i < SEQ_MELODY_TRACKS; i++) {
-        if (synth->songPlayer.melodyVoice[i] >= 0) {
-            releaseNote(synth->songPlayer.melodyVoice[i]);
-            synth->songPlayer.melodyVoice[i] = -1;
+    // Release ALL active voices — they'll fade out naturally via their envelopes
+    for (int i = 0; i < NUM_VOICES; i++) {
+        if (synthVoices[i].envStage > 0 && synthVoices[i].envStage < 4) {
+            synthVoices[i].envStage = 4;  // enter release phase
         }
+    }
+    for (int i = 0; i < SEQ_MELODY_TRACKS; i++) {
+        synth->songPlayer.melodyVoice[i] = -1;
     }
 }
 
@@ -985,43 +1049,86 @@ bool SoundSynthIsSongPlaying(SoundSynth* synth) {
 }
 
 // ============================================================================
+// Jukebox — song table and browse/play API
+// ============================================================================
+
+typedef void (*SongPlayFunc)(SoundSynth*);
+
+typedef struct {
+    const char* name;
+    SongPlayFunc play;
+} JukeboxEntry;
+
+static const JukeboxEntry jukeboxSongs[] = {
+    { "Dormitory Ambient",    SoundSynthPlaySongDormitory },
+    { "Suspense",             SoundSynthPlaySongSuspense },
+    { "Jazz Call & Response",  SoundSynthPlaySongJazz },
+    { "House",                SoundSynthPlaySongHouse },
+    { "Deep House",           SoundSynthPlaySongDeepHouse },
+    { "Dilla Hip-Hop",        SoundSynthPlaySongDilla },
+    { "Atmosphere",           SoundSynthPlaySongAtmosphere },
+    { "Mr Lucky",             SoundSynthPlaySongMrLucky },
+};
+
+#define JUKEBOX_SONG_COUNT (int)(sizeof(jukeboxSongs) / sizeof(jukeboxSongs[0]))
+
+int SoundSynthGetSongCount(void) {
+    return JUKEBOX_SONG_COUNT;
+}
+
+const char* SoundSynthGetSongName(int index) {
+    if (index < 0 || index >= JUKEBOX_SONG_COUNT) return "???";
+    return jukeboxSongs[index].name;
+}
+
+int SoundSynthGetCurrentSong(SoundSynth* synth) {
+    if (!synth) return -1;
+    return synth->songPlayer.jukeboxIndex;
+}
+
+void SoundSynthJukeboxPlay(SoundSynth* synth, int songIndex) {
+    if (!synth || songIndex < 0 || songIndex >= JUKEBOX_SONG_COUNT) return;
+    synth->songPlayer.jukeboxIndex = songIndex;
+    jukeboxSongs[songIndex].play(synth);
+}
+
+void SoundSynthJukeboxNext(SoundSynth* synth) {
+    if (!synth) return;
+    int idx = synth->songPlayer.jukeboxIndex;
+    idx = (idx + 1) % JUKEBOX_SONG_COUNT;
+    SoundSynthJukeboxPlay(synth, idx);
+}
+
+void SoundSynthJukeboxPrev(SoundSynth* synth) {
+    if (!synth) return;
+    int idx = synth->songPlayer.jukeboxIndex;
+    idx = (idx - 1 + JUKEBOX_SONG_COUNT) % JUKEBOX_SONG_COUNT;
+    SoundSynthJukeboxPlay(synth, idx);
+}
+
+void SoundSynthJukeboxToggle(SoundSynth* synth) {
+    if (!synth) return;
+    if (synth->songPlayer.active) {
+        SoundSynthStopSong(synth);
+    } else {
+        int idx = synth->songPlayer.jukeboxIndex;
+        if (idx < 0) idx = 0;
+        SoundSynthJukeboxPlay(synth, idx);
+    }
+}
+
+// ============================================================================
 // Update (call from game loop each frame)
 // ============================================================================
 
 void SoundSynthUpdate(SoundSynth* synth, float dt) {
     if (!synth) return;
+
+    // Sequencer update happens on the audio thread (SoundSynthCallback)
+    // to avoid threading races between melody triggers and voice processing.
+
+    // Update phrase player (shares voice pool with song system)
     useSoundSystem(&synth->ss);
-
-    // Update sequencer (song player)
-    if (synth->songPlayer.active) {
-        SongPlayer* sp = &synth->songPlayer;
-
-        // Advance filter sweep phase
-        if (sp->sweepRate > 0.0f) {
-            sp->sweepPhase += sp->sweepRate * dt;
-            if (sp->sweepPhase > 1.0f) sp->sweepPhase -= 1.0f;
-        }
-
-        // Track pattern loops via sequencer playCount
-        int prevPlayCount = seq.playCount;
-        updateSequencer(dt);
-
-        // Detect when the sequencer loops (playCount incremented)
-        if (seq.playCount > prevPlayCount) {
-            sp->loopsOnCurrent++;
-
-            // Cycle to next pattern after loopsPerPattern repeats
-            if (sp->patternCount > 1 && sp->loopsOnCurrent >= sp->loopsPerPattern) {
-                int nextPat = (sp->currentPattern + 1) % sp->patternCount;
-                sp->currentPattern = nextPat;
-                sp->loopsOnCurrent = 0;
-                Pattern* seqPat = seqCurrentPattern();
-                *seqPat = sp->patterns[nextPat];
-            }
-        }
-    }
-
-    // Update phrase player (existing functionality)
     SoundPhrasePlayer* p = &synth->player;
     if (!p->active && !p->songActive) return;
 
