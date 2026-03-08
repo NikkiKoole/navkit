@@ -42,11 +42,13 @@ static void SetupClean(void) {
     ClearPlants();
     InitDesignations();
     InitBalance();
+    InitSceneryState();
     hungerEnabled = true;
     energyEnabled = true;
     bodyTempEnabled = true;
     thirstEnabled = true;
     moodEnabled = true;
+    sceneryEnabled = false;  // off by default; scenery tests enable explicitly
     gameDeltaTime = TICK_DT;
     gameSpeed = 1.0f;
     dayLength = 60.0f;
@@ -959,6 +961,294 @@ describe(mood_full_day_story) {
     }
 }
 
+// =============================================================================
+// Phase 3: Scenery appreciation
+// =============================================================================
+
+// Helper: create a larger grid with lush and barren zones
+static void SetupSceneryGrid(void) {
+    InitTestGrid(30, 30);
+    ClearWater();
+    InitWater();
+    for (int y = 0; y < 30; y++) {
+        for (int x = 0; x < 30; x++) {
+            grid[0][y][x] = CELL_WALL;
+            SetWallMaterial(x, y, 0, MAT_DIRT);
+            grid[1][y][x] = CELL_AIR;
+            SET_FLOOR(x, y, 1);
+        }
+    }
+    ClearMovers();
+    ClearItems();
+    ClearStockpiles();
+    ClearWorkshops();
+    ClearFurniture();
+    ClearJobs();
+    ClearPlants();
+    InitDesignations();
+    InitBalance();
+    InitSceneryState();
+    hungerEnabled = true;
+    energyEnabled = true;
+    bodyTempEnabled = true;
+    thirstEnabled = true;
+    moodEnabled = true;
+    sceneryEnabled = true;
+    gameDeltaTime = TICK_DT;
+    gameSpeed = 1.0f;
+    dayLength = 60.0f;
+    daysPerSeason = 7;
+    dayNumber = 8;
+    for (int y = 0; y < 30; y++)
+        for (int x = 0; x < 30; x++)
+            SetTemperature(x, y, 1, (int)balance.bodyTempNormal);
+}
+
+describe(scenery_beauty_count) {
+    it("empty grid has zero beauty") {
+        SetupSceneryGrid();
+        int count = CountBeautySources(15, 15, 1, 6);
+        expect(count == 0);
+    }
+
+    it("trees count as beauty sources") {
+        SetupSceneryGrid();
+        // Place a few tree trunks near center
+        grid[1][15][14] = CELL_TREE_TRUNK;
+        SetWallMaterial(14, 15, 1, MAT_OAK);
+        grid[1][15][16] = CELL_TREE_TRUNK;
+        SetWallMaterial(16, 15, 1, MAT_BIRCH);
+        grid[1][14][15] = CELL_TREE_TRUNK;
+        SetWallMaterial(15, 14, 1, MAT_PINE);
+
+        int count = CountBeautySources(15, 15, 1, 6);
+        expect(count == 3);
+    }
+
+    it("water counts as beauty source") {
+        SetupSceneryGrid();
+        SetWaterLevel(14, 15, 1, 5);
+        waterActiveCells++;
+        SetWaterLevel(16, 15, 1, 5);
+        waterActiveCells++;
+
+        int count = CountBeautySources(15, 15, 1, 6);
+        expect(count == 2);
+    }
+
+    it("plants count as beauty sources") {
+        SetupSceneryGrid();
+        SpawnPlant(14, 15, 1, PLANT_BERRY_BUSH);
+        SpawnPlant(16, 15, 1, PLANT_WILD_WHEAT);
+
+        int count = CountBeautySources(15, 15, 1, 6);
+        expect(count == 2);
+    }
+
+    it("sources outside radius are not counted") {
+        SetupSceneryGrid();
+        // Place tree far from center (radius 6, so >6 cells away)
+        grid[1][5][5] = CELL_TREE_TRUNK;
+        SetWallMaterial(5, 5, 1, MAT_OAK);
+
+        int count = CountBeautySources(15, 15, 1, 6);
+        expect(count == 0);
+    }
+
+    it("tree at z-1 still counts (below walking level)") {
+        SetupSceneryGrid();
+        // Tree trunk at z=0 should still count for mover at z=1
+        grid[0][15][14] = CELL_TREE_TRUNK;
+        SetWallMaterial(14, 15, 0, MAT_OAK);
+
+        int count = CountBeautySources(15, 15, 1, 6);
+        expect(count == 1);
+    }
+
+    it("mixed sources all count") {
+        SetupSceneryGrid();
+        // 2 trees + 1 water + 1 plant = 4 beauty
+        grid[1][15][14] = CELL_TREE_TRUNK;
+        SetWallMaterial(14, 15, 1, MAT_OAK);
+        grid[1][15][16] = CELL_TREE_TRUNK;
+        SetWallMaterial(16, 15, 1, MAT_BIRCH);
+        SetWaterLevel(14, 14, 1, 5);
+        waterActiveCells++;
+        SpawnPlant(16, 14, 1, PLANT_BERRY_BUSH);
+
+        int count = CountBeautySources(15, 15, 1, 6);
+        expect(count == 4);
+    }
+}
+
+describe(scenery_moodlets) {
+    it("mover near many trees gets pleasant view moodlet") {
+        SetupSceneryGrid();
+        int mi = SetupMover(15, 15);
+        Mover* m = &movers[mi];
+        m->hunger = 1.0f;
+        m->thirst = 1.0f;
+        m->energy = 1.0f;
+        m->bodyTemp = 37.0f;
+        m->traits[0] = TRAIT_NONE;
+        m->traits[1] = TRAIT_NONE;
+
+        // Place 5 trees (above threshold of 3)
+        for (int i = 0; i < 5; i++) {
+            grid[1][14][13 + i] = CELL_TREE_TRUNK;
+            SetWallMaterial(13 + i, 14, 1, MAT_OAK);
+        }
+
+        // Tick past the check interval so the scenery scan fires
+        float checkInterval = GameHoursToGameSeconds(0.5f);
+        int ticks = (int)(checkInterval / TICK_DT) + 10;
+        for (int t = 0; t < ticks; t++) MoodTick(TICK_DT);
+        expect(HasMoodlet(m, MOODLET_PLEASANT_VIEW));
+        expect(!HasMoodlet(m, MOODLET_BLEAK_SURROUNDINGS));
+    }
+
+    it("mover in barren area does NOT get pleasant view") {
+        SetupSceneryGrid();
+        int mi = SetupMover(15, 15);
+        Mover* m = &movers[mi];
+        m->hunger = 1.0f;
+        m->thirst = 1.0f;
+        m->energy = 1.0f;
+        m->bodyTemp = 37.0f;
+        m->traits[0] = TRAIT_NONE;
+        m->traits[1] = TRAIT_NONE;
+
+        // No beauty sources — tick past one check interval
+        float checkInterval = GameHoursToGameSeconds(0.5f);
+        int ticks = (int)(checkInterval / TICK_DT) + 10;
+        for (int t = 0; t < ticks; t++) MoodTick(TICK_DT);
+        expect(!HasMoodlet(m, MOODLET_PLEASANT_VIEW));
+    }
+
+    it("bleak surroundings triggers after extended time in barren area") {
+        SetupSceneryGrid();
+        int mi = SetupMover(15, 15);
+        Mover* m = &movers[mi];
+        m->hunger = 1.0f;
+        m->thirst = 1.0f;
+        m->energy = 1.0f;
+        m->bodyTemp = 37.0f;
+        m->traits[0] = TRAIT_NONE;
+        m->traits[1] = TRAIT_NONE;
+
+        // No beauty sources — tick enough for bleak to accumulate.
+        // Bleak threshold = 2 GH = 5 game-seconds at dayLength=60.
+        // Check interval = 0.5 GH = 1.25 game-seconds. Need ~4 checks adding 1.25 each = 5.0.
+        // Timer starts at interval (1.25), so first check at ~1.25s. Need 6 intervals to be safe.
+        float checkIntervalSec = GameHoursToGameSeconds(0.5f);
+        int ticksPerCheck = (int)(checkIntervalSec / TICK_DT) + 1;
+        for (int c = 0; c < 6; c++) {
+            for (int t = 0; t < ticksPerCheck; t++) {
+                MoodTick(TICK_DT);
+            }
+        }
+
+        expect(HasMoodlet(m, MOODLET_BLEAK_SURROUNDINGS));
+        expect(!HasMoodlet(m, MOODLET_PLEASANT_VIEW));
+    }
+
+    it("bleak resets when moving to beautiful area") {
+        SetupSceneryGrid();
+        int mi = SetupMover(15, 15);
+        Mover* m = &movers[mi];
+        m->hunger = 1.0f;
+        m->thirst = 1.0f;
+        m->energy = 1.0f;
+        m->bodyTemp = 37.0f;
+        m->traits[0] = TRAIT_NONE;
+        m->traits[1] = TRAIT_NONE;
+
+        // Accumulate some bleak time (3 checks, not enough for threshold of 4)
+        float checkIntervalSec = GameHoursToGameSeconds(0.5f);
+        int ticksPerCheck = (int)(checkIntervalSec / TICK_DT) + 1;
+        for (int c = 0; c < 3; c++) {
+            for (int t = 0; t < ticksPerCheck; t++) MoodTick(TICK_DT);
+        }
+        expect(!HasMoodlet(m, MOODLET_BLEAK_SURROUNDINGS));
+
+        // Now add trees (beauty)
+        for (int i = 0; i < 5; i++) {
+            grid[1][14][13 + i] = CELL_TREE_TRUNK;
+            SetWallMaterial(13 + i, 14, 1, MAT_OAK);
+        }
+
+        // Next check should trigger pleasant view + reset bleak
+        for (int t = 0; t < ticksPerCheck; t++) MoodTick(TICK_DT);
+        expect(HasMoodlet(m, MOODLET_PLEASANT_VIEW));
+        expect(!HasMoodlet(m, MOODLET_BLEAK_SURROUNDINGS));
+
+        // Remove trees again, bleak should take full threshold again (accumulator was reset)
+        for (int i = 0; i < 5; i++) {
+            grid[1][14][13 + i] = CELL_AIR;
+        }
+        // 2 more checks — not enough for bleak yet (accumulator was reset to 0)
+        for (int c = 0; c < 2; c++) {
+            for (int t = 0; t < ticksPerCheck; t++) MoodTick(TICK_DT);
+        }
+        expect(!HasMoodlet(m, MOODLET_BLEAK_SURROUNDINGS));
+    }
+
+    it("outdoorsy trait amplifies pleasant view") {
+        SetupSceneryGrid();
+        int mi = SetupMover(15, 15);
+        Mover* m = &movers[mi];
+        m->hunger = 1.0f;
+        m->thirst = 1.0f;
+        m->energy = 1.0f;
+        m->bodyTemp = 37.0f;
+        m->traits[0] = TRAIT_OUTDOORSY;
+        m->traits[1] = TRAIT_NONE;
+
+        // Place trees
+        for (int i = 0; i < 5; i++) {
+            grid[1][14][13 + i] = CELL_TREE_TRUNK;
+            SetWallMaterial(13 + i, 14, 1, MAT_OAK);
+        }
+
+        float checkInterval = GameHoursToGameSeconds(0.5f);
+        int ticks = (int)(checkInterval / TICK_DT) + 10;
+        for (int t = 0; t < ticks; t++) MoodTick(TICK_DT);
+        expect(HasMoodlet(m, MOODLET_PLEASANT_VIEW));
+
+        // Check amplified value: 0.5 * 1.5 = 0.75
+        float val = 0;
+        for (int i = 0; i < m->moodletCount; i++) {
+            if (m->moodlets[i].type == MOODLET_PLEASANT_VIEW)
+                val = m->moodlets[i].value;
+        }
+        expect(fabsf(val - 0.75f) < 0.01f);
+    }
+
+    it("pleasant view improves mood over time") {
+        SetupSceneryGrid();
+        int mi = SetupMover(15, 15);
+        Mover* m = &movers[mi];
+        m->hunger = 0.5f;
+        m->thirst = 0.5f;
+        m->energy = 0.5f;
+        m->bodyTemp = 37.0f;
+        m->traits[0] = TRAIT_NONE;
+        m->traits[1] = TRAIT_NONE;
+
+        // Baseline mood with no scenery
+        TickMood(3000);
+        float baseline = m->mood;
+
+        // Add beauty
+        for (int i = 0; i < 5; i++) {
+            grid[1][14][13 + i] = CELL_TREE_TRUNK;
+            SetWallMaterial(13 + i, 14, 1, MAT_OAK);
+        }
+        TickMood(3000);
+        expect(m->mood > baseline);
+    }
+}
+
 int main(int argc, char* argv[]) {
     bool quiet = false;
     for (int i = 1; i < argc; i++) {
@@ -981,6 +1271,8 @@ int main(int argc, char* argv[]) {
     test(mood_sleep_triggers);
     test(mood_drink_triggers);
     test(mood_full_day_story);
+    test(scenery_beauty_count);
+    test(scenery_moodlets);
 
     return summary();
 }

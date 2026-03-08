@@ -36,6 +36,8 @@ const MoodletDef moodletDefs[MOODLET_TYPE_COUNT] = {
     [MOODLET_COLD]              = { "Cold",                -2.0f,  0.5f },
     [MOODLET_DRANK_GOOD]        = { "Refreshing drink",    1.0f,  4.0f },
     [MOODLET_DRANK_DIRTY_WATER] = { "Drank dirty water",  -1.0f,  4.0f },
+    [MOODLET_PLEASANT_VIEW]     = { "Pleasant view",       0.5f,  2.0f },
+    [MOODLET_BLEAK_SURROUNDINGS]= { "Bleak surroundings", -0.5f,  2.0f },
 };
 
 // --- Trait definitions ---
@@ -72,6 +74,8 @@ const TraitDef traitDefs[TRAIT_COUNT] = {
             [MOODLET_SLEPT_ON_GROUND]   = 0.3f,  // fine sleeping outside
             [MOODLET_SLEPT_POORLY]      = 0.5f,
             [MOODLET_DRANK_DIRTY_WATER] = 0.5f,  // river water is fine
+            [MOODLET_PLEASANT_VIEW]     = 1.5f,  // really appreciates nature
+            [MOODLET_BLEAK_SURROUNDINGS]= 1.5f,  // hates being indoors/barren
         }
     },
 
@@ -319,15 +323,100 @@ static void TickMoverMoodlets(Mover* m, float dt) {
     }
 }
 
+// --- Scenery appreciation (Phase 3) ---
+// Per-mover timers stored externally to avoid Mover struct changes / save migration.
+
+bool sceneryEnabled = true;
+
+static float sceneryCheckTimer[MAX_MOVERS];   // countdown to next beauty scan
+static float bleakAccumulator[MAX_MOVERS];    // game-seconds spent with zero beauty
+
+#define SCENERY_CHECK_INTERVAL_GH 0.5f  // check every ~0.5 game-hours
+#define SCENERY_RADIUS 6
+#define BEAUTY_THRESHOLD 3             // need N sources to trigger pleasant view
+#define BLEAK_THRESHOLD_GH 2.0f        // hours with no beauty before bleak moodlet
+
+void InitSceneryState(void) {
+    memset(sceneryCheckTimer, 0, sizeof(sceneryCheckTimer));
+    memset(bleakAccumulator, 0, sizeof(bleakAccumulator));
+}
+
+// Count beauty sources (trees, water, plants) within radius of a cell.
+int CountBeautySources(int cx, int cy, int cz, int radius) {
+    int count = 0;
+    for (int dy = -radius; dy <= radius; dy++) {
+        for (int dx = -radius; dx <= radius; dx++) {
+            int nx = cx + dx;
+            int ny = cy + dy;
+            if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+
+            // Trees: trunk, branch, leaves, sapling at any z within ±1
+            for (int dz = -1; dz <= 1; dz++) {
+                int nz = cz + dz;
+                if (nz < 0 || nz >= gridDepth) continue;
+                CellType cell = grid[nz][ny][nx];
+                if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_BRANCH ||
+                    cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
+                    count++;
+                    break; // only count this (x,y) once for trees
+                }
+                // Water
+                if (GetWaterLevel(nx, ny, nz) > 0) {
+                    count++;
+                    break;
+                }
+            }
+
+            // Plants (entity-based, at walking level)
+            if (GetPlantAt(nx, ny, cz)) {
+                count++;
+            }
+        }
+    }
+    return count;
+}
+
+static void UpdateSceneryMoodlets(Mover* m, int moverIdx, float dt) {
+    if (!sceneryEnabled) return;
+    sceneryCheckTimer[moverIdx] -= dt;
+    if (sceneryCheckTimer[moverIdx] > 0.0f) return;
+
+    sceneryCheckTimer[moverIdx] = GameHoursToGameSeconds(SCENERY_CHECK_INTERVAL_GH);
+
+    // Convert pixel position to cell coords
+    int cx = (int)(m->x / CELL_SIZE);
+    int cy = (int)(m->y / CELL_SIZE);
+    int cz = (int)m->z;
+
+    int beauty = CountBeautySources(cx, cy, cz, SCENERY_RADIUS);
+
+    if (beauty >= BEAUTY_THRESHOLD) {
+        // Pleasant view — refresh moodlet, reset bleak accumulator
+        AddMoodlet(m, MOODLET_PLEASANT_VIEW);
+        RemoveMoodlet(m, MOODLET_BLEAK_SURROUNDINGS);
+        bleakAccumulator[moverIdx] = 0.0f;
+    } else {
+        // No beauty — accumulate bleak time
+        RemoveMoodlet(m, MOODLET_PLEASANT_VIEW);
+        bleakAccumulator[moverIdx] += GameHoursToGameSeconds(SCENERY_CHECK_INTERVAL_GH);
+        if (bleakAccumulator[moverIdx] >= GameHoursToGameSeconds(BLEAK_THRESHOLD_GH)) {
+            AddMoodlet(m, MOODLET_BLEAK_SURROUNDINGS);
+        }
+    }
+}
+
 // --- Continuous moodlet triggers ---
 // These fire every tick based on current state (not events).
 
-static void UpdateContinuousMoodlets(Mover* m) {
+static void UpdateContinuousMoodlets(Mover* m, int moverIdx, float dt) {
     // Cold moodlet: active while body temp below mild threshold
     if (bodyTempEnabled && m->bodyTemp < balance.mildColdThreshold) {
         // Refresh with short duration — expires quickly when warmed up
         AddMoodlet(m, MOODLET_COLD);
     }
+
+    // Scenery appreciation (periodic)
+    UpdateSceneryMoodlets(m, moverIdx, dt);
 }
 
 // --- Trait assignment ---
@@ -367,7 +456,7 @@ void MoodTick(float dt) {
         if (!m->active) continue;
 
         TickMoverMoodlets(m, dt);
-        UpdateContinuousMoodlets(m);
+        UpdateContinuousMoodlets(m, i, dt);
         RecomputeMood(m);
     }
 }

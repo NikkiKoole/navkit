@@ -35,6 +35,10 @@ typedef enum {
     MOODLET_DRANK_GOOD,          // +1  tea or juice
     MOODLET_DRANK_DIRTY_WATER,   // -1  drank from natural water source
 
+    // Scenery
+    MOODLET_PLEASANT_VIEW,       // +0.5 nearby trees, water, plants
+    MOODLET_BLEAK_SURROUNDINGS,  // -0.5 extended time with no beauty
+
     // Environment (future: room quality)
     // MOODLET_NICE_ROOM,
     // MOODLET_UGLY_ROOM,
@@ -102,5 +106,10 @@ void AssignRandomTraits(struct Mover* m);
 const char* MoodLevelName(float mood);
 
 extern bool moodEnabled;
+
+// Scenery appreciation (Phase 3)
+extern bool sceneryEnabled;
+void InitSceneryState(void);
+int CountBeautySources(int cx, int cy, int cz, int radius);
 
 #endif // MOOD_H

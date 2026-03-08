@@ -38,7 +38,22 @@
 - [x] **Drinking completion**: tea/juice → DRANK_GOOD, natural water → DRANK_DIRTY_WATER
 - [x] **Cold** (continuous): already in UpdateContinuousMoodlets in mood.c
 
-### Phase 3: Weather moodlets (new triggers, existing data)
+### Phase 3: Scenery appreciation (new triggers, existing data) ✅
+
+Movers passively "notice" nearby natural beauty — trees, water, plants. Small positive boost from pleasant surroundings, mild negative from barren/ugly ones.
+
+- [x] **Pleasant view** (+0.5, 2h) — periodic scan (every 0.5 game-hours) within radius 6
+  - Trees: CELL_TREE_TRUNK/BRANCH/LEAVES/SAPLING at z±1
+  - Water: `GetWaterLevel(x,y,z) > 0` at z±1
+  - Plants: `GetPlantAt(x,y,z)` at walking level
+  - Threshold: 3+ beauty sources to trigger
+- [x] **Bleak surroundings** (-0.5, 2h) — 2+ game-hours with zero beauty sources nearby
+- [x] Trait: `TRAIT_OUTDOORSY` 1.5x on both pleasant view and bleak surroundings
+- [x] `sceneryEnabled` toggle, `InitSceneryState()`, `CountBeautySources()` API
+- [x] 13 new tests (6 beauty count + 7 moodlet behavior)
+- [ ] Future: flowers, decorated items, room decorations could count as beauty sources
+
+### Phase 4: Weather moodlets (new triggers, existing data)
 
 All data exists in weather.c. Triggers go in `UpdateContinuousMoodlets()` or a new periodic check.
 
@@ -47,28 +62,28 @@ All data exists in weather.c. Triggers go in `UpdateContinuousMoodlets()` or a n
 - [ ] **Enjoying the sun** (+1, 2h) — `IsExposedToSky && weatherType == CLEAR && daytime`
 - [ ] **Snow** (+1 or -1, trait-dependent) — exposed during WEATHER_SNOW
 
-### Phase 4: Light moodlets (new triggers, existing data)
+### Phase 5: Light moodlets (new triggers, existing data)
 
 `GetLightColor()` exists per cell. Check at job completion or periodically.
 
 - [ ] **Worked in the dark** (-1, 4h) — completed a job in a cell with very low light level
 - [ ] **Well-lit workspace** (+0.5, 4h) — completed a job in a well-lit cell
 
-### Phase 5: Environment moodlets (new triggers, existing data)
+### Phase 6: Environment moodlets (new triggers, existing data)
 
 - [ ] **Filthy surroundings** (-1, 2h) — mover on cell with high `floorDirtGrid` value
 - [ ] **Ate stale food** (-1, 6h) — `item.condition == CONDITION_STALE` at eating completion
 - [ ] **Varied diet** (+1, 12h) — ate 3+ different food types recently (needs small tracking array)
 - [ ] **Monotonous diet** (-1, 12h) — ate same food type 3 times in a row
 
-### Phase 6: Activity moodlets (new triggers, existing data)
+### Phase 7: Activity moodlets (new triggers, existing data)
 
 - [ ] **Overworked** (-1, 4h) — mover worked N game-hours without rest break
 - [ ] **Idle too long** (-1, 4h) — mover had no job for extended period
 - [ ] **Company** (+0.5, 2h) — other movers within N cells while resting/eating (spatial grid query)
 - [ ] **Alone** (-0.5, 2h) — no other mover within N cells for extended time
 
-### Phase 7: Room quality moodlets (needs room detection system)
+### Phase 8: Room quality moodlets (needs room detection system)
 
 Depends on `village-next-steps.md` Step 1 (room detection + quality scoring).
 
@@ -77,7 +92,7 @@ Depends on `village-next-steps.md` Step 1 (room detection + quality scoring).
 - [ ] **Ate at table** (+2, 6h) — ate in room with table+chair (needs FURNITURE_TABLE)
 - [ ] **Ate without table** (-3, 6h) — ate standing/outdoors/no table
 
-### Phase 8: More personality traits
+### Phase 9: More personality traits
 
 - [ ] **Night owl** — less penalty from working at night, more from early morning
 - [ ] **Early bird** — opposite of night owl
@@ -104,10 +119,11 @@ One catastrophically bad need dominates mood. Slightly hungry barely hurts, but 
 
 ### Dependencies
 - Phase 1-2: no deps, can ship now
-- Phase 3-4: no deps (weather/light data exists)
-- Phase 5-6: no deps (dirt/food/spatial data exists), varied diet needs small tracking
-- Phase 7: depends on room detection (village-next-steps step 1)
-- Phase 8: no deps (just trait table entries)
+- Phase 3: no deps (trees/water/plants data exists)
+- Phase 4-5: no deps (weather/light data exists)
+- Phase 6-7: no deps (dirt/food/spatial data exists), varied diet needs small tracking
+- Phase 8: depends on room detection (village-next-steps step 1)
+- Phase 9: no deps (just trait table entries)
 
 ---
 

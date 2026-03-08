@@ -4841,51 +4841,74 @@ void GenerateTrainTestLong(void) {
 }
 
 void GenerateMoodTest(void) {
-    // Mood system showcase: two camps side by side
-    // Left = comfort camp (beds, good food, tea, torches)
-    // Right = rough camp (leaf piles, raw food, pond water)
-    // Spawn movers via UI to watch personality-driven mood differences
-    InitGridWithSizeAndChunkSize(40, 30, 16, 16);
+    // Mood system showcase: four zones for testing all mood phases
+    //
+    // Ground = z=0+z=1 solid (two layers), walking level = z=2
+    // This lets us dig ponds into z=1 with z=0 as the basin floor.
+    //
+    // ┌──────────┬──────────┬──────────┬──────────┐
+    // │ COMFORT  │  LUSH    │  ROUGH   │  BARREN  │
+    // │ camp     │  grove   │  camp    │  mine    │
+    // │ beds,food│ trees,   │ leaf     │ stone,   │
+    // │ tea,torch│ pond,    │ piles,   │ dark,    │
+    // │ oak floor│ berries  │ raw food │ no plants│
+    // └──────────┴──────────┴──────────┴──────────┘
+    //
+    // Comfort+Grove = happy movers (good food + pleasant view)
+    // Rough+Barren = miserable movers (raw food + bleak surroundings)
+
+    int W = 2;  // walking z-level
+
+    InitGridWithSizeAndChunkSize(56, 36, 16, 16);
 
     ClearWorkshops();
     ClearStockpiles();
     ClearItems();
     ClearFurniture();
+    ClearPlants();
     InitDesignations();
     for (int i = 0; i < MAX_BLUEPRINTS; i++) {
         blueprints[i].active = false;
     }
     blueprintCount = 0;
 
-    // Fill z=0 with dirt (ground), z=1 is walking level
+    // Two solid layers: z=0 and z=1. Walking on z=2.
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
             grid[0][y][x] = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
-            SetVegetation(x, y, 0, VEG_GRASS);
+            grid[1][y][x] = CELL_WALL;
+            SetWallMaterial(x, y, 1, MAT_DIRT);
         }
     }
 
-    // ── Comfort camp (left side, x=3..10) ──
+    // Grass on the left half (comfort + grove), bare dirt on right half (rough + barren)
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < 30; x++) {
+            SetVegetation(x, y, 1, VEG_GRASS_TALL);
+        }
+    }
+
+    // ── Zone 1: Comfort camp (x=2..11, y=3..24) ──
 
     // Wood floor under beds (shelter area)
     for (int y = 5; y <= 10; y++) {
         for (int x = 3; x <= 10; x++) {
-            SET_FLOOR(x, y, 1);
-            SetFloorMaterial(x, y, 1, MAT_OAK);
+            SET_FLOOR(x, y, W);
+            SetFloorMaterial(x, y, W, MAT_OAK);
         }
     }
 
     // Plank beds
-    SpawnFurniture(4, 6, 1, FURNITURE_PLANK_BED, MAT_OAK);
-    SpawnFurniture(6, 6, 1, FURNITURE_PLANK_BED, MAT_OAK);
-    SpawnFurniture(8, 6, 1, FURNITURE_PLANK_BED, MAT_OAK);
-    SpawnFurniture(4, 9, 1, FURNITURE_PLANK_BED, MAT_OAK);
-    SpawnFurniture(6, 9, 1, FURNITURE_PLANK_BED, MAT_OAK);
-    SpawnFurniture(8, 9, 1, FURNITURE_PLANK_BED, MAT_OAK);
+    SpawnFurniture(4, 6, W, FURNITURE_PLANK_BED, MAT_OAK);
+    SpawnFurniture(6, 6, W, FURNITURE_PLANK_BED, MAT_OAK);
+    SpawnFurniture(8, 6, W, FURNITURE_PLANK_BED, MAT_OAK);
+    SpawnFurniture(4, 9, W, FURNITURE_PLANK_BED, MAT_OAK);
+    SpawnFurniture(6, 9, W, FURNITURE_PLANK_BED, MAT_OAK);
+    SpawnFurniture(8, 9, W, FURNITURE_PLANK_BED, MAT_OAK);
 
     // Good food stockpile (cooked meat + bread) — large 4x4
-    int moodFoodSp = CreateStockpile(3, 13, 1, 4, 4);
+    int moodFoodSp = CreateStockpile(3, 13, W, 4, 4);
     if (moodFoodSp >= 0) {
         for (int t = 0; t < ITEM_TYPE_COUNT; t++)
             SetStockpileFilter(moodFoodSp, t, false);
@@ -4898,15 +4921,15 @@ void GenerateMoodTest(void) {
     // Spawn lots of good food on ground for hauling
     {
         ItemType goodFoods[] = {ITEM_COOKED_MEAT, ITEM_BREAD, ITEM_ROASTED_ROOT, ITEM_COOKED_LENTILS};
-        for (int i = 0; i < 30; i++) {
-            float ix = (3 + i % 6) * CELL_SIZE + CELL_SIZE * 0.5f;
-            float iy = (18 + i / 6) * CELL_SIZE + CELL_SIZE * 0.5f;
-            SpawnItem(ix, iy, 1.0f, goodFoods[i % 4]);
+        for (int i = 0; i < 60; i++) {
+            float ix = (3 + i % 8) * CELL_SIZE + CELL_SIZE * 0.5f;
+            float iy = (18 + i / 8) * CELL_SIZE + CELL_SIZE * 0.5f;
+            SpawnItem(ix, iy, (float)W, goodFoods[i % 4]);
         }
     }
 
     // Good drink stockpile (tea + juice) — large 3x3
-    int moodDrinkSp = CreateStockpile(9, 13, 1, 3, 3);
+    int moodDrinkSp = CreateStockpile(9, 13, W, 3, 3);
     if (moodDrinkSp >= 0) {
         for (int t = 0; t < ITEM_TYPE_COUNT; t++)
             SetStockpileFilter(moodDrinkSp, t, false);
@@ -4914,56 +4937,231 @@ void GenerateMoodTest(void) {
         SetStockpileFilter(moodDrinkSp, ITEM_BERRY_JUICE, true);
         SetStockpilePriority(moodDrinkSp, 7);
     }
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 40; i++) {
         float ix = (9 + i % 4) * CELL_SIZE + CELL_SIZE * 0.5f;
         float iy = (18 + i / 4) * CELL_SIZE + CELL_SIZE * 0.5f;
-        SpawnItem(ix, iy, 1.0f, (i % 2 == 0) ? ITEM_HERBAL_TEA : ITEM_BERRY_JUICE);
+        SpawnItem(ix, iy, (float)W, (i % 2 == 0) ? ITEM_HERBAL_TEA : ITEM_BERRY_JUICE);
     }
 
-    // Torches for lighting
-    AddLightSource(5, 5, 1, 255, 180, 80, 12);
-    AddLightSource(9, 10, 1, 255, 180, 80, 12);
-    AddLightSource(5, 13, 1, 255, 180, 80, 12);
+    // Torches for warm lighting
+    AddLightSource(5, 5, W, 255, 180, 80, 12);
+    AddLightSource(9, 10, W, 255, 180, 80, 12);
+    AddLightSource(5, 13, W, 255, 180, 80, 12);
 
-    // ── Rough camp (right side, x=24..30) ──
+    // Scatter a few trees near comfort camp for ambiance
+    TreeGrowFull(1, 4, W, MAT_OAK);
+    TreeGrowFull(1, 12, W, MAT_BIRCH);
+    TreeGrowFull(1, 20, W, MAT_OAK);
+    TreeGrowFull(11, 3, W, MAT_BIRCH);
 
-    // Leaf piles on bare ground (no floor)
-    SpawnFurniture(25, 6, 1, FURNITURE_LEAF_PILE, 0);
-    SpawnFurniture(27, 6, 1, FURNITURE_LEAF_PILE, 0);
-    SpawnFurniture(29, 6, 1, FURNITURE_LEAF_PILE, 0);
-    SpawnFurniture(25, 9, 1, FURNITURE_LEAF_PILE, 0);
-    SpawnFurniture(27, 9, 1, FURNITURE_LEAF_PILE, 0);
-    SpawnFurniture(29, 9, 1, FURNITURE_LEAF_PILE, 0);
+    // ── Zone 2: Lush grove (x=14..27, y=2..33) ──
+    // Dense trees, natural pond, berry bushes, tall grass, reeds
 
-    // Lots of raw food scattered on ground (no stockpile)
-    {
-        ItemType rawFoods[] = {ITEM_RAW_MEAT, ITEM_BERRIES, ITEM_ROOT, ITEM_LENTILS};
-        for (int i = 0; i < 30; i++) {
-            float ix = (24 + i % 6) * CELL_SIZE + CELL_SIZE * 0.5f;
-            float iy = (13 + i / 6) * CELL_SIZE + CELL_SIZE * 0.5f;
-            SpawnItem(ix, iy, 1.0f, rawFoods[i % 4]);
+    // Natural pond — dig basin into z=1, water sits at z=1 held by surrounding z=1 walls
+    // First pass: excavate interior
+    for (int y = 16; y <= 22; y++) {
+        for (int x = 17; x <= 24; x++) {
+            int dy = y - 19, dx = x - 20;
+            if (dy * dy * 4 + dx * dx * 3 > 48) continue;
+            grid[1][y][x] = CELL_AIR;
+            SetWallMaterial(x, y, 0, MAT_GRAVEL);
+            SetWaterLevel(x, y, 1, WATER_MAX_LEVEL);
         }
     }
+    // Ramps down into the pond from the north edge
+    // Carve into z=1 ground where neighbor to south is excavated (pond interior)
+    grid[1][15][19] = CELL_RAMP_S;
+    SetWallMaterial(19, 15, 1, MAT_GRAVEL);
+    grid[1][15][21] = CELL_RAMP_S;
+    SetWallMaterial(21, 15, 1, MAT_GRAVEL);
 
-    // Walled pond at z=1 — 2-thick walls so ramps can carve outer layer
-    // Inner wall: y=20,y=26,x=25,x=32  Outer wall: y=19,y=27,x=24,x=33
-    for (int y = 19; y <= 27; y++) {
-        for (int x = 24; x <= 33; x++) {
-            bool outer = (y == 19 || y == 27 || x == 24 || x == 33);
-            bool inner = (y == 20 || y == 26 || x == 25 || x == 32);
-            if (outer || inner) {
-                grid[1][y][x] = CELL_WALL;
-                SetWallMaterial(x, y, 1, MAT_GRANITE);
-                SetWallNatural(x, y, 1);
-            } else {
-                SetWaterLevel(x, y, 1, WATER_MAX_LEVEL);
+    // Trees around the grove — mixed species, clustered
+    // Northern grove (oaks and birch)
+    TreeGrowFull(15, 3, W, MAT_OAK);
+    TreeGrowFull(17, 4, W, MAT_OAK);
+    TreeGrowFull(19, 2, W, MAT_BIRCH);
+    TreeGrowFull(21, 3, W, MAT_OAK);
+    TreeGrowFull(23, 5, W, MAT_BIRCH);
+    TreeGrowFull(25, 3, W, MAT_OAK);
+    TreeGrowYoung(16, 6, W, MAT_OAK);
+    TreeGrowYoung(20, 5, W, MAT_BIRCH);
+
+    // Western grove edge
+    TreeGrowFull(14, 8, W, MAT_OAK);
+    TreeGrowFull(14, 12, W, MAT_BIRCH);
+    TreeGrowFull(14, 16, W, MAT_OAK);
+    TreeGrowYoung(15, 10, W, MAT_OAK);
+    TreeGrowYoung(15, 14, W, MAT_BIRCH);
+
+    // Willows near water
+    TreeGrowFull(16, 17, W, MAT_WILLOW);
+    TreeGrowFull(25, 19, W, MAT_WILLOW);
+    TreeGrowFull(18, 23, W, MAT_WILLOW);
+    TreeGrowYoung(16, 21, W, MAT_WILLOW);
+
+    // Eastern grove edge
+    TreeGrowFull(26, 7, W, MAT_PINE);
+    TreeGrowFull(27, 11, W, MAT_OAK);
+    TreeGrowFull(26, 15, W, MAT_BIRCH);
+
+    // Southern grove
+    TreeGrowFull(15, 26, W, MAT_OAK);
+    TreeGrowFull(18, 27, W, MAT_BIRCH);
+    TreeGrowFull(21, 26, W, MAT_OAK);
+    TreeGrowFull(24, 28, W, MAT_PINE);
+    TreeGrowFull(27, 26, W, MAT_OAK);
+    TreeGrowYoung(16, 28, W, MAT_OAK);
+    TreeGrowYoung(23, 25, W, MAT_BIRCH);
+
+    // Interior scattered trees
+    TreeGrowFull(19, 9, W, MAT_OAK);
+    TreeGrowFull(22, 12, W, MAT_BIRCH);
+    TreeGrowFull(17, 13, W, MAT_OAK);
+    TreeGrowFull(24, 10, W, MAT_OAK);
+    TreeGrowYoung(21, 8, W, MAT_OAK);
+
+    // Berry bushes throughout the grove (harvestable)
+    SpawnPlant(16, 8, W, PLANT_BERRY_BUSH);
+    SpawnPlant(18, 10, W, PLANT_BERRY_BUSH);
+    SpawnPlant(22, 7, W, PLANT_BERRY_BUSH);
+    SpawnPlant(20, 14, W, PLANT_BERRY_BUSH);
+    SpawnPlant(23, 24, W, PLANT_BERRY_BUSH);
+    SpawnPlant(16, 25, W, PLANT_BERRY_BUSH);
+    SpawnPlant(26, 24, W, PLANT_BERRY_BUSH);
+
+    // Wild wheat and flax patches
+    SpawnPlant(18, 8, W, PLANT_WILD_WHEAT);
+    SpawnPlant(19, 11, W, PLANT_WILD_WHEAT);
+    SpawnPlant(23, 13, W, PLANT_WILD_WHEAT);
+    SpawnPlant(20, 24, W, PLANT_WILD_FLAX);
+    SpawnPlant(22, 25, W, PLANT_WILD_FLAX);
+
+    // Tall grass / reeds near the pond
+    for (int y = 14; y <= 24; y++) {
+        for (int x = 15; x <= 26; x++) {
+            if (GetWaterLevel(x, y, 1) > 0) continue;
+            if (grid[W][y][x] != CELL_AIR) continue;
+            bool nearWater = false;
+            for (int dy2 = -2; dy2 <= 2 && !nearWater; dy2++)
+                for (int dx2 = -2; dx2 <= 2 && !nearWater; dx2++)
+                    if (GetWaterLevel(x+dx2, y+dy2, 1) > 0) nearWater = true;
+            if (nearWater) {
+                SetVegetation(x, y, 1, VEG_GRASS_TALLER);
             }
         }
     }
-    // Carve ramps into outer north wall — inner wall still holds water
-    grid[1][19][26] = CELL_RAMP_S;
-    grid[1][19][28] = CELL_RAMP_S;
-    grid[1][19][30] = CELL_RAMP_S;
+
+    // ── Zone 3: Rough camp (x=32..42, y=3..18) ──
+    // Bare ground, no trees, no plants — just survival basics
+
+    // Strip vegetation from rough camp area
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 30; x < gridWidth; x++) {
+            SetVegetation(x, y, 1, VEG_NONE);
+        }
+    }
+
+    // Leaf piles on bare ground (no floor)
+    SpawnFurniture(34, 6, W, FURNITURE_LEAF_PILE, 0);
+    SpawnFurniture(36, 6, W, FURNITURE_LEAF_PILE, 0);
+    SpawnFurniture(38, 6, W, FURNITURE_LEAF_PILE, 0);
+    SpawnFurniture(34, 9, W, FURNITURE_LEAF_PILE, 0);
+    SpawnFurniture(36, 9, W, FURNITURE_LEAF_PILE, 0);
+    SpawnFurniture(38, 9, W, FURNITURE_LEAF_PILE, 0);
+
+    // Lots of raw food scattered on ground (no stockpile)
+    // 8 per row, x=33..40 (stays clear of mine wall at x=42), y=11..18
+    {
+        ItemType rawFoods[] = {ITEM_RAW_MEAT, ITEM_BERRIES, ITEM_ROOT, ITEM_LENTILS};
+        for (int i = 0; i < 60; i++) {
+            float ix = (33 + i % 8) * CELL_SIZE + CELL_SIZE * 0.5f;
+            float iy = (11 + i / 8) * CELL_SIZE + CELL_SIZE * 0.5f;
+            SpawnItem(ix, iy, (float)W, rawFoods[i % 4]);
+        }
+    }
+
+    // Dirty water pond — dig into z=1 same as grove pond but no scenery around it
+    for (int y = 20; y <= 24; y++) {
+        for (int x = 34; x <= 39; x++) {
+            grid[1][y][x] = CELL_AIR;
+            SetWallMaterial(x, y, 0, MAT_GRANITE);
+            SetWaterLevel(x, y, 1, WATER_MAX_LEVEL);
+        }
+    }
+    // Ramps down into pond from north edge
+    grid[1][19][36] = CELL_RAMP_S;
+    SetWallMaterial(36, 19, 1, MAT_GRANITE);
+    grid[1][19][37] = CELL_RAMP_S;
+    SetWallMaterial(37, 19, 1, MAT_GRANITE);
+
+    // ── Zone 4: Barren mine (x=42..54, y=3..33) ──
+    // Underground-like: stone floor, stone walls enclosure, no vegetation, no light
+    // Movers working here should feel bleak
+
+    // Stone floor
+    for (int y = 3; y <= 33; y++) {
+        for (int x = 42; x <= 54; x++) {
+            SetWallMaterial(x, y, 1, MAT_GRANITE);
+            SET_FLOOR(x, y, W);
+            SetFloorMaterial(x, y, W, MAT_GRANITE);
+        }
+    }
+
+    // Enclosing walls (stone room, entrance on west side)
+    for (int y = 3; y <= 33; y++) {
+        grid[W][y][42] = CELL_WALL;
+        SetWallMaterial(42, y, W, MAT_GRANITE);
+        SetWallNatural(42, y, W);
+        grid[W][y][54] = CELL_WALL;
+        SetWallMaterial(54, y, W, MAT_GRANITE);
+        SetWallNatural(54, y, W);
+    }
+    for (int x = 42; x <= 54; x++) {
+        grid[W][3][x] = CELL_WALL;
+        SetWallMaterial(x, 3, W, MAT_GRANITE);
+        SetWallNatural(x, 3, W);
+        grid[W][33][x] = CELL_WALL;
+        SetWallMaterial(x, 33, W, MAT_GRANITE);
+        SetWallNatural(x, 33, W);
+    }
+    // Entrance gap on west wall
+    grid[W][16][42] = CELL_AIR;
+    grid[W][17][42] = CELL_AIR;
+    grid[W][18][42] = CELL_AIR;
+
+    // Ceiling above mine (z=3 + z=4 solid) — two layers so z=4 isn't walkable
+    for (int y = 3; y <= 33; y++) {
+        for (int x = 42; x <= 54; x++) {
+            grid[W+1][y][x] = CELL_WALL;
+            SetWallMaterial(x, y, W+1, MAT_GRANITE);
+            SetWallNatural(x, y, W+1);
+            grid[W+2][y][x] = CELL_WALL;
+            SetWallMaterial(x, y, W+2, MAT_GRANITE);
+            SetWallNatural(x, y, W+2);
+        }
+    }
+
+    // Ladder at mine entrance (41,17) — z=1 up through z=2 (walking level)
+    // Lets movers descend from surface into the excavated pond level too
+    grid[1][17][41] = CELL_LADDER_BOTH;
+    grid[W][17][41] = CELL_LADDER_BOTH;
+
+    // Sparse dim lights inside the mine — enough to see but still gloomy
+    AddLightSource(44, 6, W, 180, 140, 100, 6);
+    AddLightSource(48, 10, W, 180, 140, 100, 6);
+    AddLightSource(52, 6, W, 180, 140, 100, 6);
+    AddLightSource(44, 18, W, 180, 140, 100, 6);
+    AddLightSource(52, 18, W, 180, 140, 100, 6);
+    AddLightSource(48, 26, W, 180, 140, 100, 6);
+    AddLightSource(44, 30, W, 180, 140, 100, 6);
+    AddLightSource(52, 30, W, 180, 140, 100, 6);
+
+    // Some loose rocks inside the mine (items to haul, work to do)
+    for (int i = 0; i < 15; i++) {
+        float ix = (44 + i % 4) * CELL_SIZE + CELL_SIZE * 0.5f;
+        float iy = (8 + (i / 4) * 5) * CELL_SIZE + CELL_SIZE * 0.5f;
+        SpawnItem(ix, iy, (float)W, ITEM_ROCK);
+    }
 
     needsRebuild = true;
 }

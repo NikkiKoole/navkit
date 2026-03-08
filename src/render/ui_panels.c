@@ -676,6 +676,7 @@ void DrawUI(void) {
                 currentTerrain = 23;
                 InitPlants();
                 ClearFarming();
+                InitLighting();
                 GenerateCurrentTerrain();
                 InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
                 InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
@@ -688,17 +689,23 @@ void DrawUI(void) {
                 InitGroundWear();
                 InitFloorDirt();
                 InitSnow();
-                InitLighting();
                 BuildEntrances();
                 BuildGraph();
-                // Enable needs
+                // Enable needs + slower day cycle with proportional speed
                 hungerEnabled = true;
                 thirstEnabled = true;
                 energyEnabled = true;
+                dayLength = 333.0f;
+                balance.baseMoverSpeed = 1066.0f;
+                // Update existing movers to new speed
+                for (int mi2 = 0; mi2 < moverCount; mi2++) {
+                    movers[mi2].speed = balance.baseMoverSpeed;
+                }
                 // Spawn 10 movers spread across both camps
+                // Walking level = z=2 (ground is z=0+z=1)
                 for (int mi = 0; mi < 5; mi++) {
-                    SpawnMoverAt(4 + mi, 8, 1);   // comfort camp
-                    SpawnMoverAt(25 + mi, 8, 1);   // rough camp
+                    SpawnMoverAt(4 + mi, 8, 2);   // comfort camp
+                    SpawnMoverAt(34 + mi, 8, 2);   // rough camp
                 }
                 AddMessage("Mood scenario: 10 movers, needs ON", GREEN);
             }

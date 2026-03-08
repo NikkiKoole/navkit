@@ -223,7 +223,7 @@ static bool FindNearestWaterCell(float x, float y, int z, int* outWaterX, int* o
     int bestDistSq = INT_MAX;
     bool found = false;
 
-    // Spiral search up to 20 tiles
+    // Spiral search up to 20 tiles, check z and z-1 for water (dug-out ponds)
     for (int r = 1; r <= 20; r++) {
         for (int dy = -r; dy <= r; dy++) {
             for (int dx = -r; dx <= r; dx++) {
@@ -231,25 +231,30 @@ static bool FindNearestWaterCell(float x, float y, int z, int* outWaterX, int* o
                 int wx = cx + dx;
                 int wy = cy + dy;
                 if (wx < 0 || wx >= gridWidth || wy < 0 || wy >= gridHeight) continue;
-                if (!HasWater(wx, wy, z)) continue;
 
                 int distSq = dx * dx + dy * dy;
                 if (distSq >= bestDistSq) continue;
 
-                // Find walkable neighbor at z or z+1 (wall-top access to walled ponds)
-                int dirs[4][2] = {{0,-1},{0,1},{-1,0},{1,0}};
-                for (int sz = z; sz <= z + 1 && sz < gridDepth; sz++) {
-                    for (int d = 0; d < 4; d++) {
-                        int sx = wx + dirs[d][0];
-                        int sy = wy + dirs[d][1];
-                        if (sx >= 0 && sx < gridWidth && sy >= 0 && sy < gridHeight &&
-                            IsCellWalkableAt(sz, sy, sx)) {
-                            bestDistSq = distSq;
-                            *outWaterX = wx; *outWaterY = wy; *outWaterZ = z;
-                            *outStandX = sx; *outStandY = sy; *outStandZ = sz;
-                            found = true;
-                            break;
+                // Check z and z-1 for water (z-1 = dug pond one level below)
+                for (int wz = z; wz >= z - 1 && wz >= 0; wz--) {
+                    if (!HasWater(wx, wy, wz)) continue;
+
+                    // Find walkable neighbor at wz..wz+1 (ramp/wall-top access)
+                    int dirs[4][2] = {{0,-1},{0,1},{-1,0},{1,0}};
+                    for (int sz = wz; sz <= wz + 1 && sz < gridDepth; sz++) {
+                        for (int d = 0; d < 4; d++) {
+                            int sx = wx + dirs[d][0];
+                            int sy = wy + dirs[d][1];
+                            if (sx >= 0 && sx < gridWidth && sy >= 0 && sy < gridHeight &&
+                                IsCellWalkableAt(sz, sy, sx)) {
+                                bestDistSq = distSq;
+                                *outWaterX = wx; *outWaterY = wy; *outWaterZ = wz;
+                                *outStandX = sx; *outStandY = sy; *outStandZ = sz;
+                                found = true;
+                                break;
+                            }
                         }
+                        if (found && bestDistSq == distSq) break;
                     }
                     if (found && bestDistSq == distSq) break;
                 }
