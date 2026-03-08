@@ -1204,6 +1204,17 @@ int main(int argc, char** argv) {
                 SoundSynthGetSongName(idx), idx + 1, SoundSynthGetSongCount()), GREEN);
         }
 
+        // KP3 = toggle sound log, KP. = dump sound log
+        if (IsKeyPressed(KEY_KP_3)) {
+            SoundSynthLogToggle();
+            AddMessage(TextFormat("Sound log: %s", SoundSynthLogIsEnabled() ? "ON (KP. to dump)" : "OFF"),
+                       SoundSynthLogIsEnabled() ? GREEN : GRAY);
+        }
+        if (IsKeyPressed(KEY_KP_DECIMAL)) {
+            SoundSynthLogDump();
+            AddMessage("Sound log dumped to navkit_sound.log", GREEN);
+        }
+
         // Handle drag-and-drop of save files
         if (IsFileDropped()) {
             FilePathList droppedFiles = LoadDroppedFiles();

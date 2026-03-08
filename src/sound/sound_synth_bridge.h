@@ -26,6 +26,10 @@ void SoundSynthPlaySongDeepHouse(SoundSynth* synth);
 void SoundSynthPlaySongDilla(SoundSynth* synth);
 void SoundSynthPlaySongMrLucky(SoundSynth* synth);
 void SoundSynthPlaySongAtmosphere(SoundSynth* synth);
+void SoundSynthPlaySongHappyBirthday(SoundSynth* synth);
+void SoundSynthPlaySongMonksMood(SoundSynth* synth);
+void SoundSynthPlaySongSummertime(SoundSynth* synth);
+void SoundSynthPlaySongMule(SoundSynth* synth);
 void SoundSynthStopSong(SoundSynth* synth);
 bool SoundSynthIsSongPlaying(SoundSynth* synth);
 
@@ -37,5 +41,10 @@ void SoundSynthJukeboxPlay(SoundSynth* synth, int songIndex);
 void SoundSynthJukeboxNext(SoundSynth* synth);
 void SoundSynthJukeboxPrev(SoundSynth* synth);
 void SoundSynthJukeboxToggle(SoundSynth* synth);
+
+// Sound log — toggle on to record sequencer events, dump to file for debugging
+void SoundSynthLogToggle(void);
+void SoundSynthLogDump(void);
+bool SoundSynthLogIsEnabled(void);
 
 #endif

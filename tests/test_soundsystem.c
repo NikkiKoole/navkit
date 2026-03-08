@@ -857,6 +857,115 @@ describe(adsr_envelope) {
 }
 
 // ============================================================================
+// SYNTH TESTS - RELEASE ENVELOPE TIMING
+// ============================================================================
+
+describe(release_envelope_timing) {
+    it("should complete release within release time when released from sustain level") {
+        // Voice at sustain level (0.25) with release=0.3s should fade to zero in ~0.3s
+        Voice v;
+        memset(&v, 0, sizeof(Voice));
+        v.sustain = 0.25f;
+        v.release = 0.3f;
+        v.envLevel = 0.25f;  // At sustain level
+        v.releaseLevel = 0.25f;
+        v.envStage = 4;      // Release
+        v.envPhase = 0.0f;
+
+        float dt = 1.0f / 44100.0f;
+        int samples = (int)(0.35f * 44100.0f); // 0.35s — slightly more than release time
+        for (int i = 0; i < samples; i++) {
+            processEnvelope(&v, dt);
+        }
+
+        // Voice should be fully off after release time + small margin
+        expect(v.envStage == 0);
+        expect_float_eq(v.envLevel, 0.0f);
+    }
+
+    it("should complete release within release time when released during decay") {
+        // BUG TEST: Voice released during decay phase at level 0.7 (above sustain=0.25).
+        // With release=0.1s, it should fade to zero in ~0.1s.
+        // The buggy formula uses sustain (0.25) as fade rate basis, making a voice
+        // at 0.7 take ~0.28s instead of 0.1s.
+        Voice v;
+        memset(&v, 0, sizeof(Voice));
+        v.sustain = 0.25f;
+        v.release = 0.1f;
+        v.envLevel = 0.7f;   // Released mid-decay, well above sustain
+        v.releaseLevel = 0.7f;
+        v.envStage = 4;      // Release
+        v.envPhase = 0.0f;
+
+        float dt = 1.0f / 44100.0f;
+        // Run for exactly release time + 10% margin
+        int samples = (int)(0.11f * 44100.0f);
+        for (int i = 0; i < samples; i++) {
+            processEnvelope(&v, dt);
+        }
+
+        // Voice MUST be off. With the buggy formula, envLevel is still ~0.42 here.
+        expect(v.envStage == 0);
+        expect_float_eq(v.envLevel, 0.0f);
+    }
+
+    it("should complete exponential release within release time") {
+        // Exponential release: natural decay curve, still bounded by release time
+        Voice v;
+        memset(&v, 0, sizeof(Voice));
+        v.sustain = 0.25f;
+        v.release = 0.2f;
+        v.envLevel = 0.7f;
+        v.releaseLevel = 0.7f;
+        v.envStage = 4;
+        v.envPhase = 0.0f;
+        v.expRelease = true;
+
+        float dt = 1.0f / 44100.0f;
+        // Halfway through release, level should still be above zero (tail)
+        int halfSamples = (int)(0.1f * 44100.0f);
+        for (int i = 0; i < halfSamples; i++) {
+            processEnvelope(&v, dt);
+        }
+        expect(v.envStage == 4);  // Still releasing
+        expect(v.envLevel > 0.01f);  // Still audible — natural tail
+
+        // After full release time, should be off
+        int remainingSamples = (int)(0.12f * 44100.0f);
+        for (int i = 0; i < remainingSamples; i++) {
+            processEnvelope(&v, dt);
+        }
+        expect(v.envStage == 0);
+        expect_float_eq(v.envLevel, 0.0f);
+    }
+
+    it("should complete release within release time regardless of entry level") {
+        // Test multiple entry levels — all should complete within release time
+        float entryLevels[] = { 0.1f, 0.25f, 0.5f, 0.75f, 1.0f };
+        float releaseTime = 0.2f;
+
+        for (int t = 0; t < 5; t++) {
+            Voice v;
+            memset(&v, 0, sizeof(Voice));
+            v.sustain = 0.25f;
+            v.release = releaseTime;
+            v.envLevel = entryLevels[t];
+            v.releaseLevel = entryLevels[t];
+            v.envStage = 4;
+            v.envPhase = 0.0f;
+
+            float dt = 1.0f / 44100.0f;
+            int samples = (int)((releaseTime + 0.02f) * 44100.0f); // release + 20ms margin
+            for (int i = 0; i < samples; i++) {
+                processEnvelope(&v, dt);
+            }
+
+            expect(v.envStage == 0);
+        }
+    }
+}
+
+// ============================================================================
 // SYNTH TESTS - SCALE LOCK
 // ============================================================================
 
@@ -4294,6 +4403,681 @@ describe(bus_reverb_send) {
 // MAIN
 // ============================================================================
 
+// ============================================================================
+// CUSTOM CHORD VOICING TESTS
+// ============================================================================
+
+// Chord trigger test helpers
+static int chord_trigger_count = 0;
+static int chord_last_notes[NOTE_POOL_MAX_NOTES];
+static int chord_last_count = 0;
+static float chord_last_vel = 0.0f;
+
+static void test_chord_trigger(int* notes, int noteCount, float vel,
+                                float gateTime, bool slide, bool accent) {
+    (void)gateTime; (void)slide; (void)accent;
+    chord_trigger_count++;
+    chord_last_count = noteCount;
+    chord_last_vel = vel;
+    for (int i = 0; i < noteCount && i < NOTE_POOL_MAX_NOTES; i++) {
+        chord_last_notes[i] = notes[i];
+    }
+}
+
+static void reset_chord_counters(void) {
+    chord_trigger_count = 0;
+    chord_last_count = 0;
+    chord_last_vel = 0.0f;
+    memset(chord_last_notes, 0, sizeof(chord_last_notes));
+}
+
+describe(custom_chord_voicings) {
+    it("should return custom notes when CHORD_CUSTOM is set") {
+        _ensureSeqCtx();
+        Pattern p;
+        initPattern(&p);
+
+        // Set up a step with CHORD_CUSTOM voicing [D4, Ab4, C5, G5]
+        p.melodyNote[0][0] = 62;  // D4
+        p.melodyVelocity[0][0] = 0.8f;
+        p.melodyGate[0][0] = 4;
+        p.melodyNotePool[0][0].enabled = true;
+        p.melodyNotePool[0][0].chordType = CHORD_CUSTOM;
+        p.melodyNotePool[0][0].pickMode = PICK_ALL;
+        p.melodyNotePool[0][0].customNotes[0] = 62;   // D4
+        p.melodyNotePool[0][0].customNotes[1] = 68;   // Ab4
+        p.melodyNotePool[0][0].customNotes[2] = 72;   // C5
+        p.melodyNotePool[0][0].customNotes[3] = 79;   // G5
+        p.melodyNotePool[0][0].customNoteCount = 4;
+
+        int outNotes[NOTE_POOL_MAX_NOTES];
+        int count = seqGetAllNotesForStep(&p, 0, 0, outNotes);
+
+        expect(count == 4);
+        expect(outNotes[0] == 62);
+        expect(outNotes[1] == 68);
+        expect(outNotes[2] == 72);
+        expect(outNotes[3] == 79);
+    }
+
+    it("should pick from custom notes in non-PICK_ALL mode") {
+        _ensureSeqCtx();
+        Pattern p;
+        initPattern(&p);
+
+        p.melodyNote[0][0] = 60;  // C4 (base note, not used for custom)
+        p.melodyVelocity[0][0] = 0.8f;
+        p.melodyGate[0][0] = 4;
+        p.melodyNotePool[0][0].enabled = true;
+        p.melodyNotePool[0][0].chordType = CHORD_CUSTOM;
+        p.melodyNotePool[0][0].pickMode = PICK_CYCLE_UP;
+        p.melodyNotePool[0][0].currentIndex = 0;
+        p.melodyNotePool[0][0].customNotes[0] = 62;
+        p.melodyNotePool[0][0].customNotes[1] = 68;
+        p.melodyNotePool[0][0].customNotes[2] = 72;
+        p.melodyNotePool[0][0].customNoteCount = 3;
+
+        // First pick should cycle through custom notes
+        int note1 = seqGetNoteForStep(&p, 0, 0);
+        int note2 = seqGetNoteForStep(&p, 0, 0);
+        int note3 = seqGetNoteForStep(&p, 0, 0);
+
+        // Should cycle through the 3 custom notes
+        expect(note1 == 62);
+        expect(note2 == 68);
+        expect(note3 == 72);
+    }
+
+    it("should clamp custom note count to NOTE_POOL_MAX_NOTES") {
+        _ensureSeqCtx();
+        Pattern p;
+        initPattern(&p);
+
+        p.melodyNote[0][0] = 60;
+        p.melodyVelocity[0][0] = 0.8f;
+        p.melodyGate[0][0] = 4;
+        p.melodyNotePool[0][0].enabled = true;
+        p.melodyNotePool[0][0].chordType = CHORD_CUSTOM;
+        p.melodyNotePool[0][0].pickMode = PICK_ALL;
+        // Set count larger than array — should clamp
+        p.melodyNotePool[0][0].customNoteCount = NOTE_POOL_MAX_NOTES + 5;
+        for (int i = 0; i < NOTE_POOL_MAX_NOTES; i++) {
+            p.melodyNotePool[0][0].customNotes[i] = 60 + i;
+        }
+
+        int outNotes[NOTE_POOL_MAX_NOTES];
+        int count = seqGetAllNotesForStep(&p, 0, 0, outNotes);
+
+        expect(count == NOTE_POOL_MAX_NOTES);
+    }
+
+    it("should fall back to base note when customNoteCount is 0") {
+        _ensureSeqCtx();
+        Pattern p;
+        initPattern(&p);
+
+        p.melodyNote[0][0] = 60;
+        p.melodyVelocity[0][0] = 0.8f;
+        p.melodyGate[0][0] = 4;
+        p.melodyNotePool[0][0].enabled = true;
+        p.melodyNotePool[0][0].chordType = CHORD_CUSTOM;
+        p.melodyNotePool[0][0].pickMode = PICK_ALL;
+        p.melodyNotePool[0][0].customNoteCount = 0;  // Empty custom
+
+        int outNotes[NOTE_POOL_MAX_NOTES];
+        int count = seqGetAllNotesForStep(&p, 0, 0, outNotes);
+
+        // Should fall through to buildChordNotes (CHORD_CUSTOM with count 0 falls to default)
+        // buildChordNotes doesn't know CHORD_CUSTOM, hits default → returns root only
+        expect(count == 1);
+        expect(outNotes[0] == 60);
+    }
+
+    it("should trigger chord callback with custom voicing during playback") {
+        reset_chord_counters();
+        reset_melody_counters();
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+        setMelodyCallbacks(0, test_melody_trigger, test_melody_release);
+        setMelodyChordCallback(0, test_chord_trigger);
+
+        Pattern *p = seqCurrentPattern();
+        p->melodyNote[0][0] = 62;
+        p->melodyVelocity[0][0] = 0.75f;
+        p->melodyGate[0][0] = 4;
+        p->melodyNotePool[0][0].enabled = true;
+        p->melodyNotePool[0][0].chordType = CHORD_CUSTOM;
+        p->melodyNotePool[0][0].pickMode = PICK_ALL;
+        p->melodyNotePool[0][0].customNotes[0] = 62;
+        p->melodyNotePool[0][0].customNotes[1] = 68;
+        p->melodyNotePool[0][0].customNotes[2] = 72;
+        p->melodyNotePool[0][0].customNotes[3] = 79;
+        p->melodyNotePool[0][0].customNoteCount = 4;
+
+        seq.bpm = 120.0f;
+        seq.playing = true;
+        resetSequencer();
+
+        float dt = 1.0f / SAMPLE_RATE;
+        for (int i = 0; i < 1000; i++) {
+            updateSequencer(dt);
+        }
+
+        // Chord callback should have been called, not the single-note trigger
+        expect(chord_trigger_count == 1);
+        expect(melody_trigger_count == 0);
+        expect(chord_last_count == 4);
+        expect(chord_last_notes[0] == 62);
+        expect(chord_last_notes[1] == 68);
+        expect(chord_last_notes[2] == 72);
+        expect(chord_last_notes[3] == 79);
+
+        seq.playing = false;
+    }
+
+    it("should use single-note trigger when custom has only 1 note") {
+        reset_chord_counters();
+        reset_melody_counters();
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+        setMelodyCallbacks(0, test_melody_trigger, test_melody_release);
+        setMelodyChordCallback(0, test_chord_trigger);
+
+        Pattern *p = seqCurrentPattern();
+        p->melodyNote[0][0] = 60;
+        p->melodyVelocity[0][0] = 0.8f;
+        p->melodyGate[0][0] = 2;
+        p->melodyNotePool[0][0].enabled = true;
+        p->melodyNotePool[0][0].chordType = CHORD_CUSTOM;
+        p->melodyNotePool[0][0].pickMode = PICK_ALL;
+        p->melodyNotePool[0][0].customNotes[0] = 60;
+        p->melodyNotePool[0][0].customNoteCount = 1;
+
+        seq.bpm = 120.0f;
+        seq.playing = true;
+        resetSequencer();
+
+        float dt = 1.0f / SAMPLE_RATE;
+        for (int i = 0; i < 1000; i++) {
+            updateSequencer(dt);
+        }
+
+        // Single note: chord callback NOT called, single-note trigger used
+        expect(chord_trigger_count == 0);
+        expect(melody_trigger_count == 1);
+        expect(melody_last_note == 60);
+
+        seq.playing = false;
+    }
+}
+
+// ============================================================================
+// MELODY HUMANIZE TESTS
+// ============================================================================
+
+describe(melody_humanize) {
+    it("should default to zero (no jitter)") {
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+
+        expect(seq.humanize.timingJitter == 0);
+        expect_float_eq(seq.humanize.velocityJitter, 0.0f);
+    }
+
+    it("should add timing variation when timingJitter > 0") {
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+
+        // Set up a melody note at step 0 with no p-lock nudge
+        seqSetMelodyStep(0, 0, 60, 0.8f, 4);
+
+        seq.humanize.timingJitter = 3;  // ±3 ticks
+        seq.bpm = 120.0f;
+        seq.playing = true;
+
+        // Run calcMelodyTriggerTick many times and check we get varying results
+        int seen_different = 0;
+        int first = -999;
+        for (int trial = 0; trial < 50; trial++) {
+            resetSequencer();
+            int tick = calcMelodyTriggerTick(0);
+            if (first == -999) first = tick;
+            if (tick != first) seen_different = 1;
+            // Should be within range
+            expect(tick >= -3);
+            expect(tick <= 3);
+        }
+        // With 50 trials and ±3 range, we should see at least one different value
+        expect(seen_different == 1);
+
+        seq.playing = false;
+    }
+
+    it("should NOT vary timing when timingJitter is 0") {
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+
+        seqSetMelodyStep(0, 0, 60, 0.8f, 4);
+
+        seq.humanize.timingJitter = 0;
+        seq.bpm = 120.0f;
+        seq.playing = true;
+
+        // All calls should return 0 (no nudge, no jitter)
+        for (int trial = 0; trial < 20; trial++) {
+            resetSequencer();
+            int tick = calcMelodyTriggerTick(0);
+            expect(tick == 0);
+        }
+
+        seq.playing = false;
+    }
+
+    it("should add velocity variation when velocityJitter > 0") {
+        reset_melody_counters();
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+        setMelodyCallbacks(0, test_melody_trigger, test_melody_release);
+
+        // Note with fixed velocity
+        seqSetMelodyStep(0, 0, 60, 0.5f, 1);
+
+        seq.humanize.timingJitter = 0;
+        seq.humanize.velocityJitter = 0.2f;  // ±20%
+        seq.bpm = 120.0f;
+
+        // Trigger many times and collect velocities
+        float vels[20];
+        int seen_vel_diff = 0;
+        for (int trial = 0; trial < 20; trial++) {
+            reset_melody_counters();
+            seq.playing = true;
+            resetSequencer();
+
+            float dt = 1.0f / SAMPLE_RATE;
+            for (int i = 0; i < 500; i++) {
+                updateSequencer(dt);
+            }
+
+            expect(melody_trigger_count == 1);
+            vels[trial] = melody_last_vel;
+            // Velocity should be in reasonable range (0.5 ± 20% of 0.5 = 0.4-0.6)
+            expect(melody_last_vel >= 0.3f);
+            expect(melody_last_vel <= 0.7f);
+
+            seq.playing = false;
+        }
+
+        // Check we got some variation
+        for (int i = 1; i < 20; i++) {
+            if (fabsf(vels[i] - vels[0]) > 0.001f) {
+                seen_vel_diff = 1;
+                break;
+            }
+        }
+        expect(seen_vel_diff == 1);
+    }
+
+    it("should clamp jittered velocity to 0-1 range") {
+        reset_melody_counters();
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+        setMelodyCallbacks(0, test_melody_trigger, test_melody_release);
+
+        // Very quiet note with large jitter — could go negative
+        seqSetMelodyStep(0, 0, 60, 0.05f, 1);
+        seq.humanize.velocityJitter = 0.9f;  // ±90% — extreme
+        seq.bpm = 120.0f;
+
+        for (int trial = 0; trial < 20; trial++) {
+            reset_melody_counters();
+            seq.playing = true;
+            resetSequencer();
+
+            float dt = 1.0f / SAMPLE_RATE;
+            for (int i = 0; i < 500; i++) {
+                updateSequencer(dt);
+            }
+
+            expect(melody_trigger_count == 1);
+            expect(melody_last_vel >= 0.0f);
+            expect(melody_last_vel <= 1.0f);
+
+            seq.playing = false;
+        }
+    }
+}
+
+// ============================================================================
+// SUSTAIN TESTS
+// ============================================================================
+
+describe(melody_sustain) {
+    it("should NOT release note when sustain is active and gate expires") {
+        reset_melody_counters();
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+        setMelodyCallbacks(0, test_melody_trigger, test_melody_release);
+
+        Pattern *p = seqCurrentPattern();
+        p->melodyNote[0][0] = 60;
+        p->melodyVelocity[0][0] = 0.8f;
+        p->melodyGate[0][0] = 1;  // Very short gate (1 step)
+        p->melodySustain[0][0] = 16;  // Sustain holds it for 16 extra steps
+
+        seq.bpm = 120.0f;
+        seq.playing = true;
+        resetSequencer();
+
+        // Run for 3 steps worth — enough for gate to expire
+        float stepDuration = 60.0f / seq.bpm / 4.0f;
+        float dt = 1.0f / SAMPLE_RATE;
+        int samples = (int)(stepDuration * 3.0f * SAMPLE_RATE);
+
+        for (int i = 0; i < samples; i++) {
+            updateSequencer(dt);
+        }
+
+        expect(melody_trigger_count == 1);
+        // With sustain, note should NOT have been released even though gate expired
+        expect(melody_release_count == 0);
+        // Note should still be tracked as playing
+        expect(seq.melodyCurrentNote[0] != SEQ_NOTE_OFF);
+
+        seq.playing = false;
+    }
+
+    it("should release note when gate expires WITHOUT sustain") {
+        reset_melody_counters();
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+        setMelodyCallbacks(0, test_melody_trigger, test_melody_release);
+
+        Pattern *p = seqCurrentPattern();
+        p->melodyNote[0][0] = 60;
+        p->melodyVelocity[0][0] = 0.8f;
+        p->melodyGate[0][0] = 1;
+        p->melodySustain[0][0] = 0;  // No sustain
+
+        seq.bpm = 120.0f;
+        seq.playing = true;
+        resetSequencer();
+
+        float stepDuration = 60.0f / seq.bpm / 4.0f;
+        float dt = 1.0f / SAMPLE_RATE;
+        int samples = (int)(stepDuration * 3.0f * SAMPLE_RATE);
+
+        for (int i = 0; i < samples; i++) {
+            updateSequencer(dt);
+        }
+
+        expect(melody_trigger_count == 1);
+        // Without sustain, note should have been released
+        expect(melody_release_count >= 1);
+        expect(seq.melodyCurrentNote[0] == SEQ_NOTE_OFF);
+
+        seq.playing = false;
+    }
+
+    it("should release sustained note when next note triggers") {
+        reset_melody_counters();
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+        setMelodyCallbacks(0, test_melody_trigger, test_melody_release);
+
+        Pattern *p = seqCurrentPattern();
+        // Note 1 at step 0: sustained, short gate
+        p->melodyNote[0][0] = 60;
+        p->melodyVelocity[0][0] = 0.8f;
+        p->melodyGate[0][0] = 1;
+        p->melodySustain[0][0] = 16;  // Sustain holds until next note
+
+        // Note 2 at step 4: this should release the sustained note
+        p->melodyNote[0][4] = 64;
+        p->melodyVelocity[0][4] = 0.7f;
+        p->melodyGate[0][4] = 2;
+        p->melodySustain[0][4] = 0;
+
+        seq.bpm = 120.0f;
+        seq.playing = true;
+        resetSequencer();
+
+        // Run for 6 steps
+        float stepDuration = 60.0f / seq.bpm / 4.0f;
+        float dt = 1.0f / SAMPLE_RATE;
+        int samples = (int)(stepDuration * 6.0f * SAMPLE_RATE);
+
+        for (int i = 0; i < samples; i++) {
+            updateSequencer(dt);
+        }
+
+        // Both notes triggered
+        expect(melody_trigger_count == 2);
+        // The sustained note gets released when note 2 triggers (release before new note-on)
+        // Then note 2's gate expires normally → another release
+        expect(melody_release_count >= 1);
+        // Last note triggered should be E4 (64)
+        expect(melody_last_note == 64);
+
+        seq.playing = false;
+    }
+
+    it("should initialize sustain to false in initPattern") {
+        _ensureSeqCtx();
+        Pattern p;
+        initPattern(&p);
+
+        for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
+            for (int s = 0; s < SEQ_MAX_STEPS; s++) {
+                expect(p.melodySustain[t][s] == 0);
+            }
+        }
+    }
+
+    it("should clear sustain state on reset") {
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+
+        // Manually set sustain active
+        seq.melodySustainRemaining[0] = 48;
+
+        resetSequencer();
+
+        for (int i = 0; i < SEQ_MELODY_TRACKS; i++) {
+            expect(seq.melodySustainRemaining[i] == 0);
+        }
+    }
+
+    it("should release sustained notes on stop") {
+        reset_melody_counters();
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+        setMelodyCallbacks(0, test_melody_trigger, test_melody_release);
+
+        Pattern *p = seqCurrentPattern();
+        p->melodyNote[0][0] = 60;
+        p->melodyVelocity[0][0] = 0.8f;
+        p->melodyGate[0][0] = 1;
+        p->melodySustain[0][0] = 16;  // 16 extra steps of sustain after gate
+
+        seq.bpm = 120.0f;
+        seq.playing = true;
+        resetSequencer();
+
+        float dt = 1.0f / SAMPLE_RATE;
+        // Run long enough to trigger and let gate expire but within sustain window
+        float stepDuration = 60.0f / seq.bpm / 4.0f;
+        int samples = (int)(stepDuration * 3.0f * SAMPLE_RATE);
+        for (int i = 0; i < samples; i++) {
+            updateSequencer(dt);
+        }
+
+        // Note is sustained (gate expired but sustain countdown still running)
+        expect(melody_trigger_count == 1);
+        expect(melody_release_count == 0);
+        expect(seq.melodyCurrentNote[0] != SEQ_NOTE_OFF);
+
+        // Stop the sequencer — must release sustained note
+        stopSequencer();
+
+        expect(melody_release_count == 1);
+        expect(seq.melodyCurrentNote[0] == SEQ_NOTE_OFF);
+        expect(seq.melodySustainRemaining[0] == 0);
+    }
+
+    it("should release sustained note when pattern changes and new pattern triggers a note") {
+        // Simulates cross-pattern sustain: sustained note from pattern 0 should release
+        // when pattern 1's melody triggers at step 11.
+        reset_melody_counters();
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+        setMelodyCallbacks(0, test_melody_trigger, test_melody_release);
+        seq.ticksPerStep = SEQ_TICKS_PER_STEP_16TH;
+
+        // Pattern 0: note at step 0 with sustain, gate covers whole pattern
+        Pattern *p0 = &seq.patterns[0];
+        initPattern(p0);
+        p0->melodyNote[0][0] = 60;
+        p0->melodyVelocity[0][0] = 0.8f;
+        p0->melodyGate[0][0] = 16;  // Full pattern
+        p0->melodySustain[0][0] = 32;  // Large sustain to survive into next pattern
+
+        seq.currentPattern = 0;
+        seq.bpm = 120.0f;
+        seq.playing = true;
+        resetSequencer();
+
+        float dt = 1.0f / SAMPLE_RATE;
+        float stepDuration = 60.0f / seq.bpm / 4.0f;
+
+        // Set up pattern 1 before we start
+        Pattern *p1 = &seq.patterns[1];
+        initPattern(p1);
+        p1->melodyNote[0][11] = 67;
+        p1->melodyVelocity[0][11] = 0.7f;
+        p1->melodyGate[0][11] = 2;
+
+        // Run 15.5 steps (just before pattern wrap back to step 0)
+        int samplesBefore = (int)(stepDuration * 15.5f * SAMPLE_RATE);
+        for (int i = 0; i < samplesBefore; i++) {
+            updateSequencer(dt);
+        }
+
+        // Note triggered, gate expired, sustain holds
+        expect(melody_trigger_count == 1);
+        expect(melody_release_count == 0);
+        expect(seq.melodyCurrentNote[0] != SEQ_NOTE_OFF);
+        expect(seq.melodySustainRemaining[0] > 0);
+
+        // Switch to pattern 1 (simulating song player callback at pattern boundary)
+        seqSwitchPattern(1);
+
+        // Run 12 more steps into pattern 1 (past step 11)
+        int samplesFor12Steps = (int)(stepDuration * 12.5f * SAMPLE_RATE);
+        for (int i = 0; i < samplesFor12Steps; i++) {
+            updateSequencer(dt);
+        }
+
+        // The sustained note should have been released when step 11 triggered
+        expect(melody_trigger_count == 2);
+        expect(melody_release_count >= 1);
+        expect(melody_last_note == 67);
+
+        seq.playing = false;
+    }
+
+    it("sustained note auto-releases after sustain duration expires in empty pattern") {
+        // Bounded sustain: note holds for N extra steps after gate, then auto-releases.
+        // Even if no new note comes, the sustain countdown ensures release.
+        reset_melody_counters();
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+        setMelodyCallbacks(0, test_melody_trigger, test_melody_release);
+        seq.ticksPerStep = SEQ_TICKS_PER_STEP_16TH;
+
+        Pattern *p0 = &seq.patterns[0];
+        initPattern(p0);
+        p0->melodyNote[0][0] = 60;
+        p0->melodyVelocity[0][0] = 0.8f;
+        p0->melodyGate[0][0] = 1;  // Short gate (1 step)
+        p0->melodySustain[0][0] = 4;  // 4 extra steps of sustain after gate
+
+        // Pattern 1: completely empty melody track
+        Pattern *p1 = &seq.patterns[1];
+        initPattern(p1);
+
+        seq.currentPattern = 0;
+        seq.bpm = 120.0f;
+        seq.playing = true;
+        resetSequencer();
+
+        float dt = 1.0f / SAMPLE_RATE;
+        float stepDuration = 60.0f / seq.bpm / 4.0f;
+
+        // Run 3 steps (gate=1 expired, sustain counting down)
+        int samplesFor3Steps = (int)(stepDuration * 3.0f * SAMPLE_RATE);
+        for (int i = 0; i < samplesFor3Steps; i++) {
+            updateSequencer(dt);
+        }
+
+        // Sustain is still active (gate=1 step done, 3 of 4 sustain steps elapsed)
+        expect(melody_trigger_count == 1);
+        expect(melody_release_count == 0);
+        expect(seq.melodyCurrentNote[0] != SEQ_NOTE_OFF);
+
+        // Run 3 more steps (sustain should expire around step 5)
+        for (int i = 0; i < samplesFor3Steps; i++) {
+            updateSequencer(dt);
+        }
+
+        // Sustain has expired — note auto-released
+        expect(melody_release_count == 1);
+        expect(seq.melodyCurrentNote[0] == SEQ_NOTE_OFF);
+        expect(seq.melodySustainRemaining[0] == 0);
+
+        seq.playing = false;
+    }
+
+    it("should sustain across many steps until next note-on") {
+        reset_melody_counters();
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+        setMelodyCallbacks(0, test_melody_trigger, test_melody_release);
+
+        Pattern *p = seqCurrentPattern();
+        // Note at step 0: gate=1 but sustained
+        p->melodyNote[0][0] = 60;
+        p->melodyVelocity[0][0] = 0.8f;
+        p->melodyGate[0][0] = 1;
+        p->melodySustain[0][0] = 16;  // Hold until next note
+
+        // Next note at step 12 (3 beats later)
+        p->melodyNote[0][12] = 67;
+        p->melodyVelocity[0][12] = 0.7f;
+        p->melodyGate[0][12] = 2;
+
+        seq.bpm = 120.0f;
+        seq.playing = true;
+        resetSequencer();
+
+        // Run for 14 steps
+        float stepDuration = 60.0f / seq.bpm / 4.0f;
+        float dt = 1.0f / SAMPLE_RATE;
+        int samples = (int)(stepDuration * 14.0f * SAMPLE_RATE);
+
+        for (int i = 0; i < samples; i++) {
+            updateSequencer(dt);
+        }
+
+        expect(melody_trigger_count == 2);
+        // Note was sustained through steps 1-11, released when step 12 triggers
+        expect(melody_release_count >= 1);
+        expect(melody_last_note == 67);
+
+        seq.playing = false;
+    }
+}
+
 int main(int argc, char **argv) {
     // Check for quiet mode flag
     for (int i = 1; i < argc; i++) {
@@ -4325,6 +5109,7 @@ int main(int argc, char **argv) {
     test(synth_context);
     test(synth_oscillators);
     test(adsr_envelope);
+    test(release_envelope_timing);
     test(scale_lock);
     test(additive_synthesis);
     test(mallet_synthesis);
@@ -4389,6 +5174,15 @@ int main(int argc, char **argv) {
     
     // Multi-instance isolation tests
     test(multi_instance_isolation);
-    
+
+    // Custom chord voicings (CHORD_CUSTOM)
+    test(custom_chord_voicings);
+
+    // Melody humanize
+    test(melody_humanize);
+
+    // Sustain system
+    test(melody_sustain);
+
     return summary();
 }

@@ -10,6 +10,9 @@
 #include <stdbool.h>
 #include <string.h>
 #include <math.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <time.h>
 
 // ============================================================================
 // CONFIGURATION
@@ -17,8 +20,10 @@
 
 // Timing resolution - 96 PPQ (pulses per quarter note) like MPC60/3000
 #define SEQ_PPQ 96
-#define SEQ_TICKS_PER_STEP 24  // 96 / 4 steps per beat
-#define SEQ_MAX_STEPS 16
+#define SEQ_TICKS_PER_STEP_16TH 24  // 96 / 4 steps per beat (16th note resolution)
+#define SEQ_TICKS_PER_STEP_32ND 12  // 96 / 8 steps per beat (32nd note resolution)
+#define SEQ_TICKS_PER_STEP SEQ_TICKS_PER_STEP_16TH  // Default (backward compat for direct use)
+#define SEQ_MAX_STEPS 32
 #define SEQ_DRUM_TRACKS 4      // Kick, Snare, HiHat, Clap
 #define SEQ_MELODY_TRACKS 3    // Bass, Lead, Chords
 #define SEQ_TOTAL_TRACKS (SEQ_DRUM_TRACKS + SEQ_MELODY_TRACKS)
@@ -36,6 +41,91 @@
 #define NOTE_POOL_MAX_NOTES 8  // Max notes in a chord/pool
 
 // ============================================================================
+// SOUND LOG — lightweight ring buffer for audio event debugging
+// Toggle: seqSoundLogEnabled = true, dump: seqSoundLogDump("file.log")
+// ============================================================================
+
+#define SEQ_SOUND_LOG_MAX 2048
+#define SEQ_SOUND_LOG_LINE 128
+
+static bool seqSoundLogEnabled = false;
+static char seqSoundLogBuffer[SEQ_SOUND_LOG_MAX][SEQ_SOUND_LOG_LINE];
+static int seqSoundLogHead = 0;
+static int seqSoundLogCount = 0;
+static double seqSoundLogStartTime = 0.0;  // wall clock at song start
+
+// Note name lookup (for readable output)
+static const char* seqNoteNames[] = {
+    "C","C#","D","D#","E","F","F#","G","G#","A","A#","B"
+};
+
+static const char* seqTrackNames[] = { "bass", "lead", "chord" };
+
+static void seqSoundLog(const char* fmt, ...) {
+    if (!seqSoundLogEnabled) return;
+    char* entry = seqSoundLogBuffer[seqSoundLogHead];
+
+    // Wall-clock timestamp relative to song start
+    double now = 0.0;
+    #ifdef _WIN32
+    // fallback: no high-res timer
+    #else
+    {
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        now = ts.tv_sec + ts.tv_nsec / 1000000000.0;
+    }
+    #endif
+    double elapsed = now - seqSoundLogStartTime;
+
+    int prefixLen = snprintf(entry, SEQ_SOUND_LOG_LINE, "[%+7.3fs] ", elapsed);
+    if (prefixLen < 0) prefixLen = 0;
+    if (prefixLen >= SEQ_SOUND_LOG_LINE) prefixLen = SEQ_SOUND_LOG_LINE - 1;
+
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(entry + prefixLen, SEQ_SOUND_LOG_LINE - prefixLen, fmt, args);
+    va_end(args);
+
+    seqSoundLogHead = (seqSoundLogHead + 1) % SEQ_SOUND_LOG_MAX;
+    if (seqSoundLogCount < SEQ_SOUND_LOG_MAX) seqSoundLogCount++;
+}
+
+static const char* seqNoteName(int midi) {
+    if (midi < 0) return "---";
+    int octave = (midi / 12) - 1;
+    int note = midi % 12;
+    static char buf[8];
+    snprintf(buf, sizeof(buf), "%s%d", seqNoteNames[note], octave);
+    return buf;
+}
+
+static void seqSoundLogDump(const char* filepath) {
+    FILE* f = fopen(filepath, "w");
+    if (!f) return;
+    int start = (seqSoundLogCount < SEQ_SOUND_LOG_MAX) ? 0 : seqSoundLogHead;
+    for (int i = 0; i < seqSoundLogCount; i++) {
+        int idx = (start + i) % SEQ_SOUND_LOG_MAX;
+        fprintf(f, "%s\n", seqSoundLogBuffer[idx]);
+    }
+    fclose(f);
+    seqSoundLogCount = 0;
+    seqSoundLogHead = 0;
+}
+
+static void seqSoundLogReset(void) {
+    seqSoundLogCount = 0;
+    seqSoundLogHead = 0;
+    #ifndef _WIN32
+    {
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        seqSoundLogStartTime = ts.tv_sec + ts.tv_nsec / 1000000000.0;
+    }
+    #endif
+}
+
+// ============================================================================
 // TYPES
 // ============================================================================
 
@@ -49,6 +139,7 @@ typedef enum {
     CHORD_SEVENTH,      // Root + 3rd + 5th + 7th
     CHORD_OCTAVE,       // Root + octave
     CHORD_OCTAVES,      // Root + octave + 2 octaves
+    CHORD_CUSTOM,       // Custom voicing: use NotePool.customNotes[] directly
     CHORD_COUNT
 } ChordType;
 
@@ -63,11 +154,12 @@ typedef enum {
     PICK_PINGPONG,      // Up then down
     PICK_RANDOM,        // Random selection
     PICK_RANDOM_WALK,   // Random but tends to move stepwise
+    PICK_ALL,           // Play ALL chord notes simultaneously (true chord voicing)
     PICK_COUNT
 } PickMode;
 
 static const char* pickModeNames[] = {
-    "Up", "Down", "Ping", "Rand", "Walk"
+    "Up", "Down", "Ping", "Rand", "Walk", "All"
 };
 
 // Note pool state for a step
@@ -77,6 +169,8 @@ typedef struct {
     int pickMode;           // PickMode: how to select
     int currentIndex;       // Current position in the pool (for cycling)
     int direction;          // 1 = up, -1 = down (for pingpong)
+    int customNotes[NOTE_POOL_MAX_NOTES];  // Exact MIDI notes for CHORD_CUSTOM
+    int customNoteCount;    // Number of notes in customNotes (0 = unused)
 } NotePool;
 
 // Trigger conditions (Elektron-style)
@@ -109,6 +203,12 @@ typedef struct {
     int swing;          // Off-beat swing in ticks
     int jitter;         // Random humanization range in ticks
 } DillaTiming;
+
+// Melody humanize — subtle random variation for less mechanical playback
+typedef struct {
+    int timingJitter;       // Random timing offset range in ticks (±N, 0 = off)
+    float velocityJitter;   // Random velocity variation (0.0-1.0, fraction of ± original vel)
+} MelodyHumanize;
 
 // ============================================================================
 // PARAMETER LOCKS (Elektron-style per-step parameter automation)
@@ -178,6 +278,7 @@ typedef struct {
     // 303-style per-step slide & accent (for melodic tracks)
     bool melodySlide[SEQ_MELODY_TRACKS][SEQ_MAX_STEPS];      // Slide/glide to this note
     bool melodyAccent[SEQ_MELODY_TRACKS][SEQ_MAX_STEPS];     // Accent (boost vel + filter env)
+    int melodySustain[SEQ_MELODY_TRACKS][SEQ_MAX_STEPS];     // Sustain: extra steps to hold after gate expires (0 = off, >0 = max hold steps)
     
     // Note pool per step (for generative/varied melodies)
     NotePool melodyNotePool[SEQ_MELODY_TRACKS][SEQ_MAX_STEPS];
@@ -199,6 +300,10 @@ typedef void (*MelodyTriggerFunc)(int note, float vel, float gateTime, bool slid
 // Release function type for melodic - called when note should stop
 typedef void (*MelodyReleaseFunc)(void);
 
+// Chord trigger: plays all notes in a chord at once (used with PICK_ALL mode)
+// notes = MIDI note array, noteCount = how many, rest same as MelodyTriggerFunc
+typedef void (*MelodyChordTriggerFunc)(int* notes, int noteCount, float vel, float gateTime, bool slide, bool accent);
+
 typedef struct {
     // Pattern bank
     Pattern patterns[SEQ_NUM_PATTERNS];
@@ -217,6 +322,7 @@ typedef struct {
     bool melodyTriggered[SEQ_MELODY_TRACKS];       // Has this step been triggered?
     int melodyGateRemaining[SEQ_MELODY_TRACKS];    // Ticks remaining for current note
     int melodyCurrentNote[SEQ_MELODY_TRACKS];      // Currently playing note (-1 if none)
+    int melodySustainRemaining[SEQ_MELODY_TRACKS];  // Ticks remaining in sustain hold (0 = inactive)
     
     // Condition tracking (combined for all tracks)
     int playCount;                             // How many times pattern has looped
@@ -227,10 +333,14 @@ typedef struct {
     bool playing;
     float bpm;
     float tickTimer;
+    int ticksPerStep;  // 24 = 16th note, 12 = 32nd note (set per song)
     
     // Dilla timing
     DillaTiming dilla;
-    
+
+    // Melody humanize
+    MelodyHumanize humanize;
+
     // Per-track volume (0.0-1.0, default 1.0)
     float trackVolume[SEQ_TOTAL_TRACKS];
     
@@ -246,6 +356,7 @@ typedef struct {
     DrumTriggerFunc drumTriggers[SEQ_DRUM_TRACKS];
     MelodyTriggerFunc melodyTriggers[SEQ_MELODY_TRACKS];
     MelodyReleaseFunc melodyRelease[SEQ_MELODY_TRACKS];
+    MelodyChordTriggerFunc melodyChordTriggers[SEQ_MELODY_TRACKS];  // PICK_ALL uses this if set
 } DrumSequencer;
 
 // ============================================================================
@@ -470,11 +581,45 @@ static int seqGetNoteForStep(Pattern* p, int track, int step) {
     
     // Build the chord notes
     int notes[NOTE_POOL_MAX_NOTES];
-    bool useMinor = shouldUseMinor(baseNote);
-    int noteCount = buildChordNotes(baseNote, (ChordType)pool->chordType, useMinor, notes);
-    
+    int noteCount;
+    if (pool->chordType == CHORD_CUSTOM && pool->customNoteCount > 0) {
+        noteCount = pool->customNoteCount;
+        if (noteCount > NOTE_POOL_MAX_NOTES) noteCount = NOTE_POOL_MAX_NOTES;
+        for (int i = 0; i < noteCount; i++) notes[i] = pool->customNotes[i];
+    } else {
+        bool useMinor = shouldUseMinor(baseNote);
+        noteCount = buildChordNotes(baseNote, (ChordType)pool->chordType, useMinor, notes);
+    }
+
     // Pick from the pool
     return pickNoteFromPool(pool, notes, noteCount);
+}
+
+// Get all chord notes for a step (for PICK_ALL mode).
+// Returns note count. outNotes must hold NOTE_POOL_MAX_NOTES entries.
+// If pool is not enabled or not PICK_ALL, returns 1 with just the base note.
+static int seqGetAllNotesForStep(Pattern* p, int track, int step, int* outNotes) {
+    int baseNote = p->melodyNote[track][step];
+    if (baseNote == SEQ_NOTE_OFF) { outNotes[0] = SEQ_NOTE_OFF; return 0; }
+
+    NotePool* pool = &p->melodyNotePool[track][step];
+    if (!pool->enabled || pool->pickMode != PICK_ALL) {
+        outNotes[0] = baseNote;
+        return 1;
+    }
+
+    // CHORD_CUSTOM: return the exact notes stored in the pool
+    if (pool->chordType == CHORD_CUSTOM && pool->customNoteCount > 0) {
+        int count = pool->customNoteCount;
+        if (count > NOTE_POOL_MAX_NOTES) count = NOTE_POOL_MAX_NOTES;
+        for (int i = 0; i < count; i++) {
+            outNotes[i] = pool->customNotes[i];
+        }
+        return count;
+    }
+
+    bool useMinor = shouldUseMinor(baseNote);
+    return buildChordNotes(baseNote, (ChordType)pool->chordType, useMinor, outNotes);
 }
 
 // Enable/disable note pool for a step
@@ -771,9 +916,32 @@ static int calcDrumTriggerTick(int track) {
     }
     
     // Clamp to valid range
-    if (baseTick < -SEQ_TICKS_PER_STEP / 2) baseTick = -SEQ_TICKS_PER_STEP / 2;
-    if (baseTick > SEQ_TICKS_PER_STEP - 1) baseTick = SEQ_TICKS_PER_STEP - 1;
-    
+    if (baseTick < -seq.ticksPerStep / 2) baseTick = -seq.ticksPerStep / 2;
+    if (baseTick > seq.ticksPerStep - 1) baseTick = seq.ticksPerStep - 1;
+
+    return baseTick;
+}
+
+// Calculate the trigger tick for a melody track on its current step
+// Only per-step nudge (no swing/jitter — those are drum-feel concepts)
+static int calcMelodyTriggerTick(int track) {
+    int step = seq.melodyStep[track];
+    int baseTick = 0;
+
+    // Apply per-step nudge (p-lock) — uses absolute track index (melody = SEQ_DRUM_TRACKS + track)
+    Pattern *p = seqCurrentPattern();
+    float stepNudge = seqGetPLock(p, SEQ_DRUM_TRACKS + track, step, PLOCK_TIME_NUDGE, 0.0f);
+    baseTick += (int)stepNudge;
+
+    // Apply humanize timing jitter
+    if (seq.humanize.timingJitter > 0) {
+        baseTick += seqRandInt(-seq.humanize.timingJitter, seq.humanize.timingJitter);
+    }
+
+    // Clamp to valid range
+    if (baseTick < -seq.ticksPerStep / 2) baseTick = -seq.ticksPerStep / 2;
+    if (baseTick > seq.ticksPerStep - 1) baseTick = seq.ticksPerStep - 1;
+
     return baseTick;
 }
 
@@ -782,17 +950,7 @@ static float midiToFreq(int note) {
     return 440.0f * powf(2.0f, (note - 69) / 12.0f);
 }
 
-// Note names for display
-static const char* noteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
-
-static const char* seqNoteName(int note) {
-    if (note < 0) return "---";
-    static char buf[8];
-    int octave = (note / 12) - 1;
-    int semitone = note % 12;
-    snprintf(buf, sizeof(buf), "%s%d", noteNames[semitone], octave);
-    return buf;
-}
+// Note names for display — uses seqNoteName() from sound log section above
 
 // ============================================================================
 // PATTERN HELPERS
@@ -815,6 +973,7 @@ static void initPattern(Pattern *p) {
     // Initialize melodic tracks
     memset(p->melodySlide, 0, sizeof(p->melodySlide));
     memset(p->melodyAccent, 0, sizeof(p->melodyAccent));
+    memset(p->melodySustain, 0, sizeof(p->melodySustain));
     for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
         for (int s = 0; s < SEQ_MAX_STEPS; s++) {
             p->melodyNote[t][s] = SEQ_NOTE_OFF;
@@ -865,6 +1024,7 @@ static void releaseAllMelodyNotes(void) {
             seq.melodyCurrentNote[i] = SEQ_NOTE_OFF;
         }
         seq.melodyGateRemaining[i] = 0;
+        seq.melodySustainRemaining[i] = 0;
     }
 }
 
@@ -890,6 +1050,7 @@ static void resetSequencer(void) {
         seq.melodyTriggered[i] = false;
         seq.melodyGateRemaining[i] = 0;
         seq.melodyCurrentNote[i] = SEQ_NOTE_OFF;
+        seq.melodySustainRemaining[i] = 0;
     }
 }
 
@@ -914,6 +1075,7 @@ static void initSequencer(DrumTriggerFunc kickFn, DrumTriggerFunc snareFn,
     seq.playing = false;
     seq.bpm = 120.0f;
     seq.tickTimer = 0.0f;
+    seq.ticksPerStep = SEQ_TICKS_PER_STEP_16TH;  // Default 16th note resolution
     seq.playCount = 0;
     seq.fillMode = false;
     memset(seq.drumStepPlayCount, 0, sizeof(seq.drumStepPlayCount));
@@ -969,8 +1131,9 @@ static void initSequencer(DrumTriggerFunc kickFn, DrumTriggerFunc snareFn,
         seq.melodyTriggered[i] = false;
         seq.melodyGateRemaining[i] = 0;
         seq.melodyCurrentNote[i] = SEQ_NOTE_OFF;
+        seq.melodySustainRemaining[i] = 0;
     }
-    
+
     // Default Dilla timing (MPC-style feel)
     seq.dilla.kickNudge = -2;    // Kicks slightly early (punchy)
     seq.dilla.snareDelay = 4;    // Snares lazy/late (laid back)
@@ -978,6 +1141,15 @@ static void initSequencer(DrumTriggerFunc kickFn, DrumTriggerFunc snareFn,
     seq.dilla.clapDelay = 3;     // Claps slightly late
     seq.dilla.swing = 6;         // Off-beats pushed late
     seq.dilla.jitter = 2;        // Subtle humanization
+
+    // Melody humanize off by default — songs opt in
+    seq.humanize.timingJitter = 0;
+    seq.humanize.velocityJitter = 0.0f;
+}
+
+// Set step resolution: false = 16th note (16 steps, default), true = 32nd note (32 steps)
+static void seqSet32ndNoteMode(bool enable) {
+    seq.ticksPerStep = enable ? SEQ_TICKS_PER_STEP_32ND : SEQ_TICKS_PER_STEP_16TH;
 }
 
 // Set melodic track trigger/release functions
@@ -985,6 +1157,14 @@ static void setMelodyCallbacks(int track, MelodyTriggerFunc trigger, MelodyRelea
     if (track < 0 || track >= SEQ_MELODY_TRACKS) return;
     seq.melodyTriggers[track] = trigger;
     seq.melodyRelease[track] = release;
+    seq.melodyChordTriggers[track] = NULL;  // clear chord trigger by default
+}
+
+// Set chord trigger for a track (used with PICK_ALL note pools)
+// When set, PICK_ALL steps call this instead of the single-note trigger.
+static void setMelodyChordCallback(int track, MelodyChordTriggerFunc chordTrigger) {
+    if (track < 0 || track >= SEQ_MELODY_TRACKS) return;
+    seq.melodyChordTriggers[track] = chordTrigger;
 }
 
 // ============================================================================
@@ -997,7 +1177,7 @@ static void updateSequencer(float dt) {
     
     // Calculate tick duration: 60 / BPM / PPQ
     float tickDuration = 60.0f / seq.bpm / (float)SEQ_PPQ;
-    float stepDuration = tickDuration * SEQ_TICKS_PER_STEP;
+    float stepDuration = tickDuration * seq.ticksPerStep;
     
     // Process pending flams (time-based, outside tick loop)
     for (int track = 0; track < SEQ_DRUM_TRACKS; track++) {
@@ -1072,8 +1252,8 @@ static void updateSequencer(float dt) {
             // Advance tick
             seq.drumTick[track]++;
             
-            // Check if track completed its step (24 ticks)
-            if (seq.drumTick[track] >= SEQ_TICKS_PER_STEP) {
+            // Check if track completed its step
+            if (seq.drumTick[track] >= seq.ticksPerStep) {
                 seq.drumTick[track] = 0;
                 
                 // Increment step play counter before advancing
@@ -1116,6 +1296,7 @@ static void updateSequencer(float dt) {
                 // Check if pattern completed (track 0 wraps as master)
                 if (track == 0 && seq.drumStep[0] == 0 && prevStep != 0) {
                     seq.playCount++;
+                    seqSoundLog("PATTERN_END  pat=%d playCount=%d", seq.currentPattern, seq.playCount);
                     
                     // Handle queued pattern switch
                     if (seq.nextPattern >= 0 && seq.nextPattern < SEQ_NUM_PATTERNS) {
@@ -1138,6 +1319,28 @@ static void updateSequencer(float dt) {
             if (seq.melodyGateRemaining[track] > 0) {
                 seq.melodyGateRemaining[track]--;
                 if (seq.melodyGateRemaining[track] == 0 && seq.melodyCurrentNote[track] != SEQ_NOTE_OFF) {
+                    if (seq.melodySustainRemaining[track] > 0) {
+                        // Sustain phase: gate expired but sustain holds.
+                        seqSoundLog("%s GATE_END %s -> sustain (%d ticks left)",
+                            seqTrackNames[track], seqNoteName(seq.melodyCurrentNote[track]),
+                            seq.melodySustainRemaining[track]);
+                    } else {
+                        seqSoundLog("%s RELEASE(gate) %s  step=%d",
+                            seqTrackNames[track], seqNoteName(seq.melodyCurrentNote[track]), step);
+                        if (seq.melodyRelease[track]) {
+                            seq.melodyRelease[track]();
+                        }
+                        seq.melodyCurrentNote[track] = SEQ_NOTE_OFF;
+                    }
+                }
+            }
+
+            // Handle sustain countdown (auto-release after sustain duration)
+            if (seq.melodySustainRemaining[track] > 0 && seq.melodyGateRemaining[track] == 0) {
+                seq.melodySustainRemaining[track]--;
+                if (seq.melodySustainRemaining[track] == 0 && seq.melodyCurrentNote[track] != SEQ_NOTE_OFF) {
+                    seqSoundLog("%s RELEASE(sustain) %s  step=%d",
+                        seqTrackNames[track], seqNoteName(seq.melodyCurrentNote[track]), step);
                     if (seq.melodyRelease[track]) {
                         seq.melodyRelease[track]();
                     }
@@ -1145,9 +1348,10 @@ static void updateSequencer(float dt) {
                 }
             }
             
-            // Check if we should trigger on this tick (at start of step)
+            // Check if we should trigger on this tick (with per-step nudge)
             int baseNote = p->melodyNote[track][step];
-            if (baseNote != SEQ_NOTE_OFF && !seq.melodyTriggered[track] && tick == 0) {
+            int melodyTrigTick = calcMelodyTriggerTick(track);
+            if (baseNote != SEQ_NOTE_OFF && !seq.melodyTriggered[track] && tick >= melodyTrigTick) {
                 // Check probability
                 float prob = p->melodyProbability[track][step];
                 bool passedProb = (prob >= 1.0f) || (seqRandFloat() < prob);
@@ -1156,40 +1360,62 @@ static void updateSequencer(float dt) {
                 bool passedCond = seqEvalMelodyCondition(track, step);
                 
                 if (passedProb && passedCond) {
-                    // Release previous note if still playing
+                    // Release previous note/chord if still playing
                     if (seq.melodyCurrentNote[track] != SEQ_NOTE_OFF && seq.melodyRelease[track]) {
+                        seqSoundLog("%s RELEASE(new-note) %s  step=%d",
+                            seqTrackNames[track], seqNoteName(seq.melodyCurrentNote[track]), step);
                         seq.melodyRelease[track]();
                     }
-                    
-                    // Get the actual note to play (may vary if note pool is enabled)
-                    int note = seqGetNoteForStep(p, track, step);
-                    
+
                     // Calculate gate time in seconds
                     int gateSteps = p->melodyGate[track][step];
-                    if (gateSteps == 0) gateSteps = 1;  // Minimum 1 step
+                    if (gateSteps == 0) gateSteps = 1;
                     float gateTime = gateSteps * stepDuration;
-                    
-                    // Trigger the note with slide and accent flags
-                    if (seq.melodyTriggers[track]) {
-                        bool slide = p->melodySlide[track][step];
-                        bool accent = p->melodyAccent[track][step];
-                        // Prepare p-locks for this step (melody uses tracks 4-6, offset by SEQ_DRUM_TRACKS)
-                        seqPreparePLocks(p, SEQ_DRUM_TRACKS + track, step);
-                        // Apply track volume to velocity
-                        float velocity = p->melodyVelocity[track][step] * seq.trackVolume[SEQ_DRUM_TRACKS + track];
-                        seq.melodyTriggers[track](note, velocity, gateTime, slide, accent);
+                    bool slide = p->melodySlide[track][step];
+                    bool accent = p->melodyAccent[track][step];
+                    seqPreparePLocks(p, SEQ_DRUM_TRACKS + track, step);
+                    float velocity = p->melodyVelocity[track][step] * seq.trackVolume[SEQ_DRUM_TRACKS + track];
+                    if (seq.humanize.velocityJitter > 0.0f) {
+                        float jit = (seqRandFloat() * 2.0f - 1.0f) * seq.humanize.velocityJitter * velocity;
+                        velocity += jit;
+                        if (velocity < 0.0f) velocity = 0.0f;
+                        if (velocity > 1.0f) velocity = 1.0f;
                     }
-                    seq.melodyCurrentNote[track] = note;
-                    seq.melodyGateRemaining[track] = gateSteps * SEQ_TICKS_PER_STEP;
+
+                    // Check for PICK_ALL chord mode
+                    int chordNotes[NOTE_POOL_MAX_NOTES];
+                    int chordCount = seqGetAllNotesForStep(p, track, step, chordNotes);
+
+                    int sustainSteps = p->melodySustain[track][step];
+                    if (chordCount > 1 && seq.melodyChordTriggers[track]) {
+                        // Chord trigger: pass all notes at once
+                        seq.melodyChordTriggers[track](chordNotes, chordCount, velocity, gateTime, slide, accent);
+                        seq.melodyCurrentNote[track] = chordNotes[0];  // track root for state
+                        seqSoundLog("%s NOTE_ON chord root=%s  step=%d gate=%d sus=%d vel=%.2f cnt=%d",
+                            seqTrackNames[track], seqNoteName(chordNotes[0]),
+                            step, gateSteps, sustainSteps, velocity, chordCount);
+                    } else {
+                        // Single note trigger (existing path)
+                        int note = (chordCount > 0) ? chordNotes[0] : seqGetNoteForStep(p, track, step);
+                        if (seq.melodyTriggers[track]) {
+                            seq.melodyTriggers[track](note, velocity, gateTime, slide, accent);
+                        }
+                        seq.melodyCurrentNote[track] = note;
+                        seqSoundLog("%s NOTE_ON %s  step=%d gate=%d sus=%d vel=%.2f",
+                            seqTrackNames[track], seqNoteName(note),
+                            step, gateSteps, sustainSteps, velocity);
+                    }
+                    seq.melodyGateRemaining[track] = gateSteps * seq.ticksPerStep;
+                    seq.melodySustainRemaining[track] = sustainSteps * seq.ticksPerStep;
                 }
                 seq.melodyTriggered[track] = true;
             }
-            
+
             // Advance tick
             seq.melodyTick[track]++;
-            
+
             // Check if track completed its step
-            if (seq.melodyTick[track] >= SEQ_TICKS_PER_STEP) {
+            if (seq.melodyTick[track] >= seq.ticksPerStep) {
                 seq.melodyTick[track] = 0;
                 
                 // Increment step play counter
@@ -1198,36 +1424,60 @@ static void updateSequencer(float dt) {
                 seq.melodyStep[track] = (seq.melodyStep[track] + 1) % p->melodyTrackLength[track];
                 seq.melodyTriggered[track] = false;
                 
-                // IMPORTANT: Check if new step should trigger immediately (tick 0)
+                // IMPORTANT: Check if new step should trigger immediately (nudge <= 0)
                 // This handles the case where we advance to a new step and need to trigger NOW
                 int newStep = seq.melodyStep[track];
                 int newBaseNote = p->melodyNote[track][newStep];
-                if (newBaseNote != SEQ_NOTE_OFF) {
+                int newTrigTick = calcMelodyTriggerTick(track);
+                if (newBaseNote != SEQ_NOTE_OFF && newTrigTick <= 0) {
                     float prob = p->melodyProbability[track][newStep];
                     bool passedProb = (prob >= 1.0f) || (seqRandFloat() < prob);
                     bool passedCond = seqEvalMelodyCondition(track, newStep);
                     
                     if (passedProb && passedCond) {
                         if (seq.melodyCurrentNote[track] != SEQ_NOTE_OFF && seq.melodyRelease[track]) {
+                            seqSoundLog("%s RELEASE(new-note) %s  step=%d",
+                                seqTrackNames[track], seqNoteName(seq.melodyCurrentNote[track]), newStep);
                             seq.melodyRelease[track]();
                         }
-                        
-                        // Get the actual note to play (may vary if note pool is enabled)
-                        int newNote = seqGetNoteForStep(p, track, newStep);
-                        
+
                         int gateSteps = p->melodyGate[track][newStep];
                         if (gateSteps == 0) gateSteps = 1;
                         float gateTime = gateSteps * stepDuration;
-                        
-                        if (seq.melodyTriggers[track]) {
-                            bool slide = p->melodySlide[track][newStep];
-                            bool accent = p->melodyAccent[track][newStep];
-                            seqPreparePLocks(p, SEQ_DRUM_TRACKS + track, newStep);
-                            float velocity = p->melodyVelocity[track][newStep] * seq.trackVolume[SEQ_DRUM_TRACKS + track];
-                            seq.melodyTriggers[track](newNote, velocity, gateTime, slide, accent);
+                        bool slide = p->melodySlide[track][newStep];
+                        bool accent = p->melodyAccent[track][newStep];
+                        seqPreparePLocks(p, SEQ_DRUM_TRACKS + track, newStep);
+                        float velocity = p->melodyVelocity[track][newStep] * seq.trackVolume[SEQ_DRUM_TRACKS + track];
+                        if (seq.humanize.velocityJitter > 0.0f) {
+                            float jit = (seqRandFloat() * 2.0f - 1.0f) * seq.humanize.velocityJitter * velocity;
+                            velocity += jit;
+                            if (velocity < 0.0f) velocity = 0.0f;
+                            if (velocity > 1.0f) velocity = 1.0f;
                         }
-                        seq.melodyCurrentNote[track] = newNote;
-                        seq.melodyGateRemaining[track] = gateSteps * SEQ_TICKS_PER_STEP;
+
+                        // Check for PICK_ALL chord mode
+                        int chordNotes[NOTE_POOL_MAX_NOTES];
+                        int chordCount = seqGetAllNotesForStep(p, track, newStep, chordNotes);
+
+                        int sustainSteps2 = p->melodySustain[track][newStep];
+                        if (chordCount > 1 && seq.melodyChordTriggers[track]) {
+                            seq.melodyChordTriggers[track](chordNotes, chordCount, velocity, gateTime, slide, accent);
+                            seq.melodyCurrentNote[track] = chordNotes[0];
+                            seqSoundLog("%s NOTE_ON chord root=%s  step=%d gate=%d sus=%d vel=%.2f cnt=%d",
+                                seqTrackNames[track], seqNoteName(chordNotes[0]),
+                                newStep, gateSteps, sustainSteps2, velocity, chordCount);
+                        } else {
+                            int newNote = (chordCount > 0) ? chordNotes[0] : seqGetNoteForStep(p, track, newStep);
+                            if (seq.melodyTriggers[track]) {
+                                seq.melodyTriggers[track](newNote, velocity, gateTime, slide, accent);
+                            }
+                            seq.melodyCurrentNote[track] = newNote;
+                            seqSoundLog("%s NOTE_ON %s  step=%d gate=%d sus=%d vel=%.2f",
+                                seqTrackNames[track], seqNoteName(newNote),
+                                newStep, gateSteps, sustainSteps2, velocity);
+                        }
+                        seq.melodyGateRemaining[track] = gateSteps * seq.ticksPerStep;
+                        seq.melodySustainRemaining[track] = sustainSteps2 * seq.ticksPerStep;
                     }
                     seq.melodyTriggered[track] = true;
                 }

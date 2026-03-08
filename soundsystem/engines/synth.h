@@ -351,7 +351,9 @@ typedef struct {
     float release;
     float envPhase;
     float envLevel;       // current envelope level
+    float releaseLevel;   // envLevel captured at release start (for linear fade)
     int envStage;         // 0=off, 1=attack, 2=decay, 3=sustain, 4=release
+    bool expRelease;      // false=linear (tight, predictable), true=exponential (natural tail)
     
     // For pitch slides (SFX)
     float pitchSlide;
@@ -502,6 +504,7 @@ typedef struct SynthContext {
     float noteDecay;
     float noteSustain;
     float noteRelease;
+    bool noteExpRelease;  // false=linear, true=exponential
     float noteVolume;
     float notePulseWidth;
     float notePwmRate;
@@ -633,6 +636,7 @@ static void initSynthContext(SynthContext* ctx) {
     ctx->noteDecay = 0.1f;
     ctx->noteSustain = 0.5f;
     ctx->noteRelease = 0.3f;
+    ctx->noteExpRelease = false;
     ctx->noteVolume = 0.5f;
     ctx->notePulseWidth = 0.5f;
     ctx->notePwmRate = 3.0f;
@@ -751,6 +755,7 @@ static void _ensureSynthCtx(void) {
 #define noteDecay (synthCtx->noteDecay)
 #define noteSustain (synthCtx->noteSustain)
 #define noteRelease (synthCtx->noteRelease)
+#define noteExpRelease (synthCtx->noteExpRelease)
 #define noteVolume (synthCtx->noteVolume)
 #define notePulseWidth (synthCtx->notePulseWidth)
 #define notePwmRate (synthCtx->notePwmRate)
@@ -2335,12 +2340,14 @@ static float processEnvelope(Voice *v, float dt) {
             if (v->decay <= 0.0f) {
                 v->envPhase = 0.0f;
                 v->envLevel = v->sustain;
+                if (v->sustain <= 0.001f) v->releaseLevel = v->envLevel;
                 v->envStage = (v->sustain > 0.001f) ? 3 : 4;
             } else {
                 v->envLevel = 1.0f - (1.0f - v->sustain) * (v->envPhase / v->decay);
                 if (v->envPhase >= v->decay) {
                     v->envPhase = 0.0f;
                     v->envLevel = v->sustain;
+                    if (v->sustain <= 0.001f) v->releaseLevel = v->envLevel;
                     v->envStage = (v->sustain > 0.001f) ? 3 : 4;
                 }
             }
@@ -2352,17 +2359,33 @@ static float processEnvelope(Voice *v, float dt) {
             if (v->release <= 0.0f) {
                 // Even with zero release, do a quick anti-click fade (~1ms)
                 v->envLevel *= 0.99f;
-                if (v->envLevel < 0.0001f) {
+                if (v->envLevel < 0.001f) {
+                    v->envStage = 0;
+                    v->envLevel = 0.0f;
+                }
+            } else if (v->expRelease) {
+                // Exponential release: natural decay curve, reaches ~0.001 in v->release seconds.
+                // Rate constant chosen so that releaseLevel * exp(-k * release) ≈ 0.001
+                // k = ln(releaseLevel/0.001) / release  ≈  ln(1000*releaseLevel) / release
+                float k = logf(fmaxf(v->releaseLevel, 0.001f) / 0.001f) / v->release;
+                v->envLevel = v->releaseLevel * expf(-k * v->envPhase);
+                if (v->envLevel < 0.001f) {
                     v->envStage = 0;
                     v->envLevel = 0.0f;
                 }
             } else {
-                // Exponential decay for smooth release
-                v->envLevel *= (1.0f - dt / v->release);
-                // Use very low threshold to avoid pops (0.0001 = -80dB, inaudible)
-                if (v->envLevel < 0.0001f) {
+                // Linear release: fade from releaseLevel to zero in exactly v->release seconds.
+                // releaseLevel is captured by releaseNote() at the moment release begins.
+                float t = v->envPhase / v->release;
+                if (t >= 1.0f) {
                     v->envStage = 0;
                     v->envLevel = 0.0f;
+                } else {
+                    v->envLevel = v->releaseLevel * (1.0f - t);
+                    if (v->envLevel < 0.001f) {
+                        v->envStage = 0;
+                        v->envLevel = 0.0f;
+                    }
                 }
             }
             break;
@@ -2670,6 +2693,7 @@ static int findVoice(void) {
 static void releaseNote(int voiceIdx) {
     if (voiceIdx < 0 || voiceIdx >= NUM_VOICES) return;
     if (synthVoices[voiceIdx].envStage > 0 && synthVoices[voiceIdx].envStage < 4) {
+        synthVoices[voiceIdx].releaseLevel = synthVoices[voiceIdx].envLevel;
         synthVoices[voiceIdx].envStage = 4;
         synthVoices[voiceIdx].envPhase = 0.0f;
     }
@@ -2828,7 +2852,8 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->decay = params->useGlobalEnvelope ? noteDecay : params->decay;
     v->sustain = params->useGlobalEnvelope ? noteSustain : params->sustain;
     v->release = params->useGlobalEnvelope ? noteRelease : params->release;
-    
+    v->expRelease = params->useGlobalEnvelope ? noteExpRelease : false;
+
     if (!isGlide) {
         v->envPhase = 0.0f;
         // On mono retrigger, preserve some envelope level for smooth transition

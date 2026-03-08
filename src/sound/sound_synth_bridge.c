@@ -28,7 +28,7 @@ typedef struct {
 // Song player state
 // ============================================================================
 
-#define MAX_SONG_PATTERNS 4
+#define MAX_SONG_PATTERNS 8
 
 typedef struct {
     bool active;
@@ -39,7 +39,11 @@ typedef struct {
     int loopsPerPattern;    // how many times to loop before switching (default 2)
     float bpm;
     // Voice indices for melody tracks (so we can release them)
-    int melodyVoice[SEQ_MELODY_TRACKS];
+    // Single-voice tracks use melodyVoices[track][0] with melodyVoiceCount[track]=1.
+    // Chord tracks (PICK_ALL) use multiple voices.
+    #define MAX_CHORD_VOICES 6
+    int melodyVoices[SEQ_MELODY_TRACKS][MAX_CHORD_VOICES];
+    int melodyVoiceCount[SEQ_MELODY_TRACKS];
     // Filter sweep state — accumulates across bars for long sweeps
     float sweepPhase;       // 0.0 to 1.0, wraps (sine LFO position)
     float sweepRate;        // how fast the sweep moves per second (e.g. 0.02 = 50s cycle)
@@ -68,6 +72,31 @@ static SoundSynth* g_soundSynth = NULL;
 // Audio callback — mixes synth voices + drums
 // ============================================================================
 
+static float voiceSnapshotTimer = 0.0f;
+
+static void logVoiceSnapshot(void) {
+    if (!seqSoundLogEnabled) return;
+    int off = 0, atk = 0, dec = 0, sus = 0, rel = 0;
+    float maxRelLevel = 0.0f;
+    for (int i = 0; i < NUM_VOICES; i++) {
+        switch (synthVoices[i].envStage) {
+            case 0: off++; break;
+            case 1: atk++; break;
+            case 2: dec++; break;
+            case 3: sus++; break;
+            case 4: rel++;
+                if (synthVoices[i].envLevel > maxRelLevel)
+                    maxRelLevel = synthVoices[i].envLevel;
+                break;
+        }
+    }
+    int active = atk + dec + sus + rel;
+    if (active > 0) {
+        seqSoundLog("VOICES  active=%d (atk=%d dec=%d sus=%d rel=%d) off=%d  maxRelLvl=%.4f",
+            active, atk, dec, sus, rel, off, maxRelLevel);
+    }
+}
+
 static void SoundSynthCallback(void* buffer, unsigned int frames) {
     if (!g_soundSynth) return;
     short* out = (short*)buffer;
@@ -75,6 +104,15 @@ static void SoundSynthCallback(void* buffer, unsigned int frames) {
     float bufferDt = (float)frames / sr;
 
     useSoundSystem(&g_soundSynth->ss);
+
+    // Periodic voice state snapshot (~4x per second)
+    if (seqSoundLogEnabled) {
+        voiceSnapshotTimer += bufferDt;
+        if (voiceSnapshotTimer >= 0.25f) {
+            voiceSnapshotTimer -= 0.25f;
+            logVoiceSnapshot();
+        }
+    }
 
     // Update sequencer on the audio thread — melody triggers and voice
     // processing share the same thread, so no context pointer races.
@@ -98,6 +136,7 @@ static void SoundSynthCallback(void* buffer, unsigned int frames) {
             // Cycle to next pattern after loopsPerPattern repeats
             if (sp->patternCount > 1 && sp->loopsOnCurrent >= sp->loopsPerPattern) {
                 int nextPat = (sp->currentPattern + 1) % sp->patternCount;
+                seqSoundLog("SONG_PATTERN %d -> %d", sp->currentPattern, nextPat);
                 sp->currentPattern = nextPat;
                 sp->loopsOnCurrent = 0;
                 Pattern* seqPat = seqCurrentPattern();
@@ -143,8 +182,8 @@ static void melodyTriggerBass(int note, float vel, float gateTime, bool slide, b
     useSoundSystem(&g_soundSynth->ss);
 
     // Release previous bass voice
-    if (g_soundSynth->songPlayer.melodyVoice[0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[0]);
+    if (g_soundSynth->songPlayer.melodyVoices[0][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[0][0]);
     }
 
     noteAttack  = 0.3f;
@@ -157,7 +196,7 @@ static void melodyTriggerBass(int note, float vel, float gateTime, bool slide, b
 
     float freq = midiToFreqScaled(note);
     int v = playNote(freq, WAVE_TRIANGLE);
-    g_soundSynth->songPlayer.melodyVoice[0] = v;
+    g_soundSynth->songPlayer.melodyVoices[0][0] = v;
 }
 
 // Lead track: glockenspiel (mallet)
@@ -166,14 +205,14 @@ static void melodyTriggerLead(int note, float vel, float gateTime, bool slide, b
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[1] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[1]);
+    if (g_soundSynth->songPlayer.melodyVoices[1][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[1][0]);
     }
 
     noteVolume = vel * 0.4f;
     float freq = midiToFreqScaled(note);
     int v = playMallet(freq, MALLET_PRESET_GLOCKEN);
-    g_soundSynth->songPlayer.melodyVoice[1] = v;
+    g_soundSynth->songPlayer.melodyVoices[1][0] = v;
 }
 
 // Chord track: additive choir pad
@@ -182,8 +221,8 @@ static void melodyTriggerChord(int note, float vel, float gateTime, bool slide, 
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[2] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[2]);
+    if (g_soundSynth->songPlayer.melodyVoices[2][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[2][0]);
     }
 
     noteAttack  = 0.8f;
@@ -194,7 +233,7 @@ static void melodyTriggerChord(int note, float vel, float gateTime, bool slide, 
 
     float freq = midiToFreqScaled(note);
     int v = playAdditive(freq, ADDITIVE_PRESET_CHOIR);
-    g_soundSynth->songPlayer.melodyVoice[2] = v;
+    g_soundSynth->songPlayer.melodyVoices[2][0] = v;
 }
 
 // ============================================================================
@@ -207,8 +246,8 @@ static void melodyTriggerOrganBass(int note, float vel, float gateTime, bool sli
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[0]);
+    if (g_soundSynth->songPlayer.melodyVoices[0][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[0][0]);
     }
 
     noteAttack  = 0.8f;
@@ -221,7 +260,7 @@ static void melodyTriggerOrganBass(int note, float vel, float gateTime, bool sli
 
     float freq = midiToFreqScaled(note);
     int v = playAdditive(freq, ADDITIVE_PRESET_ORGAN);
-    g_soundSynth->songPlayer.melodyVoice[0] = v;
+    g_soundSynth->songPlayer.melodyVoices[0][0] = v;
 }
 
 // Lead track: eerie vowel chanting
@@ -230,8 +269,8 @@ static void melodyTriggerVowel(int note, float vel, float gateTime, bool slide, 
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[1] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[1]);
+    if (g_soundSynth->songPlayer.melodyVoices[1][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[1][0]);
     }
 
     noteAttack  = 0.5f;
@@ -250,7 +289,7 @@ static void melodyTriggerVowel(int note, float vel, float gateTime, bool slide, 
         // Slide = portamento: eerie gliding between notes
         synthVoices[v].glideRate = 0.3f;
     }
-    g_soundSynth->songPlayer.melodyVoice[1] = v;
+    g_soundSynth->songPlayer.melodyVoices[1][0] = v;
 }
 
 // Chord track: dark organ pad
@@ -259,8 +298,8 @@ static void melodyTriggerOrganChord(int note, float vel, float gateTime, bool sl
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[2] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[2]);
+    if (g_soundSynth->songPlayer.melodyVoices[2][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[2][0]);
     }
 
     noteAttack  = 1.0f;
@@ -272,7 +311,7 @@ static void melodyTriggerOrganChord(int note, float vel, float gateTime, bool sl
 
     float freq = midiToFreqScaled(note);
     int v = playAdditive(freq, ADDITIVE_PRESET_ORGAN);
-    g_soundSynth->songPlayer.melodyVoice[2] = v;
+    g_soundSynth->songPlayer.melodyVoices[2][0] = v;
 }
 
 // ============================================================================
@@ -285,15 +324,15 @@ static void melodyTriggerPluckBass(int note, float vel, float gateTime, bool sli
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[0]);
+    if (g_soundSynth->songPlayer.melodyVoices[0][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[0][0]);
     }
 
     noteVolume = vel * 0.55f;
     float freq = midiToFreqScaled(note);
     // brightness 0.4 = warm, damping 0.5 = natural decay
     int v = playPluck(freq, 0.4f, 0.5f);
-    g_soundSynth->songPlayer.melodyVoice[0] = v;
+    g_soundSynth->songPlayer.melodyVoices[0][0] = v;
 }
 
 // Lead: vibraphone (mallet with motor tremolo)
@@ -302,30 +341,30 @@ static void melodyTriggerVibes(int note, float vel, float gateTime, bool slide, 
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[1] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[1]);
+    if (g_soundSynth->songPlayer.melodyVoices[1][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[1][0]);
     }
 
     noteVolume = vel * (accent ? 0.55f : 0.42f);
     float freq = midiToFreqScaled(note);
     int v = playMallet(freq, MALLET_PRESET_VIBES);
-    g_soundSynth->songPlayer.melodyVoice[1] = v;
+    g_soundSynth->songPlayer.melodyVoices[1][0] = v;
 }
 
 // Chord/response: FM electric piano (Rhodes-like)
-static void melodyTriggerFMKeys(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide;
+// Internal: FM Keys trigger for a specific track
+static void melodyTriggerFMKeysOnTrack(int track, int note, float vel, bool accent) {
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[2] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[2]);
+    if (g_soundSynth->songPlayer.melodyVoices[track][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[track][0]);
     }
 
     noteAttack  = 0.005f;     // snappy attack
     noteDecay   = 0.5f;
     noteSustain = 0.25f;
-    noteRelease = 0.8f;
+    noteRelease = 0.3f;       // short release, no lingering
     noteVolume  = vel * (accent ? 0.50f : 0.40f);
     noteFilterCutoff = 0.6f;  // brighter than organ
 
@@ -336,7 +375,20 @@ static void melodyTriggerFMKeys(int note, float vel, float gateTime, bool slide,
 
     float freq = midiToFreqScaled(note);
     int v = playFM(freq);
-    g_soundSynth->songPlayer.melodyVoice[2] = v;
+    g_soundSynth->songPlayer.melodyVoices[track][0] = v;
+    g_soundSynth->songPlayer.melodyVoiceCount[track] = 1;
+}
+
+// FM Keys on track 2 (chord/comping)
+static void melodyTriggerFMKeys(int note, float vel, float gateTime, bool slide, bool accent) {
+    (void)gateTime; (void)slide;
+    melodyTriggerFMKeysOnTrack(2, note, vel, accent);
+}
+
+// FM Keys on track 1 (lead/melody)
+static void melodyTriggerFMKeysLead(int note, float vel, float gateTime, bool slide, bool accent) {
+    (void)gateTime; (void)slide;
+    melodyTriggerFMKeysOnTrack(1, note, vel, accent);
 }
 
 // ============================================================================
@@ -349,8 +401,8 @@ static void melodyTriggerAcidBass(int note, float vel, float gateTime, bool slid
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[0]);
+    if (g_soundSynth->songPlayer.melodyVoices[0][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[0][0]);
     }
 
     float sweep = getSweepValue();   // 0.0 to 1.0 over ~40 seconds
@@ -371,7 +423,7 @@ static void melodyTriggerAcidBass(int note, float vel, float gateTime, bool slid
     if (v >= 0 && slide) {
         synthVoices[v].glideRate = 0.15f;
     }
-    g_soundSynth->songPlayer.melodyVoice[0] = v;
+    g_soundSynth->songPlayer.melodyVoices[0][0] = v;
 }
 
 // Chord stab: FM with sweep-modulated brightness
@@ -380,8 +432,8 @@ static void melodyTriggerHouseStab(int note, float vel, float gateTime, bool sli
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[1] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[1]);
+    if (g_soundSynth->songPlayer.melodyVoices[1][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[1][0]);
     }
 
     float sweep = getSweepValue();
@@ -401,7 +453,7 @@ static void melodyTriggerHouseStab(int note, float vel, float gateTime, bool sli
 
     float freq = midiToFreqScaled(note);
     int v = playFM(freq);
-    g_soundSynth->songPlayer.melodyVoice[1] = v;
+    g_soundSynth->songPlayer.melodyVoices[1][0] = v;
 }
 
 // Deep pad: additive strings with very slow sweep
@@ -410,8 +462,8 @@ static void melodyTriggerDeepPad(int note, float vel, float gateTime, bool slide
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[2] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[2]);
+    if (g_soundSynth->songPlayer.melodyVoices[2][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[2][0]);
     }
 
     float sweep = getSweepValue();
@@ -428,7 +480,7 @@ static void melodyTriggerDeepPad(int note, float vel, float gateTime, bool slide
 
     float freq = midiToFreqScaled(note);
     int v = playAdditive(freq, ADDITIVE_PRESET_STRINGS);
-    g_soundSynth->songPlayer.melodyVoice[2] = v;
+    g_soundSynth->songPlayer.melodyVoices[2][0] = v;
 }
 
 // Deep house sub bass: pure triangle sub
@@ -437,8 +489,8 @@ static void melodyTriggerSubBass(int note, float vel, float gateTime, bool slide
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[0]);
+    if (g_soundSynth->songPlayer.melodyVoices[0][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[0][0]);
     }
 
     noteAttack  = 0.01f;
@@ -451,7 +503,7 @@ static void melodyTriggerSubBass(int note, float vel, float gateTime, bool slide
 
     float freq = midiToFreqScaled(note);
     int v = playNote(freq, WAVE_TRIANGLE);
-    g_soundSynth->songPlayer.melodyVoice[0] = v;
+    g_soundSynth->songPlayer.melodyVoices[0][0] = v;
 }
 
 // ============================================================================
@@ -464,8 +516,8 @@ static void melodyTriggerDillaBass(int note, float vel, float gateTime, bool sli
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[0]);
+    if (g_soundSynth->songPlayer.melodyVoices[0][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[0][0]);
     }
 
     noteVolume = vel * 0.55f;
@@ -475,7 +527,7 @@ static void melodyTriggerDillaBass(int note, float vel, float gateTime, bool sli
     float freq = midiToFreqScaled(note);
     // brightness 0.35 = very warm, damping 0.55 = natural thump
     int v = playPluck(freq, 0.35f, 0.55f);
-    g_soundSynth->songPlayer.melodyVoice[0] = v;
+    g_soundSynth->songPlayer.melodyVoices[0][0] = v;
 }
 
 // Keys: lo-fi Rhodes (FM with low index, short decay)
@@ -484,8 +536,8 @@ static void melodyTriggerDillaKeys(int note, float vel, float gateTime, bool sli
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[1] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[1]);
+    if (g_soundSynth->songPlayer.melodyVoices[1][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[1][0]);
     }
 
     noteAttack  = 0.003f;
@@ -503,7 +555,7 @@ static void melodyTriggerDillaKeys(int note, float vel, float gateTime, bool sli
 
     float freq = midiToFreqScaled(note);
     int v = playFM(freq);
-    g_soundSynth->songPlayer.melodyVoice[1] = v;
+    g_soundSynth->songPlayer.melodyVoices[1][0] = v;
 }
 
 // Pad: soft choir, very quiet — sampled vinyl warmth
@@ -512,8 +564,8 @@ static void melodyTriggerDillaPad(int note, float vel, float gateTime, bool slid
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[2] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[2]);
+    if (g_soundSynth->songPlayer.melodyVoices[2][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[2][0]);
     }
 
     noteAttack  = 0.6f;
@@ -526,7 +578,7 @@ static void melodyTriggerDillaPad(int note, float vel, float gateTime, bool slid
 
     float freq = midiToFreqScaled(note);
     int v = playAdditive(freq, ADDITIVE_PRESET_CHOIR);
-    g_soundSynth->songPlayer.melodyVoice[2] = v;
+    g_soundSynth->songPlayer.melodyVoices[2][0] = v;
 }
 
 // ============================================================================
@@ -539,8 +591,8 @@ static void melodyTriggerMrLuckyBass(int note, float vel, float gateTime, bool s
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[0]);
+    if (g_soundSynth->songPlayer.melodyVoices[0][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[0][0]);
     }
 
     noteVolume = vel * 0.50f;
@@ -550,7 +602,7 @@ static void melodyTriggerMrLuckyBass(int note, float vel, float gateTime, bool s
     float freq = midiToFreqScaled(note);
     // brightness 0.45 = warm-bright, damping 0.35 = sustains nicely
     int v = playPluck(freq, 0.45f, 0.35f);
-    g_soundSynth->songPlayer.melodyVoice[0] = v;
+    g_soundSynth->songPlayer.melodyVoices[0][0] = v;
 }
 
 // Lead: vibraphone — the smooth muzak sparkle
@@ -559,15 +611,15 @@ static void melodyTriggerMrLuckyVibes(int note, float vel, float gateTime, bool 
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[1] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[1]);
+    if (g_soundSynth->songPlayer.melodyVoices[1][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[1][0]);
     }
 
     noteVolume = vel * 0.42f;
     noteFilterCutoff = 0.55f;       // open, sparkling
     float freq = midiToFreqScaled(note);
     int v = playMallet(freq, MALLET_PRESET_VIBES);
-    g_soundSynth->songPlayer.melodyVoice[1] = v;
+    g_soundSynth->songPlayer.melodyVoices[1][0] = v;
 }
 
 // Pad: lush strings — the warmth underneath everything
@@ -576,8 +628,8 @@ static void melodyTriggerMrLuckyStrings(int note, float vel, float gateTime, boo
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[2] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[2]);
+    if (g_soundSynth->songPlayer.melodyVoices[2][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[2][0]);
     }
 
     noteAttack  = 0.8f;             // slow swell
@@ -590,7 +642,7 @@ static void melodyTriggerMrLuckyStrings(int note, float vel, float gateTime, boo
 
     float freq = midiToFreqScaled(note);
     int v = playAdditive(freq, ADDITIVE_PRESET_STRINGS);
-    g_soundSynth->songPlayer.melodyVoice[2] = v;
+    g_soundSynth->songPlayer.melodyVoices[2][0] = v;
 }
 
 // ============================================================================
@@ -603,8 +655,8 @@ static void melodyTriggerAtmoBass(int note, float vel, float gateTime, bool slid
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[0]);
+    if (g_soundSynth->songPlayer.melodyVoices[0][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[0][0]);
     }
 
     noteVolume = vel * 0.50f;
@@ -614,7 +666,7 @@ static void melodyTriggerAtmoBass(int note, float vel, float gateTime, bool slid
     float freq = midiToFreqScaled(note);
     // brightness 0.5 = medium bright, damping 0.3 = long sustain
     int v = playPluck(freq, 0.5f, 0.3f);
-    g_soundSynth->songPlayer.melodyVoice[0] = v;
+    g_soundSynth->songPlayer.melodyVoices[0][0] = v;
 }
 
 // Lead: glockenspiel, slightly louder and brighter than dormitory
@@ -623,15 +675,15 @@ static void melodyTriggerAtmoGlocken(int note, float vel, float gateTime, bool s
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[1] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[1]);
+    if (g_soundSynth->songPlayer.melodyVoices[1][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[1][0]);
     }
 
     noteVolume = vel * 0.45f;
     noteFilterCutoff = 0.65f;       // brighter — sparkly
     float freq = midiToFreqScaled(note);
     int v = playMallet(freq, MALLET_PRESET_GLOCKEN);
-    g_soundSynth->songPlayer.melodyVoice[1] = v;
+    g_soundSynth->songPlayer.melodyVoices[1][0] = v;
 }
 
 // Pad: additive strings, wide and lush
@@ -640,8 +692,8 @@ static void melodyTriggerAtmoStrings(int note, float vel, float gateTime, bool s
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
-    if (g_soundSynth->songPlayer.melodyVoice[2] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[2]);
+    if (g_soundSynth->songPlayer.melodyVoices[2][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[2][0]);
     }
 
     noteAttack  = 1.2f;            // very slow swell
@@ -654,7 +706,7 @@ static void melodyTriggerAtmoStrings(int note, float vel, float gateTime, bool s
 
     float freq = midiToFreqScaled(note);
     int v = playAdditive(freq, ADDITIVE_PRESET_STRINGS);
-    g_soundSynth->songPlayer.melodyVoice[2] = v;
+    g_soundSynth->songPlayer.melodyVoices[2][0] = v;
 }
 
 // ============================================================================
@@ -663,24 +715,73 @@ static void melodyTriggerAtmoStrings(int note, float vel, float gateTime, bool s
 
 static void melodyReleaseBass(void) {
     if (!g_soundSynth) return;
-    if (g_soundSynth->songPlayer.melodyVoice[0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[0]);
-        g_soundSynth->songPlayer.melodyVoice[0] = -1;
+    if (g_soundSynth->songPlayer.melodyVoices[0][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[0][0]);
+        g_soundSynth->songPlayer.melodyVoices[0][0] = -1;
     }
 }
 static void melodyReleaseLead(void) {
     if (!g_soundSynth) return;
-    if (g_soundSynth->songPlayer.melodyVoice[1] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[1]);
-        g_soundSynth->songPlayer.melodyVoice[1] = -1;
+    if (g_soundSynth->songPlayer.melodyVoices[1][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[1][0]);
+        g_soundSynth->songPlayer.melodyVoices[1][0] = -1;
     }
 }
 static void melodyReleaseChord(void) {
     if (!g_soundSynth) return;
-    if (g_soundSynth->songPlayer.melodyVoice[2] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoice[2]);
-        g_soundSynth->songPlayer.melodyVoice[2] = -1;
+    if (g_soundSynth->songPlayer.melodyVoices[2][0] >= 0) {
+        releaseNote(g_soundSynth->songPlayer.melodyVoices[2][0]);
+        g_soundSynth->songPlayer.melodyVoices[2][0] = -1;
     }
+}
+
+// Release all chord voices for a given track
+static void melodyReleaseAllVoices(int track) {
+    if (!g_soundSynth) return;
+    for (int j = 0; j < g_soundSynth->songPlayer.melodyVoiceCount[track]; j++) {
+        int v = g_soundSynth->songPlayer.melodyVoices[track][j];
+        if (v >= 0) releaseNote(v);
+        g_soundSynth->songPlayer.melodyVoices[track][j] = -1;
+    }
+    g_soundSynth->songPlayer.melodyVoiceCount[track] = 0;
+}
+
+// Chord release wrappers per track
+static void melodyReleaseChordPoly(void) { melodyReleaseAllVoices(2); }
+static void melodyReleaseLeadPoly(void)  { melodyReleaseAllVoices(1); }
+
+// FM Keys chord trigger — plays all notes with finger stagger (offset attacks)
+static void melodyTriggerChordFMKeys(int* notes, int noteCount, float vel,
+                                      float gateTime, bool slide, bool accent) {
+    (void)gateTime; (void)slide;
+    if (!g_soundSynth) return;
+    useSoundSystem(&g_soundSynth->ss);
+
+    // Release previous chord voices
+    melodyReleaseAllVoices(2);
+
+    if (noteCount > MAX_CHORD_VOICES) noteCount = MAX_CHORD_VOICES;
+
+    for (int i = 0; i < noteCount; i++) {
+        // Finger stagger: each successive note gets a slightly delayed attack
+        // 5-15ms offset per finger gives natural "rolled chord" feel
+        noteAttack  = 0.005f + i * 0.012f;
+        noteDecay   = 0.5f;
+        noteSustain = 0.25f;
+        noteRelease = 0.1f;       // very short tail, no chord wash
+        // Slightly lower volume per note to prevent clipping
+        noteVolume  = vel * (accent ? 0.35f : 0.28f);
+        noteFilterCutoff = 0.6f;
+
+        fmModRatio = 1.0f;
+        fmModIndex = 1.8f;
+        fmFeedback = 0.0f;
+
+        float freq = midiToFreqScaled(notes[i]);
+        int v = playFM(freq);
+        g_soundSynth->songPlayer.melodyVoices[2][i] = v;
+    }
+    g_soundSynth->songPlayer.melodyVoiceCount[2] = noteCount;
 }
 
 // ============================================================================
@@ -737,7 +838,10 @@ bool SoundSynthInitAudio(SoundSynth* synth, int sampleRate, int bufferFrames) {
     synth->songPlayer.active = false;
     synth->songPlayer.jukeboxIndex = 0;
     for (int i = 0; i < SEQ_MELODY_TRACKS; i++) {
-        synth->songPlayer.melodyVoice[i] = -1;
+        for (int j = 0; j < MAX_CHORD_VOICES; j++) {
+            synth->songPlayer.melodyVoices[i][j] = -1;
+        }
+        synth->songPlayer.melodyVoiceCount[i] = 0;
     }
 
     g_soundSynth = synth;
@@ -778,6 +882,10 @@ static void startSongPlayback(SoundSynth* synth, float bpm) {
     resetSequencer();
     seq.playing = true;
     sp->active = true;
+    seqSoundLogReset();
+    seqSoundLog("SONG_START \"%s\"  bpm=%.0f patterns=%d tps=%d",
+        (sp->jukeboxIndex >= 0) ? SoundSynthGetSongName(sp->jukeboxIndex) : "?",
+        bpm, sp->patternCount, seq.ticksPerStep);
 }
 
 void SoundSynthPlaySongDormitory(SoundSynth* synth) {
@@ -1000,10 +1108,11 @@ void SoundSynthPlaySongHappyBirthday(SoundSynth* synth) {
 
     SoundSynthStopSong(synth);
 
-    // Jazz waltz: pluck bass, FM keys melody, FM keys chords
+    // Jazz waltz: pluck bass, FM keys melody, FM keys chords (polyphonic)
     setMelodyCallbacks(0, melodyTriggerPluckBass, melodyReleaseBass);
-    setMelodyCallbacks(1, melodyTriggerFMKeys, melodyReleaseLead);
-    setMelodyCallbacks(2, melodyTriggerFMKeys, melodyReleaseChord);
+    setMelodyCallbacks(1, melodyTriggerFMKeysLead, melodyReleaseLead);
+    setMelodyCallbacks(2, melodyTriggerFMKeys, melodyReleaseChordPoly);
+    setMelodyChordCallback(2, melodyTriggerChordFMKeys);
 
     Song_HappyBirthday_ConfigureVoices();
 
@@ -1022,6 +1131,118 @@ void SoundSynthPlaySongHappyBirthday(SoundSynth* synth) {
     seq.dilla.snareDelay = 0;
     seq.dilla.jitter = 1;
 
+    // Subtle melody humanize for waltz feel
+    seq.humanize.timingJitter = 1;
+    seq.humanize.velocityJitter = 0.06f;
+
+    startSongPlayback(synth, sp->bpm);
+}
+
+void SoundSynthPlaySongMonksMood(SoundSynth* synth) {
+    if (!synth || !synth->audioReady) return;
+    useSoundSystem(&synth->ss);
+
+    SoundSynthStopSong(synth);
+
+    // Jazz ballad: pluck bass, FM keys melody, FM keys chords (polyphonic)
+    setMelodyCallbacks(0, melodyTriggerPluckBass, melodyReleaseBass);
+    setMelodyCallbacks(1, melodyTriggerFMKeysLead, melodyReleaseLeadPoly);
+    setMelodyCallbacks(2, melodyTriggerFMKeys, melodyReleaseChordPoly);
+    setMelodyChordCallback(2, melodyTriggerChordFMKeys);
+
+    Song_MonksMood_ConfigureVoices();
+
+    SongPlayer* sp = &synth->songPlayer;
+    Song_MonksMood_Load(sp->patterns);
+    sp->patternCount = 8;
+    sp->currentPattern = 0;
+    sp->loopsOnCurrent = 0;
+    sp->loopsPerPattern = 1;  // Play all 8 bars, then loop
+    sp->bpm = SONG_MONKS_MOOD_BPM;
+    sp->sweepPhase = 0.0f;
+    sp->sweepRate = 0.0f;
+
+    // Gentle swing for jazz feel (drums only)
+    seq.dilla.swing = 3;
+    seq.dilla.snareDelay = 0;
+    seq.dilla.jitter = 0;
+
+    // Melody humanize — Monk's rubato is already in the nudge values,
+    // add just a touch of jitter for life
+    seq.humanize.timingJitter = 2;
+    seq.humanize.velocityJitter = 0.08f;
+
+    startSongPlayback(synth, sp->bpm);
+}
+
+void SoundSynthPlaySongSummertime(SoundSynth* synth) {
+    if (!synth || !synth->audioReady) return;
+    useSoundSystem(&synth->ss);
+
+    SoundSynthStopSong(synth);
+
+    // Jazz standard: pluck bass, FM keys melody, FM keys chords (polyphonic)
+    setMelodyCallbacks(0, melodyTriggerPluckBass, melodyReleaseBass);
+    setMelodyCallbacks(1, melodyTriggerFMKeysLead, melodyReleaseLeadPoly);
+    setMelodyCallbacks(2, melodyTriggerFMKeys, melodyReleaseChordPoly);
+    setMelodyChordCallback(2, melodyTriggerChordFMKeys);
+
+    Song_Summertime_ConfigureVoices();
+
+    SongPlayer* sp = &synth->songPlayer;
+    Song_Summertime_Load(sp->patterns);
+    sp->patternCount = 8;
+    sp->currentPattern = 0;
+    sp->loopsOnCurrent = 0;
+    sp->loopsPerPattern = 1;
+    sp->bpm = SONG_SUMMERTIME_BPM;
+    sp->sweepPhase = 0.0f;
+    sp->sweepRate = 0.0f;
+
+    // Lazy swing for summer feel
+    seq.dilla.swing = 3;
+    seq.dilla.snareDelay = 0;
+    seq.dilla.jitter = 0;
+
+    // Subtle humanize
+    seq.humanize.timingJitter = 2;
+    seq.humanize.velocityJitter = 0.06f;
+
+    startSongPlayback(synth, sp->bpm);
+}
+
+void SoundSynthPlaySongMule(SoundSynth* synth) {
+    if (!synth || !synth->audioReady) return;
+    useSoundSystem(&synth->ss);
+
+    SoundSynthStopSong(synth);
+
+    // 8-bit: square bass, sawtooth melody — both monophonic
+    setMelodyCallbacks(0, melodyTriggerPluckBass, melodyReleaseBass);
+    setMelodyCallbacks(1, melodyTriggerFMKeysLead, melodyReleaseLeadPoly);
+
+    Song_Mule_ConfigureVoices();
+
+    SongPlayer* sp = &synth->songPlayer;
+    Song_Mule_Load(sp->patterns);
+    sp->patternCount = 8;
+    sp->currentPattern = 0;
+    sp->loopsOnCurrent = 0;
+    sp->loopsPerPattern = 1;
+    sp->bpm = SONG_MULE_BPM;
+    sp->sweepPhase = 0.0f;
+    sp->sweepRate = 0.0f;
+
+    // 32nd note resolution for the grace note stutters
+    seqSet32ndNoteMode(true);
+
+    // No swing, no humanize — tight 8-bit machine
+    seq.dilla.swing = 0;
+    seq.dilla.snareDelay = 0;
+    seq.dilla.jitter = 0;
+    seq.humanize.timingJitter = 0;
+    seq.humanize.velocityJitter = 0.0f;
+
     startSongPlayback(synth, sp->bpm);
 }
 
@@ -1029,7 +1250,9 @@ void SoundSynthStopSong(SoundSynth* synth) {
     if (!synth || !synth->audioReady) return;
     useSoundSystem(&synth->ss);
 
+    seqSoundLog("SONG_STOP");
     stopSequencer();
+    seqSet32ndNoteMode(false);  // Reset to default 16th note resolution
     synth->songPlayer.active = false;
 
     // Release ALL active voices — they'll fade out naturally via their envelopes
@@ -1039,7 +1262,10 @@ void SoundSynthStopSong(SoundSynth* synth) {
         }
     }
     for (int i = 0; i < SEQ_MELODY_TRACKS; i++) {
-        synth->songPlayer.melodyVoice[i] = -1;
+        for (int j = 0; j < MAX_CHORD_VOICES; j++) {
+            synth->songPlayer.melodyVoices[i][j] = -1;
+        }
+        synth->songPlayer.melodyVoiceCount[i] = 0;
     }
 }
 
@@ -1068,6 +1294,10 @@ static const JukeboxEntry jukeboxSongs[] = {
     { "Dilla Hip-Hop",        SoundSynthPlaySongDilla },
     { "Atmosphere",           SoundSynthPlaySongAtmosphere },
     { "Mr Lucky",             SoundSynthPlaySongMrLucky },
+    { "Happy Birthday",       SoundSynthPlaySongHappyBirthday },
+    { "Monk's Mood",          SoundSynthPlaySongMonksMood },
+    { "Summertime",            SoundSynthPlaySongSummertime },
+    { "M.U.L.E. Theme",        SoundSynthPlaySongMule },
 };
 
 #define JUKEBOX_SONG_COUNT (int)(sizeof(jukeboxSongs) / sizeof(jukeboxSongs[0]))
@@ -1244,4 +1474,23 @@ void SoundSynthPlaySongPhrases(SoundSynth* synth, const SoundSong* song) {
         synth->player.songActive = true;
         synth->player.phraseIndex = 0;
     }
+}
+
+// ============================================================================
+// Sound log — sequencer event debugging
+// ============================================================================
+
+void SoundSynthLogToggle(void) {
+    seqSoundLogEnabled = !seqSoundLogEnabled;
+    if (seqSoundLogEnabled) {
+        seqSoundLogReset();
+    }
+}
+
+bool SoundSynthLogIsEnabled(void) {
+    return seqSoundLogEnabled;
+}
+
+void SoundSynthLogDump(void) {
+    seqSoundLogDump("navkit_sound.log");
 }

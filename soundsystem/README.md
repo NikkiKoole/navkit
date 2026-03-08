@@ -38,6 +38,21 @@ A header-only synthesized audio library for games. Features synthesizers, drum m
 - 303-style slide and accent
 - Scale lock (9 scale types)
 - 8 pattern slots with queued switching
+- Melody tracks with gate time and bounded sustain
+- PICK_ALL chord mode (polyphonic chord voicing from note pools)
+- Per-track trigger/release callbacks (single-note and chord variants)
+
+### ADSR Envelope
+- Per-voice ADSR with attack/decay/sustain/release
+- **Linear release** (default): predictable cutoff, voice dead in exactly `release` seconds
+- **Exponential release**: natural decay tail, still bounded by `release` time
+- Release level captured at gate-off for correct fade regardless of entry level
+
+### Sound Log (Debug)
+- Ring buffer (2048 entries) with wall-clock timestamps
+- Logs note triggers, releases, gate expiry, pattern switches, song start/stop
+- Voice state snapshots (active count by envelope stage, max release level)
+- Toggle on/off at runtime, dump to `navkit_sound.log`
 
 ## Usage
 
@@ -135,6 +150,58 @@ seqQueuePattern(1);      // Queue pattern 1 (switches at end of current)
 seqSwitchPattern(2);     // Immediate switch to pattern 2
 ```
 
+### Melody Tracks & Chords
+
+```c
+// Set up melody callbacks: trigger function called on note-on, release on gate-off
+setMelodyCallbacks(0, myBassTrigger, myBassRelease);    // Track 0 = bass
+setMelodyCallbacks(1, myLeadTrigger, myLeadRelease);    // Track 1 = lead
+setMelodyCallbacks(2, myChordTrigger, myChordRelease);  // Track 2 = chords
+
+// For polyphonic chords (PICK_ALL mode), set a chord callback
+// This receives all notes at once instead of one-at-a-time
+setMelodyChordCallback(2, myChordPolyTrigger);
+
+// Melody steps with gate time and sustain
+Pattern *p = seqCurrentPattern();
+seqSetMelodyStep(0, 0, 36, 0.8f, 4);     // Track 0, step 0, C2, vel 0.8, gate 4 steps
+p->melodySustain[0][0] = 8;               // Hold 8 extra steps after gate expires
+
+// Chord note pools (PICK_ALL plays all notes simultaneously)
+setCustomChord(p, 2, 0, (int[]){55,59,62,67}, 4, 8, 0, 0.25f);  // G3 chord, gate 8
+```
+
+### Release Modes
+
+```c
+// Linear release (default) — tight, predictable. Good for keys, chords, bass.
+noteRelease = 0.1f;
+noteExpRelease = false;   // Voice fades to zero in exactly 0.1s
+
+// Exponential release — natural decay tail. Good for pads, strings, atmosphere.
+noteRelease = 2.0f;
+noteExpRelease = true;    // Voice decays naturally, guaranteed silent by 2.0s
+```
+
+Both modes capture the actual envelope level at release start, so the fade time is
+correct regardless of whether the note was released during attack, decay, or sustain.
+
+### Sound Log (Debug)
+
+```c
+// Toggle sound logging on/off
+seqSoundLogEnabled = true;
+
+// Log entries are timestamped with wall-clock milliseconds
+// Automatically logs: NOTE_ON, RELEASE, PATTERN_END, SONG_PATTERN changes
+
+// Dump to file
+seqSoundLogDump("navkit_sound.log");
+
+// Reset timestamps (e.g., on song start)
+seqSoundLogReset();
+```
+
 ### Parameter Locks
 
 ```c
@@ -158,6 +225,34 @@ scaleType = SCALE_MINOR_PENTA;
 // Convert MIDI note to frequency (constrained to scale)
 float freq = midiToFreqScaled(60);  // Will snap to nearest scale note
 ```
+
+### Song Player (Game Integration)
+
+The song player sits in `sound_synth_bridge.c` and drives the sequencer with
+pre-composed songs. Each song configures instruments, loads patterns, and sets tempo.
+
+```c
+// Play a song by name
+SoundSynthPlaySongSummertime(synth);
+SoundSynthPlaySongJazz(synth);
+SoundSynthStopSong(synth);
+
+// Jukebox — browse songs by index
+int count = SoundSynthGetSongCount();        // 12 songs
+const char* name = SoundSynthGetSongName(0); // "Dormitory"
+SoundSynthJukeboxPlay(synth, 3);             // Play song 3
+SoundSynthJukeboxNext(synth);                // Next song
+SoundSynthJukeboxToggle(synth);              // Play/stop toggle
+```
+
+Each song sets up 3 melody tracks (bass/lead/chord) with instrument-specific
+trigger callbacks. Single-note triggers store one voice per track; chord triggers
+(PICK_ALL) store multiple voices and release them all on gate-off.
+
+**Important**: trigger callbacks are hardcoded to a specific track slot for voice
+management. When reusing a trigger (e.g., `melodyTriggerFMKeys`) on multiple tracks,
+create track-specific variants (e.g., `melodyTriggerFMKeysLead` for track 1) to avoid
+voice leaks where old voices never get released.
 
 ### SFX (Game Sound Effects)
 
@@ -256,6 +351,7 @@ noteAttack = 0.01f;
 noteDecay = 0.1f;
 noteSustain = 0.5f;
 noteRelease = 0.3f;
+noteExpRelease = false;   // true = exponential (natural tail), false = linear (tight cutoff)
 
 // Filter
 noteFilterCutoff = 0.7f;
