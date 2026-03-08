@@ -19,6 +19,26 @@ This project uses a **unity build** — `src/unity.c` and `tests/test_unity.c` `
 - **`make clean` is NOT normally needed.** If a build fails with bizarre errors (wrong enum values, missing symbols), run `make clean && make path` — but this should be rare.
 - **Do NOT create new `.c` files** without adding them to `src/unity.c` (and `tests/test_unity.c` if they contain game logic needed by tests). New headers are picked up automatically.
 
+## LSP / Code Intelligence
+
+A `compile_commands.json` is generated so that **clangd** can index each `.c` file individually (the unity build would otherwise prevent cross-file references). A `.clangd` config force-includes `game_state.h` to suppress false diagnostics from standalone compilation. This powers the LSP tool:
+
+- **`findReferences`** — find all callers/usages of a function or symbol
+- **`goToDefinition`** — jump to a symbol's definition
+- **`incomingCalls`** — call hierarchy (who calls this function?)
+- **`documentSymbol`** — list all symbols in a file
+- **`workspaceSymbol`** — search symbols by name across the workspace
+- **`hover`** — get type info for a symbol
+
+**Prefer LSP over Grep** for navigating code (finding callers, definitions, references). Use Grep for pattern/text searches that aren't symbol-based.
+
+**`ast-grep`** (`sg`) is available for structural code search — match by code pattern rather than regex. Useful for refactoring patterns like "find all for-loops over movers" or "find all if-blocks that return early". Run via Bash: `sg --pattern 'DeleteItem($A)' --lang c src/`.
+
+If new `.c` files are added, regenerate:
+```bash
+make compile_commands.json
+```
+
 ## Debug Tips
 
 - Use `LOG_INFO` or `LOG_WARNING` for debug output (`LOG_DEBUG` not visible by default)

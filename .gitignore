@@ -10,3 +10,11 @@ a.out
 saves/debug_save.bin
 saves/debug_save.bin.gz
 saves/
+
+# Tooling (clangd)
+compile_commands.json
+.cache/
+
+# Debug/temp
+navkit_sound.log
+screenshot*.png

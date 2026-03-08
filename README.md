@@ -109,6 +109,24 @@ The atlas generator validates that both atlases have matching sprite names.
 
 Raylib is vendored in `vendor/raylib/` and built automatically — no external dependencies needed.
 
+## Setting Up Claude Code
+
+To get full LSP code intelligence (find references, go to definition, call hierarchy) working with Claude Code:
+
+```bash
+# 1. Enable the clangd plugin (one-time)
+#    In Claude Code settings (~/.claude/settings.json), add:
+#    "enabledPlugins": { "clangd-lsp@claude-plugins-official": true }
+
+# 2. Generate the compilation database (needed because of the unity build)
+make compile_commands.json
+
+# 3. Optional: install ast-grep for structural code search
+brew install ast-grep
+```
+
+The `.clangd` config in the repo root handles force-including `game_state.h` so clangd can index individual files correctly despite the unity build. The `compile_commands.json` is gitignored and must be generated locally on each machine.
+
 ## Save/Load & Inspector
 
 In-game:

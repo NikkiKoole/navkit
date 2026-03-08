@@ -2,4 +2,13 @@ CompileFlags:
   Add:
     - -xc
     - -std=c11
-    - -I/Users/nikkikoole/Projects/navkit
+    - -include
+    - src/game_state.h
+    - -Wno-unused-function
+  Remove:
+    - -Wmissing-prototypes
+    - -Wstrict-prototypes
+
+Diagnostics:
+  Suppress:
+    - pp_file_not_found
