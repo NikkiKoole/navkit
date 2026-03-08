@@ -231,7 +231,7 @@ static void SoundDebugPlayVowelOnly(void) {
 static void SoundDebugPlaySong(void) {
     if (!soundDebugEnabled || !soundDebugSynth) return;
     SoundSong song = SoundMakeSong(soundDebugSeed++);
-    SoundSynthPlaySong(soundDebugSynth, &song);
+    SoundSynthPlaySongPhrases(soundDebugSynth, &song);
 }
 
 static void SoundDebugScheduleResponse(const SoundPhrase* call, SoundPhrase response) {
@@ -1179,6 +1179,86 @@ int main(int argc, char** argv) {
         if (IsKeyPressed(KEY_KP_9)) {
             soundDebugAuto = false;
             SoundDebugCallResponseMirror();
+        }
+        if (IsKeyPressed(KEY_KP_0)) {
+            SoundDebugEnsure();
+            if (SoundSynthIsSongPlaying(soundDebugSynth)) {
+                SoundSynthStopSong(soundDebugSynth);
+                AddMessage("Song: stopped", GRAY);
+            } else {
+                SoundSynthPlaySongDormitory(soundDebugSynth);
+                AddMessage("Song: Dormitory Ambient (KP0 stop, KP. suspense)", GREEN);
+            }
+        }
+        if (IsKeyPressed(KEY_KP_DECIMAL)) {
+            SoundDebugEnsure();
+            if (SoundSynthIsSongPlaying(soundDebugSynth)) {
+                SoundSynthStopSong(soundDebugSynth);
+                AddMessage("Song: stopped", GRAY);
+            } else {
+                SoundSynthPlaySongSuspense(soundDebugSynth);
+                AddMessage("Song: Suspense (KP. stop)", GREEN);
+            }
+        }
+        if (IsKeyPressed(KEY_KP_ENTER)) {
+            SoundDebugEnsure();
+            if (SoundSynthIsSongPlaying(soundDebugSynth)) {
+                SoundSynthStopSong(soundDebugSynth);
+                AddMessage("Song: stopped", GRAY);
+            } else {
+                SoundSynthPlaySongJazz(soundDebugSynth);
+                AddMessage("Song: Jazz Call & Response (KP_Enter stop)", GREEN);
+            }
+        }
+        if (IsKeyPressed(KEY_KP_ADD)) {
+            SoundDebugEnsure();
+            if (SoundSynthIsSongPlaying(soundDebugSynth)) {
+                SoundSynthStopSong(soundDebugSynth);
+                AddMessage("Song: stopped", GRAY);
+            } else {
+                SoundSynthPlaySongHouse(soundDebugSynth);
+                AddMessage("Song: House (KP+ stop)", GREEN);
+            }
+        }
+        if (IsKeyPressed(KEY_KP_SUBTRACT)) {
+            SoundDebugEnsure();
+            if (SoundSynthIsSongPlaying(soundDebugSynth)) {
+                SoundSynthStopSong(soundDebugSynth);
+                AddMessage("Song: stopped", GRAY);
+            } else {
+                SoundSynthPlaySongDeepHouse(soundDebugSynth);
+                AddMessage("Song: Deep House (KP- stop)", GREEN);
+            }
+        }
+        if (IsKeyPressed(KEY_KP_MULTIPLY)) {
+            SoundDebugEnsure();
+            if (SoundSynthIsSongPlaying(soundDebugSynth)) {
+                SoundSynthStopSong(soundDebugSynth);
+                AddMessage("Song: stopped", GRAY);
+            } else {
+                SoundSynthPlaySongDilla(soundDebugSynth);
+                AddMessage("Song: Dilla Hip-Hop (KP* stop)", GREEN);
+            }
+        }
+        if (IsKeyPressed(KEY_KP_DIVIDE)) {
+            SoundDebugEnsure();
+            if (SoundSynthIsSongPlaying(soundDebugSynth)) {
+                SoundSynthStopSong(soundDebugSynth);
+                AddMessage("Song: stopped", GRAY);
+            } else {
+                SoundSynthPlaySongAtmosphere(soundDebugSynth);
+                AddMessage("Song: Atmosphere (KP/ stop)", GREEN);
+            }
+        }
+        if (IsKeyPressed(KEY_F12)) {
+            SoundDebugEnsure();
+            if (SoundSynthIsSongPlaying(soundDebugSynth)) {
+                SoundSynthStopSong(soundDebugSynth);
+                AddMessage("Song: stopped", GRAY);
+            } else {
+                SoundSynthPlaySongMrLucky(soundDebugSynth);
+                AddMessage("Song: Mr Lucky (F12 stop)", GREEN);
+            }
         }
 
         // Handle drag-and-drop of save files
