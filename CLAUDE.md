@@ -32,7 +32,36 @@ A `compile_commands.json` is generated so that **clangd** can index each `.c` fi
 
 **Prefer LSP over Grep** for navigating code (finding callers, definitions, references). Use Grep for pattern/text searches that aren't symbol-based.
 
-**`ast-grep`** (`sg`) is available for structural code search — match by code pattern rather than regex. Useful for refactoring patterns like "find all for-loops over movers" or "find all if-blocks that return early". Run via Bash: `sg --pattern 'DeleteItem($A)' --lang c src/`.
+### ast-grep (`sg`)
+
+**`ast-grep`** (`sg`) is installed for **structural code search** — matches AST patterns, not text. **Use `sg` instead of Grep** when searching for code structures (function calls, for-loops, if-blocks, assignments, etc.). Grep is better for string/comment/text searches.
+
+Run via Bash with `sg run`:
+```bash
+# Find all calls to a function (use bare name, not $A — metavars don't match single args well)
+sg run -p 'DeleteItem' -l c src/
+
+# Find for-loops with a specific shape
+sg run -p 'for(int $I = 0; $I < $N; $I++) { $$$ }' -l c src/entities/jobs.c
+
+# Find if-blocks that return early
+sg run -p 'if ($COND) { return $RET; }' -l c src/
+
+# Find struct field access patterns
+sg run -p 'items[$IDX].active' -l c src/
+
+# Rewrite (dry-run: omit --update-all)
+sg run -p 'OLD_FUNC($$$)' -r 'NEW_FUNC($$$)' -l c src/ --update-all
+```
+
+Key syntax: `$X` = single node metavar, `$$$` = multi-node (variadic), bare names = literal match.
+
+**When to use which tool:**
+| Task | Tool |
+|---|---|
+| Find callers/definition of a symbol | LSP (`findReferences`, `goToDefinition`) |
+| Find code patterns (loops, if-blocks, call shapes) | `sg run -p '...' -l c src/` |
+| Find text/strings/comments/regex | Grep |
 
 If new `.c` files are added, regenerate:
 ```bash
