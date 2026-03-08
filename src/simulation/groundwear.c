@@ -37,24 +37,67 @@ int wearMax = WEAR_MAX_DEFAULT;
 // Internal accumulator for game-time
 static float wearRecoveryAccum = 0.0f;
 
-// Update vegetation and surface based on current wear value
-static void UpdateSurfaceFromWear(int x, int y, int z) {
+// Map wear value to the vegetation level it implies
+static VegetationType VegLevelForWear(int wear) {
+    if (wear >= wearGrassToDirt)      return VEG_NONE;
+    if (wear >= wearNormalToTrampled) return VEG_NONE;
+    if (wear >= wearTallToNormal)     return VEG_GRASS_SHORT;
+    if (wear >= wearTallerToTall)     return VEG_GRASS_TALL;
+    return VEG_GRASS_TALLER;
+}
+
+// Next vegetation level in the wear recovery sequence (skips VEG_GRASS)
+static VegetationType NextWearVegLevel(VegetationType current) {
+    switch (current) {
+        case VEG_NONE:        return VEG_GRASS_SHORT;
+        case VEG_GRASS_SHORT: return VEG_GRASS_TALL;
+        case VEG_GRASS_TALL:  return VEG_GRASS_TALLER;
+        default:              return current;
+    }
+}
+
+// Update vegetation and surface based on current wear value.
+// recovering=true: wear is decaying, vegetation can increase back.
+// recovering=false: trampling, vegetation can only decrease (never upgrade bare dirt to grass).
+static void UpdateSurfaceFromWear(int x, int y, int z, bool recovering) {
     int wear = wearGrid[z][y][x];
+    VegetationType target = VegLevelForWear(wear);
+    VegetationType current = GetVegetation(x, y, z);
+
+    // Surface overlay
     if (wear >= wearGrassToDirt) {
         SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
-        SetVegetation(x, y, z, VEG_NONE);
     } else if (wear >= wearNormalToTrampled) {
         SET_CELL_SURFACE(x, y, z, SURFACE_TRAMPLED);
-        SetVegetation(x, y, z, VEG_NONE);
-    } else if (wear >= wearTallToNormal) {
-        SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
-        SetVegetation(x, y, z, VEG_GRASS_SHORT);
-    } else if (wear >= wearTallerToTall) {
-        SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
-        SetVegetation(x, y, z, VEG_GRASS_TALL);
     } else {
         SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
-        SetVegetation(x, y, z, VEG_GRASS_TALLER);
+    }
+
+    // Vegetation: when trampling, only decrease; when recovering, grow one step at a time.
+    // HAD_VEGETATION flag tracks cells that once had grass — allows recovery from VEG_NONE.
+    // Intentionally bare dirt (flag not set) stays bare forever.
+    if (recovering) {
+        if (target > current) {
+            if (current > VEG_NONE) {
+                // Gradual regrowth: SHORT → TALL → TALLER, one step per tick
+                SetVegetation(x, y, z, NextWearVegLevel(current));
+            } else if (HAS_CELL_FLAG(x, y, z, CELL_FLAG_HAD_VEGETATION)) {
+                // Was grassy before trampling destroyed it — start regrowing
+                SetVegetation(x, y, z, VEG_GRASS_SHORT);
+                CLEAR_CELL_FLAG(x, y, z, CELL_FLAG_HAD_VEGETATION);
+            }
+        } else if (target < current) {
+            SetVegetation(x, y, z, target);
+        }
+    } else {
+        // Trampling: can only decrease vegetation
+        if (target < current) {
+            // Remember that this cell had vegetation before trampling killed it
+            if (current > VEG_NONE && target == VEG_NONE) {
+                SET_CELL_FLAG(x, y, z, CELL_FLAG_HAD_VEGETATION);
+            }
+            SetVegetation(x, y, z, target);
+        }
     }
 }
 
@@ -150,8 +193,8 @@ void TrampleGround(int x, int y, int z) {
         wearActiveCells++;
     }
     
-    // Update surface overlay based on new wear
-    UpdateSurfaceFromWear(x, y, targetZ);
+    // Update surface overlay — trampling can only decrease vegetation
+    UpdateSurfaceFromWear(x, y, targetZ, false);
 }
 
 void UpdateGroundWear(void) {
@@ -192,13 +235,21 @@ void UpdateGroundWear(void) {
                     int oldWear = wearGrid[z][y][x];
                     if (effectiveDecay > 0 && oldWear > effectiveDecay) {
                         wearGrid[z][y][x] = oldWear - effectiveDecay;
+                        // Recovery — vegetation grows one step per tick
+                        UpdateSurfaceFromWear(x, y, z, true);
                     } else if (effectiveDecay > 0 && oldWear > 0) {
+                        // Wear would decay to 0. If vegetation hasn't fully
+                        // regrown, hold wear at 1 to keep recovery ticking.
+                        VegetationType veg = GetVegetation(x, y, z);
                         wearGrid[z][y][x] = 0;
-                        wearActiveCells--;
+                        UpdateSurfaceFromWear(x, y, z, true);
+                        veg = GetVegetation(x, y, z);
+                        if (veg > VEG_NONE && veg < VEG_GRASS_TALLER) {
+                            wearGrid[z][y][x] = 1;  // keep ticking
+                        } else {
+                            wearActiveCells--;
+                        }
                     }
-
-                    // Update surface overlay based on new wear
-                    UpdateSurfaceFromWear(x, y, z);
                 }
 
                 // Reed regrowth: bare soil adjacent to water regrows reeds

@@ -5,6 +5,7 @@
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include "../src/simulation/groundwear.h"
+#include "../src/core/sim_manager.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -250,41 +251,47 @@ describe(surface_overlay_updates) {
     it("should recover grass overlay as wear decays") {
         InitTestGridFromAscii(
             "dddd\n");
-        
+        seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
+
         for (int x = 0; x < gridWidth; x++) {
             grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
+            SetVegetation(x, 0, 0, VEG_GRASS_TALLER);
         }
-        
+
         InitGroundWear();
         groundWearEnabled = true;
-        
-        // Set test thresholds: TALL_GRASS < 20, GRASS 20-59, TRAMPLED 60-99, BARE >= 100
+
+        // Set test thresholds
         wearTallToNormal = 20;
         wearNormalToTrampled = 60;
         wearGrassToDirt = 100;
-        
-        // Set high wear (bare dirt)
-        wearGrid[0][0][2] = 150;
-        SetVegetation(2, 0, 0, VEG_NONE);
-        
-        // Use fast decay for testing
         wearDecayRate = 50;
         wearRecoveryInterval = 0.004f;
+
+        // Trample to high wear via TrampleGround for proper bookkeeping
+        wearTrampleAmount = 150;
+        TrampleGround(2, 0, 0);
+        wearTrampleAmount = WEAR_TRAMPLE_AMOUNT_DEFAULT;
         
         expect(GetVegetation(2, 0, 0) == VEG_NONE);
         
-        // Decay: 150 -> 100 (still bare)
-        UpdateGroundWear();
+        // Gradual recovery: one vegetation step per tick
+        UpdateGroundWear();  // 150->100: still bare
         expect(GetVegetation(2, 0, 0) == VEG_NONE);
-        
-        // Decay: 100 -> 50 (short grass: 20-59)
-        UpdateGroundWear();
+
+        UpdateGroundWear();  // 100->50: NONE->SHORT
         expect(GetVegetation(2, 0, 0) == VEG_GRASS_SHORT);
-        
-        // Decay: 50 -> 0 (taller grass: wear == 0)
-        UpdateGroundWear();
+
+        UpdateGroundWear();  // 50->0 (held at 1): SHORT->TALL
+        expect(GetVegetation(2, 0, 0) == VEG_GRASS_TALL);
+
+        UpdateGroundWear();  // 1->0 (held at 1): TALL->TALLER
         expect(GetVegetation(2, 0, 0) == VEG_GRASS_TALLER);
-        
+
+        UpdateGroundWear();  // 1->0 (fully recovered)
+        expect(GetGroundWear(2, 0, 0) == 0);
+
         // Restore
         wearTallToNormal = WEAR_TALL_TO_NORMAL_DEFAULT;
         wearNormalToTrampled = WEAR_NORMAL_TO_TRAMPLED_DEFAULT;
@@ -309,9 +316,10 @@ describe(wear_decay) {
         InitGroundWear();
         groundWearEnabled = true;
         
-        // Set initial wear
+        // Set initial wear (manually, so also set active cell counter)
         wearGrid[0][0][2] = 100;
-        
+        wearActiveCells = 1;
+
         // Set decay interval to fast for testing
         float originalInterval = wearRecoveryInterval;
         wearRecoveryInterval = 0.004f;
@@ -341,9 +349,10 @@ describe(wear_decay) {
         wearRecoveryInterval = 0.04f;
         wearDecayRate = 10;
         
-        // Set initial wear
+        // Set initial wear (manually, so also set active cell counter)
         wearGrid[0][0][2] = 100;
-        
+        wearActiveCells = 1;
+
         // First few ticks: no decay (accumulator < interval)
         for (int i = 0; i < 3; i++) {
             UpdateGroundWear();
@@ -364,22 +373,24 @@ describe(wear_decay) {
     it("should clamp wear to 0 on decay") {
         InitTestGridFromAscii(
             "dddd\n");
-        
+
         for (int x = 0; x < gridWidth; x++) {
             grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
+            SetVegetation(x, 0, 0, VEG_GRASS_TALLER);  // fully grown so recovery completes
         }
-        
+
         InitGroundWear();
         groundWearEnabled = true;
-        
+
         wearDecayRate = 10;
         wearRecoveryInterval = 0.004f;
-        
-        // Set wear lower than decay rate
+
+        // Set wear lower than decay rate (manually, so also set active cell counter)
         wearGrid[0][0][2] = 5;
-        
+        wearActiveCells = 1;
+
         UpdateGroundWear();
-        
+
         expect(GetGroundWear(2, 0, 0) == 0);
         
         // Restore default values
@@ -402,11 +413,12 @@ describe(wear_decay) {
         InitGroundWear();
         groundWearEnabled = true;
         
-        // Set wear at different z-levels
+        // Set wear at different z-levels (manually, so also set active cell counter)
         wearGrid[0][0][2] = 100;
         wearGrid[1][0][2] = 100;
         wearGrid[2][0][2] = 100;
-        
+        wearActiveCells = 3;
+
         wearDecayRate = 10;
         wearRecoveryInterval = 0.004f;
         
@@ -461,19 +473,19 @@ describe(groundwear_full_cycle) {
         expect(GetVegetation(2, 0, 0) == VEG_NONE);
         expect(GetGroundWear(2, 0, 0) == 100);
         
-        // Let it decay back
-        // 100 -> 70 (trampled)
-        UpdateGroundWear();
+        // Gradual recovery: one vegetation step per tick
+        UpdateGroundWear();  // 100->70: still NONE (trampled surface)
         expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_TRAMPLED);
         expect(GetVegetation(2, 0, 0) == VEG_NONE);
-        
-        // 70 -> 40 (short grass)
-        UpdateGroundWear();
+
+        UpdateGroundWear();  // 70->40: NONE->SHORT
         expect(GetVegetation(2, 0, 0) == VEG_GRASS_SHORT);
-        
-        // 40 -> 10 (tall grass)
-        UpdateGroundWear();
+
+        UpdateGroundWear();  // 40->10: SHORT->TALL
         expect(GetVegetation(2, 0, 0) == VEG_GRASS_TALL);
+
+        UpdateGroundWear();  // 10->0 (held): TALL->TALLER
+        expect(GetVegetation(2, 0, 0) == VEG_GRASS_TALLER);
         
         // Restore default values
         wearTallerToTall = WEAR_TALLER_TO_TALL_DEFAULT;
@@ -524,6 +536,242 @@ describe(groundwear_full_cycle) {
         wearNormalToTrampled = WEAR_NORMAL_TO_TRAMPLED_DEFAULT;
         wearGrassToDirt = WEAR_GRASS_TO_DIRT_DEFAULT;
         wearTrampleAmount = WEAR_TRAMPLE_AMOUNT_DEFAULT;
+    }
+}
+
+// =============================================================================
+// Vegetation Initialization — wear system must respect pre-set vegetation
+// =============================================================================
+
+describe(groundwear_vegetation_init) {
+    it("should not grow grass on intentionally bare natural dirt") {
+        // Scenario: terrain generator places bare dirt with no vegetation
+        // The wear system should NOT spontaneously set VEG_GRASS_TALLER
+        InitTestGrid(8, 4);
+        seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
+
+        for (int y = 0; y < 4; y++) {
+            for (int x = 0; x < 8; x++) {
+                grid[0][y][x] = CELL_WALL;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
+                SetWallNatural(x, y, 0);
+                SetVegetation(x, y, 0, VEG_NONE);  // intentionally bare
+            }
+        }
+
+        InitGroundWear();
+        groundWearEnabled = true;
+        wearRecoveryInterval = 0.004f;
+
+        // Wear is 0, vegetation is VEG_NONE
+        expect(GetGroundWear(3, 1, 0) == 0);
+        expect(GetVegetation(3, 1, 0) == VEG_NONE);
+
+        // Run several wear update ticks
+        for (int i = 0; i < 10; i++) {
+            UpdateGroundWear();
+        }
+
+        // Vegetation must still be VEG_NONE — never trampled, so no recovery
+        expect(GetVegetation(3, 1, 0) == VEG_NONE);
+    }
+
+    it("should preserve each vegetation stage when wear is zero") {
+        // Terrain generators may set any vegetation level — wear system must not override
+        InitTestGrid(8, 1);
+        seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
+
+        VegetationType stages[] = {VEG_NONE, VEG_GRASS_SHORT, VEG_GRASS_TALL, VEG_GRASS_TALLER};
+        for (int x = 0; x < 4; x++) {
+            grid[0][0][x] = CELL_WALL;
+            SetWallMaterial(x, 0, 0, MAT_DIRT);
+            SetWallNatural(x, 0, 0);
+            SetVegetation(x, 0, 0, stages[x]);
+        }
+
+        InitGroundWear();
+        groundWearEnabled = true;
+        wearRecoveryInterval = 0.004f;
+
+        // Run wear updates
+        for (int i = 0; i < 10; i++) {
+            UpdateGroundWear();
+        }
+
+        // Each cell should keep its original vegetation
+        expect(GetVegetation(0, 0, 0) == VEG_NONE);
+        expect(GetVegetation(1, 0, 0) == VEG_GRASS_SHORT);
+        expect(GetVegetation(2, 0, 0) == VEG_GRASS_TALL);
+        expect(GetVegetation(3, 0, 0) == VEG_GRASS_TALLER);
+    }
+
+    it("should still recover grass after actual trampling") {
+        // Trample a grassy cell, then let it recover — this must still work
+        InitTestGrid(4, 1);
+        seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
+
+        grid[0][0][1] = CELL_WALL;
+        SetWallMaterial(1, 0, 0, MAT_DIRT);
+        SetWallNatural(1, 0, 0);
+        SetVegetation(1, 0, 0, VEG_GRASS_TALLER);
+
+        InitGroundWear();
+        groundWearEnabled = true;
+        wearTallerToTall = 5;
+        wearTallToNormal = 20;
+        wearNormalToTrampled = 60;
+        wearGrassToDirt = 100;
+        wearTrampleAmount = 50;
+        wearDecayRate = 30;
+        wearRecoveryInterval = 0.004f;
+
+        // Trample to bare
+        TrampleGround(1, 0, 0);
+        TrampleGround(1, 0, 0);
+        expect(GetVegetation(1, 0, 0) == VEG_NONE);
+        expect(GetGroundWear(1, 0, 0) == 100);
+
+        // Let it fully recover
+        for (int i = 0; i < 10; i++) {
+            UpdateGroundWear();
+        }
+
+        // Should recover to tallest grass (wear decayed to 0)
+        expect(GetGroundWear(1, 0, 0) == 0);
+        expect(GetVegetation(1, 0, 0) == VEG_GRASS_TALLER);
+
+        // Restore
+        wearTallerToTall = WEAR_TALLER_TO_TALL_DEFAULT;
+        wearTallToNormal = WEAR_TALL_TO_NORMAL_DEFAULT;
+        wearNormalToTrampled = WEAR_NORMAL_TO_TRAMPLED_DEFAULT;
+        wearGrassToDirt = WEAR_GRASS_TO_DIRT_DEFAULT;
+        wearTrampleAmount = WEAR_TRAMPLE_AMOUNT_DEFAULT;
+        wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
+    }
+
+    it("should not grow grass when trampling bare dirt") {
+        // Mood scenario: right side is bare dirt, movers walk on it.
+        // Trampling should NOT upgrade VEG_NONE to VEG_GRASS_TALLER.
+        InitTestGrid(8, 4);
+        seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
+
+        for (int y = 0; y < 4; y++) {
+            for (int x = 0; x < 8; x++) {
+                grid[0][y][x] = CELL_WALL;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
+                SetWallNatural(x, y, 0);
+                SetVegetation(x, y, 0, VEG_NONE);  // intentionally bare
+            }
+        }
+
+        InitGroundWear();
+        groundWearEnabled = true;
+
+        // Trample multiple times (simulating mover walking)
+        for (int i = 0; i < 20; i++) {
+            TrampleGround(3, 1, 0);
+        }
+
+        // Vegetation must still be VEG_NONE — trampling never upgrades
+        expect(GetVegetation(3, 1, 0) == VEG_NONE);
+        expect(GetGroundWear(3, 1, 0) > 0);
+    }
+
+    it("should not grow grass when trampling then recovering on bare dirt") {
+        // Full cycle: bare dirt → trample → recover → should stay bare
+        InitTestGrid(4, 1);
+        seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
+
+        grid[0][0][1] = CELL_WALL;
+        SetWallMaterial(1, 0, 0, MAT_DIRT);
+        SetWallNatural(1, 0, 0);
+        SetVegetation(1, 0, 0, VEG_NONE);  // intentionally bare
+
+        InitGroundWear();
+        groundWearEnabled = true;
+        wearTrampleAmount = 50;
+        wearDecayRate = 30;
+        wearRecoveryInterval = 0.004f;
+
+        // Trample
+        TrampleGround(1, 0, 0);
+        expect(GetVegetation(1, 0, 0) == VEG_NONE);
+        expect(GetGroundWear(1, 0, 0) == 50);
+
+        // Let it fully recover
+        for (int i = 0; i < 10; i++) {
+            UpdateGroundWear();
+        }
+
+        // Wear decayed to 0 but vegetation should NOT become grass
+        // because it was VEG_NONE before trampling — HAD_VEGETATION flag was never set
+        expect(GetGroundWear(1, 0, 0) == 0);
+        expect(GetVegetation(1, 0, 0) == VEG_NONE);
+
+        // Restore
+        wearTrampleAmount = WEAR_TRAMPLE_AMOUNT_DEFAULT;
+        wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
+    }
+
+    it("should downgrade grass when trampling grassy dirt") {
+        // Trampling on grassy dirt should reduce vegetation level
+        InitTestGrid(4, 1);
+        seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
+
+        grid[0][0][1] = CELL_WALL;
+        SetWallMaterial(1, 0, 0, MAT_DIRT);
+        SetWallNatural(1, 0, 0);
+        SetVegetation(1, 0, 0, VEG_GRASS_TALLER);
+
+        InitGroundWear();
+        groundWearEnabled = true;
+        wearTallerToTall = 5;
+        wearTallToNormal = 20;
+        wearNormalToTrampled = 60;
+        wearGrassToDirt = 100;
+        wearTrampleAmount = 10;
+
+        // Light trampling: wear=10 > wearTallerToTall=5 → GRASS_TALL
+        TrampleGround(1, 0, 0);
+        expect(GetVegetation(1, 0, 0) == VEG_GRASS_TALL);
+
+        // More trampling: wear=20 >= wearTallToNormal=20 → GRASS_SHORT
+        TrampleGround(1, 0, 0);
+        expect(GetVegetation(1, 0, 0) == VEG_GRASS_SHORT);
+
+        // Restore
+        wearTallerToTall = WEAR_TALLER_TO_TALL_DEFAULT;
+        wearTallToNormal = WEAR_TALL_TO_NORMAL_DEFAULT;
+        wearNormalToTrampled = WEAR_NORMAL_TO_TRAMPLED_DEFAULT;
+        wearGrassToDirt = WEAR_GRASS_TO_DIRT_DEFAULT;
+        wearTrampleAmount = WEAR_TRAMPLE_AMOUNT_DEFAULT;
+    }
+
+    it("should not grow grass on non-dirt natural walls") {
+        // Stone walls should never get vegetation from wear recovery
+        InitTestGrid(4, 1);
+        seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
+
+        grid[0][0][1] = CELL_WALL;
+        SetWallMaterial(1, 0, 0, MAT_GRANITE);
+        SetWallNatural(1, 0, 0);
+
+        InitGroundWear();
+        groundWearEnabled = true;
+        wearRecoveryInterval = 0.004f;
+
+        for (int i = 0; i < 10; i++) {
+            UpdateGroundWear();
+        }
+
+        expect(GetVegetation(1, 0, 0) == VEG_NONE);
     }
 }
 
@@ -662,6 +910,7 @@ int main(int argc, char* argv[]) {
     test(surface_overlay_updates);
     test(wear_decay);
     test(groundwear_full_cycle);
+    test(groundwear_vegetation_init);
     test(groundwear_edge_cases);
     
     return summary();

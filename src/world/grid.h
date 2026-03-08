@@ -82,7 +82,8 @@ extern uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 // Any structure with non-walkable tiles sets this flag on create, clears on delete.
 // Generic - not workshop-specific, can be reused for other blocking structures.
 #define CELL_FLAG_WORKSHOP_BLOCK (1 << 6)
-// Bit 7: reserved
+// Bit 7: cell originally had vegetation (set when veg > NONE trampled to NONE)
+#define CELL_FLAG_HAD_VEGETATION (1 << 7)
 
 // Surface overlay types (ground condition only — trampled paths, etc.)
 #define SURFACE_BARE        0

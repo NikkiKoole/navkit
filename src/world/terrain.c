@@ -4861,12 +4861,16 @@ void GenerateMoodTest(void) {
 
     InitGridWithSizeAndChunkSize(56, 36, 16, 16);
 
+    ClearMovers();
     ClearWorkshops();
     ClearStockpiles();
     ClearItems();
     ClearFurniture();
     ClearPlants();
+    ClearWater();
+    ClearLightSources();
     InitDesignations();
+    InitSceneryState();
     for (int i = 0; i < MAX_BLUEPRINTS; i++) {
         blueprints[i].active = false;
     }
@@ -4877,8 +4881,10 @@ void GenerateMoodTest(void) {
         for (int x = 0; x < gridWidth; x++) {
             grid[0][y][x] = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
+            SetWallNatural(x, y, 0);
             grid[1][y][x] = CELL_WALL;
             SetWallMaterial(x, y, 1, MAT_DIRT);
+            SetWallNatural(x, y, 1);
         }
     }
 
@@ -4907,8 +4913,8 @@ void GenerateMoodTest(void) {
     SpawnFurniture(6, 9, W, FURNITURE_PLANK_BED, MAT_OAK);
     SpawnFurniture(8, 9, W, FURNITURE_PLANK_BED, MAT_OAK);
 
-    // Good food stockpile (cooked meat + bread) — large 4x4
-    int moodFoodSp = CreateStockpile(3, 13, W, 4, 4);
+    // Good food stockpile (cooked meat + bread)
+    int moodFoodSp = CreateStockpile(3, 13, W, 3, 3);
     if (moodFoodSp >= 0) {
         for (int t = 0; t < ITEM_TYPE_COUNT; t++)
             SetStockpileFilter(moodFoodSp, t, false);
@@ -4918,18 +4924,18 @@ void GenerateMoodTest(void) {
         SetStockpileFilter(moodFoodSp, ITEM_COOKED_LENTILS, true);
         SetStockpilePriority(moodFoodSp, 7);
     }
-    // Spawn lots of good food on ground for hauling
+    // Spawn a handful of good food on ground near the stockpile
     {
         ItemType goodFoods[] = {ITEM_COOKED_MEAT, ITEM_BREAD, ITEM_ROASTED_ROOT, ITEM_COOKED_LENTILS};
-        for (int i = 0; i < 60; i++) {
-            float ix = (3 + i % 8) * CELL_SIZE + CELL_SIZE * 0.5f;
-            float iy = (18 + i / 8) * CELL_SIZE + CELL_SIZE * 0.5f;
+        for (int i = 0; i < 12; i++) {
+            float ix = (3 + i % 4) * CELL_SIZE + CELL_SIZE * 0.5f;
+            float iy = (18 + i / 4) * CELL_SIZE + CELL_SIZE * 0.5f;
             SpawnItem(ix, iy, (float)W, goodFoods[i % 4]);
         }
     }
 
-    // Good drink stockpile (tea + juice) — large 3x3
-    int moodDrinkSp = CreateStockpile(9, 13, W, 3, 3);
+    // Good drink stockpile (tea + juice)
+    int moodDrinkSp = CreateStockpile(8, 13, W, 2, 2);
     if (moodDrinkSp >= 0) {
         for (int t = 0; t < ITEM_TYPE_COUNT; t++)
             SetStockpileFilter(moodDrinkSp, t, false);
@@ -4937,9 +4943,9 @@ void GenerateMoodTest(void) {
         SetStockpileFilter(moodDrinkSp, ITEM_BERRY_JUICE, true);
         SetStockpilePriority(moodDrinkSp, 7);
     }
-    for (int i = 0; i < 40; i++) {
-        float ix = (9 + i % 4) * CELL_SIZE + CELL_SIZE * 0.5f;
-        float iy = (18 + i / 4) * CELL_SIZE + CELL_SIZE * 0.5f;
+    for (int i = 0; i < 8; i++) {
+        float ix = (9 + i % 3) * CELL_SIZE + CELL_SIZE * 0.5f;
+        float iy = (18 + i / 3) * CELL_SIZE + CELL_SIZE * 0.5f;
         SpawnItem(ix, iy, (float)W, (i % 2 == 0) ? ITEM_HERBAL_TEA : ITEM_BERRY_JUICE);
     }
 
@@ -5069,13 +5075,12 @@ void GenerateMoodTest(void) {
     SpawnFurniture(36, 9, W, FURNITURE_LEAF_PILE, 0);
     SpawnFurniture(38, 9, W, FURNITURE_LEAF_PILE, 0);
 
-    // Lots of raw food scattered on ground (no stockpile)
-    // 8 per row, x=33..40 (stays clear of mine wall at x=42), y=11..18
+    // Some raw food scattered on ground (no stockpile)
     {
         ItemType rawFoods[] = {ITEM_RAW_MEAT, ITEM_BERRIES, ITEM_ROOT, ITEM_LENTILS};
-        for (int i = 0; i < 60; i++) {
-            float ix = (33 + i % 8) * CELL_SIZE + CELL_SIZE * 0.5f;
-            float iy = (11 + i / 8) * CELL_SIZE + CELL_SIZE * 0.5f;
+        for (int i = 0; i < 12; i++) {
+            float ix = (33 + i % 4) * CELL_SIZE + CELL_SIZE * 0.5f;
+            float iy = (11 + i / 4) * CELL_SIZE + CELL_SIZE * 0.5f;
             SpawnItem(ix, iy, (float)W, rawFoods[i % 4]);
         }
     }
@@ -5163,5 +5168,6 @@ void GenerateMoodTest(void) {
         SpawnItem(ix, iy, (float)W, ITEM_ROCK);
     }
 
+    SyncMaterialsToTerrain();
     needsRebuild = true;
 }

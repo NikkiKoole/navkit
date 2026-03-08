@@ -656,6 +656,7 @@ void DrawUI(void) {
                 ClearFarming();
                 GenerateCurrentTerrain();
                 InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+                InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
                 InitDesignations();
                 RebuildSimActivityCounts();
                 InitFire();
@@ -665,7 +666,7 @@ void DrawUI(void) {
                 InitGroundWear();
                 InitFloorDirt();
                 InitSnow();
-                InitLighting();
+                InvalidateLighting();
                 BuildEntrances();
                 BuildGraph();
                 AddMessage(TextFormat("Generated terrain: %s", terrainNames[currentTerrain]), GREEN);
@@ -676,7 +677,6 @@ void DrawUI(void) {
                 currentTerrain = 23;
                 InitPlants();
                 ClearFarming();
-                InitLighting();
                 GenerateCurrentTerrain();
                 InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
                 InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
@@ -689,6 +689,7 @@ void DrawUI(void) {
                 InitGroundWear();
                 InitFloorDirt();
                 InitSnow();
+                InvalidateLighting();
                 BuildEntrances();
                 BuildGraph();
                 // Enable needs + slower day cycle with proportional speed

@@ -578,7 +578,12 @@ describe(sapling_regrowth) {
         InitTrees();
         InitGroundWear();
         ClearGroundWear();
-        
+
+        // Sapling regrowth requires VEG_GRASS_TALL on dirt cells
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++)
+                SetVegetation(x, y, 0, VEG_GRASS_TALLER);
+
         groundWearEnabled = true;
         saplingRegrowthEnabled = true;
         
