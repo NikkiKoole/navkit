@@ -30,6 +30,7 @@ void SoundSynthPlaySongHappyBirthday(SoundSynth* synth);
 void SoundSynthPlaySongMonksMood(SoundSynth* synth);
 void SoundSynthPlaySongSummertime(SoundSynth* synth);
 void SoundSynthPlaySongMule(SoundSynth* synth);
+void SoundSynthPlaySongGymnopedie(SoundSynth* synth);
 void SoundSynthStopSong(SoundSynth* synth);
 bool SoundSynthIsSongPlaying(SoundSynth* synth);
 

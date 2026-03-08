@@ -238,7 +238,7 @@ SoundSynthPlaySongJazz(synth);
 SoundSynthStopSong(synth);
 
 // Jukebox — browse songs by index
-int count = SoundSynthGetSongCount();        // 12 songs
+int count = SoundSynthGetSongCount();        // 13 songs
 const char* name = SoundSynthGetSongName(0); // "Dormitory"
 SoundSynthJukeboxPlay(synth, 3);             // Play song 3
 SoundSynthJukeboxNext(synth);                // Next song

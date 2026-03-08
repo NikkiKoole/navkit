@@ -1246,6 +1246,42 @@ void SoundSynthPlaySongMule(SoundSynth* synth) {
     startSongPlayback(synth, sp->bpm);
 }
 
+void SoundSynthPlaySongGymnopedie(SoundSynth* synth) {
+    if (!synth || !synth->audioReady) return;
+    useSoundSystem(&synth->ss);
+
+    SoundSynthStopSong(synth);
+
+    // Dreamy piano waltz: pluck bass, FM keys melody, FM keys chords (polyphonic)
+    setMelodyCallbacks(0, melodyTriggerPluckBass, melodyReleaseBass);
+    setMelodyCallbacks(1, melodyTriggerFMKeysLead, melodyReleaseLead);
+    setMelodyCallbacks(2, melodyTriggerFMKeys, melodyReleaseChordPoly);
+    setMelodyChordCallback(2, melodyTriggerChordFMKeys);
+
+    Song_Gymnopedie_ConfigureVoices();
+
+    SongPlayer* sp = &synth->songPlayer;
+    Song_Gymnopedie_Load(sp->patterns);
+    sp->patternCount = 8;
+    sp->currentPattern = 0;
+    sp->loopsOnCurrent = 0;
+    sp->loopsPerPattern = 1;
+    sp->bpm = SONG_GYMNOPEDIE_BPM;
+    sp->sweepPhase = 0.0f;
+    sp->sweepRate = 0.0f;
+
+    // No swing — Satie is straight, floating
+    seq.dilla.swing = 0;
+    seq.dilla.snareDelay = 0;
+    seq.dilla.jitter = 0;
+
+    // Very subtle humanize for piano feel
+    seq.humanize.timingJitter = 1;
+    seq.humanize.velocityJitter = 0.04f;
+
+    startSongPlayback(synth, sp->bpm);
+}
+
 void SoundSynthStopSong(SoundSynth* synth) {
     if (!synth || !synth->audioReady) return;
     useSoundSystem(&synth->ss);
@@ -1298,6 +1334,7 @@ static const JukeboxEntry jukeboxSongs[] = {
     { "Monk's Mood",          SoundSynthPlaySongMonksMood },
     { "Summertime",            SoundSynthPlaySongSummertime },
     { "M.U.L.E. Theme",        SoundSynthPlaySongMule },
+    { "Gymnopedie No.1",        SoundSynthPlaySongGymnopedie },
 };
 
 #define JUKEBOX_SONG_COUNT (int)(sizeof(jukeboxSongs) / sizeof(jukeboxSongs[0]))

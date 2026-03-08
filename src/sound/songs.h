@@ -80,7 +80,9 @@
 #define B0  23
 
 // Octave 5 extras
+#define Cs5 73
 #define Fs5 78
+#define A5  81
 #define Ab5 80
 #define Bb5 82
 
@@ -2075,5 +2077,216 @@ static void Song_Mule_Load(Pattern patterns[8]) {
 }
 
 #define SONG_MULE_BPM  74.0f
+
+// ============================================================================
+// Song: Gymnopédie No. 1 (Satie)
+//
+// D major, 3/4 waltz, ~80 BPM. Dreamy, floating.
+// 8th-note resolution: trackLength=12 (2 bars of 3/4), BPM halved to 40.
+// Step mapping: bar1 beat 0/1/2 → steps 0/2/4, bar2 → steps 6/8/10.
+//
+// Bars 0-15 (first half): 2 bars intro chords, then A melody, gap, A' repeat.
+// Track 0: bass (LH beat 1 single notes)
+// Track 1: melody (RH)
+// Track 2: chords (LH beat 2 triads, CHORD_CUSTOM + PICK_ALL)
+// ============================================================================
+
+static void Song_Gymnopedie_ConfigureVoices(void) {
+    masterVolume = 0.30f;
+
+    scaleLockEnabled = false;
+
+    // Soft, dreamy piano — slow attack, long release
+    noteAttack  = 0.02f;
+    noteDecay   = 0.8f;
+    noteSustain = 0.4f;
+    noteRelease = 1.5f;
+    noteExpRelease = true;   // natural decay tail
+    noteVolume  = 0.35f;
+
+    // Warm, dark filter
+    noteFilterCutoff    = 0.40f;
+    noteFilterResonance = 0.05f;
+    noteFilterEnvAmt    = 0.08f;
+
+    // Very gentle vibrato
+    noteVibratoRate  = 3.5f;
+    noteVibratoDepth = 0.001f;
+
+    notePwmRate  = 0.0f;
+    notePwmDepth = 0.0f;
+    noteArpEnabled = false;
+}
+
+// Helper: set up Gymnopédie waltz track lengths (12 = 2 bars of 3/4)
+static void satieTrackLengths(Pattern* p) {
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) p->drumTrackLength[t] = 12;
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) p->melodyTrackLength[t] = 12;
+}
+
+// Helper: custom chord on track 2 (3-note voicing, Satie uses triads)
+static void satieChord(Pattern* p, int step, int root, int n0, int n1, int n2) {
+    p->melodyNote[2][step]     = root;
+    p->melodyVelocity[2][step] = 0.22f;
+    p->melodyGate[2][step]     = 4;    // 2 beats at 8th-note resolution
+    p->melodySustain[2][step]  = 2;
+    p->melodyNotePool[2][step].enabled        = true;
+    p->melodyNotePool[2][step].chordType      = CHORD_CUSTOM;
+    p->melodyNotePool[2][step].pickMode       = PICK_ALL;
+    p->melodyNotePool[2][step].customNotes[0] = n0;
+    p->melodyNotePool[2][step].customNotes[1] = n1;
+    p->melodyNotePool[2][step].customNotes[2] = n2;
+    p->melodyNotePool[2][step].customNoteCount = 3;
+}
+
+// Pattern 0 (bars 0-1): Intro — chords only, no melody
+// Bar 0: G2 bass, Bm chord (B3 D4 F#4)
+// Bar 1: D2 bass, A chord (A3 C#4 F#4)
+static void Song_Gymnopedie_Pattern0(Pattern* p) {
+    initPattern(p);
+    satieTrackLengths(p);
+
+    // Bass
+    note(p, 0, 0, G2,  .32, 4);
+    note(p, 0, 6, D2,  .30, 4);
+
+    // Chords on beat 2 (step 2 and 8)
+    satieChord(p, 2, B3, B3, D4, Fs4);
+    satieChord(p, 8, A3, A3, Cs4, Fs4);
+}
+
+// Pattern 1 (bars 2-3): Intro repeat
+static void Song_Gymnopedie_Pattern1(Pattern* p) {
+    initPattern(p);
+    satieTrackLengths(p);
+
+    note(p, 0, 0, G2,  .32, 4);
+    note(p, 0, 6, D2,  .30, 4);
+
+    satieChord(p, 2, B3, B3, D4, Fs4);
+    satieChord(p, 8, A3, A3, Cs4, Fs4);
+}
+
+// Pattern 2 (bars 4-5): Melody begins — F#5, A5 | G5, F#5, C#5
+// Bar 4: G2 bass, Bm chord, melody F#5 (beat 1) A5 (beat 2)
+// Bar 5: D2 bass, A chord, melody G5 (beat 0) F#5 (beat 1) C#5 (beat 2)
+static void Song_Gymnopedie_Pattern2(Pattern* p) {
+    initPattern(p);
+    satieTrackLengths(p);
+
+    note(p, 0, 0, G2,  .32, 4);
+    note(p, 0, 6, D2,  .30, 4);
+
+    satieChord(p, 2, B3, B3, D4, Fs4);
+    satieChord(p, 8, A3, A3, Cs4, Fs4);
+
+    // Melody (octave 4)
+    note(p, 1, 2, Fs4, .38, 2);    // F#4 beat 1
+    note(p, 1, 4, A4,  .48, 2);    // A4 beat 2
+    note(p, 1, 6, G4,  .44, 2);    // G4 beat 0 (bar 5)
+    note(p, 1, 8, Fs4, .42, 2);    // F#4 beat 1
+    note(p, 1,10, Cs4, .37, 2);    // C#4 beat 2
+}
+
+// Pattern 3 (bars 6-7): B3, C#4, D4 | A3 (held)
+// Bar 6: G2 bass, Bm chord
+// Bar 7: D2 bass, A chord
+static void Song_Gymnopedie_Pattern3(Pattern* p) {
+    initPattern(p);
+    satieTrackLengths(p);
+
+    note(p, 0, 0, G2,  .34, 4);
+    note(p, 0, 6, D2,  .32, 4);
+
+    satieChord(p, 2, B3, B3, D4, Fs4);
+    satieChord(p, 8, A3, A3, Cs4, Fs4);
+
+    // Melody
+    note(p, 1, 0, B3,  .42, 2);    // B3 beat 0
+    note(p, 1, 2, Cs4, .45, 2);    // C#4 beat 1
+    note(p, 1, 4, D4,  .48, 2);    // D4 beat 2
+    noteS(p, 1, 6, A3, .40, 6, 6); // A3 held through bar 7
+}
+
+// Pattern 4 (bars 8-9): F#3 held long, then silence
+// Bar 8: G2 bass, Bm chord
+// Bar 9: D2 bass, A chord
+static void Song_Gymnopedie_Pattern4(Pattern* p) {
+    initPattern(p);
+    satieTrackLengths(p);
+
+    note(p, 0, 0, G2,  .32, 4);
+    note(p, 0, 6, D2,  .30, 4);
+
+    satieChord(p, 2, B3, B3, D4, Fs4);
+    satieChord(p, 8, A3, A3, Cs4, Fs4);
+
+    // Melody: F#3 held for most of these 2 bars
+    noteS(p, 1, 0, Fs3, .38, 6, 6);
+}
+
+// Pattern 5 (bars 10-11): Waltz continues, no melody (sustained F#4 rings)
+// Bar 10: G2 bass, Bm chord
+// Bar 11: D2 bass, A chord
+static void Song_Gymnopedie_Pattern5(Pattern* p) {
+    initPattern(p);
+    satieTrackLengths(p);
+
+    note(p, 0, 0, G2,  .34, 4);
+    note(p, 0, 6, D2,  .32, 4);
+
+    satieChord(p, 2, B3, B3, D4, Fs4);
+    satieChord(p, 8, A3, A3, Cs4, Fs4);
+}
+
+// Pattern 6 (bars 12-13): A' repeat — F#5, A5 | G5, F#5, C#5
+static void Song_Gymnopedie_Pattern6(Pattern* p) {
+    initPattern(p);
+    satieTrackLengths(p);
+
+    note(p, 0, 0, G2,  .34, 4);
+    note(p, 0, 6, D2,  .32, 4);
+
+    satieChord(p, 2, B3, B3, D4, Fs4);
+    satieChord(p, 8, A3, A3, Cs4, Fs4);
+
+    // Melody (same as pattern 2, octave 4)
+    note(p, 1, 2, Fs4, .38, 2);
+    note(p, 1, 4, A4,  .48, 2);
+    note(p, 1, 6, G4,  .43, 2);
+    note(p, 1, 8, Fs4, .42, 2);
+    note(p, 1,10, Cs4, .36, 2);
+}
+
+// Pattern 7 (bars 14-15): B3, C#4, D4 | A3 (held) — resolves, loops back
+static void Song_Gymnopedie_Pattern7(Pattern* p) {
+    initPattern(p);
+    satieTrackLengths(p);
+
+    note(p, 0, 0, G2,  .32, 4);
+    note(p, 0, 6, D2,  .30, 4);
+
+    satieChord(p, 2, B3, B3, D4, Fs4);
+    satieChord(p, 8, A3, A3, Cs4, Fs4);
+
+    // Melody
+    note(p, 1, 0, B3,  .42, 2);
+    note(p, 1, 2, Cs4, .47, 2);
+    note(p, 1, 4, D4,  .46, 2);
+    noteS(p, 1, 6, A3, .38, 6, 6);
+}
+
+static void Song_Gymnopedie_Load(Pattern patterns[8]) {
+    Song_Gymnopedie_Pattern0(&patterns[0]);
+    Song_Gymnopedie_Pattern1(&patterns[1]);
+    Song_Gymnopedie_Pattern2(&patterns[2]);
+    Song_Gymnopedie_Pattern3(&patterns[3]);
+    Song_Gymnopedie_Pattern4(&patterns[4]);
+    Song_Gymnopedie_Pattern5(&patterns[5]);
+    Song_Gymnopedie_Pattern6(&patterns[6]);
+    Song_Gymnopedie_Pattern7(&patterns[7]);
+}
+
+#define SONG_GYMNOPEDIE_BPM  40.0f  // actual 80 BPM, halved for 8th-note resolution
 
 #endif // SONGS_H
