@@ -54,7 +54,17 @@ void UpdateMessages(float dt, bool paused);
 // Draw messages at bottom of screen (call during drawing)
 void DrawMessages(int screenWidth, int screenHeight);
 
+// MIDI learn callback (set by app, called by DraggableFloat on right-click)
+// Signature: void callback(float* target, float min, float max, const char* label)
+typedef void (*UIMidiLearnFunc)(float* target, float min, float max, const char* label);
+typedef bool (*UIMidiLearnIsWaitingFunc)(float* target);
+typedef int  (*UIMidiLearnGetCCFunc)(float* target);
+
+// Set MIDI learn hooks (call once at init, NULL to disable)
+void ui_set_midi_learn_hooks(UIMidiLearnFunc arm, UIMidiLearnIsWaitingFunc isWaiting, UIMidiLearnGetCCFunc getCC);
+
 // Draggable float value - returns true if changed
+// Right-click: arm MIDI learn (if hooks set). Right-click again: unlearn.
 bool DraggableFloat(float x, float y, const char* label, float* value, float speed, float min, float max);
 
 // Draggable int value - returns true if changed
@@ -156,6 +166,11 @@ static bool g_ui_clickConsumed = false;  // Set when UI consumes a click
 static bool g_ui_customHovered = false;  // For custom UI elements (like profiler)
 static bool g_ui_isDragging = false;     // True while any draggable is being dragged
 
+// MIDI learn hooks (set by app via ui_set_midi_learn_hooks)
+static UIMidiLearnFunc g_ui_midiLearnArm = NULL;
+static UIMidiLearnIsWaitingFunc g_ui_midiLearnIsWaiting = NULL;
+static UIMidiLearnGetCCFunc g_ui_midiLearnGetCC = NULL;
+
 // Block rectangles - registered before HandleInput, checked immediately
 static Rectangle g_ui_blockRects[UI_MAX_BLOCK_RECTS];
 static int g_ui_blockRectCount = 0;
@@ -240,9 +255,26 @@ int MeasureTextUI(const char* text, int size) {
     }
 }
 
+// Set MIDI learn hooks (call once at init)
+void ui_set_midi_learn_hooks(UIMidiLearnFunc arm, UIMidiLearnIsWaitingFunc isWaiting, UIMidiLearnGetCCFunc getCC) {
+    g_ui_midiLearnArm = arm;
+    g_ui_midiLearnIsWaiting = isWaiting;
+    g_ui_midiLearnGetCC = getCC;
+}
+
 bool DraggableFloat(float x, float y, const char* label, float* value, float speed, float min, float max) {
+    // Check MIDI learn state for this parameter
+    bool midiWaiting = g_ui_midiLearnIsWaiting && g_ui_midiLearnIsWaiting(value);
+    int midiCC = g_ui_midiLearnGetCC ? g_ui_midiLearnGetCC(value) : -1;
+
     char buf[64];
-    snprintf(buf, sizeof(buf), "%s: %.2f", label, *value);
+    if (midiWaiting) {
+        snprintf(buf, sizeof(buf), "%s: MIDI?", label);
+    } else if (midiCC >= 0) {
+        snprintf(buf, sizeof(buf), "%s: %.2f [CC%d]", label, *value, midiCC);
+    } else {
+        snprintf(buf, sizeof(buf), "%s: %.2f", label, *value);
+    }
 
     int textWidth = MeasureTextUI(buf, 18);
     Rectangle bounds = {x, y, (float)textWidth + 10, 20};
@@ -252,7 +284,15 @@ bool DraggableFloat(float x, float y, const char* label, float* value, float spe
     if (hovered) g_ui_draggableAnyHovered = true;
 
     Color col = hovered ? YELLOW : LIGHTGRAY;
+    if (midiWaiting) col = (Color){255, 100, 255, 255}; // magenta = waiting
+    else if (midiCC >= 0) col = hovered ? YELLOW : (Color){100, 200, 255, 255}; // cyan = mapped
     DrawTextShadow(buf, (int)x, (int)y, 18, col);
+
+    // Right-click: arm/disarm MIDI learn
+    if (hovered && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && g_ui_midiLearnArm) {
+        g_ui_midiLearnArm(value, min, max, label);
+        g_ui_clickConsumed = true;
+    }
 
     static bool dragging = false;
     static float* dragTarget = NULL;
@@ -682,8 +722,17 @@ void DrawTooltip(void) {
 }
 
 bool DraggableFloatT(float x, float y, const char* label, float* value, float speed, float min, float max, const char* tooltip) {
+    bool midiWaiting = g_ui_midiLearnIsWaiting && g_ui_midiLearnIsWaiting(value);
+    int midiCC = g_ui_midiLearnGetCC ? g_ui_midiLearnGetCC(value) : -1;
+
     char buf[64];
-    snprintf(buf, sizeof(buf), "%s: %.2f", label, *value);
+    if (midiWaiting) {
+        snprintf(buf, sizeof(buf), "%s: MIDI?", label);
+    } else if (midiCC >= 0) {
+        snprintf(buf, sizeof(buf), "%s: %.2f [CC%d]", label, *value, midiCC);
+    } else {
+        snprintf(buf, sizeof(buf), "%s: %.2f", label, *value);
+    }
 
     int textWidth = MeasureTextUI(buf, 18);
     Rectangle bounds = {x, y, (float)textWidth + 10, 20};
@@ -696,7 +745,15 @@ bool DraggableFloatT(float x, float y, const char* label, float* value, float sp
     }
 
     Color col = hovered ? YELLOW : LIGHTGRAY;
+    if (midiWaiting) col = (Color){255, 100, 255, 255};
+    else if (midiCC >= 0) col = hovered ? YELLOW : (Color){100, 200, 255, 255};
     DrawTextShadow(buf, (int)x, (int)y, 18, col);
+
+    // Right-click: arm/disarm MIDI learn
+    if (hovered && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && g_ui_midiLearnArm) {
+        g_ui_midiLearnArm(value, min, max, label);
+        g_ui_clickConsumed = true;
+    }
 
     static bool dragging = false;
     static float* dragTarget = NULL;

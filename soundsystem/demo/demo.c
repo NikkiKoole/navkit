@@ -27,6 +27,7 @@
 #include "../engines/sampler.h"  // WAV sample playback
 #include "../engines/sample_data.h" // Embedded samples (run `make sample_embed` to regenerate)
 #include "../engines/piku_presets.h" // Pikuniku-style "sillycore" presets
+#include "../engines/midi_input.h"  // MIDI keyboard input (CoreMIDI on macOS, stubs elsewhere)
 
 // ============================================================================
 // SPEECH SYSTEM
@@ -1738,6 +1739,32 @@ int main(void) {
     for (size_t i = 0; i < NUM_PIANO_KEYS; i++) {
         pianoKeyVoices[i] = -1;
     }
+
+    // Initialize MIDI keyboard input (no-op if no device found)
+    MidiInput_Init();
+
+    // Hook MIDI learn into UI (right-click any knob to map a CC)
+    ui_set_midi_learn_hooks(MidiLearn_Arm, MidiLearn_IsWaiting, MidiLearn_GetCC);
+
+    // Track voices triggered by MIDI keys (128 MIDI notes)
+    #define NUM_MIDI_NOTES 128
+    int midiNoteVoices[NUM_MIDI_NOTES];
+    for (int i = 0; i < NUM_MIDI_NOTES; i++) midiNoteVoices[i] = -1;
+    bool midiSustainPedal = false;
+
+    // Split keyboard state
+    bool splitEnabled = false;
+    int splitPoint = 60;           // C4 — notes below go left, at/above go right
+    int splitLeftPatch = 1;        // index into patches[] (1=Bass)
+    int splitRightPatch = 2;       // index into patches[] (2=Lead)
+    int splitLeftOctave = 0;       // octave offset for left zone (-2 to +2)
+    int splitRightOctave = 0;      // octave offset for right zone (-2 to +2)
+    int splitLeftVoices[NUM_MIDI_NOTES];
+    int splitRightVoices[NUM_MIDI_NOTES];
+    for (int i = 0; i < NUM_MIDI_NOTES; i++) {
+        splitLeftVoices[i] = -1;
+        splitRightVoices[i] = -1;
+    }
     
     while (!WindowShouldClose()) {
         // SFX (1-6)
@@ -1832,7 +1859,143 @@ int main(void) {
                 pianoKeyVoices[i] = -1;
             }
         }
-        
+
+        // MIDI keyboard input (with split keyboard support)
+        {
+            MidiEvent midiEvents[64];
+            int midiCount = MidiInput_Poll(midiEvents, 64);
+            for (int i = 0; i < midiCount; i++) {
+                MidiEvent *ev = &midiEvents[i];
+                switch (ev->type) {
+                    case MIDI_NOTE_ON: {
+                        int note = ev->data1;
+                        float vel = ev->data2 / 127.0f;
+                        if (note >= NUM_MIDI_NOTES) break;
+
+                        // Pick patch and voice array based on split state
+                        SynthPatch *patch;
+                        int *voices;
+                        int octaveOffset = 0;
+                        if (splitEnabled) {
+                            bool isLeft = (note < splitPoint);
+                            patch = &patches[isLeft ? splitLeftPatch : splitRightPatch];
+                            voices = isLeft ? splitLeftVoices : splitRightVoices;
+                            octaveOffset = isLeft ? splitLeftOctave : splitRightOctave;
+                        } else {
+                            patch = &patches[selectedPatch];
+                            voices = midiNoteVoices;
+                        }
+
+                        // Release previous voice on this note (re-trigger)
+                        if (voices[note] >= 0) {
+                            releaseNote(voices[note]);
+                        }
+
+                        noteVolume = vel * patch->p_volume;
+                        int midiNote = note + octaveOffset * 12;
+                        if (midiNote < 0) midiNote = 0;
+                        if (midiNote > 127) midiNote = 127;
+                        if (scaleLockEnabled) {
+                            midiNote = constrainToScale(midiNote);
+                        }
+                        float freq = midiNoteToFreq(midiNote);
+                        voices[note] = playNoteWithPatch(freq, patch);
+                    } break;
+                    case MIDI_NOTE_OFF: {
+                        int note = ev->data1;
+                        if (note >= NUM_MIDI_NOTES) break;
+
+                        // Find voice in the right array
+                        int *voices;
+                        if (splitEnabled) {
+                            bool isLeft = (note < splitPoint);
+                            voices = isLeft ? splitLeftVoices : splitRightVoices;
+                        } else {
+                            voices = midiNoteVoices;
+                        }
+
+                        if (voices[note] >= 0 && !midiSustainPedal) {
+                            releaseNote(voices[note]);
+                            voices[note] = -1;
+                        }
+                    } break;
+                    case MIDI_CC: {
+                        int cc = ev->data1;
+                        float val = ev->data2 / 127.0f;
+
+                        // MIDI learn gets first crack at all CCs
+                        bool learned = MidiLearn_ProcessCC(cc, val);
+
+                        if (learned) {
+                            // Push learned param changes to active MIDI voices.
+                            // In split mode, update both zones from their respective patches.
+                            int voiceArrayCount = splitEnabled ? 2 : 1;
+                            for (int z = 0; z < voiceArrayCount; z++) {
+                                int *voices = splitEnabled
+                                    ? (z == 0 ? splitLeftVoices : splitRightVoices)
+                                    : midiNoteVoices;
+                                SynthPatch *p = splitEnabled
+                                    ? &patches[z == 0 ? splitLeftPatch : splitRightPatch]
+                                    : &patches[selectedPatch];
+                                for (int n = 0; n < NUM_MIDI_NOTES; n++) {
+                                    int vi = voices[n];
+                                    if (vi >= 0 && vi < NUM_VOICES) {
+                                        synthVoices[vi].filterCutoff    = p->p_filterCutoff;
+                                        synthVoices[vi].filterResonance = p->p_filterResonance;
+                                        synthVoices[vi].filterEnvAmt    = p->p_filterEnvAmt;
+                                        synthVoices[vi].filterLfoRate   = p->p_filterLfoRate;
+                                        synthVoices[vi].filterLfoDepth  = p->p_filterLfoDepth;
+                                        synthVoices[vi].vibratoRate     = p->p_vibratoRate;
+                                        synthVoices[vi].vibratoDepth    = p->p_vibratoDepth;
+                                        synthVoices[vi].pulseWidth      = p->p_pulseWidth;
+                                        synthVoices[vi].pwmRate         = p->p_pwmRate;
+                                        synthVoices[vi].pwmDepth        = p->p_pwmDepth;
+                                        synthVoices[vi].volume          = p->p_volume;
+                                    }
+                                }
+                            }
+                        } else if (cc == 1) {
+                            // Mod wheel → filter cutoff on all active MIDI voices
+                            // In split mode, affects both zones
+                            int voiceArrayCount = splitEnabled ? 2 : 1;
+                            for (int z = 0; z < voiceArrayCount; z++) {
+                                int *voices = splitEnabled
+                                    ? (z == 0 ? splitLeftVoices : splitRightVoices)
+                                    : midiNoteVoices;
+                                SynthPatch *p = splitEnabled
+                                    ? &patches[z == 0 ? splitLeftPatch : splitRightPatch]
+                                    : &patches[selectedPatch];
+                                p->p_filterCutoff = val;
+                                for (int n = 0; n < NUM_MIDI_NOTES; n++) {
+                                    if (voices[n] >= 0 && voices[n] < NUM_VOICES) {
+                                        synthVoices[voices[n]].filterCutoff = val;
+                                    }
+                                }
+                            }
+                        } else if (cc == 64) {
+                            // Sustain pedal — release all held notes in all zones
+                            midiSustainPedal = (ev->data2 >= 64);
+                            if (!midiSustainPedal) {
+                                int *arrays[] = { midiNoteVoices, splitLeftVoices, splitRightVoices };
+                                int arrayCount = splitEnabled ? 3 : 1;
+                                for (int z = 0; z < arrayCount; z++) {
+                                    for (int n = 0; n < NUM_MIDI_NOTES; n++) {
+                                        if (arrays[z][n] >= 0) {
+                                            releaseNote(arrays[z][n]);
+                                            arrays[z][n] = -1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } break;
+                    case MIDI_PITCH_BEND:
+                        // TODO: pitch bend support
+                        break;
+                }
+            }
+        }
+
         BeginDrawing();
         ClearBackground(DARKGRAY);
         ui_begin_frame();
@@ -2001,6 +2164,63 @@ int main(void) {
                 }
             }
             
+            // [+] Split keyboard section
+            {
+                static bool splitExpanded = false;
+                if (SectionHeader(x, topBarY, "Split", &splitExpanded)) {
+                    int sx = 330;
+                    int sy = topBarY + 20;
+                    if (grooveExpanded) sy += 20;
+                    if (scenesExpanded) sy += 20;
+                    if (polyExpanded) sy += 20;
+
+                    // On/Off toggle
+                    ToggleBool(sx, sy, "Split", &splitEnabled);
+                    sx += 70;
+
+                    if (splitEnabled) {
+                        // Note name table for display
+                        static const char* noteNames[] = {
+                            "C","C#","D","D#","E","F","F#","G","G#","A","A#","B"
+                        };
+                        int splitOctave = splitPoint / 12;
+                        int splitNote = splitPoint % 12;
+
+                        // Split point
+                        DraggableInt(sx, sy, "At", &splitPoint, 0.3f, 24, 96);
+                        sx += 65;
+                        DrawTextShadow(TextFormat("(%s%d)", noteNames[splitNote], splitOctave),
+                                       sx, sy, 18, LIGHTGRAY);
+                        sx += 50;
+
+                        // Left zone patch
+                        CycleOption(sx, sy, "L", patchNames, NUM_PATCHES, &splitLeftPatch);
+                        sx += 80;
+                        DraggableInt(sx, sy, "Oct", &splitLeftOctave, 0.3f, -2, 2);
+                        sx += 70;
+
+                        sx += 10;
+
+                        // Right zone patch
+                        CycleOption(sx, sy, "R", patchNames, NUM_PATCHES, &splitRightPatch);
+                        sx += 80;
+                        DraggableInt(sx, sy, "Oct", &splitRightOctave, 0.3f, -2, 2);
+                    }
+                }
+                x += MeasureTextUI("[Split]", 18) + 15;
+            }
+
+            // MIDI status (right side, above stats)
+            {
+                int mx = SCREEN_WIDTH - 160;
+                if (MidiInput_IsConnected()) {
+                    DrawTextShadow("MIDI", mx, topBarY, 10, GREEN);
+                    DrawTextShadow(MidiInput_DeviceName(), mx, topBarY + 12, 10, GRAY);
+                } else {
+                    DrawTextShadow("MIDI: --", mx, topBarY, 10, (Color){80, 80, 80, 255});
+                }
+            }
+
             // Audio stats (right side, stacked vertically)
             double bufferTimeMs = (double)audioFrameCount / SAMPLE_RATE * 1000.0;
             double cpuPercent = (audioTimeUs / 1000.0) / bufferTimeMs * 100.0;
@@ -4171,6 +4391,7 @@ int main(void) {
         EndDrawing();
     }
     
+    MidiInput_Shutdown();
     UnloadAudioStream(stream);
     CloseAudioDevice();
     UnloadFont(font);

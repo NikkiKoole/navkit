@@ -34,7 +34,7 @@ RAYLIB_OBJS   := $(patsubst $(RAYLIB_DIR)/%.c,$(RAYLIB_BUILDDIR)/raylib_%.o,$(RA
 
 # macOS link flags for raylib (static)
 LDFLAGS := -L$(RAYLIB_BUILDDIR) -lraylib -framework OpenGL -framework Cocoa -framework IOKit \
-           -framework CoreAudio -framework CoreVideo -lm -lpthread
+           -framework CoreAudio -framework CoreVideo -framework CoreMIDI -lm -lpthread
 
 # Build individual raylib object files
 $(RAYLIB_BUILDDIR)/raylib_%.o: $(RAYLIB_DIR)/%.c | $(RAYLIB_BUILDDIR)
@@ -592,5 +592,18 @@ asan: $(RAYLIB_LIB) | $(BINDIR)
 # Release build - max optimization, no debug symbols
 release: $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
+
+# ---------------------------------------------------------------------------
+# compile_commands.json for clangd (LSP code intelligence)
+# ---------------------------------------------------------------------------
+compile_commands.json: $(GAME_SOURCES)
+	@python3 -c "\
+	import json, glob, os; \
+	d = os.getcwd(); \
+	flags = '$(CFLAGS)'; \
+	files = [f for f in sorted(glob.glob('src/**/*.c', recursive=True)) if 'unity.c' not in f]; \
+	files += sorted(glob.glob('tests/test_*.c')); \
+	json.dump([{'directory': d, 'command': f'clang {flags} -c -o /dev/null {f}', 'file': os.path.join(d, f)} for f in files], open('compile_commands.json','w'), indent=2); \
+	print(f'compile_commands.json: {len(files)} entries')"
 
 .PHONY: all clean clean-raylib clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood path steer crowd soundsystem-demo mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs bench_items windows
