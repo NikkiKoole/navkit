@@ -3117,13 +3117,12 @@ int main(void) {
                     }
                 }
                 
-                for (int step = 0; step < SEQ_MAX_STEPS; step++) {
+                for (int step = 0; step < trackLen; step++) {
                     int x = gridX + labelW + step * cellW;
                     Rectangle cell = {(float)x, (float)y, (float)cellW - 2, (float)cellH - 2};
-                    
-                    bool isInRange = step < trackLen;
-                    bool isActive = p->drumSteps[track][step] && isInRange;
-                    bool isCurrent = (step == seq.drumStep[track]) && seq.playing && isInRange;
+
+                    bool isActive = p->drumSteps[track][step];
+                    bool isCurrent = (step == seq.drumStep[track]) && seq.playing;
                     bool isHovered = CheckCollisionPointRec(mouse, cell);
                     bool isBeingDragged = isDragging && !dragIsMelody && dragTrack == track && dragStep == step;
                     bool isSelected = !selectedIsMelody && selectedTrack == track && selectedStep == step;
@@ -3132,9 +3131,8 @@ int main(void) {
                     bool hasCond = isActive && p->drumCondition[track][step] != COND_ALWAYS;
                     bool hasFlam = isActive && seqGetPLock(p, track, step, PLOCK_FLAM_TIME, 0.0f) > 0.0f;
                     bool hasNudge = isActive && fabsf(seqGetPLock(p, track, step, PLOCK_TIME_NUDGE, 0.0f)) > 0.1f;
-                    
+
                     Color bgColor = (step / 4) % 2 == 0 ? (Color){40, 40, 40, 255} : (Color){30, 30, 30, 255};
-                    if (!isInRange) bgColor = (Color){55, 55, 55, 255};  // Light gray for out-of-range
                     
                     Color cellColor = bgColor;
                     if (isActive) {
@@ -3151,15 +3149,15 @@ int main(void) {
                     } else if (isCurrent) {
                         cellColor = (Color){60, 60, 80, 255};
                     }
-                    if (isHovered && isInRange && !isDragging) {
+                    if (isHovered && !isDragging) {
                         cellColor.r = (unsigned char)fminf(255, cellColor.r + 30);
                         cellColor.g = (unsigned char)fminf(255, cellColor.g + 30);
                         cellColor.b = (unsigned char)fminf(255, cellColor.b + 30);
                     }
-                    
+
                     DrawRectangleRec(cell, cellColor);
-                    
-                    Color borderColor = isInRange ? (Color){60, 60, 60, 255} : (Color){35, 35, 35, 255};
+
+                    Color borderColor = (Color){60, 60, 60, 255};
                     if (isSelected) borderColor = ORANGE;
                     DrawRectangleLinesEx(cell, isSelected ? 2 : 1, borderColor);
                     
@@ -3195,7 +3193,7 @@ int main(void) {
                         }
                     }
                     
-                    if (isHovered && isInRange && !isDragging) {
+                    if (isHovered && !isDragging) {
                         if (mouseClicked) {
                             if (isActive) {
                                 selectedTrack = track;
@@ -3297,24 +3295,22 @@ int main(void) {
                     }
                 }
                 
-                for (int step = 0; step < SEQ_MAX_STEPS; step++) {
+                for (int step = 0; step < trackLen; step++) {
                     int x = gridX + labelW + step * cellW;
                     Rectangle cell = {(float)x, (float)y, (float)cellW - 2, (float)cellH - 2};
-                    
-                    bool isInRange = step < trackLen;
+
                     int note = p->melodyNote[track][step];
-                    bool hasNote = (note != SEQ_NOTE_OFF) && isInRange;
-                    bool isCurrent = (step == seq.melodyStep[track]) && seq.playing && isInRange;
+                    bool hasNote = (note != SEQ_NOTE_OFF);
+                    bool isCurrent = (step == seq.melodyStep[track]) && seq.playing;
                     bool isHovered = CheckCollisionPointRec(mouse, cell);
                     bool isSelected = selectedIsMelody && selectedTrack == track && selectedStep == step;
                     bool hasProb = hasNote && p->melodyProbability[track][step] < 1.0f;
                     bool hasCond = hasNote && p->melodyCondition[track][step] != COND_ALWAYS;
                     bool hasSlide = hasNote && p->melodySlide[track][step];
                     bool hasAccent = hasNote && p->melodyAccent[track][step];
-                    
+
                     Color bgColor = (step / 4) % 2 == 0 ? (Color){35, 38, 45, 255} : (Color){28, 30, 38, 255};
-                    if (!isInRange) bgColor = (Color){55, 55, 58, 255};  // Light gray for out-of-range
-                    
+
                     Color cellColor = bgColor;
                     if (hasNote) {
                         float vel = p->melodyVelocity[track][step];
@@ -3330,15 +3326,15 @@ int main(void) {
                     } else if (isCurrent) {
                         cellColor = (Color){50, 50, 60, 255};
                     }
-                    if (isHovered && isInRange) {
+                    if (isHovered) {
                         cellColor.r = (unsigned char)fminf(255, cellColor.r + 25);
                         cellColor.g = (unsigned char)fminf(255, cellColor.g + 25);
                         cellColor.b = (unsigned char)fminf(255, cellColor.b + 25);
                     }
-                    
+
                     DrawRectangleRec(cell, cellColor);
-                    
-                    Color borderColor = isInRange ? (Color){55, 55, 65, 255} : (Color){30, 30, 35, 255};
+
+                    Color borderColor = (Color){55, 55, 65, 255};
                     if (isSelected) borderColor = ORANGE;
                     DrawRectangleLinesEx(cell, isSelected ? 2 : 1, borderColor);
                     
@@ -3388,7 +3384,7 @@ int main(void) {
                     }
                     
                     // Note input via scroll wheel
-                    if (isHovered && isInRange && fabsf(mouseWheel) > 0.1f) {
+                    if (isHovered && fabsf(mouseWheel) > 0.1f) {
                         if (hasNote) {
                             // Adjust note by semitone or octave (shift)
                             int delta = (int)mouseWheel;
@@ -3398,8 +3394,8 @@ int main(void) {
                             p->melodyNote[track][step] = clampf(note + delta, 24, 96);  // C1 to C7
                         }
                     }
-                    
-                    if (isHovered && isInRange) {
+
+                    if (isHovered) {
                         if (mouseClicked) {
                             selectedTrack = track;
                             selectedStep = step;
