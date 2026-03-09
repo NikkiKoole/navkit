@@ -50,13 +50,14 @@ $(RAYLIB_LIB): $(RAYLIB_OBJS)
 	@echo "Built $(RAYLIB_LIB)"
 
 # Define your targets here
-TARGETS := steer crowd path soundsystem-demo mechanisms
+TARGETS := steer crowd path soundsystem-demo soundsystem-daw mechanisms
 
 # Source files for each target (using unity build for path)
 steer_SRC      := experiments/steering/demo.c experiments/steering/steering.c
 crowd_SRC      := experiments/crowd/demo.c
 path_SRC       := src/unity.c src/sound/sound_phrase.c src/sound/sound_synth_bridge.c
 soundsystem-demo_SRC := soundsystem/demo/demo.c
+soundsystem-daw_SRC := soundsystem/demo/daw.c
 mechanisms_SRC := experiments/mechanisms/demo.c
 sound_phrase_wav_SRC := tools/sound_phrase_wav.c src/sound/sound_phrase.c
 
@@ -150,6 +151,9 @@ $(BINDIR)/%: $(RAYLIB_LIB) | $(BINDIR)
 # Soundsystem demo needs -Wno-unused-function for header-only library functions
 $(BINDIR)/soundsystem-demo: $(soundsystem-demo_SRC) | $(BINDIR)
 	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $@ $(soundsystem-demo_SRC) $(LDFLAGS)
+
+$(BINDIR)/soundsystem-daw: $(soundsystem-daw_SRC) | $(BINDIR)
+	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $@ $(soundsystem-daw_SRC) $(LDFLAGS)
 
 # Pathing test - links raylib for GetTime() etc used in pathfinding.c
 test_pathing: $(TEST_UNITY_OBJ)
@@ -480,6 +484,7 @@ path: $(BINDIR) $(BINDIR)/path
 steer: $(BINDIR) $(BINDIR)/steer
 crowd: $(BINDIR) $(BINDIR)/crowd
 soundsystem-demo: $(BINDIR) $(BINDIR)/soundsystem-demo
+soundsystem-daw: $(BINDIR) $(BINDIR)/soundsystem-daw
 mechanisms: $(BINDIR) $(BINDIR)/mechanisms
 sound-phrase-wav: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/sound_phrase_wav $(sound_phrase_wav_SRC) -lm
