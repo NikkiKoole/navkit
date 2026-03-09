@@ -1,7 +1,94 @@
 
-NOW WE ARE COOKING
+# PixelSynth DAW UX
 
-UX Analysis: From Current State to Full-Featured Tool
+## Final Decision: 3-Zone Layout (2026-03-09)
+
+After iterating through several approaches, we landed on an **opinionated 3-zone layout** in `daw.c`. Here's the journey and the reasoning.
+
+### Approach 1: Page-Based (F1-F5)
+The first DAW skeleton used 5 dedicated pages (Synth/Drums/Seq/Mix/Song), switching with F-keys. Like Elektron hardware or OP-1.
+
+**Problem:** Felt like a book. You lose context when switching — can't see the sequencer while tweaking a sound. The pages were also a guess at what combinations people need, and often wrong.
+
+### Approach 2: Floating Panels
+Replaced pages with draggable/closable/resizable panels. Toggle with hotkeys (S/D/Q/M/A). Panel system added to `shared/ui.h`.
+
+**Problem:** Opening all 5 panels = overlapping mess. Opening 3 = "things feel hidden." The user has to make layout decisions before they can make music. It's a copout — "here you go, arrange it yourself."
+
+### Approach 3: 3-Zone Layout (current)
+One opinionated screen with clear hierarchy:
+
+```
+┌──────────────────────────────────────────────────┐
+│ Transport         BPM: 120  [▶]                  │
+├────────────┬─────────────────────────────────────┤
+│ 1 Synth    │ F1 Sequencer  F2 Piano  F3 Song     │
+│ 2 Drums    │                                     │
+│ 3 FX       │  Pattern: [1][2]...[8]              │
+│ 4 Tape     │       Main Area                     │
+│ 5 Mix      │       (the big workspace)           │
+│            │                                     │
+├────────────┴─────────────────────────────────────┤
+│ Detail strip (step inspector / bus fx / context) │
+└──────────────────────────────────────────────────┘
+```
+
+**Why this works:**
+
+1. **Clear hierarchy** — sidebar is for sound design (what it sounds like), main area is for structure (what plays when), detail strip is for precision editing (the selected thing).
+
+2. **Nothing hidden** — everything has a visible tab. No hotkey required to discover features. Key hints shown in the empty detail strip.
+
+3. **No layout decisions** — the user never has to arrange windows. We made the decision so they can make music.
+
+4. **Context preserved** — switching sidebar tabs (1/2/3) doesn't lose the sequencer. Switching main tabs (F1/F2/F3) doesn't lose the sound params. The detail strip reacts to what you click.
+
+5. **The right things share screen space** — Synth/Drums/Mix are never needed simultaneously (you're editing one sound at a time), so they share the sidebar. Seq/Piano/Song are different views of the same musical data, so they share the main area.
+
+### Key Design Principle
+
+Most panels are **never needed simultaneously**:
+- You're tweaking a synth sound OR a drum kit OR mixing — not all three
+- You're editing a step grid OR a piano roll OR arranging — not all three
+
+So things that compete for attention share screen space via tabs, and things that complement each other (sidebar + main area) sit side by side.
+
+### The Panel System Still Exists
+
+`shared/ui.h` still has the full panel system (`UIPanel`, draggable, closable, resizable, z-ordering). It's available for future use — pop-out panels for power users, floating inspectors, etc. The 3-zone layout is the default, panels are the escape hatch.
+
+### Detail Strip: Context-Sensitive
+
+The bottom strip changes based on what's selected:
+- **Click a sequencer step** → shows velocity, probability, trigger condition, p-locks
+- **Click a bus name in the mixer** → shows that bus's effects chain (distortion/delay/reverb)
+- **Nothing selected** → shows keyboard shortcut hints
+
+This avoids dedicated pages for step editing or effects — the detail appears where and when you need it.
+
+---
+
+## Refinements (2026-03-09, continued)
+
+### 5 Sidebar Tabs (was 3)
+Added **Tape** and **Mix** tabs to the sidebar, bringing it to: `1=Synth  2=Drums  3=FX  4=Tape  5=Mix`. Sidebar width increased to 310px to fit comfortably.
+
+### 8 Patches with Per-Patch State
+Each patch stores its own wave type, envelope, filter, LFOs, and all wave-specific params. Switching patches via the cycle control shows completely different UIs (e.g., FM Synth params vs Bird vocalization vs Mallet physical model). 8 slots: Bass, Lead, Chord, Voice, Pluck, FM Bell, Mallet, Bird.
+
+### Pattern Selector Moved to Sequencer
+The pattern selector (8 slots) was in the transport bar but belongs in the sequencer — it's about *which steps you're editing*, not a global transport concern. Transport bar is now just: PixelSynth / Play / BPM. Clean and focused.
+
+### Scenes vs Patterns (clarified)
+- **Pattern** = *what* plays (notes/triggers in the step grid)
+- **Scene** = *how* it sounds (mixer state: volumes, pans, mutes, effects)
+- **Pattern Chain** = the *order* patterns play for arrangement
+
+Scenes are defined in **Song (F3)** and performed from **Mix (5)** via the crossfader (A/B blending). Any pattern can play under any scene — they're orthogonal.
+
+---
+
+## Earlier Analysis (preserved below)
 
 ---
 

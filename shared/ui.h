@@ -149,6 +149,61 @@ void ui_col_cycle(UIColumn* col, const char* label, const char** options, int co
 // Push button - returns true when clicked
 bool ui_col_button(UIColumn* col, const char* label);
 
+// ============================================================================
+// PANEL SYSTEM - Draggable, closable, toggleable panels
+// ============================================================================
+
+#define UI_MAX_PANELS 16
+#define UI_PANEL_TITLE_H 22
+#define UI_PANEL_PAD 8
+
+// Panel flags
+#define UI_PANEL_DRAGGABLE  (1 << 0)
+#define UI_PANEL_CLOSABLE   (1 << 1)
+#define UI_PANEL_RESIZABLE  (1 << 2)
+
+typedef void (*UIPanelDrawFunc)(float x, float y, float w, float h);
+
+typedef struct {
+    const char* title;          // Panel title (displayed in title bar)
+    float x, y, w, h;          // Position and size
+    float minW, minH;          // Minimum size (for resize)
+    int hotkey;                 // Raylib KEY_* to toggle, 0 = none
+    int flags;                  // UI_PANEL_* flags
+    bool open;                  // Visible?
+    UIPanelDrawFunc draw;       // Content draw callback
+    // Internal state
+    int zOrder;                 // Higher = drawn on top
+} UIPanel;
+
+// Initialize panel system (call once)
+void ui_panels_init(void);
+
+// Register a panel - returns panel index (or -1 if full)
+int ui_panel_add(const char* title, float x, float y, float w, float h,
+                 int hotkey, int flags, UIPanelDrawFunc draw);
+
+// Set minimum size for resizable panels
+void ui_panel_set_min_size(int idx, float minW, float minH);
+
+// Process input for all panels (call before drawing, after ui_begin_frame)
+void ui_panels_update(void);
+
+// Draw all open panels in z-order (call during drawing)
+void ui_panels_draw(void);
+
+// Get panel by index
+UIPanel* ui_panel_get(int idx);
+
+// Toggle a panel open/closed
+void ui_panel_toggle(int idx);
+
+// Check if mouse is over any open panel
+bool ui_panels_wants_mouse(void);
+
+// Draw a hotkey legend bar showing all panels and their toggle keys
+void ui_panels_draw_legend(float x, float y);
+
 #endif // UI_H
 
 // ============================================================================
@@ -910,6 +965,302 @@ bool ui_col_button(UIColumn* col, const char* label) {
     bool clicked = PushButton(col->x, col->y, label);
     col->y += col->spacing;
     return clicked;
+}
+
+// ============================================================================
+// PANEL SYSTEM IMPLEMENTATION
+// ============================================================================
+
+static UIPanel g_panels[UI_MAX_PANELS];
+static int g_panelCount = 0;
+static int g_panelNextZ = 1;
+
+// Drag state
+static int g_panelDragIdx = -1;
+static float g_panelDragOffX = 0, g_panelDragOffY = 0;
+
+// Resize state
+static int g_panelResizeIdx = -1;
+static float g_panelResizeOffX = 0, g_panelResizeOffY = 0;
+
+void ui_panels_init(void) {
+    g_panelCount = 0;
+    g_panelNextZ = 1;
+    g_panelDragIdx = -1;
+    g_panelResizeIdx = -1;
+}
+
+int ui_panel_add(const char* title, float x, float y, float w, float h,
+                 int hotkey, int flags, UIPanelDrawFunc draw) {
+    if (g_panelCount >= UI_MAX_PANELS) return -1;
+    int idx = g_panelCount++;
+    UIPanel* p = &g_panels[idx];
+    p->title = title;
+    p->x = x; p->y = y; p->w = w; p->h = h;
+    p->minW = 150; p->minH = 80;
+    p->hotkey = hotkey;
+    p->flags = flags;
+    p->open = false;
+    p->draw = draw;
+    p->zOrder = g_panelNextZ++;
+    return idx;
+}
+
+void ui_panel_set_min_size(int idx, float minW, float minH) {
+    if (idx >= 0 && idx < g_panelCount) {
+        g_panels[idx].minW = minW;
+        g_panels[idx].minH = minH;
+    }
+}
+
+UIPanel* ui_panel_get(int idx) {
+    if (idx >= 0 && idx < g_panelCount) return &g_panels[idx];
+    return NULL;
+}
+
+void ui_panel_toggle(int idx) {
+    if (idx >= 0 && idx < g_panelCount) {
+        g_panels[idx].open = !g_panels[idx].open;
+        if (g_panels[idx].open) {
+            g_panels[idx].zOrder = g_panelNextZ++;
+        }
+    }
+}
+
+// Bring panel to front
+static void ui_panel_focus(int idx) {
+    g_panels[idx].zOrder = g_panelNextZ++;
+}
+
+// Get sorted draw order (back to front)
+static void ui_panels_sorted(int* order, int* count) {
+    *count = 0;
+    for (int i = 0; i < g_panelCount; i++) {
+        if (g_panels[i].open) order[(*count)++] = i;
+    }
+    // Simple insertion sort by zOrder
+    for (int i = 1; i < *count; i++) {
+        int key = order[i];
+        int j = i - 1;
+        while (j >= 0 && g_panels[order[j]].zOrder > g_panels[key].zOrder) {
+            order[j + 1] = order[j];
+            j--;
+        }
+        order[j + 1] = key;
+    }
+}
+
+// Get the topmost panel under the mouse, or -1
+static int ui_panel_hit_test(Vector2 mouse) {
+    int order[UI_MAX_PANELS];
+    int count;
+    ui_panels_sorted(order, &count);
+    // Check back-to-front (highest z last), return highest hit
+    for (int i = count - 1; i >= 0; i--) {
+        UIPanel* p = &g_panels[order[i]];
+        Rectangle r = {p->x, p->y, p->w, p->h};
+        if (CheckCollisionPointRec(mouse, r)) return order[i];
+    }
+    return -1;
+}
+
+void ui_panels_update(void) {
+    Vector2 mouse = GetMousePosition();
+
+    // Hotkey toggles
+    for (int i = 0; i < g_panelCount; i++) {
+        if (g_panels[i].hotkey && IsKeyPressed(g_panels[i].hotkey)) {
+            ui_panel_toggle(i);
+        }
+    }
+
+    // Handle ongoing drag
+    if (g_panelDragIdx >= 0) {
+        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+            UIPanel* p = &g_panels[g_panelDragIdx];
+            p->x = mouse.x - g_panelDragOffX;
+            p->y = mouse.y - g_panelDragOffY;
+            // Clamp to screen
+            if (p->x < 0) p->x = 0;
+            if (p->y < 0) p->y = 0;
+            if (p->x + p->w > GetScreenWidth()) p->x = GetScreenWidth() - p->w;
+            if (p->y + UI_PANEL_TITLE_H > GetScreenHeight()) p->y = GetScreenHeight() - UI_PANEL_TITLE_H;
+            g_ui_clickConsumed = true;
+        } else {
+            g_panelDragIdx = -1;
+        }
+        return; // Don't process other clicks while dragging
+    }
+
+    // Handle ongoing resize
+    if (g_panelResizeIdx >= 0) {
+        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+            UIPanel* p = &g_panels[g_panelResizeIdx];
+            p->w = mouse.x - p->x + g_panelResizeOffX;
+            p->h = mouse.y - p->y + g_panelResizeOffY;
+            if (p->w < p->minW) p->w = p->minW;
+            if (p->h < p->minH) p->h = p->minH;
+            g_ui_clickConsumed = true;
+        } else {
+            g_panelResizeIdx = -1;
+        }
+        return;
+    }
+
+    // Click handling
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        int hit = ui_panel_hit_test(mouse);
+        if (hit >= 0) {
+            UIPanel* p = &g_panels[hit];
+            ui_panel_focus(hit);
+
+            Rectangle titleBar = {p->x, p->y, p->w, UI_PANEL_TITLE_H};
+
+            // Close button (top-right of title bar)
+            if (p->flags & UI_PANEL_CLOSABLE) {
+                Rectangle closeBtn = {p->x + p->w - 20, p->y + 2, 18, 18};
+                if (CheckCollisionPointRec(mouse, closeBtn)) {
+                    p->open = false;
+                    g_ui_clickConsumed = true;
+                    return;
+                }
+            }
+
+            // Resize handle (bottom-right corner, 14x14)
+            if (p->flags & UI_PANEL_RESIZABLE) {
+                Rectangle resizeHandle = {p->x + p->w - 14, p->y + p->h - 14, 14, 14};
+                if (CheckCollisionPointRec(mouse, resizeHandle)) {
+                    g_panelResizeIdx = hit;
+                    g_panelResizeOffX = (p->x + p->w) - mouse.x;
+                    g_panelResizeOffY = (p->y + p->h) - mouse.y;
+                    g_ui_clickConsumed = true;
+                    return;
+                }
+            }
+
+            // Title bar drag
+            if ((p->flags & UI_PANEL_DRAGGABLE) && CheckCollisionPointRec(mouse, titleBar)) {
+                g_panelDragIdx = hit;
+                g_panelDragOffX = mouse.x - p->x;
+                g_panelDragOffY = mouse.y - p->y;
+                g_ui_clickConsumed = true;
+                return;
+            }
+        }
+    }
+}
+
+bool ui_panels_wants_mouse(void) {
+    if (g_panelDragIdx >= 0 || g_panelResizeIdx >= 0) return true;
+    Vector2 mouse = GetMousePosition();
+    return ui_panel_hit_test(mouse) >= 0;
+}
+
+void ui_panels_draw(void) {
+    int order[UI_MAX_PANELS];
+    int count;
+    ui_panels_sorted(order, &count);
+
+    for (int i = 0; i < count; i++) {
+        UIPanel* p = &g_panels[order[i]];
+
+        // Panel background
+        DrawRectangle((int)p->x, (int)p->y, (int)p->w, (int)p->h, (Color){28, 28, 34, 240});
+
+        // Title bar
+        Color titleBg = (order[i] == ui_panel_hit_test(GetMousePosition()) || g_panelDragIdx == order[i])
+            ? (Color){50, 55, 70, 255} : (Color){38, 40, 50, 255};
+        DrawRectangle((int)p->x, (int)p->y, (int)p->w, UI_PANEL_TITLE_H, titleBg);
+        DrawTextShadow(p->title, (int)p->x + 8, (int)p->y + 4, 14, ORANGE);
+
+        // Hotkey hint
+        if (p->hotkey) {
+            const char* keyName = TextFormat("[%c]", p->hotkey >= KEY_A && p->hotkey <= KEY_Z
+                ? 'A' + (p->hotkey - KEY_A) : '?');
+            int kw = MeasureTextUI(keyName, 11);
+            DrawTextShadow(keyName, (int)(p->x + p->w - 24 - kw), (int)p->y + 6, 11, GRAY);
+        }
+
+        // Close button
+        if (p->flags & UI_PANEL_CLOSABLE) {
+            int cx = (int)(p->x + p->w - 18);
+            int cy = (int)p->y + 4;
+            Vector2 mouse = GetMousePosition();
+            Rectangle closeRect = {(float)cx - 2, (float)cy - 2, 18, 18};
+            bool closeHovered = CheckCollisionPointRec(mouse, closeRect);
+            DrawTextShadow("x", cx, cy, 14, closeHovered ? RED : GRAY);
+        }
+
+        // Border
+        DrawRectangleLinesEx((Rectangle){p->x, p->y, p->w, p->h}, 1, (Color){60, 60, 75, 255});
+
+        // Separator under title
+        DrawLine((int)p->x, (int)p->y + UI_PANEL_TITLE_H, (int)(p->x + p->w), (int)p->y + UI_PANEL_TITLE_H,
+                 (Color){60, 60, 75, 255});
+
+        // Content area
+        float cx = p->x + UI_PANEL_PAD;
+        float cy = p->y + UI_PANEL_TITLE_H + UI_PANEL_PAD;
+        float cw = p->w - UI_PANEL_PAD * 2;
+        float ch = p->h - UI_PANEL_TITLE_H - UI_PANEL_PAD * 2;
+        if (p->draw) p->draw(cx, cy, cw, ch);
+
+        // Resize handle
+        if (p->flags & UI_PANEL_RESIZABLE) {
+            int rx = (int)(p->x + p->w - 12);
+            int ry = (int)(p->y + p->h - 12);
+            for (int d = 0; d < 3; d++) {
+                int off = d * 4;
+                DrawLine(rx + off, ry + 10, rx + 10, ry + off, (Color){80, 80, 100, 255});
+            }
+        }
+    }
+}
+
+void ui_panels_draw_legend(float x, float y) {
+    Vector2 mouse = GetMousePosition();
+    float px = x;
+    int fontSize = 14;
+    int btnH = 20;
+    int btnPad = 6;
+
+    for (int i = 0; i < g_panelCount; i++) {
+        UIPanel* p = &g_panels[i];
+        if (!p->hotkey) continue;
+
+        char keyChar = (p->hotkey >= KEY_A && p->hotkey <= KEY_Z)
+            ? 'A' + (p->hotkey - KEY_A) : '?';
+
+        const char* text = TextFormat("%c %s", keyChar, p->title);
+        int tw = MeasureTextUI(text, fontSize);
+        int btnW = tw + btnPad * 2;
+
+        Rectangle btn = {px, y, (float)btnW, (float)btnH};
+        bool hovered = CheckCollisionPointRec(mouse, btn);
+
+        // Background: lit up when open, dim when closed
+        Color bg = p->open ? (Color){50, 55, 68, 255} : (Color){32, 33, 40, 255};
+        if (hovered) { bg.r += 18; bg.g += 18; bg.b += 18; }
+        DrawRectangleRec(btn, bg);
+
+        // Underline when open
+        if (p->open) {
+            DrawRectangle((int)px, (int)y + btnH - 2, btnW, 2, ORANGE);
+        }
+
+        DrawRectangleLinesEx(btn, 1, p->open ? (Color){70, 70, 85, 255} : (Color){48, 48, 58, 255});
+
+        Color textCol = p->open ? WHITE : (hovered ? LIGHTGRAY : GRAY);
+        DrawTextShadow(text, (int)px + btnPad, (int)y + 3, fontSize, textCol);
+
+        // Click to toggle
+        if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            ui_panel_toggle(i);
+            g_ui_clickConsumed = true;
+        }
+
+        px += btnW + 4;
+    }
 }
 
 #endif // UI_IMPLEMENTATION
