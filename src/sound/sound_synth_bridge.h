@@ -34,6 +34,9 @@ void SoundSynthPlaySongGymnopedie(SoundSynth* synth);
 void SoundSynthStopSong(SoundSynth* synth);
 bool SoundSynthIsSongPlaying(SoundSynth* synth);
 
+// File-based song playback (loads .song, uses generic patch triggers)
+bool SoundSynthPlaySongFile(SoundSynth* synth, const char* filepath);
+
 // Jukebox — browse and play songs by index
 int SoundSynthGetSongCount(void);
 const char* SoundSynthGetSongName(int index);

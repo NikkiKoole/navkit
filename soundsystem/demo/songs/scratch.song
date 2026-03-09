@@ -1,0 +1,617 @@
+# Song file (format 1)
+
+[song]
+format = 1
+bpm = 120
+ticksPerStep = 24
+loopsPerPattern = 1
+drumTracks = 4
+melodyTracks = 3
+
+[scale]
+enabled = false
+root = 0
+type = major
+
+[groove]
+kickNudge = -2
+snareDelay = 4
+hatNudge = 0
+clapDelay = 3
+swing = 6
+jitter = 2
+melodyTimingJitter = 0
+melodyVelocityJitter = 0
+
+[instrument.bass]
+waveType = scw
+scwIndex = 0
+attack = 0.01
+decay = 0.1
+sustain = 0.5
+release = 0.3
+expRelease = false
+volume = 0.5
+pulseWidth = 0.5
+pwmRate = 3
+pwmDepth = 0
+vibratoRate = 5
+vibratoDepth = 0
+filterCutoff = 1
+filterResonance = 0
+filterEnvAmt = 0
+filterEnvAttack = 0.01
+filterEnvDecay = 0.2
+filterLfoRate = 0
+filterLfoDepth = 0
+filterLfoShape = 0
+filterLfoSync = 0
+resoLfoRate = 0
+resoLfoDepth = 0
+resoLfoShape = 0
+ampLfoRate = 0
+ampLfoDepth = 0
+ampLfoShape = 0
+pitchLfoRate = 5
+pitchLfoDepth = 0
+pitchLfoShape = 0
+arpEnabled = false
+arpMode = 0
+arpRateDiv = 1
+arpRate = 8
+arpChord = 1
+unisonCount = 1
+unisonDetune = 10
+unisonMix = 0.5
+monoMode = false
+glideTime = 0.1
+pluckBrightness = 0.5
+pluckDamping = 0.996
+pluckDamp = 0
+additivePreset = 1
+additiveBrightness = 0.5
+additiveShimmer = 0
+additiveInharmonicity = 0
+malletPreset = 0
+malletStiffness = 0.3
+malletHardness = 0.5
+malletStrikePos = 0.25
+malletResonance = 0.7
+malletTremolo = 0
+malletTremoloRate = 5.5
+malletDamp = 0
+voiceVowel = 0
+voiceFormantShift = 1
+voiceBreathiness = 0.1
+voiceBuzziness = 0.6
+voiceSpeed = 10
+voicePitch = 1
+voiceConsonant = false
+voiceConsonantAmt = 0.5
+voiceNasal = false
+voiceNasalAmt = 0.5
+voicePitchEnv = 0
+voicePitchEnvTime = 0.15
+voicePitchEnvCurve = 0
+granularScwIndex = 0
+granularGrainSize = 50
+granularDensity = 20
+granularPosition = 0.5
+granularPosRandom = 0.1
+granularPitch = 1
+granularPitchRandom = 0
+granularAmpRandom = 0.1
+granularSpread = 0.5
+granularFreeze = false
+fmModRatio = 2
+fmModIndex = 1
+fmFeedback = 0
+pdWaveType = 0
+pdDistortion = 0.5
+membranePreset = 0
+membraneDamping = 0.3
+membraneStrike = 0.3
+membraneBend = 0.15
+membraneBendDecay = 0.08
+birdType = 0
+birdChirpRange = 1
+birdTrillRate = 0
+birdTrillDepth = 0
+birdAmRate = 0
+birdAmDepth = 0
+birdHarmonics = 0.2
+
+[instrument.lead]
+waveType = square
+scwIndex = 0
+attack = 0.01
+decay = 0.1
+sustain = 0.5
+release = 0.3
+expRelease = false
+volume = 0.5
+pulseWidth = 0.5
+pwmRate = 3
+pwmDepth = 0
+vibratoRate = 5
+vibratoDepth = 0.2
+filterCutoff = 0.8
+filterResonance = 0
+filterEnvAmt = 0
+filterEnvAttack = 0.01
+filterEnvDecay = 0.2
+filterLfoRate = 0
+filterLfoDepth = 0
+filterLfoShape = 0
+filterLfoSync = 0
+resoLfoRate = 0
+resoLfoDepth = 0
+resoLfoShape = 0
+ampLfoRate = 0
+ampLfoDepth = 0
+ampLfoShape = 0
+pitchLfoRate = 5
+pitchLfoDepth = 0
+pitchLfoShape = 0
+arpEnabled = false
+arpMode = 0
+arpRateDiv = 1
+arpRate = 8
+arpChord = 1
+unisonCount = 1
+unisonDetune = 10
+unisonMix = 0.5
+monoMode = false
+glideTime = 0.1
+pluckBrightness = 0.5
+pluckDamping = 0.996
+pluckDamp = 0
+additivePreset = 1
+additiveBrightness = 0.5
+additiveShimmer = 0
+additiveInharmonicity = 0
+malletPreset = 0
+malletStiffness = 0.3
+malletHardness = 0.5
+malletStrikePos = 0.25
+malletResonance = 0.7
+malletTremolo = 0
+malletTremoloRate = 5.5
+malletDamp = 0
+voiceVowel = 0
+voiceFormantShift = 1
+voiceBreathiness = 0.1
+voiceBuzziness = 0.6
+voiceSpeed = 10
+voicePitch = 1
+voiceConsonant = false
+voiceConsonantAmt = 0.5
+voiceNasal = false
+voiceNasalAmt = 0.5
+voicePitchEnv = 0
+voicePitchEnvTime = 0.15
+voicePitchEnvCurve = 0
+granularScwIndex = 0
+granularGrainSize = 50
+granularDensity = 20
+granularPosition = 0.5
+granularPosRandom = 0.1
+granularPitch = 1
+granularPitchRandom = 0
+granularAmpRandom = 0.1
+granularSpread = 0.5
+granularFreeze = false
+fmModRatio = 2
+fmModIndex = 1
+fmFeedback = 0
+pdWaveType = 0
+pdDistortion = 0.5
+membranePreset = 0
+membraneDamping = 0.3
+membraneStrike = 0.3
+membraneBend = 0.15
+membraneBendDecay = 0.08
+birdType = 0
+birdChirpRange = 1
+birdTrillRate = 0
+birdTrillDepth = 0
+birdAmRate = 0
+birdAmDepth = 0
+birdHarmonics = 0.2
+
+[instrument.chord]
+waveType = triangle
+scwIndex = 0
+attack = 0.05
+decay = 0.1
+sustain = 0.5
+release = 0.5
+expRelease = false
+volume = 0.5
+pulseWidth = 0.5
+pwmRate = 3
+pwmDepth = 0
+vibratoRate = 5
+vibratoDepth = 0
+filterCutoff = 1
+filterResonance = 0
+filterEnvAmt = 0
+filterEnvAttack = 0.01
+filterEnvDecay = 0.2
+filterLfoRate = 0
+filterLfoDepth = 0
+filterLfoShape = 0
+filterLfoSync = 0
+resoLfoRate = 0
+resoLfoDepth = 0
+resoLfoShape = 0
+ampLfoRate = 0
+ampLfoDepth = 0
+ampLfoShape = 0
+pitchLfoRate = 5
+pitchLfoDepth = 0
+pitchLfoShape = 0
+arpEnabled = false
+arpMode = 0
+arpRateDiv = 1
+arpRate = 8
+arpChord = 1
+unisonCount = 1
+unisonDetune = 10
+unisonMix = 0.5
+monoMode = false
+glideTime = 0.1
+pluckBrightness = 0.5
+pluckDamping = 0.996
+pluckDamp = 0
+additivePreset = 1
+additiveBrightness = 0.5
+additiveShimmer = 0
+additiveInharmonicity = 0
+malletPreset = 0
+malletStiffness = 0.3
+malletHardness = 0.5
+malletStrikePos = 0.25
+malletResonance = 0.7
+malletTremolo = 0
+malletTremoloRate = 5.5
+malletDamp = 0
+voiceVowel = 0
+voiceFormantShift = 1
+voiceBreathiness = 0.1
+voiceBuzziness = 0.6
+voiceSpeed = 10
+voicePitch = 1
+voiceConsonant = false
+voiceConsonantAmt = 0.5
+voiceNasal = false
+voiceNasalAmt = 0.5
+voicePitchEnv = 0
+voicePitchEnvTime = 0.15
+voicePitchEnvCurve = 0
+granularScwIndex = 0
+granularGrainSize = 50
+granularDensity = 20
+granularPosition = 0.5
+granularPosRandom = 0.1
+granularPitch = 1
+granularPitchRandom = 0
+granularAmpRandom = 0.1
+granularSpread = 0.5
+granularFreeze = false
+fmModRatio = 2
+fmModIndex = 1
+fmFeedback = 0
+pdWaveType = 0
+pdDistortion = 0.5
+membranePreset = 0
+membraneDamping = 0.3
+membraneStrike = 0.3
+membraneBend = 0.15
+membraneBendDecay = 0.08
+birdType = 0
+birdChirpRange = 1
+birdTrillRate = 0
+birdTrillDepth = 0
+birdAmRate = 0
+birdAmDepth = 0
+birdHarmonics = 0.2
+
+[drums]
+track0 = kick
+track1 = snare
+track2 = closedHH
+track3 = clap
+
+# Drum parameters
+kickPitch = 50
+kickDecay = 0.5
+kickPunchPitch = 150
+kickPunchDecay = 0.04
+kickClick = 0.3
+kickTone = 0.5
+snarePitch = 180
+snareDecay = 0.2
+snareSnappy = 0.6
+snareTone = 0.5
+clapDecay = 0.3
+clapTone = 0.6
+clapSpread = 0.012
+hhDecayClosed = 0.05
+hhDecayOpen = 0.4
+hhTone = 0.7
+tomPitch = 1
+tomDecay = 0.3
+tomPunchDecay = 0.05
+rimPitch = 1700
+rimDecay = 0.03
+cowbellPitch = 560
+cowbellDecay = 0.3
+clavePitch = 2500
+claveDecay = 0.02
+maracasDecay = 0.07
+maracasTone = 0.8
+cr78KickPitch = 80
+cr78KickDecay = 0.25
+cr78KickResonance = 0.9
+cr78SnarePitch = 220
+cr78SnareDecay = 0.15
+cr78SnareSnappy = 0.5
+cr78HHDecay = 0.08
+cr78HHTone = 0.6
+cr78MetalPitch = 800
+cr78MetalDecay = 0.15
+
+[mix]
+masterVolume = 0.5
+drumVolume = 0.6
+track0 = 1
+track1 = 1
+track2 = 1
+track3 = 1
+track4 = 1
+track5 = 1
+track6 = 1
+
+[effects]
+distEnabled = false
+distDrive = 2
+distTone = 0.7
+distMix = 0.5
+delayEnabled = false
+delayTime = 0.3
+delayFeedback = 0.4
+delayMix = 0.3
+delayTone = 0.6
+tapeEnabled = false
+tapeWow = 0.3
+tapeFlutter = 0.2
+tapeSaturation = 0.5
+tapeHiss = 0.1
+crushEnabled = false
+crushBits = 8
+crushRate = 4
+crushMix = 0.5
+chorusEnabled = false
+chorusRate = 1.5
+chorusDepth = 0.4
+chorusMix = 0.5
+chorusDelay = 0.015
+chorusFeedback = 0
+reverbEnabled = false
+reverbSize = 0.5
+reverbDamping = 0.5
+reverbMix = 0.3
+reverbPreDelay = 0.02
+sidechainEnabled = false
+sidechainSource = 0
+sidechainTarget = 0
+sidechainDepth = 0.8
+sidechainAttack = 0.005
+sidechainRelease = 0.15
+
+[dub]
+enabled = false
+feedback = 0.6
+mix = 0.4
+inputSource = 0
+preReverb = false
+speed = 1
+saturation = 0.3
+toneHigh = 0.7
+toneLow = 0.1
+noise = 0.05
+degradeRate = 0.15
+wow = 0.2
+flutter = 0.1
+drift = 0.3
+driftRate = 0.2
+numHeads = 1
+headTime0 = 0.375
+headLevel0 = 1
+
+[bus.drum0]
+volume = 1
+pan = 0
+mute = false
+solo = false
+filterEnabled = false
+filterCutoff = 1
+filterResonance = 0
+filterType = 0
+distEnabled = false
+distDrive = 1
+distMix = 0.5
+delayEnabled = false
+delayTime = 0.25
+delayFeedback = 0.3
+delayMix = 0.3
+delayTempoSync = false
+delaySyncDiv = 1
+reverbSend = 0
+
+[bus.drum1]
+volume = 1
+pan = 0
+mute = false
+solo = false
+filterEnabled = false
+filterCutoff = 1
+filterResonance = 0
+filterType = 0
+distEnabled = false
+distDrive = 1
+distMix = 0.5
+delayEnabled = false
+delayTime = 0.25
+delayFeedback = 0.3
+delayMix = 0.3
+delayTempoSync = false
+delaySyncDiv = 1
+reverbSend = 0
+
+[bus.drum2]
+volume = 1
+pan = 0
+mute = false
+solo = false
+filterEnabled = false
+filterCutoff = 1
+filterResonance = 0
+filterType = 0
+distEnabled = false
+distDrive = 1
+distMix = 0.5
+delayEnabled = false
+delayTime = 0.25
+delayFeedback = 0.3
+delayMix = 0.3
+delayTempoSync = false
+delaySyncDiv = 1
+reverbSend = 0
+
+[bus.drum3]
+volume = 1
+pan = 0
+mute = false
+solo = false
+filterEnabled = false
+filterCutoff = 1
+filterResonance = 0
+filterType = 0
+distEnabled = false
+distDrive = 1
+distMix = 0.5
+delayEnabled = false
+delayTime = 0.25
+delayFeedback = 0.3
+delayMix = 0.3
+delayTempoSync = false
+delaySyncDiv = 1
+reverbSend = 0
+
+[bus.bass]
+volume = 1
+pan = 0
+mute = false
+solo = false
+filterEnabled = false
+filterCutoff = 1
+filterResonance = 0
+filterType = 0
+distEnabled = false
+distDrive = 1
+distMix = 0.5
+delayEnabled = false
+delayTime = 0.25
+delayFeedback = 0.3
+delayMix = 0.3
+delayTempoSync = false
+delaySyncDiv = 1
+reverbSend = 0
+
+[bus.lead]
+volume = 1
+pan = 0
+mute = false
+solo = false
+filterEnabled = false
+filterCutoff = 1
+filterResonance = 0
+filterType = 0
+distEnabled = false
+distDrive = 1
+distMix = 0.5
+delayEnabled = false
+delayTime = 0.25
+delayFeedback = 0.3
+delayMix = 0.3
+delayTempoSync = false
+delaySyncDiv = 1
+reverbSend = 0
+
+[bus.chord]
+volume = 1
+pan = 0
+mute = false
+solo = false
+filterEnabled = false
+filterCutoff = 1
+filterResonance = 0
+filterType = 0
+distEnabled = false
+distDrive = 1
+distMix = 0.5
+delayEnabled = false
+delayTime = 0.25
+delayFeedback = 0.3
+delayMix = 0.3
+delayTempoSync = false
+delaySyncDiv = 1
+reverbSend = 0
+
+[metadata]
+energy = medium
+
+[transitions]
+fadeIn = 0
+fadeOut = 0
+crossfade = false
+
+[pattern.0]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=0 step=0 note=C2 vel=0.8 gate=1
+m track=0 step=6 note=C2 vel=0.8 gate=1
+m track=0 step=11 note=B2 vel=0.8 gate=1
+m track=0 step=12 note=C1 vel=0.8 gate=1 slide accent
+m track=0 step=13 note=D5 vel=0.8 gate=1 slide accent
+m track=0 step=14 note=E1 vel=0.8 gate=1
+
+[pattern.1]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+
+[pattern.2]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+
+[pattern.3]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+
+[pattern.4]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+
+[pattern.5]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+
+[pattern.6]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+
+[pattern.7]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16

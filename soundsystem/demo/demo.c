@@ -402,251 +402,9 @@ static float semitoneToFreq(int semitone, int octave) {
 // SYNTH PATCHES (Per-track synth settings)
 // ============================================================================
 
-typedef struct {
-    // Wave type
-    int p_waveType;
-    int p_scwIndex;
-    
-    // Envelope
-    float p_attack;
-    float p_decay;
-    float p_sustain;
-    float p_release;
-    float p_volume;
-    
-    // PWM (for square wave)
-    float p_pulseWidth;
-    float p_pwmRate;
-    float p_pwmDepth;
-    
-    // Vibrato
-    float p_vibratoRate;
-    float p_vibratoDepth;
-    
-    // Filter
-    float p_filterCutoff;
-    float p_filterResonance;
-    float p_filterEnvAmt;
-    float p_filterEnvAttack;
-    float p_filterEnvDecay;
-    
-    // Filter LFO
-    float p_filterLfoRate;
-    float p_filterLfoDepth;
-    int p_filterLfoShape;
-    int p_filterLfoSync;      // LfoSyncDiv (0=off, 1-7=tempo divisions)
-    
-    // Arpeggiator
-    bool p_arpEnabled;
-    int p_arpMode;            // ArpMode
-    int p_arpRateDiv;         // ArpRateDiv
-    float p_arpRate;          // Free rate in Hz
-    int p_arpChord;           // ArpChordType
-    
-    // Unison
-    int p_unisonCount;        // 1-4
-    float p_unisonDetune;     // cents
-    float p_unisonMix;        // 0-1
-    
-    // Resonance LFO
-    float p_resoLfoRate;
-    float p_resoLfoDepth;
-    int p_resoLfoShape;
-    
-    // Amplitude LFO
-    float p_ampLfoRate;
-    float p_ampLfoDepth;
-    int p_ampLfoShape;
-    
-    // Pitch LFO
-    float p_pitchLfoRate;
-    float p_pitchLfoDepth;
-    int p_pitchLfoShape;
-    
-    // Mono/Glide
-    bool p_monoMode;
-    float p_glideTime;
-    
-    // Pluck settings
-    float p_pluckBrightness;
-    float p_pluckDamping;
-    float p_pluckDamp;
-    
-    // Additive
-    int p_additivePreset;
-    float p_additiveBrightness;
-    float p_additiveShimmer;
-    float p_additiveInharmonicity;
-    
-    // Mallet
-    int p_malletPreset;
-    float p_malletStiffness;
-    float p_malletHardness;
-    float p_malletStrikePos;
-    float p_malletResonance;
-    float p_malletTremolo;
-    float p_malletTremoloRate;
-    float p_malletDamp;
-    
-    // Voice (formant)
-    int p_voiceVowel;
-    float p_voiceFormantShift;
-    float p_voiceBreathiness;
-    float p_voiceBuzziness;
-    float p_voiceSpeed;
-    float p_voicePitch;
-    bool p_voiceConsonant;
-    float p_voiceConsonantAmt;
-    bool p_voiceNasal;
-    float p_voiceNasalAmt;
-    float p_voicePitchEnv;
-    float p_voicePitchEnvTime;
-    float p_voicePitchEnvCurve;
-    
-    // Granular
-    int p_granularScwIndex;
-    float p_granularGrainSize;
-    float p_granularDensity;
-    float p_granularPosition;
-    float p_granularPosRandom;
-    float p_granularPitch;
-    float p_granularPitchRandom;
-    float p_granularAmpRandom;
-    float p_granularSpread;
-    bool p_granularFreeze;
-    
-    // FM
-    float p_fmModRatio;
-    float p_fmModIndex;
-    float p_fmFeedback;
-    
-    // Phase Distortion
-    int p_pdWaveType;
-    float p_pdDistortion;
-    
-    // Membrane
-    int p_membranePreset;
-    float p_membraneDamping;
-    float p_membraneStrike;
-    float p_membraneBend;
-    float p_membraneBendDecay;
-    
-    // Bird
-    int p_birdType;
-    float p_birdChirpRange;
-    float p_birdTrillRate;
-    float p_birdTrillDepth;
-    float p_birdAmRate;
-    float p_birdAmDepth;
-    float p_birdHarmonics;
-
-    // Identity & misc
-    char p_name[32];
-    bool p_expRelease;        // true = exponential (natural tail), false = linear (tight cutoff)
-} SynthPatch;
-
-// Default patch initializer
-static SynthPatch createDefaultPatch(int waveType) {
-    return (SynthPatch){
-        .p_waveType = waveType,
-        .p_scwIndex = 0,
-        .p_attack = 0.01f,
-        .p_decay = 0.1f,
-        .p_sustain = 0.5f,
-        .p_release = 0.3f,
-        .p_volume = 0.5f,
-        .p_pulseWidth = 0.5f,
-        .p_pwmRate = 3.0f,
-        .p_pwmDepth = 0.0f,
-        .p_vibratoRate = 5.0f,
-        .p_vibratoDepth = 0.0f,
-        .p_filterCutoff = 1.0f,
-        .p_filterResonance = 0.0f,
-        .p_filterEnvAmt = 0.0f,
-        .p_filterEnvAttack = 0.01f,
-        .p_filterEnvDecay = 0.2f,
-        .p_filterLfoRate = 0.0f,
-        .p_filterLfoDepth = 0.0f,
-        .p_filterLfoShape = 0,
-        .p_filterLfoSync = 0,
-        .p_arpEnabled = false,
-        .p_arpMode = 0,
-        .p_arpRateDiv = 1,  // ARP_RATE_1_8
-        .p_arpRate = 8.0f,
-        .p_arpChord = 1,    // ARP_CHORD_MAJOR
-        .p_unisonCount = 1,
-        .p_unisonDetune = 10.0f,
-        .p_unisonMix = 0.5f,
-        .p_resoLfoRate = 0.0f,
-        .p_resoLfoDepth = 0.0f,
-        .p_resoLfoShape = 0,
-        .p_ampLfoRate = 0.0f,
-        .p_ampLfoDepth = 0.0f,
-        .p_ampLfoShape = 0,
-        .p_pitchLfoRate = 5.0f,
-        .p_pitchLfoDepth = 0.0f,
-        .p_pitchLfoShape = 0,
-        .p_monoMode = false,
-        .p_glideTime = 0.1f,
-        .p_pluckBrightness = 0.5f,
-        .p_pluckDamping = 0.996f,
-        .p_pluckDamp = 0.0f,
-        .p_additivePreset = ADDITIVE_PRESET_ORGAN,
-        .p_additiveBrightness = 0.5f,
-        .p_additiveShimmer = 0.0f,
-        .p_additiveInharmonicity = 0.0f,
-        .p_malletPreset = MALLET_PRESET_MARIMBA,
-        .p_malletStiffness = 0.3f,
-        .p_malletHardness = 0.5f,
-        .p_malletStrikePos = 0.25f,
-        .p_malletResonance = 0.7f,
-        .p_malletTremolo = 0.0f,
-        .p_malletTremoloRate = 5.5f,
-        .p_malletDamp = 0.0f,
-        .p_voiceVowel = VOWEL_A,
-        .p_voiceFormantShift = 1.0f,
-        .p_voiceBreathiness = 0.1f,
-        .p_voiceBuzziness = 0.6f,
-        .p_voiceSpeed = 10.0f,
-        .p_voicePitch = 1.0f,
-        .p_voiceConsonant = false,
-        .p_voiceConsonantAmt = 0.5f,
-        .p_voiceNasal = false,
-        .p_voiceNasalAmt = 0.5f,
-        .p_voicePitchEnv = 0.0f,
-        .p_voicePitchEnvTime = 0.15f,
-        .p_voicePitchEnvCurve = 0.0f,
-        .p_granularScwIndex = 0,
-        .p_granularGrainSize = 50.0f,
-        .p_granularDensity = 20.0f,
-        .p_granularPosition = 0.5f,
-        .p_granularPosRandom = 0.1f,
-        .p_granularPitch = 1.0f,
-        .p_granularPitchRandom = 0.0f,
-        .p_granularAmpRandom = 0.1f,
-        .p_granularSpread = 0.5f,
-        .p_granularFreeze = false,
-        .p_fmModRatio = 2.0f,
-        .p_fmModIndex = 1.0f,
-        .p_fmFeedback = 0.0f,
-        .p_pdWaveType = PD_WAVE_SAW,
-        .p_pdDistortion = 0.5f,
-        .p_membranePreset = MEMBRANE_TABLA,
-        .p_membraneDamping = 0.3f,
-        .p_membraneStrike = 0.3f,
-        .p_membraneBend = 0.15f,
-        .p_membraneBendDecay = 0.08f,
-        .p_birdType = BIRD_CHIRP,
-        .p_birdChirpRange = 1.0f,
-        .p_birdTrillRate = 0.0f,
-        .p_birdTrillDepth = 0.0f,
-        .p_birdAmRate = 0.0f,
-        .p_birdAmDepth = 0.0f,
-        .p_birdHarmonics = 0.2f,
-        .p_name = "",
-        .p_expRelease = false,
-    };
-}
+#include "../engines/synth_patch.h"   // SynthPatch struct + createDefaultPatch()
+#include "../engines/patch_trigger.h" // applyPatchToGlobals() + playNoteWithPatch()
+#include "../engines/song_file.h"     // .song/.patch file format parser/serializer
 
 // 5 patches: Preview (jamming), Bass, Lead, Chord + copy targets
 #define PATCH_PREVIEW 0
@@ -975,6 +733,7 @@ static void initInstrumentPresets(void) {
 
 // Forward declarations
 static void updateDrumTrackName(int track);
+// applyPatchToGlobals and playNoteWithPatch are in patch_trigger.h
 
 // ============================================================================
 // SCENES (Snapshots of all sound parameters)
@@ -1092,6 +851,85 @@ static void clearScene(int idx) {
     if (idx < 0 || idx >= NUM_SCENES) return;
     scenes[idx].initialized = false;
     if (currentScene == idx) currentScene = -1;
+}
+
+// ============================================================================
+// SONG FILE SAVE/LOAD (engine state <-> .song file)
+// ============================================================================
+
+static const char *songFilePath = "soundsystem/demo/songs/scratch.song";
+
+static void songFileFromEngine(SongFileData *d) {
+    songFileDataInit(d);
+    d->bpm = seq.bpm;
+    d->ticksPerStep = seq.ticksPerStep;
+    d->songScaleLockEnabled = scaleLockEnabled;
+    d->songScaleRoot = scaleRoot;
+    d->songScaleType = scaleType;
+    d->dilla = seq.dilla;
+    d->humanize = seq.humanize;
+    // Instruments (patches 1-3 = bass/lead/chord)
+    for (int i = 0; i < 3; i++) d->instruments[i] = patches[i + 1];
+    // Drums
+    for (int i = 0; i < SEQ_DRUM_TRACKS; i++) d->sfDrumSounds[i] = drumTrackSound[i];
+    d->sfDrumParams = drumParams;
+    // Mix
+    d->sfMasterVolume = masterVolume;
+    d->sfDrumVolume = drumVolume;
+    for (int i = 0; i < SEQ_TOTAL_TRACKS; i++) d->sfTrackVolume[i] = seq.trackVolume[i];
+    // Effects
+    d->sfEffects = fx;
+    d->sfDubLoop = dubLoop;
+    for (int i = 0; i < NUM_BUSES; i++) d->sfBusEffects[i] = mixerCtx->bus[i];
+    // Patterns
+    for (int i = 0; i < SEQ_NUM_PATTERNS; i++) d->patterns[i] = seq.patterns[i];
+}
+
+static void songFileToEngine(const SongFileData *d) {
+    seq.bpm = d->bpm;
+    seq.ticksPerStep = d->ticksPerStep;
+    scaleLockEnabled = d->songScaleLockEnabled;
+    scaleRoot = d->songScaleRoot;
+    scaleType = d->songScaleType;
+    seq.dilla = d->dilla;
+    seq.humanize = d->humanize;
+    // Instruments
+    for (int i = 0; i < 3; i++) patches[i + 1] = d->instruments[i];
+    // Apply current patch to globals
+    applyPatchToGlobals(&patches[selectedPatch]);
+    // Drums
+    for (int i = 0; i < SEQ_DRUM_TRACKS; i++) {
+        drumTrackSound[i] = d->sfDrumSounds[i];
+        updateDrumTrackName(i);
+    }
+    drumParams = d->sfDrumParams;
+    // Mix
+    masterVolume = d->sfMasterVolume;
+    drumVolume = d->sfDrumVolume;
+    for (int i = 0; i < SEQ_TOTAL_TRACKS; i++) seq.trackVolume[i] = d->sfTrackVolume[i];
+    // Effects
+    fx = d->sfEffects;
+    dubLoop = d->sfDubLoop;
+    for (int i = 0; i < NUM_BUSES; i++) mixerCtx->bus[i] = d->sfBusEffects[i];
+    // Patterns
+    for (int i = 0; i < SEQ_NUM_PATTERNS; i++) seq.patterns[i] = d->patterns[i];
+}
+
+static void saveSongFile(void) {
+    SongFileData d;
+    songFileFromEngine(&d);
+    if (songFileSave(songFilePath, &d)) {
+        TraceLog(LOG_INFO, "Song saved to %s", songFilePath);
+    }
+}
+
+static void loadSongFile(void) {
+    SongFileData d;
+    songFileDataInit(&d);
+    if (songFileLoad(songFilePath, &d)) {
+        songFileToEngine(&d);
+        TraceLog(LOG_INFO, "Song loaded from %s", songFilePath);
+    }
 }
 
 // ============================================================================
@@ -1359,136 +1197,15 @@ static void copyPatch(SynthPatch *src, SynthPatch *dst) {
     *dst = *src;
 }
 
-// Apply a patch's settings to the global synth parameters
-static void applyPatchToGlobals(SynthPatch *p) {
-    noteAttack = p->p_attack;
-    noteDecay = p->p_decay;
-    noteSustain = p->p_sustain;
-    noteRelease = p->p_release;
-    noteVolume = p->p_volume;
-    notePulseWidth = p->p_pulseWidth;
-    notePwmRate = p->p_pwmRate;
-    notePwmDepth = p->p_pwmDepth;
-    noteVibratoRate = p->p_vibratoRate;
-    noteVibratoDepth = p->p_vibratoDepth;
-    noteFilterCutoff = p->p_filterCutoff;
-    noteFilterResonance = p->p_filterResonance;
-    noteFilterEnvAmt = p->p_filterEnvAmt;
-    noteFilterEnvAttack = p->p_filterEnvAttack;
-    noteFilterEnvDecay = p->p_filterEnvDecay;
-    noteFilterLfoRate = p->p_filterLfoRate;
-    noteFilterLfoDepth = p->p_filterLfoDepth;
-    noteFilterLfoShape = p->p_filterLfoShape;
-    noteFilterLfoSync = (LfoSyncDiv)p->p_filterLfoSync;
-    noteArpEnabled = p->p_arpEnabled;
-    noteArpMode = (ArpMode)p->p_arpMode;
-    noteArpRateDiv = (ArpRateDiv)p->p_arpRateDiv;
-    noteArpRate = p->p_arpRate;
-    noteArpChord = (ArpChordType)p->p_arpChord;
-    noteUnisonCount = p->p_unisonCount;
-    noteUnisonDetune = p->p_unisonDetune;
-    noteUnisonMix = p->p_unisonMix;
-    noteResoLfoRate = p->p_resoLfoRate;
-    noteResoLfoDepth = p->p_resoLfoDepth;
-    noteResoLfoShape = p->p_resoLfoShape;
-    noteAmpLfoRate = p->p_ampLfoRate;
-    noteAmpLfoDepth = p->p_ampLfoDepth;
-    noteAmpLfoShape = p->p_ampLfoShape;
-    notePitchLfoRate = p->p_pitchLfoRate;
-    notePitchLfoDepth = p->p_pitchLfoDepth;
-    notePitchLfoShape = p->p_pitchLfoShape;
-    noteScwIndex = p->p_scwIndex;
-    monoMode = p->p_monoMode;
-    glideTime = p->p_glideTime;
-    pluckBrightness = p->p_pluckBrightness;
-    pluckDamping = p->p_pluckDamping;
-    pluckDamp = p->p_pluckDamp;
-    additivePreset = p->p_additivePreset;
-    additiveBrightness = p->p_additiveBrightness;
-    additiveShimmer = p->p_additiveShimmer;
-    additiveInharmonicity = p->p_additiveInharmonicity;
-    malletPreset = p->p_malletPreset;
-    malletStiffness = p->p_malletStiffness;
-    malletHardness = p->p_malletHardness;
-    malletStrikePos = p->p_malletStrikePos;
-    malletResonance = p->p_malletResonance;
-    malletTremolo = p->p_malletTremolo;
-    malletTremoloRate = p->p_malletTremoloRate;
-    malletDamp = p->p_malletDamp;
-    voiceVowel = p->p_voiceVowel;
-    voiceFormantShift = p->p_voiceFormantShift;
-    voiceBreathiness = p->p_voiceBreathiness;
-    voiceBuzziness = p->p_voiceBuzziness;
-    voiceSpeed = p->p_voiceSpeed;
-    voicePitch = p->p_voicePitch;
-    voiceConsonant = p->p_voiceConsonant;
-    voiceConsonantAmt = p->p_voiceConsonantAmt;
-    voiceNasal = p->p_voiceNasal;
-    voiceNasalAmt = p->p_voiceNasalAmt;
-    voicePitchEnv = p->p_voicePitchEnv;
-    voicePitchEnvTime = p->p_voicePitchEnvTime;
-    voicePitchEnvCurve = p->p_voicePitchEnvCurve;
-    granularScwIndex = p->p_granularScwIndex;
-    granularGrainSize = p->p_granularGrainSize;
-    granularDensity = p->p_granularDensity;
-    granularPosition = p->p_granularPosition;
-    granularPosRandom = p->p_granularPosRandom;
-    granularPitch = p->p_granularPitch;
-    granularPitchRandom = p->p_granularPitchRandom;
-    granularAmpRandom = p->p_granularAmpRandom;
-    granularSpread = p->p_granularSpread;
-    granularFreeze = p->p_granularFreeze;
-    fmModRatio = p->p_fmModRatio;
-    fmModIndex = p->p_fmModIndex;
-    fmFeedback = p->p_fmFeedback;
-    pdWaveType = p->p_pdWaveType;
-    pdDistortion = p->p_pdDistortion;
-    membranePreset = p->p_membranePreset;
-    membraneDamping = p->p_membraneDamping;
-    membraneStrike = p->p_membraneStrike;
-    membraneBend = p->p_membraneBend;
-    membraneBendDecay = p->p_membraneBendDecay;
-    birdType = p->p_birdType;
-    birdChirpRange = p->p_birdChirpRange;
-    birdTrillRate = p->p_birdTrillRate;
-    birdTrillDepth = p->p_birdTrillDepth;
-    birdAmRate = p->p_birdAmRate;
-    birdAmDepth = p->p_birdAmDepth;
-    birdHarmonics = p->p_birdHarmonics;
-    noteExpRelease = p->p_expRelease;
-}
-
 // ============================================================================
 // MELODIC SEQUENCER VOICES
 // ============================================================================
 
 // melodyVoiceIdx declared earlier (near audio callback) for sidechain routing
+// applyPatchToGlobals, playNoteWithPatch, patchMidiToFreq — see patch_trigger.h
 
-// Convert MIDI note to frequency
-static float midiNoteToFreq(int note) {
-    return 440.0f * powf(2.0f, (note - 69) / 12.0f);
-}
-
-// Play a note using a specific patch's settings
-static int playNoteWithPatch(float freq, SynthPatch *p) {
-    // Set globals from patch (play functions in synth.h read these)
-    applyPatchToGlobals(p);
-    
-    WaveType wave = (WaveType)p->p_waveType;
-    
-    switch (wave) {
-        case WAVE_PLUCK:    return playPluck(freq, p->p_pluckBrightness, p->p_pluckDamping);
-        case WAVE_ADDITIVE: return playAdditive(freq, (AdditivePreset)p->p_additivePreset);
-        case WAVE_MALLET:   return playMallet(freq, (MalletPreset)p->p_malletPreset);
-        case WAVE_VOICE:    return playVowel(freq, (VowelType)p->p_voiceVowel);
-        case WAVE_GRANULAR: return playGranular(freq, p->p_granularScwIndex);
-        case WAVE_FM:       return playFM(freq);
-        case WAVE_PD:       return playPD(freq);
-        case WAVE_MEMBRANE: return playMembrane(freq, (MembranePreset)p->p_membranePreset);
-        case WAVE_BIRD:     return playBird(freq, (BirdType)p->p_birdType);
-        default:            return playNote(freq, wave);
-    }
-}
+// Alias for backward compat (demo.c used midiNoteToFreq before extraction)
+#define midiNoteToFreq patchMidiToFreq
 
 // ============================================================================
 // DRUM SEQUENCER TRIGGERS (with P-lock support)
@@ -2203,7 +1920,13 @@ int main(void) {
                     }
                 }
                 sx += MeasureText("[Save]", 18) + 20;
-                
+
+                // File save/load
+                if (PushButton(sx, sy, "Sv")) { saveSongFile(); }
+                sx += MeasureText("[Sv]", 18) + 5;
+                if (PushButton(sx, sy, "Ld")) { loadSongFile(); }
+                sx += MeasureText("[Ld]", 18) + 20;
+
                 // XFade toggle and controls: [X] A:1 XFade: 0.50 B:2
                 ToggleBool(sx, sy, "X", &crossfaderEnabled);
                 sx += 40;
@@ -2357,15 +2080,30 @@ int main(void) {
                 selectedWave = cp->p_waveType;
             }
             
+            // Split keyboard quick-switch: jump to editing L or R patch
+            if (splitEnabled) {
+                ui_col_sublabel(&col1, TextFormat("Split: L=%s  R=%s", patchNames[splitLeftPatch], patchNames[splitRightPatch]), GRAY);
+                if (ui_col_button(&col1, TextFormat("Edit L (%s)", patchNames[splitLeftPatch]))) {
+                    selectedPatch = splitLeftPatch;
+                    cp = &patches[selectedPatch];
+                    selectedWave = cp->p_waveType;
+                }
+                if (ui_col_button(&col1, TextFormat("Edit R (%s)", patchNames[splitRightPatch]))) {
+                    selectedPatch = splitRightPatch;
+                    cp = &patches[selectedPatch];
+                    selectedWave = cp->p_waveType;
+                }
+            }
+
             // Copy buttons (only show when on Preview)
             if (selectedPatch == PATCH_PREVIEW) {
-                if (ui_col_button(&col1, "-> Bass")) {
+                if (ui_col_button(&col1, "Use as Bass")) {
                     copyPatch(&patches[PATCH_PREVIEW], &patches[PATCH_BASS]);
                 }
-                if (ui_col_button(&col1, "-> Lead")) {
+                if (ui_col_button(&col1, "Use as Lead")) {
                     copyPatch(&patches[PATCH_PREVIEW], &patches[PATCH_LEAD]);
                 }
-                if (ui_col_button(&col1, "-> Chord")) {
+                if (ui_col_button(&col1, "Use as Chord")) {
                     copyPatch(&patches[PATCH_PREVIEW], &patches[PATCH_CHORD]);
                 }
             }

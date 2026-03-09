@@ -4,6 +4,9 @@
 #include <string.h>
 #include "../../vendor/raylib.h"
 #include "soundsystem/soundsystem.h"
+#include "soundsystem/engines/synth_patch.h"
+#include "soundsystem/engines/patch_trigger.h"
+#include "soundsystem/engines/song_file.h"
 
 // Song definitions (uses synth/drums/sequencer types from soundsystem.h)
 #include "songs.h"
@@ -47,6 +50,9 @@ typedef struct {
     // Filter sweep state — accumulates across bars for long sweeps
     float sweepPhase;       // 0.0 to 1.0, wraps (sine LFO position)
     float sweepRate;        // how fast the sweep moves per second (e.g. 0.02 = 50s cycle)
+    // File-based instruments (from .song files)
+    SynthPatch instruments[SEQ_MELODY_TRACKS];  // bass, lead, chord
+    bool hasPatchInstruments;   // true = use generic patch trigger, false = use per-song callbacks
     // Jukebox
     int jukeboxIndex;       // which song is selected (-1 = none)
 } SongPlayer;
@@ -1311,6 +1317,152 @@ bool SoundSynthIsSongPlaying(SoundSynth* synth) {
 }
 
 // ============================================================================
+// Generic patch-based triggers (for .song file playback)
+// ============================================================================
+
+// Generic melody trigger: reads instrument from SongPlayer.instruments[]
+static void melodyTriggerPatchGeneric(int track, int note, float vel,
+                                       float gateTime, bool slide, bool accent) {
+    (void)gateTime; (void)slide;
+    if (!g_soundSynth) return;
+    useSoundSystem(&g_soundSynth->ss);
+
+    SongPlayer *sp = &g_soundSynth->songPlayer;
+    SynthPatch *p = &sp->instruments[track];
+
+    // Release previous voice
+    if (sp->melodyVoices[track][0] >= 0) {
+        releaseNote(sp->melodyVoices[track][0]);
+    }
+
+    float freq = patchMidiToFreq(note);
+    if (accent) {
+        // Boost velocity and filter env for accent
+        noteVolume = vel * 1.3f;
+        noteFilterEnvAmt = p->p_filterEnvAmt + 0.2f;
+    }
+    sp->melodyVoices[track][0] = playNoteWithPatch(freq, p);
+    sp->melodyVoiceCount[track] = 1;
+}
+
+// Generic chord trigger: plays all notes through patch
+static void melodyChordTriggerPatchGeneric(int track, int* notes, int noteCount,
+                                            float vel, float gateTime, bool slide, bool accent) {
+    (void)gateTime; (void)slide;
+    if (!g_soundSynth) return;
+    useSoundSystem(&g_soundSynth->ss);
+
+    SongPlayer *sp = &g_soundSynth->songPlayer;
+    SynthPatch *p = &sp->instruments[track];
+
+    melodyReleaseAllVoices(track);
+
+    if (noteCount > MAX_CHORD_VOICES) noteCount = MAX_CHORD_VOICES;
+    for (int i = 0; i < noteCount; i++) {
+        float freq = patchMidiToFreq(notes[i]);
+        if (accent) noteVolume = vel * 1.3f;
+        sp->melodyVoices[track][i] = playNoteWithPatch(freq, p);
+    }
+    sp->melodyVoiceCount[track] = noteCount;
+}
+
+// Per-track wrappers (setMelodyCallbacks needs specific function signatures)
+static void melodyTriggerPatchBass(int note, float vel, float gateTime, bool slide, bool accent) {
+    melodyTriggerPatchGeneric(0, note, vel, gateTime, slide, accent);
+}
+static void melodyTriggerPatchLead(int note, float vel, float gateTime, bool slide, bool accent) {
+    melodyTriggerPatchGeneric(1, note, vel, gateTime, slide, accent);
+}
+static void melodyTriggerPatchChord(int note, float vel, float gateTime, bool slide, bool accent) {
+    melodyTriggerPatchGeneric(2, note, vel, gateTime, slide, accent);
+}
+static void melodyReleasePatchBass(void)  { melodyReleaseAllVoices(0); }
+static void melodyReleasePatchLead(void)  { melodyReleaseAllVoices(1); }
+static void melodyReleasePatchChord(void) { melodyReleaseAllVoices(2); }
+static void melodyChordTriggerPatchChord(int* notes, int noteCount, float vel,
+                                          float gateTime, bool slide, bool accent) {
+    melodyChordTriggerPatchGeneric(2, notes, noteCount, vel, gateTime, slide, accent);
+}
+
+// ============================================================================
+// Play a .song file
+// ============================================================================
+
+bool SoundSynthPlaySongFile(SoundSynth* synth, const char* filepath) {
+    if (!synth || !synth->audioReady) return false;
+    useSoundSystem(&synth->ss);
+
+    SoundSynthStopSong(synth);
+
+    // Load song file
+    SongFileData sf;
+    songFileDataInit(&sf);
+    if (!songFileLoad(filepath, &sf)) {
+        TraceLog(LOG_WARNING, "Failed to load song file: %s", filepath);
+        return false;
+    }
+
+    SongPlayer *sp = &synth->songPlayer;
+
+    // Copy instruments
+    for (int i = 0; i < SEQ_MELODY_TRACKS && i < 3; i++) {
+        sp->instruments[i] = sf.instruments[i];
+    }
+    sp->hasPatchInstruments = true;
+
+    // Set up generic triggers
+    setMelodyCallbacks(0, melodyTriggerPatchBass, melodyReleasePatchBass);
+    setMelodyCallbacks(1, melodyTriggerPatchLead, melodyReleasePatchLead);
+    setMelodyCallbacks(2, melodyTriggerPatchChord, melodyReleasePatchChord);
+    setMelodyChordCallback(2, melodyChordTriggerPatchChord);
+
+    // Load patterns
+    sp->patternCount = 0;
+    for (int i = 0; i < SEQ_NUM_PATTERNS && i < MAX_SONG_PATTERNS; i++) {
+        sp->patterns[i] = sf.patterns[i];
+        // Check if pattern has any content
+        bool hasContent = false;
+        for (int t = 0; t < SEQ_DRUM_TRACKS && !hasContent; t++)
+            for (int s = 0; s < SEQ_MAX_STEPS && !hasContent; s++)
+                if (sf.patterns[i].drumSteps[t][s]) hasContent = true;
+        for (int t = 0; t < SEQ_MELODY_TRACKS && !hasContent; t++)
+            for (int s = 0; s < SEQ_MAX_STEPS && !hasContent; s++)
+                if (sf.patterns[i].melodyNote[t][s] != SEQ_NOTE_OFF) hasContent = true;
+        if (hasContent) sp->patternCount = i + 1;
+    }
+    if (sp->patternCount == 0) sp->patternCount = 1;
+    sp->currentPattern = 0;
+    sp->loopsOnCurrent = 0;
+    sp->loopsPerPattern = sf.loopsPerPattern > 0 ? sf.loopsPerPattern : 2;
+
+    // Apply mix
+    masterVolume = sf.sfMasterVolume;
+    drumVolume = sf.sfDrumVolume;
+    for (int i = 0; i < SEQ_TOTAL_TRACKS; i++) seq.trackVolume[i] = sf.sfTrackVolume[i];
+
+    // Apply drum params
+    drumParams = sf.sfDrumParams;
+
+    // Apply effects
+    fx = sf.sfEffects;
+
+    // Apply groove
+    seq.dilla = sf.dilla;
+    seq.ticksPerStep = sf.ticksPerStep;
+
+    // Apply scale
+    scaleLockEnabled = sf.songScaleLockEnabled;
+    scaleRoot = sf.songScaleRoot;
+    scaleType = sf.songScaleType;
+
+    // Start playback
+    startSongPlayback(synth, sf.bpm);
+
+    TraceLog(LOG_INFO, "Playing song file: %s (%.0f BPM, %d patterns)", filepath, sf.bpm, sp->patternCount);
+    return true;
+}
+
+// ============================================================================
 // Jukebox — song table and browse/play API
 // ============================================================================
 
@@ -1321,7 +1473,13 @@ typedef struct {
     SongPlayFunc play;
 } JukeboxEntry;
 
+// Wrapper to play scratch.song via jukebox (matches SongPlayFunc signature)
+static void SoundSynthPlayScratchSong(SoundSynth* synth) {
+    SoundSynthPlaySongFile(synth, "soundsystem/demo/songs/scratch.song");
+}
+
 static const JukeboxEntry jukeboxSongs[] = {
+    { "Scratch (.song)",      SoundSynthPlayScratchSong },
     { "Dormitory Ambient",    SoundSynthPlaySongDormitory },
     { "Suspense",             SoundSynthPlaySongSuspense },
     { "Jazz Call & Response",  SoundSynthPlaySongJazz },

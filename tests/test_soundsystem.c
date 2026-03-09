@@ -35,6 +35,10 @@
 #undef fmModIndex
 // Note: don't undef 'seq' as it's used throughout the tests
 
+// Song file format (needs SynthPatch + engine types, macros already undef'd above)
+#include "../soundsystem/engines/synth_patch.h"
+#include "../soundsystem/engines/song_file.h"
+
 // Test helpers
 #define FLOAT_EPSILON 0.0001f
 #define expect_float_eq(a, b) expect(fabsf((a) - (b)) < FLOAT_EPSILON)
@@ -5078,6 +5082,351 @@ describe(melody_sustain) {
     }
 }
 
+// ============================================================================
+// SONG FILE FORMAT TESTS
+// ============================================================================
+
+describe(song_file_round_trip) {
+    it("should save and load a song file with matching header fields") {
+        _ensureSeqCtx();
+        const char *path = "/tmp/test_song_roundtrip.song";
+
+        SongFileData orig;
+        songFileDataInit(&orig);
+        strcpy(orig.name, "Test Song");
+        orig.bpm = 95.5f;
+        orig.ticksPerStep = 12;
+        orig.loopsPerPattern = 2;
+        orig.songScaleLockEnabled = true;
+        orig.songScaleRoot = 3;
+        orig.songScaleType = 2;
+        orig.sfMasterVolume = 0.42f;
+        orig.sfDrumVolume = 0.77f;
+        orig.sfTrackVolume[0] = 0.8f;
+        orig.sfTrackVolume[3] = 0.65f;
+        orig.sfDrumSounds[0] = DRUM_KICK;
+        orig.sfDrumSounds[1] = DRUM_CLAP;
+        orig.sfDrumSounds[2] = DRUM_OPEN_HH;
+        orig.sfDrumSounds[3] = DRUM_RIMSHOT;
+        strcpy(orig.author, "Test Author");
+        strcpy(orig.description, "A test song");
+        orig.fadeIn = 1.5f;
+        orig.fadeOut = 2.0f;
+        orig.crossfade = true;
+
+        bool saved = songFileSave(path, &orig);
+        expect(saved);
+
+        SongFileData loaded;
+        songFileDataInit(&loaded);
+        bool ok = songFileLoad(path, &loaded);
+        expect(ok);
+
+        expect(strcmp(loaded.name, "Test Song") == 0);
+        expect_float_near(loaded.bpm, 95.5f, 0.01f);
+        expect(loaded.ticksPerStep == 12);
+        expect(loaded.loopsPerPattern == 2);
+        expect(loaded.songScaleLockEnabled == true);
+        expect(loaded.songScaleRoot == 3);
+        expect(loaded.songScaleType == 2);
+        expect_float_near(loaded.sfMasterVolume, 0.42f, 0.01f);
+        expect_float_near(loaded.sfDrumVolume, 0.77f, 0.01f);
+        expect_float_near(loaded.sfTrackVolume[0], 0.8f, 0.01f);
+        expect_float_near(loaded.sfTrackVolume[3], 0.65f, 0.01f);
+        expect((int)loaded.sfDrumSounds[1] == (int)DRUM_CLAP);
+        expect((int)loaded.sfDrumSounds[2] == (int)DRUM_OPEN_HH);
+        expect((int)loaded.sfDrumSounds[3] == (int)DRUM_RIMSHOT);
+        expect(strcmp(loaded.author, "Test Author") == 0);
+        expect_float_near(loaded.fadeIn, 1.5f, 0.01f);
+        expect_float_near(loaded.fadeOut, 2.0f, 0.01f);
+        expect(loaded.crossfade == true);
+
+        remove(path);
+    }
+
+    it("should round-trip effects settings") {
+        _ensureSeqCtx();
+        const char *path = "/tmp/test_song_effects.song";
+
+        SongFileData orig;
+        songFileDataInit(&orig);
+        orig.sfEffects.distEnabled = true;
+        orig.sfEffects.distDrive = 0.7f;
+        orig.sfEffects.delayEnabled = true;
+        orig.sfEffects.delayTime = 0.35f;
+        orig.sfEffects.delayFeedback = 0.55f;
+        orig.sfEffects.reverbEnabled = true;
+        orig.sfEffects.reverbSize = 0.8f;
+        orig.sfEffects.reverbMix = 0.3f;
+
+        bool saved = songFileSave(path, &orig);
+        expect(saved);
+
+        SongFileData loaded;
+        songFileDataInit(&loaded);
+        bool ok = songFileLoad(path, &loaded);
+        expect(ok);
+
+        expect(loaded.sfEffects.distEnabled == true);
+        expect_float_near(loaded.sfEffects.distDrive, 0.7f, 0.01f);
+        expect(loaded.sfEffects.delayEnabled == true);
+        expect_float_near(loaded.sfEffects.delayTime, 0.35f, 0.01f);
+        expect_float_near(loaded.sfEffects.delayFeedback, 0.55f, 0.01f);
+        expect(loaded.sfEffects.reverbEnabled == true);
+        expect_float_near(loaded.sfEffects.reverbSize, 0.8f, 0.01f);
+        expect_float_near(loaded.sfEffects.reverbMix, 0.3f, 0.01f);
+
+        remove(path);
+    }
+
+    it("should round-trip dub loop settings") {
+        _ensureSeqCtx();
+        const char *path = "/tmp/test_song_dub.song";
+
+        SongFileData orig;
+        songFileDataInit(&orig);
+        orig.sfDubLoop.enabled = true;
+        orig.sfDubLoop.feedback = 0.6f;
+        orig.sfDubLoop.mix = 0.4f;
+        orig.sfDubLoop.speed = 0.5f;
+        orig.sfDubLoop.numHeads = 2;
+        orig.sfDubLoop.headTime[0] = 0.25f;
+        orig.sfDubLoop.headLevel[0] = 0.8f;
+        orig.sfDubLoop.headTime[1] = 0.5f;
+        orig.sfDubLoop.headLevel[1] = 0.6f;
+
+        bool saved = songFileSave(path, &orig);
+        expect(saved);
+
+        SongFileData loaded;
+        songFileDataInit(&loaded);
+        bool ok = songFileLoad(path, &loaded);
+        expect(ok);
+
+        expect(loaded.sfDubLoop.enabled == true);
+        expect_float_near(loaded.sfDubLoop.feedback, 0.6f, 0.01f);
+        expect_float_near(loaded.sfDubLoop.mix, 0.4f, 0.01f);
+        expect_float_near(loaded.sfDubLoop.speed, 0.5f, 0.01f);
+        expect(loaded.sfDubLoop.numHeads == 2);
+        expect_float_near(loaded.sfDubLoop.headTime[0], 0.25f, 0.01f);
+        expect_float_near(loaded.sfDubLoop.headLevel[0], 0.8f, 0.01f);
+        expect_float_near(loaded.sfDubLoop.headTime[1], 0.5f, 0.01f);
+        expect_float_near(loaded.sfDubLoop.headLevel[1], 0.6f, 0.01f);
+
+        remove(path);
+    }
+
+    it("should round-trip drum params") {
+        _ensureSeqCtx();
+        const char *path = "/tmp/test_song_drums.song";
+
+        SongFileData orig;
+        songFileDataInit(&orig);
+        orig.sfDrumParams.kickPitch = 55.0f;
+        orig.sfDrumParams.kickDecay = 0.4f;
+        orig.sfDrumParams.snarePitch = 200.0f;
+        orig.sfDrumParams.snareSnappy = 0.6f;
+
+        bool saved = songFileSave(path, &orig);
+        expect(saved);
+
+        SongFileData loaded;
+        songFileDataInit(&loaded);
+        bool ok = songFileLoad(path, &loaded);
+        expect(ok);
+
+        expect_float_near(loaded.sfDrumParams.kickPitch, 55.0f, 0.1f);
+        expect_float_near(loaded.sfDrumParams.kickDecay, 0.4f, 0.01f);
+        expect_float_near(loaded.sfDrumParams.snarePitch, 200.0f, 0.1f);
+        expect_float_near(loaded.sfDrumParams.snareSnappy, 0.6f, 0.01f);
+
+        remove(path);
+    }
+}
+
+describe(song_file_patch_round_trip) {
+    it("should save and load a patch file") {
+        const char *path = "/tmp/test_patch.patch";
+
+        SynthPatch orig = createDefaultPatch(WAVE_SAW);
+        strcpy(orig.p_name, "Test Lead");
+        orig.p_attack = 0.05f;
+        orig.p_decay = 0.2f;
+        orig.p_sustain = 0.7f;
+        orig.p_release = 0.5f;
+        orig.p_filterCutoff = 0.6f;
+        orig.p_filterResonance = 0.4f;
+        orig.p_arpEnabled = true;
+        orig.p_arpMode = 2;
+        orig.p_monoMode = true;
+        orig.p_glideTime = 0.15f;
+        orig.p_expRelease = true;
+
+        bool saved = songFileSavePatch(path, &orig);
+        expect(saved);
+
+        SynthPatch loaded = createDefaultPatch(WAVE_SQUARE);
+        bool ok = songFileLoadPatch(path, &loaded);
+        expect(ok);
+
+        expect(strcmp(loaded.p_name, "Test Lead") == 0);
+        expect(loaded.p_waveType == WAVE_SAW);
+        expect_float_near(loaded.p_attack, 0.05f, 0.001f);
+        expect_float_near(loaded.p_decay, 0.2f, 0.001f);
+        expect_float_near(loaded.p_sustain, 0.7f, 0.001f);
+        expect_float_near(loaded.p_release, 0.5f, 0.001f);
+        expect_float_near(loaded.p_filterCutoff, 0.6f, 0.001f);
+        expect_float_near(loaded.p_filterResonance, 0.4f, 0.001f);
+        expect(loaded.p_arpEnabled == true);
+        expect(loaded.p_arpMode == 2);
+        expect(loaded.p_monoMode == true);
+        expect_float_near(loaded.p_glideTime, 0.15f, 0.001f);
+        expect(loaded.p_expRelease == true);
+
+        remove(path);
+    }
+
+    it("should preserve all synth engine types in patch") {
+        const char *path = "/tmp/test_patch_types.patch";
+
+        SynthPatch orig = createDefaultPatch(WAVE_NOISE);
+        orig.p_pdWaveType = PD_WAVE_PULSE;
+        orig.p_membranePreset = MEMBRANE_DJEMBE;
+        orig.p_birdType = BIRD_WARBLE;
+        orig.p_additivePreset = ADDITIVE_PRESET_BRASS;
+        orig.p_malletPreset = MALLET_PRESET_VIBES;
+
+        bool saved = songFileSavePatch(path, &orig);
+        expect(saved);
+
+        SynthPatch loaded = createDefaultPatch(WAVE_SQUARE);
+        bool ok = songFileLoadPatch(path, &loaded);
+        expect(ok);
+
+        expect(loaded.p_waveType == WAVE_NOISE);
+        expect(loaded.p_pdWaveType == PD_WAVE_PULSE);
+        expect(loaded.p_membranePreset == MEMBRANE_DJEMBE);
+        expect(loaded.p_birdType == BIRD_WARBLE);
+        expect(loaded.p_additivePreset == ADDITIVE_PRESET_BRASS);
+        expect(loaded.p_malletPreset == MALLET_PRESET_VIBES);
+
+        remove(path);
+    }
+}
+
+describe(song_file_pattern_events) {
+    it("should round-trip drum steps in a pattern") {
+        _ensureSeqCtx();
+        const char *path = "/tmp/test_song_pattern.song";
+
+        SongFileData orig;
+        songFileDataInit(&orig);
+        // Set some drum steps on pattern 0
+        orig.patterns[0].drumSteps[0][0] = 1;   // kick on step 0
+        orig.patterns[0].drumSteps[0][4] = 1;   // kick on step 4
+        orig.patterns[0].drumSteps[0][8] = 1;   // kick on step 8
+        orig.patterns[0].drumSteps[1][2] = 1;   // snare on step 2
+        orig.patterns[0].drumSteps[1][6] = 1;   // snare on step 6
+        orig.patterns[0].drumVelocity[1][2] = 0.75f;  // snare vel
+
+        bool saved = songFileSave(path, &orig);
+        expect(saved);
+
+        SongFileData loaded;
+        songFileDataInit(&loaded);
+        bool ok = songFileLoad(path, &loaded);
+        expect(ok);
+
+        expect(loaded.patterns[0].drumSteps[0][0] == 1);
+        expect(loaded.patterns[0].drumSteps[0][4] == 1);
+        expect(loaded.patterns[0].drumSteps[0][8] == 1);
+        expect(loaded.patterns[0].drumSteps[0][1] == 0);  // untouched step
+        expect(loaded.patterns[0].drumSteps[1][2] == 1);
+        expect(loaded.patterns[0].drumSteps[1][6] == 1);
+        expect_float_near(loaded.patterns[0].drumVelocity[1][2], 0.75f, 0.01f);
+
+        remove(path);
+    }
+
+    it("should round-trip melody notes in a pattern") {
+        _ensureSeqCtx();
+        const char *path = "/tmp/test_song_melody.song";
+
+        SongFileData orig;
+        songFileDataInit(&orig);
+        // Set melody on track 0 (bass), pattern 0
+        // Pattern struct uses melody-relative indexing (0=bass, 1=lead, 2=chord)
+        int t = 0;
+        orig.patterns[0].melodyNote[t][0] = 36;  // C2
+        orig.patterns[0].melodyVelocity[t][0] = 0.9f;
+        orig.patterns[0].melodyGate[t][0] = 4;
+        orig.patterns[0].melodySlide[t][0] = true;
+        orig.patterns[0].melodyNote[t][4] = 48;  // C3
+        orig.patterns[0].melodyVelocity[t][4] = 0.7f;
+        orig.patterns[0].melodyGate[t][4] = 8;
+        orig.patterns[0].melodyAccent[t][4] = true;
+
+        bool saved = songFileSave(path, &orig);
+        expect(saved);
+
+        SongFileData loaded;
+        songFileDataInit(&loaded);
+        bool ok = songFileLoad(path, &loaded);
+        expect(ok);
+
+        expect(loaded.patterns[0].melodyNote[t][0] == 36);
+        expect_float_near(loaded.patterns[0].melodyVelocity[t][0], 0.9f, 0.01f);
+        expect(loaded.patterns[0].melodyGate[t][0] == 4);
+        expect(loaded.patterns[0].melodySlide[t][0] == true);
+        expect(loaded.patterns[0].melodyNote[t][4] == 48);
+        expect_float_near(loaded.patterns[0].melodyVelocity[t][4], 0.7f, 0.01f);
+        expect(loaded.patterns[0].melodyGate[t][4] == 8);
+        expect(loaded.patterns[0].melodyAccent[t][4] == true);
+        // Untouched steps should remain SEQ_NOTE_OFF (-1)
+        expect(loaded.patterns[0].melodyNote[t][1] == SEQ_NOTE_OFF);
+
+        remove(path);
+    }
+
+    it("should round-trip p-locks in a pattern") {
+        _ensureSeqCtx();
+        const char *path = "/tmp/test_song_plocks.song";
+
+        SongFileData orig;
+        songFileDataInit(&orig);
+        // Add p-locks: track 5 (lead = drum_tracks + 1), step 0 + 4
+        int t = SEQ_DRUM_TRACKS + 1;  // lead track (absolute index)
+        orig.patterns[0].plockCount = 2;
+        orig.patterns[0].plocks[0].track = t;
+        orig.patterns[0].plocks[0].step = 0;
+        orig.patterns[0].plocks[0].param = PLOCK_FILTER_CUTOFF;
+        orig.patterns[0].plocks[0].value = 0.3f;
+        orig.patterns[0].plocks[1].track = t;
+        orig.patterns[0].plocks[1].step = 4;
+        orig.patterns[0].plocks[1].param = PLOCK_FILTER_RESO;
+        orig.patterns[0].plocks[1].value = 0.8f;
+
+        bool saved = songFileSave(path, &orig);
+        expect(saved);
+
+        SongFileData loaded;
+        songFileDataInit(&loaded);
+        bool ok = songFileLoad(path, &loaded);
+        expect(ok);
+
+        expect(loaded.patterns[0].plocks[0].track == t);
+        expect(loaded.patterns[0].plocks[0].step == 0);
+        expect(loaded.patterns[0].plocks[0].param == PLOCK_FILTER_CUTOFF);
+        expect_float_near(loaded.patterns[0].plocks[0].value, 0.3f, 0.01f);
+        expect(loaded.patterns[0].plocks[1].track == t);
+        expect(loaded.patterns[0].plocks[1].step == 4);
+        expect(loaded.patterns[0].plocks[1].param == PLOCK_FILTER_RESO);
+        expect_float_near(loaded.patterns[0].plocks[1].value, 0.8f, 0.01f);
+
+        remove(path);
+    }
+}
+
 int main(int argc, char **argv) {
     // Check for quiet mode flag
     for (int i = 1; i < argc; i++) {
@@ -5183,6 +5532,11 @@ int main(int argc, char **argv) {
 
     // Sustain system
     test(melody_sustain);
+
+    // Song file format
+    test(song_file_round_trip);
+    test(song_file_patch_round_trip);
+    test(song_file_pattern_events);
 
     return summary();
 }

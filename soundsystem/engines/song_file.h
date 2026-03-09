@@ -1,0 +1,1321 @@
+// song_file.h — .song/.patch/.bank file format parser and serializer
+//
+// Header-only. Include after synth.h, sequencer.h, drums.h, effects.h.
+//
+// Format: custom text (INI-style sections + key=value event lines)
+//   [section]
+//   key = value
+//   d track=0 step=0 vel=0.90
+//   m track=0 step=0 note=D2 vel=0.35 gate=8 slide
+//   p track=6 step=0 param=cutoff val=0.3
+//
+// Future-proofing rules:
+//   1. format = N version header in [song]
+//   2. Unknown sections/keys are skipped (warn, don't error)
+//   3. Events are fully key=value (no positional fields)
+//   4. Track counts are explicit (drumTracks, melodyTracks)
+//   5. Missing keys get engine defaults
+//
+#ifndef SONG_FILE_H
+#define SONG_FILE_H
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+
+#define SONG_FILE_FORMAT_VERSION 1
+#define SONG_FILE_MAX_LINE 512
+#define SONG_FILE_MAX_NAME 64
+
+// ============================================================================
+// SongFileData — intermediate struct for serialization
+// ============================================================================
+// Caller fills this from their state, then calls songFileSave().
+// Or calls songFileLoad() which fills this, then caller applies to state.
+
+typedef struct {
+    // Song header
+    char name[SONG_FILE_MAX_NAME];
+    float bpm;
+    int ticksPerStep;           // 24 = 16th, 12 = 32nd
+    int loopsPerPattern;
+    int drumTracks;             // currently 4
+    int melodyTracks;           // currently 3
+
+    // Scale lock (prefixed to avoid synth.h macro collision)
+    bool songScaleLockEnabled;
+    int songScaleRoot;
+    int songScaleType;
+
+    // Groove
+    DillaTiming dilla;
+    MelodyHumanize humanize;
+
+    // Instruments (3 melody patches)
+    SynthPatch instruments[3];  // bass, lead, chord
+
+    // Drums
+    DrumType sfDrumSounds[SEQ_DRUM_TRACKS];
+    DrumParams sfDrumParams;
+
+    // Mix
+    float sfMasterVolume;
+    float sfDrumVolume;
+    float sfTrackVolume[SEQ_TOTAL_TRACKS];
+
+    // Master effects
+    Effects sfEffects;
+
+    // Per-bus effects
+    BusEffects sfBusEffects[NUM_BUSES];
+
+    // Dub loop
+    DubLoopParams sfDubLoop;
+
+    // Patterns
+    int patternCount;
+    Pattern patterns[SEQ_NUM_PATTERNS];
+
+    // Metadata
+    char author[SONG_FILE_MAX_NAME];
+    char description[SONG_FILE_MAX_NAME];
+    char mood[SONG_FILE_MAX_NAME];      // comma-separated tags
+    char energy[16];                     // "low", "medium", "high"
+    char context[SONG_FILE_MAX_NAME];   // comma-separated tags
+
+    // Transitions
+    float fadeIn;
+    float fadeOut;
+    bool crossfade;
+} SongFileData;
+
+static void songFileDataInit(SongFileData *d) {
+    memset(d, 0, sizeof(*d));
+    d->bpm = 120.0f;
+    d->ticksPerStep = SEQ_TICKS_PER_STEP_16TH;
+    d->loopsPerPattern = 1;
+    d->drumTracks = SEQ_DRUM_TRACKS;
+    d->melodyTracks = SEQ_MELODY_TRACKS;
+    d->sfMasterVolume = 0.25f;
+    d->sfDrumVolume = 0.6f;
+    d->patternCount = SEQ_NUM_PATTERNS;
+    for (int i = 0; i < SEQ_TOTAL_TRACKS; i++) d->sfTrackVolume[i] = 1.0f;
+    d->sfDrumSounds[0] = DRUM_KICK;
+    d->sfDrumSounds[1] = DRUM_SNARE;
+    d->sfDrumSounds[2] = DRUM_CLOSED_HH;
+    d->sfDrumSounds[3] = DRUM_CLAP;
+    for (int i = 0; i < SEQ_NUM_PATTERNS; i++) initPattern(&d->patterns[i]);
+    strcpy(d->energy, "medium");
+}
+
+// ============================================================================
+// HELPER: note name conversion
+// ============================================================================
+
+static const char* _sf_noteNames[] = {
+    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+};
+
+static void _sf_midiToName(int midi, char *buf, int bufSize) {
+    if (midi == SEQ_NOTE_OFF || midi < 0) {
+        snprintf(buf, bufSize, "REST");
+        return;
+    }
+    int octave = (midi / 12) - 1;
+    int note = midi % 12;
+    snprintf(buf, bufSize, "%s%d", _sf_noteNames[note], octave);
+}
+
+static int _sf_nameToMidi(const char *name) {
+    if (!name || !name[0]) return SEQ_NOTE_OFF;
+    if (strcmp(name, "REST") == 0 || strcmp(name, "-") == 0) return SEQ_NOTE_OFF;
+
+    // Try numeric
+    if (isdigit(name[0]) || (name[0] == '-' && isdigit(name[1]))) {
+        return atoi(name);
+    }
+
+    // Parse note name: C#4, Eb2, D4, etc.
+    int note = -1;
+    int pos = 0;
+    switch (toupper(name[0])) {
+        case 'C': note = 0; break;
+        case 'D': note = 2; break;
+        case 'E': note = 4; break;
+        case 'F': note = 5; break;
+        case 'G': note = 7; break;
+        case 'A': note = 9; break;
+        case 'B': note = 11; break;
+        default: return SEQ_NOTE_OFF;
+    }
+    pos = 1;
+    if (name[pos] == '#') { note++; pos++; }
+    else if (name[pos] == 'b') { note--; pos++; }
+    if (note < 0) note += 12;
+    if (note > 11) note -= 12;
+
+    int octave = 4; // default
+    if (name[pos] == '-' || isdigit(name[pos])) {
+        octave = atoi(&name[pos]);
+    }
+    return (octave + 1) * 12 + note;
+}
+
+// ============================================================================
+// HELPER: enum name tables for serialization
+// ============================================================================
+
+static const char* _sf_waveTypeNames[] = {
+    "square", "saw", "triangle", "noise", "scw", "voice", "pluck",
+    "additive", "mallet", "granular", "fm", "pd", "membrane", "bird"
+};
+static const int _sf_waveTypeCount = 14;
+
+static const char* _sf_scaleTypeNames[] = {
+    "chromatic", "major", "minor", "pentatonic", "minorPentatonic",
+    "blues", "dorian", "mixolydian", "harmonicMinor"
+};
+static const int _sf_scaleTypeCount = 9;
+
+static const char* _sf_drumTypeNames[] = {
+    "kick", "snare", "clap", "closedHH", "openHH", "lowTom", "midTom",
+    "hiTom", "rimshot", "cowbell", "clave", "maracas",
+    "cr78Kick", "cr78Snare", "cr78HH", "cr78Metal"
+};
+static const int _sf_drumTypeCount = 16;
+
+static const char* _sf_conditionNames[] = {
+    "always", "1:2", "2:2", "1:4", "2:4", "3:4", "4:4",
+    "fill", "notFill", "first", "notFirst"
+};
+static const int _sf_conditionCount = 11;
+
+static const char* _sf_chordTypeNames[] = {
+    "single", "fifth", "triad", "inv1", "inv2", "seventh",
+    "octave", "octaves", "custom"
+};
+static const int _sf_chordTypeCount = 9;
+
+static const char* _sf_pickModeNames[] = {
+    "cycleUp", "cycleDown", "pingpong", "random", "randomWalk", "all"
+};
+static const int _sf_pickModeCount = 6;
+
+static const char* _sf_plockParamNames[] = {
+    "cutoff", "reso", "filterEnv", "decay", "volume",
+    "pitch", "pulseWidth", "tone", "punch", "nudge",
+    "flamTime", "flamVelocity"
+};
+static const int _sf_plockParamCount = 12;
+
+static int _sf_lookupName(const char *name, const char **table, int count) {
+    for (int i = 0; i < count; i++) {
+        if (strcasecmp(name, table[i]) == 0) return i;
+    }
+    return -1;
+}
+
+// ============================================================================
+// HELPER: key=value parsing
+// ============================================================================
+
+// Parse "key=value" from a token. Returns 1 if found, 0 if bare word.
+static int _sf_parseKV(const char *token, char *key, int keySize, char *val, int valSize) {
+    const char *eq = strchr(token, '=');
+    if (!eq) {
+        // Bare word (boolean flag like "slide", "accent")
+        strncpy(key, token, keySize - 1);
+        key[keySize - 1] = '\0';
+        val[0] = '\0';
+        return 0;
+    }
+    int klen = (int)(eq - token);
+    if (klen >= keySize) klen = keySize - 1;
+    memcpy(key, token, klen);
+    key[klen] = '\0';
+    strncpy(val, eq + 1, valSize - 1);
+    val[valSize - 1] = '\0';
+    return 1;
+}
+
+// Tokenize a line by spaces, respecting quotes
+// Note: '#' is only a comment at token boundaries (start of token after whitespace),
+// NOT inside tokens — because note names like D#1 contain '#'.
+static int _sf_tokenize(char *line, char **tokens, int maxTokens) {
+    int count = 0;
+    char *p = line;
+    while (*p && count < maxTokens) {
+        while (*p == ' ' || *p == '\t') p++;
+        if (!*p || *p == '#') break;  // '#' at token start = comment
+        if (*p == '"') {
+            p++;
+            tokens[count++] = p;
+            while (*p && *p != '"') p++;
+            if (*p == '"') *p++ = '\0';
+        } else {
+            tokens[count++] = p;
+            while (*p && *p != ' ' && *p != '\t') p++;
+            if (*p) *p++ = '\0';
+        }
+    }
+    return count;
+}
+
+// ============================================================================
+// SAVE — Write .song file
+// ============================================================================
+
+static void _sf_writeStr(FILE *f, const char *key, const char *val) {
+    if (val[0]) fprintf(f, "%s = \"%s\"\n", key, val);
+}
+static void _sf_writeFloat(FILE *f, const char *key, float val) {
+    fprintf(f, "%s = %.4g\n", key, (double)val);
+}
+static void _sf_writeInt(FILE *f, const char *key, int val) {
+    fprintf(f, "%s = %d\n", key, val);
+}
+static void _sf_writeBool(FILE *f, const char *key, bool val) {
+    fprintf(f, "%s = %s\n", key, val ? "true" : "false");
+}
+static void _sf_writeEnum(FILE *f, const char *key, int val, const char **names, int count) {
+    if (val >= 0 && val < count) fprintf(f, "%s = %s\n", key, names[val]);
+    else fprintf(f, "%s = %d\n", key, val);
+}
+
+static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
+    fprintf(f, "\n[%s]\n", section);
+    if (p->p_name[0]) _sf_writeStr(f, "name", p->p_name);
+    _sf_writeEnum(f, "waveType", p->p_waveType, _sf_waveTypeNames, _sf_waveTypeCount);
+    _sf_writeInt(f, "scwIndex", p->p_scwIndex);
+    _sf_writeFloat(f, "attack", p->p_attack);
+    _sf_writeFloat(f, "decay", p->p_decay);
+    _sf_writeFloat(f, "sustain", p->p_sustain);
+    _sf_writeFloat(f, "release", p->p_release);
+    _sf_writeBool(f, "expRelease", p->p_expRelease);
+    _sf_writeFloat(f, "volume", p->p_volume);
+    _sf_writeFloat(f, "pulseWidth", p->p_pulseWidth);
+    _sf_writeFloat(f, "pwmRate", p->p_pwmRate);
+    _sf_writeFloat(f, "pwmDepth", p->p_pwmDepth);
+    _sf_writeFloat(f, "vibratoRate", p->p_vibratoRate);
+    _sf_writeFloat(f, "vibratoDepth", p->p_vibratoDepth);
+    _sf_writeFloat(f, "filterCutoff", p->p_filterCutoff);
+    _sf_writeFloat(f, "filterResonance", p->p_filterResonance);
+    _sf_writeFloat(f, "filterEnvAmt", p->p_filterEnvAmt);
+    _sf_writeFloat(f, "filterEnvAttack", p->p_filterEnvAttack);
+    _sf_writeFloat(f, "filterEnvDecay", p->p_filterEnvDecay);
+    _sf_writeFloat(f, "filterLfoRate", p->p_filterLfoRate);
+    _sf_writeFloat(f, "filterLfoDepth", p->p_filterLfoDepth);
+    _sf_writeInt(f, "filterLfoShape", p->p_filterLfoShape);
+    _sf_writeInt(f, "filterLfoSync", p->p_filterLfoSync);
+    _sf_writeFloat(f, "resoLfoRate", p->p_resoLfoRate);
+    _sf_writeFloat(f, "resoLfoDepth", p->p_resoLfoDepth);
+    _sf_writeInt(f, "resoLfoShape", p->p_resoLfoShape);
+    _sf_writeFloat(f, "ampLfoRate", p->p_ampLfoRate);
+    _sf_writeFloat(f, "ampLfoDepth", p->p_ampLfoDepth);
+    _sf_writeInt(f, "ampLfoShape", p->p_ampLfoShape);
+    _sf_writeFloat(f, "pitchLfoRate", p->p_pitchLfoRate);
+    _sf_writeFloat(f, "pitchLfoDepth", p->p_pitchLfoDepth);
+    _sf_writeInt(f, "pitchLfoShape", p->p_pitchLfoShape);
+    _sf_writeBool(f, "arpEnabled", p->p_arpEnabled);
+    _sf_writeInt(f, "arpMode", p->p_arpMode);
+    _sf_writeInt(f, "arpRateDiv", p->p_arpRateDiv);
+    _sf_writeFloat(f, "arpRate", p->p_arpRate);
+    _sf_writeInt(f, "arpChord", p->p_arpChord);
+    _sf_writeInt(f, "unisonCount", p->p_unisonCount);
+    _sf_writeFloat(f, "unisonDetune", p->p_unisonDetune);
+    _sf_writeFloat(f, "unisonMix", p->p_unisonMix);
+    _sf_writeBool(f, "monoMode", p->p_monoMode);
+    _sf_writeFloat(f, "glideTime", p->p_glideTime);
+    _sf_writeFloat(f, "pluckBrightness", p->p_pluckBrightness);
+    _sf_writeFloat(f, "pluckDamping", p->p_pluckDamping);
+    _sf_writeFloat(f, "pluckDamp", p->p_pluckDamp);
+    _sf_writeInt(f, "additivePreset", p->p_additivePreset);
+    _sf_writeFloat(f, "additiveBrightness", p->p_additiveBrightness);
+    _sf_writeFloat(f, "additiveShimmer", p->p_additiveShimmer);
+    _sf_writeFloat(f, "additiveInharmonicity", p->p_additiveInharmonicity);
+    _sf_writeInt(f, "malletPreset", p->p_malletPreset);
+    _sf_writeFloat(f, "malletStiffness", p->p_malletStiffness);
+    _sf_writeFloat(f, "malletHardness", p->p_malletHardness);
+    _sf_writeFloat(f, "malletStrikePos", p->p_malletStrikePos);
+    _sf_writeFloat(f, "malletResonance", p->p_malletResonance);
+    _sf_writeFloat(f, "malletTremolo", p->p_malletTremolo);
+    _sf_writeFloat(f, "malletTremoloRate", p->p_malletTremoloRate);
+    _sf_writeFloat(f, "malletDamp", p->p_malletDamp);
+    _sf_writeInt(f, "voiceVowel", p->p_voiceVowel);
+    _sf_writeFloat(f, "voiceFormantShift", p->p_voiceFormantShift);
+    _sf_writeFloat(f, "voiceBreathiness", p->p_voiceBreathiness);
+    _sf_writeFloat(f, "voiceBuzziness", p->p_voiceBuzziness);
+    _sf_writeFloat(f, "voiceSpeed", p->p_voiceSpeed);
+    _sf_writeFloat(f, "voicePitch", p->p_voicePitch);
+    _sf_writeBool(f, "voiceConsonant", p->p_voiceConsonant);
+    _sf_writeFloat(f, "voiceConsonantAmt", p->p_voiceConsonantAmt);
+    _sf_writeBool(f, "voiceNasal", p->p_voiceNasal);
+    _sf_writeFloat(f, "voiceNasalAmt", p->p_voiceNasalAmt);
+    _sf_writeFloat(f, "voicePitchEnv", p->p_voicePitchEnv);
+    _sf_writeFloat(f, "voicePitchEnvTime", p->p_voicePitchEnvTime);
+    _sf_writeFloat(f, "voicePitchEnvCurve", p->p_voicePitchEnvCurve);
+    _sf_writeInt(f, "granularScwIndex", p->p_granularScwIndex);
+    _sf_writeFloat(f, "granularGrainSize", p->p_granularGrainSize);
+    _sf_writeFloat(f, "granularDensity", p->p_granularDensity);
+    _sf_writeFloat(f, "granularPosition", p->p_granularPosition);
+    _sf_writeFloat(f, "granularPosRandom", p->p_granularPosRandom);
+    _sf_writeFloat(f, "granularPitch", p->p_granularPitch);
+    _sf_writeFloat(f, "granularPitchRandom", p->p_granularPitchRandom);
+    _sf_writeFloat(f, "granularAmpRandom", p->p_granularAmpRandom);
+    _sf_writeFloat(f, "granularSpread", p->p_granularSpread);
+    _sf_writeBool(f, "granularFreeze", p->p_granularFreeze);
+    _sf_writeFloat(f, "fmModRatio", p->p_fmModRatio);
+    _sf_writeFloat(f, "fmModIndex", p->p_fmModIndex);
+    _sf_writeFloat(f, "fmFeedback", p->p_fmFeedback);
+    _sf_writeInt(f, "pdWaveType", p->p_pdWaveType);
+    _sf_writeFloat(f, "pdDistortion", p->p_pdDistortion);
+    _sf_writeInt(f, "membranePreset", p->p_membranePreset);
+    _sf_writeFloat(f, "membraneDamping", p->p_membraneDamping);
+    _sf_writeFloat(f, "membraneStrike", p->p_membraneStrike);
+    _sf_writeFloat(f, "membraneBend", p->p_membraneBend);
+    _sf_writeFloat(f, "membraneBendDecay", p->p_membraneBendDecay);
+    _sf_writeInt(f, "birdType", p->p_birdType);
+    _sf_writeFloat(f, "birdChirpRange", p->p_birdChirpRange);
+    _sf_writeFloat(f, "birdTrillRate", p->p_birdTrillRate);
+    _sf_writeFloat(f, "birdTrillDepth", p->p_birdTrillDepth);
+    _sf_writeFloat(f, "birdAmRate", p->p_birdAmRate);
+    _sf_writeFloat(f, "birdAmDepth", p->p_birdAmDepth);
+    _sf_writeFloat(f, "birdHarmonics", p->p_birdHarmonics);
+}
+
+static void _sf_writePattern(FILE *f, int idx, const Pattern *p) {
+    fprintf(f, "\n[pattern.%d]\n", idx);
+
+    // Track lengths
+    fprintf(f, "drumTrackLength =");
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) fprintf(f, " %d", p->drumTrackLength[t]);
+    fprintf(f, "\n");
+    fprintf(f, "melodyTrackLength =");
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) fprintf(f, " %d", p->melodyTrackLength[t]);
+    fprintf(f, "\n");
+
+    // Drum events — only write active steps
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
+        for (int s = 0; s < p->drumTrackLength[t]; s++) {
+            if (!p->drumSteps[t][s]) continue;
+            fprintf(f, "d track=%d step=%d vel=%.3g", t, s, (double)p->drumVelocity[t][s]);
+            if (p->drumPitch[t][s] != 0.0f)
+                fprintf(f, " pitch=%.3g", (double)p->drumPitch[t][s]);
+            if (p->drumProbability[t][s] > 0.0f && p->drumProbability[t][s] < 1.0f)
+                fprintf(f, " prob=%.3g", (double)p->drumProbability[t][s]);
+            if (p->drumCondition[t][s] != COND_ALWAYS)
+                fprintf(f, " cond=%s", _sf_conditionNames[p->drumCondition[t][s]]);
+            fprintf(f, "\n");
+        }
+    }
+
+    // Melody events — only write steps with notes
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
+        for (int s = 0; s < p->melodyTrackLength[t]; s++) {
+            if (p->melodyNote[t][s] == SEQ_NOTE_OFF) continue;
+            char noteName[8];
+            _sf_midiToName(p->melodyNote[t][s], noteName, sizeof(noteName));
+            fprintf(f, "m track=%d step=%d note=%s vel=%.3g gate=%d",
+                    t, s, noteName, (double)p->melodyVelocity[t][s], p->melodyGate[t][s]);
+            if (p->melodySlide[t][s]) fprintf(f, " slide");
+            if (p->melodyAccent[t][s]) fprintf(f, " accent");
+            if (p->melodySustain[t][s] > 0)
+                fprintf(f, " sustain=%d", p->melodySustain[t][s]);
+            if (p->melodyProbability[t][s] > 0.0f && p->melodyProbability[t][s] < 1.0f)
+                fprintf(f, " prob=%.3g", (double)p->melodyProbability[t][s]);
+            if (p->melodyCondition[t][s] != COND_ALWAYS)
+                fprintf(f, " cond=%s", _sf_conditionNames[p->melodyCondition[t][s]]);
+
+            // Note pool
+            const NotePool *np = &p->melodyNotePool[t][s];
+            if (np->enabled) {
+                if (np->chordType >= 0 && np->chordType < _sf_chordTypeCount)
+                    fprintf(f, " chord=%s", _sf_chordTypeNames[np->chordType]);
+                if (np->pickMode >= 0 && np->pickMode < _sf_pickModeCount)
+                    fprintf(f, " pick=%s", _sf_pickModeNames[np->pickMode]);
+                if (np->chordType == CHORD_CUSTOM && np->customNoteCount > 0) {
+                    fprintf(f, " notes=");
+                    for (int n = 0; n < np->customNoteCount; n++) {
+                        if (n > 0) fprintf(f, ",");
+                        char nn[8];
+                        _sf_midiToName(np->customNotes[n], nn, sizeof(nn));
+                        fprintf(f, "%s", nn);
+                    }
+                }
+            }
+            fprintf(f, "\n");
+        }
+    }
+
+    // P-locks
+    for (int i = 0; i < p->plockCount; i++) {
+        const PLock *pl = &p->plocks[i];
+        if (pl->param < _sf_plockParamCount) {
+            fprintf(f, "p track=%d step=%d param=%s val=%.4g\n",
+                    pl->track, pl->step, _sf_plockParamNames[pl->param], (double)pl->value);
+        }
+    }
+}
+
+static bool songFileSave(const char *filepath, const SongFileData *d) {
+    FILE *f = fopen(filepath, "w");
+    if (!f) return false;
+
+    // Song header
+    fprintf(f, "# Song file (format %d)\n", SONG_FILE_FORMAT_VERSION);
+    fprintf(f, "\n[song]\n");
+    _sf_writeInt(f, "format", SONG_FILE_FORMAT_VERSION);
+    _sf_writeStr(f, "name", d->name);
+    _sf_writeFloat(f, "bpm", d->bpm);
+    _sf_writeInt(f, "ticksPerStep", d->ticksPerStep);
+    _sf_writeInt(f, "loopsPerPattern", d->loopsPerPattern);
+    _sf_writeInt(f, "drumTracks", d->drumTracks);
+    _sf_writeInt(f, "melodyTracks", d->melodyTracks);
+
+    // Scale
+    fprintf(f, "\n[scale]\n");
+    _sf_writeBool(f, "enabled", d->songScaleLockEnabled);
+    _sf_writeInt(f, "root", d->songScaleRoot);
+    _sf_writeEnum(f, "type", d->songScaleType, _sf_scaleTypeNames, _sf_scaleTypeCount);
+
+    // Groove
+    fprintf(f, "\n[groove]\n");
+    _sf_writeInt(f, "kickNudge", d->dilla.kickNudge);
+    _sf_writeInt(f, "snareDelay", d->dilla.snareDelay);
+    _sf_writeInt(f, "hatNudge", d->dilla.hatNudge);
+    _sf_writeInt(f, "clapDelay", d->dilla.clapDelay);
+    _sf_writeInt(f, "swing", d->dilla.swing);
+    _sf_writeInt(f, "jitter", d->dilla.jitter);
+    _sf_writeInt(f, "melodyTimingJitter", d->humanize.timingJitter);
+    _sf_writeFloat(f, "melodyVelocityJitter", d->humanize.velocityJitter);
+
+    // Instruments
+    _sf_writePatch(f, "instrument.bass", &d->instruments[0]);
+    _sf_writePatch(f, "instrument.lead", &d->instruments[1]);
+    _sf_writePatch(f, "instrument.chord", &d->instruments[2]);
+
+    // Drums
+    fprintf(f, "\n[drums]\n");
+    for (int i = 0; i < SEQ_DRUM_TRACKS; i++) {
+        int dt = (int)d->sfDrumSounds[i];
+        char key[16];
+        snprintf(key, sizeof(key), "track%d", i);
+        if (dt >= 0 && dt < _sf_drumTypeCount)
+            fprintf(f, "%s = %s\n", key, _sf_drumTypeNames[dt]);
+        else
+            fprintf(f, "%s = sample:%d\n", key, dt - DRUM_SYNTH_COUNT);
+    }
+
+    // Drum params
+    fprintf(f, "\n# Drum parameters\n");
+    _sf_writeFloat(f, "kickPitch", d->sfDrumParams.kickPitch);
+    _sf_writeFloat(f, "kickDecay", d->sfDrumParams.kickDecay);
+    _sf_writeFloat(f, "kickPunchPitch", d->sfDrumParams.kickPunchPitch);
+    _sf_writeFloat(f, "kickPunchDecay", d->sfDrumParams.kickPunchDecay);
+    _sf_writeFloat(f, "kickClick", d->sfDrumParams.kickClick);
+    _sf_writeFloat(f, "kickTone", d->sfDrumParams.kickTone);
+    _sf_writeFloat(f, "snarePitch", d->sfDrumParams.snarePitch);
+    _sf_writeFloat(f, "snareDecay", d->sfDrumParams.snareDecay);
+    _sf_writeFloat(f, "snareSnappy", d->sfDrumParams.snareSnappy);
+    _sf_writeFloat(f, "snareTone", d->sfDrumParams.snareTone);
+    _sf_writeFloat(f, "clapDecay", d->sfDrumParams.clapDecay);
+    _sf_writeFloat(f, "clapTone", d->sfDrumParams.clapTone);
+    _sf_writeFloat(f, "clapSpread", d->sfDrumParams.clapSpread);
+    _sf_writeFloat(f, "hhDecayClosed", d->sfDrumParams.hhDecayClosed);
+    _sf_writeFloat(f, "hhDecayOpen", d->sfDrumParams.hhDecayOpen);
+    _sf_writeFloat(f, "hhTone", d->sfDrumParams.hhTone);
+    _sf_writeFloat(f, "tomPitch", d->sfDrumParams.tomPitch);
+    _sf_writeFloat(f, "tomDecay", d->sfDrumParams.tomDecay);
+    _sf_writeFloat(f, "tomPunchDecay", d->sfDrumParams.tomPunchDecay);
+    _sf_writeFloat(f, "rimPitch", d->sfDrumParams.rimPitch);
+    _sf_writeFloat(f, "rimDecay", d->sfDrumParams.rimDecay);
+    _sf_writeFloat(f, "cowbellPitch", d->sfDrumParams.cowbellPitch);
+    _sf_writeFloat(f, "cowbellDecay", d->sfDrumParams.cowbellDecay);
+    _sf_writeFloat(f, "clavePitch", d->sfDrumParams.clavePitch);
+    _sf_writeFloat(f, "claveDecay", d->sfDrumParams.claveDecay);
+    _sf_writeFloat(f, "maracasDecay", d->sfDrumParams.maracasDecay);
+    _sf_writeFloat(f, "maracasTone", d->sfDrumParams.maracasTone);
+    _sf_writeFloat(f, "cr78KickPitch", d->sfDrumParams.cr78KickPitch);
+    _sf_writeFloat(f, "cr78KickDecay", d->sfDrumParams.cr78KickDecay);
+    _sf_writeFloat(f, "cr78KickResonance", d->sfDrumParams.cr78KickResonance);
+    _sf_writeFloat(f, "cr78SnarePitch", d->sfDrumParams.cr78SnarePitch);
+    _sf_writeFloat(f, "cr78SnareDecay", d->sfDrumParams.cr78SnareDecay);
+    _sf_writeFloat(f, "cr78SnareSnappy", d->sfDrumParams.cr78SnareSnappy);
+    _sf_writeFloat(f, "cr78HHDecay", d->sfDrumParams.cr78HHDecay);
+    _sf_writeFloat(f, "cr78HHTone", d->sfDrumParams.cr78HHTone);
+    _sf_writeFloat(f, "cr78MetalPitch", d->sfDrumParams.cr78MetalPitch);
+    _sf_writeFloat(f, "cr78MetalDecay", d->sfDrumParams.cr78MetalDecay);
+
+    // Mix
+    fprintf(f, "\n[mix]\n");
+    _sf_writeFloat(f, "masterVolume", d->sfMasterVolume);
+    _sf_writeFloat(f, "drumVolume", d->sfDrumVolume);
+    for (int i = 0; i < SEQ_TOTAL_TRACKS; i++) {
+        char key[16];
+        snprintf(key, sizeof(key), "track%d", i);
+        _sf_writeFloat(f, key, d->sfTrackVolume[i]);
+    }
+
+    // Master effects
+    fprintf(f, "\n[effects]\n");
+    _sf_writeBool(f, "distEnabled", d->sfEffects.distEnabled);
+    _sf_writeFloat(f, "distDrive", d->sfEffects.distDrive);
+    _sf_writeFloat(f, "distTone", d->sfEffects.distTone);
+    _sf_writeFloat(f, "distMix", d->sfEffects.distMix);
+    _sf_writeBool(f, "delayEnabled", d->sfEffects.delayEnabled);
+    _sf_writeFloat(f, "delayTime", d->sfEffects.delayTime);
+    _sf_writeFloat(f, "delayFeedback", d->sfEffects.delayFeedback);
+    _sf_writeFloat(f, "delayMix", d->sfEffects.delayMix);
+    _sf_writeFloat(f, "delayTone", d->sfEffects.delayTone);
+    _sf_writeBool(f, "tapeEnabled", d->sfEffects.tapeEnabled);
+    _sf_writeFloat(f, "tapeWow", d->sfEffects.tapeWow);
+    _sf_writeFloat(f, "tapeFlutter", d->sfEffects.tapeFlutter);
+    _sf_writeFloat(f, "tapeSaturation", d->sfEffects.tapeSaturation);
+    _sf_writeFloat(f, "tapeHiss", d->sfEffects.tapeHiss);
+    _sf_writeBool(f, "crushEnabled", d->sfEffects.crushEnabled);
+    _sf_writeFloat(f, "crushBits", d->sfEffects.crushBits);
+    _sf_writeFloat(f, "crushRate", d->sfEffects.crushRate);
+    _sf_writeFloat(f, "crushMix", d->sfEffects.crushMix);
+    _sf_writeBool(f, "chorusEnabled", d->sfEffects.chorusEnabled);
+    _sf_writeFloat(f, "chorusRate", d->sfEffects.chorusRate);
+    _sf_writeFloat(f, "chorusDepth", d->sfEffects.chorusDepth);
+    _sf_writeFloat(f, "chorusMix", d->sfEffects.chorusMix);
+    _sf_writeFloat(f, "chorusDelay", d->sfEffects.chorusDelay);
+    _sf_writeFloat(f, "chorusFeedback", d->sfEffects.chorusFeedback);
+    _sf_writeBool(f, "reverbEnabled", d->sfEffects.reverbEnabled);
+    _sf_writeFloat(f, "reverbSize", d->sfEffects.reverbSize);
+    _sf_writeFloat(f, "reverbDamping", d->sfEffects.reverbDamping);
+    _sf_writeFloat(f, "reverbMix", d->sfEffects.reverbMix);
+    _sf_writeFloat(f, "reverbPreDelay", d->sfEffects.reverbPreDelay);
+    _sf_writeBool(f, "sidechainEnabled", d->sfEffects.sidechainEnabled);
+    _sf_writeInt(f, "sidechainSource", d->sfEffects.sidechainSource);
+    _sf_writeInt(f, "sidechainTarget", d->sfEffects.sidechainTarget);
+    _sf_writeFloat(f, "sidechainDepth", d->sfEffects.sidechainDepth);
+    _sf_writeFloat(f, "sidechainAttack", d->sfEffects.sidechainAttack);
+    _sf_writeFloat(f, "sidechainRelease", d->sfEffects.sidechainRelease);
+
+    // Dub loop
+    fprintf(f, "\n[dub]\n");
+    _sf_writeBool(f, "enabled", d->sfDubLoop.enabled);
+    _sf_writeFloat(f, "feedback", d->sfDubLoop.feedback);
+    _sf_writeFloat(f, "mix", d->sfDubLoop.mix);
+    _sf_writeInt(f, "inputSource", d->sfDubLoop.inputSource);
+    _sf_writeBool(f, "preReverb", d->sfDubLoop.preReverb);
+    _sf_writeFloat(f, "speed", d->sfDubLoop.speed);
+    _sf_writeFloat(f, "saturation", d->sfDubLoop.saturation);
+    _sf_writeFloat(f, "toneHigh", d->sfDubLoop.toneHigh);
+    _sf_writeFloat(f, "toneLow", d->sfDubLoop.toneLow);
+    _sf_writeFloat(f, "noise", d->sfDubLoop.noise);
+    _sf_writeFloat(f, "degradeRate", d->sfDubLoop.degradeRate);
+    _sf_writeFloat(f, "wow", d->sfDubLoop.wow);
+    _sf_writeFloat(f, "flutter", d->sfDubLoop.flutter);
+    _sf_writeFloat(f, "drift", d->sfDubLoop.drift);
+    _sf_writeFloat(f, "driftRate", d->sfDubLoop.driftRate);
+    _sf_writeInt(f, "numHeads", d->sfDubLoop.numHeads);
+    for (int i = 0; i < d->sfDubLoop.numHeads && i < DUB_LOOP_MAX_HEADS; i++) {
+        char key[32];
+        snprintf(key, sizeof(key), "headTime%d", i);
+        _sf_writeFloat(f, key, d->sfDubLoop.headTime[i]);
+        snprintf(key, sizeof(key), "headLevel%d", i);
+        _sf_writeFloat(f, key, d->sfDubLoop.headLevel[i]);
+    }
+
+    // Per-bus effects
+    static const char* busNames[] = {"drum0", "drum1", "drum2", "drum3", "bass", "lead", "chord"};
+    for (int b = 0; b < NUM_BUSES; b++) {
+        const BusEffects *bus = &d->sfBusEffects[b];
+        fprintf(f, "\n[bus.%s]\n", busNames[b]);
+        _sf_writeFloat(f, "volume", bus->volume);
+        _sf_writeFloat(f, "pan", bus->pan);
+        _sf_writeBool(f, "mute", bus->mute);
+        _sf_writeBool(f, "solo", bus->solo);
+        _sf_writeBool(f, "filterEnabled", bus->filterEnabled);
+        _sf_writeFloat(f, "filterCutoff", bus->filterCutoff);
+        _sf_writeFloat(f, "filterResonance", bus->filterResonance);
+        _sf_writeInt(f, "filterType", bus->filterType);
+        _sf_writeBool(f, "distEnabled", bus->distEnabled);
+        _sf_writeFloat(f, "distDrive", bus->distDrive);
+        _sf_writeFloat(f, "distMix", bus->distMix);
+        _sf_writeBool(f, "delayEnabled", bus->delayEnabled);
+        _sf_writeFloat(f, "delayTime", bus->delayTime);
+        _sf_writeFloat(f, "delayFeedback", bus->delayFeedback);
+        _sf_writeFloat(f, "delayMix", bus->delayMix);
+        _sf_writeBool(f, "delayTempoSync", bus->delayTempoSync);
+        _sf_writeInt(f, "delaySyncDiv", bus->delaySyncDiv);
+        _sf_writeFloat(f, "reverbSend", bus->reverbSend);
+    }
+
+    // Metadata
+    fprintf(f, "\n[metadata]\n");
+    _sf_writeStr(f, "author", d->author);
+    _sf_writeStr(f, "description", d->description);
+    _sf_writeStr(f, "mood", d->mood);
+    if (d->energy[0]) fprintf(f, "energy = %s\n", d->energy);
+    _sf_writeStr(f, "context", d->context);
+
+    // Transitions
+    fprintf(f, "\n[transitions]\n");
+    _sf_writeFloat(f, "fadeIn", d->fadeIn);
+    _sf_writeFloat(f, "fadeOut", d->fadeOut);
+    _sf_writeBool(f, "crossfade", d->crossfade);
+
+    // Patterns
+    for (int i = 0; i < d->patternCount; i++) {
+        _sf_writePattern(f, i, &d->patterns[i]);
+    }
+
+    fclose(f);
+    return true;
+}
+
+// Save a single patch to .patch file
+static bool songFileSavePatch(const char *filepath, const SynthPatch *patch) {
+    FILE *f = fopen(filepath, "w");
+    if (!f) return false;
+    fprintf(f, "# Patch file (format %d)\n", SONG_FILE_FORMAT_VERSION);
+    _sf_writePatch(f, "patch", patch);
+    fclose(f);
+    return true;
+}
+
+// ============================================================================
+// LOAD — Parse .song file
+// ============================================================================
+
+// Apply a key=value pair to the current section context
+typedef enum {
+    _SF_SEC_NONE,
+    _SF_SEC_SONG,
+    _SF_SEC_SCALE,
+    _SF_SEC_GROOVE,
+    _SF_SEC_INSTRUMENT,   // .bass, .lead, .chord
+    _SF_SEC_DRUMS,
+    _SF_SEC_MIX,
+    _SF_SEC_EFFECTS,
+    _SF_SEC_DUB,
+    _SF_SEC_BUS,          // .drum0, .drum1, ..., .chord
+    _SF_SEC_METADATA,
+    _SF_SEC_TRANSITIONS,
+    _SF_SEC_PATTERN,
+    _SF_SEC_PATCH,        // standalone .patch file
+} _SFSection;
+
+static float _sf_parseFloat(const char *val) { return (float)atof(val); }
+static int _sf_parseInt(const char *val) { return atoi(val); }
+static bool _sf_parseBool(const char *val) {
+    return (strcmp(val, "true") == 0 || strcmp(val, "1") == 0 || strcmp(val, "yes") == 0);
+}
+
+// Strip leading/trailing whitespace in-place, return new start
+static char* _sf_strip(char *s) {
+    while (*s == ' ' || *s == '\t') s++;
+    int len = (int)strlen(s);
+    while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\t' || s[len-1] == '\n' || s[len-1] == '\r'))
+        s[--len] = '\0';
+    return s;
+}
+
+// Strip surrounding quotes if present
+static void _sf_stripQuotes(char *s) {
+    int len = (int)strlen(s);
+    if (len >= 2 && s[0] == '"' && s[len-1] == '"') {
+        memmove(s, s+1, len-2);
+        s[len-2] = '\0';
+    }
+}
+
+static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
+    if (strcmp(key, "name") == 0) { char tmp[64]; strncpy(tmp, val, 63); tmp[63]='\0'; _sf_stripQuotes(tmp); strncpy(p->p_name, tmp, 31); p->p_name[31]='\0'; }
+    else if (strcmp(key, "waveType") == 0) {
+        int idx = _sf_lookupName(val, _sf_waveTypeNames, _sf_waveTypeCount);
+        p->p_waveType = idx >= 0 ? idx : _sf_parseInt(val);
+    }
+    else if (strcmp(key, "scwIndex") == 0) p->p_scwIndex = _sf_parseInt(val);
+    else if (strcmp(key, "attack") == 0) p->p_attack = _sf_parseFloat(val);
+    else if (strcmp(key, "decay") == 0) p->p_decay = _sf_parseFloat(val);
+    else if (strcmp(key, "sustain") == 0) p->p_sustain = _sf_parseFloat(val);
+    else if (strcmp(key, "release") == 0) p->p_release = _sf_parseFloat(val);
+    else if (strcmp(key, "expRelease") == 0) p->p_expRelease = _sf_parseBool(val);
+    else if (strcmp(key, "volume") == 0) p->p_volume = _sf_parseFloat(val);
+    else if (strcmp(key, "pulseWidth") == 0) p->p_pulseWidth = _sf_parseFloat(val);
+    else if (strcmp(key, "pwmRate") == 0) p->p_pwmRate = _sf_parseFloat(val);
+    else if (strcmp(key, "pwmDepth") == 0) p->p_pwmDepth = _sf_parseFloat(val);
+    else if (strcmp(key, "vibratoRate") == 0) p->p_vibratoRate = _sf_parseFloat(val);
+    else if (strcmp(key, "vibratoDepth") == 0) p->p_vibratoDepth = _sf_parseFloat(val);
+    else if (strcmp(key, "filterCutoff") == 0) p->p_filterCutoff = _sf_parseFloat(val);
+    else if (strcmp(key, "filterResonance") == 0) p->p_filterResonance = _sf_parseFloat(val);
+    else if (strcmp(key, "filterEnvAmt") == 0) p->p_filterEnvAmt = _sf_parseFloat(val);
+    else if (strcmp(key, "filterEnvAttack") == 0) p->p_filterEnvAttack = _sf_parseFloat(val);
+    else if (strcmp(key, "filterEnvDecay") == 0) p->p_filterEnvDecay = _sf_parseFloat(val);
+    else if (strcmp(key, "filterLfoRate") == 0) p->p_filterLfoRate = _sf_parseFloat(val);
+    else if (strcmp(key, "filterLfoDepth") == 0) p->p_filterLfoDepth = _sf_parseFloat(val);
+    else if (strcmp(key, "filterLfoShape") == 0) p->p_filterLfoShape = _sf_parseInt(val);
+    else if (strcmp(key, "filterLfoSync") == 0) p->p_filterLfoSync = _sf_parseInt(val);
+    else if (strcmp(key, "resoLfoRate") == 0) p->p_resoLfoRate = _sf_parseFloat(val);
+    else if (strcmp(key, "resoLfoDepth") == 0) p->p_resoLfoDepth = _sf_parseFloat(val);
+    else if (strcmp(key, "resoLfoShape") == 0) p->p_resoLfoShape = _sf_parseInt(val);
+    else if (strcmp(key, "ampLfoRate") == 0) p->p_ampLfoRate = _sf_parseFloat(val);
+    else if (strcmp(key, "ampLfoDepth") == 0) p->p_ampLfoDepth = _sf_parseFloat(val);
+    else if (strcmp(key, "ampLfoShape") == 0) p->p_ampLfoShape = _sf_parseInt(val);
+    else if (strcmp(key, "pitchLfoRate") == 0) p->p_pitchLfoRate = _sf_parseFloat(val);
+    else if (strcmp(key, "pitchLfoDepth") == 0) p->p_pitchLfoDepth = _sf_parseFloat(val);
+    else if (strcmp(key, "pitchLfoShape") == 0) p->p_pitchLfoShape = _sf_parseInt(val);
+    else if (strcmp(key, "arpEnabled") == 0) p->p_arpEnabled = _sf_parseBool(val);
+    else if (strcmp(key, "arpMode") == 0) p->p_arpMode = _sf_parseInt(val);
+    else if (strcmp(key, "arpRateDiv") == 0) p->p_arpRateDiv = _sf_parseInt(val);
+    else if (strcmp(key, "arpRate") == 0) p->p_arpRate = _sf_parseFloat(val);
+    else if (strcmp(key, "arpChord") == 0) p->p_arpChord = _sf_parseInt(val);
+    else if (strcmp(key, "unisonCount") == 0) p->p_unisonCount = _sf_parseInt(val);
+    else if (strcmp(key, "unisonDetune") == 0) p->p_unisonDetune = _sf_parseFloat(val);
+    else if (strcmp(key, "unisonMix") == 0) p->p_unisonMix = _sf_parseFloat(val);
+    else if (strcmp(key, "monoMode") == 0) p->p_monoMode = _sf_parseBool(val);
+    else if (strcmp(key, "glideTime") == 0) p->p_glideTime = _sf_parseFloat(val);
+    else if (strcmp(key, "pluckBrightness") == 0) p->p_pluckBrightness = _sf_parseFloat(val);
+    else if (strcmp(key, "pluckDamping") == 0) p->p_pluckDamping = _sf_parseFloat(val);
+    else if (strcmp(key, "pluckDamp") == 0) p->p_pluckDamp = _sf_parseFloat(val);
+    else if (strcmp(key, "additivePreset") == 0) p->p_additivePreset = _sf_parseInt(val);
+    else if (strcmp(key, "additiveBrightness") == 0) p->p_additiveBrightness = _sf_parseFloat(val);
+    else if (strcmp(key, "additiveShimmer") == 0) p->p_additiveShimmer = _sf_parseFloat(val);
+    else if (strcmp(key, "additiveInharmonicity") == 0) p->p_additiveInharmonicity = _sf_parseFloat(val);
+    else if (strcmp(key, "malletPreset") == 0) p->p_malletPreset = _sf_parseInt(val);
+    else if (strcmp(key, "malletStiffness") == 0) p->p_malletStiffness = _sf_parseFloat(val);
+    else if (strcmp(key, "malletHardness") == 0) p->p_malletHardness = _sf_parseFloat(val);
+    else if (strcmp(key, "malletStrikePos") == 0) p->p_malletStrikePos = _sf_parseFloat(val);
+    else if (strcmp(key, "malletResonance") == 0) p->p_malletResonance = _sf_parseFloat(val);
+    else if (strcmp(key, "malletTremolo") == 0) p->p_malletTremolo = _sf_parseFloat(val);
+    else if (strcmp(key, "malletTremoloRate") == 0) p->p_malletTremoloRate = _sf_parseFloat(val);
+    else if (strcmp(key, "malletDamp") == 0) p->p_malletDamp = _sf_parseFloat(val);
+    else if (strcmp(key, "voiceVowel") == 0) p->p_voiceVowel = _sf_parseInt(val);
+    else if (strcmp(key, "voiceFormantShift") == 0) p->p_voiceFormantShift = _sf_parseFloat(val);
+    else if (strcmp(key, "voiceBreathiness") == 0) p->p_voiceBreathiness = _sf_parseFloat(val);
+    else if (strcmp(key, "voiceBuzziness") == 0) p->p_voiceBuzziness = _sf_parseFloat(val);
+    else if (strcmp(key, "voiceSpeed") == 0) p->p_voiceSpeed = _sf_parseFloat(val);
+    else if (strcmp(key, "voicePitch") == 0) p->p_voicePitch = _sf_parseFloat(val);
+    else if (strcmp(key, "voiceConsonant") == 0) p->p_voiceConsonant = _sf_parseBool(val);
+    else if (strcmp(key, "voiceConsonantAmt") == 0) p->p_voiceConsonantAmt = _sf_parseFloat(val);
+    else if (strcmp(key, "voiceNasal") == 0) p->p_voiceNasal = _sf_parseBool(val);
+    else if (strcmp(key, "voiceNasalAmt") == 0) p->p_voiceNasalAmt = _sf_parseFloat(val);
+    else if (strcmp(key, "voicePitchEnv") == 0) p->p_voicePitchEnv = _sf_parseFloat(val);
+    else if (strcmp(key, "voicePitchEnvTime") == 0) p->p_voicePitchEnvTime = _sf_parseFloat(val);
+    else if (strcmp(key, "voicePitchEnvCurve") == 0) p->p_voicePitchEnvCurve = _sf_parseFloat(val);
+    else if (strcmp(key, "granularScwIndex") == 0) p->p_granularScwIndex = _sf_parseInt(val);
+    else if (strcmp(key, "granularGrainSize") == 0) p->p_granularGrainSize = _sf_parseFloat(val);
+    else if (strcmp(key, "granularDensity") == 0) p->p_granularDensity = _sf_parseFloat(val);
+    else if (strcmp(key, "granularPosition") == 0) p->p_granularPosition = _sf_parseFloat(val);
+    else if (strcmp(key, "granularPosRandom") == 0) p->p_granularPosRandom = _sf_parseFloat(val);
+    else if (strcmp(key, "granularPitch") == 0) p->p_granularPitch = _sf_parseFloat(val);
+    else if (strcmp(key, "granularPitchRandom") == 0) p->p_granularPitchRandom = _sf_parseFloat(val);
+    else if (strcmp(key, "granularAmpRandom") == 0) p->p_granularAmpRandom = _sf_parseFloat(val);
+    else if (strcmp(key, "granularSpread") == 0) p->p_granularSpread = _sf_parseFloat(val);
+    else if (strcmp(key, "granularFreeze") == 0) p->p_granularFreeze = _sf_parseBool(val);
+    else if (strcmp(key, "fmModRatio") == 0) p->p_fmModRatio = _sf_parseFloat(val);
+    else if (strcmp(key, "fmModIndex") == 0) p->p_fmModIndex = _sf_parseFloat(val);
+    else if (strcmp(key, "fmFeedback") == 0) p->p_fmFeedback = _sf_parseFloat(val);
+    else if (strcmp(key, "pdWaveType") == 0) p->p_pdWaveType = _sf_parseInt(val);
+    else if (strcmp(key, "pdDistortion") == 0) p->p_pdDistortion = _sf_parseFloat(val);
+    else if (strcmp(key, "membranePreset") == 0) p->p_membranePreset = _sf_parseInt(val);
+    else if (strcmp(key, "membraneDamping") == 0) p->p_membraneDamping = _sf_parseFloat(val);
+    else if (strcmp(key, "membraneStrike") == 0) p->p_membraneStrike = _sf_parseFloat(val);
+    else if (strcmp(key, "membraneBend") == 0) p->p_membraneBend = _sf_parseFloat(val);
+    else if (strcmp(key, "membraneBendDecay") == 0) p->p_membraneBendDecay = _sf_parseFloat(val);
+    else if (strcmp(key, "birdType") == 0) p->p_birdType = _sf_parseInt(val);
+    else if (strcmp(key, "birdChirpRange") == 0) p->p_birdChirpRange = _sf_parseFloat(val);
+    else if (strcmp(key, "birdTrillRate") == 0) p->p_birdTrillRate = _sf_parseFloat(val);
+    else if (strcmp(key, "birdTrillDepth") == 0) p->p_birdTrillDepth = _sf_parseFloat(val);
+    else if (strcmp(key, "birdAmRate") == 0) p->p_birdAmRate = _sf_parseFloat(val);
+    else if (strcmp(key, "birdAmDepth") == 0) p->p_birdAmDepth = _sf_parseFloat(val);
+    else if (strcmp(key, "birdHarmonics") == 0) p->p_birdHarmonics = _sf_parseFloat(val);
+    // Unknown keys silently skipped (future-proof)
+}
+
+static void _sf_parseDrumEvent(const char *line, Pattern *p) {
+    char lineCopy[SONG_FILE_MAX_LINE];
+    strncpy(lineCopy, line, SONG_FILE_MAX_LINE - 1);
+    lineCopy[SONG_FILE_MAX_LINE - 1] = '\0';
+    char *tokens[32];
+    int n = _sf_tokenize(lineCopy + 1, tokens, 32); // skip 'd'
+
+    int track = 0, step = 0;
+    float vel = 0.8f, pitch = 0.0f, prob = 1.0f;
+    int cond = COND_ALWAYS;
+
+    char key[32], val[64];
+    for (int i = 0; i < n; i++) {
+        if (_sf_parseKV(tokens[i], key, 32, val, 64)) {
+            if (strcmp(key, "track") == 0) track = _sf_parseInt(val);
+            else if (strcmp(key, "step") == 0) step = _sf_parseInt(val);
+            else if (strcmp(key, "vel") == 0) vel = _sf_parseFloat(val);
+            else if (strcmp(key, "pitch") == 0) pitch = _sf_parseFloat(val);
+            else if (strcmp(key, "prob") == 0) prob = _sf_parseFloat(val);
+            else if (strcmp(key, "cond") == 0) {
+                int idx = _sf_lookupName(val, _sf_conditionNames, _sf_conditionCount);
+                if (idx >= 0) cond = idx;
+            }
+        }
+    }
+
+    if (track >= 0 && track < SEQ_DRUM_TRACKS && step >= 0 && step < SEQ_MAX_STEPS) {
+        p->drumSteps[track][step] = true;
+        p->drumVelocity[track][step] = vel;
+        p->drumPitch[track][step] = pitch;
+        p->drumProbability[track][step] = prob;
+        p->drumCondition[track][step] = cond;
+    }
+}
+
+static void _sf_parseMelodyEvent(const char *line, Pattern *p) {
+    char lineCopy[SONG_FILE_MAX_LINE];
+    strncpy(lineCopy, line, SONG_FILE_MAX_LINE - 1);
+    lineCopy[SONG_FILE_MAX_LINE - 1] = '\0';
+    char *tokens[32];
+    int n = _sf_tokenize(lineCopy + 1, tokens, 32); // skip 'm'
+
+    int track = 0, step = 0, gate = 4, sustain = 0;
+    char noteName[16] = "C4";
+    float vel = 0.8f, prob = 1.0f;
+    int cond = COND_ALWAYS;
+    bool slide = false, accent = false;
+    bool hasPool = false;
+    int chordType = CHORD_SINGLE, pickMode = PICK_CYCLE_UP;
+    int customNotes[NOTE_POOL_MAX_NOTES] = {0};
+    int customNoteCount = 0;
+
+    char key[32], val[64];
+    for (int i = 0; i < n; i++) {
+        if (_sf_parseKV(tokens[i], key, 32, val, 64)) {
+            if (strcmp(key, "track") == 0) track = _sf_parseInt(val);
+            else if (strcmp(key, "step") == 0) step = _sf_parseInt(val);
+            else if (strcmp(key, "note") == 0) strncpy(noteName, val, 15);
+            else if (strcmp(key, "vel") == 0) vel = _sf_parseFloat(val);
+            else if (strcmp(key, "gate") == 0) gate = _sf_parseInt(val);
+            else if (strcmp(key, "sustain") == 0) sustain = _sf_parseInt(val);
+            else if (strcmp(key, "prob") == 0) prob = _sf_parseFloat(val);
+            else if (strcmp(key, "cond") == 0) {
+                int idx = _sf_lookupName(val, _sf_conditionNames, _sf_conditionCount);
+                if (idx >= 0) cond = idx;
+            }
+            else if (strcmp(key, "chord") == 0) {
+                hasPool = true;
+                int idx = _sf_lookupName(val, _sf_chordTypeNames, _sf_chordTypeCount);
+                if (idx >= 0) chordType = idx;
+            }
+            else if (strcmp(key, "pick") == 0) {
+                hasPool = true;
+                int idx = _sf_lookupName(val, _sf_pickModeNames, _sf_pickModeCount);
+                if (idx >= 0) pickMode = idx;
+            }
+            else if (strcmp(key, "notes") == 0) {
+                // Parse comma-separated note names: "C4,E4,G4"
+                hasPool = true;
+                char notesBuf[128];
+                strncpy(notesBuf, val, 127);
+                notesBuf[127] = '\0';
+                char *tok = strtok(notesBuf, ",");
+                while (tok && customNoteCount < NOTE_POOL_MAX_NOTES) {
+                    customNotes[customNoteCount++] = _sf_nameToMidi(tok);
+                    tok = strtok(NULL, ",");
+                }
+            }
+        } else {
+            // Bare word flags
+            if (strcmp(key, "slide") == 0) slide = true;
+            else if (strcmp(key, "accent") == 0) accent = true;
+        }
+    }
+
+    if (track >= 0 && track < SEQ_MELODY_TRACKS && step >= 0 && step < SEQ_MAX_STEPS) {
+        p->melodyNote[track][step] = _sf_nameToMidi(noteName);
+        p->melodyVelocity[track][step] = vel;
+        p->melodyGate[track][step] = gate;
+        p->melodySlide[track][step] = slide;
+        p->melodyAccent[track][step] = accent;
+        p->melodySustain[track][step] = sustain;
+        p->melodyProbability[track][step] = prob;
+        p->melodyCondition[track][step] = cond;
+
+        if (hasPool) {
+            NotePool *np = &p->melodyNotePool[track][step];
+            np->enabled = true;
+            np->chordType = chordType;
+            np->pickMode = pickMode;
+            np->customNoteCount = customNoteCount;
+            for (int j = 0; j < customNoteCount; j++)
+                np->customNotes[j] = customNotes[j];
+        }
+    }
+}
+
+static void _sf_parsePlockEvent(const char *line, Pattern *p) {
+    char lineCopy[SONG_FILE_MAX_LINE];
+    strncpy(lineCopy, line, SONG_FILE_MAX_LINE - 1);
+    lineCopy[SONG_FILE_MAX_LINE - 1] = '\0';
+    char *tokens[16];
+    int n = _sf_tokenize(lineCopy + 1, tokens, 16); // skip 'p'
+
+    int track = 0, step = 0, param = -1;
+    float value = 0.0f;
+
+    char key[32], val[64];
+    for (int i = 0; i < n; i++) {
+        if (_sf_parseKV(tokens[i], key, 32, val, 64)) {
+            if (strcmp(key, "track") == 0) track = _sf_parseInt(val);
+            else if (strcmp(key, "step") == 0) step = _sf_parseInt(val);
+            else if (strcmp(key, "param") == 0) {
+                int idx = _sf_lookupName(val, _sf_plockParamNames, _sf_plockParamCount);
+                param = idx >= 0 ? idx : _sf_parseInt(val);
+            }
+            else if (strcmp(key, "val") == 0) value = _sf_parseFloat(val);
+        }
+    }
+
+    if (param >= 0 && param < PLOCK_COUNT) {
+        seqSetPLock(p, track, step, param, value);
+    }
+}
+
+static int _sf_parseBusIndex(const char *name) {
+    if (strcmp(name, "drum0") == 0) return BUS_DRUM0;
+    if (strcmp(name, "drum1") == 0) return BUS_DRUM1;
+    if (strcmp(name, "drum2") == 0) return BUS_DRUM2;
+    if (strcmp(name, "drum3") == 0) return BUS_DRUM3;
+    if (strcmp(name, "bass") == 0) return BUS_BASS;
+    if (strcmp(name, "lead") == 0) return BUS_LEAD;
+    if (strcmp(name, "chord") == 0) return BUS_CHORD;
+    return -1;
+}
+
+static int _sf_parseInstrumentIndex(const char *name) {
+    if (strcmp(name, "bass") == 0) return 0;
+    if (strcmp(name, "lead") == 0) return 1;
+    if (strcmp(name, "chord") == 0) return 2;
+    return -1;
+}
+
+static DrumType _sf_parseDrumType(const char *val) {
+    // Check for sample:N
+    if (strncmp(val, "sample:", 7) == 0) {
+        return (DrumType)(DRUM_SYNTH_COUNT + atoi(val + 7));
+    }
+    int idx = _sf_lookupName(val, _sf_drumTypeNames, _sf_drumTypeCount);
+    return idx >= 0 ? (DrumType)idx : DRUM_KICK;
+}
+
+// Parse int list like "16 16 16 16"
+static int _sf_parseIntList(const char *val, int *out, int maxCount) {
+    char buf[128];
+    strncpy(buf, val, 127);
+    buf[127] = '\0';
+    int count = 0;
+    char *tok = strtok(buf, " ,\t");
+    while (tok && count < maxCount) {
+        out[count++] = atoi(tok);
+        tok = strtok(NULL, " ,\t");
+    }
+    return count;
+}
+
+static bool songFileLoad(const char *filepath, SongFileData *d) {
+    FILE *f = fopen(filepath, "r");
+    if (!f) return false;
+
+    songFileDataInit(d);
+
+    _SFSection section = _SF_SEC_NONE;
+    int subIndex = -1;      // instrument index, bus index, pattern index
+    char line[SONG_FILE_MAX_LINE];
+
+    while (fgets(line, SONG_FILE_MAX_LINE, f)) {
+        char *s = _sf_strip(line);
+        if (!*s || *s == '#') continue;
+
+        // Section header
+        if (*s == '[') {
+            char *end = strchr(s, ']');
+            if (!end) continue;
+            *end = '\0';
+            char *secName = s + 1;
+
+            if (strcmp(secName, "song") == 0) { section = _SF_SEC_SONG; }
+            else if (strcmp(secName, "scale") == 0) { section = _SF_SEC_SCALE; }
+            else if (strcmp(secName, "groove") == 0) { section = _SF_SEC_GROOVE; }
+            else if (strcmp(secName, "drums") == 0) { section = _SF_SEC_DRUMS; }
+            else if (strcmp(secName, "mix") == 0) { section = _SF_SEC_MIX; }
+            else if (strcmp(secName, "effects") == 0) { section = _SF_SEC_EFFECTS; }
+            else if (strcmp(secName, "dub") == 0) { section = _SF_SEC_DUB; }
+            else if (strcmp(secName, "metadata") == 0) { section = _SF_SEC_METADATA; }
+            else if (strcmp(secName, "transitions") == 0) { section = _SF_SEC_TRANSITIONS; }
+            else if (strcmp(secName, "patch") == 0) { section = _SF_SEC_PATCH; subIndex = 0; }
+            else if (strncmp(secName, "instrument.", 11) == 0) {
+                section = _SF_SEC_INSTRUMENT;
+                subIndex = _sf_parseInstrumentIndex(secName + 11);
+            }
+            else if (strncmp(secName, "bus.", 4) == 0) {
+                section = _SF_SEC_BUS;
+                subIndex = _sf_parseBusIndex(secName + 4);
+            }
+            else if (strncmp(secName, "pattern.", 8) == 0) {
+                section = _SF_SEC_PATTERN;
+                subIndex = atoi(secName + 8);
+                if (subIndex >= 0 && subIndex < SEQ_NUM_PATTERNS) {
+                    initPattern(&d->patterns[subIndex]);
+                }
+            }
+            else {
+                section = _SF_SEC_NONE; // Unknown section — skip
+            }
+            continue;
+        }
+
+        // Event lines (in pattern sections)
+        if (section == _SF_SEC_PATTERN && subIndex >= 0 && subIndex < SEQ_NUM_PATTERNS) {
+            if (s[0] == 'd' && s[1] == ' ') {
+                _sf_parseDrumEvent(s, &d->patterns[subIndex]);
+                continue;
+            }
+            if (s[0] == 'm' && s[1] == ' ') {
+                _sf_parseMelodyEvent(s, &d->patterns[subIndex]);
+                continue;
+            }
+            if (s[0] == 'p' && s[1] == ' ') {
+                _sf_parsePlockEvent(s, &d->patterns[subIndex]);
+                continue;
+            }
+        }
+
+        // Key = value
+        char *eq = strchr(s, '=');
+        if (!eq) continue;
+        *eq = '\0';
+        char *key = _sf_strip(s);
+        char *val = _sf_strip(eq + 1);
+        _sf_stripQuotes(val);
+
+        switch (section) {
+        case _SF_SEC_SONG:
+            if (strcmp(key, "name") == 0) strncpy(d->name, val, SONG_FILE_MAX_NAME - 1);
+            else if (strcmp(key, "bpm") == 0) d->bpm = _sf_parseFloat(val);
+            else if (strcmp(key, "ticksPerStep") == 0) d->ticksPerStep = _sf_parseInt(val);
+            else if (strcmp(key, "loopsPerPattern") == 0) d->loopsPerPattern = _sf_parseInt(val);
+            else if (strcmp(key, "drumTracks") == 0) d->drumTracks = _sf_parseInt(val);
+            else if (strcmp(key, "melodyTracks") == 0) d->melodyTracks = _sf_parseInt(val);
+            break;
+
+        case _SF_SEC_SCALE:
+            if (strcmp(key, "enabled") == 0) d->songScaleLockEnabled = _sf_parseBool(val);
+            else if (strcmp(key, "root") == 0) d->songScaleRoot = _sf_parseInt(val);
+            else if (strcmp(key, "type") == 0) {
+                int idx = _sf_lookupName(val, _sf_scaleTypeNames, _sf_scaleTypeCount);
+                d->songScaleType = idx >= 0 ? idx : _sf_parseInt(val);
+            }
+            break;
+
+        case _SF_SEC_GROOVE:
+            if (strcmp(key, "kickNudge") == 0) d->dilla.kickNudge = _sf_parseInt(val);
+            else if (strcmp(key, "snareDelay") == 0) d->dilla.snareDelay = _sf_parseInt(val);
+            else if (strcmp(key, "hatNudge") == 0) d->dilla.hatNudge = _sf_parseInt(val);
+            else if (strcmp(key, "clapDelay") == 0) d->dilla.clapDelay = _sf_parseInt(val);
+            else if (strcmp(key, "swing") == 0) d->dilla.swing = _sf_parseInt(val);
+            else if (strcmp(key, "jitter") == 0) d->dilla.jitter = _sf_parseInt(val);
+            else if (strcmp(key, "melodyTimingJitter") == 0) d->humanize.timingJitter = _sf_parseInt(val);
+            else if (strcmp(key, "melodyVelocityJitter") == 0) d->humanize.velocityJitter = _sf_parseFloat(val);
+            break;
+
+        case _SF_SEC_INSTRUMENT:
+            if (subIndex >= 0 && subIndex < 3)
+                _sf_applyPatchKV(&d->instruments[subIndex], key, val);
+            break;
+
+        case _SF_SEC_PATCH:
+            _sf_applyPatchKV(&d->instruments[0], key, val); // standalone .patch → slot 0
+            break;
+
+        case _SF_SEC_DRUMS:
+            if (strncmp(key, "track", 5) == 0 && isdigit(key[5])) {
+                int t = key[5] - '0';
+                if (t >= 0 && t < SEQ_DRUM_TRACKS) d->sfDrumSounds[t] = _sf_parseDrumType(val);
+            }
+            // Drum params
+            else if (strcmp(key, "kickPitch") == 0) d->sfDrumParams.kickPitch = _sf_parseFloat(val);
+            else if (strcmp(key, "kickDecay") == 0) d->sfDrumParams.kickDecay = _sf_parseFloat(val);
+            else if (strcmp(key, "kickPunchPitch") == 0) d->sfDrumParams.kickPunchPitch = _sf_parseFloat(val);
+            else if (strcmp(key, "kickPunchDecay") == 0) d->sfDrumParams.kickPunchDecay = _sf_parseFloat(val);
+            else if (strcmp(key, "kickClick") == 0) d->sfDrumParams.kickClick = _sf_parseFloat(val);
+            else if (strcmp(key, "kickTone") == 0) d->sfDrumParams.kickTone = _sf_parseFloat(val);
+            else if (strcmp(key, "snarePitch") == 0) d->sfDrumParams.snarePitch = _sf_parseFloat(val);
+            else if (strcmp(key, "snareDecay") == 0) d->sfDrumParams.snareDecay = _sf_parseFloat(val);
+            else if (strcmp(key, "snareSnappy") == 0) d->sfDrumParams.snareSnappy = _sf_parseFloat(val);
+            else if (strcmp(key, "snareTone") == 0) d->sfDrumParams.snareTone = _sf_parseFloat(val);
+            else if (strcmp(key, "clapDecay") == 0) d->sfDrumParams.clapDecay = _sf_parseFloat(val);
+            else if (strcmp(key, "clapTone") == 0) d->sfDrumParams.clapTone = _sf_parseFloat(val);
+            else if (strcmp(key, "clapSpread") == 0) d->sfDrumParams.clapSpread = _sf_parseFloat(val);
+            else if (strcmp(key, "hhDecayClosed") == 0) d->sfDrumParams.hhDecayClosed = _sf_parseFloat(val);
+            else if (strcmp(key, "hhDecayOpen") == 0) d->sfDrumParams.hhDecayOpen = _sf_parseFloat(val);
+            else if (strcmp(key, "hhTone") == 0) d->sfDrumParams.hhTone = _sf_parseFloat(val);
+            else if (strcmp(key, "tomPitch") == 0) d->sfDrumParams.tomPitch = _sf_parseFloat(val);
+            else if (strcmp(key, "tomDecay") == 0) d->sfDrumParams.tomDecay = _sf_parseFloat(val);
+            else if (strcmp(key, "tomPunchDecay") == 0) d->sfDrumParams.tomPunchDecay = _sf_parseFloat(val);
+            else if (strcmp(key, "rimPitch") == 0) d->sfDrumParams.rimPitch = _sf_parseFloat(val);
+            else if (strcmp(key, "rimDecay") == 0) d->sfDrumParams.rimDecay = _sf_parseFloat(val);
+            else if (strcmp(key, "cowbellPitch") == 0) d->sfDrumParams.cowbellPitch = _sf_parseFloat(val);
+            else if (strcmp(key, "cowbellDecay") == 0) d->sfDrumParams.cowbellDecay = _sf_parseFloat(val);
+            else if (strcmp(key, "clavePitch") == 0) d->sfDrumParams.clavePitch = _sf_parseFloat(val);
+            else if (strcmp(key, "claveDecay") == 0) d->sfDrumParams.claveDecay = _sf_parseFloat(val);
+            else if (strcmp(key, "maracasDecay") == 0) d->sfDrumParams.maracasDecay = _sf_parseFloat(val);
+            else if (strcmp(key, "maracasTone") == 0) d->sfDrumParams.maracasTone = _sf_parseFloat(val);
+            else if (strcmp(key, "cr78KickPitch") == 0) d->sfDrumParams.cr78KickPitch = _sf_parseFloat(val);
+            else if (strcmp(key, "cr78KickDecay") == 0) d->sfDrumParams.cr78KickDecay = _sf_parseFloat(val);
+            else if (strcmp(key, "cr78KickResonance") == 0) d->sfDrumParams.cr78KickResonance = _sf_parseFloat(val);
+            else if (strcmp(key, "cr78SnarePitch") == 0) d->sfDrumParams.cr78SnarePitch = _sf_parseFloat(val);
+            else if (strcmp(key, "cr78SnareDecay") == 0) d->sfDrumParams.cr78SnareDecay = _sf_parseFloat(val);
+            else if (strcmp(key, "cr78SnareSnappy") == 0) d->sfDrumParams.cr78SnareSnappy = _sf_parseFloat(val);
+            else if (strcmp(key, "cr78HHDecay") == 0) d->sfDrumParams.cr78HHDecay = _sf_parseFloat(val);
+            else if (strcmp(key, "cr78HHTone") == 0) d->sfDrumParams.cr78HHTone = _sf_parseFloat(val);
+            else if (strcmp(key, "cr78MetalPitch") == 0) d->sfDrumParams.cr78MetalPitch = _sf_parseFloat(val);
+            else if (strcmp(key, "cr78MetalDecay") == 0) d->sfDrumParams.cr78MetalDecay = _sf_parseFloat(val);
+            break;
+
+        case _SF_SEC_MIX:
+            if (strcmp(key, "masterVolume") == 0) d->sfMasterVolume = _sf_parseFloat(val);
+            else if (strcmp(key, "drumVolume") == 0) d->sfDrumVolume = _sf_parseFloat(val);
+            else if (strncmp(key, "track", 5) == 0 && isdigit(key[5])) {
+                int t = key[5] - '0';
+                if (t >= 0 && t < SEQ_TOTAL_TRACKS) d->sfTrackVolume[t] = _sf_parseFloat(val);
+            }
+            break;
+
+        case _SF_SEC_EFFECTS:
+            if (strcmp(key, "distEnabled") == 0) d->sfEffects.distEnabled = _sf_parseBool(val);
+            else if (strcmp(key, "distDrive") == 0) d->sfEffects.distDrive = _sf_parseFloat(val);
+            else if (strcmp(key, "distTone") == 0) d->sfEffects.distTone = _sf_parseFloat(val);
+            else if (strcmp(key, "distMix") == 0) d->sfEffects.distMix = _sf_parseFloat(val);
+            else if (strcmp(key, "delayEnabled") == 0) d->sfEffects.delayEnabled = _sf_parseBool(val);
+            else if (strcmp(key, "delayTime") == 0) d->sfEffects.delayTime = _sf_parseFloat(val);
+            else if (strcmp(key, "delayFeedback") == 0) d->sfEffects.delayFeedback = _sf_parseFloat(val);
+            else if (strcmp(key, "delayMix") == 0) d->sfEffects.delayMix = _sf_parseFloat(val);
+            else if (strcmp(key, "delayTone") == 0) d->sfEffects.delayTone = _sf_parseFloat(val);
+            else if (strcmp(key, "tapeEnabled") == 0) d->sfEffects.tapeEnabled = _sf_parseBool(val);
+            else if (strcmp(key, "tapeWow") == 0) d->sfEffects.tapeWow = _sf_parseFloat(val);
+            else if (strcmp(key, "tapeFlutter") == 0) d->sfEffects.tapeFlutter = _sf_parseFloat(val);
+            else if (strcmp(key, "tapeSaturation") == 0) d->sfEffects.tapeSaturation = _sf_parseFloat(val);
+            else if (strcmp(key, "tapeHiss") == 0) d->sfEffects.tapeHiss = _sf_parseFloat(val);
+            else if (strcmp(key, "crushEnabled") == 0) d->sfEffects.crushEnabled = _sf_parseBool(val);
+            else if (strcmp(key, "crushBits") == 0) d->sfEffects.crushBits = _sf_parseFloat(val);
+            else if (strcmp(key, "crushRate") == 0) d->sfEffects.crushRate = _sf_parseFloat(val);
+            else if (strcmp(key, "crushMix") == 0) d->sfEffects.crushMix = _sf_parseFloat(val);
+            else if (strcmp(key, "chorusEnabled") == 0) d->sfEffects.chorusEnabled = _sf_parseBool(val);
+            else if (strcmp(key, "chorusRate") == 0) d->sfEffects.chorusRate = _sf_parseFloat(val);
+            else if (strcmp(key, "chorusDepth") == 0) d->sfEffects.chorusDepth = _sf_parseFloat(val);
+            else if (strcmp(key, "chorusMix") == 0) d->sfEffects.chorusMix = _sf_parseFloat(val);
+            else if (strcmp(key, "chorusDelay") == 0) d->sfEffects.chorusDelay = _sf_parseFloat(val);
+            else if (strcmp(key, "chorusFeedback") == 0) d->sfEffects.chorusFeedback = _sf_parseFloat(val);
+            else if (strcmp(key, "reverbEnabled") == 0) d->sfEffects.reverbEnabled = _sf_parseBool(val);
+            else if (strcmp(key, "reverbSize") == 0) d->sfEffects.reverbSize = _sf_parseFloat(val);
+            else if (strcmp(key, "reverbDamping") == 0) d->sfEffects.reverbDamping = _sf_parseFloat(val);
+            else if (strcmp(key, "reverbMix") == 0) d->sfEffects.reverbMix = _sf_parseFloat(val);
+            else if (strcmp(key, "reverbPreDelay") == 0) d->sfEffects.reverbPreDelay = _sf_parseFloat(val);
+            else if (strcmp(key, "sidechainEnabled") == 0) d->sfEffects.sidechainEnabled = _sf_parseBool(val);
+            else if (strcmp(key, "sidechainSource") == 0) d->sfEffects.sidechainSource = _sf_parseInt(val);
+            else if (strcmp(key, "sidechainTarget") == 0) d->sfEffects.sidechainTarget = _sf_parseInt(val);
+            else if (strcmp(key, "sidechainDepth") == 0) d->sfEffects.sidechainDepth = _sf_parseFloat(val);
+            else if (strcmp(key, "sidechainAttack") == 0) d->sfEffects.sidechainAttack = _sf_parseFloat(val);
+            else if (strcmp(key, "sidechainRelease") == 0) d->sfEffects.sidechainRelease = _sf_parseFloat(val);
+            break;
+
+        case _SF_SEC_DUB:
+            if (strcmp(key, "enabled") == 0) d->sfDubLoop.enabled = _sf_parseBool(val);
+            else if (strcmp(key, "feedback") == 0) d->sfDubLoop.feedback = _sf_parseFloat(val);
+            else if (strcmp(key, "mix") == 0) d->sfDubLoop.mix = _sf_parseFloat(val);
+            else if (strcmp(key, "inputSource") == 0) d->sfDubLoop.inputSource = _sf_parseInt(val);
+            else if (strcmp(key, "preReverb") == 0) d->sfDubLoop.preReverb = _sf_parseBool(val);
+            else if (strcmp(key, "speed") == 0) d->sfDubLoop.speed = _sf_parseFloat(val);
+            else if (strcmp(key, "saturation") == 0) d->sfDubLoop.saturation = _sf_parseFloat(val);
+            else if (strcmp(key, "toneHigh") == 0) d->sfDubLoop.toneHigh = _sf_parseFloat(val);
+            else if (strcmp(key, "toneLow") == 0) d->sfDubLoop.toneLow = _sf_parseFloat(val);
+            else if (strcmp(key, "noise") == 0) d->sfDubLoop.noise = _sf_parseFloat(val);
+            else if (strcmp(key, "degradeRate") == 0) d->sfDubLoop.degradeRate = _sf_parseFloat(val);
+            else if (strcmp(key, "wow") == 0) d->sfDubLoop.wow = _sf_parseFloat(val);
+            else if (strcmp(key, "flutter") == 0) d->sfDubLoop.flutter = _sf_parseFloat(val);
+            else if (strcmp(key, "drift") == 0) d->sfDubLoop.drift = _sf_parseFloat(val);
+            else if (strcmp(key, "driftRate") == 0) d->sfDubLoop.driftRate = _sf_parseFloat(val);
+            else if (strcmp(key, "numHeads") == 0) d->sfDubLoop.numHeads = _sf_parseInt(val);
+            else if (strncmp(key, "headTime", 8) == 0) {
+                int h = key[8] - '0';
+                if (h >= 0 && h < DUB_LOOP_MAX_HEADS) d->sfDubLoop.headTime[h] = _sf_parseFloat(val);
+            }
+            else if (strncmp(key, "headLevel", 9) == 0) {
+                int h = key[9] - '0';
+                if (h >= 0 && h < DUB_LOOP_MAX_HEADS) d->sfDubLoop.headLevel[h] = _sf_parseFloat(val);
+            }
+            break;
+
+        case _SF_SEC_BUS:
+            if (subIndex >= 0 && subIndex < NUM_BUSES) {
+                BusEffects *bus = &d->sfBusEffects[subIndex];
+                if (strcmp(key, "volume") == 0) bus->volume = _sf_parseFloat(val);
+                else if (strcmp(key, "pan") == 0) bus->pan = _sf_parseFloat(val);
+                else if (strcmp(key, "mute") == 0) bus->mute = _sf_parseBool(val);
+                else if (strcmp(key, "solo") == 0) bus->solo = _sf_parseBool(val);
+                else if (strcmp(key, "filterEnabled") == 0) bus->filterEnabled = _sf_parseBool(val);
+                else if (strcmp(key, "filterCutoff") == 0) bus->filterCutoff = _sf_parseFloat(val);
+                else if (strcmp(key, "filterResonance") == 0) bus->filterResonance = _sf_parseFloat(val);
+                else if (strcmp(key, "filterType") == 0) bus->filterType = _sf_parseInt(val);
+                else if (strcmp(key, "distEnabled") == 0) bus->distEnabled = _sf_parseBool(val);
+                else if (strcmp(key, "distDrive") == 0) bus->distDrive = _sf_parseFloat(val);
+                else if (strcmp(key, "distMix") == 0) bus->distMix = _sf_parseFloat(val);
+                else if (strcmp(key, "delayEnabled") == 0) bus->delayEnabled = _sf_parseBool(val);
+                else if (strcmp(key, "delayTime") == 0) bus->delayTime = _sf_parseFloat(val);
+                else if (strcmp(key, "delayFeedback") == 0) bus->delayFeedback = _sf_parseFloat(val);
+                else if (strcmp(key, "delayMix") == 0) bus->delayMix = _sf_parseFloat(val);
+                else if (strcmp(key, "delayTempoSync") == 0) bus->delayTempoSync = _sf_parseBool(val);
+                else if (strcmp(key, "delaySyncDiv") == 0) bus->delaySyncDiv = _sf_parseInt(val);
+                else if (strcmp(key, "reverbSend") == 0) bus->reverbSend = _sf_parseFloat(val);
+            }
+            break;
+
+        case _SF_SEC_METADATA:
+            if (strcmp(key, "author") == 0) strncpy(d->author, val, SONG_FILE_MAX_NAME - 1);
+            else if (strcmp(key, "description") == 0) strncpy(d->description, val, SONG_FILE_MAX_NAME - 1);
+            else if (strcmp(key, "mood") == 0) strncpy(d->mood, val, SONG_FILE_MAX_NAME - 1);
+            else if (strcmp(key, "energy") == 0) strncpy(d->energy, val, 15);
+            else if (strcmp(key, "context") == 0) strncpy(d->context, val, SONG_FILE_MAX_NAME - 1);
+            break;
+
+        case _SF_SEC_TRANSITIONS:
+            if (strcmp(key, "fadeIn") == 0) d->fadeIn = _sf_parseFloat(val);
+            else if (strcmp(key, "fadeOut") == 0) d->fadeOut = _sf_parseFloat(val);
+            else if (strcmp(key, "crossfade") == 0) d->crossfade = _sf_parseBool(val);
+            break;
+
+        case _SF_SEC_PATTERN:
+            if (subIndex >= 0 && subIndex < SEQ_NUM_PATTERNS) {
+                Pattern *p = &d->patterns[subIndex];
+                if (strcmp(key, "drumTrackLength") == 0) {
+                    _sf_parseIntList(val, p->drumTrackLength, SEQ_DRUM_TRACKS);
+                }
+                else if (strcmp(key, "melodyTrackLength") == 0) {
+                    _sf_parseIntList(val, p->melodyTrackLength, SEQ_MELODY_TRACKS);
+                }
+            }
+            break;
+
+        default:
+            break; // Unknown section — skip
+        }
+    }
+
+    fclose(f);
+    return true;
+}
+
+// Load a single .patch file into a SynthPatch
+static bool songFileLoadPatch(const char *filepath, SynthPatch *patch) {
+    SongFileData d;
+    songFileDataInit(&d);
+    // Patch loading reuses the song parser — [patch] section maps to instruments[0]
+    if (!songFileLoad(filepath, &d)) return false;
+    *patch = d.instruments[0];
+    return true;
+}
+
+#endif // SONG_FILE_H
