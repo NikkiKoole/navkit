@@ -15,6 +15,13 @@ saves/
 compile_commands.json
 .cache/
 
+# Code navigation
+tags
+cscope.out
+cscope.out.in
+cscope.out.po
+cscope.files
+
 # Debug/temp
 navkit_sound.log
 screenshot*.png

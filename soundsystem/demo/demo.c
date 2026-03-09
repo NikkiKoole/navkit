@@ -539,6 +539,10 @@ typedef struct {
     float p_birdAmRate;
     float p_birdAmDepth;
     float p_birdHarmonics;
+
+    // Identity & misc
+    char p_name[32];
+    bool p_expRelease;        // true = exponential (natural tail), false = linear (tight cutoff)
 } SynthPatch;
 
 // Default patch initializer
@@ -639,6 +643,8 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_birdAmRate = 0.0f,
         .p_birdAmDepth = 0.0f,
         .p_birdHarmonics = 0.2f,
+        .p_name = "",
+        .p_expRelease = false,
     };
 }
 
@@ -967,6 +973,9 @@ static void initInstrumentPresets(void) {
     instrumentPresets[23].patch.p_vibratoDepth = 0.1f;
 }
 
+// Forward declarations
+static void updateDrumTrackName(int track);
+
 // ============================================================================
 // SCENES (Snapshots of all sound parameters)
 // ============================================================================
@@ -980,6 +989,18 @@ typedef struct {
     float masterVol;                   // Master volume
     float drumVol;                     // Drum volume
     bool initialized;                  // Has this scene been saved?
+
+    // Sequencer state
+    Pattern patterns[SEQ_NUM_PATTERNS];
+    float bpm;
+    int ticksPerStep;                  // 24 = 16th, 12 = 32nd
+    float trackVolume[SEQ_TOTAL_TRACKS];
+    DrumType drumSounds[SEQ_DRUM_TRACKS];
+
+    // Scale lock
+    bool sceneScaleLockEnabled;
+    int sceneScaleRoot;
+    int sceneScaleType;
 } Scene;
 
 static Scene scenes[NUM_SCENES];
@@ -989,20 +1010,38 @@ static int currentScene = -1;  // -1 = no scene loaded, 0-7 = active scene
 static void saveScene(int idx) {
     if (idx < 0 || idx >= NUM_SCENES) return;
     Scene *s = &scenes[idx];
-    
+
     // Copy all patches
     for (int i = 0; i < NUM_PATCHES; i++) {
         s->patches[i] = patches[i];
     }
-    
+
     // Copy drums and effects
     s->drums = drumParams;
     s->effects = fx;
-    
+
     // Copy volumes
     s->masterVol = masterVolume;
     s->drumVol = drumVolume;
-    
+
+    // Copy sequencer state
+    for (int i = 0; i < SEQ_NUM_PATTERNS; i++) {
+        s->patterns[i] = seq.patterns[i];
+    }
+    s->bpm = seq.bpm;
+    s->ticksPerStep = seq.ticksPerStep;
+    for (int i = 0; i < SEQ_TOTAL_TRACKS; i++) {
+        s->trackVolume[i] = seq.trackVolume[i];
+    }
+    for (int i = 0; i < SEQ_DRUM_TRACKS; i++) {
+        s->drumSounds[i] = drumTrackSound[i];
+    }
+
+    // Copy scale lock
+    s->sceneScaleLockEnabled = scaleLockEnabled;
+    s->sceneScaleRoot = scaleRoot;
+    s->sceneScaleType = scaleType;
+
     s->initialized = true;
     currentScene = idx;
 }
@@ -1012,20 +1051,39 @@ static void loadScene(int idx) {
     if (idx < 0 || idx >= NUM_SCENES) return;
     Scene *s = &scenes[idx];
     if (!s->initialized) return;
-    
+
     // Restore all patches
     for (int i = 0; i < NUM_PATCHES; i++) {
         patches[i] = s->patches[i];
     }
-    
+
     // Restore drums and effects
     drumParams = s->drums;
     fx = s->effects;
-    
+
     // Restore volumes
     masterVolume = s->masterVol;
     drumVolume = s->drumVol;
-    
+
+    // Restore sequencer state
+    for (int i = 0; i < SEQ_NUM_PATTERNS; i++) {
+        seq.patterns[i] = s->patterns[i];
+    }
+    seq.bpm = s->bpm;
+    seq.ticksPerStep = s->ticksPerStep;
+    for (int i = 0; i < SEQ_TOTAL_TRACKS; i++) {
+        seq.trackVolume[i] = s->trackVolume[i];
+    }
+    for (int i = 0; i < SEQ_DRUM_TRACKS; i++) {
+        drumTrackSound[i] = s->drumSounds[i];
+        updateDrumTrackName(i);
+    }
+
+    // Restore scale lock
+    scaleLockEnabled = s->sceneScaleLockEnabled;
+    scaleRoot = s->sceneScaleRoot;
+    scaleType = s->sceneScaleType;
+
     currentScene = idx;
 }
 
@@ -1397,6 +1455,7 @@ static void applyPatchToGlobals(SynthPatch *p) {
     birdAmRate = p->p_birdAmRate;
     birdAmDepth = p->p_birdAmDepth;
     birdHarmonics = p->p_birdHarmonics;
+    noteExpRelease = p->p_expRelease;
 }
 
 // ============================================================================
@@ -1649,6 +1708,32 @@ static void melodyTriggerChord(int note, float vel, float gateTime, bool slide, 
 }
 static void melodyReleaseChord(void) { melodyReleaseGeneric(2); }
 
+// Chord trigger for PICK_ALL mode — plays all notes in a chord simultaneously
+static void melodyChordTriggerGeneric(int trackIdx, int patchIdx, float freqMult,
+                                       int* notes, int noteCount, float vel,
+                                       float gateTime, bool slide, bool accent) {
+    (void)gateTime;
+    // Release previous voices for this track
+    melodyReleaseGeneric(trackIdx);
+    // Play each note in the chord with slight stagger for natural feel
+    for (int i = 0; i < noteCount; i++) {
+        melodyTriggerGeneric(trackIdx, patchIdx, freqMult, notes[i], vel, slide, accent);
+    }
+}
+
+static void melodyChordTriggerBass(int* notes, int noteCount, float vel,
+                                    float gateTime, bool slide, bool accent) {
+    melodyChordTriggerGeneric(0, PATCH_BASS, 0.5f, notes, noteCount, vel, gateTime, slide, accent);
+}
+static void melodyChordTriggerLead(int* notes, int noteCount, float vel,
+                                    float gateTime, bool slide, bool accent) {
+    melodyChordTriggerGeneric(1, PATCH_LEAD, 1.0f, notes, noteCount, vel, gateTime, slide, accent);
+}
+static void melodyChordTriggerChord(int* notes, int noteCount, float vel,
+                                     float gateTime, bool slide, bool accent) {
+    melodyChordTriggerGeneric(2, PATCH_CHORD, 1.0f, notes, noteCount, vel, gateTime, slide, accent);
+}
+
 // ============================================================================
 // UI COLUMN VISIBILITY
 // ============================================================================
@@ -1732,6 +1817,11 @@ int main(void) {
     setMelodyCallbacks(0, melodyTriggerBass, melodyReleaseBass);
     setMelodyCallbacks(1, melodyTriggerLead, melodyReleaseLead);
     setMelodyCallbacks(2, melodyTriggerChord, melodyReleaseChord);
+
+    // Chord triggers for PICK_ALL note pools
+    setMelodyChordCallback(0, melodyChordTriggerBass);
+    setMelodyChordCallback(1, melodyChordTriggerLead);
+    setMelodyChordCallback(2, melodyChordTriggerChord);
     
     SetTargetFPS(60);
     
@@ -2437,8 +2527,9 @@ int main(void) {
             ui_col_float(&col2, "Decay", &cp->p_decay, 0.5f, 0.0f, 2.0f);
             ui_col_float(&col2, "Sustain", &cp->p_sustain, 0.5f, 0.0f, 1.0f);
             ui_col_float(&col2, "Release", &cp->p_release, 0.5f, 0.01f, 3.0f);
+            ui_col_toggle(&col2, "Exp Release", &cp->p_expRelease);
             ui_col_space(&col2, 4);
-            
+
             ui_col_sublabel(&col2, "Vibrato:", ORANGE);
             ui_col_float(&col2, "Rate", &cp->p_vibratoRate, 0.5f, 0.5f, 15.0f);
             ui_col_float(&col2, "Depth", &cp->p_vibratoDepth, 0.2f, 0.0f, 2.0f);
@@ -3133,14 +3224,20 @@ int main(void) {
                     if (isHovered) {
                         if (mouseClicked) {
                             if (shiftHeld) {
-                                seqCopyPatternTo(i);
+                                // Shift+click: instant switch (jump to pattern now)
+                                seq.currentPattern = i;
+                                seq.nextPattern = -1;
                             } else {
                                 seqQueuePattern(i);
                             }
                             ui_consume_click();
                         }
                         if (rightClicked) {
-                            clearPattern(&seq.patterns[i]);
+                            if (shiftHeld) {
+                                seqCopyPatternTo(i);
+                            } else {
+                                clearPattern(&seq.patterns[i]);
+                            }
                             ui_consume_click();
                         }
                     }
@@ -4053,13 +4150,44 @@ int main(void) {
                         ui_consume_click();
                     }
                 }
-                
+
+                // Sustain (extra hold steps after gate expires)
+                {
+                    int susX = inspX + 10 + colSpacing * 5 + 105;
+                    int susVal = p->melodySustain[selectedTrack][selectedStep];
+                    bool hasSustain = susVal > 0;
+                    Color susColor = hasSustain ? (Color){100, 220, 160, 255} : LIGHTGRAY;
+                    char susText[16];
+                    snprintf(susText, sizeof(susText), "Sus:%d", susVal);
+                    Rectangle susRect = {(float)susX, (float)(row1Y - 2), 50, 16};
+                    bool susHovered = CheckCollisionPointRec(mouse, susRect);
+                    Color susBg = hasSustain ? (Color){50, 100, 70, 255} : (Color){45, 45, 55, 255};
+                    if (susHovered) susBg = (Color){60, 120, 80, 255};
+                    DrawRectangleRec(susRect, susBg);
+                    DrawRectangleLinesEx(susRect, 1, hasSustain ? susColor : (Color){80, 80, 80, 255});
+                    DrawTextShadow(susText, susX + 4, row1Y, 10, susColor);
+                    if (susHovered && mouseClicked) {
+                        p->melodySustain[selectedTrack][selectedStep] = (susVal + 1) % 17;
+                        ui_consume_click();
+                    }
+                    if (susHovered && rightClicked) {
+                        p->melodySustain[selectedTrack][selectedStep] = (susVal - 1 + 17) % 17;
+                        ui_consume_click();
+                    }
+                    if (susHovered && mouseWheel != 0) {
+                        int newVal = susVal + (int)mouseWheel;
+                        if (newVal < 0) newVal = 0;
+                        if (newVal > 16) newVal = 16;
+                        p->melodySustain[selectedTrack][selectedStep] = newVal;
+                    }
+                }
+
                 // P-Lock row (second row)
                 int row2Y = row1Y + 22;
                 DrawTextShadow("P-Lock:", inspX + 10, row2Y, 10, (Color){180, 120, 255, 255});
-                
+
                 // Get patch index for this track
-                int patchIdx = (selectedTrack == 0) ? PATCH_BASS : 
+                int patchIdx = (selectedTrack == 0) ? PATCH_BASS :
                                (selectedTrack == 1) ? PATCH_LEAD : PATCH_CHORD;
                 SynthPatch *patch = &patches[patchIdx];
                 
@@ -4382,7 +4510,7 @@ int main(void) {
             DrawTextShadow("Drums: shift+drag=pitch", helpBoxX + 10, helpBoxY + 40, 11, LIGHTGRAY);
             DrawTextShadow("Melody: click=add note, scroll=pitch", helpBoxX + 10, helpBoxY + 54, 11, LIGHTGRAY);
             DrawTextShadow("Melody: right-click=delete note", helpBoxX + 10, helpBoxY + 68, 11, LIGHTGRAY);
-            DrawTextShadow("Pattern: click=queue, shift+click=copy", helpBoxX + 10, helpBoxY + 86, 11, (Color){100, 200, 100, 255});
+            DrawTextShadow("Pattern: click=queue, shift+click=jump, R-click=clear, shift+R-click=copy", helpBoxX + 10, helpBoxY + 86, 11, (Color){100, 200, 100, 255});
             DrawTextShadow("Pattern: right-click=clear", helpBoxX + 10, helpBoxY + 100, 11, (Color){100, 200, 100, 255});
             DrawTextShadow("P-Lock: scroll to edit, right-click=clear", helpBoxX + 10, helpBoxY + 118, 11, (Color){255, 180, 100, 255});
             DrawTextShadow("Scene: click=load, shift+click=save", helpBoxX + 10, helpBoxY + 132, 11, (Color){100, 150, 255, 255});

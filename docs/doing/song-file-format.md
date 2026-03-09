@@ -1100,27 +1100,28 @@ All items here are independent of each other and can be done in any order or in 
 - Wire to `saveSongFile` / `loadSongFile`
 - Small amount of code — the hard part is 1a
 
-**1c. Scene struct expansion** `[independent — easy win]`
-- Add to Scene: `Pattern patterns[8]`, `float bpm`, `bool use32ndNoteMode`, `float trackVolume[7]`, `int drumTrackSound[4]`, `bool scaleLockEnabled`, `int scaleRoot`, `int scaleType`
-- Update `saveScene()` to copy `seq.patterns`, `seq.bpm`, `seq.trackVolume`, `drumTrackSound`, scale globals
-- Update `loadScene()` to restore them
-- **This is an easy win** — scenes become complete snapshots. ~30 lines of code changes. Useful immediately even without file I/O.
+**1c. Scene struct expansion** `[independent — easy win]` **DONE**
+- Added to Scene: `Pattern patterns[8]`, `float bpm`, `int ticksPerStep`, `float trackVolume[7]`, `DrumType drumSounds[4]`, `bool sceneScaleLockEnabled`, `int sceneScaleRoot`, `int sceneScaleType`
+- Updated `saveScene()` to copy `seq.patterns`, `seq.bpm`, `seq.ticksPerStep`, `seq.trackVolume`, `drumTrackSound`, scale globals
+- Updated `loadScene()` to restore them all (including drum track names via `updateDrumTrackName`)
+- Scenes are now complete snapshots — patterns, BPM, resolution, volumes, drum sounds, and scale lock all survive scene save/load.
 
-**1d. SynthPatch additions** `[independent — easy win]`
-- Add `char p_name[32]` to SynthPatch
-- Add `bool p_expRelease` to SynthPatch
-- Update `createDefaultPatch()` to init both
-- Update `applyPatchToGlobals()` to set `noteExpRelease`
-- ~10 lines. Needed before file format can serialize names.
+**1d. SynthPatch additions** `[independent — easy win]` **DONE**
+- Added `char p_name[32]` and `bool p_expRelease` to SynthPatch
+- Updated `createDefaultPatch()` to init both (empty name, false expRelease)
+- Updated `applyPatchToGlobals()` to set `noteExpRelease` from patch
 
-**1e. DAW chord trigger** `[independent — easy win]`
-- Write `melodyChordTriggerGeneric(int* notes, int noteCount, float vel, float gateTime, bool slide, bool accent)` — loop over notes, call `playNoteWithPatch` for each
-- Call `setMelodyChordCallbacks(0, ...), (1, ...), (2, ...)` in init
-- **This unlocks PICK_ALL chords in the DAW** — currently broken. ~30 lines.
+**1e. DAW chord trigger** `[independent — easy win]` **DONE**
+- Added `melodyChordTriggerGeneric()` — releases previous voices, then plays each chord note via `melodyTriggerGeneric`
+- Added per-track wrappers: `melodyChordTriggerBass/Lead/Chord`
+- Registered all 3 via `setMelodyChordCallback()` in main init
+- PICK_ALL chords now work in the DAW sequencer.
 
-**1f. Melody sustain UI** `[independent — easy win]`
-- Add "Sustain" draggable (0-16) in the melody step inspector, reading/writing `p->melodySustain[track][step]`
-- ~5 lines of UI code. The engine already processes it.
+**1f. Melody sustain UI** `[independent — easy win]` **DONE**
+- Added "Sus:N" control in melody step inspector (after Accent toggle)
+- Click to increment (0-16), right-click to decrement, scroll wheel for fine adjust
+- Green highlight when sustain > 0
+- Reads/writes `p->melodySustain[track][step]` — engine already processes it.
 
 ### Phase 2: Generic trigger in game bridge
 
@@ -1209,11 +1210,11 @@ These are all purely DAW UI work. None depend on the file format or game integra
 
 ### Suggested attack order (what to do first)
 
-**Immediate easy wins (< 1 hour each, no dependencies):**
-1. 1c — Scene struct expansion (scenes become complete snapshots)
-2. 1d — SynthPatch name + expRelease fields
-3. 1e — DAW chord trigger callback (unlocks PICK_ALL)
-4. 1f — Melody sustain UI in step inspector
+**Immediate easy wins (< 1 hour each, no dependencies): ALL DONE**
+1. ~~1c — Scene struct expansion (scenes become complete snapshots)~~
+2. ~~1d — SynthPatch name + expRelease fields~~
+3. ~~1e — DAW chord trigger callback (unlocks PICK_ALL)~~
+4. ~~1f — Melody sustain UI in step inspector~~
 
 **Then the core blocker:**
 5. 1a — File format parser/serializer (the real work)

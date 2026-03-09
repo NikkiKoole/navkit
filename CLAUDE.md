@@ -91,7 +91,7 @@ src/
 └── render/             # Drawing, UI, tooltips
 ```
 
-~50,000 lines of C total. Per-folder CLAUDE.md files in `src/entities/`, `src/world/`, `src/core/`, and `tests/` have detailed patterns and gotchas.
+~69,000 lines of C in src/, ~60,000 in tests/ (~129K total). Per-folder CLAUDE.md files in `src/entities/`, `src/world/`, `src/core/`, and `tests/` have detailed patterns and gotchas.
 
 ## Key Systems
 

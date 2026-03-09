@@ -606,4 +606,18 @@ compile_commands.json: $(GAME_SOURCES)
 	json.dump([{'directory': d, 'command': f'clang {flags} -c -o /dev/null {f}', 'file': os.path.join(d, f)} for f in files], open('compile_commands.json','w'), indent=2); \
 	print(f'compile_commands.json: {len(files)} entries')"
 
-.PHONY: all clean clean-raylib clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood path steer crowd soundsystem-demo mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs bench_items windows
+# ---------------------------------------------------------------------------
+# Code navigation databases (ctags + cscope)
+# ---------------------------------------------------------------------------
+tags:
+	ctags -R --languages=C --exclude=build --exclude=vendor src/ tests/
+
+cscope.out:
+	find src/ tests/ -name '*.c' -o -name '*.h' > cscope.files
+	cscope -b -q
+
+# Rebuild both
+nav: tags cscope.out
+	@echo "Updated tags + cscope.out"
+
+.PHONY: all clean clean-raylib clean-atlas nav test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood path steer crowd soundsystem-demo mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs bench_items windows
