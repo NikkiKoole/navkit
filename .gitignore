@@ -17,10 +17,6 @@ compile_commands.json
 
 # Code navigation
 tags
-cscope.out
-cscope.out.in
-cscope.out.po
-cscope.files
 
 # Debug/temp
 navkit_sound.log
