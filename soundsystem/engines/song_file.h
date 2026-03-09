@@ -77,6 +77,10 @@ typedef struct {
     int patternCount;
     Pattern patterns[SEQ_NUM_PATTERNS];
 
+    // Chain (pattern play order)
+    int chain[SEQ_MAX_CHAIN];
+    int chainLength;                 // 0 = no chain
+
     // Metadata
     char author[SONG_FILE_MAX_NAME];
     char description[SONG_FILE_MAX_NAME];
@@ -660,6 +664,15 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
     _sf_writeFloat(f, "fadeOut", d->fadeOut);
     _sf_writeBool(f, "crossfade", d->crossfade);
 
+    // Chain
+    if (d->chainLength > 0) {
+        fprintf(f, "\n[chain]\norder =");
+        for (int i = 0; i < d->chainLength; i++) {
+            fprintf(f, "%s %d", i > 0 ? "," : "", d->chain[i]);
+        }
+        fprintf(f, "\n");
+    }
+
     // Patterns
     for (int i = 0; i < d->patternCount; i++) {
         _sf_writePattern(f, i, &d->patterns[i]);
@@ -697,6 +710,7 @@ typedef enum {
     _SF_SEC_BUS,          // .drum0, .drum1, ..., .chord
     _SF_SEC_METADATA,
     _SF_SEC_TRANSITIONS,
+    _SF_SEC_CHAIN,
     _SF_SEC_PATTERN,
     _SF_SEC_PATCH,        // standalone .patch file
 } _SFSection;
@@ -1045,6 +1059,7 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
             else if (strcmp(secName, "dub") == 0) { section = _SF_SEC_DUB; }
             else if (strcmp(secName, "metadata") == 0) { section = _SF_SEC_METADATA; }
             else if (strcmp(secName, "transitions") == 0) { section = _SF_SEC_TRANSITIONS; }
+            else if (strcmp(secName, "chain") == 0) { section = _SF_SEC_CHAIN; }
             else if (strcmp(secName, "patch") == 0) { section = _SF_SEC_PATCH; subIndex = 0; }
             else if (strncmp(secName, "instrument.", 11) == 0) {
                 section = _SF_SEC_INSTRUMENT;
@@ -1285,6 +1300,20 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
             if (strcmp(key, "fadeIn") == 0) d->fadeIn = _sf_parseFloat(val);
             else if (strcmp(key, "fadeOut") == 0) d->fadeOut = _sf_parseFloat(val);
             else if (strcmp(key, "crossfade") == 0) d->crossfade = _sf_parseBool(val);
+            break;
+
+        case _SF_SEC_CHAIN:
+            if (strcmp(key, "order") == 0) {
+                // Parse comma-separated pattern indices: "0, 1, 1, 2, 3"
+                d->chainLength = 0;
+                char *tok = val;
+                while (*tok && d->chainLength < SEQ_MAX_CHAIN) {
+                    while (*tok == ' ' || *tok == ',') tok++;
+                    if (!*tok) break;
+                    d->chain[d->chainLength++] = atoi(tok);
+                    while (*tok && *tok != ',') tok++;
+                }
+            }
             break;
 
         case _SF_SEC_PATTERN:

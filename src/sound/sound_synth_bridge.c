@@ -53,6 +53,10 @@ typedef struct {
     // File-based instruments (from .song files)
     SynthPatch instruments[SEQ_MELODY_TRACKS];  // bass, lead, chord
     bool hasPatchInstruments;   // true = use generic patch trigger, false = use per-song callbacks
+    // Chain (pattern play order from .song file)
+    int chain[SEQ_MAX_CHAIN];
+    int chainLength;            // 0 = linear cycle (no chain)
+    int chainPos;
     // Jukebox
     int jukeboxIndex;       // which song is selected (-1 = none)
 } SongPlayer;
@@ -141,7 +145,16 @@ static void SoundSynthCallback(void* buffer, unsigned int frames) {
 
             // Cycle to next pattern after loopsPerPattern repeats
             if (sp->patternCount > 1 && sp->loopsOnCurrent >= sp->loopsPerPattern) {
-                int nextPat = (sp->currentPattern + 1) % sp->patternCount;
+                int nextPat;
+                if (sp->chainLength > 0) {
+                    // Chain mode: follow chain order
+                    sp->chainPos = (sp->chainPos + 1) % sp->chainLength;
+                    nextPat = sp->chain[sp->chainPos];
+                    if (nextPat < 0 || nextPat >= sp->patternCount) nextPat = 0;
+                } else {
+                    // Linear cycle: 0 → 1 → 2 → ... → 0
+                    nextPat = (sp->currentPattern + 1) % sp->patternCount;
+                }
                 seqSoundLog("SONG_PATTERN %d -> %d", sp->currentPattern, nextPat);
                 sp->currentPattern = nextPat;
                 sp->loopsOnCurrent = 0;
@@ -1434,6 +1447,13 @@ bool SoundSynthPlaySongFile(SoundSynth* synth, const char* filepath) {
     sp->currentPattern = 0;
     sp->loopsOnCurrent = 0;
     sp->loopsPerPattern = sf.loopsPerPattern > 0 ? sf.loopsPerPattern : 2;
+
+    // Load chain
+    sp->chainLength = sf.chainLength;
+    sp->chainPos = 0;
+    for (int i = 0; i < sf.chainLength && i < SEQ_MAX_CHAIN; i++) {
+        sp->chain[i] = sf.chain[i];
+    }
 
     // Apply mix
     masterVolume = sf.sfMasterVolume;

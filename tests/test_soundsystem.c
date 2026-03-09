@@ -5427,6 +5427,178 @@ describe(song_file_pattern_events) {
     }
 }
 
+// ============================================================================
+// CHAIN TESTS
+// ============================================================================
+
+describe(chain_basic) {
+    it("should append and remove chain entries") {
+        _ensureSeqCtx();
+        seqChainClear();
+        expect(seq.chainLength == 0);
+
+        expect(seqChainAppend(0));
+        expect(seqChainAppend(1));
+        expect(seqChainAppend(2));
+        expect(seq.chainLength == 3);
+        expect(seq.chain[0] == 0);
+        expect(seq.chain[1] == 1);
+        expect(seq.chain[2] == 2);
+
+        // Remove middle entry
+        expect(seqChainRemove(1));
+        expect(seq.chainLength == 2);
+        expect(seq.chain[0] == 0);
+        expect(seq.chain[1] == 2);
+
+        // Clear
+        seqChainClear();
+        expect(seq.chainLength == 0);
+        expect(seq.chainPos == 0);
+    }
+
+    it("should reject invalid pattern indices") {
+        _ensureSeqCtx();
+        seqChainClear();
+        expect(!seqChainAppend(-1));
+        expect(!seqChainAppend(SEQ_NUM_PATTERNS));
+        expect(seq.chainLength == 0);
+    }
+
+    it("should clamp chainPos on remove") {
+        _ensureSeqCtx();
+        seqChainClear();
+        seqChainAppend(0);
+        seqChainAppend(1);
+        seq.chainPos = 1;  // pointing at last entry
+        seqChainRemove(1); // remove it
+        expect(seq.chainPos == 0);
+    }
+}
+
+describe(chain_file_round_trip) {
+    it("should save and load chain in song file") {
+        _ensureSeqCtx();
+        const char *path = "/tmp/test_song_chain.song";
+
+        SongFileData orig;
+        songFileDataInit(&orig);
+        orig.chainLength = 5;
+        orig.chain[0] = 0;
+        orig.chain[1] = 1;
+        orig.chain[2] = 1;
+        orig.chain[3] = 2;
+        orig.chain[4] = 0;
+
+        bool saved = songFileSave(path, &orig);
+        expect(saved);
+
+        SongFileData loaded;
+        songFileDataInit(&loaded);
+        bool ok = songFileLoad(path, &loaded);
+        expect(ok);
+
+        expect(loaded.chainLength == 5);
+        expect(loaded.chain[0] == 0);
+        expect(loaded.chain[1] == 1);
+        expect(loaded.chain[2] == 1);
+        expect(loaded.chain[3] == 2);
+        expect(loaded.chain[4] == 0);
+
+        remove(path);
+    }
+
+    it("should load empty chain when no [chain] section") {
+        _ensureSeqCtx();
+        const char *path = "/tmp/test_song_nochain.song";
+
+        SongFileData orig;
+        songFileDataInit(&orig);
+        // No chain set — chainLength stays 0
+
+        songFileSave(path, &orig);
+
+        SongFileData loaded;
+        songFileDataInit(&loaded);
+        songFileLoad(path, &loaded);
+
+        expect(loaded.chainLength == 0);
+
+        remove(path);
+    }
+}
+
+describe(chain_sequencer_advance) {
+    it("should advance through chain on pattern end") {
+        _ensureSeqCtx();
+        initSequencerContext(seqCtx);
+        for (int i = 0; i < SEQ_NUM_PATTERNS; i++) initPattern(&seq.patterns[i]);
+        seqChainAppend(0);
+        seqChainAppend(2);
+        seqChainAppend(1);
+
+        // Set short 2-step patterns so they end quickly
+        for (int i = 0; i < SEQ_NUM_PATTERNS; i++) {
+            for (int t = 0; t < SEQ_DRUM_TRACKS; t++)
+                seq.patterns[i].drumTrackLength[t] = 2;
+            for (int t = 0; t < SEQ_MELODY_TRACKS; t++)
+                seq.patterns[i].melodyTrackLength[t] = 2;
+        }
+
+        seq.currentPattern = 0;
+        seq.chainPos = 0;
+        seq.playing = true;
+        seq.bpm = 120.0f;
+        seq.ticksPerStep = SEQ_TICKS_PER_STEP_16TH;
+        seq.nextPattern = -1;
+
+        // Advance until exactly 1 pattern end
+        float dt = 60.0f / (seq.bpm * (float)SEQ_PPQ);  // one tick
+        int startPlayCount = seq.playCount;
+        for (int i = 0; i < 200 && seq.playCount == startPlayCount; i++) {
+            updateSequencer(dt);
+        }
+
+        // After first pattern end, chain should have advanced: pos 0 -> 1
+        expect(seq.chainPos == 1);
+        expect(seq.currentPattern == 2);
+    }
+
+    it("should wrap chain position at end") {
+        _ensureSeqCtx();
+        initSequencerContext(seqCtx);
+        for (int i = 0; i < SEQ_NUM_PATTERNS; i++) initPattern(&seq.patterns[i]);
+        seqChainAppend(0);
+        seqChainAppend(1);
+
+        // Set short 2-step patterns
+        for (int i = 0; i < SEQ_NUM_PATTERNS; i++) {
+            for (int t = 0; t < SEQ_DRUM_TRACKS; t++)
+                seq.patterns[i].drumTrackLength[t] = 2;
+            for (int t = 0; t < SEQ_MELODY_TRACKS; t++)
+                seq.patterns[i].melodyTrackLength[t] = 2;
+        }
+
+        seq.currentPattern = 1;
+        seq.chainPos = 1;  // last position
+        seq.playing = true;
+        seq.bpm = 120.0f;
+        seq.ticksPerStep = SEQ_TICKS_PER_STEP_16TH;
+        seq.nextPattern = -1;
+
+        // Advance until exactly 1 pattern end
+        float dt = 60.0f / (seq.bpm * (float)SEQ_PPQ);  // one tick
+        int startPlayCount = seq.playCount;
+        for (int i = 0; i < 200 && seq.playCount == startPlayCount; i++) {
+            updateSequencer(dt);
+        }
+
+        // Should wrap: pos 1 -> 0, currentPattern = chain[0] = 0
+        expect(seq.chainPos == 0);
+        expect(seq.currentPattern == 0);
+    }
+}
+
 int main(int argc, char **argv) {
     // Check for quiet mode flag
     for (int i = 1; i < argc; i++) {
@@ -5537,6 +5709,11 @@ int main(int argc, char **argv) {
     test(song_file_round_trip);
     test(song_file_patch_round_trip);
     test(song_file_pattern_events);
+
+    // Chain
+    test(chain_basic);
+    test(chain_file_round_trip);
+    test(chain_sequencer_advance);
 
     return summary();
 }

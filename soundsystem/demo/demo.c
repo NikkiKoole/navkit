@@ -883,6 +883,9 @@ static void songFileFromEngine(SongFileData *d) {
     for (int i = 0; i < NUM_BUSES; i++) d->sfBusEffects[i] = mixerCtx->bus[i];
     // Patterns
     for (int i = 0; i < SEQ_NUM_PATTERNS; i++) d->patterns[i] = seq.patterns[i];
+    // Chain
+    d->chainLength = seq.chainLength;
+    for (int i = 0; i < seq.chainLength; i++) d->chain[i] = seq.chain[i];
 }
 
 static void songFileToEngine(const SongFileData *d) {
@@ -913,6 +916,10 @@ static void songFileToEngine(const SongFileData *d) {
     for (int i = 0; i < NUM_BUSES; i++) mixerCtx->bus[i] = d->sfBusEffects[i];
     // Patterns
     for (int i = 0; i < SEQ_NUM_PATTERNS; i++) seq.patterns[i] = d->patterns[i];
+    // Chain
+    seq.chainLength = d->chainLength;
+    seq.chainPos = 0;
+    for (int i = 0; i < d->chainLength; i++) seq.chain[i] = d->chain[i];
 }
 
 static void saveSongFile(void) {
@@ -2907,8 +2914,86 @@ int main(void) {
             int cellH = 20;
             int labelW = 80;  // Increased to fit volume slider
             int lengthW = 30;
+            int chainBarY = gridY - 52;
             int patternBarY = gridY - 28;
-            
+
+            // === CHAIN BAR ===
+            {
+                int chW = 20;
+                int chH = 18;
+                int chX = gridX + labelW;
+
+                DrawTextShadow("Chain:", gridX, chainBarY + 3, 12, (Color){180, 180, 255, 255});
+
+                Vector2 mouse = GetMousePosition();
+                bool mouseClicked = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+                bool rightClicked = IsMouseButtonPressed(MOUSE_RIGHT_BUTTON);
+
+                // Draw chain entries
+                for (int i = 0; i < seq.chainLength; i++) {
+                    int px = chX + i * (chW + 2);
+                    Rectangle r = {(float)px, (float)chainBarY, (float)chW, (float)chH};
+                    bool hovered = CheckCollisionPointRec(mouse, r);
+                    bool isPlaying = (seq.chainLength > 0 && i == seq.chainPos && seq.playing);
+
+                    Color bg = isPlaying ? (Color){60, 100, 60, 255} : (Color){45, 45, 55, 255};
+                    if (hovered) { bg.r += 25; bg.g += 25; bg.b += 25; }
+
+                    DrawRectangleRec(r, bg);
+                    DrawRectangleLinesEx(r, 1, isPlaying ? GREEN : (Color){70, 70, 80, 255});
+
+                    Color tc = isPlaying ? WHITE : LIGHTGRAY;
+                    DrawTextShadow(TextFormat("%d", seq.chain[i] + 1), px + 6, chainBarY + 3, 12, tc);
+
+                    if (hovered) {
+                        if (rightClicked) {
+                            seqChainRemove(i);
+                            ui_consume_click();
+                        } else if (mouseClicked) {
+                            // Click to jump chain position (queues that pattern)
+                            seq.chainPos = i;
+                            seqQueuePattern(seq.chain[i]);
+                            ui_consume_click();
+                        }
+                        // Scroll wheel to change pattern number
+                        float wheel = GetMouseWheelMove();
+                        if (wheel > 0) {
+                            seq.chain[i] = (seq.chain[i] + 1) % SEQ_NUM_PATTERNS;
+                        } else if (wheel < 0) {
+                            seq.chain[i] = (seq.chain[i] - 1 + SEQ_NUM_PATTERNS) % SEQ_NUM_PATTERNS;
+                        }
+                    }
+                }
+
+                // [+] button — append current pattern
+                int addX = chX + seq.chainLength * (chW + 2);
+                Rectangle addRect = {(float)addX, (float)chainBarY, (float)chW, (float)chH};
+                bool addHovered = CheckCollisionPointRec(mouse, addRect);
+                Color addBg = addHovered ? (Color){70, 70, 80, 255} : (Color){40, 40, 50, 255};
+                DrawRectangleRec(addRect, addBg);
+                DrawRectangleLinesEx(addRect, 1, (Color){80, 80, 90, 255});
+                DrawTextShadow("+", addX + 6, chainBarY + 3, 12, addHovered ? WHITE : GRAY);
+
+                if (addHovered && mouseClicked && seq.chainLength < SEQ_MAX_CHAIN) {
+                    seqChainAppend(seq.currentPattern);
+                    ui_consume_click();
+                }
+
+                // [C] clear chain button
+                if (seq.chainLength > 0) {
+                    int clrX = addX + chW + 8;
+                    Rectangle clrRect = {(float)clrX, (float)chainBarY, 20.0f, (float)chH};
+                    bool clrHovered = CheckCollisionPointRec(mouse, clrRect);
+                    DrawRectangleRec(clrRect, clrHovered ? (Color){100, 50, 50, 255} : (Color){60, 40, 40, 255});
+                    DrawRectangleLinesEx(clrRect, 1, (Color){120, 60, 60, 255});
+                    DrawTextShadow("C", clrX + 6, chainBarY + 3, 12, clrHovered ? WHITE : GRAY);
+                    if (clrHovered && mouseClicked) {
+                        seqChainClear();
+                        ui_consume_click();
+                    }
+                }
+            }
+
             // === PATTERN BAR ===
             {
                 int patW = 28;

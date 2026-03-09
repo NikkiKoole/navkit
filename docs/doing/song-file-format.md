@@ -1,6 +1,6 @@
 # Song File Format & DAW Save/Load
 
-Status: **plan**
+Status: **in progress** — Phases 1-3 done, Phase 4+ remaining
 
 ## Source Files Map
 
@@ -1087,18 +1087,16 @@ Independent (can be done anytime, no dependencies):
 
 All items here are independent of each other and can be done in any order or in parallel.
 
-**1a. File format parser/serializer** `[blocker — everything else depends on this]`
-- New header: `soundsystem/engines/song_file.h`
-- `saveSongFile(filepath, ...)` — serialize all state to `.song` text
-- `loadSongFile(filepath, ...)` — parse `.song` text, populate state
+**1a. File format parser/serializer** `[blocker — everything else depends on this]` **DONE**
+- `soundsystem/engines/song_file.h` (1321 lines) — full `.song` text parser and serializer
+- `saveSongFile(filepath, ...)` / `loadSongFile(filepath, ...)` for complete songs
 - `savePatchFile(filepath, SynthPatch*)` / `loadPatchFile(filepath, SynthPatch*)`
-- Pure data transformation, no UI, no engine changes
-- Can be tested standalone with a hardcoded song struct → write → read → compare
+- 354 lines of tests in `test_soundsystem.c` (round-trip write→read→compare)
+- Example file: `soundsystem/demo/songs/scratch.song`
 
-**1b. DAW save/load UI** `[depends on 1a]`
-- Add `[Save] [Load] [New]` buttons to transport bar
-- Wire to `saveSongFile` / `loadSongFile`
-- Small amount of code — the hard part is 1a
+**1b. DAW save/load UI** `[depends on 1a]` **DONE**
+- DAW wired to `saveSongFile` / `loadSongFile`
+- demo.c refactored (-373/+484 lines) to use shared patch/trigger code
 
 **1c. Scene struct expansion** `[independent — easy win]` **DONE**
 - Added to Scene: `Pattern patterns[8]`, `float bpm`, `int ticksPerStep`, `float trackVolume[7]`, `DrumType drumSounds[4]`, `bool sceneScaleLockEnabled`, `int sceneScaleRoot`, `int sceneScaleType`
@@ -1123,25 +1121,23 @@ All items here are independent of each other and can be done in any order or in 
 - Green highlight when sustain > 0
 - Reads/writes `p->melodySustain[track][step]` — engine already processes it.
 
-### Phase 2: Generic trigger in game bridge
+### Phase 2: Generic trigger in game bridge — **DONE**
 
 `[depends on 1d for expRelease, otherwise independent]`
 
-The DAW already has `playNoteWithPatch`. The game bridge (`sound_synth_bridge.c`) still uses per-song hardcoded triggers. To play `.song` files in the game:
-
-1. Move `playNoteWithPatch` and `applyPatchToGlobals` from demo.c to a shared location (new header `soundsystem/engines/patch_trigger.h`, or into `synth.h`)
-2. Add `genericMelodyTrigger` that wraps it (same as demo.c's but reads SynthPatch from SongPlayer)
-3. `SoundSynthPlaySongFile()` sets up generic triggers instead of per-song ones
+1. ~~Move `playNoteWithPatch` and `applyPatchToGlobals` from demo.c to shared header~~ → `soundsystem/engines/patch_trigger.h` (141 lines)
+2. ~~Extract `SynthPatch` struct from demo.c~~ → `soundsystem/engines/synth_patch.h` (257 lines)
+3. ~~`SoundSynthPlaySongFile()` sets up generic triggers instead of per-song ones~~ → implemented in `sound_synth_bridge.c` (+158 lines)
 4. Existing compiled songs keep their own callbacks — no migration needed
 
-### Phase 3: Game runtime loader
+### Phase 3: Game runtime loader — **DONE**
 
 `[depends on 1a + Phase 2]`
 
-1. Include `song_file.h` in game build (add to unity.c)
-2. `LoadSongFile()` → parse `.song` → populate SongPlayer patterns + instruments + arrangement
-3. `SoundSynthPlaySongFile(synth, songFile)` — configures everything and starts playback
-4. Test round-trip: compose in DAW → save → load in game → sounds identical
+1. ~~Include `song_file.h` in game build~~ → done
+2. ~~`LoadSongFile()` → parse `.song` → populate SongPlayer patterns + instruments + arrangement~~ → done
+3. ~~`SoundSynthPlaySongFile(synth, songFile)` — configures everything and starts playback~~ → done
+4. Round-trip works: compose in DAW → save `.song` → load in game
 
 ### Phase 4: Automation
 
@@ -1203,28 +1199,30 @@ These are all purely DAW UI work. None depend on the file format or game integra
 | **Song metadata editor** (mood/energy/context tags) | Small | Medium — needed for Phase 6 |
 | **Patch name editing** | Tiny | Small — quality of life |
 | **Piano roll view** | Large | High — alternative note editing |
-| **MIDI keyboard input** | Medium | High — real-time playing |
+| ~~**MIDI keyboard input**~~ | ~~Medium~~ | ~~High~~ — **DONE** (`bf4f8d9`) |
 | **Recording mode** | Medium | High — capture played notes |
 | **Undo/redo** (pattern snapshots) | Medium | Medium — safety net |
 | **Tooltips on hover** | Small | Small — discoverability |
 
-### Suggested attack order (what to do first)
+### Suggested attack order
 
-**Immediate easy wins (< 1 hour each, no dependencies): ALL DONE**
-1. ~~1c — Scene struct expansion (scenes become complete snapshots)~~
+**Completed:**
+1. ~~1c — Scene struct expansion~~
 2. ~~1d — SynthPatch name + expRelease fields~~
-3. ~~1e — DAW chord trigger callback (unlocks PICK_ALL)~~
+3. ~~1e — DAW chord trigger callback~~
 4. ~~1f — Melody sustain UI in step inspector~~
+5. ~~1a — File format parser/serializer~~
+6. ~~1b — DAW save/load UI~~
+7. ~~Phase 2 + 3 — Generic trigger + game runtime loader~~
+8. ~~MIDI keyboard input~~
 
-**Then the core blocker:**
-5. 1a — File format parser/serializer (the real work)
-6. 1b — DAW save/load UI buttons
-
-**Then in whatever order makes sense:**
-7. Arrangement editor UI (for composing multi-section songs)
-8. Phase 2 + 3 (game runtime loader — proves the round-trip)
-9. Phase 4 (automation — can be parallel with 7/8)
-10. Everything else
+**Next up:**
+9. Arrangement editor UI (for composing multi-section songs)
+10. Phase 4 (automation lanes)
+11. Phase 5 (MIDI pipeline outputs `.song` instead of C)
+12. Phase 6 (song metadata + context-aware picking + crossfade)
+13. Phase 7 (DJ system + iMUSE features)
+14. Recording mode, piano roll, undo/redo
 
 ---
 

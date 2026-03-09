@@ -350,6 +350,12 @@ typedef struct {
     float flamVelocity[SEQ_DRUM_TRACKS];   // Velocity for flam hit
     float flamPitch[SEQ_DRUM_TRACKS];      // Pitch for flam hit
     
+    // Pattern chain (Elektron-style arrangement)
+    #define SEQ_MAX_CHAIN 64
+    int chain[SEQ_MAX_CHAIN];       // Pattern indices in play order
+    int chainLength;                 // 0 = no chain (loop current pattern)
+    int chainPos;                    // Current position in chain during playback
+
     // Track configuration
     const char* drumTrackNames[SEQ_DRUM_TRACKS];
     const char* melodyTrackNames[SEQ_MELODY_TRACKS];
@@ -1297,14 +1303,24 @@ static void updateSequencer(float dt) {
                 if (track == 0 && seq.drumStep[0] == 0 && prevStep != 0) {
                     seq.playCount++;
                     seqSoundLog("PATTERN_END  pat=%d playCount=%d", seq.currentPattern, seq.playCount);
-                    
-                    // Handle queued pattern switch
+
+                    // Handle queued pattern switch (manual queue overrides chain)
                     if (seq.nextPattern >= 0 && seq.nextPattern < SEQ_NUM_PATTERNS) {
                         seq.currentPattern = seq.nextPattern;
                         seq.nextPattern = -1;
-                        // Reset step counters for new pattern
                         memset(seq.drumStepPlayCount, 0, sizeof(seq.drumStepPlayCount));
                         memset(seq.melodyStepPlayCount, 0, sizeof(seq.melodyStepPlayCount));
+                    }
+                    // Chain advance (when no manual queue is pending)
+                    else if (seq.chainLength > 0) {
+                        seq.chainPos = (seq.chainPos + 1) % seq.chainLength;
+                        int nextPat = seq.chain[seq.chainPos];
+                        if (nextPat >= 0 && nextPat < SEQ_NUM_PATTERNS && nextPat != seq.currentPattern) {
+                            seqSoundLog("CHAIN_ADVANCE  pos=%d -> pat=%d", seq.chainPos, nextPat);
+                            seq.currentPattern = nextPat;
+                            memset(seq.drumStepPlayCount, 0, sizeof(seq.drumStepPlayCount));
+                            memset(seq.melodyStepPlayCount, 0, sizeof(seq.melodyStepPlayCount));
+                        }
                     }
                 }
             }
@@ -1575,6 +1591,38 @@ static void seqSwitchPattern(int idx) {
     seq.nextPattern = -1;
     memset(seq.drumStepPlayCount, 0, sizeof(seq.drumStepPlayCount));
     memset(seq.melodyStepPlayCount, 0, sizeof(seq.melodyStepPlayCount));
+}
+
+// ============================================================================
+// CHAIN (Elektron-style pattern arrangement)
+// ============================================================================
+
+// Append a pattern to the chain. Returns false if chain is full.
+static bool seqChainAppend(int patternIdx) {
+    if (seq.chainLength >= SEQ_MAX_CHAIN) return false;
+    if (patternIdx < 0 || patternIdx >= SEQ_NUM_PATTERNS) return false;
+    seq.chain[seq.chainLength++] = patternIdx;
+    return true;
+}
+
+// Remove chain entry at position. Returns false if out of range.
+static bool seqChainRemove(int pos) {
+    if (pos < 0 || pos >= seq.chainLength) return false;
+    for (int i = pos; i < seq.chainLength - 1; i++) {
+        seq.chain[i] = seq.chain[i + 1];
+    }
+    seq.chainLength--;
+    if (seq.chainPos >= seq.chainLength && seq.chainLength > 0) {
+        seq.chainPos = seq.chainLength - 1;
+    }
+    if (seq.chainLength == 0) seq.chainPos = 0;
+    return true;
+}
+
+// Clear the entire chain
+static void seqChainClear(void) {
+    seq.chainLength = 0;
+    seq.chainPos = 0;
 }
 
 // Reset timing to defaults
