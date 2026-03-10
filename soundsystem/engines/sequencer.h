@@ -1248,13 +1248,15 @@ static void updateSequencer(float dt) {
                             seq.flamPitch[track] = pitchMod;
                         } else if (seq.drumTriggers[track]) {
                             // Normal trigger (no flam)
+                            seqSoundLog("SEQ_DRUM  track=%d step=%d vel=%.2f pitch=%.2f",
+                                        track, step, velocity, pitchMod);
                             seq.drumTriggers[track](velocity, pitchMod);
                         }
                     }
                     seq.drumTriggered[track] = true;
                 }
             }
-            
+
             // Advance tick
             seq.drumTick[track]++;
             
@@ -1293,12 +1295,14 @@ static void updateSequencer(float dt) {
                             seq.flamVelocity[track] = p->drumVelocity[track][newStep];
                             seq.flamPitch[track] = pitchMod;
                         } else if (seq.drumTriggers[track]) {
+                            seqSoundLog("SEQ_DRUM  track=%d step=%d vel=%.2f pitch=%.2f (advance)",
+                                        track, newStep, velocity, pitchMod);
                             seq.drumTriggers[track](velocity, pitchMod);
                         }
                     }
                     seq.drumTriggered[track] = true;
                 }
-                
+
                 // Check if pattern completed (track 0 wraps as master)
                 if (track == 0 && seq.drumStep[0] == 0 && prevStep != 0) {
                     seq.playCount++;
