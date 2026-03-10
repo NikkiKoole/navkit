@@ -386,6 +386,47 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "birdAmRate", p->p_birdAmRate);
     _sf_writeFloat(f, "birdAmDepth", p->p_birdAmDepth);
     _sf_writeFloat(f, "birdHarmonics", p->p_birdHarmonics);
+    // Pitch envelope
+    _sf_writeFloat(f, "pitchEnvAmount", p->p_pitchEnvAmount);
+    _sf_writeFloat(f, "pitchEnvDecay", p->p_pitchEnvDecay);
+    _sf_writeFloat(f, "pitchEnvCurve", p->p_pitchEnvCurve);
+    _sf_writeBool(f, "pitchEnvLinear", p->p_pitchEnvLinear);
+    // Noise mix
+    _sf_writeFloat(f, "noiseMix", p->p_noiseMix);
+    _sf_writeFloat(f, "noiseTone", p->p_noiseTone);
+    _sf_writeFloat(f, "noiseHP", p->p_noiseHP);
+    _sf_writeFloat(f, "noiseDecay", p->p_noiseDecay);
+    // Retrigger
+    _sf_writeInt(f, "retriggerCount", p->p_retriggerCount);
+    _sf_writeFloat(f, "retriggerSpread", p->p_retriggerSpread);
+    _sf_writeBool(f, "retriggerOverlap", p->p_retriggerOverlap);
+    _sf_writeFloat(f, "retriggerBurstDecay", p->p_retriggerBurstDecay);
+    // Extra oscillators
+    _sf_writeFloat(f, "osc2Ratio", p->p_osc2Ratio);
+    _sf_writeFloat(f, "osc2Level", p->p_osc2Level);
+    _sf_writeFloat(f, "osc3Ratio", p->p_osc3Ratio);
+    _sf_writeFloat(f, "osc3Level", p->p_osc3Level);
+    _sf_writeFloat(f, "osc4Ratio", p->p_osc4Ratio);
+    _sf_writeFloat(f, "osc4Level", p->p_osc4Level);
+    _sf_writeFloat(f, "osc5Ratio", p->p_osc5Ratio);
+    _sf_writeFloat(f, "osc5Level", p->p_osc5Level);
+    _sf_writeFloat(f, "osc6Ratio", p->p_osc6Ratio);
+    _sf_writeFloat(f, "osc6Level", p->p_osc6Level);
+    // Drive, click, filter type
+    _sf_writeFloat(f, "drive", p->p_drive);
+    _sf_writeFloat(f, "clickLevel", p->p_clickLevel);
+    _sf_writeFloat(f, "clickTime", p->p_clickTime);
+    _sf_writeInt(f, "filterType", p->p_filterType);
+    // Algorithm modes
+    _sf_writeInt(f, "noiseMode", p->p_noiseMode);
+    _sf_writeInt(f, "oscMixMode", p->p_oscMixMode);
+    _sf_writeFloat(f, "retriggerCurve", p->p_retriggerCurve);
+    _sf_writeBool(f, "phaseReset", p->p_phaseReset);
+    _sf_writeBool(f, "noiseLPBypass", p->p_noiseLPBypass);
+    _sf_writeInt(f, "noiseType", p->p_noiseType);
+    // Envelope flags
+    _sf_writeBool(f, "expDecay", p->p_expDecay);
+    _sf_writeBool(f, "oneShot", p->p_oneShot);
 }
 
 static void _sf_writePattern(FILE *f, int idx, const Pattern *p) {
@@ -840,6 +881,47 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "birdAmRate") == 0) p->p_birdAmRate = _sf_parseFloat(val);
     else if (strcmp(key, "birdAmDepth") == 0) p->p_birdAmDepth = _sf_parseFloat(val);
     else if (strcmp(key, "birdHarmonics") == 0) p->p_birdHarmonics = _sf_parseFloat(val);
+    // Pitch envelope
+    else if (strcmp(key, "pitchEnvAmount") == 0) p->p_pitchEnvAmount = _sf_parseFloat(val);
+    else if (strcmp(key, "pitchEnvDecay") == 0) p->p_pitchEnvDecay = _sf_parseFloat(val);
+    else if (strcmp(key, "pitchEnvCurve") == 0) p->p_pitchEnvCurve = _sf_parseFloat(val);
+    else if (strcmp(key, "pitchEnvLinear") == 0) p->p_pitchEnvLinear = _sf_parseBool(val);
+    // Noise mix
+    else if (strcmp(key, "noiseMix") == 0) p->p_noiseMix = _sf_parseFloat(val);
+    else if (strcmp(key, "noiseTone") == 0) p->p_noiseTone = _sf_parseFloat(val);
+    else if (strcmp(key, "noiseHP") == 0) p->p_noiseHP = _sf_parseFloat(val);
+    else if (strcmp(key, "noiseDecay") == 0) p->p_noiseDecay = _sf_parseFloat(val);
+    // Retrigger
+    else if (strcmp(key, "retriggerCount") == 0) p->p_retriggerCount = _sf_parseInt(val);
+    else if (strcmp(key, "retriggerSpread") == 0) p->p_retriggerSpread = _sf_parseFloat(val);
+    else if (strcmp(key, "retriggerOverlap") == 0) p->p_retriggerOverlap = _sf_parseBool(val);
+    else if (strcmp(key, "retriggerBurstDecay") == 0) p->p_retriggerBurstDecay = _sf_parseFloat(val);
+    // Extra oscillators
+    else if (strcmp(key, "osc2Ratio") == 0) p->p_osc2Ratio = _sf_parseFloat(val);
+    else if (strcmp(key, "osc2Level") == 0) p->p_osc2Level = _sf_parseFloat(val);
+    else if (strcmp(key, "osc3Ratio") == 0) p->p_osc3Ratio = _sf_parseFloat(val);
+    else if (strcmp(key, "osc3Level") == 0) p->p_osc3Level = _sf_parseFloat(val);
+    else if (strcmp(key, "osc4Ratio") == 0) p->p_osc4Ratio = _sf_parseFloat(val);
+    else if (strcmp(key, "osc4Level") == 0) p->p_osc4Level = _sf_parseFloat(val);
+    else if (strcmp(key, "osc5Ratio") == 0) p->p_osc5Ratio = _sf_parseFloat(val);
+    else if (strcmp(key, "osc5Level") == 0) p->p_osc5Level = _sf_parseFloat(val);
+    else if (strcmp(key, "osc6Ratio") == 0) p->p_osc6Ratio = _sf_parseFloat(val);
+    else if (strcmp(key, "osc6Level") == 0) p->p_osc6Level = _sf_parseFloat(val);
+    // Drive, click, filter type
+    else if (strcmp(key, "drive") == 0) p->p_drive = _sf_parseFloat(val);
+    else if (strcmp(key, "clickLevel") == 0) p->p_clickLevel = _sf_parseFloat(val);
+    else if (strcmp(key, "clickTime") == 0) p->p_clickTime = _sf_parseFloat(val);
+    else if (strcmp(key, "filterType") == 0) p->p_filterType = _sf_parseInt(val);
+    // Algorithm modes
+    else if (strcmp(key, "noiseMode") == 0) p->p_noiseMode = _sf_parseInt(val);
+    else if (strcmp(key, "oscMixMode") == 0) p->p_oscMixMode = _sf_parseInt(val);
+    else if (strcmp(key, "retriggerCurve") == 0) p->p_retriggerCurve = _sf_parseFloat(val);
+    else if (strcmp(key, "phaseReset") == 0) p->p_phaseReset = _sf_parseBool(val);
+    else if (strcmp(key, "noiseLPBypass") == 0) p->p_noiseLPBypass = _sf_parseBool(val);
+    else if (strcmp(key, "noiseType") == 0) p->p_noiseType = _sf_parseInt(val);
+    // Envelope flags
+    else if (strcmp(key, "expDecay") == 0) p->p_expDecay = _sf_parseBool(val);
+    else if (strcmp(key, "oneShot") == 0) p->p_oneShot = _sf_parseBool(val);
     // Unknown keys silently skipped (future-proof)
 }
 
