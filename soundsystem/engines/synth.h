@@ -536,7 +536,7 @@ typedef struct {
 // SYNTH CONTEXT (all synth state in one struct)
 // ============================================================================
 
-#define NUM_VOICES 16
+#define NUM_VOICES 32
 
 typedef struct SynthContext {
     // Voices
@@ -1352,10 +1352,17 @@ static float processPluckOscillator(Voice *v, float sampleRate) {
     int nextIndex = (v->ksIndex + 1) % v->ksLength;
     float nextSample = v->ksBuffer[nextIndex];
     
-    // Simple averaging filter with damping
-    float filtered = ((sample + nextSample) * 0.5f) * v->ksDamping;
+    // Karplus-Strong with brightness and tone damping
+    // Brightness: 1=bright (more direct sample), 0=muted (more averaging)
+    float avg = (sample + nextSample) * 0.5f;
+    float bright = v->ksBrightness;
+    float blended = avg + (sample - avg) * bright;
+    // Tone damping: additional one-pole lowpass in feedback (pluckDamp 0=no effect, 1=heavy damping)
+    float damp = pluckDamp;
+    float filtered = v->ksLastSample + (blended - v->ksLastSample) * (1.0f - damp * 0.8f);
+    filtered *= v->ksDamping;
     v->ksLastSample = filtered;
-    
+
     // Write back to delay line
     v->ksBuffer[v->ksIndex] = filtered;
     v->ksIndex = nextIndex;
@@ -3239,7 +3246,7 @@ static const VoiceInitParams VOICE_INIT_PERC = {
     .attack = 0.002f, .decay = 3.0f, .sustain = 0.0f, .release = 0.1f,
     .filterCutoff = 1.0f, .filterResonance = 0.0f,
     .vibratoRate = 0.0f, .vibratoDepth = 0.0f,
-    .useGlobalEnvelope = false, .useGlobalFilter = false, .useGlobalLfos = false, .supportsMono = false
+    .useGlobalEnvelope = false, .useGlobalFilter = false, .useGlobalLfos = false, .supportsMono = true
 };
 
 // Unified voice initialization - returns voice index, sets isGlide output
@@ -3528,7 +3535,7 @@ static const VoiceInitParams VOICE_INIT_PLUCK = {
     .attack = 0.001f, .decay = 4.0f, .sustain = 0.0f, .release = 0.01f,
     .filterCutoff = 1.0f, .filterResonance = 0.0f,
     .vibratoRate = 0.0f, .vibratoDepth = 0.0f,
-    .useGlobalEnvelope = false, .useGlobalFilter = false, .useGlobalLfos = false, .supportsMono = false
+    .useGlobalEnvelope = false, .useGlobalFilter = false, .useGlobalLfos = false, .supportsMono = true
 };
 
 // Play a plucked string (Karplus-Strong)

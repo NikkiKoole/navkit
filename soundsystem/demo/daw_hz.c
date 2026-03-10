@@ -262,6 +262,41 @@ static void dawRecSample(short s) {
     }
 }
 
+// ============================================================================
+// DEBUG PANEL
+// ============================================================================
+
+static bool dawDebugOpen = false;
+
+// Voice lifecycle ring buffer
+#define VOICE_LOG_SIZE 64
+#define VOICE_LOG_LINE 80
+static char voiceLog[VOICE_LOG_SIZE][VOICE_LOG_LINE];
+static int voiceLogHead = 0;
+static int voiceLogCount = 0;
+static float voiceAge[NUM_VOICES]; // seconds since voice became active
+
+static void voiceLogPush(const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(voiceLog[voiceLogHead], VOICE_LOG_LINE, fmt, args);
+    va_end(args);
+    voiceLogHead = (voiceLogHead + 1) % VOICE_LOG_SIZE;
+    if (voiceLogCount < VOICE_LOG_SIZE) voiceLogCount++;
+}
+
+// Bus colors for voice grid
+static const Color busColors[] = {
+    {220, 60, 60, 255},   // 0: kick (red)
+    {230, 140, 50, 255},  // 1: snare (orange)
+    {220, 200, 50, 255},  // 2: CH (yellow)
+    {180, 80, 200, 255},  // 3: clap (purple)
+    {60, 100, 220, 255},  // 4: bass (blue)
+    {50, 200, 200, 255},  // 5: lead (cyan)
+    {60, 200, 80, 255},   // 6: chord (green)
+};
+// busNames defined later with other bus arrays
+
 static DawState daw = {
     .transport = { .bpm = 120.0f },
     .crossfader = { .pos = 0.5f, .sceneB = 1, .count = 8 },
@@ -649,6 +684,8 @@ static void drawSidebar(void) {
 // TRANSPORT BAR
 // ============================================================================
 
+static void drawDebugPanel(void); // forward decl — defined after voiceBus/dawDrumVoice
+
 static void drawTransport(void) {
     float x = CONTENT_X, w = CONTENT_W;
     DrawRectangle((int)x, 0, (int)w, TRANSPORT_H, (Color){25, 25, 30, 255});
@@ -663,6 +700,19 @@ static void drawTransport(void) {
 
     if (daw.transport.playing) DrawTextShadow(">>>", (int)tx, (int)ty, 14, GREEN);
     tx += 50;
+
+    // Debug button
+    {
+        Vector2 mouse = GetMousePosition();
+        Rectangle dbgR = {tx, ty-2, 40, 18};
+        bool dbgHov = CheckCollisionPointRec(mouse, dbgR);
+        Color dbgBg = dawDebugOpen ? (Color){80, 60, 30, 255} : (dbgHov ? (Color){45, 45, 55, 255} : (Color){33, 33, 40, 255});
+        DrawRectangleRec(dbgR, dbgBg);
+        DrawRectangleLinesEx(dbgR, 1, dawDebugOpen ? ORANGE : (Color){55, 55, 65, 255});
+        DrawTextShadow("Dbg", (int)tx + 8, (int)ty, 11, dawDebugOpen ? WHITE : GRAY);
+        if (dbgHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { dawDebugOpen = !dawDebugOpen; ui_consume_click(); }
+    }
+    tx += 46;
 
     // Pattern indicator
     DrawTextShadow(TextFormat("Pat:%d", daw.transport.currentPattern+1), (int)tx, (int)ty+2, 11, (Color){120,120,140,255});
@@ -1657,9 +1707,9 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "Curve", &p->p_voicePitchEnvCurve, 0.1f, -1.0f, 1.0f);
         } else if (p->p_waveType == WAVE_PLUCK) {
             ui_col_sublabel(&c, "Pluck:", (Color){140,160,200,255});
-            ui_col_float(&c, "Bright", &p->p_pluckBrightness, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&c, "Sustain", &p->p_pluckDamping, 0.0002f, 0.995f, 0.9998f);
-            ui_col_float(&c, "Damp", &p->p_pluckDamp, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Bright", &p->p_pluckBrightness, 0.01f, 0.0f, 1.0f);
+            ui_col_float(&c, "Sustain", &p->p_pluckDamping, 0.001f, 0.9f, 0.9999f);
+            ui_col_float(&c, "Damp", &p->p_pluckDamp, 0.01f, 0.0f, 1.0f);
         } else if (p->p_waveType == WAVE_ADDITIVE) {
             ui_col_sublabel(&c, "Additive:", (Color){140,160,200,255});
             ui_col_cycle(&c, "Preset", additivePresetNames, 5, &p->p_additivePreset);
@@ -1783,7 +1833,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
         ui_col_float_p(&c, "Note", &p->p_volume, 0.05f, 0.0f, 1.0f);
         ui_col_space(&c, 3);
 
-        if (p->p_waveType != WAVE_PLUCK && p->p_waveType != WAVE_MALLET) {
+        {
             bool monoActive = DB(p_monoMode) || DF(p_glideTime);
             secY = c.y;
             ui_col_sublabel(&c, "Mono/Glide:", ORANGE);
@@ -2534,11 +2584,17 @@ static void dawDrumTriggerGeneric(int trackIdx, int busIdx, float vel, float pit
     // Choke: only release if the voice still belongs to this track's bus
     // (voices get reused by findVoice — stale index may point to another track's voice)
     if (p->p_choke && dawDrumVoice[trackIdx] >= 0 && voiceBus[dawDrumVoice[trackIdx]] == busIdx) {
+        voiceLogPush("REL drum[%d] v%d choke bus=%d", trackIdx, dawDrumVoice[trackIdx], busIdx);
         releaseNote(dawDrumVoice[trackIdx]);
     }
     int v = playNoteWithPatch(trigFreq, p);
     dawDrumVoice[trackIdx] = v;
-    if (v >= 0) { voiceBus[v] = busIdx; synthCtx->voices[v].volume *= pVol; }
+    if (v >= 0) {
+        voiceBus[v] = busIdx;
+        synthCtx->voices[v].volume *= pVol;
+        voiceAge[v] = 0.0f;
+        voiceLogPush("ALLOC drum[%d] v%d bus=%d freq=%.0f", trackIdx, v, busIdx, trigFreq);
+    }
     int activeVoices = 0;
     for (int vi = 0; vi < NUM_VOICES; vi++)
         if (synthCtx->voices[vi].envStage > 0) activeVoices++;
@@ -2607,6 +2663,7 @@ static void dawMelodyTriggerGeneric(int trackIdx, int note, float vel,
     // Only release if voice still belongs to this track's bus
     int melBus = dawPatchToBus(busTrack);
     if (dawMelodyVoice[trackIdx] >= 0 && voiceBus[dawMelodyVoice[trackIdx]] == melBus) {
+        voiceLogPush("REL mel[%d] v%d retrig bus=%d", trackIdx, dawMelodyVoice[trackIdx], melBus);
         releaseNote(dawMelodyVoice[trackIdx]);
     }
 
@@ -2630,7 +2687,9 @@ static void dawMelodyTriggerGeneric(int trackIdx, int note, float vel,
     dawMelodyVoice[trackIdx] = v;
     if (v >= 0) {
         voiceBus[v] = dawPatchToBus(busTrack);
+        voiceAge[v] = 0.0f;
         if (p->p_monoMode) dawMonoVoiceIdx[trackIdx] = v;
+        voiceLogPush("ALLOC mel[%d] v%d bus=%d freq=%.0f", trackIdx, v, dawPatchToBus(busTrack), freq);
     }
 
     // Restore mono voice idx so other tracks aren't affected
@@ -2648,9 +2707,16 @@ static void dawMelodyTrigger0(int note, float vel, float gt, bool sl, bool ac) {
 static void dawMelodyTrigger1(int note, float vel, float gt, bool sl, bool ac) { dawMelodyTriggerGeneric(1, note, vel, gt, sl, ac); }
 static void dawMelodyTrigger2(int note, float vel, float gt, bool sl, bool ac) { dawMelodyTriggerGeneric(2, note, vel, gt, sl, ac); }
 
-static void dawMelodyRelease0(void) { if (dawMelodyVoice[0] >= 0) { releaseNote(dawMelodyVoice[0]); dawMelodyVoice[0] = -1; } }
-static void dawMelodyRelease1(void) { if (dawMelodyVoice[1] >= 0) { releaseNote(dawMelodyVoice[1]); dawMelodyVoice[1] = -1; } }
-static void dawMelodyRelease2(void) { if (dawMelodyVoice[2] >= 0) { releaseNote(dawMelodyVoice[2]); dawMelodyVoice[2] = -1; } }
+static void dawMelodyReleaseGeneric(int t) {
+    if (dawMelodyVoice[t] >= 0) {
+        voiceLogPush("REL mel[%d] v%d gate-end", t, dawMelodyVoice[t]);
+        releaseNote(dawMelodyVoice[t]);
+        dawMelodyVoice[t] = -1;
+    }
+}
+static void dawMelodyRelease0(void) { dawMelodyReleaseGeneric(0); }
+static void dawMelodyRelease1(void) { dawMelodyReleaseGeneric(1); }
+static void dawMelodyRelease2(void) { dawMelodyReleaseGeneric(2); }
 
 // Chord trigger for PICK_ALL note pool mode — plays all notes simultaneously
 static void dawMelodyChordTriggerGeneric(int trackIdx, int *notes, int noteCount,
@@ -2710,7 +2776,10 @@ static void dawStopSequencer(void) {
         seq.drumStep[t] = 0;
         seq.drumTick[t] = 0;
         seq.drumTriggered[t] = false;
-        if (dawDrumVoice[t] >= 0) { releaseNote(dawDrumVoice[t]); dawDrumVoice[t] = -1; }
+        if (dawDrumVoice[t] >= 0) {
+            voiceLogPush("REL drum[%d] v%d stop", t, dawDrumVoice[t]);
+            releaseNote(dawDrumVoice[t]); dawDrumVoice[t] = -1;
+        }
     }
     for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
         seq.melodyStep[t] = 0;
@@ -2718,7 +2787,10 @@ static void dawStopSequencer(void) {
         seq.melodyTriggered[t] = false;
         seq.melodyGateRemaining[t] = 0;
         seq.melodyCurrentNote[t] = SEQ_NOTE_OFF;
-        if (dawMelodyVoice[t] >= 0) { releaseNote(dawMelodyVoice[t]); dawMelodyVoice[t] = -1; }
+        if (dawMelodyVoice[t] >= 0) {
+            voiceLogPush("REL mel[%d] v%d stop", t, dawMelodyVoice[t]);
+            releaseNote(dawMelodyVoice[t]); dawMelodyVoice[t] = -1;
+        }
     }
     seq.tickTimer = 0.0f;
 }
@@ -2726,6 +2798,189 @@ static void dawStopSequencer(void) {
 // Arp keyboard state: single voice collecting held keys
 static int dawArpVoice = -1;
 static bool dawArpKeyHeld[20] = {false}; // per-piano-key held state
+static int dawArpPrevHeldCount = 0;
+static float dawArpPrevFreqs[8] = {0};
+
+// ============================================================================
+// DEBUG PANEL (draw implementation — needs voiceBus, dawDrumVoice, etc.)
+// ============================================================================
+
+static void drawDebugPanel(void) {
+    if (!dawDebugOpen) return;
+    Vector2 mouse = GetMousePosition();
+
+    float px = CONTENT_X + 20, py = TRANSPORT_H + 10;
+    float pw = 460, ph = 380;
+    DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){18, 18, 24, 240});
+    DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 1, (Color){70, 70, 90, 255});
+    DrawTextShadow("Debug", (int)px + 6, (int)py + 4, 12, WHITE);
+
+    float bx = px + 8, by = py + 22;
+
+    // --- Row 1: Control buttons ---
+    // Sound log toggle
+    {
+        Rectangle r = {bx, by, 70, 16};
+        bool hov = CheckCollisionPointRec(mouse, r);
+        Color bg = seqSoundLogEnabled ? (Color){140, 50, 50, 255} : (hov ? (Color){50, 50, 60, 255} : (Color){35, 35, 42, 255});
+        DrawRectangleRec(r, bg);
+        DrawRectangleLinesEx(r, 1, (Color){60, 60, 70, 255});
+        DrawTextShadow(seqSoundLogEnabled ? "Log: ON" : "Log: OFF", (int)bx + 4, (int)by + 3, 9, WHITE);
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            seqSoundLogEnabled = !seqSoundLogEnabled;
+            if (seqSoundLogEnabled) {
+                seqSoundLogCount = 0; seqSoundLogHead = 0;
+                struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+                seqSoundLogStartTime = ts.tv_sec + ts.tv_nsec / 1000000000.0;
+            }
+            ui_consume_click();
+        }
+    }
+    // Dump log
+    {
+        Rectangle r = {bx + 76, by, 56, 16};
+        bool hov = CheckCollisionPointRec(mouse, r);
+        DrawRectangleRec(r, hov ? (Color){50, 50, 60, 255} : (Color){35, 35, 42, 255});
+        DrawRectangleLinesEx(r, 1, (Color){60, 60, 70, 255});
+        DrawTextShadow("Dump", (int)bx + 80, (int)by + 3, 9, seqSoundLogCount > 0 ? WHITE : GRAY);
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && seqSoundLogCount > 0) {
+            seqSoundLogDump("daw_sound.log");
+            ui_consume_click();
+        }
+    }
+    // WAV record toggle
+    {
+        Rectangle r = {bx + 138, by, 70, 16};
+        bool hov = CheckCollisionPointRec(mouse, r);
+        Color bg = dawRecording ? (Color){180, 40, 40, 255} : (hov ? (Color){50, 50, 60, 255} : (Color){35, 35, 42, 255});
+        DrawRectangleRec(r, bg);
+        DrawRectangleLinesEx(r, 1, (Color){60, 60, 70, 255});
+        if (dawRecording) {
+            float secs = (float)dawRecSamples / SAMPLE_RATE;
+            DrawTextShadow(TextFormat("WAV %.1fs", secs), (int)bx + 142, (int)by + 3, 9, WHITE);
+        } else {
+            DrawTextShadow("WAV Rec", (int)bx + 142, (int)by + 3, 9, WHITE);
+        }
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            if (dawRecording) dawRecStop(); else dawRecStart();
+            ui_consume_click();
+        }
+    }
+    // Kill all voices
+    {
+        Rectangle r = {bx + 214, by, 60, 16};
+        bool hov = CheckCollisionPointRec(mouse, r);
+        DrawRectangleRec(r, hov ? (Color){80, 40, 40, 255} : (Color){35, 35, 42, 255});
+        DrawRectangleLinesEx(r, 1, (Color){60, 60, 70, 255});
+        DrawTextShadow("Kill All", (int)bx + 218, (int)by + 3, 9, (Color){255, 120, 120, 255});
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            for (int i = 0; i < NUM_VOICES; i++) {
+                synthVoices[i].envStage = 0;
+                synthVoices[i].envLevel = 0;
+                voiceBus[i] = -1;
+            }
+            for (int t = 0; t < SEQ_DRUM_TRACKS; t++) dawDrumVoice[t] = -1;
+            for (int t = 0; t < SEQ_MELODY_TRACKS; t++) dawMelodyVoice[t] = -1;
+            dawArpVoice = -1;
+            voiceLogPush("KILL_ALL  all voices silenced");
+            ui_consume_click();
+        }
+    }
+    // Dump voice log to file
+    {
+        Rectangle r = {bx + 280, by, 66, 16};
+        bool hov = CheckCollisionPointRec(mouse, r);
+        DrawRectangleRec(r, hov ? (Color){50, 50, 60, 255} : (Color){35, 35, 42, 255});
+        DrawRectangleLinesEx(r, 1, (Color){60, 60, 70, 255});
+        DrawTextShadow("Dump VLog", (int)bx + 284, (int)by + 3, 9, voiceLogCount > 0 ? WHITE : GRAY);
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && voiceLogCount > 0) {
+            FILE *vf = fopen("daw_voice.log", "w");
+            if (vf) {
+                int n = voiceLogCount < VOICE_LOG_SIZE ? voiceLogCount : VOICE_LOG_SIZE;
+                for (int i = 0; i < n; i++) {
+                    int idx = (voiceLogHead - n + i + VOICE_LOG_SIZE) % VOICE_LOG_SIZE;
+                    fprintf(vf, "%s\n", voiceLog[idx]);
+                }
+                fclose(vf);
+            }
+            ui_consume_click();
+        }
+    }
+
+    by += 24;
+
+    // --- Voice grid: 16 boxes colored by bus, with index ---
+    DrawTextShadow("Voices:", (int)bx, (int)by, 9, GRAY);
+    by += 12;
+    int activeCount = 0;
+    for (int i = 0; i < NUM_VOICES; i++) {
+        float cx = bx + (i % 8) * 54;
+        float cy = by + (i / 8) * 38;
+        bool active = synthVoices[i].envStage > 0;
+        bool releasing = synthVoices[i].envStage == 4;
+        if (active) activeCount++;
+
+        // Background colored by bus
+        Color bg = {30, 30, 36, 255};
+        int bus = voiceBus[i];
+        if (active && bus >= 0 && bus < NUM_BUSES) {
+            bg = busColors[bus];
+            if (releasing) { bg.r /= 2; bg.g /= 2; bg.b /= 2; }
+        } else if (active) {
+            bg = (Color){100, 100, 100, 255};
+            if (releasing) { bg.r /= 2; bg.g /= 2; bg.b /= 2; }
+        }
+
+        DrawRectangle((int)cx, (int)cy, 50, 34, bg);
+        DrawRectangleLinesEx((Rectangle){cx, cy, 50, 34}, 1, active ? WHITE : (Color){45, 45, 55, 255});
+
+        // Voice index
+        DrawTextShadow(TextFormat("%d", i), (int)cx + 2, (int)cy + 1, 9, active ? WHITE : (Color){50, 50, 58, 255});
+
+        if (active) {
+            // Bus name
+            const char *bname = (bus >= 0 && bus < NUM_BUSES) ? busNames[bus] : "??";
+            DrawTextShadow(bname, (int)cx + 14, (int)cy + 1, 9, WHITE);
+            // Frequency
+            DrawTextShadow(TextFormat("%.0fHz", synthVoices[i].frequency), (int)cx + 2, (int)cy + 12, 8, (Color){200, 200, 200, 255});
+            // Env stage + age
+            const char *stageNames[] = {"off", "atk", "dec", "sus", "rel"};
+            DrawTextShadow(TextFormat("%s %.1fs", stageNames[synthVoices[i].envStage], voiceAge[i]),
+                          (int)cx + 2, (int)cy + 22, 8,
+                          voiceAge[i] > 5.0f ? (Color){255, 100, 100, 255} : (Color){160, 160, 170, 255});
+        }
+    }
+    by += 80;
+
+    // Voice count summary
+    DrawTextShadow(TextFormat("Active: %d/%d", activeCount, NUM_VOICES), (int)bx, (int)by, 9,
+                  activeCount >= NUM_VOICES ? RED : (activeCount > 12 ? ORANGE : GRAY));
+
+    // Per-bus voice count
+    {
+        float bsx = bx + 90;
+        for (int b = 0; b < NUM_BUSES; b++) {
+            int cnt = 0;
+            for (int v = 0; v < NUM_VOICES; v++)
+                if (synthVoices[v].envStage > 0 && voiceBus[v] == b) cnt++;
+            if (cnt > 0) {
+                DrawRectangle((int)bsx, (int)by, 8, 10, busColors[b]);
+                DrawTextShadow(TextFormat("%s:%d", busNames[b], cnt), (int)bsx + 10, (int)by, 9, GRAY);
+                bsx += 55;
+            }
+        }
+    }
+    by += 16;
+
+    // --- Voice lifecycle log ---
+    DrawTextShadow("Voice Log:", (int)bx, (int)by, 9, GRAY);
+    by += 12;
+    int logLines = voiceLogCount < 12 ? voiceLogCount : 12;
+    for (int i = 0; i < logLines; i++) {
+        int idx = (voiceLogHead - logLines + i + VOICE_LOG_SIZE) % VOICE_LOG_SIZE;
+        DrawTextShadow(voiceLog[idx], (int)bx, (int)(by + i * 10), 8, (Color){140, 140, 150, 255});
+    }
+}
 
 static void dawHandleMusicalTyping(void) {
     // Octave: Z down, X up
@@ -2736,13 +2991,15 @@ static void dawHandleMusicalTyping(void) {
     int bus = dawPatchToBus(daw.selectedPatch);
 
     if (patch->p_arpEnabled) {
-        // Arp mode: collect held keys into a single voice's arp buffer
+        // Arp mode: one persistent voice, never retrigger mid-play
+        // 1 key  → build chord from UI chord type via buildArpChord
+        // 2+ keys → use held notes directly
         for (size_t i = 0; i < NUM_DAW_PIANO_KEYS; i++) {
             if (IsKeyPressed(dawPianoKeys[i].key)) dawArpKeyHeld[i] = true;
             if (IsKeyReleased(dawPianoKeys[i].key)) dawArpKeyHeld[i] = false;
         }
 
-        // Count held keys and collect frequencies (sorted by pitch)
+        // Collect held keys
         float heldFreqs[8];
         int heldCount = 0;
         for (size_t i = 0; i < NUM_DAW_PIANO_KEYS && heldCount < 8; i++) {
@@ -2752,30 +3009,53 @@ static void dawHandleMusicalTyping(void) {
         }
 
         if (heldCount > 0) {
-            if (dawArpVoice < 0 || synthCtx->voices[dawArpVoice].envStage == 0) {
-                // Trigger first note, arp will cycle through the rest
-                applyPatchToGlobals(patch);
-                // Temporarily disable arp so playNoteWithPatch doesn't build a chord from single root
+            // Create voice only if none exists
+            bool needNewVoice = (dawArpVoice < 0 || synthCtx->voices[dawArpVoice].envStage == 0);
+            if (needNewVoice) {
                 patch->p_arpEnabled = false;
                 int v = playNoteWithPatch(heldFreqs[0], patch);
                 patch->p_arpEnabled = true;
                 dawArpVoice = v;
-                if (v >= 0) voiceBus[v] = bus;
+                if (v >= 0) {
+                    voiceBus[v] = bus;
+                    voiceAge[v] = 0.0f;
+                    voiceLogPush("ALLOC arp v%d bus=%d freq=%.0f", v, bus, heldFreqs[0]);
+                }
             }
-            // Update arp notes on the voice with all held keys
-            if (dawArpVoice >= 0) {
-                Voice *v = &synthCtx->voices[dawArpVoice];
-                setArpNotes(v, heldFreqs, heldCount,
+
+            // Build arp note list: 1 key = chord from UI, 2+ = held notes
+            float arpFreqs[8];
+            int arpCount = 0;
+            if (heldCount == 1) {
+                arpCount = buildArpChord(heldFreqs[0], (ArpChordType)patch->p_arpChord, arpFreqs);
+            } else {
+                arpCount = heldCount;
+                for (int k = 0; k < heldCount; k++) arpFreqs[k] = heldFreqs[k];
+            }
+
+            // Only update voice arp when notes actually changed
+            bool changed = (arpCount != dawArpPrevHeldCount);
+            if (!changed) {
+                for (int k = 0; k < arpCount; k++) {
+                    if (arpFreqs[k] != dawArpPrevFreqs[k]) { changed = true; break; }
+                }
+            }
+            if (changed && dawArpVoice >= 0) {
+                setArpNotes(&synthCtx->voices[dawArpVoice], arpFreqs, arpCount,
                            (ArpMode)patch->p_arpMode,
                            (ArpRateDiv)patch->p_arpRateDiv,
                            patch->p_arpRate);
+                dawArpPrevHeldCount = arpCount;
+                for (int k = 0; k < arpCount && k < 8; k++) dawArpPrevFreqs[k] = arpFreqs[k];
             }
         } else {
             // All keys released — stop arp
             if (dawArpVoice >= 0) {
+                voiceLogPush("REL arp v%d keys-up", dawArpVoice);
                 releaseNote(dawArpVoice);
                 dawArpVoice = -1;
             }
+            dawArpPrevHeldCount = 0;
         }
     } else {
         // Non-arp mode: one voice per key (original behavior)
@@ -2788,10 +3068,39 @@ static void dawHandleMusicalTyping(void) {
                 float freq = dawSemitoneToFreq(dawPianoKeys[i].semitone, dawCurrentOctave);
                 int v = playNoteWithPatch(freq, patch);
                 dawPianoKeyVoices[i] = v;
-                if (v >= 0) voiceBus[v] = bus;
+                if (v >= 0) {
+                    voiceBus[v] = bus;
+                    voiceAge[v] = 0.0f;
+                    voiceLogPush("ALLOC key[%d] v%d bus=%d freq=%.0f", (int)i, v, bus, freq);
+                }
             }
             if (IsKeyReleased(dawPianoKeys[i].key) && dawPianoKeyVoices[i] >= 0) {
-                releaseNote(dawPianoKeyVoices[i]);
+                if (patch->p_monoMode) {
+                    // Mono: only release if no other keys are held
+                    bool anyHeld = false;
+                    for (size_t j = 0; j < NUM_DAW_PIANO_KEYS; j++) {
+                        if (j != i && IsKeyDown(dawPianoKeys[j].key)) { anyHeld = true; break; }
+                    }
+                    if (anyHeld) {
+                        // Glide back to the most recently still-held key
+                        for (int j = (int)NUM_DAW_PIANO_KEYS - 1; j >= 0; j--) {
+                            if (j != (int)i && IsKeyDown(dawPianoKeys[j].key)) {
+                                float freq = dawSemitoneToFreq(dawPianoKeys[j].semitone, dawCurrentOctave);
+                                int v = playNoteWithPatch(freq, patch);
+                                dawPianoKeyVoices[j] = v;
+                                if (v >= 0) voiceBus[v] = bus;
+                                voiceLogPush("GLIDE key[%d] v%d freq=%.0f", j, v, freq);
+                                break;
+                            }
+                        }
+                    } else {
+                        voiceLogPush("REL key[%d] v%d mono-last", (int)i, dawPianoKeyVoices[i]);
+                        releaseNote(dawPianoKeyVoices[i]);
+                    }
+                } else {
+                    voiceLogPush("REL key[%d] v%d", (int)i, dawPianoKeyVoices[i]);
+                    releaseNote(dawPianoKeyVoices[i]);
+                }
                 dawPianoKeyVoices[i] = -1;
             }
         }
@@ -2902,7 +3211,7 @@ int main(void) {
             EndScissorMode();
         }
 
-        // Log/recording indicators
+        // Log/recording indicators (top-right, always visible)
         if (seqSoundLogEnabled) {
             DrawRectangle(SCREEN_WIDTH - 60, 2, 58, 14, (Color){180,30,30,200});
             DrawTextShadow("REC LOG", SCREEN_WIDTH - 58, 3, 9, WHITE);
@@ -2912,6 +3221,18 @@ int main(void) {
             DrawRectangle(SCREEN_WIDTH - 60, 18, 58, 14, (Color){200,50,50,220});
             DrawTextShadow(TextFormat("WAV %.1fs", secs), SCREEN_WIDTH - 58, 19, 9, WHITE);
         }
+
+        // Update voice ages
+        {
+            float dt = GetFrameTime();
+            for (int i = 0; i < NUM_VOICES; i++) {
+                if (synthVoices[i].envStage > 0) voiceAge[i] += dt;
+                else voiceAge[i] = 0.0f;
+            }
+        }
+
+        // Debug panel overlay (drawn last so it's on top)
+        drawDebugPanel();
 
         ui_update();
         DrawTooltip();
