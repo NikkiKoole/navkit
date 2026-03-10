@@ -339,6 +339,8 @@ static void initInstrumentPresets(void) {
     instrumentPresets[24].patch.p_clickLevel = 0.3f;         // Click transient (drums.h: kickClick=0.3)
     instrumentPresets[24].patch.p_clickTime = 0.005f;        // drums.h: KICK_CLICK_DURATION
     instrumentPresets[24].patch.p_drive = 0.5f;             // Warm saturation
+    instrumentPresets[24].patch.p_useTriggerFreq = true;
+    instrumentPresets[24].patch.p_triggerFreq = 50.0f;
 
     // 808 Snare - Tone + bandpass noise (matching drums.h dual-osc + filtered noise)
     // drums.h: sin(180Hz) + sin(270Hz), BP noise (snappy 0.6), tone/noise separate decay
@@ -358,6 +360,8 @@ static void initInstrumentPresets(void) {
     instrumentPresets[25].patch.p_noiseTone = 0.55f;        // LP cutoff (drums.h: 0.15+tone*0.4)
     instrumentPresets[25].patch.p_noiseHP = 0.3f;           // HP to remove rumble (bandpass)
     instrumentPresets[25].patch.p_noiseDecay = 0.2f;        // Noise tail
+    instrumentPresets[25].patch.p_useTriggerFreq = true;
+    instrumentPresets[25].patch.p_triggerFreq = 180.0f;
 
     // 808 Clap - Bandpass noise with retrigger
     // drums.h: 4 noise bursts at staggered offsets, BP filter, spread 0.012s
@@ -380,6 +384,8 @@ static void initInstrumentPresets(void) {
     instrumentPresets[26].patch.p_retriggerCurve = 0.15f;     // Accelerating gaps matching drums.h {0,1,2.2,3.5}×spread
     instrumentPresets[26].patch.p_noiseMode = 2;               // Per-burst noise re-seeding
     instrumentPresets[26].patch.p_noiseType = 1;               // Time-hash noise (drums.h style)
+    instrumentPresets[26].patch.p_useTriggerFreq = true;
+    instrumentPresets[26].patch.p_triggerFreq = 400.0f;
 
     // 808 Closed HiHat - 3 square oscillators at metallic ratios + HP noise
     // drums.h: 6 squares at {1,1.45,1.62,1.93,2.50,2.66} + HP filter
@@ -407,6 +413,9 @@ static void initInstrumentPresets(void) {
     instrumentPresets[27].patch.p_filterCutoff = 0.58f;      // drums.h: 0.3+tone*0.4, tone=0.7 → 0.58 (one-pole direct)
     instrumentPresets[27].patch.p_volume = 0.4f;
     instrumentPresets[27].patch.p_phaseReset = true;          // Deterministic attack
+    instrumentPresets[27].patch.p_useTriggerFreq = true;
+    instrumentPresets[27].patch.p_triggerFreq = 460.0f;
+    instrumentPresets[27].patch.p_choke = true;
 
     // 808 Open HiHat - Same metallic character, longer decay
     instrumentPresets[28].name = "808 OH";
@@ -430,6 +439,9 @@ static void initInstrumentPresets(void) {
     instrumentPresets[28].patch.p_filterCutoff = 0.58f;       // drums.h: 0.3+tone*0.4, tone=0.7 → 0.58
     instrumentPresets[28].patch.p_volume = 0.4f;
     instrumentPresets[28].patch.p_phaseReset = true;
+    instrumentPresets[28].patch.p_useTriggerFreq = true;
+    instrumentPresets[28].patch.p_triggerFreq = 460.0f;
+    instrumentPresets[28].patch.p_choke = true;
 
     // 808 Tom - Sine with pitch drop + triangle blend
     // drums.h: sin(80Hz*pitchMult) + 20% triangle, pitch drops from 2× to 1×, expDecay 0.3s
@@ -446,6 +458,8 @@ static void initInstrumentPresets(void) {
     instrumentPresets[29].patch.p_pitchEnvAmount = 12.0f;    // 1 octave (2× to 1×)
     instrumentPresets[29].patch.p_pitchEnvDecay = 0.05f;     // drums.h: tomPunchDecay=0.05
     instrumentPresets[29].patch.p_pitchEnvLinear = true;      // Linear Hz (matches drums.h)
+    instrumentPresets[29].patch.p_useTriggerFreq = true;
+    instrumentPresets[29].patch.p_triggerFreq = 80.0f;
 
     // Rimshot - Sharp click + high sine
     // drums.h: sin(1700Hz) + noise click, expDecay 0.03s
@@ -461,6 +475,8 @@ static void initInstrumentPresets(void) {
     instrumentPresets[30].patch.p_filterCutoff = 1.0f;
     instrumentPresets[30].patch.p_clickLevel = 0.5f;          // Click transient (drums.h: noise * expDecay(t, 0.005))
     instrumentPresets[30].patch.p_clickTime = 0.005f;
+    instrumentPresets[30].patch.p_useTriggerFreq = true;
+    instrumentPresets[30].patch.p_triggerFreq = 1700.0f;
 
     // Cowbell - Two square waves at non-harmonic interval
     // drums.h: sq(560Hz) + sq(560*1.508Hz), lowpass filter, expDecay 0.3s
@@ -474,6 +490,8 @@ static void initInstrumentPresets(void) {
     instrumentPresets[31].patch.p_release = 0.05f;
     instrumentPresets[31].patch.p_expDecay = true;
     instrumentPresets[31].patch.p_filterCutoff = 0.4f;       // Lowpass (drums.h: LP 0.15, SVF squares internally)
+    instrumentPresets[31].patch.p_useTriggerFreq = true;
+    instrumentPresets[31].patch.p_triggerFreq = 560.0f;
 
     // ========================================================================
     // CR-78 DRUM PRESETS (32-35)
@@ -498,6 +516,8 @@ static void initInstrumentPresets(void) {
     instrumentPresets[32].patch.p_pitchEnvLinear = true;      // Linear Hz (matches drums.h)
     instrumentPresets[32].patch.p_clickLevel = 0.2f;         // Soft click (drums.h: noise * 0.2 for 0.005s)
     instrumentPresets[32].patch.p_clickTime = 0.005f;
+    instrumentPresets[32].patch.p_useTriggerFreq = true;
+    instrumentPresets[32].patch.p_triggerFreq = 80.0f;
 
     // CR-78 Snare - Resonant ping + bandpassed noise
     // drums.h: sin(220Hz), BP noise (snappy 0.5), ping decays at 0.5× main, expDecay 0.15s
@@ -515,6 +535,8 @@ static void initInstrumentPresets(void) {
     instrumentPresets[33].patch.p_noiseTone = 0.5f;          // BP: LP cutoff 0.25
     instrumentPresets[33].patch.p_noiseHP = 0.28f;           // BP: HP cutoff 0.08
     instrumentPresets[33].patch.p_noiseDecay = 0.15f;
+    instrumentPresets[33].patch.p_useTriggerFreq = true;
+    instrumentPresets[33].patch.p_triggerFreq = 220.0f;
 
     // CR-78 Hihat - 3 square oscillators at ratios + noise sizzle
     // drums.h: 3 squares {1.0, 1.34, 1.68} at 400+tone*300 Hz, noise 0.3, BP filter
@@ -537,6 +559,9 @@ static void initInstrumentPresets(void) {
     instrumentPresets[34].patch.p_noiseHP = 0.15f;
     instrumentPresets[34].patch.p_noiseDecay = 0.06f;
     instrumentPresets[34].patch.p_volume = 0.35f;
+    instrumentPresets[34].patch.p_useTriggerFreq = true;
+    instrumentPresets[34].patch.p_triggerFreq = 580.0f;
+    instrumentPresets[34].patch.p_choke = true;
 
     // CR-78 Metal - 3 squares at octave+fifth through lowpass
     // drums.h: squares {1.0, 1.5, 2.0} at 800Hz, LP 0.08 + dry 0.3, expDecay 0.15s
@@ -552,6 +577,8 @@ static void initInstrumentPresets(void) {
     instrumentPresets[35].patch.p_release = 0.05f;
     instrumentPresets[35].patch.p_expDecay = true;
     instrumentPresets[35].patch.p_filterCutoff = 0.3f;       // Inductor-style LP
+    instrumentPresets[35].patch.p_useTriggerFreq = true;
+    instrumentPresets[35].patch.p_triggerFreq = 800.0f;
 
     // ========================================================================
     // PERCUSSION PRESETS (36-37)
@@ -569,6 +596,8 @@ static void initInstrumentPresets(void) {
     instrumentPresets[36].patch.p_release = 0.01f;
     instrumentPresets[36].patch.p_expDecay = true;
     instrumentPresets[36].patch.p_filterCutoff = 1.0f;       // Bright, no filtering
+    instrumentPresets[36].patch.p_useTriggerFreq = true;
+    instrumentPresets[36].patch.p_triggerFreq = 2500.0f;
 
     // Maracas - Highpass-filtered noise burst
     // drums.h: HP noise (cutoff 0.3+tone*0.4, tone=0.8), expDecay 0.07s
@@ -585,6 +614,8 @@ static void initInstrumentPresets(void) {
     instrumentPresets[37].patch.p_filterCutoff = 0.62f;       // drums.h: 0.3+tone*0.4, tone=0.8 → 0.62
     instrumentPresets[37].patch.p_noiseHP = 0.0f;             // HP handled by main filter now
     instrumentPresets[37].patch.p_noiseType = 1;               // Time-hash noise (drums.h style)
+    instrumentPresets[37].patch.p_useTriggerFreq = true;
+    instrumentPresets[37].patch.p_triggerFreq = 800.0f;
 }
 
 #endif // INSTRUMENT_PRESETS_H

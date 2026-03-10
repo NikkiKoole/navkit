@@ -149,6 +149,11 @@ static void applyPatchToGlobals(SynthPatch *p) {
 // then dispatches to the correct play function based on wave type.
 // Returns the voice index (for later release).
 static int playNoteWithPatch(float freq, SynthPatch *p) {
+    // Use fixed trigger frequency if patch specifies one (drums/percussion)
+    if (p->p_useTriggerFreq && p->p_triggerFreq > 0.0f) {
+        freq = p->p_triggerFreq;
+    }
+
     applyPatchToGlobals(p);
 
     WaveType wave = (WaveType)p->p_waveType;

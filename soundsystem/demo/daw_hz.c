@@ -14,14 +14,20 @@
 #include <math.h>
 #include <string.h>
 #include "../engines/synth.h"
+#include "../engines/synth_patch.h"
+#include "../engines/patch_trigger.h"
+#include "../engines/scw_data.h"
+#include "../engines/effects.h"
 // Undefine synth.h macros that conflict with our local DAW state
 #undef masterVolume
 #undef scaleLockEnabled
 #undef scaleRoot
 #undef scaleType
 #undef monoMode
-#include "../engines/synth_patch.h"
 #include "../engines/instrument_presets.h"
+
+#define SAMPLE_RATE 44100
+#define MAX_SAMPLES_PER_UPDATE 4096
 
 #define SCREEN_WIDTH 1200
 #define SCREEN_HEIGHT 800
@@ -57,10 +63,10 @@ static WorkTab workTab = WORK_SEQ;
 static const char* workTabNames[] = {"Sequencer", "Piano Roll", "Song"};
 static const int workTabKeys[] = {KEY_F1, KEY_F2, KEY_F3};
 
-typedef enum { PARAM_PATCH, PARAM_DRUMS, PARAM_BUS, PARAM_MASTER, PARAM_TAPE, PARAM_COUNT } ParamTab;
+typedef enum { PARAM_PATCH, PARAM_BUS, PARAM_MASTER, PARAM_TAPE, PARAM_COUNT } ParamTab;
 static ParamTab paramTab = PARAM_PATCH;
-static const char* paramTabNames[] = {"Patch", "Drums", "Bus FX", "Master FX", "Tape"};
-static const int paramTabKeys[] = {KEY_ONE, KEY_TWO, KEY_THREE, KEY_FOUR, KEY_FIVE};
+static const char* paramTabNames[] = {"Patch", "Bus FX", "Master FX", "Tape"};
+static const int paramTabKeys[] = {KEY_ONE, KEY_TWO, KEY_THREE, KEY_FOUR};
 
 // Patch sub-tabs: Main (all params) | Adv (algorithm modes)
 // All patch params on one page (no sub-tabs)
@@ -72,27 +78,10 @@ static const char* oscMixModeNames[] = {"Weighted", "Additive"};
 static const char* noiseTypeNames[] = {"LFSR", "TimeHash"};
 
 // ============================================================================
-// ALL STATE
+// STATE
 // ============================================================================
 
-// --- Transport ---
-static bool playing = false;
-static float bpm = 120.0f;
-static int currentPattern = 0;
-
-// --- Groove / Dilla ---
-static int grooveKickNudge = 0, grooveSnareDelay = 0, grooveHatNudge = 0, grooveClapDelay = 0;
-static int grooveSwing = 0, grooveJitter = 0;
-
-// --- Scenes / Crossfader ---
-static bool crossfaderEnabled = false;
-static float crossfaderPos = 0.5f;
-static int sceneA = 0, sceneB = 1;
-static int sceneCount = 8;
-
-// --- Synth Patch ---
-#define NUM_PATCHES 8
-
+// --- Name arrays (UI labels, not part of DAW state) ---
 static const char* waveNames[] = {"Square", "Saw", "Triangle", "Noise", "SCW",
     "Voice", "Pluck", "Additive", "Mallet", "Granular", "FM", "PD", "Membrane", "Bird"};
 static const char* vowelNames[] = {"A", "E", "I", "O", "U"};
@@ -108,46 +97,179 @@ static const char* arpRateNames[] = {"1/4", "1/8", "1/16", "1/32", "Free"};
 static const char* lfoShapeNames[] = {"Sine", "Tri", "Sqr", "Saw", "S&H"};
 static const char* lfoSyncNames[] = {"Off", "4bar", "2bar", "1bar", "1/2", "1/4", "1/8", "1/16"};
 
-static int selectedPatch = 0;
-static int selectedDrum = 0; // 0=Kick, 1=Snare, 2=HiHat, 3=Clap
-static SynthPatch patches[NUM_PATCHES];
-// Engine-level settings (not per-patch in synth engine) // TODO: find proper home
-static bool daw_scaleLockEnabled = false;
-static int daw_scaleRoot = 0, daw_scaleType = 0;
-static bool daw_voiceRandomVowel = false;
-static bool patchesInit = false;
-static float daw_masterVolume = 0.8f;
+// --- Structs ---
 
-// --- Preset tracking ---
+#define NUM_PATCHES 8
+// NUM_BUSES (7) provided by effects.h
+
+typedef struct {
+    bool playing;
+    float bpm;
+    int currentPattern;
+    int grooveSwing, grooveJitter;
+    int currentStep;
+    double stepAccumulator;  // fractional step accumulator (in seconds)
+} Transport;
+
+typedef struct {
+    bool on;
+    int source, target;
+    float depth, attack, release;
+} Sidechain;
+
+typedef struct {
+    bool distOn;    float distDrive, distTone, distMix;
+    bool crushOn;   float crushBits, crushRate, crushMix;
+    bool chorusOn;  float chorusRate, chorusDepth, chorusMix;
+    bool flangerOn; float flangerRate, flangerDepth, flangerFeedback, flangerMix;
+    bool tapeOn;    float tapeSaturation, tapeWow, tapeFlutter, tapeHiss;
+    bool delayOn;   float delayTime, delayFeedback, delayTone, delayMix;
+    bool reverbOn;  float reverbSize, reverbDamping, reverbPreDelay, reverbMix;
+} MasterFX;
+
+typedef struct {
+    bool enabled;
+    float headTime, feedback, mix;
+    int inputSource;
+    bool preReverb;
+    float saturation, toneHigh, noise, degradeRate;
+    float wow, flutter, drift, speedTarget;
+    float rewindTime, rewindMinSpeed, rewindVinyl, rewindWobble, rewindFilter;
+    int rewindCurve;
+    bool isRewinding;
+} TapeFX;
+
+typedef struct {
+    float volume[NUM_BUSES];
+    float pan[NUM_BUSES];
+    float reverbSend[NUM_BUSES];
+    bool mute[NUM_BUSES];
+    bool solo[NUM_BUSES];
+    // Per-bus FX
+    bool filterOn[NUM_BUSES];  float filterCut[NUM_BUSES]; float filterRes[NUM_BUSES]; int filterType[NUM_BUSES];
+    bool distOn[NUM_BUSES];    float distDrive[NUM_BUSES]; float distMix[NUM_BUSES];
+    bool delayOn[NUM_BUSES];   bool delaySync[NUM_BUSES];  int delaySyncDiv[NUM_BUSES];
+    float delayTime[NUM_BUSES]; float delayFB[NUM_BUSES];  float delayMix[NUM_BUSES];
+} Mixer;
+
+typedef struct {
+    bool enabled;
+    float pos;
+    int sceneA, sceneB, count;
+} Crossfader;
+
+#define SEQ_NOTE_OFF -1
+#define SEQ_MAX_STEPS 32
+#define SEQ_DRUM_TRACKS 4
+#define SEQ_MELODY_TRACKS 3
+
+typedef struct {
+    // Drum tracks (0-3): bool per step
+    bool steps[SEQ_DRUM_TRACKS][SEQ_MAX_STEPS];
+    // Melody tracks (4-6): MIDI note per step (-1 = rest/off)
+    int melodyNotes[SEQ_MELODY_TRACKS][SEQ_MAX_STEPS];
+    bool stepsInit;
+    int stepCount; // 16 or 32
+    int trackLength[NUM_BUSES];
+} Sequencer;
+
+typedef struct {
+    int length;
+    int patterns[64];
+} Song;
+
+typedef struct {
+    Transport transport;
+    Crossfader crossfader;
+    Sequencer seq;
+    Song song;
+    Mixer mixer;
+    Sidechain sidechain;
+    MasterFX masterFx;
+    TapeFX tapeFx;
+
+    // Patches
+    SynthPatch patches[NUM_PATCHES];
+    int selectedPatch;
+    float masterVol;
+
+    // Engine-level settings (not per-patch)
+    bool scaleLockEnabled;
+    int scaleRoot, scaleType;
+    bool voiceRandomVowel;
+
+    // Split keyboard
+    bool splitEnabled;
+    int splitPoint;
+    int splitLeftPatch, splitRightPatch;
+    int splitLeftOctave, splitRightOctave;
+} DawState;
+
+static DawState daw = {
+    .transport = { .bpm = 120.0f },
+    .crossfader = { .pos = 0.5f, .sceneB = 1, .count = 8 },
+    .seq = { .stepCount = 16, .trackLength = {16,16,16,16,16,16,16} },
+    .mixer = {
+        .volume = {0.8f,0.8f,0.8f,0.8f,0.8f,0.8f,0.8f},
+        .filterCut = {1,1,1,1,1,1,1},
+        .distDrive = {2,2,2,2,2,2,2},
+        .distMix = {0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f},
+        .delayTime = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
+        .delayFB = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
+        .delayMix = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
+    },
+    .sidechain = { .depth = 0.8f, .attack = 0.005f, .release = 0.15f },
+    .masterFx = {
+        .distDrive = 2.0f, .distTone = 0.7f, .distMix = 0.5f,
+        .crushBits = 8.0f, .crushRate = 4.0f, .crushMix = 0.5f,
+        .chorusRate = 1.0f, .chorusDepth = 0.3f, .chorusMix = 0.3f,
+        .flangerRate = 0.5f, .flangerDepth = 0.5f, .flangerFeedback = 0.3f, .flangerMix = 0.3f,
+        .tapeSaturation = 0.3f, .tapeWow = 0.1f, .tapeFlutter = 0.1f, .tapeHiss = 0.05f,
+        .delayTime = 0.3f, .delayFeedback = 0.4f, .delayTone = 0.5f, .delayMix = 0.3f,
+        .reverbSize = 0.5f, .reverbDamping = 0.5f, .reverbPreDelay = 0.02f, .reverbMix = 0.3f,
+    },
+    .tapeFx = {
+        .headTime = 0.5f, .feedback = 0.6f, .mix = 0.5f,
+        .saturation = 0.3f, .toneHigh = 0.7f, .noise = 0.05f, .degradeRate = 0.1f,
+        .wow = 0.1f, .flutter = 0.1f, .drift = 0.05f, .speedTarget = 1.0f,
+        .rewindTime = 1.5f, .rewindMinSpeed = 0.2f, .rewindVinyl = 0.3f, .rewindWobble = 0.2f, .rewindFilter = 0.5f,
+    },
+    .masterVol = 0.8f,
+    .splitPoint = 60, .splitLeftPatch = 1, .splitRightPatch = 2,
+};
+
+// Preset tracking (UI-only, not part of scene state)
 static int patchPresetIndex[NUM_PATCHES] = {-1,-1,-1,-1,-1,-1,-1,-1};
 static SynthPatch patchPresetSnapshot[NUM_PATCHES];
 static bool presetPickerOpen = false;
 static bool presetPickerJustClosed = false;
 static bool presetsInitialized = false;
 
+static bool patchesInit = false;
+
 static void initPatches(void) {
     if (patchesInit) return;
     if (!presetsInitialized) { initInstrumentPresets(); presetsInitialized = true; }
-    for (int i = 0; i < NUM_PATCHES; i++) patches[i] = createDefaultPatch(WAVE_SAW);
+    for (int i = 0; i < NUM_PATCHES; i++) daw.patches[i] = createDefaultPatch(WAVE_SAW);
     // Drum tracks 0-3: load 808 presets
-    patches[0] = instrumentPresets[24].patch; snprintf(patches[0].p_name, 32, "Kick");
-    patches[1] = instrumentPresets[25].patch; snprintf(patches[1].p_name, 32, "Snare");
-    patches[2] = instrumentPresets[27].patch; snprintf(patches[2].p_name, 32, "CH");
-    patches[3] = instrumentPresets[26].patch; snprintf(patches[3].p_name, 32, "Clap");
-    patchPresetIndex[0] = 24; patchPresetSnapshot[0] = patches[0];
-    patchPresetIndex[1] = 25; patchPresetSnapshot[1] = patches[1];
-    patchPresetIndex[2] = 27; patchPresetSnapshot[2] = patches[2];
-    patchPresetIndex[3] = 26; patchPresetSnapshot[3] = patches[3];
+    daw.patches[0] = instrumentPresets[24].patch; snprintf(daw.patches[0].p_name, 32, "Kick");
+    daw.patches[1] = instrumentPresets[25].patch; snprintf(daw.patches[1].p_name, 32, "Snare");
+    daw.patches[2] = instrumentPresets[27].patch; snprintf(daw.patches[2].p_name, 32, "CH");
+    daw.patches[3] = instrumentPresets[26].patch; snprintf(daw.patches[3].p_name, 32, "Clap");
+    patchPresetIndex[0] = 24; patchPresetSnapshot[0] = daw.patches[0];
+    patchPresetIndex[1] = 25; patchPresetSnapshot[1] = daw.patches[1];
+    patchPresetIndex[2] = 27; patchPresetSnapshot[2] = daw.patches[2];
+    patchPresetIndex[3] = 26; patchPresetSnapshot[3] = daw.patches[3];
     // Melody tracks 4-6
-    snprintf(patches[4].p_name, 32, "Bass");       patches[4].p_waveType = WAVE_SQUARE;
-    snprintf(patches[5].p_name, 32, "Lead");        patches[5].p_waveType = WAVE_SAW;
-    snprintf(patches[6].p_name, 32, "Chord");       patches[6].p_waveType = WAVE_ADDITIVE;
-    patches[4].p_monoMode = true; patches[4].p_filterCutoff = 0.4f;
-    patches[5].p_unisonCount = 2; patches[5].p_vibratoDepth = 0.3f;
-    patches[6].p_attack = 0.05f; patches[6].p_release = 0.8f;
+    snprintf(daw.patches[4].p_name, 32, "Bass");       daw.patches[4].p_waveType = WAVE_SQUARE;
+    snprintf(daw.patches[5].p_name, 32, "Lead");        daw.patches[5].p_waveType = WAVE_SAW;
+    snprintf(daw.patches[6].p_name, 32, "Chord");       daw.patches[6].p_waveType = WAVE_ADDITIVE;
+    daw.patches[4].p_monoMode = true; daw.patches[4].p_filterCutoff = 0.4f;
+    daw.patches[5].p_unisonCount = 2; daw.patches[5].p_vibratoDepth = 0.3f;
+    daw.patches[6].p_attack = 0.05f; daw.patches[6].p_release = 0.8f;
     // Extra patches 7
-    snprintf(patches[7].p_name, 32, "Bird");        patches[7].p_waveType = WAVE_BIRD;
-    patches[7].p_birdType = 4;
+    snprintf(daw.patches[7].p_name, 32, "Bird");        daw.patches[7].p_waveType = WAVE_BIRD;
+    daw.patches[7].p_birdType = 4;
     patchesInit = true;
 }
 
@@ -155,123 +277,33 @@ static void initPatches(void) {
 
 static bool isPatchDirty(int patchIdx) {
     if (patchPresetIndex[patchIdx] < 0) return false;
-    return memcmp(&patches[patchIdx], &patchPresetSnapshot[patchIdx], sizeof(SynthPatch)) != 0;
+    return memcmp(&daw.patches[patchIdx], &patchPresetSnapshot[patchIdx], sizeof(SynthPatch)) != 0;
 }
 
 static void loadPresetIntoPatch(int patchIdx, int presetIdx) {
     if (!presetsInitialized) { initInstrumentPresets(); presetsInitialized = true; }
-    // Copy preset params but keep the patch name
     char nameBak[32];
-    memcpy(nameBak, patches[patchIdx].p_name, 32);
-    patches[patchIdx] = instrumentPresets[presetIdx].patch;
-    memcpy(patches[patchIdx].p_name, nameBak, 32);
+    memcpy(nameBak, daw.patches[patchIdx].p_name, 32);
+    daw.patches[patchIdx] = instrumentPresets[presetIdx].patch;
+    memcpy(daw.patches[patchIdx].p_name, nameBak, 32);
     patchPresetIndex[patchIdx] = presetIdx;
-    patchPresetSnapshot[patchIdx] = patches[patchIdx];
+    patchPresetSnapshot[patchIdx] = daw.patches[patchIdx];
 }
 
-// --- Drums ---
-static float drumVolume = 0.6f;
-static float kickPitch = 50.0f, kickDecay = 0.5f, kickPunchPitch = 150.0f;
-static float kickClick = 0.3f, kickTone = 0.5f;
-static float snarePitch = 180.0f, snareDecay = 0.2f, snareSnappy = 0.6f, snareTone = 0.5f;
-static float clapDecay = 0.3f, clapTone = 0.5f, clapSpread = 0.015f;
-static float hhDecayClosed = 0.05f, hhDecayOpen = 0.4f, hhTone = 0.5f;
-static float tomPitch = 1.0f, tomDecay = 0.3f, tomPunchDecay = 0.05f;
-static float rimPitch = 1500.0f, rimDecay = 0.03f;
-static float cowbellPitch = 600.0f, cowbellDecay = 0.3f;
-static float clavePitch = 2500.0f, claveDecay = 0.03f;
-static float maracasDecay = 0.05f, maracasTone = 0.5f;
-static float cr78KickPitch = 80.0f, cr78KickDecay = 0.3f, cr78KickResonance = 0.8f;
-static float cr78SnarePitch = 200.0f, cr78SnareDecay = 0.15f, cr78SnareSnappy = 0.5f;
-static float cr78HHDecay = 0.05f, cr78HHTone = 0.5f;
-static float cr78MetalPitch = 800.0f, cr78MetalDecay = 0.2f;
-
-// Sidechain
-static bool sidechainOn = false;
-static int sidechainSource = 0, sidechainTarget = 0;
-static float sidechainDepth = 0.8f, sidechainAttack = 0.005f, sidechainRelease = 0.15f;
+// --- Name arrays for mixer/fx UI ---
 static const char* sidechainSourceNames[] = {"Kick", "Snare", "Clap", "HiHat", "AllDrm"};
 static const char* sidechainTargetNames[] = {"Bass", "Lead", "Chord", "AllSyn"};
-
-// Sequencer grid (32 steps max, toggle between 16/32)
-static bool drumSteps[4][32] = {{0}};
-static bool drumStepsInit = false;
-static int seqStepCount = 16; // 16 or 32
-
-// --- Master Effects ---
-static bool distOn = false;
-static float distDrive = 2.0f, distTone = 0.7f, distMix = 0.5f;
-static bool delayOn = false;
-static float delayTime = 0.3f, delayFeedback = 0.4f, delayTone = 0.5f, delayMix = 0.3f;
-static bool tapeOn = false;
-static float tapeSaturation = 0.3f, tapeWow = 0.1f, tapeFlutter = 0.1f, tapeHiss = 0.05f;
-static bool crushOn = false;
-static float crushBits = 8.0f, crushRate = 4.0f, crushMix = 0.5f;
-static bool chorusOn = false;
-static float chorusRate = 1.0f, chorusDepth = 0.3f, chorusMix = 0.3f;
-static bool reverbOn = false;
-static float reverbSize = 0.5f, reverbDamping = 0.5f, reverbPreDelay = 0.02f, reverbMix = 0.3f;
-
-// --- Tape FX ---
-static bool dubLoopEnabled = false;
-static float dubHeadTime = 0.5f, dubFeedback = 0.6f, dubMix = 0.5f;
-static int dubInputSource = 0;
-static bool dubPreReverb = false;
-static float dubSaturation = 0.3f, dubToneHigh = 0.7f, dubNoise = 0.05f, dubDegradeRate = 0.1f;
-static float dubWow = 0.1f, dubFlutter = 0.1f, dubDrift = 0.05f, dubSpeedTarget = 1.0f;
-static float rewindTime = 1.5f;
-static int rewindCurve = 0;
-static float rewindMinSpeed = 0.2f, rewindVinyl = 0.3f, rewindWobble = 0.2f, rewindFilter = 0.5f;
-static bool isRewinding = false;
+static const char* busNames[] = {"Kick", "Snare", "HiHat", "Clap", "Bass", "Lead", "Chord"};
+static const char* busFilterTypeNames[] = {"LP", "HP", "BP"};
+static const char* delaySyncNames[] = {"1/16", "1/8", "1/4", "1/2", "1bar"};
 static const char* rewindCurveNames[] = {"Linear", "Expo", "S-Curve"};
 static const char* dubInputNames[] = {"All", "Drums", "Synth", "Manual"};
 
-// --- Mixer (7 buses) ---
-static const char* busNames[] = {"Kick", "Snare", "HiHat", "Clap", "Bass", "Lead", "Chord"};
-static float busVolumes[7] = {0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f};
-static float busPan[7] = {0};
-static float busReverbSend[7] = {0};
-static bool busMute[7] = {false};
-static bool busSolo[7] = {false};
-static bool busFilterOn[7] = {false};
-static float busFilterCut[7] = {1,1,1,1,1,1,1};
-static float busFilterRes[7] = {0};
-static int busFilterType[7] = {0};
-static bool busDistOn[7] = {false};
-static float busDistDrive[7] = {2,2,2,2,2,2,2};
-static float busDistMix[7] = {0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f};
-static bool busDelayOn[7] = {false};
-static bool busDelaySync[7] = {false};
-static int busDelaySyncDiv[7] = {2};
-static float busDelayTime[7] = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f};
-static float busDelayFB[7] = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f};
-static float busDelayMix[7] = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f};
-static float masterVol = 0.8f;
+// --- UI-only state (not part of DawState / scene snapshots) ---
 static int selectedBus = -1;
-static const char* busFilterTypeNames[] = {"LP", "HP", "BP"};
-static const char* delaySyncNames[] = {"1/16", "1/8", "1/4", "1/2", "1bar"};
-
-// --- Song ---
-static int chainLength = 0;
-static int chain[64] = {0};
-
-// --- Detail context ---
 typedef enum { DETAIL_NONE, DETAIL_STEP, DETAIL_BUS_FX } DetailContext;
 static DetailContext detailCtx = DETAIL_NONE;
 static int detailStep = -1, detailTrack = -1;
-
-// Polyrhythmic track lengths
-static int drumTrackLength[4] = {16, 16, 16, 16};
-static int melodyTrackLength[3] = {16, 16, 16};
-
-// Split keyboard
-static bool splitEnabled = false;
-static int splitPoint = 60;
-static int splitLeftPatch = 1, splitRightPatch = 2;
-static int splitLeftOctave = 0, splitRightOctave = 0;
-
-// Sidebar scroll (not needed much but just in case)
-static float paramScroll = 0;
 
 // ============================================================================
 // P-LOCK BADGE
@@ -516,16 +548,16 @@ static void drawSidebar(void) {
     {
         Rectangle r = {x, y, SIDEBAR_W-8, 20};
         bool hov = CheckCollisionPointRec(mouse, r);
-        Color bg = playing ? (Color){40, 80, 40, 255} : (hov ? (Color){45, 45, 55, 255} : (Color){32, 33, 40, 255});
+        Color bg = daw.transport.playing ? (Color){40, 80, 40, 255} : (hov ? (Color){45, 45, 55, 255} : (Color){32, 33, 40, 255});
         DrawRectangleRec(r, bg);
-        DrawTextShadow(playing ? "Stop" : "Play", (int)x+20, (int)y+4, 11, playing ? GREEN : LIGHTGRAY);
-        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { playing = !playing; ui_consume_click(); }
+        DrawTextShadow(daw.transport.playing ? "Stop" : "Play", (int)x+20, (int)y+4, 11, daw.transport.playing ? GREEN : LIGHTGRAY);
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { daw.transport.playing = !daw.transport.playing; ui_consume_click(); }
     }
     y += 24;
 
     // BPM (compact)
-    DrawTextShadow(TextFormat("%.0f", bpm), (int)x+2, (int)y, 10, (Color){140,140,150,255});
-    DrawTextShadow("bpm", (int)x+30, (int)y, 9, (Color){70,70,80,255});
+    DrawTextShadow(TextFormat("%.0f", daw.transport.bpm), (int)x+2, (int)y, 10, (Color){140,140,150,255});
+    DrawTextShadow("daw.transport.bpm", (int)x+30, (int)y, 9, (Color){70,70,80,255});
     y += 16;
 
     // Divider
@@ -538,15 +570,15 @@ static void drawSidebar(void) {
     float barH = 60;
     float barX = x + 20, barW = 16;
     DrawRectangle((int)barX, (int)y, (int)barW, (int)barH, (Color){20,20,25,255});
-    float fillH = masterVol * barH;
+    float fillH = daw.masterVol * barH;
     DrawRectangle((int)barX, (int)(y+barH-fillH), (int)barW, (int)fillH, (Color){170,150,50,255});
     Rectangle volR = {barX, y, barW, barH};
     if (CheckCollisionPointRec(mouse, volR) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-        masterVol = 1.0f - (mouse.y - y) / barH;
-        if (masterVol < 0) masterVol = 0;
-        if (masterVol > 1) masterVol = 1;
+        daw.masterVol = 1.0f - (mouse.y - y) / barH;
+        if (daw.masterVol < 0) daw.masterVol = 0;
+        if (daw.masterVol > 1) daw.masterVol = 1;
     }
-    DrawTextShadow(TextFormat("%.0f%%", masterVol*100), (int)x, (int)(y+barH+2), 9, (Color){100,100,110,255});
+    DrawTextShadow(TextFormat("%.0f%%", daw.masterVol*100), (int)x, (int)(y+barH+2), 9, (Color){100,100,110,255});
 }
 
 // ============================================================================
@@ -562,19 +594,19 @@ static void drawTransport(void) {
     DrawTextShadow("PixelSynth", (int)tx, (int)ty, 18, WHITE);
     tx += 130;
 
-    DraggableFloat(tx, ty, "BPM", &bpm, 2.0f, 60.0f, 200.0f);
+    DraggableFloat(tx, ty, "BPM", &daw.transport.bpm, 2.0f, 60.0f, 200.0f);
     tx += 130;
 
-    if (playing) DrawTextShadow(">>>", (int)tx, (int)ty, 14, GREEN);
+    if (daw.transport.playing) DrawTextShadow(">>>", (int)tx, (int)ty, 14, GREEN);
     tx += 50;
 
     // Pattern indicator
-    DrawTextShadow(TextFormat("Pat:%d", currentPattern+1), (int)tx, (int)ty+2, 11, (Color){120,120,140,255});
+    DrawTextShadow(TextFormat("Pat:%d", daw.transport.currentPattern+1), (int)tx, (int)ty+2, 11, (Color){120,120,140,255});
     tx += 60;
 
     // Crossfader indicator
-    if (crossfaderEnabled) {
-        DrawTextShadow(TextFormat("XF:%d>%d %.0f%%", sceneA+1, sceneB+1, crossfaderPos*100),
+    if (daw.crossfader.enabled) {
+        DrawTextShadow(TextFormat("XF:%d>%d %.0f%%", daw.crossfader.sceneA+1, daw.crossfader.sceneB+1, daw.crossfader.pos*100),
                        (int)(x+w-180), (int)ty+2, 10, (Color){180,180,100,255});
     }
 
@@ -593,15 +625,18 @@ static const char* condNames[] = {"Always","1:2","2:2","1:3","2:3","3:3","1:4","
 static const char* retrigNames[] = {"Off","1/8","1/16","1/32"};
 
 static void drawWorkSeq(float x, float y, float w, float h) {
-    if (!drumStepsInit) {
-        drumSteps[0][0] = drumSteps[0][4] = drumSteps[0][8] = drumSteps[0][12] = true;
-        drumSteps[1][4] = drumSteps[1][12] = true;
-        for (int i = 0; i < 16; i += 2) drumSteps[2][i] = true;
-        drumStepsInit = true;
+    if (!daw.seq.stepsInit) {
+        daw.seq.steps[0][0] = daw.seq.steps[0][4] = daw.seq.steps[0][8] = daw.seq.steps[0][12] = true;
+        daw.seq.steps[1][4] = daw.seq.steps[1][12] = true;
+        for (int i = 0; i < 16; i += 2) daw.seq.steps[2][i] = true;
+        for (int t = 0; t < SEQ_MELODY_TRACKS; t++)
+            for (int s = 0; s < SEQ_MAX_STEPS; s++)
+                daw.seq.melodyNotes[t][s] = SEQ_NOTE_OFF;
+        daw.seq.stepsInit = true;
     }
 
     Vector2 mouse = GetMousePosition();
-    int steps = seqStepCount;
+    int steps = daw.seq.stepCount;
 
     // Top row: Pattern selector + 16/32 toggle
     DrawTextShadow("Pattern:", (int)x, (int)y+2, 11, GRAY);
@@ -609,12 +644,12 @@ static void drawWorkSeq(float x, float y, float w, float h) {
     for (int i = 0; i < 8; i++) {
         Rectangle r = {px + i*28, y, 26, 18};
         bool hov = CheckCollisionPointRec(mouse, r);
-        bool act = (i == currentPattern);
+        bool act = (i == daw.transport.currentPattern);
         Color bg = act ? (Color){50,90,50,255} : (hov ? (Color){42,44,52,255} : (Color){33,34,40,255});
         DrawRectangleRec(r, bg);
         DrawRectangleLinesEx(r, 1, act ? GREEN : (Color){48,48,58,255});
         DrawTextShadow(TextFormat("%d", i+1), (int)px+i*28+9, (int)y+3, 10, act ? WHITE : GRAY);
-        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { currentPattern = i; ui_consume_click(); }
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { daw.transport.currentPattern = i; ui_consume_click(); }
     }
 
     // 16/32 toggle
@@ -630,8 +665,8 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         DrawRectangleLinesEx(r32, 1, steps==32 ? GREEN : (Color){48,48,58,255});
         DrawTextShadow("16", (int)togX+6, (int)y+3, 10, steps==16 ? WHITE : GRAY);
         DrawTextShadow("32", (int)togX+34, (int)y+3, 10, steps==32 ? WHITE : GRAY);
-        if (h16 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { seqStepCount = 16; ui_consume_click(); }
-        if (h32 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { seqStepCount = 32; ui_consume_click(); }
+        if (h16 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { daw.seq.stepCount = 16; ui_consume_click(); }
+        if (h32 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { daw.seq.stepCount = 32; ui_consume_click(); }
     }
 
     y += 22; h -= 22;
@@ -674,31 +709,31 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         // Mute button (12x12)
         Rectangle muteR = {(float)lx, (float)(lcy-6), 12, 12};
         bool muteHov = CheckCollisionPointRec(mouse, muteR);
-        Color muteBg = busMute[track] ? (Color){150,50,50,255} : (muteHov ? (Color){55,45,45,255} : (Color){35,30,30,255});
+        Color muteBg = daw.mixer.mute[track] ? (Color){150,50,50,255} : (muteHov ? (Color){55,45,45,255} : (Color){35,30,30,255});
         DrawRectangleRec(muteR, muteBg);
-        DrawTextShadow("M", lx+2, lcy-5, 9, busMute[track] ? WHITE : GRAY);
-        if (muteHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { busMute[track] = !busMute[track]; ui_consume_click(); }
+        DrawTextShadow("M", lx+2, lcy-5, 9, daw.mixer.mute[track] ? WHITE : GRAY);
+        if (muteHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { daw.mixer.mute[track] = !daw.mixer.mute[track]; ui_consume_click(); }
 
         // Solo button (12x12)
         Rectangle soloR = {(float)(lx+14), (float)(lcy-6), 12, 12};
         bool soloHov = CheckCollisionPointRec(mouse, soloR);
-        Color soloBg = busSolo[track] ? (Color){170,170,55,255} : (soloHov ? (Color){55,55,40,255} : (Color){35,35,30,255});
+        Color soloBg = daw.mixer.solo[track] ? (Color){170,170,55,255} : (soloHov ? (Color){55,55,40,255} : (Color){35,35,30,255});
         DrawRectangleRec(soloR, soloBg);
-        DrawTextShadow("S", lx+16, lcy-5, 9, busSolo[track] ? BLACK : GRAY);
-        if (soloHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { busSolo[track] = !busSolo[track]; ui_consume_click(); }
+        DrawTextShadow("S", lx+16, lcy-5, 9, daw.mixer.solo[track] ? BLACK : GRAY);
+        if (soloHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { daw.mixer.solo[track] = !daw.mixer.solo[track]; ui_consume_click(); }
 
         // Volume bar (horizontal, 40px wide)
         float volBarX = lx + 29, volBarW = 40, volBarH = 8;
         float volBarY = lcy - volBarH/2;
         DrawRectangle((int)volBarX, (int)volBarY, (int)volBarW, (int)volBarH, (Color){20,20,25,255});
-        float volFill = busVolumes[track] * volBarW;
-        Color volCol = busMute[track] ? (Color){80,40,40,255} : (isDrum ? (Color){50,110,50,255} : (Color){50,80,140,255});
+        float volFill = daw.mixer.volume[track] * volBarW;
+        Color volCol = daw.mixer.mute[track] ? (Color){80,40,40,255} : (isDrum ? (Color){50,110,50,255} : (Color){50,80,140,255});
         DrawRectangle((int)volBarX, (int)volBarY, (int)volFill, (int)volBarH, volCol);
         Rectangle volR = {volBarX, (float)ty, volBarW, (float)cellH}; // full row height for easier dragging
         if (CheckCollisionPointRec(mouse, volR) && !muteHov && !soloHov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-            busVolumes[track] = (mouse.x - volBarX) / volBarW;
-            if (busVolumes[track] < 0) busVolumes[track] = 0;
-            if (busVolumes[track] > 1) busVolumes[track] = 1;
+            daw.mixer.volume[track] = (mouse.x - volBarX) / volBarW;
+            if (daw.mixer.volume[track] < 0) daw.mixer.volume[track] = 0;
+            if (daw.mixer.volume[track] > 1) daw.mixer.volume[track] = 1;
         }
 
         // Track name (clickable — selects patch/drums in param panel)
@@ -710,8 +745,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                        nameCol.b = (unsigned char)(nameCol.b + 40 > 255 ? 255 : nameCol.b + 40); }
         DrawTextShadow(trackNames[track], lx + 72, lcy-5, 9, nameCol);
         if (nameHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            selectedPatch = track; // all tracks map 1:1 to patches[]
-            if (isDrum) selectedDrum = track;
+            daw.selectedPatch = track; // all tracks map 1:1 to patches[]
             paramTab = PARAM_PATCH;
             ui_consume_click();
         }
@@ -722,14 +756,48 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             bool hov = CheckCollisionPointRec(mouse, cell);
             Color bg = (step/4)%2==0 ? (Color){36,36,42,255} : (Color){30,30,35,255};
 
-            if (isDrum && step < 32 && drumSteps[track][step]) bg = (Color){50,125,65,255};
+            if (isDrum && step < 32 && daw.seq.steps[track][step]) bg = (Color){50,125,65,255};
+            if (!isDrum && track >= SEQ_DRUM_TRACKS && daw.seq.melodyNotes[track - SEQ_DRUM_TRACKS][step] != SEQ_NOTE_OFF)
+                bg = (Color){50,80,140,255};
+            // Playhead highlight
+            if (daw.transport.playing && step == daw.transport.currentStep)
+                { bg.r = (unsigned char)(bg.r + 35 > 255 ? 255 : bg.r + 35);
+                  bg.g = (unsigned char)(bg.g + 35 > 255 ? 255 : bg.g + 35);
+                  bg.b = (unsigned char)(bg.b + 20 > 255 ? 255 : bg.b + 20); }
             if (hov) { bg.r += 18; bg.g += 18; bg.b += 18; }
             DrawRectangleRec(cell, bg);
             DrawRectangleLinesEx(cell, 1, (Color){48,48,56,255});
 
+            // Draw note name for melody cells
+            if (!isDrum && track >= SEQ_DRUM_TRACKS) {
+                int note = daw.seq.melodyNotes[track - SEQ_DRUM_TRACKS][step];
+                if (note != SEQ_NOTE_OFF && cellW >= 14) {
+                    const char* nn[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+                    DrawTextShadow(nn[note % 12], sx+2, ty+2, 8, WHITE);
+                }
+            }
+
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                if (isDrum && step < 32) drumSteps[track][step] = !drumSteps[track][step];
+                if (isDrum && step < 32) {
+                    daw.seq.steps[track][step] = !daw.seq.steps[track][step];
+                } else if (!isDrum && track >= SEQ_DRUM_TRACKS) {
+                    int mt = track - SEQ_DRUM_TRACKS;
+                    if (daw.seq.melodyNotes[mt][step] == SEQ_NOTE_OFF)
+                        daw.seq.melodyNotes[mt][step] = 60; // C4 default
+                    else
+                        daw.seq.melodyNotes[mt][step] = SEQ_NOTE_OFF;
+                }
                 ui_consume_click();
+            }
+            // Scroll wheel to adjust melody note pitch
+            if (hov && !isDrum && track >= SEQ_DRUM_TRACKS) {
+                int mt = track - SEQ_DRUM_TRACKS;
+                int wheel = (int)GetMouseWheelMove();
+                if (wheel != 0 && daw.seq.melodyNotes[mt][step] != SEQ_NOTE_OFF) {
+                    int n = daw.seq.melodyNotes[mt][step] + wheel;
+                    if (n < 0) n = 0; if (n > 127) n = 127;
+                    daw.seq.melodyNotes[mt][step] = n;
+                }
             }
             if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
                 if (detailCtx == DETAIL_STEP && detailTrack == track && detailStep == step) {
@@ -743,6 +811,12 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             if (track == detailTrack && step == detailStep && detailCtx == DETAIL_STEP)
                 DrawRectangleLinesEx(cell, 2, ORANGE);
         }
+    }
+
+    // === PLAYHEAD LINE ===
+    if (daw.transport.playing) {
+        int phX = (int)x + labelW + daw.transport.currentStep * cellW + cellW/2;
+        DrawLine(phX, (int)y+14, phX, (int)(y + 14 + 7*(cellH+2)), (Color){255,200,50,180});
     }
 
     // === STEP INSPECTOR (below grid) ===
@@ -773,7 +847,17 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         }
 
         UIColumn c4 = ui_column(cx + 520, iy, 15);
-        if (!isDrumTrack) {
+        if (!isDrumTrack && detailTrack >= SEQ_DRUM_TRACKS) {
+            int mt = detailTrack - SEQ_DRUM_TRACKS;
+            int *notePtr = &daw.seq.melodyNotes[mt][detailStep];
+            if (*notePtr != SEQ_NOTE_OFF) {
+                const char* nn[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+                int oct = *notePtr / 12 - 1;
+                ui_col_sublabel(&c4, TextFormat("Note: %s%d (MIDI %d)", nn[*notePtr % 12], oct, *notePtr), (Color){140,180,255,255});
+                ui_col_int(&c4, "MIDI Note", notePtr, 1, 0, 127);
+            }
+            ui_col_toggle(&c4, "Accent", &stepAccent);
+        } else if (!isDrumTrack) {
             ui_col_toggle(&c4, "Accent", &stepAccent);
         }
         ui_col_sublabel(&c4, "P-Locks:", (Color){140,140,200,255});
@@ -821,29 +905,29 @@ static void drawWorkSong(float x, float y, float w, float h) {
     DrawTextShadow("Pattern Chain:", (int)x+4, (int)y+4, 13, (Color){180,180,255,255});
     float cy = y + 22; int chW = 28, chH = 24;
 
-    for (int i = 0; i < chainLength; i++) {
+    for (int i = 0; i < daw.song.length; i++) {
         float cx = x + 4 + i * (chW+3);
         if (cx + chW > x + w - 4) break;
         Rectangle r = {cx, cy, (float)chW, (float)chH};
         bool hov = CheckCollisionPointRec(mouse, r);
         DrawRectangleRec(r, hov ? (Color){55,58,68,255} : (Color){40,40,50,255});
         DrawRectangleLinesEx(r, 1, (Color){62,62,72,255});
-        DrawTextShadow(TextFormat("%d", chain[i]+1), (int)cx+9, (int)cy+6, 11, WHITE);
+        DrawTextShadow(TextFormat("%d", daw.song.patterns[i]+1), (int)cx+9, (int)cy+6, 11, WHITE);
         if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-            for (int j = i; j < chainLength-1; j++) chain[j] = chain[j+1];
-            chainLength--; ui_consume_click();
+            for (int j = i; j < daw.song.length-1; j++) daw.song.patterns[j] = daw.song.patterns[j+1];
+            daw.song.length--; ui_consume_click();
         }
-        if (hov) { float wh = GetMouseWheelMove(); if (wh>0) chain[i]=(chain[i]+1)%8; else if (wh<0) chain[i]=(chain[i]+7)%8; }
+        if (hov) { float wh = GetMouseWheelMove(); if (wh>0) daw.song.patterns[i]=(daw.song.patterns[i]+1)%8; else if (wh<0) daw.song.patterns[i]=(daw.song.patterns[i]+7)%8; }
     }
-    if (chainLength < 64) {
-        float ax = x + 4 + chainLength*(chW+3);
+    if (daw.song.length < 64) {
+        float ax = x + 4 + daw.song.length*(chW+3);
         if (ax + chW <= x + w - 4) {
             Rectangle ar = {ax, cy, (float)chW, (float)chH};
             bool ah = CheckCollisionPointRec(mouse, ar);
             DrawRectangleRec(ar, ah ? (Color){60,62,72,255} : (Color){35,36,45,255});
             DrawRectangleLinesEx(ar, 1, (Color){70,70,82,255});
             DrawTextShadow("+", (int)ax+10, (int)cy+6, 11, ah ? WHITE : GRAY);
-            if (ah && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { chain[chainLength++] = currentPattern; ui_consume_click(); }
+            if (ah && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { daw.song.patterns[daw.song.length++] = daw.transport.currentPattern; ui_consume_click(); }
         }
     }
 
@@ -851,7 +935,7 @@ static void drawWorkSong(float x, float y, float w, float h) {
     float sy = cy + chH + 12;
     DrawTextShadow("Scenes:", (int)x+4, (int)sy, 13, (Color){180,200,255,255});
     sy += 18;
-    for (int i = 0; i < sceneCount; i++) {
+    for (int i = 0; i < daw.crossfader.count; i++) {
         float sx = x + 4 + i * 68;
         if (sx + 62 > x + w) break;
         Rectangle r = {sx, sy, 62, 26};
@@ -881,7 +965,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
         return;
     }
 
-    SynthPatch *p = &patches[selectedPatch];
+    SynthPatch *p = &daw.patches[daw.selectedPatch];
     SynthPatch dp = createDefaultPatch(p->p_waveType); // default for comparison
 
     // Preset selector + sub-tab row
@@ -891,9 +975,9 @@ static void drawParamPatch(float x, float y, float w, float h) {
         int fs = 14;
 
         // Preset button (left)
-        int pi = patchPresetIndex[selectedPatch];
+        int pi = patchPresetIndex[daw.selectedPatch];
         const char* presetName = (pi >= 0) ? instrumentPresets[pi].name : "Custom";
-        bool dirty = isPatchDirty(selectedPatch);
+        bool dirty = isPatchDirty(daw.selectedPatch);
         const char* display = dirty ? TextFormat("[%s *]", presetName) : TextFormat("[%s]", presetName);
 
         DrawTextShadow(display, (int)x + 8, (int)y + 2, fs, (Color){180,180,220,255});
@@ -931,13 +1015,13 @@ static void drawParamPatch(float x, float y, float w, float h) {
             float iy = popY + 4 + row * 18;
             Rectangle itemR = {ix - 2, iy, colW - 4, 17};
             bool hov = CheckCollisionPointRec(mouse, itemR);
-            bool selected = (i == patchPresetIndex[selectedPatch]);
+            bool selected = (i == patchPresetIndex[daw.selectedPatch]);
             if (selected) DrawRectangleRec(itemR, (Color){50,50,80,255});
             else if (hov) DrawRectangleRec(itemR, (Color){40,40,60,255});
             Color tc = selected ? ORANGE : (hov ? WHITE : (Color){160,160,180,255});
             DrawTextShadow(instrumentPresets[i].name, (int)ix, (int)iy + 1, 13, tc);
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                loadPresetIntoPatch(selectedPatch, i);
+                loadPresetIntoPatch(daw.selectedPatch, i);
                 presetPickerOpen = false;
                 presetPickerJustClosed = true;
                 clickedItem = true;
@@ -979,8 +1063,13 @@ static void drawParamPatch(float x, float y, float w, float h) {
     // COL 1: Oscillator + wave-specific
     {
         UIColumn c = PCOL(col1X + 8, y);
-        ui_col_sublabel(&c, TextFormat("OSC: %s [%s]", patches[selectedPatch].p_name, waveNames[p->p_waveType]), ORANGE);
+        ui_col_sublabel(&c, TextFormat("OSC: %s [%s]", daw.patches[daw.selectedPatch].p_name, waveNames[p->p_waveType]), ORANGE);
         c.y += drawWaveSelector(c.x, c.y, col1W - 16, &p->p_waveType);
+        ui_col_toggle(&c, "Fixed Freq", &p->p_useTriggerFreq);
+        if (p->p_useTriggerFreq) {
+            ui_col_float(&c, "Freq Hz", &p->p_triggerFreq, 10.0f, 20.0f, 5000.0f);
+        }
+        ui_col_toggle(&c, "Choke", &p->p_choke);
         ui_col_space(&c, 2);
 
         if (p->p_waveType == WAVE_SQUARE) {
@@ -994,7 +1083,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
         } else if (p->p_waveType == WAVE_VOICE) {
             ui_col_sublabel(&c, "Formant:", (Color){140,160,200,255});
             ui_col_cycle(&c, "Vowel", vowelNames, 5, &p->p_voiceVowel);
-            ui_col_toggle(&c, "Random", &daw_voiceRandomVowel);
+            ui_col_toggle(&c, "Random", &daw.voiceRandomVowel);
             ui_col_float(&c, "Pitch", &p->p_voicePitch, 0.1f, 0.3f, 2.0f);
             ui_col_float(&c, "Speed", &p->p_voiceSpeed, 1.0f, 4.0f, 20.0f);
             ui_col_float(&c, "Formant", &p->p_voiceFormantShift, 0.05f, 0.5f, 1.5f);
@@ -1103,7 +1192,6 @@ static void drawParamPatch(float x, float y, float w, float h) {
 
         ui_col_sublabel(&c, "Filter:", ORANGE);
         ui_col_cycle(&c, "Type", filterTypeNames, 6, &p->p_filterType);
-        float filtY = c.y;
         ui_col_float_p(&c, "Cut", &p->p_filterCutoff, 0.05f, 0.01f, 1.0f);
         ui_col_float_p(&c, "Res", &p->p_filterResonance, 0.05f, 0.0f, 1.0f);
         ui_col_float_p(&c, "EnvAmt", &p->p_filterEnvAmt, 0.05f, -1.0f, 1.0f);
@@ -1135,7 +1223,6 @@ static void drawParamPatch(float x, float y, float w, float h) {
 
         ui_col_sublabel(&c, "Volume:", ORANGE);
         ui_col_float_p(&c, "Note", &p->p_volume, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Master", &daw_masterVolume, 0.05f, 0.0f, 1.0f);
         ui_col_space(&c, 3);
 
         if (p->p_waveType != WAVE_PLUCK && p->p_waveType != WAVE_MALLET) {
@@ -1175,10 +1262,10 @@ static void drawParamPatch(float x, float y, float w, float h) {
         ui_col_space(&c, 3);
 
         ui_col_sublabel(&c, "Scale Lock:", ORANGE);
-        ui_col_toggle(&c, "On", &daw_scaleLockEnabled);
-        if (daw_scaleLockEnabled) {
-            ui_col_cycle(&c, "Root", rootNoteNames, 12, &daw_scaleRoot);
-            ui_col_cycle(&c, "Scale", scaleNames, 9, &daw_scaleType);
+        ui_col_toggle(&c, "On", &daw.scaleLockEnabled);
+        if (daw.scaleLockEnabled) {
+            ui_col_cycle(&c, "Root", rootNoteNames, 12, &daw.scaleRoot);
+            ui_col_cycle(&c, "Scale", scaleNames, 9, &daw.scaleType);
         }
     }
 
@@ -1323,83 +1410,6 @@ static void drawParamPatch(float x, float y, float w, float h) {
     #undef DB
 }
 
-// ============================================================================
-// PARAMS: DRUMS - Horizontal columns
-// ============================================================================
-
-static void drawParamDrums(float x, float y, float w, float h) {
-    float colW = 160;
-
-    float cols[] = {x, x+colW, x+2*colW, x+3*colW, x+4*colW, x+5*colW};
-
-    // Kick
-    {
-        UIColumn c = ui_column(cols[0]+4, y, 16);
-        ui_col_sublabel(&c, "Kick:", selectedDrum == 0 ? ORANGE : GRAY);
-        ui_col_float_p(&c, "Pitch", &kickPitch, 3.0f, 30.0f, 100.0f);
-        ui_col_float_p(&c, "Decay", &kickDecay, 0.07f, 0.1f, 1.5f);
-        ui_col_float_p(&c, "Punch", &kickPunchPitch, 10.0f, 80.0f, 300.0f);
-        ui_col_float(&c, "Click", &kickClick, 0.05f, 0.0f, 1.0f);
-        ui_col_float_p(&c, "Tone", &kickTone, 0.05f, 0.0f, 1.0f);
-    }
-
-    // Snare
-    {
-        UIColumn c = ui_column(cols[1]+4, y, 16);
-        ui_col_sublabel(&c, "Snare:", selectedDrum == 1 ? ORANGE : GRAY);
-        ui_col_float_p(&c, "Pitch", &snarePitch, 10.0f, 100.0f, 350.0f);
-        ui_col_float_p(&c, "Decay", &snareDecay, 0.03f, 0.05f, 0.6f);
-        ui_col_float(&c, "Snappy", &snareSnappy, 0.05f, 0.0f, 1.0f);
-        ui_col_float_p(&c, "Tone", &snareTone, 0.05f, 0.0f, 1.0f);
-    }
-
-    // HiHat
-    {
-        UIColumn c = ui_column(cols[2]+4, y, 16);
-        ui_col_sublabel(&c, "HiHat:", selectedDrum == 2 ? ORANGE : GRAY);
-        ui_col_float(&c, "Closed", &hhDecayClosed, 0.01f, 0.01f, 0.2f);
-        ui_col_float(&c, "Open", &hhDecayOpen, 0.05f, 0.1f, 1.0f);
-        ui_col_float_p(&c, "Tone", &hhTone, 0.05f, 0.0f, 1.0f);
-    }
-
-    // Clap
-    {
-        UIColumn c = ui_column(cols[3]+4, y, 16);
-        ui_col_sublabel(&c, "Clap:", selectedDrum == 3 ? ORANGE : GRAY);
-        ui_col_float_p(&c, "Decay", &clapDecay, 0.03f, 0.1f, 0.6f);
-        ui_col_float_p(&c, "Tone", &clapTone, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Spread", &clapSpread, 0.001f, 0.005f, 0.03f);
-    }
-
-    // Groove
-    {
-        UIColumn c = ui_column(cols[4]+4, y, 16);
-        ui_col_sublabel(&c, "Groove:", (Color){140,140,200,255});
-        ui_col_int(&c, "Kick", &grooveKickNudge, 0.3f, -12, 12);
-        ui_col_int(&c, "Snare", &grooveSnareDelay, 0.3f, -12, 12);
-        ui_col_int(&c, "HH", &grooveHatNudge, 0.3f, -12, 12);
-        ui_col_int(&c, "Swing", &grooveSwing, 0.3f, 0, 12);
-        ui_col_int(&c, "Jitter", &grooveJitter, 0.3f, 0, 6);
-    }
-
-    // Sidechain + Drum volume
-    {
-        UIColumn c = ui_column(cols[5]+4, y, 16);
-        ui_col_sublabel(&c, "Sidechain:", (Color){140,140,200,255});
-        ui_col_toggle(&c, "On", &sidechainOn);
-        if (sidechainOn) {
-            ui_col_cycle(&c, "Source", sidechainSourceNames, 5, &sidechainSource);
-            ui_col_cycle(&c, "Target", sidechainTargetNames, 4, &sidechainTarget);
-            ui_col_float(&c, "Depth", &sidechainDepth, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&c, "Attack", &sidechainAttack, 0.002f, 0.001f, 0.05f);
-            ui_col_float(&c, "Release", &sidechainRelease, 0.02f, 0.05f, 0.5f);
-        }
-        ui_col_space(&c, 4);
-        ui_col_float_p(&c, "DrumVol", &drumVolume, 0.05f, 0.0f, 1.0f);
-    }
-
-    (void)w; (void)h;
-}
 
 // ============================================================================
 // PARAMS: BUS FX - 7 buses + master as strips
@@ -1445,7 +1455,7 @@ static void drawParamBus(float x, float y, float w, float h) {
             DrawRectangle((int)rightX, (int)ry, (int)rightW, (int)barH, (Color){32,36,45,255}); // visible track color
             int panCenter = (int)(rightX + rightW * 0.5f);
             DrawLine(panCenter, (int)ry, panCenter, (int)(ry+barH), (Color){55,60,72,255});
-            float panNorm = (busPan[b] + 1.0f) * 0.5f;
+            float panNorm = (daw.mixer.pan[b] + 1.0f) * 0.5f;
             int panPos = (int)(rightX + panNorm * rightW);
             if (panPos > panCenter) {
                 DrawRectangle(panCenter, (int)ry+1, panPos-panCenter, (int)barH-2, (Color){80,120,180,255});
@@ -1455,9 +1465,9 @@ static void drawParamBus(float x, float y, float w, float h) {
             DrawLine(panPos, (int)ry, panPos, (int)(ry+barH), WHITE);
             Rectangle panR = {rightX, ry-2, rightW, barH+4};
             if (CheckCollisionPointRec(mouse, panR) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                busPan[b] = ((mouse.x - rightX) / rightW) * 2.0f - 1.0f;
-                if (busPan[b] < -1) busPan[b] = -1;
-                if (busPan[b] > 1) busPan[b] = 1;
+                daw.mixer.pan[b] = ((mouse.x - rightX) / rightW) * 2.0f - 1.0f;
+                if (daw.mixer.pan[b] < -1) daw.mixer.pan[b] = -1;
+                if (daw.mixer.pan[b] > 1) daw.mixer.pan[b] = 1;
             }
             DrawTextShadow("Pan", (int)rightX, (int)(ry+barH+1), 11, (Color){60,60,70,255});
             ry += barH + 12;
@@ -1466,13 +1476,13 @@ static void drawParamBus(float x, float y, float w, float h) {
         // Rev send bar
         {
             DrawRectangle((int)rightX, (int)ry, (int)rightW, (int)barH, (Color){35,28,50,255}); // visible track
-            float revFill = busReverbSend[b] * rightW;
+            float revFill = daw.mixer.reverbSend[b] * rightW;
             DrawRectangle((int)rightX, (int)ry, (int)revFill, (int)barH, (Color){80,60,140,255});
             Rectangle revR = {rightX, ry-2, rightW, barH+4};
             if (CheckCollisionPointRec(mouse, revR) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                busReverbSend[b] = (mouse.x - rightX) / rightW;
-                if (busReverbSend[b] < 0) busReverbSend[b] = 0;
-                if (busReverbSend[b] > 1) busReverbSend[b] = 1;
+                daw.mixer.reverbSend[b] = (mouse.x - rightX) / rightW;
+                if (daw.mixer.reverbSend[b] < 0) daw.mixer.reverbSend[b] = 0;
+                if (daw.mixer.reverbSend[b] > 1) daw.mixer.reverbSend[b] = 1;
             }
             DrawTextShadow("RevSend", (int)rightX, (int)(ry+barH+1), 11, (Color){60,60,70,255});
             ry += barH + 14;
@@ -1480,38 +1490,38 @@ static void drawParamBus(float x, float y, float w, float h) {
 
         // FX controls (right of fader, below pan/rev)
         // Filter
-        ToggleBoolS(rightX, ry, "Filter", &busFilterOn[b], fs); ry += row;
-        if (busFilterOn[b]) {
+        ToggleBoolS(rightX, ry, "Filter", &daw.mixer.filterOn[b], fs); ry += row;
+        if (daw.mixer.filterOn[b]) {
             float xySize = rightW * 0.45f;
             if (xySize > 50) xySize = 50;
             if (xySize < 30) xySize = 30;
-            drawFilterXY(rightX, ry, xySize, &busFilterCut[b], &busFilterRes[b]);
+            drawFilterXY(rightX, ry, xySize, &daw.mixer.filterCut[b], &daw.mixer.filterRes[b]);
             float textX = rightX + xySize + 4;
             int sfs = fs - 2;
             int srow = sfs + 4;
-            DraggableFloatS(textX, ry, "Cut", &busFilterCut[b], 0.02f, 0.0f, 1.0f, sfs);
-            DraggableFloatS(textX, ry + srow, "Res", &busFilterRes[b], 0.02f, 0.0f, 1.0f, sfs);
-            CycleOptionS(textX, ry + srow*2, "Type", busFilterTypeNames, 3, &busFilterType[b], sfs);
+            DraggableFloatS(textX, ry, "Cut", &daw.mixer.filterCut[b], 0.02f, 0.0f, 1.0f, sfs);
+            DraggableFloatS(textX, ry + srow, "Res", &daw.mixer.filterRes[b], 0.02f, 0.0f, 1.0f, sfs);
+            CycleOptionS(textX, ry + srow*2, "Type", busFilterTypeNames, 3, &daw.mixer.filterType[b], sfs);
             ry += xySize + 2;
         }
         ry += 2;
 
         // Distortion
-        ToggleBoolS(rightX, ry, "Dist", &busDistOn[b], fs); ry += row;
-        if (busDistOn[b]) {
-            DraggableFloatS(rightX, ry, "Drive", &busDistDrive[b], 0.05f, 1.0f, 4.0f, fs); ry += row;
-            DraggableFloatS(rightX, ry, "Mix", &busDistMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
+        ToggleBoolS(rightX, ry, "Dist", &daw.mixer.distOn[b], fs); ry += row;
+        if (daw.mixer.distOn[b]) {
+            DraggableFloatS(rightX, ry, "Drive", &daw.mixer.distDrive[b], 0.05f, 1.0f, 4.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Mix", &daw.mixer.distMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
         }
         ry += 2;
 
         // Delay
-        ToggleBoolS(rightX, ry, "Delay", &busDelayOn[b], fs); ry += row;
-        if (busDelayOn[b]) {
-            ToggleBoolS(rightX, ry, "Sync", &busDelaySync[b], fs); ry += row;
-            if (busDelaySync[b]) { CycleOptionS(rightX, ry, "Div", delaySyncNames, 5, &busDelaySyncDiv[b], fs); ry += row; }
-            else { DraggableFloatS(rightX, ry, "Time", &busDelayTime[b], 0.01f, 0.01f, 1.0f, fs); ry += row; }
-            DraggableFloatS(rightX, ry, "FB", &busDelayFB[b], 0.02f, 0.0f, 0.8f, fs); ry += row;
-            DraggableFloatS(rightX, ry, "Mix", &busDelayMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
+        ToggleBoolS(rightX, ry, "Delay", &daw.mixer.delayOn[b], fs); ry += row;
+        if (daw.mixer.delayOn[b]) {
+            ToggleBoolS(rightX, ry, "Sync", &daw.mixer.delaySync[b], fs); ry += row;
+            if (daw.mixer.delaySync[b]) { CycleOptionS(rightX, ry, "Div", delaySyncNames, 5, &daw.mixer.delaySyncDiv[b], fs); ry += row; }
+            else { DraggableFloatS(rightX, ry, "Time", &daw.mixer.delayTime[b], 0.01f, 0.01f, 1.0f, fs); ry += row; }
+            DraggableFloatS(rightX, ry, "FB", &daw.mixer.delayFB[b], 0.02f, 0.0f, 0.8f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Mix", &daw.mixer.delayMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
         }
 
         // Vertical separator
@@ -1531,23 +1541,35 @@ static void drawParamBus(float x, float y, float w, float h) {
         float fW = stripW - 12;
         Rectangle fr = {mx+4, mcy+1, fW, 8};
         DrawRectangleRec(fr, (Color){20,20,25,255});
-        DrawRectangle((int)(mx+4), (int)mcy+1, (int)(fW*masterVol), 8, (Color){170,150,50,255});
+        DrawRectangle((int)(mx+4), (int)mcy+1, (int)(fW*daw.masterVol), 8, (Color){170,150,50,255});
         if (CheckCollisionPointRec(mouse, fr) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-            masterVol = (mouse.x - (mx+4)) / fW;
-            if (masterVol < 0) masterVol = 0;
-            if (masterVol > 1) masterVol = 1;
+            daw.masterVol = (mouse.x - (mx+4)) / fW;
+            if (daw.masterVol < 0) daw.masterVol = 0;
+            if (daw.masterVol > 1) daw.masterVol = 1;
         }
         mcy += 12;
     }
     mcy += 4;
 
-    // Scenes in master strip
+    // Sidechain
+    DrawTextShadow("Sidechain:", (int)mx+4, (int)mcy, 9, (Color){140,140,200,255}); mcy += row;
+    ToggleBoolS(mx+4, mcy, "On", &daw.sidechain.on, fs); mcy += row;
+    if (daw.sidechain.on) {
+        CycleOptionS(mx+4, mcy, "Src", sidechainSourceNames, 5, &daw.sidechain.source, fs); mcy += row;
+        CycleOptionS(mx+4, mcy, "Tgt", sidechainTargetNames, 4, &daw.sidechain.target, fs); mcy += row;
+        DraggableFloatS(mx+4, mcy, "Depth", &daw.sidechain.depth, 0.05f, 0.0f, 1.0f, fs); mcy += row;
+        DraggableFloatS(mx+4, mcy, "Atk", &daw.sidechain.attack, 0.002f, 0.001f, 0.05f, fs); mcy += row;
+        DraggableFloatS(mx+4, mcy, "Rel", &daw.sidechain.release, 0.02f, 0.05f, 0.5f, fs); mcy += row;
+    }
+    mcy += 4;
+
+    // Scenes
     DrawTextShadow("Scenes:", (int)mx+4, (int)mcy, 9, (Color){140,140,200,255}); mcy += row;
-    ToggleBoolS(mx+4, mcy, "XFade", &crossfaderEnabled, fs); mcy += row;
-    if (crossfaderEnabled) {
-        DraggableFloatS(mx+4, mcy, "Pos", &crossfaderPos, 0.02f, 0.0f, 1.0f, fs); mcy += row;
-        DraggableIntS(mx+4, mcy, "A", &sceneA, 0.3f, 0, 7, fs); mcy += row;
-        DraggableIntS(mx+4, mcy, "B", &sceneB, 0.3f, 0, 7, fs); mcy += row;
+    ToggleBoolS(mx+4, mcy, "XFade", &daw.crossfader.enabled, fs); mcy += row;
+    if (daw.crossfader.enabled) {
+        DraggableFloatS(mx+4, mcy, "Pos", &daw.crossfader.pos, 0.02f, 0.0f, 1.0f, fs); mcy += row;
+        DraggableIntS(mx+4, mcy, "A", &daw.crossfader.sceneA, 0.3f, 0, 7, fs); mcy += row;
+        DraggableIntS(mx+4, mcy, "B", &daw.crossfader.sceneB, 0.3f, 0, 7, fs); mcy += row;
     }
 
     (void)h; (void)mcy;
@@ -1558,28 +1580,28 @@ static void drawParamBus(float x, float y, float w, float h) {
 // ============================================================================
 
 static void drawParamMasterFx(float x, float y, float w, float h) {
-    // 6 effect blocks in signal chain order
-    float blockW = w / 6.0f;
-    if (blockW > 190) blockW = 190;
+    // 7 effect blocks in signal chain order
+    float blockW = w / 7.0f;
+    if (blockW > 170) blockW = 170;
 
     // Draw signal flow arrows between blocks
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         float ax = x + (i+1)*blockW - 6;
         DrawTextShadow(">", (int)ax, (int)(y + h*0.5f - 5), 12, (Color){50,50,60,255});
     }
 
     // Signal chain label
-    DrawTextShadow("Signal: Dist > Crush > Chorus > Tape > Delay > Reverb",
+    DrawTextShadow("Dist > Crush > Chorus > Flanger > Tape > Delay > Reverb",
                    (int)x, (int)(y+h-14), 9, (Color){55,55,65,255});
 
     // Block 1: Distortion
     {
         UIColumn c = ui_column(x+4, y, 16);
         ui_col_sublabel(&c, "Distortion:", ORANGE);
-        ui_col_toggle(&c, "On", &distOn);
-        ui_col_float(&c, "Drive", &distDrive, 0.5f, 1.0f, 20.0f);
-        ui_col_float(&c, "Tone", &distTone, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Mix", &distMix, 0.05f, 0.0f, 1.0f);
+        ui_col_toggle(&c, "On", &daw.masterFx.distOn);
+        ui_col_float(&c, "Drive", &daw.masterFx.distDrive, 0.5f, 1.0f, 20.0f);
+        ui_col_float(&c, "Tone", &daw.masterFx.distTone, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Mix", &daw.masterFx.distMix, 0.05f, 0.0f, 1.0f);
     }
     DrawLine((int)(x+blockW), (int)y, (int)(x+blockW), (int)(y+h), (Color){38,38,48,255});
 
@@ -1587,10 +1609,10 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
     {
         UIColumn c = ui_column(x+blockW+4, y, 16);
         ui_col_sublabel(&c, "Bitcrusher:", ORANGE);
-        ui_col_toggle(&c, "On", &crushOn);
-        ui_col_float(&c, "Bits", &crushBits, 0.5f, 2.0f, 16.0f);
-        ui_col_float(&c, "Rate", &crushRate, 1.0f, 1.0f, 32.0f);
-        ui_col_float(&c, "Mix", &crushMix, 0.05f, 0.0f, 1.0f);
+        ui_col_toggle(&c, "On", &daw.masterFx.crushOn);
+        ui_col_float(&c, "Bits", &daw.masterFx.crushBits, 0.5f, 2.0f, 16.0f);
+        ui_col_float(&c, "Rate", &daw.masterFx.crushRate, 1.0f, 1.0f, 32.0f);
+        ui_col_float(&c, "Mix", &daw.masterFx.crushMix, 0.05f, 0.0f, 1.0f);
     }
     DrawLine((int)(x+2*blockW), (int)y, (int)(x+2*blockW), (int)(y+h), (Color){38,38,48,255});
 
@@ -1598,46 +1620,58 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
     {
         UIColumn c = ui_column(x+2*blockW+4, y, 16);
         ui_col_sublabel(&c, "Chorus:", ORANGE);
-        ui_col_toggle(&c, "On", &chorusOn);
-        ui_col_float(&c, "Rate", &chorusRate, 0.1f, 0.1f, 5.0f);
-        ui_col_float(&c, "Depth", &chorusDepth, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Mix", &chorusMix, 0.05f, 0.0f, 1.0f);
+        ui_col_toggle(&c, "On", &daw.masterFx.chorusOn);
+        ui_col_float(&c, "Rate", &daw.masterFx.chorusRate, 0.1f, 0.1f, 5.0f);
+        ui_col_float(&c, "Depth", &daw.masterFx.chorusDepth, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Mix", &daw.masterFx.chorusMix, 0.05f, 0.0f, 1.0f);
     }
     DrawLine((int)(x+3*blockW), (int)y, (int)(x+3*blockW), (int)(y+h), (Color){38,38,48,255});
 
-    // Block 4: Tape
+    // Block 4: Flanger
     {
         UIColumn c = ui_column(x+3*blockW+4, y, 16);
-        ui_col_sublabel(&c, "Tape:", ORANGE);
-        ui_col_toggle(&c, "On", &tapeOn);
-        ui_col_float(&c, "Saturat", &tapeSaturation, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Wow", &tapeWow, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Flutter", &tapeFlutter, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Hiss", &tapeHiss, 0.05f, 0.0f, 1.0f);
+        ui_col_sublabel(&c, "Flanger:", ORANGE);
+        ui_col_toggle(&c, "On", &daw.masterFx.flangerOn);
+        ui_col_float(&c, "Rate", &daw.masterFx.flangerRate, 0.05f, 0.05f, 5.0f);
+        ui_col_float(&c, "Depth", &daw.masterFx.flangerDepth, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Feedbk", &daw.masterFx.flangerFeedback, 0.05f, -0.95f, 0.95f);
+        ui_col_float(&c, "Mix", &daw.masterFx.flangerMix, 0.05f, 0.0f, 1.0f);
     }
     DrawLine((int)(x+4*blockW), (int)y, (int)(x+4*blockW), (int)(y+h), (Color){38,38,48,255});
 
-    // Block 5: Delay
+    // Block 5: Tape
     {
         UIColumn c = ui_column(x+4*blockW+4, y, 16);
-        ui_col_sublabel(&c, "Delay:", ORANGE);
-        ui_col_toggle(&c, "On", &delayOn);
-        ui_col_float(&c, "Time", &delayTime, 0.05f, 0.05f, 1.0f);
-        ui_col_float(&c, "Fdbk", &delayFeedback, 0.05f, 0.0f, 0.9f);
-        ui_col_float(&c, "Tone", &delayTone, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Mix", &delayMix, 0.05f, 0.0f, 1.0f);
+        ui_col_sublabel(&c, "Tape:", ORANGE);
+        ui_col_toggle(&c, "On", &daw.masterFx.tapeOn);
+        ui_col_float(&c, "Saturat", &daw.masterFx.tapeSaturation, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Wow", &daw.masterFx.tapeWow, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Flutter", &daw.masterFx.tapeFlutter, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Hiss", &daw.masterFx.tapeHiss, 0.05f, 0.0f, 1.0f);
     }
     DrawLine((int)(x+5*blockW), (int)y, (int)(x+5*blockW), (int)(y+h), (Color){38,38,48,255});
 
-    // Block 6: Reverb
+    // Block 6: Delay
     {
         UIColumn c = ui_column(x+5*blockW+4, y, 16);
+        ui_col_sublabel(&c, "Delay:", ORANGE);
+        ui_col_toggle(&c, "On", &daw.masterFx.delayOn);
+        ui_col_float(&c, "Time", &daw.masterFx.delayTime, 0.05f, 0.05f, 1.0f);
+        ui_col_float(&c, "Fdbk", &daw.masterFx.delayFeedback, 0.05f, 0.0f, 0.9f);
+        ui_col_float(&c, "Tone", &daw.masterFx.delayTone, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Mix", &daw.masterFx.delayMix, 0.05f, 0.0f, 1.0f);
+    }
+    DrawLine((int)(x+6*blockW), (int)y, (int)(x+6*blockW), (int)(y+h), (Color){38,38,48,255});
+
+    // Block 7: Reverb
+    {
+        UIColumn c = ui_column(x+6*blockW+4, y, 16);
         ui_col_sublabel(&c, "Reverb:", ORANGE);
-        ui_col_toggle(&c, "On", &reverbOn);
-        ui_col_float(&c, "Size", &reverbSize, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Damping", &reverbDamping, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "PreDly", &reverbPreDelay, 0.005f, 0.0f, 0.1f);
-        ui_col_float(&c, "Mix", &reverbMix, 0.05f, 0.0f, 1.0f);
+        ui_col_toggle(&c, "On", &daw.masterFx.reverbOn);
+        ui_col_float(&c, "Size", &daw.masterFx.reverbSize, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Damping", &daw.masterFx.reverbDamping, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "PreDly", &daw.masterFx.reverbPreDelay, 0.005f, 0.0f, 0.1f);
+        ui_col_float(&c, "Mix", &daw.masterFx.reverbMix, 0.05f, 0.0f, 1.0f);
     }
 
     // Presets row at bottom
@@ -1667,28 +1701,28 @@ static void drawParamTape(float x, float y, float w, float h) {
     {
         UIColumn c = ui_column(x+4, y, 16);
         ui_col_sublabel(&c, "Dub Loop:", ORANGE);
-        ui_col_toggle(&c, "On", &dubLoopEnabled);
-        ui_col_float(&c, "Time", &dubHeadTime, 0.05f, 0.05f, 4.0f);
-        ui_col_float(&c, "Fdbk", &dubFeedback, 0.05f, 0.0f, 0.95f);
-        ui_col_float(&c, "Mix", &dubMix, 0.05f, 0.0f, 1.0f);
+        ui_col_toggle(&c, "On", &daw.tapeFx.enabled);
+        ui_col_float(&c, "Time", &daw.tapeFx.headTime, 0.05f, 0.05f, 4.0f);
+        ui_col_float(&c, "Fdbk", &daw.tapeFx.feedback, 0.05f, 0.0f, 0.95f);
+        ui_col_float(&c, "Mix", &daw.tapeFx.mix, 0.05f, 0.0f, 1.0f);
         ui_col_space(&c, 2);
-        ui_col_cycle(&c, "Input", dubInputNames, 4, &dubInputSource);
-        ui_col_toggle(&c, "PreReverb", &dubPreReverb);
+        ui_col_cycle(&c, "Input", dubInputNames, 4, &daw.tapeFx.inputSource);
+        ui_col_toggle(&c, "PreReverb", &daw.tapeFx.preReverb);
         ui_col_space(&c, 2);
 
         ui_col_sublabel(&c, "Degradation:", (Color){140,140,200,255});
-        ui_col_float(&c, "Saturat", &dubSaturation, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "ToneHi", &dubToneHigh, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Noise", &dubNoise, 0.02f, 0.0f, 0.5f);
-        ui_col_float(&c, "Degrade", &dubDegradeRate, 0.02f, 0.0f, 0.5f);
+        ui_col_float(&c, "Saturat", &daw.tapeFx.saturation, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "ToneHi", &daw.tapeFx.toneHigh, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Noise", &daw.tapeFx.noise, 0.02f, 0.0f, 0.5f);
+        ui_col_float(&c, "Degrade", &daw.tapeFx.degradeRate, 0.02f, 0.0f, 0.5f);
 
         // Second column for modulation + buttons
         UIColumn c2 = ui_column(x + 180, y, 16);
         ui_col_sublabel(&c2, "Modulation:", (Color){140,140,200,255});
-        ui_col_float(&c2, "Wow", &dubWow, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c2, "Flutter", &dubFlutter, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c2, "Drift", &dubDrift, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c2, "Speed", &dubSpeedTarget, 0.1f, 0.25f, 2.0f);
+        ui_col_float(&c2, "Wow", &daw.tapeFx.wow, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c2, "Flutter", &daw.tapeFx.flutter, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c2, "Drift", &daw.tapeFx.drift, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c2, "Speed", &daw.tapeFx.speedTarget, 0.1f, 0.25f, 2.0f);
         ui_col_space(&c2, 4);
         ui_col_button(&c2, "Throw");
         ui_col_button(&c2, "Cut");
@@ -1703,18 +1737,301 @@ static void drawParamTape(float x, float y, float w, float h) {
     {
         UIColumn c = ui_column(x+halfW+8, y, 16);
         ui_col_sublabel(&c, "Rewind:", ORANGE);
-        ui_col_float(&c, "Time", &rewindTime, 0.1f, 0.3f, 3.0f);
-        ui_col_cycle(&c, "Curve", rewindCurveNames, 3, &rewindCurve);
-        ui_col_float(&c, "MinSpd", &rewindMinSpeed, 0.05f, 0.05f, 0.8f);
+        ui_col_float(&c, "Time", &daw.tapeFx.rewindTime, 0.1f, 0.3f, 3.0f);
+        ui_col_cycle(&c, "Curve", rewindCurveNames, 3, &daw.tapeFx.rewindCurve);
+        ui_col_float(&c, "MinSpd", &daw.tapeFx.rewindMinSpeed, 0.05f, 0.05f, 0.8f);
         ui_col_space(&c, 2);
-        ui_col_float(&c, "Vinyl", &rewindVinyl, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Wobble", &rewindWobble, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Filter", &rewindFilter, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Vinyl", &daw.tapeFx.rewindVinyl, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Wobble", &daw.tapeFx.rewindWobble, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Filter", &daw.tapeFx.rewindFilter, 0.05f, 0.0f, 1.0f);
         ui_col_space(&c, 4);
-        ui_col_button(&c, isRewinding ? ">>..." : "Rewind");
+        ui_col_button(&c, daw.tapeFx.isRewinding ? ">>..." : "Rewind");
     }
 
     (void)h;
+}
+
+// ============================================================================
+// AUDIO
+// ============================================================================
+
+// Piano-style key mapping (white keys on ASDFGHJKL, black keys on WERTYUIOP)
+typedef struct { int key; int semitone; } DawPianoKey;
+static const DawPianoKey dawPianoKeys[] = {
+    // White keys (bottom row)
+    {KEY_A, 0},   // C
+    {KEY_S, 2},   // D
+    {KEY_D, 4},   // E
+    {KEY_F, 5},   // F
+    {KEY_G, 7},   // G
+    {KEY_H, 9},   // A
+    {KEY_J, 11},  // B
+    {KEY_K, 12},  // C+1
+    {KEY_L, 14},  // D+1
+    // Black keys (top row)
+    {KEY_W, 1},   // C#
+    {KEY_E, 3},   // D#
+    {KEY_R, 6},   // F#
+    {KEY_T, 8},   // G#
+    {KEY_Y, 10},  // A#
+    {KEY_U, 13},  // C#+1
+    {KEY_I, 15},  // D#+1
+};
+#define NUM_DAW_PIANO_KEYS (sizeof(dawPianoKeys) / sizeof(dawPianoKeys[0]))
+static int dawPianoKeyVoices[NUM_DAW_PIANO_KEYS];
+static int dawCurrentOctave = 4;
+
+static float dawSemitoneToFreq(int semitone, int octave) {
+    float c0 = 16.351597831287414f;
+    int totalSemitones = octave * 12 + semitone;
+    // constrainToScale reads from synthCtx, synced by dawSyncEngineState()
+    totalSemitones = constrainToScale(totalSemitones);
+    return c0 * powf(2.0f, totalSemitones / 12.0f);
+}
+
+// Track which bus each voice belongs to (-1 = keyboard/preview → CHORD bus)
+static int voiceBus[NUM_VOICES];
+
+static void DawAudioCallback(void *buffer, unsigned int frames) {
+    short *d = (short *)buffer;
+    float dt = 1.0f / SAMPLE_RATE;
+
+    setMixerTempo(daw.transport.bpm);
+    synthCtx->bpm = daw.transport.bpm;
+
+    for (unsigned int i = 0; i < frames; i++) {
+        float busInputs[NUM_BUSES] = {0};
+
+        // Process all voices and route to buses
+        for (int v = 0; v < NUM_VOICES; v++) {
+            float s = processVoice(&synthVoices[v], SAMPLE_RATE);
+            int bus = voiceBus[v];
+            if (bus >= 0 && bus < NUM_BUSES) {
+                busInputs[bus] += s;
+            } else {
+                // Keyboard/preview voices → chord bus
+                busInputs[BUS_CHORD] += s;
+            }
+        }
+
+        // Sidechain: extract source signal
+        float sidechainSample = 0.0f;
+        if (fx.sidechainEnabled) {
+            switch (fx.sidechainSource) {
+                case SIDECHAIN_SRC_KICK:  sidechainSample = busInputs[BUS_DRUM0]; break;
+                case SIDECHAIN_SRC_SNARE: sidechainSample = busInputs[BUS_DRUM1]; break;
+                case SIDECHAIN_SRC_CLAP:  sidechainSample = busInputs[BUS_DRUM1]; break;
+                case SIDECHAIN_SRC_HIHAT: sidechainSample = busInputs[BUS_DRUM2]; break;
+                default:
+                    sidechainSample = busInputs[BUS_DRUM0] + busInputs[BUS_DRUM1] +
+                                      busInputs[BUS_DRUM2] + busInputs[BUS_DRUM3];
+                    break;
+            }
+            updateSidechainEnvelope(sidechainSample, dt);
+
+            switch (fx.sidechainTarget) {
+                case SIDECHAIN_TGT_BASS:  busInputs[BUS_BASS] = applySidechainDucking(busInputs[BUS_BASS]); break;
+                case SIDECHAIN_TGT_LEAD:  busInputs[BUS_LEAD] = applySidechainDucking(busInputs[BUS_LEAD]); break;
+                case SIDECHAIN_TGT_CHORD: busInputs[BUS_CHORD] = applySidechainDucking(busInputs[BUS_CHORD]); break;
+                default:
+                    busInputs[BUS_BASS]  = applySidechainDucking(busInputs[BUS_BASS]);
+                    busInputs[BUS_LEAD]  = applySidechainDucking(busInputs[BUS_LEAD]);
+                    busInputs[BUS_CHORD] = applySidechainDucking(busInputs[BUS_CHORD]);
+                    break;
+            }
+        }
+
+        // Full mixer → bus FX → master FX chain
+        float sample = processMixerOutput(busInputs, dt);
+        sample *= daw.masterVol;
+
+        if (sample > 1.0f) sample = 1.0f;
+        if (sample < -1.0f) sample = -1.0f;
+        d[i] = (short)(sample * 32000.0f);
+    }
+}
+
+// Sync DAW state → engine contexts each frame
+static void dawSyncEngineState(void) {
+    // Scale lock
+    synthCtx->scaleLockEnabled = daw.scaleLockEnabled;
+    synthCtx->scaleRoot = daw.scaleRoot;
+    synthCtx->scaleType = daw.scaleType;
+
+    // Master FX → effects engine
+    fx.distEnabled     = daw.masterFx.distOn;
+    fx.distDrive       = daw.masterFx.distDrive;
+    fx.distTone        = daw.masterFx.distTone;
+    fx.distMix         = daw.masterFx.distMix;
+    fx.crushEnabled    = daw.masterFx.crushOn;
+    fx.crushBits       = daw.masterFx.crushBits;
+    fx.crushRate       = daw.masterFx.crushRate;
+    fx.crushMix        = daw.masterFx.crushMix;
+    fx.chorusEnabled   = daw.masterFx.chorusOn;
+    fx.chorusRate      = daw.masterFx.chorusRate;
+    fx.chorusDepth     = daw.masterFx.chorusDepth;
+    fx.chorusMix       = daw.masterFx.chorusMix;
+    fx.flangerEnabled  = daw.masterFx.flangerOn;
+    fx.flangerRate     = daw.masterFx.flangerRate;
+    fx.flangerDepth    = daw.masterFx.flangerDepth;
+    fx.flangerFeedback = daw.masterFx.flangerFeedback;
+    fx.flangerMix      = daw.masterFx.flangerMix;
+    fx.tapeEnabled     = daw.masterFx.tapeOn;
+    fx.tapeSaturation  = daw.masterFx.tapeSaturation;
+    fx.tapeWow         = daw.masterFx.tapeWow;
+    fx.tapeFlutter     = daw.masterFx.tapeFlutter;
+    fx.tapeHiss        = daw.masterFx.tapeHiss;
+    fx.delayEnabled    = daw.masterFx.delayOn;
+    fx.delayTime       = daw.masterFx.delayTime;
+    fx.delayFeedback   = daw.masterFx.delayFeedback;
+    fx.delayTone       = daw.masterFx.delayTone;
+    fx.delayMix        = daw.masterFx.delayMix;
+    fx.reverbEnabled   = daw.masterFx.reverbOn;
+    fx.reverbSize      = daw.masterFx.reverbSize;
+    fx.reverbDamping   = daw.masterFx.reverbDamping;
+    fx.reverbPreDelay  = daw.masterFx.reverbPreDelay;
+    fx.reverbMix       = daw.masterFx.reverbMix;
+
+    // Sidechain
+    fx.sidechainEnabled = daw.sidechain.on;
+    fx.sidechainSource  = daw.sidechain.source;
+    fx.sidechainTarget  = daw.sidechain.target;
+    fx.sidechainDepth   = daw.sidechain.depth;
+    fx.sidechainAttack  = daw.sidechain.attack;
+    fx.sidechainRelease = daw.sidechain.release;
+
+    // Per-bus mixer params
+    for (int b = 0; b < NUM_BUSES; b++) {
+        setBusVolume(b, daw.mixer.volume[b]);
+        setBusPan(b, daw.mixer.pan[b]);
+        setBusMute(b, daw.mixer.mute[b]);
+        setBusSolo(b, daw.mixer.solo[b]);
+        setBusReverbSend(b, daw.mixer.reverbSend[b]);
+        setBusFilter(b, daw.mixer.filterOn[b], daw.mixer.filterCut[b],
+                     daw.mixer.filterRes[b], daw.mixer.filterType[b]);
+        setBusDistortion(b, daw.mixer.distOn[b], daw.mixer.distDrive[b],
+                         daw.mixer.distMix[b]);
+        setBusDelay(b, daw.mixer.delayOn[b], daw.mixer.delayTime[b],
+                    daw.mixer.delayFB[b], daw.mixer.delayMix[b]);
+        setBusDelaySync(b, daw.mixer.delaySync[b], daw.mixer.delaySyncDiv[b]);
+    }
+
+    // Tape/dub loop
+    dubLoop.enabled      = daw.tapeFx.enabled;
+    dubLoop.headTime[0]  = daw.tapeFx.headTime;  // DAW exposes single head time
+    dubLoop.feedback     = daw.tapeFx.feedback;
+    dubLoop.mix          = daw.tapeFx.mix;
+    dubLoop.inputSource  = daw.tapeFx.inputSource;
+    dubLoop.saturation   = daw.tapeFx.saturation;
+}
+
+// Map patch index (0-7) to bus index for voice routing
+// Patches 0-3 = drums → BUS_DRUM0-3, 4 = bass, 5 = lead, 6+ = chord
+static int dawPatchToBus(int patchIdx) {
+    if (patchIdx >= 0 && patchIdx <= 3) return BUS_DRUM0 + patchIdx;
+    if (patchIdx == 4) return BUS_BASS;
+    if (patchIdx == 5) return BUS_LEAD;
+    return BUS_CHORD;
+}
+
+// Voice indices per track (for release on next trigger)
+static int drumVoiceIdx[SEQ_DRUM_TRACKS] = {-1, -1, -1, -1};
+static int melodyVoiceIdx[SEQ_MELODY_TRACKS] = {-1, -1, -1};
+
+// Sequencer tick: advance step based on BPM, trigger notes
+static void dawTickSequencer(float dt) {
+    if (!daw.transport.playing) return;
+
+    // Steps per second = (BPM / 60) * (stepCount / 4)
+    // At 120 BPM, 16 steps = 8 steps/sec, 32 steps = 16 steps/sec
+    float stepsPerBeat = daw.seq.stepCount / 4.0f;
+    float stepsPerSec = (daw.transport.bpm / 60.0f) * stepsPerBeat;
+    daw.transport.stepAccumulator += (double)dt;
+
+    double stepDuration = 1.0 / (double)stepsPerSec;
+    while (daw.transport.stepAccumulator >= stepDuration) {
+        daw.transport.stepAccumulator -= stepDuration;
+
+        // Advance step (wraps per-track for polyrhythm)
+        int step = daw.transport.currentStep;
+
+        // Trigger drum tracks (0-3)
+        for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
+            int trackStep = step % daw.seq.trackLength[t];
+            if (daw.seq.steps[t][trackStep]) {
+                SynthPatch *p = &daw.patches[t];
+                // Choke: cut previous voice on this track (hihat behavior)
+                if (p->p_choke && drumVoiceIdx[t] >= 0)
+                    releaseNote(drumVoiceIdx[t]);
+                int v = playNoteWithPatch(p->p_triggerFreq, p);
+                drumVoiceIdx[t] = v;
+                if (v >= 0) voiceBus[v] = dawPatchToBus(t);
+            }
+        }
+
+        // Trigger melody tracks (4-6)
+        for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
+            int busTrack = t + SEQ_DRUM_TRACKS; // track index 4,5,6
+            int trackStep = step % daw.seq.trackLength[busTrack];
+            int note = daw.seq.melodyNotes[t][trackStep];
+            if (note != SEQ_NOTE_OFF) {
+                // Release previous note on this track
+                if (melodyVoiceIdx[t] >= 0) releaseNote(melodyVoiceIdx[t]);
+                float freq = patchMidiToFreq(note);
+                SynthPatch *p = &daw.patches[busTrack];
+                int v = playNoteWithPatch(freq, p);
+                melodyVoiceIdx[t] = v;
+                if (v >= 0) voiceBus[v] = dawPatchToBus(busTrack);
+            } else {
+                // Rest: release held note
+                if (melodyVoiceIdx[t] >= 0) {
+                    releaseNote(melodyVoiceIdx[t]);
+                    melodyVoiceIdx[t] = -1;
+                }
+            }
+        }
+
+        daw.transport.currentStep = (step + 1) % daw.seq.stepCount;
+    }
+}
+
+static void dawStopSequencer(void) {
+    daw.transport.currentStep = 0;
+    daw.transport.stepAccumulator = 0;
+    // Release all tracked voices
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
+        if (drumVoiceIdx[t] >= 0) {
+            releaseNote(drumVoiceIdx[t]);
+            drumVoiceIdx[t] = -1;
+        }
+    }
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
+        if (melodyVoiceIdx[t] >= 0) {
+            releaseNote(melodyVoiceIdx[t]);
+            melodyVoiceIdx[t] = -1;
+        }
+    }
+}
+
+static void dawHandleMusicalTyping(void) {
+    // Octave: Z down, X up
+    if (IsKeyPressed(KEY_Z) && dawCurrentOctave > 1) dawCurrentOctave--;
+    if (IsKeyPressed(KEY_X) && dawCurrentOctave < 7) dawCurrentOctave++;
+
+    SynthPatch *patch = &daw.patches[daw.selectedPatch];
+    int bus = dawPatchToBus(daw.selectedPatch);
+    for (size_t i = 0; i < NUM_DAW_PIANO_KEYS; i++) {
+        if (IsKeyPressed(dawPianoKeys[i].key)) {
+            float freq = dawSemitoneToFreq(dawPianoKeys[i].semitone, dawCurrentOctave);
+            int v = playNoteWithPatch(freq, patch);
+            dawPianoKeyVoices[i] = v;
+            if (v >= 0) voiceBus[v] = bus;
+        }
+        if (IsKeyReleased(dawPianoKeys[i].key) && dawPianoKeyVoices[i] >= 0) {
+            releaseNote(dawPianoKeyVoices[i]);
+            dawPianoKeyVoices[i] = -1;
+        }
+    }
 }
 
 // ============================================================================
@@ -1725,12 +2042,31 @@ int main(void) {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "PixelSynth DAW (Horizontal)");
     SetTargetFPS(60);
 
+    // Audio init
+    SetAudioStreamBufferSizeDefault(MAX_SAMPLES_PER_UPDATE);
+    InitAudioDevice();
+    loadEmbeddedSCWs();
+    AudioStream dawStream = LoadAudioStream(SAMPLE_RATE, 16, 1);
+    SetAudioStreamCallback(dawStream, DawAudioCallback);
+    PlayAudioStream(dawStream);
+
+    // Init audio engine state
+    initEffects();
+    for (size_t i = 0; i < NUM_DAW_PIANO_KEYS; i++) dawPianoKeyVoices[i] = -1;
+    for (int i = 0; i < NUM_VOICES; i++) voiceBus[i] = -1;
+
     Font font = LoadEmbeddedFont();
     ui_init(&font);
     initPatches();
 
     while (!WindowShouldClose()) {
-        if (IsKeyPressed(KEY_SPACE)) playing = !playing;
+        if (IsKeyPressed(KEY_SPACE)) {
+            daw.transport.playing = !daw.transport.playing;
+            if (!daw.transport.playing) dawStopSequencer();
+        }
+        dawSyncEngineState();
+        dawTickSequencer(GetFrameTime());
+        dawHandleMusicalTyping();
 
         BeginDrawing();
         ClearBackground((Color){22, 22, 28, 255});
@@ -1775,7 +2111,6 @@ int main(void) {
             BeginScissorMode((int)px, PARAM_Y, (int)pw + 4, PARAM_H);
             switch (paramTab) {
                 case PARAM_PATCH:  drawParamPatch(px, py, pw, ph); break;
-                case PARAM_DRUMS:  drawParamDrums(px, py, pw, ph); break;
                 case PARAM_BUS:    drawParamBus(px, py, pw, ph); break;
                 case PARAM_MASTER: drawParamMasterFx(px, py, pw, ph); break;
                 case PARAM_TAPE:   drawParamTape(px, py, pw, ph); break;
@@ -1789,6 +2124,8 @@ int main(void) {
         EndDrawing();
     }
 
+    UnloadAudioStream(dawStream);
+    CloseAudioDevice();
     UnloadFont(font);
     CloseWindow();
     return 0;

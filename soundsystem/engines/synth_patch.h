@@ -192,6 +192,11 @@ typedef struct {
     bool p_noiseLPBypass;     // true=skip noise LP filter (raw noise to HP/main filter)
     int p_noiseType;          // 0=LFSR (running state), 1=time-hash (drums.h-style, deterministic)
 
+    // Trigger frequency (for drums/percussive patches with baked-in pitch)
+    bool p_useTriggerFreq;    // true = use p_triggerFreq instead of note freq
+    float p_triggerFreq;      // fixed trigger frequency in Hz (e.g. 50 for kick)
+    bool p_choke;             // true = new hit cuts off previous voice on same track (hihat)
+
     // Identity & misc
     char p_name[32];
     bool p_expRelease;        // true = exponential release (natural tail)
@@ -328,6 +333,9 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_phaseReset = false,
         .p_noiseLPBypass = false,
         .p_noiseType = 0,
+        .p_useTriggerFreq = false,
+        .p_triggerFreq = 440.0f,
+        .p_choke = false,
         .p_name = "",
         .p_expRelease = false,
         .p_expDecay = false,
