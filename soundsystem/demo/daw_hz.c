@@ -62,6 +62,15 @@ static ParamTab paramTab = PARAM_PATCH;
 static const char* paramTabNames[] = {"Patch", "Drums", "Bus FX", "Master FX", "Tape"};
 static const int paramTabKeys[] = {KEY_ONE, KEY_TWO, KEY_THREE, KEY_FOUR, KEY_FIVE};
 
+// Patch sub-tabs: Main (all params) | Adv (algorithm modes)
+// All patch params on one page (no sub-tabs)
+
+// Name arrays for new params
+static const char* filterTypeNames[] = {"LP", "HP", "BP", "1pLP", "1pHP", "ResoBP"};
+static const char* noiseModeNames[] = {"Mix", "Replace", "PerBurst"};
+static const char* oscMixModeNames[] = {"Weighted", "Additive"};
+static const char* noiseTypeNames[] = {"LFSR", "TimeHash"};
+
 // ============================================================================
 // ALL STATE
 // ============================================================================
@@ -109,32 +118,40 @@ static bool daw_voiceRandomVowel = false;
 static bool patchesInit = false;
 static float daw_masterVolume = 0.8f;
 
+// --- Preset tracking ---
+static int patchPresetIndex[NUM_PATCHES] = {-1,-1,-1,-1,-1,-1,-1,-1};
+static SynthPatch patchPresetSnapshot[NUM_PATCHES];
+static bool presetPickerOpen = false;
+static bool presetPickerJustClosed = false;
+static bool presetsInitialized = false;
+
 static void initPatches(void) {
     if (patchesInit) return;
+    if (!presetsInitialized) { initInstrumentPresets(); presetsInitialized = true; }
     for (int i = 0; i < NUM_PATCHES; i++) patches[i] = createDefaultPatch(WAVE_SAW);
-    snprintf(patches[0].p_name, 32, "Bass");       patches[0].p_waveType = WAVE_SQUARE;
-    snprintf(patches[1].p_name, 32, "Lead");        patches[1].p_waveType = WAVE_SAW;
-    snprintf(patches[2].p_name, 32, "Chord");       patches[2].p_waveType = WAVE_ADDITIVE;
-    snprintf(patches[3].p_name, 32, "Voice");       patches[3].p_waveType = WAVE_VOICE;
-    snprintf(patches[4].p_name, 32, "Pluck");       patches[4].p_waveType = WAVE_PLUCK;
-    snprintf(patches[5].p_name, 32, "FM Bell");     patches[5].p_waveType = WAVE_FM;
-    snprintf(patches[6].p_name, 32, "Mallet");      patches[6].p_waveType = WAVE_MALLET;
+    // Drum tracks 0-3: load 808 presets
+    patches[0] = instrumentPresets[24].patch; snprintf(patches[0].p_name, 32, "Kick");
+    patches[1] = instrumentPresets[25].patch; snprintf(patches[1].p_name, 32, "Snare");
+    patches[2] = instrumentPresets[27].patch; snprintf(patches[2].p_name, 32, "CH");
+    patches[3] = instrumentPresets[26].patch; snprintf(patches[3].p_name, 32, "Clap");
+    patchPresetIndex[0] = 24; patchPresetSnapshot[0] = patches[0];
+    patchPresetIndex[1] = 25; patchPresetSnapshot[1] = patches[1];
+    patchPresetIndex[2] = 27; patchPresetSnapshot[2] = patches[2];
+    patchPresetIndex[3] = 26; patchPresetSnapshot[3] = patches[3];
+    // Melody tracks 4-6
+    snprintf(patches[4].p_name, 32, "Bass");       patches[4].p_waveType = WAVE_SQUARE;
+    snprintf(patches[5].p_name, 32, "Lead");        patches[5].p_waveType = WAVE_SAW;
+    snprintf(patches[6].p_name, 32, "Chord");       patches[6].p_waveType = WAVE_ADDITIVE;
+    patches[4].p_monoMode = true; patches[4].p_filterCutoff = 0.4f;
+    patches[5].p_unisonCount = 2; patches[5].p_vibratoDepth = 0.3f;
+    patches[6].p_attack = 0.05f; patches[6].p_release = 0.8f;
+    // Extra patches 7
     snprintf(patches[7].p_name, 32, "Bird");        patches[7].p_waveType = WAVE_BIRD;
-    patches[0].p_monoMode = true; patches[0].p_filterCutoff = 0.4f;
-    patches[1].p_unisonCount = 2; patches[1].p_vibratoDepth = 0.3f;
-    patches[2].p_attack = 0.05f; patches[2].p_release = 0.8f;
-    patches[3].p_voiceVowel = 2; patches[3].p_voiceBreathiness = 0.2f;
-    patches[5].p_fmModRatio = 3.5f; patches[5].p_fmModIndex = 2.0f;
     patches[7].p_birdType = 4;
     patchesInit = true;
 }
 
-// --- Preset tracking ---
-static int patchPresetIndex[NUM_PATCHES] = {-1,-1,-1,-1,-1,-1,-1,-1}; // -1 = no preset loaded
-static SynthPatch patchPresetSnapshot[NUM_PATCHES]; // snapshot at load time for dirty detection
-static bool presetPickerOpen = false;
-static bool presetPickerJustClosed = false; // skip one frame after closing to avoid click-through
-static bool presetsInitialized = false;
+// (preset tracking vars moved above initPatches)
 
 static bool isPatchDirty(int patchIdx) {
     if (patchPresetIndex[patchIdx] < 0) return false;
@@ -231,7 +248,7 @@ static float busDelayFB[7] = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f};
 static float busDelayMix[7] = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f};
 static float masterVol = 0.8f;
 static int selectedBus = -1;
-static const char* filterTypeNames[] = {"LP", "HP", "BP"};
+static const char* busFilterTypeNames[] = {"LP", "HP", "BP"};
 static const char* delaySyncNames[] = {"1/16", "1/8", "1/4", "1/2", "1bar"};
 
 // --- Song ---
@@ -268,6 +285,15 @@ static void plockDot(float x, float y) {
 static bool ui_col_float_p(UIColumn *c, const char *label, float *val, float speed, float mn, float mx) {
     plockDot(c->x - 8, c->y);
     return ui_col_float(c, label, val, speed, mn, mx);
+}
+
+// Section-level non-default indicator: colored left stripe + subtle bg
+// active=true means at least one param in this section differs from default
+static void sectionHighlight(float x, float y, float w, float h, bool active) {
+    if (active) {
+        DrawRectangle((int)x, (int)y, 2, (int)h, ORANGE);
+    }
+    (void)w;
 }
 
 // ============================================================================
@@ -684,13 +710,9 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                        nameCol.b = (unsigned char)(nameCol.b + 40 > 255 ? 255 : nameCol.b + 40); }
         DrawTextShadow(trackNames[track], lx + 72, lcy-5, 9, nameCol);
         if (nameHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            if (isDrum) {
-                selectedDrum = track; // 0=Kick, 1=Snare, 2=HiHat, 3=Clap
-                paramTab = PARAM_DRUMS;
-            } else {
-                selectedPatch = track - 4; // melody tracks 4,5,6 → patches 0,1,2
-                paramTab = PARAM_PATCH;
-            }
+            selectedPatch = track; // all tracks map 1:1 to patches[]
+            if (isDrum) selectedDrum = track;
+            paramTab = PARAM_PATCH;
             ui_consume_click();
         }
 
@@ -860,26 +882,30 @@ static void drawParamPatch(float x, float y, float w, float h) {
     }
 
     SynthPatch *p = &patches[selectedPatch];
+    SynthPatch dp = createDefaultPatch(p->p_waveType); // default for comparison
 
-    // Preset selector row
+    // Preset selector + sub-tab row
     if (!presetsInitialized) { initInstrumentPresets(); presetsInitialized = true; }
     float presetRowY = y;
     {
+        int fs = 14;
+
+        // Preset button (left)
         int pi = patchPresetIndex[selectedPatch];
         const char* presetName = (pi >= 0) ? instrumentPresets[pi].name : "Custom";
         bool dirty = isPatchDirty(selectedPatch);
         const char* display = dirty ? TextFormat("[%s *]", presetName) : TextFormat("[%s]", presetName);
 
-        int fs = 14;
         DrawTextShadow(display, (int)x + 8, (int)y + 2, fs, (Color){180,180,220,255});
 
-        // Click to open/close preset picker
         int tw = MeasureText(display, fs) + 16;
         Rectangle presetR = {x + 4, y, (float)tw, 18};
         if (CheckCollisionPointRec(GetMousePosition(), presetR) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             presetPickerOpen = !presetPickerOpen;
             ui_consume_click();
         }
+
+        // (sub-tabs removed — everything is on one page now)
 
         y += 20;
         h -= 20;
@@ -931,14 +957,28 @@ static void drawParamPatch(float x, float y, float w, float h) {
         return;
     }
 
-    float col1X = x, col1W = 260;
-    float col2X = x + 268;
-    float col3X = x + 528;
-    float col4X = x + 778;
+    // Compact font for all patch sub-tabs
+    #define PCOL(px, py) ui_column_small((px), (py), 13, 12)
+    // Section highlight helpers — compare float/int/bool fields against defaults
+    #define DF(field) (fabsf(p->field - dp.field) > 0.001f)
+    #define DI(field) (p->field != dp.field)
+    #define DB(field) (p->field != dp.field)
+
+    // ---- SUB-TAB: MAIN ----
+    {
+
+    float col1X = x, col1W = 150;
+    float col2X = x + 155;
+    float col3X = x + 295;
+    float col4X = x + 430;
+    float col5X = x + 575;
+    float col6X = x + 720;
+    float col7X = x + 870;
+    float percColW = 140;
 
     // COL 1: Oscillator + wave-specific
     {
-        UIColumn c = ui_column(col1X + 8, y, 16);
+        UIColumn c = PCOL(col1X + 8, y);
         ui_col_sublabel(&c, TextFormat("OSC: %s [%s]", patches[selectedPatch].p_name, waveNames[p->p_waveType]), ORANGE);
         c.y += drawWaveSelector(c.x, c.y, col1W - 16, &p->p_waveType);
         ui_col_space(&c, 2);
@@ -1034,10 +1074,15 @@ static void drawParamPatch(float x, float y, float w, float h) {
 
     // COL 2: Envelope + Filter
     {
-        float envX = col2X, envW = 240;
+        float envX = col2X, envW = 130;
+
+        // Envelope section highlight
+        bool envActive = DF(p_attack) || DF(p_decay) || DF(p_sustain) || DF(p_release)
+                         || DB(p_expRelease) || DB(p_expDecay) || DB(p_oneShot);
 
         // ADSR curve
-        UIColumn c = ui_column(envX, y, 16);
+        UIColumn c = PCOL(envX, y);
+        float envStartY = c.y;
         ui_col_sublabel(&c, "Envelope:", ORANGE);
         c.y += drawADSRCurve(envX, c.y, envW, 55, &p->p_attack, &p->p_decay, &p->p_sustain, &p->p_release, p->p_expRelease);
 
@@ -1046,22 +1091,30 @@ static void drawParamPatch(float x, float y, float w, float h) {
         ui_col_float(&c, "Sus", &p->p_sustain, 0.5f, 0.0f, 1.0f);
         ui_col_float(&c, "Rel", &p->p_release, 0.5f, 0.01f, 3.0f);
         ui_col_toggle(&c, "Exp Release", &p->p_expRelease);
+        ui_col_toggle(&c, "Exp Decay", &p->p_expDecay);
+        ui_col_toggle(&c, "One Shot", &p->p_oneShot);
+        sectionHighlight(envX - 2, envStartY, envW + 4, c.y - envStartY, envActive);
         ui_col_space(&c, 6);
 
-        // Filter
+        // Filter section highlight
+        bool filtActive = DF(p_filterCutoff) || DF(p_filterResonance) || DI(p_filterType)
+                          || DF(p_filterEnvAmt) || DF(p_filterEnvAttack) || DF(p_filterEnvDecay);
+        float filtStartY = c.y;
+
         ui_col_sublabel(&c, "Filter:", ORANGE);
+        ui_col_cycle(&c, "Type", filterTypeNames, 6, &p->p_filterType);
         float filtY = c.y;
         ui_col_float_p(&c, "Cut", &p->p_filterCutoff, 0.05f, 0.01f, 1.0f);
         ui_col_float_p(&c, "Res", &p->p_filterResonance, 0.05f, 0.0f, 1.0f);
         ui_col_float_p(&c, "EnvAmt", &p->p_filterEnvAmt, 0.05f, -1.0f, 1.0f);
         ui_col_float(&c, "EnvAtk", &p->p_filterEnvAttack, 0.01f, 0.001f, 0.5f);
         ui_col_float(&c, "EnvDcy", &p->p_filterEnvDecay, 0.05f, 0.01f, 2.0f);
+        sectionHighlight(envX - 2, filtStartY, envW + 4, c.y - filtStartY, filtActive);
 
-        // XY pad next to filter sliders
-        float padSize = c.y - filtY - 4;
-        if (padSize < 50) padSize = 50;
-        if (padSize > 90) padSize = 90;
-        drawFilterXY(envX + envW - padSize - 4, filtY, padSize, &p->p_filterCutoff, &p->p_filterResonance);
+        // XY pad below filter sliders
+        float padSize = 60;
+        drawFilterXY(envX, c.y, padSize, &p->p_filterCutoff, &p->p_filterResonance);
+        c.y += padSize + 4;
     }
 
     // Vertical divider
@@ -1069,11 +1122,15 @@ static void drawParamPatch(float x, float y, float w, float h) {
 
     // COL 3: Voice params (vibrato, volume, mono, unison, arp, scale)
     {
-        UIColumn c = ui_column(col3X, y, 16);
+        float col3W = 130;
+        UIColumn c = PCOL(col3X, y);
 
+        bool vibActive = DF(p_vibratoRate) || DF(p_vibratoDepth);
+        float secY = c.y;
         ui_col_sublabel(&c, "Vibrato:", ORANGE);
         ui_col_float(&c, "Rate", &p->p_vibratoRate, 0.5f, 0.5f, 15.0f);
         ui_col_float(&c, "Depth", &p->p_vibratoDepth, 0.2f, 0.0f, 2.0f);
+        sectionHighlight(col3X - 2, secY, col3W, c.y - secY, vibActive);
         ui_col_space(&c, 3);
 
         ui_col_sublabel(&c, "Volume:", ORANGE);
@@ -1082,19 +1139,30 @@ static void drawParamPatch(float x, float y, float w, float h) {
         ui_col_space(&c, 3);
 
         if (p->p_waveType != WAVE_PLUCK && p->p_waveType != WAVE_MALLET) {
+            bool monoActive = DB(p_monoMode) || DF(p_glideTime);
+            secY = c.y;
             ui_col_sublabel(&c, "Mono/Glide:", ORANGE);
             ui_col_toggle(&c, "Mono", &p->p_monoMode);
             if (p->p_monoMode) ui_col_float(&c, "Glide", &p->p_glideTime, 0.02f, 0.01f, 1.0f);
+            sectionHighlight(col3X - 2, secY, col3W, c.y - secY, monoActive);
             ui_col_space(&c, 3);
         }
 
         if (p->p_waveType <= WAVE_TRIANGLE) {
+            bool uniActive = DI(p_unisonCount) || DF(p_unisonDetune) || DF(p_unisonMix);
+            secY = c.y;
             ui_col_sublabel(&c, "Unison:", ORANGE);
             ui_col_int(&c, "Count", &p->p_unisonCount, 1, 1, 4);
-            if (p->p_unisonCount > 1) ui_col_float(&c, "Detune", &p->p_unisonDetune, 1.0f, 0.0f, 50.0f);
+            if (p->p_unisonCount > 1) {
+                ui_col_float(&c, "Detune", &p->p_unisonDetune, 1.0f, 0.0f, 50.0f);
+                ui_col_float(&c, "Mix", &p->p_unisonMix, 0.05f, 0.0f, 1.0f);
+            }
+            sectionHighlight(col3X - 2, secY, col3W, c.y - secY, uniActive);
             ui_col_space(&c, 3);
         }
 
+        bool arpActive = DB(p_arpEnabled);
+        secY = c.y;
         ui_col_sublabel(&c, "Arpeggiator:", ORANGE);
         ui_col_toggle(&c, "On", &p->p_arpEnabled);
         if (p->p_arpEnabled) {
@@ -1103,6 +1171,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_cycle(&c, "Rate", arpRateNames, 5, &p->p_arpRateDiv);
             if (p->p_arpRateDiv == 4) ui_col_float(&c, "Hz", &p->p_arpRate, 0.5f, 1.0f, 30.0f);
         }
+        sectionHighlight(col3X - 2, secY, col3W, c.y - secY, arpActive);
         ui_col_space(&c, 3);
 
         ui_col_sublabel(&c, "Scale Lock:", ORANGE);
@@ -1132,7 +1201,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
 
         float ly = y;
         for (int i = 0; i < 4; i++) {
-            UIColumn c = ui_column(col4X, ly, 15);
+            UIColumn c = PCOL(col4X, ly);
             ui_col_sublabel(&c, lfos[i].name, (Color){140,140,200,255});
             float sliderY = c.y;
             ui_col_float(&c, "Rate", lfos[i].rate, 0.5f, 0.0f, 20.0f);
@@ -1149,7 +1218,109 @@ static void drawParamPatch(float x, float y, float w, float h) {
         }
     }
 
+    // Vertical divider
+    DrawLine((int)col5X-4, (int)y, (int)col5X-4, (int)(y+h), (Color){40,40,50,255});
+
+    // COL 5: Pitch Envelope + Drive + Click
+    {
+        UIColumn c = PCOL(col5X + 4, y);
+        bool pitchActive = DF(p_pitchEnvAmount) || DF(p_pitchEnvDecay) || DF(p_pitchEnvCurve) || DB(p_pitchEnvLinear);
+        float secY = c.y;
+        ui_col_sublabel(&c, "Pitch Env:", ORANGE);
+        ui_col_float(&c, "Amount", &p->p_pitchEnvAmount, 1.0f, -48.0f, 48.0f);
+        ui_col_float(&c, "Decay", &p->p_pitchEnvDecay, 0.01f, 0.005f, 0.5f);
+        ui_col_float(&c, "Curve", &p->p_pitchEnvCurve, 0.1f, -1.0f, 1.0f);
+        ui_col_toggle(&c, "Linear Hz", &p->p_pitchEnvLinear);
+        sectionHighlight(col5X + 2, secY, percColW, c.y - secY, pitchActive);
+        ui_col_space(&c, 6);
+
+        bool driveActive = DF(p_drive);
+        secY = c.y;
+        ui_col_sublabel(&c, "Drive:", ORANGE);
+        ui_col_float(&c, "Drive", &p->p_drive, 0.05f, 0.0f, 1.0f);
+        sectionHighlight(col5X + 2, secY, percColW, c.y - secY, driveActive);
+        ui_col_space(&c, 6);
+
+        bool clickActive = DF(p_clickLevel);
+        secY = c.y;
+        ui_col_sublabel(&c, "Click:", ORANGE);
+        ui_col_float(&c, "Level", &p->p_clickLevel, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Time", &p->p_clickTime, 0.002f, 0.001f, 0.05f);
+        sectionHighlight(col5X + 2, secY, percColW, c.y - secY, clickActive);
+    }
+
+    // Vertical divider
+    DrawLine((int)col6X-4, (int)y, (int)col6X-4, (int)(y+h), (Color){40,40,50,255});
+
+    // COL 6: Noise + Retrigger
+    {
+        UIColumn c = PCOL(col6X + 4, y);
+        bool noiseActive = DF(p_noiseMix) || DF(p_noiseTone) || DF(p_noiseHP) || DF(p_noiseDecay)
+                           || DI(p_noiseMode) || DI(p_noiseType) || DB(p_noiseLPBypass);
+        float secY = c.y;
+        ui_col_sublabel(&c, "Noise:", ORANGE);
+        ui_col_float(&c, "Mix", &p->p_noiseMix, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Tone", &p->p_noiseTone, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "HP", &p->p_noiseHP, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Decay", &p->p_noiseDecay, 0.02f, 0.0f, 1.0f);
+        ui_col_cycle(&c, "Mode", noiseModeNames, 3, &p->p_noiseMode);
+        ui_col_cycle(&c, "Type", noiseTypeNames, 2, &p->p_noiseType);
+        ui_col_toggle(&c, "LP Bypass", &p->p_noiseLPBypass);
+        sectionHighlight(col6X + 2, secY, percColW, c.y - secY, noiseActive);
+        ui_col_space(&c, 6);
+
+        bool retrigActive = DI(p_retriggerCount);
+        secY = c.y;
+        ui_col_sublabel(&c, "Retrigger:", ORANGE);
+        ui_col_int(&c, "Count", &p->p_retriggerCount, 1, 0, 8);
+        if (p->p_retriggerCount > 0) {
+            ui_col_float(&c, "Spread", &p->p_retriggerSpread, 0.002f, 0.003f, 0.1f);
+            ui_col_toggle(&c, "Overlap", &p->p_retriggerOverlap);
+            if (p->p_retriggerOverlap)
+                ui_col_float(&c, "BrstDcy", &p->p_retriggerBurstDecay, 0.005f, 0.005f, 0.2f);
+            ui_col_float(&c, "Curve", &p->p_retriggerCurve, 0.05f, 0.0f, 1.0f);
+        }
+        sectionHighlight(col6X + 2, secY, percColW, c.y - secY, retrigActive);
+
+        ui_col_space(&c, 4);
+        ui_col_toggle(&c, "PhaseReset", &p->p_phaseReset);
+    }
+
+    // Vertical divider
+    DrawLine((int)col7X-4, (int)y, (int)col7X-4, (int)(y+h), (Color){40,40,50,255});
+
+    // COL 7: Extra Oscillators
+    {
+        UIColumn c = PCOL(col7X + 4, y);
+        bool oscActive = DF(p_osc2Level) || DF(p_osc3Level) || DF(p_osc4Level)
+                         || DF(p_osc5Level) || DF(p_osc6Level);
+        float secY = c.y;
+        ui_col_sublabel(&c, "Extra Osc:", ORANGE);
+        ui_col_cycle(&c, "MixMode", oscMixModeNames, 2, &p->p_oscMixMode);
+        ui_col_space(&c, 3);
+
+        struct { const char* label; float *ratio, *level; } oscs[] = {
+            {"Osc2", &p->p_osc2Ratio, &p->p_osc2Level},
+            {"Osc3", &p->p_osc3Ratio, &p->p_osc3Level},
+            {"Osc4", &p->p_osc4Ratio, &p->p_osc4Level},
+            {"Osc5", &p->p_osc5Ratio, &p->p_osc5Level},
+            {"Osc6", &p->p_osc6Ratio, &p->p_osc6Level},
+        };
+        for (int i = 0; i < 5; i++) {
+            ui_col_float(&c, TextFormat("%s R", oscs[i].label), oscs[i].ratio, 0.1f, 0.0f, 16.0f);
+            ui_col_float(&c, TextFormat("%s L", oscs[i].label), oscs[i].level, 0.05f, 0.0f, 1.0f);
+        }
+        sectionHighlight(col7X + 2, secY, percColW, c.y - secY, oscActive);
+    }
+
     (void)h;
+
+    } // end patch columns
+
+    #undef PCOL
+    #undef DF
+    #undef DI
+    #undef DB
 }
 
 // ============================================================================
@@ -1320,7 +1491,7 @@ static void drawParamBus(float x, float y, float w, float h) {
             int srow = sfs + 4;
             DraggableFloatS(textX, ry, "Cut", &busFilterCut[b], 0.02f, 0.0f, 1.0f, sfs);
             DraggableFloatS(textX, ry + srow, "Res", &busFilterRes[b], 0.02f, 0.0f, 1.0f, sfs);
-            CycleOptionS(textX, ry + srow*2, "Type", filterTypeNames, 3, &busFilterType[b], sfs);
+            CycleOptionS(textX, ry + srow*2, "Type", busFilterTypeNames, 3, &busFilterType[b], sfs);
             ry += xySize + 2;
         }
         ry += 2;

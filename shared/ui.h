@@ -123,10 +123,12 @@ typedef struct {
     float y;           // Current Y position (advances with each element)
     float startY;      // Starting Y (for reset)
     float spacing;     // Vertical spacing between elements
+    int fontSize;       // 0 = default (18/14/12), >0 = custom font size for all elements
 } UIColumn;
 
 // Create a new column layout
 UIColumn ui_column(float x, float y, float spacing);
+UIColumn ui_column_small(float x, float y, float spacing, int fontSize);
 
 // Reset column to starting position
 void ui_col_reset(UIColumn* col);
@@ -1021,6 +1023,13 @@ UIColumn ui_column(float x, float y, float spacing) {
     col.y = y;
     col.startY = y;
     col.spacing = spacing;
+    col.fontSize = 0;  // 0 = default sizes
+    return col;
+}
+
+UIColumn ui_column_small(float x, float y, float spacing, int fontSize) {
+    UIColumn col = ui_column(x, y, spacing);
+    col.fontSize = fontSize;
     return col;
 }
 
@@ -1033,34 +1042,55 @@ void ui_col_space(UIColumn* col, float pixels) {
 }
 
 void ui_col_label(UIColumn* col, const char* text, Color color) {
-    DrawTextShadow(text, (int)col->x, (int)col->y, 14, color);
+    int fs = col->fontSize > 0 ? col->fontSize : 14;
+    DrawTextShadow(text, (int)col->x, (int)col->y, fs, color);
     col->y += col->spacing;
 }
 
 void ui_col_sublabel(UIColumn* col, const char* text, Color color) {
-    DrawTextShadow(text, (int)col->x, (int)col->y, 12, color);
+    int fs = col->fontSize > 0 ? col->fontSize - 2 : 12;
+    if (fs < 8) fs = 8;
+    DrawTextShadow(text, (int)col->x, (int)col->y, fs, color);
     col->y += col->spacing - 2;
 }
 
 bool ui_col_float(UIColumn* col, const char* label, float* value, float speed, float min, float max) {
-    bool changed = DraggableFloat(col->x, col->y, label, value, speed, min, max);
+    bool changed;
+    if (col->fontSize > 0) {
+        changed = DraggableFloatS(col->x, col->y, label, value, speed, min, max, col->fontSize);
+    } else {
+        changed = DraggableFloat(col->x, col->y, label, value, speed, min, max);
+    }
     col->y += col->spacing;
     return changed;
 }
 
 bool ui_col_int(UIColumn* col, const char* label, int* value, float speed, int min, int max) {
-    bool changed = DraggableInt(col->x, col->y, label, value, speed, min, max);
+    bool changed;
+    if (col->fontSize > 0) {
+        changed = DraggableIntS(col->x, col->y, label, value, speed, min, max, col->fontSize);
+    } else {
+        changed = DraggableInt(col->x, col->y, label, value, speed, min, max);
+    }
     col->y += col->spacing;
     return changed;
 }
 
 void ui_col_toggle(UIColumn* col, const char* label, bool* value) {
-    ToggleBool(col->x, col->y, label, value);
+    if (col->fontSize > 0) {
+        ToggleBoolS(col->x, col->y, label, value, col->fontSize);
+    } else {
+        ToggleBool(col->x, col->y, label, value);
+    }
     col->y += col->spacing;
 }
 
 void ui_col_cycle(UIColumn* col, const char* label, const char** options, int count, int* value) {
-    CycleOption(col->x, col->y, label, options, count, value);
+    if (col->fontSize > 0) {
+        CycleOptionS(col->x, col->y, label, options, count, value, col->fontSize);
+    } else {
+        CycleOption(col->x, col->y, label, options, count, value);
+    }
     col->y += col->spacing + 2;  // Cycles are slightly taller
 }
 
