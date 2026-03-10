@@ -32,6 +32,7 @@ typedef struct {
     // Filter
     float p_filterCutoff;
     float p_filterResonance;
+    int p_filterType;             // 0=LP, 1=HP, 2=BP
     float p_filterEnvAmt;
     float p_filterEnvAttack;
     float p_filterEnvDecay;
@@ -146,9 +147,55 @@ typedef struct {
     float p_birdAmDepth;
     float p_birdHarmonics;
 
+    // Pitch envelope (one-shot pitch sweep — kicks, toms, zaps, lasers)
+    float p_pitchEnvAmount;   // Semitones to sweep (e.g., +24 for kick punch)
+    float p_pitchEnvDecay;    // Decay time in seconds (e.g., 0.04 for kick)
+    float p_pitchEnvCurve;    // Curve shape: -1=fast start, 0=linear, 1=slow start
+    bool p_pitchEnvLinear;    // false=semitone (musical), true=linear Hz (analog drums)
+
+    // Noise mix layer (blend filtered noise with oscillator — snares, hihats)
+    float p_noiseMix;         // 0 = pure oscillator, 1 = pure noise
+    float p_noiseTone;        // Noise LP filter cutoff (0 = dark, 1 = bright)
+    float p_noiseHP;          // Noise HP filter cutoff (0 = off, 1 = maximum highpass)
+    float p_noiseDecay;       // Separate noise decay (0 = follows main envelope)
+
+    // Retrigger (claps, flams, rolls)
+    int p_retriggerCount;     // 0 = off, 2-4 = rapid re-triggers
+    float p_retriggerSpread;  // Timing spread between triggers in seconds
+    bool p_retriggerOverlap;  // true = overlapping bursts (clap), false = envelope restart
+    float p_retriggerBurstDecay; // Per-burst decay time (0 = default 0.02s)
+
+    // Extra oscillators (metallic hihats, cowbell, fifth stacking)
+    float p_osc2Ratio;        // Frequency ratio for 2nd oscillator (0 = off)
+    float p_osc2Level;        // Mix level (0-1)
+    float p_osc3Ratio;        // Frequency ratio for 3rd oscillator (0 = off)
+    float p_osc3Level;        // Mix level (0-1)
+    float p_osc4Ratio;        // Frequency ratio for 4th oscillator (0 = off)
+    float p_osc4Level;        // Mix level (0-1)
+    float p_osc5Ratio;        // Frequency ratio for 5th oscillator (0 = off)
+    float p_osc5Level;        // Mix level (0-1)
+    float p_osc6Ratio;        // Frequency ratio for 6th oscillator (0 = off)
+    float p_osc6Level;        // Mix level (0-1)
+
+    // Drive/saturation
+    float p_drive;            // 0 = clean, tanh saturation (kick warmth, etc.)
+
+    // Click transient (one-shot noise burst — kick click, key click, pluck attack)
+    float p_clickLevel;       // 0 = off, strength of click noise burst
+    float p_clickTime;        // Duration in seconds (linear fade, e.g. 0.005 for kick)
+
+    // Algorithm modes (select different code paths for different sound types)
+    int p_noiseMode;          // 0=mix with osc (default), 1=replace osc (pure noise→main filter), 2=per-burst noise (clap)
+    int p_oscMixMode;         // 0=weighted average (default), 1=additive sum
+    float p_retriggerCurve;   // 0=uniform spacing, >0=accelerating gaps (e.g. 0.3 for clap)
+    bool p_phaseReset;        // true=force all osc phases to 0 on note-on
+    bool p_noiseLPBypass;     // true=skip noise LP filter (raw noise to HP/main filter)
+    int p_noiseType;          // 0=LFSR (running state), 1=time-hash (drums.h-style, deterministic)
+
     // Identity & misc
     char p_name[32];
-    bool p_expRelease;        // true = exponential (natural tail), false = linear (tight cutoff)
+    bool p_expRelease;        // true = exponential release (natural tail)
+    bool p_expDecay;          // true = exponential decay (punchy drums)
 } SynthPatch;
 
 // Default patch initializer
@@ -249,8 +296,40 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_birdAmRate = 0.0f,
         .p_birdAmDepth = 0.0f,
         .p_birdHarmonics = 0.2f,
+        .p_pitchEnvAmount = 0.0f,
+        .p_pitchEnvDecay = 0.05f,
+        .p_pitchEnvCurve = 0.0f,
+        .p_pitchEnvLinear = false,
+        .p_noiseMix = 0.0f,
+        .p_noiseTone = 0.5f,
+        .p_noiseHP = 0.0f,
+        .p_noiseDecay = 0.0f,
+        .p_retriggerCount = 0,
+        .p_retriggerSpread = 0.015f,
+        .p_retriggerOverlap = false,
+        .p_retriggerBurstDecay = 0.02f,
+        .p_osc2Ratio = 0.0f,
+        .p_osc2Level = 0.0f,
+        .p_osc3Ratio = 0.0f,
+        .p_osc3Level = 0.0f,
+        .p_osc4Ratio = 0.0f,
+        .p_osc4Level = 0.0f,
+        .p_osc5Ratio = 0.0f,
+        .p_osc5Level = 0.0f,
+        .p_osc6Ratio = 0.0f,
+        .p_osc6Level = 0.0f,
+        .p_drive = 0.0f,
+        .p_clickLevel = 0.0f,
+        .p_clickTime = 0.005f,
+        .p_noiseMode = 0,
+        .p_oscMixMode = 0,
+        .p_retriggerCurve = 0.0f,
+        .p_phaseReset = false,
+        .p_noiseLPBypass = false,
+        .p_noiseType = 0,
         .p_name = "",
         .p_expRelease = false,
+        .p_expDecay = false,
     };
 }
 

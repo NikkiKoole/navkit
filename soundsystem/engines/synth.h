@@ -358,9 +358,10 @@ typedef struct {
     // For pitch slides (SFX)
     float pitchSlide;
     
-    // Resonant lowpass filter (per-voice)
+    // Resonant filter (per-voice)
     float filterCutoff;   // Base cutoff 0.0-1.0
     float filterResonance;// Resonance 0.0-1.0
+    int filterType;       // 0=LP (default), 1=HP, 2=BP
     float filterLp;       // Filter state (lowpass)
     float filterBp;       // Filter state (bandpass, for resonance)
     
@@ -452,6 +453,65 @@ typedef struct {
     
     // Bird synthesis
     BirdSettings birdSettings;
+
+    // General pitch envelope (kicks, toms, zaps)
+    float pitchEnvAmount;    // Semitones to sweep
+    float pitchEnvDecay;     // Decay time in seconds
+    float pitchEnvCurve;     // -1=fast start, 0=linear, 1=slow start
+    float pitchEnvTimer;     // Current time
+    bool pitchEnvLinear;     // false=semitone, true=linear Hz
+
+    // Noise mix layer
+    float noiseMix;       // 0-1
+    float noiseTone;      // LP filter cutoff for noise
+    float noiseHP;        // HP filter cutoff for noise
+    float noiseDecay;     // Separate decay (0 = follows main env)
+    float noiseTimer;     // Timer for noise decay
+    float noiseFilterState; // One-pole lowpass state for noise
+    float noiseHPState;   // One-pole highpass state for noise
+
+    // Retrigger (claps, flams, rolls)
+    int retriggerCount;      // Total triggers remaining
+    float retriggerSpread;   // Time between triggers in seconds
+    float retriggerTimer;    // Timer
+    int retriggerDone;       // How many triggers have fired
+    bool retriggerOverlap;   // true = overlapping bursts (clap), false = envelope restart
+    float burstTimers[8];    // Per-burst timers for overlap mode
+    float burstDecay;        // Decay time for each burst
+
+    // Extra oscillators
+    float osc2Ratio;         // Freq ratio for 2nd osc (0 = off)
+    float osc2Level;         // Mix level
+    float osc2Phase;         // Phase accumulator
+    float osc3Ratio;         // Freq ratio for 3rd osc (0 = off)
+    float osc3Level;         // Mix level
+    float osc3Phase;         // Phase accumulator
+    float osc4Ratio, osc4Level, osc4Phase;  // 4th osc
+    float osc5Ratio, osc5Level, osc5Phase;  // 5th osc
+    float osc6Ratio, osc6Level, osc6Phase;  // 6th osc (808 hihat has 6 metallic partials)
+
+    // Drive/saturation
+    float drive;             // 0 = clean, >0 = tanh saturation
+
+    // Exponential decay flag
+    bool expDecay;           // true = exponential decay curve (punchy drums)
+
+    // Click transient
+    float clickLevel;        // Noise burst strength
+    float clickTime;         // Duration in seconds
+    float clickTimer;        // Current time
+
+    // Per-voice noise generator (independent from global noise)
+    unsigned int voiceNoiseState;
+    int noiseType;           // 0=LFSR (running state), 1=time-hash (drums.h deterministic)
+    float voiceTime;         // Elapsed time since note-on (for time-hash noise)
+
+    // Algorithm modes
+    int noiseMode;           // 0=mix with osc, 1=replace osc (pure noise→main filter), 2=per-burst noise
+    int oscMixMode;          // 0=weighted average, 1=additive sum
+    float retriggerCurve;    // 0=uniform, >0=accelerating gaps
+    bool phaseReset;         // true=phases forced to 0 on note-on
+    bool noiseLPBypass;      // true=skip noise LP filter
 } Voice;
 
 // ============================================================================
@@ -513,6 +573,7 @@ typedef struct SynthContext {
     float noteVibratoDepth;
     float noteFilterCutoff;
     float noteFilterResonance;
+    int noteFilterType;          // 0=LP, 1=HP, 2=BP
     float noteFilterEnvAmt;
     float noteFilterEnvAttack;
     float noteFilterEnvDecay;
@@ -619,6 +680,54 @@ typedef struct SynthContext {
     float birdAmDepth;
     float birdHarmonics;
     
+    // General pitch envelope globals
+    float notePitchEnvAmount;
+    float notePitchEnvDecay;
+    float notePitchEnvCurve;
+    bool notePitchEnvLinear;
+
+    // Noise mix globals
+    float noteNoiseMix;
+    float noteNoiseTone;
+    float noteNoiseHP;
+    float noteNoiseDecay;
+
+    // Retrigger globals
+    int noteRetriggerCount;
+    float noteRetriggerSpread;
+    bool noteRetriggerOverlap;   // Overlapping bursts (clap) vs envelope restart
+    float noteRetriggerBurstDecay; // Per-burst decay time
+
+    // Extra oscillators
+    float noteOsc2Ratio;
+    float noteOsc2Level;
+    float noteOsc3Ratio;
+    float noteOsc3Level;
+    float noteOsc4Ratio;
+    float noteOsc4Level;
+    float noteOsc5Ratio;
+    float noteOsc5Level;
+    float noteOsc6Ratio;
+    float noteOsc6Level;
+
+    // Drive/saturation
+    float noteDrive;
+
+    // Exponential decay
+    bool noteExpDecay;
+
+    // Click transient
+    float noteClickLevel;
+    float noteClickTime;
+
+    // Algorithm modes
+    int noteNoiseMode;           // 0=mix, 1=replace, 2=per-burst
+    int noteOscMixMode;          // 0=weighted avg, 1=additive sum
+    float noteRetriggerCurve;    // 0=uniform, >0=accelerating
+    bool notePhaseReset;         // force phase reset on note-on
+    bool noteNoiseLPBypass;      // skip noise LP filter
+    int noteNoiseType;           // 0=LFSR, 1=time-hash (drums.h style)
+
     // SFX randomization
     bool sfxRandomize;
 } SynthContext;
@@ -764,6 +873,7 @@ static void _ensureSynthCtx(void) {
 #define noteVibratoDepth (synthCtx->noteVibratoDepth)
 #define noteFilterCutoff (synthCtx->noteFilterCutoff)
 #define noteFilterResonance (synthCtx->noteFilterResonance)
+#define noteFilterType (synthCtx->noteFilterType)
 #define noteFilterEnvAmt (synthCtx->noteFilterEnvAmt)
 #define noteFilterEnvAttack (synthCtx->noteFilterEnvAttack)
 #define noteFilterEnvDecay (synthCtx->noteFilterEnvDecay)
@@ -845,6 +955,38 @@ static void _ensureSynthCtx(void) {
 #define birdAmRate (synthCtx->birdAmRate)
 #define birdAmDepth (synthCtx->birdAmDepth)
 #define birdHarmonics (synthCtx->birdHarmonics)
+#define notePitchEnvAmount (synthCtx->notePitchEnvAmount)
+#define notePitchEnvDecay (synthCtx->notePitchEnvDecay)
+#define notePitchEnvCurve (synthCtx->notePitchEnvCurve)
+#define notePitchEnvLinear (synthCtx->notePitchEnvLinear)
+#define noteNoiseMix (synthCtx->noteNoiseMix)
+#define noteNoiseTone (synthCtx->noteNoiseTone)
+#define noteNoiseHP (synthCtx->noteNoiseHP)
+#define noteNoiseDecay (synthCtx->noteNoiseDecay)
+#define noteRetriggerCount (synthCtx->noteRetriggerCount)
+#define noteRetriggerSpread (synthCtx->noteRetriggerSpread)
+#define noteRetriggerOverlap (synthCtx->noteRetriggerOverlap)
+#define noteRetriggerBurstDecay (synthCtx->noteRetriggerBurstDecay)
+#define noteOsc2Ratio (synthCtx->noteOsc2Ratio)
+#define noteOsc2Level (synthCtx->noteOsc2Level)
+#define noteOsc3Ratio (synthCtx->noteOsc3Ratio)
+#define noteOsc3Level (synthCtx->noteOsc3Level)
+#define noteOsc4Ratio (synthCtx->noteOsc4Ratio)
+#define noteOsc4Level (synthCtx->noteOsc4Level)
+#define noteOsc5Ratio (synthCtx->noteOsc5Ratio)
+#define noteOsc5Level (synthCtx->noteOsc5Level)
+#define noteOsc6Ratio (synthCtx->noteOsc6Ratio)
+#define noteOsc6Level (synthCtx->noteOsc6Level)
+#define noteDrive (synthCtx->noteDrive)
+#define noteExpDecay (synthCtx->noteExpDecay)
+#define noteClickLevel (synthCtx->noteClickLevel)
+#define noteClickTime (synthCtx->noteClickTime)
+#define noteNoiseMode (synthCtx->noteNoiseMode)
+#define noteOscMixMode (synthCtx->noteOscMixMode)
+#define noteRetriggerCurve (synthCtx->noteRetriggerCurve)
+#define notePhaseReset (synthCtx->notePhaseReset)
+#define noteNoiseLPBypass (synthCtx->noteNoiseLPBypass)
+#define noteNoiseType (synthCtx->noteNoiseType)
 #define sfxRandomize (synthCtx->sfxRandomize)
 
 // ============================================================================
@@ -854,6 +996,28 @@ static void _ensureSynthCtx(void) {
 static float noise(void) {
     synthNoiseState = synthNoiseState * 1103515245 + 12345;
     return (float)(synthNoiseState >> 16) / 32768.0f - 1.0f;
+}
+
+// Per-voice noise: LFSR mode uses voice-local running state
+static float voiceNoiseLFSR(unsigned int *state) {
+    *state = *state * 1103515245 + 12345;
+    return (float)(*state >> 16) / 32768.0f - 1.0f;
+}
+
+// Time-hash noise: deterministic from elapsed time (drums.h style)
+// Each sample gets a fresh seed from time position, single LCG step
+static float voiceNoiseTimeHash(float time) {
+    unsigned int ns = (unsigned int)(time * 1000000.0f);
+    ns = ns * 1103515245 + 12345;
+    return (float)(ns >> 16) / 32768.0f - 1.0f;
+}
+
+// Dispatch to noise type based on voice setting
+static float voiceNoise(Voice *v) {
+    if (v->noiseType == 1) {
+        return voiceNoiseTimeHash(v->voiceTime);
+    }
+    return voiceNoiseLFSR(&v->voiceNoiseState);
 }
 
 static float clampf(float x, float min, float max) {
@@ -2342,6 +2506,17 @@ static float processEnvelope(Voice *v, float dt) {
                 v->envLevel = v->sustain;
                 if (v->sustain <= 0.001f) v->releaseLevel = v->envLevel;
                 v->envStage = (v->sustain > 0.001f) ? 3 : 4;
+            } else if (v->expDecay) {
+                // Exponential decay: punchy drums, natural sound
+                // expf(-t / (decay * 0.368)) matches drums.h expDecay()
+                float expLevel = expf(-v->envPhase / (v->decay * 0.368f));
+                v->envLevel = v->sustain + (1.0f - v->sustain) * expLevel;
+                if (expLevel < 0.001f) {
+                    v->envPhase = 0.0f;
+                    v->envLevel = v->sustain;
+                    if (v->sustain <= 0.001f) v->releaseLevel = v->envLevel;
+                    v->envStage = (v->sustain > 0.001f) ? 3 : 4;
+                }
             } else {
                 v->envLevel = 1.0f - (1.0f - v->sustain) * (v->envPhase / v->decay);
                 if (v->envPhase >= v->decay) {
@@ -2400,9 +2575,43 @@ static float processEnvelope(Voice *v, float dt) {
 
 static float processVoice(Voice *v, float sampleRate) {
     if (v->envStage == 0) return 0.0f;
-    
+
     float dt = 1.0f / sampleRate;
-    
+    v->voiceTime += dt;
+
+    // Retrigger (claps, flams) — only while voice is still active (not in release)
+    if (v->retriggerCount > 0 && v->retriggerDone < v->retriggerCount && v->envStage < 4) {
+        v->retriggerTimer += dt;
+        // Calculate next trigger time: uniform or curved spacing
+        float nextTime = v->retriggerSpread;
+        if (v->retriggerCurve > 0.001f) {
+            // Accelerating gaps: each successive gap is wider
+            // burst 0→1: spread, 1→2: spread*(1+curve), 2→3: spread*(1+curve)^2, ...
+            float mult = 1.0f;
+            for (int i = 0; i < v->retriggerDone; i++) mult *= (1.0f + v->retriggerCurve);
+            nextTime = v->retriggerSpread * mult;
+        }
+        if (v->retriggerTimer >= nextTime) {
+            v->retriggerTimer -= nextTime;
+            v->retriggerDone++;
+            if (v->retriggerOverlap) {
+                // Overlap mode: start a new burst timer (don't reset envelope)
+                if (v->retriggerDone < 8) {
+                    v->burstTimers[v->retriggerDone] = 0.0f;
+                }
+                // Per-burst noise re-seeding (noiseMode 2): each burst gets fresh noise
+                if (v->noiseMode == 2) {
+                    v->voiceNoiseState = v->voiceNoiseState * 1103515245 + v->retriggerDone * 12345 + 67890;
+                }
+            } else {
+                // Classic mode: reset envelope to attack
+                v->envPhase = 0.0f;
+                v->envLevel = 0.0f;
+                v->envStage = 1;
+            }
+        }
+    }
+
     // Arpeggiator (enhanced with modes and tempo sync)
     if (v->arpEnabled && v->arpCount > 0) {
         // Calculate interval (tempo-synced or free rate)
@@ -2492,8 +2701,40 @@ static float processVoice(Voice *v, float sampleRate) {
         freq *= powf(2.0f, pitchLfoMod / 12.0f);  // pitchLfoDepth is in semitones
     }
     
-    v->frequency = freq;
-    
+    // General pitch envelope (for all wave types)
+    float pitchEnvMod = 1.0f;
+    if (fabsf(v->pitchEnvAmount) > 0.01f && v->pitchEnvTimer < v->pitchEnvDecay) {
+        v->pitchEnvTimer += dt;
+
+        if (v->pitchEnvLinear) {
+            // Linear Hz mode (analog drums): freq = base + offset * exp(-t/tau)
+            // Matches drums.h: freq = basePitch + (punchPitch - basePitch) * expDecay(time, decay)
+            // pitchEnvAmount in semitones → convert to frequency ratio
+            float ratio = powf(2.0f, v->pitchEnvAmount / 12.0f);
+            float envLevel = expf(-v->pitchEnvTimer / (v->pitchEnvDecay * 0.368f));
+            // Linear interpolation in Hz: base + base*(ratio-1)*envLevel
+            pitchEnvMod = 1.0f + (ratio - 1.0f) * envLevel;
+        } else {
+            // Semitone mode (musical): exponential pitch scaling with curve shaping
+            float t = (v->pitchEnvDecay > 0.0f) ? (v->pitchEnvTimer / v->pitchEnvDecay) : 1.0f;
+            if (t > 1.0f) t = 1.0f;
+            float curved;
+            if (v->pitchEnvCurve < 0.0f) {
+                float power = 1.0f + fabsf(v->pitchEnvCurve) * 2.0f;
+                curved = 1.0f - powf(1.0f - t, power);
+            } else if (v->pitchEnvCurve > 0.0f) {
+                float power = 1.0f + v->pitchEnvCurve * 2.0f;
+                curved = powf(t, power);
+            } else {
+                curved = t;
+            }
+            float semitones = v->pitchEnvAmount * (1.0f - curved);
+            pitchEnvMod = powf(2.0f, semitones / 12.0f);
+        }
+    }
+
+    v->frequency = freq * pitchEnvMod;
+
     // Advance phase
     float phaseInc = v->frequency / sampleRate;
     v->phase += phaseInc;
@@ -2596,7 +2837,104 @@ static float processVoice(Voice *v, float sampleRate) {
             sample = processBirdOscillator(v, sampleRate);
             break;
     }
-    
+
+    // Extra oscillators (metallic hihats, cowbell, fifth stacking — up to 6 total)
+    if (v->osc2Level > 0.001f && v->osc2Ratio > 0.001f) {
+        // Helper: generate one extra oscillator sample from phase + wave type
+        #define EXTRA_OSC(phase, ratio, level, sampleRate) do { \
+            float _inc = v->frequency * (ratio) / (sampleRate); \
+            (phase) += _inc; \
+            if ((phase) >= 1.0f) (phase) -= 1.0f; \
+            float _osc; \
+            switch (v->wave) { \
+                case WAVE_SQUARE: _osc = (phase) < 0.5f ? 1.0f : -1.0f; break; \
+                case WAVE_SAW:    _osc = 2.0f * (phase) - 1.0f; break; \
+                case WAVE_TRIANGLE: _osc = 4.0f * fabsf((phase) - 0.5f) - 1.0f; break; \
+                default:          _osc = sinf((phase) * 2.0f * PI); break; \
+            } \
+            mixSum += _osc * (level); \
+            totalWeight += (level); \
+        } while(0)
+
+        float mixSum = sample;  // main osc contributes weight 1.0
+        float totalWeight = 1.0f;
+
+        EXTRA_OSC(v->osc2Phase, v->osc2Ratio, v->osc2Level, sampleRate);
+        if (v->osc3Level > 0.001f && v->osc3Ratio > 0.001f)
+            EXTRA_OSC(v->osc3Phase, v->osc3Ratio, v->osc3Level, sampleRate);
+        if (v->osc4Level > 0.001f && v->osc4Ratio > 0.001f)
+            EXTRA_OSC(v->osc4Phase, v->osc4Ratio, v->osc4Level, sampleRate);
+        if (v->osc5Level > 0.001f && v->osc5Ratio > 0.001f)
+            EXTRA_OSC(v->osc5Phase, v->osc5Ratio, v->osc5Level, sampleRate);
+        if (v->osc6Level > 0.001f && v->osc6Ratio > 0.001f)
+            EXTRA_OSC(v->osc6Phase, v->osc6Ratio, v->osc6Level, sampleRate);
+
+        if (v->oscMixMode == 1) {
+            // Additive sum: all oscillators just sum (drums.h hihat style)
+            sample = mixSum;
+        } else {
+            // Weighted average (default): normalize by total weight
+            sample = mixSum / totalWeight;
+        }
+        #undef EXTRA_OSC
+    }
+
+    // Click transient (one-shot linear-fade noise burst — kick click, key click)
+    if (v->clickLevel > 0.001f && v->clickTimer < v->clickTime) {
+        v->clickTimer += dt;
+        float clickAmp = 1.0f - v->clickTimer / v->clickTime;
+        if (clickAmp < 0.0f) clickAmp = 0.0f;
+        sample += voiceNoise(v) * clickAmp * v->clickLevel;
+    }
+
+    // Noise mix layer (bandpass filtered noise — snares, hihats, percussion)
+    // Skip for noiseMode==2 + overlap: per-burst noise is generated in the burst section
+    bool skipNoiseMix = (v->noiseMode == 2 && v->retriggerOverlap && v->retriggerCount > 0);
+    if (!skipNoiseMix && (v->noiseMix > 0.001f || v->noiseMode == 1)) {
+        float n = voiceNoise(v);
+        float filteredNoise;
+
+        if (v->noiseLPBypass) {
+            // Bypass LP: raw noise directly (matches drums.h maracas path)
+            filteredNoise = n;
+        } else {
+            // Lowpass filter on noise
+            float lpCoeff = v->noiseTone * v->noiseTone; // Exponential curve for LP
+            v->noiseFilterState += lpCoeff * (n - v->noiseFilterState);
+            filteredNoise = v->noiseFilterState;
+        }
+
+        // Highpass filter on noise (removes low rumble, adds sizzle for hihats)
+        if (v->noiseHP > 0.001f) {
+            float hpCoeff = v->noiseHP * v->noiseHP;
+            v->noiseHPState += hpCoeff * (filteredNoise - v->noiseHPState);
+            filteredNoise = filteredNoise - v->noiseHPState; // HP = input - LP
+        }
+
+        // Separate noise decay envelope (if set)
+        float noiseAmp = 1.0f;
+        if (v->noiseDecay > 0.001f) {
+            v->noiseTimer += dt;
+            noiseAmp = expf(-v->noiseTimer / (v->noiseDecay * 0.368f));
+            if (noiseAmp < 0.001f) noiseAmp = 0.0f;
+        }
+
+        if (v->noiseMode == 1) {
+            // Mode 1: replace oscillator entirely (pure noise → main filter)
+            sample = filteredNoise * noiseAmp;
+        } else {
+            // Mode 0 (default): mix noise with oscillator
+            float mix = v->noiseMix;
+            sample = sample * (1.0f - mix) + filteredNoise * mix * noiseAmp;
+        }
+    }
+
+    // Drive/saturation (tanh waveshaping — kick warmth, snare crunch)
+    if (v->drive > 0.001f) {
+        float gain = 1.0f + v->drive * 3.0f;
+        sample = tanhf(sample * gain);
+    }
+
     // Process filter envelope
     if (v->filterEnvStage > 0) {
         v->filterEnvPhase += dt;
@@ -2643,33 +2981,127 @@ static float processVoice(Voice *v, float sampleRate) {
     // Calculate effective cutoff with envelope and LFO modulation
     float cutoff = v->filterCutoff + v->filterEnvAmt * v->filterEnvLevel + filterLfoMod;
     cutoff = clampf(cutoff, 0.01f, 1.0f);
-    cutoff = cutoff * cutoff;  // Exponential curve for more musical feel
-    
+
     // Calculate effective resonance with LFO
     float res = clampf(v->filterResonance + resoLfoMod, 0.0f, 1.0f);
-    // Resonance affects damping - at max resonance (1.0), q approaches 0.02 for self-oscillation
-    // This gives a screaming 303-style filter at high resonance
-    float q = 1.0f - res * FILTER_RESONANCE_SCALE;
-    
-    // SVF coefficients
-    float f = cutoff * 1.5f;  // Scale for better range
-    if (f > 0.99f) f = 0.99f;
-    
-    // Process SVF
-    v->filterLp += f * v->filterBp;
-    float hp = sample - v->filterLp - q * v->filterBp;
-    v->filterBp += f * hp;
-    
-    // Mix in resonance (bandpass adds the "peak")
-    sample = v->filterLp + res * v->filterBp * 0.5f;
+
+    // Bypass filter when fully open with no modulation (avoids SVF charge-up delay on drums)
+    // Also skip for noiseMode==2 overlap: per-burst noise applies its own filter in burst section
+    bool filterActive = cutoff < 0.999f || res > 0.001f;
+    if (filterActive && !skipNoiseMix) {
+        if (v->filterType == 3 || v->filterType == 4) {
+            // One-pole filter (matches drums.h topology — 6dB/oct, no resonance)
+            // state += cutoff * (input - state); output = state (LP) or input - state (HP)
+            v->filterLp += cutoff * (sample - v->filterLp);
+            sample = (v->filterType == 3) ? v->filterLp : (sample - v->filterLp);
+        } else if (v->filterType == 5) {
+            // Resonant bandpass (bridged-T / ringing filter)
+            // Two-pole BP with feedback — self-oscillates at high resonance
+            // Great for: CR-78 kick ringing, acid bass, metallic percussion
+            float f = cutoff * cutoff * 1.5f;
+            if (f > 0.99f) f = 0.99f;
+            float fb = res * 0.99f + 0.01f;  // feedback: 0.01 (gentle) to 1.0 (self-osc)
+            v->filterBp += f * (sample - v->filterBp - fb * (v->filterBp - v->filterLp));
+            v->filterLp += f * (v->filterBp - v->filterLp);
+            sample = v->filterBp * (1.0f + res * 2.0f);  // Gain boost at high resonance
+        } else {
+            // SVF (2nd order, resonant — LP/HP/BP)
+            cutoff = cutoff * cutoff;  // Exponential curve for more musical feel
+            float q = 1.0f - res * FILTER_RESONANCE_SCALE;
+
+            float f = cutoff * 1.5f;
+            if (f > 0.99f) f = 0.99f;
+
+            v->filterLp += f * v->filterBp;
+            float hp = sample - v->filterLp - q * v->filterBp;
+            v->filterBp += f * hp;
+
+            if (v->filterType == 1) {
+                sample = hp + res * v->filterBp * 0.5f;
+            } else if (v->filterType == 2) {
+                sample = v->filterBp;
+            } else {
+                sample = v->filterLp + res * v->filterBp * 0.5f;
+            }
+        }
+    }
     
     // Apply amplitude envelope
-    float env = processEnvelope(v, dt);
-    
+    float env;
+    if (v->retriggerOverlap && v->retriggerCount > 0) {
+        // Overlap mode: sum independent burst decays (drums.h clap style)
+        float burstSum = 0.0f;
+        int totalBursts = v->retriggerCount + 1; // +1 for initial burst
+        if (totalBursts > 8) totalBursts = 8;
+        bool anyActive = false;
+
+        if (v->noiseMode == 2) {
+            // Per-burst noise mode: each burst generates its own noise stream
+            // then sum noise×decay, replacing the oscillator sample entirely.
+            // This matches drums.h clap: for(i) { noise(t+i*12345) * expDecay(t,0.02) }
+            float noiseBurstSum = 0.0f;
+            for (int b = 0; b < totalBursts; b++) {
+                if (v->burstTimers[b] >= 0.0f) {
+                    v->burstTimers[b] += dt;
+                    float burstAmp = expf(-v->burstTimers[b] / (v->burstDecay * 0.368f));
+                    if (burstAmp < 0.001f) {
+                        v->burstTimers[b] = -1.0f;
+                    } else {
+                        // Generate per-burst noise using burst-local time + burst index
+                        float n;
+                        if (v->noiseType == 1) {
+                            // Time-hash: seed from burst's local time + burst index
+                            n = voiceNoiseTimeHash(v->burstTimers[b] + (float)b * 0.012345f);
+                        } else {
+                            // LFSR: use different seed per burst
+                            unsigned int burstSeed = v->voiceNoiseState + (unsigned int)(b * 12345);
+                            burstSeed = burstSeed * 1103515245 + 12345;
+                            n = (float)(burstSeed >> 16) / 32768.0f - 1.0f;
+                            // Advance LFSR state only for burst 0 to keep it moving
+                            if (b == 0) v->voiceNoiseState = burstSeed;
+                        }
+                        noiseBurstSum += n * burstAmp * 0.4f;
+                        anyActive = true;
+                    }
+                }
+            }
+            // Apply filter to per-burst noise sum (drums.h: noise_sum → one-pole BP)
+            // drums.h filterBP: LP state → HP state → return LP-HP
+            // Use voice filter state (skipped noise mix + main filter for this mode)
+            float lpCut = v->filterCutoff;   // preset sets this to match drums.h LP cutoff
+            float hpCut = v->noiseHP > 0.001f ? v->noiseHP : 0.08f; // HP cutoff (drums.h clap: 0.08)
+            v->filterLp += lpCut * (noiseBurstSum - v->filterLp);
+            v->filterBp += hpCut * (v->filterLp - v->filterBp);
+            sample = (v->filterLp - v->filterBp) * 2.0f; // ×2.0 gain matches drums.h
+        } else {
+            // Standard overlap mode: use existing sample with burst envelope
+            for (int b = 0; b < totalBursts; b++) {
+                if (v->burstTimers[b] >= 0.0f) {
+                    v->burstTimers[b] += dt;
+                    float burstAmp = expf(-v->burstTimers[b] / (v->burstDecay * 0.368f));
+                    if (burstAmp < 0.001f) {
+                        v->burstTimers[b] = -1.0f;
+                    } else {
+                        burstSum += burstAmp;
+                        anyActive = true;
+                    }
+                }
+            }
+            sample = sample * burstSum / (float)totalBursts;
+        }
+
+        // Main envelope controls the overall tail
+        float mainEnv = processEnvelope(v, dt);
+        env = mainEnv;
+        if (!anyActive && mainEnv < 0.001f) v->envStage = 0;
+    } else {
+        env = processEnvelope(v, dt);
+    }
+
     // Apply amplitude LFO (tremolo) - modulates between 1.0 and (1.0 - depth)
     float ampMod = 1.0f - ampLfoMod * 0.5f - 0.5f * v->ampLfoDepth;  // Center the modulation
     ampMod = clampf(ampMod, 0.0f, 1.0f);
-    
+
     return sample * env * v->volume * ampMod;
 }
 
@@ -2827,7 +3259,8 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
         v->targetFrequency = freq;
         v->glideRate = 0.0f;
         // Preserve phase on mono retrigger to avoid clicks, reset otherwise
-        if (!isMonoRetrigger) {
+        // phaseReset forces reset even in mono retrigger (deterministic drums)
+        if (!isMonoRetrigger || notePhaseReset) {
             v->phase = 0.0f;
         }
     }
@@ -2835,7 +3268,73 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->volume = noteVolume;
     v->wave = wave;
     v->pitchSlide = 0.0f;
-    
+
+    // General pitch envelope
+    v->pitchEnvAmount = notePitchEnvAmount;
+    v->pitchEnvDecay = notePitchEnvDecay;
+    v->pitchEnvCurve = notePitchEnvCurve;
+    v->pitchEnvTimer = 0.0f;
+    v->pitchEnvLinear = notePitchEnvLinear;
+
+    // Noise mix layer
+    v->noiseMix = noteNoiseMix;
+    v->noiseTone = noteNoiseTone;
+    v->noiseHP = noteNoiseHP;
+    v->noiseDecay = noteNoiseDecay;
+    v->noiseTimer = 0.0f;
+    v->noiseFilterState = 0.0f;
+    v->noiseHPState = 0.0f;
+
+    // Retrigger
+    v->retriggerCount = noteRetriggerCount;
+    v->retriggerSpread = noteRetriggerSpread;
+    v->retriggerTimer = 0.0f;
+    v->retriggerDone = 0;
+    v->retriggerOverlap = noteRetriggerOverlap;
+    v->burstDecay = noteRetriggerBurstDecay > 0.001f ? noteRetriggerBurstDecay : 0.02f;
+    for (int i = 0; i < 8; i++) v->burstTimers[i] = -1.0f; // inactive
+    if (v->retriggerOverlap && v->retriggerCount > 0) {
+        v->burstTimers[0] = 0.0f; // first burst starts immediately
+    }
+
+    // Extra oscillators
+    v->osc2Ratio = noteOsc2Ratio;
+    v->osc2Level = noteOsc2Level;
+    v->osc2Phase = 0.0f;
+    v->osc3Ratio = noteOsc3Ratio;
+    v->osc3Level = noteOsc3Level;
+    v->osc3Phase = 0.0f;
+    v->osc4Ratio = noteOsc4Ratio;
+    v->osc4Level = noteOsc4Level;
+    v->osc4Phase = 0.0f;
+    v->osc5Ratio = noteOsc5Ratio;
+    v->osc5Level = noteOsc5Level;
+    v->osc5Phase = 0.0f;
+    v->osc6Ratio = noteOsc6Ratio;
+    v->osc6Level = noteOsc6Level;
+    v->osc6Phase = 0.0f;
+
+    // Drive & exp decay
+    v->drive = noteDrive;
+    v->expDecay = noteExpDecay;
+
+    // Click transient
+    v->clickLevel = noteClickLevel;
+    v->clickTime = noteClickTime > 0.001f ? noteClickTime : 0.005f;
+    v->clickTimer = 0.0f;
+
+    // Per-voice noise (seeded from voice index for deterministic behavior)
+    v->voiceNoiseState = (unsigned int)(voiceIdx * 7919 + 1);
+    v->noiseType = noteNoiseType;
+    v->voiceTime = 0.0f;
+
+    // Algorithm modes
+    v->noiseMode = noteNoiseMode;
+    v->oscMixMode = noteOscMixMode;
+    v->retriggerCurve = noteRetriggerCurve;
+    v->phaseReset = notePhaseReset;
+    v->noiseLPBypass = noteNoiseLPBypass;
+
     // PWM (reset for all voices)
     v->pulseWidth = params->useGlobalEnvelope ? notePulseWidth : 0.5f;
     v->pwmRate = params->useGlobalEnvelope ? notePwmRate : 0.0f;
@@ -2853,6 +3352,7 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->sustain = params->useGlobalEnvelope ? noteSustain : params->sustain;
     v->release = params->useGlobalEnvelope ? noteRelease : params->release;
     v->expRelease = params->useGlobalEnvelope ? noteExpRelease : false;
+    v->expDecay = params->useGlobalEnvelope ? noteExpDecay : false;
 
     if (!isGlide) {
         v->envPhase = 0.0f;
@@ -2874,6 +3374,7 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     // Filter
     v->filterCutoff = params->useGlobalFilter ? noteFilterCutoff : params->filterCutoff;
     v->filterResonance = params->useGlobalFilter ? noteFilterResonance : params->filterResonance;
+    v->filterType = params->useGlobalFilter ? noteFilterType : 0;
     
     // Initialize arpeggiator from global params if enabled
     if (noteArpEnabled && params->useGlobalLfos) {

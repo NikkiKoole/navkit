@@ -26,6 +26,7 @@ static void applyPatchToGlobals(SynthPatch *p) {
     noteVibratoDepth = p->p_vibratoDepth;
     noteFilterCutoff = p->p_filterCutoff;
     noteFilterResonance = p->p_filterResonance;
+    noteFilterType = p->p_filterType;
     noteFilterEnvAmt = p->p_filterEnvAmt;
     noteFilterEnvAttack = p->p_filterEnvAttack;
     noteFilterEnvDecay = p->p_filterEnvDecay;
@@ -109,6 +110,38 @@ static void applyPatchToGlobals(SynthPatch *p) {
     birdAmDepth = p->p_birdAmDepth;
     birdHarmonics = p->p_birdHarmonics;
     noteExpRelease = p->p_expRelease;
+    notePitchEnvAmount = p->p_pitchEnvAmount;
+    notePitchEnvDecay = p->p_pitchEnvDecay;
+    notePitchEnvCurve = p->p_pitchEnvCurve;
+    notePitchEnvLinear = p->p_pitchEnvLinear;
+    noteNoiseMix = p->p_noiseMix;
+    noteNoiseTone = p->p_noiseTone;
+    noteNoiseHP = p->p_noiseHP;
+    noteNoiseDecay = p->p_noiseDecay;
+    noteRetriggerCount = p->p_retriggerCount;
+    noteRetriggerSpread = p->p_retriggerSpread;
+    noteRetriggerOverlap = p->p_retriggerOverlap;
+    noteRetriggerBurstDecay = p->p_retriggerBurstDecay;
+    noteOsc2Ratio = p->p_osc2Ratio;
+    noteOsc2Level = p->p_osc2Level;
+    noteOsc3Ratio = p->p_osc3Ratio;
+    noteOsc3Level = p->p_osc3Level;
+    noteOsc4Ratio = p->p_osc4Ratio;
+    noteOsc4Level = p->p_osc4Level;
+    noteOsc5Ratio = p->p_osc5Ratio;
+    noteOsc5Level = p->p_osc5Level;
+    noteOsc6Ratio = p->p_osc6Ratio;
+    noteOsc6Level = p->p_osc6Level;
+    noteDrive = p->p_drive;
+    noteExpDecay = p->p_expDecay;
+    noteClickLevel = p->p_clickLevel;
+    noteClickTime = p->p_clickTime;
+    noteNoiseMode = p->p_noiseMode;
+    noteOscMixMode = p->p_oscMixMode;
+    noteRetriggerCurve = p->p_retriggerCurve;
+    notePhaseReset = p->p_phaseReset;
+    noteNoiseLPBypass = p->p_noiseLPBypass;
+    noteNoiseType = p->p_noiseType;
 }
 
 // Play a note using a SynthPatch. Sets all globals from the patch,

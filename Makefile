@@ -525,6 +525,10 @@ sample_embed: $(BINDIR)
 	./$(BINDIR)/sample_embed soundsystem/oneshots > soundsystem/engines/sample_data.h
 	@echo "Generated soundsystem/engines/sample_data.h"
 
+# Drum comparison tool (drums.h vs synth presets)
+drum-compare: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/drum-compare soundsystem/tools/drum_compare.c -lm
+
 # Embed all assets (atlas + fonts)
 embed: atlas embed_font
 

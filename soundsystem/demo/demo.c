@@ -9,7 +9,7 @@
 #include <math.h>
 #include <string.h>
 
-#define SCREEN_WIDTH 1200
+#define SCREEN_WIDTH 1400
 #define SCREEN_HEIGHT 1060
 #define SAMPLE_RATE 44100
 #define MAX_SAMPLES_PER_UPDATE 4096
@@ -404,6 +404,7 @@ static float semitoneToFreq(int semitone, int octave) {
 
 #include "../engines/synth_patch.h"   // SynthPatch struct + createDefaultPatch()
 #include "../engines/patch_trigger.h" // applyPatchToGlobals() + playNoteWithPatch()
+#include "../engines/instrument_presets.h" // Shared preset definitions (32 presets)
 #include "../engines/song_file.h"     // .song/.patch file format parser/serializer
 
 // 5 patches: Preview (jamming), Bass, Lead, Chord + copy targets
@@ -421,21 +422,18 @@ static int selectedPatch = PATCH_PREVIEW;
 // INSTRUMENT PRESETS
 // ============================================================================
 
-typedef struct {
-    const char *name;
-    SynthPatch patch;
-} InstrumentPreset;
-
-#define NUM_INSTRUMENT_PRESETS 24
-static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
+// InstrumentPreset, NUM_INSTRUMENT_PRESETS, instrumentPresets[], initInstrumentPresets()
+// are all provided by instrument_presets.h
 static int currentPresetIndex = 0;
 
-static void initInstrumentPresets(void) {
-    // Start all presets from default
-    for (int i = 0; i < NUM_INSTRUMENT_PRESETS; i++) {
-        instrumentPresets[i].patch = createDefaultPatch(WAVE_SAW);
-    }
-    
+// Preset init — just calls shared header's initInstrumentPresets()
+static void initDemoPresets(void) {
+    initInstrumentPresets();
+}
+
+// Keep old preset data as dead code reference (to be removed later)
+#if 0
+static void _oldPresets(void) {
     // Chip Lead - Classic square wave lead
     instrumentPresets[0].name = "Chip Lead";
     instrumentPresets[0].patch.p_waveType = WAVE_SQUARE;
@@ -730,6 +728,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[23].patch.p_vibratoRate = 0.5f;       // Very slow drift
     instrumentPresets[23].patch.p_vibratoDepth = 0.1f;
 }
+#endif
 
 // Forward declarations
 static void updateDrumTrackName(int track);
@@ -1195,8 +1194,8 @@ static void initPatches(void) {
     patches[PATCH_CHORD] = createDefaultPatch(WAVE_TRIANGLE);
     patches[PATCH_CHORD].p_attack = 0.05f;
     patches[PATCH_CHORD].p_release = 0.5f;
-    
-    initInstrumentPresets();
+
+    initDemoPresets();
 }
 
 // Copy one patch to another
@@ -1464,6 +1463,7 @@ static void melodyChordTriggerChord(int* notes, int noteCount, float vel,
 
 static bool showWaveColumn = true;
 static bool showSynthColumn = true;
+static bool showPercColumn = true;
 static bool showLfoColumn = true;
 static bool showDrumsColumn = true;
 static bool showEffectsColumn = true;
@@ -2281,6 +2281,10 @@ int main(void) {
             ui_col_space(&col2, 4);
             
             ui_col_sublabel(&col2, "Filter:", ORANGE);
+            {
+                static const char* filterTypeNames[] = {"LP", "HP", "BP", "1p LP", "1p HP", "Reso BP"};
+                ui_col_cycle(&col2, "Type", filterTypeNames, 6, &cp->p_filterType);
+            }
             ui_col_float(&col2, "Cutoff", &cp->p_filterCutoff, 0.05f, 0.01f, 1.0f);
             ui_col_float(&col2, "Reso", &cp->p_filterResonance, 0.05f, 0.0f, 1.0f);
             ui_col_float(&col2, "EnvAmt", &cp->p_filterEnvAmt, 0.05f, -1.0f, 1.0f);
@@ -2337,10 +2341,96 @@ int main(void) {
                 ui_col_cycle(&col2, "Scale", scaleNames, SCALE_COUNT, &scaleIdx);
                 scaleType = (ScaleType)scaleIdx;
             }
+
         }
-        
+
+        // === COLUMN 2b: Percussion / Drum Synthesis ===
+        UIColumn colPerc = ui_column(430, 75, 20);
+
+        if (SectionHeader(colPerc.x, colPerc.y, "Perc", &showPercColumn)) {
+            colPerc.y += 18;
+
+            ui_col_sublabel(&colPerc, "Pitch Env:", ORANGE);
+            ui_col_float(&colPerc, "Amount", &cp->p_pitchEnvAmount, 1.0f, -48.0f, 48.0f);
+            ui_col_float(&colPerc, "Decay", &cp->p_pitchEnvDecay, 0.005f, 0.005f, 0.5f);
+            if (!cp->p_pitchEnvLinear) {
+                ui_col_float(&colPerc, "Curve", &cp->p_pitchEnvCurve, 0.1f, -1.0f, 1.0f);
+            }
+            ui_col_toggle(&colPerc, "Linear Hz", &cp->p_pitchEnvLinear);
+
+            ui_col_space(&colPerc, 4);
+            ui_col_sublabel(&colPerc, "Noise Mix:", ORANGE);
+            ui_col_float(&colPerc, "Mix", &cp->p_noiseMix, 0.05f, 0.0f, 1.0f);
+            if (cp->p_noiseMix > 0.001f) {
+                ui_col_float(&colPerc, "Tone LP", &cp->p_noiseTone, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&colPerc, "HP", &cp->p_noiseHP, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&colPerc, "Decay", &cp->p_noiseDecay, 0.01f, 0.0f, 1.0f);
+            }
+
+            ui_col_space(&colPerc, 4);
+            ui_col_sublabel(&colPerc, "Extra Osc:", ORANGE);
+            ui_col_float(&colPerc, "Osc2 Ratio", &cp->p_osc2Ratio, 0.1f, 0.0f, 16.0f);
+            if (cp->p_osc2Ratio > 0.001f) {
+                ui_col_float(&colPerc, "Osc2 Level", &cp->p_osc2Level, 0.05f, 0.0f, 1.0f);
+            }
+            ui_col_float(&colPerc, "Osc3 Ratio", &cp->p_osc3Ratio, 0.1f, 0.0f, 16.0f);
+            if (cp->p_osc3Ratio > 0.001f) {
+                ui_col_float(&colPerc, "Osc3 Level", &cp->p_osc3Level, 0.05f, 0.0f, 1.0f);
+            }
+            ui_col_float(&colPerc, "Osc4 Ratio", &cp->p_osc4Ratio, 0.1f, 0.0f, 16.0f);
+            if (cp->p_osc4Ratio > 0.001f) {
+                ui_col_float(&colPerc, "Osc4 Level", &cp->p_osc4Level, 0.05f, 0.0f, 1.0f);
+            }
+            ui_col_float(&colPerc, "Osc5 Ratio", &cp->p_osc5Ratio, 0.1f, 0.0f, 16.0f);
+            if (cp->p_osc5Ratio > 0.001f) {
+                ui_col_float(&colPerc, "Osc5 Level", &cp->p_osc5Level, 0.05f, 0.0f, 1.0f);
+            }
+            ui_col_float(&colPerc, "Osc6 Ratio", &cp->p_osc6Ratio, 0.1f, 0.0f, 16.0f);
+            if (cp->p_osc6Ratio > 0.001f) {
+                ui_col_float(&colPerc, "Osc6 Level", &cp->p_osc6Level, 0.05f, 0.0f, 1.0f);
+            }
+
+            ui_col_space(&colPerc, 4);
+            ui_col_sublabel(&colPerc, "Retrigger:", ORANGE);
+            ui_col_int(&colPerc, "Count", &cp->p_retriggerCount, 1, 0, 8);
+            if (cp->p_retriggerCount > 0) {
+                ui_col_float(&colPerc, "Spread", &cp->p_retriggerSpread, 0.01f, 0.005f, 1.0f);
+                ui_col_toggle(&colPerc, "Overlap", &cp->p_retriggerOverlap);
+                if (cp->p_retriggerOverlap) {
+                    ui_col_float(&colPerc, "BurstDcy", &cp->p_retriggerBurstDecay, 0.005f, 0.005f, 0.2f);
+                }
+            }
+
+            ui_col_space(&colPerc, 4);
+            ui_col_sublabel(&colPerc, "Character:", ORANGE);
+            ui_col_float(&colPerc, "Drive", &cp->p_drive, 0.05f, 0.0f, 1.0f);
+            ui_col_toggle(&colPerc, "Exp Decay", &cp->p_expDecay);
+            ui_col_toggle(&colPerc, "Exp Release", &cp->p_expRelease);
+
+            ui_col_space(&colPerc, 4);
+            ui_col_sublabel(&colPerc, "Click:", ORANGE);
+            ui_col_float(&colPerc, "Level", &cp->p_clickLevel, 0.05f, 0.0f, 1.0f);
+            if (cp->p_clickLevel > 0.001f) {
+                ui_col_float(&colPerc, "Time", &cp->p_clickTime, 0.001f, 0.001f, 0.05f);
+            }
+
+            ui_col_space(&colPerc, 4);
+            ui_col_sublabel(&colPerc, "Algorithms:", ORANGE);
+            static const char* noiseModeNames[] = {"Mix", "Replace", "PerBurst"};
+            ui_col_cycle(&colPerc, "NoiseMd", noiseModeNames, 3, &cp->p_noiseMode);
+            ui_col_toggle(&colPerc, "NoiseLP Off", &cp->p_noiseLPBypass);
+            static const char* noiseTypeNames[] = {"LFSR", "TimeHash"};
+            ui_col_cycle(&colPerc, "NoiseTyp", noiseTypeNames, 2, &cp->p_noiseType);
+            static const char* oscMixNames[] = {"Avg", "Sum"};
+            ui_col_cycle(&colPerc, "OscMix", oscMixNames, 2, &cp->p_oscMixMode);
+            if (cp->p_retriggerCount > 0) {
+                ui_col_float(&colPerc, "RetCurve", &cp->p_retriggerCurve, 0.05f, 0.0f, 2.0f);
+            }
+            ui_col_toggle(&colPerc, "Phase Rst", &cp->p_phaseReset);
+        }
+
         // === COLUMN 3: LFOs ===
-        UIColumn col3 = ui_column(430, 125, 20);
+        UIColumn col3 = ui_column(610, 125, 20);
         
         if (SectionHeader(col3.x, col3.y, "LFOs", &showLfoColumn)) {
             col3.y += 18;
@@ -2375,7 +2465,7 @@ int main(void) {
         }
         
         // === COLUMN 4: Drums ===
-        UIColumn col4 = ui_column(610, 125, 20);
+        UIColumn col4 = ui_column(790, 125, 20);
         
         if (SectionHeader(col4.x, col4.y, "Drums", &showDrumsColumn)) {
             col4.y += 18;
@@ -2500,7 +2590,7 @@ int main(void) {
         }
         
         // === COLUMN 5: Effects ===
-        UIColumn col5 = ui_column(790, 125, 20);
+        UIColumn col5 = ui_column(970, 125, 20);
         
         if (SectionHeader(col5.x, col5.y, "Effects", &showEffectsColumn)) {
             col5.y += 18;
@@ -2566,7 +2656,7 @@ int main(void) {
         }
         
         // === COLUMN 6: Tape FX (Dub Loop + Rewind) ===
-        UIColumn col6 = ui_column(950, 125, 20);
+        UIColumn col6 = ui_column(1150, 125, 20);
         
         // Rewind curve names for UI
         static const char* rewindCurveNames[] = {"Linear", "Expo", "S-Curve"};
