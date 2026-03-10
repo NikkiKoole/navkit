@@ -13,6 +13,15 @@
 #include "../../shared/ui.h"
 #include <math.h>
 #include <string.h>
+#include "../engines/synth.h"
+// Undefine synth.h macros that conflict with our local DAW state
+#undef masterVolume
+#undef scaleLockEnabled
+#undef scaleRoot
+#undef scaleType
+#undef monoMode
+#include "../engines/synth_patch.h"
+#include "../engines/instrument_presets.h"
 
 #define SCREEN_WIDTH 1200
 #define SCREEN_HEIGHT 800
@@ -86,131 +95,61 @@ static const char* birdTypeNames[] = {"Sparrow", "Robin", "Wren", "Finch", "Nigh
 static const char* arpModeNames[] = {"Up", "Down", "UpDown", "Random"};
 static const char* arpChordNames[] = {"Octave", "Major", "Minor", "Dom7", "Min7", "Sus4", "Power"};
 static const char* arpRateNames[] = {"1/4", "1/8", "1/16", "1/32", "Free"};
-static const char* rootNoteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
-static const char* scaleNames[] = {"Chromatic", "Major", "Minor", "Pentatonic", "Blues",
-    "Dorian", "Mixolydian", "HarmMinor", "Phrygian"};
+// rootNoteNames and scaleNames provided by synth.h
 static const char* lfoShapeNames[] = {"Sine", "Tri", "Sqr", "Saw", "S&H"};
 static const char* lfoSyncNames[] = {"Off", "4bar", "2bar", "1bar", "1/2", "1/4", "1/8", "1/16"};
-
-typedef struct {
-    char name[16];
-    int wave;
-    float attack, decay, sustain, release;
-    bool expRelease;
-    float vibratoRate, vibratoDepth;
-    float filterCutoff, filterResonance;
-    float filterEnvAmt, filterEnvAttack, filterEnvDecay;
-    float volume;
-    bool monoMode;
-    float glideTime;
-    int unisonCount;
-    float unisonDetune;
-    bool arpEnabled;
-    int arpMode, arpChord, arpRateDiv;
-    float arpRate;
-    bool scaleLockEnabled;
-    int scaleRoot, scaleType;
-    float pulseWidth, pwmRate, pwmDepth;
-    int scwIndex;
-    int voiceVowel;
-    bool voiceRandomVowel;
-    float voicePitch, voiceSpeed, voiceFormantShift;
-    float voiceBreathiness, voiceBuzziness;
-    bool voiceConsonant, voiceNasal;
-    float voiceConsonantAmt, voiceNasalAmt;
-    float voicePitchEnv, voicePitchEnvTime, voicePitchEnvCurve;
-    float pluckBrightness, pluckDamping, pluckDamp;
-    int additivePreset;
-    float additiveBrightness, additiveShimmer, additiveInharmonicity;
-    int malletPreset;
-    float malletStiffness, malletHardness, malletStrikePos;
-    float malletResonance, malletDamp;
-    float malletTremolo, malletTremoloRate;
-    int granularScwIndex;
-    float granularGrainSize, granularDensity;
-    float granularPosition, granularPosRandom;
-    float granularPitch, granularPitchRandom, granularAmpRandom;
-    bool granularFreeze;
-    float fmModRatio, fmModIndex, fmFeedback;
-    int pdWaveType;
-    float pdDistortion;
-    int membranePreset;
-    float membraneDamping, membraneStrike;
-    float membraneBend, membraneBendDecay;
-    int birdType;
-    float birdChirpRange, birdHarmonics;
-    float birdTrillRate, birdTrillDepth;
-    float birdAmRate, birdAmDepth;
-    float lfoFilterRate, lfoFilterDepth;
-    int lfoFilterShape, lfoFilterSync;
-    float lfoResoRate, lfoResoDepth;
-    int lfoResoShape;
-    float lfoAmpRate, lfoAmpDepth;
-    int lfoAmpShape;
-    float lfoPitchRate, lfoPitchDepth;
-    int lfoPitchShape;
-} SynthPatch;
-
-static SynthPatch defaultPatch(void) {
-    return (SynthPatch){
-        .name = "Init", .wave = 0,
-        .attack = 0.01f, .decay = 0.1f, .sustain = 0.5f, .release = 0.3f, .expRelease = false,
-        .vibratoRate = 5.0f, .vibratoDepth = 0.0f,
-        .filterCutoff = 1.0f, .filterResonance = 0.0f,
-        .filterEnvAmt = 0.0f, .filterEnvAttack = 0.01f, .filterEnvDecay = 0.2f,
-        .volume = 0.8f, .monoMode = false, .glideTime = 0.1f,
-        .unisonCount = 1, .unisonDetune = 10.0f,
-        .arpEnabled = false, .arpMode = 0, .arpChord = 0, .arpRateDiv = 2, .arpRate = 8.0f,
-        .scaleLockEnabled = false, .scaleRoot = 0, .scaleType = 0,
-        .pulseWidth = 0.5f, .pwmRate = 2.0f, .pwmDepth = 0.1f,
-        .scwIndex = 0,
-        .voiceVowel = 0, .voiceRandomVowel = false,
-        .voicePitch = 1.0f, .voiceSpeed = 10.0f, .voiceFormantShift = 1.0f,
-        .voiceBreathiness = 0.0f, .voiceBuzziness = 0.3f,
-        .voiceConsonant = false, .voiceNasal = false,
-        .voiceConsonantAmt = 0.3f, .voiceNasalAmt = 0.3f,
-        .voicePitchEnv = 0.0f, .voicePitchEnvTime = 0.1f, .voicePitchEnvCurve = 0.0f,
-        .pluckBrightness = 0.5f, .pluckDamping = 0.998f, .pluckDamp = 0.3f,
-        .additivePreset = 0, .additiveBrightness = 0.8f, .additiveShimmer = 0.0f, .additiveInharmonicity = 0.0f,
-        .malletPreset = 0, .malletStiffness = 0.5f, .malletHardness = 0.5f, .malletStrikePos = 0.3f,
-        .malletResonance = 0.5f, .malletDamp = 0.3f, .malletTremolo = 0.0f, .malletTremoloRate = 5.0f,
-        .granularScwIndex = 0, .granularGrainSize = 50.0f, .granularDensity = 20.0f,
-        .granularPosition = 0.5f, .granularPosRandom = 0.1f,
-        .granularPitch = 1.0f, .granularPitchRandom = 0.0f, .granularAmpRandom = 0.0f,
-        .granularFreeze = false,
-        .fmModRatio = 2.0f, .fmModIndex = 1.0f, .fmFeedback = 0.0f,
-        .pdWaveType = 0, .pdDistortion = 0.5f,
-        .membranePreset = 0, .membraneDamping = 0.5f, .membraneStrike = 0.5f,
-        .membraneBend = 0.1f, .membraneBendDecay = 0.1f,
-        .birdType = 0, .birdChirpRange = 1.0f, .birdHarmonics = 0.3f,
-        .birdTrillRate = 12.0f, .birdTrillDepth = 1.0f, .birdAmRate = 5.0f, .birdAmDepth = 0.3f,
-    };
-}
 
 static int selectedPatch = 0;
 static int selectedDrum = 0; // 0=Kick, 1=Snare, 2=HiHat, 3=Clap
 static SynthPatch patches[NUM_PATCHES];
+// Engine-level settings (not per-patch in synth engine) // TODO: find proper home
+static bool daw_scaleLockEnabled = false;
+static int daw_scaleRoot = 0, daw_scaleType = 0;
+static bool daw_voiceRandomVowel = false;
 static bool patchesInit = false;
-static float masterVolume = 0.8f;
+static float daw_masterVolume = 0.8f;
 
 static void initPatches(void) {
     if (patchesInit) return;
-    for (int i = 0; i < NUM_PATCHES; i++) patches[i] = defaultPatch();
-    snprintf(patches[0].name, 16, "Bass");       patches[0].wave = 0;
-    snprintf(patches[1].name, 16, "Lead");        patches[1].wave = 1;
-    snprintf(patches[2].name, 16, "Chord");       patches[2].wave = 7;
-    snprintf(patches[3].name, 16, "Voice");       patches[3].wave = 5;
-    snprintf(patches[4].name, 16, "Pluck");       patches[4].wave = 6;
-    snprintf(patches[5].name, 16, "FM Bell");     patches[5].wave = 10;
-    snprintf(patches[6].name, 16, "Mallet");      patches[6].wave = 8;
-    snprintf(patches[7].name, 16, "Bird");        patches[7].wave = 13;
-    patches[0].monoMode = true; patches[0].filterCutoff = 0.4f;
-    patches[1].unisonCount = 2; patches[1].vibratoDepth = 0.3f;
-    patches[2].attack = 0.05f; patches[2].release = 0.8f;
-    patches[3].voiceVowel = 2; patches[3].voiceBreathiness = 0.2f;
-    patches[5].fmModRatio = 3.5f; patches[5].fmModIndex = 2.0f;
-    patches[7].birdType = 4;
+    for (int i = 0; i < NUM_PATCHES; i++) patches[i] = createDefaultPatch(WAVE_SAW);
+    snprintf(patches[0].p_name, 32, "Bass");       patches[0].p_waveType = WAVE_SQUARE;
+    snprintf(patches[1].p_name, 32, "Lead");        patches[1].p_waveType = WAVE_SAW;
+    snprintf(patches[2].p_name, 32, "Chord");       patches[2].p_waveType = WAVE_ADDITIVE;
+    snprintf(patches[3].p_name, 32, "Voice");       patches[3].p_waveType = WAVE_VOICE;
+    snprintf(patches[4].p_name, 32, "Pluck");       patches[4].p_waveType = WAVE_PLUCK;
+    snprintf(patches[5].p_name, 32, "FM Bell");     patches[5].p_waveType = WAVE_FM;
+    snprintf(patches[6].p_name, 32, "Mallet");      patches[6].p_waveType = WAVE_MALLET;
+    snprintf(patches[7].p_name, 32, "Bird");        patches[7].p_waveType = WAVE_BIRD;
+    patches[0].p_monoMode = true; patches[0].p_filterCutoff = 0.4f;
+    patches[1].p_unisonCount = 2; patches[1].p_vibratoDepth = 0.3f;
+    patches[2].p_attack = 0.05f; patches[2].p_release = 0.8f;
+    patches[3].p_voiceVowel = 2; patches[3].p_voiceBreathiness = 0.2f;
+    patches[5].p_fmModRatio = 3.5f; patches[5].p_fmModIndex = 2.0f;
+    patches[7].p_birdType = 4;
     patchesInit = true;
+}
+
+// --- Preset tracking ---
+static int patchPresetIndex[NUM_PATCHES] = {-1,-1,-1,-1,-1,-1,-1,-1}; // -1 = no preset loaded
+static SynthPatch patchPresetSnapshot[NUM_PATCHES]; // snapshot at load time for dirty detection
+static bool presetPickerOpen = false;
+static bool presetPickerJustClosed = false; // skip one frame after closing to avoid click-through
+static bool presetsInitialized = false;
+
+static bool isPatchDirty(int patchIdx) {
+    if (patchPresetIndex[patchIdx] < 0) return false;
+    return memcmp(&patches[patchIdx], &patchPresetSnapshot[patchIdx], sizeof(SynthPatch)) != 0;
+}
+
+static void loadPresetIntoPatch(int patchIdx, int presetIdx) {
+    if (!presetsInitialized) { initInstrumentPresets(); presetsInitialized = true; }
+    // Copy preset params but keep the patch name
+    char nameBak[32];
+    memcpy(nameBak, patches[patchIdx].p_name, 32);
+    patches[patchIdx] = instrumentPresets[presetIdx].patch;
+    memcpy(patches[patchIdx].p_name, nameBak, 32);
+    patchPresetIndex[patchIdx] = presetIdx;
+    patchPresetSnapshot[patchIdx] = patches[patchIdx];
 }
 
 // --- Drums ---
@@ -914,7 +853,83 @@ static void drawWorkSong(float x, float y, float w, float h) {
 // ============================================================================
 
 static void drawParamPatch(float x, float y, float w, float h) {
+    // After closing preset picker, skip until mouse is released to prevent click-through
+    if (presetPickerJustClosed) {
+        if (!IsMouseButtonDown(MOUSE_LEFT_BUTTON)) presetPickerJustClosed = false;
+        return;
+    }
+
     SynthPatch *p = &patches[selectedPatch];
+
+    // Preset selector row
+    if (!presetsInitialized) { initInstrumentPresets(); presetsInitialized = true; }
+    float presetRowY = y;
+    {
+        int pi = patchPresetIndex[selectedPatch];
+        const char* presetName = (pi >= 0) ? instrumentPresets[pi].name : "Custom";
+        bool dirty = isPatchDirty(selectedPatch);
+        const char* display = dirty ? TextFormat("[%s *]", presetName) : TextFormat("[%s]", presetName);
+
+        int fs = 14;
+        DrawTextShadow(display, (int)x + 8, (int)y + 2, fs, (Color){180,180,220,255});
+
+        // Click to open/close preset picker
+        int tw = MeasureText(display, fs) + 16;
+        Rectangle presetR = {x + 4, y, (float)tw, 18};
+        if (CheckCollisionPointRec(GetMousePosition(), presetR) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            presetPickerOpen = !presetPickerOpen;
+            ui_consume_click();
+        }
+
+        y += 20;
+        h -= 20;
+    }
+
+    // If preset picker is open, skip all column content (drawn after return)
+    if (presetPickerOpen) {
+        // Draw popup on top
+        float popX = x + 4, popY = presetRowY + 20;
+        float popW = 400;
+        int pcols = 3, perCol = (NUM_INSTRUMENT_PRESETS + pcols - 1) / pcols;
+        float popH = perCol * 18 + 8;
+        Vector2 mouse = GetMousePosition();
+
+        DrawRectangle((int)popX, (int)popY, (int)popW, (int)popH, (Color){25,25,35,245});
+        DrawRectangleLinesEx((Rectangle){popX,popY,popW,popH}, 1, (Color){80,80,100,255});
+
+        float colW = popW / pcols;
+        bool clickedItem = false;
+        for (int i = 0; i < NUM_INSTRUMENT_PRESETS; i++) {
+            int col = i / perCol, row = i % perCol;
+            float ix = popX + col * colW + 6;
+            float iy = popY + 4 + row * 18;
+            Rectangle itemR = {ix - 2, iy, colW - 4, 17};
+            bool hov = CheckCollisionPointRec(mouse, itemR);
+            bool selected = (i == patchPresetIndex[selectedPatch]);
+            if (selected) DrawRectangleRec(itemR, (Color){50,50,80,255});
+            else if (hov) DrawRectangleRec(itemR, (Color){40,40,60,255});
+            Color tc = selected ? ORANGE : (hov ? WHITE : (Color){160,160,180,255});
+            DrawTextShadow(instrumentPresets[i].name, (int)ix, (int)iy + 1, 13, tc);
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                loadPresetIntoPatch(selectedPatch, i);
+                presetPickerOpen = false;
+                presetPickerJustClosed = true;
+                clickedItem = true;
+                ui_consume_click();
+            }
+        }
+
+        // Click outside popup closes it (also exclude the preset button itself)
+        Rectangle popR = {popX, popY, popW, popH};
+        Rectangle btnR = {x + 4, presetRowY, 200, 20};
+        if (!clickedItem && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)
+            && !CheckCollisionPointRec(mouse, popR)
+            && !CheckCollisionPointRec(mouse, btnR)) {
+            presetPickerOpen = false;
+            ui_consume_click();
+        }
+        return;
+    }
 
     float col1X = x, col1W = 260;
     float col2X = x + 268;
@@ -924,93 +939,93 @@ static void drawParamPatch(float x, float y, float w, float h) {
     // COL 1: Oscillator + wave-specific
     {
         UIColumn c = ui_column(col1X + 8, y, 16);
-        ui_col_sublabel(&c, TextFormat("OSC: %s [%s]", patches[selectedPatch].name, waveNames[p->wave]), ORANGE);
-        c.y += drawWaveSelector(c.x, c.y, col1W - 16, &p->wave);
+        ui_col_sublabel(&c, TextFormat("OSC: %s [%s]", patches[selectedPatch].p_name, waveNames[p->p_waveType]), ORANGE);
+        c.y += drawWaveSelector(c.x, c.y, col1W - 16, &p->p_waveType);
         ui_col_space(&c, 2);
 
-        if (p->wave == 0) {
+        if (p->p_waveType == WAVE_SQUARE) {
             ui_col_sublabel(&c, "PWM:", (Color){140,160,200,255});
-            ui_col_float_p(&c, "Width", &p->pulseWidth, 0.05f, 0.1f, 0.9f);
-            ui_col_float(&c, "Rate", &p->pwmRate, 0.5f, 0.1f, 20.0f);
-            ui_col_float(&c, "Depth", &p->pwmDepth, 0.02f, 0.0f, 0.4f);
-        } else if (p->wave == 4) {
+            ui_col_float_p(&c, "Width", &p->p_pulseWidth, 0.05f, 0.1f, 0.9f);
+            ui_col_float(&c, "Rate", &p->p_pwmRate, 0.5f, 0.1f, 20.0f);
+            ui_col_float(&c, "Depth", &p->p_pwmDepth, 0.02f, 0.0f, 0.4f);
+        } else if (p->p_waveType == WAVE_SCW) {
             ui_col_sublabel(&c, "Wavetable:", (Color){140,160,200,255});
-            ui_col_int(&c, "SCW", &p->scwIndex, 0.3f, 0, 20);
-        } else if (p->wave == 5) {
+            ui_col_int(&c, "SCW", &p->p_scwIndex, 0.3f, 0, 20);
+        } else if (p->p_waveType == WAVE_VOICE) {
             ui_col_sublabel(&c, "Formant:", (Color){140,160,200,255});
-            ui_col_cycle(&c, "Vowel", vowelNames, 5, &p->voiceVowel);
-            ui_col_toggle(&c, "Random", &p->voiceRandomVowel);
-            ui_col_float(&c, "Pitch", &p->voicePitch, 0.1f, 0.3f, 2.0f);
-            ui_col_float(&c, "Speed", &p->voiceSpeed, 1.0f, 4.0f, 20.0f);
-            ui_col_float(&c, "Formant", &p->voiceFormantShift, 0.05f, 0.5f, 1.5f);
-            ui_col_float(&c, "Breath", &p->voiceBreathiness, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&c, "Buzz", &p->voiceBuzziness, 0.05f, 0.0f, 1.0f);
-            ui_col_toggle(&c, "Consonant", &p->voiceConsonant);
-            if (p->voiceConsonant) ui_col_float(&c, "ConsAmt", &p->voiceConsonantAmt, 0.05f, 0.0f, 1.0f);
-            ui_col_toggle(&c, "Nasal", &p->voiceNasal);
-            if (p->voiceNasal) ui_col_float(&c, "NasalAmt", &p->voiceNasalAmt, 0.05f, 0.0f, 1.0f);
+            ui_col_cycle(&c, "Vowel", vowelNames, 5, &p->p_voiceVowel);
+            ui_col_toggle(&c, "Random", &daw_voiceRandomVowel);
+            ui_col_float(&c, "Pitch", &p->p_voicePitch, 0.1f, 0.3f, 2.0f);
+            ui_col_float(&c, "Speed", &p->p_voiceSpeed, 1.0f, 4.0f, 20.0f);
+            ui_col_float(&c, "Formant", &p->p_voiceFormantShift, 0.05f, 0.5f, 1.5f);
+            ui_col_float(&c, "Breath", &p->p_voiceBreathiness, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Buzz", &p->p_voiceBuzziness, 0.05f, 0.0f, 1.0f);
+            ui_col_toggle(&c, "Consonant", &p->p_voiceConsonant);
+            if (p->p_voiceConsonant) ui_col_float(&c, "ConsAmt", &p->p_voiceConsonantAmt, 0.05f, 0.0f, 1.0f);
+            ui_col_toggle(&c, "Nasal", &p->p_voiceNasal);
+            if (p->p_voiceNasal) ui_col_float(&c, "NasalAmt", &p->p_voiceNasalAmt, 0.05f, 0.0f, 1.0f);
             ui_col_sublabel(&c, "Pitch Env:", (Color){120,140,180,255});
-            ui_col_float(&c, "Bend", &p->voicePitchEnv, 0.5f, -12.0f, 12.0f);
-            ui_col_float(&c, "Time", &p->voicePitchEnvTime, 0.02f, 0.02f, 0.5f);
-            ui_col_float(&c, "Curve", &p->voicePitchEnvCurve, 0.1f, -1.0f, 1.0f);
-        } else if (p->wave == 6) {
+            ui_col_float(&c, "Bend", &p->p_voicePitchEnv, 0.5f, -12.0f, 12.0f);
+            ui_col_float(&c, "Time", &p->p_voicePitchEnvTime, 0.02f, 0.02f, 0.5f);
+            ui_col_float(&c, "Curve", &p->p_voicePitchEnvCurve, 0.1f, -1.0f, 1.0f);
+        } else if (p->p_waveType == WAVE_PLUCK) {
             ui_col_sublabel(&c, "Pluck:", (Color){140,160,200,255});
-            ui_col_float(&c, "Bright", &p->pluckBrightness, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&c, "Sustain", &p->pluckDamping, 0.0002f, 0.995f, 0.9998f);
-            ui_col_float(&c, "Damp", &p->pluckDamp, 0.05f, 0.0f, 1.0f);
-        } else if (p->wave == 7) {
+            ui_col_float(&c, "Bright", &p->p_pluckBrightness, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Sustain", &p->p_pluckDamping, 0.0002f, 0.995f, 0.9998f);
+            ui_col_float(&c, "Damp", &p->p_pluckDamp, 0.05f, 0.0f, 1.0f);
+        } else if (p->p_waveType == WAVE_ADDITIVE) {
             ui_col_sublabel(&c, "Additive:", (Color){140,160,200,255});
-            ui_col_cycle(&c, "Preset", additivePresetNames, 5, &p->additivePreset);
-            ui_col_float(&c, "Bright", &p->additiveBrightness, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&c, "Shimmer", &p->additiveShimmer, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&c, "Inharm", &p->additiveInharmonicity, 0.005f, 0.0f, 0.1f);
-        } else if (p->wave == 8) {
+            ui_col_cycle(&c, "Preset", additivePresetNames, 5, &p->p_additivePreset);
+            ui_col_float(&c, "Bright", &p->p_additiveBrightness, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Shimmer", &p->p_additiveShimmer, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Inharm", &p->p_additiveInharmonicity, 0.005f, 0.0f, 0.1f);
+        } else if (p->p_waveType == WAVE_MALLET) {
             ui_col_sublabel(&c, "Mallet:", (Color){140,160,200,255});
-            ui_col_cycle(&c, "Preset", malletPresetNames, 5, &p->malletPreset);
-            ui_col_float(&c, "Stiff", &p->malletStiffness, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&c, "Hard", &p->malletHardness, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&c, "Strike", &p->malletStrikePos, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&c, "Reson", &p->malletResonance, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&c, "Damp", &p->malletDamp, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&c, "Tremolo", &p->malletTremolo, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&c, "TremSpd", &p->malletTremoloRate, 0.5f, 1.0f, 12.0f);
-        } else if (p->wave == 9) {
+            ui_col_cycle(&c, "Preset", malletPresetNames, 5, &p->p_malletPreset);
+            ui_col_float(&c, "Stiff", &p->p_malletStiffness, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Hard", &p->p_malletHardness, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Strike", &p->p_malletStrikePos, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Reson", &p->p_malletResonance, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Damp", &p->p_malletDamp, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Tremolo", &p->p_malletTremolo, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "TremSpd", &p->p_malletTremoloRate, 0.5f, 1.0f, 12.0f);
+        } else if (p->p_waveType == WAVE_GRANULAR) {
             ui_col_sublabel(&c, "Granular:", (Color){140,160,200,255});
-            ui_col_int(&c, "Source", &p->granularScwIndex, 0.3f, 0, 20);
-            ui_col_float(&c, "Size", &p->granularGrainSize, 5.0f, 10.0f, 200.0f);
-            ui_col_float(&c, "Density", &p->granularDensity, 2.0f, 1.0f, 100.0f);
-            ui_col_float(&c, "Pos", &p->granularPosition, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&c, "PosRnd", &p->granularPosRandom, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&c, "Pitch", &p->granularPitch, 0.1f, 0.25f, 4.0f);
-            ui_col_float(&c, "PitRnd", &p->granularPitchRandom, 0.5f, 0.0f, 12.0f);
-            ui_col_toggle(&c, "Freeze", &p->granularFreeze);
-        } else if (p->wave == 10) {
+            ui_col_int(&c, "Source", &p->p_granularScwIndex, 0.3f, 0, 20);
+            ui_col_float(&c, "Size", &p->p_granularGrainSize, 5.0f, 10.0f, 200.0f);
+            ui_col_float(&c, "Density", &p->p_granularDensity, 2.0f, 1.0f, 100.0f);
+            ui_col_float(&c, "Pos", &p->p_granularPosition, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "PosRnd", &p->p_granularPosRandom, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Pitch", &p->p_granularPitch, 0.1f, 0.25f, 4.0f);
+            ui_col_float(&c, "PitRnd", &p->p_granularPitchRandom, 0.5f, 0.0f, 12.0f);
+            ui_col_toggle(&c, "Freeze", &p->p_granularFreeze);
+        } else if (p->p_waveType == WAVE_FM) {
             ui_col_sublabel(&c, "FM Synth:", (Color){140,160,200,255});
-            ui_col_float(&c, "Ratio", &p->fmModRatio, 0.5f, 0.5f, 16.0f);
-            ui_col_float(&c, "Index", &p->fmModIndex, 0.1f, 0.0f, 10.0f);
-            ui_col_float(&c, "Feedback", &p->fmFeedback, 0.05f, 0.0f, 1.0f);
-        } else if (p->wave == 11) {
+            ui_col_float(&c, "Ratio", &p->p_fmModRatio, 0.5f, 0.5f, 16.0f);
+            ui_col_float(&c, "Index", &p->p_fmModIndex, 0.1f, 0.0f, 10.0f);
+            ui_col_float(&c, "Feedback", &p->p_fmFeedback, 0.05f, 0.0f, 1.0f);
+        } else if (p->p_waveType == WAVE_PD) {
             ui_col_sublabel(&c, "Phase Dist:", (Color){140,160,200,255});
-            ui_col_cycle(&c, "Wave", pdWaveNames, 5, &p->pdWaveType);
-            ui_col_float(&c, "Distort", &p->pdDistortion, 0.05f, 0.0f, 1.0f);
-        } else if (p->wave == 12) {
+            ui_col_cycle(&c, "Wave", pdWaveNames, 5, &p->p_pdWaveType);
+            ui_col_float(&c, "Distort", &p->p_pdDistortion, 0.05f, 0.0f, 1.0f);
+        } else if (p->p_waveType == WAVE_MEMBRANE) {
             ui_col_sublabel(&c, "Membrane:", (Color){140,160,200,255});
-            ui_col_cycle(&c, "Preset", membranePresetNames, 5, &p->membranePreset);
-            ui_col_float(&c, "Damping", &p->membraneDamping, 0.05f, 0.1f, 1.0f);
-            ui_col_float(&c, "Strike", &p->membraneStrike, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&c, "Bend", &p->membraneBend, 0.02f, 0.0f, 0.5f);
-            ui_col_float(&c, "BndDcy", &p->membraneBendDecay, 0.01f, 0.02f, 0.3f);
-        } else if (p->wave == 13) {
+            ui_col_cycle(&c, "Preset", membranePresetNames, 5, &p->p_membranePreset);
+            ui_col_float(&c, "Damping", &p->p_membraneDamping, 0.05f, 0.1f, 1.0f);
+            ui_col_float(&c, "Strike", &p->p_membraneStrike, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Bend", &p->p_membraneBend, 0.02f, 0.0f, 0.5f);
+            ui_col_float(&c, "BndDcy", &p->p_membraneBendDecay, 0.01f, 0.02f, 0.3f);
+        } else if (p->p_waveType == WAVE_BIRD) {
             ui_col_sublabel(&c, "Bird:", (Color){140,160,200,255});
-            ui_col_cycle(&c, "Type", birdTypeNames, 5, &p->birdType);
-            ui_col_float(&c, "Range", &p->birdChirpRange, 0.1f, 0.5f, 2.0f);
-            ui_col_float(&c, "Harmon", &p->birdHarmonics, 0.05f, 0.0f, 1.0f);
+            ui_col_cycle(&c, "Type", birdTypeNames, 5, &p->p_birdType);
+            ui_col_float(&c, "Range", &p->p_birdChirpRange, 0.1f, 0.5f, 2.0f);
+            ui_col_float(&c, "Harmon", &p->p_birdHarmonics, 0.05f, 0.0f, 1.0f);
             ui_col_sublabel(&c, "Trill:", (Color){120,140,180,255});
-            ui_col_float(&c, "Rate", &p->birdTrillRate, 1.0f, 0.0f, 30.0f);
-            ui_col_float(&c, "Depth", &p->birdTrillDepth, 0.2f, 0.0f, 5.0f);
+            ui_col_float(&c, "Rate", &p->p_birdTrillRate, 1.0f, 0.0f, 30.0f);
+            ui_col_float(&c, "Depth", &p->p_birdTrillDepth, 0.2f, 0.0f, 5.0f);
             ui_col_sublabel(&c, "Flutter:", (Color){120,140,180,255});
-            ui_col_float(&c, "AM Rate", &p->birdAmRate, 1.0f, 0.0f, 20.0f);
-            ui_col_float(&c, "AM Dep", &p->birdAmDepth, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "AM Rate", &p->p_birdAmRate, 1.0f, 0.0f, 20.0f);
+            ui_col_float(&c, "AM Dep", &p->p_birdAmDepth, 0.05f, 0.0f, 1.0f);
         }
     }
 
@@ -1024,29 +1039,29 @@ static void drawParamPatch(float x, float y, float w, float h) {
         // ADSR curve
         UIColumn c = ui_column(envX, y, 16);
         ui_col_sublabel(&c, "Envelope:", ORANGE);
-        c.y += drawADSRCurve(envX, c.y, envW, 55, &p->attack, &p->decay, &p->sustain, &p->release, p->expRelease);
+        c.y += drawADSRCurve(envX, c.y, envW, 55, &p->p_attack, &p->p_decay, &p->p_sustain, &p->p_release, p->p_expRelease);
 
-        ui_col_float_p(&c, "Atk", &p->attack, 0.5f, 0.001f, 2.0f);
-        ui_col_float_p(&c, "Dec", &p->decay, 0.5f, 0.0f, 2.0f);
-        ui_col_float(&c, "Sus", &p->sustain, 0.5f, 0.0f, 1.0f);
-        ui_col_float(&c, "Rel", &p->release, 0.5f, 0.01f, 3.0f);
-        ui_col_toggle(&c, "Exp Release", &p->expRelease);
+        ui_col_float_p(&c, "Atk", &p->p_attack, 0.5f, 0.001f, 2.0f);
+        ui_col_float_p(&c, "Dec", &p->p_decay, 0.5f, 0.0f, 2.0f);
+        ui_col_float(&c, "Sus", &p->p_sustain, 0.5f, 0.0f, 1.0f);
+        ui_col_float(&c, "Rel", &p->p_release, 0.5f, 0.01f, 3.0f);
+        ui_col_toggle(&c, "Exp Release", &p->p_expRelease);
         ui_col_space(&c, 6);
 
         // Filter
         ui_col_sublabel(&c, "Filter:", ORANGE);
         float filtY = c.y;
-        ui_col_float_p(&c, "Cut", &p->filterCutoff, 0.05f, 0.01f, 1.0f);
-        ui_col_float_p(&c, "Res", &p->filterResonance, 0.05f, 0.0f, 1.0f);
-        ui_col_float_p(&c, "EnvAmt", &p->filterEnvAmt, 0.05f, -1.0f, 1.0f);
-        ui_col_float(&c, "EnvAtk", &p->filterEnvAttack, 0.01f, 0.001f, 0.5f);
-        ui_col_float(&c, "EnvDcy", &p->filterEnvDecay, 0.05f, 0.01f, 2.0f);
+        ui_col_float_p(&c, "Cut", &p->p_filterCutoff, 0.05f, 0.01f, 1.0f);
+        ui_col_float_p(&c, "Res", &p->p_filterResonance, 0.05f, 0.0f, 1.0f);
+        ui_col_float_p(&c, "EnvAmt", &p->p_filterEnvAmt, 0.05f, -1.0f, 1.0f);
+        ui_col_float(&c, "EnvAtk", &p->p_filterEnvAttack, 0.01f, 0.001f, 0.5f);
+        ui_col_float(&c, "EnvDcy", &p->p_filterEnvDecay, 0.05f, 0.01f, 2.0f);
 
         // XY pad next to filter sliders
         float padSize = c.y - filtY - 4;
         if (padSize < 50) padSize = 50;
         if (padSize > 90) padSize = 90;
-        drawFilterXY(envX + envW - padSize - 4, filtY, padSize, &p->filterCutoff, &p->filterResonance);
+        drawFilterXY(envX + envW - padSize - 4, filtY, padSize, &p->p_filterCutoff, &p->p_filterResonance);
     }
 
     // Vertical divider
@@ -1057,44 +1072,44 @@ static void drawParamPatch(float x, float y, float w, float h) {
         UIColumn c = ui_column(col3X, y, 16);
 
         ui_col_sublabel(&c, "Vibrato:", ORANGE);
-        ui_col_float(&c, "Rate", &p->vibratoRate, 0.5f, 0.5f, 15.0f);
-        ui_col_float(&c, "Depth", &p->vibratoDepth, 0.2f, 0.0f, 2.0f);
+        ui_col_float(&c, "Rate", &p->p_vibratoRate, 0.5f, 0.5f, 15.0f);
+        ui_col_float(&c, "Depth", &p->p_vibratoDepth, 0.2f, 0.0f, 2.0f);
         ui_col_space(&c, 3);
 
         ui_col_sublabel(&c, "Volume:", ORANGE);
-        ui_col_float_p(&c, "Note", &p->volume, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Master", &masterVolume, 0.05f, 0.0f, 1.0f);
+        ui_col_float_p(&c, "Note", &p->p_volume, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Master", &daw_masterVolume, 0.05f, 0.0f, 1.0f);
         ui_col_space(&c, 3);
 
-        if (p->wave != 6 && p->wave != 8) {
+        if (p->p_waveType != WAVE_PLUCK && p->p_waveType != WAVE_MALLET) {
             ui_col_sublabel(&c, "Mono/Glide:", ORANGE);
-            ui_col_toggle(&c, "Mono", &p->monoMode);
-            if (p->monoMode) ui_col_float(&c, "Glide", &p->glideTime, 0.02f, 0.01f, 1.0f);
+            ui_col_toggle(&c, "Mono", &p->p_monoMode);
+            if (p->p_monoMode) ui_col_float(&c, "Glide", &p->p_glideTime, 0.02f, 0.01f, 1.0f);
             ui_col_space(&c, 3);
         }
 
-        if (p->wave <= 2) {
+        if (p->p_waveType <= WAVE_TRIANGLE) {
             ui_col_sublabel(&c, "Unison:", ORANGE);
-            ui_col_int(&c, "Count", &p->unisonCount, 1, 1, 4);
-            if (p->unisonCount > 1) ui_col_float(&c, "Detune", &p->unisonDetune, 1.0f, 0.0f, 50.0f);
+            ui_col_int(&c, "Count", &p->p_unisonCount, 1, 1, 4);
+            if (p->p_unisonCount > 1) ui_col_float(&c, "Detune", &p->p_unisonDetune, 1.0f, 0.0f, 50.0f);
             ui_col_space(&c, 3);
         }
 
         ui_col_sublabel(&c, "Arpeggiator:", ORANGE);
-        ui_col_toggle(&c, "On", &p->arpEnabled);
-        if (p->arpEnabled) {
-            ui_col_cycle(&c, "Mode", arpModeNames, 4, &p->arpMode);
-            ui_col_cycle(&c, "Chord", arpChordNames, 7, &p->arpChord);
-            ui_col_cycle(&c, "Rate", arpRateNames, 5, &p->arpRateDiv);
-            if (p->arpRateDiv == 4) ui_col_float(&c, "Hz", &p->arpRate, 0.5f, 1.0f, 30.0f);
+        ui_col_toggle(&c, "On", &p->p_arpEnabled);
+        if (p->p_arpEnabled) {
+            ui_col_cycle(&c, "Mode", arpModeNames, 4, &p->p_arpMode);
+            ui_col_cycle(&c, "Chord", arpChordNames, 7, &p->p_arpChord);
+            ui_col_cycle(&c, "Rate", arpRateNames, 5, &p->p_arpRateDiv);
+            if (p->p_arpRateDiv == 4) ui_col_float(&c, "Hz", &p->p_arpRate, 0.5f, 1.0f, 30.0f);
         }
         ui_col_space(&c, 3);
 
         ui_col_sublabel(&c, "Scale Lock:", ORANGE);
-        ui_col_toggle(&c, "On", &p->scaleLockEnabled);
-        if (p->scaleLockEnabled) {
-            ui_col_cycle(&c, "Root", rootNoteNames, 12, &p->scaleRoot);
-            ui_col_cycle(&c, "Scale", scaleNames, 9, &p->scaleType);
+        ui_col_toggle(&c, "On", &daw_scaleLockEnabled);
+        if (daw_scaleLockEnabled) {
+            ui_col_cycle(&c, "Root", rootNoteNames, 12, &daw_scaleRoot);
+            ui_col_cycle(&c, "Scale", scaleNames, 9, &daw_scaleType);
         }
     }
 
@@ -1109,10 +1124,10 @@ static void drawParamPatch(float x, float y, float w, float h) {
         (void)sliderW;
 
         struct { const char* name; float *rate, *depth; int *shape; int *sync; } lfos[] = {
-            {"Filter LFO", &p->lfoFilterRate, &p->lfoFilterDepth, &p->lfoFilterShape, &p->lfoFilterSync},
-            {"Reso LFO",   &p->lfoResoRate,   &p->lfoResoDepth,   &p->lfoResoShape,   NULL},
-            {"Amp LFO",    &p->lfoAmpRate,     &p->lfoAmpDepth,    &p->lfoAmpShape,    NULL},
-            {"Pitch LFO",  &p->lfoPitchRate,   &p->lfoPitchDepth,  &p->lfoPitchShape,  NULL},
+            {"Filter LFO", &p->p_filterLfoRate, &p->p_filterLfoDepth, &p->p_filterLfoShape, &p->p_filterLfoSync},
+            {"Reso LFO",   &p->p_resoLfoRate,   &p->p_resoLfoDepth,   &p->p_resoLfoShape,   NULL},
+            {"Amp LFO",    &p->p_ampLfoRate,     &p->p_ampLfoDepth,    &p->p_ampLfoShape,    NULL},
+            {"Pitch LFO",  &p->p_pitchLfoRate,   &p->p_pitchLfoDepth,  &p->p_pitchLfoShape,  NULL},
         };
 
         float ly = y;
