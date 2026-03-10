@@ -22,7 +22,7 @@
 // ============================================================================
 
 #define TRANSPORT_H 36
-#define SIDEBAR_W 310
+#define SIDEBAR_W 340
 #define DETAIL_H 140
 #define TAB_H 26
 
@@ -411,6 +411,322 @@ static void drawTabBar(float x, float y, float w, const char** names, const int*
 }
 
 // ============================================================================
+// BESPOKE UI WIDGETS
+// ============================================================================
+
+// Wave thumbnail: draw a tiny waveform icon for each wave type
+static void drawWaveThumb(float x, float y, float w, float h, int waveType, bool selected, bool hovered) {
+    Color bg = selected ? (Color){50, 65, 80, 255} : (hovered ? (Color){42, 44, 52, 255} : (Color){30, 31, 38, 255});
+    DrawRectangle((int)x, (int)y, (int)w, (int)h, bg);
+    if (selected) DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, ORANGE);
+    else DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, (Color){48, 48, 58, 255});
+
+    float cx = x + 2, cy = y + 2, cw = w - 4, ch = h - 4;
+    float mid = cy + ch * 0.5f;
+    Color lineCol = selected ? WHITE : (Color){120, 130, 150, 255};
+    int steps = (int)cw;
+
+    for (int i = 0; i < steps - 1; i++) {
+        float t0 = (float)i / (float)steps;
+        float t1 = (float)(i + 1) / (float)steps;
+        float v0 = 0, v1 = 0;
+
+        switch (waveType) {
+            case 0: // Square
+                v0 = t0 < 0.5f ? 1.0f : -1.0f;
+                v1 = t1 < 0.5f ? 1.0f : -1.0f;
+                break;
+            case 1: // Saw
+                v0 = 1.0f - 2.0f * t0;
+                v1 = 1.0f - 2.0f * t1;
+                break;
+            case 2: // Triangle
+                v0 = t0 < 0.5f ? (4.0f * t0 - 1.0f) : (3.0f - 4.0f * t0);
+                v1 = t1 < 0.5f ? (4.0f * t1 - 1.0f) : (3.0f - 4.0f * t1);
+                break;
+            case 3: // Noise
+                v0 = ((float)((i * 7 + 13) % 17)) / 8.5f - 1.0f;
+                v1 = ((float)(((i + 1) * 7 + 13) % 17)) / 8.5f - 1.0f;
+                break;
+            case 4: // SCW (wavy)
+                v0 = sinf(t0 * 6.28f) * 0.6f + sinf(t0 * 12.56f) * 0.3f;
+                v1 = sinf(t1 * 6.28f) * 0.6f + sinf(t1 * 12.56f) * 0.3f;
+                break;
+            case 5: // Voice (formant-ish bumps)
+                v0 = sinf(t0 * 6.28f) * (1.0f - 0.5f * sinf(t0 * 18.84f));
+                v1 = sinf(t1 * 6.28f) * (1.0f - 0.5f * sinf(t1 * 18.84f));
+                break;
+            case 6: // Pluck (decaying)
+                v0 = sinf(t0 * 25.0f) * (1.0f - t0);
+                v1 = sinf(t1 * 25.0f) * (1.0f - t1);
+                break;
+            case 7: // Additive (organ-like)
+                v0 = sinf(t0*6.28f)*0.5f + sinf(t0*12.56f)*0.3f + sinf(t0*18.84f)*0.2f;
+                v1 = sinf(t1*6.28f)*0.5f + sinf(t1*12.56f)*0.3f + sinf(t1*18.84f)*0.2f;
+                break;
+            case 8: // Mallet (decaying harmonics)
+                v0 = sinf(t0*12.56f) * expf(-t0*3.0f);
+                v1 = sinf(t1*12.56f) * expf(-t1*3.0f);
+                break;
+            case 9: // Granular (choppy)
+                v0 = sinf(t0 * 31.4f) * (((int)(t0*6)%2) ? 0.8f : 0.3f);
+                v1 = sinf(t1 * 31.4f) * (((int)(t1*6)%2) ? 0.8f : 0.3f);
+                break;
+            case 10: // FM
+                v0 = sinf(t0*6.28f + 2.0f*sinf(t0*12.56f));
+                v1 = sinf(t1*6.28f + 2.0f*sinf(t1*12.56f));
+                break;
+            case 11: // PD (phase distorted)
+                { float p0 = t0 < 0.5f ? t0*t0*2.0f : 0.5f+(t0-0.5f)*(2.0f-t0*2.0f);
+                  float p1 = t1 < 0.5f ? t1*t1*2.0f : 0.5f+(t1-0.5f)*(2.0f-t1*2.0f);
+                  v0 = sinf(p0*6.28f); v1 = sinf(p1*6.28f); }
+                break;
+            case 12: // Membrane (inharmonic)
+                v0 = sinf(t0*6.28f)*0.5f + sinf(t0*9.8f)*0.3f + sinf(t0*15.2f)*0.2f;
+                v1 = sinf(t1*6.28f)*0.5f + sinf(t1*9.8f)*0.3f + sinf(t1*15.2f)*0.2f;
+                v0 *= expf(-t0*2.0f); v1 *= expf(-t1*2.0f);
+                break;
+            case 13: // Bird (chirp)
+                v0 = sinf(t0*6.28f*(1.0f + t0*3.0f)) * (1.0f - t0*0.5f);
+                v1 = sinf(t1*6.28f*(1.0f + t1*3.0f)) * (1.0f - t1*0.5f);
+                break;
+            default:
+                v0 = sinf(t0 * 6.28f); v1 = sinf(t1 * 6.28f);
+        }
+        float y0 = mid - v0 * ch * 0.4f;
+        float y1 = mid - v1 * ch * 0.4f;
+        DrawLine((int)(cx + i), (int)y0, (int)(cx + i + 1), (int)y1, lineCol);
+    }
+}
+
+// Wave selector grid: clickable thumbnails, split into waveforms + engines
+static float drawWaveSelector(float x, float y, float w, int* wave) {
+    // Row 1: Waveforms (0-4): Square, Saw, Triangle, Noise, SCW
+    // Row 2: Engines (5-13): Voice, Pluck, Additive, Mallet, Granular, FM, PD, Membrane, Bird
+    int waveCount = 5, engineCount = 9;
+    float thumbH = 22;
+    Vector2 mouse = GetMousePosition();
+    float totalH = 0;
+
+    // Waveforms row
+    float thumbW = (w - (waveCount - 1) * 2) / waveCount;
+    for (int i = 0; i < waveCount; i++) {
+        float tx = x + i * (thumbW + 2);
+        float ty = y;
+        bool sel = (i == *wave);
+        bool hov = CheckCollisionPointRec(mouse, (Rectangle){tx, ty, thumbW, thumbH});
+        drawWaveThumb(tx, ty, thumbW, thumbH, i, sel, hov);
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { *wave = i; ui_consume_click(); }
+    }
+    totalH += thumbH + 4;
+
+    // "Engines" label
+    DrawTextShadow("Engines:", (int)x, (int)(y + totalH), 10, (Color){80, 80, 95, 255});
+    totalH += 13;
+
+    // Engines rows: 5 + 4
+    int engRow1 = 5; // Voice, Pluck, Additive, Mallet, Granular
+    float eThumbW = (w - (engRow1 - 1) * 2) / engRow1;
+    for (int i = 0; i < engRow1; i++) {
+        int waveIdx = 5 + i;
+        float tx = x + i * (eThumbW + 2);
+        float ty = y + totalH;
+        bool sel = (waveIdx == *wave);
+        bool hov = CheckCollisionPointRec(mouse, (Rectangle){tx, ty, eThumbW, thumbH});
+        drawWaveThumb(tx, ty, eThumbW, thumbH, waveIdx, sel, hov);
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { *wave = waveIdx; ui_consume_click(); }
+    }
+    totalH += thumbH + 2;
+
+    int engRow2 = 4; // FM, PD, Membrane, Bird
+    eThumbW = (w - (engRow2 - 1) * 2) / engRow2;
+    for (int i = 0; i < engRow2; i++) {
+        int waveIdx = 10 + i;
+        float tx = x + i * (eThumbW + 2);
+        float ty = y + totalH;
+        bool sel = (waveIdx == *wave);
+        bool hov = CheckCollisionPointRec(mouse, (Rectangle){tx, ty, eThumbW, thumbH});
+        drawWaveThumb(tx, ty, eThumbW, thumbH, waveIdx, sel, hov);
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { *wave = waveIdx; ui_consume_click(); }
+    }
+    totalH += thumbH + 4;
+
+    return totalH;
+}
+
+// ADSR envelope curve visualization
+static float drawADSRCurve(float x, float y, float w, float h,
+                            float *atk, float *dec, float *sus, float *rel, bool expRel) {
+    DrawRectangle((int)x, (int)y, (int)w, (int)h, (Color){22, 22, 28, 255});
+    DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, (Color){42, 42, 52, 255});
+
+    // Normalize times to fit in the box
+    float totalTime = *atk + *dec + 0.3f + *rel; // sustain gets fixed display width
+    float atkW = (*atk / totalTime) * w;
+    float decW = (*dec / totalTime) * w;
+    float susW = (0.3f / totalTime) * w;
+    float relW = (*rel / totalTime) * w;
+    float susLevel = *sus;
+
+    float bot = y + h - 2;
+    float top = y + 2;
+    float range = bot - top;
+
+    // Draw curve
+    Color curveCol = (Color){100, 200, 120, 255};
+    // Attack: 0 -> 1
+    DrawLine((int)x, (int)bot, (int)(x + atkW), (int)top, curveCol);
+    // Decay: 1 -> sustain
+    float susY = bot - susLevel * range;
+    DrawLine((int)(x + atkW), (int)top, (int)(x + atkW + decW), (int)susY, curveCol);
+    // Sustain hold
+    DrawLine((int)(x + atkW + decW), (int)susY, (int)(x + atkW + decW + susW), (int)susY, curveCol);
+    // Release: sustain -> 0
+    float relStartX = x + atkW + decW + susW;
+    if (expRel) {
+        // Draw curved release
+        int steps = (int)relW;
+        for (int i = 0; i < steps; i++) {
+            float t0 = (float)i / (float)steps;
+            float t1 = (float)(i + 1) / (float)steps;
+            float v0 = susLevel * expf(-t0 * 3.0f);
+            float v1 = susLevel * expf(-t1 * 3.0f);
+            DrawLine((int)(relStartX + i), (int)(bot - v0 * range),
+                     (int)(relStartX + i + 1), (int)(bot - v1 * range), curveCol);
+        }
+    } else {
+        DrawLine((int)relStartX, (int)susY, (int)(relStartX + relW), (int)bot, curveCol);
+    }
+
+    // Draggable breakpoints
+    Vector2 mouse = GetMousePosition();
+    Color dotCol = (Color){255, 180, 60, 255};
+    // Attack peak
+    Rectangle atkDot = {x + atkW - 4, top - 4, 8, 8};
+    DrawRectangleRec(atkDot, CheckCollisionPointRec(mouse, atkDot) ? WHITE : dotCol);
+    // Sustain level
+    Rectangle susDot = {x + atkW + decW + susW * 0.5f - 4, susY - 4, 8, 8};
+    DrawRectangleRec(susDot, CheckCollisionPointRec(mouse, susDot) ? WHITE : dotCol);
+
+    // Drag attack peak horizontally
+    Rectangle atkZone = {x, y, atkW + decW * 0.5f, h};
+    if (CheckCollisionPointRec(mouse, atkZone) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+        float newAtk = ((mouse.x - x) / w) * totalTime;
+        if (newAtk < 0.001f) newAtk = 0.001f;
+        if (newAtk > 2.0f) newAtk = 2.0f;
+        *atk = newAtk;
+    }
+    // Drag sustain level vertically
+    Rectangle susZone = {x + atkW + decW * 0.5f, y, susW + decW * 0.5f + relW * 0.3f, h};
+    if (CheckCollisionPointRec(mouse, susZone) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+        float newSus = 1.0f - (mouse.y - top) / range;
+        if (newSus < 0.0f) newSus = 0.0f;
+        if (newSus > 1.0f) newSus = 1.0f;
+        *sus = newSus;
+    }
+
+    return h + 4;
+}
+
+// Filter XY pad: X = cutoff, Y = resonance
+static float drawFilterXY(float x, float y, float size, float *cutoff, float *resonance) {
+    DrawRectangle((int)x, (int)y, (int)size, (int)size, (Color){22, 22, 28, 255});
+    DrawRectangleLinesEx((Rectangle){x, y, size, size}, 1, (Color){42, 42, 52, 255});
+
+    // Grid lines
+    for (int i = 1; i < 4; i++) {
+        float gx = x + size * i * 0.25f;
+        float gy = y + size * i * 0.25f;
+        DrawLine((int)gx, (int)y, (int)gx, (int)(y + size), (Color){32, 32, 38, 255});
+        DrawLine((int)x, (int)gy, (int)(x + size), (int)gy, (Color){32, 32, 38, 255});
+    }
+
+    // Labels
+    DrawTextShadow("Cut", (int)x + 2, (int)(y + size - 12), 9, (Color){60, 60, 70, 255});
+    DrawTextShadow("Res", (int)(x + size - 20), (int)y + 2, 9, (Color){60, 60, 70, 255});
+
+    // Crosshair position
+    float cx = x + (*cutoff) * size;
+    float cy = y + (1.0f - *resonance) * size;
+
+    // Crosshair lines
+    DrawLine((int)cx, (int)y, (int)cx, (int)(y + size), (Color){60, 80, 100, 200});
+    DrawLine((int)x, (int)cy, (int)(x + size), (int)cy, (Color){60, 80, 100, 200});
+
+    // Dot
+    DrawCircle((int)cx, (int)cy, 5, (Color){255, 140, 40, 255});
+    DrawCircle((int)cx, (int)cy, 3, WHITE);
+
+    // Drag interaction
+    Vector2 mouse = GetMousePosition();
+    Rectangle pad = {x, y, size, size};
+    if (CheckCollisionPointRec(mouse, pad) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+        float newCut = (mouse.x - x) / size;
+        float newRes = 1.0f - (mouse.y - y) / size;
+        if (newCut < 0.01f) newCut = 0.01f;
+        if (newCut > 1.0f) newCut = 1.0f;
+        if (newRes < 0.0f) newRes = 0.0f;
+        if (newRes > 1.0f) newRes = 1.0f;
+        *cutoff = newCut;
+        *resonance = newRes;
+    }
+
+    return size + 4;
+}
+
+// LFO waveform preview
+static float drawLFOPreview(float x, float y, float w, float h,
+                             int shape, float rate, float depth) {
+    DrawRectangle((int)x, (int)y, (int)w, (int)h, (Color){22, 22, 28, 255});
+    DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, (Color){42, 42, 52, 255});
+
+    if (depth < 0.001f || rate < 0.001f) {
+        DrawTextShadow("off", (int)(x + w * 0.5f - 8), (int)(y + h * 0.5f - 5), 10, (Color){50, 50, 58, 255});
+        return h + 2;
+    }
+
+    float mid = y + h * 0.5f;
+    float amp = h * 0.4f * (depth > 1.0f ? 1.0f : depth);
+    float t = (float)GetTime();
+    Color lineCol = (Color){130, 130, 220, 255};
+    int steps = (int)w;
+
+    for (int i = 0; i < steps - 1; i++) {
+        float phase0 = ((float)i / w) * 2.0f + t * rate * 0.2f;
+        float phase1 = ((float)(i + 1) / w) * 2.0f + t * rate * 0.2f;
+        float v0 = 0, v1 = 0;
+
+        switch (shape) {
+            case 0: // Sine
+                v0 = sinf(phase0 * 6.28f); v1 = sinf(phase1 * 6.28f); break;
+            case 1: // Triangle
+                v0 = fmodf(phase0, 1.0f); v0 = v0 < 0.5f ? (4.0f*v0-1.0f) : (3.0f-4.0f*v0);
+                v1 = fmodf(phase1, 1.0f); v1 = v1 < 0.5f ? (4.0f*v1-1.0f) : (3.0f-4.0f*v1);
+                break;
+            case 2: // Square
+                v0 = fmodf(phase0, 1.0f) < 0.5f ? 1.0f : -1.0f;
+                v1 = fmodf(phase1, 1.0f) < 0.5f ? 1.0f : -1.0f;
+                break;
+            case 3: // Saw
+                v0 = 1.0f - 2.0f * fmodf(phase0, 1.0f);
+                v1 = 1.0f - 2.0f * fmodf(phase1, 1.0f);
+                break;
+            case 4: // S&H
+                v0 = ((int)(phase0 * 5) * 7 + 3) % 11 / 5.5f - 1.0f;
+                v1 = ((int)(phase1 * 5) * 7 + 3) % 11 / 5.5f - 1.0f;
+                break;
+        }
+        DrawLine((int)(x + i), (int)(mid - v0 * amp),
+                 (int)(x + i + 1), (int)(mid - v1 * amp), lineCol);
+    }
+
+    // Center line
+    DrawLine((int)x, (int)mid, (int)(x + w), (int)mid, (Color){35, 35, 42, 255});
+
+    return h + 2;
+}
+
+// ============================================================================
 // SIDEBAR: SYNTH (patch + wave-specific + envelope + filter + mono + arp + scale)
 // ============================================================================
 
@@ -429,10 +745,12 @@ static void drawSideSynth(float x, float y, float w) {
     }
     ui_col_space(&c, 3);
 
-    // Oscillator
+    // Oscillator - wave thumbnails + name
     ui_col_sublabel(&c, "Oscillator:", ORANGE);
-    ui_col_cycle(&c, "Wave", waveNames, 14, &p->wave);
-    ui_col_space(&c, 3);
+    c.y += drawWaveSelector(c.x, c.y, SIDEBAR_W - 16, &p->wave);
+    DrawTextShadow(waveNames[p->wave], (int)c.x, (int)c.y, 12, (Color){160, 170, 190, 255});
+    c.y += 16;
+    ui_col_space(&c, 2);
 
     // Wave-specific params (conditional)
     if (p->wave == 0) { // Square
@@ -521,22 +839,31 @@ static void drawSideSynth(float x, float y, float w) {
     }
     ui_col_space(&c, 4);
 
-    // Envelope
+    // Envelope - sliders left, ADSR curve right
     ui_col_sublabel(&c, "Envelope:", ORANGE);
+    { float envY = c.y;
     ui_col_float(&c, "Atk", &p->attack, 0.5f, 0.001f, 2.0f);
     ui_col_float(&c, "Dec", &p->decay, 0.5f, 0.0f, 2.0f);
     ui_col_float(&c, "Sus", &p->sustain, 0.5f, 0.0f, 1.0f);
     ui_col_float(&c, "Rel", &p->release, 0.5f, 0.01f, 3.0f);
     ui_col_toggle(&c, "Exp Release", &p->expRelease);
+    float halfW = (SIDEBAR_W - 16) * 0.5f;
+    drawADSRCurve(c.x + halfW + 4, envY, halfW - 4, c.y - envY - 4,
+                   &p->attack, &p->decay, &p->sustain, &p->release, p->expRelease); }
     ui_col_space(&c, 3);
 
-    // Filter
+    // Filter - sliders left, XY pad right
     ui_col_sublabel(&c, "Filter:", ORANGE);
+    { float filtY = c.y;
     ui_col_float(&c, "Cut", &p->filterCutoff, 0.05f, 0.01f, 1.0f);
     ui_col_float(&c, "Res", &p->filterResonance, 0.05f, 0.0f, 1.0f);
     ui_col_float(&c, "EnvAmt", &p->filterEnvAmt, 0.05f, -1.0f, 1.0f);
     ui_col_float(&c, "EnvAtk", &p->filterEnvAttack, 0.01f, 0.001f, 0.5f);
     ui_col_float(&c, "EnvDcy", &p->filterEnvDecay, 0.05f, 0.01f, 2.0f);
+    float filtSize = c.y - filtY - 4;
+    if (filtSize < 60) filtSize = 60;
+    float halfW = (SIDEBAR_W - 16) * 0.5f;
+    drawFilterXY(c.x + halfW + 4, filtY, filtSize, &p->filterCutoff, &p->filterResonance); }
     ui_col_space(&c, 3);
 
     // Vibrato
@@ -587,30 +914,44 @@ static void drawSideSynth(float x, float y, float w) {
     }
     ui_col_space(&c, 3);
 
-    // LFOs
+    // LFOs - sliders left, waveform previews right
+    float halfW = (SIDEBAR_W - 16) * 0.5f;
+
     ui_col_sublabel(&c, "Filter LFO:", (Color){140, 140, 200, 255});
+    { float lfoY = c.y;
     ui_col_float(&c, "Rate", &p->lfoFilterRate, 0.5f, 0.0f, 20.0f);
     ui_col_float(&c, "Depth", &p->lfoFilterDepth, 0.05f, 0.0f, 2.0f);
     ui_col_cycle(&c, "Shape", lfoShapeNames, 5, &p->lfoFilterShape);
     ui_col_cycle(&c, "Sync", lfoSyncNames, 8, &p->lfoFilterSync);
+    drawLFOPreview(c.x + halfW + 4, lfoY, halfW - 4, c.y - lfoY - 4,
+                    p->lfoFilterShape, p->lfoFilterRate, p->lfoFilterDepth); }
     ui_col_space(&c, 2);
 
     ui_col_sublabel(&c, "Reso LFO:", (Color){140, 140, 200, 255});
+    { float lfoY = c.y;
     ui_col_float(&c, "Rate", &p->lfoResoRate, 0.5f, 0.0f, 20.0f);
     ui_col_float(&c, "Depth", &p->lfoResoDepth, 0.05f, 0.0f, 1.0f);
     ui_col_cycle(&c, "Shape", lfoShapeNames, 5, &p->lfoResoShape);
+    drawLFOPreview(c.x + halfW + 4, lfoY, halfW - 4, c.y - lfoY - 4,
+                    p->lfoResoShape, p->lfoResoRate, p->lfoResoDepth); }
     ui_col_space(&c, 2);
 
     ui_col_sublabel(&c, "Amp LFO:", (Color){140, 140, 200, 255});
+    { float lfoY = c.y;
     ui_col_float(&c, "Rate", &p->lfoAmpRate, 0.5f, 0.0f, 20.0f);
     ui_col_float(&c, "Depth", &p->lfoAmpDepth, 0.05f, 0.0f, 1.0f);
     ui_col_cycle(&c, "Shape", lfoShapeNames, 5, &p->lfoAmpShape);
+    drawLFOPreview(c.x + halfW + 4, lfoY, halfW - 4, c.y - lfoY - 4,
+                    p->lfoAmpShape, p->lfoAmpRate, p->lfoAmpDepth); }
     ui_col_space(&c, 2);
 
     ui_col_sublabel(&c, "Pitch LFO:", (Color){140, 140, 200, 255});
+    { float lfoY = c.y;
     ui_col_float(&c, "Rate", &p->lfoPitchRate, 0.5f, 0.0f, 20.0f);
     ui_col_float(&c, "Depth", &p->lfoPitchDepth, 0.05f, 0.0f, 1.0f);
     ui_col_cycle(&c, "Shape", lfoShapeNames, 5, &p->lfoPitchShape);
+    drawLFOPreview(c.x + halfW + 4, lfoY, halfW - 4, c.y - lfoY - 4,
+                    p->lfoPitchShape, p->lfoPitchRate, p->lfoPitchDepth); }
 }
 
 // ============================================================================

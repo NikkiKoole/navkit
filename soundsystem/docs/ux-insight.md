@@ -88,6 +88,83 @@ Scenes are defined in **Song (F3)** and performed from **Mix (5)** via the cross
 
 ---
 
+## Bespoke UI Widgets (2026-03-09)
+
+Not everything should be a slider. Four high-impact parameters get dedicated visual controls:
+
+### 1. ADSR Envelope Curve
+Drawn breakpoint curve replacing 4 blind sliders. You see the shape: attack ramp, decay slope to sustain level, release tail. Draggable points for direct manipulation. Sits above the A/D/S/R sliders so both views coexist.
+
+### 2. Filter XY Pad
+Square pad: X axis = cutoff, Y axis = resonance. One drag gesture replaces two sliders. Lets you find sweet spots by feel. Crosshair shows current position. Sits above the filter sliders.
+
+### 3. LFO Waveform Preview
+Small animated waveform showing the actual LFO shape (sine/tri/sqr/saw/S&H) at current rate. Makes modulation tangible — you see what the LFO is doing, not just numbers. One per LFO target.
+
+### 4. Wave Selector Thumbnails
+Tiny waveform icons instead of cycling text. Square wave looks like a square, saw looks like a saw. Immediate visual identity for each oscillator type. Click to select.
+
+These sit inline in the Synth sidebar, adjacent to the parameter sliders they replace/augment. The sliders remain for precision — the visual widgets are for overview and fast interaction.
+
+---
+
+## Horizontal Split Layout (IMPLEMENTED — `daw_hz.c`)
+
+The vertical split (sidebar | main) kept fighting for width. Flipped to a **horizontal split** with a narrow sidebar:
+
+```
+┌────┬──────────────────────────────────────┐
+│ ▶  │ Transport          BPM:120          │
+│    ├──────────────────────────────────────┤
+│●Ba │ [F1 Seq] [F2 Piano] [F3 Song]      │
+│●Ld │                                      │
+│●Ch │  Sequencer grid (16/32 steps)       │
+│●Vo │  7 tracks: 4 drum + 3 melody        │
+│○Pl │  Step inspector (right-click cell)  │
+│○FM ├──────────────────────────────────────┤
+│○Ma │ [1 Patch] [2 Drums] [3 Bus FX]     │
+│○Bi │ [4 Master FX] [5 Tape]             │
+│    │                                      │
+│K■  │  Params (horizontal layout)         │
+│S■  │  Widgets side by side               │
+│H■  │                                      │
+│C■  │                                      │
+│Mstr│                                      │
+└────┴──────────────────────────────────────┘
+```
+
+### Narrow Sidebar (74px, full height)
+Always-visible state: play/stop, BPM, 8 patch slots with names (click to select), drum/melody mute toggles with tiny level bars, master volume.
+
+### Workspace (top, full width)
+Sequencer / Piano Roll / Song via F1/F2/F3. Sequencer has 16/32 step toggle — at 32 steps cells are square (half width). Step inspector appears below grid on right-click (right-click again to dismiss, or Escape).
+
+### Param Area (bottom, full width)
+5 tabs: Patch / Drums / Bus FX / Master FX / Tape.
+- **Patch**: 4 columns (Oscillator + wave-specific | Envelope + Filter with bespoke widgets | Voice params | 4 LFOs with previews)
+- **Drums**: top row (main drums) + bottom row (percussion + CR-78), groove/sidechain
+- **Bus FX**: 7 buses as vertical strips side by side + master strip with scenes
+- **Master FX**: signal chain left→right (Dist > Crush > Chorus > Tape > Delay > Reverb)
+- **Tape**: dub loop (left) + rewind (right)
+
+### Effects Hierarchy (clarified in UI)
+Three levels, each with its own tab:
+1. **P-locks** (per-step) — marked with orange dot on lockable params
+2. **Bus FX** (per-instrument) — filter/dist/delay/send per bus
+3. **Master FX** (global) — fixed signal chain, shown as flow diagram
+
+### Key Interactions
+- **Left click** grid cell: toggle drum step on/off
+- **Right click** grid cell: toggle step inspector for that cell
+- **Escape**: dismiss step inspector
+- **Number keys 1-5**: switch param tabs
+- **F1-F3**: switch workspace tabs
+- **Click patch** in sidebar: select patch, auto-switch to Patch tab
+
+**Why this works:** Sequencer gets full width = more visible steps. Params spread horizontally = ADSR + filter XY + LFO previews sit side by side. Sidebar gives persistent overview without tab-switching. Follows Ableton/Bitwig convention: look at the music, tweak below.
+
+---
+
 ## Earlier Analysis (preserved below)
 
 ---
