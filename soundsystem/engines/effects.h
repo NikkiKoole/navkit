@@ -39,6 +39,11 @@
 #define CHORUS_MIN_DELAY 0.005f       // 5ms minimum delay
 #define CHORUS_MAX_DELAY 0.030f       // 30ms maximum delay
 
+// Flanger constants (short modulated delay with feedback)
+#define FLANGER_BUFFER_SIZE 512       // ~11ms at 44100Hz
+#define FLANGER_MIN_DELAY 0.0001f     // 0.1ms minimum delay
+#define FLANGER_MAX_DELAY 0.010f      // 10ms maximum delay
+
 // Dub Loop constants
 #define DUB_LOOP_MAX_TIME 4.0f        // Max loop time in seconds
 #define DUB_LOOP_BUFFER_SIZE (SAMPLE_RATE * 4)  // 4 seconds at 44.1kHz
@@ -230,6 +235,14 @@ typedef struct {
     float chorusPhase1;   // LFO 1 phase
     float chorusPhase2;   // LFO 2 phase (90° offset for stereo width)
     
+    // Flanger (short modulated delay with feedback — jet/sweep sounds)
+    bool flangerEnabled;
+    float flangerRate;    // LFO rate in Hz (0.05 - 5.0)
+    float flangerDepth;   // Modulation depth (0-1)
+    float flangerMix;     // Dry/wet (0-1)
+    float flangerFeedback;// Feedback amount (-0.95 to 0.95, negative = inverted)
+    float flangerPhase;   // LFO phase
+
     // Reverb (Schroeder-style)
     bool reverbEnabled;
     float reverbSize;     // Room size (0-1, affects delay times)
@@ -386,6 +399,10 @@ typedef struct EffectsContext {
     // Chorus buffer and state
     float chorusBuffer[CHORUS_BUFFER_SIZE];
     int chorusWritePos;
+
+    // Flanger buffer and state
+    float flangerBuffer[FLANGER_BUFFER_SIZE];
+    int flangerWritePos;
     
     // Noise state for tape hiss
     unsigned int noiseState;
@@ -462,6 +479,14 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->params.chorusPhase1 = 0.0f;
     ctx->params.chorusPhase2 = 0.25f;    // 90° offset
     
+    // Flanger - off by default
+    ctx->params.flangerEnabled = false;
+    ctx->params.flangerRate = 0.3f;       // Slow sweep
+    ctx->params.flangerDepth = 0.7f;      // Strong modulation
+    ctx->params.flangerMix = 0.5f;
+    ctx->params.flangerFeedback = 0.7f;   // High feedback for jet sound
+    ctx->params.flangerPhase = 0.0f;
+
     // Reverb - off by default
     ctx->params.reverbEnabled = false;
     ctx->params.reverbSize = 0.5f;
@@ -764,6 +789,47 @@ static float processChorus(float sample, float dt) {
     }
     
     return dry * (1.0f - fx.chorusMix) + wet * fx.chorusMix;
+}
+
+// Flanger — short modulated delay with feedback (jet sweeps, metallic resonance)
+static float processFlanger(float sample, float dt) {
+    _ensureFxCtx();
+    if (!fx.flangerEnabled) return sample;
+
+    float dry = sample;
+
+    // Advance LFO (triangle wave for smoother sweep than sine)
+    fx.flangerPhase += fx.flangerRate * dt;
+    if (fx.flangerPhase >= 1.0f) fx.flangerPhase -= 1.0f;
+    // Triangle: 0→1→0 over one cycle
+    float lfo = fx.flangerPhase < 0.5f
+        ? fx.flangerPhase * 2.0f
+        : 2.0f - fx.flangerPhase * 2.0f;
+
+    // Calculate modulated delay (0.1ms to 10ms)
+    float delayRange = FLANGER_MAX_DELAY - FLANGER_MIN_DELAY;
+    float delaySec = FLANGER_MIN_DELAY + lfo * fx.flangerDepth * delayRange;
+    float delaySamples = delaySec * SAMPLE_RATE;
+    if (delaySamples < 1.0f) delaySamples = 1.0f;
+    if (delaySamples > FLANGER_BUFFER_SIZE - 1) delaySamples = FLANGER_BUFFER_SIZE - 1;
+
+    // Read with interpolation
+    float readPos = (float)fxCtx->flangerWritePos - delaySamples;
+    if (readPos < 0) readPos += FLANGER_BUFFER_SIZE;
+    int i0 = (int)readPos % FLANGER_BUFFER_SIZE;
+    int i1 = (i0 + 1) % FLANGER_BUFFER_SIZE;
+    float frac = readPos - (int)readPos;
+    float wet = fxCtx->flangerBuffer[i0] * (1.0f - frac) + fxCtx->flangerBuffer[i1] * frac;
+
+    // Write input + feedback to buffer
+    float fbSample = sample + wet * fx.flangerFeedback;
+    // Soft clip feedback to prevent runaway
+    if (fbSample > 1.5f) fbSample = 1.5f;
+    if (fbSample < -1.5f) fbSample = -1.5f;
+    fxCtx->flangerBuffer[fxCtx->flangerWritePos] = fbSample;
+    fxCtx->flangerWritePos = (fxCtx->flangerWritePos + 1) % FLANGER_BUFFER_SIZE;
+
+    return dry * (1.0f - fx.flangerMix) + wet * fx.flangerMix;
 }
 
 // Helper: process a single comb filter with lowpass damping
@@ -1350,6 +1416,7 @@ static float processEffects(float sample, float dt) {
     sample = processDistortion(sample);
     sample = processBitcrusher(sample);
     sample = processChorus(sample, dt);
+    sample = processFlanger(sample, dt);
     sample = processTape(sample, dt);
     sample = processDelay(sample, dt);
     
@@ -1380,6 +1447,7 @@ static float processEffectsWithBuses(float drumBus, float synthBus, float dt) {
     sample = processDistortion(sample);
     sample = processBitcrusher(sample);
     sample = processChorus(sample, dt);
+    sample = processFlanger(sample, dt);
     sample = processTape(sample, dt);
     sample = processDelay(sample, dt);
     
@@ -1625,6 +1693,8 @@ static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
     // Master effects chain
     sample = processDistortion(sample);
     sample = processBitcrusher(sample);
+    sample = processChorus(sample, dt);
+    sample = processFlanger(sample, dt);
     sample = processTape(sample, dt);
     sample = processDelay(sample, dt);
     

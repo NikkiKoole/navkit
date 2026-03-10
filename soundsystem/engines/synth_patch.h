@@ -196,6 +196,7 @@ typedef struct {
     char p_name[32];
     bool p_expRelease;        // true = exponential release (natural tail)
     bool p_expDecay;          // true = exponential decay (punchy drums)
+    bool p_oneShot;           // true = skip sustain, auto-release after decay
 } SynthPatch;
 
 // Default patch initializer
@@ -330,6 +331,7 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_name = "",
         .p_expRelease = false,
         .p_expDecay = false,
+        .p_oneShot = false,
     };
 }
 

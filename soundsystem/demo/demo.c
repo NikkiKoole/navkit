@@ -2273,6 +2273,7 @@ int main(void) {
             ui_col_float(&col2, "Sustain", &cp->p_sustain, 0.5f, 0.0f, 1.0f);
             ui_col_float(&col2, "Release", &cp->p_release, 0.5f, 0.01f, 3.0f);
             ui_col_toggle(&col2, "Exp Release", &cp->p_expRelease);
+            ui_col_toggle(&col2, "One Shot", &cp->p_oneShot);
             ui_col_space(&col2, 4);
 
             ui_col_sublabel(&col2, "Vibrato:", ORANGE);
@@ -2632,6 +2633,14 @@ int main(void) {
             ui_col_float(&col5, "Mix", &fx.chorusMix, 0.05f, 0.0f, 1.0f);
             ui_col_space(&col5, 4);
             
+            ui_col_sublabel(&col5, "Flanger:", ORANGE);
+            ui_col_toggle(&col5, "On", &fx.flangerEnabled);
+            ui_col_float(&col5, "Rate", &fx.flangerRate, 0.05f, 0.05f, 5.0f);
+            ui_col_float(&col5, "Depth", &fx.flangerDepth, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col5, "Feedbk", &fx.flangerFeedback, 0.05f, -0.95f, 0.95f);
+            ui_col_float(&col5, "Mix", &fx.flangerMix, 0.05f, 0.0f, 1.0f);
+            ui_col_space(&col5, 4);
+
             ui_col_sublabel(&col5, "Reverb:", ORANGE);
             ui_col_toggle(&col5, "On", &fx.reverbEnabled);
             ui_col_float(&col5, "Size", &fx.reverbSize, 0.05f, 0.0f, 1.0f);

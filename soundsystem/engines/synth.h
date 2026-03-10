@@ -354,6 +354,7 @@ typedef struct {
     float releaseLevel;   // envLevel captured at release start (for linear fade)
     int envStage;         // 0=off, 1=attack, 2=decay, 3=sustain, 4=release
     bool expRelease;      // false=linear (tight, predictable), true=exponential (natural tail)
+    bool oneShot;         // true=skip sustain, go straight to release after decay
     
     // For pitch slides (SFX)
     float pitchSlide;
@@ -715,6 +716,7 @@ typedef struct SynthContext {
 
     // Exponential decay
     bool noteExpDecay;
+    bool noteOneShot;        // skip sustain, auto-release after decay
 
     // Click transient
     float noteClickLevel;
@@ -979,6 +981,7 @@ static void _ensureSynthCtx(void) {
 #define noteOsc6Level (synthCtx->noteOsc6Level)
 #define noteDrive (synthCtx->noteDrive)
 #define noteExpDecay (synthCtx->noteExpDecay)
+#define noteOneShot (synthCtx->noteOneShot)
 #define noteClickLevel (synthCtx->noteClickLevel)
 #define noteClickTime (synthCtx->noteClickTime)
 #define noteNoiseMode (synthCtx->noteNoiseMode)
@@ -2500,33 +2503,39 @@ static float processEnvelope(Voice *v, float dt) {
                 }
             }
             break;
-        case 2: // Decay
+        case 2: { // Decay
+            // Helper: after decay ends, go to sustain or release
+            // oneShot skips sustain — goes straight to release
+            #define DECAY_DONE() do { \
+                v->envPhase = 0.0f; \
+                v->envLevel = v->sustain; \
+                if (v->oneShot || v->sustain <= 0.001f) { \
+                    v->releaseLevel = v->envLevel; \
+                    v->envStage = 4; \
+                } else { \
+                    v->envStage = 3; \
+                } \
+            } while(0)
+
             if (v->decay <= 0.0f) {
-                v->envPhase = 0.0f;
-                v->envLevel = v->sustain;
-                if (v->sustain <= 0.001f) v->releaseLevel = v->envLevel;
-                v->envStage = (v->sustain > 0.001f) ? 3 : 4;
+                DECAY_DONE();
             } else if (v->expDecay) {
                 // Exponential decay: punchy drums, natural sound
                 // expf(-t / (decay * 0.368)) matches drums.h expDecay()
                 float expLevel = expf(-v->envPhase / (v->decay * 0.368f));
                 v->envLevel = v->sustain + (1.0f - v->sustain) * expLevel;
                 if (expLevel < 0.001f) {
-                    v->envPhase = 0.0f;
-                    v->envLevel = v->sustain;
-                    if (v->sustain <= 0.001f) v->releaseLevel = v->envLevel;
-                    v->envStage = (v->sustain > 0.001f) ? 3 : 4;
+                    DECAY_DONE();
                 }
             } else {
                 v->envLevel = 1.0f - (1.0f - v->sustain) * (v->envPhase / v->decay);
                 if (v->envPhase >= v->decay) {
-                    v->envPhase = 0.0f;
-                    v->envLevel = v->sustain;
-                    if (v->sustain <= 0.001f) v->releaseLevel = v->envLevel;
-                    v->envStage = (v->sustain > 0.001f) ? 3 : 4;
+                    DECAY_DONE();
                 }
             }
+            #undef DECAY_DONE
             break;
+        }
         case 3: // Sustain
             v->envLevel = v->sustain;
             break;
@@ -2655,6 +2664,14 @@ static float processVoice(Voice *v, float sampleRate) {
             }
             
             v->baseFrequency = v->arpNotes[v->arpIndex];
+
+            // Retrigger envelope on each arp step (needed for percussive sounds
+            // where sustain=0 means the voice dies before the next arp tick)
+            if (v->envStage == 0 || v->envStage == 4 || v->sustain < 0.001f) {
+                v->envPhase = 0.0f;
+                v->envLevel = 0.0f;
+                v->envStage = 1; // restart from attack
+            }
         }
     }
     
@@ -3128,6 +3145,7 @@ static void releaseNote(int voiceIdx) {
         synthVoices[voiceIdx].releaseLevel = synthVoices[voiceIdx].envLevel;
         synthVoices[voiceIdx].envStage = 4;
         synthVoices[voiceIdx].envPhase = 0.0f;
+        synthVoices[voiceIdx].arpEnabled = false; // Stop arp from retriggering
     }
 }
 
@@ -3353,6 +3371,7 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->release = params->useGlobalEnvelope ? noteRelease : params->release;
     v->expRelease = params->useGlobalEnvelope ? noteExpRelease : false;
     v->expDecay = params->useGlobalEnvelope ? noteExpDecay : false;
+    v->oneShot = noteOneShot;
 
     if (!isGlide) {
         v->envPhase = 0.0f;
@@ -3377,7 +3396,7 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->filterType = params->useGlobalFilter ? noteFilterType : 0;
     
     // Initialize arpeggiator from global params if enabled
-    if (noteArpEnabled && params->useGlobalLfos) {
+    if (noteArpEnabled) {
         float chordFreqs[8];
         int chordCount = buildArpChord(freq, noteArpChord, chordFreqs);
         v->arpEnabled = true;
