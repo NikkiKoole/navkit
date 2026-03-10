@@ -188,6 +188,7 @@ static SynthPatch defaultPatch(void) {
 }
 
 static int selectedPatch = 0;
+static int selectedDrum = 0; // 0=Kick, 1=Snare, 2=HiHat, 3=Clap
 static SynthPatch patches[NUM_PATCHES];
 static bool patchesInit = false;
 static float masterVolume = 0.8f;
@@ -566,100 +567,6 @@ static void drawSidebar(void) {
     DrawLine((int)x, (int)y, SIDEBAR_W-4, (int)y, (Color){42,42,52,255});
     y += 6;
 
-    // Patch slots
-    DrawTextShadow("Patch", (int)x, (int)y, 9, (Color){70,70,85,255});
-    y += 12;
-
-    for (int i = 0; i < NUM_PATCHES; i++) {
-        Rectangle r = {x, y, SIDEBAR_W-8, 16};
-        bool hov = CheckCollisionPointRec(mouse, r);
-        bool sel = (i == selectedPatch);
-        Color bg = sel ? (Color){50, 55, 68, 255} : (hov ? (Color){38, 40, 48, 255} : (Color){24, 25, 30, 255});
-        DrawRectangleRec(r, bg);
-        if (sel) DrawRectangle((int)x, (int)y, 2, 16, ORANGE);
-
-        // Colored dot
-        Color dot = sel ? ORANGE : (Color){60, 70, 90, 255};
-        DrawCircle((int)x+9, (int)y+8, 3, dot);
-
-        // Short name (truncate to 4 chars)
-        char short_name[6];
-        strncpy(short_name, patches[i].name, 5);
-        short_name[5] = '\0';
-        DrawTextShadow(short_name, (int)x+16, (int)y+3, 10, sel ? WHITE : GRAY);
-
-        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            selectedPatch = i;
-            if (paramTab != PARAM_PATCH) paramTab = PARAM_PATCH;
-            ui_consume_click();
-        }
-        y += 18;
-    }
-
-    // Divider
-    y += 4;
-    DrawLine((int)x, (int)y, SIDEBAR_W-4, (int)y, (Color){42,42,52,255});
-    y += 6;
-
-    // Drum track mutes
-    DrawTextShadow("Drums", (int)x, (int)y, 9, (Color){70,70,85,255});
-    y += 12;
-
-    const char* drumShort[] = {"K", "S", "H", "C"};
-    for (int i = 0; i < 4; i++) {
-        Rectangle r = {x, y, SIDEBAR_W-8, 14};
-        bool hov = CheckCollisionPointRec(mouse, r);
-        DrawTextShadow(drumShort[i], (int)x+4, (int)y+2, 10, LIGHTGRAY);
-
-        // Mute toggle
-        Rectangle mr = {x+18, y+1, 12, 12};
-        bool mHov = CheckCollisionPointRec(mouse, mr);
-        Color mc = busMute[i] ? (Color){150,50,50,255} : (mHov ? (Color){50,90,50,255} : (Color){40,80,40,255});
-        DrawRectangleRec(mr, mc);
-        DrawTextShadow(busMute[i] ? "M" : "", (int)x+19, (int)y+2, 9, WHITE);
-
-        // Tiny level bar
-        float barX = x + 34, barW = SIDEBAR_W - 42;
-        DrawRectangle((int)barX, (int)y+3, (int)barW, 8, (Color){20,20,25,255});
-        float fill = busVolumes[i] * barW;
-        DrawRectangle((int)barX, (int)y+3, (int)fill, 8, busMute[i] ? (Color){80,40,40,255} : (Color){50,110,50,255});
-
-        if (mHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { busMute[i] = !busMute[i]; ui_consume_click(); }
-        else if (hov && !mHov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-            busVolumes[i] = (mouse.x - barX) / barW;
-            if (busVolumes[i] < 0) busVolumes[i] = 0;
-            if (busVolumes[i] > 1) busVolumes[i] = 1;
-        }
-        y += 16;
-    }
-
-    // Melody bus mutes
-    y += 2;
-    const char* melShort[] = {"B", "L", "C"};
-    for (int i = 0; i < 3; i++) {
-        int bi = 4 + i;
-        DrawTextShadow(melShort[i], (int)x+4, (int)y+2, 10, (Color){140,180,255,255});
-
-        Rectangle mr = {x+18, y+1, 12, 12};
-        bool mHov = CheckCollisionPointRec(mouse, mr);
-        Color mc = busMute[bi] ? (Color){150,50,50,255} : (mHov ? (Color){50,90,50,255} : (Color){40,80,40,255});
-        DrawRectangleRec(mr, mc);
-        if (busMute[bi]) DrawTextShadow("M", (int)x+19, (int)y+2, 9, WHITE);
-
-        float barX = x + 34, barW = SIDEBAR_W - 42;
-        DrawRectangle((int)barX, (int)y+3, (int)barW, 8, (Color){20,20,25,255});
-        float fill = busVolumes[bi] * barW;
-        DrawRectangle((int)barX, (int)y+3, (int)fill, 8, busMute[bi] ? (Color){80,40,40,255} : (Color){50,80,140,255});
-
-        if (mHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { busMute[bi] = !busMute[bi]; ui_consume_click(); }
-        y += 16;
-    }
-
-    // Divider
-    y += 4;
-    DrawLine((int)x, (int)y, SIDEBAR_W-4, (int)y, (Color){42,42,52,255});
-    y += 6;
-
     // Master volume
     DrawTextShadow("Mstr", (int)x, (int)y, 9, (Color){170,160,80,255});
     y += 12;
@@ -765,7 +672,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
     y += 22; h -= 22;
 
     // Fixed cell size — always reserve space for inspector so grid doesn't jump
-    int labelW = 42;
+    int labelW = 124; // mute + solo + volume bar + name
     int cellW = (int)((w - labelW - 8) / steps);
     if (cellW < 6) cellW = 6;
     int cellH;
@@ -795,8 +702,58 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         bool isDrum = (track < 4);
         if (track == 4) DrawLine((int)x, ty-2, (int)(x+w), ty-2, (Color){55,55,70,255});
 
-        DrawTextShadow(trackNames[track], (int)x+2, ty+cellH/2-5, steps==32 ? 9 : 10,
-                       isDrum ? LIGHTGRAY : (Color){140,180,255,255});
+        // --- Inline mute + volume bar + track name ---
+        int lx = (int)x;
+        int lcy = ty + cellH/2; // vertical center of row
+
+        // Mute button (12x12)
+        Rectangle muteR = {(float)lx, (float)(lcy-6), 12, 12};
+        bool muteHov = CheckCollisionPointRec(mouse, muteR);
+        Color muteBg = busMute[track] ? (Color){150,50,50,255} : (muteHov ? (Color){55,45,45,255} : (Color){35,30,30,255});
+        DrawRectangleRec(muteR, muteBg);
+        DrawTextShadow("M", lx+2, lcy-5, 9, busMute[track] ? WHITE : GRAY);
+        if (muteHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { busMute[track] = !busMute[track]; ui_consume_click(); }
+
+        // Solo button (12x12)
+        Rectangle soloR = {(float)(lx+14), (float)(lcy-6), 12, 12};
+        bool soloHov = CheckCollisionPointRec(mouse, soloR);
+        Color soloBg = busSolo[track] ? (Color){170,170,55,255} : (soloHov ? (Color){55,55,40,255} : (Color){35,35,30,255});
+        DrawRectangleRec(soloR, soloBg);
+        DrawTextShadow("S", lx+16, lcy-5, 9, busSolo[track] ? BLACK : GRAY);
+        if (soloHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { busSolo[track] = !busSolo[track]; ui_consume_click(); }
+
+        // Volume bar (horizontal, 40px wide)
+        float volBarX = lx + 29, volBarW = 40, volBarH = 8;
+        float volBarY = lcy - volBarH/2;
+        DrawRectangle((int)volBarX, (int)volBarY, (int)volBarW, (int)volBarH, (Color){20,20,25,255});
+        float volFill = busVolumes[track] * volBarW;
+        Color volCol = busMute[track] ? (Color){80,40,40,255} : (isDrum ? (Color){50,110,50,255} : (Color){50,80,140,255});
+        DrawRectangle((int)volBarX, (int)volBarY, (int)volFill, (int)volBarH, volCol);
+        Rectangle volR = {volBarX, (float)ty, volBarW, (float)cellH}; // full row height for easier dragging
+        if (CheckCollisionPointRec(mouse, volR) && !muteHov && !soloHov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+            busVolumes[track] = (mouse.x - volBarX) / volBarW;
+            if (busVolumes[track] < 0) busVolumes[track] = 0;
+            if (busVolumes[track] > 1) busVolumes[track] = 1;
+        }
+
+        // Track name (clickable — selects patch/drums in param panel)
+        Rectangle nameR = {(float)(lx + 70), (float)ty, (float)(labelW - 70), (float)cellH};
+        bool nameHov = CheckCollisionPointRec(mouse, nameR);
+        Color nameCol = isDrum ? LIGHTGRAY : (Color){140,180,255,255};
+        if (nameHov) { nameCol.r = (unsigned char)(nameCol.r + 40 > 255 ? 255 : nameCol.r + 40);
+                       nameCol.g = (unsigned char)(nameCol.g + 40 > 255 ? 255 : nameCol.g + 40);
+                       nameCol.b = (unsigned char)(nameCol.b + 40 > 255 ? 255 : nameCol.b + 40); }
+        DrawTextShadow(trackNames[track], lx + 72, lcy-5, 9, nameCol);
+        if (nameHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            if (isDrum) {
+                selectedDrum = track; // 0=Kick, 1=Snare, 2=HiHat, 3=Clap
+                paramTab = PARAM_DRUMS;
+            } else {
+                selectedPatch = track - 4; // melody tracks 4,5,6 → patches 0,1,2
+                paramTab = PARAM_PATCH;
+            }
+            ui_consume_click();
+        }
 
         for (int step = 0; step < steps; step++) {
             int sx = (int)x + labelW + step * cellW;
@@ -1185,29 +1142,14 @@ static void drawParamPatch(float x, float y, float w, float h) {
 // ============================================================================
 
 static void drawParamDrums(float x, float y, float w, float h) {
-    // Row 1: Main drums + volume + sidechain
-    float colW = 140;
-    float cols[] = {x, x+colW, x+2*colW, x+3*colW, x+4*colW, x+5*colW, x+6*colW};
+    float colW = 160;
 
-    // Volume
-    {
-        UIColumn c = ui_column(cols[0]+4, y, 16);
-        ui_col_sublabel(&c, "Drums:", ORANGE);
-        ui_col_float_p(&c, "Volume", &drumVolume, 0.05f, 0.0f, 1.0f);
-        ui_col_space(&c, 4);
-
-        ui_col_sublabel(&c, "Groove:", (Color){140,140,200,255});
-        ui_col_int(&c, "Kick", &grooveKickNudge, 0.3f, -12, 12);
-        ui_col_int(&c, "Snare", &grooveSnareDelay, 0.3f, -12, 12);
-        ui_col_int(&c, "HH", &grooveHatNudge, 0.3f, -12, 12);
-        ui_col_int(&c, "Swing", &grooveSwing, 0.3f, 0, 12);
-        ui_col_int(&c, "Jitter", &grooveJitter, 0.3f, 0, 6);
-    }
+    float cols[] = {x, x+colW, x+2*colW, x+3*colW, x+4*colW, x+5*colW};
 
     // Kick
     {
-        UIColumn c = ui_column(cols[1]+4, y, 16);
-        ui_col_sublabel(&c, "Kick:", ORANGE);
+        UIColumn c = ui_column(cols[0]+4, y, 16);
+        ui_col_sublabel(&c, "Kick:", selectedDrum == 0 ? ORANGE : GRAY);
         ui_col_float_p(&c, "Pitch", &kickPitch, 3.0f, 30.0f, 100.0f);
         ui_col_float_p(&c, "Decay", &kickDecay, 0.07f, 0.1f, 1.5f);
         ui_col_float_p(&c, "Punch", &kickPunchPitch, 10.0f, 80.0f, 300.0f);
@@ -1217,36 +1159,47 @@ static void drawParamDrums(float x, float y, float w, float h) {
 
     // Snare
     {
-        UIColumn c = ui_column(cols[2]+4, y, 16);
-        ui_col_sublabel(&c, "Snare:", ORANGE);
+        UIColumn c = ui_column(cols[1]+4, y, 16);
+        ui_col_sublabel(&c, "Snare:", selectedDrum == 1 ? ORANGE : GRAY);
         ui_col_float_p(&c, "Pitch", &snarePitch, 10.0f, 100.0f, 350.0f);
         ui_col_float_p(&c, "Decay", &snareDecay, 0.03f, 0.05f, 0.6f);
         ui_col_float(&c, "Snappy", &snareSnappy, 0.05f, 0.0f, 1.0f);
         ui_col_float_p(&c, "Tone", &snareTone, 0.05f, 0.0f, 1.0f);
     }
 
-    // Clap
-    {
-        UIColumn c = ui_column(cols[3]+4, y, 16);
-        ui_col_sublabel(&c, "Clap:", ORANGE);
-        ui_col_float_p(&c, "Decay", &clapDecay, 0.03f, 0.1f, 0.6f);
-        ui_col_float_p(&c, "Tone", &clapTone, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Spread", &clapSpread, 0.001f, 0.005f, 0.03f);
-    }
-
     // HiHat
     {
-        UIColumn c = ui_column(cols[4]+4, y, 16);
-        ui_col_sublabel(&c, "HiHat:", ORANGE);
+        UIColumn c = ui_column(cols[2]+4, y, 16);
+        ui_col_sublabel(&c, "HiHat:", selectedDrum == 2 ? ORANGE : GRAY);
         ui_col_float(&c, "Closed", &hhDecayClosed, 0.01f, 0.01f, 0.2f);
         ui_col_float(&c, "Open", &hhDecayOpen, 0.05f, 0.1f, 1.0f);
         ui_col_float_p(&c, "Tone", &hhTone, 0.05f, 0.0f, 1.0f);
     }
 
-    // Sidechain
+    // Clap
+    {
+        UIColumn c = ui_column(cols[3]+4, y, 16);
+        ui_col_sublabel(&c, "Clap:", selectedDrum == 3 ? ORANGE : GRAY);
+        ui_col_float_p(&c, "Decay", &clapDecay, 0.03f, 0.1f, 0.6f);
+        ui_col_float_p(&c, "Tone", &clapTone, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Spread", &clapSpread, 0.001f, 0.005f, 0.03f);
+    }
+
+    // Groove
+    {
+        UIColumn c = ui_column(cols[4]+4, y, 16);
+        ui_col_sublabel(&c, "Groove:", (Color){140,140,200,255});
+        ui_col_int(&c, "Kick", &grooveKickNudge, 0.3f, -12, 12);
+        ui_col_int(&c, "Snare", &grooveSnareDelay, 0.3f, -12, 12);
+        ui_col_int(&c, "HH", &grooveHatNudge, 0.3f, -12, 12);
+        ui_col_int(&c, "Swing", &grooveSwing, 0.3f, 0, 12);
+        ui_col_int(&c, "Jitter", &grooveJitter, 0.3f, 0, 6);
+    }
+
+    // Sidechain + Drum volume
     {
         UIColumn c = ui_column(cols[5]+4, y, 16);
-        ui_col_sublabel(&c, "Sidechain:", ORANGE);
+        ui_col_sublabel(&c, "Sidechain:", (Color){140,140,200,255});
         ui_col_toggle(&c, "On", &sidechainOn);
         if (sidechainOn) {
             ui_col_cycle(&c, "Source", sidechainSourceNames, 5, &sidechainSource);
@@ -1255,72 +1208,11 @@ static void drawParamDrums(float x, float y, float w, float h) {
             ui_col_float(&c, "Attack", &sidechainAttack, 0.002f, 0.001f, 0.05f);
             ui_col_float(&c, "Release", &sidechainRelease, 0.02f, 0.05f, 0.5f);
         }
+        ui_col_space(&c, 4);
+        ui_col_float_p(&c, "DrumVol", &drumVolume, 0.05f, 0.0f, 1.0f);
     }
 
-    // Row 2: Percussion + CR78
-    float row2Y = y + h * 0.5f + 4;
-    float pcols[] = {x, x+colW, x+colW*2, x+colW*3, x+colW*4, x+colW*5};
-
-    // Toms
-    {
-        UIColumn c = ui_column(pcols[0]+4, row2Y, 16);
-        ui_col_sublabel(&c, "Toms:", ORANGE);
-        ui_col_float_p(&c, "Pitch", &tomPitch, 0.1f, 0.5f, 2.0f);
-        ui_col_float_p(&c, "Decay", &tomDecay, 0.03f, 0.1f, 0.8f);
-        ui_col_float(&c, "PnchDcy", &tomPunchDecay, 0.01f, 0.01f, 0.2f);
-    }
-
-    // Rimshot
-    {
-        UIColumn c = ui_column(pcols[1]+4, row2Y, 16);
-        ui_col_sublabel(&c, "Rimshot:", ORANGE);
-        ui_col_float_p(&c, "Pitch", &rimPitch, 100.0f, 800.0f, 3000.0f);
-        ui_col_float_p(&c, "Decay", &rimDecay, 0.005f, 0.01f, 0.1f);
-    }
-
-    // Cowbell
-    {
-        UIColumn c = ui_column(pcols[2]+4, row2Y, 16);
-        ui_col_sublabel(&c, "Cowbell:", ORANGE);
-        ui_col_float_p(&c, "Pitch", &cowbellPitch, 20.0f, 400.0f, 1000.0f);
-        ui_col_float_p(&c, "Decay", &cowbellDecay, 0.03f, 0.1f, 0.6f);
-    }
-
-    // Clave
-    {
-        UIColumn c = ui_column(pcols[3]+4, row2Y, 16);
-        ui_col_sublabel(&c, "Clave:", ORANGE);
-        ui_col_float_p(&c, "Pitch", &clavePitch, 100.0f, 1500.0f, 4000.0f);
-        ui_col_float_p(&c, "Decay", &claveDecay, 0.005f, 0.01f, 0.1f);
-    }
-
-    // Maracas
-    {
-        UIColumn c = ui_column(pcols[4]+4, row2Y, 16);
-        ui_col_sublabel(&c, "Maracas:", ORANGE);
-        ui_col_float_p(&c, "Decay", &maracasDecay, 0.01f, 0.02f, 0.2f);
-        ui_col_float_p(&c, "Tone", &maracasTone, 0.05f, 0.0f, 1.0f);
-    }
-
-    // CR-78
-    {
-        UIColumn c = ui_column(pcols[5]+4, row2Y, 16);
-        ui_col_sublabel(&c, "CR-78:", (Color){180,140,100,255});
-        ui_col_float(&c, "KPitch", &cr78KickPitch, 5.0f, 40.0f, 150.0f);
-        ui_col_float(&c, "KDecay", &cr78KickDecay, 0.03f, 0.1f, 0.6f);
-        ui_col_float(&c, "KReso", &cr78KickResonance, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "SPitch", &cr78SnarePitch, 10.0f, 100.0f, 350.0f);
-        ui_col_float(&c, "SDecay", &cr78SnareDecay, 0.03f, 0.05f, 0.4f);
-        ui_col_float(&c, "SSnap", &cr78SnareSnappy, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "HDecay", &cr78HHDecay, 0.01f, 0.01f, 0.2f);
-        ui_col_float(&c, "HTone", &cr78HHTone, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "MetPch", &cr78MetalPitch, 50.0f, 400.0f, 1200.0f);
-        ui_col_float(&c, "MetDcy", &cr78MetalDecay, 0.03f, 0.05f, 0.5f);
-    }
-
-    // Divider between rows
-    DrawLine((int)x, (int)row2Y-4, (int)(x+w), (int)row2Y-4, (Color){45,45,55,255});
-    (void)w;
+    (void)w; (void)h;
 }
 
 // ============================================================================
@@ -1330,7 +1222,9 @@ static void drawParamDrums(float x, float y, float w, float h) {
 static void drawParamBus(float x, float y, float w, float h) {
     Vector2 mouse = GetMousePosition();
     int nBuses = 7;
-    float stripW = w / (nBuses + 1); // +1 for master
+    int fs = 14; // compact font size
+    int row = fs + 2; // row height
+    float stripW = w / (nBuses + 1);
     if (stripW > 150) stripW = 150;
 
     for (int b = 0; b < nBuses; b++) {
@@ -1338,80 +1232,100 @@ static void drawParamBus(float x, float y, float w, float h) {
         bool isSel = (selectedBus == b);
 
         // Bus header
-        Rectangle nameR = {sx, y, stripW-2, 18};
+        Rectangle nameR = {sx, y, stripW-2, 14};
         bool nameHov = CheckCollisionPointRec(mouse, nameR);
         Color hdrBg = isSel ? (Color){50,55,68,255} : (nameHov ? (Color){40,42,52,255} : (Color){30,31,38,255});
         DrawRectangleRec(nameR, hdrBg);
-        if (isSel) DrawRectangle((int)sx, (int)y+16, (int)stripW-2, 2, ORANGE);
+        if (isSel) DrawRectangle((int)sx, (int)y+12, (int)stripW-2, 2, ORANGE);
         bool isDrum = (b < 4);
-        DrawTextShadow(busNames[b], (int)sx+4, (int)y+3, 11, isSel ? ORANGE : (isDrum ? LIGHTGRAY : (Color){140,180,255,255}));
+        DrawTextShadow(busNames[b], (int)sx+4, (int)y+1, 10, isSel ? ORANGE : (isDrum ? LIGHTGRAY : (Color){140,180,255,255}));
 
         if (nameHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             selectedBus = (selectedBus == b) ? -1 : b;
             ui_consume_click();
         }
 
-        UIColumn c = ui_column(sx+4, y+22, 15);
+        float cy = y + 16;
 
-        // Volume fader
+        float rightX = sx + 4;
+        float rightW = stripW - 10;
+
+        // Pan, Rev, then FX
+        float ry = cy;
+        float barH = 8;
+
+        // Pan bar (center-notched, visible track)
         {
-            float fW = stripW - 40;
-            if (fW < 30) fW = 30;
-            Rectangle fr = {c.x, c.y+2, fW, 10};
-            DrawRectangleRec(fr, (Color){20,20,25,255});
-            float fill = fW * busVolumes[b];
-            Color vc = busMute[b] ? (Color){80,40,40,255} : (Color){50,120,50,255};
-            DrawRectangle((int)c.x, (int)c.y+2, (int)fill, 10, vc);
-            if (CheckCollisionPointRec(mouse, fr) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                busVolumes[b] = (mouse.x - c.x) / fW;
-                if (busVolumes[b] < 0) busVolumes[b] = 0;
-                if (busVolumes[b] > 1) busVolumes[b] = 1;
+            DrawRectangle((int)rightX, (int)ry, (int)rightW, (int)barH, (Color){32,36,45,255}); // visible track color
+            int panCenter = (int)(rightX + rightW * 0.5f);
+            DrawLine(panCenter, (int)ry, panCenter, (int)(ry+barH), (Color){55,60,72,255});
+            float panNorm = (busPan[b] + 1.0f) * 0.5f;
+            int panPos = (int)(rightX + panNorm * rightW);
+            if (panPos > panCenter) {
+                DrawRectangle(panCenter, (int)ry+1, panPos-panCenter, (int)barH-2, (Color){80,120,180,255});
+            } else {
+                DrawRectangle(panPos, (int)ry+1, panCenter-panPos, (int)barH-2, (Color){80,120,180,255});
             }
-            // M/S buttons
-            float btnX = c.x + fW + 2;
-            Rectangle mR = {btnX, c.y, 14, 13};
-            bool mH = CheckCollisionPointRec(mouse, mR);
-            DrawRectangleRec(mR, busMute[b] ? (Color){170,55,55,255} : (mH ? (Color){55,40,40,255} : (Color){35,30,30,255}));
-            DrawTextShadow("M", (int)btnX+2, (int)c.y+1, 9, busMute[b] ? WHITE : GRAY);
-            if (mH && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { busMute[b] = !busMute[b]; ui_consume_click(); }
-
-            Rectangle sR = {btnX+15, c.y, 14, 13};
-            bool sH = CheckCollisionPointRec(mouse, sR);
-            DrawRectangleRec(sR, busSolo[b] ? (Color){170,170,55,255} : (sH ? (Color){55,55,40,255} : (Color){35,35,30,255}));
-            DrawTextShadow("S", (int)btnX+17, (int)c.y+1, 9, busSolo[b] ? BLACK : GRAY);
-            if (sH && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { busSolo[b] = !busSolo[b]; ui_consume_click(); }
-            c.y += 16;
+            DrawLine(panPos, (int)ry, panPos, (int)(ry+barH), WHITE);
+            Rectangle panR = {rightX, ry-2, rightW, barH+4};
+            if (CheckCollisionPointRec(mouse, panR) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                busPan[b] = ((mouse.x - rightX) / rightW) * 2.0f - 1.0f;
+                if (busPan[b] < -1) busPan[b] = -1;
+                if (busPan[b] > 1) busPan[b] = 1;
+            }
+            DrawTextShadow("Pan", (int)rightX, (int)(ry+barH+1), 11, (Color){60,60,70,255});
+            ry += barH + 12;
         }
 
-        ui_col_float(&c, "Pan", &busPan[b], 0.02f, -1.0f, 1.0f);
-        ui_col_float(&c, "RevSnd", &busReverbSend[b], 0.02f, 0.0f, 1.0f);
-        ui_col_space(&c, 2);
+        // Rev send bar
+        {
+            DrawRectangle((int)rightX, (int)ry, (int)rightW, (int)barH, (Color){35,28,50,255}); // visible track
+            float revFill = busReverbSend[b] * rightW;
+            DrawRectangle((int)rightX, (int)ry, (int)revFill, (int)barH, (Color){80,60,140,255});
+            Rectangle revR = {rightX, ry-2, rightW, barH+4};
+            if (CheckCollisionPointRec(mouse, revR) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                busReverbSend[b] = (mouse.x - rightX) / rightW;
+                if (busReverbSend[b] < 0) busReverbSend[b] = 0;
+                if (busReverbSend[b] > 1) busReverbSend[b] = 1;
+            }
+            DrawTextShadow("RevSend", (int)rightX, (int)(ry+barH+1), 11, (Color){60,60,70,255});
+            ry += barH + 14;
+        }
 
+        // FX controls (right of fader, below pan/rev)
         // Filter
-        ui_col_toggle(&c, "Filter", &busFilterOn[b]);
+        ToggleBoolS(rightX, ry, "Filter", &busFilterOn[b], fs); ry += row;
         if (busFilterOn[b]) {
-            ui_col_float(&c, "Cut", &busFilterCut[b], 0.02f, 0.0f, 1.0f);
-            ui_col_float(&c, "Res", &busFilterRes[b], 0.02f, 0.0f, 1.0f);
-            ui_col_cycle(&c, "Type", filterTypeNames, 3, &busFilterType[b]);
+            float xySize = rightW * 0.45f;
+            if (xySize > 50) xySize = 50;
+            if (xySize < 30) xySize = 30;
+            drawFilterXY(rightX, ry, xySize, &busFilterCut[b], &busFilterRes[b]);
+            float textX = rightX + xySize + 4;
+            int sfs = fs - 2;
+            int srow = sfs + 4;
+            DraggableFloatS(textX, ry, "Cut", &busFilterCut[b], 0.02f, 0.0f, 1.0f, sfs);
+            DraggableFloatS(textX, ry + srow, "Res", &busFilterRes[b], 0.02f, 0.0f, 1.0f, sfs);
+            CycleOptionS(textX, ry + srow*2, "Type", filterTypeNames, 3, &busFilterType[b], sfs);
+            ry += xySize + 2;
         }
-        ui_col_space(&c, 2);
+        ry += 2;
 
         // Distortion
-        ui_col_toggle(&c, "Dist", &busDistOn[b]);
+        ToggleBoolS(rightX, ry, "Dist", &busDistOn[b], fs); ry += row;
         if (busDistOn[b]) {
-            ui_col_float(&c, "Drive", &busDistDrive[b], 0.05f, 1.0f, 4.0f);
-            ui_col_float(&c, "Mix", &busDistMix[b], 0.02f, 0.0f, 1.0f);
+            DraggableFloatS(rightX, ry, "Drive", &busDistDrive[b], 0.05f, 1.0f, 4.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Mix", &busDistMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
         }
-        ui_col_space(&c, 2);
+        ry += 2;
 
         // Delay
-        ui_col_toggle(&c, "Delay", &busDelayOn[b]);
+        ToggleBoolS(rightX, ry, "Delay", &busDelayOn[b], fs); ry += row;
         if (busDelayOn[b]) {
-            ui_col_toggle(&c, "Sync", &busDelaySync[b]);
-            if (busDelaySync[b]) ui_col_cycle(&c, "Div", delaySyncNames, 5, &busDelaySyncDiv[b]);
-            else ui_col_float(&c, "Time", &busDelayTime[b], 0.01f, 0.01f, 1.0f);
-            ui_col_float(&c, "FB", &busDelayFB[b], 0.02f, 0.0f, 0.8f);
-            ui_col_float(&c, "Mix", &busDelayMix[b], 0.02f, 0.0f, 1.0f);
+            ToggleBoolS(rightX, ry, "Sync", &busDelaySync[b], fs); ry += row;
+            if (busDelaySync[b]) { CycleOptionS(rightX, ry, "Div", delaySyncNames, 5, &busDelaySyncDiv[b], fs); ry += row; }
+            else { DraggableFloatS(rightX, ry, "Time", &busDelayTime[b], 0.01f, 0.01f, 1.0f, fs); ry += row; }
+            DraggableFloatS(rightX, ry, "FB", &busDelayFB[b], 0.02f, 0.0f, 0.8f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Mix", &busDelayMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
         }
 
         // Vertical separator
@@ -1422,35 +1336,35 @@ static void drawParamBus(float x, float y, float w, float h) {
 
     // Master strip
     float mx = x + nBuses * stripW;
-    DrawRectangle((int)mx, (int)y, (int)stripW, 18, (Color){40,38,28,255});
-    DrawTextShadow("Master", (int)mx+4, (int)y+3, 11, YELLOW);
+    DrawRectangle((int)mx, (int)y, (int)stripW, 14, (Color){40,38,28,255});
+    DrawTextShadow("Master", (int)mx+4, (int)y+1, 10, YELLOW);
     DrawLine((int)mx-1, (int)y, (int)mx-1, (int)(y+h), (Color){55,55,45,255});
 
-    UIColumn mc = ui_column(mx+4, y+22, 15);
+    float mcy = y + 16;
     {
         float fW = stripW - 12;
-        Rectangle fr = {mc.x, mc.y+2, fW, 10};
+        Rectangle fr = {mx+4, mcy+1, fW, 8};
         DrawRectangleRec(fr, (Color){20,20,25,255});
-        DrawRectangle((int)mc.x, (int)mc.y+2, (int)(fW*masterVol), 10, (Color){170,150,50,255});
+        DrawRectangle((int)(mx+4), (int)mcy+1, (int)(fW*masterVol), 8, (Color){170,150,50,255});
         if (CheckCollisionPointRec(mouse, fr) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-            masterVol = (mouse.x - mc.x) / fW;
+            masterVol = (mouse.x - (mx+4)) / fW;
             if (masterVol < 0) masterVol = 0;
             if (masterVol > 1) masterVol = 1;
         }
-        mc.y += 16;
+        mcy += 12;
     }
-    ui_col_space(&mc, 4);
+    mcy += 4;
 
     // Scenes in master strip
-    ui_col_sublabel(&mc, "Scenes:", (Color){140,140,200,255});
-    ui_col_toggle(&mc, "XFade", &crossfaderEnabled);
+    DrawTextShadow("Scenes:", (int)mx+4, (int)mcy, 9, (Color){140,140,200,255}); mcy += row;
+    ToggleBoolS(mx+4, mcy, "XFade", &crossfaderEnabled, fs); mcy += row;
     if (crossfaderEnabled) {
-        ui_col_float(&mc, "Pos", &crossfaderPos, 0.02f, 0.0f, 1.0f);
-        ui_col_int(&mc, "A", &sceneA, 0.3f, 0, 7);
-        ui_col_int(&mc, "B", &sceneB, 0.3f, 0, 7);
+        DraggableFloatS(mx+4, mcy, "Pos", &crossfaderPos, 0.02f, 0.0f, 1.0f, fs); mcy += row;
+        DraggableIntS(mx+4, mcy, "A", &sceneA, 0.3f, 0, 7, fs); mcy += row;
+        DraggableIntS(mx+4, mcy, "B", &sceneB, 0.3f, 0, 7, fs); mcy += row;
     }
 
-    (void)h;
+    (void)h; (void)mcy;
 }
 
 // ============================================================================
@@ -1548,8 +1462,11 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
     px += 60;
     const char* presets[] = {"Clean", "9-Bit", "Wobbly", "Toy", "Tape+Chorus", "Lo-Fi"};
     for (int i = 0; i < 6; i++) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "[%s]", presets[i]);
+        int btnW = MeasureTextUI(buf, 18) + 10;
         if (PushButton(px, preY, presets[i])) { /* preset logic */ }
-        px += MeasureTextUI(presets[i], 11) + 20;
+        px += btnW + 8;
     }
 }
 

@@ -57,8 +57,7 @@ steer_SRC      := experiments/steering/demo.c experiments/steering/steering.c
 crowd_SRC      := experiments/crowd/demo.c
 path_SRC       := src/unity.c src/sound/sound_phrase.c src/sound/sound_synth_bridge.c
 soundsystem-demo_SRC := soundsystem/demo/demo.c
-soundsystem-daw_SRC := soundsystem/demo/daw.c
-soundsystem-daw-hz_SRC := soundsystem/demo/daw_hz.c
+soundsystem-daw_SRC := soundsystem/demo/daw_hz.c
 mechanisms_SRC := experiments/mechanisms/demo.c
 sound_phrase_wav_SRC := tools/sound_phrase_wav.c src/sound/sound_phrase.c
 
@@ -156,8 +155,6 @@ $(BINDIR)/soundsystem-demo: $(soundsystem-demo_SRC) | $(BINDIR)
 $(BINDIR)/soundsystem-daw: $(soundsystem-daw_SRC) | $(BINDIR)
 	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $@ $(soundsystem-daw_SRC) $(LDFLAGS)
 
-$(BINDIR)/soundsystem-daw-hz: $(soundsystem-daw-hz_SRC) | $(BINDIR)
-	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $@ $(soundsystem-daw-hz_SRC) $(LDFLAGS)
 
 # Pathing test - links raylib for GetTime() etc used in pathfinding.c
 test_pathing: $(TEST_UNITY_OBJ)
@@ -489,7 +486,6 @@ steer: $(BINDIR) $(BINDIR)/steer
 crowd: $(BINDIR) $(BINDIR)/crowd
 soundsystem-demo: $(BINDIR) $(BINDIR)/soundsystem-demo
 soundsystem-daw: $(BINDIR) $(BINDIR)/soundsystem-daw
-soundsystem-daw-hz: $(BINDIR) $(BINDIR)/soundsystem-daw-hz
 mechanisms: $(BINDIR) $(BINDIR)/mechanisms
 sound-phrase-wav: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/sound_phrase_wav $(sound_phrase_wav_SRC) -lm

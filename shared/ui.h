@@ -85,6 +85,12 @@ float PushButtonInline(float x, float y, const char* label, bool* clicked);
 // Cycle through options - click to advance
 void CycleOption(float x, float y, const char* label, const char** options, int count, int* value);
 
+// Sized variants - same as above but with configurable font size
+bool DraggableFloatS(float x, float y, const char* label, float* value, float speed, float min, float max, int fontSize);
+bool DraggableIntS(float x, float y, const char* label, int* value, float speed, int min, int max, int fontSize);
+void ToggleBoolS(float x, float y, const char* label, bool* value, int fontSize);
+void CycleOptionS(float x, float y, const char* label, const char** options, int count, int* value, int fontSize);
+
 // Collapsible section header - returns true if section is open
 bool SectionHeader(float x, float y, const char* label, bool* open);
 
@@ -373,6 +379,103 @@ bool DraggableFloat(float x, float y, const char* label, float* value, float spe
         return true;
     }
     return false;
+}
+
+bool DraggableFloatS(float x, float y, const char* label, float* value, float speed, float min, float max, int fontSize) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%s: %.2f", label, *value);
+    int textWidth = MeasureTextUI(buf, fontSize);
+    int rowH = fontSize + 2;
+    Rectangle bounds = {x, y, (float)textWidth + 6, (float)rowH};
+    Vector2 mouse = GetMousePosition();
+    bool hovered = CheckCollisionPointRec(mouse, bounds);
+    if (hovered) g_ui_draggableAnyHovered = true;
+    Color col = hovered ? YELLOW : LIGHTGRAY;
+    DrawTextShadow(buf, (int)x, (int)y, fontSize, col);
+    if (hovered && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && g_ui_midiLearnArm) {
+        g_ui_midiLearnArm(value, min, max, label);
+        g_ui_clickConsumed = true;
+    }
+    static bool dragging = false;
+    static float* dragTarget = NULL;
+    if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        dragging = true; dragTarget = value;
+        g_ui_clickConsumed = true; g_ui_isDragging = true;
+    }
+    if (dragging && dragTarget == value) {
+        float delta = GetMouseDelta().x * speed * 0.1f;
+        *value += delta;
+        if (*value < min) *value = min;
+        if (*value > max) *value = max;
+        if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+            dragging = false; dragTarget = NULL; g_ui_isDragging = false;
+        }
+        return true;
+    }
+    return false;
+}
+
+bool DraggableIntS(float x, float y, const char* label, int* value, float speed, int min, int max, int fontSize) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%s: %d", label, *value);
+    int textWidth = MeasureTextUI(buf, fontSize);
+    int rowH = fontSize + 2;
+    Rectangle bounds = {x, y, (float)textWidth + 6, (float)rowH};
+    Vector2 mouse = GetMousePosition();
+    bool hovered = CheckCollisionPointRec(mouse, bounds);
+    if (hovered) g_ui_draggableAnyHovered = true;
+    Color col = hovered ? YELLOW : LIGHTGRAY;
+    DrawTextShadow(buf, (int)x, (int)y, fontSize, col);
+    static bool dragging = false;
+    static int* dragTarget = NULL;
+    if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        dragging = true; dragTarget = value;
+        g_ui_clickConsumed = true; g_ui_isDragging = true;
+    }
+    if (dragging && dragTarget == value) {
+        float delta = GetMouseDelta().x * speed * 0.1f;
+        int newVal = *value + (int)(delta > 0 ? delta + 0.5f : delta - 0.5f);
+        if (newVal < min) newVal = min;
+        if (newVal > max) newVal = max;
+        if (newVal != *value) *value = newVal;
+        if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+            dragging = false; dragTarget = NULL; g_ui_isDragging = false;
+        }
+        return true;
+    }
+    return false;
+}
+
+void ToggleBoolS(float x, float y, const char* label, bool* value, int fontSize) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "[%c] %s", *value ? 'X' : ' ', label);
+    int textWidth = MeasureTextUI(buf, fontSize);
+    int rowH = fontSize + 2;
+    Rectangle bounds = {x, y, (float)textWidth + 6, (float)rowH};
+    Vector2 mouse = GetMousePosition();
+    bool hovered = CheckCollisionPointRec(mouse, bounds);
+    if (hovered) g_ui_toggleAnyHovered = true;
+    Color col = hovered ? YELLOW : LIGHTGRAY;
+    DrawTextShadow(buf, (int)x, (int)y, fontSize, col);
+    if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        *value = !*value; g_ui_clickConsumed = true;
+    }
+}
+
+void CycleOptionS(float x, float y, const char* label, const char** options, int count, int* value, int fontSize) {
+    char buf[128];
+    snprintf(buf, sizeof(buf), "%s: < %s >", label, options[*value]);
+    int textWidth = MeasureTextUI(buf, fontSize);
+    int rowH = fontSize + 2;
+    Rectangle bounds = {x, y, (float)textWidth + 6, (float)rowH};
+    Vector2 mouse = GetMousePosition();
+    bool hovered = CheckCollisionPointRec(mouse, bounds);
+    if (hovered) g_ui_cycleAnyHovered = true;
+    Color col = hovered ? YELLOW : LIGHTGRAY;
+    DrawTextShadow(buf, (int)x, (int)y, fontSize, col);
+    if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        *value = (*value + 1) % count; g_ui_clickConsumed = true;
+    }
 }
 
 bool DraggableInt(float x, float y, const char* label, int* value, float speed, int min, int max) {
