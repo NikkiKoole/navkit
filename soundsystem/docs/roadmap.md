@@ -151,28 +151,33 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 
 *More expressive and generative features.*
 
-## 3.1 Micro-timing Per Step
-- Nudge individual steps forward/back in time
-- Finer than current Dilla system
-- Visual micro-timing editor
+## 3.1 Micro-timing Per Step ✓ DONE
+- ✓ Per-step nudge via `PLOCK_TIME_NUDGE` parameter lock (-12 to +12 ticks)
+- ✓ Helper functions: `seqSetStepNudge()`, `seqGetStepNudge()`, `seqClearStepNudge()`
+- ✓ V2 struct field: `StepNote.nudge`
+- ✓ Applied during drum and melody trigger logic
+- **Visual micro-timing editor** (NOT YET)
 
-## 3.2 Gate Length Per Step
-- Control note duration independently
-- Short staccato vs long sustained
-- Percentage of step length or absolute time
+## 3.2 Gate Length Per Step ✓ DONE
+- ✓ `melodyGate[MELODY_TRACKS][MAX_STEPS]` — per-step gate control
+- ✓ `melodySustain[MELODY_TRACKS][MAX_STEPS]` — sustain/hold per step
+- ✓ V2 struct: `StepNote.gate` (1-64 steps, 0=legato)
+- ✓ `PLOCK_GATE_NUDGE` for sub-step end-time offset (-23 to +23 ticks)
 
-## 3.3 Retrigger/Note Repeat
-- Rapid-fire retrigs within a step
-- Retrig rate (1/8, 1/16, 1/32, etc.)
-- Velocity decay on retrigs
-- Great for drum rolls, glitchy effects
+## 3.3 Retrigger/Note Repeat ✓ DONE
+- ✓ `p_retriggerCount` (0=off, 2-4 rapid re-triggers)
+- ✓ `p_retriggerSpread` (timing spread in seconds)
+- ✓ `p_retriggerOverlap` (overlapping bursts like clap vs envelope restart)
+- ✓ `p_retriggerBurstDecay` (per-burst decay, default 0.02s)
+- ✓ `p_retriggerCurve` (0=uniform, >0=accelerating gaps for clap effect)
+- ✓ Velocity decay on retrigs
 
-## 3.4 Arpeggiator
-- Classic arp patterns (up, down, up-down, random)
-- Octave range (1-4 octaves)
-- Arp rate synced to tempo
-- Hold mode
-- Pattern-based arps (custom note orders)
+## 3.4 Arpeggiator ✓ DONE
+- ✓ `ArpMode`: UP, DOWN, UPDOWN, RANDOM
+- ✓ `ArpRateDiv`: 1/4, 1/8, 1/16, 1/32, FREE — tempo-synced
+- ✓ `ArpChordType`: OCTAVE, MAJOR, MINOR, DOM7, MIN7, SUS4, POWER
+- ✓ Hold mode, per-voice arp state
+- **Pattern-based arps** (custom note orders) (NOT YET)
 
 ## 3.5 Euclidean Rhythm Generator
 - Distribute N hits over M steps mathematically
@@ -181,15 +186,20 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - Per-track Euclidean settings
 - ~45 lines (algorithm + UI), see `docs/synthesis-additions.md` §11
 
-## 3.6 Pattern Templates
-- Preset drum patterns (4-on-floor, breakbeat, trap, DnB, etc.)
-- Preset bass patterns
-- One-click starting points
+## 3.6 Pattern Templates ✓ DONE
+- ✓ 14 preset styles in `rhythm_patterns.h`: Rock, Pop, Disco, Funk, Bossa Nova, Cha-Cha, Swing, Foxtrot, Reggae, Hip Hop, House, Latin, Waltz, Shuffle
+- ✓ Per-pattern: kick, snare, hihat, percussion (4 tracks × 16 steps)
+- ✓ Suggested swing and BPM per pattern
+- ✓ `RhythmVariation`: NONE, FILL, SPARSE, BUSY
+- ⚠️ SYNCOPATED: basic (kick-only, shifts forward) — needs upgrade to all-track anticipation, see `docs/synthesis-additions.md` §23
+- ✓ `applyRhythmPattern()` with humanize (velocity randomization)
 
-## 3.7 Generative/Random Patterns
-- Random within constraints (scale, rhythm density)
-- Evolving patterns (slight changes each repeat)
-- Controlled chaos
+## 3.7 Generative/Random Patterns ✓ DONE
+- ✓ Note pool system: `PICK_RANDOM`, `PICK_RANDOM_WALK` modes
+- ✓ Per-step probability: `drumProbability[]`, `melodyProbability[]`
+- ✓ Trigger conditions for automatic variation (COND_1_2, COND_1_4, etc.)
+- ✓ Rhythm variation system (FILL/SPARSE/BUSY, SYNCOPATED partial)
+- ✓ Humanize velocity jitter
 
 ---
 

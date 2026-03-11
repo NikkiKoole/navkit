@@ -1160,22 +1160,28 @@ just new entries in `instrument_presets.h`.
 
 ---
 
-### 23. Syncopated Rhythm Variation (Fix Stub)
+### 23. Syncopated Rhythm Variation (Upgrade from Basic)
 
-**Effort:** ~15 lines in rhythm_patterns.h
-**Impact:** Completes an existing feature — currently shows in UI but does nothing
+**Effort:** ~10 lines change in rhythm_patterns.h
+**Impact:** Upgrades existing basic implementation to musically correct syncopation
 
-`RHYTHM_VAR_SYNCOPATED` exists in the enum and appears in the rhythm generator UI
-but the implementation is empty. Should shift some hits off the beat:
+**Current state:** `RHYTHM_VAR_SYNCOPATED` has a basic implementation that shifts kicks
+forward by one step (30% chance). This delays hits rather than anticipating the beat —
+not true syncopation. It also only affects track 0 (kick).
+
+**Proposed upgrade:** shift on-beat hits to the *preceding* off-beat across all tracks,
+which creates anticipation (the defining quality of syncopation):
 ```c
 case RHYTHM_VAR_SYNCOPATED:
     for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
-        for (int s = 0; s < p->drumTrackLength[t]; s++) {
-            // Move some on-beat hits to the preceding off-beat
-            if (p->drumSteps[t][s] && (s % 4 == 0) && s > 0 && !p->drumSteps[t][s-1]) {
-                p->drumSteps[t][s] = false;
-                p->drumSteps[t][s-1] = true;
-                p->drumVelocity[t][s-1] = p->drumVelocity[t][s] * 0.85f;
+        for (int s = 0; s < src->length; s++) {
+            // Move some on-beat hits to the preceding off-beat (anticipation)
+            if (patGetDrum(p, t, s) && (s % 4 == 0) && s > 0 && !patGetDrum(p, t, s-1)) {
+                if (rhythmRandFloat(gen) < 0.3f) {
+                    float vel = patGetDrumVel(p, t, s);
+                    patClearDrum(p, t, s);
+                    patSetDrum(p, t, s-1, vel * 0.85f, 0.0f);
+                }
             }
         }
     }
@@ -1198,7 +1204,7 @@ case RHYTHM_VAR_SYNCOPATED:
 | 17 | Preset audition | ~10 | Workflow | Sound design speed |
 | 21 | Keyboard hints | ~15 | Polish | Discoverability |
 | 12 | Arp tempo sync | ~15 | Sequencer | Fixes audible drift |
-| 23 | Syncopated variation | ~15 | Sequencer | Completes existing feature |
+| 23 | Syncopated variation | ~10 | Sequencer | Upgrade: kick-only → all tracks, delay → anticipation |
 | 4 | Unison stereo | ~15 | Synthesis | Wide pads/leads |
 | 18 | Hide wave params | ~20 | Polish | Reduces visual overload |
 | 10 | Polyrhythmic lengths | ~20 | Sequencer | Engine ready, just needs UI |
