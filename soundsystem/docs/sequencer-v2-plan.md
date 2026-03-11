@@ -317,9 +317,26 @@ Key differences from v1:
 - No NotePool/PICK_ALL path — just iterate the note array
 - Nudge is per-note (from StepNote), not per-step p-lock
 
-### Phase 3: Migrate Callers
+### Phase 3: Migrate Callers — DONE
 
-File by file, update to use new data structures:
+All callers migrated to read/write v2 data (except songs.h, blocked on NotePool).
+
+**Getters switched to v2** (13 functions): `patGetDrum`, `patGetDrumVel`, `patGetDrumPitch`, `patGetDrumProb`, `patGetDrumCond`, `patGetNote`, `patGetNoteVel`, `patGetNoteGate`, `patGetNoteSlide`, `patGetNoteAccent`, `patGetNoteSustain`, `patGetNoteProb`, `patGetNoteCond`.
+
+**New single-field setters** (6 functions): `patSetNoteGate`, `patSetNotePitch`, `patSetNoteVel`, `patSetDrumVel`, `patSetDrumPitch` — dual-write v1+v2.
+
+| File | What changed |
+|---|---|
+| daw.c | Direct writes → setters, pointer widget bindings → v2 writeback, playhead/progress → trackStep/trackLength (v2), dawStopSequencer resets v2 |
+| demo.c | Drum drag → patSetDrumVel/Pitch, melody grid → patSetNotePitch/patSetNote, inspector → setter writebacks, playhead → trackStep, track lengths → trackLength (v2) |
+| test_daw_file.c | syncPatternV1ToV2 before save, wider float epsilon for v2 quantization |
+| test_soundsystem.c | VEL_EPSILON for velocity round-trip, skip velocity checks on empty drum steps |
+| song_file.h / daw_file.h | Already used helpers (now reading v2 via getters) |
+| songs.h (~217 refs) | DEFERRED — blocked on NotePool removal (Phase 4) |
+
+**Remaining v1 pointer bindings** (UI widgets that take `float*`/`int*`/`bool*` to v1 fields): 14 in daw.c + 4 in demo.c. All have v2 writeback code — v1 fields used as temp storage for widget editing, synced to v2 after each frame.
+
+Previously:
 
 **sequencer.h helpers** — Update seqPreparePLocks, seqGetPLock, seqSetPLock to use direct track index (no offset). Remove PLOCK_TIME_NUDGE and PLOCK_GATE_NUDGE from PLockParam.
 
