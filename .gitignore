@@ -21,3 +21,6 @@ tags
 # Debug/temp
 navkit_sound.log
 screenshot*.png
+daw_output.wav
+daw_sound.log
+daw_voice.log
