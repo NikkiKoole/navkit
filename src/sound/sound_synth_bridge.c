@@ -254,9 +254,15 @@ static void bridgeMelodyTrigger(int track, int note, float vel,
     useSoundSystem(&g_soundSynth->ss);
     SongPlayer *sp = &g_soundSynth->songPlayer;
 
-    if (sp->melodyVoices[track][0] >= 0) {
-        releaseNote(sp->melodyVoices[track][0]);
+    int slot = sp->melodyVoiceCount[track];
+    if (slot == 0) {
+        // First note for this step — release any leftover voice in slot 0
+        if (sp->melodyVoices[track][0] >= 0) {
+            releaseNote(sp->melodyVoices[track][0]);
+            sp->melodyVoices[track][0] = -1;
+        }
     }
+    if (slot >= MAX_CHORD_VOICES) return;  // voice slots full
 
     // Accent: boost volume and filter envelope
     float origVol = p->p_volume;
@@ -280,8 +286,8 @@ static void bridgeMelodyTrigger(int track, int note, float vel,
             synthVoices[v].glideRate = 1.0f / p->p_glideTime;
         }
     }
-    sp->melodyVoices[track][0] = v;
-    sp->melodyVoiceCount[track] = 1;
+    sp->melodyVoices[track][slot] = v;
+    sp->melodyVoiceCount[track] = slot + 1;
 }
 
 
@@ -491,6 +497,7 @@ static void melodyReleaseBass(void) {
         releaseNote(g_soundSynth->songPlayer.melodyVoices[0][0]);
         g_soundSynth->songPlayer.melodyVoices[0][0] = -1;
     }
+    g_soundSynth->songPlayer.melodyVoiceCount[0] = 0;
 }
 static void melodyReleaseLead(void) {
     if (!g_soundSynth) return;
@@ -498,6 +505,7 @@ static void melodyReleaseLead(void) {
         releaseNote(g_soundSynth->songPlayer.melodyVoices[1][0]);
         g_soundSynth->songPlayer.melodyVoices[1][0] = -1;
     }
+    g_soundSynth->songPlayer.melodyVoiceCount[1] = 0;
 }
 static void melodyReleaseChord(void) {
     if (!g_soundSynth) return;
@@ -505,6 +513,7 @@ static void melodyReleaseChord(void) {
         releaseNote(g_soundSynth->songPlayer.melodyVoices[2][0]);
         g_soundSynth->songPlayer.melodyVoices[2][0] = -1;
     }
+    g_soundSynth->songPlayer.melodyVoiceCount[2] = 0;
 }
 
 // Release all chord voices for a given track
