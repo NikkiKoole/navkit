@@ -436,6 +436,40 @@ All feasible callers migrated to use pattern access helpers:
 
 All 2185 test assertions pass.
 
-### Remaining prep (do before starting Phase 1)
+### Remaining prep
 1. **songs.h** (~130+ refs, mostly NotePool) — blocked on other pipeline work, migrate when feasible
-2. **sequencer.h engine internals** (~30 refs) — changes during actual refactor in Phase 2
+
+### Phase 1: New Data Structures — DONE
+
+Added to `sequencer.h`:
+- `StepNote` struct (7 bytes: note, velocity, gate, gateNudge, nudge, slide, accent)
+- `StepV2` struct (~46 bytes: 6 StepNote slots + noteCount, probability, condition, sustain)
+- `TrackType` enum (TRACK_DRUM, TRACK_MELODIC)
+- Step manipulation helpers: `stepV2Clear`, `stepV2AddNote`, `stepV2RemoveNote`, `stepV2FindNote`
+- Velocity/probability conversion: `velFloatToU8`/`velU8ToFloat`, `probFloatToU8`/`probU8ToFloat`
+- `Pattern` struct extended with `steps[12][64]`, `trackLength[12]`, `trackType[12]`
+- V1→V2 conversion: `patternV1DrumToV2`, `patternV1MelodyToV2`, `patternV1ToV2`
+- `syncPatternV1ToV2()` — bulk sync for catching direct v1 array writes
+- ALL pattern helpers + seq* setters dual-write to both v1 and v2 arrays
+
+### Phase 2: Unified Tick Loop — DONE
+
+Replaced dual drum/melody tick loops with single unified loop:
+- Single `for (track < seq.trackCount)` loop reads from `p->steps[track][step]` (StepV2)
+- `seqTriggerStep()` — extracted shared trigger logic (probability, condition, p-lock prep, drum vs melodic dispatch)
+- `calcTrackTriggerTick()` — unified trigger tick calculation (dilla for drums, humanize for melody)
+- `seqEvalTrackCondition()` — reads condition from v2 step data
+- Gate countdown + sustain for melodic tracks
+- Pattern end detection on track 0 wrap, chain advance logic preserved
+- Advance-trigger (immediate trigger on step advance when nudge<=0) uses same `seqTriggerStep`
+
+**V1 backward compatibility layer** (temporary, for transition):
+- v2→v1 state mirroring in tick loop: `melodyCurrentNote`, `melodyGateRemaining`, `melodySustainRemaining`, `drumStep`, step play counts
+- v1→v2 track length sync at start of each tick (catches direct `drumTrackLength`/`melodyTrackLength` writes)
+- `initSequencerContext` initializes `trackCount`, `nextPattern`, `trackCurrentNote` for v2
+- `releaseAllMelodyNotes` checks both v1 and v2 state, clears both
+- Probability/condition set `trackTriggered=true` before evaluation (prevents re-evaluation on failure)
+
+**Key bug found and fixed**: probability re-evaluation — when `seqTriggerStep` returned early (failed prob/cond), `trackTriggered` stayed false, causing the step to be re-evaluated on subsequent ticks. Fixed by marking triggered before checking prob/cond.
+
+All 276 tests (2276 assertions) pass. Main build compiles.
