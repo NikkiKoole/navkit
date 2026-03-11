@@ -3066,7 +3066,16 @@ static void dawHandleMusicalTyping(void) {
         for (size_t i = 0; i < NUM_DAW_PIANO_KEYS; i++) {
             if (IsKeyPressed(dawPianoKeys[i].key)) {
                 float freq = dawSemitoneToFreq(dawPianoKeys[i].semitone, dawCurrentOctave);
-                int v = playNoteWithPatch(freq, patch);
+                int v;
+                if (patch->p_waveType == WAVE_VOICE && daw.voiceRandomVowel) {
+                    seqNoiseState = seqNoiseState * 1103515245 + 12345;
+                    int savedVowel = patch->p_voiceVowel;
+                    patch->p_voiceVowel = (seqNoiseState >> 16) % 5;
+                    v = playNoteWithPatch(freq, patch);
+                    patch->p_voiceVowel = savedVowel;
+                } else {
+                    v = playNoteWithPatch(freq, patch);
+                }
                 dawPianoKeyVoices[i] = v;
                 if (v >= 0) {
                     voiceBus[v] = bus;
