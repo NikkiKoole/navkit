@@ -2289,4 +2289,173 @@ static void Song_Gymnopedie_Load(Pattern patterns[8]) {
 
 #define SONG_GYMNOPEDIE_BPM  40.0f  // actual 80 BPM, halved for 8th-note resolution
 
+// ============================================================================
+// Song: M.U.L.E. Theme v2 (from MIDI transcription)
+//
+// F minor, 74 BPM, 32nd note resolution.
+// Faithful to the original Commodore 64 SID chip version.
+//
+// 3 tracks: drums (snare/kick/HH), square bass, sawtooth melody
+// 8 patterns of 32 steps each (= 8 bars).
+// Pattern structure: 2x drums, 2x drums+bass, 4x drums+bass+melody
+//
+// Key differences from v1:
+// - True square wave bass (not pluck)
+// - True sawtooth melody (not FM)
+// - Sub-step timing in melody runs via p-lock nudges
+// - Correct drum pattern (snare on beats, kick on off-beats)
+// ============================================================================
+
+static void mule2SetTrackLengths(Pattern* p) {
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) p->drumTrackLength[t] = 32;
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) p->melodyTrackLength[t] = 32;
+}
+
+// Drums: snare+HH on even steps (0,4,8..), kick+HH on odd steps (2,6,10..)
+static void mule2Drums(Pattern* p) {
+    for (int s = 0; s < 32; s += 2) {
+        // Hihat on every 16th note
+        p->drumSteps[2][s] = true;
+        p->drumVelocity[2][s] = 0.4f;
+        // Snare on downbeats (even 16ths), kick on upbeats (odd 16ths)
+        if ((s / 2) % 2 == 0) {
+            p->drumSteps[1][s] = true;   // snare
+            p->drumVelocity[1][s] = 0.4f;
+        } else {
+            p->drumSteps[0][s] = true;   // kick
+            p->drumVelocity[0][s] = 0.4f;
+        }
+    }
+}
+
+// Bass: chromatic ascending pattern F→E in low/high octave pairs
+// Every 16th note (every 2 steps at 32nd resolution), gate=1
+static void mule2Bass(Pattern* p) {
+    int bassNotes[16] = {
+        F1, F2, A0, A1, Bb0, Bb1, B0, B1,
+        Cn1, Cn2, D1, D2, Eb1, Eb2, E1, E2
+    };
+    for (int i = 0; i < 16; i++) {
+        int s = i * 2;
+        p->melodyNote[0][s] = bassNotes[i];
+        p->melodyGate[0][s] = 1;
+        p->melodyVelocity[0][s] = 0.4f;
+    }
+}
+
+// Helper: set melody note on track 1 with nudge for sub-step timing
+static void mule2Note(Pattern* p, int step, int n, int gate) {
+    p->melodyNote[1][step] = n;
+    p->melodyGate[1][step] = gate;
+    p->melodyVelocity[1][step] = 0.4f;
+}
+
+// Helper: set melody note with half-step nudge (for sub-32nd timing in runs)
+static void mule2NoteNudge(Pattern* p, int step, int n, int gate, float nudge) {
+    mule2Note(p, step, n, gate);
+    seqSetPLock(p, SEQ_DRUM_TRACKS + 1, step, PLOCK_TIME_NUDGE, nudge);
+}
+
+// Melody phrase A: C grace notes → F held, run C→F→A→G→F,
+//                  Eb grace notes → Bb held, run Eb→G→Bb→Ab→G
+static void mule2MelodyA(Pattern* p) {
+    // Grace notes + held F
+    mule2Note(p,  0, Cn3, 1);       // grace 1
+    mule2Note(p,  2, Cn3, 1);       // grace 2 (half-step dur)
+    mule2Note(p,  3, Cn3, 1);       // grace 3 (32nd!)
+    mule2Note(p,  4, F3,  4);       // main held F
+    // Fast descending run with sub-step timing
+    mule2Note(p, 10, Cn3, 1);       // pickup
+    mule2Note(p, 11, F3,  1);       // F3
+    mule2NoteNudge(p, 12, A3, 1, 6.0f);  // A3 at step 12.5 (nudge +6 ticks)
+    mule2NoteNudge(p, 13, G3, 1, 6.0f);  // G3 at step 13.5 (nudge +6 ticks)
+    mule2Note(p, 15, F3,  1);       // landing F
+
+    // Eb grace notes + held Bb
+    mule2Note(p, 16, Eb3, 1);       // grace 1
+    mule2Note(p, 18, Eb3, 1);       // grace 2
+    mule2Note(p, 19, Eb3, 1);       // grace 3 (32nd!)
+    mule2Note(p, 20, Bb3, 4);       // main held Bb
+    // Fast ascending run with sub-step timing
+    mule2Note(p, 26, Eb3, 1);       // pickup
+    mule2Note(p, 27, G3,  1);       // G3
+    mule2NoteNudge(p, 28, Bb3, 1, 6.0f); // Bb3 at step 28.5
+    mule2NoteNudge(p, 29, Ab3, 1, 6.0f); // Ab3 at step 29.5
+    mule2Note(p, 31, G3,  1);       // landing G
+}
+
+// Melody phrase A2: same opening, ends on held Eb3
+static void mule2MelodyA2(Pattern* p) {
+    mule2Note(p,  0, Cn3, 1);
+    mule2Note(p,  2, Cn3, 1);
+    mule2Note(p,  3, Cn3, 1);
+    mule2Note(p,  4, F3,  4);
+    mule2Note(p, 10, Cn3, 1);
+    mule2Note(p, 11, F3,  1);
+    mule2NoteNudge(p, 12, A3, 1, 6.0f);
+    mule2NoteNudge(p, 13, G3, 1, 6.0f);
+    mule2Note(p, 15, F3,  1);
+    mule2Note(p, 16, Eb3, 6);       // held to end of bar
+}
+
+// Melody phrase B: higher variation F→C4, ends on held G3
+static void mule2MelodyB(Pattern* p) {
+    mule2Note(p,  0, F3,  1);
+    mule2Note(p,  2, F3,  1);
+    mule2Note(p,  3, F3,  1);
+    mule2Note(p,  4, Cn4, 4);
+    mule2Note(p, 10, F3,  1);
+    mule2Note(p, 11, A3,  1);
+    mule2NoteNudge(p, 12, Cn4, 1, 6.0f);
+    mule2NoteNudge(p, 13, Bb3, 1, 6.0f);
+    mule2Note(p, 15, A3,  1);
+    mule2Note(p, 16, G3,  6);       // held to end of bar
+}
+
+static void Song_Mule2_ConfigureVoices(void) {
+    (void)0;
+}
+
+static void Song_Mule2_Pattern0(Pattern* p) {
+    initPattern(p); mule2SetTrackLengths(p); mule2Drums(p);
+}
+static void Song_Mule2_Pattern1(Pattern* p) {
+    initPattern(p); mule2SetTrackLengths(p); mule2Drums(p);
+}
+static void Song_Mule2_Pattern2(Pattern* p) {
+    initPattern(p); mule2SetTrackLengths(p); mule2Drums(p); mule2Bass(p);
+}
+static void Song_Mule2_Pattern3(Pattern* p) {
+    initPattern(p); mule2SetTrackLengths(p); mule2Drums(p); mule2Bass(p);
+}
+static void Song_Mule2_Pattern4(Pattern* p) {
+    initPattern(p); mule2SetTrackLengths(p); mule2Drums(p); mule2Bass(p);
+    mule2MelodyA(p);
+}
+static void Song_Mule2_Pattern5(Pattern* p) {
+    initPattern(p); mule2SetTrackLengths(p); mule2Drums(p); mule2Bass(p);
+    mule2MelodyA2(p);
+}
+static void Song_Mule2_Pattern6(Pattern* p) {
+    initPattern(p); mule2SetTrackLengths(p); mule2Drums(p); mule2Bass(p);
+    mule2MelodyA(p);
+}
+static void Song_Mule2_Pattern7(Pattern* p) {
+    initPattern(p); mule2SetTrackLengths(p); mule2Drums(p); mule2Bass(p);
+    mule2MelodyB(p);
+}
+
+static void Song_Mule2_Load(Pattern patterns[8]) {
+    Song_Mule2_Pattern0(&patterns[0]);
+    Song_Mule2_Pattern1(&patterns[1]);
+    Song_Mule2_Pattern2(&patterns[2]);
+    Song_Mule2_Pattern3(&patterns[3]);
+    Song_Mule2_Pattern4(&patterns[4]);
+    Song_Mule2_Pattern5(&patterns[5]);
+    Song_Mule2_Pattern6(&patterns[6]);
+    Song_Mule2_Pattern7(&patterns[7]);
+}
+
+#define SONG_MULE2_BPM  74.0f
+
 #endif // SONGS_H

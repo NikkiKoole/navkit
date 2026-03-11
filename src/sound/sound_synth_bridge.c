@@ -207,10 +207,6 @@ static void initBridgeDrumPatches(void) {
 }
 
 // Saved note parameter block — applyPatchToGlobals writes these fields on SynthContext.
-// We snapshot them before drum triggers and restore after, so melody triggers
-// (which set globals piecemeal) don't get clobbered by drum patch values.
-static SynthPatch bridgeNoteSnapshot;
-
 static void bridgeDrumTriggerGeneric(int trackIdx, float vel, float pitch) {
     (void)pitch;
     if (!g_soundSynth) return;
@@ -225,33 +221,7 @@ static void bridgeDrumTriggerGeneric(int trackIdx, float vel, float pitch) {
         releaseNote(bridgeDrumVoice[trackIdx]);
     }
 
-    // Snapshot current note globals into a temporary patch, trigger drum, then restore.
-    // This prevents applyPatchToGlobals (called by playNoteWithPatch) from clobbering
-    // the globals that per-song melody triggers set piecemeal.
-    applyPatchToGlobals(&bridgeNoteSnapshot); // read current globals back into snapshot (no-op direction, but...)
-
-    // Actually: we need the reverse — save globals, trigger, restore.
-    // Use the fact that applyPatchToGlobals is globals←patch. We need patch←globals.
-    // Simplest: just re-apply after. Save a SynthPatch from current globals:
-    bridgeNoteSnapshot.p_attack = noteAttack;
-    bridgeNoteSnapshot.p_decay = noteDecay;
-    bridgeNoteSnapshot.p_sustain = noteSustain;
-    bridgeNoteSnapshot.p_release = noteRelease;
-    bridgeNoteSnapshot.p_volume = noteVolume;
-    bridgeNoteSnapshot.p_pulseWidth = notePulseWidth;
-    bridgeNoteSnapshot.p_filterCutoff = noteFilterCutoff;
-    bridgeNoteSnapshot.p_filterResonance = noteFilterResonance;
-    bridgeNoteSnapshot.p_filterEnvAmt = noteFilterEnvAmt;
-    bridgeNoteSnapshot.p_filterType = noteFilterType;
-    bridgeNoteSnapshot.p_fmModRatio = fmModRatio;
-    bridgeNoteSnapshot.p_fmModIndex = fmModIndex;
-    bridgeNoteSnapshot.p_fmFeedback = fmFeedback;
-
     int v = playNoteWithPatch(p->p_triggerFreq, p);
-
-    // Restore globals from snapshot
-    applyPatchToGlobals(&bridgeNoteSnapshot);
-
     bridgeDrumVoice[trackIdx] = v;
     if (v >= 0) {
         synthVoices[v].volume *= vel;
@@ -264,541 +234,279 @@ static void bridgeDrumHH(float vel, float pitch)    { bridgeDrumTriggerGeneric(2
 static void bridgeDrumClap(float vel, float pitch)  { bridgeDrumTriggerGeneric(3, vel, pitch); }
 
 // ============================================================================
-// Melody trigger callbacks — each track gets a different instrument
+// Unified melody trigger system — all instruments via SynthPatch presets
 // ============================================================================
 
-// Bass track: warm saw with low filter
+// Song instrument patches — copied from presets at init, per-song overrides applied
+static SynthPatch songPatches[SEQ_MELODY_TRACKS];
+static bool songPatchesInitialized = false;
+
+static void ensureSongPatches(void) {
+    if (songPatchesInitialized) return;
+    initInstrumentPresets();
+    songPatchesInitialized = true;
+}
+
+// Generic single-voice melody trigger via SynthPatch
+static void bridgeMelodyTrigger(int track, int note, float vel,
+                                 bool slide, bool accent, SynthPatch *p) {
+    if (!g_soundSynth) return;
+    useSoundSystem(&g_soundSynth->ss);
+    SongPlayer *sp = &g_soundSynth->songPlayer;
+
+    if (sp->melodyVoices[track][0] >= 0) {
+        releaseNote(sp->melodyVoices[track][0]);
+    }
+
+    // Accent: boost volume and filter envelope
+    float origVol = p->p_volume;
+    float origFE = p->p_filterEnvAmt;
+    if (accent) {
+        p->p_volume = fminf(p->p_volume * 1.3f, 1.0f);
+        p->p_filterEnvAmt += 0.2f;
+    }
+
+    float freq = midiToFreqScaled(note);
+    int v = playNoteWithPatch(freq, p);
+
+    // Restore patch after accent tweak
+    p->p_volume = origVol;
+    p->p_filterEnvAmt = origFE;
+
+    // Apply velocity scaling on the voice directly
+    if (v >= 0) {
+        synthVoices[v].volume *= vel;
+        if (slide) {
+            synthVoices[v].glideRate = 1.0f / p->p_glideTime;
+        }
+    }
+    sp->melodyVoices[track][0] = v;
+    sp->melodyVoiceCount[track] = 1;
+}
+
+// Generic chord trigger via SynthPatch (finger stagger for rolled chords)
+static void bridgeChordTrigger(int track, int* notes, int noteCount, float vel,
+                                bool accent, SynthPatch *p) {
+    if (!g_soundSynth) return;
+    useSoundSystem(&g_soundSynth->ss);
+    SongPlayer *sp = &g_soundSynth->songPlayer;
+
+    // Release previous chord voices
+    for (int j = 0; j < sp->melodyVoiceCount[track]; j++) {
+        if (sp->melodyVoices[track][j] >= 0) releaseNote(sp->melodyVoices[track][j]);
+        sp->melodyVoices[track][j] = -1;
+    }
+
+    if (noteCount > MAX_CHORD_VOICES) noteCount = MAX_CHORD_VOICES;
+
+    float origAtk = p->p_attack;
+    for (int i = 0; i < noteCount; i++) {
+        // Finger stagger: 5-15ms offset per finger for rolled chord feel
+        p->p_attack = origAtk + i * 0.012f;
+        float freq = midiToFreqScaled(notes[i]);
+        int v = playNoteWithPatch(freq, p);
+        if (v >= 0) {
+            synthVoices[v].volume *= vel * (accent ? 1.3f : 1.0f);
+        }
+        sp->melodyVoices[track][i] = v;
+    }
+    p->p_attack = origAtk;
+    sp->melodyVoiceCount[track] = noteCount;
+}
+
+// ============================================================================
+// Per-song melody triggers — thin wrappers using presets + overrides
+// ============================================================================
+
+// --- Preset indices for readability ---
+#define PRESET_GLOCK      15
+#define PRESET_MAC_KEYS   21
+#define PRESET_MAC_VIBES  23
+#define PRESET_ACID        8
+#define PRESET_WARM_TRI   38
+#define PRESET_DARK_ORGAN 39
+#define PRESET_EERIE_VOW  40
+#define PRESET_TRI_SUB    41
+#define PRESET_DARK_CHOIR 42
+#define PRESET_LUSH_STR   43
+#define PRESET_WARM_PLUCK 44
+
+// Helper: load preset into track slot with optional overrides
+static SynthPatch* songPatch(int track, int presetIdx) {
+    ensureSongPatches();
+    songPatches[track] = instrumentPresets[presetIdx].patch;
+    return &songPatches[track];
+}
+
+// --- Default (Dormitory) song ---
 static void melodyTriggerBass(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    // Release previous bass voice
-    if (g_soundSynth->songPlayer.melodyVoices[0][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[0][0]);
-    }
-
-    noteAttack  = 0.3f;
-    noteDecay   = 0.6f;
-    noteSustain = 0.4f;
-    noteRelease = 1.2f;
-    noteVolume  = vel * 0.5f;
-    noteFilterCutoff = 0.25f;
-    noteFilterResonance = 0.15f;
-
-    float freq = midiToFreqScaled(note);
-    int v = playNote(freq, WAVE_TRIANGLE);
-    g_soundSynth->songPlayer.melodyVoices[0][0] = v;
+    (void)gateTime;
+    bridgeMelodyTrigger(0, note, vel, slide, accent, songPatch(0, PRESET_WARM_TRI));
 }
-
-// Lead track: glockenspiel (mallet)
 static void melodyTriggerLead(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[1][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[1][0]);
-    }
-
-    noteVolume = vel * 0.4f;
-    float freq = midiToFreqScaled(note);
-    int v = playMallet(freq, MALLET_PRESET_GLOCKEN);
-    g_soundSynth->songPlayer.melodyVoices[1][0] = v;
+    (void)gateTime;
+    SynthPatch *p = songPatch(1, PRESET_GLOCK);
+    p->p_volume = 0.4f;
+    bridgeMelodyTrigger(1, note, vel, slide, accent, p);
 }
-
-// Chord track: additive choir pad
 static void melodyTriggerChord(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[2][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[2][0]);
-    }
-
-    noteAttack  = 0.8f;
-    noteDecay   = 1.0f;
-    noteSustain = 0.5f;
-    noteRelease = 2.0f;
-    noteVolume  = vel * 0.35f;
-
-    float freq = midiToFreqScaled(note);
-    int v = playAdditive(freq, ADDITIVE_PRESET_CHOIR);
-    g_soundSynth->songPlayer.melodyVoices[2][0] = v;
+    (void)gateTime;
+    SynthPatch *p = songPatch(2, PRESET_DARK_CHOIR);
+    p->p_attack = 0.8f; p->p_decay = 1.0f; p->p_sustain = 0.5f; p->p_release = 2.0f;
+    p->p_volume = 0.35f;
+    bridgeMelodyTrigger(2, note, vel, slide, accent, p);
 }
 
-// ============================================================================
-// Suspense song triggers — organ + vowel
-// ============================================================================
-
-// Bass track: dark organ drone
+// --- Suspense song ---
 static void melodyTriggerOrganBass(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[0][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[0][0]);
-    }
-
-    noteAttack  = 0.8f;
-    noteDecay   = 1.5f;
-    noteSustain = 0.6f;
-    noteRelease = 3.0f;
-    noteVolume  = vel * 0.45f;
-    noteFilterCutoff = 0.18f;      // very dark
-    noteFilterResonance = 0.20f;
-
-    float freq = midiToFreqScaled(note);
-    int v = playAdditive(freq, ADDITIVE_PRESET_ORGAN);
-    g_soundSynth->songPlayer.melodyVoices[0][0] = v;
+    (void)gateTime;
+    bridgeMelodyTrigger(0, note, vel, slide, accent, songPatch(0, PRESET_DARK_ORGAN));
 }
-
-// Lead track: eerie vowel chanting
 static void melodyTriggerVowel(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[1][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[1][0]);
-    }
-
-    noteAttack  = 0.5f;
-    noteDecay   = 1.0f;
-    noteSustain = 0.4f;
-    noteRelease = 2.0f;
-    noteVolume  = vel * 0.4f;
-
-    // Cycle between dark vowels: "oo" and "oh"
-    // Use note pitch to alternate — low notes get U, higher get O
-    VowelType vowel = (note < 67) ? VOWEL_U : VOWEL_O;
-
-    float freq = midiToFreqScaled(note);
-    int v = playVowel(freq, vowel);
-    if (v >= 0 && slide) {
-        // Slide = portamento: eerie gliding between notes
-        synthVoices[v].glideRate = 0.3f;
-    }
-    g_soundSynth->songPlayer.melodyVoices[1][0] = v;
+    (void)gateTime;
+    SynthPatch *p = songPatch(1, PRESET_EERIE_VOW);
+    // Alternate vowel by pitch — low notes get U, high get O
+    p->p_voiceVowel = (note < 67) ? VOWEL_U : VOWEL_O;
+    bridgeMelodyTrigger(1, note, vel, slide, accent, p);
 }
-
-// Chord track: dark organ pad
 static void melodyTriggerOrganChord(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[2][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[2][0]);
-    }
-
-    noteAttack  = 1.0f;
-    noteDecay   = 1.5f;
-    noteSustain = 0.5f;
-    noteRelease = 3.0f;
-    noteVolume  = vel * 0.35f;
-    noteFilterCutoff = 0.22f;
-
-    float freq = midiToFreqScaled(note);
-    int v = playAdditive(freq, ADDITIVE_PRESET_ORGAN);
-    g_soundSynth->songPlayer.melodyVoices[2][0] = v;
+    (void)gateTime;
+    SynthPatch *p = songPatch(2, PRESET_DARK_ORGAN);
+    p->p_attack = 1.0f; p->p_volume = 0.35f; p->p_filterCutoff = 0.22f;
+    bridgeMelodyTrigger(2, note, vel, slide, accent, p);
 }
 
-// ============================================================================
-// Jazz song triggers — plucked bass, vibes, FM electric piano
-// ============================================================================
-
-// Bass: upright bass pizzicato (Karplus-Strong plucked string)
+// --- Jazz song ---
 static void melodyTriggerPluckBass(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[0][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[0][0]);
-    }
-
-    noteVolume = vel * 0.55f;
-    float freq = midiToFreqScaled(note);
-    // brightness 0.4 = warm, damping 0.5 = natural decay
-    int v = playPluck(freq, 0.4f, 0.5f);
-    g_soundSynth->songPlayer.melodyVoices[0][0] = v;
+    (void)gateTime;
+    bridgeMelodyTrigger(0, note, vel, slide, accent, songPatch(0, PRESET_WARM_PLUCK));
 }
-
-// Lead: vibraphone (mallet with motor tremolo)
 static void melodyTriggerVibes(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[1][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[1][0]);
-    }
-
-    noteVolume = vel * (accent ? 0.55f : 0.42f);
-    float freq = midiToFreqScaled(note);
-    int v = playMallet(freq, MALLET_PRESET_VIBES);
-    g_soundSynth->songPlayer.melodyVoices[1][0] = v;
+    (void)gateTime;
+    SynthPatch *p = songPatch(1, PRESET_MAC_VIBES);
+    p->p_volume = accent ? 0.55f : 0.42f;
+    bridgeMelodyTrigger(1, note, vel, slide, false, p); // accent already in volume
 }
-
-// Chord/response: FM electric piano (Rhodes-like)
-// Internal: FM Keys trigger for a specific track
 static void melodyTriggerFMKeysOnTrack(int track, int note, float vel, bool accent) {
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[track][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[track][0]);
-    }
-
-    noteAttack  = 0.005f;     // snappy attack
-    noteDecay   = 0.5f;
-    noteSustain = 0.25f;
-    noteRelease = 0.3f;       // short release, no lingering
-    noteVolume  = vel * (accent ? 0.50f : 0.40f);
-    noteFilterCutoff = 0.6f;  // brighter than organ
-
-    // Set FM params: ratio 1:1, moderate index = bell-like Rhodes tone
-    fmModRatio = 1.0f;
-    fmModIndex = 1.8f;
-    fmFeedback = 0.0f;
-
-    float freq = midiToFreqScaled(note);
-    int v = playFM(freq);
-    g_soundSynth->songPlayer.melodyVoices[track][0] = v;
-    g_soundSynth->songPlayer.melodyVoiceCount[track] = 1;
+    SynthPatch *p = songPatch(track, PRESET_MAC_KEYS);
+    // Override preset defaults to match original tight 8-bit sound
+    p->p_fmModIndex = 1.8f;        // brighter than preset's 1.2
+    p->p_sustain = 0.25f;          // tighter than preset's 0.3
+    p->p_release = 0.3f;           // shorter than preset's 0.4
+    p->p_vibratoRate = 0.0f;       // no vibrato (preset has 5.5)
+    p->p_vibratoDepth = 0.0f;      // no vibrato (preset has 0.12)
+    p->p_volume = accent ? 0.50f : 0.40f;
+    p->p_filterCutoff = 0.6f;
+    bridgeMelodyTrigger(track, note, vel, false, false, p); // accent already in volume
 }
-
-// FM Keys on track 2 (chord/comping)
 static void melodyTriggerFMKeys(int note, float vel, float gateTime, bool slide, bool accent) {
     (void)gateTime; (void)slide;
     melodyTriggerFMKeysOnTrack(2, note, vel, accent);
 }
-
-// FM Keys on track 1 (lead/melody)
 static void melodyTriggerFMKeysLead(int note, float vel, float gateTime, bool slide, bool accent) {
     (void)gateTime; (void)slide;
     melodyTriggerFMKeysOnTrack(1, note, vel, accent);
 }
 
-// ============================================================================
-// House triggers — acid bass, filtered pads, stabs
-// ============================================================================
-
-// Acid bass: resonant saw with filter sweep from sweepPhase
+// --- House song (sweep-modulated instruments) ---
 static void melodyTriggerAcidBass(int note, float vel, float gateTime, bool slide, bool accent) {
     (void)gateTime;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[0][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[0][0]);
-    }
-
-    float sweep = getSweepValue();   // 0.0 to 1.0 over ~40 seconds
-
-    noteAttack  = 0.003f;
-    noteDecay   = 0.15f;
-    noteSustain = 0.6f;
-    noteRelease = 0.1f;
-    noteVolume  = vel * (accent ? 0.60f : 0.50f);
-
-    // Filter sweeps from 0.08 (dark) to 0.65 (bright) over the sweep cycle
-    noteFilterCutoff    = 0.08f + sweep * 0.57f;
-    noteFilterResonance = 0.45f + sweep * 0.15f;  // resonance increases with sweep
-    noteFilterEnvAmt    = 0.3f;  // each note gets a filter spike too
-
-    float freq = midiToFreqScaled(note);
-    int v = playNote(freq, WAVE_SAW);
-    if (v >= 0 && slide) {
-        synthVoices[v].glideRate = 0.15f;
-    }
-    g_soundSynth->songPlayer.melodyVoices[0][0] = v;
+    SynthPatch *p = songPatch(0, PRESET_ACID);
+    float sweep = getSweepValue();
+    p->p_filterCutoff = 0.08f + sweep * 0.57f;
+    p->p_filterResonance = 0.45f + sweep * 0.15f;
+    p->p_filterEnvAmt = 0.3f;
+    p->p_volume = accent ? 0.60f : 0.50f;
+    p->p_glideTime = 0.15f;
+    bridgeMelodyTrigger(0, note, vel, slide, false, p); // accent already in volume
 }
-
-// Chord stab: FM with sweep-modulated brightness
 static void melodyTriggerHouseStab(int note, float vel, float gateTime, bool slide, bool accent) {
     (void)gateTime; (void)slide; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[1][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[1][0]);
-    }
-
+    SynthPatch *p = songPatch(1, PRESET_MAC_KEYS);
     float sweep = getSweepValue();
-
-    noteAttack  = 0.002f;
-    noteDecay   = 0.3f;
-    noteSustain = 0.1f;
-    noteRelease = 0.4f;
-    noteVolume  = vel * 0.40f;
-    noteFilterCutoff = 0.20f + sweep * 0.45f;
-    noteFilterResonance = 0.10f;
-
-    // FM index follows sweep — brighter at peak
-    fmModRatio = 2.0f;
-    fmModIndex = 0.5f + sweep * 2.5f;
-    fmFeedback = 0.0f;
-
-    float freq = midiToFreqScaled(note);
-    int v = playFM(freq);
-    g_soundSynth->songPlayer.melodyVoices[1][0] = v;
+    p->p_waveType = WAVE_FM;
+    p->p_fmModRatio = 2.0f;
+    p->p_fmModIndex = 0.5f + sweep * 2.5f;
+    p->p_attack = 0.002f; p->p_decay = 0.3f; p->p_sustain = 0.1f; p->p_release = 0.4f;
+    p->p_volume = 0.40f;
+    p->p_filterCutoff = 0.20f + sweep * 0.45f;
+    p->p_filterResonance = 0.10f;
+    bridgeMelodyTrigger(1, note, vel, false, false, p);
 }
-
-// Deep pad: additive strings with very slow sweep
 static void melodyTriggerDeepPad(int note, float vel, float gateTime, bool slide, bool accent) {
     (void)gateTime; (void)slide; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[2][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[2][0]);
-    }
-
+    SynthPatch *p = songPatch(2, PRESET_LUSH_STR);
     float sweep = getSweepValue();
-
-    noteAttack  = 1.5f;        // very slow fade in
-    noteDecay   = 2.0f;
-    noteSustain = 0.5f;
-    noteRelease = 3.0f;        // long tail
-    noteVolume  = vel * 0.30f;
-
-    // Pad filter sweeps opposite to bass — opens when bass is closing
-    noteFilterCutoff    = 0.12f + (1.0f - sweep) * 0.40f;
-    noteFilterResonance = 0.08f;
-
-    float freq = midiToFreqScaled(note);
-    int v = playAdditive(freq, ADDITIVE_PRESET_STRINGS);
-    g_soundSynth->songPlayer.melodyVoices[2][0] = v;
+    p->p_attack = 1.5f; p->p_decay = 2.0f; p->p_release = 3.0f;
+    p->p_filterCutoff = 0.12f + (1.0f - sweep) * 0.40f;
+    p->p_filterResonance = 0.08f;
+    bridgeMelodyTrigger(2, note, vel, false, false, p);
 }
-
-// Deep house sub bass: pure triangle sub
 static void melodyTriggerSubBass(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[0][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[0][0]);
-    }
-
-    noteAttack  = 0.01f;
-    noteDecay   = 0.3f;
-    noteSustain = 0.7f;
-    noteRelease = 0.2f;
-    noteVolume  = vel * 0.55f;
-    noteFilterCutoff    = 0.15f;   // very dark, sub only
-    noteFilterResonance = 0.05f;
-
-    float freq = midiToFreqScaled(note);
-    int v = playNote(freq, WAVE_TRIANGLE);
-    g_soundSynth->songPlayer.melodyVoices[0][0] = v;
+    (void)gateTime;
+    bridgeMelodyTrigger(0, note, vel, slide, accent, songPatch(0, PRESET_TRI_SUB));
 }
 
-// ============================================================================
-// Dilla hip-hop triggers — warm, lo-fi, behind-the-beat
-// ============================================================================
-
-// Bass: warm plucked upright, slightly detuned and filtered dark
+// --- Dilla hip-hop ---
 static void melodyTriggerDillaBass(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[0][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[0][0]);
-    }
-
-    noteVolume = vel * 0.55f;
-    noteFilterCutoff = 0.20f;      // dark, warm
-    noteFilterResonance = 0.12f;
-
-    float freq = midiToFreqScaled(note);
-    // brightness 0.35 = very warm, damping 0.55 = natural thump
-    int v = playPluck(freq, 0.35f, 0.55f);
-    g_soundSynth->songPlayer.melodyVoices[0][0] = v;
+    (void)gateTime;
+    SynthPatch *p = songPatch(0, PRESET_WARM_PLUCK);
+    p->p_pluckBrightness = 0.35f; p->p_pluckDamping = 0.55f;
+    p->p_filterCutoff = 0.20f; p->p_filterResonance = 0.12f;
+    bridgeMelodyTrigger(0, note, vel, slide, accent, p);
 }
-
-// Keys: lo-fi Rhodes (FM with low index, short decay)
 static void melodyTriggerDillaKeys(int note, float vel, float gateTime, bool slide, bool accent) {
     (void)gateTime; (void)slide;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[1][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[1][0]);
-    }
-
-    noteAttack  = 0.003f;
-    noteDecay   = 0.35f;
-    noteSustain = 0.15f;
-    noteRelease = 0.5f;
-    noteVolume  = vel * (accent ? 0.45f : 0.35f);
-    noteFilterCutoff = 0.35f;      // warm, not bright
-    noteFilterResonance = 0.08f;
-
-    // Lo-fi Rhodes: low FM index for mellow bell tone
-    fmModRatio = 1.0f;
-    fmModIndex = 1.2f;
-    fmFeedback = 0.0f;
-
-    float freq = midiToFreqScaled(note);
-    int v = playFM(freq);
-    g_soundSynth->songPlayer.melodyVoices[1][0] = v;
+    SynthPatch *p = songPatch(1, PRESET_MAC_KEYS);
+    p->p_decay = 0.35f; p->p_sustain = 0.15f; p->p_release = 0.5f;
+    p->p_volume = accent ? 0.45f : 0.35f;
+    p->p_filterCutoff = 0.35f; p->p_filterResonance = 0.08f;
+    bridgeMelodyTrigger(1, note, vel, false, false, p); // accent already in volume
 }
-
-// Pad: soft choir, very quiet — sampled vinyl warmth
 static void melodyTriggerDillaPad(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[2][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[2][0]);
-    }
-
-    noteAttack  = 0.6f;
-    noteDecay   = 1.2f;
-    noteSustain = 0.35f;
-    noteRelease = 2.0f;
-    noteVolume  = vel * 0.25f;
-    noteFilterCutoff = 0.22f;      // very dark, like through a speaker
-    noteFilterResonance = 0.10f;
-
-    float freq = midiToFreqScaled(note);
-    int v = playAdditive(freq, ADDITIVE_PRESET_CHOIR);
-    g_soundSynth->songPlayer.melodyVoices[2][0] = v;
+    (void)gateTime;
+    bridgeMelodyTrigger(2, note, vel, slide, accent, songPatch(2, PRESET_DARK_CHOIR));
 }
 
-// ============================================================================
-// Mr Lucky triggers — smooth walking bass, vibes, lush strings
-// ============================================================================
-
-// Bass: smooth plucked upright, bright enough to sing, long sustain
+// --- Mr Lucky ---
 static void melodyTriggerMrLuckyBass(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[0][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[0][0]);
-    }
-
-    noteVolume = vel * 0.50f;
-    noteFilterCutoff = 0.35f;       // warm but with some definition
-    noteFilterResonance = 0.10f;
-
-    float freq = midiToFreqScaled(note);
-    // brightness 0.45 = warm-bright, damping 0.35 = sustains nicely
-    int v = playPluck(freq, 0.45f, 0.35f);
-    g_soundSynth->songPlayer.melodyVoices[0][0] = v;
+    (void)gateTime;
+    SynthPatch *p = songPatch(0, PRESET_WARM_PLUCK);
+    p->p_pluckBrightness = 0.45f; p->p_pluckDamping = 0.35f;
+    p->p_filterCutoff = 0.35f; p->p_volume = 0.50f;
+    bridgeMelodyTrigger(0, note, vel, slide, accent, p);
 }
-
-// Lead: vibraphone — the smooth muzak sparkle
 static void melodyTriggerMrLuckyVibes(int note, float vel, float gateTime, bool slide, bool accent) {
     (void)gateTime; (void)slide; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[1][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[1][0]);
-    }
-
-    noteVolume = vel * 0.42f;
-    noteFilterCutoff = 0.55f;       // open, sparkling
-    float freq = midiToFreqScaled(note);
-    int v = playMallet(freq, MALLET_PRESET_VIBES);
-    g_soundSynth->songPlayer.melodyVoices[1][0] = v;
+    SynthPatch *p = songPatch(1, PRESET_MAC_VIBES);
+    p->p_volume = 0.42f; p->p_filterCutoff = 0.55f;
+    bridgeMelodyTrigger(1, note, vel, false, false, p);
 }
-
-// Pad: lush strings — the warmth underneath everything
 static void melodyTriggerMrLuckyStrings(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[2][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[2][0]);
-    }
-
-    noteAttack  = 0.8f;             // slow swell
-    noteDecay   = 1.5f;
-    noteSustain = 0.5f;
-    noteRelease = 2.5f;             // long, cinematic tail
-    noteVolume  = vel * 0.30f;
-    noteFilterCutoff = 0.40f;
-    noteFilterResonance = 0.06f;
-
-    float freq = midiToFreqScaled(note);
-    int v = playAdditive(freq, ADDITIVE_PRESET_STRINGS);
-    g_soundSynth->songPlayer.melodyVoices[2][0] = v;
+    (void)gateTime;
+    bridgeMelodyTrigger(2, note, vel, slide, accent, songPatch(2, PRESET_LUSH_STR));
 }
 
-// ============================================================================
-// Atmosphere triggers — warm pluck, bright glocken, wide strings
-// ============================================================================
-
-// Bass: warm plucked string, brighter than Dilla, more sustain
+// --- Atmosphere ---
 static void melodyTriggerAtmoBass(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[0][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[0][0]);
-    }
-
-    noteVolume = vel * 0.50f;
-    noteFilterCutoff = 0.30f;       // warmer than default but not dark
-    noteFilterResonance = 0.08f;
-
-    float freq = midiToFreqScaled(note);
-    // brightness 0.5 = medium bright, damping 0.3 = long sustain
-    int v = playPluck(freq, 0.5f, 0.3f);
-    g_soundSynth->songPlayer.melodyVoices[0][0] = v;
+    (void)gateTime;
+    SynthPatch *p = songPatch(0, PRESET_WARM_PLUCK);
+    p->p_pluckBrightness = 0.5f; p->p_pluckDamping = 0.3f;
+    p->p_filterCutoff = 0.30f; p->p_filterResonance = 0.08f; p->p_volume = 0.50f;
+    bridgeMelodyTrigger(0, note, vel, slide, accent, p);
 }
-
-// Lead: glockenspiel, slightly louder and brighter than dormitory
 static void melodyTriggerAtmoGlocken(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[1][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[1][0]);
-    }
-
-    noteVolume = vel * 0.45f;
-    noteFilterCutoff = 0.65f;       // brighter — sparkly
-    float freq = midiToFreqScaled(note);
-    int v = playMallet(freq, MALLET_PRESET_GLOCKEN);
-    g_soundSynth->songPlayer.melodyVoices[1][0] = v;
+    (void)gateTime;
+    SynthPatch *p = songPatch(1, PRESET_GLOCK);
+    p->p_volume = 0.45f; p->p_filterCutoff = 0.65f;
+    bridgeMelodyTrigger(1, note, vel, slide, accent, p);
 }
-
-// Pad: additive strings, wide and lush
 static void melodyTriggerAtmoStrings(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    if (g_soundSynth->songPlayer.melodyVoices[2][0] >= 0) {
-        releaseNote(g_soundSynth->songPlayer.melodyVoices[2][0]);
-    }
-
-    noteAttack  = 1.2f;            // very slow swell
-    noteDecay   = 2.0f;
-    noteSustain = 0.6f;
-    noteRelease = 3.5f;            // long, fading tail
-    noteVolume  = vel * 0.35f;
-    noteFilterCutoff = 0.45f;       // open but warm
-    noteFilterResonance = 0.05f;
-
-    float freq = midiToFreqScaled(note);
-    int v = playAdditive(freq, ADDITIVE_PRESET_STRINGS);
-    g_soundSynth->songPlayer.melodyVoices[2][0] = v;
+    (void)gateTime;
+    SynthPatch *p = songPatch(2, PRESET_LUSH_STR);
+    p->p_attack = 1.2f; p->p_decay = 2.0f; p->p_sustain = 0.6f; p->p_release = 3.5f;
+    p->p_volume = 0.35f; p->p_filterCutoff = 0.45f; p->p_filterResonance = 0.05f;
+    bridgeMelodyTrigger(2, note, vel, slide, accent, p);
 }
 
 // ============================================================================
@@ -842,38 +550,17 @@ static void melodyReleaseAllVoices(int track) {
 static void melodyReleaseChordPoly(void) { melodyReleaseAllVoices(2); }
 static void melodyReleaseLeadPoly(void)  { melodyReleaseAllVoices(1); }
 
-// FM Keys chord trigger — plays all notes with finger stagger (offset attacks)
+// FM Keys chord trigger — uses patch with finger stagger
 static void melodyTriggerChordFMKeys(int* notes, int noteCount, float vel,
                                       float gateTime, bool slide, bool accent) {
     (void)gateTime; (void)slide;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    // Release previous chord voices
-    melodyReleaseAllVoices(2);
-
-    if (noteCount > MAX_CHORD_VOICES) noteCount = MAX_CHORD_VOICES;
-
-    for (int i = 0; i < noteCount; i++) {
-        // Finger stagger: each successive note gets a slightly delayed attack
-        // 5-15ms offset per finger gives natural "rolled chord" feel
-        noteAttack  = 0.005f + i * 0.012f;
-        noteDecay   = 0.5f;
-        noteSustain = 0.25f;
-        noteRelease = 0.1f;       // very short tail, no chord wash
-        // Slightly lower volume per note to prevent clipping
-        noteVolume  = vel * (accent ? 0.35f : 0.28f);
-        noteFilterCutoff = 0.6f;
-
-        fmModRatio = 1.0f;
-        fmModIndex = 1.8f;
-        fmFeedback = 0.0f;
-
-        float freq = midiToFreqScaled(notes[i]);
-        int v = playFM(freq);
-        g_soundSynth->songPlayer.melodyVoices[2][i] = v;
-    }
-    g_soundSynth->songPlayer.melodyVoiceCount[2] = noteCount;
+    ensureSongPatches();
+    SynthPatch *p = songPatch(2, PRESET_MAC_KEYS);
+    p->p_fmModIndex = 1.8f;
+    p->p_volume = accent ? 0.35f : 0.28f;
+    p->p_filterCutoff = 0.6f;
+    p->p_release = 0.1f;
+    bridgeChordTrigger(2, notes, noteCount, vel, accent, p);
 }
 
 // ============================================================================
@@ -1339,6 +1026,150 @@ void SoundSynthPlaySongMule(SoundSynth* synth) {
     startSongPlayback(synth, sp->bpm);
 }
 
+// --- M.U.L.E. v2: true 8-bit square bass + sawtooth melody ---
+// Reset globals that drum patches leave dirty (pitch env, noise, extra oscs, etc.)
+static void reset8bitGlobals(void) {
+    notePitchEnvAmount = 0.0f;
+    notePitchEnvDecay  = 0.0f;
+    notePitchEnvCurve  = 0.0f;
+    notePitchEnvLinear = false;
+    noteNoiseMix   = 0.0f;
+    noteNoiseTone  = 0.0f;
+    noteNoiseHP    = 0.0f;
+    noteNoiseDecay = 0.0f;
+    noteNoiseMode  = 0;
+    noteNoiseType  = 0;
+    noteOsc2Ratio  = 1.0f;  noteOsc2Level = 0.0f;
+    noteOsc3Ratio  = 1.0f;  noteOsc3Level = 0.0f;
+    noteOsc4Ratio  = 1.0f;  noteOsc4Level = 0.0f;
+    noteOsc5Ratio  = 1.0f;  noteOsc5Level = 0.0f;
+    noteOsc6Ratio  = 1.0f;  noteOsc6Level = 0.0f;
+    noteDrive      = 0.0f;
+    noteExpDecay   = false;
+    noteExpRelease = false;
+    noteClickLevel = 0.0f;
+    noteClickTime  = 0.005f;
+    noteRetriggerCount = 0;
+    noteRetriggerSpread = 0.0f;
+    noteRetriggerOverlap = false;
+    noteRetriggerBurstDecay = 0.0f;
+    noteRetriggerCurve = 0.0f;
+    noteOneShot    = false;
+    notePhaseReset = false;
+    noteNoiseLPBypass = false;
+    noteFilterType = 0;
+    noteFilterEnvAmt    = 0.0f;
+    noteFilterEnvAttack = 0.0f;
+    noteFilterEnvDecay  = 0.0f;
+    noteFilterLfoRate   = 0.0f;
+    noteFilterLfoDepth  = 0.0f;
+    noteResoLfoRate  = 0.0f;
+    noteResoLfoDepth = 0.0f;
+    noteAmpLfoRate   = 0.0f;
+    noteAmpLfoDepth  = 0.0f;
+    notePitchLfoRate  = 0.0f;
+    notePitchLfoDepth = 0.0f;
+    notePulseWidth = 0.5f;
+    notePwmRate    = 0.0f;
+    notePwmDepth   = 0.0f;
+    noteArpEnabled = false;
+    noteUnisonCount = 1;
+    noteUnisonDetune = 0.0f;
+    monoMode   = false;
+    glideTime  = 0.0f;
+}
+
+static void melodyTrigger8bitSquare(int note, float vel, float gateTime, bool slide, bool accent) {
+    (void)gateTime; (void)accent;
+    if (!g_soundSynth) return;
+    useSoundSystem(&g_soundSynth->ss);
+    SongPlayer *sp = &g_soundSynth->songPlayer;
+
+    if (sp->melodyVoices[0][0] >= 0) releaseNote(sp->melodyVoices[0][0]);
+
+    reset8bitGlobals();
+    noteAttack  = 0.001f;
+    noteDecay   = 0.08f;
+    noteSustain = 0.8f;
+    noteRelease = 0.02f;
+    noteVolume  = vel * 0.45f;
+    noteFilterCutoff    = 1.0f;
+    noteFilterResonance = 0.0f;
+    noteVibratoRate  = 0.0f;
+    noteVibratoDepth = 0.0f;
+
+    float freq = midiToFreqScaled(note);
+    int v = playNote(freq, WAVE_SQUARE);
+    if (v >= 0 && slide) {
+        synthVoices[v].glideRate = 8.0f;
+    }
+    sp->melodyVoices[0][0] = v;
+    sp->melodyVoiceCount[0] = 1;
+}
+
+static void melodyTrigger8bitSaw(int note, float vel, float gateTime, bool slide, bool accent) {
+    (void)gateTime; (void)accent;
+    if (!g_soundSynth) return;
+    useSoundSystem(&g_soundSynth->ss);
+    SongPlayer *sp = &g_soundSynth->songPlayer;
+
+    if (sp->melodyVoices[1][0] >= 0) releaseNote(sp->melodyVoices[1][0]);
+
+    reset8bitGlobals();
+    noteAttack  = 0.001f;
+    noteDecay   = 0.1f;
+    noteSustain = 0.7f;
+    noteRelease = 0.03f;
+    noteVolume  = vel * 0.55f;
+    noteFilterCutoff    = 0.85f;
+    noteFilterResonance = 0.0f;
+    noteVibratoRate  = 0.0f;
+    noteVibratoDepth = 0.0f;
+
+    float freq = midiToFreqScaled(note);
+    int v = playNote(freq, WAVE_SAW);
+    if (v >= 0 && slide) {
+        synthVoices[v].glideRate = 8.0f;
+    }
+    sp->melodyVoices[1][0] = v;
+    sp->melodyVoiceCount[1] = 1;
+}
+
+void SoundSynthPlaySongMule2(SoundSynth* synth) {
+    if (!synth || !synth->audioReady) return;
+    useSoundSystem(&synth->ss);
+
+    SoundSynthStopSong(synth);
+
+    // 8-bit: square bass (track 0), sawtooth melody (track 1)
+    setMelodyCallbacks(0, melodyTrigger8bitSquare, melodyReleaseBass);
+    setMelodyCallbacks(1, melodyTrigger8bitSaw, melodyReleaseLeadPoly);
+
+    Song_Mule2_ConfigureVoices();
+
+    SongPlayer* sp = &synth->songPlayer;
+    Song_Mule2_Load(sp->patterns);
+    sp->patternCount = 8;
+    sp->currentPattern = 0;
+    sp->loopsOnCurrent = 0;
+    sp->loopsPerPattern = 1;
+    sp->bpm = SONG_MULE2_BPM;
+    sp->sweepPhase = 0.0f;
+    sp->sweepRate = 0.0f;
+
+    // 32nd note resolution for grace notes
+    seqSet32ndNoteMode(true);
+
+    // No swing, no humanize — tight 8-bit machine
+    seq.dilla.swing = 0;
+    seq.dilla.snareDelay = 0;
+    seq.dilla.jitter = 0;
+    seq.humanize.timingJitter = 0;
+    seq.humanize.velocityJitter = 0.0f;
+
+    startSongPlayback(synth, sp->bpm);
+}
+
 void SoundSynthPlaySongGymnopedie(SoundSynth* synth) {
     if (!synth || !synth->audioReady) return;
     useSoundSystem(&synth->ss);
@@ -1586,6 +1417,7 @@ static const JukeboxEntry jukeboxSongs[] = {
     { "Monk's Mood",          SoundSynthPlaySongMonksMood },
     { "Summertime",            SoundSynthPlaySongSummertime },
     { "M.U.L.E. Theme",        SoundSynthPlaySongMule },
+    { "M.U.L.E. v2 (MIDI)",    SoundSynthPlaySongMule2 },
     { "Gymnopedie No.1",        SoundSynthPlaySongGymnopedie },
 };
 

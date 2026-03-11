@@ -50,7 +50,7 @@ $(RAYLIB_LIB): $(RAYLIB_OBJS)
 	@echo "Built $(RAYLIB_LIB)"
 
 # Define your targets here
-TARGETS := steer crowd path soundsystem-demo soundsystem-daw mechanisms
+TARGETS := steer crowd path soundsystem-demo soundsystem-daw jukebox-test mechanisms
 
 # Source files for each target (using unity build for path)
 steer_SRC      := experiments/steering/demo.c experiments/steering/steering.c
@@ -58,6 +58,7 @@ crowd_SRC      := experiments/crowd/demo.c
 path_SRC       := src/unity.c src/sound/sound_phrase.c src/sound/sound_synth_bridge.c
 soundsystem-demo_SRC := soundsystem/demo/demo.c
 soundsystem-daw_SRC := soundsystem/demo/daw.c
+jukebox-test_SRC := soundsystem/tools/jukebox_test.c src/sound/sound_phrase.c src/sound/sound_synth_bridge.c
 mechanisms_SRC := experiments/mechanisms/demo.c
 sound_phrase_wav_SRC := tools/sound_phrase_wav.c src/sound/sound_phrase.c
 
@@ -154,6 +155,9 @@ $(BINDIR)/soundsystem-demo: $(soundsystem-demo_SRC) | $(BINDIR)
 
 $(BINDIR)/soundsystem-daw: $(soundsystem-daw_SRC) | $(BINDIR)
 	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $@ $(soundsystem-daw_SRC) $(LDFLAGS)
+
+$(BINDIR)/jukebox-test: $(jukebox-test_SRC) | $(BINDIR)
+	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $@ $(jukebox-test_SRC) $(LDFLAGS)
 
 
 # Pathing test - links raylib for GetTime() etc used in pathfinding.c
@@ -486,6 +490,7 @@ steer: $(BINDIR) $(BINDIR)/steer
 crowd: $(BINDIR) $(BINDIR)/crowd
 soundsystem-demo: $(BINDIR) $(BINDIR)/soundsystem-demo
 soundsystem-daw: $(BINDIR) $(BINDIR)/soundsystem-daw
+jukebox-test: $(BINDIR) $(BINDIR)/jukebox-test
 mechanisms: $(BINDIR) $(BINDIR)/mechanisms
 sound-phrase-wav: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/sound_phrase_wav $(sound_phrase_wav_SRC) -lm

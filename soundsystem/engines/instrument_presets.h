@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 40
+#define NUM_INSTRUMENT_PRESETS 48
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -616,6 +616,88 @@ static void initInstrumentPresets(void) {
     instrumentPresets[37].patch.p_noiseType = 1;               // Time-hash noise (drums.h style)
     instrumentPresets[37].patch.p_useTriggerFreq = true;
     instrumentPresets[37].patch.p_triggerFreq = 800.0f;
+
+    // ========================================================================
+    // Song instrument presets (38+) — used by sound_synth_bridge song triggers
+    // ========================================================================
+
+    // 38: Warm Triangle Bass — mellow bass for dormitory/default song
+    instrumentPresets[38].name = "Warm Tri Bass";
+    instrumentPresets[38].patch.p_waveType = WAVE_TRIANGLE;
+    instrumentPresets[38].patch.p_attack = 0.3f;
+    instrumentPresets[38].patch.p_decay = 0.6f;
+    instrumentPresets[38].patch.p_sustain = 0.4f;
+    instrumentPresets[38].patch.p_release = 1.2f;
+    instrumentPresets[38].patch.p_volume = 0.5f;
+    instrumentPresets[38].patch.p_filterCutoff = 0.25f;
+    instrumentPresets[38].patch.p_filterResonance = 0.15f;
+
+    // 39: Dark Organ — slow, dark additive organ for suspense
+    instrumentPresets[39].name = "Dark Organ";
+    instrumentPresets[39].patch.p_waveType = WAVE_ADDITIVE;
+    instrumentPresets[39].patch.p_additivePreset = ADDITIVE_PRESET_ORGAN;
+    instrumentPresets[39].patch.p_attack = 0.8f;
+    instrumentPresets[39].patch.p_decay = 1.5f;
+    instrumentPresets[39].patch.p_sustain = 0.6f;
+    instrumentPresets[39].patch.p_release = 3.0f;
+    instrumentPresets[39].patch.p_volume = 0.45f;
+    instrumentPresets[39].patch.p_filterCutoff = 0.18f;
+    instrumentPresets[39].patch.p_filterResonance = 0.20f;
+
+    // 40: Eerie Vowel — dark vocal pad for suspense lead
+    instrumentPresets[40].name = "Eerie Vowel";
+    instrumentPresets[40].patch.p_waveType = WAVE_VOICE;
+    instrumentPresets[40].patch.p_voiceVowel = VOWEL_U;
+    instrumentPresets[40].patch.p_attack = 0.5f;
+    instrumentPresets[40].patch.p_decay = 1.0f;
+    instrumentPresets[40].patch.p_sustain = 0.4f;
+    instrumentPresets[40].patch.p_release = 2.0f;
+    instrumentPresets[40].patch.p_volume = 0.4f;
+    instrumentPresets[40].patch.p_glideTime = 0.3f;
+
+    // 41: Triangle Sub — deep house sub bass
+    instrumentPresets[41].name = "Tri Sub";
+    instrumentPresets[41].patch.p_waveType = WAVE_TRIANGLE;
+    instrumentPresets[41].patch.p_attack = 0.01f;
+    instrumentPresets[41].patch.p_decay = 0.3f;
+    instrumentPresets[41].patch.p_sustain = 0.7f;
+    instrumentPresets[41].patch.p_release = 0.2f;
+    instrumentPresets[41].patch.p_volume = 0.55f;
+    instrumentPresets[41].patch.p_filterCutoff = 0.15f;
+    instrumentPresets[41].patch.p_filterResonance = 0.05f;
+
+    // 42: Dark Choir Pad — soft choir for Dilla/default chord tracks
+    instrumentPresets[42].name = "Dark Choir";
+    instrumentPresets[42].patch.p_waveType = WAVE_ADDITIVE;
+    instrumentPresets[42].patch.p_additivePreset = ADDITIVE_PRESET_CHOIR;
+    instrumentPresets[42].patch.p_attack = 0.6f;
+    instrumentPresets[42].patch.p_decay = 1.2f;
+    instrumentPresets[42].patch.p_sustain = 0.35f;
+    instrumentPresets[42].patch.p_release = 2.0f;
+    instrumentPresets[42].patch.p_volume = 0.25f;
+    instrumentPresets[42].patch.p_filterCutoff = 0.22f;
+    instrumentPresets[42].patch.p_filterResonance = 0.10f;
+
+    // 43: Lush Strings — additive strings for Mr Lucky/Atmosphere
+    instrumentPresets[43].name = "Lush Strings";
+    instrumentPresets[43].patch.p_waveType = WAVE_ADDITIVE;
+    instrumentPresets[43].patch.p_additivePreset = ADDITIVE_PRESET_STRINGS;
+    instrumentPresets[43].patch.p_attack = 0.8f;
+    instrumentPresets[43].patch.p_decay = 1.5f;
+    instrumentPresets[43].patch.p_sustain = 0.5f;
+    instrumentPresets[43].patch.p_release = 2.5f;
+    instrumentPresets[43].patch.p_volume = 0.30f;
+    instrumentPresets[43].patch.p_filterCutoff = 0.40f;
+    instrumentPresets[43].patch.p_filterResonance = 0.06f;
+
+    // 44: Warm Pluck — Karplus-Strong bass for jazz/Dilla/atmosphere
+    instrumentPresets[44].name = "Warm Pluck";
+    instrumentPresets[44].patch.p_waveType = WAVE_PLUCK;
+    instrumentPresets[44].patch.p_pluckBrightness = 0.4f;
+    instrumentPresets[44].patch.p_pluckDamping = 0.5f;
+    instrumentPresets[44].patch.p_volume = 0.55f;
+    instrumentPresets[44].patch.p_filterCutoff = 0.30f;
+    instrumentPresets[44].patch.p_filterResonance = 0.10f;
 }
 
 #endif // INSTRUMENT_PRESETS_H
