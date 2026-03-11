@@ -50,13 +50,13 @@ $(RAYLIB_LIB): $(RAYLIB_OBJS)
 	@echo "Built $(RAYLIB_LIB)"
 
 # Define your targets here
-TARGETS := steer crowd path soundsystem-demo soundsystem-daw jukebox-test mechanisms
+TARGETS := steer crowd path soundsystem-prototype soundsystem-daw jukebox-test mechanisms
 
 # Source files for each target (using unity build for path)
 steer_SRC      := experiments/steering/demo.c experiments/steering/steering.c
 crowd_SRC      := experiments/crowd/demo.c
 path_SRC       := src/unity.c src/sound/sound_phrase.c src/sound/sound_synth_bridge.c
-soundsystem-demo_SRC := soundsystem/demo/demo.c
+soundsystem-prototype_SRC := soundsystem/demo/prototype.c
 soundsystem-daw_SRC := soundsystem/demo/daw.c
 jukebox-test_SRC := soundsystem/tools/jukebox_test.c src/sound/sound_phrase.c src/sound/sound_synth_bridge.c
 mechanisms_SRC := experiments/mechanisms/demo.c
@@ -149,9 +149,9 @@ $(BINDIR)/path8: $(GAME_SOURCES)
 $(BINDIR)/%: $(RAYLIB_LIB) | $(BINDIR)
 	@if [ -n "$($*_SRC)" ]; then $(CC) $(CFLAGS) -o $@ $($*_SRC) $(LDFLAGS); fi
 
-# Soundsystem demo needs -Wno-unused-function for header-only library functions
-$(BINDIR)/soundsystem-demo: $(soundsystem-demo_SRC) | $(BINDIR)
-	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $@ $(soundsystem-demo_SRC) $(LDFLAGS)
+# Soundsystem prototype needs -Wno-unused-function for header-only library functions
+$(BINDIR)/soundsystem-prototype: $(soundsystem-prototype_SRC) | $(BINDIR)
+	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $@ $(soundsystem-prototype_SRC) $(LDFLAGS)
 
 $(BINDIR)/soundsystem-daw: $(soundsystem-daw_SRC) | $(BINDIR)
 	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $@ $(soundsystem-daw_SRC) $(LDFLAGS)
@@ -484,11 +484,11 @@ bench_pathfinding: $(TEST_UNITY_OBJ)
 # Run all benchmarks
 bench: bench_jobs bench_items bench_pathfinding
 
-# Aliases for convenience (make path, make steer, make crowd, make soundsystem-demo)
+# Aliases for convenience (make path, make steer, make crowd, make soundsystem-prototype)
 path: $(BINDIR) $(BINDIR)/path
 steer: $(BINDIR) $(BINDIR)/steer
 crowd: $(BINDIR) $(BINDIR)/crowd
-soundsystem-demo: $(BINDIR) $(BINDIR)/soundsystem-demo
+soundsystem-prototype: $(BINDIR) $(BINDIR)/soundsystem-prototype
 soundsystem-daw: $(BINDIR) $(BINDIR)/soundsystem-daw
 jukebox-test: $(BINDIR) $(BINDIR)/jukebox-test
 mechanisms: $(BINDIR) $(BINDIR)/mechanisms
@@ -636,4 +636,4 @@ cscope:
 nav: tags cscope
 	@echo "Updated tags + cscope.out"
 
-.PHONY: all clean clean-raylib clean-atlas nav test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood path steer crowd soundsystem-demo mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs bench_items windows
+.PHONY: all clean clean-raylib clean-atlas nav test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood path steer crowd soundsystem-prototype mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs bench_items windows

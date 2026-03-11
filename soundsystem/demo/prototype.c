@@ -1,4 +1,5 @@
-// PixelSynth Demo - Chiptune synth with 808 drums
+// PixelSynth Prototype - Chiptune synth with 808 drums
+// Contains scene/crossfader system not yet migrated to daw.c
 // Notes: ASDFGHJKL (white) + WERTYUIOP (black), Z/X = octave
 // SFX: 1-6, Drums: 7-0,-,=
 

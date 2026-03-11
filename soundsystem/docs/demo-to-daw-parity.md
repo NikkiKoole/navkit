@@ -1,8 +1,8 @@
-# Demo.c -> Daw.c Feature Parity (2026-03-11)
+# Prototype -> Daw.c Feature Parity (2026-03-11)
 
-What demo.c has that daw.c doesn't, and vice versa. Goal: identify what should migrate to daw.c so demo.c can eventually be retired.
+What prototype.c has that daw.c doesn't, and vice versa. Goal: identify what should migrate to daw.c so prototype.c can eventually be retired.
 
-## Demo.c Features Missing from Daw.c
+## Prototype Features Missing from Daw.c
 
 ### Worth Migrating
 
@@ -22,7 +22,7 @@ What demo.c has that daw.c doesn't, and vice versa. Goal: identify what should m
 | Simple piano keyboard (ASDF keys) | Daw.c already has musical typing + MIDI input with more features |
 | Song file save/load (.song format) | Daw.c has its own .daw binary format with more data |
 
-## Daw.c Features Not in Demo.c
+## Daw.c Features Not in Prototype
 
 These are daw.c advantages — no migration needed, just noting for completeness:
 
@@ -54,4 +54,4 @@ Synth engine (14 osc types), ADSR, filter system, 4 LFOs, arpeggiator, scale loc
 
 ## End State
 
-Once daw.c has all the worth-migrating features, demo.c becomes a legacy reference. It can stay around for quick testing but daw.c becomes the single UI for all sound work.
+Once daw.c has all the worth-migrating features, prototype.c becomes a legacy reference. It can stay around for quick testing but daw.c becomes the single UI for all sound work.
