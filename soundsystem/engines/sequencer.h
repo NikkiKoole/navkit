@@ -230,12 +230,13 @@ typedef enum {
     PLOCK_TIME_NUDGE,       // Per-step timing offset in ticks (-12 to +12)
     PLOCK_FLAM_TIME,        // Flam timing in ms (0 = off, 10-50ms typical)
     PLOCK_FLAM_VELOCITY,    // Flam ghost note velocity multiplier (0.3-0.7 typical)
+    PLOCK_GATE_NUDGE,       // Gate end timing offset in ticks (-23 to +23), shortens/extends note end
     PLOCK_COUNT
 } PLockParam;
 
 static const char* plockParamNames[] = {
     "Cutoff", "Reso", "FiltEnv", "Decay", "Volume", "Pitch", "PW", "Tone", "Punch",
-    "Nudge", "FlamTime", "FlamVel"
+    "Nudge", "FlamTime", "FlamVel", "GateNdg"
 };
 
 // A single parameter lock entry
@@ -1454,7 +1455,12 @@ static void updateSequencer(float dt) {
                             seqTrackNames[track], seqNoteName(note),
                             step, gateSteps, sustainSteps, velocity);
                     }
-                    seq.melodyGateRemaining[track] = gateSteps * seq.ticksPerStep;
+                    int gateTicks = gateSteps * seq.ticksPerStep;
+                    // Apply gate nudge p-lock (sub-step note-end offset)
+                    float gateNudge = seqGetPLock(p, SEQ_DRUM_TRACKS + track, step, PLOCK_GATE_NUDGE, 0.0f);
+                    gateTicks += (int)gateNudge;
+                    if (gateTicks < 1) gateTicks = 1;
+                    seq.melodyGateRemaining[track] = gateTicks;
                     seq.melodySustainRemaining[track] = sustainSteps * seq.ticksPerStep;
                 }
                 seq.melodyTriggered[track] = true;
@@ -1525,7 +1531,11 @@ static void updateSequencer(float dt) {
                                 seqTrackNames[track], seqNoteName(newNote),
                                 newStep, gateSteps, sustainSteps2, velocity);
                         }
-                        seq.melodyGateRemaining[track] = gateSteps * seq.ticksPerStep;
+                        int gateTicks2 = gateSteps * seq.ticksPerStep;
+                        float gateNudge2 = seqGetPLock(p, SEQ_DRUM_TRACKS + track, newStep, PLOCK_GATE_NUDGE, 0.0f);
+                        gateTicks2 += (int)gateNudge2;
+                        if (gateTicks2 < 1) gateTicks2 = 1;
+                        seq.melodyGateRemaining[track] = gateTicks2;
                         seq.melodySustainRemaining[track] = sustainSteps2 * seq.ticksPerStep;
                     }
                     seq.melodyTriggered[track] = true;

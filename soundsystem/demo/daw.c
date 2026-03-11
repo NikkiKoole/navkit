@@ -29,6 +29,7 @@
 // (needed by seqEvalCondition etc. which reference seq.fillMode)
 #include "../engines/instrument_presets.h"
 #include "../engines/rhythm_patterns.h"
+#include "../engines/midi_input.h"
 
 #define SAMPLE_RATE 44100
 #define MAX_SAMPLES_PER_UPDATE 4096
@@ -62,10 +63,10 @@
 // TABS
 // ============================================================================
 
-typedef enum { WORK_SEQ, WORK_PIANO, WORK_SONG, WORK_COUNT } WorkTab;
+typedef enum { WORK_SEQ, WORK_PIANO, WORK_SONG, WORK_MIDI, WORK_COUNT } WorkTab;
 static WorkTab workTab = WORK_SEQ;
-static const char* workTabNames[] = {"Sequencer", "Piano Roll", "Song"};
-static const int workTabKeys[] = {KEY_F1, KEY_F2, KEY_F3};
+static const char* workTabNames[] = {"Sequencer", "Piano Roll", "Song", "MIDI"};
+static const int workTabKeys[] = {KEY_F1, KEY_F2, KEY_F3, KEY_F4};
 
 typedef enum { PARAM_PATCH, PARAM_BUS, PARAM_MASTER, PARAM_TAPE, PARAM_COUNT } ParamTab;
 static ParamTab paramTab = PARAM_PATCH;
@@ -288,6 +289,14 @@ static int voiceLogHead = 0;
 static int voiceLogCount = 0;
 static float voiceAge[NUM_VOICES]; // seconds since voice became active
 
+// MIDI keyboard voice tracking (128 MIDI notes × 3 arrays: normal, split left, split right)
+#define NUM_MIDI_NOTES 128
+static int midiNoteVoices[NUM_MIDI_NOTES];
+static int midiSplitLeftVoices[NUM_MIDI_NOTES];
+static int midiSplitRightVoices[NUM_MIDI_NOTES];
+static bool midiNoteHeld[NUM_MIDI_NOTES]; // track held state for arp + mono + visual keyboard
+static bool midiSustainPedal = false;
+
 static void voiceLogPush(const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -352,6 +361,12 @@ static bool presetsInitialized = false;
 
 static bool patchesInit = false;
 
+// Save/load (.song files)
+#include "daw_file.h"
+
+static char dawStatusMsg[64] = "";
+static double dawStatusTime = 0.0;
+
 // Forward declarations for sequencer integration
 static void dawStopSequencer(void);
 static void dawReleaseVoicesForPatch(int patchIdx);
@@ -414,6 +429,21 @@ static int selectedBus = -1;
 typedef enum { DETAIL_NONE, DETAIL_STEP, DETAIL_BUS_FX } DetailContext;
 static DetailContext detailCtx = DETAIL_NONE;
 static int detailStep = -1, detailTrack = -1;
+
+// Piano roll state
+static int prTrack = 0;           // Which melody track (0=Bass, 1=Lead, 2=Chord)
+static int prScrollNote = 48;     // Bottom visible MIDI note (C3)
+
+// Drag modes
+typedef enum { PR_DRAG_NONE, PR_DRAG_MOVE, PR_DRAG_LEFT, PR_DRAG_RIGHT } PRDragMode;
+static PRDragMode prDragMode = PR_DRAG_NONE;
+static int prDragStep = -1;       // Original step of note being dragged
+static int prDragNote = -1;       // Original pitch of note being dragged
+static float prDragStartX = 0;    // Mouse X at drag start
+static float prDragStartY = 0;    // Mouse Y at drag start
+static int prDragOrigGate = 0;    // Gate at drag start
+static float prDragOrigNudge = 0; // Nudge at drag start
+static float prDragOrigGateNudge = 0; // Gate nudge at drag start
 
 // ============================================================================
 // P-LOCK BADGE
@@ -733,6 +763,34 @@ static void drawTransport(void) {
     DrawTextShadow(TextFormat("Pat:%d", daw.transport.currentPattern+1), (int)tx, (int)ty+2, 11, (Color){120,120,140,255});
     tx += 60;
 
+    // Save / Load buttons
+    {
+        Vector2 mouse = GetMousePosition();
+        for (int bi = 0; bi < 2; bi++) {
+            const char *label = bi == 0 ? "Save" : "Load";
+            Rectangle br = {tx, ty-2, 38, 18};
+            bool bh = CheckCollisionPointRec(mouse, br);
+            DrawRectangleRec(br, bh ? (Color){50,50,60,255} : (Color){33,33,40,255});
+            DrawRectangleLinesEx(br, 1, (Color){55,55,65,255});
+            DrawTextShadow(label, (int)tx+6, (int)ty, 11, bh ? WHITE : GRAY);
+            if (bh && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                ui_consume_click();
+                if (bi == 0) {
+                    if (dawSave("soundsystem/demo/songs/scratch.song"))
+                        snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Saved scratch.song");
+                    else snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Save failed!");
+                } else {
+                    if (dawLoad("soundsystem/demo/songs/scratch.song"))
+                        snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Loaded scratch.song");
+                    else snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Load failed!");
+                }
+                dawStatusTime = GetTime();
+            }
+            tx += 42;
+        }
+    }
+
+    // Split keyboard + MIDI status
     // Crossfader indicator
     if (daw.crossfader.enabled) {
         DrawTextShadow(TextFormat("XF:%d>%d %.0f%%", daw.crossfader.sceneA+1, daw.crossfader.sceneB+1, daw.crossfader.pos*100),
@@ -1475,27 +1533,426 @@ static void drawWorkSeq(float x, float y, float w, float h) {
 // ============================================================================
 
 static void drawWorkPiano(float x, float y, float w, float h) {
-    DrawRectangle((int)x, (int)y, (int)w, (int)h, (Color){20,20,25,255});
-    int keyW = 34, noteH = (int)(h / 24);
-    if (noteH < 4) noteH = 4;
-    const char* noteNames[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
-    int vis = (int)(h / noteH); if (vis > 24) vis = 24;
+    Vector2 mouse = GetMousePosition();
+    static const char* noteNames[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+    static const char* prTrackNames[] = {"Bass", "Lead", "Chord"};
+    static const Color prTrackColors[] = {
+        {80, 140, 220, 255},   // Bass: blue
+        {220, 140, 80, 255},   // Lead: orange
+        {140, 200, 100, 255},  // Chord: green
+    };
 
-    for (int i = 0; i < vis; i++) {
-        int ny = (int)(y+h) - (i+1)*noteH;
-        int ni = i % 12;
+    int steps = daw.stepCount;
+    Pattern *pat = dawPattern();
+    int mt = prTrack; // melody track index (0-2)
+    Color trackCol = prTrackColors[mt];
+
+    // Layout
+    float topH = 18;     // Track selector row
+    float keyW = 36;     // Piano key width
+    float gridX = x + keyW;
+    float gridY = y + topH;
+    float gridW = w - keyW;
+    float gridH = h - topH;
+    int visNotes = 24;   // Visible pitch range
+    float noteH = gridH / visNotes;
+    if (noteH < 6) noteH = 6;
+    float stepW = gridW / steps;
+
+    // --- Track selector ---
+    {
+        float tx = x;
+        for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
+            float tw = 70;
+            Rectangle r = {tx, y, tw, topH - 2};
+            bool hov = CheckCollisionPointRec(mouse, r);
+            bool act = (t == prTrack);
+            Color bg = act ? (Color){48,52,65,255} : (hov ? (Color){38,40,50,255} : (Color){28,29,35,255});
+            DrawRectangleRec(r, bg);
+            if (act) DrawRectangle((int)tx, (int)(y + topH - 4), (int)tw, 2, prTrackColors[t]);
+            DrawTextShadow(prTrackNames[t], (int)tx + 6, (int)y + 3, 10, act ? WHITE : GRAY);
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { prTrack = t; ui_consume_click(); }
+            tx += tw + 2;
+        }
+        // Octave scroll hint
+        DrawTextShadow(TextFormat("Oct %d-%d  (scroll to shift)", prScrollNote/12, (prScrollNote+visNotes)/12),
+                       (int)(x + 230), (int)y + 4, 9, (Color){70,70,80,255});
+    }
+
+    // --- Scroll pitch range with mouse wheel ---
+    Rectangle gridRect = {gridX, gridY, gridW, gridH};
+    if (CheckCollisionPointRec(mouse, gridRect)) {
+        float wheel = GetMouseWheelMove();
+        if (wheel > 0 && prScrollNote + visNotes < 120) prScrollNote += 2;
+        if (wheel < 0 && prScrollNote > 12) prScrollNote -= 2;
+    }
+
+    // --- Background ---
+    DrawRectangle((int)gridX, (int)gridY, (int)gridW, (int)gridH, (Color){20,20,25,255});
+
+    // --- Scissor to grid area ---
+    BeginScissorMode((int)x, (int)gridY, (int)w, (int)gridH);
+
+    // --- Piano keys + horizontal pitch lines ---
+    for (int i = 0; i < visNotes; i++) {
+        int note = prScrollNote + i;
+        if (note > 127) break;
+        int ni = note % 12;
         bool blk = (ni==1||ni==3||ni==6||ni==8||ni==10);
-        DrawRectangle((int)x, ny, keyW, noteH-1, blk ? (Color){28,28,33,255} : (Color){42,42,48,255});
-        if (noteH >= 10) DrawTextShadow(TextFormat("%s%d", noteNames[ni], 3+i/12), (int)x+2, ny+1, 8, GRAY);
-        DrawLine((int)x+keyW, ny+noteH-1, (int)(x+w), ny+noteH-1, ni==0 ? (Color){55,55,65,255} : (Color){32,32,38,255});
+        float ny = gridY + gridH - (i + 1) * noteH;
+
+        // Piano key
+        Color keyCol = blk ? (Color){28,28,33,255} : (Color){48,48,55,255};
+        DrawRectangle((int)x, (int)ny, (int)keyW - 1, (int)noteH - 1, keyCol);
+        if (noteH >= 9) {
+            DrawTextShadow(TextFormat("%s%d", noteNames[ni], note/12 - 1),
+                          (int)x + 1, (int)ny + 1, 7, ni == 0 ? LIGHTGRAY : (Color){90,90,100,255});
+        }
+
+        // Horizontal grid line
+        Color lineCol = ni == 0 ? (Color){55,55,65,255} : (Color){30,30,36,255};
+        DrawLine((int)gridX, (int)(ny + noteH - 1), (int)(gridX + gridW), (int)(ny + noteH - 1), lineCol);
+
+        // Highlight C rows
+        if (ni == 0) {
+            DrawRectangle((int)gridX, (int)ny, (int)gridW, (int)noteH, (Color){35,35,42,60});
+        }
     }
-    int stepW = (int)((w - keyW) / 16);
-    for (int i = 0; i <= 16; i++) {
-        int lx = (int)x + keyW + i*stepW;
-        DrawLine(lx, (int)y, lx, (int)(y+h), i%4==0 ? (Color){60,60,72,255} : (Color){36,36,42,255});
+
+    // --- Vertical step lines ---
+    for (int s = 0; s <= steps; s++) {
+        float lx = gridX + s * stepW;
+        Color lineCol = s % 4 == 0 ? (Color){65,65,78,255} : (Color){36,36,42,255};
+        DrawLine((int)lx, (int)gridY, (int)lx, (int)(gridY + gridH), lineCol);
     }
-    DrawTextShadow("Piano Roll", (int)(x+w/2-36), (int)(y+h/2-6), 14, (Color){50,50,60,255});
-    DrawRectangleLinesEx((Rectangle){x,y,w,h}, 1, (Color){48,48,58,255});
+
+    // --- Draw notes ---
+    for (int s = 0; s < steps; s++) {
+        int noteVal = pat->melodyNote[mt][s];
+        if (noteVal == SEQ_NOTE_OFF) continue;
+
+        // Check if note is in visible range
+        int pitchIdx = noteVal - prScrollNote;
+        if (pitchIdx < 0 || pitchIdx >= visNotes) continue;
+
+        float vel = pat->melodyVelocity[mt][s];
+        int gate = pat->melodyGate[mt][s];
+        if (gate <= 0) gate = 1; // legato shows as 1 step minimum visually
+
+        // Nudge offset (sub-step positioning)
+        float nudge = seqGetPLock(pat, SEQ_DRUM_TRACKS + mt, s, PLOCK_TIME_NUDGE, 0.0f);
+        float nudgeFrac = nudge / 24.0f; // ticksPerStep = 24
+
+        // Gate nudge (sub-step note-end offset)
+        float gateNudge = seqGetPLock(pat, SEQ_DRUM_TRACKS + mt, s, PLOCK_GATE_NUDGE, 0.0f);
+        float gateNudgeFrac = gateNudge / 24.0f;
+
+        float noteX = gridX + (s + nudgeFrac) * stepW;
+        float noteY = gridY + gridH - (pitchIdx + 1) * noteH;
+        float noteW = (gate + gateNudgeFrac) * stepW - 1;
+        if (noteW < 3) noteW = 3;
+
+        // Color: track hue, brightness from velocity
+        float bright = 0.4f + vel * 0.6f;
+        Color col = {
+            (unsigned char)(trackCol.r * bright),
+            (unsigned char)(trackCol.g * bright),
+            (unsigned char)(trackCol.b * bright),
+            220
+        };
+
+        // Slide indicator (darker bottom border)
+        bool slide = pat->melodySlide[mt][s];
+
+        DrawRectangle((int)noteX, (int)noteY, (int)noteW, (int)noteH - 1, col);
+        DrawRectangleLinesEx((Rectangle){noteX, noteY, noteW, noteH - 1}, 1,
+                            (Color){col.r/2, col.g/2, col.b/2, 255});
+
+        if (slide) {
+            DrawRectangle((int)noteX, (int)(noteY + noteH - 3), (int)noteW, 2, ORANGE);
+        }
+
+        // Accent marker
+        if (pat->melodyAccent[mt][s]) {
+            DrawTextShadow(">", (int)noteX + 1, (int)noteY, 8, WHITE);
+        }
+
+        // Nudge indicator (small tick mark if nudged)
+        if (nudge != 0.0f) {
+            DrawCircle((int)(noteX + noteW/2), (int)(noteY + noteH - 2), 1.5f, (Color){255,200,80,200});
+        }
+    }
+
+    // --- Playhead ---
+    if (daw.transport.playing) {
+        // Use the melody track's current step for this track
+        int curStep = seq.melodyStep[mt];
+        float phX = gridX + curStep * stepW + stepW * seq.melodyTick[mt] / (float)seq.ticksPerStep;
+        DrawLine((int)phX, (int)gridY, (int)phX, (int)(gridY + gridH), (Color){255,200,50,180});
+    }
+
+    // --- Mouse interaction ---
+    // Hit-test: find which note (if any) the mouse is over, and which zone (left/middle/right)
+    int hitStep = -1;
+    int hitZone = 0; // 0=none, 1=left edge, 2=middle, 3=right edge
+    float edgeW = stepW * 0.2f; // edge grab zone width
+    if (edgeW < 4) edgeW = 4;
+    if (edgeW > 12) edgeW = 12;
+
+    if (CheckCollisionPointRec(mouse, gridRect)) {
+        for (int s = 0; s < steps; s++) {
+            int noteVal = pat->melodyNote[mt][s];
+            if (noteVal == SEQ_NOTE_OFF) continue;
+            int pitchIdx = noteVal - prScrollNote;
+            if (pitchIdx < 0 || pitchIdx >= visNotes) continue;
+
+            int gate = pat->melodyGate[mt][s];
+            if (gate <= 0) gate = 1;
+            float nudge = seqGetPLock(pat, SEQ_DRUM_TRACKS + mt, s, PLOCK_TIME_NUDGE, 0.0f);
+            float nudgeFrac = nudge / 24.0f;
+            float gateNdg = seqGetPLock(pat, SEQ_DRUM_TRACKS + mt, s, PLOCK_GATE_NUDGE, 0.0f);
+            float gateNdgFrac = gateNdg / 24.0f;
+
+            float nX = gridX + (s + nudgeFrac) * stepW;
+            float nY = gridY + gridH - (pitchIdx + 1) * noteH;
+            float nW = (gate + gateNdgFrac) * stepW - 1;
+            if (nW < 3) nW = 3;
+
+            // Hit rect extends edgeW outside the note on both sides for easier edge grabs
+            float margin = edgeW * 0.6f;
+            Rectangle noteR = {nX - margin, nY, nW + margin * 2, noteH};
+            if (CheckCollisionPointRec(mouse, noteR)) {
+                hitStep = s;
+                float relToLeft = mouse.x - nX;    // negative = left of note
+                float relToRight = mouse.x - (nX + nW); // positive = right of note
+                // For short notes (< 3x edge width), skip edge zones — just move
+                if (nW < edgeW * 3.0f) {
+                    // But still allow edge grabs in the margin outside the note
+                    if (relToLeft < 0) hitZone = 1;
+                    else if (relToRight > 0) hitZone = 3;
+                    else hitZone = 2;
+                } else {
+                    if (relToLeft < edgeW) hitZone = 1;          // left edge (incl. margin)
+                    else if (relToRight > -edgeW) hitZone = 3;   // right edge (incl. margin)
+                    else hitZone = 2;                              // middle
+                }
+                break;
+            }
+        }
+    }
+
+    // Cursor hint based on zone
+    if (prDragMode == PR_DRAG_NONE && hitStep >= 0) {
+        if (hitZone == 1 || hitZone == 3) {
+            SetMouseCursor(MOUSE_CURSOR_RESIZE_EW);
+            DrawTextShadow("<->", (int)mouse.x + 12, (int)mouse.y - 14, 9, (Color){255,200,100,255});
+        } else {
+            SetMouseCursor(MOUSE_CURSOR_RESIZE_ALL);
+            int nn = pat->melodyNote[mt][hitStep];
+            int ni = nn % 12; int no = nn / 12 - 1;
+            float nudge = seqGetPLock(pat, SEQ_DRUM_TRACKS + mt, hitStep, PLOCK_TIME_NUDGE, 0.0f);
+            int gate = pat->melodyGate[mt][hitStep];
+            if (nudge != 0.0f)
+                DrawTextShadow(TextFormat("%s%d s%d g%d n%.0f", noteNames[ni], no, hitStep+1, gate, nudge),
+                               (int)mouse.x + 12, (int)mouse.y - 14, 9, (Color){180,180,190,255});
+            else
+                DrawTextShadow(TextFormat("%s%d step %d gate %d", noteNames[ni], no, hitStep+1, gate),
+                               (int)mouse.x + 12, (int)mouse.y - 14, 9, (Color){180,180,190,255});
+        }
+    } else if (prDragMode == PR_DRAG_NONE && CheckCollisionPointRec(mouse, gridRect)) {
+        SetMouseCursor(MOUSE_CURSOR_DEFAULT);
+        // Hovering empty space
+        float relX = mouse.x - gridX;
+        float relY = (gridY + gridH) - mouse.y;
+        int hoverStep = (int)(relX / stepW);
+        int hoverPitch = prScrollNote + (int)(relY / noteH);
+        if (hoverStep >= 0 && hoverStep < steps && hoverPitch >= 0 && hoverPitch <= 127) {
+            float hoverY = gridY + gridH - (hoverPitch - prScrollNote + 1) * noteH;
+            float hoverX = gridX + hoverStep * stepW;
+            DrawRectangleLinesEx((Rectangle){hoverX, hoverY, stepW, noteH}, 1, (Color){255,255,255,40});
+            int ni = hoverPitch % 12; int no = hoverPitch / 12 - 1;
+            DrawTextShadow(TextFormat("%s%d step %d", noteNames[ni], no, hoverStep+1),
+                           (int)mouse.x + 12, (int)mouse.y - 14, 9, (Color){120,120,130,255});
+        }
+    } else if (prDragMode == PR_DRAG_NONE) {
+        SetMouseCursor(MOUSE_CURSOR_DEFAULT);
+    }
+
+    // Set cursor during active drags
+    if (prDragMode == PR_DRAG_LEFT || prDragMode == PR_DRAG_RIGHT) {
+        SetMouseCursor(MOUSE_CURSOR_RESIZE_EW);
+    } else if (prDragMode == PR_DRAG_MOVE) {
+        SetMouseCursor(MOUSE_CURSOR_RESIZE_ALL);
+    }
+
+    // --- Drag in progress ---
+    if (prDragMode != PR_DRAG_NONE && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+        float dx = mouse.x - prDragStartX;
+        float dy = mouse.y - prDragStartY;
+
+        if (prDragMode == PR_DRAG_RIGHT) {
+            // Resize right edge: continuous gate with sub-step precision
+            // Total gate length in ticks = origGate*24 + origGateNudge + dx_in_ticks
+            float totalTicks = prDragOrigGate * 24.0f + prDragOrigGateNudge + (dx / stepW) * 24.0f;
+            if (totalTicks < 1.0f) totalTicks = 1.0f; // minimum 1 tick
+            int maxSteps = steps;
+            if (totalTicks > maxSteps * 24.0f) totalTicks = maxSteps * 24.0f;
+            // Split into whole steps + remainder ticks
+            int newGate = (int)(totalTicks / 24.0f);
+            float newGateNudge = totalTicks - newGate * 24.0f;
+            // Keep gate >= 1, put sub-step remainder in nudge (range -23 to +23)
+            if (newGate < 1) { newGateNudge = totalTicks - 24.0f; newGate = 1; }
+            if (newGateNudge < -23) newGateNudge = -23;
+            if (newGateNudge > 23) newGateNudge = 23;
+            pat->melodyGate[mt][prDragStep] = newGate;
+            seqSetPLock(pat, SEQ_DRUM_TRACKS + mt, prDragStep, PLOCK_GATE_NUDGE, newGateNudge);
+        }
+        else if (prDragMode == PR_DRAG_LEFT) {
+            // Resize left edge: change nudge (sub-step) and potentially step
+            float totalOffset = prDragOrigNudge + (dx / stepW) * 24.0f;
+            // Split into step shift + remaining nudge
+            int stepShift = 0;
+            while (totalOffset > 12.0f) { totalOffset -= 24.0f; stepShift++; }
+            while (totalOffset < -12.0f) { totalOffset += 24.0f; stepShift--; }
+            int newStep = prDragStep + stepShift;
+            if (newStep >= 0 && newStep < steps && newStep != prDragStep) {
+                // Move note to new step
+                if (pat->melodyNote[mt][newStep] == SEQ_NOTE_OFF) {
+                    pat->melodyNote[mt][newStep] = pat->melodyNote[mt][prDragStep];
+                    pat->melodyVelocity[mt][newStep] = pat->melodyVelocity[mt][prDragStep];
+                    pat->melodyGate[mt][newStep] = pat->melodyGate[mt][prDragStep];
+                    pat->melodySlide[mt][newStep] = pat->melodySlide[mt][prDragStep];
+                    pat->melodyAccent[mt][newStep] = pat->melodyAccent[mt][prDragStep];
+                    // Copy p-locks to new step
+                    float oldGateNdg = seqGetPLock(pat, SEQ_DRUM_TRACKS + mt, prDragStep, PLOCK_GATE_NUDGE, 0.0f);
+                    if (oldGateNdg != 0.0f) seqSetPLock(pat, SEQ_DRUM_TRACKS + mt, newStep, PLOCK_GATE_NUDGE, oldGateNdg);
+                    // Clear old step
+                    pat->melodyNote[mt][prDragStep] = SEQ_NOTE_OFF;
+                    pat->melodyVelocity[mt][prDragStep] = 0;
+                    pat->melodyGate[mt][prDragStep] = 0;
+                    pat->melodySlide[mt][prDragStep] = false;
+                    pat->melodyAccent[mt][prDragStep] = false;
+                    seqClearPLock(pat, SEQ_DRUM_TRACKS + mt, prDragStep, PLOCK_TIME_NUDGE);
+                    seqClearPLock(pat, SEQ_DRUM_TRACKS + mt, prDragStep, PLOCK_GATE_NUDGE);
+                    // Adjust gate: moved left = longer, moved right = shorter
+                    int gateAdj = pat->melodyGate[mt][newStep] - stepShift;
+                    if (gateAdj < 1) gateAdj = 1;
+                    pat->melodyGate[mt][newStep] = gateAdj;
+                    prDragStep = newStep;
+                    prDragStartX = mouse.x;
+                    prDragOrigNudge = totalOffset;
+                }
+            }
+            // Set nudge on current step
+            if (totalOffset < -12) totalOffset = -12;
+            if (totalOffset > 12) totalOffset = 12;
+            seqSetPLock(pat, SEQ_DRUM_TRACKS + mt, prDragStep, PLOCK_TIME_NUDGE, totalOffset);
+        }
+        else if (prDragMode == PR_DRAG_MOVE) {
+            // Move note: horizontal = step + nudge, vertical = pitch
+            float totalOffset = prDragOrigNudge + (dx / stepW) * 24.0f;
+            int stepShift = 0;
+            while (totalOffset > 12.0f) { totalOffset -= 24.0f; stepShift++; }
+            while (totalOffset < -12.0f) { totalOffset += 24.0f; stepShift--; }
+            int newStep = prDragStep + stepShift;
+
+            // Pitch change
+            int pitchShift = -(int)(dy / noteH);
+            int newPitch = prDragNote + pitchShift;
+            if (newPitch < 0) newPitch = 0;
+            if (newPitch > 127) newPitch = 127;
+
+            if (newStep >= 0 && newStep < steps) {
+                if (newStep != prDragStep) {
+                    // Move to new step if empty
+                    if (pat->melodyNote[mt][newStep] == SEQ_NOTE_OFF) {
+                        pat->melodyNote[mt][newStep] = newPitch;
+                        pat->melodyVelocity[mt][newStep] = pat->melodyVelocity[mt][prDragStep];
+                        pat->melodyGate[mt][newStep] = pat->melodyGate[mt][prDragStep];
+                        pat->melodySlide[mt][newStep] = pat->melodySlide[mt][prDragStep];
+                        pat->melodyAccent[mt][newStep] = pat->melodyAccent[mt][prDragStep];
+                        // Copy p-locks to new step
+                        float oldGateNdg2 = seqGetPLock(pat, SEQ_DRUM_TRACKS + mt, prDragStep, PLOCK_GATE_NUDGE, 0.0f);
+                        if (oldGateNdg2 != 0.0f) seqSetPLock(pat, SEQ_DRUM_TRACKS + mt, newStep, PLOCK_GATE_NUDGE, oldGateNdg2);
+                        // Clear old
+                        pat->melodyNote[mt][prDragStep] = SEQ_NOTE_OFF;
+                        pat->melodyVelocity[mt][prDragStep] = 0;
+                        pat->melodyGate[mt][prDragStep] = 0;
+                        pat->melodySlide[mt][prDragStep] = false;
+                        pat->melodyAccent[mt][prDragStep] = false;
+                        seqClearPLock(pat, SEQ_DRUM_TRACKS + mt, prDragStep, PLOCK_TIME_NUDGE);
+                        seqClearPLock(pat, SEQ_DRUM_TRACKS + mt, prDragStep, PLOCK_GATE_NUDGE);
+                        prDragStep = newStep;
+                        prDragStartX = mouse.x;
+                        prDragStartY = mouse.y;
+                        prDragNote = newPitch;
+                        prDragOrigNudge = totalOffset;
+                    }
+                } else {
+                    // Same step — just update pitch + nudge
+                    pat->melodyNote[mt][prDragStep] = newPitch;
+                }
+                if (totalOffset < -12) totalOffset = -12;
+                if (totalOffset > 12) totalOffset = 12;
+                seqSetPLock(pat, SEQ_DRUM_TRACKS + mt, prDragStep, PLOCK_TIME_NUDGE, totalOffset);
+            }
+        }
+    } else if (prDragMode != PR_DRAG_NONE) {
+        // Drag ended
+        prDragMode = PR_DRAG_NONE;
+        prDragStep = -1;
+    }
+
+    // --- Click to start drag or place/delete notes ---
+    if (CheckCollisionPointRec(mouse, gridRect) && prDragMode == PR_DRAG_NONE) {
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            if (hitStep >= 0) {
+                // Clicked on existing note — start drag based on zone
+                prDragStep = hitStep;
+                prDragNote = pat->melodyNote[mt][hitStep];
+                prDragStartX = mouse.x;
+                prDragStartY = mouse.y;
+                prDragOrigGate = pat->melodyGate[mt][hitStep];
+                if (prDragOrigGate <= 0) prDragOrigGate = 1;
+                prDragOrigNudge = seqGetPLock(pat, SEQ_DRUM_TRACKS + mt, hitStep, PLOCK_TIME_NUDGE, 0.0f);
+                prDragOrigGateNudge = seqGetPLock(pat, SEQ_DRUM_TRACKS + mt, hitStep, PLOCK_GATE_NUDGE, 0.0f);
+
+                if (hitZone == 1) prDragMode = PR_DRAG_LEFT;
+                else if (hitZone == 3) prDragMode = PR_DRAG_RIGHT;
+                else prDragMode = PR_DRAG_MOVE;
+            } else {
+                // Clicked empty space — place new note
+                float relX = mouse.x - gridX;
+                float relY = (gridY + gridH) - mouse.y;
+                int newStep = (int)(relX / stepW);
+                int newPitch = prScrollNote + (int)(relY / noteH);
+                if (newStep >= 0 && newStep < steps && newPitch >= 0 && newPitch <= 127) {
+                    if (pat->melodyNote[mt][newStep] == SEQ_NOTE_OFF) {
+                        pat->melodyNote[mt][newStep] = newPitch;
+                        pat->melodyVelocity[mt][newStep] = 0.8f;
+                        pat->melodyGate[mt][newStep] = 1;
+                    }
+                }
+            }
+            ui_consume_click();
+        }
+
+        // Right click: delete note
+        if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+            if (hitStep >= 0) {
+                pat->melodyNote[mt][hitStep] = SEQ_NOTE_OFF;
+                pat->melodyVelocity[mt][hitStep] = 0;
+                pat->melodyGate[mt][hitStep] = 0;
+                pat->melodySlide[mt][hitStep] = false;
+                pat->melodyAccent[mt][hitStep] = false;
+                seqClearPLock(pat, SEQ_DRUM_TRACKS + mt, hitStep, PLOCK_TIME_NUDGE);
+            }
+            ui_consume_click();
+        }
+    }
+
+    EndScissorMode();
+    DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, (Color){48,48,58,255});
 }
 
 // ============================================================================
@@ -3509,6 +3966,503 @@ static void dawHandleMusicalTyping(void) {
 }
 
 // ============================================================================
+// WORKSPACE: MIDI (F4) — device status, split keyboard, MIDI learn, visual keyboard
+// ============================================================================
+
+static void drawWorkMidi(float x, float y, float w, float h) {
+    (void)h;
+    Vector2 mouse = GetMousePosition();
+    static const char* noteNames[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+    float sx = x, sy = y;
+
+    // --- MIDI Device Status ---
+    DrawTextShadow("MIDI Device", (int)sx, (int)sy, 12, WHITE);
+    sy += 16;
+    if (MidiInput_IsConnected()) {
+        DrawRectangle((int)sx, (int)sy, 8, 8, GREEN);
+        DrawTextShadow(MidiInput_DeviceName(), (int)sx + 12, (int)sy - 1, 11, LIGHTGRAY);
+    } else {
+        DrawRectangle((int)sx, (int)sy, 8, 8, (Color){80,40,40,255});
+        DrawTextShadow("No device — plug in a MIDI controller", (int)sx + 12, (int)sy - 1, 11, (Color){120,120,130,255});
+    }
+    sy += 18;
+
+    // --- Split Keyboard ---
+    DrawLine((int)x, (int)sy, (int)(x + w), (int)sy, (Color){42,42,52,255});
+    sy += 6;
+    DrawTextShadow("Split Keyboard", (int)sx, (int)sy, 12, WHITE);
+    sy += 18;
+
+    ToggleBool(sx, sy, "Enable Split", &daw.splitEnabled);
+    sx += 140;
+
+    if (daw.splitEnabled) {
+        // Split point
+        DraggableInt(sx, sy, "Split At", &daw.splitPoint, 0.3f, 24, 96);
+        sx += 100;
+        int spOct = daw.splitPoint / 12;
+        int spNote = daw.splitPoint % 12;
+        DrawTextShadow(TextFormat("(%s%d)", noteNames[spNote], spOct), (int)sx, (int)sy + 2, 11, LIGHTGRAY);
+        sx += 50;
+
+        sy += 24;
+        sx = x;
+
+        // Left zone
+        DrawTextShadow("Left zone (below split):", (int)sx, (int)sy, 10, (Color){100,180,255,255});
+        sy += 14;
+        DrawTextShadow("Patch:", (int)sx, (int)sy + 2, 10, (Color){80,140,200,255});
+        DraggableInt(sx + 50, sy, "", &daw.splitLeftPatch, 0.3f, 0, NUM_PATCHES - 1);
+        DrawTextShadow(daw.patches[daw.splitLeftPatch].p_name, (int)sx + 80, (int)sy + 2, 10, (Color){100,180,255,255});
+        DraggableInt(sx + 180, sy, "Octave", &daw.splitLeftOctave, 0.3f, -2, 2);
+        sy += 18;
+
+        // Right zone
+        DrawTextShadow("Right zone (above split):", (int)sx, (int)sy, 10, (Color){255,180,100,255});
+        sy += 14;
+        DrawTextShadow("Patch:", (int)sx, (int)sy + 2, 10, (Color){200,140,80,255});
+        DraggableInt(sx + 50, sy, "", &daw.splitRightPatch, 0.3f, 0, NUM_PATCHES - 1);
+        DrawTextShadow(daw.patches[daw.splitRightPatch].p_name, (int)sx + 80, (int)sy + 2, 10, (Color){255,180,100,255});
+        DraggableInt(sx + 180, sy, "Octave", &daw.splitRightOctave, 0.3f, -2, 2);
+        sy += 22;
+    } else {
+        sy += 20;
+        sx = x;
+    }
+
+    // --- Visual Mini Keyboard (shows held notes) ---
+    DrawLine((int)x, (int)sy, (int)(x + w), (int)sy, (Color){42,42,52,255});
+    sy += 6;
+    DrawTextShadow("Keyboard", (int)x, (int)sy, 12, WHITE);
+    sy += 18;
+
+    // Draw 4 octaves (C2-B5 = notes 36-83) as a mini piano
+    int startNote = 36, endNote = 84;
+    float keyW = w / (float)((endNote - startNote) * 7 / 12); // white key width
+    keyW = (w - 10) / 28.0f; // 28 white keys in 4 octaves
+    float keyH = 40;
+
+    // White keys first
+    int whiteIdx = 0;
+    for (int n = startNote; n < endNote; n++) {
+        int pc = n % 12;
+        bool isBlack = (pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10);
+        if (isBlack) continue;
+
+        float kx = x + whiteIdx * (keyW + 1);
+        bool held = midiNoteHeld[n] || (n < NUM_MIDI_NOTES &&
+            (midiNoteVoices[n] >= 0 || midiSplitLeftVoices[n] >= 0 || midiSplitRightVoices[n] >= 0));
+
+        Color col = {55, 55, 65, 255};
+        if (held) {
+            if (daw.splitEnabled && n < daw.splitPoint) col = (Color){60, 120, 200, 255};
+            else if (daw.splitEnabled) col = (Color){200, 130, 60, 255};
+            else col = (Color){80, 180, 80, 255};
+        }
+        // Split point marker
+        if (daw.splitEnabled && n == daw.splitPoint) {
+            DrawLine((int)kx, (int)sy, (int)kx, (int)(sy + keyH), RED);
+        }
+        DrawRectangle((int)kx, (int)sy, (int)keyW, (int)keyH, col);
+        DrawRectangleLinesEx((Rectangle){kx, sy, keyW, keyH}, 1, (Color){30,30,35,255});
+
+        // Octave labels on C keys
+        if (pc == 0) {
+            DrawTextShadow(TextFormat("C%d", n / 12), (int)kx + 1, (int)(sy + keyH - 12), 8, (Color){120,120,130,255});
+        }
+        whiteIdx++;
+    }
+
+    // Black keys on top
+    whiteIdx = 0;
+    for (int n = startNote; n < endNote; n++) {
+        int pc = n % 12;
+        bool isBlack = (pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10);
+        if (!isBlack) { whiteIdx++; continue; }
+
+        // Black key sits between previous and current white key
+        float kx = x + (whiteIdx - 1) * (keyW + 1) + keyW * 0.6f;
+        float bkW = keyW * 0.7f, bkH = keyH * 0.6f;
+        bool held = midiNoteHeld[n] || (n < NUM_MIDI_NOTES &&
+            (midiNoteVoices[n] >= 0 || midiSplitLeftVoices[n] >= 0 || midiSplitRightVoices[n] >= 0));
+
+        Color col = {25, 25, 30, 255};
+        if (held) {
+            if (daw.splitEnabled && n < daw.splitPoint) col = (Color){40, 90, 160, 255};
+            else if (daw.splitEnabled) col = (Color){160, 100, 40, 255};
+            else col = (Color){50, 140, 50, 255};
+        }
+        DrawRectangle((int)kx, (int)sy, (int)bkW, (int)bkH, col);
+        DrawRectangleLinesEx((Rectangle){kx, sy, bkW, bkH}, 1, (Color){15,15,20,255});
+    }
+    sy += keyH + 8;
+
+    // --- MIDI Learn Mappings ---
+    DrawLine((int)x, (int)sy, (int)(x + w), (int)sy, (Color){42,42,52,255});
+    sy += 6;
+    DrawTextShadow("MIDI Learn", (int)x, (int)sy, 12, WHITE);
+    DrawTextShadow("(right-click any knob to map)", (int)(x + 100), (int)sy + 2, 9, (Color){80,80,90,255});
+    sy += 18;
+
+    if (g_midiLearn.learning) {
+        DrawTextShadow(TextFormat("Waiting for CC... (move a knob on your controller for \"%s\")",
+                       g_midiLearn.learnLabel), (int)x, (int)sy, 10, ORANGE);
+        sy += 14;
+    }
+
+    if (g_midiLearn.count == 0 && !g_midiLearn.learning) {
+        DrawTextShadow("No mappings yet", (int)x, (int)sy, 10, (Color){80,80,90,255});
+    } else {
+        // Column headers
+        DrawTextShadow("CC", (int)x, (int)sy, 9, (Color){100,100,120,255});
+        DrawTextShadow("Parameter", (int)(x + 40), (int)sy, 9, (Color){100,100,120,255});
+        DrawTextShadow("Value", (int)(x + 220), (int)sy, 9, (Color){100,100,120,255});
+        sy += 12;
+
+        for (int i = 0; i < g_midiLearn.count && i < 16; i++) {
+            MidiCCMapping *m = &g_midiLearn.mappings[i];
+            if (!m->active) continue;
+
+            DrawTextShadow(TextFormat("%3d", m->cc), (int)x, (int)sy, 10, (Color){180,180,100,255});
+            DrawTextShadow(m->label, (int)(x + 40), (int)sy, 10, LIGHTGRAY);
+            float val01 = (m->target && (m->max - m->min) > 0.0001f)
+                ? (*m->target - m->min) / (m->max - m->min) : 0;
+            // Small value bar
+            DrawRectangle((int)(x + 220), (int)sy + 1, 80, 8, (Color){30,30,35,255});
+            DrawRectangle((int)(x + 220), (int)sy + 1, (int)(80 * val01), 8, (Color){100,160,100,255});
+            DrawTextShadow(TextFormat("%.2f", m->target ? *m->target : 0), (int)(x + 305), (int)sy, 9, (Color){120,120,130,255});
+
+            // Delete button
+            Rectangle delR = {x + 360, sy - 1, 12, 12};
+            bool delHov = CheckCollisionPointRec(mouse, delR);
+            DrawRectangleRec(delR, delHov ? (Color){120,50,50,255} : (Color){50,30,30,255});
+            DrawTextShadow("x", (int)(x + 362), (int)sy, 9, delHov ? WHITE : (Color){150,80,80,255});
+            if (delHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                // Remove mapping
+                g_midiLearn.mappings[i] = g_midiLearn.mappings[g_midiLearn.count - 1];
+                g_midiLearn.mappings[g_midiLearn.count - 1].active = false;
+                g_midiLearn.count--;
+                ui_consume_click();
+            }
+
+            sy += 14;
+        }
+    }
+
+    // Clear all button
+    if (g_midiLearn.count > 0) {
+        sy += 4;
+        Rectangle clrR = {x, sy, 80, 16};
+        bool clrHov = CheckCollisionPointRec(mouse, clrR);
+        DrawRectangleRec(clrR, clrHov ? (Color){120,50,50,255} : (Color){45,35,35,255});
+        DrawRectangleLinesEx(clrR, 1, (Color){80,50,50,255});
+        DrawTextShadow("Clear All", (int)x + 10, (int)sy + 2, 10, clrHov ? WHITE : (Color){180,100,100,255});
+        if (clrHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            MidiLearn_ClearAll();
+            ui_consume_click();
+        }
+    }
+}
+
+// ============================================================================
+// MIDI KEYBOARD INPUT (with split keyboard, arp, mono, random vowel)
+// ============================================================================
+
+// MIDI arp state (parallel to dawArpVoice/dawArpKeyHeld for computer keyboard)
+static int midiArpVoice = -1;
+static int midiArpPrevHeldCount = 0;
+static float midiArpPrevFreqs[8] = {0};
+
+// Helper: resolve patch + voice array + octave offset for a MIDI note
+static void midiResolveSplit(int note, SynthPatch **outPatch, int **outVoices, int *outPatchIdx, int *outOctaveOffset) {
+    if (daw.splitEnabled) {
+        bool isLeft = (note < daw.splitPoint);
+        int pIdx = isLeft ? daw.splitLeftPatch : daw.splitRightPatch;
+        *outPatch = &daw.patches[pIdx];
+        *outVoices = isLeft ? midiSplitLeftVoices : midiSplitRightVoices;
+        *outPatchIdx = pIdx;
+        *outOctaveOffset = isLeft ? daw.splitLeftOctave : daw.splitRightOctave;
+    } else {
+        *outPatch = &daw.patches[daw.selectedPatch];
+        *outVoices = midiNoteVoices;
+        *outPatchIdx = daw.selectedPatch;
+        *outOctaveOffset = 0;
+    }
+}
+
+// Helper: convert MIDI note to freq with octave offset + scale lock
+static float midiNoteToPlayFreq(int note, int octaveOffset) {
+    int midiNote = note + octaveOffset * 12;
+    if (midiNote < 0) midiNote = 0;
+    if (midiNote > 127) midiNote = 127;
+    if (daw.scaleLockEnabled) midiNote = constrainToScale(midiNote);
+    return patchMidiToFreq(midiNote);
+}
+
+static void dawHandleMidiInput(void) {
+    MidiEvent midiEvents[64];
+    int midiCount = MidiInput_Poll(midiEvents, 64);
+
+    for (int i = 0; i < midiCount; i++) {
+        MidiEvent *ev = &midiEvents[i];
+        switch (ev->type) {
+            case MIDI_NOTE_ON: {
+                int note = ev->data1;
+                float vel = ev->data2 / 127.0f;
+                if (note >= NUM_MIDI_NOTES) break;
+
+                SynthPatch *patch; int *voices; int patchIdx, octaveOffset;
+                midiResolveSplit(note, &patch, &voices, &patchIdx, &octaveOffset);
+                int bus = dawPatchToBus(patchIdx);
+
+                midiNoteHeld[note] = true;
+
+                if (patch->p_arpEnabled) {
+                    // Arp mode: collect held notes, single persistent voice
+                    // (arp update happens below, after all events processed)
+                } else if (patch->p_monoMode) {
+                    // Mono: retrigger the single voice on the newest note
+                    // Release previous voice if any note was sounding
+                    for (int n = 0; n < NUM_MIDI_NOTES; n++) {
+                        if (voices[n] >= 0) {
+                            releaseNote(voices[n]);
+                            voices[n] = -1;
+                        }
+                    }
+                    float freq = midiNoteToPlayFreq(note, octaveOffset);
+                    float savedVol = patch->p_volume;
+                    patch->p_volume = vel * savedVol;
+                    int v = playNoteWithPatch(freq, patch);
+                    patch->p_volume = savedVol;
+                    voices[note] = v;
+                    if (v >= 0) {
+                        voiceBus[v] = bus;
+                        voiceAge[v] = 0.0f;
+                        voiceLogPush("MIDI ON n%d v%d bus=%d mono", note, v, bus);
+                    }
+                } else {
+                    // Poly mode
+                    if (voices[note] >= 0) releaseNote(voices[note]);
+
+                    float freq = midiNoteToPlayFreq(note, octaveOffset);
+
+                    // Random vowel
+                    float savedVol = patch->p_volume;
+                    patch->p_volume = vel * savedVol;
+                    int v;
+                    if (patch->p_waveType == WAVE_VOICE && daw.voiceRandomVowel) {
+                        seqNoiseState = seqNoiseState * 1103515245 + 12345;
+                        int savedVowel = patch->p_voiceVowel;
+                        patch->p_voiceVowel = (seqNoiseState >> 16) % 5;
+                        v = playNoteWithPatch(freq, patch);
+                        patch->p_voiceVowel = savedVowel;
+                    } else {
+                        v = playNoteWithPatch(freq, patch);
+                    }
+                    patch->p_volume = savedVol;
+
+                    voices[note] = v;
+                    if (v >= 0) {
+                        voiceBus[v] = bus;
+                        voiceAge[v] = 0.0f;
+                        voiceLogPush("MIDI ON n%d v%d bus=%d vel=%.0f%%", note, v, bus, vel*100);
+                    }
+                }
+            } break;
+
+            case MIDI_NOTE_OFF: {
+                int note = ev->data1;
+                if (note >= NUM_MIDI_NOTES) break;
+
+                SynthPatch *patch; int *voices; int patchIdx, octaveOffset;
+                midiResolveSplit(note, &patch, &voices, &patchIdx, &octaveOffset);
+                int bus = dawPatchToBus(patchIdx);
+
+                midiNoteHeld[note] = false;
+
+                if (patch->p_arpEnabled) {
+                    // Arp: handled in post-event update below
+                } else if (patch->p_monoMode) {
+                    // Mono: if other notes still held, glide to highest held note
+                    int highestHeld = -1;
+                    for (int n = NUM_MIDI_NOTES - 1; n >= 0; n--) {
+                        if (midiNoteHeld[n]) { highestHeld = n; break; }
+                    }
+                    if (highestHeld >= 0) {
+                        // Glide to still-held note
+                        if (voices[note] >= 0) {
+                            releaseNote(voices[note]);
+                            voices[note] = -1;
+                        }
+                        float freq = midiNoteToPlayFreq(highestHeld, octaveOffset);
+                        int v = playNoteWithPatch(freq, patch);
+                        voices[highestHeld] = v;
+                        if (v >= 0) {
+                            voiceBus[v] = bus;
+                            voiceLogPush("MIDI GLIDE n%d v%d", highestHeld, v);
+                        }
+                    } else {
+                        // Last note released
+                        if (voices[note] >= 0 && !midiSustainPedal) {
+                            voiceLogPush("MIDI OFF n%d v%d mono-last", note, voices[note]);
+                            releaseNote(voices[note]);
+                            voices[note] = -1;
+                        }
+                    }
+                } else {
+                    // Poly mode
+                    if (voices[note] >= 0 && !midiSustainPedal) {
+                        voiceLogPush("MIDI OFF n%d v%d", note, voices[note]);
+                        releaseNote(voices[note]);
+                        voices[note] = -1;
+                    }
+                }
+            } break;
+
+            case MIDI_CC: {
+                int cc = ev->data1;
+                float val = ev->data2 / 127.0f;
+
+                // MIDI Learn gets first crack
+                bool learned = MidiLearn_ProcessCC(cc, val);
+
+                if (learned) {
+                    // Push learned param changes to active MIDI voices
+                    int arrayCount = daw.splitEnabled ? 2 : 1;
+                    for (int z = 0; z < arrayCount; z++) {
+                        int *voices = daw.splitEnabled
+                            ? (z == 0 ? midiSplitLeftVoices : midiSplitRightVoices)
+                            : midiNoteVoices;
+                        int pIdx = daw.splitEnabled
+                            ? (z == 0 ? daw.splitLeftPatch : daw.splitRightPatch)
+                            : daw.selectedPatch;
+                        SynthPatch *p = &daw.patches[pIdx];
+                        for (int n = 0; n < NUM_MIDI_NOTES; n++) {
+                            int vi = voices[n];
+                            if (vi >= 0 && vi < NUM_VOICES) {
+                                synthCtx->voices[vi].filterCutoff    = p->p_filterCutoff;
+                                synthCtx->voices[vi].filterResonance = p->p_filterResonance;
+                                synthCtx->voices[vi].filterEnvAmt    = p->p_filterEnvAmt;
+                                synthCtx->voices[vi].filterLfoRate   = p->p_filterLfoRate;
+                                synthCtx->voices[vi].filterLfoDepth  = p->p_filterLfoDepth;
+                                synthCtx->voices[vi].vibratoRate     = p->p_vibratoRate;
+                                synthCtx->voices[vi].vibratoDepth    = p->p_vibratoDepth;
+                                synthCtx->voices[vi].pulseWidth      = p->p_pulseWidth;
+                                synthCtx->voices[vi].pwmRate         = p->p_pwmRate;
+                                synthCtx->voices[vi].pwmDepth        = p->p_pwmDepth;
+                                synthCtx->voices[vi].volume          = p->p_volume;
+                            }
+                        }
+                    }
+                } else if (cc == 1) {
+                    // Mod wheel → filter cutoff on active MIDI voices
+                    int arrayCount = daw.splitEnabled ? 2 : 1;
+                    for (int z = 0; z < arrayCount; z++) {
+                        int *voices = daw.splitEnabled
+                            ? (z == 0 ? midiSplitLeftVoices : midiSplitRightVoices)
+                            : midiNoteVoices;
+                        int pIdx = daw.splitEnabled
+                            ? (z == 0 ? daw.splitLeftPatch : daw.splitRightPatch)
+                            : daw.selectedPatch;
+                        SynthPatch *p = &daw.patches[pIdx];
+                        p->p_filterCutoff = val;
+                        for (int n = 0; n < NUM_MIDI_NOTES; n++) {
+                            if (voices[n] >= 0 && voices[n] < NUM_VOICES) {
+                                synthCtx->voices[voices[n]].filterCutoff = val;
+                            }
+                        }
+                    }
+                } else if (cc == 64) {
+                    // Sustain pedal
+                    midiSustainPedal = (ev->data2 >= 64);
+                    if (!midiSustainPedal) {
+                        int *arrays[] = { midiNoteVoices, midiSplitLeftVoices, midiSplitRightVoices };
+                        int count = daw.splitEnabled ? 3 : 1;
+                        for (int z = 0; z < count; z++) {
+                            for (int n = 0; n < NUM_MIDI_NOTES; n++) {
+                                if (arrays[z][n] >= 0) {
+                                    releaseNote(arrays[z][n]);
+                                    arrays[z][n] = -1;
+                                }
+                            }
+                        }
+                    }
+                }
+            } break;
+
+            case MIDI_PITCH_BEND:
+                break; // TODO: pitch bend
+        }
+    }
+
+    // Arp mode: update after all events processed (like musical typing)
+    SynthPatch *arpPatch = &daw.patches[daw.selectedPatch];
+    int arpBus = dawPatchToBus(daw.selectedPatch);
+    if (arpPatch->p_arpEnabled) {
+        // Collect held MIDI notes as frequencies
+        float heldFreqs[8];
+        int heldCount = 0;
+        for (int n = 0; n < NUM_MIDI_NOTES && heldCount < 8; n++) {
+            if (midiNoteHeld[n]) {
+                heldFreqs[heldCount++] = patchMidiToFreq(n);
+            }
+        }
+
+        if (heldCount > 0) {
+            bool needNewVoice = (midiArpVoice < 0 || synthCtx->voices[midiArpVoice].envStage == 0);
+            if (needNewVoice) {
+                arpPatch->p_arpEnabled = false;
+                int v = playNoteWithPatch(heldFreqs[0], arpPatch);
+                arpPatch->p_arpEnabled = true;
+                midiArpVoice = v;
+                if (v >= 0) {
+                    voiceBus[v] = arpBus;
+                    voiceAge[v] = 0.0f;
+                    voiceLogPush("MIDI ALLOC arp v%d bus=%d", v, arpBus);
+                }
+            }
+
+            // Build arp: 1 note = chord from UI, 2+ = held notes
+            float arpFreqs[8];
+            int arpCount = 0;
+            if (heldCount == 1) {
+                arpCount = buildArpChord(heldFreqs[0], (ArpChordType)arpPatch->p_arpChord, arpFreqs);
+            } else {
+                arpCount = heldCount;
+                for (int k = 0; k < heldCount; k++) arpFreqs[k] = heldFreqs[k];
+            }
+
+            // Only update when notes changed
+            bool changed = (arpCount != midiArpPrevHeldCount);
+            if (!changed) {
+                for (int k = 0; k < arpCount; k++) {
+                    if (arpFreqs[k] != midiArpPrevFreqs[k]) { changed = true; break; }
+                }
+            }
+            if (changed && midiArpVoice >= 0) {
+                setArpNotes(&synthCtx->voices[midiArpVoice], arpFreqs, arpCount,
+                           (ArpMode)arpPatch->p_arpMode,
+                           (ArpRateDiv)arpPatch->p_arpRateDiv,
+                           arpPatch->p_arpRate);
+                midiArpPrevHeldCount = arpCount;
+                for (int k = 0; k < arpCount && k < 8; k++) midiArpPrevFreqs[k] = arpFreqs[k];
+            }
+        } else {
+            // All MIDI keys released — stop arp
+            if (midiArpVoice >= 0) {
+                voiceLogPush("MIDI REL arp v%d keys-up", midiArpVoice);
+                releaseNote(midiArpVoice);
+                midiArpVoice = -1;
+            }
+            midiArpPrevHeldCount = 0;
+        }
+    } else {
+        // Not in arp mode — clean up if switching away
+        if (midiArpVoice >= 0) { releaseNote(midiArpVoice); midiArpVoice = -1; }
+    }
+}
+
+// ============================================================================
 // MAIN
 // ============================================================================
 
@@ -3528,6 +4482,13 @@ int main(void) {
     initEffects();
     for (size_t i = 0; i < NUM_DAW_PIANO_KEYS; i++) dawPianoKeyVoices[i] = -1;
     for (int i = 0; i < NUM_VOICES; i++) voiceBus[i] = -1;
+    for (int i = 0; i < NUM_MIDI_NOTES; i++) {
+        midiNoteVoices[i] = -1;
+        midiSplitLeftVoices[i] = -1;
+        midiSplitRightVoices[i] = -1;
+    }
+    MidiInput_Init();
+    ui_set_midi_learn_hooks(MidiLearn_Arm, MidiLearn_IsWaiting, MidiLearn_GetCC);
 
     Font font = LoadEmbeddedFont();
     ui_init(&font);
@@ -3556,10 +4517,24 @@ int main(void) {
         if (IsKeyPressed(KEY_F7)) {
             if (dawRecording) dawRecStop(); else dawRecStart();
         }
+        // Ctrl+S: save, Ctrl+O: load
+        if (IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_LEFT_CONTROL)) {
+            if (IsKeyPressed(KEY_S)) {
+                if (dawSave("soundsystem/demo/songs/scratch.song")) snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Saved scratch.song");
+                else snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Save failed!");
+                dawStatusTime = GetTime();
+            }
+            if (IsKeyPressed(KEY_O)) {
+                if (dawLoad("soundsystem/demo/songs/scratch.song")) snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Loaded scratch.song");
+                else snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Load failed!");
+                dawStatusTime = GetTime();
+            }
+        }
         dawSyncEngineState();
         dawSyncSequencer();
         updateSequencer(GetFrameTime());
         dawHandleMusicalTyping();
+        dawHandleMidiInput();
 
         BeginDrawing();
         ClearBackground((Color){22, 22, 28, 255});
@@ -3584,6 +4559,7 @@ int main(void) {
                 case WORK_SEQ:   drawWorkSeq(wx, wy, ww, wh); break;
                 case WORK_PIANO: drawWorkPiano(wx, wy, ww, wh); break;
                 case WORK_SONG:  drawWorkSong(wx, wy, ww, wh); break;
+                case WORK_MIDI:  drawWorkMidi(wx, wy, ww, wh); break;
                 default: break;
             }
         }
@@ -3637,9 +4613,20 @@ int main(void) {
 
         ui_update();
         DrawTooltip();
+
+        // Status message (save/load feedback)
+        if (dawStatusMsg[0] && (GetTime() - dawStatusTime) < 2.0) {
+            int tw = MeasureText(dawStatusMsg, 16);
+            DrawRectangle(SCREEN_WIDTH/2 - tw/2 - 8, 2, tw + 16, 22, (Color){0,0,0,200});
+            DrawText(dawStatusMsg, SCREEN_WIDTH/2 - tw/2, 5, 16, GREEN);
+        } else {
+            dawStatusMsg[0] = '\0';
+        }
+
         EndDrawing();
     }
 
+    MidiInput_Shutdown();
     UnloadAudioStream(dawStream);
     CloseAudioDevice();
     UnloadFont(font);
