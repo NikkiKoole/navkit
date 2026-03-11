@@ -7,6 +7,7 @@
 
 #include <stdbool.h>
 #include <string.h>
+#include "rhythm_prob_maps.h"
 
 // ============================================================================
 // RHYTHM STYLE DEFINITIONS
@@ -222,17 +223,34 @@ static const char* rhythmVariationNames[RHYTHM_VAR_COUNT] = {
 // RHYTHM GENERATOR CONTEXT
 // ============================================================================
 
+typedef enum {
+    RHYTHM_MODE_CLASSIC = 0,  // Fixed patterns + variation modes
+    RHYTHM_MODE_PROB_MAP,     // Probability maps + density knob
+    RHYTHM_MODE_COUNT
+} RhythmMode;
+
 typedef struct {
+    RhythmMode mode;
+    // Classic mode
     RhythmStyle style;
     RhythmVariation variation;
+    // Prob map mode
+    int probStyle;           // ProbMapStyle index (int to avoid cross-header enum dep)
+    float density;           // 0.0-1.0, threshold for probability maps
+    float randomize;         // 0.0-1.0, per-generation jitter
+    // Shared
     unsigned int noiseState;
     float intensity;         // 0.0-1.0, affects velocity variation
     float humanize;          // 0.0-1.0, adds velocity randomization
 } RhythmGenerator;
 
 static void initRhythmGenerator(RhythmGenerator* gen) {
+    gen->mode = RHYTHM_MODE_CLASSIC;
     gen->style = RHYTHM_ROCK;
     gen->variation = RHYTHM_VAR_NONE;
+    gen->probStyle = 16; // PROB_ROCK
+    gen->density = 0.55f;
+    gen->randomize = 0.0f;
     gen->noiseState = 54321;
     gen->intensity = 0.8f;
     gen->humanize = 0.1f;
@@ -319,12 +337,16 @@ static void applyRhythmPattern(Pattern* p, RhythmGenerator* gen) {
             break;
 
         case RHYTHM_VAR_SYNCOPATED:
-            // Shift some kick hits by one step
-            for (int step = 0; step < src->length - 1; step++) {
-                if (patGetDrum(p, 0, step) && !patGetDrum(p, 0, step + 1) && rhythmRandFloat(gen) < 0.3f) {
-                    float kickVel = patGetDrumVel(p, 0, step);
-                    patClearDrum(p, 0, step);
-                    patSetDrum(p, 0, step + 1, kickVel, 0.0f);
+            // Move on-beat hits to preceding off-beat (anticipation) across all tracks
+            for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
+                for (int step = 0; step < src->length; step++) {
+                    if (patGetDrum(p, t, step) && (step % 4 == 0) && step > 0 && !patGetDrum(p, t, step-1)) {
+                        if (rhythmRandFloat(gen) < 0.3f) {
+                            float vel = patGetDrumVel(p, t, step);
+                            patClearDrum(p, t, step);
+                            patSetDrum(p, t, step-1, vel * 0.85f, 0.0f);
+                        }
+                    }
                 }
             }
             break;
@@ -334,14 +356,125 @@ static void applyRhythmPattern(Pattern* p, RhythmGenerator* gen) {
     }
 }
 
-// Get recommended swing for current style
+// ============================================================================
+// PROBABILITY MAP GENERATION (Grids-style)
+// ============================================================================
+
+// Apply probability map to sequencer pattern (drum tracks only)
+// Density acts as threshold: low = skeleton beat, high = full groove
+static void applyRhythmProbMap(Pattern* p, RhythmGenerator* gen) {
+    if (!p || !gen) return;
+    int style = gen->probStyle;
+    if (style < 0 || style >= PROB_MAP_COUNT) style = 0;
+    const RhythmProbMap *map = &probMaps[style];
+
+    // Threshold: density 0.0 → 255 (nothing fires), density 1.0 → 0 (everything fires)
+    int threshold = (int)((1.0f - gen->density) * 255.0f);
+
+    // Clear existing drum steps and set track lengths
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
+        for (int s = 0; s < SEQ_MAX_STEPS; s++) patClearDrum(p, t, s);
+        patSetDrumLength(p, t, map->length);
+    }
+
+    const uint8_t *tracks[4] = { map->kick, map->snare, map->hihat, map->perc };
+
+    for (int s = 0; s < map->length; s++) {
+        for (int t = 0; t < 4; t++) {
+            int prob = tracks[t][s];
+
+            // Optional jitter: randomize shifts probabilities around
+            if (gen->randomize > 0.0f) {
+                prob += (int)((rhythmRandFloat(gen) - 0.5f) * 40.0f * gen->randomize);
+                if (prob < 0) prob = 0;
+                if (prob > 255) prob = 255;
+            }
+
+            if (prob <= threshold) continue;
+
+            // Velocity scales with how far above threshold (essential hits = louder)
+            float baseVel = 0.4f + 0.6f * ((float)(prob - threshold) / (float)(255 - threshold));
+
+            // Accent boost
+            float accent = (map->accent[s] > threshold) ? 0.15f : 0.0f;
+
+            // Humanize
+            float humanize = (gen->humanize > 0.0f)
+                ? (rhythmRandFloat(gen) - 0.5f) * gen->humanize * 0.2f
+                : 0.0f;
+
+            float vel = fminf(1.0f, fmaxf(0.1f, (baseVel + accent + humanize) * gen->intensity));
+            patSetDrum(p, t, s, vel, 0.0f);
+        }
+    }
+}
+
+// ============================================================================
+// UNIFIED HELPERS (work with both modes)
+// ============================================================================
+
+// Get recommended swing for current mode/style
 static int getRhythmSwing(RhythmGenerator* gen) {
+    if (gen->mode == RHYTHM_MODE_PROB_MAP) {
+        int s = gen->probStyle;
+        if (s < 0 || s >= PROB_MAP_COUNT) s = 0;
+        return probMaps[s].swingAmount;
+    }
     return rhythmPatterns[gen->style].swingAmount;
 }
 
-// Get recommended BPM for current style
+// Get recommended BPM for current mode/style
 static int getRhythmRecommendedBpm(RhythmGenerator* gen) {
+    if (gen->mode == RHYTHM_MODE_PROB_MAP) {
+        int s = gen->probStyle;
+        if (s < 0 || s >= PROB_MAP_COUNT) s = 0;
+        return probMaps[s].recommendedBpm;
+    }
     return rhythmPatterns[gen->style].recommendedBpm;
+}
+
+// Generate pattern using current mode
+static void generateRhythm(Pattern* p, RhythmGenerator* gen) {
+    if (gen->mode == RHYTHM_MODE_PROB_MAP) {
+        applyRhythmProbMap(p, gen);
+    } else {
+        applyRhythmPattern(p, gen);
+    }
+}
+
+// ============================================================================
+// EUCLIDEAN RHYTHM GENERATOR (Bjorklund's algorithm)
+// ============================================================================
+
+// Distribute `hits` evenly across `steps`, rotated by `rotation`
+static void euclidean(bool *out, int steps, int hits, int rotation) {
+    if (steps <= 0 || steps > SEQ_MAX_STEPS) return;
+    if (hits < 0) hits = 0;
+    if (hits > steps) hits = steps;
+    int bucket = 0;
+    for (int i = 0; i < steps; i++) {
+        bucket += hits;
+        if (bucket >= steps) {
+            bucket -= steps;
+            out[(i + rotation) % steps] = true;
+        } else {
+            out[(i + rotation) % steps] = false;
+        }
+    }
+}
+
+// Apply euclidean pattern to a single drum track
+static void applyEuclideanToTrack(Pattern* p, int track, int hits, int steps, int rotation, float vel) {
+    if (!p || track < 0 || track >= SEQ_DRUM_TRACKS) return;
+    if (steps < 1) steps = 1;
+    if (steps > SEQ_MAX_STEPS) steps = SEQ_MAX_STEPS;
+    bool pattern[SEQ_MAX_STEPS] = {false};
+    euclidean(pattern, steps, hits, rotation);
+    for (int s = 0; s < SEQ_MAX_STEPS; s++) patClearDrum(p, track, s);
+    patSetDrumLength(p, track, steps);
+    for (int s = 0; s < steps; s++) {
+        if (pattern[s]) patSetDrum(p, track, s, vel, 0.0f);
+    }
 }
 
 #endif // PIXELSYNTH_RHYTHM_PATTERNS_H

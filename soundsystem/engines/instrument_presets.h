@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 66
+#define NUM_INSTRUMENT_PRESETS 81
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -997,6 +997,301 @@ static void initInstrumentPresets(void) {
     instrumentPresets[65].patch.p_filterCutoff = 0.8f;
     instrumentPresets[65].patch.p_monoMode = true;
     instrumentPresets[65].patch.p_glideTime = 0.04f;
+    // ========================================================================
+    // PERCUSSION PRESETS — Tier 1 (66-70)
+    // ========================================================================
+
+    // 66: Ride Cymbal — 6-osc metallic, lower ratios than HH, long decay, LP filtered
+    instrumentPresets[66].name = "Ride Cymbal";
+    instrumentPresets[66].patch.p_waveType = WAVE_SQUARE;
+    instrumentPresets[66].patch.p_osc2Ratio = 1.34f;
+    instrumentPresets[66].patch.p_osc2Level = 0.9f;
+    instrumentPresets[66].patch.p_osc3Ratio = 1.87f;
+    instrumentPresets[66].patch.p_osc3Level = 0.8f;
+    instrumentPresets[66].patch.p_osc4Ratio = 2.42f;
+    instrumentPresets[66].patch.p_osc4Level = 0.7f;
+    instrumentPresets[66].patch.p_osc5Ratio = 3.15f;
+    instrumentPresets[66].patch.p_osc5Level = 0.5f;
+    instrumentPresets[66].patch.p_osc6Ratio = 3.89f;
+    instrumentPresets[66].patch.p_osc6Level = 0.4f;
+    instrumentPresets[66].patch.p_noiseMix = 0.15f;
+    instrumentPresets[66].patch.p_noiseTone = 0.5f;
+    instrumentPresets[66].patch.p_noiseDecay = 0.01f;
+    instrumentPresets[66].patch.p_attack = 0.001f;
+    instrumentPresets[66].patch.p_decay = 1.5f;
+    instrumentPresets[66].patch.p_sustain = 0.0f;
+    instrumentPresets[66].patch.p_release = 0.5f;
+    instrumentPresets[66].patch.p_expDecay = true;
+    instrumentPresets[66].patch.p_filterType = 0; // SVF LP
+    instrumentPresets[66].patch.p_filterCutoff = 0.55f;
+    instrumentPresets[66].patch.p_drive = 0.15f;
+    instrumentPresets[66].patch.p_volume = 0.35f;
+    instrumentPresets[66].patch.p_phaseReset = true;
+    instrumentPresets[66].patch.p_useTriggerFreq = true;
+    instrumentPresets[66].patch.p_triggerFreq = 340.0f;
+
+    // 67: Brush Snare — noise-heavy, soft attack, gentle swish
+    instrumentPresets[67].name = "Brush Snare";
+    instrumentPresets[67].patch.p_waveType = WAVE_NOISE;
+    instrumentPresets[67].patch.p_noiseMix = 0.85f;
+    instrumentPresets[67].patch.p_noiseTone = 0.4f;
+    instrumentPresets[67].patch.p_noiseHP = 0.1f;
+    instrumentPresets[67].patch.p_attack = 0.008f;
+    instrumentPresets[67].patch.p_decay = 0.25f;
+    instrumentPresets[67].patch.p_sustain = 0.0f;
+    instrumentPresets[67].patch.p_release = 0.15f;
+    instrumentPresets[67].patch.p_expDecay = true;
+    instrumentPresets[67].patch.p_filterType = 2; // SVF BP
+    instrumentPresets[67].patch.p_filterCutoff = 0.45f;
+    instrumentPresets[67].patch.p_filterResonance = 0.15f;
+    instrumentPresets[67].patch.p_volume = 0.4f;
+    instrumentPresets[67].patch.p_phaseReset = true;
+    instrumentPresets[67].patch.p_useTriggerFreq = true;
+    instrumentPresets[67].patch.p_triggerFreq = 200.0f;
+
+    // 68: Crash Cymbal — bright ride variant, faster burst, longer decay
+    instrumentPresets[68].name = "Crash";
+    instrumentPresets[68].patch.p_waveType = WAVE_SQUARE;
+    instrumentPresets[68].patch.p_osc2Ratio = 1.34f;
+    instrumentPresets[68].patch.p_osc2Level = 1.0f;
+    instrumentPresets[68].patch.p_osc3Ratio = 1.87f;
+    instrumentPresets[68].patch.p_osc3Level = 0.9f;
+    instrumentPresets[68].patch.p_osc4Ratio = 2.42f;
+    instrumentPresets[68].patch.p_osc4Level = 0.8f;
+    instrumentPresets[68].patch.p_osc5Ratio = 3.15f;
+    instrumentPresets[68].patch.p_osc5Level = 0.7f;
+    instrumentPresets[68].patch.p_osc6Ratio = 3.89f;
+    instrumentPresets[68].patch.p_osc6Level = 0.6f;
+    instrumentPresets[68].patch.p_noiseMix = 0.3f;
+    instrumentPresets[68].patch.p_noiseTone = 0.7f;
+    instrumentPresets[68].patch.p_noiseDecay = 0.02f;
+    instrumentPresets[68].patch.p_attack = 0.001f;
+    instrumentPresets[68].patch.p_decay = 2.0f;
+    instrumentPresets[68].patch.p_sustain = 0.0f;
+    instrumentPresets[68].patch.p_release = 0.8f;
+    instrumentPresets[68].patch.p_expDecay = true;
+    instrumentPresets[68].patch.p_filterType = 0; // SVF LP
+    instrumentPresets[68].patch.p_filterCutoff = 0.75f;
+    instrumentPresets[68].patch.p_drive = 0.1f;
+    instrumentPresets[68].patch.p_volume = 0.35f;
+    instrumentPresets[68].patch.p_phaseReset = true;
+    instrumentPresets[68].patch.p_useTriggerFreq = true;
+    instrumentPresets[68].patch.p_triggerFreq = 380.0f;
+
+    // 69: Shaker — tight noise burst, bandpass filtered
+    instrumentPresets[69].name = "Shaker";
+    instrumentPresets[69].patch.p_waveType = WAVE_NOISE;
+    instrumentPresets[69].patch.p_noiseMix = 1.0f;
+    instrumentPresets[69].patch.p_noiseTone = 0.6f;
+    instrumentPresets[69].patch.p_noiseHP = 0.2f;
+    instrumentPresets[69].patch.p_attack = 0.001f;
+    instrumentPresets[69].patch.p_decay = 0.03f;
+    instrumentPresets[69].patch.p_sustain = 0.0f;
+    instrumentPresets[69].patch.p_release = 0.01f;
+    instrumentPresets[69].patch.p_expDecay = true;
+    instrumentPresets[69].patch.p_filterType = 2; // SVF BP
+    instrumentPresets[69].patch.p_filterCutoff = 0.55f;
+    instrumentPresets[69].patch.p_filterResonance = 0.3f;
+    instrumentPresets[69].patch.p_retriggerCount = 2;
+    instrumentPresets[69].patch.p_retriggerSpread = 0.015f;
+    instrumentPresets[69].patch.p_retriggerOverlap = false;
+    instrumentPresets[69].patch.p_volume = 0.35f;
+    instrumentPresets[69].patch.p_phaseReset = true;
+    instrumentPresets[69].patch.p_useTriggerFreq = true;
+    instrumentPresets[69].patch.p_triggerFreq = 800.0f;
+
+    // 70: Tambourine — noise burst + metallic jingle (3 inharmonic oscs)
+    instrumentPresets[70].name = "Tambourine";
+    instrumentPresets[70].patch.p_waveType = WAVE_SQUARE;
+    instrumentPresets[70].patch.p_noiseMix = 0.4f;
+    instrumentPresets[70].patch.p_noiseTone = 0.7f;
+    instrumentPresets[70].patch.p_noiseDecay = 0.02f;
+    instrumentPresets[70].patch.p_osc2Ratio = 2.71f;
+    instrumentPresets[70].patch.p_osc2Level = 0.8f;
+    instrumentPresets[70].patch.p_osc3Ratio = 4.13f;
+    instrumentPresets[70].patch.p_osc3Level = 0.6f;
+    instrumentPresets[70].patch.p_attack = 0.001f;
+    instrumentPresets[70].patch.p_decay = 0.2f;
+    instrumentPresets[70].patch.p_sustain = 0.0f;
+    instrumentPresets[70].patch.p_release = 0.1f;
+    instrumentPresets[70].patch.p_expDecay = true;
+    instrumentPresets[70].patch.p_filterType = 4; // One-pole HP
+    instrumentPresets[70].patch.p_filterCutoff = 0.45f;
+    instrumentPresets[70].patch.p_volume = 0.3f;
+    instrumentPresets[70].patch.p_phaseReset = true;
+    instrumentPresets[70].patch.p_useTriggerFreq = true;
+    instrumentPresets[70].patch.p_triggerFreq = 600.0f;
+
+    // ========================================================================
+    // PERCUSSION PRESETS — Tier 2 (71-80)
+    // ========================================================================
+
+    // 71: Bongo Hi — membrane, high pitch, sharp attack
+    instrumentPresets[71].name = "Bongo Hi";
+    instrumentPresets[71].patch.p_waveType = WAVE_MEMBRANE;
+    instrumentPresets[71].patch.p_membranePreset = MEMBRANE_BONGO;
+    instrumentPresets[71].patch.p_membraneDamping = 0.35f;
+    instrumentPresets[71].patch.p_membraneStrike = 0.6f;
+    instrumentPresets[71].patch.p_membraneBend = 0.1f;
+    instrumentPresets[71].patch.p_membraneBendDecay = 0.05f;
+    instrumentPresets[71].patch.p_attack = 0.001f;
+    instrumentPresets[71].patch.p_decay = 0.3f;
+    instrumentPresets[71].patch.p_sustain = 0.0f;
+    instrumentPresets[71].patch.p_release = 0.1f;
+    instrumentPresets[71].patch.p_volume = 0.5f;
+    instrumentPresets[71].patch.p_useTriggerFreq = true;
+    instrumentPresets[71].patch.p_triggerFreq = 450.0f;
+
+    // 72: Bongo Lo — membrane, lower pitch
+    instrumentPresets[72].name = "Bongo Lo";
+    instrumentPresets[72].patch.p_waveType = WAVE_MEMBRANE;
+    instrumentPresets[72].patch.p_membranePreset = MEMBRANE_BONGO;
+    instrumentPresets[72].patch.p_membraneDamping = 0.25f;
+    instrumentPresets[72].patch.p_membraneStrike = 0.5f;
+    instrumentPresets[72].patch.p_membraneBend = 0.15f;
+    instrumentPresets[72].patch.p_membraneBendDecay = 0.08f;
+    instrumentPresets[72].patch.p_attack = 0.001f;
+    instrumentPresets[72].patch.p_decay = 0.4f;
+    instrumentPresets[72].patch.p_sustain = 0.0f;
+    instrumentPresets[72].patch.p_release = 0.15f;
+    instrumentPresets[72].patch.p_volume = 0.5f;
+    instrumentPresets[72].patch.p_useTriggerFreq = true;
+    instrumentPresets[72].patch.p_triggerFreq = 280.0f;
+
+    // 73: Conga Hi — membrane, slap sound
+    instrumentPresets[73].name = "Conga Hi";
+    instrumentPresets[73].patch.p_waveType = WAVE_MEMBRANE;
+    instrumentPresets[73].patch.p_membranePreset = MEMBRANE_CONGA;
+    instrumentPresets[73].patch.p_membraneDamping = 0.3f;
+    instrumentPresets[73].patch.p_membraneStrike = 0.7f;
+    instrumentPresets[73].patch.p_membraneBend = 0.08f;
+    instrumentPresets[73].patch.p_membraneBendDecay = 0.04f;
+    instrumentPresets[73].patch.p_attack = 0.001f;
+    instrumentPresets[73].patch.p_decay = 0.35f;
+    instrumentPresets[73].patch.p_sustain = 0.0f;
+    instrumentPresets[73].patch.p_release = 0.12f;
+    instrumentPresets[73].patch.p_volume = 0.5f;
+    instrumentPresets[73].patch.p_useTriggerFreq = true;
+    instrumentPresets[73].patch.p_triggerFreq = 320.0f;
+
+    // 74: Conga Lo — membrane, open tone
+    instrumentPresets[74].name = "Conga Lo";
+    instrumentPresets[74].patch.p_waveType = WAVE_MEMBRANE;
+    instrumentPresets[74].patch.p_membranePreset = MEMBRANE_CONGA;
+    instrumentPresets[74].patch.p_membraneDamping = 0.2f;
+    instrumentPresets[74].patch.p_membraneStrike = 0.5f;
+    instrumentPresets[74].patch.p_membraneBend = 0.12f;
+    instrumentPresets[74].patch.p_membraneBendDecay = 0.06f;
+    instrumentPresets[74].patch.p_attack = 0.001f;
+    instrumentPresets[74].patch.p_decay = 0.5f;
+    instrumentPresets[74].patch.p_sustain = 0.0f;
+    instrumentPresets[74].patch.p_release = 0.2f;
+    instrumentPresets[74].patch.p_volume = 0.5f;
+    instrumentPresets[74].patch.p_useTriggerFreq = true;
+    instrumentPresets[74].patch.p_triggerFreq = 200.0f;
+
+    // 75: Timbales — short metallic ring, FM high ratio
+    instrumentPresets[75].name = "Timbales";
+    instrumentPresets[75].patch.p_waveType = WAVE_FM;
+    instrumentPresets[75].patch.p_fmModRatio = 5.5f;
+    instrumentPresets[75].patch.p_fmModIndex = 1.5f;
+    instrumentPresets[75].patch.p_pitchEnvAmount = 6.0f;
+    instrumentPresets[75].patch.p_pitchEnvDecay = 0.01f;
+    instrumentPresets[75].patch.p_pitchEnvCurve = -0.5f;
+    instrumentPresets[75].patch.p_attack = 0.001f;
+    instrumentPresets[75].patch.p_decay = 0.25f;
+    instrumentPresets[75].patch.p_sustain = 0.0f;
+    instrumentPresets[75].patch.p_release = 0.08f;
+    instrumentPresets[75].patch.p_expDecay = true;
+    instrumentPresets[75].patch.p_filterCutoff = 0.7f;
+    instrumentPresets[75].patch.p_volume = 0.45f;
+    instrumentPresets[75].patch.p_phaseReset = true;
+    instrumentPresets[75].patch.p_useTriggerFreq = true;
+    instrumentPresets[75].patch.p_triggerFreq = 380.0f;
+
+    // 76: Woodblock — short filtered click, high pitch
+    instrumentPresets[76].name = "Woodblock";
+    instrumentPresets[76].patch.p_waveType = WAVE_SQUARE;
+    instrumentPresets[76].patch.p_pitchEnvAmount = 12.0f;
+    instrumentPresets[76].patch.p_pitchEnvDecay = 0.008f;
+    instrumentPresets[76].patch.p_pitchEnvCurve = -0.8f;
+    instrumentPresets[76].patch.p_attack = 0.001f;
+    instrumentPresets[76].patch.p_decay = 0.03f;
+    instrumentPresets[76].patch.p_sustain = 0.0f;
+    instrumentPresets[76].patch.p_release = 0.01f;
+    instrumentPresets[76].patch.p_expDecay = true;
+    instrumentPresets[76].patch.p_filterType = 0; // SVF LP
+    instrumentPresets[76].patch.p_filterCutoff = 0.6f;
+    instrumentPresets[76].patch.p_volume = 0.4f;
+    instrumentPresets[76].patch.p_phaseReset = true;
+    instrumentPresets[76].patch.p_useTriggerFreq = true;
+    instrumentPresets[76].patch.p_triggerFreq = 900.0f;
+
+    // 77: Agogo Hi — pure FM bell, high pitch
+    instrumentPresets[77].name = "Agogo Hi";
+    instrumentPresets[77].patch.p_waveType = WAVE_FM;
+    instrumentPresets[77].patch.p_fmModRatio = 3.0f;
+    instrumentPresets[77].patch.p_fmModIndex = 1.0f;
+    instrumentPresets[77].patch.p_attack = 0.001f;
+    instrumentPresets[77].patch.p_decay = 0.4f;
+    instrumentPresets[77].patch.p_sustain = 0.0f;
+    instrumentPresets[77].patch.p_release = 0.15f;
+    instrumentPresets[77].patch.p_expDecay = true;
+    instrumentPresets[77].patch.p_filterCutoff = 0.65f;
+    instrumentPresets[77].patch.p_volume = 0.35f;
+    instrumentPresets[77].patch.p_phaseReset = true;
+    instrumentPresets[77].patch.p_useTriggerFreq = true;
+    instrumentPresets[77].patch.p_triggerFreq = 700.0f;
+
+    // 78: Agogo Lo — FM bell, lower pitch
+    instrumentPresets[78].name = "Agogo Lo";
+    instrumentPresets[78].patch.p_waveType = WAVE_FM;
+    instrumentPresets[78].patch.p_fmModRatio = 3.0f;
+    instrumentPresets[78].patch.p_fmModIndex = 1.0f;
+    instrumentPresets[78].patch.p_attack = 0.001f;
+    instrumentPresets[78].patch.p_decay = 0.4f;
+    instrumentPresets[78].patch.p_sustain = 0.0f;
+    instrumentPresets[78].patch.p_release = 0.15f;
+    instrumentPresets[78].patch.p_expDecay = true;
+    instrumentPresets[78].patch.p_filterCutoff = 0.55f;
+    instrumentPresets[78].patch.p_volume = 0.35f;
+    instrumentPresets[78].patch.p_phaseReset = true;
+    instrumentPresets[78].patch.p_useTriggerFreq = true;
+    instrumentPresets[78].patch.p_triggerFreq = 470.0f;
+
+    // 79: Triangle Perc — high sine, long decay, slight pitch drop
+    instrumentPresets[79].name = "Triangle";
+    instrumentPresets[79].patch.p_waveType = WAVE_TRIANGLE;
+    instrumentPresets[79].patch.p_pitchEnvAmount = -1.0f;
+    instrumentPresets[79].patch.p_pitchEnvDecay = 0.5f;
+    instrumentPresets[79].patch.p_attack = 0.001f;
+    instrumentPresets[79].patch.p_decay = 1.5f;
+    instrumentPresets[79].patch.p_sustain = 0.0f;
+    instrumentPresets[79].patch.p_release = 0.5f;
+    instrumentPresets[79].patch.p_expDecay = true;
+    instrumentPresets[79].patch.p_volume = 0.3f;
+    instrumentPresets[79].patch.p_phaseReset = true;
+    instrumentPresets[79].patch.p_useTriggerFreq = true;
+    instrumentPresets[79].patch.p_triggerFreq = 1500.0f;
+
+    // 80: Finger Snap — single noise burst, bandpass, very short
+    instrumentPresets[80].name = "Finger Snap";
+    instrumentPresets[80].patch.p_waveType = WAVE_NOISE;
+    instrumentPresets[80].patch.p_noiseMix = 1.0f;
+    instrumentPresets[80].patch.p_noiseTone = 0.5f;
+    instrumentPresets[80].patch.p_noiseHP = 0.15f;
+    instrumentPresets[80].patch.p_attack = 0.001f;
+    instrumentPresets[80].patch.p_decay = 0.04f;
+    instrumentPresets[80].patch.p_sustain = 0.0f;
+    instrumentPresets[80].patch.p_release = 0.02f;
+    instrumentPresets[80].patch.p_expDecay = true;
+    instrumentPresets[80].patch.p_filterType = 2; // SVF BP
+    instrumentPresets[80].patch.p_filterCutoff = 0.5f;
+    instrumentPresets[80].patch.p_filterResonance = 0.25f;
+    instrumentPresets[80].patch.p_volume = 0.4f;
+    instrumentPresets[80].patch.p_phaseReset = true;
+    instrumentPresets[80].patch.p_useTriggerFreq = true;
+    instrumentPresets[80].patch.p_triggerFreq = 1200.0f;
 }
 
 #endif // INSTRUMENT_PRESETS_H

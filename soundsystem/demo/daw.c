@@ -862,8 +862,18 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         DrawRectangleLinesEx(r32, 1, steps==32 ? GREEN : (Color){48,48,58,255});
         DrawTextShadow("16", (int)togX+6, (int)y+3, 10, steps==16 ? WHITE : GRAY);
         DrawTextShadow("32", (int)togX+34, (int)y+3, 10, steps==32 ? WHITE : GRAY);
-        if (h16 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { daw.stepCount = 16; ui_consume_click(); }
-        if (h32 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { daw.stepCount = 32; ui_consume_click(); }
+        if (h16 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            daw.stepCount = 16;
+            Pattern *tp = dawPattern();
+            for (int t = 0; t < SEQ_DRUM_TRACKS + SEQ_MELODY_TRACKS; t++) tp->trackLength[t] = 16;
+            ui_consume_click();
+        }
+        if (h32 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            daw.stepCount = 32;
+            Pattern *tp = dawPattern();
+            for (int t = 0; t < SEQ_DRUM_TRACKS + SEQ_MELODY_TRACKS; t++) tp->trackLength[t] = 32;
+            ui_consume_click();
+        }
     }
 
     // Fill mode toggle
@@ -888,7 +898,6 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         DrawRectangleLinesEx(rc, 1, (Color){48,48,58,255});
         DrawTextShadow("Cpy", (int)copyX+4, (int)y+3, 10, chov ? WHITE : GRAY);
         if (chov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            // Copy current pattern to next empty-ish slot (or cycle)
             int dst = (daw.transport.currentPattern + 1) % SEQ_NUM_PATTERNS;
             copyPattern(&seq.patterns[dst], dawPattern());
             ui_consume_click();
@@ -909,48 +918,174 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         static bool rhythmGenInit = false;
         if (!rhythmGenInit) { initRhythmGenerator(&rhythmGen); rhythmGenInit = true; }
 
-        // Style selector
-        Rectangle rs = {rgenX, y, 60, 18};
-        bool shov = CheckCollisionPointRec(mouse, rs);
-        DrawRectangleRec(rs, shov ? (Color){45,48,55,255} : (Color){33,34,40,255});
-        DrawRectangleLinesEx(rs, 1, (Color){48,48,58,255});
-        DrawTextShadow(rhythmStyleNames[rhythmGen.style], (int)rgenX+4, (int)y+3, 10, shov ? WHITE : (Color){180,180,200,255});
-        if (shov) {
-            float wh = GetMouseWheelMove();
-            if (wh > 0) rhythmGen.style = (rhythmGen.style + 1) % RHYTHM_COUNT;
-            else if (wh < 0) rhythmGen.style = (rhythmGen.style + RHYTHM_COUNT - 1) % RHYTHM_COUNT;
-            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { rhythmGen.style = (rhythmGen.style + 1) % RHYTHM_COUNT; ui_consume_click(); }
-            if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) { rhythmGen.style = (rhythmGen.style + RHYTHM_COUNT - 1) % RHYTHM_COUNT; ui_consume_click(); }
+        // Mode toggle (Classic / Prob)
+        float cx = rgenX;
+        const char *modeName = (rhythmGen.mode == RHYTHM_MODE_PROB_MAP) ? "Prob" : "Clas";
+        Rectangle rm = {cx, y, 32, 18};
+        bool mhov = CheckCollisionPointRec(mouse, rm);
+        Color modeCol = (rhythmGen.mode == RHYTHM_MODE_PROB_MAP) ? (Color){80,140,200,255} : (Color){200,160,80,255};
+        DrawRectangleRec(rm, mhov ? (Color){45,48,55,255} : (Color){33,34,40,255});
+        DrawRectangleLinesEx(rm, 1, (Color){48,48,58,255});
+        DrawTextShadow(modeName, (int)cx+4, (int)y+3, 10, mhov ? WHITE : modeCol);
+        if (mhov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            rhythmGen.mode = (rhythmGen.mode + 1) % RHYTHM_MODE_COUNT;
+            ui_consume_click();
         }
+        cx += 35;
 
-        // Variation selector
-        Rectangle rv = {rgenX + 63, y, 42, 18};
-        bool vhov = CheckCollisionPointRec(mouse, rv);
-        DrawRectangleRec(rv, vhov ? (Color){45,48,55,255} : (Color){33,34,40,255});
-        DrawRectangleLinesEx(rv, 1, (Color){48,48,58,255});
-        static const char* varNames[] = {"Norm", "Fill", "Spar", "Busy", "Sync"};
-        DrawTextShadow(varNames[rhythmGen.variation], (int)rgenX+67, (int)y+3, 10, vhov ? WHITE : (Color){160,160,180,255});
-        if (vhov) {
-            float wh = GetMouseWheelMove();
-            if (wh > 0) rhythmGen.variation = (rhythmGen.variation + 1) % RHYTHM_VAR_COUNT;
-            else if (wh < 0) rhythmGen.variation = (rhythmGen.variation + RHYTHM_VAR_COUNT - 1) % RHYTHM_VAR_COUNT;
-            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { rhythmGen.variation = (rhythmGen.variation + 1) % RHYTHM_VAR_COUNT; ui_consume_click(); }
+        if (rhythmGen.mode == RHYTHM_MODE_CLASSIC) {
+            // Style selector
+            Rectangle rs = {cx, y, 60, 18};
+            bool shov = CheckCollisionPointRec(mouse, rs);
+            DrawRectangleRec(rs, shov ? (Color){45,48,55,255} : (Color){33,34,40,255});
+            DrawRectangleLinesEx(rs, 1, (Color){48,48,58,255});
+            DrawTextShadow(rhythmStyleNames[rhythmGen.style], (int)cx+4, (int)y+3, 10, shov ? WHITE : (Color){180,180,200,255});
+            if (shov) {
+                float wh = GetMouseWheelMove();
+                if (wh > 0) rhythmGen.style = (rhythmGen.style + 1) % RHYTHM_COUNT;
+                else if (wh < 0) rhythmGen.style = (rhythmGen.style + RHYTHM_COUNT - 1) % RHYTHM_COUNT;
+                if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { rhythmGen.style = (rhythmGen.style + 1) % RHYTHM_COUNT; ui_consume_click(); }
+                if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) { rhythmGen.style = (rhythmGen.style + RHYTHM_COUNT - 1) % RHYTHM_COUNT; ui_consume_click(); }
+            }
+
+            // Variation selector
+            Rectangle rv = {cx + 63, y, 42, 18};
+            bool vhov = CheckCollisionPointRec(mouse, rv);
+            DrawRectangleRec(rv, vhov ? (Color){45,48,55,255} : (Color){33,34,40,255});
+            DrawRectangleLinesEx(rv, 1, (Color){48,48,58,255});
+            static const char* varNames[] = {"Norm", "Fill", "Spar", "Busy", "Sync"};
+            DrawTextShadow(varNames[rhythmGen.variation], (int)cx+67, (int)y+3, 10, vhov ? WHITE : (Color){160,160,180,255});
+            if (vhov) {
+                float wh = GetMouseWheelMove();
+                if (wh > 0) rhythmGen.variation = (rhythmGen.variation + 1) % RHYTHM_VAR_COUNT;
+                else if (wh < 0) rhythmGen.variation = (rhythmGen.variation + RHYTHM_VAR_COUNT - 1) % RHYTHM_VAR_COUNT;
+                if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { rhythmGen.variation = (rhythmGen.variation + 1) % RHYTHM_VAR_COUNT; ui_consume_click(); }
+            }
+            cx += 108;
+        } else {
+            // Prob map style selector
+            Rectangle rs = {cx, y, 72, 18};
+            bool shov = CheckCollisionPointRec(mouse, rs);
+            DrawRectangleRec(rs, shov ? (Color){45,48,55,255} : (Color){33,34,40,255});
+            DrawRectangleLinesEx(rs, 1, (Color){48,48,58,255});
+            DrawTextShadow(probMapNames[rhythmGen.probStyle], (int)cx+4, (int)y+3, 10, shov ? WHITE : (Color){140,180,220,255});
+            if (shov) {
+                float wh = GetMouseWheelMove();
+                if (wh > 0) rhythmGen.probStyle = (rhythmGen.probStyle + 1) % PROB_MAP_COUNT;
+                else if (wh < 0) rhythmGen.probStyle = (rhythmGen.probStyle + PROB_MAP_COUNT - 1) % PROB_MAP_COUNT;
+                if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { rhythmGen.probStyle = (rhythmGen.probStyle + 1) % PROB_MAP_COUNT; ui_consume_click(); }
+                if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) { rhythmGen.probStyle = (rhythmGen.probStyle + PROB_MAP_COUNT - 1) % PROB_MAP_COUNT; ui_consume_click(); }
+            }
+
+            // Density knob (drag horizontal)
+            Rectangle rd = {cx + 75, y, 36, 18};
+            bool dhov = CheckCollisionPointRec(mouse, rd);
+            DrawRectangleRec(rd, dhov ? (Color){45,48,55,255} : (Color){33,34,40,255});
+            DrawRectangleLinesEx(rd, 1, (Color){48,48,58,255});
+            // Fill bar to show density level
+            float fillW = 34.0f * rhythmGen.density;
+            DrawRectangleRec((Rectangle){cx+76, y+14, fillW, 3}, (Color){80,140,200,180});
+            DrawTextShadow(TextFormat("D%.0f", rhythmGen.density * 100), (int)cx+78, (int)y+3, 10, dhov ? WHITE : (Color){140,180,220,255});
+            if (dhov) {
+                float wh = GetMouseWheelMove();
+                if (wh != 0) { rhythmGen.density += wh * 0.05f; if (rhythmGen.density < 0) rhythmGen.density = 0; if (rhythmGen.density > 1) rhythmGen.density = 1; }
+            }
+
+            // Randomize knob
+            Rectangle rr = {cx + 114, y, 30, 18};
+            bool rhov = CheckCollisionPointRec(mouse, rr);
+            DrawRectangleRec(rr, rhov ? (Color){45,48,55,255} : (Color){33,34,40,255});
+            DrawRectangleLinesEx(rr, 1, (Color){48,48,58,255});
+            float rndFillW = 28.0f * rhythmGen.randomize;
+            DrawRectangleRec((Rectangle){cx+115, y+14, rndFillW, 3}, (Color){200,140,80,180});
+            DrawTextShadow(TextFormat("R%.0f", rhythmGen.randomize * 100), (int)cx+117, (int)y+3, 10, rhov ? WHITE : (Color){200,160,80,255});
+            if (rhov) {
+                float wh = GetMouseWheelMove();
+                if (wh != 0) { rhythmGen.randomize += wh * 0.05f; if (rhythmGen.randomize < 0) rhythmGen.randomize = 0; if (rhythmGen.randomize > 1) rhythmGen.randomize = 1; }
+            }
+            cx += 147;
         }
 
         // Gen button
-        Rectangle rg = {rgenX + 108, y, 30, 18};
+        Rectangle rg = {cx, y, 30, 18};
         bool ghov = CheckCollisionPointRec(mouse, rg);
         DrawRectangleRec(rg, ghov ? (Color){60,90,60,255} : (Color){40,55,40,255});
         DrawRectangleLinesEx(rg, 1, ghov ? GREEN : (Color){48,58,48,255});
-        DrawTextShadow("Gen", (int)rgenX+112, (int)y+3, 10, ghov ? WHITE : GREEN);
+        DrawTextShadow("Gen", (int)cx+4, (int)y+3, 10, ghov ? WHITE : GREEN);
         if (ghov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            applyRhythmPattern(dawPattern(), &rhythmGen);
+            generateRhythm(dawPattern(), &rhythmGen);
             seq.dilla.swing = getRhythmSwing(&rhythmGen);
+            // Apply per-style instrument routing (prob map mode only)
+            if (rhythmGen.mode == RHYTHM_MODE_PROB_MAP) {
+                int s = rhythmGen.probStyle;
+                if (s >= 0 && s < PROB_MAP_COUNT) {
+                    for (int t = 0; t < SEQ_DRUM_TRACKS && t < 4; t++) {
+                        int pi = probMapDrumPresets[s][t];
+                        if (pi >= 0 && pi < NUM_INSTRUMENT_PRESETS) {
+                            daw.patches[t] = instrumentPresets[pi].patch;
+                            snprintf(daw.patches[t].p_name, 32, "%s", instrumentPresets[pi].name);
+                        }
+                    }
+                }
+            }
             ui_consume_click();
         }
 
         // BPM hint
-        DrawTextShadow(TextFormat("~%d", getRhythmRecommendedBpm(&rhythmGen)), (int)rgenX+142, (int)y+4, 9, (Color){70,70,80,255});
+        DrawTextShadow(TextFormat("~%d", getRhythmRecommendedBpm(&rhythmGen)), (int)cx+34, (int)y+4, 9, (Color){70,70,80,255});
+        cx += 64;
+
+        // Euclidean generator — click "Euc" to expand
+        static bool eucOpen = false;
+        static int eucHits = 4, eucSteps = 16, eucRot = 0, eucTrack = 0;
+        Rectangle eucToggle = {cx, y, 24, 18};
+        bool eucTogHov = CheckCollisionPointRec(mouse, eucToggle);
+        DrawRectangleRec(eucToggle, eucTogHov ? (Color){45,48,55,255} : (Color){33,34,40,255});
+        DrawRectangleLinesEx(eucToggle, 1, (Color){48,48,58,255});
+        DrawTextShadow("Euc", (int)cx+2, (int)y+3, 10, eucTogHov ? WHITE : (eucOpen ? (Color){140,180,200,255} : (Color){70,70,80,255}));
+        if (eucTogHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { eucOpen = !eucOpen; ui_consume_click(); }
+        if (eucOpen) {
+            cx += 27;
+            // Hits
+            Rectangle reh = {cx, y, 22, 18};
+            bool ehhov = CheckCollisionPointRec(mouse, reh);
+            DrawRectangleRec(reh, ehhov ? (Color){45,48,55,255} : (Color){33,34,40,255});
+            DrawRectangleLinesEx(reh, 1, (Color){48,48,58,255});
+            DrawTextShadow(TextFormat("%d", eucHits), (int)cx+3, (int)y+3, 10, ehhov ? WHITE : (Color){180,200,140,255});
+            if (ehhov) { float wh = GetMouseWheelMove(); if (wh > 0 && eucHits < eucSteps) eucHits++; else if (wh < 0 && eucHits > 0) eucHits--; }
+            // Steps
+            Rectangle res = {cx+24, y, 22, 18};
+            bool eshov = CheckCollisionPointRec(mouse, res);
+            DrawRectangleRec(res, eshov ? (Color){45,48,55,255} : (Color){33,34,40,255});
+            DrawRectangleLinesEx(res, 1, (Color){48,48,58,255});
+            DrawTextShadow(TextFormat("%d", eucSteps), (int)cx+27, (int)y+3, 10, eshov ? WHITE : (Color){140,180,200,255});
+            if (eshov) { float wh = GetMouseWheelMove(); if (wh > 0 && eucSteps < 32) eucSteps++; else if (wh < 0 && eucSteps > 1) eucSteps--; if (eucHits > eucSteps) eucHits = eucSteps; }
+            // Rotation
+            Rectangle rer = {cx+48, y, 22, 18};
+            bool erhov = CheckCollisionPointRec(mouse, rer);
+            DrawRectangleRec(rer, erhov ? (Color){45,48,55,255} : (Color){33,34,40,255});
+            DrawRectangleLinesEx(rer, 1, (Color){48,48,58,255});
+            DrawTextShadow(TextFormat("r%d", eucRot), (int)cx+50, (int)y+3, 10, erhov ? WHITE : (Color){200,160,140,255});
+            if (erhov) { float wh = GetMouseWheelMove(); if (wh > 0) eucRot = (eucRot + 1) % eucSteps; else if (wh < 0) eucRot = (eucRot + eucSteps - 1) % eucSteps; }
+            // Track target
+            static const char* eucTrk[] = {"K","S","H","C"};
+            Rectangle ret = {cx+72, y, 16, 18};
+            bool ethov = CheckCollisionPointRec(mouse, ret);
+            DrawRectangleRec(ret, ethov ? (Color){45,48,55,255} : (Color){33,34,40,255});
+            DrawRectangleLinesEx(ret, 1, (Color){48,48,58,255});
+            DrawTextShadow(eucTrk[eucTrack], (int)cx+75, (int)y+3, 10, ethov ? WHITE : (Color){160,160,180,255});
+            if (ethov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { eucTrack = (eucTrack + 1) % SEQ_DRUM_TRACKS; ui_consume_click(); }
+            // Apply
+            Rectangle rea = {cx+90, y, 20, 18};
+            bool eahov = CheckCollisionPointRec(mouse, rea);
+            DrawRectangleRec(rea, eahov ? (Color){60,90,60,255} : (Color){40,55,40,255});
+            DrawRectangleLinesEx(rea, 1, eahov ? GREEN : (Color){48,58,48,255});
+            DrawTextShadow("E", (int)cx+94, (int)y+3, 10, eahov ? WHITE : GREEN);
+            if (eahov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                applyEuclideanToTrack(dawPattern(), eucTrack, eucHits, eucSteps, eucRot, 0.8f);
+                ui_consume_click();
+            }
+        }
     }
 
     y += 22; h -= 22;
@@ -1029,6 +1164,27 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                        nameCol.g = (unsigned char)(nameCol.g + 40 > 255 ? 255 : nameCol.g + 40);
                        nameCol.b = (unsigned char)(nameCol.b + 40 > 255 ? 255 : nameCol.b + 40); }
         DrawTextShadow(trackNames[track], lx + 72, lcy-5, 9, nameCol);
+        // Per-track length (right-click or scroll on name to change)
+        int tLen = dawPattern()->trackLength[track];
+        bool lenDiffers = (tLen != daw.stepCount);
+        Color lenCol = lenDiffers ? (Color){200,160,80,255} : (Color){70,70,80,255};
+        DrawTextShadow(TextFormat("%d", tLen), lx + labelW - 16, lcy-4, 8, lenCol);
+        if (nameHov) {
+            float wh = GetMouseWheelMove();
+            if (wh > 0) { tLen++; if (tLen > 32) tLen = 32; dawPattern()->trackLength[track] = tLen; }
+            else if (wh < 0) { tLen--; if (tLen < 1) tLen = 1; dawPattern()->trackLength[track] = tLen; }
+            if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+                // Right-click: cycle through common lengths
+                static const int commonLens[] = {4, 6, 8, 12, 16, 24, 32};
+                int best = 16;
+                for (int ci = 0; ci < 7; ci++) {
+                    if (commonLens[ci] > tLen) { best = commonLens[ci]; break; }
+                    if (ci == 6) best = commonLens[0];
+                }
+                dawPattern()->trackLength[track] = best;
+                ui_consume_click();
+            }
+        }
         if (nameHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             daw.selectedPatch = track; // all tracks map 1:1 to patches[]
             paramTab = PARAM_PATCH;
@@ -2309,8 +2465,8 @@ static void drawParamPatch(float x, float y, float w, float h) {
     if (presetPickerOpen) {
         // Draw popup on top
         float popX = x + 4, popY = presetRowY + 20;
-        float popW = 400;
-        int pcols = 3, perCol = (NUM_INSTRUMENT_PRESETS + pcols - 1) / pcols;
+        float popW = 660;
+        int pcols = 6, perCol = (NUM_INSTRUMENT_PRESETS + pcols - 1) / pcols;
         float popH = perCol * 18 + 8;
         Vector2 mouse = GetMousePosition();
 
@@ -3371,11 +3527,14 @@ static void dawDrumTriggerGeneric(int trackIdx, int busIdx, float vel, float pit
     if (pDecay >= 0.0f) p->p_decay = pDecay;
     if (pTone >= 0.0f) p->p_filterCutoff = pTone;
 
-    // Choke: only release if the voice still belongs to this track's bus
-    // (voices get reused by findVoice — stale index may point to another track's voice)
+    // Choke: kill the previous voice immediately (envStage=0) so findVoice
+    // can reclaim the slot. releaseNote only sets stage=4 (release), which
+    // keeps the voice alive — findVoice then grabs a different free slot
+    // and voices pile up indefinitely.
     if (p->p_choke && dawDrumVoice[trackIdx] >= 0 && voiceBus[dawDrumVoice[trackIdx]] == busIdx) {
-        voiceLogPush("REL drum[%d] v%d choke bus=%d", trackIdx, dawDrumVoice[trackIdx], busIdx);
-        releaseNote(dawDrumVoice[trackIdx]);
+        voiceLogPush("KILL drum[%d] v%d choke bus=%d", trackIdx, dawDrumVoice[trackIdx], busIdx);
+        synthCtx->voices[dawDrumVoice[trackIdx]].envStage = 0;
+        synthCtx->voices[dawDrumVoice[trackIdx]].envLevel = 0.0f;
     }
     int v = playNoteWithPatch(trigFreq, p);
     dawDrumVoice[trackIdx] = v;
@@ -3450,11 +3609,14 @@ static void dawMelodyTriggerGeneric(int trackIdx, int note, float vel,
 
     // New note — temporarily apply p-lock values to patch, trigger, restore
     seqSoundLog("DAW_MELODY  track=%d note=%s bus=%d vel=%.2f slide=%d accent=%d", trackIdx, seqNoteName(note), dawPatchToBus(busTrack), pVol, slide, accent);
-    // Only release if voice still belongs to this track's bus
+    // Kill previous voice on retrigger so voices don't pile up.
+    // releaseNote only sets stage=4 (release), keeping the voice alive —
+    // findVoice then grabs a different free slot and voices accumulate.
     int melBus = dawPatchToBus(busTrack);
     if (dawMelodyVoice[trackIdx] >= 0 && voiceBus[dawMelodyVoice[trackIdx]] == melBus) {
-        voiceLogPush("REL mel[%d] v%d retrig bus=%d", trackIdx, dawMelodyVoice[trackIdx], melBus);
-        releaseNote(dawMelodyVoice[trackIdx]);
+        voiceLogPush("KILL mel[%d] v%d retrig bus=%d", trackIdx, dawMelodyVoice[trackIdx], melBus);
+        synthCtx->voices[dawMelodyVoice[trackIdx]].envStage = 0;
+        synthCtx->voices[dawMelodyVoice[trackIdx]].envLevel = 0.0f;
     }
 
     float origCutoff = p->p_filterCutoff, origReso = p->p_filterResonance;
@@ -3586,19 +3748,17 @@ static void dawStopSequencer(void) {
         seq.trackCurrentNote[t] = SEQ_NOTE_OFF;
         seq.trackSustainRemaining[t] = 0;
     }
-    // Release active synth voices
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
-        if (dawDrumVoice[t] >= 0) {
-            voiceLogPush("REL drum[%d] v%d stop", t, dawDrumVoice[t]);
-            releaseNote(dawDrumVoice[t]); dawDrumVoice[t] = -1;
+    // Release ALL active voices — not just tracked ones, since voice indices
+    // only remember the last voice per track (orphaned voices would linger).
+    // releaseNote starts the release envelope so voices fade out naturally.
+    // This is safe on stop because no new notes will allocate fresh slots.
+    for (int i = 0; i < NUM_VOICES; i++) {
+        if (synthCtx->voices[i].envStage > 0 && synthCtx->voices[i].envStage < 4) {
+            releaseNote(i);
         }
     }
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
-        if (dawMelodyVoice[t] >= 0) {
-            voiceLogPush("REL mel[%d] v%d stop", t, dawMelodyVoice[t]);
-            releaseNote(dawMelodyVoice[t]); dawMelodyVoice[t] = -1;
-        }
-    }
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) dawDrumVoice[t] = -1;
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) dawMelodyVoice[t] = -1;
     seq.tickTimer = 0.0f;
     // Reset chain playback to beginning
     seq.chainPos = 0;

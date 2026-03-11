@@ -83,6 +83,42 @@ static const char* probMapNames[PROB_MAP_COUNT] = {
     "SNES",
 };
 
+// Per-style suggested drum preset indices (from instrument_presets.h)
+// {kick, snare, hihat, perc} — -1 means "keep current preset"
+// Preset indices: 24=808 Kick, 25=808 Snare, 26=808 Clap, 27=808 CH, 28=808 OH,
+// 29=808 Tom, 30=Rimshot, 31=Cowbell, 36=Clave, 37=Maracas,
+// 66=Ride, 67=Brush Snare, 68=Crash, 69=Shaker, 70=Tambourine,
+// 71=Bongo Hi, 73=Conga Hi, 75=Timbales, 76=Woodblock, 77=Agogo Hi
+static const int probMapDrumPresets[PROB_MAP_COUNT][4] = {
+    [PROB_BALLAD]          = {-1, -1, -1, 26},    // clap
+    [PROB_BASIC]           = {-1, -1, -1, 26},    // clap
+    [PROB_BOSSA_NOVA]      = {-1, -1, -1, 36},    // clave
+    [PROB_CHA_CHA]         = {-1, -1, -1, 31},    // cowbell
+    [PROB_DISCO]           = {-1, -1, -1, 26},    // clap
+    [PROB_DNB]             = {-1, -1, -1, 26},    // clap
+    [PROB_ELECTRO]         = {-1, -1, -1, 26},    // clap
+    [PROB_ENDINGS]         = {-1, -1, -1, 26},    // clap
+    [PROB_FUNK]            = {-1, -1, -1, 30},    // rimshot
+    [PROB_HIP_HOP]         = {-1, -1, -1, 26},    // clap
+    [PROB_HOUSE]           = {-1, -1, -1, 26},    // clap
+    [PROB_LATIN]           = {-1, -1, -1, 31},    // cowbell
+    [PROB_MARCH]           = {-1, -1, -1, 68},    // crash
+    [PROB_POP]             = {-1, -1, -1, 70},    // tambourine
+    [PROB_R_B]             = {-1, -1, -1, 26},    // clap
+    [PROB_REGGAE]          = {-1, -1, -1, 30},    // rimshot
+    [PROB_ROCK]            = {-1, -1, -1, 26},    // clap
+    [PROB_SHUFFLE]         = {-1, -1, -1, 26},    // clap
+    [PROB_SKA]             = {-1, -1, -1, 30},    // rimshot
+    [PROB_STANDARD_BREAKS] = {-1, -1, -1, 26},    // clap
+    [PROB_WALTZ]           = {-1, -1, -1, 26},    // clap
+    [PROB_JAZZ]            = {-1, -1, 66, 66},     // ride on hihat + perc
+    [PROB_BRUSH_JAZZ]      = {-1, 67, 66, 66},     // brush snare, ride on hihat + perc
+    [PROB_WALTZ_JAZZ]      = {-1, -1, 66, 66},     // ride on hihat + perc
+    [PROB_LOFI]            = {-1, -1, -1, 69},     // shaker
+    [PROB_JANGLE]          = {-1, -1, -1, 66},     // ride on perc
+    [PROB_SNES]            = {-1, -1, -1, 68},     // crash
+};
+
 static const RhythmProbMap probMaps[PROB_MAP_COUNT] = {
     // Ballad (33 source patterns: Measure A, Measure B, Break, Measure A, Measure B, Break, Measure A, Measure B, )
     {

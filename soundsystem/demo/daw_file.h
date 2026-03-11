@@ -289,6 +289,12 @@ static bool dawSave(const char *filepath) {
     _db(f, "reverbOn", daw.masterFx.reverbOn); _dw(f, "reverbSize", daw.masterFx.reverbSize);
     _dw(f, "reverbDamping", daw.masterFx.reverbDamping); _dw(f, "reverbPreDelay", daw.masterFx.reverbPreDelay);
     _dw(f, "reverbMix", daw.masterFx.reverbMix);
+    _db(f, "eqOn", daw.masterFx.eqOn); _dw(f, "eqLowGain", daw.masterFx.eqLowGain);
+    _dw(f, "eqHighGain", daw.masterFx.eqHighGain); _dw(f, "eqLowFreq", daw.masterFx.eqLowFreq);
+    _dw(f, "eqHighFreq", daw.masterFx.eqHighFreq);
+    _db(f, "compOn", daw.masterFx.compOn); _dw(f, "compThreshold", daw.masterFx.compThreshold);
+    _dw(f, "compRatio", daw.masterFx.compRatio); _dw(f, "compAttack", daw.masterFx.compAttack);
+    _dw(f, "compRelease", daw.masterFx.compRelease); _dw(f, "compMakeup", daw.masterFx.compMakeup);
 
     // [tapefx]
     fprintf(f, "\n[tapefx]\n");
@@ -833,6 +839,17 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"reverbDamping")==0) daw.masterFx.reverbDamping=_dpf(val);
             else if (strcmp(key,"reverbPreDelay")==0) daw.masterFx.reverbPreDelay=_dpf(val);
             else if (strcmp(key,"reverbMix")==0) daw.masterFx.reverbMix=_dpf(val);
+            else if (strcmp(key,"eqOn")==0) daw.masterFx.eqOn=_dpb(val);
+            else if (strcmp(key,"eqLowGain")==0) daw.masterFx.eqLowGain=_dpf(val);
+            else if (strcmp(key,"eqHighGain")==0) daw.masterFx.eqHighGain=_dpf(val);
+            else if (strcmp(key,"eqLowFreq")==0) daw.masterFx.eqLowFreq=_dpf(val);
+            else if (strcmp(key,"eqHighFreq")==0) daw.masterFx.eqHighFreq=_dpf(val);
+            else if (strcmp(key,"compOn")==0) daw.masterFx.compOn=_dpb(val);
+            else if (strcmp(key,"compThreshold")==0) daw.masterFx.compThreshold=_dpf(val);
+            else if (strcmp(key,"compRatio")==0) daw.masterFx.compRatio=_dpf(val);
+            else if (strcmp(key,"compAttack")==0) daw.masterFx.compAttack=_dpf(val);
+            else if (strcmp(key,"compRelease")==0) daw.masterFx.compRelease=_dpf(val);
+            else if (strcmp(key,"compMakeup")==0) daw.masterFx.compMakeup=_dpf(val);
             break;
         case _DW_SEC_TAPEFX:
             if (strcmp(key,"enabled")==0) daw.tapeFx.enabled=_dpb(val);
