@@ -259,60 +259,23 @@ static void applyRhythmPattern(Pattern* p, RhythmGenerator* gen) {
     // Clear existing drum steps
     for (int track = 0; track < SEQ_DRUM_TRACKS; track++) {
         for (int step = 0; step < SEQ_MAX_STEPS; step++) {
-            p->drumSteps[track][step] = false;
-            p->drumVelocity[track][step] = 0.8f;
-            p->drumPitch[track][step] = 0.0f;
+            patClearDrum(p, track, step);
         }
-        p->drumTrackLength[track] = src->length;
+        patSetDrumLength(p, track, src->length);
     }
-    
+
     // Apply base pattern
+    const float *srcTracks[4] = { src->kick, src->snare, src->hihat, src->perc };
     for (int step = 0; step < src->length; step++) {
-        // Kick (track 0)
-        if (src->kick[step] > 0.0f) {
-            float vel = src->kick[step] * gen->intensity;
-            if (gen->humanize > 0.0f) {
-                vel += (rhythmRandFloat(gen) - 0.5f) * gen->humanize * 0.3f;
-            }
-            if (vel > 0.1f) {
-                p->drumSteps[0][step] = true;
-                p->drumVelocity[0][step] = vel < 1.0f ? vel : 1.0f;
-            }
-        }
-        
-        // Snare (track 1)
-        if (src->snare[step] > 0.0f) {
-            float vel = src->snare[step] * gen->intensity;
-            if (gen->humanize > 0.0f) {
-                vel += (rhythmRandFloat(gen) - 0.5f) * gen->humanize * 0.3f;
-            }
-            if (vel > 0.1f) {
-                p->drumSteps[1][step] = true;
-                p->drumVelocity[1][step] = vel < 1.0f ? vel : 1.0f;
-            }
-        }
-        
-        // HiHat (track 2)
-        if (src->hihat[step] > 0.0f) {
-            float vel = src->hihat[step] * gen->intensity;
-            if (gen->humanize > 0.0f) {
-                vel += (rhythmRandFloat(gen) - 0.5f) * gen->humanize * 0.3f;
-            }
-            if (vel > 0.1f) {
-                p->drumSteps[2][step] = true;
-                p->drumVelocity[2][step] = vel < 1.0f ? vel : 1.0f;
-            }
-        }
-        
-        // Percussion (track 3)
-        if (src->perc[step] > 0.0f) {
-            float vel = src->perc[step] * gen->intensity;
-            if (gen->humanize > 0.0f) {
-                vel += (rhythmRandFloat(gen) - 0.5f) * gen->humanize * 0.3f;
-            }
-            if (vel > 0.1f) {
-                p->drumSteps[3][step] = true;
-                p->drumVelocity[3][step] = vel < 1.0f ? vel : 1.0f;
+        for (int track = 0; track < 4; track++) {
+            if (srcTracks[track][step] > 0.0f) {
+                float vel = srcTracks[track][step] * gen->intensity;
+                if (gen->humanize > 0.0f) {
+                    vel += (rhythmRandFloat(gen) - 0.5f) * gen->humanize * 0.3f;
+                }
+                if (vel > 0.1f) {
+                    patSetDrum(p, track, step, vel < 1.0f ? vel : 1.0f, 0.0f);
+                }
             }
         }
     }
@@ -322,49 +285,46 @@ static void applyRhythmPattern(Pattern* p, RhythmGenerator* gen) {
         case RHYTHM_VAR_FILL:
             // Add fills at end of pattern (last 4 steps)
             for (int step = src->length - 4; step < src->length; step++) {
-                if (rhythmRandFloat(gen) < 0.5f && !p->drumSteps[1][step]) {
-                    p->drumSteps[1][step] = true;
-                    p->drumVelocity[1][step] = 0.6f + rhythmRandFloat(gen) * 0.4f;
+                if (rhythmRandFloat(gen) < 0.5f && !patGetDrum(p, 1, step)) {
+                    patSetDrum(p, 1, step, 0.6f + rhythmRandFloat(gen) * 0.4f, 0.0f);
                 }
             }
             break;
-            
+
         case RHYTHM_VAR_SPARSE:
             // Remove some hits (especially ghost notes and weak beats)
             for (int track = 0; track < SEQ_DRUM_TRACKS; track++) {
                 for (int step = 0; step < src->length; step++) {
-                    if (p->drumSteps[track][step] && p->drumVelocity[track][step] < 0.7f) {
+                    if (patGetDrum(p, track, step) && patGetDrumVel(p, track, step) < 0.7f) {
                         if (rhythmRandFloat(gen) < 0.5f) {
-                            p->drumSteps[track][step] = false;
+                            patClearDrum(p, track, step);
                         }
                     }
                 }
             }
             break;
-            
+
         case RHYTHM_VAR_BUSY:
             // Add ghost notes
             for (int step = 0; step < src->length; step++) {
                 // Add ghost snares
-                if (!p->drumSteps[1][step] && rhythmRandFloat(gen) < 0.2f) {
-                    p->drumSteps[1][step] = true;
-                    p->drumVelocity[1][step] = 0.3f + rhythmRandFloat(gen) * 0.2f;
+                if (!patGetDrum(p, 1, step) && rhythmRandFloat(gen) < 0.2f) {
+                    patSetDrum(p, 1, step, 0.3f + rhythmRandFloat(gen) * 0.2f, 0.0f);
                 }
                 // Add extra hihats
-                if (!p->drumSteps[2][step] && rhythmRandFloat(gen) < 0.4f) {
-                    p->drumSteps[2][step] = true;
-                    p->drumVelocity[2][step] = 0.3f + rhythmRandFloat(gen) * 0.2f;
+                if (!patGetDrum(p, 2, step) && rhythmRandFloat(gen) < 0.4f) {
+                    patSetDrum(p, 2, step, 0.3f + rhythmRandFloat(gen) * 0.2f, 0.0f);
                 }
             }
             break;
-            
+
         case RHYTHM_VAR_SYNCOPATED:
             // Shift some kick hits by one step
             for (int step = 0; step < src->length - 1; step++) {
-                if (p->drumSteps[0][step] && !p->drumSteps[0][step + 1] && rhythmRandFloat(gen) < 0.3f) {
-                    p->drumSteps[0][step] = false;
-                    p->drumSteps[0][step + 1] = true;
-                    p->drumVelocity[0][step + 1] = p->drumVelocity[0][step];
+                if (patGetDrum(p, 0, step) && !patGetDrum(p, 0, step + 1) && rhythmRandFloat(gen) < 0.3f) {
+                    float kickVel = patGetDrumVel(p, 0, step);
+                    patClearDrum(p, 0, step);
+                    patSetDrum(p, 0, step + 1, kickVel, 0.0f);
                 }
             }
             break;

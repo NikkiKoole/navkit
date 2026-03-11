@@ -443,14 +443,17 @@ static void _sf_writePattern(FILE *f, int idx, const Pattern *p) {
     // Drum events — only write active steps
     for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
         for (int s = 0; s < p->drumTrackLength[t]; s++) {
-            if (!p->drumSteps[t][s]) continue;
-            fprintf(f, "d track=%d step=%d vel=%.3g", t, s, (double)p->drumVelocity[t][s]);
-            if (p->drumPitch[t][s] != 0.0f)
-                fprintf(f, " pitch=%.3g", (double)p->drumPitch[t][s]);
-            if (p->drumProbability[t][s] > 0.0f && p->drumProbability[t][s] < 1.0f)
-                fprintf(f, " prob=%.3g", (double)p->drumProbability[t][s]);
-            if (p->drumCondition[t][s] != COND_ALWAYS)
-                fprintf(f, " cond=%s", _sf_conditionNames[p->drumCondition[t][s]]);
+            if (!patGetDrum(p, t, s)) continue;
+            fprintf(f, "d track=%d step=%d vel=%.3g", t, s, (double)patGetDrumVel(p, t, s));
+            float dp = patGetDrumPitch(p, t, s);
+            if (dp != 0.0f)
+                fprintf(f, " pitch=%.3g", (double)dp);
+            float dProb = patGetDrumProb(p, t, s);
+            if (dProb > 0.0f && dProb < 1.0f)
+                fprintf(f, " prob=%.3g", (double)dProb);
+            int dCond = patGetDrumCond(p, t, s);
+            if (dCond != COND_ALWAYS)
+                fprintf(f, " cond=%s", _sf_conditionNames[dCond]);
             fprintf(f, "\n");
         }
     }
@@ -458,19 +461,22 @@ static void _sf_writePattern(FILE *f, int idx, const Pattern *p) {
     // Melody events — only write steps with notes
     for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
         for (int s = 0; s < p->melodyTrackLength[t]; s++) {
-            if (p->melodyNote[t][s] == SEQ_NOTE_OFF) continue;
+            int mn = patGetNote(p, t, s);
+            if (mn == SEQ_NOTE_OFF) continue;
             char noteName[8];
-            _sf_midiToName(p->melodyNote[t][s], noteName, sizeof(noteName));
+            _sf_midiToName(mn, noteName, sizeof(noteName));
             fprintf(f, "m track=%d step=%d note=%s vel=%.3g gate=%d",
-                    t, s, noteName, (double)p->melodyVelocity[t][s], p->melodyGate[t][s]);
-            if (p->melodySlide[t][s]) fprintf(f, " slide");
-            if (p->melodyAccent[t][s]) fprintf(f, " accent");
-            if (p->melodySustain[t][s] > 0)
-                fprintf(f, " sustain=%d", p->melodySustain[t][s]);
-            if (p->melodyProbability[t][s] > 0.0f && p->melodyProbability[t][s] < 1.0f)
-                fprintf(f, " prob=%.3g", (double)p->melodyProbability[t][s]);
-            if (p->melodyCondition[t][s] != COND_ALWAYS)
-                fprintf(f, " cond=%s", _sf_conditionNames[p->melodyCondition[t][s]]);
+                    t, s, noteName, (double)patGetNoteVel(p, t, s), patGetNoteGate(p, t, s));
+            if (patGetNoteSlide(p, t, s)) fprintf(f, " slide");
+            if (patGetNoteAccent(p, t, s)) fprintf(f, " accent");
+            int mSus = patGetNoteSustain(p, t, s);
+            if (mSus > 0) fprintf(f, " sustain=%d", mSus);
+            float mProb = patGetNoteProb(p, t, s);
+            if (mProb > 0.0f && mProb < 1.0f)
+                fprintf(f, " prob=%.3g", (double)mProb);
+            int mCond = patGetNoteCond(p, t, s);
+            if (mCond != COND_ALWAYS)
+                fprintf(f, " cond=%s", _sf_conditionNames[mCond]);
 
             // Note pool
             const NotePool *np = &p->melodyNotePool[t][s];
@@ -952,11 +958,9 @@ static void _sf_parseDrumEvent(const char *line, Pattern *p) {
     }
 
     if (track >= 0 && track < SEQ_DRUM_TRACKS && step >= 0 && step < SEQ_MAX_STEPS) {
-        p->drumSteps[track][step] = true;
-        p->drumVelocity[track][step] = vel;
-        p->drumPitch[track][step] = pitch;
-        p->drumProbability[track][step] = prob;
-        p->drumCondition[track][step] = cond;
+        patSetDrum(p, track, step, vel, pitch);
+        patSetDrumProb(p, track, step, prob);
+        patSetDrumCond(p, track, step, cond);
     }
 }
 
@@ -1021,14 +1025,11 @@ static void _sf_parseMelodyEvent(const char *line, Pattern *p) {
     }
 
     if (track >= 0 && track < SEQ_MELODY_TRACKS && step >= 0 && step < SEQ_MAX_STEPS) {
-        p->melodyNote[track][step] = _sf_nameToMidi(noteName);
-        p->melodyVelocity[track][step] = vel;
-        p->melodyGate[track][step] = gate;
-        p->melodySlide[track][step] = slide;
-        p->melodyAccent[track][step] = accent;
-        p->melodySustain[track][step] = sustain;
-        p->melodyProbability[track][step] = prob;
-        p->melodyCondition[track][step] = cond;
+        patSetNote(p, track, step, _sf_nameToMidi(noteName), vel, gate);
+        patSetNoteFlags(p, track, step, slide, accent);
+        patSetNoteSustain(p, track, step, sustain);
+        patSetNoteProb(p, track, step, prob);
+        patSetNoteCond(p, track, step, cond);
 
         if (hasPool) {
             NotePool *np = &p->melodyNotePool[track][step];

@@ -3117,12 +3117,12 @@ int main(void) {
                     bool hasContent = false;
                     for (int t = 0; t < SEQ_DRUM_TRACKS && !hasContent; t++) {
                         for (int s = 0; s < SEQ_MAX_STEPS && !hasContent; s++) {
-                            if (seq.patterns[i].drumSteps[t][s]) hasContent = true;
+                            if (patGetDrum(&seq.patterns[i], t, s)) hasContent = true;
                         }
                     }
                     for (int t = 0; t < SEQ_MELODY_TRACKS && !hasContent; t++) {
                         for (int s = 0; s < SEQ_MAX_STEPS && !hasContent; s++) {
-                            if (seq.patterns[i].melodyNote[t][s] != SEQ_NOTE_OFF) hasContent = true;
+                            if (patGetNote(&seq.patterns[i], t, s) != SEQ_NOTE_OFF) hasContent = true;
                         }
                     }
                     
@@ -3360,14 +3360,14 @@ int main(void) {
                     int x = gridX + labelW + step * cellW;
                     Rectangle cell = {(float)x, (float)y, (float)cellW - 2, (float)cellH - 2};
 
-                    bool isActive = p->drumSteps[track][step];
+                    bool isActive = patGetDrum(p, track, step);
                     bool isCurrent = (step == seq.drumStep[track]) && seq.playing;
                     bool isHovered = CheckCollisionPointRec(mouse, cell);
                     bool isBeingDragged = isDragging && !dragIsMelody && dragTrack == track && dragStep == step;
                     bool isSelected = !selectedIsMelody && selectedTrack == track && selectedStep == step;
-                    bool hasPitchOffset = isActive && fabsf(p->drumPitch[track][step]) > 0.01f;
-                    bool hasProb = isActive && p->drumProbability[track][step] < 1.0f;
-                    bool hasCond = isActive && p->drumCondition[track][step] != COND_ALWAYS;
+                    bool hasPitchOffset = isActive && fabsf(patGetDrumPitch(p, track, step)) > 0.01f;
+                    bool hasProb = isActive && patGetDrumProb(p, track, step) < 1.0f;
+                    bool hasCond = isActive && patGetDrumCond(p, track, step) != COND_ALWAYS;
                     bool hasFlam = isActive && seqGetPLock(p, track, step, PLOCK_FLAM_TIME, 0.0f) > 0.0f;
                     bool hasNudge = isActive && fabsf(seqGetPLock(p, track, step, PLOCK_TIME_NUDGE, 0.0f)) > 0.1f;
 
@@ -3375,7 +3375,7 @@ int main(void) {
                     
                     Color cellColor = bgColor;
                     if (isActive) {
-                        float vel = p->drumVelocity[track][step];
+                        float vel = patGetDrumVel(p, track, step);
                         unsigned char baseG = (unsigned char)(80 + vel * 100);
                         unsigned char baseR = (unsigned char)(30 + vel * 50);
                         unsigned char baseB = (unsigned char)(30 + vel * 50);
@@ -3402,7 +3402,7 @@ int main(void) {
                     
                     // Indicators
                     if (hasPitchOffset) {
-                        float pit = p->drumPitch[track][step];
+                        float pit = patGetDrumPitch(p, track, step);
                         Color triColor = pit > 0 ? (Color){255, 150, 50, 255} : (Color){100, 150, 255, 255};
                         DrawRectangle(x + cellW - 6, y + 2, 3, 3, triColor);
                     }
@@ -3444,22 +3444,22 @@ int main(void) {
                                 dragTrack = track;
                                 dragStep = step;
                                 dragStartY = mouse.y;
-                                dragStartVal = isDraggingPitch ? p->drumPitch[track][step] : p->drumVelocity[track][step];
+                                dragStartVal = isDraggingPitch ? patGetDrumPitch(p, track, step) : patGetDrumVel(p, track, step);
                                 ui_consume_click();
                             } else {
-                                p->drumSteps[track][step] = true;
+                                patSetDrum(p, track, step, patGetDrumVel(p, track, step), patGetDrumPitch(p, track, step));
                                 selectedTrack = track;
                                 selectedStep = step;
                                 selectedIsMelody = false;
                                 ui_consume_click();
-                                float pitchMod = powf(2.0f, p->drumPitch[track][step]);
+                                float pitchMod = powf(2.0f, patGetDrumPitch(p, track, step));
                                 if (seq.drumTriggers[track]) {
-                                    seq.drumTriggers[track](p->drumVelocity[track][step], pitchMod);
+                                    seq.drumTriggers[track](patGetDrumVel(p, track, step), pitchMod);
                                 }
                             }
                         }
                         if (rightClicked && isActive) {
-                            p->drumSteps[track][step] = false;
+                            patClearDrum(p, track, step);
                             if (!selectedIsMelody && selectedTrack == track && selectedStep == step) {
                                 selectedTrack = -1;
                                 selectedStep = -1;
@@ -3538,21 +3538,21 @@ int main(void) {
                     int x = gridX + labelW + step * cellW;
                     Rectangle cell = {(float)x, (float)y, (float)cellW - 2, (float)cellH - 2};
 
-                    int note = p->melodyNote[track][step];
+                    int note = patGetNote(p, track, step);
                     bool hasNote = (note != SEQ_NOTE_OFF);
                     bool isCurrent = (step == seq.melodyStep[track]) && seq.playing;
                     bool isHovered = CheckCollisionPointRec(mouse, cell);
                     bool isSelected = selectedIsMelody && selectedTrack == track && selectedStep == step;
-                    bool hasProb = hasNote && p->melodyProbability[track][step] < 1.0f;
-                    bool hasCond = hasNote && p->melodyCondition[track][step] != COND_ALWAYS;
-                    bool hasSlide = hasNote && p->melodySlide[track][step];
-                    bool hasAccent = hasNote && p->melodyAccent[track][step];
+                    bool hasProb = hasNote && patGetNoteProb(p, track, step) < 1.0f;
+                    bool hasCond = hasNote && patGetNoteCond(p, track, step) != COND_ALWAYS;
+                    bool hasSlide = hasNote && patGetNoteSlide(p, track, step);
+                    bool hasAccent = hasNote && patGetNoteAccent(p, track, step);
 
                     Color bgColor = (step / 4) % 2 == 0 ? (Color){35, 38, 45, 255} : (Color){28, 30, 38, 255};
 
                     Color cellColor = bgColor;
                     if (hasNote) {
-                        float vel = p->melodyVelocity[track][step];
+                        float vel = patGetNoteVel(p, track, step);
                         cellColor = melodyTrackColors[track];
                         cellColor.r = (unsigned char)(cellColor.r * (0.5f + vel * 0.5f));
                         cellColor.g = (unsigned char)(cellColor.g * (0.5f + vel * 0.5f));
@@ -3647,7 +3647,7 @@ int main(void) {
                             ui_consume_click();
                         }
                         if (rightClicked && hasNote) {
-                            p->melodyNote[track][step] = SEQ_NOTE_OFF;
+                            patClearNote(p, track, step);
                             if (selectedIsMelody && selectedTrack == track && selectedStep == step) {
                                 selectedTrack = -1;
                                 selectedStep = -1;
@@ -3662,10 +3662,10 @@ int main(void) {
             int totalRows = SEQ_DRUM_TRACKS + SEQ_MELODY_TRACKS + 1;  // +1 for separator
             int inspY = melodyStartY + SEQ_MELODY_TRACKS * cellH + 8;
             
-            bool showDrumInspector = !selectedIsMelody && selectedTrack >= 0 && selectedStep >= 0 
-                                     && p->drumSteps[selectedTrack][selectedStep];
-            bool showMelodyInspector = selectedIsMelody && selectedTrack >= 0 && selectedStep >= 0 
-                                       && p->melodyNote[selectedTrack][selectedStep] != SEQ_NOTE_OFF;
+            bool showDrumInspector = !selectedIsMelody && selectedTrack >= 0 && selectedStep >= 0
+                                     && patGetDrum(p, selectedTrack, selectedStep);
+            bool showMelodyInspector = selectedIsMelody && selectedTrack >= 0 && selectedStep >= 0
+                                       && patGetNote(p, selectedTrack, selectedStep) != SEQ_NOTE_OFF;
             
             if (showDrumInspector) {
                 int inspX = gridX;
@@ -3685,9 +3685,9 @@ int main(void) {
                 
                 DraggableFloat(inspX + 10, row1Y, "Vel", &p->drumVelocity[selectedTrack][selectedStep], 0.02f, 0.0f, 1.0f);
                 
-                float pitchSemitones = p->drumPitch[selectedTrack][selectedStep] * 12.0f;
+                float pitchSemitones = patGetDrumPitch(p, selectedTrack, selectedStep) * 12.0f;
                 DraggableFloat(inspX + 10 + colSpacing, row1Y, "Pitch", &pitchSemitones, 0.5f, -12.0f, 12.0f);
-                p->drumPitch[selectedTrack][selectedStep] = pitchSemitones / 12.0f;
+                p->drumPitch[selectedTrack][selectedStep] = pitchSemitones / 12.0f;  // write-back from UI widget
                 
                 DraggableFloat(inspX + 10 + colSpacing * 2, row1Y, "Prob", &p->drumProbability[selectedTrack][selectedStep], 0.02f, 0.0f, 1.0f);
                 
@@ -3699,14 +3699,14 @@ int main(void) {
                     bool condHovered = CheckCollisionPointRec(mouse, condRect);
                     DrawRectangleRec(condRect, condHovered ? (Color){60, 60, 70, 255} : (Color){45, 45, 55, 255});
                     DrawRectangleLinesEx(condRect, 1, condHovered ? YELLOW : (Color){80, 80, 80, 255});
-                    int cond = p->drumCondition[selectedTrack][selectedStep];
+                    int cond = patGetDrumCond(p, selectedTrack, selectedStep);
                     DrawTextShadow(conditionNames[cond], condX + 44, row1Y, 10, WHITE);
                     if (condHovered && mouseClicked) {
-                        p->drumCondition[selectedTrack][selectedStep] = (cond + 1) % COND_COUNT;
+                        patSetDrumCond(p, selectedTrack, selectedStep, (cond + 1) % COND_COUNT);
                         ui_consume_click();
                     }
                     if (condHovered && rightClicked) {
-                        p->drumCondition[selectedTrack][selectedStep] = (cond - 1 + COND_COUNT) % COND_COUNT;
+                        patSetDrumCond(p, selectedTrack, selectedStep, (cond - 1 + COND_COUNT) % COND_COUNT);
                         ui_consume_click();
                     }
                 }
@@ -3783,15 +3783,15 @@ int main(void) {
                     int px = inspX + 245;
                     float vol = seqGetPLock(p, absTrack, selectedStep, PLOCK_VOLUME, -1.0f);
                     bool isLocked = (vol >= 0.0f);
-                    if (!isLocked) vol = p->drumVelocity[selectedTrack][selectedStep];
-                    
+                    if (!isLocked) vol = patGetDrumVel(p, selectedTrack, selectedStep);
+
                     DrawTextShadow("Vol:", px, row2Y, 10, isLocked ? (Color){255, 180, 100, 255} : DARKGRAY);
                     Rectangle rect = {(float)(px + 28), (float)(row2Y - 2), 45, 14};
                     bool hovered = CheckCollisionPointRec(mouse, rect);
                     DrawRectangleRec(rect, hovered ? (Color){50, 50, 60, 255} : (Color){35, 35, 45, 255});
                     DrawRectangleLinesEx(rect, 1, isLocked ? (Color){255, 180, 100, 255} : (Color){60, 60, 70, 255});
                     DrawTextShadow(TextFormat("%.2f", vol), px + 32, row2Y, 9, isLocked ? WHITE : DARKGRAY);
-                    
+
                     if (hovered) {
                         float wheel = GetMouseWheelMove();
                         if (fabsf(wheel) > 0.1f) {
@@ -3804,7 +3804,7 @@ int main(void) {
                         }
                     }
                 }
-                
+
                 // P-lock: Tone (brightness/character)
                 {
                     int px = inspX + 330;
@@ -3969,7 +3969,7 @@ int main(void) {
                 DrawRectangle(inspX, inspY, inspW, inspH, (Color){35, 38, 45, 255});
                 DrawRectangleLinesEx((Rectangle){(float)inspX, (float)inspY, (float)inspW, (float)inspH}, 1, melodyTrackColors[selectedTrack]);
                 
-                int note = p->melodyNote[selectedTrack][selectedStep];
+                int note = patGetNote(p, selectedTrack, selectedStep);
                 DrawTextShadow(TextFormat("Step %d - %s [%s]", selectedStep + 1, seq.melodyTrackNames[selectedTrack], seqNoteName(note)), 
                              inspX + 8, inspY + 4, 12, melodyTrackColors[selectedTrack]);
                 
@@ -4004,15 +4004,16 @@ int main(void) {
                     bool gateHovered = CheckCollisionPointRec(mouse, gateRect);
                     DrawRectangleRec(gateRect, gateHovered ? (Color){60, 60, 70, 255} : (Color){45, 45, 55, 255});
                     DrawRectangleLinesEx(gateRect, 1, gateHovered ? YELLOW : (Color){80, 80, 80, 255});
-                    int gate = p->melodyGate[selectedTrack][selectedStep];
+                    int gate = patGetNoteGate(p, selectedTrack, selectedStep);
                     DrawTextShadow(TextFormat("%d", gate), gateX + 48, row1Y, 10, WHITE);
                     if (gateHovered && mouseClicked) {
                         p->melodyGate[selectedTrack][selectedStep] = (gate % 16) + 1;
                         ui_consume_click();
                     }
                     if (gateHovered && rightClicked) {
-                        p->melodyGate[selectedTrack][selectedStep]--;
-                        if (p->melodyGate[selectedTrack][selectedStep] < 1) p->melodyGate[selectedTrack][selectedStep] = 16;
+                        int newGate = gate - 1;
+                        if (newGate < 1) newGate = 16;
+                        p->melodyGate[selectedTrack][selectedStep] = newGate;
                         ui_consume_click();
                     }
                 }
@@ -4027,14 +4028,14 @@ int main(void) {
                     bool condHovered = CheckCollisionPointRec(mouse, condRect);
                     DrawRectangleRec(condRect, condHovered ? (Color){60, 60, 70, 255} : (Color){45, 45, 55, 255});
                     DrawRectangleLinesEx(condRect, 1, condHovered ? YELLOW : (Color){80, 80, 80, 255});
-                    int cond = p->melodyCondition[selectedTrack][selectedStep];
+                    int cond = patGetNoteCond(p, selectedTrack, selectedStep);
                     DrawTextShadow(conditionNames[cond], condX + 44, row1Y, 10, WHITE);
                     if (condHovered && mouseClicked) {
-                        p->melodyCondition[selectedTrack][selectedStep] = (cond + 1) % COND_COUNT;
+                        patSetNoteCond(p, selectedTrack, selectedStep, (cond + 1) % COND_COUNT);
                         ui_consume_click();
                     }
                     if (condHovered && rightClicked) {
-                        p->melodyCondition[selectedTrack][selectedStep] = (cond - 1 + COND_COUNT) % COND_COUNT;
+                        patSetNoteCond(p, selectedTrack, selectedStep, (cond - 1 + COND_COUNT) % COND_COUNT);
                         ui_consume_click();
                     }
                 }
@@ -4042,7 +4043,7 @@ int main(void) {
                 // 303-style Slide toggle
                 {
                     int slideX = inspX + 10 + colSpacing * 5;
-                    bool hasSlide = p->melodySlide[selectedTrack][selectedStep];
+                    bool hasSlide = patGetNoteSlide(p, selectedTrack, selectedStep);
                     Rectangle slideRect = {(float)slideX, (float)(row1Y - 2), 45, 16};
                     bool slideHovered = CheckCollisionPointRec(mouse, slideRect);
                     Color slideBg = hasSlide ? (Color){60, 100, 130, 255} : (Color){45, 45, 55, 255};
@@ -4051,7 +4052,7 @@ int main(void) {
                     DrawRectangleLinesEx(slideRect, 1, hasSlide ? (Color){100, 200, 255, 255} : (Color){80, 80, 80, 255});
                     DrawTextShadow("Slide", slideX + 6, row1Y, 10, hasSlide ? (Color){100, 200, 255, 255} : LIGHTGRAY);
                     if (slideHovered && mouseClicked) {
-                        p->melodySlide[selectedTrack][selectedStep] = !hasSlide;
+                        patSetNoteFlags(p, selectedTrack, selectedStep, !hasSlide, patGetNoteAccent(p, selectedTrack, selectedStep));
                         ui_consume_click();
                     }
                 }
@@ -4059,7 +4060,7 @@ int main(void) {
                 // 303-style Accent toggle
                 {
                     int accentX = inspX + 10 + colSpacing * 5 + 50;
-                    bool hasAccent = p->melodyAccent[selectedTrack][selectedStep];
+                    bool hasAccent = patGetNoteAccent(p, selectedTrack, selectedStep);
                     Rectangle accentRect = {(float)accentX, (float)(row1Y - 2), 50, 16};
                     bool accentHovered = CheckCollisionPointRec(mouse, accentRect);
                     Color accentBg = hasAccent ? (Color){130, 60, 60, 255} : (Color){45, 45, 55, 255};
@@ -4068,7 +4069,7 @@ int main(void) {
                     DrawRectangleLinesEx(accentRect, 1, hasAccent ? (Color){255, 100, 100, 255} : (Color){80, 80, 80, 255});
                     DrawTextShadow("Accent", accentX + 4, row1Y, 10, hasAccent ? (Color){255, 100, 100, 255} : LIGHTGRAY);
                     if (accentHovered && mouseClicked) {
-                        p->melodyAccent[selectedTrack][selectedStep] = !hasAccent;
+                        patSetNoteFlags(p, selectedTrack, selectedStep, patGetNoteSlide(p, selectedTrack, selectedStep), !hasAccent);
                         ui_consume_click();
                     }
                 }
@@ -4076,7 +4077,7 @@ int main(void) {
                 // Sustain (extra hold steps after gate expires)
                 {
                     int susX = inspX + 10 + colSpacing * 5 + 105;
-                    int susVal = p->melodySustain[selectedTrack][selectedStep];
+                    int susVal = patGetNoteSustain(p, selectedTrack, selectedStep);
                     bool hasSustain = susVal > 0;
                     Color susColor = hasSustain ? (Color){100, 220, 160, 255} : LIGHTGRAY;
                     char susText[16];
@@ -4089,18 +4090,18 @@ int main(void) {
                     DrawRectangleLinesEx(susRect, 1, hasSustain ? susColor : (Color){80, 80, 80, 255});
                     DrawTextShadow(susText, susX + 4, row1Y, 10, susColor);
                     if (susHovered && mouseClicked) {
-                        p->melodySustain[selectedTrack][selectedStep] = (susVal + 1) % 17;
+                        patSetNoteSustain(p, selectedTrack, selectedStep, (susVal + 1) % 17);
                         ui_consume_click();
                     }
                     if (susHovered && rightClicked) {
-                        p->melodySustain[selectedTrack][selectedStep] = (susVal - 1 + 17) % 17;
+                        patSetNoteSustain(p, selectedTrack, selectedStep, (susVal - 1 + 17) % 17);
                         ui_consume_click();
                     }
                     if (susHovered && mouseWheel != 0) {
                         int newVal = susVal + (int)mouseWheel;
                         if (newVal < 0) newVal = 0;
                         if (newVal > 16) newVal = 16;
-                        p->melodySustain[selectedTrack][selectedStep] = newVal;
+                        patSetNoteSustain(p, selectedTrack, selectedStep, newVal);
                     }
                 }
 
@@ -4253,7 +4254,7 @@ int main(void) {
                     int px = inspX + 520;
                     float vol = seqGetPLock(p, absTrack, selectedStep, PLOCK_VOLUME, -1.0f);
                     bool isLocked = (vol >= 0.0f);
-                    if (!isLocked) vol = p->melodyVelocity[selectedTrack][selectedStep];
+                    if (!isLocked) vol = patGetNoteVel(p, selectedTrack, selectedStep);
                     
                     DrawTextShadow("Vol:", px, row2Y, 10, isLocked ? (Color){180, 120, 255, 255} : DARKGRAY);
                     Rectangle rect = {(float)(px + 28), (float)(row2Y - 2), 40, 14};
@@ -4363,7 +4364,7 @@ int main(void) {
                     {
                         int previewX = inspX + 290;
                         int notes[NOTE_POOL_MAX_NOTES];
-                        int baseNote = p->melodyNote[selectedTrack][selectedStep];
+                        int baseNote = patGetNote(p, selectedTrack, selectedStep);
                         bool useMinor = shouldUseMinor(baseNote);
                         int noteCount = buildChordNotes(baseNote, (ChordType)notePool->chordType, useMinor, notes);
                         

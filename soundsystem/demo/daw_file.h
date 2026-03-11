@@ -52,6 +52,7 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _di(f, "filterType", p->p_filterType);
     _dw(f, "filterEnvAmt", p->p_filterEnvAmt); _dw(f, "filterEnvAttack", p->p_filterEnvAttack);
     _dw(f, "filterEnvDecay", p->p_filterEnvDecay);
+    _dw(f, "filterKeyTrack", p->p_filterKeyTrack);
     _dw(f, "filterLfoRate", p->p_filterLfoRate); _dw(f, "filterLfoDepth", p->p_filterLfoDepth);
     _di(f, "filterLfoShape", p->p_filterLfoShape); _di(f, "filterLfoSync", p->p_filterLfoSync);
     _dw(f, "resoLfoRate", p->p_resoLfoRate); _dw(f, "resoLfoDepth", p->p_resoLfoDepth);
@@ -142,30 +143,33 @@ static void _dwWritePattern(FILE *f, int idx, const Pattern *p) {
 
     for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
         for (int s = 0; s < p->drumTrackLength[t]; s++) {
-            if (!p->drumSteps[t][s]) continue;
-            fprintf(f, "d track=%d step=%d vel=%.3g", t, s, (double)p->drumVelocity[t][s]);
-            if (p->drumPitch[t][s] != 0.0f) fprintf(f, " pitch=%.3g", (double)p->drumPitch[t][s]);
-            if (p->drumProbability[t][s] > 0.0f && p->drumProbability[t][s] < 1.0f)
-                fprintf(f, " prob=%.3g", (double)p->drumProbability[t][s]);
-            if (p->drumCondition[t][s] != COND_ALWAYS)
-                fprintf(f, " cond=%s", _dwCondNames[p->drumCondition[t][s]]);
+            if (!patGetDrum((Pattern*)p, t, s)) continue;
+            fprintf(f, "d track=%d step=%d vel=%.3g", t, s, (double)patGetDrumVel((Pattern*)p, t, s));
+            float dp = patGetDrumPitch((Pattern*)p, t, s);
+            if (dp != 0.0f) fprintf(f, " pitch=%.3g", (double)dp);
+            float dProb = patGetDrumProb((Pattern*)p, t, s);
+            if (dProb > 0.0f && dProb < 1.0f) fprintf(f, " prob=%.3g", (double)dProb);
+            int dCond = patGetDrumCond((Pattern*)p, t, s);
+            if (dCond != COND_ALWAYS) fprintf(f, " cond=%s", _dwCondNames[dCond]);
             fprintf(f, "\n");
         }
     }
 
     for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
         for (int s = 0; s < p->melodyTrackLength[t]; s++) {
-            if (p->melodyNote[t][s] == SEQ_NOTE_OFF) continue;
-            char nn[8]; _dwMidiToName(p->melodyNote[t][s], nn, sizeof(nn));
+            int mn = patGetNote((Pattern*)p, t, s);
+            if (mn == SEQ_NOTE_OFF) continue;
+            char nn[8]; _dwMidiToName(mn, nn, sizeof(nn));
             fprintf(f, "m track=%d step=%d note=%s vel=%.3g gate=%d",
-                    t, s, nn, (double)p->melodyVelocity[t][s], p->melodyGate[t][s]);
-            if (p->melodySlide[t][s]) fprintf(f, " slide");
-            if (p->melodyAccent[t][s]) fprintf(f, " accent");
-            if (p->melodySustain[t][s] > 0) fprintf(f, " sustain=%d", p->melodySustain[t][s]);
-            if (p->melodyProbability[t][s] > 0.0f && p->melodyProbability[t][s] < 1.0f)
-                fprintf(f, " prob=%.3g", (double)p->melodyProbability[t][s]);
-            if (p->melodyCondition[t][s] != COND_ALWAYS)
-                fprintf(f, " cond=%s", _dwCondNames[p->melodyCondition[t][s]]);
+                    t, s, nn, (double)patGetNoteVel((Pattern*)p, t, s), patGetNoteGate((Pattern*)p, t, s));
+            if (patGetNoteSlide((Pattern*)p, t, s)) fprintf(f, " slide");
+            if (patGetNoteAccent((Pattern*)p, t, s)) fprintf(f, " accent");
+            int mSus = patGetNoteSustain((Pattern*)p, t, s);
+            if (mSus > 0) fprintf(f, " sustain=%d", mSus);
+            float mProb = patGetNoteProb((Pattern*)p, t, s);
+            if (mProb > 0.0f && mProb < 1.0f) fprintf(f, " prob=%.3g", (double)mProb);
+            int mCond = patGetNoteCond((Pattern*)p, t, s);
+            if (mCond != COND_ALWAYS) fprintf(f, " cond=%s", _dwCondNames[mCond]);
             const NotePool *np = &p->melodyNotePool[t][s];
             if (np->enabled) {
                 if (np->chordType >= 0 && np->chordType < 9) fprintf(f, " chord=%s", _dwChordNames[np->chordType]);
@@ -345,10 +349,10 @@ static bool dawSave(const char *filepath) {
         bool empty = true;
         for (int t = 0; t < SEQ_DRUM_TRACKS && empty; t++)
             for (int s = 0; s < p->drumTrackLength[t] && empty; s++)
-                if (p->drumSteps[t][s]) empty = false;
+                if (patGetDrum((Pattern*)p, t, s)) empty = false;
         for (int t = 0; t < SEQ_MELODY_TRACKS && empty; t++)
             for (int s = 0; s < p->melodyTrackLength[t] && empty; s++)
-                if (p->melodyNote[t][s] != SEQ_NOTE_OFF) empty = false;
+                if (patGetNote((Pattern*)p, t, s) != SEQ_NOTE_OFF) empty = false;
         if (p->plockCount > 0) empty = false;
         if (!empty) _dwWritePattern(f, i, p);
     }
@@ -405,6 +409,7 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"filterEnvAmt")==0) p->p_filterEnvAmt = _dpf(val);
     else if (strcmp(key,"filterEnvAttack")==0) p->p_filterEnvAttack = _dpf(val);
     else if (strcmp(key,"filterEnvDecay")==0) p->p_filterEnvDecay = _dpf(val);
+    else if (strcmp(key,"filterKeyTrack")==0) p->p_filterKeyTrack = _dpf(val);
     else if (strcmp(key,"filterLfoRate")==0) p->p_filterLfoRate = _dpf(val);
     else if (strcmp(key,"filterLfoDepth")==0) p->p_filterLfoDepth = _dpf(val);
     else if (strcmp(key,"filterLfoShape")==0) p->p_filterLfoShape = _dpi(val);
@@ -582,9 +587,9 @@ static void _dwParseDrumEvent(const char *line, Pattern *p) {
         }
     }
     if (track>=0&&track<SEQ_DRUM_TRACKS&&step>=0&&step<SEQ_MAX_STEPS) {
-        p->drumSteps[track][step]=true; p->drumVelocity[track][step]=vel;
-        p->drumPitch[track][step]=pitch; p->drumProbability[track][step]=prob;
-        p->drumCondition[track][step]=cond;
+        patSetDrum(p, track, step, vel, pitch);
+        patSetDrumProb(p, track, step, prob);
+        patSetDrumCond(p, track, step, cond);
     }
 }
 
@@ -620,11 +625,11 @@ static void _dwParseMelodyEvent(const char *line, Pattern *p) {
         }
     }
     if (track>=0&&track<SEQ_MELODY_TRACKS&&step>=0&&step<SEQ_MAX_STEPS) {
-        p->melodyNote[track][step]=_dwNameToMidi(noteName);
-        p->melodyVelocity[track][step]=vel; p->melodyGate[track][step]=gate;
-        p->melodySlide[track][step]=slide; p->melodyAccent[track][step]=accent;
-        p->melodySustain[track][step]=sustain; p->melodyProbability[track][step]=prob;
-        p->melodyCondition[track][step]=cond;
+        patSetNote(p, track, step, _dwNameToMidi(noteName), vel, gate);
+        patSetNoteFlags(p, track, step, slide, accent);
+        patSetNoteSustain(p, track, step, sustain);
+        patSetNoteProb(p, track, step, prob);
+        patSetNoteCond(p, track, step, cond);
         if (hasPool) {
             NotePool *np=&p->melodyNotePool[track][step];
             np->enabled=true; np->chordType=chordType; np->pickMode=pickMode;

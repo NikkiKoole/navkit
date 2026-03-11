@@ -470,11 +470,11 @@ describe(pattern_management) {
         // All drum steps should be off
         for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
             for (int s = 0; s < SEQ_MAX_STEPS; s++) {
-                expect(p.drumSteps[t][s] == false);
-                expect_float_eq(p.drumVelocity[t][s], 0.8f);
-                expect_float_eq(p.drumPitch[t][s], 0.0f);
-                expect_float_eq(p.drumProbability[t][s], 1.0f);
-                expect(p.drumCondition[t][s] == COND_ALWAYS);
+                expect(patGetDrum(&p, t, s) == false);
+                expect_float_eq(patGetDrumVel(&p, t, s), 0.8f);
+                expect_float_eq(patGetDrumPitch(&p, t, s), 0.0f);
+                expect_float_eq(patGetDrumProb(&p, t, s), 1.0f);
+                expect(patGetDrumCond(&p, t, s) == COND_ALWAYS);
             }
             expect(p.drumTrackLength[t] == 16);
         }
@@ -482,7 +482,7 @@ describe(pattern_management) {
         // All melody notes should be off
         for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
             for (int s = 0; s < SEQ_MAX_STEPS; s++) {
-                expect(p.melodyNote[t][s] == SEQ_NOTE_OFF);
+                expect(patGetNote(&p, t, s) == SEQ_NOTE_OFF);
             }
             expect(p.melodyTrackLength[t] == 16);
         }
@@ -498,9 +498,9 @@ describe(pattern_management) {
         seqSetDrumStep(0, 0, true, 0.9f, 0.5f);
         
         Pattern *p = seqCurrentPattern();
-        expect(p->drumSteps[0][0] == true);
-        expect_float_eq(p->drumVelocity[0][0], 0.9f);
-        expect_float_eq(p->drumPitch[0][0], 0.5f);
+        expect(patGetDrum(p, 0, 0) == true);
+        expect_float_eq(patGetDrumVel(p, 0, 0), 0.9f);
+        expect_float_eq(patGetDrumPitch(p, 0, 0), 0.5f);
     }
     
     it("should toggle drum step") {
@@ -508,13 +508,13 @@ describe(pattern_management) {
         initSequencer(NULL, NULL, NULL, NULL);
         
         Pattern *p = seqCurrentPattern();
-        expect(p->drumSteps[0][0] == false);
-        
+        expect(patGetDrum(p, 0, 0) == false);
+
         seqToggleDrumStep(0, 0);
-        expect(p->drumSteps[0][0] == true);
-        
+        expect(patGetDrum(p, 0, 0) == true);
+
         seqToggleDrumStep(0, 0);
-        expect(p->drumSteps[0][0] == false);
+        expect(patGetDrum(p, 0, 0) == false);
     }
     
     it("should set melody step correctly") {
@@ -524,9 +524,9 @@ describe(pattern_management) {
         seqSetMelodyStep(0, 0, 60, 0.7f, 2);  // C4, velocity 0.7, 2-step gate
         
         Pattern *p = seqCurrentPattern();
-        expect(p->melodyNote[0][0] == 60);
-        expect_float_eq(p->melodyVelocity[0][0], 0.7f);
-        expect(p->melodyGate[0][0] == 2);
+        expect(patGetNote(p, 0, 0) == 60);
+        expect_float_eq(patGetNoteVel(p, 0, 0), 0.7f);
+        expect(patGetNoteGate(p, 0, 0) == 2);
     }
     
     it("should set melody step with 303-style attributes") {
@@ -536,9 +536,9 @@ describe(pattern_management) {
         seqSetMelodyStep303(0, 0, 60, 0.8f, 1, true, true);
         
         Pattern *p = seqCurrentPattern();
-        expect(p->melodyNote[0][0] == 60);
-        expect(p->melodySlide[0][0] == true);
-        expect(p->melodyAccent[0][0] == true);
+        expect(patGetNote(p, 0, 0) == 60);
+        expect(patGetNoteSlide(p, 0, 0) == true);
+        expect(patGetNoteAccent(p, 0, 0) == true);
     }
     
     it("should copy pattern to another slot") {
@@ -553,8 +553,8 @@ describe(pattern_management) {
         seqCopyPatternTo(1);
         
         // Verify copy
-        expect(seq.patterns[1].drumSteps[0][0] == true);
-        expect(seq.patterns[1].drumSteps[1][4] == true);
+        expect(patGetDrum(&seq.patterns[1], 0, 0) == true);
+        expect(patGetDrum(&seq.patterns[1], 1, 4) == true);
     }
     
     it("should clear pattern") {
@@ -568,8 +568,8 @@ describe(pattern_management) {
         seqClearPattern();
         
         Pattern *p = seqCurrentPattern();
-        expect(p->drumSteps[0][0] == false);
-        expect(p->drumSteps[0][4] == false);
+        expect(patGetDrum(p, 0, 0) == false);
+        expect(patGetDrum(p, 0, 4) == false);
     }
     
     it("should queue pattern switch") {
@@ -1684,8 +1684,8 @@ describe(integration_sequencer_drums) {
         seqSetDrumStep(0, 0, true, 0.9f, 0.0f);
         
         Pattern *p = seqCurrentPattern();
-        expect(p->drumSteps[0][0] == true);
-        expect_float_eq(p->drumVelocity[0][0], 0.9f);
+        expect(patGetDrum(p, 0, 0) == true);
+        expect_float_eq(patGetDrumVel(p, 0, 0), 0.9f);
     }
     
     it("should apply p-lock to drum trigger") {
@@ -1943,7 +1943,7 @@ describe(e2e_sequencer_playback) {
             // Kick on every step with 50% probability
             for (int s = 0; s < 16; s++) {
                 seqSetDrumStep(0, s, true, 1.0f, 0.0f);
-                p->drumProbability[0][s] = 0.5f;
+                patSetDrumProb(p, 0, s, 0.5f);
             }
             
             seq.bpm = 240.0f;  // Fast for quicker test
@@ -4442,9 +4442,7 @@ describe(custom_chord_voicings) {
         initPattern(&p);
 
         // Set up a step with CHORD_CUSTOM voicing [D4, Ab4, C5, G5]
-        p.melodyNote[0][0] = 62;  // D4
-        p.melodyVelocity[0][0] = 0.8f;
-        p.melodyGate[0][0] = 4;
+        patSetNote(&p, 0, 0, 62, 0.8f, 4);  // D4
         p.melodyNotePool[0][0].enabled = true;
         p.melodyNotePool[0][0].chordType = CHORD_CUSTOM;
         p.melodyNotePool[0][0].pickMode = PICK_ALL;
@@ -4469,9 +4467,7 @@ describe(custom_chord_voicings) {
         Pattern p;
         initPattern(&p);
 
-        p.melodyNote[0][0] = 60;  // C4 (base note, not used for custom)
-        p.melodyVelocity[0][0] = 0.8f;
-        p.melodyGate[0][0] = 4;
+        patSetNote(&p, 0, 0, 60, 0.8f, 4);  // C4 (base note, not used for custom)
         p.melodyNotePool[0][0].enabled = true;
         p.melodyNotePool[0][0].chordType = CHORD_CUSTOM;
         p.melodyNotePool[0][0].pickMode = PICK_CYCLE_UP;
@@ -4497,9 +4493,7 @@ describe(custom_chord_voicings) {
         Pattern p;
         initPattern(&p);
 
-        p.melodyNote[0][0] = 60;
-        p.melodyVelocity[0][0] = 0.8f;
-        p.melodyGate[0][0] = 4;
+        patSetNote(&p, 0, 0, 60, 0.8f, 4);
         p.melodyNotePool[0][0].enabled = true;
         p.melodyNotePool[0][0].chordType = CHORD_CUSTOM;
         p.melodyNotePool[0][0].pickMode = PICK_ALL;
@@ -4520,9 +4514,7 @@ describe(custom_chord_voicings) {
         Pattern p;
         initPattern(&p);
 
-        p.melodyNote[0][0] = 60;
-        p.melodyVelocity[0][0] = 0.8f;
-        p.melodyGate[0][0] = 4;
+        patSetNote(&p, 0, 0, 60, 0.8f, 4);
         p.melodyNotePool[0][0].enabled = true;
         p.melodyNotePool[0][0].chordType = CHORD_CUSTOM;
         p.melodyNotePool[0][0].pickMode = PICK_ALL;
@@ -4546,9 +4538,7 @@ describe(custom_chord_voicings) {
         setMelodyChordCallback(0, test_chord_trigger);
 
         Pattern *p = seqCurrentPattern();
-        p->melodyNote[0][0] = 62;
-        p->melodyVelocity[0][0] = 0.75f;
-        p->melodyGate[0][0] = 4;
+        patSetNote(p, 0, 0, 62, 0.75f, 4);
         p->melodyNotePool[0][0].enabled = true;
         p->melodyNotePool[0][0].chordType = CHORD_CUSTOM;
         p->melodyNotePool[0][0].pickMode = PICK_ALL;
@@ -4588,9 +4578,7 @@ describe(custom_chord_voicings) {
         setMelodyChordCallback(0, test_chord_trigger);
 
         Pattern *p = seqCurrentPattern();
-        p->melodyNote[0][0] = 60;
-        p->melodyVelocity[0][0] = 0.8f;
-        p->melodyGate[0][0] = 2;
+        patSetNote(p, 0, 0, 60, 0.8f, 2);
         p->melodyNotePool[0][0].enabled = true;
         p->melodyNotePool[0][0].chordType = CHORD_CUSTOM;
         p->melodyNotePool[0][0].pickMode = PICK_ALL;
@@ -4764,10 +4752,8 @@ describe(melody_sustain) {
         setMelodyCallbacks(0, test_melody_trigger, test_melody_release);
 
         Pattern *p = seqCurrentPattern();
-        p->melodyNote[0][0] = 60;
-        p->melodyVelocity[0][0] = 0.8f;
-        p->melodyGate[0][0] = 1;  // Very short gate (1 step)
-        p->melodySustain[0][0] = 16;  // Sustain holds it for 16 extra steps
+        patSetNote(p, 0, 0, 60, 0.8f, 1);  // Very short gate (1 step)
+        patSetNoteSustain(p, 0, 0, 16);  // Sustain holds it for 16 extra steps
 
         seq.bpm = 120.0f;
         seq.playing = true;
@@ -4798,10 +4784,8 @@ describe(melody_sustain) {
         setMelodyCallbacks(0, test_melody_trigger, test_melody_release);
 
         Pattern *p = seqCurrentPattern();
-        p->melodyNote[0][0] = 60;
-        p->melodyVelocity[0][0] = 0.8f;
-        p->melodyGate[0][0] = 1;
-        p->melodySustain[0][0] = 0;  // No sustain
+        patSetNote(p, 0, 0, 60, 0.8f, 1);
+        patSetNoteSustain(p, 0, 0, 0);  // No sustain
 
         seq.bpm = 120.0f;
         seq.playing = true;
@@ -4831,16 +4815,12 @@ describe(melody_sustain) {
 
         Pattern *p = seqCurrentPattern();
         // Note 1 at step 0: sustained, short gate
-        p->melodyNote[0][0] = 60;
-        p->melodyVelocity[0][0] = 0.8f;
-        p->melodyGate[0][0] = 1;
-        p->melodySustain[0][0] = 16;  // Sustain holds until next note
+        patSetNote(p, 0, 0, 60, 0.8f, 1);
+        patSetNoteSustain(p, 0, 0, 16);  // Sustain holds until next note
 
         // Note 2 at step 4: this should release the sustained note
-        p->melodyNote[0][4] = 64;
-        p->melodyVelocity[0][4] = 0.7f;
-        p->melodyGate[0][4] = 2;
-        p->melodySustain[0][4] = 0;
+        patSetNote(p, 0, 4, 64, 0.7f, 2);
+        patSetNoteSustain(p, 0, 4, 0);
 
         seq.bpm = 120.0f;
         seq.playing = true;
@@ -4873,7 +4853,7 @@ describe(melody_sustain) {
 
         for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
             for (int s = 0; s < SEQ_MAX_STEPS; s++) {
-                expect(p.melodySustain[t][s] == 0);
+                expect(patGetNoteSustain(&p, t, s) == 0);
             }
         }
     }
@@ -4899,10 +4879,8 @@ describe(melody_sustain) {
         setMelodyCallbacks(0, test_melody_trigger, test_melody_release);
 
         Pattern *p = seqCurrentPattern();
-        p->melodyNote[0][0] = 60;
-        p->melodyVelocity[0][0] = 0.8f;
-        p->melodyGate[0][0] = 1;
-        p->melodySustain[0][0] = 16;  // 16 extra steps of sustain after gate
+        patSetNote(p, 0, 0, 60, 0.8f, 1);
+        patSetNoteSustain(p, 0, 0, 16);  // 16 extra steps of sustain after gate
 
         seq.bpm = 120.0f;
         seq.playing = true;
@@ -4941,10 +4919,8 @@ describe(melody_sustain) {
         // Pattern 0: note at step 0 with sustain, gate covers whole pattern
         Pattern *p0 = &seq.patterns[0];
         initPattern(p0);
-        p0->melodyNote[0][0] = 60;
-        p0->melodyVelocity[0][0] = 0.8f;
-        p0->melodyGate[0][0] = 16;  // Full pattern
-        p0->melodySustain[0][0] = 32;  // Large sustain to survive into next pattern
+        patSetNote(p0, 0, 0, 60, 0.8f, 16);  // Full pattern
+        patSetNoteSustain(p0, 0, 0, 32);  // Large sustain to survive into next pattern
 
         seq.currentPattern = 0;
         seq.bpm = 120.0f;
@@ -4957,9 +4933,7 @@ describe(melody_sustain) {
         // Set up pattern 1 before we start
         Pattern *p1 = &seq.patterns[1];
         initPattern(p1);
-        p1->melodyNote[0][11] = 67;
-        p1->melodyVelocity[0][11] = 0.7f;
-        p1->melodyGate[0][11] = 2;
+        patSetNote(p1, 0, 11, 67, 0.7f, 2);
 
         // Run 15.5 steps (just before pattern wrap back to step 0)
         int samplesBefore = (int)(stepDuration * 15.5f * SAMPLE_RATE);
@@ -5001,10 +4975,8 @@ describe(melody_sustain) {
 
         Pattern *p0 = &seq.patterns[0];
         initPattern(p0);
-        p0->melodyNote[0][0] = 60;
-        p0->melodyVelocity[0][0] = 0.8f;
-        p0->melodyGate[0][0] = 1;  // Short gate (1 step)
-        p0->melodySustain[0][0] = 4;  // 4 extra steps of sustain after gate
+        patSetNote(p0, 0, 0, 60, 0.8f, 1);  // Short gate (1 step)
+        patSetNoteSustain(p0, 0, 0, 4);  // 4 extra steps of sustain after gate
 
         // Pattern 1: completely empty melody track
         Pattern *p1 = &seq.patterns[1];
@@ -5050,15 +5022,11 @@ describe(melody_sustain) {
 
         Pattern *p = seqCurrentPattern();
         // Note at step 0: gate=1 but sustained
-        p->melodyNote[0][0] = 60;
-        p->melodyVelocity[0][0] = 0.8f;
-        p->melodyGate[0][0] = 1;
-        p->melodySustain[0][0] = 16;  // Hold until next note
+        patSetNote(p, 0, 0, 60, 0.8f, 1);
+        patSetNoteSustain(p, 0, 0, 16);  // Hold until next note
 
         // Next note at step 12 (3 beats later)
-        p->melodyNote[0][12] = 67;
-        p->melodyVelocity[0][12] = 0.7f;
-        p->melodyGate[0][12] = 2;
+        patSetNote(p, 0, 12, 67, 0.7f, 2);
 
         seq.bpm = 120.0f;
         seq.playing = true;
@@ -5322,12 +5290,11 @@ describe(song_file_pattern_events) {
         SongFileData orig;
         songFileDataInit(&orig);
         // Set some drum steps on pattern 0
-        orig.patterns[0].drumSteps[0][0] = 1;   // kick on step 0
-        orig.patterns[0].drumSteps[0][4] = 1;   // kick on step 4
-        orig.patterns[0].drumSteps[0][8] = 1;   // kick on step 8
-        orig.patterns[0].drumSteps[1][2] = 1;   // snare on step 2
-        orig.patterns[0].drumSteps[1][6] = 1;   // snare on step 6
-        orig.patterns[0].drumVelocity[1][2] = 0.75f;  // snare vel
+        patSetDrum(&orig.patterns[0], 0, 0, 0.8f, 0.0f);   // kick on step 0
+        patSetDrum(&orig.patterns[0], 0, 4, 0.8f, 0.0f);   // kick on step 4
+        patSetDrum(&orig.patterns[0], 0, 8, 0.8f, 0.0f);   // kick on step 8
+        patSetDrum(&orig.patterns[0], 1, 2, 0.75f, 0.0f);  // snare on step 2
+        patSetDrum(&orig.patterns[0], 1, 6, 0.8f, 0.0f);   // snare on step 6
 
         bool saved = songFileSave(path, &orig);
         expect(saved);
@@ -5337,13 +5304,13 @@ describe(song_file_pattern_events) {
         bool ok = songFileLoad(path, &loaded);
         expect(ok);
 
-        expect(loaded.patterns[0].drumSteps[0][0] == 1);
-        expect(loaded.patterns[0].drumSteps[0][4] == 1);
-        expect(loaded.patterns[0].drumSteps[0][8] == 1);
-        expect(loaded.patterns[0].drumSteps[0][1] == 0);  // untouched step
-        expect(loaded.patterns[0].drumSteps[1][2] == 1);
-        expect(loaded.patterns[0].drumSteps[1][6] == 1);
-        expect_float_near(loaded.patterns[0].drumVelocity[1][2], 0.75f, 0.01f);
+        expect(patGetDrum(&loaded.patterns[0], 0, 0) == 1);
+        expect(patGetDrum(&loaded.patterns[0], 0, 4) == 1);
+        expect(patGetDrum(&loaded.patterns[0], 0, 8) == 1);
+        expect(patGetDrum(&loaded.patterns[0], 0, 1) == 0);  // untouched step
+        expect(patGetDrum(&loaded.patterns[0], 1, 2) == 1);
+        expect(patGetDrum(&loaded.patterns[0], 1, 6) == 1);
+        expect_float_near(patGetDrumVel(&loaded.patterns[0], 1, 2), 0.75f, 0.01f);
 
         remove(path);
     }
@@ -5357,14 +5324,10 @@ describe(song_file_pattern_events) {
         // Set melody on track 0 (bass), pattern 0
         // Pattern struct uses melody-relative indexing (0=bass, 1=lead, 2=chord)
         int t = 0;
-        orig.patterns[0].melodyNote[t][0] = 36;  // C2
-        orig.patterns[0].melodyVelocity[t][0] = 0.9f;
-        orig.patterns[0].melodyGate[t][0] = 4;
-        orig.patterns[0].melodySlide[t][0] = true;
-        orig.patterns[0].melodyNote[t][4] = 48;  // C3
-        orig.patterns[0].melodyVelocity[t][4] = 0.7f;
-        orig.patterns[0].melodyGate[t][4] = 8;
-        orig.patterns[0].melodyAccent[t][4] = true;
+        patSetNote(&orig.patterns[0], t, 0, 36, 0.9f, 4);  // C2
+        patSetNoteFlags(&orig.patterns[0], t, 0, true, false);
+        patSetNote(&orig.patterns[0], t, 4, 48, 0.7f, 8);  // C3
+        patSetNoteFlags(&orig.patterns[0], t, 4, false, true);
 
         bool saved = songFileSave(path, &orig);
         expect(saved);
@@ -5374,16 +5337,16 @@ describe(song_file_pattern_events) {
         bool ok = songFileLoad(path, &loaded);
         expect(ok);
 
-        expect(loaded.patterns[0].melodyNote[t][0] == 36);
-        expect_float_near(loaded.patterns[0].melodyVelocity[t][0], 0.9f, 0.01f);
-        expect(loaded.patterns[0].melodyGate[t][0] == 4);
-        expect(loaded.patterns[0].melodySlide[t][0] == true);
-        expect(loaded.patterns[0].melodyNote[t][4] == 48);
-        expect_float_near(loaded.patterns[0].melodyVelocity[t][4], 0.7f, 0.01f);
-        expect(loaded.patterns[0].melodyGate[t][4] == 8);
-        expect(loaded.patterns[0].melodyAccent[t][4] == true);
+        expect(patGetNote(&loaded.patterns[0], t, 0) == 36);
+        expect_float_near(patGetNoteVel(&loaded.patterns[0], t, 0), 0.9f, 0.01f);
+        expect(patGetNoteGate(&loaded.patterns[0], t, 0) == 4);
+        expect(patGetNoteSlide(&loaded.patterns[0], t, 0) == true);
+        expect(patGetNote(&loaded.patterns[0], t, 4) == 48);
+        expect_float_near(patGetNoteVel(&loaded.patterns[0], t, 4), 0.7f, 0.01f);
+        expect(patGetNoteGate(&loaded.patterns[0], t, 4) == 8);
+        expect(patGetNoteAccent(&loaded.patterns[0], t, 4) == true);
         // Untouched steps should remain SEQ_NOTE_OFF (-1)
-        expect(loaded.patterns[0].melodyNote[t][1] == SEQ_NOTE_OFF);
+        expect(patGetNote(&loaded.patterns[0], t, 1) == SEQ_NOTE_OFF);
 
         remove(path);
     }
@@ -5599,6 +5562,480 @@ describe(chain_sequencer_advance) {
     }
 }
 
+// ============================================================================
+// GOLDEN BEHAVIORAL TESTS
+// These test observable sequencer output (triggers, releases, timing) rather
+// than data structure internals. They should survive the v2 refactor unchanged.
+// ============================================================================
+
+// Helper: run sequencer for N steps worth of time at current BPM
+static void run_sequencer_steps(int numSteps) {
+    float stepDuration = 60.0f / seq.bpm / 4.0f;
+    float dt = 1.0f / SAMPLE_RATE;
+    int samples = (int)(stepDuration * numSteps * SAMPLE_RATE);
+    for (int i = 0; i < samples; i++) {
+        updateSequencer(dt);
+    }
+}
+
+// Helper: run sequencer for a fraction of a step
+static void run_sequencer_fraction(float fractionOfStep) {
+    float stepDuration = 60.0f / seq.bpm / 4.0f;
+    float dt = 1.0f / SAMPLE_RATE;
+    int samples = (int)(stepDuration * fractionOfStep * SAMPLE_RATE);
+    for (int i = 0; i < samples; i++) {
+        updateSequencer(dt);
+    }
+}
+
+// Track per-step trigger history for drums
+static int golden_drum_triggers[SEQ_DRUM_TRACKS];
+static float golden_drum_last_vel[SEQ_DRUM_TRACKS];
+static void golden_kick_trigger(float vel, float pitch) {
+    (void)pitch; golden_drum_triggers[0]++; golden_drum_last_vel[0] = vel;
+}
+static void golden_snare_trigger(float vel, float pitch) {
+    (void)pitch; golden_drum_triggers[1]++; golden_drum_last_vel[1] = vel;
+}
+static void golden_hh_trigger(float vel, float pitch) {
+    (void)pitch; golden_drum_triggers[2]++; golden_drum_last_vel[2] = vel;
+}
+static void golden_clap_trigger(float vel, float pitch) {
+    (void)pitch; golden_drum_triggers[3]++; golden_drum_last_vel[3] = vel;
+}
+
+// Melody tracking for golden tests — up to 4 melody tracks
+static int golden_mel_triggers[SEQ_MELODY_TRACKS];
+static int golden_mel_releases[SEQ_MELODY_TRACKS];
+static int golden_mel_last_note[SEQ_MELODY_TRACKS];
+static float golden_mel_last_vel[SEQ_MELODY_TRACKS];
+static bool golden_mel_last_slide[SEQ_MELODY_TRACKS];
+
+static void golden_mel_trigger_0(int note, float vel, float gateTime, bool slide, bool accent) {
+    (void)gateTime; (void)accent;
+    golden_mel_triggers[0]++; golden_mel_last_note[0] = note;
+    golden_mel_last_vel[0] = vel; golden_mel_last_slide[0] = slide;
+}
+static void golden_mel_release_0(void) { golden_mel_releases[0]++; }
+
+static void golden_mel_trigger_1(int note, float vel, float gateTime, bool slide, bool accent) {
+    (void)gateTime; (void)accent;
+    golden_mel_triggers[1]++; golden_mel_last_note[1] = note;
+    golden_mel_last_vel[1] = vel; golden_mel_last_slide[1] = slide;
+}
+static void golden_mel_release_1(void) { golden_mel_releases[1]++; }
+
+static void golden_reset(void) {
+    memset(golden_drum_triggers, 0, sizeof(golden_drum_triggers));
+    memset(golden_drum_last_vel, 0, sizeof(golden_drum_last_vel));
+    memset(golden_mel_triggers, 0, sizeof(golden_mel_triggers));
+    memset(golden_mel_releases, 0, sizeof(golden_mel_releases));
+    memset(golden_mel_last_note, 0, sizeof(golden_mel_last_note));
+    memset(golden_mel_last_vel, 0, sizeof(golden_mel_last_vel));
+    memset(golden_mel_last_slide, 0, sizeof(golden_mel_last_slide));
+}
+
+static void golden_init_seq(void) {
+    golden_reset();
+    _ensureSeqCtx();
+    initSequencer(golden_kick_trigger, golden_snare_trigger, golden_hh_trigger, golden_clap_trigger);
+    setMelodyCallbacks(0, golden_mel_trigger_0, golden_mel_release_0);
+    setMelodyCallbacks(1, golden_mel_trigger_1, golden_mel_release_1);
+    seq.bpm = 120.0f;
+    seq.dilla.kickNudge = 0;
+    seq.dilla.snareDelay = 0;
+    seq.dilla.hatNudge = 0;
+    seq.dilla.clapDelay = 0;
+    seq.dilla.swing = 0;
+    seq.dilla.jitter = 0;
+    seq.humanize.velocityJitter = 0.0f;
+    seq.humanize.timingJitter = 0.0f;
+    seq.chainLength = 0;
+    seq.chainPos = 0;
+    seq.chainLoopCount = 0;
+}
+
+describe(golden_drum_patterns) {
+    it("four-on-the-floor + backbeat: exact trigger counts over one loop") {
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        // Kick on 0,4,8,12  Snare on 4,12  HH on every step
+        patSetDrum(p, 0, 0,  1.0f, 0.0f);
+        patSetDrum(p, 0, 4,  1.0f, 0.0f);
+        patSetDrum(p, 0, 8,  1.0f, 0.0f);
+        patSetDrum(p, 0, 12, 1.0f, 0.0f);
+        patSetDrum(p, 1, 4,  0.8f, 0.0f);
+        patSetDrum(p, 1, 12, 0.8f, 0.0f);
+        for (int s = 0; s < 16; s++) patSetDrum(p, 2, s, 0.7f, 0.0f);
+
+        seq.playing = true;
+        resetSequencer();
+        // Run almost exactly one full pattern minus a tiny bit (avoid re-triggering step 0)
+        run_sequencer_fraction(15.99f);
+
+        expect(golden_drum_triggers[0] == 4);   // kick
+        expect(golden_drum_triggers[1] == 2);   // snare
+        expect(golden_drum_triggers[2] == 16);  // hh
+        expect(golden_drum_triggers[3] == 0);   // clap (silent)
+
+        seq.playing = false;
+    }
+
+    it("two loops produce doubled trigger counts") {
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        patSetDrum(p, 0, 0,  1.0f, 0.0f);
+        patSetDrum(p, 0, 8,  1.0f, 0.0f);
+        patSetDrum(p, 1, 4,  1.0f, 0.0f);
+
+        seq.playing = true;
+        resetSequencer();
+        // Two full loops minus epsilon (avoid triggering step 0 of loop 3)
+        run_sequencer_fraction(31.99f);
+
+        expect(golden_drum_triggers[0] == 4);  // 2 per loop × 2 loops
+        expect(golden_drum_triggers[1] == 2);  // 1 per loop × 2 loops
+
+        seq.playing = false;
+    }
+
+    it("per-track length: shorter track loops independently") {
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        // Kick: 4-step loop with hit on step 0
+        patSetDrumLength(p, 0, 4);
+        patSetDrum(p, 0, 0, 1.0f, 0.0f);
+
+        // Snare: 16-step loop with hit on step 0
+        patSetDrumLength(p, 1, 16);
+        patSetDrum(p, 1, 0, 1.0f, 0.0f);
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(15.99f);
+
+        // Kick loops 4 times in 16 steps = 4 triggers
+        expect(golden_drum_triggers[0] == 4);
+        // Snare plays once in 16 steps = 1 trigger
+        expect(golden_drum_triggers[1] == 1);
+
+        seq.playing = false;
+    }
+}
+
+describe(golden_melody_gate) {
+    it("gate=1 note triggers and releases within 2 steps") {
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        patSetNote(p, 0, 0, 60, 0.9f, 1);  // C4, gate=1 step
+
+        seq.playing = true;
+        resetSequencer();
+
+        // After a fraction of step 0, should have triggered
+        run_sequencer_fraction(0.1f);
+        expect(golden_mel_triggers[0] == 1);
+        expect(golden_mel_last_note[0] == 60);
+        expect(golden_mel_releases[0] == 0);
+
+        // After 2 steps, gate should have expired → release
+        run_sequencer_fraction(1.9f);
+        expect(golden_mel_releases[0] >= 1);
+
+        seq.playing = false;
+    }
+
+    it("gate=4 note holds across 4 steps before release") {
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        patSetNote(p, 0, 0, 64, 0.8f, 4);  // E4, gate=4 steps
+
+        seq.playing = true;
+        resetSequencer();
+
+        // At step 2, note should still be playing (no release yet)
+        run_sequencer_steps(2);
+        expect(golden_mel_triggers[0] == 1);
+        expect(golden_mel_releases[0] == 0);
+
+        // At step 5, gate expired → released
+        run_sequencer_steps(3);
+        expect(golden_mel_releases[0] >= 1);
+
+        seq.playing = false;
+    }
+
+    it("new note on a later step releases the previous note") {
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        patSetNote(p, 0, 0, 60, 0.8f, 8);  // long gate
+        patSetNote(p, 0, 4, 64, 0.8f, 1);  // cuts previous note short
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(4.5f);  // past step 4
+
+        expect(golden_mel_triggers[0] == 2);    // both triggered
+        expect(golden_mel_releases[0] >= 1);    // first note released by second
+        expect(golden_mel_last_note[0] == 64);  // last triggered is E4
+
+        seq.playing = false;
+    }
+}
+
+describe(golden_melody_and_drums) {
+    it("drums and melody trigger independently in the same pattern") {
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        // Kick on 0, 4
+        patSetDrum(p, 0, 0, 1.0f, 0.0f);
+        patSetDrum(p, 0, 4, 1.0f, 0.0f);
+
+        // Melody on step 2
+        patSetNote(p, 0, 2, 72, 0.7f, 1);  // C5
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(5.5f);  // past step 5
+
+        expect(golden_drum_triggers[0] == 2);
+        expect(golden_mel_triggers[0] == 1);
+        expect(golden_mel_last_note[0] == 72);
+
+        seq.playing = false;
+    }
+
+    it("two melody tracks trigger independently") {
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        patSetNote(p, 0, 0, 60, 1.0f, 2);  // track 0: C4
+        patSetNote(p, 1, 0, 48, 0.8f, 4);  // track 1: C3
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(0.5f);
+
+        expect(golden_mel_triggers[0] == 1);
+        expect(golden_mel_triggers[1] == 1);
+        expect(golden_mel_last_note[0] == 60);
+        expect(golden_mel_last_note[1] == 48);
+
+        // Track 0 releases after gate=2, track 1 still playing
+        run_sequencer_fraction(2.5f);  // at step 3
+        expect(golden_mel_releases[0] >= 1);
+        expect(golden_mel_releases[1] == 0);  // gate=4, still going
+
+        seq.playing = false;
+    }
+}
+
+describe(golden_conditional_triggers) {
+    it("COND_1_2 fires on even loops only") {
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        patSetDrum(p, 0, 0, 1.0f, 0.0f);
+        patSetDrumCond(p, 0, 0, COND_1_2);  // every other loop (count%2==0)
+
+        seq.playing = true;
+        resetSequencer();
+
+        // Run 3 full loops minus epsilon
+        run_sequencer_fraction(47.99f);
+
+        // Loop 1: count=0 → 0%2==0 → fires
+        // Loop 2: count=1 → 1%2==1 → skip
+        // Loop 3: count=2 → 2%2==0 → fires
+        // Total: 2 triggers
+        expect(golden_drum_triggers[0] == 2);
+
+        seq.playing = false;
+    }
+
+    it("COND_FIRST fires only on first playthrough") {
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        patSetDrum(p, 1, 0, 1.0f, 0.0f);
+        patSetDrumCond(p, 1, 0, COND_FIRST);
+
+        seq.playing = true;
+        resetSequencer();
+
+        // Run 3 full loops minus epsilon
+        run_sequencer_fraction(47.99f);
+
+        // Only first loop fires (count=0), loops 2+3 skip
+        expect(golden_drum_triggers[1] == 1);
+
+        seq.playing = false;
+    }
+
+    it("melody conditional COND_2_2 fires on odd loops") {
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        patSetNote(p, 0, 0, 60, 1.0f, 1);
+        patSetNoteCond(p, 0, 0, COND_2_2);  // odd loops only
+
+        seq.playing = true;
+        resetSequencer();
+
+        // Loop 1 (count=0 → 0%2==1? no → skip)
+        run_sequencer_fraction(0.5f);
+        expect(golden_mel_triggers[0] == 0);
+
+        // Loop 2 (count=1 → 1%2==1? yes → fire)
+        run_sequencer_fraction(15.5f);
+        run_sequencer_fraction(0.5f);
+        expect(golden_mel_triggers[0] == 1);
+
+        seq.playing = false;
+    }
+}
+
+describe(golden_pattern_switch) {
+    it("queued pattern switch happens at loop boundary") {
+        golden_init_seq();
+
+        // Pattern 0: kick on step 0
+        Pattern *p0 = &seq.patterns[0];
+        clearPattern(p0);
+        patSetDrum(p0, 0, 0, 1.0f, 0.0f);
+
+        // Pattern 1: snare on step 0
+        Pattern *p1 = &seq.patterns[1];
+        clearPattern(p1);
+        patSetDrum(p1, 1, 0, 1.0f, 0.0f);
+
+        seq.currentPattern = 0;
+        seq.playing = true;
+        resetSequencer();
+
+        // Play half of pattern 0 then queue switch
+        run_sequencer_fraction(8.0f);
+        expect(golden_drum_triggers[0] == 1);  // kick fired
+        expect(golden_drum_triggers[1] == 0);  // no snare
+
+        seq.nextPattern = 1;  // queue switch
+
+        // Finish pattern 0 + small bit into pattern 1
+        golden_reset();
+        run_sequencer_fraction(8.5f);
+
+        // Pattern 1 should now be playing — snare on step 0
+        expect(seq.currentPattern == 1);
+        expect(golden_drum_triggers[1] >= 1);  // snare from pattern 1
+
+        seq.playing = false;
+    }
+}
+
+describe(golden_gate_nudge) {
+    it("positive gate nudge extends note duration") {
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        // Note with gate=1 and +12 tick gate nudge (half step longer)
+        patSetNote(p, 0, 0, 60, 0.8f, 1);
+        seqSetPLock(p, SEQ_DRUM_TRACKS + 0, 0, PLOCK_GATE_NUDGE, 12.0f);
+
+        seq.playing = true;
+        resetSequencer();
+
+        // After 1 step, note should still be playing (gate=1 step + 12 ticks = 1.5 steps)
+        run_sequencer_steps(1);
+        expect(golden_mel_triggers[0] == 1);
+        expect(golden_mel_releases[0] == 0);  // not yet released
+
+        // After 2 steps total, should be released
+        run_sequencer_steps(1);
+        expect(golden_mel_releases[0] >= 1);
+
+        seq.playing = false;
+    }
+
+    it("negative gate nudge shortens note duration") {
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        // Note with gate=2 and -20 tick gate nudge (almost 1 step shorter)
+        patSetNote(p, 0, 0, 60, 0.8f, 2);
+        seqSetPLock(p, SEQ_DRUM_TRACKS + 0, 0, PLOCK_GATE_NUDGE, -20.0f);
+
+        seq.playing = true;
+        resetSequencer();
+
+        // Gate = 2*24 - 20 = 28 ticks ≈ 1.17 steps
+        // After 1.5 steps, should be released
+        run_sequencer_fraction(1.5f);
+        expect(golden_mel_triggers[0] == 1);
+        expect(golden_mel_releases[0] >= 1);
+
+        seq.playing = false;
+    }
+}
+
+describe(golden_slide_accent) {
+    it("slide and accent flags are delivered to trigger callback") {
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        patSetNote(p, 0, 0, 48, 0.9f, 1);
+        patSetNoteFlags(p, 0, 0, true, true);  // slide + accent
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(0.5f);
+
+        expect(golden_mel_triggers[0] == 1);
+        expect(golden_mel_last_note[0] == 48);
+        expect(golden_mel_last_slide[0] == true);
+
+        seq.playing = false;
+    }
+
+    it("notes without flags have slide=false") {
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        patSetNote(p, 0, 0, 60, 0.8f, 1);
+        // No setNoteFlags call → defaults to false
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(0.5f);
+
+        expect(golden_mel_triggers[0] == 1);
+        expect(golden_mel_last_slide[0] == false);
+
+        seq.playing = false;
+    }
+}
+
 int main(int argc, char **argv) {
     // Check for quiet mode flag
     for (int i = 1; i < argc; i++) {
@@ -5714,6 +6151,15 @@ int main(int argc, char **argv) {
     test(chain_basic);
     test(chain_file_round_trip);
     test(chain_sequencer_advance);
+
+    // Golden behavioral tests (survive v2 refactor)
+    test(golden_drum_patterns);
+    test(golden_melody_gate);
+    test(golden_melody_and_drums);
+    test(golden_conditional_triggers);
+    test(golden_pattern_switch);
+    test(golden_gate_nudge);
+    test(golden_slide_accent);
 
     return summary();
 }
