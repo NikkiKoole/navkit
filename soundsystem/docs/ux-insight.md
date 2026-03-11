@@ -108,7 +108,7 @@ These sit inline in the Synth sidebar, adjacent to the parameter sliders they re
 
 ---
 
-## Horizontal Split Layout (IMPLEMENTED — `daw_hz.c`)
+## Horizontal Split Layout (IMPLEMENTED — `daw.c`)
 
 The vertical split (sidebar | main) kept fighting for width. Flipped to a **horizontal split** with a narrow sidebar:
 

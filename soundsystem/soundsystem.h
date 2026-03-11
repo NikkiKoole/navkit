@@ -6,22 +6,23 @@
 //   #include "soundsystem/soundsystem.h"
 //
 // This pulls in:
-//   - Synth engine (wavetables, voices, formant)
-//   - Drum machine (808 + CR78 style)
-//   - Effects (distortion, delay, tape, bitcrusher, reverb)
-//   - Sequencer (patterns, p-locks)
+//   - Synth engine (oscillators, voices, formant, SynthPatch)
+//   - Patch trigger (playNoteWithPatch, instrument presets)
+//   - Effects (distortion, delay, tape, bitcrusher, reverb, mixer buses)
+//   - Sequencer (patterns, p-locks, Dilla timing)
+//   - Sampler (WAV playback)
 //
-// For game integration, also include:
-//   - soundsystem/game/triggers.h   (sound event API)
-//   - soundsystem/game/musicstate.h (game state -> music)
-//   - soundsystem/game/project.h    (save/load)
+// Drums use SynthPatch presets (instrument_presets.h indices 24-37),
+// triggered via playNoteWithPatch() — no separate drum engine needed.
 
 #ifndef SOUNDSYSTEM_H
 #define SOUNDSYSTEM_H
 
 // Core audio engines
 #include "engines/synth.h"
-#include "engines/drums.h"
+#include "engines/synth_patch.h"
+#include "engines/patch_trigger.h"
+#include "engines/drums.h"           // Legacy: kept for song_file.h DrumType compat
 #include "engines/effects.h"
 #include "engines/sequencer.h"
 #include "engines/sampler.h"
@@ -39,7 +40,7 @@
 // Allows multiple independent instances or explicit context management
 typedef struct SoundSystem {
     SynthContext synth;
-    DrumsContext drums;
+    DrumsContext drums;              // Legacy: kept for song_file.h compat
     EffectsContext effects;
     SequencerContext sequencer;
     SamplerContext sampler;
@@ -89,28 +90,13 @@ static inline void soundsystem_suppress_warnings(void) {
     (void)sfxExplosion;
     (void)sfxPowerup;
     (void)sfxBlip;
-    // drums.h
-    (void)triggerDrum;
-    (void)triggerDrumFull;
-    (void)triggerDrumWithVel;
-    (void)drumKick;
-    (void)drumSnare;
-    (void)drumClap;
-    (void)drumClosedHH;
-    (void)drumOpenHH;
-    (void)drumLowTom;
-    (void)drumMidTom;
-    (void)drumHiTom;
-    (void)drumRimshot;
-    (void)drumCowbell;
-    (void)drumClave;
-    (void)drumMaracas;
-    (void)drumKickFull;
-    (void)drumSnareFull;
-    (void)drumClosedHHFull;
-    (void)drumClapFull;
-    (void)initDrumParams;
-    (void)processDrums;
+    // patch_trigger.h
+    (void)playNoteWithPatch;
+    (void)patchMidiToFreq;
+    (void)applyPatchToGlobals;
+    (void)createDefaultPatch;
+    (void)buildArpChord;
+    (void)setArpNotes;
     // effects.h
     (void)initEffects;
     (void)processEffects;

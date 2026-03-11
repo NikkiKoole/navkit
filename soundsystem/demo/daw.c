@@ -341,6 +341,7 @@ static bool patchesInit = false;
 
 // Forward declarations for sequencer integration
 static void dawStopSequencer(void);
+static void dawReleaseVoicesForPatch(int patchIdx);
 
 static void initPatches(void) {
     if (patchesInit) return;
@@ -377,6 +378,7 @@ static bool isPatchDirty(int patchIdx) {
 
 static void loadPresetIntoPatch(int patchIdx, int presetIdx) {
     if (!presetsInitialized) { initInstrumentPresets(); presetsInitialized = true; }
+    dawReleaseVoicesForPatch(patchIdx);
     char nameBak[32];
     memcpy(nameBak, daw.patches[patchIdx].p_name, 32);
     daw.patches[patchIdx] = instrumentPresets[presetIdx].patch;
@@ -2557,6 +2559,22 @@ static int dawDrumVoice[SEQ_DRUM_TRACKS] = {-1, -1, -1, -1};
 static int dawMelodyVoice[SEQ_MELODY_TRACKS] = {-1, -1, -1};
 // Per-track mono voice index — prevents mono patches on different tracks from stealing each other
 static int dawMonoVoiceIdx[SEQ_MELODY_TRACKS] = {-1, -1, -1};
+
+// Release all voices on a patch's bus (used when changing presets to prevent orphaned sounds)
+static void dawReleaseVoicesForPatch(int patchIdx) {
+    int bus = dawPatchToBus(patchIdx);
+    for (int v = 0; v < NUM_VOICES; v++) {
+        if (voiceBus[v] == bus && synthCtx->voices[v].envStage > 0) {
+            voiceLogPush("REL v%d bus=%d preset-change", v, bus);
+            releaseNote(v);
+        }
+    }
+    if (patchIdx < SEQ_DRUM_TRACKS) {
+        dawDrumVoice[patchIdx] = -1;
+    } else if (patchIdx - SEQ_DRUM_TRACKS < SEQ_MELODY_TRACKS) {
+        dawMelodyVoice[patchIdx - SEQ_DRUM_TRACKS] = -1;
+    }
+}
 
 // Generic drum trigger with full P-lock support
 // Temporarily patches SynthPatch fields for decay/tone, triggers, then restores

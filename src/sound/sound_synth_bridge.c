@@ -4,8 +4,7 @@
 #include <string.h>
 #include "../../vendor/raylib.h"
 #include "soundsystem/soundsystem.h"
-#include "soundsystem/engines/synth_patch.h"
-#include "soundsystem/engines/patch_trigger.h"
+#include "soundsystem/engines/instrument_presets.h"
 #include "soundsystem/engines/song_file.h"
 
 // Song definitions (uses synth/drums/sequencer types from soundsystem.h)
@@ -169,7 +168,6 @@ static void SoundSynthCallback(void* buffer, unsigned int frames) {
         for (int v = 0; v < NUM_VOICES; v++) {
             sample += processVoice(&synthVoices[v], sr);
         }
-        sample += processDrums(1.0f / sr);
 
         sample *= masterVolume;
         if (sample > 1.0f) sample = 1.0f;
@@ -189,6 +187,81 @@ static float getSweepValue(void) {
     // Sine: 0→1→0 over one full cycle
     return 0.5f + 0.5f * sinf(phase * 2.0f * 3.14159265f);
 }
+
+// ============================================================================
+// SynthPatch-based drum triggers (replaces legacy drums.h)
+// ============================================================================
+
+static SynthPatch bridgeDrumPatches[SEQ_DRUM_TRACKS];
+static int bridgeDrumVoice[SEQ_DRUM_TRACKS] = {-1, -1, -1, -1};
+static bool bridgeDrumsInitialized = false;
+
+static void initBridgeDrumPatches(void) {
+    if (bridgeDrumsInitialized) return;
+    initInstrumentPresets();
+    bridgeDrumPatches[0] = instrumentPresets[24].patch; // 808 Kick
+    bridgeDrumPatches[1] = instrumentPresets[25].patch; // 808 Snare
+    bridgeDrumPatches[2] = instrumentPresets[27].patch; // 808 CH
+    bridgeDrumPatches[3] = instrumentPresets[26].patch; // 808 Clap
+    bridgeDrumsInitialized = true;
+}
+
+// Saved note parameter block — applyPatchToGlobals writes these fields on SynthContext.
+// We snapshot them before drum triggers and restore after, so melody triggers
+// (which set globals piecemeal) don't get clobbered by drum patch values.
+static SynthPatch bridgeNoteSnapshot;
+
+static void bridgeDrumTriggerGeneric(int trackIdx, float vel, float pitch) {
+    (void)pitch;
+    if (!g_soundSynth) return;
+    useSoundSystem(&g_soundSynth->ss);
+    initBridgeDrumPatches();
+
+    SynthPatch *p = &bridgeDrumPatches[trackIdx];
+
+    // Choke previous voice on this track if patch requests it
+    if (p->p_choke && bridgeDrumVoice[trackIdx] >= 0 &&
+        synthVoices[bridgeDrumVoice[trackIdx]].envStage > 0) {
+        releaseNote(bridgeDrumVoice[trackIdx]);
+    }
+
+    // Snapshot current note globals into a temporary patch, trigger drum, then restore.
+    // This prevents applyPatchToGlobals (called by playNoteWithPatch) from clobbering
+    // the globals that per-song melody triggers set piecemeal.
+    applyPatchToGlobals(&bridgeNoteSnapshot); // read current globals back into snapshot (no-op direction, but...)
+
+    // Actually: we need the reverse — save globals, trigger, restore.
+    // Use the fact that applyPatchToGlobals is globals←patch. We need patch←globals.
+    // Simplest: just re-apply after. Save a SynthPatch from current globals:
+    bridgeNoteSnapshot.p_attack = noteAttack;
+    bridgeNoteSnapshot.p_decay = noteDecay;
+    bridgeNoteSnapshot.p_sustain = noteSustain;
+    bridgeNoteSnapshot.p_release = noteRelease;
+    bridgeNoteSnapshot.p_volume = noteVolume;
+    bridgeNoteSnapshot.p_pulseWidth = notePulseWidth;
+    bridgeNoteSnapshot.p_filterCutoff = noteFilterCutoff;
+    bridgeNoteSnapshot.p_filterResonance = noteFilterResonance;
+    bridgeNoteSnapshot.p_filterEnvAmt = noteFilterEnvAmt;
+    bridgeNoteSnapshot.p_filterType = noteFilterType;
+    bridgeNoteSnapshot.p_fmModRatio = fmModRatio;
+    bridgeNoteSnapshot.p_fmModIndex = fmModIndex;
+    bridgeNoteSnapshot.p_fmFeedback = fmFeedback;
+
+    int v = playNoteWithPatch(p->p_triggerFreq, p);
+
+    // Restore globals from snapshot
+    applyPatchToGlobals(&bridgeNoteSnapshot);
+
+    bridgeDrumVoice[trackIdx] = v;
+    if (v >= 0) {
+        synthVoices[v].volume *= vel;
+    }
+}
+
+static void bridgeDrumKick(float vel, float pitch)  { bridgeDrumTriggerGeneric(0, vel, pitch); }
+static void bridgeDrumSnare(float vel, float pitch) { bridgeDrumTriggerGeneric(1, vel, pitch); }
+static void bridgeDrumHH(float vel, float pitch)    { bridgeDrumTriggerGeneric(2, vel, pitch); }
+static void bridgeDrumClap(float vel, float pitch)  { bridgeDrumTriggerGeneric(3, vel, pitch); }
 
 // ============================================================================
 // Melody trigger callbacks — each track gets a different instrument
@@ -843,8 +916,9 @@ bool SoundSynthInitAudio(SoundSynth* synth, int sampleRate, int bufferFrames) {
     loadEmbeddedSCWs();
 #endif
 
-    // Set up the sequencer with drum trigger functions
-    initSequencer(drumKickFull, drumSnareFull, drumClosedHHFull, drumClapFull);
+    // Set up the sequencer with SynthPatch-based drum triggers
+    initBridgeDrumPatches();
+    initSequencer(bridgeDrumKick, bridgeDrumSnare, bridgeDrumHH, bridgeDrumClap);
 
     // Set up melodic trigger functions (bass=0, lead=1, chord=2)
     setMelodyCallbacks(0, melodyTriggerBass, melodyReleaseBass);

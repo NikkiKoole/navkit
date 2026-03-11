@@ -1,6 +1,6 @@
 // instrument_presets.h — Shared instrument preset definitions
 //
-// Extracted from demo.c so multiple frontends (demo, daw_hz) can share presets.
+// Extracted from demo.c so multiple frontends (demo, daw) can share presets.
 // Include after synth_patch.h.
 
 #ifndef INSTRUMENT_PRESETS_H
