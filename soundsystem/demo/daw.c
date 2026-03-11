@@ -63,10 +63,10 @@
 // TABS
 // ============================================================================
 
-typedef enum { WORK_SEQ, WORK_PIANO, WORK_SONG, WORK_MIDI, WORK_COUNT } WorkTab;
+typedef enum { WORK_SEQ, WORK_PIANO, WORK_SONG, WORK_MIDI, WORK_VOICE, WORK_COUNT } WorkTab;
 static WorkTab workTab = WORK_SEQ;
-static const char* workTabNames[] = {"Sequencer", "Piano Roll", "Song", "MIDI"};
-static const int workTabKeys[] = {KEY_F1, KEY_F2, KEY_F3, KEY_F4};
+static const char* workTabNames[] = {"Sequencer", "Piano Roll", "Song", "MIDI", "Voice"};
+static const int workTabKeys[] = {KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5};
 
 typedef enum { PARAM_PATCH, PARAM_BUS, PARAM_MASTER, PARAM_TAPE, PARAM_COUNT } ParamTab;
 static ParamTab paramTab = PARAM_PATCH;
@@ -130,6 +130,8 @@ typedef struct {
     bool tapeOn;    float tapeSaturation, tapeWow, tapeFlutter, tapeHiss;
     bool delayOn;   float delayTime, delayFeedback, delayTone, delayMix;
     bool reverbOn;  float reverbSize, reverbDamping, reverbPreDelay, reverbMix;
+    bool eqOn;      float eqLowGain, eqHighGain, eqLowFreq, eqHighFreq;
+    bool compOn;    float compThreshold, compRatio, compAttack, compRelease, compMakeup;
 } MasterFX;
 
 typedef struct {
@@ -340,6 +342,8 @@ static DawState daw = {
         .tapeSaturation = 0.3f, .tapeWow = 0.1f, .tapeFlutter = 0.1f, .tapeHiss = 0.05f,
         .delayTime = 0.3f, .delayFeedback = 0.4f, .delayTone = 0.5f, .delayMix = 0.3f,
         .reverbSize = 0.5f, .reverbDamping = 0.5f, .reverbPreDelay = 0.02f, .reverbMix = 0.3f,
+        .eqLowGain = 0.0f, .eqHighGain = 0.0f, .eqLowFreq = 200.0f, .eqHighFreq = 6000.0f,
+        .compThreshold = -12.0f, .compRatio = 4.0f, .compAttack = 0.01f, .compRelease = 0.1f, .compMakeup = 0.0f,
     },
     .tapeFx = {
         .headTime = 0.5f, .feedback = 0.6f, .mix = 0.5f,
@@ -2642,6 +2646,25 @@ static void drawParamPatch(float x, float y, float w, float h) {
         ui_col_float(&c, "Level", &p->p_clickLevel, 0.05f, 0.0f, 1.0f);
         ui_col_float(&c, "Time", &p->p_clickTime, 0.002f, 0.001f, 0.05f);
         sectionHighlight(col5X + 2, secY, percColW, c.y - secY, clickActive);
+        ui_col_space(&c, 6);
+
+        bool warmthActive = DB(p_analogRolloff) || DB(p_tubeSaturation);
+        secY = c.y;
+        ui_col_sublabel(&c, "Warmth:", ORANGE);
+        ui_col_toggle(&c, "Analog Rolloff", &p->p_analogRolloff);
+        ui_col_toggle(&c, "Tube Sat", &p->p_tubeSaturation);
+        sectionHighlight(col5X + 2, secY, percColW, c.y - secY, warmthActive);
+        ui_col_space(&c, 6);
+
+        bool synthModActive = DB(p_ringMod) || DF(p_wavefoldAmount) || DB(p_hardSync);
+        secY = c.y;
+        ui_col_sublabel(&c, "Synth:", ORANGE);
+        ui_col_toggle(&c, "Ring Mod", &p->p_ringMod);
+        if (p->p_ringMod) ui_col_float(&c, "RM Freq", &p->p_ringModFreq, 0.1f, 0.1f, 16.0f);
+        ui_col_float(&c, "Wavefold", &p->p_wavefoldAmount, 0.05f, 0.0f, 1.0f);
+        ui_col_toggle(&c, "Hard Sync", &p->p_hardSync);
+        if (p->p_hardSync) ui_col_float(&c, "Sync Ratio", &p->p_hardSyncRatio, 0.1f, 0.5f, 8.0f);
+        sectionHighlight(col5X + 2, secY, percColW, c.y - secY, synthModActive);
     }
 
     // Vertical divider
@@ -2888,12 +2911,12 @@ static void drawParamBus(float x, float y, float w, float h) {
 // ============================================================================
 
 static void drawParamMasterFx(float x, float y, float w, float h) {
-    // 7 effect blocks in signal chain order
-    float blockW = w / 7.0f;
-    if (blockW > 170) blockW = 170;
+    // 9 effect blocks in signal chain order
+    float blockW = w / 9.0f;
+    if (blockW > 140) blockW = 140;
 
     // Draw signal flow arrows between blocks
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 8; i++) {
         float ax = x + (i+1)*blockW - 6;
         DrawTextShadow(">", (int)ax, (int)(y + h*0.5f - 5), 12, (Color){50,50,60,255});
     }
@@ -2980,6 +3003,31 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
         ui_col_float(&c, "Damping", &daw.masterFx.reverbDamping, 0.05f, 0.0f, 1.0f);
         ui_col_float(&c, "PreDly", &daw.masterFx.reverbPreDelay, 0.005f, 0.0f, 0.1f);
         ui_col_float(&c, "Mix", &daw.masterFx.reverbMix, 0.05f, 0.0f, 1.0f);
+    }
+    DrawLine((int)(x+7*blockW), (int)y, (int)(x+7*blockW), (int)(y+h), (Color){38,38,48,255});
+
+    // Block 8: Master EQ
+    {
+        UIColumn c = ui_column(x+7*blockW+4, y, 16);
+        ui_col_sublabel(&c, "EQ:", ORANGE);
+        ui_col_toggle(&c, "On", &daw.masterFx.eqOn);
+        ui_col_float(&c, "Low", &daw.masterFx.eqLowGain, 0.5f, -12.0f, 12.0f);
+        ui_col_float(&c, "High", &daw.masterFx.eqHighGain, 0.5f, -12.0f, 12.0f);
+        ui_col_float(&c, "Lo Hz", &daw.masterFx.eqLowFreq, 10.0f, 40.0f, 500.0f);
+        ui_col_float(&c, "Hi Hz", &daw.masterFx.eqHighFreq, 200.0f, 2000.0f, 16000.0f);
+    }
+    DrawLine((int)(x+8*blockW), (int)y, (int)(x+8*blockW), (int)(y+h), (Color){38,38,48,255});
+
+    // Block 9: Master Compressor
+    {
+        UIColumn c = ui_column(x+8*blockW+4, y, 16);
+        ui_col_sublabel(&c, "Comp:", ORANGE);
+        ui_col_toggle(&c, "On", &daw.masterFx.compOn);
+        ui_col_float(&c, "Thresh", &daw.masterFx.compThreshold, 1.0f, -40.0f, 0.0f);
+        ui_col_float(&c, "Ratio", &daw.masterFx.compRatio, 0.5f, 1.0f, 20.0f);
+        ui_col_float(&c, "Attack", &daw.masterFx.compAttack, 0.005f, 0.001f, 0.1f);
+        ui_col_float(&c, "Release", &daw.masterFx.compRelease, 0.01f, 0.01f, 1.0f);
+        ui_col_float(&c, "Makeup", &daw.masterFx.compMakeup, 0.5f, 0.0f, 24.0f);
     }
 
     // Presets row at bottom
@@ -3216,6 +3264,21 @@ static void dawSyncEngineState(void) {
     fx.reverbDamping   = daw.masterFx.reverbDamping;
     fx.reverbPreDelay  = daw.masterFx.reverbPreDelay;
     fx.reverbMix       = daw.masterFx.reverbMix;
+
+    // Master EQ
+    fx.eqEnabled       = daw.masterFx.eqOn;
+    fx.eqLowGain       = daw.masterFx.eqLowGain;
+    fx.eqHighGain      = daw.masterFx.eqHighGain;
+    fx.eqLowFreq       = daw.masterFx.eqLowFreq;
+    fx.eqHighFreq      = daw.masterFx.eqHighFreq;
+
+    // Master Compressor
+    fx.compEnabled     = daw.masterFx.compOn;
+    fx.compThreshold   = daw.masterFx.compThreshold;
+    fx.compRatio       = daw.masterFx.compRatio;
+    fx.compAttack      = daw.masterFx.compAttack;
+    fx.compRelease     = daw.masterFx.compRelease;
+    fx.compMakeup      = daw.masterFx.compMakeup;
 
     // Sidechain
     fx.sidechainEnabled = daw.sidechain.on;
@@ -4067,6 +4130,188 @@ static void drawWorkMidi(float x, float y, float w, float h) {
 }
 
 // ============================================================================
+// WORKSPACE: VOICE (F5) — babble generator, speech synthesis
+// ============================================================================
+
+#define SPEECH_MAX 64
+
+typedef struct {
+    char text[SPEECH_MAX];
+    int index;
+    int length;
+    float timer;
+    float speed;
+    float basePitch;
+    float pitchVariation;
+    float intonation;  // -1.0 = falling (answer), 0 = flat, +1.0 = rising (question)
+    bool active;
+    int voiceIdx;
+} SpeechQueue;
+
+static SpeechQueue speechQueue = {0};
+
+static VowelType charToVowel(char c) {
+    if (c >= 'A' && c <= 'Z') c += 32;
+    switch (c) {
+        case 'a': return VOWEL_A;
+        case 'e': return VOWEL_E;
+        case 'i': case 'y': return VOWEL_I;
+        case 'o': return VOWEL_O;
+        case 'u': case 'w': return VOWEL_U;
+        case 'b': case 'p': case 'm': return VOWEL_U;
+        case 'd': case 't': case 'n': case 'l': return VOWEL_E;
+        case 'g': case 'k': case 'q': return VOWEL_A;
+        case 'f': case 'v': case 's': case 'z': case 'c': return VOWEL_I;
+        case 'r': return VOWEL_A;
+        default: return VOWEL_A;
+    }
+}
+
+static float charToPitch(char c) {
+    if (c >= 'A' && c <= 'Z') c += 32;
+    int val = (c * 7) % 12;
+    return 1.0f + (val - 6) * 0.05f;
+}
+
+static void speakWithIntonation(const char *text, float speed, float pitch, float variation, float intonation) {
+    SpeechQueue *sq = &speechQueue;
+    int len = 0;
+    while (text[len] && len < SPEECH_MAX - 1) {
+        sq->text[len] = text[len];
+        len++;
+    }
+    sq->text[len] = '\0';
+    sq->length = len;
+    sq->index = -1;
+    sq->timer = 0.0f;
+    sq->speed = clampf(speed, 1.0f, 30.0f);
+    sq->basePitch = clampf(pitch, 0.3f, 3.0f);
+    sq->pitchVariation = clampf(variation, 0.0f, 1.0f);
+    sq->intonation = clampf(intonation, -1.0f, 1.0f);
+    sq->active = true;
+    sq->voiceIdx = NUM_VOICES - 1;
+}
+
+static const char* babbleSyllables[] = {
+    "ba", "da", "ga", "ma", "na", "pa", "ta", "ka", "wa", "ya",
+    "be", "de", "ge", "me", "ne", "pe", "te", "ke", "we", "ye",
+    "bi", "di", "gi", "mi", "ni", "pi", "ti", "ki", "wi", "yi",
+    "bo", "do", "go", "mo", "no", "po", "to", "ko", "wo", "yo",
+    "bu", "du", "gu", "mu", "nu", "pu", "tu", "ku", "wu", "yu",
+    "la", "ra", "sa", "za", "ha", "ja", "fa", "va",
+};
+static const int numBabbleSyllables = sizeof(babbleSyllables) / sizeof(babbleSyllables[0]);
+
+static void babbleWithIntonation(float duration, float pitch, float mood, float intonation) {
+    char text[SPEECH_MAX];
+    int pos = 0;
+    float speed = 8.0f + mood * 8.0f;
+    int targetSyllables = (int)(duration * speed / 2.0f);
+    for (int i = 0; i < targetSyllables && pos < SPEECH_MAX - 4; i++) {
+        synthNoiseState = synthNoiseState * 1103515245 + 12345;
+        const char* syl = babbleSyllables[(synthNoiseState >> 16) % numBabbleSyllables];
+        while (*syl && pos < SPEECH_MAX - 2) {
+            text[pos++] = *syl++;
+        }
+        synthNoiseState = synthNoiseState * 1103515245 + 12345;
+        if ((synthNoiseState >> 16) % 4 == 0 && pos < SPEECH_MAX - 2) {
+            text[pos++] = ' ';
+        }
+    }
+    text[pos] = '\0';
+    float variation = 0.1f + mood * 0.3f;
+    speakWithIntonation(text, speed, pitch, variation, intonation);
+}
+
+static void updateSpeech(float dt) {
+    SpeechQueue *sq = &speechQueue;
+    if (!sq->active) return;
+    sq->timer -= dt;
+    if (sq->timer <= 0.0f) {
+        sq->index++;
+        if (sq->index >= sq->length) {
+            sq->active = false;
+            releaseNote(sq->voiceIdx);
+            return;
+        }
+        char c = sq->text[sq->index];
+        if (c == ' ' || c == ',' || c == '.') {
+            sq->timer = (c == ' ') ? 0.5f / sq->speed : 1.0f / sq->speed;
+            releaseNote(sq->voiceIdx);
+            return;
+        }
+        VowelType vowel = charToVowel(c);
+        float pitchMod = charToPitch(c);
+        synthNoiseState = synthNoiseState * 1103515245 + 12345;
+        float randVar = 1.0f + ((float)(synthNoiseState >> 16) / 65535.0f - 0.5f) * sq->pitchVariation;
+        float progress = (float)sq->index / (float)sq->length;
+        float intonationMod = 1.0f + sq->intonation * 0.3f * progress;
+        float baseFreq = 200.0f * sq->basePitch * pitchMod * randVar * intonationMod;
+        Voice *v = &synthVoices[sq->voiceIdx];
+        if (v->envStage > 0 && v->wave == WAVE_VOICE) {
+            v->voiceSettings.nextVowel = vowel;
+            v->voiceSettings.vowelBlend = 0.0f;
+            v->frequency = baseFreq;
+            v->baseFrequency = baseFreq;
+        } else {
+            playVowelOnVoice(sq->voiceIdx, baseFreq, vowel);
+        }
+        sq->timer = 1.0f / sq->speed;
+    }
+    Voice *v = &synthVoices[sq->voiceIdx];
+    if (v->envStage > 0 && v->wave == WAVE_VOICE) {
+        v->voiceSettings.vowelBlend += dt * sq->speed * 2.0f;
+        if (v->voiceSettings.vowelBlend >= 1.0f) {
+            v->voiceSettings.vowelBlend = 0.0f;
+            v->voiceSettings.vowel = v->voiceSettings.nextVowel;
+        }
+    }
+}
+
+static float babblePitch = 1.0f;
+static float babbleMood = 0.5f;
+static float babbleDuration = 2.0f;
+
+static void drawWorkVoice(float x, float y, float w, float h) {
+    (void)w; (void)h;
+    float sx = x, sy = y;
+
+    DrawTextShadow("Voice / Babble Generator", (int)sx, (int)sy, 12, WHITE);
+    sy += 24;
+
+    UIColumn col = ui_column(sx, sy, 15);
+    ui_col_float(&col, "Pitch", &babblePitch, 0.05f, 0.3f, 3.0f);
+    ui_col_float(&col, "Mood", &babbleMood, 0.05f, 0.0f, 1.0f);
+    ui_col_float(&col, "Duration", &babbleDuration, 0.25f, 0.5f, 5.0f);
+    sy = col.y + 10;
+
+    Vector2 mouse = GetMousePosition();
+    const struct { const char *label; Color color; float intonation; } buttons[] = {
+        {"Babble", WHITE, 0.0f},
+        {"Call",   (Color){120,200,255,255}, 1.0f},
+        {"Answer", (Color){255,180,100,255}, -1.0f},
+    };
+    for (int i = 0; i < 3; i++) {
+        Rectangle r = {sx + i * 88, sy, 80, 22};
+        bool hov = CheckCollisionPointRec(mouse, r);
+        DrawRectangleRec(r, hov ? (Color){60,60,80,255} : (Color){40,42,54,255});
+        DrawRectangleLinesEx(r, 1, (Color){80,80,100,255});
+        int tw = MeasureTextUI(buttons[i].label, 11);
+        DrawTextShadow(buttons[i].label, (int)(r.x + (80 - tw) / 2), (int)sy + 5, 11, buttons[i].color);
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            babbleWithIntonation(babbleDuration, babblePitch, babbleMood, buttons[i].intonation);
+            ui_consume_click();
+        }
+    }
+    sy += 32;
+
+    if (speechQueue.active) {
+        DrawTextShadow("Speaking...", (int)sx, (int)sy, 10, GREEN);
+        DrawTextShadow(speechQueue.text, (int)sx, (int)sy + 14, 10, GRAY);
+    }
+}
+
+// ============================================================================
 // MIDI KEYBOARD INPUT (with split keyboard, arp, mono, random vowel)
 // ============================================================================
 
@@ -4403,8 +4648,8 @@ int main(void) {
             daw.transport.playing = !daw.transport.playing;
             if (!daw.transport.playing) dawStopSequencer();
         }
-        // F5: toggle sound log, F6: dump to file
-        if (IsKeyPressed(KEY_F5)) {
+        // F8: toggle sound log, F9: dump to file
+        if (IsKeyPressed(KEY_F8)) {
             seqSoundLogEnabled = !seqSoundLogEnabled;
             if (seqSoundLogEnabled) {
                 seqSoundLogCount = 0;
@@ -4413,11 +4658,11 @@ int main(void) {
                 seqSoundLogStartTime = ts.tv_sec + ts.tv_nsec / 1000000000.0;
             }
         }
-        if (IsKeyPressed(KEY_F6) && seqSoundLogCount > 0) {
+        if (IsKeyPressed(KEY_F9) && seqSoundLogCount > 0) {
             seqSoundLogDump("daw_sound.log");
         }
-        // F7: toggle WAV recording
-        if (IsKeyPressed(KEY_F7)) {
+        // F10: toggle WAV recording
+        if (IsKeyPressed(KEY_F10)) {
             if (dawRecording) dawRecStop(); else dawRecStart();
         }
         // Ctrl+S: save, Ctrl+O: load
@@ -4438,6 +4683,7 @@ int main(void) {
         updateSequencer(GetFrameTime());
         dawHandleMusicalTyping();
         dawHandleMidiInput();
+        updateSpeech(GetFrameTime());
 
         BeginDrawing();
         ClearBackground((Color){22, 22, 28, 255});
@@ -4463,6 +4709,7 @@ int main(void) {
                 case WORK_PIANO: drawWorkPiano(wx, wy, ww, wh); break;
                 case WORK_SONG:  drawWorkSong(wx, wy, ww, wh); break;
                 case WORK_MIDI:  drawWorkMidi(wx, wy, ww, wh); break;
+                case WORK_VOICE: drawWorkVoice(wx, wy, ww, wh); break;
                 default: break;
             }
         }
