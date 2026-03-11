@@ -136,13 +136,13 @@ _Static_assert(sizeof(_dwPlockNames)/sizeof(_dwPlockNames[0]) == PLOCK_COUNT, "U
 static void _dwWritePattern(FILE *f, int idx, const Pattern *p) {
     fprintf(f, "\n[pattern.%d]\n", idx);
     fprintf(f, "drumTrackLength =");
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) fprintf(f, " %d", p->drumTrackLength[t]);
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) fprintf(f, " %d", p->trackLength[t]);
     fprintf(f, "\nmelodyTrackLength =");
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) fprintf(f, " %d", p->melodyTrackLength[t]);
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) fprintf(f, " %d", p->trackLength[SEQ_DRUM_TRACKS + t]);
     fprintf(f, "\n");
 
     for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
-        for (int s = 0; s < p->drumTrackLength[t]; s++) {
+        for (int s = 0; s < p->trackLength[t]; s++) {
             if (!patGetDrum((Pattern*)p, t, s)) continue;
             fprintf(f, "d track=%d step=%d vel=%.3g", t, s, (double)patGetDrumVel((Pattern*)p, t, s));
             float dp = patGetDrumPitch((Pattern*)p, t, s);
@@ -156,33 +156,21 @@ static void _dwWritePattern(FILE *f, int idx, const Pattern *p) {
     }
 
     for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
-        for (int s = 0; s < p->melodyTrackLength[t]; s++) {
-            int mn = patGetNote((Pattern*)p, t, s);
+        for (int s = 0; s < p->trackLength[SEQ_DRUM_TRACKS + t]; s++) {
+            int mn = patGetNote((Pattern*)p, SEQ_DRUM_TRACKS + t, s);
             if (mn == SEQ_NOTE_OFF) continue;
             char nn[8]; _dwMidiToName(mn, nn, sizeof(nn));
             fprintf(f, "m track=%d step=%d note=%s vel=%.3g gate=%d",
-                    t, s, nn, (double)patGetNoteVel((Pattern*)p, t, s), patGetNoteGate((Pattern*)p, t, s));
-            if (patGetNoteSlide((Pattern*)p, t, s)) fprintf(f, " slide");
-            if (patGetNoteAccent((Pattern*)p, t, s)) fprintf(f, " accent");
-            int mSus = patGetNoteSustain((Pattern*)p, t, s);
+                    t, s, nn, (double)patGetNoteVel((Pattern*)p, SEQ_DRUM_TRACKS + t, s), patGetNoteGate((Pattern*)p, SEQ_DRUM_TRACKS + t, s));
+            if (patGetNoteSlide((Pattern*)p, SEQ_DRUM_TRACKS + t, s)) fprintf(f, " slide");
+            if (patGetNoteAccent((Pattern*)p, SEQ_DRUM_TRACKS + t, s)) fprintf(f, " accent");
+            int mSus = patGetNoteSustain((Pattern*)p, SEQ_DRUM_TRACKS + t, s);
             if (mSus > 0) fprintf(f, " sustain=%d", mSus);
-            float mProb = patGetNoteProb((Pattern*)p, t, s);
+            float mProb = patGetNoteProb((Pattern*)p, SEQ_DRUM_TRACKS + t, s);
             if (mProb > 0.0f && mProb < 1.0f) fprintf(f, " prob=%.3g", (double)mProb);
-            int mCond = patGetNoteCond((Pattern*)p, t, s);
+            int mCond = patGetNoteCond((Pattern*)p, SEQ_DRUM_TRACKS + t, s);
             if (mCond != COND_ALWAYS) fprintf(f, " cond=%s", _dwCondNames[mCond]);
-            const NotePool *np = &p->melodyNotePool[t][s];
-            if (np->enabled) {
-                if (np->chordType >= 0 && np->chordType < 9) fprintf(f, " chord=%s", _dwChordNames[np->chordType]);
-                if (np->pickMode >= 0 && np->pickMode < 6) fprintf(f, " pick=%s", _dwPickNames[np->pickMode]);
-                if (np->chordType == CHORD_CUSTOM && np->customNoteCount > 0) {
-                    fprintf(f, " notes=");
-                    for (int n = 0; n < np->customNoteCount; n++) {
-                        if (n > 0) fprintf(f, ",");
-                        char cn[8]; _dwMidiToName(np->customNotes[n], cn, sizeof(cn));
-                        fprintf(f, "%s", cn);
-                    }
-                }
-            }
+            // NotePool fields no longer saved (v2 uses multi-note steps)
             fprintf(f, "\n");
         }
     }
@@ -348,11 +336,11 @@ static bool dawSave(const char *filepath) {
         const Pattern *p = &seq.patterns[i];
         bool empty = true;
         for (int t = 0; t < SEQ_DRUM_TRACKS && empty; t++)
-            for (int s = 0; s < p->drumTrackLength[t] && empty; s++)
+            for (int s = 0; s < p->trackLength[t] && empty; s++)
                 if (patGetDrum((Pattern*)p, t, s)) empty = false;
         for (int t = 0; t < SEQ_MELODY_TRACKS && empty; t++)
-            for (int s = 0; s < p->melodyTrackLength[t] && empty; s++)
-                if (patGetNote((Pattern*)p, t, s) != SEQ_NOTE_OFF) empty = false;
+            for (int s = 0; s < p->trackLength[SEQ_DRUM_TRACKS + t] && empty; s++)
+                if (patGetNote((Pattern*)p, SEQ_DRUM_TRACKS + t, s) != SEQ_NOTE_OFF) empty = false;
         if (p->plockCount > 0) empty = false;
         if (!empty) _dwWritePattern(f, i, p);
     }
@@ -598,9 +586,9 @@ static void _dwParseMelodyEvent(const char *line, Pattern *p) {
     char *toks[32]; int n = _dwTokenize(lc+1, toks, 32);
     int track=0, step=0, gate=4, sustain=0; char noteName[16]="C4";
     float vel=0.8f, prob=1.0f; int cond=COND_ALWAYS;
-    bool slide=false, accent=false, hasPool=false;
-    int chordType=CHORD_SINGLE, pickMode=PICK_CYCLE_UP;
-    int customNotes[NOTE_POOL_MAX_NOTES]={0}; int customNoteCount=0;
+    bool slide=false, accent=false, hasChord=false;
+    int chordType=CHORD_SINGLE;
+    int customNotes[8]={0}; int customNoteCount=0;
     char k[32], v[64];
     for (int i=0; i<n; i++) {
         if (_dwParseKV(toks[i],k,32,v,64)) {
@@ -612,12 +600,13 @@ static void _dwParseMelodyEvent(const char *line, Pattern *p) {
             else if (strcmp(k,"sustain")==0) sustain=_dpi(v);
             else if (strcmp(k,"prob")==0) prob=_dpf(v);
             else if (strcmp(k,"cond")==0) { int idx=_dwLookupName(v,_dwCondNames,11); if(idx>=0) cond=idx; }
-            else if (strcmp(k,"chord")==0) { hasPool=true; int idx=_dwLookupName(v,_dwChordNames,9); if(idx>=0) chordType=idx; }
-            else if (strcmp(k,"pick")==0) { hasPool=true; int idx=_dwLookupName(v,_dwPickNames,6); if(idx>=0) pickMode=idx; }
+            else if (strcmp(k,"chord")==0) { hasChord=true; int idx=_dwLookupName(v,_dwChordNames,9); if(idx>=0) chordType=idx; }
+            else if (strcmp(k,"pick")==0) { hasChord=true; /* pick mode ignored in v2 */ }
             else if (strcmp(k,"notes")==0) {
-                hasPool=true; char nb[128]; strncpy(nb,v,127); nb[127]='\0';
+                hasChord=true; chordType=CHORD_CUSTOM;
+                char nb[128]; strncpy(nb,v,127); nb[127]='\0';
                 char *t2=strtok(nb,",");
-                while (t2 && customNoteCount<NOTE_POOL_MAX_NOTES) { customNotes[customNoteCount++]=_dwNameToMidi(t2); t2=strtok(NULL,","); }
+                while (t2 && customNoteCount<8) { customNotes[customNoteCount++]=_dwNameToMidi(t2); t2=strtok(NULL,","); }
             }
         } else {
             if (strcmp(k,"slide")==0) slide=true;
@@ -625,17 +614,19 @@ static void _dwParseMelodyEvent(const char *line, Pattern *p) {
         }
     }
     if (track>=0&&track<SEQ_MELODY_TRACKS&&step>=0&&step<SEQ_MAX_STEPS) {
-        patSetNote(p, track, step, _dwNameToMidi(noteName), vel, gate);
-        patSetNoteFlags(p, track, step, slide, accent);
-        patSetNoteSustain(p, track, step, sustain);
-        patSetNoteProb(p, track, step, prob);
-        patSetNoteCond(p, track, step, cond);
-        if (hasPool) {
-            NotePool *np=&p->melodyNotePool[track][step];
-            np->enabled=true; np->chordType=chordType; np->pickMode=pickMode;
-            np->customNoteCount=customNoteCount;
-            for (int j=0; j<customNoteCount; j++) np->customNotes[j]=customNotes[j];
+        if (hasChord && chordType==CHORD_CUSTOM && customNoteCount>0) {
+            patSetChordCustom(p, SEQ_DRUM_TRACKS + track, step, vel, gate,
+                customNoteCount>0?customNotes[0]:-1, customNoteCount>1?customNotes[1]:-1,
+                customNoteCount>2?customNotes[2]:-1, customNoteCount>3?customNotes[3]:-1);
+        } else if (hasChord) {
+            patSetChord(p, SEQ_DRUM_TRACKS + track, step, _dwNameToMidi(noteName), (ChordType)chordType, vel, gate);
+        } else {
+            patSetNote(p, SEQ_DRUM_TRACKS + track, step, _dwNameToMidi(noteName), vel, gate);
         }
+        patSetNoteFlags(p, SEQ_DRUM_TRACKS + track, step, slide, accent);
+        patSetNoteSustain(p, SEQ_DRUM_TRACKS + track, step, sustain);
+        patSetNoteProb(p, SEQ_DRUM_TRACKS + track, step, prob);
+        patSetNoteCond(p, SEQ_DRUM_TRACKS + track, step, cond);
     }
 }
 
@@ -883,8 +874,15 @@ static bool dawLoad(const char *filepath) {
         case _DW_SEC_PATTERN:
             if (subIndex >= 0 && subIndex < SEQ_NUM_PATTERNS) {
                 Pattern *p = &seq.patterns[subIndex];
-                if (strcmp(key,"drumTrackLength")==0) _dwParseIntList(val, p->drumTrackLength, SEQ_DRUM_TRACKS);
-                else if (strcmp(key,"melodyTrackLength")==0) _dwParseIntList(val, p->melodyTrackLength, SEQ_MELODY_TRACKS);
+                if (strcmp(key,"drumTrackLength")==0) {
+                    _dwParseIntList(val, p->trackLength, SEQ_DRUM_TRACKS);
+                }
+                else if (strcmp(key,"melodyTrackLength")==0) {
+                    int melLengths[SEQ_MELODY_TRACKS];
+                    _dwParseIntList(val, melLengths, SEQ_MELODY_TRACKS);
+                    for (int _t = 0; _t < SEQ_MELODY_TRACKS; _t++)
+                        p->trackLength[SEQ_DRUM_TRACKS + _t] = melLengths[_t];
+                }
             }
             break;
         default: break;

@@ -42,7 +42,7 @@ typedef struct {
     float bpm;
     // Voice indices for melody tracks (so we can release them)
     // Single-voice tracks use melodyVoices[track][0] with melodyVoiceCount[track]=1.
-    // Chord tracks (PICK_ALL) use multiple voices.
+    // Chord tracks use multiple voices.
     #define MAX_CHORD_VOICES 6
     int melodyVoices[SEQ_MELODY_TRACKS][MAX_CHORD_VOICES];
     int melodyVoiceCount[SEQ_MELODY_TRACKS];
@@ -284,35 +284,7 @@ static void bridgeMelodyTrigger(int track, int note, float vel,
     sp->melodyVoiceCount[track] = 1;
 }
 
-// Generic chord trigger via SynthPatch (finger stagger for rolled chords)
-static void bridgeChordTrigger(int track, int* notes, int noteCount, float vel,
-                                bool accent, SynthPatch *p) {
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-    SongPlayer *sp = &g_soundSynth->songPlayer;
 
-    // Release previous chord voices
-    for (int j = 0; j < sp->melodyVoiceCount[track]; j++) {
-        if (sp->melodyVoices[track][j] >= 0) releaseNote(sp->melodyVoices[track][j]);
-        sp->melodyVoices[track][j] = -1;
-    }
-
-    if (noteCount > MAX_CHORD_VOICES) noteCount = MAX_CHORD_VOICES;
-
-    float origAtk = p->p_attack;
-    for (int i = 0; i < noteCount; i++) {
-        // Finger stagger: 5-15ms offset per finger for rolled chord feel
-        p->p_attack = origAtk + i * 0.012f;
-        float freq = midiToFreqScaled(notes[i]);
-        int v = playNoteWithPatch(freq, p);
-        if (v >= 0) {
-            synthVoices[v].volume *= vel * (accent ? 1.3f : 1.0f);
-        }
-        sp->melodyVoices[track][i] = v;
-    }
-    p->p_attack = origAtk;
-    sp->melodyVoiceCount[track] = noteCount;
-}
 
 // ============================================================================
 // Per-song melody triggers — thin wrappers using presets + overrides
@@ -549,19 +521,6 @@ static void melodyReleaseAllVoices(int track) {
 // Chord release wrappers per track
 static void melodyReleaseChordPoly(void) { melodyReleaseAllVoices(2); }
 static void melodyReleaseLeadPoly(void)  { melodyReleaseAllVoices(1); }
-
-// FM Keys chord trigger — uses patch with finger stagger
-static void melodyTriggerChordFMKeys(int* notes, int noteCount, float vel,
-                                      float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide;
-    ensureSongPatches();
-    SynthPatch *p = songPatch(2, PRESET_MAC_KEYS);
-    p->p_fmModIndex = 1.8f;
-    p->p_volume = accent ? 0.35f : 0.28f;
-    p->p_filterCutoff = 0.6f;
-    p->p_release = 0.1f;
-    bridgeChordTrigger(2, notes, noteCount, vel, accent, p);
-}
 
 // ============================================================================
 // Create / Destroy / Init
@@ -892,7 +851,6 @@ void SoundSynthPlaySongHappyBirthday(SoundSynth* synth) {
     setMelodyCallbacks(0, melodyTriggerPluckBass, melodyReleaseBass);
     setMelodyCallbacks(1, melodyTriggerFMKeysLead, melodyReleaseLead);
     setMelodyCallbacks(2, melodyTriggerFMKeys, melodyReleaseChordPoly);
-    setMelodyChordCallback(2, melodyTriggerChordFMKeys);
 
     Song_HappyBirthday_ConfigureVoices();
 
@@ -928,7 +886,6 @@ void SoundSynthPlaySongMonksMood(SoundSynth* synth) {
     setMelodyCallbacks(0, melodyTriggerPluckBass, melodyReleaseBass);
     setMelodyCallbacks(1, melodyTriggerFMKeysLead, melodyReleaseLeadPoly);
     setMelodyCallbacks(2, melodyTriggerFMKeys, melodyReleaseChordPoly);
-    setMelodyChordCallback(2, melodyTriggerChordFMKeys);
 
     Song_MonksMood_ConfigureVoices();
 
@@ -965,7 +922,6 @@ void SoundSynthPlaySongSummertime(SoundSynth* synth) {
     setMelodyCallbacks(0, melodyTriggerPluckBass, melodyReleaseBass);
     setMelodyCallbacks(1, melodyTriggerFMKeysLead, melodyReleaseLeadPoly);
     setMelodyCallbacks(2, melodyTriggerFMKeys, melodyReleaseChordPoly);
-    setMelodyChordCallback(2, melodyTriggerChordFMKeys);
 
     Song_Summertime_ConfigureVoices();
 
@@ -1128,7 +1084,6 @@ void SoundSynthPlaySongGymnopedie(SoundSynth* synth) {
     setMelodyCallbacks(0, melodyTriggerPluckBass, melodyReleaseBass);
     setMelodyCallbacks(1, melodyTriggerFMKeysLead, melodyReleaseLead);
     setMelodyCallbacks(2, melodyTriggerFMKeys, melodyReleaseChordPoly);
-    setMelodyChordCallback(2, melodyTriggerChordFMKeys);
 
     Song_Gymnopedie_ConfigureVoices();
 
@@ -1211,27 +1166,6 @@ static void melodyTriggerPatchGeneric(int track, int note, float vel,
     sp->melodyVoiceCount[track] = 1;
 }
 
-// Generic chord trigger: plays all notes through patch
-static void melodyChordTriggerPatchGeneric(int track, int* notes, int noteCount,
-                                            float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-
-    SongPlayer *sp = &g_soundSynth->songPlayer;
-    SynthPatch *p = &sp->instruments[track];
-
-    melodyReleaseAllVoices(track);
-
-    if (noteCount > MAX_CHORD_VOICES) noteCount = MAX_CHORD_VOICES;
-    for (int i = 0; i < noteCount; i++) {
-        float freq = patchMidiToFreq(notes[i]);
-        if (accent) noteVolume = vel * 1.3f;
-        sp->melodyVoices[track][i] = playNoteWithPatch(freq, p);
-    }
-    sp->melodyVoiceCount[track] = noteCount;
-}
-
 // Per-track wrappers (setMelodyCallbacks needs specific function signatures)
 static void melodyTriggerPatchBass(int note, float vel, float gateTime, bool slide, bool accent) {
     melodyTriggerPatchGeneric(0, note, vel, gateTime, slide, accent);
@@ -1245,10 +1179,6 @@ static void melodyTriggerPatchChord(int note, float vel, float gateTime, bool sl
 static void melodyReleasePatchBass(void)  { melodyReleaseAllVoices(0); }
 static void melodyReleasePatchLead(void)  { melodyReleaseAllVoices(1); }
 static void melodyReleasePatchChord(void) { melodyReleaseAllVoices(2); }
-static void melodyChordTriggerPatchChord(int* notes, int noteCount, float vel,
-                                          float gateTime, bool slide, bool accent) {
-    melodyChordTriggerPatchGeneric(2, notes, noteCount, vel, gateTime, slide, accent);
-}
 
 // ============================================================================
 // Play a .song file
@@ -1280,7 +1210,6 @@ bool SoundSynthPlaySongFile(SoundSynth* synth, const char* filepath) {
     setMelodyCallbacks(0, melodyTriggerPatchBass, melodyReleasePatchBass);
     setMelodyCallbacks(1, melodyTriggerPatchLead, melodyReleasePatchLead);
     setMelodyCallbacks(2, melodyTriggerPatchChord, melodyReleasePatchChord);
-    setMelodyChordCallback(2, melodyChordTriggerPatchChord);
 
     // Load patterns
     sp->patternCount = 0;
@@ -1293,7 +1222,7 @@ bool SoundSynthPlaySongFile(SoundSynth* synth, const char* filepath) {
                 if (patGetDrum(&sf.patterns[i], t, s)) hasContent = true;
         for (int t = 0; t < SEQ_MELODY_TRACKS && !hasContent; t++)
             for (int s = 0; s < SEQ_MAX_STEPS && !hasContent; s++)
-                if (patGetNote(&sf.patterns[i], t, s) != SEQ_NOTE_OFF) hasContent = true;
+                if (patGetNote(&sf.patterns[i], SEQ_DRUM_TRACKS + t, s) != SEQ_NOTE_OFF) hasContent = true;
         if (hasContent) sp->patternCount = i + 1;
     }
     if (sp->patternCount == 0) sp->patternCount = 1;
@@ -1311,7 +1240,7 @@ bool SoundSynthPlaySongFile(SoundSynth* synth, const char* filepath) {
     // Apply mix
     masterVolume = sf.sfMasterVolume;
     drumVolume = sf.sfDrumVolume;
-    for (int i = 0; i < SEQ_TOTAL_TRACKS; i++) seq.trackVolume[i] = sf.sfTrackVolume[i];
+    for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) seq.trackVolume[i] = sf.sfTrackVolume[i];
 
     // Apply drum params
     drumParams = sf.sfDrumParams;

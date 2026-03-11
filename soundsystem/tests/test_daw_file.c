@@ -131,7 +131,7 @@ static int patchPresetIndex[NUM_PATCHES];
 #include "../demo/daw_file.h"
 
 // Helper to access saved_seq fields without triggering the `seq` macro
-// saved_seq is a SequencerContext; its DrumSequencer is the first field (.seq)
+// saved_seq is a SequencerContext; its Sequencer is the first field (.seq)
 // We use a pointer to access it safely.
 #define SAVED_SEQ_DS(field) (saved_seq_ptr->field)
 
@@ -179,8 +179,8 @@ static int tests_failed = 0;
 
 static DawState saved_daw;
 static SequencerContext saved_seq;
-// Pointer to saved sequencer's DrumSequencer, avoids `seq` macro collision
-static DrumSequencer *saved_seq_ptr;
+// Pointer to saved sequencer's Sequencer, avoids `seq` macro collision
+static Sequencer *saved_seq_ptr;
 
 static void setupTestState(void) {
     // Zero everything first
@@ -484,51 +484,40 @@ static void setupTestState(void) {
     Pattern *p0 = &seq.patterns[0];
 
     // Drum steps
-    p0->drumTrackLength[0] = 16; p0->drumTrackLength[1] = 16;
-    p0->drumTrackLength[2] = 12; p0->drumTrackLength[3] = 8;
-    p0->drumSteps[0][0] = true; p0->drumVelocity[0][0] = 0.9f; p0->drumPitch[0][0] = 0.1f;
-    p0->drumProbability[0][0] = 0.8f; p0->drumCondition[0][0] = COND_ALWAYS;
-    p0->drumSteps[0][4] = true; p0->drumVelocity[0][4] = 0.85f;
-    p0->drumProbability[0][4] = 1.0f; p0->drumCondition[0][4] = COND_1_2;
-    p0->drumSteps[1][4] = true; p0->drumVelocity[1][4] = 0.75f; p0->drumPitch[1][4] = -0.2f;
-    p0->drumProbability[1][4] = 0.7f; p0->drumCondition[1][4] = COND_FILL;
-    p0->drumSteps[2][0] = true; p0->drumVelocity[2][0] = 0.6f;
-    p0->drumProbability[2][0] = 1.0f;
-    p0->drumSteps[2][2] = true; p0->drumVelocity[2][2] = 0.5f;
-    p0->drumProbability[2][2] = 1.0f;
-    p0->drumSteps[3][3] = true; p0->drumVelocity[3][3] = 0.7f;
-    p0->drumProbability[3][3] = 0.5f; p0->drumCondition[3][3] = COND_2_4;
+    patSetDrumLength(p0, 0, 16); patSetDrumLength(p0, 1, 16);
+    patSetDrumLength(p0, 2, 12); patSetDrumLength(p0, 3, 8);
+    patSetDrum(p0, 0, 0, 0.9f, 0.1f);
+    patSetDrumProb(p0, 0, 0, 0.8f);
+    patSetDrum(p0, 0, 4, 0.85f, 0.0f);
+    patSetDrumCond(p0, 0, 4, COND_1_2);
+    patSetDrum(p0, 1, 4, 0.75f, -0.2f);
+    patSetDrumProb(p0, 1, 4, 0.7f);
+    patSetDrumCond(p0, 1, 4, COND_FILL);
+    patSetDrum(p0, 2, 0, 0.6f, 0.0f);
+    patSetDrum(p0, 2, 2, 0.5f, 0.0f);
+    patSetDrum(p0, 3, 3, 0.7f, 0.0f);
+    patSetDrumProb(p0, 3, 3, 0.5f);
+    patSetDrumCond(p0, 3, 3, COND_2_4);
 
     // Melody notes
-    p0->melodyTrackLength[0] = 16; p0->melodyTrackLength[1] = 8; p0->melodyTrackLength[2] = 16;
-    p0->melodyNote[0][0] = 48;  // C3
-    p0->melodyVelocity[0][0] = 0.8f; p0->melodyGate[0][0] = 4;
-    p0->melodySlide[0][0] = false; p0->melodyAccent[0][0] = true;
-    p0->melodySustain[0][0] = 2; p0->melodyProbability[0][0] = 0.9f;
-    p0->melodyCondition[0][0] = COND_ALWAYS;
+    patSetMelodyLength(p0, SEQ_DRUM_TRACKS + 0, 16); patSetMelodyLength(p0, SEQ_DRUM_TRACKS + 1, 8); patSetMelodyLength(p0, SEQ_DRUM_TRACKS + 2, 16);
+    patSetNote(p0, SEQ_DRUM_TRACKS + 0, 0, 48, 0.8f, 4);  // C3
+    patSetNoteFlags(p0, SEQ_DRUM_TRACKS + 0, 0, false, true);
+    patSetNoteSustain(p0, SEQ_DRUM_TRACKS + 0, 0, 2);
+    patSetNoteProb(p0, SEQ_DRUM_TRACKS + 0, 0, 0.9f);
 
-    p0->melodyNote[0][4] = 55;  // G3
-    p0->melodyVelocity[0][4] = 0.7f; p0->melodyGate[0][4] = 2;
-    p0->melodySlide[0][4] = true; p0->melodyAccent[0][4] = false;
-    p0->melodyProbability[0][4] = 0.6f; p0->melodyCondition[0][4] = COND_NOT_FIRST;
+    patSetNote(p0, SEQ_DRUM_TRACKS + 0, 4, 55, 0.7f, 2);  // G3
+    patSetNoteFlags(p0, SEQ_DRUM_TRACKS + 0, 4, true, false);
+    patSetNoteProb(p0, SEQ_DRUM_TRACKS + 0, 4, 0.6f);
+    patSetNoteCond(p0, SEQ_DRUM_TRACKS + 0, 4, COND_NOT_FIRST);
 
-    p0->melodyNote[1][0] = 60;  // C4
-    p0->melodyVelocity[1][0] = 0.9f; p0->melodyGate[1][0] = 8;
-    p0->melodyProbability[1][0] = 1.0f;
+    patSetNote(p0, SEQ_DRUM_TRACKS + 1, 0, 60, 0.9f, 8);  // C4
 
-    // Note pool on melody track 0, step 0
-    p0->melodyNotePool[0][0].enabled = true;
-    p0->melodyNotePool[0][0].chordType = CHORD_CUSTOM;
-    p0->melodyNotePool[0][0].pickMode = PICK_RANDOM;
-    p0->melodyNotePool[0][0].customNoteCount = 3;
-    p0->melodyNotePool[0][0].customNotes[0] = 48;
-    p0->melodyNotePool[0][0].customNotes[1] = 52;
-    p0->melodyNotePool[0][0].customNotes[2] = 55;
+    // Custom chord on melody track 0, step 0 (v2 multi-note step)
+    patSetChordCustom(p0, SEQ_DRUM_TRACKS + 0, 0, 0.8f, 4, 48, 52, 55, -1);
 
-    // Note pool with chord type (non-custom)
-    p0->melodyNotePool[0][4].enabled = true;
-    p0->melodyNotePool[0][4].chordType = CHORD_TRIAD;
-    p0->melodyNotePool[0][4].pickMode = PICK_CYCLE_DOWN;
+    // Standard chord on melody track 0, step 4 (v2 multi-note step)
+    patSetChord(p0, SEQ_DRUM_TRACKS + 0, 4, patGetNote(p0, SEQ_DRUM_TRACKS + 0, 4), CHORD_TRIAD, patGetNoteVel(p0, SEQ_DRUM_TRACKS + 0, 4), patGetNoteGate(p0, SEQ_DRUM_TRACKS + 0, 4));
 
     // P-locks
     seqSetPLock(p0, 0, 0, PLOCK_FILTER_CUTOFF, 0.75f);
@@ -538,23 +527,19 @@ static void setupTestState(void) {
 
     // Pattern 3: a second non-empty pattern (different track lengths)
     Pattern *p3 = &seq.patterns[3];
-    p3->drumTrackLength[0] = 32; p3->drumTrackLength[1] = 16;
-    p3->drumTrackLength[2] = 16; p3->drumTrackLength[3] = 16;
-    p3->melodyTrackLength[0] = 32; p3->melodyTrackLength[1] = 16; p3->melodyTrackLength[2] = 16;
-    p3->drumSteps[0][0] = true; p3->drumVelocity[0][0] = 1.0f;
-    p3->drumProbability[0][0] = 1.0f;
-    p3->drumSteps[0][8] = true; p3->drumVelocity[0][8] = 0.8f;
-    p3->drumProbability[0][8] = 1.0f;
-    p3->melodyNote[0][0] = 36;  // C2
-    p3->melodyVelocity[0][0] = 0.85f; p3->melodyGate[0][0] = 6;
-    p3->melodyProbability[0][0] = 1.0f;
+    patSetDrumLength(p3, 0, 32); patSetDrumLength(p3, 1, 16);
+    patSetDrumLength(p3, 2, 16); patSetDrumLength(p3, 3, 16);
+    patSetMelodyLength(p3, SEQ_DRUM_TRACKS + 0, 32); patSetMelodyLength(p3, SEQ_DRUM_TRACKS + 1, 16); patSetMelodyLength(p3, SEQ_DRUM_TRACKS + 2, 16);
+    patSetDrum(p3, 0, 0, 1.0f, 0.0f);
+    patSetDrum(p3, 0, 8, 0.8f, 0.0f);
+    patSetNote(p3, SEQ_DRUM_TRACKS + 0, 0, 36, 0.85f, 6);  // C2
 
     // Save copies for comparison
     memcpy(&saved_daw, &daw, sizeof(DawState));
     memcpy(&saved_seq, &_seqCtx, sizeof(SequencerContext));
-    // Use pointer arithmetic to get the DrumSequencer field (first member)
+    // Use pointer arithmetic to get the Sequencer field (first member)
     // without triggering the `seq` macro
-    saved_seq_ptr = (DrumSequencer *)&saved_seq;
+    saved_seq_ptr = (Sequencer *)&saved_seq;
 }
 
 // ============================================================================
@@ -771,75 +756,66 @@ static void verifyPatterns(void) {
 
         // Track lengths
         for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
-            snprintf(label, sizeof(label), "pat[%d].drumTrackLength[%d]", pi, t);
-            ASSERT_EQ_INT(a->drumTrackLength[t], b->drumTrackLength[t], label);
+            snprintf(label, sizeof(label), "pat[%d].trackLength[%d]", pi, t);
+            ASSERT_EQ_INT(a->trackLength[t], b->trackLength[t], label);
         }
         for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
-            snprintf(label, sizeof(label), "pat[%d].melodyTrackLength[%d]", pi, t);
-            ASSERT_EQ_INT(a->melodyTrackLength[t], b->melodyTrackLength[t], label);
+            snprintf(label, sizeof(label), "pat[%d].trackLength[%d]", pi, SEQ_DRUM_TRACKS + t);
+            ASSERT_EQ_INT(a->trackLength[SEQ_DRUM_TRACKS + t], b->trackLength[SEQ_DRUM_TRACKS + t], label);
         }
 
         // Drum steps
         for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
-            for (int s = 0; s < b->drumTrackLength[t]; s++) {
-                if (!b->drumSteps[t][s]) {
+            for (int s = 0; s < b->trackLength[t]; s++) {
+                if (!patGetDrum((Pattern*)b, t, s)) {
                     snprintf(label, sizeof(label), "pat[%d].drumSteps[%d][%d]", pi, t, s);
-                    ASSERT_EQ_BOOL(a->drumSteps[t][s], false, label);
+                    ASSERT_EQ_BOOL(patGetDrum((Pattern*)a, t, s), false, label);
                     continue;
                 }
                 snprintf(label, sizeof(label), "pat[%d].drumSteps[%d][%d]", pi, t, s);
-                ASSERT_EQ_BOOL(a->drumSteps[t][s], true, label);
+                ASSERT_EQ_BOOL(patGetDrum((Pattern*)a, t, s), true, label);
                 snprintf(label, sizeof(label), "pat[%d].drumVel[%d][%d]", pi, t, s);
-                ASSERT_EQ_FLOAT(a->drumVelocity[t][s], b->drumVelocity[t][s], label);
+                ASSERT_EQ_FLOAT(patGetDrumVel((Pattern*)a, t, s), patGetDrumVel((Pattern*)b, t, s), label);
                 snprintf(label, sizeof(label), "pat[%d].drumPitch[%d][%d]", pi, t, s);
-                ASSERT_EQ_FLOAT(a->drumPitch[t][s], b->drumPitch[t][s], label);
+                ASSERT_EQ_FLOAT(patGetDrumPitch((Pattern*)a, t, s), patGetDrumPitch((Pattern*)b, t, s), label);
                 snprintf(label, sizeof(label), "pat[%d].drumProb[%d][%d]", pi, t, s);
-                ASSERT_EQ_FLOAT(a->drumProbability[t][s], b->drumProbability[t][s], label);
+                ASSERT_EQ_FLOAT(probU8ToFloat(a->steps[t][s].probability), probU8ToFloat(b->steps[t][s].probability), label);
                 snprintf(label, sizeof(label), "pat[%d].drumCond[%d][%d]", pi, t, s);
-                ASSERT_EQ_INT(a->drumCondition[t][s], b->drumCondition[t][s], label);
+                ASSERT_EQ_INT((int)a->steps[t][s].condition, (int)b->steps[t][s].condition, label);
             }
         }
 
         // Melody notes
         for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
-            for (int s = 0; s < b->melodyTrackLength[t]; s++) {
+            for (int s = 0; s < b->trackLength[SEQ_DRUM_TRACKS + t]; s++) {
                 snprintf(label, sizeof(label), "pat[%d].melodyNote[%d][%d]", pi, t, s);
-                ASSERT_EQ_INT(a->melodyNote[t][s], b->melodyNote[t][s], label);
-                if (b->melodyNote[t][s] == SEQ_NOTE_OFF) continue;
+                ASSERT_EQ_INT(patGetNote((Pattern*)a, SEQ_DRUM_TRACKS + t, s), patGetNote((Pattern*)b, SEQ_DRUM_TRACKS + t, s), label);
+                if (patGetNote((Pattern*)b, SEQ_DRUM_TRACKS + t, s) == SEQ_NOTE_OFF) continue;
 
                 snprintf(label, sizeof(label), "pat[%d].melodyVel[%d][%d]", pi, t, s);
-                ASSERT_EQ_FLOAT(a->melodyVelocity[t][s], b->melodyVelocity[t][s], label);
+                ASSERT_EQ_FLOAT(patGetNoteVel((Pattern*)a, SEQ_DRUM_TRACKS + t, s), patGetNoteVel((Pattern*)b, SEQ_DRUM_TRACKS + t, s), label);
                 snprintf(label, sizeof(label), "pat[%d].melodyGate[%d][%d]", pi, t, s);
-                ASSERT_EQ_INT(a->melodyGate[t][s], b->melodyGate[t][s], label);
+                ASSERT_EQ_INT(patGetNoteGate((Pattern*)a, SEQ_DRUM_TRACKS + t, s), patGetNoteGate((Pattern*)b, SEQ_DRUM_TRACKS + t, s), label);
                 snprintf(label, sizeof(label), "pat[%d].melodySlide[%d][%d]", pi, t, s);
-                ASSERT_EQ_BOOL(a->melodySlide[t][s], b->melodySlide[t][s], label);
+                ASSERT_EQ_BOOL(patGetNoteSlide((Pattern*)a, SEQ_DRUM_TRACKS + t, s), patGetNoteSlide((Pattern*)b, SEQ_DRUM_TRACKS + t, s), label);
                 snprintf(label, sizeof(label), "pat[%d].melodyAccent[%d][%d]", pi, t, s);
-                ASSERT_EQ_BOOL(a->melodyAccent[t][s], b->melodyAccent[t][s], label);
+                ASSERT_EQ_BOOL(patGetNoteAccent((Pattern*)a, SEQ_DRUM_TRACKS + t, s), patGetNoteAccent((Pattern*)b, SEQ_DRUM_TRACKS + t, s), label);
                 snprintf(label, sizeof(label), "pat[%d].melodySustain[%d][%d]", pi, t, s);
-                ASSERT_EQ_INT(a->melodySustain[t][s], b->melodySustain[t][s], label);
+                ASSERT_EQ_INT(patGetNoteSustain((Pattern*)a, SEQ_DRUM_TRACKS + t, s), patGetNoteSustain((Pattern*)b, SEQ_DRUM_TRACKS + t, s), label);
                 snprintf(label, sizeof(label), "pat[%d].melodyProb[%d][%d]", pi, t, s);
-                ASSERT_EQ_FLOAT(a->melodyProbability[t][s], b->melodyProbability[t][s], label);
+                ASSERT_EQ_FLOAT(probU8ToFloat(a->steps[SEQ_DRUM_TRACKS + t][s].probability), probU8ToFloat(b->steps[SEQ_DRUM_TRACKS + t][s].probability), label);
                 snprintf(label, sizeof(label), "pat[%d].melodyCond[%d][%d]", pi, t, s);
-                ASSERT_EQ_INT(a->melodyCondition[t][s], b->melodyCondition[t][s], label);
+                ASSERT_EQ_INT((int)a->steps[SEQ_DRUM_TRACKS + t][s].condition, (int)b->steps[SEQ_DRUM_TRACKS + t][s].condition, label);
 
-                // Note pools
-                const NotePool *na = &a->melodyNotePool[t][s];
-                const NotePool *nb = &b->melodyNotePool[t][s];
-                snprintf(label, sizeof(label), "pat[%d].notePool[%d][%d].enabled", pi, t, s);
-                ASSERT_EQ_BOOL(na->enabled, nb->enabled, label);
-                if (nb->enabled) {
-                    snprintf(label, sizeof(label), "pat[%d].notePool[%d][%d].chordType", pi, t, s);
-                    ASSERT_EQ_INT(na->chordType, nb->chordType, label);
-                    snprintf(label, sizeof(label), "pat[%d].notePool[%d][%d].pickMode", pi, t, s);
-                    ASSERT_EQ_INT(na->pickMode, nb->pickMode, label);
-                    if (nb->chordType == CHORD_CUSTOM) {
-                        snprintf(label, sizeof(label), "pat[%d].notePool[%d][%d].customNoteCount", pi, t, s);
-                        ASSERT_EQ_INT(na->customNoteCount, nb->customNoteCount, label);
-                        for (int n = 0; n < nb->customNoteCount; n++) {
-                            snprintf(label, sizeof(label), "pat[%d].notePool[%d][%d].customNotes[%d]", pi, t, s, n);
-                            ASSERT_EQ_INT(na->customNotes[n], nb->customNotes[n], label);
-                        }
-                    }
+                // V2 step notes (chord data)
+                int absT = SEQ_DRUM_TRACKS + t;
+                const StepV2 *sa = &a->steps[absT][s];
+                const StepV2 *sb = &b->steps[absT][s];
+                snprintf(label, sizeof(label), "pat[%d].steps[%d][%d].noteCount", pi, absT, s);
+                ASSERT_EQ_INT(sa->noteCount, sb->noteCount, label);
+                for (int v = 0; v < sb->noteCount; v++) {
+                    snprintf(label, sizeof(label), "pat[%d].steps[%d][%d].notes[%d].note", pi, absT, s, v);
+                    ASSERT_EQ_INT(sa->notes[v].note, sb->notes[v].note, label);
                 }
             }
         }
@@ -1041,10 +1017,6 @@ int main(void) {
     // 1. Set up test state with non-default values
     printf("Setting up test state...\n");
     setupTestState();
-
-    // Sync v1 pattern data to v2 (setupTestState writes directly to v1 arrays)
-    for (int i = 0; i < SEQ_NUM_PATTERNS; i++)
-        syncPatternV1ToV2(&seq.patterns[i]);
 
     // 2. Save to file
     printf("Saving to %s...\n", tmpfile);

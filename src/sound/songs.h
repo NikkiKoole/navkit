@@ -94,46 +94,52 @@
 
 // Set a melody note: note + velocity + gate in one call
 static inline void note(Pattern* p, int track, int step, int n, float vel, int gate) {
-    p->melodyNote[track][step] = n;
-    p->melodyVelocity[track][step] = vel;
-    p->melodyGate[track][step] = gate;
+    patSetNote(p, SEQ_DRUM_TRACKS + track, step, n, vel, gate);
 }
 
 // Set a melody note with timing nudge (p-lock)
 static inline void noteN(Pattern* p, int track, int step, int n, float vel, int gate, float nudge) {
-    note(p, track, step, n, vel, gate);
+    patSetNote(p, SEQ_DRUM_TRACKS + track, step, n, vel, gate);
     seqSetPLock(p, SEQ_DRUM_TRACKS + track, step, PLOCK_TIME_NUDGE, nudge);
 }
 
 // Set a melody note with sustain (extra hold steps after gate)
 static inline void noteS(Pattern* p, int track, int step, int n, float vel, int gate, int sus) {
-    note(p, track, step, n, vel, gate);
-    p->melodySustain[track][step] = sus;
+    patSetNote(p, SEQ_DRUM_TRACKS + track, step, n, vel, gate);
+    patSetNoteSustain(p, SEQ_DRUM_TRACKS + track, step, sus);
 }
 
 // Set a melody note with nudge + sustain
 static inline void noteNS(Pattern* p, int track, int step, int n, float vel, int gate, float nudge, int sus) {
-    note(p, track, step, n, vel, gate);
+    patSetNote(p, SEQ_DRUM_TRACKS + track, step, n, vel, gate);
     seqSetPLock(p, SEQ_DRUM_TRACKS + track, step, PLOCK_TIME_NUDGE, nudge);
-    p->melodySustain[track][step] = sus;
+    patSetNoteSustain(p, SEQ_DRUM_TRACKS + track, step, sus);
+}
+
+// Set a chord step: root note + chord type → multi-note v2 step
+static inline void chord(Pattern* p, int track, int step, int root, ChordType type, float vel, int gate) {
+    patSetChord(p, SEQ_DRUM_TRACKS + track, step, root, type, vel, gate);
+}
+
+// Set a custom chord step with explicit notes (up to 4, -1 = unused)
+static inline void chordCustom(Pattern* p, int track, int step, float vel, int gate, int n0, int n1, int n2, int n3) {
+    patSetChordCustom(p, SEQ_DRUM_TRACKS + track, step, vel, gate, n0, n1, n2, n3);
 }
 
 // Set a drum hit: step + velocity in one call
 static inline void drum(Pattern* p, int track, int step, float vel) {
-    p->drumSteps[track][step] = true;
-    p->drumVelocity[track][step] = vel;
+    patSetDrum(p, track, step, vel, 0.0f);
 }
 
 // Set a drum hit with timing nudge
 static inline void drumN(Pattern* p, int track, int step, float vel, float nudge) {
-    drum(p, track, step, vel);
+    patSetDrum(p, track, step, vel, 0.0f);
     seqSetPLock(p, track, step, PLOCK_TIME_NUDGE, nudge);
 }
 
 // Set a drum hit with pitch offset
 static inline void drumP(Pattern* p, int track, int step, float vel, float pitch) {
-    drum(p, track, step, vel);
-    p->drumPitch[track][step] = pitch;
+    patSetDrum(p, track, step, vel, pitch);
 }
 
 // ============================================================================
@@ -195,7 +201,7 @@ static void Song_DormitoryAmbient_PatternA(Pattern* p) {
     drum(p, 2,10, .15);  drum(p, 2,14, .10);
     // Perc: single rimshot on step 12, very faint — a creak
     drumP(p, 3, 12, 0.08, 0.3);
-    p->drumProbability[3][12] = 0.4f;
+    patSetDrumProb(p, 3, 12, 0.4f);
 
     // Bass: slow D pedal, then A
     note(p, 0, 0, D2, .35, 8);
@@ -206,15 +212,9 @@ static void Song_DormitoryAmbient_PatternA(Pattern* p) {
     note(p, 1,10, F4, .22, 2);   note(p, 1,13, D4, .18, 3);
 
     // Chords: Dm (half bar) then Am
-    note(p, 2, 0, D3, 0.20, 8);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_TRIAD;
-    p->melodyNotePool[2][0].pickMode  = PICK_CYCLE_UP;
+    chord(p, 2, 0, D3, CHORD_TRIAD, 0.20, 8);
 
-    note(p, 2, 8, A3, 0.18, 8);
-    p->melodyNotePool[2][8].enabled   = true;
-    p->melodyNotePool[2][8].chordType = CHORD_TRIAD;
-    p->melodyNotePool[2][8].pickMode  = PICK_CYCLE_UP;
+    chord(p, 2, 8, A3, CHORD_TRIAD, 0.18, 8);
 }
 
 // --- Pattern B: variation (sparser, for variety when looping) ---
@@ -231,13 +231,10 @@ static void Song_DormitoryAmbient_PatternB(Pattern* p) {
     // Lead: call and response
     note(p, 1, 4,  A4, 0.20, 4);
     note(p, 1, 12, D4, 0.18, 4);
-    p->melodySlide[1][12] = true;
+    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 1, 12, true);
 
     // Chords: Dm the whole bar
-    note(p, 2, 0, D3, 0.15, 16);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_TRIAD;
-    p->melodyNotePool[2][0].pickMode  = PICK_RANDOM;
+    chord(p, 2, 0, D3, CHORD_TRIAD, 0.15, 16);
 }
 
 // --- Song loader: populates two patterns (A B) for alternation ---
@@ -322,13 +319,13 @@ static void Song_Suspense_PatternA(Pattern* p) {
 
     // HiHat: distant metallic tick, irregular
     drum(p, 2, 3, 0.08);
-    drum(p, 2, 7, 0.06);   p->drumProbability[2][7] = 0.5f;
+    drum(p, 2, 7, 0.06);   patSetDrumProb(p, 2, 7, 0.5f);
     drum(p, 2,11, 0.10);
-    drum(p, 2,15, 0.05);   p->drumProbability[2][15] = 0.3f;
+    drum(p, 2,15, 0.05);   patSetDrumProb(p, 2, 15, 0.3f);
 
     // Perc: distant rimshot, very rare
     drumP(p, 3, 6, 0.06, -0.3);
-    p->drumProbability[3][6] = 0.25f;
+    patSetDrumProb(p, 3, 6, 0.25f);
 
     // Bass: chromatic descent C2→B1→Bb2→A2
     note(p, 0, 0, Cn2, .40, 4);  note(p, 0, 4, B1,  .38, 4);
@@ -338,18 +335,12 @@ static void Song_Suspense_PatternA(Pattern* p) {
     note(p, 1, 4, Eb4, .22, 5);
     note(p, 1,11, G4,  .18, 4);
     note(p, 1,14, Ab4, .20, 3);
-    p->melodySlide[1][14] = true;
+    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 1, 14, true);
 
     // Chords: Cm then Ab
-    note(p, 2, 0, Cn3, 0.18, 8);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_TRIAD;
-    p->melodyNotePool[2][0].pickMode  = PICK_CYCLE_UP;
+    chord(p, 2, 0, Cn3, CHORD_TRIAD, 0.18, 8);
 
-    note(p, 2, 8, Ab3, 0.16, 8);
-    p->melodyNotePool[2][8].enabled   = true;
-    p->melodyNotePool[2][8].chordType = CHORD_TRIAD;
-    p->melodyNotePool[2][8].pickMode  = PICK_CYCLE_UP;
+    chord(p, 2, 8, Ab3, CHORD_TRIAD, 0.16, 8);
 }
 
 // --- Pattern B: the void stares back ---
@@ -368,10 +359,7 @@ static void Song_Suspense_PatternB(Pattern* p) {
     note(p, 1, 6, B4, 0.20, 10);
 
     // Chords: Cm7 held whole bar
-    note(p, 2, 0, Cn3, 0.14, 16);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][0].pickMode  = PICK_RANDOM;
+    chord(p, 2, 0, Cn3, CHORD_SEVENTH, 0.14, 16);
 }
 
 static void Song_Suspense_Load(Pattern patterns[2]) {
@@ -438,7 +426,7 @@ static void Song_JazzCallResponse_PatternA(Pattern* p) {
     drum(p, 0, 0, .35);  drum(p, 0, 8, .28);
     // Snare: brush on 2 and 4 + ghost
     drum(p, 1, 4, .15);  drum(p, 1,12, .18);
-    drum(p, 1,10, .06);  p->drumProbability[1][10] = 0.5f;
+    drum(p, 1,10, .06);  patSetDrumProb(p, 1, 10, 0.5f);
     // HiHat: ride pattern (8ths) + swing offbeats
     drum(p, 2, 0, .30);  drum(p, 2, 2, .18);  drum(p, 2, 3, .10);
     drum(p, 2, 4, .30);  drum(p, 2, 6, .18);  drum(p, 2, 7, .08);
@@ -454,12 +442,12 @@ static void Song_JazzCallResponse_PatternA(Pattern* p) {
     // Lead/CALL (vibes): rising phrase first half
     note(p, 1, 1, G4, .35, 2);  note(p, 1, 3, A4, .38, 2);
     note(p, 1, 4, B4, .42, 3);  note(p, 1, 6, D5, .45, 4);
-    p->melodyAccent[1][6] = true;
+    patSetNoteAccent(p, SEQ_DRUM_TRACKS + 1, 6, true);
 
     // Chord/RESPONSE (FM): descending answer second half
     note(p, 2, 9, Cn5, .38, 2);  note(p, 2,11, B4, .35, 2);
     note(p, 2,12, A4,  .40, 3);  note(p, 2,14, G4, .42, 4);
-    p->melodyAccent[2][14] = true;
+    patSetNoteAccent(p, SEQ_DRUM_TRACKS + 2, 14, true);
 }
 
 // --- Pattern B: FM calls, vibes respond (roles swapped) ---
@@ -488,7 +476,7 @@ static void Song_JazzCallResponse_PatternB(Pattern* p) {
     // Vibes RESPOND second half (track 1)
     note(p, 1, 9, E5, .35, 2);  note(p, 1,11, D5, .38, 2);
     note(p, 1,12, B4, .40, 3);  note(p, 1,14, G4, .45, 4);
-    p->melodySlide[1][14] = true;
+    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 1, 14, true);
 }
 
 // --- Pattern C: trading twos — fast back and forth ---
@@ -582,7 +570,7 @@ static void Song_House_PatternA(Pattern* p) {
     // Perc: shaker on 16ths with probability
     for (int s = 1; s < 16; s += 2) {
         drumP(p, 3, s, 0.08, 0.5);
-        p->drumProbability[3][s] = 0.4f;
+        patSetDrumProb(p, 3, s, 0.4f);
     }
 
     // Acid bass: syncopated C2 line
@@ -591,30 +579,18 @@ static void Song_House_PatternA(Pattern* p) {
     note(p, 0, 7, Eb2, .52, 2);  note(p, 0, 9, Cn2, .48, 2);
     note(p, 0,11, Cn2, .40, 1);  note(p, 0,12, Cn2, .55, 2);
     note(p, 0,15, G2,  .45, 2);
-    p->melodySlide[0][5]  = true;   p->melodySlide[0][15] = true;
-    p->melodyAccent[0][0] = true;   p->melodyAccent[0][12] = true;
+    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 0, 5, true);   patSetNoteSlide(p, SEQ_DRUM_TRACKS + 0, 15, true);
+    patSetNoteAccent(p, SEQ_DRUM_TRACKS + 0, 0, true);   patSetNoteAccent(p, SEQ_DRUM_TRACKS + 0, 12, true);
 
     // Chord stabs (track 1): offbeat Cm
-    note(p, 1, 2, Cn4, 0.35, 1);
-    p->melodyNotePool[1][2].enabled   = true;
-    p->melodyNotePool[1][2].chordType = CHORD_TRIAD;
-    p->melodyNotePool[1][2].pickMode  = PICK_CYCLE_UP;
+    chord(p, 1, 2, Cn4, CHORD_TRIAD, 0.35, 1);
 
-    note(p, 1, 6, Cn4, 0.30, 1);
-    p->melodyNotePool[1][6].enabled   = true;
-    p->melodyNotePool[1][6].chordType = CHORD_TRIAD;
-    p->melodyNotePool[1][6].pickMode  = PICK_CYCLE_UP;
+    chord(p, 1, 6, Cn4, CHORD_TRIAD, 0.30, 1);
 
-    note(p, 1, 10, Ab3, 0.32, 1);
-    p->melodyNotePool[1][10].enabled   = true;
-    p->melodyNotePool[1][10].chordType = CHORD_TRIAD;
-    p->melodyNotePool[1][10].pickMode  = PICK_CYCLE_UP;
+    chord(p, 1, 10, Ab3, CHORD_TRIAD, 0.32, 1);
 
     // Pad: Cm7 held whole bar
-    note(p, 2, 0, Cn3, 0.15, 16);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][0].pickMode  = PICK_RANDOM;
+    chord(p, 2, 0, Cn3, CHORD_SEVENTH, 0.15, 16);
 }
 
 // --- Pattern B: breakdown (filter closes, drums thin out) ---
@@ -630,13 +606,10 @@ static void Song_House_PatternB(Pattern* p) {
     // Bass: root held long
     note(p, 0, 0, Cn2, .45, 8);
     note(p, 0, 8, Eb2, .40, 8);
-    p->melodySlide[0][8] = true;
+    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 0, 8, true);
 
     // Pad only, quieter
-    note(p, 2, 0, Cn3, 0.12, 16);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_TRIAD;
-    p->melodyNotePool[2][0].pickMode  = PICK_RANDOM;
+    chord(p, 2, 0, Cn3, CHORD_TRIAD, 0.12, 16);
 }
 
 static void Song_House_Load(Pattern patterns[2]) {
@@ -701,8 +674,8 @@ static void Song_DeepHouse_PatternA(Pattern* p) {
     drum(p, 2, 8, .18);  drum(p, 2,10, .10);
     drum(p, 2,12, .10);  drum(p, 2,14, .10);
     // Perc: rim click, sparse
-    drum(p, 3, 3, .12);  p->drumProbability[3][3] = 0.6f;
-    drum(p, 3,11, .10);  p->drumProbability[3][11] = 0.4f;
+    drum(p, 3, 3, .12);  patSetDrumProb(p, 3, 3, 0.6f);
+    drum(p, 3,11, .10);  patSetDrumProb(p, 3, 11, 0.4f);
 
     // Sub bass: F1 and C2
     note(p, 0, 0, F1,  .50, 8);
@@ -711,13 +684,10 @@ static void Song_DeepHouse_PatternA(Pattern* p) {
     // Stab (track 1): sparse FM color
     note(p, 1, 6, Cn4, .25, 2);
     note(p, 1,14, Ab3, .20, 2);
-    p->drumProbability[1][14] = 0.5f;
+    patSetDrumProb(p, 1, 14, 0.5f);
 
     // Pad: Fm7 held whole bar
-    note(p, 2, 0, Fn3, 0.20, 16);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][0].pickMode  = PICK_CYCLE_UP;
+    chord(p, 2, 0, Fn3, CHORD_SEVENTH, 0.20, 16);
 }
 
 // --- Pattern B: even more minimal — pad solo with filter breathing ---
@@ -731,10 +701,7 @@ static void Song_DeepHouse_PatternB(Pattern* p) {
     note(p, 0, 0, F1, .45, 16);   // Sub bass: F1 whole bar
 
     // Pad: Fm7 whole bar
-    note(p, 2, 0, Fn3, 0.22, 16);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][0].pickMode  = PICK_RANDOM;
+    chord(p, 2, 0, Fn3, CHORD_SEVENTH, 0.22, 16);
 }
 
 static void Song_DeepHouse_Load(Pattern patterns[2]) {
@@ -805,20 +772,20 @@ static void Song_Dilla_PatternA(Pattern* p) {
     // Kick: syncopated, never on 1
     drum(p, 0, 1, .60);  drum(p, 0, 7, .50);
     drum(p, 0,10, .55);  drum(p, 0,14, .35);
-    p->drumProbability[0][14] = 0.6f;
+    patSetDrumProb(p, 0, 14, 0.6f);
     // Snare: lazy beats 2+4 + ghost notes
     drum(p, 1, 2, .08);  drum(p, 1, 4, .40);
-    drum(p, 1, 6, .06);  p->drumProbability[1][6] = 0.4f;
-    drum(p, 1, 9, .07);  p->drumProbability[1][9] = 0.5f;
+    drum(p, 1, 6, .06);  patSetDrumProb(p, 1, 6, 0.4f);
+    drum(p, 1, 9, .07);  patSetDrumProb(p, 1, 9, 0.5f);
     drum(p, 1,12, .42);
-    drum(p, 1,15, .05);  p->drumProbability[1][15] = 0.3f;
+    drum(p, 1,15, .05);  patSetDrumProb(p, 1, 15, 0.3f);
     // HiHat: 16ths with velocity variation
     drum(p, 2, 0, .20);  drum(p, 2, 1, .08);  drum(p, 2, 2, .25);  drum(p, 2, 3, .06);
     drum(p, 2, 4, .18);  drum(p, 2, 5, .04);  drum(p, 2, 6, .22);  drum(p, 2, 7, .10);
     drum(p, 2, 8, .20);  drum(p, 2, 9, .06);  drum(p, 2,10, .25);  drum(p, 2,11, .04);
     drum(p, 2,12, .15);  drum(p, 2,13, .08);  drum(p, 2,14, .20);  drum(p, 2,15, .05);
-    p->drumProbability[2][3]  = 0.5f;  p->drumProbability[2][7]  = 0.6f;
-    p->drumProbability[2][11] = 0.5f;  p->drumProbability[2][15] = 0.4f;
+    patSetDrumProb(p, 2, 3, 0.5f);  patSetDrumProb(p, 2, 7, 0.6f);
+    patSetDrumProb(p, 2, 11, 0.5f);  patSetDrumProb(p, 2, 15, 0.4f);
     // Perc: shaker on 8ths
     for (int s = 0; s < 16; s += 2) drumP(p, 3, s, 0.06, 0.4);
 
@@ -829,24 +796,15 @@ static void Song_Dilla_PatternA(Pattern* p) {
     note(p, 0,12, Eb2, .48, 2);
 
     // Keys (track 1): Rhodes stabs on upbeats
-    note(p, 1, 2, Eb4, 0.32, 2);
-    p->melodyNotePool[1][2].enabled   = true;
-    p->melodyNotePool[1][2].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[1][2].pickMode  = PICK_CYCLE_UP;
+    chord(p, 1, 2, Eb4, CHORD_SEVENTH, 0.32, 2);
 
     note(p, 1, 6, Eb4, 0.28, 1);
-    p->melodyAccent[1][6] = true;
+    patSetNoteAccent(p, SEQ_DRUM_TRACKS + 1, 6, true);
 
-    note(p, 1, 11, Ab3, 0.30, 2);
-    p->melodyNotePool[1][11].enabled   = true;
-    p->melodyNotePool[1][11].chordType = CHORD_TRIAD;
-    p->melodyNotePool[1][11].pickMode  = PICK_RANDOM;
+    chord(p, 1, 11, Ab3, CHORD_TRIAD, 0.30, 2);
 
     // Pad: Eb maj7 held whole bar
-    note(p, 2, 0, Eb3, 0.15, 16);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][0].pickMode  = PICK_RANDOM;
+    chord(p, 2, 0, Eb3, CHORD_SEVENTH, 0.15, 16);
 }
 
 // --- Pattern B: the breakdown — kick + pad only, heads still nodding ---
@@ -867,10 +825,7 @@ static void Song_Dilla_PatternB(Pattern* p) {
     note(p, 1, 6, Bb4, 0.25, 4);
 
     // Pad: Cm7 — mood shift
-    note(p, 2, 0, Cn3, 0.18, 16);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][0].pickMode  = PICK_RANDOM;
+    chord(p, 2, 0, Cn3, CHORD_SEVENTH, 0.18, 16);
 }
 
 // --- Pattern C: full groove — bass gets busier, more Rhodes ---
@@ -879,7 +834,7 @@ static void Song_Dilla_PatternC(Pattern* p) {
     initPattern(p);
 
     // Full drums with extra kick ghost
-    drum(p, 0, 1, .60);  drum(p, 0, 5, .30);  p->drumProbability[0][5] = 0.5f;
+    drum(p, 0, 1, .60);  drum(p, 0, 5, .30);  patSetDrumProb(p, 0, 5, 0.5f);
     drum(p, 0, 7, .50);  drum(p, 0,10, .55);   drum(p, 0,13, .35);
     drum(p, 1, 2, .07);  drum(p, 1, 4, .42);   drum(p, 1, 6, .06);
     drum(p, 1,10, .08);  drum(p, 1,12, .45);   drum(p, 1,14, .05);
@@ -888,7 +843,7 @@ static void Song_Dilla_PatternC(Pattern* p) {
     drum(p, 2, 4, .20);  drum(p, 2, 5, .06);  drum(p, 2, 6, .25);  drum(p, 2, 7, .12);
     drum(p, 2, 8, .22);  drum(p, 2, 9, .08);  drum(p, 2,10, .28);  drum(p, 2,11, .05);
     drum(p, 2,12, .18);  drum(p, 2,13, .10);  drum(p, 2,14, .22);  drum(p, 2,15, .06);
-    p->drumProbability[2][3]  = 0.6f;  p->drumProbability[2][11] = 0.5f;
+    patSetDrumProb(p, 2, 3, 0.6f);  patSetDrumProb(p, 2, 11, 0.5f);
 
     // Bass: chromatic run with blue note E natural
     note(p, 0, 0, Eb2, .52, 2);  note(p, 0, 2, E2,  .38, 1);
@@ -898,26 +853,17 @@ static void Song_Dilla_PatternC(Pattern* p) {
     note(p, 0,15, Eb2, .48, 1);
 
     // Rhodes stabs: busier
-    note(p, 1, 2, Eb4, 0.35, 1);
-    p->melodyNotePool[1][2].enabled   = true;
-    p->melodyNotePool[1][2].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[1][2].pickMode  = PICK_CYCLE_UP;
+    chord(p, 1, 2, Eb4, CHORD_SEVENTH, 0.35, 1);
 
     note(p, 1, 5, Bb3, 0.28, 2);
-    p->melodyAccent[1][5] = true;
+    patSetNoteAccent(p, SEQ_DRUM_TRACKS + 1, 5, true);
 
-    note(p, 1, 9, Ab3, 0.32, 2);
-    p->melodyNotePool[1][9].enabled   = true;
-    p->melodyNotePool[1][9].chordType = CHORD_TRIAD;
-    p->melodyNotePool[1][9].pickMode  = PICK_RANDOM;
+    chord(p, 1, 9, Ab3, CHORD_TRIAD, 0.32, 2);
 
     note(p, 1, 13, G4, 0.25, 2);
 
     // Pad: Eb maj7
-    note(p, 2, 0, Eb3, 0.18, 16);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][0].pickMode  = PICK_RANDOM;
+    chord(p, 2, 0, Eb3, CHORD_SEVENTH, 0.18, 16);
 }
 
 static void Song_Dilla_Load(Pattern patterns[3]) {
@@ -985,7 +931,7 @@ static void Song_Atmosphere_PatternA(Pattern* p) {
     drum(p, 2, 8, .08);  drum(p, 2,10, .08);  drum(p, 2,12, .08);  drum(p, 2,14, .08);
     // Perc: distant chime
     drumP(p, 3, 12, 0.06, 0.6);
-    p->drumProbability[3][12] = 0.5f;
+    patSetDrumProb(p, 3, 12, 0.5f);
 
     // Bass: simple D pedal
     note(p, 0, 0, D2, .40, 8);
@@ -996,10 +942,7 @@ static void Song_Atmosphere_PatternA(Pattern* p) {
     note(p, 1,10, A4,  .20, 3);
 
     // Pad: D major triad
-    note(p, 2, 0, D3, 0.12, 16);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_TRIAD;
-    p->melodyNotePool[2][0].pickMode  = PICK_CYCLE_UP;
+    chord(p, 2, 0, D3, CHORD_TRIAD, 0.12, 16);
 }
 
 // --- Pattern B: full bloom — the melody soars ---
@@ -1014,7 +957,7 @@ static void Song_Atmosphere_PatternB(Pattern* p) {
     drum(p, 2, 4, .15);  drum(p, 2, 6, .10);
     drum(p, 2, 8, .15);  drum(p, 2,10, .10);  drum(p, 2,11, .05);
     drum(p, 2,12, .15);  drum(p, 2,14, .10);
-    p->drumProbability[2][3] = 0.4f;  p->drumProbability[2][11] = 0.3f;
+    patSetDrumProb(p, 2, 3, 0.4f);  patSetDrumProb(p, 2, 11, 0.3f);
     // Perc: chimes
     drumP(p, 3, 4, 0.05, 0.7);  drumP(p, 3, 12, 0.06, 0.5);
 
@@ -1028,15 +971,9 @@ static void Song_Atmosphere_PatternB(Pattern* p) {
     note(p, 1,12, B4, .28, 2);  note(p, 1,14, D5, .32, 4);
 
     // Pad: Dmaj7 → A
-    note(p, 2, 0, D3, 0.20, 8);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][0].pickMode  = PICK_CYCLE_UP;
+    chord(p, 2, 0, D3, CHORD_SEVENTH, 0.20, 8);
 
-    note(p, 2, 8, A3, 0.22, 8);
-    p->melodyNotePool[2][8].enabled   = true;
-    p->melodyNotePool[2][8].chordType = CHORD_TRIAD;
-    p->melodyNotePool[2][8].pickMode  = PICK_CYCLE_UP;
+    chord(p, 2, 8, A3, CHORD_TRIAD, 0.22, 8);
 }
 
 // --- Pattern C: breathing — spacious, just pad and ornaments ---
@@ -1053,13 +990,10 @@ static void Song_Atmosphere_PatternC(Pattern* p) {
     // Lead: question and answer
     note(p, 1, 4, B4, .18, 6);
     note(p, 1,12, D5, .20, 4);
-    p->melodySlide[1][12] = true;
+    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 1, 12, true);
 
     // Pad: Dmaj7 held whole bar
-    note(p, 2, 0, D3, 0.25, 16);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][0].pickMode  = PICK_RANDOM;
+    chord(p, 2, 0, D3, CHORD_SEVENTH, 0.25, 16);
 }
 
 static void Song_Atmosphere_Load(Pattern patterns[3]) {
@@ -1138,15 +1072,9 @@ static void Song_MrLucky_PatternA(Pattern* p) {
     note(p, 1,10, Cn5, .25, 3);
 
     // Pad: Am7 → Dm7
-    note(p, 2, 0, A3, 0.20, 8);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][0].pickMode  = PICK_CYCLE_UP;
+    chord(p, 2, 0, A3, CHORD_SEVENTH, 0.20, 8);
 
-    note(p, 2, 8, D3, 0.18, 8);
-    p->melodyNotePool[2][8].enabled   = true;
-    p->melodyNotePool[2][8].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][8].pickMode  = PICK_CYCLE_UP;
+    chord(p, 2, 8, D3, CHORD_SEVENTH, 0.18, 8);
 }
 
 // --- Pattern B: G7 → Cmaj7 (the lift, brightening) ---
@@ -1170,15 +1098,9 @@ static void Song_MrLucky_PatternB(Pattern* p) {
     note(p, 1,10, G4, .30, 4);
 
     // Pad: G7 → Cmaj7
-    note(p, 2, 0, G3, 0.18, 8);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][0].pickMode  = PICK_CYCLE_UP;
+    chord(p, 2, 0, G3, CHORD_SEVENTH, 0.18, 8);
 
-    note(p, 2, 8, Cn3, 0.22, 8);
-    p->melodyNotePool[2][8].enabled   = true;
-    p->melodyNotePool[2][8].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][8].pickMode  = PICK_CYCLE_UP;
+    chord(p, 2, 8, Cn3, CHORD_SEVENTH, 0.22, 8);
 }
 
 // --- Pattern C: Fmaj7 → E7 (tension, wants to resolve back to Am) ---
@@ -1200,18 +1122,12 @@ static void Song_MrLucky_PatternC(Pattern* p) {
     // Vibes: descending A4→G4→F4→E4
     note(p, 1, 0, A4, .28, 3);  note(p, 1, 4, G4, .25, 3);
     note(p, 1, 9, F4, .27, 3);  note(p, 1,13, E4, .30, 3);
-    p->melodySlide[1][13] = true;
+    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 1, 13, true);
 
     // Pad: Fmaj7 → E7
-    note(p, 2, 0, F3, 0.20, 8);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][0].pickMode  = PICK_CYCLE_UP;
+    chord(p, 2, 0, F3, CHORD_SEVENTH, 0.20, 8);
 
-    note(p, 2, 8, E3, 0.22, 8);
-    p->melodyNotePool[2][8].enabled   = true;
-    p->melodyNotePool[2][8].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][8].pickMode  = PICK_CYCLE_UP;
+    chord(p, 2, 8, E3, CHORD_SEVENTH, 0.22, 8);
 }
 
 static void Song_MrLucky_Load(Pattern patterns[3]) {
@@ -1275,8 +1191,8 @@ static void Song_HappyBirthday_ConfigureVoices(void) {
 // Chords: Fmaj (bar 1) | C7 (bar 2)
 static void Song_HappyBirthday_PatternA(Pattern* p) {
     initPattern(p);
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) p->drumTrackLength[t] = 12;
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) p->melodyTrackLength[t] = 12;
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, t, 12);
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, SEQ_DRUM_TRACKS + t, 12);
 
     // Drums: jazz waltz brushes
     drum(p, 0, 0, .45);  drum(p, 0, 6, .40);
@@ -1293,15 +1209,9 @@ static void Song_HappyBirthday_PatternA(Pattern* p) {
     note(p, 1,10, Cn4, .38, 1);  note(p, 1,11, Cn4, .35, 1);
 
     // Chords: F major → C7
-    note(p, 2, 0, F3, .28, 6);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_TRIAD;
-    p->melodyNotePool[2][0].pickMode  = PICK_ALL;
+    chord(p, 2, 0, F3, CHORD_TRIAD, .28, 6);
 
-    note(p, 2, 6, Cn3, .26, 6);
-    p->melodyNotePool[2][6].enabled   = true;
-    p->melodyNotePool[2][6].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][6].pickMode  = PICK_ALL;
+    chord(p, 2, 6, Cn3, CHORD_SEVENTH, .26, 6);
 }
 
 // Pattern B: bars 3-4 — "Happy birthday to you" (second time, resolves to F)
@@ -1310,15 +1220,15 @@ static void Song_HappyBirthday_PatternA(Pattern* p) {
 // Chords: C7 (bar 1) | F (bar 2)
 static void Song_HappyBirthday_PatternB(Pattern* p) {
     initPattern(p);
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) p->drumTrackLength[t] = 12;
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) p->melodyTrackLength[t] = 12;
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, t, 12);
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, SEQ_DRUM_TRACKS + t, 12);
 
     // Drums: waltz + rimshot fill
     drum(p, 0, 0, .45);  drum(p, 0, 6, .40);
     drum(p, 1, 4, .15);  drum(p, 1,10, .15);
     drum(p, 2, 0, .30);  drum(p, 2, 2, .18);  drum(p, 2, 4, .18);
     drum(p, 2, 6, .30);  drum(p, 2, 8, .18);  drum(p, 2,10, .18);
-    drum(p, 3, 9, .10);  p->drumProbability[3][9] = 0.5f;
+    drum(p, 3, 9, .10);  patSetDrumProb(p, 3, 9, 0.5f);
 
     // Bass: G2→C2 | F2
     note(p, 0, 0, G2,  .48, 4);  note(p, 0, 4, Cn2, .45, 2);
@@ -1330,15 +1240,9 @@ static void Song_HappyBirthday_PatternB(Pattern* p) {
     note(p, 1,10, Cn4, .38, 1);  note(p, 1,11, Cn4, .35, 1);
 
     // Chords: C7 → F
-    note(p, 2, 0, Cn3, .26, 6);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][0].pickMode  = PICK_ALL;
+    chord(p, 2, 0, Cn3, CHORD_SEVENTH, .26, 6);
 
-    note(p, 2, 6, F3, .28, 6);
-    p->melodyNotePool[2][6].enabled   = true;
-    p->melodyNotePool[2][6].chordType = CHORD_TRIAD;
-    p->melodyNotePool[2][6].pickMode  = PICK_ALL;
+    chord(p, 2, 6, F3, CHORD_TRIAD, .28, 6);
 }
 
 // Pattern C: bars 5-6 — "Happy birthday dear ___" (climax!)
@@ -1347,8 +1251,8 @@ static void Song_HappyBirthday_PatternB(Pattern* p) {
 // Chords: F7 (bar 1) | Bb (bar 2)
 static void Song_HappyBirthday_PatternC(Pattern* p) {
     initPattern(p);
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) p->drumTrackLength[t] = 12;
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) p->melodyTrackLength[t] = 12;
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, t, 12);
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, SEQ_DRUM_TRACKS + t, 12);
 
     // Drums: more energy for climax + offbeat hats
     drum(p, 0, 0, .50);  drum(p, 0, 6, .45);
@@ -1368,15 +1272,9 @@ static void Song_HappyBirthday_PatternC(Pattern* p) {
     note(p, 1,10, Bb4, .42, 1);  note(p, 1,11, Bb4, .40, 1);
 
     // Chords: F7 → Bb
-    note(p, 2, 0, F3, .30, 6);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][0].pickMode  = PICK_ALL;
+    chord(p, 2, 0, F3, CHORD_SEVENTH, .30, 6);
 
-    note(p, 2, 6, Bb3, .28, 6);
-    p->melodyNotePool[2][6].enabled   = true;
-    p->melodyNotePool[2][6].chordType = CHORD_TRIAD;
-    p->melodyNotePool[2][6].pickMode  = PICK_ALL;
+    chord(p, 2, 6, Bb3, CHORD_TRIAD, .28, 6);
 }
 
 // Pattern D: bars 7-8 — "Happy birthday to you" (final resolution)
@@ -1385,8 +1283,8 @@ static void Song_HappyBirthday_PatternC(Pattern* p) {
 // Chords: C7 (bar 1) | F (bar 2, home)
 static void Song_HappyBirthday_PatternD(Pattern* p) {
     initPattern(p);
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) p->drumTrackLength[t] = 12;
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) p->melodyTrackLength[t] = 12;
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, t, 12);
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, SEQ_DRUM_TRACKS + t, 12);
 
     // Drums: gentle, resolving
     drum(p, 0, 0, .45);  drum(p, 0, 6, .35);
@@ -1401,18 +1299,12 @@ static void Song_HappyBirthday_PatternD(Pattern* p) {
     // Melody: A4 F4 G4 | F4 (resolution)
     note(p, 1, 0, A4, .48, 2);  note(p, 1, 2, F4, .45, 2);
     note(p, 1, 4, G4, .46, 2);  note(p, 1, 6, F4, .50, 6);
-    p->melodySlide[1][6] = true;
+    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 1, 6, true);
 
     // Chords: C7 → F (V-I home)
-    note(p, 2, 0, Cn3, .26, 6);
-    p->melodyNotePool[2][0].enabled   = true;
-    p->melodyNotePool[2][0].chordType = CHORD_SEVENTH;
-    p->melodyNotePool[2][0].pickMode  = PICK_ALL;
+    chord(p, 2, 0, Cn3, CHORD_SEVENTH, .26, 6);
 
-    note(p, 2, 6, F3, .30, 6);
-    p->melodyNotePool[2][6].enabled   = true;
-    p->melodyNotePool[2][6].chordType = CHORD_TRIAD;
-    p->melodyNotePool[2][6].pickMode  = PICK_ALL;
+    chord(p, 2, 6, F3, CHORD_TRIAD, .30, 6);
 }
 
 static void Song_HappyBirthday_Load(Pattern patterns[4]) {
@@ -1444,19 +1336,8 @@ static void Song_MonksMood_ConfigureVoices(void) {
 // Helper: set a custom chord voicing on chord track (track 2)
 static void setCustomChord(Pattern* p, int step, int root, float vel, int gate,
                            int sustain, int n0, int n1, int n2, int n3) {
-    p->melodyNote[2][step]     = root;
-    p->melodyVelocity[2][step] = vel;
-    p->melodyGate[2][step]     = gate;
-    p->melodySustain[2][step]  = sustain;
-    p->melodyNotePool[2][step].enabled        = true;
-    p->melodyNotePool[2][step].chordType      = CHORD_CUSTOM;
-    p->melodyNotePool[2][step].pickMode       = PICK_ALL;
-    int count = 0;
-    if (n0 >= 0) p->melodyNotePool[2][step].customNotes[count++] = n0;
-    if (n1 >= 0) p->melodyNotePool[2][step].customNotes[count++] = n1;
-    if (n2 >= 0) p->melodyNotePool[2][step].customNotes[count++] = n2;
-    if (n3 >= 0) p->melodyNotePool[2][step].customNotes[count++] = n3;
-    p->melodyNotePool[2][step].customNoteCount = count;
+    chordCustom(p, 2, step, vel, gate, n0, n1, n2, n3);
+    patSetNoteSustain(p, SEQ_DRUM_TRACKS + 2, step, sustain);
 }
 
 // Standard jazz drum pattern: ride on beats + upbeats, kick on offbeats
@@ -1792,7 +1673,7 @@ static void Song_Summertime_Pattern4(Pattern* p) {
 
     // Melody: blue note grace → E5, then C5
     noteN(p, 1, 10, Eb5, .79, 1, 12);
-    p->melodySlide[1][10] = true;
+    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 1, 10, true);
     noteN(p, 1, 11, E5,  .91, 2, 2);
     noteN(p, 1, 14, Cn5, .73, 2, -9);
 
@@ -1904,23 +1785,20 @@ static void Song_Summertime_Load(Pattern patterns[8]) {
 
 // Helper: set track lengths to 32 for 32nd note resolution
 static void muleSetTrackLengths(Pattern* p) {
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) p->drumTrackLength[t] = 32;
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) p->melodyTrackLength[t] = 32;
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, t, 32);
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, SEQ_DRUM_TRACKS + t, 32);
 }
 
 // Drums at 32nd resolution: hihat every 2 steps (=16th), snare/kick alternate
 static void muleDrums(Pattern* p) {
     for (int s = 0; s < 32; s += 2) {
         // Hihat on every 16th note (every 2 steps at 32nd resolution)
-        p->drumSteps[2][s] = true;
-        p->drumVelocity[2][s] = 0.4f;
+        patSetDrum(p, 2, s, 0.4f, 0.0f);
         // Snare on even 16ths, kick on odd 16ths
         if ((s / 2) % 2 == 0) {
-            p->drumSteps[1][s] = true;
-            p->drumVelocity[1][s] = 0.4f;
+            patSetDrum(p, 1, s, 0.4f, 0.0f);
         } else {
-            p->drumSteps[0][s] = true;
-            p->drumVelocity[0][s] = 0.4f;
+            patSetDrum(p, 0, s, 0.4f, 0.0f);
         }
     }
 }
@@ -1933,17 +1811,13 @@ static void muleBass(Pattern* p) {
     };
     for (int i = 0; i < 16; i++) {
         int s = i * 2;  // Every other step
-        p->melodyNote[0][s] = bassNotes[i];
-        p->melodyGate[0][s] = 1;
-        p->melodyVelocity[0][s] = 0.4f;
+        patSetNote(p, SEQ_DRUM_TRACKS + 0, s, bassNotes[i], 0.4f, 1);
     }
 }
 
 // Helper: set a melody note on track 1
-static void muleNote(Pattern* p, int step, int note, int gate) {
-    p->melodyNote[1][step] = note;
-    p->melodyGate[1][step] = gate;
-    p->melodyVelocity[1][step] = 0.4f;
+static void muleNote(Pattern* p, int step, int n, int gate) {
+    patSetNote(p, SEQ_DRUM_TRACKS + 1, step, n, 0.4f, gate);
 }
 
 // Melody phrase A (bars 4 and 6): full 32nd note resolution
@@ -2120,23 +1994,14 @@ static void Song_Gymnopedie_ConfigureVoices(void) {
 
 // Helper: set up Gymnopédie waltz track lengths (12 = 2 bars of 3/4)
 static void satieTrackLengths(Pattern* p) {
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) p->drumTrackLength[t] = 12;
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) p->melodyTrackLength[t] = 12;
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, t, 12);
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, SEQ_DRUM_TRACKS + t, 12);
 }
 
 // Helper: custom chord on track 2 (3-note voicing, Satie uses triads)
 static void satieChord(Pattern* p, int step, int root, int n0, int n1, int n2) {
-    p->melodyNote[2][step]     = root;
-    p->melodyVelocity[2][step] = 0.22f;
-    p->melodyGate[2][step]     = 4;    // 2 beats at 8th-note resolution
-    p->melodySustain[2][step]  = 2;
-    p->melodyNotePool[2][step].enabled        = true;
-    p->melodyNotePool[2][step].chordType      = CHORD_CUSTOM;
-    p->melodyNotePool[2][step].pickMode       = PICK_ALL;
-    p->melodyNotePool[2][step].customNotes[0] = n0;
-    p->melodyNotePool[2][step].customNotes[1] = n1;
-    p->melodyNotePool[2][step].customNotes[2] = n2;
-    p->melodyNotePool[2][step].customNoteCount = 3;
+    chordCustom(p, 2, step, 0.22f, 4, n0, n1, n2, -1);
+    patSetNoteSustain(p, SEQ_DRUM_TRACKS + 2, step, 2);
 }
 
 // Pattern 0 (bars 0-1): Intro — chords only, no melody
@@ -2307,23 +2172,20 @@ static void Song_Gymnopedie_Load(Pattern patterns[8]) {
 // ============================================================================
 
 static void mule2SetTrackLengths(Pattern* p) {
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) p->drumTrackLength[t] = 32;
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) p->melodyTrackLength[t] = 32;
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, t, 32);
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, SEQ_DRUM_TRACKS + t, 32);
 }
 
 // Drums: snare+HH on even steps (0,4,8..), kick+HH on odd steps (2,6,10..)
 static void mule2Drums(Pattern* p) {
     for (int s = 0; s < 32; s += 2) {
         // Hihat on every 16th note
-        p->drumSteps[2][s] = true;
-        p->drumVelocity[2][s] = 0.4f;
+        patSetDrum(p, 2, s, 0.4f, 0.0f);
         // Snare on downbeats (even 16ths), kick on upbeats (odd 16ths)
         if ((s / 2) % 2 == 0) {
-            p->drumSteps[1][s] = true;   // snare
-            p->drumVelocity[1][s] = 0.4f;
+            patSetDrum(p, 1, s, 0.4f, 0.0f);
         } else {
-            p->drumSteps[0][s] = true;   // kick
-            p->drumVelocity[0][s] = 0.4f;
+            patSetDrum(p, 0, s, 0.4f, 0.0f);
         }
     }
 }
@@ -2337,17 +2199,13 @@ static void mule2Bass(Pattern* p) {
     };
     for (int i = 0; i < 16; i++) {
         int s = i * 2;
-        p->melodyNote[0][s] = bassNotes[i];
-        p->melodyGate[0][s] = 1;
-        p->melodyVelocity[0][s] = 0.4f;
+        patSetNote(p, SEQ_DRUM_TRACKS + 0, s, bassNotes[i], 0.4f, 1);
     }
 }
 
 // Helper: set melody note on track 1 with nudge for sub-step timing
 static void mule2Note(Pattern* p, int step, int n, int gate) {
-    p->melodyNote[1][step] = n;
-    p->melodyGate[1][step] = gate;
-    p->melodyVelocity[1][step] = 0.4f;
+    patSetNote(p, SEQ_DRUM_TRACKS + 1, step, n, 0.4f, gate);
 }
 
 // Helper: set melody note with half-step nudge (for sub-32nd timing in runs)

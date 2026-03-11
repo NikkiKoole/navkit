@@ -62,7 +62,7 @@ typedef struct {
     // Mix
     float sfMasterVolume;
     float sfDrumVolume;
-    float sfTrackVolume[SEQ_TOTAL_TRACKS];
+    float sfTrackVolume[SEQ_V2_MAX_TRACKS];
 
     // Master effects
     Effects sfEffects;
@@ -104,7 +104,7 @@ static void songFileDataInit(SongFileData *d) {
     d->sfMasterVolume = 0.25f;
     d->sfDrumVolume = 0.6f;
     d->patternCount = SEQ_NUM_PATTERNS;
-    for (int i = 0; i < SEQ_TOTAL_TRACKS; i++) d->sfTrackVolume[i] = 1.0f;
+    for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) d->sfTrackVolume[i] = 1.0f;
     d->sfDrumSounds[0] = DRUM_KICK;
     d->sfDrumSounds[1] = DRUM_SNARE;
     d->sfDrumSounds[2] = DRUM_CLOSED_HH;
@@ -434,15 +434,15 @@ static void _sf_writePattern(FILE *f, int idx, const Pattern *p) {
 
     // Track lengths
     fprintf(f, "drumTrackLength =");
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) fprintf(f, " %d", p->drumTrackLength[t]);
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) fprintf(f, " %d", p->trackLength[t]);
     fprintf(f, "\n");
     fprintf(f, "melodyTrackLength =");
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) fprintf(f, " %d", p->melodyTrackLength[t]);
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) fprintf(f, " %d", p->trackLength[SEQ_DRUM_TRACKS + t]);
     fprintf(f, "\n");
 
     // Drum events — only write active steps
     for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
-        for (int s = 0; s < p->drumTrackLength[t]; s++) {
+        for (int s = 0; s < p->trackLength[t]; s++) {
             if (!patGetDrum(p, t, s)) continue;
             fprintf(f, "d track=%d step=%d vel=%.3g", t, s, (double)patGetDrumVel(p, t, s));
             float dp = patGetDrumPitch(p, t, s);
@@ -460,41 +460,25 @@ static void _sf_writePattern(FILE *f, int idx, const Pattern *p) {
 
     // Melody events — only write steps with notes
     for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
-        for (int s = 0; s < p->melodyTrackLength[t]; s++) {
-            int mn = patGetNote(p, t, s);
+        for (int s = 0; s < p->trackLength[SEQ_DRUM_TRACKS + t]; s++) {
+            int mn = patGetNote(p, SEQ_DRUM_TRACKS + t, s);
             if (mn == SEQ_NOTE_OFF) continue;
             char noteName[8];
             _sf_midiToName(mn, noteName, sizeof(noteName));
             fprintf(f, "m track=%d step=%d note=%s vel=%.3g gate=%d",
-                    t, s, noteName, (double)patGetNoteVel(p, t, s), patGetNoteGate(p, t, s));
-            if (patGetNoteSlide(p, t, s)) fprintf(f, " slide");
-            if (patGetNoteAccent(p, t, s)) fprintf(f, " accent");
-            int mSus = patGetNoteSustain(p, t, s);
+                    t, s, noteName, (double)patGetNoteVel(p, SEQ_DRUM_TRACKS + t, s), patGetNoteGate(p, SEQ_DRUM_TRACKS + t, s));
+            if (patGetNoteSlide(p, SEQ_DRUM_TRACKS + t, s)) fprintf(f, " slide");
+            if (patGetNoteAccent(p, SEQ_DRUM_TRACKS + t, s)) fprintf(f, " accent");
+            int mSus = patGetNoteSustain(p, SEQ_DRUM_TRACKS + t, s);
             if (mSus > 0) fprintf(f, " sustain=%d", mSus);
-            float mProb = patGetNoteProb(p, t, s);
+            float mProb = patGetNoteProb(p, SEQ_DRUM_TRACKS + t, s);
             if (mProb > 0.0f && mProb < 1.0f)
                 fprintf(f, " prob=%.3g", (double)mProb);
-            int mCond = patGetNoteCond(p, t, s);
+            int mCond = patGetNoteCond(p, SEQ_DRUM_TRACKS + t, s);
             if (mCond != COND_ALWAYS)
                 fprintf(f, " cond=%s", _sf_conditionNames[mCond]);
 
-            // Note pool
-            const NotePool *np = &p->melodyNotePool[t][s];
-            if (np->enabled) {
-                if (np->chordType >= 0 && np->chordType < _sf_chordTypeCount)
-                    fprintf(f, " chord=%s", _sf_chordTypeNames[np->chordType]);
-                if (np->pickMode >= 0 && np->pickMode < _sf_pickModeCount)
-                    fprintf(f, " pick=%s", _sf_pickModeNames[np->pickMode]);
-                if (np->chordType == CHORD_CUSTOM && np->customNoteCount > 0) {
-                    fprintf(f, " notes=");
-                    for (int n = 0; n < np->customNoteCount; n++) {
-                        if (n > 0) fprintf(f, ",");
-                        char nn[8];
-                        _sf_midiToName(np->customNotes[n], nn, sizeof(nn));
-                        fprintf(f, "%s", nn);
-                    }
-                }
-            }
+            // Note pool fields ignored on save (v2 uses multi-note steps)
             fprintf(f, "\n");
         }
     }
@@ -602,7 +586,7 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
     fprintf(f, "\n[mix]\n");
     _sf_writeFloat(f, "masterVolume", d->sfMasterVolume);
     _sf_writeFloat(f, "drumVolume", d->sfDrumVolume);
-    for (int i = 0; i < SEQ_TOTAL_TRACKS; i++) {
+    for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) {
         char key[16];
         snprintf(key, sizeof(key), "track%d", i);
         _sf_writeFloat(f, key, d->sfTrackVolume[i]);
@@ -976,9 +960,9 @@ static void _sf_parseMelodyEvent(const char *line, Pattern *p) {
     float vel = 0.8f, prob = 1.0f;
     int cond = COND_ALWAYS;
     bool slide = false, accent = false;
-    bool hasPool = false;
-    int chordType = CHORD_SINGLE, pickMode = PICK_CYCLE_UP;
-    int customNotes[NOTE_POOL_MAX_NOTES] = {0};
+    bool hasChord = false;
+    int chordType = CHORD_SINGLE;
+    int customNotes[8] = {0};
     int customNoteCount = 0;
 
     char key[32], val[64];
@@ -996,23 +980,24 @@ static void _sf_parseMelodyEvent(const char *line, Pattern *p) {
                 if (idx >= 0) cond = idx;
             }
             else if (strcmp(key, "chord") == 0) {
-                hasPool = true;
+                // Legacy NotePool chord → convert to v2 multi-note step
+                hasChord = true;
                 int idx = _sf_lookupName(val, _sf_chordTypeNames, _sf_chordTypeCount);
                 if (idx >= 0) chordType = idx;
             }
             else if (strcmp(key, "pick") == 0) {
-                hasPool = true;
-                int idx = _sf_lookupName(val, _sf_pickModeNames, _sf_pickModeCount);
-                if (idx >= 0) pickMode = idx;
+                // Legacy NotePool pick mode — ignored in v2 (all notes play)
+                hasChord = true;
             }
             else if (strcmp(key, "notes") == 0) {
-                // Parse comma-separated note names: "C4,E4,G4"
-                hasPool = true;
+                // Legacy custom chord notes: "C4,E4,G4" → v2 multi-note step
+                hasChord = true;
+                chordType = CHORD_CUSTOM;
                 char notesBuf[128];
                 strncpy(notesBuf, val, 127);
                 notesBuf[127] = '\0';
                 char *tok = strtok(notesBuf, ",");
-                while (tok && customNoteCount < NOTE_POOL_MAX_NOTES) {
+                while (tok && customNoteCount < 8) {
                     customNotes[customNoteCount++] = _sf_nameToMidi(tok);
                     tok = strtok(NULL, ",");
                 }
@@ -1025,21 +1010,23 @@ static void _sf_parseMelodyEvent(const char *line, Pattern *p) {
     }
 
     if (track >= 0 && track < SEQ_MELODY_TRACKS && step >= 0 && step < SEQ_MAX_STEPS) {
-        patSetNote(p, track, step, _sf_nameToMidi(noteName), vel, gate);
-        patSetNoteFlags(p, track, step, slide, accent);
-        patSetNoteSustain(p, track, step, sustain);
-        patSetNoteProb(p, track, step, prob);
-        patSetNoteCond(p, track, step, cond);
-
-        if (hasPool) {
-            NotePool *np = &p->melodyNotePool[track][step];
-            np->enabled = true;
-            np->chordType = chordType;
-            np->pickMode = pickMode;
-            np->customNoteCount = customNoteCount;
-            for (int j = 0; j < customNoteCount; j++)
-                np->customNotes[j] = customNotes[j];
+        if (hasChord && chordType == CHORD_CUSTOM && customNoteCount > 0) {
+            // Custom chord → v2 multi-note step
+            patSetChordCustom(p, SEQ_DRUM_TRACKS + track, step, vel, gate,
+                customNoteCount > 0 ? customNotes[0] : -1,
+                customNoteCount > 1 ? customNotes[1] : -1,
+                customNoteCount > 2 ? customNotes[2] : -1,
+                customNoteCount > 3 ? customNotes[3] : -1);
+        } else if (hasChord) {
+            // Standard chord → v2 multi-note step via buildChordNotes
+            patSetChord(p, SEQ_DRUM_TRACKS + track, step, _sf_nameToMidi(noteName), (ChordType)chordType, vel, gate);
+        } else {
+            patSetNote(p, SEQ_DRUM_TRACKS + track, step, _sf_nameToMidi(noteName), vel, gate);
         }
+        patSetNoteFlags(p, SEQ_DRUM_TRACKS + track, step, slide, accent);
+        patSetNoteSustain(p, SEQ_DRUM_TRACKS + track, step, sustain);
+        patSetNoteProb(p, SEQ_DRUM_TRACKS + track, step, prob);
+        patSetNoteCond(p, SEQ_DRUM_TRACKS + track, step, cond);
     }
 }
 
@@ -1278,7 +1265,7 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
             else if (strcmp(key, "drumVolume") == 0) d->sfDrumVolume = _sf_parseFloat(val);
             else if (strncmp(key, "track", 5) == 0 && isdigit(key[5])) {
                 int t = key[5] - '0';
-                if (t >= 0 && t < SEQ_TOTAL_TRACKS) d->sfTrackVolume[t] = _sf_parseFloat(val);
+                if (t >= 0 && t < SEQ_V2_MAX_TRACKS) d->sfTrackVolume[t] = _sf_parseFloat(val);
             }
             break;
 
@@ -1403,10 +1390,13 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
             if (subIndex >= 0 && subIndex < SEQ_NUM_PATTERNS) {
                 Pattern *p = &d->patterns[subIndex];
                 if (strcmp(key, "drumTrackLength") == 0) {
-                    _sf_parseIntList(val, p->drumTrackLength, SEQ_DRUM_TRACKS);
+                    _sf_parseIntList(val, p->trackLength, SEQ_DRUM_TRACKS);
                 }
                 else if (strcmp(key, "melodyTrackLength") == 0) {
-                    _sf_parseIntList(val, p->melodyTrackLength, SEQ_MELODY_TRACKS);
+                    int melLengths[SEQ_MELODY_TRACKS];
+                    _sf_parseIntList(val, melLengths, SEQ_MELODY_TRACKS);
+                    for (int _t = 0; _t < SEQ_MELODY_TRACKS; _t++)
+                        p->trackLength[SEQ_DRUM_TRACKS + _t] = melLengths[_t];
                 }
             }
             break;

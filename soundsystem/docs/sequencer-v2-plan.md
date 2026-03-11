@@ -319,58 +319,25 @@ Key differences from v1:
 
 ### Phase 3: Migrate Callers — DONE
 
-All callers migrated to read/write v2 data (except songs.h, blocked on NotePool).
+All callers migrated to use pattern helpers (v2-only). No more direct v1 array access anywhere.
+- songs.h still DEFERRED (~130+ refs, mostly NotePool — blocked on pipeline work)
+- UI widgets (DraggableFloat etc.) now use local variables + patGet/patSet instead of v1 field pointers
 
-**Getters switched to v2** (13 functions): `patGetDrum`, `patGetDrumVel`, `patGetDrumPitch`, `patGetDrumProb`, `patGetDrumCond`, `patGetNote`, `patGetNoteVel`, `patGetNoteGate`, `patGetNoteSlide`, `patGetNoteAccent`, `patGetNoteSustain`, `patGetNoteProb`, `patGetNoteCond`.
+### Phase 4: Cleanup — COMPLETE ✅
 
-**New single-field setters** (6 functions): `patSetNoteGate`, `patSetNotePitch`, `patSetNoteVel`, `patSetDrumVel`, `patSetDrumPitch` — dual-write v1+v2.
-
-| File | What changed |
-|---|---|
-| daw.c | Direct writes → setters, pointer widget bindings → v2 writeback, playhead/progress → trackStep/trackLength (v2), dawStopSequencer resets v2 |
-| demo.c | Drum drag → patSetDrumVel/Pitch, melody grid → patSetNotePitch/patSetNote, inspector → setter writebacks, playhead → trackStep, track lengths → trackLength (v2) |
-| test_daw_file.c | syncPatternV1ToV2 before save, wider float epsilon for v2 quantization |
-| test_soundsystem.c | VEL_EPSILON for velocity round-trip, skip velocity checks on empty drum steps |
-| song_file.h / daw_file.h | Already used helpers (now reading v2 via getters) |
-| songs.h (~217 refs) | DEFERRED — blocked on NotePool removal (Phase 4) |
-
-**Remaining v1 pointer bindings** (UI widgets that take `float*`/`int*`/`bool*` to v1 fields): 14 in daw.c + 4 in demo.c. All have v2 writeback code — v1 fields used as temp storage for widget editing, synced to v2 after each frame.
-
-Previously:
-
-**sequencer.h helpers** — Update seqPreparePLocks, seqGetPLock, seqSetPLock to use direct track index (no offset). Remove PLOCK_TIME_NUDGE and PLOCK_GATE_NUDGE from PLockParam.
-
-**daw.c** (~85 refs):
-- Step grid drawing: read from `pat->steps[track][s]` instead of `drumSteps`/`melodyNote`
-- Piano roll: iterate `step->notes[]` for display and hit-testing. Click on occupied step at new pitch → `stepAddNote()`. Right-click note → `stepRemoveNote()`.
-- Step inspector: show note list for selected step, each note editable
-- Track setup: `seq.trackType[t]` instead of checking if `t < SEQ_DRUM_TRACKS`
-
-**song_file.h** (~20 refs):
-- Serialize: write `n track=T step=S note=C4 vel=0.8 gate=2 nudge=3` per note
-- Parse: `stepAddNote()` per `n` event
-- Old `d` (drum) and `m` (melody) event types → both become `n`
-- Backward compat: parse old `d`/`m` events, convert to unified Step
-
-**daw_file.h** (~44 refs):
-- Binary format: write Step arrays directly
-- Version bump, migration reads old format into new
-
-**demo.c** (~43 refs):
-- Track setup: replace `setDrumCallback(0, ...)` / `setMelodyCallback(0, ...)` with unified `setNoteOnCallback(track, ...)`
-
-**sound_synth_bridge.c + songs.h** (~51 refs):
-- Bridge uses old drum/melody setup. Update to unified callbacks.
-- songs.h hand-coded songs: update to new pattern format or migrate to .song files (this is content work, not engine work)
-
-### Phase 4: Cleanup
-
-1. Remove compat macros from Phase 0
-2. Delete NotePool system (ChordType, PickMode, NotePool struct, all pool helpers)
-3. Delete old DrumTriggerFunc, MelodyTriggerFunc, MelodyChordTriggerFunc typedefs
-4. Delete SEQ_DRUM_TRACKS, SEQ_MELODY_TRACKS constants (replace with runtime trackCount)
-5. Rename `DrumSequencer` → `Sequencer`
-6. Run full test/demo/game to verify
+1. ✅ Remove compat macros from Phase 0
+2. ✅ Delete NotePool system (ChordType, PickMode, NotePool struct, all pool helpers)
+3. ✅ Remove v1→v2 state mirroring from tick loop (drumStep[], melodyStep[], etc.)
+4. ✅ Remove v1 playback state arrays from DrumSequencer (drumStep, drumTick, drumTriggered, melodyStep, melodyGateRemaining, melodyCurrentNote, melodySustainRemaining, drumStepPlayCount, melodyStepPlayCount)
+5. ✅ Remove dual-write v1 code from all pattern helpers (patSetDrum, patSetNote, etc. now v2-only)
+6. ✅ Remove all 15 v1 data arrays from Pattern struct (drumSteps, drumVelocity, drumPitch, drumProbability, drumCondition, drumTrackLength, melodyNote, melodyVelocity, melodyGate, melodyProbability, melodyCondition, melodyTrackLength, melodySlide, melodyAccent, melodySustain)
+7. ✅ Delete v1→v2 conversion functions (patternV1DrumToV2, patternV1MelodyToV2, patternV1ToV2, syncPatternV1ToV2) and their tests
+8. ✅ Unified callback system: TrackNoteOnFunc/TrackNoteOffFunc replace DrumTriggerFunc/MelodyTriggerFunc/MelodyReleaseFunc in tick loop
+9. ✅ Convert melody pattern helpers from relative track indices to absolute track indices
+10. ✅ Remove SEQ_TOTAL_TRACKS from all structural uses (→ SEQ_V2_MAX_TRACKS)
+11. ✅ Remove legacy callback arrays (drumTriggers, melodyTriggers, melodyRelease, drumTrackNames, melodyTrackNames) from struct
+12. ✅ Rename DrumSequencer → Sequencer
+13. ✅ All tests passing
 
 ## Migration Strategy for .daw / .song Files
 
@@ -456,37 +423,95 @@ All 2185 test assertions pass.
 ### Remaining prep
 1. **songs.h** (~130+ refs, mostly NotePool) — blocked on other pipeline work, migrate when feasible
 
-### Phase 1: New Data Structures — DONE
+### Phase 1+2: Data Structures + Unified Tick Loop — DONE
 
-Added to `sequencer.h`:
-- `StepNote` struct (7 bytes: note, velocity, gate, gateNudge, nudge, slide, accent)
-- `StepV2` struct (~46 bytes: 6 StepNote slots + noteCount, probability, condition, sustain)
-- `TrackType` enum (TRACK_DRUM, TRACK_MELODIC)
-- Step manipulation helpers: `stepV2Clear`, `stepV2AddNote`, `stepV2RemoveNote`, `stepV2FindNote`
-- Velocity/probability conversion: `velFloatToU8`/`velU8ToFloat`, `probFloatToU8`/`probU8ToFloat`
-- `Pattern` struct extended with `steps[12][64]`, `trackLength[12]`, `trackType[12]`
-- V1→V2 conversion: `patternV1DrumToV2`, `patternV1MelodyToV2`, `patternV1ToV2`
-- `syncPatternV1ToV2()` — bulk sync for catching direct v1 array writes
-- ALL pattern helpers + seq* setters dual-write to both v1 and v2 arrays
+All v1 data structures and tick loops have been removed. The sequencer now runs entirely on v2 data.
 
-### Phase 2: Unified Tick Loop — DONE
+### Current Architecture (after Phase 4 partial cleanup)
 
-Replaced dual drum/melody tick loops with single unified loop:
-- Single `for (track < seq.trackCount)` loop reads from `p->steps[track][step]` (StepV2)
-- `seqTriggerStep()` — extracted shared trigger logic (probability, condition, p-lock prep, drum vs melodic dispatch)
-- `calcTrackTriggerTick()` — unified trigger tick calculation (dilla for drums, humanize for melody)
-- `seqEvalTrackCondition()` — reads condition from v2 step data
-- Gate countdown + sustain for melodic tracks
-- Pattern end detection on track 0 wrap, chain advance logic preserved
-- Advance-trigger (immediate trigger on step advance when nudge<=0) uses same `seqTriggerStep`
+**Pattern struct** (v2 only):
+```c
+typedef struct {
+    PLock plocks[MAX_PLOCKS_PER_PATTERN];
+    int plockCount;
+    int8_t plockStepIndex[SEQ_TOTAL_TRACKS][SEQ_MAX_STEPS];
+    PatternOverrides overrides;
 
-**V1 backward compatibility layer** (temporary, for transition):
-- v2→v1 state mirroring in tick loop: `melodyCurrentNote`, `melodyGateRemaining`, `melodySustainRemaining`, `drumStep`, step play counts
-- v1→v2 track length sync at start of each tick (catches direct `drumTrackLength`/`melodyTrackLength` writes)
-- `initSequencerContext` initializes `trackCount`, `nextPattern`, `trackCurrentNote` for v2
-- `releaseAllMelodyNotes` checks both v1 and v2 state, clears both
-- Probability/condition set `trackTriggered=true` before evaluation (prevents re-evaluation on failure)
+    // All data lives here now:
+    StepV2 steps[SEQ_V2_MAX_TRACKS][SEQ_MAX_STEPS];  // tracks 0-3=drum, 4-6=melodic
+    int trackLength[SEQ_V2_MAX_TRACKS];
+    TrackType trackType[SEQ_V2_MAX_TRACKS];
+} Pattern;
+```
 
-**Key bug found and fixed**: probability re-evaluation — when `seqTriggerStep` returned early (failed prob/cond), `trackTriggered` stayed false, causing the step to be re-evaluated on subsequent ticks. Fixed by marking triggered before checking prob/cond.
+**DrumSequencer struct** (v2 playback state only):
+```c
+// Unified callbacks (tick loop uses these exclusively):
+TrackNoteOnFunc trackNoteOn[SEQ_V2_MAX_TRACKS];   // (note, vel, gateTime, pitchMod, slide, accent)
+TrackNoteOffFunc trackNoteOff[SEQ_V2_MAX_TRACKS];  // (void)
+const char* trackNames[SEQ_V2_MAX_TRACKS];
 
-All 276 tests (2276 assertions) pass. Main build compiles.
+// Legacy callback arrays still present (populated by initSequencer/setMelodyCallbacks adapters):
+DrumTriggerFunc drumTriggers[SEQ_DRUM_TRACKS];     // TO BE REMOVED
+MelodyTriggerFunc melodyTriggers[SEQ_MELODY_TRACKS]; // TO BE REMOVED
+MelodyReleaseFunc melodyRelease[SEQ_MELODY_TRACKS]; // TO BE REMOVED
+
+// Unified playback state:
+int trackStep[SEQ_V2_MAX_TRACKS];
+int trackTick[SEQ_V2_MAX_TRACKS];
+int trackGateRemaining[SEQ_V2_MAX_TRACKS];
+int trackCurrentNote[SEQ_V2_MAX_TRACKS];
+// ... etc
+```
+
+**Callback adapter system** (bridges legacy→unified):
+- `initSequencer(kick, snare, hh, clap)` stores raw DrumTriggerFunc + installs per-track adapter wrappers into `trackNoteOn[]`
+- `setMelodyCallbacks(track, trigger, release)` stores raw MelodyTriggerFunc + installs adapters into `trackNoteOn[SEQ_DRUM_TRACKS+track]` / `trackNoteOff[...]`
+- Adapters: `_drumNoteOnAdapter0..3` ignore note/gate/slide/accent, call `(vel, pitchMod)`. `_melodyNoteOnAdapter0..2` ignore pitchMod, call `(note, vel, gateTime, slide, accent)`
+- New direct API: `setTrackCallbacks(track, noteOn, noteOff)` — no adapters needed
+
+**Pattern helpers** — two layers:
+- **Drum helpers** (`patSetDrum`, `patGetDrum`, etc.): take absolute track index 0-3, access `p->steps[track][step]` directly
+- **Melody helpers** (`patSetNote`, `patGetNote`, etc.): take **relative** melody track index 0-2, internally add `SEQ_DRUM_TRACKS` offset to get absolute index → **THIS NEEDS TO CHANGE for flexible layouts**
+
+**Tick loop** (`seqTriggerStep` + `updateSequencer`):
+- Single loop over `seq.trackCount` tracks
+- Calls `seq.trackNoteOn[track]()` and `seq.trackNoteOff[track]()` (unified callbacks)
+- Drums: `trackNoteOn(0, vel, 0, pitchMod, false, false)` — note=0, gateTime=0
+- Melodic: `trackNoteOn(note, vel, gateTime, 1.0, slide, accent)` — pitchMod=1.0
+- Flam arrays expanded to `SEQ_V2_MAX_TRACKS` (any track can have flam)
+- `releaseAllNotes()` replaces `releaseAllMelodyNotes()` (iterates all tracks)
+
+**File format** (song_file.h / daw_file.h):
+- Save: writes `drumTrackLength` / `melodyTrackLength` text keys (backward compat names) but reads from `p->trackLength[t]` / `p->trackLength[SEQ_DRUM_TRACKS + t]`
+- Load: parses drum/melody step data using pattern helpers, track lengths into `p->trackLength[]`
+- No format version change needed — file format was already decoupled from internal struct
+
+**Test status**: 271 tests, 1975 assertions, all passing.
+
+### What's left in Phase 4
+
+**Step 9: Convert melody helpers to absolute track indices.**
+The melody pattern helpers (`patSetNote`, `patGetNote`, `patSetNoteVel`, `patGetNoteVel`, `patGetNoteGate`, `patSetNoteGate`, `patSetNotePitch`, `patClearNote`, `patSetNoteFlags`, `patSetNoteSustain`, `patSetNoteProb`, `patSetNoteCond`, `patSetMelodyLength`, `patGetNoteSlide`, `patGetNoteAccent`, `patGetNoteSustain`, `patGetNoteProb`, `patGetNoteCond`, `patSetChord`, `patSetChordCustom`) all take relative melody track 0-2 and add `SEQ_DRUM_TRACKS` internally. For flexible layouts (e.g. 10 drums, 8 melodic), callers should pass absolute track indices. This means:
+- Remove `SEQ_DRUM_TRACKS + track` from inside the helpers
+- Change bounds check from `track >= SEQ_MELODY_TRACKS` to `track >= SEQ_V2_MAX_TRACKS`
+- Update ALL callers to pass absolute track index (currently pass relative)
+
+Callers that pass relative indices and need `SEQ_DRUM_TRACKS +` added:
+- `song_file.h` save/load (~10 refs)
+- `daw_file.h` save/load (~8 refs)
+- `daw.c` UI (~25 refs)
+- `demo.c` UI (~15 refs)
+- `test_soundsystem.c` (~40 refs)
+- `test_daw_file.c` (~15 refs)
+- `songs.h` (~130+ refs, mostly NotePool — blocked)
+- `sound_synth_bridge.c` (~2 refs)
+- Internal: `seqSetMelodyStep`, `seqSetMelodyStep303`, `seqToggleMelodySlide`, `seqToggleMelodyAccent` in sequencer.h
+
+**Step 10: Remove SEQ_DRUM_TRACKS/SEQ_MELODY_TRACKS from logic.**
+Keep as defaults for initialization, but remove from loop bounds and offset calculations.
+`SEQ_TOTAL_TRACKS` (7) → use `seq.trackCount` everywhere.
+
+**Step 11: Remove legacy callback arrays** once all callers use `setTrackCallbacks` or the adapter layer is no longer needed.
+
+**Step 12: Rename `DrumSequencer` → `Sequencer`.**
