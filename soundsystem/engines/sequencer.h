@@ -353,8 +353,11 @@ typedef struct {
     // Pattern chain (Elektron-style arrangement)
     #define SEQ_MAX_CHAIN 64
     int chain[SEQ_MAX_CHAIN];       // Pattern indices in play order
+    int chainLoops[SEQ_MAX_CHAIN];  // Loops per entry (0 = use chainDefaultLoops)
+    int chainDefaultLoops;           // Default loops per entry (1 = advance every pattern end)
     int chainLength;                 // 0 = no chain (loop current pattern)
     int chainPos;                    // Current position in chain during playback
+    int chainLoopCount;              // How many times current chain entry has looped
 
     // Track configuration
     const char* drumTrackNames[SEQ_DRUM_TRACKS];
@@ -1317,13 +1320,20 @@ static void updateSequencer(float dt) {
                     }
                     // Chain advance (when no manual queue is pending)
                     else if (seq.chainLength > 0) {
-                        seq.chainPos = (seq.chainPos + 1) % seq.chainLength;
-                        int nextPat = seq.chain[seq.chainPos];
-                        if (nextPat >= 0 && nextPat < SEQ_NUM_PATTERNS && nextPat != seq.currentPattern) {
-                            seqSoundLog("CHAIN_ADVANCE  pos=%d -> pat=%d", seq.chainPos, nextPat);
-                            seq.currentPattern = nextPat;
-                            memset(seq.drumStepPlayCount, 0, sizeof(seq.drumStepPlayCount));
-                            memset(seq.melodyStepPlayCount, 0, sizeof(seq.melodyStepPlayCount));
+                        int targetLoops = seq.chainLoops[seq.chainPos];
+                        if (targetLoops <= 0) targetLoops = seq.chainDefaultLoops;
+                        if (targetLoops <= 0) targetLoops = 1;
+                        seq.chainLoopCount++;
+                        if (seq.chainLoopCount >= targetLoops) {
+                            seq.chainLoopCount = 0;
+                            seq.chainPos = (seq.chainPos + 1) % seq.chainLength;
+                            int nextPat = seq.chain[seq.chainPos];
+                            if (nextPat >= 0 && nextPat < SEQ_NUM_PATTERNS) {
+                                seqSoundLog("CHAIN_ADVANCE  pos=%d -> pat=%d (after %d loops)", seq.chainPos, nextPat, targetLoops);
+                                seq.currentPattern = nextPat;
+                                memset(seq.drumStepPlayCount, 0, sizeof(seq.drumStepPlayCount));
+                                memset(seq.melodyStepPlayCount, 0, sizeof(seq.melodyStepPlayCount));
+                            }
                         }
                     }
                 }

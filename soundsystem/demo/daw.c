@@ -165,9 +165,21 @@ typedef struct {
 // SEQ_NOTE_OFF, SEQ_MAX_STEPS, SEQ_DRUM_TRACKS, SEQ_MELODY_TRACKS, SEQ_TOTAL_TRACKS
 // all provided by sequencer.h, along with Pattern, PLock, etc.
 
+#define SONG_MAX_SECTIONS 64
+#define SONG_SECTION_NAME_LEN 12
+
+static const char* sectionPresetNames[] = {
+    "intro", "verse", "chorus", "bridge", "outro", "break", "build", "drop", ""
+};
+#define SECTION_PRESET_COUNT 9  // last is empty string = custom/clear
+
 typedef struct {
     int length;
-    int patterns[64];
+    int patterns[SONG_MAX_SECTIONS];
+    char names[SONG_MAX_SECTIONS][SONG_SECTION_NAME_LEN];
+    int loopsPerSection[SONG_MAX_SECTIONS];  // 0 = use global default
+    int loopsPerPattern;     // global default (1-8, default 2)
+    bool songMode;           // true = follow arrangement, false = loop current pattern
 } Song;
 
 // Helper: get active pattern from sequencer engine
@@ -301,6 +313,7 @@ static DawState daw = {
     .transport = { .bpm = 120.0f },
     .crossfader = { .pos = 0.5f, .sceneB = 1, .count = 8 },
     .stepCount = 16,
+    .song = { .loopsPerPattern = 2 },
     .mixer = {
         .volume = {0.8f,0.8f,0.8f,0.8f,0.8f,0.8f,0.8f},
         .filterCut = {1,1,1,1,1,1,1},
@@ -1485,49 +1498,239 @@ static void drawWorkPiano(float x, float y, float w, float h) {
 // WORKSPACE: SONG
 // ============================================================================
 
+// Editing state for section name inline edit
+static int songEditingNameIdx = -1;  // -1 = not editing
+static char songEditNameBuf[SONG_SECTION_NAME_LEN] = {0};
+static int songEditNameCursor = 0;
+
+// Get effective loops for a section entry
+static int songEffectiveLoops(int idx) {
+    int l = daw.song.loopsPerSection[idx];
+    if (l <= 0) l = daw.song.loopsPerPattern;
+    if (l <= 0) l = 1;
+    return l;
+}
+
 static void drawWorkSong(float x, float y, float w, float h) {
+    (void)h;
     Vector2 mouse = GetMousePosition();
-    DrawTextShadow("Pattern Chain:", (int)x+4, (int)y+4, 13, (Color){180,180,255,255});
-    float cy = y + 22; int chW = 28, chH = 24;
+
+    // === SONG MODE TOGGLE + SETTINGS (top row) ===
+    float row0y = y + 2;
+    {
+        // Song mode toggle
+        Rectangle smr = {x + 4, row0y, 80, 18};
+        bool smHov = CheckCollisionPointRec(mouse, smr);
+        Color smBg = daw.song.songMode
+            ? (smHov ? (Color){60,100,60,255} : (Color){45,80,45,255})
+            : (smHov ? (Color){50,50,60,255} : (Color){38,38,48,255});
+        DrawRectangleRec(smr, smBg);
+        DrawRectangleLinesEx(smr, 1, daw.song.songMode ? GREEN : (Color){55,55,65,255});
+        DrawTextShadow(daw.song.songMode ? "Song Mode" : "Pattern", (int)x+10, (int)row0y+3, 11,
+                       daw.song.songMode ? WHITE : GRAY);
+        if (smHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            daw.song.songMode = !daw.song.songMode;
+            if (daw.song.songMode && daw.song.length > 0) {
+                // Start from beginning of chain
+                seq.chainPos = 0;
+                seq.chainLoopCount = 0;
+                seq.currentPattern = daw.song.patterns[0];
+                daw.transport.currentPattern = daw.song.patterns[0];
+            }
+            ui_consume_click();
+        }
+
+        // Loops per pattern (global default)
+        DraggableInt(x + 100, row0y, "Loops", &daw.song.loopsPerPattern, 0.3f, 1, 8);
+
+        // Section count display
+        DrawTextShadow(TextFormat("%d sections", daw.song.length), (int)(x + 240), (int)row0y+3, 11, (Color){100,100,120,255});
+    }
+
+    // === ARRANGEMENT TIMELINE ===
+    float arrY = row0y + 24;
+    float arrH = 52;  // Height for each section entry
+    int secW = 72, secH = 48, secGap = 4;
+
+    // Calculate which chain position is currently playing
+    int playingChainPos = -1;
+    if (daw.song.songMode && daw.transport.playing && daw.song.length > 0) {
+        playingChainPos = seq.chainPos;
+    }
+
+    // Background
+    float arrBgH = arrH + 8;
+    DrawRectangle((int)x, (int)arrY, (int)w, (int)arrBgH, (Color){20,20,25,255});
+    DrawRectangleLinesEx((Rectangle){x, arrY, w, arrBgH}, 1, (Color){40,40,50,255});
+
+    // Scroll offset for long arrangements (simple: clamp to visible)
+    float innerX = x + 4;
+    float maxVisX = x + w - 8;
 
     for (int i = 0; i < daw.song.length; i++) {
-        float cx = x + 4 + i * (chW+3);
-        if (cx + chW > x + w - 4) break;
-        Rectangle r = {cx, cy, (float)chW, (float)chH};
+        float sx = innerX + i * (secW + secGap);
+        if (sx > maxVisX) break;
+        if (sx + secW < x) continue;
+
+        bool isPlaying = (i == playingChainPos);
+        Rectangle r = {sx, arrY + 4, (float)secW, (float)secH};
         bool hov = CheckCollisionPointRec(mouse, r);
-        DrawRectangleRec(r, hov ? (Color){55,58,68,255} : (Color){40,40,50,255});
-        DrawRectangleLinesEx(r, 1, (Color){62,62,72,255});
-        DrawTextShadow(TextFormat("%d", daw.song.patterns[i]+1), (int)cx+9, (int)cy+6, 11, WHITE);
-        if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-            for (int j = i; j < daw.song.length-1; j++) daw.song.patterns[j] = daw.song.patterns[j+1];
-            daw.song.length--; ui_consume_click();
+
+        // Background color
+        Color bg;
+        if (isPlaying) bg = (Color){40,70,40,255};
+        else if (hov) bg = (Color){48,50,60,255};
+        else bg = (Color){32,34,42,255};
+        DrawRectangleRec(r, bg);
+
+        // Border
+        Color border = isPlaying ? GREEN : (hov ? (Color){80,80,95,255} : (Color){50,52,62,255});
+        DrawRectangleLinesEx(r, 1, border);
+
+        // Playback progress bar (thin line at bottom)
+        if (isPlaying && daw.transport.playing) {
+            int loops = songEffectiveLoops(i);
+            float loopFrac = (float)seq.chainLoopCount / (float)loops;
+            Pattern *p = &seq.patterns[seq.currentPattern];
+            int trackLen = p->drumTrackLength[0] > 0 ? p->drumTrackLength[0] : 16;
+            float stepFrac = (float)seq.drumStep[0] / (float)trackLen;
+            float progress = (loopFrac + stepFrac / (float)loops);
+            if (progress > 1.0f) progress = 1.0f;
+            int barW = (int)(progress * (secW - 4));
+            if (barW > 0) DrawRectangle((int)sx+2, (int)(arrY+4+secH-4), barW, 3, (Color){80,200,80,200});
         }
-        if (hov) { float wh = GetMouseWheelMove(); if (wh>0) daw.song.patterns[i]=(daw.song.patterns[i]+1)%8; else if (wh<0) daw.song.patterns[i]=(daw.song.patterns[i]+7)%8; }
-    }
-    if (daw.song.length < 64) {
-        float ax = x + 4 + daw.song.length*(chW+3);
-        if (ax + chW <= x + w - 4) {
-            Rectangle ar = {ax, cy, (float)chW, (float)chH};
-            bool ah = CheckCollisionPointRec(mouse, ar);
-            DrawRectangleRec(ar, ah ? (Color){60,62,72,255} : (Color){35,36,45,255});
-            DrawRectangleLinesEx(ar, 1, (Color){70,70,82,255});
-            DrawTextShadow("+", (int)ax+10, (int)cy+6, 11, ah ? WHITE : GRAY);
-            if (ah && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { daw.song.patterns[daw.song.length++] = daw.transport.currentPattern; ui_consume_click(); }
+
+        // Section name (top) — click to cycle preset names, double-click could be inline edit
+        const char* name = daw.song.names[i];
+        bool hasName = (name[0] != '\0');
+        if (songEditingNameIdx == i) {
+            // Inline name editing
+            DrawRectangle((int)sx+2, (int)(arrY+6), secW-4, 14, (Color){30,30,40,255});
+            DrawTextShadow(songEditNameBuf, (int)sx+4, (int)(arrY+7), 9, WHITE);
+            // Blinking cursor
+            int cw = MeasureText(songEditNameBuf, 9);
+            if (((int)(GetTime()*3)) % 2 == 0) DrawLine((int)(sx+4+cw), (int)(arrY+7), (int)(sx+4+cw), (int)(arrY+18), WHITE);
+
+            // Handle text input
+            int key = GetCharPressed();
+            while (key > 0) {
+                if (songEditNameCursor < SONG_SECTION_NAME_LEN - 1 && key >= 32 && key < 127) {
+                    songEditNameBuf[songEditNameCursor++] = (char)key;
+                    songEditNameBuf[songEditNameCursor] = '\0';
+                }
+                key = GetCharPressed();
+            }
+            if (IsKeyPressed(KEY_BACKSPACE) && songEditNameCursor > 0) {
+                songEditNameBuf[--songEditNameCursor] = '\0';
+            }
+            if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE)) {
+                memcpy(daw.song.names[i], songEditNameBuf, SONG_SECTION_NAME_LEN);
+                songEditingNameIdx = -1;
+            }
+            // Click elsewhere to confirm
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !CheckCollisionPointRec(mouse, r)) {
+                memcpy(daw.song.names[i], songEditNameBuf, SONG_SECTION_NAME_LEN);
+                songEditingNameIdx = -1;
+            }
+        } else {
+            Color nameCol = hasName ? (Color){160,180,255,255} : (Color){80,80,100,255};
+            DrawTextShadow(hasName ? name : "---", (int)sx+4, (int)(arrY+7), 9, nameCol);
+
+            // Left-click on name area: cycle preset names
+            Rectangle nameR = {sx, arrY+4, (float)secW, 16};
+            if (CheckCollisionPointRec(mouse, nameR) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                // Find current preset index and cycle
+                int cur = -1;
+                for (int p = 0; p < SECTION_PRESET_COUNT; p++) {
+                    if (strcmp(daw.song.names[i], sectionPresetNames[p]) == 0) { cur = p; break; }
+                }
+                cur = (cur + 1) % SECTION_PRESET_COUNT;
+                strncpy(daw.song.names[i], sectionPresetNames[cur], SONG_SECTION_NAME_LEN - 1);
+                daw.song.names[i][SONG_SECTION_NAME_LEN - 1] = '\0';
+                ui_consume_click();
+            }
+            // Right-click on name: start inline edit
+            if (CheckCollisionPointRec(mouse, nameR) && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+                songEditingNameIdx = i;
+                strncpy(songEditNameBuf, daw.song.names[i], SONG_SECTION_NAME_LEN);
+                songEditNameCursor = (int)strlen(songEditNameBuf);
+                ui_consume_click();
+            }
+        }
+
+        // Pattern number (center, large)
+        int patNum = daw.song.patterns[i] + 1;
+        Color patCol = isPlaying ? WHITE : (Color){200,200,220,255};
+        DrawTextShadow(TextFormat("%d", patNum), (int)sx + secW/2 - 4, (int)(arrY+20), 16, patCol);
+
+        // Scroll wheel on pattern area: change pattern index
+        Rectangle patR = {sx, arrY + 18, (float)secW, 20};
+        if (CheckCollisionPointRec(mouse, patR)) {
+            float wh = GetMouseWheelMove();
+            if (wh > 0) daw.song.patterns[i] = (daw.song.patterns[i] + 1) % 8;
+            else if (wh < 0) daw.song.patterns[i] = (daw.song.patterns[i] + 7) % 8;
+        }
+
+        // Per-section loop count (bottom-left)
+        int effLoops = songEffectiveLoops(i);
+        int raw = daw.song.loopsPerSection[i];
+        Color loopCol = raw > 0 ? (Color){180,200,120,255} : (Color){90,90,110,255};
+        DrawTextShadow(TextFormat("x%d", effLoops), (int)sx+4, (int)(arrY+38), 9, loopCol);
+
+        // Click loop count to cycle (0=default, 1-8=explicit)
+        Rectangle loopR = {sx, arrY+36, 30, 14};
+        if (CheckCollisionPointRec(mouse, loopR) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            daw.song.loopsPerSection[i] = (daw.song.loopsPerSection[i] + 1) % 9;
+            ui_consume_click();
+        }
+
+        // Right-click on entry body (not name): delete section
+        Rectangle bodyR = {sx, arrY + 18, (float)secW, (float)(secH - 14)};
+        if (CheckCollisionPointRec(mouse, bodyR) && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+            for (int j = i; j < daw.song.length - 1; j++) {
+                daw.song.patterns[j] = daw.song.patterns[j+1];
+                memcpy(daw.song.names[j], daw.song.names[j+1], SONG_SECTION_NAME_LEN);
+                daw.song.loopsPerSection[j] = daw.song.loopsPerSection[j+1];
+            }
+            daw.song.length--;
+            if (songEditingNameIdx == i) songEditingNameIdx = -1;
+            ui_consume_click();
+            break;  // UI changed, skip rest of iteration
         }
     }
 
-    // Scenes
-    float sy = cy + chH + 12;
+    // [+] button to add section
+    if (daw.song.length < SONG_MAX_SECTIONS) {
+        float ax = innerX + daw.song.length * (secW + secGap);
+        if (ax + 30 <= maxVisX) {
+            Rectangle ar = {ax, arrY + 4, 30, (float)secH};
+            bool ah = CheckCollisionPointRec(mouse, ar);
+            DrawRectangleRec(ar, ah ? (Color){55,60,70,255} : (Color){30,32,40,255});
+            DrawRectangleLinesEx(ar, 1, (Color){60,62,72,255});
+            DrawTextShadow("+", (int)ax+11, (int)(arrY+22), 14, ah ? WHITE : GRAY);
+            if (ah && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                int idx = daw.song.length;
+                daw.song.patterns[idx] = daw.transport.currentPattern;
+                daw.song.names[idx][0] = '\0';
+                daw.song.loopsPerSection[idx] = 0;
+                daw.song.length++;
+                ui_consume_click();
+            }
+        }
+    }
+
+    // === SCENES ===
+    float sy = arrY + arrBgH + 8;
     DrawTextShadow("Scenes:", (int)x+4, (int)sy, 13, (Color){180,200,255,255});
     sy += 18;
     for (int i = 0; i < daw.crossfader.count; i++) {
-        float sx = x + 4 + i * 68;
-        if (sx + 62 > x + w) break;
-        Rectangle r = {sx, sy, 62, 26};
+        float scx = x + 4 + i * 68;
+        if (scx + 62 > x + w) break;
+        Rectangle r = {scx, sy, 62, 26};
         bool hov = CheckCollisionPointRec(mouse, r);
         DrawRectangleRec(r, hov ? (Color){50,54,64,255} : (Color){36,38,46,255});
         DrawRectangleLinesEx(r, 1, (Color){60,60,72,255});
-        DrawTextShadow(TextFormat("Scene %d", i+1), (int)sx+6, (int)sy+7, 10, LIGHTGRAY);
+        DrawTextShadow(TextFormat("Scene %d", i+1), (int)scx+6, (int)sy+7, 10, LIGHTGRAY);
     }
 
     // === GROOVE (Dilla timing + humanize) ===
@@ -1553,15 +1756,6 @@ static void drawWorkSong(float x, float y, float w, float h) {
     DrawTextShadow("Melody:", (int)x+4, (int)gy+2, 10, (Color){140,140,160,255});
     DraggableInt(x + 80, gy, "Timing", &seq.humanize.timingJitter, 0.3f, 0, 6);
     DraggableFloat(x + 180, gy, "Vel Jit", &seq.humanize.velocityJitter, 0.02f, 0.0f, 0.3f);
-    gy += 24;
-
-    // Arrangement placeholder (below groove)
-    float tlY = gy, tlH = y + h - tlY - 4;
-    if (tlH > 20) {
-        DrawRectangle((int)x, (int)tlY, (int)w, (int)tlH, (Color){20,20,25,255});
-        DrawRectangleLinesEx((Rectangle){x,tlY,w,tlH}, 1, (Color){45,45,55,255});
-        DrawTextShadow("Arrangement Timeline", (int)(x+w/2-75), (int)(tlY+tlH/2-6), 13, (Color){48,48,58,255});
-    }
 }
 
 // ============================================================================
@@ -2779,7 +2973,23 @@ static void dawInitSequencer(void) {
 static void dawSyncSequencer(void) {
     seq.bpm = daw.transport.bpm;
     seq.playing = daw.transport.playing;
-    seq.currentPattern = daw.transport.currentPattern;
+
+    // Song mode: push arrangement chain to sequencer
+    if (daw.song.songMode && daw.song.length > 0) {
+        for (int i = 0; i < daw.song.length; i++) {
+            seq.chain[i] = daw.song.patterns[i];
+            seq.chainLoops[i] = daw.song.loopsPerSection[i];
+        }
+        seq.chainLength = daw.song.length;
+        seq.chainDefaultLoops = daw.song.loopsPerPattern > 0 ? daw.song.loopsPerPattern : 1;
+        // Read back current pattern from sequencer (chain controls it)
+        daw.transport.currentPattern = seq.currentPattern;
+    } else {
+        // Pattern mode: no chain, DAW controls current pattern directly
+        seq.chainLength = 0;
+        seq.currentPattern = daw.transport.currentPattern;
+    }
+
     // Track the current step for playhead display
     // Use drum track 0 as master step reference
     daw.transport.currentStep = seq.drumStep[0];
@@ -2811,6 +3021,13 @@ static void dawStopSequencer(void) {
         }
     }
     seq.tickTimer = 0.0f;
+    // Reset chain playback to beginning
+    seq.chainPos = 0;
+    seq.chainLoopCount = 0;
+    if (daw.song.songMode && daw.song.length > 0) {
+        daw.transport.currentPattern = daw.song.patterns[0];
+        seq.currentPattern = daw.song.patterns[0];
+    }
 }
 
 // Arp keyboard state: single voice collecting held keys
