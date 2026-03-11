@@ -781,6 +781,10 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         DrawRectangleRec(r, bg);
         DrawRectangleLinesEx(r, 1, act ? GREEN : (Color){48,48,58,255});
         DrawTextShadow(TextFormat("%d", i+1), (int)px+i*28+9, (int)y+3, 10, act ? WHITE : GRAY);
+        // Override indicator dot (orange if pattern has overrides)
+        if (seq.patterns[i].overrides.flags != 0) {
+            DrawCircle((int)(px+i*28+22), (int)y+3, 3, (Color){255,180,60,255});
+        }
         if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { daw.transport.currentPattern = i; ui_consume_click(); }
     }
 
@@ -1719,8 +1723,135 @@ static void drawWorkSong(float x, float y, float w, float h) {
         }
     }
 
+    // === PATTERN OVERRIDES (for current pattern) ===
+    float ovrY = arrY + arrBgH + 4;
+    {
+        Pattern *pat = dawPattern();
+        PatternOverrides *ovr = &pat->overrides;
+        bool hasAny = (ovr->flags != 0);
+        int patIdx = daw.transport.currentPattern;
+
+        DrawTextShadow(TextFormat("Pattern %d Overrides:", patIdx+1), (int)x+4, (int)ovrY, 11,
+                       hasAny ? (Color){255,200,120,255} : (Color){120,120,140,255});
+        float ox = x + 160, oy = ovrY;
+
+        // Scale override
+        {
+            bool on = (ovr->flags & PAT_OVR_SCALE) != 0;
+            Rectangle tr = {ox, oy - 1, 42, 14};
+            bool th = CheckCollisionPointRec(mouse, tr);
+            DrawRectangleRec(tr, on ? (Color){50,70,90,255} : (th ? (Color){42,42,52,255} : (Color){30,30,38,255}));
+            DrawRectangleLinesEx(tr, 1, on ? (Color){100,150,220,255} : (Color){48,48,58,255});
+            DrawTextShadow("Scale", (int)ox+4, (int)oy, 9, on ? WHITE : GRAY);
+            if (th && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                ovr->flags ^= PAT_OVR_SCALE;
+                if (ovr->flags & PAT_OVR_SCALE) {
+                    // Init from current song defaults
+                    ovr->ovrScaleRoot = daw.scaleRoot;
+                    ovr->ovrScaleType = daw.scaleType;
+                }
+                ui_consume_click();
+            }
+            if (on) {
+                ox += 48;
+                // Root note cycle
+                Rectangle rr = {ox, oy - 1, 28, 14};
+                bool rh = CheckCollisionPointRec(mouse, rr);
+                DrawRectangleRec(rr, rh ? (Color){45,45,55,255} : (Color){32,32,42,255});
+                DrawTextShadow(rootNoteNames[ovr->ovrScaleRoot], (int)ox+4, (int)oy, 9, (Color){180,200,255,255});
+                if (rh && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { ovr->ovrScaleRoot = (ovr->ovrScaleRoot + 1) % 12; ui_consume_click(); }
+                if (rh && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) { ovr->ovrScaleRoot = (ovr->ovrScaleRoot + 11) % 12; ui_consume_click(); }
+                if (rh) { float wh = GetMouseWheelMove(); if (wh > 0) ovr->ovrScaleRoot = (ovr->ovrScaleRoot+1)%12; else if (wh < 0) ovr->ovrScaleRoot = (ovr->ovrScaleRoot+11)%12; }
+                ox += 32;
+                // Scale type cycle
+                Rectangle sr = {ox, oy - 1, 60, 14};
+                bool sh = CheckCollisionPointRec(mouse, sr);
+                DrawRectangleRec(sr, sh ? (Color){45,45,55,255} : (Color){32,32,42,255});
+                DrawTextShadow(scaleNames[ovr->ovrScaleType], (int)ox+4, (int)oy, 9, (Color){180,200,255,255});
+                if (sh && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { ovr->ovrScaleType = (ovr->ovrScaleType + 1) % 9; ui_consume_click(); }
+                if (sh && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) { ovr->ovrScaleType = (ovr->ovrScaleType + 8) % 9; ui_consume_click(); }
+                if (sh) { float wh = GetMouseWheelMove(); if (wh > 0) ovr->ovrScaleType = (ovr->ovrScaleType+1)%9; else if (wh < 0) ovr->ovrScaleType = (ovr->ovrScaleType+8)%9; }
+                ox += 66;
+            } else {
+                ox += 48;
+            }
+        }
+
+        // BPM override
+        {
+            bool on = (ovr->flags & PAT_OVR_BPM) != 0;
+            Rectangle tr = {ox, oy - 1, 34, 14};
+            bool th = CheckCollisionPointRec(mouse, tr);
+            DrawRectangleRec(tr, on ? (Color){80,70,40,255} : (th ? (Color){42,42,52,255} : (Color){30,30,38,255}));
+            DrawRectangleLinesEx(tr, 1, on ? (Color){200,180,80,255} : (Color){48,48,58,255});
+            DrawTextShadow("BPM", (int)ox+4, (int)oy, 9, on ? WHITE : GRAY);
+            if (th && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                ovr->flags ^= PAT_OVR_BPM;
+                if (ovr->flags & PAT_OVR_BPM) ovr->bpm = daw.transport.bpm;
+                ui_consume_click();
+            }
+            ox += 40;
+            if (on) {
+                DraggableFloat(ox, oy - 2, "", &ovr->bpm, 1.0f, 40.0f, 300.0f);
+                ox += 70;
+            }
+        }
+
+        // Groove override
+        {
+            bool on = (ovr->flags & PAT_OVR_GROOVE) != 0;
+            Rectangle tr = {ox, oy - 1, 48, 14};
+            bool th = CheckCollisionPointRec(mouse, tr);
+            DrawRectangleRec(tr, on ? (Color){60,80,50,255} : (th ? (Color){42,42,52,255} : (Color){30,30,38,255}));
+            DrawRectangleLinesEx(tr, 1, on ? (Color){140,200,100,255} : (Color){48,48,58,255});
+            DrawTextShadow("Groove", (int)ox+4, (int)oy, 9, on ? WHITE : GRAY);
+            if (th && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                ovr->flags ^= PAT_OVR_GROOVE;
+                if (ovr->flags & PAT_OVR_GROOVE) {
+                    ovr->swing = seq.dilla.swing;
+                    ovr->jitter = seq.dilla.jitter;
+                }
+                ui_consume_click();
+            }
+            ox += 54;
+            if (on) {
+                DraggableInt(ox, oy - 2, "Sw", &ovr->swing, 0.3f, 0, 12);
+                DraggableInt(ox + 68, oy - 2, "Jt", &ovr->jitter, 0.3f, 0, 6);
+                ox += 140;
+            }
+        }
+
+        // Track mute override
+        {
+            bool on = (ovr->flags & PAT_OVR_MUTE) != 0;
+            Rectangle tr = {ox, oy - 1, 40, 14};
+            bool th = CheckCollisionPointRec(mouse, tr);
+            DrawRectangleRec(tr, on ? (Color){90,45,45,255} : (th ? (Color){42,42,52,255} : (Color){30,30,38,255}));
+            DrawRectangleLinesEx(tr, 1, on ? (Color){220,100,100,255} : (Color){48,48,58,255});
+            DrawTextShadow("Mute", (int)ox+4, (int)oy, 9, on ? WHITE : GRAY);
+            if (th && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                ovr->flags ^= PAT_OVR_MUTE;
+                if (ovr->flags & PAT_OVR_MUTE) memset(ovr->trackMute, 0, sizeof(ovr->trackMute));
+                ui_consume_click();
+            }
+            ox += 46;
+            if (on) {
+                const char* trkShort[] = {"K", "S", "H", "C", "Bs", "Ld", "Ch"};
+                for (int t = 0; t < SEQ_TOTAL_TRACKS; t++) {
+                    Rectangle mr = {ox + t*22, oy - 1, 20, 14};
+                    bool mh = CheckCollisionPointRec(mouse, mr);
+                    bool muted = ovr->trackMute[t];
+                    Color mbg = muted ? (Color){140,50,50,255} : (mh ? (Color){45,45,55,255} : (Color){32,32,42,255});
+                    DrawRectangleRec(mr, mbg);
+                    DrawTextShadow(trkShort[t], (int)(ox+t*22+3), (int)oy, 9, muted ? WHITE : GRAY);
+                    if (mh && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { ovr->trackMute[t] = !ovr->trackMute[t]; ui_consume_click(); }
+                }
+            }
+        }
+    }
+
     // === SCENES ===
-    float sy = arrY + arrBgH + 8;
+    float sy = ovrY + 20;
     DrawTextShadow("Scenes:", (int)x+4, (int)sy, 13, (Color){180,200,255,255});
     sy += 18;
     for (int i = 0; i < daw.crossfader.count; i++) {
@@ -2663,10 +2794,21 @@ static void DawAudioCallback(void *buffer, unsigned int frames) {
 
 // Sync DAW state → engine contexts each frame
 static void dawSyncEngineState(void) {
-    // Scale lock
+    // Scale lock (song defaults, then pattern override)
     synthCtx->scaleLockEnabled = daw.scaleLockEnabled;
     synthCtx->scaleRoot = daw.scaleRoot;
     synthCtx->scaleType = daw.scaleType;
+
+    // Apply per-pattern overrides from current pattern
+    Pattern *curPat = dawPattern();
+    PatternOverrides *ovr = &curPat->overrides;
+    if (ovr->flags & PAT_OVR_SCALE) {
+        synthCtx->scaleLockEnabled = true;  // scale override implies scale lock on
+        synthCtx->scaleRoot = ovr->ovrScaleRoot;
+        synthCtx->scaleType = ovr->ovrScaleType;
+    }
+    // BPM, groove, and mute overrides are applied in dawSyncSequencer
+    // to avoid permanently overwriting song-level state
 
     // Master FX → effects engine
     fx.distEnabled     = daw.masterFx.distOn;
@@ -2988,6 +3130,21 @@ static void dawSyncSequencer(void) {
         // Pattern mode: no chain, DAW controls current pattern directly
         seq.chainLength = 0;
         seq.currentPattern = daw.transport.currentPattern;
+    }
+
+    // Apply per-pattern overrides (BPM, groove, mutes) without modifying DAW state
+    Pattern *curPat = dawPattern();
+    PatternOverrides *ovr = &curPat->overrides;
+    if (ovr->flags & PAT_OVR_BPM) {
+        seq.bpm = ovr->bpm;  // Override sequencer BPM, not daw.transport.bpm
+    }
+    if (ovr->flags & PAT_OVR_GROOVE) {
+        seq.dilla.swing = ovr->swing;
+        seq.dilla.jitter = ovr->jitter;
+    }
+    if (ovr->flags & PAT_OVR_MUTE) {
+        for (int t = 0; t < SEQ_TOTAL_TRACKS; t++)
+            seq.trackVolume[t] = ovr->trackMute[t] ? 0.0f : daw.mixer.volume[t];
     }
 
     // Track the current step for playhead display

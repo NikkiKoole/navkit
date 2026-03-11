@@ -257,6 +257,22 @@ typedef struct {
     float values[PLOCK_COUNT];          // Locked values (only valid if locked[i] is true)
 } PLockState;
 
+// Per-pattern overrides (optional — 0 bits = inherit everything from song defaults)
+#define PAT_OVR_SCALE    (1 << 0)  // scaleRoot + scaleType
+#define PAT_OVR_BPM      (1 << 1)  // bpm
+#define PAT_OVR_GROOVE   (1 << 2)  // swing + jitter
+#define PAT_OVR_MUTE     (1 << 3)  // trackMute mask
+
+typedef struct {
+    unsigned int flags;            // Bitmask of PAT_OVR_* — which fields are active
+    int ovrScaleRoot;              // 0-11 (C through B)
+    int ovrScaleType;              // Scale type index
+    float bpm;                     // Tempo override
+    int swing;                     // Groove swing (0-12)
+    int jitter;                    // Groove jitter (0-6)
+    bool trackMute[SEQ_TOTAL_TRACKS];  // Per-track mute (7 tracks: 4 drum + 3 melody)
+} PatternOverrides;
+
 // Single pattern data (drums + melodic)
 typedef struct {
     // Drum tracks (tracks 0-3)
@@ -289,6 +305,9 @@ typedef struct {
     
     // P-lock index: first p-lock for each (track, step) pair, or PLOCK_INDEX_NONE
     int8_t plockStepIndex[SEQ_TOTAL_TRACKS][SEQ_MAX_STEPS];
+
+    // Per-pattern overrides (flags == 0 means inherit all from song defaults)
+    PatternOverrides overrides;
 } Pattern;
 
 // Trigger function type for drums - takes velocity and pitch multiplier
