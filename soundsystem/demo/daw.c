@@ -1200,8 +1200,8 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             if (isDrum && step < 32 && patGetDrum(dawPattern(), track, step)) bg = (Color){50,125,65,255};
             if (!isDrum && track >= SEQ_DRUM_TRACKS && patGetNote(dawPattern(), track, step) != SEQ_NOTE_OFF)
                 bg = (Color){50,80,140,255};
-            // Playhead highlight
-            if (daw.transport.playing && step == daw.transport.currentStep)
+            // Playhead highlight (per-track for polyrhythm)
+            if (daw.transport.playing && step == seq.trackStep[track])
                 { bg.r = (unsigned char)(bg.r + 35 > 255 ? 255 : bg.r + 35);
                   bg.g = (unsigned char)(bg.g + 35 > 255 ? 255 : bg.g + 35);
                   bg.b = (unsigned char)(bg.b + 20 > 255 ? 255 : bg.b + 20); }
