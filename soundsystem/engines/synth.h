@@ -3479,6 +3479,81 @@ static void initUnison(Voice *v, int count, float detuneCents, float mix) {
 // PLAY FUNCTIONS
 // ============================================================================
 
+// Reset all note globals to safe defaults. Call this before playNote() when
+// setting globals manually, to avoid inheriting dirty state from prior
+// applyPatchToGlobals() calls (e.g. drum pitch envelopes, noise, extra oscs).
+// Not needed when using playNoteWithPatch() — that calls applyPatchToGlobals()
+// which fully overwrites all globals from the patch.
+__attribute__((unused))
+static void resetNoteGlobals(void) {
+    noteAttack = 0.01f;   noteDecay = 0.1f;
+    noteSustain = 0.5f;   noteRelease = 0.3f;
+    noteVolume = 0.5f;
+    noteFilterCutoff = 1.0f;
+    noteFilterResonance = 0.0f;
+    noteFilterType = 0;
+    noteFilterEnvAmt = 0.0f;
+    noteFilterEnvAttack = 0.0f;
+    noteFilterEnvDecay = 0.0f;
+    noteFilterLfoRate = 0.0f;
+    noteFilterLfoDepth = 0.0f;
+    noteFilterLfoShape = 0;
+    noteFilterLfoSync = 0;
+    noteResoLfoRate = 0.0f;
+    noteResoLfoDepth = 0.0f;
+    noteResoLfoShape = 0;
+    noteAmpLfoRate = 0.0f;
+    noteAmpLfoDepth = 0.0f;
+    noteAmpLfoShape = 0;
+    notePitchLfoRate = 0.0f;
+    notePitchLfoDepth = 0.0f;
+    notePitchLfoShape = 0;
+    noteVibratoRate = 0.0f;
+    noteVibratoDepth = 0.0f;
+    notePulseWidth = 0.5f;
+    notePwmRate = 0.0f;
+    notePwmDepth = 0.0f;
+    notePitchEnvAmount = 0.0f;
+    notePitchEnvDecay = 0.0f;
+    notePitchEnvCurve = 0.0f;
+    notePitchEnvLinear = false;
+    noteNoiseMix = 0.0f;
+    noteNoiseTone = 0.0f;
+    noteNoiseHP = 0.0f;
+    noteNoiseDecay = 0.0f;
+    noteNoiseMode = 0;
+    noteNoiseType = 0;
+    noteNoiseLPBypass = false;
+    noteOsc2Ratio = 1.0f;  noteOsc2Level = 0.0f;
+    noteOsc3Ratio = 1.0f;  noteOsc3Level = 0.0f;
+    noteOsc4Ratio = 1.0f;  noteOsc4Level = 0.0f;
+    noteOsc5Ratio = 1.0f;  noteOsc5Level = 0.0f;
+    noteOsc6Ratio = 1.0f;  noteOsc6Level = 0.0f;
+    noteDrive = 0.0f;
+    noteExpDecay = false;
+    noteExpRelease = false;
+    noteClickLevel = 0.0f;
+    noteClickTime = 0.005f;
+    noteRetriggerCount = 0;
+    noteRetriggerSpread = 0.0f;
+    noteRetriggerOverlap = false;
+    noteRetriggerBurstDecay = 0.0f;
+    noteRetriggerCurve = 0.0f;
+    noteOneShot = false;
+    notePhaseReset = false;
+    noteScwIndex = -1;
+    noteArpEnabled = false;
+    noteArpMode = 0;
+    noteArpRateDiv = 0;
+    noteArpRate = 0.0f;
+    noteArpChord = 0;
+    noteUnisonCount = 1;
+    noteUnisonDetune = 0.0f;
+    noteUnisonMix = 0.5f;
+    monoMode = false;
+    glideTime = 0.0f;
+}
+
 // Play a note using global parameters
 static int playNote(float freq, WaveType wave) {
     int voiceIdx = initVoiceCommon(freq, wave, &VOICE_INIT_SYNTH, NULL);

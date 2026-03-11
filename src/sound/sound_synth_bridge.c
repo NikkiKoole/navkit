@@ -1027,58 +1027,6 @@ void SoundSynthPlaySongMule(SoundSynth* synth) {
 }
 
 // --- M.U.L.E. v2: true 8-bit square bass + sawtooth melody ---
-// Reset globals that drum patches leave dirty (pitch env, noise, extra oscs, etc.)
-static void reset8bitGlobals(void) {
-    notePitchEnvAmount = 0.0f;
-    notePitchEnvDecay  = 0.0f;
-    notePitchEnvCurve  = 0.0f;
-    notePitchEnvLinear = false;
-    noteNoiseMix   = 0.0f;
-    noteNoiseTone  = 0.0f;
-    noteNoiseHP    = 0.0f;
-    noteNoiseDecay = 0.0f;
-    noteNoiseMode  = 0;
-    noteNoiseType  = 0;
-    noteOsc2Ratio  = 1.0f;  noteOsc2Level = 0.0f;
-    noteOsc3Ratio  = 1.0f;  noteOsc3Level = 0.0f;
-    noteOsc4Ratio  = 1.0f;  noteOsc4Level = 0.0f;
-    noteOsc5Ratio  = 1.0f;  noteOsc5Level = 0.0f;
-    noteOsc6Ratio  = 1.0f;  noteOsc6Level = 0.0f;
-    noteDrive      = 0.0f;
-    noteExpDecay   = false;
-    noteExpRelease = false;
-    noteClickLevel = 0.0f;
-    noteClickTime  = 0.005f;
-    noteRetriggerCount = 0;
-    noteRetriggerSpread = 0.0f;
-    noteRetriggerOverlap = false;
-    noteRetriggerBurstDecay = 0.0f;
-    noteRetriggerCurve = 0.0f;
-    noteOneShot    = false;
-    notePhaseReset = false;
-    noteNoiseLPBypass = false;
-    noteFilterType = 0;
-    noteFilterEnvAmt    = 0.0f;
-    noteFilterEnvAttack = 0.0f;
-    noteFilterEnvDecay  = 0.0f;
-    noteFilterLfoRate   = 0.0f;
-    noteFilterLfoDepth  = 0.0f;
-    noteResoLfoRate  = 0.0f;
-    noteResoLfoDepth = 0.0f;
-    noteAmpLfoRate   = 0.0f;
-    noteAmpLfoDepth  = 0.0f;
-    notePitchLfoRate  = 0.0f;
-    notePitchLfoDepth = 0.0f;
-    notePulseWidth = 0.5f;
-    notePwmRate    = 0.0f;
-    notePwmDepth   = 0.0f;
-    noteArpEnabled = false;
-    noteUnisonCount = 1;
-    noteUnisonDetune = 0.0f;
-    monoMode   = false;
-    glideTime  = 0.0f;
-}
-
 static void melodyTrigger8bitSquare(int note, float vel, float gateTime, bool slide, bool accent) {
     (void)gateTime; (void)accent;
     if (!g_soundSynth) return;
@@ -1087,7 +1035,7 @@ static void melodyTrigger8bitSquare(int note, float vel, float gateTime, bool sl
 
     if (sp->melodyVoices[0][0] >= 0) releaseNote(sp->melodyVoices[0][0]);
 
-    reset8bitGlobals();
+    resetNoteGlobals();
     noteAttack  = 0.001f;
     noteDecay   = 0.08f;
     noteSustain = 0.8f;
@@ -1115,7 +1063,7 @@ static void melodyTrigger8bitSaw(int note, float vel, float gateTime, bool slide
 
     if (sp->melodyVoices[1][0] >= 0) releaseNote(sp->melodyVoices[1][0]);
 
-    reset8bitGlobals();
+    resetNoteGlobals();
     noteAttack  = 0.001f;
     noteDecay   = 0.1f;
     noteSustain = 0.7f;

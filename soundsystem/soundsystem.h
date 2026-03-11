@@ -70,6 +70,7 @@ static inline void soundsystem_suppress_warnings(void) {
     // synth.h
     (void)processVoice;
     (void)releaseNote;
+    (void)resetNoteGlobals;
     (void)playNote;
     (void)playVowel;
     (void)playVowelOnVoice;
