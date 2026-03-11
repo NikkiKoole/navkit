@@ -1,6 +1,6 @@
 ---
 description: Deep assumption audit - find "correct but stupid" bugs
-allowed-tools: Read, Grep, Glob, Task
+allowed-tools: Read, Grep, Glob, Task, LSP
 model: opus
 argument-hint: [system-or-file-to-audit]
 ---
@@ -34,6 +34,13 @@ Think like a player, not a programmer. For each system you audit, ask:
 3. For each state change, verify ALL related state is updated
 4. For each cache/lookup, verify invalidation covers all mutation paths
 5. Think about the player experience: "If I were watching this in-game, would anything look wrong?"
+
+### Use LSP for tracing state lifecycles
+
+Prefer LSP over Grep when tracing how state flows between systems:
+- **`findReferences`** — find ALL places a field is read or written (e.g., who sets `item.reserved`? who clears it?)
+- **`incomingCalls`** — trace who calls `CancelJob` or `DeleteItem` to verify all cleanup paths
+- **`goToDefinition`** — jump to a function to check if it handles the edge case you're investigating
 
 ## Output format
 

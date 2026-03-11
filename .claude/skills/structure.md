@@ -1,6 +1,6 @@
 ---
 description: Structural analysis of C code - find repetition, implicit coupling, and drift risks
-allowed-tools: Read, Grep, Glob, Task
+allowed-tools: Read, Grep, Glob, Task, LSP
 model: opus
 argument-hint: [files or system to analyze, e.g. "src/entities/" or "the job system"]
 ---
@@ -84,6 +84,14 @@ Report your discovered file list before starting the analysis, organized as:
 - **Coupled via shared state**: Files that share mutable globals
 
 ## How to analyze
+
+### Use LSP for tracing coupling and call patterns
+
+Prefer LSP over Grep for understanding how systems connect:
+- **`findReferences`** — find ALL readers/writers of a shared global (e.g., who touches `items[]`? who reads `itemHighWaterMark`?)
+- **`incomingCalls`** — trace who calls a function to map dependents (e.g., who calls `CancelJob`?)
+- **`workspaceSymbol`** — find all definitions of a symbol name to detect duplicates or shadowing
+- **`documentSymbol`** — list all symbols in a file to inventory its public surface vs internal helpers
 
 1. Read ALL discovered/specified files thoroughly — this analysis is about the big picture
 2. For each pattern found, trace it across the full codebase

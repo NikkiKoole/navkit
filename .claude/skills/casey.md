@@ -1,6 +1,6 @@
 ---
 description: Casey Muratori-style performance & data-oriented design audit
-allowed-tools: Read, Grep, Glob, Task
+allowed-tools: Read, Grep, Glob, Task, LSP
 model: opus
 argument-hint: [system-or-file-to-audit, or "all" for full codebase]
 ---
@@ -65,6 +65,14 @@ You are a performance auditor channeling Casey Muratori's data-oriented design p
 7. **Check rendering**: Look for per-cell function calls that hide loops, string formatting in draw code, and non-batched draw calls.
 
 Use the Task tool to run parallel investigations of different subsystems when auditing the full codebase.
+
+### Use LSP for tracing hot paths
+
+Prefer LSP over Grep when tracing which functions call into hot loops:
+- **`findReferences`** — find all callers of a function to determine if it's on a hot path
+- **`incomingCalls`** — trace the call hierarchy up from a suspected hot function to its tick/update/render entry point
+- **`goToDefinition`** — jump to a function's implementation when you see it called in a loop
+- **`hover`** — check the type/size of a variable without reading the full header
 
 ## Output format
 

@@ -1,7 +1,7 @@
 ---
 description: Find SIMD vectorization opportunities — only where it actually matters
-allowed-tools: Read, Grep, Glob, Task
-model: opus
+allowed-tools: Read, Grep, Glob, Task, LSP
+model: sonnet
 argument-hint: [file-or-system-to-audit, or "all" for full codebase]
 ---
 
@@ -95,6 +95,12 @@ Before recommending intrinsics, check if the compiler can handle it:
 - Check with `-Rpass=loop-vectorize` (Clang) to see what the compiler already does
 
 Use the Task tool to run parallel investigations of different subsystems when auditing the full codebase.
+
+### Use LSP for tracing hot loop call sites
+
+- **`findReferences`** — find all callers of a loop function to determine call frequency (per-frame? per-tick? per-entity?)
+- **`incomingCalls`** — trace the call hierarchy from a candidate loop up to its entry point (render loop? simulation tick?)
+- **`goToDefinition`** — jump to struct/array definitions to check data layout and stride
 
 ## Output format
 
