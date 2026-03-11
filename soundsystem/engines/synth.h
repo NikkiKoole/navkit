@@ -363,6 +363,7 @@ typedef struct {
     float filterCutoff;   // Base cutoff 0.0-1.0
     float filterResonance;// Resonance 0.0-1.0
     int filterType;       // 0=LP (default), 1=HP, 2=BP
+    float filterKeyTrack; // 0 = fixed, 1 = cutoff tracks pitch (scale by freq/440)
     float filterLp;       // Filter state (lowpass)
     float filterBp;       // Filter state (bandpass, for resonance)
     
@@ -575,6 +576,7 @@ typedef struct SynthContext {
     float noteFilterCutoff;
     float noteFilterResonance;
     int noteFilterType;          // 0=LP, 1=HP, 2=BP
+    float noteFilterKeyTrack;    // 0 = fixed, 1 = cutoff follows pitch
     float noteFilterEnvAmt;
     float noteFilterEnvAttack;
     float noteFilterEnvDecay;
@@ -876,6 +878,7 @@ static void _ensureSynthCtx(void) {
 #define noteFilterCutoff (synthCtx->noteFilterCutoff)
 #define noteFilterResonance (synthCtx->noteFilterResonance)
 #define noteFilterType (synthCtx->noteFilterType)
+#define noteFilterKeyTrack (synthCtx->noteFilterKeyTrack)
 #define noteFilterEnvAmt (synthCtx->noteFilterEnvAmt)
 #define noteFilterEnvAttack (synthCtx->noteFilterEnvAttack)
 #define noteFilterEnvDecay (synthCtx->noteFilterEnvDecay)
@@ -3002,8 +3005,12 @@ static float processVoice(Voice *v, float sampleRate) {
     float ampLfoMod = processLfo(&v->ampLfoPhase, &v->ampLfoSH,
                                   v->ampLfoRate, v->ampLfoDepth, v->ampLfoShape, dt);
     
-    // Calculate effective cutoff with envelope and LFO modulation
+    // Calculate effective cutoff with envelope, LFO, and key tracking
     float cutoff = v->filterCutoff + v->filterEnvAmt * v->filterEnvLevel + filterLfoMod;
+    if (v->filterKeyTrack > 0.001f) {
+        float keyScale = v->frequency / 440.0f;
+        cutoff *= 1.0f + (keyScale - 1.0f) * v->filterKeyTrack;
+    }
     cutoff = clampf(cutoff, 0.01f, 1.0f);
 
     // Calculate effective resonance with LFO
@@ -3400,6 +3407,7 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     // Filter
     v->filterCutoff = params->useGlobalFilter ? noteFilterCutoff : params->filterCutoff;
     v->filterResonance = params->useGlobalFilter ? noteFilterResonance : params->filterResonance;
+    v->filterKeyTrack = params->useGlobalFilter ? noteFilterKeyTrack : 0.0f;
     v->filterType = params->useGlobalFilter ? noteFilterType : 0;
     
     // Initialize arpeggiator from global params if enabled

@@ -25,7 +25,7 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 
 ### Modulation
 - ADSR envelope
-- Filter with envelope, resonance
+- Filter with envelope, resonance, key tracking (`p_filterKeyTrack`)
 - LFOs for filter, resonance, amplitude, pitch (multiple shapes)
 - Vibrato
 - Mono mode with glide/portamento
@@ -109,8 +109,10 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - ✓ Multiple patterns (8 per bank - SEQ_NUM_PATTERNS)
 - ✓ Pattern switching - seqSwitchPattern(int idx)
 - ✓ Queue pattern at boundary - seqQueuePattern(int idx)
-- Pattern copy/paste/clear (NOT YET)
-- Pattern length (1-128 steps) (NOT YET - fixed at 16)
+- ✓ Pattern copy/clear (Cpy/Clr buttons in sequencer)
+- Pattern copy to any slot (NOT YET — copies to next only), see `docs/synthesis-additions.md` §14
+- ✓ Pattern length per track (`drumTrackLength[]`/`melodyTrackLength[]` in engine)
+- Per-track length UI (NOT YET — 16/32 toggle is global only), see `docs/synthesis-additions.md` §10
 - Time signature per pattern (NOT YET)
 
 ## 2.2 Pattern Chaining
@@ -177,6 +179,7 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - Rotation/offset
 - Great for polyrhythms and non-musicians
 - Per-track Euclidean settings
+- ~45 lines (algorithm + UI), see `docs/synthesis-additions.md` §11
 
 ## 3.6 Pattern Templates
 - Preset drum patterns (4-on-floor, breakbeat, trap, DnB, etc.)
@@ -240,23 +243,25 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - ✓ Classic acid bassline workflow: sawtooth/square + resonant filter + slides + accents
 - ✓ Sequencer integration with seqSetMelodyStep303()
 
-## 5.2 Supersaw/Unison
-- Multiple detuned oscillators (2-8 voices)
-- Detune amount, spread
-- JP-8000/Virus style massive leads
+## 5.2 Supersaw/Unison — PARTIALLY DONE
+- ✓ Unison 1-4 detuned oscillators with detune/mix controls
+- **Stereo spread** — pan unison copies across L/R (NOT YET)
+- See `docs/synthesis-additions.md` §4 for stereo spread implementation
 
-## 5.3 Wavefolder
-- Triangle through wavefolder
-- Fold amount (drive)
-- Metallic, squelchy, West Coast tones
+## 5.3 Wavefolder — TOP QUICK WIN
+- Triangle through wavefolder, reflective harmonics
+- ~25 lines, 1 new param (`p_wavefold`), biggest sonic impact for least effort
+- See `docs/synthesis-additions.md` §1 for implementation details + presets
 
 ## 5.4 Hard Sync
-- Two oscillators with hard sync
-- Sync sweep for classic tearing sound
+- Slave osc phase reset by master osc, classic tearing/screaming leads
+- ~30 lines, reuses `p_osc2Ratio` as master freq, 1 new param (`p_syncEnabled`)
+- See `docs/synthesis-additions.md` §3 for implementation details
 
-## 5.5 Ring Modulation
-- Carrier x Modulator
-- Metallic, bell-like, atonal textures
+## 5.5 Ring Modulation — EASIEST WIN
+- Multiply main osc × osc2 instead of mixing
+- ~5 lines, 0 new params (new `p_oscMixMode` value = 2)
+- See `docs/synthesis-additions.md` §2 for implementation details
 
 ## 5.6 Speech (8-bit)
 - Speak & Spell style synthesis
@@ -297,21 +302,33 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - Classic sweeping effect
 
 ## 6.4 Compressor/Limiter
-- Dynamics control
-- Threshold, ratio, attack, release
-- Sidechain input for pumping effect
+- Dynamics control: threshold, ratio, attack, release, makeup gain
+- Sidechain input for pumping effect (✓ DONE as separate sidechain system)
 - Limiter for final output protection
+- ~50 lines, see `docs/synthesis-additions.md` §8 for implementation
 
 ## 6.5 Per-Track Effects
 - Effect sends per track
 - Dry/wet per track
 - Effect routing flexibility
 
+## 6.x Master EQ (2-Band Shelving) — NEW, TOP WARMTH PRIORITY
+- Low shelf + high shelf, ~40 lines
+- See `docs/synthesis-additions.md` §5 for implementation
+
+## 6.x Tube Saturation (Asymmetric) — NEW
+- Even-harmonic warmth (2nd, 4th), unlike tanh which adds cold odd harmonics
+- ~10 lines, see `docs/synthesis-additions.md` §7
+
+## 6.x Analog Rolloff — NEW, EASIEST WIN
+- Always-on gentle highpass at ~16kHz, removes digital harshness, 3 lines
+- See `docs/synthesis-additions.md` §6
+
 ## 6.6 Comb Filter
 - Short delay with feedback
 - Flanging, metallic, Karplus-adjacent tones
 
-## 6.7 Tape Loop (King Tubby Dub Delay) - PLANNED
+## 6.7 Tape Loop (King Tubby Dub Delay) ✓ DONE
 - Variable-length loop buffer (up to 4 seconds)
 - Variable speed playback with motor inertia slew
 - Degradation per pass: saturation, high-freq rolloff, noise
@@ -320,7 +337,7 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - Throw/Cut controls for classic dub moves
 - Half-speed drop for pitch effects
 
-## 6.8 Rewind Effect (Vinyl Spinback) - PLANNED
+## 6.8 Rewind Effect (Vinyl Spinback) ✓ DONE
 - Capture buffer continuously stores last 3 seconds
 - Trigger-based reverse playback
 - Speed curves: linear, exponential (natural brake), S-curve
@@ -328,7 +345,7 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - Vinyl crackle/noise during rewind
 - Crossfade in/out of effect
 
-## 6.9 Bus/Mixer System - PLANNED (FUTURE)
+## 6.9 Bus/Mixer System ✓ DONE
 Koala-style per-sound effects routing:
 
 ### Architecture
@@ -379,10 +396,9 @@ Drums ─────────────────────> (configur
 - Use to modulate filter, etc.
 - Sidechain-style ducking
 
-## 7.4 Sample & Hold LFO
-- Random stepped modulation
-- Smoothed random
-- Clocked to tempo
+## 7.4 Sample & Hold LFO ✓ DONE
+- ✓ S&H is LFO shape 4 (filterLfoShape, resoLfoShape, ampLfoShape, pitchLfoShape)
+- ✓ Filter LFO has tempo sync (LfoSyncDiv)
 
 ---
 
@@ -400,11 +416,12 @@ Drums ─────────────────────> (configur
 - Pattern visualization
 - Keyboard highlight (playing notes)
 
-## 8.3 MIDI I/O
-- MIDI input for external controllers
-- MIDI output to external gear
-- MIDI clock sync (send/receive)
-- MIDI learn for parameters
+## 8.3 MIDI I/O — PARTIALLY DONE
+- ✓ MIDI input (CoreMIDI, hot-plug, velocity, sustain pedal CC64, mod wheel CC1)
+- ✓ MIDI learn (right-click any knob to map CC)
+- ✓ Split keyboard (route below/above split point to different patches)
+- MIDI output to external gear (NOT YET)
+- MIDI clock sync (send/receive) (NOT YET)
 
 ## 8.4 Audio Export
 - Render pattern to WAV

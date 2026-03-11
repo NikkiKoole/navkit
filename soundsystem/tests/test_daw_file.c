@@ -229,6 +229,7 @@ static void setupTestState(void) {
         daw.patches[i].p_filterEnvAmt = 0.2f + i * 0.05f;
         daw.patches[i].p_filterEnvAttack = 0.005f + i * 0.01f;
         daw.patches[i].p_filterEnvDecay = 0.1f + i * 0.02f;
+        daw.patches[i].p_filterKeyTrack = 0.2f + i * 0.1f;
         daw.patches[i].p_filterLfoRate = 1.0f + i * 0.5f;
         daw.patches[i].p_filterLfoDepth = 0.1f + i * 0.1f;
         daw.patches[i].p_filterLfoShape = i % 5;
@@ -866,7 +867,7 @@ static void verifyPatterns(void) {
 // 1. Compile-time: sizeof checks. If you add a field to any of these structs,
 //    the static assert fires → update save/load in daw_file.h, THEN update
 //    the expected size here.
-_Static_assert(sizeof(SynthPatch) == 548,
+_Static_assert(sizeof(SynthPatch) == 552,
     "SynthPatch size changed! Update _dwWritePatch/_dwApplyPatchKV in daw_file.h, then update this assert.");
 _Static_assert(sizeof(Mixer) == 384,
     "Mixer size changed! Update dawSave/dawLoad mixer section, then update this assert.");
@@ -901,6 +902,7 @@ static void verifyPatchFieldCoverage(void) {
     orig.p_filterCutoff = 0.345f; orig.p_filterResonance = 0.678f;
     orig.p_filterType = 2;
     orig.p_filterEnvAmt = 0.234f; orig.p_filterEnvAttack = 0.012f; orig.p_filterEnvDecay = 0.345f;
+    orig.p_filterKeyTrack = 0.567f;
     orig.p_filterLfoRate = 3.45f; orig.p_filterLfoDepth = 0.456f;
     orig.p_filterLfoShape = 2; orig.p_filterLfoSync = 3;
     orig.p_arpEnabled = true; orig.p_arpMode = 2; orig.p_arpRateDiv = 3;
@@ -979,6 +981,7 @@ static void verifyPatchFieldCoverage(void) {
     CK_F(p_vibratoRate); CK_F(p_vibratoDepth);
     CK_F(p_filterCutoff); CK_F(p_filterResonance); CK_I(p_filterType);
     CK_F(p_filterEnvAmt); CK_F(p_filterEnvAttack); CK_F(p_filterEnvDecay);
+    CK_F(p_filterKeyTrack);
     CK_F(p_filterLfoRate); CK_F(p_filterLfoDepth); CK_I(p_filterLfoShape); CK_I(p_filterLfoSync);
     CK_B(p_arpEnabled); CK_I(p_arpMode); CK_I(p_arpRateDiv); CK_F(p_arpRate); CK_I(p_arpChord);
     CK_I(p_unisonCount); CK_F(p_unisonDetune); CK_F(p_unisonMix);

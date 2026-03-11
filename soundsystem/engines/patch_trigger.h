@@ -30,6 +30,7 @@ static void applyPatchToGlobals(SynthPatch *p) {
     noteFilterEnvAmt = p->p_filterEnvAmt;
     noteFilterEnvAttack = p->p_filterEnvAttack;
     noteFilterEnvDecay = p->p_filterEnvDecay;
+    noteFilterKeyTrack = p->p_filterKeyTrack;
     noteFilterLfoRate = p->p_filterLfoRate;
     noteFilterLfoDepth = p->p_filterLfoDepth;
     noteFilterLfoShape = p->p_filterLfoShape;

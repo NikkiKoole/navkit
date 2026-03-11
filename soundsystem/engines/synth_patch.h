@@ -36,6 +36,7 @@ typedef struct {
     float p_filterEnvAmt;
     float p_filterEnvAttack;
     float p_filterEnvDecay;
+    float p_filterKeyTrack;       // 0 = fixed cutoff, 1 = cutoff tracks pitch fully
 
     // Filter LFO
     float p_filterLfoRate;
