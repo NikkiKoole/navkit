@@ -1,13 +1,13 @@
 # Missing Melodic Instruments
 
-Status: **design** — cataloguing melodic sounds needed for the target aesthetic
+Status: **Phase 0 DONE** — cataloguing melodic sounds needed for the target aesthetic
 (indie, lo-fi, jangle, jazz, SNES/RPG, game music) and how to build them.
 
 All instruments here are SynthPatch presets — no engine changes needed unless noted.
 
 ---
 
-## What Exists (45 presets, indices 0-44)
+## What Exists (98 presets, indices 0-97)
 
 ### By category
 
@@ -44,8 +44,10 @@ Piku Accord, Piku Tuba, Piku Bell, Piku Glock, Piku Piano, Piku Pluck
 | Membrane | (none melodic) | Only used for drums — but tabla is melodic! |
 | Bird | (none as preset) | Niche but useful for game ambience |
 
-**Big gap:** FM, Additive, Phase Distortion, SCW, and Granular have zero or one melodic
-preset each. These are entire synthesis families sitting unused.
+**Update:** Phase 0 complete — Additive (Choir Pad, Brass Stab, Add Strings, Add Bell),
+Phase Distortion (PD Bass, PD Lead), Mallet (Glockenspiel, Xylophone, Tubular Bells),
+Membrane (Tabla), and Bird (Bird Song) all have presets now. SCW and Granular still
+have zero presets.
 
 ---
 
@@ -182,7 +184,8 @@ an `instrumentPresets[N]` block:
 | Tabla (melodic) | WAVE_MEMBRANE | Preset entry — melodic tabla is a real instrument |
 | Bird Ambience | WAVE_BIRD | Preset entry — 6 bird types, none exposed |
 
-That's **11 free presets** from engines that are fully implemented but invisible.
+That's **11 free presets** from engines that were fully implemented but invisible.
+**All 11 now implemented** as presets 87-97.
 
 ---
 
@@ -204,19 +207,17 @@ lo-fi/SNES aesthetic where "perfectly accurate" isn't the goal.
 
 ## Implementation Plan
 
-| Phase | What | Count | Effort |
+| Phase | What | Count | Status |
 |-------|------|-------|--------|
-| **0: Free presets** | Glocken, Xylo, Tubular, Choir, Brass, Strings, Bell, PD×2, Tabla, Bird | 11 | ~100 lines |
-| **1: Core keys** | Rhodes (×2), Wurlitzer, Clavinet, Celesta, Toy Piano | 6 | ~80 lines |
-| **2: Core bass** | Upright, Fretless, Sub, FM Bass, Slap | 5 | ~60 lines |
-| **3: Guitar variants** | Nylon, Jazz, Muted, 12-string | 4 | ~50 lines |
-| **4: Winds** | Flute, Recorder, Ocarina, Muted Trumpet, Accordion | 5 | ~60 lines |
-| **5: World/bells** | Kalimba, Steel Drum, Gamelan, Pan Flute, Harmonica | 5 | ~60 lines |
-| **6: SNES kit** | SNES Strings, Brass, Choir, Piano, Harp, Bell (with bitcrusher) | 6 | ~70 lines |
-| **7: Pads** | Warm, Glass, Grain, Tape, Drone | 5 | ~60 lines |
+| **0: Free presets** | Glocken, Xylo, Tubular, Choir, Brass, Strings, Bell, PD×2, Tabla, Bird | 11 | **DONE** (presets 87-97) |
+| **1: Core keys** | Rhodes (×2), Wurlitzer, Clavinet, Celesta, Toy Piano | 6 | TODO |
+| **2: Core bass** | Upright, Fretless, Sub, FM Bass, Slap | 5 | Partial — Sub Bass (61), Nylon Guitar (62) done |
+| **3: Guitar variants** | Nylon, Jazz, Muted, 12-string | 4 | Partial — Nylon Guitar (62) done |
+| **4: Winds** | Flute, Recorder, Ocarina, Muted Trumpet, Accordion | 5 | TODO |
+| **5: World/bells** | Kalimba, Steel Drum, Gamelan, Pan Flute, Harmonica | 5 | Partial — Kalimba (60) done |
+| **6: SNES kit** | SNES Strings, Brass, Choir, Piano, Harp, Bell (with bitcrusher) | 6 | TODO |
+| **7: Pads** | Warm, Glass, Grain, Tape, Drone | 5 | Partial — WC Pad (82) done |
 
-Total: ~47 new presets, ~540 lines in instrument_presets.h, zero engine changes
-(except Phase 0 PD presets which just set different p_pdWave values on the existing engine).
-
-Phase 0 should happen first — it's embarrassing to have 5 synthesis engines with
-zero presets each.
+Phase 0 is complete — all 5 previously-unused synthesis engines now have presets.
+Also added 6 West Coast showcase presets (81-86) using wavefold/ring mod/hard sync.
+Total presets: 98 (up from 48).

@@ -1,9 +1,9 @@
 # Missing Percussion Instruments
 
-Status: **design** — cataloguing what's needed for the rhythm generator styles to sound
+Status: **Tier 1+2 DONE** — cataloguing what's needed for the rhythm generator styles to sound
 right, and how each instrument maps to the unified SynthPatch engine.
 
-Depends on: `unified-synth-drums.md` (Phase 2: DAW integration, drums.h → SynthPatch)
+Depends on: `unified-synth-drums.md` (Phase 2: DAW integration, drums.h → SynthPatch) — DONE
 
 ---
 
@@ -27,7 +27,7 @@ The synth engine already has the building blocks:
 
 ---
 
-## What Exists (14 drum presets, indices 24-37)
+## What Exists (29 drum/perc presets, indices 24-37 + 66-80)
 
 | Index | Name | Engine |
 |-------|------|--------|
@@ -50,30 +50,37 @@ The synth engine already has the building blocks:
 
 ## What's Missing
 
-### Tier 1: Needed by rhythm generator styles (high priority)
+### Tier 1: Needed by rhythm generator styles — DONE
 
-These are the sounds that rhythm map styles expect on the perc track but can't currently
-produce.
+All 5 implemented as SynthPatch presets (indices 66-70):
 
-| Instrument | Needed by styles | Synthesis approach |
-|------------|-----------------|-------------------|
-| **Ride Cymbal** | Jazz, Brush Jazz, Waltz Jazz, Jangle, SNES | 6-osc metallic (like HH) but lower ratios, longer decay (~2s), slight pitch drift. Key: the "wash" comes from beating frequencies between detuned partials. LP filter shapes brightness. |
-| **Brush Snare** | Brush Jazz | Noise-heavy (noiseMix ~0.8), longer noise decay (~0.3s), softer attack, less pitch envelope. The "swish" is white noise through a gentle bandpass. |
-| **Crash Cymbal** | SNES, Rock (fills) | Similar to ride but brighter (higher cutoff), faster initial burst, longer decay. More noise in the attack. |
-| **Shaker** | Lo-fi, Bossa Nova | Short noise burst, no pitch, bandpass filtered (mid-high). Like maracas but shorter and tighter. Retrigger=2 with very short spread for the "chick-a" sound. |
-| **Tambourine** | Pop, Reggae, Lo-fi | Noise burst (like shaker) + metallic jingle (FM or 3-osc at inharmonic ratios). Two layers: noise attack + ringing metallic tail. |
+| Instrument | Preset # | Key settings |
+|------------|----------|-------------|
+| **Ride Cymbal** | 66 | 6-osc metallic, lower ratios, 1.5s decay, LP 0.55 |
+| **Brush Snare** | 67 | Noise-heavy (0.85), BP filtered, soft attack |
+| **Crash Cymbal** | 68 | Bright ride variant, 2.0s decay, noise 0.3 |
+| **Shaker** | 69 | Tight noise, BP, retrigger=2, 30ms decay |
+| **Tambourine** | 70 | Noise + 2 inharmonic oscs, HP filtered |
 
-### Tier 2: Would improve specific styles (medium priority)
+### Tier 2: Would improve specific styles — MOSTLY DONE
 
-| Instrument | Needed by styles | Synthesis approach |
-|------------|-----------------|-------------------|
-| **Bongo Hi/Lo** | Latin, Bossa Nova | WAVE_MEMBRANE (already exists!). Just needs presets with bongo-appropriate pitch/damping/tension. |
-| **Conga Hi/Lo** | Latin | WAVE_MEMBRANE. Preset with conga pitch range and slap/open variations (via velocity→filter mapping). |
-| **Timbales** | Latin, Cha-Cha | Short metallic ring. FM with high ratio (~5-7), fast decay, bright filter. Halfway between tom and cowbell. |
-| **Guiro** | Latin, Cha-Cha | Noise through comb filter or rapid retrigger (8-12 bursts) with descending pitch. The scraping sound is essentially a train of short clicks. |
-| **Agogo** | Latin | Two FM tones at fixed pitches (high/low). Like cowbell but purer, less noise. |
-| **Woodblock** | Latin, March | Short filtered click, high pitch, no sustain. Square wave with fast pitch envelope down, very short decay (~30ms). |
-| **Triangle (perc)** | Jazz, SNES | Single sine at high frequency (~1-2kHz), long decay, slight pitch drop. Simplest possible preset. |
+Implemented (indices 71-80):
+
+| Instrument | Preset # | Key settings |
+|------------|----------|-------------|
+| **Bongo Hi** | 71 | WAVE_MEMBRANE (BONGO), 450Hz, damping 0.35 |
+| **Bongo Lo** | 72 | WAVE_MEMBRANE (BONGO), 280Hz, damping 0.25 |
+| **Conga Hi** | 73 | WAVE_MEMBRANE (CONGA), 350Hz, strike 0.7 |
+| **Conga Lo** | 74 | WAVE_MEMBRANE (CONGA), 220Hz, strike 0.5 |
+| **Timbales** | 75 | WAVE_FM, high ratio 5.0, fast decay |
+| **Woodblock** | 76 | WAVE_SQUARE, fast pitch env, 30ms decay |
+| **Agogo Hi** | 77 | WAVE_FM, ratio 3.0, 700Hz |
+| **Agogo Lo** | 78 | WAVE_FM, ratio 3.0, 470Hz |
+| **Triangle** | 79 | WAVE_TRIANGLE, 1500Hz, 1.5s decay |
+| **Finger Snap** | 80 | Noise, BP filtered, 40ms decay |
+
+Still missing from Tier 2: **Guiro** (needs rapid retrigger 8-12 bursts, may need
+engine support for high retrigger counts).
 
 ### Tier 3: Nice to have (low priority)
 
@@ -147,15 +154,12 @@ For the rhythmic "chick-a" double: retrigger=2, spread=0.015s, overlap=false.
 
 All new instruments are SynthPatch presets — no engine changes needed.
 
-| Phase | What | Presets | Effort |
+| Phase | What | Presets | Status |
 |-------|------|---------|--------|
-| After unified drums Phase 2 | Tier 1: Ride, Brush Snare, Crash, Shaker, Tambourine | 5 presets | ~50 lines in instrument_presets.h |
-| After tier 1 | Tier 2: Bongo, Conga, Timbales, Guiro, Agogo, Woodblock, Triangle | 7-9 presets | ~80 lines (membrane presets are simple) |
-| Whenever | Tier 3: Finger Snap, Vinyl Crackle, Cross Stick, Surdo, Cabasa | 5 presets | ~40 lines |
-
-**Note:** Bongo and Conga are potentially zero-effort — WAVE_MEMBRANE already synthesizes
-these. They just need preset entries with the right pitch/tension/damping values.
-The membrane engine's `membranePreset` field already has MEMBRANE_CONGA and MEMBRANE_BONGO.
+| Tier 1 | Ride, Brush Snare, Crash, Shaker, Tambourine | 5 presets (66-70) | **DONE** |
+| Tier 2 | Bongo, Conga, Timbales, Agogo, Woodblock, Triangle, Finger Snap | 10 presets (71-80) | **DONE** |
+| Tier 2 | Guiro | 1 preset | TODO (needs high retrigger count) |
+| Tier 3 | Vinyl Crackle, Cross Stick, Surdo, Cabasa | 4 presets | TODO |
 
 ### Connection to rhythm generator
 

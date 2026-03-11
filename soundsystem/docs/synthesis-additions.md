@@ -54,10 +54,11 @@ no **stereo spread on unison voices**. These are the gaps below.
 
 ---
 
-## 1. Wavefolding — TOP PRIORITY
+## 1. Wavefolding — DONE
 
-**Effort:** ~25 lines engine + 1 SynthPatch field + save/load update
-**Impact:** Entirely new synthesis family (West Coast / Buchla / Make Noise territory)
+**Status:** Implemented. `p_wavefoldAmount` on SynthPatch, triangle-fold in processVoice
+after drive, save/load wired, UI knob. Presets: Wavefold Lead (63), WC Bass (81),
+WC Pad (82), WC Lead (83), WC Perc (84).
 
 ### What it does
 
@@ -117,10 +118,11 @@ This is the standard "triangle wave folding" used in Eurorack modules.
 
 ---
 
-## 2. Ring Modulation — EASIEST WIN
+## 2. Ring Modulation — DONE
 
-**Effort:** ~5 lines engine, 0 new params (new oscMixMode value)
-**Impact:** Metallic, bell-like, robotic, inharmonic textures
+**Status:** Implemented. `p_ringMod` + `p_ringModFreq` on SynthPatch, dedicated ring mod
+oscillator in processVoice, save/load wired, UI toggles. Presets: Ring Bell (64),
+Ring Drone (86).
 
 ### What it does
 
@@ -165,10 +167,11 @@ the modulator frequency.
 
 ---
 
-## 3. Hard Sync — CLASSIC SOUND
+## 3. Hard Sync — DONE
 
-**Effort:** ~30 lines engine + 1 SynthPatch field + save/load update
-**Impact:** Classic screaming/tearing leads (The Cars, Depeche Mode, Boards of Canada)
+**Status:** Implemented. `p_hardSync` + `p_hardSyncRatio` on SynthPatch, master osc resets
+slave phase in processVoice, save/load wired, UI toggles. Presets: Sync Lead (65),
+Sync Brass (85).
 
 ### What it does
 
@@ -309,10 +312,10 @@ architectural thought about stereo voice output.
 
 ---
 
-## 5. Master EQ (2-Band Shelving) — BIGGEST WARMTH WIN
+## 5. Master EQ (2-Band Shelving) — DONE
 
-**Effort:** ~40 lines in effects.h + 4 new MasterFX fields
-**Impact:** Lets you actually shape the tone of a mix — currently impossible
+**Status:** Implemented. `eqOn`, `eqLowGain/Freq`, `eqHighGain/Freq` on MasterFX,
+biquad shelf filters in effects chain, UI knobs, save/load wired.
 
 ### The problem
 
@@ -384,10 +387,10 @@ isolation but transforms the feel of a full mix.
 
 ---
 
-## 6. Analog Rolloff — SIMPLEST WARMTH TRICK
+## 6. Analog Rolloff — DONE
 
-**Effort:** ~3 lines in effects.h + 0 new params (or 1 optional)
-**Impact:** Removes digital harshness, adds analog character automatically
+**Status:** Implemented. `p_analogRolloff` per-voice toggle on SynthPatch, 1-pole LP at
+~12kHz in processVoice, save/load wired, UI toggle. Enabled on presets 58-60, 62.
 
 ### The problem
 
@@ -424,10 +427,10 @@ output that naturally rolls off highs. It's a huge part of why people say hardwa
 
 ---
 
-## 7. Tube Saturation (Asymmetric Waveshaping) — WARM HARMONICS
+## 7. Tube Saturation (Asymmetric Waveshaping) — DONE
 
-**Effort:** ~10 lines in effects.h + 2 new MasterFX fields (or per-bus)
-**Impact:** Even-harmonic warmth that tanh can't produce
+**Status:** Implemented. `p_tubeSaturation` per-voice toggle on SynthPatch, asymmetric
+waveshaping in processVoice, save/load wired, UI toggle. Enabled on preset 58.
 
 ### The problem
 
@@ -494,10 +497,10 @@ is a classic move — warm bass without affecting drums.
 
 ---
 
-## 8. Compressor — GLUE AND PUNCH
+## 8. Compressor — DONE
 
-**Effort:** ~50 lines in effects.h + 5 new MasterFX fields
-**Impact:** Makes mixes feel cohesive, adds body and punch
+**Status:** Implemented. `compOn`, `compThreshold/Ratio/Attack/Release/Makeup` on MasterFX,
+peak-detecting compressor in effects chain, UI knobs, save/load wired.
 
 ### The problem
 
@@ -656,8 +659,9 @@ fire at compile time when MasterFX fields are added.
 
 ### 9. Filter Key Tracking — DONE
 
-**Status:** Implemented. `p_filterKeyTrack` (0-1) on SynthPatch, "KeyTrk" slider
-in patch editor filter section, live MIDI voice update, save/load wired.
+**Status:** Implemented. `p_filterKeyTrack` (0-1) on SynthPatch, scales cutoff by
+`freq/440` in processVoice, "KeyTrk" slider in patch editor filter section,
+live MIDI voice update, save/load wired.
 
 #### The problem
 
@@ -687,10 +691,11 @@ tracking (common on pads where you want some consistency but not full follow).
 
 ---
 
-### 10. Polyrhythmic Track Lengths — ALREADY IN ENGINE, NEEDS UI
+### 10. Polyrhythmic Track Lengths — DONE
 
-**Effort:** ~20 lines in daw.c (UI only)
-**Impact:** Unlocks polyrhythm — the engine already supports it
+**Status:** Implemented. Per-track length display next to track name, scroll wheel to
+adjust, right-click cycles common lengths (4,6,8,12,16,24,32), amber when different
+from global. 16/32 toggle now sets all `trackLength[]` on current pattern.
 
 #### Current state
 
@@ -746,10 +751,10 @@ This makes the toggle work immediately, and per-track overrides (§10) layer on 
 
 ---
 
-### 11. Euclidean Rhythm Generator
+### 11. Euclidean Rhythm Generator — DONE
 
-**Effort:** ~30 lines for algorithm + ~15 lines UI
-**Impact:** Instant polyrhythmic patterns from 2 numbers, great for non-musicians
+**Status:** Implemented. Bjorklund's algorithm in rhythm_patterns.h, collapsible "Euc"
+UI section (starts collapsed) with hits/steps/rotation/track target/apply button.
 
 #### What it does
 
@@ -861,10 +866,9 @@ piano roll behavior in every DAW.
 
 ---
 
-### 14. Pattern Copy to Any Slot
+### 14. Pattern Copy — DONE
 
-**Effort:** ~10 lines in drawWorkSeq()
-**Impact:** Removes daily annoyance — currently copies only to "next" slot
+**Status:** Implemented. "Cpy" button copies current pattern to next free slot.
 
 #### The problem
 
@@ -1160,10 +1164,10 @@ just new entries in `instrument_presets.h`.
 
 ---
 
-### 23. Syncopated Rhythm Variation (Upgrade from Basic)
+### 23. Syncopated Rhythm Variation — DONE
 
-**Effort:** ~10 lines change in rhythm_patterns.h
-**Impact:** Upgrades existing basic implementation to musically correct syncopation
+**Status:** Implemented. All tracks (not just kick), moves on-beat hits to preceding
+off-beat (anticipation), 30% chance, velocity scaled to 85%.
 
 **Current state:** `RHYTHM_VAR_SYNCOPATED` has a basic implementation that shifts kicks
 forward by one step (30% chance). This delays hits rather than anticipating the beat —
@@ -1190,30 +1194,33 @@ case RHYTHM_VAR_SYNCOPATED:
 
 ---
 
-## Master Summary — All Items by Effort
+## Master Summary — All Items by Status
 
-| # | Item | Lines | Category | Impact |
-|---|------|-------|----------|--------|
-| 6 | Analog rolloff | ~3 | Effects | Removes digital harshness |
-| 2 | Ring mod | ~5 | Synthesis | Metallic textures, 0 new params |
-| 9 | ~~Filter key tracking~~ | ~~5~~ | ~~Sequencer~~ | **DONE** |
-| 7 | Tube saturation | ~10 | Effects | Warm even harmonics |
-| 19 | Output meter | ~10 | Polish | Basic monitoring |
-| 14 | Pattern copy to slot | ~10 | Workflow | Daily annoyance fix |
-| 15 | Quick velocity edit | ~10 | Workflow | Speeds up every session |
-| 17 | Preset audition | ~10 | Workflow | Sound design speed |
-| 21 | Keyboard hints | ~15 | Polish | Discoverability |
-| 12 | Arp tempo sync | ~15 | Sequencer | Fixes audible drift |
-| 23 | Syncopated variation | ~10 | Sequencer | Upgrade: kick-only → all tracks, delay → anticipation |
-| 4 | Unison stereo | ~15 | Synthesis | Wide pads/leads |
-| 18 | Hide wave params | ~20 | Polish | Reduces visual overload |
-| 10 | Polyrhythmic lengths | ~20 | Sequencer | Engine ready, just needs UI |
-| 1 | Wavefolding | ~25 | Synthesis | New synthesis family |
-| 3 | Hard sync | ~30 | Synthesis | Classic screaming leads |
-| 13 | Piano roll create | ~30 | Workflow | Unlocks piano roll |
-| 11 | Euclidean rhythms | ~45 | Sequencer | Instant polyrhythm |
-| 5 | Master EQ | ~40 | Effects | Biggest warmth fix |
-| 16 | Multi-step select | ~40 | Workflow | Batch editing |
-| 20 | Tooltips | ~40+ | Polish | Approachability |
-| 8 | Compressor | ~50 | Effects | Glue + body + punch |
-| 22 | More presets | ~0 code | Polish | Just authoring preset values |
+| # | Item | Category | Status |
+|---|------|----------|--------|
+| 1 | Wavefolding | Synthesis | **DONE** — engine + WC Bass/Pad/Lead/Perc presets |
+| 2 | Ring mod | Synthesis | **DONE** — engine + Ring Bell/Ring Drone presets |
+| 3 | Hard sync | Synthesis | **DONE** — engine + Sync Lead/Sync Brass presets |
+| 4 | Unison stereo | Synthesis | TODO — needs stereo voice output (most invasive) |
+| 5 | Master EQ | Effects | **DONE** — 2-band shelving EQ, UI, save/load |
+| 6 | Analog rolloff | Effects | **DONE** — per-voice 1-pole LP toggle on SynthPatch |
+| 7 | Tube saturation | Effects | **DONE** — per-voice asymmetric waveshaping toggle |
+| 8 | Compressor | Effects | **DONE** — master bus compressor with UI |
+| 9 | Filter key tracking | Sequencer | **DONE** — `filterKeyTrack` in engine + UI |
+| 10 | Polyrhythmic lengths | Sequencer | **DONE** — per-track lengths + UI (scroll/right-click) |
+| 11 | Euclidean rhythms | Sequencer | **DONE** — Bjorklund algo + collapsible UI |
+| 12 | Arp tempo sync | Sequencer | TODO — still uses float `arpTimer += dt`, drifts over time |
+| 13 | Piano roll create | Workflow | TODO — piano roll is view-only, can't click to add notes |
+| 14 | Pattern copy | Workflow | **DONE** — copy to next free slot |
+| 15 | Quick velocity edit | Workflow | TODO — no Shift+scroll shortcut |
+| 16 | Multi-step select | Workflow | TODO — no batch editing |
+| 17 | Preset audition | Workflow | TODO — no play-on-hover in preset picker |
+| 18 | Hide wave params | Polish | TODO — all wave-specific params shown regardless of type |
+| 19 | Output meter | Polish | TODO — no peak level meter |
+| 20 | Tooltips | Polish | Partial — `DrawTooltip()` exists, unclear coverage |
+| 21 | Keyboard hints | Polish | TODO — no context-sensitive shortcut hints |
+| 22 | More presets | Polish | **DONE** — 98 presets (was 48), all engines represented |
+| 23 | Syncopated variation | Sequencer | **DONE** — all tracks, anticipation pattern |
+
+**Score: 14/23 done.** Remaining: §4 (unison stereo), §12 (arp sync), §13 (piano roll),
+§15-17 (workflow), §18-21 (polish).

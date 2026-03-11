@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 81
+#define NUM_INSTRUMENT_PRESETS 98
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -1292,6 +1292,272 @@ static void initInstrumentPresets(void) {
     instrumentPresets[80].patch.p_phaseReset = true;
     instrumentPresets[80].patch.p_useTriggerFreq = true;
     instrumentPresets[80].patch.p_triggerFreq = 1200.0f;
+
+    // ========================================================================
+    // WEST COAST / WAVEFOLD / SYNC / RING MOD SHOWCASE (81-86)
+    // ========================================================================
+
+    // 81: West Coast Bass — Buchla-style bongo bass, triangle through wavefolder
+    instrumentPresets[81].name = "WC Bass";
+    instrumentPresets[81].patch.p_waveType = WAVE_TRIANGLE;
+    instrumentPresets[81].patch.p_wavefoldAmount = 0.4f;
+    instrumentPresets[81].patch.p_attack = 0.003f;
+    instrumentPresets[81].patch.p_decay = 0.35f;
+    instrumentPresets[81].patch.p_sustain = 0.3f;
+    instrumentPresets[81].patch.p_release = 0.12f;
+    instrumentPresets[81].patch.p_filterCutoff = 0.35f;
+    instrumentPresets[81].patch.p_filterResonance = 0.25f;
+    instrumentPresets[81].patch.p_filterEnvAmt = 0.4f;
+    instrumentPresets[81].patch.p_filterEnvAttack = 0.005f;
+    instrumentPresets[81].patch.p_filterEnvDecay = 0.25f;
+    instrumentPresets[81].patch.p_monoMode = true;
+    instrumentPresets[81].patch.p_glideTime = 0.03f;
+    instrumentPresets[81].patch.p_volume = 0.6f;
+
+    // 82: Evolving Pad — sine through wavefolder with filter LFO, breathing texture
+    instrumentPresets[82].name = "WC Pad";
+    instrumentPresets[82].patch.p_waveType = WAVE_TRIANGLE;
+    instrumentPresets[82].patch.p_wavefoldAmount = 0.35f;
+    instrumentPresets[82].patch.p_attack = 0.4f;
+    instrumentPresets[82].patch.p_decay = 0.5f;
+    instrumentPresets[82].patch.p_sustain = 0.7f;
+    instrumentPresets[82].patch.p_release = 0.6f;
+    instrumentPresets[82].patch.p_filterCutoff = 0.4f;
+    instrumentPresets[82].patch.p_filterResonance = 0.15f;
+    instrumentPresets[82].patch.p_filterLfoRate = 0.3f;
+    instrumentPresets[82].patch.p_filterLfoDepth = 0.3f;
+    instrumentPresets[82].patch.p_volume = 0.5f;
+
+    // 83: Metallic Lead — saw + heavy wavefold + high resonance, screaming harmonics
+    instrumentPresets[83].name = "WC Lead";
+    instrumentPresets[83].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[83].patch.p_wavefoldAmount = 0.7f;
+    instrumentPresets[83].patch.p_attack = 0.005f;
+    instrumentPresets[83].patch.p_decay = 0.15f;
+    instrumentPresets[83].patch.p_sustain = 0.65f;
+    instrumentPresets[83].patch.p_release = 0.15f;
+    instrumentPresets[83].patch.p_filterCutoff = 0.6f;
+    instrumentPresets[83].patch.p_filterResonance = 0.4f;
+    instrumentPresets[83].patch.p_filterEnvAmt = 0.3f;
+    instrumentPresets[83].patch.p_filterEnvAttack = 0.01f;
+    instrumentPresets[83].patch.p_filterEnvDecay = 0.3f;
+    instrumentPresets[83].patch.p_monoMode = true;
+    instrumentPresets[83].patch.p_glideTime = 0.04f;
+    instrumentPresets[83].patch.p_volume = 0.45f;
+
+    // 84: Fold Perc — sine + pitch env + wavefold, complex percussive transient
+    instrumentPresets[84].name = "WC Perc";
+    instrumentPresets[84].patch.p_waveType = WAVE_TRIANGLE;
+    instrumentPresets[84].patch.p_wavefoldAmount = 0.6f;
+    instrumentPresets[84].patch.p_pitchEnvAmount = 12.0f;
+    instrumentPresets[84].patch.p_pitchEnvDecay = 0.04f;
+    instrumentPresets[84].patch.p_attack = 0.001f;
+    instrumentPresets[84].patch.p_decay = 0.25f;
+    instrumentPresets[84].patch.p_sustain = 0.0f;
+    instrumentPresets[84].patch.p_release = 0.08f;
+    instrumentPresets[84].patch.p_expDecay = true;
+    instrumentPresets[84].patch.p_filterCutoff = 0.65f;
+    instrumentPresets[84].patch.p_filterResonance = 0.15f;
+    instrumentPresets[84].patch.p_volume = 0.5f;
+    instrumentPresets[84].patch.p_phaseReset = true;
+
+    // 85: Sync Brass — hard sync saw with filter env sweep, punchy brass stab
+    instrumentPresets[85].name = "Sync Brass";
+    instrumentPresets[85].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[85].patch.p_hardSync = true;
+    instrumentPresets[85].patch.p_hardSyncRatio = 1.5f;
+    instrumentPresets[85].patch.p_attack = 0.01f;
+    instrumentPresets[85].patch.p_decay = 0.2f;
+    instrumentPresets[85].patch.p_sustain = 0.5f;
+    instrumentPresets[85].patch.p_release = 0.12f;
+    instrumentPresets[85].patch.p_filterCutoff = 0.3f;
+    instrumentPresets[85].patch.p_filterResonance = 0.2f;
+    instrumentPresets[85].patch.p_filterEnvAmt = 0.5f;
+    instrumentPresets[85].patch.p_filterEnvAttack = 0.01f;
+    instrumentPresets[85].patch.p_filterEnvDecay = 0.15f;
+    instrumentPresets[85].patch.p_volume = 0.5f;
+
+    // 86: Ring Drone — ring mod with slow beating, dark metallic texture
+    instrumentPresets[86].name = "Ring Drone";
+    instrumentPresets[86].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[86].patch.p_ringMod = true;
+    instrumentPresets[86].patch.p_ringModFreq = 1.01f;  // Near-unison = slow beating
+    instrumentPresets[86].patch.p_attack = 0.3f;
+    instrumentPresets[86].patch.p_decay = 0.5f;
+    instrumentPresets[86].patch.p_sustain = 0.8f;
+    instrumentPresets[86].patch.p_release = 0.5f;
+    instrumentPresets[86].patch.p_filterCutoff = 0.35f;
+    instrumentPresets[86].patch.p_filterResonance = 0.2f;
+    instrumentPresets[86].patch.p_filterLfoRate = 0.15f;
+    instrumentPresets[86].patch.p_filterLfoDepth = 0.2f;
+    instrumentPresets[86].patch.p_volume = 0.45f;
+
+    // ========================================================================
+    // PHASE 0: FREE PRESETS — engines with zero presets (87-97)
+    // ========================================================================
+
+    // 87: Glockenspiel — bright, bell-like mallet
+    instrumentPresets[87].name = "Glockenspiel";
+    instrumentPresets[87].patch.p_waveType = WAVE_MALLET;
+    instrumentPresets[87].patch.p_malletPreset = MALLET_PRESET_GLOCKEN;
+    instrumentPresets[87].patch.p_malletHardness = 0.8f;
+    instrumentPresets[87].patch.p_malletStrikePos = 0.3f;
+    instrumentPresets[87].patch.p_malletResonance = 0.8f;
+    instrumentPresets[87].patch.p_malletDamp = 0.1f;
+    instrumentPresets[87].patch.p_attack = 0.001f;
+    instrumentPresets[87].patch.p_decay = 1.2f;
+    instrumentPresets[87].patch.p_sustain = 0.0f;
+    instrumentPresets[87].patch.p_release = 0.4f;
+    instrumentPresets[87].patch.p_expDecay = true;
+    instrumentPresets[87].patch.p_volume = 0.4f;
+
+    // 88: Xylophone — bright, sharp, woody
+    instrumentPresets[88].name = "Xylophone";
+    instrumentPresets[88].patch.p_waveType = WAVE_MALLET;
+    instrumentPresets[88].patch.p_malletPreset = MALLET_PRESET_XYLOPHONE;
+    instrumentPresets[88].patch.p_malletHardness = 0.7f;
+    instrumentPresets[88].patch.p_malletStrikePos = 0.2f;
+    instrumentPresets[88].patch.p_malletResonance = 0.6f;
+    instrumentPresets[88].patch.p_malletDamp = 0.2f;
+    instrumentPresets[88].patch.p_attack = 0.001f;
+    instrumentPresets[88].patch.p_decay = 0.6f;
+    instrumentPresets[88].patch.p_sustain = 0.0f;
+    instrumentPresets[88].patch.p_release = 0.2f;
+    instrumentPresets[88].patch.p_expDecay = true;
+    instrumentPresets[88].patch.p_volume = 0.45f;
+
+    // 89: Tubular Bells — deep, resonant church bells
+    instrumentPresets[89].name = "Tubular Bells";
+    instrumentPresets[89].patch.p_waveType = WAVE_MALLET;
+    instrumentPresets[89].patch.p_malletPreset = MALLET_PRESET_TUBULAR;
+    instrumentPresets[89].patch.p_malletHardness = 0.6f;
+    instrumentPresets[89].patch.p_malletStrikePos = 0.15f;
+    instrumentPresets[89].patch.p_malletResonance = 0.9f;
+    instrumentPresets[89].patch.p_malletDamp = 0.05f;
+    instrumentPresets[89].patch.p_attack = 0.001f;
+    instrumentPresets[89].patch.p_decay = 2.5f;
+    instrumentPresets[89].patch.p_sustain = 0.0f;
+    instrumentPresets[89].patch.p_release = 0.8f;
+    instrumentPresets[89].patch.p_expDecay = true;
+    instrumentPresets[89].patch.p_volume = 0.4f;
+
+    // 90: Choir Pad — additive choir, warm sustained voices
+    instrumentPresets[90].name = "Choir Pad";
+    instrumentPresets[90].patch.p_waveType = WAVE_ADDITIVE;
+    instrumentPresets[90].patch.p_additivePreset = ADDITIVE_PRESET_CHOIR;
+    instrumentPresets[90].patch.p_additiveBrightness = 0.5f;
+    instrumentPresets[90].patch.p_additiveShimmer = 0.15f;
+    instrumentPresets[90].patch.p_attack = 0.3f;
+    instrumentPresets[90].patch.p_decay = 0.5f;
+    instrumentPresets[90].patch.p_sustain = 0.7f;
+    instrumentPresets[90].patch.p_release = 0.5f;
+    instrumentPresets[90].patch.p_filterCutoff = 0.55f;
+    instrumentPresets[90].patch.p_vibratoRate = 5.5f;
+    instrumentPresets[90].patch.p_vibratoDepth = 0.003f;
+    instrumentPresets[90].patch.p_volume = 0.45f;
+
+    // 91: Brass Stab — additive brass, short punchy
+    instrumentPresets[91].name = "Brass Stab";
+    instrumentPresets[91].patch.p_waveType = WAVE_ADDITIVE;
+    instrumentPresets[91].patch.p_additivePreset = ADDITIVE_PRESET_BRASS;
+    instrumentPresets[91].patch.p_additiveBrightness = 0.7f;
+    instrumentPresets[91].patch.p_attack = 0.02f;
+    instrumentPresets[91].patch.p_decay = 0.2f;
+    instrumentPresets[91].patch.p_sustain = 0.5f;
+    instrumentPresets[91].patch.p_release = 0.1f;
+    instrumentPresets[91].patch.p_filterCutoff = 0.6f;
+    instrumentPresets[91].patch.p_filterEnvAmt = 0.3f;
+    instrumentPresets[91].patch.p_filterEnvAttack = 0.01f;
+    instrumentPresets[91].patch.p_filterEnvDecay = 0.15f;
+    instrumentPresets[91].patch.p_volume = 0.5f;
+
+    // 92: Add Strings — additive string ensemble (different from saw-based Strings)
+    instrumentPresets[92].name = "Add Strings";
+    instrumentPresets[92].patch.p_waveType = WAVE_ADDITIVE;
+    instrumentPresets[92].patch.p_additivePreset = ADDITIVE_PRESET_STRINGS;
+    instrumentPresets[92].patch.p_additiveBrightness = 0.55f;
+    instrumentPresets[92].patch.p_additiveShimmer = 0.1f;
+    instrumentPresets[92].patch.p_attack = 0.15f;
+    instrumentPresets[92].patch.p_decay = 0.3f;
+    instrumentPresets[92].patch.p_sustain = 0.7f;
+    instrumentPresets[92].patch.p_release = 0.3f;
+    instrumentPresets[92].patch.p_filterCutoff = 0.5f;
+    instrumentPresets[92].patch.p_vibratoRate = 5.0f;
+    instrumentPresets[92].patch.p_vibratoDepth = 0.004f;
+    instrumentPresets[92].patch.p_volume = 0.45f;
+
+    // 93: Add Bell — additive bell, inharmonic partials, long ring
+    instrumentPresets[93].name = "Add Bell";
+    instrumentPresets[93].patch.p_waveType = WAVE_ADDITIVE;
+    instrumentPresets[93].patch.p_additivePreset = ADDITIVE_PRESET_BELL;
+    instrumentPresets[93].patch.p_additiveBrightness = 0.65f;
+    instrumentPresets[93].patch.p_additiveInharmonicity = 0.3f;
+    instrumentPresets[93].patch.p_attack = 0.001f;
+    instrumentPresets[93].patch.p_decay = 2.0f;
+    instrumentPresets[93].patch.p_sustain = 0.0f;
+    instrumentPresets[93].patch.p_release = 0.6f;
+    instrumentPresets[93].patch.p_expDecay = true;
+    instrumentPresets[93].patch.p_volume = 0.4f;
+
+    // 94: PD Bass — CZ-style digital bass, resonant saw
+    instrumentPresets[94].name = "PD Bass";
+    instrumentPresets[94].patch.p_waveType = WAVE_PD;
+    instrumentPresets[94].patch.p_pdWaveType = PD_WAVE_RESO1;
+    instrumentPresets[94].patch.p_attack = 0.005f;
+    instrumentPresets[94].patch.p_decay = 0.25f;
+    instrumentPresets[94].patch.p_sustain = 0.4f;
+    instrumentPresets[94].patch.p_release = 0.1f;
+    instrumentPresets[94].patch.p_filterCutoff = 0.4f;
+    instrumentPresets[94].patch.p_filterResonance = 0.2f;
+    instrumentPresets[94].patch.p_filterEnvAmt = 0.35f;
+    instrumentPresets[94].patch.p_filterEnvAttack = 0.005f;
+    instrumentPresets[94].patch.p_filterEnvDecay = 0.2f;
+    instrumentPresets[94].patch.p_monoMode = true;
+    instrumentPresets[94].patch.p_volume = 0.55f;
+
+    // 95: PD Lead — CZ-101 screaming resonant lead
+    instrumentPresets[95].name = "PD Lead";
+    instrumentPresets[95].patch.p_waveType = WAVE_PD;
+    instrumentPresets[95].patch.p_pdWaveType = PD_WAVE_RESO3;
+    instrumentPresets[95].patch.p_attack = 0.01f;
+    instrumentPresets[95].patch.p_decay = 0.15f;
+    instrumentPresets[95].patch.p_sustain = 0.6f;
+    instrumentPresets[95].patch.p_release = 0.15f;
+    instrumentPresets[95].patch.p_filterCutoff = 0.65f;
+    instrumentPresets[95].patch.p_filterResonance = 0.3f;
+    instrumentPresets[95].patch.p_monoMode = true;
+    instrumentPresets[95].patch.p_glideTime = 0.04f;
+    instrumentPresets[95].patch.p_volume = 0.5f;
+
+    // 96: Tabla — melodic tabla, pitched membrane
+    instrumentPresets[96].name = "Tabla";
+    instrumentPresets[96].patch.p_waveType = WAVE_MEMBRANE;
+    instrumentPresets[96].patch.p_membranePreset = MEMBRANE_TABLA;
+    instrumentPresets[96].patch.p_membraneDamping = 0.2f;
+    instrumentPresets[96].patch.p_membraneStrike = 0.4f;
+    instrumentPresets[96].patch.p_membraneBend = 0.2f;
+    instrumentPresets[96].patch.p_membraneBendDecay = 0.1f;
+    instrumentPresets[96].patch.p_attack = 0.001f;
+    instrumentPresets[96].patch.p_decay = 0.5f;
+    instrumentPresets[96].patch.p_sustain = 0.0f;
+    instrumentPresets[96].patch.p_release = 0.2f;
+    instrumentPresets[96].patch.p_volume = 0.5f;
+
+    // 97: Bird Song — chirpy bird vocalization for game ambience
+    instrumentPresets[97].name = "Bird Song";
+    instrumentPresets[97].patch.p_waveType = WAVE_BIRD;
+    instrumentPresets[97].patch.p_birdType = BIRD_WARBLE;
+    instrumentPresets[97].patch.p_birdChirpRange = 1.2f;
+    instrumentPresets[97].patch.p_birdTrillRate = 0.3f;
+    instrumentPresets[97].patch.p_birdTrillDepth = 0.4f;
+    instrumentPresets[97].patch.p_birdAmRate = 0.2f;
+    instrumentPresets[97].patch.p_birdAmDepth = 0.3f;
+    instrumentPresets[97].patch.p_birdHarmonics = 0.25f;
+    instrumentPresets[97].patch.p_attack = 0.01f;
+    instrumentPresets[97].patch.p_decay = 0.5f;
+    instrumentPresets[97].patch.p_sustain = 0.3f;
+    instrumentPresets[97].patch.p_release = 0.2f;
+    instrumentPresets[97].patch.p_volume = 0.35f;
 }
 
 #endif // INSTRUMENT_PRESETS_H
