@@ -887,19 +887,21 @@ static void patClearDrum(Pattern *p, int track, int step) {
 // Check if a drum step is active
 static bool patGetDrum(Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_DRUM_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return false;
-    return p->drumSteps[track][step];
+    return p->steps[track][step].noteCount > 0;
 }
 
 // Get drum velocity
 static float patGetDrumVel(Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_DRUM_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 0.0f;
-    return p->drumVelocity[track][step];
+    StepV2 *sv = &p->steps[track][step];
+    return (sv->noteCount > 0) ? velU8ToFloat(sv->notes[0].velocity) : 0.0f;
 }
 
 // Get drum pitch
 static float patGetDrumPitch(Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_DRUM_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 0.0f;
-    return p->drumPitch[track][step];
+    StepV2 *sv = &p->steps[track][step];
+    return (sv->noteCount > 0) ? (sv->notes[0].nudge / 12.0f) : 0.0f;
 }
 
 // Set drum probability
@@ -961,19 +963,62 @@ static void patClearNote(Pattern *p, int track, int step) {
 // Get melody note (returns SEQ_NOTE_OFF if empty)
 static int patGetNote(Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_MELODY_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return SEQ_NOTE_OFF;
-    return p->melodyNote[track][step];
+    StepV2 *sv = &p->steps[SEQ_DRUM_TRACKS + track][step];
+    return (sv->noteCount > 0) ? sv->notes[0].note : SEQ_NOTE_OFF;
 }
 
 // Get melody velocity
 static float patGetNoteVel(Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_MELODY_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 0.0f;
-    return p->melodyVelocity[track][step];
+    StepV2 *sv = &p->steps[SEQ_DRUM_TRACKS + track][step];
+    return (sv->noteCount > 0) ? velU8ToFloat(sv->notes[0].velocity) : 0.0f;
 }
 
 // Get melody gate
 static int patGetNoteGate(Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_MELODY_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 0;
-    return p->melodyGate[track][step];
+    StepV2 *sv = &p->steps[SEQ_DRUM_TRACKS + track][step];
+    return (sv->noteCount > 0) ? sv->notes[0].gate : 0;
+}
+
+// Set melody gate (without changing note or velocity)
+static void patSetNoteGate(Pattern *p, int track, int step, int gate) {
+    if (track < 0 || track >= SEQ_MELODY_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return;
+    p->melodyGate[track][step] = gate;
+    StepV2 *sv = &p->steps[SEQ_DRUM_TRACKS + track][step];
+    if (sv->noteCount > 0) sv->notes[0].gate = (int8_t)gate;
+}
+
+// Set melody note pitch (without changing velocity or gate)
+static void patSetNotePitch(Pattern *p, int track, int step, int note) {
+    if (track < 0 || track >= SEQ_MELODY_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return;
+    p->melodyNote[track][step] = note;
+    StepV2 *sv = &p->steps[SEQ_DRUM_TRACKS + track][step];
+    if (sv->noteCount > 0) sv->notes[0].note = (int8_t)note;
+}
+
+// Set melody velocity (without changing note or gate)
+static void patSetNoteVel(Pattern *p, int track, int step, float vel) {
+    if (track < 0 || track >= SEQ_MELODY_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return;
+    p->melodyVelocity[track][step] = vel;
+    StepV2 *sv = &p->steps[SEQ_DRUM_TRACKS + track][step];
+    if (sv->noteCount > 0) sv->notes[0].velocity = velFloatToU8(vel);
+}
+
+// Set drum velocity (without changing pitch)
+static void patSetDrumVel(Pattern *p, int track, int step, float vel) {
+    if (track < 0 || track >= SEQ_DRUM_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return;
+    p->drumVelocity[track][step] = vel;
+    StepV2 *sv = &p->steps[track][step];
+    if (sv->noteCount > 0) sv->notes[0].velocity = velFloatToU8(vel);
+}
+
+// Set drum pitch (without changing velocity)
+static void patSetDrumPitch(Pattern *p, int track, int step, float pitch) {
+    if (track < 0 || track >= SEQ_DRUM_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return;
+    p->drumPitch[track][step] = pitch;
+    StepV2 *sv = &p->steps[track][step];
+    if (sv->noteCount > 0) sv->notes[0].nudge = (int8_t)(pitch * 12.0f);
 }
 
 // Set melody slide/accent flags
@@ -1013,43 +1058,45 @@ static void patSetNoteCond(Pattern *p, int track, int step, int cond) {
 // Get drum probability
 static float patGetDrumProb(Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_DRUM_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 1.0f;
-    return p->drumProbability[track][step];
+    return probU8ToFloat(p->steps[track][step].probability);
 }
 
 // Get drum condition
 static int patGetDrumCond(Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_DRUM_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 0;
-    return p->drumCondition[track][step];
+    return (int)p->steps[track][step].condition;
 }
 
 // Get melody slide
 static bool patGetNoteSlide(Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_MELODY_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return false;
-    return p->melodySlide[track][step];
+    StepV2 *sv = &p->steps[SEQ_DRUM_TRACKS + track][step];
+    return (sv->noteCount > 0) ? sv->notes[0].slide : false;
 }
 
 // Get melody accent
 static bool patGetNoteAccent(Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_MELODY_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return false;
-    return p->melodyAccent[track][step];
+    StepV2 *sv = &p->steps[SEQ_DRUM_TRACKS + track][step];
+    return (sv->noteCount > 0) ? sv->notes[0].accent : false;
 }
 
 // Get melody sustain
 static int patGetNoteSustain(Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_MELODY_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 0;
-    return p->melodySustain[track][step];
+    return (int)p->steps[SEQ_DRUM_TRACKS + track][step].sustain;
 }
 
 // Get melody probability
 static float patGetNoteProb(Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_MELODY_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 1.0f;
-    return p->melodyProbability[track][step];
+    return probU8ToFloat(p->steps[SEQ_DRUM_TRACKS + track][step].probability);
 }
 
 // Get melody condition
 static int patGetNoteCond(Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_MELODY_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 0;
-    return p->melodyCondition[track][step];
+    return (int)p->steps[SEQ_DRUM_TRACKS + track][step].condition;
 }
 
 // Set melody track length

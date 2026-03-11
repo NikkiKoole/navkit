@@ -190,8 +190,7 @@ static Pattern* dawPattern(void) {
 
 // Helper: get track length from Pattern (drum tracks 0-3 vs melody tracks 4-6)
 static int dawTrackLength(Pattern *p, int track) {
-    if (track < SEQ_DRUM_TRACKS) return p->drumTrackLength[track];
-    return p->melodyTrackLength[track - SEQ_DRUM_TRACKS];
+    return p->trackLength[track];
 }
 
 typedef struct {
@@ -1103,7 +1102,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                 if (wheel != 0 && patGetNote(dawPattern(), mt, step) != SEQ_NOTE_OFF) {
                     int n = patGetNote(dawPattern(), mt, step) + wheel;
                     if (n < 0) n = 0; if (n > 127) n = 127;
-                    dawPattern()->melodyNote[mt][step] = n;
+                    patSetNote(dawPattern(), mt, step, n, patGetNoteVel(dawPattern(), mt, step), patGetNoteGate(dawPattern(), mt, step));
                 }
             }
             if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
@@ -1185,6 +1184,21 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             }
             ui_col_toggle(&c4, "Accent", &pat->melodyAccent[mt][ds]);
         }
+        // Writeback v1 → v2 after UI widget edits
+        if (isDrumTrack) {
+            patSetDrumVel(pat, detailTrack, ds, *velPtr);
+            patSetDrumProb(pat, detailTrack, ds, *probPtr);
+            patSetDrumCond(pat, detailTrack, ds, *condPtr);
+        } else {
+            int mt = detailTrack - SEQ_DRUM_TRACKS;
+            patSetNoteVel(pat, mt, ds, *velPtr);
+            patSetNoteProb(pat, mt, ds, *probPtr);
+            patSetNoteCond(pat, mt, ds, *condPtr);
+            patSetNoteGate(pat, mt, ds, pat->melodyGate[mt][ds]);
+            patSetNoteFlags(pat, mt, ds, pat->melodySlide[mt][ds], pat->melodyAccent[mt][ds]);
+            patSetNotePitch(pat, mt, ds, pat->melodyNote[mt][ds]);
+        }
+
         // === P-LOCK ROW ===
         // Scrollwheel to edit, right-click to clear
         bool hasPL = seqHasPLocks(pat, detailTrack, ds);
@@ -1688,9 +1702,10 @@ static void drawWorkPiano(float x, float y, float w, float h) {
 
     // --- Playhead ---
     if (daw.transport.playing) {
-        // Use the melody track's current step for this track
-        int curStep = seq.melodyStep[mt];
-        float phX = gridX + curStep * stepW + stepW * seq.melodyTick[mt] / (float)seq.ticksPerStep;
+        // Use the v2 track's current step for this track
+        int absTrack = SEQ_DRUM_TRACKS + mt;
+        int curStep = seq.trackStep[absTrack];
+        float phX = gridX + curStep * stepW + stepW * seq.trackTick[absTrack] / (float)seq.ticksPerStep;
         DrawLine((int)phX, (int)gridY, (int)phX, (int)(gridY + gridH), (Color){255,200,50,180});
     }
 
@@ -1807,7 +1822,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
             if (newGate < 1) { newGateNudge = totalTicks - 24.0f; newGate = 1; }
             if (newGateNudge < -23) newGateNudge = -23;
             if (newGateNudge > 23) newGateNudge = 23;
-            pat->melodyGate[mt][prDragStep] = newGate;
+            patSetNoteGate(pat, mt, prDragStep, newGate);
             seqSetPLock(pat, SEQ_DRUM_TRACKS + mt, prDragStep, PLOCK_GATE_NUDGE, newGateNudge);
         }
         else if (prDragMode == PR_DRAG_LEFT) {
@@ -1833,7 +1848,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
                     // Adjust gate: moved left = longer, moved right = shorter
                     int gateAdj = patGetNoteGate(pat, mt, newStep) - stepShift;
                     if (gateAdj < 1) gateAdj = 1;
-                    pat->melodyGate[mt][newStep] = gateAdj;
+                    patSetNoteGate(pat, mt, newStep, gateAdj);
                     prDragStep = newStep;
                     prDragStartX = mouse.x;
                     prDragOrigNudge = totalOffset;
@@ -1879,7 +1894,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
                     }
                 } else {
                     // Same step — just update pitch + nudge
-                    pat->melodyNote[mt][prDragStep] = newPitch;
+                    patSetNotePitch(pat, mt, prDragStep, newPitch);
                 }
                 if (totalOffset < -12) totalOffset = -12;
                 if (totalOffset > 12) totalOffset = 12;
@@ -2036,8 +2051,8 @@ static void drawWorkSong(float x, float y, float w, float h) {
             int loops = songEffectiveLoops(i);
             float loopFrac = (float)seq.chainLoopCount / (float)loops;
             Pattern *p = &seq.patterns[seq.currentPattern];
-            int trackLen = p->drumTrackLength[0] > 0 ? p->drumTrackLength[0] : 16;
-            float stepFrac = (float)seq.drumStep[0] / (float)trackLen;
+            int trackLen = p->trackLength[0] > 0 ? p->trackLength[0] : 16;
+            float stepFrac = (float)seq.trackStep[0] / (float)trackLen;
             float progress = (loopFrac + stepFrac / (float)loops);
             if (progress > 1.0f) progress = 1.0f;
             int barW = (int)(progress * (secW - 4));
@@ -3598,7 +3613,15 @@ static void dawStopSequencer(void) {
     seq.playing = false;
     daw.transport.playing = false;
     daw.transport.currentStep = 0;
-    // Reset sequencer playback state
+    // Reset sequencer playback state (v2 unified + v1 compat)
+    for (int t = 0; t < seq.trackCount; t++) {
+        seq.trackStep[t] = 0;
+        seq.trackTick[t] = 0;
+        seq.trackTriggered[t] = false;
+        seq.trackGateRemaining[t] = 0;
+        seq.trackCurrentNote[t] = SEQ_NOTE_OFF;
+        seq.trackSustainRemaining[t] = 0;
+    }
     for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
         seq.drumStep[t] = 0;
         seq.drumTick[t] = 0;

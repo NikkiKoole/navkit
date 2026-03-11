@@ -1969,17 +1969,20 @@ int main(void) {
                 
                 // Drum track lengths
                 const char* drumNames[] = {"Kick", "Snare", "HH", "Clap"};
+                Pattern *tlPat = &seq.patterns[seq.currentPattern];
                 for (int i = 0; i < SEQ_DRUM_TRACKS; i++) {
-                    DraggableInt(px, py, drumNames[i], &seq.patterns[seq.currentPattern].drumTrackLength[i], 0.3f, 1, SEQ_MAX_STEPS);
+                    DraggableInt(px, py, drumNames[i], &tlPat->trackLength[i], 0.3f, 1, SEQ_MAX_STEPS);
+                    tlPat->drumTrackLength[i] = tlPat->trackLength[i];  // v1 mirror
                     px += 80;
                 }
-                
+
                 px += 10;
-                
+
                 // Melody track lengths
                 const char* melodyNames[] = {"Bass", "Lead", "Chord"};
                 for (int i = 0; i < SEQ_MELODY_TRACKS; i++) {
-                    DraggableInt(px, py, melodyNames[i], &seq.patterns[seq.currentPattern].melodyTrackLength[i], 0.3f, 1, SEQ_MAX_STEPS);
+                    DraggableInt(px, py, melodyNames[i], &tlPat->trackLength[SEQ_DRUM_TRACKS + i], 0.3f, 1, SEQ_MAX_STEPS);
+                    tlPat->melodyTrackLength[i] = tlPat->trackLength[SEQ_DRUM_TRACKS + i];  // v1 mirror
                     px += 85;
                 }
             }
@@ -3306,17 +3309,17 @@ int main(void) {
                 float deltaY = dragStartY - mouse.y;
                 if (isDraggingPitch) {
                     float newPitch = dragStartVal + deltaY * 0.01f;
-                    p->drumPitch[dragTrack][dragStep] = clampf(newPitch, -1.0f, 1.0f);
+                    patSetDrumPitch(p, dragTrack, dragStep, clampf(newPitch, -1.0f, 1.0f));
                 } else {
                     float newVel = dragStartVal + deltaY * 0.01f;
-                    p->drumVelocity[dragTrack][dragStep] = clampf(newVel, 0.1f, 1.0f);
+                    patSetDrumVel(p, dragTrack, dragStep, clampf(newVel, 0.1f, 1.0f));
                 }
             }
             
             // === DRUM TRACKS ===
             for (int track = 0; track < SEQ_DRUM_TRACKS; track++) {
                 int y = gridY + track * cellH;
-                int trackLen = p->drumTrackLength[track];
+                int trackLen = p->trackLength[track];
                 
                 // Clickable track label to change drum sound
                 Rectangle labelRect = {(float)gridX, (float)y, 40, (float)cellH - 2};
@@ -3361,7 +3364,7 @@ int main(void) {
                     Rectangle cell = {(float)x, (float)y, (float)cellW - 2, (float)cellH - 2};
 
                     bool isActive = patGetDrum(p, track, step);
-                    bool isCurrent = (step == seq.drumStep[track]) && seq.playing;
+                    bool isCurrent = (step == seq.trackStep[track]) && seq.playing;
                     bool isHovered = CheckCollisionPointRec(mouse, cell);
                     bool isBeingDragged = isDragging && !dragIsMelody && dragTrack == track && dragStep == step;
                     bool isSelected = !selectedIsMelody && selectedTrack == track && selectedStep == step;
@@ -3488,8 +3491,8 @@ int main(void) {
             
             for (int track = 0; track < SEQ_MELODY_TRACKS; track++) {
                 int y = melodyStartY + track * cellH;
-                int trackLen = p->melodyTrackLength[track];
-                
+                int trackLen = p->trackLength[SEQ_DRUM_TRACKS + track];
+
                 // Clickable label to select patch
                 Rectangle labelRect = {(float)gridX, (float)y, 40, (float)cellH - 2};
                 bool labelHovered = CheckCollisionPointRec(mouse, labelRect);
@@ -3540,7 +3543,7 @@ int main(void) {
 
                     int note = patGetNote(p, track, step);
                     bool hasNote = (note != SEQ_NOTE_OFF);
-                    bool isCurrent = (step == seq.melodyStep[track]) && seq.playing;
+                    bool isCurrent = (step == seq.trackStep[SEQ_DRUM_TRACKS + track]) && seq.playing;
                     bool isHovered = CheckCollisionPointRec(mouse, cell);
                     bool isSelected = selectedIsMelody && selectedTrack == track && selectedStep == step;
                     bool hasProb = hasNote && patGetNoteProb(p, track, step) < 1.0f;
@@ -3630,7 +3633,7 @@ int main(void) {
                             if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
                                 delta *= 12;  // Octave
                             }
-                            p->melodyNote[track][step] = clampf(note + delta, 24, 96);  // C1 to C7
+                            patSetNotePitch(p, track, step, (int)clampf(note + delta, 24, 96));  // C1 to C7
                         }
                     }
 
@@ -3642,7 +3645,7 @@ int main(void) {
                             if (!hasNote) {
                                 // Default note based on track: Bass=C2, Lead=C4, Chord=C3
                                 int defaultNotes[3] = {36, 60, 48};
-                                p->melodyNote[track][step] = defaultNotes[track];
+                                patSetNote(p, track, step, defaultNotes[track], 0.8f, 1);
                             }
                             ui_consume_click();
                         }
@@ -3684,12 +3687,14 @@ int main(void) {
                 int colSpacing = 130;
                 
                 DraggableFloat(inspX + 10, row1Y, "Vel", &p->drumVelocity[selectedTrack][selectedStep], 0.02f, 0.0f, 1.0f);
-                
+                patSetDrumVel(p, selectedTrack, selectedStep, p->drumVelocity[selectedTrack][selectedStep]);
+
                 float pitchSemitones = patGetDrumPitch(p, selectedTrack, selectedStep) * 12.0f;
                 DraggableFloat(inspX + 10 + colSpacing, row1Y, "Pitch", &pitchSemitones, 0.5f, -12.0f, 12.0f);
-                p->drumPitch[selectedTrack][selectedStep] = pitchSemitones / 12.0f;  // write-back from UI widget
-                
+                patSetDrumPitch(p, selectedTrack, selectedStep, pitchSemitones / 12.0f);
+
                 DraggableFloat(inspX + 10 + colSpacing * 2, row1Y, "Prob", &p->drumProbability[selectedTrack][selectedStep], 0.02f, 0.0f, 1.0f);
+                patSetDrumProb(p, selectedTrack, selectedStep, p->drumProbability[selectedTrack][selectedStep]);
                 
                 // Condition
                 {
@@ -3989,13 +3994,14 @@ int main(void) {
                         if (fabsf(wheel) > 0.1f) {
                             int delta = (int)wheel;
                             if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) delta *= 12;
-                            p->melodyNote[selectedTrack][selectedStep] = clampf(note + delta, 24, 96);
+                            patSetNotePitch(p, selectedTrack, selectedStep, (int)clampf(note + delta, 24, 96));
                         }
                     }
                 }
-                
+
                 DraggableFloat(inspX + 10 + colSpacing, row1Y, "Vel", &p->melodyVelocity[selectedTrack][selectedStep], 0.02f, 0.0f, 1.0f);
-                
+                patSetNoteVel(p, selectedTrack, selectedStep, p->melodyVelocity[selectedTrack][selectedStep]);
+
                 // Gate length
                 {
                     int gateX = inspX + 10 + colSpacing * 2;
@@ -4003,22 +4009,22 @@ int main(void) {
                     Rectangle gateRect = {(float)(gateX + 40), (float)(row1Y - 2), 30, 16};
                     bool gateHovered = CheckCollisionPointRec(mouse, gateRect);
                     DrawRectangleRec(gateRect, gateHovered ? (Color){60, 60, 70, 255} : (Color){45, 45, 55, 255});
-                    DrawRectangleLinesEx(gateRect, 1, gateHovered ? YELLOW : (Color){80, 80, 80, 255});
                     int gate = patGetNoteGate(p, selectedTrack, selectedStep);
                     DrawTextShadow(TextFormat("%d", gate), gateX + 48, row1Y, 10, WHITE);
                     if (gateHovered && mouseClicked) {
-                        p->melodyGate[selectedTrack][selectedStep] = (gate % 16) + 1;
+                        patSetNoteGate(p, selectedTrack, selectedStep, (gate % 16) + 1);
                         ui_consume_click();
                     }
                     if (gateHovered && rightClicked) {
                         int newGate = gate - 1;
                         if (newGate < 1) newGate = 16;
-                        p->melodyGate[selectedTrack][selectedStep] = newGate;
+                        patSetNoteGate(p, selectedTrack, selectedStep, newGate);
                         ui_consume_click();
                     }
                 }
-                
+
                 DraggableFloat(inspX + 10 + colSpacing * 3, row1Y, "Prob", &p->melodyProbability[selectedTrack][selectedStep], 0.02f, 0.0f, 1.0f);
+                patSetNoteProb(p, selectedTrack, selectedStep, p->melodyProbability[selectedTrack][selectedStep]);
                 
                 // Condition
                 {

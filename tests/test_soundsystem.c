@@ -41,7 +41,9 @@
 
 // Test helpers
 #define FLOAT_EPSILON 0.0001f
+#define VEL_EPSILON   0.005f   // Velocity uses uint8 encoding (1/255 ≈ 0.004 precision)
 #define expect_float_eq(a, b) expect(fabsf((a) - (b)) < FLOAT_EPSILON)
+#define expect_vel_eq(a, b) expect(fabsf((a) - (b)) < VEL_EPSILON)
 #define expect_float_near(a, b, eps) expect(fabsf((a) - (b)) < (eps))
 
 // ============================================================================
@@ -471,8 +473,7 @@ describe(pattern_management) {
         for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
             for (int s = 0; s < SEQ_MAX_STEPS; s++) {
                 expect(patGetDrum(&p, t, s) == false);
-                expect_float_eq(patGetDrumVel(&p, t, s), 0.8f);
-                expect_float_eq(patGetDrumPitch(&p, t, s), 0.0f);
+                // Empty steps have no velocity/pitch data in v2
                 expect_float_eq(patGetDrumProb(&p, t, s), 1.0f);
                 expect(patGetDrumCond(&p, t, s) == COND_ALWAYS);
             }
@@ -499,8 +500,8 @@ describe(pattern_management) {
         
         Pattern *p = seqCurrentPattern();
         expect(patGetDrum(p, 0, 0) == true);
-        expect_float_eq(patGetDrumVel(p, 0, 0), 0.9f);
-        expect_float_eq(patGetDrumPitch(p, 0, 0), 0.5f);
+        expect_vel_eq(patGetDrumVel(p, 0, 0), 0.9f);
+        expect_vel_eq(patGetDrumPitch(p, 0, 0), 0.5f);
     }
     
     it("should toggle drum step") {
@@ -525,7 +526,7 @@ describe(pattern_management) {
         
         Pattern *p = seqCurrentPattern();
         expect(patGetNote(p, 0, 0) == 60);
-        expect_float_eq(patGetNoteVel(p, 0, 0), 0.7f);
+        expect_vel_eq(patGetNoteVel(p, 0, 0), 0.7f);
         expect(patGetNoteGate(p, 0, 0) == 2);
     }
     
@@ -1685,9 +1686,9 @@ describe(integration_sequencer_drums) {
         
         Pattern *p = seqCurrentPattern();
         expect(patGetDrum(p, 0, 0) == true);
-        expect_float_eq(patGetDrumVel(p, 0, 0), 0.9f);
+        expect_vel_eq(patGetDrumVel(p, 0, 0), 0.9f);
     }
-    
+
     it("should apply p-lock to drum trigger") {
         _ensureSeqCtx();
         _ensureDrumsCtx();

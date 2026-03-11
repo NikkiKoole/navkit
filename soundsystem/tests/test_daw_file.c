@@ -152,7 +152,7 @@ static int tests_failed = 0;
 
 #define ASSERT_EQ_FLOAT(a, b, msg) do { \
     float _a = (a), _b = (b); \
-    if (fabsf(_a - _b) > 0.001f) { \
+    if (fabsf(_a - _b) > 0.05f) { /* 0.05 to accommodate v2 quantization (uint8 vel, int8 pitch) */ \
         printf("  FAIL: %s: expected %.4f, got %.4f\n", msg, (double)_b, (double)_a); \
         tests_failed++; return; \
     } else { tests_passed++; } \
@@ -1041,6 +1041,10 @@ int main(void) {
     // 1. Set up test state with non-default values
     printf("Setting up test state...\n");
     setupTestState();
+
+    // Sync v1 pattern data to v2 (setupTestState writes directly to v1 arrays)
+    for (int i = 0; i < SEQ_NUM_PATTERNS; i++)
+        syncPatternV1ToV2(&seq.patterns[i]);
 
     // 2. Save to file
     printf("Saving to %s...\n", tmpfile);
