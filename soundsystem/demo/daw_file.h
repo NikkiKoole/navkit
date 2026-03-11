@@ -115,6 +115,10 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _db(f, "noiseLPBypass", p->p_noiseLPBypass); _di(f, "noiseType", p->p_noiseType);
     _db(f, "useTriggerFreq", p->p_useTriggerFreq); _dw(f, "triggerFreq", p->p_triggerFreq);
     _db(f, "choke", p->p_choke);
+    _db(f, "analogRolloff", p->p_analogRolloff); _db(f, "tubeSaturation", p->p_tubeSaturation);
+    _db(f, "ringMod", p->p_ringMod); _dw(f, "ringModFreq", p->p_ringModFreq);
+    _dw(f, "wavefoldAmount", p->p_wavefoldAmount);
+    _db(f, "hardSync", p->p_hardSync); _dw(f, "hardSyncRatio", p->p_hardSyncRatio);
 }
 
 // ============================================================================
@@ -510,6 +514,13 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"useTriggerFreq")==0) p->p_useTriggerFreq = _dpb(val);
     else if (strcmp(key,"triggerFreq")==0) p->p_triggerFreq = _dpf(val);
     else if (strcmp(key,"choke")==0) p->p_choke = _dpb(val);
+    else if (strcmp(key,"analogRolloff")==0) p->p_analogRolloff = _dpb(val);
+    else if (strcmp(key,"tubeSaturation")==0) p->p_tubeSaturation = _dpb(val);
+    else if (strcmp(key,"ringMod")==0) p->p_ringMod = _dpb(val);
+    else if (strcmp(key,"ringModFreq")==0) p->p_ringModFreq = _dpf(val);
+    else if (strcmp(key,"wavefoldAmount")==0) p->p_wavefoldAmount = _dpf(val);
+    else if (strcmp(key,"hardSync")==0) p->p_hardSync = _dpb(val);
+    else if (strcmp(key,"hardSyncRatio")==0) p->p_hardSyncRatio = _dpf(val);
 }
 
 static int _dwParseIntList(const char *val, int *out, int maxCount) {

@@ -198,6 +198,17 @@ typedef struct {
     float p_triggerFreq;      // fixed trigger frequency in Hz (e.g. 50 for kick)
     bool p_choke;             // true = new hit cuts off previous voice on same track (hihat)
 
+    // Analog warmth toggles
+    bool p_analogRolloff;     // true = gentle 1-pole LP rolloff (removes digital harshness)
+    bool p_tubeSaturation;    // true = even-harmonic tube-style warmth
+
+    // Synthesis modes (ring mod, wavefolding, hard sync)
+    bool p_ringMod;           // true = multiply osc output by ring mod oscillator
+    float p_ringModFreq;      // Ring mod frequency ratio (e.g. 2.0 = octave above)
+    float p_wavefoldAmount;   // 0 = off, >0 = wavefold gain (West Coast synthesis)
+    bool p_hardSync;          // true = master osc resets slave phase
+    float p_hardSyncRatio;    // Master/slave frequency ratio (e.g. 1.5)
+
     // Identity & misc
     char p_name[32];
     bool p_expRelease;        // true = exponential release (natural tail)
@@ -337,6 +348,13 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_useTriggerFreq = false,
         .p_triggerFreq = 440.0f,
         .p_choke = false,
+        .p_analogRolloff = false,
+        .p_tubeSaturation = false,
+        .p_ringMod = false,
+        .p_ringModFreq = 2.0f,
+        .p_wavefoldAmount = 0.0f,
+        .p_hardSync = false,
+        .p_hardSyncRatio = 1.5f,
         .p_name = "",
         .p_expRelease = false,
         .p_expDecay = false,

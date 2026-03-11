@@ -144,6 +144,13 @@ static void applyPatchToGlobals(SynthPatch *p) {
     noteNoiseLPBypass = p->p_noiseLPBypass;
     noteNoiseType = p->p_noiseType;
     noteOneShot = p->p_oneShot;
+    noteAnalogRolloff = p->p_analogRolloff;
+    noteTubeSaturation = p->p_tubeSaturation;
+    noteRingMod = p->p_ringMod;
+    noteRingModFreq = p->p_ringModFreq;
+    noteWavefoldAmount = p->p_wavefoldAmount;
+    noteHardSync = p->p_hardSync;
+    noteHardSyncRatio = p->p_hardSyncRatio;
 }
 
 // Play a note using a SynthPatch. Sets all globals from the patch,

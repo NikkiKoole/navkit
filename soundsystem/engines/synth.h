@@ -514,6 +514,20 @@ typedef struct {
     float retriggerCurve;    // 0=uniform, >0=accelerating gaps
     bool phaseReset;         // true=phases forced to 0 on note-on
     bool noiseLPBypass;      // true=skip noise LP filter
+
+    // Analog warmth
+    bool analogRolloff;      // 1-pole LP rolloff
+    float rolloffState;      // Filter state for rolloff
+    bool tubeSaturation;     // Even-harmonic tube warmth
+
+    // Synthesis modes
+    bool ringMod;            // Ring modulation
+    float ringModFreq;       // Ring mod frequency ratio
+    float ringModPhase;      // Ring mod oscillator phase
+    float wavefoldAmount;    // Wavefold gain (0 = off)
+    bool hardSync;           // Hard sync enable
+    float hardSyncRatio;     // Master/slave ratio
+    float hardSyncPhase;     // Master oscillator phase
 } Voice;
 
 // ============================================================================
@@ -731,6 +745,17 @@ typedef struct SynthContext {
     bool notePhaseReset;         // force phase reset on note-on
     bool noteNoiseLPBypass;      // skip noise LP filter
     int noteNoiseType;           // 0=LFSR, 1=time-hash (drums.h style)
+
+    // Analog warmth
+    bool noteAnalogRolloff;
+    bool noteTubeSaturation;
+
+    // Synthesis modes
+    bool noteRingMod;
+    float noteRingModFreq;
+    float noteWavefoldAmount;
+    bool noteHardSync;
+    float noteHardSyncRatio;
 
     // SFX randomization
     bool sfxRandomize;
@@ -993,6 +1018,13 @@ static void _ensureSynthCtx(void) {
 #define notePhaseReset (synthCtx->notePhaseReset)
 #define noteNoiseLPBypass (synthCtx->noteNoiseLPBypass)
 #define noteNoiseType (synthCtx->noteNoiseType)
+#define noteAnalogRolloff (synthCtx->noteAnalogRolloff)
+#define noteTubeSaturation (synthCtx->noteTubeSaturation)
+#define noteRingMod (synthCtx->noteRingMod)
+#define noteRingModFreq (synthCtx->noteRingModFreq)
+#define noteWavefoldAmount (synthCtx->noteWavefoldAmount)
+#define noteHardSync (synthCtx->noteHardSync)
+#define noteHardSyncRatio (synthCtx->noteHardSyncRatio)
 #define sfxRandomize (synthCtx->sfxRandomize)
 
 // ============================================================================
@@ -2762,11 +2794,18 @@ static float processVoice(Voice *v, float sampleRate) {
 
     v->frequency = freq * pitchEnvMod;
 
-    // Advance phase
+    // Advance phase (with hard sync: master osc resets slave phase)
     float phaseInc = v->frequency / sampleRate;
+    if (v->hardSync && v->hardSyncRatio > 0.0f) {
+        v->hardSyncPhase += phaseInc * v->hardSyncRatio;
+        if (v->hardSyncPhase >= 1.0f) {
+            v->hardSyncPhase -= 1.0f;
+            v->phase = 0.0f;  // Master cycle reset -> slave phase reset
+        }
+    }
     v->phase += phaseInc;
     if (v->phase >= 1.0f) v->phase -= 1.0f;
-    
+
     // PWM modulation
     float pw = v->pulseWidth;
     if (v->pwmDepth > 0.0f && v->wave == WAVE_SQUARE) {
@@ -2960,6 +2999,40 @@ static float processVoice(Voice *v, float sampleRate) {
     if (v->drive > 0.001f) {
         float gain = 1.0f + v->drive * 3.0f;
         sample = tanhf(sample * gain);
+    }
+
+    // Ring modulation (multiply signal by carrier sine at ratio of base freq)
+    if (v->ringMod) {
+        v->ringModPhase += v->frequency * v->ringModFreq / sampleRate;
+        if (v->ringModPhase >= 1.0f) v->ringModPhase -= (int)v->ringModPhase;
+        sample *= sinf(v->ringModPhase * 2.0f * PI);
+    }
+
+    // Wavefolding (West Coast synthesis — fold signal back when exceeding bounds)
+    if (v->wavefoldAmount > 0.001f) {
+        float wfGain = 1.0f + v->wavefoldAmount * 4.0f;
+        float s = sample * wfGain;
+        // Triangle-wave fold: maps any value back into [-1, 1]
+        s = s - floorf(s * 0.25f + 0.25f) * 4.0f;
+        if (s > 3.0f) s = s - 4.0f;
+        else if (s > 1.0f) s = 2.0f - s;
+        sample = s;
+    }
+
+    // Tube saturation (even harmonics — warm, musical distortion)
+    if (v->tubeSaturation) {
+        float x = sample;
+        sample = (x > 0.0f)
+            ? 1.0f - expf(-x)
+            : -1.0f + expf(x);
+        sample += 0.1f * sinf(2.0f * PI * x);  // Explicit 2nd harmonic
+    }
+
+    // Analog rolloff (gentle 1-pole LP — removes digital harshness above ~12kHz)
+    if (v->analogRolloff) {
+        float coeff = 0.15f;  // ~12kHz rolloff at 44.1kHz
+        v->rolloffState += coeff * (sample - v->rolloffState);
+        sample = v->rolloffState;
     }
 
     // Process filter envelope
@@ -3367,6 +3440,20 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->phaseReset = notePhaseReset;
     v->noiseLPBypass = noteNoiseLPBypass;
 
+    // Analog warmth
+    v->analogRolloff = noteAnalogRolloff;
+    v->rolloffState = 0.0f;
+    v->tubeSaturation = noteTubeSaturation;
+
+    // Synthesis modes
+    v->ringMod = noteRingMod;
+    v->ringModFreq = noteRingModFreq;
+    v->ringModPhase = 0.0f;
+    v->wavefoldAmount = noteWavefoldAmount;
+    v->hardSync = noteHardSync;
+    v->hardSyncRatio = noteHardSyncRatio;
+    v->hardSyncPhase = 0.0f;
+
     // PWM (reset for all voices)
     v->pulseWidth = params->useGlobalEnvelope ? notePulseWidth : 0.5f;
     v->pwmRate = params->useGlobalEnvelope ? notePwmRate : 0.0f;
@@ -3549,6 +3636,13 @@ static void resetNoteGlobals(void) {
     noteRetriggerCurve = 0.0f;
     noteOneShot = false;
     notePhaseReset = false;
+    noteAnalogRolloff = false;
+    noteTubeSaturation = false;
+    noteRingMod = false;
+    noteRingModFreq = 2.0f;
+    noteWavefoldAmount = 0.0f;
+    noteHardSync = false;
+    noteHardSyncRatio = 1.5f;
     noteScwIndex = -1;
     noteArpEnabled = false;
     noteArpMode = 0;

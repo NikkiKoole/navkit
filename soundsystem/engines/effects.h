@@ -258,6 +258,24 @@ typedef struct {
     float sidechainAttack;   // Attack time in seconds (0.001-0.05)
     float sidechainRelease;  // Release time in seconds (0.05-0.5)
     float sidechainEnvelope; // Internal: current envelope value
+
+    // Master EQ (2-band shelving)
+    bool eqEnabled;
+    float eqLowGain;         // Low shelf gain in dB (-12 to +12)
+    float eqHighGain;        // High shelf gain in dB (-12 to +12)
+    float eqLowFreq;         // Low shelf frequency (40-500 Hz)
+    float eqHighFreq;        // High shelf frequency (2000-16000 Hz)
+    float eqLowState;        // Internal: low shelf filter state
+    float eqHighState;       // Internal: high shelf filter state
+
+    // Master compressor
+    bool compEnabled;
+    float compThreshold;     // Threshold in dB (-40 to 0)
+    float compRatio;         // Compression ratio (1:1 to 20:1)
+    float compAttack;        // Attack time in seconds (0.001-0.1)
+    float compRelease;       // Release time in seconds (0.01-1.0)
+    float compMakeup;        // Makeup gain in dB (0-24)
+    float compEnvelope;      // Internal: current envelope value
 } Effects;
 
 // Sidechain source options
@@ -502,7 +520,25 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->params.sidechainAttack = 0.005f;   // 5ms attack
     ctx->params.sidechainRelease = 0.15f;   // 150ms release (pumpy)
     ctx->params.sidechainEnvelope = 0.0f;
-    
+
+    // Master EQ - off by default
+    ctx->params.eqEnabled = false;
+    ctx->params.eqLowGain = 0.0f;       // Flat (dB)
+    ctx->params.eqHighGain = 0.0f;      // Flat (dB)
+    ctx->params.eqLowFreq = 200.0f;     // Low shelf at 200Hz
+    ctx->params.eqHighFreq = 6000.0f;   // High shelf at 6kHz
+    ctx->params.eqLowState = 0.0f;
+    ctx->params.eqHighState = 0.0f;
+
+    // Master compressor - off by default
+    ctx->params.compEnabled = false;
+    ctx->params.compThreshold = -12.0f;  // -12dB threshold
+    ctx->params.compRatio = 4.0f;        // 4:1 ratio
+    ctx->params.compAttack = 0.01f;      // 10ms attack
+    ctx->params.compRelease = 0.1f;      // 100ms release
+    ctx->params.compMakeup = 0.0f;       // No makeup gain
+    ctx->params.compEnvelope = 0.0f;
+
     // Dub Loop - off by default, classic dub delay settings
     ctx->dubLoop.enabled = false;
     ctx->dubLoop.recording = true;          // Usually always recording
@@ -900,6 +936,64 @@ static float processReverb(float sample) {
     
     // Mix
     return dry * (1.0f - fx.reverbMix) + wet * fx.reverbMix;
+}
+
+// ============================================================================
+// MASTER EQ (2-band shelving)
+// ============================================================================
+
+static float processMasterEQ(float sample) {
+    if (!fx.eqEnabled) return sample;
+
+    // Low shelf: 1-pole with gain
+    float lowCoeff = fx.eqLowFreq * 2.0f * PI / SAMPLE_RATE;
+    if (lowCoeff > 0.99f) lowCoeff = 0.99f;
+    fx.eqLowState += lowCoeff * (sample - fx.eqLowState);
+    float lowBand = fx.eqLowState;
+    float highBand = sample - fx.eqLowState;
+
+    // High shelf: split highBand further
+    float highCoeff = fx.eqHighFreq * 2.0f * PI / SAMPLE_RATE;
+    if (highCoeff > 0.99f) highCoeff = 0.99f;
+    fx.eqHighState += highCoeff * (highBand - fx.eqHighState);
+    float midBand = fx.eqHighState;
+    float topBand = highBand - fx.eqHighState;
+
+    // Apply gains (dB to linear)
+    float lowGain = powf(10.0f, fx.eqLowGain / 20.0f);
+    float highGain = powf(10.0f, fx.eqHighGain / 20.0f);
+
+    return lowBand * lowGain + midBand + topBand * highGain;
+}
+
+// ============================================================================
+// MASTER COMPRESSOR (peak envelope follower)
+// ============================================================================
+
+static float processMasterCompressor(float sample, float dt) {
+    if (!fx.compEnabled) return sample;
+
+    // Envelope follower (peak detection)
+    float level = fabsf(sample);
+    float coeff = (level > fx.compEnvelope) ? fx.compAttack : fx.compRelease;
+    float alpha = 1.0f - expf(-dt / (coeff + 0.0001f));
+    fx.compEnvelope += alpha * (level - fx.compEnvelope);
+
+    // Convert to dB
+    float envDb = 20.0f * log10f(fx.compEnvelope + 1e-10f);
+
+    // Gain reduction
+    float gainReduction = 0.0f;
+    if (envDb > fx.compThreshold) {
+        float excess = envDb - fx.compThreshold;
+        gainReduction = excess * (1.0f - 1.0f / fx.compRatio);
+    }
+
+    // Apply gain reduction + makeup
+    float totalGainDb = -gainReduction + fx.compMakeup;
+    float gain = powf(10.0f, totalGainDb / 20.0f);
+
+    return sample * gain;
 }
 
 // ============================================================================
@@ -1736,7 +1830,13 @@ static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
     }
     // Also apply reverb to main signal if enabled
     sample = processReverb(sample);
-    
+
+    // Master EQ (tone shaping after all effects)
+    sample = processMasterEQ(sample);
+
+    // Master compressor (dynamics last in chain)
+    sample = processMasterCompressor(sample, dt);
+
     return sample;
 }
 
@@ -1841,6 +1941,36 @@ static float getBusOutput(int bus) {
         return mixerCtx->busOutputs[bus];
     }
     return 0.0f;
+}
+
+// === MASTER EQ SETTERS ===
+
+__attribute__((unused))
+static void setMasterEQ(bool enabled, float lowGain, float highGain) {
+    _ensureFxCtx();
+    fx.eqEnabled = enabled;
+    fx.eqLowGain = lowGain;
+    fx.eqHighGain = highGain;
+}
+
+__attribute__((unused))
+static void setMasterEQFreqs(float lowFreq, float highFreq) {
+    _ensureFxCtx();
+    fx.eqLowFreq = lowFreq;
+    fx.eqHighFreq = highFreq;
+}
+
+// === MASTER COMPRESSOR SETTERS ===
+
+__attribute__((unused))
+static void setMasterCompressor(bool enabled, float threshold, float ratio, float attack, float release, float makeup) {
+    _ensureFxCtx();
+    fx.compEnabled = enabled;
+    fx.compThreshold = threshold;
+    fx.compRatio = ratio;
+    fx.compAttack = attack;
+    fx.compRelease = release;
+    fx.compMakeup = makeup;
 }
 
 #endif // PIXELSYNTH_EFFECTS_H

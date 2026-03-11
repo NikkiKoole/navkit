@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 48
+#define NUM_INSTRUMENT_PRESETS 66
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -698,6 +698,305 @@ static void initInstrumentPresets(void) {
     instrumentPresets[44].patch.p_volume = 0.55f;
     instrumentPresets[44].patch.p_filterCutoff = 0.30f;
     instrumentPresets[44].patch.p_filterResonance = 0.10f;
+
+    // ========================================================================
+    // MALLET PRESETS (45-47) — engines exist, zero presets exposed
+    // ========================================================================
+
+    // 45: Glockenspiel — bright, glassy, short
+    instrumentPresets[45].name = "Glockenspiel";
+    instrumentPresets[45].patch.p_waveType = WAVE_MALLET;
+    instrumentPresets[45].patch.p_malletPreset = MALLET_PRESET_GLOCKEN;
+    instrumentPresets[45].patch.p_malletStiffness = 0.95f;
+    instrumentPresets[45].patch.p_malletHardness = 0.9f;
+    instrumentPresets[45].patch.p_malletResonance = 0.6f;
+    instrumentPresets[45].patch.p_attack = 0.001f;
+    instrumentPresets[45].patch.p_decay = 1.2f;
+    instrumentPresets[45].patch.p_sustain = 0.0f;
+    instrumentPresets[45].patch.p_release = 0.5f;
+    instrumentPresets[45].patch.p_filterCutoff = 0.9f;
+
+    // 46: Xylophone — woody, dry, short
+    instrumentPresets[46].name = "Xylophone";
+    instrumentPresets[46].patch.p_waveType = WAVE_MALLET;
+    instrumentPresets[46].patch.p_malletPreset = MALLET_PRESET_MARIMBA;
+    instrumentPresets[46].patch.p_malletStiffness = 0.7f;
+    instrumentPresets[46].patch.p_malletHardness = 0.85f;
+    instrumentPresets[46].patch.p_malletResonance = 0.4f;
+    instrumentPresets[46].patch.p_malletDamp = 0.3f;
+    instrumentPresets[46].patch.p_attack = 0.001f;
+    instrumentPresets[46].patch.p_decay = 0.6f;
+    instrumentPresets[46].patch.p_sustain = 0.0f;
+    instrumentPresets[46].patch.p_release = 0.2f;
+    instrumentPresets[46].patch.p_filterCutoff = 0.75f;
+
+    // 47: Tubular Bells — long sustain, metallic
+    instrumentPresets[47].name = "Tubular Bell";
+    instrumentPresets[47].patch.p_waveType = WAVE_MALLET;
+    instrumentPresets[47].patch.p_malletPreset = MALLET_PRESET_VIBES;
+    instrumentPresets[47].patch.p_malletStiffness = 0.5f;
+    instrumentPresets[47].patch.p_malletHardness = 0.7f;
+    instrumentPresets[47].patch.p_malletResonance = 0.85f;
+    instrumentPresets[47].patch.p_attack = 0.001f;
+    instrumentPresets[47].patch.p_decay = 3.0f;
+    instrumentPresets[47].patch.p_sustain = 0.0f;
+    instrumentPresets[47].patch.p_release = 1.0f;
+    instrumentPresets[47].patch.p_filterCutoff = 0.85f;
+
+    // ========================================================================
+    // ADDITIVE PRESETS (48-51) — entire engine invisible until now
+    // ========================================================================
+
+    // 48: Choir Pad — soft, warm vocal pad
+    instrumentPresets[48].name = "Choir";
+    instrumentPresets[48].patch.p_waveType = WAVE_ADDITIVE;
+    instrumentPresets[48].patch.p_additivePreset = ADDITIVE_PRESET_CHOIR;
+    instrumentPresets[48].patch.p_additiveBrightness = 0.4f;
+    instrumentPresets[48].patch.p_attack = 0.4f;
+    instrumentPresets[48].patch.p_decay = 0.8f;
+    instrumentPresets[48].patch.p_sustain = 0.6f;
+    instrumentPresets[48].patch.p_release = 1.0f;
+    instrumentPresets[48].patch.p_filterCutoff = 0.5f;
+    instrumentPresets[48].patch.p_vibratoRate = 5.0f;
+    instrumentPresets[48].patch.p_vibratoDepth = 0.08f;
+
+    // 49: Brass — bold, bright brass section
+    instrumentPresets[49].name = "Brass";
+    instrumentPresets[49].patch.p_waveType = WAVE_ADDITIVE;
+    instrumentPresets[49].patch.p_additivePreset = ADDITIVE_PRESET_BRASS;
+    instrumentPresets[49].patch.p_additiveBrightness = 0.7f;
+    instrumentPresets[49].patch.p_attack = 0.08f;
+    instrumentPresets[49].patch.p_decay = 0.3f;
+    instrumentPresets[49].patch.p_sustain = 0.7f;
+    instrumentPresets[49].patch.p_release = 0.2f;
+    instrumentPresets[49].patch.p_filterCutoff = 0.7f;
+    instrumentPresets[49].patch.p_filterEnvAmt = 0.2f;
+    instrumentPresets[49].patch.p_filterEnvDecay = 0.15f;
+
+    // 50: Strings Section — lush bowed strings
+    instrumentPresets[50].name = "Strings Sect";
+    instrumentPresets[50].patch.p_waveType = WAVE_ADDITIVE;
+    instrumentPresets[50].patch.p_additivePreset = ADDITIVE_PRESET_STRINGS;
+    instrumentPresets[50].patch.p_additiveBrightness = 0.5f;
+    instrumentPresets[50].patch.p_additiveShimmer = 0.1f;
+    instrumentPresets[50].patch.p_attack = 0.5f;
+    instrumentPresets[50].patch.p_decay = 1.0f;
+    instrumentPresets[50].patch.p_sustain = 0.65f;
+    instrumentPresets[50].patch.p_release = 0.8f;
+    instrumentPresets[50].patch.p_filterCutoff = 0.55f;
+    instrumentPresets[50].patch.p_vibratoRate = 5.5f;
+    instrumentPresets[50].patch.p_vibratoDepth = 0.04f;
+
+    // 51: Crystal Bell — bright additive bell
+    instrumentPresets[51].name = "Crystal Bell";
+    instrumentPresets[51].patch.p_waveType = WAVE_ADDITIVE;
+    instrumentPresets[51].patch.p_additivePreset = ADDITIVE_PRESET_BELL;
+    instrumentPresets[51].patch.p_additiveBrightness = 0.8f;
+    instrumentPresets[51].patch.p_additiveInharmonicity = 0.02f;
+    instrumentPresets[51].patch.p_attack = 0.001f;
+    instrumentPresets[51].patch.p_decay = 2.0f;
+    instrumentPresets[51].patch.p_sustain = 0.0f;
+    instrumentPresets[51].patch.p_release = 1.0f;
+    instrumentPresets[51].patch.p_filterCutoff = 0.9f;
+
+    // ========================================================================
+    // PHASE DISTORTION PRESETS (52-53)
+    // ========================================================================
+
+    // 52: PD Bass — deep CZ-style bass
+    instrumentPresets[52].name = "PD Bass";
+    instrumentPresets[52].patch.p_waveType = WAVE_PD;
+    instrumentPresets[52].patch.p_pdWaveType = PD_WAVE_SAW;
+    instrumentPresets[52].patch.p_pdDistortion = 0.7f;
+    instrumentPresets[52].patch.p_attack = 0.005f;
+    instrumentPresets[52].patch.p_decay = 0.3f;
+    instrumentPresets[52].patch.p_sustain = 0.4f;
+    instrumentPresets[52].patch.p_release = 0.15f;
+    instrumentPresets[52].patch.p_filterCutoff = 0.35f;
+    instrumentPresets[52].patch.p_filterResonance = 0.3f;
+    instrumentPresets[52].patch.p_filterEnvAmt = 0.3f;
+    instrumentPresets[52].patch.p_filterEnvDecay = 0.15f;
+
+    // 53: PD Lead — bright resonant CZ lead
+    instrumentPresets[53].name = "PD Lead";
+    instrumentPresets[53].patch.p_waveType = WAVE_PD;
+    instrumentPresets[53].patch.p_pdWaveType = PD_WAVE_SQUARE;
+    instrumentPresets[53].patch.p_pdDistortion = 0.5f;
+    instrumentPresets[53].patch.p_attack = 0.01f;
+    instrumentPresets[53].patch.p_decay = 0.2f;
+    instrumentPresets[53].patch.p_sustain = 0.6f;
+    instrumentPresets[53].patch.p_release = 0.2f;
+    instrumentPresets[53].patch.p_filterCutoff = 0.6f;
+    instrumentPresets[53].patch.p_filterResonance = 0.4f;
+    instrumentPresets[53].patch.p_monoMode = true;
+    instrumentPresets[53].patch.p_glideTime = 0.05f;
+
+    // ========================================================================
+    // MEMBRANE & BIRD PRESETS (54-55)
+    // ========================================================================
+
+    // 54: Melodic Tabla — pitched membrane with bend
+    instrumentPresets[54].name = "Mel Tabla";
+    instrumentPresets[54].patch.p_waveType = WAVE_MEMBRANE;
+    instrumentPresets[54].patch.p_membranePreset = MEMBRANE_TABLA;
+    instrumentPresets[54].patch.p_membraneDamping = 0.2f;
+    instrumentPresets[54].patch.p_membraneStrike = 0.4f;
+    instrumentPresets[54].patch.p_membraneBend = 0.2f;
+    instrumentPresets[54].patch.p_membraneBendDecay = 0.1f;
+    instrumentPresets[54].patch.p_attack = 0.001f;
+    instrumentPresets[54].patch.p_decay = 0.8f;
+    instrumentPresets[54].patch.p_sustain = 0.0f;
+    instrumentPresets[54].patch.p_release = 0.3f;
+
+    // 55: Bird Ambience — nature background texture
+    instrumentPresets[55].name = "Bird Ambience";
+    instrumentPresets[55].patch.p_waveType = WAVE_BIRD;
+    instrumentPresets[55].patch.p_birdType = BIRD_CHIRP;
+    instrumentPresets[55].patch.p_birdChirpRange = 0.8f;
+    instrumentPresets[55].patch.p_birdTrillRate = 8.0f;
+    instrumentPresets[55].patch.p_birdTrillDepth = 0.3f;
+    instrumentPresets[55].patch.p_birdAmRate = 3.0f;
+    instrumentPresets[55].patch.p_birdAmDepth = 0.4f;
+    instrumentPresets[55].patch.p_attack = 0.1f;
+    instrumentPresets[55].patch.p_decay = 0.5f;
+    instrumentPresets[55].patch.p_sustain = 0.4f;
+    instrumentPresets[55].patch.p_release = 0.5f;
+
+    // ========================================================================
+    // CORE MELODIC PRESETS (56-61) — Rhodes, upright bass, flute, kalimba, sub, nylon
+    // ========================================================================
+
+    // 56: Rhodes Mellow — classic warm EP
+    instrumentPresets[56].name = "Rhodes Mel";
+    instrumentPresets[56].patch.p_waveType = WAVE_FM;
+    instrumentPresets[56].patch.p_fmModRatio = 1.0f;
+    instrumentPresets[56].patch.p_fmModIndex = 0.8f;
+    instrumentPresets[56].patch.p_fmFeedback = 0.0f;
+    instrumentPresets[56].patch.p_attack = 0.005f;
+    instrumentPresets[56].patch.p_decay = 0.8f;
+    instrumentPresets[56].patch.p_sustain = 0.3f;
+    instrumentPresets[56].patch.p_release = 0.5f;
+    instrumentPresets[56].patch.p_filterCutoff = 0.5f;
+    instrumentPresets[56].patch.p_filterKeyTrack = 0.5f;
+    instrumentPresets[56].patch.p_vibratoRate = 5.5f;
+    instrumentPresets[56].patch.p_vibratoDepth = 0.08f;
+    instrumentPresets[56].patch.p_tubeSaturation = true;
+
+    // 57: Rhodes Bright — cutting EP with bite
+    instrumentPresets[57].name = "Rhodes Brt";
+    instrumentPresets[57].patch.p_waveType = WAVE_FM;
+    instrumentPresets[57].patch.p_fmModRatio = 1.0f;
+    instrumentPresets[57].patch.p_fmModIndex = 1.8f;
+    instrumentPresets[57].patch.p_fmFeedback = 0.1f;
+    instrumentPresets[57].patch.p_attack = 0.003f;
+    instrumentPresets[57].patch.p_decay = 0.6f;
+    instrumentPresets[57].patch.p_sustain = 0.35f;
+    instrumentPresets[57].patch.p_release = 0.4f;
+    instrumentPresets[57].patch.p_filterCutoff = 0.7f;
+    instrumentPresets[57].patch.p_filterKeyTrack = 0.6f;
+    instrumentPresets[57].patch.p_vibratoRate = 5.5f;
+    instrumentPresets[57].patch.p_vibratoDepth = 0.05f;
+
+    // 58: Upright Bass — warm plucked jazz bass
+    instrumentPresets[58].name = "Upright Bass";
+    instrumentPresets[58].patch.p_waveType = WAVE_PLUCK;
+    instrumentPresets[58].patch.p_pluckBrightness = 0.35f;
+    instrumentPresets[58].patch.p_pluckDamping = 0.993f;
+    instrumentPresets[58].patch.p_filterCutoff = 0.25f;
+    instrumentPresets[58].patch.p_filterResonance = 0.1f;
+    instrumentPresets[58].patch.p_volume = 0.6f;
+    instrumentPresets[58].patch.p_analogRolloff = true;
+    instrumentPresets[58].patch.p_tubeSaturation = true;
+
+    // 59: Flute — breathy SNES/RPG wind
+    instrumentPresets[59].name = "Flute";
+    instrumentPresets[59].patch.p_waveType = WAVE_TRIANGLE;
+    instrumentPresets[59].patch.p_attack = 0.08f;
+    instrumentPresets[59].patch.p_decay = 0.2f;
+    instrumentPresets[59].patch.p_sustain = 0.65f;
+    instrumentPresets[59].patch.p_release = 0.3f;
+    instrumentPresets[59].patch.p_filterCutoff = 0.6f;
+    instrumentPresets[59].patch.p_vibratoRate = 5.0f;
+    instrumentPresets[59].patch.p_vibratoDepth = 0.15f;
+    instrumentPresets[59].patch.p_noiseMix = 0.05f;
+    instrumentPresets[59].patch.p_noiseTone = 0.8f;
+    instrumentPresets[59].patch.p_analogRolloff = true;
+
+    // 60: Kalimba — lo-fi thumb piano
+    instrumentPresets[60].name = "Kalimba";
+    instrumentPresets[60].patch.p_waveType = WAVE_MALLET;
+    instrumentPresets[60].patch.p_malletPreset = MALLET_PRESET_MARIMBA;
+    instrumentPresets[60].patch.p_malletStiffness = 0.6f;
+    instrumentPresets[60].patch.p_malletHardness = 0.4f;
+    instrumentPresets[60].patch.p_malletResonance = 0.75f;
+    instrumentPresets[60].patch.p_attack = 0.001f;
+    instrumentPresets[60].patch.p_decay = 1.5f;
+    instrumentPresets[60].patch.p_sustain = 0.0f;
+    instrumentPresets[60].patch.p_release = 0.5f;
+    instrumentPresets[60].patch.p_filterCutoff = 0.65f;
+    instrumentPresets[60].patch.p_analogRolloff = true;
+
+    // 61: Sub Bass — deep sine sub for lo-fi/house
+    instrumentPresets[61].name = "Sub Bass";
+    instrumentPresets[61].patch.p_waveType = WAVE_FM;
+    instrumentPresets[61].patch.p_fmModRatio = 1.0f;
+    instrumentPresets[61].patch.p_fmModIndex = 0.0f;   // Pure sine
+    instrumentPresets[61].patch.p_attack = 0.01f;
+    instrumentPresets[61].patch.p_decay = 0.2f;
+    instrumentPresets[61].patch.p_sustain = 0.8f;
+    instrumentPresets[61].patch.p_release = 0.15f;
+    instrumentPresets[61].patch.p_filterCutoff = 0.2f;
+    instrumentPresets[61].patch.p_volume = 0.6f;
+
+    // 62: Nylon Guitar — bossa nova pluck
+    instrumentPresets[62].name = "Nylon Guitar";
+    instrumentPresets[62].patch.p_waveType = WAVE_PLUCK;
+    instrumentPresets[62].patch.p_pluckBrightness = 0.45f;
+    instrumentPresets[62].patch.p_pluckDamping = 0.996f;
+    instrumentPresets[62].patch.p_filterCutoff = 0.5f;
+    instrumentPresets[62].patch.p_filterResonance = 0.05f;
+    instrumentPresets[62].patch.p_analogRolloff = true;
+
+    // ========================================================================
+    // WAVE 0 SYNTHESIS DEMO PRESETS (63-65) — showcase new features
+    // ========================================================================
+
+    // 63: Wavefold Lead — West Coast screaming lead
+    instrumentPresets[63].name = "Wavefold Lead";
+    instrumentPresets[63].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[63].patch.p_wavefoldAmount = 0.6f;
+    instrumentPresets[63].patch.p_attack = 0.01f;
+    instrumentPresets[63].patch.p_decay = 0.2f;
+    instrumentPresets[63].patch.p_sustain = 0.6f;
+    instrumentPresets[63].patch.p_release = 0.2f;
+    instrumentPresets[63].patch.p_filterCutoff = 0.7f;
+    instrumentPresets[63].patch.p_filterResonance = 0.2f;
+    instrumentPresets[63].patch.p_monoMode = true;
+    instrumentPresets[63].patch.p_glideTime = 0.05f;
+
+    // 64: Ring Mod Bell — metallic, inharmonic bell
+    instrumentPresets[64].name = "Ring Bell";
+    instrumentPresets[64].patch.p_waveType = WAVE_TRIANGLE;
+    instrumentPresets[64].patch.p_ringMod = true;
+    instrumentPresets[64].patch.p_ringModFreq = 3.5f;
+    instrumentPresets[64].patch.p_attack = 0.001f;
+    instrumentPresets[64].patch.p_decay = 1.5f;
+    instrumentPresets[64].patch.p_sustain = 0.0f;
+    instrumentPresets[64].patch.p_release = 0.5f;
+    instrumentPresets[64].patch.p_filterCutoff = 0.8f;
+
+    // 65: Sync Lead — classic hard sync screaming lead
+    instrumentPresets[65].name = "Sync Lead";
+    instrumentPresets[65].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[65].patch.p_hardSync = true;
+    instrumentPresets[65].patch.p_hardSyncRatio = 2.3f;
+    instrumentPresets[65].patch.p_attack = 0.005f;
+    instrumentPresets[65].patch.p_decay = 0.15f;
+    instrumentPresets[65].patch.p_sustain = 0.7f;
+    instrumentPresets[65].patch.p_release = 0.15f;
+    instrumentPresets[65].patch.p_filterCutoff = 0.8f;
+    instrumentPresets[65].patch.p_monoMode = true;
+    instrumentPresets[65].patch.p_glideTime = 0.04f;
 }
 
 #endif // INSTRUMENT_PRESETS_H
