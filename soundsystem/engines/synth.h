@@ -3725,8 +3725,9 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
             // Active note (not released) - do legato glide
             isGlide = true;
         } else if (monoV->envStage == 4 && monoV->envLevel > 0.001f) {
-            // In release but still audible - retrigger but preserve phase for smooth transition
-            isMonoRetrigger = true;
+            // In release but still audible - glide from current pitch
+            // (sequencer releases before retriggering, so this is the common path)
+            isGlide = true;
         }
         // envStage == 0: normal retrigger
     } else {

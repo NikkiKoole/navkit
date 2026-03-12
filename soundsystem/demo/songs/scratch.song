@@ -74,8 +74,8 @@ arpChord = 1
 unisonCount = 1
 unisonDetune = 10
 unisonMix = 0.5
-monoMode = false
-glideTime = 0.1
+monoMode = true
+glideTime = 0.518289
 pluckBrightness = 0.5
 pluckDamping = 0.996
 pluckDamp = 0
@@ -1532,22 +1532,10 @@ songMode = false
 [pattern.0]
 drumTrackLength = 16 16 16 16
 melodyTrackLength = 16 16 16
-d track=0 step=0 vel=0.808
-d track=0 step=4 vel=0.808
-d track=0 step=8 vel=0.796
-d track=0 step=12 vel=0.812
-d track=1 step=4 vel=0.808
-d track=1 step=12 vel=0.788
-d track=2 step=0 vel=0.725
-d track=2 step=2 vel=0.475
-d track=2 step=4 vel=0.729
-d track=2 step=6 vel=0.467
-d track=2 step=8 vel=0.729
-d track=2 step=10 vel=0.478
-d track=2 step=12 vel=0.722
-d track=2 step=14 vel=0.494
 m track=2 step=0 note=D#2 vel=0.8 gate=1
+m track=2 step=1 note=E2 vel=0.8 gate=1
 m track=2 step=2 note=F#2 vel=0.8 gate=1
+m track=2 step=3 note=D2 vel=0.8 gate=1
 m track=2 step=7 note=G2 vel=0.8 gate=1
 m track=2 step=10 note=D#1 vel=0.8 gate=1 cond=1:2
 m track=2 step=12 note=F2 vel=0.8 gate=1

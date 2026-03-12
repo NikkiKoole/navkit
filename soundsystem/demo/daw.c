@@ -7,16 +7,90 @@
 // Workspace (full width, top): Sequencer / Piano Roll / Song [F1/F2/F3]
 // Params (full width, bottom): Patch / Drums / Bus FX / Master FX / Tape [1-5]
 
+#ifdef DAW_HEADLESS
+// Headless mode: stub raylib + skip GUI/audio/MIDI dependencies
+#include "../tools/raylib_headless.h"
+// Stub ui.h functions (no UI_IMPLEMENTATION needed)
+static inline void ui_init(Font *f) { (void)f; }
+static inline void ui_begin_frame(void) {}
+static inline void ui_update(void) {}
+static inline bool ui_wants_mouse(void) { return false; }
+static inline void ui_consume_click(void) {}
+static inline void ui_set_hovered(void) {}
+static inline void ui_add_block_rect(Rectangle r) { (void)r; }
+static inline void ui_clear_block_rects(void) {}
+static inline void DrawTextShadow(const char *t, int x, int y, int s, Color c) { (void)t; (void)x; (void)y; (void)s; (void)c; }
+static inline void DrawTooltip(void) {}
+static inline int MeasureTextUI(const char *t, int s) { (void)s; return t ? (int)strlen(t)*6 : 0; }
+static inline void AddMessage(const char *t, Color c) { (void)t; (void)c; }
+static inline void UpdateMessages(float dt, bool p) { (void)dt; (void)p; }
+static inline void DrawMessages(int w, int h) { (void)w; (void)h; }
+typedef void (*UIMidiLearnFunc)(float*, float, float, const char*);
+typedef bool (*UIMidiLearnIsWaitingFunc)(float*);
+typedef int  (*UIMidiLearnGetCCFunc)(float*);
+static inline void ui_set_midi_learn_hooks(UIMidiLearnFunc a, UIMidiLearnIsWaitingFunc b, UIMidiLearnGetCCFunc c) { (void)a; (void)b; (void)c; }
+static inline bool DraggableFloat(float x, float y, const char *l, float *v, float sp, float mn, float mx) { (void)x; (void)y; (void)l; (void)v; (void)sp; (void)mn; (void)mx; return false; }
+static inline bool DraggableInt(float x, float y, const char *l, int *v, float sp, int mn, int mx) { (void)x; (void)y; (void)l; (void)v; (void)sp; (void)mn; (void)mx; return false; }
+static inline bool DraggableIntLog(float x, float y, const char *l, int *v, float sp, int mn, int mx) { (void)x; (void)y; (void)l; (void)v; (void)sp; (void)mn; (void)mx; return false; }
+static inline void ToggleBool(float x, float y, const char *l, bool *v) { (void)x; (void)y; (void)l; (void)v; }
+static inline bool PushButton(float x, float y, const char *l) { (void)x; (void)y; (void)l; return false; }
+static inline float PushButtonInline(float x, float y, const char *l, bool *c) { (void)x; (void)y; (void)l; (void)c; return 0; }
+static inline void CycleOption(float x, float y, const char *l, const char **o, int c, int *v) { (void)x; (void)y; (void)l; (void)o; (void)c; (void)v; }
+static inline bool DraggableFloatS(float x, float y, const char *l, float *v, float sp, float mn, float mx, int fs) { (void)x; (void)y; (void)l; (void)v; (void)sp; (void)mn; (void)mx; (void)fs; return false; }
+static inline bool DraggableIntS(float x, float y, const char *l, int *v, float sp, int mn, int mx, int fs) { (void)x; (void)y; (void)l; (void)v; (void)sp; (void)mn; (void)mx; (void)fs; return false; }
+static inline void ToggleBoolS(float x, float y, const char *l, bool *v, int fs) { (void)x; (void)y; (void)l; (void)v; (void)fs; }
+static inline void CycleOptionS(float x, float y, const char *l, const char **o, int c, int *v, int fs) { (void)x; (void)y; (void)l; (void)o; (void)c; (void)v; (void)fs; }
+static inline bool SectionHeader(float x, float y, const char *l, bool *o) { (void)x; (void)y; (void)l; (void)o; return false; }
+static inline bool DraggableFloatT(float x, float y, const char *l, float *v, float sp, float mn, float mx, const char *t) { (void)x; (void)y; (void)l; (void)v; (void)sp; (void)mn; (void)mx; (void)t; return false; }
+static inline bool DraggableIntT(float x, float y, const char *l, int *v, float sp, int mn, int mx, const char *t) { (void)x; (void)y; (void)l; (void)v; (void)sp; (void)mn; (void)mx; (void)t; return false; }
+static inline void ToggleBoolT(float x, float y, const char *l, bool *v, const char *t) { (void)x; (void)y; (void)l; (void)v; (void)t; }
+// Column layout stubs
+typedef struct { float x, y, startY, spacing; int fontSize; } UIColumn;
+static inline UIColumn ui_column(float x, float y, float sp) { return (UIColumn){x, y, y, sp, 0}; }
+static inline UIColumn ui_column_small(float x, float y, float sp, int fs) { return (UIColumn){x, y, y, sp, fs}; }
+static inline void ui_col_reset(UIColumn *c) { (void)c; }
+static inline void ui_col_space(UIColumn *c, float px) { (void)c; (void)px; }
+static inline void ui_col_label(UIColumn *c, const char *t, Color col) { (void)c; (void)t; (void)col; }
+static inline void ui_col_sublabel(UIColumn *c, const char *t, Color col) { (void)c; (void)t; (void)col; }
+static inline bool ui_col_float(UIColumn *c, const char *l, float *v, float sp, float mn, float mx) { (void)c; (void)l; (void)v; (void)sp; (void)mn; (void)mx; return false; }
+static inline bool ui_col_int(UIColumn *c, const char *l, int *v, float sp, int mn, int mx) { (void)c; (void)l; (void)v; (void)sp; (void)mn; (void)mx; return false; }
+static inline void ui_col_toggle(UIColumn *c, const char *l, bool *v) { (void)c; (void)l; (void)v; }
+static inline void ui_col_cycle(UIColumn *c, const char *l, const char **o, int cnt, int *v) { (void)c; (void)l; (void)o; (void)cnt; (void)v; }
+static inline bool ui_col_button(UIColumn *c, const char *l) { (void)c; (void)l; return false; }
+// Stub MIDI input
+static inline void MidiInput_Init(void) {}
+static inline void MidiInput_Shutdown(void) {}
+typedef enum { MIDI_NOTE_ON, MIDI_NOTE_OFF, MIDI_CC, MIDI_PITCH_BEND } MidiEventType;
+typedef struct { MidiEventType type; unsigned char channel, data1, data2; } MidiEvent;
+static inline int MidiInput_Poll(MidiEvent *e, int max) { (void)e; (void)max; return 0; }
+static inline bool MidiInput_IsConnected(void) { return false; }
+static inline const char *MidiInput_DeviceName(void) { return ""; }
+#define MIDI_LEARN_MAX_MAPPINGS 64
+typedef struct { float *target; float min, max; int cc; char label[32]; bool active; } MidiCCMapping;
+typedef struct { MidiCCMapping mappings[MIDI_LEARN_MAX_MAPPINGS]; int count; bool learning; float *learnTarget; float learnMin, learnMax; char learnLabel[32]; } MidiLearnState;
+static MidiLearnState g_midiLearn = {0};
+static inline void MidiLearn_Arm(float *t, float mn, float mx, const char *l) { (void)t; (void)mn; (void)mx; (void)l; }
+static inline void MidiLearn_Cancel(void) {}
+static inline bool MidiLearn_IsWaiting(float *t) { (void)t; return false; }
+static inline int MidiLearn_GetCC(float *t) { (void)t; return -1; }
+static inline bool MidiLearn_ProcessCC(int cc, float v) { (void)cc; (void)v; return false; }
+static inline void MidiLearn_ClearAll(void) {}
+// Stub SCW data
+static inline void loadEmbeddedSCWs(void) {}
+#else
 #include "../../vendor/raylib.h"
 #include "../../assets/fonts/comic_embedded.h"
 #define UI_IMPLEMENTATION
 #include "../../shared/ui.h"
+#endif // DAW_HEADLESS
 #include <math.h>
 #include <string.h>
 #include "../engines/synth.h"
 #include "../engines/synth_patch.h"
 #include "../engines/patch_trigger.h"
+#ifndef DAW_HEADLESS
 #include "../engines/scw_data.h"
+#endif
 #include "../engines/effects.h"
 #include "../engines/sequencer.h"
 // Undefine engine macros that conflict with our local DAW state
@@ -29,7 +103,9 @@
 // (needed by seqEvalCondition etc. which reference seq.fillMode)
 #include "../engines/instrument_presets.h"
 #include "../engines/rhythm_patterns.h"
+#ifndef DAW_HEADLESS
 #include "../engines/midi_input.h"
+#endif
 
 #define SAMPLE_RATE 44100
 #define MAX_SAMPLES_PER_UPDATE 4096
@@ -3882,9 +3958,14 @@ static void dawMelodyTriggerGeneric(int trackIdx, int note, float vel,
         if (mvi >= 0 && voiceBus[mvi] == dawPatchToBus(busTrack)) {
             // Voice still belongs to this track — reuse for mono glide
             monoVoiceIdx = mvi;
+            seqSoundLog("MONO_GLIDE  track=%d reuse v%d (bus=%d, envStage=%d, freq=%.1f->%.1f)",
+                trackIdx, mvi, voiceBus[mvi], synthCtx->voices[mvi].envStage,
+                synthCtx->voices[mvi].baseFrequency, freq);
         } else {
             // No valid mono voice (first note or voice was stolen by another track)
             // Force fresh allocation via findVoice() to avoid gliding from wrong pitch
+            seqSoundLog("MONO_STOLEN track=%d mvi=%d (bus=%d, expected=%d) -> forceNewVoice",
+                trackIdx, mvi, mvi >= 0 ? voiceBus[mvi] : -1, dawPatchToBus(busTrack));
             if (mvi >= 0) synthCtx->voices[mvi].monoReserved = false;  // Release old reservation
             dawMonoVoiceIdx[trackIdx] = -1;
             forceNewVoice = true;
@@ -3906,7 +3987,8 @@ static void dawMelodyTriggerGeneric(int trackIdx, int note, float vel,
             dawMonoVoiceIdx[trackIdx] = vi;
             synthCtx->voices[vi].monoReserved = true;  // Protect from findVoice() stealing
         }
-        voiceLogPush("ALLOC mel[%d] v%d bus=%d freq=%.0f", trackIdx, vi, dawPatchToBus(busTrack), freq);
+        voiceLogPush("ALLOC mel[%d] v%d bus=%d freq=%.0f%s", trackIdx, vi, dawPatchToBus(busTrack), freq,
+            forceNewVoice ? " (FORCED_NEW, no glide)" : "");
         // Track this voice for later release
         if (vc < SEQ_V2_MAX_POLY) {
             dawMelodyVoice[trackIdx][vc] = vi;
@@ -5060,6 +5142,7 @@ static void dawHandleMidiInput(void) {
 // MAIN
 // ============================================================================
 
+#ifndef DAW_HEADLESS
 int main(void) {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "PixelSynth DAW (Horizontal)");
     SetTargetFPS(60);
@@ -5229,3 +5312,4 @@ int main(void) {
     CloseWindow();
     return 0;
 }
+#endif // !DAW_HEADLESS

@@ -532,6 +532,10 @@ preset-audition: $(BINDIR)
 song-render: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/song-render soundsystem/tools/song_render.c -lm
 
+# Headless DAW renderer (full DAW logic, stubbed raylib)
+daw-render: $(BINDIR)
+	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $(BINDIR)/daw-render soundsystem/tools/daw_render.c -lm
+
 # Embed all assets (atlas + fonts)
 embed: atlas embed_font
 
