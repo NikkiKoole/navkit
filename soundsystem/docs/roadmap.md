@@ -252,6 +252,14 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - ✓ **Tuned self-oscillation** - SVF Q changed to 0.98 for screaming resonance
 - ✓ Classic acid bassline workflow: sawtooth/square + resonant filter + slides + accents
 - ✓ Sequencer integration with seqSetMelodyStep303()
+- ✓ **Acid Mode** (`p_acidMode`) — hardware-authentic TB-303 behavior toggle:
+  - ✓ Slide: constant 60ms RC glide (real circuit), filter env continues decay (no retrigger), gate held across tied notes
+  - ✓ Accent sweep circuit: `accentSweepLevel` capacitor charges on accent, accumulates across consecutive accents (RC ~147ms discharge)
+  - ✓ Accent forces short ~200ms filter decay (overrides Decay knob, like real hardware)
+  - ✓ Gimmick dip: pulls filter cutoff below baseline at end of decay
+  - ✓ UI: `p_accentSweepAmt` and `p_gimmickDipAmt` sliders for tweaking
+  - ✓ Acid preset: 3ms attack, 3s VEG decay, no sustain (AD envelope matches real 303)
+  - ✓ 303 bassline generator button in sequencer (visible on Acid preset)
 
 ## 5.2 Supersaw/Unison ✓ DONE
 - ✓ Unison 1-4 detuned oscillators with detune/mix controls

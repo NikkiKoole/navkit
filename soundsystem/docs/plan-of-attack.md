@@ -2,7 +2,7 @@
 
 All TODO items consolidated from across soundsystem docs. Waves 0-2 complete, partial Wave 3. Completed docs moved to `done/`. Reference docs (roadmap.md, ux-insight.md, piku.md) kept in place.
 
-**Current state:** 111 presets, 14+2 synthesis engines (WAVE_BOWED, WAVE_PIPE added), sequencer v2 with polyphony, full DAW UI (5 tabs), chorus/flanger/stereo spread, bus mixer, MIDI input+learn+split.
+**Current state:** 111 presets, 14+2 synthesis engines (WAVE_BOWED, WAVE_PIPE added), sequencer v2 with polyphony, full DAW UI (5 tabs), chorus/flanger/stereo spread, bus mixer, MIDI input+learn+split, authentic TB-303 acid mode (accent sweep circuit, gimmick dip, constant-time RC glide).
 
 ---
 
