@@ -34,6 +34,8 @@ typedef enum {
     WAVE_PD,         // Phase distortion (CZ-style)
     WAVE_MEMBRANE,   // Pitched membrane (tabla/conga)
     WAVE_BIRD,       // Bird vocalization synthesis
+    WAVE_BOWED,      // Bowed string (waveguide + bow friction)
+    WAVE_PIPE,       // Blown pipe (waveguide + jet excitation)
 } WaveType;
 
 // LFO tempo sync divisions
@@ -336,6 +338,42 @@ typedef struct {
     bool inGap;              // Currently in gap between notes
 } BirdSettings;
 
+// Bowed string synthesis settings (Smith/McIntyre waveguide model)
+// Two delay lines: nut side and bridge side, with bow interaction point
+typedef struct {
+    float pressure;       // 0-1: bow force (controls stick-slip friction)
+    float velocity;       // bow velocity (drives amplitude)
+    float position;       // 0-1: bow contact point (fraction of string length)
+    // Waveguide state: two traveling waves
+    int nutLen;           // delay length: bow→nut→bow
+    int bridgeLen;        // delay length: bow→bridge→bow
+    float nutBuf[1024];   // nut-side delay line
+    float bridgeBuf[1024];// bridge-side delay line
+    int nutIdx;
+    int bridgeIdx;
+    float nutRefl;        // reflection filter state (nut end)
+    float bridgeRefl;     // reflection filter state (bridge end)
+} BowedSettings;
+
+// Blown pipe synthesis settings (Fletcher/Verge jet-drive model)
+typedef struct {
+    float breath;         // 0-1: breath pressure
+    float embou;          // 0-1: embouchure tightness
+    float bore;           // 0-1: bore length scale
+    float overblowAmt;    // 0-1: overblowing
+    // Bore delay line (two halves for bidirectional waveguide)
+    float upperBuf[1024]; // upper bore (mouth end)
+    float lowerBuf[1024]; // lower bore (open end)
+    int boreLen;
+    int boreIdx;
+    float jetBuf[64];     // jet delay (mouth-to-edge travel)
+    int jetLen;
+    int jetIdx;
+    float lpState;        // bore loss filter state
+    float dcState;        // DC blocker
+    float dcPrev;
+} PipeSettings;
+
 // Voice structure (polyphonic synth voice)
 typedef struct {
     float frequency;
@@ -472,6 +510,12 @@ typedef struct {
     
     // Bird synthesis
     BirdSettings birdSettings;
+
+    // Bowed string synthesis
+    BowedSettings bowedSettings;
+
+    // Blown pipe synthesis
+    PipeSettings pipeSettings;
 
     // General pitch envelope (kicks, toms, zaps)
     float pitchEnvAmount;    // Semitones to sweep
@@ -720,7 +764,18 @@ typedef struct SynthContext {
     float birdAmRate;
     float birdAmDepth;
     float birdHarmonics;
-    
+
+    // Bowed string tweakables
+    float bowPressure;
+    float bowSpeed;
+    float bowPosition;
+
+    // Blown pipe tweakables
+    float pipeBreath;
+    float pipeEmbouchure;
+    float pipeBore;
+    float pipeOverblow;
+
     // General pitch envelope globals
     float notePitchEnvAmount;
     float notePitchEnvDecay;
@@ -1016,6 +1071,13 @@ static void _ensureSynthCtx(void) {
 #define birdAmRate (synthCtx->birdAmRate)
 #define birdAmDepth (synthCtx->birdAmDepth)
 #define birdHarmonics (synthCtx->birdHarmonics)
+#define bowPressure (synthCtx->bowPressure)
+#define bowSpeed (synthCtx->bowSpeed)
+#define bowPosition (synthCtx->bowPosition)
+#define pipeBreath (synthCtx->pipeBreath)
+#define pipeEmbouchure (synthCtx->pipeEmbouchure)
+#define pipeBore (synthCtx->pipeBore)
+#define pipeOverblow (synthCtx->pipeOverblow)
 #define notePitchEnvAmount (synthCtx->notePitchEnvAmount)
 #define notePitchEnvDecay (synthCtx->notePitchEnvDecay)
 #define notePitchEnvCurve (synthCtx->notePitchEnvCurve)
@@ -1445,6 +1507,116 @@ static float processPluckOscillator(Voice *v, float sampleRate) {
     v->ksIndex = nextIndex;
     
     return sample;
+}
+
+// Bowed string oscillator — Smith/McIntyre digital waveguide
+// Two delay lines meet at the bow point. The bow injects energy via
+// a nonlinear friction function applied to (bowVelocity - stringVelocity).
+static float processBowedOscillator(Voice *v, float sampleRate) {
+    (void)sampleRate;
+    BowedSettings *bs = &v->bowedSettings;
+    if (bs->nutLen <= 0 || bs->bridgeLen <= 0) return 0.0f;
+
+    // Standard Smith digital waveguide bowed string:
+    // Two delay lines (nut-side, bridge-side) meet at the bow contact point.
+    // Each delay line is a circular buffer; a signal written at idx is read
+    // back after `len` samples, representing the round-trip to that end.
+
+    // Read returning waves at bow point (completed round-trip through delay)
+    float nutReturn = bs->nutBuf[bs->nutIdx];
+    float bridgeReturn = bs->bridgeBuf[bs->bridgeIdx];
+
+    // String velocity at bow contact = sum of returning traveling waves
+    float vStringAtBow = nutReturn + bridgeReturn;
+
+    // Differential velocity between bow and string
+    float deltaV = bs->velocity - vStringAtBow;
+
+    // Bow-string friction function (Smith hyperbolic model)
+    // f(dv) = pressure * dv * exp(-pressure * dv^2)
+    // Creates stick-slip behavior: linear at small dv (stick), falls off (slip)
+    float pres = bs->pressure * 5.0f + 0.5f;
+    float friction = pres * deltaV * expf(-pres * deltaV * deltaV);
+
+    // Outgoing waves from bow point toward each end
+    float toNut = bridgeReturn + friction;
+    float toBridge = nutReturn + friction;
+
+    // Nut-end reflection: fixed end → invert + one-pole lowpass (stiffness loss)
+    float nutReflected = -toNut;
+    bs->nutRefl = bs->nutRefl * 0.35f + nutReflected * 0.65f;
+
+    // Bridge-end reflection: invert + loss + stronger lowpass
+    float bridgeReflected = -toBridge * 0.995f;
+    bs->bridgeRefl = bs->bridgeRefl * 0.15f + bridgeReflected * 0.85f;
+
+    // Write reflected waves back into delay lines at current index.
+    // These will be read again after `len` samples (full round-trip).
+    bs->nutBuf[bs->nutIdx] = bs->nutRefl;
+    bs->bridgeBuf[bs->bridgeIdx] = bs->bridgeRefl;
+
+    // Advance delay line read/write positions
+    bs->nutIdx = (bs->nutIdx + 1) % bs->nutLen;
+    bs->bridgeIdx = (bs->bridgeIdx + 1) % bs->bridgeLen;
+
+    // Output: bridge-side signal (what reaches the listener through the body)
+    return toBridge * 0.8f;
+}
+
+// Blown pipe oscillator — Fletcher/Verge jet-drive model
+// Bore waveguide + jet delay + nonlinear jet deflection
+static float processPipeOscillator(Voice *v, float sampleRate) {
+    (void)sampleRate;
+    PipeSettings *ps = &v->pipeSettings;
+    if (ps->boreLen <= 0) return 0.0f;
+
+    // STK-style flute model (Cook/Scavone):
+    // Single bore delay line, jet delay, nonlinear jet deflection.
+    // Mouth-end reflection coefficient creates oscillation via sign alternation.
+
+    // Read returning signal from bore delay (full round-trip)
+    float boreReturn = ps->lowerBuf[ps->boreIdx];
+
+    // Open-end reflection: invert + loss + lowpass (radiation impedance)
+    float openFiltered = -boreReturn * 0.9f;
+    ps->lpState = ps->lpState * 0.15f + openFiltered * 0.85f;
+    float reflected = ps->lpState;
+
+    // Mouth-end feedback gain (embouchure controls coupling to bore)
+    float feedbackGain = 0.5f + ps->embou * 0.4f;
+
+    // Jet input: purely AC bore feedback (no DC breath bias)
+    // This keeps the jet operating in its linear region for maximum AC gain
+    float jetInput = reflected * feedbackGain;
+
+    // Jet delay (models travel time from lip to labium edge)
+    ps->jetBuf[ps->jetIdx] = jetInput;
+    int jetRead = (ps->jetIdx - ps->jetLen + 64) % 64;
+    float jetOut = ps->jetBuf[jetRead];
+    ps->jetIdx = (ps->jetIdx + 1) % 64;
+
+    // Nonlinear jet deflection (S-curve switching across labium)
+    // tanh slope at zero = gain, providing self-oscillation when gain > 1/feedbackGain
+    float gain = 2.0f + ps->overblowAmt * 8.0f;
+    float excitation = tanhf(jetOut * gain) * ps->breath;
+
+    // Bore input: excitation (with energy from breath) + reflected wave
+    // The excitation acts as an amplifier that overcomes round-trip losses
+    float boreInput = excitation + reflected * 0.5f;
+    ps->lowerBuf[ps->boreIdx] = boreInput;
+
+    // Advance bore waveguide
+    ps->boreIdx = (ps->boreIdx + 1) % ps->boreLen;
+
+    // Output: radiated sound at open end + direct jet component
+    float out = boreReturn * 0.5f + excitation * 0.3f;
+
+    // DC blocking on output
+    float dcOut = out - ps->dcPrev + 0.995f * ps->dcState;
+    ps->dcPrev = out;
+    ps->dcState = dcOut;
+
+    return dcOut * 2.0f;
 }
 
 // Additive synthesis oscillator
@@ -2600,6 +2772,70 @@ static void initPluck(Voice *v, float frequency, float sampleRate, float brightn
     }
 }
 
+// Initialize bowed string waveguide
+// Two delay lines split at the bow contact point
+static void initBowed(Voice *v, float frequency, float sampleRate) {
+    BowedSettings *bs = &v->bowedSettings;
+    int totalLen = (int)(sampleRate / frequency);
+    if (totalLen > 2046) totalLen = 2046;
+    if (totalLen < 4) totalLen = 4;
+
+    // Split delay line at bow position
+    float pos = clampf(bowPosition, 0.05f, 0.95f);
+    bs->nutLen = (int)(totalLen * pos);
+    bs->bridgeLen = totalLen - bs->nutLen;
+    if (bs->nutLen < 2) bs->nutLen = 2;
+    if (bs->bridgeLen < 2) bs->bridgeLen = 2;
+    if (bs->nutLen > 1023) bs->nutLen = 1023;
+    if (bs->bridgeLen > 1023) bs->bridgeLen = 1023;
+
+    bs->nutIdx = 0;
+    bs->bridgeIdx = 0;
+    bs->nutRefl = 0.0f;
+    bs->bridgeRefl = 0.0f;
+
+    // Clear delay lines with tiny seed noise
+    for (int i = 0; i < bs->nutLen; i++) bs->nutBuf[i] = noise() * 0.005f;
+    for (int i = 0; i < bs->bridgeLen; i++) bs->bridgeBuf[i] = noise() * 0.005f;
+
+    bs->pressure = bowPressure;
+    bs->velocity = bowSpeed * 0.2f;  // scale to reasonable physical range
+    bs->position = pos;
+}
+
+// Initialize blown pipe waveguide
+static void initPipe(Voice *v, float frequency, float sampleRate) {
+    PipeSettings *ps = &v->pipeSettings;
+    float boreScale = 1.0f + (pipeBore - 0.5f) * 0.2f;
+    int totalLen = (int)(sampleRate / (frequency * boreScale));
+    if (totalLen > 1023) totalLen = 1023;
+    if (totalLen < 4) totalLen = 4;
+
+    ps->boreLen = totalLen;
+    ps->boreIdx = 0;
+
+    // Seed bore with noise burst (larger seed = faster oscillation startup)
+    for (int i = 0; i < ps->boreLen; i++) {
+        ps->upperBuf[i] = 0.0f;
+        ps->lowerBuf[i] = noise() * 0.1f;
+    }
+
+    ps->breath = pipeBreath;
+    ps->embou = pipeEmbouchure;
+    ps->bore = pipeBore;
+    ps->overblowAmt = pipeOverblow;
+
+    // Jet delay: shorter = more stable, longer = easier to overblow
+    ps->jetLen = 3 + (int)((1.0f - pipeEmbouchure) * 8.0f);
+    if (ps->jetLen < 2) ps->jetLen = 2;
+    if (ps->jetLen > 63) ps->jetLen = 63;
+    ps->jetIdx = 0;
+    memset(ps->jetBuf, 0, sizeof(ps->jetBuf));
+    ps->lpState = 0.0f;
+    ps->dcState = 0.0f;
+    ps->dcPrev = 0.0f;
+}
+
 // ============================================================================
 // ENVELOPE PROCESSING
 // ============================================================================
@@ -2992,6 +3228,12 @@ static float processVoice(Voice *v, float sampleRate) {
             break;
         case WAVE_BIRD:
             sample = processBirdOscillator(v, sampleRate);
+            break;
+        case WAVE_BOWED:
+            sample = processBowedOscillator(v, sampleRate);
+            break;
+        case WAVE_PIPE:
+            sample = processPipeOscillator(v, sampleRate);
             break;
     }
 
@@ -3953,6 +4195,38 @@ static int playBird(float freq, BirdType type) {
     }
     v->birdSettings.harmonic2 = birdHarmonics * 0.5f;
     v->birdSettings.harmonic3 = birdHarmonics * 0.3f;
+    return voiceIdx;
+}
+
+// Bowed string init params (sustained, natural vibrato)
+static const VoiceInitParams VOICE_INIT_BOWED = {
+    .attack = 0.08f, .decay = 0.5f, .sustain = 0.8f, .release = 0.15f,
+    .filterCutoff = 0.85f, .filterResonance = 0.1f,
+    .vibratoRate = 5.5f, .vibratoDepth = 0.15f,
+    .useGlobalEnvelope = true, .useGlobalFilter = true, .useGlobalLfos = true, .supportsMono = true
+};
+
+// Play bowed string note
+__attribute__((unused))
+static int playBowed(float freq) {
+    int voiceIdx = initVoiceCommon(freq, WAVE_BOWED, &VOICE_INIT_BOWED, NULL);
+    initBowed(&synthVoices[voiceIdx], freq, 44100.0f);
+    return voiceIdx;
+}
+
+// Blown pipe init params (sustained, breathy)
+static const VoiceInitParams VOICE_INIT_PIPE = {
+    .attack = 0.05f, .decay = 0.3f, .sustain = 0.7f, .release = 0.1f,
+    .filterCutoff = 0.75f, .filterResonance = 0.05f,
+    .vibratoRate = 5.0f, .vibratoDepth = 0.1f,
+    .useGlobalEnvelope = true, .useGlobalFilter = true, .useGlobalLfos = true, .supportsMono = true
+};
+
+// Play blown pipe note
+__attribute__((unused))
+static int playPipe(float freq) {
+    int voiceIdx = initVoiceCommon(freq, WAVE_PIPE, &VOICE_INIT_PIPE, NULL);
+    initPipe(&synthVoices[voiceIdx], freq, 44100.0f);
     return voiceIdx;
 }
 

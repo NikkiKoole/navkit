@@ -534,6 +534,10 @@ sample_embed: $(BINDIR)
 drum-compare: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/drum-compare soundsystem/tools/drum_compare.c -lm
 
+# Headless preset audition tool (render + analyze presets)
+preset-audition: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/preset-audition soundsystem/tools/preset_audition.c -lm
+
 # Embed all assets (atlas + fonts)
 embed: atlas embed_font
 

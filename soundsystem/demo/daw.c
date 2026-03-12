@@ -88,7 +88,7 @@ static const char* noiseTypeNames[] = {"LFSR", "TimeHash"};
 
 // --- Name arrays (UI labels, not part of DAW state) ---
 static const char* waveNames[] = {"Square", "Saw", "Triangle", "Noise", "SCW",
-    "Voice", "Pluck", "Additive", "Mallet", "Granular", "FM", "PD", "Membrane", "Bird"};
+    "Voice", "Pluck", "Additive", "Mallet", "Granular", "FM", "PD", "Membrane", "Bird", "Bowed", "Pipe"};
 static const char* vowelNames[] = {"A", "E", "I", "O", "U"};
 static const char* additivePresetNames[] = {"Organ", "Bell", "Choir", "Brass", "Strings"};
 static const char* malletPresetNames[] = {"Marimba", "Vibes", "Xylo", "Glock", "Tubular"};
@@ -226,6 +226,8 @@ typedef struct {
 // Audio performance monitoring
 static double dawAudioTimeUs = 0.0;
 static int dawAudioFrameCount = 0;
+static float dawPeakLevel = 0.0f;    // peak output level (updated in audio callback)
+static float dawPeakHold = 0.0f;     // slow-decay peak for meter display
 
 // WAV recording (F7=toggle, writes daw_output.wav)
 static bool dawRecording = false;
@@ -506,6 +508,8 @@ static void drawWaveThumb(float x, float y, float w, float h, int waveType, bool
             case 11: { float p0=t0<0.5f?t0*t0*2:0.5f+(t0-0.5f)*(2-t0*2); float p1=t1<0.5f?t1*t1*2:0.5f+(t1-0.5f)*(2-t1*2); v0=sinf(p0*6.28f); v1=sinf(p1*6.28f); } break;
             case 12: v0=(sinf(t0*6.28f)*0.5f+sinf(t0*9.8f)*0.3f+sinf(t0*15.2f)*0.2f)*expf(-t0*2); v1=(sinf(t1*6.28f)*0.5f+sinf(t1*9.8f)*0.3f+sinf(t1*15.2f)*0.2f)*expf(-t1*2); break;
             case 13: v0=sinf(t0*6.28f*(1+t0*3))*(1-t0*0.5f); v1=sinf(t1*6.28f*(1+t1*3))*(1-t1*0.5f); break;
+            case 14: v0=sinf(t0*6.28f)*0.7f+sinf(t0*12.56f)*0.2f+sinf(t0*18.84f)*0.1f; v1=sinf(t1*6.28f)*0.7f+sinf(t1*12.56f)*0.2f+sinf(t1*18.84f)*0.1f; break; // Bowed (rich harmonics)
+            case 15: v0=sinf(t0*6.28f)*0.8f+sinf(t0*18.84f)*0.15f+((float)((i*3+7)%11)/55.0f); v1=sinf(t1*6.28f)*0.8f+sinf(t1*18.84f)*0.15f+((float)(((i+1)*3+7)%11)/55.0f); break; // Pipe (breathy)
             default: v0 = sinf(t0*6.28f); v1 = sinf(t1*6.28f);
         }
         DrawLine((int)(cx+i), (int)(mid-v0*ch*0.4f), (int)(cx+i+1), (int)(mid-v1*ch*0.4f), lineCol);
@@ -513,7 +517,7 @@ static void drawWaveThumb(float x, float y, float w, float h, int waveType, bool
 }
 
 static float drawWaveSelector(float x, float y, float w, int* wave) {
-    int waveCount = 5, engineCount1 = 5, engineCount2 = 4;
+    int waveCount = 5, engineCount1 = 5, engineCount2 = 6;
     float thumbH = 20;
     Vector2 mouse = GetMousePosition();
     float totalH = 0;
@@ -812,11 +816,51 @@ static void drawTransport(void) {
         DrawRectangle((int)(vx + (i % 8) * 7), (int)(vy + (i / 8) * 8), 5, 6, c);
     }
 
+    // Output level meter (horizontal bar with peak hold decay)
+    {
+        // Decay peak hold toward current peak, then reset current peak
+        float peak = dawPeakLevel;
+        dawPeakLevel = 0.0f;
+        if (peak > dawPeakHold) dawPeakHold = peak;
+        else dawPeakHold *= 0.95f; // smooth decay
+
+        float meterX = x + w - 120;
+        float meterY = ty + 14;
+        float meterW = 60;
+        float meterH = 6;
+
+        // Background
+        DrawRectangle((int)meterX, (int)meterY, (int)meterW, (int)meterH, (Color){20,20,25,255});
+
+        // dB scale: -48dB to +6dB mapped to bar width
+        float db = 20.0f * log10f(fmaxf(dawPeakHold, 0.00001f));
+        float norm = (db + 48.0f) / 54.0f; // -48dB=0, 0dB=0.89, +6dB=1.0
+        if (norm < 0.0f) norm = 0.0f;
+        if (norm > 1.0f) norm = 1.0f;
+        float barW = norm * meterW;
+
+        // Color: green → yellow → red
+        Color mc = GREEN;
+        if (dawPeakHold > 1.0f) mc = RED;
+        else if (dawPeakHold > 0.7f) mc = YELLOW;
+
+        DrawRectangle((int)meterX, (int)meterY, (int)barW, (int)meterH, mc);
+
+        // 0dB mark (thin line at ~89% of bar)
+        float zeroDbX = meterX + (48.0f / 54.0f) * meterW;
+        DrawLine((int)zeroDbX, (int)meterY, (int)zeroDbX, (int)(meterY + meterH), (Color){100,100,100,255});
+
+        // Clip indicator
+        if (dawPeakHold > 1.0f) {
+            DrawTextShadow("CLIP", (int)(meterX + meterW + 4), (int)meterY - 1, 8, RED);
+        }
+    }
+
     // CPU % and FPS
     double bufferTimeMs = (double)dawAudioFrameCount / SAMPLE_RATE * 1000.0;
     double cpuPercent = bufferTimeMs > 0 ? (dawAudioTimeUs / 1000.0) / bufferTimeMs * 100.0 : 0;
-    DrawTextShadow(TextFormat("%.0f%%", cpuPercent), (int)(x+w-120), (int)ty+2, 10, cpuPercent > 50 ? RED : (Color){80,80,80,255});
-    DrawTextShadow(TextFormat("%d fps", GetFPS()), (int)(x+w-55), (int)ty+2, 10, (Color){50,50,50,255});
+    DrawTextShadow(TextFormat("%.0f%%", cpuPercent), (int)(x+w-48), (int)ty+2, 10, cpuPercent > 50 ? RED : (Color){80,80,80,255});
+    DrawTextShadow(TextFormat("%dfps", GetFPS()), (int)(x+w-48), (int)ty+14, 10, (Color){50,50,50,255});
 }
 
 // ============================================================================
@@ -2630,6 +2674,17 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "Strike", &p->p_membraneStrike, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Bend", &p->p_membraneBend, 0.02f, 0.0f, 0.5f);
             ui_col_float(&c, "BndDcy", &p->p_membraneBendDecay, 0.01f, 0.02f, 0.3f);
+        } else if (p->p_waveType == WAVE_BOWED) {
+            ui_col_sublabel(&c, "Bowed:", (Color){140,160,200,255});
+            ui_col_float(&c, "Pressure", &p->p_bowPressure, 0.05f, 0.1f, 1.0f);
+            ui_col_float(&c, "Speed", &p->p_bowSpeed, 0.05f, 0.1f, 1.0f);
+            ui_col_float(&c, "Position", &p->p_bowPosition, 0.01f, 0.02f, 0.5f);
+        } else if (p->p_waveType == WAVE_PIPE) {
+            ui_col_sublabel(&c, "Pipe:", (Color){140,160,200,255});
+            ui_col_float(&c, "Breath", &p->p_pipeBreath, 0.05f, 0.1f, 1.0f);
+            ui_col_float(&c, "Embou", &p->p_pipeEmbouchure, 0.05f, 0.1f, 1.0f);
+            ui_col_float(&c, "Bore", &p->p_pipeBore, 0.05f, 0.1f, 0.9f);
+            ui_col_float(&c, "Overblow", &p->p_pipeOverblow, 0.05f, 0.0f, 1.0f);
         } else if (p->p_waveType == WAVE_BIRD) {
             ui_col_sublabel(&c, "Bird:", (Color){140,160,200,255});
             ui_col_cycle(&c, "Type", birdTypeNames, 5, &p->p_birdType);
@@ -3385,6 +3440,10 @@ static void DawAudioCallback(void *buffer, unsigned int frames) {
         // Full mixer → bus FX → master FX chain
         float sample = processMixerOutput(busInputs, dt);
         sample *= daw.masterVol;
+
+        // Track peak level for output meter (before clipping)
+        float absS = fabsf(sample);
+        if (absS > dawPeakLevel) dawPeakLevel = absS;
 
         if (sample > 1.0f) sample = 1.0f;
         if (sample < -1.0f) sample = -1.0f;

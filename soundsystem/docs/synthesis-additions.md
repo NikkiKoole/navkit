@@ -981,34 +981,12 @@ larger or with more spacing.
 
 ---
 
-### 19. Output Level Meter
+### 19. Output Level Meter — DONE
 
-**Effort:** ~10 lines in drawTransport()
-**Impact:** Basic monitoring — can't currently see if you're clipping
-
-#### The problem
-
-No way to see how loud the output is. You can't tell if the mix is clipping until
-you hear it distort. Every DAW, every hardware groovebox has a level meter.
-
-#### Implementation
-
-Track peak level in the audio callback:
-```c
-// In audio callback:
-static float peakLevel = 0.0f;
-float abs = fabsf(sample);
-if (abs > peakLevel) peakLevel = abs;
-
-// In drawTransport() — draw a horizontal bar
-float db = 20.0f * log10f(fmaxf(peakLevel, 0.00001f));
-float barWidth = (db + 48.0f) / 48.0f * maxWidth;  // -48dB to 0dB range
-Color c = peakLevel > 1.0f ? RED : (peakLevel > 0.8f ? YELLOW : GREEN);
-DrawRectangle(x, y, (int)barWidth, 6, c);
-peakLevel *= 0.95f;  // Decay
-```
-
-Fits in the transport bar next to the Save/Load buttons. Red when clipping.
+**Status:** Implemented. Peak tracking in `DawAudioCallback` (pre-clipping `fabsf`),
+smooth-decay hold (`dawPeakHold *= 0.95f`), horizontal bar in transport with dB scale
+(-48dB to +6dB), 0dB tick mark, green/yellow/red color coding, "CLIP" indicator when
+output exceeds 0dB. Sits in transport bar between voice monitor and CPU%.
 
 ---
 
@@ -1170,11 +1148,11 @@ case RHYTHM_VAR_SYNCOPATED:
 | 16 | Multi-step select | Workflow | TODO — no batch editing |
 | 17 | Preset audition | Workflow | TODO — no play-on-hover in preset picker |
 | 18 | Hide wave params | Polish | TODO — all wave-specific params shown regardless of type |
-| 19 | Output meter | Polish | TODO — no peak level meter |
+| 19 | Output meter | Polish | **DONE** — peak meter in transport bar, dB scale, clip indicator |
 | 20 | Tooltips | Polish | Partial — `DrawTooltip()` exists, unclear coverage |
 | 21 | Keyboard hints | Polish | TODO — no context-sensitive shortcut hints |
 | 22 | More presets | Polish | **DONE** — 107 presets (was 48), all engines represented |
 | 23 | Syncopated variation | Sequencer | **DONE** — all tracks, anticipation pattern |
 
-**Score: 16/23 done.** Remaining: §4 (unison stereo), §13 (piano roll),
-§16-17 (workflow), §18-21 (polish).
+**Score: 17/23 done.** Remaining: §4 (unison stereo), §13 (piano roll),
+§16-17 (workflow), §18 (hide wave params), §20 (tooltips), §21 (keyboard hints).

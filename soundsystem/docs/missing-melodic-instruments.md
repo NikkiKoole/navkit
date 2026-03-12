@@ -195,8 +195,8 @@ A few sounds can't be done well with existing engines:
 
 | Sound | What's missing | Effort |
 |-------|---------------|--------|
-| **Bowed String** | Continuous excitation model (bow pressure/speed). Pluck is impulse-only. | New engine (~200 lines) — listed in roadmap §5.8 |
-| **Blown Pipe / Flute (physical)** | Breath noise + resonant tube. Triangle+noise is an approximation. | New engine (~150 lines) — listed in roadmap §5.8 |
+| ~~**Bowed String**~~ | ~~Continuous excitation model (bow pressure/speed).~~ | **DONE** — WAVE_BOWED engine (Smith waveguide), presets 107-108 |
+| ~~**Blown Pipe / Flute (physical)**~~ | ~~Breath noise + resonant tube.~~ | **DONE** — WAVE_PIPE engine (Fletcher/Verge jet-drive), presets 109-110 |
 | **True Piano** | Requires multi-sample or waveguide model. FM piano is an approximation. | Complex — SCW with piano samples is the practical path |
 | **Distortion Guitar** | Need waveshaping beyond tanh (wavefold helps). Existing drive is too clean. | Wavefold (§1 in synthesis-additions.md) would unlock this |
 
@@ -213,7 +213,7 @@ lo-fi/SNES aesthetic where "perfectly accurate" isn't the goal.
 | **1: Core keys** | Rhodes (×2), Wurlitzer, Clavinet, Celesta, Toy Piano | 6 | TODO |
 | **2: Core bass** | Upright, Fretless, Sub, FM Bass, Slap | 5 | Partial — Sub Bass (61), Nylon Guitar (62) done |
 | **3: Guitar variants** | Nylon, Jazz, Muted, 12-string | 4 | Partial — Nylon Guitar (62) done |
-| **4: Winds** | Flute, Recorder, Ocarina, Muted Trumpet, Accordion | 5 | TODO |
+| **4: Winds** | Flute, Recorder, Ocarina, Muted Trumpet, Accordion | 5 | Partial — Pipe Flute (109), Recorder (110) done |
 | **5: World/bells** | Kalimba, Steel Drum, Gamelan, Pan Flute, Harmonica | 5 | Partial — Kalimba (60) done |
 | **6: SNES kit** | SNES Strings, Brass, Choir, Piano, Harp, Bell (with bitcrusher) | 6 | TODO |
 | **7: Pads** | Warm, Glass, Grain, Tape, Drone | 5 | Partial — WC Pad (82) done |

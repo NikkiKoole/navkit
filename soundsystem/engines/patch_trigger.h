@@ -14,6 +14,7 @@
 // Apply all SynthPatch parameters to the synth engine globals.
 // Must be called before any playNote/playPluck/etc. call.
 static void applyPatchToGlobals(SynthPatch *p) {
+    _ensureSynthCtx();
     noteAttack = p->p_attack;
     noteDecay = p->p_decay;
     noteSustain = p->p_sustain;
@@ -116,6 +117,13 @@ static void applyPatchToGlobals(SynthPatch *p) {
     birdAmRate = p->p_birdAmRate;
     birdAmDepth = p->p_birdAmDepth;
     birdHarmonics = p->p_birdHarmonics;
+    bowPressure = p->p_bowPressure;
+    bowSpeed = p->p_bowSpeed;
+    bowPosition = p->p_bowPosition;
+    pipeBreath = p->p_pipeBreath;
+    pipeEmbouchure = p->p_pipeEmbouchure;
+    pipeBore = p->p_pipeBore;
+    pipeOverblow = p->p_pipeOverblow;
     noteExpRelease = p->p_expRelease;
     notePitchEnvAmount = p->p_pitchEnvAmount;
     notePitchEnvDecay = p->p_pitchEnvDecay;
@@ -182,6 +190,8 @@ static int playNoteWithPatch(float freq, SynthPatch *p) {
         case WAVE_PD:       return playPD(freq);
         case WAVE_MEMBRANE: return playMembrane(freq, (MembranePreset)p->p_membranePreset);
         case WAVE_BIRD:     return playBird(freq, (BirdType)p->p_birdType);
+        case WAVE_BOWED:    return playBowed(freq);
+        case WAVE_PIPE:     return playPipe(freq);
         default:            return playNote(freq, wave);
     }
 }

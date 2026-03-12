@@ -145,6 +145,17 @@ typedef struct {
     float p_membraneBend;
     float p_membraneBendDecay;
 
+    // Bowed string
+    float p_bowPressure;
+    float p_bowSpeed;
+    float p_bowPosition;
+
+    // Blown pipe
+    float p_pipeBreath;
+    float p_pipeEmbouchure;
+    float p_pipeBore;
+    float p_pipeOverblow;
+
     // Bird
     int p_birdType;
     float p_birdChirpRange;
@@ -319,6 +330,13 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_membraneStrike = 0.3f,
         .p_membraneBend = 0.15f,
         .p_membraneBendDecay = 0.08f,
+        .p_bowPressure = 0.5f,
+        .p_bowSpeed = 0.5f,
+        .p_bowPosition = 0.13f,
+        .p_pipeBreath = 0.5f,
+        .p_pipeEmbouchure = 0.5f,
+        .p_pipeBore = 0.5f,
+        .p_pipeOverblow = 0.0f,
         .p_birdType = BIRD_CHIRP,
         .p_birdChirpRange = 1.0f,
         .p_birdTrillRate = 0.0f,

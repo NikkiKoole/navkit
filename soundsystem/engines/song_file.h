@@ -385,6 +385,13 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "membraneStrike", p->p_membraneStrike);
     _sf_writeFloat(f, "membraneBend", p->p_membraneBend);
     _sf_writeFloat(f, "membraneBendDecay", p->p_membraneBendDecay);
+    _sf_writeFloat(f, "bowPressure", p->p_bowPressure);
+    _sf_writeFloat(f, "bowSpeed", p->p_bowSpeed);
+    _sf_writeFloat(f, "bowPosition", p->p_bowPosition);
+    _sf_writeFloat(f, "pipeBreath", p->p_pipeBreath);
+    _sf_writeFloat(f, "pipeEmbouchure", p->p_pipeEmbouchure);
+    _sf_writeFloat(f, "pipeBore", p->p_pipeBore);
+    _sf_writeFloat(f, "pipeOverblow", p->p_pipeOverblow);
     _sf_writeInt(f, "birdType", p->p_birdType);
     _sf_writeFloat(f, "birdChirpRange", p->p_birdChirpRange);
     _sf_writeFloat(f, "birdTrillRate", p->p_birdTrillRate);
@@ -876,6 +883,13 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "membraneStrike") == 0) p->p_membraneStrike = _sf_parseFloat(val);
     else if (strcmp(key, "membraneBend") == 0) p->p_membraneBend = _sf_parseFloat(val);
     else if (strcmp(key, "membraneBendDecay") == 0) p->p_membraneBendDecay = _sf_parseFloat(val);
+    else if (strcmp(key, "bowPressure") == 0) p->p_bowPressure = _sf_parseFloat(val);
+    else if (strcmp(key, "bowSpeed") == 0) p->p_bowSpeed = _sf_parseFloat(val);
+    else if (strcmp(key, "bowPosition") == 0) p->p_bowPosition = _sf_parseFloat(val);
+    else if (strcmp(key, "pipeBreath") == 0) p->p_pipeBreath = _sf_parseFloat(val);
+    else if (strcmp(key, "pipeEmbouchure") == 0) p->p_pipeEmbouchure = _sf_parseFloat(val);
+    else if (strcmp(key, "pipeBore") == 0) p->p_pipeBore = _sf_parseFloat(val);
+    else if (strcmp(key, "pipeOverblow") == 0) p->p_pipeOverblow = _sf_parseFloat(val);
     else if (strcmp(key, "birdType") == 0) p->p_birdType = _sf_parseInt(val);
     else if (strcmp(key, "birdChirpRange") == 0) p->p_birdChirpRange = _sf_parseFloat(val);
     else if (strcmp(key, "birdTrillRate") == 0) p->p_birdTrillRate = _sf_parseFloat(val);

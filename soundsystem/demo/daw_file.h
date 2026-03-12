@@ -95,6 +95,10 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _di(f, "membranePreset", p->p_membranePreset); _dw(f, "membraneDamping", p->p_membraneDamping);
     _dw(f, "membraneStrike", p->p_membraneStrike); _dw(f, "membraneBend", p->p_membraneBend);
     _dw(f, "membraneBendDecay", p->p_membraneBendDecay);
+    _dw(f, "bowPressure", p->p_bowPressure); _dw(f, "bowSpeed", p->p_bowSpeed);
+    _dw(f, "bowPosition", p->p_bowPosition);
+    _dw(f, "pipeBreath", p->p_pipeBreath); _dw(f, "pipeEmbouchure", p->p_pipeEmbouchure);
+    _dw(f, "pipeBore", p->p_pipeBore); _dw(f, "pipeOverblow", p->p_pipeOverblow);
     _di(f, "birdType", p->p_birdType); _dw(f, "birdChirpRange", p->p_birdChirpRange);
     _dw(f, "birdTrillRate", p->p_birdTrillRate); _dw(f, "birdTrillDepth", p->p_birdTrillDepth);
     _dw(f, "birdAmRate", p->p_birdAmRate); _dw(f, "birdAmDepth", p->p_birdAmDepth);
@@ -487,6 +491,13 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"membraneStrike")==0) p->p_membraneStrike = _dpf(val);
     else if (strcmp(key,"membraneBend")==0) p->p_membraneBend = _dpf(val);
     else if (strcmp(key,"membraneBendDecay")==0) p->p_membraneBendDecay = _dpf(val);
+    else if (strcmp(key,"bowPressure")==0) p->p_bowPressure = _dpf(val);
+    else if (strcmp(key,"bowSpeed")==0) p->p_bowSpeed = _dpf(val);
+    else if (strcmp(key,"bowPosition")==0) p->p_bowPosition = _dpf(val);
+    else if (strcmp(key,"pipeBreath")==0) p->p_pipeBreath = _dpf(val);
+    else if (strcmp(key,"pipeEmbouchure")==0) p->p_pipeEmbouchure = _dpf(val);
+    else if (strcmp(key,"pipeBore")==0) p->p_pipeBore = _dpf(val);
+    else if (strcmp(key,"pipeOverblow")==0) p->p_pipeOverblow = _dpf(val);
     else if (strcmp(key,"birdType")==0) p->p_birdType = _dpi(val);
     else if (strcmp(key,"birdChirpRange")==0) p->p_birdChirpRange = _dpf(val);
     else if (strcmp(key,"birdTrillRate")==0) p->p_birdTrillRate = _dpf(val);

@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 107
+#define NUM_INSTRUMENT_PRESETS 111
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -1725,6 +1725,77 @@ static void initInstrumentPresets(void) {
     instrumentPresets[106].patch.p_sustain = 0.8f;
     instrumentPresets[106].patch.p_release = 0.1f;
     instrumentPresets[106].patch.p_volume = 0.4f;
+
+    // === Bowed String presets ===
+
+    // 107: Bowed Cello — warm, rich, moderate vibrato
+    instrumentPresets[107].name = "Bowed Cello";
+    instrumentPresets[107].patch.p_waveType = WAVE_BOWED;
+    instrumentPresets[107].patch.p_bowPressure = 0.6f;
+    instrumentPresets[107].patch.p_bowSpeed = 0.5f;
+    instrumentPresets[107].patch.p_bowPosition = 0.13f;
+    instrumentPresets[107].patch.p_attack = 0.08f;
+    instrumentPresets[107].patch.p_decay = 0.3f;
+    instrumentPresets[107].patch.p_sustain = 0.8f;
+    instrumentPresets[107].patch.p_release = 0.2f;
+    instrumentPresets[107].patch.p_vibratoRate = 5.5f;
+    instrumentPresets[107].patch.p_vibratoDepth = 0.12f;
+    instrumentPresets[107].patch.p_filterCutoff = 0.7f;
+    instrumentPresets[107].patch.p_analogRolloff = true;
+    instrumentPresets[107].patch.p_volume = 0.5f;
+
+    // 108: Bowed Fiddle — brighter, more pressure, faster attack
+    instrumentPresets[108].name = "Bowed Fiddle";
+    instrumentPresets[108].patch.p_waveType = WAVE_BOWED;
+    instrumentPresets[108].patch.p_bowPressure = 0.8f;
+    instrumentPresets[108].patch.p_bowSpeed = 0.65f;
+    instrumentPresets[108].patch.p_bowPosition = 0.1f;
+    instrumentPresets[108].patch.p_attack = 0.04f;
+    instrumentPresets[108].patch.p_decay = 0.2f;
+    instrumentPresets[108].patch.p_sustain = 0.85f;
+    instrumentPresets[108].patch.p_release = 0.15f;
+    instrumentPresets[108].patch.p_vibratoRate = 6.0f;
+    instrumentPresets[108].patch.p_vibratoDepth = 0.15f;
+    instrumentPresets[108].patch.p_filterCutoff = 0.85f;
+    instrumentPresets[108].patch.p_volume = 0.45f;
+
+    // === Blown Pipe presets ===
+
+    // 109: Pipe Flute — breathy, gentle, classic flute tone
+    instrumentPresets[109].name = "Pipe Flute";
+    instrumentPresets[109].patch.p_waveType = WAVE_PIPE;
+    instrumentPresets[109].patch.p_pipeBreath = 0.7f;
+    instrumentPresets[109].patch.p_pipeEmbouchure = 0.6f;
+    instrumentPresets[109].patch.p_pipeBore = 0.5f;
+    instrumentPresets[109].patch.p_pipeOverblow = 0.0f;
+    instrumentPresets[109].patch.p_attack = 0.04f;
+    instrumentPresets[109].patch.p_decay = 0.2f;
+    instrumentPresets[109].patch.p_sustain = 0.8f;
+    instrumentPresets[109].patch.p_release = 0.12f;
+    instrumentPresets[109].patch.p_vibratoRate = 5.0f;
+    instrumentPresets[109].patch.p_vibratoDepth = 0.08f;
+    instrumentPresets[109].patch.p_filterCutoff = 0.85f;
+    instrumentPresets[109].patch.p_noiseMix = 0.06f;
+    instrumentPresets[109].patch.p_noiseTone = 0.3f;
+    instrumentPresets[109].patch.p_volume = 0.7f;
+
+    // 110: Recorder — simpler bore, more breathy, medieval character
+    instrumentPresets[110].name = "Recorder";
+    instrumentPresets[110].patch.p_waveType = WAVE_PIPE;
+    instrumentPresets[110].patch.p_pipeBreath = 0.65f;
+    instrumentPresets[110].patch.p_pipeEmbouchure = 0.35f;
+    instrumentPresets[110].patch.p_pipeBore = 0.5f;
+    instrumentPresets[110].patch.p_pipeOverblow = 0.0f;
+    instrumentPresets[110].patch.p_attack = 0.02f;
+    instrumentPresets[110].patch.p_decay = 0.15f;
+    instrumentPresets[110].patch.p_sustain = 0.75f;
+    instrumentPresets[110].patch.p_release = 0.08f;
+    instrumentPresets[110].patch.p_vibratoRate = 4.5f;
+    instrumentPresets[110].patch.p_vibratoDepth = 0.06f;
+    instrumentPresets[110].patch.p_filterCutoff = 0.7f;
+    instrumentPresets[110].patch.p_noiseMix = 0.08f;
+    instrumentPresets[110].patch.p_noiseTone = 0.25f;
+    instrumentPresets[110].patch.p_volume = 0.65f;
 }
 
 #endif // INSTRUMENT_PRESETS_H
