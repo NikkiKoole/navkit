@@ -1,4 +1,4 @@
-// preset_audition.c — Headless preset renderer + analyzer
+// preset_audition.c — Headless preset renderer + analyzer + reference comparison
 //
 // Usage:
 //   preset_audition <preset_index> [options]
@@ -9,12 +9,16 @@
 //   -t <seconds>   Total render time including release (default: 2.0)
 //   -o <file.wav>  Output WAV path (default: preset_<index>.wav)
 //   -a             Analysis only (no WAV write)
+//   --ref <file>   Compare preset against a reference WAV
+//   --csv <dir>    Export analysis CSV files to directory
 //   --all          Render all presets
+//   --multi        Test multiple durations + notes
 //
 // Examples:
 //   preset_audition 107              # render Bowed Cello, write WAV + analysis
 //   preset_audition 109 -n 72 -d 2   # Pipe Flute, C5, 2s note-on
 //   preset_audition 0 -a             # analyze Chip Lead without writing WAV
+//   preset_audition 45 -n 84 --ref /path/to/glockenspiel_C6.wav
 //   preset_audition --all            # render all presets, write analysis summary
 
 #include <stdio.h>
@@ -22,6 +26,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdbool.h>
+#include <sys/stat.h>
 
 // Include synth engine (no raylib dependency)
 #include "../engines/synth.h"
@@ -29,51 +34,33 @@
 #include "../engines/patch_trigger.h"
 #include "../engines/instrument_presets.h"
 
+// WAV analysis library
+#define WAV_ANALYZE_IMPLEMENTATION
+#include "wav_analyze.h"
+
 #define SAMPLE_RATE 44100
 #define MAX_RENDER_SECONDS 10
 
-// Write 16-bit mono WAV
-static void writeWav(const char *path, const short *data, int numSamples) {
-    FILE *f = fopen(path, "wb");
-    if (!f) { fprintf(stderr, "Can't open %s for writing\n", path); return; }
-    int dataSize = numSamples * 2;
-    int fileSize = 36 + dataSize;
-    fwrite("RIFF", 1, 4, f);
-    fwrite(&fileSize, 4, 1, f);
-    fwrite("WAVE", 1, 4, f);
-    fwrite("fmt ", 1, 4, f);
-    int le32 = 16; fwrite(&le32, 4, 1, f);
-    short le16 = 1; fwrite(&le16, 2, 1, f); // PCM
-    le16 = 1; fwrite(&le16, 2, 1, f); // mono
-    le32 = SAMPLE_RATE; fwrite(&le32, 4, 1, f);
-    le32 = SAMPLE_RATE * 2; fwrite(&le32, 4, 1, f);
-    le16 = 2; fwrite(&le16, 2, 1, f);
-    le16 = 16; fwrite(&le16, 2, 1, f);
-    fwrite("data", 1, 4, f);
-    fwrite(&dataSize, 4, 1, f);
-    fwrite(data, 2, numSamples, f);
-    fclose(f);
-}
+// ============================================================================
+// LEGACY ANALYSIS (kept for --all and --multi backward compat)
+// ============================================================================
 
-// Analysis results
 typedef struct {
-    float peakLevel;          // max |sample|
-    float rmsLevel;           // RMS over full render
-    float rmsNoteOn;          // RMS during note-on portion
-    float rmsTail;            // RMS during release tail
-    bool clipped;             // peak > 1.0 before clamp
-    float attackTimeMs;       // time to reach 50% of peak
-    float zeroCrossRate;      // zero crossings per second (pitch estimate)
-    float dcOffset;           // average sample value
-    float crestFactor;        // peak/RMS ratio in dB
-    int silentAfterMs;        // ms until signal drops below -60dB
-    float spectralCentroid;   // brightness estimate (Hz)
+    float peakLevel;
+    float rmsLevel;
+    float rmsNoteOn;
+    float rmsTail;
+    bool clipped;
+    float attackTimeMs;
+    float zeroCrossRate;
+    float dcOffset;
+    float crestFactor;
+    int silentAfterMs;
+    float spectralCentroid;
 } AnalysisResult;
 
 static AnalysisResult analyzeBuffer(const float *buf, int totalSamples, int noteOnSamples) {
     AnalysisResult r = {0};
-
-    // Peak and RMS
     double sumSq = 0, sumSqOn = 0, sumSqTail = 0, sumDC = 0;
     float peak = 0;
     for (int i = 0; i < totalSamples; i++) {
@@ -93,7 +80,6 @@ static AnalysisResult analyzeBuffer(const float *buf, int totalSamples, int note
     r.dcOffset = (float)(sumDC / totalSamples);
     r.crestFactor = r.rmsLevel > 0.00001f ? 20.0f * log10f(peak / r.rmsLevel) : 0;
 
-    // Attack time (time to reach 50% of peak)
     float threshold = peak * 0.5f;
     r.attackTimeMs = -1;
     for (int i = 0; i < totalSamples; i++) {
@@ -103,7 +89,6 @@ static AnalysisResult analyzeBuffer(const float *buf, int totalSamples, int note
         }
     }
 
-    // Zero crossing rate (over note-on portion)
     int crossings = 0;
     int zcSamples = noteOnSamples > 0 ? noteOnSamples : totalSamples;
     for (int i = 1; i < zcSamples; i++) {
@@ -111,7 +96,6 @@ static AnalysisResult analyzeBuffer(const float *buf, int totalSamples, int note
     }
     r.zeroCrossRate = (float)crossings / ((float)zcSamples / SAMPLE_RATE);
 
-    // Silent after (signal below -60dB = 0.001)
     r.silentAfterMs = (int)((float)totalSamples / SAMPLE_RATE * 1000.0f);
     for (int i = totalSamples - 1; i >= 0; i--) {
         if (fabsf(buf[i]) > 0.001f) {
@@ -120,9 +104,7 @@ static AnalysisResult analyzeBuffer(const float *buf, int totalSamples, int note
         }
     }
 
-    // Spectral centroid estimate (weighted average of zero-crossing frequency in windows)
-    // Simple approach: count zero crossings in 10ms windows, compute weighted average
-    int windowSize = SAMPLE_RATE / 100; // 10ms
+    int windowSize = SAMPLE_RATE / 100;
     double freqSum = 0, ampSum = 0;
     for (int w = 0; w < zcSamples / windowSize; w++) {
         int start = w * windowSize;
@@ -138,7 +120,6 @@ static AnalysisResult analyzeBuffer(const float *buf, int totalSamples, int note
         ampSum += winAmp;
     }
     r.spectralCentroid = ampSum > 0 ? (float)(freqSum / ampSum) : 0;
-
     return r;
 }
 
@@ -159,97 +140,94 @@ static void printAnalysis(const char *name, int presetIdx, const AnalysisResult 
     printf("  DC off:   %.4f%s\n", r->dcOffset,
            fabsf(r->dcOffset) > 0.01f ? " *** HIGH DC ***" : "");
     printf("  Attack:   %.1f ms\n", r->attackTimeMs);
-    printf("  ZC rate:  %.0f/s → est pitch %.0f Hz (%.1f%% of expected)\n",
+    printf("  ZC rate:  %.0f/s -> est pitch %.0f Hz (%.1f%% of expected)\n",
            r->zeroCrossRate, estPitch,
            expectedFreq > 0 ? estPitch / expectedFreq * 100.0f : 0);
     printf("  Bright:   %.0f Hz (spectral centroid)\n", r->spectralCentroid);
     printf("  Decay:    silent after %d ms\n", r->silentAfterMs);
 
-    // Quality flags
-    if (r->peakLevel < 0.01f) printf("  ⚠ SILENT — no audible output!\n");
-    else if (r->peakLevel < 0.05f) printf("  ⚠ Very quiet (peak < -26dB)\n");
-    if (r->clipped) printf("  ⚠ Clipping detected — reduce volume\n");
-    if (fabsf(r->dcOffset) > 0.01f) printf("  ⚠ DC offset — may cause clicks\n");
+    if (r->peakLevel < 0.01f) printf("  !! SILENT - no audible output!\n");
+    else if (r->peakLevel < 0.05f) printf("  !! Very quiet (peak < -26dB)\n");
+    if (r->clipped) printf("  !! Clipping detected - reduce volume\n");
+    if (fabsf(r->dcOffset) > 0.01f) printf("  !! DC offset - may cause clicks\n");
     if (estPitch > 0 && fabsf(estPitch / expectedFreq - 1.0f) > 0.15f)
-        printf("  ⚠ Pitch mismatch — may sound out of tune\n");
+        printf("  !! Pitch mismatch - may sound out of tune\n");
     if (r->rmsNoteOn > 0 && r->rmsTail / r->rmsNoteOn > 0.8f && noteOnSec < 1.5f)
-        printf("  ⚠ No audible release — check envelope\n");
+        printf("  !! No audible release - check envelope\n");
     if (r->attackTimeMs > 200.0f)
-        printf("  ⚠ Slow attack (>200ms) — may feel sluggish\n");
+        printf("  !! Slow attack (>200ms) - may feel sluggish\n");
     printf("\n");
 }
 
-// Render a single preset and return analysis
+// ============================================================================
+// PRESET RENDERING
+// ============================================================================
+
+// Render a preset into a float buffer. Caller must free *outBuf if non-NULL.
 static AnalysisResult renderPreset(int presetIdx, int midiNote, float noteOnSec, float totalSec,
-                                    const char *wavPath, bool writeWavFile) {
+                                    const char *wavPath, bool writeWavFile,
+                                    float **outBuf, int *outLen) {
     // Init synth context
     static SynthContext ctx;
     memset(&ctx, 0, sizeof(ctx));
     synthCtx = &ctx;
     synthCtx->bpm = 120.0f;
 
-    // Reset voices
     for (int i = 0; i < NUM_VOICES; i++) {
         synthVoices[i].envStage = 0;
         synthVoices[i].envLevel = 0;
     }
 
-    // Load preset
     initInstrumentPresets();
     SynthPatch *p = &instrumentPresets[presetIdx].patch;
     applyPatchToGlobals(p);
 
-    // Calculate freq from MIDI note
     float freq = 440.0f * powf(2.0f, (midiNote - 69) / 12.0f);
-
-    // Trigger note
     int voiceIdx = playNoteWithPatch(freq, p);
     (void)voiceIdx;
 
-    // Render
     int totalSamples = (int)(totalSec * SAMPLE_RATE);
     int noteOnSamples = (int)(noteOnSec * SAMPLE_RATE);
     if (totalSamples > MAX_RENDER_SECONDS * SAMPLE_RATE) totalSamples = MAX_RENDER_SECONDS * SAMPLE_RATE;
 
     float *floatBuf = (float *)malloc(totalSamples * sizeof(float));
-    short *pcmBuf = (short *)malloc(totalSamples * sizeof(short));
 
     for (int i = 0; i < totalSamples; i++) {
-        // Note-off at the right time
         if (i == noteOnSamples) {
             for (int v = 0; v < NUM_VOICES; v++) {
                 if (synthVoices[v].envStage > 0 && synthVoices[v].envStage < 4) {
-                    synthVoices[v].envStage = 4; // release
+                    synthVoices[v].envStage = 4;
                     synthVoices[v].envPhase = 0;
                 }
             }
         }
-
-        // Sum all voices
         float sample = 0;
         for (int v = 0; v < NUM_VOICES; v++) {
             sample += processVoice(&synthVoices[v], (float)SAMPLE_RATE);
         }
-
         floatBuf[i] = sample;
-        float clamped = sample;
-        if (clamped > 1.0f) clamped = 1.0f;
-        if (clamped < -1.0f) clamped = -1.0f;
-        pcmBuf[i] = (short)(clamped * 32000.0f);
     }
 
-    // Analyze
     AnalysisResult result = analyzeBuffer(floatBuf, totalSamples, noteOnSamples);
 
-    // Write WAV
     if (writeWavFile && wavPath) {
-        writeWav(wavPath, pcmBuf, totalSamples);
+        waWriteWav(wavPath, floatBuf, totalSamples, SAMPLE_RATE);
     }
 
-    free(floatBuf);
-    free(pcmBuf);
+    // Return buffer to caller if requested
+    if (outBuf) {
+        *outBuf = floatBuf;
+        if (outLen) *outLen = totalSamples;
+    } else {
+        free(floatBuf);
+    }
+
     return result;
 }
+
+// ============================================================================
+// MAIN
+// ============================================================================
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
@@ -261,6 +239,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "  -t <seconds>   Total render time (default: 2.0)\n");
         fprintf(stderr, "  -o <file.wav>  Output path (default: preset_<N>.wav)\n");
         fprintf(stderr, "  -a             Analysis only, no WAV\n");
+        fprintf(stderr, "  --ref <file>   Compare against a reference WAV\n");
+        fprintf(stderr, "  --csv <dir>    Export analysis CSVs to directory\n");
         fprintf(stderr, "  --all          Render all presets\n");
         fprintf(stderr, "  --multi        Test multiple durations + notes\n");
         return 1;
@@ -277,6 +257,8 @@ int main(int argc, char *argv[]) {
     float noteOnSec = 1.0f;
     float totalSec = 2.0f;
     char *outputPath = NULL;
+    char *refPath = NULL;
+    char *csvDir = NULL;
     bool analysisOnly = false;
     int presetIdx = -1;
 
@@ -286,33 +268,33 @@ int main(int argc, char *argv[]) {
         else if (strcmp(argv[i], "-d") == 0 && i+1 < argc) { noteOnSec = atof(argv[++i]); }
         else if (strcmp(argv[i], "-t") == 0 && i+1 < argc) { totalSec = atof(argv[++i]); }
         else if (strcmp(argv[i], "-o") == 0 && i+1 < argc) { outputPath = argv[++i]; }
+        else if (strcmp(argv[i], "--ref") == 0 && i+1 < argc) { refPath = argv[++i]; }
+        else if (strcmp(argv[i], "--csv") == 0 && i+1 < argc) { csvDir = argv[++i]; }
         else if (strcmp(argv[i], "-a") == 0) { analysisOnly = true; }
         else if (strcmp(argv[i], "--all") == 0 || strcmp(argv[i], "--multi") == 0) { /* handled above */ }
-        else if (presetIdx < 0) { presetIdx = atoi(argv[i]); }
+        else if (presetIdx < 0 && argv[i][0] != '-') { presetIdx = atoi(argv[i]); }
     }
 
-    // Init presets to get names
     initInstrumentPresets();
 
     if (allMode) {
+        // --- Render all presets (legacy mode) ---
         printf("Rendering all %d presets (MIDI %d, %.1fs on, %.1fs total)\n\n",
                NUM_INSTRUMENT_PRESETS, midiNote, noteOnSec, totalSec);
-
         int issues = 0;
         for (int i = 0; i < NUM_INSTRUMENT_PRESETS; i++) {
             char wavName[256];
             snprintf(wavName, sizeof(wavName), "preset_%03d.wav", i);
-
             AnalysisResult r = renderPreset(i, midiNote, noteOnSec, totalSec,
-                                             wavName, !analysisOnly);
+                                             wavName, !analysisOnly, NULL, NULL);
             printAnalysis(instrumentPresets[i].name, i, &r, midiNote, noteOnSec);
-
             if (r.peakLevel < 0.01f || r.clipped || fabsf(r.dcOffset) > 0.01f)
                 issues++;
         }
         printf("=== Summary: %d/%d presets have issues ===\n", issues, NUM_INSTRUMENT_PRESETS);
+
     } else if (multiMode) {
-        // Multi-duration + multi-note test for a single preset
+        // --- Multi-duration + multi-note test ---
         if (presetIdx < 0 || presetIdx >= NUM_INSTRUMENT_PRESETS) {
             fprintf(stderr, "Invalid preset index %d (0-%d)\n", presetIdx, NUM_INSTRUMENT_PRESETS - 1);
             return 1;
@@ -320,47 +302,44 @@ int main(int argc, char *argv[]) {
         const char *name = instrumentPresets[presetIdx].name;
         printf("=== Multi-test: Preset %d (%s) ===\n\n", presetIdx, name);
 
-        // Test different note-on durations
         float durations[] = {0.05f, 0.15f, 0.5f, 1.0f, 2.0f};
         const char *durNames[] = {"staccato(50ms)", "short(150ms)", "medium(500ms)", "normal(1s)", "sustained(2s)"};
-        int numDur = 5;
 
         printf("--- Duration sweep (MIDI %d) ---\n", midiNote);
-        for (int d = 0; d < numDur; d++) {
+        for (int d = 0; d < 5; d++) {
             float dur = durations[d];
-            float total = dur + 1.5f; // always 1.5s of release tail
+            float total = dur + 1.5f;
             char wavName[256];
             snprintf(wavName, sizeof(wavName), "preset_%03d_%s.wav", presetIdx, durNames[d]);
-            // strip parens from filename
             for (char *c = wavName; *c; c++) { if (*c == '(' || *c == ')') *c = '_'; }
-
-            AnalysisResult r = renderPreset(presetIdx, midiNote, dur, total, wavName, !analysisOnly);
+            AnalysisResult r = renderPreset(presetIdx, midiNote, dur, total,
+                                             wavName, !analysisOnly, NULL, NULL);
             printf("  %-18s  peak=%.3f  rms=%.3f  attack=%.0fms  decay@%dms%s\n",
                    durNames[d], r.peakLevel, r.rmsLevel, r.attackTimeMs, r.silentAfterMs,
                    r.peakLevel < 0.01f ? " SILENT!" : (r.clipped ? " CLIP!" : ""));
         }
 
-        // Test different notes (pitch range)
         int notes[] = {36, 48, 60, 72, 84};
         const char *noteNames[] = {"C2", "C3", "C4", "C5", "C6"};
-        int numNotes = 5;
 
         printf("\n--- Pitch range (1s note-on) ---\n");
-        for (int n = 0; n < numNotes; n++) {
+        for (int n = 0; n < 5; n++) {
             char wavName[256];
             snprintf(wavName, sizeof(wavName), "preset_%03d_%s.wav", presetIdx, noteNames[n]);
-            AnalysisResult r = renderPreset(presetIdx, notes[n], 1.0f, 2.5f, wavName, !analysisOnly);
+            AnalysisResult r = renderPreset(presetIdx, notes[n], 1.0f, 2.5f,
+                                             wavName, !analysisOnly, NULL, NULL);
             float expectedFreq = 440.0f * powf(2.0f, (notes[n] - 69) / 12.0f);
             float estPitch = r.zeroCrossRate * 0.5f;
             float pitchErr = expectedFreq > 0 ? fabsf(estPitch / expectedFreq - 1.0f) * 100.0f : 0;
-            printf("  %-4s (MIDI %2d)  peak=%.3f  rms=%.3f  pitch≈%.0fHz (%.0f%% off)%s\n",
+            printf("  %-4s (MIDI %2d)  peak=%.3f  rms=%.3f  pitch~%.0fHz (%.0f%% off)%s\n",
                    noteNames[n], notes[n], r.peakLevel, r.rmsLevel, estPitch, pitchErr,
                    r.peakLevel < 0.01f ? " SILENT!" : "");
         }
         printf("\n");
-
         if (!analysisOnly) printf("WAVs written to current directory\n");
+
     } else {
+        // --- Single preset (with optional reference comparison) ---
         if (presetIdx < 0 || presetIdx >= NUM_INSTRUMENT_PRESETS) {
             fprintf(stderr, "Invalid preset index %d (0-%d)\n", presetIdx, NUM_INSTRUMENT_PRESETS - 1);
             return 1;
@@ -372,13 +351,88 @@ int main(int argc, char *argv[]) {
             outputPath = defaultPath;
         }
 
+        // Render preset (keep float buffer for comparison)
+        float *presetBuf = NULL;
+        int presetLen = 0;
+        int noteOnSamples = (int)(noteOnSec * SAMPLE_RATE);
+
         AnalysisResult r = renderPreset(presetIdx, midiNote, noteOnSec, totalSec,
-                                         outputPath, !analysisOnly);
+                                         outputPath, !analysisOnly, &presetBuf, &presetLen);
         printAnalysis(instrumentPresets[presetIdx].name, presetIdx, &r, midiNote, noteOnSec);
 
         if (!analysisOnly) {
-            printf("WAV written to: %s\n", outputPath);
+            printf("WAV written to: %s\n\n", outputPath);
         }
+
+        if (refPath) {
+            // --- Reference comparison mode ---
+            WavFile ref;
+            if (!waLoadWav(refPath, &ref)) {
+                fprintf(stderr, "Failed to load reference WAV: %s\n", refPath);
+                free(presetBuf);
+                return 1;
+            }
+            printf("Reference: %s (%d samples, %dHz, %d-bit, %dch)\n\n",
+                   refPath, ref.length, ref.sampleRate, ref.bitsPerSample, ref.channels);
+
+            // Match lengths for comparison (use shorter of the two)
+            int cmpLen = presetLen < ref.length ? presetLen : ref.length;
+
+            // Analyze both with wav_analyze
+            WaAnalysis waPreset = waAnalyze(presetBuf, presetLen, noteOnSamples);
+            WaAnalysis waRef = waAnalyze(ref.data, ref.length, ref.length);  // reference: all note-on
+
+            // Print detailed analysis of both
+            char presetLabel[128];
+            snprintf(presetLabel, sizeof(presetLabel), "Preset %d: %s",
+                     presetIdx, instrumentPresets[presetIdx].name);
+            waPrintAnalysis(presetLabel, &waPreset);
+            waPrintAnalysis("Reference", &waRef);
+
+            // Compare
+            WaComparison cmp = waCompare(&waPreset, &waRef, presetBuf, ref.data, cmpLen);
+            printf("=== Comparison: %s vs Reference ===\n", instrumentPresets[presetIdx].name);
+            waPrintComparison(&cmp, &waPreset, &waRef);
+
+            // Detect reverb in reference
+            if (ref.length > 0) {
+                // Check if reference has significant tail energy (reverb indicator)
+                // Look at last 25% of the buffer
+                int tailStart = ref.length * 3 / 4;
+                double tailSum = 0;
+                for (int i = tailStart; i < ref.length; i++)
+                    tailSum += (double)ref.data[i] * ref.data[i];
+                float tailRMS = sqrtf((float)(tailSum / (ref.length - tailStart)));
+                if (tailRMS > 0.01f && waRef.durationMs > 1500.0f) {
+                    printf("  Note: reference appears to have reverb/room ambience\n");
+                    printf("        Envelope and waveform scores may be less reliable.\n");
+                    printf("        Harmonic and spectral shape scores are still valid.\n\n");
+                }
+            }
+
+            // CSV export
+            if (csvDir) {
+                mkdir(csvDir, 0755);
+                char name[64];
+                snprintf(name, sizeof(name), "preset_%03d", presetIdx);
+                waExportCSV(csvDir, name, presetBuf, presetLen, &waPreset);
+                waExportCSV(csvDir, "reference", ref.data, ref.length, &waRef);
+                waExportCompareCSV(csvDir, name, presetBuf, ref.data, cmpLen, &waPreset, &waRef);
+                printf("CSVs written to: %s/\n", csvDir);
+            }
+
+            free(ref.data);
+        } else if (csvDir) {
+            // CSV export without reference
+            mkdir(csvDir, 0755);
+            WaAnalysis waPreset = waAnalyze(presetBuf, presetLen, noteOnSamples);
+            char name[64];
+            snprintf(name, sizeof(name), "preset_%03d", presetIdx);
+            waExportCSV(csvDir, name, presetBuf, presetLen, &waPreset);
+            printf("CSVs written to: %s/\n", csvDir);
+        }
+
+        free(presetBuf);
     }
 
     return 0;
