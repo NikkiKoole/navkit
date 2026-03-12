@@ -5,7 +5,7 @@ Status: **in progress** — tracking gaps between current state and demo-ready
 ## Completed (Phases 1-3 + arrangement + overrides + seq v2)
 
 All the core infrastructure is solid:
-- Full synth engine (14 oscillators), 32 voices, 99 presets (SynthPatch-based drums + melodic)
+- Full synth engine (14 oscillators, 3-op FM with 4 algorithms), 32 voices, 107 presets (SynthPatch-based drums + melodic)
 - Sequencer v2 (unified tracks, per-step polyphony, 271 tests passing)
 - Wave 0 synthesis complete (analog rolloff, tube saturation, ring mod, wavefolding, hard sync, master EQ, compressor)
 - DAW 3-zone UI with step inspector, bus mixer, 5 sidebar tabs

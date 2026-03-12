@@ -612,13 +612,13 @@ These are small improvements to existing systems:
 - **Velocity → filter cutoff**: Already implicit via filter envelope, but a direct
   velocity→cutoff amount param would give more control.
 
-### FM improvements
-- **3-operator FM**: Current FM is 2-op (modulator→carrier). Adding a 3rd operator
-  (modulator2→modulator1→carrier) would massively expand the timbral range. Uses
-  existing FMSettings struct pattern. Medium effort (~40 lines).
-- **FM algorithms**: Instead of fixed modulator→carrier chain, allow different
-  routings (parallel, series, feedback loops). But this is getting into DX7 territory
-  and may be over-engineering.
+### FM improvements — DONE ✅
+- ✅ **3-operator FM**: mod2→mod1→carrier chain. `p_fmMod2Ratio`/`p_fmMod2Index` on
+  SynthPatch. When mod2Ratio=0, behaves as 2-op (backward compatible).
+- ✅ **FM algorithms**: 4 routings via `FMAlgorithm` enum + cycle UI:
+  - Stack (mod2→mod1→carrier), Parallel (mod1+mod2→carrier),
+  - Branch (mod2→mod1→carrier + mod2→carrier), Pair (mod1→carrier + mod2 additive)
+- 4 showcase presets: FM Crystal (Stack), FM Bright EP (Parallel), FM Gong (Branch), FM Organ (Pair)
 
 ---
 
@@ -877,34 +877,11 @@ while in copy mode.
 
 ---
 
-### 15. Quick Velocity Edit (Without Inspector)
+### 15. Quick Velocity Edit (Without Inspector) — DONE ✅
 
-**Effort:** ~10 lines in drawWorkSeq()
-**Impact:** Speeds up every session — velocity is the most-edited parameter
-
-#### The problem
-
-To change a step's velocity, you must right-click → open step inspector → find the
-velocity slider → scroll wheel. This 3-step process happens dozens of times per
-session.
-
-#### Implementation
-
-Hold Shift + scroll wheel over a grid cell = adjust velocity:
-```c
-if (IsKeyDown(KEY_LEFT_SHIFT) && fabsf(GetMouseWheelMove()) > 0.0f) {
-    float delta = GetMouseWheelMove() * 0.05f;
-    if (isDrumTrack) {
-        p->drumVelocity[track][step] = clamp(p->drumVelocity[track][step] + delta, 0.0f, 1.0f);
-    } else {
-        p->melodyVelocity[mTrack][step] = clamp(p->melodyVelocity[mTrack][step] + delta, 0.0f, 1.0f);
-    }
-}
-```
-
-Visual feedback: briefly show velocity value as a tooltip near the cursor. The thin
-yellow velocity bar at the bottom of each cell already exists — it updates in
-real-time so the feedback is immediate.
+Shift+scroll over any active step adjusts velocity ±5% per tick. Works on both
+drum and melody steps. Yellow velocity bar always visible (was hidden at 100%).
+Plain scroll still does pitch for melody tracks.
 
 ---
 
@@ -1189,15 +1166,15 @@ case RHYTHM_VAR_SYNCOPATED:
 | 12 | Arp tempo sync | Sequencer | **DONE** — beat-based sync via `beatPosition`, zero drift |
 | 13 | Piano roll create | Workflow | TODO — piano roll is view-only, can't click to add notes |
 | 14 | Pattern copy | Workflow | **DONE** — copy to next free slot |
-| 15 | Quick velocity edit | Workflow | TODO — no Shift+scroll shortcut |
+| 15 | Quick velocity edit | Workflow | **DONE** — Shift+scroll on grid cells, ±5% per tick |
 | 16 | Multi-step select | Workflow | TODO — no batch editing |
 | 17 | Preset audition | Workflow | TODO — no play-on-hover in preset picker |
 | 18 | Hide wave params | Polish | TODO — all wave-specific params shown regardless of type |
 | 19 | Output meter | Polish | TODO — no peak level meter |
 | 20 | Tooltips | Polish | Partial — `DrawTooltip()` exists, unclear coverage |
 | 21 | Keyboard hints | Polish | TODO — no context-sensitive shortcut hints |
-| 22 | More presets | Polish | **DONE** — 98 presets (was 48), all engines represented |
+| 22 | More presets | Polish | **DONE** — 107 presets (was 48), all engines represented |
 | 23 | Syncopated variation | Sequencer | **DONE** — all tracks, anticipation pattern |
 
-**Score: 15/23 done.** Remaining: §4 (unison stereo), §13 (piano roll),
-§15-17 (workflow), §18-21 (polish).
+**Score: 16/23 done.** Remaining: §4 (unison stereo), §13 (piano roll),
+§16-17 (workflow), §18-21 (polish).

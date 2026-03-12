@@ -10,7 +10,7 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - Basic Waves (Square, Saw, Triangle, Noise) with PWM
 - Wavetable/SCW (single-cycle waveforms)
 - Karplus-Strong (Pluck) with brightness/damping
-- Two Operator FM with feedback
+- 3-Operator FM with feedback + 4 algorithms (Stack/Parallel/Branch/Pair)
 - Formant/Voice synthesis with vowels, consonants, breath, nasality
 - Modal/Physical (Mallet - marimba/vibes/xylo/glock/tubular)
 - Membrane (Tabla, Conga, Bongo, Djembe, Tom)

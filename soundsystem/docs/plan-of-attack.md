@@ -7,7 +7,7 @@ respect dependencies. Within each wave, items are ordered by effort:impact ratio
 
 ## Wave 0: Zero-dependency quick wins — COMPLETE ✅
 
-All 17 items implemented. 98 total presets (NUM_INSTRUMENT_PRESETS = 98).
+All 17 items implemented. 107 total presets (NUM_INSTRUMENT_PRESETS = 107).
 
 ### Warmth & polish (effects) — all 7 done
 
