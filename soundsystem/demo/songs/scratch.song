@@ -970,12 +970,12 @@ hardSyncRatio = 1.5
 
 [patch.6]
 name = "Chord"
-waveType = additive
+waveType = saw
 scwIndex = 0
-attack = 0.05
-decay = 0.1
-sustain = 0.5
-release = 0.8
+attack = 0.005
+decay = 0.2
+sustain = 0.3
+release = 0.15
 expRelease = false
 expDecay = false
 oneShot = false
@@ -985,12 +985,12 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
-filterCutoff = 1
-filterResonance = 0
+filterCutoff = 0.2
+filterResonance = 0.7
 filterType = 0
-filterEnvAmt = 0
+filterEnvAmt = 0.6
 filterEnvAttack = 0.01
-filterEnvDecay = 0.2
+filterEnvDecay = 0.12
 filterKeyTrack = 0
 filterLfoRate = 0
 filterLfoDepth = 0
@@ -1016,8 +1016,8 @@ arpChord = 1
 unisonCount = 1
 unisonDetune = 10
 unisonMix = 0.5
-monoMode = false
-glideTime = 0.1
+monoMode = true
+glideTime = 0.05
 pluckBrightness = 0.5
 pluckDamping = 0.996
 pluckDamp = 0
@@ -1508,6 +1508,7 @@ songMode = false
 [pattern.0]
 drumTrackLength = 16 16 16 16
 melodyTrackLength = 16 16 16
-m track=2 step=0 note=C#4 vel=0.8 gate=1
-m track=2 step=0 note=G3 vel=0.8 gate=1
-m track=2 step=0 note=A3 vel=0.8 gate=1
+m track=2 step=0 note=C4 vel=0.8 gate=1
+m track=2 step=1 note=F2 vel=0.8 gate=1
+m track=2 step=4 note=C4 vel=0.8 gate=16 slide accent
+m track=2 step=5 note=F2 vel=0.8 gate=1 slide accent

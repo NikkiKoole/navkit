@@ -538,6 +538,10 @@ drum-compare: $(BINDIR)
 preset-audition: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/preset-audition soundsystem/tools/preset_audition.c -lm
 
+# Headless .song renderer (DAW song → WAV)
+song-render: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/song-render soundsystem/tools/song_render.c -lm
+
 # Embed all assets (atlas + fonts)
 embed: atlas embed_font
 

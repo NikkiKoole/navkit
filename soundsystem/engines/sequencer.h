@@ -1380,11 +1380,16 @@ static void seqTriggerStep(Pattern *p, int track, int step, float stepDuration) 
     } else {
         // --- MELODIC TRIGGER ---
         // Release all previous voices if still playing
-        for (int v = 0; v < seq.trackActiveVoices[track]; v++) {
-            if (seq.trackCurrentNote[track][v] != SEQ_NOTE_OFF) {
-                if (seq.trackNoteOff[track]) seq.trackNoteOff[track]();
-                seq.trackCurrentNote[track][v] = SEQ_NOTE_OFF;
-                seq.trackGateRemaining[track][v] = 0;
+        // BUT skip release if the new step has slide — the trigger callback
+        // needs to see the active voice so it can glide instead of retrigger
+        bool newStepSlide = (sv->noteCount > 0 && sv->notes[0].slide);
+        if (!newStepSlide) {
+            for (int v = 0; v < seq.trackActiveVoices[track]; v++) {
+                if (seq.trackCurrentNote[track][v] != SEQ_NOTE_OFF) {
+                    if (seq.trackNoteOff[track]) seq.trackNoteOff[track]();
+                    seq.trackCurrentNote[track][v] = SEQ_NOTE_OFF;
+                    seq.trackGateRemaining[track][v] = 0;
+                }
             }
         }
 
@@ -1470,7 +1475,15 @@ static void updateSequencer(float dt) {
                         allGatesExpired = false;
                         seq.trackGateRemaining[track][v]--;
                         if (seq.trackGateRemaining[track][v] == 0 && seq.trackCurrentNote[track][v] != SEQ_NOTE_OFF) {
-                            if (seq.trackSustainRemaining[track] > 0) {
+                            // 303-style slide tie: if next step has slide, extend gate
+                            // so the voice stays alive for the glide
+                            int nextStep = (step + 1) % p->trackLength[track];
+                            StepV2 *nextSv = &p->steps[track][nextStep];
+                            bool nextHasSlide = (nextSv->noteCount > 0 && nextSv->notes[0].slide);
+                            if (nextHasSlide) {
+                                // Extend gate by one step to bridge into slide note
+                                seq.trackGateRemaining[track][v] = seq.ticksPerStep;
+                            } else if (seq.trackSustainRemaining[track] > 0) {
                                 // Sustain holds — don't release yet
                             } else {
                                 if (seq.trackNoteOff[track]) seq.trackNoteOff[track]();

@@ -872,6 +872,74 @@ static void drawTransport(void) {
 // Condition names matching TriggerCondition enum from sequencer.h
 static const char* condNames[] = {"Always","1:2","2:2","1:4","2:4","3:4","4:4","Fill","!Fill","First","!First"};
 
+// Generate a random 303-style acid bassline on a melody track.
+// Uses scale lock if enabled, otherwise defaults to minor pentatonic.
+static void generate303Bassline(Pattern *p, int melodyTrack) {
+    int absTrack = SEQ_DRUM_TRACKS + melodyTrack;
+    int len = p->trackLength[absTrack];
+    if (len < 1) len = 16;
+    if (len > SEQ_MAX_STEPS) len = SEQ_MAX_STEPS;
+
+    for (int s = 0; s < SEQ_MAX_STEPS; s++) stepV2Clear(&p->steps[absTrack][s]);
+
+    int baseNote = 36 + seqRandInt(0, 4);
+    int pool[16];
+    int poolSize = 0;
+    static const int minorPenta[] = {0, 3, 5, 7, 10};
+    for (int oct = 0; oct < 2; oct++) {
+        for (int i = 0; i < 5; i++) {
+            int n = baseNote + oct * 12 + minorPenta[i];
+            if (synthCtx->scaleLockEnabled) n = constrainToScale(n);
+            if (n >= 24 && n <= 60 && poolSize < 16) pool[poolSize++] = n;
+        }
+    }
+    if (poolSize == 0) { pool[0] = baseNote; poolSize = 1; }
+
+    int prevNote = pool[seqRandInt(0, poolSize - 1)];
+    for (int s = 0; s < len; s++) {
+        if (seqRandFloat() < 0.25f) continue; // rest
+
+        int note;
+        float r = seqRandFloat();
+        if (r < 0.45f) {
+            // Stepwise motion
+            int curIdx = 0;
+            for (int i = 0; i < poolSize; i++) { if (pool[i] == prevNote) { curIdx = i; break; } }
+            int newIdx = curIdx + (seqRandFloat() < 0.5f ? -1 : 1);
+            if (newIdx < 0) newIdx = 0;
+            if (newIdx >= poolSize) newIdx = poolSize - 1;
+            note = pool[newIdx];
+        } else if (r < 0.7f) {
+            // Root or fifth
+            note = (seqRandFloat() < 0.6f) ? pool[0] : pool[poolSize > 2 ? 2 : 0];
+        } else if (r < 0.85f) {
+            note = pool[seqRandInt(0, poolSize - 1)];
+        } else {
+            // Octave jump
+            note = prevNote + (seqRandFloat() < 0.5f ? 12 : -12);
+            if (note < 24) note += 12;
+            if (note > 60) note -= 12;
+            if (synthCtx->scaleLockEnabled) note = constrainToScale(note);
+        }
+
+        float gr = seqRandFloat();
+        int8_t gate = gr < 0.55f ? 1 : gr < 0.80f ? 2 : gr < 0.92f ? 3 : 4;
+        uint8_t vel = velFloatToU8(0.7f + seqRandFloat() * 0.15f);
+
+        int vi = stepV2AddNote(&p->steps[absTrack][s], note, vel, gate);
+        if (vi >= 0) {
+            p->steps[absTrack][s].notes[vi].slide = (seqRandFloat() < 0.20f);
+            if (seqRandFloat() < 0.25f) {
+                p->steps[absTrack][s].notes[vi].accent = true;
+                p->steps[absTrack][s].notes[vi].velocity = velFloatToU8(0.95f);
+            }
+            if (seqRandFloat() < 0.15f)
+                p->steps[absTrack][s].notes[vi].nudge = (int8_t)seqRandInt(-3, 3);
+        }
+        prevNote = note;
+    }
+}
+
 static void drawWorkSeq(float x, float y, float w, float h) {
 
     Vector2 mouse = GetMousePosition();
@@ -1237,6 +1305,21 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             ui_consume_click();
         }
 
+        // 303 generator button — only when track has the Acid preset
+        if (!isDrum && patchPresetIndex[track] == 8) {
+            int melTrack = track - SEQ_DRUM_TRACKS;
+            Rectangle acidR = {(float)(lx + labelW - 30), (float)(ty + 1), 14, (float)(cellH - 2)};
+            bool acidHov = CheckCollisionPointRec(mouse, acidR);
+            Color acidBg = acidHov ? (Color){70,55,30,255} : (Color){40,35,28,255};
+            DrawRectangleRec(acidR, acidBg);
+            DrawRectangleLinesEx(acidR, 1, acidHov ? (Color){220,180,60,255} : (Color){60,50,35,255});
+            DrawTextShadow("*", (int)acidR.x + 4, (int)acidR.y + cellH/2 - 6, 9, acidHov ? (Color){255,200,60,255} : (Color){100,80,40,255});
+            if (acidHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                generate303Bassline(dawPattern(), melTrack);
+                ui_consume_click();
+            }
+        }
+
         for (int step = 0; step < steps; step++) {
             int sx = (int)x + labelW + step * cellW;
             Rectangle cell = {(float)sx, (float)ty, (float)(cellW-1), (float)cellH};
@@ -1316,12 +1399,20 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                         else patSetNoteVel(pat, track, step, vel);
                     }
                 } else if (wh != 0.0f && !isDrum && track >= SEQ_DRUM_TRACKS) {
-                    // Plain scroll = pitch (melody only)
-                    int wheel = (int)wh;
-                    if (wheel != 0 && patGetNote(dawPattern(), track, step) != SEQ_NOTE_OFF) {
-                        int n = patGetNote(dawPattern(), track, step) + wheel;
+                    // Plain scroll = pitch (melody only) — accumulate for smooth scroll
+                    static float pitchWheelAccum = 0.0f;
+                    static int pitchWheelTrack = -1, pitchWheelStep = -1;
+                    if (track != pitchWheelTrack || step != pitchWheelStep) {
+                        pitchWheelAccum = 0.0f;
+                        pitchWheelTrack = track; pitchWheelStep = step;
+                    }
+                    pitchWheelAccum += wh;
+                    int delta = (int)pitchWheelAccum;
+                    if (delta != 0 && patGetNote(dawPattern(), track, step) != SEQ_NOTE_OFF) {
+                        int n = patGetNote(dawPattern(), track, step) + delta;
                         if (n < 0) n = 0; if (n > 127) n = 127;
                         patSetNote(dawPattern(), track, step, n, patGetNoteVel(dawPattern(), track, step), patGetNoteGate(dawPattern(), track, step));
+                        pitchWheelAccum -= delta;
                     }
                 }
             }
@@ -3725,17 +3816,20 @@ static void dawMelodyTriggerGeneric(int trackIdx, int note, float vel,
         synthCtx->voices[lastVoice].envStage > 0) {
         Voice *sv = &synthCtx->voices[lastVoice];
         sv->targetFrequency = freq;
-        sv->glideRate = 1.0f / 0.06f; // 303-style ~60ms glide
+        // 303-style glide: scale time with pitch interval for musical feel
+        float semitoneDistance = 12.0f * fabsf(logf(freq / sv->baseFrequency) / logf(2.0f));
+        float slideTime = 0.06f + semitoneDistance * 0.003f; // 60ms base + 3ms per semitone
+        if (slideTime > 0.2f) slideTime = 0.2f;
+        sv->glideRate = 1.0f / slideTime;
         sv->volume = pVol * p->p_volume;
         sv->filterCutoff = pCutoff;
         sv->filterResonance = pReso;
         sv->filterEnvAmt = pFilterEnv;
         sv->decay = pDecay;
-        if (accent || currentPLocks.locked[PLOCK_FILTER_ENV]) {
-            sv->filterEnvLevel = 1.0f;
-            sv->filterEnvStage = 2;
-            sv->filterEnvPhase = 0.0f;
-        }
+        // 303: filter envelope always retriggers on each step (accent just boosts amount)
+        sv->filterEnvLevel = 1.0f;
+        sv->filterEnvStage = 2;
+        sv->filterEnvPhase = 0.0f;
         return;
     }
 

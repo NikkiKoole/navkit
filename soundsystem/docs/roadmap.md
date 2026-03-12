@@ -110,9 +110,9 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - ✓ Pattern switching - seqSwitchPattern(int idx)
 - ✓ Queue pattern at boundary - seqQueuePattern(int idx)
 - ✓ Pattern copy/clear (Cpy/Clr buttons in sequencer)
-- Pattern copy to any slot (NOT YET — copies to next only), see `docs/synthesis-additions.md` §14
-- ✓ Pattern length per track (`drumTrackLength[]`/`melodyTrackLength[]` in engine)
-- Per-track length UI (NOT YET — 16/32 toggle is global only), see `docs/synthesis-additions.md` §10
+- ✓ Pattern copy to any slot (`copyPattern()` supports any dest, UI copies to next)
+- ✓ Pattern length per track (`trackLength[SEQ_V2_MAX_TRACKS]` in Pattern struct)
+- ✓ Per-track length UI (mouse wheel + right-click cycling in DAW)
 - Time signature per pattern (NOT YET)
 
 ## 2.2 Pattern Chaining
@@ -180,12 +180,11 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - ✓ Beat-based tempo sync (monotonic `beatPosition`, zero drift, freerunning when seq stopped)
 - **Pattern-based arps** (custom note orders) (NOT YET)
 
-## 3.5 Euclidean Rhythm Generator
-- Distribute N hits over M steps mathematically
-- Rotation/offset
-- Great for polyrhythms and non-musicians
-- Per-track Euclidean settings
-- ~45 lines (algorithm + UI), see `docs/synthesis-additions.md` §11
+## 3.5 Euclidean Rhythm Generator ✓ DONE
+- ✓ Distribute N hits over M steps mathematically
+- ✓ Rotation/offset
+- ✓ Per-track Euclidean settings
+- ✓ Toggle UI with hits/steps/rotation controls, `applyEuclideanToTrack()`
 
 ## 3.6 Pattern Templates ✓ DONE
 - ✓ 14 preset styles in `rhythm_patterns.h`: Rock, Pop, Disco, Funk, Bossa Nova, Cha-Cha, Swing, Foxtrot, Reggae, Hip Hop, House, Latin, Waltz, Shuffle
@@ -254,10 +253,9 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - ✓ Classic acid bassline workflow: sawtooth/square + resonant filter + slides + accents
 - ✓ Sequencer integration with seqSetMelodyStep303()
 
-## 5.2 Supersaw/Unison — PARTIALLY DONE
+## 5.2 Supersaw/Unison ✓ DONE
 - ✓ Unison 1-4 detuned oscillators with detune/mix controls
-- **Stereo spread** — pan unison copies across L/R (NOT YET)
-- See `docs/synthesis-additions.md` §4 for stereo spread implementation
+- ✓ `unisonCount`/`unisonDetune`/`unisonMix` in synth.h, integrated into PULSE/SAW/TRIANGLE
 
 ## 5.3 Wavefolder ✓ DONE
 - ✓ `wavefoldAmount` in synth.h — triangle fold with reflective harmonics
@@ -280,10 +278,10 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - Non-linear waveshaping for heavy digital bass
 - Noise Engineering style
 
-## 5.8 Physical Modeling Extensions
-- **Bowed String** - bow pressure, velocity, position
-- **Wind/Flute** - breath noise + resonant tube model
-- **Blown Bottle** - simple wind instrument
+## 5.8 Physical Modeling Extensions ✓ MOSTLY DONE
+- ✓ **Bowed String** — WAVE_BOWED engine (Smith waveguide), presets 107-108 (Cello, Fiddle)
+- ✓ **Wind/Flute** — WAVE_PIPE engine (Fletcher/Verge jet-drive), presets 109-110 (Pipe Flute, Recorder)
+- **Blown Bottle** - simple wind instrument (NOT YET)
 
 ## 5.9 Vocoder
 - 8-16 band vocoder
@@ -300,10 +298,10 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - ✓ 2 series allpass filters for diffusion
 - ✓ Parameters: reverbSize, reverbDamping, reverbMix, reverbPreDelay (0-100ms)
 
-## 6.2 Chorus/Flanger
-- Short modulated delays
-- Rate, depth, feedback
-- Stereo widening
+## 6.2 Chorus/Flanger ✓ DONE
+- ✓ Chorus: stereo LFOs (90° offset), circular buffer, rate/depth/mix/feedback/delay
+- ✓ Flanger: separate implementation with rate/depth/mix/feedback
+- ✓ Both enabled per-bus, saved/loaded in song files
 
 ## 6.3 Phaser
 - Allpass filter chain with LFO

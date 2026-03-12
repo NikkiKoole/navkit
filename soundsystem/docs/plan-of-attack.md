@@ -1,181 +1,137 @@
-# Plan of Attack
+# Plan of Attack — Remaining Work
 
-A prioritized execution order for PixelSynth improvements. Grouped into waves that
-respect dependencies. Within each wave, items are ordered by effort:impact ratio.
+All TODO items consolidated from across soundsystem docs. Waves 0-2 complete, partial Wave 3. Completed docs moved to `done/`. Reference docs (roadmap.md, ux-insight.md, piku.md) kept in place.
 
----
-
-## Wave 0: Zero-dependency quick wins — COMPLETE ✅
-
-All 17 items implemented. 107 total presets (NUM_INSTRUMENT_PRESETS = 107).
-
-### Warmth & polish (effects) — all 7 done
-
-| # | What | Status |
-|---|------|--------|
-| 1 | **Analog rolloff** | ✅ `analogRolloff` in synth.h (1-pole LP ~12kHz) |
-| 2 | **Tube saturation** | ✅ `p_tubeSaturation` in synth_patch.h (asymmetric tanh) |
-| 3 | **Ring modulation** | ✅ `ringMod`/`ringModFreq` in synth.h |
-| 4 | **Wavefolding** | ✅ `wavefoldAmount` in synth.h (West Coast triangle fold) |
-| 5 | **Hard sync** | ✅ `hardSync`/`hardSyncRatio` in synth.h |
-| 6 | **Master EQ** (2-band shelving) | ✅ `processMasterEQ()` in effects.h (low/high shelf) |
-| 7 | **Compressor** | ✅ Master compressor in effects.h (-12dB, 4:1 default) |
-
-### Free presets (invisible engines → visible) — all 11 done
-
-| # | What | Presets |
-|---|------|--------|
-| 8 | **Mallet presets** (glocken, xylo, tubular) | ✅ Presets 45-47 |
-| 9 | **Additive presets** (choir, brass, strings, bell) | ✅ Presets 48-51 |
-| 10 | **Phase Distortion presets** (bass, lead) | ✅ Presets 52-53 |
-| 11 | **Melodic tabla, bird ambience** | ✅ Presets 54-55 |
-
-### Core melodic presets — all 7 done
-
-| # | What | Preset |
-|---|------|--------|
-| 12 | **Rhodes / EP** (mellow + bright) | ✅ Presets 56-57 (FM + tube saturation) |
-| 13 | **Upright bass** | ✅ Preset 58 (WAVE_PLUCK + analog rolloff + tube) |
-| 14 | **Flute** | ✅ Preset 59 (WAVE_TRIANGLE + breathy noise) |
-| 15 | **Kalimba** | ✅ Preset 60 (WAVE_MALLET/MARIMBA) |
-| 16 | **Sub bass** | ✅ Preset 61 (WAVE_FM pure sine) |
-| 17 | **Nylon guitar** | ✅ Preset 62 (WAVE_PLUCK + analog rolloff) |
-
-### Synthesis showcase presets (bonus)
-
-| # | What | Preset |
-|---|------|--------|
-| — | **Wavefold Lead** | Preset 63 (wavefold 0.6) |
-| — | **Ring Bell** | Preset 64 (ring mod 3.5×) |
-| — | **Sync Lead** | Preset 65 (hard sync 2.3×) |
+**Current state:** 111 presets, 14+2 synthesis engines (WAVE_BOWED, WAVE_PIPE added), sequencer v2 with polyphony, full DAW UI (5 tabs), chorus/flanger/stereo spread, bus mixer, MIDI input+learn+split.
 
 ---
 
-## Wave 1: Unblocked (DAW refactor complete)
+## Near-Term (demo polish)
 
-The sequencer v2 refactor is done. These are now unblocked.
+### DAW Workflow
 
-### Rhythm generator integration
+| What | Effort | Source |
+|------|--------|--------|
+| **P-lock interpolation** — linear interp between p-locked steps for smooth sweeps | ~50 lines | daw-demo-gaps §analysis |
+| **Groove presets** — named presets (Jazz, Dilla, Bossa) for quick selection | ~30 lines | daw-demo-gaps |
+| **Song settings panel** — song name + resolution toggle UI | ~40 lines | daw-demo-gaps |
+| **Patch name editing** — `p_name[32]` exists, needs text input UI | ~30 lines | daw-demo-gaps |
+| **Arrangement scroll** — horizontal scroll for >14 sections | ~20 lines | daw-demo-gaps |
+| **Multi-step selection** — select multiple steps for batch edits | ~80 lines | synthesis-additions §16 |
+| **Hide irrelevant wave params** — only show params for active oscillator type | ~60 lines | synthesis-additions §18 |
+| **Keyboard shortcut hints** — context-sensitive hints in UI | ~30 lines | synthesis-additions §21 |
+| **Tooltips** — expand hover coverage across all parameters | partial done | synthesis-additions §20 |
 
-| # | What | Lines | Doc |
-|---|------|-------|-----|
-| 18 | **Wire `applyRhythmProbMap()` into rhythm generator** | 80 | grids-rhythm-generator §integration |
-| 19 | **Density knob** (replaces variation selector) | 20 | grids-rhythm-generator §UI |
-| 20 | **Randomize knob** | 10 | grids-rhythm-generator §phase 3 |
-| 21 | **Syncopated variation upgrade** (all tracks, anticipation) | 10 | synthesis-additions §23 |
+### Prototype → DAW Migration
 
-### Sequencer features
-
-| # | What | Lines | Doc |
-|---|------|-------|-----|
-| 22 | **Euclidean rhythm generator** | 45 | synthesis-additions §11, roadmap §3.5 |
-| 23 | **Polyrhythmic track length UI** | 20 | synthesis-additions §10 |
-| 24 | **Pattern copy to any slot** | 10 | synthesis-additions §14 |
-
-**Wave 1 total: ~195 lines**
-
----
-
-## Wave 2: Percussion & routing
-
-### Percussion presets (Tier 1) — COMPLETE ✅
-
-| # | What | Preset |
-|---|------|--------|
-| 25 | **Ride cymbal** | ✅ Preset 66 |
-| 26 | **Brush snare** | ✅ Preset 67 |
-| 27 | **Crash cymbal** | ✅ Preset 68 |
-| 28 | **Shaker** | ✅ Preset 69 |
-| 29 | **Tambourine** | ✅ Preset 70 |
-
-### Per-style instrument routing
-
-| # | What | Lines | Doc |
-|---|------|-------|-----|
-| 30 | **`drumSound[4]` per-style hint** | 30 | grids-rhythm-generator §routing |
-| 31 | **Style switch swaps trigger functions** | 20 | grids-rhythm-generator §routing |
-
-### Percussion presets (Tier 2)
-
-| # | What | Engine | Doc |
-|---|------|--------|-----|
-| 32 | **Bongo hi/lo** | WAVE_MEMBRANE (presets only!) | missing-percussion §tier2 |
-| 33 | **Conga hi/lo** | WAVE_MEMBRANE (presets only!) | missing-percussion §tier2 |
-| 34 | **Timbales, woodblock, agogo** | FM / filtered click | missing-percussion §tier2 |
-
-**Wave 2 remaining: routing (~50 lines) + tier-3 presets (~4 sounds)**
+| What | Effort | Source |
+|------|--------|--------|
+| **Crossfader / Scene system** — scene snapshot storage + blending (UI shell exists, logic missing) | Medium | demo-to-daw-parity |
+| **SFX triggers** — 6 preset one-shot sounds for game audio preview | Small | demo-to-daw-parity |
+| **Direct drum keys** — number keys trigger individual drums with p-lock support | Small | demo-to-daw-parity |
+| **Column visibility toggles** — show/hide parameter sections | Small | demo-to-daw-parity |
+| **Quick-copy preset buttons** — "Use as Bass/Lead/Chord" from preset picker | Small | demo-to-daw-parity |
 
 ---
 
-## Wave 3: Polish & depth
+## Melodic Presets (~20 needed)
 
-No hard blockers — do when the core is solid.
+All preset-only work — no engine changes. See `done/missing-melodic-instruments.md` for details.
 
-### More melodic presets
-
-| # | What | Count | Doc |
-|---|------|-------|-----|
-| 35 | **Wurlitzer, Clavinet, Toy Piano** | 3 | missing-melodic §keys |
-| 36 | **Fretless bass, FM bass, Slap bass** | 3 | missing-melodic §bass |
-| 37 | **Muted guitar, 12-string, acoustic strum** | 3 | missing-melodic §guitar |
-| 38 | **Recorder, Ocarina, Muted trumpet, Accordion** | 4 | missing-melodic §winds |
-| 39 | **SNES kit** (strings, brass, choir, piano, harp, bell w/ bitcrusher) | 6 | missing-melodic §SNES |
-| 40 | **Pads** (warm, glass, grain, tape, drone) | 5 | missing-melodic §pads |
-
-### Advanced rhythm features
-
-| # | What | Lines | Doc |
-|---|------|-------|-----|
-| 41 | **Style interpolation** (morph between 2 styles) | 30 | grids-rhythm-generator §phase 2 |
-| 42 | **Game state → density mapping** | 10 | grids-rhythm-generator §game audio |
-
-### Effects
-
-| # | What | Lines | Doc |
-|---|------|-------|-----|
-| 43 | **Chorus/flanger** | ~80 | roadmap §6.2 |
-| 44 | **Unison stereo spread** | 15 | synthesis-additions §4 |
+| What | Count | Notes |
+|------|-------|-------|
+| **Wurlitzer, Clavinet, Toy Piano** | 3 | FM/PD for Wurli, Pluck/PD for Clav, FM/Square for Toy |
+| **Fretless bass, FM bass, Slap bass** | 3 | Saw+glide, FM low ratio, Pluck+noise burst |
+| **Muted guitar, 12-string, acoustic strum** | 3 | Short damped Pluck, detuned unison Pluck, Pluck+fast arp |
+| **Ocarina, Muted trumpet, Accordion** | 3 | Tri/sine, Saw+bandpass, Square+unison=2 |
+| **SNES kit** (strings, brass, choir, piano, harp, bell) | 6 | Existing engines + bitcrusher for crunch |
+| **Pads** (warm, glass, grain, tape, drone) | ~3 | Need Grain Pad (granular), Tape Pad (saw+tape FX), Dark Drone |
 
 ---
 
-## Dependency Graph
+## Advanced Rhythm
 
-```
-    ┌─────────────────┐      ┌──────────────────┐
-    │  Wave 0 ✅      │      │  DAW refactor ✅  │
-    │  Quick wins     │      │  Seq v2 done     │
-    │  + presets      │      │                  │
-    └─────────────────┘      └────────┬─────────┘
-                                      ▼
-                             ┌──────────────────┐
-                             │  Wave 1          │  ← UNBLOCKED
-                             │  Rhythm gen      │
-                             │  integration     │
-                             └────────┬─────────┘
-                                      │
-    ┌─────────────────┐               │
-    │  Wave 2         │               │
-    │  Tier 1 ✅      │               │
-    │  Routing + T2   │               │
-    └────────┬────────┘               │
-             │                        │
-             └───────────┬────────────┘
-                         ▼
-               ┌──────────────────┐
-               │  Wave 3          │
-               │  Polish & depth  │
-               └──────────────────┘
-```
+| What | ~Lines | Source |
+|------|--------|--------|
+| **Style interpolation** — morph between 2 rhythm prob map styles | 30 | grids-rhythm-generator §phase 2 |
+| **Game state → density mapping** — tie game intensity to rhythm density | 10 | grids-rhythm-generator §game audio |
 
 ---
 
-## Quick Reference: All Docs
+## Unified Synth+Drums (Phase 2-3)
 
-| Doc | What it covers |
-|-----|---------------|
-| `roadmap.md` | Full feature roadmap (8 priority tiers), status of all features |
-| `synthesis-additions.md` | 23 quick-win specs with code snippets |
-| `grids-rhythm-generator.md` | Probability map system, density knob, style interpolation |
-| `missing-percussion.md` | Drum presets needed per style (3 tiers) |
-| `missing-melodic-instruments.md` | Melodic presets needed (47 instruments, 8 phases) |
-| `unified-synth-drums.md` | drums.h → SynthPatch migration plan |
+Phase 1 done (engine + 14 drum presets as SynthPatch, 80.8% similarity). See `done/unified-synth-drums.md`.
+
+| What | Effort | Source |
+|------|--------|--------|
+| **Phase 2: DAW integration** — all 7 tracks use SynthPatch, drums trigger `playNoteWithPatch()` | Medium | unified-synth-drums |
+| **Phase 3: Cleanup** — deprecate drums.h, add more drum presets (909, Lo-Fi, Trap, Piku) | Medium | unified-synth-drums |
+| **Drum preset improvements** — fix clap burst spacing, cowbell tuning, CR-78 resonance | Small | unified-synth-drums §known improvements |
+
+---
+
+## Code Quality
+
+From `audit/code-simplifier-audit-soundsystem.md`:
+
+**Quick wins:**
+- M3: Delete dead CR-78 preset line (trivial)
+- H4: Single wave type name table instead of 3 duplicates (~20 lines)
+- H5: Extract `waveThumbSample()` helper from unreadable one-liners (~30 lines)
+- L2: Add `f` suffix to float literals in rhythm_patterns.h (trivial)
+
+**Longer term:**
+- H1: Replace 130+ `#define` macros with explicit context passing (architectural)
+- H2: Data-driven `applyPatchToGlobals()` instead of 147-line field copy (medium)
+- H3: Shared file write/read helpers between song_file.h and daw_file.h (small)
+
+---
+
+## Performance
+
+From `audit/performance-dod-audit-soundsystem.md`:
+
+| # | What | Impact | Effort |
+|---|------|--------|--------|
+| 1 | **Voice hot/cold split** — 10KB struct → 100B hot path | 5-20x voice loop | Medium |
+| 4 | **Delete v1 pattern arrays** — finish v2 migration | 2x memory, 2x writes | Medium |
+| 7 | **Fast sine approximation** — replace sinf() in audio paths | 2-5x sine-heavy | Medium |
+| 5 | **Power-of-2 reverb combs** — bitmask vs modulo division | 2-3x reverb | Low |
+| 2 | **Lazy bus delay buffers** — pointer + alloc on enable | 2-7x cache | Low |
+| 3 | **Lazy effects buffers** — pointer + alloc on enable | 3-5x cache | Low |
+
+---
+
+## Test Coverage
+
+From `audit/test-gaps-audit-soundsystem.md`. Current: 271 suites, 1980 assertions.
+
+**Critical (0% coverage):**
+- Sampler WAV loading — header parsing, bit depths, truncation
+- Patch trigger — `applyPatchToGlobals()` completeness, wave dispatch
+- Rhythm patterns — all 5 variations, edge cases
+
+**High:**
+- Synth oscillators — most types untested (pluck, bird, membrane, PD, FM, granular, additive, mallet)
+- Sequencer playback — `seqAdvancePlayback()`, pattern switch timing
+- Bus effects chain — per-bus interaction
+
+---
+
+## Longer Term (from roadmap.md)
+
+**Synthesis:** Vocoder, Speech 8-bit, Bass waveshaping
+
+**Sequencer:** Chord mode, Pattern chaining, Song/arranger improvements, Scenes crossfader completion
+
+**Game audio:** State system (intensity/danger/health), Vertical layering/mute groups, Horizontal re-sequencing, Stingers & one-shots
+
+**Effects:** Phaser, Per-track effects, Comb filter
+
+**Modulation:** Mod matrix, DAHDSR envelopes, Envelope follower
+
+**UI/Workflow:** MIDI output & clock sync, Audio export/render to WAV, Undo/redo, Recording mode (MIDI → pattern)
+
+**Recording:** Live recording, Audio looping, Skip-back sampling, Resample, Tape mode
+
+**Content:** Convert 13 bridge songs from C to .song format (prove pipeline, remove ~1500 lines)
