@@ -391,6 +391,7 @@ typedef struct {
     bool playing;
     float bpm;
     float tickTimer;
+    double beatPosition;  // Monotonic beat counter (1.0 = quarter note), for arp/LFO sync
     int ticksPerStep;  // 24 = 16th note, 12 = 32nd note (set per song)
     
     // Dilla timing
@@ -1139,6 +1140,7 @@ static void resetSequencer(void) {
     releaseAllMelodyNotes();
 
     seq.tickTimer = 0.0f;
+    // Note: beatPosition is NOT reset — it's a monotonic clock for arp/LFO sync
     seq.playCount = 0;
 
     // Reset all track state
@@ -1230,6 +1232,7 @@ static void initSequencer(DrumTriggerFunc kickFn, DrumTriggerFunc snareFn,
     seq.playing = false;
     seq.bpm = 120.0f;
     seq.tickTimer = 0.0f;
+    seq.beatPosition = 0.0;
     seq.ticksPerStep = SEQ_TICKS_PER_STEP_16TH;
     seq.playCount = 0;
     seq.fillMode = false;
@@ -1425,6 +1428,7 @@ static void updateSequencer(float dt) {
 
     while (seq.tickTimer >= tickDuration) {
         seq.tickTimer -= tickDuration;
+        seq.beatPosition += 1.0 / (double)SEQ_PPQ;  // 1 tick = 1/96 of a beat
 
         Pattern *p = seqCurrentPattern();
 

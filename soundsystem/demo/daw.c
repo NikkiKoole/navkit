@@ -2846,7 +2846,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
         bool retrigActive = DI(p_retriggerCount);
         secY = c.y;
         ui_col_sublabel(&c, "Retrigger:", ORANGE);
-        ui_col_int(&c, "Count", &p->p_retriggerCount, 1, 0, 8);
+        ui_col_int(&c, "Count", &p->p_retriggerCount, 1, 0, 15);
         if (p->p_retriggerCount > 0) {
             ui_col_float(&c, "Spread", &p->p_retriggerSpread, 0.002f, 0.003f, 0.1f);
             ui_col_toggle(&c, "Overlap", &p->p_retriggerOverlap);
@@ -3311,8 +3311,16 @@ static void DawAudioCallback(void *buffer, unsigned int frames) {
 
     setMixerTempo(daw.transport.bpm);
     synthCtx->bpm = daw.transport.bpm;
+    if (seq.playing) {
+        synthCtx->beatPosition = seq.beatPosition;
+    }
 
     for (unsigned int i = 0; i < frames; i++) {
+        // When sequencer is stopped, advance beat position from BPM so arp still works
+        if (!seq.playing) {
+            synthCtx->beatPosition += (double)dt * (daw.transport.bpm / 60.0);
+        }
+
         float busInputs[NUM_BUSES] = {0};
 
         // Process all voices and route to buses

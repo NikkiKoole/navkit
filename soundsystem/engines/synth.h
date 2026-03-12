@@ -413,7 +413,8 @@ typedef struct {
     ArpMode arpMode;
     ArpRateDiv arpRateDiv;
     float arpRate;            // Hz when FREE mode
-    float arpTimer;
+    float arpTimer;           // Used for FREE mode only
+    double arpLastBeat;       // Beat position of last arp trigger (for tempo-synced modes)
     
     // Unison/Detune
     int unisonCount;          // 1-4 oscillators (1 = off)
@@ -478,7 +479,7 @@ typedef struct {
     float retriggerTimer;    // Timer
     int retriggerDone;       // How many triggers have fired
     bool retriggerOverlap;   // true = overlapping bursts (clap), false = envelope restart
-    float burstTimers[8];    // Per-burst timers for overlap mode
+    float burstTimers[16];   // Per-burst timers for overlap mode
     float burstDecay;        // Decay time for each burst
 
     // Extra oscillators
@@ -621,8 +622,9 @@ typedef struct SynthContext {
     float noteUnisonDetune;
     float noteUnisonMix;
     
-    // Global tempo (BPM)
+    // Global tempo (BPM) and beat position
     float bpm;
+    double beatPosition;  // Monotonic beat counter (incremented by sequencer ticks)
     
     // Voice synthesis parameters
     float voiceFormantShift;
@@ -930,6 +932,7 @@ static void _ensureSynthCtx(void) {
 #define noteUnisonDetune (synthCtx->noteUnisonDetune)
 #define noteUnisonMix (synthCtx->noteUnisonMix)
 #define synthBpm (synthCtx->bpm)
+#define synthBeatPosition (synthCtx->beatPosition)
 #define voiceFormantShift (synthCtx->voiceFormantShift)
 #define voiceBreathiness (synthCtx->voiceBreathiness)
 #define voiceBuzziness (synthCtx->voiceBuzziness)
@@ -1099,6 +1102,17 @@ static float getArpIntervalSeconds(float bpm, ArpRateDiv div) {
         case ARP_RATE_1_16: return beatDuration / 4.0f;  // Sixteenth note
         case ARP_RATE_1_32: return beatDuration / 8.0f;  // Thirty-second note
         default: return 0.0f;
+    }
+}
+
+// Get arpeggiator interval in beats from tempo sync division
+static double getArpIntervalBeats(ArpRateDiv div) {
+    switch (div) {
+        case ARP_RATE_1_4:  return 1.0;    // Quarter note = 1 beat
+        case ARP_RATE_1_8:  return 0.5;    // Eighth note
+        case ARP_RATE_1_16: return 0.25;   // Sixteenth note
+        case ARP_RATE_1_32: return 0.125;  // Thirty-second note
+        default: return 0.0;
     }
 }
 
@@ -2647,7 +2661,7 @@ static float processVoice(Voice *v, float sampleRate) {
             v->retriggerDone++;
             if (v->retriggerOverlap) {
                 // Overlap mode: start a new burst timer (don't reset envelope)
-                if (v->retriggerDone < 8) {
+                if (v->retriggerDone < 16) {
                     v->burstTimers[v->retriggerDone] = 0.0f;
                 }
                 // Per-burst noise re-seeding (noiseMode 2): each burst gets fresh noise
@@ -2665,17 +2679,25 @@ static float processVoice(Voice *v, float sampleRate) {
 
     // Arpeggiator (enhanced with modes and tempo sync)
     if (v->arpEnabled && v->arpCount > 0) {
-        // Calculate interval (tempo-synced or free rate)
-        float interval;
+        bool arpAdvance = false;
         if (v->arpRateDiv != ARP_RATE_FREE) {
-            interval = getArpIntervalSeconds(synthBpm, v->arpRateDiv);
+            // Beat-synced: compare against monotonic beat position (no drift)
+            double intervalBeats = getArpIntervalBeats(v->arpRateDiv);
+            if (intervalBeats > 0.0 && (synthBeatPosition - v->arpLastBeat) >= intervalBeats) {
+                v->arpLastBeat += intervalBeats;  // Accumulate, don't reset — prevents drift
+                arpAdvance = true;
+            }
         } else {
-            interval = (v->arpRate > 0.0f) ? (1.0f / v->arpRate) : 0.125f;
+            // Free rate: use dt-based timer
+            float interval = (v->arpRate > 0.0f) ? (1.0f / v->arpRate) : 0.125f;
+            v->arpTimer += dt;
+            if (v->arpTimer >= interval) {
+                v->arpTimer -= interval;  // Subtract instead of reset — prevents drift
+                arpAdvance = true;
+            }
         }
-        
-        v->arpTimer += dt;
-        if (v->arpTimer >= interval) {
-            v->arpTimer = 0.0f;
+
+        if (arpAdvance) {
             
             // Advance based on mode
             switch (v->arpMode) {
@@ -3136,7 +3158,7 @@ static float processVoice(Voice *v, float sampleRate) {
         // Overlap mode: sum independent burst decays (drums.h clap style)
         float burstSum = 0.0f;
         int totalBursts = v->retriggerCount + 1; // +1 for initial burst
-        if (totalBursts > 8) totalBursts = 8;
+        if (totalBursts > 16) totalBursts = 16;
         bool anyActive = false;
 
         if (v->noiseMode == 2) {
@@ -3397,7 +3419,7 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->retriggerDone = 0;
     v->retriggerOverlap = noteRetriggerOverlap;
     v->burstDecay = noteRetriggerBurstDecay > 0.001f ? noteRetriggerBurstDecay : 0.02f;
-    for (int i = 0; i < 8; i++) v->burstTimers[i] = -1.0f; // inactive
+    for (int i = 0; i < 16; i++) v->burstTimers[i] = -1.0f; // inactive
     if (v->retriggerOverlap && v->retriggerCount > 0) {
         v->burstTimers[0] = 0.0f; // first burst starts immediately
     }
@@ -3512,6 +3534,7 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
         v->arpRateDiv = noteArpRateDiv;
         v->arpRate = noteArpRate;
         v->arpTimer = 0.0f;
+        v->arpLastBeat = synthBeatPosition;
         v->baseFrequency = v->arpNotes[0];
     } else {
         v->arpEnabled = false;
@@ -3554,6 +3577,7 @@ static void setArpNotes(Voice *v, float *freqs, int count, ArpMode mode, ArpRate
     v->arpRateDiv = rateDiv;
     v->arpRate = freeRate;
     v->arpTimer = 0.0f;
+    v->arpLastBeat = synthBeatPosition;
     v->baseFrequency = v->arpNotes[0];
 }
 

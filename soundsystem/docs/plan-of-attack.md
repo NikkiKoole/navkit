@@ -5,49 +5,55 @@ respect dependencies. Within each wave, items are ordered by effort:impact ratio
 
 ---
 
-## Wave 0: Zero-dependency quick wins (do anytime)
+## Wave 0: Zero-dependency quick wins — COMPLETE ✅
 
-No blockers. Can be done in any order, even interleaved with other work.
+All 17 items implemented. 98 total presets (NUM_INSTRUMENT_PRESETS = 98).
 
-### Warmth & polish (effects)
+### Warmth & polish (effects) — all 7 done
 
-| # | What | Lines | Doc | Why first |
-|---|------|-------|-----|-----------|
-| 1 | **Analog rolloff** | 3 | synthesis-additions §6 | 3 lines, removes digital harshness from everything |
-| 2 | **Tube saturation** | 10 | synthesis-additions §7 | Even harmonics → warmth. tanh only gives cold odd harmonics |
-| 3 | **Ring modulation** | 5 | synthesis-additions §2 | New texture family, 0 new params |
-| 4 | **Wavefolding** | 25 | synthesis-additions §1 | Biggest new synthesis family (West Coast) |
-| 5 | **Hard sync** | 30 | synthesis-additions §3 | Classic screaming leads |
-| 6 | **Master EQ** (2-band shelving) | 40 | synthesis-additions §5 | Shape overall tone |
-| 7 | **Compressor** | 50 | synthesis-additions §8 | Glue + punch for the mix |
+| # | What | Status |
+|---|------|--------|
+| 1 | **Analog rolloff** | ✅ `analogRolloff` in synth.h (1-pole LP ~12kHz) |
+| 2 | **Tube saturation** | ✅ `p_tubeSaturation` in synth_patch.h (asymmetric tanh) |
+| 3 | **Ring modulation** | ✅ `ringMod`/`ringModFreq` in synth.h |
+| 4 | **Wavefolding** | ✅ `wavefoldAmount` in synth.h (West Coast triangle fold) |
+| 5 | **Hard sync** | ✅ `hardSync`/`hardSyncRatio` in synth.h |
+| 6 | **Master EQ** (2-band shelving) | ✅ `processMasterEQ()` in effects.h (low/high shelf) |
+| 7 | **Compressor** | ✅ Master compressor in effects.h (-12dB, 4:1 default) |
 
-### Free presets (invisible engines → visible)
+### Free presets (invisible engines → visible) — all 11 done
 
-| # | What | Count | Doc | Why |
-|---|------|-------|-----|-----|
-| 8 | **Mallet presets** (glocken, xylo, tubular) | 3 | missing-melodic §free | Engines exist, zero presets |
-| 9 | **Additive presets** (choir, brass, strings, bell) | 4 | missing-melodic §free | Entire engine invisible |
-| 10 | **Phase Distortion presets** (bass, lead) | 2 | missing-melodic §free | 8 CZ waveforms, zero presets |
-| 11 | **Melodic tabla, bird ambience** | 2 | missing-melodic §free | Membrane+bird engines unused |
+| # | What | Presets |
+|---|------|--------|
+| 8 | **Mallet presets** (glocken, xylo, tubular) | ✅ Presets 45-47 |
+| 9 | **Additive presets** (choir, brass, strings, bell) | ✅ Presets 48-51 |
+| 10 | **Phase Distortion presets** (bass, lead) | ✅ Presets 52-53 |
+| 11 | **Melodic tabla, bird ambience** | ✅ Presets 54-55 |
 
-### Core melodic presets
+### Core melodic presets — all 7 done
 
-| # | What | Count | Doc | Why |
-|---|------|-------|-----|-----|
-| 12 | **Rhodes / EP** (mellow + bright) | 2 | missing-melodic §keys | FM is criminally underused, Rhodes is THE indie/jazz sound |
-| 13 | **Upright bass** | 1 | missing-melodic §bass | Jazz can't exist without it |
-| 14 | **Flute** | 1 | missing-melodic §winds | SNES/RPG staple |
-| 15 | **Kalimba** | 1 | missing-melodic §bells | Lo-fi essential |
-| 16 | **Sub bass** | 1 | missing-melodic §bass | Lo-fi/house fundamental |
-| 17 | **Nylon guitar** | 1 | missing-melodic §guitar | Bossa nova needs this |
+| # | What | Preset |
+|---|------|--------|
+| 12 | **Rhodes / EP** (mellow + bright) | ✅ Presets 56-57 (FM + tube saturation) |
+| 13 | **Upright bass** | ✅ Preset 58 (WAVE_PLUCK + analog rolloff + tube) |
+| 14 | **Flute** | ✅ Preset 59 (WAVE_TRIANGLE + breathy noise) |
+| 15 | **Kalimba** | ✅ Preset 60 (WAVE_MALLET/MARIMBA) |
+| 16 | **Sub bass** | ✅ Preset 61 (WAVE_FM pure sine) |
+| 17 | **Nylon guitar** | ✅ Preset 62 (WAVE_PLUCK + analog rolloff) |
 
-**Wave 0 total: ~163 lines of engine code + ~25 presets (~250 lines preset data)**
+### Synthesis showcase presets (bonus)
+
+| # | What | Preset |
+|---|------|--------|
+| — | **Wavefold Lead** | Preset 63 (wavefold 0.6) |
+| — | **Ring Bell** | Preset 64 (ring mod 3.5×) |
+| — | **Sync Lead** | Preset 65 (hard sync 2.3×) |
 
 ---
 
-## Wave 1: After DAW refactor
+## Wave 1: Unblocked (DAW refactor complete)
 
-The sequencer refactor is cooking. Once it lands, these become unblocked.
+The sequencer v2 refactor is done. These are now unblocked.
 
 ### Rhythm generator integration
 
@@ -70,20 +76,17 @@ The sequencer refactor is cooking. Once it lands, these become unblocked.
 
 ---
 
-## Wave 2: After unified drums Phase 2
+## Wave 2: Percussion & routing
 
-`drums.h` → SynthPatch migration must complete first (unified-synth-drums §Phase 2).
-Then drum tracks can use any SynthPatch preset, unlocking instrument routing.
+### Percussion presets (Tier 1) — COMPLETE ✅
 
-### Percussion presets (Tier 1)
-
-| # | What | Engine | Doc |
-|---|------|--------|-----|
-| 25 | **Ride cymbal** | 6-osc metallic (like HH, lower ratios, long decay) | missing-percussion §tier1 |
-| 26 | **Brush snare** | Noise-heavy, soft attack | missing-percussion §tier1 |
-| 27 | **Crash cymbal** | Bright ride variant | missing-percussion §tier1 |
-| 28 | **Shaker** | Short noise burst, BP filtered | missing-percussion §tier1 |
-| 29 | **Tambourine** | Noise + metallic jingle | missing-percussion §tier1 |
+| # | What | Preset |
+|---|------|--------|
+| 25 | **Ride cymbal** | ✅ Preset 66 |
+| 26 | **Brush snare** | ✅ Preset 67 |
+| 27 | **Crash cymbal** | ✅ Preset 68 |
+| 28 | **Shaker** | ✅ Preset 69 |
+| 29 | **Tambourine** | ✅ Preset 70 |
 
 ### Per-style instrument routing
 
@@ -100,7 +103,7 @@ Then drum tracks can use any SynthPatch preset, unlocking instrument routing.
 | 33 | **Conga hi/lo** | WAVE_MEMBRANE (presets only!) | missing-percussion §tier2 |
 | 34 | **Timbales, woodblock, agogo** | FM / filtered click | missing-percussion §tier2 |
 
-**Wave 2 total: ~5 tier-1 presets + routing (~100 lines) + tier-2 presets (~80 lines)**
+**Wave 2 remaining: routing (~50 lines) + tier-3 presets (~4 sounds)**
 
 ---
 
@@ -138,24 +141,23 @@ No hard blockers — do when the core is solid.
 ## Dependency Graph
 
 ```
-                    ┌─────────────┐
-                    │  Wave 0     │  ← no blockers, start now
-                    │  Quick wins │
-                    │  + presets  │
-                    └──────┬──────┘
-                           │
-              ┌────────────┼────────────┐
-              ▼                         ▼
     ┌─────────────────┐      ┌──────────────────┐
-    │  DAW refactor   │      │  Unified drums   │
-    │  (in progress)  │      │  Phase 2         │
-    └────────┬────────┘      └────────┬─────────┘
-             ▼                        ▼
-    ┌─────────────────┐      ┌──────────────────┐
-    │  Wave 1         │      │  Wave 2          │
-    │  Rhythm gen     │      │  Perc presets    │
-    │  integration    │      │  + routing       │
-    └────────┬────────┘      └────────┬─────────┘
+    │  Wave 0 ✅      │      │  DAW refactor ✅  │
+    │  Quick wins     │      │  Seq v2 done     │
+    │  + presets      │      │                  │
+    └─────────────────┘      └────────┬─────────┘
+                                      ▼
+                             ┌──────────────────┐
+                             │  Wave 1          │  ← UNBLOCKED
+                             │  Rhythm gen      │
+                             │  integration     │
+                             └────────┬─────────┘
+                                      │
+    ┌─────────────────┐               │
+    │  Wave 2         │               │
+    │  Tier 1 ✅      │               │
+    │  Routing + T2   │               │
+    └────────┬────────┘               │
              │                        │
              └───────────┬────────────┘
                          ▼

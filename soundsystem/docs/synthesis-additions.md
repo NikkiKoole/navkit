@@ -799,37 +799,14 @@ evolving rhythms from simple parameters.
 
 ---
 
-### 12. Arpeggiator Tempo Sync
+### 12. Arpeggiator Tempo Sync — DONE ✅
 
-**Effort:** ~15 lines in synth.h
-**Impact:** Fixes audible drift — arps don't lock to the beat
-
-#### The problem
-
-The arpeggiator has rate divisions (1/4, 1/8, 1/16, 1/32) but each voice runs an
-independent timer (`arpTimer += dt`). Over time this drifts from the sequencer BPM
-because floating-point `dt` accumulation doesn't exactly match the tick-based
-sequencer clock.
-
-The filter LFO already has proper tempo sync via `getLfoRateFromSync(bpm, division)`.
-The arp should use the same mechanism — sync to the sequencer tick count rather than
-accumulating `dt`.
-
-#### Implementation
-
-In `processVoice` or wherever the arp timer advances:
-```c
-// Instead of: arpTimer += dt; if (arpTimer >= 1.0f/arpRate) ...
-// Use: sync to sequencer tick position
-if (v->arpSynced) {
-    float ticksPerStep = getLfoRateFromSync(synthBpm, v->arpRateDiv);
-    // Advance on sequencer tick boundaries, not float accumulation
-}
-```
-
-Or simpler: just reset `arpTimer` at the start of each bar/beat to prevent
-cumulative drift. Even a periodic re-sync (once per pattern loop) would fix
-the audible problem.
+Full beat-based sync implemented. Monotonic `beatPosition` (double) on both Sequencer
+and SoundSystemContext, incremented per tick (1/96 beat) in the sequencer loop. Synced
+arp modes compare `beatPosition - arpLastBeat >= intervalBeats` using `getArpIntervalBeats()`.
+Accumulates (`arpLastBeat += interval`) instead of resetting, so zero drift. FREE mode
+also fixed (`arpTimer -= interval` instead of `= 0.0f`). When sequencer is stopped,
+beatPosition freerunning from BPM so arps work during live play.
 
 ---
 
@@ -1209,7 +1186,7 @@ case RHYTHM_VAR_SYNCOPATED:
 | 9 | Filter key tracking | Sequencer | **DONE** — `filterKeyTrack` in engine + UI |
 | 10 | Polyrhythmic lengths | Sequencer | **DONE** — per-track lengths + UI (scroll/right-click) |
 | 11 | Euclidean rhythms | Sequencer | **DONE** — Bjorklund algo + collapsible UI |
-| 12 | Arp tempo sync | Sequencer | TODO — still uses float `arpTimer += dt`, drifts over time |
+| 12 | Arp tempo sync | Sequencer | **DONE** — beat-based sync via `beatPosition`, zero drift |
 | 13 | Piano roll create | Workflow | TODO — piano roll is view-only, can't click to add notes |
 | 14 | Pattern copy | Workflow | **DONE** — copy to next free slot |
 | 15 | Quick velocity edit | Workflow | TODO — no Shift+scroll shortcut |
@@ -1222,5 +1199,5 @@ case RHYTHM_VAR_SYNCOPATED:
 | 22 | More presets | Polish | **DONE** — 98 presets (was 48), all engines represented |
 | 23 | Syncopated variation | Sequencer | **DONE** — all tracks, anticipation pattern |
 
-**Score: 14/23 done.** Remaining: §4 (unison stereo), §12 (arp sync), §13 (piano roll),
+**Score: 15/23 done.** Remaining: §4 (unison stereo), §13 (piano roll),
 §15-17 (workflow), §18-21 (polish).

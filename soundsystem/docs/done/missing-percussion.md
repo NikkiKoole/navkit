@@ -1,7 +1,6 @@
 # Missing Percussion Instruments
 
-Status: **Tier 1+2 DONE** — cataloguing what's needed for the rhythm generator styles to sound
-right, and how each instrument maps to the unified SynthPatch engine.
+Status: **ALL TIERS DONE** (35 drum/perc presets). 103 total presets.
 
 Depends on: `unified-synth-drums.md` (Phase 2: DAW integration, drums.h → SynthPatch) — DONE
 
@@ -27,7 +26,7 @@ The synth engine already has the building blocks:
 
 ---
 
-## What Exists (29 drum/perc presets, indices 24-37 + 66-80)
+## What Exists (35 drum/perc presets, indices 24-37 + 66-80 + 98-102)
 
 | Index | Name | Engine |
 |-------|------|--------|
@@ -62,7 +61,7 @@ All 5 implemented as SynthPatch presets (indices 66-70):
 | **Shaker** | 69 | Tight noise, BP, retrigger=2, 30ms decay |
 | **Tambourine** | 70 | Noise + 2 inharmonic oscs, HP filtered |
 
-### Tier 2: Would improve specific styles — MOSTLY DONE
+### Tier 2: Would improve specific styles — DONE
 
 Implemented (indices 71-80):
 
@@ -79,19 +78,21 @@ Implemented (indices 71-80):
 | **Triangle** | 79 | WAVE_TRIANGLE, 1500Hz, 1.5s decay |
 | **Finger Snap** | 80 | Noise, BP filtered, 40ms decay |
 
-Still missing from Tier 2: **Guiro** (needs rapid retrigger 8-12 bursts, may need
-engine support for high retrigger counts).
+| **Guiro** | 98 | Noise, BP, retrigger=10, curve 0.08 (accelerating scrape) |
 
-### Tier 3: Nice to have (low priority)
+Engine support for high retrigger counts added: `burstTimers` expanded from 8→16 slots
+(max 15 retrigs + 1 initial = 16 total bursts).
 
-| Instrument | Needed by styles | Synthesis approach |
-|------------|-----------------|-------------------|
-| **Finger Snap** | Lo-fi | Like clap but single trigger (no retrigger), bandpass noise, very short. |
-| **Vinyl Crackle** | Lo-fi | Sparse random noise clicks. Could be a special noise mode or just a very quiet noise layer with high HP. |
-| **Cross Stick** | Jazz, R&B | Like rimshot but quieter, more wood (less ring). Lower noise mix, faster decay. |
-| **Surdo** | Samba, Latin | WAVE_MEMBRANE at low pitch, long decay. Like a very deep tom. |
-| **Claves** | Already exists (index 36) | |
-| **Cabasa** | Bossa Nova | Like shaker but with metallic high-frequency content. Noise + one high-ratio FM osc. |
+### Tier 3: Nice to have — DONE
+
+| Instrument | Preset # | Key settings |
+|------------|----------|-------------|
+| ~~**Finger Snap**~~ | 80 | Already in Tier 2. |
+| ~~**Claves**~~ | 36 | Already exists. |
+| **Cross Stick** | 99 | FM (rimshot variant), shorter decay, noise 0.3, darker filter 0.6 |
+| **Surdo** | 100 | WAVE_MEMBRANE (TOM), 80Hz, 1.2s decay, dark filter 0.3 |
+| **Cabasa** | 101 | Noise + metallic osc2 (7.5×), one-pole HP, bright |
+| **Vinyl Crackle** | 102 | Ultra-short noise pop (5ms), BP filtered, quiet (0.15 vol) |
 
 ---
 
@@ -158,8 +159,8 @@ All new instruments are SynthPatch presets — no engine changes needed.
 |-------|------|---------|--------|
 | Tier 1 | Ride, Brush Snare, Crash, Shaker, Tambourine | 5 presets (66-70) | **DONE** |
 | Tier 2 | Bongo, Conga, Timbales, Agogo, Woodblock, Triangle, Finger Snap | 10 presets (71-80) | **DONE** |
-| Tier 2 | Guiro | 1 preset | TODO (needs high retrigger count) |
-| Tier 3 | Vinyl Crackle, Cross Stick, Surdo, Cabasa | 4 presets | TODO |
+| Tier 2 | Guiro | 1 preset (98) | **DONE** (burstTimers expanded 8→16) |
+| Tier 3 | Cross Stick, Surdo, Cabasa, Vinyl Crackle | 4 presets (99-102) | **DONE** |
 
 ### Connection to rhythm generator
 

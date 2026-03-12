@@ -1,12 +1,13 @@
-# DAW Demo — What's Missing (2026-03-11, updated)
+# DAW Demo — What's Missing (2026-03-12, updated)
 
 Status: **in progress** — tracking gaps between current state and demo-ready
 
-## Completed (Phases 1-3 + arrangement + overrides)
+## Completed (Phases 1-3 + arrangement + overrides + seq v2)
 
 All the core infrastructure is solid:
-- Full synth engine (14 oscillators), 32 voices, SynthPatch-based drums (48 presets)
-- Sequencer with p-locks, conditional triggers, probability, 303 slide/accent, note pools
+- Full synth engine (14 oscillators), 32 voices, 99 presets (SynthPatch-based drums + melodic)
+- Sequencer v2 (unified tracks, per-step polyphony, 271 tests passing)
+- Wave 0 synthesis complete (analog rolloff, tube saturation, ring mod, wavefolding, hard sync, master EQ, compressor)
 - DAW 3-zone UI with step inspector, bus mixer, 5 sidebar tabs
 - File format parser/serializer (`.song`/`.patch`/`.bank`)
 - DAW save/load wired up
@@ -20,6 +21,8 @@ All the core infrastructure is solid:
 - **Arrangement editor** (`7239244`) — Song mode toggle, named sections with loop counts, chain playback with per-entry loop support, progress indicator
 - **Per-pattern overrides** (`21a67e6`) — PatternOverrides struct with bitmask flags for scale (root+type), BPM, groove (swing+jitter), per-track mute. UI in Song tab, orange dot indicator on pattern buttons
 - **Pattern copy/clear** — Cpy/Clr buttons already in sequencer tab top row
+- **Piano roll** (F2) — Fully functional melodic composition with note bars, gate/velocity visualization, mouse interaction (place/move/resize notes), slide/accent/nudge indicators, playhead animation
+- **Voice tab** (F5) — Babble generator with pitch/mood/duration, 3 intonation modes (babble/call/answer), speech synthesis pipeline with vowel mapping
 
 ## What's Missing (roughly by priority for demo)
 
@@ -33,7 +36,7 @@ All the core infrastructure is solid:
 
 ### Medium Priority — Polish for Demo
 
-4. **Song settings panel** (`docs/doing/song-file-format.md:1251`) — Song name, resolution toggle (16th/32nd). Loops-per-pattern is now in Song tab top row, but song name and resolution mode are not exposed.
+4. **Song settings panel** (`docs/doing/song-file-format.md:1251`) — Song name, resolution toggle (16th/32nd). Loops-per-pattern is now in Song tab top row. Resolution toggle exists via Q/W keys but has no visible UI — users can't discover it without reading code.
 
 5. **Song metadata editor** (mood/energy/context tags) — Needed for Phase 6 game integration but also for demo if you want to show context-aware song picking.
 
@@ -41,9 +44,9 @@ All the core infrastructure is solid:
 
 ### Lower Priority — Nice to Have
 
-7. **Piano roll view** (F2 tab) — Only a placeholder currently. Step grid works fine for 16-step patterns but piano roll is better for melodic composition.
+7. ~~**Piano roll view**~~ (F2 tab) — **DONE**. Fully functional melodic composition (2400+ lines), note bars with gate/velocity, mouse place/move/resize, slide/accent/nudge indicators.
 
-8. **Recording mode** — Capture keyboard/MIDI played notes into the sequencer.
+8. **Recording mode** — Capture keyboard/MIDI played notes into the sequencer. (WAV audio recording exists via F7, but no MIDI-to-pattern recording.)
 
 9. **Undo/redo** — No safety net for pattern edits.
 
@@ -117,28 +120,18 @@ The 13 bridge songs in `src/sound/songs.h` use hand-coded C with per-song trigge
 - No tooltips on hover for discoverability
 - Arrangement timeline doesn't scroll horizontally yet (sections past screen edge are clipped)
 - Per-pattern instrument override not yet supported (only scale/BPM/groove/mute)
-- **Piano roll polyphony** — one note per step per track (melodyNote[track][step]). Can't stack chords on a single step in one track. Workaround: use multiple melody tracks. Real fix would need a linked-list or array-of-notes-per-step in the Pattern struct (bigger change: sequencer tick loop, save/load, song_file parser).
+- ~~**Piano roll polyphony**~~ — **DONE** (sequencer v2). `StepV2` has `notes[SEQ_V2_MAX_POLY]` (6 notes per step) with independent pitch, velocity, gate, nudge, slide, accent per note.
 
-### Sequencer v2 — Architectural Rethink
+### Sequencer v2 — COMPLETE ✅
 
-Two related design debts that should be tackled together:
+Unified tracks + per-step polyphony refactor is done (all 4 phases). See `soundsystem/docs/sequencer-v2-plan.md` for full details.
 
-**1. Per-step polyphony (Option C)** — Replace `melodyNote[track][step]` (single int) with `melodyNotes[track][step][MAX_POLY]`. Each note in the array gets independent pitch, velocity, gate, nudge, gate nudge, slide, accent. Enables chords within a single track without burning other tracks. Touches: sequencer tick loop, p-lock storage (needs per-note-in-step dimension or separate store per voice slot), save/load, song_file parser/serializer, step inspector, piano roll UI, musical typing/MIDI input. Interim options: (A) NotePool with PICK_ALL/CHORD_CUSTOM — already works in engine, no independent nudge per chord note but zero engine changes; (B) multi-track overlay in piano roll — independent timing but eats tracks.
+- Unified `Sequencer` struct (renamed from `DrumSequencer`) with `TrackNoteOnFunc`/`TrackNoteOffFunc`
+- `StepV2 steps[SEQ_V2_MAX_TRACKS][SEQ_MAX_STEPS]` — single data layout for drum and melodic tracks
+- NotePool system deleted, all callers migrated (including songs.h)
+- 271 test suites, 1980 assertions passing
 
-**2. Unified tracks** — Currently rigid split: `SEQ_DRUM_TRACKS` (rhythm, sample-based triggers) vs `SEQ_MELODY_TRACKS` (melodic, synth patch triggers) with different data structures and trigger paths. The synth/drum distinction lives in the patch (SynthPatch.isDrum), not inherently in the track. A unified track model would: (a) remove the drum/melody split — every track is just a track with a patch reference, (b) track data structure covers both cases (note array + velocity + gate + p-locks), (c) trigger path checks patch type to decide drum vs melodic playback, (d) allow any number of tracks (not fixed 8+4). This simplifies the sequencer, makes the piano roll universal, and enables flexible track count per song.
-
-**Why together**: If we're going to refactor the track data model for polyphony, that's the right time to also unify drum/melody tracks. Doing them separately means two rounds of breaking changes to Pattern, save format, and the tick loop.
-
-**What it removes** — This is a net code *reduction* despite being a big refactor:
-- **NotePool system** (~200 lines) — `PICK_ALL`, `CHORD_CUSTOM`, `ChordType`, `PickMode`, `seqGetAllNotesForStep()`, `MelodyChordTriggerFunc` all become unnecessary. Per-step note arrays replace the entire concept.
-- **Drum/melody array duplication** (~300 lines) — `drumPattern[][]`, `drumVelocity[][]`, `drumCondition[][]` etc. merge into unified track arrays. No more near-duplicate tick loop logic for drums vs melody.
-- **Separate trigger callback types** — `DrumTriggerFunc`, `MelodyTriggerFunc`, `MelodyChordTriggerFunc`, `MelodyReleaseFunc` collapse into one generic callback. Patch type determines playback behavior.
-- **`SEQ_DRUM_TRACKS +` offset math** — every melody p-lock call currently adds this offset. Unified tracks = just track index.
-- **Dual UI paths** — step inspector, piano roll, and song file parser currently branch on drum vs melody. One track type = one code path each.
-
-**Scope**: This is a significant refactor (est. Pattern struct redesign + sequencer tick loop rewrite + save format v3 + UI updates). Not demo-blocking — current system works fine for the demo.
-
-**Full implementation plan**: `soundsystem/docs/sequencer-v2-plan.md` — phased rollout (Phase 0: prep, Phase 1: new structs, Phase 2: unified tick loop, Phase 3: migrate callers, Phase 4: cleanup). Net ~290 lines removed.
+Remaining optional cleanup: remove `SEQ_TOTAL_TRACKS` define (unused), remove legacy adapter functions once callers use `setTrackCallbacks()`.
 
 ## Scenes vs Automation vs P-locks — Design Analysis
 
@@ -226,13 +219,14 @@ Full automation lanes (option 3) are the "correct" long-term solution but may be
 2. ~~**Per-pattern overrides**~~ — DONE
 3. ~~**MIDI keyboard + split keyboard + MIDI learn + F4 tab**~~ — DONE
 4. ~~**Save/Load updated**~~ — DONE (`daw_file.h`, format v2, buttons in transport bar)
-5. **P-lock interpolation OR automation lanes** — see analysis above. Interpolation is the quick win; full lanes if we want more polish. Also solves sweep rate gap (#12).
-6. **Groove presets** — handful of named Dilla presets for quick groove selection
-7. **Song settings panel** — song name + resolution mode
-8. **NotePool editing UI** — step inspector needs chord type/pick mode/custom note editing
-9. **Patch name editing** — quality of life
-10. **Arrangement scroll** — needed once songs have >14 sections
-11. **Convert bridge songs to .song** — prove the pipeline, remove C code
+5. ~~**Piano roll (F2)**~~ — DONE (fully functional melodic composition)
+6. ~~**Voice tab (F5)**~~ — DONE (babble generator + speech synthesis)
+7. **P-lock interpolation OR automation lanes** — see analysis above. Interpolation is the quick win; full lanes if we want more polish. Also solves sweep rate gap (#12).
+8. **Groove presets** — handful of named Dilla presets for quick groove selection
+9. **Song settings panel** — song name + resolution mode UI (Q/W keys work but not discoverable)
+10. **Patch name editing** — quality of life
+11. **Arrangement scroll** — needed once songs have >14 sections
+12. **Convert bridge songs to .song** — prove the pipeline, remove C code
 
 ## Related Docs
 

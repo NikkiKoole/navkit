@@ -244,13 +244,21 @@ static void SynthCallback(void *buffer, unsigned int frames) {
     // Sync mixer and synth tempo with sequencer
     setMixerTempo(seq.bpm);
     synthBpm = seq.bpm;
-    
+    if (seq.playing) {
+        synthBeatPosition = seq.beatPosition;
+    }
+
     for (unsigned int i = 0; i < frames; i++) {
+        // When sequencer is stopped, advance beat position from BPM so arp still works
+        if (!seq.playing) {
+            synthBeatPosition += (double)dt * (seq.bpm / 60.0);
+        }
+
         float sample = 0.0f;
-        
+
         // Bus input array: [DRUM0, DRUM1, DRUM2, DRUM3, BASS, LEAD, CHORD]
         float busInputs[NUM_BUSES] = {0};
-        
+
         // Process each drum track to its bus
         busInputs[BUS_DRUM0] = processDrumType(drumTrackSound[0], dt);
         busInputs[BUS_DRUM1] = processDrumType(drumTrackSound[1], dt);
@@ -2364,7 +2372,7 @@ int main(void) {
 
             ui_col_space(&colPerc, 4);
             ui_col_sublabel(&colPerc, "Retrigger:", ORANGE);
-            ui_col_int(&colPerc, "Count", &cp->p_retriggerCount, 1, 0, 8);
+            ui_col_int(&colPerc, "Count", &cp->p_retriggerCount, 1, 0, 15);
             if (cp->p_retriggerCount > 0) {
                 ui_col_float(&colPerc, "Spread", &cp->p_retriggerSpread, 0.01f, 0.005f, 1.0f);
                 ui_col_toggle(&colPerc, "Overlap", &cp->p_retriggerOverlap);

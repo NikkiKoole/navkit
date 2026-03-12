@@ -177,6 +177,7 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - ✓ `ArpRateDiv`: 1/4, 1/8, 1/16, 1/32, FREE — tempo-synced
 - ✓ `ArpChordType`: OCTAVE, MAJOR, MINOR, DOM7, MIN7, SUS4, POWER
 - ✓ Hold mode, per-voice arp state
+- ✓ Beat-based tempo sync (monotonic `beatPosition`, zero drift, freerunning when seq stopped)
 - **Pattern-based arps** (custom note orders) (NOT YET)
 
 ## 3.5 Euclidean Rhythm Generator
@@ -258,20 +259,17 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - **Stereo spread** — pan unison copies across L/R (NOT YET)
 - See `docs/synthesis-additions.md` §4 for stereo spread implementation
 
-## 5.3 Wavefolder — TOP QUICK WIN
-- Triangle through wavefolder, reflective harmonics
-- ~25 lines, 1 new param (`p_wavefold`), biggest sonic impact for least effort
-- See `docs/synthesis-additions.md` §1 for implementation details + presets
+## 5.3 Wavefolder ✓ DONE
+- ✓ `wavefoldAmount` in synth.h — triangle fold with reflective harmonics
+- ✓ Preset: Wavefold Lead (preset 63)
 
-## 5.4 Hard Sync
-- Slave osc phase reset by master osc, classic tearing/screaming leads
-- ~30 lines, reuses `p_osc2Ratio` as master freq, 1 new param (`p_syncEnabled`)
-- See `docs/synthesis-additions.md` §3 for implementation details
+## 5.4 Hard Sync ✓ DONE
+- ✓ `hardSync`/`hardSyncRatio`/`hardSyncPhase` in synth.h
+- ✓ Preset: Sync Lead (preset 65, ratio 2.3)
 
-## 5.5 Ring Modulation — EASIEST WIN
-- Multiply main osc × osc2 instead of mixing
-- ~5 lines, 0 new params (new `p_oscMixMode` value = 2)
-- See `docs/synthesis-additions.md` §2 for implementation details
+## 5.5 Ring Modulation ✓ DONE
+- ✓ `ringMod`/`ringModFreq`/`ringModPhase` in synth.h
+- ✓ Preset: Ring Bell (preset 64, 3.5× frequency)
 
 ## 5.6 Speech (8-bit)
 - Speak & Spell style synthesis
@@ -311,28 +309,25 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - Allpass filter chain with LFO
 - Classic sweeping effect
 
-## 6.4 Compressor/Limiter
-- Dynamics control: threshold, ratio, attack, release, makeup gain
-- Sidechain input for pumping effect (✓ DONE as separate sidechain system)
-- Limiter for final output protection
-- ~50 lines, see `docs/synthesis-additions.md` §8 for implementation
+## 6.4 Compressor/Limiter ✓ DONE
+- ✓ Master compressor in effects.h: threshold, ratio, attack, release, makeup gain
+- ✓ Default: -12dB threshold, 4:1 ratio
+- ✓ Sidechain input for pumping effect (separate sidechain system)
 
 ## 6.5 Per-Track Effects
 - Effect sends per track
 - Dry/wet per track
 - Effect routing flexibility
 
-## 6.x Master EQ (2-Band Shelving) — NEW, TOP WARMTH PRIORITY
-- Low shelf + high shelf, ~40 lines
-- See `docs/synthesis-additions.md` §5 for implementation
+## 6.x Master EQ (2-Band Shelving) ✓ DONE
+- ✓ `processMasterEQ()` in effects.h — low shelf (200Hz) + high shelf (6kHz)
+- ✓ `eqLowGain`, `eqHighGain`, `eqLowFreq`, `eqHighFreq`
 
-## 6.x Tube Saturation (Asymmetric) — NEW
-- Even-harmonic warmth (2nd, 4th), unlike tanh which adds cold odd harmonics
-- ~10 lines, see `docs/synthesis-additions.md` §7
+## 6.x Tube Saturation (Asymmetric) ✓ DONE
+- ✓ `p_tubeSaturation` in synth_patch.h — asymmetric tanh for even-harmonic warmth
 
-## 6.x Analog Rolloff — NEW, EASIEST WIN
-- Always-on gentle highpass at ~16kHz, removes digital harshness, 3 lines
-- See `docs/synthesis-additions.md` §6
+## 6.x Analog Rolloff ✓ DONE
+- ✓ `analogRolloff` in synth.h — 1-pole LP ~12kHz, removes digital harshness
 
 ## 6.6 Comb Filter
 - Short delay with feedback

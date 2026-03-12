@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 98
+#define NUM_INSTRUMENT_PRESETS 103
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -1558,6 +1558,105 @@ static void initInstrumentPresets(void) {
     instrumentPresets[97].patch.p_sustain = 0.3f;
     instrumentPresets[97].patch.p_release = 0.2f;
     instrumentPresets[97].patch.p_volume = 0.35f;
+
+    // 98: Guiro — rapid scraped retrigger, noise burst train
+    instrumentPresets[98].name = "Guiro";
+    instrumentPresets[98].patch.p_waveType = WAVE_NOISE;
+    instrumentPresets[98].patch.p_noiseMix = 1.0f;
+    instrumentPresets[98].patch.p_noiseTone = 0.55f;
+    instrumentPresets[98].patch.p_noiseHP = 0.2f;
+    instrumentPresets[98].patch.p_attack = 0.001f;
+    instrumentPresets[98].patch.p_decay = 0.02f;
+    instrumentPresets[98].patch.p_sustain = 0.0f;
+    instrumentPresets[98].patch.p_release = 0.01f;
+    instrumentPresets[98].patch.p_expDecay = true;
+    instrumentPresets[98].patch.p_filterType = 2; // SVF BP
+    instrumentPresets[98].patch.p_filterCutoff = 0.45f;
+    instrumentPresets[98].patch.p_filterResonance = 0.2f;
+    instrumentPresets[98].patch.p_retriggerCount = 10;
+    instrumentPresets[98].patch.p_retriggerSpread = 0.012f;
+    instrumentPresets[98].patch.p_retriggerOverlap = false; // envelope restart per scrape
+    instrumentPresets[98].patch.p_retriggerCurve = 0.08f;   // slight acceleration (scrape speeds up)
+    instrumentPresets[98].patch.p_volume = 0.35f;
+    instrumentPresets[98].patch.p_phaseReset = true;
+    instrumentPresets[98].patch.p_useTriggerFreq = true;
+    instrumentPresets[98].patch.p_triggerFreq = 900.0f;
+
+    // 99: Cross Stick — quieter rimshot, more wood, less ring
+    instrumentPresets[99].name = "Cross Stick";
+    instrumentPresets[99].patch.p_waveType = WAVE_FM;
+    instrumentPresets[99].patch.p_fmModRatio = 1.0f;
+    instrumentPresets[99].patch.p_fmModIndex = 0.0f;
+    instrumentPresets[99].patch.p_attack = 0.0f;
+    instrumentPresets[99].patch.p_decay = 0.02f;          // shorter than rimshot (0.03)
+    instrumentPresets[99].patch.p_sustain = 0.0f;
+    instrumentPresets[99].patch.p_release = 0.008f;
+    instrumentPresets[99].patch.p_expDecay = true;
+    instrumentPresets[99].patch.p_noiseMix = 0.3f;        // wood texture
+    instrumentPresets[99].patch.p_noiseTone = 0.35f;      // dark noise
+    instrumentPresets[99].patch.p_noiseDecay = 0.01f;
+    instrumentPresets[99].patch.p_filterCutoff = 0.6f;    // darker than rimshot (1.0)
+    instrumentPresets[99].patch.p_clickLevel = 0.3f;      // softer click than rimshot (0.5)
+    instrumentPresets[99].patch.p_clickTime = 0.003f;
+    instrumentPresets[99].patch.p_volume = 0.3f;
+    instrumentPresets[99].patch.p_phaseReset = true;
+    instrumentPresets[99].patch.p_useTriggerFreq = true;
+    instrumentPresets[99].patch.p_triggerFreq = 1400.0f;  // lower than rimshot (1700)
+
+    // 100: Surdo — deep Brazilian bass drum, long membrane decay
+    instrumentPresets[100].name = "Surdo";
+    instrumentPresets[100].patch.p_waveType = WAVE_MEMBRANE;
+    instrumentPresets[100].patch.p_membranePreset = MEMBRANE_TOM;
+    instrumentPresets[100].patch.p_membraneDamping = 0.15f;   // low damping = long sustain
+    instrumentPresets[100].patch.p_membraneStrike = 0.3f;     // soft mallet
+    instrumentPresets[100].patch.p_membraneBend = 0.15f;
+    instrumentPresets[100].patch.p_membraneBendDecay = 0.08f;
+    instrumentPresets[100].patch.p_attack = 0.002f;
+    instrumentPresets[100].patch.p_decay = 1.2f;              // long boom
+    instrumentPresets[100].patch.p_sustain = 0.0f;
+    instrumentPresets[100].patch.p_release = 0.3f;
+    instrumentPresets[100].patch.p_expDecay = true;
+    instrumentPresets[100].patch.p_filterCutoff = 0.3f;       // dark, bassy
+    instrumentPresets[100].patch.p_volume = 0.5f;
+    instrumentPresets[100].patch.p_useTriggerFreq = true;
+    instrumentPresets[100].patch.p_triggerFreq = 80.0f;       // very low
+
+    // 101: Cabasa — shaker with metallic high-freq content
+    instrumentPresets[101].name = "Cabasa";
+    instrumentPresets[101].patch.p_waveType = WAVE_NOISE;
+    instrumentPresets[101].patch.p_noiseMix = 0.85f;
+    instrumentPresets[101].patch.p_noiseTone = 0.7f;          // bright noise
+    instrumentPresets[101].patch.p_noiseHP = 0.3f;            // more HP than shaker
+    instrumentPresets[101].patch.p_osc2Ratio = 7.5f;          // metallic partial
+    instrumentPresets[101].patch.p_osc2Level = 0.15f;
+    instrumentPresets[101].patch.p_attack = 0.001f;
+    instrumentPresets[101].patch.p_decay = 0.045f;            // slightly longer than shaker
+    instrumentPresets[101].patch.p_sustain = 0.0f;
+    instrumentPresets[101].patch.p_release = 0.02f;
+    instrumentPresets[101].patch.p_expDecay = true;
+    instrumentPresets[101].patch.p_filterType = 4;            // one-pole HP
+    instrumentPresets[101].patch.p_filterCutoff = 0.4f;
+    instrumentPresets[101].patch.p_volume = 0.3f;
+    instrumentPresets[101].patch.p_phaseReset = true;
+    instrumentPresets[101].patch.p_useTriggerFreq = true;
+    instrumentPresets[101].patch.p_triggerFreq = 1100.0f;
+
+    // 102: Vinyl Crackle — sparse random noise pops, lo-fi texture
+    instrumentPresets[102].name = "Vinyl Crackle";
+    instrumentPresets[102].patch.p_waveType = WAVE_NOISE;
+    instrumentPresets[102].patch.p_noiseMix = 1.0f;
+    instrumentPresets[102].patch.p_noiseTone = 0.3f;          // dark crackle
+    instrumentPresets[102].patch.p_noiseHP = 0.35f;           // remove low rumble
+    instrumentPresets[102].patch.p_attack = 0.0f;
+    instrumentPresets[102].patch.p_decay = 0.005f;            // ultra-short pop
+    instrumentPresets[102].patch.p_sustain = 0.0f;
+    instrumentPresets[102].patch.p_release = 0.003f;
+    instrumentPresets[102].patch.p_expDecay = true;
+    instrumentPresets[102].patch.p_filterType = 2;            // SVF BP
+    instrumentPresets[102].patch.p_filterCutoff = 0.55f;
+    instrumentPresets[102].patch.p_filterResonance = 0.15f;
+    instrumentPresets[102].patch.p_volume = 0.15f;            // quiet — texture, not rhythm
+    instrumentPresets[102].patch.p_phaseReset = true;
 }
 
 #endif // INSTRUMENT_PRESETS_H

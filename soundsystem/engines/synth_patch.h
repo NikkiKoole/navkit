@@ -161,7 +161,7 @@ typedef struct {
     float p_noiseDecay;       // Separate noise decay (0 = follows main envelope)
 
     // Retrigger (claps, flams, rolls)
-    int p_retriggerCount;     // 0 = off, 2-4 = rapid re-triggers
+    int p_retriggerCount;     // 0 = off, 1-15 = rapid re-triggers (up to 16 total bursts)
     float p_retriggerSpread;  // Timing spread between triggers in seconds
     bool p_retriggerOverlap;  // true = overlapping bursts (clap), false = envelope restart
     float p_retriggerBurstDecay; // Per-burst decay time (0 = default 0.02s)
