@@ -130,6 +130,9 @@ typedef struct {
     float p_fmModRatio;
     float p_fmModIndex;
     float p_fmFeedback;
+    float p_fmMod2Ratio;      // 3rd operator ratio (0=off)
+    float p_fmMod2Index;      // 3rd operator depth
+    int p_fmAlgorithm;        // FMAlgorithm (0=stack, 1=parallel, 2=branch, 3=pair)
 
     // Phase Distortion
     int p_pdWaveType;
@@ -306,6 +309,9 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_fmModRatio = 2.0f,
         .p_fmModIndex = 1.0f,
         .p_fmFeedback = 0.0f,
+        .p_fmMod2Ratio = 0.0f,
+        .p_fmMod2Index = 0.0f,
+        .p_fmAlgorithm = 0,
         .p_pdWaveType = PD_WAVE_SAW,
         .p_pdDistortion = 0.5f,
         .p_membranePreset = MEMBRANE_TABLA,

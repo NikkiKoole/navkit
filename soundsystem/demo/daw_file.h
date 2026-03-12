@@ -89,6 +89,8 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _dw(f, "granularSpread", p->p_granularSpread); _db(f, "granularFreeze", p->p_granularFreeze);
     _dw(f, "fmModRatio", p->p_fmModRatio); _dw(f, "fmModIndex", p->p_fmModIndex);
     _dw(f, "fmFeedback", p->p_fmFeedback);
+    _dw(f, "fmMod2Ratio", p->p_fmMod2Ratio); _dw(f, "fmMod2Index", p->p_fmMod2Index);
+    _di(f, "fmAlgorithm", p->p_fmAlgorithm);
     _di(f, "pdWaveType", p->p_pdWaveType); _dw(f, "pdDistortion", p->p_pdDistortion);
     _di(f, "membranePreset", p->p_membranePreset); _dw(f, "membraneDamping", p->p_membraneDamping);
     _dw(f, "membraneStrike", p->p_membraneStrike); _dw(f, "membraneBend", p->p_membraneBend);
@@ -475,6 +477,9 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"fmModRatio")==0) p->p_fmModRatio = _dpf(val);
     else if (strcmp(key,"fmModIndex")==0) p->p_fmModIndex = _dpf(val);
     else if (strcmp(key,"fmFeedback")==0) p->p_fmFeedback = _dpf(val);
+    else if (strcmp(key,"fmMod2Ratio")==0) p->p_fmMod2Ratio = _dpf(val);
+    else if (strcmp(key,"fmMod2Index")==0) p->p_fmMod2Index = _dpf(val);
+    else if (strcmp(key,"fmAlgorithm")==0) p->p_fmAlgorithm = _dpi(val);
     else if (strcmp(key,"pdWaveType")==0) p->p_pdWaveType = _dpi(val);
     else if (strcmp(key,"pdDistortion")==0) p->p_pdDistortion = _dpf(val);
     else if (strcmp(key,"membranePreset")==0) p->p_membranePreset = _dpi(val);

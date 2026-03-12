@@ -221,13 +221,26 @@ typedef struct {
     bool freeze;              // When true, position doesn't follow note pitch
 } GranularSettings;
 
-// FM synthesis settings (2-operator)
+// FM algorithm routing
+typedef enum {
+    FM_ALG_STACK,     // mod2 → mod1 → carrier (series, deep metallic)
+    FM_ALG_PARALLEL,  // (mod1 + mod2) → carrier (both modulate carrier independently)
+    FM_ALG_BRANCH,    // mod2 → mod1 → carrier, mod2 also → carrier (Y-split)
+    FM_ALG_PAIR,      // mod1 → carrier, mod2 mixed as additive sine
+    FM_ALG_COUNT
+} FMAlgorithm;
+
+// FM synthesis settings (2 or 3 operator)
 typedef struct {
-    float modRatio;      // Modulator frequency ratio (0.5-16)
-    float modIndex;      // Modulation index/depth (0-10)
+    float modRatio;      // Modulator 1 frequency ratio (0.5-16)
+    float modIndex;      // Modulator 1 depth (0-10)
     float feedback;      // Self-modulation amount (0-1)
-    float modPhase;      // Modulator phase accumulator
+    float modPhase;      // Modulator 1 phase accumulator
     float fbSample;      // Previous sample for feedback loop
+    float mod2Ratio;     // Modulator 2 frequency ratio (0=off, 0.5-16)
+    float mod2Index;     // Modulator 2 depth (0-10)
+    float mod2Phase;     // Modulator 2 phase accumulator
+    FMAlgorithm algorithm;
 } FMSettings;
 
 // Phase distortion synthesis settings (CZ-style)
@@ -684,6 +697,9 @@ typedef struct SynthContext {
     float fmModRatio;
     float fmModIndex;
     float fmFeedback;
+    float fmMod2Ratio;
+    float fmMod2Index;
+    int fmAlgorithm;
     
     // PD tweakables
     int pdWaveType;
@@ -983,6 +999,9 @@ static void _ensureSynthCtx(void) {
 #define fmModRatio (synthCtx->fmModRatio)
 #define fmModIndex (synthCtx->fmModIndex)
 #define fmFeedback (synthCtx->fmFeedback)
+#define fmMod2Ratio (synthCtx->fmMod2Ratio)
+#define fmMod2Index (synthCtx->fmMod2Index)
+#define fmAlgorithm (synthCtx->fmAlgorithm)
 #define pdWaveType (synthCtx->pdWaveType)
 #define pdDistortion (synthCtx->pdDistortion)
 #define membranePreset (synthCtx->membranePreset)
@@ -1965,28 +1984,65 @@ static float processGranularOscillator(Voice *v, float sampleRate) {
     return out * 0.7f;  // Overall level scaling
 }
 
-// FM synthesis oscillator (2-operator: modulator -> carrier)
+// FM synthesis oscillator (2 or 3 operator with algorithm routing)
 static float processFMOscillator(Voice *v, float sampleRate) {
     FMSettings *fm = &v->fmSettings;
     float dt = 1.0f / sampleRate;
-    
-    // Modulator frequency
+    bool has3op = fm->mod2Index > 0.001f && fm->mod2Ratio > 0.001f;
+
+    // Advance mod2 phase (all algorithms need this when 3-op is active)
+    float mod2out = 0.0f;
+    if (has3op) {
+        float mod2Freq = v->frequency * fm->mod2Ratio;
+        fm->mod2Phase += mod2Freq * dt;
+        if (fm->mod2Phase >= 1.0f) fm->mod2Phase -= 1.0f;
+        mod2out = sinf(fm->mod2Phase * 2.0f * PI);
+    }
+
+    // Advance mod1 phase
     float modFreq = v->frequency * fm->modRatio;
-    
-    // Advance modulator phase
     fm->modPhase += modFreq * dt;
     if (fm->modPhase >= 1.0f) fm->modPhase -= 1.0f;
-    
-    // Modulator with feedback (self-modulation)
+
+    // Feedback (shared across algorithms)
     float fbAmount = fm->feedback * fm->fbSample * PI;
-    float modulator = sinf((fm->modPhase * 2.0f * PI) + fbAmount);
-    fm->fbSample = modulator;
-    
-    // Carrier phase modulated by modulator
-    // modIndex controls how many radians the modulator shifts the carrier
-    float carrierPhase = v->phase + modulator * fm->modIndex;
-    float carrier = sinf(carrierPhase * 2.0f * PI);
-    
+
+    float carrier;
+    switch (fm->algorithm) {
+        case FM_ALG_PARALLEL: {
+            // (mod1 + mod2) → carrier independently
+            float mod1 = sinf((fm->modPhase * 2.0f * PI) + fbAmount);
+            fm->fbSample = mod1;
+            float carrierPhase = v->phase + mod1 * fm->modIndex + mod2out * fm->mod2Index;
+            carrier = sinf(carrierPhase * 2.0f * PI);
+        } break;
+
+        case FM_ALG_BRANCH: {
+            // mod2 → mod1 → carrier, AND mod2 → carrier (Y-split)
+            float mod1 = sinf((fm->modPhase * 2.0f * PI) + fbAmount + mod2out * fm->mod2Index);
+            fm->fbSample = mod1;
+            float carrierPhase = v->phase + mod1 * fm->modIndex + mod2out * fm->mod2Index * 0.5f;
+            carrier = sinf(carrierPhase * 2.0f * PI);
+        } break;
+
+        case FM_ALG_PAIR: {
+            // mod1 → carrier, mod2 mixed as additive sine
+            float mod1 = sinf((fm->modPhase * 2.0f * PI) + fbAmount);
+            fm->fbSample = mod1;
+            float carrierPhase = v->phase + mod1 * fm->modIndex;
+            carrier = sinf(carrierPhase * 2.0f * PI) + mod2out * fm->mod2Index * 0.3f;
+        } break;
+
+        default: // FM_ALG_STACK
+        {
+            // mod2 → mod1 → carrier (series chain)
+            float mod1 = sinf((fm->modPhase * 2.0f * PI) + fbAmount + mod2out * fm->mod2Index);
+            fm->fbSample = mod1;
+            float carrierPhase = v->phase + mod1 * fm->modIndex;
+            carrier = sinf(carrierPhase * 2.0f * PI);
+        } break;
+    }
+
     return carrier;
 }
 
@@ -3834,6 +3890,10 @@ static int playFM(float freq) {
     v->fmSettings.feedback = fmFeedback;
     v->fmSettings.modPhase = 0.0f;
     v->fmSettings.fbSample = 0.0f;
+    v->fmSettings.mod2Ratio = fmMod2Ratio;
+    v->fmSettings.mod2Index = fmMod2Index;
+    v->fmSettings.mod2Phase = 0.0f;
+    v->fmSettings.algorithm = (FMAlgorithm)fmAlgorithm;
     return voiceIdx;
 }
 

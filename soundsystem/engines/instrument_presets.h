@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 103
+#define NUM_INSTRUMENT_PRESETS 107
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -1657,6 +1657,74 @@ static void initInstrumentPresets(void) {
     instrumentPresets[102].patch.p_filterResonance = 0.15f;
     instrumentPresets[102].patch.p_volume = 0.15f;            // quiet — texture, not rhythm
     instrumentPresets[102].patch.p_phaseReset = true;
+
+    // === 3-Operator FM Showcase ===
+
+    // 103: FM Crystal — Stack algorithm, metallic shimmer
+    instrumentPresets[103].name = "FM Crystal";
+    instrumentPresets[103].patch.p_waveType = WAVE_FM;
+    instrumentPresets[103].patch.p_fmModRatio = 3.0f;
+    instrumentPresets[103].patch.p_fmModIndex = 1.5f;
+    instrumentPresets[103].patch.p_fmFeedback = 0.0f;
+    instrumentPresets[103].patch.p_fmMod2Ratio = 7.0f;
+    instrumentPresets[103].patch.p_fmMod2Index = 2.0f;
+    instrumentPresets[103].patch.p_fmAlgorithm = FM_ALG_STACK;
+    instrumentPresets[103].patch.p_attack = 0.001f;
+    instrumentPresets[103].patch.p_decay = 1.2f;
+    instrumentPresets[103].patch.p_sustain = 0.0f;
+    instrumentPresets[103].patch.p_release = 0.4f;
+    instrumentPresets[103].patch.p_expDecay = true;
+    instrumentPresets[103].patch.p_filterCutoff = 0.7f;
+    instrumentPresets[103].patch.p_volume = 0.4f;
+
+    // 104: FM Bright EP — Parallel algorithm, rich electric piano
+    instrumentPresets[104].name = "FM Bright EP";
+    instrumentPresets[104].patch.p_waveType = WAVE_FM;
+    instrumentPresets[104].patch.p_fmModRatio = 1.0f;
+    instrumentPresets[104].patch.p_fmModIndex = 1.8f;
+    instrumentPresets[104].patch.p_fmFeedback = 0.1f;
+    instrumentPresets[104].patch.p_fmMod2Ratio = 14.0f;
+    instrumentPresets[104].patch.p_fmMod2Index = 0.8f;
+    instrumentPresets[104].patch.p_fmAlgorithm = FM_ALG_PARALLEL;
+    instrumentPresets[104].patch.p_attack = 0.001f;
+    instrumentPresets[104].patch.p_decay = 0.8f;
+    instrumentPresets[104].patch.p_sustain = 0.15f;
+    instrumentPresets[104].patch.p_release = 0.3f;
+    instrumentPresets[104].patch.p_expDecay = true;
+    instrumentPresets[104].patch.p_tubeSaturation = 0.15f;
+    instrumentPresets[104].patch.p_volume = 0.4f;
+
+    // 105: FM Gong — Branch algorithm, inharmonic decay
+    instrumentPresets[105].name = "FM Gong";
+    instrumentPresets[105].patch.p_waveType = WAVE_FM;
+    instrumentPresets[105].patch.p_fmModRatio = 1.41f;
+    instrumentPresets[105].patch.p_fmModIndex = 3.0f;
+    instrumentPresets[105].patch.p_fmFeedback = 0.2f;
+    instrumentPresets[105].patch.p_fmMod2Ratio = 2.76f;
+    instrumentPresets[105].patch.p_fmMod2Index = 2.5f;
+    instrumentPresets[105].patch.p_fmAlgorithm = FM_ALG_BRANCH;
+    instrumentPresets[105].patch.p_attack = 0.002f;
+    instrumentPresets[105].patch.p_decay = 3.0f;
+    instrumentPresets[105].patch.p_sustain = 0.0f;
+    instrumentPresets[105].patch.p_release = 1.0f;
+    instrumentPresets[105].patch.p_expDecay = true;
+    instrumentPresets[105].patch.p_filterCutoff = 0.5f;
+    instrumentPresets[105].patch.p_volume = 0.35f;
+
+    // 106: FM Organ — Pair algorithm, mod2 adds body as additive sine
+    instrumentPresets[106].name = "FM Organ";
+    instrumentPresets[106].patch.p_waveType = WAVE_FM;
+    instrumentPresets[106].patch.p_fmModRatio = 1.0f;
+    instrumentPresets[106].patch.p_fmModIndex = 0.8f;
+    instrumentPresets[106].patch.p_fmFeedback = 0.3f;
+    instrumentPresets[106].patch.p_fmMod2Ratio = 0.5f;
+    instrumentPresets[106].patch.p_fmMod2Index = 3.0f;
+    instrumentPresets[106].patch.p_fmAlgorithm = FM_ALG_PAIR;
+    instrumentPresets[106].patch.p_attack = 0.005f;
+    instrumentPresets[106].patch.p_decay = 0.1f;
+    instrumentPresets[106].patch.p_sustain = 0.8f;
+    instrumentPresets[106].patch.p_release = 0.1f;
+    instrumentPresets[106].patch.p_volume = 0.4f;
 }
 
 #endif // INSTRUMENT_PRESETS_H

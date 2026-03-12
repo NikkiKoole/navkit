@@ -92,6 +92,7 @@ static const char* waveNames[] = {"Square", "Saw", "Triangle", "Noise", "SCW",
 static const char* vowelNames[] = {"A", "E", "I", "O", "U"};
 static const char* additivePresetNames[] = {"Organ", "Bell", "Choir", "Brass", "Strings"};
 static const char* malletPresetNames[] = {"Marimba", "Vibes", "Xylo", "Glock", "Tubular"};
+static const char* fmAlgNames[] = {"Stack", "Parallel", "Branch", "Pair"};
 static const char* pdWaveNames[] = {"Saw", "Square", "Pulse", "SyncSaw", "SyncSq"};
 static const char* membranePresetNames[] = {"Tabla", "Conga", "Bongo", "Djembe", "Tom"};
 static const char* birdTypeNames[] = {"Sparrow", "Robin", "Wren", "Finch", "Nightingale"};
@@ -1220,7 +1221,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                                         : patGetNoteProb(pat, track, step);
                     int cond = isDrum ? patGetDrumCond(pat, track, step)
                                       : patGetNoteCond(pat, track, step);
-                    if (vel < 0.99f) {
+                    {
                         int barH = 2;
                         int barW = (int)((cellW-3) * vel);
                         DrawRectangle(sx+1, ty+cellH-barH-1, barW, barH, (Color){255,200,50,180});
@@ -1254,13 +1255,29 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                 }
                 ui_consume_click();
             }
-            // Scroll wheel to adjust melody note pitch
-            if (hov && !isDrum && track >= SEQ_DRUM_TRACKS) {
-                int wheel = (int)GetMouseWheelMove();
-                if (wheel != 0 && patGetNote(dawPattern(), track, step) != SEQ_NOTE_OFF) {
-                    int n = patGetNote(dawPattern(), track, step) + wheel;
-                    if (n < 0) n = 0; if (n > 127) n = 127;
-                    patSetNote(dawPattern(), track, step, n, patGetNoteVel(dawPattern(), track, step), patGetNoteGate(dawPattern(), track, step));
+            // Scroll wheel: Shift+scroll = velocity, plain scroll = pitch (melody)
+            if (hov) {
+                float wh = GetMouseWheelMove();
+                if (wh != 0.0f && IsKeyDown(KEY_LEFT_SHIFT)) {
+                    // Shift+scroll = adjust velocity
+                    Pattern *pat = dawPattern();
+                    bool active = (isDrum && step < 32 && patGetDrum(pat, track, step)) ||
+                                  (!isDrum && track >= SEQ_DRUM_TRACKS && patGetNote(pat, track, step) != SEQ_NOTE_OFF);
+                    if (active) {
+                        float vel = isDrum ? patGetDrumVel(pat, track, step) : patGetNoteVel(pat, track, step);
+                        vel += wh * 0.05f;
+                        if (vel < 0.05f) vel = 0.05f; if (vel > 1.0f) vel = 1.0f;
+                        if (isDrum) patSetDrumVel(pat, track, step, vel);
+                        else patSetNoteVel(pat, track, step, vel);
+                    }
+                } else if (wh != 0.0f && !isDrum && track >= SEQ_DRUM_TRACKS) {
+                    // Plain scroll = pitch (melody only)
+                    int wheel = (int)wh;
+                    if (wheel != 0 && patGetNote(dawPattern(), track, step) != SEQ_NOTE_OFF) {
+                        int n = patGetNote(dawPattern(), track, step) + wheel;
+                        if (n < 0) n = 0; if (n > 127) n = 127;
+                        patSetNote(dawPattern(), track, step, n, patGetNoteVel(dawPattern(), track, step), patGetNoteGate(dawPattern(), track, step));
+                    }
                 }
             }
             if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
@@ -2599,6 +2616,9 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "Ratio", &p->p_fmModRatio, 0.5f, 0.5f, 16.0f);
             ui_col_float(&c, "Index", &p->p_fmModIndex, 0.1f, 0.0f, 10.0f);
             ui_col_float(&c, "Feedback", &p->p_fmFeedback, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Mod2 Rat", &p->p_fmMod2Ratio, 0.5f, 0.0f, 16.0f);
+            ui_col_float(&c, "Mod2 Idx", &p->p_fmMod2Index, 0.1f, 0.0f, 10.0f);
+            ui_col_cycle(&c, "Algorithm", fmAlgNames, FM_ALG_COUNT, &p->p_fmAlgorithm);
         } else if (p->p_waveType == WAVE_PD) {
             ui_col_sublabel(&c, "Phase Dist:", (Color){140,160,200,255});
             ui_col_cycle(&c, "Wave", pdWaveNames, 5, &p->p_pdWaveType);

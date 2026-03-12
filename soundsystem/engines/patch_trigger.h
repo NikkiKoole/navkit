@@ -99,6 +99,9 @@ static void applyPatchToGlobals(SynthPatch *p) {
     fmModRatio = p->p_fmModRatio;
     fmModIndex = p->p_fmModIndex;
     fmFeedback = p->p_fmFeedback;
+    fmMod2Ratio = p->p_fmMod2Ratio;
+    fmMod2Index = p->p_fmMod2Index;
+    fmAlgorithm = p->p_fmAlgorithm;
     pdWaveType = p->p_pdWaveType;
     pdDistortion = p->p_pdDistortion;
     membranePreset = p->p_membranePreset;

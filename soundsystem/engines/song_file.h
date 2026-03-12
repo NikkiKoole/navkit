@@ -375,6 +375,9 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "fmModRatio", p->p_fmModRatio);
     _sf_writeFloat(f, "fmModIndex", p->p_fmModIndex);
     _sf_writeFloat(f, "fmFeedback", p->p_fmFeedback);
+    _sf_writeFloat(f, "fmMod2Ratio", p->p_fmMod2Ratio);
+    _sf_writeFloat(f, "fmMod2Index", p->p_fmMod2Index);
+    _sf_writeInt(f, "fmAlgorithm", p->p_fmAlgorithm);
     _sf_writeInt(f, "pdWaveType", p->p_pdWaveType);
     _sf_writeFloat(f, "pdDistortion", p->p_pdDistortion);
     _sf_writeInt(f, "membranePreset", p->p_membranePreset);
@@ -863,6 +866,9 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "fmModRatio") == 0) p->p_fmModRatio = _sf_parseFloat(val);
     else if (strcmp(key, "fmModIndex") == 0) p->p_fmModIndex = _sf_parseFloat(val);
     else if (strcmp(key, "fmFeedback") == 0) p->p_fmFeedback = _sf_parseFloat(val);
+    else if (strcmp(key, "fmMod2Ratio") == 0) p->p_fmMod2Ratio = _sf_parseFloat(val);
+    else if (strcmp(key, "fmMod2Index") == 0) p->p_fmMod2Index = _sf_parseFloat(val);
+    else if (strcmp(key, "fmAlgorithm") == 0) p->p_fmAlgorithm = _sf_parseInt(val);
     else if (strcmp(key, "pdWaveType") == 0) p->p_pdWaveType = _sf_parseInt(val);
     else if (strcmp(key, "pdDistortion") == 0) p->p_pdDistortion = _sf_parseFloat(val);
     else if (strcmp(key, "membranePreset") == 0) p->p_membranePreset = _sf_parseInt(val);
