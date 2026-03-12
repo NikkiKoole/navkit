@@ -4473,8 +4473,9 @@ describe(v2_multi_note_steps) {
             seq.trackTick[i] = 0;
             seq.trackTriggered[i] = false;
             seq.trackTriggerTick[i] = 0;
-            seq.trackGateRemaining[i] = 0;
-            seq.trackCurrentNote[i] = SEQ_NOTE_OFF;
+            memset(seq.trackGateRemaining[i], 0, sizeof(seq.trackGateRemaining[i]));
+            for (int v = 0; v < SEQ_V2_MAX_POLY; v++) seq.trackCurrentNote[i][v] = SEQ_NOTE_OFF;
+            seq.trackActiveVoices[i] = 0;
             seq.trackSustainRemaining[i] = 0;
         }
 
@@ -4683,7 +4684,7 @@ describe(melody_sustain) {
         // With sustain, note should NOT have been released even though gate expired
         expect(melody_release_count == 0);
         // Note should still be tracked as playing
-        expect(seq.trackCurrentNote[SEQ_DRUM_TRACKS + 0] != SEQ_NOTE_OFF);
+        expect(seq.trackCurrentNote[SEQ_DRUM_TRACKS + 0][0] != SEQ_NOTE_OFF);
 
         seq.playing = false;
     }
@@ -4713,7 +4714,7 @@ describe(melody_sustain) {
         expect(melody_trigger_count == 1);
         // Without sustain, note should have been released
         expect(melody_release_count >= 1);
-        expect(seq.trackCurrentNote[SEQ_DRUM_TRACKS + 0] == SEQ_NOTE_OFF);
+        expect(seq.trackCurrentNote[SEQ_DRUM_TRACKS + 0][0] == SEQ_NOTE_OFF);
 
         seq.playing = false;
     }
@@ -4808,13 +4809,13 @@ describe(melody_sustain) {
         // Note is sustained (gate expired but sustain countdown still running)
         expect(melody_trigger_count == 1);
         expect(melody_release_count == 0);
-        expect(seq.trackCurrentNote[SEQ_DRUM_TRACKS + 0] != SEQ_NOTE_OFF);
+        expect(seq.trackCurrentNote[SEQ_DRUM_TRACKS + 0][0] != SEQ_NOTE_OFF);
 
         // Stop the sequencer — must release sustained note
         stopSequencer();
 
         expect(melody_release_count == 1);
-        expect(seq.trackCurrentNote[SEQ_DRUM_TRACKS + 0] == SEQ_NOTE_OFF);
+        expect(seq.trackCurrentNote[SEQ_DRUM_TRACKS + 0][0] == SEQ_NOTE_OFF);
         expect(seq.trackSustainRemaining[SEQ_DRUM_TRACKS + 0] == 0);
     }
 
@@ -4855,7 +4856,7 @@ describe(melody_sustain) {
         // Note triggered, gate expired, sustain holds
         expect(melody_trigger_count == 1);
         expect(melody_release_count == 0);
-        expect(seq.trackCurrentNote[SEQ_DRUM_TRACKS + 0] != SEQ_NOTE_OFF);
+        expect(seq.trackCurrentNote[SEQ_DRUM_TRACKS + 0][0] != SEQ_NOTE_OFF);
         expect(seq.trackSustainRemaining[SEQ_DRUM_TRACKS + 0] > 0);
 
         // Switch to pattern 1 (simulating song player callback at pattern boundary)
@@ -4910,7 +4911,7 @@ describe(melody_sustain) {
         // Sustain is still active (gate=1 step done, 3 of 4 sustain steps elapsed)
         expect(melody_trigger_count == 1);
         expect(melody_release_count == 0);
-        expect(seq.trackCurrentNote[SEQ_DRUM_TRACKS + 0] != SEQ_NOTE_OFF);
+        expect(seq.trackCurrentNote[SEQ_DRUM_TRACKS + 0][0] != SEQ_NOTE_OFF);
 
         // Run 3 more steps (sustain should expire around step 5)
         for (int i = 0; i < samplesFor3Steps; i++) {
@@ -4919,7 +4920,7 @@ describe(melody_sustain) {
 
         // Sustain has expired — note auto-released
         expect(melody_release_count == 1);
-        expect(seq.trackCurrentNote[SEQ_DRUM_TRACKS + 0] == SEQ_NOTE_OFF);
+        expect(seq.trackCurrentNote[SEQ_DRUM_TRACKS + 0][0] == SEQ_NOTE_OFF);
         expect(seq.trackSustainRemaining[SEQ_DRUM_TRACKS + 0] == 0);
 
         seq.playing = false;

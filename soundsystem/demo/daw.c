@@ -444,12 +444,13 @@ static int prScrollNote = 48;     // Bottom visible MIDI note (C3)
 typedef enum { PR_DRAG_NONE, PR_DRAG_MOVE, PR_DRAG_LEFT, PR_DRAG_RIGHT } PRDragMode;
 static PRDragMode prDragMode = PR_DRAG_NONE;
 static int prDragStep = -1;       // Original step of note being dragged
+static int prDragVoice = -1;      // Which voice index within the step
 static int prDragNote = -1;       // Original pitch of note being dragged
 static float prDragStartX = 0;    // Mouse X at drag start
 static float prDragStartY = 0;    // Mouse Y at drag start
 static int prDragOrigGate = 0;    // Gate at drag start
-static float prDragOrigNudge = 0; // Nudge at drag start
-static float prDragOrigGateNudge = 0; // Gate nudge at drag start
+static int8_t prDragOrigNudge = 0;     // Nudge at drag start (from StepNote)
+static int8_t prDragOrigGateNudge = 0; // Gate nudge at drag start (from StepNote)
 
 // ============================================================================
 // P-LOCK BADGE
@@ -1780,60 +1781,58 @@ static void drawWorkPiano(float x, float y, float w, float h) {
         DrawLine((int)lx, (int)gridY, (int)lx, (int)(gridY + gridH), lineCol);
     }
 
-    // --- Draw notes ---
+    // --- Draw notes (all voices per step) ---
     for (int s = 0; s < steps; s++) {
-        int noteVal = patGetNote(pat, mt, s);
-        if (noteVal == SEQ_NOTE_OFF) continue;
+        StepV2 *sv = &pat->steps[mt][s];
+        if (sv->noteCount == 0) continue;
 
-        // Check if note is in visible range
-        int pitchIdx = noteVal - prScrollNote;
-        if (pitchIdx < 0 || pitchIdx >= visNotes) continue;
+        for (int v = 0; v < sv->noteCount; v++) {
+            StepNote *sn = &sv->notes[v];
+            if (sn->note == SEQ_NOTE_OFF) continue;
 
-        float vel = patGetNoteVel(pat, mt, s);
-        int gate = patGetNoteGate(pat, mt, s);
-        if (gate <= 0) gate = 1; // legato shows as 1 step minimum visually
+            // Check if note is in visible range
+            int pitchIdx = sn->note - prScrollNote;
+            if (pitchIdx < 0 || pitchIdx >= visNotes) continue;
 
-        // Nudge offset (sub-step positioning)
-        float nudge = seqGetPLock(pat, mt, s, PLOCK_TIME_NUDGE, 0.0f);
-        float nudgeFrac = nudge / 24.0f; // ticksPerStep = 24
+            float vel = velU8ToFloat(sn->velocity);
+            int gate = sn->gate;
+            if (gate <= 0) gate = 1;
 
-        // Gate nudge (sub-step note-end offset)
-        float gateNudge = seqGetPLock(pat, mt, s, PLOCK_GATE_NUDGE, 0.0f);
-        float gateNudgeFrac = gateNudge / 24.0f;
+            // Nudge offset (sub-step positioning) — from StepNote directly
+            float nudgeFrac = sn->nudge / 24.0f;
 
-        float noteX = gridX + (s + nudgeFrac) * stepW;
-        float noteY = gridY + gridH - (pitchIdx + 1) * noteH;
-        float noteW = (gate + gateNudgeFrac) * stepW - 1;
-        if (noteW < 3) noteW = 3;
+            // Gate nudge (sub-step note-end offset)
+            float gateNudgeFrac = sn->gateNudge / 24.0f;
 
-        // Color: track hue, brightness from velocity
-        float bright = 0.4f + vel * 0.6f;
-        Color col = {
-            (unsigned char)(trackCol.r * bright),
-            (unsigned char)(trackCol.g * bright),
-            (unsigned char)(trackCol.b * bright),
-            220
-        };
+            float noteX = gridX + (s + nudgeFrac) * stepW;
+            float noteY = gridY + gridH - (pitchIdx + 1) * noteH;
+            float noteW = (gate + gateNudgeFrac) * stepW - 1;
+            if (noteW < 3) noteW = 3;
 
-        // Slide indicator (darker bottom border)
-        bool slide = patGetNoteSlide(pat, mt, s);
+            // Color: track hue, brightness from velocity
+            float bright = 0.4f + vel * 0.6f;
+            Color col = {
+                (unsigned char)(trackCol.r * bright),
+                (unsigned char)(trackCol.g * bright),
+                (unsigned char)(trackCol.b * bright),
+                220
+            };
 
-        DrawRectangle((int)noteX, (int)noteY, (int)noteW, (int)noteH - 1, col);
-        DrawRectangleLinesEx((Rectangle){noteX, noteY, noteW, noteH - 1}, 1,
-                            (Color){col.r/2, col.g/2, col.b/2, 255});
+            DrawRectangle((int)noteX, (int)noteY, (int)noteW, (int)noteH - 1, col);
+            DrawRectangleLinesEx((Rectangle){noteX, noteY, noteW, noteH - 1}, 1,
+                                (Color){col.r/2, col.g/2, col.b/2, 255});
 
-        if (slide) {
-            DrawRectangle((int)noteX, (int)(noteY + noteH - 3), (int)noteW, 2, ORANGE);
-        }
+            if (sn->slide) {
+                DrawRectangle((int)noteX, (int)(noteY + noteH - 3), (int)noteW, 2, ORANGE);
+            }
 
-        // Accent marker
-        if (patGetNoteAccent(pat, mt, s)) {
-            DrawTextShadow(">", (int)noteX + 1, (int)noteY, 8, WHITE);
-        }
+            if (sn->accent) {
+                DrawTextShadow(">", (int)noteX + 1, (int)noteY, 8, WHITE);
+            }
 
-        // Nudge indicator (small tick mark if nudged)
-        if (nudge != 0.0f) {
-            DrawCircle((int)(noteX + noteW/2), (int)(noteY + noteH - 2), 1.5f, (Color){255,200,80,200});
+            if (sn->nudge != 0) {
+                DrawCircle((int)(noteX + noteW/2), (int)(noteY + noteH - 2), 1.5f, (Color){255,200,80,200});
+            }
         }
     }
 
@@ -1849,69 +1848,72 @@ static void drawWorkPiano(float x, float y, float w, float h) {
     // --- Mouse interaction ---
     // Hit-test: find which note (if any) the mouse is over, and which zone (left/middle/right)
     int hitStep = -1;
+    int hitVoice = -1;
     int hitZone = 0; // 0=none, 1=left edge, 2=middle, 3=right edge
     float edgeW = stepW * 0.2f; // edge grab zone width
     if (edgeW < 4) edgeW = 4;
     if (edgeW > 12) edgeW = 12;
 
     if (CheckCollisionPointRec(mouse, gridRect)) {
-        for (int s = 0; s < steps; s++) {
-            int noteVal = patGetNote(pat, mt, s);
-            if (noteVal == SEQ_NOTE_OFF) continue;
-            int pitchIdx = noteVal - prScrollNote;
-            if (pitchIdx < 0 || pitchIdx >= visNotes) continue;
+        for (int s = 0; s < steps && hitStep < 0; s++) {
+            StepV2 *sv = &pat->steps[mt][s];
+            for (int v = 0; v < sv->noteCount; v++) {
+                StepNote *sn = &sv->notes[v];
+                if (sn->note == SEQ_NOTE_OFF) continue;
+                int pitchIdx = sn->note - prScrollNote;
+                if (pitchIdx < 0 || pitchIdx >= visNotes) continue;
 
-            int gate = patGetNoteGate(pat, mt, s);
-            if (gate <= 0) gate = 1;
-            float nudge = seqGetPLock(pat, mt, s, PLOCK_TIME_NUDGE, 0.0f);
-            float nudgeFrac = nudge / 24.0f;
-            float gateNdg = seqGetPLock(pat, mt, s, PLOCK_GATE_NUDGE, 0.0f);
-            float gateNdgFrac = gateNdg / 24.0f;
+                int gate = sn->gate;
+                if (gate <= 0) gate = 1;
+                float nudgeFrac = sn->nudge / 24.0f;
+                float gateNdgFrac = sn->gateNudge / 24.0f;
 
-            float nX = gridX + (s + nudgeFrac) * stepW;
-            float nY = gridY + gridH - (pitchIdx + 1) * noteH;
-            float nW = (gate + gateNdgFrac) * stepW - 1;
-            if (nW < 3) nW = 3;
+                float nX = gridX + (s + nudgeFrac) * stepW;
+                float nY = gridY + gridH - (pitchIdx + 1) * noteH;
+                float nW = (gate + gateNdgFrac) * stepW - 1;
+                if (nW < 3) nW = 3;
 
-            // Hit rect extends edgeW outside the note on both sides for easier edge grabs
-            float margin = edgeW * 0.6f;
-            Rectangle noteR = {nX - margin, nY, nW + margin * 2, noteH};
-            if (CheckCollisionPointRec(mouse, noteR)) {
-                hitStep = s;
-                float relToLeft = mouse.x - nX;    // negative = left of note
-                float relToRight = mouse.x - (nX + nW); // positive = right of note
-                // For short notes (< 3x edge width), skip edge zones — just move
-                if (nW < edgeW * 3.0f) {
-                    // But still allow edge grabs in the margin outside the note
-                    if (relToLeft < 0) hitZone = 1;
-                    else if (relToRight > 0) hitZone = 3;
-                    else hitZone = 2;
-                } else {
-                    if (relToLeft < edgeW) hitZone = 1;          // left edge (incl. margin)
-                    else if (relToRight > -edgeW) hitZone = 3;   // right edge (incl. margin)
-                    else hitZone = 2;                              // middle
+                float margin = edgeW * 0.6f;
+                Rectangle noteR = {nX - margin, nY, nW + margin * 2, noteH};
+                if (CheckCollisionPointRec(mouse, noteR)) {
+                    hitStep = s;
+                    hitVoice = v;
+                    float relToLeft = mouse.x - nX;
+                    float relToRight = mouse.x - (nX + nW);
+                    if (nW < edgeW * 3.0f) {
+                        if (relToLeft < 0) hitZone = 1;
+                        else if (relToRight > 0) hitZone = 3;
+                        else hitZone = 2;
+                    } else {
+                        if (relToLeft < edgeW) hitZone = 1;
+                        else if (relToRight > -edgeW) hitZone = 3;
+                        else hitZone = 2;
+                    }
+                    break;
                 }
-                break;
             }
         }
     }
 
     // Cursor hint based on zone
-    if (prDragMode == PR_DRAG_NONE && hitStep >= 0) {
+    if (prDragMode == PR_DRAG_NONE && hitStep >= 0 && hitVoice >= 0) {
+        StepNote *hitSn = &pat->steps[mt][hitStep].notes[hitVoice];
         if (hitZone == 1 || hitZone == 3) {
             SetMouseCursor(MOUSE_CURSOR_RESIZE_EW);
             DrawTextShadow("<->", (int)mouse.x + 12, (int)mouse.y - 14, 9, (Color){255,200,100,255});
         } else {
             SetMouseCursor(MOUSE_CURSOR_RESIZE_ALL);
-            int nn = patGetNote(pat, mt, hitStep);
+            int nn = hitSn->note;
             int ni = nn % 12; int no = nn / 12 - 1;
-            float nudge = seqGetPLock(pat, mt, hitStep, PLOCK_TIME_NUDGE, 0.0f);
-            int gate = patGetNoteGate(pat, mt, hitStep);
-            if (nudge != 0.0f)
-                DrawTextShadow(TextFormat("%s%d s%d g%d n%.0f", noteNames[ni], no, hitStep+1, gate, nudge),
+            int gate = hitSn->gate;
+            int voices = pat->steps[mt][hitStep].noteCount;
+            if (hitSn->nudge != 0)
+                DrawTextShadow(TextFormat("%s%d s%d g%d n%d%s", noteNames[ni], no, hitStep+1, gate, hitSn->nudge,
+                               voices > 1 ? TextFormat(" [%d/%d]", hitVoice+1, voices) : ""),
                                (int)mouse.x + 12, (int)mouse.y - 14, 9, (Color){180,180,190,255});
             else
-                DrawTextShadow(TextFormat("%s%d step %d gate %d", noteNames[ni], no, hitStep+1, gate),
+                DrawTextShadow(TextFormat("%s%d step %d gate %d%s", noteNames[ni], no, hitStep+1, gate,
+                               voices > 1 ? TextFormat(" [%d/%d]", hitVoice+1, voices) : ""),
                                (int)mouse.x + 12, (int)mouse.y - 14, 9, (Color){180,180,190,255});
         }
     } else if (prDragMode == PR_DRAG_NONE && CheckCollisionPointRec(mouse, gridRect)) {
@@ -1944,143 +1946,181 @@ static void drawWorkPiano(float x, float y, float w, float h) {
     if (prDragMode != PR_DRAG_NONE && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
         float dx = mouse.x - prDragStartX;
         float dy = mouse.y - prDragStartY;
+        StepV2 *dragSv = &pat->steps[mt][prDragStep];
+        // Safety: voice may have been removed externally
+        if (prDragVoice >= 0 && prDragVoice < dragSv->noteCount) {
+            StepNote *dragSn = &dragSv->notes[prDragVoice];
 
-        if (prDragMode == PR_DRAG_RIGHT) {
-            // Resize right edge: continuous gate with sub-step precision
-            // Total gate length in ticks = origGate*24 + origGateNudge + dx_in_ticks
-            float totalTicks = prDragOrigGate * 24.0f + prDragOrigGateNudge + (dx / stepW) * 24.0f;
-            if (totalTicks < 1.0f) totalTicks = 1.0f; // minimum 1 tick
-            int maxSteps = steps;
-            if (totalTicks > maxSteps * 24.0f) totalTicks = maxSteps * 24.0f;
-            // Split into whole steps + remainder ticks
-            int newGate = (int)(totalTicks / 24.0f);
-            float newGateNudge = totalTicks - newGate * 24.0f;
-            // Keep gate >= 1, put sub-step remainder in nudge (range -23 to +23)
-            if (newGate < 1) { newGateNudge = totalTicks - 24.0f; newGate = 1; }
-            if (newGateNudge < -23) newGateNudge = -23;
-            if (newGateNudge > 23) newGateNudge = 23;
-            patSetNoteGate(pat, mt, prDragStep, newGate);
-            seqSetPLock(pat, mt, prDragStep, PLOCK_GATE_NUDGE, newGateNudge);
-        }
-        else if (prDragMode == PR_DRAG_LEFT) {
-            // Resize left edge: change nudge (sub-step) and potentially step
-            float totalOffset = prDragOrigNudge + (dx / stepW) * 24.0f;
-            // Split into step shift + remaining nudge
-            int stepShift = 0;
-            while (totalOffset > 12.0f) { totalOffset -= 24.0f; stepShift++; }
-            while (totalOffset < -12.0f) { totalOffset += 24.0f; stepShift--; }
-            int newStep = prDragStep + stepShift;
-            if (newStep >= 0 && newStep < steps && newStep != prDragStep) {
-                // Move note to new step
-                if (patGetNote(pat, mt, newStep) == SEQ_NOTE_OFF) {
-                    patSetNote(pat, mt, newStep, patGetNote(pat, mt, prDragStep), patGetNoteVel(pat, mt, prDragStep), patGetNoteGate(pat, mt, prDragStep));
-                    patSetNoteFlags(pat, mt, newStep, patGetNoteSlide(pat, mt, prDragStep), patGetNoteAccent(pat, mt, prDragStep));
-                    // Copy p-locks to new step
-                    float oldGateNdg = seqGetPLock(pat, mt, prDragStep, PLOCK_GATE_NUDGE, 0.0f);
-                    if (oldGateNdg != 0.0f) seqSetPLock(pat, mt, newStep, PLOCK_GATE_NUDGE, oldGateNdg);
-                    // Clear old step
-                    patClearNote(pat, mt, prDragStep);
-                    seqClearPLock(pat, mt, prDragStep, PLOCK_TIME_NUDGE);
-                    seqClearPLock(pat, mt, prDragStep, PLOCK_GATE_NUDGE);
-                    // Adjust gate: moved left = longer, moved right = shorter
-                    int gateAdj = patGetNoteGate(pat, mt, newStep) - stepShift;
-                    if (gateAdj < 1) gateAdj = 1;
-                    patSetNoteGate(pat, mt, newStep, gateAdj);
-                    prDragStep = newStep;
-                    prDragStartX = mouse.x;
-                    prDragOrigNudge = totalOffset;
-                }
+            if (prDragMode == PR_DRAG_RIGHT) {
+                // Resize right edge: continuous gate with sub-step precision
+                float totalTicks = prDragOrigGate * 24.0f + prDragOrigGateNudge + (dx / stepW) * 24.0f;
+                if (totalTicks < 1.0f) totalTicks = 1.0f;
+                int maxTicks = steps * 24;
+                if (totalTicks > maxTicks) totalTicks = (float)maxTicks;
+                int newGate = (int)(totalTicks / 24.0f);
+                float newGateNudge = totalTicks - newGate * 24.0f;
+                if (newGate < 1) { newGateNudge = totalTicks - 24.0f; newGate = 1; }
+                if (newGateNudge < -23) newGateNudge = -23;
+                if (newGateNudge > 23) newGateNudge = 23;
+                dragSn->gate = (int8_t)newGate;
+                dragSn->gateNudge = (int8_t)newGateNudge;
             }
-            // Set nudge on current step
-            if (totalOffset < -12) totalOffset = -12;
-            if (totalOffset > 12) totalOffset = 12;
-            seqSetPLock(pat, mt, prDragStep, PLOCK_TIME_NUDGE, totalOffset);
-        }
-        else if (prDragMode == PR_DRAG_MOVE) {
-            // Move note: horizontal = step + nudge, vertical = pitch
-            float totalOffset = prDragOrigNudge + (dx / stepW) * 24.0f;
-            int stepShift = 0;
-            while (totalOffset > 12.0f) { totalOffset -= 24.0f; stepShift++; }
-            while (totalOffset < -12.0f) { totalOffset += 24.0f; stepShift--; }
-            int newStep = prDragStep + stepShift;
+            else if (prDragMode == PR_DRAG_LEFT) {
+                // Resize left edge: move start while keeping end fixed.
+                // End position (in ticks from pattern start) is constant:
+                int origStartStep = prDragStep; // step at drag-start (updated as we move)
+                // We track the original end from the very first drag-start values captured on click.
+                // origEnd = origStep*24 + origNudge + origGate*24 + origGateNudge
+                // But since prDragStep/prDragOrigNudge update as we drag, recompute end from current state:
+                int endTicks = prDragStep * 24 + dragSn->nudge + dragSn->gate * 24 + dragSn->gateNudge;
 
-            // Pitch change
-            int pitchShift = -(int)(dy / noteH);
-            int newPitch = prDragNote + pitchShift;
-            if (newPitch < 0) newPitch = 0;
-            if (newPitch > 127) newPitch = 127;
+                // New start position from mouse drag
+                float newStartF = prDragStep * 24.0f + prDragOrigNudge + (dx / stepW) * 24.0f;
+                // Clamp: start can't go past end - 1 tick
+                if (newStartF > endTicks - 1.0f) newStartF = (float)(endTicks - 1);
+                if (newStartF < 0.0f) newStartF = 0.0f;
 
-            if (newStep >= 0 && newStep < steps) {
-                if (newStep != prDragStep) {
-                    // Move to new step if empty
-                    if (patGetNote(pat, mt, newStep) == SEQ_NOTE_OFF) {
-                        patSetNote(pat, mt, newStep, newPitch, patGetNoteVel(pat, mt, prDragStep), patGetNoteGate(pat, mt, prDragStep));
-                        patSetNoteFlags(pat, mt, newStep, patGetNoteSlide(pat, mt, prDragStep), patGetNoteAccent(pat, mt, prDragStep));
-                        // Copy p-locks to new step
-                        float oldGateNdg2 = seqGetPLock(pat, mt, prDragStep, PLOCK_GATE_NUDGE, 0.0f);
-                        if (oldGateNdg2 != 0.0f) seqSetPLock(pat, mt, newStep, PLOCK_GATE_NUDGE, oldGateNdg2);
-                        // Clear old
-                        patClearNote(pat, mt, prDragStep);
-                        seqClearPLock(pat, mt, prDragStep, PLOCK_TIME_NUDGE);
-                        seqClearPLock(pat, mt, prDragStep, PLOCK_GATE_NUDGE);
-                        prDragStep = newStep;
-                        prDragStartX = mouse.x;
-                        prDragStartY = mouse.y;
-                        prDragNote = newPitch;
-                        prDragOrigNudge = totalOffset;
+                // Split into step + sub-step nudge
+                int newStartStep = (int)(newStartF / 24.0f);
+                float newNudge = newStartF - newStartStep * 24.0f;
+                // Normalize nudge to -12..+12 range
+                if (newNudge > 12.0f) { newNudge -= 24.0f; newStartStep++; }
+                if (newStartStep < 0) { newStartStep = 0; newNudge = 0; }
+                if (newStartStep >= steps) { newStartStep = steps - 1; newNudge = 0; }
+                if (newNudge < -12) newNudge = -12;
+                if (newNudge > 12) newNudge = 12;
+
+                // Compute new gate from fixed end - new start
+                int newStartTicks = newStartStep * 24 + (int)newNudge;
+                int remainTicks = endTicks - newStartTicks;
+                if (remainTicks < 1) remainTicks = 1;
+                int newGate = remainTicks / 24;
+                int newGateNudge = remainTicks - newGate * 24;
+                if (newGate < 1) { newGate = 1; newGateNudge = remainTicks - 24; }
+                if (newGateNudge < -23) newGateNudge = -23;
+                if (newGateNudge > 23) newGateNudge = 23;
+
+                if (newStartStep != prDragStep) {
+                    // Move voice to new step
+                    StepV2 *destSv = &pat->steps[mt][newStartStep];
+                    if (destSv->noteCount < SEQ_V2_MAX_POLY) {
+                        StepNote noteCopy = *dragSn;
+                        noteCopy.gate = (int8_t)newGate;
+                        noteCopy.gateNudge = (int8_t)newGateNudge;
+                        noteCopy.nudge = (int8_t)newNudge;
+                        int newVoice = stepV2AddNote(destSv, noteCopy.note, noteCopy.velocity, noteCopy.gate);
+                        if (newVoice >= 0) {
+                            destSv->notes[newVoice].gateNudge = noteCopy.gateNudge;
+                            destSv->notes[newVoice].nudge = noteCopy.nudge;
+                            destSv->notes[newVoice].slide = noteCopy.slide;
+                            destSv->notes[newVoice].accent = noteCopy.accent;
+                            stepV2RemoveNote(dragSv, prDragVoice);
+                            prDragStep = newStartStep;
+                            prDragVoice = newVoice;
+                            prDragStartX = mouse.x;
+                            prDragOrigNudge = (int8_t)newNudge;
+                        }
                     }
                 } else {
-                    // Same step — just update pitch + nudge
-                    patSetNotePitch(pat, mt, prDragStep, newPitch);
+                    // Same step — just update nudge and gate
+                    dragSn->nudge = (int8_t)newNudge;
+                    dragSn->gate = (int8_t)newGate;
+                    dragSn->gateNudge = (int8_t)newGateNudge;
                 }
-                if (totalOffset < -12) totalOffset = -12;
-                if (totalOffset > 12) totalOffset = 12;
-                seqSetPLock(pat, mt, prDragStep, PLOCK_TIME_NUDGE, totalOffset);
+            }
+            else if (prDragMode == PR_DRAG_MOVE) {
+                // Move note: horizontal = step + nudge, vertical = pitch
+                float totalOffset = prDragOrigNudge + (dx / stepW) * 24.0f;
+                int stepShift = 0;
+                while (totalOffset > 12.0f) { totalOffset -= 24.0f; stepShift++; }
+                while (totalOffset < -12.0f) { totalOffset += 24.0f; stepShift--; }
+                int newStep = prDragStep + stepShift;
+
+                int pitchShift = -(int)(dy / noteH);
+                int newPitch = prDragNote + pitchShift;
+                if (newPitch < 0) newPitch = 0;
+                if (newPitch > 127) newPitch = 127;
+
+                if (newStep >= 0 && newStep < steps) {
+                    if (newStep != prDragStep) {
+                        // Move voice to new step
+                        StepV2 *destSv = &pat->steps[mt][newStep];
+                        if (destSv->noteCount < SEQ_V2_MAX_POLY) {
+                            StepNote noteCopy = *dragSn;
+                            noteCopy.note = (int8_t)newPitch;
+                            int newVoice = stepV2AddNote(destSv, noteCopy.note, noteCopy.velocity, noteCopy.gate);
+                            if (newVoice >= 0) {
+                                destSv->notes[newVoice].gateNudge = noteCopy.gateNudge;
+                                destSv->notes[newVoice].nudge = 0;
+                                destSv->notes[newVoice].slide = noteCopy.slide;
+                                destSv->notes[newVoice].accent = noteCopy.accent;
+                                stepV2RemoveNote(dragSv, prDragVoice);
+                                prDragStep = newStep;
+                                prDragVoice = newVoice;
+                                prDragStartX = mouse.x;
+                                prDragStartY = mouse.y;
+                                prDragNote = newPitch;
+                                prDragOrigNudge = (int8_t)totalOffset;
+                            }
+                        }
+                    } else {
+                        // Same step — just update pitch
+                        dragSn->note = (int8_t)newPitch;
+                    }
+                    if (totalOffset < -12) totalOffset = -12;
+                    if (totalOffset > 12) totalOffset = 12;
+                    StepNote *curSn = &pat->steps[mt][prDragStep].notes[prDragVoice];
+                    curSn->nudge = (int8_t)totalOffset;
+                }
             }
         }
     } else if (prDragMode != PR_DRAG_NONE) {
         // Drag ended
         prDragMode = PR_DRAG_NONE;
         prDragStep = -1;
+        prDragVoice = -1;
     }
 
     // --- Click to start drag or place/delete notes ---
     if (CheckCollisionPointRec(mouse, gridRect) && prDragMode == PR_DRAG_NONE) {
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            if (hitStep >= 0) {
+            if (hitStep >= 0 && hitVoice >= 0) {
                 // Clicked on existing note — start drag based on zone
+                StepNote *clickSn = &pat->steps[mt][hitStep].notes[hitVoice];
                 prDragStep = hitStep;
-                prDragNote = patGetNote(pat, mt, hitStep);
+                prDragVoice = hitVoice;
+                prDragNote = clickSn->note;
                 prDragStartX = mouse.x;
                 prDragStartY = mouse.y;
-                prDragOrigGate = patGetNoteGate(pat, mt, hitStep);
+                prDragOrigGate = clickSn->gate;
                 if (prDragOrigGate <= 0) prDragOrigGate = 1;
-                prDragOrigNudge = seqGetPLock(pat, mt, hitStep, PLOCK_TIME_NUDGE, 0.0f);
-                prDragOrigGateNudge = seqGetPLock(pat, mt, hitStep, PLOCK_GATE_NUDGE, 0.0f);
+                prDragOrigNudge = clickSn->nudge;
+                prDragOrigGateNudge = clickSn->gateNudge;
 
                 if (hitZone == 1) prDragMode = PR_DRAG_LEFT;
                 else if (hitZone == 3) prDragMode = PR_DRAG_RIGHT;
                 else prDragMode = PR_DRAG_MOVE;
             } else {
-                // Clicked empty space — place new note
+                // Clicked empty space (or different pitch on existing step) — add note
                 float relX = mouse.x - gridX;
                 float relY = (gridY + gridH) - mouse.y;
                 int newStep = (int)(relX / stepW);
                 int newPitch = prScrollNote + (int)(relY / noteH);
                 if (newStep >= 0 && newStep < steps && newPitch >= 0 && newPitch <= 127) {
-                    if (patGetNote(pat, mt, newStep) == SEQ_NOTE_OFF) {
-                        patSetNote(pat, mt, newStep, newPitch, 0.8f, 1);
+                    StepV2 *sv = &pat->steps[mt][newStep];
+                    // Check this exact pitch doesn't already exist in the step
+                    if (stepV2FindNote(sv, newPitch) < 0 && sv->noteCount < SEQ_V2_MAX_POLY) {
+                        stepV2AddNote(sv, newPitch, velFloatToU8(0.8f), 1);
                     }
                 }
             }
             ui_consume_click();
         }
 
-        // Right click: delete note
+        // Right click: delete specific note under cursor
         if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-            if (hitStep >= 0) {
-                patClearNote(pat, mt, hitStep);
-                seqClearPLock(pat, mt, hitStep, PLOCK_TIME_NUDGE);
+            if (hitStep >= 0 && hitVoice >= 0) {
+                stepV2RemoveNote(&pat->steps[mt][hitStep], hitVoice);
             }
             ui_consume_click();
         }
@@ -3571,7 +3611,8 @@ static int dawPatchToBus(int patchIdx) {
 
 // Voice indices per track (for release on next trigger / choke)
 static int dawDrumVoice[SEQ_DRUM_TRACKS] = {-1, -1, -1, -1};
-static int dawMelodyVoice[SEQ_MELODY_TRACKS] = {-1, -1, -1};
+static int dawMelodyVoice[SEQ_MELODY_TRACKS][SEQ_V2_MAX_POLY];
+static int dawMelodyVoiceCount[SEQ_MELODY_TRACKS] = {0, 0, 0};
 // Per-track mono voice index — prevents mono patches on different tracks from stealing each other
 static int dawMonoVoiceIdx[SEQ_MELODY_TRACKS] = {-1, -1, -1};
 
@@ -3587,7 +3628,9 @@ static void dawReleaseVoicesForPatch(int patchIdx) {
     if (patchIdx < SEQ_DRUM_TRACKS) {
         dawDrumVoice[patchIdx] = -1;
     } else if (patchIdx - SEQ_DRUM_TRACKS < SEQ_MELODY_TRACKS) {
-        dawMelodyVoice[patchIdx - SEQ_DRUM_TRACKS] = -1;
+        int mt = patchIdx - SEQ_DRUM_TRACKS;
+        for (int vi = 0; vi < SEQ_V2_MAX_POLY; vi++) dawMelodyVoice[mt][vi] = -1;
+        dawMelodyVoiceCount[mt] = 0;
     }
 }
 
@@ -3674,37 +3717,30 @@ static void dawMelodyTriggerGeneric(int trackIdx, int note, float vel,
     float pFilterEnv = plockValue(PLOCK_FILTER_ENV, p->p_filterEnvAmt) + accentFilterBoost;
     float pDecay = plockValue(PLOCK_DECAY, p->p_decay);
 
-    // Slide: glide existing voice instead of retriggering (only if voice still belongs to us)
-    if (slide && dawMelodyVoice[trackIdx] >= 0 &&
-        voiceBus[dawMelodyVoice[trackIdx]] == dawPatchToBus(busTrack) &&
-        synthCtx->voices[dawMelodyVoice[trackIdx]].envStage > 0) {
-        Voice *v = &synthCtx->voices[dawMelodyVoice[trackIdx]];
-        v->targetFrequency = freq;
-        v->glideRate = 1.0f / 0.06f; // 303-style ~60ms glide
-        v->volume = pVol * p->p_volume;
-        v->filterCutoff = pCutoff;
-        v->filterResonance = pReso;
-        v->filterEnvAmt = pFilterEnv;
-        v->decay = pDecay;
+    // Slide: glide the most recent voice instead of retriggering
+    int vc = dawMelodyVoiceCount[trackIdx];
+    int lastVoice = (vc > 0) ? dawMelodyVoice[trackIdx][vc - 1] : -1;
+    if (slide && lastVoice >= 0 &&
+        voiceBus[lastVoice] == dawPatchToBus(busTrack) &&
+        synthCtx->voices[lastVoice].envStage > 0) {
+        Voice *sv = &synthCtx->voices[lastVoice];
+        sv->targetFrequency = freq;
+        sv->glideRate = 1.0f / 0.06f; // 303-style ~60ms glide
+        sv->volume = pVol * p->p_volume;
+        sv->filterCutoff = pCutoff;
+        sv->filterResonance = pReso;
+        sv->filterEnvAmt = pFilterEnv;
+        sv->decay = pDecay;
         if (accent || currentPLocks.locked[PLOCK_FILTER_ENV]) {
-            v->filterEnvLevel = 1.0f;
-            v->filterEnvStage = 2;
-            v->filterEnvPhase = 0.0f;
+            sv->filterEnvLevel = 1.0f;
+            sv->filterEnvStage = 2;
+            sv->filterEnvPhase = 0.0f;
         }
         return;
     }
 
     // New note — temporarily apply p-lock values to patch, trigger, restore
     seqSoundLog("DAW_MELODY  track=%d note=%s bus=%d vel=%.2f slide=%d accent=%d", trackIdx, seqNoteName(note), dawPatchToBus(busTrack), pVol, slide, accent);
-    // Kill previous voice on retrigger so voices don't pile up.
-    // releaseNote only sets stage=4 (release), keeping the voice alive —
-    // findVoice then grabs a different free slot and voices accumulate.
-    int melBus = dawPatchToBus(busTrack);
-    if (dawMelodyVoice[trackIdx] >= 0 && voiceBus[dawMelodyVoice[trackIdx]] == melBus) {
-        voiceLogPush("KILL mel[%d] v%d retrig bus=%d", trackIdx, dawMelodyVoice[trackIdx], melBus);
-        synthCtx->voices[dawMelodyVoice[trackIdx]].envStage = 0;
-        synthCtx->voices[dawMelodyVoice[trackIdx]].envLevel = 0.0f;
-    }
 
     float origCutoff = p->p_filterCutoff, origReso = p->p_filterResonance;
     float origFilterEnvAmt = p->p_filterEnvAmt, origDecay = p->p_decay;
@@ -3722,13 +3758,17 @@ static void dawMelodyTriggerGeneric(int trackIdx, int note, float vel,
         monoVoiceIdx = dawMonoVoiceIdx[trackIdx];
     }
 
-    int v = playNoteWithPatch(freq, p);
-    dawMelodyVoice[trackIdx] = v;
-    if (v >= 0) {
-        voiceBus[v] = dawPatchToBus(busTrack);
-        voiceAge[v] = 0.0f;
-        if (p->p_monoMode) dawMonoVoiceIdx[trackIdx] = v;
-        voiceLogPush("ALLOC mel[%d] v%d bus=%d freq=%.0f", trackIdx, v, dawPatchToBus(busTrack), freq);
+    int vi = playNoteWithPatch(freq, p);
+    if (vi >= 0) {
+        voiceBus[vi] = dawPatchToBus(busTrack);
+        voiceAge[vi] = 0.0f;
+        if (p->p_monoMode) dawMonoVoiceIdx[trackIdx] = vi;
+        voiceLogPush("ALLOC mel[%d] v%d bus=%d freq=%.0f", trackIdx, vi, dawPatchToBus(busTrack), freq);
+        // Track this voice for later release
+        if (vc < SEQ_V2_MAX_POLY) {
+            dawMelodyVoice[trackIdx][vc] = vi;
+            dawMelodyVoiceCount[trackIdx] = vc + 1;
+        }
     }
 
     // Restore mono voice idx so other tracks aren't affected
@@ -3747,11 +3787,14 @@ static void dawMelodyTrigger1(int note, float vel, float gt, bool sl, bool ac) {
 static void dawMelodyTrigger2(int note, float vel, float gt, bool sl, bool ac) { dawMelodyTriggerGeneric(2, note, vel, gt, sl, ac); }
 
 static void dawMelodyReleaseGeneric(int t) {
-    if (dawMelodyVoice[t] >= 0) {
-        voiceLogPush("REL mel[%d] v%d gate-end", t, dawMelodyVoice[t]);
-        releaseNote(dawMelodyVoice[t]);
-        dawMelodyVoice[t] = -1;
+    for (int i = 0; i < dawMelodyVoiceCount[t]; i++) {
+        if (dawMelodyVoice[t][i] >= 0) {
+            voiceLogPush("REL mel[%d] v%d gate-end", t, dawMelodyVoice[t][i]);
+            releaseNote(dawMelodyVoice[t][i]);
+            dawMelodyVoice[t][i] = -1;
+        }
     }
+    dawMelodyVoiceCount[t] = 0;
 }
 static void dawMelodyRelease0(void) { dawMelodyReleaseGeneric(0); }
 static void dawMelodyRelease1(void) { dawMelodyReleaseGeneric(1); }
@@ -3759,6 +3802,8 @@ static void dawMelodyRelease2(void) { dawMelodyReleaseGeneric(2); }
 
 // Initialize the sequencer engine with DAW callbacks
 static void dawInitSequencer(void) {
+    memset(dawMelodyVoice, -1, sizeof(dawMelodyVoice));
+    memset(dawMelodyVoiceCount, 0, sizeof(dawMelodyVoiceCount));
     initSequencer(dawDrumTrigger0, dawDrumTrigger1, dawDrumTrigger2, dawDrumTrigger3);
     setMelodyCallbacks(0, dawMelodyTrigger0, dawMelodyRelease0);
     setMelodyCallbacks(1, dawMelodyTrigger1, dawMelodyRelease1);
@@ -3831,8 +3876,9 @@ static void dawStopSequencer(void) {
         seq.trackStep[t] = 0;
         seq.trackTick[t] = 0;
         seq.trackTriggered[t] = false;
-        seq.trackGateRemaining[t] = 0;
-        seq.trackCurrentNote[t] = SEQ_NOTE_OFF;
+        memset(seq.trackGateRemaining[t], 0, sizeof(seq.trackGateRemaining[t]));
+        for (int v = 0; v < SEQ_V2_MAX_POLY; v++) seq.trackCurrentNote[t][v] = SEQ_NOTE_OFF;
+        seq.trackActiveVoices[t] = 0;
         seq.trackSustainRemaining[t] = 0;
     }
     // Release ALL active voices — not just tracked ones, since voice indices
@@ -3845,7 +3891,7 @@ static void dawStopSequencer(void) {
         }
     }
     for (int t = 0; t < SEQ_DRUM_TRACKS; t++) dawDrumVoice[t] = -1;
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) dawMelodyVoice[t] = -1;
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) { memset(dawMelodyVoice[t], -1, sizeof(dawMelodyVoice[t])); dawMelodyVoiceCount[t] = 0; }
     seq.tickTimer = 0.0f;
     // Reset chain playback to beginning
     seq.chainPos = 0;
@@ -3941,7 +3987,7 @@ static void drawDebugPanel(void) {
                 voiceBus[i] = -1;
             }
             for (int t = 0; t < SEQ_DRUM_TRACKS; t++) dawDrumVoice[t] = -1;
-            for (int t = 0; t < SEQ_MELODY_TRACKS; t++) dawMelodyVoice[t] = -1;
+            for (int t = 0; t < SEQ_MELODY_TRACKS; t++) { memset(dawMelodyVoice[t], -1, sizeof(dawMelodyVoice[t])); dawMelodyVoiceCount[t] = 0; }
             dawArpVoice = -1;
             voiceLogPush("KILL_ALL  all voices silenced");
             ui_consume_click();

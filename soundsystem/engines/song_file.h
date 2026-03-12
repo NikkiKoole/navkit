@@ -471,28 +471,37 @@ static void _sf_writePattern(FILE *f, int idx, const Pattern *p) {
         }
     }
 
-    // Melody events — only write steps with notes
+    // Melody events — write all voices per step
     for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
-        for (int s = 0; s < p->trackLength[SEQ_DRUM_TRACKS + t]; s++) {
-            int mn = patGetNote(p, SEQ_DRUM_TRACKS + t, s);
-            if (mn == SEQ_NOTE_OFF) continue;
-            char noteName[8];
-            _sf_midiToName(mn, noteName, sizeof(noteName));
-            fprintf(f, "m track=%d step=%d note=%s vel=%.3g gate=%d",
-                    t, s, noteName, (double)patGetNoteVel(p, SEQ_DRUM_TRACKS + t, s), patGetNoteGate(p, SEQ_DRUM_TRACKS + t, s));
-            if (patGetNoteSlide(p, SEQ_DRUM_TRACKS + t, s)) fprintf(f, " slide");
-            if (patGetNoteAccent(p, SEQ_DRUM_TRACKS + t, s)) fprintf(f, " accent");
-            int mSus = patGetNoteSustain(p, SEQ_DRUM_TRACKS + t, s);
-            if (mSus > 0) fprintf(f, " sustain=%d", mSus);
-            float mProb = patGetNoteProb(p, SEQ_DRUM_TRACKS + t, s);
-            if (mProb > 0.0f && mProb < 1.0f)
-                fprintf(f, " prob=%.3g", (double)mProb);
-            int mCond = patGetNoteCond(p, SEQ_DRUM_TRACKS + t, s);
-            if (mCond != COND_ALWAYS)
-                fprintf(f, " cond=%s", _sf_conditionNames[mCond]);
+        int absTrack = SEQ_DRUM_TRACKS + t;
+        for (int s = 0; s < p->trackLength[absTrack]; s++) {
+            StepV2 *sv = &p->steps[absTrack][s];
+            if (sv->noteCount == 0) continue;
 
-            // Note pool fields ignored on save (v2 uses multi-note steps)
-            fprintf(f, "\n");
+            for (int v = 0; v < sv->noteCount; v++) {
+                StepNote *sn = &sv->notes[v];
+                if (sn->note == SEQ_NOTE_OFF) continue;
+                char noteName[8];
+                _sf_midiToName(sn->note, noteName, sizeof(noteName));
+                fprintf(f, "m track=%d step=%d note=%s vel=%.3g gate=%d",
+                        t, s, noteName, (double)velU8ToFloat(sn->velocity), (int)sn->gate);
+                if (sn->slide) fprintf(f, " slide");
+                if (sn->accent) fprintf(f, " accent");
+                if (sn->nudge != 0) fprintf(f, " nudge=%d", (int)sn->nudge);
+                if (sn->gateNudge != 0) fprintf(f, " gateNudge=%d", (int)sn->gateNudge);
+                // Per-step fields: only write on first voice to avoid duplication
+                if (v == 0) {
+                    int mSus = (int)sv->sustain;
+                    if (mSus > 0) fprintf(f, " sustain=%d", mSus);
+                    float mProb = probU8ToFloat(sv->probability);
+                    if (mProb > 0.0f && mProb < 1.0f)
+                        fprintf(f, " prob=%.3g", (double)mProb);
+                    int mCond = (int)sv->condition;
+                    if (mCond != COND_ALWAYS)
+                        fprintf(f, " cond=%s", _sf_conditionNames[mCond]);
+                }
+                fprintf(f, "\n");
+            }
         }
     }
 
@@ -982,6 +991,7 @@ static void _sf_parseMelodyEvent(const char *line, Pattern *p) {
     int n = _sf_tokenize(lineCopy + 1, tokens, 32); // skip 'm'
 
     int track = 0, step = 0, gate = 4, sustain = 0;
+    int nudge = 0, gateNudge = 0;
     char noteName[16] = "C4";
     float vel = 0.8f, prob = 1.0f;
     int cond = COND_ALWAYS;
@@ -1000,6 +1010,8 @@ static void _sf_parseMelodyEvent(const char *line, Pattern *p) {
             else if (strcmp(key, "vel") == 0) vel = _sf_parseFloat(val);
             else if (strcmp(key, "gate") == 0) gate = _sf_parseInt(val);
             else if (strcmp(key, "sustain") == 0) sustain = _sf_parseInt(val);
+            else if (strcmp(key, "nudge") == 0) nudge = _sf_parseInt(val);
+            else if (strcmp(key, "gateNudge") == 0) gateNudge = _sf_parseInt(val);
             else if (strcmp(key, "prob") == 0) prob = _sf_parseFloat(val);
             else if (strcmp(key, "cond") == 0) {
                 int idx = _sf_lookupName(val, _sf_conditionNames, _sf_conditionCount);
@@ -1036,23 +1048,44 @@ static void _sf_parseMelodyEvent(const char *line, Pattern *p) {
     }
 
     if (track >= 0 && track < SEQ_MELODY_TRACKS && step >= 0 && step < SEQ_MAX_STEPS) {
+        int absTrack = SEQ_DRUM_TRACKS + track;
         if (hasChord && chordType == CHORD_CUSTOM && customNoteCount > 0) {
-            // Custom chord → v2 multi-note step
-            patSetChordCustom(p, SEQ_DRUM_TRACKS + track, step, vel, gate,
+            // Legacy custom chord → v2 multi-note step
+            patSetChordCustom(p, absTrack, step, vel, gate,
                 customNoteCount > 0 ? customNotes[0] : -1,
                 customNoteCount > 1 ? customNotes[1] : -1,
                 customNoteCount > 2 ? customNotes[2] : -1,
                 customNoteCount > 3 ? customNotes[3] : -1);
         } else if (hasChord) {
-            // Standard chord → v2 multi-note step via buildChordNotes
-            patSetChord(p, SEQ_DRUM_TRACKS + track, step, _sf_nameToMidi(noteName), (ChordType)chordType, vel, gate);
+            // Legacy standard chord → v2 multi-note step
+            patSetChord(p, absTrack, step, _sf_nameToMidi(noteName), (ChordType)chordType, vel, gate);
         } else {
-            patSetNote(p, SEQ_DRUM_TRACKS + track, step, _sf_nameToMidi(noteName), vel, gate);
+            // v2 polyphony: if step already has notes, add to it (chord from multiple m lines)
+            StepV2 *sv = &p->steps[absTrack][step];
+            if (sv->noteCount > 0) {
+                int vi = stepV2AddNote(sv, _sf_nameToMidi(noteName), velFloatToU8(vel), (int8_t)gate);
+                if (vi >= 0) {
+                    sv->notes[vi].slide = slide;
+                    sv->notes[vi].accent = accent;
+                    sv->notes[vi].nudge = (int8_t)nudge;
+                    sv->notes[vi].gateNudge = (int8_t)gateNudge;
+                }
+                // Per-step fields: prob/cond/sustain from first voice, don't overwrite
+                return;
+            }
+            patSetNote(p, absTrack, step, _sf_nameToMidi(noteName), vel, gate);
         }
-        patSetNoteFlags(p, SEQ_DRUM_TRACKS + track, step, slide, accent);
-        patSetNoteSustain(p, SEQ_DRUM_TRACKS + track, step, sustain);
-        patSetNoteProb(p, SEQ_DRUM_TRACKS + track, step, prob);
-        patSetNoteCond(p, SEQ_DRUM_TRACKS + track, step, cond);
+        // Set per-voice fields on notes[0] (or legacy chord's first note)
+        StepV2 *sv = &p->steps[absTrack][step];
+        if (sv->noteCount > 0) {
+            sv->notes[0].slide = slide;
+            sv->notes[0].accent = accent;
+            sv->notes[0].nudge = (int8_t)nudge;
+            sv->notes[0].gateNudge = (int8_t)gateNudge;
+        }
+        patSetNoteSustain(p, absTrack, step, sustain);
+        patSetNoteProb(p, absTrack, step, prob);
+        patSetNoteCond(p, absTrack, step, cond);
     }
 }
 

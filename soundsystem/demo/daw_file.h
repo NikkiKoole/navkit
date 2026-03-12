@@ -166,22 +166,31 @@ static void _dwWritePattern(FILE *f, int idx, const Pattern *p) {
     }
 
     for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
-        for (int s = 0; s < p->trackLength[SEQ_DRUM_TRACKS + t]; s++) {
-            int mn = patGetNote((Pattern*)p, SEQ_DRUM_TRACKS + t, s);
-            if (mn == SEQ_NOTE_OFF) continue;
-            char nn[8]; _dwMidiToName(mn, nn, sizeof(nn));
-            fprintf(f, "m track=%d step=%d note=%s vel=%.3g gate=%d",
-                    t, s, nn, (double)patGetNoteVel((Pattern*)p, SEQ_DRUM_TRACKS + t, s), patGetNoteGate((Pattern*)p, SEQ_DRUM_TRACKS + t, s));
-            if (patGetNoteSlide((Pattern*)p, SEQ_DRUM_TRACKS + t, s)) fprintf(f, " slide");
-            if (patGetNoteAccent((Pattern*)p, SEQ_DRUM_TRACKS + t, s)) fprintf(f, " accent");
-            int mSus = patGetNoteSustain((Pattern*)p, SEQ_DRUM_TRACKS + t, s);
-            if (mSus > 0) fprintf(f, " sustain=%d", mSus);
-            float mProb = patGetNoteProb((Pattern*)p, SEQ_DRUM_TRACKS + t, s);
-            if (mProb > 0.0f && mProb < 1.0f) fprintf(f, " prob=%.3g", (double)mProb);
-            int mCond = patGetNoteCond((Pattern*)p, SEQ_DRUM_TRACKS + t, s);
-            if (mCond != COND_ALWAYS) fprintf(f, " cond=%s", _dwCondNames[mCond]);
-            // NotePool fields no longer saved (v2 uses multi-note steps)
-            fprintf(f, "\n");
+        int absTrack = SEQ_DRUM_TRACKS + t;
+        for (int s = 0; s < p->trackLength[absTrack]; s++) {
+            const StepV2 *sv = &p->steps[absTrack][s];
+            if (sv->noteCount == 0) continue;
+
+            for (int v = 0; v < sv->noteCount; v++) {
+                const StepNote *sn = &sv->notes[v];
+                if (sn->note == SEQ_NOTE_OFF) continue;
+                char nn[8]; _dwMidiToName(sn->note, nn, sizeof(nn));
+                fprintf(f, "m track=%d step=%d note=%s vel=%.3g gate=%d",
+                        t, s, nn, (double)velU8ToFloat(sn->velocity), (int)sn->gate);
+                if (sn->slide) fprintf(f, " slide");
+                if (sn->accent) fprintf(f, " accent");
+                if (sn->nudge != 0) fprintf(f, " nudge=%d", (int)sn->nudge);
+                if (sn->gateNudge != 0) fprintf(f, " gateNudge=%d", (int)sn->gateNudge);
+                if (v == 0) {
+                    int mSus = (int)sv->sustain;
+                    if (mSus > 0) fprintf(f, " sustain=%d", mSus);
+                    float mProb = probU8ToFloat(sv->probability);
+                    if (mProb > 0.0f && mProb < 1.0f) fprintf(f, " prob=%.3g", (double)mProb);
+                    int mCond = (int)sv->condition;
+                    if (mCond != COND_ALWAYS) fprintf(f, " cond=%s", _dwCondNames[mCond]);
+                }
+                fprintf(f, "\n");
+            }
         }
     }
 
@@ -621,6 +630,7 @@ static void _dwParseMelodyEvent(const char *line, Pattern *p) {
     char lc[512]; strncpy(lc,line,511); lc[511]='\0';
     char *toks[32]; int n = _dwTokenize(lc+1, toks, 32);
     int track=0, step=0, gate=4, sustain=0; char noteName[16]="C4";
+    int nudge=0, gateNudge=0;
     float vel=0.8f, prob=1.0f; int cond=COND_ALWAYS;
     bool slide=false, accent=false, hasChord=false;
     int chordType=CHORD_SINGLE;
@@ -634,6 +644,8 @@ static void _dwParseMelodyEvent(const char *line, Pattern *p) {
             else if (strcmp(k,"vel")==0) vel=_dpf(v);
             else if (strcmp(k,"gate")==0) gate=_dpi(v);
             else if (strcmp(k,"sustain")==0) sustain=_dpi(v);
+            else if (strcmp(k,"nudge")==0) nudge=_dpi(v);
+            else if (strcmp(k,"gateNudge")==0) gateNudge=_dpi(v);
             else if (strcmp(k,"prob")==0) prob=_dpf(v);
             else if (strcmp(k,"cond")==0) { int idx=_dwLookupName(v,_dwCondNames,11); if(idx>=0) cond=idx; }
             else if (strcmp(k,"chord")==0) { hasChord=true; int idx=_dwLookupName(v,_dwChordNames,9); if(idx>=0) chordType=idx; }
@@ -650,19 +662,38 @@ static void _dwParseMelodyEvent(const char *line, Pattern *p) {
         }
     }
     if (track>=0&&track<SEQ_MELODY_TRACKS&&step>=0&&step<SEQ_MAX_STEPS) {
+        int absTrack = SEQ_DRUM_TRACKS + track;
         if (hasChord && chordType==CHORD_CUSTOM && customNoteCount>0) {
-            patSetChordCustom(p, SEQ_DRUM_TRACKS + track, step, vel, gate,
+            patSetChordCustom(p, absTrack, step, vel, gate,
                 customNoteCount>0?customNotes[0]:-1, customNoteCount>1?customNotes[1]:-1,
                 customNoteCount>2?customNotes[2]:-1, customNoteCount>3?customNotes[3]:-1);
         } else if (hasChord) {
-            patSetChord(p, SEQ_DRUM_TRACKS + track, step, _dwNameToMidi(noteName), (ChordType)chordType, vel, gate);
+            patSetChord(p, absTrack, step, _dwNameToMidi(noteName), (ChordType)chordType, vel, gate);
         } else {
-            patSetNote(p, SEQ_DRUM_TRACKS + track, step, _dwNameToMidi(noteName), vel, gate);
+            // v2 polyphony: if step already has notes, add to it
+            StepV2 *sv = &p->steps[absTrack][step];
+            if (sv->noteCount > 0) {
+                int vi = stepV2AddNote(sv, _dwNameToMidi(noteName), velFloatToU8(vel), (int8_t)gate);
+                if (vi >= 0) {
+                    sv->notes[vi].slide = slide;
+                    sv->notes[vi].accent = accent;
+                    sv->notes[vi].nudge = (int8_t)nudge;
+                    sv->notes[vi].gateNudge = (int8_t)gateNudge;
+                }
+                return;
+            }
+            patSetNote(p, absTrack, step, _dwNameToMidi(noteName), vel, gate);
         }
-        patSetNoteFlags(p, SEQ_DRUM_TRACKS + track, step, slide, accent);
-        patSetNoteSustain(p, SEQ_DRUM_TRACKS + track, step, sustain);
-        patSetNoteProb(p, SEQ_DRUM_TRACKS + track, step, prob);
-        patSetNoteCond(p, SEQ_DRUM_TRACKS + track, step, cond);
+        StepV2 *sv = &p->steps[absTrack][step];
+        if (sv->noteCount > 0) {
+            sv->notes[0].slide = slide;
+            sv->notes[0].accent = accent;
+            sv->notes[0].nudge = (int8_t)nudge;
+            sv->notes[0].gateNudge = (int8_t)gateNudge;
+        }
+        patSetNoteSustain(p, absTrack, step, sustain);
+        patSetNoteProb(p, absTrack, step, prob);
+        patSetNoteCond(p, absTrack, step, cond);
     }
 }
 

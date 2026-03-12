@@ -429,8 +429,9 @@ typedef struct {
     int trackTick[SEQ_V2_MAX_TRACKS];                           // Current tick within step
     int trackTriggerTick[SEQ_V2_MAX_TRACKS];                    // When to trigger (nudge-adjusted)
     bool trackTriggered[SEQ_V2_MAX_TRACKS];                     // Has this step been triggered?
-    int trackGateRemaining[SEQ_V2_MAX_TRACKS];                  // Ticks remaining for current note (voice 0)
-    int trackCurrentNote[SEQ_V2_MAX_TRACKS];                    // Currently playing note (-1 if none)
+    int trackGateRemaining[SEQ_V2_MAX_TRACKS][SEQ_V2_MAX_POLY];  // Per-voice gate countdown
+    int trackCurrentNote[SEQ_V2_MAX_TRACKS][SEQ_V2_MAX_POLY];   // Per-voice currently playing note (-1 if none)
+    int trackActiveVoices[SEQ_V2_MAX_TRACKS];                    // Number of active voices in current step
     int trackSustainRemaining[SEQ_V2_MAX_TRACKS];               // Sustain countdown
     int trackStepPlayCount[SEQ_V2_MAX_TRACKS][SEQ_MAX_STEPS];   // Per-step play count for conditions
 } Sequencer;
@@ -452,7 +453,8 @@ static void initSequencerContext(SequencerContext* ctx) {
     ctx->seq.nextPattern = -1;
     // Initialize current notes to SEQ_NOTE_OFF
     for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++)
-        ctx->seq.trackCurrentNote[i] = SEQ_NOTE_OFF;
+        for (int v = 0; v < SEQ_V2_MAX_POLY; v++)
+            ctx->seq.trackCurrentNote[i][v] = SEQ_NOTE_OFF;
     ctx->noiseState = 12345;
     memset(&ctx->currentPLocks, 0, sizeof(PLockState));
 }
@@ -1124,11 +1126,16 @@ static bool seqEvalTrackCondition(int track, int step) {
 // Release all currently playing notes (call their noteOff callbacks)
 static void releaseAllNotes(void) {
     for (int t = 0; t < seq.trackCount; t++) {
-        if (seq.trackCurrentNote[t] != SEQ_NOTE_OFF && seq.trackNoteOff[t]) {
+        bool hadActiveVoice = false;
+        for (int v = 0; v < SEQ_V2_MAX_POLY; v++) {
+            if (seq.trackCurrentNote[t][v] != SEQ_NOTE_OFF) hadActiveVoice = true;
+            seq.trackCurrentNote[t][v] = SEQ_NOTE_OFF;
+            seq.trackGateRemaining[t][v] = 0;
+        }
+        if (hadActiveVoice && seq.trackNoteOff[t]) {
             seq.trackNoteOff[t]();
         }
-        seq.trackCurrentNote[t] = SEQ_NOTE_OFF;
-        seq.trackGateRemaining[t] = 0;
+        seq.trackActiveVoices[t] = 0;
         seq.trackSustainRemaining[t] = 0;
     }
 }
@@ -1150,8 +1157,9 @@ static void resetSequencer(void) {
         seq.trackTick[i] = 0;
         seq.trackTriggered[i] = false;
         seq.trackTriggerTick[i] = calcTrackTriggerTick(i);
-        seq.trackGateRemaining[i] = 0;
-        seq.trackCurrentNote[i] = SEQ_NOTE_OFF;
+        memset(seq.trackGateRemaining[i], 0, sizeof(seq.trackGateRemaining[i]));
+        for (int v = 0; v < SEQ_V2_MAX_POLY; v++) seq.trackCurrentNote[i][v] = SEQ_NOTE_OFF;
+        seq.trackActiveVoices[i] = 0;
         seq.trackSustainRemaining[i] = 0;
     }
 }
@@ -1280,8 +1288,9 @@ static void initSequencer(DrumTriggerFunc kickFn, DrumTriggerFunc snareFn,
         seq.trackTick[i] = 0;
         seq.trackTriggerTick[i] = 0;
         seq.trackTriggered[i] = false;
-        seq.trackGateRemaining[i] = 0;
-        seq.trackCurrentNote[i] = SEQ_NOTE_OFF;
+        memset(seq.trackGateRemaining[i], 0, sizeof(seq.trackGateRemaining[i]));
+        for (int v = 0; v < SEQ_V2_MAX_POLY; v++) seq.trackCurrentNote[i][v] = SEQ_NOTE_OFF;
+        seq.trackActiveVoices[i] = 0;
         seq.trackSustainRemaining[i] = 0;
     }
     memset(seq.trackStepPlayCount, 0, sizeof(seq.trackStepPlayCount));
@@ -1370,35 +1379,49 @@ static void seqTriggerStep(Pattern *p, int track, int step, float stepDuration) 
         }
     } else {
         // --- MELODIC TRIGGER ---
-        // Release previous note if still playing
-        if (seq.trackCurrentNote[track] != SEQ_NOTE_OFF && seq.trackNoteOff[track]) {
-            seq.trackNoteOff[track]();
-        }
-
-        int gateSteps = sn->gate;
-        if (gateSteps == 0) gateSteps = 1;
-        float gateTime = gateSteps * stepDuration;
-
-        int sustainSteps = sv->sustain;
-        // Trigger all notes in this step (v2: multi-note for chords)
-        for (int v = 0; v < sv->noteCount; v++) {
-            StepNote *vn = &sv->notes[v];
-            if (seq.trackNoteOn[track]) {
-                seq.trackNoteOn[track](vn->note, velocity, gateTime, 1.0f, vn->slide, vn->accent);
+        // Release all previous voices if still playing
+        for (int v = 0; v < seq.trackActiveVoices[track]; v++) {
+            if (seq.trackCurrentNote[track][v] != SEQ_NOTE_OFF) {
+                if (seq.trackNoteOff[track]) seq.trackNoteOff[track]();
+                seq.trackCurrentNote[track][v] = SEQ_NOTE_OFF;
+                seq.trackGateRemaining[track][v] = 0;
             }
         }
-        seq.trackCurrentNote[track] = sn->note;
 
-        int gateTicks = gateSteps * seq.ticksPerStep;
-        // Apply per-note gate nudge (from StepNote) + p-lock fallback
-        int gateNudge = sn->gateNudge;
-        if (gateNudge == 0) {
-            float plockGateNudge = seqGetPLock(p, track, step, PLOCK_GATE_NUDGE, 0.0f);
-            gateNudge = (int)plockGateNudge;
+        int sustainSteps = sv->sustain;
+        // Trigger all notes with per-voice velocity and gate
+        int voiceCount = sv->noteCount;
+        if (voiceCount > SEQ_V2_MAX_POLY) voiceCount = SEQ_V2_MAX_POLY;
+        seq.trackActiveVoices[track] = voiceCount;
+
+        for (int v = 0; v < voiceCount; v++) {
+            StepNote *vn = &sv->notes[v];
+            float vVel = velU8ToFloat(vn->velocity) * seq.trackVolume[track];
+            if (seq.humanize.velocityJitter > 0.0f) {
+                float jit = (seqRandFloat() * 2.0f - 1.0f) * seq.humanize.velocityJitter * vVel;
+                vVel += jit;
+                if (vVel < 0.0f) vVel = 0.0f;
+                if (vVel > 1.0f) vVel = 1.0f;
+            }
+            int vGateSteps = vn->gate;
+            if (vGateSteps == 0) vGateSteps = 1;
+            float vGateTime = vGateSteps * stepDuration;
+            if (seq.trackNoteOn[track]) {
+                seq.trackNoteOn[track](vn->note, vVel, vGateTime, 1.0f, vn->slide, vn->accent);
+            }
+            seq.trackCurrentNote[track][v] = vn->note;
+
+            // Per-voice gate countdown
+            int vGateTicks = vGateSteps * seq.ticksPerStep;
+            int vGateNudge = vn->gateNudge;
+            if (vGateNudge == 0) {
+                float plockGateNudge = seqGetPLock(p, track, step, PLOCK_GATE_NUDGE, 0.0f);
+                vGateNudge = (int)plockGateNudge;
+            }
+            vGateTicks += vGateNudge;
+            if (vGateTicks < 1) vGateTicks = 1;
+            seq.trackGateRemaining[track][v] = vGateTicks;
         }
-        gateTicks += gateNudge;
-        if (gateTicks < 1) gateTicks = 1;
-        seq.trackGateRemaining[track] = gateTicks;
         seq.trackSustainRemaining[track] = sustainSteps * seq.ticksPerStep;
     }
 }
@@ -1438,30 +1461,37 @@ static void updateSequencer(float dt) {
             int tick = seq.trackTick[track];
             StepV2 *sv = &p->steps[track][step];
 
-            // --- Gate countdown (melodic tracks) ---
+            // --- Per-voice gate countdown (melodic tracks) ---
             if (p->trackType[track] == TRACK_MELODIC) {
-                if (seq.trackGateRemaining[track] > 0) {
-                    seq.trackGateRemaining[track]--;
-                    if (seq.trackGateRemaining[track] == 0 && seq.trackCurrentNote[track] != SEQ_NOTE_OFF) {
-                        if (seq.trackSustainRemaining[track] > 0) {
-                            // Sustain holds
-                        } else {
-                            if (seq.trackNoteOff[track]) {
-                                seq.trackNoteOff[track]();
+                bool anyVoiceActive = false;
+                bool allGatesExpired = true;
+                for (int v = 0; v < seq.trackActiveVoices[track]; v++) {
+                    if (seq.trackGateRemaining[track][v] > 0) {
+                        allGatesExpired = false;
+                        seq.trackGateRemaining[track][v]--;
+                        if (seq.trackGateRemaining[track][v] == 0 && seq.trackCurrentNote[track][v] != SEQ_NOTE_OFF) {
+                            if (seq.trackSustainRemaining[track] > 0) {
+                                // Sustain holds — don't release yet
+                            } else {
+                                if (seq.trackNoteOff[track]) seq.trackNoteOff[track]();
+                                seq.trackCurrentNote[track][v] = SEQ_NOTE_OFF;
                             }
-                            seq.trackCurrentNote[track] = SEQ_NOTE_OFF;
                         }
                     }
+                    if (seq.trackCurrentNote[track][v] != SEQ_NOTE_OFF) anyVoiceActive = true;
                 }
 
-                // Handle sustain countdown
-                if (seq.trackSustainRemaining[track] > 0 && seq.trackGateRemaining[track] == 0) {
+                // Handle sustain countdown (shared: counts down once all gates expired)
+                if (seq.trackSustainRemaining[track] > 0 && allGatesExpired) {
                     seq.trackSustainRemaining[track]--;
-                    if (seq.trackSustainRemaining[track] == 0 && seq.trackCurrentNote[track] != SEQ_NOTE_OFF) {
-                        if (seq.trackNoteOff[track]) {
-                            seq.trackNoteOff[track]();
+                    if (seq.trackSustainRemaining[track] == 0 && anyVoiceActive) {
+                        // Release all remaining voices
+                        for (int v = 0; v < seq.trackActiveVoices[track]; v++) {
+                            if (seq.trackCurrentNote[track][v] != SEQ_NOTE_OFF) {
+                                if (seq.trackNoteOff[track]) seq.trackNoteOff[track]();
+                                seq.trackCurrentNote[track][v] = SEQ_NOTE_OFF;
+                            }
                         }
-                        seq.trackCurrentNote[track] = SEQ_NOTE_OFF;
                     }
                 }
             }
