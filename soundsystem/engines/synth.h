@@ -425,6 +425,12 @@ typedef struct {
     float filterEnvLevel; // Current envelope level
     float filterEnvPhase; // Time in current stage
     int filterEnvStage;   // 0=off, 1=attack, 2=decay
+
+    // 303 accent sweep circuit (capacitor voltage, accumulates across accents)
+    float accentSweepLevel;   // Current cap voltage (0-1+, can exceed 1 from stacking)
+    float accentSweepAmt;     // How much each accent charges the cap
+    float gimmickDipAmt;      // Strength of gimmick circuit dip at decay end
+    bool acidMode;            // true = 303-authentic filter/accent behavior
     
     // Filter LFO
     float filterLfoRate;  // LFO rate in Hz (when not synced)
@@ -3419,8 +3425,23 @@ static float processVoice(Voice *v, float sampleRate) {
     float ampLfoMod = processLfo(&v->ampLfoPhase, &v->ampLfoSH,
                                   ampLfoActualRate, v->ampLfoDepth, v->ampLfoShape, dt);
     
-    // Calculate effective cutoff with envelope, LFO, and key tracking
-    float cutoff = v->filterCutoff + v->filterEnvAmt * v->filterEnvLevel + filterLfoMod;
+    // 303 accent sweep: discharge capacitor (RC ~147ms time constant)
+    if (v->acidMode && v->accentSweepLevel > 0.001f) {
+        float dischargeRate = 1.0f / 0.147f; // ~147ms RC
+        v->accentSweepLevel *= expf(-dischargeRate * dt);
+    }
+
+    // 303 gimmick dip: pull cutoff down when filter env finishes decaying
+    float gimmickMod = 0.0f;
+    if (v->acidMode && v->gimmickDipAmt > 0.0f && v->filterEnvStage == 0 && v->filterEnvLevel <= 0.0f) {
+        // Gimmick circuit injects negative offset at end of decay
+        gimmickMod = -v->gimmickDipAmt * 0.3f; // Scale so 1.0 = strong dip
+    }
+
+    // Calculate effective cutoff with envelope, LFO, accent sweep, gimmick, and key tracking
+    float accentSweepMod = v->acidMode ? v->accentSweepLevel * v->accentSweepAmt : 0.0f;
+    float cutoff = v->filterCutoff + v->filterEnvAmt * v->filterEnvLevel
+                 + filterLfoMod + accentSweepMod + gimmickMod;
     if (v->filterKeyTrack > 0.001f) {
         float keyScale = v->frequency / 440.0f;
         cutoff *= 1.0f + (keyScale - 1.0f) * v->filterKeyTrack;

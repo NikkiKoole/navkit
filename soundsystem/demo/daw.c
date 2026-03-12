@@ -3018,6 +3018,17 @@ static void drawParamPatch(float x, float y, float w, float h) {
         sectionHighlight(col5X + 2, secY, percColW, c.y - secY, warmthActive);
         ui_col_space(&c, 6);
 
+        bool acidActive = DB(p_acidMode) || DF(p_accentSweepAmt) || DF(p_gimmickDipAmt);
+        secY = c.y;
+        ui_col_sublabel(&c, "303 Acid:", ORANGE);
+        ui_col_toggle(&c, "Acid Mode", &p->p_acidMode);
+        if (p->p_acidMode) {
+            ui_col_float(&c, "Acc Sweep", &p->p_accentSweepAmt, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Gimmick Dip", &p->p_gimmickDipAmt, 0.05f, 0.0f, 1.0f);
+        }
+        sectionHighlight(col5X + 2, secY, percColW, c.y - secY, acidActive);
+        ui_col_space(&c, 6);
+
         bool synthModActive = DB(p_ringMod) || DF(p_wavefoldAmount) || DB(p_hardSync);
         secY = c.y;
         ui_col_sublabel(&c, "Synth:", ORANGE);
@@ -3816,20 +3827,37 @@ static void dawMelodyTriggerGeneric(int trackIdx, int note, float vel,
         synthCtx->voices[lastVoice].envStage > 0) {
         Voice *sv = &synthCtx->voices[lastVoice];
         sv->targetFrequency = freq;
-        // 303-style glide: scale time with pitch interval for musical feel
-        float semitoneDistance = 12.0f * fabsf(logf(freq / sv->baseFrequency) / logf(2.0f));
-        float slideTime = 0.06f + semitoneDistance * 0.003f; // 60ms base + 3ms per semitone
-        if (slideTime > 0.2f) slideTime = 0.2f;
-        sv->glideRate = 1.0f / slideTime;
-        sv->volume = pVol * p->p_volume;
-        sv->filterCutoff = pCutoff;
-        sv->filterResonance = pReso;
-        sv->filterEnvAmt = pFilterEnv;
-        sv->decay = pDecay;
-        // 303: filter envelope always retriggers on each step (accent just boosts amount)
-        sv->filterEnvLevel = 1.0f;
-        sv->filterEnvStage = 2;
-        sv->filterEnvPhase = 0.0f;
+
+        if (p->p_acidMode) {
+            // Authentic 303: constant-time RC slew (~22ms time constant, 95% in ~60ms)
+            sv->glideRate = 1.0f / 0.06f;
+            sv->volume = pVol * p->p_volume;
+            sv->filterCutoff = pCutoff;
+            sv->filterResonance = pReso;
+            sv->filterEnvAmt = pFilterEnv;
+            // 303: filter env does NOT retrigger on slide — continues its decay
+            // Accent on a slide step: charge the accent sweep capacitor + force short decay
+            if (accent) {
+                sv->accentSweepLevel += 1.0f; // Capacitor charges (accumulates!)
+                sv->filterEnvDecay = 0.2f;    // Accent forces ~200ms decay
+                sv->filterEnvAmt = pFilterEnv;
+            }
+        } else {
+            // Generic slide: pitch-proportional glide
+            float semitoneDistance = 12.0f * fabsf(logf(freq / sv->baseFrequency) / logf(2.0f));
+            float slideTime = 0.06f + semitoneDistance * 0.003f;
+            if (slideTime > 0.2f) slideTime = 0.2f;
+            sv->glideRate = 1.0f / slideTime;
+            sv->volume = pVol * p->p_volume;
+            sv->filterCutoff = pCutoff;
+            sv->filterResonance = pReso;
+            sv->filterEnvAmt = pFilterEnv;
+            sv->decay = pDecay;
+            // Generic: retrigger filter env on every slide step
+            sv->filterEnvLevel = 1.0f;
+            sv->filterEnvStage = 2;
+            sv->filterEnvPhase = 0.0f;
+        }
         return;
     }
 
@@ -3862,6 +3890,16 @@ static void dawMelodyTriggerGeneric(int trackIdx, int note, float vel,
         if (vc < SEQ_V2_MAX_POLY) {
             dawMelodyVoice[trackIdx][vc] = vi;
             dawMelodyVoiceCount[trackIdx] = vc + 1;
+        }
+        // Initialize 303 acid mode state on the voice
+        Voice *nv = &synthCtx->voices[vi];
+        nv->acidMode = p->p_acidMode;
+        nv->accentSweepAmt = p->p_accentSweepAmt;
+        nv->gimmickDipAmt = p->p_gimmickDipAmt;
+        nv->accentSweepLevel = 0.0f;
+        if (p->p_acidMode && accent) {
+            nv->accentSweepLevel = 1.0f;       // First accent charges cap
+            nv->filterEnvDecay = 0.2f;          // Accent forces ~200ms decay
         }
     }
 

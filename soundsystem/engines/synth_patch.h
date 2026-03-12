@@ -226,6 +226,11 @@ typedef struct {
     bool p_hardSync;          // true = master osc resets slave phase
     float p_hardSyncRatio;    // Master/slave frequency ratio (e.g. 1.5)
 
+    // 303 acid mode
+    bool p_acidMode;          // true = authentic TB-303 slide/accent behavior
+    float p_accentSweepAmt;   // Accent sweep circuit intensity (0-1, default 0.5)
+    float p_gimmickDipAmt;    // Gimmick circuit filter dip at decay end (0-1, default 0.3)
+
     // Identity & misc
     char p_name[32];
     bool p_expRelease;        // true = exponential release (natural tail)
@@ -385,6 +390,9 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_wavefoldAmount = 0.0f,
         .p_hardSync = false,
         .p_hardSyncRatio = 1.5f,
+        .p_acidMode = false,
+        .p_accentSweepAmt = 0.5f,
+        .p_gimmickDipAmt = 0.3f,
         .p_name = "",
         .p_expRelease = false,
         .p_expDecay = false,

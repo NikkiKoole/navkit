@@ -126,19 +126,22 @@ static void initInstrumentPresets(void) {
     instrumentPresets[7].patch.p_filterEnvAmt = 0.2f;
     instrumentPresets[7].patch.p_filterEnvDecay = 0.25f;
 
-    // Acid Lead - Resonant saw with filter env
+    // Acid Lead - Authentic TB-303 with acid mode
     instrumentPresets[8].name = "Acid";
     instrumentPresets[8].patch.p_waveType = WAVE_SAW;
-    instrumentPresets[8].patch.p_attack = 0.005f;
-    instrumentPresets[8].patch.p_decay = 0.2f;
-    instrumentPresets[8].patch.p_sustain = 0.3f;
+    instrumentPresets[8].patch.p_attack = 0.003f;       // 303 VEG attack ~3ms
+    instrumentPresets[8].patch.p_decay = 3.0f;          // 303 VEG decay ~3-4s (very long!)
+    instrumentPresets[8].patch.p_sustain = 0.0f;        // 303 has no sustain (attack-decay only)
     instrumentPresets[8].patch.p_release = 0.15f;
     instrumentPresets[8].patch.p_filterCutoff = 0.2f;
     instrumentPresets[8].patch.p_filterResonance = 0.7f;
     instrumentPresets[8].patch.p_filterEnvAmt = 0.6f;
-    instrumentPresets[8].patch.p_filterEnvDecay = 0.12f;
+    instrumentPresets[8].patch.p_filterEnvDecay = 0.4f; // MEG decay (Decay knob mid-range)
     instrumentPresets[8].patch.p_monoMode = true;
-    instrumentPresets[8].patch.p_glideTime = 0.05f;
+    instrumentPresets[8].patch.p_glideTime = 0.06f;     // 303 RC slide ~60ms
+    instrumentPresets[8].patch.p_acidMode = true;
+    instrumentPresets[8].patch.p_accentSweepAmt = 0.5f;
+    instrumentPresets[8].patch.p_gimmickDipAmt = 0.3f;
 
     // Power Arp - Arpeggiated power chord
     instrumentPresets[9].name = "Power Arp";

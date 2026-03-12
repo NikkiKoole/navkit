@@ -125,6 +125,9 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _db(f, "ringMod", p->p_ringMod); _dw(f, "ringModFreq", p->p_ringModFreq);
     _dw(f, "wavefoldAmount", p->p_wavefoldAmount);
     _db(f, "hardSync", p->p_hardSync); _dw(f, "hardSyncRatio", p->p_hardSyncRatio);
+    // 303 acid mode
+    _db(f, "acidMode", p->p_acidMode);
+    _dw(f, "accentSweepAmt", p->p_accentSweepAmt); _dw(f, "gimmickDipAmt", p->p_gimmickDipAmt);
 }
 
 // ============================================================================
@@ -555,6 +558,10 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"wavefoldAmount")==0) p->p_wavefoldAmount = _dpf(val);
     else if (strcmp(key,"hardSync")==0) p->p_hardSync = _dpb(val);
     else if (strcmp(key,"hardSyncRatio")==0) p->p_hardSyncRatio = _dpf(val);
+    // 303 acid mode
+    else if (strcmp(key,"acidMode")==0) p->p_acidMode = _dpb(val);
+    else if (strcmp(key,"accentSweepAmt")==0) p->p_accentSweepAmt = _dpf(val);
+    else if (strcmp(key,"gimmickDipAmt")==0) p->p_gimmickDipAmt = _dpf(val);
 }
 
 static int _dwParseIntList(const char *val, int *out, int maxCount) {

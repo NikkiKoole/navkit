@@ -440,6 +440,10 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     // Envelope flags
     _sf_writeBool(f, "expDecay", p->p_expDecay);
     _sf_writeBool(f, "oneShot", p->p_oneShot);
+    // 303 acid mode
+    _sf_writeBool(f, "acidMode", p->p_acidMode);
+    _sf_writeFloat(f, "accentSweepAmt", p->p_accentSweepAmt);
+    _sf_writeFloat(f, "gimmickDipAmt", p->p_gimmickDipAmt);
 }
 
 static void _sf_writePattern(FILE *f, int idx, const Pattern *p) {
@@ -947,6 +951,10 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     // Envelope flags
     else if (strcmp(key, "expDecay") == 0) p->p_expDecay = _sf_parseBool(val);
     else if (strcmp(key, "oneShot") == 0) p->p_oneShot = _sf_parseBool(val);
+    // 303 acid mode
+    else if (strcmp(key, "acidMode") == 0) p->p_acidMode = _sf_parseBool(val);
+    else if (strcmp(key, "accentSweepAmt") == 0) p->p_accentSweepAmt = _sf_parseFloat(val);
+    else if (strcmp(key, "gimmickDipAmt") == 0) p->p_gimmickDipAmt = _sf_parseFloat(val);
     // Unknown keys silently skipped (future-proof)
 }
 
