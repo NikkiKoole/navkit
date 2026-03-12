@@ -22,7 +22,6 @@
 #include "engines/synth.h"
 #include "engines/synth_patch.h"
 #include "engines/patch_trigger.h"
-#include "engines/drums.h"           // Legacy: kept for song_file.h DrumType compat
 #include "engines/effects.h"
 #include "engines/sequencer.h"
 #include "engines/sampler.h"
@@ -40,7 +39,6 @@
 // Allows multiple independent instances or explicit context management
 typedef struct SoundSystem {
     SynthContext synth;
-    DrumsContext drums;              // Legacy: kept for song_file.h compat
     EffectsContext effects;
     SequencerContext sequencer;
     SamplerContext sampler;
@@ -49,7 +47,6 @@ typedef struct SoundSystem {
 // Initialize a complete sound system instance
 static void initSoundSystem(SoundSystem* ss) {
     initSynthContext(&ss->synth);
-    initDrumsContext(&ss->drums);
     initEffectsContext(&ss->effects);
     initSequencerContext(&ss->sequencer);
     initSamplerContext(&ss->sampler);
@@ -59,7 +56,6 @@ static void initSoundSystem(SoundSystem* ss) {
 // (Use this to swap between sound system instances)
 static void useSoundSystem(SoundSystem* ss) {
     synthCtx = &ss->synth;
-    drumsCtx = &ss->drums;
     fxCtx = &ss->effects;
     seqCtx = &ss->sequencer;
     samplerCtx = &ss->sampler;
@@ -163,7 +159,6 @@ static inline void soundsystem_suppress_warnings(void) {
     (void)useSoundSystem;
     // context init functions
     (void)initSynthContext;
-    (void)initDrumsContext;
     (void)initEffectsContext;
     (void)initSequencerContext;
     (void)initSamplerContext;

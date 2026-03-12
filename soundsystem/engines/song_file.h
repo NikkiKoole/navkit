@@ -55,10 +55,6 @@ typedef struct {
     // Instruments (3 melody patches)
     SynthPatch instruments[3];  // bass, lead, chord
 
-    // Drums
-    DrumType sfDrumSounds[SEQ_DRUM_TRACKS];
-    DrumParams sfDrumParams;
-
     // Mix
     float sfMasterVolume;
     float sfDrumVolume;
@@ -105,10 +101,6 @@ static void songFileDataInit(SongFileData *d) {
     d->sfDrumVolume = 0.6f;
     d->patternCount = SEQ_NUM_PATTERNS;
     for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) d->sfTrackVolume[i] = 1.0f;
-    d->sfDrumSounds[0] = DRUM_KICK;
-    d->sfDrumSounds[1] = DRUM_SNARE;
-    d->sfDrumSounds[2] = DRUM_CLOSED_HH;
-    d->sfDrumSounds[3] = DRUM_CLAP;
     for (int i = 0; i < SEQ_NUM_PATTERNS; i++) initPattern(&d->patterns[i]);
     strcpy(d->energy, "medium");
 }
@@ -181,13 +173,6 @@ static const char* _sf_scaleTypeNames[] = {
     "blues", "dorian", "mixolydian", "harmonicMinor"
 };
 static const int _sf_scaleTypeCount = 9;
-
-static const char* _sf_drumTypeNames[] = {
-    "kick", "snare", "clap", "closedHH", "openHH", "lowTom", "midTom",
-    "hiTom", "rimshot", "cowbell", "clave", "maracas",
-    "cr78Kick", "cr78Snare", "cr78HH", "cr78Metal"
-};
-static const int _sf_drumTypeCount = 16;
 
 static const char* _sf_conditionNames[] = {
     "always", "1:2", "2:2", "1:4", "2:4", "3:4", "4:4",
@@ -555,58 +540,6 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
     _sf_writePatch(f, "instrument.bass", &d->instruments[0]);
     _sf_writePatch(f, "instrument.lead", &d->instruments[1]);
     _sf_writePatch(f, "instrument.chord", &d->instruments[2]);
-
-    // Drums
-    fprintf(f, "\n[drums]\n");
-    for (int i = 0; i < SEQ_DRUM_TRACKS; i++) {
-        int dt = (int)d->sfDrumSounds[i];
-        char key[16];
-        snprintf(key, sizeof(key), "track%d", i);
-        if (dt >= 0 && dt < _sf_drumTypeCount)
-            fprintf(f, "%s = %s\n", key, _sf_drumTypeNames[dt]);
-        else
-            fprintf(f, "%s = sample:%d\n", key, dt - DRUM_SYNTH_COUNT);
-    }
-
-    // Drum params
-    fprintf(f, "\n# Drum parameters\n");
-    _sf_writeFloat(f, "kickPitch", d->sfDrumParams.kickPitch);
-    _sf_writeFloat(f, "kickDecay", d->sfDrumParams.kickDecay);
-    _sf_writeFloat(f, "kickPunchPitch", d->sfDrumParams.kickPunchPitch);
-    _sf_writeFloat(f, "kickPunchDecay", d->sfDrumParams.kickPunchDecay);
-    _sf_writeFloat(f, "kickClick", d->sfDrumParams.kickClick);
-    _sf_writeFloat(f, "kickTone", d->sfDrumParams.kickTone);
-    _sf_writeFloat(f, "snarePitch", d->sfDrumParams.snarePitch);
-    _sf_writeFloat(f, "snareDecay", d->sfDrumParams.snareDecay);
-    _sf_writeFloat(f, "snareSnappy", d->sfDrumParams.snareSnappy);
-    _sf_writeFloat(f, "snareTone", d->sfDrumParams.snareTone);
-    _sf_writeFloat(f, "clapDecay", d->sfDrumParams.clapDecay);
-    _sf_writeFloat(f, "clapTone", d->sfDrumParams.clapTone);
-    _sf_writeFloat(f, "clapSpread", d->sfDrumParams.clapSpread);
-    _sf_writeFloat(f, "hhDecayClosed", d->sfDrumParams.hhDecayClosed);
-    _sf_writeFloat(f, "hhDecayOpen", d->sfDrumParams.hhDecayOpen);
-    _sf_writeFloat(f, "hhTone", d->sfDrumParams.hhTone);
-    _sf_writeFloat(f, "tomPitch", d->sfDrumParams.tomPitch);
-    _sf_writeFloat(f, "tomDecay", d->sfDrumParams.tomDecay);
-    _sf_writeFloat(f, "tomPunchDecay", d->sfDrumParams.tomPunchDecay);
-    _sf_writeFloat(f, "rimPitch", d->sfDrumParams.rimPitch);
-    _sf_writeFloat(f, "rimDecay", d->sfDrumParams.rimDecay);
-    _sf_writeFloat(f, "cowbellPitch", d->sfDrumParams.cowbellPitch);
-    _sf_writeFloat(f, "cowbellDecay", d->sfDrumParams.cowbellDecay);
-    _sf_writeFloat(f, "clavePitch", d->sfDrumParams.clavePitch);
-    _sf_writeFloat(f, "claveDecay", d->sfDrumParams.claveDecay);
-    _sf_writeFloat(f, "maracasDecay", d->sfDrumParams.maracasDecay);
-    _sf_writeFloat(f, "maracasTone", d->sfDrumParams.maracasTone);
-    _sf_writeFloat(f, "cr78KickPitch", d->sfDrumParams.cr78KickPitch);
-    _sf_writeFloat(f, "cr78KickDecay", d->sfDrumParams.cr78KickDecay);
-    _sf_writeFloat(f, "cr78KickResonance", d->sfDrumParams.cr78KickResonance);
-    _sf_writeFloat(f, "cr78SnarePitch", d->sfDrumParams.cr78SnarePitch);
-    _sf_writeFloat(f, "cr78SnareDecay", d->sfDrumParams.cr78SnareDecay);
-    _sf_writeFloat(f, "cr78SnareSnappy", d->sfDrumParams.cr78SnareSnappy);
-    _sf_writeFloat(f, "cr78HHDecay", d->sfDrumParams.cr78HHDecay);
-    _sf_writeFloat(f, "cr78HHTone", d->sfDrumParams.cr78HHTone);
-    _sf_writeFloat(f, "cr78MetalPitch", d->sfDrumParams.cr78MetalPitch);
-    _sf_writeFloat(f, "cr78MetalDecay", d->sfDrumParams.cr78MetalDecay);
 
     // Mix
     fprintf(f, "\n[mix]\n");
@@ -1143,15 +1076,6 @@ static int _sf_parseInstrumentIndex(const char *name) {
     return -1;
 }
 
-static DrumType _sf_parseDrumType(const char *val) {
-    // Check for sample:N
-    if (strncmp(val, "sample:", 7) == 0) {
-        return (DrumType)(DRUM_SYNTH_COUNT + atoi(val + 7));
-    }
-    int idx = _sf_lookupName(val, _sf_drumTypeNames, _sf_drumTypeCount);
-    return idx >= 0 ? (DrumType)idx : DRUM_KICK;
-}
-
 // Parse int list like "16 16 16 16"
 static int _sf_parseIntList(const char *val, int *out, int maxCount) {
     char buf[128];
@@ -1283,49 +1207,7 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
             break;
 
         case _SF_SEC_DRUMS:
-            if (strncmp(key, "track", 5) == 0 && isdigit(key[5])) {
-                int t = key[5] - '0';
-                if (t >= 0 && t < SEQ_DRUM_TRACKS) d->sfDrumSounds[t] = _sf_parseDrumType(val);
-            }
-            // Drum params
-            else if (strcmp(key, "kickPitch") == 0) d->sfDrumParams.kickPitch = _sf_parseFloat(val);
-            else if (strcmp(key, "kickDecay") == 0) d->sfDrumParams.kickDecay = _sf_parseFloat(val);
-            else if (strcmp(key, "kickPunchPitch") == 0) d->sfDrumParams.kickPunchPitch = _sf_parseFloat(val);
-            else if (strcmp(key, "kickPunchDecay") == 0) d->sfDrumParams.kickPunchDecay = _sf_parseFloat(val);
-            else if (strcmp(key, "kickClick") == 0) d->sfDrumParams.kickClick = _sf_parseFloat(val);
-            else if (strcmp(key, "kickTone") == 0) d->sfDrumParams.kickTone = _sf_parseFloat(val);
-            else if (strcmp(key, "snarePitch") == 0) d->sfDrumParams.snarePitch = _sf_parseFloat(val);
-            else if (strcmp(key, "snareDecay") == 0) d->sfDrumParams.snareDecay = _sf_parseFloat(val);
-            else if (strcmp(key, "snareSnappy") == 0) d->sfDrumParams.snareSnappy = _sf_parseFloat(val);
-            else if (strcmp(key, "snareTone") == 0) d->sfDrumParams.snareTone = _sf_parseFloat(val);
-            else if (strcmp(key, "clapDecay") == 0) d->sfDrumParams.clapDecay = _sf_parseFloat(val);
-            else if (strcmp(key, "clapTone") == 0) d->sfDrumParams.clapTone = _sf_parseFloat(val);
-            else if (strcmp(key, "clapSpread") == 0) d->sfDrumParams.clapSpread = _sf_parseFloat(val);
-            else if (strcmp(key, "hhDecayClosed") == 0) d->sfDrumParams.hhDecayClosed = _sf_parseFloat(val);
-            else if (strcmp(key, "hhDecayOpen") == 0) d->sfDrumParams.hhDecayOpen = _sf_parseFloat(val);
-            else if (strcmp(key, "hhTone") == 0) d->sfDrumParams.hhTone = _sf_parseFloat(val);
-            else if (strcmp(key, "tomPitch") == 0) d->sfDrumParams.tomPitch = _sf_parseFloat(val);
-            else if (strcmp(key, "tomDecay") == 0) d->sfDrumParams.tomDecay = _sf_parseFloat(val);
-            else if (strcmp(key, "tomPunchDecay") == 0) d->sfDrumParams.tomPunchDecay = _sf_parseFloat(val);
-            else if (strcmp(key, "rimPitch") == 0) d->sfDrumParams.rimPitch = _sf_parseFloat(val);
-            else if (strcmp(key, "rimDecay") == 0) d->sfDrumParams.rimDecay = _sf_parseFloat(val);
-            else if (strcmp(key, "cowbellPitch") == 0) d->sfDrumParams.cowbellPitch = _sf_parseFloat(val);
-            else if (strcmp(key, "cowbellDecay") == 0) d->sfDrumParams.cowbellDecay = _sf_parseFloat(val);
-            else if (strcmp(key, "clavePitch") == 0) d->sfDrumParams.clavePitch = _sf_parseFloat(val);
-            else if (strcmp(key, "claveDecay") == 0) d->sfDrumParams.claveDecay = _sf_parseFloat(val);
-            else if (strcmp(key, "maracasDecay") == 0) d->sfDrumParams.maracasDecay = _sf_parseFloat(val);
-            else if (strcmp(key, "maracasTone") == 0) d->sfDrumParams.maracasTone = _sf_parseFloat(val);
-            else if (strcmp(key, "cr78KickPitch") == 0) d->sfDrumParams.cr78KickPitch = _sf_parseFloat(val);
-            else if (strcmp(key, "cr78KickDecay") == 0) d->sfDrumParams.cr78KickDecay = _sf_parseFloat(val);
-            else if (strcmp(key, "cr78KickResonance") == 0) d->sfDrumParams.cr78KickResonance = _sf_parseFloat(val);
-            else if (strcmp(key, "cr78SnarePitch") == 0) d->sfDrumParams.cr78SnarePitch = _sf_parseFloat(val);
-            else if (strcmp(key, "cr78SnareDecay") == 0) d->sfDrumParams.cr78SnareDecay = _sf_parseFloat(val);
-            else if (strcmp(key, "cr78SnareSnappy") == 0) d->sfDrumParams.cr78SnareSnappy = _sf_parseFloat(val);
-            else if (strcmp(key, "cr78HHDecay") == 0) d->sfDrumParams.cr78HHDecay = _sf_parseFloat(val);
-            else if (strcmp(key, "cr78HHTone") == 0) d->sfDrumParams.cr78HHTone = _sf_parseFloat(val);
-            else if (strcmp(key, "cr78MetalPitch") == 0) d->sfDrumParams.cr78MetalPitch = _sf_parseFloat(val);
-            else if (strcmp(key, "cr78MetalDecay") == 0) d->sfDrumParams.cr78MetalDecay = _sf_parseFloat(val);
-            break;
+            break;  // Legacy: silently ignore [drums] sections from old .song files
 
         case _SF_SEC_MIX:
             if (strcmp(key, "masterVolume") == 0) d->sfMasterVolume = _sf_parseFloat(val);

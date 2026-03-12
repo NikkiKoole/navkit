@@ -3876,15 +3876,36 @@ static void dawMelodyTriggerGeneric(int trackIdx, int note, float vel,
 
     // Set per-track mono voice so mono patches on different tracks don't steal each other
     int savedMonoVoiceIdx = monoVoiceIdx;
-    if (p->p_monoMode && dawMonoVoiceIdx[trackIdx] >= 0) {
-        monoVoiceIdx = dawMonoVoiceIdx[trackIdx];
+    bool forceNewVoice = false;
+    if (p->p_monoMode) {
+        int mvi = dawMonoVoiceIdx[trackIdx];
+        if (mvi >= 0 && voiceBus[mvi] == dawPatchToBus(busTrack)) {
+            // Voice still belongs to this track — reuse for mono glide
+            monoVoiceIdx = mvi;
+        } else {
+            // No valid mono voice (first note or voice was stolen by another track)
+            // Force fresh allocation via findVoice() to avoid gliding from wrong pitch
+            if (mvi >= 0) synthCtx->voices[mvi].monoReserved = false;  // Release old reservation
+            dawMonoVoiceIdx[trackIdx] = -1;
+            forceNewVoice = true;
+        }
     }
 
+    // Temporarily disable mono mode if we need a fresh voice, so the engine
+    // uses findVoice() instead of the stale/uninitialized monoVoiceIdx
+    bool origMono = p->p_monoMode;
+    if (forceNewVoice) p->p_monoMode = false;
+
     int vi = playNoteWithPatch(freq, p);
+
+    if (forceNewVoice) p->p_monoMode = origMono;
     if (vi >= 0) {
         voiceBus[vi] = dawPatchToBus(busTrack);
         voiceAge[vi] = 0.0f;
-        if (p->p_monoMode) dawMonoVoiceIdx[trackIdx] = vi;
+        if (p->p_monoMode) {
+            dawMonoVoiceIdx[trackIdx] = vi;
+            synthCtx->voices[vi].monoReserved = true;  // Protect from findVoice() stealing
+        }
         voiceLogPush("ALLOC mel[%d] v%d bus=%d freq=%.0f", trackIdx, vi, dawPatchToBus(busTrack), freq);
         // Track this voice for later release
         if (vc < SEQ_V2_MAX_POLY) {

@@ -148,16 +148,22 @@ Current scores (80.8% average):
 5. ✅ Demo UI exposes all new params (filter type, osc4-6, retrigger overlap, burst decay)
 6. ✅ 80.8% average similarity across 14 drum sounds
 
-### Phase 2: DAW integration
-1. Remove Drums tab (or repurpose as "Kit" overview)
-2. Make all 7 sequencer tracks use SynthPatch
-3. Drum sequencer rows trigger `playNoteWithPatch()` instead of `triggerDrum()`
-4. Track names show preset name from picker
+### Phase 2: DAW integration — DONE (cleanup remains)
+1. ✅ Drum sequencer rows trigger `playNoteWithPatch()` — `dawDrumTriggerGeneric()` in daw.c:3741
+2. ✅ All 4 drum tracks use SynthPatch presets (indices 24-27), initialized in `initPatches()`
+3. ✅ P-locks (DECAY, TONE, PUNCH, PITCH_OFFSET, VOLUME) work uniformly for drums and melody
+4. ✅ Choke works via `p_choke` (closed hihat kills open hihat voice)
+5. ✅ No Drums tab — only Patch/Bus FX/Master FX/Tape tabs exist. All drum params via Patch tab.
+6. ✅ No DrumParams/DrumType/drums.h references in daw.c — fully SynthPatch-based
+7. Track names: still hardcoded in 3 places (daw.c:385, daw.c:1222, sequencer.h:1269). Patches have `p_name`, just need to read it. (TODO, tiny)
+8. Sequencer track types: TRACK_DRUM vs TRACK_MELODIC still distinguished. Drums use different callback (no gate/slide/accent, one-shot, Dilla per-instrument nudge). Debatable whether to unify — drums genuinely behave differently. (Open)
 
 ### Phase 3: Cleanup
-1. Deprecate drums.h (keep as reference)
-2. Add more drum presets (909, CR-78, Lo-Fi, Trap, Piku)
-3. Expose sampler.h as another wave type option
+1. ✅ Deleted drums.h (~1500 lines), prototype.c, drum_compare.c — all dead code removed
+2. ✅ Removed DrumParams/DrumType from song_file.h, soundsystem.h, sound_synth_bridge.c
+3. ✅ Removed drums.h tests from test_soundsystem.c (~591 lines)
+4. Add more drum presets (909, Lo-Fi, Trap, Piku)
+5. Expose sampler.h as another wave type option
 
 ## What we keep from drums.h
 

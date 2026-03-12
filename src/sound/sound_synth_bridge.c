@@ -1248,11 +1248,7 @@ bool SoundSynthPlaySongFile(SoundSynth* synth, const char* filepath) {
 
     // Apply mix
     masterVolume = sf.sfMasterVolume;
-    drumVolume = sf.sfDrumVolume;
     for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) seq.trackVolume[i] = sf.sfTrackVolume[i];
-
-    // Apply drum params
-    drumParams = sf.sfDrumParams;
 
     // Apply effects
     fx = sf.sfEffects;

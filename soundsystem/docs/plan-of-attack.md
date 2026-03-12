@@ -24,13 +24,12 @@ All TODO items consolidated from across soundsystem docs. Waves 0-2 complete, pa
 
 ### Prototype → DAW Migration
 
+Prototype has been deleted. Only the scene/crossfader system is worth reimplementing; spec extracted to `scene-crossfader-spec.md`.
+
 | What | Effort | Source |
 |------|--------|--------|
-| **Crossfader / Scene system** — scene snapshot storage + blending (UI shell exists, logic missing) | Medium | demo-to-daw-parity |
-| **SFX triggers** — 6 preset one-shot sounds for game audio preview | Small | demo-to-daw-parity |
-| **Direct drum keys** — number keys trigger individual drums with p-lock support | Small | demo-to-daw-parity |
-| **Column visibility toggles** — show/hide parameter sections | Small | demo-to-daw-parity |
-| **Quick-copy preset buttons** — "Use as Bass/Lead/Chord" from preset picker | Small | demo-to-daw-parity |
+| **Crossfader / Scene system** — scene snapshot storage + blending (UI shell exists in DAW, logic missing). Full spec in `scene-crossfader-spec.md` | Medium | demo-to-daw-parity |
+| ~~SFX triggers, Direct drum keys, Column visibility, Quick-copy presets~~ | — | Dropped (not worth migrating) |
 
 ---
 
@@ -62,11 +61,17 @@ All preset-only work — no engine changes. See `done/missing-melodic-instrument
 
 Phase 1 done (engine + 14 drum presets as SynthPatch, 80.8% similarity). See `done/unified-synth-drums.md`.
 
-| What | Effort | Source |
+**Phase 2 is mostly done** — `dawDrumTriggerGeneric()` already calls `playNoteWithPatch()`, all 4 drum tracks use SynthPatch presets (indices 24-27), P-locks work uniformly. What remains is cleanup:
+
+| What | Effort | Status |
 |------|--------|--------|
-| **Phase 2: DAW integration** — all 7 tracks use SynthPatch, drums trigger `playNoteWithPatch()` | Medium | unified-synth-drums |
-| **Phase 3: Cleanup** — deprecate drums.h, add more drum presets (909, Lo-Fi, Trap, Piku) | Medium | unified-synth-drums |
-| **Drum preset improvements** — fix clap burst spacing, cowbell tuning, CR-78 resonance | Small | unified-synth-drums §known improvements |
+| ~~Drums trigger `playNoteWithPatch()`~~ | — | **Done** (`daw.c:3741`) |
+| ~~Remove Drums tab~~ | — | **Done** (no Drums tab exists; only Patch/Bus FX/Master FX/Tape) |
+| **Unify track types** — sequencer still has TRACK_DRUM vs TRACK_MELODIC with different callbacks. Debatable: drums genuinely behave differently (no gate, no slide, one-shot, per-instrument Dilla nudge). May not be worth unifying. | Small | Open |
+| **Track names from preset** — 3 hardcoded locations (`daw.c:385`, `daw.c:1222`, `sequencer.h:1269`). Patches already have `p_name`, just read it. | Tiny | TODO |
+| ~~Deprecate drums.h~~ | — | **Done** (deleted drums.h, prototype.c, drum_compare.c, all dead code removed) |
+| **More drum presets** (909, Lo-Fi, Trap, Piku) — preset-only, no engine changes | Small | TODO |
+| **Drum preset improvements** — fix clap burst spacing, cowbell tuning, CR-78 resonance | Small | TODO |
 
 ---
 

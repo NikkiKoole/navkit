@@ -182,6 +182,9 @@ ringModFreq = 2
 wavefoldAmount = 0
 hardSync = false
 hardSyncRatio = 1.5
+acidMode = false
+accentSweepAmt = 0.5
+gimmickDipAmt = 0.3
 
 [patch.1]
 name = "Snare"
@@ -339,6 +342,9 @@ ringModFreq = 2
 wavefoldAmount = 0
 hardSync = false
 hardSyncRatio = 1.5
+acidMode = false
+accentSweepAmt = 0.5
+gimmickDipAmt = 0.3
 
 [patch.2]
 name = "CH"
@@ -496,6 +502,9 @@ ringModFreq = 2
 wavefoldAmount = 0
 hardSync = false
 hardSyncRatio = 1.5
+acidMode = false
+accentSweepAmt = 0.5
+gimmickDipAmt = 0.3
 
 [patch.3]
 name = "Clap"
@@ -653,6 +662,9 @@ ringModFreq = 2
 wavefoldAmount = 0
 hardSync = false
 hardSyncRatio = 1.5
+acidMode = false
+accentSweepAmt = 0.5
+gimmickDipAmt = 0.3
 
 [patch.4]
 name = "Bass"
@@ -810,6 +822,9 @@ ringModFreq = 2
 wavefoldAmount = 0
 hardSync = false
 hardSyncRatio = 1.5
+acidMode = false
+accentSweepAmt = 0.5
+gimmickDipAmt = 0.3
 
 [patch.5]
 name = "Lead"
@@ -967,30 +982,33 @@ ringModFreq = 2
 wavefoldAmount = 0
 hardSync = false
 hardSyncRatio = 1.5
+acidMode = false
+accentSweepAmt = 0.5
+gimmickDipAmt = 0.3
 
 [patch.6]
 name = "Chord"
-waveType = saw
+waveType = fm
 scwIndex = 0
-attack = 0.005
+attack = 0.01
 decay = 0.2
-sustain = 0.3
+sustain = 0.8
 release = 0.15
 expRelease = false
 expDecay = false
 oneShot = false
-volume = 0.5
+volume = 0.6
 pulseWidth = 0.5
 pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
 filterCutoff = 0.2
-filterResonance = 0.7
+filterResonance = 0
 filterType = 0
-filterEnvAmt = 0.6
+filterEnvAmt = 0
 filterEnvAttack = 0.01
-filterEnvDecay = 0.12
+filterEnvDecay = 0.2
 filterKeyTrack = 0
 filterLfoRate = 0
 filterLfoDepth = 0
@@ -1017,7 +1035,7 @@ unisonCount = 1
 unisonDetune = 10
 unisonMix = 0.5
 monoMode = true
-glideTime = 0.05
+glideTime = 0.375169
 pluckBrightness = 0.5
 pluckDamping = 0.996
 pluckDamp = 0
@@ -1056,8 +1074,8 @@ granularPitchRandom = 0
 granularAmpRandom = 0.1
 granularSpread = 0.5
 granularFreeze = false
-fmModRatio = 2
-fmModIndex = 1
+fmModRatio = 1
+fmModIndex = 0
 fmFeedback = 0
 fmMod2Ratio = 0
 fmMod2Index = 0
@@ -1124,6 +1142,9 @@ ringModFreq = 2
 wavefoldAmount = 0
 hardSync = false
 hardSyncRatio = 1.5
+acidMode = false
+accentSweepAmt = 1
+gimmickDipAmt = 1
 
 [patch.7]
 name = "Bird"
@@ -1281,6 +1302,9 @@ ringModFreq = 2
 wavefoldAmount = 0
 hardSync = false
 hardSyncRatio = 1.5
+acidMode = false
+accentSweepAmt = 0.5
+gimmickDipAmt = 0.3
 
 [mixer]
 vol0 = 0.8
@@ -1508,11 +1532,22 @@ songMode = false
 [pattern.0]
 drumTrackLength = 16 16 16 16
 melodyTrackLength = 16 16 16
-m track=2 step=0 note=C4 vel=0.8 gate=1
-m track=2 step=1 note=F2 vel=0.8 gate=1
-m track=2 step=4 note=C4 vel=0.8 gate=16 slide accent
-m track=2 step=5 note=F2 vel=0.8 gate=1 slide accent
-m track=2 step=7 note=A2 vel=0.8 gate=1
-m track=2 step=8 note=C4 vel=0.8 gate=1 slide
-m track=2 step=11 note=A2 vel=0.8 gate=1
-m track=2 step=12 note=C4 vel=0.8 gate=1
+d track=0 step=0 vel=0.808
+d track=0 step=4 vel=0.808
+d track=0 step=8 vel=0.796
+d track=0 step=12 vel=0.812
+d track=1 step=4 vel=0.808
+d track=1 step=12 vel=0.788
+d track=2 step=0 vel=0.725
+d track=2 step=2 vel=0.475
+d track=2 step=4 vel=0.729
+d track=2 step=6 vel=0.467
+d track=2 step=8 vel=0.729
+d track=2 step=10 vel=0.478
+d track=2 step=12 vel=0.722
+d track=2 step=14 vel=0.494
+m track=2 step=0 note=D#2 vel=0.8 gate=1
+m track=2 step=2 note=F#2 vel=0.8 gate=1
+m track=2 step=7 note=G2 vel=0.8 gate=1
+m track=2 step=10 note=D#1 vel=0.8 gate=1 cond=1:2
+m track=2 step=12 note=F2 vel=0.8 gate=1

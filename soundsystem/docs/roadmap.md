@@ -19,9 +19,11 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - Phase Distortion (CZ-style)
 - Bird vocalization
 
-### Drums (808-style)
+### Drums (808-style) — now unified with SynthPatch
 - Kick, Snare, Clap, HiHat (open/closed)
 - Toms (low/mid/hi), Rimshot, Cowbell, Clave, Maracas
+- 14 drum presets as SynthPatch (indices 24-37), triggered via `playNoteWithPatch()`
+- Old `drums.h` engine still exists but DAW no longer uses it
 
 ### Modulation
 - ADSR envelope

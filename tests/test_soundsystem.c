@@ -4,7 +4,6 @@
  * Comprehensive tests for the soundsystem audio library:
  * - Sequencer: P-locks, trigger conditions, Dilla timing, pattern management
  * - Synth: Oscillators, envelopes, filters, scale lock
- * - Drums: Trigger behavior, envelope decay, voice management
  * - Effects: Distortion, delay, reverb, sidechain
  */
 
@@ -1150,185 +1149,6 @@ describe(mallet_synthesis) {
 }
 
 // ============================================================================
-// DRUMS TESTS - CONTEXT INITIALIZATION
-// ============================================================================
-
-describe(drums_context) {
-    it("should initialize drums context with defaults") {
-        DrumsContext ctx;
-        initDrumsContext(&ctx);
-        
-        expect_float_eq(ctx.volume, 0.6f);
-        expect_float_eq(ctx.params.kickPitch, 50.0f);
-        expect_float_eq(ctx.params.kickDecay, 0.5f);
-    }
-    
-    it("should have all voices inactive initially") {
-        DrumsContext ctx;
-        initDrumsContext(&ctx);
-        
-        for (int i = 0; i < NUM_DRUM_VOICES; i++) {
-            expect(ctx.voices[i].active == false);
-        }
-    }
-}
-
-// ============================================================================
-// DRUMS TESTS - TRIGGER BEHAVIOR
-// ============================================================================
-
-describe(drum_triggers) {
-    it("should activate voice on trigger") {
-        _ensureDrumsCtx();
-        initDrumParams();
-        
-        // Ensure voice is inactive
-        drumVoices[DRUM_KICK].active = false;
-        
-        triggerDrum(DRUM_KICK);
-        
-        expect(drumVoices[DRUM_KICK].active == true);
-        expect_float_eq(drumVoices[DRUM_KICK].time, 0.0f);
-        expect_float_eq(drumVoices[DRUM_KICK].velocity, 1.0f);
-    }
-    
-    it("should set velocity on trigger") {
-        _ensureDrumsCtx();
-        initDrumParams();
-        
-        triggerDrumWithVel(DRUM_SNARE, 0.7f);
-        
-        expect_float_eq(drumVoices[DRUM_SNARE].velocity, 0.7f);
-    }
-    
-    it("should set pitch modifier on full trigger") {
-        _ensureDrumsCtx();
-        initDrumParams();
-        
-        triggerDrumFull(DRUM_KICK, 0.8f, 1.5f);
-        
-        expect_float_eq(drumVoices[DRUM_KICK].velocity, 0.8f);
-        expect_float_eq(drumVoices[DRUM_KICK].pitchMod, 1.5f);
-    }
-    
-    it("should reset p-lock overrides on trigger") {
-        _ensureDrumsCtx();
-        initDrumParams();
-        
-        triggerDrum(DRUM_KICK);
-        
-        expect_float_eq(drumVoices[DRUM_KICK].plockDecay, -1.0f);
-        expect_float_eq(drumVoices[DRUM_KICK].plockTone, -1.0f);
-        expect_float_eq(drumVoices[DRUM_KICK].plockPunch, -1.0f);
-    }
-    
-    it("should choke open hihat when closed hihat triggers") {
-        _ensureDrumsCtx();
-        initDrumParams();
-        
-        // Trigger open hihat first
-        triggerDrum(DRUM_OPEN_HH);
-        expect(drumVoices[DRUM_OPEN_HH].active == true);
-        
-        // Trigger closed hihat
-        triggerDrum(DRUM_CLOSED_HH);
-        
-        // Open hihat should be choked
-        expect(drumVoices[DRUM_OPEN_HH].active == false);
-        expect(drumVoices[DRUM_CLOSED_HH].active == true);
-    }
-}
-
-// ============================================================================
-// DRUMS TESTS - ENVELOPE DECAY
-// ============================================================================
-
-describe(drum_envelope) {
-    it("should calculate exponential decay") {
-        float time = 0.0f;
-        float decay = 0.5f;
-        
-        float amp = expDecay(time, decay);
-        expect_float_eq(amp, 1.0f);  // At t=0, amplitude is 1
-        
-        time = 0.5f;  // At decay time
-        amp = expDecay(time, decay);
-        expect(amp < 1.0f);
-        expect(amp > 0.0f);
-    }
-    
-    it("should deactivate voice at silence threshold") {
-        _ensureDrumsCtx();
-        initDrumParams();
-        
-        triggerDrum(DRUM_CLAVE);
-        expect(drumVoices[DRUM_CLAVE].active == true);
-        
-        // Process many samples to let it decay
-        float dt = 1.0f / 44100.0f;
-        for (int i = 0; i < 44100; i++) {  // 1 second
-            processDrums(dt);
-        }
-        
-        // Clave has very short decay, should be inactive
-        expect(drumVoices[DRUM_CLAVE].active == false);
-    }
-}
-
-// ============================================================================
-// DRUMS TESTS - PROCESSING OUTPUT
-// ============================================================================
-
-describe(drum_processing) {
-    it("should output non-zero sample when kick is active") {
-        _ensureDrumsCtx();
-        initDrumParams();
-        
-        triggerDrum(DRUM_KICK);
-        
-        float dt = 1.0f / 44100.0f;
-        float sample = processDrums(dt);
-        
-        expect(sample != 0.0f);
-    }
-    
-    it("should output zero when no drums are active") {
-        _ensureDrumsCtx();
-        initDrumParams();
-        
-        // Ensure all voices are inactive
-        for (int i = 0; i < NUM_DRUM_VOICES; i++) {
-            drumVoices[i].active = false;
-        }
-        
-        float dt = 1.0f / 44100.0f;
-        float sample = processDrums(dt);
-        
-        expect_float_eq(sample, 0.0f);
-    }
-    
-    it("should scale output by drum volume") {
-        _ensureDrumsCtx();
-        initDrumParams();
-        
-        triggerDrum(DRUM_KICK);
-        
-        float dt = 1.0f / 44100.0f;
-        
-        drumVolume = 1.0f;
-        float sampleFull = processDrums(dt);
-        
-        // Retrigger
-        triggerDrum(DRUM_KICK);
-        drumVolume = 0.5f;
-        float sampleHalf = processDrums(dt);
-        
-        // Half volume should give approximately half amplitude
-        expect(fabsf(sampleHalf) < fabsf(sampleFull));
-    }
-}
-
-// ============================================================================
 // EFFECTS TESTS - CONTEXT INITIALIZATION
 // ============================================================================
 
@@ -1674,40 +1494,6 @@ describe(tape_effect) {
 // INTEGRATION TESTS
 // ============================================================================
 
-describe(integration_sequencer_drums) {
-    it("should trigger drum from sequencer step data") {
-        _ensureSeqCtx();
-        _ensureDrumsCtx();
-        initSequencer(drumKickFull, drumSnareFull, drumClosedHHFull, drumClapFull);
-        initDrumParams();
-        
-        // Set up a kick on step 0
-        seqSetDrumStep(0, 0, true, 0.9f, 0.0f);
-        
-        Pattern *p = seqCurrentPattern();
-        expect(patGetDrum(p, 0, 0) == true);
-        expect_vel_eq(patGetDrumVel(p, 0, 0), 0.9f);
-    }
-
-    it("should apply p-lock to drum trigger") {
-        _ensureSeqCtx();
-        _ensureDrumsCtx();
-        initSequencer(NULL, NULL, NULL, NULL);
-        initDrumParams();
-        
-        // Set decay p-lock on kick step
-        Pattern *p = seqCurrentPattern();
-        seqSetPLock(p, 0, 0, PLOCK_DECAY, 0.3f);
-        
-        // Prepare p-locks as sequencer would
-        seqPreparePLocks(p, 0, 0);
-        
-        // Check p-lock is available
-        expect(currentPLocks.locked[PLOCK_DECAY] == true);
-        expect_float_eq(currentPLocks.values[PLOCK_DECAY], 0.3f);
-    }
-}
-
 describe(integration_effects_chain) {
     it("should process full effects chain") {
         _ensureFxCtx();
@@ -1753,19 +1539,18 @@ static void e2e_kick_trigger(float vel, float pitch) {
     e2e_kick_count++;
     e2e_last_kick_vel = vel;
     e2e_last_kick_pitch = pitch;
-    triggerDrumFull(DRUM_KICK, vel, pitch);
 }
 static void e2e_snare_trigger(float vel, float pitch) {
+    (void)vel; (void)pitch;
     e2e_snare_count++;
-    triggerDrumFull(DRUM_SNARE, vel, pitch);
 }
 static void e2e_hh_trigger(float vel, float pitch) {
+    (void)vel; (void)pitch;
     e2e_hh_count++;
-    triggerDrumFull(DRUM_CLOSED_HH, vel, pitch);
 }
 static void e2e_clap_trigger(float vel, float pitch) {
+    (void)vel; (void)pitch;
     e2e_clap_count++;
-    triggerDrumFull(DRUM_CLAP, vel, pitch);
 }
 
 static void e2e_reset_counters(void) {
@@ -1781,9 +1566,7 @@ describe(e2e_sequencer_playback) {
     it("should trigger drums at correct steps during playback") {
         e2e_reset_counters();
         _ensureSeqCtx();
-        _ensureDrumsCtx();
         initSequencer(e2e_kick_trigger, e2e_snare_trigger, e2e_hh_trigger, e2e_clap_trigger);
-        initDrumParams();
         
         // Simple 4-on-the-floor pattern: kick on 0,4,8,12
         seqSetDrumStep(0, 0, true, 1.0f, 0.0f);
@@ -1822,9 +1605,7 @@ describe(e2e_sequencer_playback) {
     it("should respect velocity settings") {
         e2e_reset_counters();
         _ensureSeqCtx();
-        _ensureDrumsCtx();
         initSequencer(e2e_kick_trigger, e2e_snare_trigger, e2e_hh_trigger, e2e_clap_trigger);
-        initDrumParams();
         
         // Single kick with specific velocity
         seqSetDrumStep(0, 0, true, 0.65f, 0.0f);
@@ -1854,9 +1635,7 @@ describe(e2e_sequencer_playback) {
     it("should respect pitch settings") {
         e2e_reset_counters();
         _ensureSeqCtx();
-        _ensureDrumsCtx();
         initSequencer(e2e_kick_trigger, e2e_snare_trigger, e2e_hh_trigger, e2e_clap_trigger);
-        initDrumParams();
         
         // Single kick with pitch offset (0.5 = up one octave since it's exponential)
         // drumPitch is -1 to +1, converted to multiplier via pow(2, pitch)
@@ -1886,9 +1665,7 @@ describe(e2e_sequencer_playback) {
     it("should handle polyrhythmic track lengths") {
         e2e_reset_counters();
         _ensureSeqCtx();
-        _ensureDrumsCtx();
         initSequencer(e2e_kick_trigger, e2e_snare_trigger, e2e_hh_trigger, e2e_clap_trigger);
-        initDrumParams();
         
         Pattern *p = seqCurrentPattern();
         
@@ -1935,10 +1712,8 @@ describe(e2e_sequencer_playback) {
         for (int run = 0; run < runs; run++) {
             e2e_reset_counters();
             _ensureSeqCtx();
-            _ensureDrumsCtx();
             initSequencer(e2e_kick_trigger, e2e_snare_trigger, e2e_hh_trigger, e2e_clap_trigger);
             seqNoiseState = 12345 + run * 7919;  // Vary seed per run for statistical coverage
-            initDrumParams();
             
             Pattern *p = seqCurrentPattern();
             
@@ -1978,9 +1753,7 @@ describe(e2e_sequencer_playback) {
     it("should handle pattern switching") {
         e2e_reset_counters();
         _ensureSeqCtx();
-        _ensureDrumsCtx();
         initSequencer(e2e_kick_trigger, e2e_snare_trigger, e2e_hh_trigger, e2e_clap_trigger);
-        initDrumParams();
         
         // Pattern 0: kick on step 0
         seqSetDrumStep(0, 0, true, 1.0f, 0.0f);
@@ -2034,9 +1807,7 @@ describe(e2e_sequencer_playback) {
         // not just the first time. This catches timing issues at the loop boundary.
         e2e_reset_counters();
         _ensureSeqCtx();
-        _ensureDrumsCtx();
         initSequencer(e2e_kick_trigger, e2e_snare_trigger, e2e_hh_trigger, e2e_clap_trigger);
-        initDrumParams();
         
         // Only kick on step 0
         seqSetDrumStep(0, 0, true, 1.0f, 0.0f);
@@ -2077,9 +1848,7 @@ describe(e2e_sequencer_playback) {
         // multiple ticks to be processed in a single updateSequencer call
         e2e_reset_counters();
         _ensureSeqCtx();
-        _ensureDrumsCtx();
         initSequencer(e2e_kick_trigger, e2e_snare_trigger, e2e_hh_trigger, e2e_clap_trigger);
-        initDrumParams();
         
         // Only kick on step 0
         seqSetDrumStep(0, 0, true, 1.0f, 0.0f);
@@ -2119,9 +1888,7 @@ describe(e2e_sequencer_playback) {
         // Test that step 0 doesn't trigger twice when crossing the loop boundary
         e2e_reset_counters();
         _ensureSeqCtx();
-        _ensureDrumsCtx();
         initSequencer(e2e_kick_trigger, e2e_snare_trigger, e2e_hh_trigger, e2e_clap_trigger);
-        initDrumParams();
         
         // Kick on step 0 only
         seqSetDrumStep(0, 0, true, 1.0f, 0.0f);
@@ -2166,9 +1933,7 @@ describe(e2e_sequencer_playback) {
         // when the pattern loops (this tests early triggers at boundary)
         e2e_reset_counters();
         _ensureSeqCtx();
-        _ensureDrumsCtx();
         initSequencer(e2e_kick_trigger, e2e_snare_trigger, e2e_hh_trigger, e2e_clap_trigger);
-        initDrumParams();
         
         seqSetDrumStep(0, 0, true, 1.0f, 0.0f);
         
@@ -2197,173 +1962,6 @@ describe(e2e_sequencer_playback) {
         
         // Should trigger exactly twice (once per loop)
         expect(e2e_kick_count == 2);
-        
-        seq.playing = false;
-    }
-}
-
-describe(e2e_audio_generation) {
-    it("should generate audio buffer for drum pattern") {
-        _ensureSeqCtx();
-        _ensureDrumsCtx();
-        _ensureFxCtx();
-        initSequencer(drumKickFull, drumSnareFull, drumClosedHHFull, drumClapFull);
-        initDrumParams();
-        initEffects();
-        
-        // Simple beat
-        seqSetDrumStep(0, 0, true, 1.0f, 0.0f);   // Kick
-        seqSetDrumStep(1, 4, true, 0.8f, 0.0f);   // Snare
-        seqSetDrumStep(2, 0, true, 0.6f, 0.0f);   // HH
-        seqSetDrumStep(2, 2, true, 0.6f, 0.0f);
-        seqSetDrumStep(2, 4, true, 0.6f, 0.0f);
-        seqSetDrumStep(2, 6, true, 0.6f, 0.0f);
-        
-        seq.bpm = 120.0f;
-        seq.playing = true;
-        resetSequencer();
-        
-        // Disable timing randomization for predictable output
-        seq.dilla.kickNudge = 0;
-        seq.dilla.snareDelay = 0;
-        seq.dilla.hatNudge = 0;
-        seq.dilla.swing = 0;
-        seq.dilla.jitter = 0;
-        
-        float dt = 1.0f / SAMPLE_RATE;
-        
-        // Generate 1 second of audio
-        int numSamples = SAMPLE_RATE;
-        float peakLevel = 0.0f;
-        float rmsSum = 0.0f;
-        int nonZeroSamples = 0;
-        
-        for (int i = 0; i < numSamples; i++) {
-            updateSequencer(dt);
-            float sample = processDrums(dt);
-            
-            if (sample != 0.0f) nonZeroSamples++;
-            if (fabsf(sample) > peakLevel) peakLevel = fabsf(sample);
-            rmsSum += sample * sample;
-        }
-        
-        float rms = sqrtf(rmsSum / numSamples);
-        
-        // Audio was generated
-        expect(nonZeroSamples > 0);
-        // Peak level is reasonable (not clipping hard)
-        expect(peakLevel < 2.0f);
-        expect(peakLevel > 0.01f);
-        // RMS is reasonable
-        expect(rms > 0.001f);
-        expect(rms < 1.0f);
-        
-        seq.playing = false;
-    }
-    
-    it("should generate continuous audio without dropouts") {
-        _ensureSeqCtx();
-        _ensureDrumsCtx();
-        initSequencer(drumKickFull, drumSnareFull, drumClosedHHFull, drumClapFull);
-        initDrumParams();
-        
-        // Dense pattern
-        for (int s = 0; s < 16; s++) {
-            seqSetDrumStep(0, s, true, 0.8f, 0.0f);  // Kick every step
-            seqSetDrumStep(2, s, true, 0.5f, 0.0f);  // HH every step
-        }
-        
-        seq.bpm = 140.0f;
-        seq.playing = true;
-        resetSequencer();
-        
-        seq.dilla.kickNudge = 0;
-        seq.dilla.hatNudge = 0;
-        seq.dilla.swing = 0;
-        seq.dilla.jitter = 0;
-        
-        float dt = 1.0f / SAMPLE_RATE;
-        
-        // Check for audio continuity over 2 seconds
-        int numSamples = SAMPLE_RATE * 2;
-        int silentRuns = 0;
-        int maxSilentRun = 0;
-        int currentSilentRun = 0;
-        
-        for (int i = 0; i < numSamples; i++) {
-            updateSequencer(dt);
-            float sample = processDrums(dt);
-            
-            if (fabsf(sample) < 0.0001f) {
-                currentSilentRun++;
-            } else {
-                if (currentSilentRun > maxSilentRun) {
-                    maxSilentRun = currentSilentRun;
-                }
-                if (currentSilentRun > 1000) silentRuns++;  // > ~23ms of silence
-                currentSilentRun = 0;
-            }
-        }
-        
-        // With dense pattern, shouldn't have long silent gaps
-        // Allow some silence between drum hits (expected), but not huge gaps
-        expect(silentRuns < 100);  // Few long silent periods
-        
-        seq.playing = false;
-    }
-    
-    it("should produce different output for different patterns") {
-        _ensureSeqCtx();
-        _ensureDrumsCtx();
-        initSequencer(drumKickFull, drumSnareFull, drumClosedHHFull, drumClapFull);
-        initDrumParams();
-        
-        // Pattern 0: kick-heavy
-        seqSetDrumStep(0, 0, true, 1.0f, 0.0f);
-        seqSetDrumStep(0, 4, true, 1.0f, 0.0f);
-        seqSetDrumStep(0, 8, true, 1.0f, 0.0f);
-        seqSetDrumStep(0, 12, true, 1.0f, 0.0f);
-        
-        seq.bpm = 120.0f;
-        seq.playing = true;
-        resetSequencer();
-        
-        seq.dilla.kickNudge = 0;
-        seq.dilla.swing = 0;
-        seq.dilla.jitter = 0;
-        
-        float dt = 1.0f / SAMPLE_RATE;
-        
-        // Generate sum for pattern 0
-        float sum0 = 0.0f;
-        for (int i = 0; i < SAMPLE_RATE / 2; i++) {
-            updateSequencer(dt);
-            float sample = processDrums(dt);
-            sum0 += fabsf(sample);
-        }
-        
-        seq.playing = false;
-        
-        // Pattern 1: hihat-heavy (different frequency content)
-        seqSwitchPattern(1);
-        clearPattern(seqCurrentPattern());
-        for (int s = 0; s < 16; s++) {
-            seqSetDrumStep(2, s, true, 0.7f, 0.0f);  // HH every step
-        }
-        
-        seq.playing = true;
-        resetSequencer();
-        
-        // Generate sum for pattern 1
-        float sum1 = 0.0f;
-        for (int i = 0; i < SAMPLE_RATE / 2; i++) {
-            updateSequencer(dt);
-            float sample = processDrums(dt);
-            sum1 += fabsf(sample);
-        }
-        
-        // Patterns should produce different total energy
-        expect(fabsf(sum0 - sum1) > 0.1f);
         
         seq.playing = false;
     }
@@ -2489,113 +2087,6 @@ describe(e2e_synth_audio) {
     }
 }
 
-describe(e2e_full_mixdown) {
-    it("should mix drums and effects into final output") {
-        _ensureSeqCtx();
-        _ensureDrumsCtx();
-        _ensureFxCtx();
-        initSequencer(drumKickFull, drumSnareFull, drumClosedHHFull, drumClapFull);
-        initDrumParams();
-        initEffects();
-        
-        // Simple beat
-        seqSetDrumStep(0, 0, true, 1.0f, 0.0f);
-        seqSetDrumStep(1, 4, true, 0.8f, 0.0f);
-        
-        // Enable effects
-        fx.distEnabled = true;
-        fx.distDrive = 1.5f;
-        fx.distMix = 0.2f;
-        
-        fx.reverbEnabled = true;
-        fx.reverbSize = 0.3f;
-        fx.reverbMix = 0.15f;
-        
-        seq.bpm = 120.0f;
-        seq.playing = true;
-        resetSequencer();
-        
-        seq.dilla.kickNudge = 0;
-        seq.dilla.snareDelay = 0;
-        seq.dilla.swing = 0;
-        seq.dilla.jitter = 0;
-        
-        float dt = 1.0f / SAMPLE_RATE;
-        
-        // Generate 1 second and verify output
-        float peakLevel = 0.0f;
-        float rmsSum = 0.0f;
-        
-        for (int i = 0; i < SAMPLE_RATE; i++) {
-            updateSequencer(dt);
-            float drums = processDrums(dt);
-            float final_sample = processEffects(drums, dt);
-            
-            if (fabsf(final_sample) > peakLevel) peakLevel = fabsf(final_sample);
-            rmsSum += final_sample * final_sample;
-        }
-        
-        float rms = sqrtf(rmsSum / SAMPLE_RATE);
-        
-        // Should have audio
-        expect(peakLevel > 0.01f);
-        expect(rms > 0.001f);
-        
-        // Should not be clipping
-        expect(peakLevel < 3.0f);
-        
-        seq.playing = false;
-    }
-    
-    it("should apply sidechain compression correctly") {
-        _ensureDrumsCtx();
-        _ensureFxCtx();
-        initDrumParams();
-        initEffects();
-        
-        // Enable sidechain
-        fx.sidechainEnabled = true;
-        fx.sidechainDepth = 0.8f;
-        fx.sidechainAttack = 0.001f;
-        fx.sidechainRelease = 0.1f;
-        
-        float dt = 1.0f / SAMPLE_RATE;
-        
-        // Simulate kick hit
-        triggerDrum(DRUM_KICK);
-        
-        // Process kick and measure sidechain effect
-        float kickSample = processDrums(dt);
-        updateSidechainEnvelope(kickSample, dt);
-        
-        // Run a few samples to let attack happen
-        for (int i = 0; i < 100; i++) {
-            float sample = processDrums(dt);
-            updateSidechainEnvelope(sample, dt);
-        }
-        
-        // Envelope should be elevated
-        expect(fx.sidechainEnvelope > 0.1f);
-        
-        // Apply ducking to a test signal
-        float testSignal = 1.0f;
-        float ducked = applySidechainDucking(testSignal);
-        
-        // Ducked signal should be lower
-        expect(ducked < testSignal);
-        expect(ducked > 0.0f);
-        
-        // Let sidechain release
-        for (int i = 0; i < SAMPLE_RATE / 2; i++) {
-            updateSidechainEnvelope(0.0f, dt);
-        }
-        
-        // After release, ducking should be minimal
-        float afterRelease = applySidechainDucking(testSignal);
-        expect(afterRelease > ducked);
-    }
-}
-
 // ============================================================================
 // HELPER FUNCTION TESTS
 // ============================================================================
@@ -2623,27 +2114,6 @@ describe(helper_functions) {
         }
     }
     
-    it("should calculate exponential decay correctly") {
-        float decay = 0.5f;
-        
-        // At t=0, should be 1.0
-        expect_float_eq(expDecay(0.0f, decay), 1.0f);
-        
-        // Should decrease over time
-        float amp1 = expDecay(0.1f, decay);
-        float amp2 = expDecay(0.2f, decay);
-        expect(amp1 < 1.0f);
-        expect(amp2 < amp1);
-        
-        // Should approach 0
-        float ampLate = expDecay(5.0f, decay);
-        expect(ampLate < 0.01f);
-    }
-    
-    it("should handle zero decay gracefully") {
-        float amp = expDecay(0.5f, 0.0f);
-        expect_float_eq(amp, 0.0f);
-    }
 }
 
 // ============================================================================
@@ -3503,25 +2973,6 @@ describe(multi_instance_isolation) {
         expect_float_eq(ctx2.masterVolume, 0.8f);
         expect_float_eq(ctx1.noteAttack, 0.05f);
         expect_float_eq(ctx2.noteAttack, 0.2f);
-    }
-    
-    it("should allow separate drums contexts without interference") {
-        DrumsContext ctx1, ctx2;
-        initDrumsContext(&ctx1);
-        initDrumsContext(&ctx2);
-        
-        // Configure differently
-        ctx1.volume = 0.4f;
-        ctx1.params.kickPitch = 55.0f;
-        
-        ctx2.volume = 0.9f;
-        ctx2.params.kickPitch = 45.0f;
-        
-        // Verify they're independent
-        expect_float_eq(ctx1.volume, 0.4f);
-        expect_float_eq(ctx2.volume, 0.9f);
-        expect_float_eq(ctx1.params.kickPitch, 55.0f);
-        expect_float_eq(ctx2.params.kickPitch, 45.0f);
     }
     
     it("should allow separate effects contexts without interference") {
@@ -4984,10 +4435,6 @@ describe(song_file_round_trip) {
         orig.sfDrumVolume = 0.77f;
         orig.sfTrackVolume[0] = 0.8f;
         orig.sfTrackVolume[3] = 0.65f;
-        orig.sfDrumSounds[0] = DRUM_KICK;
-        orig.sfDrumSounds[1] = DRUM_CLAP;
-        orig.sfDrumSounds[2] = DRUM_OPEN_HH;
-        orig.sfDrumSounds[3] = DRUM_RIMSHOT;
         strcpy(orig.author, "Test Author");
         strcpy(orig.description, "A test song");
         orig.fadeIn = 1.5f;
@@ -5013,9 +4460,6 @@ describe(song_file_round_trip) {
         expect_float_near(loaded.sfDrumVolume, 0.77f, 0.01f);
         expect_float_near(loaded.sfTrackVolume[0], 0.8f, 0.01f);
         expect_float_near(loaded.sfTrackVolume[3], 0.65f, 0.01f);
-        expect((int)loaded.sfDrumSounds[1] == (int)DRUM_CLAP);
-        expect((int)loaded.sfDrumSounds[2] == (int)DRUM_OPEN_HH);
-        expect((int)loaded.sfDrumSounds[3] == (int)DRUM_RIMSHOT);
         expect(strcmp(loaded.author, "Test Author") == 0);
         expect_float_near(loaded.fadeIn, 1.5f, 0.01f);
         expect_float_near(loaded.fadeOut, 2.0f, 0.01f);
@@ -5096,32 +4540,6 @@ describe(song_file_round_trip) {
         remove(path);
     }
 
-    it("should round-trip drum params") {
-        _ensureSeqCtx();
-        const char *path = "/tmp/test_song_drums.song";
-
-        SongFileData orig;
-        songFileDataInit(&orig);
-        orig.sfDrumParams.kickPitch = 55.0f;
-        orig.sfDrumParams.kickDecay = 0.4f;
-        orig.sfDrumParams.snarePitch = 200.0f;
-        orig.sfDrumParams.snareSnappy = 0.6f;
-
-        bool saved = songFileSave(path, &orig);
-        expect(saved);
-
-        SongFileData loaded;
-        songFileDataInit(&loaded);
-        bool ok = songFileLoad(path, &loaded);
-        expect(ok);
-
-        expect_float_near(loaded.sfDrumParams.kickPitch, 55.0f, 0.1f);
-        expect_float_near(loaded.sfDrumParams.kickDecay, 0.4f, 0.01f);
-        expect_float_near(loaded.sfDrumParams.snarePitch, 200.0f, 0.1f);
-        expect_float_near(loaded.sfDrumParams.snareSnappy, 0.6f, 0.01f);
-
-        remove(path);
-    }
 }
 
 describe(song_file_patch_round_trip) {
@@ -6130,12 +5548,6 @@ int main(int argc, char **argv) {
     test(additive_synthesis);
     test(mallet_synthesis);
     
-    // Drums tests
-    test(drums_context);
-    test(drum_triggers);
-    test(drum_envelope);
-    test(drum_processing);
-    
     // Effects tests
     test(effects_context);
     test(distortion_effect);
@@ -6162,14 +5574,11 @@ int main(int argc, char **argv) {
     test(bus_reverb_send);
     
     // Integration tests
-    test(integration_sequencer_drums);
     test(integration_effects_chain);
     
     // End-to-end tests
     test(e2e_sequencer_playback);
-    test(e2e_audio_generation);
     test(e2e_synth_audio);
-    test(e2e_full_mixdown);
     
     // Helper function tests
     test(helper_functions);

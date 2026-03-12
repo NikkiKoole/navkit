@@ -406,7 +406,8 @@ typedef struct {
     int envStage;         // 0=off, 1=attack, 2=decay, 3=sustain, 4=release
     bool expRelease;      // false=linear (tight, predictable), true=exponential (natural tail)
     bool oneShot;         // true=skip sustain, go straight to release after decay
-    
+    bool monoReserved;    // true = reserved for mono track, findVoice() should avoid stealing
+
     // For pitch slides (SFX)
     float pitchSlide;
     
@@ -3578,11 +3579,25 @@ static float processVoice(Voice *v, float sampleRate) {
 // Find a free voice or steal one
 static int findVoice(void) {
     _ensureSynthCtx();
+    // Pass 1: prefer inactive, non-reserved voices
+    for (int i = 0; i < NUM_VOICES; i++) {
+        if (synthVoices[i].envStage == 0 && !synthVoices[i].monoReserved) return i;
+    }
+    // Pass 2: releasing, non-reserved voices
+    for (int i = 0; i < NUM_VOICES; i++) {
+        if (synthVoices[i].envStage == 4 && !synthVoices[i].monoReserved) return i;
+    }
+    // Pass 3: any inactive voice (including reserved ones that finished)
     for (int i = 0; i < NUM_VOICES; i++) {
         if (synthVoices[i].envStage == 0) return i;
     }
+    // Pass 4: any releasing voice
     for (int i = 0; i < NUM_VOICES; i++) {
         if (synthVoices[i].envStage == 4) return i;
+    }
+    // Last resort: steal the last non-reserved voice, or truly last resort any voice
+    for (int i = NUM_VOICES - 1; i >= 0; i--) {
+        if (!synthVoices[i].monoReserved) return i;
     }
     return NUM_VOICES - 1;
 }
