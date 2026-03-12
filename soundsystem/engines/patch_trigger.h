@@ -46,12 +46,15 @@ static void applyPatchToGlobals(SynthPatch *p) {
     noteResoLfoRate = p->p_resoLfoRate;
     noteResoLfoDepth = p->p_resoLfoDepth;
     noteResoLfoShape = p->p_resoLfoShape;
+    noteResoLfoSync = (LfoSyncDiv)p->p_resoLfoSync;
     noteAmpLfoRate = p->p_ampLfoRate;
     noteAmpLfoDepth = p->p_ampLfoDepth;
     noteAmpLfoShape = p->p_ampLfoShape;
+    noteAmpLfoSync = (LfoSyncDiv)p->p_ampLfoSync;
     notePitchLfoRate = p->p_pitchLfoRate;
     notePitchLfoDepth = p->p_pitchLfoDepth;
     notePitchLfoShape = p->p_pitchLfoShape;
+    notePitchLfoSync = (LfoSyncDiv)p->p_pitchLfoSync;
     noteScwIndex = p->p_scwIndex;
     monoMode = p->p_monoMode;
     glideTime = p->p_glideTime;

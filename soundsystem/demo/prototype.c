@@ -987,8 +987,11 @@ static void blendSynthPatch(SynthPatch *out, const SynthPatch *a, const SynthPat
     out->p_arpChord = switchInt(a->p_arpChord, b->p_arpChord, t);
     out->p_unisonCount = switchInt(a->p_unisonCount, b->p_unisonCount, t);
     out->p_resoLfoShape = switchInt(a->p_resoLfoShape, b->p_resoLfoShape, t);
+    out->p_resoLfoSync = switchInt(a->p_resoLfoSync, b->p_resoLfoSync, t);
     out->p_ampLfoShape = switchInt(a->p_ampLfoShape, b->p_ampLfoShape, t);
+    out->p_ampLfoSync = switchInt(a->p_ampLfoSync, b->p_ampLfoSync, t);
     out->p_pitchLfoShape = switchInt(a->p_pitchLfoShape, b->p_pitchLfoShape, t);
+    out->p_pitchLfoSync = switchInt(a->p_pitchLfoSync, b->p_pitchLfoSync, t);
     out->p_additivePreset = switchInt(a->p_additivePreset, b->p_additivePreset, t);
     out->p_malletPreset = switchInt(a->p_malletPreset, b->p_malletPreset, t);
     out->p_voiceVowel = switchInt(a->p_voiceVowel, b->p_voiceVowel, t);
@@ -2430,18 +2433,21 @@ int main(void) {
             ui_col_float(&col3, "Rate", &cp->p_resoLfoRate, 0.5f, 0.0f, 20.0f);
             ui_col_float(&col3, "Depth", &cp->p_resoLfoDepth, 0.05f, 0.0f, 1.0f);
             ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &cp->p_resoLfoShape);
+            ui_col_cycle(&col3, "Sync", lfoSyncNames, 8, &cp->p_resoLfoSync);
             ui_col_space(&col3, 4);
-            
+
             ui_col_sublabel(&col3, "Amplitude:", ORANGE);
             ui_col_float(&col3, "Rate", &cp->p_ampLfoRate, 0.5f, 0.0f, 20.0f);
             ui_col_float(&col3, "Depth", &cp->p_ampLfoDepth, 0.05f, 0.0f, 1.0f);
             ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &cp->p_ampLfoShape);
+            ui_col_cycle(&col3, "Sync", lfoSyncNames, 8, &cp->p_ampLfoSync);
             ui_col_space(&col3, 4);
-            
+
             ui_col_sublabel(&col3, "Pitch:", ORANGE);
             ui_col_float(&col3, "Rate", &cp->p_pitchLfoRate, 0.5f, 0.0f, 20.0f);
             ui_col_float(&col3, "Depth", &cp->p_pitchLfoDepth, 0.05f, 0.0f, 1.0f);
             ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &cp->p_pitchLfoShape);
+            ui_col_cycle(&col3, "Sync", lfoSyncNames, 8, &cp->p_pitchLfoSync);
         }
         
         // === COLUMN 4: Drums ===

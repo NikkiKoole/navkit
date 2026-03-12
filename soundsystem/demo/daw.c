@@ -2749,9 +2749,9 @@ static void drawParamPatch(float x, float y, float w, float h) {
 
         struct { const char* name; float *rate, *depth; int *shape; int *sync; } lfos[] = {
             {"Filter LFO", &p->p_filterLfoRate, &p->p_filterLfoDepth, &p->p_filterLfoShape, &p->p_filterLfoSync},
-            {"Reso LFO",   &p->p_resoLfoRate,   &p->p_resoLfoDepth,   &p->p_resoLfoShape,   NULL},
-            {"Amp LFO",    &p->p_ampLfoRate,     &p->p_ampLfoDepth,    &p->p_ampLfoShape,    NULL},
-            {"Pitch LFO",  &p->p_pitchLfoRate,   &p->p_pitchLfoDepth,  &p->p_pitchLfoShape,  NULL},
+            {"Reso LFO",   &p->p_resoLfoRate,   &p->p_resoLfoDepth,   &p->p_resoLfoShape,   &p->p_resoLfoSync},
+            {"Amp LFO",    &p->p_ampLfoRate,     &p->p_ampLfoDepth,    &p->p_ampLfoShape,    &p->p_ampLfoSync},
+            {"Pitch LFO",  &p->p_pitchLfoRate,   &p->p_pitchLfoDepth,  &p->p_pitchLfoShape,  &p->p_pitchLfoSync},
         };
 
         float ly = y;

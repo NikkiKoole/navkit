@@ -389,21 +389,24 @@ typedef struct {
     float resoLfoPhase;
     int resoLfoShape;
     float resoLfoSH;
-    
+    LfoSyncDiv resoLfoSync;
+
     // Amplitude LFO (tremolo)
     float ampLfoRate;
     float ampLfoDepth;
     float ampLfoPhase;
     int ampLfoShape;
     float ampLfoSH;
-    
+    LfoSyncDiv ampLfoSync;
+
     // Pitch LFO
     float pitchLfoRate;
     float pitchLfoDepth;  // In semitones
     float pitchLfoPhase;
     int pitchLfoShape;
     float pitchLfoSH;
-    
+    LfoSyncDiv pitchLfoSync;
+
     // Arpeggiator
     bool arpEnabled;
     float arpNotes[8];        // Expanded from 4
@@ -602,12 +605,15 @@ typedef struct SynthContext {
     float noteResoLfoRate;
     float noteResoLfoDepth;
     int noteResoLfoShape;
+    LfoSyncDiv noteResoLfoSync;
     float noteAmpLfoRate;
     float noteAmpLfoDepth;
     int noteAmpLfoShape;
+    LfoSyncDiv noteAmpLfoSync;
     float notePitchLfoRate;
     float notePitchLfoDepth;
     int notePitchLfoShape;
+    LfoSyncDiv notePitchLfoSync;
     int noteScwIndex;
     
     // Arpeggiator parameters
@@ -916,12 +922,15 @@ static void _ensureSynthCtx(void) {
 #define noteResoLfoRate (synthCtx->noteResoLfoRate)
 #define noteResoLfoDepth (synthCtx->noteResoLfoDepth)
 #define noteResoLfoShape (synthCtx->noteResoLfoShape)
+#define noteResoLfoSync (synthCtx->noteResoLfoSync)
 #define noteAmpLfoRate (synthCtx->noteAmpLfoRate)
 #define noteAmpLfoDepth (synthCtx->noteAmpLfoDepth)
 #define noteAmpLfoShape (synthCtx->noteAmpLfoShape)
+#define noteAmpLfoSync (synthCtx->noteAmpLfoSync)
 #define notePitchLfoRate (synthCtx->notePitchLfoRate)
 #define notePitchLfoDepth (synthCtx->notePitchLfoDepth)
 #define notePitchLfoShape (synthCtx->notePitchLfoShape)
+#define notePitchLfoSync (synthCtx->notePitchLfoSync)
 #define noteScwIndex (synthCtx->noteScwIndex)
 #define noteArpEnabled (synthCtx->noteArpEnabled)
 #define noteArpMode (synthCtx->noteArpMode)
@@ -2776,8 +2785,12 @@ static float processVoice(Voice *v, float sampleRate) {
     }
     
     // Pitch LFO (replaces simple vibrato with shape options)
+    float pitchLfoActualRate = v->pitchLfoRate;
+    if (v->pitchLfoSync != LFO_SYNC_OFF) {
+        pitchLfoActualRate = getLfoRateFromSync(synthBpm, v->pitchLfoSync);
+    }
     float pitchLfoMod = processLfo(&v->pitchLfoPhase, &v->pitchLfoSH,
-                                    v->pitchLfoRate, v->pitchLfoDepth, v->pitchLfoShape, dt);
+                                    pitchLfoActualRate, v->pitchLfoDepth, v->pitchLfoShape, dt);
     if (pitchLfoMod != 0.0f) {
         freq *= powf(2.0f, pitchLfoMod / 12.0f);  // pitchLfoDepth is in semitones
     }
@@ -3095,10 +3108,18 @@ static float processVoice(Voice *v, float sampleRate) {
     }
     float filterLfoMod = processLfo(&v->filterLfoPhase, &v->filterLfoSH, 
                                      filterLfoRate, v->filterLfoDepth, v->filterLfoShape, dt);
+    float resoLfoActualRate = v->resoLfoRate;
+    if (v->resoLfoSync != LFO_SYNC_OFF) {
+        resoLfoActualRate = getLfoRateFromSync(synthBpm, v->resoLfoSync);
+    }
     float resoLfoMod = processLfo(&v->resoLfoPhase, &v->resoLfoSH,
-                                   v->resoLfoRate, v->resoLfoDepth, v->resoLfoShape, dt);
+                                   resoLfoActualRate, v->resoLfoDepth, v->resoLfoShape, dt);
+    float ampLfoActualRate = v->ampLfoRate;
+    if (v->ampLfoSync != LFO_SYNC_OFF) {
+        ampLfoActualRate = getLfoRateFromSync(synthBpm, v->ampLfoSync);
+    }
     float ampLfoMod = processLfo(&v->ampLfoPhase, &v->ampLfoSH,
-                                  v->ampLfoRate, v->ampLfoDepth, v->ampLfoShape, dt);
+                                  ampLfoActualRate, v->ampLfoDepth, v->ampLfoShape, dt);
     
     // Calculate effective cutoff with envelope, LFO, and key tracking
     float cutoff = v->filterCutoff + v->filterEnvAmt * v->filterEnvLevel + filterLfoMod;
@@ -3281,12 +3302,15 @@ static void resetVoiceLfos(Voice *v, bool useGlobalParams) {
         v->resoLfoRate = noteResoLfoRate;
         v->resoLfoDepth = noteResoLfoDepth;
         v->resoLfoShape = noteResoLfoShape;
+        v->resoLfoSync = noteResoLfoSync;
         v->ampLfoRate = noteAmpLfoRate;
         v->ampLfoDepth = noteAmpLfoDepth;
         v->ampLfoShape = noteAmpLfoShape;
+        v->ampLfoSync = noteAmpLfoSync;
         v->pitchLfoRate = notePitchLfoRate;
         v->pitchLfoDepth = notePitchLfoDepth;
         v->pitchLfoShape = notePitchLfoShape;
+        v->pitchLfoSync = notePitchLfoSync;
     } else {
         v->filterLfoRate = 0.0f;
         v->filterLfoDepth = 0.0f;
@@ -3295,12 +3319,15 @@ static void resetVoiceLfos(Voice *v, bool useGlobalParams) {
         v->resoLfoRate = 0.0f;
         v->resoLfoDepth = 0.0f;
         v->resoLfoShape = 0;
+        v->resoLfoSync = LFO_SYNC_OFF;
         v->ampLfoRate = 0.0f;
         v->ampLfoDepth = 0.0f;
         v->ampLfoShape = 0;
+        v->ampLfoSync = LFO_SYNC_OFF;
         v->pitchLfoRate = 0.0f;
         v->pitchLfoDepth = 0.0f;
         v->pitchLfoShape = 0;
+        v->pitchLfoSync = LFO_SYNC_OFF;
     }
 }
 
@@ -3621,12 +3648,15 @@ static void resetNoteGlobals(void) {
     noteResoLfoRate = 0.0f;
     noteResoLfoDepth = 0.0f;
     noteResoLfoShape = 0;
+    noteResoLfoSync = LFO_SYNC_OFF;
     noteAmpLfoRate = 0.0f;
     noteAmpLfoDepth = 0.0f;
     noteAmpLfoShape = 0;
+    noteAmpLfoSync = LFO_SYNC_OFF;
     notePitchLfoRate = 0.0f;
     notePitchLfoDepth = 0.0f;
     notePitchLfoShape = 0;
+    notePitchLfoSync = LFO_SYNC_OFF;
     noteVibratoRate = 0.0f;
     noteVibratoDepth = 0.0f;
     notePulseWidth = 0.5f;

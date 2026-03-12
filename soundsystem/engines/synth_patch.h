@@ -60,16 +60,19 @@ typedef struct {
     float p_resoLfoRate;
     float p_resoLfoDepth;
     int p_resoLfoShape;
+    int p_resoLfoSync;        // LfoSyncDiv (0=off, 1-7=tempo divisions)
 
     // Amplitude LFO
     float p_ampLfoRate;
     float p_ampLfoDepth;
     int p_ampLfoShape;
+    int p_ampLfoSync;         // LfoSyncDiv (0=off, 1-7=tempo divisions)
 
     // Pitch LFO
     float p_pitchLfoRate;
     float p_pitchLfoDepth;
     int p_pitchLfoShape;
+    int p_pitchLfoSync;       // LfoSyncDiv (0=off, 1-7=tempo divisions)
 
     // Mono/Glide
     bool p_monoMode;
@@ -251,12 +254,15 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_resoLfoRate = 0.0f,
         .p_resoLfoDepth = 0.0f,
         .p_resoLfoShape = 0,
+        .p_resoLfoSync = 0,
         .p_ampLfoRate = 0.0f,
         .p_ampLfoDepth = 0.0f,
         .p_ampLfoShape = 0,
+        .p_ampLfoSync = 0,
         .p_pitchLfoRate = 5.0f,
         .p_pitchLfoDepth = 0.0f,
         .p_pitchLfoShape = 0,
+        .p_pitchLfoSync = 0,
         .p_monoMode = false,
         .p_glideTime = 0.1f,
         .p_pluckBrightness = 0.5f,
