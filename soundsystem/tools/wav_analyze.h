@@ -403,7 +403,7 @@ static float wa_odd_even_ratio(const float *buf, int n, float fundamental) {
         float mag = sqrtf(realPart * realPart + imagPart * imagPart);
         if (h % 2 == 1) oddEnergy += mag; else evenEnergy += mag;
     }
-    if (evenEnergy < 1e-10) return 10.0f;  // all odd = very hollow
+    if (evenEnergy < 1e-10) return (oddEnergy > 1e-10) ? 10.0f : 1.0f;  // all odd = very hollow
     return (float)(oddEnergy / evenEnergy);
 }
 
@@ -533,9 +533,19 @@ static int wa_detect_partials(const float *buf, int n, float fundamental,
         }
     }
 
-    // Normalize amplitudes relative to strongest partial
+    // Normalize amplitudes relative to strongest partial, then prune weak ones
     if (maxAmp > 1e-10f) {
         for (int i = 0; i < count; i++) amps[i] /= maxAmp;
+        // Remove partials below 1% of the strongest (noise floor)
+        int pruned = 0;
+        for (int i = 0; i < count; i++) {
+            if (amps[i] >= 0.01f) {
+                freqs[pruned] = freqs[i];
+                amps[pruned] = amps[i];
+                pruned++;
+            }
+        }
+        count = pruned;
     }
     return count;
 }
@@ -735,10 +745,11 @@ static WaAnalysis waAnalyze(const float *buf, int totalSamples, int noteOnSample
         a.numPartials = wa_detect_partials(buf, totalSamples, a.fundamental,
                                             a.partialFreqs, a.partialAmps, WA_PARTIALS_MAX);
         a.inharmonicity = wa_inharmonicity(a.partialFreqs, a.numPartials, a.fundamental);
-        a.oddEvenRatio = wa_odd_even_ratio(buf, totalSamples, a.fundamental);
+        a.oddEvenRatio = a.numPartials >= 2
+            ? wa_odd_even_ratio(buf, totalSamples, a.fundamental) : 1.0f;
 
         // Fundamental strength: energy of partial[0] vs sum of all
-        if (a.numPartials > 1) {
+        if (a.numPartials >= 1) {
             float totalAmp = 0;
             for (int i = 0; i < a.numPartials; i++) totalAmp += a.partialAmps[i];
             a.fundamentalStrength = totalAmp > 0 ? a.partialAmps[0] / totalAmp : 0;
