@@ -162,11 +162,10 @@ static int _sf_nameToMidi(const char *name) {
 // HELPER: enum name tables for serialization
 // ============================================================================
 
-static const char* _sf_waveTypeNames[] = {
-    "square", "saw", "triangle", "noise", "scw", "voice", "pluck",
-    "additive", "mallet", "granular", "fm", "pd", "membrane", "bird"
-};
-static const int _sf_waveTypeCount = 14;
+// Use canonical waveTypeNames[] and waveTypeCount from synth.h
+// (extended from 14 to 16 to include WAVE_BOWED and WAVE_PIPE)
+#define _sf_waveTypeNames waveTypeNames
+#define _sf_waveTypeCount waveTypeCount
 
 static const char* _sf_scaleTypeNames[] = {
     "chromatic", "major", "minor", "pentatonic", "minorPentatonic",

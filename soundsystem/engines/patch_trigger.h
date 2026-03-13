@@ -13,7 +13,7 @@
 
 // Apply all SynthPatch parameters to the synth engine globals.
 // Must be called before any playNote/playPluck/etc. call.
-static void applyPatchToGlobals(SynthPatch *p) {
+static void applyPatchToGlobals(const SynthPatch *p) {
     _ensureSynthCtx();
     noteEnvelopeEnabled = p->p_envelopeEnabled;
     noteFilterEnabled = p->p_filterEnabled;
@@ -172,7 +172,7 @@ static void applyPatchToGlobals(SynthPatch *p) {
 // Play a note using a SynthPatch. Sets all globals from the patch,
 // then dispatches to the correct play function based on wave type.
 // Returns the voice index (for later release).
-static int playNoteWithPatch(float freq, SynthPatch *p) {
+static int playNoteWithPatch(float freq, const SynthPatch *p) {
     // Use fixed trigger frequency if patch specifies one (drums/percussion)
     if (p->p_useTriggerFreq && p->p_triggerFreq > 0.0f) {
         freq = p->p_triggerFreq;

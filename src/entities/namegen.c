@@ -52,7 +52,7 @@ static const WeightedStr onsetsFemale[] = {
 static const char* vowels[] = {
     "a", "e", "i", "o", "u", "aa", "oo", "ai", "au", "ei", "ou"
 };
-#define VOWEL_COUNT 11
+#define NAMEGEN_VOWEL_COUNT 11
 
 // Coda tables
 static const WeightedStr codasMale[] = {
@@ -117,7 +117,7 @@ static void GenerateOneName(char name[16], uint8_t gender) {
         pos += olen;
 
         // Vowel
-        const char* vowel = vowels[NameRand() % VOWEL_COUNT];
+        const char* vowel = vowels[NameRand() % NAMEGEN_VOWEL_COUNT];
         int vlen = (int)strlen(vowel);
         if (pos + vlen >= 15) break;
         memcpy(name + pos, vowel, vlen);

@@ -520,7 +520,6 @@ static void initInstrumentPresets(void) {
     instrumentPresets[32].patch.p_fmModRatio = 2.0f;        // 2nd harmonic
     instrumentPresets[32].patch.p_fmModIndex = 0.15f;        // Subtle (drums.h: sin*2 * 0.15)
     instrumentPresets[32].patch.p_attack = 0.0f;
-    instrumentPresets[32].patch.p_decay = 0.25f;
     instrumentPresets[32].patch.p_sustain = 0.0f;
     instrumentPresets[32].patch.p_release = 0.05f;
     instrumentPresets[32].patch.p_expDecay = true;

@@ -163,6 +163,8 @@ static const char* noiseTypeNames[] = {"LFSR", "TimeHash"};
 // ============================================================================
 
 // --- Name arrays (UI labels, not part of DAW state) ---
+// Note: waveNames[] is capitalized for UI display. Canonical lowercase names
+// (square, saw, triangle, etc.) are in synth.h:waveTypeNames[] for file I/O.
 static const char* waveNames[] = {"Square", "Saw", "Triangle", "Noise", "SCW",
     "Voice", "Pluck", "Additive", "Mallet", "Granular", "FM", "PD", "Membrane", "Bird", "Bowed", "Pipe"};
 static const char* vowelNames[] = {"A", "E", "I", "O", "U"};
@@ -545,6 +547,68 @@ static void sectionHighlight(float x, float y, float w, float h, bool active) {
 // BESPOKE WIDGETS (same as daw.c)
 // ============================================================================
 
+// Helper: compute wave sample value for a given wave type and time position
+static float waveThumbSample(int waveType, float t, int i) {
+    float v = 0.0f;
+    switch (waveType) {
+        case 0: // Square
+            v = t < 0.5f ? 1.0f : -1.0f;
+            break;
+        case 1: // Sawtooth
+            v = 1.0f - 2.0f * t;
+            break;
+        case 2: // Triangle
+            v = t < 0.5f ? (4 * t - 1) : (3 - 4 * t);
+            break;
+        case 3: // Noise
+            v = ((float)((i * 7 + 13) % 17)) / 8.5f - 1;
+            break;
+        case 4: // Sine + 2nd harmonic
+            v = sinf(t * 6.28f) * 0.6f + sinf(t * 12.56f) * 0.3f;
+            break;
+        case 5: // Sine with AM modulation
+            v = sinf(t * 6.28f) * (1 - 0.5f * sinf(t * 18.84f));
+            break;
+        case 6: // Pluck (decay)
+            v = sinf(t * 25) * expf(-t * 3);
+            break;
+        case 7: // Rich harmonics (3 partials)
+            v = sinf(t * 6.28f) * 0.5f + sinf(t * 12.56f) * 0.3f + sinf(t * 18.84f) * 0.2f;
+            break;
+        case 8: // 2nd harmonic with decay
+            v = sinf(t * 12.56f) * expf(-t * 3);
+            break;
+        case 9: // FM-like with modulation
+            v = sinf(t * 31.4f) * (((int)(t * 6) % 2) ? 0.8f : 0.3f);
+            break;
+        case 10: // FM modulation
+            v = sinf(t * 6.28f + 2 * sinf(t * 12.56f));
+            break;
+        case 11: // Smooth curve modulation
+        {
+            float p = t < 0.5f ? t * t * 2 : 0.5f + (t - 0.5f) * (2 - t * 2);
+            v = sinf(p * 6.28f);
+            break;
+        }
+        case 12: // Multiple harmonics with decay
+            v = (sinf(t * 6.28f) * 0.5f + sinf(t * 9.8f) * 0.3f + sinf(t * 15.2f) * 0.2f) * expf(-t * 2);
+            break;
+        case 13: // Frequency sweep
+            v = sinf(t * 6.28f * (1 + t * 3)) * (1 - t * 0.5f);
+            break;
+        case 14: // Bowed (rich harmonics)
+            v = sinf(t * 6.28f) * 0.7f + sinf(t * 12.56f) * 0.2f + sinf(t * 18.84f) * 0.1f;
+            break;
+        case 15: // Pipe (breathy)
+            v = sinf(t * 6.28f) * 0.8f + sinf(t * 18.84f) * 0.15f + ((float)((i * 3 + 7) % 11) / 55.0f);
+            break;
+        default: // Sine wave
+            v = sinf(t * 6.28f);
+            break;
+    }
+    return v;
+}
+
 static void drawWaveThumb(float x, float y, float w, float h, int waveType, bool selected, bool hovered) {
     Color bg = selected ? (Color){50, 65, 80, 255} : (hovered ? (Color){42, 44, 52, 255} : (Color){30, 31, 38, 255});
     DrawRectangle((int)x, (int)y, (int)w, (int)h, bg);
@@ -559,26 +623,8 @@ static void drawWaveThumb(float x, float y, float w, float h, int waveType, bool
     for (int i = 0; i < steps - 1; i++) {
         float t0 = (float)i / (float)steps;
         float t1 = (float)(i + 1) / (float)steps;
-        float v0 = 0, v1 = 0;
-        switch (waveType) {
-            case 0: v0 = t0 < 0.5f ? 1.0f : -1.0f; v1 = t1 < 0.5f ? 1.0f : -1.0f; break;
-            case 1: v0 = 1.0f - 2.0f * t0; v1 = 1.0f - 2.0f * t1; break;
-            case 2: v0 = t0<0.5f?(4*t0-1):(3-4*t0); v1 = t1<0.5f?(4*t1-1):(3-4*t1); break;
-            case 3: v0 = ((float)((i*7+13)%17))/8.5f-1; v1 = ((float)(((i+1)*7+13)%17))/8.5f-1; break;
-            case 4: v0 = sinf(t0*6.28f)*0.6f+sinf(t0*12.56f)*0.3f; v1 = sinf(t1*6.28f)*0.6f+sinf(t1*12.56f)*0.3f; break;
-            case 5: v0 = sinf(t0*6.28f)*(1-0.5f*sinf(t0*18.84f)); v1 = sinf(t1*6.28f)*(1-0.5f*sinf(t1*18.84f)); break;
-            case 6: v0 = sinf(t0*25)*expf(-t0*3); v1 = sinf(t1*25)*expf(-t1*3); break;  // Pluck (decay was wrong in original: used (1-t))
-            case 7: v0 = sinf(t0*6.28f)*0.5f+sinf(t0*12.56f)*0.3f+sinf(t0*18.84f)*0.2f; v1 = sinf(t1*6.28f)*0.5f+sinf(t1*12.56f)*0.3f+sinf(t1*18.84f)*0.2f; break;
-            case 8: v0 = sinf(t0*12.56f)*expf(-t0*3); v1 = sinf(t1*12.56f)*expf(-t1*3); break;
-            case 9: v0 = sinf(t0*31.4f)*(((int)(t0*6)%2)?0.8f:0.3f); v1 = sinf(t1*31.4f)*(((int)(t1*6)%2)?0.8f:0.3f); break;
-            case 10: v0 = sinf(t0*6.28f+2*sinf(t0*12.56f)); v1 = sinf(t1*6.28f+2*sinf(t1*12.56f)); break;
-            case 11: { float p0=t0<0.5f?t0*t0*2:0.5f+(t0-0.5f)*(2-t0*2); float p1=t1<0.5f?t1*t1*2:0.5f+(t1-0.5f)*(2-t1*2); v0=sinf(p0*6.28f); v1=sinf(p1*6.28f); } break;
-            case 12: v0=(sinf(t0*6.28f)*0.5f+sinf(t0*9.8f)*0.3f+sinf(t0*15.2f)*0.2f)*expf(-t0*2); v1=(sinf(t1*6.28f)*0.5f+sinf(t1*9.8f)*0.3f+sinf(t1*15.2f)*0.2f)*expf(-t1*2); break;
-            case 13: v0=sinf(t0*6.28f*(1+t0*3))*(1-t0*0.5f); v1=sinf(t1*6.28f*(1+t1*3))*(1-t1*0.5f); break;
-            case 14: v0=sinf(t0*6.28f)*0.7f+sinf(t0*12.56f)*0.2f+sinf(t0*18.84f)*0.1f; v1=sinf(t1*6.28f)*0.7f+sinf(t1*12.56f)*0.2f+sinf(t1*18.84f)*0.1f; break; // Bowed (rich harmonics)
-            case 15: v0=sinf(t0*6.28f)*0.8f+sinf(t0*18.84f)*0.15f+((float)((i*3+7)%11)/55.0f); v1=sinf(t1*6.28f)*0.8f+sinf(t1*18.84f)*0.15f+((float)(((i+1)*3+7)%11)/55.0f); break; // Pipe (breathy)
-            default: v0 = sinf(t0*6.28f); v1 = sinf(t1*6.28f);
-        }
+        float v0 = waveThumbSample(waveType, t0, i);
+        float v1 = waveThumbSample(waveType, t1, i + 1);
         DrawLine((int)(cx+i), (int)(mid-v0*ch*0.4f), (int)(cx+i+1), (int)(mid-v1*ch*0.4f), lineCol);
     }
 }

@@ -66,7 +66,7 @@ static SamplerContext* samplerCtx = &_samplerCtx;
 static bool _samplerCtxInitialized = false;
 
 static void initSamplerContext(SamplerContext* ctx) {
-    memset(ctx, 0, sizeof(SamplerContext));
+    memset(ctx, 0, sizeof(*ctx));
     ctx->volume = 1.0f;
     ctx->sampleRate = 48000;  // Default to 48kHz
 }
@@ -427,13 +427,13 @@ static void samplerStopAll(void) {
 // ============================================================================
 
 // Linear interpolation for fractional sample positions
-static float samplerInterpolate(float* data, int length, float position) {
+static float samplerInterpolate(const float* data, int length, float position) {
     int i0 = (int)position;
     int i1 = i0 + 1;
-    
+
     if (i0 < 0) return 0.0f;
     if (i1 >= length) return data[i0 < length ? i0 : length - 1];
-    
+
     float frac = position - i0;
     return data[i0] * (1.0f - frac) + data[i1] * frac;
 }

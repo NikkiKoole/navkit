@@ -30,15 +30,15 @@ static void _di(FILE *f, const char *k, int v)     { fprintf(f, "%s = %d\n", k, 
 static void _db(FILE *f, const char *k, bool v)    { fprintf(f, "%s = %s\n", k, v ? "true" : "false"); }
 static void _ds(FILE *f, const char *k, const char *v) { if (v[0]) fprintf(f, "%s = \"%s\"\n", k, v); }
 
-static const char* _dwWaveNames[] = {
-    "square","saw","triangle","noise","scw","voice","pluck",
-    "additive","mallet","granular","fm","pd","membrane","bird"
-};
+// Use canonical waveTypeNames[] from synth.h
+// (extended from 14 to 16 to include "bowed" and "pipe")
+#define _dwWaveNames waveTypeNames
+#define _dwWaveCount waveTypeCount
 
 static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     fprintf(f, "\n[%s]\n", sec);
     if (p->p_name[0]) _ds(f, "name", p->p_name);
-    if (p->p_waveType >= 0 && p->p_waveType < 14) fprintf(f, "waveType = %s\n", _dwWaveNames[p->p_waveType]);
+    if (p->p_waveType >= 0 && p->p_waveType < _dwWaveCount) fprintf(f, "waveType = %s\n", _dwWaveNames[p->p_waveType]);
     else _di(f, "waveType", p->p_waveType);
     _di(f, "scwIndex", p->p_scwIndex);
     _dw(f, "attack", p->p_attack); _dw(f, "decay", p->p_decay);
@@ -400,7 +400,7 @@ static void _dwStripQuotes(char *s) {
 }
 
 static int _dwLookupWave(const char *name) {
-    for (int i = 0; i < 14; i++) if (strcasecmp(name, _dwWaveNames[i])==0) return i;
+    for (int i = 0; i < _dwWaveCount; i++) if (strcasecmp(name, _dwWaveNames[i])==0) return i;
     return atoi(name);
 }
 
