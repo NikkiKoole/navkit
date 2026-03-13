@@ -294,6 +294,9 @@ typedef struct {
     int scaleRoot, scaleType;
     bool voiceRandomVowel;
 
+    // Song name
+    char songName[64];
+
     // Split keyboard
     bool splitEnabled;
     int splitPoint;
@@ -452,6 +455,55 @@ static bool patchesInit = false;
 static char dawStatusMsg[64] = "";
 static double dawStatusTime = 0.0;
 static char dawFilePath[512] = "soundsystem/demo/songs/scratch.song";
+static bool editingSongName = false;
+static char songNameEditBuf[64] = "";
+static int songNameEditCursor = 0;
+
+// Inline text editing with cursor support (arrow keys, home/end, insert/delete at cursor)
+// Returns: 0 = still editing, 1 = confirmed (Enter), -1 = cancelled (Escape)
+static int dawTextEdit(char *buf, int maxLen, int *cursor) {
+    // Character input — insert at cursor
+    int key = GetCharPressed();
+    while (key > 0) {
+        int len = (int)strlen(buf);
+        if (key >= 32 && key < 127 && len < maxLen - 1) {
+            memmove(&buf[*cursor + 1], &buf[*cursor], (size_t)(len - *cursor + 1));
+            buf[*cursor] = (char)key;
+            (*cursor)++;
+        }
+        key = GetCharPressed();
+    }
+    // Backspace — delete before cursor
+    if (IsKeyPressed(KEY_BACKSPACE) && *cursor > 0) {
+        int len = (int)strlen(buf);
+        memmove(&buf[*cursor - 1], &buf[*cursor], (size_t)(len - *cursor + 1));
+        (*cursor)--;
+    }
+    // Delete — delete at cursor
+    if (IsKeyPressed(KEY_DELETE)) {
+        int len = (int)strlen(buf);
+        if (*cursor < len) memmove(&buf[*cursor], &buf[*cursor + 1], (size_t)(len - *cursor));
+    }
+    // Arrow keys
+    if (IsKeyPressed(KEY_LEFT) && *cursor > 0) (*cursor)--;
+    if (IsKeyPressed(KEY_RIGHT) && *cursor < (int)strlen(buf)) (*cursor)++;
+    if (IsKeyPressed(KEY_HOME)) *cursor = 0;
+    if (IsKeyPressed(KEY_END)) *cursor = (int)strlen(buf);
+    // Confirm/cancel
+    if (IsKeyPressed(KEY_ENTER)) return 1;
+    if (IsKeyPressed(KEY_ESCAPE)) return -1;
+    return 0;
+}
+
+// Draw cursor at correct position within text (uses UI font)
+static int dawTextCursorX(const char *buf, int cursor, int fontSize) {
+    if (cursor <= 0) return 0;
+    char tmp[128];
+    int n = cursor < 127 ? cursor : 127;
+    memcpy(tmp, buf, (size_t)n);
+    tmp[n] = '\0';
+    return MeasureTextUI(tmp, fontSize);
+}
 
 // Forward declarations for sequencer integration
 static void dawStopSequencer(void);
@@ -657,6 +709,10 @@ static void drawTransport(void) {
             if (bh && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 ui_consume_click();
                 if (bi == 0) {
+                    // Derive save path from song name
+                    if (daw.songName[0]) {
+                        snprintf(dawFilePath, sizeof(dawFilePath), "soundsystem/demo/songs/%s.song", daw.songName);
+                    }
                     if (dawSave(dawFilePath)) {
                         const char *fname = strrchr(dawFilePath, '/');
                         snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Saved %s", fname ? fname+1 : dawFilePath);
@@ -670,6 +726,48 @@ static void drawTransport(void) {
                 dawStatusTime = GetTime();
             }
             tx += 42;
+        }
+
+        // Song name (click to edit)
+        tx += 6;
+        const char *displayName = daw.songName[0] ? daw.songName : "untitled";
+        if (editingSongName) {
+            Rectangle nr = {tx, ty-2, 140, 18};
+            DrawRectangleRec(nr, (Color){25,25,35,255});
+            DrawRectangleLinesEx(nr, 1, (Color){100,150,220,255});
+            DrawTextShadow(songNameEditBuf, (int)tx+4, (int)ty, 11, WHITE);
+            int cx = dawTextCursorX(songNameEditBuf, songNameEditCursor, 11);
+            if ((int)(GetTime()*3) % 2) DrawRectangle((int)tx+4+cx, (int)ty, 1, 12, WHITE);
+
+            int result = dawTextEdit(songNameEditBuf, 64, &songNameEditCursor);
+            // Click outside also confirms
+            if (result == 0 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !CheckCollisionPointRec(mouse, nr)) {
+                result = 1;
+            }
+            if (result != 0) {
+                if (result == 1 && songNameEditBuf[0]) {
+                    strncpy(daw.songName, songNameEditBuf, 63);
+                    daw.songName[63] = '\0';
+                    snprintf(dawFilePath, sizeof(dawFilePath), "soundsystem/demo/songs/%s.song", daw.songName);
+                }
+                editingSongName = false;
+            }
+            tx += 146;
+        } else {
+            int tw = MeasureTextUI(displayName, 11);
+            Rectangle nr = {tx, ty-2, (float)(tw + 12), 18};
+            bool nh = CheckCollisionPointRec(mouse, nr);
+            DrawRectangleRec(nr, nh ? (Color){42,42,52,255} : (Color){28,28,36,255});
+            DrawRectangleLinesEx(nr, 1, (Color){45,45,55,255});
+            DrawTextShadow(displayName, (int)tx+6, (int)ty, 11, daw.songName[0] ? WHITE : (Color){80,80,100,255});
+            if (nh && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                editingSongName = true;
+                strncpy(songNameEditBuf, daw.songName, 63);
+                songNameEditBuf[63] = '\0';
+                songNameEditCursor = (int)strlen(songNameEditBuf);
+                ui_consume_click();
+            }
+            tx += tw + 18;
         }
     }
 
@@ -2227,22 +2325,11 @@ static void drawWorkSong(float x, float y, float w, float h) {
             DrawRectangle((int)sx+2, (int)(arrY+6), secW-4, 14, (Color){30,30,40,255});
             DrawTextShadow(songEditNameBuf, (int)sx+4, (int)(arrY+7), 9, WHITE);
             // Blinking cursor
-            int cw = MeasureText(songEditNameBuf, 9);
-            if (((int)(GetTime()*3)) % 2 == 0) DrawLine((int)(sx+4+cw), (int)(arrY+7), (int)(sx+4+cw), (int)(arrY+18), WHITE);
+            int cx = dawTextCursorX(songEditNameBuf, songEditNameCursor, 9);
+            if (((int)(GetTime()*3)) % 2 == 0) DrawLine((int)(sx+4+cx), (int)(arrY+7), (int)(sx+4+cx), (int)(arrY+18), WHITE);
 
-            // Handle text input
-            int key = GetCharPressed();
-            while (key > 0) {
-                if (songEditNameCursor < SONG_SECTION_NAME_LEN - 1 && key >= 32 && key < 127) {
-                    songEditNameBuf[songEditNameCursor++] = (char)key;
-                    songEditNameBuf[songEditNameCursor] = '\0';
-                }
-                key = GetCharPressed();
-            }
-            if (IsKeyPressed(KEY_BACKSPACE) && songEditNameCursor > 0) {
-                songEditNameBuf[--songEditNameCursor] = '\0';
-            }
-            if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE)) {
+            int result = dawTextEdit(songEditNameBuf, SONG_SECTION_NAME_LEN, &songEditNameCursor);
+            if (result != 0) {
                 memcpy(daw.song.names[i], songEditNameBuf, SONG_SECTION_NAME_LEN);
                 songEditingNameIdx = -1;
             }
@@ -2560,7 +2647,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
 
         DrawTextShadow(display, (int)x + 8, (int)y + 2, fs, (Color){180,180,220,255});
 
-        int tw = MeasureText(display, fs) + 16;
+        int tw = MeasureTextUI(display, fs) + 16;
         Rectangle presetR = {x + 4, y, (float)tw, 18};
         if (CheckCollisionPointRec(GetMousePosition(), presetR) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             presetPickerOpen = !presetPickerOpen;
@@ -4466,6 +4553,13 @@ int main(void) {
                         strncpy(dawFilePath, path, sizeof(dawFilePath) - 1);
                         dawFilePath[sizeof(dawFilePath) - 1] = '\0';
                         const char *fname = strrchr(dawFilePath, '/');
+                        // Set song name from file if not already in the file
+                        if (!daw.songName[0] && fname) {
+                            strncpy(daw.songName, fname+1, 63);
+                            daw.songName[63] = '\0';
+                            char *dot = strrchr(daw.songName, '.');
+                            if (dot) *dot = '\0';
+                        }
                         snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Loaded %s", fname ? fname+1 : dawFilePath);
                     } else {
                         snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Load failed!");
@@ -4563,9 +4657,9 @@ int main(void) {
 
         // Status message (save/load feedback)
         if (dawStatusMsg[0] && (GetTime() - dawStatusTime) < 2.0) {
-            int tw = MeasureText(dawStatusMsg, 16);
+            int tw = MeasureTextUI(dawStatusMsg, 16);
             DrawRectangle(SCREEN_WIDTH/2 - tw/2 - 8, 2, tw + 16, 22, (Color){0,0,0,200});
-            DrawText(dawStatusMsg, SCREEN_WIDTH/2 - tw/2, 5, 16, GREEN);
+            DrawTextShadow(dawStatusMsg, SCREEN_WIDTH/2 - tw/2, 5, 16, GREEN);
         } else {
             dawStatusMsg[0] = '\0';
         }

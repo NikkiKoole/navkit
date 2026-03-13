@@ -2,7 +2,7 @@
 
 [song]
 format = 2
-songName = "gymnopedie"
+songName = "gymnopedienew"
 bpm = 40
 stepCount = 12
 grooveSwing = 0
@@ -828,37 +828,37 @@ accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
 
 [patch.5]
-name = "Mac Keys"
-waveType = fm
+name = "Wobble"
+waveType = saw
 scwIndex = 0
-attack = 0.005
-decay = 0.5
-sustain = 0.25
-release = 0.3
+attack = 0.01
+decay = 0.1
+sustain = 0.8
+release = 0.15
 expRelease = false
 expDecay = false
 oneShot = false
-volume = 0.4
+volume = 0.5
 pulseWidth = 0.5
 pwmRate = 3
 pwmDepth = 0
-vibratoRate = 0
+vibratoRate = 5
 vibratoDepth = 0
-filterCutoff = 0.6
-filterResonance = 0
+filterCutoff = 0.3
+filterResonance = 0.5
 filterType = 0
 filterEnvAmt = 0
 filterEnvAttack = 0.01
 filterEnvDecay = 0.2
 filterKeyTrack = 0
-filterLfoRate = 0
-filterLfoDepth = 0
+filterLfoRate = 2.55778
+filterLfoDepth = 1.15456
 filterLfoShape = 0
-filterLfoSync = 0
-resoLfoRate = 0
-resoLfoDepth = 0
+filterLfoSync = 5
+resoLfoRate = 15.8478
+resoLfoDepth = 0.988447
 resoLfoShape = 0
-resoLfoSync = 0
+resoLfoSync = 7
 ampLfoRate = 0
 ampLfoDepth = 0
 ampLfoShape = 0
@@ -872,10 +872,10 @@ arpMode = 0
 arpRateDiv = 1
 arpRate = 8
 arpChord = 1
-unisonCount = 1
-unisonDetune = 10
+unisonCount = 2
+unisonDetune = 12
 unisonMix = 0.5
-monoMode = false
+monoMode = true
 glideTime = 0.1
 pluckBrightness = 0.5
 pluckDamping = 0.996
@@ -915,8 +915,8 @@ granularPitchRandom = 0
 granularAmpRandom = 0.1
 granularSpread = 0.5
 granularFreeze = false
-fmModRatio = 1
-fmModIndex = 1.8
+fmModRatio = 2
+fmModIndex = 1
 fmFeedback = 0
 fmMod2Ratio = 0
 fmMod2Index = 0
@@ -1443,12 +1443,12 @@ attack = 0.005
 release = 0.15
 
 [masterfx]
-distOn = false
-distDrive = 2
+distOn = true
+distDrive = 7.62116
 distTone = 0.7
 distMix = 0.5
-crushOn = false
-crushBits = 8
+crushOn = true
+crushBits = 5.88436
 crushRate = 4
 crushMix = 0.5
 chorusOn = false
@@ -1470,13 +1470,13 @@ delayTime = 0.3
 delayFeedback = 0.4
 delayTone = 0.5
 delayMix = 0.3
-reverbOn = false
+reverbOn = true
 reverbSize = 0.5
 reverbDamping = 0.5
 reverbPreDelay = 0.02
 reverbMix = 0.3
-eqOn = false
-eqLowGain = 0
+eqOn = true
+eqLowGain = 12
 eqHighGain = 0
 eqLowFreq = 200
 eqHighFreq = 6000
@@ -1575,6 +1575,16 @@ m track=2 step=8 note=F#4 vel=0.22 gate=4
 [pattern.3]
 drumTrackLength = 12 12 12 12
 melodyTrackLength = 12 12 12
+d track=0 step=0 vel=0.8
+d track=0 step=1 vel=0.8
+d track=0 step=2 vel=0.8
+d track=0 step=3 vel=0.8
+d track=0 step=4 vel=0.8
+d track=0 step=5 vel=0.8
+d track=0 step=6 vel=0.8
+d track=0 step=7 vel=0.8
+d track=0 step=8 vel=0.8
+d track=0 step=10 vel=0.8
 m track=0 step=0 note=G2 vel=0.341 gate=4
 m track=0 step=6 note=D2 vel=0.322 gate=4
 m track=1 step=0 note=B3 vel=0.42 gate=2
@@ -1591,6 +1601,10 @@ m track=2 step=8 note=F#4 vel=0.22 gate=4
 [pattern.4]
 drumTrackLength = 12 12 12 12
 melodyTrackLength = 12 12 12
+d track=0 step=3 vel=0.8
+d track=0 step=6 vel=0.8
+d track=0 step=8 vel=0.8
+d track=0 step=10 vel=0.8
 m track=0 step=0 note=G2 vel=0.322 gate=4
 m track=0 step=6 note=D2 vel=0.302 gate=4
 m track=1 step=0 note=F#3 vel=0.38 gate=6 sustain=6

@@ -126,6 +126,7 @@ typedef struct {
     bool scaleLockEnabled;
     int scaleRoot, scaleType;
     bool voiceRandomVowel;
+    char songName[64];
     bool splitEnabled;
     int splitPoint;
     int splitLeftPatch, splitRightPatch;
@@ -327,6 +328,8 @@ int main(int argc, char *argv[]) {
     initSequencer(stubDrum, stubDrum, stubDrum, stubDrum);
 
     // Set up DAW state from song definition
+    strncpy(daw.songName, song->name, 63);
+    daw.songName[63] = '\0';
     daw.transport.bpm = song->bpm;
     daw.masterVol = 0.25f;  // bridge songs are quiet
     daw.stepCount = song->stepCount ? song->stepCount : 16;

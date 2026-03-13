@@ -225,6 +225,7 @@ static bool dawSave(const char *filepath) {
     // [song]
     fprintf(f, "\n[song]\n");
     _di(f, "format", DAW_FILE_FORMAT);
+    if (daw.songName[0]) _ds(f, "songName", daw.songName);
     _dw(f, "bpm", daw.transport.bpm);
     _di(f, "stepCount", daw.stepCount);
     _di(f, "grooveSwing", daw.transport.grooveSwing);
@@ -794,6 +795,7 @@ static bool dawLoad(const char *filepath) {
         switch (section) {
         case _DW_SEC_SONG:
             if (strcmp(key,"bpm")==0) daw.transport.bpm = _dpf(val);
+            else if (strcmp(key,"songName")==0) { char t[64]; strncpy(t,val,63); t[63]=0; _dwStripQuotes(t); strncpy(daw.songName,t,63); daw.songName[63]=0; }
             else if (strcmp(key,"stepCount")==0) daw.stepCount = _dpi(val);
             else if (strcmp(key,"grooveSwing")==0) daw.transport.grooveSwing = _dpi(val);
             else if (strcmp(key,"grooveJitter")==0) daw.transport.grooveJitter = _dpi(val);

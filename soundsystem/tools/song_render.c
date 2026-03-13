@@ -132,6 +132,7 @@ typedef struct {
     bool scaleLockEnabled;
     int scaleRoot, scaleType;
     bool voiceRandomVowel;
+    char songName[64];
     bool splitEnabled;
     int splitPoint;
     int splitLeftPatch, splitRightPatch;

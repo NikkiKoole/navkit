@@ -2,6 +2,7 @@
 
 [song]
 format = 2
+songName = "dormitory"
 bpm = 56
 stepCount = 16
 grooveSwing = 0

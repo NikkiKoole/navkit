@@ -268,6 +268,7 @@ int main(int argc, char *argv[]) {
             dawSyncSequencer();
             dawSyncEngineState();
             updateSequencer(seqDt);
+
         }
 
         if (seq.playing) {
