@@ -191,6 +191,8 @@ static void _dwWritePattern(FILE *f, int idx, const Pattern *p) {
                     if (mProb > 0.0f && mProb < 1.0f) fprintf(f, " prob=%.3g", (double)mProb);
                     int mCond = (int)sv->condition;
                     if (mCond != COND_ALWAYS) fprintf(f, " cond=%s", _dwCondNames[mCond]);
+                    if (sv->pickMode != PICK_ALL)
+                        fprintf(f, " pick=%d", (int)sv->pickMode);
                 }
                 fprintf(f, "\n");
             }
@@ -639,6 +641,7 @@ static void _dwParseMelodyEvent(const char *line, Pattern *p) {
     int track=0, step=0, gate=4, sustain=0; char noteName[16]="C4";
     int nudge=0, gateNudge=0;
     float vel=0.8f, prob=1.0f; int cond=COND_ALWAYS;
+    int pickMode=PICK_ALL;
     bool slide=false, accent=false, hasChord=false;
     int chordType=CHORD_SINGLE;
     int customNotes[8]={0}; int customNoteCount=0;
@@ -656,7 +659,7 @@ static void _dwParseMelodyEvent(const char *line, Pattern *p) {
             else if (strcmp(k,"prob")==0) prob=_dpf(v);
             else if (strcmp(k,"cond")==0) { int idx=_dwLookupName(v,_dwCondNames,11); if(idx>=0) cond=idx; }
             else if (strcmp(k,"chord")==0) { hasChord=true; int idx=_dwLookupName(v,_dwChordNames,9); if(idx>=0) chordType=idx; }
-            else if (strcmp(k,"pick")==0) { hasChord=true; /* pick mode ignored in v2 */ }
+            else if (strcmp(k,"pick")==0) { int pv=_dpi(v); if(pv>=0&&pv<PICK_COUNT) pickMode=pv; }
             else if (strcmp(k,"notes")==0) {
                 hasChord=true; chordType=CHORD_CUSTOM;
                 char nb[128]; strncpy(nb,v,127); nb[127]='\0';
@@ -701,6 +704,7 @@ static void _dwParseMelodyEvent(const char *line, Pattern *p) {
         patSetNoteSustain(p, absTrack, step, sustain);
         patSetNoteProb(p, absTrack, step, prob);
         patSetNoteCond(p, absTrack, step, cond);
+        if (pickMode != PICK_ALL) patSetPickMode(p, absTrack, step, pickMode);
     }
 }
 

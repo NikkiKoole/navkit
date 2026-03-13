@@ -57,46 +57,24 @@ All preset-only work — no engine changes. See `done/missing-melodic-instrument
 
 ---
 
-## Note Pool (sequencer-side generative variation)
+## Note Pool (DONE)
 
-Reintroduce the note pool concept from v1, but built on v2's existing multi-note step data. The old system was removed when v2 replaced it with explicit polyphony (piano roll chords). Both serve different purposes:
-
-- **Piano roll (current):** deterministic polyphony — place exact notes, all play every time
-- **Note pool (proposed):** generative monophony — step holds candidate notes, one is *picked* per trigger
-
-### How it works
-
-A step's `notes[]` array (up to 6 slots) doubles as the pool. A per-step `pickMode` flag controls behavior:
+Reuses v2's multi-note step data for generative monophony. A step's `notes[]` array doubles as the candidate pool, and a per-step `pickMode` selects which note fires each trigger.
 
 | pickMode | Behavior |
 |----------|----------|
-| `PICK_ALL` (0 / off) | All notes play as chord (current default, no change) |
-| `PICK_RANDOM` | One note chosen randomly each trigger |
-| `PICK_CYCLE_UP` | Rotate through notes sequentially |
-| `PICK_CYCLE_DOWN` | Rotate in reverse |
-| `PICK_PINGPONG` | Bounce up and down through notes |
+| `PICK_ALL` (0 / off) | All notes play as chord (default) |
+| `PICK_RANDOM` | Random selection each trigger |
+| `PICK_CYCLE_UP` / `DOWN` | Rotate through notes sequentially |
+| `PICK_PINGPONG` | Bounce up and down |
 | `PICK_RANDOM_WALK` | Move ±1 position from last pick |
 
-### UI (sequencer view only)
+**Implementation:** `pickMode` + `pickState` on `StepV2`, pick logic in `seqTriggerStep()`, "Pool Pick" cycle widget in step inspector (shows for melodic steps with 2+ notes), save/load in song_file.h + daw_file.h. `patFillPool()` helper for quick chord-to-pool fill. `buildChordNotes()` still available for programmatic pool construction.
 
-In the step grid, when a step is selected: set its note pool via the existing note slots, then pick a mode. No piano roll needed. The `buildChordNotes()` helper (still in sequencer.h) can serve as a quick-fill shortcut — "fill pool with triad from root."
-
-### Implementation
-
+### Future
 | What | Effort | Notes |
 |------|--------|-------|
-| Add `pickMode` + `pickIndex` to `StepV2` | Tiny | 2 bytes, `pickIndex` is runtime state for cycle/pingpong |
-| Pick logic in `seqAdvancePlayback()` | ~30 lines | Switch on pickMode, select one note, trigger only that one |
-| DAW UI for mode selection | ~40 lines | Dropdown or cycle button on step inspector |
-| Save/load `pickMode` | ~10 lines | song_file.h + daw_file.h |
-| `buildChordNotes()` as pool quick-fill | Already exists | Wire to a "fill from chord" button |
-
-### What it enables
-
-- Evolving melodies that never repeat exactly (PICK_RANDOM over a scale fragment)
-- Algorithmic arpeggios without manually programming each step (PICK_CYCLE over a chord)
-- Slowly drifting bass lines (PICK_RANDOM_WALK over a few root notes)
-- All controllable per-step — some steps can be fixed, others generative, in the same pattern
+| **"Fill from chord" UI button** — quick-fill pool from chord type in step inspector | ~20 lines | `patFillPool()` exists, just needs UI wiring |
 
 ---
 
@@ -170,7 +148,7 @@ From `audit/test-gaps-audit-soundsystem.md`. Current: 248 suites, 1905 assertion
 
 **Synthesis:** Vocoder, Speech 8-bit, Bass waveshaping
 
-**Sequencer:** Note pool (see below), Pattern chaining, Song/arranger improvements, Scenes crossfader completion
+**Sequencer:** ~~Note pool~~ (done), Pattern chaining, Song/arranger improvements, Scenes crossfader completion
 
 **Game audio:** State system (intensity/danger/health), Vertical layering/mute groups, Horizontal re-sequencing, Stingers & one-shots
 

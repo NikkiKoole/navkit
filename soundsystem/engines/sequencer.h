@@ -148,6 +148,21 @@ static const char* chordTypeNames[] = {
     "Single", "5th", "Triad", "Inv1", "Inv2", "7th", "Oct", "2Oct"
 };
 
+// Note pool pick modes — how to select from a step's notes[] array
+typedef enum {
+    PICK_ALL = 0,       // Play all notes as chord (default, current behavior)
+    PICK_RANDOM,        // Random selection each trigger
+    PICK_CYCLE_UP,      // Rotate through notes sequentially
+    PICK_CYCLE_DOWN,    // Rotate in reverse
+    PICK_PINGPONG,      // Bounce up and down through notes
+    PICK_RANDOM_WALK,   // Move ±1 position from last pick
+    PICK_COUNT
+} PickMode;
+
+static const char* pickModeNames[] = {
+    "All", "Random", "Cycle Up", "Cycle Down", "Pingpong", "Rnd Walk"
+};
+
 // Trigger conditions (Elektron-style)
 typedef enum {
     COND_ALWAYS = 0,    // Always trigger
@@ -278,7 +293,9 @@ typedef struct {
     uint8_t probability;              // 0-255 (map to 0.0-1.0), shared by all notes
     uint8_t condition;                // TriggerCondition, shared
     uint8_t sustain;                  // Sustain steps (shared, mainly for melodic)
-} StepV2;  // 7*6 + 4 = 46 bytes
+    uint8_t pickMode;                 // PickMode: 0=all (chord), 1+=pick one note from pool
+    uint8_t pickState;               // Runtime: current index for cycle/pingpong/walk modes
+} StepV2;  // 7*6 + 6 = 48 bytes
 
 // Single pattern data (drums + melodic)
 typedef struct {
@@ -313,6 +330,8 @@ static void stepV2Clear(StepV2 *s) {
     s->probability = 255;  // Default: always trigger
     s->condition = COND_ALWAYS;
     s->sustain = 0;
+    s->pickMode = PICK_ALL;
+    s->pickState = 0;
     for (int i = 0; i < SEQ_V2_MAX_POLY; i++) {
         memset(&s->notes[i], 0, sizeof(StepNote));
         s->notes[i].note = SEQ_NOTE_OFF;
@@ -781,6 +800,28 @@ static void patSetChordCustom(Pattern *p, int track, int step, float vel, int ga
     if (n1 >= 0) stepV2AddNote(sv, n1, velFloatToU8(vel), (int8_t)gate);
     if (n2 >= 0) stepV2AddNote(sv, n2, velFloatToU8(vel), (int8_t)gate);
     if (n3 >= 0) stepV2AddNote(sv, n3, velFloatToU8(vel), (int8_t)gate);
+}
+
+// Set/get note pool pick mode
+static void patSetPickMode(Pattern *p, int track, int step, int mode) {
+    if (track < 0 || track >= SEQ_V2_MAX_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return;
+    if (p->steps[track][step].pickMode != (uint8_t)mode) {
+        p->steps[track][step].pickMode = (uint8_t)mode;
+        p->steps[track][step].pickState = 0;  // Reset state only on actual mode change
+    }
+}
+static int patGetPickMode(Pattern *p, int track, int step) {
+    if (track < 0 || track >= SEQ_V2_MAX_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 0;
+    return (int)p->steps[track][step].pickMode;
+}
+
+// Fill a step's note pool from a chord type (quick-fill helper for sequencer UI)
+static void patFillPool(Pattern *p, int track, int step, int rootNote, ChordType chordType, float vel, int gate) {
+    if (track < 0 || track >= SEQ_V2_MAX_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return;
+    StepV2 *sv = &p->steps[track][step];
+    uint8_t prevPickMode = sv->pickMode;
+    patSetChord(p, track, step, rootNote, chordType, vel, gate);
+    sv->pickMode = prevPickMode;  // Preserve pick mode across refill
 }
 
 // Set melody sustain
@@ -1394,13 +1435,58 @@ static void seqTriggerStep(Pattern *p, int track, int step, float stepDuration) 
         }
 
         int sustainSteps = sv->sustain;
-        // Trigger all notes with per-voice velocity and gate
-        int voiceCount = sv->noteCount;
+
+        // Note pool pick mode: select which notes to trigger
+        int pickStart = 0, pickEnd = sv->noteCount;
+        if (sv->pickMode != PICK_ALL && sv->noteCount > 1) {
+            // Pick a single note from the pool
+            int poolSize = sv->noteCount;
+            int picked = 0;
+            switch ((PickMode)sv->pickMode) {
+                case PICK_RANDOM:
+                    picked = (int)(seqRandFloat() * poolSize) % poolSize;
+                    break;
+                case PICK_CYCLE_UP:
+                    picked = sv->pickState % poolSize;
+                    sv->pickState = (sv->pickState + 1) % poolSize;
+                    break;
+                case PICK_CYCLE_DOWN:
+                    picked = (poolSize - 1) - (sv->pickState % poolSize);
+                    sv->pickState = (sv->pickState + 1) % poolSize;
+                    break;
+                case PICK_PINGPONG: {
+                    // State encodes position in a 0..2*(n-1)-1 cycle
+                    int cycle = (poolSize > 1) ? 2 * (poolSize - 1) : 1;
+                    int pos = sv->pickState % cycle;
+                    picked = (pos < poolSize) ? pos : (cycle - pos);
+                    sv->pickState = (sv->pickState + 1) % cycle;
+                    break;
+                }
+                case PICK_RANDOM_WALK: {
+                    int cur = sv->pickState % poolSize;
+                    int dir = (seqRandFloat() < 0.5f) ? -1 : 1;
+                    cur += dir;
+                    if (cur < 0) cur = 1;            // Bounce off bottom
+                    if (cur >= poolSize) cur = poolSize - 2;
+                    if (cur < 0) cur = 0;            // Edge case: 2-note pool
+                    picked = cur;
+                    sv->pickState = (uint8_t)cur;
+                    break;
+                }
+                default: break;
+            }
+            // Swap picked note to slot 0 position for trigger, then only play 1 voice
+            // (We don't physically reorder — just set the range to [picked, picked+1))
+            pickStart = picked;
+            pickEnd = picked + 1;
+        }
+
+        int voiceCount = pickEnd - pickStart;
         if (voiceCount > SEQ_V2_MAX_POLY) voiceCount = SEQ_V2_MAX_POLY;
         seq.trackActiveVoices[track] = voiceCount;
 
         for (int v = 0; v < voiceCount; v++) {
-            StepNote *vn = &sv->notes[v];
+            StepNote *vn = &sv->notes[pickStart + v];
             float vVel = velU8ToFloat(vn->velocity) * seq.trackVolume[track];
             if (seq.humanize.velocityJitter > 0.0f) {
                 float jit = (seqRandFloat() * 2.0f - 1.0f) * seq.humanize.velocityJitter * vVel;

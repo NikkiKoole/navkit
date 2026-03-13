@@ -1574,6 +1574,22 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             accent = patGetNoteAccent(pat, detailTrack, ds);
             ui_col_toggle(&c4, "Accent", &accent);
         }
+
+        // Note pool pick mode (only for melodic steps with 2+ notes)
+        int pick = PICK_ALL;
+        if (!isDrumTrack) {
+            StepV2 *stepData = &pat->steps[detailTrack][ds];
+            if (stepData->noteCount > 1) {
+                UIColumn c5 = ui_column(cx + 680, iy, 15);
+                pick = patGetPickMode(pat, detailTrack, ds);
+                ui_col_cycle(&c5, "Pool Pick", pickModeNames, PICK_COUNT, &pick);
+                if (pick != PICK_ALL) {
+                    ui_col_sublabel(&c5, TextFormat("%d notes in pool", stepData->noteCount),
+                                    (Color){120,200,120,255});
+                }
+            }
+        }
+
         // Writeback to v2 after UI widget edits
         if (isDrumTrack) {
             patSetDrumVel(pat, detailTrack, ds, vel);
@@ -1586,6 +1602,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             patSetNoteGate(pat, detailTrack, ds, gate);
             patSetNoteFlags(pat, detailTrack, ds, slide, accent);
             patSetNotePitch(pat, detailTrack, ds, noteVal);
+            patSetPickMode(pat, detailTrack, ds, pick);
         }
 
         // === P-LOCK ROW ===

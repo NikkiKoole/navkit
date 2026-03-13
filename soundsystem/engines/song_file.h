@@ -491,6 +491,8 @@ static void _sf_writePattern(FILE *f, int idx, const Pattern *p) {
                     int mCond = (int)sv->condition;
                     if (mCond != COND_ALWAYS)
                         fprintf(f, " cond=%s", _sf_conditionNames[mCond]);
+                    if (sv->pickMode != PICK_ALL)
+                        fprintf(f, " pick=%d", (int)sv->pickMode);
                 }
                 fprintf(f, "\n");
             }
@@ -942,6 +944,7 @@ static void _sf_parseMelodyEvent(const char *line, Pattern *p) {
     char noteName[16] = "C4";
     float vel = 0.8f, prob = 1.0f;
     int cond = COND_ALWAYS;
+    int pickMode = PICK_ALL;
     bool slide = false, accent = false;
     bool hasChord = false;
     int chordType = CHORD_SINGLE;
@@ -971,8 +974,8 @@ static void _sf_parseMelodyEvent(const char *line, Pattern *p) {
                 if (idx >= 0) chordType = idx;
             }
             else if (strcmp(key, "pick") == 0) {
-                // Legacy NotePool pick mode — ignored in v2 (all notes play)
-                hasChord = true;
+                int pv = _sf_parseInt(val);
+                if (pv >= 0 && pv < PICK_COUNT) pickMode = pv;
             }
             else if (strcmp(key, "notes") == 0) {
                 // Legacy custom chord notes: "C4,E4,G4" → v2 multi-note step
@@ -1033,6 +1036,7 @@ static void _sf_parseMelodyEvent(const char *line, Pattern *p) {
         patSetNoteSustain(p, absTrack, step, sustain);
         patSetNoteProb(p, absTrack, step, prob);
         patSetNoteCond(p, absTrack, step, cond);
+        if (pickMode != PICK_ALL) patSetPickMode(p, absTrack, step, pickMode);
     }
 }
 
