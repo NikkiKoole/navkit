@@ -489,10 +489,9 @@ static bool isPatchDirty(int patchIdx) {
 static void loadPresetIntoPatch(int patchIdx, int presetIdx) {
     if (!presetsInitialized) { initInstrumentPresets(); presetsInitialized = true; }
     dawReleaseVoicesForPatch(patchIdx);
-    char nameBak[32];
-    memcpy(nameBak, daw.patches[patchIdx].p_name, 32);
     daw.patches[patchIdx] = instrumentPresets[presetIdx].patch;
-    memcpy(daw.patches[patchIdx].p_name, nameBak, 32);
+    // Copy preset name into patch p_name
+    snprintf(daw.patches[patchIdx].p_name, 32, "%s", instrumentPresets[presetIdx].name);
     patchPresetIndex[patchIdx] = presetIdx;
     patchPresetSnapshot[patchIdx] = daw.patches[patchIdx];
 }
