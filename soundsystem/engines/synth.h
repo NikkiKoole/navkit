@@ -3716,20 +3716,21 @@ static const VoiceInitParams VOICE_INIT_PERC = {
 static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *params, bool *outIsGlide) {
     int voiceIdx;
     bool isGlide = false;
-    bool isMonoRetrigger = false;  // Retrigger during release - keep some state
-    
+    bool isGlideRetrigger = false;  // Glide pitch but retrigger envelope (voice was in release)
+    bool isMonoRetrigger = false;   // Retrigger during release - keep some state
+
     if (params->supportsMono && monoMode) {
         voiceIdx = monoVoiceIdx;
         Voice *monoV = &synthVoices[voiceIdx];
         if (monoV->envStage > 0 && monoV->envStage < 4) {
             // Active note (not released) - do legato glide
             isGlide = true;
-        } else if (monoV->envStage == 4 && monoV->envLevel > 0.001f) {
-            // In release but still audible - glide from current pitch
-            // (sequencer releases before retriggering, so this is the common path)
+        } else if (monoV->baseFrequency > 20.0f && glideTime > 0.0f) {
+            // Voice released or dead — glide pitch from last note, retrigger envelope
             isGlide = true;
+            isGlideRetrigger = true;
         }
-        // envStage == 0: normal retrigger
+        // No valid previous frequency: normal retrigger
     } else {
         voiceIdx = findVoice();
     }
@@ -3858,19 +3859,21 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->expDecay = params->useGlobalEnvelope ? noteExpDecay : false;
     v->oneShot = noteOneShot;
 
-    if (!isGlide) {
+    if (!isGlide || isGlideRetrigger) {
         v->envPhase = 0.0f;
-        // On mono retrigger, preserve some envelope level for smooth transition
-        // This prevents the "note didn't trigger" feeling
-        if (isMonoRetrigger && v->envLevel > 0.0f) {
+        // On glide retrigger (voice was in release), start attack from current level
+        // for a smooth transition. On mono retrigger, same idea.
+        if ((isGlideRetrigger || isMonoRetrigger) && v->envLevel > 0.0f) {
             // Keep current level but restart attack from there
             v->envLevel = fmaxf(v->envLevel, 0.1f);  // At least 10% to be audible
         } else {
             v->envLevel = 0.0f;
         }
         v->envStage = 1;
-        v->filterLp = oldFilterLp * 0.3f;
-        v->filterBp = 0.0f;
+        if (!isGlideRetrigger) {
+            v->filterLp = oldFilterLp * 0.3f;
+            v->filterBp = 0.0f;
+        }
         resetFilterEnvelope(v, params->useGlobalLfos);
         resetVoiceLfos(v, params->useGlobalLfos);
     }

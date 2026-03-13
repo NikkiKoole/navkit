@@ -75,7 +75,7 @@ unisonCount = 1
 unisonDetune = 10
 unisonMix = 0.5
 monoMode = true
-glideTime = 0.518289
+glideTime = 0.417891
 pluckBrightness = 0.5
 pluckDamping = 0.996
 pluckDamp = 0
@@ -988,22 +988,22 @@ gimmickDipAmt = 0.3
 
 [patch.6]
 name = "Chord"
-waveType = fm
+waveType = additive
 scwIndex = 0
-attack = 0.01
-decay = 0.2
-sustain = 0.8
-release = 0.15
+attack = 0.05
+decay = 0.1
+sustain = 0.5
+release = 0.8
 expRelease = false
 expDecay = false
 oneShot = false
-volume = 0.6
+volume = 0.5
 pulseWidth = 0.5
 pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
-filterCutoff = 0.2
+filterCutoff = 1
 filterResonance = 0
 filterType = 0
 filterEnvAmt = 0
@@ -1035,7 +1035,7 @@ unisonCount = 1
 unisonDetune = 10
 unisonMix = 0.5
 monoMode = true
-glideTime = 0.375169
+glideTime = 0.45968
 pluckBrightness = 0.5
 pluckDamping = 0.996
 pluckDamp = 0
@@ -1074,8 +1074,8 @@ granularPitchRandom = 0
 granularAmpRandom = 0.1
 granularSpread = 0.5
 granularFreeze = false
-fmModRatio = 1
-fmModIndex = 0
+fmModRatio = 2
+fmModIndex = 1
 fmFeedback = 0
 fmMod2Ratio = 0
 fmMod2Index = 0
@@ -1143,8 +1143,8 @@ wavefoldAmount = 0
 hardSync = false
 hardSyncRatio = 1.5
 acidMode = false
-accentSweepAmt = 1
-gimmickDipAmt = 1
+accentSweepAmt = 0.5
+gimmickDipAmt = 0.3
 
 [patch.7]
 name = "Bird"
@@ -1532,10 +1532,7 @@ songMode = false
 [pattern.0]
 drumTrackLength = 16 16 16 16
 melodyTrackLength = 16 16 16
-m track=2 step=0 note=D#2 vel=0.8 gate=1
-m track=2 step=1 note=E2 vel=0.8 gate=1
-m track=2 step=2 note=F#2 vel=0.8 gate=1
-m track=2 step=3 note=D2 vel=0.8 gate=1
-m track=2 step=7 note=G2 vel=0.8 gate=1
-m track=2 step=10 note=D#1 vel=0.8 gate=1 cond=1:2
-m track=2 step=12 note=F2 vel=0.8 gate=1
+m track=2 step=0 note=C4 vel=0.8 gate=1
+m track=2 step=4 note=E5 vel=0.8 gate=1
+m track=2 step=7 note=C4 vel=0.8 gate=1
+m track=2 step=10 note=C4 vel=0.8 gate=1
