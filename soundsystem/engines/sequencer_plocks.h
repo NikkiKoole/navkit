@@ -16,27 +16,6 @@ static void plockIndexAdd(Pattern *p, int plockIdx) {
     p->plockStepIndex[pl->track][pl->step] = (int8_t)plockIdx;
 }
 
-// Remove a p-lock from the step index (call before removing from plocks array)
-__attribute__((unused))
-static void plockIndexRemove(Pattern *p, int plockIdx) {
-    PLock *pl = &p->plocks[plockIdx];
-    int track = pl->track, step = pl->step;
-    
-    if (p->plockStepIndex[track][step] == plockIdx) {
-        // First in chain - update head
-        p->plockStepIndex[track][step] = pl->nextInStep;
-    } else {
-        // Find predecessor and unlink
-        int prev = p->plockStepIndex[track][step];
-        while (prev >= 0 && p->plocks[prev].nextInStep != plockIdx) {
-            prev = p->plocks[prev].nextInStep;
-        }
-        if (prev >= 0) {
-            p->plocks[prev].nextInStep = pl->nextInStep;
-        }
-    }
-}
-
 // Update index after shifting p-locks down (for removal)
 static void plockIndexRebuild(Pattern *p) {
     // Clear all indices

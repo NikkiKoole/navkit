@@ -7,20 +7,15 @@
 
 ## Genuinely Dead (superseded or abandoned)
 
-### `processDrumsWithSidechain` — drums.h:678
-55-line function, zero callers anywhere. Sidechain routing is handled differently now.
+### ~~`processDrumsWithSidechain`~~ — drums.h:678 — **N/A** (drums.h deleted)
 
-### `plockIndexRemove` — sequencer.h:873
-`__attribute__((unused))`. Superseded by the shift+rebuild approach in `seqClearPLock`.
+### ~~`plockIndexRemove`~~ — sequencer_plocks.h — **Removed**
 
-### `setTrackCallbacks` — sequencer.h:1219
-New unified track callback API, never adopted. All code uses `initSequencer`/`setMelodyCallbacks`.
+### ~~`setTrackCallbacks`~~ — sequencer.h — **Removed**
 
-### `seqTrackNames[]` — sequencer.h:63
-Static array `{"bass","lead","chord"}`, never referenced. Track names are set directly in `initSequencer()` via `seq.trackNames[]`.
+### ~~`seqTrackNames[]`~~ — sequencer.h — **Removed**
 
-### `processDubLoopWithVoices` — effects.h:1062
-Only reference is the `(void)` suppression in `soundsystem.h`. No real callers.
+### ~~`processDubLoopWithVoices`~~ — dub_loop.h — **Removed** (+ `(void)` suppression in soundsystem.h)
 
 ### `CHORD_OCTAVES` enum — sequencer.h:142
 Handled in `buildChordNotes` switch but never passed as an argument from any call site.

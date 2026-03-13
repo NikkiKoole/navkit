@@ -1743,7 +1743,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[104].patch.p_sustain = 0.15f;
     instrumentPresets[104].patch.p_release = 0.3f;
     instrumentPresets[104].patch.p_expDecay = true;
-    instrumentPresets[104].patch.p_tubeSaturation = 0.15f;
+    instrumentPresets[104].patch.p_tubeSaturation = true;
     instrumentPresets[104].patch.p_volume = 0.4f;
 
     // 105: FM Gong — Branch algorithm, inharmonic decay

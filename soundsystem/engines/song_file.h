@@ -445,11 +445,11 @@ static void _sf_writePattern(FILE *f, int idx, const Pattern *p) {
     for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
         int absTrack = SEQ_DRUM_TRACKS + t;
         for (int s = 0; s < p->trackLength[absTrack]; s++) {
-            StepV2 *sv = &p->steps[absTrack][s];
+            const StepV2 *sv = &p->steps[absTrack][s];
             if (sv->noteCount == 0) continue;
 
             for (int v = 0; v < sv->noteCount; v++) {
-                StepNote *sn = &sv->notes[v];
+                const StepNote *sn = &sv->notes[v];
                 if (sn->note == SEQ_NOTE_OFF) continue;
                 char noteName[8];
                 _sf_midiToName(sn->note, noteName, sizeof(noteName));

@@ -156,13 +156,13 @@ static void _dwWritePattern(FILE *f, int idx, const Pattern *p) {
 
     for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
         for (int s = 0; s < p->trackLength[t]; s++) {
-            if (!patGetDrum((Pattern*)p, t, s)) continue;
-            fprintf(f, "d track=%d step=%d vel=%.3g", t, s, (double)patGetDrumVel((Pattern*)p, t, s));
-            float dp = patGetDrumPitch((Pattern*)p, t, s);
+            if (!patGetDrum(p, t, s)) continue;
+            fprintf(f, "d track=%d step=%d vel=%.3g", t, s, (double)patGetDrumVel(p, t, s));
+            float dp = patGetDrumPitch(p, t, s);
             if (dp != 0.0f) fprintf(f, " pitch=%.3g", (double)dp);
-            float dProb = patGetDrumProb((Pattern*)p, t, s);
+            float dProb = patGetDrumProb(p, t, s);
             if (dProb > 0.0f && dProb < 1.0f) fprintf(f, " prob=%.3g", (double)dProb);
-            int dCond = patGetDrumCond((Pattern*)p, t, s);
+            int dCond = patGetDrumCond(p, t, s);
             if (dCond != COND_ALWAYS) fprintf(f, " cond=%s", _dwCondNames[dCond]);
             fprintf(f, "\n");
         }
@@ -367,10 +367,10 @@ static bool dawSave(const char *filepath) {
         bool empty = true;
         for (int t = 0; t < SEQ_DRUM_TRACKS && empty; t++)
             for (int s = 0; s < p->trackLength[t] && empty; s++)
-                if (patGetDrum((Pattern*)p, t, s)) empty = false;
+                if (patGetDrum(p, t, s)) empty = false;
         for (int t = 0; t < SEQ_MELODY_TRACKS && empty; t++)
             for (int s = 0; s < p->trackLength[SEQ_DRUM_TRACKS + t] && empty; s++)
-                if (patGetNote((Pattern*)p, SEQ_DRUM_TRACKS + t, s) != SEQ_NOTE_OFF) empty = false;
+                if (patGetNote(p, SEQ_DRUM_TRACKS + t, s) != SEQ_NOTE_OFF) empty = false;
         if (p->plockCount > 0) empty = false;
         if (!empty) _dwWritePattern(f, i, p);
     }

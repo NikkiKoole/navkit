@@ -1336,6 +1336,7 @@ static void Song_MonksMood_ConfigureVoices(void) {
 // Helper: set a custom chord voicing on chord track (track 2)
 static void setCustomChord(Pattern* p, int step, int root, float vel, int gate,
                            int sustain, int n0, int n1, int n2, int n3) {
+    (void)root;
     chordCustom(p, 2, step, vel, gate, n0, n1, n2, n3);
     patSetNoteSustain(p, SEQ_DRUM_TRACKS + 2, step, sustain);
 }
@@ -2000,6 +2001,7 @@ static void satieTrackLengths(Pattern* p) {
 
 // Helper: custom chord on track 2 (3-note voicing, Satie uses triads)
 static void satieChord(Pattern* p, int step, int root, int n0, int n1, int n2) {
+    (void)root;
     chordCustom(p, 2, step, 0.22f, 4, n0, n1, n2, -1);
     patSetNoteSustain(p, SEQ_DRUM_TRACKS + 2, step, 2);
 }

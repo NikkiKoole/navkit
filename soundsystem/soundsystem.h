@@ -99,7 +99,6 @@ static inline void soundsystem_suppress_warnings(void) {
     (void)processEffects;
     (void)processEffectsWithBuses;
     (void)processDubLoopWithInputs;
-    (void)processDubLoopWithVoices;
     (void)dubLoopThrow;
     (void)dubLoopCut;
     (void)dubLoopHalfSpeed;

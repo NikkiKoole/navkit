@@ -60,8 +60,7 @@ static const char* seqNoteNames[] = {
     "C","C#","D","D#","E","F","F#","G","G#","A","A#","B"
 };
 
-static const char* seqTrackNames[] = { "bass", "lead", "chord" };
-
+__attribute__((format(printf, 1, 2)))
 static void seqSoundLog(const char* fmt, ...) {
     if (!seqSoundLogEnabled) return;
     char* entry = seqSoundLogBuffer[seqSoundLogHead];
@@ -96,9 +95,11 @@ static const char* seqNoteName(int midi) {
     if (midi < 0) return "---";
     int octave = (midi / 12) - 1;
     int note = midi % 12;
-    static char buf[8];
-    snprintf(buf, sizeof(buf), "%s%d", seqNoteNames[note], octave);
-    return buf;
+    static char buf[2][8];
+    static int which = 0;
+    which = 1 - which;
+    snprintf(buf[which], sizeof(buf[which]), "%s%d", seqNoteNames[note], octave);
+    return buf[which];
 }
 
 static void seqSoundLogDump(const char* filepath) {
@@ -211,19 +212,19 @@ typedef struct {
 } GroovePreset;
 
 static const GroovePreset groovePresets[] = {
-    // name               kick  snare hat  clap  swing jitter  timJit velJit
-    {"Straight",        {{ 0,    0,    0,    0,    0,    0},   { 0,   0.0f}}},
-    {"Light Swing",     {{ 0,    0,    0,    0,    4,    0},   { 0,   0.0f}}},
-    {"MPC Swing",       {{ 0,    0,    0,    0,    6,    0},   { 0,   0.0f}}},
-    {"Hard Swing",      {{ 0,    0,    0,    0,    9,    0},   { 0,   0.0f}}},
-    {"Dilla",           {{ 0,    3,   -2,    2,    5,    2},   { 2,   0.12f}}},
-    {"Dilla Heavy",     {{ 1,    5,   -3,    4,    7,    3},   { 3,   0.18f}}},
-    {"Jazz",            {{ 0,    1,   -1,    0,    8,    2},   { 2,   0.10f}}},
-    {"Bossa Nova",      {{ 0,    2,    0,    0,    4,    1},   { 1,   0.08f}}},
-    {"Hip Hop",         {{ 0,    2,   -1,    1,    3,    1},   { 1,   0.10f}}},
-    {"Reggae",          {{-1,    4,    0,    3,    3,    1},   { 0,   0.05f}}},
-    {"Funk",            {{ 0,    0,   -2,    0,    5,    1},   { 1,   0.08f}}},
-    {"Loose",           {{ 0,    0,    0,    0,    0,    3},   { 3,   0.15f}}},
+    //                         kick snare hat clap swing jitter   timJit velJit
+    {"Straight",        {.kickNudge= 0, .snareDelay= 0, .hatNudge= 0, .clapDelay= 0, .swing= 0, .jitter= 0}, {.timingJitter= 0, .velocityJitter= 0.0f}},
+    {"Light Swing",     {.kickNudge= 0, .snareDelay= 0, .hatNudge= 0, .clapDelay= 0, .swing= 4, .jitter= 0}, {.timingJitter= 0, .velocityJitter= 0.0f}},
+    {"MPC Swing",       {.kickNudge= 0, .snareDelay= 0, .hatNudge= 0, .clapDelay= 0, .swing= 6, .jitter= 0}, {.timingJitter= 0, .velocityJitter= 0.0f}},
+    {"Hard Swing",      {.kickNudge= 0, .snareDelay= 0, .hatNudge= 0, .clapDelay= 0, .swing= 9, .jitter= 0}, {.timingJitter= 0, .velocityJitter= 0.0f}},
+    {"Dilla",           {.kickNudge= 0, .snareDelay= 3, .hatNudge=-2, .clapDelay= 2, .swing= 5, .jitter= 2}, {.timingJitter= 2, .velocityJitter= 0.12f}},
+    {"Dilla Heavy",     {.kickNudge= 1, .snareDelay= 5, .hatNudge=-3, .clapDelay= 4, .swing= 7, .jitter= 3}, {.timingJitter= 3, .velocityJitter= 0.18f}},
+    {"Jazz",            {.kickNudge= 0, .snareDelay= 1, .hatNudge=-1, .clapDelay= 0, .swing= 8, .jitter= 2}, {.timingJitter= 2, .velocityJitter= 0.10f}},
+    {"Bossa Nova",      {.kickNudge= 0, .snareDelay= 2, .hatNudge= 0, .clapDelay= 0, .swing= 4, .jitter= 1}, {.timingJitter= 1, .velocityJitter= 0.08f}},
+    {"Hip Hop",         {.kickNudge= 0, .snareDelay= 2, .hatNudge=-1, .clapDelay= 1, .swing= 3, .jitter= 1}, {.timingJitter= 1, .velocityJitter= 0.10f}},
+    {"Reggae",          {.kickNudge=-1, .snareDelay= 4, .hatNudge= 0, .clapDelay= 3, .swing= 3, .jitter= 1}, {.timingJitter= 0, .velocityJitter= 0.05f}},
+    {"Funk",            {.kickNudge= 0, .snareDelay= 0, .hatNudge=-2, .clapDelay= 0, .swing= 5, .jitter= 1}, {.timingJitter= 1, .velocityJitter= 0.08f}},
+    {"Loose",           {.kickNudge= 0, .snareDelay= 0, .hatNudge= 0, .clapDelay= 0, .swing= 0, .jitter= 3}, {.timingJitter= 3, .velocityJitter= 0.15f}},
 };
 static const int groovePresetCount = sizeof(groovePresets) / sizeof(groovePresets[0]);
 
@@ -677,22 +678,22 @@ static void patClearDrum(Pattern *p, int track, int step) {
 }
 
 // Check if a drum step is active
-static bool patGetDrum(Pattern *p, int track, int step) {
+static bool patGetDrum(const Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_V2_MAX_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return false;
     return p->steps[track][step].noteCount > 0;
 }
 
 // Get drum velocity
-static float patGetDrumVel(Pattern *p, int track, int step) {
+static float patGetDrumVel(const Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_V2_MAX_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 0.0f;
-    StepV2 *sv = &p->steps[track][step];
+    const StepV2 *sv = &p->steps[track][step];
     return (sv->noteCount > 0) ? velU8ToFloat(sv->notes[0].velocity) : 0.0f;
 }
 
 // Get drum pitch
-static float patGetDrumPitch(Pattern *p, int track, int step) {
+static float patGetDrumPitch(const Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_V2_MAX_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 0.0f;
-    StepV2 *sv = &p->steps[track][step];
+    const StepV2 *sv = &p->steps[track][step];
     return (sv->noteCount > 0) ? (sv->notes[0].nudge / 12.0f) : 0.0f;
 }
 
@@ -735,23 +736,23 @@ static void patClearNote(Pattern *p, int track, int step) {
 }
 
 // Get melody note (returns SEQ_NOTE_OFF if empty)
-static int patGetNote(Pattern *p, int track, int step) {
+static int patGetNote(const Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_V2_MAX_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return SEQ_NOTE_OFF;
-    StepV2 *sv = &p->steps[track][step];
+    const StepV2 *sv = &p->steps[track][step];
     return (sv->noteCount > 0) ? sv->notes[0].note : SEQ_NOTE_OFF;
 }
 
 // Get melody velocity
-static float patGetNoteVel(Pattern *p, int track, int step) {
+static float patGetNoteVel(const Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_V2_MAX_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 0.0f;
-    StepV2 *sv = &p->steps[track][step];
+    const StepV2 *sv = &p->steps[track][step];
     return (sv->noteCount > 0) ? velU8ToFloat(sv->notes[0].velocity) : 0.0f;
 }
 
 // Get melody gate
-static int patGetNoteGate(Pattern *p, int track, int step) {
+static int patGetNoteGate(const Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_V2_MAX_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 0;
-    StepV2 *sv = &p->steps[track][step];
+    const StepV2 *sv = &p->steps[track][step];
     return (sv->noteCount > 0) ? sv->notes[0].gate : 0;
 }
 
@@ -846,7 +847,7 @@ static void patSetPickMode(Pattern *p, int track, int step, int mode) {
         p->steps[track][step].pickState = 0;  // Reset state only on actual mode change
     }
 }
-static int patGetPickMode(Pattern *p, int track, int step) {
+static int patGetPickMode(const Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_V2_MAX_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 0;
     return (int)p->steps[track][step].pickMode;
 }
@@ -879,45 +880,45 @@ static void patSetNoteCond(Pattern *p, int track, int step, int cond) {
 }
 
 // Get drum probability
-static float patGetDrumProb(Pattern *p, int track, int step) {
+static float patGetDrumProb(const Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_V2_MAX_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 1.0f;
     return probU8ToFloat(p->steps[track][step].probability);
 }
 
 // Get drum condition
-static int patGetDrumCond(Pattern *p, int track, int step) {
+static int patGetDrumCond(const Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_V2_MAX_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 0;
     return (int)p->steps[track][step].condition;
 }
 
 // Get melody slide
-static bool patGetNoteSlide(Pattern *p, int track, int step) {
+static bool patGetNoteSlide(const Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_V2_MAX_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return false;
-    StepV2 *sv = &p->steps[track][step];
+    const StepV2 *sv = &p->steps[track][step];
     return (sv->noteCount > 0) ? sv->notes[0].slide : false;
 }
 
 // Get melody accent
-static bool patGetNoteAccent(Pattern *p, int track, int step) {
+static bool patGetNoteAccent(const Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_V2_MAX_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return false;
-    StepV2 *sv = &p->steps[track][step];
+    const StepV2 *sv = &p->steps[track][step];
     return (sv->noteCount > 0) ? sv->notes[0].accent : false;
 }
 
 // Get melody sustain
-static int patGetNoteSustain(Pattern *p, int track, int step) {
+static int patGetNoteSustain(const Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_V2_MAX_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 0;
     return (int)p->steps[track][step].sustain;
 }
 
 // Get melody probability
-static float patGetNoteProb(Pattern *p, int track, int step) {
+static float patGetNoteProb(const Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_V2_MAX_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 1.0f;
     return probU8ToFloat(p->steps[track][step].probability);
 }
 
 // Get melody condition
-static int patGetNoteCond(Pattern *p, int track, int step) {
+static int patGetNoteCond(const Pattern *p, int track, int step) {
     if (track < 0 || track >= SEQ_V2_MAX_TRACKS || step < 0 || step >= SEQ_MAX_STEPS) return 0;
     return (int)p->steps[track][step].condition;
 }
@@ -1136,13 +1137,6 @@ static void _melodyNoteOffAdapter2(void) { if (_melodyReleaseAdapters[2]) _melod
 static TrackNoteOffFunc _melodyNoteOffAdapters[SEQ_MELODY_TRACKS] = {
     _melodyNoteOffAdapter0, _melodyNoteOffAdapter1, _melodyNoteOffAdapter2
 };
-
-// Set unified track callbacks directly (new API)
-static void setTrackCallbacks(int track, TrackNoteOnFunc noteOn, TrackNoteOffFunc noteOff) {
-    if (track < 0 || track >= SEQ_V2_MAX_TRACKS) return;
-    seq.trackNoteOn[track] = noteOn;
-    seq.trackNoteOff[track] = noteOff;
-}
 
 // Initialize sequencer with drum trigger functions (legacy API — wraps to unified callbacks)
 static void initSequencer(DrumTriggerFunc kickFn, DrumTriggerFunc snareFn,

@@ -7,39 +7,15 @@
 
 ## HIGH (hurts readability significantly)
 
-### H1. 130+ `#define` macros hiding global state
+### ~~H1. 130+ `#define` macros hiding global state~~ — WON'T FIX
 
-**Files**: `synth.h:856-996`, `drums.h:252-254`, `sampler.h:82-84`, `sequencer.h:480-482`
-
-Each engine uses file-static global context + `#define` macros that make struct fields look like plain variables:
-
-```c
-#define masterVolume (synthCtx->masterVolume)
-#define noteAttack (synthCtx->noteAttack)
-// ... 100+ more
-```
-
-This makes it impossible to know where state lives without memorizing the mapping. The macros also collide across files — `daw.c` has to `#undef masterVolume`, `#undef scaleLockEnabled`, `#undef monoMode` (lines 23-27). Any `#include` ordering change can break things silently.
-
-**Suggestion**: Long-term, pass context pointers explicitly. Short-term, group the macros into documented accessor blocks and consolidate the "ensure initialized" idiom.
+**Reason**: The cure is worse than the disease. Replacing macros with explicit `ctx->` prefixes would touch thousands of lines across ~20 files, adding visual noise to dense DSP math where short names actually help readability. The collision issue is real but stable in practice (only 5 `#undef`s in 3 files, unchanged for months). Massive blast radius with no feature on the roadmap blocked by it. Reconsider only if thread-safe contexts become necessary.
 
 ---
 
-### H2. `applyPatchToGlobals()` is 147 lines of field-by-field copy
+### ~~H2. `applyPatchToGlobals()` is 147 lines of field-by-field copy~~ — WON'T FIX
 
-**File**: `patch_trigger.h:16-147`
-
-```c
-static void applyPatchToGlobals(SynthPatch *p) {
-    noteAttack = p->p_attack;
-    noteDecay = p->p_decay;
-    // ... 130 more lines
-}
-```
-
-Every new SynthPatch field requires updating: the macro list, `applyPatchToGlobals()`, `createDefaultPatch()`, and song_file save/load. Extremely error-prone.
-
-**Suggestion**: Data-driven approach — a table of `{offsetof(SynthPatch, field), offsetof(SynthContext, field), size}` entries iterated by a single loop. Or a naming convention that lets a macro generate the copy.
+**Reason**: A data-driven offsetof table trades "obvious but tedious" for "clever but opaque." The field names don't match between SynthPatch (`p_attack`) and SynthContext (`noteAttack`), so auto-generation isn't possible — you'd still need an explicit table. A wrong table entry causes silent audio data corruption, whereas a wrong line in the current copy is easy to spot in diffs. The current approach is verbose but reliable for a solo/small-team project.
 
 ---
 
@@ -156,7 +132,7 @@ static int playNoteWithPatch(float freq, SynthPatch *p);
 
 ---
 
-### M5. `seqNoteName()` uses a static buffer — not reentrant
+### ~~M5. `seqNoteName()` uses a static buffer — not reentrant~~ **Done**
 
 **File**: `sequencer.h:95-102`
 
@@ -203,7 +179,7 @@ Array size is implicitly 7 (NUM_BUSES). If NUM_BUSES changes, these won't compil
 
 ---
 
-### M8. WAV recording variable names suggest endian awareness that doesn't exist
+### ~~M8. WAV recording variable names suggest endian awareness that doesn't exist~~ **Done**
 
 **File**: `daw.c:245-268`
 
@@ -226,11 +202,7 @@ Custom two-component envelope instead of using `DRUM_PROC_END` pattern. Same wit
 
 ## LOW (minor style nits)
 
-### L1. `PI` defined 3 times
-
-**Files**: `synth.h:11`, `drums.h:10`, `effects.h:14`
-
-Define once in a shared header.
+### ~~L1. `PI` defined 3 times~~ **N/A** — drums.h deleted, remaining 2 use `#ifndef` guards (no actual duplication at runtime)
 
 ---
 
@@ -301,8 +273,8 @@ Recording state, debug state, voice tracking, and MIDI state declared as scatter
 
 | # | Issue | Impact | Effort |
 |---|-------|--------|--------|
-| H1 | 130+ #define macros hiding state | High (readability, collision risk) | Large (architectural) |
-| H2 | 147-line field-by-field copy | High (maintenance, bug risk) | Medium (data-driven table) |
+| ~~H1~~ | ~~130+ #define macros hiding state~~ | ~~High~~ | Won't fix — ctx-> prefix hurts DSP readability, stable in practice |
+| ~~H2~~ | ~~147-line field-by-field copy~~ | ~~High~~ | Won't fix — offsetof table trades obvious bugs for silent ones |
 | H3 | Duplicated file helpers | Medium (inconsistent precision) | Low (extract shared header) |
 | H4 | Wave names duplicated 3x | Medium (sync risk) | Low (single table) |
 | H5 | Unreadable waveform one-liners | Medium (readability) | Low (extract helper) |
@@ -312,4 +284,4 @@ Recording state, debug state, voice tracking, and MIDI state declared as scatter
 | L2 | Double literals in float arrays | Low (implicit narrowing) | Trivial (add f suffix) |
 
 **Quick wins**: M3 (delete dead line), H4 (single name table), H5 (extract helper), L2 (add f suffix)
-**Biggest long-term payoff**: H1 (explicit context passing), H2 (data-driven patch copy)
+**Won't fix**: H1 (macros stable in practice, refactor hurts DSP readability), H2 (verbose but reliable, offsetof table not worth the risk)

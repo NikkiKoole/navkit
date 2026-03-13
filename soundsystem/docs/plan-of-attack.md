@@ -109,9 +109,9 @@ From `audit/code-simplifier-audit-soundsystem.md`:
 - ~~M2: Use `sizeof(*var)` in memset calls~~ **Done**
 - ~~H3: Shared file write/read helpers between song_file.h and daw_file.h~~ **Done** (file_helpers.h)
 
-**Longer term:**
-- H1: Replace 130+ `#define` macros with explicit context passing (architectural)
-- H2: Data-driven `applyPatchToGlobals()` instead of 170-line field copy (medium) — simplified by unified routing refactor but still a long list
+**Won't fix:**
+- ~~H1: Replace 130+ `#define` macros~~ — `ctx->` prefix hurts DSP readability; collision issue stable in practice (5 `#undef`s, 3 files)
+- ~~H2: Data-driven `applyPatchToGlobals()`~~ — offsetof table trades obvious bugs for silent data corruption; names don't match so still needs explicit table
 
 ---
 

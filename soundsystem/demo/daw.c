@@ -331,20 +331,20 @@ static void dawRecStop(void) {
     int fileSize = 36 + dataSize;
     // RIFF header
     fwrite("RIFF", 1, 4, f);
-    int le32 = fileSize; fwrite(&le32, 4, 1, f);
+    int val32 = fileSize; fwrite(&val32, 4, 1, f);
     fwrite("WAVE", 1, 4, f);
     // fmt chunk
     fwrite("fmt ", 1, 4, f);
-    le32 = 16; fwrite(&le32, 4, 1, f);
-    short le16 = 1; fwrite(&le16, 2, 1, f); // PCM
-    le16 = 1; fwrite(&le16, 2, 1, f); // mono
-    le32 = SAMPLE_RATE; fwrite(&le32, 4, 1, f);
-    le32 = SAMPLE_RATE * 2; fwrite(&le32, 4, 1, f); // byte rate
-    le16 = 2; fwrite(&le16, 2, 1, f); // block align
-    le16 = 16; fwrite(&le16, 2, 1, f); // bits per sample
+    val32 = 16; fwrite(&val32, 4, 1, f);
+    short val16 = 1; fwrite(&val16, 2, 1, f); // PCM
+    val16 = 1; fwrite(&val16, 2, 1, f); // mono
+    val32 = SAMPLE_RATE; fwrite(&val32, 4, 1, f);
+    val32 = SAMPLE_RATE * 2; fwrite(&val32, 4, 1, f); // byte rate
+    val16 = 2; fwrite(&val16, 2, 1, f); // block align
+    val16 = 16; fwrite(&val16, 2, 1, f); // bits per sample
     // data chunk
     fwrite("data", 1, 4, f);
-    le32 = dataSize; fwrite(&le32, 4, 1, f);
+    val32 = dataSize; fwrite(&val32, 4, 1, f);
     fwrite(dawRecBuffer, 2, dawRecSamples, f);
     fclose(f);
     free(dawRecBuffer);
@@ -379,6 +379,7 @@ static int midiSplitRightVoices[NUM_MIDI_NOTES];
 static bool midiNoteHeld[NUM_MIDI_NOTES]; // track held state for arp + mono + visual keyboard
 static bool midiSustainPedal = false;
 
+__attribute__((format(printf, 1, 2)))
 static void voiceLogPush(const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);

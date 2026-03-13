@@ -158,50 +158,7 @@ static float _processDubLoopCore(float selectedInput, float dt) {
     return wet;
 }
 
-// Process dub loop with individual voice inputs (most flexible)
-// drumInputs: array of 12 drum signals (DRUM_KICK through DRUM_MARACAS), or NULL
-// synthInputs: array of 3 synth voice signals (Bass, Lead, Chord), or NULL
-// Returns: wet signal only (caller handles dry/wet mix)
-static float processDubLoopWithVoices(float *drumInputs, float *synthInputs, float dt) {
-    _ensureFxCtx();
-    if (!dubLoop.enabled) return 0.0f;
-    
-    DubLoopParams *p = &dubLoop;
-    
-    // Calculate summed buses
-    float allDrums = 0.0f;
-    float allSynth = 0.0f;
-    if (drumInputs) {
-        for (int i = 0; i < DUB_NUM_DRUMS; i++) allDrums += drumInputs[i];
-    }
-    if (synthInputs) {
-        for (int i = 0; i < DUB_NUM_SYNTHS; i++) allSynth += synthInputs[i];
-    }
-    
-    // Determine what input goes to the delay based on source selection
-    float selectedInput = 0.0f;
-    int src = p->inputSource;
-    
-    if (src == DUB_INPUT_ALL) {
-        selectedInput = allDrums + allSynth;
-    } else if (src == DUB_INPUT_DRUMS) {
-        selectedInput = allDrums;
-    } else if (src == DUB_INPUT_SYNTH) {
-        selectedInput = allSynth;
-    } else if (src == DUB_INPUT_MANUAL) {
-        selectedInput = p->throwActive ? (allDrums + allSynth) : 0.0f;
-    } else if (src >= DUB_INPUT_KICK && src <= DUB_INPUT_MARACAS && drumInputs) {
-        // Individual drum voice (4-15 maps to drumInputs[0-11])
-        selectedInput = drumInputs[src - DUB_INPUT_KICK];
-    } else if (src >= DUB_INPUT_BASS && src <= DUB_INPUT_CHORD && synthInputs) {
-        // Individual synth voice (16-18 maps to synthInputs[0-2])
-        selectedInput = synthInputs[src - DUB_INPUT_BASS];
-    }
-    
-    return _processDubLoopCore(selectedInput, dt);
-}
-
-// Process dub loop with summed drum/synth buses (simpler API)
+// Process dub loop with summed drum/synth buses
 // drumInput: summed signal from all drums
 // synthInput: summed signal from all synth voices  
 // Returns: wet signal only (caller handles dry/wet mix)
@@ -227,7 +184,7 @@ static float processDubLoopWithInputs(float drumInput, float synthInput, float d
             selectedInput = p->throwActive ? (drumInput + synthInput) : 0.0f;
             break;
         default:
-            // Individual sources need processDubLoopWithVoices
+            // Individual sources not supported in summed-bus API
             // Fall back to manual behavior
             selectedInput = p->throwActive ? (drumInput + synthInput) : 0.0f;
             break;
