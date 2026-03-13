@@ -27,6 +27,7 @@ masterVol = 0.25
 voiceRandomVowel = false
 
 [patch.0]
+name = "808 Kick"
 waveType = fm
 scwIndex = 0
 attack = 0
@@ -186,6 +187,7 @@ accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
 
 [patch.1]
+name = "808 Snare"
 waveType = fm
 scwIndex = 0
 attack = 0
@@ -345,6 +347,7 @@ accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
 
 [patch.2]
+name = "808 CH"
 waveType = square
 scwIndex = 0
 attack = 0
@@ -504,6 +507,7 @@ accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
 
 [patch.3]
+name = "808 Clap"
 waveType = noise
 scwIndex = 0
 attack = 0
@@ -663,6 +667,7 @@ accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
 
 [patch.4]
+name = "Warm Tri Bass"
 waveType = triangle
 scwIndex = 0
 attack = 0.3
@@ -822,6 +827,7 @@ accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
 
 [patch.5]
+name = "Piku Glock"
 waveType = mallet
 scwIndex = 0
 attack = 0.01
@@ -981,6 +987,7 @@ accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
 
 [patch.6]
+name = "Dark Choir"
 waveType = additive
 scwIndex = 0
 attack = 0.8

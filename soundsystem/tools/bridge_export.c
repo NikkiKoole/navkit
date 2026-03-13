@@ -336,12 +336,18 @@ int main(int argc, char *argv[]) {
 
     // Load drum presets into patches 0-3
     for (int i = 0; i < 4; i++) {
-        daw.patches[i] = instrumentPresets[song->drumPresets[i]].patch;
+        int idx = song->drumPresets[i];
+        daw.patches[i] = instrumentPresets[idx].patch;
+        strncpy(daw.patches[i].p_name, instrumentPresets[idx].name, 31);
+        daw.patches[i].p_name[31] = '\0';
     }
 
     // Load melody presets into patches 4-6
     for (int i = 0; i < 3; i++) {
-        daw.patches[4 + i] = instrumentPresets[song->melodyPresets[i]].patch;
+        int idx = song->melodyPresets[i];
+        daw.patches[4 + i] = instrumentPresets[idx].patch;
+        strncpy(daw.patches[4 + i].p_name, instrumentPresets[idx].name, 31);
+        daw.patches[4 + i].p_name[31] = '\0';
     }
 
     // Apply per-song overrides
