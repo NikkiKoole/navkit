@@ -203,9 +203,20 @@ Each subsystem has a global pointer (`synthCtx`, `fxCtx`, `seqCtx`, `samplerCtx`
 ## Current Status
 
 Waves 0-2 complete. Near-term TODO (per `docs/plan-of-attack.md`):
-- ~~P-lock interpolation~~ (dropped — scenes/crossfader owns sweeps), groove presets, song settings UI, patch name editing
+- ~~P-lock interpolation~~ (dropped — scenes/crossfader owns sweeps), ~~groove presets~~, ~~song settings UI~~, patch name editing
 - ~20 melodic presets (Wurlitzer, Clavinet, bass variants, guitar, pads, SNES kit)
 - More drum presets (909, Lo-Fi, Trap)
 - Crossfader/scene system (spec in `docs/scene-crossfader-spec.md`)
 - Performance: voice hot/cold split, fast sine approx, reverb comb power-of-2
 - Test gaps: sampler WAV loading, patch trigger, rhythm patterns
+
+### Current Work (2026-03-13)
+
+**Bridge → .song migration**: Converting C-coded bridge songs to `.song` files the DAW can load/edit.
+- Done: Gymnopedie (8 patterns, 40 BPM, 12-step 3/4 waltz) — exported via `bridge_export`, playable in DAW
+- Done: Song name UI (edit in transport bar, save/load, file path derivation from name)
+- Done: `dawTextEdit()` reusable text editor with cursor/arrow key support
+- Done: Font consistency fixes (MeasureTextUI, DrawTextShadow everywhere)
+- TODO: Export remaining ~10 non-sweep bridge songs
+- TODO: Debug playback glitch in `gymnopedienew.song` (user's modified version with drums + wobble + heavy master FX) — clipping at pattern 4 steps 9-10 and pattern 6. Use `daw-render` headless tool for diagnosis.
+- TODO: Scenes/crossfader for House + Deep House sweep songs
