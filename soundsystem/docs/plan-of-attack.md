@@ -89,7 +89,7 @@ Phase 1 done (engine + 14 drum presets as SynthPatch, 80.8% similarity). See `do
 | ~~Drums trigger `playNoteWithPatch()`~~ | — | **Done** (`daw.c:3741`) |
 | ~~Remove Drums tab~~ | — | **Done** (no Drums tab exists; only Patch/Bus FX/Master FX/Tape) |
 | **Unify track types** — sequencer still has TRACK_DRUM vs TRACK_MELODIC with different callbacks. Debatable: drums genuinely behave differently (no gate, no slide, one-shot, per-instrument Dilla nudge). May not be worth unifying. | Small | Open |
-| **Track names from preset** — 3 hardcoded locations (`daw.c:385`, `daw.c:1222`, `sequencer.h:1269`). Patches already have `p_name`, just read it. | Tiny | TODO |
+| ~~**Track names from preset**~~ — sequencer grid, piano roll, bus mixer all read `p_name`. All tracks init from real presets via `loadPresetIntoPatch()`. | — | **Done** |
 | ~~Deprecate drums.h~~ | — | **Done** (deleted drums.h, prototype.c, drum_compare.c, all dead code removed) |
 | **More drum presets** (909, Lo-Fi, Trap, Piku) — preset-only, no engine changes | Small | TODO |
 | **Drum preset improvements** — fix clap burst spacing, cowbell tuning, CR-78 resonance | Small | TODO |
