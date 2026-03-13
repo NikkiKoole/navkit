@@ -2503,19 +2503,16 @@ static void drawWorkSong(float x, float y, float w, float h) {
         gy += 22;
     }
 
-    // Drum feel: per-track nudge (labels from preset names)
+    // Drum feel: per-track nudge (labels from preset names, truncated to 6 chars)
     {
-        // Truncate long preset names for nudge labels
-        char lbl0[10], lbl1[10], lbl2[10], lbl3[10];
-        snprintf(lbl0, sizeof(lbl0), "%.9s", daw.patches[0].p_name[0] ? daw.patches[0].p_name : "Trk 1");
-        snprintf(lbl1, sizeof(lbl1), "%.9s", daw.patches[1].p_name[0] ? daw.patches[1].p_name : "Trk 2");
-        snprintf(lbl2, sizeof(lbl2), "%.9s", daw.patches[2].p_name[0] ? daw.patches[2].p_name : "Trk 3");
-        snprintf(lbl3, sizeof(lbl3), "%.9s", daw.patches[3].p_name[0] ? daw.patches[3].p_name : "Trk 4");
+        int *nudges[] = {&seq.dilla.kickNudge, &seq.dilla.snareDelay, &seq.dilla.hatNudge, &seq.dilla.clapDelay};
         DrawTextShadow("Nudge:", (int)x+4, (int)gy+2, 10, (Color){140,140,160,255});
-        if (DraggableInt(x + 80, gy, lbl0, &seq.dilla.kickNudge, 0.3f, -12, 12)) selectedGroovePreset = -1;
-        if (DraggableInt(x + 175, gy, lbl1, &seq.dilla.snareDelay, 0.3f, -12, 12)) selectedGroovePreset = -1;
-        if (DraggableInt(x + 280, gy, lbl2, &seq.dilla.hatNudge, 0.3f, -12, 12)) selectedGroovePreset = -1;
-        if (DraggableInt(x + 375, gy, lbl3, &seq.dilla.clapDelay, 0.3f, -12, 12)) selectedGroovePreset = -1;
+        for (int i = 0; i < 4; i++) {
+            char lbl[7];
+            const char *name = daw.patches[i].p_name[0] ? daw.patches[i].p_name : "Trk";
+            snprintf(lbl, sizeof(lbl), "%.6s", name);
+            if (DraggableInt(x + 60 + i * 105, gy, lbl, nudges[i], 0.3f, -12, 12)) selectedGroovePreset = -1;
+        }
         gy += 20;
     }
 
