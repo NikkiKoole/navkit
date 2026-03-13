@@ -14,6 +14,7 @@ typedef struct {
     int p_scwIndex;
 
     // Envelope
+    bool p_envelopeEnabled;   // true = ADSR shapes amplitude, false = bypass (sustain=1.0)
     float p_attack;
     float p_decay;
     float p_sustain;
@@ -30,6 +31,7 @@ typedef struct {
     float p_vibratoDepth;
 
     // Filter
+    bool p_filterEnabled;         // true = filter active, false = bypass (cutoff=1.0, reso=0)
     float p_filterCutoff;
     float p_filterResonance;
     int p_filterType;             // 0=LP, 1=HP, 2=BP
@@ -243,6 +245,7 @@ static SynthPatch createDefaultPatch(int waveType) {
     return (SynthPatch){
         .p_waveType = waveType,
         .p_scwIndex = 0,
+        .p_envelopeEnabled = true,
         .p_attack = 0.01f,
         .p_decay = 0.1f,
         .p_sustain = 0.5f,
@@ -253,6 +256,7 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_pwmDepth = 0.0f,
         .p_vibratoRate = 5.0f,
         .p_vibratoDepth = 0.0f,
+        .p_filterEnabled = true,
         .p_filterCutoff = 1.0f,
         .p_filterResonance = 0.0f,
         .p_filterEnvAmt = 0.0f,

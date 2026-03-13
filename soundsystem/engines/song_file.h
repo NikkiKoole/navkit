@@ -425,6 +425,9 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     // Envelope flags
     _sf_writeBool(f, "expDecay", p->p_expDecay);
     _sf_writeBool(f, "oneShot", p->p_oneShot);
+    // Envelope/filter bypass toggles
+    _sf_writeBool(f, "envelopeEnabled", p->p_envelopeEnabled);
+    _sf_writeBool(f, "filterEnabled", p->p_filterEnabled);
     // 303 acid mode
     _sf_writeBool(f, "acidMode", p->p_acidMode);
     _sf_writeFloat(f, "accentSweepAmt", p->p_accentSweepAmt);
@@ -884,6 +887,9 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     // Envelope flags
     else if (strcmp(key, "expDecay") == 0) p->p_expDecay = _sf_parseBool(val);
     else if (strcmp(key, "oneShot") == 0) p->p_oneShot = _sf_parseBool(val);
+    // Envelope/filter bypass toggles
+    else if (strcmp(key, "envelopeEnabled") == 0) p->p_envelopeEnabled = _sf_parseBool(val);
+    else if (strcmp(key, "filterEnabled") == 0) p->p_filterEnabled = _sf_parseBool(val);
     // 303 acid mode
     else if (strcmp(key, "acidMode") == 0) p->p_acidMode = _sf_parseBool(val);
     else if (strcmp(key, "accentSweepAmt") == 0) p->p_accentSweepAmt = _sf_parseFloat(val);

@@ -15,6 +15,8 @@
 // Must be called before any playNote/playPluck/etc. call.
 static void applyPatchToGlobals(SynthPatch *p) {
     _ensureSynthCtx();
+    noteEnvelopeEnabled = p->p_envelopeEnabled;
+    noteFilterEnabled = p->p_filterEnabled;
     noteAttack = p->p_attack;
     noteDecay = p->p_decay;
     noteSustain = p->p_sustain;
