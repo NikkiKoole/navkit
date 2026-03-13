@@ -1,0 +1,256 @@
+// PixelSynth DAW - Bespoke Widgets
+// P-lock badge, waveform thumbnails, ADSR curve, filter XY, LFO preview
+// Extracted from daw.c — include after state/UI globals are defined
+
+#ifndef PIXELSYNTH_DAW_WIDGETS_H
+#define PIXELSYNTH_DAW_WIDGETS_H
+
+// ============================================================================
+// P-LOCK BADGE
+// ============================================================================
+
+static void plockDot(float x, float y) {
+    DrawCircle((int)(x + 3), (int)(y + 5), 2.5f, (Color){220, 130, 50, 180});
+}
+
+// P-lockable float: draws orange dot before the control
+static bool ui_col_float_p(UIColumn *c, const char *label, float *val, float speed, float mn, float mx) {
+    plockDot(c->x - 8, c->y);
+    return ui_col_float(c, label, val, speed, mn, mx);
+}
+
+// Section-level non-default indicator: colored left stripe + subtle bg
+// active=true means at least one param in this section differs from default
+static void sectionHighlight(float x, float y, float w, float h, bool active) {
+    if (active) {
+        DrawRectangle((int)x, (int)y, 2, (int)h, ORANGE);
+    }
+    (void)w;
+}
+
+// ============================================================================
+// BESPOKE WIDGETS (same as daw.c)
+// ============================================================================
+
+// Helper: compute wave sample value for a given wave type and time position
+static float waveThumbSample(int waveType, float t, int i) {
+    float v = 0.0f;
+    switch (waveType) {
+        case 0: // Square
+            v = t < 0.5f ? 1.0f : -1.0f;
+            break;
+        case 1: // Sawtooth
+            v = 1.0f - 2.0f * t;
+            break;
+        case 2: // Triangle
+            v = t < 0.5f ? (4 * t - 1) : (3 - 4 * t);
+            break;
+        case 3: // Noise
+            v = ((float)((i * 7 + 13) % 17)) / 8.5f - 1;
+            break;
+        case 4: // Sine + 2nd harmonic
+            v = sinf(t * 6.28f) * 0.6f + sinf(t * 12.56f) * 0.3f;
+            break;
+        case 5: // Sine with AM modulation
+            v = sinf(t * 6.28f) * (1 - 0.5f * sinf(t * 18.84f));
+            break;
+        case 6: // Pluck (decay)
+            v = sinf(t * 25) * expf(-t * 3);
+            break;
+        case 7: // Rich harmonics (3 partials)
+            v = sinf(t * 6.28f) * 0.5f + sinf(t * 12.56f) * 0.3f + sinf(t * 18.84f) * 0.2f;
+            break;
+        case 8: // 2nd harmonic with decay
+            v = sinf(t * 12.56f) * expf(-t * 3);
+            break;
+        case 9: // FM-like with modulation
+            v = sinf(t * 31.4f) * (((int)(t * 6) % 2) ? 0.8f : 0.3f);
+            break;
+        case 10: // FM modulation
+            v = sinf(t * 6.28f + 2 * sinf(t * 12.56f));
+            break;
+        case 11: // Smooth curve modulation
+        {
+            float p = t < 0.5f ? t * t * 2 : 0.5f + (t - 0.5f) * (2 - t * 2);
+            v = sinf(p * 6.28f);
+            break;
+        }
+        case 12: // Multiple harmonics with decay
+            v = (sinf(t * 6.28f) * 0.5f + sinf(t * 9.8f) * 0.3f + sinf(t * 15.2f) * 0.2f) * expf(-t * 2);
+            break;
+        case 13: // Frequency sweep
+            v = sinf(t * 6.28f * (1 + t * 3)) * (1 - t * 0.5f);
+            break;
+        case 14: // Bowed (rich harmonics)
+            v = sinf(t * 6.28f) * 0.7f + sinf(t * 12.56f) * 0.2f + sinf(t * 18.84f) * 0.1f;
+            break;
+        case 15: // Pipe (breathy)
+            v = sinf(t * 6.28f) * 0.8f + sinf(t * 18.84f) * 0.15f + ((float)((i * 3 + 7) % 11) / 55.0f);
+            break;
+        default: // Sine wave
+            v = sinf(t * 6.28f);
+            break;
+    }
+    return v;
+}
+
+static void drawWaveThumb(float x, float y, float w, float h, int waveType, bool selected, bool hovered) {
+    Color bg = selected ? (Color){50, 65, 80, 255} : (hovered ? (Color){42, 44, 52, 255} : (Color){30, 31, 38, 255});
+    DrawRectangle((int)x, (int)y, (int)w, (int)h, bg);
+    if (selected) DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, ORANGE);
+    else DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, (Color){48, 48, 58, 255});
+
+    float cx = x + 2, cy = y + 2, cw = w - 4, ch = h - 4;
+    float mid = cy + ch * 0.5f;
+    Color lineCol = selected ? WHITE : (Color){120, 130, 150, 255};
+    int steps = (int)cw;
+
+    for (int i = 0; i < steps - 1; i++) {
+        float t0 = (float)i / (float)steps;
+        float t1 = (float)(i + 1) / (float)steps;
+        float v0 = waveThumbSample(waveType, t0, i);
+        float v1 = waveThumbSample(waveType, t1, i + 1);
+        DrawLine((int)(cx+i), (int)(mid-v0*ch*0.4f), (int)(cx+i+1), (int)(mid-v1*ch*0.4f), lineCol);
+    }
+}
+
+static float drawWaveSelector(float x, float y, float w, int* wave) {
+    int waveCount = 5, engineCount1 = 5, engineCount2 = 6;
+    float thumbH = 20;
+    Vector2 mouse = GetMousePosition();
+    float totalH = 0;
+
+    float thumbW = (w - (waveCount - 1) * 2) / waveCount;
+    for (int i = 0; i < waveCount; i++) {
+        float tx = x + i * (thumbW + 2), ty = y;
+        bool sel = (i == *wave), hov = CheckCollisionPointRec(mouse, (Rectangle){tx, ty, thumbW, thumbH});
+        drawWaveThumb(tx, ty, thumbW, thumbH, i, sel, hov);
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { *wave = i; ui_consume_click(); }
+    }
+    totalH += thumbH + 2;
+
+    DrawTextShadow("Engines:", (int)x, (int)(y + totalH), 9, (Color){70, 70, 85, 255});
+    totalH += 12;
+
+    float eW = (w - (engineCount1 - 1) * 2) / engineCount1;
+    for (int i = 0; i < engineCount1; i++) {
+        int wi = 5 + i;
+        float tx = x + i * (eW + 2), ty = y + totalH;
+        bool sel = (wi == *wave), hov = CheckCollisionPointRec(mouse, (Rectangle){tx, ty, eW, thumbH});
+        drawWaveThumb(tx, ty, eW, thumbH, wi, sel, hov);
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { *wave = wi; ui_consume_click(); }
+    }
+    totalH += thumbH + 2;
+
+    eW = (w - (engineCount2 - 1) * 2) / engineCount2;
+    for (int i = 0; i < engineCount2; i++) {
+        int wi = 10 + i;
+        float tx = x + i * (eW + 2), ty = y + totalH;
+        bool sel = (wi == *wave), hov = CheckCollisionPointRec(mouse, (Rectangle){tx, ty, eW, thumbH});
+        drawWaveThumb(tx, ty, eW, thumbH, wi, sel, hov);
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { *wave = wi; ui_consume_click(); }
+    }
+    totalH += thumbH + 4;
+    return totalH;
+}
+
+static float drawADSRCurve(float x, float y, float w, float h,
+                            float *atk, float *dec, float *sus, float *rel, bool expRel) {
+    DrawRectangle((int)x, (int)y, (int)w, (int)h, (Color){22, 22, 28, 255});
+    DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, (Color){42, 42, 52, 255});
+
+    float totalTime = *atk + *dec + 0.3f + *rel;
+    float atkW = (*atk / totalTime) * w;
+    float decW = (*dec / totalTime) * w;
+    float susW = (0.3f / totalTime) * w;
+    float relW = (*rel / totalTime) * w;
+    float bot = y + h - 2, top = y + 2, range = bot - top;
+    float susY = bot - *sus * range;
+    Color cc = (Color){100, 200, 120, 255};
+
+    DrawLine((int)x, (int)bot, (int)(x+atkW), (int)top, cc);
+    DrawLine((int)(x+atkW), (int)top, (int)(x+atkW+decW), (int)susY, cc);
+    DrawLine((int)(x+atkW+decW), (int)susY, (int)(x+atkW+decW+susW), (int)susY, cc);
+    float relStartX = x + atkW + decW + susW;
+    if (expRel) {
+        int steps = (int)relW;
+        for (int i = 0; i < steps; i++) {
+            float t0 = (float)i/steps, t1 = (float)(i+1)/steps;
+            float v0 = *sus * expf(-t0*3), v1 = *sus * expf(-t1*3);
+            DrawLine((int)(relStartX+i), (int)(bot-v0*range), (int)(relStartX+i+1), (int)(bot-v1*range), cc);
+        }
+    } else {
+        DrawLine((int)relStartX, (int)susY, (int)(relStartX+relW), (int)bot, cc);
+    }
+
+    Vector2 mouse = GetMousePosition();
+    Color dotCol = (Color){255, 180, 60, 255};
+    Rectangle atkDot = {x+atkW-4, top-4, 8, 8};
+    DrawRectangleRec(atkDot, CheckCollisionPointRec(mouse, atkDot) ? WHITE : dotCol);
+    Rectangle susDot = {x+atkW+decW+susW*0.5f-4, susY-4, 8, 8};
+    DrawRectangleRec(susDot, CheckCollisionPointRec(mouse, susDot) ? WHITE : dotCol);
+
+    Rectangle atkZone = {x, y, atkW+decW*0.5f, h};
+    if (CheckCollisionPointRec(mouse, atkZone) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+        float newAtk = ((mouse.x - x) / w) * totalTime;
+        *atk = newAtk < 0.001f ? 0.001f : (newAtk > 2.0f ? 2.0f : newAtk);
+    }
+    Rectangle susZone = {x+atkW+decW*0.5f, y, susW+decW*0.5f+relW*0.3f, h};
+    if (CheckCollisionPointRec(mouse, susZone) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+        float newSus = 1.0f - (mouse.y - top) / range;
+        *sus = newSus < 0 ? 0 : (newSus > 1 ? 1 : newSus);
+    }
+    return h + 4;
+}
+
+static float drawFilterXY(float x, float y, float size, float *cutoff, float *resonance) {
+    DrawRectangle((int)x, (int)y, (int)size, (int)size, (Color){22, 22, 28, 255});
+    DrawRectangleLinesEx((Rectangle){x, y, size, size}, 1, (Color){42, 42, 52, 255});
+    for (int i = 1; i < 4; i++) {
+        float gx = x + size*i*0.25f, gy = y + size*i*0.25f;
+        DrawLine((int)gx, (int)y, (int)gx, (int)(y+size), (Color){32,32,38,255});
+        DrawLine((int)x, (int)gy, (int)(x+size), (int)gy, (Color){32,32,38,255});
+    }
+    DrawTextShadow("Cut", (int)x+2, (int)(y+size-12), 9, (Color){60,60,70,255});
+    DrawTextShadow("Res", (int)(x+size-20), (int)y+2, 9, (Color){60,60,70,255});
+    float cx = x + (*cutoff)*size, cy = y + (1-*resonance)*size;
+    DrawLine((int)cx, (int)y, (int)cx, (int)(y+size), (Color){60,80,100,200});
+    DrawLine((int)x, (int)cy, (int)(x+size), (int)cy, (Color){60,80,100,200});
+    DrawCircle((int)cx, (int)cy, 5, (Color){255,140,40,255});
+    DrawCircle((int)cx, (int)cy, 3, WHITE);
+    Vector2 mouse = GetMousePosition();
+    if (CheckCollisionPointRec(mouse, (Rectangle){x,y,size,size}) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+        float nc = (mouse.x-x)/size, nr = 1-(mouse.y-y)/size;
+        *cutoff = nc<0.01f?0.01f:(nc>1?1:nc);
+        *resonance = nr<0?0:(nr>1?1:nr);
+    }
+    return size + 4;
+}
+
+static float drawLFOPreview(float x, float y, float w, float h, int shape, float rate, float depth) {
+    DrawRectangle((int)x, (int)y, (int)w, (int)h, (Color){22, 22, 28, 255});
+    DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, (Color){42, 42, 52, 255});
+    if (depth < 0.001f || rate < 0.001f) {
+        DrawTextShadow("off", (int)(x+w*0.5f-8), (int)(y+h*0.5f-5), 10, (Color){50,50,58,255});
+        return h + 2;
+    }
+    float mid = y + h*0.5f, amp = h*0.4f*(depth>1?1:depth);
+    float t = (float)GetTime();
+    Color lc = (Color){130,130,220,255};
+    for (int i = 0; i < (int)w - 1; i++) {
+        float p0 = ((float)i/w)*2+t*rate*0.2f, p1 = ((float)(i+1)/w)*2+t*rate*0.2f;
+        float v0=0, v1=0;
+        switch (shape) {
+            case 0: v0=sinf(p0*6.28f); v1=sinf(p1*6.28f); break;
+            case 1: v0=fmodf(p0,1); v0=v0<0.5f?(4*v0-1):(3-4*v0); v1=fmodf(p1,1); v1=v1<0.5f?(4*v1-1):(3-4*v1); break;
+            case 2: v0=fmodf(p0,1)<0.5f?1:-1; v1=fmodf(p1,1)<0.5f?1:-1; break;
+            case 3: v0=1-2*fmodf(p0,1); v1=1-2*fmodf(p1,1); break;
+            case 4: v0=((int)(p0*5)*7+3)%11/5.5f-1; v1=((int)(p1*5)*7+3)%11/5.5f-1; break;
+        }
+        DrawLine((int)(x+i),(int)(mid-v0*amp),(int)(x+i+1),(int)(mid-v1*amp),lc);
+    }
+    DrawLine((int)x,(int)mid,(int)(x+w),(int)mid,(Color){35,35,42,255});
+    return h + 2;
+}
+
+#endif // PIXELSYNTH_DAW_WIDGETS_H

@@ -43,8 +43,11 @@ soundsystem/
 │   ├── synth_scale.h          # Scale lock system (~114 lines, extracted from synth.h)
 │   ├── synth_patch.h          # SynthPatch struct (200+ p_ fields)
 │   ├── instrument_presets.h   # 111 presets (melodic + 35 drums) (~1850 lines)
-│   ├── effects.h              # Effects chain + bus mixer + dub loop (~1970 lines)
-│   ├── sequencer.h            # Step sequencer v2 (96 PPQ, 7 tracks) (~1900 lines)
+│   ├── effects.h              # Effects chain + bus mixer (~1516 lines)
+│   ├── dub_loop.h             # King Tubby tape delay (~310 lines, extracted from effects.h)
+│   ├── rewind.h               # Vinyl spinback effect (~165 lines, extracted from effects.h)
+│   ├── sequencer.h            # Step sequencer v2 (96 PPQ, 7 tracks) (~1735 lines)
+│   ├── sequencer_plocks.h     # Parameter lock subsystem (~170 lines, extracted from sequencer.h)
 │   ├── patch_trigger.h        # SynthPatch → synth globals applicator
 │   ├── sampler.h              # Sample playback (8-voice, 32 slots)
 │   ├── song_file.h            # .song/.patch/.bank file I/O
@@ -55,8 +58,10 @@ soundsystem/
 │   ├── scw_data.h             # Generated wavetable data (from scw_embed)
 │   └── sample_data.h          # Generated sample data (from sample_embed)
 ├── demo/
-│   ├── daw.c                  # Full DAW UI (~250KB, 5 tabs)
-│   └── daw_file.h             # DAW save/load (.daw format)
+│   ├── daw.c                  # Full DAW UI (~4540 lines, 5 tabs)
+│   ├── daw_file.h             # DAW save/load (.daw format)
+│   ├── daw_widgets.h          # Bespoke UI widgets (~250 lines, extracted from daw.c)
+│   └── daw_audio.h            # Audio callback + sequencer callbacks (~590 lines, extracted from daw.c)
 ├── tools/                     # CLI tools (see Build & Run)
 ├── tests/
 │   └── test_daw_file.c        # DAW file round-trip tests (~83 assertions)
@@ -161,18 +166,29 @@ Each subsystem has a global pointer (`synthCtx`, `fxCtx`, `seqCtx`, `samplerCtx`
 - 800-1400: updateSequencer() — main tick logic, note triggers, p-locks
 - 1400-1900: Rhythm generator, pattern chain, Dilla timing
 
-### effects.h (~1970 lines)
+### effects.h (~1516 lines)
 - 1-190: Constants, enums
-- 190-390: Effects, BusEffects, BusState, MixerContext structs
+- 190-390: Effects, BusEffects, BusState, MixerContext, DubLoopParams, RewindParams structs
 - 390-460: EffectsContext struct (all buffers)
-- 460-800: initEffects, bus processing
-- 800-1400: processEffects() — main chain (dist → delay → tape → crush → reverb)
-- 1400-1700: Dub loop (capture, playback heads, degradation)
-- 1700-1970: Rewind effect, sidechain, master EQ/compressor
+- 460-660: initEffects, global context, macros
+- 660-1000: processEffects() — main chain (dist → delay → tape → crush → reverb)
+- 1000: `#include "dub_loop.h"` (310 lines) + `#include "rewind.h"` (165 lines)
+- 1005-1516: Sidechain, master EQ/compressor, bus mixer, parameter setters
 
-### daw.c (~250KB) — too large for full reads
-- Search by function name or use `sg run -p 'functionName' -l c soundsystem/demo/`
-- 5 workspace tabs: Sequencer grid, Piano roll, Song chain, MIDI viz, Voice diags
+### daw.c (~4540 lines)
+- 1-520: Includes, layout, tabs, state structs, DawState, debug state, globals
+- 522: `#include "daw_widgets.h"` (250 lines — p-lock badge, wave thumbs, ADSR curve, filter XY, LFO preview)
+- 524-800: Tab bar, narrow sidebar
+- 800-930: Transport bar
+- 930-1910: Workspace: Sequencer tab (grid, rhythm gen, step inspector)
+- 1910-2310: Workspace: Piano roll tab
+- 2310-2700: Workspace: Song tab
+- 2700-3200: Params: Patch tab
+- 3200-3365: Params: Bus FX tab
+- 3365-3550: Params: Master FX tab
+- 3550-3610: Params: Tape/Dub tab
+- 3612: `#include "daw_audio.h"` (590 lines — audio callback, voice tracking, sequencer callbacks)
+- 3615-4540: Debug panel, MIDI tab, Voice tab, MIDI keyboard input, main()
 
 ## Gotchas
 
