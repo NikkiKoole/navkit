@@ -500,7 +500,7 @@ static void loadPresetIntoPatch(int patchIdx, int presetIdx) {
 // --- Name arrays for mixer/fx UI ---
 static const char* sidechainSourceNames[] = {"Kick", "Snare", "Clap", "HiHat", "AllDrm"};
 static const char* sidechainTargetNames[] = {"Bass", "Lead", "Chord", "AllSyn"};
-static const char* busNames[] = {"Kick", "Snare", "HiHat", "Clap", "Bass", "Lead", "Chord"};
+static const char* dawBusName(int bus) { return (bus >= 0 && bus < 7) ? daw.patches[bus].p_name : "??"; }
 static const char* busFilterTypeNames[] = {"LP", "HP", "BP"};
 static const char* delaySyncNames[] = {"1/16", "1/8", "1/4", "1/2", "1bar"};
 static const char* rewindCurveNames[] = {"Linear", "Expo", "S-Curve"};
@@ -1295,7 +1295,8 @@ static void drawWorkSeq(float x, float y, float w, float h) {
     if (cellH < 12) cellH = 12;
     if (cellH > 28) cellH = 28;
 
-    const char* trackNames[] = {"Kick", "Snare", "CH", "Clap", "Bass", "Lead", "Chord"};
+    const char* trackNames[7];
+    for (int i = 0; i < 7; i++) trackNames[i] = daw.patches[i].p_name;
 
     // Step numbers (show every 1 for 16, every 2 for 32)
     int numSkip = (steps == 32) ? 2 : 1;
@@ -1874,7 +1875,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
 static void drawWorkPiano(float x, float y, float w, float h) {
     Vector2 mouse = GetMousePosition();
     static const char* noteNames[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
-    static const char* prTrackNames[] = {"Bass", "Lead", "Chord"};
+    const char* prTrackNames[] = {daw.patches[4].p_name, daw.patches[5].p_name, daw.patches[6].p_name};
     static const Color prTrackColors[] = {
         {80, 140, 220, 255},   // Bass: blue
         {220, 140, 80, 255},   // Lead: orange
@@ -3231,7 +3232,7 @@ static void drawParamBus(float x, float y, float w, float h) {
         DrawRectangleRec(nameR, hdrBg);
         if (isSel) DrawRectangle((int)sx, (int)y+12, (int)stripW-2, 2, ORANGE);
         bool isDrum = (b < 4);
-        DrawTextShadow(busNames[b], (int)sx+4, (int)y+1, 10, isSel ? ORANGE : (isDrum ? LIGHTGRAY : (Color){140,180,255,255}));
+        DrawTextShadow(dawBusName(b), (int)sx+4, (int)y+1, 10, isSel ? ORANGE : (isDrum ? LIGHTGRAY : (Color){140,180,255,255}));
 
         if (nameHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             selectedBus = (selectedBus == b) ? -1 : b;
@@ -4298,7 +4299,7 @@ static void drawDebugPanel(void) {
 
         if (active) {
             // Bus name
-            const char *bname = (bus >= 0 && bus < NUM_BUSES) ? busNames[bus] : "??";
+            const char *bname = dawBusName(bus);
             DrawTextShadow(bname, (int)cx + 14, (int)cy + 1, 9, WHITE);
             // Frequency
             DrawTextShadow(TextFormat("%.0fHz", synthVoices[i].frequency), (int)cx + 2, (int)cy + 12, 8, (Color){200, 200, 200, 255});
@@ -4324,7 +4325,7 @@ static void drawDebugPanel(void) {
                 if (synthVoices[v].envStage > 0 && voiceBus[v] == b) cnt++;
             if (cnt > 0) {
                 DrawRectangle((int)bsx, (int)by, 8, 10, busColors[b]);
-                DrawTextShadow(TextFormat("%s:%d", busNames[b], cnt), (int)bsx + 10, (int)by, 9, GRAY);
+                DrawTextShadow(TextFormat("%s:%d", dawBusName(b), cnt), (int)bsx + 10, (int)by, 9, GRAY);
                 bsx += 55;
             }
         }
