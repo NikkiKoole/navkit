@@ -2,7 +2,7 @@
 
 All TODO items consolidated from across soundsystem docs. Waves 0-2 complete, partial Wave 3. Completed docs moved to `done/`. Reference docs (roadmap.md, ux-insight.md, piku.md) kept in place.
 
-**Current state:** 111 presets, 14+2 synthesis engines (WAVE_BOWED, WAVE_PIPE added), sequencer v2 with polyphony, full DAW UI (5 tabs), chorus/flanger/stereo spread, bus mixer, MIDI input+learn+split, authentic TB-303 acid mode (accent sweep circuit, gimmick dip, constant-time RC glide).
+**Current state:** 111 presets, 14+2 synthesis engines (WAVE_BOWED, WAVE_PIPE added), sequencer v2 with polyphony, full DAW UI (5 tabs), chorus/flanger/stereo spread, bus mixer, MIDI input+learn+split, authentic TB-303 acid mode (accent sweep circuit, gimmick dip, constant-time RC glide), unified parameter routing (all 16 engines use globals via `initVoiceCommon`, bypass toggles for envelope/filter).
 
 ---
 
@@ -18,7 +18,7 @@ All TODO items consolidated from across soundsystem docs. Waves 0-2 complete, pa
 | **Patch name editing** — `p_name[32]` exists, needs text input UI | ~30 lines | daw-demo-gaps |
 | **Arrangement scroll** — horizontal scroll for >14 sections | ~20 lines | daw-demo-gaps |
 | **Multi-step selection** — select multiple steps for batch edits | ~80 lines | synthesis-additions §16 |
-| **Hide irrelevant wave params** — only show params for active oscillator type | ~60 lines | synthesis-additions §18 |
+| ~~**Hide irrelevant wave params**~~ — Resolved: enabled params on physical models via bypass toggles (`p_envelopeEnabled`/`p_filterEnabled`) instead of hiding. PWM/unison already conditionally shown in DAW UI. See `done/engine-parameter-audit.md` | — | **Done** |
 | **Keyboard shortcut hints** — context-sensitive hints in UI | ~30 lines | synthesis-additions §21 |
 | **Tooltips** — expand hover coverage across all parameters | partial done | synthesis-additions §20 |
 
@@ -57,6 +57,49 @@ All preset-only work — no engine changes. See `done/missing-melodic-instrument
 
 ---
 
+## Note Pool (sequencer-side generative variation)
+
+Reintroduce the note pool concept from v1, but built on v2's existing multi-note step data. The old system was removed when v2 replaced it with explicit polyphony (piano roll chords). Both serve different purposes:
+
+- **Piano roll (current):** deterministic polyphony — place exact notes, all play every time
+- **Note pool (proposed):** generative monophony — step holds candidate notes, one is *picked* per trigger
+
+### How it works
+
+A step's `notes[]` array (up to 6 slots) doubles as the pool. A per-step `pickMode` flag controls behavior:
+
+| pickMode | Behavior |
+|----------|----------|
+| `PICK_ALL` (0 / off) | All notes play as chord (current default, no change) |
+| `PICK_RANDOM` | One note chosen randomly each trigger |
+| `PICK_CYCLE_UP` | Rotate through notes sequentially |
+| `PICK_CYCLE_DOWN` | Rotate in reverse |
+| `PICK_PINGPONG` | Bounce up and down through notes |
+| `PICK_RANDOM_WALK` | Move ±1 position from last pick |
+
+### UI (sequencer view only)
+
+In the step grid, when a step is selected: set its note pool via the existing note slots, then pick a mode. No piano roll needed. The `buildChordNotes()` helper (still in sequencer.h) can serve as a quick-fill shortcut — "fill pool with triad from root."
+
+### Implementation
+
+| What | Effort | Notes |
+|------|--------|-------|
+| Add `pickMode` + `pickIndex` to `StepV2` | Tiny | 2 bytes, `pickIndex` is runtime state for cycle/pingpong |
+| Pick logic in `seqAdvancePlayback()` | ~30 lines | Switch on pickMode, select one note, trigger only that one |
+| DAW UI for mode selection | ~40 lines | Dropdown or cycle button on step inspector |
+| Save/load `pickMode` | ~10 lines | song_file.h + daw_file.h |
+| `buildChordNotes()` as pool quick-fill | Already exists | Wire to a "fill from chord" button |
+
+### What it enables
+
+- Evolving melodies that never repeat exactly (PICK_RANDOM over a scale fragment)
+- Algorithmic arpeggios without manually programming each step (PICK_CYCLE over a chord)
+- Slowly drifting bass lines (PICK_RANDOM_WALK over a few root notes)
+- All controllable per-step — some steps can be fixed, others generative, in the same pattern
+
+---
+
 ## Unified Synth+Drums (Phase 2-3)
 
 Phase 1 done (engine + 14 drum presets as SynthPatch, 80.8% similarity). See `done/unified-synth-drums.md`.
@@ -87,7 +130,7 @@ From `audit/code-simplifier-audit-soundsystem.md`:
 
 **Longer term:**
 - H1: Replace 130+ `#define` macros with explicit context passing (architectural)
-- H2: Data-driven `applyPatchToGlobals()` instead of 147-line field copy (medium)
+- H2: Data-driven `applyPatchToGlobals()` instead of 170-line field copy (medium) — simplified by unified routing refactor but still a long list
 - H3: Shared file write/read helpers between song_file.h and daw_file.h (small)
 
 ---
@@ -109,7 +152,7 @@ From `audit/performance-dod-audit-soundsystem.md`:
 
 ## Test Coverage
 
-From `audit/test-gaps-audit-soundsystem.md`. Current: 271 suites, 1980 assertions.
+From `audit/test-gaps-audit-soundsystem.md`. Current: 248 suites, 1905 assertions.
 
 **Critical (0% coverage):**
 - Sampler WAV loading — header parsing, bit depths, truncation
@@ -127,7 +170,7 @@ From `audit/test-gaps-audit-soundsystem.md`. Current: 271 suites, 1980 assertion
 
 **Synthesis:** Vocoder, Speech 8-bit, Bass waveshaping
 
-**Sequencer:** Chord mode, Pattern chaining, Song/arranger improvements, Scenes crossfader completion
+**Sequencer:** Note pool (see below), Pattern chaining, Song/arranger improvements, Scenes crossfader completion
 
 **Game audio:** State system (intensity/danger/health), Vertical layering/mute groups, Horizontal re-sequencing, Stingers & one-shots
 
