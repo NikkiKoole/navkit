@@ -452,30 +452,21 @@ static double dawStatusTime = 0.0;
 // Forward declarations for sequencer integration
 static void dawStopSequencer(void);
 static void dawReleaseVoicesForPatch(int patchIdx);
+static void loadPresetIntoPatch(int patchIdx, int presetIdx);
 
 static void initPatches(void) {
     if (patchesInit) return;
     if (!presetsInitialized) { initInstrumentPresets(); presetsInitialized = true; }
     for (int i = 0; i < NUM_PATCHES; i++) daw.patches[i] = createDefaultPatch(WAVE_SAW);
     // Drum tracks 0-3: load 808 presets
-    daw.patches[0] = instrumentPresets[24].patch; snprintf(daw.patches[0].p_name, 32, "Kick");
-    daw.patches[1] = instrumentPresets[25].patch; snprintf(daw.patches[1].p_name, 32, "Snare");
-    daw.patches[2] = instrumentPresets[27].patch; snprintf(daw.patches[2].p_name, 32, "CH");
-    daw.patches[3] = instrumentPresets[26].patch; snprintf(daw.patches[3].p_name, 32, "Clap");
-    patchPresetIndex[0] = 24; patchPresetSnapshot[0] = daw.patches[0];
-    patchPresetIndex[1] = 25; patchPresetSnapshot[1] = daw.patches[1];
-    patchPresetIndex[2] = 27; patchPresetSnapshot[2] = daw.patches[2];
-    patchPresetIndex[3] = 26; patchPresetSnapshot[3] = daw.patches[3];
-    // Melody tracks 4-6
-    snprintf(daw.patches[4].p_name, 32, "Bass");       daw.patches[4].p_waveType = WAVE_SQUARE;
-    snprintf(daw.patches[5].p_name, 32, "Lead");        daw.patches[5].p_waveType = WAVE_SAW;
-    snprintf(daw.patches[6].p_name, 32, "Chord");       daw.patches[6].p_waveType = WAVE_ADDITIVE;
-    daw.patches[4].p_monoMode = true; daw.patches[4].p_filterCutoff = 0.4f;
-    daw.patches[5].p_unisonCount = 2; daw.patches[5].p_vibratoDepth = 0.3f;
-    daw.patches[6].p_attack = 0.05f; daw.patches[6].p_release = 0.8f;
-    // Extra patches 7
-    snprintf(daw.patches[7].p_name, 32, "Bird");        daw.patches[7].p_waveType = WAVE_BIRD;
-    daw.patches[7].p_birdType = 4;
+    loadPresetIntoPatch(0, 24);  // 808 Kick
+    loadPresetIntoPatch(1, 25);  // 808 Snare
+    loadPresetIntoPatch(2, 27);  // 808 CH
+    loadPresetIntoPatch(3, 26);  // 808 Clap
+    // Melody tracks 4-6: load real presets
+    loadPresetIntoPatch(4, 1);   // Fat Bass
+    loadPresetIntoPatch(5, 0);   // Chip Lead
+    loadPresetIntoPatch(6, 5);   // Strings
     patchesInit = true;
 }
 
