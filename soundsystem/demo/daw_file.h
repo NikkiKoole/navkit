@@ -21,14 +21,14 @@
 
 #define DAW_FILE_FORMAT 2
 
-// ============================================================================
-// WRITE HELPERS
-// ============================================================================
+// Shared file I/O helpers
+#include "../engines/file_helpers.h"
 
-static void _dw(FILE *f, const char *k, float v)  { fprintf(f, "%s = %.6g\n", k, (double)v); }
-static void _di(FILE *f, const char *k, int v)     { fprintf(f, "%s = %d\n", k, v); }
-static void _db(FILE *f, const char *k, bool v)    { fprintf(f, "%s = %s\n", k, v ? "true" : "false"); }
-static void _ds(FILE *f, const char *k, const char *v) { if (v[0]) fprintf(f, "%s = \"%s\"\n", k, v); }
+// Write aliases
+#define _dw fileWriteFloat
+#define _di fileWriteInt
+#define _db fileWriteBool
+#define _ds fileWriteStr
 
 // Use canonical waveTypeNames[] from synth.h
 // (extended from 14 to 16 to include "bowed" and "pipe")
@@ -380,28 +380,18 @@ static bool dawSave(const char *filepath) {
 }
 
 // ============================================================================
-// LOAD HELPERS
+// LOAD HELPERS — read aliases from file_helpers.h
 // ============================================================================
 
-static float _dpf(const char *v) { return (float)atof(v); }
-static int _dpi(const char *v) { return atoi(v); }
-static bool _dpb(const char *v) { return strcmp(v,"true")==0 || strcmp(v,"1")==0; }
-
-static char* _dwStrip(char *s) {
-    while (*s == ' ' || *s == '\t') s++;
-    int len = (int)strlen(s);
-    while (len > 0 && (s[len-1]==' '||s[len-1]=='\t'||s[len-1]=='\n'||s[len-1]=='\r')) s[--len]='\0';
-    return s;
-}
-
-static void _dwStripQuotes(char *s) {
-    int len = (int)strlen(s);
-    if (len >= 2 && s[0]=='"' && s[len-1]=='"') { memmove(s, s+1, len-2); s[len-2]='\0'; }
-}
+#define _dpf fileParseFloat
+#define _dpi fileParseInt
+#define _dpb fileParseBool
+#define _dwStrip fileStrip
+#define _dwStripQuotes fileStripQuotes
 
 static int _dwLookupWave(const char *name) {
-    for (int i = 0; i < _dwWaveCount; i++) if (strcasecmp(name, _dwWaveNames[i])==0) return i;
-    return atoi(name);
+    int idx = fileLookupName(name, _dwWaveNames, _dwWaveCount);
+    return idx >= 0 ? idx : atoi(name);
 }
 
 static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {

@@ -197,16 +197,16 @@ static const char* _sf_plockParamNames[] = {
 };
 static const int _sf_plockParamCount = 12;
 
-static int _sf_lookupName(const char *name, const char **table, int count) {
-    for (int i = 0; i < count; i++) {
-        if (strcasecmp(name, table[i]) == 0) return i;
-    }
-    return -1;
-}
+// Shared file I/O helpers (write/read/parse primitives)
+#include "file_helpers.h"
 
-// ============================================================================
-// HELPER: key=value parsing
-// ============================================================================
+// Aliases for backward compatibility with existing _sf_ call sites
+#define _sf_lookupName fileLookupName
+#define _sf_writeStr fileWriteStr
+#define _sf_writeFloat fileWriteFloat
+#define _sf_writeInt fileWriteInt
+#define _sf_writeBool fileWriteBool
+#define _sf_writeEnum fileWriteEnum
 
 // Parse "key=value" from a token. Returns 1 if found, 0 if bare word.
 static int _sf_parseKV(const char *token, char *key, int keySize, char *val, int valSize) {
@@ -248,27 +248,6 @@ static int _sf_tokenize(char *line, char **tokens, int maxTokens) {
         }
     }
     return count;
-}
-
-// ============================================================================
-// SAVE — Write .song file
-// ============================================================================
-
-static void _sf_writeStr(FILE *f, const char *key, const char *val) {
-    if (val[0]) fprintf(f, "%s = \"%s\"\n", key, val);
-}
-static void _sf_writeFloat(FILE *f, const char *key, float val) {
-    fprintf(f, "%s = %.4g\n", key, (double)val);
-}
-static void _sf_writeInt(FILE *f, const char *key, int val) {
-    fprintf(f, "%s = %d\n", key, val);
-}
-static void _sf_writeBool(FILE *f, const char *key, bool val) {
-    fprintf(f, "%s = %s\n", key, val ? "true" : "false");
-}
-static void _sf_writeEnum(FILE *f, const char *key, int val, const char **names, int count) {
-    if (val >= 0 && val < count) fprintf(f, "%s = %s\n", key, names[val]);
-    else fprintf(f, "%s = %d\n", key, val);
 }
 
 static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
@@ -709,29 +688,12 @@ typedef enum {
     _SF_SEC_PATCH,        // standalone .patch file
 } _SFSection;
 
-static float _sf_parseFloat(const char *val) { return (float)atof(val); }
-static int _sf_parseInt(const char *val) { return atoi(val); }
-static bool _sf_parseBool(const char *val) {
-    return (strcmp(val, "true") == 0 || strcmp(val, "1") == 0 || strcmp(val, "yes") == 0);
-}
-
-// Strip leading/trailing whitespace in-place, return new start
-static char* _sf_strip(char *s) {
-    while (*s == ' ' || *s == '\t') s++;
-    int len = (int)strlen(s);
-    while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\t' || s[len-1] == '\n' || s[len-1] == '\r'))
-        s[--len] = '\0';
-    return s;
-}
-
-// Strip surrounding quotes if present
-static void _sf_stripQuotes(char *s) {
-    int len = (int)strlen(s);
-    if (len >= 2 && s[0] == '"' && s[len-1] == '"') {
-        memmove(s, s+1, len-2);
-        s[len-2] = '\0';
-    }
-}
+// Read/parse aliases — implementations in file_helpers.h
+#define _sf_parseFloat fileParseFloat
+#define _sf_parseInt fileParseInt
+#define _sf_parseBool fileParseBool
+#define _sf_strip fileStrip
+#define _sf_stripQuotes fileStripQuotes
 
 static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     if (strcmp(key, "name") == 0) { char tmp[64]; strncpy(tmp, val, 63); tmp[63]='\0'; _sf_stripQuotes(tmp); strncpy(p->p_name, tmp, 31); p->p_name[31]='\0'; }
