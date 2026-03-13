@@ -201,6 +201,35 @@ typedef struct {
 } MelodyHumanize;
 
 // ============================================================================
+// GROOVE PRESETS — named Dilla/humanize combinations
+// ============================================================================
+
+typedef struct {
+    const char *name;
+    DillaTiming dilla;
+    MelodyHumanize humanize;
+} GroovePreset;
+
+static const GroovePreset groovePresets[] = {
+    // name               kick  snare hat  clap  swing jitter  timJit velJit
+    {"Straight",        {{ 0,    0,    0,    0,    0,    0},   { 0,   0.0f}}},
+    {"Light Swing",     {{ 0,    0,    0,    0,    4,    0},   { 0,   0.0f}}},
+    {"MPC Swing",       {{ 0,    0,    0,    0,    6,    0},   { 0,   0.0f}}},
+    {"Hard Swing",      {{ 0,    0,    0,    0,    9,    0},   { 0,   0.0f}}},
+    {"Dilla",           {{ 0,    3,   -2,    2,    5,    2},   { 2,   0.12f}}},
+    {"Dilla Heavy",     {{ 1,    5,   -3,    4,    7,    3},   { 3,   0.18f}}},
+    {"Jazz",            {{ 0,    1,   -1,    0,    8,    2},   { 2,   0.10f}}},
+    {"Bossa Nova",      {{ 0,    2,    0,    0,    4,    1},   { 1,   0.08f}}},
+    {"Hip Hop",         {{ 0,    2,   -1,    1,    3,    1},   { 1,   0.10f}}},
+    {"Reggae",          {{-1,    4,    0,    3,    3,    1},   { 0,   0.05f}}},
+    {"Funk",            {{ 0,    0,   -2,    0,    5,    1},   { 1,   0.08f}}},
+    {"Loose",           {{ 0,    0,    0,    0,    0,    3},   { 3,   0.15f}}},
+};
+static const int groovePresetCount = sizeof(groovePresets) / sizeof(groovePresets[0]);
+
+// seqApplyGroovePreset() defined after Sequencer struct (forward reference)
+
+// ============================================================================
 // PARAMETER LOCKS (Elektron-style per-step parameter automation)
 // ============================================================================
 
@@ -454,6 +483,13 @@ typedef struct {
     int trackSustainRemaining[SEQ_V2_MAX_TRACKS];               // Sustain countdown
     int trackStepPlayCount[SEQ_V2_MAX_TRACKS][SEQ_MAX_STEPS];   // Per-step play count for conditions
 } Sequencer;
+
+// Apply a groove preset to sequencer state
+static void seqApplyGroovePreset(Sequencer *s, MelodyHumanize *h, int presetIndex) {
+    if (presetIndex < 0 || presetIndex >= groovePresetCount) return;
+    s->dilla = groovePresets[presetIndex].dilla;
+    *h = groovePresets[presetIndex].humanize;
+}
 
 // ============================================================================
 // CONTEXT STRUCT

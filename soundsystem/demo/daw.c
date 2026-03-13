@@ -520,6 +520,8 @@ static int prDragOrigGate = 0;    // Gate at drag start
 static int8_t prDragOrigNudge = 0;     // Nudge at drag start (from StepNote)
 static int8_t prDragOrigGateNudge = 0; // Gate nudge at drag start (from StepNote)
 
+// Groove preset state (-1 = custom / manual)
+static int selectedGroovePreset = -1;
 
 #include "daw_widgets.h"
 
@@ -2478,24 +2480,55 @@ static void drawWorkSong(float x, float y, float w, float h) {
     DrawTextShadow("Groove:", (int)x+4, (int)gy, 13, (Color){255,200,120,255});
     gy += 18;
 
-    // Drum feel: per-instrument nudge
-    DrawTextShadow("Drum Feel:", (int)x+4, (int)gy+2, 10, (Color){140,140,160,255});
-    DraggableInt(x + 80, gy, "Kick", &seq.dilla.kickNudge, 0.3f, -12, 12);
-    DraggableInt(x + 175, gy, "Snare", &seq.dilla.snareDelay, 0.3f, -12, 12);
-    DraggableInt(x + 280, gy, "HH", &seq.dilla.hatNudge, 0.3f, -12, 12);
-    DraggableInt(x + 355, gy, "Clap", &seq.dilla.clapDelay, 0.3f, -12, 12);
-    gy += 20;
+    // Groove preset selector
+    {
+        float bx = x + 4;
+        for (int i = 0; i < groovePresetCount; i++) {
+            const char *name = groovePresets[i].name;
+            int tw = MeasureTextUI(name, 9) + 8;
+            Rectangle r = {bx, gy, (float)tw, 16};
+            bool hov = CheckCollisionPointRec(mouse, r);
+            bool act = (i == selectedGroovePreset);
+            Color bg = act ? (Color){80,60,30,255} : (hov ? (Color){50,50,60,255} : (Color){36,38,46,255});
+            DrawRectangleRec(r, bg);
+            if (act) DrawRectangle((int)bx, (int)gy+14, tw, 2, ORANGE);
+            DrawTextShadow(name, (int)bx+4, (int)gy+3, 9, act ? WHITE : (hov ? LIGHTGRAY : GRAY));
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                selectedGroovePreset = i;
+                seqApplyGroovePreset(&seq, &seq.humanize, i);
+                ui_consume_click();
+            }
+            bx += tw + 3;
+        }
+        gy += 22;
+    }
+
+    // Drum feel: per-track nudge (labels from preset names)
+    {
+        // Truncate long preset names for nudge labels
+        char lbl0[10], lbl1[10], lbl2[10], lbl3[10];
+        snprintf(lbl0, sizeof(lbl0), "%.9s", daw.patches[0].p_name[0] ? daw.patches[0].p_name : "Trk 1");
+        snprintf(lbl1, sizeof(lbl1), "%.9s", daw.patches[1].p_name[0] ? daw.patches[1].p_name : "Trk 2");
+        snprintf(lbl2, sizeof(lbl2), "%.9s", daw.patches[2].p_name[0] ? daw.patches[2].p_name : "Trk 3");
+        snprintf(lbl3, sizeof(lbl3), "%.9s", daw.patches[3].p_name[0] ? daw.patches[3].p_name : "Trk 4");
+        DrawTextShadow("Nudge:", (int)x+4, (int)gy+2, 10, (Color){140,140,160,255});
+        if (DraggableInt(x + 80, gy, lbl0, &seq.dilla.kickNudge, 0.3f, -12, 12)) selectedGroovePreset = -1;
+        if (DraggableInt(x + 175, gy, lbl1, &seq.dilla.snareDelay, 0.3f, -12, 12)) selectedGroovePreset = -1;
+        if (DraggableInt(x + 280, gy, lbl2, &seq.dilla.hatNudge, 0.3f, -12, 12)) selectedGroovePreset = -1;
+        if (DraggableInt(x + 375, gy, lbl3, &seq.dilla.clapDelay, 0.3f, -12, 12)) selectedGroovePreset = -1;
+        gy += 20;
+    }
 
     // Swing & jitter
     DrawTextShadow("Timing:", (int)x+4, (int)gy+2, 10, (Color){140,140,160,255});
-    DraggableInt(x + 80, gy, "Swing", &seq.dilla.swing, 0.3f, 0, 12);
-    DraggableInt(x + 180, gy, "Jitter", &seq.dilla.jitter, 0.3f, 0, 6);
+    if (DraggableInt(x + 80, gy, "Swing", &seq.dilla.swing, 0.3f, 0, 12)) selectedGroovePreset = -1;
+    if (DraggableInt(x + 180, gy, "Jitter", &seq.dilla.jitter, 0.3f, 0, 6)) selectedGroovePreset = -1;
     gy += 20;
 
     // Melody humanize
     DrawTextShadow("Melody:", (int)x+4, (int)gy+2, 10, (Color){140,140,160,255});
-    DraggableInt(x + 80, gy, "Timing", &seq.humanize.timingJitter, 0.3f, 0, 6);
-    DraggableFloat(x + 180, gy, "Vel Jit", &seq.humanize.velocityJitter, 0.02f, 0.0f, 0.3f);
+    if (DraggableInt(x + 80, gy, "Timing", &seq.humanize.timingJitter, 0.3f, 0, 6)) selectedGroovePreset = -1;
+    if (DraggableFloat(x + 180, gy, "Vel Jit", &seq.humanize.velocityJitter, 0.02f, 0.0f, 0.3f)) selectedGroovePreset = -1;
 }
 
 // ============================================================================
