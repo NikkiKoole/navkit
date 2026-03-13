@@ -203,7 +203,7 @@ Each subsystem has a global pointer (`synthCtx`, `fxCtx`, `seqCtx`, `samplerCtx`
 ## Current Status
 
 Waves 0-2 complete. Near-term TODO (per `docs/plan-of-attack.md`):
-- P-lock interpolation, groove presets, song settings UI, patch name editing
+- ~~P-lock interpolation~~ (dropped — scenes/crossfader owns sweeps), groove presets, song settings UI, patch name editing
 - ~20 melodic presets (Wurlitzer, Clavinet, bass variants, guitar, pads, SNES kit)
 - More drum presets (909, Lo-Fi, Trap)
 - Crossfader/scene system (spec in `docs/scene-crossfader-spec.md`)

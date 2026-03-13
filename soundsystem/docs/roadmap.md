@@ -135,6 +135,9 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - Crossfader morphs between scenes
 - Lock any parameter to a scene
 - Great for game state transitions (calm -> combat)
+- Also replaces bridge `sweepPhase` hack for long tonal arcs (House, Deep House songs)
+- Full spec + decision: `scene-crossfader-spec.md` §Decision
+- **Note:** Neither automation lanes nor p-lock interpolation will be built — discrete p-locks are sufficient for pattern-level changes, scenes/crossfader handles song-level morphing. See `scene-crossfader-spec.md` §Decision
 
 ## 2.5 Game Audio: Horizontal Re-sequencing
 - Same instruments, different patterns per game state

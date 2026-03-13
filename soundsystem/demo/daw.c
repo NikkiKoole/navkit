@@ -451,6 +451,7 @@ static bool patchesInit = false;
 
 static char dawStatusMsg[64] = "";
 static double dawStatusTime = 0.0;
+static char dawFilePath[512] = "soundsystem/demo/songs/scratch.song";
 
 // Forward declarations for sequencer integration
 static void dawStopSequencer(void);
@@ -656,13 +657,15 @@ static void drawTransport(void) {
             if (bh && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 ui_consume_click();
                 if (bi == 0) {
-                    if (dawSave("soundsystem/demo/songs/scratch.song"))
-                        snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Saved scratch.song");
-                    else snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Save failed!");
+                    if (dawSave(dawFilePath)) {
+                        const char *fname = strrchr(dawFilePath, '/');
+                        snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Saved %s", fname ? fname+1 : dawFilePath);
+                    } else snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Save failed!");
                 } else {
-                    if (dawLoad("soundsystem/demo/songs/scratch.song"))
-                        snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Loaded scratch.song");
-                    else snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Load failed!");
+                    if (dawLoad(dawFilePath)) {
+                        const char *fname = strrchr(dawFilePath, '/');
+                        snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Loaded %s", fname ? fname+1 : dawFilePath);
+                    } else snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Load failed!");
                 }
                 dawStatusTime = GetTime();
             }
@@ -4452,18 +4455,25 @@ int main(void) {
         if (IsKeyPressed(KEY_F10)) {
             if (dawRecording) dawRecStop(); else dawRecStart();
         }
-        // Ctrl+S: save, Ctrl+O: load
-        if (IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_LEFT_CONTROL)) {
-            if (IsKeyPressed(KEY_S)) {
-                if (dawSave("soundsystem/demo/songs/scratch.song")) snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Saved scratch.song");
-                else snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Save failed!");
-                dawStatusTime = GetTime();
+        // File drop: load any .song file
+        if (IsFileDropped()) {
+            FilePathList files = LoadDroppedFiles();
+            if (files.count > 0) {
+                const char *path = files.paths[0];
+                const char *ext = strrchr(path, '.');
+                if (ext && strcmp(ext, ".song") == 0) {
+                    if (dawLoad(path)) {
+                        strncpy(dawFilePath, path, sizeof(dawFilePath) - 1);
+                        dawFilePath[sizeof(dawFilePath) - 1] = '\0';
+                        const char *fname = strrchr(dawFilePath, '/');
+                        snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Loaded %s", fname ? fname+1 : dawFilePath);
+                    } else {
+                        snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Load failed!");
+                    }
+                    dawStatusTime = GetTime();
+                }
             }
-            if (IsKeyPressed(KEY_O)) {
-                if (dawLoad("soundsystem/demo/songs/scratch.song")) snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Loaded scratch.song");
-                else snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Load failed!");
-                dawStatusTime = GetTime();
-            }
+            UnloadDroppedFiles(files);
         }
         dawSyncEngineState();
         dawSyncSequencer();

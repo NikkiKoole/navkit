@@ -12,7 +12,7 @@ All TODO items consolidated from across soundsystem docs. Waves 0-2 complete, pa
 
 | What | Effort | Source |
 |------|--------|--------|
-| **P-lock interpolation** — linear interp between p-locked steps for smooth sweeps | ~50 lines | daw-demo-gaps §analysis |
+| ~~**P-lock interpolation**~~ — Dropped. Original motivation was smooth sweeps for bridge song migration, but scenes/crossfader now owns that. Discrete p-locks are fine at step granularity. See `scene-crossfader-spec.md` §Decision | — | **Won't do** |
 | ~~**Groove presets**~~ — 12 named presets (Straight, Light/MPC/Hard Swing, Dilla, Jazz, Bossa, Hip Hop, Reggae, Funk, Loose) with preset selector UI + dynamic track names | — | **Done** |
 | **Song settings panel** — song name + resolution toggle UI | ~40 lines | daw-demo-gaps |
 | **Patch name editing** — `p_name[32]` exists, needs text input UI | ~30 lines | daw-demo-gaps |
@@ -28,7 +28,7 @@ Prototype has been deleted. Only the scene/crossfader system is worth reimplemen
 
 | What | Effort | Source |
 |------|--------|--------|
-| **Crossfader / Scene system** — scene snapshot storage + blending (UI shell exists in DAW, logic missing). Full spec in `scene-crossfader-spec.md` | Medium | demo-to-daw-parity |
+| **Crossfader / Scene system** — scene snapshot storage + blending (UI shell exists in DAW, logic missing). Replaces bridge `sweepPhase` hack for song-level parameter morphing. Full spec + decision rationale in `scene-crossfader-spec.md` §Decision | Medium | demo-to-daw-parity |
 | ~~SFX triggers, Direct drum keys, Column visibility, Quick-copy presets~~ | — | Dropped (not worth migrating) |
 
 ---
@@ -162,4 +162,4 @@ From `audit/test-gaps-audit-soundsystem.md`. Current: 248 suites, 1905 assertion
 
 **Recording:** Live recording, Audio looping, Skip-back sampling, Resample, Tape mode
 
-**Content:** Convert 13 bridge songs from C to .song format (prove pipeline, remove ~1500 lines)
+**Content:** Convert bridge songs from C to .song format — 12 non-sweep songs now, 2 sweep songs (House, Deep House) after scenes/crossfader. Removes ~1500 lines from songs.h. See `scene-crossfader-spec.md` §Decision

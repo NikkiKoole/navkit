@@ -532,6 +532,14 @@ preset-audition: $(BINDIR)
 song-render: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/song-render soundsystem/tools/song_render.c -lm
 
+# Bridge song exporter (C songs → .song format)
+bridge-export: $(BINDIR)
+	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $(BINDIR)/bridge-export soundsystem/tools/bridge_export.c -lm
+
+# Bridge song WAV renderer (C songs → WAV, bridge audio path)
+bridge-render: $(BINDIR)
+	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $(BINDIR)/bridge-render soundsystem/tools/bridge_render.c -lm
+
 # Headless DAW renderer (full DAW logic, stubbed raylib)
 daw-render: $(BINDIR)
 	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $(BINDIR)/daw-render soundsystem/tools/daw_render.c -lm

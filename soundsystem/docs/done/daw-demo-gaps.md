@@ -213,6 +213,8 @@ For the **game bridge**: scenes + crossfader driven by game state (option 4) is 
 
 Full automation lanes (option 3) are the "correct" long-term solution but may be over-engineering for the demo milestone.
 
+> **Decision (2026-03-13):** Only option 4 (scenes/crossfader) chosen. P-lock interpolation (option 2) and automation lanes (option 3) both dropped — the original motivation for interpolation was bridge song sweeps, which scenes now own. Discrete p-locks are fine at step granularity for pattern-level use. See `scene-crossfader-spec.md` §Decision for full rationale.
+
 ## Suggested Attack Order for Demo
 
 1. ~~**Arrangement editor**~~ — DONE
@@ -221,7 +223,7 @@ Full automation lanes (option 3) are the "correct" long-term solution but may be
 4. ~~**Save/Load updated**~~ — DONE (`daw_file.h`, format v2, buttons in transport bar)
 5. ~~**Piano roll (F2)**~~ — DONE (fully functional melodic composition)
 6. ~~**Voice tab (F5)**~~ — DONE (babble generator + speech synthesis)
-7. **P-lock interpolation OR automation lanes** — see analysis above. Interpolation is the quick win; full lanes if we want more polish. Also solves sweep rate gap (#12).
+7. ~~**P-lock interpolation OR automation lanes**~~ — **Dropped.** Neither needed: scenes/crossfader owns long sweeps, discrete p-locks are fine for pattern-level. See `scene-crossfader-spec.md` §Decision.
 8. **Groove presets** — handful of named Dilla presets for quick groove selection
 9. **Song settings panel** — song name + resolution mode UI (Q/W keys work but not discoverable)
 10. **Patch name editing** — quality of life

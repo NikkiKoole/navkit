@@ -4,6 +4,34 @@ Extracted from `prototype.c`. The DAW already has `Crossfader` struct + UI shell
 
 ---
 
+## Decision: Sweeps, Automation, and Scenes (2026-03-13)
+
+Three systems that change parameters over time were considered. This is the decision:
+
+| System | Decision | Rationale |
+|--------|----------|-----------|
+| **P-lock interpolation** | **Won't do** | Was proposed to enable smooth sweeps within patterns, but that need was driven by bridge song migration (House/Deep House). Now that scenes own long sweeps, the motivation is gone. Discrete p-locks at step granularity (50-100ms) already sound smooth enough for pattern-level use. If a smooth sweep is needed, set more p-locks. Revisit only if a real composition need emerges. |
+| **Automation lanes** | **Won't do** | Over-engineering. P-locks already cover pattern-level parameter changes. Full lanes would add ~500-900 lines of engine+UI+serialization for marginal benefit. |
+| **Scenes + crossfader** | **Do it** (medium effort) | Replaces the bridge's `sweepPhase` hack. Song-level and game-level parameter morphing belongs here, not in per-pattern sequencer data. |
+
+**How they divide responsibilities:**
+
+- **P-locks** (discrete, as-is) = **pattern-level detail**. The musician's tool. Per-step accent variation, filter snaps, parameter tweaks. Scope: one parameter, one step. No interpolation — values snap, which is musically useful (sharp filter opens on downbeats, etc.). For smoother transitions, just set more p-locks across adjacent steps.
+- **Scenes + crossfader** = **song-level / game-level morphing**. Long arcs (30-60 second tonal shifts), game state transitions (calm↔combat). Scope: everything at once — all patches, effects, mixer, BPM.
+
+**What this replaces:**
+
+The bridge's `sweepPhase`/`sweepRate` hack in `sound_synth_bridge.c` is a poor man's crossfader — one float driving multiple instrument parameters on a slow sine cycle. Once scenes work, House and Deep House songs become: Scene A = filter closed, Scene B = filter open, crossfader position driven by a slow oscillator or game state. The per-song trigger callbacks (`melodyTriggerAcidBass`, etc.) and `getSweepValue()` can be deleted.
+
+**What this means for the bridge song migration (songs.h → .song):**
+
+- 12 of 14 songs use no sweeps — convert directly to .song format now.
+- House + Deep House (the 2 sweep songs) — convert after scenes are implemented. Their sweep behavior becomes scene A/B + crossfader automation.
+
+See also: `done/daw-demo-gaps.md` §"Scenes vs Automation vs P-locks" for the full analysis that led to this decision.
+
+---
+
 ## Concepts
 
 **Scene** = a complete snapshot of all sound state at a point in time (patches, effects, mixer, BPM, etc.). Think of it as a "preset for the entire session."
