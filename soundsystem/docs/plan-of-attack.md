@@ -13,7 +13,7 @@ All TODO items consolidated from across soundsystem docs. Waves 0-2 complete, pa
 | What | Effort | Source |
 |------|--------|--------|
 | **P-lock interpolation** — linear interp between p-locked steps for smooth sweeps | ~50 lines | daw-demo-gaps §analysis |
-| **Groove presets** — named presets (Jazz, Dilla, Bossa) for quick selection | ~30 lines | daw-demo-gaps |
+| ~~**Groove presets**~~ — 12 named presets (Straight, Light/MPC/Hard Swing, Dilla, Jazz, Bossa, Hip Hop, Reggae, Funk, Loose) with preset selector UI + dynamic track names | — | **Done** |
 | **Song settings panel** — song name + resolution toggle UI | ~40 lines | daw-demo-gaps |
 | **Patch name editing** — `p_name[32]` exists, needs text input UI | ~30 lines | daw-demo-gaps |
 | **Arrangement scroll** — horizontal scroll for >14 sections | ~20 lines | daw-demo-gaps |
@@ -100,16 +100,18 @@ Phase 1 done (engine + 14 drum presets as SynthPatch, 80.8% similarity). See `do
 
 From `audit/code-simplifier-audit-soundsystem.md`:
 
-**Quick wins:**
-- M3: Delete dead CR-78 preset line (trivial)
-- H4: Single wave type name table instead of 3 duplicates (~20 lines)
-- H5: Extract `waveThumbSample()` helper from unreadable one-liners (~30 lines)
-- L2: Add `f` suffix to float literals in rhythm_patterns.h (trivial)
+**Quick wins (all done):**
+- ~~M3: Delete dead CR-78 preset line~~ **Done**
+- ~~H4: Single wave type name table instead of 3 duplicates~~ **Done**
+- ~~H5: Extract `waveThumbSample()` helper from unreadable one-liners~~ **Done**
+- ~~L2: Add `f` suffix to float literals in rhythm_patterns.h~~ **Done**
+- ~~M4: Add `const` to read-only pointer params~~ **Done**
+- ~~M2: Use `sizeof(*var)` in memset calls~~ **Done**
+- ~~H3: Shared file write/read helpers between song_file.h and daw_file.h~~ **Done** (file_helpers.h)
 
 **Longer term:**
 - H1: Replace 130+ `#define` macros with explicit context passing (architectural)
 - H2: Data-driven `applyPatchToGlobals()` instead of 170-line field copy (medium) — simplified by unified routing refactor but still a long list
-- H3: Shared file write/read helpers between song_file.h and daw_file.h (small)
 
 ---
 
