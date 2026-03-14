@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 134
+#define NUM_INSTRUMENT_PRESETS 137
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -2283,6 +2283,68 @@ static void initInstrumentPresets(void) {
     instrumentPresets[133].patch.p_filterEnvDecay = 3.0f;
     instrumentPresets[133].patch.p_filterKeyTrack = 0.4f;
     instrumentPresets[133].patch.p_volume = 0.4f;
+
+    // 134: FM Clav — funky percussive clavinet, 1:1 + high index burst
+    instrumentPresets[134].name = "FM Clav";
+    instrumentPresets[134].patch.p_waveType = WAVE_FM;
+    instrumentPresets[134].patch.p_fmModRatio = 1.0f;
+    instrumentPresets[134].patch.p_fmModIndex = 8.0f;
+    instrumentPresets[134].patch.p_fmFeedback = 0.25f;
+    instrumentPresets[134].patch.p_fmMod2Ratio = 0.0f;
+    instrumentPresets[134].patch.p_fmAlgorithm = 0;
+    instrumentPresets[134].patch.p_attack = 0.001f;
+    instrumentPresets[134].patch.p_decay = 0.25f;
+    instrumentPresets[134].patch.p_sustain = 0.0f;
+    instrumentPresets[134].patch.p_release = 0.05f;
+    instrumentPresets[134].patch.p_expDecay = true;
+    instrumentPresets[134].patch.p_filterCutoff = 0.6f;
+    instrumentPresets[134].patch.p_filterResonance = 0.1f;
+    instrumentPresets[134].patch.p_filterEnvAmt = 0.5f;
+    instrumentPresets[134].patch.p_filterEnvAttack = 0.001f;
+    instrumentPresets[134].patch.p_filterEnvDecay = 0.08f;
+    instrumentPresets[134].patch.p_filterKeyTrack = 0.6f;
+    instrumentPresets[134].patch.p_volume = 0.5f;
+
+    // 135: FM Marimba — 4:1 ratio, bright attack into warm wooden decay
+    instrumentPresets[135].name = "FM Marimba";
+    instrumentPresets[135].patch.p_waveType = WAVE_FM;
+    instrumentPresets[135].patch.p_fmModRatio = 4.0f;
+    instrumentPresets[135].patch.p_fmModIndex = 4.0f;
+    instrumentPresets[135].patch.p_fmFeedback = 0.0f;
+    instrumentPresets[135].patch.p_fmMod2Ratio = 0.0f;
+    instrumentPresets[135].patch.p_fmAlgorithm = 0;
+    instrumentPresets[135].patch.p_attack = 0.001f;
+    instrumentPresets[135].patch.p_decay = 1.2f;
+    instrumentPresets[135].patch.p_sustain = 0.0f;
+    instrumentPresets[135].patch.p_release = 0.3f;
+    instrumentPresets[135].patch.p_expDecay = true;
+    instrumentPresets[135].patch.p_filterCutoff = 0.65f;
+    instrumentPresets[135].patch.p_filterEnvAmt = 0.35f;
+    instrumentPresets[135].patch.p_filterEnvAttack = 0.001f;
+    instrumentPresets[135].patch.p_filterEnvDecay = 0.5f;
+    instrumentPresets[135].patch.p_filterKeyTrack = 0.5f;
+    instrumentPresets[135].patch.p_volume = 0.45f;
+
+    // 136: FM Flute — 1:1 ratio, very low index, pure breathy tone
+    instrumentPresets[136].name = "FM Flute";
+    instrumentPresets[136].patch.p_waveType = WAVE_FM;
+    instrumentPresets[136].patch.p_fmModRatio = 1.0f;
+    instrumentPresets[136].patch.p_fmModIndex = 0.8f;
+    instrumentPresets[136].patch.p_fmFeedback = 0.0f;
+    instrumentPresets[136].patch.p_fmMod2Ratio = 0.0f;
+    instrumentPresets[136].patch.p_fmAlgorithm = 0;
+    instrumentPresets[136].patch.p_attack = 0.06f;
+    instrumentPresets[136].patch.p_decay = 0.2f;
+    instrumentPresets[136].patch.p_sustain = 0.75f;
+    instrumentPresets[136].patch.p_release = 0.15f;
+    instrumentPresets[136].patch.p_noiseMix = 0.06f;
+    instrumentPresets[136].patch.p_noiseTone = 0.6f;
+    instrumentPresets[136].patch.p_noiseDecay = 0.08f;
+    instrumentPresets[136].patch.p_filterCutoff = 0.55f;
+    instrumentPresets[136].patch.p_filterKeyTrack = 0.7f;
+    instrumentPresets[136].patch.p_vibratoRate = 5.0f;
+    instrumentPresets[136].patch.p_vibratoDepth = 0.1f;
+    instrumentPresets[136].patch.p_volume = 0.45f;
 }
 
 #endif // INSTRUMENT_PRESETS_H
