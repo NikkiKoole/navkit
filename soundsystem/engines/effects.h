@@ -327,7 +327,7 @@ typedef struct {
     float reverbPreDelay; // Pre-delay in seconds (0-0.1)
     float reverbBass;     // Bass feedback multiplier (0.5-2.0, 1.0=neutral)
 
-    // Sidechain compression (kick -> bass ducking)
+    // Sidechain compression (kick -> bass ducking, audio-follower mode)
     bool sidechainEnabled;
     int sidechainSource;     // 0=Kick, 1=Snare, 2=Clap, 3=HiHat, 4=AllDrums
     int sidechainTarget;     // 0=Bass, 1=Lead, 2=Chord, 3=All
@@ -337,6 +337,20 @@ typedef struct {
     float sidechainEnvelope; // Internal: current envelope value
     float sidechainHPFreq;   // Bass-preserve HP freq (0=off, 40-120Hz = bass passes through unducked)
     float sidechainHPState;  // Internal: HP filter state
+
+    // Sidechain envelope (note-triggered, LFOTool/Kickstart style)
+    bool scEnvEnabled;       // On/off (mutually exclusive with sidechainEnabled)
+    int scEnvSource;         // Same as sidechainSource (which drum triggers it)
+    int scEnvTarget;         // Same as sidechainTarget (which bus to duck)
+    float scEnvDepth;        // How much to duck (0-1)
+    float scEnvAttack;       // Attack/duck-down time in seconds (0.001-0.02)
+    float scEnvHold;         // Hold at full duck in seconds (0-0.1)
+    float scEnvRelease;      // Release/duck-up time in seconds (0.05-0.5)
+    int scEnvCurve;          // 0=linear, 1=exponential, 2=S-curve
+    float scEnvHPFreq;       // Bass-preserve HP freq (0=off)
+    float scEnvHPState;      // Internal: HP filter state
+    float scEnvPhase;        // Internal: current phase (0=idle, >0=active)
+    float scEnvTimer;        // Internal: time since trigger
 
     // Sub-bass boost (gentle +3dB shelf at 60Hz)
     bool subBassBoost;
@@ -359,6 +373,20 @@ typedef struct {
     float compRelease;       // Release time in seconds (0.01-1.0)
     float compMakeup;        // Makeup gain in dB (0-24)
     float compEnvelope;      // Internal: current envelope value
+
+    // Multiband processing (3-band split: low/mid/high)
+    bool mbEnabled;
+    float mbLowCrossover;    // Low/mid crossover frequency (40-500 Hz)
+    float mbHighCrossover;   // Mid/high crossover frequency (1000-16000 Hz)
+    float mbLowGain;         // Low band gain (0-2, 1=unity)
+    float mbMidGain;         // Mid band gain (0-2, 1=unity)
+    float mbHighGain;        // High band gain (0-2, 1=unity)
+    float mbLowDrive;        // Low band drive (1=clean, 2-4=warm saturation)
+    float mbMidDrive;        // Mid band drive
+    float mbHighDrive;       // High band drive
+    // Internal: Linkwitz-Riley crossover (2x cascaded 1-pole per split)
+    float mbLowLP1, mbLowLP2;   // Low crossover LP stages
+    float mbHighLP1, mbHighLP2;  // High crossover LP stages
 } Effects;
 
 // Sidechain source options
@@ -632,6 +660,20 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->params.sidechainHPFreq = 0.0f;     // Off (no bass-preserve)
     ctx->params.sidechainHPState = 0.0f;
 
+    // Sidechain envelope (note-triggered) - off by default
+    ctx->params.scEnvEnabled = false;
+    ctx->params.scEnvSource = SIDECHAIN_SRC_KICK;
+    ctx->params.scEnvTarget = SIDECHAIN_TGT_BASS;
+    ctx->params.scEnvDepth = 0.8f;
+    ctx->params.scEnvAttack = 0.005f;    // 5ms duck-down
+    ctx->params.scEnvHold = 0.02f;       // 20ms hold
+    ctx->params.scEnvRelease = 0.15f;    // 150ms duck-up
+    ctx->params.scEnvCurve = 1;          // exponential (natural pump)
+    ctx->params.scEnvHPFreq = 0.0f;
+    ctx->params.scEnvHPState = 0.0f;
+    ctx->params.scEnvPhase = 0.0f;
+    ctx->params.scEnvTimer = 0.0f;
+
     // Sub-bass boost - off by default
     ctx->params.subBassBoost = false;
     ctx->params.subBassState = 0.0f;
@@ -653,6 +695,21 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->params.compRelease = 0.1f;      // 100ms release
     ctx->params.compMakeup = 0.0f;       // No makeup gain
     ctx->params.compEnvelope = 0.0f;
+
+    // Multiband - off by default
+    ctx->params.mbEnabled = false;
+    ctx->params.mbLowCrossover = 200.0f;    // Low/mid split at 200Hz
+    ctx->params.mbHighCrossover = 3000.0f;  // Mid/high split at 3kHz
+    ctx->params.mbLowGain = 1.0f;
+    ctx->params.mbMidGain = 1.0f;
+    ctx->params.mbHighGain = 1.0f;
+    ctx->params.mbLowDrive = 1.0f;          // Clean (no saturation)
+    ctx->params.mbMidDrive = 1.0f;
+    ctx->params.mbHighDrive = 1.0f;
+    ctx->params.mbLowLP1 = 0.0f;
+    ctx->params.mbLowLP2 = 0.0f;
+    ctx->params.mbHighLP1 = 0.0f;
+    ctx->params.mbHighLP2 = 0.0f;
 
     // Dub Loop - off by default, classic dub delay settings
     ctx->dubLoop.enabled = false;
@@ -691,7 +748,7 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->rewind.rewindTime = 1.5f;
     ctx->rewind.curve = REWIND_CURVE_EXPONENTIAL;
     ctx->rewind.minSpeed = 0.2f;
-    ctx->rewind.vinylNoise = 0.3f;
+    ctx->rewind.vinylNoise = 0.1f;
     ctx->rewind.wobble = 0.2f;
     ctx->rewind.filterSweep = 0.6f;
     ctx->rewind.crossfadeTime = 0.05f;
@@ -1084,34 +1141,27 @@ static float processAllpass(float input, float *buffer, int *pos, int size, floa
 }
 
 // Reverb - Schroeder-style algorithmic reverb
-static float processReverb(float sample) {
-    if (!fx.reverbEnabled) return sample;
-    
-    float dry = sample;
-    
+// Core reverb: processes input through Schroeder reverb, returns WET signal only.
+// Used by both the send/return path and the inline path.
+static float _processReverbCore(float sample) {
     // Pre-delay
     int preDelaySamples = (int)(fx.reverbPreDelay * SAMPLE_RATE);
     if (preDelaySamples > REVERB_PREDELAY_MAX - 1) preDelaySamples = REVERB_PREDELAY_MAX - 1;
     if (preDelaySamples < 1) preDelaySamples = 1;
-    
+
     int preDelayReadPos = (reverbPreDelayPos - preDelaySamples + REVERB_PREDELAY_MAX) % REVERB_PREDELAY_MAX;
     float preDelayed = reverbPreDelayBuf[preDelayReadPos];
     reverbPreDelayBuf[reverbPreDelayPos] = sample;
     reverbPreDelayPos = (reverbPreDelayPos + 1) % REVERB_PREDELAY_MAX;
-    
+
     // Feedback amount based on room size (longer decay for larger rooms)
     float feedback = REVERB_FEEDBACK_MIN + fx.reverbSize * REVERB_FEEDBACK_RANGE;
-    
-    // Scale delay lengths by room size (affects density and character)
-    // For simplicity, we use fixed delays but vary feedback
-    
+
     // Reverb bass multiplier: scale low-frequency feedback separately
-    // bassMult > 1.0 = boomier reverb tail, < 1.0 = tighter bass in reverb
     float bassFeedback = feedback * fx.reverbBass;
-    if (bassFeedback > 0.98f) bassFeedback = 0.98f;  // Prevent runaway
+    if (bassFeedback > 0.98f) bassFeedback = 0.98f;
 
     // 4 parallel comb filters (create dense echo pattern)
-    // Use bassFeedback for longer combs (lower frequencies), normal for shorter
     float comb1 = processCombFilter(preDelayed, reverbComb1, &reverbCombPos1, REVERB_COMB_1,
                                     &reverbCombLp1, bassFeedback, fx.reverbDamping);
     float comb2 = processCombFilter(preDelayed, reverbComb2, &reverbCombPos2, REVERB_COMB_2,
@@ -1121,17 +1171,61 @@ static float processReverb(float sample) {
     float comb4 = processCombFilter(preDelayed, reverbComb4, &reverbCombPos4, REVERB_COMB_4,
                                     &reverbCombLp4, feedback, fx.reverbDamping);
 
-    // Sum combs
     float combSum = (comb1 + comb2 + comb3 + comb4) * 0.25f;
-    
+
     // 2 series allpass filters (diffuse and smooth the reverb)
-    float allpass1Out = processAllpass(combSum, reverbAllpass1, &reverbAllpassPos1, 
+    float allpass1Out = processAllpass(combSum, reverbAllpass1, &reverbAllpassPos1,
                                        REVERB_ALLPASS_1, 0.5f);
     float wet = processAllpass(allpass1Out, reverbAllpass2, &reverbAllpassPos2,
                                REVERB_ALLPASS_2, 0.5f);
-    
-    // Mix
+
+    return wet;
+}
+
+// Inline reverb: processes sample through reverb with dry/wet mix.
+// Used by processEffects() and processEffectsWithBuses() (non-mixer paths).
+static float processReverb(float sample) {
+    if (!fx.reverbEnabled) return sample;
+    float dry = sample;
+    float wet = _processReverbCore(sample);
     return dry * (1.0f - fx.reverbMix) + wet * fx.reverbMix;
+}
+
+// ============================================================================
+// MULTIBAND PROCESSING (3-band split with per-band gain and drive)
+// ============================================================================
+
+// Linkwitz-Riley crossover: two cascaded 1-pole LP filters per split point.
+// LP output = low band, (input - LP output) = high band. Sums flat.
+static float processMultiband(float sample) {
+    if (!fx.mbEnabled) return sample;
+
+    // Low crossover: split into low and (mid+high)
+    float lowCoeff = 2.0f * PI * fx.mbLowCrossover / SAMPLE_RATE;
+    if (lowCoeff > 0.99f) lowCoeff = 0.99f;
+    fx.mbLowLP1 += lowCoeff * (sample - fx.mbLowLP1);
+    fx.mbLowLP2 += lowCoeff * (fx.mbLowLP1 - fx.mbLowLP2);
+    float lowBand = fx.mbLowLP2;
+    float midHigh = sample - fx.mbLowLP2;
+
+    // High crossover: split mid+high into mid and high
+    float highCoeff = 2.0f * PI * fx.mbHighCrossover / SAMPLE_RATE;
+    if (highCoeff > 0.99f) highCoeff = 0.99f;
+    fx.mbHighLP1 += highCoeff * (midHigh - fx.mbHighLP1);
+    fx.mbHighLP2 += highCoeff * (fx.mbHighLP1 - fx.mbHighLP2);
+    float midBand = fx.mbHighLP2;
+    float highBand = midHigh - fx.mbHighLP2;
+
+    // Per-band drive (tanh saturation, only when drive > 1)
+    if (fx.mbLowDrive > 1.001f)
+        lowBand = tanhf(lowBand * fx.mbLowDrive) / tanhf(fx.mbLowDrive);
+    if (fx.mbMidDrive > 1.001f)
+        midBand = tanhf(midBand * fx.mbMidDrive) / tanhf(fx.mbMidDrive);
+    if (fx.mbHighDrive > 1.001f)
+        highBand = tanhf(highBand * fx.mbHighDrive) / tanhf(fx.mbHighDrive);
+
+    // Per-band gain and recombine
+    return lowBand * fx.mbLowGain + midBand * fx.mbMidGain + highBand * fx.mbHighGain;
 }
 
 // ============================================================================
@@ -1267,6 +1361,88 @@ static float applySidechainDucking(float signal) {
     }
 
     return ducked;
+}
+
+// ============================================================================
+// SIDECHAIN ENVELOPE (note-triggered, LFOTool/Kickstart style)
+// ============================================================================
+
+// Curve shapes for sidechain envelope release
+#define SC_ENV_CURVE_LINEAR 0
+#define SC_ENV_CURVE_EXP    1
+#define SC_ENV_CURVE_SCURVE 2
+
+// Trigger the sidechain envelope (call from drum noteOn callback)
+static void triggerSidechainEnvelope(void) {
+    _ensureFxCtx();
+    if (!fx.scEnvEnabled) return;
+    fx.scEnvTimer = 0.0f;
+    fx.scEnvPhase = 1.0f; // active
+}
+
+// Advance the sidechain envelope by dt seconds, return gain multiplier (0-1)
+// 0 = fully ducked, 1 = no ducking
+static float updateSidechainEnvelopeNote(float dt) {
+    _ensureFxCtx();
+    if (!fx.scEnvEnabled || fx.scEnvPhase <= 0.0f) return 1.0f;
+
+    fx.scEnvTimer += dt;
+
+    float duck = 0.0f; // 0 = no duck, 1 = full duck
+
+    if (fx.scEnvTimer < fx.scEnvAttack) {
+        // Attack phase: ramp up ducking
+        float t = fx.scEnvTimer / fx.scEnvAttack;
+        duck = t;
+    } else if (fx.scEnvTimer < fx.scEnvAttack + fx.scEnvHold) {
+        // Hold phase: full duck
+        duck = 1.0f;
+    } else {
+        // Release phase: ramp down ducking
+        float relTime = fx.scEnvTimer - fx.scEnvAttack - fx.scEnvHold;
+        if (relTime >= fx.scEnvRelease) {
+            fx.scEnvPhase = 0.0f; // done
+            return 1.0f;
+        }
+        float t = relTime / fx.scEnvRelease; // 0 to 1
+        switch (fx.scEnvCurve) {
+            case SC_ENV_CURVE_LINEAR:
+                duck = 1.0f - t;
+                break;
+            case SC_ENV_CURVE_EXP:
+                duck = expf(-4.0f * t); // exponential decay
+                break;
+            case SC_ENV_CURVE_SCURVE:
+                // Smooth S-curve: slow start, fast middle, slow end
+                duck = 1.0f - (t * t * (3.0f - 2.0f * t));
+                break;
+            default:
+                duck = 1.0f - t;
+                break;
+        }
+    }
+
+    float gainReduction = duck * fx.scEnvDepth;
+    if (gainReduction > 1.0f) gainReduction = 1.0f;
+    return 1.0f - gainReduction;
+}
+
+// Apply sidechain envelope ducking to a signal
+static float applySidechainEnvelopeDucking(float signal, float gainMult) {
+    _ensureFxCtx();
+    if (!fx.scEnvEnabled) return signal;
+
+    // Bass-preserve: split signal, only duck above HP freq
+    if (fx.scEnvHPFreq > 1.0f) {
+        float hpCoeff = 2.0f * PI * fx.scEnvHPFreq / SAMPLE_RATE;
+        if (hpCoeff > 0.5f) hpCoeff = 0.5f;
+        fx.scEnvHPState += hpCoeff * (signal - fx.scEnvHPState);
+        float bassContent = fx.scEnvHPState;
+        float restContent = signal - fx.scEnvHPState;
+        return bassContent + restContent * gainMult;
+    }
+
+    return signal * gainMult;
 }
 
 // ============================================================================
@@ -1712,12 +1888,23 @@ static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
     sample = processTape(sample, dt);
     sample = processDelay(sample, dt);
 
+    // preReverb mode: apply reverb to dub loop INPUT (room being echoed)
+    // Normal mode: apply reverb AFTER dub loop (echoes in a room)
+    bool doReverbSend = fx.reverbEnabled && (reverbSend > 0.001f || reverbSend < -0.001f);
+
+    if (dubLoop.preReverb && doReverbSend) {
+        // Pre-reverb: add reverb wet to sample BEFORE dub loop captures it
+        float wet = _processReverbCore(reverbSend);
+        sample += wet * fx.reverbMix;
+        doReverbSend = false; // Don't apply reverb again after dub loop
+    }
+
     // Dub loop (can use bus outputs for selective input)
     if (dubLoop.enabled) {
         float dry = sample;
         float dubInput = 0.0f;
-        
-        // Handle bus input sources for dub loop
+
+        // Select input source
         int src = dubLoop.inputSource;
         if (src >= DUB_INPUT_BUS_DRUM0 && src <= DUB_INPUT_BUS_CHORD) {
             int busIdx = src - DUB_INPUT_BUS_DRUM0;
@@ -1732,24 +1919,37 @@ static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
                        mixerCtx->busOutputs[BUS_CHORD];
         } else if (src == DUB_INPUT_MANUAL) {
             dubInput = dubLoop.throwActive ? sample : 0.0f;
+        } else if (src >= DUB_INPUT_KICK && src <= DUB_INPUT_CHORD) {
+            // Legacy individual sources: map to bus outputs
+            // Kick/Snare/Clap/HH → drum buses 0-3, Bass/Lead/Chord → synth buses
+            if (src <= DUB_INPUT_MARACAS) {
+                // Individual drum sounds share buses (kick=0, snare=1, HH=2, perc=3)
+                int drumBusMap[] = {0,1,3,2,2,3,3,3,3,3,3,3}; // kick,snare,clap,chh,ohh,lo,mid,hi,rim,cow,clv,mar
+                int idx = src - DUB_INPUT_KICK;
+                if (idx >= 0 && idx < 12) dubInput = mixerCtx->busOutputs[BUS_DRUM0 + drumBusMap[idx]];
+            } else {
+                int synthBusMap[] = {BUS_BASS, BUS_LEAD, BUS_CHORD};
+                int idx = src - DUB_INPUT_BASS;
+                if (idx >= 0 && idx < 3) dubInput = mixerCtx->busOutputs[synthBusMap[idx]];
+            }
         } else {
-            // Legacy individual sources - use full sample
             dubInput = sample;
         }
-        
+
         float wet = _processDubLoopCore(dubInput, dt);
         sample = dry * (1.0f - dubLoop.mix) + wet * dubLoop.mix;
     }
-    
+
     sample = processRewind(sample, dt);
-    
-    // Reverb: process sends + apply to output
-    if (fx.reverbEnabled && reverbSend > 0.0f) {
-        float reverbWet = processReverb(reverbSend);
-        sample += reverbWet * fx.reverbMix;
+
+    // Normal mode: apply reverb send/return AFTER dub loop (echoes in a room)
+    if (doReverbSend) {
+        float wet = _processReverbCore(reverbSend);
+        sample += wet * fx.reverbMix;
     }
-    // Also apply reverb to main signal if enabled
-    sample = processReverb(sample);
+
+    // Multiband processing (per-band gain/drive, before EQ)
+    sample = processMultiband(sample);
 
     // Master EQ (tone shaping after all effects)
     sample = processMasterEQ(sample);

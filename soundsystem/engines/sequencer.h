@@ -446,6 +446,10 @@ typedef struct {
     // Dilla timing
     DillaTiming dilla;
 
+    // Per-track swing (0-12 ticks, applied on off-beats)
+    // Allows e.g. straight kick + swung hats. dilla.swing is the song default.
+    int trackSwing[SEQ_V2_MAX_TRACKS];
+
     // Melody humanize
     MelodyHumanize humanize;
 
@@ -490,6 +494,10 @@ static void seqApplyGroovePreset(Sequencer *s, MelodyHumanize *h, int presetInde
     if (presetIndex < 0 || presetIndex >= groovePresetCount) return;
     s->dilla = groovePresets[presetIndex].dilla;
     *h = groovePresets[presetIndex].humanize;
+    // Propagate global swing to all tracks
+    for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) {
+        s->trackSwing[i] = s->dilla.swing;
+    }
 }
 
 // ============================================================================
@@ -1006,6 +1014,9 @@ static int calcTrackTriggerTick(int track) {
     int step = seq.trackStep[track];
     int baseTick = 0;
 
+    // Per-track swing (applied on off-beats for all track types)
+    if (step % 2 == 1) baseTick += seq.trackSwing[track];
+
     if (p->trackType[track] == TRACK_DRUM) {
         switch (track) {
             case 0: baseTick += seq.dilla.kickNudge; break;
@@ -1013,7 +1024,6 @@ static int calcTrackTriggerTick(int track) {
             case 2: baseTick += seq.dilla.hatNudge; break;
             case 3: baseTick += seq.dilla.clapDelay; break;
         }
-        if (step % 2 == 1) baseTick += seq.dilla.swing;
         if (seq.dilla.jitter > 0) {
             baseTick += seqRandInt(-seq.dilla.jitter, seq.dilla.jitter);
         }
@@ -1215,6 +1225,11 @@ static void initSequencer(DrumTriggerFunc kickFn, DrumTriggerFunc snareFn,
     seq.dilla.clapDelay = 3;
     seq.dilla.swing = 6;
     seq.dilla.jitter = 2;
+
+    // Per-track swing defaults from global swing
+    for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) {
+        seq.trackSwing[i] = seq.dilla.swing;
+    }
 
     // Melody humanize off by default
     seq.humanize.timingJitter = 0;
@@ -1658,6 +1673,9 @@ static void seqResetTiming(void) {
     seq.dilla.clapDelay = 3;
     seq.dilla.swing = 6;
     seq.dilla.jitter = 2;
+    for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) {
+        seq.trackSwing[i] = seq.dilla.swing;
+    }
 }
 
 // ============================================================================

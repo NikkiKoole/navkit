@@ -462,7 +462,8 @@ static void pikuTimingBouncy(void) {
     // Moderate swing - not too heavy, just "jaunty"
     seq.dilla.swing = 5;       // Off-beats pushed late
     seq.dilla.jitter = 1;      // Tiny random variation
-    
+    for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) seq.trackSwing[i] = 5;
+
     // Slight nudge on kick for groove
     seq.dilla.kickNudge = -1;  // Kick slightly early = driving
     seq.dilla.snareDelay = 2;  // Snare slightly late = lazy bounce

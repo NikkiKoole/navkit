@@ -250,6 +250,11 @@ static bool dawSave(const char *filepath) {
     _di(f, "clapDelay", seq.dilla.clapDelay);
     _di(f, "swing", seq.dilla.swing);
     _di(f, "jitter", seq.dilla.jitter);
+    for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) {
+        char key[32];
+        snprintf(key, sizeof(key), "trackSwing%d", i);
+        _di(f, key, seq.trackSwing[i]);
+    }
     _di(f, "melodyTimingJitter", seq.humanize.timingJitter);
     _dw(f, "melodyVelocityJitter", seq.humanize.velocityJitter);
 
@@ -316,6 +321,11 @@ static bool dawSave(const char *filepath) {
     _di(f, "source", daw.sidechain.source); _di(f, "target", daw.sidechain.target);
     _dw(f, "depth", daw.sidechain.depth); _dw(f, "attack", daw.sidechain.attack);
     _dw(f, "release", daw.sidechain.release); _dw(f, "hpFreq", daw.sidechain.hpFreq);
+    _db(f, "envOn", daw.sidechain.envOn);
+    _di(f, "envSource", daw.sidechain.envSource); _di(f, "envTarget", daw.sidechain.envTarget);
+    _dw(f, "envDepth", daw.sidechain.envDepth); _dw(f, "envAttack", daw.sidechain.envAttack);
+    _dw(f, "envHold", daw.sidechain.envHold); _dw(f, "envRelease", daw.sidechain.envRelease);
+    _di(f, "envCurve", daw.sidechain.envCurve); _dw(f, "envHPFreq", daw.sidechain.envHPFreq);
 
     // [masterfx]
     fprintf(f, "\n[masterfx]\n");
@@ -350,6 +360,10 @@ static bool dawSave(const char *filepath) {
     _db(f, "compOn", daw.masterFx.compOn); _dw(f, "compThreshold", daw.masterFx.compThreshold);
     _dw(f, "compRatio", daw.masterFx.compRatio); _dw(f, "compAttack", daw.masterFx.compAttack);
     _dw(f, "compRelease", daw.masterFx.compRelease); _dw(f, "compMakeup", daw.masterFx.compMakeup);
+    _db(f, "mbOn", daw.masterFx.mbOn);
+    _dw(f, "mbLowCross", daw.masterFx.mbLowCross); _dw(f, "mbHighCross", daw.masterFx.mbHighCross);
+    _dw(f, "mbLowGain", daw.masterFx.mbLowGain); _dw(f, "mbMidGain", daw.masterFx.mbMidGain); _dw(f, "mbHighGain", daw.masterFx.mbHighGain);
+    _dw(f, "mbLowDrive", daw.masterFx.mbLowDrive); _dw(f, "mbMidDrive", daw.masterFx.mbMidDrive); _dw(f, "mbHighDrive", daw.masterFx.mbHighDrive);
 
     // [tapefx]
     fprintf(f, "\n[tapefx]\n");
@@ -855,6 +869,10 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"clapDelay")==0) seq.dilla.clapDelay = _dpi(val);
             else if (strcmp(key,"swing")==0) seq.dilla.swing = _dpi(val);
             else if (strcmp(key,"jitter")==0) seq.dilla.jitter = _dpi(val);
+            else if (strncmp(key,"trackSwing",10)==0) {
+                int t = atoi(key + 10);
+                if (t >= 0 && t < SEQ_V2_MAX_TRACKS) seq.trackSwing[t] = _dpi(val);
+            }
             else if (strcmp(key,"melodyTimingJitter")==0) seq.humanize.timingJitter = _dpi(val);
             else if (strcmp(key,"melodyVelocityJitter")==0) seq.humanize.velocityJitter = _dpf(val);
             break;
@@ -924,6 +942,15 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"attack")==0) daw.sidechain.attack=_dpf(val);
             else if (strcmp(key,"release")==0) daw.sidechain.release=_dpf(val);
             else if (strcmp(key,"hpFreq")==0) daw.sidechain.hpFreq=_dpf(val);
+            else if (strcmp(key,"envOn")==0) daw.sidechain.envOn=_dpb(val);
+            else if (strcmp(key,"envSource")==0) daw.sidechain.envSource=_dpi(val);
+            else if (strcmp(key,"envTarget")==0) daw.sidechain.envTarget=_dpi(val);
+            else if (strcmp(key,"envDepth")==0) daw.sidechain.envDepth=_dpf(val);
+            else if (strcmp(key,"envAttack")==0) daw.sidechain.envAttack=_dpf(val);
+            else if (strcmp(key,"envHold")==0) daw.sidechain.envHold=_dpf(val);
+            else if (strcmp(key,"envRelease")==0) daw.sidechain.envRelease=_dpf(val);
+            else if (strcmp(key,"envCurve")==0) daw.sidechain.envCurve=_dpi(val);
+            else if (strcmp(key,"envHPFreq")==0) daw.sidechain.envHPFreq=_dpf(val);
             break;
         case _DW_SEC_MASTERFX:
             if (strcmp(key,"distOn")==0) daw.masterFx.distOn=_dpb(val);
@@ -982,6 +1009,15 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"compAttack")==0) daw.masterFx.compAttack=_dpf(val);
             else if (strcmp(key,"compRelease")==0) daw.masterFx.compRelease=_dpf(val);
             else if (strcmp(key,"compMakeup")==0) daw.masterFx.compMakeup=_dpf(val);
+            else if (strcmp(key,"mbOn")==0) daw.masterFx.mbOn=_dpb(val);
+            else if (strcmp(key,"mbLowCross")==0) daw.masterFx.mbLowCross=_dpf(val);
+            else if (strcmp(key,"mbHighCross")==0) daw.masterFx.mbHighCross=_dpf(val);
+            else if (strcmp(key,"mbLowGain")==0) daw.masterFx.mbLowGain=_dpf(val);
+            else if (strcmp(key,"mbMidGain")==0) daw.masterFx.mbMidGain=_dpf(val);
+            else if (strcmp(key,"mbHighGain")==0) daw.masterFx.mbHighGain=_dpf(val);
+            else if (strcmp(key,"mbLowDrive")==0) daw.masterFx.mbLowDrive=_dpf(val);
+            else if (strcmp(key,"mbMidDrive")==0) daw.masterFx.mbMidDrive=_dpf(val);
+            else if (strcmp(key,"mbHighDrive")==0) daw.masterFx.mbHighDrive=_dpf(val);
             break;
         case _DW_SEC_TAPEFX:
             if (strcmp(key,"enabled")==0) daw.tapeFx.enabled=_dpb(val);
@@ -1050,6 +1086,18 @@ static bool dawLoad(const char *filepath) {
     }
 
     fclose(f);
+
+    // Backward compat: old files without trackSwing keys — propagate global swing
+    {
+        bool allZero = true;
+        for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) {
+            if (seq.trackSwing[i] != 0) { allZero = false; break; }
+        }
+        if (allZero && seq.dilla.swing != 0) {
+            for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++)
+                seq.trackSwing[i] = seq.dilla.swing;
+        }
+    }
 
     // Reset transport to start
     daw.transport.currentStep = 0;

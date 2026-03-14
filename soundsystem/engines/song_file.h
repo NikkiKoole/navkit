@@ -50,6 +50,7 @@ typedef struct {
 
     // Groove
     DillaTiming dilla;
+    int trackSwing[SEQ_V2_MAX_TRACKS];
     MelodyHumanize humanize;
 
     // Instruments (3 melody patches)
@@ -525,6 +526,11 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
     _sf_writeInt(f, "clapDelay", d->dilla.clapDelay);
     _sf_writeInt(f, "swing", d->dilla.swing);
     _sf_writeInt(f, "jitter", d->dilla.jitter);
+    for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) {
+        char key[32];
+        snprintf(key, sizeof(key), "trackSwing%d", i);
+        _sf_writeInt(f, key, d->trackSwing[i]);
+    }
     _sf_writeInt(f, "melodyTimingJitter", d->humanize.timingJitter);
     _sf_writeFloat(f, "melodyVelocityJitter", d->humanize.velocityJitter);
 
@@ -598,7 +604,25 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
     _sf_writeFloat(f, "sidechainAttack", d->sfEffects.sidechainAttack);
     _sf_writeFloat(f, "sidechainRelease", d->sfEffects.sidechainRelease);
     _sf_writeFloat(f, "sidechainHPFreq", d->sfEffects.sidechainHPFreq);
+    _sf_writeBool(f, "scEnvEnabled", d->sfEffects.scEnvEnabled);
+    _sf_writeInt(f, "scEnvSource", d->sfEffects.scEnvSource);
+    _sf_writeInt(f, "scEnvTarget", d->sfEffects.scEnvTarget);
+    _sf_writeFloat(f, "scEnvDepth", d->sfEffects.scEnvDepth);
+    _sf_writeFloat(f, "scEnvAttack", d->sfEffects.scEnvAttack);
+    _sf_writeFloat(f, "scEnvHold", d->sfEffects.scEnvHold);
+    _sf_writeFloat(f, "scEnvRelease", d->sfEffects.scEnvRelease);
+    _sf_writeInt(f, "scEnvCurve", d->sfEffects.scEnvCurve);
+    _sf_writeFloat(f, "scEnvHPFreq", d->sfEffects.scEnvHPFreq);
     _sf_writeBool(f, "subBassBoost", d->sfEffects.subBassBoost);
+    _sf_writeBool(f, "mbEnabled", d->sfEffects.mbEnabled);
+    _sf_writeFloat(f, "mbLowCrossover", d->sfEffects.mbLowCrossover);
+    _sf_writeFloat(f, "mbHighCrossover", d->sfEffects.mbHighCrossover);
+    _sf_writeFloat(f, "mbLowGain", d->sfEffects.mbLowGain);
+    _sf_writeFloat(f, "mbMidGain", d->sfEffects.mbMidGain);
+    _sf_writeFloat(f, "mbHighGain", d->sfEffects.mbHighGain);
+    _sf_writeFloat(f, "mbLowDrive", d->sfEffects.mbLowDrive);
+    _sf_writeFloat(f, "mbMidDrive", d->sfEffects.mbMidDrive);
+    _sf_writeFloat(f, "mbHighDrive", d->sfEffects.mbHighDrive);
 
     // Dub loop
     fprintf(f, "\n[dub]\n");
@@ -1223,6 +1247,10 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
             else if (strcmp(key, "clapDelay") == 0) d->dilla.clapDelay = _sf_parseInt(val);
             else if (strcmp(key, "swing") == 0) d->dilla.swing = _sf_parseInt(val);
             else if (strcmp(key, "jitter") == 0) d->dilla.jitter = _sf_parseInt(val);
+            else if (strncmp(key, "trackSwing", 10) == 0) {
+                int t = atoi(key + 10);
+                if (t >= 0 && t < SEQ_V2_MAX_TRACKS) d->trackSwing[t] = _sf_parseInt(val);
+            }
             else if (strcmp(key, "melodyTimingJitter") == 0) d->humanize.timingJitter = _sf_parseInt(val);
             else if (strcmp(key, "melodyVelocityJitter") == 0) d->humanize.velocityJitter = _sf_parseFloat(val);
             break;
@@ -1302,7 +1330,25 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
             else if (strcmp(key, "sidechainAttack") == 0) d->sfEffects.sidechainAttack = _sf_parseFloat(val);
             else if (strcmp(key, "sidechainRelease") == 0) d->sfEffects.sidechainRelease = _sf_parseFloat(val);
             else if (strcmp(key, "sidechainHPFreq") == 0) d->sfEffects.sidechainHPFreq = _sf_parseFloat(val);
+            else if (strcmp(key, "scEnvEnabled") == 0) d->sfEffects.scEnvEnabled = _sf_parseBool(val);
+            else if (strcmp(key, "scEnvSource") == 0) d->sfEffects.scEnvSource = _sf_parseInt(val);
+            else if (strcmp(key, "scEnvTarget") == 0) d->sfEffects.scEnvTarget = _sf_parseInt(val);
+            else if (strcmp(key, "scEnvDepth") == 0) d->sfEffects.scEnvDepth = _sf_parseFloat(val);
+            else if (strcmp(key, "scEnvAttack") == 0) d->sfEffects.scEnvAttack = _sf_parseFloat(val);
+            else if (strcmp(key, "scEnvHold") == 0) d->sfEffects.scEnvHold = _sf_parseFloat(val);
+            else if (strcmp(key, "scEnvRelease") == 0) d->sfEffects.scEnvRelease = _sf_parseFloat(val);
+            else if (strcmp(key, "scEnvCurve") == 0) d->sfEffects.scEnvCurve = _sf_parseInt(val);
+            else if (strcmp(key, "scEnvHPFreq") == 0) d->sfEffects.scEnvHPFreq = _sf_parseFloat(val);
             else if (strcmp(key, "subBassBoost") == 0) d->sfEffects.subBassBoost = _sf_parseBool(val);
+            else if (strcmp(key, "mbEnabled") == 0) d->sfEffects.mbEnabled = _sf_parseBool(val);
+            else if (strcmp(key, "mbLowCrossover") == 0) d->sfEffects.mbLowCrossover = _sf_parseFloat(val);
+            else if (strcmp(key, "mbHighCrossover") == 0) d->sfEffects.mbHighCrossover = _sf_parseFloat(val);
+            else if (strcmp(key, "mbLowGain") == 0) d->sfEffects.mbLowGain = _sf_parseFloat(val);
+            else if (strcmp(key, "mbMidGain") == 0) d->sfEffects.mbMidGain = _sf_parseFloat(val);
+            else if (strcmp(key, "mbHighGain") == 0) d->sfEffects.mbHighGain = _sf_parseFloat(val);
+            else if (strcmp(key, "mbLowDrive") == 0) d->sfEffects.mbLowDrive = _sf_parseFloat(val);
+            else if (strcmp(key, "mbMidDrive") == 0) d->sfEffects.mbMidDrive = _sf_parseFloat(val);
+            else if (strcmp(key, "mbHighDrive") == 0) d->sfEffects.mbHighDrive = _sf_parseFloat(val);
             break;
 
         case _SF_SEC_DUB:
@@ -1427,6 +1473,19 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
     }
 
     fclose(f);
+
+    // Backward compat: old files without trackSwing keys — propagate global swing
+    {
+        bool allZero = true;
+        for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) {
+            if (d->trackSwing[i] != 0) { allZero = false; break; }
+        }
+        if (allZero && d->dilla.swing != 0) {
+            for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++)
+                d->trackSwing[i] = d->dilla.swing;
+        }
+    }
+
     return true;
 }
 

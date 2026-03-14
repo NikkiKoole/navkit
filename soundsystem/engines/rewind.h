@@ -104,20 +104,26 @@ static float processRewind(float input, float dt) {
         // Read from buffer (backwards)
         float sample = hermiteInterpolate(rewindBuffer, REWIND_BUFFER_SIZE, rewindReadPos);
         
-        // Filter sweep (lowpass follows speed)
+        // Filter sweep: lowpass darkens as speed drops (like real vinyl slowdown).
+        // At full speed: wide open. At minSpeed: sweeps down based on filterSweep amount.
         if (p->filterSweep > 0.0f) {
-            float cutoff = targetSpeed * (1.0f - p->filterSweep) + p->filterSweep;
-            cutoff = cutoff * cutoff * 0.4f + 0.05f;
-            rewindLpState += cutoff * (sample - rewindLpState);
+            // Map speed to frequency: full speed = 12kHz, min speed = 200-2000Hz based on sweep
+            float minFreq = 2000.0f * (1.0f - p->filterSweep) + 200.0f * p->filterSweep;
+            float freq = minFreq + (12000.0f - minFreq) * targetSpeed;
+            float lpCoef = 2.0f * PI * freq / SAMPLE_RATE;
+            if (lpCoef > 0.99f) lpCoef = 0.99f;
+            rewindLpState += lpCoef * (sample - rewindLpState);
             sample = rewindLpState;
         }
-        
-        // Add vinyl noise/crackle
+
+        // Vinyl crackle: sparse pops, not white noise.
+        // Threshold creates occasional clicks rather than constant hiss.
         if (p->vinylNoise > 0.0f) {
             float noise = rewindNoise();
-            // Shape noise to be more crackly (sparse pops)
-            noise = noise * noise * noise * (noise > 0 ? 1.0f : -1.0f);
-            sample += noise * p->vinylNoise * 0.15f;
+            // Only let through sparse peaks (crackle, not hiss)
+            if (fabsf(noise) > 0.85f) {
+                sample += noise * p->vinylNoise * 0.08f;
+            }
         }
         
         // Crossfade in at start

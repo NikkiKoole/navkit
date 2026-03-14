@@ -350,6 +350,7 @@ describe(dilla_timing) {
         seq.dilla.clapDelay = 0;
         seq.dilla.swing = 0;
         seq.dilla.jitter = 0;
+        for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) seq.trackSwing[i] = 0;
 
         seq.trackStep[0] = 0;
         int tick = calcTrackTriggerTick(0);
@@ -364,6 +365,7 @@ describe(dilla_timing) {
         seq.dilla.kickNudge = -3;
         seq.dilla.swing = 0;
         seq.dilla.jitter = 0;
+        for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) seq.trackSwing[i] = 0;
         seq.trackStep[0] = 0;
 
         int tick = calcTrackTriggerTick(0);
@@ -378,6 +380,7 @@ describe(dilla_timing) {
         seq.dilla.snareDelay = 5;
         seq.dilla.swing = 0;
         seq.dilla.jitter = 0;
+        for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) seq.trackSwing[i] = 0;
         seq.trackStep[1] = 0;
 
         int tick = calcTrackTriggerTick(1);
@@ -392,6 +395,7 @@ describe(dilla_timing) {
         seq.dilla.kickNudge = 0;
         seq.dilla.swing = 6;
         seq.dilla.jitter = 0;
+        for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) seq.trackSwing[i] = 6;
 
         // Even step (on-beat) - no swing
         seq.trackStep[0] = 0;
@@ -411,6 +415,7 @@ describe(dilla_timing) {
         seq.dilla.kickNudge = 0;
         seq.dilla.swing = 0;
         seq.dilla.jitter = 0;
+        for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) seq.trackSwing[i] = 0;
         seq.trackStep[0] = 3;
 
         Pattern *p = seqCurrentPattern();
@@ -428,6 +433,7 @@ describe(dilla_timing) {
         seq.dilla.kickNudge = -100;  // Extremely early
         seq.dilla.swing = 0;
         seq.dilla.jitter = 0;
+        for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) seq.trackSwing[i] = 0;
         seq.trackStep[0] = 0;
 
         int tick = calcTrackTriggerTick(0);
@@ -450,6 +456,7 @@ describe(dilla_timing) {
         seq.dilla.kickNudge = -2;
         seq.dilla.swing = 4;
         seq.dilla.jitter = 0;
+        for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) seq.trackSwing[i] = 4;
         seq.trackStep[0] = 1;  // Odd step for swing
 
         int tick = calcTrackTriggerTick(0);

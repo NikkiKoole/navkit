@@ -49,17 +49,19 @@ static float _processDubLoopCore(float selectedInput, float dt) {
     float speedDiff = p->speedTarget - dubLoopCurrentSpeed;
     dubLoopCurrentSpeed += speedDiff * p->speedSlew;
     
-    // Add wow & flutter to speed
+    // Wow & flutter modulate the read offset (not write speed) for audible wobble.
+    // Wow = slow tape-stretch (~0.4 Hz), Flutter = fast motor jitter (~5 Hz).
     float speed = dubLoopCurrentSpeed;
+    float wowFlutterOffset = 0.0f;  // in samples, applied to read position
     if (p->wow > 0.0f) {
         dubLoopWowPhase += 0.4f * dt;  // ~0.4 Hz
         if (dubLoopWowPhase > 1.0f) dubLoopWowPhase -= 1.0f;
-        speed *= 1.0f + sinf(dubLoopWowPhase * 2.0f * PI) * p->wow * 0.02f;
+        wowFlutterOffset += sinf(dubLoopWowPhase * 2.0f * PI) * p->wow * 40.0f;  // ±40 samples at wow=1
     }
     if (p->flutter > 0.0f) {
         dubLoopFlutterPhase += 5.0f * dt;  // ~5 Hz
         if (dubLoopFlutterPhase > 1.0f) dubLoopFlutterPhase -= 1.0f;
-        speed *= 1.0f + sinf(dubLoopFlutterPhase * 2.0f * PI) * p->flutter * 0.005f;
+        wowFlutterOffset += sinf(dubLoopFlutterPhase * 2.0f * PI) * p->flutter * 8.0f;  // ±8 samples at flutter=1
     }
     
     // Read from all heads and mix (with per-head drift for woozy feel)
@@ -84,8 +86,9 @@ static float _processDubLoopCore(float selectedInput, float dt) {
         if (delaySamples < 1.0f) delaySamples = 1.0f;
         if (delaySamples > DUB_LOOP_BUFFER_SIZE - 1) delaySamples = DUB_LOOP_BUFFER_SIZE - 1;
         
-        float readPos = dubLoopWritePos - delaySamples;
+        float readPos = dubLoopWritePos - delaySamples + wowFlutterOffset;
         if (readPos < 0) readPos += DUB_LOOP_BUFFER_SIZE;
+        if (readPos >= DUB_LOOP_BUFFER_SIZE) readPos -= DUB_LOOP_BUFFER_SIZE;
         
         float sample = hermiteInterpolate(dubLoopBuffer, DUB_LOOP_BUFFER_SIZE, readPos);
         wet += sample * p->headLevel[h];
@@ -93,52 +96,60 @@ static float _processDubLoopCore(float selectedInput, float dt) {
     if (p->numHeads > 1) wet /= (float)p->numHeads;
     
     // === CUMULATIVE DEGRADATION ===
-    // Each echo generation gets progressively worse
-    // echoAge tracks how "old" the content in the buffer is
+    // Each echo generation gets progressively worse.
+    // echoAge tracks how "old" the content in the buffer is (0 = fresh, caps at MAX_ECHOES).
     float feedbackSample = wet;
-    
-    // Calculate degradation multiplier based on echo age
-    float degradeMult = 1.0f + dubLoopEchoAge * p->degradeRate;
-    
-    // Saturation increases with age (tape compression gets worse)
-    float ageSaturation = p->saturation * degradeMult;
-    if (ageSaturation > 0.0f) {
-        float satAmount = 1.0f + ageSaturation * 2.0f;
-        feedbackSample = tanhf(feedbackSample * satAmount) / (satAmount * 0.5f + 0.5f);
+
+    // Degradation multiplier: 1.0 at age 0, grows gently with age.
+    // Capped so the signal doesn't get destroyed — just gently worn.
+    float degradeMult = 1.0f + dubLoopEchoAge * p->degradeRate * 0.5f;
+    if (degradeMult > 4.0f) degradeMult = 4.0f;
+
+    // Saturation: tape compression. tanh soft-clip with gain compensation.
+    if (p->saturation > 0.001f) {
+        float satAmount = 1.0f + p->saturation * degradeMult;
+        feedbackSample = tanhf(feedbackSample * satAmount) / tanhf(satAmount);
     }
-    
-    // Tone - lowpass gets darker with age (high frequency loss compounds)
-    float ageToneHigh = p->toneHigh / degradeMult;  // Lower = darker
-    if (ageToneHigh < 0.1f) ageToneHigh = 0.1f;
-    float lpCoef = ageToneHigh * ageToneHigh * 0.5f + 0.1f;
-    dubLoopLpState += lpCoef * (feedbackSample - dubLoopLpState);
-    feedbackSample = dubLoopLpState;
-    
-    // Tone - highpass for low frequency loss (prevents mud buildup)
-    float hpCoef = p->toneLow * 0.01f * degradeMult;
-    dubLoopHpState += hpCoef * (feedbackSample - dubLoopHpState);
-    feedbackSample = feedbackSample - dubLoopHpState * p->toneLow;
-    
-    // Noise increases with age
-    if (p->noise > 0.0f) {
+
+    // Tone — lowpass: toneHigh controls cutoff (1.0 = bright, 0.0 = very dark).
+    // Gets darker with age (high frequencies lost per pass, like real tape).
+    // Use proper 1-pole coefficient: 2πf/sr, where f maps toneHigh to ~200-8000Hz.
+    {
+        float toneFreq = 200.0f + (p->toneHigh / degradeMult) * 7800.0f; // 200-8000 Hz
+        if (toneFreq < 200.0f) toneFreq = 200.0f;
+        float lpCoef = 2.0f * PI * toneFreq / SAMPLE_RATE;
+        if (lpCoef > 0.99f) lpCoef = 0.99f;
+        dubLoopLpState += lpCoef * (feedbackSample - dubLoopLpState);
+        feedbackSample = dubLoopLpState;
+    }
+
+    // Tone — highpass: prevents mud/DC buildup (fixed at ~30Hz, subtle).
+    {
+        float hpCoef = 2.0f * PI * 30.0f / SAMPLE_RATE;
+        dubLoopHpState += hpCoef * (feedbackSample - dubLoopHpState);
+        feedbackSample = feedbackSample - dubLoopHpState;
+    }
+
+    // Noise: tape hiss, increases with age.
+    if (p->noise > 0.001f) {
         float ageNoise = p->noise * degradeMult;
-        float noise = dubLoopNoise() * ageNoise * 0.02f;
-        feedbackSample += noise;
+        feedbackSample += dubLoopNoise() * ageNoise * 0.01f;
     }
     
     // Write to tape: input + feedback
     float toTape = 0.0f;
     if (p->recording && fabsf(selectedInput) > 0.001f) {
         toTape += selectedInput * p->inputGain;
-        // Fresh input resets the echo age (new content)
-        dubLoopEchoAge = dubLoopEchoAge * 0.95f;  // Blend toward fresh
+        // Fresh input pulls echo age back toward 0 (new content refreshes the tape)
+        dubLoopEchoAge *= 0.98f;
     }
     toTape += feedbackSample * p->feedback;
-    
-    // Age the echo content (each pass through increases age)
-    if (p->feedback > 0.0f) {
-        dubLoopEchoAge += p->feedback * 0.1f;  // Age proportional to feedback
-        if (dubLoopEchoAge > DUB_LOOP_MAX_ECHOES) dubLoopEchoAge = DUB_LOOP_MAX_ECHOES;
+
+    // Age the echo content. Grows slowly — caps at a reasonable level
+    // so the degradation effects plateau instead of killing the signal.
+    if (p->feedback > 0.01f) {
+        dubLoopEchoAge += dt * 0.5f;  // Time-based aging, not per-sample
+        if (dubLoopEchoAge > 8.0f) dubLoopEchoAge = 8.0f;
     }
     
     // Clip to prevent runaway
@@ -156,6 +167,25 @@ static float _processDubLoopCore(float selectedInput, float dt) {
     }
     
     return wet;
+}
+
+// Reset dub loop: clear tape buffer and all internal state.
+// Call when the tape gets stuck or you want a clean slate.
+// Uses macros (which resolve to fxCtx->field).
+static void dubLoopReset(void) {
+    _ensureFxCtx();
+    memset(dubLoopBuffer, 0, DUB_LOOP_BUFFER_SIZE * sizeof(float));
+    dubLoopWritePos = 0;
+    dubLoopLpState = 0.0f;
+    dubLoopHpState = 0.0f;
+    dubLoopCurrentSpeed = dubLoop.speedTarget;
+    dubLoopWowPhase = 0.0f;
+    dubLoopFlutterPhase = 0.0f;
+    dubLoopEchoAge = 0.0f;
+    for (int i = 0; i < DUB_LOOP_MAX_HEADS; i++) {
+        dubLoopDriftPhase[i] = 0.0f;
+        dubLoopDriftValue[i] = 0.0f;
+    }
 }
 
 // Process dub loop with summed drum/synth buses

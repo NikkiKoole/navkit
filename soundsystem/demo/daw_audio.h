@@ -104,6 +104,21 @@ static void DawAudioCallback(void *buffer, unsigned int frames) {
             }
         }
 
+        // Sidechain envelope (note-triggered): apply ducking
+        if (fx.scEnvEnabled) {
+            float gainMult = updateSidechainEnvelopeNote(dt);
+            switch (fx.scEnvTarget) {
+                case SIDECHAIN_TGT_BASS:  busInputs[BUS_BASS] = applySidechainEnvelopeDucking(busInputs[BUS_BASS], gainMult); break;
+                case SIDECHAIN_TGT_LEAD:  busInputs[BUS_LEAD] = applySidechainEnvelopeDucking(busInputs[BUS_LEAD], gainMult); break;
+                case SIDECHAIN_TGT_CHORD: busInputs[BUS_CHORD] = applySidechainEnvelopeDucking(busInputs[BUS_CHORD], gainMult); break;
+                default:
+                    busInputs[BUS_BASS]  = applySidechainEnvelopeDucking(busInputs[BUS_BASS], gainMult);
+                    busInputs[BUS_LEAD]  = applySidechainEnvelopeDucking(busInputs[BUS_LEAD], gainMult);
+                    busInputs[BUS_CHORD] = applySidechainEnvelopeDucking(busInputs[BUS_CHORD], gainMult);
+                    break;
+            }
+        }
+
         // Full mixer → bus FX → master FX chain
         float sample = processMixerOutput(busInputs, dt);
         sample *= daw.masterVol;
@@ -195,6 +210,17 @@ static void dawSyncEngineState(void) {
     fx.eqHighFreq      = daw.masterFx.eqHighFreq;
     fx.subBassBoost    = daw.masterFx.subBassBoost;
 
+    // Multiband
+    fx.mbEnabled        = daw.masterFx.mbOn;
+    fx.mbLowCrossover   = daw.masterFx.mbLowCross;
+    fx.mbHighCrossover  = daw.masterFx.mbHighCross;
+    fx.mbLowGain        = daw.masterFx.mbLowGain;
+    fx.mbMidGain        = daw.masterFx.mbMidGain;
+    fx.mbHighGain       = daw.masterFx.mbHighGain;
+    fx.mbLowDrive       = daw.masterFx.mbLowDrive;
+    fx.mbMidDrive       = daw.masterFx.mbMidDrive;
+    fx.mbHighDrive      = daw.masterFx.mbHighDrive;
+
     // Master Compressor
     fx.compEnabled     = daw.masterFx.compOn;
     fx.compThreshold   = daw.masterFx.compThreshold;
@@ -203,7 +229,7 @@ static void dawSyncEngineState(void) {
     fx.compRelease     = daw.masterFx.compRelease;
     fx.compMakeup      = daw.masterFx.compMakeup;
 
-    // Sidechain
+    // Sidechain (audio-follower mode)
     fx.sidechainEnabled = daw.sidechain.on;
     fx.sidechainSource  = daw.sidechain.source;
     fx.sidechainTarget  = daw.sidechain.target;
@@ -211,6 +237,17 @@ static void dawSyncEngineState(void) {
     fx.sidechainAttack  = daw.sidechain.attack;
     fx.sidechainRelease = daw.sidechain.release;
     fx.sidechainHPFreq  = daw.sidechain.hpFreq;
+
+    // Sidechain envelope (note-triggered mode)
+    fx.scEnvEnabled = daw.sidechain.envOn;
+    fx.scEnvSource  = daw.sidechain.envSource;
+    fx.scEnvTarget  = daw.sidechain.envTarget;
+    fx.scEnvDepth   = daw.sidechain.envDepth;
+    fx.scEnvAttack  = daw.sidechain.envAttack;
+    fx.scEnvHold    = daw.sidechain.envHold;
+    fx.scEnvRelease = daw.sidechain.envRelease;
+    fx.scEnvCurve   = daw.sidechain.envCurve;
+    fx.scEnvHPFreq  = daw.sidechain.envHPFreq;
 
     // Per-bus mixer params
     for (int b = 0; b < NUM_BUSES; b++) {
@@ -240,11 +277,27 @@ static void dawSyncEngineState(void) {
 
     // Tape/dub loop
     dubLoop.enabled      = daw.tapeFx.enabled;
-    dubLoop.headTime[0]  = daw.tapeFx.headTime;  // DAW exposes single head time
+    dubLoop.headTime[0]  = daw.tapeFx.headTime;
     dubLoop.feedback     = daw.tapeFx.feedback;
     dubLoop.mix          = daw.tapeFx.mix;
     dubLoop.inputSource  = daw.tapeFx.inputSource;
     dubLoop.saturation   = daw.tapeFx.saturation;
+    dubLoop.toneHigh     = daw.tapeFx.toneHigh;
+    dubLoop.noise        = daw.tapeFx.noise;
+    dubLoop.degradeRate  = daw.tapeFx.degradeRate;
+    dubLoop.wow          = daw.tapeFx.wow;
+    dubLoop.flutter      = daw.tapeFx.flutter;
+    dubLoop.drift        = daw.tapeFx.drift;
+    dubLoop.speedTarget  = daw.tapeFx.speedTarget;
+    dubLoop.preReverb    = daw.tapeFx.preReverb;
+
+    // Rewind
+    rewind.rewindTime    = daw.tapeFx.rewindTime;
+    rewind.curve         = daw.tapeFx.rewindCurve;
+    rewind.minSpeed      = daw.tapeFx.rewindMinSpeed;
+    rewind.vinylNoise    = daw.tapeFx.rewindVinyl;
+    rewind.wobble        = daw.tapeFx.rewindWobble;
+    rewind.filterSweep   = daw.tapeFx.rewindFilter;
 }
 
 // Map patch index (0-7) to bus index for voice routing
@@ -289,6 +342,20 @@ static void dawReleaseVoicesForPatch(int patchIdx) {
 // Temporarily patches SynthPatch fields for decay/tone, triggers, then restores
 static void dawDrumTriggerGeneric(int trackIdx, int busIdx, float vel, float pitch) {
     (void)pitch;
+
+    // Sidechain envelope: trigger if this drum matches the source
+    if (fx.scEnvEnabled) {
+        bool match = false;
+        switch (fx.scEnvSource) {
+            case SIDECHAIN_SRC_KICK:  match = (trackIdx == 0); break;
+            case SIDECHAIN_SRC_SNARE: match = (trackIdx == 1); break;
+            case SIDECHAIN_SRC_CLAP:  match = (trackIdx == 3); break;
+            case SIDECHAIN_SRC_HIHAT: match = (trackIdx == 2); break;
+            default: match = true; break; // ALL
+        }
+        if (match) triggerSidechainEnvelope();
+    }
+
     SynthPatch *p = &daw.patches[trackIdx];
     float pVol = plockValue(PLOCK_VOLUME, vel);
     seqSoundLog("DAW_DRUM  track=%d bus=%d vel=%.2f pVol=%.2f freq=%.1f mute=%d solo=%d",
@@ -530,6 +597,7 @@ static void dawInitSequencer(void) {
     seq.dilla.clapDelay = 0;
     seq.dilla.swing = 0;
     seq.dilla.jitter = 0;
+    for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) seq.trackSwing[i] = 0;
     seq.humanize.timingJitter = 0;
     seq.humanize.velocityJitter = 0.0f;
 }
@@ -567,6 +635,8 @@ static void dawSyncSequencer(void) {
     if (ovr->flags & PAT_OVR_GROOVE) {
         seq.dilla.swing = ovr->swing;
         seq.dilla.jitter = ovr->jitter;
+        for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++)
+            seq.trackSwing[t] = ovr->swing;
     }
     if (ovr->flags & PAT_OVR_MUTE) {
         for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++)
