@@ -130,9 +130,51 @@ From `audit/code-simplifier-audit-soundsystem.md`:
 
 ---
 
-## Known Limitations
+## Next Up — Audio & Modulation
 
-- **Bus pan is non-functional.** The pan knob exists in the UI and the value is stored on `BusEffects.pan`, but the entire audio pipeline is mono (single float per sample). Making pan work requires: stereo bus outputs (L/R pairs), stereo master effects chain, and 2-channel audio buffer output. Medium-large effort.
+### 1. Stereo Pipeline + Pan (Medium-Large)
+
+Bus pan knob exists in UI but does nothing — entire pipeline is mono. Requires:
+- `float[2]` (L/R) bus outputs instead of `float`
+- `processBusEffects` returns stereo pair, applies `cos/sin` pan law
+- All master effects need stereo variants (or process L/R independently)
+- Audio callback writes 2-channel buffer (`d[i*2]`, `d[i*2+1]`)
+- WAV export writes stereo
+- Unison spread could auto-pan voices left/right
+
+**Incremental approach:** Start with just bus pan (apply pan law after `processBusEffects`, before master sum). Master effects stay mono (sum L+R → process → split back). This gets 80% of the value with 30% of the work.
+
+### 2. LFO → UI Reflection (Medium)
+
+Currently LFOs modulate voice-level params but UI shows static patch values. Want: sliders/knobs visually move with the LFO modulation.
+
+**Challenge:** 32 voices, each with independent LFO phase. Which voice to show?
+
+**Approach options:**
+- (a) Show the *most recent* voice's modulated value (track `lastTriggeredVoice` per track)
+- (b) Show the *average* across active voices on this track
+- (c) Show a separate "mod indicator" dot/line next to each slider (doesn't move the slider itself, just shows modulation range)
+
+Option (c) is cleanest — draw a small orange marker at the modulated position next to each LFO-affected slider. Needs: per-frame readback of one active voice's filter/reso/amp/pitch/FM LFO values, then overlay in the Patch tab UI.
+
+**Implementation:** In the render loop, find one active voice for the selected track, read its `filterLfoPhase`/`resoLfoPhase`/etc, compute current mod value, pass to UI draw code as an overlay marker.
+
+### 3. Mod Matrix (Large)
+
+Arbitrary source → destination routing. Currently each LFO has a fixed target (filter, reso, amp, pitch, FM). A mod matrix lets any modulation source control any parameter.
+
+**Sources:** LFO 1-5, Envelope, Velocity, Note number, Aftertouch, MIDI CC, Random
+**Destinations:** Any `p_` field on SynthPatch (filter cutoff, resonance, volume, FM index, pitch, PWM, etc.)
+
+**Design questions:**
+- How many slots? (8-16 typical)
+- Per-voice or global? (per-voice = proper, global = simpler)
+- UI: list of rows with source/dest dropdowns + amount slider?
+- Save/load: array of `{source, dest, amount}` tuples in patch
+
+**Existing doc:** Referenced in roadmap.md as "Mod matrix". Check `docs/` for any spec.
+
+This subsumes the current fixed LFO system — the 5 hardcoded LFO targets become just default mod matrix routings. But it's a big refactor of the voice processing pipeline.
 
 ---
 
