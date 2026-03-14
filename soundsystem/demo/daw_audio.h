@@ -515,8 +515,11 @@ static void dawSyncSequencer(void) {
     seq.bpm = daw.transport.bpm;
     seq.playing = daw.transport.playing;
 
+    // Pattern lock: force pattern loop when recording in song mode
+    bool patLocked = recPatternLock && recMode == REC_RECORDING;
+
     // Song mode: push arrangement chain to sequencer
-    if (daw.song.songMode && daw.song.length > 0) {
+    if (daw.song.songMode && daw.song.length > 0 && !patLocked) {
         for (int i = 0; i < daw.song.length; i++) {
             seq.chain[i] = daw.song.patterns[i];
             seq.chainLoops[i] = daw.song.loopsPerSection[i];

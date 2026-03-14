@@ -2,15 +2,15 @@
 
 [song]
 format = 2
-bpm = 120
-stepCount = 16
+bpm = 75.3
+stepCount = 32
 grooveSwing = 0
 grooveJitter = 0
 
 [scale]
 enabled = false
-root = 0
-type = 0
+root = 3
+type = 2
 
 [groove]
 kickNudge = 0
@@ -23,12 +23,12 @@ melodyTimingJitter = 0
 melodyVelocityJitter = 0
 
 [settings]
-masterVol = 0.8
+masterVol = 0.988932
 voiceRandomVowel = false
 
 [patch.0]
-name = "Kick"
-waveType = fm
+name = "808 Kick"
+waveType = granular
 scwIndex = 0
 attack = 0
 decay = 0.5
@@ -43,9 +43,9 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
-filterCutoff = 1
-filterResonance = 0
-filterType = 0
+filterCutoff = 0.188346
+filterResonance = 0.727734
+filterType = 2
 filterEnvAmt = 0
 filterEnvAttack = 0.01
 filterEnvDecay = 0.2
@@ -74,8 +74,8 @@ arpChord = 1
 unisonCount = 1
 unisonDetune = 10
 unisonMix = 0.5
-monoMode = true
-glideTime = 0.417891
+monoMode = false
+glideTime = 0.1
 pluckBrightness = 0.5
 pluckDamping = 0.996
 pluckDamp = 0
@@ -105,10 +105,10 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
-granularGrainSize = 50
-granularDensity = 20
-granularPosition = 0.5
-granularPosRandom = 0.1
+granularGrainSize = 140.734
+granularDensity = 100
+granularPosition = 0.00300778
+granularPosRandom = 1
 granularPitch = 1
 granularPitchRandom = 0
 granularAmpRandom = 0.1
@@ -172,7 +172,7 @@ retriggerCurve = 0
 phaseReset = false
 noiseLPBypass = false
 noiseType = 0
-useTriggerFreq = true
+useTriggerFreq = false
 triggerFreq = 50
 choke = false
 analogRolloff = false
@@ -187,7 +187,7 @@ accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
 
 [patch.1]
-name = "Snare"
+name = "808 Snare"
 waveType = fm
 scwIndex = 0
 attack = 0
@@ -347,7 +347,7 @@ accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
 
 [patch.2]
-name = "CH"
+name = "808 CH"
 waveType = square
 scwIndex = 0
 attack = 0
@@ -507,7 +507,7 @@ accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
 
 [patch.3]
-name = "Clap"
+name = "808 Clap"
 waveType = noise
 scwIndex = 0
 attack = 0
@@ -667,13 +667,13 @@ accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
 
 [patch.4]
-name = "Bass"
-waveType = square
+name = "Acid"
+waveType = saw
 scwIndex = 0
-attack = 0.01
-decay = 0.1
-sustain = 0.5
-release = 0.3
+attack = 0.003
+decay = 3
+sustain = 0
+release = 0.15
 expRelease = false
 expDecay = false
 oneShot = false
@@ -683,21 +683,21 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
-filterCutoff = 0.4
-filterResonance = 0
+filterCutoff = 0.388477
+filterResonance = 0.821094
 filterType = 0
-filterEnvAmt = 0
+filterEnvAmt = 0.6
 filterEnvAttack = 0.01
-filterEnvDecay = 0.2
+filterEnvDecay = 0.4
 filterKeyTrack = 0
-filterLfoRate = 0
-filterLfoDepth = 0
-filterLfoShape = 0
-filterLfoSync = 0
+filterLfoRate = 4.19844
+filterLfoDepth = 0.530937
+filterLfoShape = 1
+filterLfoSync = 1
 resoLfoRate = 0
 resoLfoDepth = 0
 resoLfoShape = 0
-resoLfoSync = 0
+resoLfoSync = 7
 ampLfoRate = 0
 ampLfoDepth = 0
 ampLfoShape = 0
@@ -715,7 +715,7 @@ unisonCount = 1
 unisonDetune = 10
 unisonMix = 0.5
 monoMode = true
-glideTime = 0.1
+glideTime = 0.06
 pluckBrightness = 0.5
 pluckDamping = 0.996
 pluckDamp = 0
@@ -822,28 +822,28 @@ ringModFreq = 2
 wavefoldAmount = 0
 hardSync = false
 hardSyncRatio = 1.5
-acidMode = false
+acidMode = true
 accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
 
 [patch.5]
-name = "Lead"
-waveType = saw
+name = "Chip Lead"
+waveType = square
 scwIndex = 0
-attack = 0.01
+attack = 0.005
 decay = 0.1
-sustain = 0.5
-release = 0.3
+sustain = 0.7
+release = 0.15
 expRelease = false
 expDecay = false
 oneShot = false
 volume = 0.5
 pulseWidth = 0.5
-pwmRate = 3
-pwmDepth = 0
+pwmRate = 2
+pwmDepth = 0.1
 vibratoRate = 5
-vibratoDepth = 0.3
-filterCutoff = 1
+vibratoDepth = 0
+filterCutoff = 0.8
 filterResonance = 0
 filterType = 0
 filterEnvAmt = 0
@@ -871,7 +871,7 @@ arpMode = 0
 arpRateDiv = 1
 arpRate = 8
 arpChord = 1
-unisonCount = 2
+unisonCount = 1
 unisonDetune = 10
 unisonMix = 0.5
 monoMode = false
@@ -987,13 +987,13 @@ accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
 
 [patch.6]
-name = "Chord"
-waveType = additive
+name = "Strings"
+waveType = saw
 scwIndex = 0
-attack = 0.05
-decay = 0.1
-sustain = 0.5
-release = 0.8
+attack = 0.3
+decay = 0.2
+sustain = 0.7
+release = 0.5
 expRelease = false
 expDecay = false
 oneShot = false
@@ -1002,8 +1002,8 @@ pulseWidth = 0.5
 pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
-vibratoDepth = 0
-filterCutoff = 1
+vibratoDepth = 0.02
+filterCutoff = 0.5
 filterResonance = 0
 filterType = 0
 filterEnvAmt = 0
@@ -1031,11 +1031,11 @@ arpMode = 0
 arpRateDiv = 1
 arpRate = 8
 arpChord = 1
-unisonCount = 1
-unisonDetune = 10
+unisonCount = 4
+unisonDetune = 20
 unisonMix = 0.5
-monoMode = true
-glideTime = 0.45968
+monoMode = false
+glideTime = 0.1
 pluckBrightness = 0.5
 pluckDamping = 0.996
 pluckDamp = 0
@@ -1147,8 +1147,7 @@ accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
 
 [patch.7]
-name = "Bird"
-waveType = bird
+waveType = saw
 scwIndex = 0
 attack = 0.01
 decay = 0.1
@@ -1254,7 +1253,7 @@ pipeBreath = 0.5
 pipeEmbouchure = 0.5
 pipeBore = 0.5
 pipeOverblow = 0
-birdType = 4
+birdType = 0
 birdChirpRange = 1
 birdTrillRate = 0
 birdTrillDepth = 0
@@ -1345,7 +1344,7 @@ delayFB1 = 0.3
 delayMix1 = 0.3
 vol2 = 0.8
 pan2 = 0
-reverbSend2 = 0
+reverbSend2 = 0.0282996
 mute2 = false
 solo2 = false
 filterOn2 = false
@@ -1363,7 +1362,7 @@ delayFB2 = 0.3
 delayMix2 = 0.3
 vol3 = 0.8
 pan3 = 0
-reverbSend3 = 0
+reverbSend3 = 0.0408839
 mute3 = false
 solo3 = false
 filterOn3 = false
@@ -1381,25 +1380,25 @@ delayFB3 = 0.3
 delayMix3 = 0.3
 vol4 = 0.8
 pan4 = 0
-reverbSend4 = 0
+reverbSend4 = 0.479498
 mute4 = false
 solo4 = false
-filterOn4 = false
-filterCut4 = 1
-filterRes4 = 0
+filterOn4 = true
+filterCut4 = 0.448047
+filterRes4 = 0.55625
 filterType4 = 0
-distOn4 = false
-distDrive4 = 2
+distOn4 = true
+distDrive4 = 4
 distMix4 = 0.5
 delayOn4 = false
-delaySync4 = false
-delaySyncDiv4 = 0
+delaySync4 = true
+delaySyncDiv4 = 2
 delayTime4 = 0.3
 delayFB4 = 0.3
 delayMix4 = 0.3
 vol5 = 0.8
 pan5 = 0
-reverbSend5 = 0
+reverbSend5 = 0.246478
 mute5 = false
 solo5 = false
 filterOn5 = false
@@ -1530,9 +1529,61 @@ loopsPerPattern = 2
 songMode = false
 
 [pattern.0]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-m track=2 step=0 note=C4 vel=0.8 gate=1
-m track=2 step=4 note=E5 vel=0.8 gate=1
-m track=2 step=7 note=C4 vel=0.8 gate=1
-m track=2 step=10 note=C4 vel=0.8 gate=1
+drumTrackLength = 32 16 16 16
+melodyTrackLength = 32 32 32
+d track=0 step=0 vel=0.796
+d track=0 step=4 vel=0.8
+d track=0 step=8 vel=0.792
+d track=0 step=12 vel=0.796
+d track=0 step=16 vel=0.8
+d track=0 step=20 vel=0.8
+d track=0 step=23 vel=0.8
+d track=0 step=26 vel=0.8
+d track=0 step=28 vel=0.8
+d track=0 step=29 vel=0.8
+d track=0 step=31 vel=0.8
+d track=1 step=0 vel=0.8
+d track=1 step=1 vel=0.8 cond=1:2
+d track=1 step=2 vel=0.8 cond=1:2
+d track=1 step=3 vel=0.8 cond=1:2
+d track=1 step=4 vel=0.788
+d track=1 step=12 vel=0.8
+d track=2 step=0 vel=0.71
+d track=2 step=2 vel=0.49
+d track=2 step=4 vel=0.733
+d track=2 step=6 vel=0.49
+d track=2 step=8 vel=0.725
+d track=2 step=10 vel=0.486
+d track=2 step=12 vel=0.714
+d track=2 step=14 vel=0.49
+m track=0 step=2 note=D3 vel=0.824 gate=1
+m track=0 step=3 note=D3 vel=0.765 gate=1 nudge=2
+m track=0 step=4 note=E3 vel=0.788 gate=1
+m track=0 step=5 note=G3 vel=0.804 gate=1 slide
+m track=0 step=6 note=E2 vel=0.824 gate=3
+m track=0 step=7 note=A2 vel=0.949 gate=1 accent
+m track=0 step=8 note=A1 vel=0.729 gate=1
+m track=0 step=10 note=A2 vel=0.741 gate=2
+m track=0 step=11 note=A3 vel=0.71 gate=2 nudge=2
+m track=0 step=12 note=E2 vel=0.808 gate=1 slide
+m track=0 step=13 note=E3 vel=0.949 gate=1 slide accent
+m track=0 step=15 note=D3 vel=0.761 gate=1 nudge=1
+m track=0 step=16 note=E3 vel=0.706 gate=2 slide
+m track=0 step=17 note=E2 vel=0.753 gate=1
+m track=0 step=18 note=G2 vel=0.733 gate=1 slide nudge=3
+m track=0 step=19 note=D3 vel=0.827 gate=1
+m track=0 step=20 note=B2 vel=0.702 gate=1
+m track=0 step=21 note=A2 vel=0.733 gate=1
+m track=0 step=23 note=E2 vel=0.769 gate=2
+m track=0 step=24 note=E2 vel=0.8 gate=3 slide accent
+m track=0 step=25 note=E2 vel=0.753 gate=2 accent nudge=-2
+m track=0 step=26 note=D#2 vel=0.827 gate=3 accent
+m track=0 step=28 note=E2 vel=0.949 gate=1 accent
+m track=0 step=29 note=B2 vel=0.949 gate=1 accent
+m track=0 step=31 note=B1 vel=0.733 gate=2 nudge=-2
+p track=4 step=25 param=filterEnv val=0.930032
+p track=4 step=25 param=reso val=1
+p track=4 step=25 param=cutoff val=0.876697
+p track=4 step=26 param=cutoff val=0.185512
+p track=4 step=26 param=reso val=0.621527
+p track=4 step=26 param=decay val=1.43317
