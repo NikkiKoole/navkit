@@ -1033,34 +1033,35 @@ static void initInstrumentPresets(void) {
     // PERCUSSION PRESETS — Tier 1 (66-70)
     // ========================================================================
 
-    // 66: Ride Cymbal — 6-osc metallic, lower ratios than HH, long decay, LP filtered
+    // 66: Ride Cymbal — 6-osc metallic, higher ratios for shimmer, long decay
     instrumentPresets[66].name = "Ride Cymbal";
     instrumentPresets[66].patch.p_waveType = WAVE_SQUARE;
-    instrumentPresets[66].patch.p_osc2Ratio = 1.34f;
-    instrumentPresets[66].patch.p_osc2Level = 0.9f;
-    instrumentPresets[66].patch.p_osc3Ratio = 1.87f;
+    instrumentPresets[66].patch.p_osc2Ratio = 2.12f;
+    instrumentPresets[66].patch.p_osc2Level = 0.85f;
+    instrumentPresets[66].patch.p_osc3Ratio = 3.05f;
     instrumentPresets[66].patch.p_osc3Level = 0.8f;
-    instrumentPresets[66].patch.p_osc4Ratio = 2.42f;
+    instrumentPresets[66].patch.p_osc4Ratio = 4.18f;
     instrumentPresets[66].patch.p_osc4Level = 0.7f;
-    instrumentPresets[66].patch.p_osc5Ratio = 3.15f;
-    instrumentPresets[66].patch.p_osc5Level = 0.5f;
-    instrumentPresets[66].patch.p_osc6Ratio = 3.89f;
-    instrumentPresets[66].patch.p_osc6Level = 0.4f;
-    instrumentPresets[66].patch.p_noiseMix = 0.15f;
-    instrumentPresets[66].patch.p_noiseTone = 0.5f;
-    instrumentPresets[66].patch.p_noiseDecay = 0.01f;
+    instrumentPresets[66].patch.p_osc5Ratio = 5.41f;
+    instrumentPresets[66].patch.p_osc5Level = 0.6f;
+    instrumentPresets[66].patch.p_osc6Ratio = 6.93f;
+    instrumentPresets[66].patch.p_osc6Level = 0.5f;
+    instrumentPresets[66].patch.p_noiseMix = 0.25f;
+    instrumentPresets[66].patch.p_noiseTone = 0.8f;
+    instrumentPresets[66].patch.p_noiseHP = 0.25f;
+    instrumentPresets[66].patch.p_noiseDecay = 0.4f;
     instrumentPresets[66].patch.p_attack = 0.001f;
-    instrumentPresets[66].patch.p_decay = 1.5f;
+    instrumentPresets[66].patch.p_decay = 2.5f;
     instrumentPresets[66].patch.p_sustain = 0.0f;
-    instrumentPresets[66].patch.p_release = 0.5f;
+    instrumentPresets[66].patch.p_release = 1.0f;
     instrumentPresets[66].patch.p_expDecay = true;
-    instrumentPresets[66].patch.p_filterType = 0; // SVF LP
-    instrumentPresets[66].patch.p_filterCutoff = 0.55f;
-    instrumentPresets[66].patch.p_drive = 0.15f;
-    instrumentPresets[66].patch.p_volume = 0.35f;
+    instrumentPresets[66].patch.p_filterType = 1; // SVF HP — cut low-end rumble
+    instrumentPresets[66].patch.p_filterCutoff = 0.35f;
+    instrumentPresets[66].patch.p_drive = 0.1f;
+    instrumentPresets[66].patch.p_volume = 0.4f;
     instrumentPresets[66].patch.p_phaseReset = true;
     instrumentPresets[66].patch.p_useTriggerFreq = true;
-    instrumentPresets[66].patch.p_triggerFreq = 340.0f;
+    instrumentPresets[66].patch.p_triggerFreq = 540.0f;
 
     // 67: Brush Snare — noise-heavy, soft attack, gentle swish
     instrumentPresets[67].name = "Brush Snare";
