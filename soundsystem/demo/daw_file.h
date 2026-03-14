@@ -61,6 +61,8 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _di(f, "ampLfoShape", p->p_ampLfoShape); _di(f, "ampLfoSync", p->p_ampLfoSync);
     _dw(f, "pitchLfoRate", p->p_pitchLfoRate); _dw(f, "pitchLfoDepth", p->p_pitchLfoDepth);
     _di(f, "pitchLfoShape", p->p_pitchLfoShape); _di(f, "pitchLfoSync", p->p_pitchLfoSync);
+    _dw(f, "filterLfoPhaseOffset", p->p_filterLfoPhaseOffset); _dw(f, "resoLfoPhaseOffset", p->p_resoLfoPhaseOffset);
+    _dw(f, "ampLfoPhaseOffset", p->p_ampLfoPhaseOffset); _dw(f, "pitchLfoPhaseOffset", p->p_pitchLfoPhaseOffset);
     _db(f, "arpEnabled", p->p_arpEnabled); _di(f, "arpMode", p->p_arpMode);
     _di(f, "arpRateDiv", p->p_arpRateDiv); _dw(f, "arpRate", p->p_arpRate);
     _di(f, "arpChord", p->p_arpChord);
@@ -87,6 +89,9 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _dw(f, "granularPosRandom", p->p_granularPosRandom); _dw(f, "granularPitch", p->p_granularPitch);
     _dw(f, "granularPitchRandom", p->p_granularPitchRandom); _dw(f, "granularAmpRandom", p->p_granularAmpRandom);
     _dw(f, "granularSpread", p->p_granularSpread); _db(f, "granularFreeze", p->p_granularFreeze);
+    _dw(f, "fmLfoRate", p->p_fmLfoRate); _dw(f, "fmLfoDepth", p->p_fmLfoDepth);
+    _di(f, "fmLfoShape", p->p_fmLfoShape); _di(f, "fmLfoSync", p->p_fmLfoSync);
+    _dw(f, "fmLfoPhaseOffset", p->p_fmLfoPhaseOffset);
     _dw(f, "fmModRatio", p->p_fmModRatio); _dw(f, "fmModIndex", p->p_fmModIndex);
     _dw(f, "fmFeedback", p->p_fmFeedback);
     _dw(f, "fmMod2Ratio", p->p_fmMod2Ratio); _dw(f, "fmMod2Index", p->p_fmMod2Index);
@@ -435,6 +440,10 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"pitchLfoDepth")==0) p->p_pitchLfoDepth = _dpf(val);
     else if (strcmp(key,"pitchLfoShape")==0) p->p_pitchLfoShape = _dpi(val);
     else if (strcmp(key,"pitchLfoSync")==0) p->p_pitchLfoSync = _dpi(val);
+    else if (strcmp(key,"filterLfoPhaseOffset")==0) p->p_filterLfoPhaseOffset = _dpf(val);
+    else if (strcmp(key,"resoLfoPhaseOffset")==0) p->p_resoLfoPhaseOffset = _dpf(val);
+    else if (strcmp(key,"ampLfoPhaseOffset")==0) p->p_ampLfoPhaseOffset = _dpf(val);
+    else if (strcmp(key,"pitchLfoPhaseOffset")==0) p->p_pitchLfoPhaseOffset = _dpf(val);
     else if (strcmp(key,"arpEnabled")==0) p->p_arpEnabled = _dpb(val);
     else if (strcmp(key,"arpMode")==0) p->p_arpMode = _dpi(val);
     else if (strcmp(key,"arpRateDiv")==0) p->p_arpRateDiv = _dpi(val);
@@ -483,6 +492,11 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"granularAmpRandom")==0) p->p_granularAmpRandom = _dpf(val);
     else if (strcmp(key,"granularSpread")==0) p->p_granularSpread = _dpf(val);
     else if (strcmp(key,"granularFreeze")==0) p->p_granularFreeze = _dpb(val);
+    else if (strcmp(key,"fmLfoRate")==0) p->p_fmLfoRate = _dpf(val);
+    else if (strcmp(key,"fmLfoDepth")==0) p->p_fmLfoDepth = _dpf(val);
+    else if (strcmp(key,"fmLfoShape")==0) p->p_fmLfoShape = _dpi(val);
+    else if (strcmp(key,"fmLfoSync")==0) p->p_fmLfoSync = _dpi(val);
+    else if (strcmp(key,"fmLfoPhaseOffset")==0) p->p_fmLfoPhaseOffset = _dpf(val);
     else if (strcmp(key,"fmModRatio")==0) p->p_fmModRatio = _dpf(val);
     else if (strcmp(key,"fmModIndex")==0) p->p_fmModIndex = _dpf(val);
     else if (strcmp(key,"fmFeedback")==0) p->p_fmFeedback = _dpf(val);

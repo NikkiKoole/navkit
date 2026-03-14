@@ -287,6 +287,10 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "pitchLfoDepth", p->p_pitchLfoDepth);
     _sf_writeInt(f, "pitchLfoShape", p->p_pitchLfoShape);
     _sf_writeInt(f, "pitchLfoSync", p->p_pitchLfoSync);
+    _sf_writeFloat(f, "filterLfoPhaseOffset", p->p_filterLfoPhaseOffset);
+    _sf_writeFloat(f, "resoLfoPhaseOffset", p->p_resoLfoPhaseOffset);
+    _sf_writeFloat(f, "ampLfoPhaseOffset", p->p_ampLfoPhaseOffset);
+    _sf_writeFloat(f, "pitchLfoPhaseOffset", p->p_pitchLfoPhaseOffset);
     _sf_writeBool(f, "arpEnabled", p->p_arpEnabled);
     _sf_writeInt(f, "arpMode", p->p_arpMode);
     _sf_writeInt(f, "arpRateDiv", p->p_arpRateDiv);
@@ -335,6 +339,11 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "granularAmpRandom", p->p_granularAmpRandom);
     _sf_writeFloat(f, "granularSpread", p->p_granularSpread);
     _sf_writeBool(f, "granularFreeze", p->p_granularFreeze);
+    _sf_writeFloat(f, "fmLfoRate", p->p_fmLfoRate);
+    _sf_writeFloat(f, "fmLfoDepth", p->p_fmLfoDepth);
+    _sf_writeInt(f, "fmLfoShape", p->p_fmLfoShape);
+    _sf_writeInt(f, "fmLfoSync", p->p_fmLfoSync);
+    _sf_writeFloat(f, "fmLfoPhaseOffset", p->p_fmLfoPhaseOffset);
     _sf_writeFloat(f, "fmModRatio", p->p_fmModRatio);
     _sf_writeFloat(f, "fmModIndex", p->p_fmModIndex);
     _sf_writeFloat(f, "fmFeedback", p->p_fmFeedback);
@@ -734,6 +743,10 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "pitchLfoDepth") == 0) p->p_pitchLfoDepth = _sf_parseFloat(val);
     else if (strcmp(key, "pitchLfoShape") == 0) p->p_pitchLfoShape = _sf_parseInt(val);
     else if (strcmp(key, "pitchLfoSync") == 0) p->p_pitchLfoSync = _sf_parseInt(val);
+    else if (strcmp(key, "filterLfoPhaseOffset") == 0) p->p_filterLfoPhaseOffset = _sf_parseFloat(val);
+    else if (strcmp(key, "resoLfoPhaseOffset") == 0) p->p_resoLfoPhaseOffset = _sf_parseFloat(val);
+    else if (strcmp(key, "ampLfoPhaseOffset") == 0) p->p_ampLfoPhaseOffset = _sf_parseFloat(val);
+    else if (strcmp(key, "pitchLfoPhaseOffset") == 0) p->p_pitchLfoPhaseOffset = _sf_parseFloat(val);
     else if (strcmp(key, "arpEnabled") == 0) p->p_arpEnabled = _sf_parseBool(val);
     else if (strcmp(key, "arpMode") == 0) p->p_arpMode = _sf_parseInt(val);
     else if (strcmp(key, "arpRateDiv") == 0) p->p_arpRateDiv = _sf_parseInt(val);
@@ -782,6 +795,11 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "granularAmpRandom") == 0) p->p_granularAmpRandom = _sf_parseFloat(val);
     else if (strcmp(key, "granularSpread") == 0) p->p_granularSpread = _sf_parseFloat(val);
     else if (strcmp(key, "granularFreeze") == 0) p->p_granularFreeze = _sf_parseBool(val);
+    else if (strcmp(key, "fmLfoRate") == 0) p->p_fmLfoRate = _sf_parseFloat(val);
+    else if (strcmp(key, "fmLfoDepth") == 0) p->p_fmLfoDepth = _sf_parseFloat(val);
+    else if (strcmp(key, "fmLfoShape") == 0) p->p_fmLfoShape = _sf_parseInt(val);
+    else if (strcmp(key, "fmLfoSync") == 0) p->p_fmLfoSync = _sf_parseInt(val);
+    else if (strcmp(key, "fmLfoPhaseOffset") == 0) p->p_fmLfoPhaseOffset = _sf_parseFloat(val);
     else if (strcmp(key, "fmModRatio") == 0) p->p_fmModRatio = _sf_parseFloat(val);
     else if (strcmp(key, "fmModIndex") == 0) p->p_fmModIndex = _sf_parseFloat(val);
     else if (strcmp(key, "fmFeedback") == 0) p->p_fmFeedback = _sf_parseFloat(val);

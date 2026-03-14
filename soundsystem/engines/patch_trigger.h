@@ -58,6 +58,10 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     notePitchLfoDepth = p->p_pitchLfoDepth;
     notePitchLfoShape = p->p_pitchLfoShape;
     notePitchLfoSync = (LfoSyncDiv)p->p_pitchLfoSync;
+    noteFilterLfoPhaseOffset = p->p_filterLfoPhaseOffset;
+    noteResoLfoPhaseOffset = p->p_resoLfoPhaseOffset;
+    noteAmpLfoPhaseOffset = p->p_ampLfoPhaseOffset;
+    notePitchLfoPhaseOffset = p->p_pitchLfoPhaseOffset;
     noteScwIndex = p->p_scwIndex;
     monoMode = p->p_monoMode;
     glideTime = p->p_glideTime;
@@ -99,6 +103,11 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     granularAmpRandom = p->p_granularAmpRandom;
     granularSpread = p->p_granularSpread;
     granularFreeze = p->p_granularFreeze;
+    noteFmLfoRate = p->p_fmLfoRate;
+    noteFmLfoDepth = p->p_fmLfoDepth;
+    noteFmLfoShape = p->p_fmLfoShape;
+    noteFmLfoSync = (LfoSyncDiv)p->p_fmLfoSync;
+    noteFmLfoPhaseOffset = p->p_fmLfoPhaseOffset;
     fmModRatio = p->p_fmModRatio;
     fmModIndex = p->p_fmModIndex;
     fmFeedback = p->p_fmFeedback;

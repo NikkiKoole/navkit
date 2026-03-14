@@ -57,6 +57,8 @@ static inline bool ui_col_int(UIColumn *c, const char *l, int *v, float sp, int 
 static inline void ui_col_toggle(UIColumn *c, const char *l, bool *v) { (void)c; (void)l; (void)v; }
 static inline void ui_col_cycle(UIColumn *c, const char *l, const char **o, int cnt, int *v) { (void)c; (void)l; (void)o; (void)cnt; (void)v; }
 static inline bool ui_col_button(UIColumn *c, const char *l) { (void)c; (void)l; return false; }
+static inline void ui_col_float_pair(UIColumn *c, const char *l1, float *v1, float s1, float n1, float x1, const char *l2, float *v2, float s2, float n2, float x2) { (void)c; (void)l1; (void)v1; (void)s1; (void)n1; (void)x1; (void)l2; (void)v2; (void)s2; (void)n2; (void)x2; }
+static inline void ui_col_cycle_float_pair(UIColumn *c, const char *cl, const char **o, int cnt, int *cv, const char *fl, float *fv, float fs, float fn, float fx) { (void)c; (void)cl; (void)o; (void)cnt; (void)cv; (void)fl; (void)fv; (void)fs; (void)fn; (void)fx; }
 // Stub MIDI input
 static inline void MidiInput_Init(void) {}
 static inline void MidiInput_Shutdown(void) {}
@@ -179,7 +181,7 @@ static const char* arpChordNames[] = {"Octave", "Major", "Minor", "Dom7", "Min7"
 static const char* arpRateNames[] = {"1/4", "1/8", "1/16", "1/32", "Free"};
 // rootNoteNames and scaleNames provided by synth.h
 static const char* lfoShapeNames[] = {"Sine", "Tri", "Sqr", "Saw", "S&H"};
-static const char* lfoSyncNames[] = {"Off", "4bar", "2bar", "1bar", "1/2", "1/4", "1/8", "1/16"};
+static const char* lfoSyncNames[] = {"Off", "4bar", "2bar", "1bar", "1/2", "1/4", "1/8", "1/16", "8bar", "16bar", "32bar"};
 
 // --- Structs ---
 
@@ -361,6 +363,51 @@ static void dawRecSample(short s) {
 }
 
 // ============================================================================
+// NOTE RECORDING (live keyboard/MIDI → pattern)
+// ============================================================================
+
+typedef enum {
+    REC_OFF = 0,
+    REC_ARMED,       // Waiting for play or first note
+    REC_RECORDING,   // Actively capturing notes
+} RecordMode;
+
+typedef enum {
+    REC_OVERDUB = 0, // Add notes on top of existing
+    REC_REPLACE,     // Clear step before writing
+} RecordWriteMode;
+
+typedef enum {
+    REC_QUANT_NONE = 0,  // Nearest step + nudge offset (preserves feel)
+    REC_QUANT_16TH,      // Hard snap to 16th note grid
+    REC_QUANT_8TH,       // Hard snap to 8th note (2 steps)
+    REC_QUANT_QUARTER,   // Hard snap to quarter note (4 steps)
+    REC_QUANT_COUNT
+} RecordQuantize;
+
+static RecordMode recMode = REC_OFF;
+static RecordWriteMode recWriteMode = REC_OVERDUB;
+static RecordQuantize recQuantize = REC_QUANT_NONE;
+static bool recPatternLock = false; // Force pattern loop in song mode
+
+// Per-note hold tracking for gate measurement
+#define REC_MAX_HELD 16
+typedef struct {
+    int note;         // MIDI note number
+    int step;         // Step when note-on occurred
+    int track;        // Absolute track index (4-6 for melody)
+    bool active;
+} RecHeldNote;
+static RecHeldNote recHeld[REC_MAX_HELD];
+
+// Forward declarations — implementations after DawState
+static int recQuantizeStep(int step, int tick, int trackLength, int8_t *outNudge);
+static void dawRecordNoteOn(int midiNote, float velocity);
+static void dawRecordNoteOff(int midiNote);
+static void dawUpdateRecording(void);
+static void dawRecordToggle(void);
+
+// ============================================================================
 // DEBUG PANEL
 // ============================================================================
 
@@ -439,6 +486,144 @@ static DawState daw = {
     .masterVol = 0.8f,
     .splitPoint = 60, .splitLeftPatch = 1, .splitRightPatch = 2,
 };
+
+// ============================================================================
+// NOTE RECORDING — implementations (need DawState)
+// ============================================================================
+
+static int recTargetTrack(void) {
+    int p = daw.selectedPatch;
+    if (p >= SEQ_DRUM_TRACKS && p < SEQ_DRUM_TRACKS + SEQ_MELODY_TRACKS) return p;
+    return -1;
+}
+
+// Returns quantized step, sets *outNudge to sub-step offset (0 for hard quantize)
+static int recQuantizeStep(int step, int tick, int trackLength, int8_t *outNudge) {
+    *outNudge = 0;
+    int halfTick = seq.ticksPerStep / 2;
+
+    if (recQuantize == REC_QUANT_NONE) {
+        // Snap to nearest step, store timing offset as nudge (-12 to +12)
+        if (tick <= halfTick) {
+            *outNudge = (int8_t)tick;  // positive nudge = late
+            return step;
+        } else {
+            *outNudge = (int8_t)(tick - seq.ticksPerStep);  // negative nudge = early
+            return (step + 1) % trackLength;
+        }
+    }
+
+    int gridSize = 1;
+    switch (recQuantize) {
+        case REC_QUANT_16TH:    gridSize = 1; break;
+        case REC_QUANT_8TH:     gridSize = 2; break;
+        case REC_QUANT_QUARTER: gridSize = 4; break;
+        default: break;
+    }
+    if (gridSize == 1) {
+        if (tick > halfTick) return (step + 1) % trackLength;
+        return step;
+    }
+    int halfGrid = gridSize / 2;
+    int posInGrid = step % gridSize;
+    if (posInGrid < halfGrid || (posInGrid == halfGrid && tick <= halfTick)) {
+        return (step - posInGrid + trackLength) % trackLength;
+    }
+    return (step - posInGrid + gridSize) % trackLength;
+}
+
+static void dawRecordNoteOn(int midiNote, float velocity) {
+    if (recMode == REC_ARMED && !daw.transport.playing) {
+        daw.transport.playing = true;
+        recMode = REC_RECORDING;
+        memset(recHeld, 0, sizeof(recHeld));
+    }
+    if (recMode != REC_RECORDING) return;
+    int track = recTargetTrack();
+    if (track < 0) return;
+
+    Pattern *pat = dawPattern();
+    int trackLen = pat->trackLength[track];
+    if (trackLen <= 0) trackLen = 16;
+
+    int step = seq.trackStep[track];
+    int tick = seq.trackTick[track];
+    int8_t nudge = 0;
+    int qStep = recQuantizeStep(step, tick, trackLen, &nudge);
+    StepV2 *sv = &pat->steps[track][qStep];
+
+    if (recWriteMode == REC_REPLACE) {
+        bool otherHeld = false;
+        for (int i = 0; i < REC_MAX_HELD; i++) {
+            if (recHeld[i].active && recHeld[i].track == track && recHeld[i].step == qStep) {
+                otherHeld = true; break;
+            }
+        }
+        if (!otherHeld) stepV2Clear(sv);
+    }
+
+    int ni = stepV2AddNote(sv, midiNote, velFloatToU8(velocity), 1);
+    if (ni >= 0) {
+        sv->notes[ni].nudge = nudge;
+    }
+
+    for (int i = 0; i < REC_MAX_HELD; i++) {
+        if (!recHeld[i].active) {
+            recHeld[i].note = midiNote;
+            recHeld[i].step = qStep;
+            recHeld[i].track = track;
+            recHeld[i].active = true;
+            break;
+        }
+    }
+}
+
+static void dawRecordNoteOff(int midiNote) {
+    if (recMode != REC_RECORDING) return;
+    for (int i = 0; i < REC_MAX_HELD; i++) {
+        if (recHeld[i].active && recHeld[i].note == midiNote) {
+            int track = recHeld[i].track;
+            int startStep = recHeld[i].step;
+
+            Pattern *pat = dawPattern();
+            int trackLen = pat->trackLength[track];
+            if (trackLen <= 0) trackLen = 16;
+
+            int curStep = seq.trackStep[track];
+            int gate = (curStep - startStep + trackLen) % trackLen;
+            if (gate < 1) gate = 1;
+            if (gate > 16) gate = 16;
+
+            StepV2 *sv = &pat->steps[track][startStep];
+            int ni = stepV2FindNote(sv, midiNote);
+            if (ni >= 0) sv->notes[ni].gate = (int8_t)gate;
+
+            recHeld[i].active = false;
+            break;
+        }
+    }
+}
+
+static void dawUpdateRecording(void) {
+    if (recMode == REC_ARMED && daw.transport.playing) {
+        recMode = REC_RECORDING;
+        memset(recHeld, 0, sizeof(recHeld));
+    }
+    if (recMode == REC_RECORDING && !daw.transport.playing) {
+        recMode = REC_OFF;
+        memset(recHeld, 0, sizeof(recHeld));
+    }
+}
+
+static void dawRecordToggle(void) {
+    if (recMode == REC_OFF) {
+        recMode = REC_ARMED;
+        memset(recHeld, 0, sizeof(recHeld));
+    } else {
+        recMode = REC_OFF;
+        memset(recHeld, 0, sizeof(recHeld));
+    }
+}
 
 // Preset tracking (UI-only, not part of scene state)
 static int patchPresetIndex[NUM_PATCHES] = {-1,-1,-1,-1,-1,-1,-1,-1};
@@ -695,6 +880,87 @@ static void drawTransport(void) {
     // Pattern indicator
     DrawTextShadow(TextFormat("Pat:%d", daw.transport.currentPattern+1), (int)tx, (int)ty+2, 11, (Color){120,120,140,255});
     tx += 60;
+
+    // Record button (F7)
+    {
+        Vector2 mouse = GetMousePosition();
+        Rectangle rr = {tx, ty-2, 42, 18};
+        bool rHov = CheckCollisionPointRec(mouse, rr);
+
+        Color recBg, recFg;
+        const char *recLabel;
+        if (recMode == REC_RECORDING) {
+            bool blink = (int)(GetTime() * 4) % 2;
+            recBg = blink ? (Color){140, 30, 30, 255} : (Color){100, 20, 20, 255};
+            recFg = WHITE;
+            recLabel = "REC";
+        } else if (recMode == REC_ARMED) {
+            bool blink = (int)(GetTime() * 2) % 2;
+            recBg = blink ? (Color){100, 30, 30, 255} : (Color){50, 25, 25, 255};
+            recFg = (Color){255, 100, 100, 255};
+            recLabel = "ARM";
+        } else {
+            recBg = rHov ? (Color){50, 35, 35, 255} : (Color){33, 33, 40, 255};
+            recFg = (Color){180, 80, 80, 255};
+            recLabel = "Rec";
+        }
+        DrawRectangleRec(rr, recBg);
+        DrawRectangleLinesEx(rr, 1, recMode != REC_OFF ? RED : (Color){55, 55, 65, 255});
+        // Red circle icon
+        DrawCircle((int)tx + 8, (int)ty + 7, 4, recMode != REC_OFF ? RED : (Color){120, 50, 50, 255});
+        DrawTextShadow(recLabel, (int)tx + 15, (int)ty, 11, recFg);
+        if (rHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            dawRecordToggle();
+            ui_consume_click();
+        }
+    }
+    tx += 46;
+
+    // Write mode + quantize indicators (visible when recording is on)
+    if (recMode != REC_OFF) {
+        Vector2 mouse = GetMousePosition();
+        // Overdub/Replace toggle
+        const char *wmLabel = recWriteMode == REC_OVERDUB ? "OVR" : "REP";
+        Rectangle wmR = {tx, ty-2, 30, 18};
+        bool wmHov = CheckCollisionPointRec(mouse, wmR);
+        DrawRectangleRec(wmR, wmHov ? (Color){50, 50, 60, 255} : (Color){33, 33, 40, 255});
+        DrawRectangleLinesEx(wmR, 1, (Color){55, 55, 65, 255});
+        DrawTextShadow(wmLabel, (int)tx + 4, (int)ty, 10, recWriteMode == REC_OVERDUB ? (Color){100, 200, 100, 255} : (Color){200, 150, 80, 255});
+        if (wmHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            recWriteMode = (recWriteMode == REC_OVERDUB) ? REC_REPLACE : REC_OVERDUB;
+            ui_consume_click();
+        }
+        tx += 34;
+
+        // Quantize setting
+        const char *qLabels[] = {"Free", "1/16", "1/8", "1/4"};
+        const char *qLabel = qLabels[recQuantize];
+        Rectangle qR = {tx, ty-2, 34, 18};
+        bool qHov = CheckCollisionPointRec(mouse, qR);
+        DrawRectangleRec(qR, qHov ? (Color){50, 50, 60, 255} : (Color){33, 33, 40, 255});
+        DrawRectangleLinesEx(qR, 1, (Color){55, 55, 65, 255});
+        Color qCol = recQuantize == REC_QUANT_NONE ? (Color){255, 180, 100, 255} : (Color){150, 150, 200, 255};
+        DrawTextShadow(qLabel, (int)tx + 4, (int)ty, 10, qCol);
+        if (qHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            recQuantize = (RecordQuantize)((recQuantize + 1) % REC_QUANT_COUNT);
+            ui_consume_click();
+        }
+        tx += 38;
+
+        // Pattern lock toggle (for song mode)
+        if (daw.song.songMode) {
+            Rectangle plR = {tx, ty-2, 22, 18};
+            bool plHov = CheckCollisionPointRec(mouse, plR);
+            DrawRectangleRec(plR, plHov ? (Color){50, 50, 60, 255} : (Color){33, 33, 40, 255});
+            DrawRectangleLinesEx(plR, 1, recPatternLock ? (Color){200, 150, 50, 255} : (Color){55, 55, 65, 255});
+            DrawTextShadow("L", (int)tx + 7, (int)ty, 11, recPatternLock ? (Color){255, 200, 80, 255} : GRAY);
+            if (plHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                recPatternLock = !recPatternLock;
+                ui_consume_click();
+            }
+            tx += 26;
+        }
+    }
 
     // Save / Load buttons
     {
@@ -2720,8 +2986,8 @@ static void drawParamPatch(float x, float y, float w, float h) {
     float col2X = x + 155;
     float col3X = x + 295;
     float col4X = x + 430;
-    float col5X = x + 575;
-    float col6X = x + 720;
+    float col5X = x + 620;
+    float col6X = x + 760;
     float col7X = x + 870;
     float percColW = 140;
 
@@ -2960,29 +3226,33 @@ static void drawParamPatch(float x, float y, float w, float h) {
         float sliderW = lfoW - previewW - 8;
         (void)sliderW;
 
-        struct { const char* name; float *rate, *depth; int *shape; int *sync; } lfos[] = {
-            {"Filter LFO", &p->p_filterLfoRate, &p->p_filterLfoDepth, &p->p_filterLfoShape, &p->p_filterLfoSync},
-            {"Reso LFO",   &p->p_resoLfoRate,   &p->p_resoLfoDepth,   &p->p_resoLfoShape,   &p->p_resoLfoSync},
-            {"Amp LFO",    &p->p_ampLfoRate,     &p->p_ampLfoDepth,    &p->p_ampLfoShape,    &p->p_ampLfoSync},
-            {"Pitch LFO",  &p->p_pitchLfoRate,   &p->p_pitchLfoDepth,  &p->p_pitchLfoShape,  &p->p_pitchLfoSync},
+        struct { const char* name; float *rate, *depth, *phaseOffset; int *shape; int *sync; } lfos[] = {
+            {"Filter LFO", &p->p_filterLfoRate, &p->p_filterLfoDepth, &p->p_filterLfoPhaseOffset, &p->p_filterLfoShape, &p->p_filterLfoSync},
+            {"Reso LFO",   &p->p_resoLfoRate,   &p->p_resoLfoDepth,   &p->p_resoLfoPhaseOffset,   &p->p_resoLfoShape,   &p->p_resoLfoSync},
+            {"Amp LFO",    &p->p_ampLfoRate,     &p->p_ampLfoDepth,    &p->p_ampLfoPhaseOffset,    &p->p_ampLfoShape,    &p->p_ampLfoSync},
+            {"Pitch LFO",  &p->p_pitchLfoRate,   &p->p_pitchLfoDepth,  &p->p_pitchLfoPhaseOffset,  &p->p_pitchLfoShape,  &p->p_pitchLfoSync},
+            {"FM LFO",     &p->p_fmLfoRate,      &p->p_fmLfoDepth,     &p->p_fmLfoPhaseOffset,     &p->p_fmLfoShape,     &p->p_fmLfoSync},
         };
 
         float ly = y;
-        for (int i = 0; i < 4; i++) {
+        int lfoCount = (p->p_waveType == WAVE_FM) ? 5 : 4;
+        for (int i = 0; i < lfoCount; i++) {
             UIColumn c = PCOL(col4X, ly);
             ui_col_sublabel(&c, lfos[i].name, (Color){140,140,200,255});
             float sliderY = c.y;
-            ui_col_float(&c, "Rate", lfos[i].rate, 0.5f, 0.0f, 20.0f);
-            ui_col_float(&c, "Depth", lfos[i].depth, 0.05f, 0.0f, 2.0f);
+            ui_col_float_pair(&c, "R", lfos[i].rate, 0.5f, 0.0f, 20.0f,
+                                  "D", lfos[i].depth, 0.05f, 0.0f, 2.0f);
             ui_col_cycle(&c, "Shape", lfoShapeNames, 5, lfos[i].shape);
-            if (lfos[i].sync) ui_col_cycle(&c, "Sync", lfoSyncNames, 8, lfos[i].sync);
+            if (lfos[i].sync) ui_col_cycle_float_pair(&c, "Sync", lfoSyncNames, 11, lfos[i].sync,
+                                                          "Ph", lfos[i].phaseOffset, 0.05f, 0.0f, 1.0f);
+            else ui_col_float(&c, "Phase", lfos[i].phaseOffset, 0.05f, 0.0f, 1.0f);
 
             float preH = c.y - sliderY - 4;
             if (preH < 30) preH = 30;
             drawLFOPreview(col4X + lfoW - previewW, sliderY, previewW, preH,
                            *lfos[i].shape, *lfos[i].rate, *lfos[i].depth);
 
-            ly = c.y + 6;
+            ly = c.y + 4;
         }
     }
 
@@ -3772,6 +4042,13 @@ static void dawHandleMusicalTyping(void) {
                     voiceAge[v] = 0.0f;
                     voiceLogPush("ALLOC key[%d] v%d bus=%d freq=%.0f", (int)i, v, bus, freq);
                 }
+                // Record note into pattern
+                int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
+                dawRecordNoteOn(midiNote, 0.8f);
+            }
+            if (IsKeyReleased(dawPianoKeys[i].key)) {
+                int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
+                dawRecordNoteOff(midiNote);
             }
             if (IsKeyReleased(dawPianoKeys[i].key) && dawPianoKeyVoices[i] >= 0) {
                 if (patch->p_monoMode) {
@@ -4291,11 +4568,15 @@ static void dawHandleMidiInput(void) {
                         voiceLogPush("MIDI ON n%d v%d bus=%d vel=%.0f%%", note, v, bus, vel*100);
                     }
                 }
+                // Record MIDI note into pattern
+                dawRecordNoteOn(note, vel);
             } break;
 
             case MIDI_NOTE_OFF: {
                 int note = ev->data1;
                 if (note >= NUM_MIDI_NOTES) break;
+
+                dawRecordNoteOff(note);
 
                 SynthPatch *patch; int *voices; int patchIdx, octaveOffset;
                 midiResolveSplit(note, &patch, &voices, &patchIdx, &octaveOffset);
@@ -4538,6 +4819,10 @@ int main(void) {
         if (IsKeyPressed(KEY_F9) && seqSoundLogCount > 0) {
             seqSoundLogDump("daw_sound.log");
         }
+        // F7: toggle note recording (armed/off)
+        if (IsKeyPressed(KEY_F7)) {
+            dawRecordToggle();
+        }
         // F10: toggle WAV recording
         if (IsKeyPressed(KEY_F10)) {
             if (dawRecording) dawRecStop(); else dawRecStart();
@@ -4569,6 +4854,7 @@ int main(void) {
             }
             UnloadDroppedFiles(files);
         }
+        dawUpdateRecording();
         dawSyncEngineState();
         dawSyncSequencer();
         updateSequencer(GetFrameTime());

@@ -76,6 +76,12 @@ typedef struct {
     int p_pitchLfoShape;
     int p_pitchLfoSync;       // LfoSyncDiv (0=off, 1-7=tempo divisions)
 
+    // LFO phase offsets (0.0-1.0, applied as initial phase on voice start)
+    float p_filterLfoPhaseOffset;
+    float p_resoLfoPhaseOffset;
+    float p_ampLfoPhaseOffset;
+    float p_pitchLfoPhaseOffset;
+
     // Mono/Glide
     bool p_monoMode;
     float p_glideTime;
@@ -127,6 +133,13 @@ typedef struct {
     float p_granularAmpRandom;
     float p_granularSpread;
     bool p_granularFreeze;
+
+    // FM LFO (modulates fmModIndex)
+    float p_fmLfoRate;
+    float p_fmLfoDepth;
+    int p_fmLfoShape;
+    int p_fmLfoSync;
+    float p_fmLfoPhaseOffset;
 
     // FM
     float p_fmModRatio;

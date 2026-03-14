@@ -253,4 +253,31 @@ static float drawLFOPreview(float x, float y, float w, float h, int shape, float
     return h + 2;
 }
 
+// ============================================================================
+// COMPACT LFO WIDGET — two values per row to save vertical space
+// ============================================================================
+
+// Draw two draggable floats side by side on one row (short labels)
+static void ui_col_float_pair(UIColumn *c, const char *l1, float *v1, float sp1, float mn1, float mx1,
+                               const char *l2, float *v2, float sp2, float mn2, float mx2) {
+    int fs = c->fontSize > 0 ? c->fontSize : 12;
+    float halfW = 70;  // approximate width for first control
+    DraggableFloatS(c->x, c->y, l1, v1, sp1, mn1, mx1, fs);
+    DraggableFloatS(c->x + halfW, c->y, l2, v2, sp2, mn2, mx2, fs);
+    c->y += c->spacing;
+}
+
+// Draw a cycle + draggable float side by side on one row
+static void ui_col_cycle_float_pair(UIColumn *c, const char *cl, const char **opts, int cnt, int *cv,
+                                     const char *fl, float *fv, float fsp, float fmn, float fmx) {
+    int fs = c->fontSize > 0 ? c->fontSize : 12;
+    CycleOptionS(c->x, c->y, cl, opts, cnt, cv, fs);
+    // Measure cycle text width to place float after it
+    char buf[128];
+    snprintf(buf, sizeof(buf), "%s: < %s >", cl, opts[*cv]);
+    float cw = (float)MeasureTextUI(buf, fs) + 10;
+    DraggableFloatS(c->x + cw, c->y, fl, fv, fsp, fmn, fmx, fs);
+    c->y += c->spacing + 2;  // match cycle spacing
+}
+
 #endif // PIXELSYNTH_DAW_WIDGETS_H
