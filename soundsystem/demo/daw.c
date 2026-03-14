@@ -741,8 +741,15 @@ static void loadPresetIntoPatch(int patchIdx, int presetIdx) {
 }
 
 // --- Name arrays for mixer/fx UI ---
-static const char* sidechainSourceNames[] = {"Kick", "Snare", "Clap", "HiHat", "AllDrm"};
-static const char* sidechainTargetNames[] = {"Bass", "Lead", "Chord", "AllSyn"};
+// Sidechain names: first 4 sources / first 3 targets read from live patch names
+static const char* sidechainSourceName(int idx) {
+    if (idx == 4) return "AllDrm";
+    return (idx >= 0 && idx < 4) ? daw.patches[idx].p_name : "?";
+}
+static const char* sidechainTargetName(int idx) {
+    if (idx == 3) return "AllSyn";
+    return (idx >= 0 && idx < 3) ? daw.patches[4 + idx].p_name : "?";
+}
 static const char* dawBusName(int bus) { return (bus >= 0 && bus < 7) ? daw.patches[bus].p_name : "??"; }
 static const char* busFilterTypeNames[] = {"LP", "HP", "BP", "Notch"};
 static const char* delaySyncNames[] = {"1/16", "1/8", "1/4", "1/2", "1bar"};
@@ -3598,8 +3605,10 @@ static void drawParamBus(float x, float y, float w, float h) {
     DrawTextShadow("Sidechain:", (int)mx+4, (int)mcy, 9, (Color){140,140,200,255}); mcy += row;
     ToggleBoolS(mx+4, mcy, "On", &daw.sidechain.on, fs); mcy += row;
     if (daw.sidechain.on) {
-        CycleOptionS(mx+4, mcy, "Src", sidechainSourceNames, 5, &daw.sidechain.source, fs); mcy += row;
-        CycleOptionS(mx+4, mcy, "Tgt", sidechainTargetNames, 4, &daw.sidechain.target, fs); mcy += row;
+        { const char* srcN[] = {sidechainSourceName(0), sidechainSourceName(1), sidechainSourceName(2), sidechainSourceName(3), "AllDrm"};
+          CycleOptionS(mx+4, mcy, "Src", srcN, 5, &daw.sidechain.source, fs); mcy += row; }
+        { const char* tgtN[] = {sidechainTargetName(0), sidechainTargetName(1), sidechainTargetName(2), "AllSyn"};
+          CycleOptionS(mx+4, mcy, "Tgt", tgtN, 4, &daw.sidechain.target, fs); mcy += row; }
         DraggableFloatS(mx+4, mcy, "Depth", &daw.sidechain.depth, 0.05f, 0.0f, 1.0f, fs); mcy += row;
         DraggableFloatS(mx+4, mcy, "Atk", &daw.sidechain.attack, 0.002f, 0.001f, 0.05f, fs); mcy += row;
         DraggableFloatS(mx+4, mcy, "Rel", &daw.sidechain.release, 0.02f, 0.05f, 0.5f, fs); mcy += row;
