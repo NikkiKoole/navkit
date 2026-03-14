@@ -2930,15 +2930,21 @@ static void drawParamPatch(float x, float y, float w, float h) {
     if (presetPickerOpen) {
         // Draw popup on top
         float popX = x + 4, popY = presetRowY + 20;
-        float popW = 770;
-        int pcols = 7, perCol = (NUM_INSTRUMENT_PRESETS + pcols - 1) / pcols;
+        float margin = 20;
+        float maxH = SCREEN_HEIGHT - popY - margin;
+        int maxRows = (int)((maxH - 8) / 18);
+        int pcols = (NUM_INSTRUMENT_PRESETS + maxRows - 1) / maxRows;
+        if (pcols < 1) pcols = 1;
+        int perCol = (NUM_INSTRUMENT_PRESETS + pcols - 1) / pcols;
+        float colW0 = 110;
+        float popW = pcols * colW0 + 12;
         float popH = perCol * 18 + 8;
         Vector2 mouse = GetMousePosition();
 
         DrawRectangle((int)popX, (int)popY, (int)popW, (int)popH, (Color){25,25,35,245});
         DrawRectangleLinesEx((Rectangle){popX,popY,popW,popH}, 1, (Color){80,80,100,255});
 
-        float colW = popW / pcols;
+        float colW = colW0;
         bool clickedItem = false;
         for (int i = 0; i < NUM_INSTRUMENT_PRESETS; i++) {
             int col = i / perCol, row = i % perCol;

@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 140
+#define NUM_INSTRUMENT_PRESETS 146
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -2417,6 +2417,153 @@ static void initInstrumentPresets(void) {
     instrumentPresets[139].patch.p_filterLfoPhaseOffset = 0.5f;  // inverted — opens when FM dims
     instrumentPresets[139].patch.p_filterKeyTrack = 0.4f;
     instrumentPresets[139].patch.p_volume = 0.4f;
+
+    // 140: 909 Kick — punchy click + short sine body, tighter than 808
+    instrumentPresets[140].name = "909 Kick";
+    instrumentPresets[140].patch.p_waveType = WAVE_FM;
+    instrumentPresets[140].patch.p_fmModRatio = 1.0f;
+    instrumentPresets[140].patch.p_fmModIndex = 0.0f;  // pure sine
+    instrumentPresets[140].patch.p_attack = 0.0f;
+    instrumentPresets[140].patch.p_decay = 0.3f;
+    instrumentPresets[140].patch.p_sustain = 0.0f;
+    instrumentPresets[140].patch.p_release = 0.03f;
+    instrumentPresets[140].patch.p_expDecay = true;
+    instrumentPresets[140].patch.p_pitchEnvAmount = 24.0f;  // sharper pitch drop than 808
+    instrumentPresets[140].patch.p_pitchEnvDecay = 0.025f;  // faster sweep — snappier attack
+    instrumentPresets[140].patch.p_pitchEnvLinear = true;
+    instrumentPresets[140].patch.p_clickLevel = 0.5f;   // stronger click than 808
+    instrumentPresets[140].patch.p_clickTime = 0.003f;   // shorter click burst
+    instrumentPresets[140].patch.p_drive = 0.35f;
+    instrumentPresets[140].patch.p_useTriggerFreq = true;
+    instrumentPresets[140].patch.p_triggerFreq = 55.0f;  // slightly higher body than 808
+    instrumentPresets[140].patch.p_volume = 0.55f;
+
+    // 141: 909 Snare — bright noise snap + dual sine tones, punchy
+    instrumentPresets[141].name = "909 Snare";
+    instrumentPresets[141].patch.p_waveType = WAVE_FM;
+    instrumentPresets[141].patch.p_fmModRatio = 1.0f;
+    instrumentPresets[141].patch.p_fmModIndex = 0.0f;
+    instrumentPresets[141].patch.p_osc2Ratio = 1.6f;    // higher 2nd partial — brighter tone
+    instrumentPresets[141].patch.p_osc2Level = 0.4f;
+    instrumentPresets[141].patch.p_attack = 0.0f;
+    instrumentPresets[141].patch.p_decay = 0.15f;        // tighter tone body
+    instrumentPresets[141].patch.p_sustain = 0.0f;
+    instrumentPresets[141].patch.p_release = 0.04f;
+    instrumentPresets[141].patch.p_expDecay = true;
+    instrumentPresets[141].patch.p_noiseMix = 0.7f;      // more noise than 808 — THE 909 snare character
+    instrumentPresets[141].patch.p_noiseTone = 0.65f;     // brighter noise
+    instrumentPresets[141].patch.p_noiseHP = 0.2f;
+    instrumentPresets[141].patch.p_noiseDecay = 0.15f;    // short noise tail
+    instrumentPresets[141].patch.p_pitchEnvAmount = 8.0f; // subtle pitch snap
+    instrumentPresets[141].patch.p_pitchEnvDecay = 0.01f;
+    instrumentPresets[141].patch.p_pitchEnvLinear = true;
+    instrumentPresets[141].patch.p_useTriggerFreq = true;
+    instrumentPresets[141].patch.p_triggerFreq = 200.0f;
+    instrumentPresets[141].patch.p_volume = 0.5f;
+
+    // 142: 909 Clap — tighter retrigger, brighter than 808
+    instrumentPresets[142].name = "909 Clap";
+    instrumentPresets[142].patch.p_waveType = WAVE_NOISE;
+    instrumentPresets[142].patch.p_attack = 0.0f;
+    instrumentPresets[142].patch.p_decay = 0.2f;         // shorter tail
+    instrumentPresets[142].patch.p_sustain = 0.0f;
+    instrumentPresets[142].patch.p_release = 0.04f;
+    instrumentPresets[142].patch.p_expDecay = true;
+    instrumentPresets[142].patch.p_filterType = 2;       // BP
+    instrumentPresets[142].patch.p_filterCutoff = 0.45f; // brighter than 808
+    instrumentPresets[142].patch.p_noiseTone = 0.95f;
+    instrumentPresets[142].patch.p_noiseHP = 0.12f;
+    instrumentPresets[142].patch.p_retriggerCount = 3;
+    instrumentPresets[142].patch.p_retriggerSpread = 0.008f;  // tighter than 808
+    instrumentPresets[142].patch.p_retriggerOverlap = true;
+    instrumentPresets[142].patch.p_retriggerBurstDecay = 0.015f;
+    instrumentPresets[142].patch.p_retriggerCurve = 0.1f;
+    instrumentPresets[142].patch.p_noiseMode = 2;
+    instrumentPresets[142].patch.p_noiseType = 1;
+    instrumentPresets[142].patch.p_useTriggerFreq = true;
+    instrumentPresets[142].patch.p_triggerFreq = 400.0f;
+    instrumentPresets[142].patch.p_volume = 0.5f;
+
+    // 143: 909 CH — metallic squares + noise, brighter/thinner than 808
+    instrumentPresets[143].name = "909 CH";
+    instrumentPresets[143].patch.p_waveType = WAVE_SQUARE;
+    instrumentPresets[143].patch.p_osc2Ratio = 1.4471f;
+    instrumentPresets[143].patch.p_osc2Level = 0.9f;
+    instrumentPresets[143].patch.p_osc3Ratio = 1.6170f;
+    instrumentPresets[143].patch.p_osc3Level = 0.9f;
+    instrumentPresets[143].patch.p_osc4Ratio = 1.9265f;
+    instrumentPresets[143].patch.p_osc4Level = 0.8f;
+    instrumentPresets[143].patch.p_osc5Ratio = 2.5028f;
+    instrumentPresets[143].patch.p_osc5Level = 0.7f;
+    instrumentPresets[143].patch.p_osc6Ratio = 2.6637f;
+    instrumentPresets[143].patch.p_osc6Level = 0.6f;
+    instrumentPresets[143].patch.p_noiseMix = 0.2f;      // 909 hats have more noise than 808
+    instrumentPresets[143].patch.p_noiseTone = 0.8f;
+    instrumentPresets[143].patch.p_noiseHP = 0.3f;
+    instrumentPresets[143].patch.p_noiseDecay = 0.03f;
+    instrumentPresets[143].patch.p_attack = 0.0f;
+    instrumentPresets[143].patch.p_decay = 0.04f;         // tighter than 808
+    instrumentPresets[143].patch.p_sustain = 0.0f;
+    instrumentPresets[143].patch.p_release = 0.015f;
+    instrumentPresets[143].patch.p_expDecay = true;
+    instrumentPresets[143].patch.p_filterType = 1;        // HP
+    instrumentPresets[143].patch.p_filterCutoff = 0.45f;  // brighter cutoff than 808
+    instrumentPresets[143].patch.p_volume = 0.4f;
+    instrumentPresets[143].patch.p_phaseReset = true;
+    instrumentPresets[143].patch.p_useTriggerFreq = true;
+    instrumentPresets[143].patch.p_triggerFreq = 480.0f;  // slightly higher pitch
+    instrumentPresets[143].patch.p_choke = true;
+
+    // 144: 909 OH — open hat, longer decay + noise wash
+    instrumentPresets[144].name = "909 OH";
+    instrumentPresets[144].patch.p_waveType = WAVE_SQUARE;
+    instrumentPresets[144].patch.p_osc2Ratio = 1.4471f;
+    instrumentPresets[144].patch.p_osc2Level = 0.9f;
+    instrumentPresets[144].patch.p_osc3Ratio = 1.6170f;
+    instrumentPresets[144].patch.p_osc3Level = 0.9f;
+    instrumentPresets[144].patch.p_osc4Ratio = 1.9265f;
+    instrumentPresets[144].patch.p_osc4Level = 0.8f;
+    instrumentPresets[144].patch.p_osc5Ratio = 2.5028f;
+    instrumentPresets[144].patch.p_osc5Level = 0.7f;
+    instrumentPresets[144].patch.p_osc6Ratio = 2.6637f;
+    instrumentPresets[144].patch.p_osc6Level = 0.6f;
+    instrumentPresets[144].patch.p_noiseMix = 0.25f;
+    instrumentPresets[144].patch.p_noiseTone = 0.8f;
+    instrumentPresets[144].patch.p_noiseHP = 0.3f;
+    instrumentPresets[144].patch.p_noiseDecay = 0.25f;
+    instrumentPresets[144].patch.p_attack = 0.0f;
+    instrumentPresets[144].patch.p_decay = 0.35f;
+    instrumentPresets[144].patch.p_sustain = 0.0f;
+    instrumentPresets[144].patch.p_release = 0.08f;
+    instrumentPresets[144].patch.p_expDecay = true;
+    instrumentPresets[144].patch.p_filterType = 1;        // HP
+    instrumentPresets[144].patch.p_filterCutoff = 0.45f;
+    instrumentPresets[144].patch.p_volume = 0.4f;
+    instrumentPresets[144].patch.p_phaseReset = true;
+    instrumentPresets[144].patch.p_useTriggerFreq = true;
+    instrumentPresets[144].patch.p_triggerFreq = 480.0f;
+    instrumentPresets[144].patch.p_choke = true;
+
+    // 145: 909 Rim — short sine ping, sharp click
+    instrumentPresets[145].name = "909 Rim";
+    instrumentPresets[145].patch.p_waveType = WAVE_FM;
+    instrumentPresets[145].patch.p_fmModRatio = 1.0f;
+    instrumentPresets[145].patch.p_fmModIndex = 0.0f;
+    instrumentPresets[145].patch.p_attack = 0.0f;
+    instrumentPresets[145].patch.p_decay = 0.03f;
+    instrumentPresets[145].patch.p_sustain = 0.0f;
+    instrumentPresets[145].patch.p_release = 0.01f;
+    instrumentPresets[145].patch.p_expDecay = true;
+    instrumentPresets[145].patch.p_clickLevel = 0.8f;
+    instrumentPresets[145].patch.p_clickTime = 0.002f;
+    instrumentPresets[145].patch.p_pitchEnvAmount = 30.0f;
+    instrumentPresets[145].patch.p_pitchEnvDecay = 0.008f;
+    instrumentPresets[145].patch.p_pitchEnvLinear = true;
+    instrumentPresets[145].patch.p_filterType = 1;  // HP — remove sub rumble
+    instrumentPresets[145].patch.p_filterCutoff = 0.2f;
+    instrumentPresets[145].patch.p_useTriggerFreq = true;
+    instrumentPresets[145].patch.p_triggerFreq = 500.0f;
+    instrumentPresets[145].patch.p_volume = 0.5f;
 }
 
 #endif // INSTRUMENT_PRESETS_H
