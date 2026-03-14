@@ -3153,6 +3153,9 @@ static void drawParamPatch(float x, float y, float w, float h) {
         ui_col_sublabel(&c, "Vibrato:", ORANGE);
         ui_col_float(&c, "Rate", &p->p_vibratoRate, 0.5f, 0.5f, 15.0f);
         ui_col_float(&c, "Depth", &p->p_vibratoDepth, 0.2f, 0.0f, 2.0f);
+        if (lfoModViz.active && fabsf(lfoModViz.pitchMod) > 0.001f) {
+            DrawTextShadow(TextFormat("%+.1fst", lfoModViz.pitchMod), (int)(col3X + 80), (int)(c.y - c.spacing + 1), 9, (Color){255, 160, 60, 200});
+        }
         sectionHighlight(col3X - 2, secY, col3W, c.y - secY, vibActive);
         ui_col_space(&c, 3);
 
