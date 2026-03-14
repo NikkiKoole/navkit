@@ -130,6 +130,12 @@ From `audit/code-simplifier-audit-soundsystem.md`:
 
 ---
 
+## Known Limitations
+
+- **Bus pan is non-functional.** The pan knob exists in the UI and the value is stored on `BusEffects.pan`, but the entire audio pipeline is mono (single float per sample). Making pan work requires: stereo bus outputs (L/R pairs), stereo master effects chain, and 2-channel audio buffer output. Medium-large effort.
+
+---
+
 ## Performance
 
 From `audit/performance-dod-audit-soundsystem.md`:
