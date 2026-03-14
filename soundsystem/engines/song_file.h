@@ -590,12 +590,15 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
     _sf_writeFloat(f, "reverbDamping", d->sfEffects.reverbDamping);
     _sf_writeFloat(f, "reverbMix", d->sfEffects.reverbMix);
     _sf_writeFloat(f, "reverbPreDelay", d->sfEffects.reverbPreDelay);
+    _sf_writeFloat(f, "reverbBass", d->sfEffects.reverbBass);
     _sf_writeBool(f, "sidechainEnabled", d->sfEffects.sidechainEnabled);
     _sf_writeInt(f, "sidechainSource", d->sfEffects.sidechainSource);
     _sf_writeInt(f, "sidechainTarget", d->sfEffects.sidechainTarget);
     _sf_writeFloat(f, "sidechainDepth", d->sfEffects.sidechainDepth);
     _sf_writeFloat(f, "sidechainAttack", d->sfEffects.sidechainAttack);
     _sf_writeFloat(f, "sidechainRelease", d->sfEffects.sidechainRelease);
+    _sf_writeFloat(f, "sidechainHPFreq", d->sfEffects.sidechainHPFreq);
+    _sf_writeBool(f, "subBassBoost", d->sfEffects.subBassBoost);
 
     // Dub loop
     fprintf(f, "\n[dub]\n");
@@ -1291,12 +1294,15 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
             else if (strcmp(key, "reverbDamping") == 0) d->sfEffects.reverbDamping = _sf_parseFloat(val);
             else if (strcmp(key, "reverbMix") == 0) d->sfEffects.reverbMix = _sf_parseFloat(val);
             else if (strcmp(key, "reverbPreDelay") == 0) d->sfEffects.reverbPreDelay = _sf_parseFloat(val);
+            else if (strcmp(key, "reverbBass") == 0) d->sfEffects.reverbBass = _sf_parseFloat(val);
             else if (strcmp(key, "sidechainEnabled") == 0) d->sfEffects.sidechainEnabled = _sf_parseBool(val);
             else if (strcmp(key, "sidechainSource") == 0) d->sfEffects.sidechainSource = _sf_parseInt(val);
             else if (strcmp(key, "sidechainTarget") == 0) d->sfEffects.sidechainTarget = _sf_parseInt(val);
             else if (strcmp(key, "sidechainDepth") == 0) d->sfEffects.sidechainDepth = _sf_parseFloat(val);
             else if (strcmp(key, "sidechainAttack") == 0) d->sfEffects.sidechainAttack = _sf_parseFloat(val);
             else if (strcmp(key, "sidechainRelease") == 0) d->sfEffects.sidechainRelease = _sf_parseFloat(val);
+            else if (strcmp(key, "sidechainHPFreq") == 0) d->sfEffects.sidechainHPFreq = _sf_parseFloat(val);
+            else if (strcmp(key, "subBassBoost") == 0) d->sfEffects.subBassBoost = _sf_parseBool(val);
             break;
 
         case _SF_SEC_DUB:

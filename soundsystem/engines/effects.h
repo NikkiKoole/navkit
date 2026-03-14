@@ -325,7 +325,8 @@ typedef struct {
     float reverbDamping;  // High frequency damping (0-1)
     float reverbMix;      // Dry/wet (0-1)
     float reverbPreDelay; // Pre-delay in seconds (0-0.1)
-    
+    float reverbBass;     // Bass feedback multiplier (0.5-2.0, 1.0=neutral)
+
     // Sidechain compression (kick -> bass ducking)
     bool sidechainEnabled;
     int sidechainSource;     // 0=Kick, 1=Snare, 2=Clap, 3=HiHat, 4=AllDrums
@@ -334,6 +335,12 @@ typedef struct {
     float sidechainAttack;   // Attack time in seconds (0.001-0.05)
     float sidechainRelease;  // Release time in seconds (0.05-0.5)
     float sidechainEnvelope; // Internal: current envelope value
+    float sidechainHPFreq;   // Bass-preserve HP freq (0=off, 40-120Hz = bass passes through unducked)
+    float sidechainHPState;  // Internal: HP filter state
+
+    // Sub-bass boost (gentle +3dB shelf at 60Hz)
+    bool subBassBoost;
+    float subBassState;      // Internal: filter state
 
     // Master EQ (2-band shelving)
     bool eqEnabled;
@@ -612,7 +619,8 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->params.reverbDamping = 0.5f;
     ctx->params.reverbMix = 0.3f;
     ctx->params.reverbPreDelay = 0.02f;
-    
+    ctx->params.reverbBass = 1.0f;       // Neutral (no bass boost/cut in reverb)
+
     // Sidechain - off by default, kick -> bass
     ctx->params.sidechainEnabled = false;
     ctx->params.sidechainSource = SIDECHAIN_SRC_KICK;
@@ -621,12 +629,18 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->params.sidechainAttack = 0.005f;   // 5ms attack
     ctx->params.sidechainRelease = 0.15f;   // 150ms release (pumpy)
     ctx->params.sidechainEnvelope = 0.0f;
+    ctx->params.sidechainHPFreq = 0.0f;     // Off (no bass-preserve)
+    ctx->params.sidechainHPState = 0.0f;
+
+    // Sub-bass boost - off by default
+    ctx->params.subBassBoost = false;
+    ctx->params.subBassState = 0.0f;
 
     // Master EQ - off by default
     ctx->params.eqEnabled = false;
     ctx->params.eqLowGain = 0.0f;       // Flat (dB)
     ctx->params.eqHighGain = 0.0f;      // Flat (dB)
-    ctx->params.eqLowFreq = 200.0f;     // Low shelf at 200Hz
+    ctx->params.eqLowFreq = 80.0f;      // Low shelf at 80Hz (reaches sub-bass)
     ctx->params.eqHighFreq = 6000.0f;   // High shelf at 6kHz
     ctx->params.eqLowState = 0.0f;
     ctx->params.eqHighState = 0.0f;
@@ -1091,16 +1105,22 @@ static float processReverb(float sample) {
     // Scale delay lengths by room size (affects density and character)
     // For simplicity, we use fixed delays but vary feedback
     
+    // Reverb bass multiplier: scale low-frequency feedback separately
+    // bassMult > 1.0 = boomier reverb tail, < 1.0 = tighter bass in reverb
+    float bassFeedback = feedback * fx.reverbBass;
+    if (bassFeedback > 0.98f) bassFeedback = 0.98f;  // Prevent runaway
+
     // 4 parallel comb filters (create dense echo pattern)
-    float comb1 = processCombFilter(preDelayed, reverbComb1, &reverbCombPos1, REVERB_COMB_1, 
-                                    &reverbCombLp1, feedback, fx.reverbDamping);
+    // Use bassFeedback for longer combs (lower frequencies), normal for shorter
+    float comb1 = processCombFilter(preDelayed, reverbComb1, &reverbCombPos1, REVERB_COMB_1,
+                                    &reverbCombLp1, bassFeedback, fx.reverbDamping);
     float comb2 = processCombFilter(preDelayed, reverbComb2, &reverbCombPos2, REVERB_COMB_2,
-                                    &reverbCombLp2, feedback, fx.reverbDamping);
+                                    &reverbCombLp2, bassFeedback, fx.reverbDamping);
     float comb3 = processCombFilter(preDelayed, reverbComb3, &reverbCombPos3, REVERB_COMB_3,
                                     &reverbCombLp3, feedback, fx.reverbDamping);
     float comb4 = processCombFilter(preDelayed, reverbComb4, &reverbCombPos4, REVERB_COMB_4,
                                     &reverbCombLp4, feedback, fx.reverbDamping);
-    
+
     // Sum combs
     float combSum = (comb1 + comb2 + comb3 + comb4) * 0.25f;
     
@@ -1140,6 +1160,23 @@ static float processMasterEQ(float sample) {
     float highGain = powf(10.0f, fx.eqHighGain / 20.0f);
 
     return lowBand * lowGain + midBand + topBand * highGain;
+}
+
+// ============================================================================
+// SUB-BASS BOOST (gentle +3dB shelf at 60Hz)
+// ============================================================================
+
+static float processSubBassBoost(float sample) {
+    if (!fx.subBassBoost) return sample;
+
+    // 1-pole LP at 60Hz to extract sub-bass content
+    float coeff = 2.0f * PI * 60.0f / SAMPLE_RATE;  // ~60Hz
+    fx.subBassState += coeff * (sample - fx.subBassState);
+    float subBass = fx.subBassState;
+
+    // Add +3dB (×1.41) of the sub-bass content back to the signal
+    // 1.41 - 1.0 = 0.41 extra sub-bass on top of what's already there
+    return sample + subBass * 0.41f;
 }
 
 // ============================================================================
@@ -1208,14 +1245,28 @@ static float updateSidechainEnvelope(float sidechainInput, float dt) {
 static float applySidechainDucking(float signal) {
     _ensureFxCtx();
     if (!fx.sidechainEnabled) return signal;
-    
+
     // Calculate gain reduction based on envelope and depth
     float gainReduction = fx.sidechainEnvelope * fx.sidechainDepth;
-    
+
     // Clamp to avoid negative gain
     if (gainReduction > 1.0f) gainReduction = 1.0f;
-    
-    return signal * (1.0f - gainReduction);
+
+    float ducked = signal * (1.0f - gainReduction);
+
+    // Bass-preserve: blend back sub-bass that was ducked
+    // HP filter splits signal into bass (below sidechainHPFreq) and rest
+    if (fx.sidechainHPFreq > 1.0f) {
+        float hpCoeff = 2.0f * PI * fx.sidechainHPFreq / SAMPLE_RATE;
+        if (hpCoeff > 0.5f) hpCoeff = 0.5f;
+        fx.sidechainHPState += hpCoeff * (signal - fx.sidechainHPState);
+        float bassContent = fx.sidechainHPState;      // LP = bass
+        float restContent = signal - fx.sidechainHPState; // HP = everything else
+        // Duck only the rest, pass bass through unducked
+        ducked = bassContent + restContent * (1.0f - gainReduction);
+    }
+
+    return ducked;
 }
 
 // ============================================================================
@@ -1702,6 +1753,9 @@ static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
 
     // Master EQ (tone shaping after all effects)
     sample = processMasterEQ(sample);
+
+    // Sub-bass boost (+3dB shelf at 60Hz, optional)
+    sample = processSubBassBoost(sample);
 
     // Master compressor (dynamics last in chain)
     sample = processMasterCompressor(sample, dt);

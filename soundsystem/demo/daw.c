@@ -201,6 +201,7 @@ typedef struct {
     bool on;
     int source, target;
     float depth, attack, release;
+    float hpFreq;  // Bass-preserve HP frequency (0=off, 40-120Hz)
 } Sidechain;
 
 typedef struct {
@@ -212,9 +213,10 @@ typedef struct {
     bool combOn;    float combFreq, combFeedback, combMix, combDamping;
     bool tapeOn;    float tapeSaturation, tapeWow, tapeFlutter, tapeHiss;
     bool delayOn;   float delayTime, delayFeedback, delayTone, delayMix;
-    bool reverbOn;  float reverbSize, reverbDamping, reverbPreDelay, reverbMix;
+    bool reverbOn;  float reverbSize, reverbDamping, reverbPreDelay, reverbMix, reverbBass;
     bool eqOn;      float eqLowGain, eqHighGain, eqLowFreq, eqHighFreq;
     bool compOn;    float compThreshold, compRatio, compAttack, compRelease, compMakeup;
+    bool subBassBoost;
 } MasterFX;
 
 typedef struct {
@@ -483,8 +485,8 @@ static DawState daw = {
         .flangerRate = 0.5f, .flangerDepth = 0.5f, .flangerFeedback = 0.3f, .flangerMix = 0.3f,
         .tapeSaturation = 0.3f, .tapeWow = 0.1f, .tapeFlutter = 0.1f, .tapeHiss = 0.05f,
         .delayTime = 0.3f, .delayFeedback = 0.4f, .delayTone = 0.5f, .delayMix = 0.3f,
-        .reverbSize = 0.5f, .reverbDamping = 0.5f, .reverbPreDelay = 0.02f, .reverbMix = 0.3f,
-        .eqLowGain = 0.0f, .eqHighGain = 0.0f, .eqLowFreq = 200.0f, .eqHighFreq = 6000.0f,
+        .reverbSize = 0.5f, .reverbDamping = 0.5f, .reverbPreDelay = 0.02f, .reverbMix = 0.3f, .reverbBass = 1.0f,
+        .eqLowGain = 0.0f, .eqHighGain = 0.0f, .eqLowFreq = 80.0f, .eqHighFreq = 6000.0f,
         .compThreshold = -12.0f, .compRatio = 4.0f, .compAttack = 0.01f, .compRelease = 0.1f, .compMakeup = 0.0f,
     },
     .tapeFx = {
@@ -3601,6 +3603,7 @@ static void drawParamBus(float x, float y, float w, float h) {
         DraggableFloatS(mx+4, mcy, "Depth", &daw.sidechain.depth, 0.05f, 0.0f, 1.0f, fs); mcy += row;
         DraggableFloatS(mx+4, mcy, "Atk", &daw.sidechain.attack, 0.002f, 0.001f, 0.05f, fs); mcy += row;
         DraggableFloatS(mx+4, mcy, "Rel", &daw.sidechain.release, 0.02f, 0.05f, 0.5f, fs); mcy += row;
+        DraggableFloatS(mx+4, mcy, "BassHP", &daw.sidechain.hpFreq, 5.0f, 0.0f, 120.0f, fs); mcy += row;
     }
     mcy += 4;
 
@@ -3621,163 +3624,157 @@ static void drawParamBus(float x, float y, float w, float h) {
 // ============================================================================
 
 static void drawParamMasterFx(float x, float y, float w, float h) {
-    // 11 effect blocks in signal chain order
-    float blockW = w / 11.0f;
-    if (blockW > 140) blockW = 140;
+    // Vertical strips — same pattern as Bus FX tab.
+    // Disabled effects hide params but keep same width for stable layout.
+    int fs = 11;
+    int row = fs + 3;
+    float stripW = w / 11.0f;
+    if (stripW > 140) stripW = 140;
 
-    // Draw signal flow arrows between blocks
-    for (int i = 0; i < 10; i++) {
-        float ax = x + (i+1)*blockW - 6;
-        DrawTextShadow(">", (int)ax, (int)(y + h*0.5f - 5), 12, (Color){50,50,60,255});
+    // Signal chain label at bottom
+    DrawTextShadow("Dist > Crush > Chorus > Flanger > Phaser > Comb > Tape > Delay > Reverb > EQ > Comp",
+                   (int)(x+2), (int)(y+h-11), 9, (Color){55,55,65,255});
+
+    float cx = x;
+    float panelH = h - 14;  // Leave room for signal chain label
+
+    // Helper: each strip gets a label + On toggle, then params if on
+    #define MFX_BEGIN(label, onPtr) { \
+        Color lc = *(onPtr) ? ORANGE : (Color){70,70,80,255}; \
+        DrawTextShadow(label, (int)(cx+2), (int)(y+1), 9, lc); \
+        ToggleBoolS(cx+2, y+12, "On", onPtr, fs); \
+        float ry = y + 12 + row + 2; \
+        float rx = cx + 2; \
+        (void)ry; (void)rx;
+
+    #define MFX_END() \
+        DrawLine((int)(cx+stripW), (int)y, (int)(cx+stripW), (int)(y+panelH), (Color){38,38,48,255}); \
+        cx += stripW; \
     }
 
-    // Signal chain label
-    DrawTextShadow("Dist > Crush > Chorus > Flanger > Phaser > Comb > Tape > Delay > Reverb",
-                   (int)x, (int)(y+h-14), 9, (Color){55,55,65,255});
-
-    // Block 1: Distortion
-    {
-        UIColumn c = ui_column(x+4, y, 12);
-        ui_col_sublabel(&c, "Distortion:", ORANGE);
-        ui_col_toggle(&c, "On", &daw.masterFx.distOn);
-        ui_col_float(&c, "Drive", &daw.masterFx.distDrive, 0.5f, 1.0f, 20.0f);
-        ui_col_float(&c, "Tone", &daw.masterFx.distTone, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Mix", &daw.masterFx.distMix, 0.05f, 0.0f, 1.0f);
+    // 1: Distortion
+    MFX_BEGIN("Dist", &daw.masterFx.distOn)
+    if (daw.masterFx.distOn) {
+        DraggableFloatS(rx, ry, "Drive", &daw.masterFx.distDrive, 0.5f, 1.0f, 20.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Tone", &daw.masterFx.distTone, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Mix", &daw.masterFx.distMix, 0.05f, 0.0f, 1.0f, fs); ry += row;
     }
-    DrawLine((int)(x+blockW), (int)y, (int)(x+blockW), (int)(y+h), (Color){38,38,48,255});
+    MFX_END()
 
-    // Block 2: Bitcrusher
-    {
-        UIColumn c = ui_column(x+blockW+4, y, 12);
-        ui_col_sublabel(&c, "Bitcrusher:", ORANGE);
-        ui_col_toggle(&c, "On", &daw.masterFx.crushOn);
-        ui_col_float(&c, "Bits", &daw.masterFx.crushBits, 0.5f, 2.0f, 16.0f);
-        ui_col_float(&c, "Rate", &daw.masterFx.crushRate, 1.0f, 1.0f, 32.0f);
-        ui_col_float(&c, "Mix", &daw.masterFx.crushMix, 0.05f, 0.0f, 1.0f);
+    // 2: Bitcrusher
+    MFX_BEGIN("Crush", &daw.masterFx.crushOn)
+    if (daw.masterFx.crushOn) {
+        DraggableFloatS(rx, ry, "Bits", &daw.masterFx.crushBits, 0.5f, 2.0f, 16.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Rate", &daw.masterFx.crushRate, 1.0f, 1.0f, 32.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Mix", &daw.masterFx.crushMix, 0.05f, 0.0f, 1.0f, fs); ry += row;
     }
-    DrawLine((int)(x+2*blockW), (int)y, (int)(x+2*blockW), (int)(y+h), (Color){38,38,48,255});
+    MFX_END()
 
-    // Block 3: Chorus
-    {
-        UIColumn c = ui_column(x+2*blockW+4, y, 12);
-        ui_col_sublabel(&c, "Chorus:", ORANGE);
-        ui_col_toggle(&c, "On", &daw.masterFx.chorusOn);
-        ui_col_float(&c, "Rate", &daw.masterFx.chorusRate, 0.1f, 0.1f, 5.0f);
-        ui_col_float(&c, "Depth", &daw.masterFx.chorusDepth, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Mix", &daw.masterFx.chorusMix, 0.05f, 0.0f, 1.0f);
+    // 3: Chorus
+    MFX_BEGIN("Chorus", &daw.masterFx.chorusOn)
+    if (daw.masterFx.chorusOn) {
+        DraggableFloatS(rx, ry, "Rate", &daw.masterFx.chorusRate, 0.1f, 0.1f, 5.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Depth", &daw.masterFx.chorusDepth, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Mix", &daw.masterFx.chorusMix, 0.05f, 0.0f, 1.0f, fs); ry += row;
     }
-    DrawLine((int)(x+3*blockW), (int)y, (int)(x+3*blockW), (int)(y+h), (Color){38,38,48,255});
+    MFX_END()
 
-    // Block 4: Flanger
-    {
-        UIColumn c = ui_column(x+3*blockW+4, y, 12);
-        ui_col_sublabel(&c, "Flanger:", ORANGE);
-        ui_col_toggle(&c, "On", &daw.masterFx.flangerOn);
-        ui_col_float(&c, "Rate", &daw.masterFx.flangerRate, 0.05f, 0.05f, 5.0f);
-        ui_col_float(&c, "Depth", &daw.masterFx.flangerDepth, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Feedbk", &daw.masterFx.flangerFeedback, 0.05f, -0.95f, 0.95f);
-        ui_col_float(&c, "Mix", &daw.masterFx.flangerMix, 0.05f, 0.0f, 1.0f);
+    // 4: Flanger
+    MFX_BEGIN("Flanger", &daw.masterFx.flangerOn)
+    if (daw.masterFx.flangerOn) {
+        DraggableFloatS(rx, ry, "Rate", &daw.masterFx.flangerRate, 0.05f, 0.05f, 5.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Depth", &daw.masterFx.flangerDepth, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "FB", &daw.masterFx.flangerFeedback, 0.05f, -0.95f, 0.95f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Mix", &daw.masterFx.flangerMix, 0.05f, 0.0f, 1.0f, fs); ry += row;
     }
-    DrawLine((int)(x+4*blockW), (int)y, (int)(x+4*blockW), (int)(y+h), (Color){38,38,48,255});
+    MFX_END()
 
-    // Block 5: Phaser
-    {
-        UIColumn c = ui_column(x+4*blockW+4, y, 12);
-        ui_col_sublabel(&c, "Phaser:", ORANGE);
-        ui_col_toggle(&c, "On", &daw.masterFx.phaserOn);
-        ui_col_float(&c, "Rate", &daw.masterFx.phaserRate, 0.05f, 0.05f, 5.0f);
-        ui_col_float(&c, "Depth", &daw.masterFx.phaserDepth, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Feedbk", &daw.masterFx.phaserFeedback, 0.05f, -0.9f, 0.9f);
-        ui_col_float(&c, "Mix", &daw.masterFx.phaserMix, 0.05f, 0.0f, 1.0f);
-        ui_col_int(&c, "Stages", &daw.masterFx.phaserStages, 2, 2, 8);
+    // 5: Phaser
+    MFX_BEGIN("Phaser", &daw.masterFx.phaserOn)
+    if (daw.masterFx.phaserOn) {
+        DraggableFloatS(rx, ry, "Rate", &daw.masterFx.phaserRate, 0.05f, 0.05f, 5.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Depth", &daw.masterFx.phaserDepth, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "FB", &daw.masterFx.phaserFeedback, 0.05f, -0.9f, 0.9f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Mix", &daw.masterFx.phaserMix, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableIntS(rx, ry, "Stages", &daw.masterFx.phaserStages, 2, 2, 8, fs); ry += row;
     }
-    DrawLine((int)(x+5*blockW), (int)y, (int)(x+5*blockW), (int)(y+h), (Color){38,38,48,255});
+    MFX_END()
 
-    // Block 6: Comb Filter
-    {
-        UIColumn c = ui_column(x+5*blockW+4, y, 12);
-        ui_col_sublabel(&c, "Comb:", ORANGE);
-        ui_col_toggle(&c, "On", &daw.masterFx.combOn);
-        ui_col_float(&c, "Freq", &daw.masterFx.combFreq, 5.0f, 20.0f, 2000.0f);
-        ui_col_float(&c, "Feedbk", &daw.masterFx.combFeedback, 0.05f, -0.95f, 0.95f);
-        ui_col_float(&c, "Damp", &daw.masterFx.combDamping, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Mix", &daw.masterFx.combMix, 0.05f, 0.0f, 1.0f);
+    // 6: Comb
+    MFX_BEGIN("Comb", &daw.masterFx.combOn)
+    if (daw.masterFx.combOn) {
+        DraggableFloatS(rx, ry, "Freq", &daw.masterFx.combFreq, 5.0f, 20.0f, 2000.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "FB", &daw.masterFx.combFeedback, 0.05f, -0.95f, 0.95f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Damp", &daw.masterFx.combDamping, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Mix", &daw.masterFx.combMix, 0.05f, 0.0f, 1.0f, fs); ry += row;
     }
-    DrawLine((int)(x+6*blockW), (int)y, (int)(x+6*blockW), (int)(y+h), (Color){38,38,48,255});
+    MFX_END()
 
-    // Block 7: Tape
-    {
-        UIColumn c = ui_column(x+6*blockW+4, y, 12);
-        ui_col_sublabel(&c, "Tape:", ORANGE);
-        ui_col_toggle(&c, "On", &daw.masterFx.tapeOn);
-        ui_col_float(&c, "Saturat", &daw.masterFx.tapeSaturation, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Wow", &daw.masterFx.tapeWow, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Flutter", &daw.masterFx.tapeFlutter, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Hiss", &daw.masterFx.tapeHiss, 0.05f, 0.0f, 1.0f);
+    // 7: Tape
+    MFX_BEGIN("Tape", &daw.masterFx.tapeOn)
+    if (daw.masterFx.tapeOn) {
+        DraggableFloatS(rx, ry, "Sat", &daw.masterFx.tapeSaturation, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Wow", &daw.masterFx.tapeWow, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Flut", &daw.masterFx.tapeFlutter, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Hiss", &daw.masterFx.tapeHiss, 0.05f, 0.0f, 1.0f, fs); ry += row;
     }
-    DrawLine((int)(x+7*blockW), (int)y, (int)(x+7*blockW), (int)(y+h), (Color){38,38,48,255});
+    MFX_END()
 
-    // Block 8: Delay
-    {
-        UIColumn c = ui_column(x+7*blockW+4, y, 12);
-        ui_col_sublabel(&c, "Delay:", ORANGE);
-        ui_col_toggle(&c, "On", &daw.masterFx.delayOn);
-        ui_col_float(&c, "Time", &daw.masterFx.delayTime, 0.05f, 0.05f, 1.0f);
-        ui_col_float(&c, "Fdbk", &daw.masterFx.delayFeedback, 0.05f, 0.0f, 0.9f);
-        ui_col_float(&c, "Tone", &daw.masterFx.delayTone, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Mix", &daw.masterFx.delayMix, 0.05f, 0.0f, 1.0f);
+    // 8: Delay
+    MFX_BEGIN("Delay", &daw.masterFx.delayOn)
+    if (daw.masterFx.delayOn) {
+        DraggableFloatS(rx, ry, "Time", &daw.masterFx.delayTime, 0.05f, 0.05f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "FB", &daw.masterFx.delayFeedback, 0.05f, 0.0f, 0.9f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Tone", &daw.masterFx.delayTone, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Mix", &daw.masterFx.delayMix, 0.05f, 0.0f, 1.0f, fs); ry += row;
     }
-    DrawLine((int)(x+8*blockW), (int)y, (int)(x+8*blockW), (int)(y+h), (Color){38,38,48,255});
+    MFX_END()
 
-    // Block 9: Reverb
-    {
-        UIColumn c = ui_column(x+8*blockW+4, y, 12);
-        ui_col_sublabel(&c, "Reverb:", ORANGE);
-        ui_col_toggle(&c, "On", &daw.masterFx.reverbOn);
-        ui_col_float(&c, "Size", &daw.masterFx.reverbSize, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Damping", &daw.masterFx.reverbDamping, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "PreDly", &daw.masterFx.reverbPreDelay, 0.005f, 0.0f, 0.1f);
-        ui_col_float(&c, "Mix", &daw.masterFx.reverbMix, 0.05f, 0.0f, 1.0f);
+    // 9: Reverb
+    MFX_BEGIN("Reverb", &daw.masterFx.reverbOn)
+    if (daw.masterFx.reverbOn) {
+        DraggableFloatS(rx, ry, "Size", &daw.masterFx.reverbSize, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Damp", &daw.masterFx.reverbDamping, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "PreD", &daw.masterFx.reverbPreDelay, 0.005f, 0.0f, 0.1f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Mix", &daw.masterFx.reverbMix, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Bass", &daw.masterFx.reverbBass, 0.05f, 0.5f, 2.0f, fs); ry += row;
     }
-    DrawLine((int)(x+9*blockW), (int)y, (int)(x+9*blockW), (int)(y+h), (Color){38,38,48,255});
+    MFX_END()
 
-    // Block 10: Master EQ
-    {
-        UIColumn c = ui_column(x+9*blockW+4, y, 12);
-        ui_col_sublabel(&c, "EQ:", ORANGE);
-        ui_col_toggle(&c, "On", &daw.masterFx.eqOn);
-        ui_col_float(&c, "Low", &daw.masterFx.eqLowGain, 0.5f, -12.0f, 12.0f);
-        ui_col_float(&c, "High", &daw.masterFx.eqHighGain, 0.5f, -12.0f, 12.0f);
-        ui_col_float(&c, "Lo Hz", &daw.masterFx.eqLowFreq, 10.0f, 40.0f, 500.0f);
-        ui_col_float(&c, "Hi Hz", &daw.masterFx.eqHighFreq, 200.0f, 2000.0f, 16000.0f);
+    // 10: EQ (Sub+ always visible since it's a quick toggle)
+    MFX_BEGIN("EQ", &daw.masterFx.eqOn)
+    if (daw.masterFx.eqOn) {
+        DraggableFloatS(rx, ry, "Low", &daw.masterFx.eqLowGain, 0.5f, -12.0f, 12.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "High", &daw.masterFx.eqHighGain, 0.5f, -12.0f, 12.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "LoHz", &daw.masterFx.eqLowFreq, 10.0f, 40.0f, 500.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "HiHz", &daw.masterFx.eqHighFreq, 200.0f, 2000.0f, 16000.0f, fs); ry += row;
     }
-    DrawLine((int)(x+10*blockW), (int)y, (int)(x+10*blockW), (int)(y+h), (Color){38,38,48,255});
+    ToggleBoolS(rx, ry, "Sub+", &daw.masterFx.subBassBoost, fs); ry += row;
+    MFX_END()
 
-    // Block 11: Master Compressor
-    {
-        UIColumn c = ui_column(x+10*blockW+4, y, 12);
-        ui_col_sublabel(&c, "Comp:", ORANGE);
-        ui_col_toggle(&c, "On", &daw.masterFx.compOn);
-        ui_col_float(&c, "Thresh", &daw.masterFx.compThreshold, 1.0f, -40.0f, 0.0f);
-        ui_col_float(&c, "Ratio", &daw.masterFx.compRatio, 0.5f, 1.0f, 20.0f);
-        ui_col_float(&c, "Attack", &daw.masterFx.compAttack, 0.005f, 0.001f, 0.1f);
-        ui_col_float(&c, "Release", &daw.masterFx.compRelease, 0.01f, 0.01f, 1.0f);
-        ui_col_float(&c, "Makeup", &daw.masterFx.compMakeup, 0.5f, 0.0f, 24.0f);
+    // 11: Compressor
+    MFX_BEGIN("Comp", &daw.masterFx.compOn)
+    if (daw.masterFx.compOn) {
+        DraggableFloatS(rx, ry, "Thresh", &daw.masterFx.compThreshold, 1.0f, -40.0f, 0.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Ratio", &daw.masterFx.compRatio, 0.5f, 1.0f, 20.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Atk", &daw.masterFx.compAttack, 0.005f, 0.001f, 0.1f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Rel", &daw.masterFx.compRelease, 0.01f, 0.01f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Gain", &daw.masterFx.compMakeup, 0.5f, 0.0f, 24.0f, fs); ry += row;
     }
+    MFX_END()
+
+    #undef MFX_BEGIN
+    #undef MFX_END
 
     // Presets row at bottom
-    float preY = y + h - 36;
-    DrawLine((int)x, (int)preY-4, (int)(x+w), (int)preY-4, (Color){40,40,50,255});
+    float preY = y + h - 26;
     float px = x + 4;
-    DrawTextShadow("Presets:", (int)px, (int)preY, 10, (Color){80,80,95,255});
-    px += 60;
+    DrawTextShadow("Presets:", (int)px, (int)preY, 9, (Color){80,80,95,255});
+    px += 50;
     const char* presets[] = {"Clean", "9-Bit", "Wobbly", "Toy", "Tape+Chorus", "Lo-Fi"};
     for (int i = 0; i < 6; i++) {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "[%s]", presets[i]);
-        int btnW = MeasureTextUI(buf, 18) + 10;
         if (PushButton(px, preY, presets[i])) { /* preset logic */ }
-        px += btnW + 8;
+        px += MeasureTextUI(presets[i], 18) + 18;
     }
 }
 

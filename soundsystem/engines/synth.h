@@ -1216,8 +1216,12 @@ static inline float polyblepTriangle(float phase, float dt, float *integrator) {
     float sq = polyblepSquare(phase, 0.5f, dt);
     // Leaky integrator: integrate square → triangle, scale by 4*dt for unity amplitude
     *integrator = *integrator + 4.0f * dt * sq;
-    // Slight leak to prevent DC drift
-    *integrator *= 0.999f;
+    // DC blocker instead of leak — removes only true DC offset without eating bass.
+    // First-order HP at ~5Hz: y = x - x_prev + 0.9997*y_prev
+    // But since we only have one state variable, use a gentler leak that preserves
+    // bass better than 0.999 (which had -3dB at ~7Hz, audibly thinning low notes).
+    // 0.9999 at 44.1kHz = -3dB at ~0.7Hz — well below audible range.
+    *integrator *= 0.9999f;
     return *integrator;
 }
 

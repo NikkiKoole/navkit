@@ -185,6 +185,7 @@ static void dawSyncEngineState(void) {
     fx.reverbDamping   = daw.masterFx.reverbDamping;
     fx.reverbPreDelay  = daw.masterFx.reverbPreDelay;
     fx.reverbMix       = daw.masterFx.reverbMix;
+    fx.reverbBass      = daw.masterFx.reverbBass;
 
     // Master EQ
     fx.eqEnabled       = daw.masterFx.eqOn;
@@ -192,6 +193,7 @@ static void dawSyncEngineState(void) {
     fx.eqHighGain      = daw.masterFx.eqHighGain;
     fx.eqLowFreq       = daw.masterFx.eqLowFreq;
     fx.eqHighFreq      = daw.masterFx.eqHighFreq;
+    fx.subBassBoost    = daw.masterFx.subBassBoost;
 
     // Master Compressor
     fx.compEnabled     = daw.masterFx.compOn;
@@ -208,6 +210,7 @@ static void dawSyncEngineState(void) {
     fx.sidechainDepth   = daw.sidechain.depth;
     fx.sidechainAttack  = daw.sidechain.attack;
     fx.sidechainRelease = daw.sidechain.release;
+    fx.sidechainHPFreq  = daw.sidechain.hpFreq;
 
     // Per-bus mixer params
     for (int b = 0; b < NUM_BUSES; b++) {

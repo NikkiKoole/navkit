@@ -315,7 +315,7 @@ static bool dawSave(const char *filepath) {
     _db(f, "on", daw.sidechain.on);
     _di(f, "source", daw.sidechain.source); _di(f, "target", daw.sidechain.target);
     _dw(f, "depth", daw.sidechain.depth); _dw(f, "attack", daw.sidechain.attack);
-    _dw(f, "release", daw.sidechain.release);
+    _dw(f, "release", daw.sidechain.release); _dw(f, "hpFreq", daw.sidechain.hpFreq);
 
     // [masterfx]
     fprintf(f, "\n[masterfx]\n");
@@ -342,10 +342,11 @@ static bool dawSave(const char *filepath) {
     _dw(f, "delayMix", daw.masterFx.delayMix);
     _db(f, "reverbOn", daw.masterFx.reverbOn); _dw(f, "reverbSize", daw.masterFx.reverbSize);
     _dw(f, "reverbDamping", daw.masterFx.reverbDamping); _dw(f, "reverbPreDelay", daw.masterFx.reverbPreDelay);
-    _dw(f, "reverbMix", daw.masterFx.reverbMix);
+    _dw(f, "reverbMix", daw.masterFx.reverbMix); _dw(f, "reverbBass", daw.masterFx.reverbBass);
     _db(f, "eqOn", daw.masterFx.eqOn); _dw(f, "eqLowGain", daw.masterFx.eqLowGain);
     _dw(f, "eqHighGain", daw.masterFx.eqHighGain); _dw(f, "eqLowFreq", daw.masterFx.eqLowFreq);
     _dw(f, "eqHighFreq", daw.masterFx.eqHighFreq);
+    _db(f, "subBassBoost", daw.masterFx.subBassBoost);
     _db(f, "compOn", daw.masterFx.compOn); _dw(f, "compThreshold", daw.masterFx.compThreshold);
     _dw(f, "compRatio", daw.masterFx.compRatio); _dw(f, "compAttack", daw.masterFx.compAttack);
     _dw(f, "compRelease", daw.masterFx.compRelease); _dw(f, "compMakeup", daw.masterFx.compMakeup);
@@ -922,6 +923,7 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"depth")==0) daw.sidechain.depth=_dpf(val);
             else if (strcmp(key,"attack")==0) daw.sidechain.attack=_dpf(val);
             else if (strcmp(key,"release")==0) daw.sidechain.release=_dpf(val);
+            else if (strcmp(key,"hpFreq")==0) daw.sidechain.hpFreq=_dpf(val);
             break;
         case _DW_SEC_MASTERFX:
             if (strcmp(key,"distOn")==0) daw.masterFx.distOn=_dpb(val);
@@ -967,11 +969,13 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"reverbDamping")==0) daw.masterFx.reverbDamping=_dpf(val);
             else if (strcmp(key,"reverbPreDelay")==0) daw.masterFx.reverbPreDelay=_dpf(val);
             else if (strcmp(key,"reverbMix")==0) daw.masterFx.reverbMix=_dpf(val);
+            else if (strcmp(key,"reverbBass")==0) daw.masterFx.reverbBass=_dpf(val);
             else if (strcmp(key,"eqOn")==0) daw.masterFx.eqOn=_dpb(val);
             else if (strcmp(key,"eqLowGain")==0) daw.masterFx.eqLowGain=_dpf(val);
             else if (strcmp(key,"eqHighGain")==0) daw.masterFx.eqHighGain=_dpf(val);
             else if (strcmp(key,"eqLowFreq")==0) daw.masterFx.eqLowFreq=_dpf(val);
             else if (strcmp(key,"eqHighFreq")==0) daw.masterFx.eqHighFreq=_dpf(val);
+            else if (strcmp(key,"subBassBoost")==0) daw.masterFx.subBassBoost=_dpb(val);
             else if (strcmp(key,"compOn")==0) daw.masterFx.compOn=_dpb(val);
             else if (strcmp(key,"compThreshold")==0) daw.masterFx.compThreshold=_dpf(val);
             else if (strcmp(key,"compRatio")==0) daw.masterFx.compRatio=_dpf(val);
