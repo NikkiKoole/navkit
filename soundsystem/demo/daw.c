@@ -3166,6 +3166,10 @@ static void drawParamPatch(float x, float y, float w, float h) {
             float effVol = p->p_volume * ampMul;
             drawLfoModIndicator(col3X + 80, c.y - c.spacing, p->p_volume, effVol - p->p_volume, 0.0f, 1.0f);
         }
+        ui_col_int(&c, "Transpose", &seq.trackTranspose[daw.selectedPatch], 1, -48, 48);
+        if (lfoModViz.active && fabsf(lfoModViz.pitchMod) > 0.001f) {
+            DrawTextShadow(TextFormat("%.1fst", lfoModViz.pitchMod), (int)(col3X + 90), (int)(c.y - c.spacing + 1), 9, (Color){255, 160, 60, 200});
+        }
         ui_col_space(&c, 3);
 
         {

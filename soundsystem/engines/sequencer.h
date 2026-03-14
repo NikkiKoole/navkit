@@ -455,6 +455,9 @@ typedef struct {
 
     // Per-track volume (0.0-1.0, default 1.0)
     float trackVolume[SEQ_V2_MAX_TRACKS];
+
+    // Per-track transpose (semitones, melodic tracks only)
+    int trackTranspose[SEQ_V2_MAX_TRACKS];
     
     // Flam state for pending ghost hits (any track can have flam)
     bool flamPending[SEQ_V2_MAX_TRACKS];
@@ -1384,10 +1387,13 @@ static void seqTriggerStep(Pattern *p, int track, int step, float stepDuration) 
             int vGateSteps = vn->gate;
             if (vGateSteps == 0) vGateSteps = 1;
             float vGateTime = vGateSteps * stepDuration;
+            int transposedNote = vn->note + seq.trackTranspose[track];
+            if (transposedNote < 0) transposedNote = 0;
+            if (transposedNote > 127) transposedNote = 127;
             if (seq.trackNoteOn[track]) {
-                seq.trackNoteOn[track](vn->note, vVel, vGateTime, 1.0f, vn->slide, vn->accent);
+                seq.trackNoteOn[track](transposedNote, vVel, vGateTime, 1.0f, vn->slide, vn->accent);
             }
-            seq.trackCurrentNote[track][v] = vn->note;
+            seq.trackCurrentNote[track][v] = transposedNote;
 
             // Per-voice gate countdown
             int vGateTicks = vGateSteps * seq.ticksPerStep;

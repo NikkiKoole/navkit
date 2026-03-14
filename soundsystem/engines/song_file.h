@@ -51,6 +51,7 @@ typedef struct {
     // Groove
     DillaTiming dilla;
     int trackSwing[SEQ_V2_MAX_TRACKS];
+    int trackTranspose[SEQ_V2_MAX_TRACKS];
     MelodyHumanize humanize;
 
     // Instruments (3 melody patches)
@@ -530,6 +531,8 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
         char key[32];
         snprintf(key, sizeof(key), "trackSwing%d", i);
         _sf_writeInt(f, key, d->trackSwing[i]);
+        snprintf(key, sizeof(key), "trackTranspose%d", i);
+        _sf_writeInt(f, key, d->trackTranspose[i]);
     }
     _sf_writeInt(f, "melodyTimingJitter", d->humanize.timingJitter);
     _sf_writeFloat(f, "melodyVelocityJitter", d->humanize.velocityJitter);
@@ -1250,6 +1253,10 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
             else if (strncmp(key, "trackSwing", 10) == 0) {
                 int t = atoi(key + 10);
                 if (t >= 0 && t < SEQ_V2_MAX_TRACKS) d->trackSwing[t] = _sf_parseInt(val);
+            }
+            else if (strncmp(key, "trackTranspose", 14) == 0) {
+                int t = atoi(key + 14);
+                if (t >= 0 && t < SEQ_V2_MAX_TRACKS) d->trackTranspose[t] = _sf_parseInt(val);
             }
             else if (strcmp(key, "melodyTimingJitter") == 0) d->humanize.timingJitter = _sf_parseInt(val);
             else if (strcmp(key, "melodyVelocityJitter") == 0) d->humanize.velocityJitter = _sf_parseFloat(val);

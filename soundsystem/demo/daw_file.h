@@ -254,6 +254,8 @@ static bool dawSave(const char *filepath) {
         char key[32];
         snprintf(key, sizeof(key), "trackSwing%d", i);
         _di(f, key, seq.trackSwing[i]);
+        snprintf(key, sizeof(key), "trackTranspose%d", i);
+        _di(f, key, seq.trackTranspose[i]);
     }
     _di(f, "melodyTimingJitter", seq.humanize.timingJitter);
     _dw(f, "melodyVelocityJitter", seq.humanize.velocityJitter);
@@ -872,6 +874,10 @@ static bool dawLoad(const char *filepath) {
             else if (strncmp(key,"trackSwing",10)==0) {
                 int t = atoi(key + 10);
                 if (t >= 0 && t < SEQ_V2_MAX_TRACKS) seq.trackSwing[t] = _dpi(val);
+            }
+            else if (strncmp(key,"trackTranspose",14)==0) {
+                int t = atoi(key + 14);
+                if (t >= 0 && t < SEQ_V2_MAX_TRACKS) seq.trackTranspose[t] = _dpi(val);
             }
             else if (strcmp(key,"melodyTimingJitter")==0) seq.humanize.timingJitter = _dpi(val);
             else if (strcmp(key,"melodyVelocityJitter")==0) seq.humanize.velocityJitter = _dpf(val);
