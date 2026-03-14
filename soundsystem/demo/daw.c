@@ -3204,7 +3204,16 @@ static void drawParamPatch(float x, float y, float w, float h) {
         bool arpActive = DB(p_arpEnabled);
         secY = c.y;
         ui_col_sublabel(&c, "Arpeggiator:", ORANGE);
+        bool arpWasOn = p->p_arpEnabled;
         ui_col_toggle(&c, "On", &p->p_arpEnabled);
+        // When arp is toggled off, release arping voices so they stop stepping
+        if (arpWasOn && !p->p_arpEnabled) {
+            for (int vi = 0; vi < NUM_VOICES; vi++) {
+                if (synthCtx->voices[vi].arpEnabled && synthCtx->voices[vi].envStage > 0) {
+                    releaseNote(vi);
+                }
+            }
+        }
         if (p->p_arpEnabled) {
             ui_col_cycle(&c, "Mode", arpModeNames, 4, &p->p_arpMode);
             ui_col_cycle(&c, "Chord", arpChordNames, 7, &p->p_arpChord);
