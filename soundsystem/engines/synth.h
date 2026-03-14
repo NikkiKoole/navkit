@@ -503,6 +503,7 @@ typedef struct {
     float unisonDetune;       // Spread in cents (0-50)
     float unisonPhases[4];    // Per-oscillator phases
     float unisonMix;          // Center vs spread balance (0-1)
+    float triIntegrator;      // PolyBLEP triangle leaky integrator state
     
     // SCW (wavetable) index
     int scwIndex;
@@ -517,6 +518,8 @@ typedef struct {
     float ksDamping;        // Damping/decay factor (0.9-0.999)
     float ksBrightness;     // Filter coefficient (0=muted, 1=bright)
     float ksLastSample;     // For lowpass filter
+    float ksAllpassState;   // Allpass fractional delay state (Jaffe-Smith tuning)
+    float ksAllpassCoeff;   // Allpass coefficient for fractional sample delay
     
     // Additive synthesis
     AdditiveSettings additiveSettings;
@@ -1176,6 +1179,70 @@ static void _ensureSynthCtx(void) {
 // HELPERS
 // ============================================================================
 
+// PolyBLEP anti-aliasing: smooths discontinuities in naive waveforms
+// t = phase position (0-1), dt = phase increment per sample
+// Apply at each discontinuity edge to subtract the aliased energy
+static inline float polyblep(float t, float dt) {
+    if (t < dt) {              // Just past a discontinuity
+        t /= dt;
+        return t + t - t * t - 1.0f;
+    } else if (t > 1.0f - dt) { // Just before a discontinuity
+        t = (t - 1.0f) / dt;
+        return t * t + t + t + 1.0f;
+    }
+    return 0.0f;
+}
+
+// Generate a PolyBLEP-corrected saw from phase and phase increment
+static inline float polyblepSaw(float phase, float dt) {
+    float saw = 2.0f * phase - 1.0f;
+    saw -= polyblep(phase, dt);  // Correct the discontinuity at phase=0 (wrap)
+    return saw;
+}
+
+// Generate a PolyBLEP-corrected square/pulse from phase, pulse width, and phase increment
+static inline float polyblepSquare(float phase, float pw, float dt) {
+    float sq = phase < pw ? 1.0f : -1.0f;
+    sq += polyblep(phase, dt);             // Rising edge at phase=0
+    float shifted = phase + (1.0f - pw);   // Shift to put falling edge at phase=0
+    if (shifted >= 1.0f) shifted -= 1.0f;
+    sq -= polyblep(shifted, dt);           // Falling edge at phase=pw
+    return sq;
+}
+
+// Generate a PolyBLEP-corrected triangle by integrating a PolyBLEP'd square
+// Uses per-voice state (triIntegrator) for leaky integration
+static inline float polyblepTriangle(float phase, float dt, float *integrator) {
+    float sq = polyblepSquare(phase, 0.5f, dt);
+    // Leaky integrator: integrate square → triangle, scale by 4*dt for unity amplitude
+    *integrator = *integrator + 4.0f * dt * sq;
+    // Slight leak to prevent DC drift
+    *integrator *= 0.999f;
+    return *integrator;
+}
+
+// Cubic Hermite interpolation for wavetable/granular playback
+// 4-point, 3rd-order interpolation — much less HF rolloff than linear,
+// and avoids the intermodulation artifacts of 2-point linear interp.
+// data = circular buffer, size = buffer length, pos = fractional read position
+static inline float cubicHermite(const float *data, int size, float pos) {
+    int i1 = (int)pos % size;
+    int i0 = (i1 - 1 + size) % size;  // One sample before
+    int i2 = (i1 + 1) % size;
+    int i3 = (i1 + 2) % size;
+    float frac = pos - (int)pos;
+
+    float y0 = data[i0], y1 = data[i1], y2 = data[i2], y3 = data[i3];
+
+    // Hermite basis functions (Catmull-Rom spline, tension=0)
+    float c0 = y1;
+    float c1 = 0.5f * (y2 - y0);
+    float c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
+    float c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
+
+    return ((c3 * frac + c2) * frac + c1) * frac + c0;
+}
+
 static float noise(void) {
     synthNoiseState = synthNoiseState * 1103515245 + 12345;
     return (float)(synthNoiseState >> 16) / 32768.0f - 1.0f;
@@ -1691,48 +1758,53 @@ static float processVoice(Voice *v, float sampleRate) {
     float sample = 0.0f;
     switch (v->wave) {
         case WAVE_SQUARE:
-            // Unison support for square wave
+            // PolyBLEP anti-aliased square/pulse wave (Välimäki & Smith 2005)
             if (v->unisonCount > 1) {
                 float phaseInc = v->frequency / sampleRate;
                 for (int u = 0; u < v->unisonCount; u++) {
                     float detune = getUnisonDetuneMultiplier(u, v->unisonCount, v->unisonDetune);
-                    v->unisonPhases[u] += phaseInc * detune;
+                    float udt = phaseInc * detune;
+                    v->unisonPhases[u] += udt;
                     if (v->unisonPhases[u] >= 1.0f) v->unisonPhases[u] -= 1.0f;
-                    sample += (v->unisonPhases[u] < pw ? 1.0f : -1.0f);
+                    sample += polyblepSquare(v->unisonPhases[u], pw, udt);
                 }
                 sample /= (float)v->unisonCount;
             } else {
-                sample = v->phase < pw ? 1.0f : -1.0f;
+                sample = polyblepSquare(v->phase, pw, phaseInc);
             }
             break;
         case WAVE_SAW:
-            // Unison support for saw wave
+            // PolyBLEP anti-aliased sawtooth wave
             if (v->unisonCount > 1) {
-                float phaseInc = v->frequency / sampleRate;
+                float sawPhaseInc = v->frequency / sampleRate;
                 for (int u = 0; u < v->unisonCount; u++) {
                     float detune = getUnisonDetuneMultiplier(u, v->unisonCount, v->unisonDetune);
-                    v->unisonPhases[u] += phaseInc * detune;
+                    float udt = sawPhaseInc * detune;
+                    v->unisonPhases[u] += udt;
                     if (v->unisonPhases[u] >= 1.0f) v->unisonPhases[u] -= 1.0f;
-                    sample += 2.0f * v->unisonPhases[u] - 1.0f;
+                    sample += polyblepSaw(v->unisonPhases[u], udt);
                 }
                 sample /= (float)v->unisonCount;
             } else {
-                sample = 2.0f * v->phase - 1.0f;
+                sample = polyblepSaw(v->phase, phaseInc);
             }
             break;
         case WAVE_TRIANGLE:
-            // Unison support for triangle wave
+            // PolyBLEP anti-aliased triangle (integrated bandlimited square)
             if (v->unisonCount > 1) {
-                float phaseInc = v->frequency / sampleRate;
+                float triPhaseInc = v->frequency / sampleRate;
                 for (int u = 0; u < v->unisonCount; u++) {
                     float detune = getUnisonDetuneMultiplier(u, v->unisonCount, v->unisonDetune);
-                    v->unisonPhases[u] += phaseInc * detune;
+                    float udt = triPhaseInc * detune;
+                    v->unisonPhases[u] += udt;
                     if (v->unisonPhases[u] >= 1.0f) v->unisonPhases[u] -= 1.0f;
+                    // For unison triangle, fall back to naive (integrator state per-voice
+                    // would need per-unison-oscillator state; aliasing is mild on triangle)
                     sample += 4.0f * fabsf(v->unisonPhases[u] - 0.5f) - 1.0f;
                 }
                 sample /= (float)v->unisonCount;
             } else {
-                sample = 4.0f * fabsf(v->phase - 0.5f) - 1.0f;
+                sample = polyblepTriangle(v->phase, phaseInc, &v->triIntegrator);
             }
             break;
         case WAVE_NOISE:
@@ -1742,10 +1814,7 @@ static float processVoice(Voice *v, float sampleRate) {
             if (v->scwIndex >= 0 && v->scwIndex < scwCount && scwTables[v->scwIndex].loaded) {
                 SCWTable* table = &scwTables[v->scwIndex];
                 float pos = v->phase * table->size;
-                int i0 = (int)pos % table->size;
-                int i1 = (i0 + 1) % table->size;
-                float frac = pos - (int)pos;
-                sample = table->data[i0] * (1.0f - frac) + table->data[i1] * frac;
+                sample = cubicHermite(table->data, table->size, pos);
             }
             break;
         case WAVE_VOICE:
@@ -1797,8 +1866,8 @@ static float processVoice(Voice *v, float sampleRate) {
             if ((phase) >= 1.0f) (phase) -= 1.0f; \
             float _osc; \
             switch (v->wave) { \
-                case WAVE_SQUARE: _osc = (phase) < 0.5f ? 1.0f : -1.0f; break; \
-                case WAVE_SAW:    _osc = 2.0f * (phase) - 1.0f; break; \
+                case WAVE_SQUARE: _osc = polyblepSquare((phase), 0.5f, _inc); break; \
+                case WAVE_SAW:    _osc = polyblepSaw((phase), _inc); break; \
                 case WAVE_TRIANGLE: _osc = 4.0f * fabsf((phase) - 0.5f) - 1.0f; break; \
                 default:          _osc = sinf((phase) * 2.0f * PI); break; \
             } \
@@ -2009,30 +2078,45 @@ static float processVoice(Voice *v, float sampleRate) {
             // Resonant bandpass (bridged-T / ringing filter)
             // Two-pole BP with feedback — self-oscillates at high resonance
             // Great for: CR-78 kick ringing, acid bass, metallic percussion
-            float f = cutoff * cutoff * 1.5f;
+            float f = 2.0f * sinf(cutoff * cutoff * 0.75f);
             if (f > 0.99f) f = 0.99f;
             float fb = res * 0.99f + 0.01f;  // feedback: 0.01 (gentle) to 1.0 (self-osc)
             v->filterBp += f * (sample - v->filterBp - fb * (v->filterBp - v->filterLp));
             v->filterLp += f * (v->filterBp - v->filterLp);
             sample = v->filterBp * (1.0f + res * 2.0f);  // Gain boost at high resonance
         } else {
-            // SVF (2nd order, resonant — LP/HP/BP)
-            cutoff = cutoff * cutoff;  // Exponential curve for more musical feel
-            float q = 1.0f - res * FILTER_RESONANCE_SCALE;
+            // Simper/Cytomic SVF (Andrew Simper, 2013)
+            // Topology-preserving integrator: unconditionally stable, correct frequency
+            // response at all cutoff/resonance values, zero-delay feedback.
+            // g = tan(theta) where theta = PI*fc/sr. For preset compatibility, use
+            // the same c^2*0.75 mapping as the old Chamberlin (theta ≈ 0 to ~0.75 rad,
+            // i.e. ~0 to ~5.2kHz at 44.1k). tan(x) ≈ x for small x, so low-cutoff
+            // presets sound identical; high-cutoff presets gain correct warping.
+            float theta = cutoff * cutoff * 0.75f;
+            float g = tanf(theta);
+            float k = 2.0f * (1.0f - res * FILTER_RESONANCE_SCALE);  // damping (2 = no reso, ~0.04 = self-osc)
 
-            float f = cutoff * 1.5f;
-            if (f > 0.99f) f = 0.99f;
+            // Simper SVF tick (linear trapezoidal integrated)
+            float a1 = 1.0f / (1.0f + g * (g + k));
+            float a2 = g * a1;
+            float a3 = g * a2;
 
-            v->filterLp += f * v->filterBp;
-            float hp = sample - v->filterLp - q * v->filterBp;
-            v->filterBp += f * hp;
+            float v3 = sample - v->filterLp;  // ic2eq = filterLp, ic1eq = filterBp
+            float v1 = a1 * v->filterBp + a2 * v3;
+            float v2 = v->filterLp + a2 * v->filterBp + a3 * v3;
 
+            // Update state variables (ic1eq, ic2eq)
+            v->filterBp = 2.0f * v1 - v->filterBp;
+            v->filterLp = 2.0f * v2 - v->filterLp;
+
+            // Output selection: lp = v2, bp = v1, hp = sample - k*v1 - v2
             if (v->filterType == 1) {
-                sample = hp + res * v->filterBp * 0.5f;
+                float hp = sample - k * v1 - v2;
+                sample = hp + res * v1 * 0.5f;
             } else if (v->filterType == 2) {
-                sample = v->filterBp;
+                sample = v1;
             } else {
-                sample = v->filterLp + res * v->filterBp * 0.5f;
+                sample = v2 + res * v1 * 0.5f;
             }
         }
     }

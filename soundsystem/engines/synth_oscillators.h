@@ -184,17 +184,18 @@ static float processVoiceOscillator(Voice *v, float sampleRate) {
 }
 
 // Karplus-Strong plucked string oscillator
+// With allpass fractional delay for accurate pitch tuning (Jaffe & Smith 1983)
 static float processPluckOscillator(Voice *v, float sampleRate) {
     (void)sampleRate;
     if (v->ksLength <= 0) return 0.0f;
-    
+
     // Read from delay line
     float sample = v->ksBuffer[v->ksIndex];
-    
+
     // Get next sample for averaging (Karplus-Strong lowpass)
     int nextIndex = (v->ksIndex + 1) % v->ksLength;
     float nextSample = v->ksBuffer[nextIndex];
-    
+
     // Karplus-Strong with brightness and tone damping
     // Brightness: 1=bright (more direct sample), 0=muted (more averaging)
     float avg = (sample + nextSample) * 0.5f;
@@ -206,10 +207,18 @@ static float processPluckOscillator(Voice *v, float sampleRate) {
     filtered *= v->ksDamping;
     v->ksLastSample = filtered;
 
+    // First-order allpass for fractional delay tuning (Jaffe & Smith 1983)
+    // Transfer function: H(z) = (C + z^-1) / (1 + C*z^-1)
+    // Direct form I: y[n] = C*x[n] + x[n-1] - C*y[n-1]
+    // Using transposed direct form II (one state variable):
+    //   y[n] = C*x[n] + s;  s = x[n] - C*y[n]
+    float apOut = v->ksAllpassCoeff * filtered + v->ksAllpassState;
+    v->ksAllpassState = filtered - v->ksAllpassCoeff * apOut;
+
     // Write back to delay line
-    v->ksBuffer[v->ksIndex] = filtered;
+    v->ksBuffer[v->ksIndex] = apOut;
     v->ksIndex = nextIndex;
-    
+
     return sample;
 }
 
@@ -822,17 +831,14 @@ static float processGranularOscillator(Voice *v, float sampleRate) {
         Grain *g = &gs->grains[i];
         if (!g->active) continue;
         
-        // Read from buffer with linear interpolation
+        // Read from buffer with cubic Hermite interpolation
         float readPos = g->bufferPos + g->position * table->size;
-        
+
         // Wrap around buffer
         while (readPos >= table->size) readPos -= table->size;
         while (readPos < 0) readPos += table->size;
-        
-        int i0 = (int)readPos % table->size;
-        int i1 = (i0 + 1) % table->size;
-        float frac = readPos - (int)readPos;
-        float sample = table->data[i0] * (1.0f - frac) + table->data[i1] * frac;
+
+        float sample = cubicHermite(table->data, table->size, readPos);
         
         // Apply grain envelope
         float env = grainEnvelope(g->envPhase);
@@ -1474,17 +1480,27 @@ static float processBirdOscillator(Voice *v, float sampleRate) {
 }
 
 // Initialize Karplus-Strong buffer with noise burst (called when note starts)
+// Uses allpass fractional delay for accurate tuning (Jaffe & Smith 1983)
 static void initPluck(Voice *v, float frequency, float sampleRate, float brightness, float damping) {
-    // Calculate delay length from frequency
-    v->ksLength = (int)(sampleRate / frequency);
+    // Calculate delay length from frequency — use fractional part for allpass tuning
+    float idealLength = sampleRate / frequency;
+    v->ksLength = (int)idealLength;
     if (v->ksLength > 2047) v->ksLength = 2047;
     if (v->ksLength < 2) v->ksLength = 2;
-    
+
+    // First-order allpass for fractional delay: corrects pitch to exact frequency
+    // Without this, high notes are audibly out of tune (up to 39 cents at 4kHz)
+    float frac = idealLength - (float)v->ksLength;
+    // Thiran allpass coefficient: C = (1 - frac) / (1 + frac)
+    // At frac=0: C=1 (no delay), at frac=0.5: C=0.33, at frac→1: C→0
+    v->ksAllpassCoeff = (1.0f - frac) / (1.0f + frac);
+    v->ksAllpassState = 0.0f;
+
     v->ksIndex = 0;
     v->ksBrightness = clampf(brightness, 0.0f, 1.0f);
     v->ksDamping = clampf(damping, 0.9f, 0.9999f);
     v->ksLastSample = 0.0f;
-    
+
     // Fill buffer with noise burst (the "pluck" excitation)
     for (int i = 0; i < v->ksLength; i++) {
         v->ksBuffer[i] = noise();
