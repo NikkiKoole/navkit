@@ -208,6 +208,8 @@ typedef struct {
     bool crushOn;   float crushBits, crushRate, crushMix;
     bool chorusOn;  float chorusRate, chorusDepth, chorusMix;
     bool flangerOn; float flangerRate, flangerDepth, flangerFeedback, flangerMix;
+    bool phaserOn;  float phaserRate, phaserDepth, phaserMix, phaserFeedback; int phaserStages;
+    bool combOn;    float combFreq, combFeedback, combMix, combDamping;
     bool tapeOn;    float tapeSaturation, tapeWow, tapeFlutter, tapeHiss;
     bool delayOn;   float delayTime, delayFeedback, delayTone, delayMix;
     bool reverbOn;  float reverbSize, reverbDamping, reverbPreDelay, reverbMix;
@@ -236,6 +238,14 @@ typedef struct {
     // Per-bus FX
     bool filterOn[NUM_BUSES];  float filterCut[NUM_BUSES]; float filterRes[NUM_BUSES]; int filterType[NUM_BUSES];
     bool distOn[NUM_BUSES];    float distDrive[NUM_BUSES]; float distMix[NUM_BUSES];
+    bool eqOn[NUM_BUSES];      float eqLowGain[NUM_BUSES]; float eqHighGain[NUM_BUSES];
+    float eqLowFreq[NUM_BUSES]; float eqHighFreq[NUM_BUSES];
+    bool chorusOn[NUM_BUSES];  float chorusRate[NUM_BUSES]; float chorusDepth[NUM_BUSES];
+    float chorusMix[NUM_BUSES]; float chorusDelay[NUM_BUSES]; float chorusFB[NUM_BUSES];
+    bool phaserOn[NUM_BUSES];  float phaserRate[NUM_BUSES]; float phaserDepth[NUM_BUSES];
+    float phaserMix[NUM_BUSES]; float phaserFB[NUM_BUSES]; int phaserStages[NUM_BUSES];
+    bool combOn[NUM_BUSES];    float combFreq[NUM_BUSES]; float combFB[NUM_BUSES];
+    float combMix[NUM_BUSES];  float combDamping[NUM_BUSES];
     bool delayOn[NUM_BUSES];   bool delaySync[NUM_BUSES];  int delaySyncDiv[NUM_BUSES];
     float delayTime[NUM_BUSES]; float delayFB[NUM_BUSES];  float delayMix[NUM_BUSES];
 } Mixer;
@@ -732,7 +742,7 @@ static void loadPresetIntoPatch(int patchIdx, int presetIdx) {
 static const char* sidechainSourceNames[] = {"Kick", "Snare", "Clap", "HiHat", "AllDrm"};
 static const char* sidechainTargetNames[] = {"Bass", "Lead", "Chord", "AllSyn"};
 static const char* dawBusName(int bus) { return (bus >= 0 && bus < 7) ? daw.patches[bus].p_name : "??"; }
-static const char* busFilterTypeNames[] = {"LP", "HP", "BP"};
+static const char* busFilterTypeNames[] = {"LP", "HP", "BP", "Notch"};
 static const char* delaySyncNames[] = {"1/16", "1/8", "1/4", "1/2", "1bar"};
 static const char* rewindCurveNames[] = {"Linear", "Expo", "S-Curve"};
 static const char* dubInputNames[] = {"All", "Drums", "Synth", "Manual"};
@@ -3497,7 +3507,7 @@ static void drawParamBus(float x, float y, float w, float h) {
             int srow = sfs + 4;
             DraggableFloatS(textX, ry, "Cut", &daw.mixer.filterCut[b], 0.02f, 0.0f, 1.0f, sfs);
             DraggableFloatS(textX, ry + srow, "Res", &daw.mixer.filterRes[b], 0.02f, 0.0f, 1.0f, sfs);
-            CycleOptionS(textX, ry + srow*2, "Type", busFilterTypeNames, 3, &daw.mixer.filterType[b], sfs);
+            CycleOptionS(textX, ry + srow*2, "Type", busFilterTypeNames, 4, &daw.mixer.filterType[b], sfs);
             ry += xySize + 2;
         }
         ry += 2;
@@ -3507,6 +3517,41 @@ static void drawParamBus(float x, float y, float w, float h) {
         if (daw.mixer.distOn[b]) {
             DraggableFloatS(rightX, ry, "Drive", &daw.mixer.distDrive[b], 0.05f, 1.0f, 4.0f, fs); ry += row;
             DraggableFloatS(rightX, ry, "Mix", &daw.mixer.distMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
+        }
+        ry += 2;
+
+        // EQ
+        ToggleBoolS(rightX, ry, "EQ", &daw.mixer.eqOn[b], fs); ry += row;
+        if (daw.mixer.eqOn[b]) {
+            DraggableFloatS(rightX, ry, "Low", &daw.mixer.eqLowGain[b], 0.5f, -12.0f, 12.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "High", &daw.mixer.eqHighGain[b], 0.5f, -12.0f, 12.0f, fs); ry += row;
+        }
+        ry += 2;
+
+        // Chorus
+        ToggleBoolS(rightX, ry, "Chorus", &daw.mixer.chorusOn[b], fs); ry += row;
+        if (daw.mixer.chorusOn[b]) {
+            DraggableFloatS(rightX, ry, "Rate", &daw.mixer.chorusRate[b], 0.1f, 0.1f, 5.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Depth", &daw.mixer.chorusDepth[b], 0.05f, 0.0f, 1.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Mix", &daw.mixer.chorusMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
+        }
+        ry += 2;
+
+        // Phaser
+        ToggleBoolS(rightX, ry, "Phaser", &daw.mixer.phaserOn[b], fs); ry += row;
+        if (daw.mixer.phaserOn[b]) {
+            DraggableFloatS(rightX, ry, "Rate", &daw.mixer.phaserRate[b], 0.05f, 0.05f, 5.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Depth", &daw.mixer.phaserDepth[b], 0.05f, 0.0f, 1.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Mix", &daw.mixer.phaserMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
+        }
+        ry += 2;
+
+        // Comb
+        ToggleBoolS(rightX, ry, "Comb", &daw.mixer.combOn[b], fs); ry += row;
+        if (daw.mixer.combOn[b]) {
+            DraggableFloatS(rightX, ry, "Freq", &daw.mixer.combFreq[b], 5.0f, 20.0f, 2000.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "FB", &daw.mixer.combFB[b], 0.05f, -0.95f, 0.95f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Mix", &daw.mixer.combMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
         }
         ry += 2;
 
@@ -3576,23 +3621,23 @@ static void drawParamBus(float x, float y, float w, float h) {
 // ============================================================================
 
 static void drawParamMasterFx(float x, float y, float w, float h) {
-    // 9 effect blocks in signal chain order
-    float blockW = w / 9.0f;
+    // 11 effect blocks in signal chain order
+    float blockW = w / 11.0f;
     if (blockW > 140) blockW = 140;
 
     // Draw signal flow arrows between blocks
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 10; i++) {
         float ax = x + (i+1)*blockW - 6;
         DrawTextShadow(">", (int)ax, (int)(y + h*0.5f - 5), 12, (Color){50,50,60,255});
     }
 
     // Signal chain label
-    DrawTextShadow("Dist > Crush > Chorus > Flanger > Tape > Delay > Reverb",
+    DrawTextShadow("Dist > Crush > Chorus > Flanger > Phaser > Comb > Tape > Delay > Reverb",
                    (int)x, (int)(y+h-14), 9, (Color){55,55,65,255});
 
     // Block 1: Distortion
     {
-        UIColumn c = ui_column(x+4, y, 16);
+        UIColumn c = ui_column(x+4, y, 12);
         ui_col_sublabel(&c, "Distortion:", ORANGE);
         ui_col_toggle(&c, "On", &daw.masterFx.distOn);
         ui_col_float(&c, "Drive", &daw.masterFx.distDrive, 0.5f, 1.0f, 20.0f);
@@ -3603,7 +3648,7 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
 
     // Block 2: Bitcrusher
     {
-        UIColumn c = ui_column(x+blockW+4, y, 16);
+        UIColumn c = ui_column(x+blockW+4, y, 12);
         ui_col_sublabel(&c, "Bitcrusher:", ORANGE);
         ui_col_toggle(&c, "On", &daw.masterFx.crushOn);
         ui_col_float(&c, "Bits", &daw.masterFx.crushBits, 0.5f, 2.0f, 16.0f);
@@ -3614,7 +3659,7 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
 
     // Block 3: Chorus
     {
-        UIColumn c = ui_column(x+2*blockW+4, y, 16);
+        UIColumn c = ui_column(x+2*blockW+4, y, 12);
         ui_col_sublabel(&c, "Chorus:", ORANGE);
         ui_col_toggle(&c, "On", &daw.masterFx.chorusOn);
         ui_col_float(&c, "Rate", &daw.masterFx.chorusRate, 0.1f, 0.1f, 5.0f);
@@ -3625,7 +3670,7 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
 
     // Block 4: Flanger
     {
-        UIColumn c = ui_column(x+3*blockW+4, y, 16);
+        UIColumn c = ui_column(x+3*blockW+4, y, 12);
         ui_col_sublabel(&c, "Flanger:", ORANGE);
         ui_col_toggle(&c, "On", &daw.masterFx.flangerOn);
         ui_col_float(&c, "Rate", &daw.masterFx.flangerRate, 0.05f, 0.05f, 5.0f);
@@ -3635,9 +3680,34 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
     }
     DrawLine((int)(x+4*blockW), (int)y, (int)(x+4*blockW), (int)(y+h), (Color){38,38,48,255});
 
-    // Block 5: Tape
+    // Block 5: Phaser
     {
-        UIColumn c = ui_column(x+4*blockW+4, y, 16);
+        UIColumn c = ui_column(x+4*blockW+4, y, 12);
+        ui_col_sublabel(&c, "Phaser:", ORANGE);
+        ui_col_toggle(&c, "On", &daw.masterFx.phaserOn);
+        ui_col_float(&c, "Rate", &daw.masterFx.phaserRate, 0.05f, 0.05f, 5.0f);
+        ui_col_float(&c, "Depth", &daw.masterFx.phaserDepth, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Feedbk", &daw.masterFx.phaserFeedback, 0.05f, -0.9f, 0.9f);
+        ui_col_float(&c, "Mix", &daw.masterFx.phaserMix, 0.05f, 0.0f, 1.0f);
+        ui_col_int(&c, "Stages", &daw.masterFx.phaserStages, 2, 2, 8);
+    }
+    DrawLine((int)(x+5*blockW), (int)y, (int)(x+5*blockW), (int)(y+h), (Color){38,38,48,255});
+
+    // Block 6: Comb Filter
+    {
+        UIColumn c = ui_column(x+5*blockW+4, y, 12);
+        ui_col_sublabel(&c, "Comb:", ORANGE);
+        ui_col_toggle(&c, "On", &daw.masterFx.combOn);
+        ui_col_float(&c, "Freq", &daw.masterFx.combFreq, 5.0f, 20.0f, 2000.0f);
+        ui_col_float(&c, "Feedbk", &daw.masterFx.combFeedback, 0.05f, -0.95f, 0.95f);
+        ui_col_float(&c, "Damp", &daw.masterFx.combDamping, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Mix", &daw.masterFx.combMix, 0.05f, 0.0f, 1.0f);
+    }
+    DrawLine((int)(x+6*blockW), (int)y, (int)(x+6*blockW), (int)(y+h), (Color){38,38,48,255});
+
+    // Block 7: Tape
+    {
+        UIColumn c = ui_column(x+6*blockW+4, y, 12);
         ui_col_sublabel(&c, "Tape:", ORANGE);
         ui_col_toggle(&c, "On", &daw.masterFx.tapeOn);
         ui_col_float(&c, "Saturat", &daw.masterFx.tapeSaturation, 0.05f, 0.0f, 1.0f);
@@ -3645,11 +3715,11 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
         ui_col_float(&c, "Flutter", &daw.masterFx.tapeFlutter, 0.05f, 0.0f, 1.0f);
         ui_col_float(&c, "Hiss", &daw.masterFx.tapeHiss, 0.05f, 0.0f, 1.0f);
     }
-    DrawLine((int)(x+5*blockW), (int)y, (int)(x+5*blockW), (int)(y+h), (Color){38,38,48,255});
+    DrawLine((int)(x+7*blockW), (int)y, (int)(x+7*blockW), (int)(y+h), (Color){38,38,48,255});
 
-    // Block 6: Delay
+    // Block 8: Delay
     {
-        UIColumn c = ui_column(x+5*blockW+4, y, 16);
+        UIColumn c = ui_column(x+7*blockW+4, y, 12);
         ui_col_sublabel(&c, "Delay:", ORANGE);
         ui_col_toggle(&c, "On", &daw.masterFx.delayOn);
         ui_col_float(&c, "Time", &daw.masterFx.delayTime, 0.05f, 0.05f, 1.0f);
@@ -3657,11 +3727,11 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
         ui_col_float(&c, "Tone", &daw.masterFx.delayTone, 0.05f, 0.0f, 1.0f);
         ui_col_float(&c, "Mix", &daw.masterFx.delayMix, 0.05f, 0.0f, 1.0f);
     }
-    DrawLine((int)(x+6*blockW), (int)y, (int)(x+6*blockW), (int)(y+h), (Color){38,38,48,255});
+    DrawLine((int)(x+8*blockW), (int)y, (int)(x+8*blockW), (int)(y+h), (Color){38,38,48,255});
 
-    // Block 7: Reverb
+    // Block 9: Reverb
     {
-        UIColumn c = ui_column(x+6*blockW+4, y, 16);
+        UIColumn c = ui_column(x+8*blockW+4, y, 12);
         ui_col_sublabel(&c, "Reverb:", ORANGE);
         ui_col_toggle(&c, "On", &daw.masterFx.reverbOn);
         ui_col_float(&c, "Size", &daw.masterFx.reverbSize, 0.05f, 0.0f, 1.0f);
@@ -3669,11 +3739,11 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
         ui_col_float(&c, "PreDly", &daw.masterFx.reverbPreDelay, 0.005f, 0.0f, 0.1f);
         ui_col_float(&c, "Mix", &daw.masterFx.reverbMix, 0.05f, 0.0f, 1.0f);
     }
-    DrawLine((int)(x+7*blockW), (int)y, (int)(x+7*blockW), (int)(y+h), (Color){38,38,48,255});
+    DrawLine((int)(x+9*blockW), (int)y, (int)(x+9*blockW), (int)(y+h), (Color){38,38,48,255});
 
-    // Block 8: Master EQ
+    // Block 10: Master EQ
     {
-        UIColumn c = ui_column(x+7*blockW+4, y, 16);
+        UIColumn c = ui_column(x+9*blockW+4, y, 12);
         ui_col_sublabel(&c, "EQ:", ORANGE);
         ui_col_toggle(&c, "On", &daw.masterFx.eqOn);
         ui_col_float(&c, "Low", &daw.masterFx.eqLowGain, 0.5f, -12.0f, 12.0f);
@@ -3681,11 +3751,11 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
         ui_col_float(&c, "Lo Hz", &daw.masterFx.eqLowFreq, 10.0f, 40.0f, 500.0f);
         ui_col_float(&c, "Hi Hz", &daw.masterFx.eqHighFreq, 200.0f, 2000.0f, 16000.0f);
     }
-    DrawLine((int)(x+8*blockW), (int)y, (int)(x+8*blockW), (int)(y+h), (Color){38,38,48,255});
+    DrawLine((int)(x+10*blockW), (int)y, (int)(x+10*blockW), (int)(y+h), (Color){38,38,48,255});
 
-    // Block 9: Master Compressor
+    // Block 11: Master Compressor
     {
-        UIColumn c = ui_column(x+8*blockW+4, y, 16);
+        UIColumn c = ui_column(x+10*blockW+4, y, 12);
         ui_col_sublabel(&c, "Comp:", ORANGE);
         ui_col_toggle(&c, "On", &daw.masterFx.compOn);
         ui_col_float(&c, "Thresh", &daw.masterFx.compThreshold, 1.0f, -40.0f, 0.0f);

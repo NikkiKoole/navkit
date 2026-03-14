@@ -286,6 +286,28 @@ static bool dawSave(const char *filepath) {
         snprintf(k, sizeof(k), "delayTime%d", b); _dw(f, k, daw.mixer.delayTime[b]);
         snprintf(k, sizeof(k), "delayFB%d", b); _dw(f, k, daw.mixer.delayFB[b]);
         snprintf(k, sizeof(k), "delayMix%d", b); _dw(f, k, daw.mixer.delayMix[b]);
+        snprintf(k, sizeof(k), "eqOn%d", b); _db(f, k, daw.mixer.eqOn[b]);
+        snprintf(k, sizeof(k), "eqLowGain%d", b); _dw(f, k, daw.mixer.eqLowGain[b]);
+        snprintf(k, sizeof(k), "eqHighGain%d", b); _dw(f, k, daw.mixer.eqHighGain[b]);
+        snprintf(k, sizeof(k), "eqLowFreq%d", b); _dw(f, k, daw.mixer.eqLowFreq[b]);
+        snprintf(k, sizeof(k), "eqHighFreq%d", b); _dw(f, k, daw.mixer.eqHighFreq[b]);
+        snprintf(k, sizeof(k), "chorusOn%d", b); _db(f, k, daw.mixer.chorusOn[b]);
+        snprintf(k, sizeof(k), "chorusRate%d", b); _dw(f, k, daw.mixer.chorusRate[b]);
+        snprintf(k, sizeof(k), "chorusDepth%d", b); _dw(f, k, daw.mixer.chorusDepth[b]);
+        snprintf(k, sizeof(k), "chorusMix%d", b); _dw(f, k, daw.mixer.chorusMix[b]);
+        snprintf(k, sizeof(k), "chorusDelay%d", b); _dw(f, k, daw.mixer.chorusDelay[b]);
+        snprintf(k, sizeof(k), "chorusFB%d", b); _dw(f, k, daw.mixer.chorusFB[b]);
+        snprintf(k, sizeof(k), "phaserOn%d", b); _db(f, k, daw.mixer.phaserOn[b]);
+        snprintf(k, sizeof(k), "phaserRate%d", b); _dw(f, k, daw.mixer.phaserRate[b]);
+        snprintf(k, sizeof(k), "phaserDepth%d", b); _dw(f, k, daw.mixer.phaserDepth[b]);
+        snprintf(k, sizeof(k), "phaserMix%d", b); _dw(f, k, daw.mixer.phaserMix[b]);
+        snprintf(k, sizeof(k), "phaserFB%d", b); _dw(f, k, daw.mixer.phaserFB[b]);
+        snprintf(k, sizeof(k), "phaserStages%d", b); _di(f, k, daw.mixer.phaserStages[b]);
+        snprintf(k, sizeof(k), "combOn%d", b); _db(f, k, daw.mixer.combOn[b]);
+        snprintf(k, sizeof(k), "combFreq%d", b); _dw(f, k, daw.mixer.combFreq[b]);
+        snprintf(k, sizeof(k), "combFB%d", b); _dw(f, k, daw.mixer.combFB[b]);
+        snprintf(k, sizeof(k), "combMix%d", b); _dw(f, k, daw.mixer.combMix[b]);
+        snprintf(k, sizeof(k), "combDamping%d", b); _dw(f, k, daw.mixer.combDamping[b]);
     }
 
     // [sidechain]
@@ -306,6 +328,12 @@ static bool dawSave(const char *filepath) {
     _db(f, "flangerOn", daw.masterFx.flangerOn); _dw(f, "flangerRate", daw.masterFx.flangerRate);
     _dw(f, "flangerDepth", daw.masterFx.flangerDepth); _dw(f, "flangerFeedback", daw.masterFx.flangerFeedback);
     _dw(f, "flangerMix", daw.masterFx.flangerMix);
+    _db(f, "phaserOn", daw.masterFx.phaserOn); _dw(f, "phaserRate", daw.masterFx.phaserRate);
+    _dw(f, "phaserDepth", daw.masterFx.phaserDepth); _dw(f, "phaserMix", daw.masterFx.phaserMix);
+    _dw(f, "phaserFeedback", daw.masterFx.phaserFeedback); _di(f, "phaserStages", daw.masterFx.phaserStages);
+    _db(f, "combOn", daw.masterFx.combOn); _dw(f, "combFreq", daw.masterFx.combFreq);
+    _dw(f, "combFeedback", daw.masterFx.combFeedback); _dw(f, "combMix", daw.masterFx.combMix);
+    _dw(f, "combDamping", daw.masterFx.combDamping);
     _db(f, "tapeOn", daw.masterFx.tapeOn); _dw(f, "tapeSaturation", daw.masterFx.tapeSaturation);
     _dw(f, "tapeWow", daw.masterFx.tapeWow); _dw(f, "tapeFlutter", daw.masterFx.tapeFlutter);
     _dw(f, "tapeHiss", daw.masterFx.tapeHiss);
@@ -861,6 +889,28 @@ static bool dawLoad(const char *filepath) {
                     else if (strcmp(base,"delayTime")==0) daw.mixer.delayTime[b]=_dpf(val);
                     else if (strcmp(base,"delayFB")==0) daw.mixer.delayFB[b]=_dpf(val);
                     else if (strcmp(base,"delayMix")==0) daw.mixer.delayMix[b]=_dpf(val);
+                    else if (strcmp(base,"eqOn")==0) daw.mixer.eqOn[b]=_dpb(val);
+                    else if (strcmp(base,"eqLowGain")==0) daw.mixer.eqLowGain[b]=_dpf(val);
+                    else if (strcmp(base,"eqHighGain")==0) daw.mixer.eqHighGain[b]=_dpf(val);
+                    else if (strcmp(base,"eqLowFreq")==0) daw.mixer.eqLowFreq[b]=_dpf(val);
+                    else if (strcmp(base,"eqHighFreq")==0) daw.mixer.eqHighFreq[b]=_dpf(val);
+                    else if (strcmp(base,"chorusOn")==0) daw.mixer.chorusOn[b]=_dpb(val);
+                    else if (strcmp(base,"chorusRate")==0) daw.mixer.chorusRate[b]=_dpf(val);
+                    else if (strcmp(base,"chorusDepth")==0) daw.mixer.chorusDepth[b]=_dpf(val);
+                    else if (strcmp(base,"chorusMix")==0) daw.mixer.chorusMix[b]=_dpf(val);
+                    else if (strcmp(base,"chorusDelay")==0) daw.mixer.chorusDelay[b]=_dpf(val);
+                    else if (strcmp(base,"chorusFB")==0) daw.mixer.chorusFB[b]=_dpf(val);
+                    else if (strcmp(base,"phaserOn")==0) daw.mixer.phaserOn[b]=_dpb(val);
+                    else if (strcmp(base,"phaserRate")==0) daw.mixer.phaserRate[b]=_dpf(val);
+                    else if (strcmp(base,"phaserDepth")==0) daw.mixer.phaserDepth[b]=_dpf(val);
+                    else if (strcmp(base,"phaserMix")==0) daw.mixer.phaserMix[b]=_dpf(val);
+                    else if (strcmp(base,"phaserFB")==0) daw.mixer.phaserFB[b]=_dpf(val);
+                    else if (strcmp(base,"phaserStages")==0) daw.mixer.phaserStages[b]=_dpi(val);
+                    else if (strcmp(base,"combOn")==0) daw.mixer.combOn[b]=_dpb(val);
+                    else if (strcmp(base,"combFreq")==0) daw.mixer.combFreq[b]=_dpf(val);
+                    else if (strcmp(base,"combFB")==0) daw.mixer.combFB[b]=_dpf(val);
+                    else if (strcmp(base,"combMix")==0) daw.mixer.combMix[b]=_dpf(val);
+                    else if (strcmp(base,"combDamping")==0) daw.mixer.combDamping[b]=_dpf(val);
                 }
             }
             break;
@@ -891,6 +941,17 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"flangerDepth")==0) daw.masterFx.flangerDepth=_dpf(val);
             else if (strcmp(key,"flangerFeedback")==0) daw.masterFx.flangerFeedback=_dpf(val);
             else if (strcmp(key,"flangerMix")==0) daw.masterFx.flangerMix=_dpf(val);
+            else if (strcmp(key,"phaserOn")==0) daw.masterFx.phaserOn=_dpb(val);
+            else if (strcmp(key,"phaserRate")==0) daw.masterFx.phaserRate=_dpf(val);
+            else if (strcmp(key,"phaserDepth")==0) daw.masterFx.phaserDepth=_dpf(val);
+            else if (strcmp(key,"phaserMix")==0) daw.masterFx.phaserMix=_dpf(val);
+            else if (strcmp(key,"phaserFeedback")==0) daw.masterFx.phaserFeedback=_dpf(val);
+            else if (strcmp(key,"phaserStages")==0) daw.masterFx.phaserStages=_dpi(val);
+            else if (strcmp(key,"combOn")==0) daw.masterFx.combOn=_dpb(val);
+            else if (strcmp(key,"combFreq")==0) daw.masterFx.combFreq=_dpf(val);
+            else if (strcmp(key,"combFeedback")==0) daw.masterFx.combFeedback=_dpf(val);
+            else if (strcmp(key,"combMix")==0) daw.masterFx.combMix=_dpf(val);
+            else if (strcmp(key,"combDamping")==0) daw.masterFx.combDamping=_dpf(val);
             else if (strcmp(key,"tapeOn")==0) daw.masterFx.tapeOn=_dpb(val);
             else if (strcmp(key,"tapeSaturation")==0) daw.masterFx.tapeSaturation=_dpf(val);
             else if (strcmp(key,"tapeWow")==0) daw.masterFx.tapeWow=_dpf(val);

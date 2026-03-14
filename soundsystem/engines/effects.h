@@ -44,6 +44,14 @@
 #define FLANGER_MIN_DELAY 0.0001f     // 0.1ms minimum delay
 #define FLANGER_MAX_DELAY 0.010f      // 10ms maximum delay
 
+// Phaser constants (allpass filter chain with LFO)
+#define PHASER_MAX_STAGES 8           // Maximum allpass stages
+
+// Comb filter constants (pitched delay with feedback)
+#define COMB_BUFFER_SIZE 2205         // SAMPLE_RATE / 20Hz = longest delay
+#define COMB_MIN_FREQ 20.0f           // Lowest pitch (longest delay)
+#define COMB_MAX_FREQ 2000.0f         // Highest pitch (shortest delay)
+
 // Dub Loop constants
 #define DUB_LOOP_MAX_TIME 4.0f        // Max loop time in seconds
 #define DUB_LOOP_BUFFER_SIZE (SAMPLE_RATE * 4)  // 4 seconds at 44.1kHz
@@ -107,6 +115,7 @@
 #define BUS_FILTER_LOWPASS   0
 #define BUS_FILTER_HIGHPASS  1
 #define BUS_FILTER_BANDPASS  2
+#define BUS_FILTER_NOTCH     3
 
 // Delay sync divisions
 #define BUS_DELAY_SYNC_16TH  0   // 1/16 note
@@ -150,6 +159,36 @@ typedef struct {
     bool delayTempoSync;    // If true, use delaySyncDiv instead of delayTime
     int delaySyncDiv;       // BUS_DELAY_SYNC_*
     
+    // EQ (2-band shelving, same as master)
+    bool eqEnabled;
+    float eqLowGain;        // -12 to +12 dB
+    float eqHighGain;       // -12 to +12 dB
+    float eqLowFreq;        // 40-500 Hz
+    float eqHighFreq;       // 2000-16000 Hz
+
+    // Chorus
+    bool chorusEnabled;
+    float chorusRate;        // LFO rate Hz (0.1-5.0)
+    float chorusDepth;       // Modulation depth (0-1)
+    float chorusMix;         // Dry/wet (0-1)
+    float chorusDelay;       // Base delay seconds (0.005-0.030)
+    float chorusFeedback;    // Feedback (0-0.5)
+
+    // Phaser
+    bool phaserEnabled;
+    float phaserRate;        // LFO rate Hz (0.05-5.0)
+    float phaserDepth;       // Modulation depth (0-1)
+    float phaserMix;         // Dry/wet (0-1)
+    float phaserFeedback;    // -0.9 to 0.9
+    int   phaserStages;      // 2, 4, 6, or 8
+
+    // Comb filter
+    bool combEnabled;
+    float combFreq;          // 20-2000 Hz
+    float combFeedback;      // -0.95 to 0.95
+    float combMix;           // Dry/wet (0-1)
+    float combDamping;       // 0-1
+
     // Reverb send
     float reverbSend;       // 0-1 (amount sent to master reverb)
 } BusEffects;
@@ -167,6 +206,26 @@ typedef struct {
     float busDelayBuf[BUS_DELAY_SIZE];
     int busDelayWritePos;
     float busDelayFilterLp;
+
+    // EQ state
+    float eqLowState;
+    float eqHighState;
+
+    // Chorus state
+    float busChorusBuf[CHORUS_BUFFER_SIZE];
+    int busChorusWritePos;
+    float busChorusPhase1;
+    float busChorusPhase2;
+
+    // Phaser state
+    float busPhaserState[PHASER_MAX_STAGES];
+    float busPhaserPrev[PHASER_MAX_STAGES];
+    float busPhaserPhase;
+
+    // Comb filter state
+    float busCombBuf[COMB_BUFFER_SIZE];
+    int busCombWritePos;
+    float busCombFilterLp;
 } BusState;
 
 // Mixer context (all buses + shared state)
@@ -242,6 +301,23 @@ typedef struct {
     float flangerMix;     // Dry/wet (0-1)
     float flangerFeedback;// Feedback amount (-0.95 to 0.95, negative = inverted)
     float flangerPhase;   // LFO phase
+
+    // Phaser (allpass chain with LFO — sweeping notch effect)
+    bool phaserEnabled;
+    float phaserRate;     // LFO rate in Hz (0.05 - 5.0)
+    float phaserDepth;    // Modulation depth (0-1)
+    float phaserMix;      // Dry/wet (0-1)
+    float phaserFeedback; // Output → input feedback (-0.9 to 0.9, adds resonance)
+    int   phaserStages;   // Number of allpass stages (2, 4, 6, or 8)
+    float phaserPhase;    // Internal LFO phase
+
+    // Comb filter (pitched delay with feedback — metallic/resonant tones)
+    bool combEnabled;
+    float combFreq;       // Fundamental frequency in Hz (20-2000, sets delay length)
+    float combFeedback;   // -0.95 to 0.95 (negative = hollow/nasal character)
+    float combMix;        // Dry/wet (0-1)
+    float combDamping;    // High-frequency loss per iteration (0-1)
+    float combFilterLp;   // Internal: damping filter state
 
     // Reverb (Schroeder-style)
     bool reverbEnabled;
@@ -421,7 +497,15 @@ typedef struct EffectsContext {
     // Flanger buffer and state
     float flangerBuffer[FLANGER_BUFFER_SIZE];
     int flangerWritePos;
-    
+
+    // Phaser state (allpass filter chain)
+    float phaserState[PHASER_MAX_STAGES];   // Allpass output states
+    float phaserPrev[PHASER_MAX_STAGES];    // Previous input per stage
+
+    // Comb filter buffer and state
+    float combBuffer[COMB_BUFFER_SIZE];
+    int combWritePos;
+
     // Noise state for tape hiss
     unsigned int noiseState;
     
@@ -504,6 +588,23 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->params.flangerMix = 0.5f;
     ctx->params.flangerFeedback = 0.7f;   // High feedback for jet sound
     ctx->params.flangerPhase = 0.0f;
+
+    // Phaser - off by default
+    ctx->params.phaserEnabled = false;
+    ctx->params.phaserRate = 0.5f;        // Gentle sweep
+    ctx->params.phaserDepth = 0.7f;
+    ctx->params.phaserMix = 0.5f;
+    ctx->params.phaserFeedback = 0.3f;    // Mild resonance
+    ctx->params.phaserStages = 4;         // Classic 4-stage
+    ctx->params.phaserPhase = 0.0f;
+
+    // Comb filter - off by default
+    ctx->params.combEnabled = false;
+    ctx->params.combFreq = 200.0f;        // ~200Hz fundamental
+    ctx->params.combFeedback = 0.5f;
+    ctx->params.combMix = 0.5f;
+    ctx->params.combDamping = 0.3f;
+    ctx->params.combFilterLp = 0.0f;
 
     // Reverb - off by default
     ctx->params.reverbEnabled = false;
@@ -868,6 +969,81 @@ static float processFlanger(float sample, float dt) {
     return dry * (1.0f - fx.flangerMix) + wet * fx.flangerMix;
 }
 
+// Phaser — cascaded allpass filters with LFO-modulated coefficient
+static float processPhaser(float sample, float dt) {
+    _ensureFxCtx();
+    if (!fx.phaserEnabled) return sample;
+
+    float dry = sample;
+
+    // Advance LFO (sine)
+    fx.phaserPhase += fx.phaserRate * dt;
+    if (fx.phaserPhase >= 1.0f) fx.phaserPhase -= 1.0f;
+    float lfo = sinf(fx.phaserPhase * 2.0f * PI);
+
+    // Map LFO to allpass coefficient (sweeps notch frequencies)
+    // Range: ~200Hz to ~4kHz mapped to coefficient 0.1-0.9
+    float minCoeff = 0.1f;
+    float maxCoeff = 0.9f;
+    float range = (maxCoeff - minCoeff) * 0.5f;
+    float center = (maxCoeff + minCoeff) * 0.5f;
+    float coeff = center + lfo * fx.phaserDepth * range;
+
+    // Apply feedback from last stage
+    float input = sample + fxCtx->phaserState[fx.phaserStages - 1] * fx.phaserFeedback;
+    // Soft clip feedback to prevent runaway
+    if (input > 1.5f) input = 1.5f;
+    if (input < -1.5f) input = -1.5f;
+
+    // Cascade allpass stages
+    int stages = fx.phaserStages;
+    if (stages < 2) stages = 2;
+    if (stages > PHASER_MAX_STAGES) stages = PHASER_MAX_STAGES;
+
+    for (int i = 0; i < stages; i++) {
+        float ap = coeff * (input - fxCtx->phaserState[i]) + fxCtx->phaserPrev[i];
+        fxCtx->phaserPrev[i] = input;
+        fxCtx->phaserState[i] = ap;
+        input = ap;
+    }
+
+    return dry * (1.0f - fx.phaserMix) + input * fx.phaserMix;
+}
+
+// Comb filter — pitched delay with feedback (metallic/resonant tones)
+static float processComb(float sample) {
+    _ensureFxCtx();
+    if (!fx.combEnabled) return sample;
+
+    float dry = sample;
+
+    // Calculate delay from frequency
+    float freq = fx.combFreq;
+    if (freq < COMB_MIN_FREQ) freq = COMB_MIN_FREQ;
+    if (freq > COMB_MAX_FREQ) freq = COMB_MAX_FREQ;
+    int delaySamples = (int)(SAMPLE_RATE / freq);
+    if (delaySamples < 1) delaySamples = 1;
+    if (delaySamples >= COMB_BUFFER_SIZE) delaySamples = COMB_BUFFER_SIZE - 1;
+
+    // Read from buffer
+    int readPos = fxCtx->combWritePos - delaySamples;
+    if (readPos < 0) readPos += COMB_BUFFER_SIZE;
+    float delayed = fxCtx->combBuffer[readPos];
+
+    // Damping lowpass on feedback path
+    float damp = fx.combDamping;
+    fx.combFilterLp = delayed * (1.0f - damp) + fx.combFilterLp * damp;
+
+    // Write input + damped feedback
+    float fbSample = sample + fx.combFilterLp * fx.combFeedback;
+    if (fbSample > 1.5f) fbSample = 1.5f;
+    if (fbSample < -1.5f) fbSample = -1.5f;
+    fxCtx->combBuffer[fxCtx->combWritePos] = fbSample;
+    fxCtx->combWritePos = (fxCtx->combWritePos + 1) % COMB_BUFFER_SIZE;
+
+    return dry * (1.0f - fx.combMix) + delayed * fx.combMix;
+}
+
 // Helper: process a single comb filter with lowpass damping
 static float processCombFilter(float input, float *buffer, int *pos, int size, 
                                float *lpState, float feedback, float damping) {
@@ -1053,9 +1229,11 @@ static float processEffects(float sample, float dt) {
     sample = processBitcrusher(sample);
     sample = processChorus(sample, dt);
     sample = processFlanger(sample, dt);
+    sample = processPhaser(sample, dt);
+    sample = processComb(sample);
     sample = processTape(sample, dt);
     sample = processDelay(sample, dt);
-    
+
     // Dub loop routing: preReverb means reverb -> delay (room being echoed)
     if (dubLoop.enabled && dubLoop.preReverb) {
         // Pre-reverb mode: apply reverb before dub loop
@@ -1084,9 +1262,11 @@ static float processEffectsWithBuses(float drumBus, float synthBus, float dt) {
     sample = processBitcrusher(sample);
     sample = processChorus(sample, dt);
     sample = processFlanger(sample, dt);
+    sample = processPhaser(sample, dt);
+    sample = processComb(sample);
     sample = processTape(sample, dt);
     sample = processDelay(sample, dt);
-    
+
     // Dub loop with selective input
     if (dubLoop.enabled) {
         float dry = sample;
@@ -1148,6 +1328,32 @@ static void initBusDefaults(BusEffects* bus) {
     bus->delayTempoSync = false;
     bus->delaySyncDiv = BUS_DELAY_SYNC_8TH;
     
+    bus->eqEnabled = false;
+    bus->eqLowGain = 0.0f;
+    bus->eqHighGain = 0.0f;
+    bus->eqLowFreq = 200.0f;
+    bus->eqHighFreq = 6000.0f;
+
+    bus->chorusEnabled = false;
+    bus->chorusRate = 1.5f;
+    bus->chorusDepth = 0.4f;
+    bus->chorusMix = 0.5f;
+    bus->chorusDelay = 0.015f;
+    bus->chorusFeedback = 0.0f;
+
+    bus->phaserEnabled = false;
+    bus->phaserRate = 0.5f;
+    bus->phaserDepth = 0.7f;
+    bus->phaserMix = 0.5f;
+    bus->phaserFeedback = 0.3f;
+    bus->phaserStages = 4;
+
+    bus->combEnabled = false;
+    bus->combFreq = 200.0f;
+    bus->combFeedback = 0.5f;
+    bus->combMix = 0.5f;
+    bus->combDamping = 0.3f;
+
     bus->reverbSend = 0.0f;        // No reverb send by default
 }
 
@@ -1254,17 +1460,136 @@ static float processBusEffects(float input, int busIndex, float dt) {
             case BUS_FILTER_LOWPASS:  sample = lp; break;
             case BUS_FILTER_HIGHPASS: sample = hp; break;
             case BUS_FILTER_BANDPASS: sample = bp; break;
+            case BUS_FILTER_NOTCH:   sample = lp + hp; break;
             default: sample = lp; break;
         }
     }
     
+    // === EQ (2-band shelving) ===
+    if (bus->eqEnabled) {
+        float lowCoeff = bus->eqLowFreq * 2.0f * PI / SAMPLE_RATE;
+        if (lowCoeff > 0.99f) lowCoeff = 0.99f;
+        state->eqLowState += lowCoeff * (sample - state->eqLowState);
+        float lowBand = state->eqLowState;
+        float highBand = sample - state->eqLowState;
+
+        float highCoeff = bus->eqHighFreq * 2.0f * PI / SAMPLE_RATE;
+        if (highCoeff > 0.99f) highCoeff = 0.99f;
+        state->eqHighState += highCoeff * (highBand - state->eqHighState);
+        float midBand = state->eqHighState;
+        float topBand = highBand - state->eqHighState;
+
+        float lowGain = powf(10.0f, bus->eqLowGain / 20.0f);
+        float highGain = powf(10.0f, bus->eqHighGain / 20.0f);
+        sample = lowBand * lowGain + midBand + topBand * highGain;
+    }
+
     // === DISTORTION (light tanh saturation) ===
     if (bus->distEnabled && bus->distDrive > 1.0f) {
         float dry = sample;
         float driven = tanhf(sample * bus->distDrive);
         sample = dry * (1.0f - bus->distMix) + driven * bus->distMix;
     }
-    
+
+    // === CHORUS ===
+    if (bus->chorusEnabled) {
+        float chorusDry = sample;
+
+        // Write to chorus buffer
+        state->busChorusBuf[state->busChorusWritePos] = sample;
+        state->busChorusWritePos = (state->busChorusWritePos + 1) % CHORUS_BUFFER_SIZE;
+
+        // Advance LFOs
+        state->busChorusPhase1 += bus->chorusRate * (1.0f / SAMPLE_RATE);
+        if (state->busChorusPhase1 >= 1.0f) state->busChorusPhase1 -= 1.0f;
+        state->busChorusPhase2 += bus->chorusRate * 1.1f * (1.0f / SAMPLE_RATE);
+        if (state->busChorusPhase2 >= 1.0f) state->busChorusPhase2 -= 1.0f;
+
+        float delayRange = CHORUS_MAX_DELAY - CHORUS_MIN_DELAY;
+        float modAmount = bus->chorusDepth * delayRange * 0.5f;
+        float d1 = clampToRange(bus->chorusDelay + sinf(state->busChorusPhase1 * 2.0f * PI) * modAmount,
+                                CHORUS_MIN_DELAY, CHORUS_MAX_DELAY);
+        float d2 = clampToRange(bus->chorusDelay + sinf(state->busChorusPhase2 * 2.0f * PI) * modAmount,
+                                CHORUS_MIN_DELAY, CHORUS_MAX_DELAY);
+
+        // Read with interpolation
+        float rp1 = (float)state->busChorusWritePos - d1 * SAMPLE_RATE;
+        if (rp1 < 0) rp1 += CHORUS_BUFFER_SIZE;
+        int ci0 = (int)rp1 % CHORUS_BUFFER_SIZE;
+        int ci1 = (ci0 + 1) % CHORUS_BUFFER_SIZE;
+        float cf = rp1 - (int)rp1;
+        float w1 = state->busChorusBuf[ci0] * (1.0f - cf) + state->busChorusBuf[ci1] * cf;
+
+        float rp2 = (float)state->busChorusWritePos - d2 * SAMPLE_RATE;
+        if (rp2 < 0) rp2 += CHORUS_BUFFER_SIZE;
+        ci0 = (int)rp2 % CHORUS_BUFFER_SIZE;
+        ci1 = (ci0 + 1) % CHORUS_BUFFER_SIZE;
+        cf = rp2 - (int)rp2;
+        float w2 = state->busChorusBuf[ci0] * (1.0f - cf) + state->busChorusBuf[ci1] * cf;
+
+        float wet = (w1 + w2) * 0.5f;
+        sample = chorusDry * (1.0f - bus->chorusMix) + wet * bus->chorusMix;
+    }
+
+    // === PHASER ===
+    if (bus->phaserEnabled) {
+        float phaserDry = sample;
+
+        // Advance LFO
+        state->busPhaserPhase += bus->phaserRate * (1.0f / SAMPLE_RATE);
+        if (state->busPhaserPhase >= 1.0f) state->busPhaserPhase -= 1.0f;
+        float lfo = sinf(state->busPhaserPhase * 2.0f * PI);
+
+        float minC = 0.1f, maxC = 0.9f;
+        float cRange = (maxC - minC) * 0.5f;
+        float cCenter = (maxC + minC) * 0.5f;
+        float coeff = cCenter + lfo * bus->phaserDepth * cRange;
+
+        int stages = bus->phaserStages;
+        if (stages < 2) stages = 2;
+        if (stages > PHASER_MAX_STAGES) stages = PHASER_MAX_STAGES;
+
+        float pIn = sample + state->busPhaserState[stages - 1] * bus->phaserFeedback;
+        if (pIn > 1.5f) pIn = 1.5f;
+        if (pIn < -1.5f) pIn = -1.5f;
+
+        for (int s = 0; s < stages; s++) {
+            float ap = coeff * (pIn - state->busPhaserState[s]) + state->busPhaserPrev[s];
+            state->busPhaserPrev[s] = pIn;
+            state->busPhaserState[s] = ap;
+            pIn = ap;
+        }
+
+        sample = phaserDry * (1.0f - bus->phaserMix) + pIn * bus->phaserMix;
+    }
+
+    // === COMB FILTER ===
+    if (bus->combEnabled) {
+        float combDry = sample;
+
+        float freq = bus->combFreq;
+        if (freq < COMB_MIN_FREQ) freq = COMB_MIN_FREQ;
+        if (freq > COMB_MAX_FREQ) freq = COMB_MAX_FREQ;
+        int combDelay = (int)(SAMPLE_RATE / freq);
+        if (combDelay < 1) combDelay = 1;
+        if (combDelay >= COMB_BUFFER_SIZE) combDelay = COMB_BUFFER_SIZE - 1;
+
+        int combReadPos = state->busCombWritePos - combDelay;
+        if (combReadPos < 0) combReadPos += COMB_BUFFER_SIZE;
+        float combDelayed = state->busCombBuf[combReadPos];
+
+        float damp = bus->combDamping;
+        state->busCombFilterLp = combDelayed * (1.0f - damp) + state->busCombFilterLp * damp;
+
+        float combFb = sample + state->busCombFilterLp * bus->combFeedback;
+        if (combFb > 1.5f) combFb = 1.5f;
+        if (combFb < -1.5f) combFb = -1.5f;
+        state->busCombBuf[state->busCombWritePos] = combFb;
+        state->busCombWritePos = (state->busCombWritePos + 1) % COMB_BUFFER_SIZE;
+
+        sample = combDry * (1.0f - bus->combMix) + combDelayed * bus->combMix;
+    }
+
     // === DELAY ===
     if (bus->delayEnabled) {
         int delaySamples = _getBusDelaySamples(bus, mixerCtx->tempo);
@@ -1331,9 +1656,11 @@ static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
     sample = processBitcrusher(sample);
     sample = processChorus(sample, dt);
     sample = processFlanger(sample, dt);
+    sample = processPhaser(sample, dt);
+    sample = processComb(sample);
     sample = processTape(sample, dt);
     sample = processDelay(sample, dt);
-    
+
     // Dub loop (can use bus outputs for selective input)
     if (dubLoop.enabled) {
         float dry = sample;
@@ -1464,6 +1791,63 @@ static void setBusReverbSend(int bus, float amount) {
     _ensureMixerCtx();
     if (bus >= 0 && bus < NUM_BUSES) {
         mixerCtx->bus[bus].reverbSend = amount;
+    }
+}
+
+__attribute__((unused))
+static void setBusEQ(int bus, bool enabled, float lowGain, float highGain) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].eqEnabled = enabled;
+        mixerCtx->bus[bus].eqLowGain = lowGain;
+        mixerCtx->bus[bus].eqHighGain = highGain;
+    }
+}
+
+__attribute__((unused))
+static void setBusEQFreqs(int bus, float lowFreq, float highFreq) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].eqLowFreq = lowFreq;
+        mixerCtx->bus[bus].eqHighFreq = highFreq;
+    }
+}
+
+__attribute__((unused))
+static void setBusChorus(int bus, bool enabled, float rate, float depth, float mix, float delay, float feedback) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].chorusEnabled = enabled;
+        mixerCtx->bus[bus].chorusRate = rate;
+        mixerCtx->bus[bus].chorusDepth = depth;
+        mixerCtx->bus[bus].chorusMix = mix;
+        mixerCtx->bus[bus].chorusDelay = delay;
+        mixerCtx->bus[bus].chorusFeedback = feedback;
+    }
+}
+
+__attribute__((unused))
+static void setBusPhaser(int bus, bool enabled, float rate, float depth, float mix, float feedback, int stages) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].phaserEnabled = enabled;
+        mixerCtx->bus[bus].phaserRate = rate;
+        mixerCtx->bus[bus].phaserDepth = depth;
+        mixerCtx->bus[bus].phaserMix = mix;
+        mixerCtx->bus[bus].phaserFeedback = feedback;
+        mixerCtx->bus[bus].phaserStages = stages;
+    }
+}
+
+__attribute__((unused))
+static void setBusComb(int bus, bool enabled, float freq, float feedback, float mix, float damping) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].combEnabled = enabled;
+        mixerCtx->bus[bus].combFreq = freq;
+        mixerCtx->bus[bus].combFeedback = feedback;
+        mixerCtx->bus[bus].combMix = mix;
+        mixerCtx->bus[bus].combDamping = damping;
     }
 }
 

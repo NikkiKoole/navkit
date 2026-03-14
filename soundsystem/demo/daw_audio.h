@@ -159,6 +159,17 @@ static void dawSyncEngineState(void) {
     fx.flangerDepth    = daw.masterFx.flangerDepth;
     fx.flangerFeedback = daw.masterFx.flangerFeedback;
     fx.flangerMix      = daw.masterFx.flangerMix;
+    fx.phaserEnabled   = daw.masterFx.phaserOn;
+    fx.phaserRate      = daw.masterFx.phaserRate;
+    fx.phaserDepth     = daw.masterFx.phaserDepth;
+    fx.phaserMix       = daw.masterFx.phaserMix;
+    fx.phaserFeedback  = daw.masterFx.phaserFeedback;
+    fx.phaserStages    = daw.masterFx.phaserStages;
+    fx.combEnabled     = daw.masterFx.combOn;
+    fx.combFreq        = daw.masterFx.combFreq;
+    fx.combFeedback    = daw.masterFx.combFeedback;
+    fx.combMix         = daw.masterFx.combMix;
+    fx.combDamping     = daw.masterFx.combDamping;
     fx.tapeEnabled     = daw.masterFx.tapeOn;
     fx.tapeSaturation  = daw.masterFx.tapeSaturation;
     fx.tapeWow         = daw.masterFx.tapeWow;
@@ -209,6 +220,16 @@ static void dawSyncEngineState(void) {
                      daw.mixer.filterRes[b], daw.mixer.filterType[b]);
         setBusDistortion(b, daw.mixer.distOn[b], daw.mixer.distDrive[b],
                          daw.mixer.distMix[b]);
+        setBusEQ(b, daw.mixer.eqOn[b], daw.mixer.eqLowGain[b], daw.mixer.eqHighGain[b]);
+        setBusEQFreqs(b, daw.mixer.eqLowFreq[b], daw.mixer.eqHighFreq[b]);
+        setBusChorus(b, daw.mixer.chorusOn[b], daw.mixer.chorusRate[b],
+                     daw.mixer.chorusDepth[b], daw.mixer.chorusMix[b],
+                     daw.mixer.chorusDelay[b], daw.mixer.chorusFB[b]);
+        setBusPhaser(b, daw.mixer.phaserOn[b], daw.mixer.phaserRate[b],
+                     daw.mixer.phaserDepth[b], daw.mixer.phaserMix[b],
+                     daw.mixer.phaserFB[b], daw.mixer.phaserStages[b]);
+        setBusComb(b, daw.mixer.combOn[b], daw.mixer.combFreq[b],
+                   daw.mixer.combFB[b], daw.mixer.combMix[b], daw.mixer.combDamping[b]);
         setBusDelay(b, daw.mixer.delayOn[b], daw.mixer.delayTime[b],
                     daw.mixer.delayFB[b], daw.mixer.delayMix[b]);
         setBusDelaySync(b, daw.mixer.delaySync[b], daw.mixer.delaySyncDiv[b]);
