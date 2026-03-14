@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 137
+#define NUM_INSTRUMENT_PRESETS 140
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -2345,6 +2345,78 @@ static void initInstrumentPresets(void) {
     instrumentPresets[136].patch.p_vibratoRate = 5.0f;
     instrumentPresets[136].patch.p_vibratoDepth = 0.1f;
     instrumentPresets[136].patch.p_volume = 0.45f;
+
+    // 137: Supersaw Pad — thick detuned saws, slow attack, 16-bar filter sweep
+    instrumentPresets[137].name = "Supersaw Pad";
+    instrumentPresets[137].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[137].patch.p_attack = 0.8f;
+    instrumentPresets[137].patch.p_decay = 0.5f;
+    instrumentPresets[137].patch.p_sustain = 0.7f;
+    instrumentPresets[137].patch.p_release = 1.5f;
+    instrumentPresets[137].patch.p_unisonCount = 4;
+    instrumentPresets[137].patch.p_unisonDetune = 20.0f;
+    instrumentPresets[137].patch.p_unisonMix = 0.6f;
+    instrumentPresets[137].patch.p_filterCutoff = 0.4f;
+    instrumentPresets[137].patch.p_filterResonance = 0.15f;
+    instrumentPresets[137].patch.p_filterEnvAmt = 0.2f;
+    instrumentPresets[137].patch.p_filterEnvAttack = 0.5f;
+    instrumentPresets[137].patch.p_filterEnvDecay = 1.0f;
+    instrumentPresets[137].patch.p_filterLfoDepth = 0.25f;
+    instrumentPresets[137].patch.p_filterLfoShape = 0;  // sine
+    instrumentPresets[137].patch.p_filterLfoSync = LFO_SYNC_16_1;  // 16 bars ~31s
+    instrumentPresets[137].patch.p_analogRolloff = true;
+    instrumentPresets[137].patch.p_drive = 0.1f;
+    instrumentPresets[137].patch.p_volume = 0.4f;
+
+    // 138: Warm Pad — gentle filtered saw, slow evolving, 32-bar reso sweep
+    instrumentPresets[138].name = "Warm Pad";
+    instrumentPresets[138].patch.p_waveType = WAVE_TRIANGLE;
+    instrumentPresets[138].patch.p_attack = 1.2f;
+    instrumentPresets[138].patch.p_decay = 0.8f;
+    instrumentPresets[138].patch.p_sustain = 0.8f;
+    instrumentPresets[138].patch.p_release = 2.0f;
+    instrumentPresets[138].patch.p_expRelease = true;
+    instrumentPresets[138].patch.p_unisonCount = 3;
+    instrumentPresets[138].patch.p_unisonDetune = 10.0f;
+    instrumentPresets[138].patch.p_unisonMix = 0.5f;
+    instrumentPresets[138].patch.p_filterCutoff = 0.35f;
+    instrumentPresets[138].patch.p_filterResonance = 0.1f;
+    instrumentPresets[138].patch.p_filterKeyTrack = 0.4f;
+    instrumentPresets[138].patch.p_filterLfoDepth = 0.15f;
+    instrumentPresets[138].patch.p_filterLfoShape = 1;  // triangle — gentle back and forth
+    instrumentPresets[138].patch.p_filterLfoSync = LFO_SYNC_32_1;  // 32 bars ~62s
+    instrumentPresets[138].patch.p_resoLfoDepth = 0.12f;
+    instrumentPresets[138].patch.p_resoLfoShape = 0;  // sine
+    instrumentPresets[138].patch.p_resoLfoSync = LFO_SYNC_16_1;  // reso sweeps at half rate
+    instrumentPresets[138].patch.p_resoLfoPhaseOffset = 0.25f;  // offset from filter for movement
+    instrumentPresets[138].patch.p_analogRolloff = true;
+    instrumentPresets[138].patch.p_tubeSaturation = true;
+    instrumentPresets[138].patch.p_volume = 0.4f;
+
+    // 139: Glass Pad — FM shimmer, slow attack, 8-bar FM LFO modulating brightness
+    instrumentPresets[139].name = "Glass Pad";
+    instrumentPresets[139].patch.p_waveType = WAVE_FM;
+    instrumentPresets[139].patch.p_fmModRatio = 1.414f;  // sqrt(2) — glassy beating
+    instrumentPresets[139].patch.p_fmModIndex = 2.5f;
+    instrumentPresets[139].patch.p_fmFeedback = 0.0f;
+    instrumentPresets[139].patch.p_fmMod2Ratio = 5.0f;   // shimmer
+    instrumentPresets[139].patch.p_fmMod2Index = 1.0f;
+    instrumentPresets[139].patch.p_fmAlgorithm = 1;  // parallel — cleaner
+    instrumentPresets[139].patch.p_fmLfoDepth = 1.5f;
+    instrumentPresets[139].patch.p_fmLfoShape = 0;  // sine
+    instrumentPresets[139].patch.p_fmLfoSync = LFO_SYNC_8_1;  // 8 bars ~15s
+    instrumentPresets[139].patch.p_attack = 1.0f;
+    instrumentPresets[139].patch.p_decay = 0.5f;
+    instrumentPresets[139].patch.p_sustain = 0.7f;
+    instrumentPresets[139].patch.p_release = 2.0f;
+    instrumentPresets[139].patch.p_expRelease = true;
+    instrumentPresets[139].patch.p_filterCutoff = 0.6f;
+    instrumentPresets[139].patch.p_filterResonance = 0.05f;
+    instrumentPresets[139].patch.p_filterLfoDepth = 0.1f;
+    instrumentPresets[139].patch.p_filterLfoSync = LFO_SYNC_16_1;  // filter offset from FM
+    instrumentPresets[139].patch.p_filterLfoPhaseOffset = 0.5f;  // inverted — opens when FM dims
+    instrumentPresets[139].patch.p_filterKeyTrack = 0.4f;
+    instrumentPresets[139].patch.p_volume = 0.4f;
 }
 
 #endif // INSTRUMENT_PRESETS_H
