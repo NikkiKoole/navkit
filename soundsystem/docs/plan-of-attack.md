@@ -2,7 +2,7 @@
 
 All TODO items consolidated from across soundsystem docs. Waves 0-2 complete, partial Wave 3. Completed docs moved to `done/`. Reference docs (roadmap.md, ux-insight.md, piku.md) kept in place.
 
-**Current state:** 111 presets, 14+2 synthesis engines (WAVE_BOWED, WAVE_PIPE added), sequencer v2 with polyphony, full DAW UI (5 tabs), chorus/flanger/stereo spread, bus mixer, MIDI input+learn+split, authentic TB-303 acid mode (accent sweep circuit, gimmick dip, constant-time RC glide), unified parameter routing (all 16 engines use globals via `initVoiceCommon`, bypass toggles for envelope/filter), slow LFO sync divisions (8/16/32 bar), per-LFO phase offset, FM mod index LFO, real-time note recording (free/quantized, overdub/replace, gate tracking, pattern lock).
+**Current state:** 146 presets (808+909+CR78 drum kits, DX7 FM series, leads, pads, world percussion), 14+2 synthesis engines (WAVE_BOWED, WAVE_PIPE added), sequencer v2 with polyphony, full DAW UI (5 tabs), chorus/flanger/phaser/comb/tape effects, bus mixer, MIDI input+learn+split, authentic TB-303 acid mode (accent sweep circuit, gimmick dip, constant-time RC glide), unified parameter routing (all 16 engines use globals via `initVoiceCommon`, bypass toggles for envelope/filter), slow LFO sync divisions (8/16/32 bar), per-LFO phase offset, FM mod index LFO, standard radian FM modIndex scaling, real-time note recording (free/quantized, overdub/replace, gate tracking, pattern lock), pluck allpass fractional delay tuning (Jaffe & Smith 1983).
 
 ---
 
@@ -28,18 +28,24 @@ Prototype has been deleted. Only the scene/crossfader system is worth reimplemen
 
 | What | Effort | Source |
 |------|--------|--------|
-| **Crossfader / Scene system** — scene snapshot storage + blending (UI shell exists in DAW, logic missing). Replaces bridge `sweepPhase` hack for song-level parameter morphing. Full spec + decision rationale in `scene-crossfader-spec.md` §Decision | Medium | demo-to-daw-parity |
+| **Crossfader / Scene system** — scene snapshot storage + blending (UI shell exists in DAW, logic missing). Replaces bridge `sweepPhase` hack for song-level parameter morphing. Full spec + decision rationale in `scene-crossfader-spec.md` §Decision. **Note:** Slow LFO sync (8/16/32 bar) + phase offsets + FM LFO may cover most sweep use cases without scenes. | Medium | demo-to-daw-parity |
 | ~~SFX triggers, Direct drum keys, Column visibility, Quick-copy presets~~ | — | Dropped (not worth migrating) |
 
 ---
 
-## Melodic Presets — 127 total (Phase 1-7 mostly done)
+## Presets — 146 total
 
-All preset-only work — no engine changes. See `done/missing-melodic-instruments.md` for details.
+All preset-only work — no engine changes. See `done/missing-melodic-instruments.md` for details on Phase 1-7.
 
-**Added (111-126):** Wurlitzer (PD reso), Clavinet (pluck+wah), Toy Piano (FM detuned), Honky Piano (FM detuned), Fretless Bass (saw+glide), FM Bass (DX7), Slap Bass (pluck+noise), Mute Guitar (pluck short), Accordion (square musette), Ocarina (triangle+vibrato), Grain Pad (granular — first!), Grain Shimmer (granular sparkle), Dark Drone (square resonant), SNES Strings (saw+drive), SNES Brass (saw stab), SNES Harp (pluck bright).
+**Added (111-126):** Wurlitzer, Clavinet, Toy Piano, Honky Piano, Fretless Bass, FM Bass, Slap Bass, Mute Guitar, Accordion, Ocarina, Grain Pad, Grain Shimmer, Dark Drone, SNES Strings, SNES Brass, SNES Harp.
 
-**Engine coverage now:** All 16 engines have presets. Granular went from 0→2 presets. SCW/wavetable still at 0 (needs good cycle content).
+**Added (127-139):** Mono Lead (Minimoog-style), Hoover (reese bass), Screamer (high-reso lead), DX7 E.Piano, DX7 Bass, DX7 Brass, DX7 Bell, FM Clav, FM Marimba, FM Flute, Supersaw Pad, Warm Pad, Glass Pad.
+
+**Added (140-145):** 909 Kick, 909 Snare, 909 Clap, 909 CH, 909 OH, 909 Rim.
+
+**Engine coverage now:** All 16 engines have presets. FM went from 4→10 presets (DX7 series). Granular has 2 presets. SCW/wavetable still at 0 (needs good cycle content).
+
+**Preset audit** (see `docs/preset-audit.md`): Found exact duplicates (Mel Tabla=Tabla), near-dupes (Chip Lead≈Piku Accord, Marimba≈Kalimba), and 5 same-name collisions (Glockenspiel×2, Xylophone×2, PD Bass×2, PD Lead×2, Tubular Bell(s)×2). Cleanup TODO.
 
 **Still could add (nice-to-have):**
 
@@ -48,8 +54,11 @@ All preset-only work — no engine changes. See `done/missing-melodic-instrument
 | **SNES Choir** | 1 | Voice engine with bitcrusher, FF6 opera |
 | **SNES Piano** | 1 | FM slightly metallic, JRPG staple |
 | **SNES Bell** | 1 | Short FM bell, item pickup |
-| **More drum presets** (909, Lo-Fi, Trap) | ~6 | Preset-only |
+| ~~**909 drum kit**~~ | ~~6~~ | **Done** (140-145) |
+| **Lo-Fi drum kit** | ~3 | Preset-only |
+| **Trap drum kit** | ~3 | Preset-only |
 | **SCW wavetable presets** | ~2 | Need good wavetable content first |
+| **Preset cleanup** | — | Remove duplicates, rename collisions (see audit) |
 
 ---
 
@@ -96,7 +105,8 @@ Phase 1 done (engine + 14 drum presets as SynthPatch, 80.8% similarity). See `do
 | **Unify track types** — sequencer still has TRACK_DRUM vs TRACK_MELODIC with different callbacks. Debatable: drums genuinely behave differently (no gate, no slide, one-shot, per-instrument Dilla nudge). May not be worth unifying. | Small | Open |
 | ~~**Track names from preset**~~ — sequencer grid, piano roll, bus mixer all read `p_name`. All tracks init from real presets via `loadPresetIntoPatch()`. | — | **Done** |
 | ~~Deprecate drums.h~~ | — | **Done** (deleted drums.h, prototype.c, drum_compare.c, all dead code removed) |
-| **More drum presets** (909, Lo-Fi, Trap, Piku) — preset-only, no engine changes | Small | TODO |
+| ~~**909 drum kit**~~ — 6 presets: Kick, Snare, Clap, CH, OH, Rim | — | **Done** (140-145) |
+| **More drum presets** (Lo-Fi, Trap, Piku) — preset-only, no engine changes | Small | TODO |
 | **Drum preset improvements** — fix clap burst spacing, cowbell tuning, CR-78 resonance | Small | TODO |
 
 ---
@@ -159,7 +169,7 @@ From `audit/test-gaps-audit-soundsystem.md`. Current: 248 suites, 1905 assertion
 
 **Game audio:** State system (intensity/danger/health), Vertical layering/mute groups, Horizontal re-sequencing, Stingers & one-shots
 
-**Effects:** Phaser, Per-track effects, Comb filter
+**Effects:** ~~Phaser~~ (done), ~~Comb filter~~ (done), Per-track effects
 
 **Modulation:** Mod matrix, DAHDSR envelopes, Envelope follower
 
@@ -167,4 +177,19 @@ From `audit/test-gaps-audit-soundsystem.md`. Current: 248 suites, 1905 assertion
 
 **Recording:** ~~Live recording~~ (done), Audio looping, Skip-back sampling, Resample, Tape mode
 
-**Content:** Convert bridge songs from C to .song format — 12 non-sweep songs now, 2 sweep songs (House, Deep House) after scenes/crossfader. Removes ~1500 lines from songs.h. See `scene-crossfader-spec.md` §Decision
+**Content:** Convert bridge songs from C to .song format — 12 non-sweep songs now, 2 sweep songs (House, Deep House) may work with slow LFOs instead of needing scenes. Removes ~1500 lines from songs.h. See `scene-crossfader-spec.md` §Decision
+
+---
+
+## Recent Changes (2026-03-14)
+
+- **FM modIndex scaling fix:** Oscillator now uses standard radian convention (β = peak phase deviation in radians). All existing presets, bridge songs, and .song files compensated (×2π). FM recipes from literature now work with expected values.
+- **Slow LFO sync:** 8/16/32 bar divisions (up to ~62s at 120 BPM) for evolving pad sweeps and song-level modulation.
+- **Per-LFO phase offset:** 0.0-1.0 initial phase per LFO. Patches can run inverted (0.5) relative to each other.
+- **FM mod index LFO:** 5th LFO target, shown for FM patches. Enables DX7-style brightness sweeps.
+- **Compact LFO UI:** Rate+Depth and Sync+Phase paired on single rows. Columns widened to fit.
+- **Pluck allpass fractional delay:** Jaffe & Smith 1983 — fixes high-note detuning (up to 39 cents at 4kHz).
+- **Arp toggle-off fix:** Disabling arp releases active voices (fade out via release envelope, no abrupt cutoff).
+- **Ride Cymbal improvement:** Brighter, less boxy — spectral balance matches real ride reference.
+- **Preset picker auto-fit:** Calculates columns to fit within screen height with margin. Adapts as presets grow.
+- **Preset audit:** Documented duplicates and naming collisions across all 146 presets.
