@@ -866,6 +866,11 @@ static float processFMOscillator(Voice *v, float sampleRate) {
     float dt = 1.0f / sampleRate;
     bool has3op = fm->mod2Index > 0.001f && fm->mod2Ratio > 0.001f;
 
+    // modIndex is in radians (standard FM convention: β = peak phase deviation)
+    // Convert to phase-space (0-1 cycles) by dividing by 2π
+    float mi1 = fm->modIndex / (2.0f * PI);
+    float mi2 = fm->mod2Index / (2.0f * PI);
+
     // Advance mod2 phase (all algorithms need this when 3-op is active)
     float mod2out = 0.0f;
     if (has3op) {
@@ -889,15 +894,15 @@ static float processFMOscillator(Voice *v, float sampleRate) {
             // (mod1 + mod2) → carrier independently
             float mod1 = sinf((fm->modPhase * 2.0f * PI) + fbAmount);
             fm->fbSample = mod1;
-            float carrierPhase = v->phase + mod1 * fm->modIndex + mod2out * fm->mod2Index;
+            float carrierPhase = v->phase + mod1 * mi1 + mod2out * mi2;
             carrier = sinf(carrierPhase * 2.0f * PI);
         } break;
 
         case FM_ALG_BRANCH: {
             // mod2 → mod1 → carrier, AND mod2 → carrier (Y-split)
-            float mod1 = sinf((fm->modPhase * 2.0f * PI) + fbAmount + mod2out * fm->mod2Index);
+            float mod1 = sinf((fm->modPhase * 2.0f * PI) + fbAmount + mod2out * mi2);
             fm->fbSample = mod1;
-            float carrierPhase = v->phase + mod1 * fm->modIndex + mod2out * fm->mod2Index * 0.5f;
+            float carrierPhase = v->phase + mod1 * mi1 + mod2out * mi2 * 0.5f;
             carrier = sinf(carrierPhase * 2.0f * PI);
         } break;
 
@@ -905,16 +910,16 @@ static float processFMOscillator(Voice *v, float sampleRate) {
             // mod1 → carrier, mod2 mixed as additive sine
             float mod1 = sinf((fm->modPhase * 2.0f * PI) + fbAmount);
             fm->fbSample = mod1;
-            float carrierPhase = v->phase + mod1 * fm->modIndex;
-            carrier = sinf(carrierPhase * 2.0f * PI) + mod2out * fm->mod2Index * 0.3f;
+            float carrierPhase = v->phase + mod1 * mi1;
+            carrier = sinf(carrierPhase * 2.0f * PI) + mod2out * mi2 * 0.3f;
         } break;
 
         default: // FM_ALG_STACK
         {
             // mod2 → mod1 → carrier (series chain)
-            float mod1 = sinf((fm->modPhase * 2.0f * PI) + fbAmount + mod2out * fm->mod2Index);
+            float mod1 = sinf((fm->modPhase * 2.0f * PI) + fbAmount + mod2out * mi2);
             fm->fbSample = mod1;
-            float carrierPhase = v->phase + mod1 * fm->modIndex;
+            float carrierPhase = v->phase + mod1 * mi1;
             carrier = sinf(carrierPhase * 2.0f * PI);
         } break;
     }

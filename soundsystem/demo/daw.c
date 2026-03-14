@@ -2930,8 +2930,8 @@ static void drawParamPatch(float x, float y, float w, float h) {
     if (presetPickerOpen) {
         // Draw popup on top
         float popX = x + 4, popY = presetRowY + 20;
-        float popW = 660;
-        int pcols = 6, perCol = (NUM_INSTRUMENT_PRESETS + pcols - 1) / pcols;
+        float popW = 770;
+        int pcols = 7, perCol = (NUM_INSTRUMENT_PRESETS + pcols - 1) / pcols;
         float popH = perCol * 18 + 8;
         Vector2 mouse = GetMousePosition();
 
@@ -3062,10 +3062,10 @@ static void drawParamPatch(float x, float y, float w, float h) {
         } else if (p->p_waveType == WAVE_FM) {
             ui_col_sublabel(&c, "FM Synth:", (Color){140,160,200,255});
             ui_col_float(&c, "Ratio", &p->p_fmModRatio, 0.5f, 0.5f, 16.0f);
-            ui_col_float(&c, "Index", &p->p_fmModIndex, 0.1f, 0.0f, 10.0f);
+            ui_col_float(&c, "Index", &p->p_fmModIndex, 0.2f, 0.0f, 30.0f);
             ui_col_float(&c, "Feedback", &p->p_fmFeedback, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Mod2 Rat", &p->p_fmMod2Ratio, 0.5f, 0.0f, 16.0f);
-            ui_col_float(&c, "Mod2 Idx", &p->p_fmMod2Index, 0.1f, 0.0f, 10.0f);
+            ui_col_float(&c, "Mod2 Idx", &p->p_fmMod2Index, 0.2f, 0.0f, 30.0f);
             ui_col_cycle(&c, "Algorithm", fmAlgNames, FM_ALG_COUNT, &p->p_fmAlgorithm);
         } else if (p->p_waveType == WAVE_PD) {
             ui_col_sublabel(&c, "Phase Dist:", (Color){140,160,200,255});

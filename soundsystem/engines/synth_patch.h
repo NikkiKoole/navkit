@@ -340,7 +340,7 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_granularSpread = 0.5f,
         .p_granularFreeze = false,
         .p_fmModRatio = 2.0f,
-        .p_fmModIndex = 1.0f,
+        .p_fmModIndex = 2.0f,
         .p_fmFeedback = 0.0f,
         .p_fmMod2Ratio = 0.0f,
         .p_fmMod2Index = 0.0f,

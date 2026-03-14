@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 127
+#define NUM_INSTRUMENT_PRESETS 134
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -208,7 +208,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[14].name = "Piku Bell";
     instrumentPresets[14].patch.p_waveType = WAVE_FM;
     instrumentPresets[14].patch.p_fmModRatio = 3.5f;
-    instrumentPresets[14].patch.p_fmModIndex = 2.5f;
+    instrumentPresets[14].patch.p_fmModIndex = 15.71f;
     instrumentPresets[14].patch.p_attack = 0.001f;
     instrumentPresets[14].patch.p_decay = 0.8f;
     instrumentPresets[14].patch.p_sustain = 0.0f;
@@ -296,7 +296,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[21].name = "Mac Keys";
     instrumentPresets[21].patch.p_waveType = WAVE_FM;
     instrumentPresets[21].patch.p_fmModRatio = 1.0f;
-    instrumentPresets[21].patch.p_fmModIndex = 1.2f;
+    instrumentPresets[21].patch.p_fmModIndex = 7.54f;
     instrumentPresets[21].patch.p_attack = 0.005f;
     instrumentPresets[21].patch.p_decay = 0.5f;
     instrumentPresets[21].patch.p_sustain = 0.3f;
@@ -463,7 +463,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[29].name = "808 Tom";
     instrumentPresets[29].patch.p_waveType = WAVE_FM;       // FM index=0 ≈ sine
     instrumentPresets[29].patch.p_fmModRatio = 2.0f;
-    instrumentPresets[29].patch.p_fmModIndex = 0.15f;       // Hint of harmonics (triangle blend)
+    instrumentPresets[29].patch.p_fmModIndex = 0.94f;       // Hint of harmonics (triangle blend)
     instrumentPresets[29].patch.p_attack = 0.0f;
     instrumentPresets[29].patch.p_decay = 0.3f;
     instrumentPresets[29].patch.p_sustain = 0.0f;
@@ -518,7 +518,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[32].name = "CR78 Kick";
     instrumentPresets[32].patch.p_waveType = WAVE_FM;
     instrumentPresets[32].patch.p_fmModRatio = 2.0f;        // 2nd harmonic
-    instrumentPresets[32].patch.p_fmModIndex = 0.15f;        // Subtle (drums.h: sin*2 * 0.15)
+    instrumentPresets[32].patch.p_fmModIndex = 0.94f;        // Subtle (drums.h: sin*2 * 0.15)
     instrumentPresets[32].patch.p_attack = 0.0f;
     instrumentPresets[32].patch.p_sustain = 0.0f;
     instrumentPresets[32].patch.p_release = 0.05f;
@@ -896,7 +896,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[56].name = "Rhodes Mel";
     instrumentPresets[56].patch.p_waveType = WAVE_FM;
     instrumentPresets[56].patch.p_fmModRatio = 1.0f;
-    instrumentPresets[56].patch.p_fmModIndex = 0.8f;
+    instrumentPresets[56].patch.p_fmModIndex = 5.03f;
     instrumentPresets[56].patch.p_fmFeedback = 0.0f;
     instrumentPresets[56].patch.p_attack = 0.005f;
     instrumentPresets[56].patch.p_decay = 0.8f;
@@ -912,7 +912,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[57].name = "Rhodes Brt";
     instrumentPresets[57].patch.p_waveType = WAVE_FM;
     instrumentPresets[57].patch.p_fmModRatio = 1.0f;
-    instrumentPresets[57].patch.p_fmModIndex = 1.8f;
+    instrumentPresets[57].patch.p_fmModIndex = 11.31f;
     instrumentPresets[57].patch.p_fmFeedback = 0.1f;
     instrumentPresets[57].patch.p_attack = 0.003f;
     instrumentPresets[57].patch.p_decay = 0.6f;
@@ -1235,7 +1235,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[75].name = "Timbales";
     instrumentPresets[75].patch.p_waveType = WAVE_FM;
     instrumentPresets[75].patch.p_fmModRatio = 5.5f;
-    instrumentPresets[75].patch.p_fmModIndex = 1.5f;
+    instrumentPresets[75].patch.p_fmModIndex = 9.42f;
     instrumentPresets[75].patch.p_pitchEnvAmount = 6.0f;
     instrumentPresets[75].patch.p_pitchEnvDecay = 0.01f;
     instrumentPresets[75].patch.p_pitchEnvCurve = -0.5f;
@@ -1272,7 +1272,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[77].name = "Agogo Hi";
     instrumentPresets[77].patch.p_waveType = WAVE_FM;
     instrumentPresets[77].patch.p_fmModRatio = 3.0f;
-    instrumentPresets[77].patch.p_fmModIndex = 1.0f;
+    instrumentPresets[77].patch.p_fmModIndex = 6.28f;
     instrumentPresets[77].patch.p_attack = 0.001f;
     instrumentPresets[77].patch.p_decay = 0.4f;
     instrumentPresets[77].patch.p_sustain = 0.0f;
@@ -1288,7 +1288,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[78].name = "Agogo Lo";
     instrumentPresets[78].patch.p_waveType = WAVE_FM;
     instrumentPresets[78].patch.p_fmModRatio = 3.0f;
-    instrumentPresets[78].patch.p_fmModIndex = 1.0f;
+    instrumentPresets[78].patch.p_fmModIndex = 6.28f;
     instrumentPresets[78].patch.p_attack = 0.001f;
     instrumentPresets[78].patch.p_decay = 0.4f;
     instrumentPresets[78].patch.p_sustain = 0.0f;
@@ -1717,10 +1717,10 @@ static void initInstrumentPresets(void) {
     instrumentPresets[103].name = "FM Crystal";
     instrumentPresets[103].patch.p_waveType = WAVE_FM;
     instrumentPresets[103].patch.p_fmModRatio = 3.0f;
-    instrumentPresets[103].patch.p_fmModIndex = 1.5f;
+    instrumentPresets[103].patch.p_fmModIndex = 9.42f;
     instrumentPresets[103].patch.p_fmFeedback = 0.0f;
     instrumentPresets[103].patch.p_fmMod2Ratio = 7.0f;
-    instrumentPresets[103].patch.p_fmMod2Index = 2.0f;
+    instrumentPresets[103].patch.p_fmMod2Index = 12.57f;
     instrumentPresets[103].patch.p_fmAlgorithm = FM_ALG_STACK;
     instrumentPresets[103].patch.p_attack = 0.001f;
     instrumentPresets[103].patch.p_decay = 1.2f;
@@ -1734,10 +1734,10 @@ static void initInstrumentPresets(void) {
     instrumentPresets[104].name = "FM Bright EP";
     instrumentPresets[104].patch.p_waveType = WAVE_FM;
     instrumentPresets[104].patch.p_fmModRatio = 1.0f;
-    instrumentPresets[104].patch.p_fmModIndex = 1.8f;
+    instrumentPresets[104].patch.p_fmModIndex = 11.31f;
     instrumentPresets[104].patch.p_fmFeedback = 0.1f;
     instrumentPresets[104].patch.p_fmMod2Ratio = 14.0f;
-    instrumentPresets[104].patch.p_fmMod2Index = 0.8f;
+    instrumentPresets[104].patch.p_fmMod2Index = 5.03f;
     instrumentPresets[104].patch.p_fmAlgorithm = FM_ALG_PARALLEL;
     instrumentPresets[104].patch.p_attack = 0.001f;
     instrumentPresets[104].patch.p_decay = 0.8f;
@@ -1751,10 +1751,10 @@ static void initInstrumentPresets(void) {
     instrumentPresets[105].name = "FM Gong";
     instrumentPresets[105].patch.p_waveType = WAVE_FM;
     instrumentPresets[105].patch.p_fmModRatio = 1.41f;
-    instrumentPresets[105].patch.p_fmModIndex = 3.0f;
+    instrumentPresets[105].patch.p_fmModIndex = 18.85f;
     instrumentPresets[105].patch.p_fmFeedback = 0.2f;
     instrumentPresets[105].patch.p_fmMod2Ratio = 2.76f;
-    instrumentPresets[105].patch.p_fmMod2Index = 2.5f;
+    instrumentPresets[105].patch.p_fmMod2Index = 15.71f;
     instrumentPresets[105].patch.p_fmAlgorithm = FM_ALG_BRANCH;
     instrumentPresets[105].patch.p_attack = 0.002f;
     instrumentPresets[105].patch.p_decay = 3.0f;
@@ -1768,10 +1768,10 @@ static void initInstrumentPresets(void) {
     instrumentPresets[106].name = "FM Organ";
     instrumentPresets[106].patch.p_waveType = WAVE_FM;
     instrumentPresets[106].patch.p_fmModRatio = 1.0f;
-    instrumentPresets[106].patch.p_fmModIndex = 0.8f;
+    instrumentPresets[106].patch.p_fmModIndex = 5.03f;
     instrumentPresets[106].patch.p_fmFeedback = 0.3f;
     instrumentPresets[106].patch.p_fmMod2Ratio = 0.5f;
-    instrumentPresets[106].patch.p_fmMod2Index = 3.0f;
+    instrumentPresets[106].patch.p_fmMod2Index = 18.85f;
     instrumentPresets[106].patch.p_fmAlgorithm = FM_ALG_PAIR;
     instrumentPresets[106].patch.p_attack = 0.005f;
     instrumentPresets[106].patch.p_decay = 0.1f;
@@ -1894,7 +1894,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[113].name = "Toy Piano";
     instrumentPresets[113].patch.p_waveType = WAVE_FM;
     instrumentPresets[113].patch.p_fmModRatio = 3.0f;
-    instrumentPresets[113].patch.p_fmModIndex = 1.2f;
+    instrumentPresets[113].patch.p_fmModIndex = 7.54f;
     instrumentPresets[113].patch.p_attack = 0.001f;
     instrumentPresets[113].patch.p_decay = 0.4f;
     instrumentPresets[113].patch.p_sustain = 0.0f;
@@ -1911,7 +1911,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[114].name = "Honky Piano";
     instrumentPresets[114].patch.p_waveType = WAVE_FM;
     instrumentPresets[114].patch.p_fmModRatio = 1.0f;
-    instrumentPresets[114].patch.p_fmModIndex = 1.8f;
+    instrumentPresets[114].patch.p_fmModIndex = 11.31f;
     instrumentPresets[114].patch.p_fmFeedback = 0.08f;
     instrumentPresets[114].patch.p_attack = 0.001f;
     instrumentPresets[114].patch.p_decay = 1.2f;
@@ -1950,7 +1950,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[116].name = "FM Bass";
     instrumentPresets[116].patch.p_waveType = WAVE_FM;
     instrumentPresets[116].patch.p_fmModRatio = 1.0f;
-    instrumentPresets[116].patch.p_fmModIndex = 4.0f;
+    instrumentPresets[116].patch.p_fmModIndex = 25.13f;
     instrumentPresets[116].patch.p_attack = 0.001f;
     instrumentPresets[116].patch.p_decay = 0.35f;
     instrumentPresets[116].patch.p_sustain = 0.2f;
@@ -2133,6 +2133,156 @@ static void initInstrumentPresets(void) {
     instrumentPresets[126].patch.p_drive = 0.1f;
     instrumentPresets[126].patch.p_analogRolloff = true;
     instrumentPresets[126].patch.p_volume = 0.55f;
+
+    // 127: Mono Lead — Minimoog-style fat saw, filter sweep, mono+glide
+    instrumentPresets[127].name = "Mono Lead";
+    instrumentPresets[127].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[127].patch.p_attack = 0.005f;
+    instrumentPresets[127].patch.p_decay = 0.3f;
+    instrumentPresets[127].patch.p_sustain = 0.7f;
+    instrumentPresets[127].patch.p_release = 0.15f;
+    instrumentPresets[127].patch.p_filterCutoff = 0.35f;
+    instrumentPresets[127].patch.p_filterResonance = 0.25f;
+    instrumentPresets[127].patch.p_filterEnvAmt = 0.45f;
+    instrumentPresets[127].patch.p_filterEnvAttack = 0.005f;
+    instrumentPresets[127].patch.p_filterEnvDecay = 0.35f;
+    instrumentPresets[127].patch.p_filterKeyTrack = 0.5f;
+    instrumentPresets[127].patch.p_unisonCount = 3;
+    instrumentPresets[127].patch.p_unisonDetune = 12.0f;
+    instrumentPresets[127].patch.p_unisonMix = 0.5f;
+    instrumentPresets[127].patch.p_monoMode = true;
+    instrumentPresets[127].patch.p_glideTime = 0.08f;
+    instrumentPresets[127].patch.p_drive = 0.15f;
+    instrumentPresets[127].patch.p_analogRolloff = true;
+    instrumentPresets[127].patch.p_volume = 0.5f;
+
+    // 128: Hoover — detuned saws, dark, wide, menacing reese bass
+    instrumentPresets[128].name = "Hoover";
+    instrumentPresets[128].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[128].patch.p_attack = 0.02f;
+    instrumentPresets[128].patch.p_decay = 0.5f;
+    instrumentPresets[128].patch.p_sustain = 0.8f;
+    instrumentPresets[128].patch.p_release = 0.4f;
+    instrumentPresets[128].patch.p_filterCutoff = 0.3f;
+    instrumentPresets[128].patch.p_filterResonance = 0.15f;
+    instrumentPresets[128].patch.p_filterEnvAmt = 0.25f;
+    instrumentPresets[128].patch.p_filterEnvDecay = 0.6f;
+    instrumentPresets[128].patch.p_unisonCount = 4;
+    instrumentPresets[128].patch.p_unisonDetune = 25.0f;
+    instrumentPresets[128].patch.p_unisonMix = 0.7f;
+    instrumentPresets[128].patch.p_monoMode = true;
+    instrumentPresets[128].patch.p_glideTime = 0.12f;
+    instrumentPresets[128].patch.p_drive = 0.25f;
+    instrumentPresets[128].patch.p_tubeSaturation = true;
+    instrumentPresets[128].patch.p_analogRolloff = true;
+    instrumentPresets[128].patch.p_pitchLfoRate = 4.5f;
+    instrumentPresets[128].patch.p_pitchLfoDepth = 0.15f;
+    instrumentPresets[128].patch.p_pitchLfoShape = 0;  // sine
+    instrumentPresets[128].patch.p_volume = 0.5f;
+
+    // 129: Screamer — high-resonance saw lead, aggressive filter, fast glide
+    instrumentPresets[129].name = "Screamer";
+    instrumentPresets[129].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[129].patch.p_attack = 0.002f;
+    instrumentPresets[129].patch.p_decay = 0.2f;
+    instrumentPresets[129].patch.p_sustain = 0.6f;
+    instrumentPresets[129].patch.p_release = 0.1f;
+    instrumentPresets[129].patch.p_filterCutoff = 0.25f;
+    instrumentPresets[129].patch.p_filterResonance = 0.6f;
+    instrumentPresets[129].patch.p_filterEnvAmt = 0.7f;
+    instrumentPresets[129].patch.p_filterEnvAttack = 0.002f;
+    instrumentPresets[129].patch.p_filterEnvDecay = 0.25f;
+    instrumentPresets[129].patch.p_filterKeyTrack = 0.7f;
+    instrumentPresets[129].patch.p_unisonCount = 2;
+    instrumentPresets[129].patch.p_unisonDetune = 8.0f;
+    instrumentPresets[129].patch.p_monoMode = true;
+    instrumentPresets[129].patch.p_glideTime = 0.04f;
+    instrumentPresets[129].patch.p_drive = 0.3f;
+    instrumentPresets[129].patch.p_volume = 0.45f;
+
+    // 130: DX7 E.Piano — THE classic glassy/bell FM electric piano
+    // Mod1 at 1:1 for body, Mod2 at 14:1 for metallic tine attack
+    instrumentPresets[130].name = "DX7 E.Piano";
+    instrumentPresets[130].patch.p_waveType = WAVE_FM;
+    instrumentPresets[130].patch.p_fmModRatio = 1.0f;
+    instrumentPresets[130].patch.p_fmModIndex = 2.0f;
+    instrumentPresets[130].patch.p_fmFeedback = 0.0f;
+    instrumentPresets[130].patch.p_fmMod2Ratio = 7.0f;
+    instrumentPresets[130].patch.p_fmMod2Index = 0.8f;
+    instrumentPresets[130].patch.p_fmAlgorithm = 1;  // parallel — two mods independent
+    instrumentPresets[130].patch.p_attack = 0.003f;
+    instrumentPresets[130].patch.p_decay = 2.5f;
+    instrumentPresets[130].patch.p_sustain = 0.0f;
+    instrumentPresets[130].patch.p_release = 0.4f;
+    instrumentPresets[130].patch.p_expDecay = true;
+    instrumentPresets[130].patch.p_filterCutoff = 0.8f;
+    instrumentPresets[130].patch.p_filterResonance = 0.05f;
+    instrumentPresets[130].patch.p_filterEnvAmt = 0.4f;
+    instrumentPresets[130].patch.p_filterEnvAttack = 0.001f;
+    instrumentPresets[130].patch.p_filterEnvDecay = 1.0f;
+    instrumentPresets[130].patch.p_filterKeyTrack = 0.6f;
+    instrumentPresets[130].patch.p_volume = 0.45f;
+
+    // 131: DX7 Bass — punchy FM bass, 1:1 ratio + feedback for growl
+    instrumentPresets[131].name = "DX7 Bass";
+    instrumentPresets[131].patch.p_waveType = WAVE_FM;
+    instrumentPresets[131].patch.p_fmModRatio = 1.0f;
+    instrumentPresets[131].patch.p_fmModIndex = 4.0f;
+    instrumentPresets[131].patch.p_fmFeedback = 0.2f;
+    instrumentPresets[131].patch.p_fmMod2Ratio = 0.0f;
+    instrumentPresets[131].patch.p_fmAlgorithm = 0;  // stack
+    instrumentPresets[131].patch.p_attack = 0.005f;
+    instrumentPresets[131].patch.p_decay = 0.4f;
+    instrumentPresets[131].patch.p_sustain = 0.4f;
+    instrumentPresets[131].patch.p_release = 0.1f;
+    instrumentPresets[131].patch.p_filterCutoff = 0.4f;
+    instrumentPresets[131].patch.p_filterResonance = 0.15f;
+    instrumentPresets[131].patch.p_filterEnvAmt = 0.5f;
+    instrumentPresets[131].patch.p_filterEnvAttack = 0.001f;
+    instrumentPresets[131].patch.p_filterEnvDecay = 0.2f;
+    instrumentPresets[131].patch.p_monoMode = true;
+    instrumentPresets[131].patch.p_glideTime = 0.04f;
+    instrumentPresets[131].patch.p_volume = 0.5f;
+
+    // 132: DX7 Brass — slow swell, high feedback for sawtooth-like buzz
+    instrumentPresets[132].name = "DX7 Brass";
+    instrumentPresets[132].patch.p_waveType = WAVE_FM;
+    instrumentPresets[132].patch.p_fmModRatio = 1.0f;
+    instrumentPresets[132].patch.p_fmModIndex = 5.0f;
+    instrumentPresets[132].patch.p_fmFeedback = 0.45f;
+    instrumentPresets[132].patch.p_fmMod2Ratio = 0.0f;
+    instrumentPresets[132].patch.p_fmAlgorithm = 0;  // stack
+    instrumentPresets[132].patch.p_attack = 0.15f;
+    instrumentPresets[132].patch.p_decay = 0.4f;
+    instrumentPresets[132].patch.p_sustain = 0.8f;
+    instrumentPresets[132].patch.p_release = 0.2f;
+    instrumentPresets[132].patch.p_filterCutoff = 0.3f;
+    instrumentPresets[132].patch.p_filterResonance = 0.05f;
+    instrumentPresets[132].patch.p_filterEnvAmt = 0.6f;
+    instrumentPresets[132].patch.p_filterEnvAttack = 0.15f;
+    instrumentPresets[132].patch.p_filterEnvDecay = 0.8f;
+    instrumentPresets[132].patch.p_volume = 0.45f;
+
+    // 133: DX7 Bell — inharmonic ratios (3.5:1 + 7:1) for metallic bell
+    instrumentPresets[133].name = "DX7 Bell";
+    instrumentPresets[133].patch.p_waveType = WAVE_FM;
+    instrumentPresets[133].patch.p_fmModRatio = 3.5f;
+    instrumentPresets[133].patch.p_fmModIndex = 5.0f;
+    instrumentPresets[133].patch.p_fmFeedback = 0.0f;
+    instrumentPresets[133].patch.p_fmMod2Ratio = 7.0f;
+    instrumentPresets[133].patch.p_fmMod2Index = 3.0f;
+    instrumentPresets[133].patch.p_fmAlgorithm = 0;  // stack — deep metallic chain
+    instrumentPresets[133].patch.p_attack = 0.001f;
+    instrumentPresets[133].patch.p_decay = 4.0f;
+    instrumentPresets[133].patch.p_sustain = 0.0f;
+    instrumentPresets[133].patch.p_release = 1.5f;
+    instrumentPresets[133].patch.p_expDecay = true;
+    instrumentPresets[133].patch.p_filterCutoff = 0.7f;
+    instrumentPresets[133].patch.p_filterEnvAmt = 0.4f;
+    instrumentPresets[133].patch.p_filterEnvAttack = 0.001f;
+    instrumentPresets[133].patch.p_filterEnvDecay = 3.0f;
+    instrumentPresets[133].patch.p_filterKeyTrack = 0.4f;
+    instrumentPresets[133].patch.p_volume = 0.4f;
 }
 
 #endif // INSTRUMENT_PRESETS_H

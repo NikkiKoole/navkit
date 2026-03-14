@@ -413,7 +413,7 @@ static void Song_JazzCallResponse_ConfigureVoices(void) {
 
     // FM settings: Rhodes-like electric piano (ratio 1:1, low index, no feedback)
     fmModRatio = 1.0f;
-    fmModIndex = 1.8f;
+    fmModIndex = 11.31f;
     fmFeedback = 0.0f;
 }
 
@@ -760,7 +760,7 @@ static void Song_Dilla_ConfigureVoices(void) {
 
     // FM: lo-fi Rhodes
     fmModRatio = 1.0f;
-    fmModIndex = 1.2f;
+    fmModIndex = 7.54f;
     fmFeedback = 0.0f;
 }
 
