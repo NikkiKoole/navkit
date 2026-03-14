@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 111
+#define NUM_INSTRUMENT_PRESETS 127
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -1849,6 +1849,290 @@ static void initInstrumentPresets(void) {
     instrumentPresets[110].patch.p_noiseMix = 0.08f;
     instrumentPresets[110].patch.p_noiseTone = 0.25f;
     instrumentPresets[110].patch.p_volume = 0.65f;
+
+    // ========================================================================
+    // NEW MELODIC PRESETS (111-126)
+    // ========================================================================
+
+    // Wurlitzer — grittier than Rhodes, bark on the attack, PD resonance
+    instrumentPresets[111].name = "Wurlitzer";
+    instrumentPresets[111].patch.p_waveType = WAVE_PD;
+    instrumentPresets[111].patch.p_pdWaveType = 5;  // PD_WAVE_RESO1 — CZ-style resonant
+    instrumentPresets[111].patch.p_pdDistortion = 0.6f;
+    instrumentPresets[111].patch.p_attack = 0.003f;
+    instrumentPresets[111].patch.p_decay = 0.6f;
+    instrumentPresets[111].patch.p_sustain = 0.35f;
+    instrumentPresets[111].patch.p_release = 0.3f;
+    instrumentPresets[111].patch.p_filterCutoff = 0.55f;
+    instrumentPresets[111].patch.p_filterResonance = 0.15f;
+    instrumentPresets[111].patch.p_filterEnvAmt = 0.35f;
+    instrumentPresets[111].patch.p_filterEnvDecay = 0.25f;
+    instrumentPresets[111].patch.p_filterKeyTrack = 0.4f;
+    instrumentPresets[111].patch.p_vibratoRate = 5.0f;
+    instrumentPresets[111].patch.p_vibratoDepth = 0.06f;
+    instrumentPresets[111].patch.p_drive = 0.2f;
+    instrumentPresets[111].patch.p_tubeSaturation = true;
+    instrumentPresets[111].patch.p_volume = 0.55f;
+
+    // Clavinet — funky percussive pluck with wah-style filter sweep
+    instrumentPresets[112].name = "Clavinet";
+    instrumentPresets[112].patch.p_waveType = WAVE_PLUCK;
+    instrumentPresets[112].patch.p_pluckBrightness = 0.75f;
+    instrumentPresets[112].patch.p_pluckDamping = 0.992f;
+    instrumentPresets[112].patch.p_envelopeEnabled = false;
+    instrumentPresets[112].patch.p_filterEnabled = true;
+    instrumentPresets[112].patch.p_filterCutoff = 0.45f;
+    instrumentPresets[112].patch.p_filterResonance = 0.35f;
+    instrumentPresets[112].patch.p_filterEnvAmt = 0.5f;
+    instrumentPresets[112].patch.p_filterEnvDecay = 0.12f;
+    instrumentPresets[112].patch.p_filterKeyTrack = 0.6f;
+    instrumentPresets[112].patch.p_clickLevel = 0.3f;
+    instrumentPresets[112].patch.p_clickTime = 0.003f;
+    instrumentPresets[112].patch.p_volume = 0.6f;
+
+    // Toy Piano — bright, slightly detuned FM, short and characterful
+    instrumentPresets[113].name = "Toy Piano";
+    instrumentPresets[113].patch.p_waveType = WAVE_FM;
+    instrumentPresets[113].patch.p_fmModRatio = 3.0f;
+    instrumentPresets[113].patch.p_fmModIndex = 1.2f;
+    instrumentPresets[113].patch.p_attack = 0.001f;
+    instrumentPresets[113].patch.p_decay = 0.4f;
+    instrumentPresets[113].patch.p_sustain = 0.0f;
+    instrumentPresets[113].patch.p_release = 0.15f;
+    instrumentPresets[113].patch.p_expDecay = true;
+    instrumentPresets[113].patch.p_filterCutoff = 0.75f;
+    instrumentPresets[113].patch.p_unisonCount = 2;
+    instrumentPresets[113].patch.p_unisonDetune = 8.0f;
+    instrumentPresets[113].patch.p_pitchEnvAmount = 2.0f;
+    instrumentPresets[113].patch.p_pitchEnvDecay = 0.01f;
+    instrumentPresets[113].patch.p_volume = 0.5f;
+
+    // Honky-tonk Piano — detuned FM, Chrono Trigger shop vibes
+    instrumentPresets[114].name = "Honky Piano";
+    instrumentPresets[114].patch.p_waveType = WAVE_FM;
+    instrumentPresets[114].patch.p_fmModRatio = 1.0f;
+    instrumentPresets[114].patch.p_fmModIndex = 1.8f;
+    instrumentPresets[114].patch.p_fmFeedback = 0.08f;
+    instrumentPresets[114].patch.p_attack = 0.001f;
+    instrumentPresets[114].patch.p_decay = 1.2f;
+    instrumentPresets[114].patch.p_sustain = 0.15f;
+    instrumentPresets[114].patch.p_release = 0.4f;
+    instrumentPresets[114].patch.p_expDecay = true;
+    instrumentPresets[114].patch.p_filterCutoff = 0.6f;
+    instrumentPresets[114].patch.p_filterKeyTrack = 0.5f;
+    instrumentPresets[114].patch.p_unisonCount = 2;
+    instrumentPresets[114].patch.p_unisonDetune = 12.0f;
+    instrumentPresets[114].patch.p_unisonMix = 0.7f;
+    instrumentPresets[114].patch.p_tubeSaturation = true;
+    instrumentPresets[114].patch.p_volume = 0.5f;
+
+    // Fretless Bass — warm saw mono with portamento and vibrato
+    instrumentPresets[115].name = "Fretless Bass";
+    instrumentPresets[115].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[115].patch.p_attack = 0.02f;
+    instrumentPresets[115].patch.p_decay = 0.2f;
+    instrumentPresets[115].patch.p_sustain = 0.7f;
+    instrumentPresets[115].patch.p_release = 0.15f;
+    instrumentPresets[115].patch.p_filterCutoff = 0.35f;
+    instrumentPresets[115].patch.p_filterResonance = 0.1f;
+    instrumentPresets[115].patch.p_filterEnvAmt = 0.15f;
+    instrumentPresets[115].patch.p_filterEnvDecay = 0.3f;
+    instrumentPresets[115].patch.p_filterKeyTrack = 0.3f;
+    instrumentPresets[115].patch.p_monoMode = true;
+    instrumentPresets[115].patch.p_glideTime = 0.08f;
+    instrumentPresets[115].patch.p_vibratoRate = 4.5f;
+    instrumentPresets[115].patch.p_vibratoDepth = 0.1f;
+    instrumentPresets[115].patch.p_analogRolloff = true;
+    instrumentPresets[115].patch.p_tubeSaturation = true;
+    instrumentPresets[115].patch.p_volume = 0.6f;
+
+    // FM Bass — punchy DX7 bass, fast mod index decay
+    instrumentPresets[116].name = "FM Bass";
+    instrumentPresets[116].patch.p_waveType = WAVE_FM;
+    instrumentPresets[116].patch.p_fmModRatio = 1.0f;
+    instrumentPresets[116].patch.p_fmModIndex = 4.0f;
+    instrumentPresets[116].patch.p_attack = 0.001f;
+    instrumentPresets[116].patch.p_decay = 0.35f;
+    instrumentPresets[116].patch.p_sustain = 0.2f;
+    instrumentPresets[116].patch.p_release = 0.1f;
+    instrumentPresets[116].patch.p_expDecay = true;
+    instrumentPresets[116].patch.p_filterCutoff = 0.5f;
+    instrumentPresets[116].patch.p_filterEnvAmt = 0.4f;
+    instrumentPresets[116].patch.p_filterEnvDecay = 0.15f;
+    instrumentPresets[116].patch.p_monoMode = true;
+    instrumentPresets[116].patch.p_glideTime = 0.02f;
+    instrumentPresets[116].patch.p_volume = 0.6f;
+
+    // Slap Bass — pluck with noise burst transient, funky
+    instrumentPresets[117].name = "Slap Bass";
+    instrumentPresets[117].patch.p_waveType = WAVE_PLUCK;
+    instrumentPresets[117].patch.p_pluckBrightness = 0.7f;
+    instrumentPresets[117].patch.p_pluckDamping = 0.994f;
+    instrumentPresets[117].patch.p_envelopeEnabled = false;
+    instrumentPresets[117].patch.p_filterEnabled = true;
+    instrumentPresets[117].patch.p_filterCutoff = 0.6f;
+    instrumentPresets[117].patch.p_filterResonance = 0.2f;
+    instrumentPresets[117].patch.p_filterEnvAmt = 0.35f;
+    instrumentPresets[117].patch.p_filterEnvDecay = 0.08f;
+    instrumentPresets[117].patch.p_noiseMix = 0.25f;
+    instrumentPresets[117].patch.p_noiseTone = 0.7f;
+    instrumentPresets[117].patch.p_noiseDecay = 0.015f;
+    instrumentPresets[117].patch.p_clickLevel = 0.4f;
+    instrumentPresets[117].patch.p_clickTime = 0.004f;
+    instrumentPresets[117].patch.p_volume = 0.55f;
+
+    // Muted Guitar — very short damped pluck, percussive funk/reggae
+    instrumentPresets[118].name = "Mute Guitar";
+    instrumentPresets[118].patch.p_waveType = WAVE_PLUCK;
+    instrumentPresets[118].patch.p_pluckBrightness = 0.55f;
+    instrumentPresets[118].patch.p_pluckDamping = 0.985f;   // very short
+    instrumentPresets[118].patch.p_pluckDamp = 0.3f;        // extra damping
+    instrumentPresets[118].patch.p_envelopeEnabled = false;
+    instrumentPresets[118].patch.p_filterEnabled = true;
+    instrumentPresets[118].patch.p_filterCutoff = 0.5f;
+    instrumentPresets[118].patch.p_filterKeyTrack = 0.3f;
+    instrumentPresets[118].patch.p_analogRolloff = true;
+    instrumentPresets[118].patch.p_volume = 0.6f;
+
+    // Accordion — musette detuning, two voices, reedy square wave
+    instrumentPresets[119].name = "Accordion";
+    instrumentPresets[119].patch.p_waveType = WAVE_SQUARE;
+    instrumentPresets[119].patch.p_pulseWidth = 0.45f;
+    instrumentPresets[119].patch.p_attack = 0.04f;
+    instrumentPresets[119].patch.p_decay = 0.1f;
+    instrumentPresets[119].patch.p_sustain = 0.8f;
+    instrumentPresets[119].patch.p_release = 0.08f;
+    instrumentPresets[119].patch.p_filterCutoff = 0.55f;
+    instrumentPresets[119].patch.p_filterResonance = 0.1f;
+    instrumentPresets[119].patch.p_filterKeyTrack = 0.3f;
+    instrumentPresets[119].patch.p_unisonCount = 2;
+    instrumentPresets[119].patch.p_unisonDetune = 18.0f;    // musette tuning
+    instrumentPresets[119].patch.p_unisonMix = 0.7f;
+    instrumentPresets[119].patch.p_vibratoRate = 6.0f;
+    instrumentPresets[119].patch.p_vibratoDepth = 0.04f;
+    instrumentPresets[119].patch.p_volume = 0.5f;
+
+    // Ocarina — pure, hollow, Zelda-esque with vibrato
+    instrumentPresets[120].name = "Ocarina";
+    instrumentPresets[120].patch.p_waveType = WAVE_TRIANGLE;
+    instrumentPresets[120].patch.p_attack = 0.05f;
+    instrumentPresets[120].patch.p_decay = 0.1f;
+    instrumentPresets[120].patch.p_sustain = 0.8f;
+    instrumentPresets[120].patch.p_release = 0.2f;
+    instrumentPresets[120].patch.p_filterCutoff = 0.6f;
+    instrumentPresets[120].patch.p_filterResonance = 0.05f;
+    instrumentPresets[120].patch.p_filterKeyTrack = 0.5f;
+    instrumentPresets[120].patch.p_noiseMix = 0.06f;
+    instrumentPresets[120].patch.p_noiseTone = 0.15f;
+    instrumentPresets[120].patch.p_vibratoRate = 5.5f;
+    instrumentPresets[120].patch.p_vibratoDepth = 0.15f;
+    instrumentPresets[120].patch.p_analogRolloff = true;
+    instrumentPresets[120].patch.p_volume = 0.55f;
+
+    // Grain Pad — evolving granular texture, first granular preset!
+    instrumentPresets[121].name = "Grain Pad";
+    instrumentPresets[121].patch.p_waveType = WAVE_GRANULAR;
+    instrumentPresets[121].patch.p_granularScwIndex = 8;    // SIDSAW — rich harmonic source
+    instrumentPresets[121].patch.p_granularGrainSize = 120.0f;
+    instrumentPresets[121].patch.p_granularDensity = 35.0f;
+    instrumentPresets[121].patch.p_granularPosition = 0.3f;
+    instrumentPresets[121].patch.p_granularPosRandom = 0.4f;
+    instrumentPresets[121].patch.p_granularPitch = 1.0f;
+    instrumentPresets[121].patch.p_granularPitchRandom = 0.08f;
+    instrumentPresets[121].patch.p_granularAmpRandom = 0.2f;
+    instrumentPresets[121].patch.p_granularSpread = 0.7f;
+    instrumentPresets[121].patch.p_attack = 0.5f;
+    instrumentPresets[121].patch.p_decay = 0.3f;
+    instrumentPresets[121].patch.p_sustain = 0.7f;
+    instrumentPresets[121].patch.p_release = 0.8f;
+    instrumentPresets[121].patch.p_filterCutoff = 0.45f;
+    instrumentPresets[121].patch.p_filterResonance = 0.1f;
+    instrumentPresets[121].patch.p_filterLfoRate = 0.15f;
+    instrumentPresets[121].patch.p_filterLfoDepth = 0.2f;
+    instrumentPresets[121].patch.p_volume = 0.5f;
+
+    // Grain Shimmer — bright, frozen granular sparkle
+    instrumentPresets[122].name = "Grain Shimmer";
+    instrumentPresets[122].patch.p_waveType = WAVE_GRANULAR;
+    instrumentPresets[122].patch.p_granularScwIndex = 2;    // NES triangle — pure source
+    instrumentPresets[122].patch.p_granularGrainSize = 40.0f;
+    instrumentPresets[122].patch.p_granularDensity = 60.0f;
+    instrumentPresets[122].patch.p_granularPosition = 0.5f;
+    instrumentPresets[122].patch.p_granularPosRandom = 0.6f;
+    instrumentPresets[122].patch.p_granularPitch = 2.0f;     // octave up grains
+    instrumentPresets[122].patch.p_granularPitchRandom = 0.15f;
+    instrumentPresets[122].patch.p_granularAmpRandom = 0.3f;
+    instrumentPresets[122].patch.p_granularSpread = 0.9f;
+    instrumentPresets[122].patch.p_attack = 0.3f;
+    instrumentPresets[122].patch.p_decay = 0.2f;
+    instrumentPresets[122].patch.p_sustain = 0.6f;
+    instrumentPresets[122].patch.p_release = 1.2f;
+    instrumentPresets[122].patch.p_filterCutoff = 0.65f;
+    instrumentPresets[122].patch.p_volume = 0.45f;
+
+    // Dark Drone — low, menacing, resonant square wave
+    instrumentPresets[123].name = "Dark Drone";
+    instrumentPresets[123].patch.p_waveType = WAVE_SQUARE;
+    instrumentPresets[123].patch.p_pulseWidth = 0.4f;
+    instrumentPresets[123].patch.p_pwmRate = 0.15f;
+    instrumentPresets[123].patch.p_pwmDepth = 0.15f;
+    instrumentPresets[123].patch.p_attack = 0.8f;
+    instrumentPresets[123].patch.p_decay = 0.5f;
+    instrumentPresets[123].patch.p_sustain = 0.9f;
+    instrumentPresets[123].patch.p_release = 1.5f;
+    instrumentPresets[123].patch.p_filterCutoff = 0.18f;
+    instrumentPresets[123].patch.p_filterResonance = 0.6f;
+    instrumentPresets[123].patch.p_filterLfoRate = 0.08f;
+    instrumentPresets[123].patch.p_filterLfoDepth = 0.15f;
+    instrumentPresets[123].patch.p_unisonCount = 3;
+    instrumentPresets[123].patch.p_unisonDetune = 6.0f;
+    instrumentPresets[123].patch.p_volume = 0.5f;
+
+    // SNES Strings — warm saw through bitcrusher, Chrono Trigger
+    instrumentPresets[124].name = "SNES Strings";
+    instrumentPresets[124].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[124].patch.p_attack = 0.15f;
+    instrumentPresets[124].patch.p_decay = 0.2f;
+    instrumentPresets[124].patch.p_sustain = 0.7f;
+    instrumentPresets[124].patch.p_release = 0.3f;
+    instrumentPresets[124].patch.p_filterCutoff = 0.4f;
+    instrumentPresets[124].patch.p_filterResonance = 0.05f;
+    instrumentPresets[124].patch.p_filterKeyTrack = 0.3f;
+    instrumentPresets[124].patch.p_unisonCount = 2;
+    instrumentPresets[124].patch.p_unisonDetune = 12.0f;
+    instrumentPresets[124].patch.p_drive = 0.15f;
+    instrumentPresets[124].patch.p_analogRolloff = true;
+    instrumentPresets[124].patch.p_volume = 0.5f;
+
+    // SNES Brass — short punchy stabs, Secret of Mana fanfares
+    instrumentPresets[125].name = "SNES Brass";
+    instrumentPresets[125].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[125].patch.p_attack = 0.01f;
+    instrumentPresets[125].patch.p_decay = 0.15f;
+    instrumentPresets[125].patch.p_sustain = 0.6f;
+    instrumentPresets[125].patch.p_release = 0.1f;
+    instrumentPresets[125].patch.p_filterCutoff = 0.5f;
+    instrumentPresets[125].patch.p_filterResonance = 0.1f;
+    instrumentPresets[125].patch.p_filterEnvAmt = 0.4f;
+    instrumentPresets[125].patch.p_filterEnvDecay = 0.1f;
+    instrumentPresets[125].patch.p_unisonCount = 2;
+    instrumentPresets[125].patch.p_unisonDetune = 8.0f;
+    instrumentPresets[125].patch.p_drive = 0.2f;
+    instrumentPresets[125].patch.p_volume = 0.55f;
+
+    // SNES Harp — bright pluck, long decay, Zelda/Terranigma
+    instrumentPresets[126].name = "SNES Harp";
+    instrumentPresets[126].patch.p_waveType = WAVE_PLUCK;
+    instrumentPresets[126].patch.p_pluckBrightness = 0.65f;
+    instrumentPresets[126].patch.p_pluckDamping = 0.997f;   // long sustain
+    instrumentPresets[126].patch.p_pluckDamp = 0.0f;
+    instrumentPresets[126].patch.p_envelopeEnabled = false;
+    instrumentPresets[126].patch.p_filterEnabled = true;
+    instrumentPresets[126].patch.p_filterCutoff = 0.7f;
+    instrumentPresets[126].patch.p_filterKeyTrack = 0.4f;
+    instrumentPresets[126].patch.p_drive = 0.1f;
+    instrumentPresets[126].patch.p_analogRolloff = true;
+    instrumentPresets[126].patch.p_volume = 0.55f;
 }
 
 #endif // INSTRUMENT_PRESETS_H

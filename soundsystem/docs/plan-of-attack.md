@@ -2,7 +2,7 @@
 
 All TODO items consolidated from across soundsystem docs. Waves 0-2 complete, partial Wave 3. Completed docs moved to `done/`. Reference docs (roadmap.md, ux-insight.md, piku.md) kept in place.
 
-**Current state:** 111 presets, 14+2 synthesis engines (WAVE_BOWED, WAVE_PIPE added), sequencer v2 with polyphony, full DAW UI (5 tabs), chorus/flanger/stereo spread, bus mixer, MIDI input+learn+split, authentic TB-303 acid mode (accent sweep circuit, gimmick dip, constant-time RC glide), unified parameter routing (all 16 engines use globals via `initVoiceCommon`, bypass toggles for envelope/filter).
+**Current state:** 111 presets, 14+2 synthesis engines (WAVE_BOWED, WAVE_PIPE added), sequencer v2 with polyphony, full DAW UI (5 tabs), chorus/flanger/stereo spread, bus mixer, MIDI input+learn+split, authentic TB-303 acid mode (accent sweep circuit, gimmick dip, constant-time RC glide), unified parameter routing (all 16 engines use globals via `initVoiceCommon`, bypass toggles for envelope/filter), slow LFO sync divisions (8/16/32 bar), per-LFO phase offset, FM mod index LFO, real-time note recording (free/quantized, overdub/replace, gate tracking, pattern lock).
 
 ---
 
@@ -14,8 +14,8 @@ All TODO items consolidated from across soundsystem docs. Waves 0-2 complete, pa
 |------|--------|--------|
 | ~~**P-lock interpolation**~~ — Dropped. Original motivation was smooth sweeps for bridge song migration, but scenes/crossfader now owns that. Discrete p-locks are fine at step granularity. See `scene-crossfader-spec.md` §Decision | — | **Won't do** |
 | ~~**Groove presets**~~ — 12 named presets (Straight, Light/MPC/Hard Swing, Dilla, Jazz, Bossa, Hip Hop, Reggae, Funk, Loose) with preset selector UI + dynamic track names | — | **Done** |
-| **Song settings panel** — song name + resolution toggle UI | ~40 lines | daw-demo-gaps |
-| **Patch name editing** — `p_name[32]` exists, needs text input UI | ~30 lines | daw-demo-gaps |
+| ~~**Song settings panel**~~ — song name editing done (transport bar, dawTextEdit), resolution toggle exists (stepCount) | — | **Done** |
+| ~~**Patch name editing**~~ — `p_name[32]` editable via dawTextEdit in transport bar (song name). Track name display reads from preset `p_name`. Patch renaming in patch tab still TODO. | ~30 lines | Partial |
 | **Arrangement scroll** — horizontal scroll for >14 sections | ~20 lines | daw-demo-gaps |
 | **Multi-step selection** — select multiple steps for batch edits | ~80 lines | synthesis-additions §16 |
 | ~~**Hide irrelevant wave params**~~ — Resolved: enabled params on physical models via bypass toggles (`p_envelopeEnabled`/`p_filterEnabled`) instead of hiding. PWM/unison already conditionally shown in DAW UI. See `done/engine-parameter-audit.md` | — | **Done** |
@@ -33,18 +33,23 @@ Prototype has been deleted. Only the scene/crossfader system is worth reimplemen
 
 ---
 
-## Melodic Presets (~20 needed)
+## Melodic Presets — 127 total (Phase 1-7 mostly done)
 
 All preset-only work — no engine changes. See `done/missing-melodic-instruments.md` for details.
 
+**Added (111-126):** Wurlitzer (PD reso), Clavinet (pluck+wah), Toy Piano (FM detuned), Honky Piano (FM detuned), Fretless Bass (saw+glide), FM Bass (DX7), Slap Bass (pluck+noise), Mute Guitar (pluck short), Accordion (square musette), Ocarina (triangle+vibrato), Grain Pad (granular — first!), Grain Shimmer (granular sparkle), Dark Drone (square resonant), SNES Strings (saw+drive), SNES Brass (saw stab), SNES Harp (pluck bright).
+
+**Engine coverage now:** All 16 engines have presets. Granular went from 0→2 presets. SCW/wavetable still at 0 (needs good cycle content).
+
+**Still could add (nice-to-have):**
+
 | What | Count | Notes |
 |------|-------|-------|
-| **Wurlitzer, Clavinet, Toy Piano** | 3 | FM/PD for Wurli, Pluck/PD for Clav, FM/Square for Toy |
-| **Fretless bass, FM bass, Slap bass** | 3 | Saw+glide, FM low ratio, Pluck+noise burst |
-| **Muted guitar, 12-string, acoustic strum** | 3 | Short damped Pluck, detuned unison Pluck, Pluck+fast arp |
-| **Ocarina, Muted trumpet, Accordion** | 3 | Tri/sine, Saw+bandpass, Square+unison=2 |
-| **SNES kit** (strings, brass, choir, piano, harp, bell) | 6 | Existing engines + bitcrusher for crunch |
-| **Pads** (warm, glass, grain, tape, drone) | ~3 | Need Grain Pad (granular), Tape Pad (saw+tape FX), Dark Drone |
+| **SNES Choir** | 1 | Voice engine with bitcrusher, FF6 opera |
+| **SNES Piano** | 1 | FM slightly metallic, JRPG staple |
+| **SNES Bell** | 1 | Short FM bell, item pickup |
+| **More drum presets** (909, Lo-Fi, Trap) | ~6 | Preset-only |
+| **SCW wavetable presets** | ~2 | Need good wavetable content first |
 
 ---
 
@@ -158,8 +163,8 @@ From `audit/test-gaps-audit-soundsystem.md`. Current: 248 suites, 1905 assertion
 
 **Modulation:** Mod matrix, DAHDSR envelopes, Envelope follower
 
-**UI/Workflow:** MIDI output & clock sync, Audio export/render to WAV, Undo/redo, Recording mode (MIDI → pattern)
+**UI/Workflow:** MIDI output & clock sync, Audio export/render to WAV, Undo/redo, ~~Recording mode (MIDI → pattern)~~ (done — free/quantized, overdub/replace, gate tracking, pattern lock)
 
-**Recording:** Live recording, Audio looping, Skip-back sampling, Resample, Tape mode
+**Recording:** ~~Live recording~~ (done), Audio looping, Skip-back sampling, Resample, Tape mode
 
 **Content:** Convert bridge songs from C to .song format — 12 non-sweep songs now, 2 sweep songs (House, Deep House) after scenes/crossfader. Removes ~1500 lines from songs.h. See `scene-crossfader-spec.md` §Decision

@@ -1,6 +1,6 @@
 # Soundsystem (PixelSynth)
 
-Header-only synthesized audio engine (~36K lines). 16 synthesis engines, 32-voice polyphony, 111 presets, step sequencer, full effects chain, built-in DAW.
+Header-only synthesized audio engine (~36K lines). 16 synthesis engines, 32-voice polyphony, 127 presets, step sequencer, full effects chain, built-in DAW.
 
 ## Build & Run
 
@@ -42,7 +42,7 @@ soundsystem/
 │   ├── synth_oscillators.h   # 16 oscillator implementations (~1550 lines, extracted from synth.h)
 │   ├── synth_scale.h          # Scale lock system (~114 lines, extracted from synth.h)
 │   ├── synth_patch.h          # SynthPatch struct (200+ p_ fields)
-│   ├── instrument_presets.h   # 111 presets (melodic + 35 drums) (~1850 lines)
+│   ├── instrument_presets.h   # 127 presets (melodic + 35 drums) (~1850 lines)
 │   ├── effects.h              # Effects chain + bus mixer (~1516 lines)
 │   ├── dub_loop.h             # King Tubby tape delay (~310 lines, extracted from effects.h)
 │   ├── rewind.h               # Vinyl spinback effect (~165 lines, extracted from effects.h)
@@ -210,7 +210,13 @@ Waves 0-2 complete. Near-term TODO (per `docs/plan-of-attack.md`):
 - Performance: voice hot/cold split, fast sine approx, reverb comb power-of-2
 - Test gaps: sampler WAV loading, patch trigger, rhythm patterns
 
-### Current Work (2026-03-13)
+### Current Work (2026-03-14)
+
+**Recent additions:**
+- Slow LFO sync divisions (8/16/32 bar — up to ~62s at 120 BPM)
+- Per-LFO phase offset (0.0-1.0) — patches can run inverted relative to each other
+- FM mod index LFO (5th LFO, shown for FM patches only)
+- Real-time note recording: keyboard/MIDI → pattern with free/quantized modes, overdub/replace, gate tracking, pattern lock for song mode. F7 toggle, transport bar UI.
 
 **Bridge → .song migration**: Converting C-coded bridge songs to `.song` files the DAW can load/edit.
 - Done: Gymnopedie (8 patterns, 40 BPM, 12-step 3/4 waltz) — exported via `bridge_export`, playable in DAW
@@ -218,5 +224,5 @@ Waves 0-2 complete. Near-term TODO (per `docs/plan-of-attack.md`):
 - Done: `dawTextEdit()` reusable text editor with cursor/arrow key support
 - Done: Font consistency fixes (MeasureTextUI, DrawTextShadow everywhere)
 - TODO: Export remaining ~10 non-sweep bridge songs
-- TODO: Debug playback glitch in `gymnopedienew.song` (user's modified version with drums + wobble + heavy master FX) — clipping at pattern 4 steps 9-10 and pattern 6. Use `daw-render` headless tool for diagnosis.
+- TODO: Debug playback glitch in `gymnopedienew.song` (clipping at pattern 4/6)
 - TODO: Scenes/crossfader for House + Deep House sweep songs
