@@ -384,7 +384,11 @@ static void dawDrumTriggerGeneric(int trackIdx, int busIdx, float vel, float pit
         synthCtx->voices[dawDrumVoice[trackIdx]].envStage = 0;
         synthCtx->voices[dawDrumVoice[trackIdx]].envLevel = 0.0f;
     }
+    // Force one-shot for drum tracks — drums never sustain, prevents voice hang
+    bool origOneShot = p->p_oneShot;
+    p->p_oneShot = true;
     int v = playNoteWithPatch(trigFreq, p);
+    p->p_oneShot = origOneShot;
     dawDrumVoice[trackIdx] = v;
     if (v >= 0) {
         voiceBus[v] = busIdx;

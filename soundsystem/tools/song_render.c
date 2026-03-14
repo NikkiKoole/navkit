@@ -131,7 +131,11 @@ static void renderDrumTrigger(int trackIdx, int busIdx, float vel, float pitch) 
         synthCtx->voices[dawDrumVoice[trackIdx]].envStage = 0;
         synthCtx->voices[dawDrumVoice[trackIdx]].envLevel = 0.0f;
     }
+    // Force one-shot for drum tracks — drums never sustain, prevents voice hang
+    bool origOneShot = p->p_oneShot;
+    p->p_oneShot = true;
     int v = playNoteWithPatch(trigFreq, p);
+    p->p_oneShot = origOneShot;
     dawDrumVoice[trackIdx] = v;
     if (v >= 0) {
         voiceBus[v] = busIdx;
@@ -517,12 +521,14 @@ int main(int argc, char *argv[]) {
     float duration = -1;
     float tailSeconds = 2.0f;
     bool infoOnly = false;
+    bool verbose = false;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-d") == 0 && i+1 < argc) { duration = atof(argv[++i]); }
         else if (strcmp(argv[i], "-o") == 0 && i+1 < argc) { outputPath = argv[++i]; }
         else if (strcmp(argv[i], "--tail") == 0 && i+1 < argc) { tailSeconds = atof(argv[++i]); }
         else if (strcmp(argv[i], "--info") == 0) { infoOnly = true; }
+        else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) { verbose = true; }
         else if (argv[i][0] != '-' && !songPath) { songPath = argv[i]; }
     }
 
@@ -656,6 +662,34 @@ int main(int argc, char *argv[]) {
                 busInputs[bus] += s;
             } else {
                 busInputs[BUS_CHORD] += s;
+            }
+        }
+
+        // Voice state logging (once per second)
+        if (verbose && i % SAMPLE_RATE == 0) {
+            int active = 0, sustaining = 0, releasing = 0;
+            int busCounts[NUM_BUSES] = {0};
+            int busStuck[NUM_BUSES] = {0};
+            for (int v = 0; v < NUM_VOICES; v++) {
+                if (synthVoices[v].envStage > 0) {
+                    active++;
+                    if (synthVoices[v].envStage == 3) sustaining++;
+                    if (synthVoices[v].envStage == 4) releasing++;
+                    int b = voiceBus[v];
+                    if (b >= 0 && b < NUM_BUSES) {
+                        busCounts[b]++;
+                        if (synthVoices[v].envStage == 3) busStuck[b]++;
+                    }
+                }
+            }
+            if (active > 0) {
+                fprintf(stderr, "  t=%ds: %d active (%d sustain, %d release) | buses:",
+                        i / SAMPLE_RATE, active, sustaining, releasing);
+                for (int b = 0; b < NUM_BUSES; b++) {
+                    if (busCounts[b] > 0)
+                        fprintf(stderr, " b%d=%d(%ds)", b, busCounts[b], busStuck[b]);
+                }
+                fprintf(stderr, "\n");
             }
         }
 
