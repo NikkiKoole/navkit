@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 146
+#define NUM_INSTRUMENT_PRESETS 148
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -2564,6 +2564,36 @@ static void initInstrumentPresets(void) {
     instrumentPresets[145].patch.p_useTriggerFreq = true;
     instrumentPresets[145].patch.p_triggerFreq = 500.0f;
     instrumentPresets[145].patch.p_volume = 0.5f;
+
+    // ========================================================================
+    // Chip / 8-bit (146-147) — pure retro, no effects, fast glide
+    // ========================================================================
+
+    // Chip Square — NES/C64 bass, pure square, instant attack, tight gate
+    instrumentPresets[146].name = "Chip Square";
+    instrumentPresets[146].patch.p_waveType = WAVE_SQUARE;
+    instrumentPresets[146].patch.p_attack = 0.001f;
+    instrumentPresets[146].patch.p_decay = 0.08f;
+    instrumentPresets[146].patch.p_sustain = 0.8f;
+    instrumentPresets[146].patch.p_release = 0.02f;
+    instrumentPresets[146].patch.p_filterCutoff = 1.0f;
+    instrumentPresets[146].patch.p_filterResonance = 0.0f;
+    instrumentPresets[146].patch.p_monoMode = true;
+    instrumentPresets[146].patch.p_glideTime = 0.125f;  // 1/8.0 — fast glide for slides
+    instrumentPresets[146].patch.p_volume = 0.45f;
+
+    // Chip Saw — NES/C64 lead, pure sawtooth, slightly darker
+    instrumentPresets[147].name = "Chip Saw";
+    instrumentPresets[147].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[147].patch.p_attack = 0.001f;
+    instrumentPresets[147].patch.p_decay = 0.1f;
+    instrumentPresets[147].patch.p_sustain = 0.7f;
+    instrumentPresets[147].patch.p_release = 0.03f;
+    instrumentPresets[147].patch.p_filterCutoff = 0.85f;
+    instrumentPresets[147].patch.p_filterResonance = 0.0f;
+    instrumentPresets[147].patch.p_monoMode = true;
+    instrumentPresets[147].patch.p_glideTime = 0.125f;
+    instrumentPresets[147].patch.p_volume = 0.55f;
 }
 
 #endif // INSTRUMENT_PRESETS_H

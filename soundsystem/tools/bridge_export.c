@@ -32,106 +32,12 @@
 #undef scaleType
 #undef monoMode
 
-// ============================================================================
-// DAW STATE (same as song_render.c — needed for daw_file.h)
-// ============================================================================
-
-#define NUM_PATCHES 8
-
-typedef struct {
-    bool playing;
-    float bpm;
-    int currentPattern;
-    int grooveSwing, grooveJitter;
-    int currentStep;
-    double stepAccumulator;
-} Transport;
-
-typedef struct {
-    bool on;
-    int source, target;
-    float depth, attack, release;
-} Sidechain;
-
-typedef struct {
-    bool distOn;    float distDrive, distTone, distMix;
-    bool crushOn;   float crushBits, crushRate, crushMix;
-    bool chorusOn;  float chorusRate, chorusDepth, chorusMix;
-    bool flangerOn; float flangerRate, flangerDepth, flangerFeedback, flangerMix;
-    bool tapeOn;    float tapeSaturation, tapeWow, tapeFlutter, tapeHiss;
-    bool delayOn;   float delayTime, delayFeedback, delayTone, delayMix;
-    bool reverbOn;  float reverbSize, reverbDamping, reverbPreDelay, reverbMix;
-    bool eqOn;      float eqLowGain, eqHighGain, eqLowFreq, eqHighFreq;
-    bool compOn;    float compThreshold, compRatio, compAttack, compRelease, compMakeup;
-} MasterFX;
-
-typedef struct {
-    bool enabled;
-    float headTime, feedback, mix;
-    int inputSource;
-    bool preReverb;
-    float saturation, toneHigh, noise, degradeRate;
-    float wow, flutter, drift, speedTarget;
-    float rewindTime, rewindMinSpeed, rewindVinyl, rewindWobble, rewindFilter;
-    int rewindCurve;
-    bool isRewinding;
-} TapeFX;
-
-typedef struct {
-    float volume[NUM_BUSES];
-    float pan[NUM_BUSES];
-    float reverbSend[NUM_BUSES];
-    bool mute[NUM_BUSES];
-    bool solo[NUM_BUSES];
-    bool filterOn[NUM_BUSES];  float filterCut[NUM_BUSES]; float filterRes[NUM_BUSES]; int filterType[NUM_BUSES];
-    bool distOn[NUM_BUSES];    float distDrive[NUM_BUSES]; float distMix[NUM_BUSES];
-    bool delayOn[NUM_BUSES];   bool delaySync[NUM_BUSES];  int delaySyncDiv[NUM_BUSES];
-    float delayTime[NUM_BUSES]; float delayFB[NUM_BUSES];  float delayMix[NUM_BUSES];
-} Mixer;
-
-typedef struct {
-    bool enabled;
-    float pos;
-    int sceneA, sceneB, count;
-} Crossfader;
-
-#define SONG_MAX_SECTIONS 64
-#define SONG_SECTION_NAME_LEN 12
-
-typedef struct {
-    int length;
-    int patterns[SONG_MAX_SECTIONS];
-    char names[SONG_MAX_SECTIONS][SONG_SECTION_NAME_LEN];
-    int loopsPerSection[SONG_MAX_SECTIONS];
-    int loopsPerPattern;
-    bool songMode;
-} Song;
+// DAW state types (shared with daw.c)
+#include "../demo/daw_state.h"
 
 static Pattern* dawPattern(void) {
     return &seq.patterns[seq.currentPattern];
 }
-
-typedef struct {
-    Transport transport;
-    Crossfader crossfader;
-    int stepCount;
-    Song song;
-    Mixer mixer;
-    Sidechain sidechain;
-    MasterFX masterFx;
-    TapeFX tapeFx;
-    SynthPatch patches[NUM_PATCHES];
-    int selectedPatch;
-    float masterVol;
-    bool scaleLockEnabled;
-    int scaleRoot, scaleType;
-    bool voiceRandomVowel;
-    char songName[64];
-    bool splitEnabled;
-    int splitPoint;
-    int splitLeftPatch, splitRightPatch;
-    int splitLeftOctave, splitRightOctave;
-} DawState;
 
 static DawState daw = {
     .transport = { .bpm = 120.0f },
@@ -147,7 +53,9 @@ static DawState daw = {
         .delayFB = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
         .delayMix = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
     },
-    .sidechain = { .depth = 0.8f, .attack = 0.005f, .release = 0.15f },
+    .sidechain = { .depth = 0.8f, .attack = 0.005f, .release = 0.15f,
+                    .envDepth = 0.8f, .envAttack = 0.005f, .envHold = 0.02f,
+                    .envRelease = 0.15f, .envCurve = 1 },
     .masterFx = {
         .distDrive = 2.0f, .distTone = 0.7f, .distMix = 0.5f,
         .crushBits = 8.0f, .crushRate = 4.0f, .crushMix = 0.5f,
@@ -155,8 +63,8 @@ static DawState daw = {
         .flangerRate = 0.5f, .flangerDepth = 0.5f, .flangerFeedback = 0.3f, .flangerMix = 0.3f,
         .tapeSaturation = 0.3f, .tapeWow = 0.1f, .tapeFlutter = 0.1f, .tapeHiss = 0.05f,
         .delayTime = 0.3f, .delayFeedback = 0.4f, .delayTone = 0.5f, .delayMix = 0.3f,
-        .reverbSize = 0.5f, .reverbDamping = 0.5f, .reverbPreDelay = 0.02f, .reverbMix = 0.3f,
-        .eqLowGain = 0.0f, .eqHighGain = 0.0f, .eqLowFreq = 200.0f, .eqHighFreq = 6000.0f,
+        .reverbSize = 0.5f, .reverbDamping = 0.5f, .reverbPreDelay = 0.02f, .reverbMix = 0.3f, .reverbBass = 1.0f,
+        .eqLowGain = 0.0f, .eqHighGain = 0.0f, .eqLowFreq = 80.0f, .eqHighFreq = 6000.0f,
         .compThreshold = -12.0f, .compRatio = 4.0f, .compAttack = 0.01f, .compRelease = 0.1f, .compMakeup = 0.0f,
     },
     .tapeFx = {
@@ -195,6 +103,9 @@ typedef struct {
     int scaleType;
     // Groove
     int swing, jitter, snareDelay;
+    // Humanize
+    int timingJitter;
+    float velocityJitter;
     // Step count (0 = default 16)
     int stepCount;
 } BridgeSong;
@@ -240,6 +151,239 @@ static void gymnopedieLoadPatterns(Pattern pats[]) {
     Song_Gymnopedie_Load(pats);
 }
 
+static void mule2LoadPatterns(Pattern pats[]) {
+    Song_Mule2_Load(pats);
+}
+
+// --- Suspense ---
+static void suspenseMelodyOverrides(void) {
+    // Chord (patch 6): organ with slower attack, darker
+    daw.patches[6].p_attack = 1.0f;
+    daw.patches[6].p_volume = 0.35f;
+    daw.patches[6].p_filterCutoff = 0.22f;
+}
+static void suspenseLoadPatterns(Pattern pats[]) {
+    Song_Suspense_Load(pats);
+}
+
+// --- Jazz ---
+static void jazzMelodyOverrides(void) {
+    // Lead (patch 5): vibes — volume override handled by accent at runtime,
+    // use mid value for static export
+    daw.patches[5].p_volume = 0.42f;
+    // Chord (patch 6): FM keys with tight overrides
+    daw.patches[6].p_fmModIndex = 1.8f;
+    daw.patches[6].p_sustain = 0.25f;
+    daw.patches[6].p_release = 0.3f;
+    daw.patches[6].p_vibratoRate = 0.0f;
+    daw.patches[6].p_vibratoDepth = 0.0f;
+    daw.patches[6].p_volume = 0.40f;
+    daw.patches[6].p_filterCutoff = 0.6f;
+}
+static void jazzLoadPatterns(Pattern pats[]) {
+    Song_JazzCallResponse_Load(pats);
+}
+
+// --- Dilla ---
+static void dillaMelodyOverrides(void) {
+    // Bass (patch 4): pluck with overrides
+    daw.patches[4].p_pluckBrightness = 0.35f;
+    daw.patches[4].p_pluckDamping = 0.55f;
+    daw.patches[4].p_filterCutoff = 0.20f;
+    daw.patches[4].p_filterResonance = 0.12f;
+    // Lead (patch 5): FM keys with overrides
+    daw.patches[5].p_decay = 0.35f;
+    daw.patches[5].p_sustain = 0.15f;
+    daw.patches[5].p_release = 0.5f;
+    daw.patches[5].p_volume = 0.35f;
+    daw.patches[5].p_filterCutoff = 0.35f;
+    daw.patches[5].p_filterResonance = 0.08f;
+}
+static void dillaLoadPatterns(Pattern pats[]) {
+    Song_Dilla_Load(pats);
+}
+
+// --- Atmosphere ---
+static void atmosphereMelodyOverrides(void) {
+    // Bass (patch 4): pluck with overrides
+    daw.patches[4].p_pluckBrightness = 0.5f;
+    daw.patches[4].p_pluckDamping = 0.3f;
+    daw.patches[4].p_filterCutoff = 0.30f;
+    daw.patches[4].p_filterResonance = 0.08f;
+    daw.patches[4].p_volume = 0.50f;
+    // Lead (patch 5): glock with overrides
+    daw.patches[5].p_volume = 0.45f;
+    daw.patches[5].p_filterCutoff = 0.65f;
+    // Chord (patch 6): strings with slow envelope
+    daw.patches[6].p_attack = 1.2f;
+    daw.patches[6].p_decay = 2.0f;
+    daw.patches[6].p_sustain = 0.6f;
+    daw.patches[6].p_release = 3.5f;
+    daw.patches[6].p_volume = 0.35f;
+    daw.patches[6].p_filterCutoff = 0.45f;
+    daw.patches[6].p_filterResonance = 0.05f;
+}
+static void atmosphereLoadPatterns(Pattern pats[]) {
+    Song_Atmosphere_Load(pats);
+}
+
+// --- Mr Lucky ---
+static void mrLuckyMelodyOverrides(void) {
+    // Bass (patch 4): pluck with overrides
+    daw.patches[4].p_pluckBrightness = 0.45f;
+    daw.patches[4].p_pluckDamping = 0.35f;
+    daw.patches[4].p_filterCutoff = 0.35f;
+    daw.patches[4].p_volume = 0.50f;
+    // Lead (patch 5): vibes
+    daw.patches[5].p_volume = 0.42f;
+    daw.patches[5].p_filterCutoff = 0.55f;
+}
+static void mrLuckyLoadPatterns(Pattern pats[]) {
+    Song_MrLucky_Load(pats);
+}
+
+// --- Happy Birthday ---
+static void happyBirthdayMelodyOverrides(void) {
+    // Lead (patch 5): FM keys with tight overrides
+    daw.patches[5].p_fmModIndex = 1.8f;
+    daw.patches[5].p_sustain = 0.25f;
+    daw.patches[5].p_release = 0.3f;
+    daw.patches[5].p_vibratoRate = 0.0f;
+    daw.patches[5].p_vibratoDepth = 0.0f;
+    daw.patches[5].p_volume = 0.40f;
+    daw.patches[5].p_filterCutoff = 0.6f;
+    // Chord (patch 6): same FM keys overrides
+    daw.patches[6].p_fmModIndex = 1.8f;
+    daw.patches[6].p_sustain = 0.25f;
+    daw.patches[6].p_release = 0.3f;
+    daw.patches[6].p_vibratoRate = 0.0f;
+    daw.patches[6].p_vibratoDepth = 0.0f;
+    daw.patches[6].p_volume = 0.40f;
+    daw.patches[6].p_filterCutoff = 0.6f;
+}
+static void happyBirthdayLoadPatterns(Pattern pats[]) {
+    Song_HappyBirthday_Load(pats);
+}
+
+// --- Monk's Mood ---
+static void monksMoodMelodyOverrides(void) {
+    // Same FM keys overrides as gymnopedie/happybirthday
+    daw.patches[5].p_fmModIndex = 1.8f;
+    daw.patches[5].p_sustain = 0.25f;
+    daw.patches[5].p_release = 0.3f;
+    daw.patches[5].p_vibratoRate = 0.0f;
+    daw.patches[5].p_vibratoDepth = 0.0f;
+    daw.patches[5].p_volume = 0.40f;
+    daw.patches[5].p_filterCutoff = 0.6f;
+    daw.patches[6].p_fmModIndex = 1.8f;
+    daw.patches[6].p_sustain = 0.25f;
+    daw.patches[6].p_release = 0.3f;
+    daw.patches[6].p_vibratoRate = 0.0f;
+    daw.patches[6].p_vibratoDepth = 0.0f;
+    daw.patches[6].p_volume = 0.40f;
+    daw.patches[6].p_filterCutoff = 0.6f;
+}
+static void monksMoodLoadPatterns(Pattern pats[]) {
+    Song_MonksMood_Load(pats);
+}
+
+// --- Summertime ---
+static void summertimeLoadPatterns(Pattern pats[]) {
+    Song_Summertime_Load(pats);
+}
+
+// --- House (sweep via slow LFOs) ---
+static void houseMelodyOverrides(void) {
+    // Bass (patch 4): Acid preset with LFO sweep replacing per-trigger getSweepValue()
+    // Original: cutoff 0.08 + sweep*0.57 → center 0.365, depth 0.285
+    //           reso   0.45 + sweep*0.15 → center 0.525, depth 0.075
+    daw.patches[4].p_filterCutoff = 0.365f;
+    daw.patches[4].p_filterResonance = 0.525f;
+    daw.patches[4].p_filterEnvAmt = 0.3f;
+    daw.patches[4].p_glideTime = 0.15f;
+    daw.patches[4].p_volume = 0.50f;
+    daw.patches[4].p_filterLfoRate = 0.025f;   // ~40s cycle
+    daw.patches[4].p_filterLfoDepth = 0.285f;
+    daw.patches[4].p_filterLfoShape = 0;        // sine
+    daw.patches[4].p_resoLfoRate = 0.025f;
+    daw.patches[4].p_resoLfoDepth = 0.075f;
+    daw.patches[4].p_resoLfoShape = 0;
+
+    // Lead (patch 5): FM stab with LFO sweep
+    // Original: cutoff 0.20 + sweep*0.45 → center 0.425, depth 0.225
+    //           fmModIndex 0.5 + sweep*2.5 → center 1.75, depth 1.25
+    daw.patches[5].p_waveType = WAVE_FM;
+    daw.patches[5].p_fmModRatio = 2.0f;
+    daw.patches[5].p_fmModIndex = 1.75f;
+    daw.patches[5].p_attack = 0.002f;
+    daw.patches[5].p_decay = 0.3f;
+    daw.patches[5].p_sustain = 0.1f;
+    daw.patches[5].p_release = 0.4f;
+    daw.patches[5].p_volume = 0.40f;
+    daw.patches[5].p_filterCutoff = 0.425f;
+    daw.patches[5].p_filterResonance = 0.10f;
+    daw.patches[5].p_filterLfoRate = 0.025f;
+    daw.patches[5].p_filterLfoDepth = 0.225f;
+    daw.patches[5].p_filterLfoShape = 0;
+    daw.patches[5].p_fmLfoRate = 0.025f;
+    daw.patches[5].p_fmLfoDepth = 1.25f;
+    daw.patches[5].p_fmLfoShape = 0;
+
+    // Chord (patch 6): Deep pad with inverted LFO sweep
+    // Original: cutoff 0.12 + (1-sweep)*0.40 → center 0.32, depth 0.20
+    // Inverted = phase offset 0.5
+    daw.patches[6].p_attack = 1.5f;
+    daw.patches[6].p_decay = 2.0f;
+    daw.patches[6].p_release = 3.0f;
+    daw.patches[6].p_filterCutoff = 0.32f;
+    daw.patches[6].p_filterResonance = 0.08f;
+    daw.patches[6].p_filterLfoRate = 0.025f;
+    daw.patches[6].p_filterLfoDepth = 0.20f;
+    daw.patches[6].p_filterLfoShape = 0;
+    daw.patches[6].p_filterLfoPhaseOffset = 0.5f;  // inverted
+}
+static void houseLoadPatterns(Pattern pats[]) {
+    Song_House_Load(pats);
+}
+
+// --- Deep House (sweep via slow LFOs, ~60s cycle) ---
+static void deepHouseMelodyOverrides(void) {
+    // Bass (patch 4): Sub bass — no sweep, just the preset
+    // (melodyTriggerSubBass uses PRESET_TRI_SUB with no overrides)
+
+    // Lead (patch 5): Same FM stab as House but slower sweep
+    daw.patches[5].p_waveType = WAVE_FM;
+    daw.patches[5].p_fmModRatio = 2.0f;
+    daw.patches[5].p_fmModIndex = 1.75f;
+    daw.patches[5].p_attack = 0.002f;
+    daw.patches[5].p_decay = 0.3f;
+    daw.patches[5].p_sustain = 0.1f;
+    daw.patches[5].p_release = 0.4f;
+    daw.patches[5].p_volume = 0.40f;
+    daw.patches[5].p_filterCutoff = 0.425f;
+    daw.patches[5].p_filterResonance = 0.10f;
+    daw.patches[5].p_filterLfoRate = 0.017f;    // ~60s cycle
+    daw.patches[5].p_filterLfoDepth = 0.225f;
+    daw.patches[5].p_filterLfoShape = 0;
+    daw.patches[5].p_fmLfoRate = 0.017f;
+    daw.patches[5].p_fmLfoDepth = 1.25f;
+    daw.patches[5].p_fmLfoShape = 0;
+
+    // Chord (patch 6): Same inverted pad, slower
+    daw.patches[6].p_attack = 1.5f;
+    daw.patches[6].p_decay = 2.0f;
+    daw.patches[6].p_release = 3.0f;
+    daw.patches[6].p_filterCutoff = 0.32f;
+    daw.patches[6].p_filterResonance = 0.08f;
+    daw.patches[6].p_filterLfoRate = 0.017f;
+    daw.patches[6].p_filterLfoDepth = 0.20f;
+    daw.patches[6].p_filterLfoShape = 0;
+    daw.patches[6].p_filterLfoPhaseOffset = 0.5f;
+}
+static void deepHouseLoadPatterns(Pattern pats[]) {
+    Song_DeepHouse_Load(pats);
+}
+
 static const BridgeSong bridgeSongs[] = {
     {
         .name = "dormitory",
@@ -264,6 +408,145 @@ static const BridgeSong bridgeSongs[] = {
         .configureMelody = gymnopedieMelodyOverrides,
         .loadPatterns = gymnopedieLoadPatterns,
         .stepCount = 12,  // 3/4 waltz: 12 eighth-note steps
+    },
+    {
+        .name = "mule2",
+        .bpm = 74.0f,
+        .patternCount = 8,
+        .loopsPerPattern = 1,
+        .drumPresets = {24, 25, 27, 26},    // standard 808 kit
+        .melodyPresets = {146, 147, -1},     // Chip Square, Chip Saw, unused
+        .loadPatterns = mule2LoadPatterns,
+        .stepCount = 32,  // 32nd note resolution
+    },
+    {
+        .name = "suspense",
+        .bpm = 48.0f,
+        .patternCount = 2,
+        .loopsPerPattern = 2,
+        .drumPresets = {24, 25, 27, 26},
+        .melodyPresets = {39, 40, 39},     // Dark Organ, Eerie Vowel, Dark Organ
+        .configureMelody = suspenseMelodyOverrides,
+        .loadPatterns = suspenseLoadPatterns,
+        .scaleLock = true,
+        .scaleRoot = 0,       // C
+        .scaleType = 8,       // SCALE_HARMONIC_MIN
+    },
+    {
+        .name = "jazz",
+        .bpm = 108.0f,
+        .patternCount = 3,
+        .loopsPerPattern = 2,
+        .drumPresets = {24, 25, 27, 26},
+        .melodyPresets = {44, 23, 21},     // Warm Pluck, Mac Vibes, Mac Keys
+        .configureMelody = jazzMelodyOverrides,
+        .loadPatterns = jazzLoadPatterns,
+        .scaleLock = true,
+        .scaleRoot = 7,       // G
+        .scaleType = 7,       // SCALE_MIXOLYDIAN
+        .swing = 7, .snareDelay = 3, .jitter = 2,
+    },
+    {
+        .name = "dilla",
+        .bpm = 88.0f,
+        .patternCount = 3,
+        .loopsPerPattern = 2,
+        .drumPresets = {24, 25, 27, 26},
+        .melodyPresets = {44, 21, 42},     // Warm Pluck, Mac Keys, Dark Choir
+        .configureMelody = dillaMelodyOverrides,
+        .loadPatterns = dillaLoadPatterns,
+        .scaleLock = true,
+        .scaleRoot = 3,       // Eb
+        .scaleType = 1,       // SCALE_MAJOR
+        .swing = 9, .snareDelay = 5, .jitter = 4,
+    },
+    {
+        .name = "atmosphere",
+        .bpm = 100.0f,
+        .patternCount = 3,
+        .loopsPerPattern = 3,
+        .drumPresets = {24, 25, 27, 26},
+        .melodyPresets = {44, 15, 43},     // Warm Pluck, Piku Glock, Lush Strings
+        .configureMelody = atmosphereMelodyOverrides,
+        .loadPatterns = atmosphereLoadPatterns,
+        .scaleLock = true,
+        .scaleRoot = 9,       // A
+        .scaleType = 2,       // SCALE_MINOR
+    },
+    {
+        .name = "mrlucky",
+        .bpm = 89.0f,
+        .patternCount = 3,
+        .loopsPerPattern = 2,
+        .drumPresets = {24, 25, 27, 26},
+        .melodyPresets = {44, 23, 43},     // Warm Pluck, Mac Vibes, Lush Strings
+        .configureMelody = mrLuckyMelodyOverrides,
+        .loadPatterns = mrLuckyLoadPatterns,
+        .scaleLock = true,
+        .scaleRoot = 2,       // D
+        .scaleType = 1,       // SCALE_MAJOR
+    },
+    {
+        .name = "happybirthday",
+        .bpm = 55.0f,
+        .patternCount = 4,
+        .loopsPerPattern = 1,
+        .drumPresets = {24, 25, 27, 26},
+        .melodyPresets = {44, 21, 21},     // Warm Pluck, Mac Keys, Mac Keys
+        .configureMelody = happyBirthdayMelodyOverrides,
+        .loadPatterns = happyBirthdayLoadPatterns,
+        .swing = 4, .jitter = 1,
+        .timingJitter = 1, .velocityJitter = 0.06f,
+    },
+    {
+        .name = "monksmood",
+        .bpm = 75.0f,
+        .patternCount = 8,
+        .loopsPerPattern = 1,
+        .drumPresets = {24, 25, 27, 26},
+        .melodyPresets = {44, 21, 21},     // Warm Pluck, Mac Keys, Mac Keys
+        .configureMelody = monksMoodMelodyOverrides,
+        .loadPatterns = monksMoodLoadPatterns,
+        .swing = 3,
+        .timingJitter = 2, .velocityJitter = 0.08f,
+    },
+    {
+        .name = "summertime",
+        .bpm = 120.0f,
+        .patternCount = 8,
+        .loopsPerPattern = 1,
+        .drumPresets = {24, 25, 27, 26},
+        .melodyPresets = {44, 21, 21},     // Warm Pluck, Mac Keys, Mac Keys
+        .configureMelody = monksMoodMelodyOverrides,  // same FM keys overrides
+        .loadPatterns = summertimeLoadPatterns,
+        .swing = 3,
+        .timingJitter = 2, .velocityJitter = 0.06f,
+    },
+    {
+        .name = "house",
+        .bpm = 124.0f,
+        .patternCount = 2,
+        .loopsPerPattern = 4,
+        .drumPresets = {24, 25, 27, 26},
+        .melodyPresets = {8, 21, 43},      // Acid, Mac Keys (overridden to FM), Lush Strings
+        .configureMelody = houseMelodyOverrides,
+        .loadPatterns = houseLoadPatterns,
+        .scaleLock = true,
+        .scaleRoot = 0,       // C
+        .scaleType = 2,       // SCALE_MINOR
+    },
+    {
+        .name = "deephouse",
+        .bpm = 120.0f,
+        .patternCount = 2,
+        .loopsPerPattern = 4,
+        .drumPresets = {24, 25, 27, 26},
+        .melodyPresets = {41, 21, 43},     // Tri Sub, Mac Keys (overridden to FM), Lush Strings
+        .configureMelody = deepHouseMelodyOverrides,
+        .loadPatterns = deepHouseLoadPatterns,
+        .scaleLock = true,
+        .scaleRoot = 5,       // F
+        .scaleType = 2,       // SCALE_MINOR
     },
 };
 
@@ -348,6 +631,7 @@ int main(int argc, char *argv[]) {
     // Load melody presets into patches 4-6
     for (int i = 0; i < 3; i++) {
         int idx = song->melodyPresets[i];
+        if (idx < 0) continue;  // unused track
         daw.patches[4 + i] = instrumentPresets[idx].patch;
         strncpy(daw.patches[4 + i].p_name, instrumentPresets[idx].name, 31);
         daw.patches[4 + i].p_name[31] = '\0';
@@ -363,6 +647,11 @@ int main(int argc, char *argv[]) {
     seq.dilla.swing = song->swing;
     seq.dilla.jitter = song->jitter;
     seq.dilla.snareDelay = song->snareDelay;
+    for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) seq.trackSwing[i] = song->swing;
+
+    // Humanize
+    seq.humanize.timingJitter = song->timingJitter;
+    seq.humanize.velocityJitter = song->velocityJitter;
 
     // Set up arrangement (song mode with pattern cycling)
     daw.song.songMode = true;

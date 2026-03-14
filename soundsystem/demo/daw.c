@@ -183,100 +183,16 @@ static const char* arpRateNames[] = {"1/4", "1/8", "1/16", "1/32", "Free"};
 static const char* lfoShapeNames[] = {"Sine", "Tri", "Sqr", "Saw", "S&H"};
 static const char* lfoSyncNames[] = {"Off", "4bar", "2bar", "1bar", "1/2", "1/4", "1/8", "1/16", "8bar", "16bar", "32bar"};
 
-// --- Structs ---
+// --- Structs (shared with tools via daw_state.h) ---
 
-#define NUM_PATCHES 8
+#include "daw_state.h"
+
 // NUM_BUSES (7) provided by effects.h
-
-typedef struct {
-    bool playing;
-    float bpm;
-    int currentPattern;
-    int grooveSwing, grooveJitter;
-    int currentStep;
-    double stepAccumulator;  // fractional step accumulator (in seconds)
-} Transport;
-
-typedef struct {
-    bool on;
-    int source, target;
-    float depth, attack, release;
-    float hpFreq;  // Bass-preserve HP frequency (0=off, 40-120Hz)
-} Sidechain;
-
-typedef struct {
-    bool distOn;    float distDrive, distTone, distMix;
-    bool crushOn;   float crushBits, crushRate, crushMix;
-    bool chorusOn;  float chorusRate, chorusDepth, chorusMix;
-    bool flangerOn; float flangerRate, flangerDepth, flangerFeedback, flangerMix;
-    bool phaserOn;  float phaserRate, phaserDepth, phaserMix, phaserFeedback; int phaserStages;
-    bool combOn;    float combFreq, combFeedback, combMix, combDamping;
-    bool tapeOn;    float tapeSaturation, tapeWow, tapeFlutter, tapeHiss;
-    bool delayOn;   float delayTime, delayFeedback, delayTone, delayMix;
-    bool reverbOn;  float reverbSize, reverbDamping, reverbPreDelay, reverbMix, reverbBass;
-    bool eqOn;      float eqLowGain, eqHighGain, eqLowFreq, eqHighFreq;
-    bool compOn;    float compThreshold, compRatio, compAttack, compRelease, compMakeup;
-    bool subBassBoost;
-} MasterFX;
-
-typedef struct {
-    bool enabled;
-    float headTime, feedback, mix;
-    int inputSource;
-    bool preReverb;
-    float saturation, toneHigh, noise, degradeRate;
-    float wow, flutter, drift, speedTarget;
-    float rewindTime, rewindMinSpeed, rewindVinyl, rewindWobble, rewindFilter;
-    int rewindCurve;
-    bool isRewinding;
-} TapeFX;
-
-typedef struct {
-    float volume[NUM_BUSES];
-    float pan[NUM_BUSES];
-    float reverbSend[NUM_BUSES];
-    bool mute[NUM_BUSES];
-    bool solo[NUM_BUSES];
-    // Per-bus FX
-    bool filterOn[NUM_BUSES];  float filterCut[NUM_BUSES]; float filterRes[NUM_BUSES]; int filterType[NUM_BUSES];
-    bool distOn[NUM_BUSES];    float distDrive[NUM_BUSES]; float distMix[NUM_BUSES];
-    bool eqOn[NUM_BUSES];      float eqLowGain[NUM_BUSES]; float eqHighGain[NUM_BUSES];
-    float eqLowFreq[NUM_BUSES]; float eqHighFreq[NUM_BUSES];
-    bool chorusOn[NUM_BUSES];  float chorusRate[NUM_BUSES]; float chorusDepth[NUM_BUSES];
-    float chorusMix[NUM_BUSES]; float chorusDelay[NUM_BUSES]; float chorusFB[NUM_BUSES];
-    bool phaserOn[NUM_BUSES];  float phaserRate[NUM_BUSES]; float phaserDepth[NUM_BUSES];
-    float phaserMix[NUM_BUSES]; float phaserFB[NUM_BUSES]; int phaserStages[NUM_BUSES];
-    bool combOn[NUM_BUSES];    float combFreq[NUM_BUSES]; float combFB[NUM_BUSES];
-    float combMix[NUM_BUSES];  float combDamping[NUM_BUSES];
-    bool delayOn[NUM_BUSES];   bool delaySync[NUM_BUSES];  int delaySyncDiv[NUM_BUSES];
-    float delayTime[NUM_BUSES]; float delayFB[NUM_BUSES];  float delayMix[NUM_BUSES];
-} Mixer;
-
-typedef struct {
-    bool enabled;
-    float pos;
-    int sceneA, sceneB, count;
-} Crossfader;
-
-// SEQ_NOTE_OFF, SEQ_MAX_STEPS, SEQ_DRUM_TRACKS, SEQ_MELODY_TRACKS, SEQ_TOTAL_TRACKS
-// all provided by sequencer.h, along with Pattern, PLock, etc.
-
-#define SONG_MAX_SECTIONS 64
-#define SONG_SECTION_NAME_LEN 12
 
 static const char* sectionPresetNames[] = {
     "intro", "verse", "chorus", "bridge", "outro", "break", "build", "drop", ""
 };
 #define SECTION_PRESET_COUNT 9  // last is empty string = custom/clear
-
-typedef struct {
-    int length;
-    int patterns[SONG_MAX_SECTIONS];
-    char names[SONG_MAX_SECTIONS][SONG_SECTION_NAME_LEN];
-    int loopsPerSection[SONG_MAX_SECTIONS];  // 0 = use global default
-    int loopsPerPattern;     // global default (1-8, default 2)
-    bool songMode;           // true = follow arrangement, false = loop current pattern
-} Song;
 
 // Helper: get active pattern from sequencer engine
 static Pattern* dawPattern(void) {
@@ -287,36 +203,6 @@ static Pattern* dawPattern(void) {
 static int dawTrackLength(Pattern *p, int track) {
     return p->trackLength[track];
 }
-
-typedef struct {
-    Transport transport;
-    Crossfader crossfader;
-    int stepCount;         // Display/loop length: 16 or 32
-    Song song;
-    Mixer mixer;
-    Sidechain sidechain;
-    MasterFX masterFx;
-    TapeFX tapeFx;
-
-    // Patches
-    SynthPatch patches[NUM_PATCHES];
-    int selectedPatch;
-    float masterVol;
-
-    // Engine-level settings (not per-patch)
-    bool scaleLockEnabled;
-    int scaleRoot, scaleType;
-    bool voiceRandomVowel;
-
-    // Song name
-    char songName[64];
-
-    // Split keyboard
-    bool splitEnabled;
-    int splitPoint;
-    int splitLeftPatch, splitRightPatch;
-    int splitLeftOctave, splitRightOctave;
-} DawState;
 
 // Audio performance monitoring
 static double dawAudioTimeUs = 0.0;
@@ -477,7 +363,9 @@ static DawState daw = {
         .delayFB = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
         .delayMix = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
     },
-    .sidechain = { .depth = 0.8f, .attack = 0.005f, .release = 0.15f },
+    .sidechain = { .depth = 0.8f, .attack = 0.005f, .release = 0.15f,
+                    .envDepth = 0.8f, .envAttack = 0.005f, .envHold = 0.02f,
+                    .envRelease = 0.15f, .envCurve = 1 },
     .masterFx = {
         .distDrive = 2.0f, .distTone = 0.7f, .distMix = 0.5f,
         .crushBits = 8.0f, .crushRate = 4.0f, .crushMix = 0.5f,
@@ -488,12 +376,15 @@ static DawState daw = {
         .reverbSize = 0.5f, .reverbDamping = 0.5f, .reverbPreDelay = 0.02f, .reverbMix = 0.3f, .reverbBass = 1.0f,
         .eqLowGain = 0.0f, .eqHighGain = 0.0f, .eqLowFreq = 80.0f, .eqHighFreq = 6000.0f,
         .compThreshold = -12.0f, .compRatio = 4.0f, .compAttack = 0.01f, .compRelease = 0.1f, .compMakeup = 0.0f,
+        .mbLowCross = 200.0f, .mbHighCross = 3000.0f,
+        .mbLowGain = 1.0f, .mbMidGain = 1.0f, .mbHighGain = 1.0f,
+        .mbLowDrive = 1.0f, .mbMidDrive = 1.0f, .mbHighDrive = 1.0f,
     },
     .tapeFx = {
         .headTime = 0.5f, .feedback = 0.6f, .mix = 0.5f,
         .saturation = 0.3f, .toneHigh = 0.7f, .noise = 0.05f, .degradeRate = 0.1f,
         .wow = 0.1f, .flutter = 0.1f, .drift = 0.05f, .speedTarget = 1.0f,
-        .rewindTime = 1.5f, .rewindMinSpeed = 0.2f, .rewindVinyl = 0.3f, .rewindWobble = 0.2f, .rewindFilter = 0.5f,
+        .rewindTime = 1.5f, .rewindMinSpeed = 0.2f, .rewindVinyl = 0.1f, .rewindWobble = 0.2f, .rewindFilter = 0.5f,
     },
     .masterVol = 0.8f,
     .splitPoint = 60, .splitLeftPatch = 1, .splitRightPatch = 2,
@@ -1386,6 +1277,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         if (ghov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             generateRhythm(dawPattern(), &rhythmGen);
             seq.dilla.swing = getRhythmSwing(&rhythmGen);
+            for (int ti = 0; ti < SEQ_V2_MAX_TRACKS; ti++) seq.trackSwing[ti] = seq.dilla.swing;
             // Apply per-style instrument routing (prob map mode only)
             if (rhythmGen.mode == RHYTHM_MODE_PROB_MAP) {
                 int s = rhythmGen.probStyle;
@@ -2892,11 +2784,29 @@ static void drawWorkSong(float x, float y, float w, float h) {
         gy += 20;
     }
 
-    // Swing & jitter
+    // Global swing (sets all tracks) & jitter
     DrawTextShadow("Timing:", (int)x+4, (int)gy+2, 10, (Color){140,140,160,255});
-    if (DraggableInt(x + 80, gy, "Swing", &seq.dilla.swing, 0.3f, 0, 12)) selectedGroovePreset = -1;
+    if (DraggableInt(x + 80, gy, "Swing", &seq.dilla.swing, 0.3f, 0, 12)) {
+        selectedGroovePreset = -1;
+        for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) seq.trackSwing[i] = seq.dilla.swing;
+    }
     if (DraggableInt(x + 180, gy, "Jitter", &seq.dilla.jitter, 0.3f, 0, 6)) selectedGroovePreset = -1;
     gy += 20;
+
+    // Per-track swing (fine-tune individual tracks after setting global)
+    {
+        const char *trackLabels[] = {"Kick","Snare","HiHat","Clap","Bass","Lead","Chord"};
+        int activeTracks = seq.trackCount < 7 ? seq.trackCount : 7;
+        DrawTextShadow("TrkSw:", (int)x+4, (int)gy+2, 10, (Color){140,140,160,255});
+        for (int i = 0; i < activeTracks; i++) {
+            char lbl[7];
+            const char *name = daw.patches[i].p_name[0] ? daw.patches[i].p_name : trackLabels[i];
+            snprintf(lbl, sizeof(lbl), "%.6s", name);
+            if (DraggableInt(x + 60 + i * 60, gy, lbl, &seq.trackSwing[i], 0.3f, 0, 12))
+                selectedGroovePreset = -1;
+        }
+        gy += 20;
+    }
 
     // Melody humanize
     DrawTextShadow("Melody:", (int)x+4, (int)gy+2, 10, (Color){140,140,160,255});
@@ -3616,6 +3526,24 @@ static void drawParamBus(float x, float y, float w, float h) {
     }
     mcy += 4;
 
+    // Sidechain Envelope (note-triggered)
+    DrawTextShadow("SC Envelope:", (int)mx+4, (int)mcy, 9, (Color){140,200,140,255}); mcy += row;
+    ToggleBoolS(mx+4, mcy, "On", &daw.sidechain.envOn, fs); mcy += row;
+    if (daw.sidechain.envOn) {
+        { const char* srcN[] = {sidechainSourceName(0), sidechainSourceName(1), sidechainSourceName(2), sidechainSourceName(3), "AllDrm"};
+          CycleOptionS(mx+4, mcy, "Src", srcN, 5, &daw.sidechain.envSource, fs); mcy += row; }
+        { const char* tgtN[] = {sidechainTargetName(0), sidechainTargetName(1), sidechainTargetName(2), "AllSyn"};
+          CycleOptionS(mx+4, mcy, "Tgt", tgtN, 4, &daw.sidechain.envTarget, fs); mcy += row; }
+        DraggableFloatS(mx+4, mcy, "Depth", &daw.sidechain.envDepth, 0.05f, 0.0f, 1.0f, fs); mcy += row;
+        DraggableFloatS(mx+4, mcy, "Atk", &daw.sidechain.envAttack, 0.002f, 0.001f, 0.05f, fs); mcy += row;
+        DraggableFloatS(mx+4, mcy, "Hold", &daw.sidechain.envHold, 0.005f, 0.0f, 0.1f, fs); mcy += row;
+        DraggableFloatS(mx+4, mcy, "Rel", &daw.sidechain.envRelease, 0.02f, 0.05f, 0.5f, fs); mcy += row;
+        { const char* curveN[] = {"Linear", "Exp", "S-Curve"};
+          CycleOptionS(mx+4, mcy, "Curve", curveN, 3, &daw.sidechain.envCurve, fs); mcy += row; }
+        DraggableFloatS(mx+4, mcy, "BassHP", &daw.sidechain.envHPFreq, 5.0f, 0.0f, 120.0f, fs); mcy += row;
+    }
+    mcy += 4;
+
     // Scenes
     DrawTextShadow("Scenes:", (int)mx+4, (int)mcy, 9, (Color){140,140,200,255}); mcy += row;
     ToggleBoolS(mx+4, mcy, "XFade", &daw.crossfader.enabled, fs); mcy += row;
@@ -3637,7 +3565,7 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
     // Disabled effects hide params but keep same width for stable layout.
     int fs = 11;
     int row = fs + 3;
-    float stripW = w / 11.0f;
+    float stripW = w / 12.0f;
     if (stripW > 140) stripW = 140;
 
     // Signal chain label at bottom
@@ -3649,8 +3577,8 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
 
     // Helper: each strip gets a label + On toggle, then params if on
     #define MFX_BEGIN(label, onPtr) { \
-        Color lc = *(onPtr) ? ORANGE : (Color){70,70,80,255}; \
-        DrawTextShadow(label, (int)(cx+2), (int)(y+1), 9, lc); \
+        Color lc = *(onPtr) ? ORANGE : (Color){180,180,190,255}; \
+        DrawTextShadow(label, (int)(cx+2), (int)(y+1), 13, lc); \
         ToggleBoolS(cx+2, y+12, "On", onPtr, fs); \
         float ry = y + 12 + row + 2; \
         float rx = cx + 2; \
@@ -3761,7 +3689,21 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
     ToggleBoolS(rx, ry, "Sub+", &daw.masterFx.subBassBoost, fs); ry += row;
     MFX_END()
 
-    // 11: Compressor
+    // 11: Multiband
+    MFX_BEGIN("MBand", &daw.masterFx.mbOn)
+    if (daw.masterFx.mbOn) {
+        DraggableFloatS(rx, ry, "LoHz", &daw.masterFx.mbLowCross, 10.0f, 40.0f, 500.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "HiHz", &daw.masterFx.mbHighCross, 200.0f, 1000.0f, 16000.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "LoGn", &daw.masterFx.mbLowGain, 0.05f, 0.0f, 2.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "MdGn", &daw.masterFx.mbMidGain, 0.05f, 0.0f, 2.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "HiGn", &daw.masterFx.mbHighGain, 0.05f, 0.0f, 2.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "LoDrv", &daw.masterFx.mbLowDrive, 0.2f, 1.0f, 4.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "MdDrv", &daw.masterFx.mbMidDrive, 0.2f, 1.0f, 4.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "HiDrv", &daw.masterFx.mbHighDrive, 0.2f, 1.0f, 4.0f, fs); ry += row;
+    }
+    MFX_END()
+
+    // 12: Compressor
     MFX_BEGIN("Comp", &daw.masterFx.compOn)
     if (daw.masterFx.compOn) {
         DraggableFloatS(rx, ry, "Thresh", &daw.masterFx.compThreshold, 1.0f, -40.0f, 0.0f, fs); ry += row;
@@ -3819,12 +3761,20 @@ static void drawParamTape(float x, float y, float w, float h) {
         ui_col_float(&c2, "Wow", &daw.tapeFx.wow, 0.05f, 0.0f, 1.0f);
         ui_col_float(&c2, "Flutter", &daw.tapeFx.flutter, 0.05f, 0.0f, 1.0f);
         ui_col_float(&c2, "Drift", &daw.tapeFx.drift, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c2, "Speed", &daw.tapeFx.speedTarget, 0.1f, 0.25f, 2.0f);
+        ui_col_float(&c2, "Speed", &daw.tapeFx.speedTarget, 0.1f, 0.1f, 2.0f);
         ui_col_space(&c2, 4);
-        ui_col_button(&c2, "Throw");
-        ui_col_button(&c2, "Cut");
-        ui_col_button(&c2, "1/2 Speed");
-        ui_col_button(&c2, "Normal");
+        if (ui_col_button(&c2, dubLoop.throwActive ? "Throw [ON]" : "Throw")) {
+            dubLoop.throwActive = !dubLoop.throwActive;
+        }
+        if (ui_col_button(&c2, "Cut")) {
+            dubLoopReset();
+        }
+        if (ui_col_button(&c2, "1/2 Speed")) {
+            daw.tapeFx.speedTarget = 0.5f;
+        }
+        if (ui_col_button(&c2, "Normal")) {
+            daw.tapeFx.speedTarget = 1.0f;
+        }
     }
 
     // Divider
@@ -3842,7 +3792,14 @@ static void drawParamTape(float x, float y, float w, float h) {
         ui_col_float(&c, "Wobble", &daw.tapeFx.rewindWobble, 0.05f, 0.0f, 1.0f);
         ui_col_float(&c, "Filter", &daw.tapeFx.rewindFilter, 0.05f, 0.0f, 1.0f);
         ui_col_space(&c, 4);
-        ui_col_button(&c, daw.tapeFx.isRewinding ? ">>..." : "Rewind");
+        if (ui_col_button(&c, daw.tapeFx.isRewinding ? ">>..." : "Rewind")) {
+            triggerRewind();
+            daw.tapeFx.isRewinding = true;
+        }
+        // Update rewind state display
+        if (daw.tapeFx.isRewinding && !isRewinding()) {
+            daw.tapeFx.isRewinding = false;
+        }
     }
 
     (void)h;

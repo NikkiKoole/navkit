@@ -38,116 +38,12 @@
 
 #define SAMPLE_RATE 44100
 
-// ============================================================================
-// DAW STATE (minimal replica of daw.c structs for daw_file.h compatibility)
-// ============================================================================
-
-#define NUM_PATCHES 8
-
-typedef struct {
-    bool playing;
-    float bpm;
-    int currentPattern;
-    int grooveSwing, grooveJitter;
-    int currentStep;
-    double stepAccumulator;
-} Transport;
-
-typedef struct {
-    bool on;
-    int source, target;
-    float depth, attack, release;
-} Sidechain;
-
-typedef struct {
-    bool distOn;    float distDrive, distTone, distMix;
-    bool crushOn;   float crushBits, crushRate, crushMix;
-    bool chorusOn;  float chorusRate, chorusDepth, chorusMix;
-    bool flangerOn; float flangerRate, flangerDepth, flangerFeedback, flangerMix;
-    bool phaserOn;  float phaserRate, phaserDepth, phaserMix, phaserFeedback; int phaserStages;
-    bool combOn;    float combFreq, combFeedback, combMix, combDamping;
-    bool tapeOn;    float tapeSaturation, tapeWow, tapeFlutter, tapeHiss;
-    bool delayOn;   float delayTime, delayFeedback, delayTone, delayMix;
-    bool reverbOn;  float reverbSize, reverbDamping, reverbPreDelay, reverbMix;
-    bool eqOn;      float eqLowGain, eqHighGain, eqLowFreq, eqHighFreq;
-    bool compOn;    float compThreshold, compRatio, compAttack, compRelease, compMakeup;
-} MasterFX;
-
-typedef struct {
-    bool enabled;
-    float headTime, feedback, mix;
-    int inputSource;
-    bool preReverb;
-    float saturation, toneHigh, noise, degradeRate;
-    float wow, flutter, drift, speedTarget;
-    float rewindTime, rewindMinSpeed, rewindVinyl, rewindWobble, rewindFilter;
-    int rewindCurve;
-    bool isRewinding;
-} TapeFX;
-
-typedef struct {
-    float volume[NUM_BUSES];
-    float pan[NUM_BUSES];
-    float reverbSend[NUM_BUSES];
-    bool mute[NUM_BUSES];
-    bool solo[NUM_BUSES];
-    bool filterOn[NUM_BUSES];  float filterCut[NUM_BUSES]; float filterRes[NUM_BUSES]; int filterType[NUM_BUSES];
-    bool distOn[NUM_BUSES];    float distDrive[NUM_BUSES]; float distMix[NUM_BUSES];
-    bool eqOn[NUM_BUSES];      float eqLowGain[NUM_BUSES]; float eqHighGain[NUM_BUSES];
-    float eqLowFreq[NUM_BUSES]; float eqHighFreq[NUM_BUSES];
-    bool chorusOn[NUM_BUSES];  float chorusRate[NUM_BUSES]; float chorusDepth[NUM_BUSES];
-    float chorusMix[NUM_BUSES]; float chorusDelay[NUM_BUSES]; float chorusFB[NUM_BUSES];
-    bool phaserOn[NUM_BUSES];  float phaserRate[NUM_BUSES]; float phaserDepth[NUM_BUSES];
-    float phaserMix[NUM_BUSES]; float phaserFB[NUM_BUSES]; int phaserStages[NUM_BUSES];
-    bool combOn[NUM_BUSES];    float combFreq[NUM_BUSES]; float combFB[NUM_BUSES];
-    float combMix[NUM_BUSES];  float combDamping[NUM_BUSES];
-    bool delayOn[NUM_BUSES];   bool delaySync[NUM_BUSES];  int delaySyncDiv[NUM_BUSES];
-    float delayTime[NUM_BUSES]; float delayFB[NUM_BUSES];  float delayMix[NUM_BUSES];
-} Mixer;
-
-typedef struct {
-    bool enabled;
-    float pos;
-    int sceneA, sceneB, count;
-} Crossfader;
-
-#define SONG_MAX_SECTIONS 64
-#define SONG_SECTION_NAME_LEN 12
-
-typedef struct {
-    int length;
-    int patterns[SONG_MAX_SECTIONS];
-    char names[SONG_MAX_SECTIONS][SONG_SECTION_NAME_LEN];
-    int loopsPerSection[SONG_MAX_SECTIONS];
-    int loopsPerPattern;
-    bool songMode;
-} Song;
+// DAW state types (shared with daw.c)
+#include "../demo/daw_state.h"
 
 static Pattern* dawPattern(void) {
     return &seq.patterns[seq.currentPattern];
 }
-
-typedef struct {
-    Transport transport;
-    Crossfader crossfader;
-    int stepCount;
-    Song song;
-    Mixer mixer;
-    Sidechain sidechain;
-    MasterFX masterFx;
-    TapeFX tapeFx;
-    SynthPatch patches[NUM_PATCHES];
-    int selectedPatch;
-    float masterVol;
-    bool scaleLockEnabled;
-    int scaleRoot, scaleType;
-    bool voiceRandomVowel;
-    char songName[64];
-    bool splitEnabled;
-    int splitPoint;
-    int splitLeftPatch, splitRightPatch;
-    int splitLeftOctave, splitRightOctave;
-} DawState;
 
 static DawState daw = {
     .transport = { .bpm = 120.0f },
@@ -163,7 +59,9 @@ static DawState daw = {
         .delayFB = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
         .delayMix = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
     },
-    .sidechain = { .depth = 0.8f, .attack = 0.005f, .release = 0.15f },
+    .sidechain = { .depth = 0.8f, .attack = 0.005f, .release = 0.15f,
+                    .envDepth = 0.8f, .envAttack = 0.005f, .envHold = 0.02f,
+                    .envRelease = 0.15f, .envCurve = 1 },
     .masterFx = {
         .distDrive = 2.0f, .distTone = 0.7f, .distMix = 0.5f,
         .crushBits = 8.0f, .crushRate = 4.0f, .crushMix = 0.5f,
@@ -171,8 +69,8 @@ static DawState daw = {
         .flangerRate = 0.5f, .flangerDepth = 0.5f, .flangerFeedback = 0.3f, .flangerMix = 0.3f,
         .tapeSaturation = 0.3f, .tapeWow = 0.1f, .tapeFlutter = 0.1f, .tapeHiss = 0.05f,
         .delayTime = 0.3f, .delayFeedback = 0.4f, .delayTone = 0.5f, .delayMix = 0.3f,
-        .reverbSize = 0.5f, .reverbDamping = 0.5f, .reverbPreDelay = 0.02f, .reverbMix = 0.3f,
-        .eqLowGain = 0.0f, .eqHighGain = 0.0f, .eqLowFreq = 200.0f, .eqHighFreq = 6000.0f,
+        .reverbSize = 0.5f, .reverbDamping = 0.5f, .reverbPreDelay = 0.02f, .reverbMix = 0.3f, .reverbBass = 1.0f,
+        .eqLowGain = 0.0f, .eqHighGain = 0.0f, .eqLowFreq = 80.0f, .eqHighFreq = 6000.0f,
         .compThreshold = -12.0f, .compRatio = 4.0f, .compAttack = 0.01f, .compRelease = 0.1f, .compMakeup = 0.0f,
     },
     .tapeFx = {
@@ -480,6 +378,8 @@ static void renderSyncSequencer(void) {
     if (ovr->flags & PAT_OVR_GROOVE) {
         seq.dilla.swing = ovr->swing;
         seq.dilla.jitter = ovr->jitter;
+        for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++)
+            seq.trackSwing[t] = ovr->swing;
     }
     if (ovr->flags & PAT_OVR_MUTE) {
         for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++)

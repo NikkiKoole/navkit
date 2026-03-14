@@ -308,6 +308,8 @@ static void bridgeMelodyTrigger(int track, int note, float vel,
 #define PRESET_DARK_CHOIR 42
 #define PRESET_LUSH_STR   43
 #define PRESET_WARM_PLUCK 44
+#define PRESET_CHIP_SQUARE 146
+#define PRESET_CHIP_SAW    147
 
 // Helper: load preset into track slot with optional overrides
 static SynthPatch* songPatch(int track, int presetIdx) {
@@ -991,61 +993,15 @@ void SoundSynthPlaySongMule(SoundSynth* synth) {
     startSongPlayback(synth, sp->bpm);
 }
 
-// --- M.U.L.E. v2: true 8-bit square bass + sawtooth melody ---
+// --- M.U.L.E. v2: 8-bit square bass + sawtooth melody via SynthPatch ---
 static void melodyTrigger8bitSquare(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-    SongPlayer *sp = &g_soundSynth->songPlayer;
-
-    if (sp->melodyVoices[0][0] >= 0) releaseNote(sp->melodyVoices[0][0]);
-
-    resetNoteGlobals();
-    noteAttack  = 0.001f;
-    noteDecay   = 0.08f;
-    noteSustain = 0.8f;
-    noteRelease = 0.02f;
-    noteVolume  = vel * 0.45f;
-    noteFilterCutoff    = 1.0f;
-    noteFilterResonance = 0.0f;
-    noteVibratoRate  = 0.0f;
-    noteVibratoDepth = 0.0f;
-
-    float freq = midiToFreqScaled(note);
-    int v = playNote(freq, WAVE_SQUARE);
-    if (v >= 0 && slide) {
-        synthVoices[v].glideRate = 8.0f;
-    }
-    sp->melodyVoices[0][0] = v;
-    sp->melodyVoiceCount[0] = 1;
+    (void)gateTime;
+    bridgeMelodyTrigger(0, note, vel, slide, accent, songPatch(0, PRESET_CHIP_SQUARE));
 }
 
 static void melodyTrigger8bitSaw(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)accent;
-    if (!g_soundSynth) return;
-    useSoundSystem(&g_soundSynth->ss);
-    SongPlayer *sp = &g_soundSynth->songPlayer;
-
-    if (sp->melodyVoices[1][0] >= 0) releaseNote(sp->melodyVoices[1][0]);
-
-    resetNoteGlobals();
-    noteAttack  = 0.001f;
-    noteDecay   = 0.1f;
-    noteSustain = 0.7f;
-    noteRelease = 0.03f;
-    noteVolume  = vel * 0.55f;
-    noteFilterCutoff    = 0.85f;
-    noteFilterResonance = 0.0f;
-    noteVibratoRate  = 0.0f;
-    noteVibratoDepth = 0.0f;
-
-    float freq = midiToFreqScaled(note);
-    int v = playNote(freq, WAVE_SAW);
-    if (v >= 0 && slide) {
-        synthVoices[v].glideRate = 8.0f;
-    }
-    sp->melodyVoices[1][0] = v;
-    sp->melodyVoiceCount[1] = 1;
+    (void)gateTime;
+    bridgeMelodyTrigger(1, note, vel, slide, accent, songPatch(1, PRESET_CHIP_SAW));
 }
 
 void SoundSynthPlaySongMule2(SoundSynth* synth) {
