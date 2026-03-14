@@ -139,6 +139,7 @@ static inline void DrawRectangleRec(Rectangle r, Color c) { (void)r; (void)c; }
 static inline void DrawRectangleLinesEx(Rectangle r, float t, Color c) { (void)r; (void)t; (void)c; }
 static inline void DrawLine(int x1, int y1, int x2, int y2, Color c) { (void)x1; (void)y1; (void)x2; (void)y2; (void)c; }
 static inline void DrawCircle(int x, int y, float r, Color c) { (void)x; (void)y; (void)r; (void)c; }
+static inline void DrawCircleLines(int x, int y, float r, Color c) { (void)x; (void)y; (void)r; (void)c; }
 static inline void DrawText(const char *t, int x, int y, int s, Color c) { (void)t; (void)x; (void)y; (void)s; (void)c; }
 
 // Text

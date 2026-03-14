@@ -607,6 +607,13 @@ typedef struct {
     bool phaseReset;         // true=phases forced to 0 on note-on
     bool noiseLPBypass;      // true=skip noise LP filter
 
+    // Last computed LFO mod values (for UI visualization)
+    float lastFilterLfoMod;
+    float lastResoLfoMod;
+    float lastAmpLfoMod;
+    float lastPitchLfoMod;
+    float lastFmLfoMod;
+
     // Analog warmth
     bool analogRolloff;      // 1-pole LP rolloff
     float rolloffState;      // Filter state for rolloff
@@ -1689,6 +1696,7 @@ static float processVoice(Voice *v, float sampleRate) {
     }
     float pitchLfoMod = processLfo(&v->pitchLfoPhase, &v->pitchLfoSH,
                                     pitchLfoActualRate, v->pitchLfoDepth, v->pitchLfoShape, dt);
+    v->lastPitchLfoMod = pitchLfoMod;
     if (pitchLfoMod != 0.0f) {
         freq *= powf(2.0f, pitchLfoMod / 12.0f);  // pitchLfoDepth is in semitones
     }
@@ -1757,6 +1765,7 @@ static float processVoice(Voice *v, float sampleRate) {
                                fmLfoActualRate, v->fmLfoDepth, v->fmLfoShape, dt);
         v->fmSettings.modIndex += fmLfoMod;
     }
+    v->lastFmLfoMod = fmLfoMod;
 
     // Generate waveform
     float sample = 0.0f;
@@ -2028,20 +2037,23 @@ static float processVoice(Voice *v, float sampleRate) {
     if (v->filterLfoSync != LFO_SYNC_OFF) {
         filterLfoRate = getLfoRateFromSync(synthBpm, v->filterLfoSync);
     }
-    float filterLfoMod = processLfo(&v->filterLfoPhase, &v->filterLfoSH, 
+    float filterLfoMod = processLfo(&v->filterLfoPhase, &v->filterLfoSH,
                                      filterLfoRate, v->filterLfoDepth, v->filterLfoShape, dt);
+    v->lastFilterLfoMod = filterLfoMod;
     float resoLfoActualRate = v->resoLfoRate;
     if (v->resoLfoSync != LFO_SYNC_OFF) {
         resoLfoActualRate = getLfoRateFromSync(synthBpm, v->resoLfoSync);
     }
     float resoLfoMod = processLfo(&v->resoLfoPhase, &v->resoLfoSH,
                                    resoLfoActualRate, v->resoLfoDepth, v->resoLfoShape, dt);
+    v->lastResoLfoMod = resoLfoMod;
     float ampLfoActualRate = v->ampLfoRate;
     if (v->ampLfoSync != LFO_SYNC_OFF) {
         ampLfoActualRate = getLfoRateFromSync(synthBpm, v->ampLfoSync);
     }
     float ampLfoMod = processLfo(&v->ampLfoPhase, &v->ampLfoSH,
                                   ampLfoActualRate, v->ampLfoDepth, v->ampLfoShape, dt);
+    v->lastAmpLfoMod = ampLfoMod;
     
     // 303 accent sweep: discharge capacitor (RC ~147ms time constant)
     if (v->acidMode && v->accentSweepLevel > 0.001f) {

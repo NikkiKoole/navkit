@@ -537,6 +537,16 @@ static bool presetsInitialized = false;
 
 static bool patchesInit = false;
 
+// LFO mod visualization: cached from active voice each frame
+static struct {
+    bool active;           // true if a voice is sounding on selected track
+    float filterMod;       // last filterLfoMod
+    float resoMod;         // last resoLfoMod
+    float ampMod;          // last ampLfoMod
+    float pitchMod;        // last pitchLfoMod
+    float fmMod;           // last fmLfoMod
+} lfoModViz;
+
 // Save/load (.song files)
 #include "daw_file.h"
 
@@ -2818,6 +2828,35 @@ static void drawWorkSong(float x, float y, float w, float h) {
 // PARAMS: PATCH (Synth) - Horizontal 4-column layout
 // ============================================================================
 
+// Draw a small orange modulation indicator: a horizontal bar + value text
+// showing how an LFO is offsetting a parameter from its base value.
+// x,y = position after the slider label; modVal = current LFO offset; min/max = param range
+static void drawLfoModIndicator(float x, float y, float baseVal, float modVal, float mn, float mx) {
+    if (!lfoModViz.active || fabsf(modVal) < 0.001f) return;
+    float range = mx - mn;
+    if (range < 0.001f) return;
+    float modded = baseVal + modVal;
+    if (modded < mn) modded = mn;
+    if (modded > mx) modded = mx;
+    // Draw small bar showing offset from base
+    float barW = 40.0f;
+    float barH = 3.0f;
+    float barX = x;
+    float barY = y + 5;
+    float baseFrac = (baseVal - mn) / range;
+    float modFrac = (modded - mn) / range;
+    // Background bar
+    DrawRectangle((int)barX, (int)barY, (int)barW, (int)barH, (Color){40, 40, 50, 200});
+    // Base position tick
+    DrawRectangle((int)(barX + baseFrac * barW), (int)(barY - 1), 1, (int)(barH + 2), (Color){100, 100, 120, 200});
+    // Modulated position (orange fill from base to mod)
+    float left = baseFrac < modFrac ? baseFrac : modFrac;
+    float right = baseFrac < modFrac ? modFrac : baseFrac;
+    DrawRectangle((int)(barX + left * barW), (int)barY, (int)((right - left) * barW) + 1, (int)barH, (Color){255, 140, 40, 200});
+    // Mod value text
+    DrawTextShadow(TextFormat("%.2f", modded), (int)(barX + barW + 4), (int)(barY - 3), 9, (Color){255, 160, 60, 200});
+}
+
 static void drawParamPatch(float x, float y, float w, float h) {
     // After closing preset picker, skip until mouse is released to prevent click-through
     if (presetPickerJustClosed) {
@@ -2998,6 +3037,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_sublabel(&c, "FM Synth:", (Color){140,160,200,255});
             ui_col_float(&c, "Ratio", &p->p_fmModRatio, 0.5f, 0.5f, 16.0f);
             ui_col_float(&c, "Index", &p->p_fmModIndex, 0.2f, 0.0f, 30.0f);
+            drawLfoModIndicator(col1X + 100, c.y - c.spacing, p->p_fmModIndex, lfoModViz.fmMod, 0.0f, 30.0f);
             ui_col_float(&c, "Feedback", &p->p_fmFeedback, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Mod2 Rat", &p->p_fmMod2Ratio, 0.5f, 0.0f, 16.0f);
             ui_col_float(&c, "Mod2 Idx", &p->p_fmMod2Index, 0.2f, 0.0f, 30.0f);
@@ -3074,7 +3114,9 @@ static void drawParamPatch(float x, float y, float w, float h) {
         ui_col_sublabel(&c, "Filter:", ORANGE);
         ui_col_cycle(&c, "Type", filterTypeNames, 6, &p->p_filterType);
         ui_col_float_p(&c, "Cut", &p->p_filterCutoff, 0.05f, 0.01f, 1.0f);
+        drawLfoModIndicator(envX + 80, c.y - c.spacing, p->p_filterCutoff, lfoModViz.filterMod, 0.01f, 1.0f);
         ui_col_float_p(&c, "Res", &p->p_filterResonance, 0.05f, 0.0f, 1.0f);
+        drawLfoModIndicator(envX + 80, c.y - c.spacing, p->p_filterResonance, lfoModViz.resoMod, 0.0f, 1.0f);
         ui_col_float_p(&c, "EnvAmt", &p->p_filterEnvAmt, 0.05f, -1.0f, 1.0f);
         ui_col_float(&c, "EnvAtk", &p->p_filterEnvAttack, 0.01f, 0.001f, 0.5f);
         ui_col_float(&c, "EnvDcy", &p->p_filterEnvDecay, 0.05f, 0.01f, 2.0f);
@@ -3083,7 +3125,18 @@ static void drawParamPatch(float x, float y, float w, float h) {
 
         // XY pad below filter sliders
         float padSize = 60;
+        float xyPadY = c.y;
         drawFilterXY(envX, c.y, padSize, &p->p_filterCutoff, &p->p_filterResonance);
+
+        // LFO mod ghost dot on XY pad
+        if (lfoModViz.active && (fabsf(lfoModViz.filterMod) > 0.001f || fabsf(lfoModViz.resoMod) > 0.001f)) {
+            float modCut = clampf(p->p_filterCutoff + lfoModViz.filterMod, 0.01f, 1.0f);
+            float modRes = clampf(p->p_filterResonance + lfoModViz.resoMod, 0.0f, 1.0f);
+            float gx = envX + modCut * padSize;
+            float gy = xyPadY + (1.0f - modRes) * padSize;
+            DrawCircle((int)gx, (int)gy, 4, (Color){255, 140, 40, 120});
+            DrawCircleLines((int)gx, (int)gy, 4, (Color){255, 140, 40, 200});
+        }
         c.y += padSize + 4;
     }
 
@@ -3105,6 +3158,14 @@ static void drawParamPatch(float x, float y, float w, float h) {
 
         ui_col_sublabel(&c, "Volume:", ORANGE);
         ui_col_float_p(&c, "Note", &p->p_volume, 0.05f, 0.0f, 1.0f);
+        if (lfoModViz.active && fabsf(lfoModViz.ampMod) > 0.001f) {
+            // Amp LFO: modVal is raw LFO output; effective multiplier is 1 - mod*0.5 - 0.5*depth
+            float ampMul = 1.0f - lfoModViz.ampMod * 0.5f - 0.5f * p->p_ampLfoDepth;
+            if (ampMul < 0.0f) ampMul = 0.0f;
+            if (ampMul > 1.0f) ampMul = 1.0f;
+            float effVol = p->p_volume * ampMul;
+            drawLfoModIndicator(col3X + 80, c.y - c.spacing, p->p_volume, effVol - p->p_volume, 0.0f, 1.0f);
+        }
         ui_col_space(&c, 3);
 
         {
@@ -4946,6 +5007,24 @@ int main(void) {
         int paramInt = (int)paramTab;
         drawTabBar(CONTENT_X, PARAM_TAB_Y, CONTENT_W, paramTabNames, paramTabKeys, PARAM_COUNT, &paramInt, "");
         paramTab = (ParamTab)paramInt;
+
+        // Update LFO mod visualization from active voice
+        {
+            lfoModViz.active = false;
+            int vizBus = dawPatchToBus(daw.selectedPatch);
+            for (int vi = 0; vi < NUM_VOICES; vi++) {
+                if (synthCtx->voices[vi].envStage > 0 && voiceBus[vi] == vizBus) {
+                    Voice *v = &synthCtx->voices[vi];
+                    lfoModViz.active = true;
+                    lfoModViz.filterMod = v->lastFilterLfoMod;
+                    lfoModViz.resoMod = v->lastResoLfoMod;
+                    lfoModViz.ampMod = v->lastAmpLfoMod;
+                    lfoModViz.pitchMod = v->lastPitchLfoMod;
+                    lfoModViz.fmMod = v->lastFmLfoMod;
+                    break;
+                }
+            }
+        }
 
         // === PARAMS ===
         {

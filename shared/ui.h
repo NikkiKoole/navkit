@@ -478,6 +478,9 @@ void CycleOptionS(float x, float y, const char* label, const char** options, int
     if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
         *value = (*value + 1) % count; g_ui_clickConsumed = true;
     }
+    if (hovered && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+        *value = (*value - 1 + count) % count; g_ui_clickConsumed = true;
+    }
 }
 
 bool DraggableInt(float x, float y, const char* label, int* value, float speed, int min, int max) {
