@@ -22,6 +22,18 @@ All TODO items consolidated from across soundsystem docs. Waves 0-2 complete, pa
 | **Keyboard shortcut hints** — context-sensitive hints in UI | ~30 lines | synthesis-additions §21 |
 | **Tooltips** — expand hover coverage across all parameters | partial done | synthesis-additions §20 |
 
+### Song File Format — Reduce Boilerplate
+
+Songs are ~1500 lines because every patch field is serialized. Pattern data (the actual music) is only ~30-80 lines. Three ideas to fix this, in order of effort:
+
+| What | Effort | Notes |
+|------|--------|-------|
+| **Default-value elision on save** — `songFileSave` skips fields that equal the default `SynthPatch` init value. Loader already handles missing fields (they stay at init value). Songs shrink from ~1500 to ~200 lines. | Low (~30 lines) | Backwards compatible. Existing verbose songs still load fine. Only affects newly saved files. |
+| **Patch bank references** — `.bank` file defines reusable patch sets. Song says `bank = game_kit.bank` and only overrides per-song differences. Songs become header + patterns (~100 lines). | Medium | `.bank` format already exists in `song_file.h`. Need: bank loading in song loader, fallback to inline patches if no bank specified. |
+| **Named preset references** — Song says `preset = "808 Kick"` and loader pulls from `instrument_presets.h`. Only overridden fields listed. | Medium | Requires preset name lookup table. Risk: preset index shifts break references (use names not indices). |
+
+Option 1 is the quick win — pure save-side change, no loader changes needed.
+
 ### Prototype → DAW Migration
 
 Prototype has been deleted. Only the scene/crossfader system is worth reimplementing; spec extracted to `scene-crossfader-spec.md`.
@@ -215,7 +227,7 @@ From `audit/test-gaps-audit-soundsystem.md`. Current: 248 suites, 1905 assertion
 
 **Sequencer:** ~~Note pool~~ (done), Pattern chaining, Song/arranger improvements, Scenes crossfader completion
 
-**Game audio:** State system (intensity/danger/health), Vertical layering/mute groups, Horizontal re-sequencing, Stingers & one-shots
+**Game audio:** Full design doc in `docs/doing/interactive-music-system.md`. Music Director (game state → song selection + transitions), vertical layering (track volumes driven by activity), SFX system (synthesized one-shots + spatial), beat-synced event queue (quantize SFX to beat/step/bar), ambient layer (bird calls at dawn, rain/wind beds). 5 exemplary adaptive songs in `soundsystem/demo/songs/game_*.song` (dawn/hands/dusk/smoke/collapse). Key bridge/integration files: `src/sound/sound_synth_bridge.h/c` (audio callback, jukebox, song player), `src/sound/sound_phrase.h/c` (procedural bird/vowel generation), `src/sound/songs.h` (14 C-coded bridge songs, being migrated to .song)
 
 **Effects:** ~~Phaser~~ (done), ~~Comb filter~~ (done), Per-track effects
 

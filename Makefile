@@ -148,8 +148,12 @@ $(BINDIR)/path8: $(GAME_SOURCES)
 $(BINDIR)/%: $(RAYLIB_LIB) | $(BINDIR)
 	@if [ -n "$($*_SRC)" ]; then $(CC) $(CFLAGS) -o $@ $($*_SRC) $(LDFLAGS); fi
 
-$(BINDIR)/soundsystem-daw: $(soundsystem-daw_SRC) | $(BINDIR)
-	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $@ $(soundsystem-daw_SRC) $(LDFLAGS)
+SOUNDSYSTEM_HEADERS := $(wildcard soundsystem/engines/*.h soundsystem/demo/*.h soundsystem/soundsystem.h)
+
+DAW_CFLAGS := -std=c11 -pedantic -O1 -g -I. -Ivendor -Wall -Wextra -Wno-shadow -Wno-unused-function -Wno-unused-variable
+
+$(BINDIR)/soundsystem-daw: $(soundsystem-daw_SRC) $(SOUNDSYSTEM_HEADERS) | $(BINDIR)
+	$(CC) $(DAW_CFLAGS) -o $@ $(soundsystem-daw_SRC) $(LDFLAGS)
 
 $(BINDIR)/jukebox-test: $(jukebox-test_SRC) | $(BINDIR)
 	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $@ $(jukebox-test_SRC) $(LDFLAGS)
@@ -484,6 +488,8 @@ path: $(BINDIR) $(BINDIR)/path
 steer: $(BINDIR) $(BINDIR)/steer
 crowd: $(BINDIR) $(BINDIR)/crowd
 soundsystem-daw: $(BINDIR) $(BINDIR)/soundsystem-daw
+daw-fast: $(SOUNDSYSTEM_HEADERS) | $(BINDIR)
+	$(CC) -std=c11 -O0 -g -I. -Ivendor -Wno-unused-function -Wno-unused-variable -o $(BINDIR)/soundsystem-daw $(soundsystem-daw_SRC) $(LDFLAGS)
 jukebox-test: $(BINDIR) $(BINDIR)/jukebox-test
 mechanisms: $(BINDIR) $(BINDIR)/mechanisms
 sound-phrase-wav: $(BINDIR)
@@ -646,4 +652,4 @@ cscope:
 nav: tags cscope
 	@echo "Updated tags + cscope.out"
 
-.PHONY: all clean clean-raylib clean-atlas nav test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood path steer crowd mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs bench_items windows
+.PHONY: all clean clean-raylib clean-atlas nav test test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood path steer crowd mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs bench_items windows
