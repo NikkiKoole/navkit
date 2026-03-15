@@ -61,7 +61,8 @@ typedef struct {
     int inputSource;
     bool preReverb;
     float saturation, toneHigh, noise, degradeRate;
-    float wow, flutter, drift, speedTarget;
+    float wow, flutter, drift, speedTarget, speedSlew;
+    int throwBus;             // Per-bus throw target (-1 = none, 0-6 = bus index)
     float rewindTime, rewindMinSpeed, rewindVinyl, rewindWobble, rewindFilter;
     int rewindCurve;
     bool isRewinding;

@@ -45,9 +45,9 @@ static float dubLoopNoise(void) {
 static float _processDubLoopCore(float selectedInput, float dt) {
     DubLoopParams *p = &dubLoop;
     
-    // Update speed with slew (motor inertia)
-    float speedDiff = p->speedTarget - dubLoopCurrentSpeed;
-    dubLoopCurrentSpeed += speedDiff * p->speedSlew;
+    // Update speed with slew (motor inertia — ~100ms smoothing)
+    float speedSlewCoeff = 1.0f - expf(-1.0f / (p->speedSlew * SAMPLE_RATE));
+    dubLoopCurrentSpeed += (p->speedTarget - dubLoopCurrentSpeed) * speedSlewCoeff;
     
     // Wow & flutter modulate the read offset (not write speed) for audible wobble.
     // Wow = slow tape-stretch (~0.4 Hz), Flutter = fast motor jitter (~5 Hz).
@@ -65,6 +65,8 @@ static float _processDubLoopCore(float selectedInput, float dt) {
     }
     
     // Read from all heads and mix (with per-head drift for woozy feel)
+    // Delay time slew coefficient: ~50ms smoothing to prevent clicks on time changes
+    float timeSlewCoeff = 1.0f - expf(-1.0f / (0.05f * SAMPLE_RATE));
     float wet = 0.0f;
     for (int h = 0; h < p->numHeads; h++) {
         // Update drift LFO for this head (each head drifts independently)
@@ -80,8 +82,11 @@ static float _processDubLoopCore(float selectedInput, float dt) {
             dubLoopDriftValue[h] = (drift1 * 0.7f + drift2 * 0.3f) * p->drift * 0.05f;  // Up to 5% drift
         }
         
-        // Apply drift to delay time
-        float headDelay = p->headTime[h] * (1.0f + dubLoopDriftValue[h]);
+        // Slew delay time toward target (tape head inertia — prevents clicks on time changes)
+        dubLoopHeadTimeCurrent[h] += timeSlewCoeff * (p->headTime[h] - dubLoopHeadTimeCurrent[h]);
+
+        // Apply drift to smoothed delay time
+        float headDelay = dubLoopHeadTimeCurrent[h] * (1.0f + dubLoopDriftValue[h]);
         float delaySamples = headDelay * SAMPLE_RATE;
         if (delaySamples < 1.0f) delaySamples = 1.0f;
         if (delaySamples > DUB_LOOP_BUFFER_SIZE - 1) delaySamples = DUB_LOOP_BUFFER_SIZE - 1;
@@ -185,6 +190,7 @@ static void dubLoopReset(void) {
     for (int i = 0; i < DUB_LOOP_MAX_HEADS; i++) {
         dubLoopDriftPhase[i] = 0.0f;
         dubLoopDriftValue[i] = 0.0f;
+        dubLoopHeadTimeCurrent[i] = dubLoop.headTime[i];
     }
 }
 

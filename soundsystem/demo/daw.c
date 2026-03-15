@@ -383,7 +383,7 @@ static DawState daw = {
     .tapeFx = {
         .headTime = 0.5f, .feedback = 0.6f, .mix = 0.5f,
         .saturation = 0.3f, .toneHigh = 0.7f, .noise = 0.05f, .degradeRate = 0.1f,
-        .wow = 0.1f, .flutter = 0.1f, .drift = 0.05f, .speedTarget = 1.0f,
+        .wow = 0.1f, .flutter = 0.1f, .drift = 0.05f, .speedTarget = 1.0f, .speedSlew = 0.1f, .throwBus = -1,
         .rewindTime = 1.5f, .rewindMinSpeed = 0.2f, .rewindVinyl = 0.1f, .rewindWobble = 0.2f, .rewindFilter = 0.5f,
     },
     .masterVol = 0.8f,
@@ -3804,44 +3804,64 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
 static void drawParamTape(float x, float y, float w, float h) {
     float halfW = w * 0.55f;
 
-    // Left: Dub Loop
+    // Left: Dub Loop — Performance controls (col 1) + Character (col 2) + Throws (col 3)
     {
+        // COL 1: Performance — the knobs you turn live
         UIColumn c = ui_column(x+4, y, 16);
         ui_col_sublabel(&c, "Dub Loop:", ORANGE);
         ui_col_toggle(&c, "On", &daw.tapeFx.enabled);
-        ui_col_float(&c, "Time", &daw.tapeFx.headTime, 0.05f, 0.05f, 4.0f);
+        ui_col_float(&c, "Time", &daw.tapeFx.headTime, 0.05f, 0.0f, 4.0f);
         ui_col_float(&c, "Fdbk", &daw.tapeFx.feedback, 0.05f, 0.0f, 0.95f);
-        ui_col_float(&c, "Mix", &daw.tapeFx.mix, 0.05f, 0.0f, 1.0f);
-        ui_col_space(&c, 2);
-        ui_col_cycle(&c, "Input", dubInputNames, 4, &daw.tapeFx.inputSource);
-        ui_col_toggle(&c, "PreReverb", &daw.tapeFx.preReverb);
-        ui_col_space(&c, 2);
-
-        ui_col_sublabel(&c, "Degradation:", (Color){140,140,200,255});
-        ui_col_float(&c, "Saturat", &daw.tapeFx.saturation, 0.05f, 0.0f, 1.0f);
         ui_col_float(&c, "ToneHi", &daw.tapeFx.toneHigh, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Noise", &daw.tapeFx.noise, 0.02f, 0.0f, 0.5f);
-        ui_col_float(&c, "Degrade", &daw.tapeFx.degradeRate, 0.02f, 0.0f, 0.5f);
+        ui_col_float(&c, "Mix", &daw.tapeFx.mix, 0.05f, 0.0f, 1.0f);
+        ui_col_space(&c, 4);
 
-        // Second column for modulation + buttons
-        UIColumn c2 = ui_column(x + 180, y, 16);
-        ui_col_sublabel(&c2, "Modulation:", (Color){140,140,200,255});
+        // Speed section
+        ui_col_sublabel(&c, "Speed:", (Color){140,140,200,255});
+        ui_col_float(&c, "Speed", &daw.tapeFx.speedTarget, 0.1f, 0.1f, 2.0f);
+        if (ui_col_button(&c, "1/2 Speed")) daw.tapeFx.speedTarget = 0.5f;
+        if (ui_col_button(&c, "Normal")) daw.tapeFx.speedTarget = 1.0f;
+
+        // COL 2: Character — set and forget tape personality
+        UIColumn c2 = ui_column(x + 150, y, 16);
+        ui_col_sublabel(&c2, "Character:", (Color){140,140,200,255});
+        ui_col_float(&c2, "Saturat", &daw.tapeFx.saturation, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c2, "Noise", &daw.tapeFx.noise, 0.02f, 0.0f, 0.5f);
+        ui_col_float(&c2, "Degrade", &daw.tapeFx.degradeRate, 0.02f, 0.0f, 0.5f);
         ui_col_float(&c2, "Wow", &daw.tapeFx.wow, 0.05f, 0.0f, 1.0f);
         ui_col_float(&c2, "Flutter", &daw.tapeFx.flutter, 0.05f, 0.0f, 1.0f);
         ui_col_float(&c2, "Drift", &daw.tapeFx.drift, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c2, "Speed", &daw.tapeFx.speedTarget, 0.1f, 0.1f, 2.0f);
-        ui_col_space(&c2, 4);
-        if (ui_col_button(&c2, dubLoop.throwActive ? "Throw [ON]" : "Throw")) {
-            dubLoop.throwActive = !dubLoop.throwActive;
+        ui_col_float(&c2, "Slew", &daw.tapeFx.speedSlew, 0.02f, 0.01f, 1.0f);
+        ui_col_toggle(&c2, "PreReverb", &daw.tapeFx.preReverb);
+
+        // COL 3: Throw — per-track send buttons (the Tubby workflow)
+        UIColumn c3 = ui_column(x + 290, y, 16);
+        ui_col_sublabel(&c3, "Throw:", (Color){140,140,200,255});
+        ui_col_cycle(&c3, "Input", dubInputNames, 4, &daw.tapeFx.inputSource);
+        ui_col_space(&c3, 2);
+
+        // Per-bus throw buttons — click to throw that track into the delay
+        const char *throwNames[] = {"Kick", "Snare", "Hat", "Clap", "Bass", "Lead", "Chord"};
+        for (int i = 0; i < 7; i++) {
+            bool isActive = dubLoop.throwActive && daw.tapeFx.throwBus == i;
+            const char *label = isActive ? TextFormat("[%s]", throwNames[i]) : throwNames[i];
+            if (ui_col_button(&c3, label)) {
+                if (isActive) {
+                    // Toggle off
+                    dubLoop.throwActive = false;
+                    daw.tapeFx.throwBus = -1;
+                } else {
+                    // Throw this bus
+                    daw.tapeFx.throwBus = i;
+                    dubLoop.throwActive = true;
+                    dubLoop.recording = true;
+                    dubLoop.inputGain = 1.0f;
+                }
+            }
         }
-        if (ui_col_button(&c2, "Cut")) {
+        ui_col_space(&c3, 4);
+        if (ui_col_button(&c3, "Cut Tape")) {
             dubLoopReset();
-        }
-        if (ui_col_button(&c2, "1/2 Speed")) {
-            daw.tapeFx.speedTarget = 0.5f;
-        }
-        if (ui_col_button(&c2, "Normal")) {
-            daw.tapeFx.speedTarget = 1.0f;
         }
     }
 

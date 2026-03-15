@@ -560,6 +560,7 @@ typedef struct EffectsContext {
     float dubLoopEchoAge;             // Tracks "generation" of current echo content
     float dubLoopDriftPhase[DUB_LOOP_MAX_HEADS];  // Per-head drift LFO phase
     float dubLoopDriftValue[DUB_LOOP_MAX_HEADS];  // Current drift offset per head
+    float dubLoopHeadTimeCurrent[DUB_LOOP_MAX_HEADS]; // Smoothed delay time (slews toward headTime)
     
     // Rewind state
     RewindParams rewind;
@@ -742,6 +743,9 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->dubLoopCurrentSpeed = 1.0f;
     ctx->dubLoopNoiseState = 12345;
     ctx->dubLoopEchoAge = 0.0f;
+    for (int h = 0; h < DUB_LOOP_MAX_HEADS; h++) {
+        ctx->dubLoopHeadTimeCurrent[h] = ctx->dubLoop.headTime[h];
+    }
     
     // Rewind - off by default
     ctx->rewind.enabled = true;             // Always capturing when in use
@@ -818,6 +822,7 @@ static float fxNoise(void) {
 #define dubLoopEchoAge (fxCtx->dubLoopEchoAge)
 #define dubLoopDriftPhase (fxCtx->dubLoopDriftPhase)
 #define dubLoopDriftValue (fxCtx->dubLoopDriftValue)
+#define dubLoopHeadTimeCurrent (fxCtx->dubLoopHeadTimeCurrent)
 
 #define rewind (fxCtx->rewind)
 #define rewindBuffer (fxCtx->rewindBuffer)
@@ -1908,7 +1913,7 @@ static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
         int src = dubLoop.inputSource;
         if (src >= DUB_INPUT_BUS_DRUM0 && src <= DUB_INPUT_BUS_CHORD) {
             int busIdx = src - DUB_INPUT_BUS_DRUM0;
-            dubInput = mixerCtx->busOutputs[busIdx];
+            dubInput = dubLoop.throwActive ? mixerCtx->busOutputs[busIdx] : 0.0f;
         } else if (src == DUB_INPUT_ALL) {
             dubInput = sample;
         } else if (src == DUB_INPUT_DRUMS) {

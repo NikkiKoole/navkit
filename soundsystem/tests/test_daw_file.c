@@ -63,7 +63,8 @@ typedef struct {
     int inputSource;
     bool preReverb;
     float saturation, toneHigh, noise, degradeRate;
-    float wow, flutter, drift, speedTarget;
+    float wow, flutter, drift, speedTarget, speedSlew;
+    int throwBus;
     float rewindTime, rewindMinSpeed, rewindVinyl, rewindWobble, rewindFilter;
     int rewindCurve;
     bool isRewinding;
@@ -440,6 +441,7 @@ static void setupTestState(void) {
     daw.tapeFx.flutter = 0.09f;
     daw.tapeFx.drift = 0.04f;
     daw.tapeFx.speedTarget = 0.95f;
+    daw.tapeFx.speedSlew = 0.15f;
     daw.tapeFx.rewindTime = 1.8f;
     daw.tapeFx.rewindMinSpeed = 0.15f;
     daw.tapeFx.rewindVinyl = 0.35f;
@@ -849,7 +851,7 @@ _Static_assert(sizeof(Mixer) == 384,
     "Mixer size changed! Update dawSave/dawLoad mixer section, then update this assert.");
 _Static_assert(sizeof(MasterFX) == 128,
     "MasterFX size changed! Update dawSave/dawLoad masterfx section, then update this assert.");
-_Static_assert(sizeof(TapeFX) == 84,
+_Static_assert(sizeof(TapeFX) == 92,
     "TapeFX size changed! Update dawSave/dawLoad tapefx section, then update this assert.");
 _Static_assert(sizeof(Sidechain) == 24,
     "Sidechain size changed! Update dawSave/dawLoad sidechain section, then update this assert.");

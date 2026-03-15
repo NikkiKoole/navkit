@@ -376,7 +376,7 @@ static bool dawSave(const char *filepath) {
     _dw(f, "saturation", daw.tapeFx.saturation); _dw(f, "toneHigh", daw.tapeFx.toneHigh);
     _dw(f, "noise", daw.tapeFx.noise); _dw(f, "degradeRate", daw.tapeFx.degradeRate);
     _dw(f, "wow", daw.tapeFx.wow); _dw(f, "flutter", daw.tapeFx.flutter);
-    _dw(f, "drift", daw.tapeFx.drift); _dw(f, "speedTarget", daw.tapeFx.speedTarget);
+    _dw(f, "drift", daw.tapeFx.drift); _dw(f, "speedTarget", daw.tapeFx.speedTarget); _dw(f, "speedSlew", daw.tapeFx.speedSlew);
     _dw(f, "rewindTime", daw.tapeFx.rewindTime); _dw(f, "rewindMinSpeed", daw.tapeFx.rewindMinSpeed);
     _dw(f, "rewindVinyl", daw.tapeFx.rewindVinyl); _dw(f, "rewindWobble", daw.tapeFx.rewindWobble);
     _dw(f, "rewindFilter", daw.tapeFx.rewindFilter); _di(f, "rewindCurve", daw.tapeFx.rewindCurve);
@@ -1040,6 +1040,7 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"flutter")==0) daw.tapeFx.flutter=_dpf(val);
             else if (strcmp(key,"drift")==0) daw.tapeFx.drift=_dpf(val);
             else if (strcmp(key,"speedTarget")==0) daw.tapeFx.speedTarget=_dpf(val);
+            else if (strcmp(key,"speedSlew")==0) daw.tapeFx.speedSlew=_dpf(val);
             else if (strcmp(key,"rewindTime")==0) daw.tapeFx.rewindTime=_dpf(val);
             else if (strcmp(key,"rewindMinSpeed")==0) daw.tapeFx.rewindMinSpeed=_dpf(val);
             else if (strcmp(key,"rewindVinyl")==0) daw.tapeFx.rewindVinyl=_dpf(val);

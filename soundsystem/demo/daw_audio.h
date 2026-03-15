@@ -280,7 +280,12 @@ static void dawSyncEngineState(void) {
     dubLoop.headTime[0]  = daw.tapeFx.headTime;
     dubLoop.feedback     = daw.tapeFx.feedback;
     dubLoop.mix          = daw.tapeFx.mix;
-    dubLoop.inputSource  = daw.tapeFx.inputSource;
+    // Per-bus throw overrides input source
+    if (daw.tapeFx.throwBus >= 0 && dubLoop.throwActive) {
+        dubLoop.inputSource = DUB_INPUT_BUS_DRUM0 + daw.tapeFx.throwBus;
+    } else {
+        dubLoop.inputSource = daw.tapeFx.inputSource;
+    }
     dubLoop.saturation   = daw.tapeFx.saturation;
     dubLoop.toneHigh     = daw.tapeFx.toneHigh;
     dubLoop.noise        = daw.tapeFx.noise;
@@ -289,6 +294,7 @@ static void dawSyncEngineState(void) {
     dubLoop.flutter      = daw.tapeFx.flutter;
     dubLoop.drift        = daw.tapeFx.drift;
     dubLoop.speedTarget  = daw.tapeFx.speedTarget;
+    dubLoop.speedSlew    = daw.tapeFx.speedSlew;
     dubLoop.preReverb    = daw.tapeFx.preReverb;
 
     // Rewind
