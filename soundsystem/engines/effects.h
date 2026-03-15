@@ -1902,24 +1902,54 @@ static float processBusEffects(float input, int busIndex, float dt) {
 // Returns: summed bus outputs ready for master processing
 static float processBuses(float busInputs[NUM_BUSES], float* reverbSend, float dt) {
     _ensureMixerCtx();
-    
+
     float masterInput = 0.0f;
     mixerCtx->reverbSendAccum = 0.0f;
-    
+
     for (int i = 0; i < NUM_BUSES; i++) {
         float processed = processBusEffects(busInputs[i], i, dt);
         mixerCtx->busOutputs[i] = processed;  // Store for dub loop routing
         masterInput += processed;
-        
+
         // Accumulate reverb send (post-effects, pre-master)
         mixerCtx->reverbSendAccum += processed * mixerCtx->bus[i].reverbSend;
     }
-    
+
     if (reverbSend) {
         *reverbSend = mixerCtx->reverbSendAccum;
     }
-    
+
     return masterInput;
+}
+
+// Stereo variant: process all buses, apply pan law, return L/R pair + reverb send
+// Pan uses constant-power law: L = cos(theta), R = sin(theta)
+static void processBusesStereo(float busInputs[NUM_BUSES], float* outL, float* outR, float* reverbSend, float dt) {
+    _ensureMixerCtx();
+
+    float masterL = 0.0f, masterR = 0.0f;
+    mixerCtx->reverbSendAccum = 0.0f;
+
+    for (int i = 0; i < NUM_BUSES; i++) {
+        float processed = processBusEffects(busInputs[i], i, dt);
+        mixerCtx->busOutputs[i] = processed;  // Store for dub loop routing
+
+        // Constant-power pan: pan -1=left, 0=center, +1=right
+        float pan = mixerCtx->bus[i].pan;
+        float theta = (pan + 1.0f) * 0.25f * PI;  // 0..PI/2
+        float gainL = cosf(theta);
+        float gainR = sinf(theta);
+
+        masterL += processed * gainL;
+        masterR += processed * gainR;
+
+        // Reverb send (mono, same as before)
+        mixerCtx->reverbSendAccum += processed * mixerCtx->bus[i].reverbSend;
+    }
+
+    *outL = masterL;
+    *outR = masterR;
+    if (reverbSend) *reverbSend = mixerCtx->reverbSendAccum;
 }
 
 // Full pipeline: buses → master effects → output
@@ -2015,6 +2045,93 @@ static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
     sample = processMasterCompressor(sample, dt);
 
     return sample;
+}
+
+// Full stereo pipeline: buses (with pan) → master effects (mono) → stereo output
+// Uses mid/side: master effects process the mono sum, stereo image passes through untouched.
+__attribute__((unused))
+static void processMixerOutputStereo(float busInputs[NUM_BUSES], float dt, float* outL, float* outR) {
+    _ensureMixerCtx();
+    _ensureFxCtx();
+
+    // Process buses with pan → stereo pair
+    float busL = 0.0f, busR = 0.0f, reverbSend = 0.0f;
+    processBusesStereo(busInputs, &busL, &busR, &reverbSend, dt);
+
+    // Mid/side encode: mid = (L+R)/2, side = (L-R)/2
+    float mid = (busL + busR) * 0.5f;
+    float side = (busL - busR) * 0.5f;
+
+    // Master effects chain runs on mid (mono) — identical to processMixerOutput
+    float sample = mid;
+    sample = processDistortion(sample);
+    sample = processBitcrusher(sample);
+    sample = processChorus(sample, dt);
+    sample = processFlanger(sample, dt);
+    sample = processPhaser(sample, dt);
+    sample = processComb(sample);
+    sample = processTape(sample, dt);
+    sample = processDelay(sample, dt);
+
+    bool doReverbSend = fx.reverbEnabled && (reverbSend > 0.001f || reverbSend < -0.001f);
+
+    if (dubLoop.preReverb && doReverbSend) {
+        float wet = _processReverbCore(reverbSend);
+        sample += wet * fx.reverbMix;
+        doReverbSend = false;
+    }
+
+    if (dubLoop.enabled) {
+        float dry = sample;
+        float dubInput = 0.0f;
+
+        int src = dubLoop.inputSource;
+        if (src >= DUB_INPUT_BUS_DRUM0 && src <= DUB_INPUT_BUS_CHORD) {
+            int busIdx = src - DUB_INPUT_BUS_DRUM0;
+            dubInput = dubLoop.throwActive ? mixerCtx->busOutputs[busIdx] : 0.0f;
+        } else if (src == DUB_INPUT_ALL) {
+            dubInput = sample;
+        } else if (src == DUB_INPUT_DRUMS) {
+            dubInput = mixerCtx->busOutputs[BUS_DRUM0] + mixerCtx->busOutputs[BUS_DRUM1] +
+                       mixerCtx->busOutputs[BUS_DRUM2] + mixerCtx->busOutputs[BUS_DRUM3];
+        } else if (src == DUB_INPUT_SYNTH) {
+            dubInput = mixerCtx->busOutputs[BUS_BASS] + mixerCtx->busOutputs[BUS_LEAD] +
+                       mixerCtx->busOutputs[BUS_CHORD];
+        } else if (src == DUB_INPUT_MANUAL) {
+            dubInput = dubLoop.throwActive ? sample : 0.0f;
+        } else if (src >= DUB_INPUT_KICK && src <= DUB_INPUT_CHORD) {
+            if (src <= DUB_INPUT_MARACAS) {
+                int drumBusMap[] = {0,1,3,2,2,3,3,3,3,3,3,3};
+                int idx = src - DUB_INPUT_KICK;
+                if (idx >= 0 && idx < 12) dubInput = mixerCtx->busOutputs[BUS_DRUM0 + drumBusMap[idx]];
+            } else {
+                int synthBusMap[] = {BUS_BASS, BUS_LEAD, BUS_CHORD};
+                int idx = src - DUB_INPUT_BASS;
+                if (idx >= 0 && idx < 3) dubInput = mixerCtx->busOutputs[synthBusMap[idx]];
+            }
+        } else {
+            dubInput = sample;
+        }
+
+        float wet = _processDubLoopCore(dubInput, dt);
+        sample = dry * (1.0f - dubLoop.mix) + wet * dubLoop.mix;
+    }
+
+    sample = processRewind(sample, dt);
+
+    if (doReverbSend) {
+        float wet = _processReverbCore(reverbSend);
+        sample += wet * fx.reverbMix;
+    }
+
+    sample = processMultiband(sample);
+    sample = processMasterEQ(sample);
+    sample = processSubBassBoost(sample);
+    sample = processMasterCompressor(sample, dt);
+
+    // Mid/side decode: L = mid' + side, R = mid' - side
+    *outL = sample + side;
+    *outR = sample - side;
 }
 
 // === BUS PARAMETER SETTERS ===

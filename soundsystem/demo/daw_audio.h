@@ -119,18 +119,26 @@ static void DawAudioCallback(void *buffer, unsigned int frames) {
             }
         }
 
-        // Full mixer → bus FX → master FX chain
-        float sample = processMixerOutput(busInputs, dt);
-        sample *= daw.masterVol;
+        // Full mixer → bus FX → master FX chain (stereo with bus pan)
+        float sampleL, sampleR;
+        processMixerOutputStereo(busInputs, dt, &sampleL, &sampleR);
+        sampleL *= daw.masterVol;
+        sampleR *= daw.masterVol;
 
         // Track peak level for output meter (before clipping)
-        float absS = fabsf(sample);
+        float absL = fabsf(sampleL), absR = fabsf(sampleR);
+        float absS = (absL > absR) ? absL : absR;
         if (absS > dawPeakLevel) dawPeakLevel = absS;
 
-        if (sample > 1.0f) sample = 1.0f;
-        if (sample < -1.0f) sample = -1.0f;
-        d[i] = (short)(sample * 32000.0f);
-        dawRecSample(d[i]);
+        if (sampleL > 1.0f) sampleL = 1.0f;
+        if (sampleL < -1.0f) sampleL = -1.0f;
+        if (sampleR > 1.0f) sampleR = 1.0f;
+        if (sampleR < -1.0f) sampleR = -1.0f;
+
+        // Interleaved stereo: L, R, L, R, ...
+        d[i * 2]     = (short)(sampleL * 32000.0f);
+        d[i * 2 + 1] = (short)(sampleR * 32000.0f);
+        dawRecSample(d[i * 2]);
     }
 
     double elapsed = (GetTime() - startTime) * 1000000.0;

@@ -146,17 +146,18 @@ Perc:     tension > 0.3 AND tension < 0.7 → fade in over 4 bars
 
 ---
 
-## Phase 3: Scene Crossfader
+## Phase 3: Scene Crossfader — Probably Not Needed
 
-**Goal**: One float morphs the entire musical state.
+**Original goal**: One float morphs the entire musical state.
 
-This implements the existing spec in `docs/scene-crossfader-spec.md`.
+This was spec'd in `soundsystem/docs/scene-crossfader-spec.md`, but the need has diminished:
 
-- Scene A = calm (soft pads, slow filter, 90 BPM, major scale)
-- Scene B = crisis (heavy bass, fast filter, 140 BPM, minor scale)
-- `setCrossfaderPosition(tension)` — everything lerps
+- **Slow LFO sync** (8/16/32 bar divisions) + **per-LFO phase offsets** now handle evolving pad sweeps and song-level modulation — the main use case scenes were designed for.
+- **Pattern switching** (Phase 1) handles horizontal re-sequencing.
+- **Track volumes** (Phase 2) handle vertical layering.
+- **Song switching** with dub loop/rewind transitions covers vibe changes.
 
-Deferred until Phases 1-2 prove out the concept. Track volumes + pattern switching get 80% of the way there.
+Together these cover ~90% of what the crossfader would do, without the complexity of snapshot storage and interpolation. If Phases 1-2 feel too coarse in practice, revisit — but start without it.
 
 ---
 
@@ -471,9 +472,9 @@ All in related keys (D dorian / A minor / F major are diatonic neighbors; B♭ m
 
 5. **Z-level depth**: Underground mining should sound different from surface gathering. Low-pass filter on SFX by depth? Different reverb (cave echo)?
 
-6. **Diegetic vs non-diegetic**: Is the music "in the world" or a soundtrack? Colony sims usually go non-diegetic (soundtrack), but some diegetic touches (a mover humming, birds singing) blur the line nicely.
+6. **Diegetic vs non-diegetic**: Is the music "in the world" or a soundtrack? Colony sims usually go non-diegetic (soundtrack), but some diegetic touches (a mover humming, birds singing) blur the line nicely. See `docs/todo/ensemble-stations.md` for a full diegetic music system where movers sit at stations and play instruments — tracks map to seats, colony health becomes audible.
 
-7. **Crossfader priority**: When do we implement the scene crossfader (Phase 3)? It's the most powerful tool but also the most complex. Worth doing if Phases 1-2 feel too coarse.
+7. ~~**Crossfader priority**~~: Likely not needed — slow LFOs + phase offsets + pattern switching + track volumes cover the use cases. See Phase 3 note above.
 
 ---
 
@@ -497,3 +498,10 @@ Key files:
 - `soundsystem/engines/rewind.h` — vinyl spinback transitions
 - `soundsystem/engines/song_file.h` — .song format for compositions
 - `soundsystem/docs/scene-crossfader-spec.md` — scene system spec (Phase 3)
+- `soundsystem/docs/plan-of-attack.md` — soundsystem TODO/roadmap (links back here)
+
+Related design docs:
+- `docs/todo/ensemble-stations.md` — diegetic music: movers play instruments at stations, tracks = seats
+- `docs/todo/sounds/sound-and-mind-design.md` — agent communication via synth (concepts, signals, learning)
+- `docs/todo/sounds/sound-needs-emotions-groundwork.md` — needs/emotions as foundation for sound behavior
+- `docs/todo/sounds/soundsystem-feature-gaps.md` — feature gaps in the soundsystem

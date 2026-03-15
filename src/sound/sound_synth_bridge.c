@@ -172,7 +172,9 @@ static void SoundSynthCallback(void* buffer, unsigned int frames) {
         sample *= masterVolume;
         if (sample > 1.0f) sample = 1.0f;
         if (sample < -1.0f) sample = -1.0f;
-        out[i] = (short)(sample * 32767.0f);
+        short s = (short)(sample * 32767.0f);
+        out[i * 2]     = s;  // L
+        out[i * 2 + 1] = s;  // R (mono duplicated)
     }
 }
 
@@ -561,7 +563,7 @@ bool SoundSynthInitAudio(SoundSynth* synth, int sampleRate, int bufferFrames) {
     synth->bufferFrames = (bufferFrames > 0) ? bufferFrames : 512;
 
     SetAudioStreamBufferSizeDefault(synth->bufferFrames);
-    synth->stream = LoadAudioStream(synth->sampleRate, 16, 1);
+    synth->stream = LoadAudioStream(synth->sampleRate, 16, 2);
     SetAudioStreamCallback(synth->stream, SoundSynthCallback);
     PlayAudioStream(synth->stream);
 

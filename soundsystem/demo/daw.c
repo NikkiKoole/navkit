@@ -230,7 +230,7 @@ static void dawRecStop(void) {
     // Write WAV header + data
     FILE *f = fopen("daw_output.wav", "wb");
     if (!f) { free(dawRecBuffer); dawRecBuffer = NULL; return; }
-    int dataSize = dawRecSamples * 2; // 16-bit mono
+    int dataSize = dawRecSamples * 2; // 16-bit mono (recording captures L channel only)
     int fileSize = 36 + dataSize;
     // RIFF header
     fwrite("RIFF", 1, 4, f);
@@ -240,7 +240,7 @@ static void dawRecStop(void) {
     fwrite("fmt ", 1, 4, f);
     val32 = 16; fwrite(&val32, 4, 1, f);
     short val16 = 1; fwrite(&val16, 2, 1, f); // PCM
-    val16 = 1; fwrite(&val16, 2, 1, f); // mono
+    val16 = 1; fwrite(&val16, 2, 1, f); // mono (recording is mono for now)
     val32 = SAMPLE_RATE; fwrite(&val32, 4, 1, f);
     val32 = SAMPLE_RATE * 2; fwrite(&val32, 4, 1, f); // byte rate
     val16 = 2; fwrite(&val16, 2, 1, f); // block align
@@ -4917,7 +4917,7 @@ int main(void) {
     SetAudioStreamBufferSizeDefault(MAX_SAMPLES_PER_UPDATE);
     InitAudioDevice();
     loadEmbeddedSCWs();
-    AudioStream dawStream = LoadAudioStream(SAMPLE_RATE, 16, 1);
+    AudioStream dawStream = LoadAudioStream(SAMPLE_RATE, 16, 2);
     SetAudioStreamCallback(dawStream, DawAudioCallback);
     PlayAudioStream(dawStream);
 

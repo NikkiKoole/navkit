@@ -333,6 +333,12 @@ Phases 1-3 are the minimum viable feature (~500 lines new code).
 
 ---
 
+## Related Docs
+
+- `docs/doing/interactive-music-system.md` — non-diegetic adaptive music system (Music Director, SFX, beat-sync). Ensemble stations are the diegetic complement.
+- `soundsystem/docs/plan-of-attack.md` — soundsystem TODO/roadmap (game audio section links to both)
+- `docs/todo/sounds/sound-and-mind-design.md` — agent communication via synth
+
 ## The Emergent Beauty
 
 - Colony thriving -> full ensemble -> rich sound -> movers happy -> work faster -> more music time (virtuous cycle)

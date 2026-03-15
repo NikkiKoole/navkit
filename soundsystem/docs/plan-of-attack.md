@@ -144,17 +144,24 @@ From `audit/code-simplifier-audit-soundsystem.md`:
 
 ## Next Up — Audio & Modulation
 
-### 1. Stereo Pipeline + Pan (Medium-Large)
+### ~~1. Stereo Pipeline + Pan~~ — Phase 1 DONE
 
-Bus pan knob exists in UI but does nothing — entire pipeline is mono. Requires:
-- `float[2]` (L/R) bus outputs instead of `float`
-- `processBusEffects` returns stereo pair, applies `cos/sin` pan law
-- All master effects need stereo variants (or process L/R independently)
-- Audio callback writes 2-channel buffer (`d[i*2]`, `d[i*2+1]`)
-- WAV export writes stereo
-- Unison spread could auto-pan voices left/right
+Bus pan now works. Audio output is stereo (2-channel) in both DAW and game bridge.
 
-**Incremental approach:** Start with just bus pan (apply pan law after `processBusEffects`, before master sum). Master effects stay mono (sum L+R → process → split back). This gets 80% of the value with 30% of the work.
+**Signal flow:** Voices (mono) → bus effects (mono) → constant-power pan law (cos/sin) → stereo L/R → mid/side encode → master effects on mid (mono) → mid/side decode → stereo output.
+
+**What's done:**
+- `processBusesStereo()` + `processMixerOutputStereo()` in effects.h
+- DAW and bridge audio streams changed from 1 to 2 channels
+- DAW callback writes interleaved stereo (`d[i*2]`, `d[i*2+1]`)
+- Bridge duplicates mono to both channels (no bus routing in bridge yet)
+- Recording stays mono (captures L channel)
+
+**Phase 2 (future):**
+- Stereo master effects (process L/R independently instead of mid/side)
+- Unison spread auto-pan (voices panned left/right within a bus)
+- Stereo WAV export in offline renderers (song_render.c, daw_render.c)
+- Bridge bus routing (route voices to buses for pan support in-game)
 
 ### 2. LFO → UI Reflection (Medium)
 
@@ -227,7 +234,7 @@ From `audit/test-gaps-audit-soundsystem.md`. Current: 248 suites, 1905 assertion
 
 **Sequencer:** ~~Note pool~~ (done), Pattern chaining, Song/arranger improvements, Scenes crossfader completion
 
-**Game audio:** Full design doc in `docs/doing/interactive-music-system.md`. Music Director (game state → song selection + transitions), vertical layering (track volumes driven by activity), SFX system (synthesized one-shots + spatial), beat-synced event queue (quantize SFX to beat/step/bar), ambient layer (bird calls at dawn, rain/wind beds). 5 exemplary adaptive songs in `soundsystem/demo/songs/game_*.song` (dawn/hands/dusk/smoke/collapse). Key bridge/integration files: `src/sound/sound_synth_bridge.h/c` (audio callback, jukebox, song player), `src/sound/sound_phrase.h/c` (procedural bird/vowel generation), `src/sound/songs.h` (14 C-coded bridge songs, being migrated to .song)
+**Game audio:** Full design doc in `docs/doing/interactive-music-system.md`. Music Director (game state → song selection + transitions), vertical layering (track volumes driven by activity), SFX system (synthesized one-shots + spatial), beat-synced event queue (quantize SFX to beat/step/bar), ambient layer (bird calls at dawn, rain/wind beds). 5 exemplary adaptive songs in `soundsystem/demo/songs/game_*.song` (dawn/hands/dusk/smoke/collapse). Diegetic music: `docs/todo/ensemble-stations.md` (movers play instruments at stations, tracks = seats, colony health is audible). Key bridge/integration files: `src/sound/sound_synth_bridge.h/c` (audio callback, jukebox, song player), `src/sound/sound_phrase.h/c` (procedural bird/vowel generation), `src/sound/songs.h` (14 C-coded bridge songs, being migrated to .song)
 
 **Effects:** ~~Phaser~~ (done), ~~Comb filter~~ (done), Per-track effects
 
@@ -240,6 +247,10 @@ From `audit/test-gaps-audit-soundsystem.md`. Current: 248 suites, 1905 assertion
 **Content:** Convert bridge songs from C to .song format — 12 non-sweep songs now, 2 sweep songs (House, Deep House) may work with slow LFOs instead of needing scenes. Removes ~1500 lines from songs.h. See `scene-crossfader-spec.md` §Decision
 
 ---
+
+## Recent Changes (2026-03-15)
+
+- **Stereo bus pan:** Audio output is now stereo. Bus pan knobs work via constant-power pan law (cos/sin). Master effects stay mono via mid/side encoding — stereo image passes through untouched. Both DAW and game bridge output 2-channel audio.
 
 ## Recent Changes (2026-03-14)
 
