@@ -2318,4 +2318,963 @@ static void Song_Mule2_Load(Pattern patterns[8]) {
 
 #define SONG_MULE2_BPM  74.0f
 
+// ============================================================================
+// Song: Oscar's Lo-Fi Beat
+//
+// Ab major, 80 BPM, lofi jazz. Inspired by Oscar Peterson on synth.
+// ii-V-I turnarounds (Bbm7 → Eb7 → Abmaj7), walking bass, Peterson-style
+// fast scalar runs on lead, jazzy chord comping, boom-bap drums with swing.
+// Lofi treatment: tape saturation, filtered warmth, humanized timing.
+//
+// Patterns: intro (drums) → add bass → add chords → melody enters →
+//           melody intensifies → peak → wind down → outro
+// ============================================================================
+
+// Ab major notes — extra defines for readability
+#define Db2 37   // = Cs2
+#define Db3 49   // = Cs3
+#define Db4 61   // = Cs4
+#define Db5 73   // = Cs5
+
+static void Song_OscarLofi_ConfigureVoices(void) {
+    masterVolume = 0.30f;
+    scaleLockEnabled = true;
+    scaleRoot = 8;                      // Ab
+    scaleType = SCALE_MAJOR;
+}
+
+// --- Shared drum pattern: lofi boom-bap ---
+static void oscarDrums(Pattern* p) {
+    // Kick: boom-bap (beat 1, and-of-3)
+    drum(p, 0, 0, 0.50);
+    drum(p, 0, 7, 0.35);
+    // Snare: backbeat (beats 2 and 4), slightly soft
+    drumN(p, 1, 4, 0.40, 2.0);   // lazy snare
+    drumN(p, 1, 12, 0.38, 1.5);
+    // Hihat: 8ths, ghosted offbeats
+    for (int s = 0; s < 16; s += 2) {
+        float vel = (s % 4 == 0) ? 0.30f : 0.15f;
+        drum(p, 2, s, vel);
+    }
+    // Ghost hihats on some 16ths
+    drum(p, 2, 3, 0.08);
+    drum(p, 2, 11, 0.08);
+    // Rimshot: occasional, probabilistic
+    drumP(p, 3, 10, 0.12, 0.3);
+    patSetDrumProb(p, 3, 10, 0.3f);
+}
+
+// Busier drums for peak sections
+static void oscarDrumsBusy(Pattern* p) {
+    oscarDrums(p);
+    // Extra kick ghost
+    drum(p, 0, 5, 0.20);
+    patSetDrumProb(p, 0, 5, 0.5f);
+    // Open hat on beat 4 and-of
+    drumP(p, 2, 13, 0.25, 0.2);
+    // Rimshot on beat 3
+    drumP(p, 3, 8, 0.15, 0.2);
+    patSetDrumProb(p, 3, 8, 0.4f);
+}
+
+// --- Walking bass patterns in Ab ---
+
+// Bass: Abmaj7 → Fm7 (steps 0-15 = 2 bars)
+static void oscarBassA(Pattern* p) {
+    // Bar 1 (Abmaj7): Ab C Eb G (ascending chord tones)
+    note(p, 0, 0,  Ab2, .45, 2);
+    note(p, 0, 2,  Cn3, .38, 2);
+    note(p, 0, 4,  Eb2, .40, 2);
+    note(p, 0, 6,  G2,  .35, 2);
+    // Bar 2 (Fm7): F Ab C Eb (descending into next)
+    note(p, 0, 8,  F2,  .45, 2);
+    note(p, 0, 10, Ab2, .38, 2);
+    note(p, 0, 12, Cn3, .40, 2);
+    note(p, 0, 14, Eb2, .35, 2);
+}
+
+// Bass: Bbm7 → Eb7 (turnaround)
+static void oscarBassB(Pattern* p) {
+    // Bar 1 (Bbm7): Bb Db F Ab
+    note(p, 0, 0,  Bb1, .45, 2);
+    note(p, 0, 2,  Db2, .38, 2);
+    note(p, 0, 4,  F2,  .40, 2);
+    note(p, 0, 6,  Ab2, .35, 2);
+    // Bar 2 (Eb7): Eb G Bb Db (dominant pull to Ab)
+    note(p, 0, 8,  Eb2, .45, 2);
+    note(p, 0, 10, G2,  .40, 2);
+    note(p, 0, 12, Bb1, .38, 2);
+    note(p, 0, 14, Db2, .42, 2);  // leading tone pull
+}
+
+// Bass: Abmaj7 → Dbmaj7
+static void oscarBassC(Pattern* p) {
+    // Bar 1 (Abmaj7): Ab Eb C G (wider motion)
+    note(p, 0, 0,  Ab2, .45, 2);
+    note(p, 0, 2,  Eb2, .38, 2);
+    note(p, 0, 4,  Cn3, .40, 2);
+    note(p, 0, 6,  G2,  .35, 2);
+    // Bar 2 (Dbmaj7): Db F Ab C
+    note(p, 0, 8,  Db2, .45, 2);
+    note(p, 0, 10, F2,  .40, 2);
+    note(p, 0, 12, Ab2, .38, 2);
+    note(p, 0, 14, Cn3, .35, 2);
+}
+
+// Bass: sparse outro
+static void oscarBassOutro(Pattern* p) {
+    note(p, 0, 0,  Ab2, .40, 4);   // long Ab
+    note(p, 0, 8,  Eb2, .30, 4);   // long Eb
+    noteS(p, 0, 12, Ab2, .25, 4, 4);  // Ab held to end
+}
+
+// --- Chord voicings ---
+
+// Abmaj7 → Fm7 comping
+static void oscarChordsA(Pattern* p) {
+    // Abmaj7: Ab3 C4 Eb4 G4
+    chordCustom(p, 2, 0, 0.25, 4, Ab3, Cn4, Eb4, G4);
+    // Fm7: F3 Ab3 C4 Eb4
+    chordCustom(p, 2, 8, 0.22, 4, F3, Ab3, Cn4, Eb4);
+    // Ghost stab
+    chordCustom(p, 2, 6, 0.10, 1, Ab3, Cn4, -1, -1);
+    patSetDrumProb(p, SEQ_DRUM_TRACKS + 2, 6, 0.4f);
+}
+
+// Bbm7 → Eb7 comping
+static void oscarChordsB(Pattern* p) {
+    // Bbm7: Bb3 Db4 F4 Ab4
+    chordCustom(p, 2, 0, 0.25, 4, Bb3, Db4, F4, Ab4);
+    // Eb7: Eb3 G3 Bb3 Db4
+    chordCustom(p, 2, 8, 0.23, 4, Eb3, G3, Bb3, Db4);
+    // Anticipation stab
+    chordCustom(p, 2, 14, 0.12, 1, Eb3, G3, -1, -1);
+}
+
+// Abmaj7 → Dbmaj7 comping
+static void oscarChordsC(Pattern* p) {
+    // Abmaj7 voiced higher
+    chordCustom(p, 2, 0, 0.25, 4, Cn4, Eb4, G4, Ab4);
+    // Dbmaj7: Db3 F3 Ab3 C4
+    chordCustom(p, 2, 8, 0.22, 4, Db3, F3, Ab3, Cn4);
+    // Rhythmic stab
+    chordCustom(p, 2, 5, 0.10, 1, Cn4, Eb4, -1, -1);
+    patSetDrumProb(p, SEQ_DRUM_TRACKS + 2, 5, 0.5f);
+}
+
+// --- Lead melody: Peterson synth runs ---
+
+// Melody A: opening phrase, bluesy
+static void oscarMelodyA(Pattern* p) {
+    // Bebop run descending: Ab5 G4 F4 Eb4 Db4 C4 Bb3 Ab3
+    note(p, 1, 0,  Ab4, .42, 1);
+    note(p, 1, 1,  G4,  .38, 1);
+    note(p, 1, 2,  F4,  .40, 1);
+    note(p, 1, 3,  Eb4, .36, 2);
+    // Rest, then bluesy phrase
+    note(p, 1, 6,  Db4, .35, 1);
+    note(p, 1, 7,  Cn4, .38, 2);
+    // Bar 2: call-response, sparser
+    note(p, 1, 10, Eb4, .40, 2);
+    note(p, 1, 12, F4,  .35, 1);
+    noteS(p, 1, 13, Ab4, .42, 3, 2);  // held note with sustain
+}
+
+// Melody B: faster run over Bbm7 → Eb7
+static void oscarMelodyB(Pattern* p) {
+    // Fast ascending run: Bb3 C4 Db4 Eb4 F4 G4 Ab4
+    note(p, 1, 0,  Bb3, .35, 1);
+    note(p, 1, 1,  Cn4, .38, 1);
+    note(p, 1, 2,  Db4, .36, 1);
+    note(p, 1, 3,  Eb4, .40, 1);
+    note(p, 1, 4,  F4,  .38, 1);
+    note(p, 1, 5,  G4,  .42, 2);
+    // Octave leap — classic Peterson
+    note(p, 1, 8,  Ab4, .45, 1);
+    note(p, 1, 9,  Ab3, .35, 1);  // octave down
+    note(p, 1, 10, Bb3, .38, 2);
+    // Resolution phrase
+    note(p, 1, 13, G3,  .32, 1);
+    noteS(p, 1, 14, Ab3, .40, 2, 2);
+}
+
+// Melody C: peak intensity, double-time feel
+static void oscarMelodyC(Pattern* p) {
+    // Chromatic approach: G3→Ab3, then run up
+    note(p, 1, 0,  G3,  .30, 1);
+    note(p, 1, 1,  Ab3, .42, 1);
+    note(p, 1, 2,  Bb3, .38, 1);
+    note(p, 1, 3,  Cn4, .40, 1);
+    note(p, 1, 4,  Db4, .38, 1);
+    note(p, 1, 5,  Eb4, .42, 1);
+    note(p, 1, 6,  F4,  .40, 1);
+    note(p, 1, 7,  G4,  .45, 1);
+    // Peak: high Ab with slide down
+    note(p, 1, 8,  Ab4, .50, 2);
+    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 1, 10, true);
+    note(p, 1, 10, F4,  .38, 1);
+    note(p, 1, 11, Eb4, .40, 1);
+    note(p, 1, 12, Db4, .35, 1);
+    note(p, 1, 13, Cn4, .38, 1);
+    noteS(p, 1, 14, Ab3, .42, 2, 2);
+}
+
+// Melody D: sparse, reflective outro phrase
+static void oscarMelodyD(Pattern* p) {
+    noteS(p, 1, 0,  Eb4, .35, 4, 2);   // long held Eb
+    note(p, 1, 6,  Db4, .28, 2);
+    noteS(p, 1, 10, Ab3, .30, 4, 4);    // fading Ab
+}
+
+// --- Patterns ---
+
+// Pat 0: Intro — drums only
+static void Song_OscarLofi_Pattern0(Pattern* p) {
+    initPattern(p);
+    oscarDrums(p);
+}
+
+// Pat 1: Drums + walking bass (Abmaj7 → Fm7)
+static void Song_OscarLofi_Pattern1(Pattern* p) {
+    initPattern(p);
+    oscarDrums(p);
+    oscarBassA(p);
+}
+
+// Pat 2: Full groove (Abmaj7 → Fm7 + chords)
+static void Song_OscarLofi_Pattern2(Pattern* p) {
+    initPattern(p);
+    oscarDrums(p);
+    oscarBassA(p);
+    oscarChordsA(p);
+}
+
+// Pat 3: Turnaround (Bbm7 → Eb7 + chords)
+static void Song_OscarLofi_Pattern3(Pattern* p) {
+    initPattern(p);
+    oscarDrums(p);
+    oscarBassB(p);
+    oscarChordsB(p);
+}
+
+// Pat 4: Melody enters (Abmaj7 → Fm7)
+static void Song_OscarLofi_Pattern4(Pattern* p) {
+    initPattern(p);
+    oscarDrums(p);
+    oscarBassA(p);
+    oscarChordsA(p);
+    oscarMelodyA(p);
+}
+
+// Pat 5: Melody B (Bbm7 → Eb7, faster runs)
+static void Song_OscarLofi_Pattern5(Pattern* p) {
+    initPattern(p);
+    oscarDrums(p);
+    oscarBassB(p);
+    oscarChordsB(p);
+    oscarMelodyB(p);
+}
+
+// Pat 6: Peak (Abmaj7 → Dbmaj7, intense)
+static void Song_OscarLofi_Pattern6(Pattern* p) {
+    initPattern(p);
+    oscarDrumsBusy(p);
+    oscarBassC(p);
+    oscarChordsC(p);
+    oscarMelodyC(p);
+}
+
+// Pat 7: Outro (sparse, fading)
+static void Song_OscarLofi_Pattern7(Pattern* p) {
+    initPattern(p);
+    // Minimal drums
+    drum(p, 0, 0, 0.30);
+    drum(p, 2, 4, 0.12);
+    drum(p, 2, 12, 0.10);
+    oscarBassOutro(p);
+    // Sparse final chord
+    chordCustom(p, 2, 0, 0.18, 8, Ab3, Cn4, Eb4, G4);
+    oscarMelodyD(p);
+}
+
+static void Song_OscarLofi_Load(Pattern patterns[8]) {
+    Song_OscarLofi_Pattern0(&patterns[0]);
+    Song_OscarLofi_Pattern1(&patterns[1]);
+    Song_OscarLofi_Pattern2(&patterns[2]);
+    Song_OscarLofi_Pattern3(&patterns[3]);
+    Song_OscarLofi_Pattern4(&patterns[4]);
+    Song_OscarLofi_Pattern5(&patterns[5]);
+    Song_OscarLofi_Pattern6(&patterns[6]);
+    Song_OscarLofi_Pattern7(&patterns[7]);
+}
+
+#define SONG_OSCAR_LOFI_BPM  80.0f
+
+// ============================================================================
+// Song: Dreamer (Mac DeMarco — Chamber of Reflection style)
+//
+// D minor, 78 BPM. Hypnotic synth pad drone, simple repeating bass,
+// minimal drums, a 4-note hook that won't leave your head.
+// Heavy chorus, tape wobble, reverb — everything slightly wobbly and warm.
+//
+// Chord loop: Dm → Dm → Bb → A (i → i → VI → V)
+// The bass just pulses roots. The hook is a simple descending phrase.
+// ============================================================================
+
+static void Song_Dreamer_ConfigureVoices(void) {
+    masterVolume = 0.28f;
+    scaleLockEnabled = true;
+    scaleRoot = 2;                      // D
+    scaleType = SCALE_MINOR;
+}
+
+// Minimal drums — brushy, hypnotic
+static void dreamerDrums(Pattern* p) {
+    // Kick: just beat 1 and a ghost on the and-of-3
+    drum(p, 0, 0, 0.40);
+    drum(p, 0, 7, 0.18);
+    patSetDrumProb(p, 0, 7, 0.6f);
+    // Snare: ghostly rimshot on 2 and 4
+    drumP(p, 1, 4, 0.25, 0.2);
+    drumP(p, 1, 12, 0.22, 0.2);
+    // Hihat: quiet 8ths, barely there
+    for (int s = 0; s < 16; s += 2) {
+        drum(p, 2, s, (s % 4 == 0) ? 0.18f : 0.08f);
+    }
+}
+
+// Even sparser drums for intro/outro
+static void dreamerDrumsSparse(Pattern* p) {
+    drum(p, 0, 0, 0.30);
+    drum(p, 2, 4, 0.10);
+    drum(p, 2, 12, 0.08);
+}
+
+// Bass: Dm → Dm (just pulsing D)
+static void dreamerBassDm(Pattern* p) {
+    note(p, 0, 0,  D2, .42, 4);
+    note(p, 0, 4,  D2, .30, 2);
+    note(p, 0, 8,  D2, .42, 4);
+    note(p, 0, 12, D2, .30, 2);
+}
+
+// Bass: Bb → A
+static void dreamerBassBbA(Pattern* p) {
+    note(p, 0, 0,  Bb1, .42, 4);
+    note(p, 0, 4,  Bb1, .30, 2);
+    note(p, 0, 8,  A1,  .45, 4);
+    note(p, 0, 12, A1,  .32, 2);
+}
+
+// Chords: Dm pad (D3 F3 A3)
+static void dreamerChordDm(Pattern* p) {
+    chordCustom(p, 2, 0, 0.20, 8, D3, F3, A3, -1);
+    chordCustom(p, 2, 8, 0.18, 8, D3, F3, A3, -1);
+}
+
+// Chords: Bb → A (Bb3 D4 F4 → A3 C#4 E4)
+static void dreamerChordBbA(Pattern* p) {
+    chordCustom(p, 2, 0, 0.20, 8, Bb3, D4, F4, -1);
+    chordCustom(p, 2, 8, 0.22, 8, A3, Cs4, E4, -1);
+}
+
+// The Hook — 4-note descending phrase, hypnotic repetition
+// A4 → G4 → F4 → D4 (classic minor descent)
+static void dreamerHook(Pattern* p) {
+    note(p, 1, 0,  A4,  .38, 2);
+    note(p, 1, 3,  G4,  .35, 2);
+    note(p, 1, 6,  F4,  .38, 3);
+    noteS(p, 1, 10, D4,  .40, 4, 2);  // held — the resolution
+}
+
+// Hook variation — add a turn at the end
+static void dreamerHookVar(Pattern* p) {
+    note(p, 1, 0,  A4,  .38, 2);
+    note(p, 1, 3,  G4,  .35, 2);
+    note(p, 1, 6,  F4,  .38, 2);
+    note(p, 1, 9,  D4,  .35, 1);
+    note(p, 1, 10, E4,  .32, 1);  // little turn
+    noteS(p, 1, 12, D4,  .40, 4, 2);
+}
+
+// High answer phrase over Bb → A
+static void dreamerAnswer(Pattern* p) {
+    note(p, 1, 2,  D5,  .35, 2);
+    note(p, 1, 5,  Cn5, .32, 2);
+    noteS(p, 1, 8,  A4,  .38, 4, 2);
+    // Chromatic slide to resolution
+    note(p, 1, 13, Gs4, .28, 1);
+    noteS(p, 1, 14, A4,  .35, 2, 2);
+    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 1, 14, true);
+}
+
+// Pat 0: Intro — pad drone, barely any drums
+static void Song_Dreamer_Pattern0(Pattern* p) {
+    initPattern(p);
+    dreamerDrumsSparse(p);
+    dreamerChordDm(p);
+}
+
+// Pat 1: Bass enters (Dm)
+static void Song_Dreamer_Pattern1(Pattern* p) {
+    initPattern(p);
+    dreamerDrumsSparse(p);
+    dreamerBassDm(p);
+    dreamerChordDm(p);
+}
+
+// Pat 2: Full groove Dm + hook
+static void Song_Dreamer_Pattern2(Pattern* p) {
+    initPattern(p);
+    dreamerDrums(p);
+    dreamerBassDm(p);
+    dreamerChordDm(p);
+    dreamerHook(p);
+}
+
+// Pat 3: Bb → A with answer phrase
+static void Song_Dreamer_Pattern3(Pattern* p) {
+    initPattern(p);
+    dreamerDrums(p);
+    dreamerBassBbA(p);
+    dreamerChordBbA(p);
+    dreamerAnswer(p);
+}
+
+// Pat 4: Back to Dm, hook variation
+static void Song_Dreamer_Pattern4(Pattern* p) {
+    initPattern(p);
+    dreamerDrums(p);
+    dreamerBassDm(p);
+    dreamerChordDm(p);
+    dreamerHookVar(p);
+}
+
+// Pat 5: Bb → A again, answer
+static void Song_Dreamer_Pattern5(Pattern* p) {
+    initPattern(p);
+    dreamerDrums(p);
+    dreamerBassBbA(p);
+    dreamerChordBbA(p);
+    dreamerAnswer(p);
+}
+
+// Pat 6: Dm — hook + answer combined (climax)
+static void Song_Dreamer_Pattern6(Pattern* p) {
+    initPattern(p);
+    dreamerDrums(p);
+    dreamerBassDm(p);
+    dreamerChordDm(p);
+    // Combined: hook in first half, answer note at end
+    note(p, 1, 0,  A4,  .42, 2);
+    note(p, 1, 3,  G4,  .38, 2);
+    note(p, 1, 6,  F4,  .40, 1);
+    note(p, 1, 7,  E4,  .35, 1);
+    note(p, 1, 8,  D4,  .38, 1);
+    note(p, 1, 9,  E4,  .35, 1);
+    note(p, 1, 10, F4,  .38, 1);
+    noteS(p, 1, 12, D4,  .42, 4, 2);
+}
+
+// Pat 7: Outro — pad fading, sparse
+static void Song_Dreamer_Pattern7(Pattern* p) {
+    initPattern(p);
+    dreamerDrumsSparse(p);
+    noteS(p, 0, 0, D2, .30, 8, 8);   // one long bass D
+    chordCustom(p, 2, 0, 0.15, 16, D3, F3, A3, -1);  // held chord
+    noteS(p, 1, 4, A4, .25, 4, 8);   // one last echo of the hook
+}
+
+static void Song_Dreamer_Load(Pattern patterns[8]) {
+    Song_Dreamer_Pattern0(&patterns[0]);
+    Song_Dreamer_Pattern1(&patterns[1]);
+    Song_Dreamer_Pattern2(&patterns[2]);
+    Song_Dreamer_Pattern3(&patterns[3]);
+    Song_Dreamer_Pattern4(&patterns[4]);
+    Song_Dreamer_Pattern5(&patterns[5]);
+    Song_Dreamer_Pattern6(&patterns[6]);
+    Song_Dreamer_Pattern7(&patterns[7]);
+}
+
+#define SONG_DREAMER_BPM  78.0f
+
+// ============================================================================
+// Song: Salad Daze (Mac DeMarco — Salad Days style)
+//
+// G major, 82 BPM. Sunny, breezy, jangly. The hook is a bouncy
+// ascending phrase that feels like a lazy summer afternoon.
+// Chorus-drenched keys, slightly detuned, everything warm and golden.
+//
+// Chord loop: G → Em → C → D (I → vi → IV → V)
+// Classic pop turnaround, but with that Mac wobble.
+// ============================================================================
+
+static void Song_SaladDaze_ConfigureVoices(void) {
+    masterVolume = 0.30f;
+    scaleLockEnabled = true;
+    scaleRoot = 7;                      // G
+    scaleType = SCALE_MAJOR;
+}
+
+// Drums: lighter, more open feel
+static void saladDrums(Pattern* p) {
+    // Kick: beats 1 and 3
+    drum(p, 0, 0, 0.42);
+    drum(p, 0, 8, 0.38);
+    // Snare: 2 and 4, slightly ahead (not lazy — breezy)
+    drumN(p, 1, 4, 0.35, -1.0);
+    drumN(p, 1, 12, 0.33, -1.0);
+    // Hihat: 8ths with open hat on some offbeats
+    for (int s = 0; s < 16; s += 2) {
+        drum(p, 2, s, (s % 4 == 0) ? 0.22f : 0.12f);
+    }
+    // Open hat feel on beat 4-and
+    drumP(p, 2, 13, 0.18, 0.2);
+    patSetDrumProb(p, 2, 13, 0.5f);
+}
+
+static void saladDrumsSparse(Pattern* p) {
+    drum(p, 0, 0, 0.35);
+    drum(p, 2, 4, 0.12);
+    drum(p, 2, 8, 0.10);
+    drum(p, 2, 12, 0.10);
+}
+
+// Bass: G → Em
+static void saladBassGEm(Pattern* p) {
+    // Bar 1 (G): root bounce
+    note(p, 0, 0,  G2,  .42, 2);
+    note(p, 0, 4,  B2,  .32, 2);
+    // Bar 2 (Em): E F# walk
+    note(p, 0, 8,  E2,  .42, 2);
+    note(p, 0, 12, Fs2, .32, 2);
+}
+
+// Bass: C → D
+static void saladBassCD(Pattern* p) {
+    // Bar 1 (C): root
+    note(p, 0, 0,  Cn3, .42, 2);
+    note(p, 0, 4,  E2,  .32, 2);
+    // Bar 2 (D): D with chromatic approach
+    note(p, 0, 8,  D2,  .42, 2);
+    note(p, 0, 12, Fs2, .35, 2);
+}
+
+// Chords: G → Em
+static void saladChordsGEm(Pattern* p) {
+    // G: G3 B3 D4
+    chordCustom(p, 2, 0, 0.22, 6, G3, B3, D4, -1);
+    // Em: E3 G3 B3
+    chordCustom(p, 2, 8, 0.20, 6, E3, G3, B3, -1);
+    // Little rhythmic stab
+    chordCustom(p, 2, 14, 0.10, 1, G3, B3, -1, -1);
+    patSetDrumProb(p, SEQ_DRUM_TRACKS + 2, 14, 0.4f);
+}
+
+// Chords: C → D
+static void saladChordsCD(Pattern* p) {
+    // C: C3 E3 G3
+    chordCustom(p, 2, 0, 0.22, 6, Cn3, E3, G3, -1);
+    // D: D3 F#3 A3
+    chordCustom(p, 2, 8, 0.22, 6, D3, Fs3, A3, -1);
+}
+
+// The Hook — bouncy ascending phrase, sunny and catchy
+// D4 → E4 → G4 → A4 (pentatonic bounce, very Mac)
+static void saladHook(Pattern* p) {
+    note(p, 1, 0,  D4,  .38, 2);
+    note(p, 1, 2,  E4,  .35, 1);
+    note(p, 1, 4,  G4,  .40, 3);
+    noteS(p, 1, 8, A4,  .42, 4, 2);  // held — the payoff
+    // Little tail
+    note(p, 1, 13, G4,  .28, 1);
+    note(p, 1, 14, E4,  .30, 2);
+}
+
+// Hook variation — descending answer
+static void saladHookVar(Pattern* p) {
+    note(p, 1, 0,  A4,  .40, 2);
+    note(p, 1, 2,  G4,  .35, 2);
+    note(p, 1, 5,  E4,  .38, 2);
+    note(p, 1, 8,  D4,  .35, 2);
+    // Bounce back up
+    note(p, 1, 11, E4,  .32, 1);
+    noteS(p, 1, 12, G4,  .38, 4, 2);
+}
+
+// Bridge melody — higher, more yearning
+static void saladBridge(Pattern* p) {
+    note(p, 1, 0,  B4,  .40, 2);
+    note(p, 1, 3,  A4,  .35, 1);
+    note(p, 1, 4,  G4,  .38, 2);
+    note(p, 1, 7,  A4,  .35, 2);
+    noteS(p, 1, 10, B4,  .42, 4, 2);
+    note(p, 1, 15, A4,  .28, 1);
+}
+
+// Pat 0: Intro — chords only, dreamy
+static void Song_SaladDaze_Pattern0(Pattern* p) {
+    initPattern(p);
+    saladDrumsSparse(p);
+    saladChordsGEm(p);
+}
+
+// Pat 1: Bass enters
+static void Song_SaladDaze_Pattern1(Pattern* p) {
+    initPattern(p);
+    saladDrumsSparse(p);
+    saladBassGEm(p);
+    saladChordsGEm(p);
+}
+
+// Pat 2: Full groove G → Em + hook
+static void Song_SaladDaze_Pattern2(Pattern* p) {
+    initPattern(p);
+    saladDrums(p);
+    saladBassGEm(p);
+    saladChordsGEm(p);
+    saladHook(p);
+}
+
+// Pat 3: C → D with hook variation
+static void Song_SaladDaze_Pattern3(Pattern* p) {
+    initPattern(p);
+    saladDrums(p);
+    saladBassCD(p);
+    saladChordsCD(p);
+    saladHookVar(p);
+}
+
+// Pat 4: Back to G → Em, hook again (verse 2 feel)
+static void Song_SaladDaze_Pattern4(Pattern* p) {
+    initPattern(p);
+    saladDrums(p);
+    saladBassGEm(p);
+    saladChordsGEm(p);
+    saladHook(p);
+}
+
+// Pat 5: C → D bridge melody
+static void Song_SaladDaze_Pattern5(Pattern* p) {
+    initPattern(p);
+    saladDrums(p);
+    saladBassCD(p);
+    saladChordsCD(p);
+    saladBridge(p);
+}
+
+// Pat 6: G → Em climax — hook + octave doubling
+static void Song_SaladDaze_Pattern6(Pattern* p) {
+    initPattern(p);
+    saladDrums(p);
+    saladBassGEm(p);
+    saladChordsGEm(p);
+    // Hook with octave leap at the peak
+    note(p, 1, 0,  D4,  .40, 2);
+    note(p, 1, 2,  E4,  .38, 1);
+    note(p, 1, 4,  G4,  .42, 2);
+    note(p, 1, 7,  A4,  .40, 1);
+    note(p, 1, 8,  B4,  .45, 2);   // peak!
+    note(p, 1, 10, A4,  .38, 1);
+    note(p, 1, 11, G4,  .35, 1);
+    noteS(p, 1, 12, E4,  .38, 4, 2);
+}
+
+// Pat 7: Outro — sparse, fading
+static void Song_SaladDaze_Pattern7(Pattern* p) {
+    initPattern(p);
+    saladDrumsSparse(p);
+    noteS(p, 0, 0, G2, .28, 8, 8);   // one long G
+    chordCustom(p, 2, 0, 0.15, 16, G3, B3, D4, -1);
+    // Last echo of the hook
+    noteS(p, 1, 2, G4,  .25, 4, 4);
+    noteS(p, 1, 10, D4,  .20, 4, 4);
+}
+
+static void Song_SaladDaze_Load(Pattern patterns[8]) {
+    Song_SaladDaze_Pattern0(&patterns[0]);
+    Song_SaladDaze_Pattern1(&patterns[1]);
+    Song_SaladDaze_Pattern2(&patterns[2]);
+    Song_SaladDaze_Pattern3(&patterns[3]);
+    Song_SaladDaze_Pattern4(&patterns[4]);
+    Song_SaladDaze_Pattern5(&patterns[5]);
+    Song_SaladDaze_Pattern6(&patterns[6]);
+    Song_SaladDaze_Pattern7(&patterns[7]);
+}
+
+#define SONG_SALAD_DAZE_BPM  82.0f
+
+// ============================================================================
+// Song: Emergence
+//
+// E minor pentatonic, 92 BPM. The idea: complex beauty from simple rules.
+// A mallet plays notes from a pentatonic pool, wandering via PICK_RANDOM_WALK.
+// Drums are probability-driven — never the same twice.
+// Bass pulses roots. Pad swells and recedes.
+// Conditional triggers make the pattern evolve across loops.
+//
+// It should feel like watching something grow.
+//
+// Chord movement: Em7 → Cmaj7 → Am7 → D
+// (i7 → VImaj7 → iv7 → VII — bittersweet, minor with major light)
+// ============================================================================
+
+static void Song_Emergence_ConfigureVoices(void) {
+    masterVolume = 0.28f;
+    scaleLockEnabled = true;
+    scaleRoot = 4;                      // E
+    scaleType = SCALE_MINOR_PENTA;      // E G A B D
+}
+
+// Drums: probability-driven pulse, never static
+static void emergDrums(Pattern* p) {
+    // Kick: just beat 1, sometimes beat 3
+    drum(p, 0, 0, 0.38);
+    drum(p, 0, 8, 0.25);
+    patSetDrumProb(p, 0, 8, 0.4f);
+
+    // Snare: ghost rimshots, probabilistic — like raindrops
+    drumP(p, 1, 4,  0.18, 0.3);
+    patSetDrumProb(p, 1, 4, 0.6f);
+    drumP(p, 1, 10, 0.15, 0.2);
+    patSetDrumProb(p, 1, 10, 0.4f);
+    drumP(p, 1, 14, 0.12, 0.3);
+    patSetDrumProb(p, 1, 14, 0.3f);
+
+    // Hihat: quiet 8ths, some conditional — busier on later loops
+    drum(p, 2, 0,  0.15);
+    drum(p, 2, 4,  0.10);
+    drum(p, 2, 8,  0.12);
+    drum(p, 2, 12, 0.10);
+    // Extra hats only appear after first loop
+    drum(p, 2, 2,  0.06);
+    patSetDrumCond(p, 2, 2, COND_NOT_FIRST);
+    drum(p, 2, 6,  0.06);
+    patSetDrumCond(p, 2, 6, COND_NOT_FIRST);
+    drum(p, 2, 10, 0.06);
+    patSetDrumCond(p, 2, 10, COND_1_2);  // every other loop
+
+    // Perc: rare bell-like tick
+    drumP(p, 3, 7, 0.10, 0.5);
+    patSetDrumProb(p, 3, 7, 0.2f);
+}
+
+// Even sparser — intro/outro
+static void emergDrumsBreath(Pattern* p) {
+    drum(p, 0, 0, 0.28);
+    drum(p, 2, 8, 0.08);
+    patSetDrumProb(p, 2, 8, 0.5f);
+}
+
+// --- Bass: root pulses ---
+
+// Em7 pedal (2 bars)
+static void emergBassEm(Pattern* p) {
+    note(p, 0, 0,  E2,  .40, 4);
+    note(p, 0, 8,  E2,  .32, 4);
+    // Fifth on loop 2+
+    note(p, 0, 12, B2,  .25, 2);
+    patSetNoteCond(p, SEQ_DRUM_TRACKS + 0, 12, COND_NOT_FIRST);
+}
+
+// Cmaj7 → Am7
+static void emergBassCA(Pattern* p) {
+    note(p, 0, 0,  Cn3, .40, 4);
+    note(p, 0, 4,  G2,  .28, 2);
+    patSetNoteProb(p, SEQ_DRUM_TRACKS + 0, 4, 0.6f);
+    note(p, 0, 8,  A2,  .40, 4);
+    note(p, 0, 12, E2,  .28, 2);
+    patSetNoteProb(p, SEQ_DRUM_TRACKS + 0, 12, 0.5f);
+}
+
+// Am7 → D (turnaround)
+static void emergBassAD(Pattern* p) {
+    note(p, 0, 0,  A2,  .40, 4);
+    note(p, 0, 8,  D2,  .42, 4);
+    note(p, 0, 14, E2,  .30, 2);   // walk back to E
+}
+
+// --- Chords: shimmering pads ---
+
+// Em7: E3 G3 B3 D4
+static void emergChordEm(Pattern* p) {
+    chordCustom(p, 2, 0, 0.18, 16, E3, G3, B3, D4);
+}
+
+// Cmaj7: C3 E3 G3 B3
+static void emergChordC(Pattern* p) {
+    chordCustom(p, 2, 0, 0.18, 8, Cn3, E3, G3, B3);
+    // Am7: A3 C4 E4 G4
+    chordCustom(p, 2, 8, 0.16, 8, A3, Cn4, E4, G4);
+}
+
+// Am7 → D
+static void emergChordAD(Pattern* p) {
+    chordCustom(p, 2, 0, 0.18, 8, A3, Cn4, E4, G4);
+    // D: D3 F#3 A3 — major brightness breaking through
+    chordCustom(p, 2, 8, 0.20, 8, D3, Fs3, A3, -1);
+}
+
+// --- Lead: the wandering mallet ---
+
+// Seed phrase: E5 → D5 → B4 → A4 (a question)
+static void emergMelodySeed(Pattern* p) {
+    noteS(p, 1, 0,  E5,  .35, 4, 2);    // long E — the beginning
+    note(p, 1, 6,  D5,  .30, 2);
+    noteS(p, 1, 10, B4,  .35, 4, 2);    // rest on B
+}
+
+// Answer phrase: A4 → B4 → D5 (ascending, hopeful)
+static void emergMelodyAnswer(Pattern* p) {
+    note(p, 1, 0,  A4,  .32, 2);
+    note(p, 1, 3,  B4,  .35, 3);
+    noteS(p, 1, 8,  D5,  .38, 4, 2);
+    // Echo — conditional, only sometimes
+    note(p, 1, 14, E5,  .22, 2);
+    patSetNoteProb(p, SEQ_DRUM_TRACKS + 1, 14, 0.4f);
+}
+
+// Generative: note pool on key steps — random walk through E G A B D
+static void emergMelodyPool(Pattern* p) {
+    // Step 0: pool of E5, G4, B4, D5 — wanders
+    patSetChordCustom(p, SEQ_DRUM_TRACKS + 1, 0, 0.35, 3, E5, G4, B4, D5);
+    patSetPickMode(p, SEQ_DRUM_TRACKS + 1, 0, PICK_RANDOM_WALK);
+
+    // Step 4: pool of A4, B4, D5, E5
+    patSetChordCustom(p, SEQ_DRUM_TRACKS + 1, 4, 0.32, 3, A4, B4, D5, E5);
+    patSetPickMode(p, SEQ_DRUM_TRACKS + 1, 4, PICK_RANDOM_WALK);
+
+    // Step 8: pool of B4, D5, E5, G5
+    patSetChordCustom(p, SEQ_DRUM_TRACKS + 1, 8, 0.38, 4, B4, D5, E5, G5);
+    patSetPickMode(p, SEQ_DRUM_TRACKS + 1, 8, PICK_RANDOM_WALK);
+
+    // Step 12: single held note — moment of clarity
+    noteS(p, 1, 12, E5,  .35, 4, 2);
+}
+
+// Combined: seed + pool elements
+static void emergMelodyFull(Pattern* p) {
+    // Fixed opening gesture
+    noteS(p, 1, 0,  E5,  .38, 3, 1);
+    note(p, 1, 4,  D5,  .32, 1);
+
+    // Pool on steps 5-6: wandering fill
+    patSetChordCustom(p, SEQ_DRUM_TRACKS + 1, 6, 0.30, 2, A4, B4, G4, D5);
+    patSetPickMode(p, SEQ_DRUM_TRACKS + 1, 6, PICK_RANDOM);
+
+    // Resolution
+    noteS(p, 1, 8,  B4,  .40, 3, 2);
+
+    // Tail — conditional, different each time
+    note(p, 1, 12, A4,  .28, 2);
+    patSetNoteCond(p, SEQ_DRUM_TRACKS + 1, 12, COND_1_2);
+    note(p, 1, 13, G4,  .25, 2);
+    patSetNoteCond(p, SEQ_DRUM_TRACKS + 1, 13, COND_2_2);
+}
+
+// --- Patterns ---
+
+// Pat 0: Silence, then a single note. Space.
+static void Song_Emergence_Pattern0(Pattern* p) {
+    initPattern(p);
+    // Just one mallet note, ringing into space
+    noteS(p, 1, 4,  E5,  .30, 4, 8);
+}
+
+// Pat 1: Pulse begins. Bass E pedal, breath drums.
+static void Song_Emergence_Pattern1(Pattern* p) {
+    initPattern(p);
+    emergDrumsBreath(p);
+    emergBassEm(p);
+    // That same note again, establishing the tone
+    noteS(p, 1, 0,  E5,  .28, 4, 4);
+    noteS(p, 1, 10, B4,  .25, 4, 2);
+}
+
+// Pat 2: Pad swells in. Em7. Seed melody.
+static void Song_Emergence_Pattern2(Pattern* p) {
+    initPattern(p);
+    emergDrumsBreath(p);
+    emergBassEm(p);
+    emergChordEm(p);
+    emergMelodySeed(p);
+}
+
+// Pat 3: Drums arrive. Cmaj7 → Am7. Answer phrase.
+static void Song_Emergence_Pattern3(Pattern* p) {
+    initPattern(p);
+    emergDrums(p);
+    emergBassCA(p);
+    emergChordC(p);
+    emergMelodyAnswer(p);
+}
+
+// Pat 4: Em7 again — generative pool melody. It starts wandering.
+static void Song_Emergence_Pattern4(Pattern* p) {
+    initPattern(p);
+    emergDrums(p);
+    emergBassEm(p);
+    emergChordEm(p);
+    emergMelodyPool(p);
+}
+
+// Pat 5: Am7 → D — turnaround, full melody
+static void Song_Emergence_Pattern5(Pattern* p) {
+    initPattern(p);
+    emergDrums(p);
+    emergBassAD(p);
+    emergChordAD(p);
+    emergMelodyFull(p);
+}
+
+// Pat 6: Em7 — everything together, peak. Pool melody + conditions.
+static void Song_Emergence_Pattern6(Pattern* p) {
+    initPattern(p);
+    emergDrums(p);
+    emergBassEm(p);
+    emergChordEm(p);
+
+    // Dense generative melody — every beat has a pool
+    patSetChordCustom(p, SEQ_DRUM_TRACKS + 1, 0, 0.38, 2, E5, B4, D5, G4);
+    patSetPickMode(p, SEQ_DRUM_TRACKS + 1, 0, PICK_RANDOM_WALK);
+
+    patSetChordCustom(p, SEQ_DRUM_TRACKS + 1, 3, 0.32, 2, A4, D5, E5, B4);
+    patSetPickMode(p, SEQ_DRUM_TRACKS + 1, 3, PICK_PINGPONG);
+
+    patSetChordCustom(p, SEQ_DRUM_TRACKS + 1, 6, 0.35, 2, G4, B4, D5, E5);
+    patSetPickMode(p, SEQ_DRUM_TRACKS + 1, 6, PICK_RANDOM);
+
+    noteS(p, 1, 9, E5, .42, 4, 3);    // peak — held high E
+
+    note(p, 1, 14, D5, .28, 2);
+    patSetNoteCond(p, SEQ_DRUM_TRACKS + 1, 14, COND_1_2);
+}
+
+// Pat 7: Dissolve. Just pad and one last note.
+static void Song_Emergence_Pattern7(Pattern* p) {
+    initPattern(p);
+    // No drums. Just the pad breathing.
+    chordCustom(p, 2, 0, 0.15, 16, E3, G3, B3, D4);
+
+    // One last bass note
+    noteS(p, 0, 0, E2, .25, 8, 8);
+
+    // The seed phrase one more time, slower, quieter
+    noteS(p, 1, 2,  E5,  .22, 6, 4);
+    noteS(p, 1, 10, B4,  .18, 6, 4);
+}
+
+static void Song_Emergence_Load(Pattern patterns[8]) {
+    Song_Emergence_Pattern0(&patterns[0]);
+    Song_Emergence_Pattern1(&patterns[1]);
+    Song_Emergence_Pattern2(&patterns[2]);
+    Song_Emergence_Pattern3(&patterns[3]);
+    Song_Emergence_Pattern4(&patterns[4]);
+    Song_Emergence_Pattern5(&patterns[5]);
+    Song_Emergence_Pattern6(&patterns[6]);
+    Song_Emergence_Pattern7(&patterns[7]);
+}
+
+#define SONG_EMERGENCE_BPM  92.0f
+
 #endif // SONGS_H

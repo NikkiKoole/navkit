@@ -384,6 +384,147 @@ static void deepHouseLoadPatterns(Pattern pats[]) {
     Song_DeepHouse_Load(pats);
 }
 
+// --- Oscar's Lo-Fi Beat ---
+static void oscarLofiMelodyOverrides(void) {
+    // Lead (patch 5): FM keys — Peterson synth sound, warm and round
+    daw.patches[5].p_fmModIndex = 1.5f;
+    daw.patches[5].p_sustain = 0.3f;
+    daw.patches[5].p_release = 0.5f;
+    daw.patches[5].p_vibratoRate = 4.0f;
+    daw.patches[5].p_vibratoDepth = 0.002f;  // subtle warmth
+    daw.patches[5].p_volume = 0.45f;
+    daw.patches[5].p_filterCutoff = 0.55f;   // lofi warmth — rolled off highs
+    daw.patches[5].p_filterResonance = 0.08f;
+    daw.patches[5].p_monoMode = true;
+    daw.patches[5].p_glideTime = 0.08f;      // slight legato glide
+
+    // Chord (patch 6): FM keys — softer, pad-like for comping
+    daw.patches[6].p_fmModIndex = 1.0f;
+    daw.patches[6].p_attack = 0.05f;
+    daw.patches[6].p_decay = 0.6f;
+    daw.patches[6].p_sustain = 0.35f;
+    daw.patches[6].p_release = 0.8f;
+    daw.patches[6].p_volume = 0.30f;
+    daw.patches[6].p_filterCutoff = 0.45f;   // dark, warm
+    daw.patches[6].p_filterResonance = 0.05f;
+
+    // Bass (patch 4): pluck — upright feel, slightly muffled
+    daw.patches[4].p_pluckBrightness = 0.35f;
+    daw.patches[4].p_pluckDamping = 0.45f;
+    daw.patches[4].p_filterCutoff = 0.30f;
+    daw.patches[4].p_filterResonance = 0.10f;
+    daw.patches[4].p_volume = 0.50f;
+}
+static void oscarLofiLoadPatterns(Pattern pats[]) {
+    Song_OscarLofi_Load(pats);
+}
+
+// --- Dreamer (Mac DeMarco — Chamber of Reflection style) ---
+static void dreamerMelodyOverrides(void) {
+    // Lead (patch 5): Mac Keys — wobbly, chorus-drenched, warm
+    daw.patches[5].p_fmModIndex = 1.2f;
+    daw.patches[5].p_attack = 0.01f;
+    daw.patches[5].p_decay = 0.5f;
+    daw.patches[5].p_sustain = 0.4f;
+    daw.patches[5].p_release = 1.0f;      // long release — dreamy
+    daw.patches[5].p_volume = 0.40f;
+    daw.patches[5].p_filterCutoff = 0.50f;
+    daw.patches[5].p_filterResonance = 0.08f;
+    daw.patches[5].p_vibratoRate = 4.5f;
+    daw.patches[5].p_vibratoDepth = 0.003f;  // subtle wobble
+    daw.patches[5].p_unisonCount = 2;
+    daw.patches[5].p_unisonDetune = 6.0f;    // slightly detuned — the Mac sound
+
+    // Chord (patch 6): Mac Keys — pad, even more washed out
+    daw.patches[6].p_fmModIndex = 0.8f;
+    daw.patches[6].p_attack = 0.15f;       // slow swell
+    daw.patches[6].p_decay = 1.2f;
+    daw.patches[6].p_sustain = 0.5f;
+    daw.patches[6].p_release = 2.0f;       // long tail
+    daw.patches[6].p_volume = 0.28f;
+    daw.patches[6].p_filterCutoff = 0.40f;  // dark and warm
+    daw.patches[6].p_filterResonance = 0.05f;
+    daw.patches[6].p_unisonCount = 3;
+    daw.patches[6].p_unisonDetune = 10.0f;   // thick detuned pad
+
+    // Bass (patch 4): pluck — round, simple
+    daw.patches[4].p_pluckBrightness = 0.30f;
+    daw.patches[4].p_pluckDamping = 0.50f;
+    daw.patches[4].p_filterCutoff = 0.28f;
+    daw.patches[4].p_volume = 0.48f;
+}
+static void dreamerLoadPatterns(Pattern pats[]) {
+    Song_Dreamer_Load(pats);
+}
+
+// --- Salad Daze (Mac DeMarco — Salad Days style) ---
+static void saladDazeMelodyOverrides(void) {
+    // Lead (patch 5): Mac Keys — brighter than Dreamer, jangly
+    daw.patches[5].p_fmModIndex = 1.4f;
+    daw.patches[5].p_attack = 0.005f;
+    daw.patches[5].p_decay = 0.3f;
+    daw.patches[5].p_sustain = 0.45f;
+    daw.patches[5].p_release = 0.6f;
+    daw.patches[5].p_volume = 0.42f;
+    daw.patches[5].p_filterCutoff = 0.60f;   // brighter, more jangle
+    daw.patches[5].p_filterResonance = 0.06f;
+    daw.patches[5].p_vibratoRate = 5.0f;
+    daw.patches[5].p_vibratoDepth = 0.002f;
+    daw.patches[5].p_unisonCount = 2;
+    daw.patches[5].p_unisonDetune = 5.0f;
+
+    // Chord (patch 6): Mac Vibes — bell-like comping
+    daw.patches[6].p_attack = 0.02f;
+    daw.patches[6].p_decay = 0.8f;
+    daw.patches[6].p_sustain = 0.3f;
+    daw.patches[6].p_release = 1.0f;
+    daw.patches[6].p_volume = 0.30f;
+    daw.patches[6].p_filterCutoff = 0.50f;
+
+    // Bass (patch 4): pluck — bouncy, slightly brighter
+    daw.patches[4].p_pluckBrightness = 0.40f;
+    daw.patches[4].p_pluckDamping = 0.40f;
+    daw.patches[4].p_filterCutoff = 0.35f;
+    daw.patches[4].p_volume = 0.48f;
+}
+static void saladDazeLoadPatterns(Pattern pats[]) {
+    Song_SaladDaze_Load(pats);
+}
+
+// --- Emergence (original) ---
+static void emergenceMelodyOverrides(void) {
+    // Lead (patch 5): Piku Glock (mallet) — crystalline, long decay, bell-like
+    // Let the engine handle the mallet physics, just shape the tone
+    daw.patches[5].p_volume = 0.45f;
+    daw.patches[5].p_filterCutoff = 0.70f;    // bright — let it ring
+    daw.patches[5].p_filterResonance = 0.03f;
+
+    // Chord (patch 6): Lush Strings — slow, shimmering, wide
+    daw.patches[6].p_attack = 0.5f;           // slow swell — breathes in
+    daw.patches[6].p_decay = 2.0f;
+    daw.patches[6].p_sustain = 0.6f;
+    daw.patches[6].p_release = 3.0f;          // long tail
+    daw.patches[6].p_volume = 0.22f;          // quiet — supporting, not dominant
+    daw.patches[6].p_filterCutoff = 0.35f;    // dark and warm
+    daw.patches[6].p_filterResonance = 0.03f;
+    daw.patches[6].p_unisonCount = 3;
+    daw.patches[6].p_unisonDetune = 8.0f;     // wide shimmer
+    // Slow filter LFO — the pad breathes
+    daw.patches[6].p_filterLfoRate = 0.08f;    // ~12s cycle
+    daw.patches[6].p_filterLfoDepth = 0.08f;
+    daw.patches[6].p_filterLfoShape = 0;       // sine
+
+    // Bass (patch 4): Warm Pluck — round, organic, like a thumb on a string
+    daw.patches[4].p_pluckBrightness = 0.32f;
+    daw.patches[4].p_pluckDamping = 0.50f;
+    daw.patches[4].p_filterCutoff = 0.25f;     // very warm
+    daw.patches[4].p_filterResonance = 0.05f;
+    daw.patches[4].p_volume = 0.45f;
+}
+static void emergenceLoadPatterns(Pattern pats[]) {
+    Song_Emergence_Load(pats);
+}
+
 static const BridgeSong bridgeSongs[] = {
     {
         .name = "dormitory",
@@ -547,6 +688,71 @@ static const BridgeSong bridgeSongs[] = {
         .scaleLock = true,
         .scaleRoot = 5,       // F
         .scaleType = 2,       // SCALE_MINOR
+    },
+    {
+        .name = "oscarlofi",
+        .bpm = 80.0f,
+        .patternCount = 8,
+        .loopsPerPattern = 1,
+        .drumPresets = {24, 25, 27, 26},    // 808 kit
+        .melodyPresets = {44, 21, 21},       // Warm Pluck, Mac Keys, Mac Keys
+        .configureMelody = oscarLofiMelodyOverrides,
+        .loadPatterns = oscarLofiLoadPatterns,
+        .scaleLock = true,
+        .scaleRoot = 8,       // Ab
+        .scaleType = 1,       // SCALE_MAJOR
+        .swing = 5,
+        .snareDelay = 2,
+        .jitter = 2,
+        .timingJitter = 2, .velocityJitter = 0.06f,
+    },
+    {
+        .name = "dreamer",
+        .bpm = 78.0f,
+        .patternCount = 8,
+        .loopsPerPattern = 1,
+        .drumPresets = {24, 25, 27, 26},
+        .melodyPresets = {44, 21, 21},       // Warm Pluck, Mac Keys, Mac Keys
+        .configureMelody = dreamerMelodyOverrides,
+        .loadPatterns = dreamerLoadPatterns,
+        .scaleLock = true,
+        .scaleRoot = 2,       // D
+        .scaleType = 2,       // SCALE_MINOR
+        .swing = 4,
+        .jitter = 2,
+        .timingJitter = 1, .velocityJitter = 0.05f,
+    },
+    {
+        .name = "saladdaze",
+        .bpm = 82.0f,
+        .patternCount = 8,
+        .loopsPerPattern = 1,
+        .drumPresets = {24, 25, 27, 26},
+        .melodyPresets = {44, 21, 23},       // Warm Pluck, Mac Keys, Mac Vibes
+        .configureMelody = saladDazeMelodyOverrides,
+        .loadPatterns = saladDazeLoadPatterns,
+        .scaleLock = true,
+        .scaleRoot = 7,       // G
+        .scaleType = 1,       // SCALE_MAJOR
+        .swing = 3,
+        .jitter = 1,
+        .timingJitter = 1, .velocityJitter = 0.04f,
+    },
+    {
+        .name = "emergence",
+        .bpm = 92.0f,
+        .patternCount = 8,
+        .loopsPerPattern = 2,            // let each pattern breathe twice
+        .drumPresets = {24, 25, 27, 26},
+        .melodyPresets = {44, 15, 43},   // Warm Pluck, Piku Glock, Lush Strings
+        .configureMelody = emergenceMelodyOverrides,
+        .loadPatterns = emergenceLoadPatterns,
+        .scaleLock = true,
+        .scaleRoot = 4,       // E
+        .scaleType = 4,       // SCALE_MINOR_PENTA
+        .swing = 2,           // very subtle swing — not lazy, not straight
+        .jitter = 1,
+        .timingJitter = 1, .velocityJitter = 0.03f,  // minimal — precise but alive
     },
 };
 
