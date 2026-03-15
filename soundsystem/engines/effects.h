@@ -23,8 +23,9 @@
 
 // Tape effect constants
 #define TAPE_WOW_RATE 0.5f            // Tape wow LFO rate in Hz
-#define TAPE_WOW_DEPTH 0.1f           // Tape wow modulation depth
-#define TAPE_FLUTTER_DEPTH 0.05f      // Tape flutter modulation depth
+#define TAPE_WOW_DEPTH 40.0f          // Tape wow max modulation in samples (±40)
+#define TAPE_FLUTTER_DEPTH 8.0f       // Tape flutter max modulation in samples (±8)
+#define TAPE_BUFFER_SIZE 128          // Small delay buffer for wow/flutter pitch modulation
 #define TAPE_HISS_SCALE 0.05f         // Tape hiss amplitude scaling
 #define TAPE_HISS_FILTER_COEFF 0.1f   // Tape hiss highpass filter coefficient
 
@@ -372,6 +373,7 @@ typedef struct {
     float compAttack;        // Attack time in seconds (0.001-0.1)
     float compRelease;       // Release time in seconds (0.01-1.0)
     float compMakeup;        // Makeup gain in dB (0-24)
+    float compKnee;          // Soft knee width in dB (0=hard, 6-12=soft)
     float compEnvelope;      // Internal: current envelope value
 
     // Multiband processing (3-band split: low/mid/high)
@@ -387,6 +389,9 @@ typedef struct {
     // Internal: Linkwitz-Riley crossover (2x cascaded 1-pole per split)
     float mbLowLP1, mbLowLP2;   // Low crossover LP stages
     float mbHighLP1, mbHighLP2;  // High crossover LP stages
+    // Phase compensation allpass (matches high crossover phase on low/high bands)
+    float mbLowAP1, mbLowAP2;   // Allpass for low band (matches high crossover)
+    float mbHighAP1, mbHighAP2;  // Allpass for high band (matches low crossover)
 } Effects;
 
 // Sidechain source options
@@ -491,13 +496,13 @@ typedef struct {
 #define DELAY_BUFFER_SIZE (SAMPLE_RATE * 2)
 
 // Reverb buffers (Schroeder reverberator: 4 parallel comb filters + 2 series allpass)
-// Comb filter delay times (in samples, tuned for ~44100Hz, prime-ish numbers)
-#define REVERB_COMB_1 1557
-#define REVERB_COMB_2 1617
-#define REVERB_COMB_3 1491
-#define REVERB_COMB_4 1422
-#define REVERB_ALLPASS_1 225
-#define REVERB_ALLPASS_2 556
+// Comb filter delay times (in samples, tuned for ~44100Hz, mutually prime)
+#define REVERB_COMB_1 1559
+#define REVERB_COMB_2 1621
+#define REVERB_COMB_3 1493
+#define REVERB_COMB_4 1427
+#define REVERB_ALLPASS_1 223
+#define REVERB_ALLPASS_2 557
 #define REVERB_PREDELAY_MAX 4410  // Max 100ms pre-delay
 
 typedef struct EffectsContext {
@@ -540,6 +545,10 @@ typedef struct EffectsContext {
     // Comb filter buffer and state
     float combBuffer[COMB_BUFFER_SIZE];
     int combWritePos;
+
+    // Tape delay buffer for wow/flutter pitch modulation
+    float tapeBuffer[TAPE_BUFFER_SIZE];
+    int tapeWritePos;
 
     // Noise state for tape hiss
     unsigned int noiseState;
@@ -844,6 +853,25 @@ static void initEffects(void) {
 }
 
 // ============================================================================
+// HERMITE INTERPOLATION (shared utility for modulated delay reads)
+// ============================================================================
+
+static inline float hermiteInterp(float *buffer, int bufferSize, float readPos) {
+    int pos0 = (int)readPos;
+    float frac = readPos - pos0;
+    int pm1 = (pos0 - 1 + bufferSize) % bufferSize;
+    int p0  = pos0 % bufferSize;
+    int p1  = (pos0 + 1) % bufferSize;
+    int p2  = (pos0 + 2) % bufferSize;
+    float xm1 = buffer[pm1], x0 = buffer[p0], x1 = buffer[p1], x2 = buffer[p2];
+    float c0 = x0;
+    float c1 = 0.5f * (x1 - xm1);
+    float c2 = xm1 - 2.5f * x0 + 2.0f * x1 - 0.5f * x2;
+    float c3 = 0.5f * (x2 - xm1) + 1.5f * (x0 - x1);
+    return ((c3 * frac + c2) * frac + c1) * frac + c0;
+}
+
+// ============================================================================
 // INDIVIDUAL EFFECTS
 // ============================================================================
 
@@ -869,15 +897,15 @@ static float processDelay(float sample, float dt) {
     if (!fx.delayEnabled) return sample;
     (void)dt;
     
-    // Calculate delay in samples
-    int delaySamples = (int)(fx.delayTime * SAMPLE_RATE);
-    if (delaySamples >= DELAY_BUFFER_SIZE) delaySamples = DELAY_BUFFER_SIZE - 1;
-    if (delaySamples < 1) delaySamples = 1;
-    
-    // Read from delay buffer
-    int readPos = delayWritePos - delaySamples;
+    // Calculate delay in samples (fractional for smooth time changes)
+    float delaySamples = fx.delayTime * SAMPLE_RATE;
+    if (delaySamples >= DELAY_BUFFER_SIZE - 1) delaySamples = DELAY_BUFFER_SIZE - 2;
+    if (delaySamples < 1.0f) delaySamples = 1.0f;
+
+    // Read from delay buffer with Hermite interpolation (click-free time changes)
+    float readPos = (float)delayWritePos - delaySamples;
     if (readPos < 0) readPos += DELAY_BUFFER_SIZE;
-    float delayed = delayBuffer[readPos];
+    float delayed = hermiteInterp(delayBuffer, DELAY_BUFFER_SIZE, readPos);
     
     // Filter the delayed signal (darker repeats)
     float cutoff = fx.delayTone * fx.delayTone * DELAY_TONE_SCALE + DELAY_TONE_OFFSET;
@@ -894,38 +922,47 @@ static float processDelay(float sample, float dt) {
 // Tape simulation - saturation, wow, flutter, hiss
 static float processTape(float sample, float dt) {
     if (!fx.tapeEnabled) return sample;
-    
+
     // Tape saturation (soft, warm clipping)
     if (fx.tapeSaturation > 0.0f) {
         float sat = fx.tapeSaturation * 2.0f;
-        sample = tanhf(sample * (1.0f + sat)) / (1.0f + sat * 0.5f);
+        sample = tanhf(sample * (1.0f + sat)) / tanhf(1.0f + sat);
     }
-    
-    // Wow (slow pitch wobble) - simulated as volume modulation
+
+    // Write to tape delay buffer (for wow/flutter pitch modulation)
+    fxCtx->tapeBuffer[fxCtx->tapeWritePos] = sample;
+    fxCtx->tapeWritePos = (fxCtx->tapeWritePos + 1) % TAPE_BUFFER_SIZE;
+
+    // Wow/flutter: modulate read position (pitch modulation, like real tape speed variation)
+    float modOffset = 0.0f;
     if (fx.tapeWow > 0.0f) {
         fx.tapeWowPhase += TAPE_WOW_RATE * dt;
         if (fx.tapeWowPhase > 1.0f) fx.tapeWowPhase -= 1.0f;
-        float wow = sinf(fx.tapeWowPhase * 2.0f * PI) * fx.tapeWow * TAPE_WOW_DEPTH;
-        sample *= (1.0f + wow);
+        modOffset += sinf(fx.tapeWowPhase * 2.0f * PI) * fx.tapeWow * TAPE_WOW_DEPTH;
     }
-    
-    // Flutter (fast wobble ~6Hz)
     if (fx.tapeFlutter > 0.0f) {
         fx.tapeFlutterPhase += 6.0f * dt;
         if (fx.tapeFlutterPhase > 1.0f) fx.tapeFlutterPhase -= 1.0f;
-        float flutter = sinf(fx.tapeFlutterPhase * 2.0f * PI) * fx.tapeFlutter * TAPE_FLUTTER_DEPTH;
-        sample *= (1.0f + flutter);
+        modOffset += sinf(fx.tapeFlutterPhase * 2.0f * PI) * fx.tapeFlutter * TAPE_FLUTTER_DEPTH;
     }
-    
-    // Tape hiss (filtered noise)
+
+    if (modOffset != 0.0f) {
+        // Read from tape with modulated position (Hermite interpolation for smooth pitch)
+        float baseDelay = TAPE_BUFFER_SIZE / 2.0f;  // Center of buffer
+        float readPos = fxCtx->tapeWritePos - baseDelay + modOffset;
+        if (readPos < 0) readPos += TAPE_BUFFER_SIZE;
+        if (readPos >= TAPE_BUFFER_SIZE) readPos -= TAPE_BUFFER_SIZE;
+        sample = hermiteInterp(fxCtx->tapeBuffer, TAPE_BUFFER_SIZE, readPos);
+    }
+
+    // Tape hiss (highpass-filtered noise)
     if (fx.tapeHiss > 0.0f) {
         float hiss = FX_NOISE_FUNC() * fx.tapeHiss * TAPE_HISS_SCALE;
-        // Highpass the hiss
         fx.tapeFilterLp += TAPE_HISS_FILTER_COEFF * (hiss - fx.tapeFilterLp);
         hiss = hiss - fx.tapeFilterLp;
         sample += hiss;
     }
-    
+
     return sample;
 }
 
@@ -948,14 +985,11 @@ static float processBitcrusher(float sample) {
     return dry * (1.0f - fx.crushMix) + fx.crushHold * fx.crushMix;
 }
 
-// Helper: read from chorus buffer with linear interpolation
+// Helper: read from chorus buffer with Hermite interpolation (reduces aliasing vs linear)
 static float chorusReadInterpolated(float delaySamples) {
     float readPos = (float)fxCtx->chorusWritePos - delaySamples;
     if (readPos < 0) readPos += CHORUS_BUFFER_SIZE;
-    int i0 = (int)readPos % CHORUS_BUFFER_SIZE;
-    int i1 = (i0 + 1) % CHORUS_BUFFER_SIZE;
-    float frac = readPos - (int)readPos;
-    return fxCtx->chorusBuffer[i0] * (1.0f - frac) + fxCtx->chorusBuffer[i1] * frac;
+    return hermiteInterp(fxCtx->chorusBuffer, CHORUS_BUFFER_SIZE, readPos);
 }
 
 // Helper: clamp value to range
@@ -1026,13 +1060,10 @@ static float processFlanger(float sample, float dt) {
     if (delaySamples < 1.0f) delaySamples = 1.0f;
     if (delaySamples > FLANGER_BUFFER_SIZE - 1) delaySamples = FLANGER_BUFFER_SIZE - 1;
 
-    // Read with interpolation
+    // Read with Hermite interpolation (reduces aliasing on modulated reads)
     float readPos = (float)fxCtx->flangerWritePos - delaySamples;
     if (readPos < 0) readPos += FLANGER_BUFFER_SIZE;
-    int i0 = (int)readPos % FLANGER_BUFFER_SIZE;
-    int i1 = (i0 + 1) % FLANGER_BUFFER_SIZE;
-    float frac = readPos - (int)readPos;
-    float wet = fxCtx->flangerBuffer[i0] * (1.0f - frac) + fxCtx->flangerBuffer[i1] * frac;
+    float wet = hermiteInterp(fxCtx->flangerBuffer, FLANGER_BUFFER_SIZE, readPos);
 
     // Write input + feedback to buffer
     float fbSample = sample + wet * fx.flangerFeedback;
@@ -1201,7 +1232,8 @@ static float processReverb(float sample) {
 // ============================================================================
 
 // Linkwitz-Riley crossover: two cascaded 1-pole LP filters per split point.
-// LP output = low band, (input - LP output) = high band. Sums flat.
+// Phase-compensated 3-band: allpass filters on low/high bands match the
+// extra phase shift the mid band gets from passing through both crossovers.
 static float processMultiband(float sample) {
     if (!fx.mbEnabled) return sample;
 
@@ -1220,6 +1252,17 @@ static float processMultiband(float sample) {
     fx.mbHighLP2 += highCoeff * (fx.mbHighLP1 - fx.mbHighLP2);
     float midBand = fx.mbHighLP2;
     float highBand = midHigh - fx.mbHighLP2;
+
+    // Phase compensation: low band needs allpass matching the high crossover,
+    // high band needs allpass matching the low crossover.
+    // Allpass via cascaded 1-pole: ap += coeff * (input - ap); output = 2*ap - input
+    fx.mbLowAP1 += highCoeff * (lowBand - fx.mbLowAP1);
+    fx.mbLowAP2 += highCoeff * (fx.mbLowAP1 - fx.mbLowAP2);
+    lowBand = 2.0f * fx.mbLowAP2 - lowBand;
+
+    fx.mbHighAP1 += lowCoeff * (highBand - fx.mbHighAP1);
+    fx.mbHighAP2 += lowCoeff * (fx.mbHighAP1 - fx.mbHighAP2);
+    highBand = 2.0f * fx.mbHighAP2 - highBand;
 
     // Per-band drive (tanh saturation, only when drive > 1)
     if (fx.mbLowDrive > 1.001f)
@@ -1294,9 +1337,15 @@ static float processMasterCompressor(float sample, float dt) {
     // Convert to dB
     float envDb = 20.0f * log10f(fx.compEnvelope + 1e-10f);
 
-    // Gain reduction
+    // Gain reduction (with optional soft knee)
     float gainReduction = 0.0f;
-    if (envDb > fx.compThreshold) {
+    float halfKnee = fx.compKnee * 0.5f;
+    if (halfKnee > 0.01f && envDb > fx.compThreshold - halfKnee && envDb < fx.compThreshold + halfKnee) {
+        // Soft knee: quadratic blend in the knee region
+        float x = envDb - fx.compThreshold + halfKnee;
+        float excess = (x * x) / (2.0f * fx.compKnee);
+        gainReduction = excess * (1.0f - 1.0f / fx.compRatio);
+    } else if (envDb > fx.compThreshold + halfKnee) {
         float excess = envDb - fx.compThreshold;
         gainReduction = excess * (1.0f - 1.0f / fx.compRatio);
     }

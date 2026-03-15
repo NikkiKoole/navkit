@@ -3779,6 +3779,7 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
         DraggableFloatS(rx, ry, "Atk", &daw.masterFx.compAttack, 0.005f, 0.001f, 0.1f, fs); ry += row;
         DraggableFloatS(rx, ry, "Rel", &daw.masterFx.compRelease, 0.01f, 0.01f, 1.0f, fs); ry += row;
         DraggableFloatS(rx, ry, "Gain", &daw.masterFx.compMakeup, 0.5f, 0.0f, 24.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Knee", &daw.masterFx.compKnee, 0.5f, 0.0f, 12.0f, fs); ry += row;
     }
     MFX_END()
 

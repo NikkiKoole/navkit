@@ -361,7 +361,7 @@ static bool dawSave(const char *filepath) {
     _db(f, "subBassBoost", daw.masterFx.subBassBoost);
     _db(f, "compOn", daw.masterFx.compOn); _dw(f, "compThreshold", daw.masterFx.compThreshold);
     _dw(f, "compRatio", daw.masterFx.compRatio); _dw(f, "compAttack", daw.masterFx.compAttack);
-    _dw(f, "compRelease", daw.masterFx.compRelease); _dw(f, "compMakeup", daw.masterFx.compMakeup);
+    _dw(f, "compRelease", daw.masterFx.compRelease); _dw(f, "compMakeup", daw.masterFx.compMakeup); _dw(f, "compKnee", daw.masterFx.compKnee);
     _db(f, "mbOn", daw.masterFx.mbOn);
     _dw(f, "mbLowCross", daw.masterFx.mbLowCross); _dw(f, "mbHighCross", daw.masterFx.mbHighCross);
     _dw(f, "mbLowGain", daw.masterFx.mbLowGain); _dw(f, "mbMidGain", daw.masterFx.mbMidGain); _dw(f, "mbHighGain", daw.masterFx.mbHighGain);
@@ -1015,6 +1015,7 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"compAttack")==0) daw.masterFx.compAttack=_dpf(val);
             else if (strcmp(key,"compRelease")==0) daw.masterFx.compRelease=_dpf(val);
             else if (strcmp(key,"compMakeup")==0) daw.masterFx.compMakeup=_dpf(val);
+            else if (strcmp(key,"compKnee")==0) daw.masterFx.compKnee=_dpf(val);
             else if (strcmp(key,"mbOn")==0) daw.masterFx.mbOn=_dpb(val);
             else if (strcmp(key,"mbLowCross")==0) daw.masterFx.mbLowCross=_dpf(val);
             else if (strcmp(key,"mbHighCross")==0) daw.masterFx.mbHighCross=_dpf(val);
@@ -1111,6 +1112,18 @@ static bool dawLoad(const char *filepath) {
     daw.transport.stepAccumulator = 0;
     daw.transport.currentPattern = 0;
     seq.currentPattern = 0;
+
+    // Backward compat: multiband defaults (old files saved all zeros when mbOn=false)
+    if (daw.masterFx.mbLowGain == 0.0f && daw.masterFx.mbMidGain == 0.0f && daw.masterFx.mbHighGain == 0.0f) {
+        daw.masterFx.mbLowCross = 200.0f;
+        daw.masterFx.mbHighCross = 3000.0f;
+        daw.masterFx.mbLowGain = 1.0f;
+        daw.masterFx.mbMidGain = 1.0f;
+        daw.masterFx.mbHighGain = 1.0f;
+        daw.masterFx.mbLowDrive = 1.0f;
+        daw.masterFx.mbMidDrive = 1.0f;
+        daw.masterFx.mbHighDrive = 1.0f;
+    }
 
     // Reset preset tracking (loaded patches are custom)
     for (int i = 0; i < NUM_PATCHES; i++) patchPresetIndex[i] = -1;

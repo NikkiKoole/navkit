@@ -48,7 +48,7 @@ typedef struct {
     bool delayOn;   float delayTime, delayFeedback, delayTone, delayMix;
     bool reverbOn;  float reverbSize, reverbDamping, reverbPreDelay, reverbMix, reverbBass;
     bool eqOn;      float eqLowGain, eqHighGain, eqLowFreq, eqHighFreq;
-    bool compOn;    float compThreshold, compRatio, compAttack, compRelease, compMakeup;
+    bool compOn;    float compThreshold, compRatio, compAttack, compRelease, compMakeup, compKnee;
     bool subBassBoost;
     bool mbOn;      float mbLowCross, mbHighCross;
                     float mbLowGain, mbMidGain, mbHighGain;

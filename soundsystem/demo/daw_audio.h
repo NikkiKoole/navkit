@@ -228,6 +228,7 @@ static void dawSyncEngineState(void) {
     fx.compAttack      = daw.masterFx.compAttack;
     fx.compRelease     = daw.masterFx.compRelease;
     fx.compMakeup      = daw.masterFx.compMakeup;
+    fx.compKnee        = daw.masterFx.compKnee;
 
     // Sidechain (audio-follower mode)
     fx.sidechainEnabled = daw.sidechain.on;

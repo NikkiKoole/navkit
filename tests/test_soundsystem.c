@@ -1491,9 +1491,11 @@ describe(tape_effect) {
         float dt = 1.0f / SAMPLE_RATE;
         float output = processTape(input, dt);
         
-        // Saturation should compress peaks
-        expect(output < input);
+        // Saturation should shape the signal (tanh normalization preserves peak level)
         expect(output > 0.0f);
+        expect(output <= 1.0f);
+        // With proper tanh(x*drive)/tanh(drive) normalization, output ≈ input for moderate levels
+        expect(fabsf(output - input) < 0.15f);
     }
 }
 
