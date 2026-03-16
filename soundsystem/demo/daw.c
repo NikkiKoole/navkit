@@ -4684,9 +4684,25 @@ static void chopStateBounce(void) {
     chopStateClear();
     if (!chopState.sourcePath[0]) return;
 
+    // Stop playback before bouncing — renderPatternToBuffer swaps global
+    // context pointers (synthCtx/fxCtx/seqCtx) which the audio thread reads.
+    // Without stopping, the audio callback reads dangling/wrong pointers.
+    bool wasPlaying = daw.transport.playing;
+    if (wasPlaying) {
+        daw.transport.playing = false;
+        seq.playing = false;
+    }
+
     RenderedPattern rendered = renderPatternToBuffer(
         chopState.sourcePath, chopState.sourcePattern,
         chopState.sourceLoops, 0.5f);
+
+    // Restore playback state
+    if (wasPlaying) {
+        daw.transport.playing = true;
+        seq.playing = true;
+    }
+
     if (!rendered.data) return;
 
     chopState.renderData = rendered.data;
@@ -4748,6 +4764,9 @@ static void chopStateBounce(void) {
 }
 
 // Re-apply per-slice params to sampler slots (call after changing params)
+// NOTE: This rebuilds sampler data on the main thread while the audio thread
+// may be reading it. We mark slots as unloaded first (atomic-safe: audio thread
+// checks .loaded before reading .data), build the new buffer, then re-enable.
 static void chopApplySliceParams(void) {
     if (!chopState.bounced) return;
     _ensureSamplerCtx();
@@ -4772,9 +4791,7 @@ static void chopApplySliceParams(void) {
         int len = endSamp - startSamp;
         if (len < 1) len = 1;
 
-        Sample *slot = &samplerCtx->samples[s];
-        if (slot->loaded && slot->data && !slot->embedded) free(slot->data);
-
+        // Build new buffer before touching the slot
         float *data = (float *)malloc(len * sizeof(float));
         if (!data) continue;
         memcpy(data, chopState.slices[s] + startSamp, len * sizeof(float));
@@ -4794,12 +4811,19 @@ static void chopApplySliceParams(void) {
             }
         }
 
+        // Swap into slot: mark unloaded, swap pointer, update length, re-enable
+        Sample *slot = &samplerCtx->samples[s];
+        slot->loaded = false;  // audio thread will skip this slot
+        float *oldData = slot->data;
+        bool wasEmbedded = slot->embedded;
         slot->data = data;
         slot->length = len;
         slot->sampleRate = SAMPLE_CHOP_SAMPLE_RATE;
-        slot->loaded = true;
         slot->embedded = false;
         snprintf(slot->name, sizeof(slot->name), "slice_%02d", s);
+        slot->loaded = true;   // audio thread can use it again
+        // Free old data after slot is updated
+        if (oldData && !wasEmbedded) free(oldData);
     }
 }
 
@@ -5143,7 +5167,30 @@ static void drawWorkSample(float x, float y, float w, float h) {
 
     // --- Pad mapping ---
     if (chopState.bounced) {
-        DrawTextShadow("Pad Mapping (drum tracks):", (int)x, (int)sy, 10, (Color){140, 140, 160, 255});
+        DrawTextShadow("Pad Mapping:", (int)x, (int)sy, 10, (Color){140, 140, 160, 255});
+        {
+            // Quick-map button: auto-assign slices 0-3 to pads
+            Rectangle autoR = {x + 88, sy - 1, 60, 14};
+            bool autoHov = CheckCollisionPointRec(mouse, autoR);
+            DrawRectangleRec(autoR, autoHov ? (Color){50, 55, 65, 255} : (Color){35, 36, 44, 255});
+            DrawRectangleLinesEx(autoR, 1, (Color){60, 60, 75, 255});
+            DrawTextShadow("Auto 0-3", (int)(autoR.x + 4), (int)(autoR.y + 2), 8, (Color){120, 120, 140, 255});
+            if (autoHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                for (int t = 0; t < 4 && t < chopState.sliceCount; t++)
+                    daw.chopSliceMap[t] = t;
+                ui_consume_click();
+            }
+            // Clear all button
+            Rectangle clearR = {x + 154, sy - 1, 50, 14};
+            bool clearHov = CheckCollisionPointRec(mouse, clearR);
+            DrawRectangleRec(clearR, clearHov ? (Color){50, 55, 65, 255} : (Color){35, 36, 44, 255});
+            DrawRectangleLinesEx(clearR, 1, (Color){60, 60, 75, 255});
+            DrawTextShadow("Clear", (int)(clearR.x + 8), (int)(clearR.y + 2), 8, (Color){120, 120, 140, 255});
+            if (clearHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                for (int t = 0; t < 4; t++) daw.chopSliceMap[t] = -1;
+                ui_consume_click();
+            }
+        }
         sy += 16;
 
         const char *padNames[] = {"Kick", "Snare", "HiHat", "Clap"};
@@ -5154,27 +5201,39 @@ static void drawWorkSample(float x, float y, float w, float h) {
             int slot = daw.chopSliceMap[t];
             char label[64];
             if (slot >= 0)
-                snprintf(label, sizeof(label), "%s -> Slice %d", padNames[t], slot);
+                snprintf(label, sizeof(label), "%s: Slice %d", padNames[t], slot);
             else
-                snprintf(label, sizeof(label), "%s -> (synth)", padNames[t]);
+                snprintf(label, sizeof(label), "%s: synth", padNames[t]);
 
             Rectangle r = {px, sy, pw, 20};
             bool hov = CheckCollisionPointRec(mouse, r);
-            bool hasSel = (chopState.selectedSlice >= 0);
-            DrawRectangleRec(r, hov && hasSel ? (Color){50, 50, 65, 255} : (Color){30, 31, 38, 255});
+            DrawRectangleRec(r, hov ? (Color){50, 50, 65, 255} : (Color){30, 31, 38, 255});
             DrawRectangleLinesEx(r, 1, slot >= 0 ? ORANGE : (Color){48, 48, 58, 255});
             DrawTextShadow(label, (int)(px + 4), (int)(sy + 5), 9,
                           slot >= 0 ? (Color){255, 200, 100, 255} : (Color){100, 100, 120, 255});
 
+            // Scroll wheel to change slice number
+            if (hov) {
+                float wheel = GetMouseWheelMove();
+                if (wheel != 0) {
+                    int newSlot = slot + (int)wheel;
+                    if (newSlot < -1) newSlot = -1;
+                    if (newSlot >= chopState.sliceCount) newSlot = chopState.sliceCount - 1;
+                    daw.chopSliceMap[t] = newSlot;
+                }
+            }
+            // Left-click: assign selected slice (if any), or cycle through
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                // Assign selected slice to this pad, or clear if clicking same
-                if (hasSel) {
+                if (chopState.selectedSlice >= 0) {
                     daw.chopSliceMap[t] = chopState.selectedSlice;
+                } else {
+                    // No slice selected — cycle: synth→0→1→...→max→synth
+                    daw.chopSliceMap[t] = (slot + 1 >= chopState.sliceCount) ? -1 : slot + 1;
                 }
                 ui_consume_click();
             }
+            // Right-click: clear (revert to synth)
             if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-                // Right-click: clear mapping (revert to synth)
                 daw.chopSliceMap[t] = -1;
                 ui_consume_click();
             }
