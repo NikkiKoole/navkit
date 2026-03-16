@@ -461,12 +461,24 @@ static RenderedPattern renderPatternToBuffer(const char *songPath, int patternId
     for (int i = 0; i < NUM_PATCHES; i++)
         tempDaw->patches[i] = createDefaultPatch(WAVE_SAW);
 
-    // Set up callback pointer and init sequencer
+    // Set up callback pointer and init sequencer.
+    // IMPORTANT: initSequencer and setMelodyCallbacks overwrite file-scope
+    // static adapter arrays (_drumAdapters, _melodyAdapters, _melodyReleaseAdapters)
+    // that are shared between the live system and this temp bounce.
+    // We save/restore them so the live callbacks aren't clobbered.
     _chop_daw = tempDaw;
     memset(_chop_melodyVoice, -1, sizeof(_chop_melodyVoice));
     memset(_chop_melodyVoiceCount, 0, sizeof(_chop_melodyVoiceCount));
     memset(_chop_monoVoiceIdx, -1, sizeof(_chop_monoVoiceIdx));
     memset(_chop_drumVoice, -1, sizeof(_chop_drumVoice));
+
+    // Save live callback adapters
+    DrumTriggerFunc savedDrumAdapters[SEQ_DRUM_TRACKS];
+    MelodyTriggerFunc savedMelodyAdapters[SEQ_MELODY_TRACKS];
+    MelodyReleaseFunc savedMelodyReleaseAdapters[SEQ_MELODY_TRACKS];
+    memcpy(savedDrumAdapters, _drumAdapters, sizeof(savedDrumAdapters));
+    memcpy(savedMelodyAdapters, _melodyAdapters, sizeof(savedMelodyAdapters));
+    memcpy(savedMelodyReleaseAdapters, _melodyReleaseAdapters, sizeof(savedMelodyReleaseAdapters));
 
     initSequencer(_chopDrum0, _chopDrum1, _chopDrum2, _chopDrum3);
     setMelodyCallbacks(0, _chopMel0, _chopMelRel0);
@@ -607,6 +619,11 @@ restore:
     fxCtx = savedFx;
     seqCtx = savedSeq;
     samplerCtx = savedSampler;
+
+    // Restore live callback adapters (initSequencer/setMelodyCallbacks overwrote them)
+    memcpy(_drumAdapters, savedDrumAdapters, sizeof(savedDrumAdapters));
+    memcpy(_melodyAdapters, savedMelodyAdapters, sizeof(savedMelodyAdapters));
+    memcpy(_melodyReleaseAdapters, savedMelodyReleaseAdapters, sizeof(savedMelodyReleaseAdapters));
 
     return result;
 }

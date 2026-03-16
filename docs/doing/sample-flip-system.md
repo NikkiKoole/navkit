@@ -61,6 +61,10 @@ The audio callback runs on CoreAudio's IO thread. All operations that modify sha
 ### Bounce (`renderPatternToBuffer`)
 Offline render of a .song pattern. Creates temp SoundSystem, loads song, ticks sequencer, renders synth+effects+mixer to float buffer. ~200ms for a typical pattern.
 
+**Shared state caveat**: The synth engine uses global context pointers (`synthCtx`, `fxCtx`, `seqCtx`) and file-scope static callback arrays (`_drumAdapters`, `_melodyAdapters`). The bounce swaps contexts and installs its own callbacks, then restores everything after. All global state that the bounce touches must be saved/restored — missing any piece causes the live system to use stale pointers (the root cause of several crashes and "melody track goes silent" bugs). The audio callback is gated during the bounce via `dawAudioGate()`/`dawAudioUngate()` to prevent concurrent access.
+
+**Future cleanup**: Move callback adapters into `SequencerContext` (instead of file-scope statics) so each instance is fully self-contained. This would eliminate the save/restore dance and make the bounce inherently safe. Tracked as architectural debt.
+
 ### Chop Modes
 - **Equal** (`chopEqual`): N equal-length slices (4/8/16). SP-404 / MPC workflow.
 - **Transient** (`chopAtTransients`): Energy-ratio onset detection with 5ms RMS windows. Sensitivity slider (0-100%). Falls back to equal if no transients found.
