@@ -378,6 +378,17 @@ static void dawDrumTriggerGeneric(int trackIdx, int busIdx, float vel, float pit
         if (match) triggerSidechainEnvelope();
     }
 
+    // Chop/flip: if this drum track has a sampler slice mapped, play that instead
+    int sliceSlot = daw.chopSliceMap[trackIdx];
+    if (sliceSlot >= 0 && sliceSlot < SAMPLER_MAX_SAMPLES &&
+        samplerCtx->samples[sliceSlot].loaded) {
+        float pVol = plockValue(PLOCK_VOLUME, vel);
+        float pitchMod = plockValue(PLOCK_PITCH_OFFSET, 0.0f);
+        float pitch_speed = (pitchMod != 0.0f) ? powf(2.0f, pitchMod / 12.0f) : 1.0f;
+        samplerPlay(sliceSlot, pVol, pitch_speed);
+        return;
+    }
+
     SynthPatch *p = &daw.patches[trackIdx];
     float pVol = plockValue(PLOCK_VOLUME, vel);
     seqSoundLog("DAW_DRUM  track=%d bus=%d vel=%.2f pVol=%.2f freq=%.1f mute=%d solo=%d",

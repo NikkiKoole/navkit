@@ -127,6 +127,9 @@ typedef struct {
     // Song name
     char songName[64];
 
+    // Chop/flip: per-drum-track sampler slot mapping (-1 = synth, 0+ = sampler slot)
+    int chopSliceMap[4];  // SEQ_DRUM_TRACKS = 4
+
     // Split keyboard
     bool splitEnabled;
     int splitPoint;

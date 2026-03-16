@@ -531,6 +531,10 @@ preset-audition: $(BINDIR)
 song-render: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/song-render soundsystem/tools/song_render.c -lm
 
+# Chop-flip tool (bounce .song pattern → sliced WAVs)
+chop-flip: $(BINDIR)
+	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $(BINDIR)/chop-flip soundsystem/tools/chop_flip.c -lm
+
 # Bridge song exporter (C songs → .song format)
 bridge-export: $(BINDIR)
 	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $(BINDIR)/bridge-export soundsystem/tools/bridge_export.c -lm
@@ -645,4 +649,4 @@ cscope:
 nav: tags cscope
 	@echo "Updated tags + cscope.out"
 
-.PHONY: all clean clean-raylib clean-atlas nav test test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood path steer crowd mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embedpath8 path16 path-sound bench bench_jobs bench_items windows
+.PHONY: all clean clean-raylib clean-atlas nav test test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood path steer crowd mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed chop-flip path8 path16 path-sound bench bench_jobs bench_items windows

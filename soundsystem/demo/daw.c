@@ -387,6 +387,7 @@ static DawState daw = {
         .wow = 0.1f, .flutter = 0.1f, .drift = 0.05f, .speedTarget = 1.0f, .speedSlew = 0.1f, .throwBus = -1,
         .rewindTime = 1.5f, .rewindMinSpeed = 0.2f, .rewindVinyl = 0.1f, .rewindWobble = 0.2f, .rewindFilter = 0.5f,
     },
+    .chopSliceMap = {-1, -1, -1, -1},
     .masterVol = 0.8f,
     .splitPoint = 60, .splitLeftPatch = 1, .splitRightPatch = 2,
 };
