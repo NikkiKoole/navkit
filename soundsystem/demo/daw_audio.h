@@ -388,7 +388,8 @@ static void dawDrumTriggerGeneric(int trackIdx, int busIdx, float vel, float pit
     // Chop/flip: if this drum track has a sampler slice mapped, play that instead
     int sliceSlot = daw.chopSliceMap[trackIdx];
     if (sliceSlot >= 0 && sliceSlot < SAMPLER_MAX_SAMPLES &&
-        samplerCtx->samples[sliceSlot].loaded) {
+        samplerCtx && samplerCtx->samples[sliceSlot].loaded &&
+        samplerCtx->samples[sliceSlot].data) {
         float pVol = plockValue(PLOCK_VOLUME, vel);
         float pitchMod = plockValue(PLOCK_PITCH_OFFSET, 0.0f);
         // Combine p-lock pitch with per-slice pitch offset
@@ -622,13 +623,15 @@ static void dawMelodyRelease0(void) { dawMelodyReleaseGeneric(0); }
 static void dawMelodyRelease1(void) { dawMelodyReleaseGeneric(1); }
 static void dawMelodyRelease2(void) { dawMelodyReleaseGeneric(2); }
 
-// Sampler track trigger: note = slice index, vel = volume, pitchMod = speed
+/// Sampler track trigger: note = slice index, vel = volume, pitchMod = speed
 static void dawSamplerTrigger(int note, float vel, float gateTime, float pitchMod,
                                bool slide, bool accent) {
     (void)gateTime; (void)slide; (void)accent;
+    if (dawBouncingActive) return;  // don't touch sampler during bounce
     int sliceIdx = note;
     if (sliceIdx < 0 || sliceIdx >= SAMPLER_MAX_SAMPLES) return;
-    if (!samplerCtx->samples[sliceIdx].loaded) return;
+    if (!samplerCtx || !samplerCtx->samples[sliceIdx].loaded) return;
+    if (!samplerCtx->samples[sliceIdx].data) return;
     float totalPitch = daw.chopSlicePitch[sliceIdx];
     if (pitchMod != 1.0f) totalPitch += 12.0f * logf(pitchMod) / logf(2.0f);
     float speed = (totalPitch != 0.0f) ? powf(2.0f, totalPitch / 12.0f) : 1.0f;
