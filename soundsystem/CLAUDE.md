@@ -49,6 +49,7 @@ soundsystem/
 │   ├── sequencer_plocks.h     # Parameter lock subsystem (~170 lines, extracted from sequencer.h)
 │   ├── patch_trigger.h        # SynthPatch → synth globals applicator
 │   ├── sampler.h              # Sample playback (8-voice, 32 slots)
+│   ├── sample_chop.h         # Chop/flip: bounce, slice, load, freeze
 │   ├── song_file.h            # .song/.patch/.bank file I/O
 │   ├── midi_input.h           # CoreMIDI input (macOS)
 │   ├── rhythm_patterns.h      # 14 rhythm style generators
@@ -56,7 +57,7 @@ soundsystem/
 │   ├── piku_presets.h         # Pikuniku-style presets
 │   └── scw_data.h             # Generated wavetable data (from scw_embed)
 ├── demo/
-│   ├── daw.c                  # Full DAW UI (~4540 lines, 5 tabs)
+│   ├── daw.c                  # Full DAW UI (~5600 lines, 6 tabs inc. Sample)
 │   ├── daw_file.h             # DAW save/load (.daw format)
 │   ├── daw_widgets.h          # Bespoke UI widgets (~250 lines, extracted from daw.c)
 │   └── daw_audio.h            # Audio callback + sequencer callbacks (~590 lines, extracted from daw.c)
@@ -122,6 +123,7 @@ Each subsystem has a global pointer (`synthCtx`, `fxCtx`, `seqCtx`, `samplerCtx`
 
 - Tracks 0-3: Drum (step on/off triggers)
 - Tracks 4-6: Melodic — bass, lead, chord (note value + slide/accent)
+- Track 7: Sampler (TRACK_SAMPLER) — note field selects slice, one-shot playback
 - Each track has independent step count (polyrhythmic), note pools, conditional triggers
 
 ## Key Patterns
