@@ -4565,12 +4565,62 @@ static void updateSpeech(float dt) {
 // SAMPLE TAB — Chop/flip workflow
 // ============================================================================
 
+// Song file browser
+#include <dirent.h>
+#define CHOP_SONGS_DIR "soundsystem/demo/songs"
+#define CHOP_MAX_SONGS 64
+
+static struct {
+    char paths[CHOP_MAX_SONGS][256];    // full relative paths
+    char names[CHOP_MAX_SONGS][64];     // display names (no dir, no .song)
+    int count;
+    bool scanned;
+} songBrowser;
+
+static void chopScanSongs(void) {
+    if (songBrowser.scanned) return;
+    songBrowser.count = 0;
+    DIR *d = opendir(CHOP_SONGS_DIR);
+    if (!d) return;
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL && songBrowser.count < CHOP_MAX_SONGS) {
+        int len = (int)strlen(ent->d_name);
+        if (len < 6 || strcmp(ent->d_name + len - 5, ".song") != 0) continue;
+        int idx = songBrowser.count;
+        snprintf(songBrowser.paths[idx], sizeof(songBrowser.paths[idx]),
+                 "%s/%s", CHOP_SONGS_DIR, ent->d_name);
+        // Display name: strip .song extension
+        strncpy(songBrowser.names[idx], ent->d_name, sizeof(songBrowser.names[idx]) - 1);
+        songBrowser.names[idx][sizeof(songBrowser.names[idx]) - 1] = '\0';
+        char *dot = strrchr(songBrowser.names[idx], '.');
+        if (dot) *dot = '\0';
+        songBrowser.count++;
+    }
+    closedir(d);
+    // Sort alphabetically (simple insertion sort)
+    for (int i = 1; i < songBrowser.count; i++) {
+        char tmpPath[256], tmpName[64];
+        memcpy(tmpPath, songBrowser.paths[i], sizeof(tmpPath));
+        memcpy(tmpName, songBrowser.names[i], sizeof(tmpName));
+        int j = i - 1;
+        while (j >= 0 && strcmp(songBrowser.names[j], tmpName) > 0) {
+            memcpy(songBrowser.paths[j + 1], songBrowser.paths[j], sizeof(tmpPath));
+            memcpy(songBrowser.names[j + 1], songBrowser.names[j], sizeof(tmpName));
+            j--;
+        }
+        memcpy(songBrowser.paths[j + 1], tmpPath, sizeof(tmpPath));
+        memcpy(songBrowser.names[j + 1], tmpName, sizeof(tmpName));
+    }
+    songBrowser.scanned = true;
+}
+
 // Runtime state (not saved — rebuild from .song on load)
 static struct {
     // Source
     char sourcePath[256];       // .song file path
     int sourcePattern;          // which pattern to render
     int sourceLoops;            // how many loops
+    int sourceSongIdx;          // index into songBrowser (-1 = none)
     // Rendered audio
     float *renderData;          // bounced PCM buffer (heap)
     int renderLength;           // samples
@@ -4583,13 +4633,14 @@ static struct {
     // UI
     int selectedSlice;          // highlighted slice (-1 = none)
     bool bounced;               // true if render+chop has been done
-    bool editingPath;           // true when typing source path
-    int pathCursor;             // cursor position in path editor
+    bool browsingFiles;         // true when file picker is open
+    int browseScroll;           // scroll offset in file list
 } chopState = {
     .sourcePattern = 0,
     .sourceLoops = 1,
     .sliceCount = 8,
     .selectedSlice = -1,
+    .sourceSongIdx = -1,
 };
 
 // Free chop state buffers
@@ -4745,33 +4796,26 @@ static void drawWorkSample(float x, float y, float w, float h) {
     sy += 20;
 
     // --- Source row ---
+    chopScanSongs();
     DrawTextShadow("Source:", (int)x, (int)(sy + 2), 10, (Color){140, 140, 160, 255});
-    // Song file path (click to edit)
+    // Song selector button (click to open/close file list)
     {
-        float pathX = x + 50;
-        float pathW = w - 260;
-        Rectangle pathR = {pathX, sy, pathW, 16};
-        bool hov = CheckCollisionPointRec(mouse, pathR);
-        DrawRectangleRec(pathR, chopState.editingPath ? (Color){45, 45, 58, 255} : (hov ? (Color){38, 40, 50, 255} : (Color){28, 28, 36, 255}));
-        DrawRectangleLinesEx(pathR, 1, chopState.editingPath ? ORANGE : (Color){50, 50, 60, 255});
+        float btnX = x + 50;
+        float btnW = w - 260;
+        Rectangle btnR = {btnX, sy, btnW, 16};
+        bool hov = CheckCollisionPointRec(mouse, btnR);
+        DrawRectangleRec(btnR, chopState.browsingFiles ? (Color){45, 45, 58, 255} : (hov ? (Color){38, 40, 50, 255} : (Color){28, 28, 36, 255}));
+        DrawRectangleLinesEx(btnR, 1, chopState.browsingFiles ? ORANGE : (Color){50, 50, 60, 255});
 
-        if (chopState.editingPath) {
-            int result = dawTextEdit(chopState.sourcePath, (int)sizeof(chopState.sourcePath), &chopState.pathCursor);
-            DrawTextShadow(chopState.sourcePath, (int)(pathX + 4), (int)(sy + 3), 9, WHITE);
-            // Draw cursor
-            int cx = dawTextCursorX(chopState.sourcePath, chopState.pathCursor, 9);
-            if ((int)(GetTime() * 3) % 2 == 0)
-                DrawLine((int)(pathX + 4 + cx), (int)(sy + 2), (int)(pathX + 4 + cx), (int)(sy + 14), WHITE);
-            if (result == 1 || result == -1) chopState.editingPath = false;
-        } else {
-            const char *display = chopState.sourcePath[0] ? chopState.sourcePath : "(click to type path)";
-            DrawTextShadow(display, (int)(pathX + 4), (int)(sy + 3), 9,
-                          chopState.sourcePath[0] ? WHITE : (Color){70, 70, 85, 255});
-            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                chopState.editingPath = true;
-                chopState.pathCursor = (int)strlen(chopState.sourcePath);
-                ui_consume_click();
-            }
+        const char *display = chopState.sourceSongIdx >= 0 ? songBrowser.names[chopState.sourceSongIdx] : "Select song...";
+        DrawTextShadow(display, (int)(btnX + 4), (int)(sy + 3), 9,
+                      chopState.sourceSongIdx >= 0 ? WHITE : (Color){70, 70, 85, 255});
+        // Arrow indicator
+        DrawTextShadow(chopState.browsingFiles ? "^" : "v", (int)(btnX + btnW - 12), (int)(sy + 3), 9, (Color){80, 80, 100, 255});
+
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            chopState.browsingFiles = !chopState.browsingFiles;
+            ui_consume_click();
         }
     }
 
@@ -4857,6 +4901,58 @@ static void drawWorkSample(float x, float y, float w, float h) {
         }
     }
     sy += 22;
+
+    // --- File browser dropdown (overlaid) ---
+    if (chopState.browsingFiles && songBrowser.count > 0) {
+        float listX = x + 50;
+        float listW = w - 260;
+        int visibleRows = songBrowser.count < 12 ? songBrowser.count : 12;
+        float rowH = 14;
+        float listH = visibleRows * rowH + 4;
+        Rectangle listBg = {listX, sy, listW, listH};
+        DrawRectangleRec(listBg, (Color){32, 32, 42, 245});
+        DrawRectangleLinesEx(listBg, 1, ORANGE);
+
+        // Scroll with mouse wheel
+        float wheel = GetMouseWheelMove();
+        if (CheckCollisionPointRec(mouse, listBg)) {
+            chopState.browseScroll -= (int)wheel;
+            if (chopState.browseScroll < 0) chopState.browseScroll = 0;
+            int maxScroll = songBrowser.count - visibleRows;
+            if (maxScroll < 0) maxScroll = 0;
+            if (chopState.browseScroll > maxScroll) chopState.browseScroll = maxScroll;
+        }
+
+        for (int i = 0; i < visibleRows; i++) {
+            int idx = i + chopState.browseScroll;
+            if (idx >= songBrowser.count) break;
+            float ry = sy + 2 + i * rowH;
+            Rectangle rowR = {listX + 2, ry, listW - 4, rowH};
+            bool sel = (idx == chopState.sourceSongIdx);
+            bool hov = CheckCollisionPointRec(mouse, rowR);
+            if (hov) DrawRectangleRec(rowR, (Color){50, 55, 70, 255});
+            DrawTextShadow(songBrowser.names[idx], (int)(listX + 6), (int)(ry + 2), 9,
+                          sel ? ORANGE : (hov ? WHITE : (Color){160, 160, 180, 255}));
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                chopState.sourceSongIdx = idx;
+                strncpy(chopState.sourcePath, songBrowser.paths[idx], sizeof(chopState.sourcePath) - 1);
+                chopState.browsingFiles = false;
+                ui_consume_click();
+            }
+        }
+
+        // Scrollbar hint
+        if (songBrowser.count > visibleRows) {
+            float sbH = listH * ((float)visibleRows / songBrowser.count);
+            float sbY = sy + (listH - sbH) * ((float)chopState.browseScroll / (songBrowser.count - visibleRows));
+            DrawRectangle((int)(listX + listW - 6), (int)sbY, 4, (int)sbH, (Color){80, 80, 100, 180});
+        }
+
+        // Close on Escape
+        if (IsKeyPressed(KEY_ESCAPE)) chopState.browsingFiles = false;
+
+        sy += listH + 2;
+    }
 
     // --- Waveform ---
     float waveH = 80;
