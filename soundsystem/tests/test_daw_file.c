@@ -18,115 +18,81 @@
 #include "../engines/synth_patch.h"
 #include "../engines/effects.h"
 #include "../engines/sequencer.h"
+#include "../engines/sampler.h"
 
-// Undef engine macros that clash with our local DawState fields (same as daw.c)
+// Undef engine macros that clash with DawState fields
 #undef masterVolume
 #undef scaleLockEnabled
 #undef scaleRoot
 #undef scaleType
 #undef monoMode
 
-// ============================================================================
-// DAW TYPES (copied from daw.c — must match exactly)
-// ============================================================================
-
-#define NUM_PATCHES 8
-
-typedef struct {
-    bool playing;
-    float bpm;
-    int currentPattern;
-    int grooveSwing, grooveJitter;
-    int currentStep;
-    double stepAccumulator;
-} Transport;
-
-typedef struct {
-    bool on;
-    int source, target;
-    float depth, attack, release;
-} Sidechain;
-
-typedef struct {
-    bool distOn;    float distDrive, distTone, distMix;
-    bool crushOn;   float crushBits, crushRate, crushMix;
-    bool chorusOn;  float chorusRate, chorusDepth, chorusMix;
-    bool flangerOn; float flangerRate, flangerDepth, flangerFeedback, flangerMix;
-    bool tapeOn;    float tapeSaturation, tapeWow, tapeFlutter, tapeHiss;
-    bool delayOn;   float delayTime, delayFeedback, delayTone, delayMix;
-    bool reverbOn;  float reverbSize, reverbDamping, reverbPreDelay, reverbMix;
-} MasterFX;
-
-typedef struct {
-    bool enabled;
-    float headTime, feedback, mix;
-    int inputSource;
-    bool preReverb;
-    float saturation, toneHigh, noise, degradeRate;
-    float wow, flutter, drift, speedTarget, speedSlew;
-    int throwBus;
-    float rewindTime, rewindMinSpeed, rewindVinyl, rewindWobble, rewindFilter;
-    int rewindCurve;
-    bool isRewinding;
-} TapeFX;
-
-typedef struct {
-    float volume[NUM_BUSES];
-    float pan[NUM_BUSES];
-    float reverbSend[NUM_BUSES];
-    bool mute[NUM_BUSES];
-    bool solo[NUM_BUSES];
-    bool filterOn[NUM_BUSES];  float filterCut[NUM_BUSES]; float filterRes[NUM_BUSES]; int filterType[NUM_BUSES];
-    bool distOn[NUM_BUSES];    float distDrive[NUM_BUSES]; float distMix[NUM_BUSES];
-    bool delayOn[NUM_BUSES];   bool delaySync[NUM_BUSES];  int delaySyncDiv[NUM_BUSES];
-    float delayTime[NUM_BUSES]; float delayFB[NUM_BUSES];  float delayMix[NUM_BUSES];
-} Mixer;
-
-typedef struct {
-    bool enabled;
-    float pos;
-    int sceneA, sceneB, count;
-} Crossfader;
-
-#define SONG_MAX_SECTIONS 64
-#define SONG_SECTION_NAME_LEN 12
-
-typedef struct {
-    int length;
-    int patterns[SONG_MAX_SECTIONS];
-    char names[SONG_MAX_SECTIONS][SONG_SECTION_NAME_LEN];
-    int loopsPerSection[SONG_MAX_SECTIONS];
-    int loopsPerPattern;
-    bool songMode;
-} Song;
-
-typedef struct {
-    Transport transport;
-    Crossfader crossfader;
-    int stepCount;
-    Song song;
-    Mixer mixer;
-    Sidechain sidechain;
-    MasterFX masterFx;
-    TapeFX tapeFx;
-
-    SynthPatch patches[NUM_PATCHES];
-    int selectedPatch;
-    float masterVol;
-
-    bool scaleLockEnabled;
-    int scaleRoot, scaleType;
-    bool voiceRandomVowel;
-
-    bool splitEnabled;
-    int splitPoint;
-    int splitLeftPatch, splitRightPatch;
-    int splitLeftOctave, splitRightOctave;
-} DawState;
+// Use the real struct definitions from daw_state.h
+#include "../demo/daw_state.h"
 
 // Globals that daw_file.h accesses directly
 static DawState daw;
 static int patchPresetIndex[NUM_PATCHES];
+
+// ============================================================================
+// CHOP STATE — enables [sample] section round-trip testing
+// ============================================================================
+
+static struct {
+    char sourcePath[256];
+    int sourcePattern;
+    int sourceLoops;
+    int sourceSongIdx;
+    float *renderData;
+    int renderLength;
+    float renderBpm;
+    int renderSteps;
+    int sliceCount;
+    int sliceLength;
+    int sliceLengths[SAMPLER_MAX_SAMPLES];
+    float *slices[SAMPLER_MAX_SAMPLES];
+    int chopMode;
+    float sensitivity;
+    float fadeMs;
+    struct {
+        bool reverse;
+        float pitchSemitones;
+        float gain;
+        float trimStart;
+        float trimEnd;
+        float fadeInMs;
+        float fadeOutMs;
+    } sliceParams[SAMPLER_MAX_SAMPLES];
+    int selectedSlice;
+    bool bounced;
+    bool browsingFiles;
+    int browseScroll;
+} chopState = {0};
+
+// Stubs — re-bounce not tested here, just INI parsing
+static void chopStateBounce(void) {
+    // In test: no-op (no audio engine). Post-load re-bounce will call this
+    // but sourcePath won't resolve, so it returns immediately.
+}
+static void chopApplySliceParams(void) {
+    // In test: no-op
+}
+
+static void chopStateClearTest(void) {
+    memset(&chopState, 0, sizeof(chopState));
+    chopState.selectedSlice = -1;
+    chopState.sourceSongIdx = -1;
+    chopState.fadeMs = 1.0f;
+    for (int s = 0; s < SAMPLER_MAX_SAMPLES; s++) {
+        chopState.sliceParams[s].gain = 1.0f;
+        chopState.sliceParams[s].trimEnd = 1.0f;
+        chopState.sliceParams[s].fadeInMs = -1.0f;
+        chopState.sliceParams[s].fadeOutMs = -1.0f;
+    }
+    for (int t = 0; t < 4; t++) daw.chopSliceMap[t] = -1;
+}
+
+#define DAW_HAS_CHOP_STATE
 
 // Include the header-only save/load code
 #include "../demo/daw_file.h"
@@ -536,6 +502,32 @@ static void setupTestState(void) {
     patSetDrum(p3, 0, 8, 0.8f, 0.0f);
     patSetNote(p3, SEQ_DRUM_TRACKS + 0, 0, 36, 0.85f, 6);  // C2
 
+    // Sampler track on pattern 0: a few slices with pitch offsets
+    p0->trackLength[SEQ_TRACK_SAMPLER] = 8;
+    {
+        int t = SEQ_TRACK_SAMPLER;
+        // Step 0: slice 3, vel 0.9, pitch +5
+        StepV2 *sv0 = &p0->steps[t][0];
+        sv0->noteCount = 1;
+        sv0->notes[0].note = 3;
+        sv0->notes[0].velocity = velFloatToU8(0.9f);
+        sv0->notes[0].nudge = 5;
+        // Step 2: slice 7, vel 0.6, no pitch
+        StepV2 *sv2 = &p0->steps[t][2];
+        sv2->noteCount = 1;
+        sv2->notes[0].note = 7;
+        sv2->notes[0].velocity = velFloatToU8(0.6f);
+        sv2->notes[0].nudge = 0;
+        // Step 5: slice 0, vel 1.0, pitch -3, with prob + cond
+        StepV2 *sv5 = &p0->steps[t][5];
+        sv5->noteCount = 1;
+        sv5->notes[0].note = 0;
+        sv5->notes[0].velocity = velFloatToU8(1.0f);
+        sv5->notes[0].nudge = -3;
+        sv5->probability = probFloatToU8(0.75f);
+        sv5->condition = COND_1_2;
+    }
+
     // Save copies for comparison
     memcpy(&saved_daw, &daw, sizeof(DawState));
     memcpy(&saved_seq, &_seqCtx, sizeof(SequencerContext));
@@ -822,6 +814,30 @@ static void verifyPatterns(void) {
             }
         }
 
+        // Sampler track (track 7)
+        {
+            int st = SEQ_TRACK_SAMPLER;
+            snprintf(label, sizeof(label), "pat[%d].trackLength[%d]", pi, st);
+            ASSERT_EQ_INT(a->trackLength[st], b->trackLength[st], label);
+            for (int s = 0; s < b->trackLength[st]; s++) {
+                const StepV2 *sa2 = &a->steps[st][s];
+                const StepV2 *sb2 = &b->steps[st][s];
+                snprintf(label, sizeof(label), "pat[%d].sampler[%d].noteCount", pi, s);
+                ASSERT_EQ_INT(sa2->noteCount, sb2->noteCount, label);
+                if (sb2->noteCount == 0) continue;
+                snprintf(label, sizeof(label), "pat[%d].sampler[%d].slice", pi, s);
+                ASSERT_EQ_INT(sa2->notes[0].note, sb2->notes[0].note, label);
+                snprintf(label, sizeof(label), "pat[%d].sampler[%d].vel", pi, s);
+                ASSERT_EQ_INT(sa2->notes[0].velocity, sb2->notes[0].velocity, label);
+                snprintf(label, sizeof(label), "pat[%d].sampler[%d].nudge", pi, s);
+                ASSERT_EQ_INT((int)sa2->notes[0].nudge, (int)sb2->notes[0].nudge, label);
+                snprintf(label, sizeof(label), "pat[%d].sampler[%d].prob", pi, s);
+                ASSERT_EQ_INT(sa2->probability, sb2->probability, label);
+                snprintf(label, sizeof(label), "pat[%d].sampler[%d].cond", pi, s);
+                ASSERT_EQ_INT(sa2->condition, sb2->condition, label);
+            }
+        }
+
         // P-locks
         snprintf(label, sizeof(label), "pat[%d].plockCount", pi);
         ASSERT_EQ_INT(a->plockCount, b->plockCount, label);
@@ -845,15 +861,15 @@ static void verifyPatterns(void) {
 // 1. Compile-time: sizeof checks. If you add a field to any of these structs,
 //    the static assert fires → update save/load in daw_file.h, THEN update
 //    the expected size here.
-_Static_assert(sizeof(SynthPatch) == 552,
+_Static_assert(sizeof(SynthPatch) == 680,
     "SynthPatch size changed! Update _dwWritePatch/_dwApplyPatchKV in daw_file.h, then update this assert.");
-_Static_assert(sizeof(Mixer) == 384,
+_Static_assert(sizeof(Mixer) == 920,
     "Mixer size changed! Update dawSave/dawLoad mixer section, then update this assert.");
-_Static_assert(sizeof(MasterFX) == 128,
+_Static_assert(sizeof(MasterFX) == 260,
     "MasterFX size changed! Update dawSave/dawLoad masterfx section, then update this assert.");
 _Static_assert(sizeof(TapeFX) == 92,
     "TapeFX size changed! Update dawSave/dawLoad tapefx section, then update this assert.");
-_Static_assert(sizeof(Sidechain) == 24,
+_Static_assert(sizeof(Sidechain) == 64,
     "Sidechain size changed! Update dawSave/dawLoad sidechain section, then update this assert.");
 _Static_assert(sizeof(Crossfader) == 20,
     "Crossfader size changed! Update dawSave/dawLoad crossfader section, then update this assert.");
@@ -1007,6 +1023,164 @@ static void verifyPatchFieldCoverage(void) {
 }
 
 // ============================================================================
+// SAMPLE SECTION ROUND-TRIP
+// ============================================================================
+
+static void verifySampleSectionRoundTrip(void) {
+    printf("  [sample section round-trip]\n");
+    const char *tmppath = "/tmp/test_daw_sample_rt.song";
+
+    // 1. Set up chopState with non-default values
+    chopStateClearTest();
+    strncpy(chopState.sourcePath, "songs/testbeat.song", 255);
+    chopState.sourcePattern = 2;
+    chopState.sourceLoops = 3;
+    chopState.sliceCount = 16;
+    chopState.chopMode = 1;  // transient
+    chopState.sensitivity = 0.75f;
+    chopState.fadeMs = 2.5f;
+    chopState.bounced = true;  // required for save to write [sample]
+
+    // Pad mappings
+    daw.chopSliceMap[0] = 3;
+    daw.chopSliceMap[1] = 7;
+    daw.chopSliceMap[2] = -1;
+    daw.chopSliceMap[3] = 12;
+
+    // Per-slice params — set non-default on a few slices
+    chopState.sliceParams[2].reverse = true;
+    chopState.sliceParams[5].pitchSemitones = -7.0f;
+    chopState.sliceParams[5].gain = 1.5f;
+    chopState.sliceParams[8].trimStart = 0.1f;
+    chopState.sliceParams[8].trimEnd = 0.85f;
+    chopState.sliceParams[10].fadeInMs = 3.0f;
+    chopState.sliceParams[10].fadeOutMs = 5.0f;
+    chopState.sliceParams[15].reverse = true;
+    chopState.sliceParams[15].pitchSemitones = 12.0f;
+    chopState.sliceParams[15].gain = 0.5f;
+
+    // 2. Save
+    memset(&daw.transport, 0, sizeof(Transport));
+    daw.transport.bpm = 120.0f;
+    bool ok = dawSave(tmppath);
+    if (!ok) { printf("  FAIL: dawSave failed for sample section test\n"); tests_failed++; return; }
+    tests_passed++;
+
+    // 3. Save expected values
+    char savedPath[256];
+    strncpy(savedPath, chopState.sourcePath, 255);
+    int savedPattern = chopState.sourcePattern;
+    int savedLoops = chopState.sourceLoops;
+    int savedSliceCount = chopState.sliceCount;
+    int savedChopMode = chopState.chopMode;
+    float savedSensitivity = chopState.sensitivity;
+    float savedFadeMs = chopState.fadeMs;
+    int savedPadMap[4] = { daw.chopSliceMap[0], daw.chopSliceMap[1], daw.chopSliceMap[2], daw.chopSliceMap[3] };
+
+    // Save per-slice params we set
+    bool saved_s2_rev = chopState.sliceParams[2].reverse;
+    float saved_s5_pitch = chopState.sliceParams[5].pitchSemitones;
+    float saved_s5_gain = chopState.sliceParams[5].gain;
+    float saved_s8_trimStart = chopState.sliceParams[8].trimStart;
+    float saved_s8_trimEnd = chopState.sliceParams[8].trimEnd;
+    float saved_s10_fadeIn = chopState.sliceParams[10].fadeInMs;
+    float saved_s10_fadeOut = chopState.sliceParams[10].fadeOutMs;
+    bool saved_s15_rev = chopState.sliceParams[15].reverse;
+    float saved_s15_pitch = chopState.sliceParams[15].pitchSemitones;
+    float saved_s15_gain = chopState.sliceParams[15].gain;
+
+    // 4. Clear everything
+    chopStateClearTest();
+    memset(&daw, 0, sizeof(DawState));
+    for (int i = 0; i < NUM_PATCHES; i++) daw.patches[i] = createDefaultPatch(WAVE_SAW);
+    memset(&_seqCtx, 0, sizeof(SequencerContext));
+    for (int t = 0; t < 4; t++) daw.chopSliceMap[t] = -1;
+
+    // 5. Load
+    ok = dawLoad(tmppath);
+    if (!ok) { printf("  FAIL: dawLoad failed for sample section test\n"); tests_failed++; remove(tmppath); return; }
+    tests_passed++;
+
+    // 6. Verify parsed values
+    // Note: chopStateBounce (stub) was called during load, which zeroed chopState.
+    // The post-load code saves/restores params around the bounce call, so they
+    // should survive. But our stub chopStateBounce is a no-op (doesn't call
+    // chopStateClear), so the restore should work.
+    ASSERT_EQ_STR(chopState.sourcePath, savedPath, "sample.sourceFile");
+    ASSERT_EQ_INT(chopState.sourcePattern, savedPattern, "sample.sourcePattern");
+    ASSERT_EQ_INT(chopState.sourceLoops, savedLoops, "sample.sourceLoops");
+    ASSERT_EQ_INT(chopState.sliceCount, savedSliceCount, "sample.sliceCount");
+    ASSERT_EQ_INT(chopState.chopMode, savedChopMode, "sample.chopMode");
+    ASSERT_EQ_FLOAT(chopState.sensitivity, savedSensitivity, "sample.sensitivity");
+    ASSERT_EQ_FLOAT(chopState.fadeMs, savedFadeMs, "sample.fadeMs");
+
+    // Pad mappings
+    ASSERT_EQ_INT(daw.chopSliceMap[0], savedPadMap[0], "sample.padMap0");
+    ASSERT_EQ_INT(daw.chopSliceMap[1], savedPadMap[1], "sample.padMap1");
+    ASSERT_EQ_INT(daw.chopSliceMap[2], savedPadMap[2], "sample.padMap2");
+    ASSERT_EQ_INT(daw.chopSliceMap[3], savedPadMap[3], "sample.padMap3");
+
+    // Per-slice params
+    ASSERT_EQ_BOOL(chopState.sliceParams[2].reverse, saved_s2_rev, "slice.2.reverse");
+    ASSERT_EQ_FLOAT(chopState.sliceParams[5].pitchSemitones, saved_s5_pitch, "slice.5.pitch");
+    ASSERT_EQ_FLOAT(chopState.sliceParams[5].gain, saved_s5_gain, "slice.5.gain");
+    ASSERT_EQ_FLOAT(chopState.sliceParams[8].trimStart, saved_s8_trimStart, "slice.8.trimStart");
+    ASSERT_EQ_FLOAT(chopState.sliceParams[8].trimEnd, saved_s8_trimEnd, "slice.8.trimEnd");
+    ASSERT_EQ_FLOAT(chopState.sliceParams[10].fadeInMs, saved_s10_fadeIn, "slice.10.fadeIn");
+    ASSERT_EQ_FLOAT(chopState.sliceParams[10].fadeOutMs, saved_s10_fadeOut, "slice.10.fadeOut");
+    ASSERT_EQ_BOOL(chopState.sliceParams[15].reverse, saved_s15_rev, "slice.15.reverse");
+    ASSERT_EQ_FLOAT(chopState.sliceParams[15].pitchSemitones, saved_s15_pitch, "slice.15.pitch");
+    ASSERT_EQ_FLOAT(chopState.sliceParams[15].gain, saved_s15_gain, "slice.15.gain");
+
+    // Verify slices with default params stayed default
+    ASSERT_EQ_BOOL(chopState.sliceParams[0].reverse, false, "slice.0.reverse (default)");
+    ASSERT_EQ_FLOAT(chopState.sliceParams[0].pitchSemitones, 0.0f, "slice.0.pitch (default)");
+    ASSERT_EQ_FLOAT(chopState.sliceParams[0].gain, 1.0f, "slice.0.gain (default)");
+    ASSERT_EQ_FLOAT(chopState.sliceParams[0].trimStart, 0.0f, "slice.0.trimStart (default)");
+    ASSERT_EQ_FLOAT(chopState.sliceParams[0].trimEnd, 1.0f, "slice.0.trimEnd (default)");
+    ASSERT_EQ_FLOAT(chopState.sliceParams[0].fadeInMs, -1.0f, "slice.0.fadeIn (default)");
+    ASSERT_EQ_FLOAT(chopState.sliceParams[0].fadeOutMs, -1.0f, "slice.0.fadeOut (default)");
+
+    remove(tmppath);
+}
+
+static void verifySampleSectionEmpty(void) {
+    printf("  [sample section empty — no [sample] when not bounced]\n");
+    const char *tmppath = "/tmp/test_daw_sample_empty.song";
+
+    // chopState not bounced → no [sample] section should be written
+    chopStateClearTest();
+    chopState.bounced = false;
+
+    memset(&daw, 0, sizeof(DawState));
+    daw.transport.bpm = 120.0f;
+    for (int i = 0; i < NUM_PATCHES; i++) daw.patches[i] = createDefaultPatch(WAVE_SAW);
+
+    bool ok = dawSave(tmppath);
+    if (!ok) { printf("  FAIL: dawSave failed\n"); tests_failed++; return; }
+    tests_passed++;
+
+    // Verify file doesn't contain [sample]
+    FILE *f = fopen(tmppath, "r");
+    if (!f) { printf("  FAIL: can't open saved file\n"); tests_failed++; return; }
+    bool foundSample = false;
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        if (strncmp(line, "[sample]", 8) == 0) { foundSample = true; break; }
+    }
+    fclose(f);
+
+    if (foundSample) {
+        printf("  FAIL: [sample] section written when not bounced\n");
+        tests_failed++;
+    } else {
+        tests_passed++;
+    }
+
+    remove(tmppath);
+}
+
+// ============================================================================
 // MAIN
 // ============================================================================
 
@@ -1053,7 +1227,11 @@ int main(void) {
     verifyArrangement();
     verifyPatterns();
 
-    // 6. Guardrail: field coverage
+    // 6. Sample section round-trip
+    verifySampleSectionRoundTrip();
+    verifySampleSectionEmpty();
+
+    // 7. Guardrail: field coverage
     printf("  [guardrail tests]\n");
 
     // Re-setup, save, reset, load for guardrail test

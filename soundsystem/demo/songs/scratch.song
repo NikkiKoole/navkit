@@ -17,20 +17,32 @@ kickNudge = 0
 snareDelay = 0
 hatNudge = 0
 clapDelay = 0
-swing = 2
+swing = 0
 jitter = 0
-trackSwing0 = 2
-trackSwing1 = 2
-trackSwing2 = 2
-trackSwing3 = 2
-trackSwing4 = 2
-trackSwing5 = 2
-trackSwing6 = 2
-trackSwing7 = 2
-trackSwing8 = 2
-trackSwing9 = 2
-trackSwing10 = 2
-trackSwing11 = 2
+trackSwing0 = 0
+trackTranspose0 = 0
+trackSwing1 = 0
+trackTranspose1 = 0
+trackSwing2 = 0
+trackTranspose2 = 0
+trackSwing3 = 0
+trackTranspose3 = 0
+trackSwing4 = 0
+trackTranspose4 = 0
+trackSwing5 = 0
+trackTranspose5 = 0
+trackSwing6 = 0
+trackTranspose6 = 0
+trackSwing7 = 0
+trackTranspose7 = 0
+trackSwing8 = 0
+trackTranspose8 = 0
+trackSwing9 = 0
+trackTranspose9 = 0
+trackSwing10 = 0
+trackTranspose10 = 0
+trackSwing11 = 0
+trackTranspose11 = 0
 melodyTimingJitter = 0
 melodyVelocityJitter = 0
 
@@ -39,17 +51,17 @@ masterVol = 0.8
 voiceRandomVowel = false
 
 [patch.0]
-name = "909 Kick"
+name = "808 Kick"
 waveType = fm
 scwIndex = 0
 attack = 0
-decay = 0.3
+decay = 0.5
 sustain = 0
-release = 0.03
+release = 0.05
 expRelease = false
 expDecay = true
 oneShot = false
-volume = 0.55
+volume = 0.5
 pulseWidth = 0.5
 pwmRate = 3
 pwmDepth = 0
@@ -162,8 +174,8 @@ birdTrillDepth = 0
 birdAmRate = 0
 birdAmDepth = 0
 birdHarmonics = 0.2
-pitchEnvAmount = 24
-pitchEnvDecay = 0.025
+pitchEnvAmount = 19
+pitchEnvDecay = 0.04
 pitchEnvCurve = 0
 pitchEnvLinear = true
 noiseMix = 0
@@ -184,9 +196,9 @@ osc5Ratio = 0
 osc5Level = 0
 osc6Ratio = 0
 osc6Level = 0
-drive = 0.35
-clickLevel = 0.5
-clickTime = 0.003
+drive = 0.5
+clickLevel = 0.3
+clickTime = 0.005
 noiseMode = 0
 oscMixMode = 0
 retriggerCurve = 0
@@ -194,7 +206,7 @@ phaseReset = false
 noiseLPBypass = false
 noiseType = 0
 useTriggerFreq = true
-triggerFreq = 55
+triggerFreq = 50
 choke = false
 analogRolloff = false
 tubeSaturation = false
@@ -224,8 +236,8 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
-filterCutoff = 0.423438
-filterResonance = 0.770443
+filterCutoff = 1
+filterResonance = 0
 filterType = 0
 filterEnvAmt = 0
 filterEnvAttack = 0.01
@@ -393,8 +405,8 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
-filterCutoff = 0.48138
-filterResonance = 0.287174
+filterCutoff = 0.58
+filterResonance = 0
 filterType = 4
 filterEnvAmt = 0
 filterEnvAttack = 0.01
@@ -546,24 +558,24 @@ accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
 
 [patch.3]
-name = "Shaker"
+name = "808 Clap"
 waveType = noise
 scwIndex = 0
-attack = 0.001
-decay = 0.03
+attack = 0
+decay = 0.3
 sustain = 0
-release = 0.01
+release = 0.05
 expRelease = false
 expDecay = true
 oneShot = false
-volume = 0.35
+volume = 0.5
 pulseWidth = 0.5
 pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
-filterCutoff = 0.01
-filterResonance = 0.81849
+filterCutoff = 0.38
+filterResonance = 0
 filterType = 2
 filterEnvAmt = 0
 filterEnvAttack = 0.01
@@ -673,13 +685,13 @@ pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
 pitchEnvLinear = false
-noiseMix = 1
-noiseTone = 0.6
-noiseHP = 0.2
+noiseMix = 0
+noiseTone = 0.9
+noiseHP = 0.08
 noiseDecay = 0
-retriggerCount = 2
-retriggerSpread = 0.015
-retriggerOverlap = false
+retriggerCount = 3
+retriggerSpread = 0.012
+retriggerOverlap = true
 retriggerBurstDecay = 0.02
 osc2Ratio = 0
 osc2Level = 0
@@ -694,14 +706,14 @@ osc6Level = 0
 drive = 0
 clickLevel = 0
 clickTime = 0.005
-noiseMode = 0
+noiseMode = 2
 oscMixMode = 0
-retriggerCurve = 0
-phaseReset = true
+retriggerCurve = 0.15
+phaseReset = false
 noiseLPBypass = false
-noiseType = 0
+noiseType = 1
 useTriggerFreq = true
-triggerFreq = 800
+triggerFreq = 400
 choke = false
 analogRolloff = false
 tubeSaturation = false
@@ -766,8 +778,8 @@ arpChord = 1
 unisonCount = 3
 unisonDetune = 15
 unisonMix = 0.6
-monoMode = true
-glideTime = 0.210633
+monoMode = false
+glideTime = 0.1
 pluckBrightness = 0.5
 pluckDamping = 0.996
 pluckDamp = 0
@@ -1425,10 +1437,10 @@ phaserDepth0 = 0
 phaserMix0 = 0
 phaserFB0 = 0
 phaserStages0 = 0
-combOn0 = true
-combFreq0 = 81.2988
-combFB0 = 0.849238
-combMix0 = 0.0333991
+combOn0 = false
+combFreq0 = 0
+combFB0 = 0
+combMix0 = 0
 combDamping0 = 0
 vol1 = 0.8
 pan1 = 0
@@ -1448,9 +1460,9 @@ delaySyncDiv1 = 0
 delayTime1 = 0.3
 delayFB1 = 0.3
 delayMix1 = 0.3
-eqOn1 = true
+eqOn1 = false
 eqLowGain1 = 0
-eqHighGain1 = 9.18965
+eqHighGain1 = 0
 eqLowFreq1 = 0
 eqHighFreq1 = 0
 chorusOn1 = false
@@ -1460,15 +1472,15 @@ chorusMix1 = 0
 chorusDelay1 = 0
 chorusFB1 = 0
 phaserOn1 = false
-phaserRate1 = 0.975742
-phaserDepth1 = 1
-phaserMix1 = 1
+phaserRate1 = 0
+phaserDepth1 = 0
+phaserMix1 = 0
 phaserFB1 = 0
 phaserStages1 = 0
 combOn1 = false
-combFreq1 = 359.881
-combFB1 = 0.948809
-combMix1 = 0.697992
+combFreq1 = 0
+combFB1 = 0
+combMix1 = 0
 combDamping1 = 0
 vol2 = 0.8
 pan2 = 0
@@ -1690,12 +1702,12 @@ envCurve = 1
 envHPFreq = 0
 
 [masterfx]
-distOn = true
-distDrive = 11.9361
-distTone = 0.69959
+distOn = false
+distDrive = 2
+distTone = 0.7
 distMix = 0.5
 crushOn = false
-crushBits = 13.4603
+crushBits = 8
 crushRate = 4
 crushMix = 0.5
 chorusOn = false
@@ -1719,10 +1731,10 @@ combFeedback = 0
 combMix = 0
 combDamping = 0
 tapeOn = false
-tapeSaturation = 1
-tapeWow = 1
-tapeFlutter = 1
-tapeHiss = 0
+tapeSaturation = 0.3
+tapeWow = 0.1
+tapeFlutter = 0.1
+tapeHiss = 0.05
 delayOn = false
 delayTime = 0.3
 delayFeedback = 0.4
@@ -1732,8 +1744,8 @@ reverbOn = false
 reverbSize = 0.5
 reverbDamping = 0.5
 reverbPreDelay = 0.02
-reverbMix = 0
-reverbBass = 2
+reverbMix = 0.3
+reverbBass = 1
 eqOn = false
 eqLowGain = 0
 eqHighGain = 0
@@ -1741,15 +1753,16 @@ eqLowFreq = 80
 eqHighFreq = 6000
 subBassBoost = false
 compOn = false
-compThreshold = -0.117969
-compRatio = 20
-compAttack = 0.1
+compThreshold = -12
+compRatio = 4
+compAttack = 0.01
 compRelease = 0.1
-compMakeup = 9.81582
+compMakeup = 0
+compKnee = 0
 mbOn = false
-mbLowCross = 55.3789
-mbHighCross = 1000
-mbLowGain = 1.5901
+mbLowCross = 200
+mbHighCross = 3000
+mbLowGain = 1
 mbMidGain = 1
 mbHighGain = 1
 mbLowDrive = 1
@@ -1771,9 +1784,10 @@ wow = 0.1
 flutter = 0.1
 drift = 0.05
 speedTarget = 1
+speedSlew = 0.1
 rewindTime = 1.5
 rewindMinSpeed = 0.2
-rewindVinyl = 0.3
+rewindVinyl = 0.1
 rewindWobble = 0.2
 rewindFilter = 0.5
 rewindCurve = 0
@@ -1798,49 +1812,35 @@ length = 0
 loopsPerPattern = 2
 songMode = false
 
+[sample]
+sourceFile = "soundsystem/demo/songs/jojo.song"
+sourcePattern = 0
+sourceLoops = 1
+sliceCount = 8
+chopMode = 0
+sensitivity = 0.5
+fadeMs = 1
+padMap0 = -1
+padMap1 = -1
+padMap2 = -1
+padMap3 = -1
+
 [pattern.0]
 drumTrackLength = 16 16 16 16
 melodyTrackLength = 16 16 16
-d track=0 step=0 vel=0.745
-d track=0 step=2 vel=0.8
+samplerTrackLength = 16
+d track=0 step=0 vel=0.8
 d track=0 step=4 vel=0.8
-d track=0 step=6 vel=0.8
-d track=0 step=8 vel=0.49
-d track=0 step=10 vel=0.8
+d track=0 step=8 vel=0.8
 d track=0 step=12 vel=0.8
-d track=0 step=14 vel=0.8
-d track=1 step=1 vel=0.8
-d track=1 step=3 vel=0.8
-d track=1 step=5 vel=0.8
-d track=1 step=7 vel=0.8
-d track=1 step=9 vel=0.8
-d track=1 step=11 vel=0.8
-d track=1 step=13 vel=0.8
-d track=3 step=0 vel=0.8
-d track=3 step=1 vel=0.8
-d track=3 step=2 vel=0.8
-d track=3 step=3 vel=0.8
-d track=3 step=4 vel=0.8
-d track=3 step=5 vel=0.8
-d track=3 step=6 vel=0.8
-d track=3 step=7 vel=0.8
-d track=3 step=8 vel=0.8
-d track=3 step=9 vel=0.8
-d track=3 step=10 vel=0.8
-d track=3 step=11 vel=0.8
-d track=3 step=12 vel=0.8
-d track=3 step=13 vel=0.8
-d track=3 step=14 vel=0.8
-d track=3 step=15 vel=0.8
-m track=0 step=1 note=A#0 vel=0.8 gate=1
-m track=0 step=5 note=E3 vel=0.8 gate=1
-m track=0 step=8 note=F2 vel=0.8 gate=1
-m track=0 step=13 note=D3 vel=0.8 gate=1
-p track=1 step=7 param=pitch val=12
-p track=1 step=8 param=pitch val=-12
-p track=2 step=11 param=flamTime val=10
-p track=2 step=11 param=flamVelocity val=0.5
-p track=2 step=7 param=flamTime val=10
-p track=2 step=7 param=flamVelocity val=0.5
-p track=2 step=3 param=flamTime val=10
-p track=2 step=3 param=flamVelocity val=0.5
+d track=1 step=4 vel=0.8
+d track=1 step=12 vel=0.8
+d track=2 step=0 vel=0.8
+d track=2 step=2 vel=0.8
+d track=2 step=4 vel=0.8
+d track=2 step=6 vel=0.8
+d track=2 step=8 vel=0.8
+d track=2 step=10 vel=0.8
+d track=2 step=12 vel=0.8
+d track=2 step=14 vel=0.8
+s step=6 slice=7 vel=0.8 pitch=-1

@@ -209,8 +209,8 @@ static void initBridgeDrumPatches(void) {
 }
 
 // Saved note parameter block — applyPatchToGlobals writes these fields on SynthContext.
-static void bridgeDrumTriggerGeneric(int trackIdx, float vel, float pitch) {
-    (void)pitch;
+static void bridgeDrumTriggerGeneric(int trackIdx, float vel, float pitchMod) {
+    (void)pitchMod;
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
     initBridgeDrumPatches();
@@ -230,10 +230,10 @@ static void bridgeDrumTriggerGeneric(int trackIdx, float vel, float pitch) {
     }
 }
 
-static void bridgeDrumKick(float vel, float pitch)  { bridgeDrumTriggerGeneric(0, vel, pitch); }
-static void bridgeDrumSnare(float vel, float pitch) { bridgeDrumTriggerGeneric(1, vel, pitch); }
-static void bridgeDrumHH(float vel, float pitch)    { bridgeDrumTriggerGeneric(2, vel, pitch); }
-static void bridgeDrumClap(float vel, float pitch)  { bridgeDrumTriggerGeneric(3, vel, pitch); }
+static void bridgeDrumKick(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent)  { (void)note; (void)gateTime; (void)slide; (void)accent; bridgeDrumTriggerGeneric(0, vel, pitchMod); }
+static void bridgeDrumSnare(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) { (void)note; (void)gateTime; (void)slide; (void)accent; bridgeDrumTriggerGeneric(1, vel, pitchMod); }
+static void bridgeDrumHH(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent)    { (void)note; (void)gateTime; (void)slide; (void)accent; bridgeDrumTriggerGeneric(2, vel, pitchMod); }
+static void bridgeDrumClap(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent)  { (void)note; (void)gateTime; (void)slide; (void)accent; bridgeDrumTriggerGeneric(3, vel, pitchMod); }
 
 // ============================================================================
 // Unified melody trigger system — all instruments via SynthPatch presets
@@ -321,18 +321,18 @@ static SynthPatch* songPatch(int track, int presetIdx) {
 }
 
 // --- Default (Dormitory) song ---
-static void melodyTriggerBass(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTriggerBass(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     bridgeMelodyTrigger(0, note, vel, slide, accent, songPatch(0, PRESET_WARM_TRI));
 }
-static void melodyTriggerLead(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTriggerLead(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     SynthPatch *p = songPatch(1, PRESET_GLOCK);
     p->p_volume = 0.4f;
     bridgeMelodyTrigger(1, note, vel, slide, accent, p);
 }
-static void melodyTriggerChord(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTriggerChord(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     SynthPatch *p = songPatch(2, PRESET_DARK_CHOIR);
     p->p_attack = 0.8f; p->p_decay = 1.0f; p->p_sustain = 0.5f; p->p_release = 2.0f;
     p->p_volume = 0.35f;
@@ -340,31 +340,31 @@ static void melodyTriggerChord(int note, float vel, float gateTime, bool slide, 
 }
 
 // --- Suspense song ---
-static void melodyTriggerOrganBass(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTriggerOrganBass(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     bridgeMelodyTrigger(0, note, vel, slide, accent, songPatch(0, PRESET_DARK_ORGAN));
 }
-static void melodyTriggerVowel(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTriggerVowel(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     SynthPatch *p = songPatch(1, PRESET_EERIE_VOW);
     // Alternate vowel by pitch — low notes get U, high get O
     p->p_voiceVowel = (note < 67) ? VOWEL_U : VOWEL_O;
     bridgeMelodyTrigger(1, note, vel, slide, accent, p);
 }
-static void melodyTriggerOrganChord(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTriggerOrganChord(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     SynthPatch *p = songPatch(2, PRESET_DARK_ORGAN);
     p->p_attack = 1.0f; p->p_volume = 0.35f; p->p_filterCutoff = 0.22f;
     bridgeMelodyTrigger(2, note, vel, slide, accent, p);
 }
 
 // --- Jazz song ---
-static void melodyTriggerPluckBass(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTriggerPluckBass(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     bridgeMelodyTrigger(0, note, vel, slide, accent, songPatch(0, PRESET_WARM_PLUCK));
 }
-static void melodyTriggerVibes(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTriggerVibes(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     SynthPatch *p = songPatch(1, PRESET_MAC_VIBES);
     p->p_volume = accent ? 0.55f : 0.42f;
     bridgeMelodyTrigger(1, note, vel, slide, false, p); // accent already in volume
@@ -381,18 +381,18 @@ static void melodyTriggerFMKeysOnTrack(int track, int note, float vel, bool acce
     p->p_filterCutoff = 0.6f;
     bridgeMelodyTrigger(track, note, vel, false, false, p); // accent already in volume
 }
-static void melodyTriggerFMKeys(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide;
+static void melodyTriggerFMKeys(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod; (void)slide;
     melodyTriggerFMKeysOnTrack(2, note, vel, accent);
 }
-static void melodyTriggerFMKeysLead(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide;
+static void melodyTriggerFMKeysLead(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod; (void)slide;
     melodyTriggerFMKeysOnTrack(1, note, vel, accent);
 }
 
 // --- House song (sweep-modulated instruments) ---
-static void melodyTriggerAcidBass(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTriggerAcidBass(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     SynthPatch *p = songPatch(0, PRESET_ACID);
     float sweep = getSweepValue();
     p->p_filterCutoff = 0.08f + sweep * 0.57f;
@@ -402,8 +402,8 @@ static void melodyTriggerAcidBass(int note, float vel, float gateTime, bool slid
     p->p_glideTime = 0.15f;
     bridgeMelodyTrigger(0, note, vel, slide, false, p); // accent already in volume
 }
-static void melodyTriggerHouseStab(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide; (void)accent;
+static void melodyTriggerHouseStab(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod; (void)slide; (void)accent;
     SynthPatch *p = songPatch(1, PRESET_MAC_KEYS);
     float sweep = getSweepValue();
     p->p_waveType = WAVE_FM;
@@ -415,8 +415,8 @@ static void melodyTriggerHouseStab(int note, float vel, float gateTime, bool sli
     p->p_filterResonance = 0.10f;
     bridgeMelodyTrigger(1, note, vel, false, false, p);
 }
-static void melodyTriggerDeepPad(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide; (void)accent;
+static void melodyTriggerDeepPad(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod; (void)slide; (void)accent;
     SynthPatch *p = songPatch(2, PRESET_LUSH_STR);
     float sweep = getSweepValue();
     p->p_attack = 1.5f; p->p_decay = 2.0f; p->p_release = 3.0f;
@@ -424,67 +424,67 @@ static void melodyTriggerDeepPad(int note, float vel, float gateTime, bool slide
     p->p_filterResonance = 0.08f;
     bridgeMelodyTrigger(2, note, vel, false, false, p);
 }
-static void melodyTriggerSubBass(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTriggerSubBass(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     bridgeMelodyTrigger(0, note, vel, slide, accent, songPatch(0, PRESET_TRI_SUB));
 }
 
 // --- Dilla hip-hop ---
-static void melodyTriggerDillaBass(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTriggerDillaBass(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     SynthPatch *p = songPatch(0, PRESET_WARM_PLUCK);
     p->p_pluckBrightness = 0.35f; p->p_pluckDamping = 0.55f;
     p->p_filterCutoff = 0.20f; p->p_filterResonance = 0.12f;
     bridgeMelodyTrigger(0, note, vel, slide, accent, p);
 }
-static void melodyTriggerDillaKeys(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide;
+static void melodyTriggerDillaKeys(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod; (void)slide;
     SynthPatch *p = songPatch(1, PRESET_MAC_KEYS);
     p->p_decay = 0.35f; p->p_sustain = 0.15f; p->p_release = 0.5f;
     p->p_volume = accent ? 0.45f : 0.35f;
     p->p_filterCutoff = 0.35f; p->p_filterResonance = 0.08f;
     bridgeMelodyTrigger(1, note, vel, false, false, p); // accent already in volume
 }
-static void melodyTriggerDillaPad(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTriggerDillaPad(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     bridgeMelodyTrigger(2, note, vel, slide, accent, songPatch(2, PRESET_DARK_CHOIR));
 }
 
 // --- Mr Lucky ---
-static void melodyTriggerMrLuckyBass(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTriggerMrLuckyBass(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     SynthPatch *p = songPatch(0, PRESET_WARM_PLUCK);
     p->p_pluckBrightness = 0.45f; p->p_pluckDamping = 0.35f;
     p->p_filterCutoff = 0.35f; p->p_volume = 0.50f;
     bridgeMelodyTrigger(0, note, vel, slide, accent, p);
 }
-static void melodyTriggerMrLuckyVibes(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide; (void)accent;
+static void melodyTriggerMrLuckyVibes(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod; (void)slide; (void)accent;
     SynthPatch *p = songPatch(1, PRESET_MAC_VIBES);
     p->p_volume = 0.42f; p->p_filterCutoff = 0.55f;
     bridgeMelodyTrigger(1, note, vel, false, false, p);
 }
-static void melodyTriggerMrLuckyStrings(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTriggerMrLuckyStrings(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     bridgeMelodyTrigger(2, note, vel, slide, accent, songPatch(2, PRESET_LUSH_STR));
 }
 
 // --- Atmosphere ---
-static void melodyTriggerAtmoBass(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTriggerAtmoBass(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     SynthPatch *p = songPatch(0, PRESET_WARM_PLUCK);
     p->p_pluckBrightness = 0.5f; p->p_pluckDamping = 0.3f;
     p->p_filterCutoff = 0.30f; p->p_filterResonance = 0.08f; p->p_volume = 0.50f;
     bridgeMelodyTrigger(0, note, vel, slide, accent, p);
 }
-static void melodyTriggerAtmoGlocken(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTriggerAtmoGlocken(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     SynthPatch *p = songPatch(1, PRESET_GLOCK);
     p->p_volume = 0.45f; p->p_filterCutoff = 0.65f;
     bridgeMelodyTrigger(1, note, vel, slide, accent, p);
 }
-static void melodyTriggerAtmoStrings(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTriggerAtmoStrings(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     SynthPatch *p = songPatch(2, PRESET_LUSH_STR);
     p->p_attack = 1.2f; p->p_decay = 2.0f; p->p_sustain = 0.6f; p->p_release = 3.5f;
     p->p_volume = 0.35f; p->p_filterCutoff = 0.45f; p->p_filterResonance = 0.05f;
@@ -996,13 +996,13 @@ void SoundSynthPlaySongMule(SoundSynth* synth) {
 }
 
 // --- M.U.L.E. v2: 8-bit square bass + sawtooth melody via SynthPatch ---
-static void melodyTrigger8bitSquare(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTrigger8bitSquare(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     bridgeMelodyTrigger(0, note, vel, slide, accent, songPatch(0, PRESET_CHIP_SQUARE));
 }
 
-static void melodyTrigger8bitSaw(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void melodyTrigger8bitSaw(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     bridgeMelodyTrigger(1, note, vel, slide, accent, songPatch(1, PRESET_CHIP_SAW));
 }
 
@@ -1110,8 +1110,8 @@ bool SoundSynthIsSongPlaying(SoundSynth* synth) {
 
 // Generic melody trigger: reads instrument from SongPlayer.instruments[]
 static void melodyTriggerPatchGeneric(int track, int note, float vel,
-                                       float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)slide;
+                                       float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod; (void)slide;
     if (!g_soundSynth) return;
     useSoundSystem(&g_soundSynth->ss);
 
@@ -1134,14 +1134,14 @@ static void melodyTriggerPatchGeneric(int track, int note, float vel,
 }
 
 // Per-track wrappers (setMelodyCallbacks needs specific function signatures)
-static void melodyTriggerPatchBass(int note, float vel, float gateTime, bool slide, bool accent) {
-    melodyTriggerPatchGeneric(0, note, vel, gateTime, slide, accent);
+static void melodyTriggerPatchBass(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    melodyTriggerPatchGeneric(0, note, vel, gateTime, pitchMod, slide, accent);
 }
-static void melodyTriggerPatchLead(int note, float vel, float gateTime, bool slide, bool accent) {
-    melodyTriggerPatchGeneric(1, note, vel, gateTime, slide, accent);
+static void melodyTriggerPatchLead(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    melodyTriggerPatchGeneric(1, note, vel, gateTime, pitchMod, slide, accent);
 }
-static void melodyTriggerPatchChord(int note, float vel, float gateTime, bool slide, bool accent) {
-    melodyTriggerPatchGeneric(2, note, vel, gateTime, slide, accent);
+static void melodyTriggerPatchChord(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    melodyTriggerPatchGeneric(2, note, vel, gateTime, pitchMod, slide, accent);
 }
 static void melodyReleasePatchBass(void)  { melodyReleaseAllVoices(0); }
 static void melodyReleasePatchLead(void)  { melodyReleaseAllVoices(1); }

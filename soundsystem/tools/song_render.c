@@ -110,13 +110,12 @@ static int dawPatchToBus(int patchIdx) {
 // SEQUENCER CALLBACKS (matches daw.c trigger logic)
 // ============================================================================
 
-static void renderDrumTrigger(int trackIdx, int busIdx, float vel, float pitch) {
-    (void)pitch;
+static void renderDrumTrigger(int trackIdx, int busIdx, float vel, float pitchMod) {
     SynthPatch *p = &daw.patches[trackIdx];
     float pVol = plockValue(PLOCK_VOLUME, vel);
 
     float pitchOffset = plockValue(PLOCK_PITCH_OFFSET, 0.0f);
-    float trigFreq = p->p_triggerFreq;
+    float trigFreq = p->p_triggerFreq * pitchMod;
     if (pitchOffset != 0.0f) trigFreq *= powf(2.0f, pitchOffset / 12.0f);
 
     float origDecay = p->p_decay;
@@ -146,10 +145,10 @@ static void renderDrumTrigger(int trackIdx, int busIdx, float vel, float pitch) 
     p->p_filterCutoff = origCutoff;
 }
 
-static void renderDrumTrigger0(float vel, float p) { renderDrumTrigger(0, BUS_DRUM0, vel, p); }
-static void renderDrumTrigger1(float vel, float p) { renderDrumTrigger(1, BUS_DRUM1, vel, p); }
-static void renderDrumTrigger2(float vel, float p) { renderDrumTrigger(2, BUS_DRUM2, vel, p); }
-static void renderDrumTrigger3(float vel, float p) { renderDrumTrigger(3, BUS_DRUM3, vel, p); }
+static void renderDrumTrigger0(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) { (void)note; (void)gateTime; (void)slide; (void)accent; renderDrumTrigger(0, BUS_DRUM0, vel, pitchMod); }
+static void renderDrumTrigger1(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) { (void)note; (void)gateTime; (void)slide; (void)accent; renderDrumTrigger(1, BUS_DRUM1, vel, pitchMod); }
+static void renderDrumTrigger2(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) { (void)note; (void)gateTime; (void)slide; (void)accent; renderDrumTrigger(2, BUS_DRUM2, vel, pitchMod); }
+static void renderDrumTrigger3(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) { (void)note; (void)gateTime; (void)slide; (void)accent; renderDrumTrigger(3, BUS_DRUM3, vel, pitchMod); }
 
 static void renderMelodyTrigger(int trackIdx, int note, float vel,
                                  float gateTime, bool slide, bool accent) {
@@ -231,9 +230,9 @@ static void renderMelodyTrigger(int trackIdx, int note, float vel,
     p->p_volume = origVolume;
 }
 
-static void renderMelodyTrigger0(int n, float v, float g, bool s, bool a) { renderMelodyTrigger(0, n, v, g, s, a); }
-static void renderMelodyTrigger1(int n, float v, float g, bool s, bool a) { renderMelodyTrigger(1, n, v, g, s, a); }
-static void renderMelodyTrigger2(int n, float v, float g, bool s, bool a) { renderMelodyTrigger(2, n, v, g, s, a); }
+static void renderMelodyTrigger0(int n, float v, float g, float pm, bool s, bool a) { (void)pm; renderMelodyTrigger(0, n, v, g, s, a); }
+static void renderMelodyTrigger1(int n, float v, float g, float pm, bool s, bool a) { (void)pm; renderMelodyTrigger(1, n, v, g, s, a); }
+static void renderMelodyTrigger2(int n, float v, float g, float pm, bool s, bool a) { (void)pm; renderMelodyTrigger(2, n, v, g, s, a); }
 
 static void renderMelodyRelease(int t) {
     for (int i = 0; i < dawMelodyVoiceCount[t]; i++) {

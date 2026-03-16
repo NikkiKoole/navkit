@@ -47,6 +47,18 @@ typedef struct {
 } SamplerVoice;
 
 // ============================================================================
+// COMMAND QUEUE (lock-free SPSC for thread-safe preview triggers)
+// ============================================================================
+
+#define SAMPLER_CMD_QUEUE_SIZE 16
+
+typedef struct {
+    int slot;
+    float volume;
+    float speed;
+} SamplerCommand;
+
+// ============================================================================
 // SAMPLER CONTEXT
 // ============================================================================
 
@@ -55,6 +67,10 @@ typedef struct SamplerContext {
     SamplerVoice voices[SAMPLER_MAX_VOICES];
     float volume;             // Master volume
     int sampleRate;           // Output sample rate (for resampling)
+    // Lock-free SPSC command queue (main thread → audio thread)
+    SamplerCommand cmdQueue[SAMPLER_CMD_QUEUE_SIZE];
+    volatile int cmdHead;     // written by producer (main thread)
+    volatile int cmdTail;     // written by consumer (audio thread)
 } SamplerContext;
 
 // ============================================================================
@@ -419,6 +435,33 @@ static void samplerStopAll(void) {
     _ensureSamplerCtx();
     for (int i = 0; i < SAMPLER_MAX_VOICES; i++) {
         samplerCtx->voices[i].active = false;
+    }
+}
+
+// ============================================================================
+// COMMAND QUEUE OPERATIONS (thread-safe preview triggers)
+// ============================================================================
+
+// Queue a play command from the main thread (lock-free, non-blocking).
+// Returns true if queued, false if queue is full (command dropped).
+static bool samplerQueuePlay(int sampleIndex, float volume, float speed) {
+    _ensureSamplerCtx();
+    int head = samplerCtx->cmdHead;
+    int next = (head + 1) % SAMPLER_CMD_QUEUE_SIZE;
+    if (next == samplerCtx->cmdTail) return false;  // queue full
+    samplerCtx->cmdQueue[head] = (SamplerCommand){sampleIndex, volume, speed};
+    samplerCtx->cmdHead = next;  // publish (single writer, release semantics)
+    return true;
+}
+
+// Drain queued commands on the audio thread. Call at start of each audio buffer.
+// Calls samplerPlay() for each queued command (voice allocation on audio thread).
+static void samplerDrainQueue(void) {
+    if (!samplerCtx) return;
+    while (samplerCtx->cmdTail != samplerCtx->cmdHead) {
+        SamplerCommand cmd = samplerCtx->cmdQueue[samplerCtx->cmdTail];
+        samplerCtx->cmdTail = (samplerCtx->cmdTail + 1) % SAMPLER_CMD_QUEUE_SIZE;
+        samplerPlay(cmd.slot, cmd.volume, cmd.speed);
     }
 }
 

@@ -6,15 +6,13 @@ Every `.song` file in the library becomes a potential sample source. Since they'
 
 ## Summary
 
-The chop/flip system is fully functional: bounce any .song pattern, slice it (equal or transient detection), tweak per-slice params (reverse/pitch/gain/trim), sequence slices on a dedicated sampler track, freeze live dub loop or rewind audio. 11 of 12 implementation steps done; save/load deferred until the workflow feels right.
-
-**Known issues**: The bounce temporarily swaps global engine state, which required thread gating and callback save/restore. Works but is fragile — the architectural cleanup (item 1 below) would make it robust.
+The chop/flip system is fully functional: bounce any .song pattern, slice it (equal or transient detection), tweak per-slice params (reverse/pitch/gain/trim/fade), sequence slices on a dedicated sampler track with per-step pitch, freeze live dub loop or rewind audio. All 12 implementation steps complete, including recipe-based save/load.
 
 **Decisions needed**:
-1. **Legacy callback cleanup** — should we do the refactor to drop `DrumTriggerFunc`/`MelodyTriggerFunc` and use unified `TrackNoteOnFunc` everywhere? Low risk, ~5 files, eliminates the bounce fragility. Recommended as first thing next session.
-2. **Auto fade** — always-on 1ms fades, or per-slice configurable? Always-on is simpler.
-3. **Sampler patch UI** — minimal view (just volume + slice list) or skip for now?
-4. **Save/load** — ready to commit to the recipe format, or keep playing with it?
+1. ~~**Legacy callback cleanup**~~ — **DONE** (2026-03-16). Dropped `DrumTriggerFunc`/`MelodyTriggerFunc`, unified on `TrackNoteOnFunc` everywhere. Bounce no longer needs callback save/restore.
+2. ~~**Auto fade**~~ — **DONE** (2026-03-16). Global default 1ms + per-slice fade-in/fade-out override.
+3. ~~**Sampler patch UI**~~ — **DONE** (2026-03-16). Minimal view when sampler track selected: master volume, active voices, loaded slice list with playing indicator.
+4. ~~**Save/load**~~ — **DONE** (2026-03-16). Recipe-based `[sample]` section in `.daw` format with re-bounce on load.
 5. **Bus routing** — route sampler through an existing bus, or add a new BUS_SAMPLER?
 
 ---
@@ -76,9 +74,7 @@ The audio callback runs on CoreAudio's IO thread. All operations that modify sha
 ### Bounce (`renderPatternToBuffer`)
 Offline render of a .song pattern. Creates temp SoundSystem, loads song, ticks sequencer, renders synth+effects+mixer to float buffer. ~200ms for a typical pattern.
 
-**Shared state caveat**: The synth engine uses global context pointers (`synthCtx`, `fxCtx`, `seqCtx`) and file-scope static callback arrays (`_drumAdapters`, `_melodyAdapters`). The bounce swaps contexts and installs its own callbacks, then restores everything after. All global state that the bounce touches must be saved/restored — missing any piece causes the live system to use stale pointers (the root cause of several crashes and "melody track goes silent" bugs). The audio callback is gated during the bounce via `dawAudioGate()`/`dawAudioUngate()` to prevent concurrent access.
-
-**Future cleanup**: Move callback adapters into `SequencerContext` (instead of file-scope statics) so each instance is fully self-contained. This would eliminate the save/restore dance and make the bounce inherently safe. Tracked as architectural debt.
+The bounce creates a temp `SoundSystem` instance and calls `useSoundSystem()` to redirect all global context pointers (`synthCtx`, `fxCtx`, `seqCtx`). Since callbacks are now stored per-instance in `seq.trackNoteOn[]` / `seq.trackNoteOff[]` (part of `SequencerContext`), each bounce is fully self-contained — no global adapter state to save/restore. The audio callback is still gated during the bounce via `dawAudioGate()`/`dawAudioUngate()` to prevent concurrent context pointer access.
 
 ### Chop Modes
 - **Equal** (`chopEqual`): N equal-length slices (4/8/16). SP-404 / MPC workflow.
@@ -89,12 +85,13 @@ Offline render of a .song pattern. Creates temp SoundSystem, loads song, ticks s
 - **Pitch**: +/-24 semitones (applied at trigger via sampler speed)
 - **Gain**: 0-2x volume (baked into sample data)
 - **Trim start/end**: 0-100% (baked — extracts sub-region of original slice)
+- **Fade in/out**: per-slice override (0-10ms), defaults to global fade setting. Applied after gain, before reverse so fades land on the correct ends.
 
 ### Dedicated Sampler Track
-`TRACK_SAMPLER` at sequencer track index 7. Shows in the sequencer grid as the 8th row. Each step's note field selects which slice to play. Click to toggle, scroll wheel to change slice number, shift+scroll for velocity.
+`TRACK_SAMPLER` at sequencer track index 7. Shows in the sequencer grid as the 8th row. Each step's note field selects which slice to play. Click to toggle, scroll wheel to change slice number, shift+scroll for velocity, ctrl+scroll for per-step pitch offset (+/-24 semitones, shown as purple text in cell).
 
 ### Drum Pad Mapping
-`chopSliceMap[4]` on DawState. Per-drum-track sampler slot override. When set, drum steps trigger sampler instead of synth. Auto 0-3 button, scroll wheel per pad, right-click to clear.
+`chopSliceMap[4]` on DawState. Per-drum-track sampler slot override. When set, drum steps trigger sampler instead of synth. Auto 0-3 button, scroll wheel per pad, right-click to clear. Pad mapping is **opt-in only** — chopping a sample no longer auto-maps slices 0-3 to drum pads (removed the auto-assign on bounce). User must explicitly click "Auto" or scroll-assign pads.
 
 ### Live Freeze
 - **Dub loop freeze**: captures 4-second tape buffer into sampler slot
@@ -106,7 +103,8 @@ Offline render of a .song pattern. Creates temp SoundSystem, loads song, ticks s
 - Equal/Transient mode toggle with sensitivity slider
 - Interactive waveform with slice markers and playhead
 - Click slice to select + preview
-- Per-slice param editor (Rev/Pitch/Gain) when slice selected
+- Per-slice param editor (Rev/Pitch/Gain/FadeIn/FadeOut) when slice selected
+- Global fade control (0-5ms, drag to adjust, right-click resets to 1ms)
 - Slice trim waveform with L-drag=start, R-drag=end
 - Pad mapping with Auto/Clear buttons
 - Freeze Dub / Freeze Rewind buttons
@@ -116,9 +114,9 @@ Offline render of a .song pattern. Creates temp SoundSystem, loads song, ticks s
 
 ---
 
-## Deferred: .song Save/Load
+## .song Save/Load — DONE (2026-03-16)
 
-Save a **recipe** (no audio data) in a `[sample]` section:
+Saves a **recipe** (no audio data) in a `[sample]` section of the `.daw` format:
 
 ```ini
 [sample]
@@ -126,15 +124,17 @@ sourceFile = dilla.song
 sourcePattern = 0
 sourceLoops = 1
 sliceCount = 8
-sliceMode = transient
+chopMode = 1
 sensitivity = 0.5
+fadeMs = 1.0
 padMap0 = 3
 padMap1 = 7
 slice.3.reverse = true
 slice.7.pitch = -5
+slice.7.gain = 0.8
 ```
 
-On load: re-bounce, re-chop, apply params. Deferred until the workflow is proven in practice.
+On load: re-bounces from source `.song`, re-chops, restores per-slice params (reverse/pitch/gain/trim/fade) and pad mappings. Recursion guard (`_dawLoadRebouncing`) prevents infinite loop when nested `dawLoad` calls encounter `[sample]` sections. Round-trip tests (30+ assertions) in `test_daw_file.c`. Guarded with `#ifdef DAW_HAS_CHOP_STATE` so non-DAW build targets (song_render, bridge tools) compile cleanly.
 
 ---
 
@@ -150,38 +150,44 @@ On load: re-bounce, re-chop, apply params. Deferred until the workflow is proven
 | 7-8 | Dub loop + rewind freeze | DONE |
 | 9 | Transient detection | DONE |
 | 10 | Per-slice params (reverse/pitch/gain/trim) | DONE |
-| 11 | .song save/load | DEFERRED |
+| 11 | .song save/load | DONE |
 | 12 | Dedicated sampler track (TRACK_SAMPLER) | DONE |
 | — | Audio thread safety (gate/ungate handshake) | DONE |
 | — | Playhead in waveform displays | DONE |
+| — | Unified callback refactor (drop legacy adapters) | DONE |
+| — | Golden tests (callback equivalence + WAV checksums) | DONE |
+| — | Per-step drum pitch via pitchMod | DONE |
+| — | Auto-fade (global + per-slice override) | DONE |
+| — | Per-step sampler pitch (Ctrl+scroll) | DONE |
+| — | Sampler SPSC command queue (thread safety) | DONE |
+| — | Double-buffer sync state (no parameter tearing) | DONE |
+| — | Sampler patch UI (replaces synth params for track 7) | DONE |
 
 ---
 
 ## Next Steps / Polish
 
-### Per-step pitch on sampler track
-Currently pitch is per-slice (set in Sample tab). Need per-step pitch so you can play the same slice at different pitches across steps — melodic sampling. The sequencer already passes `pitchMod` (from `sn->nudge`) through to the sampler trigger callback. Just need UI: **Ctrl+scroll** on a sampler grid cell to adjust pitch in semitones. Display pitch offset in the cell when non-zero (e.g. "+3" or "-5").
+### ~~Per-step pitch on sampler track~~ — DONE (2026-03-16)
+Ctrl+scroll on sampler grid cells adjusts per-step pitch offset (`nudge`) in semitones (-24 to +24). Displayed as purple `+3` / `-5` text at bottom of cell. Uses accumulator pattern for smooth trackpad scrolling. Pitch goes through existing `pitchMod` → `dawSamplerTrigger` → `samplerPlay(speed)` path, combined with per-slice pitch from the Sample tab. Already saved/loaded via `StepNote.nudge` in daw_file.h/song_file.h.
 
-### Fade in/out (click prevention)
-Slices from transient detection can start/end mid-waveform, causing audible clicks. Add short auto-fades (1-5ms, ~50-220 samples) applied in `chopApplySliceParams` when building the sample buffer:
-```c
-// Fade in: first N samples *= ramp 0→1
-for (int i = 0; i < fadeLen && i < len; i++)
-    data[i] *= (float)i / fadeLen;
-// Fade out: last N samples *= ramp 1→0
-for (int i = 0; i < fadeLen && i < len; i++)
-    data[len - 1 - i] *= (float)i / fadeLen;
-```
-Could be always-on (1ms) or configurable per-slice. Always-on is simpler and rarely audible.
+### ~~Fade in/out (click prevention)~~ — DONE (2026-03-16)
+Two-level system:
+- **Global fade** (`chopState.fadeMs`): default 1ms, range 0-5ms. Drag control in Sample tab chop row. Right-click resets to 1ms. "OFF" when 0.
+- **Per-slice override** (`fadeInMs` / `fadeOutMs`): default -1 (= use global, shown as "auto"). Override range 0-10ms. Right-click resets to auto.
+- Applied in `chopApplySliceParams()` after gain, before reverse (so reversed slices get fades at correct ends). Linear ramp.
 
-### Sampler patch UI (replace synth params)
-When the sampler track is selected (track 7), the Patch tab currently shows the full synth parameter editor (oscillator, filter, ADSR, LFO...) — none of which apply to sample playback. Options:
+### ~~Sampler patch UI~~ — DONE (2026-03-16)
+When the sampler track is selected (track 7), the Patch tab now shows a dedicated sampler view (`drawParamSampler()` in daw.c) instead of the full synth parameter editor:
+- **Master volume**: drag to adjust (0-200%), right-click resets to 100%
+- **Active voices**: count of playing voices / max
+- **Loaded slices list**: index, name, duration. Playing slices highlighted in green.
 
-**Option A (simple)**: Detect `track == SEQ_TRACK_SAMPLER` in the patch tab draw, show a minimal "Sampler" view instead: master volume, maybe a simple LP/HP filter on sampler output, and a list of loaded slices with their params.
-
-**Option B (later)**: Per-slot sampler parameters — filter cutoff/resonance, ADSR envelope on the sampler voice (for gated playback instead of one-shot), loop points. This turns the sampler into a proper instrument.
-
-Option A first — just prevent the confusing full-synth UI from showing.
+**Future additions for this view** (Option B):
+- One-shot vs gate mode toggle (gate = cut playback when step ends)
+- LP/HP filter on sampler output (simple cutoff + type)
+- ADSR envelope on sampler voices (for gated pads, swells)
+- Choke group assignment per slice
+- Timestretch (pitch-independent speed — needs a stretch algorithm)
 
 ### Choke groups
 Slices that cut each other off (like open/closed hihat). Add a `chokeGroup` field per slice (0 = none, 1-4 = group). When a slice triggers, stop all playing voices in the same choke group. Implementation: scan `samplerCtx->voices[]` in the trigger callback, kill matching group members.
@@ -196,57 +202,38 @@ Currently sampler output goes directly to master (post bus mixer). For effects p
 
 ## Architectural Improvements
 
-### 1. Eliminate legacy callback adapters (move into SequencerContext)
+### 1. ~~Eliminate legacy callback adapters~~ — DONE (2026-03-16)
 
-**Problem**: The sequencer has two callback layers:
-- **Unified**: `TrackNoteOnFunc(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent)` — stored per-track in `seq.trackNoteOn[]` (part of `SequencerContext`)
-- **Legacy**: `DrumTriggerFunc(float vel, float pitch)` and `MelodyTriggerFunc(int note, float vel, float gateTime, bool slide, bool accent)` — different signatures, adapted via file-scope static arrays (`_drumAdapters[]`, `_melodyAdapters[]`, `_melodyReleaseAdapters[]`)
+Deleted `DrumTriggerFunc`, `MelodyTriggerFunc`, `MelodyReleaseFunc` typedefs and all adapter infrastructure (~50 lines from `sequencer.h`). All callers now use `TrackNoteOnFunc` / `TrackNoteOffFunc` directly.
 
-The adapters (`_drumNoteOnAdapter0`, `_melodyNoteOnAdapter0`, etc.) are hardcoded per-index wrapper functions that read from the file-scope arrays. These arrays are **global mutable state** shared across all sequencer instances — the root cause of the bounce clobbering live callbacks.
+**What changed**:
+- `initSequencer()` takes `TrackNoteOnFunc` for drums (was `DrumTriggerFunc`)
+- `setMelodyCallbacks()` takes `TrackNoteOnFunc` + `TrackNoteOffFunc` (was `MelodyTriggerFunc` + `MelodyReleaseFunc`)
+- Deleted: `_drumAdapters[]`, `_melodyAdapters[]`, `_melodyReleaseAdapters[]`, all 10 adapter wrapper functions
+- Updated 7 caller files: `daw_audio.h`, `sample_chop.h`, `song_render.c`, `bridge_render.c`, `bridge_export.c`, `sound_synth_bridge.c`, `test_soundsystem.c`
+- Deleted save/restore of adapter arrays in `renderPatternToBuffer()` — no longer needed since callbacks are per-instance in `SequencerContext`
+- Drum callbacks now receive `pitchMod` (from `sn->nudge` via `powf(2, nudge/12)`) and apply it as a base frequency multiplier, with `PLOCK_PITCH_OFFSET` adding on top — per-step drum pitch actually works now
 
-**Strategy**: Drop the legacy signatures entirely. All callers switch to `TrackNoteOnFunc` directly.
+**Safety net**: Golden tests added before refactor — callback equivalence tests (6), parameter recording tests (4), and audio render CRC32 checksum test (1) in `test_soundsystem.c`. Plus WAV checksum script (`soundsystem/tools/golden_wav_gen.sh`) for 5 reference songs.
 
-**Step-by-step**:
-1. Change `initSequencer` to take `TrackNoteOnFunc` for drums (or just set `seq.trackNoteOn[i]` directly)
-2. Change `setMelodyCallbacks` to take `TrackNoteOnFunc` + `TrackNoteOffFunc` (or just set directly)
-3. Update DAW callbacks: `dawDrumTrigger0(float vel, float pitch)` → `dawDrumTrigger0(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent)` (ignore unused params)
-4. Same for `song_render.c`, `bridge_render.c`, `bridge_export.c`, `sample_chop.h`
-5. Delete: `_drumAdapters[]`, `_melodyAdapters[]`, `_melodyReleaseAdapters[]`, all `_drumNoteOnAdapterN` and `_melodyNoteOnAdapterN` wrapper functions (~50 lines)
-6. Delete `DrumTriggerFunc` and `MelodyTriggerFunc` typedefs
-7. Remove the save/restore dance in `sample_chop.h`
+### 2. ~~Sampler voice contention~~ — DONE (2026-03-16)
 
-**Callers to update** (5 files):
-- `daw_audio.h`: `dawDrumTrigger0-3`, `dawMelodyTrigger0-2` — change signatures
-- `sample_chop.h`: `_chopDrum0-3`, `_chopMel0-2` — change signatures
-- `song_render.c`: `renderDrumTrigger0-3`, `renderMelodyTrigger0-2` — change signatures
-- `bridge_render.c`: drum/melody callbacks — change signatures
-- `bridge_export.c`: stub callbacks — change signatures
+Lock-free SPSC ring buffer (16 slots) added to `SamplerContext`. Preview clicks from the Sample tab now call `samplerQueuePlay()` (main thread push), and `samplerDrainQueue()` at the top of `DawAudioCallback` drains the queue and calls `samplerPlay()` on the audio thread. All voice allocation is now serialized to the audio thread — race condition eliminated.
 
-**Impact**: ~50 lines deleted from sequencer.h, ~10 lines changed per caller file. `trackNoteOn[]` and `trackNoteOff[]` in the `Sequencer` struct are already per-instance (part of `SequencerContext`), so after this refactor each instance is fully self-contained. No more global adapter state, no more save/restore.
+**What changed**:
+- `SamplerCommand` struct + `cmdQueue[16]` / `cmdHead` / `cmdTail` on `SamplerContext` (sampler.h)
+- `samplerQueuePlay()` — non-blocking push, drops if full
+- `samplerDrainQueue()` — called at top of audio callback
+- daw.c preview click: `samplerPlay()` → `samplerQueuePlay()`
+- Tests: 5 tests in `describe(sampler_command_queue)` — push/pop, multiple commands, overflow, empty drain, parameter preservation
 
-**Risk**: Low. The unified signature already exists and is used by the tick loop. The adapters are purely a bridge for the old API. The sampler track (`dawSamplerTrigger`) already uses the unified signature — it's the proof that this works.
+### 3. ~~Double-buffer sync state~~ — DONE (2026-03-16)
 
-### 2. Sampler voice contention (main thread vs audio thread)
+Moved engine state sync from main thread to audio thread via shadow buffer. Main thread snapshots `daw` → `dawSyncShadow` (single memcpy) and sets `dawSyncPending`. Audio callback checks the flag and calls `dawSyncEngineStateFrom(&dawSyncShadow)` — all 100+ field writes to `fx`, `synthCtx`, bus state, dub loop, rewind now happen atomically on the audio thread. Zero parameter tearing.
 
-**Problem**: `samplerPlay()` from UI preview clicks writes to `samplerCtx->voices[]` on the main thread while `processSamplerStereo()` reads/writes the same voices on the audio thread. This can cause glitches or out-of-bounds reads.
-
-**Strategy**: Queue preview commands. Add a lock-free SPSC (single-producer single-consumer) ring buffer for "play" commands:
-```c
-typedef struct { int slot; float vol; float speed; } SamplerCommand;
-SamplerCommand samplerCmdQueue[16];
-volatile int samplerCmdHead, samplerCmdTail;
-```
-Main thread pushes commands. Audio callback drains the queue at the start of each buffer. This serializes all voice allocation to the audio thread. Small change (~30 lines), eliminates the last race condition.
-
-### 3. Double-buffer sync state (dawSyncEngineState)
-
-**Problem**: `dawSyncEngineState()` copies 50+ fields from `daw` into `fx`, `synthCtx`, bus state, etc. on the main thread while the audio callback reads them. Individual field writes are usually atomic on ARM but the batch is not — the audio thread can see a half-updated state (e.g. reverb size changed but reverb mix not yet).
-
-**Strategy**: Write to a shadow `DawState` struct, then swap a pointer that the audio callback reads from:
-```c
-static DawState dawSyncA, dawSyncB;
-static volatile DawState *dawSyncActive = &dawSyncA;
-// Main thread: write to inactive buffer, swap
-// Audio thread: read from dawSyncActive
-```
-This is a larger refactor (audio callback reads from the sync buffer instead of `daw` directly) but eliminates all parameter tearing. Lower priority — the current tearing causes clicks at worst, not crashes.
+**What changed**:
+- `dawSyncEngineState()` refactored to `dawSyncEngineStateFrom(const DawState *d)` — takes explicit source, reads `d->` instead of `daw.`
+- `dawSyncEngineState()` wrapper: `memcpy(&dawSyncShadow, &daw, ...)` + `dawSyncPending = true`
+- Audio callback: drains pending sync before processing
+- `daw_render.c` (headless): calls `dawSyncEngineStateFrom(&daw)` directly (single-threaded, no shadow needed)
+- Fixed pre-existing `GetMouseDelta` missing from `raylib_headless.h`

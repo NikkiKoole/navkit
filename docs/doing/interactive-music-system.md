@@ -439,6 +439,11 @@ All in related keys (D dorian / A minor / F major are diatonic neighbors; B♭ m
 - Director fades tracks based on idle ratio + job count
 
 ### Step 4: SFX system
+- **Prerequisite**: SFX patch cleanup (see `docs/doing/sfx-system-cleanup.md`)
+  - Legacy `sfxJump`/`sfxCoin`/etc. bypass the patch system — only set 7 params on raw voices
+  - Fix: define SFX as proper `SynthPatch` structs, trigger via `playNoteWithPatch()`
+  - Add `p_humanize` per-patch field for per-trigger randomization (useful for drums too)
+  - Delete legacy `initSfxVoice()` and 6 unused SFX functions
 - `sfx.h/c` — `SFX_Play(type, x, y, z)`
 - 10-15 synthesized one-shots (mining, chopping, pickup, drop, build, UI)
 - Spatial volume/pan based on camera
@@ -501,7 +506,8 @@ Key files:
 - `soundsystem/docs/plan-of-attack.md` — soundsystem TODO/roadmap (links back here)
 
 Related design docs:
+- `docs/doing/sfx-system-cleanup.md` — SFX patch cleanup, prerequisite for Step 4
 - `docs/todo/ensemble-stations.md` — diegetic music: movers play instruments at stations, tracks = seats
-- `docs/todo/sounds/sound-and-mind-design.md` — agent communication via synth (concepts, signals, learning)
-- `docs/todo/sounds/sound-needs-emotions-groundwork.md` — needs/emotions as foundation for sound behavior
-- `docs/todo/sounds/soundsystem-feature-gaps.md` — feature gaps in the soundsystem
+- `docs/vision/sounds/sound-and-mind-design.md` — agent communication via synth (concepts, signals, learning)
+- `docs/vision/sounds/sound-needs-emotions-groundwork.md` — needs/emotions as foundation for sound behavior
+- `docs/vision/sounds/soundsystem-feature-gaps.md` — feature gaps in the soundsystem

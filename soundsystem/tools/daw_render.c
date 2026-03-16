@@ -240,7 +240,7 @@ int main(int argc, char *argv[]) {
         seq.currentPattern = daw.song.patterns[0];
     }
 
-    dawSyncEngineState();
+    dawSyncEngineStateFrom(&daw);
     dawSyncSequencer();
 
     // Allocate output buffer
@@ -266,7 +266,7 @@ int main(int argc, char *argv[]) {
             setMixerTempo(daw.transport.bpm);
             synthCtx->bpm = daw.transport.bpm;
             dawSyncSequencer();
-            dawSyncEngineState();
+            dawSyncEngineStateFrom(&daw);
             updateSequencer(seqDt);
 
         }

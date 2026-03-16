@@ -351,10 +351,7 @@ typedef struct {
 typedef void (*TrackNoteOnFunc)(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent);
 typedef void (*TrackNoteOffFunc)(void);
 
-// Legacy callback types (for compat wrappers in initSequencer/setMelodyCallbacks)
-typedef void (*DrumTriggerFunc)(float vel, float pitch);
-typedef void (*MelodyTriggerFunc)(int note, float vel, float gateTime, bool slide, bool accent);
-typedef void (*MelodyReleaseFunc)(void);
+
 
 // Step manipulation helpers
 static void stepV2Clear(StepV2 *s) {
@@ -680,7 +677,7 @@ static void patSetDrum(Pattern *p, int track, int step, float vel, float pitch) 
     sv->notes[0].note = 1;
     sv->notes[0].velocity = velFloatToU8(vel);
     sv->notes[0].gate = 0;
-    sv->notes[0].nudge = (int8_t)(pitch * 12.0f);
+    sv->notes[0].nudge = (int8_t)(roundf(pitch * 12.0f));
     sv->noteCount = 1;
 }
 
@@ -1106,57 +1103,9 @@ static void stopSequencer(void) {
     releaseAllMelodyNotes();
 }
 
-// --- Legacy→unified adapter: wraps a DrumTriggerFunc as a TrackNoteOnFunc ---
-// Uses a static table so each drum track gets its own wrapper closure.
-static DrumTriggerFunc _drumAdapters[SEQ_DRUM_TRACKS];
-static void _drumNoteOnAdapter0(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
-    (void)note; (void)gateTime; (void)slide; (void)accent;
-    if (_drumAdapters[0]) _drumAdapters[0](vel, pitchMod);
-}
-static void _drumNoteOnAdapter1(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
-    (void)note; (void)gateTime; (void)slide; (void)accent;
-    if (_drumAdapters[1]) _drumAdapters[1](vel, pitchMod);
-}
-static void _drumNoteOnAdapter2(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
-    (void)note; (void)gateTime; (void)slide; (void)accent;
-    if (_drumAdapters[2]) _drumAdapters[2](vel, pitchMod);
-}
-static void _drumNoteOnAdapter3(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
-    (void)note; (void)gateTime; (void)slide; (void)accent;
-    if (_drumAdapters[3]) _drumAdapters[3](vel, pitchMod);
-}
-static TrackNoteOnFunc _drumNoteOnAdapters[SEQ_DRUM_TRACKS] = {
-    _drumNoteOnAdapter0, _drumNoteOnAdapter1, _drumNoteOnAdapter2, _drumNoteOnAdapter3
-};
-
-// --- Legacy→unified adapter: wraps MelodyTriggerFunc/MelodyReleaseFunc ---
-static MelodyTriggerFunc _melodyAdapters[SEQ_MELODY_TRACKS];
-static MelodyReleaseFunc _melodyReleaseAdapters[SEQ_MELODY_TRACKS];
-static void _melodyNoteOnAdapter0(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
-    (void)pitchMod;
-    if (_melodyAdapters[0]) _melodyAdapters[0](note, vel, gateTime, slide, accent);
-}
-static void _melodyNoteOnAdapter1(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
-    (void)pitchMod;
-    if (_melodyAdapters[1]) _melodyAdapters[1](note, vel, gateTime, slide, accent);
-}
-static void _melodyNoteOnAdapter2(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
-    (void)pitchMod;
-    if (_melodyAdapters[2]) _melodyAdapters[2](note, vel, gateTime, slide, accent);
-}
-static TrackNoteOnFunc _melodyNoteOnAdapters[SEQ_MELODY_TRACKS] = {
-    _melodyNoteOnAdapter0, _melodyNoteOnAdapter1, _melodyNoteOnAdapter2
-};
-static void _melodyNoteOffAdapter0(void) { if (_melodyReleaseAdapters[0]) _melodyReleaseAdapters[0](); }
-static void _melodyNoteOffAdapter1(void) { if (_melodyReleaseAdapters[1]) _melodyReleaseAdapters[1](); }
-static void _melodyNoteOffAdapter2(void) { if (_melodyReleaseAdapters[2]) _melodyReleaseAdapters[2](); }
-static TrackNoteOffFunc _melodyNoteOffAdapters[SEQ_MELODY_TRACKS] = {
-    _melodyNoteOffAdapter0, _melodyNoteOffAdapter1, _melodyNoteOffAdapter2
-};
-
-// Initialize sequencer with drum trigger functions (legacy API — wraps to unified callbacks)
-static void initSequencer(DrumTriggerFunc kickFn, DrumTriggerFunc snareFn,
-                          DrumTriggerFunc hhFn, DrumTriggerFunc clapFn) {
+// Initialize sequencer with drum trigger callbacks (unified API)
+static void initSequencer(TrackNoteOnFunc kickFn, TrackNoteOnFunc snareFn,
+                          TrackNoteOnFunc hhFn, TrackNoteOnFunc clapFn) {
     _ensureSeqCtx();
 
     // Initialize all patterns
@@ -1203,11 +1152,10 @@ static void initSequencer(DrumTriggerFunc kickFn, DrumTriggerFunc snareFn,
     seq.trackNames[5] = "Lead";
     seq.trackNames[6] = "Chord";
 
-    // Install drum adapters (bridge DrumTriggerFunc → TrackNoteOnFunc)
-    DrumTriggerFunc drumFns[SEQ_DRUM_TRACKS] = { kickFn, snareFn, hhFn, clapFn };
+    // Install drum callbacks directly
+    TrackNoteOnFunc drumFns[SEQ_DRUM_TRACKS] = { kickFn, snareFn, hhFn, clapFn };
     for (int i = 0; i < SEQ_DRUM_TRACKS; i++) {
-        _drumAdapters[i] = drumFns[i];
-        seq.trackNoteOn[i] = drumFns[i] ? _drumNoteOnAdapters[i] : NULL;
+        seq.trackNoteOn[i] = drumFns[i];
     }
 
     // Initialize playback state
@@ -1247,15 +1195,12 @@ static void seqSet32ndNoteMode(bool enable) {
     seq.ticksPerStep = enable ? SEQ_TICKS_PER_STEP_32ND : SEQ_TICKS_PER_STEP_16TH;
 }
 
-// Set melodic track trigger/release functions (legacy API — wraps to unified callbacks)
-static void setMelodyCallbacks(int track, MelodyTriggerFunc trigger, MelodyReleaseFunc release) {
+// Set melodic track trigger/release callbacks (unified API)
+static void setMelodyCallbacks(int track, TrackNoteOnFunc trigger, TrackNoteOffFunc release) {
     if (track < 0 || track >= SEQ_MELODY_TRACKS) return;
-    // Install unified adapter (bridge MelodyTriggerFunc → TrackNoteOnFunc)
-    _melodyAdapters[track] = trigger;
-    _melodyReleaseAdapters[track] = release;
     int absTrack = SEQ_DRUM_TRACKS + track;
-    seq.trackNoteOn[absTrack] = trigger ? _melodyNoteOnAdapters[track] : NULL;
-    seq.trackNoteOff[absTrack] = release ? _melodyNoteOffAdapters[track] : NULL;
+    seq.trackNoteOn[absTrack] = trigger;
+    seq.trackNoteOff[absTrack] = release;
 }
 
 // ============================================================================

@@ -160,6 +160,7 @@ static inline bool IsKeyDown(int k) { (void)k; return false; }
 static inline bool IsKeyReleased(int k) { (void)k; return false; }
 static inline int GetCharPressed(void) { return 0; }
 static inline Vector2 GetMousePosition(void) { return (Vector2){0, 0}; }
+static inline Vector2 GetMouseDelta(void) { return (Vector2){0, 0}; }
 static inline bool IsMouseButtonPressed(int b) { (void)b; return false; }
 static inline bool IsMouseButtonDown(int b) { (void)b; return false; }
 static inline float GetMouseWheelMove(void) { return 0.0f; }

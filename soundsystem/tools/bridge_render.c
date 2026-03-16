@@ -44,8 +44,8 @@ static void initBridgeDrums(void) {
     bridgeDrumPatches[3] = instrumentPresets[26].patch; // 808 Clap
 }
 
-static void bridgeDrumTrigger(int idx, float vel, float pitch) {
-    (void)pitch;
+static void bridgeDrumTrigger(int idx, float vel, float pitchMod) {
+    (void)pitchMod;
     SynthPatch *p = &bridgeDrumPatches[idx];
     if (p->p_choke && bridgeDrumVoice[idx] >= 0 &&
         synthVoices[bridgeDrumVoice[idx]].envStage > 0) {
@@ -56,10 +56,10 @@ static void bridgeDrumTrigger(int idx, float vel, float pitch) {
     if (v >= 0) synthVoices[v].volume *= vel;
 }
 
-static void drumKick(float v, float p)  { bridgeDrumTrigger(0, v, p); }
-static void drumSnare(float v, float p) { bridgeDrumTrigger(1, v, p); }
-static void drumHH(float v, float p)    { bridgeDrumTrigger(2, v, p); }
-static void drumClap(float v, float p)  { bridgeDrumTrigger(3, v, p); }
+static void drumKick(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent)  { (void)note; (void)gateTime; (void)slide; (void)accent; bridgeDrumTrigger(0, vel, pitchMod); }
+static void drumSnare(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) { (void)note; (void)gateTime; (void)slide; (void)accent; bridgeDrumTrigger(1, vel, pitchMod); }
+static void drumHH(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent)    { (void)note; (void)gateTime; (void)slide; (void)accent; bridgeDrumTrigger(2, vel, pitchMod); }
+static void drumClap(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent)  { (void)note; (void)gateTime; (void)slide; (void)accent; bridgeDrumTrigger(3, vel, pitchMod); }
 
 // Melody voice tracking
 #define MAX_CHORD_VOICES 6
@@ -92,19 +92,19 @@ static void melRelease(int track) {
 }
 
 // Dormitory-specific triggers
-static void melBass(int n, float v, float g, bool s, bool a) {
-    (void)g; (void)s; (void)a;
+static void melBass(int n, float v, float g, float pm, bool s, bool a) {
+    (void)g; (void)pm; (void)s; (void)a;
     melPatches[0] = instrumentPresets[38].patch; // Warm Tri Bass
     melTrigger(0, n, v, &melPatches[0]);
 }
-static void melLead(int n, float v, float g, bool s, bool a) {
-    (void)g; (void)s; (void)a;
+static void melLead(int n, float v, float g, float pm, bool s, bool a) {
+    (void)g; (void)pm; (void)s; (void)a;
     melPatches[1] = instrumentPresets[15].patch; // Piku Glock
     melPatches[1].p_volume = 0.4f;
     melTrigger(1, n, v, &melPatches[1]);
 }
-static void melChord(int n, float v, float g, bool s, bool a) {
-    (void)g; (void)s; (void)a;
+static void melChord(int n, float v, float g, float pm, bool s, bool a) {
+    (void)g; (void)pm; (void)s; (void)a;
     melPatches[2] = instrumentPresets[42].patch; // Dark Choir
     melPatches[2].p_attack = 0.8f;
     melPatches[2].p_decay = 1.0f;
@@ -119,13 +119,13 @@ static void melRelLead(void)  { melRelease(1); }
 static void melRelChord(void) { melRelease(2); }
 
 // Gymnopedie-specific triggers
-static void gymPluckBass(int n, float v, float g, bool s, bool a) {
-    (void)g; (void)s; (void)a;
+static void gymPluckBass(int n, float v, float g, float pm, bool s, bool a) {
+    (void)g; (void)pm; (void)s; (void)a;
     melPatches[0] = instrumentPresets[44].patch; // Warm Pluck
     melTrigger(0, n, v, &melPatches[0]);
 }
-static void gymFMKeysLead(int n, float v, float g, bool s, bool a) {
-    (void)g; (void)s;
+static void gymFMKeysLead(int n, float v, float g, float pm, bool s, bool a) {
+    (void)g; (void)pm; (void)s;
     melPatches[1] = instrumentPresets[21].patch; // Mac Keys
     melPatches[1].p_fmModIndex = 1.8f;
     melPatches[1].p_sustain = 0.25f;
@@ -136,8 +136,8 @@ static void gymFMKeysLead(int n, float v, float g, bool s, bool a) {
     melPatches[1].p_filterCutoff = 0.6f;
     melTrigger(1, n, v, &melPatches[1]);
 }
-static void gymFMKeysChord(int n, float v, float g, bool s, bool a) {
-    (void)g; (void)s;
+static void gymFMKeysChord(int n, float v, float g, float pm, bool s, bool a) {
+    (void)g; (void)pm; (void)s;
     melPatches[2] = instrumentPresets[21].patch; // Mac Keys
     melPatches[2].p_fmModIndex = 1.8f;
     melPatches[2].p_sustain = 0.25f;
@@ -162,12 +162,12 @@ typedef struct {
     int loopsPerPattern;
     void (*configure)(void);
     void (*loadPatterns)(Pattern pats[]);
-    void (*melTrig0)(int,float,float,bool,bool);
-    void (*melTrig1)(int,float,float,bool,bool);
-    void (*melTrig2)(int,float,float,bool,bool);
-    void (*melRel0)(void);
-    void (*melRel1)(void);
-    void (*melRel2)(void);
+    TrackNoteOnFunc melTrig0;
+    TrackNoteOnFunc melTrig1;
+    TrackNoteOnFunc melTrig2;
+    TrackNoteOffFunc melRel0;
+    TrackNoteOffFunc melRel1;
+    TrackNoteOffFunc melRel2;
 } RenderSong;
 
 static const RenderSong renderSongs[] = {

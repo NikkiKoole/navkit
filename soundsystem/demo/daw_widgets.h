@@ -258,6 +258,7 @@ static float drawLFOPreview(float x, float y, float w, float h, int shape, float
 // ============================================================================
 
 // Draw two draggable floats side by side on one row (short labels)
+#ifndef DAW_HEADLESS
 static void ui_col_float_pair(UIColumn *c, const char *l1, float *v1, float sp1, float mn1, float mx1,
                                const char *l2, float *v2, float sp2, float mn2, float mx2) {
     int fs = c->fontSize > 0 ? c->fontSize : 12;
@@ -279,5 +280,6 @@ static void ui_col_cycle_float_pair(UIColumn *c, const char *cl, const char **op
     DraggableFloatS(c->x + cw, c->y, fl, fv, fsp, fmn, fmx, fs);
     c->y += c->spacing + 2;  // match cycle spacing
 }
+#endif
 
 #endif // PIXELSYNTH_DAW_WIDGETS_H

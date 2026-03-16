@@ -762,8 +762,10 @@ static const BridgeSong bridgeSongs[] = {
 // MAIN
 // ============================================================================
 
-// Stub drum callbacks (needed for initSequencer)
-static void stubDrum(float v, float p) { (void)v; (void)p; }
+// Stub drum callback (needed for initSequencer)
+static void stubDrum(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)note; (void)vel; (void)gateTime; (void)pitchMod; (void)slide; (void)accent;
+}
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {

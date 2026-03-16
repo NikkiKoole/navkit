@@ -157,7 +157,7 @@ static void _dwWritePattern(FILE *f, int idx, const Pattern *p) {
     for (int t = 0; t < SEQ_DRUM_TRACKS; t++) fprintf(f, " %d", p->trackLength[t]);
     fprintf(f, "\nmelodyTrackLength =");
     for (int t = 0; t < SEQ_MELODY_TRACKS; t++) fprintf(f, " %d", p->trackLength[SEQ_DRUM_TRACKS + t]);
-    fprintf(f, "\n");
+    fprintf(f, "\nsamplerTrackLength = %d\n", p->trackLength[SEQ_TRACK_SAMPLER]);
 
     for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
         for (int s = 0; s < p->trackLength[t]; s++) {
@@ -201,6 +201,23 @@ static void _dwWritePattern(FILE *f, int idx, const Pattern *p) {
                 }
                 fprintf(f, "\n");
             }
+        }
+    }
+
+    // Sampler track (track 7) — slice index + velocity + pitch
+    {
+        int st = SEQ_TRACK_SAMPLER;
+        for (int s = 0; s < p->trackLength[st]; s++) {
+            const StepV2 *sv = &p->steps[st][s];
+            if (sv->noteCount == 0) continue;
+            const StepNote *sn = &sv->notes[0];
+            fprintf(f, "s step=%d slice=%d vel=%.3g", s, (int)sn->note, (double)velU8ToFloat(sn->velocity));
+            if (sn->nudge != 0) fprintf(f, " pitch=%d", (int)sn->nudge);
+            float sProb = probU8ToFloat(sv->probability);
+            if (sProb > 0.0f && sProb < 1.0f) fprintf(f, " prob=%.3g", (double)sProb);
+            int sCond = (int)sv->condition;
+            if (sCond != COND_ALWAYS) fprintf(f, " cond=%s", _dwCondNames[sCond]);
+            fprintf(f, "\n");
         }
     }
 
@@ -411,6 +428,55 @@ static bool dawSave(const char *filepath) {
             }
         }
     }
+
+#ifdef DAW_HAS_CHOP_STATE
+    // [sample] — chop/flip recipe (only if bounced)
+    if (chopState.bounced && chopState.sourcePath[0]) {
+        fprintf(f, "\n[sample]\n");
+        _ds(f, "sourceFile", chopState.sourcePath);
+        _di(f, "sourcePattern", chopState.sourcePattern);
+        _di(f, "sourceLoops", chopState.sourceLoops);
+        _di(f, "sliceCount", chopState.sliceCount);
+        _di(f, "chopMode", chopState.chopMode);
+        _dw(f, "sensitivity", chopState.sensitivity);
+        _dw(f, "fadeMs", chopState.fadeMs);
+        for (int t = 0; t < 4; t++) {
+            char k[16]; snprintf(k, sizeof(k), "padMap%d", t);
+            _di(f, k, daw.chopSliceMap[t]);
+        }
+        // Per-slice params (only non-default values)
+        for (int s = 0; s < chopState.sliceCount; s++) {
+            if (chopState.sliceParams[s].reverse) {
+                char k[32]; snprintf(k, sizeof(k), "slice.%d.reverse", s);
+                _db(f, k, true);
+            }
+            if (chopState.sliceParams[s].pitchSemitones != 0) {
+                char k[32]; snprintf(k, sizeof(k), "slice.%d.pitch", s);
+                _dw(f, k, chopState.sliceParams[s].pitchSemitones);
+            }
+            if (chopState.sliceParams[s].gain != 1.0f) {
+                char k[32]; snprintf(k, sizeof(k), "slice.%d.gain", s);
+                _dw(f, k, chopState.sliceParams[s].gain);
+            }
+            if (chopState.sliceParams[s].trimStart != 0.0f) {
+                char k[32]; snprintf(k, sizeof(k), "slice.%d.trimStart", s);
+                _dw(f, k, chopState.sliceParams[s].trimStart);
+            }
+            if (chopState.sliceParams[s].trimEnd != 1.0f) {
+                char k[32]; snprintf(k, sizeof(k), "slice.%d.trimEnd", s);
+                _dw(f, k, chopState.sliceParams[s].trimEnd);
+            }
+            if (chopState.sliceParams[s].fadeInMs >= 0) {
+                char k[32]; snprintf(k, sizeof(k), "slice.%d.fadeIn", s);
+                _dw(f, k, chopState.sliceParams[s].fadeInMs);
+            }
+            if (chopState.sliceParams[s].fadeOutMs >= 0) {
+                char k[32]; snprintf(k, sizeof(k), "slice.%d.fadeOut", s);
+                _dw(f, k, chopState.sliceParams[s].fadeOutMs);
+            }
+        }
+    }
+#endif
 
     // Patterns (only non-empty)
     for (int i = 0; i < SEQ_NUM_PATTERNS; i++) {
@@ -685,6 +751,33 @@ static void _dwParseDrumEvent(const char *line, Pattern *p) {
     }
 }
 
+static void _dwParseSamplerEvent(const char *line, Pattern *p) {
+    char lc[512]; strncpy(lc,line,511); lc[511]='\0';
+    char *toks[32]; int n = _dwTokenize(lc+1, toks, 32);
+    int step=0, slice=0, nudge=0; float vel=0.8f, prob=1.0f; int cond=COND_ALWAYS;
+    char k[32], v[64];
+    for (int i=0; i<n; i++) {
+        if (_dwParseKV(toks[i],k,32,v,64)) {
+            if (strcmp(k,"step")==0) step=_dpi(v);
+            else if (strcmp(k,"slice")==0) slice=_dpi(v);
+            else if (strcmp(k,"vel")==0) vel=_dpf(v);
+            else if (strcmp(k,"pitch")==0) nudge=_dpi(v);
+            else if (strcmp(k,"prob")==0) prob=_dpf(v);
+            else if (strcmp(k,"cond")==0) { int idx=_dwLookupName(v,_dwCondNames,11); if(idx>=0) cond=idx; }
+        }
+    }
+    if (step>=0&&step<SEQ_MAX_STEPS) {
+        int t = SEQ_TRACK_SAMPLER;
+        StepV2 *sv = &p->steps[t][step];
+        sv->noteCount = 1;
+        sv->notes[0].note = (uint8_t)slice;
+        sv->notes[0].velocity = velFloatToU8(vel);
+        sv->notes[0].nudge = (int8_t)nudge;
+        sv->probability = probFloatToU8(prob);
+        sv->condition = (uint8_t)cond;
+    }
+}
+
 static void _dwParseMelodyEvent(const char *line, Pattern *p) {
     char lc[512]; strncpy(lc,line,511); lc[511]='\0';
     char *toks[32]; int n = _dwTokenize(lc+1, toks, 32);
@@ -783,6 +876,7 @@ typedef enum {
     _DW_SEC_SETTINGS, _DW_SEC_PATCH, _DW_SEC_MIXER, _DW_SEC_SIDECHAIN,
     _DW_SEC_MASTERFX, _DW_SEC_TAPEFX, _DW_SEC_CROSSFADER,
     _DW_SEC_SPLIT, _DW_SEC_ARRANGEMENT, _DW_SEC_PATTERN,
+    _DW_SEC_SAMPLE,
 } _DwSection;
 
 static bool dawLoad(const char *filepath) {
@@ -820,6 +914,22 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(sec,"crossfader")==0) section = _DW_SEC_CROSSFADER;
             else if (strcmp(sec,"split")==0) section = _DW_SEC_SPLIT;
             else if (strcmp(sec,"arrangement")==0) section = _DW_SEC_ARRANGEMENT;
+            else if (strcmp(sec,"sample")==0) {
+                section = _DW_SEC_SAMPLE;
+#ifdef DAW_HAS_CHOP_STATE
+                // Initialize slice params to defaults before parsing
+                // (file only stores non-default values)
+                for (int _s = 0; _s < SAMPLER_MAX_SAMPLES; _s++) {
+                    chopState.sliceParams[_s].reverse = false;
+                    chopState.sliceParams[_s].pitchSemitones = 0;
+                    chopState.sliceParams[_s].gain = 1.0f;
+                    chopState.sliceParams[_s].trimStart = 0.0f;
+                    chopState.sliceParams[_s].trimEnd = 1.0f;
+                    chopState.sliceParams[_s].fadeInMs = -1.0f;
+                    chopState.sliceParams[_s].fadeOutMs = -1.0f;
+                }
+#endif
+            }
             else if (strncmp(sec,"patch.",6)==0) {
                 section = _DW_SEC_PATCH;
                 subIndex = atoi(sec + 6);
@@ -840,6 +950,7 @@ static bool dawLoad(const char *filepath) {
         if (section == _DW_SEC_PATTERN && subIndex >= 0 && subIndex < SEQ_NUM_PATTERNS) {
             if (s[0]=='d' && s[1]==' ') { _dwParseDrumEvent(s, &seq.patterns[subIndex]); continue; }
             if (s[0]=='m' && s[1]==' ') { _dwParseMelodyEvent(s, &seq.patterns[subIndex]); continue; }
+            if (s[0]=='s' && s[1]==' ') { _dwParseSamplerEvent(s, &seq.patterns[subIndex]); continue; }
             if (s[0]=='p' && s[1]==' ') { _dwParsePlockEvent(s, &seq.patterns[subIndex]); continue; }
         }
 
@@ -1087,8 +1198,44 @@ static bool dawLoad(const char *filepath) {
                     for (int _t = 0; _t < SEQ_MELODY_TRACKS; _t++)
                         p->trackLength[SEQ_DRUM_TRACKS + _t] = melLengths[_t];
                 }
+                else if (strcmp(key,"samplerTrackLength")==0) {
+                    p->trackLength[SEQ_TRACK_SAMPLER] = _dpi(val);
+                }
             }
             break;
+#ifdef DAW_HAS_CHOP_STATE
+        case _DW_SEC_SAMPLE:
+            if (strcmp(key,"sourceFile")==0) {
+                char t[256]; strncpy(t,val,255); t[255]=0; _dwStripQuotes(t);
+                strncpy(chopState.sourcePath,t,255); chopState.sourcePath[255]=0;
+            }
+            else if (strcmp(key,"sourcePattern")==0) chopState.sourcePattern = _dpi(val);
+            else if (strcmp(key,"sourceLoops")==0) chopState.sourceLoops = _dpi(val);
+            else if (strcmp(key,"sliceCount")==0) chopState.sliceCount = _dpi(val);
+            else if (strcmp(key,"chopMode")==0) chopState.chopMode = _dpi(val);
+            else if (strcmp(key,"sensitivity")==0) chopState.sensitivity = _dpf(val);
+            else if (strcmp(key,"fadeMs")==0) chopState.fadeMs = _dpf(val);
+            else if (strncmp(key,"padMap",6)==0) {
+                int idx = key[6] - '0';
+                if (idx >= 0 && idx < 4) daw.chopSliceMap[idx] = _dpi(val);
+            }
+            else if (strncmp(key,"slice.",6)==0) {
+                // Parse "slice.N.field"
+                int si = 0; const char *p = key + 6;
+                while (*p >= '0' && *p <= '9') { si = si*10 + (*p - '0'); p++; }
+                if (*p == '.' && si >= 0 && si < SAMPLER_MAX_SAMPLES) {
+                    p++; // skip '.'
+                    if (strcmp(p,"reverse")==0) chopState.sliceParams[si].reverse = _dpb(val);
+                    else if (strcmp(p,"pitch")==0) chopState.sliceParams[si].pitchSemitones = _dpf(val);
+                    else if (strcmp(p,"gain")==0) chopState.sliceParams[si].gain = _dpf(val);
+                    else if (strcmp(p,"trimStart")==0) chopState.sliceParams[si].trimStart = _dpf(val);
+                    else if (strcmp(p,"trimEnd")==0) chopState.sliceParams[si].trimEnd = _dpf(val);
+                    else if (strcmp(p,"fadeIn")==0) chopState.sliceParams[si].fadeInMs = _dpf(val);
+                    else if (strcmp(p,"fadeOut")==0) chopState.sliceParams[si].fadeOutMs = _dpf(val);
+                }
+            }
+            break;
+#endif
         default: break;
         }
     }
@@ -1127,6 +1274,56 @@ static bool dawLoad(const char *filepath) {
 
     // Reset preset tracking (loaded patches are custom)
     for (int i = 0; i < NUM_PATCHES; i++) patchPresetIndex[i] = -1;
+
+#ifdef DAW_HAS_CHOP_STATE
+    // Re-bounce sample recipe if [sample] section was present
+    // Guard against infinite recursion: renderPatternToBuffer→dawLoad→chopStateBounce→renderPatternToBuffer→dawLoad...
+    static bool _dawLoadRebouncing = false;
+    if (chopState.sourcePath[0] && !_dawLoadRebouncing) {
+        _dawLoadRebouncing = true;
+        // Save loaded params (chopStateBounce→chopStateClear resets them)
+        int savedPadMap[4];
+        for (int t = 0; t < 4; t++) savedPadMap[t] = daw.chopSliceMap[t];
+        int savedSliceCount = chopState.sliceCount;
+        int savedChopMode = chopState.chopMode;
+        float savedSensitivity = chopState.sensitivity;
+        float savedFadeMs = chopState.fadeMs;
+        struct { bool reverse; float pitchSemitones, gain, trimStart, trimEnd, fadeInMs, fadeOutMs; }
+            savedParams[SAMPLER_MAX_SAMPLES];
+        for (int s = 0; s < SAMPLER_MAX_SAMPLES; s++) {
+            savedParams[s].reverse = chopState.sliceParams[s].reverse;
+            savedParams[s].pitchSemitones = chopState.sliceParams[s].pitchSemitones;
+            savedParams[s].gain = chopState.sliceParams[s].gain;
+            savedParams[s].trimStart = chopState.sliceParams[s].trimStart;
+            savedParams[s].trimEnd = chopState.sliceParams[s].trimEnd;
+            savedParams[s].fadeInMs = chopState.sliceParams[s].fadeInMs;
+            savedParams[s].fadeOutMs = chopState.sliceParams[s].fadeOutMs;
+        }
+
+        // Bounce (clears + rebuilds slices)
+        chopState.sliceCount = savedSliceCount;
+        chopState.chopMode = savedChopMode;
+        chopState.sensitivity = savedSensitivity;
+        chopStateBounce();
+
+        // Restore params
+        chopState.fadeMs = savedFadeMs;
+        for (int t = 0; t < 4; t++) daw.chopSliceMap[t] = savedPadMap[t];
+        for (int s = 0; s < chopState.sliceCount; s++) {
+            chopState.sliceParams[s].reverse = savedParams[s].reverse;
+            chopState.sliceParams[s].pitchSemitones = savedParams[s].pitchSemitones;
+            chopState.sliceParams[s].gain = savedParams[s].gain;
+            chopState.sliceParams[s].trimStart = savedParams[s].trimStart;
+            chopState.sliceParams[s].trimEnd = savedParams[s].trimEnd;
+            chopState.sliceParams[s].fadeInMs = savedParams[s].fadeInMs;
+            chopState.sliceParams[s].fadeOutMs = savedParams[s].fadeOutMs;
+        }
+
+        // Apply per-slice params (trim, gain, fade, reverse → bake into sampler slots)
+        if (chopState.bounced) chopApplySliceParams();
+        _dawLoadRebouncing = false;
+    }
+#endif
 
     return true;
 }

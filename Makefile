@@ -125,8 +125,9 @@ GAME_SOURCES := $(wildcard src/*.h src/*.c src/**/*.h src/**/*.c tests/test_unit
 $(TEST_UNITY_OBJ): $(GAME_SOURCES) $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) $(CFLAGS) -c -o $@ tests/test_unity.c
 
-# Soundsystem test - standalone, no test_unity.c needed
+# Soundsystem tests - standalone, no test_unity.c needed
 test_soundsystem_SRC := tests/test_soundsystem.c
+test_daw_file_SRC := soundsystem/tests/test_daw_file.c
 
 # Mechanisms test - standalone, no test_unity.c needed
 test_mechanisms_SRC := tests/test_mechanisms.c
@@ -435,6 +436,14 @@ test_soundsystem: $(BINDIR)
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_soundsystem_SRC) -lm
 	-@./$(BINDIR)/test_soundsystem -q
 
+test_daw_file: $(BINDIR)
+	@echo "Running DAW file round-trip tests..."
+	@$(CC) $(TCFLAGS) -Wno-unused-function -Wno-unused-variable -o $(BINDIR)/$@ $(test_daw_file_SRC) -lm
+	-@./$(BINDIR)/test_daw_file
+
+# All soundsystem tests in one command
+test_sound: test_soundsystem test_daw_file
+
 # Mechanisms tests - standalone automation sandbox tests
 test_mechanisms: $(BINDIR)
 	@echo "Running mechanisms tests..."
@@ -443,7 +452,7 @@ test_mechanisms: $(BINDIR)
 
 # Run all tests (mover uses 5 stress iterations by default)
 .IGNORE: test
-test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_seasons test_weather test_wind test_snow test_thunderstorm test_lighting test_workshop_linking test_hunger test_stacking test_containers test_sleep test_furniture test_balance test_soundsystem test_cross_z test_workshop_deconstruction test_tool_quality test_doors test_butchering test_hunting test_spoilage test_fog test_farming test_clothing test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood
+test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_seasons test_weather test_wind test_snow test_thunderstorm test_lighting test_workshop_linking test_hunger test_stacking test_containers test_sleep test_furniture test_balance test_soundsystem test_daw_file test_cross_z test_workshop_deconstruction test_tool_quality test_doors test_butchering test_hunting test_spoilage test_fog test_farming test_clothing test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood
 
 # Full stress tests - mover tests use 20 iterations
 test-full: $(TEST_UNITY_OBJ)

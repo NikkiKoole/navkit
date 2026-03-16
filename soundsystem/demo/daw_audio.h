@@ -46,6 +46,11 @@ static float dawSemitoneToFreq(int semitone, int octave) {
 // Track which bus each voice belongs to (-1 = keyboard/preview → CHORD bus)
 static int voiceBus[NUM_VOICES];
 
+// Double-buffer sync: main thread snapshots daw → shadow, audio thread applies
+static DawState dawSyncShadow;
+static volatile bool dawSyncPending = false;
+static void dawSyncEngineStateFrom(const DawState *d);  // forward decl
+
 static void DawAudioCallback(void *buffer, unsigned int frames) {
     // During bounce, the global context pointers are swapped to a temp system.
     // Output silence to avoid dereferencing invalid pointers.
@@ -58,6 +63,15 @@ static void DawAudioCallback(void *buffer, unsigned int frames) {
     double startTime = GetTime();
     short *d = (short *)buffer;
     float dt = 1.0f / SAMPLE_RATE;
+
+    // Drain queued preview commands (main thread → audio thread)
+    samplerDrainQueue();
+
+    // Apply pending sync snapshot (main thread → audio thread, atomic swap)
+    if (dawSyncPending) {
+        dawSyncEngineStateFrom(&dawSyncShadow);
+        dawSyncPending = false;
+    }
 
     setMixerTempo(daw.transport.bpm);
     synthCtx->bpm = daw.transport.bpm;
@@ -161,12 +175,12 @@ static void DawAudioCallback(void *buffer, unsigned int frames) {
     dawAudioFrameCount = frames;
 }
 
-// Sync DAW state → engine contexts each frame
-static void dawSyncEngineState(void) {
+// Sync DAW state → engine contexts (called on audio thread with shadow copy)
+static void dawSyncEngineStateFrom(const DawState *d) {
     // Scale lock (song defaults, then pattern override)
-    synthCtx->scaleLockEnabled = daw.scaleLockEnabled;
-    synthCtx->scaleRoot = daw.scaleRoot;
-    synthCtx->scaleType = daw.scaleType;
+    synthCtx->scaleLockEnabled = d->scaleLockEnabled;
+    synthCtx->scaleRoot = d->scaleRoot;
+    synthCtx->scaleType = d->scaleType;
 
     // Apply per-pattern overrides from current pattern
     Pattern *curPat = dawPattern();
@@ -180,154 +194,160 @@ static void dawSyncEngineState(void) {
     // to avoid permanently overwriting song-level state
 
     // Master FX → effects engine
-    fx.distEnabled     = daw.masterFx.distOn;
-    fx.distDrive       = daw.masterFx.distDrive;
-    fx.distTone        = daw.masterFx.distTone;
-    fx.distMix         = daw.masterFx.distMix;
-    fx.crushEnabled    = daw.masterFx.crushOn;
-    fx.crushBits       = daw.masterFx.crushBits;
-    fx.crushRate       = daw.masterFx.crushRate;
-    fx.crushMix        = daw.masterFx.crushMix;
-    fx.chorusEnabled   = daw.masterFx.chorusOn;
-    fx.chorusRate      = daw.masterFx.chorusRate;
-    fx.chorusDepth     = daw.masterFx.chorusDepth;
-    fx.chorusMix       = daw.masterFx.chorusMix;
-    fx.flangerEnabled  = daw.masterFx.flangerOn;
-    fx.flangerRate     = daw.masterFx.flangerRate;
-    fx.flangerDepth    = daw.masterFx.flangerDepth;
-    fx.flangerFeedback = daw.masterFx.flangerFeedback;
-    fx.flangerMix      = daw.masterFx.flangerMix;
-    fx.phaserEnabled   = daw.masterFx.phaserOn;
-    fx.phaserRate      = daw.masterFx.phaserRate;
-    fx.phaserDepth     = daw.masterFx.phaserDepth;
-    fx.phaserMix       = daw.masterFx.phaserMix;
-    fx.phaserFeedback  = daw.masterFx.phaserFeedback;
-    fx.phaserStages    = daw.masterFx.phaserStages;
-    fx.combEnabled     = daw.masterFx.combOn;
-    fx.combFreq        = daw.masterFx.combFreq;
-    fx.combFeedback    = daw.masterFx.combFeedback;
-    fx.combMix         = daw.masterFx.combMix;
-    fx.combDamping     = daw.masterFx.combDamping;
-    fx.tapeEnabled     = daw.masterFx.tapeOn;
-    fx.tapeSaturation  = daw.masterFx.tapeSaturation;
-    fx.tapeWow         = daw.masterFx.tapeWow;
-    fx.tapeFlutter     = daw.masterFx.tapeFlutter;
-    fx.tapeHiss        = daw.masterFx.tapeHiss;
-    fx.delayEnabled    = daw.masterFx.delayOn;
-    fx.delayTime       = daw.masterFx.delayTime;
-    fx.delayFeedback   = daw.masterFx.delayFeedback;
-    fx.delayTone       = daw.masterFx.delayTone;
-    fx.delayMix        = daw.masterFx.delayMix;
-    fx.reverbEnabled   = daw.masterFx.reverbOn;
-    fx.reverbSize      = daw.masterFx.reverbSize;
-    fx.reverbDamping   = daw.masterFx.reverbDamping;
-    fx.reverbPreDelay  = daw.masterFx.reverbPreDelay;
-    fx.reverbMix       = daw.masterFx.reverbMix;
-    fx.reverbBass      = daw.masterFx.reverbBass;
+    fx.distEnabled     = d->masterFx.distOn;
+    fx.distDrive       = d->masterFx.distDrive;
+    fx.distTone        = d->masterFx.distTone;
+    fx.distMix         = d->masterFx.distMix;
+    fx.crushEnabled    = d->masterFx.crushOn;
+    fx.crushBits       = d->masterFx.crushBits;
+    fx.crushRate       = d->masterFx.crushRate;
+    fx.crushMix        = d->masterFx.crushMix;
+    fx.chorusEnabled   = d->masterFx.chorusOn;
+    fx.chorusRate      = d->masterFx.chorusRate;
+    fx.chorusDepth     = d->masterFx.chorusDepth;
+    fx.chorusMix       = d->masterFx.chorusMix;
+    fx.flangerEnabled  = d->masterFx.flangerOn;
+    fx.flangerRate     = d->masterFx.flangerRate;
+    fx.flangerDepth    = d->masterFx.flangerDepth;
+    fx.flangerFeedback = d->masterFx.flangerFeedback;
+    fx.flangerMix      = d->masterFx.flangerMix;
+    fx.phaserEnabled   = d->masterFx.phaserOn;
+    fx.phaserRate      = d->masterFx.phaserRate;
+    fx.phaserDepth     = d->masterFx.phaserDepth;
+    fx.phaserMix       = d->masterFx.phaserMix;
+    fx.phaserFeedback  = d->masterFx.phaserFeedback;
+    fx.phaserStages    = d->masterFx.phaserStages;
+    fx.combEnabled     = d->masterFx.combOn;
+    fx.combFreq        = d->masterFx.combFreq;
+    fx.combFeedback    = d->masterFx.combFeedback;
+    fx.combMix         = d->masterFx.combMix;
+    fx.combDamping     = d->masterFx.combDamping;
+    fx.tapeEnabled     = d->masterFx.tapeOn;
+    fx.tapeSaturation  = d->masterFx.tapeSaturation;
+    fx.tapeWow         = d->masterFx.tapeWow;
+    fx.tapeFlutter     = d->masterFx.tapeFlutter;
+    fx.tapeHiss        = d->masterFx.tapeHiss;
+    fx.delayEnabled    = d->masterFx.delayOn;
+    fx.delayTime       = d->masterFx.delayTime;
+    fx.delayFeedback   = d->masterFx.delayFeedback;
+    fx.delayTone       = d->masterFx.delayTone;
+    fx.delayMix        = d->masterFx.delayMix;
+    fx.reverbEnabled   = d->masterFx.reverbOn;
+    fx.reverbSize      = d->masterFx.reverbSize;
+    fx.reverbDamping   = d->masterFx.reverbDamping;
+    fx.reverbPreDelay  = d->masterFx.reverbPreDelay;
+    fx.reverbMix       = d->masterFx.reverbMix;
+    fx.reverbBass      = d->masterFx.reverbBass;
 
     // Master EQ
-    fx.eqEnabled       = daw.masterFx.eqOn;
-    fx.eqLowGain       = daw.masterFx.eqLowGain;
-    fx.eqHighGain      = daw.masterFx.eqHighGain;
-    fx.eqLowFreq       = daw.masterFx.eqLowFreq;
-    fx.eqHighFreq      = daw.masterFx.eqHighFreq;
-    fx.subBassBoost    = daw.masterFx.subBassBoost;
+    fx.eqEnabled       = d->masterFx.eqOn;
+    fx.eqLowGain       = d->masterFx.eqLowGain;
+    fx.eqHighGain      = d->masterFx.eqHighGain;
+    fx.eqLowFreq       = d->masterFx.eqLowFreq;
+    fx.eqHighFreq      = d->masterFx.eqHighFreq;
+    fx.subBassBoost    = d->masterFx.subBassBoost;
 
     // Multiband
-    fx.mbEnabled        = daw.masterFx.mbOn;
-    fx.mbLowCrossover   = daw.masterFx.mbLowCross;
-    fx.mbHighCrossover  = daw.masterFx.mbHighCross;
-    fx.mbLowGain        = daw.masterFx.mbLowGain;
-    fx.mbMidGain        = daw.masterFx.mbMidGain;
-    fx.mbHighGain       = daw.masterFx.mbHighGain;
-    fx.mbLowDrive       = daw.masterFx.mbLowDrive;
-    fx.mbMidDrive       = daw.masterFx.mbMidDrive;
-    fx.mbHighDrive      = daw.masterFx.mbHighDrive;
+    fx.mbEnabled        = d->masterFx.mbOn;
+    fx.mbLowCrossover   = d->masterFx.mbLowCross;
+    fx.mbHighCrossover  = d->masterFx.mbHighCross;
+    fx.mbLowGain        = d->masterFx.mbLowGain;
+    fx.mbMidGain        = d->masterFx.mbMidGain;
+    fx.mbHighGain       = d->masterFx.mbHighGain;
+    fx.mbLowDrive       = d->masterFx.mbLowDrive;
+    fx.mbMidDrive       = d->masterFx.mbMidDrive;
+    fx.mbHighDrive      = d->masterFx.mbHighDrive;
 
     // Master Compressor
-    fx.compEnabled     = daw.masterFx.compOn;
-    fx.compThreshold   = daw.masterFx.compThreshold;
-    fx.compRatio       = daw.masterFx.compRatio;
-    fx.compAttack      = daw.masterFx.compAttack;
-    fx.compRelease     = daw.masterFx.compRelease;
-    fx.compMakeup      = daw.masterFx.compMakeup;
-    fx.compKnee        = daw.masterFx.compKnee;
+    fx.compEnabled     = d->masterFx.compOn;
+    fx.compThreshold   = d->masterFx.compThreshold;
+    fx.compRatio       = d->masterFx.compRatio;
+    fx.compAttack      = d->masterFx.compAttack;
+    fx.compRelease     = d->masterFx.compRelease;
+    fx.compMakeup      = d->masterFx.compMakeup;
+    fx.compKnee        = d->masterFx.compKnee;
 
     // Sidechain (audio-follower mode)
-    fx.sidechainEnabled = daw.sidechain.on;
-    fx.sidechainSource  = daw.sidechain.source;
-    fx.sidechainTarget  = daw.sidechain.target;
-    fx.sidechainDepth   = daw.sidechain.depth;
-    fx.sidechainAttack  = daw.sidechain.attack;
-    fx.sidechainRelease = daw.sidechain.release;
-    fx.sidechainHPFreq  = daw.sidechain.hpFreq;
+    fx.sidechainEnabled = d->sidechain.on;
+    fx.sidechainSource  = d->sidechain.source;
+    fx.sidechainTarget  = d->sidechain.target;
+    fx.sidechainDepth   = d->sidechain.depth;
+    fx.sidechainAttack  = d->sidechain.attack;
+    fx.sidechainRelease = d->sidechain.release;
+    fx.sidechainHPFreq  = d->sidechain.hpFreq;
 
     // Sidechain envelope (note-triggered mode)
-    fx.scEnvEnabled = daw.sidechain.envOn;
-    fx.scEnvSource  = daw.sidechain.envSource;
-    fx.scEnvTarget  = daw.sidechain.envTarget;
-    fx.scEnvDepth   = daw.sidechain.envDepth;
-    fx.scEnvAttack  = daw.sidechain.envAttack;
-    fx.scEnvHold    = daw.sidechain.envHold;
-    fx.scEnvRelease = daw.sidechain.envRelease;
-    fx.scEnvCurve   = daw.sidechain.envCurve;
-    fx.scEnvHPFreq  = daw.sidechain.envHPFreq;
+    fx.scEnvEnabled = d->sidechain.envOn;
+    fx.scEnvSource  = d->sidechain.envSource;
+    fx.scEnvTarget  = d->sidechain.envTarget;
+    fx.scEnvDepth   = d->sidechain.envDepth;
+    fx.scEnvAttack  = d->sidechain.envAttack;
+    fx.scEnvHold    = d->sidechain.envHold;
+    fx.scEnvRelease = d->sidechain.envRelease;
+    fx.scEnvCurve   = d->sidechain.envCurve;
+    fx.scEnvHPFreq  = d->sidechain.envHPFreq;
 
     // Per-bus mixer params
     for (int b = 0; b < NUM_BUSES; b++) {
-        setBusVolume(b, daw.mixer.volume[b]);
-        setBusPan(b, daw.mixer.pan[b]);
-        setBusMute(b, daw.mixer.mute[b]);
-        setBusSolo(b, daw.mixer.solo[b]);
-        setBusReverbSend(b, daw.mixer.reverbSend[b]);
-        setBusFilter(b, daw.mixer.filterOn[b], daw.mixer.filterCut[b],
-                     daw.mixer.filterRes[b], daw.mixer.filterType[b]);
-        setBusDistortion(b, daw.mixer.distOn[b], daw.mixer.distDrive[b],
-                         daw.mixer.distMix[b]);
-        setBusEQ(b, daw.mixer.eqOn[b], daw.mixer.eqLowGain[b], daw.mixer.eqHighGain[b]);
-        setBusEQFreqs(b, daw.mixer.eqLowFreq[b], daw.mixer.eqHighFreq[b]);
-        setBusChorus(b, daw.mixer.chorusOn[b], daw.mixer.chorusRate[b],
-                     daw.mixer.chorusDepth[b], daw.mixer.chorusMix[b],
-                     daw.mixer.chorusDelay[b], daw.mixer.chorusFB[b]);
-        setBusPhaser(b, daw.mixer.phaserOn[b], daw.mixer.phaserRate[b],
-                     daw.mixer.phaserDepth[b], daw.mixer.phaserMix[b],
-                     daw.mixer.phaserFB[b], daw.mixer.phaserStages[b]);
-        setBusComb(b, daw.mixer.combOn[b], daw.mixer.combFreq[b],
-                   daw.mixer.combFB[b], daw.mixer.combMix[b], daw.mixer.combDamping[b]);
-        setBusDelay(b, daw.mixer.delayOn[b], daw.mixer.delayTime[b],
-                    daw.mixer.delayFB[b], daw.mixer.delayMix[b]);
-        setBusDelaySync(b, daw.mixer.delaySync[b], daw.mixer.delaySyncDiv[b]);
+        setBusVolume(b, d->mixer.volume[b]);
+        setBusPan(b, d->mixer.pan[b]);
+        setBusMute(b, d->mixer.mute[b]);
+        setBusSolo(b, d->mixer.solo[b]);
+        setBusReverbSend(b, d->mixer.reverbSend[b]);
+        setBusFilter(b, d->mixer.filterOn[b], d->mixer.filterCut[b],
+                     d->mixer.filterRes[b], d->mixer.filterType[b]);
+        setBusDistortion(b, d->mixer.distOn[b], d->mixer.distDrive[b],
+                         d->mixer.distMix[b]);
+        setBusEQ(b, d->mixer.eqOn[b], d->mixer.eqLowGain[b], d->mixer.eqHighGain[b]);
+        setBusEQFreqs(b, d->mixer.eqLowFreq[b], d->mixer.eqHighFreq[b]);
+        setBusChorus(b, d->mixer.chorusOn[b], d->mixer.chorusRate[b],
+                     d->mixer.chorusDepth[b], d->mixer.chorusMix[b],
+                     d->mixer.chorusDelay[b], d->mixer.chorusFB[b]);
+        setBusPhaser(b, d->mixer.phaserOn[b], d->mixer.phaserRate[b],
+                     d->mixer.phaserDepth[b], d->mixer.phaserMix[b],
+                     d->mixer.phaserFB[b], d->mixer.phaserStages[b]);
+        setBusComb(b, d->mixer.combOn[b], d->mixer.combFreq[b],
+                   d->mixer.combFB[b], d->mixer.combMix[b], d->mixer.combDamping[b]);
+        setBusDelay(b, d->mixer.delayOn[b], d->mixer.delayTime[b],
+                    d->mixer.delayFB[b], d->mixer.delayMix[b]);
+        setBusDelaySync(b, d->mixer.delaySync[b], d->mixer.delaySyncDiv[b]);
     }
 
     // Tape/dub loop
-    dubLoop.enabled      = daw.tapeFx.enabled;
-    dubLoop.headTime[0]  = daw.tapeFx.headTime;
-    dubLoop.feedback     = daw.tapeFx.feedback;
-    dubLoop.mix          = daw.tapeFx.mix;
+    dubLoop.enabled      = d->tapeFx.enabled;
+    dubLoop.headTime[0]  = d->tapeFx.headTime;
+    dubLoop.feedback     = d->tapeFx.feedback;
+    dubLoop.mix          = d->tapeFx.mix;
     // Per-bus throw overrides input source
-    if (daw.tapeFx.throwBus >= 0 && dubLoop.throwActive) {
-        dubLoop.inputSource = DUB_INPUT_BUS_DRUM0 + daw.tapeFx.throwBus;
+    if (d->tapeFx.throwBus >= 0 && dubLoop.throwActive) {
+        dubLoop.inputSource = DUB_INPUT_BUS_DRUM0 + d->tapeFx.throwBus;
     } else {
-        dubLoop.inputSource = daw.tapeFx.inputSource;
+        dubLoop.inputSource = d->tapeFx.inputSource;
     }
-    dubLoop.saturation   = daw.tapeFx.saturation;
-    dubLoop.toneHigh     = daw.tapeFx.toneHigh;
-    dubLoop.noise        = daw.tapeFx.noise;
-    dubLoop.degradeRate  = daw.tapeFx.degradeRate;
-    dubLoop.wow          = daw.tapeFx.wow;
-    dubLoop.flutter      = daw.tapeFx.flutter;
-    dubLoop.drift        = daw.tapeFx.drift;
-    dubLoop.speedTarget  = daw.tapeFx.speedTarget;
-    dubLoop.speedSlew    = daw.tapeFx.speedSlew;
-    dubLoop.preReverb    = daw.tapeFx.preReverb;
+    dubLoop.saturation   = d->tapeFx.saturation;
+    dubLoop.toneHigh     = d->tapeFx.toneHigh;
+    dubLoop.noise        = d->tapeFx.noise;
+    dubLoop.degradeRate  = d->tapeFx.degradeRate;
+    dubLoop.wow          = d->tapeFx.wow;
+    dubLoop.flutter      = d->tapeFx.flutter;
+    dubLoop.drift        = d->tapeFx.drift;
+    dubLoop.speedTarget  = d->tapeFx.speedTarget;
+    dubLoop.speedSlew    = d->tapeFx.speedSlew;
+    dubLoop.preReverb    = d->tapeFx.preReverb;
 
     // Rewind
-    rewind.rewindTime    = daw.tapeFx.rewindTime;
-    rewind.curve         = daw.tapeFx.rewindCurve;
-    rewind.minSpeed      = daw.tapeFx.rewindMinSpeed;
-    rewind.vinylNoise    = daw.tapeFx.rewindVinyl;
-    rewind.wobble        = daw.tapeFx.rewindWobble;
-    rewind.filterSweep   = daw.tapeFx.rewindFilter;
+    rewind.rewindTime    = d->tapeFx.rewindTime;
+    rewind.curve         = d->tapeFx.rewindCurve;
+    rewind.minSpeed      = d->tapeFx.rewindMinSpeed;
+    rewind.vinylNoise    = d->tapeFx.rewindVinyl;
+    rewind.wobble        = d->tapeFx.rewindWobble;
+    rewind.filterSweep   = d->tapeFx.rewindFilter;
+}
+
+// Main-thread entry point: snapshot daw → shadow, set pending for audio thread
+static void dawSyncEngineState(void) {
+    memcpy(&dawSyncShadow, &daw, sizeof(DawState));
+    dawSyncPending = true;
 }
 
 // Map patch index (0-7) to bus index for voice routing
@@ -370,9 +390,7 @@ static void dawReleaseVoicesForPatch(int patchIdx) {
 
 // Generic drum trigger with full P-lock support
 // Temporarily patches SynthPatch fields for decay/tone, triggers, then restores
-static void dawDrumTriggerGeneric(int trackIdx, int busIdx, float vel, float pitch) {
-    (void)pitch;
-
+static void dawDrumTriggerGeneric(int trackIdx, int busIdx, float vel, float pitchMod) {
     // Sidechain envelope: trigger if this drum matches the source
     if (fx.scEnvEnabled) {
         bool match = false;
@@ -406,9 +424,9 @@ static void dawDrumTriggerGeneric(int trackIdx, int busIdx, float vel, float pit
                 trackIdx, busIdx, vel, pVol, p->p_triggerFreq,
                 daw.mixer.mute[busIdx], daw.mixer.solo[busIdx]);
 
-    // Apply pitch p-lock
+    // Apply step pitch (from pitchMod) + p-lock pitch offset
     float pitchOffset = plockValue(PLOCK_PITCH_OFFSET, 0.0f);
-    float trigFreq = p->p_triggerFreq;
+    float trigFreq = p->p_triggerFreq * pitchMod;
     if (pitchOffset != 0.0f) trigFreq *= powf(2.0f, pitchOffset / 12.0f);
 
     // Save & apply decay/tone p-locks to patch before trigger
@@ -455,10 +473,10 @@ static void dawDrumTriggerGeneric(int trackIdx, int busIdx, float vel, float pit
     p->p_filterCutoff = origCutoff;
 }
 
-static void dawDrumTrigger0(float vel, float pitch) { dawDrumTriggerGeneric(0, BUS_DRUM0, vel, pitch); }
-static void dawDrumTrigger1(float vel, float pitch) { dawDrumTriggerGeneric(1, BUS_DRUM1, vel, pitch); }
-static void dawDrumTrigger2(float vel, float pitch) { dawDrumTriggerGeneric(2, BUS_DRUM2, vel, pitch); }
-static void dawDrumTrigger3(float vel, float pitch) { dawDrumTriggerGeneric(3, BUS_DRUM3, vel, pitch); }
+static void dawDrumTrigger0(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) { (void)note; (void)gateTime; (void)slide; (void)accent; dawDrumTriggerGeneric(0, BUS_DRUM0, vel, pitchMod); }
+static void dawDrumTrigger1(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) { (void)note; (void)gateTime; (void)slide; (void)accent; dawDrumTriggerGeneric(1, BUS_DRUM1, vel, pitchMod); }
+static void dawDrumTrigger2(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) { (void)note; (void)gateTime; (void)slide; (void)accent; dawDrumTriggerGeneric(2, BUS_DRUM2, vel, pitchMod); }
+static void dawDrumTrigger3(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) { (void)note; (void)gateTime; (void)slide; (void)accent; dawDrumTriggerGeneric(3, BUS_DRUM3, vel, pitchMod); }
 
 // Melody trigger callback: called by sequencer.h for each melody note
 // Full p-lock support matching demo: filter cutoff/reso/env, decay, pitch, volume
@@ -606,9 +624,9 @@ static void dawMelodyTriggerGeneric(int trackIdx, int note, float vel,
     p->p_volume = origVolume;
 }
 
-static void dawMelodyTrigger0(int note, float vel, float gt, bool sl, bool ac) { dawMelodyTriggerGeneric(0, note, vel, gt, sl, ac); }
-static void dawMelodyTrigger1(int note, float vel, float gt, bool sl, bool ac) { dawMelodyTriggerGeneric(1, note, vel, gt, sl, ac); }
-static void dawMelodyTrigger2(int note, float vel, float gt, bool sl, bool ac) { dawMelodyTriggerGeneric(2, note, vel, gt, sl, ac); }
+static void dawMelodyTrigger0(int note, float vel, float gt, float pitchMod, bool sl, bool ac) { (void)pitchMod; dawMelodyTriggerGeneric(0, note, vel, gt, sl, ac); }
+static void dawMelodyTrigger1(int note, float vel, float gt, float pitchMod, bool sl, bool ac) { (void)pitchMod; dawMelodyTriggerGeneric(1, note, vel, gt, sl, ac); }
+static void dawMelodyTrigger2(int note, float vel, float gt, float pitchMod, bool sl, bool ac) { (void)pitchMod; dawMelodyTriggerGeneric(2, note, vel, gt, sl, ac); }
 
 static void dawMelodyReleaseGeneric(int t) {
     for (int i = 0; i < dawMelodyVoiceCount[t]; i++) {
@@ -628,7 +646,7 @@ static void dawMelodyRelease2(void) { dawMelodyReleaseGeneric(2); }
 static void dawSamplerTrigger(int note, float vel, float gateTime, float pitchMod,
                                bool slide, bool accent) {
     (void)gateTime; (void)slide; (void)accent;
-    if (dawBouncingActive) return;  // don't touch sampler during bounce
+    if (dawBouncingActive) return;
     int sliceIdx = note;
     if (sliceIdx < 0 || sliceIdx >= SAMPLER_MAX_SAMPLES) return;
     if (!samplerCtx || !samplerCtx->samples[sliceIdx].loaded) return;

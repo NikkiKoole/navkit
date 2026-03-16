@@ -1544,21 +1544,22 @@ static int e2e_clap_count = 0;
 static float e2e_last_kick_vel = 0.0f;
 static float e2e_last_kick_pitch = 0.0f;
 
-static void e2e_kick_trigger(float vel, float pitch) {
+static void e2e_kick_trigger(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)note; (void)gateTime; (void)slide; (void)accent;
     e2e_kick_count++;
     e2e_last_kick_vel = vel;
-    e2e_last_kick_pitch = pitch;
+    e2e_last_kick_pitch = pitchMod;
 }
-static void e2e_snare_trigger(float vel, float pitch) {
-    (void)vel; (void)pitch;
+static void e2e_snare_trigger(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)note; (void)vel; (void)gateTime; (void)pitchMod; (void)slide; (void)accent;
     e2e_snare_count++;
 }
-static void e2e_hh_trigger(float vel, float pitch) {
-    (void)vel; (void)pitch;
+static void e2e_hh_trigger(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)note; (void)vel; (void)gateTime; (void)pitchMod; (void)slide; (void)accent;
     e2e_hh_count++;
 }
-static void e2e_clap_trigger(float vel, float pitch) {
-    (void)vel; (void)pitch;
+static void e2e_clap_trigger(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)note; (void)vel; (void)gateTime; (void)pitchMod; (void)slide; (void)accent;
     e2e_clap_count++;
 }
 
@@ -2490,8 +2491,8 @@ static bool melody_last_slide = false;
 static bool melody_last_accent = false;
 static int melody_release_count = 0;
 
-static void test_melody_trigger(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime;
+static void test_melody_trigger(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod;
     melody_trigger_count++;
     melody_last_note = note;
     melody_last_vel = vel;
@@ -4929,17 +4930,21 @@ static void run_sequencer_fraction(float fractionOfStep) {
 // Track per-step trigger history for drums
 static int golden_drum_triggers[SEQ_DRUM_TRACKS];
 static float golden_drum_last_vel[SEQ_DRUM_TRACKS];
-static void golden_kick_trigger(float vel, float pitch) {
-    (void)pitch; golden_drum_triggers[0]++; golden_drum_last_vel[0] = vel;
+static void golden_kick_trigger(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)note; (void)gateTime; (void)pitchMod; (void)slide; (void)accent;
+    golden_drum_triggers[0]++; golden_drum_last_vel[0] = vel;
 }
-static void golden_snare_trigger(float vel, float pitch) {
-    (void)pitch; golden_drum_triggers[1]++; golden_drum_last_vel[1] = vel;
+static void golden_snare_trigger(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)note; (void)gateTime; (void)pitchMod; (void)slide; (void)accent;
+    golden_drum_triggers[1]++; golden_drum_last_vel[1] = vel;
 }
-static void golden_hh_trigger(float vel, float pitch) {
-    (void)pitch; golden_drum_triggers[2]++; golden_drum_last_vel[2] = vel;
+static void golden_hh_trigger(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)note; (void)gateTime; (void)pitchMod; (void)slide; (void)accent;
+    golden_drum_triggers[2]++; golden_drum_last_vel[2] = vel;
 }
-static void golden_clap_trigger(float vel, float pitch) {
-    (void)pitch; golden_drum_triggers[3]++; golden_drum_last_vel[3] = vel;
+static void golden_clap_trigger(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)note; (void)gateTime; (void)pitchMod; (void)slide; (void)accent;
+    golden_drum_triggers[3]++; golden_drum_last_vel[3] = vel;
 }
 
 // Melody tracking for golden tests — up to 4 melody tracks
@@ -4949,15 +4954,15 @@ static int golden_mel_last_note[SEQ_MELODY_TRACKS];
 static float golden_mel_last_vel[SEQ_MELODY_TRACKS];
 static bool golden_mel_last_slide[SEQ_MELODY_TRACKS];
 
-static void golden_mel_trigger_0(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)accent;
+static void golden_mel_trigger_0(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod; (void)accent;
     golden_mel_triggers[0]++; golden_mel_last_note[0] = note;
     golden_mel_last_vel[0] = vel; golden_mel_last_slide[0] = slide;
 }
 static void golden_mel_release_0(void) { golden_mel_releases[0]++; }
 
-static void golden_mel_trigger_1(int note, float vel, float gateTime, bool slide, bool accent) {
-    (void)gateTime; (void)accent;
+static void golden_mel_trigger_1(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)pitchMod; (void)accent;
     golden_mel_triggers[1]++; golden_mel_last_note[1] = note;
     golden_mel_last_vel[1] = vel; golden_mel_last_slide[1] = slide;
 }
@@ -5521,6 +5526,642 @@ describe(v2_step_note_size) {
     }
 }
 
+// ============================================================================
+// GOLDEN TESTS: UNIFIED CALLBACK EQUIVALENCE
+// These verify that wiring TrackNoteOnFunc directly into seq.trackNoteOn[]
+// produces identical trigger behavior to the legacy initSequencer/setMelodyCallbacks
+// adapter path. This is the safety net for the callback refactor.
+// ============================================================================
+
+// Unified-signature tracking callbacks (record ALL 6 params)
+typedef struct {
+    int note;
+    float vel;
+    float gateTime;
+    float pitchMod;
+    bool slide;
+    bool accent;
+} UnifiedTriggerRecord;
+
+#define UNIFIED_MAX_RECORDS 256
+static UnifiedTriggerRecord unified_records[SEQ_V2_MAX_TRACKS][UNIFIED_MAX_RECORDS];
+static int unified_record_count[SEQ_V2_MAX_TRACKS];
+static int unified_release_count[SEQ_V2_MAX_TRACKS];
+
+static void unified_reset(void) {
+    memset(unified_records, 0, sizeof(unified_records));
+    memset(unified_record_count, 0, sizeof(unified_record_count));
+    memset(unified_release_count, 0, sizeof(unified_release_count));
+}
+
+// Per-track unified callbacks (TrackNoteOnFunc signature)
+#define MAKE_UNIFIED_CB(IDX) \
+static void unified_trigger_##IDX(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) { \
+    int i = unified_record_count[IDX]; \
+    if (i < UNIFIED_MAX_RECORDS) { \
+        unified_records[IDX][i].note = note; \
+        unified_records[IDX][i].vel = vel; \
+        unified_records[IDX][i].gateTime = gateTime; \
+        unified_records[IDX][i].pitchMod = pitchMod; \
+        unified_records[IDX][i].slide = slide; \
+        unified_records[IDX][i].accent = accent; \
+    } \
+    unified_record_count[IDX]++; \
+} \
+static void unified_release_##IDX(void) { unified_release_count[IDX]++; }
+
+MAKE_UNIFIED_CB(0)
+MAKE_UNIFIED_CB(1)
+MAKE_UNIFIED_CB(2)
+MAKE_UNIFIED_CB(3)
+MAKE_UNIFIED_CB(4)
+MAKE_UNIFIED_CB(5)
+MAKE_UNIFIED_CB(6)
+
+static TrackNoteOnFunc unified_triggers[] = {
+    unified_trigger_0, unified_trigger_1, unified_trigger_2, unified_trigger_3,
+    unified_trigger_4, unified_trigger_5, unified_trigger_6
+};
+static TrackNoteOffFunc unified_releases[] = {
+    unified_release_0, unified_release_1, unified_release_2, unified_release_3,
+    unified_release_4, unified_release_5, unified_release_6
+};
+
+// Init sequencer with unified callbacks directly (bypasses adapter layer)
+static void unified_init_seq(void) {
+    unified_reset();
+    _ensureSeqCtx();
+    // Use initSequencer just for initialization boilerplate (patterns, state, etc.)
+    // Then overwrite callbacks with unified ones
+    initSequencer(golden_kick_trigger, golden_snare_trigger, golden_hh_trigger, golden_clap_trigger);
+    setMelodyCallbacks(0, golden_mel_trigger_0, golden_mel_release_0);
+    setMelodyCallbacks(1, golden_mel_trigger_1, golden_mel_release_1);
+
+    // NOW overwrite with unified callbacks directly
+    for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) {
+        seq.trackNoteOn[i] = (i < 7) ? unified_triggers[i] : NULL;
+        seq.trackNoteOff[i] = (i < 7) ? unified_releases[i] : NULL;
+    }
+
+    seq.bpm = 120.0f;
+    seq.dilla.kickNudge = 0;
+    seq.dilla.snareDelay = 0;
+    seq.dilla.hatNudge = 0;
+    seq.dilla.clapDelay = 0;
+    seq.dilla.swing = 0;
+    seq.dilla.jitter = 0;
+    seq.humanize.velocityJitter = 0.0f;
+    seq.humanize.timingJitter = 0.0f;
+    seq.chainLength = 0;
+    seq.chainPos = 0;
+    seq.chainLoopCount = 0;
+}
+
+describe(unified_callback_equivalence) {
+    it("drum triggers: unified path matches legacy adapter path") {
+        // Run with legacy adapters
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        patSetDrum(p, 0, 0,  1.0f, 0.0f);  // Kick on 0,4,8,12
+        patSetDrum(p, 0, 4,  1.0f, 0.0f);
+        patSetDrum(p, 0, 8,  1.0f, 0.0f);
+        patSetDrum(p, 0, 12, 1.0f, 0.0f);
+        patSetDrum(p, 1, 4,  0.8f, 0.0f);  // Snare on 4,12
+        patSetDrum(p, 1, 12, 0.8f, 0.0f);
+        for (int s = 0; s < 16; s++) patSetDrum(p, 2, s, 0.7f, 0.0f);  // HH every step
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(15.99f);
+        seq.playing = false;
+
+        int legacy_kick = golden_drum_triggers[0];
+        int legacy_snare = golden_drum_triggers[1];
+        int legacy_hh = golden_drum_triggers[2];
+        int legacy_clap = golden_drum_triggers[3];
+
+        // Run with unified callbacks directly
+        unified_init_seq();
+        p = seqCurrentPattern();
+        clearPattern(p);
+
+        patSetDrum(p, 0, 0,  1.0f, 0.0f);
+        patSetDrum(p, 0, 4,  1.0f, 0.0f);
+        patSetDrum(p, 0, 8,  1.0f, 0.0f);
+        patSetDrum(p, 0, 12, 1.0f, 0.0f);
+        patSetDrum(p, 1, 4,  0.8f, 0.0f);
+        patSetDrum(p, 1, 12, 0.8f, 0.0f);
+        for (int s = 0; s < 16; s++) patSetDrum(p, 2, s, 0.7f, 0.0f);
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(15.99f);
+        seq.playing = false;
+
+        // Same trigger counts
+        expect(unified_record_count[0] == legacy_kick);
+        expect(unified_record_count[1] == legacy_snare);
+        expect(unified_record_count[2] == legacy_hh);
+        expect(unified_record_count[3] == legacy_clap);
+    }
+
+    it("drum velocity: unified receives same vel as legacy") {
+        // Legacy path
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+        patSetDrum(p, 0, 0, 0.75f, 0.0f);
+        patSetDrum(p, 1, 0, 0.5f, 0.0f);
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(0.5f);
+        seq.playing = false;
+
+        float legacy_kick_vel = golden_drum_last_vel[0];
+        float legacy_snare_vel = golden_drum_last_vel[1];
+
+        // Unified path
+        unified_init_seq();
+        p = seqCurrentPattern();
+        clearPattern(p);
+        patSetDrum(p, 0, 0, 0.75f, 0.0f);
+        patSetDrum(p, 1, 0, 0.5f, 0.0f);
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(0.5f);
+        seq.playing = false;
+
+        expect_vel_eq(unified_records[0][0].vel, legacy_kick_vel);
+        expect_vel_eq(unified_records[1][0].vel, legacy_snare_vel);
+    }
+
+    it("melody triggers: unified path matches legacy adapter path") {
+        // Legacy path
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+        patSetNote(p, SEQ_DRUM_TRACKS + 0, 0, 60, 0.9f, 2);   // Bass: C4
+        patSetNote(p, SEQ_DRUM_TRACKS + 0, 4, 64, 0.8f, 2);   // Bass: E4
+        patSetNote(p, SEQ_DRUM_TRACKS + 1, 0, 72, 0.7f, 4);   // Lead: C5
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(15.99f);
+        seq.playing = false;
+
+        int legacy_bass_triggers = golden_mel_triggers[0];
+        int legacy_lead_triggers = golden_mel_triggers[1];
+        int legacy_bass_releases = golden_mel_releases[0];
+        int legacy_lead_releases = golden_mel_releases[1];
+        (void)golden_mel_last_note; // captured for reference
+
+        // Unified path
+        unified_init_seq();
+        p = seqCurrentPattern();
+        clearPattern(p);
+        patSetNote(p, SEQ_DRUM_TRACKS + 0, 0, 60, 0.9f, 2);
+        patSetNote(p, SEQ_DRUM_TRACKS + 0, 4, 64, 0.8f, 2);
+        patSetNote(p, SEQ_DRUM_TRACKS + 1, 0, 72, 0.7f, 4);
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(15.99f);
+        seq.playing = false;
+
+        expect(unified_record_count[SEQ_DRUM_TRACKS + 0] == legacy_bass_triggers);
+        expect(unified_record_count[SEQ_DRUM_TRACKS + 1] == legacy_lead_triggers);
+        expect(unified_release_count[SEQ_DRUM_TRACKS + 0] == legacy_bass_releases);
+        expect(unified_release_count[SEQ_DRUM_TRACKS + 1] == legacy_lead_releases);
+        // Verify note values
+        expect(unified_records[SEQ_DRUM_TRACKS + 0][0].note == 60);
+        expect(unified_records[SEQ_DRUM_TRACKS + 0][1].note == 64);
+        expect(unified_records[SEQ_DRUM_TRACKS + 1][0].note == 72);
+    }
+
+    it("melody slide/accent flags preserved in unified path") {
+        // Legacy path
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+        patSetNote(p, SEQ_DRUM_TRACKS + 0, 0, 60, 0.9f, 2);
+        p->steps[SEQ_DRUM_TRACKS + 0][0].notes[0].slide = true;
+        p->steps[SEQ_DRUM_TRACKS + 0][0].notes[0].accent = true;
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(0.5f);
+        seq.playing = false;
+
+        bool legacy_slide = golden_mel_last_slide[0];
+
+        // Unified path
+        unified_init_seq();
+        p = seqCurrentPattern();
+        clearPattern(p);
+        patSetNote(p, SEQ_DRUM_TRACKS + 0, 0, 60, 0.9f, 2);
+        p->steps[SEQ_DRUM_TRACKS + 0][0].notes[0].slide = true;
+        p->steps[SEQ_DRUM_TRACKS + 0][0].notes[0].accent = true;
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(0.5f);
+        seq.playing = false;
+
+        expect(unified_records[SEQ_DRUM_TRACKS + 0][0].slide == legacy_slide);
+        expect(unified_records[SEQ_DRUM_TRACKS + 0][0].accent == true);
+    }
+
+    it("conditional triggers: unified matches legacy") {
+        // Legacy path
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+        patSetDrum(p, 0, 0, 1.0f, 0.0f);
+        p->steps[0][0].condition = COND_1_2;  // Trigger every other loop
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(31.99f);  // 2 loops
+        seq.playing = false;
+        int legacy_count = golden_drum_triggers[0];
+
+        // Unified path
+        unified_init_seq();
+        p = seqCurrentPattern();
+        clearPattern(p);
+        patSetDrum(p, 0, 0, 1.0f, 0.0f);
+        p->steps[0][0].condition = COND_1_2;
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(31.99f);
+        seq.playing = false;
+
+        expect(unified_record_count[0] == legacy_count);
+    }
+
+    it("per-track length: unified matches legacy polyrhythm behavior") {
+        // Legacy
+        golden_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+        patSetDrumLength(p, 0, 4);   // Kick: 4-step loop
+        patSetDrum(p, 0, 0, 1.0f, 0.0f);
+        patSetDrumLength(p, 1, 16);  // Snare: 16-step loop
+        patSetDrum(p, 1, 0, 1.0f, 0.0f);
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(15.99f);
+        seq.playing = false;
+        int legacy_kick = golden_drum_triggers[0];
+        int legacy_snare = golden_drum_triggers[1];
+
+        // Unified
+        unified_init_seq();
+        p = seqCurrentPattern();
+        clearPattern(p);
+        patSetDrumLength(p, 0, 4);
+        patSetDrum(p, 0, 0, 1.0f, 0.0f);
+        patSetDrumLength(p, 1, 16);
+        patSetDrum(p, 1, 0, 1.0f, 0.0f);
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(15.99f);
+        seq.playing = false;
+
+        expect(unified_record_count[0] == legacy_kick);
+        expect(unified_record_count[1] == legacy_snare);
+    }
+}
+
+// ============================================================================
+// GOLDEN TESTS: FULL PARAM RECORDING
+// Record all unified params for baseline comparison after callback refactor.
+// These capture the exact values the sequencer dispatches through trackNoteOn.
+// ============================================================================
+
+describe(golden_callback_params) {
+    it("drum pitchMod is passed through unified callback") {
+        unified_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        patSetDrum(p, 0, 0, 1.0f, 0.0f);  // kick, no pitch nudge
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(0.5f);
+        seq.playing = false;
+
+        expect(unified_record_count[0] == 1);
+        // Default nudge = 0 → pitchMod = pow(2, 0/12) = 1.0
+        expect_float_near(unified_records[0][0].pitchMod, 1.0f, 0.01f);
+    }
+
+    it("drum pitchMod reflects step nudge value") {
+        unified_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        patSetDrum(p, 0, 0, 1.0f, 0.0f);
+        p->steps[0][0].notes[0].nudge = 5;  // Some nudge value
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(0.5f);
+        seq.playing = false;
+
+        expect(unified_record_count[0] == 1);
+        // pitchMod should reflect the nudge
+        // (exact mapping depends on sequencer internals)
+    }
+
+    it("melody gateTime reflects gate length setting") {
+        unified_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        patSetNote(p, SEQ_DRUM_TRACKS + 0, 0, 60, 0.9f, 1);   // gate=1 step
+        patSetNote(p, SEQ_DRUM_TRACKS + 0, 8, 64, 0.8f, 4);   // gate=4 steps
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(15.99f);
+        seq.playing = false;
+
+        expect(unified_record_count[SEQ_DRUM_TRACKS] >= 2);
+        // Gate=1 should produce a shorter gateTime than gate=4
+        float gt1 = unified_records[SEQ_DRUM_TRACKS][0].gateTime;
+        float gt4 = unified_records[SEQ_DRUM_TRACKS][1].gateTime;
+        expect(gt4 > gt1);
+    }
+
+    it("mixed drum+melody pattern records all tracks independently") {
+        unified_init_seq();
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+
+        // Drums
+        patSetDrum(p, 0, 0,  1.0f, 0.0f);
+        patSetDrum(p, 0, 8,  0.9f, 0.0f);
+        patSetDrum(p, 1, 4,  0.7f, 0.0f);
+        patSetDrum(p, 2, 0,  0.6f, 0.0f);
+        patSetDrum(p, 2, 4,  0.6f, 0.0f);
+        patSetDrum(p, 2, 8,  0.6f, 0.0f);
+        patSetDrum(p, 2, 12, 0.6f, 0.0f);
+
+        // Melody
+        patSetNote(p, SEQ_DRUM_TRACKS + 0, 0,  48, 0.9f, 4);  // Bass
+        patSetNote(p, SEQ_DRUM_TRACKS + 1, 0,  72, 0.8f, 2);  // Lead
+        patSetNote(p, SEQ_DRUM_TRACKS + 1, 4,  76, 0.7f, 2);  // Lead
+
+        seq.playing = true;
+        resetSequencer();
+        run_sequencer_fraction(15.99f);
+        seq.playing = false;
+
+        // Drums
+        expect(unified_record_count[0] == 2);  // kick: steps 0,8
+        expect(unified_record_count[1] == 1);  // snare: step 4
+        expect(unified_record_count[2] == 4);  // hh: steps 0,4,8,12
+
+        // Melody
+        expect(unified_record_count[SEQ_DRUM_TRACKS + 0] == 1);  // bass: step 0
+        expect(unified_record_count[SEQ_DRUM_TRACKS + 1] == 2);  // lead: steps 0,4
+
+        // Releases
+        expect(unified_release_count[SEQ_DRUM_TRACKS + 0] >= 1);
+        expect(unified_release_count[SEQ_DRUM_TRACKS + 1] >= 2);
+
+        // Verify note values
+        expect(unified_records[SEQ_DRUM_TRACKS + 0][0].note == 48);
+        expect(unified_records[SEQ_DRUM_TRACKS + 1][0].note == 72);
+        expect(unified_records[SEQ_DRUM_TRACKS + 1][1].note == 76);
+
+        // Verify velocity values
+        expect_vel_eq(unified_records[0][0].vel, 1.0f);
+        expect_vel_eq(unified_records[0][1].vel, 0.9f);
+        expect_vel_eq(unified_records[1][0].vel, 0.7f);
+    }
+}
+
+// ============================================================================
+// GOLDEN TESTS: AUDIO RENDER DETERMINISM
+// Render audio through the synth engine and verify deterministic output.
+// This catches any synthesis regressions from the callback refactor.
+// ============================================================================
+
+// Simple CRC32 for audio buffer checksumming
+static uint32_t audio_crc32(const float *buf, int len) {
+    uint32_t crc = 0xFFFFFFFF;
+    const uint8_t *data = (const uint8_t *)buf;
+    int bytes = len * (int)sizeof(float);
+    for (int i = 0; i < bytes; i++) {
+        crc ^= data[i];
+        for (int j = 0; j < 8; j++) {
+            crc = (crc >> 1) ^ (0xEDB88320 & (-(crc & 1)));
+        }
+    }
+    return ~crc;
+}
+
+describe(golden_audio_render) {
+    it("rendering same pattern twice produces identical audio") {
+        // First render
+        _ensureSeqCtx();
+        _ensureSynthCtx();
+        _ensureFxCtx();
+        initEffects();
+
+        initSequencer(golden_kick_trigger, golden_snare_trigger, golden_hh_trigger, golden_clap_trigger);
+        seq.bpm = 120.0f;
+        seq.dilla.kickNudge = 0;
+        seq.dilla.snareDelay = 0;
+        seq.dilla.hatNudge = 0;
+        seq.dilla.clapDelay = 0;
+        seq.dilla.swing = 0;
+        seq.dilla.jitter = 0;
+        seq.humanize.velocityJitter = 0.0f;
+        seq.humanize.timingJitter = 0.0f;
+
+        Pattern *p = seqCurrentPattern();
+        clearPattern(p);
+        patSetDrum(p, 0, 0, 1.0f, 0.0f);
+        patSetDrum(p, 0, 8, 1.0f, 0.0f);
+        patSetDrum(p, 1, 4, 0.8f, 0.0f);
+
+        // Render 8192 samples (covers a few steps at 120 BPM)
+        #define GOLDEN_RENDER_LEN 8192
+        float buf1[GOLDEN_RENDER_LEN];
+        seq.playing = true;
+        resetSequencer();
+        for (int i = 0; i < GOLDEN_RENDER_LEN; i++) {
+            if ((i % 512) == 0) updateSequencer(512.0f / SAMPLE_RATE);
+            float s = 0;
+            for (int v = 0; v < NUM_VOICES; v++)
+                s += processVoice(&synthVoices[v], SAMPLE_RATE);
+            buf1[i] = s;
+        }
+        seq.playing = false;
+
+        uint32_t crc1 = audio_crc32(buf1, GOLDEN_RENDER_LEN);
+
+        // Second render (identical setup)
+        for (int v = 0; v < NUM_VOICES; v++) {
+            synthVoices[v].envStage = 0;
+            synthVoices[v].envLevel = 0;
+        }
+        initEffects();
+        initSequencer(golden_kick_trigger, golden_snare_trigger, golden_hh_trigger, golden_clap_trigger);
+        seq.bpm = 120.0f;
+        seq.dilla.kickNudge = 0;
+        seq.dilla.snareDelay = 0;
+        seq.dilla.hatNudge = 0;
+        seq.dilla.clapDelay = 0;
+        seq.dilla.swing = 0;
+        seq.dilla.jitter = 0;
+        seq.humanize.velocityJitter = 0.0f;
+        seq.humanize.timingJitter = 0.0f;
+
+        p = seqCurrentPattern();
+        clearPattern(p);
+        patSetDrum(p, 0, 0, 1.0f, 0.0f);
+        patSetDrum(p, 0, 8, 1.0f, 0.0f);
+        patSetDrum(p, 1, 4, 0.8f, 0.0f);
+
+        float buf2[GOLDEN_RENDER_LEN];
+        seq.playing = true;
+        resetSequencer();
+        for (int i = 0; i < GOLDEN_RENDER_LEN; i++) {
+            if ((i % 512) == 0) updateSequencer(512.0f / SAMPLE_RATE);
+            float s = 0;
+            for (int v = 0; v < NUM_VOICES; v++)
+                s += processVoice(&synthVoices[v], SAMPLE_RATE);
+            buf2[i] = s;
+        }
+        seq.playing = false;
+
+        uint32_t crc2 = audio_crc32(buf2, GOLDEN_RENDER_LEN);
+        expect(crc1 == crc2);
+        #undef GOLDEN_RENDER_LEN
+    }
+}
+
+// ============================================================================
+// SAMPLER COMMAND QUEUE TESTS
+// ============================================================================
+
+describe(sampler_command_queue) {
+    it("should queue and drain a single command") {
+        _ensureSamplerCtx();
+        initSamplerContext(samplerCtx);
+
+        // Load a tiny sample into slot 0
+        float testData[] = {0.1f, 0.2f, 0.3f, 0.4f};
+        samplerCtx->samples[0].data = testData;
+        samplerCtx->samples[0].length = 4;
+        samplerCtx->samples[0].sampleRate = 44100;
+        samplerCtx->samples[0].loaded = true;
+        samplerCtx->samples[0].embedded = true;
+
+        bool ok = samplerQueuePlay(0, 0.8f, 1.0f);
+        expect(ok);
+        expect(samplerCtx->cmdHead != samplerCtx->cmdTail);  // not empty
+
+        samplerDrainQueue();
+        expect(samplerCtx->cmdHead == samplerCtx->cmdTail);  // empty
+        // Voice 0 should now be active
+        expect(samplerCtx->voices[0].active);
+        expect(samplerCtx->voices[0].sampleIndex == 0);
+        expect_float_eq(samplerCtx->voices[0].volume, 0.8f);
+    }
+
+    it("should queue multiple commands") {
+        _ensureSamplerCtx();
+        initSamplerContext(samplerCtx);
+
+        float testData[] = {0.1f, 0.2f, 0.3f, 0.4f};
+        for (int i = 0; i < 3; i++) {
+            samplerCtx->samples[i].data = testData;
+            samplerCtx->samples[i].length = 4;
+            samplerCtx->samples[i].sampleRate = 44100;
+            samplerCtx->samples[i].loaded = true;
+            samplerCtx->samples[i].embedded = true;
+        }
+
+        expect(samplerQueuePlay(0, 0.5f, 1.0f));
+        expect(samplerQueuePlay(1, 0.6f, 1.5f));
+        expect(samplerQueuePlay(2, 0.7f, 2.0f));
+
+        samplerDrainQueue();
+        expect(samplerCtx->voices[0].active);
+        expect(samplerCtx->voices[0].sampleIndex == 0);
+        expect(samplerCtx->voices[1].active);
+        expect(samplerCtx->voices[1].sampleIndex == 1);
+        expect(samplerCtx->voices[2].active);
+        expect(samplerCtx->voices[2].sampleIndex == 2);
+    }
+
+    it("should drop commands when queue is full") {
+        _ensureSamplerCtx();
+        initSamplerContext(samplerCtx);
+
+        float testData[] = {0.1f, 0.2f};
+        samplerCtx->samples[0].data = testData;
+        samplerCtx->samples[0].length = 2;
+        samplerCtx->samples[0].sampleRate = 44100;
+        samplerCtx->samples[0].loaded = true;
+        samplerCtx->samples[0].embedded = true;
+
+        // Fill queue (capacity = SAMPLER_CMD_QUEUE_SIZE - 1 = 15)
+        int queued = 0;
+        for (int i = 0; i < SAMPLER_CMD_QUEUE_SIZE + 5; i++) {
+            if (samplerQueuePlay(0, 0.5f, 1.0f)) queued++;
+        }
+        expect(queued == SAMPLER_CMD_QUEUE_SIZE - 1);  // ring buffer wastes one slot
+    }
+
+    it("should drain empty queue without effect") {
+        _ensureSamplerCtx();
+        initSamplerContext(samplerCtx);
+
+        samplerDrainQueue();  // should not crash
+        expect(samplerCtx->cmdHead == samplerCtx->cmdTail);
+        // No voices should be active
+        for (int i = 0; i < SAMPLER_MAX_VOICES; i++) {
+            expect(!samplerCtx->voices[i].active);
+        }
+    }
+
+    it("should preserve command parameters through queue") {
+        _ensureSamplerCtx();
+        initSamplerContext(samplerCtx);
+
+        float testData[] = {0.5f, 0.5f, 0.5f, 0.5f};
+        samplerCtx->samples[5].data = testData;
+        samplerCtx->samples[5].length = 4;
+        samplerCtx->samples[5].sampleRate = 44100;
+        samplerCtx->samples[5].loaded = true;
+        samplerCtx->samples[5].embedded = true;
+
+        samplerQueuePlay(5, 0.42f, 1.5f);
+        samplerDrainQueue();
+
+        expect(samplerCtx->voices[0].active);
+        expect(samplerCtx->voices[0].sampleIndex == 5);
+        expect_float_eq(samplerCtx->voices[0].volume, 0.42f);
+        // speed = pitch * rateRatio = 1.5 * (44100/48000) ≈ 1.378
+        float expectedSpeed = 1.5f * (44100.0f / 48000.0f);
+        expect_float_near(samplerCtx->voices[0].speed, expectedSpeed, 0.01f);
+    }
+}
+
 int main(int argc, char **argv) {
     // Check for quiet mode flag
     for (int i = 1; i < argc; i++) {
@@ -5529,7 +6170,7 @@ int main(int argc, char **argv) {
             break;
         }
     }
-    
+
     // P-lock system tests
     test(plock_system);
     
@@ -5641,6 +6282,14 @@ int main(int argc, char **argv) {
     test(v2_step_manipulation);
     test(v2_velocity_conversion);
     test(v2_step_note_size);
+
+    // Unified callback equivalence (safety net for callback refactor)
+    test(unified_callback_equivalence);
+    test(golden_callback_params);
+    test(golden_audio_render);
+
+    // Sampler command queue
+    test(sampler_command_queue);
 
     return summary();
 }

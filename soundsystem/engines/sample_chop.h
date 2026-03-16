@@ -85,13 +85,12 @@ static int _chopPatchToBus(int pi) {
     return BUS_CHORD;
 }
 
-static void _chopDrumTrigger(int trackIdx, int busIdx, float vel, float pitch) {
-    (void)pitch;
+static void _chopDrumTrigger(int trackIdx, int busIdx, float vel, float pitchMod) {
     SynthPatch *p = &_chop_daw->patches[trackIdx];
     float pVol = plockValue(PLOCK_VOLUME, vel);
 
     float pitchOffset = plockValue(PLOCK_PITCH_OFFSET, 0.0f);
-    float trigFreq = p->p_triggerFreq;
+    float trigFreq = p->p_triggerFreq * pitchMod;
     if (pitchOffset != 0.0f) trigFreq *= powf(2.0f, pitchOffset / 12.0f);
 
     float origDecay = p->p_decay;
@@ -120,10 +119,10 @@ static void _chopDrumTrigger(int trackIdx, int busIdx, float vel, float pitch) {
     p->p_filterCutoff = origCutoff;
 }
 
-static void _chopDrum0(float v, float p) { _chopDrumTrigger(0, BUS_DRUM0, v, p); }
-static void _chopDrum1(float v, float p) { _chopDrumTrigger(1, BUS_DRUM1, v, p); }
-static void _chopDrum2(float v, float p) { _chopDrumTrigger(2, BUS_DRUM2, v, p); }
-static void _chopDrum3(float v, float p) { _chopDrumTrigger(3, BUS_DRUM3, v, p); }
+static void _chopDrum0(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) { (void)note; (void)gateTime; (void)slide; (void)accent; _chopDrumTrigger(0, BUS_DRUM0, vel, pitchMod); }
+static void _chopDrum1(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) { (void)note; (void)gateTime; (void)slide; (void)accent; _chopDrumTrigger(1, BUS_DRUM1, vel, pitchMod); }
+static void _chopDrum2(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) { (void)note; (void)gateTime; (void)slide; (void)accent; _chopDrumTrigger(2, BUS_DRUM2, vel, pitchMod); }
+static void _chopDrum3(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) { (void)note; (void)gateTime; (void)slide; (void)accent; _chopDrumTrigger(3, BUS_DRUM3, vel, pitchMod); }
 
 static void _chopMelodyTrigger(int trackIdx, int note, float vel,
                                 float gateTime, bool slide, bool accent) {
@@ -201,9 +200,9 @@ static void _chopMelodyTrigger(int trackIdx, int note, float vel,
     p->p_volume = origVolume;
 }
 
-static void _chopMel0(int n, float v, float g, bool s, bool a) { _chopMelodyTrigger(0, n, v, g, s, a); }
-static void _chopMel1(int n, float v, float g, bool s, bool a) { _chopMelodyTrigger(1, n, v, g, s, a); }
-static void _chopMel2(int n, float v, float g, bool s, bool a) { _chopMelodyTrigger(2, n, v, g, s, a); }
+static void _chopMel0(int n, float v, float g, float pm, bool s, bool a) { (void)pm; _chopMelodyTrigger(0, n, v, g, s, a); }
+static void _chopMel1(int n, float v, float g, float pm, bool s, bool a) { (void)pm; _chopMelodyTrigger(1, n, v, g, s, a); }
+static void _chopMel2(int n, float v, float g, float pm, bool s, bool a) { (void)pm; _chopMelodyTrigger(2, n, v, g, s, a); }
 
 static void _chopMelRelease(int t) {
     for (int i = 0; i < _chop_melodyVoiceCount[t]; i++) {
@@ -462,23 +461,14 @@ static RenderedPattern renderPatternToBuffer(const char *songPath, int patternId
         tempDaw->patches[i] = createDefaultPatch(WAVE_SAW);
 
     // Set up callback pointer and init sequencer.
-    // IMPORTANT: initSequencer and setMelodyCallbacks overwrite file-scope
-    // static adapter arrays (_drumAdapters, _melodyAdapters, _melodyReleaseAdapters)
-    // that are shared between the live system and this temp bounce.
-    // We save/restore them so the live callbacks aren't clobbered.
+    // Callbacks are now stored per-instance in seq.trackNoteOn[] (part of
+    // SequencerContext), so the bounce's initSequencer writes to the temp
+    // context — no global adapter state to save/restore.
     _chop_daw = tempDaw;
     memset(_chop_melodyVoice, -1, sizeof(_chop_melodyVoice));
     memset(_chop_melodyVoiceCount, 0, sizeof(_chop_melodyVoiceCount));
     memset(_chop_monoVoiceIdx, -1, sizeof(_chop_monoVoiceIdx));
     memset(_chop_drumVoice, -1, sizeof(_chop_drumVoice));
-
-    // Save live callback adapters
-    DrumTriggerFunc savedDrumAdapters[SEQ_DRUM_TRACKS];
-    MelodyTriggerFunc savedMelodyAdapters[SEQ_MELODY_TRACKS];
-    MelodyReleaseFunc savedMelodyReleaseAdapters[SEQ_MELODY_TRACKS];
-    memcpy(savedDrumAdapters, _drumAdapters, sizeof(savedDrumAdapters));
-    memcpy(savedMelodyAdapters, _melodyAdapters, sizeof(savedMelodyAdapters));
-    memcpy(savedMelodyReleaseAdapters, _melodyReleaseAdapters, sizeof(savedMelodyReleaseAdapters));
 
     initSequencer(_chopDrum0, _chopDrum1, _chopDrum2, _chopDrum3);
     setMelodyCallbacks(0, _chopMel0, _chopMelRel0);
@@ -614,16 +604,11 @@ cleanup_daw:
 cleanup:
     free(temp);
 restore:
-    // Restore the live system
+    // Restore the live system's global pointers
     synthCtx = savedSynth;
     fxCtx = savedFx;
     seqCtx = savedSeq;
     samplerCtx = savedSampler;
-
-    // Restore live callback adapters (initSequencer/setMelodyCallbacks overwrote them)
-    memcpy(_drumAdapters, savedDrumAdapters, sizeof(savedDrumAdapters));
-    memcpy(_melodyAdapters, savedMelodyAdapters, sizeof(savedMelodyAdapters));
-    memcpy(_melodyReleaseAdapters, savedMelodyReleaseAdapters, sizeof(savedMelodyReleaseAdapters));
 
     return result;
 }

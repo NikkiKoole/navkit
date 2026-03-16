@@ -572,7 +572,245 @@ static struct {
     float fmMod;           // last fmLfoMod
 } lfoModViz;
 
+// sample_chop.h needed here for chopStateBounce (RenderedPattern, chopEqual, etc.)
+// Forward-declare dawLoad (defined in daw_file.h, included after chopState)
+// because sample_chop.h's renderPatternToBuffer calls dawLoad.
+static bool dawLoad(const char *filepath);
+#include "../engines/sample_chop.h"
+
+// ============================================================================
+// Chop/flip state — defined before daw_file.h so save/load can access it
+// ============================================================================
+
+// Runtime state (not saved — rebuild from .song on load)
+static struct {
+    // Source
+    char sourcePath[256];       // .song file path
+    int sourcePattern;          // which pattern to render
+    int sourceLoops;            // how many loops
+    int sourceSongIdx;          // index into songBrowser (-1 = none)
+    // Rendered audio
+    float *renderData;          // bounced PCM buffer (heap)
+    int renderLength;           // samples
+    float renderBpm;            // source BPM
+    int renderSteps;            // steps in rendered pattern
+    // Chop state
+    int sliceCount;             // current slice count (8 or 16)
+    int sliceLength;            // samples per slice
+    int sliceLengths[SAMPLER_MAX_SAMPLES]; // per-slice lengths (transient mode)
+    float *slices[SAMPLER_MAX_SAMPLES]; // per-slice buffers (heap)
+    int chopMode;               // 0=equal, 1=transient
+    float sensitivity;          // transient sensitivity (0.0-1.0)
+    // Global fade (applied to all slices unless overridden)
+    float fadeMs;               // global fade in/out in ms (0=off, default 1.0)
+    // Per-slice params
+    struct {
+        bool reverse;           // play backwards
+        float pitchSemitones;   // pitch shift in semitones (-24 to +24)
+        float gain;             // volume multiplier (0.0 to 2.0, default 1.0)
+        float trimStart;        // start point 0.0-1.0 (default 0.0)
+        float trimEnd;          // end point 0.0-1.0 (default 1.0)
+        float fadeInMs;         // per-slice fade-in override (-1 = use global)
+        float fadeOutMs;        // per-slice fade-out override (-1 = use global)
+    } sliceParams[SAMPLER_MAX_SAMPLES];
+    // UI
+    int selectedSlice;          // highlighted slice (-1 = none)
+    bool bounced;               // true if render+chop has been done
+    bool browsingFiles;         // true when file picker is open
+    int browseScroll;           // scroll offset in file list
+} chopState = {
+    .sourcePattern = 0,
+    .sourceLoops = 1,
+    .sliceCount = 8,
+    .selectedSlice = -1,
+    .sourceSongIdx = -1,
+    .sensitivity = 0.5f,
+    .fadeMs = 1.0f,        // default 1ms auto-fade
+    .sliceParams = {{0}},  // zero-init: reverse=false, pitch=0, gain=0 (set to 1.0 in clear)
+};
+
+// Free chop state buffers
+static void chopStateClear(void) {
+    if (chopState.renderData) { free(chopState.renderData); chopState.renderData = NULL; }
+    for (int s = 0; s < SAMPLER_MAX_SAMPLES; s++) {
+        if (chopState.slices[s]) { free(chopState.slices[s]); chopState.slices[s] = NULL; }
+    }
+    chopState.renderLength = 0;
+    chopState.sliceLength = 0;
+    chopState.bounced = false;
+    chopState.selectedSlice = -1;
+    // Reset drum pad slice mappings
+    for (int t = 0; t < 4; t++) daw.chopSliceMap[t] = -1;
+    // Reset per-slice params
+    for (int s = 0; s < SAMPLER_MAX_SAMPLES; s++) {
+        chopState.sliceParams[s].reverse = false;
+        chopState.sliceParams[s].pitchSemitones = 0;
+        chopState.sliceParams[s].gain = 1.0f;
+        chopState.sliceParams[s].trimStart = 0.0f;
+        chopState.sliceParams[s].trimEnd = 1.0f;
+        chopState.sliceParams[s].fadeInMs = -1.0f;   // use global
+        chopState.sliceParams[s].fadeOutMs = -1.0f;   // use global
+    }
+}
+
+// Bounce + chop the current source
+static void chopStateBounce(void) {
+    chopStateClear();
+    if (!chopState.sourcePath[0]) return;
+
+    // Gate the audio callback during the entire bounce+load operation.
+    // renderPatternToBuffer swaps global context pointers, and the slot
+    // loading modifies samplerCtx->samples — both need protection.
+    dawAudioGate();
+
+    RenderedPattern rendered = renderPatternToBuffer(
+        chopState.sourcePath, chopState.sourcePattern,
+        chopState.sourceLoops, 0.5f);
+
+    if (!rendered.data) { dawAudioUngate(); return; }
+
+    chopState.renderData = rendered.data;
+    chopState.renderLength = rendered.length;
+    chopState.renderBpm = rendered.bpm;
+    chopState.renderSteps = rendered.stepCount;
+
+    // Chop (equal or transient)
+    ChoppedSample chopped;
+    if (chopState.chopMode == 1) {
+        chopped = chopAtTransients(&rendered, chopState.sensitivity, chopState.sliceCount);
+    } else {
+        chopped = chopEqual(&rendered, chopState.sliceCount);
+    }
+    if (chopped.sliceCount < 1) { chopStateClear(); dawAudioUngate(); return; }
+
+    int sc = chopped.sliceCount;
+    chopState.sliceCount = sc;  // transient mode may return fewer slices
+    chopState.sliceLength = chopped.sliceLength;
+    for (int s = 0; s < sc; s++) {
+        int len = chopped.sliceLengths[s] > 0 ? chopped.sliceLengths[s] : chopped.sliceLength;
+        chopState.sliceLengths[s] = len;
+        chopState.slices[s] = (float *)malloc(len * sizeof(float));
+        if (!chopState.slices[s]) { chopFree(&chopped); chopStateClear(); dawAudioUngate(); return; }
+        memcpy(chopState.slices[s], chopped.slices[s], len * sizeof(float));
+    }
+
+    // Load into sampler
+    _ensureSamplerCtx();
+    for (int s = 0; s < sc; s++) {
+        int len = chopState.sliceLengths[s];
+        Sample *slot = &samplerCtx->samples[s];
+        if (slot->loaded && slot->data && !slot->embedded) free(slot->data);
+        slot->data = (float *)malloc(len * sizeof(float));
+        if (slot->data) {
+            memcpy(slot->data, chopState.slices[s], len * sizeof(float));
+            slot->length = len;
+            slot->sampleRate = SAMPLE_CHOP_SAMPLE_RATE;
+            slot->loaded = true;
+            slot->embedded = false;
+            snprintf(slot->name, sizeof(slot->name), "slice_%02d", s);
+        }
+    }
+    chopFree(&chopped);
+
+    // Drum pad mapping left cleared (-1) — user can opt in via Auto button
+
+    // All slot modifications done — ungate the audio callback
+    dawAudioUngate();
+
+    chopState.bounced = true;
+    // Initialize default slice params for new chop
+    for (int s = 0; s < sc; s++) {
+        chopState.sliceParams[s].reverse = false;
+        chopState.sliceParams[s].pitchSemitones = 0;
+        chopState.sliceParams[s].gain = 1.0f;
+        chopState.sliceParams[s].trimStart = 0.0f;
+        chopState.sliceParams[s].trimEnd = 1.0f;
+        chopState.sliceParams[s].fadeInMs = -1.0f;   // use global
+        chopState.sliceParams[s].fadeOutMs = -1.0f;   // use global
+    }
+}
+
+// Re-apply per-slice params to sampler slots (call after changing params)
+// Gates the audio callback to prevent use-after-free on slot->data.
+static void chopApplySliceParams(void) {
+    if (!chopState.bounced) return;
+    _ensureSamplerCtx();
+    dawAudioGate();
+
+    // Sync pitch to DawState (used by drum trigger in daw_audio.h)
+    for (int s = 0; s < chopState.sliceCount; s++)
+        daw.chopSlicePitch[s] = chopState.sliceParams[s].pitchSemitones;
+
+    for (int s = 0; s < chopState.sliceCount; s++) {
+        if (!chopState.slices[s]) continue;
+        int fullLen = chopState.sliceLengths[s] > 0 ? chopState.sliceLengths[s] : chopState.sliceLength;
+
+        // Apply trim: extract sub-region of the original slice
+        float ts = chopState.sliceParams[s].trimStart;
+        float te = chopState.sliceParams[s].trimEnd;
+        if (ts < 0) ts = 0; if (ts > 1) ts = 1;
+        if (te < 0) te = 0; if (te > 1) te = 1;
+        if (te <= ts) te = ts + 0.01f;  // minimum length
+        int startSamp = (int)(ts * fullLen);
+        int endSamp = (int)(te * fullLen);
+        if (endSamp > fullLen) endSamp = fullLen;
+        int len = endSamp - startSamp;
+        if (len < 1) len = 1;
+
+        // Build new buffer before touching the slot
+        float *data = (float *)malloc(len * sizeof(float));
+        if (!data) continue;
+        memcpy(data, chopState.slices[s] + startSamp, len * sizeof(float));
+
+        // Apply gain
+        float gain = chopState.sliceParams[s].gain;
+        if (gain != 1.0f) {
+            for (int i = 0; i < len; i++) data[i] *= gain;
+        }
+
+        // Apply fade in/out (click prevention)
+        {
+            float fiMs = chopState.sliceParams[s].fadeInMs >= 0
+                       ? chopState.sliceParams[s].fadeInMs : chopState.fadeMs;
+            float foMs = chopState.sliceParams[s].fadeOutMs >= 0
+                       ? chopState.sliceParams[s].fadeOutMs : chopState.fadeMs;
+            int fiSamples = (int)(fiMs * 0.001f * SAMPLE_CHOP_SAMPLE_RATE);
+            int foSamples = (int)(foMs * 0.001f * SAMPLE_CHOP_SAMPLE_RATE);
+            // Fade in
+            for (int i = 0; i < fiSamples && i < len; i++)
+                data[i] *= (float)i / (float)fiSamples;
+            // Fade out
+            for (int i = 0; i < foSamples && i < len; i++)
+                data[len - 1 - i] *= (float)i / (float)foSamples;
+        }
+
+        // Apply reverse
+        if (chopState.sliceParams[s].reverse) {
+            for (int i = 0; i < len / 2; i++) {
+                float tmp = data[i];
+                data[i] = data[len - 1 - i];
+                data[len - 1 - i] = tmp;
+            }
+        }
+
+        // Swap into slot: mark unloaded, swap pointer, update length, re-enable
+        Sample *slot = &samplerCtx->samples[s];
+        slot->loaded = false;  // audio thread will skip this slot
+        float *oldData = slot->data;
+        bool wasEmbedded = slot->embedded;
+        slot->data = data;
+        slot->length = len;
+        slot->sampleRate = SAMPLE_CHOP_SAMPLE_RATE;
+        slot->embedded = false;
+        snprintf(slot->name, sizeof(slot->name), "slice_%02d", s);
+        slot->loaded = true;
+        if (oldData && !wasEmbedded) free(oldData);
+    }
+    dawAudioUngate();
+}
+
 // Save/load (.song files)
+#define DAW_HAS_CHOP_STATE  // enables [sample] section save/load in daw_file.h
 #include "daw_file.h"
 
 static char dawStatusMsg[64] = "";
@@ -1557,6 +1795,12 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                 int note = patGetNote(dawPattern(), track, step);
                 if (note != SEQ_NOTE_OFF && cellW >= 10) {
                     DrawTextShadow(TextFormat("%d", note), sx+2, ty+2, 8, (Color){255,200,100,255});
+                    // Show per-step pitch offset when non-zero
+                    StepV2 *sv = &dawPattern()->steps[track][step];
+                    if (sv->noteCount > 0 && sv->notes[0].nudge != 0) {
+                        DrawTextShadow(TextFormat("%+d", sv->notes[0].nudge),
+                                      sx+2, ty+cellH-10, 7, (Color){180,140,255,220});
+                    }
                 }
             } else if (!isDrum && track >= SEQ_DRUM_TRACKS) {
                 int note = patGetNote(dawPattern(), track, step);
@@ -1602,14 +1846,42 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                         if (isDrum) patSetDrumVel(pat, track, step, vel);
                         else patSetNoteVel(pat, track, step, vel);
                     }
+                } else if (wh != 0.0f && isSampler && IsKeyDown(KEY_LEFT_CONTROL)) {
+                    // Ctrl+scroll = per-step pitch offset for sampler track
+                    static float samplerPitchAccum = 0.0f;
+                    static int samplerPitchStep = -1;
+                    if (step != samplerPitchStep) { samplerPitchAccum = 0.0f; samplerPitchStep = step; }
+                    Pattern *pat = dawPattern();
+                    if (patGetNote(pat, track, step) != SEQ_NOTE_OFF) {
+                        StepV2 *sv = &pat->steps[track][step];
+                        if (sv->noteCount > 0) {
+                            samplerPitchAccum += wh;
+                            int delta = (int)samplerPitchAccum;
+                            if (delta != 0) {
+                                int newNudge = sv->notes[0].nudge + delta;
+                                if (newNudge < -24) newNudge = -24;
+                                if (newNudge > 24) newNudge = 24;
+                                sv->notes[0].nudge = (int8_t)newNudge;
+                                samplerPitchAccum -= delta;
+                            }
+                        }
+                    }
                 } else if (wh != 0.0f && isSampler) {
                     // Scroll = change slice number for sampler track
+                    static float samplerSliceAccum = 0.0f;
+                    static int samplerSliceStep = -1;
+                    if (step != samplerSliceStep) { samplerSliceAccum = 0.0f; samplerSliceStep = step; }
                     int note = patGetNote(dawPattern(), track, step);
                     if (note != SEQ_NOTE_OFF) {
-                        note += (int)wh;
-                        if (note < 0) note = 0;
-                        if (note >= SAMPLER_MAX_SAMPLES) note = SAMPLER_MAX_SAMPLES - 1;
-                        patSetNote(dawPattern(), track, step, note, patGetNoteVel(dawPattern(), track, step), 1);
+                        samplerSliceAccum += wh;
+                        int delta = (int)samplerSliceAccum;
+                        if (delta != 0) {
+                            note += delta;
+                            if (note < 0) note = 0;
+                            if (note >= SAMPLER_MAX_SAMPLES) note = SAMPLER_MAX_SAMPLES - 1;
+                            patSetNote(dawPattern(), track, step, note, patGetNoteVel(dawPattern(), track, step), 1);
+                            samplerSliceAccum -= delta;
+                        }
                     }
                 } else if (wh != 0.0f && !isDrum && track >= SEQ_DRUM_TRACKS) {
                     // Plain scroll = pitch (melody only) — accumulate for smooth scroll
@@ -2910,7 +3182,109 @@ static void drawLfoModIndicator(float x, float y, float baseVal, float modVal, f
     DrawTextShadow(TextFormat("%.2f", modded), (int)(barX + barW + 4), (int)(barY - 3), 9, (Color){255, 160, 60, 200});
 }
 
+// Sampler patch view — shown instead of synth params when sampler track is selected
+static void drawParamSampler(float x, float y, float w, float h) {
+    _ensureSamplerCtx();
+    Vector2 mouse = GetMousePosition();
+
+    // Header
+    DrawTextShadow("SAMPLER", (int)(x + 8), (int)(y + 2), 14, (Color){255, 180, 80, 255});
+    y += 22; h -= 22;
+
+    // Master volume
+    {
+        DrawTextShadow("Volume:", (int)(x + 8), (int)(y + 2), 10, (Color){140, 140, 160, 255});
+        Rectangle r = {x + 60, y, 80, 14};
+        bool hov = CheckCollisionPointRec(mouse, r);
+        DrawRectangleRec(r, (Color){28, 28, 36, 255});
+        DrawRectangleLinesEx(r, 1, hov ? ORANGE : (Color){50, 50, 60, 255});
+        float fill = samplerCtx->volume * 76;
+        DrawRectangle((int)(r.x + 2), (int)(r.y + 2), (int)fill, 10,
+                     (Color){80, 160, 80, 200});
+        char volStr[16];
+        snprintf(volStr, sizeof(volStr), "%.0f%%", samplerCtx->volume * 100);
+        DrawTextShadow(volStr, (int)(r.x + 4), (int)(y + 2), 9, WHITE);
+        if (hov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+            samplerCtx->volume = (mouse.x - r.x) / r.width;
+            if (samplerCtx->volume < 0) samplerCtx->volume = 0;
+            if (samplerCtx->volume > 2.0f) samplerCtx->volume = 2.0f;
+        }
+        if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+            samplerCtx->volume = 1.0f;
+            ui_consume_click();
+        }
+    }
+    y += 20;
+
+    // Active voices
+    {
+        int active = samplerActiveVoices();
+        char voiceStr[32];
+        snprintf(voiceStr, sizeof(voiceStr), "Voices: %d / %d", active, SAMPLER_MAX_VOICES);
+        DrawTextShadow(voiceStr, (int)(x + 8), (int)(y + 2), 9,
+                      active > 0 ? (Color){100, 200, 120, 255} : (Color){80, 80, 95, 255});
+    }
+    y += 16;
+
+    // Separator
+    DrawLine((int)(x + 4), (int)y, (int)(x + w - 4), (int)y, (Color){50, 50, 60, 255});
+    y += 6;
+
+    // Loaded slices list
+    DrawTextShadow("Loaded Slices:", (int)(x + 8), (int)(y + 2), 10, (Color){140, 140, 160, 255});
+    y += 16;
+
+    int sliceCount = 0;
+    for (int i = 0; i < SAMPLER_MAX_SAMPLES; i++) {
+        if (samplerCtx->samples[i].loaded) sliceCount++;
+    }
+
+    if (sliceCount == 0) {
+        DrawTextShadow("(none)", (int)(x + 16), (int)(y + 2), 9, (Color){70, 70, 85, 255});
+    } else {
+        float listH = h - (y - (y - 16 - 6 - 16 - 20 - 22));  // remaining height
+        int maxVisible = (int)(listH / 13);
+        if (maxVisible < 1) maxVisible = 1;
+        int shown = 0;
+        for (int i = 0; i < SAMPLER_MAX_SAMPLES && shown < maxVisible; i++) {
+            if (!samplerCtx->samples[i].loaded) continue;
+            float dur = samplerGetDuration(i);
+            char line[80];
+            snprintf(line, sizeof(line), "%2d: %-12s  %.2fs", i, samplerCtx->samples[i].name, dur);
+            Color col = (Color){100, 100, 120, 255};
+            // Highlight if this slice is playing
+            for (int v = 0; v < SAMPLER_MAX_VOICES; v++) {
+                if (samplerCtx->voices[v].active && samplerCtx->voices[v].sampleIndex == i) {
+                    col = (Color){180, 220, 100, 255};
+                    break;
+                }
+            }
+            DrawTextShadow(line, (int)(x + 12), (int)(y + 2), 9, col);
+            y += 13;
+            shown++;
+        }
+        if (sliceCount > maxVisible) {
+            char more[16];
+            snprintf(more, sizeof(more), "... +%d more", sliceCount - maxVisible);
+            DrawTextShadow(more, (int)(x + 12), (int)(y + 2), 9, (Color){70, 70, 85, 255});
+        }
+    }
+
+    // Future features placeholder
+    // TODO: One-shot vs gate mode toggle
+    // TODO: LP/HP filter on sampler output (cutoff + type)
+    // TODO: ADSR envelope for gated playback
+    // TODO: Choke group assignment per slice
+    // TODO: Timestretch (pitch-independent speed)
+}
+
 static void drawParamPatch(float x, float y, float w, float h) {
+    // Sampler track: show sampler-specific view instead of synth params
+    if (daw.selectedPatch == SEQ_TRACK_SAMPLER) {
+        drawParamSampler(x, y, w, h);
+        return;
+    }
+
     // After closing preset picker, skip until mouse is released to prevent click-through
     if (presetPickerJustClosed) {
         if (!IsMouseButtonDown(MOUSE_LEFT_BUTTON)) presetPickerJustClosed = false;
@@ -3949,7 +4323,6 @@ static void drawParamTape(float x, float y, float w, float h) {
 
 
 #include "daw_audio.h"
-#include "../engines/sample_chop.h"
 
 
 // ============================================================================
@@ -4665,210 +5038,6 @@ static void chopScanSongs(void) {
     songBrowser.scanned = true;
 }
 
-// Runtime state (not saved — rebuild from .song on load)
-static struct {
-    // Source
-    char sourcePath[256];       // .song file path
-    int sourcePattern;          // which pattern to render
-    int sourceLoops;            // how many loops
-    int sourceSongIdx;          // index into songBrowser (-1 = none)
-    // Rendered audio
-    float *renderData;          // bounced PCM buffer (heap)
-    int renderLength;           // samples
-    float renderBpm;            // source BPM
-    int renderSteps;            // steps in rendered pattern
-    // Chop state
-    int sliceCount;             // current slice count (8 or 16)
-    int sliceLength;            // samples per slice
-    int sliceLengths[SAMPLER_MAX_SAMPLES]; // per-slice lengths (transient mode)
-    float *slices[SAMPLER_MAX_SAMPLES]; // per-slice buffers (heap)
-    int chopMode;               // 0=equal, 1=transient
-    float sensitivity;          // transient sensitivity (0.0-1.0)
-    // Per-slice params
-    struct {
-        bool reverse;           // play backwards
-        float pitchSemitones;   // pitch shift in semitones (-24 to +24)
-        float gain;             // volume multiplier (0.0 to 2.0, default 1.0)
-        float trimStart;        // start point 0.0-1.0 (default 0.0)
-        float trimEnd;          // end point 0.0-1.0 (default 1.0)
-    } sliceParams[SAMPLER_MAX_SAMPLES];
-    // UI
-    int selectedSlice;          // highlighted slice (-1 = none)
-    bool bounced;               // true if render+chop has been done
-    bool browsingFiles;         // true when file picker is open
-    int browseScroll;           // scroll offset in file list
-} chopState = {
-    .sourcePattern = 0,
-    .sourceLoops = 1,
-    .sliceCount = 8,
-    .selectedSlice = -1,
-    .sourceSongIdx = -1,
-    .sensitivity = 0.5f,
-    .sliceParams = {{0}},  // zero-init: reverse=false, pitch=0, gain=0 (set to 1.0 in clear)
-};
-
-// Free chop state buffers
-static void chopStateClear(void) {
-    if (chopState.renderData) { free(chopState.renderData); chopState.renderData = NULL; }
-    for (int s = 0; s < SAMPLER_MAX_SAMPLES; s++) {
-        if (chopState.slices[s]) { free(chopState.slices[s]); chopState.slices[s] = NULL; }
-    }
-    chopState.renderLength = 0;
-    chopState.sliceLength = 0;
-    chopState.bounced = false;
-    chopState.selectedSlice = -1;
-    // Reset drum pad slice mappings
-    for (int t = 0; t < 4; t++) daw.chopSliceMap[t] = -1;
-    // Reset per-slice params
-    for (int s = 0; s < SAMPLER_MAX_SAMPLES; s++) {
-        chopState.sliceParams[s].reverse = false;
-        chopState.sliceParams[s].pitchSemitones = 0;
-        chopState.sliceParams[s].gain = 1.0f;
-        chopState.sliceParams[s].trimStart = 0.0f;
-        chopState.sliceParams[s].trimEnd = 1.0f;
-    }
-}
-
-// Bounce + chop the current source
-static void chopStateBounce(void) {
-    chopStateClear();
-    if (!chopState.sourcePath[0]) return;
-
-    // Gate the audio callback during the entire bounce+load operation.
-    // renderPatternToBuffer swaps global context pointers, and the slot
-    // loading modifies samplerCtx->samples — both need protection.
-    dawAudioGate();
-
-    RenderedPattern rendered = renderPatternToBuffer(
-        chopState.sourcePath, chopState.sourcePattern,
-        chopState.sourceLoops, 0.5f);
-
-    if (!rendered.data) { dawAudioUngate(); return; }
-
-    chopState.renderData = rendered.data;
-    chopState.renderLength = rendered.length;
-    chopState.renderBpm = rendered.bpm;
-    chopState.renderSteps = rendered.stepCount;
-
-    // Chop (equal or transient)
-    ChoppedSample chopped;
-    if (chopState.chopMode == 1) {
-        chopped = chopAtTransients(&rendered, chopState.sensitivity, chopState.sliceCount);
-    } else {
-        chopped = chopEqual(&rendered, chopState.sliceCount);
-    }
-    if (chopped.sliceCount < 1) { chopStateClear(); dawAudioUngate(); return; }
-
-    int sc = chopped.sliceCount;
-    chopState.sliceCount = sc;  // transient mode may return fewer slices
-    chopState.sliceLength = chopped.sliceLength;
-    for (int s = 0; s < sc; s++) {
-        int len = chopped.sliceLengths[s] > 0 ? chopped.sliceLengths[s] : chopped.sliceLength;
-        chopState.sliceLengths[s] = len;
-        chopState.slices[s] = (float *)malloc(len * sizeof(float));
-        if (!chopState.slices[s]) { chopFree(&chopped); chopStateClear(); dawAudioUngate(); return; }
-        memcpy(chopState.slices[s], chopped.slices[s], len * sizeof(float));
-    }
-
-    // Load into sampler
-    _ensureSamplerCtx();
-    for (int s = 0; s < sc; s++) {
-        int len = chopState.sliceLengths[s];
-        Sample *slot = &samplerCtx->samples[s];
-        if (slot->loaded && slot->data && !slot->embedded) free(slot->data);
-        slot->data = (float *)malloc(len * sizeof(float));
-        if (slot->data) {
-            memcpy(slot->data, chopState.slices[s], len * sizeof(float));
-            slot->length = len;
-            slot->sampleRate = SAMPLE_CHOP_SAMPLE_RATE;
-            slot->loaded = true;
-            slot->embedded = false;
-            snprintf(slot->name, sizeof(slot->name), "slice_%02d", s);
-        }
-    }
-    chopFree(&chopped);
-
-    // Map first 4 slices to drum pads by default
-    for (int t = 0; t < 4 && t < sc; t++)
-        daw.chopSliceMap[t] = t;
-
-    // All slot modifications done — ungate the audio callback
-    dawAudioUngate();
-
-    chopState.bounced = true;
-    // Initialize default slice params for new chop
-    for (int s = 0; s < sc; s++) {
-        chopState.sliceParams[s].reverse = false;
-        chopState.sliceParams[s].pitchSemitones = 0;
-        chopState.sliceParams[s].gain = 1.0f;
-        chopState.sliceParams[s].trimStart = 0.0f;
-        chopState.sliceParams[s].trimEnd = 1.0f;
-    }
-}
-
-// Re-apply per-slice params to sampler slots (call after changing params)
-// Gates the audio callback to prevent use-after-free on slot->data.
-static void chopApplySliceParams(void) {
-    if (!chopState.bounced) return;
-    _ensureSamplerCtx();
-    dawAudioGate();
-
-    // Sync pitch to DawState (used by drum trigger in daw_audio.h)
-    for (int s = 0; s < chopState.sliceCount; s++)
-        daw.chopSlicePitch[s] = chopState.sliceParams[s].pitchSemitones;
-
-    for (int s = 0; s < chopState.sliceCount; s++) {
-        if (!chopState.slices[s]) continue;
-        int fullLen = chopState.sliceLengths[s] > 0 ? chopState.sliceLengths[s] : chopState.sliceLength;
-
-        // Apply trim: extract sub-region of the original slice
-        float ts = chopState.sliceParams[s].trimStart;
-        float te = chopState.sliceParams[s].trimEnd;
-        if (ts < 0) ts = 0; if (ts > 1) ts = 1;
-        if (te < 0) te = 0; if (te > 1) te = 1;
-        if (te <= ts) te = ts + 0.01f;  // minimum length
-        int startSamp = (int)(ts * fullLen);
-        int endSamp = (int)(te * fullLen);
-        if (endSamp > fullLen) endSamp = fullLen;
-        int len = endSamp - startSamp;
-        if (len < 1) len = 1;
-
-        // Build new buffer before touching the slot
-        float *data = (float *)malloc(len * sizeof(float));
-        if (!data) continue;
-        memcpy(data, chopState.slices[s] + startSamp, len * sizeof(float));
-
-        // Apply gain
-        float gain = chopState.sliceParams[s].gain;
-        if (gain != 1.0f) {
-            for (int i = 0; i < len; i++) data[i] *= gain;
-        }
-
-        // Apply reverse
-        if (chopState.sliceParams[s].reverse) {
-            for (int i = 0; i < len / 2; i++) {
-                float tmp = data[i];
-                data[i] = data[len - 1 - i];
-                data[len - 1 - i] = tmp;
-            }
-        }
-
-        // Swap into slot: mark unloaded, swap pointer, update length, re-enable
-        Sample *slot = &samplerCtx->samples[s];
-        slot->loaded = false;  // audio thread will skip this slot
-        float *oldData = slot->data;
-        bool wasEmbedded = slot->embedded;
-        slot->data = data;
-        slot->length = len;
-        slot->sampleRate = SAMPLE_CHOP_SAMPLE_RATE;
-        slot->embedded = false;
-        snprintf(slot->name, sizeof(slot->name), "slice_%02d", s);
-        slot->loaded = true;
-        if (oldData && !wasEmbedded) free(oldData);
-    }
-    dawAudioUngate();
-}
-
 // Draw waveform with slice markers, returns clicked slice or -1
 // sliceLengths: per-slice lengths (NULL = equal division)
 static int drawChopWaveform(float bx, float by, float bw, float bh,
@@ -5133,6 +5302,39 @@ static void drawWorkSample(float x, float y, float w, float h) {
             snprintf(bpmStr, sizeof(bpmStr), "%.0f BPM", chopState.renderBpm);
             DrawTextShadow(bpmStr, (int)(x + 360), (int)(sy + 2), 10, (Color){100, 200, 120, 255});
         }
+
+        // Global fade control
+        {
+            float fx2 = x + 430;
+            DrawTextShadow("Fade:", (int)fx2, (int)(sy + 2), 9, (Color){140, 140, 160, 255});
+            Rectangle fr = {fx2 + 34, sy, 50, 16};
+            bool fhov = CheckCollisionPointRec(mouse, fr);
+            DrawRectangleRec(fr, (Color){28, 28, 36, 255});
+            DrawRectangleLinesEx(fr, 1, fhov ? ORANGE : (Color){50, 50, 60, 255});
+            float fadeFill = (chopState.fadeMs / 5.0f) * 46;
+            if (fadeFill > 46) fadeFill = 46;
+            DrawRectangle((int)(fr.x + 2), (int)(fr.y + 2), (int)fadeFill, 12,
+                         chopState.fadeMs > 0.01f ? (Color){100, 160, 200, 200} : (Color){50, 50, 60, 200});
+            char fadeStr[16];
+            if (chopState.fadeMs < 0.01f)
+                snprintf(fadeStr, sizeof(fadeStr), "OFF");
+            else
+                snprintf(fadeStr, sizeof(fadeStr), "%.1fms", chopState.fadeMs);
+            DrawTextShadow(fadeStr, (int)(fr.x + 4), (int)(sy + 3), 9,
+                          chopState.fadeMs > 0.01f ? WHITE : (Color){80, 80, 95, 255});
+            if (fhov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                float delta = GetMouseDelta().x * 0.05f;
+                chopState.fadeMs += delta;
+                if (chopState.fadeMs < 0) chopState.fadeMs = 0;
+                if (chopState.fadeMs > 5.0f) chopState.fadeMs = 5.0f;
+                if (chopState.bounced) chopApplySliceParams();
+            }
+            if (fhov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+                chopState.fadeMs = 1.0f;  // reset to default
+                if (chopState.bounced) chopApplySliceParams();
+                ui_consume_click();
+            }
+        }
     }
     sy += 22;
 
@@ -5202,7 +5404,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
             chopApplySliceParams();  // ensure sampler has latest trim
             float pitch = chopState.sliceParams[clicked].pitchSemitones;
             float speed = (pitch != 0.0f) ? powf(2.0f, pitch / 12.0f) : 1.0f;
-            samplerPlay(clicked, 0.8f, speed);
+            samplerQueuePlay(clicked, 0.8f, speed);
         }
     }
     sy += waveH + 6;
@@ -5375,6 +5577,74 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 }
                 if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
                     chopState.sliceParams[sel].gain = 1.0f;
+                    changed = true;
+                    ui_consume_click();
+                }
+            }
+
+            // Fade In override (drag left/right, right-click = reset to global)
+            {
+                float ox = px + 240;
+                float fiMs = chopState.sliceParams[sel].fadeInMs;
+                bool isOverride = (fiMs >= 0);
+                DrawTextShadow("FdIn:", (int)ox, (int)(sy + 2), 9,
+                              isOverride ? (Color){140, 140, 160, 255} : (Color){70, 70, 85, 255});
+                Rectangle r = {ox + 32, sy, 44, 16};
+                bool hov = CheckCollisionPointRec(mouse, r);
+                DrawRectangleRec(r, (Color){28, 28, 36, 255});
+                DrawRectangleLinesEx(r, 1, hov ? ORANGE : (Color){50, 50, 60, 255});
+                char fdStr[16];
+                if (isOverride)
+                    snprintf(fdStr, sizeof(fdStr), "%.1fms", fiMs);
+                else
+                    snprintf(fdStr, sizeof(fdStr), "auto");
+                DrawTextShadow(fdStr, (int)(r.x + 3), (int)(sy + 3), 9,
+                              isOverride ? WHITE : (Color){80, 80, 95, 255});
+                if (hov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                    float delta = GetMouseDelta().x * 0.05f;
+                    if (!isOverride) fiMs = chopState.fadeMs;  // start from global
+                    fiMs += delta;
+                    if (fiMs < 0) fiMs = 0;
+                    if (fiMs > 10.0f) fiMs = 10.0f;
+                    chopState.sliceParams[sel].fadeInMs = fiMs;
+                    changed = true;
+                }
+                if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+                    chopState.sliceParams[sel].fadeInMs = -1.0f;  // reset to global
+                    changed = true;
+                    ui_consume_click();
+                }
+            }
+
+            // Fade Out override
+            {
+                float ox = px + 324;
+                float foMs = chopState.sliceParams[sel].fadeOutMs;
+                bool isOverride = (foMs >= 0);
+                DrawTextShadow("FdOut:", (int)ox, (int)(sy + 2), 9,
+                              isOverride ? (Color){140, 140, 160, 255} : (Color){70, 70, 85, 255});
+                Rectangle r = {ox + 36, sy, 44, 16};
+                bool hov = CheckCollisionPointRec(mouse, r);
+                DrawRectangleRec(r, (Color){28, 28, 36, 255});
+                DrawRectangleLinesEx(r, 1, hov ? ORANGE : (Color){50, 50, 60, 255});
+                char fdStr[16];
+                if (isOverride)
+                    snprintf(fdStr, sizeof(fdStr), "%.1fms", foMs);
+                else
+                    snprintf(fdStr, sizeof(fdStr), "auto");
+                DrawTextShadow(fdStr, (int)(r.x + 3), (int)(sy + 3), 9,
+                              isOverride ? WHITE : (Color){80, 80, 95, 255});
+                if (hov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                    float delta = GetMouseDelta().x * 0.05f;
+                    if (!isOverride) foMs = chopState.fadeMs;
+                    foMs += delta;
+                    if (foMs < 0) foMs = 0;
+                    if (foMs > 10.0f) foMs = 10.0f;
+                    chopState.sliceParams[sel].fadeOutMs = foMs;
+                    changed = true;
+                }
+                if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+                    chopState.sliceParams[sel].fadeOutMs = -1.0f;
                     changed = true;
                     ui_consume_click();
                 }
