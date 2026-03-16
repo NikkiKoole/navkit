@@ -692,4 +692,77 @@ static int chopLoadIntoSampler(ChoppedSample *chop, int startSlot) {
     return loaded;
 }
 
+// ============================================================================
+// FREEZE: Capture live audio buffers into sampler slots
+// ============================================================================
+
+// Freeze the dub loop's tape buffer into a sampler slot.
+// Reads the circular buffer from oldest to newest sample.
+// Returns the slot index on success, or -1 on failure.
+static int dubLoopFreezeToSampler(int slotIndex) {
+    if (slotIndex < 0 || slotIndex >= SAMPLER_MAX_SAMPLES) return -1;
+    _ensureSamplerCtx();
+
+    int bufSize = DUB_LOOP_BUFFER_SIZE;
+    float *data = (float *)malloc(bufSize * sizeof(float));
+    if (!data) return -1;
+
+    // Read circular buffer: start from write position (oldest sample)
+    int writePos = (int)dubLoopWritePos % bufSize;
+    for (int i = 0; i < bufSize; i++) {
+        int readIdx = (writePos + i) % bufSize;
+        data[i] = dubLoopBuffer[readIdx];
+    }
+
+    // Trim silence from the end (find last non-silent sample)
+    int trimLen = bufSize;
+    for (int i = bufSize - 1; i > 0; i--) {
+        if (fabsf(data[i]) > 0.001f) { trimLen = i + 1; break; }
+    }
+
+    Sample *slot = &samplerCtx->samples[slotIndex];
+    if (slot->loaded && slot->data && !slot->embedded) free(slot->data);
+    slot->data = data;
+    slot->length = trimLen;
+    slot->sampleRate = SAMPLE_CHOP_SAMPLE_RATE;
+    slot->loaded = true;
+    slot->embedded = false;
+    snprintf(slot->name, sizeof(slot->name), "dub_freeze");
+    return slotIndex;
+}
+
+// Freeze the rewind effect's capture buffer into a sampler slot.
+// The rewind buffer contains the last 3 seconds of audio that was
+// captured before the rewind was triggered.
+static int rewindFreezeToSampler(int slotIndex) {
+    if (slotIndex < 0 || slotIndex >= SAMPLER_MAX_SAMPLES) return -1;
+    _ensureSamplerCtx();
+
+    int bufSize = REWIND_BUFFER_SIZE;
+    float *data = (float *)malloc(bufSize * sizeof(float));
+    if (!data) return -1;
+
+    // Read circular buffer from write position (oldest sample)
+    int writePos = rewindWritePos % bufSize;
+    for (int i = 0; i < bufSize; i++) {
+        int readIdx = (writePos + i) % bufSize;
+        data[i] = rewindBuffer[readIdx];
+    }
+
+    int trimLen = bufSize;
+    for (int i = bufSize - 1; i > 0; i--) {
+        if (fabsf(data[i]) > 0.001f) { trimLen = i + 1; break; }
+    }
+
+    Sample *slot = &samplerCtx->samples[slotIndex];
+    if (slot->loaded && slot->data && !slot->embedded) free(slot->data);
+    slot->data = data;
+    slot->length = trimLen;
+    slot->sampleRate = SAMPLE_CHOP_SAMPLE_RATE;
+    slot->loaded = true;
+    slot->embedded = false;
+    snprintf(slot->name, sizeof(slot->name), "rewind_freeze");
+    return slotIndex;
+}
+
 #endif // PIXELSYNTH_SAMPLE_CHOP_H

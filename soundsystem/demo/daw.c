@@ -5017,8 +5017,58 @@ static void drawWorkSample(float x, float y, float w, float h) {
         DrawTextShadow(info, (int)x, (int)sy, 9, (Color){70, 70, 85, 255});
         sy += 14;
 
-        DrawTextShadow("Click waveform to select+preview slice. Click pad to assign. Right-click pad to clear.",
+        DrawTextShadow("Click waveform to select+preview. Click pad to assign. Right-click to clear.",
                        (int)x, (int)sy, 9, (Color){55, 55, 68, 255});
+    }
+
+    // --- Freeze section (always visible, independent of bounce state) ---
+    sy += 18;
+    DrawTextShadow("Freeze Live Audio:", (int)x, (int)sy, 10, (Color){140, 140, 160, 255});
+    sy += 16;
+    {
+        // Find first free sampler slot (after any chop slices)
+        int freeSlot = chopState.bounced ? chopState.sliceCount : 0;
+        if (freeSlot >= SAMPLER_MAX_SAMPLES) freeSlot = SAMPLER_MAX_SAMPLES - 1;
+
+        // Dub Loop freeze button
+        {
+            Rectangle r = {x, sy, 100, 18};
+            bool hov = CheckCollisionPointRec(mouse, r);
+            bool active = dubLoop.enabled;
+            DrawRectangleRec(r, hov && active ? (Color){60, 50, 70, 255} : (Color){30, 31, 38, 255});
+            DrawRectangleLinesEx(r, 1, active ? (Color){160, 100, 200, 255} : (Color){48, 48, 58, 255});
+            DrawTextShadow("Freeze Dub", (int)(x + 8), (int)(sy + 3), 9,
+                          active ? (Color){200, 150, 255, 255} : (Color){60, 60, 75, 255});
+            if (hov && active && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                int slot = dubLoopFreezeToSampler(freeSlot);
+                if (slot >= 0) {
+                    // Auto-assign to selected slice slot for preview
+                    chopState.selectedSlice = slot;
+                }
+                ui_consume_click();
+            }
+        }
+
+        // Rewind freeze button
+        {
+            Rectangle r = {x + 110, sy, 110, 18};
+            bool hov = CheckCollisionPointRec(mouse, r);
+            DrawRectangleRec(r, hov ? (Color){50, 55, 70, 255} : (Color){30, 31, 38, 255});
+            DrawRectangleLinesEx(r, 1, (Color){100, 160, 200, 255});
+            DrawTextShadow("Freeze Rewind", (int)(x + 118), (int)(sy + 3), 9, (Color){140, 190, 230, 255});
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                int slot = rewindFreezeToSampler(freeSlot);
+                if (slot >= 0) {
+                    chopState.selectedSlice = slot;
+                }
+                ui_consume_click();
+            }
+        }
+
+        // Show slot info
+        char slotInfo[64];
+        snprintf(slotInfo, sizeof(slotInfo), "-> slot %d", freeSlot);
+        DrawTextShadow(slotInfo, (int)(x + 230), (int)(sy + 3), 9, (Color){60, 65, 75, 255});
     }
 }
 
