@@ -4,6 +4,21 @@ PixelSynth can synthesize full songs from scratch. What it can't do yet is **eat
 
 Every `.song` file in the library becomes a potential sample source. Since they're all synthesized, the whole pipeline is self-contained — no external WAV files needed.
 
+## Summary
+
+The chop/flip system is fully functional: bounce any .song pattern, slice it (equal or transient detection), tweak per-slice params (reverse/pitch/gain/trim), sequence slices on a dedicated sampler track, freeze live dub loop or rewind audio. 11 of 12 implementation steps done; save/load deferred until the workflow feels right.
+
+**Known issues**: The bounce temporarily swaps global engine state, which required thread gating and callback save/restore. Works but is fragile — the architectural cleanup (item 1 below) would make it robust.
+
+**Decisions needed**:
+1. **Legacy callback cleanup** — should we do the refactor to drop `DrumTriggerFunc`/`MelodyTriggerFunc` and use unified `TrackNoteOnFunc` everywhere? Low risk, ~5 files, eliminates the bounce fragility. Recommended as first thing next session.
+2. **Auto fade** — always-on 1ms fades, or per-slice configurable? Always-on is simpler.
+3. **Sampler patch UI** — minimal view (just volume + slice list) or skip for now?
+4. **Save/load** — ready to commit to the recipe format, or keep playing with it?
+5. **Bus routing** — route sampler through an existing bus, or add a new BUS_SAMPLER?
+
+---
+
 ## Design Principle: Synth Drums Stay Synthesized
 
 Drums are 100% real-time synthesized via `SynthPatch` presets (808, CR-78, orchestral, hand drums — 35 presets total at indices 24-58 in `instrument_presets.h`). The sampler engine is **not** used for drum playback. This is intentional:
