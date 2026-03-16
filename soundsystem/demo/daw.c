@@ -4892,6 +4892,22 @@ static int drawChopWaveform(float bx, float by, float bw, float bh,
     // Center line
     DrawLine((int)(bx + 2), (int)mid, (int)(bx + bw - 2), (int)mid, (Color){35, 35, 42, 128});
 
+    // Playhead: scan sampler voices for any playing within this buffer
+    _ensureSamplerCtx();
+    for (int vi = 0; vi < SAMPLER_MAX_VOICES; vi++) {
+        SamplerVoice *v = &samplerCtx->voices[vi];
+        if (!v->active) continue;
+        int si = v->sampleIndex;
+        if (si < 0 || si >= sliceCount) continue;
+        // Map voice position back to the full waveform
+        float samplePos = sliceStarts[si] + v->position;
+        float normPos = samplePos / (float)length;
+        if (normPos >= 0 && normPos <= 1.0f) {
+            float phX = bx + 2 + normPos * (bw - 4);
+            DrawLine((int)phX, (int)(by + 1), (int)phX, (int)(by + bh - 1), WHITE);
+        }
+    }
+
     return clicked;
 }
 
@@ -5365,6 +5381,20 @@ static void drawWorkSample(float x, float y, float w, float h) {
                     snprintf(trimLabel, sizeof(trimLabel), "%.0f%%", te * 100);
                     int tw = MeasureTextUI(trimLabel, 8);
                     DrawTextShadow(trimLabel, (int)(endHandleX - tw - 2), (int)(sy + 2), 8, (Color){255, 80, 80, 255});
+
+                    // Playhead in slice waveform
+                    for (int vi = 0; vi < SAMPLER_MAX_VOICES; vi++) {
+                        SamplerVoice *v = &samplerCtx->voices[vi];
+                        if (!v->active || v->sampleIndex != sel) continue;
+                        // v->position is within the trimmed sample; map back to full slice
+                        int trimmedLen = (int)((te - ts) * sLen);
+                        if (trimmedLen < 1) trimmedLen = 1;
+                        float normInSlice = (ts + (v->position / trimmedLen) * (te - ts));
+                        if (normInSlice >= 0 && normInSlice <= 1.0f) {
+                            float phX = swX + 2 + normInSlice * (swW - 4);
+                            DrawLine((int)phX, (int)sy, (int)phX, (int)(sy + swH), WHITE);
+                        }
+                    }
                 }
                 sy += swH + 2;
             }
