@@ -47,6 +47,13 @@ static float dawSemitoneToFreq(int semitone, int octave) {
 static int voiceBus[NUM_VOICES];
 
 static void DawAudioCallback(void *buffer, unsigned int frames) {
+    // During bounce, the global context pointers are swapped to a temp system.
+    // Output silence to avoid dereferencing invalid pointers.
+    if (dawBouncingActive) {
+        memset(buffer, 0, frames * 2 * sizeof(short));
+        return;
+    }
+
     double startTime = GetTime();
     short *d = (short *)buffer;
     float dt = 1.0f / SAMPLE_RATE;

@@ -87,6 +87,7 @@ static inline void loadEmbeddedSCWs(void) {}
 #endif // DAW_HEADLESS
 #include <math.h>
 #include <string.h>
+#include <unistd.h>
 #include "../engines/synth.h"
 #include "../engines/synth_patch.h"
 #include "../engines/patch_trigger.h"
@@ -210,6 +211,7 @@ static double dawAudioTimeUs = 0.0;
 static int dawAudioFrameCount = 0;
 static float dawPeakLevel = 0.0f;    // peak output level (updated in audio callback)
 static float dawPeakHold = 0.0f;     // slow-decay peak for meter display
+static volatile bool dawBouncingActive = false;  // true during bounce — audio callback outputs silence
 
 // WAV recording (F7=toggle, writes daw_output.wav)
 static bool dawRecording = false;
@@ -4684,24 +4686,20 @@ static void chopStateBounce(void) {
     chopStateClear();
     if (!chopState.sourcePath[0]) return;
 
-    // Stop playback before bouncing — renderPatternToBuffer swaps global
-    // context pointers (synthCtx/fxCtx/seqCtx) which the audio thread reads.
-    // Without stopping, the audio callback reads dangling/wrong pointers.
-    bool wasPlaying = daw.transport.playing;
-    if (wasPlaying) {
-        daw.transport.playing = false;
-        seq.playing = false;
-    }
+    // Gate the audio callback during bounce — renderPatternToBuffer swaps
+    // global context pointers (synthCtx/fxCtx/seqCtx) which the audio thread
+    // reads. Without gating, the audio callback dereferences dangling pointers
+    // and crashes (SIGBUS in processVoice on the audio thread).
+    dawBouncingActive = true;
+    // Brief sleep to ensure the audio callback sees the flag and returns
+    // before we swap pointers. One audio buffer (~5ms) is enough.
+    usleep(10000);  // 10ms
 
     RenderedPattern rendered = renderPatternToBuffer(
         chopState.sourcePath, chopState.sourcePattern,
         chopState.sourceLoops, 0.5f);
 
-    // Restore playback state
-    if (wasPlaying) {
-        daw.transport.playing = true;
-        seq.playing = true;
-    }
+    dawBouncingActive = false;
 
     if (!rendered.data) return;
 
