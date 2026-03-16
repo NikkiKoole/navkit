@@ -931,7 +931,7 @@ static DetailContext detailCtx = DETAIL_NONE;
 static int detailStep = -1, detailTrack = -1;
 
 // Piano roll state
-static int prTrack = 0;           // Which melody track (0=Bass, 1=Lead, 2=Chord)
+static int prTrack = 0;           // Which melody track (0=Bass, 1=Lead, 2=Chord, 3=Sampler)
 static int prScrollNote = 48;     // Bottom visible MIDI note (C3)
 
 // Drag modes
@@ -2287,16 +2287,19 @@ static void drawWorkSeq(float x, float y, float w, float h) {
 static void drawWorkPiano(float x, float y, float w, float h) {
     Vector2 mouse = GetMousePosition();
     static const char* noteNames[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
-    const char* prTrackNames[] = {daw.patches[4].p_name, daw.patches[5].p_name, daw.patches[6].p_name};
+    const char* prTrackNames[] = {daw.patches[4].p_name, daw.patches[5].p_name, daw.patches[6].p_name, "Sampler"};
     static const Color prTrackColors[] = {
         {80, 140, 220, 255},   // Bass: blue
         {220, 140, 80, 255},   // Lead: orange
         {140, 200, 100, 255},  // Chord: green
+        {200, 120, 60, 255},   // Sampler: warm orange
     };
+    int prTrackCount = SEQ_MELODY_TRACKS + 1; // 3 melodic + sampler
 
     int steps = daw.stepCount;
     Pattern *pat = dawPattern();
-    int mt = SEQ_DRUM_TRACKS + prTrack; // absolute track index
+    bool isSamplerPR = (prTrack == SEQ_MELODY_TRACKS); // sampler is the 4th tab
+    int mt = isSamplerPR ? SEQ_TRACK_SAMPLER : (SEQ_DRUM_TRACKS + prTrack);
     Color trackCol = prTrackColors[prTrack];
 
     // Layout
@@ -2314,7 +2317,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
     // --- Track selector ---
     {
         float tx = x;
-        for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
+        for (int t = 0; t < prTrackCount; t++) {
             float tw = 70;
             Rectangle r = {tx, y, tw, topH - 2};
             bool hov = CheckCollisionPointRec(mouse, r);
@@ -2326,17 +2329,24 @@ static void drawWorkPiano(float x, float y, float w, float h) {
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { prTrack = t; ui_consume_click(); }
             tx += tw + 2;
         }
-        // Octave scroll hint
-        DrawTextShadow(TextFormat("Oct %d-%d  (scroll to shift)", prScrollNote/12, (prScrollNote+visNotes)/12),
-                       (int)(x + 230), (int)y + 4, 9, (Color){70,70,80,255});
+        // Scroll hint
+        if (isSamplerPR)
+            DrawTextShadow(TextFormat("Pitch %+d..%+d  (scroll to shift)", prScrollNote - 24, prScrollNote - 24 + visNotes),
+                           (int)(x + 300), (int)y + 4, 9, (Color){70,70,80,255});
+        else
+            DrawTextShadow(TextFormat("Oct %d-%d  (scroll to shift)", prScrollNote/12, (prScrollNote+visNotes)/12),
+                           (int)(x + 300), (int)y + 4, 9, (Color){70,70,80,255});
     }
 
     // --- Scroll pitch range with mouse wheel ---
     Rectangle gridRect = {gridX, gridY, gridW, gridH};
-    if (CheckCollisionPointRec(mouse, gridRect)) {
+    if (CheckCollisionPointRec(mouse, gridRect) && !IsKeyDown(KEY_LEFT_SHIFT) && !IsKeyDown(KEY_LEFT_CONTROL)) {
         float wheel = GetMouseWheelMove();
-        if (wheel > 0 && prScrollNote + visNotes < 120) prScrollNote += 2;
-        if (wheel < 0 && prScrollNote > 12) prScrollNote -= 2;
+        if (!isSamplerPR) {
+            if (wheel > 0 && prScrollNote + visNotes < 120) prScrollNote += 2;
+            if (wheel < 0 && prScrollNote > 12) prScrollNote -= 2;
+        }
+        // Sampler: no scroll needed (fixed ±24 range fits)
     }
 
     // --- Background ---
@@ -2345,7 +2355,169 @@ static void drawWorkPiano(float x, float y, float w, float h) {
     // --- Scissor to grid area ---
     BeginScissorMode((int)x, (int)gridY, (int)w, (int)gridH);
 
-    // --- Piano keys + horizontal pitch lines ---
+    if (isSamplerPR) {
+        // --- Sampler pitch offset labels (Y axis = -24..+24) ---
+        int pitchMin = -24, pitchMax = 24;
+        int pitchRange = pitchMax - pitchMin + 1; // 49 rows
+        float pNoteH = gridH / pitchRange;
+        if (pNoteH < 3) pNoteH = 3;
+
+        for (int p = pitchMin; p <= pitchMax; p++) {
+            float ny = gridY + gridH - (p - pitchMin + 1) * pNoteH;
+            bool isZero = (p == 0);
+            bool isOctave = (p == 12 || p == -12 || p == 24 || p == -24);
+
+            // Key label
+            Color keyCol = isZero ? (Color){60,60,45,255} : (Color){35,35,40,255};
+            DrawRectangle((int)x, (int)ny, (int)keyW - 1, (int)pNoteH - 1, keyCol);
+            if (p % 6 == 0 || isZero) {
+                DrawTextShadow(TextFormat("%+d", p), (int)x + 1, (int)ny + 1, 7,
+                              isZero ? (Color){255,220,100,255} : (Color){90,90,100,255});
+            }
+
+            // Grid line
+            Color lineCol = isZero ? (Color){80,80,50,255} : (isOctave ? (Color){55,55,65,255} : (Color){30,30,36,255});
+            DrawLine((int)gridX, (int)(ny + pNoteH - 1), (int)(gridX + gridW), (int)(ny + pNoteH - 1), lineCol);
+
+            // Highlight zero row
+            if (isZero) {
+                DrawRectangle((int)gridX, (int)ny, (int)gridW, (int)pNoteH, (Color){50,50,35,60});
+            }
+        }
+
+        // Vertical step lines
+        for (int s = 0; s <= steps; s++) {
+            float lx = gridX + s * stepW;
+            Color lineCol = s % 4 == 0 ? (Color){65,65,78,255} : (Color){36,36,42,255};
+            DrawLine((int)lx, (int)gridY, (int)lx, (int)(gridY + gridH), lineCol);
+        }
+
+        // Slice colors (cycle through 8)
+        static const Color sliceColors[] = {
+            {220, 80, 80, 220},  {80, 180, 220, 220}, {220, 180, 60, 220}, {100, 220, 100, 220},
+            {200, 100, 220, 220},{220, 140, 60, 220},  {60, 200, 180, 220}, {180, 180, 220, 220},
+        };
+
+        // --- Draw sampler notes ---
+        for (int s = 0; s < steps; s++) {
+            StepV2 *sv = &pat->steps[mt][s];
+            if (sv->noteCount == 0) continue;
+            StepNote *sn = &sv->notes[0]; // sampler uses voice 0 only
+            if (sn->note == SEQ_NOTE_OFF) continue;
+
+            int slice = sn->note;
+            int pitch = sn->nudge; // ±24
+            float vel = velU8ToFloat(sn->velocity);
+
+            int pitchIdx = pitch - pitchMin;
+            if (pitchIdx < 0 || pitchIdx >= pitchRange) continue;
+
+            float nX = gridX + s * stepW;
+            float nY = gridY + gridH - (pitchIdx + 1) * pNoteH;
+            float nW = stepW - 1;
+            if (nW < 3) nW = 3;
+
+            Color col = sliceColors[slice % 8];
+            float bright = 0.4f + vel * 0.6f;
+            col.r = (unsigned char)(col.r * bright);
+            col.g = (unsigned char)(col.g * bright);
+            col.b = (unsigned char)(col.b * bright);
+
+            DrawRectangle((int)nX, (int)nY, (int)nW, (int)pNoteH - 1, col);
+            DrawRectangleLinesEx((Rectangle){nX, nY, nW, pNoteH - 1}, 1,
+                                (Color){col.r/2, col.g/2, col.b/2, 255});
+
+            // Slice number label
+            if (nW >= 10) {
+                DrawTextShadow(TextFormat("%d", slice), (int)nX + 2, (int)nY + 1, 8, WHITE);
+            }
+        }
+
+        // --- Playhead ---
+        if (daw.transport.playing) {
+            int curStep = seq.trackStep[mt];
+            float phX = gridX + curStep * stepW + stepW * seq.trackTick[mt] / (float)seq.ticksPerStep;
+            DrawLine((int)phX, (int)gridY, (int)phX, (int)(gridY + gridH), (Color){255,200,50,180});
+        }
+
+        // --- Mouse interaction for sampler ---
+        int hitStep = -1;
+        if (CheckCollisionPointRec(mouse, gridRect)) {
+            float relX = mouse.x - gridX;
+            int hoverStep = (int)(relX / stepW);
+            float relY = (gridY + gridH) - mouse.y;
+            int hoverPitch = pitchMin + (int)(relY / pNoteH);
+
+            // Find if hovering existing note
+            if (hoverStep >= 0 && hoverStep < steps) {
+                StepV2 *sv = &pat->steps[mt][hoverStep];
+                if (sv->noteCount > 0 && sv->notes[0].note != SEQ_NOTE_OFF) {
+                    hitStep = hoverStep;
+                }
+            }
+
+            // Hover hint
+            if (hitStep >= 0) {
+                StepNote *sn = &pat->steps[mt][hitStep].notes[0];
+                DrawTextShadow(TextFormat("Slice %d  pitch %+d  step %d",
+                              sn->note, sn->nudge, hitStep + 1),
+                              (int)mouse.x + 12, (int)mouse.y - 14, 9, (Color){180,180,190,255});
+            } else if (hoverStep >= 0 && hoverStep < steps) {
+                DrawTextShadow(TextFormat("pitch %+d  step %d", hoverPitch, hoverStep + 1),
+                              (int)mouse.x + 12, (int)mouse.y - 14, 9, (Color){120,120,130,255});
+            }
+
+            // Click: place/delete
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                if (hoverStep >= 0 && hoverStep < steps) {
+                    StepV2 *sv = &pat->steps[mt][hoverStep];
+                    if (sv->noteCount > 0 && sv->notes[0].note != SEQ_NOTE_OFF) {
+                        // Existing note — toggle off
+                        patClearNote(pat, mt, hoverStep);
+                    } else {
+                        // Place new note: slice 0, pitch from Y position
+                        if (hoverPitch < -24) hoverPitch = -24;
+                        if (hoverPitch > 24) hoverPitch = 24;
+                        patSetNote(pat, mt, hoverStep, 0, 0.8f, 1);
+                        pat->steps[mt][hoverStep].notes[0].nudge = (int8_t)hoverPitch;
+                    }
+                    ui_consume_click();
+                }
+            }
+
+            // Right-click: delete
+            if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && hitStep >= 0) {
+                patClearNote(pat, mt, hitStep);
+                ui_consume_click();
+            }
+
+            // Scroll: change slice number
+            float wh = GetMouseWheelMove();
+            if (wh != 0.0f && hitStep >= 0) {
+                if (IsKeyDown(KEY_LEFT_SHIFT)) {
+                    // Shift+scroll = velocity
+                    float vel = patGetNoteVel(pat, mt, hitStep);
+                    vel += wh * 0.05f;
+                    if (vel < 0.05f) vel = 0.05f;
+                    if (vel > 1.0f) vel = 1.0f;
+                    patSetNoteVel(pat, mt, hitStep, vel);
+                } else {
+                    // Scroll = change slice
+                    StepNote *sn = &pat->steps[mt][hitStep].notes[0];
+                    int newSlice = sn->note + (wh > 0 ? 1 : -1);
+                    if (newSlice < 0) newSlice = 0;
+                    if (newSlice >= SAMPLER_MAX_SAMPLES) newSlice = SAMPLER_MAX_SAMPLES - 1;
+                    sn->note = (int8_t)newSlice;
+                }
+            }
+        }
+
+        EndScissorMode();
+        DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, (Color){48,48,58,255});
+        return; // sampler handled, skip melodic piano roll code below
+    }
+
+    // --- Piano keys + horizontal pitch lines (melodic tracks) ---
     for (int i = 0; i < visNotes; i++) {
         int note = prScrollNote + i;
         if (note > 127) break;

@@ -228,25 +228,101 @@ From `audit/test-gaps-audit-soundsystem.md`. Current: 248 suites, 1905 assertion
 
 ---
 
-## Longer Term (from roadmap.md)
+## Longer Term
 
-**Synthesis:** Vocoder, Speech 8-bit, Bass waveshaping
+### Sequencer & Song Structure
 
-**Sequencer:** ~~Note pool~~ (done), Pattern chaining, Song/arranger improvements, Scenes crossfader completion
+| What | Effort | Notes |
+|------|--------|-------|
+| **Chord mode** — one-finger chord input, chord types (maj/min/7th/sus/dim/aug), inversions | Medium | Scale lock done, chord types defined but no input mode |
+| **Scenes / Crossfader** — scene A/B parameter snapshots, crossfader morphs between them. Replaces bridge `sweepPhase` hack. | Medium | Spec in `scene-crossfader-spec.md`. UI shell exists, logic missing. Slow LFOs may cover most sweep cases without this. |
+| **Arrangement scroll** — horizontal scroll for >14 song sections | ~20 lines | |
+| **Stingers & one-shots** — trigger musical phrases on game events (victory, death, pickup), quantized to beat or immediate, with music ducking | Medium | |
 
-**Game audio:** Full design doc in `docs/doing/interactive-music-system.md`. Music Director (game state → song selection + transitions), vertical layering (track volumes driven by activity), SFX system (synthesized one-shots + spatial), beat-synced event queue (quantize SFX to beat/step/bar), ambient layer (bird calls at dawn, rain/wind beds). 5 exemplary adaptive songs in `soundsystem/demo/songs/game_*.song` (dawn/hands/dusk/smoke/collapse). Diegetic music: `docs/todo/ensemble-stations.md` (movers play instruments at stations, tracks = seats, colony health is audible). Key bridge/integration files: `src/sound/sound_synth_bridge.h/c` (audio callback, jukebox, song player), `src/sound/sound_phrase.h/c` (procedural bird/vowel generation), `src/sound/songs.h` (14 C-coded bridge songs, being migrated to .song)
+### Synthesis
 
-**Effects:** ~~Phaser~~ (done), ~~Comb filter~~ (done), Per-track effects
+| What | Effort | Notes |
+|------|--------|-------|
+| **Vocoder** — 8-16 band, internal carrier or external input | Large | |
+| **Speech 8-bit** — Speak & Spell style, robotic lo-fi | Medium | Different from existing formant voice engine |
+| **Bass waveshaping** — non-linear waveshaping for heavy digital bass (Noise Engineering style) | Medium | |
+| **Blown bottle** — simple wind physical model | Small | Bowed + pipe engines done, this is the remaining PM extension |
 
-**Modulation:** Mod matrix, DAHDSR envelopes, Envelope follower
+### Game Audio
 
-**UI/Workflow:** MIDI output & clock sync, Audio export/render to WAV, Undo/redo, ~~Recording mode (MIDI → pattern)~~ (done — free/quantized, overdub/replace, gate tracking, pattern lock)
+Full design doc in `docs/doing/interactive-music-system.md`.
 
-**Recording:** ~~Live recording~~ (done), Audio looping, Skip-back sampling, Resample, Tape mode
+| What | Effort | Notes |
+|------|--------|-------|
+| **Game state system** — global intensity/danger/health params (0-1), conditional triggers and parameter mapping based on state | Medium | Foundation for all adaptive audio |
+| **Vertical layering** — mute/unmute tracks based on game state, layer groups (ambient/rhythm/melody/intensity), smooth fade in/out | Medium | Depends on game state system |
+| **Horizontal re-sequencing** — auto-switch patterns based on game state, musical transitions (fills, drops) | Medium | |
+| **SFX system** — synthesized one-shots + spatial, beat-synced event queue | Large | See `docs/doing/sfx-system-cleanup.md` |
+| **Ambient layer** — bird calls at dawn, rain/wind beds | Medium | |
+| **Diegetic music** — movers play instruments at stations, tracks = seats, colony health is audible | Large | See `docs/todo/ensemble-stations.md` |
 
-**Content:** Convert bridge songs from C to .song format — 12 non-sweep songs now, 2 sweep songs (House, Deep House) may work with slow LFOs instead of needing scenes. Removes ~1500 lines from songs.h. See `scene-crossfader-spec.md` §Decision
+Key integration files: `src/sound/sound_synth_bridge.h/c`, `src/sound/sound_phrase.h/c`, `src/sound/songs.h` (14 C-coded bridge songs, being migrated to .song).
+
+### Modulation
+
+| What | Effort | Notes |
+|------|--------|-------|
+| **Mod matrix** — arbitrary source→destination routing (8-16 slots). Sources: LFO 1-5, envelope, velocity, note, MIDI CC, random. Destinations: any `p_` field. Subsumes current fixed LFO system. | Large | Big voice pipeline refactor |
+| **DAHDSR envelopes** — multi-stage envelopes, looping envelopes, curve shapes (linear/expo/S-curve) | Medium | |
+| **Envelope follower** — track amplitude of audio signal, use as mod source for filter/etc | Medium | |
+| **LFO → UI reflection** — show modulation on sliders (orange marker at modulated position) | Medium | See §2 in "Next Up" section above |
+
+### Recording & Looping
+
+| What | Effort | Notes |
+|------|--------|-------|
+| **Audio looping** — record audio loops, overdub layers, undo/peel layers, multiply (double length), quantized capture, 4-8 slots | Large | |
+| **Skip-back sampling** — always recording last 30-60s, "capture that!" button | Medium | Rewind buffer partially covers this |
+| **Resample** — render pattern to audio, bake effects, freeze/flatten tracks | Medium | Offline render exists (song_render, daw_render), needs in-DAW workflow |
+| **Tape mode (OP-1 style)** — 4-track linear recording, tape-style overdub, varispeed, reverse | Large | |
+
+### Effects & Mixing
+
+| What | Effort | Notes |
+|------|--------|-------|
+| **Stereo master effects** — process L/R independently instead of mid/side | Medium | Phase 2 of stereo pipeline |
+| **Unison spread auto-pan** — voices panned left/right within a bus | Small | |
+| **Stereo WAV export** in offline renderers (song_render.c, daw_render.c) | Small | |
+| **Bridge bus routing** — route voices to buses for pan support in-game | Medium | |
+
+### UI & Workflow
+
+| What | Effort | Notes |
+|------|--------|-------|
+| **MIDI output & clock sync** — send MIDI to external gear, clock send/receive | Medium | MIDI input done |
+| **Audio export improvements** — per-track stems, stereo WAV | Medium | Basic render exists |
+| **Undo/redo** — global stack for parameter + pattern edits | Large | |
+| **Multi-step selection** — select multiple steps for batch edits | ~80 lines | |
+| **Keyboard shortcut hints** — context-sensitive hints in UI | ~30 lines | |
+| **Visual feedback** — waveform display, spectrum analyzer, keyboard highlight | Medium | |
+| **Patch name editing** — rename patches in patch tab (not just from preset) | ~30 lines | |
+
+### Content
+
+| What | Effort | Notes |
+|------|--------|-------|
+| **Bridge song migration** — convert remaining ~12 C-coded songs to .song format. 2 sweep songs (House, Deep House) may work with slow LFOs instead of scenes. Removes ~1500 lines from songs.h | Medium | See `scene-crossfader-spec.md` §Decision |
+| **Preset cleanup** — remove duplicates, rename collisions (see `preset-audit.md`) | Small | |
+| **More drum presets** — Lo-Fi kit (~3), Trap kit (~3), Piku kit | Small | Preset-only |
+| **SCW wavetable presets** — needs good wavetable content | Small | |
 
 ---
+
+## Recent Changes (2026-03-16)
+
+- **Dedicated sampler bus:** BUS_SAMPLER (index 7), NUM_BUSES 7→8. Sampler output now routes through bus mixer with full per-bus FX chain instead of mixing directly to master.
+- **Legacy callback cleanup:** Dropped DrumTriggerFunc/MelodyTriggerFunc, unified on TrackNoteOnFunc everywhere.
+- **Auto-fade:** Global default 1ms + per-slice fade-in/fade-out override.
+- **Sampler patch UI:** Minimal view when sampler track selected (master volume, active voices, loaded slice list).
+- **Recipe-based save/load:** `[sample]` section in `.daw` format with re-bounce on load.
+- **SPSC command queue:** Lock-free ring buffer for sampler voice allocation (eliminates preview click race).
+- **Double-buffer sync:** Main thread snapshots → audio thread applies (zero parameter tearing).
+- **Golden tests:** Callback equivalence + WAV checksum tests for 5 reference songs.
 
 ## Recent Changes (2026-03-15)
 
