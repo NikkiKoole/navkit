@@ -122,6 +122,13 @@ static void DawAudioCallback(void *buffer, unsigned int frames) {
         // Full mixer → bus FX → master FX chain (stereo with bus pan)
         float sampleL, sampleR;
         processMixerOutputStereo(busInputs, dt, &sampleL, &sampleR);
+
+        // Mix in sampler output (chop/flip slice playback)
+        float sampL = 0, sampR = 0;
+        processSamplerStereo(dt, &sampL, &sampR);
+        sampleL += sampL;
+        sampleR += sampR;
+
         sampleL *= daw.masterVol;
         sampleR *= daw.masterVol;
 

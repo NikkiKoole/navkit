@@ -94,6 +94,7 @@ static inline void loadEmbeddedSCWs(void) {}
 #include "../engines/scw_data.h"
 #endif
 #include "../engines/effects.h"
+#include "../engines/sampler.h"
 #include "../engines/sequencer.h"
 // Undefine engine macros that conflict with our local DAW state
 #undef masterVolume
