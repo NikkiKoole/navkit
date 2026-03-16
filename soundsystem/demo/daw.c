@@ -4639,6 +4639,8 @@ static struct {
         bool reverse;           // play backwards
         float pitchSemitones;   // pitch shift in semitones (-24 to +24)
         float gain;             // volume multiplier (0.0 to 2.0, default 1.0)
+        float trimStart;        // start point 0.0-1.0 (default 0.0)
+        float trimEnd;          // end point 0.0-1.0 (default 1.0)
     } sliceParams[SAMPLER_MAX_SAMPLES];
     // UI
     int selectedSlice;          // highlighted slice (-1 = none)
@@ -4672,6 +4674,8 @@ static void chopStateClear(void) {
         chopState.sliceParams[s].reverse = false;
         chopState.sliceParams[s].pitchSemitones = 0;
         chopState.sliceParams[s].gain = 1.0f;
+        chopState.sliceParams[s].trimStart = 0.0f;
+        chopState.sliceParams[s].trimEnd = 1.0f;
     }
 }
 
@@ -4738,6 +4742,8 @@ static void chopStateBounce(void) {
         chopState.sliceParams[s].reverse = false;
         chopState.sliceParams[s].pitchSemitones = 0;
         chopState.sliceParams[s].gain = 1.0f;
+        chopState.sliceParams[s].trimStart = 0.0f;
+        chopState.sliceParams[s].trimEnd = 1.0f;
     }
 }
 
@@ -4752,14 +4758,26 @@ static void chopApplySliceParams(void) {
 
     for (int s = 0; s < chopState.sliceCount; s++) {
         if (!chopState.slices[s]) continue;
-        int len = chopState.sliceLengths[s] > 0 ? chopState.sliceLengths[s] : chopState.sliceLength;
+        int fullLen = chopState.sliceLengths[s] > 0 ? chopState.sliceLengths[s] : chopState.sliceLength;
+
+        // Apply trim: extract sub-region of the original slice
+        float ts = chopState.sliceParams[s].trimStart;
+        float te = chopState.sliceParams[s].trimEnd;
+        if (ts < 0) ts = 0; if (ts > 1) ts = 1;
+        if (te < 0) te = 0; if (te > 1) te = 1;
+        if (te <= ts) te = ts + 0.01f;  // minimum length
+        int startSamp = (int)(ts * fullLen);
+        int endSamp = (int)(te * fullLen);
+        if (endSamp > fullLen) endSamp = fullLen;
+        int len = endSamp - startSamp;
+        if (len < 1) len = 1;
 
         Sample *slot = &samplerCtx->samples[s];
         if (slot->loaded && slot->data && !slot->embedded) free(slot->data);
 
         float *data = (float *)malloc(len * sizeof(float));
         if (!data) continue;
-        memcpy(data, chopState.slices[s], len * sizeof(float));
+        memcpy(data, chopState.slices[s] + startSamp, len * sizeof(float));
 
         // Apply gain
         float gain = chopState.sliceParams[s].gain;
@@ -5097,8 +5115,9 @@ static void drawWorkSample(float x, float y, float w, float h) {
                                     chopState.selectedSlice);
     if (clicked >= 0) {
         chopState.selectedSlice = clicked;
-        // Preview: play the clicked slice with its pitch offset
+        // Preview: play the clicked slice (sampler has trimmed version after apply)
         if (chopState.bounced && clicked < chopState.sliceCount) {
+            chopApplySliceParams();  // ensure sampler has latest trim
             float pitch = chopState.sliceParams[clicked].pitchSemitones;
             float speed = (pitch != 0.0f) ? powf(2.0f, pitch / 12.0f) : 1.0f;
             samplerPlay(clicked, 0.8f, speed);
@@ -5266,7 +5285,90 @@ static void drawWorkSample(float x, float y, float w, float h) {
             if (changed) chopApplySliceParams();
             sy += 20;
 
-            DrawTextShadow("Drag to adjust. Right-click to reset.", (int)(x + 60), (int)sy, 9, (Color){55, 55, 68, 255});
+            // --- Slice waveform with trim handles ---
+            sy += 4;
+            {
+                int sLen = chopState.sliceLengths[sel] > 0 ? chopState.sliceLengths[sel] : chopState.sliceLength;
+                float *sData = chopState.slices[sel];
+                float swH = 40;
+                float swW = w - 60;
+                float swX = x + 60;
+
+                // Background
+                DrawRectangle((int)swX, (int)sy, (int)swW, (int)swH, (Color){18, 18, 24, 255});
+                DrawRectangleLinesEx((Rectangle){swX, sy, swW, swH}, 1, (Color){42, 42, 52, 255});
+
+                if (sData && sLen > 0) {
+                    float ts = chopState.sliceParams[sel].trimStart;
+                    float te = chopState.sliceParams[sel].trimEnd;
+                    int pixels = (int)swW - 4;
+                    float mid = sy + swH * 0.5f;
+                    float amp = swH * 0.42f;
+
+                    // Draw dimmed regions outside trim
+                    int trimStartPx = (int)(ts * pixels);
+                    int trimEndPx = (int)(te * pixels);
+                    if (trimStartPx > 0)
+                        DrawRectangle((int)(swX + 2), (int)sy + 1, trimStartPx, (int)swH - 2, (Color){0, 0, 0, 120});
+                    if (trimEndPx < pixels)
+                        DrawRectangle((int)(swX + 2 + trimEndPx), (int)sy + 1, pixels - trimEndPx, (int)swH - 2, (Color){0, 0, 0, 120});
+
+                    // Draw waveform
+                    for (int col = 0; col < pixels; col++) {
+                        int s0 = (int)((float)col / pixels * sLen);
+                        int s1 = (int)((float)(col + 1) / pixels * sLen);
+                        if (s1 > sLen) s1 = sLen;
+                        float lo = 0, hi = 0;
+                        for (int i = s0; i < s1; i++) {
+                            if (sData[i] < lo) lo = sData[i];
+                            if (sData[i] > hi) hi = sData[i];
+                        }
+                        bool inTrim = (col >= trimStartPx && col <= trimEndPx);
+                        Color wc = inTrim ? (Color){255, 180, 60, 255} : (Color){60, 60, 80, 255};
+                        int y0 = (int)(mid - hi * amp);
+                        int y1 = (int)(mid - lo * amp);
+                        if (y1 <= y0) y1 = y0 + 1;
+                        DrawLine((int)(swX + 2 + col), y0, (int)(swX + 2 + col), y1, wc);
+                    }
+
+                    // Trim handles (vertical lines, draggable)
+                    float startHandleX = swX + 2 + ts * (swW - 4);
+                    float endHandleX = swX + 2 + te * (swW - 4);
+                    DrawLine((int)startHandleX, (int)sy, (int)startHandleX, (int)(sy + swH), GREEN);
+                    DrawLine((int)endHandleX, (int)sy, (int)endHandleX, (int)(sy + swH), (Color){255, 80, 80, 255});
+                    // Handle grip rectangles
+                    Rectangle startGrip = {startHandleX - 4, sy, 8, swH};
+                    Rectangle endGrip = {endHandleX - 4, sy, 8, swH};
+
+                    // Drag start handle
+                    if (CheckCollisionPointRec(mouse, startGrip) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                        float newTs = (mouse.x - swX - 2) / (swW - 4);
+                        if (newTs < 0) newTs = 0;
+                        if (newTs > te - 0.02f) newTs = te - 0.02f;
+                        chopState.sliceParams[sel].trimStart = newTs;
+                        changed = true;
+                    }
+                    // Drag end handle
+                    if (CheckCollisionPointRec(mouse, endGrip) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                        float newTe = (mouse.x - swX - 2) / (swW - 4);
+                        if (newTe > 1) newTe = 1;
+                        if (newTe < ts + 0.02f) newTe = ts + 0.02f;
+                        chopState.sliceParams[sel].trimEnd = newTe;
+                        changed = true;
+                    }
+
+                    // Labels
+                    char trimLabel[32];
+                    snprintf(trimLabel, sizeof(trimLabel), "%.0f%%", ts * 100);
+                    DrawTextShadow(trimLabel, (int)(startHandleX + 2), (int)(sy + 2), 8, GREEN);
+                    snprintf(trimLabel, sizeof(trimLabel), "%.0f%%", te * 100);
+                    int tw = MeasureTextUI(trimLabel, 8);
+                    DrawTextShadow(trimLabel, (int)(endHandleX - tw - 2), (int)(sy + 2), 8, (Color){255, 80, 80, 255});
+                }
+                sy += swH + 2;
+            }
+            DrawTextShadow("Drag green/red handles to trim. Drag params to adjust. Right-click to reset.",
+                           (int)(x + 60), (int)sy, 9, (Color){55, 55, 68, 255});
         } else {
             DrawTextShadow("Click waveform to select+preview. Click pad to assign. Right-click to clear.",
                            (int)x, (int)sy, 9, (Color){55, 55, 68, 255});
