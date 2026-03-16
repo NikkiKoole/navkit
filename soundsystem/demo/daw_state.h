@@ -129,6 +129,7 @@ typedef struct {
 
     // Chop/flip: per-drum-track sampler slot mapping (-1 = synth, 0+ = sampler slot)
     int chopSliceMap[4];  // SEQ_DRUM_TRACKS = 4
+    float chopSlicePitch[32]; // per-slot pitch offset in semitones (applied at trigger)
 
     // Split keyboard
     bool splitEnabled;

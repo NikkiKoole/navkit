@@ -4633,6 +4633,12 @@ static struct {
     float *slices[SAMPLER_MAX_SAMPLES]; // per-slice buffers (heap)
     int chopMode;               // 0=equal, 1=transient
     float sensitivity;          // transient sensitivity (0.0-1.0)
+    // Per-slice params
+    struct {
+        bool reverse;           // play backwards
+        float pitchSemitones;   // pitch shift in semitones (-24 to +24)
+        float gain;             // volume multiplier (0.0 to 2.0, default 1.0)
+    } sliceParams[SAMPLER_MAX_SAMPLES];
     // UI
     int selectedSlice;          // highlighted slice (-1 = none)
     bool bounced;               // true if render+chop has been done
@@ -4645,6 +4651,7 @@ static struct {
     .selectedSlice = -1,
     .sourceSongIdx = -1,
     .sensitivity = 0.5f,
+    .sliceParams = {{0}},  // zero-init: reverse=false, pitch=0, gain=0 (set to 1.0 in clear)
 };
 
 // Free chop state buffers
@@ -4659,6 +4666,12 @@ static void chopStateClear(void) {
     chopState.selectedSlice = -1;
     // Reset drum pad slice mappings
     for (int t = 0; t < 4; t++) daw.chopSliceMap[t] = -1;
+    // Reset per-slice params
+    for (int s = 0; s < SAMPLER_MAX_SAMPLES; s++) {
+        chopState.sliceParams[s].reverse = false;
+        chopState.sliceParams[s].pitchSemitones = 0;
+        chopState.sliceParams[s].gain = 1.0f;
+    }
 }
 
 // Bounce + chop the current source
@@ -4719,6 +4732,56 @@ static void chopStateBounce(void) {
         daw.chopSliceMap[t] = t;
 
     chopState.bounced = true;
+    // Initialize default slice params for new chop
+    for (int s = 0; s < sc; s++) {
+        chopState.sliceParams[s].reverse = false;
+        chopState.sliceParams[s].pitchSemitones = 0;
+        chopState.sliceParams[s].gain = 1.0f;
+    }
+}
+
+// Re-apply per-slice params to sampler slots (call after changing params)
+static void chopApplySliceParams(void) {
+    if (!chopState.bounced) return;
+    _ensureSamplerCtx();
+
+    // Sync pitch to DawState (used by drum trigger in daw_audio.h)
+    for (int s = 0; s < chopState.sliceCount; s++)
+        daw.chopSlicePitch[s] = chopState.sliceParams[s].pitchSemitones;
+
+    for (int s = 0; s < chopState.sliceCount; s++) {
+        if (!chopState.slices[s]) continue;
+        int len = chopState.sliceLengths[s] > 0 ? chopState.sliceLengths[s] : chopState.sliceLength;
+
+        Sample *slot = &samplerCtx->samples[s];
+        if (slot->loaded && slot->data && !slot->embedded) free(slot->data);
+
+        float *data = (float *)malloc(len * sizeof(float));
+        if (!data) continue;
+        memcpy(data, chopState.slices[s], len * sizeof(float));
+
+        // Apply gain
+        float gain = chopState.sliceParams[s].gain;
+        if (gain != 1.0f) {
+            for (int i = 0; i < len; i++) data[i] *= gain;
+        }
+
+        // Apply reverse
+        if (chopState.sliceParams[s].reverse) {
+            for (int i = 0; i < len / 2; i++) {
+                float tmp = data[i];
+                data[i] = data[len - 1 - i];
+                data[len - 1 - i] = tmp;
+            }
+        }
+
+        slot->data = data;
+        slot->length = len;
+        slot->sampleRate = SAMPLE_CHOP_SAMPLE_RATE;
+        slot->loaded = true;
+        slot->embedded = false;
+        snprintf(slot->name, sizeof(slot->name), "slice_%02d", s);
+    }
 }
 
 // Draw waveform with slice markers, returns clicked slice or -1
@@ -5033,9 +5096,11 @@ static void drawWorkSample(float x, float y, float w, float h) {
                                     chopState.selectedSlice);
     if (clicked >= 0) {
         chopState.selectedSlice = clicked;
-        // Preview: play the clicked slice
+        // Preview: play the clicked slice with its pitch offset
         if (chopState.bounced && clicked < chopState.sliceCount) {
-            samplerPlay(clicked, 0.8f, 1.0f);
+            float pitch = chopState.sliceParams[clicked].pitchSemitones;
+            float speed = (pitch != 0.0f) ? powf(2.0f, pitch / 12.0f) : 1.0f;
+            samplerPlay(clicked, 0.8f, speed);
         }
     }
     sy += waveH + 6;
@@ -5089,8 +5154,97 @@ static void drawWorkSample(float x, float y, float w, float h) {
         DrawTextShadow(info, (int)x, (int)sy, 9, (Color){70, 70, 85, 255});
         sy += 14;
 
-        DrawTextShadow("Click waveform to select+preview. Click pad to assign. Right-click to clear.",
-                       (int)x, (int)sy, 9, (Color){55, 55, 68, 255});
+        // --- Per-slice params (when a slice is selected) ---
+        if (chopState.selectedSlice >= 0 && chopState.selectedSlice < chopState.sliceCount) {
+            int sel = chopState.selectedSlice;
+            sy += 4;
+            char sliceLabel[32];
+            snprintf(sliceLabel, sizeof(sliceLabel), "Slice %d:", sel);
+            DrawTextShadow(sliceLabel, (int)x, (int)(sy + 2), 10, ORANGE);
+
+            float px = x + 60;
+            bool changed = false;
+
+            // Reverse toggle
+            {
+                Rectangle r = {px, sy, 44, 16};
+                bool hov = CheckCollisionPointRec(mouse, r);
+                bool rev = chopState.sliceParams[sel].reverse;
+                DrawRectangleRec(r, rev ? (Color){80, 50, 50, 255} : (hov ? (Color){42, 44, 52, 255} : (Color){30, 31, 38, 255}));
+                DrawRectangleLinesEx(r, 1, rev ? (Color){255, 100, 100, 255} : (Color){48, 48, 58, 255});
+                DrawTextShadow("Rev", (int)(px + 10), (int)(sy + 3), 9, rev ? (Color){255, 140, 140, 255} : (Color){100, 100, 120, 255});
+                if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                    chopState.sliceParams[sel].reverse = !rev;
+                    changed = true;
+                    ui_consume_click();
+                }
+            }
+
+            // Pitch (drag left/right)
+            {
+                float ox = px + 52;
+                DrawTextShadow("Pitch:", (int)ox, (int)(sy + 2), 9, (Color){100, 100, 120, 255});
+                Rectangle r = {ox + 38, sy, 50, 16};
+                bool hov = CheckCollisionPointRec(mouse, r);
+                DrawRectangleRec(r, (Color){28, 28, 36, 255});
+                DrawRectangleLinesEx(r, 1, hov ? ORANGE : (Color){50, 50, 60, 255});
+                char pitchStr[16];
+                float p = chopState.sliceParams[sel].pitchSemitones;
+                snprintf(pitchStr, sizeof(pitchStr), "%+.0fst", p);
+                DrawTextShadow(pitchStr, (int)(r.x + 4), (int)(sy + 3), 9, fabsf(p) > 0.1f ? WHITE : (Color){80, 80, 95, 255});
+                if (hov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                    float delta = GetMouseDelta().x * 0.2f;
+                    chopState.sliceParams[sel].pitchSemitones += delta;
+                    if (chopState.sliceParams[sel].pitchSemitones > 24) chopState.sliceParams[sel].pitchSemitones = 24;
+                    if (chopState.sliceParams[sel].pitchSemitones < -24) chopState.sliceParams[sel].pitchSemitones = -24;
+                    changed = true;
+                }
+                // Right-click to reset
+                if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+                    chopState.sliceParams[sel].pitchSemitones = 0;
+                    changed = true;
+                    ui_consume_click();
+                }
+            }
+
+            // Gain (drag left/right)
+            {
+                float ox = px + 148;
+                DrawTextShadow("Gain:", (int)ox, (int)(sy + 2), 9, (Color){100, 100, 120, 255});
+                Rectangle r = {ox + 34, sy, 50, 16};
+                bool hov = CheckCollisionPointRec(mouse, r);
+                DrawRectangleRec(r, (Color){28, 28, 36, 255});
+                DrawRectangleLinesEx(r, 1, hov ? ORANGE : (Color){50, 50, 60, 255});
+                // Fill bar
+                float g = chopState.sliceParams[sel].gain;
+                float fill = (g / 2.0f) * 46;
+                DrawRectangle((int)(r.x + 2), (int)(r.y + 2), (int)fill, 12,
+                             g > 1.05f ? (Color){200, 100, 60, 200} : (Color){60, 130, 200, 200});
+                char gainStr[16];
+                snprintf(gainStr, sizeof(gainStr), "%.1fx", g);
+                DrawTextShadow(gainStr, (int)(r.x + 4), (int)(sy + 3), 9, WHITE);
+                if (hov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                    float delta = GetMouseDelta().x * 0.01f;
+                    chopState.sliceParams[sel].gain += delta;
+                    if (chopState.sliceParams[sel].gain < 0) chopState.sliceParams[sel].gain = 0;
+                    if (chopState.sliceParams[sel].gain > 2.0f) chopState.sliceParams[sel].gain = 2.0f;
+                    changed = true;
+                }
+                if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+                    chopState.sliceParams[sel].gain = 1.0f;
+                    changed = true;
+                    ui_consume_click();
+                }
+            }
+
+            if (changed) chopApplySliceParams();
+            sy += 20;
+
+            DrawTextShadow("Drag to adjust. Right-click to reset.", (int)(x + 60), (int)sy, 9, (Color){55, 55, 68, 255});
+        } else {
+            DrawTextShadow("Click waveform to select+preview. Click pad to assign. Right-click to clear.",
+                           (int)x, (int)sy, 9, (Color){55, 55, 68, 255});
+        }
     }
 
     // --- Freeze section (always visible, independent of bounce state) ---
