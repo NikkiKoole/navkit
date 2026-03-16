@@ -280,7 +280,7 @@ The rewind effect has a 3-second capture buffer (`REWIND_BUFFER_SIZE = SAMPLE_RA
 
 ### 4.1 Transient Detection
 
-Detect onsets and slice at transient points instead of equal divisions.
+Detect onsets and slice at transient points instead of equal divisions. Toggle between "Equal" and "Transient" modes in the Sample tab UI.
 
 ```c
 // Detect transients and create slice points at onsets.
@@ -289,7 +289,15 @@ ChoppedSample chopAtTransients(const RenderedPattern *src, float sensitivity,
                                int maxSlices);
 ```
 
-Algorithm: sliding window energy, onset = energy spike above threshold. Simple energy ratio detector works for drum loops.
+**Algorithm** (energy ratio onset detection):
+1. Compute RMS energy in short windows (~5ms = 220 samples at 44.1kHz)
+2. For each window, compute ratio: `energy[w] / energy[w-1]` (spectral flux)
+3. Peaks in the ratio curve above `threshold` (scaled by sensitivity) = onset candidates
+4. Minimum distance between onsets: ~50ms to avoid double-triggers
+5. Sort by strength, pick top `maxSlices` onsets, re-sort by position
+6. Slice boundaries placed at onset positions
+
+`wav_analyze.h` has a 1ms RMS envelope follower and transient sharpness metric that prove this approach works. The onset detector in `sample_chop.h` is standalone (~40 lines) to avoid pulling in the full analysis framework.
 
 ### 4.2 Slice Manipulation
 
@@ -378,21 +386,21 @@ A `.song` can sample **itself** — render pattern 0, chop it, sequence the chop
 
 ## Implementation Order
 
-| Step | What | Work | Depends on |
-|------|------|------|------------|
-| **0** | **Wire sampler into audio callback** | Add `processSamplerStereo()` to `DawAudioCallback` in `daw_audio.h` | — |
-| 1 | `renderPatternToBuffer()` | Extract render loop from `song_render.c` into callable function | — |
-| 2 | `chopEqual()` + `chopFree()` | Buffer split, ~50 lines | Step 1 |
-| 3 | `chopLoadIntoSampler()` | Copy slices into sampler slots, ~30 lines | Step 2 |
-| 4 | Wire sampler into drum track callbacks | Switchable routing: `samplerPlay()` vs `playNoteWithPatch()` | Steps 0, 3 |
-| 5 | CLI tool: `chop-flip` | Load .song, chop, export slices as WAVs (for testing) | Steps 1-3 |
-| 6 | DAW Sample tab (basic) | `WORK_SAMPLE` tab: waveform display, slice markers, pad mapping | Steps 1-4 |
-| 7 | Dub loop freeze | `dubLoopFreezeToSampler()` | Step 3 |
-| 8 | Master capture buffer | Ring buffer in audio callback, freeze to sampler | Step 3 |
-| 9 | Transient detection | Energy-based onset slicer | Step 2 |
-| 10 | Per-slice params | Reverse, pitch shift, trim, gain | Step 6 |
-| 11 | `.song` [sample] section | Save/load chop state | Steps 6, 10 |
-| 12 | 16-pad sampler track | Extended sequencer track type | Step 6 |
+| Step | What | Work | Status |
+|------|------|------|--------|
+| **0** | **Wire sampler into audio callback** | `processSamplerStereo()` in `DawAudioCallback` | DONE |
+| 1 | `renderPatternToBuffer()` | Offline bounce via temp SoundSystem in `sample_chop.h` | DONE |
+| 2 | `chopEqual()` + `chopFree()` | Buffer split in `sample_chop.h` | DONE |
+| 3 | `chopLoadIntoSampler()` | Copy slices into sampler slots | DONE |
+| 4 | Wire sampler into drum track callbacks | `chopSliceMap[4]` on DawState, switchable routing | DONE |
+| 5 | CLI tool: `chop-flip` | `make chop-flip`, exports slices as WAVs | DONE |
+| 6 | DAW Sample tab | `WORK_SAMPLE` (F5): waveform, file browser, pad mapping | DONE |
+| 7 | Dub loop freeze | `dubLoopFreezeToSampler()` | TODO |
+| 8 | Master capture buffer | Ring buffer in audio callback, freeze to sampler | TODO |
+| 9 | Transient detection | Energy-ratio onset slicer (algorithm spec'd, ~40 lines) | TODO |
+| 10 | Per-slice params | Reverse, pitch shift, trim, gain | TODO |
+| 11 | `.song` [sample] section | Save/load chop state | TODO |
+| 12 | 16-pad sampler track | Extended sequencer track type | TODO |
 
 Steps 0-5 are the foundation. Steps 6-8 are the fun part. Steps 9-12 are refinement.
 
