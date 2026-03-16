@@ -142,10 +142,10 @@ static inline void loadEmbeddedSCWs(void) {}
 // TABS
 // ============================================================================
 
-typedef enum { WORK_SEQ, WORK_PIANO, WORK_SONG, WORK_MIDI, WORK_VOICE, WORK_COUNT } WorkTab;
+typedef enum { WORK_SEQ, WORK_PIANO, WORK_SONG, WORK_MIDI, WORK_SAMPLE, WORK_VOICE, WORK_COUNT } WorkTab;
 static WorkTab workTab = WORK_SEQ;
-static const char* workTabNames[] = {"Sequencer", "Piano Roll", "Song", "MIDI", "Voice"};
-static const int workTabKeys[] = {KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5};
+static const char* workTabNames[] = {"Sequencer", "Piano Roll", "Song", "MIDI", "Sample", "Voice"};
+static const int workTabKeys[] = {KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6};
 
 typedef enum { PARAM_PATCH, PARAM_BUS, PARAM_MASTER, PARAM_TAPE, PARAM_COUNT } ParamTab;
 static ParamTab paramTab = PARAM_PATCH;
@@ -4561,6 +4561,371 @@ static void updateSpeech(float dt) {
     }
 }
 
+// ============================================================================
+// SAMPLE TAB — Chop/flip workflow
+// ============================================================================
+
+// Runtime state (not saved — rebuild from .song on load)
+static struct {
+    // Source
+    char sourcePath[256];       // .song file path
+    int sourcePattern;          // which pattern to render
+    int sourceLoops;            // how many loops
+    // Rendered audio
+    float *renderData;          // bounced PCM buffer (heap)
+    int renderLength;           // samples
+    float renderBpm;            // source BPM
+    int renderSteps;            // steps in rendered pattern
+    // Chop state
+    int sliceCount;             // current slice count (8 or 16)
+    int sliceLength;            // samples per slice
+    float *slices[SAMPLER_MAX_SAMPLES]; // per-slice buffers (heap)
+    // UI
+    int selectedSlice;          // highlighted slice (-1 = none)
+    bool bounced;               // true if render+chop has been done
+    bool editingPath;           // true when typing source path
+    int pathCursor;             // cursor position in path editor
+} chopState = {
+    .sourcePattern = 0,
+    .sourceLoops = 1,
+    .sliceCount = 8,
+    .selectedSlice = -1,
+};
+
+// Free chop state buffers
+static void chopStateClear(void) {
+    if (chopState.renderData) { free(chopState.renderData); chopState.renderData = NULL; }
+    for (int s = 0; s < SAMPLER_MAX_SAMPLES; s++) {
+        if (chopState.slices[s]) { free(chopState.slices[s]); chopState.slices[s] = NULL; }
+    }
+    chopState.renderLength = 0;
+    chopState.sliceLength = 0;
+    chopState.bounced = false;
+    chopState.selectedSlice = -1;
+    // Reset drum pad slice mappings
+    for (int t = 0; t < 4; t++) daw.chopSliceMap[t] = -1;
+}
+
+// Bounce + chop the current source
+static void chopStateBounce(void) {
+    chopStateClear();
+    if (!chopState.sourcePath[0]) return;
+
+    RenderedPattern rendered = renderPatternToBuffer(
+        chopState.sourcePath, chopState.sourcePattern,
+        chopState.sourceLoops, 0.5f);
+    if (!rendered.data) return;
+
+    chopState.renderData = rendered.data;
+    chopState.renderLength = rendered.length;
+    chopState.renderBpm = rendered.bpm;
+    chopState.renderSteps = rendered.stepCount;
+
+    // Chop
+    int sc = chopState.sliceCount;
+    int sliceLen = rendered.length / sc;
+    if (sliceLen < 1) { chopStateClear(); return; }
+
+    chopState.sliceLength = sliceLen;
+    for (int s = 0; s < sc; s++) {
+        chopState.slices[s] = (float *)malloc(sliceLen * sizeof(float));
+        if (!chopState.slices[s]) { chopStateClear(); return; }
+        memcpy(chopState.slices[s], rendered.data + s * sliceLen, sliceLen * sizeof(float));
+    }
+
+    // Load into sampler
+    _ensureSamplerCtx();
+    for (int s = 0; s < sc; s++) {
+        Sample *slot = &samplerCtx->samples[s];
+        if (slot->loaded && slot->data && !slot->embedded) free(slot->data);
+        // Give sampler its own copy so chop state and sampler are independent
+        slot->data = (float *)malloc(sliceLen * sizeof(float));
+        if (slot->data) {
+            memcpy(slot->data, chopState.slices[s], sliceLen * sizeof(float));
+            slot->length = sliceLen;
+            slot->sampleRate = SAMPLE_CHOP_SAMPLE_RATE;
+            slot->loaded = true;
+            slot->embedded = false;
+            snprintf(slot->name, sizeof(slot->name), "slice_%02d", s);
+        }
+    }
+
+    // Map first 4 slices to drum pads by default
+    for (int t = 0; t < 4 && t < sc; t++)
+        daw.chopSliceMap[t] = t;
+
+    chopState.bounced = true;
+}
+
+// Draw waveform with slice markers, returns clicked slice or -1
+static int drawChopWaveform(float bx, float by, float bw, float bh,
+                             const float *data, int length, int sliceCount,
+                             int selectedSlice) {
+    int clicked = -1;
+    DrawRectangle((int)bx, (int)by, (int)bw, (int)bh, (Color){18, 18, 24, 255});
+    DrawRectangleLinesEx((Rectangle){bx, by, bw, bh}, 1, (Color){42, 42, 52, 255});
+
+    if (!data || length < 1) {
+        DrawTextShadow("No audio — load a .song and press Chop", (int)(bx + 8), (int)(by + bh / 2 - 5), 10, (Color){60, 60, 70, 255});
+        return -1;
+    }
+
+    float mid = by + bh * 0.5f;
+    float amp = bh * 0.45f;
+    int pixels = (int)bw - 4;
+    float px = bx + 2;
+    Vector2 mouse = GetMousePosition();
+
+    // Draw waveform (min/max per pixel column)
+    for (int col = 0; col < pixels; col++) {
+        int startSample = (int)((float)col / pixels * length);
+        int endSample = (int)((float)(col + 1) / pixels * length);
+        if (endSample > length) endSample = length;
+
+        float lo = 0, hi = 0;
+        for (int s = startSample; s < endSample; s++) {
+            if (data[s] < lo) lo = data[s];
+            if (data[s] > hi) hi = data[s];
+        }
+
+        // Which slice does this column belong to?
+        int slice = (int)((float)col / pixels * sliceCount);
+        if (slice >= sliceCount) slice = sliceCount - 1;
+        bool sel = (slice == selectedSlice);
+        Color waveCol = sel ? (Color){255, 180, 60, 255} : (Color){80, 140, 200, 255};
+
+        int y0 = (int)(mid - hi * amp);
+        int y1 = (int)(mid - lo * amp);
+        if (y1 <= y0) y1 = y0 + 1;
+        DrawLine((int)(px + col), y0, (int)(px + col), y1, waveCol);
+    }
+
+    // Draw slice markers
+    for (int s = 1; s < sliceCount; s++) {
+        float sx = bx + 2 + ((float)s / sliceCount) * (bw - 4);
+        Color mc = (Color){100, 100, 120, 180};
+        DrawLine((int)sx, (int)(by + 2), (int)sx, (int)(by + bh - 2), mc);
+    }
+
+    // Slice numbers at bottom
+    for (int s = 0; s < sliceCount; s++) {
+        float sx = bx + 2 + ((float)s / sliceCount) * (bw - 4);
+        float sw = (bw - 4) / sliceCount;
+        char num[4];
+        snprintf(num, sizeof(num), "%d", s);
+        int tw = MeasureTextUI(num, 8);
+        bool sel = (s == selectedSlice);
+        DrawTextShadow(num, (int)(sx + sw / 2 - tw / 2), (int)(by + bh - 12), 8,
+                       sel ? ORANGE : (Color){60, 65, 75, 255});
+    }
+
+    // Click detection
+    if (CheckCollisionPointRec(mouse, (Rectangle){bx, by, bw, bh}) &&
+        IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        float relX = (mouse.x - bx - 2) / (bw - 4);
+        if (relX >= 0 && relX < 1.0f) {
+            clicked = (int)(relX * sliceCount);
+            if (clicked >= sliceCount) clicked = sliceCount - 1;
+        }
+        ui_consume_click();
+    }
+
+    // Center line
+    DrawLine((int)(bx + 2), (int)mid, (int)(bx + bw - 2), (int)mid, (Color){35, 35, 42, 128});
+
+    return clicked;
+}
+
+static void drawWorkSample(float x, float y, float w, float h) {
+    (void)h;
+    Vector2 mouse = GetMousePosition();
+    float sy = y;
+
+    DrawTextShadow("Sample / Chop", (int)x, (int)sy, 12, WHITE);
+    sy += 20;
+
+    // --- Source row ---
+    DrawTextShadow("Source:", (int)x, (int)(sy + 2), 10, (Color){140, 140, 160, 255});
+    // Song file path (click to edit)
+    {
+        float pathX = x + 50;
+        float pathW = w - 260;
+        Rectangle pathR = {pathX, sy, pathW, 16};
+        bool hov = CheckCollisionPointRec(mouse, pathR);
+        DrawRectangleRec(pathR, chopState.editingPath ? (Color){45, 45, 58, 255} : (hov ? (Color){38, 40, 50, 255} : (Color){28, 28, 36, 255}));
+        DrawRectangleLinesEx(pathR, 1, chopState.editingPath ? ORANGE : (Color){50, 50, 60, 255});
+
+        if (chopState.editingPath) {
+            int result = dawTextEdit(chopState.sourcePath, (int)sizeof(chopState.sourcePath), &chopState.pathCursor);
+            DrawTextShadow(chopState.sourcePath, (int)(pathX + 4), (int)(sy + 3), 9, WHITE);
+            // Draw cursor
+            int cx = dawTextCursorX(chopState.sourcePath, chopState.pathCursor, 9);
+            if ((int)(GetTime() * 3) % 2 == 0)
+                DrawLine((int)(pathX + 4 + cx), (int)(sy + 2), (int)(pathX + 4 + cx), (int)(sy + 14), WHITE);
+            if (result == 1 || result == -1) chopState.editingPath = false;
+        } else {
+            const char *display = chopState.sourcePath[0] ? chopState.sourcePath : "(click to type path)";
+            DrawTextShadow(display, (int)(pathX + 4), (int)(sy + 3), 9,
+                          chopState.sourcePath[0] ? WHITE : (Color){70, 70, 85, 255});
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                chopState.editingPath = true;
+                chopState.pathCursor = (int)strlen(chopState.sourcePath);
+                ui_consume_click();
+            }
+        }
+    }
+
+    // Pattern selector
+    {
+        float px = x + w - 200;
+        DrawTextShadow("Pat:", (int)px, (int)(sy + 2), 10, (Color){140, 140, 160, 255});
+        for (int p = 0; p < SEQ_NUM_PATTERNS; p++) {
+            Rectangle r = {px + 28 + p * 18, sy, 16, 16};
+            bool sel = (p == chopState.sourcePattern);
+            bool hov = CheckCollisionPointRec(mouse, r);
+            DrawRectangleRec(r, sel ? (Color){60, 80, 60, 255} : (hov ? (Color){42, 44, 52, 255} : (Color){30, 31, 38, 255}));
+            DrawRectangleLinesEx(r, 1, sel ? GREEN : (Color){48, 48, 58, 255});
+            char num[4];
+            snprintf(num, sizeof(num), "%d", p + 1);
+            DrawTextShadow(num, (int)(r.x + 4), (int)(r.y + 3), 9, sel ? WHITE : (Color){100, 100, 120, 255});
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                chopState.sourcePattern = p;
+                ui_consume_click();
+            }
+        }
+    }
+    sy += 22;
+
+    // --- Controls row ---
+    {
+        // Slice count selector
+        DrawTextShadow("Slices:", (int)x, (int)(sy + 2), 10, (Color){140, 140, 160, 255});
+        int sliceCounts[] = {4, 8, 16};
+        for (int i = 0; i < 3; i++) {
+            float bx = x + 52 + i * 30;
+            Rectangle r = {bx, sy, 26, 16};
+            bool sel = (chopState.sliceCount == sliceCounts[i]);
+            bool hov = CheckCollisionPointRec(mouse, r);
+            DrawRectangleRec(r, sel ? (Color){60, 80, 60, 255} : (hov ? (Color){42, 44, 52, 255} : (Color){30, 31, 38, 255}));
+            DrawRectangleLinesEx(r, 1, sel ? GREEN : (Color){48, 48, 58, 255});
+            char num[4];
+            snprintf(num, sizeof(num), "%d", sliceCounts[i]);
+            DrawTextShadow(num, (int)(bx + 4), (int)(sy + 3), 9, sel ? WHITE : (Color){100, 100, 120, 255});
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                chopState.sliceCount = sliceCounts[i];
+                ui_consume_click();
+            }
+        }
+
+        // Loops selector
+        DrawTextShadow("Loops:", (int)(x + 150), (int)(sy + 2), 10, (Color){140, 140, 160, 255});
+        for (int l = 1; l <= 4; l++) {
+            float bx = x + 196 + (l - 1) * 22;
+            Rectangle r = {bx, sy, 18, 16};
+            bool sel = (chopState.sourceLoops == l);
+            bool hov = CheckCollisionPointRec(mouse, r);
+            DrawRectangleRec(r, sel ? (Color){60, 80, 60, 255} : (hov ? (Color){42, 44, 52, 255} : (Color){30, 31, 38, 255}));
+            DrawRectangleLinesEx(r, 1, sel ? GREEN : (Color){48, 48, 58, 255});
+            char num[4];
+            snprintf(num, sizeof(num), "%d", l);
+            DrawTextShadow(num, (int)(bx + 5), (int)(sy + 3), 9, sel ? WHITE : (Color){100, 100, 120, 255});
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                chopState.sourceLoops = l;
+                ui_consume_click();
+            }
+        }
+
+        // Chop button
+        {
+            float bx = x + 300;
+            Rectangle r = {bx, sy, 50, 16};
+            bool hov = CheckCollisionPointRec(mouse, r);
+            DrawRectangleRec(r, hov ? (Color){80, 60, 40, 255} : (Color){60, 45, 30, 255});
+            DrawRectangleLinesEx(r, 1, ORANGE);
+            DrawTextShadow("Chop!", (int)(bx + 8), (int)(sy + 3), 10, WHITE);
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                chopStateBounce();
+                ui_consume_click();
+            }
+        }
+
+        // BPM display
+        if (chopState.bounced) {
+            char bpmStr[32];
+            snprintf(bpmStr, sizeof(bpmStr), "%.0f BPM", chopState.renderBpm);
+            DrawTextShadow(bpmStr, (int)(x + 360), (int)(sy + 2), 10, (Color){100, 200, 120, 255});
+        }
+    }
+    sy += 22;
+
+    // --- Waveform ---
+    float waveH = 80;
+    int clicked = drawChopWaveform(x, sy, w, waveH,
+                                    chopState.renderData, chopState.renderLength,
+                                    chopState.sliceCount, chopState.selectedSlice);
+    if (clicked >= 0) {
+        chopState.selectedSlice = clicked;
+        // Preview: play the clicked slice
+        if (chopState.bounced && clicked < chopState.sliceCount) {
+            samplerPlay(clicked, 0.8f, 1.0f);
+        }
+    }
+    sy += waveH + 6;
+
+    // --- Pad mapping ---
+    if (chopState.bounced) {
+        DrawTextShadow("Pad Mapping (drum tracks):", (int)x, (int)sy, 10, (Color){140, 140, 160, 255});
+        sy += 16;
+
+        const char *padNames[] = {"Kick", "Snare", "HiHat", "Clap"};
+        for (int t = 0; t < 4; t++) {
+            float px = x + t * (w / 4);
+            float pw = w / 4 - 8;
+
+            int slot = daw.chopSliceMap[t];
+            char label[64];
+            if (slot >= 0)
+                snprintf(label, sizeof(label), "%s -> Slice %d", padNames[t], slot);
+            else
+                snprintf(label, sizeof(label), "%s -> (synth)", padNames[t]);
+
+            Rectangle r = {px, sy, pw, 20};
+            bool hov = CheckCollisionPointRec(mouse, r);
+            bool hasSel = (chopState.selectedSlice >= 0);
+            DrawRectangleRec(r, hov && hasSel ? (Color){50, 50, 65, 255} : (Color){30, 31, 38, 255});
+            DrawRectangleLinesEx(r, 1, slot >= 0 ? ORANGE : (Color){48, 48, 58, 255});
+            DrawTextShadow(label, (int)(px + 4), (int)(sy + 5), 9,
+                          slot >= 0 ? (Color){255, 200, 100, 255} : (Color){100, 100, 120, 255});
+
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                // Assign selected slice to this pad, or clear if clicking same
+                if (hasSel) {
+                    daw.chopSliceMap[t] = chopState.selectedSlice;
+                }
+                ui_consume_click();
+            }
+            if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+                // Right-click: clear mapping (revert to synth)
+                daw.chopSliceMap[t] = -1;
+                ui_consume_click();
+            }
+        }
+        sy += 26;
+
+        // Info line
+        char info[128];
+        snprintf(info, sizeof(info), "%d slices, %d samples each (%.3fs), %d steps",
+                 chopState.sliceCount, chopState.sliceLength,
+                 (float)chopState.sliceLength / SAMPLE_CHOP_SAMPLE_RATE,
+                 chopState.renderSteps);
+        DrawTextShadow(info, (int)x, (int)sy, 9, (Color){70, 70, 85, 255});
+        sy += 14;
+
+        DrawTextShadow("Click waveform to select+preview slice. Click pad to assign. Right-click pad to clear.",
+                       (int)x, (int)sy, 9, (Color){55, 55, 68, 255});
+    }
+}
+
 static float babblePitch = 1.0f;
 static float babbleMood = 0.5f;
 static float babbleDuration = 2.0f;
@@ -5026,6 +5391,7 @@ int main(void) {
                 case WORK_PIANO: drawWorkPiano(wx, wy, ww, wh); break;
                 case WORK_SONG:  drawWorkSong(wx, wy, ww, wh); break;
                 case WORK_MIDI:  drawWorkMidi(wx, wy, ww, wh); break;
+                case WORK_SAMPLE: drawWorkSample(wx, wy, ww, wh); break;
                 case WORK_VOICE: drawWorkVoice(wx, wy, ww, wh); break;
                 default: break;
             }
