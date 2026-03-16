@@ -388,6 +388,7 @@ static DawState daw = {
         .rewindTime = 1.5f, .rewindMinSpeed = 0.2f, .rewindVinyl = 0.1f, .rewindWobble = 0.2f, .rewindFilter = 0.5f,
     },
     .chopSliceMap = {-1, -1, -1, -1},
+    .chopSamplerTrack = -1,
     .masterVol = 0.8f,
     .splitPoint = 60, .splitLeftPatch = 1, .splitRightPatch = 2,
 };
@@ -5144,6 +5145,31 @@ static void drawWorkSample(float x, float y, float w, float h) {
             }
         }
         sy += 26;
+
+        // 16-pad sampler track selector
+        DrawTextShadow("16-Pad Track:", (int)x, (int)(sy + 2), 10, (Color){140, 140, 160, 255});
+        {
+            const char *trackOpts[] = {"Off", "Bass", "Lead", "Chord"};
+            int trackVals[] = {-1, 0, 1, 2};
+            for (int i = 0; i < 4; i++) {
+                float bx = x + 96 + i * 46;
+                Rectangle r = {bx, sy, 42, 16};
+                bool sel = (daw.chopSamplerTrack == trackVals[i]);
+                bool hov = CheckCollisionPointRec(mouse, r);
+                DrawRectangleRec(r, sel ? (Color){50, 60, 80, 255} : (hov ? (Color){42, 44, 52, 255} : (Color){30, 31, 38, 255}));
+                DrawRectangleLinesEx(r, 1, sel ? (Color){100, 160, 255, 255} : (Color){48, 48, 58, 255});
+                DrawTextShadow(trackOpts[i], (int)(bx + 4), (int)(sy + 3), 9,
+                              sel ? (Color){140, 190, 255, 255} : (Color){100, 100, 120, 255});
+                if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                    daw.chopSamplerTrack = trackVals[i];
+                    ui_consume_click();
+                }
+            }
+            if (daw.chopSamplerTrack >= 0) {
+                DrawTextShadow("(note C2=slice 0, C#2=1, D2=2...)", (int)(x + 284), (int)(sy + 2), 9, (Color){60, 65, 80, 255});
+            }
+        }
+        sy += 20;
 
         // Info line
         char info[128];

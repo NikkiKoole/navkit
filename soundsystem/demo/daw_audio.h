@@ -456,6 +456,24 @@ static void dawDrumTrigger3(float vel, float pitch) { dawDrumTriggerGeneric(3, B
 static void dawMelodyTriggerGeneric(int trackIdx, int note, float vel,
                                      float gateTime, bool slide, bool accent) {
     (void)gateTime; // gate handled by sequencer.h's tick-based countdown
+
+    // 16-pad sampler mode: if this melody track is the sampler track,
+    // map MIDI note to slice index and trigger sampler instead of synth.
+    // Note 36 (C2) = slice 0, 37 = slice 1, ..., 67 = slice 31.
+    if (trackIdx == daw.chopSamplerTrack) {
+        int sliceIdx = note - 36;
+        if (sliceIdx < 0) sliceIdx = 0;
+        if (sliceIdx >= SAMPLER_MAX_SAMPLES) sliceIdx = SAMPLER_MAX_SAMPLES - 1;
+        if (samplerCtx->samples[sliceIdx].loaded) {
+            float pVol = plockValue(PLOCK_VOLUME, vel);
+            if (accent) pVol = fminf(pVol * 1.3f, 1.0f);
+            float pitchMod = plockValue(PLOCK_PITCH_OFFSET, 0.0f) + daw.chopSlicePitch[sliceIdx];
+            float speed = (pitchMod != 0.0f) ? powf(2.0f, pitchMod / 12.0f) : 1.0f;
+            samplerPlay(sliceIdx, pVol, speed);
+        }
+        return;
+    }
+
     int busTrack = trackIdx + SEQ_DRUM_TRACKS;
     SynthPatch *p = &daw.patches[busTrack];
 

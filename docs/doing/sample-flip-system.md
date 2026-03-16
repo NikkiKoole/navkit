@@ -352,31 +352,38 @@ Already works — the sequencer's Dilla timing system (per-track swing, jitter, 
 
 ## .song Integration
 
-### Saving Chop State
+### Saving Chop State (DEFERRED — play with the system first)
 
-New `[sample]` section in the `.song` file format (`song_file.h`):
+**Status**: Spec'd but not implemented. The chop workflow is exploratory; persistence matters once you're composing with chops and want to reopen tomorrow. Deferring until the workflow is proven in practice.
+
+**Plan**: New `[sample]` section in `.song` file format. Saves a **recipe** (no audio data):
 
 ```ini
 [sample]
-sourceFile = game_dawn.song
+sourceFile = dilla.song       ; relative path to source .song
 sourcePattern = 0
-sourceLoops = 2
-sliceCount = 16
-sliceMode = equal           ; equal | transient
+sourceLoops = 1
+sliceCount = 8
+sliceMode = transient         ; equal | transient
+sensitivity = 0.5             ; transient mode only
 
-; Pad mappings: which slice goes to which drum track
+; Pad mappings: which slice goes to which drum track (-1 = synth)
 padMap0 = 3
 padMap1 = 7
-padMap2 = 1
+padMap2 = -1
 padMap3 = 12
 
-; Per-slice params (only non-default values)
+; Per-slice params (only non-default values saved)
 slice.3.reverse = true
-slice.7.pitchShift = -5
+slice.7.pitch = -5
 slice.12.gain = 1.2
 ```
 
-On load: re-render the source pattern, re-chop, re-map. No audio data stored — just the recipe. Fully reproducible.
+**On load**: re-bounce source pattern (~200ms), re-chop, apply params, restore pad mappings. Sequencer step data (which steps trigger which drum tracks) already saves normally.
+
+**Risk**: if the source .song changes, chop sounds different on reload. This is intentional — it's a recipe, not a freeze. Use `chop-flip` CLI to export static WAVs if you need permanence.
+
+**Implementation**: Add read/write in `daw_file.h` alongside existing `[song]`, `[mixer]`, etc. sections. `chopStateBounce()` called after load with saved params.
 
 ### Self-Referencing
 
@@ -395,11 +402,11 @@ A `.song` can sample **itself** — render pattern 0, chop it, sequence the chop
 | 4 | Wire sampler into drum track callbacks | `chopSliceMap[4]` on DawState, switchable routing | DONE |
 | 5 | CLI tool: `chop-flip` | `make chop-flip`, exports slices as WAVs | DONE |
 | 6 | DAW Sample tab | `WORK_SAMPLE` (F5): waveform, file browser, pad mapping | DONE |
-| 7 | Dub loop freeze | `dubLoopFreezeToSampler()` | TODO |
-| 8 | Master capture buffer | Ring buffer in audio callback, freeze to sampler | TODO |
-| 9 | Transient detection | Energy-ratio onset slicer (algorithm spec'd, ~40 lines) | TODO |
-| 10 | Per-slice params | Reverse, pitch shift, trim, gain | TODO |
-| 11 | `.song` [sample] section | Save/load chop state | TODO |
+| 7 | Dub loop freeze | `dubLoopFreezeToSampler()` | DONE |
+| 8 | Rewind freeze | `rewindFreezeToSampler()` | DONE |
+| 9 | Transient detection | `chopAtTransients()` — energy-ratio onset slicer | DONE |
+| 10 | Per-slice params | Reverse, pitch shift, gain per slice | DONE |
+| 11 | `.song` [sample] section | Save/load chop recipe | DEFERRED |
 | 12 | 16-pad sampler track | Extended sequencer track type | TODO |
 
 Steps 0-5 are the foundation. Steps 6-8 are the fun part. Steps 9-12 are refinement.
