@@ -53,7 +53,8 @@ typedef struct {
 
 typedef struct {
     int sliceCount;                     // how many slices
-    int sliceLength;                    // samples per slice
+    int sliceLength;                    // samples per slice (equal mode), or max length (transient mode)
+    int sliceLengths[SAMPLER_MAX_SAMPLES]; // per-slice lengths (0 = use sliceLength)
     float *slices[SAMPLER_MAX_SAMPLES]; // heap-allocated per-slice buffers
     float bpm;                          // inherited from source
     int stepsPerSlice;                  // sequencer steps each slice covers
@@ -644,6 +645,137 @@ static ChoppedSample chopEqual(const RenderedPattern *src, int sliceCount) {
     return chop;
 }
 
+// ============================================================================
+// CHOP: Transient-detection slicer
+// ============================================================================
+
+// Detect transient onsets and slice at those points.
+// sensitivity: 0.0 = few slices (only big hits), 1.0 = many slices.
+// maxSlices: maximum number of slices to return (1-SAMPLER_MAX_SAMPLES).
+// Slices have variable lengths (unlike chopEqual).
+static ChoppedSample chopAtTransients(const RenderedPattern *src, float sensitivity,
+                                       int maxSlices) {
+    ChoppedSample chop = {0};
+    if (!src || !src->data || src->length < 1 || maxSlices < 1)
+        return chop;
+    if (maxSlices > SAMPLER_MAX_SAMPLES) maxSlices = SAMPLER_MAX_SAMPLES;
+
+    // Parameters
+    int windowSize = 220;  // ~5ms at 44100
+    int minDistSamples = 2205;  // ~50ms minimum between onsets
+    float threshold = 3.0f - sensitivity * 2.0f;  // sens 0->3.0, sens 1->1.0
+    if (threshold < 1.2f) threshold = 1.2f;
+
+    int numWindows = src->length / windowSize;
+    if (numWindows < 3) return chopEqual(src, maxSlices);  // too short, fallback
+
+    // Step 1: compute RMS energy per window
+    float *energy = (float *)calloc(numWindows, sizeof(float));
+    if (!energy) return chop;
+
+    for (int w = 0; w < numWindows; w++) {
+        float sum = 0;
+        int base = w * windowSize;
+        for (int i = 0; i < windowSize && base + i < src->length; i++) {
+            float s = src->data[base + i];
+            sum += s * s;
+        }
+        energy[w] = sqrtf(sum / windowSize);
+    }
+
+    // Step 2: compute energy ratio (spectral flux) and find peaks
+    // Collect onset candidates: (sample position, strength)
+    int *onsetPos = (int *)calloc(numWindows, sizeof(int));
+    float *onsetStrength = (float *)calloc(numWindows, sizeof(float));
+    int numOnsets = 0;
+
+    if (!onsetPos || !onsetStrength) {
+        free(energy); free(onsetPos); free(onsetStrength);
+        return chop;
+    }
+
+    for (int w = 1; w < numWindows; w++) {
+        float prev = energy[w - 1];
+        if (prev < 0.0001f) prev = 0.0001f;  // avoid division by zero
+        float ratio = energy[w] / prev;
+
+        if (ratio > threshold) {
+            int samplePos = w * windowSize;
+            // Enforce minimum distance from last onset
+            if (numOnsets > 0 && samplePos - onsetPos[numOnsets - 1] < minDistSamples)
+                continue;
+            onsetPos[numOnsets] = samplePos;
+            onsetStrength[numOnsets] = ratio;
+            numOnsets++;
+        }
+    }
+
+    free(energy);
+
+    if (numOnsets < 1) {
+        free(onsetPos); free(onsetStrength);
+        return chopEqual(src, maxSlices);  // no transients found, fallback
+    }
+
+    // Step 3: if too many onsets, keep the strongest
+    if (numOnsets > maxSlices - 1) {
+        // Sort by strength descending (simple selection sort, small N)
+        for (int i = 0; i < maxSlices - 1; i++) {
+            int best = i;
+            for (int j = i + 1; j < numOnsets; j++) {
+                if (onsetStrength[j] > onsetStrength[best]) best = j;
+            }
+            if (best != i) {
+                int tp = onsetPos[i]; onsetPos[i] = onsetPos[best]; onsetPos[best] = tp;
+                float ts = onsetStrength[i]; onsetStrength[i] = onsetStrength[best]; onsetStrength[best] = ts;
+            }
+        }
+        numOnsets = maxSlices - 1;
+
+        // Re-sort by position ascending
+        for (int i = 1; i < numOnsets; i++) {
+            int tp = onsetPos[i]; float ts = onsetStrength[i];
+            int j = i - 1;
+            while (j >= 0 && onsetPos[j] > tp) {
+                onsetPos[j + 1] = onsetPos[j]; onsetStrength[j + 1] = onsetStrength[j];
+                j--;
+            }
+            onsetPos[j + 1] = tp; onsetStrength[j + 1] = ts;
+        }
+    }
+
+    // Step 4: build slices from onset points
+    // Slice boundaries: [0, onset0, onset1, ..., end]
+    int sliceCount = numOnsets + 1;
+    chop.sliceCount = sliceCount;
+    chop.bpm = src->bpm;
+    chop.stepsPerSlice = src->stepCount / sliceCount;
+    if (chop.stepsPerSlice < 1) chop.stepsPerSlice = 1;
+
+    for (int s = 0; s < sliceCount; s++) {
+        int start = (s == 0) ? 0 : onsetPos[s - 1];
+        int end = (s < numOnsets) ? onsetPos[s] : src->length;
+        int len = end - start;
+        if (len < 1) len = 1;
+
+        chop.slices[s] = (float *)malloc(len * sizeof(float));
+        if (!chop.slices[s]) {
+            for (int j = 0; j < s; j++) free(chop.slices[j]);
+            memset(&chop, 0, sizeof(chop));
+            free(onsetPos); free(onsetStrength);
+            return chop;
+        }
+        memcpy(chop.slices[s], src->data + start, len * sizeof(float));
+        chop.sliceLengths[s] = len;
+    }
+    // sliceLength = average (for display); actual per-slice lengths in sliceLengths[]
+    chop.sliceLength = src->length / sliceCount;
+
+    free(onsetPos);
+    free(onsetStrength);
+    return chop;
+}
+
 // Free all slice buffers.
 static void chopFree(ChoppedSample *chop) {
     if (!chop) return;
@@ -677,7 +809,7 @@ static int chopLoadIntoSampler(ChoppedSample *chop, int startSlot) {
         }
 
         slot->data = chop->slices[s];
-        slot->length = chop->sliceLength;
+        slot->length = chop->sliceLengths[s] > 0 ? chop->sliceLengths[s] : chop->sliceLength;
         slot->sampleRate = SAMPLE_CHOP_SAMPLE_RATE;
         slot->loaded = true;
         slot->embedded = false;  // sampler can free this

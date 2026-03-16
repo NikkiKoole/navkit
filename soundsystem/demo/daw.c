@@ -4629,7 +4629,10 @@ static struct {
     // Chop state
     int sliceCount;             // current slice count (8 or 16)
     int sliceLength;            // samples per slice
+    int sliceLengths[SAMPLER_MAX_SAMPLES]; // per-slice lengths (transient mode)
     float *slices[SAMPLER_MAX_SAMPLES]; // per-slice buffers (heap)
+    int chopMode;               // 0=equal, 1=transient
+    float sensitivity;          // transient sensitivity (0.0-1.0)
     // UI
     int selectedSlice;          // highlighted slice (-1 = none)
     bool bounced;               // true if render+chop has been done
@@ -4641,6 +4644,7 @@ static struct {
     .sliceCount = 8,
     .selectedSlice = -1,
     .sourceSongIdx = -1,
+    .sensitivity = 0.5f,
 };
 
 // Free chop state buffers
@@ -4672,34 +4676,43 @@ static void chopStateBounce(void) {
     chopState.renderBpm = rendered.bpm;
     chopState.renderSteps = rendered.stepCount;
 
-    // Chop
-    int sc = chopState.sliceCount;
-    int sliceLen = rendered.length / sc;
-    if (sliceLen < 1) { chopStateClear(); return; }
+    // Chop (equal or transient)
+    ChoppedSample chopped;
+    if (chopState.chopMode == 1) {
+        chopped = chopAtTransients(&rendered, chopState.sensitivity, chopState.sliceCount);
+    } else {
+        chopped = chopEqual(&rendered, chopState.sliceCount);
+    }
+    if (chopped.sliceCount < 1) { chopStateClear(); return; }
 
-    chopState.sliceLength = sliceLen;
+    int sc = chopped.sliceCount;
+    chopState.sliceCount = sc;  // transient mode may return fewer slices
+    chopState.sliceLength = chopped.sliceLength;
     for (int s = 0; s < sc; s++) {
-        chopState.slices[s] = (float *)malloc(sliceLen * sizeof(float));
-        if (!chopState.slices[s]) { chopStateClear(); return; }
-        memcpy(chopState.slices[s], rendered.data + s * sliceLen, sliceLen * sizeof(float));
+        int len = chopped.sliceLengths[s] > 0 ? chopped.sliceLengths[s] : chopped.sliceLength;
+        chopState.sliceLengths[s] = len;
+        chopState.slices[s] = (float *)malloc(len * sizeof(float));
+        if (!chopState.slices[s]) { chopFree(&chopped); chopStateClear(); return; }
+        memcpy(chopState.slices[s], chopped.slices[s], len * sizeof(float));
     }
 
     // Load into sampler
     _ensureSamplerCtx();
     for (int s = 0; s < sc; s++) {
+        int len = chopState.sliceLengths[s];
         Sample *slot = &samplerCtx->samples[s];
         if (slot->loaded && slot->data && !slot->embedded) free(slot->data);
-        // Give sampler its own copy so chop state and sampler are independent
-        slot->data = (float *)malloc(sliceLen * sizeof(float));
+        slot->data = (float *)malloc(len * sizeof(float));
         if (slot->data) {
-            memcpy(slot->data, chopState.slices[s], sliceLen * sizeof(float));
-            slot->length = sliceLen;
+            memcpy(slot->data, chopState.slices[s], len * sizeof(float));
+            slot->length = len;
             slot->sampleRate = SAMPLE_CHOP_SAMPLE_RATE;
             slot->loaded = true;
             slot->embedded = false;
             snprintf(slot->name, sizeof(slot->name), "slice_%02d", s);
         }
     }
+    chopFree(&chopped);
 
     // Map first 4 slices to drum pads by default
     for (int t = 0; t < 4 && t < sc; t++)
@@ -4709,9 +4722,10 @@ static void chopStateBounce(void) {
 }
 
 // Draw waveform with slice markers, returns clicked slice or -1
+// sliceLengths: per-slice lengths (NULL = equal division)
 static int drawChopWaveform(float bx, float by, float bw, float bh,
                              const float *data, int length, int sliceCount,
-                             int selectedSlice) {
+                             const int *sliceLengths, int selectedSlice) {
     int clicked = -1;
     DrawRectangle((int)bx, (int)by, (int)bw, (int)bh, (Color){18, 18, 24, 255});
     DrawRectangleLinesEx((Rectangle){bx, by, bw, bh}, 1, (Color){42, 42, 52, 255});
@@ -4727,6 +4741,14 @@ static int drawChopWaveform(float bx, float by, float bw, float bh,
     float px = bx + 2;
     Vector2 mouse = GetMousePosition();
 
+    // Precompute cumulative slice positions (sample offsets)
+    int sliceStarts[SAMPLER_MAX_SAMPLES + 1];
+    sliceStarts[0] = 0;
+    for (int s = 0; s < sliceCount; s++) {
+        int len = (sliceLengths && sliceLengths[s] > 0) ? sliceLengths[s] : (length / sliceCount);
+        sliceStarts[s + 1] = sliceStarts[s] + len;
+    }
+
     // Draw waveform (min/max per pixel column)
     for (int col = 0; col < pixels; col++) {
         int startSample = (int)((float)col / pixels * length);
@@ -4740,8 +4762,11 @@ static int drawChopWaveform(float bx, float by, float bw, float bh,
         }
 
         // Which slice does this column belong to?
-        int slice = (int)((float)col / pixels * sliceCount);
-        if (slice >= sliceCount) slice = sliceCount - 1;
+        int samplePos = (int)((float)col / pixels * length);
+        int slice = sliceCount - 1;
+        for (int s = 0; s < sliceCount; s++) {
+            if (samplePos < sliceStarts[s + 1]) { slice = s; break; }
+        }
         bool sel = (slice == selectedSlice);
         Color waveCol = sel ? (Color){255, 180, 60, 255} : (Color){80, 140, 200, 255};
 
@@ -4751,32 +4776,33 @@ static int drawChopWaveform(float bx, float by, float bw, float bh,
         DrawLine((int)(px + col), y0, (int)(px + col), y1, waveCol);
     }
 
-    // Draw slice markers
+    // Draw slice markers at actual boundaries
     for (int s = 1; s < sliceCount; s++) {
-        float sx = bx + 2 + ((float)s / sliceCount) * (bw - 4);
+        float sx = bx + 2 + ((float)sliceStarts[s] / length) * (bw - 4);
         Color mc = (Color){100, 100, 120, 180};
         DrawLine((int)sx, (int)(by + 2), (int)sx, (int)(by + bh - 2), mc);
     }
 
-    // Slice numbers at bottom
+    // Slice numbers at bottom (centered in each slice's width)
     for (int s = 0; s < sliceCount; s++) {
-        float sx = bx + 2 + ((float)s / sliceCount) * (bw - 4);
-        float sw = (bw - 4) / sliceCount;
+        float sx = bx + 2 + ((float)sliceStarts[s] / length) * (bw - 4);
+        float sw = ((float)(sliceStarts[s + 1] - sliceStarts[s]) / length) * (bw - 4);
         char num[4];
         snprintf(num, sizeof(num), "%d", s);
         int tw = MeasureTextUI(num, 8);
         bool sel = (s == selectedSlice);
-        DrawTextShadow(num, (int)(sx + sw / 2 - tw / 2), (int)(by + bh - 12), 8,
-                       sel ? ORANGE : (Color){60, 65, 75, 255});
+        if (sw > tw + 2)  // only draw if slice is wide enough
+            DrawTextShadow(num, (int)(sx + sw / 2 - tw / 2), (int)(by + bh - 12), 8,
+                           sel ? ORANGE : (Color){60, 65, 75, 255});
     }
 
     // Click detection
     if (CheckCollisionPointRec(mouse, (Rectangle){bx, by, bw, bh}) &&
         IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-        float relX = (mouse.x - bx - 2) / (bw - 4);
-        if (relX >= 0 && relX < 1.0f) {
-            clicked = (int)(relX * sliceCount);
-            if (clicked >= sliceCount) clicked = sliceCount - 1;
+        int samplePos = (int)(((mouse.x - bx - 2) / (bw - 4)) * length);
+        clicked = sliceCount - 1;
+        for (int s = 0; s < sliceCount; s++) {
+            if (samplePos < sliceStarts[s + 1]) { clicked = s; break; }
         }
         ui_consume_click();
     }
@@ -4842,29 +4868,73 @@ static void drawWorkSample(float x, float y, float w, float h) {
 
     // --- Controls row ---
     {
-        // Slice count selector
-        DrawTextShadow("Slices:", (int)x, (int)(sy + 2), 10, (Color){140, 140, 160, 255});
-        int sliceCounts[] = {4, 8, 16};
-        for (int i = 0; i < 3; i++) {
-            float bx = x + 52 + i * 30;
-            Rectangle r = {bx, sy, 26, 16};
-            bool sel = (chopState.sliceCount == sliceCounts[i]);
-            bool hov = CheckCollisionPointRec(mouse, r);
-            DrawRectangleRec(r, sel ? (Color){60, 80, 60, 255} : (hov ? (Color){42, 44, 52, 255} : (Color){30, 31, 38, 255}));
-            DrawRectangleLinesEx(r, 1, sel ? GREEN : (Color){48, 48, 58, 255});
-            char num[4];
-            snprintf(num, sizeof(num), "%d", sliceCounts[i]);
-            DrawTextShadow(num, (int)(bx + 4), (int)(sy + 3), 9, sel ? WHITE : (Color){100, 100, 120, 255});
-            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                chopState.sliceCount = sliceCounts[i];
-                ui_consume_click();
+        // Mode toggle: Equal / Transient
+        {
+            const char *modes[] = {"Equal", "Transient"};
+            for (int m = 0; m < 2; m++) {
+                float bx = x + m * 64;
+                Rectangle r = {bx, sy, 60, 16};
+                bool sel = (chopState.chopMode == m);
+                bool hov = CheckCollisionPointRec(mouse, r);
+                DrawRectangleRec(r, sel ? (Color){60, 80, 60, 255} : (hov ? (Color){42, 44, 52, 255} : (Color){30, 31, 38, 255}));
+                DrawRectangleLinesEx(r, 1, sel ? GREEN : (Color){48, 48, 58, 255});
+                DrawTextShadow(modes[m], (int)(bx + 4), (int)(sy + 3), 9, sel ? WHITE : (Color){100, 100, 120, 255});
+                if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                    chopState.chopMode = m;
+                    ui_consume_click();
+                }
+            }
+        }
+
+        // Slice count (equal mode) or max slices (transient mode)
+        {
+            float ox = x + 136;
+            DrawTextShadow(chopState.chopMode == 0 ? "Slices:" : "Max:", (int)ox, (int)(sy + 2), 10, (Color){140, 140, 160, 255});
+            int sliceCounts[] = {4, 8, 16};
+            for (int i = 0; i < 3; i++) {
+                float bx = ox + 42 + i * 30;
+                Rectangle r = {bx, sy, 26, 16};
+                bool sel = (chopState.sliceCount == sliceCounts[i]);
+                bool hov = CheckCollisionPointRec(mouse, r);
+                DrawRectangleRec(r, sel ? (Color){60, 80, 60, 255} : (hov ? (Color){42, 44, 52, 255} : (Color){30, 31, 38, 255}));
+                DrawRectangleLinesEx(r, 1, sel ? GREEN : (Color){48, 48, 58, 255});
+                char num[4];
+                snprintf(num, sizeof(num), "%d", sliceCounts[i]);
+                DrawTextShadow(num, (int)(bx + 4), (int)(sy + 3), 9, sel ? WHITE : (Color){100, 100, 120, 255});
+                if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                    chopState.sliceCount = sliceCounts[i];
+                    ui_consume_click();
+                }
+            }
+        }
+
+        // Sensitivity (transient mode only)
+        if (chopState.chopMode == 1) {
+            float ox = x + 278;
+            DrawTextShadow("Sens:", (int)ox, (int)(sy + 2), 10, (Color){140, 140, 160, 255});
+            // Simple drag-to-adjust
+            Rectangle sensR = {ox + 34, sy, 50, 16};
+            bool hov = CheckCollisionPointRec(mouse, sensR);
+            DrawRectangleRec(sensR, (Color){28, 28, 36, 255});
+            DrawRectangleLinesEx(sensR, 1, hov ? ORANGE : (Color){50, 50, 60, 255});
+            // Fill bar
+            float fill = chopState.sensitivity * 46;
+            DrawRectangle((int)(sensR.x + 2), (int)(sensR.y + 2), (int)fill, 12, (Color){200, 130, 60, 200});
+            char sensStr[8];
+            snprintf(sensStr, sizeof(sensStr), "%.0f%%", chopState.sensitivity * 100);
+            DrawTextShadow(sensStr, (int)(sensR.x + 4), (int)(sy + 3), 9, WHITE);
+            if (hov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                chopState.sensitivity = (mouse.x - sensR.x) / sensR.width;
+                if (chopState.sensitivity < 0) chopState.sensitivity = 0;
+                if (chopState.sensitivity > 1) chopState.sensitivity = 1;
             }
         }
 
         // Loops selector
-        DrawTextShadow("Loops:", (int)(x + 150), (int)(sy + 2), 10, (Color){140, 140, 160, 255});
+        float loopsX = chopState.chopMode == 1 ? x + 390 : x + 278;
+        DrawTextShadow("Loops:", (int)loopsX, (int)(sy + 2), 10, (Color){140, 140, 160, 255});
         for (int l = 1; l <= 4; l++) {
-            float bx = x + 196 + (l - 1) * 22;
+            float bx = loopsX + 42 + (l - 1) * 22;
             Rectangle r = {bx, sy, 18, 16};
             bool sel = (chopState.sourceLoops == l);
             bool hov = CheckCollisionPointRec(mouse, r);
@@ -4958,7 +5028,9 @@ static void drawWorkSample(float x, float y, float w, float h) {
     float waveH = 80;
     int clicked = drawChopWaveform(x, sy, w, waveH,
                                     chopState.renderData, chopState.renderLength,
-                                    chopState.sliceCount, chopState.selectedSlice);
+                                    chopState.sliceCount,
+                                    chopState.bounced ? chopState.sliceLengths : NULL,
+                                    chopState.selectedSlice);
     if (clicked >= 0) {
         chopState.selectedSlice = clicked;
         // Preview: play the clicked slice

@@ -94,6 +94,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "  -t <seconds>   Tail time for reverb/delay decay (default: 0.5)\n");
         fprintf(stderr, "  -o <dir>       Output directory (default: current dir)\n");
         fprintf(stderr, "  --full         Also export full rendered pattern as WAV\n");
+        fprintf(stderr, "  --transient    Use transient detection instead of equal slicing\n");
+        fprintf(stderr, "  --sens <0-1>   Transient sensitivity (default: 0.5)\n");
         return 1;
     }
 
@@ -104,6 +106,8 @@ int main(int argc, char *argv[]) {
     int loops = 1;
     float tail = 0.5f;
     bool exportFull = false;
+    bool useTransient = false;
+    float sensitivity = 0.5f;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-p") == 0 && i+1 < argc) { patternIdx = atoi(argv[++i]); }
@@ -112,6 +116,8 @@ int main(int argc, char *argv[]) {
         else if (strcmp(argv[i], "-t") == 0 && i+1 < argc) { tail = (float)atof(argv[++i]); }
         else if (strcmp(argv[i], "-o") == 0 && i+1 < argc) { outDir = argv[++i]; }
         else if (strcmp(argv[i], "--full") == 0) { exportFull = true; }
+        else if (strcmp(argv[i], "--transient") == 0) { useTransient = true; }
+        else if (strcmp(argv[i], "--sens") == 0 && i+1 < argc) { sensitivity = (float)atof(argv[++i]); }
         else if (argv[i][0] != '-' && !songPath) { songPath = argv[i]; }
     }
 
@@ -158,7 +164,13 @@ int main(int argc, char *argv[]) {
 
     // Step 2: Chop
     printf("\nChopping into %d slices...\n", sliceCount);
-    ChoppedSample chopped = chopEqual(&rendered, sliceCount);
+    ChoppedSample chopped;
+    if (useTransient) {
+        printf("  Mode: transient (sensitivity=%.0f%%)\n", sensitivity * 100);
+        chopped = chopAtTransients(&rendered, sensitivity, sliceCount);
+    } else {
+        chopped = chopEqual(&rendered, sliceCount);
+    }
     if (chopped.sliceCount != sliceCount) {
         fprintf(stderr, "Error: chop failed\n");
         free(rendered.data);
@@ -173,12 +185,13 @@ int main(int argc, char *argv[]) {
     mkdir(outDir, 0755);  // create if needed, ignore error if exists
 
     for (int s = 0; s < chopped.sliceCount; s++) {
+        int sLen = chopped.sliceLengths[s] > 0 ? chopped.sliceLengths[s] : chopped.sliceLength;
         char slicePath[512];
         snprintf(slicePath, sizeof(slicePath), "%s/%s_p%d_s%02d.wav", outDir, songName, patternIdx, s);
-        waWriteWav(slicePath, chopped.slices[s], chopped.sliceLength, SAMPLE_RATE);
+        waWriteWav(slicePath, chopped.slices[s], sLen, SAMPLE_RATE);
 
         float sp = 0;
-        for (int i = 0; i < chopped.sliceLength; i++) {
+        for (int i = 0; i < sLen; i++) {
             float a = fabsf(chopped.slices[s][i]);
             if (a > sp) sp = a;
         }
