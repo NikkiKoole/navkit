@@ -95,14 +95,14 @@ static float waveThumbSample(int waveType, float t, int i) {
 }
 
 static void drawWaveThumb(float x, float y, float w, float h, int waveType, bool selected, bool hovered) {
-    Color bg = selected ? (Color){50, 65, 80, 255} : (hovered ? (Color){42, 44, 52, 255} : (Color){30, 31, 38, 255});
+    Color bg = selected ? UI_BG_ACTIVE : (hovered ? UI_BG_HOVER : UI_BG_PANEL);
     DrawRectangle((int)x, (int)y, (int)w, (int)h, bg);
     if (selected) DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, ORANGE);
-    else DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, (Color){48, 48, 58, 255});
+    else DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, UI_BORDER);
 
     float cx = x + 2, cy = y + 2, cw = w - 4, ch = h - 4;
     float mid = cy + ch * 0.5f;
-    Color lineCol = selected ? WHITE : (Color){120, 130, 150, 255};
+    Color lineCol = selected ? WHITE : UI_TEXT_SUBTLE;
     int steps = (int)cw;
 
     for (int i = 0; i < steps - 1; i++) {
@@ -156,8 +156,8 @@ static float drawWaveSelector(float x, float y, float w, int* wave) {
 
 static float drawADSRCurve(float x, float y, float w, float h,
                             float *atk, float *dec, float *sus, float *rel, bool expRel) {
-    DrawRectangle((int)x, (int)y, (int)w, (int)h, (Color){22, 22, 28, 255});
-    DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, (Color){42, 42, 52, 255});
+    DrawRectangle((int)x, (int)y, (int)w, (int)h, UI_BG_DEEPEST);
+    DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, UI_BORDER_SUBTLE);
 
     float totalTime = *atk + *dec + 0.3f + *rel;
     float atkW = (*atk / totalTime) * w;
@@ -204,8 +204,8 @@ static float drawADSRCurve(float x, float y, float w, float h,
 }
 
 static float drawFilterXY(float x, float y, float size, float *cutoff, float *resonance) {
-    DrawRectangle((int)x, (int)y, (int)size, (int)size, (Color){22, 22, 28, 255});
-    DrawRectangleLinesEx((Rectangle){x, y, size, size}, 1, (Color){42, 42, 52, 255});
+    DrawRectangle((int)x, (int)y, (int)size, (int)size, UI_BG_DEEPEST);
+    DrawRectangleLinesEx((Rectangle){x, y, size, size}, 1, UI_BORDER_SUBTLE);
     for (int i = 1; i < 4; i++) {
         float gx = x + size*i*0.25f, gy = y + size*i*0.25f;
         DrawLine((int)gx, (int)y, (int)gx, (int)(y+size), (Color){32,32,38,255});
@@ -228,8 +228,8 @@ static float drawFilterXY(float x, float y, float size, float *cutoff, float *re
 }
 
 static float drawLFOPreview(float x, float y, float w, float h, int shape, float rate, float depth) {
-    DrawRectangle((int)x, (int)y, (int)w, (int)h, (Color){22, 22, 28, 255});
-    DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, (Color){42, 42, 52, 255});
+    DrawRectangle((int)x, (int)y, (int)w, (int)h, UI_BG_DEEPEST);
+    DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, UI_BORDER_SUBTLE);
     if (depth < 0.001f || rate < 0.001f) {
         DrawTextShadow("off", (int)(x+w*0.5f-8), (int)(y+h*0.5f-5), 10, (Color){50,50,58,255});
         return h + 2;

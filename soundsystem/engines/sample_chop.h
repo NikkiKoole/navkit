@@ -67,6 +67,10 @@ typedef struct {
 // These mirror the simplified callbacks in song_render.c.
 // They exist in this header so the bounce is self-contained.
 
+// Flag to suppress dawLoad's re-bounce mechanism during offline bounce.
+// Checked by daw_file.h's DAW_HAS_CHOP_STATE re-bounce guard.
+static bool _chopBounceActive = false;
+
 static int _chop_voiceBus[NUM_VOICES];
 static int _chop_drumVoice[SEQ_DRUM_TRACKS];
 static int _chop_melodyVoice[SEQ_MELODY_TRACKS][SEQ_V2_MAX_POLY];
@@ -221,102 +225,11 @@ static void _chopMelRel2(void) { _chopMelRelease(2); }
 // BOUNCE: SYNC STATE (mirrors song_render.c renderSyncState/renderSyncSequencer)
 // ============================================================================
 
+// Use shared sync (single source of truth in daw_sync.h)
+#include "../demo/daw_sync.h"
+
 static void _chopSyncState(DawState *d) {
-    synthCtx->scaleLockEnabled = d->scaleLockEnabled;
-    synthCtx->scaleRoot = d->scaleRoot;
-    synthCtx->scaleType = d->scaleType;
-
-    Pattern *curPat = &seq.patterns[seq.currentPattern];
-    PatternOverrides *ovr = &curPat->overrides;
-    if (ovr->flags & PAT_OVR_SCALE) {
-        synthCtx->scaleLockEnabled = true;
-        synthCtx->scaleRoot = ovr->ovrScaleRoot;
-        synthCtx->scaleType = ovr->ovrScaleType;
-    }
-
-    fx.distEnabled     = d->masterFx.distOn;
-    fx.distDrive       = d->masterFx.distDrive;
-    fx.distTone        = d->masterFx.distTone;
-    fx.distMix         = d->masterFx.distMix;
-    fx.crushEnabled    = d->masterFx.crushOn;
-    fx.crushBits       = d->masterFx.crushBits;
-    fx.crushRate       = d->masterFx.crushRate;
-    fx.crushMix        = d->masterFx.crushMix;
-    fx.chorusEnabled   = d->masterFx.chorusOn;
-    fx.chorusRate      = d->masterFx.chorusRate;
-    fx.chorusDepth     = d->masterFx.chorusDepth;
-    fx.chorusMix       = d->masterFx.chorusMix;
-    fx.flangerEnabled  = d->masterFx.flangerOn;
-    fx.flangerRate     = d->masterFx.flangerRate;
-    fx.flangerDepth    = d->masterFx.flangerDepth;
-    fx.flangerFeedback = d->masterFx.flangerFeedback;
-    fx.flangerMix      = d->masterFx.flangerMix;
-    fx.phaserEnabled   = d->masterFx.phaserOn;
-    fx.phaserRate      = d->masterFx.phaserRate;
-    fx.phaserDepth     = d->masterFx.phaserDepth;
-    fx.phaserMix       = d->masterFx.phaserMix;
-    fx.phaserFeedback  = d->masterFx.phaserFeedback;
-    fx.phaserStages    = d->masterFx.phaserStages;
-    fx.combEnabled     = d->masterFx.combOn;
-    fx.combFreq        = d->masterFx.combFreq;
-    fx.combFeedback    = d->masterFx.combFeedback;
-    fx.combMix         = d->masterFx.combMix;
-    fx.combDamping     = d->masterFx.combDamping;
-    fx.tapeEnabled     = d->masterFx.tapeOn;
-    fx.tapeSaturation  = d->masterFx.tapeSaturation;
-    fx.tapeWow         = d->masterFx.tapeWow;
-    fx.tapeFlutter     = d->masterFx.tapeFlutter;
-    fx.tapeHiss        = d->masterFx.tapeHiss;
-    fx.delayEnabled    = d->masterFx.delayOn;
-    fx.delayTime       = d->masterFx.delayTime;
-    fx.delayFeedback   = d->masterFx.delayFeedback;
-    fx.delayTone       = d->masterFx.delayTone;
-    fx.delayMix        = d->masterFx.delayMix;
-    fx.reverbEnabled   = d->masterFx.reverbOn;
-    fx.reverbSize      = d->masterFx.reverbSize;
-    fx.reverbDamping   = d->masterFx.reverbDamping;
-    fx.reverbPreDelay  = d->masterFx.reverbPreDelay;
-    fx.reverbMix       = d->masterFx.reverbMix;
-    fx.eqEnabled       = d->masterFx.eqOn;
-    fx.eqLowGain       = d->masterFx.eqLowGain;
-    fx.eqHighGain      = d->masterFx.eqHighGain;
-    fx.eqLowFreq       = d->masterFx.eqLowFreq;
-    fx.eqHighFreq      = d->masterFx.eqHighFreq;
-    fx.compEnabled     = d->masterFx.compOn;
-    fx.compThreshold   = d->masterFx.compThreshold;
-    fx.compRatio       = d->masterFx.compRatio;
-    fx.compAttack      = d->masterFx.compAttack;
-    fx.compRelease     = d->masterFx.compRelease;
-    fx.compMakeup      = d->masterFx.compMakeup;
-
-    fx.sidechainEnabled = d->sidechain.on;
-    fx.sidechainSource  = d->sidechain.source;
-    fx.sidechainTarget  = d->sidechain.target;
-    fx.sidechainDepth   = d->sidechain.depth;
-    fx.sidechainAttack  = d->sidechain.attack;
-    fx.sidechainRelease = d->sidechain.release;
-
-    for (int b = 0; b < NUM_BUSES; b++) {
-        setBusVolume(b, d->mixer.volume[b]);
-        setBusPan(b, d->mixer.pan[b]);
-        setBusMute(b, d->mixer.mute[b]);
-        setBusSolo(b, d->mixer.solo[b]);
-        setBusReverbSend(b, d->mixer.reverbSend[b]);
-        setBusFilter(b, d->mixer.filterOn[b], d->mixer.filterCut[b],
-                     d->mixer.filterRes[b], d->mixer.filterType[b]);
-        setBusDistortion(b, d->mixer.distOn[b], d->mixer.distDrive[b],
-                         d->mixer.distMix[b]);
-        setBusDelay(b, d->mixer.delayOn[b], d->mixer.delayTime[b],
-                    d->mixer.delayFB[b], d->mixer.delayMix[b]);
-        setBusDelaySync(b, d->mixer.delaySync[b], d->mixer.delaySyncDiv[b]);
-    }
-
-    dubLoop.enabled      = d->tapeFx.enabled;
-    dubLoop.headTime[0]  = d->tapeFx.headTime;
-    dubLoop.feedback     = d->tapeFx.feedback;
-    dubLoop.mix          = d->tapeFx.mix;
-    dubLoop.inputSource  = d->tapeFx.inputSource;
-    dubLoop.saturation   = d->tapeFx.saturation;
+    dawSyncEngineStateFromEx(d, &seq.patterns[seq.currentPattern]);
 }
 
 static void _chopSyncSequencer(DawState *d) {
@@ -366,11 +279,39 @@ static RenderedPattern renderPatternToBuffer(const char *songPath, int patternId
     SequencerContext *savedSeq = seqCtx;
     SamplerContext *savedSampler = samplerCtx;
 
+    // Save ALL mutable global state that isn't part of SoundSystem
+    MixerContext *savedMixerPtr = mixerCtx;
+    bool savedMixerInit = _mixerCtxInitialized;
+    bool savedSynthInit = _synthCtxInitialized;
+    bool savedFxInit = _fxCtxInitialized;
+    bool savedSeqInit = _seqCtxInitialized;
+
+    // Allocate a fresh mixer on the heap (mixerCtx is a separate global)
+    MixerContext *tempMixer = (MixerContext *)calloc(1, sizeof(MixerContext));
+
+    // Reset ALL init flags to match CLI's fresh-process state
+    _synthCtxInitialized = false;
+    _fxCtxInitialized = false;
+    _seqCtxInitialized = false;
+    _mixerCtxInitialized = false;
+    if (tempMixer) mixerCtx = tempMixer;  // point to fresh heap mixer
+
     // Create temporary contexts on the heap
     _CHOP_SS_TYPE *temp = (_CHOP_SS_TYPE *)calloc(1, sizeof(_CHOP_SS_TYPE));
-    if (!temp) goto restore;
+    if (!temp) { mixerCtx = savedMixerPtr; _synthCtxInitialized = savedSynthInit; _fxCtxInitialized = savedFxInit; _seqCtxInitialized = savedSeqInit; _mixerCtxInitialized = savedMixerInit; free(tempMixer); goto restore; }
 
     _CHOP_USE_SS(temp);
+
+    // Explicitly init all contexts BEFORE syncing state — matches CLI order.
+    // The CLI calls initEffects()/initSynthContext() first, then renderSyncState().
+    // Without this, _ensure*Ctx() fires lazily during the render loop and
+    // memset(0)'s the contexts, wiping all the params set by _chopSyncState().
+    initSynthContext(synthCtx);
+    _synthCtxInitialized = true;
+    initEffectsContext(fxCtx);
+    _fxCtxInitialized = true;
+    initMixerContext(mixerCtx);
+    _mixerCtxInitialized = true;
 
     synthCtx->bpm = 120.0f;
     for (int i = 0; i < NUM_VOICES; i++) {
@@ -379,13 +320,13 @@ static RenderedPattern renderPatternToBuffer(const char *songPath, int patternId
         _chop_voiceBus[i] = -1;
     }
 
-    initEffects();
     initInstrumentPresets();
 
     // Temporary DawState for the bounce (matches song_render.c defaults)
     DawState *tempDaw = (DawState *)calloc(1, sizeof(DawState));
     if (!tempDaw) goto cleanup;
 
+    // Set the same defaults used by all callers (chop_flip.c, song_render.c, daw.c)
     tempDaw->transport.bpm = 120.0f;
     tempDaw->crossfader.pos = 0.5f;
     tempDaw->crossfader.sceneB = 1;
@@ -489,6 +430,16 @@ static RenderedPattern renderPatternToBuffer(const char *songPath, int patternId
         DawState savedDaw;
         memcpy(&savedDaw, &daw, sizeof(DawState));
 
+        // Reset daw to tempDaw's clean defaults before loading the song.
+        // dawLoad only sets fields present in the file — without this,
+        // leftover state from the live session leaks into the bounce.
+        memcpy(&daw, tempDaw, sizeof(DawState));
+
+        // Suppress dawLoad's re-bounce mechanism during offline bounce.
+        // The old #ifdef DAW_HAS_CHOP_STATE guard didn't work because the macro
+        // isn't defined when sample_chop.h is compiled (it's defined later in daw.c).
+        _chopBounceActive = true;
+
         // Load the song (overwrites global `daw` and `seq`)
         if (!dawLoad(songPath)) {
             memcpy(&daw, &savedDaw, sizeof(DawState));
@@ -501,6 +452,7 @@ static RenderedPattern renderPatternToBuffer(const char *songPath, int patternId
 
         // Restore original daw state
         memcpy(&daw, &savedDaw, sizeof(DawState));
+        _chopBounceActive = false;
     }
 
     // Configure for single-pattern render
@@ -532,7 +484,7 @@ static RenderedPattern renderPatternToBuffer(const char *songPath, int patternId
     _chopSyncSequencer(tempDaw);
 
     float dt = 1.0f / SAMPLE_CHOP_SAMPLE_RATE;
-    #define _CHOP_SEQ_UPDATE_INTERVAL 512
+    #define _CHOP_SEQ_UPDATE_INTERVAL 64
     float seqDt = (float)_CHOP_SEQ_UPDATE_INTERVAL / SAMPLE_CHOP_SAMPLE_RATE;
 
     for (int i = 0; i < totalSamples; i++) {
@@ -540,7 +492,6 @@ static RenderedPattern renderPatternToBuffer(const char *songPath, int patternId
             setMixerTempo(tempDaw->transport.bpm);
             synthCtx->bpm = tempDaw->transport.bpm;
             _chopSyncSequencer(tempDaw);
-            _chopSyncState(tempDaw);
             updateSequencer(seqDt);
         }
 
@@ -609,6 +560,14 @@ restore:
     fxCtx = savedFx;
     seqCtx = savedSeq;
     samplerCtx = savedSampler;
+
+    // Restore init flags and mixer
+    _synthCtxInitialized = savedSynthInit;
+    _fxCtxInitialized = savedFxInit;
+    _seqCtxInitialized = savedSeqInit;
+    mixerCtx = savedMixerPtr;
+    _mixerCtxInitialized = savedMixerInit;
+    free(tempMixer);
 
     return result;
 }

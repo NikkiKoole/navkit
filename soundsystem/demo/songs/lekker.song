@@ -2,6 +2,7 @@
 
 [song]
 format = 2
+songName = "lekker"
 bpm = 120
 stepCount = 16
 grooveSwing = 0
@@ -1682,6 +1683,46 @@ combFreq6 = 0
 combFB6 = 0
 combMix6 = 0
 combDamping6 = 0
+vol7 = 0.8
+pan7 = 0
+reverbSend7 = 0
+mute7 = false
+solo7 = false
+filterOn7 = false
+filterCut7 = 1
+filterRes7 = 0
+filterType7 = 0
+distOn7 = false
+distDrive7 = 2
+distMix7 = 0.5
+delayOn7 = false
+delaySync7 = false
+delaySyncDiv7 = 0
+delayTime7 = 0.3
+delayFB7 = 0.3
+delayMix7 = 0.3
+eqOn7 = false
+eqLowGain7 = 0
+eqHighGain7 = 0
+eqLowFreq7 = 0
+eqHighFreq7 = 0
+chorusOn7 = false
+chorusRate7 = 0
+chorusDepth7 = 0
+chorusMix7 = 0
+chorusDelay7 = 0
+chorusFB7 = 0
+phaserOn7 = false
+phaserRate7 = 0
+phaserDepth7 = 0
+phaserMix7 = 0
+phaserFB7 = 0
+phaserStages7 = 0
+combOn7 = false
+combFreq7 = 0
+combFB7 = 0
+combMix7 = 0
+combDamping7 = 0
 
 [sidechain]
 on = false
@@ -1812,35 +1853,12 @@ length = 0
 loopsPerPattern = 2
 songMode = false
 
-[sample]
-sourceFile = "soundsystem/demo/songs/jojo.song"
-sourcePattern = 0
-sourceLoops = 1
-sliceCount = 8
-chopMode = 0
-sensitivity = 0.5
-fadeMs = 1
-padMap0 = -1
-padMap1 = -1
-padMap2 = -1
-padMap3 = -1
-
 [pattern.0]
 drumTrackLength = 16 16 16 16
 melodyTrackLength = 16 16 16
 samplerTrackLength = 16
-d track=0 step=0 vel=0.8
-d track=0 step=4 vel=0.8
-d track=0 step=8 vel=0.8
-d track=0 step=12 vel=0.8
-d track=1 step=4 vel=0.8
-d track=1 step=12 vel=0.8
-d track=2 step=0 vel=0.8
-d track=2 step=2 vel=0.8
-d track=2 step=4 vel=0.8
-d track=2 step=6 vel=0.8
-d track=2 step=8 vel=0.8
-d track=2 step=10 vel=0.8
-d track=2 step=12 vel=0.8
-d track=2 step=14 vel=0.8
-s step=6 slice=7 note=59 vel=0.8
+m track=0 step=0 note=D3 vel=0.8 gate=1
+m track=0 step=2 note=D3 vel=0.8 gate=10 nudge=-9
+m track=0 step=3 note=F3 vel=0.8 gate=1 nudge=-4
+m track=0 step=5 note=F3 vel=0.8 gate=7 nudge=1
+m track=0 step=6 note=B3 vel=0.8 gate=6

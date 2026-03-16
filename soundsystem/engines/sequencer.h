@@ -316,7 +316,8 @@ typedef struct {
     int8_t nudge;       // Sub-step timing offset (-12 to +12 ticks)
     bool slide;         // 303-style slide/glide
     bool accent;        // 303-style accent
-} StepNote;  // 7 bytes
+    uint8_t slice;      // Sampler slice index (0-31), unused on non-sampler tracks
+} StepNote;  // 8 bytes
 
 // Per-step data — holds up to SEQ_V2_MAX_POLY notes
 typedef struct {
@@ -1239,14 +1240,14 @@ static void seqTriggerStep(Pattern *p, int track, int step, float stepDuration) 
 
     if (p->trackType[track] == TRACK_SAMPLER) {
         // --- SAMPLER TRIGGER ---
-        // note field selects the sample slot; velocity controls volume
-        int sliceNote = sn->note;
-        if (sliceNote == SEQ_NOTE_OFF) sliceNote = 0;
-        float pitchMod = powf(2.0f, sn->nudge / 12.0f);
+        // slice field selects sample slot; note field is pitch (60=center); nudge is timing
+        int sliceIdx = (int)sn->slice;
+        float pitchSemis = (float)(sn->note - 60); // MIDI 60 = no pitch shift
+        float pitchMod = powf(2.0f, pitchSemis / 12.0f);
         if (seq.trackNoteOn[track]) {
-            seqSoundLog("SEQ_SAMPLER  track=%d step=%d slice=%d vel=%.2f",
-                        track, step, sliceNote, velocity);
-            seq.trackNoteOn[track](sliceNote, velocity, 0, pitchMod, false, false);
+            seqSoundLog("SEQ_SAMPLER  track=%d step=%d slice=%d pitch=%+.0f vel=%.2f",
+                        track, step, sliceIdx, pitchSemis, velocity);
+            seq.trackNoteOn[track](sliceIdx, velocity, 0, pitchMod, false, false);
         }
     } else if (p->trackType[track] == TRACK_DRUM) {
         // --- DRUM TRIGGER ---

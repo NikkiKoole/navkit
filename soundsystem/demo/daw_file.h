@@ -204,20 +204,26 @@ static void _dwWritePattern(FILE *f, int idx, const Pattern *p) {
         }
     }
 
-    // Sampler track (track 7) — slice index + velocity + pitch
+    // Sampler track (track 7) — supports polyphony (multiple slices per step)
     {
         int st = SEQ_TRACK_SAMPLER;
         for (int s = 0; s < p->trackLength[st]; s++) {
             const StepV2 *sv = &p->steps[st][s];
             if (sv->noteCount == 0) continue;
-            const StepNote *sn = &sv->notes[0];
-            fprintf(f, "s step=%d slice=%d vel=%.3g", s, (int)sn->note, (double)velU8ToFloat(sn->velocity));
-            if (sn->nudge != 0) fprintf(f, " pitch=%d", (int)sn->nudge);
-            float sProb = probU8ToFloat(sv->probability);
-            if (sProb > 0.0f && sProb < 1.0f) fprintf(f, " prob=%.3g", (double)sProb);
-            int sCond = (int)sv->condition;
-            if (sCond != COND_ALWAYS) fprintf(f, " cond=%s", _dwCondNames[sCond]);
-            fprintf(f, "\n");
+            for (int v = 0; v < sv->noteCount; v++) {
+                const StepNote *sn = &sv->notes[v];
+                if (sn->note == SEQ_NOTE_OFF) continue;
+                fprintf(f, "s step=%d slice=%d note=%d vel=%.3g",
+                        s, (int)sn->slice, (int)sn->note, (double)velU8ToFloat(sn->velocity));
+                if (sn->nudge != 0) fprintf(f, " nudge=%d", (int)sn->nudge);
+                if (v == 0) {
+                    float sProb = probU8ToFloat(sv->probability);
+                    if (sProb > 0.0f && sProb < 1.0f) fprintf(f, " prob=%.3g", (double)sProb);
+                    int sCond = (int)sv->condition;
+                    if (sCond != COND_ALWAYS) fprintf(f, " cond=%s", _dwCondNames[sCond]);
+                }
+                fprintf(f, "\n");
+            }
         }
     }
 
@@ -438,6 +444,7 @@ static bool dawSave(const char *filepath) {
         _di(f, "sourceLoops", chopState.sourceLoops);
         _di(f, "sliceCount", chopState.sliceCount);
         _di(f, "chopMode", chopState.chopMode);
+        _db(f, "normalize", chopState.normalize);
         _dw(f, "sensitivity", chopState.sensitivity);
         _dw(f, "fadeMs", chopState.fadeMs);
         for (int t = 0; t < 4; t++) {
@@ -754,14 +761,15 @@ static void _dwParseDrumEvent(const char *line, Pattern *p) {
 static void _dwParseSamplerEvent(const char *line, Pattern *p) {
     char lc[512]; strncpy(lc,line,511); lc[511]='\0';
     char *toks[32]; int n = _dwTokenize(lc+1, toks, 32);
-    int step=0, slice=0, nudge=0; float vel=0.8f, prob=1.0f; int cond=COND_ALWAYS;
+    int step=0, slice=0, note=60, nudge=0; float vel=0.8f, prob=1.0f; int cond=COND_ALWAYS;
     char k[32], v[64];
     for (int i=0; i<n; i++) {
         if (_dwParseKV(toks[i],k,32,v,64)) {
             if (strcmp(k,"step")==0) step=_dpi(v);
             else if (strcmp(k,"slice")==0) slice=_dpi(v);
+            else if (strcmp(k,"note")==0) note=_dpi(v);
             else if (strcmp(k,"vel")==0) vel=_dpf(v);
-            else if (strcmp(k,"pitch")==0) nudge=_dpi(v);
+            else if (strcmp(k,"nudge")==0) nudge=_dpi(v);
             else if (strcmp(k,"prob")==0) prob=_dpf(v);
             else if (strcmp(k,"cond")==0) { int idx=_dwLookupName(v,_dwCondNames,11); if(idx>=0) cond=idx; }
         }
@@ -769,12 +777,17 @@ static void _dwParseSamplerEvent(const char *line, Pattern *p) {
     if (step>=0&&step<SEQ_MAX_STEPS) {
         int t = SEQ_TRACK_SAMPLER;
         StepV2 *sv = &p->steps[t][step];
-        sv->noteCount = 1;
-        sv->notes[0].note = (uint8_t)slice;
-        sv->notes[0].velocity = velFloatToU8(vel);
-        sv->notes[0].nudge = (int8_t)nudge;
-        sv->probability = probFloatToU8(prob);
-        sv->condition = (uint8_t)cond;
+        if (sv->noteCount < SEQ_V2_MAX_POLY) {
+            int vi = sv->noteCount++;
+            sv->notes[vi].slice = (uint8_t)slice;
+            sv->notes[vi].note = (int8_t)note;
+            sv->notes[vi].velocity = velFloatToU8(vel);
+            sv->notes[vi].nudge = (int8_t)nudge;
+            if (vi == 0) {
+                sv->probability = probFloatToU8(prob);
+                sv->condition = (uint8_t)cond;
+            }
+        }
     }
 }
 
@@ -1213,6 +1226,7 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"sourceLoops")==0) chopState.sourceLoops = _dpi(val);
             else if (strcmp(key,"sliceCount")==0) chopState.sliceCount = _dpi(val);
             else if (strcmp(key,"chopMode")==0) chopState.chopMode = _dpi(val);
+            else if (strcmp(key,"normalize")==0) chopState.normalize = _dpb(val);
             else if (strcmp(key,"sensitivity")==0) chopState.sensitivity = _dpf(val);
             else if (strcmp(key,"fadeMs")==0) chopState.fadeMs = _dpf(val);
             else if (strncmp(key,"padMap",6)==0) {
@@ -1276,16 +1290,19 @@ static bool dawLoad(const char *filepath) {
     for (int i = 0; i < NUM_PATCHES; i++) patchPresetIndex[i] = -1;
 
 #ifdef DAW_HAS_CHOP_STATE
-    // Re-bounce sample recipe if [sample] section was present
-    // Guard against infinite recursion: renderPatternToBuffer→dawLoad→chopStateBounce→renderPatternToBuffer→dawLoad...
+    // Re-bounce sample recipe if [sample] section was present.
+    // Guard against infinite recursion: renderPatternToBuffer calls dawLoad which
+    // would call chopStateBounce which calls renderPatternToBuffer again.
+    // _chopBounceActive (from sample_chop.h) suppresses re-bounce during offline bounce.
     static bool _dawLoadRebouncing = false;
-    if (chopState.sourcePath[0] && !_dawLoadRebouncing) {
+    if (chopState.sourcePath[0] && !_dawLoadRebouncing && !_chopBounceActive) {
         _dawLoadRebouncing = true;
         // Save loaded params (chopStateBounce→chopStateClear resets them)
         int savedPadMap[4];
         for (int t = 0; t < 4; t++) savedPadMap[t] = daw.chopSliceMap[t];
         int savedSliceCount = chopState.sliceCount;
         int savedChopMode = chopState.chopMode;
+        bool savedNormalize = chopState.normalize;
         float savedSensitivity = chopState.sensitivity;
         float savedFadeMs = chopState.fadeMs;
         struct { bool reverse; float pitchSemitones, gain, trimStart, trimEnd, fadeInMs, fadeOutMs; }
@@ -1303,6 +1320,7 @@ static bool dawLoad(const char *filepath) {
         // Bounce (clears + rebuilds slices)
         chopState.sliceCount = savedSliceCount;
         chopState.chopMode = savedChopMode;
+        chopState.normalize = savedNormalize;
         chopState.sensitivity = savedSensitivity;
         chopStateBounce();
 

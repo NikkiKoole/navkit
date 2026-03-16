@@ -84,7 +84,7 @@ static bool _samplerCtxInitialized = false;
 static void initSamplerContext(SamplerContext* ctx) {
     memset(ctx, 0, sizeof(*ctx));
     ctx->volume = 1.0f;
-    ctx->sampleRate = 48000;  // Default to 48kHz
+    ctx->sampleRate = 44100;  // Match engine sample rate
 }
 
 static void _ensureSamplerCtx(void) {

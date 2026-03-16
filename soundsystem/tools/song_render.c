@@ -248,11 +248,17 @@ static void renderMelodyRelease1(void) { renderMelodyRelease(1); }
 static void renderMelodyRelease2(void) { renderMelodyRelease(2); }
 
 // ============================================================================
-// SYNC DAW STATE → ENGINE (matches dawSyncEngineState + dawSyncSequencer)
+// SYNC DAW STATE → ENGINE
 // ============================================================================
 
+#include "../demo/daw_sync.h"
+
 static void renderSyncState(void) {
-    // Scale lock
+    dawSyncEngineStateFromEx(&daw, dawPattern());
+}
+
+#if 0 // replaced by daw_sync.h — kept as tombstone for git blame
+static void renderSyncState_OLD(void) {
     synthCtx->scaleLockEnabled = daw.scaleLockEnabled;
     synthCtx->scaleRoot = daw.scaleRoot;
     synthCtx->scaleType = daw.scaleType;
@@ -354,6 +360,7 @@ static void renderSyncState(void) {
     dubLoop.inputSource  = daw.tapeFx.inputSource;
     dubLoop.saturation   = daw.tapeFx.saturation;
 }
+#endif // old renderSyncState
 
 static void renderSyncSequencer(void) {
     seq.bpm = daw.transport.bpm;
@@ -632,7 +639,7 @@ int main(int argc, char *argv[]) {
     float peakLevel = 0.0f;
 
     // Sequencer update rate: every 512 samples (~86Hz, similar to 60fps frame update)
-    #define SEQ_UPDATE_INTERVAL 512
+    #define SEQ_UPDATE_INTERVAL 64
     float seqDt = (float)SEQ_UPDATE_INTERVAL / SAMPLE_RATE;
 
     for (int i = 0; i < totalSamples; i++) {

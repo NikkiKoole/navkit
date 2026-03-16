@@ -2,6 +2,7 @@
 
 [song]
 format = 2
+songName = "stinkie"
 bpm = 120
 stepCount = 16
 grooveSwing = 0
@@ -14,37 +15,37 @@ type = 0
 
 [groove]
 kickNudge = 0
-snareDelay = 0
-hatNudge = 0
-clapDelay = 0
-swing = 0
-jitter = 0
-trackSwing0 = 0
+snareDelay = 3
+hatNudge = -2
+clapDelay = 2
+swing = 5
+jitter = 2
+trackSwing0 = 5
 trackTranspose0 = 0
-trackSwing1 = 0
+trackSwing1 = 5
 trackTranspose1 = 0
-trackSwing2 = 0
+trackSwing2 = 5
 trackTranspose2 = 0
-trackSwing3 = 0
+trackSwing3 = 5
 trackTranspose3 = 0
-trackSwing4 = 0
+trackSwing4 = 5
 trackTranspose4 = 0
-trackSwing5 = 0
+trackSwing5 = 5
 trackTranspose5 = 0
-trackSwing6 = 0
+trackSwing6 = 5
 trackTranspose6 = 0
-trackSwing7 = 0
+trackSwing7 = 5
 trackTranspose7 = 0
-trackSwing8 = 0
+trackSwing8 = 5
 trackTranspose8 = 0
-trackSwing9 = 0
+trackSwing9 = 5
 trackTranspose9 = 0
-trackSwing10 = 0
+trackSwing10 = 5
 trackTranspose10 = 0
-trackSwing11 = 0
+trackSwing11 = 5
 trackTranspose11 = 0
-melodyTimingJitter = 0
-melodyVelocityJitter = 0
+melodyTimingJitter = 2
+melodyVelocityJitter = 0.12
 
 [settings]
 masterVol = 0.8
@@ -52,11 +53,11 @@ voiceRandomVowel = false
 
 [patch.0]
 name = "808 Kick"
-waveType = fm
+waveType = pipe
 scwIndex = 0
-attack = 0
+attack = 0.268456
 decay = 0.5
-sustain = 0
+sustain = 0.110907
 release = 0.05
 expRelease = false
 expDecay = true
@@ -65,10 +66,10 @@ volume = 0.5
 pulseWidth = 0.5
 pwmRate = 3
 pwmDepth = 0
-vibratoRate = 5
-vibratoDepth = 0
-filterCutoff = 1
-filterResonance = 0
+vibratoRate = 14.9523
+vibratoDepth = 1.99523
+filterCutoff = 0.934115
+filterResonance = 0.847005
 filterType = 0
 filterEnvAmt = 0
 filterEnvAttack = 0.01
@@ -86,8 +87,8 @@ ampLfoRate = 0
 ampLfoDepth = 0
 ampLfoShape = 0
 ampLfoSync = 0
-pitchLfoRate = 5
-pitchLfoDepth = 0
+pitchLfoRate = 5.55703
+pitchLfoDepth = 0.0724805
 pitchLfoShape = 0
 pitchLfoSync = 0
 filterLfoPhaseOffset = 0
@@ -120,17 +121,17 @@ malletTremolo = 0
 malletTremoloRate = 5.5
 malletDamp = 0
 voiceVowel = 0
-voiceFormantShift = 1
-voiceBreathiness = 0.1
+voiceFormantShift = 0.5
+voiceBreathiness = 0.0189649
 voiceBuzziness = 0.6
-voiceSpeed = 10
-voicePitch = 1
+voiceSpeed = 4
+voicePitch = 2
 voiceConsonant = false
 voiceConsonantAmt = 0.5
-voiceNasal = false
-voiceNasalAmt = 0.5
-voicePitchEnv = 0
-voicePitchEnvTime = 0.15
+voiceNasal = true
+voiceNasalAmt = 0
+voicePitchEnv = 11.9645
+voicePitchEnvTime = 0.253172
 voicePitchEnvCurve = 0
 granularScwIndex = 0
 granularGrainSize = 50
@@ -174,7 +175,7 @@ birdTrillDepth = 0
 birdAmRate = 0
 birdAmDepth = 0
 birdHarmonics = 0.2
-pitchEnvAmount = 19
+pitchEnvAmount = 6.03553
 pitchEnvDecay = 0.04
 pitchEnvCurve = 0
 pitchEnvLinear = true
@@ -197,7 +198,7 @@ osc5Level = 0
 osc6Ratio = 0
 osc6Level = 0
 drive = 0.5
-clickLevel = 0.3
+clickLevel = 0
 clickTime = 0.005
 noiseMode = 0
 oscMixMode = 0
@@ -205,7 +206,7 @@ retriggerCurve = 0
 phaseReset = false
 noiseLPBypass = false
 noiseType = 0
-useTriggerFreq = true
+useTriggerFreq = false
 triggerFreq = 50
 choke = false
 analogRolloff = false
@@ -897,7 +898,7 @@ gimmickDipAmt = 0.3
 
 [patch.5]
 name = "Chip Lead"
-waveType = square
+waveType = bird
 scwIndex = 0
 attack = 0.005
 decay = 0.1
@@ -1012,7 +1013,7 @@ pipeBreath = 0.5
 pipeEmbouchure = 0.5
 pipeBore = 0.5
 pipeOverblow = 0
-birdType = 0
+birdType = 4
 birdChirpRange = 1
 birdTrillRate = 0
 birdTrillDepth = 0
@@ -1682,6 +1683,46 @@ combFreq6 = 0
 combFB6 = 0
 combMix6 = 0
 combDamping6 = 0
+vol7 = 0.8
+pan7 = 0
+reverbSend7 = 0
+mute7 = false
+solo7 = false
+filterOn7 = false
+filterCut7 = 1
+filterRes7 = 0
+filterType7 = 0
+distOn7 = false
+distDrive7 = 2
+distMix7 = 0.5
+delayOn7 = false
+delaySync7 = false
+delaySyncDiv7 = 0
+delayTime7 = 0.3
+delayFB7 = 0.3
+delayMix7 = 0.3
+eqOn7 = false
+eqLowGain7 = 0
+eqHighGain7 = 0
+eqLowFreq7 = 0
+eqHighFreq7 = 0
+chorusOn7 = false
+chorusRate7 = 0
+chorusDepth7 = 0
+chorusMix7 = 0
+chorusDelay7 = 0
+chorusFB7 = 0
+phaserOn7 = false
+phaserRate7 = 0
+phaserDepth7 = 0
+phaserMix7 = 0
+phaserFB7 = 0
+phaserStages7 = 0
+combOn7 = true
+combFreq7 = 48.9629
+combFB7 = 0.947637
+combMix7 = 0.431359
+combDamping7 = 0
 
 [sidechain]
 on = false
@@ -1813,11 +1854,12 @@ loopsPerPattern = 2
 songMode = false
 
 [sample]
-sourceFile = "soundsystem/demo/songs/jojo.song"
+sourceFile = "soundsystem/demo/songs/monksmood.song"
 sourcePattern = 0
 sourceLoops = 1
 sliceCount = 8
-chopMode = 0
+chopMode = 1
+normalize = true
 sensitivity = 0.5
 fadeMs = 1
 padMap0 = -1
@@ -1833,14 +1875,70 @@ d track=0 step=0 vel=0.8
 d track=0 step=4 vel=0.8
 d track=0 step=8 vel=0.8
 d track=0 step=12 vel=0.8
-d track=1 step=4 vel=0.8
-d track=1 step=12 vel=0.8
-d track=2 step=0 vel=0.8
+d track=1 step=13 vel=0.8
 d track=2 step=2 vel=0.8
-d track=2 step=4 vel=0.8
 d track=2 step=6 vel=0.8
-d track=2 step=8 vel=0.8
 d track=2 step=10 vel=0.8
-d track=2 step=12 vel=0.8
 d track=2 step=14 vel=0.8
-s step=6 slice=7 note=59 vel=0.8
+d track=3 step=0 vel=0.8 cond=1:2
+d track=3 step=1 vel=0.8 cond=1:2
+d track=3 step=2 vel=0.8 cond=1:2
+d track=3 step=3 vel=0.8 cond=1:2
+d track=3 step=4 vel=0.8 cond=1:2
+d track=3 step=5 vel=0.8 cond=1:2
+d track=3 step=6 vel=0.8
+d track=3 step=7 vel=0.8 cond=1:2
+d track=3 step=8 vel=0.8
+d track=3 step=9 vel=0.8
+d track=3 step=10 vel=0.8
+d track=3 step=11 vel=0.8
+d track=3 step=12 vel=0.8
+d track=3 step=13 vel=0.8
+d track=3 step=14 vel=0.8
+d track=3 step=15 vel=0.8
+s step=0 slice=6 note=60 vel=0.8
+s step=4 slice=6 note=63 vel=0.8
+p track=0 step=10 param=pitch val=6.21994
+p track=0 step=2 param=pitch val=6.32478
+p track=0 step=2 param=decay val=1.32405
+p track=0 step=4 param=pitch val=-12
+p track=0 step=4 param=tone val=1
+p track=0 step=4 param=volume val=0.515321
+
+[pattern.1]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+samplerTrackLength = 16
+d track=0 step=0 vel=0.8
+d track=0 step=4 vel=0.8
+d track=0 step=8 vel=0.8
+d track=0 step=12 vel=0.8
+d track=1 step=13 vel=0.8
+d track=2 step=2 vel=0.8
+d track=2 step=6 vel=0.8
+d track=2 step=10 vel=0.8
+d track=2 step=14 vel=0.8
+d track=3 step=0 vel=0.8
+d track=3 step=1 vel=0.8
+d track=3 step=2 vel=0.8
+d track=3 step=3 vel=0.8
+d track=3 step=4 vel=0.8
+d track=3 step=5 vel=0.8
+d track=3 step=6 vel=0.8
+d track=3 step=7 vel=0.8
+d track=3 step=8 vel=0.8
+d track=3 step=9 vel=0.8
+d track=3 step=10 vel=0.8
+d track=3 step=11 vel=0.8
+d track=3 step=12 vel=0.8
+d track=3 step=13 vel=0.8
+d track=3 step=14 vel=0.8
+d track=3 step=15 vel=0.8
+s step=0 slice=6 note=60 vel=0.8
+s step=4 slice=6 note=63 vel=0.8
+p track=0 step=10 param=pitch val=6.21994
+p track=0 step=2 param=pitch val=6.32478
+p track=0 step=2 param=decay val=1.32405
+p track=0 step=4 param=pitch val=-12
+p track=0 step=4 param=tone val=1
+p track=0 step=4 param=volume val=0.515321

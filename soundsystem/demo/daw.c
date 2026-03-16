@@ -602,6 +602,7 @@ static struct {
     float *slices[SAMPLER_MAX_SAMPLES]; // per-slice buffers (heap)
     int chopMode;               // 0=equal, 1=transient
     float sensitivity;          // transient sensitivity (0.0-1.0)
+    bool normalize;             // normalize bounce buffer before chopping
     // Global fade (applied to all slices unless overridden)
     float fadeMs;               // global fade in/out in ms (0=off, default 1.0)
     // Per-slice params
@@ -670,10 +671,50 @@ static void chopStateBounce(void) {
 
     if (!rendered.data) { dawAudioUngate(); return; }
 
+    // Normalize: scale buffer so peak hits ~0.9
+    if (chopState.normalize && rendered.length > 0) {
+        float peak = 0.0f;
+        for (int i = 0; i < rendered.length; i++) {
+            float a = fabsf(rendered.data[i]);
+            if (a > peak) peak = a;
+        }
+        if (peak > 0.001f) {
+            float gain = 0.9f / peak;
+            for (int i = 0; i < rendered.length; i++)
+                rendered.data[i] *= gain;
+        }
+    }
+
     chopState.renderData = rendered.data;
     chopState.renderLength = rendered.length;
     chopState.renderBpm = rendered.bpm;
     chopState.renderSteps = rendered.stepCount;
+
+    // Debug: dump full pre-chop bounce buffer
+    {
+        FILE *dbgf = fopen("/tmp/daw_bounce_full.wav", "wb");
+        if (dbgf) {
+            int ds = rendered.length * 2, fs = 36 + ds;
+            fwrite("RIFF", 1, 4, dbgf); fwrite(&fs, 4, 1, dbgf);
+            fwrite("WAVE", 1, 4, dbgf); fwrite("fmt ", 1, 4, dbgf);
+            int v32 = 16; fwrite(&v32, 4, 1, dbgf);
+            short v16 = 1; fwrite(&v16, 2, 1, dbgf); v16 = 1; fwrite(&v16, 2, 1, dbgf);
+            v32 = rendered.sampleRate; fwrite(&v32, 4, 1, dbgf);
+            v32 = rendered.sampleRate * 2; fwrite(&v32, 4, 1, dbgf);
+            v16 = 2; fwrite(&v16, 2, 1, dbgf); v16 = 16; fwrite(&v16, 2, 1, dbgf);
+            fwrite("data", 1, 4, dbgf); fwrite(&ds, 4, 1, dbgf);
+            float pk = 0;
+            for (int i = 0; i < rendered.length; i++) {
+                float s = rendered.data[i];
+                if (fabsf(s) > pk) pk = fabsf(s);
+                if (s > 1) s = 1; if (s < -1) s = -1;
+                short sv = (short)(s * 32000.0f);
+                fwrite(&sv, 2, 1, dbgf);
+            }
+            fclose(dbgf);
+            fprintf(stderr, "DAW bounce: /tmp/daw_bounce_full.wav (%d samples, peak=%.4f)\n", rendered.length, pk);
+        }
+    }
 
     // Chop (equal or transient)
     ChoppedSample chopped;
@@ -810,6 +851,56 @@ static void chopApplySliceParams(void) {
     dawAudioUngate();
 }
 
+// Debug: dump sampler slots AND raw chop slices to /tmp WAVs
+static void _dumpFloatsToWav(const char *path, const float *data, int len, int sr) {
+    FILE *f = fopen(path, "wb");
+    if (!f) return;
+    int dataSize = len * 2;
+    int fileSize = 36 + dataSize;
+    fwrite("RIFF", 1, 4, f);
+    fwrite(&fileSize, 4, 1, f);
+    fwrite("WAVE", 1, 4, f);
+    fwrite("fmt ", 1, 4, f);
+    int val32 = 16; fwrite(&val32, 4, 1, f);
+    short val16 = 1; fwrite(&val16, 2, 1, f);
+    val16 = 1; fwrite(&val16, 2, 1, f);
+    val32 = sr; fwrite(&val32, 4, 1, f);
+    val32 = sr * 2; fwrite(&val32, 4, 1, f);
+    val16 = 2; fwrite(&val16, 2, 1, f);
+    val16 = 16; fwrite(&val16, 2, 1, f);
+    fwrite("data", 1, 4, f);
+    fwrite(&dataSize, 4, 1, f);
+    for (int i = 0; i < len; i++) {
+        float v = data[i];
+        if (v > 1.0f) v = 1.0f; if (v < -1.0f) v = -1.0f;
+        short s = (short)(v * 32000.0f);
+        fwrite(&s, 2, 1, f);
+    }
+    fclose(f);
+}
+
+static void chopDumpSamplerSlots(void) {
+    if (!samplerCtx) return;
+    for (int s = 0; s < SAMPLER_MAX_SAMPLES; s++) {
+        // Dump sampler slot (what gets played)
+        Sample *slot = &samplerCtx->samples[s];
+        if (slot->loaded && slot->data && slot->length > 0) {
+            char path[256];
+            snprintf(path, sizeof(path), "/tmp/sampler_slot_%02d.wav", s);
+            _dumpFloatsToWav(path, slot->data, slot->length, slot->sampleRate);
+            fprintf(stderr, "Slot %d: %s (%d samples, sr=%d)\n", s, path, slot->length, slot->sampleRate);
+        }
+        // Dump raw chop slice (before chopApplySliceParams)
+        if (s < chopState.sliceCount && chopState.slices[s]) {
+            int len = chopState.sliceLengths[s] > 0 ? chopState.sliceLengths[s] : chopState.sliceLength;
+            char path[256];
+            snprintf(path, sizeof(path), "/tmp/raw_slice_%02d.wav", s);
+            _dumpFloatsToWav(path, chopState.slices[s], len, SAMPLE_CHOP_SAMPLE_RATE);
+            fprintf(stderr, "Raw  %d: %s (%d samples)\n", s, path, len);
+        }
+    }
+}
+
 // Save/load (.song files)
 #define DAW_HAS_CHOP_STATE  // enables [sample] section save/load in daw_file.h
 #include "daw_file.h"
@@ -919,6 +1010,20 @@ static const char* dawBusName(int bus) {
     if (bus == BUS_SAMPLER) return "Sampler";
     return (bus >= 0 && bus < 7) ? daw.patches[bus].p_name : "??";
 }
+// Dampened scroll helper for discrete integer values.
+// Accumulates fractional scroll (0.4x) and returns integer delta when threshold crossed.
+// Uses a single global accumulator — reset whenever the context changes (different widget).
+static float _scrollAccum = 0.0f;
+static int _scrollCtx = -1; // opaque context ID to detect widget changes
+static int scrollDelta(float wheelMove, int contextId) {
+    if (contextId != _scrollCtx) { _scrollAccum = 0.0f; _scrollCtx = contextId; }
+    if (wheelMove == 0.0f) return 0;
+    _scrollAccum += wheelMove * 0.4f;
+    int d = (int)_scrollAccum;
+    if (d != 0) _scrollAccum -= d;
+    return d;
+}
+
 static const char* busFilterTypeNames[] = {"LP", "HP", "BP", "Notch"};
 static const char* delaySyncNames[] = {"1/16", "1/8", "1/4", "1/2", "1bar"};
 static const char* rewindCurveNames[] = {"Linear", "Expo", "S-Curve"};
@@ -958,20 +1063,20 @@ static int selectedGroovePreset = -1;
 
 static void drawTabBar(float x, float y, float w, const char** names, const int* keys,
                        int count, int* current, const char* keyPrefix) {
-    DrawRectangle((int)x, (int)y, (int)w, TAB_H, (Color){28, 29, 35, 255});
-    DrawLine((int)x, (int)y+TAB_H-1, (int)(x+w), (int)y+TAB_H-1, (Color){50,50,60,255});
+    DrawRectangle((int)x, (int)y, (int)w, TAB_H, UI_BG_PANEL);
+    DrawLine((int)x, (int)y+TAB_H-1, (int)(x+w), (int)y+TAB_H-1, UI_BG_HOVER);
     Vector2 mouse = GetMousePosition();
     float tx = x + 4;
     for (int i = 0; i < count; i++) {
         const char* label = TextFormat("%s%d %s", keyPrefix, i+1, names[i]);
-        int tw = MeasureTextUI(label, 11) + 12;
+        int tw = MeasureTextUI(label, UI_FONT_SMALL) + 12;
         Rectangle r = {tx, y+2, (float)tw, TAB_H-4};
         bool hov = CheckCollisionPointRec(mouse, r);
         bool act = (i == *current);
-        Color bg = act ? (Color){48,52,65,255} : (hov ? (Color){38,40,50,255} : (Color){28,29,35,255});
+        Color bg = act ? UI_BG_ACTIVE : (hov ? UI_BG_HOVER : UI_BG_PANEL);
         DrawRectangleRec(r, bg);
         if (act) DrawRectangle((int)tx, (int)y+TAB_H-3, tw, 2, ORANGE);
-        DrawTextShadow(label, (int)tx+6, (int)y+7, 11, act ? WHITE : (hov ? LIGHTGRAY : GRAY));
+        DrawTextShadow(label, (int)tx+6, (int)y+7, UI_FONT_SMALL, act ? WHITE : (hov ? LIGHTGRAY : GRAY));
         if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { *current = i; ui_consume_click(); }
         if (IsKeyPressed(keys[i])) *current = i;
         tx += tw + 2;
@@ -983,8 +1088,8 @@ static void drawTabBar(float x, float y, float w, const char** names, const int*
 // ============================================================================
 
 static void drawSidebar(void) {
-    DrawRectangle(0, 0, SIDEBAR_W, SCREEN_HEIGHT, (Color){24, 25, 30, 255});
-    DrawLine(SIDEBAR_W-1, 0, SIDEBAR_W-1, SCREEN_HEIGHT, (Color){50, 50, 62, 255});
+    DrawRectangle(0, 0, SIDEBAR_W, SCREEN_HEIGHT, UI_BG_DARK);
+    DrawLine(SIDEBAR_W-1, 0, SIDEBAR_W-1, SCREEN_HEIGHT, UI_DIVIDER);
 
     Vector2 mouse = GetMousePosition();
     float x = 4, y = 6;
@@ -993,9 +1098,9 @@ static void drawSidebar(void) {
     {
         Rectangle r = {x, y, SIDEBAR_W-8, 20};
         bool hov = CheckCollisionPointRec(mouse, r);
-        Color bg = daw.transport.playing ? (Color){40, 80, 40, 255} : (hov ? (Color){45, 45, 55, 255} : (Color){32, 33, 40, 255});
+        Color bg = daw.transport.playing ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_BUTTON);
         DrawRectangleRec(r, bg);
-        DrawTextShadow(daw.transport.playing ? "Stop" : "Play", (int)x+20, (int)y+4, 11, daw.transport.playing ? GREEN : LIGHTGRAY);
+        DrawTextShadow(daw.transport.playing ? "Stop" : "Play", (int)x+20, (int)y+4, UI_FONT_SMALL, daw.transport.playing ? GREEN : LIGHTGRAY);
         if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             daw.transport.playing = !daw.transport.playing;
             if (!daw.transport.playing) dawStopSequencer();
@@ -1005,20 +1110,20 @@ static void drawSidebar(void) {
     y += 24;
 
     // BPM (compact)
-    DrawTextShadow(TextFormat("%.0f", daw.transport.bpm), (int)x+2, (int)y, 10, (Color){140,140,150,255});
-    DrawTextShadow("daw.transport.bpm", (int)x+30, (int)y, 9, (Color){70,70,80,255});
+    DrawTextShadow(TextFormat("%.0f", daw.transport.bpm), (int)x+2, (int)y, UI_FONT_SMALL, UI_TEXT_LABEL);
+    DrawTextShadow("daw.transport.bpm", (int)x+30, (int)y, UI_FONT_SMALL, UI_TEXT_MUTED);
     y += 16;
 
     // Divider
-    DrawLine((int)x, (int)y, SIDEBAR_W-4, (int)y, (Color){42,42,52,255});
+    DrawLine((int)x, (int)y, SIDEBAR_W-4, (int)y, UI_BORDER_SUBTLE);
     y += 6;
 
     // Master volume
-    DrawTextShadow("Mstr", (int)x, (int)y, 9, (Color){170,160,80,255});
+    DrawTextShadow("Mstr", (int)x, (int)y, UI_FONT_SMALL, UI_GOLD);
     y += 12;
     float barH = 60;
     float barX = x + 20, barW = 16;
-    DrawRectangle((int)barX, (int)y, (int)barW, (int)barH, (Color){20,20,25,255});
+    DrawRectangle((int)barX, (int)y, (int)barW, (int)barH, UI_BG_DEEPEST);
     float fillH = daw.masterVol * barH;
     DrawRectangle((int)barX, (int)(y+barH-fillH), (int)barW, (int)fillH, (Color){170,150,50,255});
     Rectangle volR = {barX, y, barW, barH};
@@ -1027,7 +1132,7 @@ static void drawSidebar(void) {
         if (daw.masterVol < 0) daw.masterVol = 0;
         if (daw.masterVol > 1) daw.masterVol = 1;
     }
-    DrawTextShadow(TextFormat("%.0f%%", daw.masterVol*100), (int)x, (int)(y+barH+2), 9, (Color){100,100,110,255});
+    DrawTextShadow(TextFormat("%.0f%%", daw.masterVol*100), (int)x, (int)(y+barH+2), UI_FONT_SMALL, UI_TEXT_DIM);
 }
 
 // ============================================================================
@@ -1038,8 +1143,8 @@ static void drawDebugPanel(void); // forward decl — defined after voiceBus/daw
 
 static void drawTransport(void) {
     float x = CONTENT_X, w = CONTENT_W;
-    DrawRectangle((int)x, 0, (int)w, TRANSPORT_H, (Color){25, 25, 30, 255});
-    DrawLine((int)x, TRANSPORT_H-1, (int)(x+w), TRANSPORT_H-1, (Color){50,50,60,255});
+    DrawRectangle((int)x, 0, (int)w, TRANSPORT_H, UI_BG_DARK);
+    DrawLine((int)x, TRANSPORT_H-1, (int)(x+w), TRANSPORT_H-1, UI_BG_HOVER);
 
     float tx = x + 10, ty = 8;
     DrawTextShadow("PixelSynth", (int)tx, (int)ty, 18, WHITE);
@@ -1048,7 +1153,7 @@ static void drawTransport(void) {
     DraggableFloat(tx, ty, "BPM", &daw.transport.bpm, 2.0f, 60.0f, 200.0f);
     tx += 130;
 
-    if (daw.transport.playing) DrawTextShadow(">>>", (int)tx, (int)ty, 14, GREEN);
+    if (daw.transport.playing) DrawTextShadow(">>>", (int)tx, (int)ty, UI_FONT_MEDIUM, GREEN);
     tx += 50;
 
     // Debug button
@@ -1056,16 +1161,16 @@ static void drawTransport(void) {
         Vector2 mouse = GetMousePosition();
         Rectangle dbgR = {tx, ty-2, 40, 18};
         bool dbgHov = CheckCollisionPointRec(mouse, dbgR);
-        Color dbgBg = dawDebugOpen ? (Color){80, 60, 30, 255} : (dbgHov ? (Color){45, 45, 55, 255} : (Color){33, 33, 40, 255});
+        Color dbgBg = dawDebugOpen ? UI_TINT_ORANGE : (dbgHov ? UI_BG_HOVER : UI_BG_BUTTON);
         DrawRectangleRec(dbgR, dbgBg);
-        DrawRectangleLinesEx(dbgR, 1, dawDebugOpen ? ORANGE : (Color){55, 55, 65, 255});
-        DrawTextShadow("Dbg", (int)tx + 8, (int)ty, 11, dawDebugOpen ? WHITE : GRAY);
+        DrawRectangleLinesEx(dbgR, 1, dawDebugOpen ? ORANGE : UI_BORDER);
+        DrawTextShadow("Dbg", (int)tx + 8, (int)ty, UI_FONT_SMALL, dawDebugOpen ? WHITE : GRAY);
         if (dbgHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { dawDebugOpen = !dawDebugOpen; ui_consume_click(); }
     }
     tx += 46;
 
     // Pattern indicator
-    DrawTextShadow(TextFormat("Pat:%d", daw.transport.currentPattern+1), (int)tx, (int)ty+2, 11, (Color){120,120,140,255});
+    DrawTextShadow(TextFormat("Pat:%d", daw.transport.currentPattern+1), (int)tx, (int)ty+2, UI_FONT_SMALL, UI_TEXT_SUBTLE);
     tx += 60;
 
     // Record button (F7)
@@ -1078,24 +1183,24 @@ static void drawTransport(void) {
         const char *recLabel;
         if (recMode == REC_RECORDING) {
             bool blink = (int)(GetTime() * 4) % 2;
-            recBg = blink ? (Color){140, 30, 30, 255} : (Color){100, 20, 20, 255};
+            recBg = blink ? (Color){140, 30, 30, 255} : (Color){100,25,25,255};
             recFg = WHITE;
             recLabel = "REC";
         } else if (recMode == REC_ARMED) {
             bool blink = (int)(GetTime() * 2) % 2;
-            recBg = blink ? (Color){100, 30, 30, 255} : (Color){50, 25, 25, 255};
+            recBg = blink ? (Color){100,25,25,255} : UI_BG_RED_DARK;
             recFg = (Color){255, 100, 100, 255};
             recLabel = "ARM";
         } else {
-            recBg = rHov ? (Color){50, 35, 35, 255} : (Color){33, 33, 40, 255};
+            recBg = rHov ? UI_BG_RED_DARK : UI_BG_BUTTON;
             recFg = (Color){180, 80, 80, 255};
             recLabel = "Rec";
         }
         DrawRectangleRec(rr, recBg);
-        DrawRectangleLinesEx(rr, 1, recMode != REC_OFF ? RED : (Color){55, 55, 65, 255});
+        DrawRectangleLinesEx(rr, 1, recMode != REC_OFF ? RED : UI_BORDER);
         // Red circle icon
         DrawCircle((int)tx + 8, (int)ty + 7, 4, recMode != REC_OFF ? RED : (Color){120, 50, 50, 255});
-        DrawTextShadow(recLabel, (int)tx + 15, (int)ty, 11, recFg);
+        DrawTextShadow(recLabel, (int)tx + 15, (int)ty, UI_FONT_SMALL, recFg);
         if (rHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             dawRecordToggle();
             ui_consume_click();
@@ -1110,9 +1215,9 @@ static void drawTransport(void) {
         const char *wmLabel = recWriteMode == REC_OVERDUB ? "OVR" : "REP";
         Rectangle wmR = {tx, ty-2, 30, 18};
         bool wmHov = CheckCollisionPointRec(mouse, wmR);
-        DrawRectangleRec(wmR, wmHov ? (Color){50, 50, 60, 255} : (Color){33, 33, 40, 255});
-        DrawRectangleLinesEx(wmR, 1, (Color){55, 55, 65, 255});
-        DrawTextShadow(wmLabel, (int)tx + 4, (int)ty, 10, recWriteMode == REC_OVERDUB ? (Color){100, 200, 100, 255} : (Color){200, 150, 80, 255});
+        DrawRectangleRec(wmR, wmHov ? UI_BG_HOVER : UI_BG_BUTTON);
+        DrawRectangleLinesEx(wmR, 1, UI_BORDER);
+        DrawTextShadow(wmLabel, (int)tx + 4, (int)ty, UI_FONT_SMALL, recWriteMode == REC_OVERDUB ? (Color){100, 200, 100, 255} : UI_TINT_ORANGE);
         if (wmHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             recWriteMode = (recWriteMode == REC_OVERDUB) ? REC_REPLACE : REC_OVERDUB;
             ui_consume_click();
@@ -1124,10 +1229,10 @@ static void drawTransport(void) {
         const char *qLabel = qLabels[recQuantize];
         Rectangle qR = {tx, ty-2, 34, 18};
         bool qHov = CheckCollisionPointRec(mouse, qR);
-        DrawRectangleRec(qR, qHov ? (Color){50, 50, 60, 255} : (Color){33, 33, 40, 255});
-        DrawRectangleLinesEx(qR, 1, (Color){55, 55, 65, 255});
-        Color qCol = recQuantize == REC_QUANT_NONE ? (Color){255, 180, 100, 255} : (Color){150, 150, 200, 255};
-        DrawTextShadow(qLabel, (int)tx + 4, (int)ty, 10, qCol);
+        DrawRectangleRec(qR, qHov ? UI_BG_HOVER : UI_BG_BUTTON);
+        DrawRectangleLinesEx(qR, 1, UI_BORDER);
+        Color qCol = recQuantize == REC_QUANT_NONE ? UI_PLOCK_DRUM : (Color){150, 150, 200, 255};
+        DrawTextShadow(qLabel, (int)tx + 4, (int)ty, UI_FONT_SMALL, qCol);
         if (qHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             recQuantize = (RecordQuantize)((recQuantize + 1) % REC_QUANT_COUNT);
             ui_consume_click();
@@ -1138,9 +1243,9 @@ static void drawTransport(void) {
         if (daw.song.songMode) {
             Rectangle plR = {tx, ty-2, 22, 18};
             bool plHov = CheckCollisionPointRec(mouse, plR);
-            DrawRectangleRec(plR, plHov ? (Color){50, 50, 60, 255} : (Color){33, 33, 40, 255});
-            DrawRectangleLinesEx(plR, 1, recPatternLock ? (Color){200, 150, 50, 255} : (Color){55, 55, 65, 255});
-            DrawTextShadow("L", (int)tx + 7, (int)ty, 11, recPatternLock ? (Color){255, 200, 80, 255} : GRAY);
+            DrawRectangleRec(plR, plHov ? UI_BG_HOVER : UI_BG_BUTTON);
+            DrawRectangleLinesEx(plR, 1, recPatternLock ? (Color){200, 150, 50, 255} : UI_BORDER);
+            DrawTextShadow("L", (int)tx + 7, (int)ty, UI_FONT_SMALL, recPatternLock ? (Color){255, 200, 80, 255} : GRAY);
             if (plHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 recPatternLock = !recPatternLock;
                 ui_consume_click();
@@ -1156,9 +1261,9 @@ static void drawTransport(void) {
             const char *label = bi == 0 ? "Save" : "Load";
             Rectangle br = {tx, ty-2, 38, 18};
             bool bh = CheckCollisionPointRec(mouse, br);
-            DrawRectangleRec(br, bh ? (Color){50,50,60,255} : (Color){33,33,40,255});
-            DrawRectangleLinesEx(br, 1, (Color){55,55,65,255});
-            DrawTextShadow(label, (int)tx+6, (int)ty, 11, bh ? WHITE : GRAY);
+            DrawRectangleRec(br, bh ? UI_BG_HOVER : UI_BG_BUTTON);
+            DrawRectangleLinesEx(br, 1, UI_BORDER);
+            DrawTextShadow(label, (int)tx+6, (int)ty, UI_FONT_SMALL, bh ? WHITE : GRAY);
             if (bh && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 ui_consume_click();
                 if (bi == 0) {
@@ -1186,9 +1291,9 @@ static void drawTransport(void) {
         const char *displayName = daw.songName[0] ? daw.songName : "untitled";
         if (editingSongName) {
             Rectangle nr = {tx, ty-2, 140, 18};
-            DrawRectangleRec(nr, (Color){25,25,35,255});
-            DrawRectangleLinesEx(nr, 1, (Color){100,150,220,255});
-            DrawTextShadow(songNameEditBuf, (int)tx+4, (int)ty, 11, WHITE);
+            DrawRectangleRec(nr, UI_BG_PANEL);
+            DrawRectangleLinesEx(nr, 1, UI_ACCENT_BLUE);
+            DrawTextShadow(songNameEditBuf, (int)tx+4, (int)ty, UI_FONT_SMALL, WHITE);
             int cx = dawTextCursorX(songNameEditBuf, songNameEditCursor, 11);
             if ((int)(GetTime()*3) % 2) DrawRectangle((int)tx+4+cx, (int)ty, 1, 12, WHITE);
 
@@ -1207,12 +1312,12 @@ static void drawTransport(void) {
             }
             tx += 146;
         } else {
-            int tw = MeasureTextUI(displayName, 11);
+            int tw = MeasureTextUI(displayName, UI_FONT_SMALL);
             Rectangle nr = {tx, ty-2, (float)(tw + 12), 18};
             bool nh = CheckCollisionPointRec(mouse, nr);
-            DrawRectangleRec(nr, nh ? (Color){42,42,52,255} : (Color){28,28,36,255});
-            DrawRectangleLinesEx(nr, 1, (Color){45,45,55,255});
-            DrawTextShadow(displayName, (int)tx+6, (int)ty, 11, daw.songName[0] ? WHITE : (Color){80,80,100,255});
+            DrawRectangleRec(nr, nh ? UI_BORDER_SUBTLE : UI_BG_PANEL);
+            DrawRectangleLinesEx(nr, 1, UI_BG_HOVER);
+            DrawTextShadow(displayName, (int)tx+6, (int)ty, UI_FONT_SMALL, daw.songName[0] ? WHITE : UI_BORDER_LIGHT);
             if (nh && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 editingSongName = true;
                 strncpy(songNameEditBuf, daw.songName, 63);
@@ -1228,7 +1333,7 @@ static void drawTransport(void) {
     // Crossfader indicator
     if (daw.crossfader.enabled) {
         DrawTextShadow(TextFormat("XF:%d>%d %.0f%%", daw.crossfader.sceneA+1, daw.crossfader.sceneB+1, daw.crossfader.pos*100),
-                       (int)(x+w-180), (int)ty+2, 10, (Color){180,180,100,255});
+                       (int)(x+w-180), (int)ty+2, 10, UI_GOLD);
     }
 
     // Voice monitor: 2 rows of 8 colored rectangles
@@ -1256,7 +1361,7 @@ static void drawTransport(void) {
         float meterH = 6;
 
         // Background
-        DrawRectangle((int)meterX, (int)meterY, (int)meterW, (int)meterH, (Color){20,20,25,255});
+        DrawRectangle((int)meterX, (int)meterY, (int)meterW, (int)meterH, UI_BG_DEEPEST);
 
         // dB scale: -48dB to +6dB mapped to bar width
         float db = 20.0f * log10f(fmaxf(dawPeakHold, 0.00001f));
@@ -1274,7 +1379,7 @@ static void drawTransport(void) {
 
         // 0dB mark (thin line at ~89% of bar)
         float zeroDbX = meterX + (48.0f / 54.0f) * meterW;
-        DrawLine((int)zeroDbX, (int)meterY, (int)zeroDbX, (int)(meterY + meterH), (Color){100,100,100,255});
+        DrawLine((int)zeroDbX, (int)meterY, (int)zeroDbX, (int)(meterY + meterH), UI_TEXT_DIM);
 
         // Clip indicator
         if (dawPeakHold > 1.0f) {
@@ -1285,8 +1390,8 @@ static void drawTransport(void) {
     // CPU % and FPS
     double bufferTimeMs = (double)dawAudioFrameCount / SAMPLE_RATE * 1000.0;
     double cpuPercent = bufferTimeMs > 0 ? (dawAudioTimeUs / 1000.0) / bufferTimeMs * 100.0 : 0;
-    DrawTextShadow(TextFormat("%.0f%%", cpuPercent), (int)(x+w-48), (int)ty+2, 10, cpuPercent > 50 ? RED : (Color){80,80,80,255});
-    DrawTextShadow(TextFormat("%dfps", GetFPS()), (int)(x+w-48), (int)ty+14, 10, (Color){50,50,50,255});
+    DrawTextShadow(TextFormat("%.0f%%", cpuPercent), (int)(x+w-48), (int)ty+2, UI_FONT_SMALL, cpuPercent > 50 ? RED : UI_BORDER_LIGHT);
+    DrawTextShadow(TextFormat("%dfps", GetFPS()), (int)(x+w-48), (int)ty+14, UI_FONT_SMALL, UI_BG_HOVER);
 }
 
 // ============================================================================
@@ -1371,16 +1476,16 @@ static void drawWorkSeq(float x, float y, float w, float h) {
     int steps = daw.stepCount;
 
     // Top row: Pattern selector + 16/32 toggle
-    DrawTextShadow("Pattern:", (int)x, (int)y+2, 11, GRAY);
+    DrawTextShadow("Pattern:", (int)x, (int)y+2, UI_FONT_SMALL, GRAY);
     float px = x + 60;
     for (int i = 0; i < 8; i++) {
         Rectangle r = {px + i*28, y, 26, 18};
         bool hov = CheckCollisionPointRec(mouse, r);
         bool act = (i == daw.transport.currentPattern);
-        Color bg = act ? (Color){50,90,50,255} : (hov ? (Color){42,44,52,255} : (Color){33,34,40,255});
+        Color bg = act ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_BUTTON);
         DrawRectangleRec(r, bg);
-        DrawRectangleLinesEx(r, 1, act ? GREEN : (Color){48,48,58,255});
-        DrawTextShadow(TextFormat("%d", i+1), (int)px+i*28+9, (int)y+3, 10, act ? WHITE : GRAY);
+        DrawRectangleLinesEx(r, 1, act ? GREEN : UI_BORDER);
+        DrawTextShadow(TextFormat("%d", i+1), (int)px+i*28+9, (int)y+3, UI_FONT_SMALL, act ? WHITE : GRAY);
         // Override indicator dot (orange if pattern has overrides)
         if (seq.patterns[i].overrides.flags != 0) {
             DrawCircle((int)(px+i*28+22), (int)y+3, 3, (Color){255,180,60,255});
@@ -1395,12 +1500,12 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         Rectangle r32 = {togX + 28, y, 26, 18};
         bool h16 = CheckCollisionPointRec(mouse, r16);
         bool h32 = CheckCollisionPointRec(mouse, r32);
-        DrawRectangleRec(r16, steps==16 ? (Color){60,80,60,255} : (h16 ? (Color){42,44,52,255} : (Color){33,34,40,255}));
-        DrawRectangleRec(r32, steps==32 ? (Color){60,80,60,255} : (h32 ? (Color){42,44,52,255} : (Color){33,34,40,255}));
-        DrawRectangleLinesEx(r16, 1, steps==16 ? GREEN : (Color){48,48,58,255});
-        DrawRectangleLinesEx(r32, 1, steps==32 ? GREEN : (Color){48,48,58,255});
-        DrawTextShadow("16", (int)togX+6, (int)y+3, 10, steps==16 ? WHITE : GRAY);
-        DrawTextShadow("32", (int)togX+34, (int)y+3, 10, steps==32 ? WHITE : GRAY);
+        DrawRectangleRec(r16, steps==16 ? UI_TINT_GREEN : (h16 ? UI_BG_HOVER : UI_BG_BUTTON));
+        DrawRectangleRec(r32, steps==32 ? UI_TINT_GREEN : (h32 ? UI_BG_HOVER : UI_BG_BUTTON));
+        DrawRectangleLinesEx(r16, 1, steps==16 ? GREEN : UI_BORDER);
+        DrawRectangleLinesEx(r32, 1, steps==32 ? GREEN : UI_BORDER);
+        DrawTextShadow("16", (int)togX+6, (int)y+3, UI_FONT_SMALL, steps==16 ? WHITE : GRAY);
+        DrawTextShadow("32", (int)togX+34, (int)y+3, UI_FONT_SMALL, steps==32 ? WHITE : GRAY);
         if (h16 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             daw.stepCount = 16;
             Pattern *tp = dawPattern();
@@ -1420,10 +1525,10 @@ static void drawWorkSeq(float x, float y, float w, float h) {
     {
         Rectangle rf = {fillX, y, 30, 18};
         bool fhov = CheckCollisionPointRec(mouse, rf);
-        Color fbg = seq.fillMode ? (Color){140,80,50,255} : (fhov ? (Color){42,44,52,255} : (Color){33,34,40,255});
+        Color fbg = seq.fillMode ? UI_TINT_ORANGE : (fhov ? UI_BG_HOVER : UI_BG_BUTTON);
         DrawRectangleRec(rf, fbg);
-        DrawRectangleLinesEx(rf, 1, seq.fillMode ? (Color){255,160,80,255} : (Color){48,48,58,255});
-        DrawTextShadow("Fill", (int)fillX+3, (int)y+3, 10, seq.fillMode ? WHITE : GRAY);
+        DrawRectangleLinesEx(rf, 1, seq.fillMode ? (Color){255,160,80,255} : UI_BORDER);
+        DrawTextShadow("Fill", (int)fillX+3, (int)y+3, UI_FONT_SMALL, seq.fillMode ? WHITE : GRAY);
         if (fhov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { seq.fillMode = !seq.fillMode; ui_consume_click(); }
     }
 
@@ -1433,9 +1538,9 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         // Copy button
         Rectangle rc = {copyX, y, 30, 18};
         bool chov = CheckCollisionPointRec(mouse, rc);
-        DrawRectangleRec(rc, chov ? (Color){42,44,52,255} : (Color){33,34,40,255});
-        DrawRectangleLinesEx(rc, 1, (Color){48,48,58,255});
-        DrawTextShadow("Cpy", (int)copyX+4, (int)y+3, 10, chov ? WHITE : GRAY);
+        DrawRectangleRec(rc, chov ? UI_BG_HOVER : UI_BG_BUTTON);
+        DrawRectangleLinesEx(rc, 1, UI_BORDER);
+        DrawTextShadow("Cpy", (int)copyX+4, (int)y+3, UI_FONT_SMALL, chov ? WHITE : GRAY);
         if (chov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             int dst = (daw.transport.currentPattern + 1) % SEQ_NUM_PATTERNS;
             copyPattern(&seq.patterns[dst], dawPattern());
@@ -1444,9 +1549,9 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         // Clear button
         Rectangle rcl = {copyX + 33, y, 30, 18};
         bool clhov = CheckCollisionPointRec(mouse, rcl);
-        DrawRectangleRec(rcl, clhov ? (Color){60,40,40,255} : (Color){33,34,40,255});
-        DrawRectangleLinesEx(rcl, 1, (Color){48,48,58,255});
-        DrawTextShadow("Clr", (int)copyX+37, (int)y+3, 10, clhov ? (Color){255,120,120,255} : GRAY);
+        DrawRectangleRec(rcl, clhov ? UI_BG_RED_DARK : UI_BG_BUTTON);
+        DrawRectangleLinesEx(rcl, 1, UI_BORDER);
+        DrawTextShadow("Clr", (int)copyX+37, (int)y+3, UI_FONT_SMALL, clhov ? (Color){255,120,120,255} : GRAY);
         if (clhov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { clearPattern(dawPattern()); ui_consume_click(); }
     }
 
@@ -1462,10 +1567,10 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         const char *modeName = (rhythmGen.mode == RHYTHM_MODE_PROB_MAP) ? "Prob" : "Clas";
         Rectangle rm = {cx, y, 32, 18};
         bool mhov = CheckCollisionPointRec(mouse, rm);
-        Color modeCol = (rhythmGen.mode == RHYTHM_MODE_PROB_MAP) ? (Color){80,140,200,255} : (Color){200,160,80,255};
-        DrawRectangleRec(rm, mhov ? (Color){45,48,55,255} : (Color){33,34,40,255});
-        DrawRectangleLinesEx(rm, 1, (Color){48,48,58,255});
-        DrawTextShadow(modeName, (int)cx+4, (int)y+3, 10, mhov ? WHITE : modeCol);
+        Color modeCol = (rhythmGen.mode == RHYTHM_MODE_PROB_MAP) ? (Color){80,140,200,255} : UI_TEXT_GOLD;
+        DrawRectangleRec(rm, mhov ? UI_BG_HOVER : UI_BG_BUTTON);
+        DrawRectangleLinesEx(rm, 1, UI_BORDER);
+        DrawTextShadow(modeName, (int)cx+4, (int)y+3, UI_FONT_SMALL, mhov ? WHITE : modeCol);
         if (mhov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             rhythmGen.mode = (rhythmGen.mode + 1) % RHYTHM_MODE_COUNT;
             ui_consume_click();
@@ -1476,13 +1581,13 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             // Style selector
             Rectangle rs = {cx, y, 60, 18};
             bool shov = CheckCollisionPointRec(mouse, rs);
-            DrawRectangleRec(rs, shov ? (Color){45,48,55,255} : (Color){33,34,40,255});
-            DrawRectangleLinesEx(rs, 1, (Color){48,48,58,255});
-            DrawTextShadow(rhythmStyleNames[rhythmGen.style], (int)cx+4, (int)y+3, 10, shov ? WHITE : (Color){180,180,200,255});
+            DrawRectangleRec(rs, shov ? UI_BG_HOVER : UI_BG_BUTTON);
+            DrawRectangleLinesEx(rs, 1, UI_BORDER);
+            DrawTextShadow(rhythmStyleNames[rhythmGen.style], (int)cx+4, (int)y+3, UI_FONT_SMALL, shov ? WHITE : UI_TEXT_BRIGHT);
             if (shov) {
-                float wh = GetMouseWheelMove();
-                if (wh > 0) rhythmGen.style = (rhythmGen.style + 1) % RHYTHM_COUNT;
-                else if (wh < 0) rhythmGen.style = (rhythmGen.style + RHYTHM_COUNT - 1) % RHYTHM_COUNT;
+                int d = scrollDelta(GetMouseWheelMove(), 100);
+                if (d > 0) rhythmGen.style = (rhythmGen.style + 1) % RHYTHM_COUNT;
+                else if (d < 0) rhythmGen.style = (rhythmGen.style + RHYTHM_COUNT - 1) % RHYTHM_COUNT;
                 if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { rhythmGen.style = (rhythmGen.style + 1) % RHYTHM_COUNT; ui_consume_click(); }
                 if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) { rhythmGen.style = (rhythmGen.style + RHYTHM_COUNT - 1) % RHYTHM_COUNT; ui_consume_click(); }
             }
@@ -1490,14 +1595,14 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             // Variation selector
             Rectangle rv = {cx + 63, y, 42, 18};
             bool vhov = CheckCollisionPointRec(mouse, rv);
-            DrawRectangleRec(rv, vhov ? (Color){45,48,55,255} : (Color){33,34,40,255});
-            DrawRectangleLinesEx(rv, 1, (Color){48,48,58,255});
+            DrawRectangleRec(rv, vhov ? UI_BG_HOVER : UI_BG_BUTTON);
+            DrawRectangleLinesEx(rv, 1, UI_BORDER);
             static const char* varNames[] = {"Norm", "Fill", "Spar", "Busy", "Sync"};
-            DrawTextShadow(varNames[rhythmGen.variation], (int)cx+67, (int)y+3, 10, vhov ? WHITE : (Color){160,160,180,255});
+            DrawTextShadow(varNames[rhythmGen.variation], (int)cx+67, (int)y+3, UI_FONT_SMALL, vhov ? WHITE : UI_TEXT_BRIGHT);
             if (vhov) {
-                float wh = GetMouseWheelMove();
-                if (wh > 0) rhythmGen.variation = (rhythmGen.variation + 1) % RHYTHM_VAR_COUNT;
-                else if (wh < 0) rhythmGen.variation = (rhythmGen.variation + RHYTHM_VAR_COUNT - 1) % RHYTHM_VAR_COUNT;
+                int d = scrollDelta(GetMouseWheelMove(), 101);
+                if (d > 0) rhythmGen.variation = (rhythmGen.variation + 1) % RHYTHM_VAR_COUNT;
+                else if (d < 0) rhythmGen.variation = (rhythmGen.variation + RHYTHM_VAR_COUNT - 1) % RHYTHM_VAR_COUNT;
                 if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { rhythmGen.variation = (rhythmGen.variation + 1) % RHYTHM_VAR_COUNT; ui_consume_click(); }
             }
             cx += 108;
@@ -1505,13 +1610,13 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             // Prob map style selector
             Rectangle rs = {cx, y, 72, 18};
             bool shov = CheckCollisionPointRec(mouse, rs);
-            DrawRectangleRec(rs, shov ? (Color){45,48,55,255} : (Color){33,34,40,255});
-            DrawRectangleLinesEx(rs, 1, (Color){48,48,58,255});
-            DrawTextShadow(probMapNames[rhythmGen.probStyle], (int)cx+4, (int)y+3, 10, shov ? WHITE : (Color){140,180,220,255});
+            DrawRectangleRec(rs, shov ? UI_BG_HOVER : UI_BG_BUTTON);
+            DrawRectangleLinesEx(rs, 1, UI_BORDER);
+            DrawTextShadow(probMapNames[rhythmGen.probStyle], (int)cx+4, (int)y+3, UI_FONT_SMALL, shov ? WHITE : UI_TEXT_BLUE);
             if (shov) {
-                float wh = GetMouseWheelMove();
-                if (wh > 0) rhythmGen.probStyle = (rhythmGen.probStyle + 1) % PROB_MAP_COUNT;
-                else if (wh < 0) rhythmGen.probStyle = (rhythmGen.probStyle + PROB_MAP_COUNT - 1) % PROB_MAP_COUNT;
+                int d = scrollDelta(GetMouseWheelMove(), 102);
+                if (d > 0) rhythmGen.probStyle = (rhythmGen.probStyle + 1) % PROB_MAP_COUNT;
+                else if (d < 0) rhythmGen.probStyle = (rhythmGen.probStyle + PROB_MAP_COUNT - 1) % PROB_MAP_COUNT;
                 if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { rhythmGen.probStyle = (rhythmGen.probStyle + 1) % PROB_MAP_COUNT; ui_consume_click(); }
                 if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) { rhythmGen.probStyle = (rhythmGen.probStyle + PROB_MAP_COUNT - 1) % PROB_MAP_COUNT; ui_consume_click(); }
             }
@@ -1519,12 +1624,12 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             // Density knob (drag horizontal)
             Rectangle rd = {cx + 75, y, 36, 18};
             bool dhov = CheckCollisionPointRec(mouse, rd);
-            DrawRectangleRec(rd, dhov ? (Color){45,48,55,255} : (Color){33,34,40,255});
-            DrawRectangleLinesEx(rd, 1, (Color){48,48,58,255});
+            DrawRectangleRec(rd, dhov ? UI_BG_HOVER : UI_BG_BUTTON);
+            DrawRectangleLinesEx(rd, 1, UI_BORDER);
             // Fill bar to show density level
             float fillW = 34.0f * rhythmGen.density;
             DrawRectangleRec((Rectangle){cx+76, y+14, fillW, 3}, (Color){80,140,200,180});
-            DrawTextShadow(TextFormat("D%.0f", rhythmGen.density * 100), (int)cx+78, (int)y+3, 10, dhov ? WHITE : (Color){140,180,220,255});
+            DrawTextShadow(TextFormat("D%.0f", rhythmGen.density * 100), (int)cx+78, (int)y+3, UI_FONT_SMALL, dhov ? WHITE : UI_TEXT_BLUE);
             if (dhov) {
                 float wh = GetMouseWheelMove();
                 if (wh != 0) { rhythmGen.density += wh * 0.05f; if (rhythmGen.density < 0) rhythmGen.density = 0; if (rhythmGen.density > 1) rhythmGen.density = 1; }
@@ -1533,11 +1638,11 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             // Randomize knob
             Rectangle rr = {cx + 114, y, 30, 18};
             bool rhov = CheckCollisionPointRec(mouse, rr);
-            DrawRectangleRec(rr, rhov ? (Color){45,48,55,255} : (Color){33,34,40,255});
-            DrawRectangleLinesEx(rr, 1, (Color){48,48,58,255});
+            DrawRectangleRec(rr, rhov ? UI_BG_HOVER : UI_BG_BUTTON);
+            DrawRectangleLinesEx(rr, 1, UI_BORDER);
             float rndFillW = 28.0f * rhythmGen.randomize;
             DrawRectangleRec((Rectangle){cx+115, y+14, rndFillW, 3}, (Color){200,140,80,180});
-            DrawTextShadow(TextFormat("R%.0f", rhythmGen.randomize * 100), (int)cx+117, (int)y+3, 10, rhov ? WHITE : (Color){200,160,80,255});
+            DrawTextShadow(TextFormat("R%.0f", rhythmGen.randomize * 100), (int)cx+117, (int)y+3, UI_FONT_SMALL, rhov ? WHITE : UI_TEXT_GOLD);
             if (rhov) {
                 float wh = GetMouseWheelMove();
                 if (wh != 0) { rhythmGen.randomize += wh * 0.05f; if (rhythmGen.randomize < 0) rhythmGen.randomize = 0; if (rhythmGen.randomize > 1) rhythmGen.randomize = 1; }
@@ -1548,9 +1653,9 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         // Gen button
         Rectangle rg = {cx, y, 30, 18};
         bool ghov = CheckCollisionPointRec(mouse, rg);
-        DrawRectangleRec(rg, ghov ? (Color){60,90,60,255} : (Color){40,55,40,255});
-        DrawRectangleLinesEx(rg, 1, ghov ? GREEN : (Color){48,58,48,255});
-        DrawTextShadow("Gen", (int)cx+4, (int)y+3, 10, ghov ? WHITE : GREEN);
+        DrawRectangleRec(rg, ghov ? UI_TINT_GREEN_HI : UI_BG_GREEN_DARK);
+        DrawRectangleLinesEx(rg, 1, ghov ? GREEN : UI_BG_GREEN_DARK);
+        DrawTextShadow("Gen", (int)cx+4, (int)y+3, UI_FONT_SMALL, ghov ? WHITE : GREEN);
         if (ghov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             generateRhythm(dawPattern(), &rhythmGen);
             seq.dilla.swing = getRhythmSwing(&rhythmGen);
@@ -1572,7 +1677,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         }
 
         // BPM hint
-        DrawTextShadow(TextFormat("~%d", getRhythmRecommendedBpm(&rhythmGen)), (int)cx+34, (int)y+4, 9, (Color){70,70,80,255});
+        DrawTextShadow(TextFormat("~%d", getRhythmRecommendedBpm(&rhythmGen)), (int)cx+34, (int)y+4, UI_FONT_SMALL, UI_TEXT_MUTED);
         cx += 64;
 
         // Euclidean generator — click "Euc" to expand
@@ -1580,47 +1685,47 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         static int eucHits = 4, eucSteps = 16, eucRot = 0, eucTrack = 0;
         Rectangle eucToggle = {cx, y, 24, 18};
         bool eucTogHov = CheckCollisionPointRec(mouse, eucToggle);
-        DrawRectangleRec(eucToggle, eucTogHov ? (Color){45,48,55,255} : (Color){33,34,40,255});
-        DrawRectangleLinesEx(eucToggle, 1, (Color){48,48,58,255});
-        DrawTextShadow("Euc", (int)cx+2, (int)y+3, 10, eucTogHov ? WHITE : (eucOpen ? (Color){140,180,200,255} : (Color){70,70,80,255}));
+        DrawRectangleRec(eucToggle, eucTogHov ? UI_BG_HOVER : UI_BG_BUTTON);
+        DrawRectangleLinesEx(eucToggle, 1, UI_BORDER);
+        DrawTextShadow("Euc", (int)cx+2, (int)y+3, UI_FONT_SMALL, eucTogHov ? WHITE : (eucOpen ? (Color){140,180,200,255} : UI_TEXT_MUTED));
         if (eucTogHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { eucOpen = !eucOpen; ui_consume_click(); }
         if (eucOpen) {
             cx += 27;
             // Hits
             Rectangle reh = {cx, y, 22, 18};
             bool ehhov = CheckCollisionPointRec(mouse, reh);
-            DrawRectangleRec(reh, ehhov ? (Color){45,48,55,255} : (Color){33,34,40,255});
-            DrawRectangleLinesEx(reh, 1, (Color){48,48,58,255});
-            DrawTextShadow(TextFormat("%d", eucHits), (int)cx+3, (int)y+3, 10, ehhov ? WHITE : (Color){180,200,140,255});
-            if (ehhov) { float wh = GetMouseWheelMove(); if (wh > 0 && eucHits < eucSteps) eucHits++; else if (wh < 0 && eucHits > 0) eucHits--; }
+            DrawRectangleRec(reh, ehhov ? UI_BG_HOVER : UI_BG_BUTTON);
+            DrawRectangleLinesEx(reh, 1, UI_BORDER);
+            DrawTextShadow(TextFormat("%d", eucHits), (int)cx+3, (int)y+3, UI_FONT_SMALL, ehhov ? WHITE : (Color){180,200,140,255});
+            if (ehhov) { int d = scrollDelta(GetMouseWheelMove(), 103); if (d > 0 && eucHits < eucSteps) eucHits++; else if (d < 0 && eucHits > 0) eucHits--; }
             // Steps
             Rectangle res = {cx+24, y, 22, 18};
             bool eshov = CheckCollisionPointRec(mouse, res);
-            DrawRectangleRec(res, eshov ? (Color){45,48,55,255} : (Color){33,34,40,255});
-            DrawRectangleLinesEx(res, 1, (Color){48,48,58,255});
-            DrawTextShadow(TextFormat("%d", eucSteps), (int)cx+27, (int)y+3, 10, eshov ? WHITE : (Color){140,180,200,255});
-            if (eshov) { float wh = GetMouseWheelMove(); if (wh > 0 && eucSteps < 32) eucSteps++; else if (wh < 0 && eucSteps > 1) eucSteps--; if (eucHits > eucSteps) eucHits = eucSteps; }
+            DrawRectangleRec(res, eshov ? UI_BG_HOVER : UI_BG_BUTTON);
+            DrawRectangleLinesEx(res, 1, UI_BORDER);
+            DrawTextShadow(TextFormat("%d", eucSteps), (int)cx+27, (int)y+3, UI_FONT_SMALL, eshov ? WHITE : (Color){140,180,200,255});
+            if (eshov) { int d = scrollDelta(GetMouseWheelMove(), 104); if (d > 0 && eucSteps < 32) eucSteps++; else if (d < 0 && eucSteps > 1) eucSteps--; if (eucHits > eucSteps) eucHits = eucSteps; }
             // Rotation
             Rectangle rer = {cx+48, y, 22, 18};
             bool erhov = CheckCollisionPointRec(mouse, rer);
-            DrawRectangleRec(rer, erhov ? (Color){45,48,55,255} : (Color){33,34,40,255});
-            DrawRectangleLinesEx(rer, 1, (Color){48,48,58,255});
-            DrawTextShadow(TextFormat("r%d", eucRot), (int)cx+50, (int)y+3, 10, erhov ? WHITE : (Color){200,160,140,255});
-            if (erhov) { float wh = GetMouseWheelMove(); if (wh > 0) eucRot = (eucRot + 1) % eucSteps; else if (wh < 0) eucRot = (eucRot + eucSteps - 1) % eucSteps; }
+            DrawRectangleRec(rer, erhov ? UI_BG_HOVER : UI_BG_BUTTON);
+            DrawRectangleLinesEx(rer, 1, UI_BORDER);
+            DrawTextShadow(TextFormat("r%d", eucRot), (int)cx+50, (int)y+3, UI_FONT_SMALL, erhov ? WHITE : (Color){200,160,140,255});
+            if (erhov) { int d = scrollDelta(GetMouseWheelMove(), 105); if (d > 0) eucRot = (eucRot + 1) % eucSteps; else if (d < 0) eucRot = (eucRot + eucSteps - 1) % eucSteps; }
             // Track target
             static const char* eucTrk[] = {"K","S","H","C"};
             Rectangle ret = {cx+72, y, 16, 18};
             bool ethov = CheckCollisionPointRec(mouse, ret);
-            DrawRectangleRec(ret, ethov ? (Color){45,48,55,255} : (Color){33,34,40,255});
-            DrawRectangleLinesEx(ret, 1, (Color){48,48,58,255});
-            DrawTextShadow(eucTrk[eucTrack], (int)cx+75, (int)y+3, 10, ethov ? WHITE : (Color){160,160,180,255});
+            DrawRectangleRec(ret, ethov ? UI_BG_HOVER : UI_BG_BUTTON);
+            DrawRectangleLinesEx(ret, 1, UI_BORDER);
+            DrawTextShadow(eucTrk[eucTrack], (int)cx+75, (int)y+3, UI_FONT_SMALL, ethov ? WHITE : UI_TEXT_BRIGHT);
             if (ethov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { eucTrack = (eucTrack + 1) % SEQ_DRUM_TRACKS; ui_consume_click(); }
             // Apply
             Rectangle rea = {cx+90, y, 20, 18};
             bool eahov = CheckCollisionPointRec(mouse, rea);
-            DrawRectangleRec(rea, eahov ? (Color){60,90,60,255} : (Color){40,55,40,255});
-            DrawRectangleLinesEx(rea, 1, eahov ? GREEN : (Color){48,58,48,255});
-            DrawTextShadow("E", (int)cx+94, (int)y+3, 10, eahov ? WHITE : GREEN);
+            DrawRectangleRec(rea, eahov ? UI_TINT_GREEN_HI : UI_BG_GREEN_DARK);
+            DrawRectangleLinesEx(rea, 1, eahov ? GREEN : UI_BG_GREEN_DARK);
+            DrawTextShadow("E", (int)cx+94, (int)y+3, UI_FONT_SMALL, eahov ? WHITE : GREEN);
             if (eahov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 applyEuclideanToTrack(dawPattern(), eucTrack, eucHits, eucSteps, eucRot, 0.8f);
                 ui_consume_click();
@@ -1655,7 +1760,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
     for (int i = 0; i < steps; i++) {
         int sx = (int)x + labelW + i * cellW;
         if (i % numSkip != 0 && steps == 32) continue;
-        Color numCol = (i%4==0) ? (Color){80,80,90,255} : (Color){50,50,58,255};
+        Color numCol = (i%4==0) ? UI_BORDER_LIGHT : UI_BG_HOVER;
         DrawTextShadow(TextFormat("%d", i+1), sx + (steps==32 ? 1 : cellW/2-3), (int)y, steps==32 ? 8 : 9, numCol);
     }
 
@@ -1663,8 +1768,8 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         int ty = (int)y + 14 + track * (cellH + 2);
         bool isDrum = (track < 4);
         bool isSampler = (track == SEQ_TRACK_SAMPLER);
-        if (track == 4) DrawLine((int)x, ty-2, (int)(x+w), ty-2, (Color){55,55,70,255});
-        if (track == SEQ_TRACK_SAMPLER) DrawLine((int)x, ty-2, (int)(x+w), ty-2, (Color){55,55,70,255});
+        if (track == 4) DrawLine((int)x, ty-2, (int)(x+w), ty-2, UI_BORDER);
+        if (track == SEQ_TRACK_SAMPLER) DrawLine((int)x, ty-2, (int)(x+w), ty-2, UI_BORDER);
 
         // --- Inline mute + volume bar + track name ---
         int lx = (int)x;
@@ -1673,26 +1778,26 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         // Mute button (12x12)
         Rectangle muteR = {(float)lx, (float)(lcy-6), 12, 12};
         bool muteHov = CheckCollisionPointRec(mouse, muteR);
-        Color muteBg = daw.mixer.mute[track] ? (Color){150,50,50,255} : (muteHov ? (Color){55,45,45,255} : (Color){35,30,30,255});
+        Color muteBg = daw.mixer.mute[track] ? (Color){150,50,50,255} : (muteHov ? UI_BG_RED_DARK : UI_BG_RED_DARK);
         DrawRectangleRec(muteR, muteBg);
-        DrawTextShadow("M", lx+2, lcy-5, 9, daw.mixer.mute[track] ? WHITE : GRAY);
+        DrawTextShadow("M", lx+2, lcy-5, UI_FONT_SMALL, daw.mixer.mute[track] ? WHITE : GRAY);
         if (muteHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { daw.mixer.mute[track] = !daw.mixer.mute[track]; ui_consume_click(); }
 
         // Solo button (12x12)
         Rectangle soloR = {(float)(lx+14), (float)(lcy-6), 12, 12};
         bool soloHov = CheckCollisionPointRec(mouse, soloR);
-        Color soloBg = daw.mixer.solo[track] ? (Color){170,170,55,255} : (soloHov ? (Color){55,55,40,255} : (Color){35,35,30,255});
+        Color soloBg = daw.mixer.solo[track] ? (Color){170,170,55,255} : (soloHov ? UI_BG_BROWN : UI_BG_RED_DARK);
         DrawRectangleRec(soloR, soloBg);
-        DrawTextShadow("S", lx+16, lcy-5, 9, daw.mixer.solo[track] ? BLACK : GRAY);
+        DrawTextShadow("S", lx+16, lcy-5, UI_FONT_SMALL, daw.mixer.solo[track] ? BLACK : GRAY);
         if (soloHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { daw.mixer.solo[track] = !daw.mixer.solo[track]; ui_consume_click(); }
 
         // Track volume bar (pre-trigger velocity scaling via seq.trackVolume)
         float volBarX = lx + 29, volBarW = 40, volBarH = 8;
         float volBarY = lcy - volBarH/2;
         float *tVol = &seq.trackVolume[track];
-        DrawRectangle((int)volBarX, (int)volBarY, (int)volBarW, (int)volBarH, (Color){20,20,25,255});
+        DrawRectangle((int)volBarX, (int)volBarY, (int)volBarW, (int)volBarH, UI_BG_DEEPEST);
         float volFill = *tVol * volBarW;
-        Color volCol = daw.mixer.mute[track] ? (Color){80,40,40,255} : (isDrum ? (Color){50,110,50,255} : (Color){50,80,140,255});
+        Color volCol = daw.mixer.mute[track] ? UI_BG_RED_MED : (isDrum ? (Color){50,110,50,255} : (Color){50,80,140,255});
         DrawRectangle((int)volBarX, (int)volBarY, (int)volFill, (int)volBarH, volCol);
         Rectangle volR = {volBarX, (float)ty, volBarW, (float)cellH}; // full row height for easier dragging
         if (CheckCollisionPointRec(mouse, volR) && !muteHov && !soloHov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
@@ -1704,15 +1809,15 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         // Track name (clickable — selects patch/drums in param panel)
         Rectangle nameR = {(float)(lx + 70), (float)ty, (float)(labelW - 70), (float)cellH};
         bool nameHov = CheckCollisionPointRec(mouse, nameR);
-        Color nameCol = isDrum ? LIGHTGRAY : (Color){140,180,255,255};
+        Color nameCol = isDrum ? LIGHTGRAY : UI_TEXT_BLUE;
         if (nameHov) { nameCol.r = (unsigned char)(nameCol.r + 40 > 255 ? 255 : nameCol.r + 40);
                        nameCol.g = (unsigned char)(nameCol.g + 40 > 255 ? 255 : nameCol.g + 40);
                        nameCol.b = (unsigned char)(nameCol.b + 40 > 255 ? 255 : nameCol.b + 40); }
-        DrawTextShadow(trackNames[track], lx + 72, lcy-5, 9, nameCol);
+        DrawTextShadow(trackNames[track], lx + 72, lcy-5, UI_FONT_SMALL, nameCol);
         // Per-track length (right-click or scroll on name to change)
         int tLen = dawPattern()->trackLength[track];
         bool lenDiffers = (tLen != daw.stepCount);
-        Color lenCol = lenDiffers ? (Color){200,160,80,255} : (Color){70,70,80,255};
+        Color lenCol = lenDiffers ? UI_TEXT_GOLD : UI_TEXT_MUTED;
         DrawTextShadow(TextFormat("%d", tLen), lx + labelW - 16, lcy-4, 8, lenCol);
         if (nameHov) {
             float wh = GetMouseWheelMove();
@@ -1741,10 +1846,10 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             int melTrack = track - SEQ_DRUM_TRACKS;
             Rectangle acidR = {(float)(lx + labelW - 30), (float)(ty + 1), 14, (float)(cellH - 2)};
             bool acidHov = CheckCollisionPointRec(mouse, acidR);
-            Color acidBg = acidHov ? (Color){70,55,30,255} : (Color){40,35,28,255};
+            Color acidBg = acidHov ? UI_BG_BROWN : UI_BG_BROWN;
             DrawRectangleRec(acidR, acidBg);
-            DrawRectangleLinesEx(acidR, 1, acidHov ? (Color){220,180,60,255} : (Color){60,50,35,255});
-            DrawTextShadow("*", (int)acidR.x + 4, (int)acidR.y + cellH/2 - 6, 9, acidHov ? (Color){255,200,60,255} : (Color){100,80,40,255});
+            DrawRectangleLinesEx(acidR, 1, acidHov ? (Color){220,180,60,255} : UI_BG_BROWN);
+            DrawTextShadow("*", (int)acidR.x + 4, (int)acidR.y + cellH/2 - 6, UI_FONT_SMALL, acidHov ? (Color){255,200,60,255} : (Color){100,80,40,255});
             if (acidHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 generate303Bassline(dawPattern(), melTrack);
                 ui_consume_click();
@@ -1755,11 +1860,11 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             int sx = (int)x + labelW + step * cellW;
             Rectangle cell = {(float)sx, (float)ty, (float)(cellW-1), (float)cellH};
             bool hov = CheckCollisionPointRec(mouse, cell);
-            Color bg = (step/4)%2==0 ? (Color){36,36,42,255} : (Color){30,30,35,255};
+            Color bg = (step/4)%2==0 ? UI_BG_BUTTON : UI_BG_PANEL;
 
             if (isDrum && step < 32 && patGetDrum(dawPattern(), track, step)) bg = (Color){50,125,65,255};
             if (isSampler && patGetNote(dawPattern(), track, step) != SEQ_NOTE_OFF)
-                bg = (Color){140,90,50,255};  // orange-brown for sampler
+                bg = UI_TINT_ORANGE;  // orange-brown for sampler
             else if (!isDrum && !isSampler && track >= SEQ_DRUM_TRACKS && patGetNote(dawPattern(), track, step) != SEQ_NOTE_OFF)
                 bg = (Color){50,80,140,255};
             // Playhead highlight (per-track for polyrhythm)
@@ -1769,7 +1874,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                   bg.b = (unsigned char)(bg.b + 20 > 255 ? 255 : bg.b + 20); }
             if (hov) { bg.r += 18; bg.g += 18; bg.b += 18; }
             DrawRectangleRec(cell, bg);
-            DrawRectangleLinesEx(cell, 1, (Color){48,48,56,255});
+            DrawRectangleLinesEx(cell, 1, UI_BG_HOVER);
             // Velocity indicator + p-lock dot
             {
                 Pattern *pat = dawPattern();
@@ -1796,13 +1901,13 @@ static void drawWorkSeq(float x, float y, float w, float h) {
 
             // Draw note name for melody cells, or slice number for sampler
             if (isSampler) {
-                int note = patGetNote(dawPattern(), track, step);
-                if (note != SEQ_NOTE_OFF && cellW >= 10) {
-                    DrawTextShadow(TextFormat("%d", note), sx+2, ty+2, 8, (Color){255,200,100,255});
-                    // Show per-step pitch offset when non-zero
-                    StepV2 *sv = &dawPattern()->steps[track][step];
-                    if (sv->noteCount > 0 && sv->notes[0].nudge != 0) {
-                        DrawTextShadow(TextFormat("%+d", sv->notes[0].nudge),
+                StepV2 *sv = &dawPattern()->steps[track][step];
+                if (sv->noteCount > 0 && sv->notes[0].note != SEQ_NOTE_OFF && cellW >= 10) {
+                    DrawTextShadow(TextFormat("S%d", sv->notes[0].slice), sx+2, ty+2, 8, (Color){255,200,100,255});
+                    // Show pitch offset when non-center (60 = no shift)
+                    int pitchOff = sv->notes[0].note - 60;
+                    if (pitchOff != 0) {
+                        DrawTextShadow(TextFormat("%+d", pitchOff),
                                       sx+2, ty+cellH-10, 7, (Color){180,140,255,220});
                     }
                 }
@@ -1821,10 +1926,12 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                     else
                         patSetDrum(dawPattern(), track, step, 0.8f, 0.0f);
                 } else if (isSampler) {
-                    if (patGetNote(dawPattern(), track, step) == SEQ_NOTE_OFF) {
-                        patSetNote(dawPattern(), track, step, 0, 0.8f, 1); // slice 0 default
-                    } else {
+                    StepV2 *sv = &dawPattern()->steps[track][step];
+                    if (sv->noteCount > 0 && sv->notes[0].note != SEQ_NOTE_OFF) {
                         patClearNote(dawPattern(), track, step);
+                    } else {
+                        patSetNote(dawPattern(), track, step, 60, 0.8f, 1); // pitch 60 = center
+                        sv->notes[0].slice = 0;
                     }
                 } else if (!isDrum && track >= SEQ_DRUM_TRACKS) {
                     if (patGetNote(dawPattern(), track, step) == SEQ_NOTE_OFF)
@@ -1851,57 +1958,32 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                         else patSetNoteVel(pat, track, step, vel);
                     }
                 } else if (wh != 0.0f && isSampler && IsKeyDown(KEY_LEFT_CONTROL)) {
-                    // Ctrl+scroll = per-step pitch offset for sampler track
-                    static float samplerPitchAccum = 0.0f;
-                    static int samplerPitchStep = -1;
-                    if (step != samplerPitchStep) { samplerPitchAccum = 0.0f; samplerPitchStep = step; }
-                    Pattern *pat = dawPattern();
-                    if (patGetNote(pat, track, step) != SEQ_NOTE_OFF) {
-                        StepV2 *sv = &pat->steps[track][step];
-                        if (sv->noteCount > 0) {
-                            samplerPitchAccum += wh;
-                            int delta = (int)samplerPitchAccum;
-                            if (delta != 0) {
-                                int newNudge = sv->notes[0].nudge + delta;
-                                if (newNudge < -24) newNudge = -24;
-                                if (newNudge > 24) newNudge = 24;
-                                sv->notes[0].nudge = (int8_t)newNudge;
-                                samplerPitchAccum -= delta;
-                            }
-                        }
+                    // Ctrl+scroll = per-step pitch for sampler track
+                    int delta = scrollDelta(wh, 200 + step);
+                    StepV2 *sv = &dawPattern()->steps[track][step];
+                    if (delta != 0 && sv->noteCount > 0 && sv->notes[0].note != SEQ_NOTE_OFF) {
+                        int newNote = sv->notes[0].note + delta;
+                        if (newNote < 36) newNote = 36;
+                        if (newNote > 84) newNote = 84;
+                        sv->notes[0].note = (int8_t)newNote;
                     }
                 } else if (wh != 0.0f && isSampler) {
                     // Scroll = change slice number for sampler track
-                    static float samplerSliceAccum = 0.0f;
-                    static int samplerSliceStep = -1;
-                    if (step != samplerSliceStep) { samplerSliceAccum = 0.0f; samplerSliceStep = step; }
-                    int note = patGetNote(dawPattern(), track, step);
-                    if (note != SEQ_NOTE_OFF) {
-                        samplerSliceAccum += wh;
-                        int delta = (int)samplerSliceAccum;
-                        if (delta != 0) {
-                            note += delta;
-                            if (note < 0) note = 0;
-                            if (note >= SAMPLER_MAX_SAMPLES) note = SAMPLER_MAX_SAMPLES - 1;
-                            patSetNote(dawPattern(), track, step, note, patGetNoteVel(dawPattern(), track, step), 1);
-                            samplerSliceAccum -= delta;
-                        }
+                    int delta = scrollDelta(wh, 300 + step);
+                    StepV2 *sv = &dawPattern()->steps[track][step];
+                    if (delta != 0 && sv->noteCount > 0 && sv->notes[0].note != SEQ_NOTE_OFF) {
+                        int newSlice = sv->notes[0].slice + delta;
+                        if (newSlice < 0) newSlice = 0;
+                        if (newSlice >= SAMPLER_MAX_SAMPLES) newSlice = SAMPLER_MAX_SAMPLES - 1;
+                        sv->notes[0].slice = (uint8_t)newSlice;
                     }
                 } else if (wh != 0.0f && !isDrum && track >= SEQ_DRUM_TRACKS) {
-                    // Plain scroll = pitch (melody only) — accumulate for smooth scroll
-                    static float pitchWheelAccum = 0.0f;
-                    static int pitchWheelTrack = -1, pitchWheelStep = -1;
-                    if (track != pitchWheelTrack || step != pitchWheelStep) {
-                        pitchWheelAccum = 0.0f;
-                        pitchWheelTrack = track; pitchWheelStep = step;
-                    }
-                    pitchWheelAccum += wh;
-                    int delta = (int)pitchWheelAccum;
+                    // Plain scroll = pitch (melody only)
+                    int delta = scrollDelta(wh, 400 + track * 100 + step);
                     if (delta != 0 && patGetNote(dawPattern(), track, step) != SEQ_NOTE_OFF) {
                         int n = patGetNote(dawPattern(), track, step) + delta;
                         if (n < 0) n = 0; if (n > 127) n = 127;
                         patSetNote(dawPattern(), track, step, n, patGetNoteVel(dawPattern(), track, step), patGetNoteGate(dawPattern(), track, step));
-                        pitchWheelAccum -= delta;
                     }
                 }
             }
@@ -1927,14 +2009,14 @@ static void drawWorkSeq(float x, float y, float w, float h) {
 
     // === STEP INSPECTOR (below grid) ===
     if (detailCtx == DETAIL_STEP && detailStep >= 0) {
-        float iy = y + 14 + 7 * (cellH + 2) + 6;
-        DrawLine((int)x, (int)iy-2, (int)(x+w), (int)iy-2, (Color){50,50,62,255});
+        float iy = y + 14 + 8 * (cellH + 2) + 6;
+        DrawLine((int)x, (int)iy-2, (int)(x+w), (int)iy-2, UI_DIVIDER);
 
         // Step header
         const char* tn = (detailTrack >= 0 && detailTrack < 7) ? trackNames[detailTrack] : "?";
         bool isDrumTrack = (detailTrack < 4);
         DrawTextShadow(TextFormat("Step %d - %s", detailStep+1, tn),
-                       (int)x+4, (int)iy+2, 13, ORANGE);
+                       (int)x+4, (int)iy+2, UI_FONT_MEDIUM, ORANGE);
 
         Pattern *pat = dawPattern();
         int ds = detailStep;
@@ -1953,7 +2035,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         }
 
         // Params spread horizontally
-        float cx = x + 130;
+        float cx = x + 160;
         UIColumn c1 = ui_column(cx, iy, 15);
         ui_col_float_p(&c1, "Velocity", &vel, 0.05f, 0.0f, 1.0f);
         ui_col_float_p(&c1, "Probability", &prob, 0.05f, 0.0f, 1.0f);
@@ -1981,7 +2063,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             if (noteVal != SEQ_NOTE_OFF) {
                 const char* nn[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
                 int oct = noteVal / 12 - 1;
-                ui_col_sublabel(&c4, TextFormat("Note: %s%d (MIDI %d)", nn[noteVal % 12], oct, noteVal), (Color){140,180,255,255});
+                ui_col_sublabel(&c4, TextFormat("Note: %s%d (MIDI %d)", nn[noteVal % 12], oct, noteVal), UI_TEXT_BLUE);
                 ui_col_int(&c4, "MIDI Note", &noteVal, 1, 0, 127);
             }
             accent = patGetNoteAccent(pat, detailTrack, ds);
@@ -2026,15 +2108,21 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         bool plRightClick = IsMouseButtonPressed(MOUSE_RIGHT_BUTTON);
         int absTrack = detailTrack; // drums 0-3 already absolute, melody needs SEQ_DRUM_TRACKS offset handled below
 
-        Color plColorDrum = (Color){255, 180, 100, 255};
+        Color plColorDrum = UI_PLOCK_DRUM;
         Color plColorMelody = (Color){180, 120, 255, 255};
         Color plActiveColor = isDrumTrack ? plColorDrum : plColorMelody;
 
-        DrawTextShadow("P-Lock:", (int)x+4, (int)plY, 10, plActiveColor);
+        int plFS = UI_FONT_MEDIUM;
+        int plBoxH = plFS + 6;
+        DrawTextShadow("P-Lock:", (int)x+4, (int)plY, plFS, plActiveColor);
 
         if (isDrumTrack) {
             // Drum p-locks: Decay, Pitch, Volume, Tone, Punch, Nudge, Flam
             SynthPatch *p = &daw.patches[detailTrack];
+
+            int plLblW = MeasureTextUI("Tone:", plFS) + 4;  // widest drum label
+            int plBoxW = MeasureTextUI("+00.0", plFS) + 8; // widest value
+            int plStep = plLblW + plBoxW + 8;              // spacing per control
 
             // Decay
             {
@@ -2042,12 +2130,12 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                 float decay = seqGetPLock(pat, absTrack, ds, PLOCK_DECAY, -1.0f);
                 bool isLocked = (decay >= 0.0f);
                 if (!isLocked) decay = p->p_decay;
-                DrawTextShadow("Dec:", (int)px, (int)plY, 10, isLocked ? plActiveColor : DARKGRAY);
-                Rectangle rect = {px + 28, plY - 2, 50, 14};
+                DrawTextShadow("Dec:", (int)px, (int)plY, plFS, isLocked ? plActiveColor : DARKGRAY);
+                Rectangle rect = {px + plLblW, plY - 2, (float)plBoxW, (float)plBoxH};
                 bool hov = CheckCollisionPointRec(plMouse, rect);
-                DrawRectangleRec(rect, hov ? (Color){50,50,60,255} : (Color){35,35,45,255});
-                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : (Color){60,60,70,255});
-                DrawTextShadow(TextFormat("%.2f", decay), (int)px+32, (int)plY, 9, isLocked ? WHITE : DARKGRAY);
+                DrawRectangleRec(rect, hov ? UI_BG_HOVER : UI_BG_BUTTON);
+                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : UI_BORDER_LIGHT);
+                DrawTextShadow(TextFormat("%.2f", decay), (int)(px+plLblW+4), (int)plY, plFS, isLocked ? WHITE : DARKGRAY);
                 if (hov) {
                     float wh = GetMouseWheelMove();
                     if (fabsf(wh) > 0.1f) { decay = fminf(2.0f, fmaxf(0.01f, decay + wh * 0.05f)); seqSetPLock(pat, absTrack, ds, PLOCK_DECAY, decay); }
@@ -2056,16 +2144,16 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             }
             // Pitch
             {
-                float px = cx + 90;
+                float px = cx + plStep;
                 float pitch = seqGetPLock(pat, absTrack, ds, PLOCK_PITCH_OFFSET, -100.0f);
                 bool isLocked = (pitch > -99.0f);
                 if (!isLocked) pitch = 0.0f;
-                DrawTextShadow("Pit:", (int)px, (int)plY, 10, isLocked ? plActiveColor : DARKGRAY);
-                Rectangle rect = {px + 25, plY - 2, 45, 14};
+                DrawTextShadow("Pit:", (int)px, (int)plY, plFS, isLocked ? plActiveColor : DARKGRAY);
+                Rectangle rect = {px + plLblW, plY - 2, (float)plBoxW, (float)plBoxH};
                 bool hov = CheckCollisionPointRec(plMouse, rect);
-                DrawRectangleRec(rect, hov ? (Color){50,50,60,255} : (Color){35,35,45,255});
-                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : (Color){60,60,70,255});
-                DrawTextShadow(TextFormat("%+.1f", pitch), (int)px+28, (int)plY, 9, isLocked ? WHITE : DARKGRAY);
+                DrawRectangleRec(rect, hov ? UI_BG_HOVER : UI_BG_BUTTON);
+                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : UI_BORDER_LIGHT);
+                DrawTextShadow(TextFormat("%+.1f", pitch), (int)(px+plLblW+4), (int)plY, plFS, isLocked ? WHITE : DARKGRAY);
                 if (hov) {
                     float wh = GetMouseWheelMove();
                     if (fabsf(wh) > 0.1f) { pitch = fminf(12.0f, fmaxf(-12.0f, pitch + wh * 0.5f)); seqSetPLock(pat, absTrack, ds, PLOCK_PITCH_OFFSET, pitch); }
@@ -2074,16 +2162,16 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             }
             // Volume
             {
-                float px = cx + 175;
+                float px = cx + plStep * 2;
                 float vol = seqGetPLock(pat, absTrack, ds, PLOCK_VOLUME, -1.0f);
                 bool isLocked = (vol >= 0.0f);
                 if (!isLocked) vol = patGetDrumVel(pat, detailTrack, ds);
-                DrawTextShadow("Vol:", (int)px, (int)plY, 10, isLocked ? plActiveColor : DARKGRAY);
-                Rectangle rect = {px + 28, plY - 2, 45, 14};
+                DrawTextShadow("Vol:", (int)px, (int)plY, plFS, isLocked ? plActiveColor : DARKGRAY);
+                Rectangle rect = {px + plLblW, plY - 2, (float)plBoxW, (float)plBoxH};
                 bool hov = CheckCollisionPointRec(plMouse, rect);
-                DrawRectangleRec(rect, hov ? (Color){50,50,60,255} : (Color){35,35,45,255});
-                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : (Color){60,60,70,255});
-                DrawTextShadow(TextFormat("%.2f", vol), (int)px+32, (int)plY, 9, isLocked ? WHITE : DARKGRAY);
+                DrawRectangleRec(rect, hov ? UI_BG_HOVER : UI_BG_BUTTON);
+                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : UI_BORDER_LIGHT);
+                DrawTextShadow(TextFormat("%.2f", vol), (int)(px+plLblW+4), (int)plY, plFS, isLocked ? WHITE : DARKGRAY);
                 if (hov) {
                     float wh = GetMouseWheelMove();
                     if (fabsf(wh) > 0.1f) { vol = fminf(1.0f, fmaxf(0.0f, vol + wh * 0.02f)); seqSetPLock(pat, absTrack, ds, PLOCK_VOLUME, vol); }
@@ -2092,16 +2180,16 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             }
             // Tone
             {
-                float px = cx + 260;
+                float px = cx + plStep * 3;
                 float tone = seqGetPLock(pat, absTrack, ds, PLOCK_TONE, -1.0f);
                 bool isLocked = (tone >= 0.0f);
                 if (!isLocked) tone = p->p_filterCutoff;
-                DrawTextShadow("Tone:", (int)px, (int)plY, 10, isLocked ? plActiveColor : DARKGRAY);
-                Rectangle rect = {px + 35, plY - 2, 45, 14};
+                DrawTextShadow("Tone:", (int)px, (int)plY, plFS, isLocked ? plActiveColor : DARKGRAY);
+                Rectangle rect = {px + plLblW, plY - 2, (float)plBoxW, (float)plBoxH};
                 bool hov = CheckCollisionPointRec(plMouse, rect);
-                DrawRectangleRec(rect, hov ? (Color){50,50,60,255} : (Color){35,35,45,255});
-                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : (Color){60,60,70,255});
-                DrawTextShadow(TextFormat("%.2f", tone), (int)px+39, (int)plY, 9, isLocked ? WHITE : DARKGRAY);
+                DrawRectangleRec(rect, hov ? UI_BG_HOVER : UI_BG_BUTTON);
+                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : UI_BORDER_LIGHT);
+                DrawTextShadow(TextFormat("%.2f", tone), (int)(px+plLblW+4), (int)plY, plFS, isLocked ? WHITE : DARKGRAY);
                 if (hov) {
                     float wh = GetMouseWheelMove();
                     if (fabsf(wh) > 0.1f) { tone = fminf(1.0f, fmaxf(0.0f, tone + wh * 0.02f)); seqSetPLock(pat, absTrack, ds, PLOCK_TONE, tone); }
@@ -2110,16 +2198,16 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             }
             // Nudge
             {
-                float px = cx + 355;
+                float px = cx + plStep * 4;
                 float nudge = seqGetPLock(pat, absTrack, ds, PLOCK_TIME_NUDGE, -100.0f);
                 bool isLocked = (nudge > -99.0f);
                 if (!isLocked) nudge = 0.0f;
-                DrawTextShadow("Nudge:", (int)px, (int)plY, 10, isLocked ? (Color){100,180,255,255} : DARKGRAY);
-                Rectangle rect = {px + 40, plY - 2, 40, 14};
+                DrawTextShadow("Nudge:", (int)px, (int)plY, plFS, isLocked ? (Color){100,180,255,255} : DARKGRAY);
+                Rectangle rect = {px + plLblW + 8, plY - 2, (float)plBoxW, (float)plBoxH};
                 bool hov = CheckCollisionPointRec(plMouse, rect);
-                DrawRectangleRec(rect, hov ? (Color){50,50,60,255} : (Color){35,35,45,255});
-                DrawRectangleLinesEx(rect, 1, isLocked ? (Color){100,180,255,255} : (Color){60,60,70,255});
-                DrawTextShadow(TextFormat("%+.0f", nudge), (int)px+48, (int)plY, 9, isLocked ? WHITE : DARKGRAY);
+                DrawRectangleRec(rect, hov ? UI_BG_HOVER : UI_BG_BUTTON);
+                DrawRectangleLinesEx(rect, 1, isLocked ? (Color){100,180,255,255} : UI_BORDER_LIGHT);
+                DrawTextShadow(TextFormat("%+.0f", nudge), (int)(px+plLblW+12), (int)plY, plFS, isLocked ? WHITE : DARKGRAY);
                 if (hov) {
                     float wh = GetMouseWheelMove();
                     if (fabsf(wh) > 0.1f) { nudge = fminf(12.0f, fmaxf(-12.0f, nudge + wh * 1.0f)); seqSetPLock(pat, absTrack, ds, PLOCK_TIME_NUDGE, nudge); }
@@ -2128,16 +2216,16 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             }
             // Flam
             {
-                float px = cx + 450;
+                float px = cx + plStep * 5;
                 float flamTime = seqGetPLock(pat, absTrack, ds, PLOCK_FLAM_TIME, 0.0f);
                 (void)seqGetPLock(pat, absTrack, ds, PLOCK_FLAM_VELOCITY, 0.5f); // read for display awareness
                 bool isLocked = (flamTime > 0.0f);
-                DrawTextShadow("Flam:", (int)px, (int)plY, 10, isLocked ? (Color){255,100,180,255} : DARKGRAY);
-                Rectangle rect = {px + 32, plY - 2, 35, 14};
+                DrawTextShadow("Flam:", (int)px, (int)plY, plFS, isLocked ? (Color){255,100,180,255} : DARKGRAY);
+                Rectangle rect = {px + plLblW, plY - 2, (float)plBoxW, (float)plBoxH};
                 bool hov = CheckCollisionPointRec(plMouse, rect);
-                DrawRectangleRec(rect, hov ? (Color){50,50,60,255} : (Color){35,35,45,255});
-                DrawRectangleLinesEx(rect, 1, isLocked ? (Color){255,100,180,255} : (Color){60,60,70,255});
-                DrawTextShadow(isLocked ? TextFormat("%.0f", flamTime) : "off", (int)px+36, (int)plY, 9, isLocked ? WHITE : DARKGRAY);
+                DrawRectangleRec(rect, hov ? UI_BG_HOVER : UI_BG_BUTTON);
+                DrawRectangleLinesEx(rect, 1, isLocked ? (Color){255,100,180,255} : UI_BORDER_LIGHT);
+                DrawTextShadow(isLocked ? TextFormat("%.0f", flamTime) : "off", (int)(px+plLblW+4), (int)plY, plFS, isLocked ? WHITE : DARKGRAY);
                 if (hov) {
                     float wh = GetMouseWheelMove();
                     if (fabsf(wh) > 0.1f) {
@@ -2152,18 +2240,22 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             int melAbsTrack = detailTrack;
             SynthPatch *p = &daw.patches[detailTrack];
 
+            int plLblW = MeasureTextUI("FEnv:", plFS) + 4;  // widest melody label
+            int plBoxW = MeasureTextUI("+00.0", plFS) + 8;
+            int plStep = plLblW + plBoxW + 8;
+
             // Cutoff
             {
                 float px = cx;
                 float cutoff = seqGetPLock(pat, melAbsTrack, ds, PLOCK_FILTER_CUTOFF, -1.0f);
                 bool isLocked = (cutoff >= 0.0f);
                 if (!isLocked) cutoff = p->p_filterCutoff;
-                DrawTextShadow("Cut:", (int)px, (int)plY, 10, isLocked ? plActiveColor : DARKGRAY);
-                Rectangle rect = {px + 28, plY - 2, 50, 14};
+                DrawTextShadow("Cut:", (int)px, (int)plY, plFS, isLocked ? plActiveColor : DARKGRAY);
+                Rectangle rect = {px + plLblW, plY - 2, (float)plBoxW, (float)plBoxH};
                 bool hov = CheckCollisionPointRec(plMouse, rect);
-                DrawRectangleRec(rect, hov ? (Color){50,50,60,255} : (Color){35,35,45,255});
-                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : (Color){60,60,70,255});
-                DrawTextShadow(TextFormat("%.0f", cutoff * 8000.0f), (int)px+32, (int)plY, 9, isLocked ? WHITE : DARKGRAY);
+                DrawRectangleRec(rect, hov ? UI_BG_HOVER : UI_BG_BUTTON);
+                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : UI_BORDER_LIGHT);
+                DrawTextShadow(TextFormat("%.0f", cutoff * 8000.0f), (int)(px+plLblW+4), (int)plY, plFS, isLocked ? WHITE : DARKGRAY);
                 if (hov) {
                     float wh = GetMouseWheelMove();
                     if (fabsf(wh) > 0.1f) { cutoff = fminf(1.0f, fmaxf(0.0f, cutoff + wh * 0.02f)); seqSetPLock(pat, melAbsTrack, ds, PLOCK_FILTER_CUTOFF, cutoff); }
@@ -2172,16 +2264,16 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             }
             // Resonance
             {
-                float px = cx + 90;
+                float px = cx + plStep;
                 float reso = seqGetPLock(pat, melAbsTrack, ds, PLOCK_FILTER_RESO, -1.0f);
                 bool isLocked = (reso >= 0.0f);
                 if (!isLocked) reso = p->p_filterResonance;
-                DrawTextShadow("Res:", (int)px, (int)plY, 10, isLocked ? plActiveColor : DARKGRAY);
-                Rectangle rect = {px + 28, plY - 2, 40, 14};
+                DrawTextShadow("Res:", (int)px, (int)plY, plFS, isLocked ? plActiveColor : DARKGRAY);
+                Rectangle rect = {px + plLblW, plY - 2, (float)plBoxW, (float)plBoxH};
                 bool hov = CheckCollisionPointRec(plMouse, rect);
-                DrawRectangleRec(rect, hov ? (Color){50,50,60,255} : (Color){35,35,45,255});
-                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : (Color){60,60,70,255});
-                DrawTextShadow(TextFormat("%.2f", reso), (int)px+32, (int)plY, 9, isLocked ? WHITE : DARKGRAY);
+                DrawRectangleRec(rect, hov ? UI_BG_HOVER : UI_BG_BUTTON);
+                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : UI_BORDER_LIGHT);
+                DrawTextShadow(TextFormat("%.2f", reso), (int)(px+plLblW+4), (int)plY, plFS, isLocked ? WHITE : DARKGRAY);
                 if (hov) {
                     float wh = GetMouseWheelMove();
                     if (fabsf(wh) > 0.1f) { reso = fminf(1.0f, fmaxf(0.0f, reso + wh * 0.02f)); seqSetPLock(pat, melAbsTrack, ds, PLOCK_FILTER_RESO, reso); }
@@ -2190,16 +2282,16 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             }
             // Filter Env
             {
-                float px = cx + 175;
+                float px = cx + plStep * 2;
                 float fenv = seqGetPLock(pat, melAbsTrack, ds, PLOCK_FILTER_ENV, -1.0f);
                 bool isLocked = (fenv >= 0.0f);
                 if (!isLocked) fenv = p->p_filterEnvAmt;
-                DrawTextShadow("FEnv:", (int)px, (int)plY, 10, isLocked ? plActiveColor : DARKGRAY);
-                Rectangle rect = {px + 35, plY - 2, 40, 14};
+                DrawTextShadow("FEnv:", (int)px, (int)plY, plFS, isLocked ? plActiveColor : DARKGRAY);
+                Rectangle rect = {px + plLblW, plY - 2, (float)plBoxW, (float)plBoxH};
                 bool hov = CheckCollisionPointRec(plMouse, rect);
-                DrawRectangleRec(rect, hov ? (Color){50,50,60,255} : (Color){35,35,45,255});
-                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : (Color){60,60,70,255});
-                DrawTextShadow(TextFormat("%.2f", fenv), (int)px+39, (int)plY, 9, isLocked ? WHITE : DARKGRAY);
+                DrawRectangleRec(rect, hov ? UI_BG_HOVER : UI_BG_BUTTON);
+                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : UI_BORDER_LIGHT);
+                DrawTextShadow(TextFormat("%.2f", fenv), (int)(px+plLblW+4), (int)plY, plFS, isLocked ? WHITE : DARKGRAY);
                 if (hov) {
                     float wh = GetMouseWheelMove();
                     if (fabsf(wh) > 0.1f) { fenv = fminf(1.0f, fmaxf(0.0f, fenv + wh * 0.02f)); seqSetPLock(pat, melAbsTrack, ds, PLOCK_FILTER_ENV, fenv); }
@@ -2208,16 +2300,16 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             }
             // Decay
             {
-                float px = cx + 265;
+                float px = cx + plStep * 3;
                 float decay = seqGetPLock(pat, melAbsTrack, ds, PLOCK_DECAY, -1.0f);
                 bool isLocked = (decay >= 0.0f);
                 if (!isLocked) decay = p->p_decay;
-                DrawTextShadow("Dec:", (int)px, (int)plY, 10, isLocked ? plActiveColor : DARKGRAY);
-                Rectangle rect = {px + 28, plY - 2, 40, 14};
+                DrawTextShadow("Dec:", (int)px, (int)plY, plFS, isLocked ? plActiveColor : DARKGRAY);
+                Rectangle rect = {px + plLblW, plY - 2, (float)plBoxW, (float)plBoxH};
                 bool hov = CheckCollisionPointRec(plMouse, rect);
-                DrawRectangleRec(rect, hov ? (Color){50,50,60,255} : (Color){35,35,45,255});
-                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : (Color){60,60,70,255});
-                DrawTextShadow(TextFormat("%.2f", decay), (int)px+32, (int)plY, 9, isLocked ? WHITE : DARKGRAY);
+                DrawRectangleRec(rect, hov ? UI_BG_HOVER : UI_BG_BUTTON);
+                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : UI_BORDER_LIGHT);
+                DrawTextShadow(TextFormat("%.2f", decay), (int)(px+plLblW+4), (int)plY, plFS, isLocked ? WHITE : DARKGRAY);
                 if (hov) {
                     float wh = GetMouseWheelMove();
                     if (fabsf(wh) > 0.1f) { decay = fminf(2.0f, fmaxf(0.01f, decay + wh * 0.05f)); seqSetPLock(pat, melAbsTrack, ds, PLOCK_DECAY, decay); }
@@ -2226,16 +2318,16 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             }
             // Pitch
             {
-                float px = cx + 350;
+                float px = cx + plStep * 4;
                 float pitch = seqGetPLock(pat, melAbsTrack, ds, PLOCK_PITCH_OFFSET, -100.0f);
                 bool isLocked = (pitch > -99.0f);
                 if (!isLocked) pitch = 0.0f;
-                DrawTextShadow("Pit:", (int)px, (int)plY, 10, isLocked ? plActiveColor : DARKGRAY);
-                Rectangle rect = {px + 25, plY - 2, 40, 14};
+                DrawTextShadow("Pit:", (int)px, (int)plY, plFS, isLocked ? plActiveColor : DARKGRAY);
+                Rectangle rect = {px + plLblW, plY - 2, (float)plBoxW, (float)plBoxH};
                 bool hov = CheckCollisionPointRec(plMouse, rect);
-                DrawRectangleRec(rect, hov ? (Color){50,50,60,255} : (Color){35,35,45,255});
-                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : (Color){60,60,70,255});
-                DrawTextShadow(TextFormat("%+.1f", pitch), (int)px+28, (int)plY, 9, isLocked ? WHITE : DARKGRAY);
+                DrawRectangleRec(rect, hov ? UI_BG_HOVER : UI_BG_BUTTON);
+                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : UI_BORDER_LIGHT);
+                DrawTextShadow(TextFormat("%+.1f", pitch), (int)(px+plLblW+4), (int)plY, plFS, isLocked ? WHITE : DARKGRAY);
                 if (hov) {
                     float wh = GetMouseWheelMove();
                     if (fabsf(wh) > 0.1f) { pitch = fminf(12.0f, fmaxf(-12.0f, pitch + wh * 0.5f)); seqSetPLock(pat, melAbsTrack, ds, PLOCK_PITCH_OFFSET, pitch); }
@@ -2244,16 +2336,16 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             }
             // Volume
             {
-                float px = cx + 435;
+                float px = cx + plStep * 5;
                 float vol = seqGetPLock(pat, melAbsTrack, ds, PLOCK_VOLUME, -1.0f);
                 bool isLocked = (vol >= 0.0f);
                 if (!isLocked) vol = patGetNoteVel(pat, detailTrack, ds);
-                DrawTextShadow("Vol:", (int)px, (int)plY, 10, isLocked ? plActiveColor : DARKGRAY);
-                Rectangle rect = {px + 28, plY - 2, 40, 14};
+                DrawTextShadow("Vol:", (int)px, (int)plY, plFS, isLocked ? plActiveColor : DARKGRAY);
+                Rectangle rect = {px + plLblW, plY - 2, (float)plBoxW, (float)plBoxH};
                 bool hov = CheckCollisionPointRec(plMouse, rect);
-                DrawRectangleRec(rect, hov ? (Color){50,50,60,255} : (Color){35,35,45,255});
-                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : (Color){60,60,70,255});
-                DrawTextShadow(TextFormat("%.2f", vol), (int)px+32, (int)plY, 9, isLocked ? WHITE : DARKGRAY);
+                DrawRectangleRec(rect, hov ? UI_BG_HOVER : UI_BG_BUTTON);
+                DrawRectangleLinesEx(rect, 1, isLocked ? plActiveColor : UI_BORDER_LIGHT);
+                DrawTextShadow(TextFormat("%.2f", vol), (int)(px+plLblW+4), (int)plY, plFS, isLocked ? WHITE : DARKGRAY);
                 if (hov) {
                     float wh = GetMouseWheelMove();
                     if (fabsf(wh) > 0.1f) { vol = fminf(1.0f, fmaxf(0.0f, vol + wh * 0.02f)); seqSetPLock(pat, melAbsTrack, ds, PLOCK_VOLUME, vol); }
@@ -2264,12 +2356,16 @@ static void drawWorkSeq(float x, float y, float w, float h) {
 
         // Clear all p-locks button
         if (hasPL) {
-            float clearX = cx + 540;
-            Rectangle clearRect = {clearX, plY - 2, 50, 14};
+            int plLblW = MeasureTextUI("FEnv:", plFS) + 4;
+            int plBoxW = MeasureTextUI("+00.0", plFS) + 8;
+            int plStep = plLblW + plBoxW + 8;
+            float clearX = cx + plStep * 6;
+            int clearW = MeasureTextUI("Clear", plFS) + 12;
+            Rectangle clearRect = {clearX, plY - 2, (float)clearW, (float)plBoxH};
             bool clearHov = CheckCollisionPointRec(plMouse, clearRect);
-            DrawRectangleRec(clearRect, clearHov ? (Color){80,50,50,255} : (Color){50,35,35,255});
-            DrawRectangleLinesEx(clearRect, 1, (Color){150,80,80,255});
-            DrawTextShadow("Clear", (int)clearX+10, (int)plY, 9, (Color){200,100,100,255});
+            DrawRectangleRec(clearRect, clearHov ? UI_BG_RED_MED : UI_BG_RED_DARK);
+            DrawRectangleLinesEx(clearRect, 1, UI_ACCENT_RED);
+            DrawTextShadow("Clear", (int)clearX+6, (int)plY, plFS, (Color){200,100,100,255});
             if (clearHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { seqClearStepPLocks(pat, detailTrack, ds); ui_consume_click(); }
         }
 
@@ -2322,20 +2418,20 @@ static void drawWorkPiano(float x, float y, float w, float h) {
             Rectangle r = {tx, y, tw, topH - 2};
             bool hov = CheckCollisionPointRec(mouse, r);
             bool act = (t == prTrack);
-            Color bg = act ? (Color){48,52,65,255} : (hov ? (Color){38,40,50,255} : (Color){28,29,35,255});
+            Color bg = act ? UI_BG_ACTIVE : (hov ? UI_BG_HOVER : UI_BG_PANEL);
             DrawRectangleRec(r, bg);
             if (act) DrawRectangle((int)tx, (int)(y + topH - 4), (int)tw, 2, prTrackColors[t]);
-            DrawTextShadow(prTrackNames[t], (int)tx + 6, (int)y + 3, 10, act ? WHITE : GRAY);
+            DrawTextShadow(prTrackNames[t], (int)tx + 6, (int)y + 3, UI_FONT_SMALL, act ? WHITE : GRAY);
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { prTrack = t; ui_consume_click(); }
             tx += tw + 2;
         }
         // Scroll hint
         if (isSamplerPR)
             DrawTextShadow(TextFormat("Pitch %+d..%+d  (scroll to shift)", prScrollNote - 24, prScrollNote - 24 + visNotes),
-                           (int)(x + 300), (int)y + 4, 9, (Color){70,70,80,255});
+                           (int)(x + 300), (int)y + 4, 9, UI_TEXT_MUTED);
         else
             DrawTextShadow(TextFormat("Oct %d-%d  (scroll to shift)", prScrollNote/12, (prScrollNote+visNotes)/12),
-                           (int)(x + 300), (int)y + 4, 9, (Color){70,70,80,255});
+                           (int)(x + 300), (int)y + 4, 9, UI_TEXT_MUTED);
     }
 
     // --- Scroll pitch range with mouse wheel ---
@@ -2350,174 +2446,23 @@ static void drawWorkPiano(float x, float y, float w, float h) {
     }
 
     // --- Background ---
-    DrawRectangle((int)gridX, (int)gridY, (int)gridW, (int)gridH, (Color){20,20,25,255});
+    DrawRectangle((int)gridX, (int)gridY, (int)gridW, (int)gridH, UI_BG_DEEPEST);
 
     // --- Scissor to grid area ---
     BeginScissorMode((int)x, (int)gridY, (int)w, (int)gridH);
 
-    if (isSamplerPR) {
-        // --- Sampler pitch offset labels (Y axis = -24..+24) ---
-        int pitchMin = -24, pitchMax = 24;
-        int pitchRange = pitchMax - pitchMin + 1; // 49 rows
-        float pNoteH = gridH / pitchRange;
-        if (pNoteH < 3) pNoteH = 3;
-
-        for (int p = pitchMin; p <= pitchMax; p++) {
-            float ny = gridY + gridH - (p - pitchMin + 1) * pNoteH;
-            bool isZero = (p == 0);
-            bool isOctave = (p == 12 || p == -12 || p == 24 || p == -24);
-
-            // Key label
-            Color keyCol = isZero ? (Color){60,60,45,255} : (Color){35,35,40,255};
-            DrawRectangle((int)x, (int)ny, (int)keyW - 1, (int)pNoteH - 1, keyCol);
-            if (p % 6 == 0 || isZero) {
-                DrawTextShadow(TextFormat("%+d", p), (int)x + 1, (int)ny + 1, 7,
-                              isZero ? (Color){255,220,100,255} : (Color){90,90,100,255});
-            }
-
-            // Grid line
-            Color lineCol = isZero ? (Color){80,80,50,255} : (isOctave ? (Color){55,55,65,255} : (Color){30,30,36,255});
-            DrawLine((int)gridX, (int)(ny + pNoteH - 1), (int)(gridX + gridW), (int)(ny + pNoteH - 1), lineCol);
-
-            // Highlight zero row
-            if (isZero) {
-                DrawRectangle((int)gridX, (int)ny, (int)gridW, (int)pNoteH, (Color){50,50,35,60});
-            }
-        }
-
-        // Vertical step lines
-        for (int s = 0; s <= steps; s++) {
-            float lx = gridX + s * stepW;
-            Color lineCol = s % 4 == 0 ? (Color){65,65,78,255} : (Color){36,36,42,255};
-            DrawLine((int)lx, (int)gridY, (int)lx, (int)(gridY + gridH), lineCol);
-        }
-
-        // Slice colors (cycle through 8)
-        static const Color sliceColors[] = {
-            {220, 80, 80, 220},  {80, 180, 220, 220}, {220, 180, 60, 220}, {100, 220, 100, 220},
-            {200, 100, 220, 220},{220, 140, 60, 220},  {60, 200, 180, 220}, {180, 180, 220, 220},
-        };
-
-        // --- Draw sampler notes ---
-        for (int s = 0; s < steps; s++) {
-            StepV2 *sv = &pat->steps[mt][s];
-            if (sv->noteCount == 0) continue;
-            StepNote *sn = &sv->notes[0]; // sampler uses voice 0 only
-            if (sn->note == SEQ_NOTE_OFF) continue;
-
-            int slice = sn->note;
-            int pitch = sn->nudge; // ±24
-            float vel = velU8ToFloat(sn->velocity);
-
-            int pitchIdx = pitch - pitchMin;
-            if (pitchIdx < 0 || pitchIdx >= pitchRange) continue;
-
-            float nX = gridX + s * stepW;
-            float nY = gridY + gridH - (pitchIdx + 1) * pNoteH;
-            float nW = stepW - 1;
-            if (nW < 3) nW = 3;
-
-            Color col = sliceColors[slice % 8];
-            float bright = 0.4f + vel * 0.6f;
-            col.r = (unsigned char)(col.r * bright);
-            col.g = (unsigned char)(col.g * bright);
-            col.b = (unsigned char)(col.b * bright);
-
-            DrawRectangle((int)nX, (int)nY, (int)nW, (int)pNoteH - 1, col);
-            DrawRectangleLinesEx((Rectangle){nX, nY, nW, pNoteH - 1}, 1,
-                                (Color){col.r/2, col.g/2, col.b/2, 255});
-
-            // Slice number label
-            if (nW >= 10) {
-                DrawTextShadow(TextFormat("%d", slice), (int)nX + 2, (int)nY + 1, 8, WHITE);
-            }
-        }
-
-        // --- Playhead ---
-        if (daw.transport.playing) {
-            int curStep = seq.trackStep[mt];
-            float phX = gridX + curStep * stepW + stepW * seq.trackTick[mt] / (float)seq.ticksPerStep;
-            DrawLine((int)phX, (int)gridY, (int)phX, (int)(gridY + gridH), (Color){255,200,50,180});
-        }
-
-        // --- Mouse interaction for sampler ---
-        int hitStep = -1;
-        if (CheckCollisionPointRec(mouse, gridRect)) {
-            float relX = mouse.x - gridX;
-            int hoverStep = (int)(relX / stepW);
-            float relY = (gridY + gridH) - mouse.y;
-            int hoverPitch = pitchMin + (int)(relY / pNoteH);
-
-            // Find if hovering existing note
-            if (hoverStep >= 0 && hoverStep < steps) {
-                StepV2 *sv = &pat->steps[mt][hoverStep];
-                if (sv->noteCount > 0 && sv->notes[0].note != SEQ_NOTE_OFF) {
-                    hitStep = hoverStep;
-                }
-            }
-
-            // Hover hint
-            if (hitStep >= 0) {
-                StepNote *sn = &pat->steps[mt][hitStep].notes[0];
-                DrawTextShadow(TextFormat("Slice %d  pitch %+d  step %d",
-                              sn->note, sn->nudge, hitStep + 1),
-                              (int)mouse.x + 12, (int)mouse.y - 14, 9, (Color){180,180,190,255});
-            } else if (hoverStep >= 0 && hoverStep < steps) {
-                DrawTextShadow(TextFormat("pitch %+d  step %d", hoverPitch, hoverStep + 1),
-                              (int)mouse.x + 12, (int)mouse.y - 14, 9, (Color){120,120,130,255});
-            }
-
-            // Click: place/delete
-            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                if (hoverStep >= 0 && hoverStep < steps) {
-                    StepV2 *sv = &pat->steps[mt][hoverStep];
-                    if (sv->noteCount > 0 && sv->notes[0].note != SEQ_NOTE_OFF) {
-                        // Existing note — toggle off
-                        patClearNote(pat, mt, hoverStep);
-                    } else {
-                        // Place new note: slice 0, pitch from Y position
-                        if (hoverPitch < -24) hoverPitch = -24;
-                        if (hoverPitch > 24) hoverPitch = 24;
-                        patSetNote(pat, mt, hoverStep, 0, 0.8f, 1);
-                        pat->steps[mt][hoverStep].notes[0].nudge = (int8_t)hoverPitch;
-                    }
-                    ui_consume_click();
-                }
-            }
-
-            // Right-click: delete
-            if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && hitStep >= 0) {
-                patClearNote(pat, mt, hitStep);
-                ui_consume_click();
-            }
-
-            // Scroll: change slice number
-            float wh = GetMouseWheelMove();
-            if (wh != 0.0f && hitStep >= 0) {
-                if (IsKeyDown(KEY_LEFT_SHIFT)) {
-                    // Shift+scroll = velocity
-                    float vel = patGetNoteVel(pat, mt, hitStep);
-                    vel += wh * 0.05f;
-                    if (vel < 0.05f) vel = 0.05f;
-                    if (vel > 1.0f) vel = 1.0f;
-                    patSetNoteVel(pat, mt, hitStep, vel);
-                } else {
-                    // Scroll = change slice
-                    StepNote *sn = &pat->steps[mt][hitStep].notes[0];
-                    int newSlice = sn->note + (wh > 0 ? 1 : -1);
-                    if (newSlice < 0) newSlice = 0;
-                    if (newSlice >= SAMPLER_MAX_SAMPLES) newSlice = SAMPLER_MAX_SAMPLES - 1;
-                    sn->note = (int8_t)newSlice;
-                }
-            }
-        }
-
-        EndScissorMode();
-        DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, (Color){48,48,58,255});
-        return; // sampler handled, skip melodic piano roll code below
+    // Sampler: force scroll range to center around MIDI 60 (±24)
+    if (isSamplerPR && (prScrollNote < 36 || prScrollNote > 60)) {
+        prScrollNote = 36; // show MIDI 36-60 (pitch offset -24 to 0 at bottom)
     }
 
-    // --- Piano keys + horizontal pitch lines (melodic tracks) ---
+    // Slice colors for sampler overlay (cycle through 8)
+    static const Color sliceColors[] = {
+        {220, 80, 80, 220},  {80, 180, 220, 220}, {220, 180, 60, 220}, {100, 220, 100, 220},
+        {200, 100, 220, 220},{220, 140, 60, 220},  {60, 200, 180, 220}, {180, 180, 220, 220},
+    };
+
+    // --- Piano keys + horizontal pitch lines ---
     for (int i = 0; i < visNotes; i++) {
         int note = prScrollNote + i;
         if (note > 127) break;
@@ -2526,27 +2471,40 @@ static void drawWorkPiano(float x, float y, float w, float h) {
         float ny = gridY + gridH - (i + 1) * noteH;
 
         // Piano key
-        Color keyCol = blk ? (Color){28,28,33,255} : (Color){48,48,55,255};
-        DrawRectangle((int)x, (int)ny, (int)keyW - 1, (int)noteH - 1, keyCol);
-        if (noteH >= 9) {
-            DrawTextShadow(TextFormat("%s%d", noteNames[ni], note/12 - 1),
-                          (int)x + 1, (int)ny + 1, 7, ni == 0 ? LIGHTGRAY : (Color){90,90,100,255});
-        }
-
-        // Horizontal grid line
-        Color lineCol = ni == 0 ? (Color){55,55,65,255} : (Color){30,30,36,255};
-        DrawLine((int)gridX, (int)(ny + noteH - 1), (int)(gridX + gridW), (int)(ny + noteH - 1), lineCol);
-
-        // Highlight C rows
-        if (ni == 0) {
-            DrawRectangle((int)gridX, (int)ny, (int)gridW, (int)noteH, (Color){35,35,42,60});
+        if (isSamplerPR) {
+            int pitchOff = note - 60;
+            bool isZero = (pitchOff == 0);
+            bool isOctave = (pitchOff == 12 || pitchOff == -12 || pitchOff == 24 || pitchOff == -24);
+            Color keyCol = isZero ? (Color){60,60,45,255} : UI_BG_BUTTON;
+            DrawRectangle((int)x, (int)ny, (int)keyW - 1, (int)noteH - 1, keyCol);
+            if (noteH >= 9 && (pitchOff % 6 == 0 || isZero)) {
+                DrawTextShadow(TextFormat("%+d", pitchOff), (int)x + 1, (int)ny + 1, 7,
+                              isZero ? (Color){255,220,100,255} : UI_TEXT_DIM);
+            }
+            Color lineCol = isZero ? (Color){80,80,50,255} : (isOctave ? UI_BORDER : UI_BG_PANEL);
+            DrawLine((int)gridX, (int)(ny + noteH - 1), (int)(gridX + gridW), (int)(ny + noteH - 1), lineCol);
+            if (isZero) {
+                DrawRectangle((int)gridX, (int)ny, (int)gridW, (int)noteH, (Color){50,50,35,60});
+            }
+        } else {
+            Color keyCol = blk ? UI_BG_PANEL : UI_BG_HOVER;
+            DrawRectangle((int)x, (int)ny, (int)keyW - 1, (int)noteH - 1, keyCol);
+            if (noteH >= 9) {
+                DrawTextShadow(TextFormat("%s%d", noteNames[ni], note/12 - 1),
+                              (int)x + 1, (int)ny + 1, 7, ni == 0 ? LIGHTGRAY : UI_TEXT_DIM);
+            }
+            Color lineCol = ni == 0 ? UI_BORDER : UI_BG_PANEL;
+            DrawLine((int)gridX, (int)(ny + noteH - 1), (int)(gridX + gridW), (int)(ny + noteH - 1), lineCol);
+            if (ni == 0) {
+                DrawRectangle((int)gridX, (int)ny, (int)gridW, (int)noteH, (Color){35,35,42,60});
+            }
         }
     }
 
     // --- Vertical step lines ---
     for (int s = 0; s <= steps; s++) {
         float lx = gridX + s * stepW;
-        Color lineCol = s % 4 == 0 ? (Color){65,65,78,255} : (Color){36,36,42,255};
+        Color lineCol = s % 4 == 0 ? UI_BORDER_LIGHT : UI_BG_BUTTON;
         DrawLine((int)lx, (int)gridY, (int)lx, (int)(gridY + gridH), lineCol);
     }
 
@@ -2578,18 +2536,26 @@ static void drawWorkPiano(float x, float y, float w, float h) {
             float noteW = (gate + gateNudgeFrac) * stepW - 1;
             if (noteW < 3) noteW = 3;
 
-            // Color: track hue, brightness from velocity
+            // Color: slice-based for sampler, track hue for melodic
             float bright = 0.4f + vel * 0.6f;
-            Color col = {
-                (unsigned char)(trackCol.r * bright),
-                (unsigned char)(trackCol.g * bright),
-                (unsigned char)(trackCol.b * bright),
-                220
-            };
+            Color col;
+            if (isSamplerPR) {
+                Color sc = sliceColors[sn->slice % 8];
+                col = (Color){(unsigned char)(sc.r * bright), (unsigned char)(sc.g * bright),
+                              (unsigned char)(sc.b * bright), 220};
+            } else {
+                col = (Color){(unsigned char)(trackCol.r * bright), (unsigned char)(trackCol.g * bright),
+                              (unsigned char)(trackCol.b * bright), 220};
+            }
 
             DrawRectangle((int)noteX, (int)noteY, (int)noteW, (int)noteH - 1, col);
             DrawRectangleLinesEx((Rectangle){noteX, noteY, noteW, noteH - 1}, 1,
                                 (Color){col.r/2, col.g/2, col.b/2, 255});
+
+            // Sampler: show slice number in note block
+            if (isSamplerPR && noteW >= 10 && noteH >= 8) {
+                DrawTextShadow(TextFormat("S%d", sn->slice), (int)noteX + 2, (int)noteY + 1, 7, WHITE);
+            }
 
             if (sn->slide) {
                 DrawRectangle((int)noteX, (int)(noteY + noteH - 3), (int)noteW, 2, ORANGE);
@@ -2669,21 +2635,27 @@ static void drawWorkPiano(float x, float y, float w, float h) {
         StepNote *hitSn = &pat->steps[mt][hitStep].notes[hitVoice];
         if (hitZone == 1 || hitZone == 3) {
             SetMouseCursor(MOUSE_CURSOR_RESIZE_EW);
-            DrawTextShadow("<->", (int)mouse.x + 12, (int)mouse.y - 14, 9, (Color){255,200,100,255});
+            DrawTextShadow("<->", (int)mouse.x + 12, (int)mouse.y - 14, UI_FONT_SMALL, (Color){255,200,100,255});
         } else {
             SetMouseCursor(MOUSE_CURSOR_RESIZE_ALL);
             int nn = hitSn->note;
-            int ni = nn % 12; int no = nn / 12 - 1;
-            int gate = hitSn->gate;
             int voices = pat->steps[mt][hitStep].noteCount;
-            if (hitSn->nudge != 0)
-                DrawTextShadow(TextFormat("%s%d s%d g%d n%d%s", noteNames[ni], no, hitStep+1, gate, hitSn->nudge,
+            if (isSamplerPR) {
+                DrawTextShadow(TextFormat("S%d pitch%+d step%d%s", hitSn->slice, nn-60, hitStep+1,
                                voices > 1 ? TextFormat(" [%d/%d]", hitVoice+1, voices) : ""),
-                               (int)mouse.x + 12, (int)mouse.y - 14, 9, (Color){180,180,190,255});
-            else
-                DrawTextShadow(TextFormat("%s%d step %d gate %d%s", noteNames[ni], no, hitStep+1, gate,
-                               voices > 1 ? TextFormat(" [%d/%d]", hitVoice+1, voices) : ""),
-                               (int)mouse.x + 12, (int)mouse.y - 14, 9, (Color){180,180,190,255});
+                               (int)mouse.x + 12, (int)mouse.y - 14, 9, UI_TEXT_BRIGHT);
+            } else {
+                int ni = nn % 12; int no = nn / 12 - 1;
+                int gate = hitSn->gate;
+                if (hitSn->nudge != 0)
+                    DrawTextShadow(TextFormat("%s%d s%d g%d n%d%s", noteNames[ni], no, hitStep+1, gate, hitSn->nudge,
+                                   voices > 1 ? TextFormat(" [%d/%d]", hitVoice+1, voices) : ""),
+                                   (int)mouse.x + 12, (int)mouse.y - 14, 9, UI_TEXT_BRIGHT);
+                else
+                    DrawTextShadow(TextFormat("%s%d step %d gate %d%s", noteNames[ni], no, hitStep+1, gate,
+                                   voices > 1 ? TextFormat(" [%d/%d]", hitVoice+1, voices) : ""),
+                                   (int)mouse.x + 12, (int)mouse.y - 14, 9, UI_TEXT_BRIGHT);
+            }
         }
     } else if (prDragMode == PR_DRAG_NONE && CheckCollisionPointRec(mouse, gridRect)) {
         SetMouseCursor(MOUSE_CURSOR_DEFAULT);
@@ -2697,8 +2669,10 @@ static void drawWorkPiano(float x, float y, float w, float h) {
             float hoverX = gridX + hoverStep * stepW;
             DrawRectangleLinesEx((Rectangle){hoverX, hoverY, stepW, noteH}, 1, (Color){255,255,255,40});
             int ni = hoverPitch % 12; int no = hoverPitch / 12 - 1;
-            DrawTextShadow(TextFormat("%s%d step %d", noteNames[ni], no, hoverStep+1),
-                           (int)mouse.x + 12, (int)mouse.y - 14, 9, (Color){120,120,130,255});
+            DrawTextShadow(isSamplerPR
+                           ? TextFormat("pitch %+d step %d", hoverPitch - 60, hoverStep+1)
+                           : TextFormat("%s%d step %d", noteNames[ni], no, hoverStep+1),
+                           (int)mouse.x + 12, (int)mouse.y - 14, 9, UI_TEXT_SUBTLE);
         }
     } else if (prDragMode == PR_DRAG_NONE) {
         SetMouseCursor(MOUSE_CURSOR_DEFAULT);
@@ -2783,6 +2757,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
                             destSv->notes[newVoice].nudge = noteCopy.nudge;
                             destSv->notes[newVoice].slide = noteCopy.slide;
                             destSv->notes[newVoice].accent = noteCopy.accent;
+                            destSv->notes[newVoice].slice = noteCopy.slice;
                             stepV2RemoveNote(dragSv, prDragVoice);
                             prDragStep = newStartStep;
                             prDragVoice = newVoice;
@@ -2823,6 +2798,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
                                 destSv->notes[newVoice].nudge = 0;
                                 destSv->notes[newVoice].slide = noteCopy.slide;
                                 destSv->notes[newVoice].accent = noteCopy.accent;
+                                destSv->notes[newVoice].slice = noteCopy.slice;
                                 stepV2RemoveNote(dragSv, prDragVoice);
                                 prDragStep = newStep;
                                 prDragVoice = newVoice;
@@ -2879,7 +2855,8 @@ static void drawWorkPiano(float x, float y, float w, float h) {
                     StepV2 *sv = &pat->steps[mt][newStep];
                     // Check this exact pitch doesn't already exist in the step
                     if (stepV2FindNote(sv, newPitch) < 0 && sv->noteCount < SEQ_V2_MAX_POLY) {
-                        stepV2AddNote(sv, newPitch, velFloatToU8(0.8f), 1);
+                        int vi = stepV2AddNote(sv, newPitch, velFloatToU8(0.8f), 1);
+                        if (isSamplerPR && vi >= 0) sv->notes[vi].slice = 0;
                     }
                 }
             }
@@ -2893,10 +2870,22 @@ static void drawWorkPiano(float x, float y, float w, float h) {
             }
             ui_consume_click();
         }
+
+        // Sampler: scroll to change slice on hovered note
+        if (isSamplerPR && hitStep >= 0 && hitVoice >= 0 && prDragMode == PR_DRAG_NONE) {
+            int delta = scrollDelta(GetMouseWheelMove(), 500 + hitStep * 10 + hitVoice);
+            if (delta != 0) {
+                StepNote *sn = &pat->steps[mt][hitStep].notes[hitVoice];
+                int newSlice = (int)sn->slice + delta;
+                if (newSlice < 0) newSlice = 0;
+                if (newSlice >= SAMPLER_MAX_SAMPLES) newSlice = SAMPLER_MAX_SAMPLES - 1;
+                sn->slice = (uint8_t)newSlice;
+            }
+        }
     }
 
     EndScissorMode();
-    DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, (Color){48,48,58,255});
+    DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, UI_BORDER);
 }
 
 // ============================================================================
@@ -2927,11 +2916,11 @@ static void drawWorkSong(float x, float y, float w, float h) {
         Rectangle smr = {x + 4, row0y, 80, 18};
         bool smHov = CheckCollisionPointRec(mouse, smr);
         Color smBg = daw.song.songMode
-            ? (smHov ? (Color){60,100,60,255} : (Color){45,80,45,255})
-            : (smHov ? (Color){50,50,60,255} : (Color){38,38,48,255});
+            ? (smHov ? UI_TINT_GREEN_HI : UI_TINT_GREEN)
+            : (smHov ? UI_BG_HOVER : UI_BG_HOVER);
         DrawRectangleRec(smr, smBg);
-        DrawRectangleLinesEx(smr, 1, daw.song.songMode ? GREEN : (Color){55,55,65,255});
-        DrawTextShadow(daw.song.songMode ? "Song Mode" : "Pattern", (int)x+10, (int)row0y+3, 11,
+        DrawRectangleLinesEx(smr, 1, daw.song.songMode ? GREEN : UI_BORDER);
+        DrawTextShadow(daw.song.songMode ? "Song Mode" : "Pattern", (int)x+10, (int)row0y+3, UI_FONT_SMALL,
                        daw.song.songMode ? WHITE : GRAY);
         if (smHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             daw.song.songMode = !daw.song.songMode;
@@ -2949,7 +2938,7 @@ static void drawWorkSong(float x, float y, float w, float h) {
         DraggableInt(x + 100, row0y, "Loops", &daw.song.loopsPerPattern, 0.3f, 1, 8);
 
         // Section count display
-        DrawTextShadow(TextFormat("%d sections", daw.song.length), (int)(x + 240), (int)row0y+3, 11, (Color){100,100,120,255});
+        DrawTextShadow(TextFormat("%d sections", daw.song.length), (int)(x + 240), (int)row0y+3, UI_FONT_SMALL, UI_TEXT_DIM);
     }
 
     // === ARRANGEMENT TIMELINE ===
@@ -2965,8 +2954,8 @@ static void drawWorkSong(float x, float y, float w, float h) {
 
     // Background
     float arrBgH = arrH + 8;
-    DrawRectangle((int)x, (int)arrY, (int)w, (int)arrBgH, (Color){20,20,25,255});
-    DrawRectangleLinesEx((Rectangle){x, arrY, w, arrBgH}, 1, (Color){40,40,50,255});
+    DrawRectangle((int)x, (int)arrY, (int)w, (int)arrBgH, UI_BG_DEEPEST);
+    DrawRectangleLinesEx((Rectangle){x, arrY, w, arrBgH}, 1, UI_BORDER_SUBTLE);
 
     // Scroll offset for long arrangements (simple: clamp to visible)
     float innerX = x + 4;
@@ -2984,12 +2973,12 @@ static void drawWorkSong(float x, float y, float w, float h) {
         // Background color
         Color bg;
         if (isPlaying) bg = (Color){40,70,40,255};
-        else if (hov) bg = (Color){48,50,60,255};
-        else bg = (Color){32,34,42,255};
+        else if (hov) bg = UI_BG_HOVER;
+        else bg = UI_BG_BUTTON;
         DrawRectangleRec(r, bg);
 
         // Border
-        Color border = isPlaying ? GREEN : (hov ? (Color){80,80,95,255} : (Color){50,52,62,255});
+        Color border = isPlaying ? GREEN : (hov ? UI_BORDER_LIGHT : UI_BORDER);
         DrawRectangleLinesEx(r, 1, border);
 
         // Playback progress bar (thin line at bottom)
@@ -3010,8 +2999,8 @@ static void drawWorkSong(float x, float y, float w, float h) {
         bool hasName = (name[0] != '\0');
         if (songEditingNameIdx == i) {
             // Inline name editing
-            DrawRectangle((int)sx+2, (int)(arrY+6), secW-4, 14, (Color){30,30,40,255});
-            DrawTextShadow(songEditNameBuf, (int)sx+4, (int)(arrY+7), 9, WHITE);
+            DrawRectangle((int)sx+2, (int)(arrY+6), secW-4, 14, UI_BG_PANEL);
+            DrawTextShadow(songEditNameBuf, (int)sx+4, (int)(arrY+7), UI_FONT_SMALL, WHITE);
             // Blinking cursor
             int cx = dawTextCursorX(songEditNameBuf, songEditNameCursor, 9);
             if (((int)(GetTime()*3)) % 2 == 0) DrawLine((int)(sx+4+cx), (int)(arrY+7), (int)(sx+4+cx), (int)(arrY+18), WHITE);
@@ -3027,8 +3016,8 @@ static void drawWorkSong(float x, float y, float w, float h) {
                 songEditingNameIdx = -1;
             }
         } else {
-            Color nameCol = hasName ? (Color){160,180,255,255} : (Color){80,80,100,255};
-            DrawTextShadow(hasName ? name : "---", (int)sx+4, (int)(arrY+7), 9, nameCol);
+            Color nameCol = hasName ? (Color){160,180,255,255} : UI_BORDER_LIGHT;
+            DrawTextShadow(hasName ? name : "---", (int)sx+4, (int)(arrY+7), UI_FONT_SMALL, nameCol);
 
             // Left-click on name area: cycle preset names
             Rectangle nameR = {sx, arrY+4, (float)secW, 16};
@@ -3068,8 +3057,8 @@ static void drawWorkSong(float x, float y, float w, float h) {
         // Per-section loop count (bottom-left)
         int effLoops = songEffectiveLoops(i);
         int raw = daw.song.loopsPerSection[i];
-        Color loopCol = raw > 0 ? (Color){180,200,120,255} : (Color){90,90,110,255};
-        DrawTextShadow(TextFormat("x%d", effLoops), (int)sx+4, (int)(arrY+38), 9, loopCol);
+        Color loopCol = raw > 0 ? (Color){180,200,120,255} : UI_TEXT_DIM;
+        DrawTextShadow(TextFormat("x%d", effLoops), (int)sx+4, (int)(arrY+38), UI_FONT_SMALL, loopCol);
 
         // Click loop count to cycle (0=default, 1-8=explicit)
         Rectangle loopR = {sx, arrY+36, 30, 14};
@@ -3099,9 +3088,9 @@ static void drawWorkSong(float x, float y, float w, float h) {
         if (ax + 30 <= maxVisX) {
             Rectangle ar = {ax, arrY + 4, 30, (float)secH};
             bool ah = CheckCollisionPointRec(mouse, ar);
-            DrawRectangleRec(ar, ah ? (Color){55,60,70,255} : (Color){30,32,40,255});
-            DrawRectangleLinesEx(ar, 1, (Color){60,62,72,255});
-            DrawTextShadow("+", (int)ax+11, (int)(arrY+22), 14, ah ? WHITE : GRAY);
+            DrawRectangleRec(ar, ah ? UI_BORDER_LIGHT : UI_BG_PANEL);
+            DrawRectangleLinesEx(ar, 1, UI_BORDER_LIGHT);
+            DrawTextShadow("+", (int)ax+11, (int)(arrY+22), UI_FONT_MEDIUM, ah ? WHITE : GRAY);
             if (ah && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 int idx = daw.song.length;
                 daw.song.patterns[idx] = daw.transport.currentPattern;
@@ -3121,80 +3110,84 @@ static void drawWorkSong(float x, float y, float w, float h) {
         bool hasAny = (ovr->flags != 0);
         int patIdx = daw.transport.currentPattern;
 
-        DrawTextShadow(TextFormat("Pattern %d Overrides:", patIdx+1), (int)x+4, (int)ovrY, 11,
-                       hasAny ? (Color){255,200,120,255} : (Color){120,120,140,255});
-        float ox = x + 160, oy = ovrY;
+        DrawTextShadow(TextFormat("Pattern %d Overrides:", patIdx+1), (int)x+4, (int)ovrY, UI_FONT_SMALL,
+                       hasAny ? UI_TEXT_GOLD : UI_TEXT_SUBTLE);
+        int obH = UI_FONT_SMALL + 4;  // override button height
+        int obPad = 6;                 // text padding inside button
+        float ox = x + MeasureTextUI("Pattern 8 Overrides:", UI_FONT_SMALL) + 12, oy = ovrY;
 
         // Scale override
         {
             bool on = (ovr->flags & PAT_OVR_SCALE) != 0;
-            Rectangle tr = {ox, oy - 1, 42, 14};
+            int bw = MeasureTextUI("Scale", UI_FONT_SMALL) + obPad*2;
+            Rectangle tr = {ox, oy - 1, (float)bw, (float)obH};
             bool th = CheckCollisionPointRec(mouse, tr);
-            DrawRectangleRec(tr, on ? (Color){50,70,90,255} : (th ? (Color){42,42,52,255} : (Color){30,30,38,255}));
-            DrawRectangleLinesEx(tr, 1, on ? (Color){100,150,220,255} : (Color){48,48,58,255});
-            DrawTextShadow("Scale", (int)ox+4, (int)oy, 9, on ? WHITE : GRAY);
+            DrawRectangleRec(tr, on ? UI_TINT_BLUE : (th ? UI_BORDER_SUBTLE : UI_BG_PANEL));
+            DrawRectangleLinesEx(tr, 1, on ? UI_ACCENT_BLUE : UI_BORDER);
+            DrawTextShadow("Scale", (int)ox+obPad, (int)oy+1, UI_FONT_SMALL, on ? WHITE : GRAY);
             if (th && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 ovr->flags ^= PAT_OVR_SCALE;
                 if (ovr->flags & PAT_OVR_SCALE) {
-                    // Init from current song defaults
                     ovr->ovrScaleRoot = daw.scaleRoot;
                     ovr->ovrScaleType = daw.scaleType;
                 }
                 ui_consume_click();
             }
+            ox += bw + 4;
             if (on) {
-                ox += 48;
                 // Root note cycle
-                Rectangle rr = {ox, oy - 1, 28, 14};
+                int rw = MeasureTextUI("C#", UI_FONT_SMALL) + obPad*2;
+                Rectangle rr = {ox, oy - 1, (float)rw, (float)obH};
                 bool rh = CheckCollisionPointRec(mouse, rr);
-                DrawRectangleRec(rr, rh ? (Color){45,45,55,255} : (Color){32,32,42,255});
-                DrawTextShadow(rootNoteNames[ovr->ovrScaleRoot], (int)ox+4, (int)oy, 9, (Color){180,200,255,255});
+                DrawRectangleRec(rr, rh ? UI_BG_HOVER : UI_BG_BUTTON);
+                DrawTextShadow(rootNoteNames[ovr->ovrScaleRoot], (int)ox+obPad, (int)oy+1, UI_FONT_SMALL, UI_TEXT_BLUE);
                 if (rh && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { ovr->ovrScaleRoot = (ovr->ovrScaleRoot + 1) % 12; ui_consume_click(); }
                 if (rh && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) { ovr->ovrScaleRoot = (ovr->ovrScaleRoot + 11) % 12; ui_consume_click(); }
-                if (rh) { float wh = GetMouseWheelMove(); if (wh > 0) ovr->ovrScaleRoot = (ovr->ovrScaleRoot+1)%12; else if (wh < 0) ovr->ovrScaleRoot = (ovr->ovrScaleRoot+11)%12; }
-                ox += 32;
+                if (rh) { int d = scrollDelta(GetMouseWheelMove(), 106); if (d > 0) ovr->ovrScaleRoot = (ovr->ovrScaleRoot+1)%12; else if (d < 0) ovr->ovrScaleRoot = (ovr->ovrScaleRoot+11)%12; }
+                ox += rw + 4;
                 // Scale type cycle
-                Rectangle sr = {ox, oy - 1, 60, 14};
+                int sw = MeasureTextUI("Chromatic", UI_FONT_SMALL) + obPad*2;
+                Rectangle sr = {ox, oy - 1, (float)sw, (float)obH};
                 bool sh = CheckCollisionPointRec(mouse, sr);
-                DrawRectangleRec(sr, sh ? (Color){45,45,55,255} : (Color){32,32,42,255});
-                DrawTextShadow(scaleNames[ovr->ovrScaleType], (int)ox+4, (int)oy, 9, (Color){180,200,255,255});
+                DrawRectangleRec(sr, sh ? UI_BG_HOVER : UI_BG_BUTTON);
+                DrawTextShadow(scaleNames[ovr->ovrScaleType], (int)ox+obPad, (int)oy+1, UI_FONT_SMALL, UI_TEXT_BLUE);
                 if (sh && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { ovr->ovrScaleType = (ovr->ovrScaleType + 1) % 9; ui_consume_click(); }
                 if (sh && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) { ovr->ovrScaleType = (ovr->ovrScaleType + 8) % 9; ui_consume_click(); }
-                if (sh) { float wh = GetMouseWheelMove(); if (wh > 0) ovr->ovrScaleType = (ovr->ovrScaleType+1)%9; else if (wh < 0) ovr->ovrScaleType = (ovr->ovrScaleType+8)%9; }
-                ox += 66;
-            } else {
-                ox += 48;
+                if (sh) { int d = scrollDelta(GetMouseWheelMove(), 107); if (d > 0) ovr->ovrScaleType = (ovr->ovrScaleType+1)%9; else if (d < 0) ovr->ovrScaleType = (ovr->ovrScaleType+8)%9; }
+                ox += sw + 4;
             }
         }
 
         // BPM override
         {
             bool on = (ovr->flags & PAT_OVR_BPM) != 0;
-            Rectangle tr = {ox, oy - 1, 34, 14};
+            int bw = MeasureTextUI("BPM", UI_FONT_SMALL) + obPad*2;
+            Rectangle tr = {ox, oy - 1, (float)bw, (float)obH};
             bool th = CheckCollisionPointRec(mouse, tr);
-            DrawRectangleRec(tr, on ? (Color){80,70,40,255} : (th ? (Color){42,42,52,255} : (Color){30,30,38,255}));
-            DrawRectangleLinesEx(tr, 1, on ? (Color){200,180,80,255} : (Color){48,48,58,255});
-            DrawTextShadow("BPM", (int)ox+4, (int)oy, 9, on ? WHITE : GRAY);
+            DrawRectangleRec(tr, on ? UI_TINT_ORANGE : (th ? UI_BORDER_SUBTLE : UI_BG_PANEL));
+            DrawRectangleLinesEx(tr, 1, on ? UI_ACCENT_GOLD : UI_BORDER);
+            DrawTextShadow("BPM", (int)ox+obPad, (int)oy+1, UI_FONT_SMALL, on ? WHITE : GRAY);
             if (th && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 ovr->flags ^= PAT_OVR_BPM;
                 if (ovr->flags & PAT_OVR_BPM) ovr->bpm = daw.transport.bpm;
                 ui_consume_click();
             }
-            ox += 40;
+            ox += bw + 4;
             if (on) {
                 DraggableFloat(ox, oy - 2, "", &ovr->bpm, 1.0f, 40.0f, 300.0f);
-                ox += 70;
+                ox += MeasureTextUI(": 120.00", UI_FONT_MEDIUM) + 14;
             }
         }
 
         // Groove override
         {
             bool on = (ovr->flags & PAT_OVR_GROOVE) != 0;
-            Rectangle tr = {ox, oy - 1, 48, 14};
+            int bw = MeasureTextUI("Groove", UI_FONT_SMALL) + obPad*2;
+            Rectangle tr = {ox, oy - 1, (float)bw, (float)obH};
             bool th = CheckCollisionPointRec(mouse, tr);
-            DrawRectangleRec(tr, on ? (Color){60,80,50,255} : (th ? (Color){42,42,52,255} : (Color){30,30,38,255}));
-            DrawRectangleLinesEx(tr, 1, on ? (Color){140,200,100,255} : (Color){48,48,58,255});
-            DrawTextShadow("Groove", (int)ox+4, (int)oy, 9, on ? WHITE : GRAY);
+            DrawRectangleRec(tr, on ? UI_TINT_GREEN : (th ? UI_BORDER_SUBTLE : UI_BG_PANEL));
+            DrawRectangleLinesEx(tr, 1, on ? UI_ACCENT_GREEN : UI_BORDER);
+            DrawTextShadow("Groove", (int)ox+obPad, (int)oy+1, UI_FONT_SMALL, on ? WHITE : GRAY);
             if (th && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 ovr->flags ^= PAT_OVR_GROOVE;
                 if (ovr->flags & PAT_OVR_GROOVE) {
@@ -3203,37 +3196,40 @@ static void drawWorkSong(float x, float y, float w, float h) {
                 }
                 ui_consume_click();
             }
-            ox += 54;
+            ox += bw + 4;
             if (on) {
                 DraggableInt(ox, oy - 2, "Sw", &ovr->swing, 0.3f, 0, 12);
-                DraggableInt(ox + 68, oy - 2, "Jt", &ovr->jitter, 0.3f, 0, 6);
-                ox += 140;
+                ox += MeasureTextUI("Sw: 12", UI_FONT_MEDIUM) + 16;
+                DraggableInt(ox, oy - 2, "Jt", &ovr->jitter, 0.3f, 0, 6);
+                ox += MeasureTextUI("Jt: 6", UI_FONT_MEDIUM) + 16;
             }
         }
 
         // Track mute override
         {
             bool on = (ovr->flags & PAT_OVR_MUTE) != 0;
-            Rectangle tr = {ox, oy - 1, 40, 14};
+            int bw = MeasureTextUI("Mute", UI_FONT_SMALL) + obPad*2;
+            Rectangle tr = {ox, oy - 1, (float)bw, (float)obH};
             bool th = CheckCollisionPointRec(mouse, tr);
-            DrawRectangleRec(tr, on ? (Color){90,45,45,255} : (th ? (Color){42,42,52,255} : (Color){30,30,38,255}));
-            DrawRectangleLinesEx(tr, 1, on ? (Color){220,100,100,255} : (Color){48,48,58,255});
-            DrawTextShadow("Mute", (int)ox+4, (int)oy, 9, on ? WHITE : GRAY);
+            DrawRectangleRec(tr, on ? UI_TINT_RED : (th ? UI_BORDER_SUBTLE : UI_BG_PANEL));
+            DrawRectangleLinesEx(tr, 1, on ? UI_ACCENT_RED : UI_BORDER);
+            DrawTextShadow("Mute", (int)ox+obPad, (int)oy+1, UI_FONT_SMALL, on ? WHITE : GRAY);
             if (th && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 ovr->flags ^= PAT_OVR_MUTE;
                 if (ovr->flags & PAT_OVR_MUTE) memset(ovr->trackMute, 0, sizeof(ovr->trackMute));
                 ui_consume_click();
             }
-            ox += 46;
+            ox += bw + 4;
             if (on) {
                 const char* trkShort[] = {"K", "S", "H", "C", "Bs", "Ld", "Ch", "T8"};
+                int mw = MeasureTextUI("Bs", UI_FONT_SMALL) + obPad*2;
                 for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++) {
-                    Rectangle mr = {ox + t*22, oy - 1, 20, 14};
+                    Rectangle mr = {ox + t*(mw+2), oy - 1, (float)mw, (float)obH};
                     bool mh = CheckCollisionPointRec(mouse, mr);
                     bool muted = ovr->trackMute[t];
-                    Color mbg = muted ? (Color){140,50,50,255} : (mh ? (Color){45,45,55,255} : (Color){32,32,42,255});
+                    Color mbg = muted ? UI_TINT_RED_HI : (mh ? UI_BG_HOVER : UI_BG_BUTTON);
                     DrawRectangleRec(mr, mbg);
-                    DrawTextShadow(trkShort[t], (int)(ox+t*22+3), (int)oy, 9, muted ? WHITE : GRAY);
+                    DrawTextShadow(trkShort[t], (int)(ox+t*(mw+2)+obPad), (int)oy+1, UI_FONT_SMALL, muted ? WHITE : GRAY);
                     if (mh && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { ovr->trackMute[t] = !ovr->trackMute[t]; ui_consume_click(); }
                 }
             }
@@ -3242,21 +3238,21 @@ static void drawWorkSong(float x, float y, float w, float h) {
 
     // === SCENES ===
     float sy = ovrY + 20;
-    DrawTextShadow("Scenes:", (int)x+4, (int)sy, 13, (Color){180,200,255,255});
+    DrawTextShadow("Scenes:", (int)x+4, (int)sy, UI_FONT_MEDIUM, UI_TEXT_BLUE);
     sy += 18;
     for (int i = 0; i < daw.crossfader.count; i++) {
         float scx = x + 4 + i * 68;
         if (scx + 62 > x + w) break;
         Rectangle r = {scx, sy, 62, 26};
         bool hov = CheckCollisionPointRec(mouse, r);
-        DrawRectangleRec(r, hov ? (Color){50,54,64,255} : (Color){36,38,46,255});
-        DrawRectangleLinesEx(r, 1, (Color){60,60,72,255});
-        DrawTextShadow(TextFormat("Scene %d", i+1), (int)scx+6, (int)sy+7, 10, LIGHTGRAY);
+        DrawRectangleRec(r, hov ? UI_BG_HOVER : UI_BG_BUTTON);
+        DrawRectangleLinesEx(r, 1, UI_BORDER_LIGHT);
+        DrawTextShadow(TextFormat("Scene %d", i+1), (int)scx+6, (int)sy+7, UI_FONT_SMALL, LIGHTGRAY);
     }
 
     // === GROOVE (Dilla timing + humanize) ===
     float gy = sy + 38;
-    DrawTextShadow("Groove:", (int)x+4, (int)gy, 13, (Color){255,200,120,255});
+    DrawTextShadow("Groove:", (int)x+4, (int)gy, UI_FONT_MEDIUM, UI_TEXT_GOLD);
     gy += 18;
 
     // Groove preset selector
@@ -3264,14 +3260,14 @@ static void drawWorkSong(float x, float y, float w, float h) {
         float bx = x + 4;
         for (int i = 0; i < groovePresetCount; i++) {
             const char *name = groovePresets[i].name;
-            int tw = MeasureTextUI(name, 9) + 8;
+            int tw = MeasureTextUI(name, UI_FONT_SMALL) + 8;
             Rectangle r = {bx, gy, (float)tw, 16};
             bool hov = CheckCollisionPointRec(mouse, r);
             bool act = (i == selectedGroovePreset);
-            Color bg = act ? (Color){80,60,30,255} : (hov ? (Color){50,50,60,255} : (Color){36,38,46,255});
+            Color bg = act ? UI_TINT_ORANGE : (hov ? UI_BG_HOVER : UI_BG_BUTTON);
             DrawRectangleRec(r, bg);
             if (act) DrawRectangle((int)bx, (int)gy+14, tw, 2, ORANGE);
-            DrawTextShadow(name, (int)bx+4, (int)gy+3, 9, act ? WHITE : (hov ? LIGHTGRAY : GRAY));
+            DrawTextShadow(name, (int)bx+4, (int)gy+3, UI_FONT_SMALL, act ? WHITE : (hov ? LIGHTGRAY : GRAY));
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 selectedGroovePreset = i;
                 seqApplyGroovePreset(&seq, &seq.humanize, i);
@@ -3283,46 +3279,48 @@ static void drawWorkSong(float x, float y, float w, float h) {
     }
 
     // Drum feel: per-track nudge (labels from preset names, truncated to 6 chars)
+    int grooveLblW = MeasureTextUI("Track Swing:", UI_FONT_MEDIUM) + 8;
+    int grooveRow = UI_FONT_MEDIUM + 6;
     {
         int *nudges[] = {&seq.dilla.kickNudge, &seq.dilla.snareDelay, &seq.dilla.hatNudge, &seq.dilla.clapDelay};
-        DrawTextShadow("Nudge:", (int)x+4, (int)gy+2, 10, (Color){140,140,160,255});
+        DrawTextShadow("Nudge:", (int)x+4, (int)gy+2, UI_FONT_MEDIUM, UI_TEXT_LABEL);
         for (int i = 0; i < 4; i++) {
             char lbl[7];
             const char *name = daw.patches[i].p_name[0] ? daw.patches[i].p_name : "Trk";
             snprintf(lbl, sizeof(lbl), "%.6s", name);
-            if (DraggableInt(x + 60 + i * 105, gy, lbl, nudges[i], 0.3f, -12, 12)) selectedGroovePreset = -1;
+            if (DraggableInt(x + grooveLblW + i * 130, gy, lbl, nudges[i], 0.3f, -12, 12)) selectedGroovePreset = -1;
         }
-        gy += 20;
+        gy += grooveRow;
     }
 
     // Global swing (sets all tracks) & jitter
-    DrawTextShadow("Timing:", (int)x+4, (int)gy+2, 10, (Color){140,140,160,255});
-    if (DraggableInt(x + 80, gy, "Swing", &seq.dilla.swing, 0.3f, 0, 12)) {
+    DrawTextShadow("Timing:", (int)x+4, (int)gy+2, UI_FONT_MEDIUM, UI_TEXT_LABEL);
+    if (DraggableInt(x + grooveLblW, gy, "Swing", &seq.dilla.swing, 0.3f, 0, 12)) {
         selectedGroovePreset = -1;
         for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) seq.trackSwing[i] = seq.dilla.swing;
     }
-    if (DraggableInt(x + 180, gy, "Jitter", &seq.dilla.jitter, 0.3f, 0, 6)) selectedGroovePreset = -1;
-    gy += 20;
+    if (DraggableInt(x + grooveLblW + 130, gy, "Jitter", &seq.dilla.jitter, 0.3f, 0, 6)) selectedGroovePreset = -1;
+    gy += grooveRow;
 
     // Per-track swing (fine-tune individual tracks after setting global)
     {
         const char *trackLabels[] = {"Kick","Snare","HiHat","Clap","Bass","Lead","Chord","Samp"};
         int activeTracks = seq.trackCount < 8 ? seq.trackCount : 8;
-        DrawTextShadow("TrkSw:", (int)x+4, (int)gy+2, 10, (Color){140,140,160,255});
+        DrawTextShadow("Track Swing:", (int)x+4, (int)gy+2, UI_FONT_MEDIUM, UI_TEXT_LABEL);
         for (int i = 0; i < activeTracks; i++) {
             char lbl[7];
             const char *name = daw.patches[i].p_name[0] ? daw.patches[i].p_name : trackLabels[i];
             snprintf(lbl, sizeof(lbl), "%.6s", name);
-            if (DraggableInt(x + 60 + i * 60, gy, lbl, &seq.trackSwing[i], 0.3f, 0, 12))
+            if (DraggableInt(x + grooveLblW + i * 100, gy, lbl, &seq.trackSwing[i], 0.3f, 0, 12))
                 selectedGroovePreset = -1;
         }
-        gy += 20;
+        gy += grooveRow;
     }
 
     // Melody humanize
-    DrawTextShadow("Melody:", (int)x+4, (int)gy+2, 10, (Color){140,140,160,255});
-    if (DraggableInt(x + 80, gy, "Timing", &seq.humanize.timingJitter, 0.3f, 0, 6)) selectedGroovePreset = -1;
-    if (DraggableFloat(x + 180, gy, "Vel Jit", &seq.humanize.velocityJitter, 0.02f, 0.0f, 0.3f)) selectedGroovePreset = -1;
+    DrawTextShadow("Melody:", (int)x+4, (int)gy+2, UI_FONT_MEDIUM, UI_TEXT_LABEL);
+    if (DraggableInt(x + grooveLblW, gy, "Timing", &seq.humanize.timingJitter, 0.3f, 0, 6)) selectedGroovePreset = -1;
+    if (DraggableFloat(x + grooveLblW + 130, gy, "Vel Jit", &seq.humanize.velocityJitter, 0.02f, 0.0f, 0.3f)) selectedGroovePreset = -1;
 }
 
 // ============================================================================
@@ -3355,7 +3353,7 @@ static void drawLfoModIndicator(float x, float y, float baseVal, float modVal, f
     float right = baseFrac < modFrac ? modFrac : baseFrac;
     DrawRectangle((int)(barX + left * barW), (int)barY, (int)((right - left) * barW) + 1, (int)barH, (Color){255, 140, 40, 200});
     // Mod value text
-    DrawTextShadow(TextFormat("%.2f", modded), (int)(barX + barW + 4), (int)(barY - 3), 9, (Color){255, 160, 60, 200});
+    DrawTextShadow(TextFormat("%.2f", modded), (int)(barX + barW + 4), (int)(barY - 3), UI_FONT_SMALL, (Color){255, 160, 60, 200});
 }
 
 // Sampler patch view — shown instead of synth params when sampler track is selected
@@ -3364,22 +3362,22 @@ static void drawParamSampler(float x, float y, float w, float h) {
     Vector2 mouse = GetMousePosition();
 
     // Header
-    DrawTextShadow("SAMPLER", (int)(x + 8), (int)(y + 2), 14, (Color){255, 180, 80, 255});
+    DrawTextShadow("SAMPLER", (int)(x + 8), (int)(y + 2), UI_FONT_MEDIUM, (Color){255, 180, 80, 255});
     y += 22; h -= 22;
 
     // Master volume
     {
-        DrawTextShadow("Volume:", (int)(x + 8), (int)(y + 2), 10, (Color){140, 140, 160, 255});
+        DrawTextShadow("Volume:", (int)(x + 8), (int)(y + 2), UI_FONT_SMALL, UI_TEXT_LABEL);
         Rectangle r = {x + 60, y, 80, 14};
         bool hov = CheckCollisionPointRec(mouse, r);
-        DrawRectangleRec(r, (Color){28, 28, 36, 255});
-        DrawRectangleLinesEx(r, 1, hov ? ORANGE : (Color){50, 50, 60, 255});
+        DrawRectangleRec(r, UI_BG_PANEL);
+        DrawRectangleLinesEx(r, 1, hov ? ORANGE : UI_BG_HOVER);
         float fill = samplerCtx->volume * 76;
         DrawRectangle((int)(r.x + 2), (int)(r.y + 2), (int)fill, 10,
-                     (Color){80, 160, 80, 200});
+                     UI_FILL_GREEN);
         char volStr[16];
         snprintf(volStr, sizeof(volStr), "%.0f%%", samplerCtx->volume * 100);
-        DrawTextShadow(volStr, (int)(r.x + 4), (int)(y + 2), 9, WHITE);
+        DrawTextShadow(volStr, (int)(r.x + 4), (int)(y + 2), UI_FONT_SMALL, WHITE);
         if (hov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
             samplerCtx->volume = (mouse.x - r.x) / r.width;
             if (samplerCtx->volume < 0) samplerCtx->volume = 0;
@@ -3398,16 +3396,16 @@ static void drawParamSampler(float x, float y, float w, float h) {
         char voiceStr[32];
         snprintf(voiceStr, sizeof(voiceStr), "Voices: %d / %d", active, SAMPLER_MAX_VOICES);
         DrawTextShadow(voiceStr, (int)(x + 8), (int)(y + 2), 9,
-                      active > 0 ? (Color){100, 200, 120, 255} : (Color){80, 80, 95, 255});
+                      active > 0 ? UI_TEXT_GREEN : UI_BORDER_LIGHT);
     }
     y += 16;
 
     // Separator
-    DrawLine((int)(x + 4), (int)y, (int)(x + w - 4), (int)y, (Color){50, 50, 60, 255});
+    DrawLine((int)(x + 4), (int)y, (int)(x + w - 4), (int)y, UI_BG_HOVER);
     y += 6;
 
     // Loaded slices list
-    DrawTextShadow("Loaded Slices:", (int)(x + 8), (int)(y + 2), 10, (Color){140, 140, 160, 255});
+    DrawTextShadow("Loaded Slices:", (int)(x + 8), (int)(y + 2), UI_FONT_SMALL, UI_TEXT_LABEL);
     y += 16;
 
     int sliceCount = 0;
@@ -3416,7 +3414,7 @@ static void drawParamSampler(float x, float y, float w, float h) {
     }
 
     if (sliceCount == 0) {
-        DrawTextShadow("(none)", (int)(x + 16), (int)(y + 2), 9, (Color){70, 70, 85, 255});
+        DrawTextShadow("(none)", (int)(x + 16), (int)(y + 2), UI_FONT_SMALL, UI_TEXT_MUTED);
     } else {
         float listH = h - (y - (y - 16 - 6 - 16 - 20 - 22));  // remaining height
         int maxVisible = (int)(listH / 13);
@@ -3427,7 +3425,7 @@ static void drawParamSampler(float x, float y, float w, float h) {
             float dur = samplerGetDuration(i);
             char line[80];
             snprintf(line, sizeof(line), "%2d: %-12s  %.2fs", i, samplerCtx->samples[i].name, dur);
-            Color col = (Color){100, 100, 120, 255};
+            Color col = UI_TEXT_DIM;
             // Highlight if this slice is playing
             for (int v = 0; v < SAMPLER_MAX_VOICES; v++) {
                 if (samplerCtx->voices[v].active && samplerCtx->voices[v].sampleIndex == i) {
@@ -3435,14 +3433,14 @@ static void drawParamSampler(float x, float y, float w, float h) {
                     break;
                 }
             }
-            DrawTextShadow(line, (int)(x + 12), (int)(y + 2), 9, col);
+            DrawTextShadow(line, (int)(x + 12), (int)(y + 2), UI_FONT_SMALL, col);
             y += 13;
             shown++;
         }
         if (sliceCount > maxVisible) {
             char more[16];
             snprintf(more, sizeof(more), "... +%d more", sliceCount - maxVisible);
-            DrawTextShadow(more, (int)(x + 12), (int)(y + 2), 9, (Color){70, 70, 85, 255});
+            DrawTextShadow(more, (int)(x + 12), (int)(y + 2), UI_FONT_SMALL, UI_TEXT_MUTED);
         }
     }
 
@@ -3512,8 +3510,8 @@ static void drawParamPatch(float x, float y, float w, float h) {
         float popH = perCol * 18 + 8;
         Vector2 mouse = GetMousePosition();
 
-        DrawRectangle((int)popX, (int)popY, (int)popW, (int)popH, (Color){25,25,35,245});
-        DrawRectangleLinesEx((Rectangle){popX,popY,popW,popH}, 1, (Color){80,80,100,255});
+        DrawRectangle((int)popX, (int)popY, (int)popW, (int)popH, UI_BG_POPUP);
+        DrawRectangleLinesEx((Rectangle){popX,popY,popW,popH}, 1, UI_BORDER_LIGHT);
 
         float colW = colW0;
         bool clickedItem = false;
@@ -3525,9 +3523,9 @@ static void drawParamPatch(float x, float y, float w, float h) {
             bool hov = CheckCollisionPointRec(mouse, itemR);
             bool selected = (i == patchPresetIndex[daw.selectedPatch]);
             if (selected) DrawRectangleRec(itemR, (Color){50,50,80,255});
-            else if (hov) DrawRectangleRec(itemR, (Color){40,40,60,255});
-            Color tc = selected ? ORANGE : (hov ? WHITE : (Color){160,160,180,255});
-            DrawTextShadow(instrumentPresets[i].name, (int)ix, (int)iy + 1, 13, tc);
+            else if (hov) DrawRectangleRec(itemR, UI_BG_HOVER);
+            Color tc = selected ? ORANGE : (hov ? WHITE : UI_TEXT_BRIGHT);
+            DrawTextShadow(instrumentPresets[i].name, (int)ix, (int)iy + 1, UI_FONT_MEDIUM, tc);
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 loadPresetIntoPatch(daw.selectedPatch, i);
                 presetPickerOpen = false;
@@ -3550,7 +3548,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
     }
 
     // Compact font for all patch sub-tabs
-    #define PCOL(px, py) ui_column_small((px), (py), 13, 12)
+    #define PCOL(px, py) ui_column_small((px), (py), UI_FONT_SMALL + 1, UI_FONT_SMALL)
     // Section highlight helpers — compare float/int/bool fields against defaults
     #define DF(field) (fabsf(p->field - dp.field) > 0.001f)
     #define DI(field) (p->field != dp.field)
@@ -3581,15 +3579,15 @@ static void drawParamPatch(float x, float y, float w, float h) {
         ui_col_space(&c, 2);
 
         if (p->p_waveType == WAVE_SQUARE) {
-            ui_col_sublabel(&c, "PWM:", (Color){140,160,200,255});
+            ui_col_sublabel(&c, "PWM:", UI_TEXT_SUBLABEL);
             ui_col_float_p(&c, "Width", &p->p_pulseWidth, 0.05f, 0.1f, 0.9f);
             ui_col_float(&c, "Rate", &p->p_pwmRate, 0.5f, 0.1f, 20.0f);
             ui_col_float(&c, "Depth", &p->p_pwmDepth, 0.02f, 0.0f, 0.4f);
         } else if (p->p_waveType == WAVE_SCW) {
-            ui_col_sublabel(&c, "Wavetable:", (Color){140,160,200,255});
+            ui_col_sublabel(&c, "Wavetable:", UI_TEXT_SUBLABEL);
             ui_col_int(&c, "SCW", &p->p_scwIndex, 0.3f, 0, 20);
         } else if (p->p_waveType == WAVE_VOICE) {
-            ui_col_sublabel(&c, "Formant:", (Color){140,160,200,255});
+            ui_col_sublabel(&c, "Formant:", UI_TEXT_SUBLABEL);
             ui_col_cycle(&c, "Vowel", vowelNames, 5, &p->p_voiceVowel);
             ui_col_toggle(&c, "Random", &daw.voiceRandomVowel);
             ui_col_float(&c, "Pitch", &p->p_voicePitch, 0.1f, 0.3f, 2.0f);
@@ -3601,23 +3599,23 @@ static void drawParamPatch(float x, float y, float w, float h) {
             if (p->p_voiceConsonant) ui_col_float(&c, "ConsAmt", &p->p_voiceConsonantAmt, 0.05f, 0.0f, 1.0f);
             ui_col_toggle(&c, "Nasal", &p->p_voiceNasal);
             if (p->p_voiceNasal) ui_col_float(&c, "NasalAmt", &p->p_voiceNasalAmt, 0.05f, 0.0f, 1.0f);
-            ui_col_sublabel(&c, "Pitch Env:", (Color){120,140,180,255});
+            ui_col_sublabel(&c, "Pitch Env:", UI_TEXT_SUBLABEL);
             ui_col_float(&c, "Bend", &p->p_voicePitchEnv, 0.5f, -12.0f, 12.0f);
             ui_col_float(&c, "Time", &p->p_voicePitchEnvTime, 0.02f, 0.02f, 0.5f);
             ui_col_float(&c, "Curve", &p->p_voicePitchEnvCurve, 0.1f, -1.0f, 1.0f);
         } else if (p->p_waveType == WAVE_PLUCK) {
-            ui_col_sublabel(&c, "Pluck:", (Color){140,160,200,255});
+            ui_col_sublabel(&c, "Pluck:", UI_TEXT_SUBLABEL);
             ui_col_float(&c, "Bright", &p->p_pluckBrightness, 0.01f, 0.0f, 1.0f);
             ui_col_float(&c, "Sustain", &p->p_pluckDamping, 0.001f, 0.9f, 0.9999f);
             ui_col_float(&c, "Damp", &p->p_pluckDamp, 0.01f, 0.0f, 1.0f);
         } else if (p->p_waveType == WAVE_ADDITIVE) {
-            ui_col_sublabel(&c, "Additive:", (Color){140,160,200,255});
+            ui_col_sublabel(&c, "Additive:", UI_TEXT_SUBLABEL);
             ui_col_cycle(&c, "Preset", additivePresetNames, 5, &p->p_additivePreset);
             ui_col_float(&c, "Bright", &p->p_additiveBrightness, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Shimmer", &p->p_additiveShimmer, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Inharm", &p->p_additiveInharmonicity, 0.005f, 0.0f, 0.1f);
         } else if (p->p_waveType == WAVE_MALLET) {
-            ui_col_sublabel(&c, "Mallet:", (Color){140,160,200,255});
+            ui_col_sublabel(&c, "Mallet:", UI_TEXT_SUBLABEL);
             ui_col_cycle(&c, "Preset", malletPresetNames, 5, &p->p_malletPreset);
             ui_col_float(&c, "Stiff", &p->p_malletStiffness, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Hard", &p->p_malletHardness, 0.05f, 0.0f, 1.0f);
@@ -3627,7 +3625,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "Tremolo", &p->p_malletTremolo, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "TremSpd", &p->p_malletTremoloRate, 0.5f, 1.0f, 12.0f);
         } else if (p->p_waveType == WAVE_GRANULAR) {
-            ui_col_sublabel(&c, "Granular:", (Color){140,160,200,255});
+            ui_col_sublabel(&c, "Granular:", UI_TEXT_SUBLABEL);
             ui_col_int(&c, "Source", &p->p_granularScwIndex, 0.3f, 0, 20);
             ui_col_float(&c, "Size", &p->p_granularGrainSize, 5.0f, 10.0f, 200.0f);
             ui_col_float(&c, "Density", &p->p_granularDensity, 2.0f, 1.0f, 100.0f);
@@ -3637,7 +3635,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "PitRnd", &p->p_granularPitchRandom, 0.5f, 0.0f, 12.0f);
             ui_col_toggle(&c, "Freeze", &p->p_granularFreeze);
         } else if (p->p_waveType == WAVE_FM) {
-            ui_col_sublabel(&c, "FM Synth:", (Color){140,160,200,255});
+            ui_col_sublabel(&c, "FM Synth:", UI_TEXT_SUBLABEL);
             ui_col_float(&c, "Ratio", &p->p_fmModRatio, 0.5f, 0.5f, 16.0f);
             ui_col_float(&c, "Index", &p->p_fmModIndex, 0.2f, 0.0f, 30.0f);
             drawLfoModIndicator(col1X + 100, c.y - c.spacing, p->p_fmModIndex, lfoModViz.fmMod, 0.0f, 30.0f);
@@ -3646,43 +3644,43 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "Mod2 Idx", &p->p_fmMod2Index, 0.2f, 0.0f, 30.0f);
             ui_col_cycle(&c, "Algorithm", fmAlgNames, FM_ALG_COUNT, &p->p_fmAlgorithm);
         } else if (p->p_waveType == WAVE_PD) {
-            ui_col_sublabel(&c, "Phase Dist:", (Color){140,160,200,255});
+            ui_col_sublabel(&c, "Phase Dist:", UI_TEXT_SUBLABEL);
             ui_col_cycle(&c, "Wave", pdWaveNames, 5, &p->p_pdWaveType);
             ui_col_float(&c, "Distort", &p->p_pdDistortion, 0.05f, 0.0f, 1.0f);
         } else if (p->p_waveType == WAVE_MEMBRANE) {
-            ui_col_sublabel(&c, "Membrane:", (Color){140,160,200,255});
+            ui_col_sublabel(&c, "Membrane:", UI_TEXT_SUBLABEL);
             ui_col_cycle(&c, "Preset", membranePresetNames, 5, &p->p_membranePreset);
             ui_col_float(&c, "Damping", &p->p_membraneDamping, 0.05f, 0.1f, 1.0f);
             ui_col_float(&c, "Strike", &p->p_membraneStrike, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Bend", &p->p_membraneBend, 0.02f, 0.0f, 0.5f);
             ui_col_float(&c, "BndDcy", &p->p_membraneBendDecay, 0.01f, 0.02f, 0.3f);
         } else if (p->p_waveType == WAVE_BOWED) {
-            ui_col_sublabel(&c, "Bowed:", (Color){140,160,200,255});
+            ui_col_sublabel(&c, "Bowed:", UI_TEXT_SUBLABEL);
             ui_col_float(&c, "Pressure", &p->p_bowPressure, 0.05f, 0.1f, 1.0f);
             ui_col_float(&c, "Speed", &p->p_bowSpeed, 0.05f, 0.1f, 1.0f);
             ui_col_float(&c, "Position", &p->p_bowPosition, 0.01f, 0.02f, 0.5f);
         } else if (p->p_waveType == WAVE_PIPE) {
-            ui_col_sublabel(&c, "Pipe:", (Color){140,160,200,255});
+            ui_col_sublabel(&c, "Pipe:", UI_TEXT_SUBLABEL);
             ui_col_float(&c, "Breath", &p->p_pipeBreath, 0.05f, 0.1f, 1.0f);
             ui_col_float(&c, "Embou", &p->p_pipeEmbouchure, 0.05f, 0.1f, 1.0f);
             ui_col_float(&c, "Bore", &p->p_pipeBore, 0.05f, 0.1f, 0.9f);
             ui_col_float(&c, "Overblow", &p->p_pipeOverblow, 0.05f, 0.0f, 1.0f);
         } else if (p->p_waveType == WAVE_BIRD) {
-            ui_col_sublabel(&c, "Bird:", (Color){140,160,200,255});
+            ui_col_sublabel(&c, "Bird:", UI_TEXT_SUBLABEL);
             ui_col_cycle(&c, "Type", birdTypeNames, 5, &p->p_birdType);
             ui_col_float(&c, "Range", &p->p_birdChirpRange, 0.1f, 0.5f, 2.0f);
             ui_col_float(&c, "Harmon", &p->p_birdHarmonics, 0.05f, 0.0f, 1.0f);
-            ui_col_sublabel(&c, "Trill:", (Color){120,140,180,255});
+            ui_col_sublabel(&c, "Trill:", UI_TEXT_SUBLABEL);
             ui_col_float(&c, "Rate", &p->p_birdTrillRate, 1.0f, 0.0f, 30.0f);
             ui_col_float(&c, "Depth", &p->p_birdTrillDepth, 0.2f, 0.0f, 5.0f);
-            ui_col_sublabel(&c, "Flutter:", (Color){120,140,180,255});
+            ui_col_sublabel(&c, "Flutter:", UI_TEXT_SUBLABEL);
             ui_col_float(&c, "AM Rate", &p->p_birdAmRate, 1.0f, 0.0f, 20.0f);
             ui_col_float(&c, "AM Dep", &p->p_birdAmDepth, 0.05f, 0.0f, 1.0f);
         }
     }
 
     // Vertical divider
-    DrawLine((int)col2X-4, (int)y, (int)col2X-4, (int)(y+h), (Color){40,40,50,255});
+    DrawLine((int)col2X-4, (int)y, (int)col2X-4, (int)(y+h), UI_BORDER_SUBTLE);
 
     // COL 2: Envelope + Filter
     {
@@ -3744,7 +3742,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
     }
 
     // Vertical divider
-    DrawLine((int)col3X-4, (int)y, (int)col3X-4, (int)(y+h), (Color){40,40,50,255});
+    DrawLine((int)col3X-4, (int)y, (int)col3X-4, (int)(y+h), UI_BORDER_SUBTLE);
 
     // COL 3: Voice params (vibrato, volume, mono, unison, arp, scale)
     {
@@ -3757,7 +3755,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
         ui_col_float(&c, "Rate", &p->p_vibratoRate, 0.5f, 0.5f, 15.0f);
         ui_col_float(&c, "Depth", &p->p_vibratoDepth, 0.2f, 0.0f, 2.0f);
         if (lfoModViz.active && fabsf(lfoModViz.pitchMod) > 0.001f) {
-            DrawTextShadow(TextFormat("%+.1fst", lfoModViz.pitchMod), (int)(col3X + 80), (int)(c.y - c.spacing + 1), 9, (Color){255, 160, 60, 200});
+            DrawTextShadow(TextFormat("%+.1fst", lfoModViz.pitchMod), (int)(col3X + 80), (int)(c.y - c.spacing + 1), UI_FONT_SMALL, (Color){255, 160, 60, 200});
         }
         sectionHighlight(col3X - 2, secY, col3W, c.y - secY, vibActive);
         ui_col_space(&c, 3);
@@ -3774,7 +3772,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
         }
         ui_col_int(&c, "Transpose", &seq.trackTranspose[daw.selectedPatch], 1, -48, 48);
         if (lfoModViz.active && fabsf(lfoModViz.pitchMod) > 0.001f) {
-            DrawTextShadow(TextFormat("%.1fst", lfoModViz.pitchMod), (int)(col3X + 90), (int)(c.y - c.spacing + 1), 9, (Color){255, 160, 60, 200});
+            DrawTextShadow(TextFormat("%.1fst", lfoModViz.pitchMod), (int)(col3X + 90), (int)(c.y - c.spacing + 1), UI_FONT_SMALL, (Color){255, 160, 60, 200});
         }
         ui_col_space(&c, 3);
 
@@ -3832,7 +3830,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
     }
 
     // Vertical divider
-    DrawLine((int)col4X-4, (int)y, (int)col4X-4, (int)(y+h), (Color){40,40,50,255});
+    DrawLine((int)col4X-4, (int)y, (int)col4X-4, (int)(y+h), UI_BORDER_SUBTLE);
 
     // COL 4: LFOs (4 stacked, each with preview)
     {
@@ -3853,7 +3851,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
         int lfoCount = (p->p_waveType == WAVE_FM) ? 5 : 4;
         for (int i = 0; i < lfoCount; i++) {
             UIColumn c = PCOL(col4X, ly);
-            ui_col_sublabel(&c, lfos[i].name, (Color){140,140,200,255});
+            ui_col_sublabel(&c, lfos[i].name, UI_TEXT_SUBLABEL);
             float sliderY = c.y;
             ui_col_float_pair(&c, "R", lfos[i].rate, 0.5f, 0.0f, 20.0f,
                                   "D", lfos[i].depth, 0.05f, 0.0f, 2.0f);
@@ -3872,7 +3870,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
     }
 
     // Vertical divider
-    DrawLine((int)col5X-4, (int)y, (int)col5X-4, (int)(y+h), (Color){40,40,50,255});
+    DrawLine((int)col5X-4, (int)y, (int)col5X-4, (int)(y+h), UI_BORDER_SUBTLE);
 
     // COL 5: Pitch Envelope + Drive + Click
     {
@@ -3933,7 +3931,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
     }
 
     // Vertical divider
-    DrawLine((int)col6X-4, (int)y, (int)col6X-4, (int)(y+h), (Color){40,40,50,255});
+    DrawLine((int)col6X-4, (int)y, (int)col6X-4, (int)(y+h), UI_BORDER_SUBTLE);
 
     // COL 6: Noise + Retrigger
     {
@@ -3970,7 +3968,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
     }
 
     // Vertical divider
-    DrawLine((int)col7X-4, (int)y, (int)col7X-4, (int)(y+h), (Color){40,40,50,255});
+    DrawLine((int)col7X-4, (int)y, (int)col7X-4, (int)(y+h), UI_BORDER_SUBTLE);
 
     // COL 7: Extra Oscillators
     {
@@ -4014,7 +4012,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
 static void drawParamBus(float x, float y, float w, float h) {
     Vector2 mouse = GetMousePosition();
     int nBuses = NUM_BUSES;
-    int fs = 14; // compact font size
+    int fs = UI_FONT_MEDIUM;
     int row = fs + 2; // row height
     float stripW = w / (nBuses + 1);
     if (stripW > 150) stripW = 150;
@@ -4026,11 +4024,11 @@ static void drawParamBus(float x, float y, float w, float h) {
         // Bus header
         Rectangle nameR = {sx, y, stripW-2, 14};
         bool nameHov = CheckCollisionPointRec(mouse, nameR);
-        Color hdrBg = isSel ? (Color){50,55,68,255} : (nameHov ? (Color){40,42,52,255} : (Color){30,31,38,255});
+        Color hdrBg = isSel ? UI_BG_ACTIVE : (nameHov ? UI_BG_HOVER : UI_BG_PANEL);
         DrawRectangleRec(nameR, hdrBg);
         if (isSel) DrawRectangle((int)sx, (int)y+12, (int)stripW-2, 2, ORANGE);
         bool isDrum = (b < 4);
-        DrawTextShadow(dawBusName(b), (int)sx+4, (int)y+1, 10, isSel ? ORANGE : (isDrum ? LIGHTGRAY : (Color){140,180,255,255}));
+        DrawTextShadow(dawBusName(b), (int)sx+4, (int)y+1, UI_FONT_SMALL, isSel ? ORANGE : (isDrum ? LIGHTGRAY : UI_TEXT_BLUE));
 
         if (nameHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             selectedBus = (selectedBus == b) ? -1 : b;
@@ -4048,15 +4046,15 @@ static void drawParamBus(float x, float y, float w, float h) {
 
         // Pan bar (center-notched, visible track)
         {
-            DrawRectangle((int)rightX, (int)ry, (int)rightW, (int)barH, (Color){32,36,45,255}); // visible track color
+            DrawRectangle((int)rightX, (int)ry, (int)rightW, (int)barH, UI_BG_HOVER); // visible track color
             int panCenter = (int)(rightX + rightW * 0.5f);
-            DrawLine(panCenter, (int)ry, panCenter, (int)(ry+barH), (Color){55,60,72,255});
+            DrawLine(panCenter, (int)ry, panCenter, (int)(ry+barH), UI_BORDER_LIGHT);
             float panNorm = (daw.mixer.pan[b] + 1.0f) * 0.5f;
             int panPos = (int)(rightX + panNorm * rightW);
             if (panPos > panCenter) {
-                DrawRectangle(panCenter, (int)ry+1, panPos-panCenter, (int)barH-2, (Color){80,120,180,255});
+                DrawRectangle(panCenter, (int)ry+1, panPos-panCenter, (int)barH-2, UI_FILL_BLUE);
             } else {
-                DrawRectangle(panPos, (int)ry+1, panCenter-panPos, (int)barH-2, (Color){80,120,180,255});
+                DrawRectangle(panPos, (int)ry+1, panCenter-panPos, (int)barH-2, UI_FILL_BLUE);
             }
             DrawLine(panPos, (int)ry, panPos, (int)(ry+barH), WHITE);
             Rectangle panR = {rightX, ry-2, rightW, barH+4};
@@ -4065,7 +4063,7 @@ static void drawParamBus(float x, float y, float w, float h) {
                 if (daw.mixer.pan[b] < -1) daw.mixer.pan[b] = -1;
                 if (daw.mixer.pan[b] > 1) daw.mixer.pan[b] = 1;
             }
-            DrawTextShadow("Pan", (int)rightX, (int)(ry+barH+1), 11, (Color){60,60,70,255});
+            DrawTextShadow("Pan", (int)rightX, (int)(ry+barH+1), UI_FONT_SMALL, UI_BORDER_LIGHT);
             ry += barH + 12;
         }
 
@@ -4073,14 +4071,14 @@ static void drawParamBus(float x, float y, float w, float h) {
         {
             DrawRectangle((int)rightX, (int)ry, (int)rightW, (int)barH, (Color){35,28,50,255}); // visible track
             float revFill = daw.mixer.reverbSend[b] * rightW;
-            DrawRectangle((int)rightX, (int)ry, (int)revFill, (int)barH, (Color){80,60,140,255});
+            DrawRectangle((int)rightX, (int)ry, (int)revFill, (int)barH, UI_FILL_PURPLE);
             Rectangle revR = {rightX, ry-2, rightW, barH+4};
             if (CheckCollisionPointRec(mouse, revR) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
                 daw.mixer.reverbSend[b] = (mouse.x - rightX) / rightW;
                 if (daw.mixer.reverbSend[b] < 0) daw.mixer.reverbSend[b] = 0;
                 if (daw.mixer.reverbSend[b] > 1) daw.mixer.reverbSend[b] = 1;
             }
-            DrawTextShadow("RevSend", (int)rightX, (int)(ry+barH+1), 11, (Color){60,60,70,255});
+            DrawTextShadow("RevSend", (int)rightX, (int)(ry+barH+1), UI_FONT_SMALL, UI_BORDER_LIGHT);
             ry += barH + 14;
         }
 
@@ -4157,21 +4155,21 @@ static void drawParamBus(float x, float y, float w, float h) {
 
         // Vertical separator
         if (b < nBuses - 1) {
-            DrawLine((int)(sx+stripW-1), (int)y, (int)(sx+stripW-1), (int)(y+h), (Color){38,38,48,255});
+            DrawLine((int)(sx+stripW-1), (int)y, (int)(sx+stripW-1), (int)(y+h), UI_BG_HOVER);
         }
     }
 
     // Master strip
     float mx = x + nBuses * stripW;
-    DrawRectangle((int)mx, (int)y, (int)stripW, 14, (Color){40,38,28,255});
-    DrawTextShadow("Master", (int)mx+4, (int)y+1, 10, YELLOW);
-    DrawLine((int)mx-1, (int)y, (int)mx-1, (int)(y+h), (Color){55,55,45,255});
+    DrawRectangle((int)mx, (int)y, (int)stripW, 14, UI_BG_BROWN);
+    DrawTextShadow("Master", (int)mx+4, (int)y+1, UI_FONT_SMALL, YELLOW);
+    DrawLine((int)mx-1, (int)y, (int)mx-1, (int)(y+h), UI_BG_BROWN);
 
     float mcy = y + 16;
     {
         float fW = stripW - 12;
         Rectangle fr = {mx+4, mcy+1, fW, 8};
-        DrawRectangleRec(fr, (Color){20,20,25,255});
+        DrawRectangleRec(fr, UI_BG_DEEPEST);
         DrawRectangle((int)(mx+4), (int)mcy+1, (int)(fW*daw.masterVol), 8, (Color){170,150,50,255});
         if (CheckCollisionPointRec(mouse, fr) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
             daw.masterVol = (mouse.x - (mx+4)) / fW;
@@ -4183,7 +4181,7 @@ static void drawParamBus(float x, float y, float w, float h) {
     mcy += 4;
 
     // Sidechain
-    DrawTextShadow("Sidechain:", (int)mx+4, (int)mcy, 9, (Color){140,140,200,255}); mcy += row;
+    DrawTextShadow("Sidechain:", (int)mx+4, (int)mcy, UI_FONT_SMALL, UI_TEXT_SUBLABEL); mcy += row;
     ToggleBoolS(mx+4, mcy, "On", &daw.sidechain.on, fs); mcy += row;
     if (daw.sidechain.on) {
         { const char* srcN[] = {sidechainSourceName(0), sidechainSourceName(1), sidechainSourceName(2), sidechainSourceName(3), "AllDrm"};
@@ -4198,7 +4196,7 @@ static void drawParamBus(float x, float y, float w, float h) {
     mcy += 4;
 
     // Sidechain Envelope (note-triggered)
-    DrawTextShadow("SC Envelope:", (int)mx+4, (int)mcy, 9, (Color){140,200,140,255}); mcy += row;
+    DrawTextShadow("SC Envelope:", (int)mx+4, (int)mcy, UI_FONT_SMALL, (Color){140,200,140,255}); mcy += row;
     ToggleBoolS(mx+4, mcy, "On", &daw.sidechain.envOn, fs); mcy += row;
     if (daw.sidechain.envOn) {
         { const char* srcN[] = {sidechainSourceName(0), sidechainSourceName(1), sidechainSourceName(2), sidechainSourceName(3), "AllDrm"};
@@ -4216,7 +4214,7 @@ static void drawParamBus(float x, float y, float w, float h) {
     mcy += 4;
 
     // Scenes
-    DrawTextShadow("Scenes:", (int)mx+4, (int)mcy, 9, (Color){140,140,200,255}); mcy += row;
+    DrawTextShadow("Scenes:", (int)mx+4, (int)mcy, UI_FONT_SMALL, UI_TEXT_SUBLABEL); mcy += row;
     ToggleBoolS(mx+4, mcy, "XFade", &daw.crossfader.enabled, fs); mcy += row;
     if (daw.crossfader.enabled) {
         DraggableFloatS(mx+4, mcy, "Pos", &daw.crossfader.pos, 0.02f, 0.0f, 1.0f, fs); mcy += row;
@@ -4241,22 +4239,22 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
 
     // Signal chain label at bottom
     DrawTextShadow("Dist > Crush > Chorus > Flanger > Phaser > Comb > Tape > Delay > Reverb > EQ > Comp",
-                   (int)(x+2), (int)(y+h-11), 9, (Color){55,55,65,255});
+                   (int)(x+2), (int)(y+h-11), 9, UI_BORDER);
 
     float cx = x;
     float panelH = h - 14;  // Leave room for signal chain label
 
     // Helper: each strip gets a label + On toggle, then params if on
     #define MFX_BEGIN(label, onPtr) { \
-        Color lc = *(onPtr) ? ORANGE : (Color){180,180,190,255}; \
-        DrawTextShadow(label, (int)(cx+2), (int)(y+1), 13, lc); \
+        Color lc = *(onPtr) ? ORANGE : UI_TEXT_BRIGHT; \
+        DrawTextShadow(label, (int)(cx+2), (int)(y+1), UI_FONT_MEDIUM, lc); \
         ToggleBoolS(cx+2, y+12, "On", onPtr, fs); \
         float ry = y + 12 + row + 2; \
         float rx = cx + 2; \
         (void)ry; (void)rx;
 
     #define MFX_END() \
-        DrawLine((int)(cx+stripW), (int)y, (int)(cx+stripW), (int)(y+panelH), (Color){38,38,48,255}); \
+        DrawLine((int)(cx+stripW), (int)y, (int)(cx+stripW), (int)(y+panelH), UI_BG_HOVER); \
         cx += stripW; \
     }
 
@@ -4392,7 +4390,7 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
     // Presets row at bottom
     float preY = y + h - 26;
     float px = x + 4;
-    DrawTextShadow("Presets:", (int)px, (int)preY, 9, (Color){80,80,95,255});
+    DrawTextShadow("Presets:", (int)px, (int)preY, UI_FONT_SMALL, UI_BORDER_LIGHT);
     px += 50;
     const char* presets[] = {"Clean", "9-Bit", "Wobbly", "Toy", "Tape+Chorus", "Lo-Fi"};
     for (int i = 0; i < 6; i++) {
@@ -4421,14 +4419,14 @@ static void drawParamTape(float x, float y, float w, float h) {
         ui_col_space(&c, 4);
 
         // Speed section
-        ui_col_sublabel(&c, "Speed:", (Color){140,140,200,255});
+        ui_col_sublabel(&c, "Speed:", UI_TEXT_SUBLABEL);
         ui_col_float(&c, "Speed", &daw.tapeFx.speedTarget, 0.1f, 0.1f, 2.0f);
         if (ui_col_button(&c, "1/2 Speed")) daw.tapeFx.speedTarget = 0.5f;
         if (ui_col_button(&c, "Normal")) daw.tapeFx.speedTarget = 1.0f;
 
         // COL 2: Character — set and forget tape personality
         UIColumn c2 = ui_column(x + 150, y, 16);
-        ui_col_sublabel(&c2, "Character:", (Color){140,140,200,255});
+        ui_col_sublabel(&c2, "Character:", UI_TEXT_SUBLABEL);
         ui_col_float(&c2, "Saturat", &daw.tapeFx.saturation, 0.05f, 0.0f, 1.0f);
         ui_col_float(&c2, "Noise", &daw.tapeFx.noise, 0.02f, 0.0f, 0.5f);
         ui_col_float(&c2, "Degrade", &daw.tapeFx.degradeRate, 0.02f, 0.0f, 0.5f);
@@ -4440,7 +4438,7 @@ static void drawParamTape(float x, float y, float w, float h) {
 
         // COL 3: Throw — per-track send buttons (the Tubby workflow)
         UIColumn c3 = ui_column(x + 290, y, 16);
-        ui_col_sublabel(&c3, "Throw:", (Color){140,140,200,255});
+        ui_col_sublabel(&c3, "Throw:", UI_TEXT_SUBLABEL);
         ui_col_cycle(&c3, "Input", dubInputNames, 4, &daw.tapeFx.inputSource);
         ui_col_space(&c3, 2);
 
@@ -4470,7 +4468,7 @@ static void drawParamTape(float x, float y, float w, float h) {
     }
 
     // Divider
-    DrawLine((int)(x+halfW), (int)y, (int)(x+halfW), (int)(y+h), (Color){45,45,55,255});
+    DrawLine((int)(x+halfW), (int)y, (int)(x+halfW), (int)(y+h), UI_BG_HOVER);
 
     // Right: Rewind
     {
@@ -4512,8 +4510,8 @@ static void drawDebugPanel(void) {
     float px = CONTENT_X + 20, py = TRANSPORT_H + 10;
     float pw = 460, ph = 380;
     DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){18, 18, 24, 240});
-    DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 1, (Color){70, 70, 90, 255});
-    DrawTextShadow("Debug", (int)px + 6, (int)py + 4, 12, WHITE);
+    DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 1, UI_BORDER_LIGHT);
+    DrawTextShadow("Debug", (int)px + 6, (int)py + 4, UI_FONT_SMALL, WHITE);
 
     float bx = px + 8, by = py + 22;
 
@@ -4522,10 +4520,10 @@ static void drawDebugPanel(void) {
     {
         Rectangle r = {bx, by, 70, 16};
         bool hov = CheckCollisionPointRec(mouse, r);
-        Color bg = seqSoundLogEnabled ? (Color){140, 50, 50, 255} : (hov ? (Color){50, 50, 60, 255} : (Color){35, 35, 42, 255});
+        Color bg = seqSoundLogEnabled ? UI_TINT_RED_HI : (hov ? UI_BG_HOVER : UI_BG_BUTTON);
         DrawRectangleRec(r, bg);
-        DrawRectangleLinesEx(r, 1, (Color){60, 60, 70, 255});
-        DrawTextShadow(seqSoundLogEnabled ? "Log: ON" : "Log: OFF", (int)bx + 4, (int)by + 3, 9, WHITE);
+        DrawRectangleLinesEx(r, 1, UI_BORDER_LIGHT);
+        DrawTextShadow(seqSoundLogEnabled ? "Log: ON" : "Log: OFF", (int)bx + 4, (int)by + 3, UI_FONT_SMALL, WHITE);
         if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             seqSoundLogEnabled = !seqSoundLogEnabled;
             if (seqSoundLogEnabled) {
@@ -4540,9 +4538,9 @@ static void drawDebugPanel(void) {
     {
         Rectangle r = {bx + 76, by, 56, 16};
         bool hov = CheckCollisionPointRec(mouse, r);
-        DrawRectangleRec(r, hov ? (Color){50, 50, 60, 255} : (Color){35, 35, 42, 255});
-        DrawRectangleLinesEx(r, 1, (Color){60, 60, 70, 255});
-        DrawTextShadow("Dump", (int)bx + 80, (int)by + 3, 9, seqSoundLogCount > 0 ? WHITE : GRAY);
+        DrawRectangleRec(r, hov ? UI_BG_HOVER : UI_BG_BUTTON);
+        DrawRectangleLinesEx(r, 1, UI_BORDER_LIGHT);
+        DrawTextShadow("Dump", (int)bx + 80, (int)by + 3, UI_FONT_SMALL, seqSoundLogCount > 0 ? WHITE : GRAY);
         if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && seqSoundLogCount > 0) {
             seqSoundLogDump("daw_sound.log");
             ui_consume_click();
@@ -4552,14 +4550,14 @@ static void drawDebugPanel(void) {
     {
         Rectangle r = {bx + 138, by, 70, 16};
         bool hov = CheckCollisionPointRec(mouse, r);
-        Color bg = dawRecording ? (Color){180, 40, 40, 255} : (hov ? (Color){50, 50, 60, 255} : (Color){35, 35, 42, 255});
+        Color bg = dawRecording ? (Color){180, 40, 40, 255} : (hov ? UI_BG_HOVER : UI_BG_BUTTON);
         DrawRectangleRec(r, bg);
-        DrawRectangleLinesEx(r, 1, (Color){60, 60, 70, 255});
+        DrawRectangleLinesEx(r, 1, UI_BORDER_LIGHT);
         if (dawRecording) {
             float secs = (float)dawRecSamples / SAMPLE_RATE;
-            DrawTextShadow(TextFormat("WAV %.1fs", secs), (int)bx + 142, (int)by + 3, 9, WHITE);
+            DrawTextShadow(TextFormat("WAV %.1fs", secs), (int)bx + 142, (int)by + 3, UI_FONT_SMALL, WHITE);
         } else {
-            DrawTextShadow("WAV Rec", (int)bx + 142, (int)by + 3, 9, WHITE);
+            DrawTextShadow("WAV Rec", (int)bx + 142, (int)by + 3, UI_FONT_SMALL, WHITE);
         }
         if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             if (dawRecording) dawRecStop(); else dawRecStart();
@@ -4570,9 +4568,9 @@ static void drawDebugPanel(void) {
     {
         Rectangle r = {bx + 214, by, 60, 16};
         bool hov = CheckCollisionPointRec(mouse, r);
-        DrawRectangleRec(r, hov ? (Color){80, 40, 40, 255} : (Color){35, 35, 42, 255});
-        DrawRectangleLinesEx(r, 1, (Color){60, 60, 70, 255});
-        DrawTextShadow("Kill All", (int)bx + 218, (int)by + 3, 9, (Color){255, 120, 120, 255});
+        DrawRectangleRec(r, hov ? UI_BG_RED_MED : UI_BG_BUTTON);
+        DrawRectangleLinesEx(r, 1, UI_BORDER_LIGHT);
+        DrawTextShadow("Kill All", (int)bx + 218, (int)by + 3, UI_FONT_SMALL, (Color){255, 120, 120, 255});
         if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             for (int i = 0; i < NUM_VOICES; i++) {
                 synthVoices[i].envStage = 0;
@@ -4590,9 +4588,9 @@ static void drawDebugPanel(void) {
     {
         Rectangle r = {bx + 280, by, 66, 16};
         bool hov = CheckCollisionPointRec(mouse, r);
-        DrawRectangleRec(r, hov ? (Color){50, 50, 60, 255} : (Color){35, 35, 42, 255});
-        DrawRectangleLinesEx(r, 1, (Color){60, 60, 70, 255});
-        DrawTextShadow("Dump VLog", (int)bx + 284, (int)by + 3, 9, voiceLogCount > 0 ? WHITE : GRAY);
+        DrawRectangleRec(r, hov ? UI_BG_HOVER : UI_BG_BUTTON);
+        DrawRectangleLinesEx(r, 1, UI_BORDER_LIGHT);
+        DrawTextShadow("Dump VLog", (int)bx + 284, (int)by + 3, UI_FONT_SMALL, voiceLogCount > 0 ? WHITE : GRAY);
         if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && voiceLogCount > 0) {
             FILE *vf = fopen("daw_voice.log", "w");
             if (vf) {
@@ -4606,11 +4604,30 @@ static void drawDebugPanel(void) {
             ui_consume_click();
         }
     }
+    // Dump sampler slots to /tmp
+    {
+        Rectangle r = {bx + 352, by, 80, 16};
+        bool hov = CheckCollisionPointRec(mouse, r);
+        DrawRectangleRec(r, hov ? UI_BG_HOVER : UI_BG_BUTTON);
+        DrawRectangleLinesEx(r, 1, UI_BORDER_LIGHT);
+        DrawTextShadow("Dump Samp", (int)bx + 356, (int)by + 3, UI_FONT_SMALL,
+                       (chopState.bounced) ? WHITE : GRAY);
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && chopState.bounced) {
+            chopDumpSamplerSlots();
+            fprintf(stderr, "samplerCtx->sampleRate = %d, volume = %.2f\n",
+                    samplerCtx->sampleRate, samplerCtx->volume);
+            for (int si = 0; si < 8; si++) {
+                Sample *ss = &samplerCtx->samples[si];
+                if (ss->loaded) fprintf(stderr, "  slot[%d]: len=%d sr=%d loaded=%d\n", si, ss->length, ss->sampleRate, ss->loaded);
+            }
+            ui_consume_click();
+        }
+    }
 
     by += 24;
 
     // --- Voice grid: 16 boxes colored by bus, with index ---
-    DrawTextShadow("Voices:", (int)bx, (int)by, 9, GRAY);
+    DrawTextShadow("Voices:", (int)bx, (int)by, UI_FONT_SMALL, GRAY);
     by += 12;
     int activeCount = 0;
     for (int i = 0; i < NUM_VOICES; i++) {
@@ -4627,20 +4644,20 @@ static void drawDebugPanel(void) {
             bg = busColors[bus];
             if (releasing) { bg.r /= 2; bg.g /= 2; bg.b /= 2; }
         } else if (active) {
-            bg = (Color){100, 100, 100, 255};
+            bg = UI_TEXT_DIM;
             if (releasing) { bg.r /= 2; bg.g /= 2; bg.b /= 2; }
         }
 
         DrawRectangle((int)cx, (int)cy, 50, 34, bg);
-        DrawRectangleLinesEx((Rectangle){cx, cy, 50, 34}, 1, active ? WHITE : (Color){45, 45, 55, 255});
+        DrawRectangleLinesEx((Rectangle){cx, cy, 50, 34}, 1, active ? WHITE : UI_BG_HOVER);
 
         // Voice index
-        DrawTextShadow(TextFormat("%d", i), (int)cx + 2, (int)cy + 1, 9, active ? WHITE : (Color){50, 50, 58, 255});
+        DrawTextShadow(TextFormat("%d", i), (int)cx + 2, (int)cy + 1, UI_FONT_SMALL, active ? WHITE : UI_BG_HOVER);
 
         if (active) {
             // Bus name
             const char *bname = dawBusName(bus);
-            DrawTextShadow(bname, (int)cx + 14, (int)cy + 1, 9, WHITE);
+            DrawTextShadow(bname, (int)cx + 14, (int)cy + 1, UI_FONT_SMALL, WHITE);
             // Frequency
             DrawTextShadow(TextFormat("%.0fHz", synthVoices[i].frequency), (int)cx + 2, (int)cy + 12, 8, (Color){200, 200, 200, 255});
             // Env stage + age
@@ -4665,7 +4682,7 @@ static void drawDebugPanel(void) {
                 if (synthVoices[v].envStage > 0 && voiceBus[v] == b) cnt++;
             if (cnt > 0) {
                 DrawRectangle((int)bsx, (int)by, 8, 10, busColors[b]);
-                DrawTextShadow(TextFormat("%s:%d", dawBusName(b), cnt), (int)bsx + 10, (int)by, 9, GRAY);
+                DrawTextShadow(TextFormat("%s:%d", dawBusName(b), cnt), (int)bsx + 10, (int)by, UI_FONT_SMALL, GRAY);
                 bsx += 55;
             }
         }
@@ -4673,12 +4690,12 @@ static void drawDebugPanel(void) {
     by += 16;
 
     // --- Voice lifecycle log ---
-    DrawTextShadow("Voice Log:", (int)bx, (int)by, 9, GRAY);
+    DrawTextShadow("Voice Log:", (int)bx, (int)by, UI_FONT_SMALL, GRAY);
     by += 12;
     int logLines = voiceLogCount < 12 ? voiceLogCount : 12;
     for (int i = 0; i < logLines; i++) {
         int idx = (voiceLogHead - logLines + i + VOICE_LOG_SIZE) % VOICE_LOG_SIZE;
-        DrawTextShadow(voiceLog[idx], (int)bx, (int)(by + i * 10), 8, (Color){140, 140, 150, 255});
+        DrawTextShadow(voiceLog[idx], (int)bx, (int)(by + i * 10), 8, UI_TEXT_LABEL);
     }
 }
 
@@ -4834,21 +4851,21 @@ static void drawWorkMidi(float x, float y, float w, float h) {
     float sx = x, sy = y;
 
     // --- MIDI Device Status ---
-    DrawTextShadow("MIDI Device", (int)sx, (int)sy, 12, WHITE);
+    DrawTextShadow("MIDI Device", (int)sx, (int)sy, UI_FONT_SMALL, WHITE);
     sy += 16;
     if (MidiInput_IsConnected()) {
         DrawRectangle((int)sx, (int)sy, 8, 8, GREEN);
-        DrawTextShadow(MidiInput_DeviceName(), (int)sx + 12, (int)sy - 1, 11, LIGHTGRAY);
+        DrawTextShadow(MidiInput_DeviceName(), (int)sx + 12, (int)sy - 1, UI_FONT_SMALL, LIGHTGRAY);
     } else {
-        DrawRectangle((int)sx, (int)sy, 8, 8, (Color){80,40,40,255});
-        DrawTextShadow("No device — plug in a MIDI controller", (int)sx + 12, (int)sy - 1, 11, (Color){120,120,130,255});
+        DrawRectangle((int)sx, (int)sy, 8, 8, UI_BG_RED_MED);
+        DrawTextShadow("No device — plug in a MIDI controller", (int)sx + 12, (int)sy - 1, UI_FONT_SMALL, UI_TEXT_SUBTLE);
     }
     sy += 18;
 
     // --- Split Keyboard ---
-    DrawLine((int)x, (int)sy, (int)(x + w), (int)sy, (Color){42,42,52,255});
+    DrawLine((int)x, (int)sy, (int)(x + w), (int)sy, UI_BORDER_SUBTLE);
     sy += 6;
-    DrawTextShadow("Split Keyboard", (int)sx, (int)sy, 12, WHITE);
+    DrawTextShadow("Split Keyboard", (int)sx, (int)sy, UI_FONT_SMALL, WHITE);
     sy += 18;
 
     ToggleBool(sx, sy, "Enable Split", &daw.splitEnabled);
@@ -4860,27 +4877,27 @@ static void drawWorkMidi(float x, float y, float w, float h) {
         sx += 100;
         int spOct = daw.splitPoint / 12;
         int spNote = daw.splitPoint % 12;
-        DrawTextShadow(TextFormat("(%s%d)", noteNames[spNote], spOct), (int)sx, (int)sy + 2, 11, LIGHTGRAY);
+        DrawTextShadow(TextFormat("(%s%d)", noteNames[spNote], spOct), (int)sx, (int)sy + 2, UI_FONT_SMALL, LIGHTGRAY);
         sx += 50;
 
         sy += 24;
         sx = x;
 
         // Left zone
-        DrawTextShadow("Left zone (below split):", (int)sx, (int)sy, 10, (Color){100,180,255,255});
+        DrawTextShadow("Left zone (below split):", (int)sx, (int)sy, UI_FONT_SMALL, (Color){100,180,255,255});
         sy += 14;
-        DrawTextShadow("Patch:", (int)sx, (int)sy + 2, 10, (Color){80,140,200,255});
+        DrawTextShadow("Patch:", (int)sx, (int)sy + 2, UI_FONT_SMALL, (Color){80,140,200,255});
         DraggableInt(sx + 50, sy, "", &daw.splitLeftPatch, 0.3f, 0, NUM_PATCHES - 1);
-        DrawTextShadow(daw.patches[daw.splitLeftPatch].p_name, (int)sx + 80, (int)sy + 2, 10, (Color){100,180,255,255});
+        DrawTextShadow(daw.patches[daw.splitLeftPatch].p_name, (int)sx + 80, (int)sy + 2, UI_FONT_SMALL, (Color){100,180,255,255});
         DraggableInt(sx + 180, sy, "Octave", &daw.splitLeftOctave, 0.3f, -2, 2);
         sy += 18;
 
         // Right zone
-        DrawTextShadow("Right zone (above split):", (int)sx, (int)sy, 10, (Color){255,180,100,255});
+        DrawTextShadow("Right zone (above split):", (int)sx, (int)sy, UI_FONT_SMALL, UI_PLOCK_DRUM);
         sy += 14;
-        DrawTextShadow("Patch:", (int)sx, (int)sy + 2, 10, (Color){200,140,80,255});
+        DrawTextShadow("Patch:", (int)sx, (int)sy + 2, UI_FONT_SMALL, UI_TINT_ORANGE);
         DraggableInt(sx + 50, sy, "", &daw.splitRightPatch, 0.3f, 0, NUM_PATCHES - 1);
-        DrawTextShadow(daw.patches[daw.splitRightPatch].p_name, (int)sx + 80, (int)sy + 2, 10, (Color){255,180,100,255});
+        DrawTextShadow(daw.patches[daw.splitRightPatch].p_name, (int)sx + 80, (int)sy + 2, UI_FONT_SMALL, UI_PLOCK_DRUM);
         DraggableInt(sx + 180, sy, "Octave", &daw.splitRightOctave, 0.3f, -2, 2);
         sy += 22;
     } else {
@@ -4889,9 +4906,9 @@ static void drawWorkMidi(float x, float y, float w, float h) {
     }
 
     // --- Visual Mini Keyboard (shows held notes) ---
-    DrawLine((int)x, (int)sy, (int)(x + w), (int)sy, (Color){42,42,52,255});
+    DrawLine((int)x, (int)sy, (int)(x + w), (int)sy, UI_BORDER_SUBTLE);
     sy += 6;
-    DrawTextShadow("Keyboard", (int)x, (int)sy, 12, WHITE);
+    DrawTextShadow("Keyboard", (int)x, (int)sy, UI_FONT_SMALL, WHITE);
     sy += 18;
 
     // Draw 4 octaves (C2-B5 = notes 36-83) as a mini piano
@@ -4922,11 +4939,11 @@ static void drawWorkMidi(float x, float y, float w, float h) {
             DrawLine((int)kx, (int)sy, (int)kx, (int)(sy + keyH), RED);
         }
         DrawRectangle((int)kx, (int)sy, (int)keyW, (int)keyH, col);
-        DrawRectangleLinesEx((Rectangle){kx, sy, keyW, keyH}, 1, (Color){30,30,35,255});
+        DrawRectangleLinesEx((Rectangle){kx, sy, keyW, keyH}, 1, UI_BG_PANEL);
 
         // Octave labels on C keys
         if (pc == 0) {
-            DrawTextShadow(TextFormat("C%d", n / 12), (int)kx + 1, (int)(sy + keyH - 12), 8, (Color){120,120,130,255});
+            DrawTextShadow(TextFormat("C%d", n / 12), (int)kx + 1, (int)(sy + keyH - 12), 8, UI_TEXT_SUBTLE);
         }
         whiteIdx++;
     }
@@ -4951,15 +4968,15 @@ static void drawWorkMidi(float x, float y, float w, float h) {
             else col = (Color){50, 140, 50, 255};
         }
         DrawRectangle((int)kx, (int)sy, (int)bkW, (int)bkH, col);
-        DrawRectangleLinesEx((Rectangle){kx, sy, bkW, bkH}, 1, (Color){15,15,20,255});
+        DrawRectangleLinesEx((Rectangle){kx, sy, bkW, bkH}, 1, UI_BG_DEEPEST);
     }
     sy += keyH + 8;
 
     // --- MIDI Learn Mappings ---
-    DrawLine((int)x, (int)sy, (int)(x + w), (int)sy, (Color){42,42,52,255});
+    DrawLine((int)x, (int)sy, (int)(x + w), (int)sy, UI_BORDER_SUBTLE);
     sy += 6;
-    DrawTextShadow("MIDI Learn", (int)x, (int)sy, 12, WHITE);
-    DrawTextShadow("(right-click any knob to map)", (int)(x + 100), (int)sy + 2, 9, (Color){80,80,90,255});
+    DrawTextShadow("MIDI Learn", (int)x, (int)sy, UI_FONT_SMALL, WHITE);
+    DrawTextShadow("(right-click any knob to map)", (int)(x + 100), (int)sy + 2, UI_FONT_SMALL, UI_BORDER_LIGHT);
     sy += 18;
 
     if (g_midiLearn.learning) {
@@ -4969,32 +4986,32 @@ static void drawWorkMidi(float x, float y, float w, float h) {
     }
 
     if (g_midiLearn.count == 0 && !g_midiLearn.learning) {
-        DrawTextShadow("No mappings yet", (int)x, (int)sy, 10, (Color){80,80,90,255});
+        DrawTextShadow("No mappings yet", (int)x, (int)sy, UI_FONT_SMALL, UI_BORDER_LIGHT);
     } else {
         // Column headers
-        DrawTextShadow("CC", (int)x, (int)sy, 9, (Color){100,100,120,255});
-        DrawTextShadow("Parameter", (int)(x + 40), (int)sy, 9, (Color){100,100,120,255});
-        DrawTextShadow("Value", (int)(x + 220), (int)sy, 9, (Color){100,100,120,255});
+        DrawTextShadow("CC", (int)x, (int)sy, UI_FONT_SMALL, UI_TEXT_DIM);
+        DrawTextShadow("Parameter", (int)(x + 40), (int)sy, UI_FONT_SMALL, UI_TEXT_DIM);
+        DrawTextShadow("Value", (int)(x + 220), (int)sy, UI_FONT_SMALL, UI_TEXT_DIM);
         sy += 12;
 
         for (int i = 0; i < g_midiLearn.count && i < 16; i++) {
             MidiCCMapping *m = &g_midiLearn.mappings[i];
             if (!m->active) continue;
 
-            DrawTextShadow(TextFormat("%3d", m->cc), (int)x, (int)sy, 10, (Color){180,180,100,255});
-            DrawTextShadow(m->label, (int)(x + 40), (int)sy, 10, LIGHTGRAY);
+            DrawTextShadow(TextFormat("%3d", m->cc), (int)x, (int)sy, UI_FONT_SMALL, UI_GOLD);
+            DrawTextShadow(m->label, (int)(x + 40), (int)sy, UI_FONT_SMALL, LIGHTGRAY);
             float val01 = (m->target && (m->max - m->min) > 0.0001f)
                 ? (*m->target - m->min) / (m->max - m->min) : 0;
             // Small value bar
-            DrawRectangle((int)(x + 220), (int)sy + 1, 80, 8, (Color){30,30,35,255});
+            DrawRectangle((int)(x + 220), (int)sy + 1, 80, 8, UI_BG_PANEL);
             DrawRectangle((int)(x + 220), (int)sy + 1, (int)(80 * val01), 8, (Color){100,160,100,255});
-            DrawTextShadow(TextFormat("%.2f", m->target ? *m->target : 0), (int)(x + 305), (int)sy, 9, (Color){120,120,130,255});
+            DrawTextShadow(TextFormat("%.2f", m->target ? *m->target : 0), (int)(x + 305), (int)sy, UI_FONT_SMALL, UI_TEXT_SUBTLE);
 
             // Delete button
             Rectangle delR = {x + 360, sy - 1, 12, 12};
             bool delHov = CheckCollisionPointRec(mouse, delR);
-            DrawRectangleRec(delR, delHov ? (Color){120,50,50,255} : (Color){50,30,30,255});
-            DrawTextShadow("x", (int)(x + 362), (int)sy, 9, delHov ? WHITE : (Color){150,80,80,255});
+            DrawRectangleRec(delR, delHov ? (Color){120,50,50,255} : UI_BG_RED_DARK);
+            DrawTextShadow("x", (int)(x + 362), (int)sy, UI_FONT_SMALL, delHov ? WHITE : UI_ACCENT_RED);
             if (delHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 // Remove mapping
                 g_midiLearn.mappings[i] = g_midiLearn.mappings[g_midiLearn.count - 1];
@@ -5012,9 +5029,9 @@ static void drawWorkMidi(float x, float y, float w, float h) {
         sy += 4;
         Rectangle clrR = {x, sy, 80, 16};
         bool clrHov = CheckCollisionPointRec(mouse, clrR);
-        DrawRectangleRec(clrR, clrHov ? (Color){120,50,50,255} : (Color){45,35,35,255});
-        DrawRectangleLinesEx(clrR, 1, (Color){80,50,50,255});
-        DrawTextShadow("Clear All", (int)x + 10, (int)sy + 2, 10, clrHov ? WHITE : (Color){180,100,100,255});
+        DrawRectangleRec(clrR, clrHov ? (Color){120,50,50,255} : UI_BG_RED_DARK);
+        DrawRectangleLinesEx(clrR, 1, UI_BG_RED_MED);
+        DrawTextShadow("Clear All", (int)x + 10, (int)sy + 2, UI_FONT_SMALL, clrHov ? WHITE : (Color){180,100,100,255});
         if (clrHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             MidiLearn_ClearAll();
             ui_consume_click();
@@ -5220,11 +5237,11 @@ static int drawChopWaveform(float bx, float by, float bw, float bh,
                              const float *data, int length, int sliceCount,
                              const int *sliceLengths, int selectedSlice) {
     int clicked = -1;
-    DrawRectangle((int)bx, (int)by, (int)bw, (int)bh, (Color){18, 18, 24, 255});
-    DrawRectangleLinesEx((Rectangle){bx, by, bw, bh}, 1, (Color){42, 42, 52, 255});
+    DrawRectangle((int)bx, (int)by, (int)bw, (int)bh, UI_BG_DEEPEST);
+    DrawRectangleLinesEx((Rectangle){bx, by, bw, bh}, 1, UI_BORDER_SUBTLE);
 
     if (!data || length < 1) {
-        DrawTextShadow("No audio — load a .song and press Chop", (int)(bx + 8), (int)(by + bh / 2 - 5), 10, (Color){60, 60, 70, 255});
+        DrawTextShadow("No audio — load a .song and press Chop", (int)(bx + 8), (int)(by + bh / 2 - 5), UI_FONT_SMALL, UI_BORDER_LIGHT);
         return -1;
     }
 
@@ -5286,7 +5303,7 @@ static int drawChopWaveform(float bx, float by, float bw, float bh,
         bool sel = (s == selectedSlice);
         if (sw > tw + 2)  // only draw if slice is wide enough
             DrawTextShadow(num, (int)(sx + sw / 2 - tw / 2), (int)(by + bh - 12), 8,
-                           sel ? ORANGE : (Color){60, 65, 75, 255});
+                           sel ? ORANGE : UI_BORDER_LIGHT);
     }
 
     // Click detection
@@ -5327,26 +5344,26 @@ static void drawWorkSample(float x, float y, float w, float h) {
     Vector2 mouse = GetMousePosition();
     float sy = y;
 
-    DrawTextShadow("Sample / Chop", (int)x, (int)sy, 12, WHITE);
+    DrawTextShadow("Sample / Chop", (int)x, (int)sy, UI_FONT_SMALL, WHITE);
     sy += 20;
 
     // --- Source row ---
     chopScanSongs();
-    DrawTextShadow("Source:", (int)x, (int)(sy + 2), 10, (Color){140, 140, 160, 255});
+    DrawTextShadow("Source:", (int)x, (int)(sy + 2), UI_FONT_SMALL, UI_TEXT_LABEL);
     // Song selector button (click to open/close file list)
     {
         float btnX = x + 50;
         float btnW = w - 260;
         Rectangle btnR = {btnX, sy, btnW, 16};
         bool hov = CheckCollisionPointRec(mouse, btnR);
-        DrawRectangleRec(btnR, chopState.browsingFiles ? (Color){45, 45, 58, 255} : (hov ? (Color){38, 40, 50, 255} : (Color){28, 28, 36, 255}));
-        DrawRectangleLinesEx(btnR, 1, chopState.browsingFiles ? ORANGE : (Color){50, 50, 60, 255});
+        DrawRectangleRec(btnR, chopState.browsingFiles ? UI_BG_HOVER : (hov ? UI_BG_HOVER : UI_BG_PANEL));
+        DrawRectangleLinesEx(btnR, 1, chopState.browsingFiles ? ORANGE : UI_BG_HOVER);
 
         const char *display = chopState.sourceSongIdx >= 0 ? songBrowser.names[chopState.sourceSongIdx] : "Select song...";
         DrawTextShadow(display, (int)(btnX + 4), (int)(sy + 3), 9,
-                      chopState.sourceSongIdx >= 0 ? WHITE : (Color){70, 70, 85, 255});
+                      chopState.sourceSongIdx >= 0 ? WHITE : UI_TEXT_MUTED);
         // Arrow indicator
-        DrawTextShadow(chopState.browsingFiles ? "^" : "v", (int)(btnX + btnW - 12), (int)(sy + 3), 9, (Color){80, 80, 100, 255});
+        DrawTextShadow(chopState.browsingFiles ? "^" : "v", (int)(btnX + btnW - 12), (int)(sy + 3), UI_FONT_SMALL, UI_BORDER_LIGHT);
 
         if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             chopState.browsingFiles = !chopState.browsingFiles;
@@ -5357,16 +5374,16 @@ static void drawWorkSample(float x, float y, float w, float h) {
     // Pattern selector
     {
         float px = x + w - 200;
-        DrawTextShadow("Pat:", (int)px, (int)(sy + 2), 10, (Color){140, 140, 160, 255});
+        DrawTextShadow("Pat:", (int)px, (int)(sy + 2), UI_FONT_SMALL, UI_TEXT_LABEL);
         for (int p = 0; p < SEQ_NUM_PATTERNS; p++) {
             Rectangle r = {px + 28 + p * 18, sy, 16, 16};
             bool sel = (p == chopState.sourcePattern);
             bool hov = CheckCollisionPointRec(mouse, r);
-            DrawRectangleRec(r, sel ? (Color){60, 80, 60, 255} : (hov ? (Color){42, 44, 52, 255} : (Color){30, 31, 38, 255}));
-            DrawRectangleLinesEx(r, 1, sel ? GREEN : (Color){48, 48, 58, 255});
+            DrawRectangleRec(r, sel ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_PANEL));
+            DrawRectangleLinesEx(r, 1, sel ? GREEN : UI_BORDER);
             char num[4];
             snprintf(num, sizeof(num), "%d", p + 1);
-            DrawTextShadow(num, (int)(r.x + 4), (int)(r.y + 3), 9, sel ? WHITE : (Color){100, 100, 120, 255});
+            DrawTextShadow(num, (int)(r.x + 4), (int)(r.y + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_DIM);
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 chopState.sourcePattern = p;
                 ui_consume_click();
@@ -5377,138 +5394,128 @@ static void drawWorkSample(float x, float y, float w, float h) {
 
     // --- Controls row ---
     {
+        int cbH = UI_FONT_SMALL + 6;   // control button height
+        int cbPad = 6;                  // text padding
+        float cx2 = x;                 // running X cursor
+
         // Mode toggle: Equal / Transient
         {
             const char *modes[] = {"Equal", "Transient"};
             for (int m = 0; m < 2; m++) {
-                float bx = x + m * 64;
-                Rectangle r = {bx, sy, 60, 16};
+                int bw = MeasureTextUI(modes[m], UI_FONT_SMALL) + cbPad*2;
+                Rectangle r = {cx2, sy, (float)bw, (float)cbH};
                 bool sel = (chopState.chopMode == m);
                 bool hov = CheckCollisionPointRec(mouse, r);
-                DrawRectangleRec(r, sel ? (Color){60, 80, 60, 255} : (hov ? (Color){42, 44, 52, 255} : (Color){30, 31, 38, 255}));
-                DrawRectangleLinesEx(r, 1, sel ? GREEN : (Color){48, 48, 58, 255});
-                DrawTextShadow(modes[m], (int)(bx + 4), (int)(sy + 3), 9, sel ? WHITE : (Color){100, 100, 120, 255});
+                DrawRectangleRec(r, sel ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_PANEL));
+                DrawRectangleLinesEx(r, 1, sel ? GREEN : UI_BORDER);
+                DrawTextShadow(modes[m], (int)(cx2 + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_DIM);
                 if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                     chopState.chopMode = m;
                     ui_consume_click();
                 }
+                cx2 += bw + 4;
             }
         }
 
         // Slice count (equal mode) or max slices (transient mode)
         {
-            float ox = x + 136;
-            DrawTextShadow(chopState.chopMode == 0 ? "Slices:" : "Max:", (int)ox, (int)(sy + 2), 10, (Color){140, 140, 160, 255});
+            const char *sliceLabel = chopState.chopMode == 0 ? "Slices" : "Max";
+            int lblW = MeasureTextUI(sliceLabel, UI_FONT_SMALL);
+            DrawTextShadow(sliceLabel, (int)cx2, (int)(sy + 3), UI_FONT_SMALL, UI_TEXT_LABEL);
+            cx2 += lblW + 4;
             int sliceCounts[] = {4, 8, 16};
             for (int i = 0; i < 3; i++) {
-                float bx = ox + 42 + i * 30;
-                Rectangle r = {bx, sy, 26, 16};
-                bool sel = (chopState.sliceCount == sliceCounts[i]);
-                bool hov = CheckCollisionPointRec(mouse, r);
-                DrawRectangleRec(r, sel ? (Color){60, 80, 60, 255} : (hov ? (Color){42, 44, 52, 255} : (Color){30, 31, 38, 255}));
-                DrawRectangleLinesEx(r, 1, sel ? GREEN : (Color){48, 48, 58, 255});
                 char num[4];
                 snprintf(num, sizeof(num), "%d", sliceCounts[i]);
-                DrawTextShadow(num, (int)(bx + 4), (int)(sy + 3), 9, sel ? WHITE : (Color){100, 100, 120, 255});
+                int bw = MeasureTextUI(num, UI_FONT_SMALL) + cbPad*2;
+                Rectangle r = {cx2, sy, (float)bw, (float)cbH};
+                bool sel = (chopState.sliceCount == sliceCounts[i]);
+                bool hov = CheckCollisionPointRec(mouse, r);
+                DrawRectangleRec(r, sel ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_PANEL));
+                DrawRectangleLinesEx(r, 1, sel ? GREEN : UI_BORDER);
+                DrawTextShadow(num, (int)(cx2 + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_DIM);
                 if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                     chopState.sliceCount = sliceCounts[i];
                     ui_consume_click();
                 }
+                cx2 += bw + 2;
             }
+            cx2 += 6;
         }
 
         // Sensitivity (transient mode only)
         if (chopState.chopMode == 1) {
-            float ox = x + 278;
-            DrawTextShadow("Sens:", (int)ox, (int)(sy + 2), 10, (Color){140, 140, 160, 255});
-            // Simple drag-to-adjust
-            Rectangle sensR = {ox + 34, sy, 50, 16};
-            bool hov = CheckCollisionPointRec(mouse, sensR);
-            DrawRectangleRec(sensR, (Color){28, 28, 36, 255});
-            DrawRectangleLinesEx(sensR, 1, hov ? ORANGE : (Color){50, 50, 60, 255});
-            // Fill bar
-            float fill = chopState.sensitivity * 46;
-            DrawRectangle((int)(sensR.x + 2), (int)(sensR.y + 2), (int)fill, 12, (Color){200, 130, 60, 200});
-            char sensStr[8];
-            snprintf(sensStr, sizeof(sensStr), "%.0f%%", chopState.sensitivity * 100);
-            DrawTextShadow(sensStr, (int)(sensR.x + 4), (int)(sy + 3), 9, WHITE);
-            if (hov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                chopState.sensitivity = (mouse.x - sensR.x) / sensR.width;
-                if (chopState.sensitivity < 0) chopState.sensitivity = 0;
-                if (chopState.sensitivity > 1) chopState.sensitivity = 1;
-            }
+            DraggableFloatS(cx2, sy + 2, "Sens", &chopState.sensitivity, 0.02f, 0.0f, 1.0f, UI_FONT_SMALL);
+            cx2 += MeasureTextUI("Sens: 0.00", UI_FONT_SMALL) + 12;
         }
 
         // Loops selector
-        float loopsX = chopState.chopMode == 1 ? x + 390 : x + 278;
-        DrawTextShadow("Loops:", (int)loopsX, (int)(sy + 2), 10, (Color){140, 140, 160, 255});
-        for (int l = 1; l <= 4; l++) {
-            float bx = loopsX + 42 + (l - 1) * 22;
-            Rectangle r = {bx, sy, 18, 16};
-            bool sel = (chopState.sourceLoops == l);
-            bool hov = CheckCollisionPointRec(mouse, r);
-            DrawRectangleRec(r, sel ? (Color){60, 80, 60, 255} : (hov ? (Color){42, 44, 52, 255} : (Color){30, 31, 38, 255}));
-            DrawRectangleLinesEx(r, 1, sel ? GREEN : (Color){48, 48, 58, 255});
-            char num[4];
-            snprintf(num, sizeof(num), "%d", l);
-            DrawTextShadow(num, (int)(bx + 5), (int)(sy + 3), 9, sel ? WHITE : (Color){100, 100, 120, 255});
-            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                chopState.sourceLoops = l;
-                ui_consume_click();
+        {
+            int lblW = MeasureTextUI("Loops:", UI_FONT_SMALL);
+            DrawTextShadow("Loops:", (int)cx2, (int)(sy + 3), UI_FONT_SMALL, UI_TEXT_LABEL);
+            cx2 += lblW + 4;
+            for (int l = 1; l <= 4; l++) {
+                char num[4];
+                snprintf(num, sizeof(num), "%d", l);
+                int bw = MeasureTextUI(num, UI_FONT_SMALL) + cbPad*2;
+                Rectangle r = {cx2, sy, (float)bw, (float)cbH};
+                bool sel = (chopState.sourceLoops == l);
+                bool hov = CheckCollisionPointRec(mouse, r);
+                DrawRectangleRec(r, sel ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_PANEL));
+                DrawRectangleLinesEx(r, 1, sel ? GREEN : UI_BORDER);
+                DrawTextShadow(num, (int)(cx2 + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_DIM);
+                if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                    chopState.sourceLoops = l;
+                    ui_consume_click();
+                }
+                cx2 += bw + 2;
             }
+            cx2 += 6;
         }
 
         // Chop button
         {
-            float bx = x + 300;
-            Rectangle r = {bx, sy, 50, 16};
+            int bw = MeasureTextUI("Chop!", UI_FONT_SMALL) + cbPad*2;
+            Rectangle r = {cx2, sy, (float)bw, (float)cbH};
             bool hov = CheckCollisionPointRec(mouse, r);
-            DrawRectangleRec(r, hov ? (Color){80, 60, 40, 255} : (Color){60, 45, 30, 255});
+            DrawRectangleRec(r, hov ? (Color){80, 60, 40, 255} : UI_BG_BROWN);
             DrawRectangleLinesEx(r, 1, ORANGE);
-            DrawTextShadow("Chop!", (int)(bx + 8), (int)(sy + 3), 10, WHITE);
+            DrawTextShadow("Chop!", (int)(cx2 + cbPad), (int)(sy + 3), UI_FONT_SMALL, WHITE);
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 chopStateBounce();
                 ui_consume_click();
             }
+            cx2 += bw + 6;
         }
 
         // BPM display
         if (chopState.bounced) {
             char bpmStr[32];
             snprintf(bpmStr, sizeof(bpmStr), "%.0f BPM", chopState.renderBpm);
-            DrawTextShadow(bpmStr, (int)(x + 360), (int)(sy + 2), 10, (Color){100, 200, 120, 255});
+            DrawTextShadow(bpmStr, (int)cx2, (int)(sy + 3), UI_FONT_SMALL, UI_TEXT_GREEN);
+            cx2 += MeasureTextUI(bpmStr, UI_FONT_SMALL) + 8;
+        }
+
+        // Normalize toggle
+        {
+            int bw = MeasureTextUI("Norm", UI_FONT_SMALL) + cbPad*2;
+            Rectangle r = {cx2, sy, (float)bw, (float)cbH};
+            bool sel = chopState.normalize;
+            bool hov = CheckCollisionPointRec(mouse, r);
+            DrawRectangleRec(r, sel ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_PANEL));
+            DrawRectangleLinesEx(r, 1, sel ? GREEN : UI_BORDER);
+            DrawTextShadow("Norm", (int)(cx2 + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_DIM);
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                chopState.normalize = !chopState.normalize;
+                ui_consume_click();
+            }
+            cx2 += bw + 6;
         }
 
         // Global fade control
         {
-            float fx2 = x + 430;
-            DrawTextShadow("Fade:", (int)fx2, (int)(sy + 2), 9, (Color){140, 140, 160, 255});
-            Rectangle fr = {fx2 + 34, sy, 50, 16};
-            bool fhov = CheckCollisionPointRec(mouse, fr);
-            DrawRectangleRec(fr, (Color){28, 28, 36, 255});
-            DrawRectangleLinesEx(fr, 1, fhov ? ORANGE : (Color){50, 50, 60, 255});
-            float fadeFill = (chopState.fadeMs / 5.0f) * 46;
-            if (fadeFill > 46) fadeFill = 46;
-            DrawRectangle((int)(fr.x + 2), (int)(fr.y + 2), (int)fadeFill, 12,
-                         chopState.fadeMs > 0.01f ? (Color){100, 160, 200, 200} : (Color){50, 50, 60, 200});
-            char fadeStr[16];
-            if (chopState.fadeMs < 0.01f)
-                snprintf(fadeStr, sizeof(fadeStr), "OFF");
-            else
-                snprintf(fadeStr, sizeof(fadeStr), "%.1fms", chopState.fadeMs);
-            DrawTextShadow(fadeStr, (int)(fr.x + 4), (int)(sy + 3), 9,
-                          chopState.fadeMs > 0.01f ? WHITE : (Color){80, 80, 95, 255});
-            if (fhov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                float delta = GetMouseDelta().x * 0.05f;
-                chopState.fadeMs += delta;
-                if (chopState.fadeMs < 0) chopState.fadeMs = 0;
-                if (chopState.fadeMs > 5.0f) chopState.fadeMs = 5.0f;
+            if (DraggableFloatS(cx2, sy + 2, "Fade", &chopState.fadeMs, 0.05f, 0.0f, 5.0f, UI_FONT_SMALL)) {
                 if (chopState.bounced) chopApplySliceParams();
-            }
-            if (fhov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-                chopState.fadeMs = 1.0f;  // reset to default
-                if (chopState.bounced) chopApplySliceParams();
-                ui_consume_click();
             }
         }
     }
@@ -5544,7 +5551,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
             bool hov = CheckCollisionPointRec(mouse, rowR);
             if (hov) DrawRectangleRec(rowR, (Color){50, 55, 70, 255});
             DrawTextShadow(songBrowser.names[idx], (int)(listX + 6), (int)(ry + 2), 9,
-                          sel ? ORANGE : (hov ? WHITE : (Color){160, 160, 180, 255}));
+                          sel ? ORANGE : (hov ? WHITE : UI_TEXT_BRIGHT));
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 chopState.sourceSongIdx = idx;
                 strncpy(chopState.sourcePath, songBrowser.paths[idx], sizeof(chopState.sourcePath) - 1);
@@ -5587,14 +5594,14 @@ static void drawWorkSample(float x, float y, float w, float h) {
 
     // --- Pad mapping ---
     if (chopState.bounced) {
-        DrawTextShadow("Pad Mapping:", (int)x, (int)sy, 10, (Color){140, 140, 160, 255});
+        DrawTextShadow("Pad Mapping:", (int)x, (int)sy, UI_FONT_SMALL, UI_TEXT_LABEL);
         {
             // Quick-map button: auto-assign slices 0-3 to pads
             Rectangle autoR = {x + 88, sy - 1, 60, 14};
             bool autoHov = CheckCollisionPointRec(mouse, autoR);
-            DrawRectangleRec(autoR, autoHov ? (Color){50, 55, 65, 255} : (Color){35, 36, 44, 255});
-            DrawRectangleLinesEx(autoR, 1, (Color){60, 60, 75, 255});
-            DrawTextShadow("Auto 0-3", (int)(autoR.x + 4), (int)(autoR.y + 2), 8, (Color){120, 120, 140, 255});
+            DrawRectangleRec(autoR, autoHov ? UI_BORDER : UI_BG_BUTTON);
+            DrawRectangleLinesEx(autoR, 1, UI_BORDER_LIGHT);
+            DrawTextShadow("Auto 0-3", (int)(autoR.x + 4), (int)(autoR.y + 2), 8, UI_TEXT_SUBTLE);
             if (autoHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 for (int t = 0; t < 4 && t < chopState.sliceCount; t++)
                     daw.chopSliceMap[t] = t;
@@ -5603,9 +5610,9 @@ static void drawWorkSample(float x, float y, float w, float h) {
             // Clear all button
             Rectangle clearR = {x + 154, sy - 1, 50, 14};
             bool clearHov = CheckCollisionPointRec(mouse, clearR);
-            DrawRectangleRec(clearR, clearHov ? (Color){50, 55, 65, 255} : (Color){35, 36, 44, 255});
-            DrawRectangleLinesEx(clearR, 1, (Color){60, 60, 75, 255});
-            DrawTextShadow("Clear", (int)(clearR.x + 8), (int)(clearR.y + 2), 8, (Color){120, 120, 140, 255});
+            DrawRectangleRec(clearR, clearHov ? UI_BORDER : UI_BG_BUTTON);
+            DrawRectangleLinesEx(clearR, 1, UI_BORDER_LIGHT);
+            DrawTextShadow("Clear", (int)(clearR.x + 8), (int)(clearR.y + 2), 8, UI_TEXT_SUBTLE);
             if (clearHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 for (int t = 0; t < 4; t++) daw.chopSliceMap[t] = -1;
                 ui_consume_click();
@@ -5627,10 +5634,10 @@ static void drawWorkSample(float x, float y, float w, float h) {
 
             Rectangle r = {px, sy, pw, 20};
             bool hov = CheckCollisionPointRec(mouse, r);
-            DrawRectangleRec(r, hov ? (Color){50, 50, 65, 255} : (Color){30, 31, 38, 255});
-            DrawRectangleLinesEx(r, 1, slot >= 0 ? ORANGE : (Color){48, 48, 58, 255});
+            DrawRectangleRec(r, hov ? UI_BG_HOVER : UI_BG_PANEL);
+            DrawRectangleLinesEx(r, 1, slot >= 0 ? ORANGE : UI_BORDER);
             DrawTextShadow(label, (int)(px + 4), (int)(sy + 5), 9,
-                          slot >= 0 ? (Color){255, 200, 100, 255} : (Color){100, 100, 120, 255});
+                          slot >= 0 ? (Color){255, 200, 100, 255} : UI_TEXT_DIM);
 
             // Scroll wheel to change slice number
             if (hov) {
@@ -5661,7 +5668,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
         sy += 26;
 
         // Sampler track hint
-        DrawTextShadow("Sampler Track:", (int)x, (int)(sy + 2), 10, (Color){140, 140, 160, 255});
+        DrawTextShadow("Sampler Track:", (int)x, (int)(sy + 2), UI_FONT_SMALL, UI_TEXT_LABEL);
         DrawTextShadow("Use the Sampler row in the Sequencer (F1). Set note = slice number.",
                        (int)(x + 96), (int)(sy + 2), 9, (Color){80, 140, 200, 255});
         sy += 16;
@@ -5672,7 +5679,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
                  chopState.sliceCount, chopState.sliceLength,
                  (float)chopState.sliceLength / SAMPLE_CHOP_SAMPLE_RATE,
                  chopState.renderSteps);
-        DrawTextShadow(info, (int)x, (int)sy, 9, (Color){70, 70, 85, 255});
+        DrawTextShadow(info, (int)x, (int)sy, UI_FONT_SMALL, UI_TEXT_MUTED);
         sy += 14;
 
         // --- Per-slice params (when a slice is selected) ---
@@ -5681,7 +5688,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
             sy += 4;
             char sliceLabel[32];
             snprintf(sliceLabel, sizeof(sliceLabel), "Slice %d:", sel);
-            DrawTextShadow(sliceLabel, (int)x, (int)(sy + 2), 10, ORANGE);
+            DrawTextShadow(sliceLabel, (int)x, (int)(sy + 2), UI_FONT_SMALL, ORANGE);
 
             float px = x + 60;
             bool changed = false;
@@ -5691,9 +5698,9 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 Rectangle r = {px, sy, 44, 16};
                 bool hov = CheckCollisionPointRec(mouse, r);
                 bool rev = chopState.sliceParams[sel].reverse;
-                DrawRectangleRec(r, rev ? (Color){80, 50, 50, 255} : (hov ? (Color){42, 44, 52, 255} : (Color){30, 31, 38, 255}));
-                DrawRectangleLinesEx(r, 1, rev ? (Color){255, 100, 100, 255} : (Color){48, 48, 58, 255});
-                DrawTextShadow("Rev", (int)(px + 10), (int)(sy + 3), 9, rev ? (Color){255, 140, 140, 255} : (Color){100, 100, 120, 255});
+                DrawRectangleRec(r, rev ? UI_BG_RED_MED : (hov ? UI_BG_HOVER : UI_BG_PANEL));
+                DrawRectangleLinesEx(r, 1, rev ? (Color){255, 100, 100, 255} : UI_BORDER);
+                DrawTextShadow("Rev", (int)(px + 10), (int)(sy + 3), UI_FONT_SMALL, rev ? (Color){255, 140, 140, 255} : UI_TEXT_DIM);
                 if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                     chopState.sliceParams[sel].reverse = !rev;
                     changed = true;
@@ -5704,15 +5711,15 @@ static void drawWorkSample(float x, float y, float w, float h) {
             // Pitch (drag left/right)
             {
                 float ox = px + 52;
-                DrawTextShadow("Pitch:", (int)ox, (int)(sy + 2), 9, (Color){100, 100, 120, 255});
+                DrawTextShadow("Pitch:", (int)ox, (int)(sy + 2), UI_FONT_SMALL, UI_TEXT_DIM);
                 Rectangle r = {ox + 38, sy, 50, 16};
                 bool hov = CheckCollisionPointRec(mouse, r);
-                DrawRectangleRec(r, (Color){28, 28, 36, 255});
-                DrawRectangleLinesEx(r, 1, hov ? ORANGE : (Color){50, 50, 60, 255});
+                DrawRectangleRec(r, UI_BG_PANEL);
+                DrawRectangleLinesEx(r, 1, hov ? ORANGE : UI_BG_HOVER);
                 char pitchStr[16];
                 float p = chopState.sliceParams[sel].pitchSemitones;
                 snprintf(pitchStr, sizeof(pitchStr), "%+.0fst", p);
-                DrawTextShadow(pitchStr, (int)(r.x + 4), (int)(sy + 3), 9, fabsf(p) > 0.1f ? WHITE : (Color){80, 80, 95, 255});
+                DrawTextShadow(pitchStr, (int)(r.x + 4), (int)(sy + 3), UI_FONT_SMALL, fabsf(p) > 0.1f ? WHITE : UI_BORDER_LIGHT);
                 if (hov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
                     float delta = GetMouseDelta().x * 0.2f;
                     chopState.sliceParams[sel].pitchSemitones += delta;
@@ -5731,11 +5738,11 @@ static void drawWorkSample(float x, float y, float w, float h) {
             // Gain (drag left/right)
             {
                 float ox = px + 148;
-                DrawTextShadow("Gain:", (int)ox, (int)(sy + 2), 9, (Color){100, 100, 120, 255});
+                DrawTextShadow("Gain:", (int)ox, (int)(sy + 2), UI_FONT_SMALL, UI_TEXT_DIM);
                 Rectangle r = {ox + 34, sy, 50, 16};
                 bool hov = CheckCollisionPointRec(mouse, r);
-                DrawRectangleRec(r, (Color){28, 28, 36, 255});
-                DrawRectangleLinesEx(r, 1, hov ? ORANGE : (Color){50, 50, 60, 255});
+                DrawRectangleRec(r, UI_BG_PANEL);
+                DrawRectangleLinesEx(r, 1, hov ? ORANGE : UI_BG_HOVER);
                 // Fill bar
                 float g = chopState.sliceParams[sel].gain;
                 float fill = (g / 2.0f) * 46;
@@ -5743,7 +5750,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
                              g > 1.05f ? (Color){200, 100, 60, 200} : (Color){60, 130, 200, 200});
                 char gainStr[16];
                 snprintf(gainStr, sizeof(gainStr), "%.1fx", g);
-                DrawTextShadow(gainStr, (int)(r.x + 4), (int)(sy + 3), 9, WHITE);
+                DrawTextShadow(gainStr, (int)(r.x + 4), (int)(sy + 3), UI_FONT_SMALL, WHITE);
                 if (hov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
                     float delta = GetMouseDelta().x * 0.01f;
                     chopState.sliceParams[sel].gain += delta;
@@ -5764,18 +5771,18 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 float fiMs = chopState.sliceParams[sel].fadeInMs;
                 bool isOverride = (fiMs >= 0);
                 DrawTextShadow("FdIn:", (int)ox, (int)(sy + 2), 9,
-                              isOverride ? (Color){140, 140, 160, 255} : (Color){70, 70, 85, 255});
+                              isOverride ? UI_TEXT_LABEL : UI_TEXT_MUTED);
                 Rectangle r = {ox + 32, sy, 44, 16};
                 bool hov = CheckCollisionPointRec(mouse, r);
-                DrawRectangleRec(r, (Color){28, 28, 36, 255});
-                DrawRectangleLinesEx(r, 1, hov ? ORANGE : (Color){50, 50, 60, 255});
+                DrawRectangleRec(r, UI_BG_PANEL);
+                DrawRectangleLinesEx(r, 1, hov ? ORANGE : UI_BG_HOVER);
                 char fdStr[16];
                 if (isOverride)
                     snprintf(fdStr, sizeof(fdStr), "%.1fms", fiMs);
                 else
                     snprintf(fdStr, sizeof(fdStr), "auto");
                 DrawTextShadow(fdStr, (int)(r.x + 3), (int)(sy + 3), 9,
-                              isOverride ? WHITE : (Color){80, 80, 95, 255});
+                              isOverride ? WHITE : UI_BORDER_LIGHT);
                 if (hov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
                     float delta = GetMouseDelta().x * 0.05f;
                     if (!isOverride) fiMs = chopState.fadeMs;  // start from global
@@ -5798,18 +5805,18 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 float foMs = chopState.sliceParams[sel].fadeOutMs;
                 bool isOverride = (foMs >= 0);
                 DrawTextShadow("FdOut:", (int)ox, (int)(sy + 2), 9,
-                              isOverride ? (Color){140, 140, 160, 255} : (Color){70, 70, 85, 255});
+                              isOverride ? UI_TEXT_LABEL : UI_TEXT_MUTED);
                 Rectangle r = {ox + 36, sy, 44, 16};
                 bool hov = CheckCollisionPointRec(mouse, r);
-                DrawRectangleRec(r, (Color){28, 28, 36, 255});
-                DrawRectangleLinesEx(r, 1, hov ? ORANGE : (Color){50, 50, 60, 255});
+                DrawRectangleRec(r, UI_BG_PANEL);
+                DrawRectangleLinesEx(r, 1, hov ? ORANGE : UI_BG_HOVER);
                 char fdStr[16];
                 if (isOverride)
                     snprintf(fdStr, sizeof(fdStr), "%.1fms", foMs);
                 else
                     snprintf(fdStr, sizeof(fdStr), "auto");
                 DrawTextShadow(fdStr, (int)(r.x + 3), (int)(sy + 3), 9,
-                              isOverride ? WHITE : (Color){80, 80, 95, 255});
+                              isOverride ? WHITE : UI_BORDER_LIGHT);
                 if (hov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
                     float delta = GetMouseDelta().x * 0.05f;
                     if (!isOverride) foMs = chopState.fadeMs;
@@ -5839,8 +5846,8 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 float swX = x + 60;
 
                 // Background
-                DrawRectangle((int)swX, (int)sy, (int)swW, (int)swH, (Color){18, 18, 24, 255});
-                DrawRectangleLinesEx((Rectangle){swX, sy, swW, swH}, 1, (Color){42, 42, 52, 255});
+                DrawRectangle((int)swX, (int)sy, (int)swW, (int)swH, UI_BG_DEEPEST);
+                DrawRectangleLinesEx((Rectangle){swX, sy, swW, swH}, 1, UI_BORDER_SUBTLE);
 
                 if (sData && sLen > 0) {
                     float ts = chopState.sliceParams[sel].trimStart;
@@ -5868,7 +5875,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
                             if (sData[i] > hi) hi = sData[i];
                         }
                         bool inTrim = (col >= trimStartPx && col <= trimEndPx);
-                        Color wc = inTrim ? (Color){255, 180, 60, 255} : (Color){60, 60, 80, 255};
+                        Color wc = inTrim ? (Color){255, 180, 60, 255} : UI_BORDER_LIGHT;
                         int y0 = (int)(mid - hi * amp);
                         int y1 = (int)(mid - lo * amp);
                         if (y1 <= y0) y1 = y0 + 1;
@@ -5927,16 +5934,16 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 sy += swH + 2;
             }
             DrawTextShadow("L-drag=set start, R-drag=set end. Drag params above. Right-click param to reset.",
-                           (int)(x + 60), (int)sy, 9, (Color){55, 55, 68, 255});
+                           (int)(x + 60), (int)sy, 9, UI_BORDER);
         } else {
             DrawTextShadow("Click waveform to select+preview. Click pad to assign. Right-click to clear.",
-                           (int)x, (int)sy, 9, (Color){55, 55, 68, 255});
+                           (int)x, (int)sy, 9, UI_BORDER);
         }
     }
 
     // --- Freeze section (always visible, independent of bounce state) ---
     sy += 18;
-    DrawTextShadow("Freeze Live Audio:", (int)x, (int)sy, 10, (Color){140, 140, 160, 255});
+    DrawTextShadow("Freeze Live Audio:", (int)x, (int)sy, UI_FONT_SMALL, UI_TEXT_LABEL);
     sy += 16;
     {
         // Find first free sampler slot (after any chop slices)
@@ -5948,10 +5955,10 @@ static void drawWorkSample(float x, float y, float w, float h) {
             Rectangle r = {x, sy, 100, 18};
             bool hov = CheckCollisionPointRec(mouse, r);
             bool active = dubLoop.enabled;
-            DrawRectangleRec(r, hov && active ? (Color){60, 50, 70, 255} : (Color){30, 31, 38, 255});
-            DrawRectangleLinesEx(r, 1, active ? (Color){160, 100, 200, 255} : (Color){48, 48, 58, 255});
+            DrawRectangleRec(r, hov && active ? (Color){60, 50, 70, 255} : UI_BG_PANEL);
+            DrawRectangleLinesEx(r, 1, active ? (Color){160, 100, 200, 255} : UI_BORDER);
             DrawTextShadow("Freeze Dub", (int)(x + 8), (int)(sy + 3), 9,
-                          active ? (Color){200, 150, 255, 255} : (Color){60, 60, 75, 255});
+                          active ? (Color){200, 150, 255, 255} : UI_BORDER_LIGHT);
             if (hov && active && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 dawAudioGate();
                 int slot = dubLoopFreezeToSampler(freeSlot);
@@ -5967,9 +5974,9 @@ static void drawWorkSample(float x, float y, float w, float h) {
         {
             Rectangle r = {x + 110, sy, 110, 18};
             bool hov = CheckCollisionPointRec(mouse, r);
-            DrawRectangleRec(r, hov ? (Color){50, 55, 70, 255} : (Color){30, 31, 38, 255});
+            DrawRectangleRec(r, hov ? (Color){50, 55, 70, 255} : UI_BG_PANEL);
             DrawRectangleLinesEx(r, 1, (Color){100, 160, 200, 255});
-            DrawTextShadow("Freeze Rewind", (int)(x + 118), (int)(sy + 3), 9, (Color){140, 190, 230, 255});
+            DrawTextShadow("Freeze Rewind", (int)(x + 118), (int)(sy + 3), UI_FONT_SMALL, UI_TEXT_BLUE);
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 dawAudioGate();
                 int slot = rewindFreezeToSampler(freeSlot);
@@ -5984,7 +5991,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
         // Show slot info
         char slotInfo[64];
         snprintf(slotInfo, sizeof(slotInfo), "-> slot %d", freeSlot);
-        DrawTextShadow(slotInfo, (int)(x + 230), (int)(sy + 3), 9, (Color){60, 65, 75, 255});
+        DrawTextShadow(slotInfo, (int)(x + 230), (int)(sy + 3), UI_FONT_SMALL, UI_BORDER_LIGHT);
     }
 }
 
@@ -5996,7 +6003,7 @@ static void drawWorkVoice(float x, float y, float w, float h) {
     (void)w; (void)h;
     float sx = x, sy = y;
 
-    DrawTextShadow("Voice / Babble Generator", (int)sx, (int)sy, 12, WHITE);
+    DrawTextShadow("Voice / Babble Generator", (int)sx, (int)sy, UI_FONT_SMALL, WHITE);
     sy += 24;
 
     UIColumn col = ui_column(sx, sy, 15);
@@ -6009,15 +6016,15 @@ static void drawWorkVoice(float x, float y, float w, float h) {
     const struct { const char *label; Color color; float intonation; } buttons[] = {
         {"Babble", WHITE, 0.0f},
         {"Call",   (Color){120,200,255,255}, 1.0f},
-        {"Answer", (Color){255,180,100,255}, -1.0f},
+        {"Answer", UI_PLOCK_DRUM, -1.0f},
     };
     for (int i = 0; i < 3; i++) {
         Rectangle r = {sx + i * 88, sy, 80, 22};
         bool hov = CheckCollisionPointRec(mouse, r);
-        DrawRectangleRec(r, hov ? (Color){60,60,80,255} : (Color){40,42,54,255});
-        DrawRectangleLinesEx(r, 1, (Color){80,80,100,255});
-        int tw = MeasureTextUI(buttons[i].label, 11);
-        DrawTextShadow(buttons[i].label, (int)(r.x + (80 - tw) / 2), (int)sy + 5, 11, buttons[i].color);
+        DrawRectangleRec(r, hov ? UI_BORDER_LIGHT : UI_BG_HOVER);
+        DrawRectangleLinesEx(r, 1, UI_BORDER_LIGHT);
+        int tw = MeasureTextUI(buttons[i].label, UI_FONT_SMALL);
+        DrawTextShadow(buttons[i].label, (int)(r.x + (80 - tw) / 2), (int)sy + 5, UI_FONT_SMALL, buttons[i].color);
         if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             babbleWithIntonation(babbleDuration, babblePitch, babbleMood, buttons[i].intonation);
             ui_consume_click();
@@ -6026,8 +6033,8 @@ static void drawWorkVoice(float x, float y, float w, float h) {
     sy += 32;
 
     if (speechQueue.active) {
-        DrawTextShadow("Speaking...", (int)sx, (int)sy, 10, GREEN);
-        DrawTextShadow(speechQueue.text, (int)sx, (int)sy + 14, 10, GRAY);
+        DrawTextShadow("Speaking...", (int)sx, (int)sy, UI_FONT_SMALL, GREEN);
+        DrawTextShadow(speechQueue.text, (int)sx, (int)sy + 14, UI_FONT_SMALL, GRAY);
     }
 }
 
@@ -6339,7 +6346,28 @@ static void dawHandleMidiInput(void) {
 // ============================================================================
 
 #ifndef DAW_HEADLESS
-int main(void) {
+int main(int argc, char *argv[]) {
+    // --bounce <song> : headless bounce for testing, no GUI
+    if (argc >= 3 && strcmp(argv[1], "--bounce") == 0) {
+        initEffects();
+        initInstrumentPresets();
+        for (int i = 0; i < NUM_PATCHES; i++) daw.patches[i] = createDefaultPatch(WAVE_SAW);
+        initSequencer(NULL, NULL, NULL, NULL);  // no callbacks needed, renderPatternToBuffer sets its own
+
+        RenderedPattern r = renderPatternToBuffer(argv[2], 0, 1, 0.5f);
+        if (r.data) {
+            const char *outPath = argc >= 4 ? argv[3] : "/tmp/daw_headless_bounce.wav";
+            _dumpFloatsToWav(outPath, r.data, r.length, r.sampleRate);
+            float peak = 0;
+            for (int i = 0; i < r.length; i++) { float a = fabsf(r.data[i]); if (a > peak) peak = a; }
+            fprintf(stderr, "Bounced %s: %d samples, peak=%.4f -> %s\n", argv[2], r.length, peak, outPath);
+            free(r.data);
+        } else {
+            fprintf(stderr, "Bounce failed for %s\n", argv[2]);
+        }
+        return 0;
+    }
+
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "PixelSynth DAW (Horizontal)");
     SetTargetFPS(60);
 
@@ -6430,7 +6458,7 @@ int main(void) {
         updateSpeech(GetFrameTime());
 
         BeginDrawing();
-        ClearBackground((Color){22, 22, 28, 255});
+        ClearBackground(UI_BG_DEEPEST);
         ui_begin_frame();
 
         // === SIDEBAR ===
@@ -6460,7 +6488,7 @@ int main(void) {
         }
 
         // === SPLIT LINE ===
-        DrawLine(CONTENT_X, SPLIT_Y, SCREEN_WIDTH, SPLIT_Y, (Color){55, 55, 65, 255});
+        DrawLine(CONTENT_X, SPLIT_Y, SCREEN_WIDTH, SPLIT_Y, UI_BORDER);
 
         // === PARAM TAB BAR ===
         int paramInt = (int)paramTab;
@@ -6504,12 +6532,12 @@ int main(void) {
         // Log/recording indicators (top-right, always visible)
         if (seqSoundLogEnabled) {
             DrawRectangle(SCREEN_WIDTH - 60, 2, 58, 14, (Color){180,30,30,200});
-            DrawTextShadow("REC LOG", SCREEN_WIDTH - 58, 3, 9, WHITE);
+            DrawTextShadow("REC LOG", SCREEN_WIDTH - 58, 3, UI_FONT_SMALL, WHITE);
         }
         if (dawRecording) {
             float secs = (float)dawRecSamples / SAMPLE_RATE;
             DrawRectangle(SCREEN_WIDTH - 60, 18, 58, 14, (Color){200,50,50,220});
-            DrawTextShadow(TextFormat("WAV %.1fs", secs), SCREEN_WIDTH - 58, 19, 9, WHITE);
+            DrawTextShadow(TextFormat("WAV %.1fs", secs), SCREEN_WIDTH - 58, 19, UI_FONT_SMALL, WHITE);
         }
 
         // Update voice ages

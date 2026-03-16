@@ -52,6 +52,7 @@ static struct {
     int sliceLengths[SAMPLER_MAX_SAMPLES];
     float *slices[SAMPLER_MAX_SAMPLES];
     int chopMode;
+    bool normalize;
     float sensitivity;
     float fadeMs;
     struct {
@@ -69,14 +70,21 @@ static struct {
     int browseScroll;
 } chopState = {0};
 
+// Track whether re-bounce was triggered during dawLoad
+static int _testRebounceCallCount = 0;
+
 // Stubs — re-bounce not tested here, just INI parsing
 static void chopStateBounce(void) {
-    // In test: no-op (no audio engine). Post-load re-bounce will call this
-    // but sourcePath won't resolve, so it returns immediately.
+    // In test: count calls instead of actually bouncing
+    _testRebounceCallCount++;
 }
 static void chopApplySliceParams(void) {
     // In test: no-op
 }
+
+// _chopBounceActive is defined in sample_chop.h, but we don't include that
+// in the test. Declare it here so the re-bounce guard in daw_file.h can see it.
+static bool _chopBounceActive = false;
 
 static void chopStateClearTest(void) {
     memset(&chopState, 0, sizeof(chopState));
@@ -502,28 +510,28 @@ static void setupTestState(void) {
     patSetDrum(p3, 0, 8, 0.8f, 0.0f);
     patSetNote(p3, SEQ_DRUM_TRACKS + 0, 0, 36, 0.85f, 6);  // C2
 
-    // Sampler track on pattern 0: a few slices with pitch offsets
+    // Sampler track on pattern 0: slices with pitch offsets (new model: slice field + note=pitch)
     p0->trackLength[SEQ_TRACK_SAMPLER] = 8;
     {
         int t = SEQ_TRACK_SAMPLER;
-        // Step 0: slice 3, vel 0.9, pitch +5
+        // Step 0: slice 3, pitch 65 (+5 from center), vel 0.9
         StepV2 *sv0 = &p0->steps[t][0];
         sv0->noteCount = 1;
-        sv0->notes[0].note = 3;
+        sv0->notes[0].slice = 3;
+        sv0->notes[0].note = 65;  // 60 + 5
         sv0->notes[0].velocity = velFloatToU8(0.9f);
-        sv0->notes[0].nudge = 5;
-        // Step 2: slice 7, vel 0.6, no pitch
+        // Step 2: slice 7, pitch 60 (center), vel 0.6
         StepV2 *sv2 = &p0->steps[t][2];
         sv2->noteCount = 1;
-        sv2->notes[0].note = 7;
+        sv2->notes[0].slice = 7;
+        sv2->notes[0].note = 60;
         sv2->notes[0].velocity = velFloatToU8(0.6f);
-        sv2->notes[0].nudge = 0;
-        // Step 5: slice 0, vel 1.0, pitch -3, with prob + cond
+        // Step 5: slice 0, pitch 57 (-3 from center), vel 1.0, with prob + cond
         StepV2 *sv5 = &p0->steps[t][5];
         sv5->noteCount = 1;
-        sv5->notes[0].note = 0;
+        sv5->notes[0].slice = 0;
+        sv5->notes[0].note = 57;  // 60 - 3
         sv5->notes[0].velocity = velFloatToU8(1.0f);
-        sv5->notes[0].nudge = -3;
         sv5->probability = probFloatToU8(0.75f);
         sv5->condition = COND_1_2;
     }
@@ -826,6 +834,8 @@ static void verifyPatterns(void) {
                 ASSERT_EQ_INT(sa2->noteCount, sb2->noteCount, label);
                 if (sb2->noteCount == 0) continue;
                 snprintf(label, sizeof(label), "pat[%d].sampler[%d].slice", pi, s);
+                ASSERT_EQ_INT(sa2->notes[0].slice, sb2->notes[0].slice, label);
+                snprintf(label, sizeof(label), "pat[%d].sampler[%d].note", pi, s);
                 ASSERT_EQ_INT(sa2->notes[0].note, sb2->notes[0].note, label);
                 snprintf(label, sizeof(label), "pat[%d].sampler[%d].vel", pi, s);
                 ASSERT_EQ_INT(sa2->notes[0].velocity, sb2->notes[0].velocity, label);
@@ -863,7 +873,7 @@ static void verifyPatterns(void) {
 //    the expected size here.
 _Static_assert(sizeof(SynthPatch) == 680,
     "SynthPatch size changed! Update _dwWritePatch/_dwApplyPatchKV in daw_file.h, then update this assert.");
-_Static_assert(sizeof(Mixer) == 920,
+_Static_assert(sizeof(Mixer) == 1040,
     "Mixer size changed! Update dawSave/dawLoad mixer section, then update this assert.");
 _Static_assert(sizeof(MasterFX) == 260,
     "MasterFX size changed! Update dawSave/dawLoad masterfx section, then update this assert.");
@@ -1181,6 +1191,75 @@ static void verifySampleSectionEmpty(void) {
 }
 
 // ============================================================================
+// BOUNCE GUARD TESTS — prevent recursive bounce inside dawLoad
+// ============================================================================
+
+static void verifyBounceGuardPreventsRebounce(void) {
+    printf("  [bounce guard: _chopBounceActive suppresses re-bounce]\n");
+    const char *tmppath = "/tmp/test_daw_bounce_guard.song";
+
+    // 1. Set up a song with a [sample] section
+    chopStateClearTest();
+    strncpy(chopState.sourcePath, "songs/testbeat.song", 255);
+    chopState.sourcePattern = 0;
+    chopState.sourceLoops = 1;
+    chopState.sliceCount = 8;
+    chopState.bounced = true;  // triggers [sample] section in save
+
+    memset(&daw, 0, sizeof(DawState));
+    daw.transport.bpm = 120.0f;
+    for (int i = 0; i < NUM_PATCHES; i++) daw.patches[i] = createDefaultPatch(WAVE_SAW);
+
+    bool ok = dawSave(tmppath);
+    if (!ok) { printf("  FAIL: dawSave failed\n"); tests_failed++; return; }
+
+    // 2. Load with _chopBounceActive = true (simulates being inside renderPatternToBuffer)
+    chopStateClearTest();
+    memset(&daw, 0, sizeof(DawState));
+    for (int i = 0; i < NUM_PATCHES; i++) daw.patches[i] = createDefaultPatch(WAVE_SAW);
+    memset(&_seqCtx, 0, sizeof(SequencerContext));
+
+    _testRebounceCallCount = 0;
+    _chopBounceActive = true;  // simulate being inside a bounce
+
+    ok = dawLoad(tmppath);
+    if (!ok) { printf("  FAIL: dawLoad failed\n"); tests_failed++; _chopBounceActive = false; remove(tmppath); return; }
+
+    _chopBounceActive = false;
+
+    // 3. Verify: chopStateBounce should NOT have been called
+    if (_testRebounceCallCount != 0) {
+        printf("  FAIL: re-bounce triggered %d times despite _chopBounceActive=true!\n",
+               _testRebounceCallCount);
+        printf("  This was the root cause of the bounce-fidelity bug (2026-03-16).\n");
+        tests_failed++;
+    } else {
+        tests_passed++;
+    }
+
+    // 4. Now load WITHOUT the guard — should trigger re-bounce
+    chopStateClearTest();
+    memset(&daw, 0, sizeof(DawState));
+    for (int i = 0; i < NUM_PATCHES; i++) daw.patches[i] = createDefaultPatch(WAVE_SAW);
+    memset(&_seqCtx, 0, sizeof(SequencerContext));
+
+    _testRebounceCallCount = 0;
+    _chopBounceActive = false;
+
+    ok = dawLoad(tmppath);
+    if (!ok) { printf("  FAIL: dawLoad failed (second load)\n"); tests_failed++; remove(tmppath); return; }
+
+    if (_testRebounceCallCount != 1) {
+        printf("  FAIL: expected 1 re-bounce call, got %d\n", _testRebounceCallCount);
+        tests_failed++;
+    } else {
+        tests_passed++;
+    }
+
+    remove(tmppath);
+}
+
+// ============================================================================
 // MAIN
 // ============================================================================
 
@@ -1230,6 +1309,9 @@ int main(void) {
     // 6. Sample section round-trip
     verifySampleSectionRoundTrip();
     verifySampleSectionEmpty();
+
+    // 7. Bounce guard (prevents recursive bounce inside dawLoad)
+    verifyBounceGuardPreventsRebounce();
 
     // 7. Guardrail: field coverage
     printf("  [guardrail tests]\n");

@@ -8,6 +8,72 @@
 #include <stddef.h>
 #include <stdio.h>
 
+// Font size constants — change these to resize all text-based UI in one sweep
+#define UI_FONT_MEDIUM 14   // Default for all widgets (draggables, toggles, buttons, columns)
+#define UI_FONT_SMALL  12   // Compact variant (patch settings, dense panels)
+
+// ============================================================================
+// COLOR PALETTE — canonical colors for the dark DAW theme
+// ============================================================================
+
+// Backgrounds (darkest → lightest)
+#define UI_BG_DEEPEST   (Color){20, 20, 25, 255}   // Grid workspace, meter backgrounds
+#define UI_BG_DARK      (Color){25, 25, 30, 255}   // Main panels, sidebar, transport
+#define UI_BG_PANEL     (Color){30, 31, 38, 255}   // Panel/section base
+#define UI_BG_BUTTON    (Color){33, 34, 40, 255}   // Inactive button/control background
+#define UI_BG_HOVER     (Color){45, 45, 55, 255}   // Hover state for buttons/controls
+#define UI_BG_ACTIVE    (Color){50, 55, 68, 255}   // Active/selected tab or panel header
+#define UI_BG_POPUP     (Color){25, 25, 35, 245}   // Popup/overlay (semi-transparent)
+
+// Borders & dividers
+#define UI_BORDER        (Color){48, 48, 58, 255}   // Default border for buttons/panels
+#define UI_BORDER_LIGHT  (Color){60, 60, 72, 255}   // Lighter border (active panels)
+#define UI_BORDER_SUBTLE (Color){42, 42, 52, 255}   // Subtle dividers, grid lines
+#define UI_DIVIDER       (Color){50, 50, 62, 255}   // Section/panel dividers
+
+// Text colors
+#define UI_TEXT_MUTED    (Color){70, 70, 85, 255}   // Very muted labels (sidebar, axis)
+#define UI_TEXT_DIM      (Color){100, 100, 120, 255} // Dim text (inactive values)
+#define UI_TEXT_SUBTLE   (Color){120, 120, 140, 255} // Subtle labels (section counts)
+#define UI_TEXT_LABEL    (Color){140, 140, 160, 255} // Parameter labels, row labels
+#define UI_TEXT_BRIGHT   (Color){160, 160, 180, 255} // Bright secondary text
+#define UI_TEXT_BLUE     (Color){140, 180, 255, 255} // Blue info text (notes, types)
+#define UI_TEXT_SUBLABEL (Color){140, 160, 200, 255} // Section sublabels (pale blue)
+
+// Semantic accent colors (active/highlight tints for button backgrounds)
+#define UI_TINT_GREEN    (Color){50, 90, 50, 255}   // Active green (play, enabled, patterns)
+#define UI_TINT_GREEN_HI (Color){60, 100, 60, 255}  // Green hover
+#define UI_TINT_RED      (Color){90, 45, 45, 255}   // Active red (mute, danger)
+#define UI_TINT_RED_HI   (Color){140, 50, 50, 255}  // Red hover/strong
+#define UI_TINT_ORANGE   (Color){80, 60, 30, 255}   // Active orange (debug, warm)
+#define UI_TINT_BLUE     (Color){50, 70, 90, 255}   // Active blue (scale, cool)
+
+// Accent border colors (colored borders when active)
+#define UI_ACCENT_GREEN  (Color){140, 200, 100, 255} // Green border (groove, enabled)
+#define UI_ACCENT_RED    (Color){220, 100, 100, 255}  // Red border (mute, alert)
+#define UI_ACCENT_BLUE   (Color){100, 150, 220, 255}  // Blue border (scale, info)
+#define UI_ACCENT_GOLD   (Color){200, 180, 80, 255}   // Gold border (BPM, master)
+
+// Special
+#define UI_GOLD          (Color){170, 160, 80, 255}   // Master volume, crossfader
+#define UI_FILL_GREEN    (Color){80, 160, 80, 200}    // Volume/level bar fill
+#define UI_FILL_BLUE     (Color){80, 120, 180, 255}   // Pan bar fill
+#define UI_FILL_PURPLE   (Color){80, 60, 140, 255}    // Reverb send fill
+
+// Dark tints (inactive colored backgrounds)
+#define UI_BG_RED_DARK   (Color){50, 35, 35, 255}     // Dark red base (record off, clear)
+#define UI_BG_RED_MED    (Color){80, 50, 50, 255}     // Medium red (alert hover)
+#define UI_BG_GREEN_DARK (Color){45, 55, 45, 255}     // Dark green base
+#define UI_BG_BROWN      (Color){55, 45, 30, 255}     // Dark brown/warm base
+
+// P-Lock / step accent colors
+#define UI_PLOCK_DRUM    (Color){255, 180, 100, 255}   // Drum p-lock labels
+#define UI_PLOCK_MELODY  (Color){180, 120, 255, 255}   // Melody p-lock labels (defined in daw.c)
+
+// Warm accent text
+#define UI_TEXT_GOLD     (Color){200, 160, 80, 255}    // Gold accent text (groove, warm)
+#define UI_TEXT_GREEN    (Color){100, 200, 120, 255}   // Green info text (BPM, voices)
+
 // Initialize UI (call once at startup)
 void ui_init(Font* font);
 
@@ -123,7 +189,7 @@ typedef struct {
     float y;           // Current Y position (advances with each element)
     float startY;      // Starting Y (for reset)
     float spacing;     // Vertical spacing between elements
-    int fontSize;       // 0 = default (18/14/12), >0 = custom font size for all elements
+    int fontSize;       // 0 = default (UI_FONT_MEDIUM), >0 = custom font size for all elements
 } UIColumn;
 
 // Create a new column layout
@@ -339,8 +405,10 @@ bool DraggableFloat(float x, float y, const char* label, float* value, float spe
         snprintf(buf, sizeof(buf), "%s: %.2f", label, *value);
     }
 
-    int textWidth = MeasureTextUI(buf, 18);
-    Rectangle bounds = {x, y, (float)textWidth + 10, 20};
+    int fs = UI_FONT_MEDIUM;
+    int textWidth = MeasureTextUI(buf, fs);
+    int rowH = fs + 2;
+    Rectangle bounds = {x, y, (float)textWidth + 10, (float)rowH};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
 
@@ -349,7 +417,7 @@ bool DraggableFloat(float x, float y, const char* label, float* value, float spe
     Color col = hovered ? YELLOW : LIGHTGRAY;
     if (midiWaiting) col = (Color){255, 100, 255, 255}; // magenta = waiting
     else if (midiCC >= 0) col = hovered ? YELLOW : (Color){100, 200, 255, 255}; // cyan = mapped
-    DrawTextShadow(buf, (int)x, (int)y, 18, col);
+    DrawTextShadow(buf, (int)x, (int)y, fs, col);
 
     // Right-click: arm/disarm MIDI learn
     if (hovered && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && g_ui_midiLearnArm) {
@@ -487,15 +555,17 @@ bool DraggableInt(float x, float y, const char* label, int* value, float speed, 
     char buf[64];
     snprintf(buf, sizeof(buf), "%s: %d", label, *value);
 
-    int textWidth = MeasureTextUI(buf, 18);
-    Rectangle bounds = {x, y, (float)textWidth + 10, 20};
+    int fs = UI_FONT_MEDIUM;
+    int textWidth = MeasureTextUI(buf, fs);
+    int rowH = fs + 2;
+    Rectangle bounds = {x, y, (float)textWidth + 10, (float)rowH};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
 
     if (hovered) g_ui_draggableAnyHovered = true;
 
     Color col = hovered ? YELLOW : LIGHTGRAY;
-    DrawTextShadow(buf, (int)x, (int)y, 18, col);
+    DrawTextShadow(buf, (int)x, (int)y, fs, col);
 
     static bool dragging = false;
     static int* dragTarget = NULL;
@@ -533,15 +603,17 @@ bool DraggableIntLog(float x, float y, const char* label, int* value, float spee
     char buf[64];
     snprintf(buf, sizeof(buf), "%s: %d", label, *value);
 
-    int textWidth = MeasureTextUI(buf, 18);
-    Rectangle bounds = {x, y, (float)textWidth + 10, 20};
+    int fs = UI_FONT_MEDIUM;
+    int textWidth = MeasureTextUI(buf, fs);
+    int rowH = fs + 2;
+    Rectangle bounds = {x, y, (float)textWidth + 10, (float)rowH};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
 
     if (hovered) g_ui_draggableAnyHovered = true;
 
     Color col = hovered ? YELLOW : LIGHTGRAY;
-    DrawTextShadow(buf, (int)x, (int)y, 18, col);
+    DrawTextShadow(buf, (int)x, (int)y, fs, col);
 
     static bool dragging = false;
     static int* dragTarget = NULL;
@@ -582,15 +654,17 @@ void ToggleBool(float x, float y, const char* label, bool* value) {
     char buf[64];
     snprintf(buf, sizeof(buf), "[%c] %s", *value ? 'X' : ' ', label);
 
-    int textWidth = MeasureTextUI(buf, 18);
-    Rectangle bounds = {x, y, (float)textWidth + 10, 20};
+    int fs = UI_FONT_MEDIUM;
+    int textWidth = MeasureTextUI(buf, fs);
+    int rowH = fs + 2;
+    Rectangle bounds = {x, y, (float)textWidth + 10, (float)rowH};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
 
     if (hovered) g_ui_toggleAnyHovered = true;
 
     Color col = hovered ? YELLOW : LIGHTGRAY;
-    DrawTextShadow(buf, (int)x, (int)y, 18, col);
+    DrawTextShadow(buf, (int)x, (int)y, fs, col);
 
     if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
         *value = !*value;
@@ -602,15 +676,17 @@ bool PushButton(float x, float y, const char* label) {
     char buf[64];
     snprintf(buf, sizeof(buf), "[%s]", label);
 
-    int textWidth = MeasureTextUI(buf, 18);
-    Rectangle bounds = {x, y, (float)textWidth + 10, 20};
+    int fs = UI_FONT_MEDIUM;
+    int textWidth = MeasureTextUI(buf, fs);
+    int rowH = fs + 2;
+    Rectangle bounds = {x, y, (float)textWidth + 10, (float)rowH};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
 
     if (hovered) g_ui_buttonAnyHovered = true;
 
     Color col = hovered ? YELLOW : LIGHTGRAY;
-    DrawTextShadow(buf, (int)x, (int)y, 18, col);
+    DrawTextShadow(buf, (int)x, (int)y, fs, col);
 
     if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
         g_ui_clickConsumed = true;
@@ -623,15 +699,17 @@ float PushButtonInline(float x, float y, const char* label, bool* clicked) {
     char buf[64];
     snprintf(buf, sizeof(buf), "[%s]", label);
 
-    int textWidth = MeasureTextUI(buf, 18);
-    Rectangle bounds = {x, y, (float)textWidth + 10, 20};
+    int fs = UI_FONT_MEDIUM;
+    int textWidth = MeasureTextUI(buf, fs);
+    int rowH = fs + 2;
+    Rectangle bounds = {x, y, (float)textWidth + 10, (float)rowH};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
 
     if (hovered) g_ui_buttonAnyHovered = true;
 
     Color col = hovered ? YELLOW : LIGHTGRAY;
-    DrawTextShadow(buf, (int)x, (int)y, 18, col);
+    DrawTextShadow(buf, (int)x, (int)y, fs, col);
 
     if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
         g_ui_clickConsumed = true;
@@ -644,15 +722,17 @@ void CycleOption(float x, float y, const char* label, const char** options, int 
     char buf[128];
     snprintf(buf, sizeof(buf), "%s: < %s >", label, options[*value]);
 
-    int textWidth = MeasureTextUI(buf, 18);
-    Rectangle bounds = {x, y, (float)textWidth + 10, 20};
+    int fs = UI_FONT_MEDIUM;
+    int textWidth = MeasureTextUI(buf, fs);
+    int rowH = fs + 2;
+    Rectangle bounds = {x, y, (float)textWidth + 10, (float)rowH};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
 
     if (hovered) g_ui_cycleAnyHovered = true;
 
     Color col = hovered ? YELLOW : LIGHTGRAY;
-    DrawTextShadow(buf, (int)x, (int)y, 18, col);
+    DrawTextShadow(buf, (int)x, (int)y, fs, col);
 
     if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
         *value = (*value + 1) % count;
@@ -897,8 +977,10 @@ bool DraggableFloatT(float x, float y, const char* label, float* value, float sp
         snprintf(buf, sizeof(buf), "%s: %.2f", label, *value);
     }
 
-    int textWidth = MeasureTextUI(buf, 18);
-    Rectangle bounds = {x, y, (float)textWidth + 10, 20};
+    int fs = UI_FONT_MEDIUM;
+    int textWidth = MeasureTextUI(buf, fs);
+    int rowH = fs + 2;
+    Rectangle bounds = {x, y, (float)textWidth + 10, (float)rowH};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
 
@@ -910,7 +992,7 @@ bool DraggableFloatT(float x, float y, const char* label, float* value, float sp
     Color col = hovered ? YELLOW : LIGHTGRAY;
     if (midiWaiting) col = (Color){255, 100, 255, 255};
     else if (midiCC >= 0) col = hovered ? YELLOW : (Color){100, 200, 255, 255};
-    DrawTextShadow(buf, (int)x, (int)y, 18, col);
+    DrawTextShadow(buf, (int)x, (int)y, fs, col);
 
     // Right-click: arm/disarm MIDI learn
     if (hovered && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && g_ui_midiLearnArm) {
@@ -948,8 +1030,10 @@ bool DraggableIntT(float x, float y, const char* label, int* value, float speed,
     char buf[64];
     snprintf(buf, sizeof(buf), "%s: %d", label, *value);
 
-    int textWidth = MeasureTextUI(buf, 18);
-    Rectangle bounds = {x, y, (float)textWidth + 10, 20};
+    int fs = UI_FONT_MEDIUM;
+    int textWidth = MeasureTextUI(buf, fs);
+    int rowH = fs + 2;
+    Rectangle bounds = {x, y, (float)textWidth + 10, (float)rowH};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
 
@@ -959,7 +1043,7 @@ bool DraggableIntT(float x, float y, const char* label, int* value, float speed,
     }
 
     Color col = hovered ? YELLOW : LIGHTGRAY;
-    DrawTextShadow(buf, (int)x, (int)y, 18, col);
+    DrawTextShadow(buf, (int)x, (int)y, fs, col);
 
     static bool dragging = false;
     static int* dragTarget = NULL;
@@ -997,8 +1081,10 @@ void ToggleBoolT(float x, float y, const char* label, bool* value, const char* t
     char buf[64];
     snprintf(buf, sizeof(buf), "[%c] %s", *value ? 'X' : ' ', label);
 
-    int textWidth = MeasureTextUI(buf, 18);
-    Rectangle bounds = {x, y, (float)textWidth + 10, 20};
+    int fs = UI_FONT_MEDIUM;
+    int textWidth = MeasureTextUI(buf, fs);
+    int rowH = fs + 2;
+    Rectangle bounds = {x, y, (float)textWidth + 10, (float)rowH};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
 
@@ -1008,7 +1094,7 @@ void ToggleBoolT(float x, float y, const char* label, bool* value, const char* t
     }
 
     Color col = hovered ? YELLOW : LIGHTGRAY;
-    DrawTextShadow(buf, (int)x, (int)y, 18, col);
+    DrawTextShadow(buf, (int)x, (int)y, fs, col);
 
     if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
         *value = !*value;
@@ -1026,7 +1112,7 @@ UIColumn ui_column(float x, float y, float spacing) {
     col.y = y;
     col.startY = y;
     col.spacing = spacing;
-    col.fontSize = 0;  // 0 = default sizes
+    col.fontSize = 0;  // 0 = default (UI_FONT_MEDIUM)
     return col;
 }
 
@@ -1045,13 +1131,13 @@ void ui_col_space(UIColumn* col, float pixels) {
 }
 
 void ui_col_label(UIColumn* col, const char* text, Color color) {
-    int fs = col->fontSize > 0 ? col->fontSize : 14;
+    int fs = col->fontSize > 0 ? col->fontSize : UI_FONT_MEDIUM;
     DrawTextShadow(text, (int)col->x, (int)col->y, fs, color);
     col->y += col->spacing;
 }
 
 void ui_col_sublabel(UIColumn* col, const char* text, Color color) {
-    int fs = col->fontSize > 0 ? col->fontSize - 2 : 12;
+    int fs = col->fontSize > 0 ? col->fontSize - 2 : UI_FONT_SMALL;
     if (fs < 8) fs = 8;
     DrawTextShadow(text, (int)col->x, (int)col->y, fs, color);
     col->y += col->spacing - 2;

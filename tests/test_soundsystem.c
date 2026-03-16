@@ -6157,8 +6157,8 @@ describe(sampler_command_queue) {
         expect(samplerCtx->voices[0].active);
         expect(samplerCtx->voices[0].sampleIndex == 5);
         expect_float_eq(samplerCtx->voices[0].volume, 0.42f);
-        // speed = pitch * rateRatio = 1.5 * (44100/48000) ≈ 1.378
-        float expectedSpeed = 1.5f * (44100.0f / 48000.0f);
+        // speed = pitch * rateRatio = 1.5 * (44100/44100) = 1.5
+        float expectedSpeed = 1.5f * (44100.0f / 44100.0f);
         expect_float_near(samplerCtx->voices[0].speed, expectedSpeed, 0.01f);
     }
 }
