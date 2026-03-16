@@ -3897,6 +3897,7 @@ static void drawParamTape(float x, float y, float w, float h) {
 
 
 #include "daw_audio.h"
+#include "../engines/sample_chop.h"
 
 
 // ============================================================================
