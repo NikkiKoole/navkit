@@ -135,3 +135,40 @@ On load: re-bounce, re-chop, apply params. Deferred until the workflow is proven
 | 12 | Dedicated sampler track (TRACK_SAMPLER) | DONE |
 | — | Audio thread safety (gate/ungate handshake) | DONE |
 | — | Playhead in waveform displays | DONE |
+
+---
+
+## Next Steps / Polish
+
+### Per-step pitch on sampler track
+Currently pitch is per-slice (set in Sample tab). Need per-step pitch so you can play the same slice at different pitches across steps — melodic sampling. The sequencer already passes `pitchMod` (from `sn->nudge`) through to the sampler trigger callback. Just need UI: **Ctrl+scroll** on a sampler grid cell to adjust pitch in semitones. Display pitch offset in the cell when non-zero (e.g. "+3" or "-5").
+
+### Fade in/out (click prevention)
+Slices from transient detection can start/end mid-waveform, causing audible clicks. Add short auto-fades (1-5ms, ~50-220 samples) applied in `chopApplySliceParams` when building the sample buffer:
+```c
+// Fade in: first N samples *= ramp 0→1
+for (int i = 0; i < fadeLen && i < len; i++)
+    data[i] *= (float)i / fadeLen;
+// Fade out: last N samples *= ramp 1→0
+for (int i = 0; i < fadeLen && i < len; i++)
+    data[len - 1 - i] *= (float)i / fadeLen;
+```
+Could be always-on (1ms) or configurable per-slice. Always-on is simpler and rarely audible.
+
+### Sampler patch UI (replace synth params)
+When the sampler track is selected (track 7), the Patch tab currently shows the full synth parameter editor (oscillator, filter, ADSR, LFO...) — none of which apply to sample playback. Options:
+
+**Option A (simple)**: Detect `track == SEQ_TRACK_SAMPLER` in the patch tab draw, show a minimal "Sampler" view instead: master volume, maybe a simple LP/HP filter on sampler output, and a list of loaded slices with their params.
+
+**Option B (later)**: Per-slot sampler parameters — filter cutoff/resonance, ADSR envelope on the sampler voice (for gated playback instead of one-shot), loop points. This turns the sampler into a proper instrument.
+
+Option A first — just prevent the confusing full-synth UI from showing.
+
+### Choke groups
+Slices that cut each other off (like open/closed hihat). Add a `chokeGroup` field per slice (0 = none, 1-4 = group). When a slice triggers, stop all playing voices in the same choke group. Implementation: scan `samplerCtx->voices[]` in the trigger callback, kill matching group members.
+
+### Visual slice grid
+The current sampler track shows slice numbers in small cells. For a more MPC-like experience: a 4x4 pad grid in the Sample tab showing slices 0-15 as clickable pads. Click to preview, drag to reorder, highlight which pads are used in the current pattern. Lower priority — the sequencer grid works, just not as visual.
+
+### Sampler bus routing
+Currently sampler output goes directly to master (post bus mixer). For effects processing, route sampler through a bus (e.g. BUS_DRUM0 or a new BUS_SAMPLER). This would let you apply per-bus filter, distortion, delay, reverb send to the chop output. Requires adding sampler output into the `busInputs[]` array in `DawAudioCallback` instead of mixing after the mixer.
