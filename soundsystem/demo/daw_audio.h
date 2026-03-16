@@ -464,23 +464,6 @@ static void dawMelodyTriggerGeneric(int trackIdx, int note, float vel,
                                      float gateTime, bool slide, bool accent) {
     (void)gateTime; // gate handled by sequencer.h's tick-based countdown
 
-    // 16-pad sampler mode: if this melody track is the sampler track,
-    // map MIDI note to slice index and trigger sampler instead of synth.
-    // Note 36 (C2) = slice 0, 37 = slice 1, ..., 67 = slice 31.
-    if (trackIdx == daw.chopSamplerTrack) {
-        int sliceIdx = note - 36;
-        if (sliceIdx < 0) sliceIdx = 0;
-        if (sliceIdx >= SAMPLER_MAX_SAMPLES) sliceIdx = SAMPLER_MAX_SAMPLES - 1;
-        if (samplerCtx->samples[sliceIdx].loaded) {
-            float pVol = plockValue(PLOCK_VOLUME, vel);
-            if (accent) pVol = fminf(pVol * 1.3f, 1.0f);
-            float pitchMod = plockValue(PLOCK_PITCH_OFFSET, 0.0f) + daw.chopSlicePitch[sliceIdx];
-            float speed = (pitchMod != 0.0f) ? powf(2.0f, pitchMod / 12.0f) : 1.0f;
-            samplerPlay(sliceIdx, pVol, speed);
-        }
-        return;
-    }
-
     int busTrack = trackIdx + SEQ_DRUM_TRACKS;
     SynthPatch *p = &daw.patches[busTrack];
 
@@ -639,6 +622,20 @@ static void dawMelodyRelease0(void) { dawMelodyReleaseGeneric(0); }
 static void dawMelodyRelease1(void) { dawMelodyReleaseGeneric(1); }
 static void dawMelodyRelease2(void) { dawMelodyReleaseGeneric(2); }
 
+// Sampler track trigger: note = slice index, vel = volume, pitchMod = speed
+static void dawSamplerTrigger(int note, float vel, float gateTime, float pitchMod,
+                               bool slide, bool accent) {
+    (void)gateTime; (void)slide; (void)accent;
+    int sliceIdx = note;
+    if (sliceIdx < 0 || sliceIdx >= SAMPLER_MAX_SAMPLES) return;
+    if (!samplerCtx->samples[sliceIdx].loaded) return;
+    float totalPitch = daw.chopSlicePitch[sliceIdx];
+    if (pitchMod != 1.0f) totalPitch += 12.0f * logf(pitchMod) / logf(2.0f);
+    float speed = (totalPitch != 0.0f) ? powf(2.0f, totalPitch / 12.0f) : 1.0f;
+    samplerPlay(sliceIdx, vel, speed);
+}
+static void dawSamplerRelease(void) { /* one-shot, no release needed */ }
+
 // Initialize the sequencer engine with DAW callbacks
 static void dawInitSequencer(void) {
     memset(dawMelodyVoice, -1, sizeof(dawMelodyVoice));
@@ -647,6 +644,11 @@ static void dawInitSequencer(void) {
     setMelodyCallbacks(0, dawMelodyTrigger0, dawMelodyRelease0);
     setMelodyCallbacks(1, dawMelodyTrigger1, dawMelodyRelease1);
     setMelodyCallbacks(2, dawMelodyTrigger2, dawMelodyRelease2);
+
+    // Sampler track (track 7)
+    seq.trackNoteOn[SEQ_TRACK_SAMPLER] = dawSamplerTrigger;
+    seq.trackNoteOff[SEQ_TRACK_SAMPLER] = dawSamplerRelease;
+    seq.trackNames[SEQ_TRACK_SAMPLER] = "Sampler";
 
     // Default demo beat on pattern 0
     Pattern *pat = &seq.patterns[0];

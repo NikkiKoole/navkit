@@ -390,7 +390,6 @@ static DawState daw = {
         .rewindTime = 1.5f, .rewindMinSpeed = 0.2f, .rewindVinyl = 0.1f, .rewindWobble = 0.2f, .rewindFilter = 0.5f,
     },
     .chopSliceMap = {-1, -1, -1, -1},
-    .chopSamplerTrack = -1,
     .masterVol = 0.8f,
     .splitPoint = 60, .splitLeftPatch = 1, .splitRightPatch = 2,
 };
@@ -1378,13 +1377,15 @@ static void drawWorkSeq(float x, float y, float w, float h) {
     } else {
         // Always compute as if inspector is showing, so no jump on toggle
         float gridH = h - 80;
-        cellH = (int)((gridH - 18) / 7);
+        cellH = (int)((gridH - 18) / 8);
     }
     if (cellH < 12) cellH = 12;
     if (cellH > 28) cellH = 28;
 
-    const char* trackNames[7];
+    #define SEQ_GRID_TRACKS 8  // 4 drum + 3 melody + 1 sampler
+    const char* trackNames[SEQ_GRID_TRACKS];
     for (int i = 0; i < 7; i++) trackNames[i] = daw.patches[i].p_name;
+    trackNames[7] = "Sampler";
 
     // Step numbers (show every 1 for 16, every 2 for 32)
     int numSkip = (steps == 32) ? 2 : 1;
@@ -1395,10 +1396,12 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         DrawTextShadow(TextFormat("%d", i+1), sx + (steps==32 ? 1 : cellW/2-3), (int)y, steps==32 ? 8 : 9, numCol);
     }
 
-    for (int track = 0; track < 7; track++) {
+    for (int track = 0; track < SEQ_GRID_TRACKS; track++) {
         int ty = (int)y + 14 + track * (cellH + 2);
         bool isDrum = (track < 4);
+        bool isSampler = (track == SEQ_TRACK_SAMPLER);
         if (track == 4) DrawLine((int)x, ty-2, (int)(x+w), ty-2, (Color){55,55,70,255});
+        if (track == SEQ_TRACK_SAMPLER) DrawLine((int)x, ty-2, (int)(x+w), ty-2, (Color){55,55,70,255});
 
         // --- Inline mute + volume bar + track name ---
         int lx = (int)x;
@@ -1492,7 +1495,9 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             Color bg = (step/4)%2==0 ? (Color){36,36,42,255} : (Color){30,30,35,255};
 
             if (isDrum && step < 32 && patGetDrum(dawPattern(), track, step)) bg = (Color){50,125,65,255};
-            if (!isDrum && track >= SEQ_DRUM_TRACKS && patGetNote(dawPattern(), track, step) != SEQ_NOTE_OFF)
+            if (isSampler && patGetNote(dawPattern(), track, step) != SEQ_NOTE_OFF)
+                bg = (Color){140,90,50,255};  // orange-brown for sampler
+            else if (!isDrum && !isSampler && track >= SEQ_DRUM_TRACKS && patGetNote(dawPattern(), track, step) != SEQ_NOTE_OFF)
                 bg = (Color){50,80,140,255};
             // Playhead highlight (per-track for polyrhythm)
             if (daw.transport.playing && step == seq.trackStep[track])
@@ -1506,7 +1511,8 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             {
                 Pattern *pat = dawPattern();
                 bool active = (isDrum && step < 32 && patGetDrum(pat, track, step)) ||
-                              (!isDrum && track >= SEQ_DRUM_TRACKS && patGetNote(pat, track, step) != SEQ_NOTE_OFF);
+                              (isSampler && patGetNote(pat, track, step) != SEQ_NOTE_OFF) ||
+                              (!isDrum && !isSampler && track >= SEQ_DRUM_TRACKS && patGetNote(pat, track, step) != SEQ_NOTE_OFF);
                 if (active) {
                     float vel = isDrum ? patGetDrumVel(pat, track, step)
                                        : patGetNoteVel(pat, track, step);
@@ -1525,8 +1531,13 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                 }
             }
 
-            // Draw note name for melody cells
-            if (!isDrum && track >= SEQ_DRUM_TRACKS) {
+            // Draw note name for melody cells, or slice number for sampler
+            if (isSampler) {
+                int note = patGetNote(dawPattern(), track, step);
+                if (note != SEQ_NOTE_OFF && cellW >= 10) {
+                    DrawTextShadow(TextFormat("%d", note), sx+2, ty+2, 8, (Color){255,200,100,255});
+                }
+            } else if (!isDrum && track >= SEQ_DRUM_TRACKS) {
                 int note = patGetNote(dawPattern(), track, step);
                 if (note != SEQ_NOTE_OFF && cellW >= 14) {
                     const char* nn[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
@@ -1540,6 +1551,12 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                         patClearDrum(dawPattern(), track, step);
                     else
                         patSetDrum(dawPattern(), track, step, 0.8f, 0.0f);
+                } else if (isSampler) {
+                    if (patGetNote(dawPattern(), track, step) == SEQ_NOTE_OFF) {
+                        patSetNote(dawPattern(), track, step, 0, 0.8f, 1); // slice 0 default
+                    } else {
+                        patClearNote(dawPattern(), track, step);
+                    }
                 } else if (!isDrum && track >= SEQ_DRUM_TRACKS) {
                     if (patGetNote(dawPattern(), track, step) == SEQ_NOTE_OFF)
                         patSetNote(dawPattern(), track, step, 60, 0.8f, 1); // C4 default
@@ -1555,13 +1572,23 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                     // Shift+scroll = adjust velocity
                     Pattern *pat = dawPattern();
                     bool active = (isDrum && step < 32 && patGetDrum(pat, track, step)) ||
-                                  (!isDrum && track >= SEQ_DRUM_TRACKS && patGetNote(pat, track, step) != SEQ_NOTE_OFF);
+                                  (isSampler && patGetNote(pat, track, step) != SEQ_NOTE_OFF) ||
+                                  (!isDrum && !isSampler && track >= SEQ_DRUM_TRACKS && patGetNote(pat, track, step) != SEQ_NOTE_OFF);
                     if (active) {
                         float vel = isDrum ? patGetDrumVel(pat, track, step) : patGetNoteVel(pat, track, step);
                         vel += wh * 0.05f;
                         if (vel < 0.05f) vel = 0.05f; if (vel > 1.0f) vel = 1.0f;
                         if (isDrum) patSetDrumVel(pat, track, step, vel);
                         else patSetNoteVel(pat, track, step, vel);
+                    }
+                } else if (wh != 0.0f && isSampler) {
+                    // Scroll = change slice number for sampler track
+                    int note = patGetNote(dawPattern(), track, step);
+                    if (note != SEQ_NOTE_OFF) {
+                        note += (int)wh;
+                        if (note < 0) note = 0;
+                        if (note >= SAMPLER_MAX_SAMPLES) note = SAMPLER_MAX_SAMPLES - 1;
+                        patSetNote(dawPattern(), track, step, note, patGetNoteVel(dawPattern(), track, step), 1);
                     }
                 } else if (wh != 0.0f && !isDrum && track >= SEQ_DRUM_TRACKS) {
                     // Plain scroll = pitch (melody only) — accumulate for smooth scroll
@@ -5238,30 +5265,11 @@ static void drawWorkSample(float x, float y, float w, float h) {
         }
         sy += 26;
 
-        // 16-pad sampler track selector
-        DrawTextShadow("16-Pad Track:", (int)x, (int)(sy + 2), 10, (Color){140, 140, 160, 255});
-        {
-            const char *trackOpts[] = {"Off", "Bass", "Lead", "Chord"};
-            int trackVals[] = {-1, 0, 1, 2};
-            for (int i = 0; i < 4; i++) {
-                float bx = x + 96 + i * 46;
-                Rectangle r = {bx, sy, 42, 16};
-                bool sel = (daw.chopSamplerTrack == trackVals[i]);
-                bool hov = CheckCollisionPointRec(mouse, r);
-                DrawRectangleRec(r, sel ? (Color){50, 60, 80, 255} : (hov ? (Color){42, 44, 52, 255} : (Color){30, 31, 38, 255}));
-                DrawRectangleLinesEx(r, 1, sel ? (Color){100, 160, 255, 255} : (Color){48, 48, 58, 255});
-                DrawTextShadow(trackOpts[i], (int)(bx + 4), (int)(sy + 3), 9,
-                              sel ? (Color){140, 190, 255, 255} : (Color){100, 100, 120, 255});
-                if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                    daw.chopSamplerTrack = trackVals[i];
-                    ui_consume_click();
-                }
-            }
-            if (daw.chopSamplerTrack >= 0) {
-                DrawTextShadow("(note C2=slice 0, C#2=1, D2=2...)", (int)(x + 284), (int)(sy + 2), 9, (Color){60, 65, 80, 255});
-            }
-        }
-        sy += 20;
+        // Sampler track hint
+        DrawTextShadow("Sampler Track:", (int)x, (int)(sy + 2), 10, (Color){140, 140, 160, 255});
+        DrawTextShadow("Use the Sampler row in the Sequencer (F1). Set note = slice number.",
+                       (int)(x + 96), (int)(sy + 2), 9, (Color){80, 140, 200, 255});
+        sy += 16;
 
         // Info line
         char info[128];

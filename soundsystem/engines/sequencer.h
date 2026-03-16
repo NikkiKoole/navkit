@@ -37,6 +37,7 @@
 #define SEQ_TRACK_BASS  (SEQ_DRUM_TRACKS + 0)
 #define SEQ_TRACK_LEAD  (SEQ_DRUM_TRACKS + 1)
 #define SEQ_TRACK_CHORD (SEQ_DRUM_TRACKS + 2)
+#define SEQ_TRACK_SAMPLER (SEQ_DRUM_TRACKS + SEQ_MELODY_TRACKS)  // Track 7
 
 // Note value for "no note" (rest)
 #define SEQ_NOTE_OFF -1
@@ -303,6 +304,7 @@ typedef struct {
 typedef enum {
     TRACK_DRUM,     // Triggered by step on/off, no gate, one-shot
     TRACK_MELODIC,  // Triggered by note value, has gate/slide/accent
+    TRACK_SAMPLER,  // Like drum (one-shot) but note field selects sample slot
 } TrackType;
 
 // Per-note data within a step
@@ -993,7 +995,8 @@ static void initPattern(Pattern *p) {
             stepV2Clear(&p->steps[t][s]);
         }
         p->trackLength[t] = 16;
-        p->trackType[t] = (t < SEQ_DRUM_TRACKS) ? TRACK_DRUM : TRACK_MELODIC;
+        p->trackType[t] = (t == SEQ_TRACK_SAMPLER) ? TRACK_SAMPLER :
+                           (t < SEQ_DRUM_TRACKS) ? TRACK_DRUM : TRACK_MELODIC;
     }
 }
 
@@ -1289,7 +1292,18 @@ static void seqTriggerStep(Pattern *p, int track, int step, float stepDuration) 
         if (velocity > 1.0f) velocity = 1.0f;
     }
 
-    if (p->trackType[track] == TRACK_DRUM) {
+    if (p->trackType[track] == TRACK_SAMPLER) {
+        // --- SAMPLER TRIGGER ---
+        // note field selects the sample slot; velocity controls volume
+        int sliceNote = sn->note;
+        if (sliceNote == SEQ_NOTE_OFF) sliceNote = 0;
+        float pitchMod = powf(2.0f, sn->nudge / 12.0f);
+        if (seq.trackNoteOn[track]) {
+            seqSoundLog("SEQ_SAMPLER  track=%d step=%d slice=%d vel=%.2f",
+                        track, step, sliceNote, velocity);
+            seq.trackNoteOn[track](sliceNote, velocity, 0, pitchMod, false, false);
+        }
+    } else if (p->trackType[track] == TRACK_DRUM) {
         // --- DRUM TRIGGER ---
         float pitchMod = powf(2.0f, sn->nudge / 12.0f);  // nudge stores pitch for drums
 
