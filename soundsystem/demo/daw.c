@@ -212,6 +212,27 @@ static int dawAudioFrameCount = 0;
 static float dawPeakLevel = 0.0f;    // peak output level (updated in audio callback)
 static float dawPeakHold = 0.0f;     // slow-decay peak for meter display
 static volatile bool dawBouncingActive = false;  // true during bounce — audio callback outputs silence
+static volatile bool dawAudioIdle = false;       // set by audio callback when it sees dawBouncingActive
+
+// Gate the audio callback: wait until it acknowledges the gate before returning.
+// Call this before any operation that modifies shared audio state (bounce,
+// sample slot changes, freeze). Call dawAudioUngate() when done.
+static void dawAudioGate(void) {
+    dawAudioIdle = false;
+    dawBouncingActive = true;
+    // Spin until the audio callback acknowledges (sets dawAudioIdle = true).
+    // Timeout after 100ms to avoid deadlock if audio isn't running.
+    for (int i = 0; i < 10000; i++) {
+        if (dawAudioIdle) return;
+        usleep(10);  // 10us per spin, max 100ms total
+    }
+    // Timeout — audio thread may not be running. Proceed anyway.
+}
+
+static void dawAudioUngate(void) {
+    dawBouncingActive = false;
+    dawAudioIdle = false;
+}
 
 // WAV recording (F7=toggle, writes daw_output.wav)
 static bool dawRecording = false;
@@ -4713,22 +4734,16 @@ static void chopStateBounce(void) {
     chopStateClear();
     if (!chopState.sourcePath[0]) return;
 
-    // Gate the audio callback during bounce — renderPatternToBuffer swaps
-    // global context pointers (synthCtx/fxCtx/seqCtx) which the audio thread
-    // reads. Without gating, the audio callback dereferences dangling pointers
-    // and crashes (SIGBUS in processVoice on the audio thread).
-    dawBouncingActive = true;
-    // Brief sleep to ensure the audio callback sees the flag and returns
-    // before we swap pointers. One audio buffer (~5ms) is enough.
-    usleep(10000);  // 10ms
+    // Gate the audio callback during the entire bounce+load operation.
+    // renderPatternToBuffer swaps global context pointers, and the slot
+    // loading modifies samplerCtx->samples — both need protection.
+    dawAudioGate();
 
     RenderedPattern rendered = renderPatternToBuffer(
         chopState.sourcePath, chopState.sourcePattern,
         chopState.sourceLoops, 0.5f);
 
-    dawBouncingActive = false;
-
-    if (!rendered.data) return;
+    if (!rendered.data) { dawAudioUngate(); return; }
 
     chopState.renderData = rendered.data;
     chopState.renderLength = rendered.length;
@@ -4742,7 +4757,7 @@ static void chopStateBounce(void) {
     } else {
         chopped = chopEqual(&rendered, chopState.sliceCount);
     }
-    if (chopped.sliceCount < 1) { chopStateClear(); return; }
+    if (chopped.sliceCount < 1) { chopStateClear(); dawAudioUngate(); return; }
 
     int sc = chopped.sliceCount;
     chopState.sliceCount = sc;  // transient mode may return fewer slices
@@ -4751,7 +4766,7 @@ static void chopStateBounce(void) {
         int len = chopped.sliceLengths[s] > 0 ? chopped.sliceLengths[s] : chopped.sliceLength;
         chopState.sliceLengths[s] = len;
         chopState.slices[s] = (float *)malloc(len * sizeof(float));
-        if (!chopState.slices[s]) { chopFree(&chopped); chopStateClear(); return; }
+        if (!chopState.slices[s]) { chopFree(&chopped); chopStateClear(); dawAudioUngate(); return; }
         memcpy(chopState.slices[s], chopped.slices[s], len * sizeof(float));
     }
 
@@ -4777,6 +4792,9 @@ static void chopStateBounce(void) {
     for (int t = 0; t < 4 && t < sc; t++)
         daw.chopSliceMap[t] = t;
 
+    // All slot modifications done — ungate the audio callback
+    dawAudioUngate();
+
     chopState.bounced = true;
     // Initialize default slice params for new chop
     for (int s = 0; s < sc; s++) {
@@ -4789,12 +4807,11 @@ static void chopStateBounce(void) {
 }
 
 // Re-apply per-slice params to sampler slots (call after changing params)
-// NOTE: This rebuilds sampler data on the main thread while the audio thread
-// may be reading it. We mark slots as unloaded first (atomic-safe: audio thread
-// checks .loaded before reading .data), build the new buffer, then re-enable.
+// Gates the audio callback to prevent use-after-free on slot->data.
 static void chopApplySliceParams(void) {
     if (!chopState.bounced) return;
     _ensureSamplerCtx();
+    dawAudioGate();
 
     // Sync pitch to DawState (used by drum trigger in daw_audio.h)
     for (int s = 0; s < chopState.sliceCount; s++)
@@ -4846,10 +4863,10 @@ static void chopApplySliceParams(void) {
         slot->sampleRate = SAMPLE_CHOP_SAMPLE_RATE;
         slot->embedded = false;
         snprintf(slot->name, sizeof(slot->name), "slice_%02d", s);
-        slot->loaded = true;   // audio thread can use it again
-        // Free old data after slot is updated
+        slot->loaded = true;
         if (oldData && !wasEmbedded) free(oldData);
     }
+    dawAudioUngate();
 }
 
 // Draw waveform with slice markers, returns clicked slice or -1
@@ -5490,9 +5507,10 @@ static void drawWorkSample(float x, float y, float w, float h) {
             DrawTextShadow("Freeze Dub", (int)(x + 8), (int)(sy + 3), 9,
                           active ? (Color){200, 150, 255, 255} : (Color){60, 60, 75, 255});
             if (hov && active && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                dawAudioGate();
                 int slot = dubLoopFreezeToSampler(freeSlot);
+                dawAudioUngate();
                 if (slot >= 0) {
-                    // Auto-assign to selected slice slot for preview
                     chopState.selectedSlice = slot;
                 }
                 ui_consume_click();
@@ -5507,7 +5525,9 @@ static void drawWorkSample(float x, float y, float w, float h) {
             DrawRectangleLinesEx(r, 1, (Color){100, 160, 200, 255});
             DrawTextShadow("Freeze Rewind", (int)(x + 118), (int)(sy + 3), 9, (Color){140, 190, 230, 255});
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                dawAudioGate();
                 int slot = rewindFreezeToSampler(freeSlot);
+                dawAudioUngate();
                 if (slot >= 0) {
                     chopState.selectedSlice = slot;
                 }

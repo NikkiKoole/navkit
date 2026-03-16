@@ -50,6 +50,7 @@ static void DawAudioCallback(void *buffer, unsigned int frames) {
     // During bounce, the global context pointers are swapped to a temp system.
     // Output silence to avoid dereferencing invalid pointers.
     if (dawBouncingActive) {
+        dawAudioIdle = true;  // acknowledge: audio thread is idle
         memset(buffer, 0, frames * 2 * sizeof(short));
         return;
     }
