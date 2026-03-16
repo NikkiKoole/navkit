@@ -523,13 +523,6 @@ scw_embed: $(BINDIR)
 	./$(BINDIR)/scw_embed soundsystem/cycles > soundsystem/engines/scw_data.h
 	@echo "Generated soundsystem/engines/scw_data.h"
 
-# Sample embedder for soundsystem (oneshot samples like CR-78)
-sample_embed_SRC := soundsystem/tools/sample_embed.c
-sample_embed: $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/sample_embed $(sample_embed_SRC)
-	./$(BINDIR)/sample_embed soundsystem/oneshots > soundsystem/engines/sample_data.h
-	@echo "Generated soundsystem/engines/sample_data.h"
-
 # Headless preset audition tool (render + analyze presets)
 preset-audition: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/preset-audition soundsystem/tools/preset_audition.c -lm
@@ -652,4 +645,4 @@ cscope:
 nav: tags cscope
 	@echo "Updated tags + cscope.out"
 
-.PHONY: all clean clean-raylib clean-atlas nav test test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood path steer crowd mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs bench_items windows
+.PHONY: all clean clean-raylib clean-atlas nav test test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood path steer crowd mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embedpath8 path16 path-sound bench bench_jobs bench_items windows

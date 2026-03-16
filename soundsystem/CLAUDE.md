@@ -27,7 +27,6 @@ make preset-audition     # headless preset → WAV renderer + spectral analysis
 make song-render         # .song → WAV export
 make daw-render          # headless DAW render (stubbed raylib)
 make scw_embed           # WAV cycles → scw_data.h (wavetable generator)
-make sample_embed        # WAV oneshots → sample_data.h (sample generator)
 ```
 
 `test_soundsystem` is included in `make test`, `make test-full`, and `make test-quick`. To run **only** sound tests after sound changes: `make test_soundsystem`.
@@ -55,8 +54,7 @@ soundsystem/
 │   ├── rhythm_patterns.h      # 14 rhythm style generators
 │   ├── rhythm_prob_maps.h     # 27 probability map presets
 │   ├── piku_presets.h         # Pikuniku-style presets
-│   ├── scw_data.h             # Generated wavetable data (from scw_embed)
-│   └── sample_data.h          # Generated sample data (from sample_embed)
+│   └── scw_data.h             # Generated wavetable data (from scw_embed)
 ├── demo/
 │   ├── daw.c                  # Full DAW UI (~4540 lines, 5 tabs)
 │   ├── daw_file.h             # DAW save/load (.daw format)
@@ -198,7 +196,7 @@ Each subsystem has a global pointer (`synthCtx`, `fxCtx`, `seqCtx`, `samplerCtx`
 - **P-lock indices**: P-locks are stored in a flat `PLock[128]` array per pattern, keyed by (track, step, paramID). Don't assume index = step.
 - **Song file format**: Text-based INI-style. Adding new fields requires updating both save and load in `song_file.h`, plus `daw_file.h` for DAW format.
 - **Preset count shifts**: Adding/removing presets in `instrument_presets.h` shifts indices — song files reference presets by index.
-- **scw_data.h / sample_data.h are generated**: Don't edit directly. Regenerate with `make scw_embed` or `make sample_embed`.
+- **scw_data.h is generated**: Don't edit directly. Regenerate with `make scw_embed`.
 
 ## Current Status
 

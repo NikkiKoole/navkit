@@ -298,7 +298,7 @@ Multiple `memset(seq.trackStepPlayCount, ...)` calls on pattern switch. These ar
 - **Circular buffer pattern**: Delay lines, reverb combs, chorus/flanger all use modular ring buffers with read/write pointers. Memory-efficient, no allocation.
 - **P-lock linked list**: `nextInStep` chaining avoids per-step scanning of all 128 p-locks. Only iterate locks that apply to the current step. Good sparse access pattern.
 - **StepV2 packing**: 46 bytes per step with uint8_t fields and compact StepNote (7 bytes). Well-packed for cache.
-- **Embedded sample/SCW data**: Optional compile-time embedding (`scw_data.h`, `sample_data.h`) avoids runtime file I/O. Good for embedded/game use.
+- **Embedded SCW data**: Optional compile-time embedding (`scw_data.h`) avoids runtime file I/O. Good for embedded/game use.
 - **DrumsContext is compact**: 16 voices × 80B = 1.3KB. Fits in L1. Hot path (processDrumVoice) touches ~30B per voice. Clean.
 - **Sequencer tick is efficient**: 96 PPQ tick loop checks per-track counters, only triggers on exact tick match. No wasted iteration.
 

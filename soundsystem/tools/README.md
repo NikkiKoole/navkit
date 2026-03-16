@@ -10,7 +10,6 @@ All C tools build from the **navkit root** via Make targets:
 make preset-audition    # Preset renderer + analyzer
 make drum-compare       # Legacy drums.h vs synth preset comparison
 make jukebox-test       # Song/jukebox playback tester
-make sample_embed       # WAV → C header embedder (samples)
 make scw_embed          # WAV → C header embedder (single-cycle waveforms)
 ```
 
@@ -130,17 +129,6 @@ Interactive song playback tester. Plays songs through the SoundSynth bridge with
 ```
 
 **Controls** (interactive mode): LEFT/RIGHT = prev/next song, SPACE = stop, L = toggle log, Q/ESC = quit
-
----
-
-## sample_embed.c
-
-Scans a directory of `.wav` files and generates a C header with embedded sample data for the sampler engine.
-
-```bash
-clang -o build/bin/sample_embed soundsystem/tools/sample_embed.c
-./build/bin/sample_embed path/to/samples/ > sample_data.h
-```
 
 ---
 

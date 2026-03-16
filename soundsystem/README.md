@@ -146,7 +146,7 @@ All drums are built from the same `SynthPatch` engine as melodic sounds — shor
 
 ### Sample Playback
 
-Up to 32 samples can be loaded (WAV, embedded or runtime). 8-voice polyphony with pitch shifting, looping, and per-voice volume/pan.
+Up to 32 samples can be loaded (WAV at runtime). 8-voice polyphony with pitch shifting, looping, and per-voice volume/pan. Used by the chop/flip system for sliced sample playback — not for drums (which are fully synthesized).
 
 ## Effects
 
@@ -420,7 +420,6 @@ soundsystem/
     rhythm_prob_maps.h       # 27 probability map presets
     piku_presets.h           # Pikuniku-style "sillycore" presets
     scw_data.h               # Generated wavetable data (optional)
-    sample_data.h            # Embedded sample data (optional)
     midi_input.h             # CoreMIDI keyboard input (macOS)
   demo/
     daw.c                    # Built-in DAW UI
@@ -429,7 +428,6 @@ soundsystem/
   cycles/                    # Source WAV files for scw_embed
   tools/
     scw_embed.c              # WAV → C header converter
-    sample_embed.c           # Sample → C header converter
     drum_compare.c           # Drum similarity analysis tool
     jukebox_test.c           # Jukebox playback test
   tests/
