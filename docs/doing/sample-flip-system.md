@@ -176,3 +176,62 @@ The current sampler track shows slice numbers in small cells. For a more MPC-lik
 
 ### Sampler bus routing
 Currently sampler output goes directly to master (post bus mixer). For effects processing, route sampler through a bus (e.g. BUS_DRUM0 or a new BUS_SAMPLER). This would let you apply per-bus filter, distortion, delay, reverb send to the chop output. Requires adding sampler output into the `busInputs[]` array in `DawAudioCallback` instead of mixing after the mixer.
+
+---
+
+## Architectural Improvements
+
+### 1. Eliminate legacy callback adapters (move into SequencerContext)
+
+**Problem**: The sequencer has two callback layers:
+- **Unified**: `TrackNoteOnFunc(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent)` — stored per-track in `seq.trackNoteOn[]` (part of `SequencerContext`)
+- **Legacy**: `DrumTriggerFunc(float vel, float pitch)` and `MelodyTriggerFunc(int note, float vel, float gateTime, bool slide, bool accent)` — different signatures, adapted via file-scope static arrays (`_drumAdapters[]`, `_melodyAdapters[]`, `_melodyReleaseAdapters[]`)
+
+The adapters (`_drumNoteOnAdapter0`, `_melodyNoteOnAdapter0`, etc.) are hardcoded per-index wrapper functions that read from the file-scope arrays. These arrays are **global mutable state** shared across all sequencer instances — the root cause of the bounce clobbering live callbacks.
+
+**Strategy**: Drop the legacy signatures entirely. All callers switch to `TrackNoteOnFunc` directly.
+
+**Step-by-step**:
+1. Change `initSequencer` to take `TrackNoteOnFunc` for drums (or just set `seq.trackNoteOn[i]` directly)
+2. Change `setMelodyCallbacks` to take `TrackNoteOnFunc` + `TrackNoteOffFunc` (or just set directly)
+3. Update DAW callbacks: `dawDrumTrigger0(float vel, float pitch)` → `dawDrumTrigger0(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent)` (ignore unused params)
+4. Same for `song_render.c`, `bridge_render.c`, `bridge_export.c`, `sample_chop.h`
+5. Delete: `_drumAdapters[]`, `_melodyAdapters[]`, `_melodyReleaseAdapters[]`, all `_drumNoteOnAdapterN` and `_melodyNoteOnAdapterN` wrapper functions (~50 lines)
+6. Delete `DrumTriggerFunc` and `MelodyTriggerFunc` typedefs
+7. Remove the save/restore dance in `sample_chop.h`
+
+**Callers to update** (5 files):
+- `daw_audio.h`: `dawDrumTrigger0-3`, `dawMelodyTrigger0-2` — change signatures
+- `sample_chop.h`: `_chopDrum0-3`, `_chopMel0-2` — change signatures
+- `song_render.c`: `renderDrumTrigger0-3`, `renderMelodyTrigger0-2` — change signatures
+- `bridge_render.c`: drum/melody callbacks — change signatures
+- `bridge_export.c`: stub callbacks — change signatures
+
+**Impact**: ~50 lines deleted from sequencer.h, ~10 lines changed per caller file. `trackNoteOn[]` and `trackNoteOff[]` in the `Sequencer` struct are already per-instance (part of `SequencerContext`), so after this refactor each instance is fully self-contained. No more global adapter state, no more save/restore.
+
+**Risk**: Low. The unified signature already exists and is used by the tick loop. The adapters are purely a bridge for the old API. The sampler track (`dawSamplerTrigger`) already uses the unified signature — it's the proof that this works.
+
+### 2. Sampler voice contention (main thread vs audio thread)
+
+**Problem**: `samplerPlay()` from UI preview clicks writes to `samplerCtx->voices[]` on the main thread while `processSamplerStereo()` reads/writes the same voices on the audio thread. This can cause glitches or out-of-bounds reads.
+
+**Strategy**: Queue preview commands. Add a lock-free SPSC (single-producer single-consumer) ring buffer for "play" commands:
+```c
+typedef struct { int slot; float vol; float speed; } SamplerCommand;
+SamplerCommand samplerCmdQueue[16];
+volatile int samplerCmdHead, samplerCmdTail;
+```
+Main thread pushes commands. Audio callback drains the queue at the start of each buffer. This serializes all voice allocation to the audio thread. Small change (~30 lines), eliminates the last race condition.
+
+### 3. Double-buffer sync state (dawSyncEngineState)
+
+**Problem**: `dawSyncEngineState()` copies 50+ fields from `daw` into `fx`, `synthCtx`, bus state, etc. on the main thread while the audio callback reads them. Individual field writes are usually atomic on ARM but the batch is not — the audio thread can see a half-updated state (e.g. reverb size changed but reverb mix not yet).
+
+**Strategy**: Write to a shadow `DawState` struct, then swap a pointer that the audio callback reads from:
+```c
+static DawState dawSyncA, dawSyncB;
+static volatile DawState *dawSyncActive = &dawSyncA;
+// Main thread: write to inactive buffer, swap
+// Audio thread: read from dawSyncActive
+```
+This is a larger refactor (audio callback reads from the sync buffer instead of `daw` directly) but eliminates all parameter tearing. Lower priority — the current tearing causes clicks at worst, not crashes.
