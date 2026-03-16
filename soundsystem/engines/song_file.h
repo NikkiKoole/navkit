@@ -654,7 +654,7 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
     }
 
     // Per-bus effects
-    static const char* busNames[] = {"drum0", "drum1", "drum2", "drum3", "bass", "lead", "chord"};
+    static const char* busNames[] = {"drum0", "drum1", "drum2", "drum3", "bass", "lead", "chord", "sampler"};
     for (int b = 0; b < NUM_BUSES; b++) {
         const BusEffects *bus = &d->sfBusEffects[b];
         fprintf(f, "\n[bus.%s]\n", busNames[b]);
@@ -1123,6 +1123,7 @@ static int _sf_parseBusIndex(const char *name) {
     if (strcmp(name, "bass") == 0) return BUS_BASS;
     if (strcmp(name, "lead") == 0) return BUS_LEAD;
     if (strcmp(name, "chord") == 0) return BUS_CHORD;
+    if (strcmp(name, "sampler") == 0) return BUS_SAMPLER;
     return -1;
 }
 

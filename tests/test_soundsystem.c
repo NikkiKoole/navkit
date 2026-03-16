@@ -3715,7 +3715,8 @@ describe(bus_system_basic) {
         expect(BUS_BASS == 4);
         expect(BUS_LEAD == 5);
         expect(BUS_CHORD == 6);
-        expect(NUM_BUSES == 7);
+        expect(BUS_SAMPLER == 7);
+        expect(NUM_BUSES == 8);
     }
 }
 

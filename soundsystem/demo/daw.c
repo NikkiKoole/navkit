@@ -370,6 +370,7 @@ static const Color busColors[] = {
     {60, 100, 220, 255},  // 4: bass (blue)
     {50, 200, 200, 255},  // 5: lead (cyan)
     {60, 200, 80, 255},   // 6: chord (green)
+    {200, 120, 60, 255},  // 7: sampler (warm orange)
 };
 // busNames defined later with other bus arrays
 
@@ -379,13 +380,13 @@ static DawState daw = {
     .stepCount = 16,
     .song = { .loopsPerPattern = 2 },
     .mixer = {
-        .volume = {0.8f,0.8f,0.8f,0.8f,0.8f,0.8f,0.8f},
-        .filterCut = {1,1,1,1,1,1,1},
-        .distDrive = {2,2,2,2,2,2,2},
-        .distMix = {0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f},
-        .delayTime = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
-        .delayFB = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
-        .delayMix = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
+        .volume = {0.8f,0.8f,0.8f,0.8f,0.8f,0.8f,0.8f,0.8f},
+        .filterCut = {1,1,1,1,1,1,1,1},
+        .distDrive = {2,2,2,2,2,2,2,2},
+        .distMix = {0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f},
+        .delayTime = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
+        .delayFB = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
+        .delayMix = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
     },
     .sidechain = { .depth = 0.8f, .attack = 0.005f, .release = 0.15f,
                     .envDepth = 0.8f, .envAttack = 0.005f, .envHold = 0.02f,
@@ -914,7 +915,10 @@ static const char* sidechainTargetName(int idx) {
     if (idx == 3) return "AllSyn";
     return (idx >= 0 && idx < 3) ? daw.patches[4 + idx].p_name : "?";
 }
-static const char* dawBusName(int bus) { return (bus >= 0 && bus < 7) ? daw.patches[bus].p_name : "??"; }
+static const char* dawBusName(int bus) {
+    if (bus == BUS_SAMPLER) return "Sampler";
+    return (bus >= 0 && bus < 7) ? daw.patches[bus].p_name : "??";
+}
 static const char* busFilterTypeNames[] = {"LP", "HP", "BP", "Notch"};
 static const char* delaySyncNames[] = {"1/16", "1/8", "1/4", "1/2", "1bar"};
 static const char* rewindCurveNames[] = {"Linear", "Expo", "S-Curve"};
@@ -3130,8 +3134,8 @@ static void drawWorkSong(float x, float y, float w, float h) {
 
     // Per-track swing (fine-tune individual tracks after setting global)
     {
-        const char *trackLabels[] = {"Kick","Snare","HiHat","Clap","Bass","Lead","Chord"};
-        int activeTracks = seq.trackCount < 7 ? seq.trackCount : 7;
+        const char *trackLabels[] = {"Kick","Snare","HiHat","Clap","Bass","Lead","Chord","Samp"};
+        int activeTracks = seq.trackCount < 8 ? seq.trackCount : 8;
         DrawTextShadow("TrkSw:", (int)x+4, (int)gy+2, 10, (Color){140,140,160,255});
         for (int i = 0; i < activeTracks; i++) {
             char lbl[7];
@@ -3837,7 +3841,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
 
 static void drawParamBus(float x, float y, float w, float h) {
     Vector2 mouse = GetMousePosition();
-    int nBuses = 7;
+    int nBuses = NUM_BUSES;
     int fs = 14; // compact font size
     int row = fs + 2; // row height
     float stripW = w / (nBuses + 1);
@@ -4269,8 +4273,8 @@ static void drawParamTape(float x, float y, float w, float h) {
         ui_col_space(&c3, 2);
 
         // Per-bus throw buttons — click to throw that track into the delay
-        const char *throwNames[] = {"Kick", "Snare", "Hat", "Clap", "Bass", "Lead", "Chord"};
-        for (int i = 0; i < 7; i++) {
+        const char *throwNames[] = {"Kick", "Snare", "Hat", "Clap", "Bass", "Lead", "Chord", "Samp"};
+        for (int i = 0; i < NUM_BUSES; i++) {
             bool isActive = dubLoop.throwActive && daw.tapeFx.throwBus == i;
             const char *label = isActive ? TextFormat("[%s]", throwNames[i]) : throwNames[i];
             if (ui_col_button(&c3, label)) {

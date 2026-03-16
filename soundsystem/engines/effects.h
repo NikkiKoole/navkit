@@ -105,9 +105,10 @@
 #define BUS_BASS       4   // Bass synth
 #define BUS_LEAD       5   // Lead synth
 #define BUS_CHORD      6   // Chord synth
+#define BUS_SAMPLER    7   // Sampler (chop/flip slices)
 
-#define NUM_BUSES      7
-#define BUS_MASTER     7   // Special index for master bus
+#define NUM_BUSES      8
+#define BUS_MASTER     8   // Special index for master bus
 
 // Bus delay buffer size (1 second per bus)
 #define BUS_DELAY_SIZE SAMPLE_RATE
@@ -133,6 +134,7 @@
 #define DUB_INPUT_BUS_BASS   28
 #define DUB_INPUT_BUS_LEAD   29
 #define DUB_INPUT_BUS_CHORD  30
+#define DUB_INPUT_BUS_SAMPLER 31
 
 // Per-bus effect parameters
 typedef struct {
