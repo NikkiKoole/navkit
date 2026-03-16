@@ -5336,25 +5336,26 @@ static void drawWorkSample(float x, float y, float w, float h) {
                     float endHandleX = swX + 2 + te * (swW - 4);
                     DrawLine((int)startHandleX, (int)sy, (int)startHandleX, (int)(sy + swH), GREEN);
                     DrawLine((int)endHandleX, (int)sy, (int)endHandleX, (int)(sy + swH), (Color){255, 80, 80, 255});
-                    // Handle grip rectangles
-                    Rectangle startGrip = {startHandleX - 4, sy, 8, swH};
-                    Rectangle endGrip = {endHandleX - 4, sy, 8, swH};
+                    // Drag interaction: left-click sets start, right-click sets end
+                    // Works anywhere in the waveform area — no tiny grip targets
+                    Rectangle waveArea = {swX, sy, swW, swH};
+                    if (CheckCollisionPointRec(mouse, waveArea)) {
+                        float normX = (mouse.x - swX - 2) / (swW - 4);
+                        if (normX < 0) normX = 0;
+                        if (normX > 1) normX = 1;
 
-                    // Drag start handle
-                    if (CheckCollisionPointRec(mouse, startGrip) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                        float newTs = (mouse.x - swX - 2) / (swW - 4);
-                        if (newTs < 0) newTs = 0;
-                        if (newTs > te - 0.02f) newTs = te - 0.02f;
-                        chopState.sliceParams[sel].trimStart = newTs;
-                        changed = true;
-                    }
-                    // Drag end handle
-                    if (CheckCollisionPointRec(mouse, endGrip) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                        float newTe = (mouse.x - swX - 2) / (swW - 4);
-                        if (newTe > 1) newTe = 1;
-                        if (newTe < ts + 0.02f) newTe = ts + 0.02f;
-                        chopState.sliceParams[sel].trimEnd = newTe;
-                        changed = true;
+                        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                            float newTs = normX;
+                            if (newTs > te - 0.02f) newTs = te - 0.02f;
+                            chopState.sliceParams[sel].trimStart = newTs;
+                            changed = true;
+                        }
+                        if (IsMouseButtonDown(MOUSE_RIGHT_BUTTON)) {
+                            float newTe = normX;
+                            if (newTe < ts + 0.02f) newTe = ts + 0.02f;
+                            chopState.sliceParams[sel].trimEnd = newTe;
+                            changed = true;
+                        }
                     }
 
                     // Labels
@@ -5367,7 +5368,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 }
                 sy += swH + 2;
             }
-            DrawTextShadow("Drag green/red handles to trim. Drag params to adjust. Right-click to reset.",
+            DrawTextShadow("L-drag=set start, R-drag=set end. Drag params above. Right-click param to reset.",
                            (int)(x + 60), (int)sy, 9, (Color){55, 55, 68, 255});
         } else {
             DrawTextShadow("Click waveform to select+preview. Click pad to assign. Right-click to clear.",
