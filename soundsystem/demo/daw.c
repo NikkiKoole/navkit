@@ -372,6 +372,27 @@ static const Color busColors[] = {
     {60, 200, 80, 255},   // 6: chord (green)
     {200, 120, 60, 255},  // 7: sampler (warm orange)
 };
+
+// Engine tint colors for preset picker (indexed by WaveType)
+// Basic waveforms = blue, physical models = green, FM/PD/synthesis = orange, drums/voice = red/purple
+static const Color engineTints[] = {
+    {50, 55, 85, 255},   // WAVE_SQUARE   — blue (basic)
+    {55, 60, 90, 255},   // WAVE_SAW      — blue
+    {45, 50, 80, 255},   // WAVE_TRIANGLE — blue
+    {75, 45, 55, 255},   // WAVE_NOISE    — purple
+    {65, 55, 40, 255},   // WAVE_SCW      — orange (wavetable)
+    {75, 45, 60, 255},   // WAVE_VOICE    — purple (formant)
+    {45, 70, 50, 255},   // WAVE_PLUCK    — green (physical)
+    {75, 60, 35, 255},   // WAVE_ADDITIVE — orange (synthesis)
+    {50, 75, 55, 255},   // WAVE_MALLET   — green (physical)
+    {70, 55, 40, 255},   // WAVE_GRANULAR — orange (synthesis)
+    {80, 60, 35, 255},   // WAVE_FM       — orange (synthesis)
+    {70, 50, 40, 255},   // WAVE_PD       — orange (synthesis)
+    {80, 50, 45, 255},   // WAVE_MEMBRANE — red (drum)
+    {45, 65, 50, 255},   // WAVE_BIRD     — green (physical)
+    {50, 70, 50, 255},   // WAVE_BOWED    — green (physical)
+    {45, 65, 55, 255},   // WAVE_PIPE     — green (physical)
+};
 // busNames defined later with other bus arrays
 
 static DawState daw = {
@@ -904,6 +925,7 @@ static void chopDumpSamplerSlots(void) {
 // Save/load (.song files)
 #define DAW_HAS_CHOP_STATE  // enables [sample] section save/load in daw_file.h
 #include "daw_file.h"
+#include "../engines/midi_file.h"
 
 static char dawStatusMsg[64] = "";
 static double dawStatusTime = 0.0;
@@ -1736,7 +1758,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
     y += 22; h -= 22;
 
     // Fixed cell size — always reserve space for inspector so grid doesn't jump
-    int labelW = 124; // mute + solo + volume bar + name
+    int labelW = 160; // mute + solo + volume bar + name
     int cellW = (int)((w - labelW - 8) / steps);
     if (cellW < 6) cellW = 6;
     int cellH;
@@ -1899,6 +1921,13 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                 }
             }
 
+            // Draw pitch p-lock indicator for drum cells
+            if (isDrum && step < 32 && patGetDrum(dawPattern(), track, step)) {
+                float pitchPl = seqGetPLock(dawPattern(), track, step, PLOCK_PITCH_OFFSET, 0.0f);
+                if (fabsf(pitchPl) > 0.01f && cellW >= 10) {
+                    DrawTextShadow(TextFormat("%+.0f", pitchPl), sx+2, ty+2, 7, (Color){180,140,255,220});
+                }
+            }
             // Draw note name for melody cells, or slice number for sampler
             if (isSampler) {
                 StepV2 *sv = &dawPattern()->steps[track][step];
@@ -1934,17 +1963,49 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                         sv->notes[0].slice = 0;
                     }
                 } else if (!isDrum && track >= SEQ_DRUM_TRACKS) {
-                    if (patGetNote(dawPattern(), track, step) == SEQ_NOTE_OFF)
-                        patSetNote(dawPattern(), track, step, 60, 0.8f, 1); // C4 default
-                    else
+                    if (patGetNote(dawPattern(), track, step) == SEQ_NOTE_OFF) {
+                        // Copy from nearest previous active step on same track (wrap around)
+                        Pattern *pat = dawPattern();
+                        int srcNote = 60; float srcVel = 0.8f; int8_t srcGate = 1;
+                        bool srcSlide = false, srcAccent = false;
+                        for (int d = 1; d < steps; d++) {
+                            int prev = (step - d + steps) % steps;
+                            if (patGetNote(pat, track, prev) != SEQ_NOTE_OFF) {
+                                StepV2 *src = &pat->steps[track][prev];
+                                srcNote = src->notes[0].note;
+                                srcVel = velU8ToFloat(src->notes[0].velocity);
+                                srcGate = src->notes[0].gate;
+                                srcSlide = src->notes[0].slide;
+                                srcAccent = src->notes[0].accent;
+                                break;
+                            }
+                        }
+                        patSetNote(pat, track, step, srcNote, srcVel, srcGate);
+                        StepV2 *sv = &pat->steps[track][step];
+                        if (sv->noteCount > 0) {
+                            sv->notes[0].slide = srcSlide;
+                            sv->notes[0].accent = srcAccent;
+                        }
+                    } else
                         patClearNote(dawPattern(), track, step);
                 }
                 ui_consume_click();
             }
-            // Scroll wheel: Shift+scroll = velocity, plain scroll = pitch (melody)
+            // Scroll wheel: Ctrl+scroll = pitch p-lock, Shift+scroll = velocity, plain scroll = pitch (melody)
             if (hov) {
                 float wh = GetMouseWheelMove();
-                if (wh != 0.0f && IsKeyDown(KEY_LEFT_SHIFT)) {
+                if (wh != 0.0f && isDrum && step < 32 && IsKeyDown(KEY_LEFT_CONTROL)) {
+                    // Ctrl+scroll = pitch offset p-lock (drums)
+                    if (patGetDrum(dawPattern(), track, step)) {
+                        int delta = scrollDelta(wh, 600 + track * 100 + step);
+                        if (delta != 0) {
+                            float cur = seqGetPLock(dawPattern(), track, step, PLOCK_PITCH_OFFSET, 0.0f);
+                            float nv = cur + (float)delta;
+                            if (nv < -24.0f) nv = -24.0f; if (nv > 24.0f) nv = 24.0f;
+                            seqSetPLock(dawPattern(), track, step, PLOCK_PITCH_OFFSET, nv);
+                        }
+                    }
+                } else if (wh != 0.0f && IsKeyDown(KEY_LEFT_SHIFT)) {
                     // Shift+scroll = adjust velocity
                     Pattern *pat = dawPattern();
                     bool active = (isDrum && step < 32 && patGetDrum(pat, track, step)) ||
@@ -3522,8 +3583,11 @@ static void drawParamPatch(float x, float y, float w, float h) {
             Rectangle itemR = {ix - 2, iy, colW - 4, 17};
             bool hov = CheckCollisionPointRec(mouse, itemR);
             bool selected = (i == patchPresetIndex[daw.selectedPatch]);
+            int wt = instrumentPresets[i].patch.p_waveType;
+            Color tint = (wt >= 0 && wt < 16) ? engineTints[wt] : UI_BG_BUTTON;
             if (selected) DrawRectangleRec(itemR, (Color){50,50,80,255});
-            else if (hov) DrawRectangleRec(itemR, UI_BG_HOVER);
+            else if (hov) { DrawRectangleRec(itemR, tint); DrawRectangleRec(itemR, (Color){255,255,255,30}); }
+            else DrawRectangleRec(itemR, tint);
             Color tc = selected ? ORANGE : (hov ? WHITE : UI_TEXT_BRIGHT);
             DrawTextShadow(instrumentPresets[i].name, (int)ix, (int)iy + 1, UI_FONT_MEDIUM, tc);
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
@@ -6428,24 +6492,28 @@ int main(int argc, char *argv[]) {
             if (files.count > 0) {
                 const char *path = files.paths[0];
                 const char *ext = strrchr(path, '.');
+                bool loaded = false;
                 if (ext && strcmp(ext, ".song") == 0) {
-                    if (dawLoad(path)) {
-                        strncpy(dawFilePath, path, sizeof(dawFilePath) - 1);
-                        dawFilePath[sizeof(dawFilePath) - 1] = '\0';
-                        const char *fname = strrchr(dawFilePath, '/');
-                        // Set song name from file if not already in the file
-                        if (!daw.songName[0] && fname) {
-                            strncpy(daw.songName, fname+1, 63);
-                            daw.songName[63] = '\0';
-                            char *dot = strrchr(daw.songName, '.');
-                            if (dot) *dot = '\0';
-                        }
-                        snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Loaded %s", fname ? fname+1 : dawFilePath);
-                    } else {
-                        snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Load failed!");
-                    }
-                    dawStatusTime = GetTime();
+                    loaded = dawLoad(path);
+                } else if (ext && (strcmp(ext, ".mid") == 0 || strcmp(ext, ".MID") == 0 ||
+                                   strcmp(ext, ".midi") == 0 || strcmp(ext, ".MIDI") == 0)) {
+                    loaded = midiFileToDaw(path);
                 }
+                if (loaded) {
+                    strncpy(dawFilePath, path, sizeof(dawFilePath) - 1);
+                    dawFilePath[sizeof(dawFilePath) - 1] = '\0';
+                    const char *fname = strrchr(dawFilePath, '/');
+                    if (!daw.songName[0] && fname) {
+                        strncpy(daw.songName, fname+1, 63);
+                        daw.songName[63] = '\0';
+                        char *dot = strrchr(daw.songName, '.');
+                        if (dot) *dot = '\0';
+                    }
+                    snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Loaded %s", fname ? fname+1 : dawFilePath);
+                } else if (ext) {
+                    snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Load failed!");
+                }
+                dawStatusTime = GetTime();
             }
             UnloadDroppedFiles(files);
         }

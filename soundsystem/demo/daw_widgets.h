@@ -154,6 +154,9 @@ static float drawWaveSelector(float x, float y, float w, int* wave) {
     return totalH;
 }
 
+// ADSR drag state — which handle is being dragged (0=none, 1=A, 2=D, 3=S, 4=R)
+static int adsrDragHandle = 0;
+
 static float drawADSRCurve(float x, float y, float w, float h,
                             float *atk, float *dec, float *sus, float *rel, bool expRel) {
     DrawRectangle((int)x, (int)y, (int)w, (int)h, UI_BG_DEEPEST);
@@ -168,6 +171,7 @@ static float drawADSRCurve(float x, float y, float w, float h,
     float susY = bot - *sus * range;
     Color cc = (Color){100, 200, 120, 255};
 
+    // Draw envelope curve
     DrawLine((int)x, (int)bot, (int)(x+atkW), (int)top, cc);
     DrawLine((int)(x+atkW), (int)top, (int)(x+atkW+decW), (int)susY, cc);
     DrawLine((int)(x+atkW+decW), (int)susY, (int)(x+atkW+decW+susW), (int)susY, cc);
@@ -183,22 +187,63 @@ static float drawADSRCurve(float x, float y, float w, float h,
         DrawLine((int)relStartX, (int)susY, (int)(relStartX+relW), (int)bot, cc);
     }
 
+    // 4 handle positions: A (peak), D (end of decay), S (sustain midpoint), R (end of release)
     Vector2 mouse = GetMousePosition();
     Color dotCol = (Color){255, 180, 60, 255};
-    Rectangle atkDot = {x+atkW-4, top-4, 8, 8};
-    DrawRectangleRec(atkDot, CheckCollisionPointRec(mouse, atkDot) ? WHITE : dotCol);
-    Rectangle susDot = {x+atkW+decW+susW*0.5f-4, susY-4, 8, 8};
-    DrawRectangleRec(susDot, CheckCollisionPointRec(mouse, susDot) ? WHITE : dotCol);
+    float atkHx = x + atkW, atkHy = top;
+    float decHx = x + atkW + decW, decHy = susY;
+    float susHx = x + atkW + decW + susW * 0.5f, susHy = susY;
+    float relHx = relStartX + relW, relHy = bot;
 
-    Rectangle atkZone = {x, y, atkW+decW*0.5f, h};
-    if (CheckCollisionPointRec(mouse, atkZone) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-        float newAtk = ((mouse.x - x) / w) * totalTime;
-        *atk = newAtk < 0.001f ? 0.001f : (newAtk > 2.0f ? 2.0f : newAtk);
+    Rectangle atkDot = {atkHx - 4, atkHy - 4, 8, 8};
+    Rectangle decDot = {decHx - 4, decHy - 4, 8, 8};
+    Rectangle susDot = {susHx - 4, susHy - 4, 8, 8};
+    Rectangle relDot = {relHx - 4, relHy - 4, 8, 8};
+
+    bool atkHov = CheckCollisionPointRec(mouse, atkDot);
+    bool decHov = CheckCollisionPointRec(mouse, decDot);
+    bool susHov = CheckCollisionPointRec(mouse, susDot);
+    bool relHov = CheckCollisionPointRec(mouse, relDot);
+
+    DrawRectangleRec(atkDot, (atkHov || adsrDragHandle == 1) ? WHITE : dotCol);
+    DrawRectangleRec(decDot, (decHov || adsrDragHandle == 2) ? WHITE : dotCol);
+    DrawRectangleRec(susDot, (susHov || adsrDragHandle == 3) ? WHITE : dotCol);
+    DrawRectangleRec(relDot, (relHov || adsrDragHandle == 4) ? WHITE : dotCol);
+
+    // Start drag on press
+    if (!g_ui_isDragging && adsrDragHandle == 0 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        if (atkHov) adsrDragHandle = 1;
+        else if (decHov) adsrDragHandle = 2;
+        else if (susHov) adsrDragHandle = 3;
+        else if (relHov) adsrDragHandle = 4;
     }
-    Rectangle susZone = {x+atkW+decW*0.5f, y, susW+decW*0.5f+relW*0.3f, h};
-    if (CheckCollisionPointRec(mouse, susZone) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-        float newSus = 1.0f - (mouse.y - top) / range;
-        *sus = newSus < 0 ? 0 : (newSus > 1 ? 1 : newSus);
+
+    // Process drag — delta-based (like DraggableFloat) so rescaling doesn't fight the handle
+    if (adsrDragHandle > 0) {
+        if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+            adsrDragHandle = 0;
+        } else {
+            float dx = GetMouseDelta().x;
+            float dy = GetMouseDelta().y;
+            float speed = totalTime / w; // pixels to time units
+            if (adsrDragHandle == 1) {
+                *atk += dx * speed;
+                if (*atk < 0.001f) *atk = 0.001f;
+                if (*atk > 2.0f) *atk = 2.0f;
+            } else if (adsrDragHandle == 2) {
+                *dec += dx * speed;
+                if (*dec < 0.001f) *dec = 0.001f;
+                if (*dec > 2.0f) *dec = 2.0f;
+            } else if (adsrDragHandle == 3) {
+                *sus -= dy / range;
+                if (*sus < 0) *sus = 0;
+                if (*sus > 1) *sus = 1;
+            } else if (adsrDragHandle == 4) {
+                *rel += dx * speed;
+                if (*rel < 0.001f) *rel = 0.001f;
+                if (*rel > 2.0f) *rel = 2.0f;
+            }
+        }
     }
     return h + 4;
 }
@@ -219,7 +264,7 @@ static float drawFilterXY(float x, float y, float size, float *cutoff, float *re
     DrawCircle((int)cx, (int)cy, 5, (Color){255,140,40,255});
     DrawCircle((int)cx, (int)cy, 3, WHITE);
     Vector2 mouse = GetMousePosition();
-    if (CheckCollisionPointRec(mouse, (Rectangle){x,y,size,size}) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+    if (!g_ui_isDragging && CheckCollisionPointRec(mouse, (Rectangle){x,y,size,size}) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
         float nc = (mouse.x-x)/size, nr = 1-(mouse.y-y)/size;
         *cutoff = nc<0.01f?0.01f:(nc>1?1:nc);
         *resonance = nr<0?0:(nr>1?1:nr);

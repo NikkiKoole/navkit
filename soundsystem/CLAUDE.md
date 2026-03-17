@@ -1,6 +1,6 @@
 # Soundsystem (PixelSynth)
 
-Header-only synthesized audio engine (~36K lines). 16 synthesis engines, 32-voice polyphony, 127 presets, step sequencer, full effects chain, built-in DAW.
+Header-only synthesized audio engine (~36K lines). 16 synthesis engines, 32-voice polyphony (+8-voice sampler), 148 presets, step sequencer, full effects chain, built-in DAW.
 
 ## Build & Run
 
@@ -41,11 +41,11 @@ soundsystem/
 │   ├── synth_oscillators.h   # 16 oscillator implementations (~1550 lines, extracted from synth.h)
 │   ├── synth_scale.h          # Scale lock system (~114 lines, extracted from synth.h)
 │   ├── synth_patch.h          # SynthPatch struct (200+ p_ fields)
-│   ├── instrument_presets.h   # 127 presets (melodic + 35 drums) (~1850 lines)
-│   ├── effects.h              # Effects chain + bus mixer (~1516 lines)
+│   ├── instrument_presets.h   # 148 presets (melodic + drums: 808/909/CR-78/orchestral/hand) (~1850 lines)
+│   ├── effects.h              # Effects chain + bus mixer (8 buses, 16 master FX) (~1516 lines)
 │   ├── dub_loop.h             # King Tubby tape delay (~310 lines, extracted from effects.h)
 │   ├── rewind.h               # Vinyl spinback effect (~165 lines, extracted from effects.h)
-│   ├── sequencer.h            # Step sequencer v2 (96 PPQ, 7 tracks) (~1735 lines)
+│   ├── sequencer.h            # Step sequencer v2 (96 PPQ, 8 tracks: 4 drum + 3 melody + 1 sampler) (~1735 lines)
 │   ├── sequencer_plocks.h     # Parameter lock subsystem (~170 lines, extracted from sequencer.h)
 │   ├── patch_trigger.h        # SynthPatch → synth globals applicator
 │   ├── sampler.h              # Sample playback (8-voice, 32 slots)
@@ -74,10 +74,10 @@ Game integration layer:
 ```
 src/sound/
 ├── sound_synth_bridge.h       # Public C API (SoundSynth struct + functions)
-├── sound_synth_bridge.c       # Implementation (audio callback, jukebox)
+├── sound_synth_bridge.c       # Implementation (audio callback, jukebox: 15 entries)
 ├── sound_phrase.h             # Procedural phrase generation (bird, vowel, tone)
 ├── sound_phrase.c             # Phrase logic
-└── songs.h                    # 14 built-in songs
+└── songs.h                    # 17 built-in songs (all exported to .song via bridge_export)
 ```
 
 ## Architecture
@@ -103,9 +103,9 @@ Sequencer (96 PPQ clock)
 Synth (32 voices, per-voice: oscillator → ADSR → SVF filter → LFO mod)
     │ + Sampler (WAV playback)
     v
-Bus Mixer (7 buses: 4 drum + 3 melodic, per-bus filter/dist/delay/reverb-send)
+Bus Mixer (8 buses: 4 drum + 3 melodic + 1 sampler, per-bus filter/dist/delay/EQ/chorus/phaser/comb/reverb-send)
     v
-Master Effects (distortion → delay → tape → bitcrusher → reverb → sidechain → EQ → compressor)
+Master Effects (distortion → chorus → flanger → phaser → comb → tape → delay → bitcrusher → reverb → sidechain → multiband → sub-bass → EQ → compressor)
     │ + Dub Loop (King Tubby tape delay) + Rewind (vinyl spinback)
     v
 Audio Output
@@ -204,25 +204,26 @@ Each subsystem has a global pointer (`synthCtx`, `fxCtx`, `seqCtx`, `samplerCtx`
 
 Waves 0-2 complete. Near-term TODO (per `docs/plan-of-attack.md`):
 - ~~P-lock interpolation~~ (dropped — scenes/crossfader owns sweeps), ~~groove presets~~, ~~song settings UI~~, patch name editing
-- ~20 melodic presets (Wurlitzer, Clavinet, bass variants, guitar, pads, SNES kit)
-- More drum presets (909, Lo-Fi, Trap)
 - Crossfader/scene system (spec in `docs/scene-crossfader-spec.md`)
 - Performance: voice hot/cold split, fast sine approx, reverb comb power-of-2
 - Test gaps: sampler WAV loading, patch trigger, rhythm patterns
 
-### Current Work (2026-03-14)
-
-**Recent additions:**
+### Recent additions
 - Slow LFO sync divisions (8/16/32 bar — up to ~62s at 120 BPM)
 - Per-LFO phase offset (0.0-1.0) — patches can run inverted relative to each other
 - FM mod index LFO (5th LFO, shown for FM patches only)
 - Real-time note recording: keyboard/MIDI → pattern with free/quantized modes, overdub/replace, gate tracking, pattern lock for song mode. F7 toggle, transport bar UI.
+- 148 presets (was 111): added 909 kit, DX7 FM series, Wurlitzer, Clavinet, world instruments, SNES kit, pads
+- 8 buses (was 7): added BUS_SAMPLER for chop/flip slice playback
+- Per-bus effects expanded: +EQ, chorus, phaser, comb filter (was: filter/dist/delay/reverb-send only)
+- Master effects expanded: +chorus, flanger, phaser, comb, multiband, sub-bass boost, sidechain envelope
 
-**Bridge → .song migration**: Converting C-coded bridge songs to `.song` files the DAW can load/edit.
-- Done: Gymnopedie (8 patterns, 40 BPM, 12-step 3/4 waltz) — exported via `bridge_export`, playable in DAW
-- Done: Song name UI (edit in transport bar, save/load, file path derivation from name)
-- Done: `dawTextEdit()` reusable text editor with cursor/arrow key support
-- Done: Font consistency fixes (MeasureTextUI, DrawTextShadow everywhere)
-- TODO: Export remaining ~10 non-sweep bridge songs
+### Bridge → .song migration (COMPLETE)
+All 17 songs in `songs.h` are registered in `bridge_export.c` and exported to `demo/songs/`:
+- dormitory, gymnopedie, mule2, suspense, jazz, dilla, atmosphere, mrlucky, happybirthday, monksmood, summertime, house, deephouse, oscarlofi, dreamer, saladdaze, emergence
+- 4 songs (oscarlofi, dreamer, saladdaze, emergence) are exported but not yet wired into the jukebox
+- M.U.L.E. v1 (original) is in jukebox but not in bridge_export (v2 MIDI version exported instead)
+- 12+ DAW-authored .song files also exist (game_dawn, game_dusk, game_smoke, jojo, lekker, etc.)
+- Done: Song name UI, `dawTextEdit()`, font consistency fixes
 - TODO: Debug playback glitch in `gymnopedienew.song` (clipping at pattern 4/6)
 - TODO: Scenes/crossfader for House + Deep House sweep songs

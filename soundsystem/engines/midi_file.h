@@ -1,0 +1,462 @@
+// midi_file.h — Standard MIDI File (.mid) parser + DAW importer
+//
+// Header-only. Parses SMF format 0 and 1. Populates DAW state (patches,
+// patterns, arrangement) from MIDI note/program/tempo events.
+//
+// Usage:
+//   #include "midi_file.h"
+//   bool ok = midiFileToDaw(filepath);  // populates daw.* and seq.*
+//
+// Requires: sequencer.h, synth_patch.h, instrument_presets.h loaded.
+// Also requires gm_preset_map.h for GM program → preset mapping.
+
+#ifndef MIDI_FILE_H
+#define MIDI_FILE_H
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <math.h>
+
+#include "../tools/gm_preset_map.h"
+
+// ---------------------------------------------------------------------------
+// SMF binary parser
+// ---------------------------------------------------------------------------
+
+// Read big-endian uint16
+static uint16_t _mf_read16(const uint8_t *p) {
+    return (uint16_t)((p[0] << 8) | p[1]);
+}
+
+// Read big-endian uint32
+static uint32_t _mf_read32(const uint8_t *p) {
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+           ((uint32_t)p[2] << 8) | (uint32_t)p[3];
+}
+
+// Read variable-length quantity, advance *pos
+static uint32_t _mf_readVLQ(const uint8_t *data, int *pos, int len) {
+    uint32_t val = 0;
+    for (int i = 0; i < 4 && *pos < len; i++) {
+        uint8_t b = data[(*pos)++];
+        val = (val << 7) | (b & 0x7F);
+        if (!(b & 0x80)) break;
+    }
+    return val;
+}
+
+// A parsed MIDI note event
+typedef struct {
+    int channel;
+    int note;           // MIDI note 0-127
+    int velocity;       // 0-127
+    int program;        // GM program number at time of note
+    uint32_t startTick;
+    uint32_t durationTick;
+} MfNoteEvent;
+
+// Parsed MIDI file
+typedef struct {
+    float bpm;
+    int ticksPerBeat;
+    int timeSigNum;     // time signature numerator (default 4)
+    int timeSigDenom;   // time signature denominator (default 4)
+    MfNoteEvent *notes;
+    int noteCount;
+    int noteCapacity;
+    int channelProgram[16];  // last program per channel
+} MfParsedMidi;
+
+static void _mf_addNote(MfParsedMidi *m, MfNoteEvent ev) {
+    if (m->noteCount >= m->noteCapacity) {
+        m->noteCapacity = m->noteCapacity ? m->noteCapacity * 2 : 1024;
+        m->notes = (MfNoteEvent *)realloc(m->notes, (size_t)m->noteCapacity * sizeof(MfNoteEvent));
+    }
+    m->notes[m->noteCount++] = ev;
+}
+
+static bool _mf_parse(const uint8_t *data, int dataLen, MfParsedMidi *out) {
+    memset(out, 0, sizeof(*out));
+    out->bpm = 120.0f;
+    out->timeSigNum = 4;
+    out->timeSigDenom = 4;
+    out->noteCapacity = 0;
+    out->notes = NULL;
+    out->noteCount = 0;
+
+    if (dataLen < 14) return false;
+    // MThd header
+    if (memcmp(data, "MThd", 4) != 0) return false;
+    uint32_t headerLen = _mf_read32(data + 4);
+    (void)headerLen;
+    int format = _mf_read16(data + 8);
+    int numTracks = _mf_read16(data + 10);
+    int division = _mf_read16(data + 12);
+    (void)format;
+
+    if (division & 0x8000) {
+        // SMPTE time — not supported, use default tpb
+        out->ticksPerBeat = 120;
+    } else {
+        out->ticksPerBeat = division;
+    }
+
+    int pos = 8 + (int)headerLen;
+
+    // Per-channel active notes: (channel, note) → (startTick, velocity, program)
+    // Simple flat array: 16 channels × 128 notes
+    typedef struct { uint32_t start; int velocity; int program; bool active; } ActiveNote;
+    ActiveNote *active = (ActiveNote *)calloc(16 * 128, sizeof(ActiveNote));
+
+    for (int t = 0; t < numTracks && pos + 8 <= dataLen; t++) {
+        if (memcmp(data + pos, "MTrk", 4) != 0) { free(active); return false; }
+        uint32_t trackLen = _mf_read32(data + pos + 4);
+        int trkStart = pos + 8;
+        int trkEnd = trkStart + (int)trackLen;
+        if (trkEnd > dataLen) trkEnd = dataLen;
+        int tp = trkStart;
+        uint32_t absTick = 0;
+        uint8_t runningStatus = 0;
+        int chProg[16] = {0};
+
+        while (tp < trkEnd) {
+            uint32_t delta = _mf_readVLQ(data, &tp, trkEnd);
+            absTick += delta;
+
+            if (tp >= trkEnd) break;
+            uint8_t status = data[tp];
+
+            // Meta event
+            if (status == 0xFF) {
+                tp++;
+                if (tp >= trkEnd) break;
+                uint8_t metaType = data[tp++];
+                uint32_t metaLen = _mf_readVLQ(data, &tp, trkEnd);
+                if (metaType == 0x51 && metaLen == 3 && tp + 3 <= trkEnd) {
+                    // Set Tempo
+                    uint32_t uspqn = ((uint32_t)data[tp] << 16) | ((uint32_t)data[tp+1] << 8) | data[tp+2];
+                    if (uspqn > 0) out->bpm = 60000000.0f / (float)uspqn;
+                }
+                if (metaType == 0x58 && metaLen >= 2 && tp + 2 <= trkEnd) {
+                    // Time Signature: nn dd (dd is log2 of denominator)
+                    out->timeSigNum = data[tp];
+                    out->timeSigDenom = 1 << data[tp + 1];
+                }
+                tp += (int)metaLen;
+                continue;
+            }
+
+            // SysEx
+            if (status == 0xF0 || status == 0xF7) {
+                tp++;
+                uint32_t sysLen = _mf_readVLQ(data, &tp, trkEnd);
+                tp += (int)sysLen;
+                continue;
+            }
+
+            // Channel message
+            uint8_t cmd, chan, d1, d2;
+            if (status & 0x80) {
+                cmd = status & 0xF0;
+                chan = status & 0x0F;
+                runningStatus = status;
+                tp++;
+            } else {
+                // Running status
+                cmd = runningStatus & 0xF0;
+                chan = runningStatus & 0x0F;
+            }
+
+            switch (cmd) {
+                case 0x90: // Note On
+                    if (tp + 1 >= trkEnd) { tp = trkEnd; break; }
+                    d1 = data[tp++]; d2 = data[tp++];
+                    if (d2 > 0) {
+                        int idx = chan * 128 + d1;
+                        active[idx] = (ActiveNote){absTick, d2, chProg[chan], true};
+                    } else {
+                        // velocity 0 = note off
+                        int idx = chan * 128 + d1;
+                        if (active[idx].active) {
+                            uint32_t dur = absTick - active[idx].start;
+                            _mf_addNote(out, (MfNoteEvent){
+                                .channel = chan, .note = d1, .velocity = active[idx].velocity,
+                                .program = active[idx].program,
+                                .startTick = active[idx].start, .durationTick = dur > 0 ? dur : 1
+                            });
+                            active[idx].active = false;
+                        }
+                    }
+                    break;
+                case 0x80: // Note Off
+                    if (tp + 1 >= trkEnd) { tp = trkEnd; break; }
+                    d1 = data[tp++]; d2 = data[tp++];
+                    {
+                        int idx = chan * 128 + d1;
+                        if (active[idx].active) {
+                            uint32_t dur = absTick - active[idx].start;
+                            _mf_addNote(out, (MfNoteEvent){
+                                .channel = chan, .note = d1, .velocity = active[idx].velocity,
+                                .program = active[idx].program,
+                                .startTick = active[idx].start, .durationTick = dur > 0 ? dur : 1
+                            });
+                            active[idx].active = false;
+                        }
+                    }
+                    break;
+                case 0xC0: // Program Change (1 data byte)
+                    if (tp >= trkEnd) break;
+                    d1 = data[tp++];
+                    chProg[chan] = d1;
+                    out->channelProgram[chan] = d1;
+                    break;
+                case 0xD0: // Channel Pressure (1 data byte)
+                    if (tp >= trkEnd) break;
+                    tp++;
+                    break;
+                default: // 2 data bytes: A0, B0, E0
+                    if (tp + 1 >= trkEnd) { tp = trkEnd; break; }
+                    tp += 2;
+                    break;
+            }
+        }
+        pos = trkEnd;
+    }
+
+    free(active);
+    return out->noteCount > 0;
+}
+
+static void _mf_free(MfParsedMidi *m) {
+    free(m->notes);
+    m->notes = NULL;
+    m->noteCount = 0;
+}
+
+// ---------------------------------------------------------------------------
+// MIDI → DAW state
+// ---------------------------------------------------------------------------
+
+// Drum note → track mapping (same as Python version)
+static int _mf_drumTrack(int note) {
+    switch (note) {
+        case 35: case 36: case 41: case 43: case 45: case 47: case 48: case 50:
+            return 0; // kick/toms
+        case 37: case 38: case 40:
+            return 1; // snare/side stick
+        case 42: case 44: case 46: case 51: case 53:
+            return 2; // hihats + ride cymbal/bell
+        default:
+            return 3; // perc/cymbals/etc
+    }
+}
+
+// Compare notes by start tick for qsort
+static int _mf_noteCompare(const void *a, const void *b) {
+    const MfNoteEvent *na = (const MfNoteEvent *)a;
+    const MfNoteEvent *nb = (const MfNoteEvent *)b;
+    if (na->startTick != nb->startTick) return (na->startTick < nb->startTick) ? -1 : 1;
+    if (na->channel != nb->channel) return na->channel - nb->channel;
+    return na->note - nb->note;
+}
+
+// Load a MIDI file into DAW state. Returns true on success.
+// Assumes daw.*, seq.*, and instrumentPresets[] are available as globals.
+static bool midiFileToDaw(const char *filepath) {
+    // Read file into memory
+    FILE *f = fopen(filepath, "rb");
+    if (!f) return false;
+    fseek(f, 0, SEEK_END);
+    long fileSize = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (fileSize <= 0 || fileSize > 10 * 1024 * 1024) { fclose(f); return false; } // 10MB limit
+    uint8_t *data = (uint8_t *)malloc((size_t)fileSize);
+    if (!data) { fclose(f); return false; }
+    size_t readBytes = fread(data, 1, (size_t)fileSize, f);
+    fclose(f);
+    if ((long)readBytes != fileSize) { free(data); return false; }
+
+    // Parse MIDI
+    MfParsedMidi midi;
+    if (!_mf_parse(data, (int)fileSize, &midi)) { free(data); return false; }
+    free(data);
+
+    // Sort notes by time
+    qsort(midi.notes, (size_t)midi.noteCount, sizeof(MfNoteEvent), _mf_noteCompare);
+
+    // --- Setup DAW state ---
+    // Compute steps per bar from time signature: numerator * (16 / denominator)
+    int timeSigSteps = midi.timeSigNum * (16 / midi.timeSigDenom);
+    if (timeSigSteps < 4) timeSigSteps = 4;
+    if (timeSigSteps > SEQ_MAX_STEPS) timeSigSteps = SEQ_MAX_STEPS;
+    int stepsPerPattern = timeSigSteps;
+    daw.stepCount = stepsPerPattern;
+    float ticksPerStep = (float)midi.ticksPerBeat / 4.0f; // 16th notes
+    float ticksPerPattern = ticksPerStep * stepsPerPattern;
+
+    // Reset patterns
+    for (int i = 0; i < SEQ_NUM_PATTERNS; i++) initPattern(&seq.patterns[i]);
+
+    // Set tempo
+    daw.transport.bpm = midi.bpm;
+
+    // Figure out how many patterns (cap at 8)
+    uint32_t maxTick = 0;
+    for (int i = 0; i < midi.noteCount; i++) {
+        uint32_t end = midi.notes[i].startTick + midi.notes[i].durationTick;
+        if (end > maxTick) maxTick = end;
+    }
+    int numPatterns = (int)(maxTick / ticksPerPattern) + 1;
+    if (numPatterns > SEQ_NUM_PATTERNS) numPatterns = SEQ_NUM_PATTERNS;
+
+    // --- Channel → melody track assignment ---
+    // Collect melodic channels (not ch9) with average pitch
+    typedef struct { int channel; float avgPitch; int noteCount; int program; } ChInfo;
+    ChInfo chInfo[16];
+    int chCount = 0;
+    {
+        long chSum[16] = {0};
+        int chN[16] = {0};
+        int chProg[16] = {0};
+        for (int i = 0; i < midi.noteCount; i++) {
+            MfNoteEvent *e = &midi.notes[i];
+            if (e->channel == 9) continue;
+            chSum[e->channel] += e->note;
+            chN[e->channel]++;
+            chProg[e->channel] = e->program;
+        }
+        for (int c = 0; c < 16; c++) {
+            if (chN[c] > 0 && c != 9) {
+                chInfo[chCount++] = (ChInfo){c, (float)chSum[c] / chN[c], chN[c], chProg[c]};
+            }
+        }
+        // Sort by average pitch (lowest first)
+        for (int i = 0; i < chCount - 1; i++)
+            for (int j = i + 1; j < chCount; j++)
+                if (chInfo[i].avgPitch > chInfo[j].avgPitch) {
+                    ChInfo tmp = chInfo[i]; chInfo[i] = chInfo[j]; chInfo[j] = tmp;
+                }
+    }
+
+    int chToTrack[16]; // channel → melody track (0=bass, 1=lead, 2=chord), -1=unmapped
+    memset(chToTrack, -1, sizeof(chToTrack));
+    if (chCount == 1) {
+        chToTrack[chInfo[0].channel] = 0;
+    } else if (chCount == 2) {
+        chToTrack[chInfo[0].channel] = 0;
+        chToTrack[chInfo[1].channel] = 1;
+    } else if (chCount >= 3) {
+        chToTrack[chInfo[0].channel] = 0;             // lowest → bass
+        chToTrack[chInfo[chCount-1].channel] = 1;     // highest → lead
+        for (int i = 1; i < chCount - 1; i++)
+            chToTrack[chInfo[i].channel] = 2;          // middle → chord
+    }
+
+    // --- Assign presets (drums + melody) ---
+    // Drums: default 808 kit
+    int drumPresets[4] = {24, 25, 27, 26}; // kick, snare, CH, clap
+    for (int i = 0; i < 4; i++) {
+        daw.patches[i] = instrumentPresets[drumPresets[i]].patch;
+        snprintf(daw.patches[i].p_name, 32, "%s", instrumentPresets[drumPresets[i]].name);
+    }
+
+    // Melody: GM program → preset
+    int melodyDefaults[3] = {1, 1, 1}; // Fat Bass fallback
+    if (chCount >= 1) {
+        int p = gmProgramPreset(chInfo[0].program);
+        melodyDefaults[0] = p >= 0 ? p : 1;
+    }
+    if (chCount >= 2) {
+        int p = gmProgramPreset(chInfo[chCount-1].program);
+        melodyDefaults[1] = p >= 0 ? p : 1;
+    }
+    if (chCount >= 3) {
+        int p = gmProgramPreset(chInfo[1].program);
+        melodyDefaults[2] = p >= 0 ? p : 1;
+    }
+    for (int i = 0; i < 3; i++) {
+        int pi = melodyDefaults[i];
+        daw.patches[4 + i] = instrumentPresets[pi].patch;
+        snprintf(daw.patches[4 + i].p_name, 32, "%s", instrumentPresets[pi].name);
+    }
+
+    // --- Populate patterns ---
+    for (int i = 0; i < midi.noteCount; i++) {
+        MfNoteEvent *e = &midi.notes[i];
+        int patIdx = (int)(e->startTick / ticksPerPattern);
+        if (patIdx >= numPatterns) continue;
+
+        float localTick = (float)e->startTick - patIdx * ticksPerPattern;
+        float stepF = localTick / ticksPerStep;
+        int step = (int)roundf(stepF);
+        if (step >= stepsPerPattern) continue;
+
+        Pattern *pat = &seq.patterns[patIdx];
+        float vel = e->velocity / 127.0f;
+
+        if (e->channel == 9) {
+            // Drum event
+            int track = _mf_drumTrack(e->note);
+            patSetDrum(pat, track, step, vel, 0.0f);
+        } else {
+            // Melody event
+            int melTrack = chToTrack[e->channel];
+            if (melTrack < 0) continue;
+            int absTrack = SEQ_DRUM_TRACKS + melTrack; // 4 + melTrack
+
+            int durSteps = (int)roundf(e->durationTick / ticksPerStep);
+            if (durSteps < 1) durSteps = 1;
+            if (durSteps > 16) durSteps = 16;
+
+            // Sub-step nudge
+            float frac = stepF - step;
+            int nudge = (int)roundf(frac * 6.0f); // 6 ticks per 16th at 96 PPQ
+
+            StepV2 *sv = &pat->steps[absTrack][step];
+            if (sv->noteCount == 0) {
+                // First note on this step
+                patSetNote(pat, absTrack, step, e->note, vel, durSteps);
+                if (nudge != 0) sv->notes[0].nudge = (int8_t)nudge;
+            } else if (sv->noteCount < SEQ_V2_MAX_POLY) {
+                // Chord: add additional note
+                int vi = stepV2AddNote(sv, e->note, velFloatToU8(vel), (int8_t)durSteps);
+                if (vi >= 0 && nudge != 0) sv->notes[vi].nudge = (int8_t)nudge;
+            }
+        }
+    }
+
+    // Set track lengths
+    for (int p = 0; p < numPatterns; p++) {
+        for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++) {
+            seq.patterns[p].trackLength[t] = stepsPerPattern;
+        }
+    }
+
+    // --- Arrangement ---
+    daw.song.songMode = true;
+    daw.song.length = numPatterns;
+    daw.song.loopsPerPattern = 1;
+    for (int i = 0; i < numPatterns; i++) {
+        daw.song.patterns[i] = i;
+        daw.song.loopsPerSection[i] = 0;
+    }
+
+    // Extract song name from filename
+    const char *fname = strrchr(filepath, '/');
+    if (!fname) fname = strrchr(filepath, '\\');
+    fname = fname ? fname + 1 : filepath;
+    strncpy(daw.songName, fname, 63);
+    daw.songName[63] = '\0';
+    char *dot = strrchr(daw.songName, '.');
+    if (dot) *dot = '\0';
+
+    // Reset preset tracking
+    for (int i = 0; i < NUM_PATCHES; i++) patchPresetIndex[i] = -1;
+
+    _mf_free(&midi);
+    return true;
+}
+
+#endif // MIDI_FILE_H

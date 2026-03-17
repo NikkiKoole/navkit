@@ -532,6 +532,10 @@ scw_embed: $(BINDIR)
 	./$(BINDIR)/scw_embed soundsystem/cycles > soundsystem/engines/scw_data.h
 	@echo "Generated soundsystem/engines/scw_data.h"
 
+# Preset dump (all presets → text file for midi_import.py)
+preset-dump: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/preset-dump soundsystem/tools/preset_dump.c -lm
+
 # Headless preset audition tool (render + analyze presets)
 preset-audition: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/preset-audition soundsystem/tools/preset_audition.c -lm

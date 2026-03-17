@@ -27,7 +27,7 @@
 #define SEQ_DRUM_TRACKS 4      // Kick, Snare, HiHat, Clap
 #define SEQ_MELODY_TRACKS 3    // Bass, Lead, Chords
 #define SEQ_TOTAL_TRACKS (SEQ_DRUM_TRACKS + SEQ_MELODY_TRACKS)
-#define SEQ_NUM_PATTERNS 8
+#define SEQ_NUM_PATTERNS 64
 
 // v2 constants (coexist with v1 during transition)
 #define SEQ_V2_MAX_TRACKS  12   // Flexible upper bound (was fixed 7)
