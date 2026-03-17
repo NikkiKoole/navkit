@@ -6154,10 +6154,42 @@ static void drawWorkSample(float x, float y, float w, float h) {
         }
     }
 
-    // --- Freeze section (always visible, independent of bounce state) ---
+    // --- Freeze / Resample section (always visible, independent of bounce state) ---
     sy += 18;
-    DrawTextShadow("Freeze Live Audio:", (int)x, (int)sy, UI_FONT_SMALL, UI_TEXT_LABEL);
+    DrawTextShadow("Freeze / Resample:", (int)x, (int)sy, UI_FONT_SMALL, UI_TEXT_LABEL);
     sy += 16;
+
+    // Resample (capture master output to new sampler slot)
+    {
+        static bool _resampleActive = false;
+        float btnW = _resampleActive ? 100 : 80;
+        Rectangle rr = {x, sy, btnW, 18};
+        bool hov = CheckCollisionPointRec(mouse, rr);
+        Color bg = _resampleActive ? (Color){140, 30, 30, 255} : (hov ? UI_BG_HOVER : UI_BG_BUTTON);
+        DrawRectangleRec(rr, bg);
+        DrawRectangleLinesEx(rr, 1, _resampleActive ? RED : UI_BORDER);
+        const char *label = _resampleActive
+            ? TextFormat("REC %ds", resampleWritePos / SAMPLE_RATE)
+            : "Resample";
+        DrawTextShadow(label, (int)(x + 4), (int)(sy + 3), 9, _resampleActive ? WHITE : (Color){255, 140, 80, 255});
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            if (_resampleActive) {
+                int slot = resampleStop();
+                _resampleActive = false;
+                if (slot >= 0) {
+                    daw.chromaticSample = slot;
+                }
+            } else {
+                resampleStart();
+                _resampleActive = true;
+            }
+            ui_consume_click();
+        }
+        if (!_resampleActive) {
+            DrawTextShadow("Record master output to sampler slot", (int)(x + btnW + 8), (int)(sy + 3), 9, UI_TEXT_MUTED);
+        }
+    }
+    sy += 22;
     {
         // Find first free sampler slot (after any chop slices)
         int freeSlot = chopState.bounced ? chopState.sliceCount : 0;

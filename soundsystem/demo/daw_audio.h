@@ -46,6 +46,12 @@ static float dawSemitoneToFreq(int semitone, int octave) {
 // Track which bus each voice belongs to (-1 = keyboard/preview → CHORD bus)
 static int voiceBus[NUM_VOICES];
 
+// Resample capture: record master output to a buffer, then load into sampler slot
+#define RESAMPLE_MAX_LENGTH (SAMPLE_RATE * 16)  // 16 seconds max
+static float resampleBuffer[RESAMPLE_MAX_LENGTH];
+static volatile int resampleWritePos = 0;
+static volatile bool resampleCapturing = false;
+
 // Double-buffer sync: main thread snapshots daw → shadow, audio thread applies
 static DawState dawSyncShadow;
 static volatile bool dawSyncPending = false;
@@ -169,6 +175,11 @@ static void DawAudioCallback(void *buffer, unsigned int frames) {
         d[i * 2]     = (short)(sampleL * 32000.0f);
         d[i * 2 + 1] = (short)(sampleR * 32000.0f);
         dawRecSample(d[i * 2]);
+
+        // Resample capture: mono mix of final output
+        if (resampleCapturing && resampleWritePos < RESAMPLE_MAX_LENGTH) {
+            resampleBuffer[resampleWritePos++] = (sampleL + sampleR) * 0.5f;
+        }
     }
 
     double elapsed = (GetTime() - startTime) * 1000000.0;
@@ -182,6 +193,50 @@ static void DawAudioCallback(void *buffer, unsigned int frames) {
 // Sync DAW state → engine contexts (called on audio thread with shadow copy)
 static void dawSyncEngineStateFrom(const DawState *d) {
     dawSyncEngineStateFromEx(d, dawPattern());
+}
+
+// Resample: start capturing master output
+static void resampleStart(void) {
+    resampleWritePos = 0;
+    resampleCapturing = true;
+}
+
+// Resample: stop capturing and load into next free sampler slot
+// Returns slot index on success, -1 if no room
+static int resampleStop(void) {
+    resampleCapturing = false;
+    int length = resampleWritePos;
+    if (length < 64) return -1;  // too short
+
+    _ensureSamplerCtx();
+
+    // Find next free slot
+    int slot = -1;
+    for (int i = 0; i < SAMPLER_MAX_SAMPLES; i++) {
+        if (!samplerCtx->samples[i].loaded) { slot = i; break; }
+    }
+    if (slot < 0) return -1;  // all slots full
+
+    // Truncate to sampler max if needed
+    if (length > SAMPLER_MAX_SAMPLE_LENGTH) length = SAMPLER_MAX_SAMPLE_LENGTH;
+
+    // Allocate and copy
+    float *data = (float *)malloc(length * sizeof(float));
+    if (!data) return -1;
+    memcpy(data, resampleBuffer, length * sizeof(float));
+
+    // Free existing if any
+    samplerFreeSample(slot);
+
+    // Load into slot
+    samplerCtx->samples[slot].data = data;
+    samplerCtx->samples[slot].length = length;
+    samplerCtx->samples[slot].sampleRate = SAMPLE_RATE;
+    samplerCtx->samples[slot].loaded = true;
+    samplerCtx->samples[slot].embedded = false;
+    snprintf(samplerCtx->samples[slot].name, 64, "Resample %d", slot);
+
+    return slot;
 }
 
 // Main-thread entry point: snapshot daw → shadow, set pending for audio thread
