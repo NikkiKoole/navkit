@@ -1169,11 +1169,13 @@ static float processCombFilter(float input, float *buffer, int *pos, int size,
     return output;
 }
 
-// Helper: process allpass filter
+// Helper: process allpass filter (Schroeder topology)
+// Correct transfer function: H(z) = (-g + z^-N) / (1 - g*z^-N)
+// Feedback must come from output (not delayed) for true allpass behavior
 static float processAllpass(float input, float *buffer, int *pos, int size, float coef) {
     float delayed = buffer[*pos];
     float output = delayed - coef * input;
-    buffer[*pos] = input + coef * delayed;
+    buffer[*pos] = input + coef * output;
     *pos = (*pos + 1) % size;
     return output;
 }
@@ -1976,7 +1978,9 @@ static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
 
     // preReverb mode: apply reverb to dub loop INPUT (room being echoed)
     // Normal mode: apply reverb AFTER dub loop (echoes in a room)
-    bool doReverbSend = fx.reverbEnabled && (reverbSend > 0.001f || reverbSend < -0.001f);
+    // IMPORTANT: reverb must run every sample (even with zero input) so the
+    // feedback tails decay smoothly. Gating the call creates discontinuities.
+    bool doReverbSend = fx.reverbEnabled;
 
     if (dubLoop.preReverb && doReverbSend) {
         // Pre-reverb: add reverb wet to sample BEFORE dub loop captures it
@@ -2075,7 +2079,7 @@ static void processMixerOutputStereo(float busInputs[NUM_BUSES], float dt, float
     sample = processTape(sample, dt);
     sample = processDelay(sample, dt);
 
-    bool doReverbSend = fx.reverbEnabled && (reverbSend > 0.001f || reverbSend < -0.001f);
+    bool doReverbSend = fx.reverbEnabled;
 
     if (dubLoop.preReverb && doReverbSend) {
         float wet = _processReverbCore(reverbSend);

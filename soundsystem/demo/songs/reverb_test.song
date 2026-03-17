@@ -1,0 +1,138 @@
+# Reverb test: kalimba notes with master reverb
+# Render: ./build/bin/song-render soundsystem/demo/songs/reverb_test.song -d 8 -o reverb_test.wav
+
+[song]
+format = 2
+songName = "reverb_test"
+bpm = 120
+stepCount = 16
+grooveSwing = 0
+grooveJitter = 0
+
+[scale]
+enabled = false
+root = 0
+type = 0
+
+[groove]
+kickNudge = 0
+snareDelay = 0
+hatNudge = 0
+clapDelay = 0
+swing = 0
+jitter = 0
+melodyTimingJitter = 0
+melodyVelocityJitter = 0
+
+[settings]
+masterVol = 0.7
+voiceRandomVowel = false
+
+[patch.4]
+name = "Kalimba"
+waveType = mallet
+scwIndex = 0
+attack = 0.001
+decay = 0
+sustain = 1
+release = 0.3
+expRelease = false
+expDecay = false
+oneShot = false
+envelopeEnabled = true
+filterEnabled = true
+volume = 0.7
+pulseWidth = 0.5
+pwmRate = 0
+pwmDepth = 0
+vibratoRate = 0
+vibratoDepth = 0
+filterCutoff = 1
+filterResonance = 0
+filterType = 0
+filterEnvAmt = 0
+filterEnvAttack = 0.01
+filterEnvDecay = 0.2
+filterKeyTrack = 0
+filterLfoRate = 0
+filterLfoDepth = 0
+filterLfoShape = 0
+filterLfoSync = 0
+resoLfoRate = 0
+resoLfoDepth = 0
+resoLfoShape = 0
+resoLfoSync = 0
+ampLfoRate = 0
+ampLfoDepth = 0
+ampLfoShape = 0
+ampLfoSync = 0
+pitchLfoRate = 0
+pitchLfoDepth = 0
+pitchLfoShape = 0
+pitchLfoSync = 0
+arpEnabled = false
+arpMode = 0
+arpRateDiv = 1
+arpRate = 8
+arpChord = 1
+unisonCount = 1
+unisonDetune = 0
+unisonMix = 0.5
+drive = 0
+glideTime = 0
+monoMode = false
+acidMode = false
+pitchEnvAmount = 0
+pitchEnvDecay = 0
+noiseLevel = 0
+noiseDecay = 0.1
+ringModFreq = 0
+ringModDepth = 0
+waveFold = 0
+tubeSaturation = false
+analogRolloff = false
+malletPreset = 0
+malletStiffness = 0.6
+malletHardness = 0.4
+malletStrikePos = 0.25
+malletResonance = 0.75
+malletTremolo = 0
+malletTremoloRate = 5.5
+malletDamp = 0
+filterLfoPhaseOffset = 0
+resoLfoPhaseOffset = 0
+ampLfoPhaseOffset = 0
+pitchLfoPhaseOffset = 0
+
+[mixer]
+vol0 = 0.7
+vol1 = 0.7
+vol2 = 0.7
+vol3 = 0.7
+vol4 = 0.7
+vol5 = 0.7
+vol6 = 0.7
+vol7 = 0.7
+pan0 = 0
+pan1 = 0
+pan2 = 0
+pan3 = 0
+pan4 = 0
+pan5 = 0
+pan6 = 0
+pan7 = 0
+reverbSend4 = 0.6
+
+[masterfx]
+reverbOn = true
+reverbSize = 0.5
+reverbDamping = 0.3
+reverbMix = 0.5
+reverbPreDelay = 0.02
+reverbBass = 1.0
+
+[pattern.0]
+m track=0 step=0 note=C4 vel=0.8 gate=4
+m track=0 step=4 note=E4 vel=0.7 gate=4
+m track=0 step=8 note=G4 vel=0.75 gate=4
+m track=0 step=12 note=C5 vel=0.65 gate=4
