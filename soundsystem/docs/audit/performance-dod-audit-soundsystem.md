@@ -258,6 +258,25 @@ static inline float fastSin(float x) {
 
 **Estimated improvement**: 2-5x for sine-heavy patches (additive with 16 harmonics, FM, multi-oscillator drums).
 
+**Experiment (2026-03-17)**: Created `fast_math.h` with drop-in replacements for sinf/cosf/tanf/tanhf/expf/powf (polynomial/rational approx). Replaced all 133 calls across synth.h, synth_oscillators.h, effects.h, dub_loop.h. Build succeeded but 6 tests failed:
+- `unison_detune` (5 failures): `fast_powf(2.0f, cents/1200.0f)` not precise enough for exact cent-to-ratio comparisons at 0.001 tolerance
+- `bitcrusher_effect` (1 failure): `fast_powf(2.0f, bits)` quantization level mismatch at FLOAT_EPSILON tolerance
+
+**Recommended selective approach** (next attempt):
+
+Safe to replace (not pitch-sensitive, inherently approximate):
+- `tanf` → `fast_tanf` in SVF filter coefficient calc (synth.h:2112, effects.h:1724) — **highest win**, runs 40×/sample
+- `tanhf` → `fast_tanhf` for drive/saturation (synth.h, effects.h, dub_loop.h) — waveshaping is approximate by nature
+- `sinf`/`cosf` → `fast_sinf`/`fast_cosf` for LFOs, chorus/phaser modulation, stereo pan — low-frequency signals, error inaudible
+
+Keep as libm (precision matters):
+- `powf(2.0f, x/12.0f)` — pitch/detune/semitone math. Causes audible tuning drift and test failures
+- `powf(2.0f, bits)` — bitcrusher quantization levels. Exact integer powers needed
+- `powf(10.0f, dB/20.0f)` — EQ/compressor gain. Precision affects loudness balance
+- `expf` in envelope decay — exact timing for ADSR shapes, user noticed audible difference
+
+Reverted for now.
+
 ### 8. Function pointers for drum/melody trigger callbacks
 
 **File**: `sequencer.h` — 7 function pointer callbacks (4 drum + 3 melody) called per step trigger
