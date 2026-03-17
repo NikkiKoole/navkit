@@ -177,7 +177,7 @@ static void DawAudioCallback(void *buffer, unsigned int frames) {
 }
 
 // Shared sync: DawState → engine contexts (single source of truth)
-#include "daw_sync.h"
+#include "../engines/daw_sync.h"
 
 // Sync DAW state → engine contexts (called on audio thread with shadow copy)
 static void dawSyncEngineStateFrom(const DawState *d) {

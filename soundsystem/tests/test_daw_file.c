@@ -28,7 +28,7 @@
 #undef monoMode
 
 // Use the real struct definitions from daw_state.h
-#include "../demo/daw_state.h"
+#include "../engines/daw_state.h"
 
 // Globals that daw_file.h accesses directly
 static DawState daw;

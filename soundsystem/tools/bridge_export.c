@@ -33,7 +33,7 @@
 #undef monoMode
 
 // DAW state types (shared with daw.c)
-#include "../demo/daw_state.h"
+#include "../engines/daw_state.h"
 
 static Pattern* dawPattern(void) {
     return &seq.patterns[seq.currentPattern];

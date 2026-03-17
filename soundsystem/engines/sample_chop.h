@@ -226,7 +226,7 @@ static void _chopMelRel2(void) { _chopMelRelease(2); }
 // ============================================================================
 
 // Use shared sync (single source of truth in daw_sync.h)
-#include "../demo/daw_sync.h"
+#include "daw_sync.h"
 
 static void _chopSyncState(DawState *d) {
     dawSyncEngineStateFromEx(d, &seq.patterns[seq.currentPattern]);

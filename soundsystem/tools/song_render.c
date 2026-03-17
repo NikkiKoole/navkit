@@ -39,7 +39,7 @@
 #define SAMPLE_RATE 44100
 
 // DAW state types (shared with daw.c)
-#include "../demo/daw_state.h"
+#include "../engines/daw_state.h"
 
 static Pattern* dawPattern(void) {
     return &seq.patterns[seq.currentPattern];
@@ -251,7 +251,7 @@ static void renderMelodyRelease2(void) { renderMelodyRelease(2); }
 // SYNC DAW STATE → ENGINE
 // ============================================================================
 
-#include "../demo/daw_sync.h"
+#include "../engines/daw_sync.h"
 
 static void renderSyncState(void) {
     dawSyncEngineStateFromEx(&daw, dawPattern());

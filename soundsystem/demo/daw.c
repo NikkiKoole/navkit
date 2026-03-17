@@ -187,7 +187,7 @@ static const char* lfoSyncNames[] = {"Off", "4bar", "2bar", "1bar", "1/2", "1/4"
 
 // --- Structs (shared with tools via daw_state.h) ---
 
-#include "daw_state.h"
+#include "../engines/daw_state.h"
 
 // NUM_BUSES (7) provided by effects.h
 

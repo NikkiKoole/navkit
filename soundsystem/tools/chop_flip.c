@@ -36,7 +36,7 @@
 
 #define SAMPLE_RATE 44100
 
-#include "../demo/daw_state.h"
+#include "../engines/daw_state.h"
 
 static Pattern* dawPattern(void) {
     return &seq.patterns[seq.currentPattern];
