@@ -239,6 +239,23 @@ From `audit/test-gaps-audit-soundsystem.md`. Current: 248 suites, 1905 assertion
 | **Arrangement scroll** — horizontal scroll for >14 song sections | ~20 lines | |
 | **Stingers & one-shots** — trigger musical phrases on game events (victory, death, pickup), quantized to beat or immediate, with music ducking | Medium | |
 
+### Track Type Unification
+
+Current limitation: drum tracks (0-3) are hard-coded as one-shot with no gate/note-off, melody tracks (4-6) have gate/sustain/release but are fixed to bass/lead/chord buses. Using a drum track melodically (pitched PD bass on kick track) breaks because:
+- Drum trigger forces `oneShot = true`, killing sustain
+- No note-off/gate means voices hang if oneShot is disabled
+- Voice stealing: other drum triggers reuse the voice once its forced-oneShot envelope dies, cutting the tail
+
+**Goal:** Any track should be able to act as drum (one-shot, no gate) or melodic (gate, sustain, release) based on a per-track toggle or auto-detection from the patch.
+
+| What | Effort | Notes |
+|------|--------|-------|
+| **Per-track melodic mode** — toggle on drum tracks to enable gate countdown + note-off, respect patch oneShot/sustain | Medium | Release previous voice on retrigger (not hard kill). Gate length = step count like melody tracks. |
+| **Flexible bus routing** — any track to any bus (not hardcoded drum→0-3, melody→4-6) | Medium | Enables melodic bass on bus 0 with sidechain from bus 1, etc. |
+| **Unified track type** — collapse TRACK_DRUM/TRACK_MELODIC into one type, behavior driven by patch settings (oneShot, gate length, choke) | Large | Bigger refactor but cleanest long-term. Every track gets note values, gate, slide, accent. "Drum mode" is just oneShot=true + gate=0. |
+
+See also: `lua-conductor-architecture.md` — the conductor layer benefits from flexible track routing for adaptive music (muting/unmuting any instrument on any bus).
+
 ### Synthesis
 
 | What | Effort | Notes |

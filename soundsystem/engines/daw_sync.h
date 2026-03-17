@@ -29,6 +29,7 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
     fx.distDrive       = d->masterFx.distDrive;
     fx.distTone        = d->masterFx.distTone;
     fx.distMix         = d->masterFx.distMix;
+    fx.distMode        = d->masterFx.distMode;
     fx.crushEnabled    = d->masterFx.crushOn;
     fx.crushBits       = d->masterFx.crushBits;
     fx.crushRate       = d->masterFx.crushRate;
@@ -125,10 +126,12 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
         setBusMute(b, d->mixer.mute[b]);
         setBusSolo(b, d->mixer.solo[b]);
         setBusReverbSend(b, d->mixer.reverbSend[b]);
+        setBusDelaySend(b, d->mixer.delaySend[b]);
         setBusFilter(b, d->mixer.filterOn[b], d->mixer.filterCut[b],
                      d->mixer.filterRes[b], d->mixer.filterType[b]);
         setBusDistortion(b, d->mixer.distOn[b], d->mixer.distDrive[b],
                          d->mixer.distMix[b]);
+        mixerCtx->bus[b].distMode = d->mixer.distMode[b];
         setBusEQ(b, d->mixer.eqOn[b], d->mixer.eqLowGain[b], d->mixer.eqHighGain[b]);
         setBusEQFreqs(b, d->mixer.eqLowFreq[b], d->mixer.eqHighFreq[b]);
         setBusChorus(b, d->mixer.chorusOn[b], d->mixer.chorusRate[b],

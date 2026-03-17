@@ -3861,7 +3861,8 @@ describe(bus_reverb_send) {
         mixerCtx->bus[BUS_LEAD].reverbSend = 0.8f;   // Lead with more reverb
         
         float reverbSend = 0.0f;
-        processBuses(busInputs, &reverbSend, dt);
+        float delaySend = 0.0f;
+        processBuses(busInputs, &reverbSend, &delaySend, dt);
         
         // Reverb send should be accumulated
         expect(reverbSend > 0.0f);

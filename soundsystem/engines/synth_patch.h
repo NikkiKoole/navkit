@@ -211,7 +211,8 @@ typedef struct {
     float p_osc6Level;        // Mix level (0-1)
 
     // Drive/saturation
-    float p_drive;            // 0 = clean, tanh saturation (kick warmth, etc.)
+    float p_drive;            // 0 = clean, saturation amount (kick warmth, etc.)
+    int p_driveMode;          // DistortionMode enum (0=soft, 1=hard, 2=fold, etc.)
 
     // Click transient (one-shot noise burst — kick click, key click, pluck attack)
     float p_clickLevel;       // 0 = off, strength of click noise burst

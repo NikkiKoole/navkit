@@ -29,6 +29,8 @@
 #define TAPE_HISS_SCALE 0.05f         // Tape hiss amplitude scaling
 #define TAPE_HISS_FILTER_COEFF 0.1f   // Tape hiss highpass filter coefficient
 
+// Distortion mode enum + applyDistortion() defined in synth.h (included before effects.h)
+
 // Distortion/delay tone curve constants
 #define DIST_TONE_SCALE 0.5f          // Distortion tone filter scale
 #define DIST_TONE_OFFSET 0.1f         // Distortion tone filter minimum
@@ -153,6 +155,7 @@ typedef struct {
     bool distEnabled;
     float distDrive;        // 1-4
     float distMix;          // 0-1
+    int distMode;           // DistortionMode enum
     
     // Delay
     bool delayEnabled;
@@ -194,6 +197,9 @@ typedef struct {
 
     // Reverb send
     float reverbSend;       // 0-1 (amount sent to master reverb)
+
+    // Delay send
+    float delaySend;        // 0-1 (amount sent to send delay)
 } BusEffects;
 
 // Per-bus processing state
@@ -241,6 +247,9 @@ typedef struct {
     
     // Reverb send accumulator (reset each sample)
     float reverbSendAccum;
+
+    // Delay send accumulator (reset each sample)
+    float delaySendAccum;
     
     // Tempo for synced delays (BPM)
     float tempo;
@@ -259,6 +268,7 @@ typedef struct {
     float distDrive;      // 1.0 = clean, 10.0 = heavy
     float distTone;       // Lowpass after distortion (0-1)
     float distMix;        // Dry/wet (0-1)
+    int distMode;         // DistortionMode enum
     float distFilterLp;   // Filter state
     
     // Delay
@@ -514,7 +524,12 @@ typedef struct EffectsContext {
     // Delay state
     float delayBuffer[DELAY_BUFFER_SIZE];
     int delayWritePos;
-    
+
+    // Send delay (independent from master inline delay)
+    float sendDelayBuffer[DELAY_BUFFER_SIZE];
+    int sendDelayWritePos;
+    float sendDelayFilterLp;  // Tone filter state
+
     // Reverb buffers
     float reverbComb1[REVERB_COMB_1];
     float reverbComb2[REVERB_COMB_2];
@@ -791,6 +806,9 @@ static void _ensureFxCtx(void) {
 #define fx (fxCtx->params)
 #define delayBuffer (fxCtx->delayBuffer)
 #define delayWritePos (fxCtx->delayWritePos)
+#define sendDelayBuffer (fxCtx->sendDelayBuffer)
+#define sendDelayWritePos (fxCtx->sendDelayWritePos)
+#define sendDelayFilterLp (fxCtx->sendDelayFilterLp)
 #define reverbComb1 (fxCtx->reverbComb1)
 #define reverbComb2 (fxCtx->reverbComb2)
 #define reverbComb3 (fxCtx->reverbComb3)
@@ -877,20 +895,20 @@ static inline float hermiteInterp(float *buffer, int bufferSize, float readPos) 
 // INDIVIDUAL EFFECTS
 // ============================================================================
 
-// Distortion - tanh soft clipping
+// Distortion - multiple waveshaping modes
 static float processDistortion(float sample) {
     if (!fx.distEnabled) return sample;
-    
+
     float dry = sample;
-    
-    // Drive into soft clipping
-    float driven = tanhf(sample * fx.distDrive);
-    
+
+    // Drive into selected distortion mode
+    float driven = applyDistortion(sample, fx.distDrive, fx.distMode);
+
     // Tone control (lowpass to tame harshness)
     float cutoff = fx.distTone * fx.distTone * DIST_TONE_SCALE + DIST_TONE_OFFSET;
     fx.distFilterLp += cutoff * (driven - fx.distFilterLp);
     float wet = fx.distFilterLp;
-    
+
     return dry * (1.0f - fx.distMix) + wet * fx.distMix;
 }
 
@@ -919,6 +937,32 @@ static float processDelay(float sample, float dt) {
     delayWritePos = (delayWritePos + 1) % DELAY_BUFFER_SIZE;
     
     return sample * (1.0f - fx.delayMix) + delayed * fx.delayMix;
+}
+
+// Send delay core — returns WET signal only (like _processReverbCore).
+// Uses separate buffer from the inline master delay.
+// Always runs (no enable gate) — controlled purely by per-bus delaySend knobs.
+// Uses master delay time/feedback/tone settings for the shared send delay.
+static float _processDelaySendCore(float input) {
+
+    float delaySamples = fx.delayTime * SAMPLE_RATE;
+    if (delaySamples >= DELAY_BUFFER_SIZE - 1) delaySamples = DELAY_BUFFER_SIZE - 2;
+    if (delaySamples < 1.0f) delaySamples = 1.0f;
+
+    float readPos = (float)sendDelayWritePos - delaySamples;
+    if (readPos < 0) readPos += DELAY_BUFFER_SIZE;
+    float delayed = hermiteInterp(sendDelayBuffer, DELAY_BUFFER_SIZE, readPos);
+
+    // Tone filter (darker repeats)
+    float cutoff = fx.delayTone * fx.delayTone * DELAY_TONE_SCALE + DELAY_TONE_OFFSET;
+    sendDelayFilterLp += cutoff * (delayed - sendDelayFilterLp);
+    delayed = sendDelayFilterLp;
+
+    // Write input + filtered feedback
+    sendDelayBuffer[sendDelayWritePos] = input + delayed * fx.delayFeedback;
+    sendDelayWritePos = (sendDelayWritePos + 1) % DELAY_BUFFER_SIZE;
+
+    return delayed;
 }
 
 // Tape simulation - saturation, wow, flutter, hiss
@@ -1769,10 +1813,10 @@ static float processBusEffects(float input, int busIndex, float dt) {
         sample = lowBand * lowGain + midBand + topBand * highGain;
     }
 
-    // === DISTORTION (light tanh saturation) ===
+    // === DISTORTION ===
     if (bus->distEnabled && bus->distDrive > 1.0f) {
         float dry = sample;
-        float driven = tanhf(sample * bus->distDrive);
+        float driven = applyDistortion(sample, bus->distDrive, bus->distMode);
         sample = dry * (1.0f - bus->distMix) + driven * bus->distMix;
     }
 
@@ -1904,35 +1948,37 @@ static float processBusEffects(float input, int busIndex, float dt) {
 // busInputs: array of NUM_BUSES raw instrument signals
 // reverbSend: output - accumulated reverb send from all buses
 // Returns: summed bus outputs ready for master processing
-static float processBuses(float busInputs[NUM_BUSES], float* reverbSend, float dt) {
+static float processBuses(float busInputs[NUM_BUSES], float* reverbSend, float* delaySend, float dt) {
     _ensureMixerCtx();
 
     float masterInput = 0.0f;
     mixerCtx->reverbSendAccum = 0.0f;
+    mixerCtx->delaySendAccum = 0.0f;
 
     for (int i = 0; i < NUM_BUSES; i++) {
         float processed = processBusEffects(busInputs[i], i, dt);
         mixerCtx->busOutputs[i] = processed;  // Store for dub loop routing
         masterInput += processed;
 
-        // Accumulate reverb send (post-effects, pre-master)
+        // Accumulate sends (post-effects, pre-master)
         mixerCtx->reverbSendAccum += processed * mixerCtx->bus[i].reverbSend;
+        mixerCtx->delaySendAccum += processed * mixerCtx->bus[i].delaySend;
     }
 
-    if (reverbSend) {
-        *reverbSend = mixerCtx->reverbSendAccum;
-    }
+    if (reverbSend) *reverbSend = mixerCtx->reverbSendAccum;
+    if (delaySend) *delaySend = mixerCtx->delaySendAccum;
 
     return masterInput;
 }
 
 // Stereo variant: process all buses, apply pan law, return L/R pair + reverb send
 // Pan uses constant-power law: L = cos(theta), R = sin(theta)
-static void processBusesStereo(float busInputs[NUM_BUSES], float* outL, float* outR, float* reverbSend, float dt) {
+static void processBusesStereo(float busInputs[NUM_BUSES], float* outL, float* outR, float* reverbSend, float* delaySend, float dt) {
     _ensureMixerCtx();
 
     float masterL = 0.0f, masterR = 0.0f;
     mixerCtx->reverbSendAccum = 0.0f;
+    mixerCtx->delaySendAccum = 0.0f;
 
     for (int i = 0; i < NUM_BUSES; i++) {
         float processed = processBusEffects(busInputs[i], i, dt);
@@ -1947,13 +1993,15 @@ static void processBusesStereo(float busInputs[NUM_BUSES], float* outL, float* o
         masterL += processed * gainL;
         masterR += processed * gainR;
 
-        // Reverb send (mono, same as before)
+        // Accumulate sends (mono)
         mixerCtx->reverbSendAccum += processed * mixerCtx->bus[i].reverbSend;
+        mixerCtx->delaySendAccum += processed * mixerCtx->bus[i].delaySend;
     }
 
     *outL = masterL;
     *outR = masterR;
     if (reverbSend) *reverbSend = mixerCtx->reverbSendAccum;
+    if (delaySend) *delaySend = mixerCtx->delaySendAccum;
 }
 
 // Full pipeline: buses → master effects → output
@@ -1964,8 +2012,13 @@ static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
     
     // Process all buses
     float reverbSend = 0.0f;
-    float sample = processBuses(busInputs, &reverbSend, dt);
-    
+    float delaySend = 0.0f;
+    float sample = processBuses(busInputs, &reverbSend, &delaySend, dt);
+
+    // Send delay (always runs — controlled by per-bus delaySend knobs)
+    float delayWet = _processDelaySendCore(delaySend);
+    sample += delayWet * fx.delayMix;
+
     // Master effects chain
     sample = processDistortion(sample);
     sample = processBitcrusher(sample);
@@ -2061,12 +2114,16 @@ static void processMixerOutputStereo(float busInputs[NUM_BUSES], float dt, float
     _ensureFxCtx();
 
     // Process buses with pan → stereo pair
-    float busL = 0.0f, busR = 0.0f, reverbSend = 0.0f;
-    processBusesStereo(busInputs, &busL, &busR, &reverbSend, dt);
+    float busL = 0.0f, busR = 0.0f, reverbSend = 0.0f, delaySend = 0.0f;
+    processBusesStereo(busInputs, &busL, &busR, &reverbSend, &delaySend, dt);
 
     // Mid/side encode: mid = (L+R)/2, side = (L-R)/2
     float mid = (busL + busR) * 0.5f;
     float side = (busL - busR) * 0.5f;
+
+    // Send delay (always runs — controlled by per-bus delaySend knobs)
+    float delayWet = _processDelaySendCore(delaySend);
+    mid += delayWet * fx.delayMix;
 
     // Master effects chain runs on mid (mono) — identical to processMixerOutput
     float sample = mid;
@@ -2222,6 +2279,14 @@ static void setBusReverbSend(int bus, float amount) {
     _ensureMixerCtx();
     if (bus >= 0 && bus < NUM_BUSES) {
         mixerCtx->bus[bus].reverbSend = amount;
+    }
+}
+
+__attribute__((unused))
+static void setBusDelaySend(int bus, float amount) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].delaySend = amount;
     }
 }
 

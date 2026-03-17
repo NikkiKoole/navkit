@@ -38,7 +38,7 @@ typedef struct {
 } Sidechain;
 
 typedef struct {
-    bool distOn;    float distDrive, distTone, distMix;
+    bool distOn;    float distDrive, distTone, distMix; int distMode;
     bool crushOn;   float crushBits, crushRate, crushMix;
     bool chorusOn;  float chorusRate, chorusDepth, chorusMix;
     bool flangerOn; float flangerRate, flangerDepth, flangerFeedback, flangerMix;
@@ -72,11 +72,12 @@ typedef struct {
     float volume[NUM_BUSES];
     float pan[NUM_BUSES];
     float reverbSend[NUM_BUSES];
+    float delaySend[NUM_BUSES];
     bool mute[NUM_BUSES];
     bool solo[NUM_BUSES];
     // Per-bus FX
     bool filterOn[NUM_BUSES];  float filterCut[NUM_BUSES]; float filterRes[NUM_BUSES]; int filterType[NUM_BUSES];
-    bool distOn[NUM_BUSES];    float distDrive[NUM_BUSES]; float distMix[NUM_BUSES];
+    bool distOn[NUM_BUSES];    float distDrive[NUM_BUSES]; float distMix[NUM_BUSES]; int distMode[NUM_BUSES];
     bool eqOn[NUM_BUSES];      float eqLowGain[NUM_BUSES]; float eqHighGain[NUM_BUSES];
     float eqLowFreq[NUM_BUSES]; float eqHighFreq[NUM_BUSES];
     bool chorusOn[NUM_BUSES];  float chorusRate[NUM_BUSES]; float chorusDepth[NUM_BUSES];

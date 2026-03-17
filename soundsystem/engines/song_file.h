@@ -401,6 +401,7 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "osc6Level", p->p_osc6Level);
     // Drive, click, filter type
     _sf_writeFloat(f, "drive", p->p_drive);
+    _sf_writeInt(f, "driveMode", p->p_driveMode);
     _sf_writeFloat(f, "clickLevel", p->p_clickLevel);
     _sf_writeFloat(f, "clickTime", p->p_clickTime);
     _sf_writeInt(f, "filterType", p->p_filterType);
@@ -923,6 +924,7 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "osc6Level") == 0) p->p_osc6Level = _sf_parseFloat(val);
     // Drive, click, filter type
     else if (strcmp(key, "drive") == 0) p->p_drive = _sf_parseFloat(val);
+    else if (strcmp(key, "driveMode") == 0) p->p_driveMode = _sf_parseInt(val);
     else if (strcmp(key, "clickLevel") == 0) p->p_clickLevel = _sf_parseFloat(val);
     else if (strcmp(key, "clickTime") == 0) p->p_clickTime = _sf_parseFloat(val);
     else if (strcmp(key, "filterType") == 0) p->p_filterType = _sf_parseInt(val);

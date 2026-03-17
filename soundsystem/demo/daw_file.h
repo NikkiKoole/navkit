@@ -119,7 +119,7 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _dw(f, "osc4Ratio", p->p_osc4Ratio); _dw(f, "osc4Level", p->p_osc4Level);
     _dw(f, "osc5Ratio", p->p_osc5Ratio); _dw(f, "osc5Level", p->p_osc5Level);
     _dw(f, "osc6Ratio", p->p_osc6Ratio); _dw(f, "osc6Level", p->p_osc6Level);
-    _dw(f, "drive", p->p_drive);
+    _dw(f, "drive", p->p_drive); _di(f, "driveMode", p->p_driveMode);
     _dw(f, "clickLevel", p->p_clickLevel); _dw(f, "clickTime", p->p_clickTime);
     _di(f, "noiseMode", p->p_noiseMode); _di(f, "oscMixMode", p->p_oscMixMode);
     _dw(f, "retriggerCurve", p->p_retriggerCurve); _db(f, "phaseReset", p->p_phaseReset);
@@ -301,6 +301,7 @@ static bool dawSave(const char *filepath) {
         snprintf(k, sizeof(k), "vol%d", b); _dw(f, k, daw.mixer.volume[b]);
         snprintf(k, sizeof(k), "pan%d", b); _dw(f, k, daw.mixer.pan[b]);
         snprintf(k, sizeof(k), "reverbSend%d", b); _dw(f, k, daw.mixer.reverbSend[b]);
+        snprintf(k, sizeof(k), "delaySend%d", b); _dw(f, k, daw.mixer.delaySend[b]);
         snprintf(k, sizeof(k), "mute%d", b); _db(f, k, daw.mixer.mute[b]);
         snprintf(k, sizeof(k), "solo%d", b); _db(f, k, daw.mixer.solo[b]);
         snprintf(k, sizeof(k), "filterOn%d", b); _db(f, k, daw.mixer.filterOn[b]);
@@ -310,6 +311,7 @@ static bool dawSave(const char *filepath) {
         snprintf(k, sizeof(k), "distOn%d", b); _db(f, k, daw.mixer.distOn[b]);
         snprintf(k, sizeof(k), "distDrive%d", b); _dw(f, k, daw.mixer.distDrive[b]);
         snprintf(k, sizeof(k), "distMix%d", b); _dw(f, k, daw.mixer.distMix[b]);
+        snprintf(k, sizeof(k), "distMode%d", b); _di(f, k, daw.mixer.distMode[b]);
         snprintf(k, sizeof(k), "delayOn%d", b); _db(f, k, daw.mixer.delayOn[b]);
         snprintf(k, sizeof(k), "delaySync%d", b); _db(f, k, daw.mixer.delaySync[b]);
         snprintf(k, sizeof(k), "delaySyncDiv%d", b); _di(f, k, daw.mixer.delaySyncDiv[b]);
@@ -355,7 +357,7 @@ static bool dawSave(const char *filepath) {
     // [masterfx]
     fprintf(f, "\n[masterfx]\n");
     _db(f, "distOn", daw.masterFx.distOn); _dw(f, "distDrive", daw.masterFx.distDrive);
-    _dw(f, "distTone", daw.masterFx.distTone); _dw(f, "distMix", daw.masterFx.distMix);
+    _dw(f, "distTone", daw.masterFx.distTone); _dw(f, "distMix", daw.masterFx.distMix); _di(f, "distMode", daw.masterFx.distMode);
     _db(f, "crushOn", daw.masterFx.crushOn); _dw(f, "crushBits", daw.masterFx.crushBits);
     _dw(f, "crushRate", daw.masterFx.crushRate); _dw(f, "crushMix", daw.masterFx.crushMix);
     _db(f, "chorusOn", daw.masterFx.chorusOn); _dw(f, "chorusRate", daw.masterFx.chorusRate);
@@ -665,6 +667,7 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"osc6Ratio")==0) p->p_osc6Ratio = _dpf(val);
     else if (strcmp(key,"osc6Level")==0) p->p_osc6Level = _dpf(val);
     else if (strcmp(key,"drive")==0) p->p_drive = _dpf(val);
+    else if (strcmp(key,"driveMode")==0) p->p_driveMode = _dpi(val);
     else if (strcmp(key,"clickLevel")==0) p->p_clickLevel = _dpf(val);
     else if (strcmp(key,"clickTime")==0) p->p_clickTime = _dpf(val);
     else if (strcmp(key,"noiseMode")==0) p->p_noiseMode = _dpi(val);
@@ -1023,6 +1026,7 @@ static bool dawLoad(const char *filepath) {
                     if (strcmp(base,"vol")==0) daw.mixer.volume[b]=_dpf(val);
                     else if (strcmp(base,"pan")==0) daw.mixer.pan[b]=_dpf(val);
                     else if (strcmp(base,"reverbSend")==0) daw.mixer.reverbSend[b]=_dpf(val);
+                    else if (strcmp(base,"delaySend")==0) daw.mixer.delaySend[b]=_dpf(val);
                     else if (strcmp(base,"mute")==0) daw.mixer.mute[b]=_dpb(val);
                     else if (strcmp(base,"solo")==0) daw.mixer.solo[b]=_dpb(val);
                     else if (strcmp(base,"filterOn")==0) daw.mixer.filterOn[b]=_dpb(val);
@@ -1032,6 +1036,7 @@ static bool dawLoad(const char *filepath) {
                     else if (strcmp(base,"distOn")==0) daw.mixer.distOn[b]=_dpb(val);
                     else if (strcmp(base,"distDrive")==0) daw.mixer.distDrive[b]=_dpf(val);
                     else if (strcmp(base,"distMix")==0) daw.mixer.distMix[b]=_dpf(val);
+                    else if (strcmp(base,"distMode")==0) daw.mixer.distMode[b]=_dpi(val);
                     else if (strcmp(base,"delayOn")==0) daw.mixer.delayOn[b]=_dpb(val);
                     else if (strcmp(base,"delaySync")==0) daw.mixer.delaySync[b]=_dpb(val);
                     else if (strcmp(base,"delaySyncDiv")==0) daw.mixer.delaySyncDiv[b]=_dpi(val);
@@ -1087,6 +1092,7 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"distDrive")==0) daw.masterFx.distDrive=_dpf(val);
             else if (strcmp(key,"distTone")==0) daw.masterFx.distTone=_dpf(val);
             else if (strcmp(key,"distMix")==0) daw.masterFx.distMix=_dpf(val);
+            else if (strcmp(key,"distMode")==0) daw.masterFx.distMode=_dpi(val);
             else if (strcmp(key,"crushOn")==0) daw.masterFx.crushOn=_dpb(val);
             else if (strcmp(key,"crushBits")==0) daw.masterFx.crushBits=_dpf(val);
             else if (strcmp(key,"crushRate")==0) daw.masterFx.crushRate=_dpf(val);

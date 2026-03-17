@@ -231,10 +231,18 @@ static float drawADSRCurve(float x, float y, float w, float h,
                 if (*atk < 0.001f) *atk = 0.001f;
                 if (*atk > 2.0f) *atk = 2.0f;
             } else if (adsrDragHandle == 2) {
+                // Decay handle: X = decay time, Y = sustain level
                 *dec += dx * speed;
                 if (*dec < 0.001f) *dec = 0.001f;
                 if (*dec > 2.0f) *dec = 2.0f;
+                *sus -= dy / range;
+                if (*sus < 0) *sus = 0;
+                if (*sus > 1) *sus = 1;
             } else if (adsrDragHandle == 3) {
+                // Sustain handle: same — X moves decay, Y moves sustain
+                *dec += dx * speed;
+                if (*dec < 0.001f) *dec = 0.001f;
+                if (*dec > 2.0f) *dec = 2.0f;
                 *sus -= dy / range;
                 if (*sus < 0) *sus = 0;
                 if (*sus > 1) *sus = 1;
@@ -258,16 +266,16 @@ static float drawFilterXY(float x, float y, float size, float *cutoff, float *re
     }
     DrawTextShadow("Cut", (int)x+2, (int)(y+size-12), 9, (Color){60,60,70,255});
     DrawTextShadow("Res", (int)(x+size-20), (int)y+2, 9, (Color){60,60,70,255});
-    float cx = x + (*cutoff)*size, cy = y + (1-*resonance)*size;
+    float cx = x + (*cutoff)*size, cy = y + (1-*resonance/1.02f)*size;
     DrawLine((int)cx, (int)y, (int)cx, (int)(y+size), (Color){60,80,100,200});
     DrawLine((int)x, (int)cy, (int)(x+size), (int)cy, (Color){60,80,100,200});
     DrawCircle((int)cx, (int)cy, 5, (Color){255,140,40,255});
     DrawCircle((int)cx, (int)cy, 3, WHITE);
     Vector2 mouse = GetMousePosition();
     if (!g_ui_isDragging && CheckCollisionPointRec(mouse, (Rectangle){x,y,size,size}) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-        float nc = (mouse.x-x)/size, nr = 1-(mouse.y-y)/size;
+        float nc = (mouse.x-x)/size, nr = (1-(mouse.y-y)/size) * 1.02f;
         *cutoff = nc<0.01f?0.01f:(nc>1?1:nc);
-        *resonance = nr<0?0:(nr>1?1:nr);
+        *resonance = nr<0?0:(nr>1.02f?1.02f:nr);
     }
     return size + 4;
 }

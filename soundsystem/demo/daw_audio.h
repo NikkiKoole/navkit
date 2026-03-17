@@ -277,20 +277,24 @@ static void dawDrumTriggerGeneric(int trackIdx, int busIdx, float vel, float pit
     if (pDecay >= 0.0f) p->p_decay = pDecay;
     if (pTone >= 0.0f) p->p_filterCutoff = pTone;
 
-    // Choke: kill the previous voice immediately (envStage=0) so findVoice
-    // can reclaim the slot. releaseNote only sets stage=4 (release), which
-    // keeps the voice alive — findVoice then grabs a different free slot
-    // and voices pile up indefinitely.
-    if (p->p_choke && dawDrumVoice[trackIdx] >= 0 && voiceBus[dawDrumVoice[trackIdx]] == busIdx) {
-        voiceLogPush("KILL drum[%d] v%d choke bus=%d", trackIdx, dawDrumVoice[trackIdx], busIdx);
-        synthCtx->voices[dawDrumVoice[trackIdx]].envStage = 0;
-        synthCtx->voices[dawDrumVoice[trackIdx]].envLevel = 0.0f;
+    // Handle previous voice on retrigger:
+    if (dawDrumVoice[trackIdx] >= 0 && voiceBus[dawDrumVoice[trackIdx]] == busIdx) {
+        int prev = dawDrumVoice[trackIdx];
+        if (p->p_choke) {
+            // Choke: hard-kill (hi-hats, etc.)
+            voiceLogPush("KILL drum[%d] v%d choke bus=%d", trackIdx, prev, busIdx);
+            synthCtx->voices[prev].envStage = 0;
+            synthCtx->voices[prev].envLevel = 0.0f;
+        } else if (!p->p_oneShot && synthCtx->voices[prev].envStage > 0 &&
+                   synthCtx->voices[prev].envStage < 4) {
+            // Melodic drum (oneShot=false): release previous voice so it fades out
+            // via its release envelope instead of hanging in sustain forever
+            voiceLogPush("REL drum[%d] v%d melodic-retrigger bus=%d", trackIdx, prev, busIdx);
+            releaseNote(prev);
+        }
     }
-    // Force one-shot for drum tracks — drums never sustain, prevents voice hang
-    bool origOneShot = p->p_oneShot;
-    p->p_oneShot = true;
+    // Respect patch oneShot: true = normal drum (skip sustain), false = melodic drum (sustain holds until retrigger)
     int v = playNoteWithPatch(trigFreq, p);
-    p->p_oneShot = origOneShot;
     dawDrumVoice[trackIdx] = v;
     if (v >= 0) {
         voiceBus[v] = busIdx;

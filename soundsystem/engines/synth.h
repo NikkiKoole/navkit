@@ -15,6 +15,58 @@
 // Forward declaration - formant.h provides this
 struct VoiceSettings;
 
+// Distortion mode enum (shared by voice, bus, and master distortion)
+#ifndef DISTORTION_MODE_DEFINED
+#define DISTORTION_MODE_DEFINED
+typedef enum {
+    DIST_SOFT,      // tanhf soft clip (warm, tube-like)
+    DIST_HARD,      // hard clip at ±1 (digital, harsh)
+    DIST_FOLDBACK,  // fold signal back at ±1 (metallic, buzzy)
+    DIST_RECTIFY,   // full-wave rectify (octave-up, industrial)
+    DIST_ASYMMETRIC,// tanhf with asymmetric positive/negative (even harmonics)
+    DIST_BITFOLD,   // quantize + fold (lo-fi industrial)
+    DIST_MODE_COUNT
+} DistortionMode;
+
+static const char* distModeNames[] = {
+    "Soft", "Hard", "Fold", "Rectify", "Asym", "BitFold"
+};
+
+// Apply distortion waveshaping by mode
+static inline float applyDistortion(float sample, float drive, int mode) {
+    float x = sample * drive;
+    switch (mode) {
+        default:
+        case DIST_SOFT:
+            return tanhf(x);
+        case DIST_HARD:
+            if (x > 1.0f) return 1.0f;
+            if (x < -1.0f) return -1.0f;
+            return x;
+        case DIST_FOLDBACK: {
+            while (x > 1.0f || x < -1.0f) {
+                if (x > 1.0f) x = 2.0f - x;
+                if (x < -1.0f) x = -2.0f - x;
+            }
+            return x;
+        }
+        case DIST_RECTIFY:
+            return fabsf(tanhf(x));
+        case DIST_ASYMMETRIC:
+            return (x >= 0.0f) ? tanhf(x) : tanhf(x * 0.6f) * 0.8f;
+        case DIST_BITFOLD: {
+            float levels = 32.0f;
+            float q = floorf(x * levels + 0.5f) / levels;
+            while (q > 1.0f || q < -1.0f) {
+                if (q > 1.0f) q = 2.0f - q;
+                if (q < -1.0f) q = -2.0f - q;
+            }
+            return q;
+        }
+    }
+}
+#endif // DISTORTION_MODE_DEFINED
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -585,7 +637,8 @@ typedef struct {
     float osc6Ratio, osc6Level, osc6Phase;  // 6th osc (808 hihat has 6 metallic partials)
 
     // Drive/saturation
-    float drive;             // 0 = clean, >0 = tanh saturation
+    float drive;             // 0 = clean, >0 = saturation amount
+    int driveMode;           // DistortionMode enum (0=soft tanh, 1=hard, 2=fold, etc.)
 
     // Exponential decay flag
     bool expDecay;           // true = exponential decay curve (punchy drums)
@@ -857,6 +910,7 @@ typedef struct SynthContext {
 
     // Drive/saturation
     float noteDrive;
+    int noteDriveMode;       // DistortionMode enum
 
     // Exponential decay
     bool noteExpDecay;
@@ -1163,6 +1217,7 @@ static void _ensureSynthCtx(void) {
 #define noteOsc6Ratio (synthCtx->noteOsc6Ratio)
 #define noteOsc6Level (synthCtx->noteOsc6Level)
 #define noteDrive (synthCtx->noteDrive)
+#define noteDriveMode (synthCtx->noteDriveMode)
 #define noteExpDecay (synthCtx->noteExpDecay)
 #define noteOneShot (synthCtx->noteOneShot)
 #define noteClickLevel (synthCtx->noteClickLevel)
@@ -1961,10 +2016,10 @@ static float processVoice(Voice *v, float sampleRate) {
         }
     }
 
-    // Drive/saturation (tanh waveshaping — kick warmth, snare crunch)
+    // Drive/saturation (multiple modes — kick warmth, snare crunch, industrial grit)
     if (v->drive > 0.001f) {
         float gain = 1.0f + v->drive * 3.0f;
-        sample = tanhf(sample * gain);
+        sample = applyDistortion(sample, gain, v->driveMode);
     }
 
     // Ring modulation (multiply signal by carrier sine at ratio of base freq)
@@ -2078,8 +2133,8 @@ static float processVoice(Voice *v, float sampleRate) {
     }
     cutoff = clampf(cutoff, 0.01f, 1.0f);
 
-    // Calculate effective resonance with LFO
-    float res = clampf(v->filterResonance + resoLfoMod, 0.0f, 1.0f);
+    // Calculate effective resonance with LFO (>1.0 allows self-oscillation)
+    float res = clampf(v->filterResonance + resoLfoMod, 0.0f, 1.02f);
 
     // Bypass filter when fully open with no modulation (avoids SVF charge-up delay on drums)
     // Also skip for noiseMode==2 overlap: per-burst noise applies its own filter in burst section
@@ -2124,6 +2179,11 @@ static float processVoice(Voice *v, float sampleRate) {
             // Update state variables (ic1eq, ic2eq)
             v->filterBp = 2.0f * v1 - v->filterBp;
             v->filterLp = 2.0f * v2 - v->filterLp;
+
+            // Clamp state variables to prevent blowup at high resonance
+            // tanh on the states keeps self-oscillation bounded and musical
+            if (v->filterBp > 4.0f || v->filterBp < -4.0f) v->filterBp = tanhf(v->filterBp) * 4.0f;
+            if (v->filterLp > 4.0f || v->filterLp < -4.0f) v->filterLp = tanhf(v->filterLp) * 4.0f;
 
             // Output selection: lp = v2, bp = v1, hp = sample - k*v1 - v2
             if (v->filterType == 1) {
@@ -2417,6 +2477,7 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
 
     // Drive & exp decay
     v->drive = noteDrive;
+    v->driveMode = noteDriveMode;
     v->expDecay = noteExpDecay;
 
     // Click transient

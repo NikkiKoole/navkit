@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 148
+#define NUM_INSTRUMENT_PRESETS 151
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -2680,6 +2680,66 @@ static void initInstrumentPresets(void) {
     instrumentPresets[147].patch.p_monoMode = true;
     instrumentPresets[147].patch.p_glideTime = 0.125f;
     instrumentPresets[147].patch.p_volume = 0.55f;
+
+    // ========================================================================
+    // DARK TECHNO / NOISE SWEEP PRESETS (148-150)
+    // ========================================================================
+
+    // 148: Dark Riser — white noise through HP filter, slow sweep up over 4 bars
+    instrumentPresets[148].name = "Dark Riser";
+    instrumentPresets[148].patch.p_waveType = WAVE_NOISE;
+    instrumentPresets[148].patch.p_envelopeEnabled = true;
+    instrumentPresets[148].patch.p_filterEnabled = true;
+    instrumentPresets[148].patch.p_attack = 0.5f;
+    instrumentPresets[148].patch.p_decay = 0.0f;
+    instrumentPresets[148].patch.p_sustain = 1.0f;
+    instrumentPresets[148].patch.p_release = 1.0f;
+    instrumentPresets[148].patch.p_filterCutoff = 0.1f;
+    instrumentPresets[148].patch.p_filterResonance = 0.3f;
+    instrumentPresets[148].patch.p_filterType = 1;  // highpass
+    instrumentPresets[148].patch.p_filterLfoDepth = 0.8f;
+    instrumentPresets[148].patch.p_filterLfoShape = 3;  // sawtooth (ramp up)
+    instrumentPresets[148].patch.p_filterLfoSync = LFO_SYNC_4_1;  // 4 bars
+    instrumentPresets[148].patch.p_volume = 0.35f;
+
+    // 149: Industrial Fall — noise + ring mod, LP filter sweep down over 2 bars
+    instrumentPresets[149].name = "Ind Fall";
+    instrumentPresets[149].patch.p_waveType = WAVE_NOISE;
+    instrumentPresets[149].patch.p_envelopeEnabled = true;
+    instrumentPresets[149].patch.p_filterEnabled = true;
+    instrumentPresets[149].patch.p_attack = 0.01f;
+    instrumentPresets[149].patch.p_decay = 0.0f;
+    instrumentPresets[149].patch.p_sustain = 1.0f;
+    instrumentPresets[149].patch.p_release = 0.5f;
+    instrumentPresets[149].patch.p_filterCutoff = 0.9f;
+    instrumentPresets[149].patch.p_filterResonance = 0.4f;
+    instrumentPresets[149].patch.p_filterType = 0;  // lowpass
+    instrumentPresets[149].patch.p_filterLfoDepth = 0.7f;
+    instrumentPresets[149].patch.p_filterLfoShape = 3;  // sawtooth (ramp down via inverted phase)
+    instrumentPresets[149].patch.p_filterLfoSync = LFO_SYNC_2_1;  // 2 bars
+    instrumentPresets[149].patch.p_filterLfoPhaseOffset = 0.5f;  // invert = sweep down
+    instrumentPresets[149].patch.p_ringMod = true;
+    instrumentPresets[149].patch.p_ringModFreq = 3.0f;
+    instrumentPresets[149].patch.p_volume = 0.3f;
+
+    // 150: Tension Wash — noise + comb filter, slow S&H on cutoff for random texture
+    instrumentPresets[150].name = "Tension";
+    instrumentPresets[150].patch.p_waveType = WAVE_NOISE;
+    instrumentPresets[150].patch.p_envelopeEnabled = true;
+    instrumentPresets[150].patch.p_filterEnabled = true;
+    instrumentPresets[150].patch.p_attack = 0.3f;
+    instrumentPresets[150].patch.p_decay = 0.0f;
+    instrumentPresets[150].patch.p_sustain = 1.0f;
+    instrumentPresets[150].patch.p_release = 2.0f;
+    instrumentPresets[150].patch.p_filterCutoff = 0.5f;
+    instrumentPresets[150].patch.p_filterResonance = 0.6f;
+    instrumentPresets[150].patch.p_filterType = 2;  // bandpass
+    instrumentPresets[150].patch.p_filterLfoDepth = 0.5f;
+    instrumentPresets[150].patch.p_filterLfoShape = 4;  // sample & hold (random steps)
+    instrumentPresets[150].patch.p_filterLfoSync = LFO_SYNC_1_4;  // quarter note
+    instrumentPresets[150].patch.p_drive = 0.3f;
+    instrumentPresets[150].patch.p_driveMode = DIST_FOLDBACK;
+    instrumentPresets[150].patch.p_volume = 0.3f;
 }
 
 #endif // INSTRUMENT_PRESETS_H

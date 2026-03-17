@@ -1034,6 +1034,10 @@ static int calcTrackTriggerTick(int track) {
         float stepNudge = seqGetPLock(p, track, step, PLOCK_TIME_NUDGE, 0.0f);
         baseTick += (int)stepNudge;
     } else {
+        // Per-note nudge from StepNote (melody/sampler timing, NOT drum — drum uses nudge for pitch)
+        StepV2 *sv = &p->steps[track][step];
+        if (sv->noteCount > 0) baseTick += sv->notes[0].nudge;
+        // P-lock nudge (additive, from automation / manual overrides)
         float stepNudge = seqGetPLock(p, track, step, PLOCK_TIME_NUDGE, 0.0f);
         baseTick += (int)stepNudge;
         if (seq.humanize.timingJitter > 0) {
@@ -1251,7 +1255,7 @@ static void seqTriggerStep(Pattern *p, int track, int step, float stepDuration) 
         }
     } else if (p->trackType[track] == TRACK_DRUM) {
         // --- DRUM TRIGGER ---
-        float pitchMod = powf(2.0f, sn->nudge / 12.0f);  // nudge stores pitch for drums
+        float pitchMod = powf(2.0f, (sn->nudge + seq.trackTranspose[track]) / 12.0f);  // nudge + transpose for drums
 
         // Check for flam effect
         float flamTimeMs = plockValue(PLOCK_FLAM_TIME, 0.0f);

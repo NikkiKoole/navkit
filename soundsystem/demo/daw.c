@@ -3780,8 +3780,8 @@ static void drawParamPatch(float x, float y, float w, float h) {
         ui_col_cycle(&c, "Type", filterTypeNames, 6, &p->p_filterType);
         ui_col_float_p(&c, "Cut", &p->p_filterCutoff, 0.05f, 0.01f, 1.0f);
         drawLfoModIndicator(envX + 80, c.y - c.spacing, p->p_filterCutoff, lfoModViz.filterMod, 0.01f, 1.0f);
-        ui_col_float_p(&c, "Res", &p->p_filterResonance, 0.05f, 0.0f, 1.0f);
-        drawLfoModIndicator(envX + 80, c.y - c.spacing, p->p_filterResonance, lfoModViz.resoMod, 0.0f, 1.0f);
+        ui_col_float_p(&c, "Res", &p->p_filterResonance, 0.05f, 0.0f, 1.02f);
+        drawLfoModIndicator(envX + 80, c.y - c.spacing, p->p_filterResonance, lfoModViz.resoMod, 0.0f, 1.02f);
         ui_col_float_p(&c, "EnvAmt", &p->p_filterEnvAmt, 0.05f, -1.0f, 1.0f);
         ui_col_float(&c, "EnvAtk", &p->p_filterEnvAttack, 0.01f, 0.001f, 0.5f);
         ui_col_float(&c, "EnvDcy", &p->p_filterEnvDecay, 0.05f, 0.01f, 2.0f);
@@ -3796,7 +3796,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
         // LFO mod ghost dot on XY pad
         if (lfoModViz.active && (fabsf(lfoModViz.filterMod) > 0.001f || fabsf(lfoModViz.resoMod) > 0.001f)) {
             float modCut = clampf(p->p_filterCutoff + lfoModViz.filterMod, 0.01f, 1.0f);
-            float modRes = clampf(p->p_filterResonance + lfoModViz.resoMod, 0.0f, 1.0f);
+            float modRes = clampf(p->p_filterResonance + lfoModViz.resoMod, 0.0f, 1.02f);
             float gx = envX + modCut * padSize;
             float gy = xyPadY + (1.0f - modRes) * padSize;
             DrawCircle((int)gx, (int)gy, 4, (Color){255, 140, 40, 120});
@@ -3837,6 +3837,11 @@ static void drawParamPatch(float x, float y, float w, float h) {
         ui_col_int(&c, "Transpose", &seq.trackTranspose[daw.selectedPatch], 1, -48, 48);
         if (lfoModViz.active && fabsf(lfoModViz.pitchMod) > 0.001f) {
             DrawTextShadow(TextFormat("%.1fst", lfoModViz.pitchMod), (int)(col3X + 90), (int)(c.y - c.spacing + 1), UI_FONT_SMALL, (Color){255, 160, 60, 200});
+        }
+        {
+            int *tp = &seq.trackTranspose[daw.selectedPatch];
+            if (ui_col_button(&c, "Oct-")) { *tp -= 12; if (*tp < -48) *tp = -48; }
+            if (ui_col_button(&c, "Oct+")) { *tp += 12; if (*tp > 48) *tp = 48; }
         }
         ui_col_space(&c, 3);
 
@@ -3949,9 +3954,10 @@ static void drawParamPatch(float x, float y, float w, float h) {
         sectionHighlight(col5X + 2, secY, percColW, c.y - secY, pitchActive);
         ui_col_space(&c, 6);
 
-        bool driveActive = DF(p_drive);
+        bool driveActive = DF(p_drive) || p->p_driveMode != 0;
         secY = c.y;
         ui_col_sublabel(&c, "Drive:", ORANGE);
+        ui_col_cycle(&c, "Mode", distModeNames, DIST_MODE_COUNT, &p->p_driveMode);
         ui_col_float(&c, "Drive", &p->p_drive, 0.05f, 0.0f, 1.0f);
         sectionHighlight(col5X + 2, secY, percColW, c.y - secY, driveActive);
         ui_col_space(&c, 6);
@@ -4146,6 +4152,21 @@ static void drawParamBus(float x, float y, float w, float h) {
             ry += barH + 14;
         }
 
+        // Delay send bar
+        {
+            DrawRectangle((int)rightX, (int)ry, (int)rightW, (int)barH, (Color){28,35,50,255});
+            float dlFill = daw.mixer.delaySend[b] * rightW;
+            DrawRectangle((int)rightX, (int)ry, (int)dlFill, (int)barH, (Color){60,120,200,255});
+            Rectangle dlR = {rightX, ry-2, rightW, barH+4};
+            if (CheckCollisionPointRec(mouse, dlR) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                daw.mixer.delaySend[b] = (mouse.x - rightX) / rightW;
+                if (daw.mixer.delaySend[b] < 0) daw.mixer.delaySend[b] = 0;
+                if (daw.mixer.delaySend[b] > 1) daw.mixer.delaySend[b] = 1;
+            }
+            DrawTextShadow("DlySend", (int)rightX, (int)(ry+barH+1), UI_FONT_SMALL, UI_BORDER_LIGHT);
+            ry += barH + 14;
+        }
+
         // FX controls (right of fader, below pan/rev)
         // Filter
         ToggleBoolS(rightX, ry, "Filter", &daw.mixer.filterOn[b], fs); ry += row;
@@ -4158,7 +4179,7 @@ static void drawParamBus(float x, float y, float w, float h) {
             int sfs = fs - 2;
             int srow = sfs + 4;
             DraggableFloatS(textX, ry, "Cut", &daw.mixer.filterCut[b], 0.02f, 0.0f, 1.0f, sfs);
-            DraggableFloatS(textX, ry + srow, "Res", &daw.mixer.filterRes[b], 0.02f, 0.0f, 1.0f, sfs);
+            DraggableFloatS(textX, ry + srow, "Res", &daw.mixer.filterRes[b], 0.02f, 0.0f, 1.02f, sfs);
             CycleOptionS(textX, ry + srow*2, "Type", busFilterTypeNames, 4, &daw.mixer.filterType[b], sfs);
             ry += xySize + 2;
         }
@@ -4167,7 +4188,8 @@ static void drawParamBus(float x, float y, float w, float h) {
         // Distortion
         ToggleBoolS(rightX, ry, "Dist", &daw.mixer.distOn[b], fs); ry += row;
         if (daw.mixer.distOn[b]) {
-            DraggableFloatS(rightX, ry, "Drive", &daw.mixer.distDrive[b], 0.05f, 1.0f, 4.0f, fs); ry += row;
+            CycleOptionS(rightX, ry, "Mode", distModeNames, DIST_MODE_COUNT, &daw.mixer.distMode[b], fs); ry += row;
+            DraggableFloatS(rightX, ry, "Drive", &daw.mixer.distDrive[b], 0.5f, 1.0f, 20.0f, fs); ry += row;
             DraggableFloatS(rightX, ry, "Mix", &daw.mixer.distMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
         }
         ry += 2;
@@ -4325,6 +4347,7 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
     // 1: Distortion
     MFX_BEGIN("Dist", &daw.masterFx.distOn)
     if (daw.masterFx.distOn) {
+        CycleOptionS(rx, ry, "Mode", distModeNames, DIST_MODE_COUNT, &daw.masterFx.distMode, fs); ry += row;
         DraggableFloatS(rx, ry, "Drive", &daw.masterFx.distDrive, 0.5f, 1.0f, 20.0f, fs); ry += row;
         DraggableFloatS(rx, ry, "Tone", &daw.masterFx.distTone, 0.05f, 0.0f, 1.0f, fs); ry += row;
         DraggableFloatS(rx, ry, "Mix", &daw.masterFx.distMix, 0.05f, 0.0f, 1.0f, fs); ry += row;
@@ -5811,7 +5834,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 float g = chopState.sliceParams[sel].gain;
                 float fill = (g / 2.0f) * 46;
                 DrawRectangle((int)(r.x + 2), (int)(r.y + 2), (int)fill, 12,
-                             g > 1.05f ? (Color){200, 100, 60, 200} : (Color){60, 130, 200, 200});
+                             g > 1.02f ? (Color){200, 100, 60, 200} : (Color){60, 130, 200, 200});
                 char gainStr[16];
                 snprintf(gainStr, sizeof(gainStr), "%.1fx", g);
                 DrawTextShadow(gainStr, (int)(r.x + 4), (int)(sy + 3), UI_FONT_SMALL, WHITE);
