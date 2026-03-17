@@ -425,14 +425,18 @@ static DawState daw = {
         .mbLowCross = 200.0f, .mbHighCross = 3000.0f,
         .mbLowGain = 1.0f, .mbMidGain = 1.0f, .mbHighGain = 1.0f,
         .mbLowDrive = 1.0f, .mbMidDrive = 1.0f, .mbHighDrive = 1.0f,
+        .vinylCrackle = 0.3f, .vinylNoise = 0.1f, .vinylWarp = 0.1f, .vinylWarpRate = 0.5f, .vinylTone = 0.8f,
     },
     .tapeFx = {
         .headTime = 0.5f, .feedback = 0.6f, .mix = 0.5f,
         .saturation = 0.3f, .toneHigh = 0.7f, .noise = 0.05f, .degradeRate = 0.1f,
         .wow = 0.1f, .flutter = 0.1f, .drift = 0.05f, .speedTarget = 1.0f, .speedSlew = 0.1f, .throwBus = -1,
         .rewindTime = 1.5f, .rewindMinSpeed = 0.2f, .rewindVinyl = 0.1f, .rewindWobble = 0.2f, .rewindFilter = 0.5f,
+        .tapeStopTime = 1.0f, .tapeStopCurve = 1, .tapeStopSpinBack = true, .tapeStopSpinTime = 0.3f,
+        .beatRepeatDiv = 2, .beatRepeatDecay = 0.1f, .beatRepeatMix = 1.0f, .beatRepeatGate = 1.0f,
     },
     .chopSliceMap = {-1, -1, -1, -1},
+    .chromaticRootNote = 60,
     .masterVol = 0.8f,
     .splitPoint = 60, .splitLeftPatch = 1, .splitRightPatch = 2,
 };
@@ -1190,6 +1194,19 @@ static void drawTransport(void) {
         if (dbgHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { dawDebugOpen = !dawDebugOpen; ui_consume_click(); }
     }
     tx += 46;
+
+    // Half-speed toggle
+    {
+        Vector2 mouse = GetMousePosition();
+        Rectangle hsR = {tx, ty-2, 34, 18};
+        bool hsHov = CheckCollisionPointRec(mouse, hsR);
+        Color hsBg = daw.halfSpeedEnabled ? (Color){80, 40, 120, 255} : (hsHov ? UI_BG_HOVER : UI_BG_BUTTON);
+        DrawRectangleRec(hsR, hsBg);
+        DrawRectangleLinesEx(hsR, 1, daw.halfSpeedEnabled ? (Color){160, 100, 255, 255} : UI_BORDER);
+        DrawTextShadow("x0.5", (int)tx + 4, (int)ty, UI_FONT_SMALL, daw.halfSpeedEnabled ? WHITE : GRAY);
+        if (hsHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { daw.halfSpeedEnabled = !daw.halfSpeedEnabled; ui_consume_click(); }
+    }
+    tx += 40;
 
     // Pattern indicator
     DrawTextShadow(TextFormat("Pat:%d", daw.transport.currentPattern+1), (int)tx, (int)ty+2, UI_FONT_SMALL, UI_TEXT_SUBTLE);
@@ -4331,11 +4348,11 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
     // Disabled effects hide params but keep same width for stable layout.
     int fs = 11;
     int row = fs + 3;
-    float stripW = w / 12.0f;
+    float stripW = w / 13.0f;
     if (stripW > 140) stripW = 140;
 
     // Signal chain label at bottom
-    DrawTextShadow("Dist > Crush > Chorus > Flanger > Phaser > Comb > Tape > Delay > Reverb > EQ > Comp",
+    DrawTextShadow("Dist > Crush > Chorus > Flanger > Phaser > Comb > Tape > Vinyl > Delay > Reverb > EQ > Comp",
                    (int)(x+2), (int)(y+h-11), 9, UI_BORDER);
 
     float cx = x;
@@ -4424,7 +4441,18 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
     }
     MFX_END()
 
-    // 8: Delay
+    // 8: Vinyl Sim
+    MFX_BEGIN("Vinyl", &daw.masterFx.vinylOn)
+    if (daw.masterFx.vinylOn) {
+        DraggableFloatS(rx, ry, "Crackle", &daw.masterFx.vinylCrackle, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Noise", &daw.masterFx.vinylNoise, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Warp", &daw.masterFx.vinylWarp, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "WarpHz", &daw.masterFx.vinylWarpRate, 0.05f, 0.1f, 2.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Tone", &daw.masterFx.vinylTone, 0.05f, 0.0f, 1.0f, fs); ry += row;
+    }
+    MFX_END()
+
+    // 9: Delay
     MFX_BEGIN("Delay", &daw.masterFx.delayOn)
     if (daw.masterFx.delayOn) {
         DraggableFloatS(rx, ry, "Time", &daw.masterFx.delayTime, 0.05f, 0.05f, 1.0f, fs); ry += row;
@@ -4587,6 +4615,60 @@ static void drawParamTape(float x, float y, float w, float h) {
         // Update rewind state display
         if (daw.tapeFx.isRewinding && !isRewinding()) {
             daw.tapeFx.isRewinding = false;
+        }
+    }
+
+    // Tape Stop column
+    {
+        UIColumn c = ui_column(x+halfW+158, y, 16);
+        ui_col_sublabel(&c, "Tape Stop:", ORANGE);
+        ui_col_float(&c, "Time", &daw.tapeFx.tapeStopTime, 0.1f, 0.2f, 3.0f);
+        ui_col_cycle(&c, "Curve", rewindCurveNames, 3, &daw.tapeFx.tapeStopCurve);
+        ui_col_toggle(&c, "SpinBack", &daw.tapeFx.tapeStopSpinBack);
+        if (daw.tapeFx.tapeStopSpinBack) {
+            ui_col_float(&c, "SpinTm", &daw.tapeFx.tapeStopSpinTime, 0.05f, 0.1f, 1.0f);
+        }
+        ui_col_space(&c, 4);
+        if (ui_col_button(&c, daw.tapeFx.isTapeStopping ? ">>..." : "Stop")) {
+            triggerTapeStop();
+            daw.tapeFx.isTapeStopping = true;
+        }
+        if (daw.tapeFx.isTapeStopping && !isTapeStopping()) {
+            daw.tapeFx.isTapeStopping = false;
+        }
+    }
+
+    // DJFX Looper column
+    {
+        UIColumn c = ui_column(x+halfW+308, y, 16);
+        ui_col_sublabel(&c, "DJFX Loop:", ORANGE);
+        ui_col_cycle(&c, "Div", beatRepeatDivNames, BEAT_REPEAT_DIV_COUNT, &daw.tapeFx.djfxLoopDiv);
+        ui_col_space(&c, 4);
+        if (ui_col_button(&c, daw.tapeFx.isDjfxLooping ? "[LOOP]" : "Hold")) {
+            triggerDjfxLoop(daw.transport.bpm);
+            daw.tapeFx.isDjfxLooping = !daw.tapeFx.isDjfxLooping;
+        }
+        if (daw.tapeFx.isDjfxLooping && !isDjfxLooping()) {
+            daw.tapeFx.isDjfxLooping = false;
+        }
+    }
+
+    // Beat Repeat column
+    {
+        UIColumn c = ui_column(x+halfW+448, y, 16);
+        ui_col_sublabel(&c, "Beat Repeat:", ORANGE);
+        ui_col_cycle(&c, "Div", beatRepeatDivNames, BEAT_REPEAT_DIV_COUNT, &daw.tapeFx.beatRepeatDiv);
+        ui_col_float(&c, "Decay", &daw.tapeFx.beatRepeatDecay, 0.05f, 0.0f, 0.9f);
+        ui_col_float(&c, "Pitch", &daw.tapeFx.beatRepeatPitch, 1.0f, -12.0f, 12.0f);
+        ui_col_float(&c, "Gate", &daw.tapeFx.beatRepeatGate, 0.05f, 0.1f, 1.0f);
+        ui_col_float(&c, "Mix", &daw.tapeFx.beatRepeatMix, 0.05f, 0.0f, 1.0f);
+        ui_col_space(&c, 4);
+        if (ui_col_button(&c, daw.tapeFx.isBeatRepeating ? "[STUTTER]" : "Repeat")) {
+            triggerBeatRepeat(daw.transport.bpm);
+            daw.tapeFx.isBeatRepeating = !daw.tapeFx.isBeatRepeating;
+        }
+        if (daw.tapeFx.isBeatRepeating && !isBeatRepeating()) {
+            daw.tapeFx.isBeatRepeating = false;
         }
     }
 
@@ -4880,6 +4962,16 @@ static void dawHandleMusicalTyping(void) {
 
         for (size_t i = 0; i < NUM_DAW_PIANO_KEYS; i++) {
             if (IsKeyPressed(dawPianoKeys[i].key)) {
+                // Chromatic sampler mode: play sample at pitched speed
+                if (daw.chromaticMode && samplerCtx &&
+                    daw.chromaticSample >= 0 && daw.chromaticSample < SAMPLER_MAX_SAMPLES &&
+                    samplerCtx->samples[daw.chromaticSample].loaded) {
+                    int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
+                    float semitones = (float)(midiNote - daw.chromaticRootNote);
+                    float speed = powf(2.0f, semitones / 12.0f);
+                    samplerPlay(daw.chromaticSample, 0.8f, speed);
+                    continue;
+                }
                 float freq = dawSemitoneToFreq(dawPianoKeys[i].semitone, dawCurrentOctave);
                 int v;
                 if (patch->p_waveType == WAVE_VOICE && daw.voiceRandomVowel) {
@@ -5765,6 +5857,18 @@ static void drawWorkSample(float x, float y, float w, float h) {
         }
         sy += 26;
 
+        // Per-pad pitch/volume
+        DrawTextShadow("Pad Pitch/Vol:", (int)x, (int)sy, UI_FONT_SMALL, UI_TEXT_LABEL);
+        sy += 14;
+        for (int t = 0; t < 4; t++) {
+            int slot = daw.chopSliceMap[t];
+            if (slot < 0) continue;
+            float px = x + t * (w / 4);
+            DraggableFloatS(px, sy, TextFormat("P%d Pitch", t), &daw.chopSlicePitch[slot], 0.5f, -24.0f, 24.0f, 9);
+            DraggableFloatS(px, sy + 13, TextFormat("P%d Vol", t), &daw.chopSliceVolume[slot], 0.05f, 0.0f, 2.0f, 9);
+        }
+        sy += 28;
+
         // Sampler track hint
         DrawTextShadow("Sampler Track:", (int)x, (int)(sy + 2), UI_FONT_SMALL, UI_TEXT_LABEL);
         DrawTextShadow("Use the Sampler row in the Sequencer (F1). Set note = slice number.",
@@ -5779,6 +5883,17 @@ static void drawWorkSample(float x, float y, float w, float h) {
                  chopState.renderSteps);
         DrawTextShadow(info, (int)x, (int)sy, UI_FONT_SMALL, UI_TEXT_MUTED);
         sy += 14;
+
+        // Chromatic mode
+        DrawTextShadow("Chromatic:", (int)x, (int)(sy + 2), UI_FONT_SMALL, UI_TEXT_LABEL);
+        {
+            ToggleBoolS(x + 70, sy, "On", &daw.chromaticMode, 9);
+            if (daw.chromaticMode) {
+                DraggableIntS(x + 140, sy, "Slot", &daw.chromaticSample, 1, 0, SAMPLER_MAX_SAMPLES - 1, 9);
+                DraggableIntS(x + 260, sy, "Root", &daw.chromaticRootNote, 1, 24, 96, 9);
+            }
+        }
+        sy += 16;
 
         // --- Per-slice params (when a slice is selected) ---
         if (chopState.selectedSlice >= 0 && chopState.selectedSlice < chopState.sliceCount) {
@@ -6183,6 +6298,16 @@ static void dawHandleMidiInput(void) {
                 float vel = ev->data2 / 127.0f;
                 if (note >= NUM_MIDI_NOTES) break;
 
+                // Chromatic sampler mode: play sample at pitched speed
+                if (daw.chromaticMode && samplerCtx &&
+                    daw.chromaticSample >= 0 && daw.chromaticSample < SAMPLER_MAX_SAMPLES &&
+                    samplerCtx->samples[daw.chromaticSample].loaded) {
+                    float semitones = (float)(note - daw.chromaticRootNote);
+                    float speed = powf(2.0f, semitones / 12.0f);
+                    samplerPlay(daw.chromaticSample, vel, speed);
+                    break;
+                }
+
                 SynthPatch *patch; int *voices; int patchIdx, octaveOffset;
                 midiResolveSplit(note, &patch, &voices, &patchIdx, &octaveOffset);
                 int bus = dawPatchToBus(patchIdx);
@@ -6481,6 +6606,7 @@ int main(int argc, char *argv[]) {
     initEffects();
     for (size_t i = 0; i < NUM_DAW_PIANO_KEYS; i++) dawPianoKeyVoices[i] = -1;
     for (int i = 0; i < NUM_VOICES; i++) voiceBus[i] = -1;
+    for (int i = 0; i < 32; i++) daw.chopSliceVolume[i] = 1.0f;
     for (int i = 0; i < NUM_MIDI_NOTES; i++) {
         midiNoteVoices[i] = -1;
         midiSplitLeftVoices[i] = -1;

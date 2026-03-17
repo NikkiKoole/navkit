@@ -250,6 +250,7 @@ static void dawDrumTriggerGeneric(int trackIdx, int busIdx, float vel, float pit
         samplerCtx && samplerCtx->samples[sliceSlot].loaded &&
         samplerCtx->samples[sliceSlot].data) {
         float pVol = plockValue(PLOCK_VOLUME, vel);
+        pVol *= daw.chopSliceVolume[sliceSlot];
         float pitchMod = plockValue(PLOCK_PITCH_OFFSET, 0.0f);
         // Combine p-lock pitch with per-slice pitch offset
         float totalPitch = pitchMod + daw.chopSlicePitch[sliceSlot];

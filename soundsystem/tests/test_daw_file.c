@@ -399,6 +399,12 @@ static void setupTestState(void) {
     daw.masterFx.reverbDamping = 0.4f;
     daw.masterFx.reverbPreDelay = 0.03f;
     daw.masterFx.reverbMix = 0.35f;
+    daw.masterFx.vinylOn = true;
+    daw.masterFx.vinylCrackle = 0.4f;
+    daw.masterFx.vinylNoise = 0.15f;
+    daw.masterFx.vinylWarp = 0.2f;
+    daw.masterFx.vinylWarpRate = 0.8f;
+    daw.masterFx.vinylTone = 0.7f;
 
     // -- TapeFX --
     daw.tapeFx.enabled = true;
@@ -422,6 +428,16 @@ static void setupTestState(void) {
     daw.tapeFx.rewindWobble = 0.25f;
     daw.tapeFx.rewindFilter = 0.45f;
     daw.tapeFx.rewindCurve = 2;
+    daw.tapeFx.tapeStopTime = 0.8f;
+    daw.tapeFx.tapeStopCurve = 2;
+    daw.tapeFx.tapeStopSpinBack = true;
+    daw.tapeFx.tapeStopSpinTime = 0.5f;
+    daw.tapeFx.beatRepeatDiv = 1;
+    daw.tapeFx.beatRepeatDecay = 0.2f;
+    daw.tapeFx.beatRepeatPitch = -3.0f;
+    daw.tapeFx.beatRepeatMix = 0.8f;
+    daw.tapeFx.beatRepeatGate = 0.75f;
+    daw.tapeFx.djfxLoopDiv = 3;
 
     // -- Crossfader --
     daw.crossfader.enabled = true;
@@ -694,6 +710,7 @@ static void verifyMasterFx(void) {
     MXB(tapeOn); MXF(tapeSaturation); MXF(tapeWow); MXF(tapeFlutter); MXF(tapeHiss);
     MXB(delayOn); MXF(delayTime); MXF(delayFeedback); MXF(delayTone); MXF(delayMix);
     MXB(reverbOn); MXF(reverbSize); MXF(reverbDamping); MXF(reverbPreDelay); MXF(reverbMix);
+    MXB(vinylOn); MXF(vinylCrackle); MXF(vinylNoise); MXF(vinylWarp); MXF(vinylWarpRate); MXF(vinylTone);
     #undef MXF
     #undef MXB
 }
@@ -708,6 +725,9 @@ static void verifyTapeFx(void) {
     TF(wow); TF(flutter); TF(drift); TF(speedTarget);
     TF(rewindTime); TF(rewindMinSpeed); TF(rewindVinyl); TF(rewindWobble); TF(rewindFilter);
     TI(rewindCurve);
+    TF(tapeStopTime); TI(tapeStopCurve); TB(tapeStopSpinBack); TF(tapeStopSpinTime);
+    TI(beatRepeatDiv); TF(beatRepeatDecay); TF(beatRepeatPitch); TF(beatRepeatMix); TF(beatRepeatGate);
+    TI(djfxLoopDiv);
     #undef TF
     #undef TB
     #undef TI
@@ -875,9 +895,9 @@ _Static_assert(sizeof(SynthPatch) == 684,
     "SynthPatch size changed! Update _dwWritePatch/_dwApplyPatchKV in daw_file.h, then update this assert.");
 _Static_assert(sizeof(Mixer) == 1272,
     "Mixer size changed! Update dawSave/dawLoad mixer section, then update this assert.");
-_Static_assert(sizeof(MasterFX) == 264,
+_Static_assert(sizeof(MasterFX) == 288,
     "MasterFX size changed! Update dawSave/dawLoad masterfx section, then update this assert.");
-_Static_assert(sizeof(TapeFX) == 92,
+_Static_assert(sizeof(TapeFX) == 140,
     "TapeFX size changed! Update dawSave/dawLoad tapefx section, then update this assert.");
 _Static_assert(sizeof(Sidechain) == 64,
     "Sidechain size changed! Update dawSave/dawLoad sidechain section, then update this assert.");

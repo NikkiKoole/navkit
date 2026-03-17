@@ -287,6 +287,10 @@ static bool dawSave(const char *filepath) {
     fprintf(f, "\n[settings]\n");
     _dw(f, "masterVol", daw.masterVol);
     _db(f, "voiceRandomVowel", daw.voiceRandomVowel);
+    _db(f, "halfSpeed", daw.halfSpeedEnabled);
+    _db(f, "chromaticMode", daw.chromaticMode);
+    _di(f, "chromaticSample", daw.chromaticSample);
+    _di(f, "chromaticRoot", daw.chromaticRootNote);
 
     // [patch.0] through [patch.7]
     for (int i = 0; i < NUM_PATCHES; i++) {
@@ -397,6 +401,9 @@ static bool dawSave(const char *filepath) {
     _dw(f, "mbLowCross", daw.masterFx.mbLowCross); _dw(f, "mbHighCross", daw.masterFx.mbHighCross);
     _dw(f, "mbLowGain", daw.masterFx.mbLowGain); _dw(f, "mbMidGain", daw.masterFx.mbMidGain); _dw(f, "mbHighGain", daw.masterFx.mbHighGain);
     _dw(f, "mbLowDrive", daw.masterFx.mbLowDrive); _dw(f, "mbMidDrive", daw.masterFx.mbMidDrive); _dw(f, "mbHighDrive", daw.masterFx.mbHighDrive);
+    _db(f, "vinylOn", daw.masterFx.vinylOn); _dw(f, "vinylCrackle", daw.masterFx.vinylCrackle);
+    _dw(f, "vinylNoise", daw.masterFx.vinylNoise); _dw(f, "vinylWarp", daw.masterFx.vinylWarp);
+    _dw(f, "vinylWarpRate", daw.masterFx.vinylWarpRate); _dw(f, "vinylTone", daw.masterFx.vinylTone);
 
     // [tapefx]
     fprintf(f, "\n[tapefx]\n");
@@ -411,6 +418,12 @@ static bool dawSave(const char *filepath) {
     _dw(f, "rewindTime", daw.tapeFx.rewindTime); _dw(f, "rewindMinSpeed", daw.tapeFx.rewindMinSpeed);
     _dw(f, "rewindVinyl", daw.tapeFx.rewindVinyl); _dw(f, "rewindWobble", daw.tapeFx.rewindWobble);
     _dw(f, "rewindFilter", daw.tapeFx.rewindFilter); _di(f, "rewindCurve", daw.tapeFx.rewindCurve);
+    _dw(f, "tapeStopTime", daw.tapeFx.tapeStopTime); _di(f, "tapeStopCurve", daw.tapeFx.tapeStopCurve);
+    _db(f, "tapeStopSpinBack", daw.tapeFx.tapeStopSpinBack); _dw(f, "tapeStopSpinTime", daw.tapeFx.tapeStopSpinTime);
+    _di(f, "beatRepeatDiv", daw.tapeFx.beatRepeatDiv); _dw(f, "beatRepeatDecay", daw.tapeFx.beatRepeatDecay);
+    _dw(f, "beatRepeatPitch", daw.tapeFx.beatRepeatPitch); _dw(f, "beatRepeatMix", daw.tapeFx.beatRepeatMix);
+    _dw(f, "beatRepeatGate", daw.tapeFx.beatRepeatGate);
+    _di(f, "djfxLoopDiv", daw.tapeFx.djfxLoopDiv);
 
     // [crossfader]
     fprintf(f, "\n[crossfader]\n");
@@ -1018,6 +1031,10 @@ static bool dawLoad(const char *filepath) {
         case _DW_SEC_SETTINGS:
             if (strcmp(key,"masterVol")==0) daw.masterVol = _dpf(val);
             else if (strcmp(key,"voiceRandomVowel")==0) daw.voiceRandomVowel = _dpb(val);
+            else if (strcmp(key,"halfSpeed")==0) daw.halfSpeedEnabled = _dpb(val);
+            else if (strcmp(key,"chromaticMode")==0) daw.chromaticMode = _dpb(val);
+            else if (strcmp(key,"chromaticSample")==0) daw.chromaticSample = _dpi(val);
+            else if (strcmp(key,"chromaticRoot")==0) daw.chromaticRootNote = _dpi(val);
             break;
         case _DW_SEC_PATCH:
             if (subIndex >= 0 && subIndex < NUM_PATCHES)
@@ -1167,6 +1184,12 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"mbLowDrive")==0) daw.masterFx.mbLowDrive=_dpf(val);
             else if (strcmp(key,"mbMidDrive")==0) daw.masterFx.mbMidDrive=_dpf(val);
             else if (strcmp(key,"mbHighDrive")==0) daw.masterFx.mbHighDrive=_dpf(val);
+            else if (strcmp(key,"vinylOn")==0) daw.masterFx.vinylOn=_dpb(val);
+            else if (strcmp(key,"vinylCrackle")==0) daw.masterFx.vinylCrackle=_dpf(val);
+            else if (strcmp(key,"vinylNoise")==0) daw.masterFx.vinylNoise=_dpf(val);
+            else if (strcmp(key,"vinylWarp")==0) daw.masterFx.vinylWarp=_dpf(val);
+            else if (strcmp(key,"vinylWarpRate")==0) daw.masterFx.vinylWarpRate=_dpf(val);
+            else if (strcmp(key,"vinylTone")==0) daw.masterFx.vinylTone=_dpf(val);
             break;
         case _DW_SEC_TAPEFX:
             if (strcmp(key,"enabled")==0) daw.tapeFx.enabled=_dpb(val);
@@ -1190,6 +1213,16 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"rewindWobble")==0) daw.tapeFx.rewindWobble=_dpf(val);
             else if (strcmp(key,"rewindFilter")==0) daw.tapeFx.rewindFilter=_dpf(val);
             else if (strcmp(key,"rewindCurve")==0) daw.tapeFx.rewindCurve=_dpi(val);
+            else if (strcmp(key,"tapeStopTime")==0) daw.tapeFx.tapeStopTime=_dpf(val);
+            else if (strcmp(key,"tapeStopCurve")==0) daw.tapeFx.tapeStopCurve=_dpi(val);
+            else if (strcmp(key,"tapeStopSpinBack")==0) daw.tapeFx.tapeStopSpinBack=_dpb(val);
+            else if (strcmp(key,"tapeStopSpinTime")==0) daw.tapeFx.tapeStopSpinTime=_dpf(val);
+            else if (strcmp(key,"beatRepeatDiv")==0) daw.tapeFx.beatRepeatDiv=_dpi(val);
+            else if (strcmp(key,"beatRepeatDecay")==0) daw.tapeFx.beatRepeatDecay=_dpf(val);
+            else if (strcmp(key,"beatRepeatPitch")==0) daw.tapeFx.beatRepeatPitch=_dpf(val);
+            else if (strcmp(key,"beatRepeatMix")==0) daw.tapeFx.beatRepeatMix=_dpf(val);
+            else if (strcmp(key,"beatRepeatGate")==0) daw.tapeFx.beatRepeatGate=_dpf(val);
+            else if (strcmp(key,"djfxLoopDiv")==0) daw.tapeFx.djfxLoopDiv=_dpi(val);
             break;
         case _DW_SEC_CROSSFADER:
             if (strcmp(key,"enabled")==0) daw.crossfader.enabled=_dpb(val);

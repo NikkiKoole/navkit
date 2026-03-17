@@ -627,6 +627,12 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
     _sf_writeFloat(f, "mbLowDrive", d->sfEffects.mbLowDrive);
     _sf_writeFloat(f, "mbMidDrive", d->sfEffects.mbMidDrive);
     _sf_writeFloat(f, "mbHighDrive", d->sfEffects.mbHighDrive);
+    _sf_writeBool(f, "vinylEnabled", d->sfEffects.vinylEnabled);
+    _sf_writeFloat(f, "vinylCrackle", d->sfEffects.vinylCrackle);
+    _sf_writeFloat(f, "vinylNoise", d->sfEffects.vinylNoise);
+    _sf_writeFloat(f, "vinylWarp", d->sfEffects.vinylWarp);
+    _sf_writeFloat(f, "vinylWarpRate", d->sfEffects.vinylWarpRate);
+    _sf_writeFloat(f, "vinylToneLP", d->sfEffects.vinylToneLP);
 
     // Dub loop
     fprintf(f, "\n[dub]\n");
@@ -1359,6 +1365,12 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
             else if (strcmp(key, "mbLowDrive") == 0) d->sfEffects.mbLowDrive = _sf_parseFloat(val);
             else if (strcmp(key, "mbMidDrive") == 0) d->sfEffects.mbMidDrive = _sf_parseFloat(val);
             else if (strcmp(key, "mbHighDrive") == 0) d->sfEffects.mbHighDrive = _sf_parseFloat(val);
+            else if (strcmp(key, "vinylEnabled") == 0) d->sfEffects.vinylEnabled = _sf_parseBool(val);
+            else if (strcmp(key, "vinylCrackle") == 0) d->sfEffects.vinylCrackle = _sf_parseFloat(val);
+            else if (strcmp(key, "vinylNoise") == 0) d->sfEffects.vinylNoise = _sf_parseFloat(val);
+            else if (strcmp(key, "vinylWarp") == 0) d->sfEffects.vinylWarp = _sf_parseFloat(val);
+            else if (strcmp(key, "vinylWarpRate") == 0) d->sfEffects.vinylWarpRate = _sf_parseFloat(val);
+            else if (strcmp(key, "vinylToneLP") == 0) d->sfEffects.vinylToneLP = _sf_parseFloat(val);
             break;
 
         case _SF_SEC_DUB:

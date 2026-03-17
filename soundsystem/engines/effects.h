@@ -95,6 +95,12 @@
 // Rewind constants
 #define REWIND_BUFFER_SIZE (SAMPLE_RATE * 3)  // 3 seconds capture
 
+// Beat repeat constants
+#define BEAT_REPEAT_BUFFER_SIZE (SAMPLE_RATE * 2)  // 2s max (covers 1/4 note at 30 BPM)
+
+// Half-speed buffer (4 seconds)
+#define HALF_SPEED_BUFFER_SIZE (SAMPLE_RATE * 4)
+
 // ============================================================================
 // BUS/MIXER SYSTEM
 // ============================================================================
@@ -415,6 +421,35 @@ typedef struct {
     // Phase compensation allpass (matches high crossover phase on low/high bands)
     float mbLowAP1, mbLowAP2;   // Allpass for low band (matches high crossover)
     float mbHighAP1, mbHighAP2;  // Allpass for high band (matches low crossover)
+
+    // Vinyl simulation (always-on character)
+    bool vinylEnabled;
+    float vinylCrackle;      // Sparse click density (0-1)
+    float vinylNoise;        // Surface noise / hiss level (0-1)
+    float vinylWarp;         // Wow/pitch drift amount (0-1)
+    float vinylWarpRate;     // Warp LFO speed (0.1-2.0 Hz)
+    float vinylToneLP;       // Gentle high-cut to darken (0-1, 1=full bandwidth)
+    float vinylWarpPhase;    // Internal: LFO phase
+    float vinylNoiseState;   // Internal: LP-filtered noise state
+    unsigned int vinylRngState; // Internal: noise RNG
+
+    // Tape stop
+    bool tapeStopEnabled;    // Effect available
+    float tapeStopTime;      // Duration of stop (0.2-3.0 seconds)
+    int tapeStopCurve;       // RewindCurve enum (0=linear, 1=exp, 2=S-curve)
+    bool tapeStopSpinBack;   // If true, spin back up after stopping
+    float tapeStopSpinTime;  // Spin-back-up duration (0.1-1.0 seconds)
+
+    // Beat repeat / stutter
+    bool beatRepeatEnabled;
+    int beatRepeatDiv;        // Division: 0=1/4, 1=1/8, 2=1/16, 3=1/32
+    float beatRepeatDecay;    // Volume decay per repeat (0=none, 0.9=rapid fade)
+    float beatRepeatPitch;    // Pitch shift per repeat in semitones (-12 to +12)
+    float beatRepeatMix;      // Dry/wet (0-1, 1=full wet when active)
+    float beatRepeatGate;     // Gate length as fraction of division (0.1-1.0)
+
+    // DJFX looper (params only — state in EffectsContext)
+    int djfxLoopDiv;          // Division: 0=1/4, 1=1/8, 2=1/16, 3=1/32
 } Effects;
 
 // Sidechain source options
@@ -610,6 +645,45 @@ typedef struct EffectsContext {
     float rewindCrossfadePos;         // 0-1 crossfade progress
     float rewindLpState;              // Filter state
     unsigned int rewindNoiseState;    // Noise state for vinyl crackle
+
+    // Vinyl sim state (tone LP filter)
+    float vinylToneLpState;
+
+    // Tape stop state
+    float tapeStopBuffer[REWIND_BUFFER_SIZE];  // Reuse same 3s size
+    int tapeStopWritePos;
+    float tapeStopReadPos;            // Fractional for pitch ramping
+    int tapeStopState;                // TAPE_STOP_IDLE/STOPPING/STOPPED/SPINBACK
+    float tapeStopProgress;           // 0-1 through deceleration
+    float tapeStopCurrentSpeed;
+    float tapeStopCrossfade;
+    float tapeStopLpState;            // Filter darkens as speed drops
+    unsigned int tapeStopNoiseState;
+
+    // Beat repeat state
+    float beatRepeatBuffer[BEAT_REPEAT_BUFFER_SIZE];
+    int beatRepeatWritePos;
+    int beatRepeatState;              // BEAT_REPEAT_IDLE/ACTIVE
+    int beatRepeatLength;             // Captured chunk length in samples
+    int beatRepeatReadPos;            // Current position within chunk
+    int beatRepeatCount;              // How many repeats done
+    float beatRepeatSpeed;            // Current playback speed (for pitch shift)
+    float beatRepeatVolume;           // Current volume (decays per repeat)
+
+    // DJFX looper state
+    float djfxLoopBuffer[BEAT_REPEAT_BUFFER_SIZE];
+    int djfxLoopWritePos;
+    int djfxLoopState;                // 0=idle, 1=active
+    int djfxLoopLength;               // captured chunk length
+    int djfxLoopReadPos;              // current read position within chunk
+    float djfxLoopCrossfade;          // 0-1 for fade in/out
+
+    // Half-speed playback state
+    float halfSpeedBuffer[HALF_SPEED_BUFFER_SIZE];
+    int halfSpeedWritePos;
+    float halfSpeedReadPos;           // fractional for interpolation
+    bool halfSpeedActive;
+    float halfSpeedCrossfade;         // for smooth toggle transitions
 } EffectsContext;
 
 // Initialize an effects context with default values
@@ -795,6 +869,33 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->rewind.crossfadeTime = 0.05f;
     ctx->rewindState = REWIND_IDLE;
     ctx->rewindNoiseState = 67890;
+
+    // Vinyl sim - off by default
+    ctx->params.vinylEnabled = false;
+    ctx->params.vinylCrackle = 0.3f;
+    ctx->params.vinylNoise = 0.1f;
+    ctx->params.vinylWarp = 0.1f;
+    ctx->params.vinylWarpRate = 0.5f;
+    ctx->params.vinylToneLP = 0.8f;
+    ctx->params.vinylWarpPhase = 0.0f;
+    ctx->params.vinylNoiseState = 0.0f;
+    ctx->params.vinylRngState = 98765;
+
+    // Tape stop - off by default
+    ctx->params.tapeStopEnabled = true;     // Available (not currently stopping)
+    ctx->params.tapeStopTime = 1.0f;
+    ctx->params.tapeStopCurve = REWIND_CURVE_EXPONENTIAL;
+    ctx->params.tapeStopSpinBack = true;
+    ctx->params.tapeStopSpinTime = 0.3f;
+    ctx->tapeStopNoiseState = 11111;
+
+    // Beat repeat - off by default
+    ctx->params.beatRepeatEnabled = true;   // Available (not currently repeating)
+    ctx->params.beatRepeatDiv = 2;          // 1/16 note
+    ctx->params.beatRepeatDecay = 0.1f;
+    ctx->params.beatRepeatPitch = 0.0f;
+    ctx->params.beatRepeatMix = 1.0f;
+    ctx->params.beatRepeatGate = 1.0f;
 }
 
 // ============================================================================
@@ -874,6 +975,46 @@ static float fxNoise(void) {
 #define rewindCrossfadePos (fxCtx->rewindCrossfadePos)
 #define rewindLpState (fxCtx->rewindLpState)
 #define rewindNoiseState (fxCtx->rewindNoiseState)
+
+// Vinyl sim macros
+#define vinylRngState (fxCtx->params.vinylRngState)
+#define vinylToneLpState (fxCtx->vinylToneLpState)
+
+// Tape stop macros
+#define tapeStopBuffer (fxCtx->tapeStopBuffer)
+#define tapeStopWritePos (fxCtx->tapeStopWritePos)
+#define tapeStopReadPos (fxCtx->tapeStopReadPos)
+#define tapeStopState (fxCtx->tapeStopState)
+#define tapeStopProgress (fxCtx->tapeStopProgress)
+#define tapeStopCurrentSpeed (fxCtx->tapeStopCurrentSpeed)
+#define tapeStopCrossfade (fxCtx->tapeStopCrossfade)
+#define tapeStopLpState (fxCtx->tapeStopLpState)
+#define tapeStopNoiseState (fxCtx->tapeStopNoiseState)
+
+// Beat repeat macros
+#define beatRepeatBuffer (fxCtx->beatRepeatBuffer)
+#define beatRepeatWritePos (fxCtx->beatRepeatWritePos)
+#define beatRepeatState (fxCtx->beatRepeatState)
+#define beatRepeatLength (fxCtx->beatRepeatLength)
+#define beatRepeatReadPos (fxCtx->beatRepeatReadPos)
+#define beatRepeatCount (fxCtx->beatRepeatCount)
+#define beatRepeatSpeed (fxCtx->beatRepeatSpeed)
+#define beatRepeatVolume (fxCtx->beatRepeatVolume)
+
+// DJFX looper macros
+#define djfxLoopBuffer (fxCtx->djfxLoopBuffer)
+#define djfxLoopWritePos (fxCtx->djfxLoopWritePos)
+#define djfxLoopState (fxCtx->djfxLoopState)
+#define djfxLoopLength (fxCtx->djfxLoopLength)
+#define djfxLoopReadPos (fxCtx->djfxLoopReadPos)
+#define djfxLoopCrossfade (fxCtx->djfxLoopCrossfade)
+
+// Half-speed macros
+#define halfSpeedBuffer (fxCtx->halfSpeedBuffer)
+#define halfSpeedWritePos (fxCtx->halfSpeedWritePos)
+#define halfSpeedReadPos (fxCtx->halfSpeedReadPos)
+#define halfSpeedActive (fxCtx->halfSpeedActive)
+#define halfSpeedCrossfade (fxCtx->halfSpeedCrossfade)
 
 // ============================================================================
 // INIT (backward compatibility wrapper)
@@ -1425,6 +1566,16 @@ static float processMasterCompressor(float sample, float dt) {
 
 #include "rewind.h"
 
+#include "vinyl_sim.h"
+
+#include "tape_stop.h"
+
+#include "beat_repeat.h"
+
+#include "djfx_loop.h"
+
+#include "half_speed.h"
+
 // ============================================================================
 // SIDECHAIN COMPRESSION
 // ============================================================================
@@ -1576,6 +1727,7 @@ static float processEffects(float sample, float dt) {
     sample = processPhaser(sample, dt);
     sample = processComb(sample);
     sample = processTape(sample, dt);
+    sample = processVinylSim(sample, dt);
     sample = processDelay(sample, dt);
 
     // Dub loop routing: preReverb means reverb -> delay (room being echoed)
@@ -1584,13 +1736,20 @@ static float processEffects(float sample, float dt) {
         sample = processReverb(sample);
         sample = processDubLoop(sample, dt);
         sample = processRewind(sample, dt);
+        sample = processTapeStop(sample, dt);
+        sample = processBeatRepeat(sample, 120.0f, dt);
+        sample = processDjfxLoop(sample, 120.0f, dt);
         // Skip reverb again at end
     } else {
         // Normal mode: delay -> reverb (echo in a room)
         sample = processDubLoop(sample, dt);
         sample = processRewind(sample, dt);
+        sample = processTapeStop(sample, dt);
+        sample = processBeatRepeat(sample, 120.0f, dt);
+        sample = processDjfxLoop(sample, 120.0f, dt);
         sample = processReverb(sample);
     }
+    sample = processHalfSpeed(sample);
     return sample;
 }
 
@@ -1598,10 +1757,10 @@ static float processEffects(float sample, float dt) {
 // This allows selective input to dub loop while processing the full mix
 static float processEffectsWithBuses(float drumBus, float synthBus, float dt) {
     _ensureFxCtx();
-    
+
     // Mix for effects that don't have selective input
     float sample = drumBus + synthBus;
-    
+
     sample = processDistortion(sample);
     sample = processBitcrusher(sample);
     sample = processChorus(sample, dt);
@@ -1609,13 +1768,14 @@ static float processEffectsWithBuses(float drumBus, float synthBus, float dt) {
     sample = processPhaser(sample, dt);
     sample = processComb(sample);
     sample = processTape(sample, dt);
+    sample = processVinylSim(sample, dt);
     sample = processDelay(sample, dt);
 
     // Dub loop with selective input
     if (dubLoop.enabled) {
         float dry = sample;
         float wet;
-        
+
         if (dubLoop.preReverb) {
             // Pre-reverb mode: reverb the input before delay
             float reverbedDrums = fx.reverbEnabled ? processReverb(drumBus) : drumBus;
@@ -1624,19 +1784,26 @@ static float processEffectsWithBuses(float drumBus, float synthBus, float dt) {
         } else {
             wet = processDubLoopWithInputs(drumBus, synthBus, dt);
         }
-        
+
         sample = dry * (1.0f - dubLoop.mix) + wet * dubLoop.mix;
         sample = processRewind(sample, dt);
-        
+        sample = processTapeStop(sample, dt);
+        sample = processBeatRepeat(sample, 120.0f, dt);
+        sample = processDjfxLoop(sample, 120.0f, dt);
+
         // Only apply reverb if not in preReverb mode (already applied)
         if (!dubLoop.preReverb) {
             sample = processReverb(sample);
         }
     } else {
         sample = processRewind(sample, dt);
+        sample = processTapeStop(sample, dt);
+        sample = processBeatRepeat(sample, 120.0f, dt);
+        sample = processDjfxLoop(sample, 120.0f, dt);
         sample = processReverb(sample);
     }
-    
+
+    sample = processHalfSpeed(sample);
     return sample;
 }
 
@@ -2077,6 +2244,7 @@ static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
     sample = processPhaser(sample, dt);
     sample = processComb(sample);
     sample = processTape(sample, dt);
+    sample = processVinylSim(sample, dt);
     sample = processDelay(sample, dt);
 
     // preReverb mode: apply reverb to dub loop INPUT (room being echoed)
@@ -2134,6 +2302,9 @@ static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
     }
 
     sample = processRewind(sample, dt);
+    sample = processTapeStop(sample, dt);
+    sample = processBeatRepeat(sample, mixerCtx->tempo, dt);
+    sample = processDjfxLoop(sample, mixerCtx->tempo, dt);
 
     // Normal mode: apply reverb send/return AFTER dub loop (echoes in a room)
     if (doReverbSend) {
@@ -2153,6 +2324,7 @@ static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
     // Master compressor (dynamics last in chain)
     sample = processMasterCompressor(sample, dt);
 
+    sample = processHalfSpeed(sample);
     return sample;
 }
 
@@ -2184,6 +2356,7 @@ static void processMixerOutputStereo(float busInputs[NUM_BUSES], float dt, float
     sample = processPhaser(sample, dt);
     sample = processComb(sample);
     sample = processTape(sample, dt);
+    sample = processVinylSim(sample, dt);
     sample = processDelay(sample, dt);
 
     bool doReverbSend = fx.reverbEnabled;
@@ -2231,6 +2404,9 @@ static void processMixerOutputStereo(float busInputs[NUM_BUSES], float dt, float
     }
 
     sample = processRewind(sample, dt);
+    sample = processTapeStop(sample, dt);
+    sample = processBeatRepeat(sample, mixerCtx->tempo, dt);
+    sample = processDjfxLoop(sample, mixerCtx->tempo, dt);
 
     if (doReverbSend) {
         float wet = _processReverbCore(reverbSend);
@@ -2241,6 +2417,8 @@ static void processMixerOutputStereo(float busInputs[NUM_BUSES], float dt, float
     sample = processMasterEQ(sample);
     sample = processSubBassBoost(sample);
     sample = processMasterCompressor(sample, dt);
+
+    sample = processHalfSpeed(sample);
 
     // Mid/side decode: L = mid' + side, R = mid' - side
     *outL = sample + side;

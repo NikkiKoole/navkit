@@ -327,6 +327,12 @@ static void renderSyncState_OLD(void) {
     fx.compAttack      = daw.masterFx.compAttack;
     fx.compRelease     = daw.masterFx.compRelease;
     fx.compMakeup      = daw.masterFx.compMakeup;
+    fx.vinylEnabled    = daw.masterFx.vinylOn;
+    fx.vinylCrackle    = daw.masterFx.vinylCrackle;
+    fx.vinylNoise      = daw.masterFx.vinylNoise;
+    fx.vinylWarp       = daw.masterFx.vinylWarp;
+    fx.vinylWarpRate   = daw.masterFx.vinylWarpRate;
+    fx.vinylToneLP     = daw.masterFx.vinylTone;
 
     // Sidechain
     fx.sidechainEnabled = daw.sidechain.on;

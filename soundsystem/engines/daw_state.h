@@ -53,6 +53,7 @@ typedef struct {
     bool mbOn;      float mbLowCross, mbHighCross;
                     float mbLowGain, mbMidGain, mbHighGain;
                     float mbLowDrive, mbMidDrive, mbHighDrive;
+    bool vinylOn;   float vinylCrackle, vinylNoise, vinylWarp, vinylWarpRate, vinylTone;
 } MasterFX;
 
 typedef struct {
@@ -66,6 +67,17 @@ typedef struct {
     float rewindTime, rewindMinSpeed, rewindVinyl, rewindWobble, rewindFilter;
     int rewindCurve;
     bool isRewinding;
+    // Tape stop
+    float tapeStopTime, tapeStopSpinTime;
+    int tapeStopCurve;
+    bool tapeStopSpinBack, isTapeStopping;
+    // Beat repeat
+    int beatRepeatDiv;
+    float beatRepeatDecay, beatRepeatPitch, beatRepeatMix, beatRepeatGate;
+    bool isBeatRepeating;
+    // DJFX looper
+    int djfxLoopDiv;
+    bool isDjfxLooping;
 } TapeFX;
 
 typedef struct {
@@ -133,6 +145,15 @@ typedef struct {
     // Chop/flip: per-drum-track sampler slot mapping (-1 = synth, 0+ = sampler slot)
     int chopSliceMap[4];  // SEQ_DRUM_TRACKS = 4
     float chopSlicePitch[32]; // per-slot pitch offset in semitones (applied at trigger)
+    float chopSliceVolume[32]; // per-slot volume multiplier (applied at trigger, 1.0 = unity)
+
+    // Half-speed playback (global toggle)
+    bool halfSpeedEnabled;
+
+    // Chromatic sampler mode
+    bool chromaticMode;       // keyboard plays sampler chromatically
+    int chromaticSample;      // which sample slot to play (0-31)
+    int chromaticRootNote;    // MIDI note for original pitch (default 60 = C4)
 
     // Split keyboard
     bool splitEnabled;

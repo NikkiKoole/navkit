@@ -79,6 +79,14 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
     fx.eqHighFreq      = d->masterFx.eqHighFreq;
     fx.subBassBoost    = d->masterFx.subBassBoost;
 
+    // Vinyl sim
+    fx.vinylEnabled     = d->masterFx.vinylOn;
+    fx.vinylCrackle     = d->masterFx.vinylCrackle;
+    fx.vinylNoise       = d->masterFx.vinylNoise;
+    fx.vinylWarp        = d->masterFx.vinylWarp;
+    fx.vinylWarpRate    = d->masterFx.vinylWarpRate;
+    fx.vinylToneLP      = d->masterFx.vinylTone;
+
     // Multiband
     fx.mbEnabled        = d->masterFx.mbOn;
     fx.mbLowCrossover   = d->masterFx.mbLowCross;
@@ -174,6 +182,26 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
     dubLoop.speedTarget  = d->tapeFx.speedTarget;
     dubLoop.speedSlew    = d->tapeFx.speedSlew;
     dubLoop.preReverb    = d->tapeFx.preReverb;
+
+    // Tape stop
+    fx.tapeStopTime      = d->tapeFx.tapeStopTime;
+    fx.tapeStopCurve     = d->tapeFx.tapeStopCurve;
+    fx.tapeStopSpinBack  = d->tapeFx.tapeStopSpinBack;
+    fx.tapeStopSpinTime  = d->tapeFx.tapeStopSpinTime;
+
+    // Beat repeat
+    fx.beatRepeatDiv     = d->tapeFx.beatRepeatDiv;
+    // Note: fx.djfxLoopDiv synced below
+    fx.beatRepeatDecay   = d->tapeFx.beatRepeatDecay;
+    fx.beatRepeatPitch   = d->tapeFx.beatRepeatPitch;
+    fx.beatRepeatMix     = d->tapeFx.beatRepeatMix;
+    fx.beatRepeatGate    = d->tapeFx.beatRepeatGate;
+
+    // DJFX looper
+    fx.djfxLoopDiv       = d->tapeFx.djfxLoopDiv;
+
+    // Half-speed (state in EffectsContext, accessed via macro)
+    halfSpeedActive      = d->halfSpeedEnabled;
 
     // Rewind
     rewind.rewindTime    = d->tapeFx.rewindTime;
