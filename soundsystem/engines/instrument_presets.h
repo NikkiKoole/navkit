@@ -161,19 +161,32 @@ static void initInstrumentPresets(void) {
     // Pluck - Karplus-Strong string
     instrumentPresets[10].name = "Pluck";
     instrumentPresets[10].patch.p_waveType = WAVE_PLUCK;
-    instrumentPresets[10].patch.p_envelopeEnabled = false;
-    instrumentPresets[10].patch.p_filterEnabled = false;
+    instrumentPresets[10].patch.p_envelopeEnabled = true;
+    instrumentPresets[10].patch.p_filterEnabled = true;
+    instrumentPresets[10].patch.p_filterCutoff = 1.0f;
+    instrumentPresets[10].patch.p_filterResonance = 0.0f;
     instrumentPresets[10].patch.p_pluckBrightness = 0.6f;
     instrumentPresets[10].patch.p_pluckDamping = 0.997f;
+    instrumentPresets[10].patch.p_pluckDamp = 0.0f;
+    instrumentPresets[10].patch.p_attack = 0.001f;
+    instrumentPresets[10].patch.p_decay = 0.0f;
+    instrumentPresets[10].patch.p_sustain = 1.0f;
+    instrumentPresets[10].patch.p_release = 0.3f;
 
     // Marimba
     instrumentPresets[11].name = "Marimba";
     instrumentPresets[11].patch.p_waveType = WAVE_MALLET;
-    instrumentPresets[11].patch.p_envelopeEnabled = false;
-    instrumentPresets[11].patch.p_filterEnabled = false;
+    instrumentPresets[11].patch.p_envelopeEnabled = true;
+    instrumentPresets[11].patch.p_filterEnabled = true;
+    instrumentPresets[11].patch.p_filterCutoff = 1.0f;
+    instrumentPresets[11].patch.p_filterResonance = 0.0f;
     instrumentPresets[11].patch.p_malletPreset = MALLET_PRESET_MARIMBA;
     instrumentPresets[11].patch.p_malletStiffness = 0.3f;
     instrumentPresets[11].patch.p_malletHardness = 0.5f;
+    instrumentPresets[11].patch.p_attack = 0.001f;
+    instrumentPresets[11].patch.p_decay = 0.0f;
+    instrumentPresets[11].patch.p_sustain = 1.0f;
+    instrumentPresets[11].patch.p_release = 0.3f;
 
     // ========================================================================
     // PIKUNIKU / SILLYCORE PRESETS (12-17)
@@ -220,12 +233,16 @@ static void initInstrumentPresets(void) {
     // Piku Glocken - Toy xylophone/glockenspiel
     instrumentPresets[15].name = "Piku Glock";
     instrumentPresets[15].patch.p_waveType = WAVE_MALLET;
-    instrumentPresets[15].patch.p_envelopeEnabled = false;
-    instrumentPresets[15].patch.p_filterEnabled = false;
+    instrumentPresets[15].patch.p_envelopeEnabled = true;
+    instrumentPresets[15].patch.p_filterEnabled = true;
     instrumentPresets[15].patch.p_malletPreset = MALLET_PRESET_GLOCKEN;
     instrumentPresets[15].patch.p_malletStiffness = 0.95f;
     instrumentPresets[15].patch.p_malletHardness = 0.9f;
     instrumentPresets[15].patch.p_filterCutoff = 1.0f;
+    instrumentPresets[15].patch.p_attack = 0.001f;
+    instrumentPresets[15].patch.p_decay = 0.0f;
+    instrumentPresets[15].patch.p_sustain = 1.0f;
+    instrumentPresets[15].patch.p_release = 0.3f;
 
     // Piku Toy Piano - Slightly detuned bell-ish keys
     instrumentPresets[16].name = "Piku Piano";
@@ -242,10 +259,15 @@ static void initInstrumentPresets(void) {
     // Piku Pluck - Cute bouncy pizzicato
     instrumentPresets[17].name = "Piku Pluck";
     instrumentPresets[17].patch.p_waveType = WAVE_PLUCK;
-    instrumentPresets[17].patch.p_envelopeEnabled = false;
-    instrumentPresets[17].patch.p_filterEnabled = false;
+    instrumentPresets[17].patch.p_envelopeEnabled = true;
+    instrumentPresets[17].patch.p_filterEnabled = true;
     instrumentPresets[17].patch.p_pluckBrightness = 0.7f;
     instrumentPresets[17].patch.p_pluckDamping = 0.995f;
+    instrumentPresets[17].patch.p_pluckDamp = 0.0f;
+    instrumentPresets[17].patch.p_attack = 0.001f;
+    instrumentPresets[17].patch.p_decay = 0.0f;
+    instrumentPresets[17].patch.p_sustain = 1.0f;
+    instrumentPresets[17].patch.p_release = 0.3f;
     instrumentPresets[17].patch.p_filterCutoff = 0.9f;
 
     // ========================================================================
@@ -255,14 +277,19 @@ static void initInstrumentPresets(void) {
     // Mac Jangle - Chorus-y jangly guitar
     instrumentPresets[18].name = "Mac Jangle";
     instrumentPresets[18].patch.p_waveType = WAVE_PLUCK;
-    instrumentPresets[18].patch.p_envelopeEnabled = false;
-    instrumentPresets[18].patch.p_filterEnabled = false;
+    instrumentPresets[18].patch.p_envelopeEnabled = true;
+    instrumentPresets[18].patch.p_filterEnabled = true;
     instrumentPresets[18].patch.p_pluckBrightness = 0.5f;
     instrumentPresets[18].patch.p_pluckDamping = 0.994f;
+    instrumentPresets[18].patch.p_pluckDamp = 0.0f;
     instrumentPresets[18].patch.p_filterCutoff = 0.6f;
     instrumentPresets[18].patch.p_filterResonance = 0.15f;
     instrumentPresets[18].patch.p_vibratoRate = 4.5f;
     instrumentPresets[18].patch.p_vibratoDepth = 0.15f;
+    instrumentPresets[18].patch.p_attack = 0.001f;
+    instrumentPresets[18].patch.p_decay = 0.0f;
+    instrumentPresets[18].patch.p_sustain = 1.0f;
+    instrumentPresets[18].patch.p_release = 0.3f;
 
     // Mac Juno - Classic Juno-60 pad sound
     instrumentPresets[19].name = "Mac Juno";
@@ -321,14 +348,18 @@ static void initInstrumentPresets(void) {
     // Mac Vibes - Detuned vibraphone
     instrumentPresets[23].name = "Mac Vibes";
     instrumentPresets[23].patch.p_waveType = WAVE_MALLET;
-    instrumentPresets[23].patch.p_envelopeEnabled = false;
-    instrumentPresets[23].patch.p_filterEnabled = false;
+    instrumentPresets[23].patch.p_envelopeEnabled = true;
+    instrumentPresets[23].patch.p_filterEnabled = true;
     instrumentPresets[23].patch.p_malletPreset = MALLET_PRESET_VIBES;
     instrumentPresets[23].patch.p_malletTremolo = 0.6f;
     instrumentPresets[23].patch.p_malletTremoloRate = 4.5f;
     instrumentPresets[23].patch.p_filterCutoff = 0.7f;
     instrumentPresets[23].patch.p_vibratoRate = 0.5f;
     instrumentPresets[23].patch.p_vibratoDepth = 0.1f;
+    instrumentPresets[23].patch.p_attack = 0.001f;
+    instrumentPresets[23].patch.p_decay = 0.0f;
+    instrumentPresets[23].patch.p_sustain = 1.0f;
+    instrumentPresets[23].patch.p_release = 0.3f;
 
     // ========================================================================
     // DRUM PRESETS (24-31)
@@ -707,9 +738,14 @@ static void initInstrumentPresets(void) {
     // 44: Warm Pluck — Karplus-Strong bass for jazz/Dilla/atmosphere
     instrumentPresets[44].name = "Warm Pluck";
     instrumentPresets[44].patch.p_waveType = WAVE_PLUCK;
-    instrumentPresets[44].patch.p_envelopeEnabled = false;
-    instrumentPresets[44].patch.p_filterEnabled = false;
+    instrumentPresets[44].patch.p_envelopeEnabled = true;
+    instrumentPresets[44].patch.p_filterEnabled = true;
     instrumentPresets[44].patch.p_pluckBrightness = 0.4f;
+    instrumentPresets[44].patch.p_pluckDamp = 0.0f;
+    instrumentPresets[44].patch.p_attack = 0.001f;
+    instrumentPresets[44].patch.p_decay = 0.0f;
+    instrumentPresets[44].patch.p_sustain = 1.0f;
+    instrumentPresets[44].patch.p_release = 0.3f;
     instrumentPresets[44].patch.p_pluckDamping = 0.5f;
     instrumentPresets[44].patch.p_volume = 0.55f;
     instrumentPresets[44].patch.p_filterCutoff = 0.30f;
@@ -722,8 +758,8 @@ static void initInstrumentPresets(void) {
     // 45: Glockenspiel — bright, glassy, short
     instrumentPresets[45].name = "Glockenspiel";
     instrumentPresets[45].patch.p_waveType = WAVE_MALLET;
-    instrumentPresets[45].patch.p_envelopeEnabled = false;
-    instrumentPresets[45].patch.p_filterEnabled = false;
+    instrumentPresets[45].patch.p_envelopeEnabled = true;
+    instrumentPresets[45].patch.p_filterEnabled = true;
     instrumentPresets[45].patch.p_malletPreset = MALLET_PRESET_GLOCKEN;
     instrumentPresets[45].patch.p_malletStiffness = 0.95f;
     instrumentPresets[45].patch.p_malletHardness = 0.9f;
@@ -737,8 +773,8 @@ static void initInstrumentPresets(void) {
     // 46: Xylophone — woody, dry, short
     instrumentPresets[46].name = "Xylophone";
     instrumentPresets[46].patch.p_waveType = WAVE_MALLET;
-    instrumentPresets[46].patch.p_envelopeEnabled = false;
-    instrumentPresets[46].patch.p_filterEnabled = false;
+    instrumentPresets[46].patch.p_envelopeEnabled = true;
+    instrumentPresets[46].patch.p_filterEnabled = true;
     instrumentPresets[46].patch.p_malletPreset = MALLET_PRESET_MARIMBA;
     instrumentPresets[46].patch.p_malletStiffness = 0.7f;
     instrumentPresets[46].patch.p_malletHardness = 0.85f;
@@ -753,8 +789,8 @@ static void initInstrumentPresets(void) {
     // 47: Tubular Bells — long sustain, metallic
     instrumentPresets[47].name = "Tubular Bell";
     instrumentPresets[47].patch.p_waveType = WAVE_MALLET;
-    instrumentPresets[47].patch.p_envelopeEnabled = false;
-    instrumentPresets[47].patch.p_filterEnabled = false;
+    instrumentPresets[47].patch.p_envelopeEnabled = true;
+    instrumentPresets[47].patch.p_filterEnabled = true;
     instrumentPresets[47].patch.p_malletPreset = MALLET_PRESET_VIBES;
     instrumentPresets[47].patch.p_malletStiffness = 0.5f;
     instrumentPresets[47].patch.p_malletHardness = 0.7f;
@@ -860,8 +896,10 @@ static void initInstrumentPresets(void) {
     // 54: Melodic Tabla — pitched membrane with bend
     instrumentPresets[54].name = "Mel Tabla";
     instrumentPresets[54].patch.p_waveType = WAVE_MEMBRANE;
-    instrumentPresets[54].patch.p_envelopeEnabled = false;
-    instrumentPresets[54].patch.p_filterEnabled = false;
+    instrumentPresets[54].patch.p_envelopeEnabled = true;
+    instrumentPresets[54].patch.p_filterEnabled = true;
+    instrumentPresets[54].patch.p_filterCutoff = 1.0f;
+    instrumentPresets[54].patch.p_filterResonance = 0.0f;
     instrumentPresets[54].patch.p_membranePreset = MEMBRANE_TABLA;
     instrumentPresets[54].patch.p_membraneDamping = 0.2f;
     instrumentPresets[54].patch.p_membraneStrike = 0.4f;
@@ -875,8 +913,10 @@ static void initInstrumentPresets(void) {
     // 55: Bird Ambience — nature background texture
     instrumentPresets[55].name = "Bird Ambience";
     instrumentPresets[55].patch.p_waveType = WAVE_BIRD;
-    instrumentPresets[55].patch.p_envelopeEnabled = false;
-    instrumentPresets[55].patch.p_filterEnabled = false;
+    instrumentPresets[55].patch.p_envelopeEnabled = true;
+    instrumentPresets[55].patch.p_filterEnabled = true;
+    instrumentPresets[55].patch.p_filterCutoff = 1.0f;
+    instrumentPresets[55].patch.p_filterResonance = 0.0f;
     instrumentPresets[55].patch.p_birdType = BIRD_CHIRP;
     instrumentPresets[55].patch.p_birdChirpRange = 0.8f;
     instrumentPresets[55].patch.p_birdTrillRate = 8.0f;
@@ -926,15 +966,20 @@ static void initInstrumentPresets(void) {
     // 58: Upright Bass — warm plucked jazz bass
     instrumentPresets[58].name = "Upright Bass";
     instrumentPresets[58].patch.p_waveType = WAVE_PLUCK;
-    instrumentPresets[58].patch.p_envelopeEnabled = false;
-    instrumentPresets[58].patch.p_filterEnabled = false;
+    instrumentPresets[58].patch.p_envelopeEnabled = true;
+    instrumentPresets[58].patch.p_filterEnabled = true;
     instrumentPresets[58].patch.p_pluckBrightness = 0.35f;
     instrumentPresets[58].patch.p_pluckDamping = 0.993f;
+    instrumentPresets[58].patch.p_pluckDamp = 0.0f;
     instrumentPresets[58].patch.p_filterCutoff = 0.25f;
     instrumentPresets[58].patch.p_filterResonance = 0.1f;
     instrumentPresets[58].patch.p_volume = 0.6f;
     instrumentPresets[58].patch.p_analogRolloff = true;
     instrumentPresets[58].patch.p_tubeSaturation = true;
+    instrumentPresets[58].patch.p_attack = 0.001f;
+    instrumentPresets[58].patch.p_decay = 0.0f;
+    instrumentPresets[58].patch.p_sustain = 1.0f;
+    instrumentPresets[58].patch.p_release = 0.3f;
 
     // 59: Flute — breathy SNES/RPG wind
     instrumentPresets[59].name = "Flute";
@@ -953,8 +998,8 @@ static void initInstrumentPresets(void) {
     // 60: Kalimba — lo-fi thumb piano
     instrumentPresets[60].name = "Kalimba";
     instrumentPresets[60].patch.p_waveType = WAVE_MALLET;
-    instrumentPresets[60].patch.p_envelopeEnabled = false;
-    instrumentPresets[60].patch.p_filterEnabled = false;
+    instrumentPresets[60].patch.p_envelopeEnabled = true;
+    instrumentPresets[60].patch.p_filterEnabled = true;
     instrumentPresets[60].patch.p_malletPreset = MALLET_PRESET_MARIMBA;
     instrumentPresets[60].patch.p_malletStiffness = 0.6f;
     instrumentPresets[60].patch.p_malletHardness = 0.4f;
@@ -981,9 +1026,14 @@ static void initInstrumentPresets(void) {
     // 62: Nylon Guitar — bossa nova pluck
     instrumentPresets[62].name = "Nylon Guitar";
     instrumentPresets[62].patch.p_waveType = WAVE_PLUCK;
-    instrumentPresets[62].patch.p_envelopeEnabled = false;
-    instrumentPresets[62].patch.p_filterEnabled = false;
+    instrumentPresets[62].patch.p_envelopeEnabled = true;
+    instrumentPresets[62].patch.p_filterEnabled = true;
     instrumentPresets[62].patch.p_pluckBrightness = 0.45f;
+    instrumentPresets[62].patch.p_pluckDamp = 0.0f;
+    instrumentPresets[62].patch.p_attack = 0.001f;
+    instrumentPresets[62].patch.p_decay = 0.0f;
+    instrumentPresets[62].patch.p_sustain = 1.0f;
+    instrumentPresets[62].patch.p_release = 0.3f;
     instrumentPresets[62].patch.p_pluckDamping = 0.996f;
     instrumentPresets[62].patch.p_filterCutoff = 0.5f;
     instrumentPresets[62].patch.p_filterResonance = 0.05f;
@@ -1162,8 +1212,10 @@ static void initInstrumentPresets(void) {
     // 71: Bongo Hi — membrane, high pitch, sharp attack
     instrumentPresets[71].name = "Bongo Hi";
     instrumentPresets[71].patch.p_waveType = WAVE_MEMBRANE;
-    instrumentPresets[71].patch.p_envelopeEnabled = false;
-    instrumentPresets[71].patch.p_filterEnabled = false;
+    instrumentPresets[71].patch.p_envelopeEnabled = true;
+    instrumentPresets[71].patch.p_filterEnabled = true;
+    instrumentPresets[71].patch.p_filterCutoff = 1.0f;
+    instrumentPresets[71].patch.p_filterResonance = 0.0f;
     instrumentPresets[71].patch.p_membranePreset = MEMBRANE_BONGO;
     instrumentPresets[71].patch.p_membraneDamping = 0.35f;
     instrumentPresets[71].patch.p_membraneStrike = 0.6f;
@@ -1180,8 +1232,10 @@ static void initInstrumentPresets(void) {
     // 72: Bongo Lo — membrane, lower pitch
     instrumentPresets[72].name = "Bongo Lo";
     instrumentPresets[72].patch.p_waveType = WAVE_MEMBRANE;
-    instrumentPresets[72].patch.p_envelopeEnabled = false;
-    instrumentPresets[72].patch.p_filterEnabled = false;
+    instrumentPresets[72].patch.p_envelopeEnabled = true;
+    instrumentPresets[72].patch.p_filterEnabled = true;
+    instrumentPresets[72].patch.p_filterCutoff = 1.0f;
+    instrumentPresets[72].patch.p_filterResonance = 0.0f;
     instrumentPresets[72].patch.p_membranePreset = MEMBRANE_BONGO;
     instrumentPresets[72].patch.p_membraneDamping = 0.25f;
     instrumentPresets[72].patch.p_membraneStrike = 0.5f;
@@ -1198,8 +1252,10 @@ static void initInstrumentPresets(void) {
     // 73: Conga Hi — membrane, slap sound
     instrumentPresets[73].name = "Conga Hi";
     instrumentPresets[73].patch.p_waveType = WAVE_MEMBRANE;
-    instrumentPresets[73].patch.p_envelopeEnabled = false;
-    instrumentPresets[73].patch.p_filterEnabled = false;
+    instrumentPresets[73].patch.p_envelopeEnabled = true;
+    instrumentPresets[73].patch.p_filterEnabled = true;
+    instrumentPresets[73].patch.p_filterCutoff = 1.0f;
+    instrumentPresets[73].patch.p_filterResonance = 0.0f;
     instrumentPresets[73].patch.p_membranePreset = MEMBRANE_CONGA;
     instrumentPresets[73].patch.p_membraneDamping = 0.3f;
     instrumentPresets[73].patch.p_membraneStrike = 0.7f;
@@ -1216,8 +1272,10 @@ static void initInstrumentPresets(void) {
     // 74: Conga Lo — membrane, open tone
     instrumentPresets[74].name = "Conga Lo";
     instrumentPresets[74].patch.p_waveType = WAVE_MEMBRANE;
-    instrumentPresets[74].patch.p_envelopeEnabled = false;
-    instrumentPresets[74].patch.p_filterEnabled = false;
+    instrumentPresets[74].patch.p_envelopeEnabled = true;
+    instrumentPresets[74].patch.p_filterEnabled = true;
+    instrumentPresets[74].patch.p_filterCutoff = 1.0f;
+    instrumentPresets[74].patch.p_filterResonance = 0.0f;
     instrumentPresets[74].patch.p_membranePreset = MEMBRANE_CONGA;
     instrumentPresets[74].patch.p_membraneDamping = 0.2f;
     instrumentPresets[74].patch.p_membraneStrike = 0.5f;
@@ -1440,8 +1498,10 @@ static void initInstrumentPresets(void) {
     // 87: Glockenspiel — bright, bell-like mallet
     instrumentPresets[87].name = "Glockenspiel";
     instrumentPresets[87].patch.p_waveType = WAVE_MALLET;
-    instrumentPresets[87].patch.p_envelopeEnabled = false;
-    instrumentPresets[87].patch.p_filterEnabled = false;
+    instrumentPresets[87].patch.p_envelopeEnabled = true;
+    instrumentPresets[87].patch.p_filterEnabled = true;
+    instrumentPresets[87].patch.p_filterCutoff = 1.0f;
+    instrumentPresets[87].patch.p_filterResonance = 0.0f;
     instrumentPresets[87].patch.p_malletPreset = MALLET_PRESET_GLOCKEN;
     instrumentPresets[87].patch.p_malletHardness = 0.8f;
     instrumentPresets[87].patch.p_malletStrikePos = 0.3f;
@@ -1457,8 +1517,10 @@ static void initInstrumentPresets(void) {
     // 88: Xylophone — bright, sharp, woody
     instrumentPresets[88].name = "Xylophone";
     instrumentPresets[88].patch.p_waveType = WAVE_MALLET;
-    instrumentPresets[88].patch.p_envelopeEnabled = false;
-    instrumentPresets[88].patch.p_filterEnabled = false;
+    instrumentPresets[88].patch.p_envelopeEnabled = true;
+    instrumentPresets[88].patch.p_filterEnabled = true;
+    instrumentPresets[88].patch.p_filterCutoff = 1.0f;
+    instrumentPresets[88].patch.p_filterResonance = 0.0f;
     instrumentPresets[88].patch.p_malletPreset = MALLET_PRESET_XYLOPHONE;
     instrumentPresets[88].patch.p_malletHardness = 0.7f;
     instrumentPresets[88].patch.p_malletStrikePos = 0.2f;
@@ -1474,8 +1536,10 @@ static void initInstrumentPresets(void) {
     // 89: Tubular Bells — deep, resonant church bells
     instrumentPresets[89].name = "Tubular Bells";
     instrumentPresets[89].patch.p_waveType = WAVE_MALLET;
-    instrumentPresets[89].patch.p_envelopeEnabled = false;
-    instrumentPresets[89].patch.p_filterEnabled = false;
+    instrumentPresets[89].patch.p_envelopeEnabled = true;
+    instrumentPresets[89].patch.p_filterEnabled = true;
+    instrumentPresets[89].patch.p_filterCutoff = 1.0f;
+    instrumentPresets[89].patch.p_filterResonance = 0.0f;
     instrumentPresets[89].patch.p_malletPreset = MALLET_PRESET_TUBULAR;
     instrumentPresets[89].patch.p_malletHardness = 0.6f;
     instrumentPresets[89].patch.p_malletStrikePos = 0.15f;
@@ -1579,8 +1643,10 @@ static void initInstrumentPresets(void) {
     // 96: Tabla — melodic tabla, pitched membrane
     instrumentPresets[96].name = "Tabla";
     instrumentPresets[96].patch.p_waveType = WAVE_MEMBRANE;
-    instrumentPresets[96].patch.p_envelopeEnabled = false;
-    instrumentPresets[96].patch.p_filterEnabled = false;
+    instrumentPresets[96].patch.p_envelopeEnabled = true;
+    instrumentPresets[96].patch.p_filterEnabled = true;
+    instrumentPresets[96].patch.p_filterCutoff = 1.0f;
+    instrumentPresets[96].patch.p_filterResonance = 0.0f;
     instrumentPresets[96].patch.p_membranePreset = MEMBRANE_TABLA;
     instrumentPresets[96].patch.p_membraneDamping = 0.2f;
     instrumentPresets[96].patch.p_membraneStrike = 0.4f;
@@ -1595,8 +1661,10 @@ static void initInstrumentPresets(void) {
     // 97: Bird Song — chirpy bird vocalization for game ambience
     instrumentPresets[97].name = "Bird Song";
     instrumentPresets[97].patch.p_waveType = WAVE_BIRD;
-    instrumentPresets[97].patch.p_envelopeEnabled = false;
-    instrumentPresets[97].patch.p_filterEnabled = false;
+    instrumentPresets[97].patch.p_envelopeEnabled = true;
+    instrumentPresets[97].patch.p_filterEnabled = true;
+    instrumentPresets[97].patch.p_filterCutoff = 1.0f;
+    instrumentPresets[97].patch.p_filterResonance = 0.0f;
     instrumentPresets[97].patch.p_birdType = BIRD_WARBLE;
     instrumentPresets[97].patch.p_birdChirpRange = 1.2f;
     instrumentPresets[97].patch.p_birdTrillRate = 0.3f;
@@ -1657,8 +1725,8 @@ static void initInstrumentPresets(void) {
     // 100: Surdo — deep Brazilian bass drum, long membrane decay
     instrumentPresets[100].name = "Surdo";
     instrumentPresets[100].patch.p_waveType = WAVE_MEMBRANE;
-    instrumentPresets[100].patch.p_envelopeEnabled = false;
-    instrumentPresets[100].patch.p_filterEnabled = false;
+    instrumentPresets[100].patch.p_envelopeEnabled = true;
+    instrumentPresets[100].patch.p_filterEnabled = true;
     instrumentPresets[100].patch.p_membranePreset = MEMBRANE_TOM;
     instrumentPresets[100].patch.p_membraneDamping = 0.15f;   // low damping = long sustain
     instrumentPresets[100].patch.p_membraneStrike = 0.3f;     // soft mallet
@@ -1879,7 +1947,8 @@ static void initInstrumentPresets(void) {
     instrumentPresets[112].patch.p_waveType = WAVE_PLUCK;
     instrumentPresets[112].patch.p_pluckBrightness = 0.75f;
     instrumentPresets[112].patch.p_pluckDamping = 0.992f;
-    instrumentPresets[112].patch.p_envelopeEnabled = false;
+    instrumentPresets[112].patch.p_pluckDamp = 0.0f;
+    instrumentPresets[112].patch.p_envelopeEnabled = true;
     instrumentPresets[112].patch.p_filterEnabled = true;
     instrumentPresets[112].patch.p_filterCutoff = 0.45f;
     instrumentPresets[112].patch.p_filterResonance = 0.35f;
@@ -1889,6 +1958,10 @@ static void initInstrumentPresets(void) {
     instrumentPresets[112].patch.p_clickLevel = 0.3f;
     instrumentPresets[112].patch.p_clickTime = 0.003f;
     instrumentPresets[112].patch.p_volume = 0.6f;
+    instrumentPresets[112].patch.p_attack = 0.001f;
+    instrumentPresets[112].patch.p_decay = 0.0f;
+    instrumentPresets[112].patch.p_sustain = 1.0f;
+    instrumentPresets[112].patch.p_release = 0.3f;
 
     // Toy Piano — bright, slightly detuned FM, short and characterful
     instrumentPresets[113].name = "Toy Piano";
@@ -1968,7 +2041,8 @@ static void initInstrumentPresets(void) {
     instrumentPresets[117].patch.p_waveType = WAVE_PLUCK;
     instrumentPresets[117].patch.p_pluckBrightness = 0.7f;
     instrumentPresets[117].patch.p_pluckDamping = 0.994f;
-    instrumentPresets[117].patch.p_envelopeEnabled = false;
+    instrumentPresets[117].patch.p_pluckDamp = 0.0f;
+    instrumentPresets[117].patch.p_envelopeEnabled = true;
     instrumentPresets[117].patch.p_filterEnabled = true;
     instrumentPresets[117].patch.p_filterCutoff = 0.6f;
     instrumentPresets[117].patch.p_filterResonance = 0.2f;
@@ -1980,6 +2054,10 @@ static void initInstrumentPresets(void) {
     instrumentPresets[117].patch.p_clickLevel = 0.4f;
     instrumentPresets[117].patch.p_clickTime = 0.004f;
     instrumentPresets[117].patch.p_volume = 0.55f;
+    instrumentPresets[117].patch.p_attack = 0.001f;
+    instrumentPresets[117].patch.p_decay = 0.0f;
+    instrumentPresets[117].patch.p_sustain = 1.0f;
+    instrumentPresets[117].patch.p_release = 0.3f;
 
     // Muted Guitar — very short damped pluck, percussive funk/reggae
     instrumentPresets[118].name = "Mute Guitar";
@@ -1987,8 +2065,12 @@ static void initInstrumentPresets(void) {
     instrumentPresets[118].patch.p_pluckBrightness = 0.55f;
     instrumentPresets[118].patch.p_pluckDamping = 0.985f;   // very short
     instrumentPresets[118].patch.p_pluckDamp = 0.3f;        // extra damping
-    instrumentPresets[118].patch.p_envelopeEnabled = false;
+    instrumentPresets[118].patch.p_envelopeEnabled = true;
     instrumentPresets[118].patch.p_filterEnabled = true;
+    instrumentPresets[118].patch.p_attack = 0.001f;
+    instrumentPresets[118].patch.p_decay = 0.0f;
+    instrumentPresets[118].patch.p_sustain = 1.0f;
+    instrumentPresets[118].patch.p_release = 0.15f;
     instrumentPresets[118].patch.p_filterCutoff = 0.5f;
     instrumentPresets[118].patch.p_filterKeyTrack = 0.3f;
     instrumentPresets[118].patch.p_analogRolloff = true;
@@ -2126,8 +2208,12 @@ static void initInstrumentPresets(void) {
     instrumentPresets[126].patch.p_pluckBrightness = 0.65f;
     instrumentPresets[126].patch.p_pluckDamping = 0.997f;   // long sustain
     instrumentPresets[126].patch.p_pluckDamp = 0.0f;
-    instrumentPresets[126].patch.p_envelopeEnabled = false;
+    instrumentPresets[126].patch.p_envelopeEnabled = true;
     instrumentPresets[126].patch.p_filterEnabled = true;
+    instrumentPresets[126].patch.p_attack = 0.001f;
+    instrumentPresets[126].patch.p_decay = 0.0f;
+    instrumentPresets[126].patch.p_sustain = 1.0f;
+    instrumentPresets[126].patch.p_release = 0.3f;
     instrumentPresets[126].patch.p_filterCutoff = 0.7f;
     instrumentPresets[126].patch.p_filterKeyTrack = 0.4f;
     instrumentPresets[126].patch.p_drive = 0.1f;
