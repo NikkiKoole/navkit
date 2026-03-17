@@ -4238,6 +4238,17 @@ static void drawParamBus(float x, float y, float w, float h) {
             DraggableFloatS(rightX, ry, "FB", &daw.mixer.delayFB[b], 0.02f, 0.0f, 0.8f, fs); ry += row;
             DraggableFloatS(rightX, ry, "Mix", &daw.mixer.delayMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
         }
+        ry += 2;
+
+        // Compressor
+        ToggleBoolS(rightX, ry, "Comp", &daw.mixer.compOn[b], fs); ry += row;
+        if (daw.mixer.compOn[b]) {
+            DraggableFloatS(rightX, ry, "Thresh", &daw.mixer.compThreshold[b], 1.0f, -40.0f, 0.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Ratio", &daw.mixer.compRatio[b], 0.5f, 1.0f, 20.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Atk", &daw.mixer.compAttack[b], 0.005f, 0.001f, 0.1f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Rel", &daw.mixer.compRelease[b], 0.01f, 0.01f, 1.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Makeup", &daw.mixer.compMakeup[b], 0.5f, 0.0f, 24.0f, fs); ry += row;
+        }
 
         // Vertical separator
         if (b < nBuses - 1) {

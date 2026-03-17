@@ -145,6 +145,13 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
         setBusDelay(b, d->mixer.delayOn[b], d->mixer.delayTime[b],
                     d->mixer.delayFB[b], d->mixer.delayMix[b]);
         setBusDelaySync(b, d->mixer.delaySync[b], d->mixer.delaySyncDiv[b]);
+        // Per-bus compressor
+        mixerCtx->bus[b].compEnabled = d->mixer.compOn[b];
+        mixerCtx->bus[b].compThreshold = d->mixer.compThreshold[b];
+        mixerCtx->bus[b].compRatio = d->mixer.compRatio[b];
+        mixerCtx->bus[b].compAttack = d->mixer.compAttack[b];
+        mixerCtx->bus[b].compRelease = d->mixer.compRelease[b];
+        mixerCtx->bus[b].compMakeup = d->mixer.compMakeup[b];
     }
 
     // Tape/dub loop

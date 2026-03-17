@@ -873,7 +873,7 @@ static void verifyPatterns(void) {
 //    the expected size here.
 _Static_assert(sizeof(SynthPatch) == 684,
     "SynthPatch size changed! Update _dwWritePatch/_dwApplyPatchKV in daw_file.h, then update this assert.");
-_Static_assert(sizeof(Mixer) == 1104,
+_Static_assert(sizeof(Mixer) == 1272,
     "Mixer size changed! Update dawSave/dawLoad mixer section, then update this assert.");
 _Static_assert(sizeof(MasterFX) == 264,
     "MasterFX size changed! Update dawSave/dawLoad masterfx section, then update this assert.");

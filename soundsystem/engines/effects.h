@@ -200,6 +200,14 @@ typedef struct {
 
     // Delay send
     float delaySend;        // 0-1 (amount sent to send delay)
+
+    // Compressor
+    bool compEnabled;
+    float compThreshold;    // dB (-40 to 0)
+    float compRatio;        // 1:1 to 20:1
+    float compAttack;       // seconds (0.001-0.1)
+    float compRelease;      // seconds (0.01-1.0)
+    float compMakeup;       // dB (0-24)
 } BusEffects;
 
 // Per-bus processing state
@@ -235,6 +243,9 @@ typedef struct {
     float busCombBuf[COMB_BUFFER_SIZE];
     int busCombWritePos;
     float busCombFilterLp;
+
+    // Compressor state
+    float compEnvelope;
 } BusState;
 
 // Mixer context (all buses + shared state)
@@ -1684,6 +1695,14 @@ static void initBusDefaults(BusEffects* bus) {
     bus->combDamping = 0.3f;
 
     bus->reverbSend = 0.0f;        // No reverb send by default
+    bus->delaySend = 0.0f;
+
+    bus->compEnabled = false;
+    bus->compThreshold = -12.0f;
+    bus->compRatio = 4.0f;
+    bus->compAttack = 0.01f;
+    bus->compRelease = 0.1f;
+    bus->compMakeup = 0.0f;
 }
 
 // Initialize mixer context
@@ -1747,7 +1766,6 @@ static int _getBusDelaySamples(BusEffects* bus, float tempo) {
 // Returns: processed sample (post volume/pan/filter/dist/delay)
 static float processBusEffects(float input, int busIndex, float dt) {
     _ensureMixerCtx();
-    (void)dt;  // Currently unused, may be needed for future time-based effects
     
     if (busIndex < 0 || busIndex >= NUM_BUSES) return input;
     
@@ -1818,6 +1836,24 @@ static float processBusEffects(float input, int busIndex, float dt) {
         float dry = sample;
         float driven = applyDistortion(sample, bus->distDrive, bus->distMode);
         sample = dry * (1.0f - bus->distMix) + driven * bus->distMix;
+    }
+
+    // === COMPRESSOR ===
+    if (bus->compEnabled) {
+        float level = fabsf(sample);
+        float *env = &state->compEnvelope;
+        float coeff = (level > *env) ? bus->compAttack : bus->compRelease;
+        float alpha = 1.0f - expf(-dt / (coeff + 0.0001f));
+        *env += alpha * (level - *env);
+
+        float envDb = 20.0f * log10f(*env + 1e-10f);
+        float gainReduction = 0.0f;
+        if (envDb > bus->compThreshold) {
+            float excess = envDb - bus->compThreshold;
+            gainReduction = excess * (1.0f - 1.0f / bus->compRatio);
+        }
+        float gain = powf(10.0f, (-gainReduction + bus->compMakeup) / 20.0f);
+        sample *= gain;
     }
 
     // === CHORUS ===

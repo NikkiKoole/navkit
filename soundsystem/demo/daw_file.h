@@ -340,6 +340,12 @@ static bool dawSave(const char *filepath) {
         snprintf(k, sizeof(k), "combFB%d", b); _dw(f, k, daw.mixer.combFB[b]);
         snprintf(k, sizeof(k), "combMix%d", b); _dw(f, k, daw.mixer.combMix[b]);
         snprintf(k, sizeof(k), "combDamping%d", b); _dw(f, k, daw.mixer.combDamping[b]);
+        snprintf(k, sizeof(k), "compOn%d", b); _db(f, k, daw.mixer.compOn[b]);
+        snprintf(k, sizeof(k), "compThresh%d", b); _dw(f, k, daw.mixer.compThreshold[b]);
+        snprintf(k, sizeof(k), "compRatio%d", b); _dw(f, k, daw.mixer.compRatio[b]);
+        snprintf(k, sizeof(k), "compAtk%d", b); _dw(f, k, daw.mixer.compAttack[b]);
+        snprintf(k, sizeof(k), "compRel%d", b); _dw(f, k, daw.mixer.compRelease[b]);
+        snprintf(k, sizeof(k), "compMakeup%d", b); _dw(f, k, daw.mixer.compMakeup[b]);
     }
 
     // [sidechain]
@@ -1065,6 +1071,12 @@ static bool dawLoad(const char *filepath) {
                     else if (strcmp(base,"combFB")==0) daw.mixer.combFB[b]=_dpf(val);
                     else if (strcmp(base,"combMix")==0) daw.mixer.combMix[b]=_dpf(val);
                     else if (strcmp(base,"combDamping")==0) daw.mixer.combDamping[b]=_dpf(val);
+                    else if (strcmp(base,"compOn")==0) daw.mixer.compOn[b]=_dpb(val);
+                    else if (strcmp(base,"compThresh")==0) daw.mixer.compThreshold[b]=_dpf(val);
+                    else if (strcmp(base,"compRatio")==0) daw.mixer.compRatio[b]=_dpf(val);
+                    else if (strcmp(base,"compAtk")==0) daw.mixer.compAttack[b]=_dpf(val);
+                    else if (strcmp(base,"compRel")==0) daw.mixer.compRelease[b]=_dpf(val);
+                    else if (strcmp(base,"compMakeup")==0) daw.mixer.compMakeup[b]=_dpf(val);
                 }
             }
             break;

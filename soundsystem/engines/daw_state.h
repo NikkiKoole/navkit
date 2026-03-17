@@ -88,6 +88,8 @@ typedef struct {
     float combMix[NUM_BUSES];  float combDamping[NUM_BUSES];
     bool delayOn[NUM_BUSES];   bool delaySync[NUM_BUSES];  int delaySyncDiv[NUM_BUSES];
     float delayTime[NUM_BUSES]; float delayFB[NUM_BUSES];  float delayMix[NUM_BUSES];
+    bool compOn[NUM_BUSES];    float compThreshold[NUM_BUSES]; float compRatio[NUM_BUSES];
+    float compAttack[NUM_BUSES]; float compRelease[NUM_BUSES]; float compMakeup[NUM_BUSES];
 } Mixer;
 
 typedef struct {
