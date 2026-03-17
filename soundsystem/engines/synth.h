@@ -2194,6 +2194,9 @@ static float processVoice(Voice *v, float sampleRate) {
             } else {
                 sample = v2 + res * v1 * 0.5f;
             }
+            // Hard limit: prevent blowup from reaching the output
+            if (sample > 4.0f) sample = 4.0f;
+            if (sample < -4.0f) sample = -4.0f;
         }
     }
     

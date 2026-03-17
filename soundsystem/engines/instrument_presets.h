@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 151
+#define NUM_INSTRUMENT_PRESETS 154
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -2740,6 +2740,67 @@ static void initInstrumentPresets(void) {
     instrumentPresets[150].patch.p_drive = 0.3f;
     instrumentPresets[150].patch.p_driveMode = DIST_FOLDBACK;
     instrumentPresets[150].patch.p_volume = 0.3f;
+
+    // ========================================================================
+    // TOM SET (151-153) — hi/mid/lo, based on 808 Tom topology
+    // ========================================================================
+
+    // 151: Tom Hi — punchy, short, high-pitched tom
+    instrumentPresets[151].name = "Tom Hi";
+    instrumentPresets[151].patch.p_waveType = WAVE_FM;
+    instrumentPresets[151].patch.p_fmModRatio = 2.0f;
+    instrumentPresets[151].patch.p_fmModIndex = 0.94f;
+    instrumentPresets[151].patch.p_attack = 0.0f;
+    instrumentPresets[151].patch.p_decay = 0.2f;
+    instrumentPresets[151].patch.p_sustain = 0.0f;
+    instrumentPresets[151].patch.p_release = 0.04f;
+    instrumentPresets[151].patch.p_expDecay = true;
+    instrumentPresets[151].patch.p_filterCutoff = 1.0f;
+    instrumentPresets[151].patch.p_filterResonance = 0.0f;
+    instrumentPresets[151].patch.p_pitchEnvAmount = 10.0f;
+    instrumentPresets[151].patch.p_pitchEnvDecay = 0.03f;
+    instrumentPresets[151].patch.p_pitchEnvLinear = true;
+    instrumentPresets[151].patch.p_useTriggerFreq = true;
+    instrumentPresets[151].patch.p_triggerFreq = 160.0f;
+    instrumentPresets[151].patch.p_volume = 0.5f;
+
+    // 152: Tom Mid — medium body, classic fill tom
+    instrumentPresets[152].name = "Tom Mid";
+    instrumentPresets[152].patch.p_waveType = WAVE_FM;
+    instrumentPresets[152].patch.p_fmModRatio = 2.0f;
+    instrumentPresets[152].patch.p_fmModIndex = 0.94f;
+    instrumentPresets[152].patch.p_attack = 0.0f;
+    instrumentPresets[152].patch.p_decay = 0.3f;
+    instrumentPresets[152].patch.p_sustain = 0.0f;
+    instrumentPresets[152].patch.p_release = 0.05f;
+    instrumentPresets[152].patch.p_expDecay = true;
+    instrumentPresets[152].patch.p_filterCutoff = 1.0f;
+    instrumentPresets[152].patch.p_filterResonance = 0.0f;
+    instrumentPresets[152].patch.p_pitchEnvAmount = 12.0f;
+    instrumentPresets[152].patch.p_pitchEnvDecay = 0.04f;
+    instrumentPresets[152].patch.p_pitchEnvLinear = true;
+    instrumentPresets[152].patch.p_useTriggerFreq = true;
+    instrumentPresets[152].patch.p_triggerFreq = 100.0f;
+    instrumentPresets[152].patch.p_volume = 0.5f;
+
+    // 153: Tom Lo — deep floor tom, long decay
+    instrumentPresets[153].name = "Tom Lo";
+    instrumentPresets[153].patch.p_waveType = WAVE_FM;
+    instrumentPresets[153].patch.p_fmModRatio = 2.0f;
+    instrumentPresets[153].patch.p_fmModIndex = 0.94f;
+    instrumentPresets[153].patch.p_attack = 0.0f;
+    instrumentPresets[153].patch.p_decay = 0.45f;
+    instrumentPresets[153].patch.p_sustain = 0.0f;
+    instrumentPresets[153].patch.p_release = 0.06f;
+    instrumentPresets[153].patch.p_expDecay = true;
+    instrumentPresets[153].patch.p_filterCutoff = 1.0f;
+    instrumentPresets[153].patch.p_filterResonance = 0.0f;
+    instrumentPresets[153].patch.p_pitchEnvAmount = 14.0f;
+    instrumentPresets[153].patch.p_pitchEnvDecay = 0.06f;
+    instrumentPresets[153].patch.p_pitchEnvLinear = true;
+    instrumentPresets[153].patch.p_useTriggerFreq = true;
+    instrumentPresets[153].patch.p_triggerFreq = 60.0f;
+    instrumentPresets[153].patch.p_volume = 0.5f;
 }
 
 #endif // INSTRUMENT_PRESETS_H

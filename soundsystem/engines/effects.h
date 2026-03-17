@@ -1411,9 +1411,13 @@ static float processMasterCompressor(float sample, float dt) {
 
     // Apply gain reduction + makeup
     float totalGainDb = -gainReduction + fx.compMakeup;
+    if (totalGainDb > 24.0f) totalGainDb = 24.0f;  // cap gain to prevent blowup
     float gain = powf(10.0f, totalGainDb / 20.0f);
-
-    return sample * gain;
+    float out = sample * gain;
+    // Hard limit: prevent NaN/inf from propagating
+    if (out > 4.0f) out = 4.0f;
+    if (out < -4.0f) out = -4.0f;
+    return out;
 }
 
 
@@ -1797,7 +1801,12 @@ static float processBusEffects(float input, int busIndex, float dt) {
         float v2 = state->filterIc2eq + a2 * state->filterIc1eq + a3 * v3;
         state->filterIc1eq = 2.0f * v1 - state->filterIc1eq;
         state->filterIc2eq = 2.0f * v2 - state->filterIc2eq;
-        
+        // Clamp state to prevent blowup
+        if (state->filterIc1eq > 4.0f) state->filterIc1eq = 4.0f;
+        if (state->filterIc1eq < -4.0f) state->filterIc1eq = -4.0f;
+        if (state->filterIc2eq > 4.0f) state->filterIc2eq = 4.0f;
+        if (state->filterIc2eq < -4.0f) state->filterIc2eq = -4.0f;
+
         // Select output based on filter type
         float lp = v2;
         float bp = v1;
@@ -1852,8 +1861,13 @@ static float processBusEffects(float input, int busIndex, float dt) {
             float excess = envDb - bus->compThreshold;
             gainReduction = excess * (1.0f - 1.0f / bus->compRatio);
         }
-        float gain = powf(10.0f, (-gainReduction + bus->compMakeup) / 20.0f);
+        float totalDb = -gainReduction + bus->compMakeup;
+        if (totalDb > 24.0f) totalDb = 24.0f;  // cap gain to prevent blowup
+        float gain = powf(10.0f, totalDb / 20.0f);
         sample *= gain;
+        // Hard limit: prevent NaN/inf from propagating
+        if (sample > 4.0f) sample = 4.0f;
+        if (sample < -4.0f) sample = -4.0f;
     }
 
     // === CHORUS ===
