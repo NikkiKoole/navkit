@@ -610,6 +610,10 @@ static void dawSyncSequencer(void) {
         seq.chainDefaultLoops = daw.song.loopsPerPattern > 0 ? daw.song.loopsPerPattern : 1;
         // Read back current pattern from sequencer (chain controls it)
         daw.transport.currentPattern = seq.currentPattern;
+    } else if ((recMode != REC_OFF || prChainView) && recChainLength > 1) {
+        // Chain recording: let the chain we set up drive pattern advance
+        // Sync UI pattern selector back from sequencer
+        daw.transport.currentPattern = seq.currentPattern;
     } else {
         // Pattern mode: no chain, DAW controls current pattern directly
         seq.chainLength = 0;
@@ -670,6 +674,10 @@ static void dawStopSequencer(void) {
     if (daw.song.songMode && daw.song.length > 0) {
         daw.transport.currentPattern = daw.song.patterns[0];
         seq.currentPattern = daw.song.patterns[0];
+    } else if (prChainView && recChainStart >= 0) {
+        // Rewind to start of chain
+        daw.transport.currentPattern = recChainStart;
+        seq.currentPattern = recChainStart;
     }
 }
 

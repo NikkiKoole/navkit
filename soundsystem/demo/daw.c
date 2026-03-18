@@ -578,6 +578,18 @@ static void dawUpdateRecording(void) {
     // Sync UI pattern selector with sequencer's current pattern during recording
     if (recMode == REC_RECORDING && recChainLength > 0) {
         daw.transport.currentPattern = seq.currentPattern;
+
+        // Auto-stop recording after chain completes one full pass
+        // chainPos wraps to 0 when it reaches the end — detect that
+        if (seq.chainPos == 0 && seq.currentPattern == recChainStart &&
+            seq.trackStep[0] == 0 && seq.playCount > 0) {
+            recMode = REC_OFF;
+            memset(recHeld, 0, sizeof(recHeld));
+            // Keep playing — chain loops so user hears their recording
+            // Reset to start of chain for clean loop
+            seq.chainPos = 0;
+            seq.chainLoopCount = 0;
+        }
     }
 }
 
@@ -608,7 +620,28 @@ static void dawRecordToggle(void) {
             seq.currentPattern = startPat;
             daw.transport.currentPattern = startPat;
 
-            // Clear destination patterns (in replace mode)
+            // Copy drum tracks from starting pattern into all chain patterns
+            // so the drum loop plays continuously while recording melody
+            Pattern *srcPat = &seq.patterns[startPat];
+            for (int i = 1; i < bars; i++) {
+                Pattern *dstPat = &seq.patterns[startPat + i];
+                for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
+                    dstPat->trackLength[t] = srcPat->trackLength[t];
+                    dstPat->trackType[t] = srcPat->trackType[t];
+                    for (int s = 0; s < SEQ_MAX_STEPS; s++) {
+                        dstPat->steps[t][s] = srcPat->steps[t][s];
+                    }
+                }
+                // Also copy sampler track if it has content
+                int st = SEQ_TRACK_SAMPLER;
+                dstPat->trackLength[st] = srcPat->trackLength[st];
+                dstPat->trackType[st] = srcPat->trackType[st];
+                for (int s = 0; s < SEQ_MAX_STEPS; s++) {
+                    dstPat->steps[st][s] = srcPat->steps[st][s];
+                }
+            }
+
+            // Clear melody track in destination patterns (in replace mode)
             if (recWriteMode == REC_REPLACE) {
                 int track = recTargetTrack();
                 if (track >= 0) {
@@ -624,10 +657,7 @@ static void dawRecordToggle(void) {
     } else {
         recMode = REC_OFF;
         memset(recHeld, 0, sizeof(recHeld));
-        // Keep chain view active so user can see what was recorded
-        // Clear the sequencer chain so playback loops the current pattern
-        seq.chainLength = 0;
-        seq.chainPos = 0;
+        // Keep chain and chain view active so playback loops the full recording
     }
 }
 
@@ -2644,7 +2674,18 @@ static void drawWorkPiano(float x, float y, float w, float h) {
             DrawRectangleLinesEx(rc, 1, prChainView ? GREEN : UI_BORDER);
             DrawTextShadow(TextFormat("Chain %d", recChainLength), (int)rc.x + 3, (int)y + 3, UI_FONT_SMALL,
                           prChainView ? WHITE : GRAY);
-            if (chov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { prChainView = !prChainView; prChainScroll = 0; ui_consume_click(); }
+            if (chov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                prChainView = !prChainView;
+                prChainScroll = 0;
+                if (!prChainView) {
+                    // Exiting chain view: clear chain so single-pattern mode resumes
+                    seq.chainLength = 0;
+                    seq.chainPos = 0;
+                    recChainStart = -1;
+                    recChainLength = 0;
+                }
+                ui_consume_click();
+            }
             tx += 56;
         }
 
@@ -2658,6 +2699,66 @@ static void drawWorkPiano(float x, float y, float w, float h) {
         else
             DrawTextShadow(TextFormat("Oct %d-%d  (scroll to shift)", prScrollNote/12, (prScrollNote+visNotes)/12),
                            (int)(x + 300), (int)y + 4, 9, UI_TEXT_MUTED);
+    }
+
+    // --- Timeline ruler (chain view: clickable bar numbers for seeking) ---
+    if (chainActive) {
+        float rulerH = 14;
+        float rulerY = gridY;
+        gridY += rulerH;
+        gridH -= rulerH;
+
+        DrawRectangle((int)gridX, (int)rulerY, (int)gridW, (int)rulerH, (Color){30,30,35,255});
+        // Draw bar numbers and pattern boundaries
+        int acc = 0;
+        for (int ci = 0; ci < recChainLength; ci++) {
+            Pattern *cp = &seq.patterns[recChainStart + ci];
+            int tl = cp->trackLength[mt]; if (tl <= 0) tl = 16;
+            float barX = gridX + (acc - prChainScroll) * stepW;
+            float barEndX = gridX + (acc + tl - prChainScroll) * stepW;
+            if (barEndX > gridX && barX < gridX + gridW) {
+                // Bar number label
+                DrawTextShadow(TextFormat("P%d", recChainStart + ci + 1),
+                              (int)(barX + 2), (int)(rulerY + 2), 8,
+                              (ci == seq.currentPattern - recChainStart) ? WHITE : UI_TEXT_DIM);
+                // Separator line
+                if (ci > 0) DrawLine((int)barX, (int)rulerY, (int)barX, (int)(rulerY + rulerH), (Color){200,100,50,255});
+            }
+            acc += tl;
+        }
+        DrawLine((int)gridX, (int)(rulerY + rulerH - 1), (int)(gridX + gridW), (int)(rulerY + rulerH - 1), UI_BORDER);
+
+        // Click to seek
+        Rectangle rulerRect = {gridX, rulerY, gridW, rulerH};
+        if (CheckCollisionPointRec(mouse, rulerRect) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            int clickGlobalStep = prChainScroll + (int)((mouse.x - gridX) / stepW);
+            // Map global step to pattern + local step
+            int seekAcc = 0;
+            for (int ci = 0; ci < recChainLength; ci++) {
+                Pattern *cp = &seq.patterns[recChainStart + ci];
+                int tl = cp->trackLength[mt]; if (tl <= 0) tl = 16;
+                if (clickGlobalStep < seekAcc + tl) {
+                    // Seek to this pattern at this step
+                    int localStep = clickGlobalStep - seekAcc;
+                    seq.currentPattern = recChainStart + ci;
+                    daw.transport.currentPattern = recChainStart + ci;
+                    seq.chainPos = ci;
+                    seq.chainLoopCount = 0;
+                    for (int t = 0; t < seq.trackCount; t++) {
+                        seq.trackStep[t] = localStep;
+                        seq.trackTick[t] = 0;
+                        seq.trackTriggered[t] = false;
+                    }
+                    break;
+                }
+                seekAcc += tl;
+            }
+            ui_consume_click();
+        }
+
+        // Recalculate noteH with adjusted gridH
+        noteH = gridH / visNotes;
+        if (noteH < 6) noteH = 6;
     }
 
     // --- Scroll pitch range with mouse wheel ---
