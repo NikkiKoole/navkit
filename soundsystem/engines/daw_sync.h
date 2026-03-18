@@ -79,6 +79,9 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
     fx.eqHighFreq      = d->masterFx.eqHighFreq;
     fx.subBassBoost    = d->masterFx.subBassBoost;
 
+    // BPM (for beat-synced effects)
+    fx.bpm              = d->transport.bpm;
+
     // Vinyl sim
     fx.vinylEnabled     = d->masterFx.vinylOn;
     fx.vinylCrackle     = d->masterFx.vinylCrackle;
@@ -200,8 +203,8 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
     // DJFX looper
     fx.djfxLoopDiv       = d->tapeFx.djfxLoopDiv;
 
-    // Half-speed (state in EffectsContext, accessed via macro)
-    halfSpeedActive      = d->halfSpeedEnabled;
+    // Master speed (state in EffectsContext, accessed via macro)
+    halfSpeedActive      = d->masterSpeed;
 
     // Rewind
     rewind.rewindTime    = d->tapeFx.rewindTime;

@@ -147,8 +147,8 @@ typedef struct {
     float chopSlicePitch[32]; // per-slot pitch offset in semitones (applied at trigger)
     float chopSliceVolume[32]; // per-slot volume multiplier (applied at trigger, 1.0 = unity)
 
-    // Half-speed playback (global toggle)
-    bool halfSpeedEnabled;
+    // Master speed (global playback rate, 1.0 = normal)
+    float masterSpeed;  // 0.25-2.0, default 1.0 (right-click to reset)
 
     // Chromatic sampler mode
     bool chromaticMode;       // keyboard plays sampler chromatically

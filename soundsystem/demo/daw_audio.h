@@ -79,8 +79,10 @@ static void DawAudioCallback(void *buffer, unsigned int frames) {
         dawSyncPending = false;
     }
 
-    setMixerTempo(daw.transport.bpm);
-    synthCtx->bpm = daw.transport.bpm;
+    // Scale BPM by master speed so sequencer + audio stay in sync
+    float effectiveBpm = daw.transport.bpm * (daw.masterSpeed > 0.01f ? daw.masterSpeed : 1.0f);
+    setMixerTempo(effectiveBpm);
+    synthCtx->bpm = effectiveBpm;
     if (seq.playing) {
         synthCtx->beatPosition = seq.beatPosition;
     }

@@ -450,6 +450,9 @@ typedef struct {
 
     // DJFX looper (params only — state in EffectsContext)
     int djfxLoopDiv;          // Division: 0=1/4, 1=1/8, 2=1/16, 3=1/32
+
+    // Tempo (for beat-synced effects — set by caller or daw sync)
+    float bpm;                // Current BPM (default 120)
 } Effects;
 
 // Sidechain source options
@@ -685,7 +688,7 @@ typedef struct EffectsContext {
     float halfSpeedBuffer[HALF_SPEED_BUFFER_SIZE];
     int halfSpeedWritePos;
     float halfSpeedReadPos;           // fractional for interpolation
-    bool halfSpeedActive;
+    float halfSpeedActive;            // target speed (1.0 = normal/bypass, <1 = slow, >1 = fast)
     float halfSpeedCrossfade;         // for smooth toggle transitions
 } EffectsContext;
 
@@ -899,6 +902,9 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->params.beatRepeatPitch = 0.0f;
     ctx->params.beatRepeatMix = 1.0f;
     ctx->params.beatRepeatGate = 1.0f;
+
+    // Default BPM for beat-synced effects
+    ctx->params.bpm = 120.0f;
 }
 
 // ============================================================================
@@ -1743,16 +1749,16 @@ static float processEffects(float sample, float dt) {
         sample = processDubLoop(sample, dt);
         sample = processRewind(sample, dt);
         sample = processTapeStop(sample, dt);
-        sample = processBeatRepeat(sample, 120.0f, dt);
-        sample = processDjfxLoop(sample, 120.0f, dt);
+        sample = processBeatRepeat(sample, fx.bpm, dt);
+        sample = processDjfxLoop(sample, fx.bpm, dt);
         // Skip reverb again at end
     } else {
         // Normal mode: delay -> reverb (echo in a room)
         sample = processDubLoop(sample, dt);
         sample = processRewind(sample, dt);
         sample = processTapeStop(sample, dt);
-        sample = processBeatRepeat(sample, 120.0f, dt);
-        sample = processDjfxLoop(sample, 120.0f, dt);
+        sample = processBeatRepeat(sample, fx.bpm, dt);
+        sample = processDjfxLoop(sample, fx.bpm, dt);
         sample = processReverb(sample);
     }
     sample = processHalfSpeed(sample);
@@ -1794,8 +1800,8 @@ static float processEffectsWithBuses(float drumBus, float synthBus, float dt) {
         sample = dry * (1.0f - dubLoop.mix) + wet * dubLoop.mix;
         sample = processRewind(sample, dt);
         sample = processTapeStop(sample, dt);
-        sample = processBeatRepeat(sample, 120.0f, dt);
-        sample = processDjfxLoop(sample, 120.0f, dt);
+        sample = processBeatRepeat(sample, fx.bpm, dt);
+        sample = processDjfxLoop(sample, fx.bpm, dt);
 
         // Only apply reverb if not in preReverb mode (already applied)
         if (!dubLoop.preReverb) {
@@ -1804,8 +1810,8 @@ static float processEffectsWithBuses(float drumBus, float synthBus, float dt) {
     } else {
         sample = processRewind(sample, dt);
         sample = processTapeStop(sample, dt);
-        sample = processBeatRepeat(sample, 120.0f, dt);
-        sample = processDjfxLoop(sample, 120.0f, dt);
+        sample = processBeatRepeat(sample, fx.bpm, dt);
+        sample = processDjfxLoop(sample, fx.bpm, dt);
         sample = processReverb(sample);
     }
 

@@ -287,7 +287,7 @@ static bool dawSave(const char *filepath) {
     fprintf(f, "\n[settings]\n");
     _dw(f, "masterVol", daw.masterVol);
     _db(f, "voiceRandomVowel", daw.voiceRandomVowel);
-    _db(f, "halfSpeed", daw.halfSpeedEnabled);
+    _dw(f, "masterSpeed", daw.masterSpeed);
     _db(f, "chromaticMode", daw.chromaticMode);
     _di(f, "chromaticSample", daw.chromaticSample);
     _di(f, "chromaticRoot", daw.chromaticRootNote);
@@ -1031,7 +1031,7 @@ static bool dawLoad(const char *filepath) {
         case _DW_SEC_SETTINGS:
             if (strcmp(key,"masterVol")==0) daw.masterVol = _dpf(val);
             else if (strcmp(key,"voiceRandomVowel")==0) daw.voiceRandomVowel = _dpb(val);
-            else if (strcmp(key,"halfSpeed")==0) daw.halfSpeedEnabled = _dpb(val);
+            else if (strcmp(key,"masterSpeed")==0) daw.masterSpeed = _dpf(val);
             else if (strcmp(key,"chromaticMode")==0) daw.chromaticMode = _dpb(val);
             else if (strcmp(key,"chromaticSample")==0) daw.chromaticSample = _dpi(val);
             else if (strcmp(key,"chromaticRoot")==0) daw.chromaticRootNote = _dpi(val);
