@@ -76,6 +76,14 @@ int summary(void);
 /* Enable quiet mode - only show failures                                     */
 void set_quiet_mode(int enabled);
 
+/* Enable TAP output mode - machine-readable, no ANSI colors                  */
+/* TAP = Test Anything Protocol (https://testanything.org/)                    */
+void set_tap_mode(int enabled);
+
+/* Parse c89spec flags from argv. Handles -q, -v, --tap.                      */
+/* Returns 1 if -v (verbose) was set, 0 otherwise.                            */
+int c89spec_parse_args(int argc, char **argv);
+
 /* private functions                                                          */
 void _c89spec_test_module(const char * module,void (*func)(void));
 void _c89spec_begin_it(const char * requirement);
@@ -121,6 +129,10 @@ static int _c89spec_tests_skipped = 0;
 /* quiet mode - only show failures                                            */
 static int _c89spec_quiet_mode = 0;
 
+/* TAP output mode - machine-readable                                         */
+static int _c89spec_tap_mode = 0;
+static int _c89spec_tap_test_number = 0;
+
 /* spinner for quiet mode                                                     */
 static const char _c89spec_spinner[] = "|/-\\";
 static int _c89spec_spinner_index = 0;
@@ -155,14 +167,16 @@ static const char * _C89SPEC_BLACK_COLOR  = "\033[1;30m";
 
 void _c89spec_test_module(const char * module,void (*func)(void)) {
    _c89spec_current_module = module;
-   if (!_c89spec_quiet_mode) {
+   if (_c89spec_tap_mode) {
+      printf("# %s\n", module);
+   } else if (!_c89spec_quiet_mode) {
       printf("\n%s%s%s%s\n",_C89SPEC_UNDERSCORE \
                            ,_C89SPEC_BLUE_COLOR \
                            ,module \
                            ,_C89SPEC_NO_COLOR);
    }
    func();
-   if (!_c89spec_quiet_mode) {
+   if (!_c89spec_tap_mode && !_c89spec_quiet_mode) {
       printf("%s\n\n",_C89SPEC_NO_COLOR);
    }
 }
@@ -170,7 +184,7 @@ void _c89spec_test_module(const char * module,void (*func)(void)) {
 void _c89spec_begin_it(const char * requirement) {
    _c89spec_tests_execs++;
    _c89spec_current_requirement = requirement;
-   if (!_c89spec_quiet_mode) {
+   if (!_c89spec_tap_mode && !_c89spec_quiet_mode) {
       printf("\n%s\t[?] %s", _C89SPEC_NO_COLOR, requirement);
    }
    _c89spec_clock_begin = clock();
@@ -180,7 +194,7 @@ void _c89spec_end_it(void) {
    _c89spec_clock_end = clock();
    _c89spec_test_time = (double)(_c89spec_clock_end - _c89spec_clock_begin)
                         / CLOCKS_PER_SEC;
-   if (!_c89spec_quiet_mode) {
+   if (!_c89spec_tap_mode && !_c89spec_quiet_mode) {
       (_c89spec_test_time > C89SPEC_PROFILE_THRESHOLD)
          ? printf("%s",_C89SPEC_RED_COLOR)
          : printf("%s",_C89SPEC_BLACK_COLOR);
@@ -189,19 +203,31 @@ void _c89spec_end_it(void) {
 }
 
 void _c89spec_expect_passed(void) {
-   if (!_c89spec_quiet_mode) {
+   if (_c89spec_tap_mode) {
+      _c89spec_tap_test_number++;
+      printf("ok %d - %s: %s\n", _c89spec_tap_test_number,
+             _c89spec_current_module ? _c89spec_current_module : "unknown",
+             _c89spec_current_requirement ? _c89spec_current_requirement : "unknown");
+   } else if (!_c89spec_quiet_mode) {
       printf("\r\t%s[x]\t",_C89SPEC_GREEN_COLOR);
    }
-   /* In quiet mode, show nothing */
    _c89spec_tests_passed++;
 }
 
 void _c89spec_expect_failed(const char * scalar) {
-   if (_c89spec_quiet_mode) {
+   if (_c89spec_tap_mode) {
+      _c89spec_tap_test_number++;
+      printf("not ok %d - %s: %s\n", _c89spec_tap_test_number,
+             _c89spec_current_module ? _c89spec_current_module : "unknown",
+             _c89spec_current_requirement ? _c89spec_current_requirement : "unknown");
+      printf("  ---\n");
+      printf("  failed: %s\n", scalar);
+      printf("  ...\n");
+   } else if (_c89spec_quiet_mode) {
       /* In quiet mode, show F and then the failure with context */
       printf("%sF%s\n", _C89SPEC_RED_COLOR, _C89SPEC_NO_COLOR);
       if (_c89spec_current_module) {
-         printf("\n%s%s%s%s\n", _C89SPEC_UNDERSCORE, _C89SPEC_BLUE_COLOR, 
+         printf("\n%s%s%s%s\n", _C89SPEC_UNDERSCORE, _C89SPEC_BLUE_COLOR,
                 _c89spec_current_module, _C89SPEC_NO_COLOR);
       }
       printf("\t%s[ ] %s\n", _C89SPEC_RED_COLOR, _c89spec_current_requirement);
@@ -214,7 +240,12 @@ void _c89spec_expect_failed(const char * scalar) {
 
 void _c89spec_skip(const char * requirement) {
    _c89spec_tests_skipped++;
-   if (!_c89spec_quiet_mode) {
+   if (_c89spec_tap_mode) {
+      _c89spec_tap_test_number++;
+      printf("ok %d - %s: %s # SKIP\n", _c89spec_tap_test_number,
+             _c89spec_current_module ? _c89spec_current_module : "unknown",
+             requirement);
+   } else if (!_c89spec_quiet_mode) {
       printf("\n%s\t[%s%s%s] %s", _C89SPEC_NO_COLOR,
              _C89SPEC_BLUE_COLOR, "s", _C89SPEC_NO_COLOR, requirement);
    }
@@ -224,7 +255,30 @@ void set_quiet_mode(int enabled) {
    _c89spec_quiet_mode = enabled;
 }
 
+void set_tap_mode(int enabled) {
+   _c89spec_tap_mode = enabled;
+   if (enabled) {
+      printf("TAP version 13\n");
+   }
+}
+
+int c89spec_parse_args(int argc, char **argv) {
+   int verbose = 0;
+   for (int i = 1; i < argc; i++) {
+      if (argv[i][0] == '-' && argv[i][1] == 'v' && argv[i][2] == '\0') verbose = 1;
+      else if (argv[i][0] == '-' && argv[i][1] == 'q' && argv[i][2] == '\0') set_quiet_mode(1);
+      else if (argv[i][0] == '-' && argv[i][1] == '-' &&
+               argv[i][2] == 't' && argv[i][3] == 'a' &&
+               argv[i][4] == 'p' && argv[i][5] == '\0') set_tap_mode(1);
+   }
+   return verbose;
+}
+
 int summary(void) {
+   if (_c89spec_tap_mode) {
+      printf("1..%d\n", _c89spec_tap_test_number);
+      return _c89spec_tests_failed;
+   }
    if (_c89spec_quiet_mode) {
       printf("\n");  // Add newline after dots
    }

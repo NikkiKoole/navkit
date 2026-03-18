@@ -463,6 +463,13 @@ test-full: $(TEST_UNITY_OBJ)
 # Quick tests - skips mover tests entirely (~4s)
 test-quick: test_pathing test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_lighting test_soundsystem
 
+# TAP output - machine-readable test results (no ANSI colors)
+# Builds all tests first, then runs with --tap flag
+test-tap: test
+	@for t in $(BINDIR)/test_*; do \
+		$$t --tap 2>/dev/null || true; \
+	done
+
 # Benchmark targets - link against precompiled test_unity.o
 bench_jobs_SRC := tests/bench_jobs.c
 bench_items_SRC := tests/bench_items.c
@@ -662,4 +669,4 @@ cscope:
 nav: tags cscope
 	@echo "Updated tags + cscope.out"
 
-.PHONY: all clean clean-raylib clean-atlas nav test test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood path steer crowd mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed chop-flip path8 path16 path-sound bench bench_jobs bench_items windows
+.PHONY: all clean clean-raylib clean-atlas nav test test-tap test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood path steer crowd mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed chop-flip path8 path16 path-sound bench bench_jobs bench_items windows
