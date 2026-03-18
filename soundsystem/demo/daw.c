@@ -6178,6 +6178,52 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 _resampleActive = false;
                 if (slot >= 0) {
                     daw.chromaticSample = slot;
+                    // Load into chop system so waveform/slice UI works
+                    chopStateClear();
+                    int len = samplerCtx->samples[slot].length;
+                    chopState.renderData = (float *)malloc(len * sizeof(float));
+                    if (chopState.renderData) {
+                        memcpy(chopState.renderData, samplerCtx->samples[slot].data, len * sizeof(float));
+                        chopState.renderLength = len;
+                        chopState.renderBpm = daw.transport.bpm;
+                        chopState.renderSteps = 16;
+                        // Auto-chop into current slice count
+                        RenderedPattern rp = {
+                            .data = chopState.renderData, .length = len,
+                            .sampleRate = SAMPLE_RATE, .bpm = daw.transport.bpm,
+                            .stepCount = 16
+                        };
+                        ChoppedSample chopped = chopEqual(&rp, chopState.sliceCount);
+                        if (chopped.sliceCount > 0) {
+                            chopState.sliceCount = chopped.sliceCount;
+                            chopState.sliceLength = chopped.sliceLength;
+                            for (int s = 0; s < chopped.sliceCount; s++) {
+                                int slen = chopped.sliceLengths[s] > 0 ? chopped.sliceLengths[s] : chopped.sliceLength;
+                                chopState.sliceLengths[s] = slen;
+                                chopState.slices[s] = (float *)malloc(slen * sizeof(float));
+                                if (chopState.slices[s])
+                                    memcpy(chopState.slices[s], chopped.slices[s], slen * sizeof(float));
+                            }
+                            // Load slices into sampler
+                            for (int s = 0; s < chopped.sliceCount; s++) {
+                                int slen = chopState.sliceLengths[s];
+                                Sample *ss = &samplerCtx->samples[s];
+                                if (ss->loaded && ss->data && !ss->embedded) free(ss->data);
+                                ss->data = (float *)malloc(slen * sizeof(float));
+                                if (ss->data) {
+                                    memcpy(ss->data, chopState.slices[s], slen * sizeof(float));
+                                    ss->length = slen;
+                                    ss->sampleRate = SAMPLE_RATE;
+                                    ss->loaded = true;
+                                    ss->embedded = false;
+                                    snprintf(ss->name, sizeof(ss->name), "rsmp_%02d", s);
+                                }
+                            }
+                            chopFree(&chopped);
+                        }
+                        chopState.bounced = true;
+                        snprintf(chopState.sourcePath, sizeof(chopState.sourcePath), "(resampled)");
+                    }
                 }
             } else {
                 resampleStart();
