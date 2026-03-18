@@ -4598,7 +4598,7 @@ static void drawParamTape(float x, float y, float w, float h) {
 
     // Right: Rewind
     {
-        UIColumn c = ui_column(x+halfW+8, y, 16);
+        UIColumn c = ui_column(x+halfW+4, y, 16);
         ui_col_sublabel(&c, "Rewind:", ORANGE);
         ui_col_float(&c, "Time", &daw.tapeFx.rewindTime, 0.1f, 0.3f, 3.0f);
         ui_col_cycle(&c, "Curve", rewindCurveNames, 3, &daw.tapeFx.rewindCurve);
@@ -4620,7 +4620,7 @@ static void drawParamTape(float x, float y, float w, float h) {
 
     // Tape Stop column
     {
-        UIColumn c = ui_column(x+halfW+158, y, 16);
+        UIColumn c = ui_column(x+halfW+130, y, 16);
         ui_col_sublabel(&c, "Tape Stop:", ORANGE);
         ui_col_float(&c, "Time", &daw.tapeFx.tapeStopTime, 0.1f, 0.2f, 3.0f);
         ui_col_cycle(&c, "Curve", rewindCurveNames, 3, &daw.tapeFx.tapeStopCurve);
@@ -4640,7 +4640,7 @@ static void drawParamTape(float x, float y, float w, float h) {
 
     // DJFX Looper column
     {
-        UIColumn c = ui_column(x+halfW+308, y, 16);
+        UIColumn c = ui_column(x+halfW+256, y, 16);
         ui_col_sublabel(&c, "DJFX Loop:", ORANGE);
         ui_col_cycle(&c, "Div", beatRepeatDivNames, BEAT_REPEAT_DIV_COUNT, &daw.tapeFx.djfxLoopDiv);
         ui_col_space(&c, 4);
@@ -4655,7 +4655,7 @@ static void drawParamTape(float x, float y, float w, float h) {
 
     // Beat Repeat column
     {
-        UIColumn c = ui_column(x+halfW+448, y, 16);
+        UIColumn c = ui_column(x+halfW+370, y, 16);
         ui_col_sublabel(&c, "Beat Repeat:", ORANGE);
         ui_col_cycle(&c, "Div", beatRepeatDivNames, BEAT_REPEAT_DIV_COUNT, &daw.tapeFx.beatRepeatDiv);
         ui_col_float(&c, "Decay", &daw.tapeFx.beatRepeatDecay, 0.05f, 0.0f, 0.9f);

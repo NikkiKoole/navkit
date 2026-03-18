@@ -9,6 +9,9 @@
 // VINYL SIMULATION (Always-on character)
 // ============================================================================
 
+// Vinyl warp buffer (shared with tape buffer would collide, use dedicated)
+#define VINYL_WARP_BUFFER_SIZE 4096
+
 // Noise generator for vinyl sim
 static float vinylSimNoise(void) {
     _ensureFxCtx();
@@ -23,16 +26,21 @@ static float processVinylSim(float input, float dt) {
 
     float sample = input;
 
-    // === Warp / wow: slow LFO pitch drift ===
-    // Resamples through a tiny delay to create pitch wobble
+    // === Warp / wow: slow LFO pitch drift via delay buffer ===
+    // Write to warp buffer, read back with modulated position for real pitch wobble
+    vinylWarpBuffer[vinylWarpWritePos] = sample;
+    vinylWarpWritePos = (vinylWarpWritePos + 1) % VINYL_WARP_BUFFER_SIZE;
+
     if (fx.vinylWarp > 0.0f) {
         fx.vinylWarpPhase += fx.vinylWarpRate * dt;
         if (fx.vinylWarpPhase > 1.0f) fx.vinylWarpPhase -= 1.0f;
-        // Subtle pitch modulation via sample interpolation offset
-        // At vinylWarp=1.0, up to ±0.002 playback speed variation
-        float warpMod = sinf(fx.vinylWarpPhase * 2.0f * PI) * fx.vinylWarp * 0.002f;
-        // Apply as gentle amplitude modulation (approximates pitch drift without buffer)
-        sample *= (1.0f + warpMod);
+        // Modulate read position: ±150 samples at warp=1.0 (±3.4ms pitch wobble)
+        float modOffset = sinf(fx.vinylWarpPhase * 2.0f * PI) * fx.vinylWarp * 150.0f;
+        float baseDelay = VINYL_WARP_BUFFER_SIZE / 2.0f;
+        float readPos = vinylWarpWritePos - baseDelay + modOffset;
+        if (readPos < 0) readPos += VINYL_WARP_BUFFER_SIZE;
+        if (readPos >= VINYL_WARP_BUFFER_SIZE) readPos -= VINYL_WARP_BUFFER_SIZE;
+        sample = hermiteInterp(vinylWarpBuffer, VINYL_WARP_BUFFER_SIZE, readPos);
     }
 
     // === Surface noise: LP-filtered white noise (warm hiss) ===
@@ -56,20 +64,18 @@ static float processVinylSim(float input, float dt) {
         }
     }
 
-    // === Tone: gentle 1-pole LP to simulate worn vinyl high-end loss ===
-    // vinylToneLP=1.0 means full bandwidth (no filtering)
-    // vinylToneLP=0.0 means heavy roll-off (~1kHz)
+    // === Tone: 2-pole LP to simulate worn vinyl high-end loss ===
+    // vinylToneLP=1.0 means full bandwidth (bypassed)
+    // vinylToneLP=0.0 means heavy roll-off (~800Hz)
     if (fx.vinylToneLP < 0.99f) {
-        float freq = 1000.0f + fx.vinylToneLP * 11000.0f;  // 1kHz - 12kHz
+        // Map 0-1 to 800Hz-16kHz (exponential feels more natural)
+        float freq = 800.0f * powf(20.0f, fx.vinylToneLP);  // 800Hz to 16kHz
         float lpCoef = 2.0f * PI * freq / SAMPLE_RATE;
         if (lpCoef > 0.99f) lpCoef = 0.99f;
-        // Use a dedicated filter state (reuse vinylNoiseState's spare bits?
-        // No — use inline state variable stored in the Effects struct)
-        // We'll use a simple approach: filter the output in-place via tapeFilterLp-style
-        // Actually, we need our own state. We store it as part of vinylWarpPhase's companion.
-        // Let's use a static approach via fxCtx->vinylToneLpState
+        // Two cascaded 1-pole filters for steeper rolloff (2-pole = -12dB/oct)
         vinylToneLpState += lpCoef * (sample - vinylToneLpState);
-        sample = vinylToneLpState;
+        vinylToneLp2State += lpCoef * (vinylToneLpState - vinylToneLp2State);
+        sample = vinylToneLp2State;
     }
 
     return sample;

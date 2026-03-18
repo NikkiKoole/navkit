@@ -23,9 +23,9 @@
 
 // Tape effect constants
 #define TAPE_WOW_RATE 0.5f            // Tape wow LFO rate in Hz
-#define TAPE_WOW_DEPTH 40.0f          // Tape wow max modulation in samples (±40)
-#define TAPE_FLUTTER_DEPTH 8.0f       // Tape flutter max modulation in samples (±8)
-#define TAPE_BUFFER_SIZE 128          // Small delay buffer for wow/flutter pitch modulation
+#define TAPE_WOW_DEPTH 200.0f         // Tape wow max modulation in samples (±200 = ±4.5ms at 44.1kHz)
+#define TAPE_FLUTTER_DEPTH 40.0f      // Tape flutter max modulation in samples (±40 = ±0.9ms)
+#define TAPE_BUFFER_SIZE 4096         // Delay buffer for wow/flutter pitch modulation (~93ms at 44.1kHz)
 #define TAPE_HISS_SCALE 0.05f         // Tape hiss amplitude scaling
 #define TAPE_HISS_FILTER_COEFF 0.1f   // Tape hiss highpass filter coefficient
 
@@ -646,8 +646,11 @@ typedef struct EffectsContext {
     float rewindLpState;              // Filter state
     unsigned int rewindNoiseState;    // Noise state for vinyl crackle
 
-    // Vinyl sim state (tone LP filter)
-    float vinylToneLpState;
+    // Vinyl sim state
+    float vinylWarpBuffer[4096];      // VINYL_WARP_BUFFER_SIZE
+    int vinylWarpWritePos;
+    float vinylToneLpState;           // 1st pole of tone filter
+    float vinylToneLp2State;          // 2nd pole of tone filter
 
     // Tape stop state
     float tapeStopBuffer[REWIND_BUFFER_SIZE];  // Reuse same 3s size
@@ -978,7 +981,10 @@ static float fxNoise(void) {
 
 // Vinyl sim macros
 #define vinylRngState (fxCtx->params.vinylRngState)
+#define vinylWarpBuffer (fxCtx->vinylWarpBuffer)
+#define vinylWarpWritePos (fxCtx->vinylWarpWritePos)
 #define vinylToneLpState (fxCtx->vinylToneLpState)
+#define vinylToneLp2State (fxCtx->vinylToneLp2State)
 
 // Tape stop macros
 #define tapeStopBuffer (fxCtx->tapeStopBuffer)
