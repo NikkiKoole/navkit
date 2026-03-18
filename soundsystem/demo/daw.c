@@ -6238,6 +6238,45 @@ static void drawWorkSample(float x, float y, float w, float h) {
         snprintf(slotInfo, sizeof(slotInfo), "-> slot %d", freeSlot);
         DrawTextShadow(slotInfo, (int)(x + 230), (int)(sy + 3), UI_FONT_SMALL, UI_BORDER_LIGHT);
     }
+    sy += 22;
+
+    // --- Sampler slots list (always visible — shows resamples, freezes, loaded WAVs) ---
+    {
+        _ensureSamplerCtx();
+        int loadedCount = 0;
+        for (int i = 0; i < SAMPLER_MAX_SAMPLES; i++)
+            if (samplerCtx->samples[i].loaded) loadedCount++;
+
+        if (loadedCount > 0) {
+            DrawTextShadow(TextFormat("Sampler Slots (%d):", loadedCount), (int)x, (int)sy, UI_FONT_SMALL, UI_TEXT_LABEL);
+            sy += 14;
+            for (int i = 0; i < SAMPLER_MAX_SAMPLES; i++) {
+                if (!samplerCtx->samples[i].loaded) continue;
+                float dur = (float)samplerCtx->samples[i].length / samplerCtx->samples[i].sampleRate;
+                char line[80];
+                snprintf(line, sizeof(line), "%2d: %-14s %.2fs", i, samplerCtx->samples[i].name, dur);
+                // Highlight if playing
+                Color col = UI_TEXT_DIM;
+                for (int v = 0; v < SAMPLER_MAX_VOICES; v++) {
+                    if (samplerCtx->voices[v].active && samplerCtx->voices[v].sampleIndex == i) {
+                        col = (Color){180, 220, 100, 255};
+                        break;
+                    }
+                }
+                // Click to preview
+                Rectangle lr = {x, sy, w, 13};
+                bool hov = CheckCollisionPointRec(mouse, lr);
+                if (hov) col = WHITE;
+                DrawTextShadow(line, (int)(x + 4), (int)(sy + 1), 9, col);
+                if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                    samplerQueuePlay(i, 0.8f, 1.0f);
+                    daw.chromaticSample = i;
+                    ui_consume_click();
+                }
+                sy += 13;
+            }
+        }
+    }
 }
 
 static float babblePitch = 1.0f;
