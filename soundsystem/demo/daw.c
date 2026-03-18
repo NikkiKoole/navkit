@@ -2439,14 +2439,15 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                     int delta = scrollDelta(wh, 500 + track * 100 + step);
                     if (delta != 0 && patGetNote(dawPattern(), track, step) != SEQ_NOTE_OFF) {
                         int n = patGetNote(dawPattern(), track, step);
-                        if (scaleLockEnabled && scaleType != SCALE_CHROMATIC) {
+                        if (daw.scaleLockEnabled && daw.scaleType != SCALE_CHROMATIC) {
                             // Step through scale degrees
+                            int dir = (delta > 0) ? 1 : -1;
                             for (int s = 0; s < abs(delta); s++) {
-                                int dir = (delta > 0) ? 1 : -1;
                                 for (int i = 1; i <= 12; i++) {
                                     int candidate = n + dir * i;
                                     if (candidate < 0 || candidate > 127) break;
-                                    if (isInScale(candidate)) { n = candidate; break; }
+                                    int nio = ((candidate % 12) - daw.scaleRoot + 12) % 12;
+                                    if (scaleIntervals[daw.scaleType][nio]) { n = candidate; break; }
                                 }
                             }
                         } else {
@@ -2463,8 +2464,20 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                     if (delta != 0 && patGetNote(dawPattern(), track, step) != SEQ_NOTE_OFF) {
                         int n = patGetNote(dawPattern(), track, step) + delta * 12;
                         if (n < 0) n = 0; if (n > 127) n = 127;
-                        if (scaleLockEnabled && scaleType != SCALE_CHROMATIC)
-                            n = constrainToScale(n);
+                        if (daw.scaleLockEnabled && daw.scaleType != SCALE_CHROMATIC) {
+                            // Snap to nearest scale note
+                            int nio = ((n % 12) - daw.scaleRoot + 12) % 12;
+                            if (!scaleIntervals[daw.scaleType][nio]) {
+                                for (int i = 1; i < 12; i++) {
+                                    int below = (nio - i + 12) % 12;
+                                    if (scaleIntervals[daw.scaleType][below]) {
+                                        n = (n / 12) * 12 + ((below + daw.scaleRoot) % 12);
+                                        break;
+                                    }
+                                }
+                            }
+                            if (n < 0) n = 0; if (n > 127) n = 127;
+                        }
                         patSetNote(dawPattern(), track, step, n, patGetNoteVel(dawPattern(), track, step), patGetNoteGate(dawPattern(), track, step));
                         const char* nn[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
                         SCROLL_POPUP("%s%d", nn[n%12], n/12-1);
