@@ -1409,6 +1409,9 @@ static bool dawLoad(const char *filepath) {
         bool savedNormalize = chopState.normalize;
         float savedSensitivity = chopState.sensitivity;
         float savedFadeMs = chopState.fadeMs;
+        float savedSelStart = chopState.selStart;
+        float savedSelEnd = chopState.selEnd;
+        bool savedHasSelection = chopState.hasSelection;
         struct { bool reverse; float pitchSemitones, gain, trimStart, trimEnd, fadeInMs, fadeOutMs; }
             savedParams[SAMPLER_MAX_SAMPLES];
         for (int s = 0; s < SAMPLER_MAX_SAMPLES; s++) {
@@ -1421,13 +1424,16 @@ static bool dawLoad(const char *filepath) {
             savedParams[s].fadeOutMs = chopState.sliceParams[s].fadeOutMs;
         }
 
-        // Bounce full song (loads structure + first pattern, then finish all lazily)
+        // Bounce full song (blocking — renders all patterns needed for chop)
         chopBounceFullSong();
-        while (chopBounceNextPattern()) {} // finish all remaining patterns
+        while (chopBounceNextPattern()) {}
         chopState.sliceCount = savedSliceCount;
         chopState.chopMode = savedChopMode;
         chopState.normalize = savedNormalize;
         chopState.sensitivity = savedSensitivity;
+        chopState.selStart = savedSelStart;
+        chopState.selEnd = savedSelEnd;
+        chopState.hasSelection = savedHasSelection;
         chopStateBounce();
 
         // Restore params

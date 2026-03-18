@@ -485,6 +485,7 @@ typedef struct {
     int trackTick[SEQ_V2_MAX_TRACKS];                           // Current tick within step
     int trackTriggerTick[SEQ_V2_MAX_TRACKS];                    // When to trigger (nudge-adjusted)
     bool trackTriggered[SEQ_V2_MAX_TRACKS];                     // Has this step been triggered?
+    bool trackWrapped[SEQ_V2_MAX_TRACKS];                       // Track step wrapped to 0 (for clip launcher)
     int trackGateRemaining[SEQ_V2_MAX_TRACKS][SEQ_V2_MAX_POLY];  // Per-voice gate countdown
     int trackCurrentNote[SEQ_V2_MAX_TRACKS][SEQ_V2_MAX_POLY];   // Per-voice currently playing note (-1 if none)
     int trackActiveVoices[SEQ_V2_MAX_TRACKS];                    // Number of active voices in current step
@@ -1508,6 +1509,11 @@ static void updateSequencer(float dt) {
                 StepV2 *newSv = trackSilent ? &_emptyStep : &p->steps[track][newStep];
                 if (newSv->noteCount > 0 && seq.trackTriggerTick[track] <= 0) {
                     seqTriggerStep(p, track, newStep, stepDuration);
+                }
+
+                // Flag per-track wrap (for clip launcher)
+                if (seq.trackStep[track] == 0 && prevStep != 0) {
+                    seq.trackWrapped[track] = true;
                 }
 
                 // Check if pattern completed (track 0 wraps as master)

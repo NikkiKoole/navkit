@@ -348,8 +348,8 @@ Features that separate a groove box from a full DAW. Sorted by architectural imp
 
 | What | Effort | Notes |
 |------|--------|-------|
-| **Timeline automation lanes** — draw continuous parameter curves over time (filter sweep across 8 bars, volume fade over a section). P-locks are per-step discrete; scenes/crossfader morph between 2 snapshots. Neither covers "draw a curve from bar 5 to bar 12." | Large | Could be pattern-scoped (automation points within a pattern, interpolated at audio rate) or song-scoped (global timeline). Pattern-scoped is more tractable. |
-| **Clip/scene launch matrix** — Ableton Session View style: trigger any clip on any track independently, scenes fire rows. | Large | Very different paradigm from linear pattern chain. Probably out of scope unless game audio needs it for vertical layering. |
+| **Timeline automation lanes** — draw continuous parameter curves over time (filter sweep across 8 bars, volume fade over a section). P-locks are per-step discrete; scenes/crossfader morph between 2 snapshots. Neither covers "draw a curve from bar 5 to bar 12." Natural home is the Arrangement view — draw curves per-track alongside the pattern blocks. | Large | Could be pattern-scoped (automation points within a pattern, interpolated at audio rate) or song-scoped (global timeline). Pattern-scoped is more tractable. See `todo-daw-ideas.md` §Automation. |
+| **Session View (clip launcher)** — Ableton Session View style: trigger any clip on any track independently, scenes fire rows. Engine already has `perTrackPatterns` + `trackPatternIdx` for per-track independence, and `Arrangement.cells[64][8]` is the right grid shape. Main work: per-track wrap detection (currently track-0 only), clip state machine (playing/queued/stopped), launch quantize. | Medium (~270 lines for bar-quantized MVP) | See `todo-daw-ideas.md` §Session View for full analysis. |
 
 ### Mixing & Metering
 

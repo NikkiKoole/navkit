@@ -26,6 +26,43 @@ typedef struct {
     bool arrMode;                              // true = arrangement drives playback
 } Arrangement;
 
+// Clip Launcher (Bitwig-style, per-track clip triggering)
+#define LAUNCHER_MAX_SLOTS 16  // clip slots per track (scenes)
+
+typedef enum {
+    CLIP_EMPTY = 0,     // No clip in slot
+    CLIP_STOPPED,       // Has clip, not playing
+    CLIP_PLAYING,       // Currently playing
+    CLIP_QUEUED,        // Will start at next quantize point
+    CLIP_STOP_QUEUED,   // Playing, will stop at next quantize point
+} ClipState;
+
+typedef enum {
+    NEXT_ACTION_LOOP = 0,  // Keep looping (default)
+    NEXT_ACTION_STOP,      // Stop after N loops
+    NEXT_ACTION_NEXT,      // Play next clip in column
+    NEXT_ACTION_PREV,      // Play previous clip in column
+    NEXT_ACTION_FIRST,     // Play first clip in column
+    NEXT_ACTION_RANDOM,    // Random clip from column
+    NEXT_ACTION_RETURN,    // Return to arrangement
+    NEXT_ACTION_COUNT,
+} NextAction;
+
+typedef struct {
+    int pattern[LAUNCHER_MAX_SLOTS];        // pattern index per slot (-1 = empty)
+    ClipState state[LAUNCHER_MAX_SLOTS];
+    NextAction nextAction[LAUNCHER_MAX_SLOTS]; // what happens after nextActionLoops
+    int nextActionLoops[LAUNCHER_MAX_SLOTS];   // trigger after N loops (0 = disabled)
+    int playingSlot;                         // which slot is playing (-1 = none)
+    int queuedSlot;                          // which slot is queued (-1 = none)
+    int loopCount;                           // loops completed on current clip
+} LauncherTrack;
+
+typedef struct {
+    LauncherTrack tracks[ARR_MAX_TRACKS];
+    bool active;                             // true = launcher is driving some tracks
+} Launcher;
+
 typedef struct {
     bool playing;
     float bpm;
@@ -168,6 +205,9 @@ typedef struct {
 
     // Arrangement (per-track pattern grid)
     Arrangement arr;
+
+    // Clip launcher
+    Launcher launcher;
 
     // Split keyboard
     bool splitEnabled;

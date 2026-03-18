@@ -1323,17 +1323,18 @@ static const char* dawBusName(int bus) {
     if (bus == BUS_SAMPLER) return "Sampler";
     return (bus >= 0 && bus < 7) ? daw.patches[bus].p_name : "??";
 }
-// Dampened scroll helper for discrete integer values.
-// Accumulates fractional scroll (0.4x) and returns integer delta when threshold crossed.
+// Scroll helper for discrete integer values.
+// Accumulates fractional scroll and returns integer delta when threshold crossed.
+// Mouse wheel (|wh|~1.0) gives 1:1 mapping; trackpad (small values) accumulates.
 // Uses a single global accumulator — reset whenever the context changes (different widget).
 static float _scrollAccum = 0.0f;
 static int _scrollCtx = -1; // opaque context ID to detect widget changes
 static int scrollDelta(float wheelMove, int contextId) {
     if (contextId != _scrollCtx) { _scrollAccum = 0.0f; _scrollCtx = contextId; }
     if (wheelMove == 0.0f) return 0;
-    _scrollAccum += wheelMove * 0.4f;
+    _scrollAccum += wheelMove;
     int d = (int)_scrollAccum;
-    if (d != 0) _scrollAccum -= d;
+    if (d != 0) _scrollAccum -= (float)d;
     return d;
 }
 
@@ -2834,9 +2835,10 @@ static void drawWorkPiano(float x, float y, float w, float h) {
     float gridY = y + topH;
     float gridW = w - keyW;
     float gridH = h - topH;
-    int visNotes = 24;   // Visible pitch range
-    float noteH = gridH / visNotes;
-    if (noteH < 6) noteH = 6;
+    float noteH = 12;    // Fixed cell height (pixels per semitone)
+    int visNotes = (int)(gridH / noteH);
+    if (visNotes < 6) visNotes = 6;
+    if (visNotes > 96) visNotes = 96;
 
     // Horizontal scroll for chain view
     int minStepPx = 12;
@@ -2986,9 +2988,10 @@ static void drawWorkPiano(float x, float y, float w, float h) {
             ui_consume_click();
         }
 
-        // Recalculate noteH with adjusted gridH
-        noteH = gridH / visNotes;
-        if (noteH < 6) noteH = 6;
+        // Recalculate visNotes with adjusted gridH (noteH stays fixed)
+        visNotes = (int)(gridH / noteH);
+        if (visNotes < 6) visNotes = 6;
+        if (visNotes > 96) visNotes = 96;
     }
 
     // --- Scroll pitch range with mouse wheel ---
@@ -3020,6 +3023,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
     };
 
     // --- Piano keys + horizontal pitch lines ---
+    static int prKeyVoice = -1;  // voice from piano key click (for release)
     for (int i = 0; i < visNotes; i++) {
         int note = prScrollNote + i;
         if (note > 127) break;
@@ -3064,6 +3068,21 @@ static void drawWorkPiano(float x, float y, float w, float h) {
                 DrawRectangle((int)gridX, (int)ny, (int)gridW, (int)noteH, (Color){35,35,42,60});
             }
         }
+
+        // Click piano key to audition note
+        Rectangle keyR = {x, ny, keyW - 1, noteH};
+        if (CheckCollisionPointRec(mouse, keyR) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            if (prKeyVoice >= 0) releaseNote(prKeyVoice);
+            SynthPatch *patch = &daw.patches[daw.selectedPatch];
+            float freq = patchMidiToFreq(note);
+            prKeyVoice = playNoteWithPatch(freq, patch);
+            ui_consume_click();
+        }
+    }
+    // Release piano key voice when mouse is released
+    if (prKeyVoice >= 0 && IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+        releaseNote(prKeyVoice);
+        prKeyVoice = -1;
     }
 
     // --- Vertical step lines ---
@@ -7176,7 +7195,10 @@ static void drawWorkArrange(float x, float y, float w, float h) {
         {140, 200, 100, 255},  // Chord: green
         {160, 160, 160, 255},  // Sampler: gray
     };
-    static const char* arrTrackNames[] = {"Kick", "Snare", "HiHat", "Clap", "Bass", "Lead", "Chord", "Samp"};
+    const char* arrTrackNames[ARR_MAX_TRACKS];
+    for (int t = 0; t < ARR_MAX_TRACKS; t++) {
+        arrTrackNames[t] = daw.patches[t].p_name[0] ? daw.patches[t].p_name : "Sampler";
+    }
 
     // === TOP ROW: Arrange mode toggle + bar count + buttons ===
     float row0y = y + 2;
@@ -7253,12 +7275,16 @@ static void drawWorkArrange(float x, float y, float w, float h) {
         }
     }
 
-    // === GRID LAYOUT ===
-    float labelW = 46;
+    // === GRID LAYOUT (two panels: launcher | arrangement) ===
+    float labelW = 56;
+    float launchW = 40;       // launcher column width (one clip slot column)
+    int launchSlotCols = 4;   // visible scene columns in launcher
+    float launchTotalW = launchW * launchSlotCols + 4; // total launcher panel width
     float rulerH = 16;
-    float gridX = x + labelW;
+    float launchX = x + labelW;
+    float gridX = launchX + launchTotalW + 2;  // arrangement starts after launcher
     float gridY = y + 26 + rulerH;
-    float gridW = w - labelW - 4;
+    float gridW = w - labelW - launchTotalW - 6;
     int cellW = 44;
     int cellH = 28;
     int trackCount = ARR_MAX_TRACKS;
@@ -7327,10 +7353,266 @@ static void drawWorkArrange(float x, float y, float w, float h) {
         float ty = gridY + t * cellH;
         Color tc = arrTrackColors[t];
         DrawRectangle((int)x, (int)ty, (int)labelW - 2, cellH - 1, (Color){tc.r/4, tc.g/4, tc.b/4, 255});
-        DrawTextShadow(arrTrackNames[t], (int)x + 2, (int)ty + 8, UI_FONT_SMALL, tc);
+        DrawTextShadow(arrTrackNames[t], (int)x + 2, (int)ty + 8, 8, tc);
     }
 
-    // === GRID CELLS ===
+    // === LAUNCHER PANEL (clip slots) ===
+    {
+        Launcher *lch = &daw.launcher;
+        char launchTooltip[256] = {0};
+        float launchTooltipX = 0, launchTooltipY = 0;
+        // Launcher ruler (scene numbers)
+        for (int s = 0; s < launchSlotCols; s++) {
+            float sx = launchX + s * launchW;
+            DrawTextShadow(TextFormat("S%d", s + 1), (int)sx + 4, (int)(gridY - rulerH + 2), UI_FONT_SMALL, UI_TEXT_DIM);
+        }
+        // Scene launch buttons (bottom of launcher)
+        for (int s = 0; s < launchSlotCols; s++) {
+            float sx = launchX + s * launchW;
+            float btnY = gridY + gridH + 2;
+            Rectangle btnR = {sx + 1, btnY, launchW - 2, 14};
+            bool btnHov = CheckCollisionPointRec(mouse, btnR);
+            DrawRectangleRec(btnR, btnHov ? UI_BG_HOVER : UI_BG_BUTTON);
+            DrawRectangleLinesEx(btnR, 1, UI_BORDER);
+            DrawTextShadow(">", (int)sx + (int)launchW/2 - 2, (int)btnY + 2, UI_FONT_SMALL, btnHov ? WHITE : UI_TEXT_DIM);
+            if (btnHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                // Scene launch: launch all clips in this column
+                lch->active = true;
+                bool wasPlaying = daw.transport.playing;
+                for (int t = 0; t < trackCount; t++) {
+                    LauncherTrack *slt = &lch->tracks[t];
+                    int pat = slt->pattern[s];
+                    if (pat >= 0) {
+                        if (!wasPlaying) {
+                            if (slt->playingSlot >= 0)
+                                slt->state[slt->playingSlot] = CLIP_STOPPED;
+                            slt->playingSlot = s;
+                            slt->state[s] = CLIP_PLAYING;
+                            slt->queuedSlot = -1;
+                            slt->loopCount = 0;
+                        } else {
+                            slt->queuedSlot = s;
+                            slt->state[s] = CLIP_QUEUED;
+                        }
+                    }
+                }
+                if (!wasPlaying) daw.transport.playing = true;
+                ui_consume_click();
+            }
+        }
+        // Clip slot grid
+        for (int t = 0; t < trackCount; t++) {
+            LauncherTrack *lt = &lch->tracks[t];
+            float ty = gridY + t * cellH;
+            for (int s = 0; s < launchSlotCols; s++) {
+                float sx = launchX + s * launchW;
+                int pat = lt->pattern[s];
+                bool empty = (pat < 0);
+                bool playing = (lt->playingSlot == s && lt->state[s] == CLIP_PLAYING);
+                bool queued = (lt->state[s] == CLIP_QUEUED);
+                bool stopQ = (lt->state[s] == CLIP_STOP_QUEUED);
+
+                Rectangle cr = {sx + 1, ty + 1, launchW - 2, (float)(cellH - 2)};
+                bool hov = CheckCollisionPointRec(mouse, cr);
+
+                // Background
+                Color bg;
+                if (empty) {
+                    bg = hov ? (Color){40,40,45,255} : (Color){20,20,25,255};
+                } else {
+                    Color tc = arrTrackColors[t];
+                    int dim = playing ? 3 : 6;
+                    bg = (Color){(unsigned char)(tc.r/dim), (unsigned char)(tc.g/dim), (unsigned char)(tc.b/dim), 255};
+                    if (hov) { bg.r += 15; bg.g += 15; bg.b += 15; }
+                }
+                DrawRectangleRec(cr, bg);
+
+                // Border (green=playing, orange=queued, red=stop-queued)
+                Color border = playing ? GREEN : (queued ? ORANGE : (stopQ ? RED : (hov ? UI_BORDER_LIGHT : (Color){40,40,45,255})));
+                DrawRectangleLinesEx(cr, 1, border);
+
+                // Label + loop count
+                if (!empty) {
+                    DrawTextShadow(TextFormat("P%d", pat + 1), (int)sx + 3, (int)ty + 2, 8, playing ? WHITE : UI_TEXT_DIM);
+                    if (playing && lt->loopCount > 0) {
+                        DrawTextShadow(TextFormat("%d", lt->loopCount), (int)sx + 3, (int)ty + 12, 7, (Color){80,200,80,180});
+                    }
+                    // Next action indicator
+                    NextAction na = lt->nextAction[s];
+                    int nal = lt->nextActionLoops[s];
+                    if (na != NEXT_ACTION_LOOP && nal > 0) {
+                        const char *naChars[] = {"", "S", ">", "<", "1", "?", "R"};
+                        DrawTextShadow(naChars[na], (int)(sx + launchW - 10), (int)ty + 2, 7, (Color){200,180,100,200});
+                    }
+                }
+
+                // Playing indicator (small progress bar)
+                if (playing && daw.transport.playing) {
+                    Pattern *pp = &seq.patterns[pat];
+                    int trackLen = pp->trackLength[t] > 0 ? pp->trackLength[t] : 16;
+                    float progress = (float)seq.trackStep[t] / (float)trackLen;
+                    int pw = (int)(progress * (launchW - 4));
+                    DrawRectangle((int)sx + 2, (int)(ty + cellH - 4), pw, 2, GREEN);
+                }
+
+                // Queued blink
+                if (queued) {
+                    float blink = (float)fmod(GetTime() * 4.0, 1.0);
+                    if (blink > 0.5f) DrawRectangleLinesEx(cr, 1, ORANGE);
+                }
+
+                // Interactions
+                if (hov) {
+                    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                        if (empty) {
+                            // Assign current pattern
+                            lt->pattern[s] = daw.transport.currentPattern;
+                            lt->state[s] = CLIP_STOPPED;
+                        } else if (playing) {
+                            // Queue stop
+                            lt->state[s] = CLIP_STOP_QUEUED;
+                        } else {
+                            // Launch clip
+                            lch->active = true;
+                            if (!daw.transport.playing) {
+                                // Not playing: start immediately (no wrap to wait for)
+                                if (lt->playingSlot >= 0)
+                                    lt->state[lt->playingSlot] = CLIP_STOPPED;
+                                lt->playingSlot = s;
+                                lt->state[s] = CLIP_PLAYING;
+                                lt->queuedSlot = -1;
+                                lt->loopCount = 0;
+                                daw.transport.playing = true;
+                            } else {
+                                // Playing: queue for next bar boundary
+                                lt->queuedSlot = s;
+                                lt->state[s] = CLIP_QUEUED;
+                            }
+                        }
+                        ui_consume_click();
+                    }
+                    if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+                        // Clear slot
+                        if (playing) {
+                            lt->state[s] = CLIP_STOP_QUEUED;
+                        } else {
+                            lt->pattern[s] = -1;
+                            lt->state[s] = CLIP_EMPTY;
+                        }
+                        ui_consume_click();
+                    }
+                    // Scroll wheel: change pattern (normal) or next action (shift)
+                    int wheel = (int)GetMouseWheelMove();
+                    if (wheel != 0 && !empty) {
+                        if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
+                            // Shift+scroll: cycle next action
+                            int na = (int)lt->nextAction[s] + wheel;
+                            if (na < 0) na = NEXT_ACTION_COUNT - 1;
+                            if (na >= NEXT_ACTION_COUNT) na = 0;
+                            lt->nextAction[s] = (NextAction)na;
+                            if (lt->nextActionLoops[s] == 0) lt->nextActionLoops[s] = 1; // auto-enable
+                        } else if (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) {
+                            // Ctrl+scroll: change loop count for next action
+                            lt->nextActionLoops[s] += wheel;
+                            if (lt->nextActionLoops[s] < 0) lt->nextActionLoops[s] = 0;
+                            if (lt->nextActionLoops[s] > 32) lt->nextActionLoops[s] = 32;
+                        } else {
+                            // Normal scroll: change pattern
+                            int newPat = pat + wheel;
+                            if (newPat < -1) newPat = -1;
+                            if (newPat >= SEQ_NUM_PATTERNS) newPat = SEQ_NUM_PATTERNS - 1;
+                            lt->pattern[s] = newPat;
+                            lt->state[s] = (newPat >= 0) ? CLIP_STOPPED : CLIP_EMPTY;
+                        }
+                    }
+                    // Tooltip (deferred — drawn after all cells)
+                    if (!empty) {
+                        static const char* naNames[] = {"Loop","Stop","Next","Prev","First","Random","Return"};
+                        NextAction na = lt->nextAction[s];
+                        int nal = lt->nextActionLoops[s];
+                        if (na != NEXT_ACTION_LOOP && nal > 0) {
+                            snprintf(launchTooltip, sizeof(launchTooltip),
+                                     "S%d %s: P%d  %s  [%s after %d]  Shift+Scroll=action Ctrl+Scroll=loops",
+                                     s+1, arrTrackNames[t], pat+1,
+                                     playing ? "Playing" : (queued ? "Queued" : "Stopped"),
+                                     naNames[na], nal);
+                        } else {
+                            snprintf(launchTooltip, sizeof(launchTooltip),
+                                     "S%d %s: P%d  %s  Shift+Scroll=action",
+                                     s+1, arrTrackNames[t], pat+1,
+                                     playing ? "Playing" : (queued ? "Queued" : "Stopped"));
+                        }
+                        launchTooltipX = mouse.x + 12;
+                        launchTooltipY = mouse.y - 14;
+                    }
+                }
+            }
+        }
+        // Per-track stop buttons (right edge of launcher, one per track)
+        {
+            // Stop buttons in the track label area
+            for (int t = 0; t < trackCount; t++) {
+                LauncherTrack *lt = &lch->tracks[t];
+                bool hasPlaying = (lt->playingSlot >= 0);
+                float ty = gridY + t * cellH;
+                Rectangle sr = {x + labelW - 14, ty + 1, 12, (float)(cellH - 2)};
+                bool shov = CheckCollisionPointRec(mouse, sr);
+                Color sbg = hasPlaying ? (shov ? (Color){120,40,40,255} : (Color){80,30,30,255})
+                                       : (shov ? (Color){40,40,45,255} : (Color){25,25,30,255});
+                DrawRectangleRec(sr, sbg);
+                DrawRectangleLinesEx(sr, 1, hasPlaying ? (Color){180,60,60,255} : (Color){40,40,45,255});
+                DrawTextShadow("x", (int)sr.x + 3, (int)ty + 8, 8, hasPlaying ? (Color){255,100,100,255} : UI_TEXT_MUTED);
+                if (shov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && hasPlaying) {
+                    if (daw.transport.playing) {
+                        lt->state[lt->playingSlot] = CLIP_STOP_QUEUED;
+                    } else {
+                        lt->state[lt->playingSlot] = CLIP_STOPPED;
+                        lt->playingSlot = -1;
+                    }
+                    ui_consume_click();
+                }
+            }
+        }
+
+        // Global stop clips button (below scene buttons)
+        {
+            float gsy = gridY + gridH + 18;
+            Rectangle gsr = {launchX, gsy, launchTotalW, 14};
+            bool ghov = CheckCollisionPointRec(mouse, gsr);
+            DrawRectangleRec(gsr, ghov ? (Color){120,40,40,255} : UI_BG_BUTTON);
+            DrawRectangleLinesEx(gsr, 1, (Color){180,60,60,255});
+            DrawTextShadow("Stop All", (int)launchX + 4, (int)gsy + 2, UI_FONT_SMALL, (Color){255,120,120,255});
+            if (ghov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                for (int t = 0; t < trackCount; t++) {
+                    LauncherTrack *lt = &lch->tracks[t];
+                    if (lt->playingSlot >= 0) {
+                        if (daw.transport.playing) {
+                            lt->state[lt->playingSlot] = CLIP_STOP_QUEUED;
+                        } else {
+                            lt->state[lt->playingSlot] = CLIP_STOPPED;
+                            lt->playingSlot = -1;
+                        }
+                    }
+                    lt->queuedSlot = -1;
+                    // Clear any queued states
+                    for (int s = 0; s < LAUNCHER_MAX_SLOTS; s++) {
+                        if (lt->state[s] == CLIP_QUEUED) lt->state[s] = CLIP_STOPPED;
+                    }
+                }
+                ui_consume_click();
+            }
+        }
+
+        // Deferred tooltip (drawn on top of everything)
+        if (launchTooltip[0]) {
+            DrawTextShadow(launchTooltip, (int)launchTooltipX, (int)launchTooltipY, UI_FONT_SMALL, WHITE);
+        }
+
+        // Divider line between launcher and arrangement
+        DrawLine((int)(gridX - 2), (int)(gridY - rulerH), (int)(gridX - 2), (int)(gridY + gridH), (Color){60,60,70,255});
+    }
+
+    // === ARRANGEMENT GRID CELLS ===
     for (int b = arrScrollX; b < arr->length; b++) {
         float bx = gridX + (b - arrScrollX) * cellW;
         if (bx > gridX + gridW) break;
@@ -7793,12 +8075,14 @@ int main(int argc, char *argv[]) {
                 const char *path = files.paths[0];
                 const char *ext = strrchr(path, '.');
                 bool loaded = false;
+                double loadT0 = GetTime();
                 if (ext && strcmp(ext, ".song") == 0) {
                     loaded = dawLoad(path);
                 } else if (ext && (strcmp(ext, ".mid") == 0 || strcmp(ext, ".MID") == 0 ||
                                    strcmp(ext, ".midi") == 0 || strcmp(ext, ".MIDI") == 0)) {
                     loaded = midiFileToDaw(path);
                 }
+                double loadMs = (GetTime() - loadT0) * 1000.0;
                 if (loaded) {
                     strncpy(dawFilePath, path, sizeof(dawFilePath) - 1);
                     dawFilePath[sizeof(dawFilePath) - 1] = '\0';
@@ -7809,7 +8093,7 @@ int main(int argc, char *argv[]) {
                         char *dot = strrchr(daw.songName, '.');
                         if (dot) *dot = '\0';
                     }
-                    snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Loaded %s", fname ? fname+1 : dawFilePath);
+                    snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Loaded %s (%.0fms)", fname ? fname+1 : dawFilePath, loadMs);
                 } else if (ext) {
                     snprintf(dawStatusMsg, sizeof(dawStatusMsg), "Load failed!");
                 }

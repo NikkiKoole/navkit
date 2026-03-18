@@ -595,6 +595,20 @@ static void dawInitSequencer(void) {
     for (int b = 0; b < ARR_MAX_BARS; b++)
         for (int t = 0; t < ARR_MAX_TRACKS; t++)
             daw.arr.cells[b][t] = ARR_EMPTY;
+
+    // Initialize launcher slots to empty
+    daw.launcher.active = false;
+    for (int t = 0; t < ARR_MAX_TRACKS; t++) {
+        daw.launcher.tracks[t].playingSlot = -1;
+        daw.launcher.tracks[t].queuedSlot = -1;
+        daw.launcher.tracks[t].loopCount = 0;
+        for (int s = 0; s < LAUNCHER_MAX_SLOTS; s++) {
+            daw.launcher.tracks[t].pattern[s] = -1;
+            daw.launcher.tracks[t].state[s] = CLIP_EMPTY;
+            daw.launcher.tracks[t].nextAction[s] = NEXT_ACTION_LOOP;
+            daw.launcher.tracks[t].nextActionLoops[s] = 0;
+        }
+    }
 }
 
 // Sync DAW transport state to sequencer engine
@@ -654,6 +668,96 @@ static void dawSyncSequencer(void) {
         // Pattern mode: no chain, DAW controls current pattern directly
         seq.chainLength = 0;
         seq.currentPattern = daw.transport.currentPattern;
+    }
+
+    // Clip launcher: process per-track wrap events and override trackPatternIdx
+    if (daw.launcher.active) {
+        seq.perTrackPatterns = true;
+        for (int t = 0; t < ARR_MAX_TRACKS; t++) {
+            LauncherTrack *lt = &daw.launcher.tracks[t];
+            // Process wrap events (clip transitions happen on bar boundary)
+            if (seq.trackWrapped[t]) {
+                if (lt->queuedSlot >= 0) {
+                    // Start queued clip (manual trigger takes priority)
+                    if (lt->playingSlot >= 0)
+                        lt->state[lt->playingSlot] = CLIP_STOPPED;
+                    lt->playingSlot = lt->queuedSlot;
+                    lt->state[lt->playingSlot] = CLIP_PLAYING;
+                    lt->queuedSlot = -1;
+                    lt->loopCount = 0;
+                } else if (lt->playingSlot >= 0 && lt->state[lt->playingSlot] == CLIP_STOP_QUEUED) {
+                    lt->state[lt->playingSlot] = CLIP_STOPPED;
+                    lt->playingSlot = -1;
+                } else if (lt->playingSlot >= 0) {
+                    lt->loopCount++;
+                    // Check next action trigger
+                    int ps = lt->playingSlot;
+                    int nal = lt->nextActionLoops[ps];
+                    if (nal > 0 && lt->loopCount >= nal) {
+                        NextAction na = lt->nextAction[ps];
+                        int nextSlot = -1;
+                        switch (na) {
+                            case NEXT_ACTION_STOP:
+                                lt->state[ps] = CLIP_STOPPED;
+                                lt->playingSlot = -1;
+                                break;
+                            case NEXT_ACTION_NEXT:
+                                for (int ns = ps + 1; ns < LAUNCHER_MAX_SLOTS; ns++) {
+                                    if (lt->pattern[ns] >= 0) { nextSlot = ns; break; }
+                                }
+                                if (nextSlot < 0) { lt->state[ps] = CLIP_STOPPED; lt->playingSlot = -1; }
+                                break;
+                            case NEXT_ACTION_PREV:
+                                for (int ns = ps - 1; ns >= 0; ns--) {
+                                    if (lt->pattern[ns] >= 0) { nextSlot = ns; break; }
+                                }
+                                if (nextSlot < 0) { lt->state[ps] = CLIP_STOPPED; lt->playingSlot = -1; }
+                                break;
+                            case NEXT_ACTION_FIRST:
+                                for (int ns = 0; ns < LAUNCHER_MAX_SLOTS; ns++) {
+                                    if (lt->pattern[ns] >= 0) { nextSlot = ns; break; }
+                                }
+                                break;
+                            case NEXT_ACTION_RANDOM: {
+                                int candidates[LAUNCHER_MAX_SLOTS], nc = 0;
+                                for (int ns = 0; ns < LAUNCHER_MAX_SLOTS; ns++) {
+                                    if (lt->pattern[ns] >= 0) candidates[nc++] = ns;
+                                }
+                                if (nc > 0) nextSlot = candidates[rand() % nc];
+                                break;
+                            }
+                            case NEXT_ACTION_RETURN:
+                                lt->state[ps] = CLIP_STOPPED;
+                                lt->playingSlot = -1;
+                                // Track falls back to arrangement in the override below
+                                break;
+                            default: break; // LOOP: do nothing
+                        }
+                        if (nextSlot >= 0) {
+                            lt->state[ps] = CLIP_STOPPED;
+                            lt->playingSlot = nextSlot;
+                            lt->state[nextSlot] = CLIP_PLAYING;
+                            lt->loopCount = 0;
+                        }
+                    }
+                }
+                seq.trackWrapped[t] = false;
+            }
+            // Launcher overrides trackPatternIdx for tracks with active clips
+            if (lt->playingSlot >= 0) {
+                seq.trackPatternIdx[t] = lt->pattern[lt->playingSlot];
+            } else if (!daw.arr.arrMode) {
+                // No launcher clip and no arrangement: silence this track
+                seq.trackPatternIdx[t] = -1;
+            }
+        }
+        // Auto-deactivate launcher when nothing is playing or queued
+        bool anyActive = false;
+        for (int t = 0; t < ARR_MAX_TRACKS; t++) {
+            LauncherTrack *lt = &daw.launcher.tracks[t];
+            if (lt->playingSlot >= 0 || lt->queuedSlot >= 0) { anyActive = true; break; }
+        }
+        if (!anyActive) daw.launcher.active = false;
     }
 
     // Apply per-pattern overrides (BPM, groove, mutes) without modifying DAW state

@@ -1957,9 +1957,23 @@ leftOctave = 0
 rightOctave = 0
 
 [arrangement]
-length = 0
+length = 2
 loopsPerPattern = 2
 songMode = false
+patterns = 0 0
+loops = 0 1
+
+[pertrack]
+arrMode = true
+arrLength = 2
+arr0 = 0 0
+arr1 = 0 0
+arr2 = 0 -1
+arr3 = 0 0
+arr4 = 0 0
+arr5 = 0 0
+arr6 = 0 0
+arr7 = 0 0
 
 [pattern.0]
 drumTrackLength = 16 16 16 16
@@ -1969,34 +1983,13 @@ d track=0 step=0 vel=0.8
 d track=0 step=4 vel=0.8
 d track=0 step=8 vel=0.8
 d track=0 step=12 vel=0.8
-
-[pattern.1]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.8
-d track=0 step=2 vel=0.8
-d track=0 step=4 vel=0.8
-d track=0 step=6 vel=0.8
-d track=0 step=8 vel=0.8
-d track=0 step=10 vel=0.8
-d track=0 step=12 vel=0.8
-d track=0 step=14 vel=0.8
-m track=0 step=3 note=C4 vel=0.8 gate=1
-m track=2 step=1 note=C4 vel=0.8 gate=1
-s step=9 slice=0 note=60 vel=0.8
-
-[pattern.2]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.8
-d track=0 step=3 vel=0.8
-d track=0 step=7 vel=0.8
-d track=0 step=11 vel=0.8
-m track=1 step=7 note=C4 vel=0.8 gate=1
-m track=2 step=0 note=C4 vel=0.8 gate=1
-m track=2 step=5 note=C4 vel=0.8 gate=1
-m track=2 step=9 note=C4 vel=0.8 gate=1
-m track=2 step=11 note=C4 vel=0.8 gate=1
-m track=2 step=14 note=C4 vel=0.8 gate=1
+d track=1 step=4 vel=0.8
+d track=1 step=12 vel=0.8
+d track=2 step=0 vel=0.8
+d track=2 step=2 vel=0.8
+d track=2 step=4 vel=0.8
+d track=2 step=6 vel=0.8
+d track=2 step=8 vel=0.8
+d track=2 step=10 vel=0.8
+d track=2 step=12 vel=0.8
+d track=2 step=14 vel=0.8
