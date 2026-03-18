@@ -4,10 +4,11 @@
 
 1. ~~**Piano roll fixes**~~ — DONE (fixed cell height, click-to-audition keys)
 2. ~~**Clip launcher MVP + Phase 1**~~ — DONE (two-panel layout, per-track triggering, next actions, scene launch, drag→arrangement, save/load, quantize selector, note cutoff)
-3. **Clip launcher polish** — better visuals, per-clip quantize override
-4. **WAV export for samples** — unblocks faster load, external sample import, standalone value
-5. **Automation lanes** — once arrangement is the primary composition tool
-6. **Record launcher → arrangement** — capture live jams as arrangement events
+3. ~~**Clip launcher polish**~~ — DONE (pulsing cells, progress fill, stop-queued blink, arrangement sound leak fix)
+4. ~~**MIDI import → per-track arrangement**~~ — DONE (auto-generates arr + launcher from MIDI drop)
+5. **WAV export for samples** — unblocks faster load, external sample import, standalone value
+6. **Automation lanes** — once arrangement is the primary composition tool
+7. **Record launcher → arrangement** — capture live jams as arrangement events
 
 **Not scheduled** (do when it hurts):
 - **Single-track clip patterns / flexible track types** — the current multi-track patterns already work with per-track arrangement. The "waste" is unused data in memory, not a functional problem. Do this when you keep bumping into "I want this bass line on a different track but it's stuck in a pattern with drums I don't want." See §Flexible Track Architecture below for the incremental path.
@@ -220,9 +221,12 @@ Add a collapsible launcher panel to `drawWorkArrange()`. Toggle button in the to
 - ✅ Launch quantize selector: Bar / Beat / 1/8 / 1/16 (sub-bar quantize via step boundaries)
 - ✅ Proper note cutoff on clip stop (fires trackNoteOff, clears gates)
 
-**Phase 2 — Polish**
-- ⬜ Better visual feedback for playing/queued states (GarageBand-style pulsing)
-- ⬜ Per-clip launch quantize override (most clips use global, some override)
+**Phase 2 — Polish** ✅ DONE
+- ✅ Pulsing cells (brightness breathes across bar), progress fill sweep, thicker playing border
+- ✅ Stop-queued red blink, next action indicator turns orange on last loop
+- ✅ Launcher owns all tracks when active (fixed arrangement sound leak)
+- ✅ MIDI import auto-generates per-track arrangement + launcher
+- ⬜ Per-clip launch quantize override (deferred — global quantize is sufficient for now)
 
 **Phase 3 — Integration**
 - ⬜ Record launcher performance → arrangement (capture clip launches as arrangement events)
