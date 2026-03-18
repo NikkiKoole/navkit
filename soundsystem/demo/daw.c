@@ -6437,21 +6437,14 @@ static void dawHandleMidiInput(void) {
                     // Arp mode: collect held notes, single persistent voice
                     // (arp update happens below, after all events processed)
                 } else if (patch->p_monoMode) {
-                    // Mono: retrigger the single voice on the newest note
-                    // Release previous voice if any note was sounding
-                    for (int n = 0; n < NUM_MIDI_NOTES; n++) {
-                        if (voices[n] >= 0) {
-                            releaseNote(voices[n]);
-                            voices[n] = -1;
-                        }
-                    }
+                    // Mono: single voice, track via monoVoiceIdx
                     float freq = midiNoteToPlayFreq(note, octaveOffset);
                     monoStackPush(note, freq);
                     float savedVol = patch->p_volume;
                     patch->p_volume = vel * savedVol;
                     int v = playNoteWithPatch(freq, patch);
                     patch->p_volume = savedVol;
-                    voices[note] = v;
+                    // Don't use per-note voices[] for mono — use monoVoiceIdx
                     if (v >= 0) {
                         voiceBus[v] = bus;
                         voiceAge[v] = 0.0f;
@@ -6504,11 +6497,11 @@ static void dawHandleMidiInput(void) {
                 if (patch->p_arpEnabled) {
                     // Arp: handled in post-event update below
                 } else if (patch->p_monoMode) {
-                    // Mono: release via stack — glides to next held note based on priority
-                    if (voices[note] >= 0 && !midiSustainPedal) {
-                        releaseMonoNote(voices[note], note);
-                        voiceLogPush("MIDI OFF n%d v%d mono (stack=%d)", note, voices[note], monoNoteCount);
-                        voices[note] = -1;
+                    // Mono: release via stack — glides to next held note or releases
+                    if (!midiSustainPedal) {
+                        int vi = monoVoiceIdx;
+                        releaseMonoNote(vi, note);
+                        voiceLogPush("MIDI OFF n%d v%d mono (stack=%d)", note, vi, monoNoteCount);
                     }
                 } else {
                     // Poly mode

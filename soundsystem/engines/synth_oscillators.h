@@ -544,6 +544,11 @@ static void initMalletPreset(MalletSettings *ms, MalletPreset preset) {
     switch (preset) {
         case MALLET_PRESET_MARIMBA:
             // Marimba: warm, woody, strong fundamental, resonant tubes
+            // Tuned bar ratios (Fletcher & Rossing): undercut brings mode 2 to 4:1 (two octaves)
+            ms->modeFreqs[0] = 1.0f;
+            ms->modeFreqs[1] = 4.0f;    // 2 octaves (undercut-tuned, industry standard)
+            ms->modeFreqs[2] = 10.0f;   // ~3.2 octaves
+            ms->modeFreqs[3] = 20.0f;   // ~4.3 octaves (barely audible)
             ms->modeAmpsInit[0] = 1.0f;
             ms->modeAmpsInit[1] = 0.25f;
             ms->modeAmpsInit[2] = 0.08f;
@@ -552,14 +557,19 @@ static void initMalletPreset(MalletSettings *ms, MalletPreset preset) {
             ms->modeDecays[1] = 1.2f;
             ms->modeDecays[2] = 0.5f;
             ms->modeDecays[3] = 0.2f;
-            ms->stiffness = 0.2f;       // Wood - less stiff
+            ms->stiffness = 0.0f;       // Ratios already tuned, no stiffness stretch needed
             ms->hardness = 0.4f;        // Medium-soft mallets
             ms->strikePos = 0.3f;       // Slightly off-center
             ms->resonance = 0.8f;       // Strong resonator tubes
             break;
-            
+
         case MALLET_PRESET_VIBES:
             // Vibraphone: metallic, sustaining, motor tremolo
+            // Tuned bar ratios: mode 2 at 4:1 (two octaves), like marimba but brighter
+            ms->modeFreqs[0] = 1.0f;
+            ms->modeFreqs[1] = 4.0f;    // 2 octaves (tuned aluminum bar)
+            ms->modeFreqs[2] = 10.0f;
+            ms->modeFreqs[3] = 20.0f;
             ms->modeAmpsInit[0] = 1.0f;
             ms->modeAmpsInit[1] = 0.4f;
             ms->modeAmpsInit[2] = 0.2f;
@@ -568,16 +578,21 @@ static void initMalletPreset(MalletSettings *ms, MalletPreset preset) {
             ms->modeDecays[1] = 3.0f;
             ms->modeDecays[2] = 2.0f;
             ms->modeDecays[3] = 1.0f;
-            ms->stiffness = 0.7f;       // Metal bars
+            ms->stiffness = 0.0f;       // Ratios already tuned
             ms->hardness = 0.5f;        // Medium mallets
             ms->strikePos = 0.25f;
             ms->resonance = 0.9f;
             ms->tremolo = 0.5f;         // Motor tremolo on
             ms->tremoloRate = 5.5f;
             break;
-            
+
         case MALLET_PRESET_XYLOPHONE:
             // Xylophone: bright, sharp attack, short decay
+            // Tuned bar ratios: mode 2 at 3:1 (octave + fifth), brighter than marimba
+            ms->modeFreqs[0] = 1.0f;
+            ms->modeFreqs[1] = 3.0f;    // Octave + fifth (rosewood bar tuning)
+            ms->modeFreqs[2] = 9.0f;    // 3 octaves + major second
+            ms->modeFreqs[3] = 18.0f;
             ms->modeAmpsInit[0] = 1.0f;
             ms->modeAmpsInit[1] = 0.5f;
             ms->modeAmpsInit[2] = 0.3f;
@@ -586,7 +601,7 @@ static void initMalletPreset(MalletSettings *ms, MalletPreset preset) {
             ms->modeDecays[1] = 0.5f;
             ms->modeDecays[2] = 0.3f;
             ms->modeDecays[3] = 0.15f;
-            ms->stiffness = 0.4f;       // Rosewood
+            ms->stiffness = 0.0f;       // Ratios already tuned
             ms->hardness = 0.8f;        // Hard mallets
             ms->strikePos = 0.2f;
             ms->resonance = 0.5f;       // Smaller resonators
@@ -623,12 +638,12 @@ static void initMalletPreset(MalletSettings *ms, MalletPreset preset) {
             ms->modeDecays[1] = 4.0f;
             ms->modeDecays[2] = 3.0f;
             ms->modeDecays[3] = 2.0f;
-            // Tubular bell partials (different from bars)
+            // Tubular bell partials (nearly harmonic tube modes)
             ms->modeFreqs[0] = 1.0f;
             ms->modeFreqs[1] = 2.0f;
             ms->modeFreqs[2] = 3.0f;
-            ms->modeFreqs[3] = 4.2f;
-            ms->stiffness = 0.85f;
+            ms->modeFreqs[3] = 4.0f;
+            ms->stiffness = 0.0f;       // Ratios already set, no stretch
             ms->hardness = 0.7f;
             ms->strikePos = 0.1f;
             ms->resonance = 0.6f;

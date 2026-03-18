@@ -30,6 +30,13 @@
 #undef scaleRoot
 #undef scaleType
 #undef monoMode
+#undef glideTime
+#undef legatoWindow
+#undef notePriority
+#undef monoNoteStack
+#undef monoFreqStack
+#undef monoNoteCount
+#undef monoVoiceIdx
 #undef fmModRatio
 #undef fmModIndex
 // Note: don't undef 'seq' as it's used throughout the tests
@@ -1131,7 +1138,7 @@ describe(mallet_synthesis) {
         initMalletPreset(&ms, MALLET_PRESET_MARIMBA);
         
         expect(ms.preset == MALLET_PRESET_MARIMBA);
-        expect_float_eq(ms.stiffness, 0.2f);  // Wood
+        expect_float_eq(ms.stiffness, 0.0f);  // Tuned ratios, no stiffness stretch
         expect(ms.tremolo == 0.0f);  // No motor
     }
     
@@ -1141,7 +1148,7 @@ describe(mallet_synthesis) {
         
         expect(ms.preset == MALLET_PRESET_VIBES);
         expect(ms.tremolo > 0.0f);  // Has motor tremolo
-        expect(ms.stiffness > 0.5f);  // Metal bars
+        expect_float_eq(ms.stiffness, 0.0f);  // Tuned ratios, no stiffness stretch
     }
     
     it("should set mode amplitudes from preset") {
@@ -6164,6 +6171,441 @@ describe(sampler_command_queue) {
     }
 }
 
+// ============================================================================
+// MONO NOTE STACK TESTS
+// ============================================================================
+
+// Helper: init synth context for mono tests
+static void setupMonoCtx(SynthContext *ctx) {
+    initSynthContext(ctx);
+    synthCtx = ctx;
+    ctx->monoMode = true;
+    ctx->glideTime = 0.06f;
+    ctx->legatoWindow = 0.015f;
+    ctx->notePriority = NOTE_PRIORITY_LAST;
+    ctx->monoNoteCount = 0;
+}
+
+// Helper: process N samples to advance voice state
+static void advanceVoice(Voice *v, int samples) {
+    for (int i = 0; i < samples; i++) {
+        processVoice(v, (float)SAMPLE_RATE);
+    }
+}
+
+describe(mono_note_stack) {
+    it("should push and pop notes in LIFO order (last priority)") {
+        SynthContext ctx;
+        setupMonoCtx(&ctx);
+
+        monoStackPush(60, 261.63f);
+        monoStackPush(64, 329.63f);
+        monoStackPush(67, 392.00f);
+        expect(ctx.monoNoteCount == 3);
+
+        // Pop 67 — should return 64 (last remaining)
+        float freq = 0;
+        int note = monoStackPop(67, &freq);
+        expect(note == 64);
+        expect_float_near(freq, 329.63f, 0.1f);
+        expect(ctx.monoNoteCount == 2);
+
+        // Pop 64 — should return 60
+        note = monoStackPop(64, &freq);
+        expect(note == 60);
+        expect_float_near(freq, 261.63f, 0.1f);
+        expect(ctx.monoNoteCount == 1);
+
+        // Pop 60 — empty
+        note = monoStackPop(60, &freq);
+        expect(note == -1);
+        expect(ctx.monoNoteCount == 0);
+    }
+
+    it("should return lowest note in LOW priority mode") {
+        SynthContext ctx;
+        setupMonoCtx(&ctx);
+        ctx.notePriority = NOTE_PRIORITY_LOW;
+
+        monoStackPush(64, 329.63f);  // E4
+        monoStackPush(60, 261.63f);  // C4 (lowest)
+        monoStackPush(67, 392.00f);  // G4
+
+        // Pop G4 — should return C4 (lowest remaining)
+        float freq = 0;
+        int note = monoStackPop(67, &freq);
+        expect(note == 60);
+        expect_float_near(freq, 261.63f, 0.1f);
+    }
+
+    it("should return highest note in HIGH priority mode") {
+        SynthContext ctx;
+        setupMonoCtx(&ctx);
+        ctx.notePriority = NOTE_PRIORITY_HIGH;
+
+        monoStackPush(60, 261.63f);  // C4
+        monoStackPush(67, 392.00f);  // G4 (highest)
+        monoStackPush(64, 329.63f);  // E4
+
+        // Pop E4 — should return G4 (highest remaining)
+        float freq = 0;
+        int note = monoStackPop(64, &freq);
+        expect(note == 67);
+        expect_float_near(freq, 392.00f, 0.1f);
+    }
+
+    it("should handle duplicate push (re-press same key)") {
+        SynthContext ctx;
+        setupMonoCtx(&ctx);
+
+        monoStackPush(60, 261.63f);
+        monoStackPush(64, 329.63f);
+        monoStackPush(60, 261.63f);  // re-press C4
+        expect(ctx.monoNoteCount == 2);  // not 3
+
+        // Pop C4 — should return E4 (only remaining)
+        float freq = 0;
+        int note = monoStackPop(60, &freq);
+        expect(note == 64);
+    }
+
+    it("should clear stack") {
+        SynthContext ctx;
+        setupMonoCtx(&ctx);
+
+        monoStackPush(60, 261.63f);
+        monoStackPush(64, 329.63f);
+        monoStackClear();
+        expect(ctx.monoNoteCount == 0);
+
+        float freq = 0;
+        int note = monoStackPop(60, &freq);
+        expect(note == -1);
+    }
+}
+
+// ============================================================================
+// MONO VOICE LIFECYCLE TESTS
+// ============================================================================
+
+describe(mono_voice_lifecycle) {
+    it("should play a note and produce audio in mono mode") {
+        SynthContext ctx;
+        setupMonoCtx(&ctx);
+        ctx.monoMode = true;
+        ctx.glideTime = 0.06f;
+
+        SynthPatch patch = createDefaultPatch(WAVE_SAW);
+        patch.p_monoMode = true;
+        patch.p_glideTime = 0.06f;
+        patch.p_attack = 0.01f;
+        patch.p_decay = 0.1f;
+        patch.p_sustain = 0.5f;
+        patch.p_release = 0.1f;
+        applyPatchToGlobals(&patch);
+
+        int v = playNoteWithPatch(261.63f, &patch);
+        expect(v >= 0);
+        expect(ctx.voices[v].envStage > 0);
+
+        // Process some samples — should produce audio
+        float sum = 0;
+        for (int i = 0; i < 1000; i++) {
+            sum += fabsf(processVoice(&ctx.voices[v], (float)SAMPLE_RATE));
+        }
+        expect(sum > 0.1f);  // non-silent
+    }
+
+    it("should glide when second note pressed while first held") {
+        SynthContext ctx;
+        setupMonoCtx(&ctx);
+        ctx.monoMode = true;
+        ctx.glideTime = 0.06f;
+
+        SynthPatch patch = createDefaultPatch(WAVE_SAW);
+        patch.p_monoMode = true;
+        patch.p_glideTime = 0.06f;
+        patch.p_sustain = 0.5f;
+        applyPatchToGlobals(&patch);
+
+        // Play first note
+        int v = playNoteWithPatch(261.63f, &patch);
+        expect(v >= 0);
+        advanceVoice(&ctx.voices[v], 100);  // let attack settle
+
+        // Play second note — should glide, same voice
+        int v2 = playNoteWithPatch(329.63f, &patch);
+        expect(v2 == v);  // same mono voice
+
+        // Target frequency should be the new note
+        expect_float_near(ctx.voices[v].targetFrequency, 329.63f, 0.1f);
+        // Glide rate should be set
+        expect(ctx.voices[v].glideRate > 0.0f);
+    }
+
+    it("should retrigger envelope on fresh note after full release") {
+        SynthContext ctx;
+        setupMonoCtx(&ctx);
+        ctx.monoMode = true;
+        ctx.glideTime = 0.06f;
+
+        SynthPatch patch = createDefaultPatch(WAVE_SAW);
+        patch.p_monoMode = true;
+        patch.p_glideTime = 0.06f;
+        patch.p_sustain = 0.5f;
+        patch.p_release = 0.05f;
+        applyPatchToGlobals(&patch);
+
+        // Play and release a note
+        int v = playNoteWithPatch(261.63f, &patch);
+        advanceVoice(&ctx.voices[v], 500);
+        releaseNote(v);
+
+        // Process until voice dies (release → stage 0)
+        for (int i = 0; i < SAMPLE_RATE; i++) {
+            processVoice(&ctx.voices[v], (float)SAMPLE_RATE);
+            if (ctx.voices[v].envStage == 0) break;
+        }
+        expect(ctx.voices[v].envStage == 0);
+
+        // Now play a fresh note — should work, produce audio
+        applyPatchToGlobals(&patch);
+        int v2 = playNoteWithPatch(329.63f, &patch);
+        expect(v2 >= 0);
+        expect(ctx.voices[v2].envStage == 1);  // attack stage
+
+        float sum = 0;
+        for (int i = 0; i < 1000; i++) {
+            sum += fabsf(processVoice(&ctx.voices[v2], (float)SAMPLE_RATE));
+        }
+        expect(sum > 0.1f);  // audible
+    }
+
+    it("should retrigger after release with zero sustain (acid preset)") {
+        SynthContext ctx;
+        setupMonoCtx(&ctx);
+        ctx.monoMode = true;
+        ctx.glideTime = 0.06f;
+
+        SynthPatch patch = createDefaultPatch(WAVE_SAW);
+        patch.p_monoMode = true;
+        patch.p_glideTime = 0.06f;
+        patch.p_attack = 0.003f;
+        patch.p_decay = 3.0f;
+        patch.p_sustain = 0.0f;   // acid: AD envelope, no sustain
+        patch.p_release = 0.15f;
+        applyPatchToGlobals(&patch);
+
+        // Play note, let it decay a bit
+        int v = playNoteWithPatch(261.63f, &patch);
+        advanceVoice(&ctx.voices[v], 2000);  // ~45ms into decay
+        expect(ctx.voices[v].envLevel > 0.0f);  // still audible
+
+        // Release
+        releaseNote(v);
+        // Let release finish
+        for (int i = 0; i < SAMPLE_RATE; i++) {
+            processVoice(&ctx.voices[v], (float)SAMPLE_RATE);
+            if (ctx.voices[v].envStage == 0) break;
+        }
+
+        // Play fresh note — MUST retrigger and produce audio
+        applyPatchToGlobals(&patch);
+        int v2 = playNoteWithPatch(329.63f, &patch);
+        expect(v2 >= 0);
+        expect(ctx.voices[v2].envStage == 1);  // attack
+
+        float sum = 0;
+        for (int i = 0; i < 2000; i++) {
+            sum += fabsf(processVoice(&ctx.voices[v2], (float)SAMPLE_RATE));
+        }
+        expect(sum > 0.1f);  // must be audible
+    }
+
+    it("should produce audio on second note with zero sustain (acid glide bug)") {
+        SynthContext ctx;
+        setupMonoCtx(&ctx);
+        ctx.monoMode = true;
+        ctx.glideTime = 0.06f;
+
+        SynthPatch patch = createDefaultPatch(WAVE_SAW);
+        patch.p_monoMode = true;
+        patch.p_glideTime = 0.06f;
+        patch.p_attack = 0.003f;
+        patch.p_decay = 3.0f;
+        patch.p_sustain = 0.0f;
+        patch.p_release = 0.15f;
+        applyPatchToGlobals(&patch);
+
+        // Play first note, decay a bit (still in decay stage)
+        int v = playNoteWithPatch(261.63f, &patch);
+        advanceVoice(&ctx.voices[v], 2000);
+        float levelBefore = ctx.voices[v].envLevel;
+        expect(levelBefore > 0.01f);  // still decaying, audible
+
+        // Play second note while first still sounding — this is the acid glide
+        applyPatchToGlobals(&patch);
+        int v2 = playNoteWithPatch(329.63f, &patch);
+        expect(v2 == v);  // same mono voice
+
+        // Voice must still be producing audio
+        float sum = 0;
+        for (int i = 0; i < 2000; i++) {
+            sum += fabsf(processVoice(&ctx.voices[v], (float)SAMPLE_RATE));
+        }
+        expect(sum > 0.1f);  // MUST be audible — this was the reported bug
+    }
+}
+
+// ============================================================================
+// MONO LEGATO WINDOW TESTS
+// ============================================================================
+
+describe(mono_legato_window) {
+    it("should treat note within legato window as glide not retrigger") {
+        SynthContext ctx;
+        setupMonoCtx(&ctx);
+        ctx.monoMode = true;
+        ctx.glideTime = 0.06f;
+        ctx.legatoWindow = 0.015f;  // 15ms
+
+        SynthPatch patch = createDefaultPatch(WAVE_SAW);
+        patch.p_monoMode = true;
+        patch.p_glideTime = 0.06f;
+        patch.p_legatoWindow = 0.015f;
+        patch.p_sustain = 0.5f;
+        patch.p_release = 0.3f;
+        applyPatchToGlobals(&patch);
+
+        // Play and release
+        int v = playNoteWithPatch(261.63f, &patch);
+        advanceVoice(&ctx.voices[v], 500);
+        float levelBeforeRelease = ctx.voices[v].envLevel;
+        expect(levelBeforeRelease > 0.1f);
+        releaseNote(v);
+
+        // Small gap (5ms = 220 samples) — within legato window
+        advanceVoice(&ctx.voices[v], 220);
+        expect(ctx.voices[v].envStage == 4);  // in release
+        (void)ctx.voices[v].envLevel;  // still in release
+
+        // Play new note — should be legato if releaseLevel is high enough
+        applyPatchToGlobals(&patch);
+        int v2 = playNoteWithPatch(329.63f, &patch);
+        expect(v2 == v);  // same voice
+
+        // Voice should still be audible regardless of legato vs retrigger
+        float sum = 0;
+        for (int i = 0; i < 1000; i++) {
+            sum += fabsf(processVoice(&ctx.voices[v], (float)SAMPLE_RATE));
+        }
+        expect(sum > 0.01f);
+    }
+
+    it("should retrigger normally outside legato window") {
+        SynthContext ctx;
+        setupMonoCtx(&ctx);
+        ctx.monoMode = true;
+        ctx.glideTime = 0.06f;
+        ctx.legatoWindow = 0.015f;
+
+        SynthPatch patch = createDefaultPatch(WAVE_SAW);
+        patch.p_monoMode = true;
+        patch.p_glideTime = 0.06f;
+        patch.p_legatoWindow = 0.015f;
+        patch.p_sustain = 0.5f;
+        patch.p_release = 0.01f;  // short release
+        applyPatchToGlobals(&patch);
+
+        int v = playNoteWithPatch(261.63f, &patch);
+        advanceVoice(&ctx.voices[v], 500);
+        releaseNote(v);
+
+        // Long gap (50ms = 2205 samples) — outside legato window
+        for (int i = 0; i < 2205; i++) {
+            processVoice(&ctx.voices[v], (float)SAMPLE_RATE);
+        }
+
+        // Play new note — should be a fresh retrigger
+        applyPatchToGlobals(&patch);
+        int v2 = playNoteWithPatch(329.63f, &patch);
+        expect(v2 >= 0);
+        // Should be in attack (stage 1) — full retrigger
+        expect(ctx.voices[v2].envStage == 1);
+    }
+}
+
+// ============================================================================
+// MONO + ARP ISOLATION TESTS
+// ============================================================================
+
+describe(mono_arp_isolation) {
+    it("should clear mono stack when arp uses the voice") {
+        SynthContext ctx;
+        setupMonoCtx(&ctx);
+
+        // Push some notes
+        monoStackPush(60, 261.63f);
+        monoStackPush(64, 329.63f);
+        expect(ctx.monoNoteCount == 2);
+
+        // Simulate arp taking over — clear stack
+        monoStackClear();
+        expect(ctx.monoNoteCount == 0);
+    }
+
+    it("should have empty stack after clear for clean mono takeover") {
+        SynthContext ctx;
+        setupMonoCtx(&ctx);
+
+        monoStackPush(60, 261.63f);
+        monoStackPush(64, 329.63f);
+        monoStackPush(67, 392.00f);
+        monoStackClear();
+
+        // Pop should return -1 on empty stack
+        float freq = 0;
+        int note = monoStackPop(60, &freq);
+        expect(note == -1);
+    }
+}
+
+// ============================================================================
+// MONO PATCH SAVE/LOAD TESTS
+// ============================================================================
+
+describe(mono_patch_save_load) {
+    it("should round-trip legatoWindow and notePriority") {
+        const char *path = "/tmp/test_mono_patch.patch";
+
+        SynthPatch orig = createDefaultPatch(WAVE_SAW);
+        orig.p_monoMode = true;
+        orig.p_glideTime = 0.08f;
+        orig.p_legatoWindow = 0.025f;
+        orig.p_notePriority = 1;  // NOTE_PRIORITY_LOW
+
+        bool saved = songFileSavePatch(path, &orig);
+        expect(saved);
+
+        SynthPatch loaded = createDefaultPatch(WAVE_SQUARE);
+        bool ok = songFileLoadPatch(path, &loaded);
+        expect(ok);
+
+        expect(loaded.p_monoMode == true);
+        expect_float_near(loaded.p_glideTime, 0.08f, 0.001f);
+        expect_float_near(loaded.p_legatoWindow, 0.025f, 0.001f);
+        expect(loaded.p_notePriority == 1);
+
+        remove(path);
+    }
+
+    it("should default legatoWindow to 15ms for new patches") {
+        SynthPatch p = createDefaultPatch(WAVE_SAW);
+        expect_float_near(p.p_legatoWindow, 0.015f, 0.001f);
+        expect(p.p_notePriority == 0);  // NOTE_PRIORITY_LAST
+    }
+}
+
 int main(int argc, char **argv) {
     // Check for quiet mode flag
     for (int i = 1; i < argc; i++) {
@@ -6292,6 +6734,13 @@ int main(int argc, char **argv) {
 
     // Sampler command queue
     test(sampler_command_queue);
+
+    // Mono mode, glide, legato, note priority
+    test(mono_note_stack);
+    test(mono_voice_lifecycle);
+    test(mono_legato_window);
+    test(mono_arp_isolation);
+    test(mono_patch_save_load);
 
     return summary();
 }

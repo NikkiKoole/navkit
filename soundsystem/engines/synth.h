@@ -2505,12 +2505,14 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
         if (monoV->envStage > 0 && monoV->envStage < 4) {
             // Active note (not released) - do legato glide
             isGlide = true;
-        } else if (monoV->envStage == 4 && legatoWindow > 0.0f && monoV->envPhase < legatoWindow) {
-            // Voice just released but within legato window — treat as legato glide
-            // Resume envelope from where it was (don't retrigger)
+        } else if (monoV->envStage == 4 && legatoWindow > 0.0f && monoV->envPhase < legatoWindow
+                   && monoV->releaseLevel > 0.01f) {
+            // Voice just released but within legato window and still audible — legato glide
+            // Retrigger envelope from current level (don't snap to sustain which may be 0)
             isGlide = true;
-            monoV->envStage = 3;  // back to sustain
-            monoV->envLevel = monoV->releaseLevel;  // restore level from before release
+            monoV->envStage = 2;  // back to decay (will naturally reach sustain)
+            monoV->envPhase = 0.0f;
+            monoV->envLevel = monoV->releaseLevel;
         } else if (monoV->baseFrequency > 20.0f && glideTime > 0.0f) {
             // Voice released or dead — glide pitch from last note, retrigger envelope
             isGlide = true;
