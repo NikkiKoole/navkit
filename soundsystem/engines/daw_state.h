@@ -61,6 +61,7 @@ typedef struct {
 typedef struct {
     LauncherTrack tracks[ARR_MAX_TRACKS];
     bool active;                             // true = launcher is driving some tracks
+    int quantize;                            // 0=bar, 1=1/16, 2=1/8, 4=beat, 8=half-bar
 } Launcher;
 
 typedef struct {

@@ -598,6 +598,7 @@ static void dawInitSequencer(void) {
 
     // Initialize launcher slots to empty
     daw.launcher.active = false;
+    daw.launcher.quantize = 0;  // bar-quantized by default
     for (int t = 0; t < ARR_MAX_TRACKS; t++) {
         daw.launcher.tracks[t].playingSlot = -1;
         daw.launcher.tracks[t].queuedSlot = -1;
@@ -670,7 +671,18 @@ static void dawSyncSequencer(void) {
         seq.currentPattern = daw.transport.currentPattern;
     }
 
+    // Helper: kill all active notes on a track
+    #define _launcherSilenceTrack(t) do { \
+        if (seq.trackNoteOff[t]) seq.trackNoteOff[t](); \
+        for (int _v = 0; _v < SEQ_V2_MAX_POLY; _v++) { \
+            seq.trackGateRemaining[t][_v] = 0; \
+            seq.trackCurrentNote[t][_v] = SEQ_NOTE_OFF; \
+        } \
+        seq.trackActiveVoices[t] = 0; \
+    } while(0)
+
     // Clip launcher: process per-track wrap events and override trackPatternIdx
+    seq.launchQuantize = daw.launcher.quantize;
     if (daw.launcher.active) {
         seq.perTrackPatterns = true;
         for (int t = 0; t < ARR_MAX_TRACKS; t++) {
@@ -688,6 +700,7 @@ static void dawSyncSequencer(void) {
                 } else if (lt->playingSlot >= 0 && lt->state[lt->playingSlot] == CLIP_STOP_QUEUED) {
                     lt->state[lt->playingSlot] = CLIP_STOPPED;
                     lt->playingSlot = -1;
+                    _launcherSilenceTrack(t);
                 } else if (lt->playingSlot >= 0) {
                     lt->loopCount++;
                     // Check next action trigger
@@ -700,6 +713,7 @@ static void dawSyncSequencer(void) {
                             case NEXT_ACTION_STOP:
                                 lt->state[ps] = CLIP_STOPPED;
                                 lt->playingSlot = -1;
+                                _launcherSilenceTrack(t);
                                 break;
                             case NEXT_ACTION_NEXT:
                                 for (int ns = ps + 1; ns < LAUNCHER_MAX_SLOTS; ns++) {
@@ -729,6 +743,7 @@ static void dawSyncSequencer(void) {
                             case NEXT_ACTION_RETURN:
                                 lt->state[ps] = CLIP_STOPPED;
                                 lt->playingSlot = -1;
+                                _launcherSilenceTrack(t);
                                 // Track falls back to arrangement in the override below
                                 break;
                             default: break; // LOOP: do nothing
