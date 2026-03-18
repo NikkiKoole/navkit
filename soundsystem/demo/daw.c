@@ -437,6 +437,7 @@ static DawState daw = {
     },
     .chopSliceMap = {-1, -1, -1, -1},
     .chromaticRootNote = 60,
+    .masterSpeed = 1.0f,
     .masterVol = 0.8f,
     .splitPoint = 60, .splitLeftPatch = 1, .splitRightPatch = 2,
 };
@@ -1195,18 +1196,21 @@ static void drawTransport(void) {
     }
     tx += 46;
 
-    // Half-speed toggle
+    // Master speed (drag to change, right-click or "1x" button resets)
+    DraggableFloat(tx, ty, "Spd", &daw.masterSpeed, 0.05f, 0.25f, 2.0f);
+    tx += 100;
     {
-        Vector2 mouse = GetMousePosition();
-        Rectangle hsR = {tx, ty-2, 34, 18};
-        bool hsHov = CheckCollisionPointRec(mouse, hsR);
-        Color hsBg = daw.halfSpeedEnabled ? (Color){80, 40, 120, 255} : (hsHov ? UI_BG_HOVER : UI_BG_BUTTON);
-        DrawRectangleRec(hsR, hsBg);
-        DrawRectangleLinesEx(hsR, 1, daw.halfSpeedEnabled ? (Color){160, 100, 255, 255} : UI_BORDER);
-        DrawTextShadow("x0.5", (int)tx + 4, (int)ty, UI_FONT_SMALL, daw.halfSpeedEnabled ? WHITE : GRAY);
-        if (hsHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { daw.halfSpeedEnabled = !daw.halfSpeedEnabled; ui_consume_click(); }
+        bool notOne = (daw.masterSpeed < 0.999f || daw.masterSpeed > 1.001f);
+        if (notOne) {
+            Vector2 mouse = GetMousePosition();
+            Rectangle r = {tx, ty - 1, 18, 16};
+            bool hov = CheckCollisionPointRec(mouse, r);
+            DrawRectangleRec(r, hov ? UI_BG_HOVER : UI_BG_BUTTON);
+            DrawTextShadow("1x", (int)tx + 2, (int)ty, UI_FONT_SMALL, hov ? WHITE : (Color){160, 100, 255, 255});
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { daw.masterSpeed = 1.0f; ui_consume_click(); }
+        }
     }
-    tx += 40;
+    tx += 22;
 
     // Pattern indicator
     DrawTextShadow(TextFormat("Pat:%d", daw.transport.currentPattern+1), (int)tx, (int)ty+2, UI_FONT_SMALL, UI_TEXT_SUBTLE);
@@ -3867,7 +3871,14 @@ static void drawParamPatch(float x, float y, float w, float h) {
             secY = c.y;
             ui_col_sublabel(&c, "Mono/Glide:", ORANGE);
             ui_col_toggle(&c, "Mono", &p->p_monoMode);
-            if (p->p_monoMode) ui_col_float(&c, "Glide", &p->p_glideTime, 0.02f, 0.01f, 1.0f);
+            if (p->p_monoMode) {
+                ui_col_float(&c, "Glide", &p->p_glideTime, 0.02f, 0.01f, 1.0f);
+                ui_col_float(&c, "Legato", &p->p_legatoWindow, 0.005f, 0.0f, 0.1f);
+                static const char *priorityNames[] = {"Last", "Low", "High"};
+                int prio = p->p_notePriority;
+                if (prio < 0) prio = 0; if (prio > 2) prio = 2;
+                ui_col_int(&c, TextFormat("Prio: %s", priorityNames[prio]), &p->p_notePriority, 1, 0, 2);
+            }
             sectionHighlight(col3X - 2, secY, col3W, c.y - secY, monoActive);
             ui_col_space(&c, 3);
         }
@@ -3890,13 +3901,19 @@ static void drawParamPatch(float x, float y, float w, float h) {
         ui_col_sublabel(&c, "Arpeggiator:", ORANGE);
         bool arpWasOn = p->p_arpEnabled;
         ui_col_toggle(&c, "On", &p->p_arpEnabled);
-        // When arp is toggled off, release arping voices so they stop stepping
+        // When arp is toggled off, release arping voices
         if (arpWasOn && !p->p_arpEnabled) {
             for (int vi = 0; vi < NUM_VOICES; vi++) {
                 if (synthCtx->voices[vi].arpEnabled && synthCtx->voices[vi].envStage > 0) {
                     releaseNote(vi);
                 }
             }
+            // Clear mono stack — keyboard input section will rebuild from held keys
+            monoStackClear();
+        }
+        // When arp is toggled on, clear mono stack (arp owns the voice now)
+        if (!arpWasOn && p->p_arpEnabled) {
+            monoStackClear();
         }
         if (p->p_arpEnabled) {
             ui_col_cycle(&c, "Mode", arpModeNames, 4, &p->p_arpMode);
@@ -4992,34 +5009,19 @@ static void dawHandleMusicalTyping(void) {
                 // Record note into pattern
                 int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
                 dawRecordNoteOn(midiNote, 0.8f);
+                // Track in mono note stack
+                if (patch->p_monoMode) monoStackPush(midiNote, freq);
             }
             if (IsKeyReleased(dawPianoKeys[i].key)) {
                 int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
                 dawRecordNoteOff(midiNote);
             }
             if (IsKeyReleased(dawPianoKeys[i].key) && dawPianoKeyVoices[i] >= 0) {
+                int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
                 if (patch->p_monoMode) {
-                    // Mono: only release if no other keys are held
-                    bool anyHeld = false;
-                    for (size_t j = 0; j < NUM_DAW_PIANO_KEYS; j++) {
-                        if (j != i && IsKeyDown(dawPianoKeys[j].key)) { anyHeld = true; break; }
-                    }
-                    if (anyHeld) {
-                        // Glide back to the most recently still-held key
-                        for (int j = (int)NUM_DAW_PIANO_KEYS - 1; j >= 0; j--) {
-                            if (j != (int)i && IsKeyDown(dawPianoKeys[j].key)) {
-                                float freq = dawSemitoneToFreq(dawPianoKeys[j].semitone, dawCurrentOctave);
-                                int v = playNoteWithPatch(freq, patch);
-                                dawPianoKeyVoices[j] = v;
-                                if (v >= 0) voiceBus[v] = bus;
-                                voiceLogPush("GLIDE key[%d] v%d freq=%.0f", j, v, freq);
-                                break;
-                            }
-                        }
-                    } else {
-                        voiceLogPush("REL key[%d] v%d mono-last", (int)i, dawPianoKeyVoices[i]);
-                        releaseNote(dawPianoKeyVoices[i]);
-                    }
+                    // Mono: release via stack — glides to next held note if any
+                    releaseMonoNote(dawPianoKeyVoices[i], midiNote);
+                    voiceLogPush("REL key[%d] v%d mono (stack=%d)", (int)i, dawPianoKeyVoices[i], monoNoteCount);
                 } else {
                     voiceLogPush("REL key[%d] v%d", (int)i, dawPianoKeyVoices[i]);
                     releaseNote(dawPianoKeyVoices[i]);
@@ -6444,6 +6446,7 @@ static void dawHandleMidiInput(void) {
                         }
                     }
                     float freq = midiNoteToPlayFreq(note, octaveOffset);
+                    monoStackPush(note, freq);
                     float savedVol = patch->p_volume;
                     patch->p_volume = vel * savedVol;
                     int v = playNoteWithPatch(freq, patch);
@@ -6501,31 +6504,11 @@ static void dawHandleMidiInput(void) {
                 if (patch->p_arpEnabled) {
                     // Arp: handled in post-event update below
                 } else if (patch->p_monoMode) {
-                    // Mono: if other notes still held, glide to highest held note
-                    int highestHeld = -1;
-                    for (int n = NUM_MIDI_NOTES - 1; n >= 0; n--) {
-                        if (midiNoteHeld[n]) { highestHeld = n; break; }
-                    }
-                    if (highestHeld >= 0) {
-                        // Glide to still-held note
-                        if (voices[note] >= 0) {
-                            releaseNote(voices[note]);
-                            voices[note] = -1;
-                        }
-                        float freq = midiNoteToPlayFreq(highestHeld, octaveOffset);
-                        int v = playNoteWithPatch(freq, patch);
-                        voices[highestHeld] = v;
-                        if (v >= 0) {
-                            voiceBus[v] = bus;
-                            voiceLogPush("MIDI GLIDE n%d v%d", highestHeld, v);
-                        }
-                    } else {
-                        // Last note released
-                        if (voices[note] >= 0 && !midiSustainPedal) {
-                            voiceLogPush("MIDI OFF n%d v%d mono-last", note, voices[note]);
-                            releaseNote(voices[note]);
-                            voices[note] = -1;
-                        }
+                    // Mono: release via stack — glides to next held note based on priority
+                    if (voices[note] >= 0 && !midiSustainPedal) {
+                        releaseMonoNote(voices[note], note);
+                        voiceLogPush("MIDI OFF n%d v%d mono (stack=%d)", note, voices[note], monoNoteCount);
+                        voices[note] = -1;
                     }
                 } else {
                     // Poly mode
@@ -6797,7 +6780,10 @@ int main(int argc, char *argv[]) {
         dawUpdateRecording();
         dawSyncEngineState();
         dawSyncSequencer();
-        updateSequencer(GetFrameTime());
+        {
+            float spd = (daw.masterSpeed > 0.01f) ? daw.masterSpeed : 1.0f;
+            updateSequencer(GetFrameTime() * spd);
+        }
         dawHandleMusicalTyping();
         dawHandleMidiInput();
         updateSpeech(GetFrameTime());

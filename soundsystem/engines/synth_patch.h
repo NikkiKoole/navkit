@@ -85,6 +85,8 @@ typedef struct {
     // Mono/Glide
     bool p_monoMode;
     float p_glideTime;
+    float p_legatoWindow;   // seconds: note-on within this time after release → legato (0=off)
+    int p_notePriority;     // NotePriority: 0=last, 1=low, 2=high
 
     // Pluck settings
     float p_pluckBrightness;
@@ -302,6 +304,8 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_pitchLfoSync = 0,
         .p_monoMode = false,
         .p_glideTime = 0.1f,
+        .p_legatoWindow = 0.015f,  // 15ms — forgives sloppy finger transitions in mono mode
+        .p_notePriority = 0,      // NOTE_PRIORITY_LAST
         .p_pluckBrightness = 0.5f,
         .p_pluckDamping = 0.996f,
         .p_pluckDamp = 0.0f,

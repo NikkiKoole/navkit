@@ -65,6 +65,8 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     noteScwIndex = p->p_scwIndex;
     monoMode = p->p_monoMode;
     glideTime = p->p_glideTime;
+    legatoWindow = p->p_legatoWindow;
+    notePriority = (NotePriority)p->p_notePriority;
     pluckBrightness = p->p_pluckBrightness;
     pluckDamping = p->p_pluckDamping;
     pluckDamp = p->p_pluckDamp;

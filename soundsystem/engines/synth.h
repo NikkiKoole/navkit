@@ -90,6 +90,13 @@ typedef enum {
     WAVE_PIPE,       // Blown pipe (waveguide + jet excitation)
 } WaveType;
 
+// Mono note priority mode
+typedef enum {
+    NOTE_PRIORITY_LAST,   // newest note wins (default, lead playing)
+    NOTE_PRIORITY_LOW,    // lowest held note wins (bass trill)
+    NOTE_PRIORITY_HIGH,   // highest held note wins (melody over held chord)
+} NotePriority;
+
 // Canonical wave type name array (lowercase, for file I/O)
 // Indexed by WaveType enum value
 static const char* waveTypeNames[] = {
@@ -725,7 +732,15 @@ typedef struct SynthContext {
     // Mono mode state
     bool monoMode;
     float glideTime;
+    float legatoWindow;   // seconds: note-on within this window after release → legato
     int monoVoiceIdx;
+    NotePriority notePriority;
+
+    // Held-note stack for mono priority (tracks which keys are pressed)
+    #define MONO_NOTE_STACK_SIZE 16
+    int monoNoteStack[MONO_NOTE_STACK_SIZE];  // MIDI note numbers
+    float monoFreqStack[MONO_NOTE_STACK_SIZE]; // corresponding frequencies
+    int monoNoteCount;                         // number of notes in stack
     
     // Global note parameters (used by playNote, etc.)
     float noteAttack;
@@ -1072,7 +1087,12 @@ static void _ensureSynthCtx(void) {
 #define scaleType (synthCtx->scaleType)
 #define monoMode (synthCtx->monoMode)
 #define glideTime (synthCtx->glideTime)
+#define legatoWindow (synthCtx->legatoWindow)
 #define monoVoiceIdx (synthCtx->monoVoiceIdx)
+#define notePriority (synthCtx->notePriority)
+#define monoNoteStack (synthCtx->monoNoteStack)
+#define monoFreqStack (synthCtx->monoFreqStack)
+#define monoNoteCount (synthCtx->monoNoteCount)
 #define noteAttack (synthCtx->noteAttack)
 #define noteDecay (synthCtx->noteDecay)
 #define noteSustain (synthCtx->noteSustain)
@@ -2313,6 +2333,68 @@ static int findVoice(void) {
     return NUM_VOICES - 1;
 }
 
+// ============================================================================
+// MONO NOTE STACK — tracks held keys for priority/fallback
+// ============================================================================
+
+// Push a note onto the mono stack (called on note-on)
+static void monoStackPush(int midiNote, float freq) {
+    _ensureSynthCtx();
+    // Remove if already in stack (re-press)
+    for (int i = 0; i < monoNoteCount; i++) {
+        if (monoNoteStack[i] == midiNote) {
+            for (int j = i; j < monoNoteCount - 1; j++) {
+                monoNoteStack[j] = monoNoteStack[j + 1];
+                monoFreqStack[j] = monoFreqStack[j + 1];
+            }
+            monoNoteCount--;
+            break;
+        }
+    }
+    // Push to top
+    if (monoNoteCount < MONO_NOTE_STACK_SIZE) {
+        monoNoteStack[monoNoteCount] = midiNote;
+        monoFreqStack[monoNoteCount] = freq;
+        monoNoteCount++;
+    }
+}
+
+// Remove a note from the mono stack (called on note-off)
+// Returns the note that should now be active based on priority, or -1 if stack empty
+static int monoStackPop(int midiNote, float *outFreq) {
+    _ensureSynthCtx();
+    // Remove the released note
+    for (int i = 0; i < monoNoteCount; i++) {
+        if (monoNoteStack[i] == midiNote) {
+            for (int j = i; j < monoNoteCount - 1; j++) {
+                monoNoteStack[j] = monoNoteStack[j + 1];
+                monoFreqStack[j] = monoFreqStack[j + 1];
+            }
+            monoNoteCount--;
+            break;
+        }
+    }
+    if (monoNoteCount == 0) return -1;
+
+    // Pick the winner based on priority
+    int best = monoNoteCount - 1;  // default: last (most recent)
+    if (notePriority == NOTE_PRIORITY_LOW) {
+        for (int i = 0; i < monoNoteCount; i++)
+            if (monoNoteStack[i] < monoNoteStack[best]) best = i;
+    } else if (notePriority == NOTE_PRIORITY_HIGH) {
+        for (int i = 0; i < monoNoteCount; i++)
+            if (monoNoteStack[i] > monoNoteStack[best]) best = i;
+    }
+    if (outFreq) *outFreq = monoFreqStack[best];
+    return monoNoteStack[best];
+}
+
+// Clear the mono stack (e.g. on patch change)
+static void monoStackClear(void) {
+    _ensureSynthCtx();
+    monoNoteCount = 0;
+}
+
 // Release a note
 static void releaseNote(int voiceIdx) {
     if (voiceIdx < 0 || voiceIdx >= NUM_VOICES) return;
@@ -2322,6 +2404,26 @@ static void releaseNote(int voiceIdx) {
         synthVoices[voiceIdx].envPhase = 0.0f;
         synthVoices[voiceIdx].arpEnabled = false; // Stop arp from retriggering
     }
+}
+
+// Release a mono note — glides to next held note if any are still pressed
+static void releaseMonoNote(int voiceIdx, int midiNote) {
+    if (voiceIdx < 0 || voiceIdx >= NUM_VOICES) return;
+    float fallbackFreq = 0;
+    int fallback = monoStackPop(midiNote, &fallbackFreq);
+    if (fallback >= 0 && synthVoices[voiceIdx].envStage > 0 && synthVoices[voiceIdx].envStage < 4) {
+        // Other notes still held — glide to the priority winner instead of releasing
+        synthVoices[voiceIdx].targetFrequency = fallbackFreq;
+        if (glideTime > 0.0f) {
+            synthVoices[voiceIdx].glideRate = 1.0f / glideTime;
+        } else {
+            synthVoices[voiceIdx].frequency = fallbackFreq;
+            synthVoices[voiceIdx].baseFrequency = fallbackFreq;
+        }
+        return;  // don't release — voice keeps playing
+    }
+    // No held notes left — normal release
+    releaseNote(voiceIdx);
 }
 
 // ============================================================================
@@ -2403,6 +2505,12 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
         if (monoV->envStage > 0 && monoV->envStage < 4) {
             // Active note (not released) - do legato glide
             isGlide = true;
+        } else if (monoV->envStage == 4 && legatoWindow > 0.0f && monoV->envPhase < legatoWindow) {
+            // Voice just released but within legato window — treat as legato glide
+            // Resume envelope from where it was (don't retrigger)
+            isGlide = true;
+            monoV->envStage = 3;  // back to sustain
+            monoV->envLevel = monoV->releaseLevel;  // restore level from before release
         } else if (monoV->baseFrequency > 20.0f && glideTime > 0.0f) {
             // Voice released or dead — glide pitch from last note, retrigger envelope
             isGlide = true;
@@ -2750,6 +2858,9 @@ static void resetNoteGlobals(void) {
     noteUnisonMix = 0.5f;
     monoMode = false;
     glideTime = 0.0f;
+    legatoWindow = 0.0f;
+    notePriority = NOTE_PRIORITY_LAST;
+    monoNoteCount = 0;
 }
 
 // Play a note using global parameters
