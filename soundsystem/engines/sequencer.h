@@ -490,6 +490,10 @@ typedef struct {
     int trackActiveVoices[SEQ_V2_MAX_TRACKS];                    // Number of active voices in current step
     int trackSustainRemaining[SEQ_V2_MAX_TRACKS];               // Sustain countdown
     int trackStepPlayCount[SEQ_V2_MAX_TRACKS][SEQ_MAX_STEPS];   // Per-step play count for conditions
+
+    // Per-track pattern selection (arrangement mode)
+    bool perTrackPatterns;                        // true = each track uses trackPatternIdx
+    int trackPatternIdx[SEQ_V2_MAX_TRACKS];       // per-track pattern index, -1 = silent
 } Sequencer;
 
 // Apply a groove preset to sequencer state
@@ -1401,13 +1405,29 @@ static void updateSequencer(float dt) {
         seq.tickTimer -= tickDuration;
         seq.beatPosition += 1.0 / (double)SEQ_PPQ;  // 1 tick = 1/96 of a beat
 
-        Pattern *p = seqCurrentPattern();
+        Pattern *p_global = seqCurrentPattern();
+        static StepV2 _emptyStep = {0};  // silent: noteCount=0
 
         // === UNIFIED TRACK LOOP ===
         for (int track = 0; track < seq.trackCount; track++) {
+            // Per-track pattern selection (arrangement mode)
+            Pattern *p;
+            bool trackSilent = false;
+            if (seq.perTrackPatterns) {
+                int pi = seq.trackPatternIdx[track];
+                if (pi >= 0 && pi < SEQ_NUM_PATTERNS) {
+                    p = &seq.patterns[pi];
+                } else {
+                    p = p_global;
+                    trackSilent = true;
+                }
+            } else {
+                p = p_global;
+            }
+
             int step = seq.trackStep[track];
             int tick = seq.trackTick[track];
-            StepV2 *sv = &p->steps[track][step];
+            StepV2 *sv = trackSilent ? &_emptyStep : &p->steps[track][step];
 
             // --- Per-voice gate countdown (melodic tracks) ---
             if (p->trackType[track] == TRACK_MELODIC) {

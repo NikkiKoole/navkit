@@ -15,6 +15,17 @@
 #define SONG_MAX_SECTIONS 64
 #define SONG_SECTION_NAME_LEN 12
 
+// Arrangement (per-track pattern grid)
+#define ARR_MAX_BARS 64
+#define ARR_EMPTY -1
+#define ARR_MAX_TRACKS 8  // Matches SEQ_V2_MAX_TRACKS (drum0-3, bass, lead, chord, sampler)
+
+typedef struct {
+    int cells[ARR_MAX_BARS][ARR_MAX_TRACKS];  // [bar][track] = pattern index or ARR_EMPTY
+    int length;                                // number of bars (0 = inactive)
+    bool arrMode;                              // true = arrangement drives playback
+} Arrangement;
+
 typedef struct {
     bool playing;
     float bpm;
@@ -154,6 +165,9 @@ typedef struct {
     bool chromaticMode;       // keyboard plays sampler chromatically
     int chromaticSample;      // which sample slot to play (0-31)
     int chromaticRootNote;    // MIDI note for original pitch (default 60 = C4)
+
+    // Arrangement (per-track pattern grid)
+    Arrangement arr;
 
     // Split keyboard
     bool splitEnabled;

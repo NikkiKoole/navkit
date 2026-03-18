@@ -590,6 +590,11 @@ static void dawInitSequencer(void) {
     for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) seq.trackSwing[i] = 0;
     seq.humanize.timingJitter = 0;
     seq.humanize.velocityJitter = 0.0f;
+
+    // Initialize arrangement cells to ARR_EMPTY (zero-init gives 0, not -1)
+    for (int b = 0; b < ARR_MAX_BARS; b++)
+        for (int t = 0; t < ARR_MAX_TRACKS; t++)
+            daw.arr.cells[b][t] = ARR_EMPTY;
 }
 
 // Sync DAW transport state to sequencer engine
@@ -600,8 +605,30 @@ static void dawSyncSequencer(void) {
     // Pattern lock: force pattern loop when recording in song mode
     bool patLocked = recPatternLock && recMode == REC_RECORDING;
 
+    // Arrangement mode: per-track pattern grid (highest priority)
+    if (daw.arr.arrMode && daw.arr.length > 0 && !patLocked) {
+        seq.perTrackPatterns = true;
+        // Chain drives bar timing via track 0's pattern
+        seq.chainLength = daw.arr.length;
+        seq.chainDefaultLoops = 1;
+        for (int i = 0; i < daw.arr.length; i++) {
+            // Use track 0's pattern for chain timing; fallback to 0 if empty
+            int pat0 = daw.arr.cells[i][0];
+            seq.chain[i] = (pat0 >= 0) ? pat0 : 0;
+            seq.chainLoops[i] = 0;  // use default
+        }
+        // Set per-track patterns for current bar
+        int bar = seq.chainPos;
+        if (bar >= 0 && bar < daw.arr.length) {
+            for (int t = 0; t < seq.trackCount; t++) {
+                seq.trackPatternIdx[t] = (t < ARR_MAX_TRACKS) ? daw.arr.cells[bar][t] : -1;
+            }
+        }
+        daw.transport.currentPattern = seq.currentPattern;
+    }
     // Song mode: push arrangement chain to sequencer
-    if (daw.song.songMode && daw.song.length > 0 && !patLocked) {
+    else if (daw.song.songMode && daw.song.length > 0 && !patLocked) {
+        seq.perTrackPatterns = false;
         for (int i = 0; i < daw.song.length; i++) {
             seq.chain[i] = daw.song.patterns[i];
             seq.chainLoops[i] = daw.song.loopsPerSection[i];
@@ -611,10 +638,12 @@ static void dawSyncSequencer(void) {
         // Read back current pattern from sequencer (chain controls it)
         daw.transport.currentPattern = seq.currentPattern;
     } else if ((recMode != REC_OFF || prChainView) && recChainLength > 1) {
+        seq.perTrackPatterns = false;
         // Chain recording: let the chain we set up drive pattern advance
         // Sync UI pattern selector back from sequencer
         daw.transport.currentPattern = seq.currentPattern;
     } else {
+        seq.perTrackPatterns = false;
         // Pattern mode: no chain, DAW controls current pattern directly
         seq.chainLength = 0;
         seq.currentPattern = daw.transport.currentPattern;
@@ -671,7 +700,12 @@ static void dawStopSequencer(void) {
     // Reset chain playback to beginning
     seq.chainPos = 0;
     seq.chainLoopCount = 0;
-    if (daw.song.songMode && daw.song.length > 0) {
+    if (daw.arr.arrMode && daw.arr.length > 0) {
+        // Rewind arrangement to first bar, set track 0's pattern
+        int pat0 = daw.arr.cells[0][0];
+        daw.transport.currentPattern = (pat0 >= 0) ? pat0 : 0;
+        seq.currentPattern = daw.transport.currentPattern;
+    } else if (daw.song.songMode && daw.song.length > 0) {
         daw.transport.currentPattern = daw.song.patterns[0];
         seq.currentPattern = daw.song.patterns[0];
     } else if (prChainView && recChainStart >= 0) {

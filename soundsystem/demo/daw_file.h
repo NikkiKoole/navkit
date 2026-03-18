@@ -457,6 +457,19 @@ static bool dawSave(const char *filepath) {
         }
     }
 
+    // [pertrack] — per-track arrangement grid
+    if (daw.arr.length > 0) {
+        fprintf(f, "\n[pertrack]\n");
+        _db(f, "arrMode", daw.arr.arrMode);
+        _di(f, "arrLength", daw.arr.length);
+        for (int t = 0; t < ARR_MAX_TRACKS; t++) {
+            char k[16]; snprintf(k, sizeof(k), "arr%d", t);
+            fprintf(f, "%s =", k);
+            for (int b = 0; b < daw.arr.length; b++) fprintf(f, " %d", daw.arr.cells[b][t]);
+            fprintf(f, "\n");
+        }
+    }
+
 #ifdef DAW_HAS_CHOP_STATE
     // [sample] — chop/flip recipe (only if bounced)
     if (chopState.bounced && chopState.sourcePath[0]) {
@@ -914,7 +927,7 @@ typedef enum {
     _DW_SEC_SETTINGS, _DW_SEC_PATCH, _DW_SEC_MIXER, _DW_SEC_SIDECHAIN,
     _DW_SEC_MASTERFX, _DW_SEC_TAPEFX, _DW_SEC_CROSSFADER,
     _DW_SEC_SPLIT, _DW_SEC_ARRANGEMENT, _DW_SEC_PATTERN,
-    _DW_SEC_SAMPLE,
+    _DW_SEC_SAMPLE, _DW_SEC_PERTRACK,
 } _DwSection;
 
 static bool dawLoad(const char *filepath) {
@@ -926,6 +939,13 @@ static bool dawLoad(const char *filepath) {
 
     // Reset patterns
     for (int i = 0; i < SEQ_NUM_PATTERNS; i++) initPattern(&seq.patterns[i]);
+
+    // Reset arrangement to empty (backward compat: old files won't have [pertrack])
+    daw.arr.arrMode = false;
+    daw.arr.length = 0;
+    for (int _b = 0; _b < ARR_MAX_BARS; _b++)
+        for (int _t = 0; _t < ARR_MAX_TRACKS; _t++)
+            daw.arr.cells[_b][_t] = ARR_EMPTY;
 
     _DwSection section = _DW_SEC_NONE;
     int subIndex = -1;
@@ -952,6 +972,14 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(sec,"crossfader")==0) section = _DW_SEC_CROSSFADER;
             else if (strcmp(sec,"split")==0) section = _DW_SEC_SPLIT;
             else if (strcmp(sec,"arrangement")==0) section = _DW_SEC_ARRANGEMENT;
+            else if (strcmp(sec,"pertrack")==0) {
+                section = _DW_SEC_PERTRACK;
+                // Initialize arrangement to empty
+                memset(&daw.arr, 0, sizeof(daw.arr));
+                for (int _b = 0; _b < ARR_MAX_BARS; _b++)
+                    for (int _t = 0; _t < ARR_MAX_TRACKS; _t++)
+                        daw.arr.cells[_b][_t] = ARR_EMPTY;
+            }
             else if (strcmp(sec,"sample")==0) {
                 section = _DW_SEC_SAMPLE;
 #ifdef DAW_HAS_CHOP_STATE
@@ -1251,6 +1279,23 @@ static bool dawLoad(const char *filepath) {
             else if (strncmp(key,"name",4)==0 && isdigit(key[4])) {
                 int idx = atoi(key+4);
                 if (idx>=0 && idx<SONG_MAX_SECTIONS) strncpy(daw.song.names[idx], val, SONG_SECTION_NAME_LEN-1);
+            }
+            break;
+        case _DW_SEC_PERTRACK:
+            if (strcmp(key,"arrMode")==0) daw.arr.arrMode=_dpb(val);
+            else if (strcmp(key,"arrLength")==0) daw.arr.length=_dpi(val);
+            else if (strncmp(key,"arr",3)==0 && isdigit(key[3])) {
+                int trackIdx = atoi(key+3);
+                if (trackIdx >= 0 && trackIdx < ARR_MAX_TRACKS) {
+                    // Parse space-separated int list into cells[bar][track]
+                    char *p = val;
+                    for (int b = 0; b < daw.arr.length && b < ARR_MAX_BARS; b++) {
+                        while (*p == ' ') p++;
+                        if (!*p) break;
+                        daw.arr.cells[b][trackIdx] = atoi(p);
+                        while (*p && *p != ' ') p++;
+                    }
+                }
             }
             break;
         case _DW_SEC_PATTERN:

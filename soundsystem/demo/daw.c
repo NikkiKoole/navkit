@@ -143,10 +143,10 @@ static inline void loadEmbeddedSCWs(void) {}
 // TABS
 // ============================================================================
 
-typedef enum { WORK_SEQ, WORK_PIANO, WORK_SONG, WORK_MIDI, WORK_SAMPLE, WORK_VOICE, WORK_COUNT } WorkTab;
+typedef enum { WORK_SEQ, WORK_PIANO, WORK_SONG, WORK_MIDI, WORK_SAMPLE, WORK_VOICE, WORK_ARRANGE, WORK_COUNT } WorkTab;
 static WorkTab workTab = WORK_SEQ;
-static const char* workTabNames[] = {"Sequencer", "Piano Roll", "Song", "MIDI", "Sample", "Voice"};
-static const int workTabKeys[] = {KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6};
+static const char* workTabNames[] = {"Sequencer", "Piano Roll", "Song", "MIDI", "Sample", "Voice", "Arrange"};
+static const int workTabKeys[] = {KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7};
 
 typedef enum { PARAM_PATCH, PARAM_BUS, PARAM_MASTER, PARAM_TAPE, PARAM_COUNT } ParamTab;
 static ParamTab paramTab = PARAM_PATCH;
@@ -620,25 +620,39 @@ static void dawRecordToggle(void) {
             seq.currentPattern = startPat;
             daw.transport.currentPattern = startPat;
 
-            // Copy drum tracks from starting pattern into all chain patterns
-            // so the drum loop plays continuously while recording melody
+            // Copy all tracks (drums, melody, sampler) from starting pattern
+            // into all chain patterns, EXCEPT the track being recorded onto
+            // so existing loops play continuously while recording new melody
+            int recTrack = recTargetTrack();
             Pattern *srcPat = &seq.patterns[startPat];
             for (int i = 1; i < bars; i++) {
                 Pattern *dstPat = &seq.patterns[startPat + i];
-                for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
+                for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++) {
+                    if (t == recTrack) continue;  // skip the track we're recording onto
                     dstPat->trackLength[t] = srcPat->trackLength[t];
                     dstPat->trackType[t] = srcPat->trackType[t];
                     for (int s = 0; s < SEQ_MAX_STEPS; s++) {
                         dstPat->steps[t][s] = srcPat->steps[t][s];
                     }
+                    // Copy p-lock index for this track
+                    for (int s = 0; s < SEQ_MAX_STEPS; s++) {
+                        dstPat->plockStepIndex[t][s] = PLOCK_INDEX_NONE;
+                    }
                 }
-                // Also copy sampler track if it has content
-                int st = SEQ_TRACK_SAMPLER;
-                dstPat->trackLength[st] = srcPat->trackLength[st];
-                dstPat->trackType[st] = srcPat->trackType[st];
-                for (int s = 0; s < SEQ_MAX_STEPS; s++) {
-                    dstPat->steps[st][s] = srcPat->steps[st][s];
+                // Copy p-locks for all non-recording tracks
+                dstPat->plockCount = 0;
+                for (int pi = 0; pi < srcPat->plockCount; pi++) {
+                    PLock *pl = &srcPat->plocks[pi];
+                    if (pl->track == recTrack) continue;
+                    if (dstPat->plockCount >= MAX_PLOCKS_PER_PATTERN) break;
+                    int di = dstPat->plockCount++;
+                    dstPat->plocks[di] = *pl;
+                    // Re-link into step index chain
+                    dstPat->plocks[di].nextInStep = dstPat->plockStepIndex[pl->track][pl->step];
+                    dstPat->plockStepIndex[pl->track][pl->step] = (int8_t)di;
                 }
+                // Copy pattern overrides
+                dstPat->overrides = srcPat->overrides;
             }
 
             // Clear melody track in destination patterns (in replace mode)
@@ -1922,6 +1936,11 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         if (track == 4) DrawLine((int)x, ty-2, (int)(x+w), ty-2, UI_BORDER);
         if (track == SEQ_TRACK_SAMPLER) DrawLine((int)x, ty-2, (int)(x+w), ty-2, UI_BORDER);
 
+        // Highlight active instrument row
+        if (track == daw.selectedPatch) {
+            DrawRectangle((int)x, ty, (int)w, cellH, (Color){255,255,255,20});
+        }
+
         // --- Inline mute + volume bar + track name ---
         int lx = (int)x;
         int lcy = ty + cellH/2; // vertical center of row
@@ -2662,7 +2681,11 @@ static void drawWorkPiano(float x, float y, float w, float h) {
             DrawRectangleRec(r, bg);
             if (act) DrawRectangle((int)tx, (int)(y + topH - 4), (int)tw, 2, prTrackColors[t]);
             DrawTextShadow(prTrackNames[t], (int)tx + 6, (int)y + 3, UI_FONT_SMALL, act ? WHITE : GRAY);
-            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { prTrack = t; ui_consume_click(); }
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                prTrack = t;
+                daw.selectedPatch = (t < SEQ_MELODY_TRACKS) ? (4 + t) : 7; // switch live play instrument
+                ui_consume_click();
+            }
             tx += tw + 2;
         }
         // Chain view toggle (only show when a chain has been recorded)
@@ -2802,27 +2825,35 @@ static void drawWorkPiano(float x, float y, float w, float h) {
             int pitchOff = note - 60;
             bool isZero = (pitchOff == 0);
             bool isOctave = (pitchOff == 12 || pitchOff == -12 || pitchOff == 24 || pitchOff == -24);
-            Color keyCol = isZero ? (Color){60,60,45,255} : UI_BG_BUTTON;
+            bool held = (note < NUM_MIDI_NOTES && midiNoteHeld[note]);
+            Color keyCol = held ? prTrackColors[prTrack] : (isZero ? (Color){60,60,45,255} : UI_BG_BUTTON);
             DrawRectangle((int)x, (int)ny, (int)keyW - 1, (int)noteH - 1, keyCol);
             if (noteH >= 9 && (pitchOff % 6 == 0 || isZero)) {
                 DrawTextShadow(TextFormat("%+d", pitchOff), (int)x + 1, (int)ny + 1, 7,
-                              isZero ? (Color){255,220,100,255} : UI_TEXT_DIM);
+                              held ? WHITE : (isZero ? (Color){255,220,100,255} : UI_TEXT_DIM));
             }
             Color lineCol = isZero ? (Color){80,80,50,255} : (isOctave ? UI_BORDER : UI_BG_PANEL);
             DrawLine((int)gridX, (int)(ny + noteH - 1), (int)(gridX + gridW), (int)(ny + noteH - 1), lineCol);
-            if (isZero) {
+            if (held) {
+                Color tc = prTrackColors[prTrack];
+                DrawRectangle((int)gridX, (int)ny, (int)gridW, (int)noteH, (Color){tc.r, tc.g, tc.b, 30});
+            } else if (isZero) {
                 DrawRectangle((int)gridX, (int)ny, (int)gridW, (int)noteH, (Color){50,50,35,60});
             }
         } else {
-            Color keyCol = blk ? UI_BG_PANEL : UI_BG_HOVER;
+            bool held = (note < NUM_MIDI_NOTES && midiNoteHeld[note]);
+            Color keyCol = held ? prTrackColors[prTrack] : (blk ? UI_BG_PANEL : UI_BG_HOVER);
             DrawRectangle((int)x, (int)ny, (int)keyW - 1, (int)noteH - 1, keyCol);
             if (noteH >= 9) {
                 DrawTextShadow(TextFormat("%s%d", noteNames[ni], note/12 - 1),
-                              (int)x + 1, (int)ny + 1, 7, ni == 0 ? LIGHTGRAY : UI_TEXT_DIM);
+                              (int)x + 1, (int)ny + 1, 7, held ? WHITE : (ni == 0 ? LIGHTGRAY : UI_TEXT_DIM));
             }
             Color lineCol = ni == 0 ? UI_BORDER : UI_BG_PANEL;
             DrawLine((int)gridX, (int)(ny + noteH - 1), (int)(gridX + gridW), (int)(ny + noteH - 1), lineCol);
-            if (ni == 0) {
+            if (held) {
+                Color tc = prTrackColors[prTrack];
+                DrawRectangle((int)gridX, (int)ny, (int)gridW, (int)noteH, (Color){tc.r, tc.g, tc.b, 30});
+            } else if (ni == 0) {
                 DrawRectangle((int)gridX, (int)ny, (int)gridW, (int)noteH, (Color){35,35,42,60});
             }
         }
@@ -6651,6 +6682,268 @@ static void drawWorkVoice(float x, float y, float w, float h) {
 }
 
 // ============================================================================
+// WORKSPACE: Arrange (per-track pattern grid)
+// ============================================================================
+
+static int arrScrollX = 0;  // horizontal scroll offset in bars
+
+static void drawWorkArrange(float x, float y, float w, float h) {
+    (void)h;
+    Vector2 mouse = GetMousePosition();
+    Arrangement *arr = &daw.arr;
+
+    // Track colors (matching bus order: drum0-3, bass, lead, chord, sampler)
+    static const Color arrTrackColors[] = {
+        {200, 80,  80, 255},   // Drum0: red
+        {200, 160, 60, 255},   // Drum1: yellow
+        {60, 180, 180, 255},   // Drum2: cyan
+        {180, 100, 200, 255},  // Drum3: purple
+        {80, 140, 220, 255},   // Bass: blue
+        {220, 140, 80, 255},   // Lead: orange
+        {140, 200, 100, 255},  // Chord: green
+        {160, 160, 160, 255},  // Sampler: gray
+    };
+    static const char* arrTrackNames[] = {"Kick", "Snare", "HiHat", "Clap", "Bass", "Lead", "Chord", "Samp"};
+
+    // === TOP ROW: Arrange mode toggle + bar count + buttons ===
+    float row0y = y + 2;
+    {
+        // Arrange mode toggle
+        Rectangle smr = {x + 4, row0y, 90, 18};
+        bool smHov = CheckCollisionPointRec(mouse, smr);
+        Color smBg = arr->arrMode
+            ? (smHov ? UI_TINT_GREEN_HI : UI_TINT_GREEN)
+            : (smHov ? UI_BG_HOVER : UI_BG_HOVER);
+        DrawRectangleRec(smr, smBg);
+        DrawRectangleLinesEx(smr, 1, arr->arrMode ? GREEN : UI_BORDER);
+        DrawTextShadow(arr->arrMode ? "Arr Mode" : "Arr Off", (int)x+10, (int)row0y+3, UI_FONT_SMALL,
+                       arr->arrMode ? WHITE : GRAY);
+        if (smHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            arr->arrMode = !arr->arrMode;
+            if (arr->arrMode && arr->length == 0) {
+                // Auto-create 4 bars with current pattern on all tracks
+                arr->length = 4;
+                for (int b = 0; b < 4; b++)
+                    for (int t = 0; t < ARR_MAX_TRACKS; t++)
+                        arr->cells[b][t] = daw.transport.currentPattern;
+            }
+            ui_consume_click();
+        }
+
+        // Bar count display
+        DrawTextShadow(TextFormat("%d bars", arr->length), (int)(x + 108), (int)row0y+3, UI_FONT_SMALL, UI_TEXT_DIM);
+
+        // [+] Add bar button
+        Rectangle addR = {x + 180, row0y, 22, 18};
+        bool addHov = CheckCollisionPointRec(mouse, addR);
+        DrawRectangleRec(addR, addHov ? UI_BG_HOVER : UI_BG_BUTTON);
+        DrawRectangleLinesEx(addR, 1, UI_BORDER);
+        DrawTextShadow("+", (int)addR.x+7, (int)row0y+3, UI_FONT_SMALL, WHITE);
+        if (addHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && arr->length < ARR_MAX_BARS) {
+            // New bar: copy last bar or default to current pattern
+            int newBar = arr->length;
+            for (int t = 0; t < ARR_MAX_TRACKS; t++) {
+                arr->cells[newBar][t] = (newBar > 0) ? arr->cells[newBar-1][t] : daw.transport.currentPattern;
+            }
+            arr->length++;
+            ui_consume_click();
+        }
+
+        // [-] Remove last bar
+        Rectangle remR = {x + 206, row0y, 22, 18};
+        bool remHov = CheckCollisionPointRec(mouse, remR);
+        DrawRectangleRec(remR, remHov ? UI_BG_HOVER : UI_BG_BUTTON);
+        DrawRectangleLinesEx(remR, 1, UI_BORDER);
+        DrawTextShadow("-", (int)remR.x+7, (int)row0y+3, UI_FONT_SMALL, WHITE);
+        if (remHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && arr->length > 0) {
+            arr->length--;
+            if (arr->length == 0) arr->arrMode = false;
+            ui_consume_click();
+        }
+
+        // Import from Song button
+        Rectangle impR = {x + 240, row0y, 80, 18};
+        bool impHov = CheckCollisionPointRec(mouse, impR);
+        DrawRectangleRec(impR, impHov ? UI_BG_HOVER : UI_BG_BUTTON);
+        DrawRectangleLinesEx(impR, 1, UI_BORDER);
+        DrawTextShadow("From Song", (int)impR.x+6, (int)row0y+3, UI_FONT_SMALL, WHITE);
+        if (impHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && daw.song.length > 0) {
+            // Convert Song sections → arrangement: all tracks get same pattern per bar
+            arr->length = daw.song.length;
+            for (int b = 0; b < arr->length; b++) {
+                for (int t = 0; t < ARR_MAX_TRACKS; t++) {
+                    arr->cells[b][t] = daw.song.patterns[b];
+                }
+            }
+            ui_consume_click();
+        }
+    }
+
+    // === GRID LAYOUT ===
+    float labelW = 46;
+    float rulerH = 16;
+    float gridX = x + labelW;
+    float gridY = y + 26 + rulerH;
+    float gridW = w - labelW - 4;
+    int cellW = 44;
+    int cellH = 28;
+    int trackCount = ARR_MAX_TRACKS;
+    float gridH = (float)(trackCount * cellH);
+
+    // Clamp scroll
+    int maxBarsVisible = (int)(gridW / cellW);
+    if (arrScrollX > arr->length - maxBarsVisible) arrScrollX = arr->length - maxBarsVisible;
+    if (arrScrollX < 0) arrScrollX = 0;
+
+    // Scroll with mouse wheel in grid area
+    Rectangle gridArea = {gridX, gridY - rulerH, gridW, gridH + rulerH + 4};
+    if (CheckCollisionPointRec(mouse, gridArea)) {
+        int scroll = (int)GetMouseWheelMove();
+        if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
+            arrScrollX -= scroll;
+            if (arrScrollX < 0) arrScrollX = 0;
+            if (arrScrollX > arr->length - maxBarsVisible) arrScrollX = arr->length - maxBarsVisible;
+            if (arrScrollX < 0) arrScrollX = 0;
+        }
+    }
+
+    // Background
+    DrawRectangle((int)x, (int)(gridY - rulerH - 2), (int)w, (int)(gridH + rulerH + 6), UI_BG_DEEPEST);
+
+    // Currently playing bar
+    int playingBar = -1;
+    if (arr->arrMode && daw.transport.playing && arr->length > 0) {
+        playingBar = seq.chainPos;
+    }
+
+    // === RULER (bar numbers) ===
+    for (int b = arrScrollX; b < arr->length; b++) {
+        float bx = gridX + (b - arrScrollX) * cellW;
+        if (bx > gridX + gridW) break;
+        bool isPlaying = (b == playingBar);
+        Color rc = isPlaying ? GREEN : UI_TEXT_DIM;
+        DrawTextShadow(TextFormat("%d", b + 1), (int)bx + 4, (int)(gridY - rulerH + 2), UI_FONT_SMALL, rc);
+
+        // Click ruler to seek
+        Rectangle rulerR = {bx, gridY - rulerH, (float)cellW, rulerH};
+        if (CheckCollisionPointRec(mouse, rulerR) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            seq.chainPos = b;
+            seq.chainLoopCount = 0;
+            // Reset track steps to 0 for clean bar start
+            for (int t = 0; t < seq.trackCount; t++) {
+                seq.trackStep[t] = 0;
+                seq.trackTick[t] = 0;
+                seq.trackTriggered[t] = false;
+            }
+            ui_consume_click();
+        }
+
+        // Playback progress line
+        if (isPlaying && daw.transport.playing) {
+            Pattern *pp = &seq.patterns[seq.currentPattern];
+            int trackLen = pp->trackLength[0] > 0 ? pp->trackLength[0] : 16;
+            float progress = (float)seq.trackStep[0] / (float)trackLen;
+            int px = (int)(bx + progress * cellW);
+            DrawLine(px, (int)(gridY - 2), px, (int)(gridY + gridH), (Color){80, 200, 80, 180});
+        }
+    }
+
+    // === TRACK LABELS (left) ===
+    for (int t = 0; t < trackCount; t++) {
+        float ty = gridY + t * cellH;
+        Color tc = arrTrackColors[t];
+        DrawRectangle((int)x, (int)ty, (int)labelW - 2, cellH - 1, (Color){tc.r/4, tc.g/4, tc.b/4, 255});
+        DrawTextShadow(arrTrackNames[t], (int)x + 2, (int)ty + 8, UI_FONT_SMALL, tc);
+    }
+
+    // === GRID CELLS ===
+    for (int b = arrScrollX; b < arr->length; b++) {
+        float bx = gridX + (b - arrScrollX) * cellW;
+        if (bx > gridX + gridW) break;
+
+        for (int t = 0; t < trackCount; t++) {
+            float cy = gridY + t * cellH;
+            int pat = arr->cells[b][t];
+            bool isEmpty = (pat == ARR_EMPTY);
+            bool isPlaying = (b == playingBar);
+
+            Rectangle cr = {bx + 1, cy + 1, (float)(cellW - 2), (float)(cellH - 2)};
+            bool hov = CheckCollisionPointRec(mouse, cr);
+
+            // Cell background
+            Color bg;
+            if (isEmpty) {
+                bg = hov ? (Color){40,40,45,255} : (Color){25,25,30,255};
+            } else {
+                Color tc = arrTrackColors[t];
+                int dim = isPlaying ? 3 : 5;
+                bg = (Color){(unsigned char)(tc.r/dim), (unsigned char)(tc.g/dim), (unsigned char)(tc.b/dim), 255};
+                if (hov) { bg.r += 15; bg.g += 15; bg.b += 15; }
+            }
+            DrawRectangleRec(cr, bg);
+
+            // Border
+            Color border = isPlaying ? GREEN : (hov ? UI_BORDER_LIGHT : (Color){50,50,55,255});
+            DrawRectangleLinesEx(cr, 1, border);
+
+            // Label
+            if (!isEmpty) {
+                DrawTextShadow(TextFormat("P%d", pat + 1), (int)bx + 4, (int)cy + 4, UI_FONT_SMALL, WHITE);
+
+                // Mini preview: show step activity as dots
+                Pattern *pp = &seq.patterns[pat];
+                int len = pp->trackLength[t];
+                if (len > 0) {
+                    int previewY = (int)cy + 18;
+                    int maxDots = cellW - 6;
+                    int dotSpacing = (len <= maxDots) ? 1 : 0;
+                    for (int s = 0; s < len && s < maxDots; s++) {
+                        if (pp->steps[t][s].noteCount > 0) {
+                            int dx = (int)bx + 3 + s * (2 + dotSpacing);
+                            DrawRectangle(dx, previewY, 1, 4, arrTrackColors[t]);
+                        }
+                    }
+                }
+            }
+
+            // Interactions
+            if (hov) {
+                // Left-click: assign current pattern
+                if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                    arr->cells[b][t] = daw.transport.currentPattern;
+                    ui_consume_click();
+                }
+                // Right-click: clear cell
+                if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+                    arr->cells[b][t] = ARR_EMPTY;
+                    ui_consume_click();
+                }
+                // Scroll wheel: change pattern index
+                int wheel = (int)GetMouseWheelMove();
+                if (wheel != 0 && !IsKeyDown(KEY_LEFT_SHIFT) && !IsKeyDown(KEY_RIGHT_SHIFT)) {
+                    int newPat = pat + wheel;
+                    if (newPat < -1) newPat = -1;  // -1 = empty
+                    if (newPat >= SEQ_NUM_PATTERNS) newPat = SEQ_NUM_PATTERNS - 1;
+                    arr->cells[b][t] = newPat;
+                }
+
+                // Tooltip
+                if (!isEmpty) {
+                    DrawTextShadow(TextFormat("Bar %d / %s: Pattern %d", b+1, arrTrackNames[t], pat+1),
+                                  (int)mouse.x + 12, (int)mouse.y - 14, UI_FONT_SMALL, WHITE);
+                }
+            }
+        }
+    }
+
+    // Empty state hint
+    if (arr->length == 0) {
+        DrawTextShadow("Click [+] to add bars, or 'From Song' to import",
+                       (int)(x + 60), (int)(gridY + 40), UI_FONT_SMALL, UI_TEXT_DIM);
+    }
+}
+
+// ============================================================================
 // MIDI KEYBOARD INPUT (with split keyboard, arp, mono, random vowel)
 // ============================================================================
 
@@ -7087,6 +7380,7 @@ int main(int argc, char *argv[]) {
                 case WORK_MIDI:  drawWorkMidi(wx, wy, ww, wh); break;
                 case WORK_SAMPLE: drawWorkSample(wx, wy, ww, wh); break;
                 case WORK_VOICE: drawWorkVoice(wx, wy, ww, wh); break;
+                case WORK_ARRANGE: drawWorkArrange(wx, wy, ww, wh); break;
                 default: break;
             }
         }
