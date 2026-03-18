@@ -295,6 +295,7 @@ Key integration files: `src/sound/sound_synth_bridge.h/c`, `src/sound/sound_phra
 |------|--------|-------|
 | **Audio looping** — record audio loops, overdub layers, undo/peel layers, multiply (double length), quantized capture, 4-8 slots | Large | |
 | **Skip-back sampling** — always recording last 30-60s, "capture that!" button | Medium | Rewind buffer partially covers this |
+| **Resample persistence** — resample-to-pad currently lives in memory only, lost on close. Need a lightweight persistence strategy that doesn't ship large WAVs. Options: (a) encode to compact format (ADPCM? delta-coded?), (b) re-render from .daw recipe on load (play pattern X with FX Y for N seconds), (c) save as small WAV sidecar but .gitignore it. Philosophy: we don't ship large WAVs. | Medium | Resample capture works (daw_audio.h), just no disk persistence |
 | **Resample** — render pattern to audio, bake effects, freeze/flatten tracks | Medium | Offline render exists (song_render, daw_render), needs in-DAW workflow |
 | **Tape mode (OP-1 style)** — 4-track linear recording, tape-style overdub, varispeed, reverse | Large | |
 
@@ -327,6 +328,45 @@ Key integration files: `src/sound/sound_synth_bridge.h/c`, `src/sound/sound_phra
 | **Preset cleanup** — remove duplicates, rename collisions (see `preset-audit.md`) | Small | |
 | **More drum presets** — Lo-Fi kit (~3), Trap kit (~3), Piku kit | Small | Preset-only |
 | **SCW wavetable presets** — needs good wavetable content | Small | |
+
+---
+
+## DAW-Gap Analysis (vs Ableton/Bitwig/FL Studio tier)
+
+Features that separate a groove box from a full DAW. Sorted by architectural impact.
+
+### Routing & Signal Flow
+
+| What | Effort | Notes |
+|------|--------|-------|
+| **Send/return buses** — parallel FX routing (e.g. shared reverb/delay return that multiple buses feed into at different levels). Currently everything is insert-only or master. | Medium | 2-4 send buses with independent FX chains. Each bus gets send level knobs. Return buses mix into master pre-compressor. |
+| **Sidechain between buses** — duck one bus from another's signal (e.g. bass ducks from kick). Current sidechain is master-only envelope detector, can't key from a specific bus. | Medium | Need per-bus sidechain input selector + envelope follower. Classic use: BUS_BASS keyed from BUS_DRUM0. |
+| **Flexible bus routing** — any track to any bus (not hardcoded drum→0-3, melody→4-6). | Medium | Already in "Track Type Unification" section above. Calling it out here because it's a DAW-gap too. |
+| **Bus grouping / submixes** — route multiple buses into a group bus before master (e.g. "all drums" submix with shared compression). | Medium | Requires bus hierarchy. Could be simple: 8 buses → 2-4 group buses → master. |
+
+### Arrangement & Automation
+
+| What | Effort | Notes |
+|------|--------|-------|
+| **Timeline automation lanes** — draw continuous parameter curves over time (filter sweep across 8 bars, volume fade over a section). P-locks are per-step discrete; scenes/crossfader morph between 2 snapshots. Neither covers "draw a curve from bar 5 to bar 12." | Large | Could be pattern-scoped (automation points within a pattern, interpolated at audio rate) or song-scoped (global timeline). Pattern-scoped is more tractable. |
+| **Clip/scene launch matrix** — Ableton Session View style: trigger any clip on any track independently, scenes fire rows. | Large | Very different paradigm from linear pattern chain. Probably out of scope unless game audio needs it for vertical layering. |
+
+### Mixing & Metering
+
+| What | Effort | Notes |
+|------|--------|-------|
+| **Parametric EQ** — full parametric (3-5 bands, bell/shelf/notch per band, Q control). Current 2-band shelving EQ can't notch out a resonance or boost 2kHz presence. | Medium | Per-bus + master. Visual EQ curve display is nice-to-have. |
+| **Metering** — RMS/peak meters per bus, LUFS loudness, spectrum analyzer. Currently flying blind on levels. | Medium | Peak meter is ~20 lines per bus (track max in ring buffer). Spectrum analyzer needs FFT (~200 lines). |
+| **Macro knobs** — one knob controlling multiple parameters simultaneously (e.g. "brightness" maps to filter cutoff + EQ high + reverb damping). | Small-Medium | 4-8 macro slots per patch, each with a list of (paramID, amount, curve) mappings. Subsumable by mod matrix if that lands first. |
+
+### Sample & Sound Design
+
+| What | Effort | Notes |
+|------|--------|-------|
+| **Time-stretching** — decouple pitch and time on samples (change tempo without pitch shift, or pitch without tempo). Currently pitch = speed. | Large | Granular engine exists — could repurpose grain overlap for basic time-stretch. Or simple WSOLA/PSOLA. |
+| **Sample layering** — trigger 2+ samples on one step with independent envelopes/pitch/pan (kick layer = sub + transient + body). | Medium | Per-step could reference multiple sample slots. Or: "layer group" that triggers N voices on one note-on. |
+| **Wavetable scanning** — morph between SCW frames over time (position knob + LFO/envelope modulation). SCW engine exists but plays single fixed cycle. | Medium | Need wavetable with multiple frames + position parameter + mod routing. Content pipeline: multi-frame WAV → wavetable. |
+| **Audio recording** — record mic/line input to sample slots. Currently synth-only + loaded WAVs. | Medium | CoreAudio input → ring buffer → sample slot. Pairs well with skip-back sampling (already in roadmap). |
 
 ---
 
