@@ -625,6 +625,18 @@ static void dawSyncSequencer(void) {
             }
         }
         daw.transport.currentPattern = seq.currentPattern;
+        // DEBUG: arrangement sync diagnostics (uncomment to debug arr mode)
+        // Logs bar, chain position, and per-track pattern indices once per second.
+        // Pair with [TRK] log in updateSequencer (sequencer.h).
+        // static int _arrLogFrame = 0;
+        // if (++_arrLogFrame % 60 == 0) {
+        //     printf("[ARR] bar=%d chainPos=%d curPat=%d tpi=[%d %d %d %d %d %d %d %d]\n",
+        //         bar, seq.chainPos, seq.currentPattern,
+        //         seq.trackPatternIdx[0], seq.trackPatternIdx[1],
+        //         seq.trackPatternIdx[2], seq.trackPatternIdx[3],
+        //         seq.trackPatternIdx[4], seq.trackPatternIdx[5],
+        //         seq.trackPatternIdx[6], seq.trackPatternIdx[7]);
+        // }
     }
     // Song mode: push arrangement chain to sequencer
     else if (daw.song.songMode && daw.song.length > 0 && !patLocked) {
@@ -637,7 +649,7 @@ static void dawSyncSequencer(void) {
         seq.chainDefaultLoops = daw.song.loopsPerPattern > 0 ? daw.song.loopsPerPattern : 1;
         // Read back current pattern from sequencer (chain controls it)
         daw.transport.currentPattern = seq.currentPattern;
-    } else if ((recMode != REC_OFF || prChainView) && recChainLength > 1) {
+    } else if ((recMode != REC_OFF || (prChainView && daw.transport.playing)) && recChainLength > 1) {
         seq.perTrackPatterns = false;
         // Chain recording: let the chain we set up drive pattern advance
         // Sync UI pattern selector back from sequencer

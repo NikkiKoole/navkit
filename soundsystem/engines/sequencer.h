@@ -1429,6 +1429,21 @@ static void updateSequencer(float dt) {
             int tick = seq.trackTick[track];
             StepV2 *sv = trackSilent ? &_emptyStep : &p->steps[track][step];
 
+            // DEBUG: per-track arrangement diagnostics (uncomment to debug arr mode)
+            // At step 0 of each track, logs pattern index, silence flag, and how many
+            // steps have data. Pair with [ARR] log in dawSyncSequencer (daw_audio.h).
+            // if (seq.perTrackPatterns && step == 0 && tick == 0) {
+            //     int pi = seq.trackPatternIdx[track];
+            //     int totalNotes = 0;
+            //     if (!trackSilent)
+            //         for (int _s = 0; _s < p->trackLength[track]; _s++)
+            //             if (p->steps[track][_s].noteCount > 0) totalNotes++;
+            //     if (track == 0) printf("--- bar %d ---\n", seq.chainPos);
+            //     printf("[TRK] t=%d pat=%d silent=%d steps_with_data=%d/%d\n",
+            //         track, pi, trackSilent, totalNotes, trackSilent ? 0 : p->trackLength[track]);
+            //     if (track == 7) { printf("\n"); fflush(stdout); }
+            // }
+
             // --- Per-voice gate countdown (melodic tracks) ---
             if (p->trackType[track] == TRACK_MELODIC) {
                 bool anyVoiceActive = false;
@@ -1493,7 +1508,7 @@ static void updateSequencer(float dt) {
 
                 // Check if new step should trigger immediately (nudge <= 0)
                 int newStep = seq.trackStep[track];
-                StepV2 *newSv = &p->steps[track][newStep];
+                StepV2 *newSv = trackSilent ? &_emptyStep : &p->steps[track][newStep];
                 if (newSv->noteCount > 0 && seq.trackTriggerTick[track] <= 0) {
                     seqTriggerStep(p, track, newStep, stepDuration);
                 }

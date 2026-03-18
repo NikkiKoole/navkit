@@ -708,10 +708,32 @@ static bool dawLoad(const char *filepath);
 static struct {
     // Source
     char sourcePath[256];       // .song file path
-    int sourcePattern;          // which pattern to render
-    int sourceLoops;            // how many loops
+    int sourceLoops;            // how many loops for selection
     int sourceSongIdx;          // index into songBrowser (-1 = none)
-    // Rendered audio
+    // Full song data (all patterns concatenated per chain order)
+    float *fullData;            // entire song waveform (heap, zero-filled, patterns copied in lazily)
+    int fullLength;             // total samples in fullData
+    int songChain[64];          // pattern play order from .song
+    int songChainLen;           // number of chain entries
+    int chainOffsets[65];       // sample offset where each chain entry starts (+1 for end)
+    float chainBpm;             // song BPM
+    bool fullBounced;           // true once ALL patterns are rendered
+    bool structureLoaded;       // true after chain parsed + buffer allocated (may be empty)
+    // Per-pattern lazy bounce cache
+    float *patternCache[SEQ_NUM_PATTERNS]; // bounced PCM per unique pattern (heap)
+    int patternCacheLen[SEQ_NUM_PATTERNS]; // length of each cached pattern
+    bool patternBounced[SEQ_NUM_PATTERNS]; // which patterns have been rendered
+    // Viewport (normalized 0-1 over full song)
+    float viewStart;            // left edge of zoom view
+    float viewEnd;              // right edge of zoom view
+    // Selection (normalized 0-1 over full song)
+    float selStart;             // start of selection
+    float selEnd;               // end of selection
+    bool hasSelection;
+    bool draggingSel;           // actively dragging to create selection
+    bool draggingView;          // dragging viewport thumb in overview
+    float dragViewOffset;       // offset from click to thumb center when dragging
+    // Rendered audio (extracted from selection)
     float *renderData;          // bounced PCM buffer (heap)
     int renderLength;           // samples
     float renderBpm;            // source BPM
@@ -742,18 +764,18 @@ static struct {
     bool browsingFiles;         // true when file picker is open
     int browseScroll;           // scroll offset in file list
 } chopState = {
-    .sourcePattern = 0,
     .sourceLoops = 1,
     .sliceCount = 8,
     .selectedSlice = -1,
     .sourceSongIdx = -1,
     .sensitivity = 0.5f,
-    .fadeMs = 1.0f,        // default 1ms auto-fade
-    .sliceParams = {{0}},  // zero-init: reverse=false, pitch=0, gain=0 (set to 1.0 in clear)
+    .fadeMs = 1.0f,
+    .viewEnd = 1.0f,
+    .sliceParams = {{0}},
 };
 
-// Free chop state buffers
-static void chopStateClear(void) {
+// Free chop state buffers (slices only, keeps full song data)
+static void chopSlicesClear(void) {
     if (chopState.renderData) { free(chopState.renderData); chopState.renderData = NULL; }
     for (int s = 0; s < SAMPLER_MAX_SAMPLES; s++) {
         if (chopState.slices[s]) { free(chopState.slices[s]); chopState.slices[s] = NULL; }
@@ -762,80 +784,252 @@ static void chopStateClear(void) {
     chopState.sliceLength = 0;
     chopState.bounced = false;
     chopState.selectedSlice = -1;
-    // Reset drum pad slice mappings
     for (int t = 0; t < 4; t++) daw.chopSliceMap[t] = -1;
-    // Reset per-slice params
     for (int s = 0; s < SAMPLER_MAX_SAMPLES; s++) {
         chopState.sliceParams[s].reverse = false;
         chopState.sliceParams[s].pitchSemitones = 0;
         chopState.sliceParams[s].gain = 1.0f;
         chopState.sliceParams[s].trimStart = 0.0f;
         chopState.sliceParams[s].trimEnd = 1.0f;
-        chopState.sliceParams[s].fadeInMs = -1.0f;   // use global
-        chopState.sliceParams[s].fadeOutMs = -1.0f;   // use global
+        chopState.sliceParams[s].fadeInMs = -1.0f;
+        chopState.sliceParams[s].fadeOutMs = -1.0f;
     }
 }
 
-// Bounce + chop the current source
-static void chopStateBounce(void) {
-    chopStateClear();
+// Free everything (full song + slices + pattern cache)
+static void chopStateClear(void) {
+    chopSlicesClear();
+    if (chopState.fullData) { free(chopState.fullData); chopState.fullData = NULL; }
+    for (int p = 0; p < SEQ_NUM_PATTERNS; p++) {
+        if (chopState.patternCache[p]) { free(chopState.patternCache[p]); chopState.patternCache[p] = NULL; }
+        chopState.patternCacheLen[p] = 0;
+        chopState.patternBounced[p] = false;
+    }
+    chopState.fullLength = 0;
+    chopState.fullBounced = false;
+    chopState.structureLoaded = false;
+    chopState.songChainLen = 0;
+    chopState.hasSelection = false;
+    chopState.draggingSel = false;
+    chopState.draggingView = false;
+    chopState.viewStart = 0.0f;
+    chopState.viewEnd = 1.0f;
+    chopState.selStart = 0.0f;
+    chopState.selEnd = 0.0f;
+}
+
+// Parse [chain] and [transport] BPM from a .song file (lightweight, no full load)
+static void chopParseChain(const char *path) {
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    chopState.songChainLen = 0;
+    chopState.chainBpm = 120.0f;
+    char line[512];
+    bool inChain = false, inTransport = false;
+    while (fgets(line, sizeof(line), f)) {
+        char *s = line;
+        while (*s == ' ' || *s == '\t') s++;
+        int len = (int)strlen(s);
+        while (len > 0 && (s[len-1] == '\n' || s[len-1] == '\r' || s[len-1] == ' ')) s[--len] = 0;
+        if (s[0] == '[') {
+            inChain = (strcmp(s, "[chain]") == 0);
+            inTransport = (strcmp(s, "[transport]") == 0);
+            continue;
+        }
+        if (inTransport && strncmp(s, "bpm", 3) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) chopState.chainBpm = strtof(eq + 1, NULL);
+        }
+        if (inChain && strncmp(s, "order", 5) == 0) {
+            char *eq = strchr(s, '=');
+            if (!eq) continue;
+            char *tok = eq + 1;
+            while (*tok && chopState.songChainLen < 64) {
+                while (*tok == ' ' || *tok == ',') tok++;
+                if (!*tok) break;
+                chopState.songChain[chopState.songChainLen++] = atoi(tok);
+                while (*tok && *tok != ',') tok++;
+            }
+        }
+    }
+    fclose(f);
+    if (chopState.songChainLen == 0) {
+        // No chain: default to all 8 patterns (some may be empty)
+        for (int i = 0; i < SEQ_NUM_PATTERNS; i++)
+            chopState.songChain[i] = i;
+        chopState.songChainLen = SEQ_NUM_PATTERNS;
+    }
+}
+
+// Bounce all unique patterns in the chain and assemble into fullData
+// Load song structure (chain + allocate buffer) — instant, no rendering
+static void chopBounceFullSong(void) {
     if (!chopState.sourcePath[0]) return;
+    chopStateClear();
 
-    // Gate the audio callback during the entire bounce+load operation.
-    // renderPatternToBuffer swaps global context pointers, and the slot
-    // loading modifies samplerCtx->samples — both need protection.
+    chopParseChain(chopState.sourcePath);
+
+    // We need to know each pattern's length to compute offsets.
+    // Estimate from BPM + step count: each pattern is (steps * 60/BPM / 4) seconds.
+    // But patterns can vary. We'll use a fixed estimate and correct when we bounce.
+    // For now: bounce pattern 0 to get a reference length, assume all same length.
     dawAudioGate();
+    int refPat = (chopState.songChainLen > 0) ? chopState.songChain[0] : 0;
+    if (refPat < 0 || refPat >= SEQ_NUM_PATTERNS) refPat = 0;
+    RenderedPattern ref = renderPatternToBuffer(chopState.sourcePath, refPat, 1, 0.1f);
+    dawAudioUngate();
 
-    RenderedPattern rendered = renderPatternToBuffer(
-        chopState.sourcePath, chopState.sourcePattern,
-        chopState.sourceLoops, 0.5f);
+    if (!ref.data) return;
+    if (ref.bpm > 0) chopState.chainBpm = ref.bpm;
 
-    if (!rendered.data) { dawAudioUngate(); return; }
+    // Cache the reference pattern
+    chopState.patternCache[refPat] = ref.data;
+    chopState.patternCacheLen[refPat] = ref.length;
+    chopState.patternBounced[refPat] = true;
 
-    // Normalize: scale buffer so peak hits ~0.9
-    if (chopState.normalize && rendered.length > 0) {
+    // Estimate: all patterns have the same length as the reference
+    // (corrected when each pattern actually bounces)
+    int estLen = ref.length;
+
+    // Calculate offsets (estimated — will be exact for bounced patterns)
+    int totalLen = 0;
+    for (int i = 0; i < chopState.songChainLen; i++) {
+        int p = chopState.songChain[i];
+        chopState.chainOffsets[i] = totalLen;
+        int pLen = (p >= 0 && p < SEQ_NUM_PATTERNS && chopState.patternBounced[p])
+            ? chopState.patternCacheLen[p] : estLen;
+        totalLen += pLen;
+    }
+    chopState.chainOffsets[chopState.songChainLen] = totalLen;
+
+    // Allocate full buffer (zero-filled — unbounced regions are silent)
+    chopState.fullData = (float *)calloc(totalLen, sizeof(float));
+    if (!chopState.fullData) return;
+    chopState.fullLength = totalLen;
+
+    // Copy the already-bounced pattern into all its chain positions
+    for (int i = 0; i < chopState.songChainLen; i++) {
+        if (chopState.songChain[i] == refPat) {
+            int off = chopState.chainOffsets[i];
+            int len = chopState.chainOffsets[i + 1] - off;
+            if (len > ref.length) len = ref.length;
+            memcpy(chopState.fullData + off, ref.data, len * sizeof(float));
+        }
+    }
+
+    chopState.structureLoaded = true;
+    chopState.viewStart = 0.0f;
+    chopState.viewEnd = 1.0f;
+
+    // Check if all unique patterns happen to be the same as refPat
+    bool allDone = true;
+    for (int i = 0; i < chopState.songChainLen; i++) {
+        int p = chopState.songChain[i];
+        if (p >= 0 && p < SEQ_NUM_PATTERNS && !chopState.patternBounced[p]) { allDone = false; break; }
+    }
+    chopState.fullBounced = allDone;
+}
+
+// Lazy-bounce one unbounced pattern and copy into fullData. Call once per frame.
+// Returns true if work was done (one pattern bounced).
+static bool chopBounceNextPattern(void) {
+    if (!chopState.structureLoaded || chopState.fullBounced) return false;
+    if (!chopState.sourcePath[0] || !chopState.fullData) return false;
+
+    // Find next unbounced pattern in the chain
+    int target = -1;
+    for (int i = 0; i < chopState.songChainLen; i++) {
+        int p = chopState.songChain[i];
+        if (p >= 0 && p < SEQ_NUM_PATTERNS && !chopState.patternBounced[p]) {
+            target = p;
+            break;
+        }
+    }
+    if (target < 0) { chopState.fullBounced = true; return false; }
+
+    // Bounce this one pattern
+    dawAudioGate();
+    RenderedPattern r = renderPatternToBuffer(chopState.sourcePath, target, 1, 0.1f);
+    dawAudioUngate();
+
+    if (!r.data) {
+        // Mark as bounced (empty) to avoid retrying
+        chopState.patternBounced[target] = true;
+        return true;
+    }
+    if (r.bpm > 0) chopState.chainBpm = r.bpm;
+
+    chopState.patternCache[target] = r.data;
+    chopState.patternCacheLen[target] = r.length;
+    chopState.patternBounced[target] = true;
+
+    // Copy into all chain positions for this pattern
+    for (int i = 0; i < chopState.songChainLen; i++) {
+        if (chopState.songChain[i] == target) {
+            int off = chopState.chainOffsets[i];
+            int space = chopState.chainOffsets[i + 1] - off;
+            int len = r.length < space ? r.length : space;
+            memcpy(chopState.fullData + off, r.data, len * sizeof(float));
+        }
+    }
+
+    // Check if all done
+    bool allDone = true;
+    for (int i = 0; i < chopState.songChainLen; i++) {
+        int p = chopState.songChain[i];
+        if (p >= 0 && p < SEQ_NUM_PATTERNS && !chopState.patternBounced[p]) { allDone = false; break; }
+    }
+    chopState.fullBounced = allDone;
+    return true;
+}
+
+// Chop the current selection from fullData
+static void chopStateBounce(void) {
+    chopSlicesClear();
+    if (!chopState.structureLoaded || !chopState.fullData || !chopState.hasSelection) return;
+
+    // Extract selection region from fullData
+    float s0 = chopState.selStart < chopState.selEnd ? chopState.selStart : chopState.selEnd;
+    float s1 = chopState.selStart < chopState.selEnd ? chopState.selEnd : chopState.selStart;
+    int startSample = (int)(s0 * chopState.fullLength);
+    int endSample = (int)(s1 * chopState.fullLength);
+    if (startSample < 0) startSample = 0;
+    if (endSample > chopState.fullLength) endSample = chopState.fullLength;
+    int selLen = endSample - startSample;
+    if (selLen < 100) return;  // too short
+
+    // Repeat selection for loops
+    int totalLen = selLen * chopState.sourceLoops;
+    chopState.renderData = (float *)malloc(totalLen * sizeof(float));
+    if (!chopState.renderData) return;
+    for (int l = 0; l < chopState.sourceLoops; l++)
+        memcpy(chopState.renderData + l * selLen, chopState.fullData + startSample, selLen * sizeof(float));
+    chopState.renderLength = totalLen;
+    chopState.renderBpm = chopState.chainBpm;
+    chopState.renderSteps = 16;  // approximate
+
+    // Normalize if requested
+    if (chopState.normalize && totalLen > 0) {
         float peak = 0.0f;
-        for (int i = 0; i < rendered.length; i++) {
-            float a = fabsf(rendered.data[i]);
+        for (int i = 0; i < totalLen; i++) {
+            float a = fabsf(chopState.renderData[i]);
             if (a > peak) peak = a;
         }
         if (peak > 0.001f) {
             float gain = 0.9f / peak;
-            for (int i = 0; i < rendered.length; i++)
-                rendered.data[i] *= gain;
+            for (int i = 0; i < totalLen; i++)
+                chopState.renderData[i] *= gain;
         }
     }
 
-    chopState.renderData = rendered.data;
-    chopState.renderLength = rendered.length;
-    chopState.renderBpm = rendered.bpm;
-    chopState.renderSteps = rendered.stepCount;
-
-    // Debug: dump full pre-chop bounce buffer
-    {
-        FILE *dbgf = fopen("/tmp/daw_bounce_full.wav", "wb");
-        if (dbgf) {
-            int ds = rendered.length * 2, fs = 36 + ds;
-            fwrite("RIFF", 1, 4, dbgf); fwrite(&fs, 4, 1, dbgf);
-            fwrite("WAVE", 1, 4, dbgf); fwrite("fmt ", 1, 4, dbgf);
-            int v32 = 16; fwrite(&v32, 4, 1, dbgf);
-            short v16 = 1; fwrite(&v16, 2, 1, dbgf); v16 = 1; fwrite(&v16, 2, 1, dbgf);
-            v32 = rendered.sampleRate; fwrite(&v32, 4, 1, dbgf);
-            v32 = rendered.sampleRate * 2; fwrite(&v32, 4, 1, dbgf);
-            v16 = 2; fwrite(&v16, 2, 1, dbgf); v16 = 16; fwrite(&v16, 2, 1, dbgf);
-            fwrite("data", 1, 4, dbgf); fwrite(&ds, 4, 1, dbgf);
-            float pk = 0;
-            for (int i = 0; i < rendered.length; i++) {
-                float s = rendered.data[i];
-                if (fabsf(s) > pk) pk = fabsf(s);
-                if (s > 1) s = 1; if (s < -1) s = -1;
-                short sv = (short)(s * 32000.0f);
-                fwrite(&sv, 2, 1, dbgf);
-            }
-            fclose(dbgf);
-            fprintf(stderr, "DAW bounce: /tmp/daw_bounce_full.wav (%d samples, peak=%.4f)\n", rendered.length, pk);
-        }
-    }
+    // Build a RenderedPattern for the chop functions
+    RenderedPattern rendered = {
+        .data = chopState.renderData,
+        .length = totalLen,
+        .sampleRate = SAMPLE_CHOP_SAMPLE_RATE,
+        .bpm = chopState.renderBpm,
+        .stepCount = chopState.renderSteps,
+    };
 
     // Chop (equal or transient)
     ChoppedSample chopped;
@@ -844,7 +1038,7 @@ static void chopStateBounce(void) {
     } else {
         chopped = chopEqual(&rendered, chopState.sliceCount);
     }
-    if (chopped.sliceCount < 1) { chopStateClear(); dawAudioUngate(); return; }
+    if (chopped.sliceCount < 1) { chopSlicesClear(); return; }
 
     int sc = chopped.sliceCount;
     chopState.sliceCount = sc;  // transient mode may return fewer slices
@@ -853,11 +1047,12 @@ static void chopStateBounce(void) {
         int len = chopped.sliceLengths[s] > 0 ? chopped.sliceLengths[s] : chopped.sliceLength;
         chopState.sliceLengths[s] = len;
         chopState.slices[s] = (float *)malloc(len * sizeof(float));
-        if (!chopState.slices[s]) { chopFree(&chopped); chopStateClear(); dawAudioUngate(); return; }
+        if (!chopState.slices[s]) { chopFree(&chopped); chopSlicesClear(); return; }
         memcpy(chopState.slices[s], chopped.slices[s], len * sizeof(float));
     }
 
-    // Load into sampler
+    // Load slices into sampler
+    dawAudioGate();
     _ensureSamplerCtx();
     for (int s = 0; s < sc; s++) {
         int len = chopState.sliceLengths[s];
@@ -874,22 +1069,17 @@ static void chopStateBounce(void) {
         }
     }
     chopFree(&chopped);
-
-    // Drum pad mapping left cleared (-1) — user can opt in via Auto button
-
-    // All slot modifications done — ungate the audio callback
     dawAudioUngate();
 
     chopState.bounced = true;
-    // Initialize default slice params for new chop
     for (int s = 0; s < sc; s++) {
         chopState.sliceParams[s].reverse = false;
         chopState.sliceParams[s].pitchSemitones = 0;
         chopState.sliceParams[s].gain = 1.0f;
         chopState.sliceParams[s].trimStart = 0.0f;
         chopState.sliceParams[s].trimEnd = 1.0f;
-        chopState.sliceParams[s].fadeInMs = -1.0f;   // use global
-        chopState.sliceParams[s].fadeOutMs = -1.0f;   // use global
+        chopState.sliceParams[s].fadeInMs = -1.0f;
+        chopState.sliceParams[s].fadeOutMs = -1.0f;
     }
 }
 
@@ -1655,7 +1845,13 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         if (seq.patterns[i].overrides.flags != 0) {
             DrawCircle((int)(px+i*28+22), (int)y+3, 3, (Color){255,180,60,255});
         }
-        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { daw.transport.currentPattern = i; ui_consume_click(); }
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            daw.transport.currentPattern = i;
+            // Break out of chain/arrangement mode so pattern selection isn't overridden
+            if (prChainView) { prChainView = false; recChainLength = 0; seq.chainLength = 0; }
+            if (daw.arr.arrMode) { daw.arr.arrMode = false; seq.perTrackPatterns = false; seq.chainLength = 0; }
+            ui_consume_click();
+        }
     }
 
     // 16/32 toggle
@@ -3317,6 +3513,7 @@ static void drawWorkSong(float x, float y, float w, float h) {
                        daw.song.songMode ? WHITE : GRAY);
         if (smHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             daw.song.songMode = !daw.song.songMode;
+            if (daw.song.songMode) daw.arr.arrMode = false;  // mutually exclusive
             if (daw.song.songMode && daw.song.length > 0) {
                 // Start from beginning of chain
                 seq.chainPos = 0;
@@ -5847,6 +6044,9 @@ static void drawWorkSample(float x, float y, float w, float h) {
     Vector2 mouse = GetMousePosition();
     float sy = y;
 
+    // Lazy-bounce: render one pattern per frame while on this tab
+    chopBounceNextPattern();
+
     DrawTextShadow("Sample / Chop", (int)x, (int)sy, UI_FONT_SMALL, WHITE);
     sy += 20;
 
@@ -5856,7 +6056,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
     // Song selector button (click to open/close file list)
     {
         float btnX = x + 50;
-        float btnW = w - 260;
+        float btnW = w - 60;  // wider now (no Pat buttons)
         Rectangle btnR = {btnX, sy, btnW, 16};
         bool hov = CheckCollisionPointRec(mouse, btnR);
         DrawRectangleRec(btnR, chopState.browsingFiles ? UI_BG_HOVER : (hov ? UI_BG_HOVER : UI_BG_PANEL));
@@ -5865,32 +6065,11 @@ static void drawWorkSample(float x, float y, float w, float h) {
         const char *display = chopState.sourceSongIdx >= 0 ? songBrowser.names[chopState.sourceSongIdx] : "Select song...";
         DrawTextShadow(display, (int)(btnX + 4), (int)(sy + 3), 9,
                       chopState.sourceSongIdx >= 0 ? WHITE : UI_TEXT_MUTED);
-        // Arrow indicator
         DrawTextShadow(chopState.browsingFiles ? "^" : "v", (int)(btnX + btnW - 12), (int)(sy + 3), UI_FONT_SMALL, UI_BORDER_LIGHT);
 
         if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             chopState.browsingFiles = !chopState.browsingFiles;
             ui_consume_click();
-        }
-    }
-
-    // Pattern selector
-    {
-        float px = x + w - 200;
-        DrawTextShadow("Pat:", (int)px, (int)(sy + 2), UI_FONT_SMALL, UI_TEXT_LABEL);
-        for (int p = 0; p < SEQ_NUM_PATTERNS; p++) {
-            Rectangle r = {px + 28 + p * 18, sy, 16, 16};
-            bool sel = (p == chopState.sourcePattern);
-            bool hov = CheckCollisionPointRec(mouse, r);
-            DrawRectangleRec(r, sel ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_PANEL));
-            DrawRectangleLinesEx(r, 1, sel ? GREEN : UI_BORDER);
-            char num[4];
-            snprintf(num, sizeof(num), "%d", p + 1);
-            DrawTextShadow(num, (int)(r.x + 4), (int)(r.y + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_DIM);
-            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                chopState.sourcePattern = p;
-                ui_consume_click();
-            }
         }
     }
     sy += 22;
@@ -5978,13 +6157,21 @@ static void drawWorkSample(float x, float y, float w, float h) {
 
         // Chop button
         {
+            bool canChop = chopState.structureLoaded && chopState.fullData;
             int bw = MeasureTextUI("Chop!", UI_FONT_SMALL) + cbPad*2;
             Rectangle r = {cx2, sy, (float)bw, (float)cbH};
-            bool hov = CheckCollisionPointRec(mouse, r);
-            DrawRectangleRec(r, hov ? (Color){80, 60, 40, 255} : UI_BG_BROWN);
-            DrawRectangleLinesEx(r, 1, ORANGE);
-            DrawTextShadow("Chop!", (int)(cx2 + cbPad), (int)(sy + 3), UI_FONT_SMALL, WHITE);
+            bool hov = CheckCollisionPointRec(mouse, r) && canChop;
+            DrawRectangleRec(r, hov ? (Color){80, 60, 40, 255} : (canChop ? UI_BG_BROWN : UI_BG_PANEL));
+            DrawRectangleLinesEx(r, 1, canChop ? ORANGE : UI_BORDER);
+            DrawTextShadow("Chop!", (int)(cx2 + cbPad), (int)(sy + 3), UI_FONT_SMALL,
+                          canChop ? WHITE : UI_TEXT_DIM);
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                // If no selection, auto-select the whole song
+                if (!chopState.hasSelection) {
+                    chopState.selStart = 0.0f;
+                    chopState.selEnd = 1.0f;
+                    chopState.hasSelection = true;
+                }
                 chopStateBounce();
                 ui_consume_click();
             }
@@ -6010,6 +6197,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
             DrawTextShadow("Norm", (int)(cx2 + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_DIM);
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 chopState.normalize = !chopState.normalize;
+                if (chopState.bounced && chopState.hasSelection) chopStateBounce();  // re-chop with new norm
                 ui_consume_click();
             }
             cx2 += bw + 6;
@@ -6027,7 +6215,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
     // --- File browser dropdown (overlaid) ---
     if (chopState.browsingFiles && songBrowser.count > 0) {
         float listX = x + 50;
-        float listW = w - 260;
+        float listW = w - 60;
         int visibleRows = songBrowser.count < 12 ? songBrowser.count : 12;
         float rowH = 14;
         float listH = visibleRows * rowH + 4;
@@ -6059,6 +6247,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 chopState.sourceSongIdx = idx;
                 strncpy(chopState.sourcePath, songBrowser.paths[idx], sizeof(chopState.sourcePath) - 1);
                 chopState.browsingFiles = false;
+                chopBounceFullSong();  // render all patterns on song select
                 ui_consume_click();
             }
         }
@@ -6076,24 +6265,297 @@ static void drawWorkSample(float x, float y, float w, float h) {
         sy += listH + 2;
     }
 
-    // --- Waveform ---
-    float waveH = 80;
-    int clicked = drawChopWaveform(x, sy, w, waveH,
-                                    chopState.renderData, chopState.renderLength,
-                                    chopState.sliceCount,
-                                    chopState.bounced ? chopState.sliceLengths : NULL,
-                                    chopState.selectedSlice);
-    if (clicked >= 0) {
-        chopState.selectedSlice = clicked;
-        // Preview: play the clicked slice (sampler has trimmed version after apply)
-        if (chopState.bounced && clicked < chopState.sliceCount) {
-            chopApplySliceParams();  // ensure sampler has latest trim
-            float pitch = chopState.sliceParams[clicked].pitchSemitones;
-            float speed = (pitch != 0.0f) ? powf(2.0f, pitch / 12.0f) : 1.0f;
-            samplerQueuePlay(clicked, 0.8f, speed);
+    // --- Overview bar (full song minimap) ---
+    {
+        float ovH = 22;
+        Rectangle ovR = {x, sy, w, ovH};
+        DrawRectangle((int)x, (int)sy, (int)w, (int)ovH, UI_BG_DEEPEST);
+        DrawRectangleLinesEx(ovR, 1, UI_BORDER_SUBTLE);
+
+        if (chopState.structureLoaded && chopState.fullData && chopState.fullLength > 0) {
+            int pixels = (int)w - 4;
+            float px0 = x + 2;
+            float mid = sy + ovH * 0.5f;
+            float amp = ovH * 0.4f;
+
+            // Draw full-song waveform (heavily downsampled)
+            for (int col = 0; col < pixels; col++) {
+                int s0 = (int)((float)col / pixels * chopState.fullLength);
+                int s1 = (int)((float)(col + 1) / pixels * chopState.fullLength);
+                if (s1 > chopState.fullLength) s1 = chopState.fullLength;
+                float lo = 0, hi = 0;
+                // Sample at most 64 points per column for speed
+                int step = (s1 - s0) > 64 ? (s1 - s0) / 64 : 1;
+                for (int s = s0; s < s1; s += step) {
+                    if (chopState.fullData[s] < lo) lo = chopState.fullData[s];
+                    if (chopState.fullData[s] > hi) hi = chopState.fullData[s];
+                }
+                // Color: selection region = orange, else blue
+                float norm = (float)col / pixels;
+                bool inSel = chopState.hasSelection &&
+                    norm >= fminf(chopState.selStart, chopState.selEnd) &&
+                    norm <= fmaxf(chopState.selStart, chopState.selEnd);
+                Color wc = inSel ? (Color){255, 180, 60, 200} : (Color){60, 100, 150, 200};
+                int y0 = (int)(mid - hi * amp);
+                int y1 = (int)(mid - lo * amp);
+                if (y1 <= y0) y1 = y0 + 1;
+                DrawLine((int)(px0 + col), y0, (int)(px0 + col), y1, wc);
+            }
+
+            // Draw chain entry boundaries + pattern numbers
+            for (int i = 0; i < chopState.songChainLen; i++) {
+                if (i > 0) {
+                    float norm = (float)chopState.chainOffsets[i] / chopState.fullLength;
+                    float bx = x + 2 + norm * (w - 4);
+                    DrawLine((int)bx, (int)(sy + 1), (int)bx, (int)(sy + ovH - 1), (Color){80, 80, 100, 120});
+                }
+                // Pattern number label in overview
+                int p = chopState.songChain[i];
+                float normL = (float)chopState.chainOffsets[i] / chopState.fullLength;
+                float normR = (float)chopState.chainOffsets[i + 1] / chopState.fullLength;
+                float cx = x + 2 + (normL + normR) * 0.5f * (w - 4);
+                char pn[4];
+                snprintf(pn, sizeof(pn), "%d", p + 1);
+                int tw = MeasureTextUI(pn, 8);
+                bool pb = (p >= 0 && p < SEQ_NUM_PATTERNS) ? chopState.patternBounced[p] : false;
+                DrawTextShadow(pn, (int)(cx - tw / 2), (int)(sy + ovH - 10), 8,
+                    pb ? (Color){80, 80, 100, 180} : (Color){60, 50, 40, 120});
+            }
+
+            // Rendering progress indicator
+            if (!chopState.fullBounced) {
+                int done = 0, total = 0;
+                for (int i = 0; i < chopState.songChainLen; i++) {
+                    int p = chopState.songChain[i];
+                    if (p >= 0 && p < SEQ_NUM_PATTERNS) {
+                        total++;
+                        if (chopState.patternBounced[p]) done++;
+                    }
+                }
+                char prog[32];
+                snprintf(prog, sizeof(prog), "Rendering %d/%d...", done, total);
+                DrawTextShadow(prog, (int)(x + w - MeasureTextUI(prog, 8) - 6), (int)(sy + 2), 8, (Color){200, 180, 100, 200});
+            }
+
+            // Draw viewport thumb
+            float thumbL = x + 2 + chopState.viewStart * (w - 4);
+            float thumbR = x + 2 + chopState.viewEnd * (w - 4);
+            float thumbW = thumbR - thumbL;
+            if (thumbW < 4) thumbW = 4;
+            DrawRectangle((int)thumbL, (int)(sy + 1), (int)thumbW, (int)(ovH - 2), (Color){255, 255, 255, 30});
+            DrawRectangleLinesEx((Rectangle){thumbL, sy + 1, thumbW, ovH - 2}, 1, (Color){200, 200, 220, 150});
+
+            // Overview interaction: click to center viewport, drag to scroll
+            if (CheckCollisionPointRec(mouse, ovR)) {
+                if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                    float clickNorm = (mouse.x - x - 2) / (w - 4);
+                    if (clickNorm < 0) clickNorm = 0;
+                    if (clickNorm > 1) clickNorm = 1;
+                    float viewW = chopState.viewEnd - chopState.viewStart;
+                    // Check if click is inside thumb (start dragging)
+                    float thumbNormL = chopState.viewStart;
+                    float thumbNormR = chopState.viewEnd;
+                    if (clickNorm >= thumbNormL && clickNorm <= thumbNormR) {
+                        chopState.draggingView = true;
+                        chopState.dragViewOffset = clickNorm - (thumbNormL + thumbNormR) * 0.5f;
+                    } else {
+                        // Jump viewport to click position
+                        chopState.viewStart = clickNorm - viewW * 0.5f;
+                        chopState.viewEnd = chopState.viewStart + viewW;
+                        if (chopState.viewStart < 0) { chopState.viewStart = 0; chopState.viewEnd = viewW; }
+                        if (chopState.viewEnd > 1) { chopState.viewEnd = 1; chopState.viewStart = 1 - viewW; }
+                        chopState.draggingView = true;
+                        chopState.dragViewOffset = 0;
+                    }
+                    ui_consume_click();
+                }
+            }
+            if (chopState.draggingView && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                float clickNorm = (mouse.x - x - 2) / (w - 4);
+                if (clickNorm < 0) clickNorm = 0;
+                if (clickNorm > 1) clickNorm = 1;
+                float viewW = chopState.viewEnd - chopState.viewStart;
+                float center = clickNorm - chopState.dragViewOffset;
+                chopState.viewStart = center - viewW * 0.5f;
+                chopState.viewEnd = center + viewW * 0.5f;
+                if (chopState.viewStart < 0) { chopState.viewStart = 0; chopState.viewEnd = viewW; }
+                if (chopState.viewEnd > 1) { chopState.viewEnd = 1; chopState.viewStart = 1 - viewW; }
+            }
+            if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) chopState.draggingView = false;
+        } else {
+            DrawTextShadow("Select a song to browse waveform", (int)(x + 8), (int)(sy + ovH / 2 - 4), UI_FONT_SMALL, UI_TEXT_MUTED);
         }
+        sy += ovH + 2;
     }
-    sy += waveH + 6;
+
+    // --- Zoom view (scrollable/zoomable detail with selection) ---
+    {
+        float zoomH = 80;
+        Rectangle zoomR = {x, sy, w, zoomH};
+        DrawRectangle((int)x, (int)sy, (int)w, (int)zoomH, UI_BG_DEEPEST);
+        DrawRectangleLinesEx(zoomR, 1, UI_BORDER_SUBTLE);
+
+        if (chopState.structureLoaded && chopState.fullData && chopState.fullLength > 0) {
+            int pixels = (int)w - 4;
+            float px0 = x + 2;
+            float mid = sy + zoomH * 0.5f;
+            float zAmp = zoomH * 0.45f;
+            float vStart = chopState.viewStart;
+            float vEnd = chopState.viewEnd;
+            float vLen = vEnd - vStart;
+            if (vLen < 0.0001f) vLen = 0.0001f;
+
+            // Draw zoomed waveform
+            for (int col = 0; col < pixels; col++) {
+                float normL = vStart + ((float)col / pixels) * vLen;
+                float normR = vStart + ((float)(col + 1) / pixels) * vLen;
+                int s0 = (int)(normL * chopState.fullLength);
+                int s1 = (int)(normR * chopState.fullLength);
+                if (s0 < 0) s0 = 0;
+                if (s1 > chopState.fullLength) s1 = chopState.fullLength;
+                float lo = 0, hi = 0;
+                int step = (s1 - s0) > 64 ? (s1 - s0) / 64 : 1;
+                for (int s = s0; s < s1; s += step) {
+                    if (chopState.fullData[s] < lo) lo = chopState.fullData[s];
+                    if (chopState.fullData[s] > hi) hi = chopState.fullData[s];
+                }
+                // Color: inside selection = orange, else blue
+                float normMid = (normL + normR) * 0.5f;
+                bool inSel = chopState.hasSelection &&
+                    normMid >= fminf(chopState.selStart, chopState.selEnd) &&
+                    normMid <= fmaxf(chopState.selStart, chopState.selEnd);
+                Color wc = inSel ? (Color){255, 180, 60, 255} : (Color){80, 140, 200, 255};
+                int y0 = (int)(mid - hi * zAmp);
+                int y1 = (int)(mid - lo * zAmp);
+                if (y1 <= y0) y1 = y0 + 1;
+                DrawLine((int)(px0 + col), y0, (int)(px0 + col), y1, wc);
+            }
+
+            // Center line
+            DrawLine((int)(x + 2), (int)mid, (int)(x + w - 2), (int)mid, (Color){35, 35, 42, 128});
+
+            // Draw chain boundaries in zoom view
+            for (int i = 0; i < chopState.songChainLen; i++) {
+                float norm = (float)chopState.chainOffsets[i] / chopState.fullLength;
+                if (norm >= vStart && norm <= vEnd) {
+                    float bx = x + 2 + ((norm - vStart) / vLen) * (w - 4);
+                    DrawLine((int)bx, (int)(sy + 1), (int)bx, (int)(sy + zoomH - 1), (Color){80, 80, 100, 100});
+                    // Pattern number label
+                    char pn[4];
+                    snprintf(pn, sizeof(pn), "%d", chopState.songChain[i] + 1);
+                    DrawTextShadow(pn, (int)(bx + 2), (int)(sy + 2), 8, (Color){100, 100, 120, 200});
+                }
+            }
+
+            // Draw selection handles
+            if (chopState.hasSelection) {
+                float sMin = fminf(chopState.selStart, chopState.selEnd);
+                float sMax = fmaxf(chopState.selStart, chopState.selEnd);
+                // Left handle (green)
+                if (sMin >= vStart && sMin <= vEnd) {
+                    float hx = x + 2 + ((sMin - vStart) / vLen) * (w - 4);
+                    DrawLine((int)hx, (int)(sy + 1), (int)hx, (int)(sy + zoomH - 1), GREEN);
+                    DrawRectangle((int)(hx - 2), (int)sy, 5, 8, GREEN);
+                }
+                // Right handle (red)
+                if (sMax >= vStart && sMax <= vEnd) {
+                    float hx = x + 2 + ((sMax - vStart) / vLen) * (w - 4);
+                    DrawLine((int)hx, (int)(sy + 1), (int)hx, (int)(sy + zoomH - 1), RED);
+                    DrawRectangle((int)(hx - 2), (int)(sy + zoomH - 8), 5, 8, RED);
+                }
+            }
+
+            // Zoom view interaction
+            bool hovZoom = CheckCollisionPointRec(mouse, zoomR);
+            if (hovZoom) {
+                // Mouse wheel: zoom in/out centered on cursor
+                float wheel = GetMouseWheelMove();
+                if (wheel != 0) {
+                    float cursorNorm = vStart + ((mouse.x - x - 2) / (w - 4)) * vLen;
+                    float zoomFactor = (wheel > 0) ? 0.8f : 1.25f;
+                    float newLen = vLen * zoomFactor;
+                    if (newLen < 0.005f) newLen = 0.005f;  // min zoom
+                    if (newLen > 1.0f) newLen = 1.0f;      // max zoom
+                    // Keep cursor position stable
+                    float ratio = (cursorNorm - vStart) / vLen;
+                    chopState.viewStart = cursorNorm - ratio * newLen;
+                    chopState.viewEnd = cursorNorm + (1 - ratio) * newLen;
+                    if (chopState.viewStart < 0) { chopState.viewStart = 0; chopState.viewEnd = newLen; }
+                    if (chopState.viewEnd > 1) { chopState.viewEnd = 1; chopState.viewStart = 1 - newLen; }
+                }
+
+                // Right-drag: pan viewport
+                if (IsMouseButtonDown(MOUSE_RIGHT_BUTTON)) {
+                    float dx = GetMouseDelta().x;
+                    float panAmt = -dx / (w - 4) * vLen;
+                    chopState.viewStart += panAmt;
+                    chopState.viewEnd += panAmt;
+                    if (chopState.viewStart < 0) { chopState.viewEnd -= chopState.viewStart; chopState.viewStart = 0; }
+                    if (chopState.viewEnd > 1) { chopState.viewStart -= (chopState.viewEnd - 1); chopState.viewEnd = 1; }
+                }
+
+                // Left-drag: create/adjust selection
+                if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !chopState.draggingView) {
+                    float clickNorm = vStart + ((mouse.x - x - 2) / (w - 4)) * vLen;
+                    if (clickNorm < 0) clickNorm = 0;
+                    if (clickNorm > 1) clickNorm = 1;
+                    chopState.selStart = clickNorm;
+                    chopState.selEnd = clickNorm;
+                    chopState.hasSelection = false;
+                    chopState.draggingSel = true;
+                    ui_consume_click();
+                }
+            }
+            if (chopState.draggingSel && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                float dragNorm = vStart + ((mouse.x - x - 2) / (w - 4)) * vLen;
+                if (dragNorm < 0) dragNorm = 0;
+                if (dragNorm > 1) dragNorm = 1;
+                chopState.selEnd = dragNorm;
+                float selSize = fabsf(chopState.selEnd - chopState.selStart);
+                chopState.hasSelection = (selSize > 0.002f);  // minimum selection size
+            }
+            if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && chopState.draggingSel) {
+                chopState.draggingSel = false;
+                // Normalize so selStart < selEnd
+                if (chopState.selStart > chopState.selEnd) {
+                    float tmp = chopState.selStart;
+                    chopState.selStart = chopState.selEnd;
+                    chopState.selEnd = tmp;
+                }
+            }
+
+            // Info text
+            if (chopState.hasSelection) {
+                float selSec = fabsf(chopState.selEnd - chopState.selStart) * chopState.fullLength / SAMPLE_CHOP_SAMPLE_RATE;
+                char info[64];
+                snprintf(info, sizeof(info), "Selection: %.2fs  %.0f BPM", selSec, chopState.chainBpm);
+                DrawTextShadow(info, (int)(x + w - MeasureTextUI(info, 8) - 4), (int)(sy + zoomH - 11), 8, UI_TEXT_GREEN);
+            }
+        } else {
+            DrawTextShadow("No audio — select a .song above", (int)(x + 8), (int)(sy + zoomH / 2 - 5), UI_FONT_SMALL, UI_BORDER_LIGHT);
+        }
+        sy += zoomH + 4;
+    }
+
+    // --- Slice waveform (after chop) ---
+    if (chopState.bounced) {
+        float waveH = 60;
+        int clicked = drawChopWaveform(x, sy, w, waveH,
+                                        chopState.renderData, chopState.renderLength,
+                                        chopState.sliceCount,
+                                        chopState.sliceLengths,
+                                        chopState.selectedSlice);
+        if (clicked >= 0) {
+            chopState.selectedSlice = clicked;
+            if (clicked < chopState.sliceCount) {
+                chopApplySliceParams();
+                float pitch = chopState.sliceParams[clicked].pitchSemitones;
+                float speed = (pitch != 0.0f) ? powf(2.0f, pitch / 12.0f) : 1.0f;
+                samplerQueuePlay(clicked, 0.8f, speed);
+            }
+        }
+        sy += waveH + 4;
+    }
 
     // --- Pad mapping ---
     if (chopState.bounced) {
@@ -6720,6 +7182,7 @@ static void drawWorkArrange(float x, float y, float w, float h) {
                        arr->arrMode ? WHITE : GRAY);
         if (smHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             arr->arrMode = !arr->arrMode;
+            if (arr->arrMode) daw.song.songMode = false;  // mutually exclusive
             if (arr->arrMode && arr->length == 0) {
                 // Auto-create 4 bars with current pattern on all tracks
                 arr->length = 4;
