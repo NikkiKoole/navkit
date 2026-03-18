@@ -150,6 +150,7 @@ static const int workTabKeys[] = {KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6
 
 typedef enum { PARAM_PATCH, PARAM_BUS, PARAM_MASTER, PARAM_TAPE, PARAM_COUNT } ParamTab;
 static ParamTab paramTab = PARAM_PATCH;
+static bool paramsCollapsed = false;  // true = bottom panel collapsed to just tab bar
 static const char* paramTabNames[] = {"Patch", "Bus FX", "Master FX", "Tape"};
 static const int paramTabKeys[] = {KEY_ONE, KEY_TWO, KEY_THREE, KEY_FOUR};
 
@@ -1373,8 +1374,10 @@ static int selectedGroovePreset = -1;
 // TAB BAR
 // ============================================================================
 
-static void drawTabBar(float x, float y, float w, const char** names, const int* keys,
+// Returns true if the already-active tab was clicked again (for collapse toggle)
+static bool drawTabBar(float x, float y, float w, const char** names, const int* keys,
                        int count, int* current, const char* keyPrefix) {
+    bool reClicked = false;
     DrawRectangle((int)x, (int)y, (int)w, TAB_H, UI_BG_PANEL);
     DrawLine((int)x, (int)y+TAB_H-1, (int)(x+w), (int)y+TAB_H-1, UI_BG_HOVER);
     Vector2 mouse = GetMousePosition();
@@ -1389,10 +1392,18 @@ static void drawTabBar(float x, float y, float w, const char** names, const int*
         DrawRectangleRec(r, bg);
         if (act) DrawRectangle((int)tx, (int)y+TAB_H-3, tw, 2, ORANGE);
         DrawTextShadow(label, (int)tx+6, (int)y+7, UI_FONT_SMALL, act ? WHITE : (hov ? LIGHTGRAY : GRAY));
-        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { *current = i; ui_consume_click(); }
-        if (IsKeyPressed(keys[i])) *current = i;
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            if (act) reClicked = true;
+            *current = i;
+            ui_consume_click();
+        }
+        if (IsKeyPressed(keys[i])) {
+            if (act) reClicked = true;
+            *current = i;
+        }
         tx += tw + 2;
     }
+    return reClicked;
 }
 
 // ============================================================================
@@ -7832,10 +7843,17 @@ int main(int argc, char *argv[]) {
         drawTabBar(CONTENT_X, WORK_TAB_Y, CONTENT_W, workTabNames, workTabKeys, WORK_COUNT, &workInt, "F");
         workTab = (WorkTab)workInt;
 
+        // Dynamic split: when params collapsed, push split to bottom (just tab bar visible)
+        int dynSplitY = paramsCollapsed ? (SCREEN_HEIGHT - TAB_H) : SPLIT_Y;
+        int dynWorkH = dynSplitY - WORK_Y;
+        int dynParamTabY = dynSplitY;
+        int dynParamY = dynSplitY + TAB_H;
+        int dynParamH = SCREEN_HEIGHT - dynParamY;
+
         // === WORKSPACE ===
         {
             float wx = CONTENT_X + 6, wy = WORK_Y + 4;
-            float ww = CONTENT_W - 12, wh = WORK_H - 8;
+            float ww = CONTENT_W - 12, wh = (float)dynWorkH - 8;
             switch (workTab) {
                 case WORK_SEQ:   drawWorkSeq(wx, wy, ww, wh); break;
                 case WORK_PIANO: drawWorkPiano(wx, wy, ww, wh); break;
@@ -7849,12 +7867,19 @@ int main(int argc, char *argv[]) {
         }
 
         // === SPLIT LINE ===
-        DrawLine(CONTENT_X, SPLIT_Y, SCREEN_WIDTH, SPLIT_Y, UI_BORDER);
+        DrawLine(CONTENT_X, dynSplitY, SCREEN_WIDTH, dynSplitY, UI_BORDER);
 
         // === PARAM TAB BAR ===
         int paramInt = (int)paramTab;
-        drawTabBar(CONTENT_X, PARAM_TAB_Y, CONTENT_W, paramTabNames, paramTabKeys, PARAM_COUNT, &paramInt, "");
+        int prevParam = paramInt;
+        bool paramReClick = drawTabBar(CONTENT_X, (float)dynParamTabY, CONTENT_W, paramTabNames, paramTabKeys, PARAM_COUNT, &paramInt, "");
         paramTab = (ParamTab)paramInt;
+        if (paramReClick) {
+            paramsCollapsed = !paramsCollapsed;
+        } else if (paramsCollapsed && paramInt != prevParam) {
+            // Clicking a different tab while collapsed: expand
+            paramsCollapsed = false;
+        }
 
         // Update LFO mod visualization from active voice
         {
@@ -7874,12 +7899,12 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // === PARAMS ===
-        {
-            float px = CONTENT_X + 4, py = PARAM_Y + 4;
-            float pw = CONTENT_W - 8, ph = PARAM_H - 8;
+        // === PARAMS (skip content when collapsed) ===
+        if (!paramsCollapsed) {
+            float px = CONTENT_X + 4, py = (float)dynParamY + 4;
+            float pw = CONTENT_W - 8, ph = (float)dynParamH - 8;
 
-            BeginScissorMode((int)px, PARAM_Y, (int)pw + 4, PARAM_H);
+            BeginScissorMode((int)px, dynParamY, (int)pw + 4, dynParamH);
             switch (paramTab) {
                 case PARAM_PATCH:  drawParamPatch(px, py, pw, ph); break;
                 case PARAM_BUS:    drawParamBus(px, py, pw, ph); break;

@@ -475,8 +475,11 @@ static bool dawSave(const char *filepath) {
     if (chopState.bounced && chopState.sourcePath[0]) {
         fprintf(f, "\n[sample]\n");
         _ds(f, "sourceFile", chopState.sourcePath);
-        _di(f, "sourcePattern", chopState.sourcePattern);
         _di(f, "sourceLoops", chopState.sourceLoops);
+        if (chopState.hasSelection) {
+            _dw(f, "selStart", chopState.selStart);
+            _dw(f, "selEnd", chopState.selEnd);
+        }
         _di(f, "sliceCount", chopState.sliceCount);
         _di(f, "chopMode", chopState.chopMode);
         _db(f, "normalize", chopState.normalize);
@@ -1321,8 +1324,10 @@ static bool dawLoad(const char *filepath) {
                 char t[256]; strncpy(t,val,255); t[255]=0; _dwStripQuotes(t);
                 strncpy(chopState.sourcePath,t,255); chopState.sourcePath[255]=0;
             }
-            else if (strcmp(key,"sourcePattern")==0) chopState.sourcePattern = _dpi(val);
+            else if (strcmp(key,"sourcePattern")==0) { /* legacy, ignored */ }
             else if (strcmp(key,"sourceLoops")==0) chopState.sourceLoops = _dpi(val);
+            else if (strcmp(key,"selStart")==0) { chopState.selStart = _dpf(val); chopState.hasSelection = true; }
+            else if (strcmp(key,"selEnd")==0) { chopState.selEnd = _dpf(val); chopState.hasSelection = true; }
             else if (strcmp(key,"sliceCount")==0) chopState.sliceCount = _dpi(val);
             else if (strcmp(key,"chopMode")==0) chopState.chopMode = _dpi(val);
             else if (strcmp(key,"normalize")==0) chopState.normalize = _dpb(val);
@@ -1416,7 +1421,9 @@ static bool dawLoad(const char *filepath) {
             savedParams[s].fadeOutMs = chopState.sliceParams[s].fadeOutMs;
         }
 
-        // Bounce (clears + rebuilds slices)
+        // Bounce full song (loads structure + first pattern, then finish all lazily)
+        chopBounceFullSong();
+        while (chopBounceNextPattern()) {} // finish all remaining patterns
         chopState.sliceCount = savedSliceCount;
         chopState.chopMode = savedChopMode;
         chopState.normalize = savedNormalize;

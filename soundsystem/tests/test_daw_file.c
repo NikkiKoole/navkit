@@ -40,9 +40,23 @@ static int patchPresetIndex[NUM_PATCHES];
 
 static struct {
     char sourcePath[256];
-    int sourcePattern;
     int sourceLoops;
     int sourceSongIdx;
+    float *fullData;
+    int fullLength;
+    int songChain[64];
+    int songChainLen;
+    int chainOffsets[65];
+    float chainBpm;
+    bool fullBounced;
+    float viewStart;
+    float viewEnd;
+    float selStart;
+    float selEnd;
+    bool hasSelection;
+    bool draggingSel;
+    bool draggingView;
+    float dragViewOffset;
     float *renderData;
     int renderLength;
     float renderBpm;
@@ -74,6 +88,12 @@ static struct {
 static int _testRebounceCallCount = 0;
 
 // Stubs — re-bounce not tested here, just INI parsing
+static void chopBounceFullSong(void) {
+    // In test: no-op (would bounce all patterns)
+}
+static bool chopBounceNextPattern(void) {
+    return false;  // nothing to bounce in test
+}
 static void chopStateBounce(void) {
     // In test: count calls instead of actually bouncing
     _testRebounceCallCount++;
@@ -1063,8 +1083,10 @@ static void verifySampleSectionRoundTrip(void) {
     // 1. Set up chopState with non-default values
     chopStateClearTest();
     strncpy(chopState.sourcePath, "songs/testbeat.song", 255);
-    chopState.sourcePattern = 2;
     chopState.sourceLoops = 3;
+    chopState.selStart = 0.1f;
+    chopState.selEnd = 0.6f;
+    chopState.hasSelection = true;
     chopState.sliceCount = 16;
     chopState.chopMode = 1;  // transient
     chopState.sensitivity = 0.75f;
@@ -1099,8 +1121,9 @@ static void verifySampleSectionRoundTrip(void) {
     // 3. Save expected values
     char savedPath[256];
     strncpy(savedPath, chopState.sourcePath, 255);
-    int savedPattern = chopState.sourcePattern;
     int savedLoops = chopState.sourceLoops;
+    float savedSelStart = chopState.selStart;
+    float savedSelEnd = chopState.selEnd;
     int savedSliceCount = chopState.sliceCount;
     int savedChopMode = chopState.chopMode;
     float savedSensitivity = chopState.sensitivity;
@@ -1137,8 +1160,9 @@ static void verifySampleSectionRoundTrip(void) {
     // should survive. But our stub chopStateBounce is a no-op (doesn't call
     // chopStateClear), so the restore should work.
     ASSERT_EQ_STR(chopState.sourcePath, savedPath, "sample.sourceFile");
-    ASSERT_EQ_INT(chopState.sourcePattern, savedPattern, "sample.sourcePattern");
     ASSERT_EQ_INT(chopState.sourceLoops, savedLoops, "sample.sourceLoops");
+    ASSERT_EQ_FLOAT(chopState.selStart, savedSelStart, "sample.selStart");
+    ASSERT_EQ_FLOAT(chopState.selEnd, savedSelEnd, "sample.selEnd");
     ASSERT_EQ_INT(chopState.sliceCount, savedSliceCount, "sample.sliceCount");
     ASSERT_EQ_INT(chopState.chopMode, savedChopMode, "sample.chopMode");
     ASSERT_EQ_FLOAT(chopState.sensitivity, savedSensitivity, "sample.sensitivity");
@@ -1221,7 +1245,6 @@ static void verifyBounceGuardPreventsRebounce(void) {
     // 1. Set up a song with a [sample] section
     chopStateClearTest();
     strncpy(chopState.sourcePath, "songs/testbeat.song", 255);
-    chopState.sourcePattern = 0;
     chopState.sourceLoops = 1;
     chopState.sliceCount = 8;
     chopState.bounced = true;  // triggers [sample] section in save
