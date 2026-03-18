@@ -2,10 +2,11 @@
 
 ## Suggested Order
 
-1. **Piano roll fixes** — DONE (fixed cell height, click-to-audition keys)
-2. **WAV export for samples** — unblocks faster load, external sample import, standalone value
-3. **Clip launcher MVP** — bar-quantized, integrated panel (not separate tab), ~300-400 lines
-4. **Automation lanes** — once arrangement is the primary composition tool
+1. ~~**Piano roll fixes**~~ — DONE (fixed cell height, click-to-audition keys)
+2. ~~**Clip launcher MVP**~~ — DONE (two-panel layout, per-track triggering, next actions, scene launch)
+3. **Clip launcher polish** — drag launcher→arrangement, save/load slots, better visuals
+4. **WAV export for samples** — unblocks faster load, external sample import, standalone value
+5. **Automation lanes** — once arrangement is the primary composition tool
 
 **Not scheduled** (do when it hurts):
 - **Single-track clip patterns / flexible track types** — the current multi-track patterns already work with per-track arrangement. The "waste" is unused data in memory, not a functional problem. Do this when you keep bumping into "I want this bass line on a different track but it's stuck in a pattern with drums I don't want." See §Flexible Track Architecture below for the incremental path.
@@ -203,25 +204,27 @@ Add a collapsible launcher panel to `drawWorkArrange()`. Toggle button in the to
 
 ### Phases
 
-**Phase 1 — MVP (bar-quantized, loop-only)**
-- `Launcher` struct + `LauncherTrack` in daw_state.h
-- `trackWrapped[]` flag in sequencer.h
-- Launcher sync block in dawSyncSequencer()
-- Launcher panel UI in drawWorkArrange() (toggle, grid, click to launch/stop)
-- Save/load launcher slots
-- ~300-400 lines total
+**Phase 1 — MVP (bar-quantized, loop-only)** ✅ DONE
+- ✅ `Launcher` struct + `LauncherTrack` + `NextAction` enum in daw_state.h
+- ✅ `trackWrapped[]` flag in sequencer.h
+- ✅ Launcher sync block in dawSyncSequencer() with next action processing
+- ✅ Two-panel UI: launcher grid (left) + arrangement timeline (right)
+- ✅ Click to assign/launch/stop, scene launch buttons, per-track stop, global Stop All
+- ✅ Per-track isolation (only launched tracks play sound)
+- ✅ Auto-start playback, auto-deactivate when all stopped
+- ✅ Next Actions engine: Loop, Stop, Next, Prev, First, Random, Return
+- ✅ Progress bars, loop count, queued blink, deferred tooltips
+- ⬜ Save/load launcher slots (not yet)
 
 **Phase 2 — Polish**
-- Scene launch buttons (fire all clips in a row)
-- Next Actions: Stop after N loops, Next clip, Return to Arrangement
-- Beat-level launch quantize (1/4, 1/8)
-- Drag clips from launcher → arrangement timeline
-- Visual: progress bars in playing clips, loop count display
+- ⬜ Drag clips from launcher → arrangement timeline (core workflow: jam → compose)
+- ⬜ Beat-level launch quantize (1/4, 1/8)
+- ⬜ Better visual feedback for playing/queued states (GarageBand-style pulsing)
 
 **Phase 3 — Integration**
-- Record launcher performance → arrangement (capture clip launches as arrangement events)
-- Launcher clips as independent single-track patterns (ties into Flexible Track Architecture)
-- Per-clip launch quantize override (most clips use global, some override)
+- ⬜ Record launcher performance → arrangement (capture clip launches as arrangement events)
+- ⬜ Launcher clips as independent single-track patterns (ties into Flexible Track Architecture)
+- ⬜ Per-clip launch quantize override (most clips use global, some override)
 
 ### References
 - [Bitwig Clip Launcher Userguide](https://www.bitwig.com/userguide/latest/the_clip_launcher/)

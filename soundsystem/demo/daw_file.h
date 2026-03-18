@@ -470,6 +470,37 @@ static bool dawSave(const char *filepath) {
         }
     }
 
+    // [launcher] — clip launcher slot assignments
+    {
+        bool hasSlots = false;
+        for (int t = 0; t < ARR_MAX_TRACKS && !hasSlots; t++)
+            for (int s = 0; s < LAUNCHER_MAX_SLOTS && !hasSlots; s++)
+                if (daw.launcher.tracks[t].pattern[s] >= 0) hasSlots = true;
+        if (hasSlots) {
+            fprintf(f, "\n[launcher]\n");
+            for (int t = 0; t < ARR_MAX_TRACKS; t++) {
+                LauncherTrack *lt = &daw.launcher.tracks[t];
+                // Find last non-empty slot for this track
+                int last = -1;
+                for (int s = LAUNCHER_MAX_SLOTS - 1; s >= 0; s--) {
+                    if (lt->pattern[s] >= 0) { last = s; break; }
+                }
+                if (last >= 0) {
+                    char k[16]; snprintf(k, sizeof(k), "t%d", t);
+                    fprintf(f, "%s =", k);
+                    for (int s = 0; s <= last; s++) fprintf(f, " %d", lt->pattern[s]);
+                    fprintf(f, "\n");
+                    // Save next actions for slots that have them
+                    for (int s = 0; s <= last; s++) {
+                        if (lt->nextAction[s] != NEXT_ACTION_LOOP && lt->nextActionLoops[s] > 0) {
+                            fprintf(f, "t%d.%d.na = %d %d\n", t, s, (int)lt->nextAction[s], lt->nextActionLoops[s]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
 #ifdef DAW_HAS_CHOP_STATE
     // [sample] — chop/flip recipe (only if bounced)
     if (chopState.bounced && chopState.sourcePath[0]) {
@@ -930,7 +961,7 @@ typedef enum {
     _DW_SEC_SETTINGS, _DW_SEC_PATCH, _DW_SEC_MIXER, _DW_SEC_SIDECHAIN,
     _DW_SEC_MASTERFX, _DW_SEC_TAPEFX, _DW_SEC_CROSSFADER,
     _DW_SEC_SPLIT, _DW_SEC_ARRANGEMENT, _DW_SEC_PATTERN,
-    _DW_SEC_SAMPLE, _DW_SEC_PERTRACK,
+    _DW_SEC_SAMPLE, _DW_SEC_PERTRACK, _DW_SEC_LAUNCHER,
 } _DwSection;
 
 static bool dawLoad(const char *filepath) {
@@ -982,6 +1013,22 @@ static bool dawLoad(const char *filepath) {
                 for (int _b = 0; _b < ARR_MAX_BARS; _b++)
                     for (int _t = 0; _t < ARR_MAX_TRACKS; _t++)
                         daw.arr.cells[_b][_t] = ARR_EMPTY;
+            }
+            else if (strcmp(sec,"launcher")==0) {
+                section = _DW_SEC_LAUNCHER;
+                // Reset launcher
+                daw.launcher.active = false;
+                for (int _t = 0; _t < ARR_MAX_TRACKS; _t++) {
+                    daw.launcher.tracks[_t].playingSlot = -1;
+                    daw.launcher.tracks[_t].queuedSlot = -1;
+                    daw.launcher.tracks[_t].loopCount = 0;
+                    for (int _s = 0; _s < LAUNCHER_MAX_SLOTS; _s++) {
+                        daw.launcher.tracks[_t].pattern[_s] = -1;
+                        daw.launcher.tracks[_t].state[_s] = CLIP_EMPTY;
+                        daw.launcher.tracks[_t].nextAction[_s] = NEXT_ACTION_LOOP;
+                        daw.launcher.tracks[_t].nextActionLoops[_s] = 0;
+                    }
+                }
             }
             else if (strcmp(sec,"sample")==0) {
                 section = _DW_SEC_SAMPLE;
@@ -1297,6 +1344,39 @@ static bool dawLoad(const char *filepath) {
                         if (!*p) break;
                         daw.arr.cells[b][trackIdx] = atoi(p);
                         while (*p && *p != ' ') p++;
+                    }
+                }
+            }
+            break;
+        case _DW_SEC_LAUNCHER:
+            // "t0 = 3 5 -1 2" — pattern indices per slot for track 0
+            // "t0.1.na = 2 4" — next action type and loop count for track 0 slot 1
+            if (key[0] == 't' && isdigit(key[1])) {
+                int ti = atoi(key + 1);
+                if (ti >= 0 && ti < ARR_MAX_TRACKS) {
+                    // Check for ".N.na" suffix (next action)
+                    char *dot = strchr(key + 1, '.');
+                    if (dot && strstr(dot, ".na")) {
+                        int si = atoi(dot + 1);
+                        if (si >= 0 && si < LAUNCHER_MAX_SLOTS) {
+                            int naType = 0, naLoops = 0;
+                            sscanf(val, "%d %d", &naType, &naLoops);
+                            if (naType >= 0 && naType < NEXT_ACTION_COUNT) {
+                                daw.launcher.tracks[ti].nextAction[si] = (NextAction)naType;
+                                daw.launcher.tracks[ti].nextActionLoops[si] = naLoops;
+                            }
+                        }
+                    } else {
+                        // Pattern list for this track
+                        char *p = val;
+                        for (int s = 0; s < LAUNCHER_MAX_SLOTS; s++) {
+                            while (*p == ' ') p++;
+                            if (!*p) break;
+                            int pat = atoi(p);
+                            daw.launcher.tracks[ti].pattern[s] = pat;
+                            daw.launcher.tracks[ti].state[s] = (pat >= 0) ? CLIP_STOPPED : CLIP_EMPTY;
+                            while (*p && *p != ' ') p++;
+                        }
                     }
                 }
             }

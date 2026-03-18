@@ -1324,14 +1324,20 @@ static const char* dawBusName(int bus) {
     return (bus >= 0 && bus < 7) ? daw.patches[bus].p_name : "??";
 }
 // Scroll helper for discrete integer values.
-// Accumulates fractional scroll and returns integer delta when threshold crossed.
-// Mouse wheel (|wh|~1.0) gives 1:1 mapping; trackpad (small values) accumulates.
+// Discrete mouse notch (|wh| >= 0.5) → immediate 1:1 step, no lag.
+// Smooth trackpad (|wh| < 0.5) → accumulates until threshold crossed.
 // Uses a single global accumulator — reset whenever the context changes (different widget).
 static float _scrollAccum = 0.0f;
 static int _scrollCtx = -1; // opaque context ID to detect widget changes
 static int scrollDelta(float wheelMove, int contextId) {
     if (contextId != _scrollCtx) { _scrollAccum = 0.0f; _scrollCtx = contextId; }
     if (wheelMove == 0.0f) return 0;
+    // Discrete mouse notch: snap to integer immediately
+    if (fabsf(wheelMove) >= 0.5f) {
+        _scrollAccum = 0.0f;
+        return (int)roundf(wheelMove);
+    }
+    // Smooth trackpad: accumulate small events
     _scrollAccum += wheelMove;
     int d = (int)_scrollAccum;
     if (d != 0) _scrollAccum -= (float)d;
@@ -1364,6 +1370,15 @@ static float prDragStartY = 0;    // Mouse Y at drag start
 static int prDragOrigGate = 0;    // Gate at drag start
 static int8_t prDragOrigNudge = 0;     // Nudge at drag start (from StepNote)
 static int8_t prDragOrigGateNudge = 0; // Gate nudge at drag start (from StepNote)
+
+// Grid cell drag state (click-drag to change pitch/velocity)
+typedef enum { GRID_DRAG_NONE, GRID_DRAG_PENDING, GRID_DRAG_ACTIVE } GridDragState;
+static GridDragState gridDrag = GRID_DRAG_NONE;
+static int gridDragTrack = -1, gridDragStep = -1;
+static float gridDragStartY = 0;       // mouse Y at click
+static int gridDragStartVal = 0;       // value at drag start (pitch, slice, etc.)
+static float gridDragStartVelF = 0;    // velocity at drag start (for Shift+drag)
+static bool gridDragIsVelocity = false; // Shift was held at drag start
 
 // Groove preset state (-1 = custom / manual)
 static int selectedGroovePreset = -1;
@@ -2137,6 +2152,75 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         DrawTextShadow(TextFormat("%d", i+1), sx + (steps==32 ? 1 : cellW/2-3), (int)y, steps==32 ? 8 : 9, numCol);
     }
 
+    // --- Grid cell drag update (runs every frame, outside per-cell loop) ---
+    {
+        Vector2 ms = GetMousePosition();
+        float dragThreshold = 3.0f;
+        float pxPerStep = 4.0f; // pixels of vertical mouse movement per 1 unit change
+        if (gridDrag == GRID_DRAG_PENDING && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+            if (fabsf(ms.y - gridDragStartY) > dragThreshold) {
+                gridDrag = GRID_DRAG_ACTIVE;
+            }
+        }
+        if (gridDrag == GRID_DRAG_ACTIVE && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+            int dt = gridDragTrack, ds = gridDragStep;
+            float dy = gridDragStartY - ms.y; // up = positive
+            Pattern *pat = dawPattern();
+            bool dtIsDrum = (dt < 4);
+            bool dtIsSampler = (dt == SEQ_TRACK_SAMPLER);
+            if (gridDragIsVelocity) {
+                // Shift+drag: velocity (all track types)
+                float nv = gridDragStartVelF + dy * 0.005f;
+                if (nv < 0.05f) nv = 0.05f; if (nv > 1.0f) nv = 1.0f;
+                if (dtIsDrum) patSetDrumVel(pat, dt, ds, nv);
+                else patSetNoteVel(pat, dt, ds, nv);
+            } else if (dtIsDrum) {
+                // Drum: drag = pitch offset p-lock
+                int delta = (int)(dy / pxPerStep);
+                float nv = (float)(gridDragStartVal + delta);
+                if (nv < -24.0f) nv = -24.0f; if (nv > 24.0f) nv = 24.0f;
+                seqSetPLock(pat, dt, ds, PLOCK_PITCH_OFFSET, nv);
+            } else if (dtIsSampler && IsKeyDown(KEY_LEFT_CONTROL)) {
+                // Sampler Ctrl+drag: pitch
+                int delta = (int)(dy / pxPerStep);
+                int nv = gridDragStartVal + delta;
+                if (nv < 36) nv = 36; if (nv > 84) nv = 84;
+                StepV2 *sv = &pat->steps[dt][ds];
+                if (sv->noteCount > 0) sv->notes[0].note = (int8_t)nv;
+            } else if (dtIsSampler) {
+                // Sampler: drag = slice
+                int delta = (int)(dy / pxPerStep);
+                int nv = gridDragStartVal + delta;
+                if (nv < 0) nv = 0; if (nv >= SAMPLER_MAX_SAMPLES) nv = SAMPLER_MAX_SAMPLES - 1;
+                StepV2 *sv = &pat->steps[dt][ds];
+                if (sv->noteCount > 0) sv->notes[0].slice = (uint8_t)nv;
+            } else {
+                // Melody: drag = pitch
+                int delta = (int)(dy / pxPerStep);
+                int nv = gridDragStartVal + delta;
+                if (nv < 0) nv = 0; if (nv > 127) nv = 127;
+                patSetNote(pat, dt, ds, nv, patGetNoteVel(pat, dt, ds), patGetNoteGate(pat, dt, ds));
+            }
+        }
+        // Release: if still pending (no drag happened), do the original toggle
+        if (gridDrag != GRID_DRAG_NONE && IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+            if (gridDrag == GRID_DRAG_PENDING) {
+                int dt = gridDragTrack, ds = gridDragStep;
+                bool dtIsDrum = (dt < 4);
+                bool dtIsSampler = (dt == SEQ_TRACK_SAMPLER);
+                if (dtIsDrum && ds < 32) {
+                    patClearDrum(dawPattern(), dt, ds);
+                } else if (dtIsSampler) {
+                    patClearNote(dawPattern(), dt, ds);
+                } else if (!dtIsDrum && dt >= SEQ_DRUM_TRACKS) {
+                    patClearNote(dawPattern(), dt, ds);
+                }
+            }
+            gridDrag = GRID_DRAG_NONE;
+            gridDragTrack = -1; gridDragStep = -1;
+        }
+    }
+
     for (int track = 0; track < SEQ_GRID_TRACKS; track++) {
         int ty = (int)y + 14 + track * (cellH + 2);
         bool isDrum = (track < 4);
@@ -2304,24 +2388,36 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                 }
             }
 
-            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                if (isDrum && step < 32) {
-                    if (patGetDrum(dawPattern(), track, step))
-                        patClearDrum(dawPattern(), track, step);
-                    else
-                        patSetDrum(dawPattern(), track, step, 0.8f, 0.0f);
-                } else if (isSampler) {
-                    StepV2 *sv = &dawPattern()->steps[track][step];
-                    if (sv->noteCount > 0 && sv->notes[0].note != SEQ_NOTE_OFF) {
-                        patClearNote(dawPattern(), track, step);
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && gridDrag == GRID_DRAG_NONE) {
+                Pattern *pat = dawPattern();
+                bool isActive = (isDrum && step < SEQ_MAX_STEPS && patGetDrum(pat, track, step)) ||
+                                (isSampler && patGetNote(pat, track, step) != SEQ_NOTE_OFF) ||
+                                (!isDrum && !isSampler && track >= SEQ_DRUM_TRACKS && patGetNote(pat, track, step) != SEQ_NOTE_OFF);
+                if (isActive) {
+                    // Active step: start pending drag (clear on release if no drag)
+                    gridDrag = GRID_DRAG_PENDING;
+                    gridDragTrack = track; gridDragStep = step;
+                    gridDragStartY = GetMousePosition().y;
+                    gridDragIsVelocity = IsKeyDown(KEY_LEFT_SHIFT);
+                    if (gridDragIsVelocity) {
+                        gridDragStartVelF = isDrum ? patGetDrumVel(pat, track, step) : patGetNoteVel(pat, track, step);
+                    } else if (isDrum) {
+                        gridDragStartVal = (int)seqGetPLock(pat, track, step, PLOCK_PITCH_OFFSET, 0.0f);
+                    } else if (isSampler) {
+                        StepV2 *sv = &pat->steps[track][step];
+                        gridDragStartVal = IsKeyDown(KEY_LEFT_CONTROL) ? sv->notes[0].note : sv->notes[0].slice;
                     } else {
-                        patSetNote(dawPattern(), track, step, 60, 0.8f, 1); // pitch 60 = center
-                        sv->notes[0].slice = 0;
+                        gridDragStartVal = patGetNote(pat, track, step);
                     }
-                } else if (!isDrum && track >= SEQ_DRUM_TRACKS) {
-                    if (patGetNote(dawPattern(), track, step) == SEQ_NOTE_OFF) {
+                } else {
+                    // Empty step: immediately place (original behavior)
+                    if (isDrum && step < 32) {
+                        patSetDrum(dawPattern(), track, step, 0.8f, 0.0f);
+                    } else if (isSampler) {
+                        patSetNote(dawPattern(), track, step, 60, 0.8f, 1);
+                        dawPattern()->steps[track][step].notes[0].slice = 0;
+                    } else if (!isDrum && track >= SEQ_DRUM_TRACKS) {
                         // Copy from nearest previous active step on same track (wrap around)
-                        Pattern *pat = dawPattern();
                         int srcNote = 60; float srcVel = 0.8f; int8_t srcGate = 1;
                         bool srcSlide = false, srcAccent = false;
                         for (int d = 1; d < steps; d++) {
@@ -2342,8 +2438,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                             sv->notes[0].slide = srcSlide;
                             sv->notes[0].accent = srcAccent;
                         }
-                    } else
-                        patClearNote(dawPattern(), track, step);
+                    }
                 }
                 ui_consume_click();
             }
@@ -7179,6 +7274,11 @@ static void drawWorkVoice(float x, float y, float w, float h) {
 
 static int arrScrollX = 0;  // horizontal scroll offset in bars
 
+// Drag state: launcher clip → arrangement
+static bool arrDragging = false;
+static int arrDragPattern = -1;   // pattern being dragged
+static int arrDragTrack = -1;     // source track
+
 static void drawWorkArrange(float x, float y, float w, float h) {
     (void)h;
     Vector2 mouse = GetMousePosition();
@@ -7525,6 +7625,14 @@ static void drawWorkArrange(float x, float y, float w, float h) {
                             lt->state[s] = (newPat >= 0) ? CLIP_STOPPED : CLIP_EMPTY;
                         }
                     }
+                    // Middle-click: start drag to arrangement
+                    if (!empty && IsMouseButtonPressed(MOUSE_MIDDLE_BUTTON)) {
+                        arrDragging = true;
+                        arrDragPattern = pat;
+                        arrDragTrack = t;
+                        ui_consume_click();
+                    }
+
                     // Tooltip (deferred — drawn after all cells)
                     if (!empty) {
                         static const char* naNames[] = {"Loop","Stop","Next","Prev","First","Random","Return"};
@@ -7664,13 +7772,25 @@ static void drawWorkArrange(float x, float y, float w, float h) {
 
             // Interactions
             if (hov) {
+                // Drop from launcher drag
+                if (arrDragging) {
+                    // Highlight drop target
+                    DrawRectangleLinesEx(cr, 2, ORANGE);
+                    if (IsMouseButtonReleased(MOUSE_MIDDLE_BUTTON)) {
+                        arr->cells[b][t] = arrDragPattern;
+                        // Auto-extend arrangement if needed
+                        if (b >= arr->length) arr->length = b + 1;
+                        arrDragging = false;
+                        arrDragPattern = -1;
+                    }
+                }
                 // Left-click: assign current pattern
-                if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                if (!arrDragging && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                     arr->cells[b][t] = daw.transport.currentPattern;
                     ui_consume_click();
                 }
                 // Right-click: clear cell
-                if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+                if (!arrDragging && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
                     arr->cells[b][t] = ARR_EMPTY;
                     ui_consume_click();
                 }
@@ -7692,8 +7812,49 @@ static void drawWorkArrange(float x, float y, float w, float h) {
         }
     }
 
+    // Drag visual + drop on empty arrangement area
+    if (arrDragging) {
+        Color dc = (arrDragTrack >= 0 && arrDragTrack < ARR_MAX_TRACKS) ? arrTrackColors[arrDragTrack] : ORANGE;
+        DrawRectangle((int)mouse.x - 16, (int)mouse.y - 10, 34, 20, (Color){dc.r/3, dc.g/3, dc.b/3, 200});
+        DrawRectangleLinesEx((Rectangle){mouse.x - 16, mouse.y - 10, 34, 20}, 1, ORANGE);
+        DrawTextShadow(TextFormat("P%d", arrDragPattern + 1), (int)mouse.x - 12, (int)mouse.y - 6, 8, WHITE);
+
+        if (IsMouseButtonReleased(MOUSE_MIDDLE_BUTTON)) {
+            // Check if dropped in the arrangement area (including empty space beyond existing bars)
+            Rectangle arrArea = {gridX, gridY, gridW, gridH};
+            if (CheckCollisionPointRec(mouse, arrArea)) {
+                int dropBar = arrScrollX + (int)((mouse.x - gridX) / cellW);
+                int dropTrack = (int)((mouse.y - gridY) / cellH);
+                if (dropBar >= 0 && dropBar < ARR_MAX_BARS && dropTrack >= 0 && dropTrack < trackCount) {
+                    // Extend arrangement if needed, fill new bars with ARR_EMPTY
+                    while (arr->length <= dropBar) {
+                        for (int t = 0; t < ARR_MAX_TRACKS; t++)
+                            arr->cells[arr->length][t] = ARR_EMPTY;
+                        arr->length++;
+                    }
+                    arr->cells[dropBar][dropTrack] = arrDragPattern;
+                }
+            }
+            arrDragging = false;
+            arrDragPattern = -1;
+            arrDragTrack = -1;
+        }
+
+        // Also show drop preview highlight in arrangement area
+        Rectangle arrArea = {gridX, gridY, gridW, gridH};
+        if (CheckCollisionPointRec(mouse, arrArea)) {
+            int previewBar = arrScrollX + (int)((mouse.x - gridX) / cellW);
+            int previewTrack = (int)((mouse.y - gridY) / cellH);
+            if (previewBar >= 0 && previewTrack >= 0 && previewTrack < trackCount) {
+                float px = gridX + (previewBar - arrScrollX) * cellW;
+                float py = gridY + previewTrack * cellH;
+                DrawRectangleLinesEx((Rectangle){px + 1, py + 1, (float)(cellW - 2), (float)(cellH - 2)}, 2, ORANGE);
+            }
+        }
+    }
+
     // Empty state hint
-    if (arr->length == 0) {
+    if (arr->length == 0 && !daw.launcher.active) {
         DrawTextShadow("Click [+] to add bars, or 'From Song' to import",
                        (int)(x + 60), (int)(gridY + 40), UI_FONT_SMALL, UI_TEXT_DIM);
     }
