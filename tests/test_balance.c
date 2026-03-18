@@ -266,10 +266,7 @@ describe(balance_movement_scaling) {
 }
 
 int main(int argc, char **argv) {
-    for (int i = 1; i < argc; i++) {
-        if (argv[i][0] == '-' && argv[i][1] == 'v') test_verbose = true;
-        if (argv[i][0] == '-' && argv[i][1] == 'q') set_quiet_mode(1);
-    }
+    test_verbose = c89spec_parse_args(argc, argv);
 
     // Restore dayLength after tests
     float savedDayLength = dayLength;

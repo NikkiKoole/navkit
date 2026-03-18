@@ -2113,8 +2113,7 @@ describe(tri_input_craft_stone_hammer) {
 }
 
 int main(int argc, char* argv[]) {
-    if (argc > 1 && strcmp(argv[1], "-v") == 0) test_verbose = true;
-    if (argc > 1 && strcmp(argv[1], "-q") == 0) set_quiet_mode(1);
+    test_verbose = c89spec_parse_args(argc, argv);
 
     test(quality_lookup);
     test(has_any_quality);

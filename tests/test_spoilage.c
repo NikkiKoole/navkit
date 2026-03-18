@@ -11,6 +11,8 @@
 #include "test_helpers.h"
 #include <string.h>
 
+static bool test_verbose = false;
+
 // Helper: tick spoilage by advancing ItemsTick in small steps
 static void TickSpoilage(float totalSeconds) {
     float step = 1.0f; // 1-second steps
@@ -466,7 +468,7 @@ describe(spoilage_e2e) {
 }
 
 int main(int argc, char* argv[]) {
-    if (argc > 1 && strcmp(argv[1], "-q") == 0) set_quiet_mode(1);
+    test_verbose = c89spec_parse_args(argc, argv);
 
     test(spoilage_item_defs);
     test(spoilage_condition);

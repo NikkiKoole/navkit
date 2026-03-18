@@ -264,8 +264,7 @@ describe(door_blueprint_placement) {
 // =============================================================================
 
 int main(int argc, char* argv[]) {
-    if (argc > 1 && strcmp(argv[1], "-v") == 0) test_verbose = true;
-    if (argc > 1 && strcmp(argv[1], "-q") == 0) set_quiet_mode(1);
+    test_verbose = c89spec_parse_args(argc, argv);
 
     test(cell_door_properties);
     test(cell_door_walkability);

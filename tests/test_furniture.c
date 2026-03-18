@@ -181,11 +181,7 @@ describe(furniture_defs) {
 }
 
 int main(int argc, char* argv[]) {
-    (void)argc;
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-v") == 0) test_verbose = true;
-        if (strcmp(argv[i], "-q") == 0) set_quiet_mode(1);
-    }
+    test_verbose = c89spec_parse_args(argc, argv);
 
     test(furniture_blocking);
     test(furniture_placement);

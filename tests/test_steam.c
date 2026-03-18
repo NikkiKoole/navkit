@@ -510,20 +510,8 @@ describe(heaters_evaporate_water) {
 // =============================================================================
 
 int main(int argc, char* argv[]) {
-    // Suppress logs by default, use -v for verbose
-    bool verbose = false;
-    bool quiet = false;
-    for (int i = 1; i < argc; i++) {
-        if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
-        if (argv[i][0] == '-' && argv[i][1] == 'q') quiet = true;
-    }
-    test_verbose = verbose;
-    if (!verbose) {
-    if (quiet) {
-        set_quiet_mode(1);
-    }
-        SetTraceLogLevel(LOG_NONE);
-    }
+    test_verbose = c89spec_parse_args(argc, argv);
+    if (!test_verbose) SetTraceLogLevel(LOG_NONE);
     
     // Basic operations
     test(steam_initialization);

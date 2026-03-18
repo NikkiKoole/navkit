@@ -28,13 +28,23 @@ The Makefile tracks all source files as dependencies — `test_unity.o` rebuilds
    ```
 3. Use c89spec pattern:
    ```c
-   describe("foo") {
+   static bool test_verbose = false;
+
+   describe(test_foo) {
        it("should do bar") {
            InitGrid(32, 32, 4);
            ClearMovers();
            // ... test logic ...
            expect(result == expected);
        }
+   }
+
+   int main(int argc, char *argv[]) {
+       test_verbose = c89spec_parse_args(argc, argv);
+       if (!test_verbose) SetTraceLogLevel(LOG_NONE);
+
+       test(test_foo);
+       return summary();
    }
    ```
 4. Add to Makefile:
@@ -58,8 +68,32 @@ Always clean state at the start of each test:
 
 ## Flags
 
-- `-q` (quiet): suppress test output, only show summary
+- `-q` (quiet): suppress test output, only show failures + summary
 - `-v` (verbose): show raylib logs and detailed output
+- `--tap`: machine-readable TAP (Test Anything Protocol) output, no ANSI colors
+
+All flags are handled by `c89spec_parse_args(argc, argv)` in each test's `main()`. To add new flags, update `c89spec_parse_args()` in `vendor/c89spec.h` — all test binaries get it automatically.
+
+### TAP output
+
+```bash
+./build/bin/test_jobs --tap     # single test binary
+make test-tap                   # all tests
+```
+
+Output format — easy to grep/parse:
+```
+TAP version 13
+# module_name
+ok 1 - module_name: "test description"
+not ok 2 - module_name: "test description"
+  ---
+  failed: some_condition == expected_value
+  ...
+1..N
+```
+
+Find failures: `./build/bin/test_foo --tap | grep "not ok"`
 
 ## State Audit in Tests
 

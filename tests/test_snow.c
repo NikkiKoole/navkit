@@ -400,11 +400,7 @@ describe(cloud_shadow) {
 
 // ========== Main ==========
 int main(int argc, char** argv) {
-    set_quiet_mode(1);
-    if (argc > 1 && strcmp(argv[1], "-v") == 0) {
-        test_verbose = 1;
-        set_quiet_mode(0);
-    }
+    test_verbose = c89spec_parse_args(argc, argv);
     
     test(snow_grid_basics);
     test(snow_accumulation);

@@ -610,15 +610,7 @@ describe(delete_workshop_cleanup) {
 // =============================================================================
 
 int main(int argc, char* argv[]) {
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) {
-            test_verbose = true;
-        }
-    }
-
-    if (!test_verbose) {
-        set_quiet_mode(1);
-    }
+    test_verbose = c89spec_parse_args(argc, argv);
 
     printf("\n=== Workshop Deconstruction Tests ===\n\n");
 

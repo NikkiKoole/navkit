@@ -22,6 +22,8 @@
 #include "test_helpers.h"
 #include <string.h>
 
+static bool test_verbose = false;
+
 // Setup a standard test grid: solid dirt at z=0, walkable air at z=1
 static void SetupClothingGrid(void) {
     InitTestGrid(16, 16);
@@ -636,7 +638,7 @@ describe(clothing) {
 }
 
 int main(int argc, char* argv[]) {
-    if (argc > 1 && strcmp(argv[1], "-q") == 0) set_quiet_mode(1);
+    test_verbose = c89spec_parse_args(argc, argv);
 
     test(clothing);
 

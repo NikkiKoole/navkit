@@ -18,6 +18,8 @@
 #include "test_helpers.h"
 #include <string.h>
 
+static bool test_verbose = false;
+
 // Helper: set up a basic flat walkable grid and clear all state
 static void SetupFogTestGrid(void) {
     InitTestGridFromAscii(
@@ -264,7 +266,7 @@ describe(fog_explore_exception) {
 }
 
 int main(int argc, char* argv[]) {
-    if (argc > 1 && strcmp(argv[1], "-q") == 0) set_quiet_mode(1);
+    test_verbose = c89spec_parse_args(argc, argv);
 
     test(fog_explored);
     test(fog_hunt);

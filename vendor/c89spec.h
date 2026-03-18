@@ -264,13 +264,25 @@ void set_tap_mode(int enabled) {
 
 int c89spec_parse_args(int argc, char **argv) {
    int verbose = 0;
+   int quiet = 0;
    for (int i = 1; i < argc; i++) {
-      if (argv[i][0] == '-' && argv[i][1] == 'v' && argv[i][2] == '\0') verbose = 1;
-      else if (argv[i][0] == '-' && argv[i][1] == 'q' && argv[i][2] == '\0') set_quiet_mode(1);
-      else if (argv[i][0] == '-' && argv[i][1] == '-' &&
-               argv[i][2] == 't' && argv[i][3] == 'a' &&
-               argv[i][4] == 'p' && argv[i][5] == '\0') set_tap_mode(1);
+      if (argv[i][0] == '-') {
+         if (argv[i][1] == 'v' && argv[i][2] == '\0') verbose = 1;
+         else if (argv[i][1] == 'q' && argv[i][2] == '\0') quiet = 1;
+         else if (argv[i][1] == '-') {
+            if (argv[i][2] == 't' && argv[i][3] == 'a' &&
+                argv[i][4] == 'p' && argv[i][5] == '\0') set_tap_mode(1);
+            else if (argv[i][2] == 'v' && argv[i][3] == 'e' &&
+                     argv[i][4] == 'r' && argv[i][5] == 'b' &&
+                     argv[i][6] == 'o' && argv[i][7] == 's' &&
+                     argv[i][8] == 'e' && argv[i][9] == '\0') verbose = 1;
+            else if (argv[i][2] == 'q' && argv[i][3] == 'u' &&
+                     argv[i][4] == 'i' && argv[i][5] == 'e' &&
+                     argv[i][6] == 't' && argv[i][7] == '\0') quiet = 1;
+         }
+      }
    }
+   if (!verbose && quiet) set_quiet_mode(1);
    return verbose;
 }
 

@@ -3019,18 +3019,18 @@ describe(multi_instance_isolation) {
         SequencerContext seqCtxLocal1, seqCtxLocal2;
         initSequencerContext(&seqCtxLocal1);
         initSequencerContext(&seqCtxLocal2);
-        
+
         // Access Sequencer via pointer arithmetic to avoid 'seq' macro collision
         // offsetof(SequencerContext, seq) == 0, so we can cast directly
         Sequencer *ds1 = (Sequencer*)&seqCtxLocal1;
         Sequencer *ds2 = (Sequencer*)&seqCtxLocal2;
-        
+
         ds1->bpm = 90.0f;
         ds1->currentPattern = 2;
-        
+
         ds2->bpm = 140.0f;
         ds2->currentPattern = 5;
-        
+
         // Verify they're independent
         expect_float_eq(ds1->bpm, 90.0f);
         expect_float_eq(ds2->bpm, 140.0f);
@@ -6606,14 +6606,10 @@ describe(mono_patch_save_load) {
     }
 }
 
+static bool test_verbose = false;
+
 int main(int argc, char **argv) {
-    // Check for quiet mode flag
-    for (int i = 1; i < argc; i++) {
-        if (argv[i][0] == '-' && argv[i][1] == 'q') {
-            set_quiet_mode(1);
-            break;
-        }
-    }
+    test_verbose = c89spec_parse_args(argc, argv);
 
     // P-lock system tests
     test(plock_system);

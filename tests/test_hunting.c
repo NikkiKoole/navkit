@@ -16,6 +16,8 @@
 #include "test_helpers.h"
 #include <string.h>
 
+static bool test_verbose = false;
+
 // Helper: set up an animal manually at a specific position (avoids random spawn)
 static int SetupAnimalAt(float x, float y, int z, AnimalType type) {
     if (animalCount >= MAX_ANIMALS) return -1;
@@ -444,7 +446,7 @@ describe(hunt_e2e) {
 }
 
 int main(int argc, char* argv[]) {
-    if (argc > 1 && strcmp(argv[1], "-q") == 0) set_quiet_mode(1);
+    test_verbose = c89spec_parse_args(argc, argv);
 
     test(hunt_designation);
     test(workgiver_hunt);

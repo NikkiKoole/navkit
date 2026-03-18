@@ -227,13 +227,8 @@ describe(water_proximity) {
 // =============================================================================
 
 int main(int argc, char** argv) {
-    bool quiet = false;
-    for (int i = 1; i < argc; i++) {
-        if (argv[i][0] == '-' && argv[i][1] == 'v') test_verbose = true;
-        if (argv[i][0] == '-' && argv[i][1] == 'q') quiet = true;
-    }
+    test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
-    if (quiet) set_quiet_mode(1);
 
     test(mud_cob_materials);
     test(mud_cob_items);

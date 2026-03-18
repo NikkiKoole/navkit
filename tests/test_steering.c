@@ -120,14 +120,10 @@ describe(steering_wander_behavior) {
 // Main
 // ============================================================================
 
+static bool test_verbose = false;
+
 int main(int argc, char** argv) {
-    // Check for quiet mode flag
-    for (int i = 1; i < argc; i++) {
-        if (argv[i][0] == '-' && argv[i][1] == 'q') {
-            set_quiet_mode(1);
-            break;
-        }
-    }
+    test_verbose = c89spec_parse_args(argc, argv);
     
     test(steering_seek_behavior);
     test(steering_arrive_behavior);

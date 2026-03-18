@@ -1170,13 +1170,10 @@ describe(mechanical_presets) {
 // Main
 // ---------------------------------------------------------------------------
 
+static bool test_verbose = false;
+
 int main(int argc, char *argv[]) {
-    for (int i = 1; i < argc; i++) {
-        if (argv[i][0] == '-' && argv[i][1] == 'q') {
-            set_quiet_mode(1);
-            break;
-        }
-    }
+    test_verbose = c89spec_parse_args(argc, argv);
 
     test(signal_basics);
     test(signal_timing);

@@ -338,19 +338,8 @@ describe(grid_audit_finding_11_init_hpa_flag) {
 // =============================================================================
 
 int main(int argc, char* argv[]) {
-    bool verbose = false;
-    bool quiet = false;
-    for (int i = 1; i < argc; i++) {
-        if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
-        if (argv[i][0] == '-' && argv[i][1] == 'q') quiet = true;
-    }
-    test_verbose = verbose;
-    if (!verbose) {
-        if (quiet) {
-            set_quiet_mode(1);
-        }
-        SetTraceLogLevel(LOG_NONE);
-    }
+    test_verbose = c89spec_parse_args(argc, argv);
+    if (!test_verbose) SetTraceLogLevel(LOG_NONE);
 
     test(grid_audit_finding_1_placecell_ramp_cleanup);
     test(grid_audit_finding_2_erase_ramp_cleanup);

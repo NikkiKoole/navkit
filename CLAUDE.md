@@ -8,6 +8,7 @@
 make path              # build main binary (not just `make`)
 ./build/bin/path       # run
 make test              # run tests
+make test-tap          # run tests with machine-readable TAP output (no ANSI)
 make debug             # debug build with sanitizers
 ```
 
