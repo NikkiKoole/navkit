@@ -1839,7 +1839,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[106].patch.p_fmModIndex = 5.03f;
     instrumentPresets[106].patch.p_fmFeedback = 0.3f;
     instrumentPresets[106].patch.p_fmMod2Ratio = 0.5f;
-    instrumentPresets[106].patch.p_fmMod2Index = 18.85f;
+    instrumentPresets[106].patch.p_fmMod2Index = 2.0f;     // was 18.85 — PAIR uses index*0.3 as mix level, so 2.0 → 0.6x sub-octave (16' drawbar)
     instrumentPresets[106].patch.p_fmAlgorithm = FM_ALG_PAIR;
     instrumentPresets[106].patch.p_attack = 0.005f;
     instrumentPresets[106].patch.p_decay = 0.1f;

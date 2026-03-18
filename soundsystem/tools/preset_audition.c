@@ -278,20 +278,204 @@ int main(int argc, char *argv[]) {
     initInstrumentPresets();
 
     if (allMode) {
-        // --- Render all presets (legacy mode) ---
-        printf("Rendering all %d presets (MIDI %d, %.1fs on, %.1fs total)\n\n",
+        // --- Render all presets with proper pitch detection ---
+        printf("Rendering all %d presets (MIDI %d, %.1fs on, %.1fs total)\n",
                NUM_INSTRUMENT_PRESETS, midiNote, noteOnSec, totalSec);
-        int issues = 0;
+        printf("Using autocorrelation pitch detection (not zero-crossing)\n\n");
+
+        float expectedFreq = 440.0f * powf(2.0f, (midiNote - 69) / 12.0f);
+
+        // Issue counters
+        int nSilent = 0, nClipped = 0, nDC = 0, nDetuned = 0, nSlowAttack = 0;
+
+        // Collect results for summary tables
+        typedef struct {
+            int idx;
+            const char *name;
+            float peak, rms, dc;
+            float fundamental, pitchConf, pitchCents;
+            float attackMs, spectralCentroid;
+            float inharmonicity, noiseContent;
+            bool isDrum;   // useTriggerFreq
+            bool silent, clipped, highDC, detuned, slowAttack, harmonicLock;
+        } PresetReport;
+        PresetReport reports[NUM_INSTRUMENT_PRESETS];
+
         for (int i = 0; i < NUM_INSTRUMENT_PRESETS; i++) {
+            SynthPatch *p = &instrumentPresets[i].patch;
+            bool isDrum = p->p_useTriggerFreq;
+
             char wavName[256];
             snprintf(wavName, sizeof(wavName), "preset_%03d.wav", i);
-            AnalysisResult r = renderPreset(i, midiNote, noteOnSec, totalSec,
-                                             wavName, !analysisOnly, NULL, NULL);
-            printAnalysis(instrumentPresets[i].name, i, &r, midiNote, noteOnSec);
-            if (r.peakLevel < 0.01f || r.clipped || fabsf(r.dcOffset) > 0.01f)
-                issues++;
+
+            float *buf = NULL;
+            int bufLen = 0;
+            int noteOnSamples = (int)(noteOnSec * SAMPLE_RATE);
+            AnalysisResult legacy = renderPreset(i, midiNote, noteOnSec, totalSec,
+                                                  wavName, !analysisOnly, &buf, &bufLen);
+
+            // Run proper analysis
+            WaAnalysis wa = waAnalyze(buf, bufLen, noteOnSamples);
+
+            // Compute pitch deviation in cents (only meaningful for pitched presets)
+            float pitchCents = 0;
+            if (!isDrum && wa.fundamental > 0 && wa.pitchConfidence > 0.3f) {
+                pitchCents = 1200.0f * log2f(wa.fundamental / expectedFreq);
+            }
+
+            // Classify issues
+            bool silent = legacy.peakLevel < 0.01f;
+            bool clipped = legacy.clipped;
+            bool highDC = fabsf(wa.dcOffset) > 0.01f;
+            // Detect if the autocorrelation locked onto a harmonic instead of fundamental.
+            // If detected freq is close to an integer multiple of expected, it's harmonic lock.
+            bool harmonicLock = false;
+            if (!isDrum && wa.fundamental > 0 && wa.pitchConfidence > 0.25f && fabsf(pitchCents) > 80.0f) {
+                float ratio = wa.fundamental / expectedFreq;
+                for (int h = 2; h <= 8; h++) {
+                    if (fabsf(ratio - (float)h) < 0.15f * h) { harmonicLock = true; break; }
+                }
+                // Also check sub-harmonics (hard sync, sub oscillators)
+                for (int h = 2; h <= 4; h++) {
+                    if (fabsf(ratio - 1.0f / (float)h) < 0.08f) { harmonicLock = true; break; }
+                }
+            }
+
+            // Only flag detuned if pitch is confident AND not harmonic lock AND not inharmonic
+            bool detuned = !isDrum && wa.pitchConfidence > 0.3f && fabsf(pitchCents) > 30.0f
+                           && wa.inharmonicity < 0.15f && !harmonicLock;
+            bool slowAttack = wa.attackTimeMs > 200.0f && !isDrum;
+
+            if (silent) nSilent++;
+            if (clipped) nClipped++;
+            if (highDC) nDC++;
+            if (detuned) nDetuned++;
+            if (slowAttack) nSlowAttack++;
+
+            reports[i] = (PresetReport){
+                .idx = i, .name = instrumentPresets[i].name,
+                .peak = legacy.peakLevel, .rms = legacy.rmsLevel, .dc = wa.dcOffset,
+                .fundamental = wa.fundamental, .pitchConf = wa.pitchConfidence,
+                .pitchCents = pitchCents,
+                .attackMs = wa.attackTimeMs, .spectralCentroid = wa.spectralCentroid,
+                .inharmonicity = wa.inharmonicity, .noiseContent = wa.noiseContent,
+                .isDrum = isDrum,
+                .silent = silent, .clipped = clipped, .highDC = highDC,
+                .detuned = detuned, .slowAttack = slowAttack, .harmonicLock = harmonicLock,
+            };
+
+            free(buf);
         }
-        printf("=== Summary: %d/%d presets have issues ===\n", issues, NUM_INSTRUMENT_PRESETS);
+
+        // === Print categorized reports ===
+
+        // 1. Silent presets (critical)
+        if (nSilent > 0) {
+            printf("=== SILENT (%d) — no audible output ===\n", nSilent);
+            for (int i = 0; i < NUM_INSTRUMENT_PRESETS; i++) {
+                if (reports[i].silent)
+                    printf("  [%3d] %s  (peak=%.4f)\n", i, reports[i].name, reports[i].peak);
+            }
+            printf("\n");
+        }
+
+        // 2. Clipping
+        if (nClipped > 0) {
+            printf("=== CLIPPING (%d) — peak > 1.0 ===\n", nClipped);
+            for (int i = 0; i < NUM_INSTRUMENT_PRESETS; i++) {
+                if (reports[i].clipped)
+                    printf("  [%3d] %s  (peak=%.3f)\n", i, reports[i].name, reports[i].peak);
+            }
+            printf("\n");
+        }
+
+        // 3. Detuned pitched presets (the one you care about!)
+        if (nDetuned > 0) {
+            printf("=== DETUNED (%d) — pitched presets >30 cents off at MIDI %d (%.1f Hz) ===\n",
+                   nDetuned, midiNote, expectedFreq);
+            printf("  %-4s %-20s %8s %8s %6s %5s\n",
+                   "Idx", "Name", "Detected", "Expected", "Cents", "Conf");
+            for (int i = 0; i < NUM_INSTRUMENT_PRESETS; i++) {
+                if (reports[i].detuned) {
+                    printf("  [%3d] %-20s %7.1fHz %7.1fHz %+5.0fc  %.0f%%\n",
+                           i, reports[i].name,
+                           reports[i].fundamental, expectedFreq,
+                           reports[i].pitchCents, reports[i].pitchConf * 100.0f);
+                }
+            }
+            printf("\n");
+        }
+
+        // 4. DC offset
+        if (nDC > 0) {
+            printf("=== HIGH DC OFFSET (%d) — |offset| > 0.01 ===\n", nDC);
+            for (int i = 0; i < NUM_INSTRUMENT_PRESETS; i++) {
+                if (reports[i].highDC)
+                    printf("  [%3d] %-20s  DC=%+.4f\n", i, reports[i].name, reports[i].dc);
+            }
+            printf("\n");
+        }
+
+        // 5. Slow attack (non-drums only)
+        if (nSlowAttack > 0) {
+            printf("=== SLOW ATTACK (%d) — >200ms (non-drum only) ===\n", nSlowAttack);
+            for (int i = 0; i < NUM_INSTRUMENT_PRESETS; i++) {
+                if (reports[i].slowAttack)
+                    printf("  [%3d] %-20s  attack=%.0fms\n", i, reports[i].name, reports[i].attackMs);
+            }
+            printf("\n");
+        }
+
+        // 6. All pitched presets — tuning table
+        printf("=== TUNING TABLE — pitched presets (MIDI %d = %.1f Hz) ===\n", midiNote, expectedFreq);
+        printf("  %-4s %-20s %8s %6s %5s %5s  %s\n",
+               "Idx", "Name", "Pitch", "Cents", "Conf", "Inhm", "Status");
+        for (int i = 0; i < NUM_INSTRUMENT_PRESETS; i++) {
+            if (reports[i].isDrum || reports[i].silent) continue;
+            const char *status = "OK";
+            if (reports[i].pitchConf < 0.3f)
+                status = "noisy/unpitched";
+            else if (reports[i].harmonicLock)
+                status = "(harmonic lock — detector on upper partial)";
+            else if (reports[i].inharmonicity >= 0.15f && fabsf(reports[i].pitchCents) > 30.0f)
+                status = "(inharmonic, pitch unreliable)";
+            else if (fabsf(reports[i].pitchCents) > 50.0f)
+                status = "** DETUNED **";
+            else if (fabsf(reports[i].pitchCents) > 30.0f)
+                status = "* slightly off *";
+            printf("  [%3d] %-20s %7.1fHz %+5.0fc  %3.0f%% %4.0f%%  %s\n",
+                   i, reports[i].name,
+                   reports[i].fundamental,
+                   reports[i].pitchCents,
+                   reports[i].pitchConf * 100.0f,
+                   reports[i].inharmonicity * 100.0f,
+                   status);
+        }
+
+        // 7. Drum summary (just levels, no pitch check)
+        printf("\n=== DRUM/PERCUSSION SUMMARY (useTriggerFreq=true) ===\n");
+        printf("  %-4s %-20s %6s %6s %8s %6s\n",
+               "Idx", "Name", "Peak", "RMS", "Bright", "Noise");
+        for (int i = 0; i < NUM_INSTRUMENT_PRESETS; i++) {
+            if (!reports[i].isDrum) continue;
+            printf("  [%3d] %-20s %5.3f %5.3f %7.0fHz  %.0f%%\n",
+                   i, reports[i].name,
+                   reports[i].peak, reports[i].rms,
+                   reports[i].spectralCentroid,
+                   reports[i].noiseContent * 100.0f);
+        }
+
+        printf("\n=== Summary ===\n");
+        printf("  Total: %d presets (%d pitched, %d drums/perc)\n",
+               NUM_INSTRUMENT_PRESETS,
+               NUM_INSTRUMENT_PRESETS - (int)(nSilent),
+               0); // count drums below
+        int nDrums = 0;
+        for (int i = 0; i < NUM_INSTRUMENT_PRESETS; i++) if (reports[i].isDrum) nDrums++;
+        printf("  Pitched: %d,  Drums/Perc: %d,  Silent: %d\n",
+               NUM_INSTRUMENT_PRESETS - nDrums - nSilent, nDrums, nSilent);
+        printf("  Detuned (>30c): %d,  DC offset: %d,  Clipping: %d,  Slow attack: %d\n",
+               nDetuned, nDC, nClipped, nSlowAttack);
 
     } else if (multiMode) {
         // --- Multi-duration + multi-note test ---
@@ -322,18 +506,24 @@ int main(int argc, char *argv[]) {
         int notes[] = {36, 48, 60, 72, 84};
         const char *noteNames[] = {"C2", "C3", "C4", "C5", "C6"};
 
-        printf("\n--- Pitch range (1s note-on) ---\n");
+        printf("\n--- Pitch range (1s note-on, autocorrelation) ---\n");
         for (int n = 0; n < 5; n++) {
             char wavName[256];
             snprintf(wavName, sizeof(wavName), "preset_%03d_%s.wav", presetIdx, noteNames[n]);
+            float *buf = NULL;
+            int bufLen = 0;
+            int noteOnSamp = (int)(1.0f * SAMPLE_RATE);
             AnalysisResult r = renderPreset(presetIdx, notes[n], 1.0f, 2.5f,
-                                             wavName, !analysisOnly, NULL, NULL);
+                                             wavName, !analysisOnly, &buf, &bufLen);
+            WaAnalysis wa = waAnalyze(buf, bufLen, noteOnSamp);
             float expectedFreq = 440.0f * powf(2.0f, (notes[n] - 69) / 12.0f);
-            float estPitch = r.zeroCrossRate * 0.5f;
-            float pitchErr = expectedFreq > 0 ? fabsf(estPitch / expectedFreq - 1.0f) * 100.0f : 0;
-            printf("  %-4s (MIDI %2d)  peak=%.3f  rms=%.3f  pitch~%.0fHz (%.0f%% off)%s\n",
-                   noteNames[n], notes[n], r.peakLevel, r.rmsLevel, estPitch, pitchErr,
+            float cents = (wa.fundamental > 0 && wa.pitchConfidence > 0.3f)
+                ? 1200.0f * log2f(wa.fundamental / expectedFreq) : 0;
+            printf("  %-4s (MIDI %2d)  peak=%.3f  rms=%.3f  pitch=%.1fHz (%+.0fc, conf=%.0f%%)%s\n",
+                   noteNames[n], notes[n], r.peakLevel, r.rmsLevel,
+                   wa.fundamental, cents, wa.pitchConfidence * 100.0f,
                    r.peakLevel < 0.01f ? " SILENT!" : "");
+            free(buf);
         }
         printf("\n");
         if (!analysisOnly) printf("WAVs written to current directory\n");

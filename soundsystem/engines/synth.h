@@ -1269,6 +1269,7 @@ static inline float polyblepSquare(float phase, float pw, float dt) {
     float shifted = phase + (1.0f - pw);   // Shift to put falling edge at phase=0
     if (shifted >= 1.0f) shifted -= 1.0f;
     sq -= polyblep(shifted, dt);           // Falling edge at phase=pw
+    sq -= (2.0f * pw - 1.0f);             // DC correction: zero-mean at any duty cycle
     return sq;
 }
 
@@ -1790,16 +1791,19 @@ static float processVoice(Voice *v, float sampleRate) {
 
     v->frequency = freq * pitchEnvMod;
 
-    // Advance phase (with hard sync: master osc resets slave phase)
+    // Advance phase (with hard sync: master at note freq, slave at ratio × freq)
+    // Master sets the pitch (repetition rate), slave adds timbral complexity.
     float phaseInc = v->frequency / sampleRate;
     if (v->hardSync && v->hardSyncRatio > 0.0f) {
-        v->hardSyncPhase += phaseInc * v->hardSyncRatio;
+        v->hardSyncPhase += phaseInc;  // master at note frequency
         if (v->hardSyncPhase >= 1.0f) {
             v->hardSyncPhase -= 1.0f;
             v->phase = 0.0f;  // Master cycle reset -> slave phase reset
         }
+        v->phase += phaseInc * v->hardSyncRatio;  // slave at ratio × freq
+    } else {
+        v->phase += phaseInc;
     }
-    v->phase += phaseInc;
     if (v->phase >= 1.0f) v->phase -= 1.0f;
 
     // PWM modulation
