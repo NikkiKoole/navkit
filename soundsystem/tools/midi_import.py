@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 # ---------------------------------------------------------------------------
 
 GM_PROGRAM_TO_PRESET = [
-    16,130,130,114,56,57,18,112,51,45,15,23,11,46,47,60,  # 0-15
+    11,130,130,114,56,57,18,112,51,45,15,23,11,46,47,60,  # 0-15
     6,106,39,39,106,119,119,119,62,18,62,44,118,63,129,51, # 16-31
     58,20,1,115,117,117,52,61,108,107,107,58,43,17,126,29, # 32-47
     5,50,124,43,48,22,42,91,49,49,13,125,49,132,85,125,    # 48-63
@@ -203,33 +203,61 @@ def quantize_events(events, tpb, steps_per_pattern=16):
             continue
         local_tick = e.start_tick - pat_idx * ticks_per_pattern
         step = round(local_tick / ticks_per_step)
+        # Wrap boundary notes to next pattern's step 0
         if step >= steps_per_pattern:
-            continue
+            step = 0
+            pat_idx += 1
+            if pat_idx >= num_patterns:
+                continue
         track = GM_DRUM_TO_TRACK.get(e.note, 3)
         vel = e.velocity / 127.0
         patterns[pat_idx].drums.append(DrumEvent(track=track, step=step, velocity=vel))
 
     # --- Melody ---
     # Assign channels to melody tracks (bass=0, lead=1, chord=2)
-    # Strategy: sort channels by average pitch, lowest → bass, highest → lead, rest → chord
+    # Strategy: group channels by resolved preset (same preset = same track),
+    # then sort groups by average pitch: lowest → bass, highest → lead, rest → chord
     if melody_events:
         ch_notes = defaultdict(list)
+        ch_programs = defaultdict(int)
         for e in melody_events:
             ch_notes[e.channel].append(e.note)
-        ch_avg = {ch: sum(ns)/len(ns) for ch, ns in ch_notes.items()}
-        sorted_chs = sorted(ch_avg.keys(), key=lambda c: ch_avg[c])
+            ch_programs[e.channel] = e.program
+
+        # Group channels by resolved preset
+        preset_groups = defaultdict(list)  # preset_idx → [channel, ...]
+        for ch in ch_notes:
+            p = gm_program_preset(ch_programs[ch])
+            preset_idx = p if p >= 0 else -ch  # unique fallback per channel
+            preset_groups[preset_idx].append(ch)
+
+        # Compute weighted avg pitch per group
+        def group_avg_pitch(channels):
+            total, count = 0, 0
+            for ch in channels:
+                total += sum(ch_notes[ch])
+                count += len(ch_notes[ch])
+            return total / count if count else 60
+
+        sorted_groups = sorted(preset_groups.values(), key=group_avg_pitch)
 
         ch_to_track = {}
-        if len(sorted_chs) == 1:
-            ch_to_track[sorted_chs[0]] = 0  # solo → bass
-        elif len(sorted_chs) == 2:
-            ch_to_track[sorted_chs[0]] = 0  # lower → bass
-            ch_to_track[sorted_chs[1]] = 1  # higher → lead
+        if len(sorted_groups) == 1:
+            for ch in sorted_groups[0]:
+                ch_to_track[ch] = 0  # solo → bass
+        elif len(sorted_groups) == 2:
+            for ch in sorted_groups[0]:
+                ch_to_track[ch] = 0  # lower → bass
+            for ch in sorted_groups[1]:
+                ch_to_track[ch] = 1  # higher → lead
         else:
-            ch_to_track[sorted_chs[0]] = 0   # lowest → bass
-            ch_to_track[sorted_chs[-1]] = 1  # highest → lead
-            for ch in sorted_chs[1:-1]:
-                ch_to_track[ch] = 2           # middle → chord
+            for ch in sorted_groups[0]:
+                ch_to_track[ch] = 0   # lowest → bass
+            for ch in sorted_groups[-1]:
+                ch_to_track[ch] = 1  # highest → lead
+            for group in sorted_groups[1:-1]:
+                for ch in group:
+                    ch_to_track[ch] = 2  # middle → chord
 
         for e in melody_events:
             pat_idx = int(e.start_tick / ticks_per_pattern)
@@ -238,15 +266,20 @@ def quantize_events(events, tpb, steps_per_pattern=16):
             local_tick = e.start_tick - pat_idx * ticks_per_pattern
             step_f = local_tick / ticks_per_step
             step = round(step_f)
-            if step >= steps_per_pattern:
-                continue
 
-            # Sub-step nudge (in sequencer ticks: 96 PPQ → 6 ticks per 16th step)
-            frac = step_f - step
-            nudge = round(frac * 6)  # 6 = 96 PPQ / 16 steps
+            # Wrap boundary notes to next pattern's step 0
+            if step >= steps_per_pattern:
+                step = 0
+                pat_idx += 1
+                if pat_idx >= num_patterns:
+                    continue
+
+            # Sub-step nudge in sequencer ticks (24 ticks per 16th step)
+            frac = step_f - round(step_f)
+            nudge = max(-12, min(12, round(frac * 24)))
 
             dur_steps = max(1, round(e.duration_tick / ticks_per_step))
-            gate = min(dur_steps, 16)
+            gate = min(dur_steps, 64)
             track = ch_to_track.get(e.channel, 0)
             vel = e.velocity / 127.0
 
@@ -263,6 +296,22 @@ def quantize_events(events, tpb, steps_per_pattern=16):
             if key not in seen or d.velocity > seen[key].velocity:
                 seen[key] = d
         pat.drums = sorted(seen.values(), key=lambda d: (d.track, d.step))
+
+    # Deduplicate melody: same track+step+note → keep longest gate
+    for pat in patterns:
+        seen = {}
+        deduped = []
+        for m in pat.melody:
+            key = (m.track, m.step, m.note)
+            if key in seen:
+                existing = seen[key]
+                if m.gate > existing.gate:
+                    existing.gate = m.gate
+                    existing.velocity = max(existing.velocity, m.velocity)
+            else:
+                seen[key] = m
+                deduped.append(m)
+        pat.melody = deduped
 
     return patterns
 
@@ -352,31 +401,30 @@ def write_song(f, bpm, patterns, channel_programs, steps_per_pattern):
     # Determine drum presets (pick most common GM drum per track)
     drum_presets = [24, 25, 27, 26]  # default 808: kick, snare, CH, clap
 
-    # For melody, map channels → tracks using same logic as quantize_events
+    # For melody, group channels by resolved preset (same logic as quantize_events)
     melody_presets = [1, 1, 1]  # fallback: Fat Bass
     melody_ch_sorted = sorted(
         ((ch, prog) for ch, prog in channel_programs.items() if ch != 9),
         key=lambda x: x[0]
     )
 
-    # Reconstruct channel→track mapping by average pitch
-    ch_notes_global = defaultdict(list)
-    # We don't have events here, so use channel_programs order
-    # Map by channel order (same as quantize_events sorts by avg pitch)
-    if len(melody_ch_sorted) == 1:
-        p = gm_program_preset(melody_ch_sorted[0][1])
-        melody_presets[0] = p if p >= 0 else 1
-    elif len(melody_ch_sorted) == 2:
-        for i, (ch, prog) in enumerate(melody_ch_sorted):
-            p = gm_program_preset(prog)
-            melody_presets[i] = p if p >= 0 else 1
-    elif len(melody_ch_sorted) >= 3:
-        p = gm_program_preset(melody_ch_sorted[0][1])
-        melody_presets[0] = p if p >= 0 else 1   # bass
-        p = gm_program_preset(melody_ch_sorted[-1][1])
-        melody_presets[1] = p if p >= 0 else 1   # lead
-        p = gm_program_preset(melody_ch_sorted[len(melody_ch_sorted)//2][1])
-        melody_presets[2] = p if p >= 0 else 1   # chord
+    # Group by resolved preset
+    preset_groups = defaultdict(list)
+    for ch, prog in melody_ch_sorted:
+        p = gm_program_preset(prog)
+        preset_idx = p if p >= 0 else -ch
+        preset_groups[preset_idx].append((ch, prog))
+    unique_presets = list(preset_groups.keys())
+
+    if len(unique_presets) == 1:
+        melody_presets[0] = unique_presets[0] if unique_presets[0] >= 0 else 1
+    elif len(unique_presets) == 2:
+        melody_presets[0] = unique_presets[0] if unique_presets[0] >= 0 else 1
+        melody_presets[1] = unique_presets[1] if unique_presets[1] >= 0 else 1
+    elif len(unique_presets) >= 3:
+        melody_presets[0] = unique_presets[0] if unique_presets[0] >= 0 else 1
+        melody_presets[1] = unique_presets[-1] if unique_presets[-1] >= 0 else 1
+        melody_presets[2] = unique_presets[1] if unique_presets[1] >= 0 else 1
 
     # --- Write file ---
     f.write("# PixelSynth DAW song (format 2)\n")

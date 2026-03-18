@@ -10,7 +10,7 @@
 
 // General MIDI Program Number (0-127) → instrumentPresets[] index
 static const int gm_program_to_preset[128] = {
-    /* GM 0:   Acoustic Grand Piano  */ 16,  // Piku Piano
+    /* GM 0:   Acoustic Grand Piano  */ 11,  // Marimba
     /* GM 1:   Bright Acoustic Piano */ 130, // DX7 E.Piano
     /* GM 2:   Electric Grand Piano  */ 130, // DX7 E.Piano
     /* GM 3:   Honky-Tonk Piano      */ 114, // Honky Piano

@@ -312,8 +312,8 @@ static bool midiFileToDaw(const char *filepath) {
     if (numPatterns > SEQ_NUM_PATTERNS) numPatterns = SEQ_NUM_PATTERNS;
 
     // --- Channel → melody track assignment ---
-    // Collect melodic channels (not ch9) with average pitch
-    typedef struct { int channel; float avgPitch; int noteCount; int program; } ChInfo;
+    // Collect melodic channels (not ch9) with average pitch + resolved preset
+    typedef struct { int channel; float avgPitch; int noteCount; int program; int preset; } ChInfo;
     ChInfo chInfo[16];
     int chCount = 0;
     {
@@ -329,29 +329,60 @@ static bool midiFileToDaw(const char *filepath) {
         }
         for (int c = 0; c < 16; c++) {
             if (chN[c] > 0 && c != 9) {
-                chInfo[chCount++] = (ChInfo){c, (float)chSum[c] / chN[c], chN[c], chProg[c]};
+                int p = gmProgramPreset(chProg[c]);
+                chInfo[chCount++] = (ChInfo){c, (float)chSum[c] / chN[c], chN[c], chProg[c], p >= 0 ? p : 1};
             }
         }
-        // Sort by average pitch (lowest first)
-        for (int i = 0; i < chCount - 1; i++)
-            for (int j = i + 1; j < chCount; j++)
-                if (chInfo[i].avgPitch > chInfo[j].avgPitch) {
-                    ChInfo tmp = chInfo[i]; chInfo[i] = chInfo[j]; chInfo[j] = tmp;
-                }
     }
 
+    // Group channels by resolved preset, compute combined avg pitch per group
+    typedef struct { int preset; float avgPitch; int channels[16]; int chCount; int program; } PresetGroup;
+    PresetGroup groups[16];
+    int groupCount = 0;
+    for (int i = 0; i < chCount; i++) {
+        // Find existing group with same preset
+        int g = -1;
+        for (int j = 0; j < groupCount; j++) {
+            if (groups[j].preset == chInfo[i].preset) { g = j; break; }
+        }
+        if (g < 0) {
+            g = groupCount++;
+            groups[g] = (PresetGroup){chInfo[i].preset, 0, {0}, 0, chInfo[i].program};
+        }
+        groups[g].channels[groups[g].chCount++] = chInfo[i].channel;
+        // Weighted average pitch across all channels in group
+        float totalPitch = 0; int totalNotes = 0;
+        for (int k = 0; k < groups[g].chCount; k++) {
+            for (int ci = 0; ci < chCount; ci++) {
+                if (chInfo[ci].channel == groups[g].channels[k]) {
+                    totalPitch += chInfo[ci].avgPitch * chInfo[ci].noteCount;
+                    totalNotes += chInfo[ci].noteCount;
+                }
+            }
+        }
+        groups[g].avgPitch = totalNotes > 0 ? totalPitch / totalNotes : 60.0f;
+    }
+
+    // Sort groups by average pitch (lowest first)
+    for (int i = 0; i < groupCount - 1; i++)
+        for (int j = i + 1; j < groupCount; j++)
+            if (groups[i].avgPitch > groups[j].avgPitch) {
+                PresetGroup tmp = groups[i]; groups[i] = groups[j]; groups[j] = tmp;
+            }
+
+    // Assign groups to tracks: lowest→bass, highest→lead, rest→chord
     int chToTrack[16]; // channel → melody track (0=bass, 1=lead, 2=chord), -1=unmapped
     memset(chToTrack, -1, sizeof(chToTrack));
-    if (chCount == 1) {
-        chToTrack[chInfo[0].channel] = 0;
-    } else if (chCount == 2) {
-        chToTrack[chInfo[0].channel] = 0;
-        chToTrack[chInfo[1].channel] = 1;
-    } else if (chCount >= 3) {
-        chToTrack[chInfo[0].channel] = 0;             // lowest → bass
-        chToTrack[chInfo[chCount-1].channel] = 1;     // highest → lead
-        for (int i = 1; i < chCount - 1; i++)
-            chToTrack[chInfo[i].channel] = 2;          // middle → chord
+    if (groupCount == 1) {
+        for (int k = 0; k < groups[0].chCount; k++) chToTrack[groups[0].channels[k]] = 0;
+    } else if (groupCount == 2) {
+        for (int k = 0; k < groups[0].chCount; k++) chToTrack[groups[0].channels[k]] = 0;
+        for (int k = 0; k < groups[1].chCount; k++) chToTrack[groups[1].channels[k]] = 1;
+    } else if (groupCount >= 3) {
+        for (int k = 0; k < groups[0].chCount; k++) chToTrack[groups[0].channels[k]] = 0;
+        for (int k = 0; k < groups[groupCount-1].chCount; k++) chToTrack[groups[groupCount-1].channels[k]] = 1;
+        for (int i = 1; i < groupCount - 1; i++)
+            for (int k = 0; k < groups[i].chCount; k++) chToTrack[groups[i].channels[k]] = 2;
     }
 
     // --- Assign presets (drums + melody) ---
@@ -362,20 +393,11 @@ static bool midiFileToDaw(const char *filepath) {
         snprintf(daw.patches[i].p_name, 32, "%s", instrumentPresets[drumPresets[i]].name);
     }
 
-    // Melody: GM program → preset
+    // Melody: use preset from each group
     int melodyDefaults[3] = {1, 1, 1}; // Fat Bass fallback
-    if (chCount >= 1) {
-        int p = gmProgramPreset(chInfo[0].program);
-        melodyDefaults[0] = p >= 0 ? p : 1;
-    }
-    if (chCount >= 2) {
-        int p = gmProgramPreset(chInfo[chCount-1].program);
-        melodyDefaults[1] = p >= 0 ? p : 1;
-    }
-    if (chCount >= 3) {
-        int p = gmProgramPreset(chInfo[1].program);
-        melodyDefaults[2] = p >= 0 ? p : 1;
-    }
+    if (groupCount >= 1) melodyDefaults[0] = groups[0].preset;
+    if (groupCount >= 2) melodyDefaults[1] = groups[groupCount-1].preset;
+    if (groupCount >= 3) melodyDefaults[2] = groups[1].preset;
     for (int i = 0; i < 3; i++) {
         int pi = melodyDefaults[i];
         daw.patches[4 + i] = instrumentPresets[pi].patch;
@@ -391,15 +413,24 @@ static bool midiFileToDaw(const char *filepath) {
         float localTick = (float)e->startTick - patIdx * ticksPerPattern;
         float stepF = localTick / ticksPerStep;
         int step = (int)roundf(stepF);
-        if (step >= stepsPerPattern) continue;
+
+        // Wrap boundary notes to next pattern's step 0
+        if (step >= stepsPerPattern) {
+            step = 0;
+            patIdx++;
+            if (patIdx >= numPatterns) continue;
+        }
 
         Pattern *pat = &seq.patterns[patIdx];
         float vel = e->velocity / 127.0f;
 
         if (e->channel == 9) {
-            // Drum event
+            // Drum event — keep loudest hit per track+step
             int track = _mf_drumTrack(e->note);
-            patSetDrum(pat, track, step, vel, 0.0f);
+            StepV2 *sv = &pat->steps[track][step];
+            if (sv->noteCount == 0 || vel > velU8ToFloat(sv->notes[0].velocity)) {
+                patSetDrum(pat, track, step, vel, 0.0f);
+            }
         } else {
             // Melody event
             int melTrack = chToTrack[e->channel];
@@ -408,21 +439,43 @@ static bool midiFileToDaw(const char *filepath) {
 
             int durSteps = (int)roundf(e->durationTick / ticksPerStep);
             if (durSteps < 1) durSteps = 1;
-            if (durSteps > 16) durSteps = 16;
+            if (durSteps > 64) durSteps = 64;
 
-            // Sub-step nudge
-            float frac = stepF - step;
-            int nudge = (int)roundf(frac * 6.0f); // 6 ticks per 16th at 96 PPQ
+            // Sub-step timing nudge (24 ticks per 16th step, ±12 range)
+            float frac = stepF - (int)roundf(stepF);
+            int nudgeTicks = (int)roundf(frac * (float)SEQ_TICKS_PER_STEP_16TH);
+            if (nudgeTicks < -12) nudgeTicks = -12;
+            if (nudgeTicks > 12) nudgeTicks = 12;
 
             StepV2 *sv = &pat->steps[absTrack][step];
-            if (sv->noteCount == 0) {
-                // First note on this step
-                patSetNote(pat, absTrack, step, e->note, vel, durSteps);
-                if (nudge != 0) sv->notes[0].nudge = (int8_t)nudge;
-            } else if (sv->noteCount < SEQ_V2_MAX_POLY) {
-                // Chord: add additional note
-                int vi = stepV2AddNote(sv, e->note, velFloatToU8(vel), (int8_t)durSteps);
-                if (vi >= 0 && nudge != 0) sv->notes[vi].nudge = (int8_t)nudge;
+
+            // Check for duplicate note (same pitch on same step) — keep longest gate
+            bool isDuplicate = false;
+            for (int n = 0; n < sv->noteCount; n++) {
+                if (sv->notes[n].note == (int8_t)e->note) {
+                    if (durSteps > sv->notes[n].gate) {
+                        sv->notes[n].gate = (int8_t)durSteps;
+                        sv->notes[n].velocity = velFloatToU8(vel);
+                    }
+                    isDuplicate = true;
+                    break;
+                }
+            }
+
+            if (!isDuplicate) {
+                if (sv->noteCount == 0) {
+                    patSetNote(pat, absTrack, step, e->note, vel, durSteps);
+                } else if (sv->noteCount < SEQ_V2_MAX_POLY) {
+                    stepV2AddNote(sv, e->note, velFloatToU8(vel), (int8_t)durSteps);
+                }
+            }
+
+            // Store nudge on the note (sequencer reads notes[0].nudge for melody timing)
+            if (nudgeTicks != 0 && sv->noteCount > 0) {
+                // Apply to first note (drives step timing), don't overwrite if already set
+                if (sv->notes[0].nudge == 0) {
+                    sv->notes[0].nudge = (int8_t)nudgeTicks;
+                }
             }
         }
     }
