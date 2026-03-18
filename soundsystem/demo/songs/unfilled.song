@@ -2,6 +2,7 @@
 
 [song]
 format = 2
+songName = "unfilled"
 bpm = 120
 stepCount = 16
 grooveSwing = 0
@@ -1860,6 +1861,7 @@ d track=0 step=0 vel=0.8
 d track=0 step=4 vel=0.8
 d track=0 step=8 vel=0.8
 d track=0 step=12 vel=0.8
+d track=1 step=4 vel=0.8
 d track=1 step=5 vel=0.8
 d track=1 step=6 vel=0.8
 d track=1 step=7 vel=0.8
@@ -1870,7 +1872,6 @@ d track=1 step=12 vel=0.8
 d track=1 step=14 vel=0.8
 d track=2 step=0 vel=0.8
 d track=2 step=2 vel=0.8
-d track=2 step=4 vel=0.8
 d track=2 step=6 vel=0.8
 d track=2 step=8 vel=0.8
 d track=2 step=10 vel=0.8

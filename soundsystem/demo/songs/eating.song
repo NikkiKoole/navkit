@@ -2,6 +2,7 @@
 
 [song]
 format = 2
+songName = "eating"
 bpm = 120
 stepCount = 16
 grooveSwing = 0

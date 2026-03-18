@@ -2,6 +2,7 @@
 
 [song]
 format = 2
+songName = "test this"
 bpm = 120
 stepCount = 16
 grooveSwing = 0
@@ -14,64 +15,64 @@ type = 0
 
 [groove]
 kickNudge = 0
-snareDelay = 0
-hatNudge = 0
-clapDelay = 0
-swing = 0
-jitter = 0
-trackSwing0 = 0
+snareDelay = 3
+hatNudge = -2
+clapDelay = 2
+swing = 5
+jitter = 2
+trackSwing0 = 5
 trackTranspose0 = 0
-trackSwing1 = 0
+trackSwing1 = 5
 trackTranspose1 = 0
-trackSwing2 = 0
+trackSwing2 = 5
 trackTranspose2 = 0
-trackSwing3 = 0
+trackSwing3 = 5
 trackTranspose3 = 0
-trackSwing4 = 0
+trackSwing4 = 5
 trackTranspose4 = 0
-trackSwing5 = 0
+trackSwing5 = 5
 trackTranspose5 = 0
-trackSwing6 = 0
+trackSwing6 = 5
 trackTranspose6 = 0
-trackSwing7 = 0
+trackSwing7 = 5
 trackTranspose7 = 0
-trackSwing8 = 0
+trackSwing8 = 5
 trackTranspose8 = 0
-trackSwing9 = 0
+trackSwing9 = 5
 trackTranspose9 = 0
-trackSwing10 = 0
+trackSwing10 = 5
 trackTranspose10 = 0
-trackSwing11 = 0
+trackSwing11 = 5
 trackTranspose11 = 0
-melodyTimingJitter = 0
-melodyVelocityJitter = 0
+melodyTimingJitter = 2
+melodyVelocityJitter = 0.12
 
 [settings]
 masterVol = 0.8
 voiceRandomVowel = false
 
 [patch.0]
-name = "PD Bass"
-waveType = pd
+name = "808 Kick"
+waveType = fm
 scwIndex = 0
-attack = 0.005
-decay = 0.25
-sustain = 0.4
-release = 0.1
+attack = 0
+decay = 0.5
+sustain = 0
+release = 0.05
 expRelease = false
-expDecay = false
+expDecay = true
 oneShot = false
-volume = 0.55
+volume = 0.5
 pulseWidth = 0.5
 pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
-filterCutoff = 0.4
-filterResonance = 0.2
+filterCutoff = 1
+filterResonance = 0
 filterType = 0
-filterEnvAmt = 0.35
-filterEnvAttack = 0.005
+filterEnvAmt = 0
+filterEnvAttack = 0.01
 filterEnvDecay = 0.2
 filterKeyTrack = 0
 filterLfoRate = 0
@@ -102,7 +103,7 @@ arpChord = 1
 unisonCount = 1
 unisonDetune = 10
 unisonMix = 0.5
-monoMode = true
+monoMode = false
 glideTime = 0.1
 pluckBrightness = 0.5
 pluckDamping = 0.996
@@ -147,13 +148,13 @@ fmLfoDepth = 0
 fmLfoShape = 0
 fmLfoSync = 0
 fmLfoPhaseOffset = 0
-fmModRatio = 2
-fmModIndex = 2
+fmModRatio = 1
+fmModIndex = 0
 fmFeedback = 0
 fmMod2Ratio = 0
 fmMod2Index = 0
 fmAlgorithm = 0
-pdWaveType = 5
+pdWaveType = 0
 pdDistortion = 0.5
 membranePreset = 0
 membraneDamping = 0.3
@@ -174,10 +175,10 @@ birdTrillDepth = 0
 birdAmRate = 0
 birdAmDepth = 0
 birdHarmonics = 0.2
-pitchEnvAmount = 0
-pitchEnvDecay = 0.05
+pitchEnvAmount = 19
+pitchEnvDecay = 0.04
 pitchEnvCurve = 0
-pitchEnvLinear = false
+pitchEnvLinear = true
 noiseMix = 0
 noiseTone = 0.5
 noiseHP = 0
@@ -196,8 +197,8 @@ osc5Ratio = 0
 osc5Level = 0
 osc6Ratio = 0
 osc6Level = 0
-drive = 0
-clickLevel = 0
+drive = 0.5
+clickLevel = 0.3
 clickTime = 0.005
 noiseMode = 0
 oscMixMode = 0
@@ -205,8 +206,8 @@ retriggerCurve = 0
 phaseReset = false
 noiseLPBypass = false
 noiseType = 0
-useTriggerFreq = false
-triggerFreq = 440
+useTriggerFreq = true
+triggerFreq = 50
 choke = false
 analogRolloff = false
 tubeSaturation = false
@@ -437,10 +438,10 @@ arpMode = 0
 arpRateDiv = 1
 arpRate = 8
 arpChord = 1
-unisonCount = 1
+unisonCount = 4
 unisonDetune = 10
 unisonMix = 0.5
-monoMode = false
+monoMode = true
 glideTime = 0.1
 pluckBrightness = 0.5
 pluckDamping = 0.996
@@ -543,7 +544,7 @@ retriggerCurve = 0
 phaseReset = true
 noiseLPBypass = false
 noiseType = 0
-useTriggerFreq = true
+useTriggerFreq = false
 triggerFreq = 460
 choke = true
 analogRolloff = false
@@ -1860,23 +1861,26 @@ d track=0 step=0 vel=0.8
 d track=0 step=4 vel=0.8
 d track=0 step=8 vel=0.8
 d track=0 step=12 vel=0.8
-d track=1 step=5 vel=0.8
+d track=1 step=2 vel=0.8
 d track=1 step=6 vel=0.8
-d track=1 step=7 vel=0.8
-d track=1 step=8 vel=0.8
-d track=1 step=9 vel=0.8
 d track=1 step=10 vel=0.8
-d track=1 step=12 vel=0.8
 d track=1 step=14 vel=0.8
-d track=2 step=0 vel=0.8
-d track=2 step=2 vel=0.8
+d track=2 step=1 vel=0.8
+d track=2 step=3 vel=0.8
 d track=2 step=4 vel=0.8
+d track=2 step=5 vel=0.8
 d track=2 step=6 vel=0.8
 d track=2 step=8 vel=0.8
-d track=2 step=10 vel=0.8
-d track=2 step=12 vel=0.8
+d track=2 step=9 vel=0.8
+d track=2 step=11 vel=0.8
+d track=2 step=13 vel=0.8
 d track=2 step=14 vel=0.8
-p track=0 step=0 param=pitch val=-6
-p track=0 step=4 param=pitch val=-9
-p track=0 step=8 param=pitch val=-4
-p track=0 step=12 param=pitch val=-3
+d track=2 step=15 vel=0.8
+p track=0 step=0 param=pitch val=7
+p track=0 step=2 param=pitch val=7
+p track=0 step=4 param=pitch val=2
+p track=2 step=3 param=pitch val=1
+p track=2 step=4 param=pitch val=1
+p track=2 step=6 param=pitch val=-1
+p track=2 step=11 param=pitch val=1
+p track=2 step=13 param=pitch val=1
