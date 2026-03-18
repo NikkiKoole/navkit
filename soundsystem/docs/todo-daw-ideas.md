@@ -3,10 +3,11 @@
 ## Suggested Order
 
 1. ~~**Piano roll fixes**~~ — DONE (fixed cell height, click-to-audition keys)
-2. ~~**Clip launcher MVP**~~ — DONE (two-panel layout, per-track triggering, next actions, scene launch)
-3. **Clip launcher polish** — drag launcher→arrangement, save/load slots, better visuals
+2. ~~**Clip launcher MVP + Phase 1**~~ — DONE (two-panel layout, per-track triggering, next actions, scene launch, drag→arrangement, save/load, quantize selector, note cutoff)
+3. **Clip launcher polish** — better visuals, per-clip quantize override
 4. **WAV export for samples** — unblocks faster load, external sample import, standalone value
 5. **Automation lanes** — once arrangement is the primary composition tool
+6. **Record launcher → arrangement** — capture live jams as arrangement events
 
 **Not scheduled** (do when it hurts):
 - **Single-track clip patterns / flexible track types** — the current multi-track patterns already work with per-track arrangement. The "waste" is unused data in memory, not a functional problem. Do this when you keep bumping into "I want this bass line on a different track but it's stuck in a pattern with drums I don't want." See §Flexible Track Architecture below for the incremental path.
@@ -204,9 +205,9 @@ Add a collapsible launcher panel to `drawWorkArrange()`. Toggle button in the to
 
 ### Phases
 
-**Phase 1 — MVP (bar-quantized, loop-only)** ✅ DONE
+**Phase 1 — MVP** ✅ DONE
 - ✅ `Launcher` struct + `LauncherTrack` + `NextAction` enum in daw_state.h
-- ✅ `trackWrapped[]` flag in sequencer.h
+- ✅ `trackWrapped[]` flag + `launchQuantize` in sequencer.h
 - ✅ Launcher sync block in dawSyncSequencer() with next action processing
 - ✅ Two-panel UI: launcher grid (left) + arrangement timeline (right)
 - ✅ Click to assign/launch/stop, scene launch buttons, per-track stop, global Stop All
@@ -214,17 +215,18 @@ Add a collapsible launcher panel to `drawWorkArrange()`. Toggle button in the to
 - ✅ Auto-start playback, auto-deactivate when all stopped
 - ✅ Next Actions engine: Loop, Stop, Next, Prev, First, Random, Return
 - ✅ Progress bars, loop count, queued blink, deferred tooltips
-- ⬜ Save/load launcher slots (not yet)
+- ✅ Save/load launcher slots + next actions in [launcher] section
+- ✅ Drag clips from launcher → arrangement (middle-click-drag, auto-creates bars)
+- ✅ Launch quantize selector: Bar / Beat / 1/8 / 1/16 (sub-bar quantize via step boundaries)
+- ✅ Proper note cutoff on clip stop (fires trackNoteOff, clears gates)
 
 **Phase 2 — Polish**
-- ⬜ Drag clips from launcher → arrangement timeline (core workflow: jam → compose)
-- ⬜ Beat-level launch quantize (1/4, 1/8)
 - ⬜ Better visual feedback for playing/queued states (GarageBand-style pulsing)
+- ⬜ Per-clip launch quantize override (most clips use global, some override)
 
 **Phase 3 — Integration**
 - ⬜ Record launcher performance → arrangement (capture clip launches as arrangement events)
 - ⬜ Launcher clips as independent single-track patterns (ties into Flexible Track Architecture)
-- ⬜ Per-clip launch quantize override (most clips use global, some override)
 
 ### References
 - [Bitwig Clip Launcher Userguide](https://www.bitwig.com/userguide/latest/the_clip_launcher/)
@@ -262,6 +264,13 @@ Add a collapsible launcher panel to `drawWorkArrange()`. Toggle button in the to
 - Need to investigate: does the synth engine support rendering at lower rates natively, or do we downsample after?
 - Also affects future WAV export — what rate to write?
 - Quality tradeoff: 22050 Hz caps at ~10kHz (probably fine for this engine), 11025 caps at ~5kHz (might be too aggressive)
+
+## Longer Songs (ARR_MAX_BARS limit)
+- Currently 64 bars max in arrangement. At 120 BPM / 16 steps = ~2 minutes.
+- Pattern reuse via per-track arrangement helps (only ~10 unique patterns needed for most songs) but bar count is still the bottleneck.
+- **Option A**: Bump `ARR_MAX_BARS` to 256 (~8 min). Trivial, costs 512 bytes per doubling.
+- **Option B**: Add per-bar loop counts to arrangement (like song mode's `loopsPerSection`). A bar marked "loop 4x" repeats without using extra slots. More bang per bar.
+- Option A is the quick fix, Option B is the proper solution.
 
 ## Flexible Track/Pattern Architecture (do when it hurts)
 

@@ -508,6 +508,114 @@ static bool midiFileToDaw(const char *filepath) {
     // Reset preset tracking
     for (int i = 0; i < NUM_PATCHES; i++) patchPresetIndex[i] = -1;
 
+    // --- Post-import: build per-track arrangement + launcher ---
+    // For each track, find unique patterns by comparing step data
+    {
+        // Per-track: which pattern index is the "canonical" version for each unique content
+        // canonical[track][pat] = first pattern with same content on this track, or pat itself
+        int canonical[ARR_MAX_TRACKS][SEQ_NUM_PATTERNS];
+        // Per-track unique count
+        int uniqueCount[ARR_MAX_TRACKS];
+        // Per-track list of unique pattern indices (for launcher)
+        int uniquePats[ARR_MAX_TRACKS][LAUNCHER_MAX_SLOTS];
+
+        for (int t = 0; t < ARR_MAX_TRACKS; t++) {
+            uniqueCount[t] = 0;
+            for (int p = 0; p < numPatterns; p++) canonical[t][p] = p;
+        }
+
+        for (int t = 0; t < ARR_MAX_TRACKS && t < SEQ_V2_MAX_TRACKS; t++) {
+            for (int p = 0; p < numPatterns; p++) {
+                // Check if this pattern's track content matches any earlier pattern
+                bool found = false;
+                for (int q = 0; q < p; q++) {
+                    // Compare step data for this track
+                    bool same = true;
+                    Pattern *pp = &seq.patterns[p];
+                    Pattern *pq = &seq.patterns[q];
+                    if (pp->trackLength[t] != pq->trackLength[t]) { same = false; }
+                    else {
+                        int len = pp->trackLength[t];
+                        for (int s = 0; s < len && same; s++) {
+                            StepV2 *a = &pp->steps[t][s];
+                            StepV2 *b = &pq->steps[t][s];
+                            if (a->noteCount != b->noteCount) { same = false; break; }
+                            for (int v = 0; v < a->noteCount && same; v++) {
+                                if (a->notes[v].note != b->notes[v].note ||
+                                    a->notes[v].gate != b->notes[v].gate) same = false;
+                            }
+                        }
+                    }
+                    if (same) {
+                        canonical[t][p] = canonical[t][q];
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) canonical[t][p] = p;
+            }
+
+            // Build unique list for launcher
+            for (int p = 0; p < numPatterns && uniqueCount[t] < LAUNCHER_MAX_SLOTS; p++) {
+                if (canonical[t][p] == p) {
+                    // Check if track actually has content in this pattern
+                    bool hasContent = false;
+                    Pattern *pp = &seq.patterns[p];
+                    int len = pp->trackLength[t];
+                    for (int s = 0; s < len; s++) {
+                        if (pp->steps[t][s].noteCount > 0) { hasContent = true; break; }
+                    }
+                    if (hasContent) {
+                        uniquePats[t][uniqueCount[t]++] = p;
+                    }
+                }
+            }
+        }
+
+        // Build per-track arrangement
+        daw.arr.arrMode = true;
+        daw.arr.length = numPatterns;
+        daw.song.songMode = false;  // switch from song mode to arrangement mode
+        for (int b = 0; b < numPatterns && b < ARR_MAX_BARS; b++) {
+            for (int t = 0; t < ARR_MAX_TRACKS; t++) {
+                if (t < SEQ_V2_MAX_TRACKS) {
+                    // Use canonical pattern for this track (deduplicates)
+                    int cp = canonical[t][b];
+                    // Check if track has any content in this canonical pattern
+                    bool hasContent = false;
+                    Pattern *pp = &seq.patterns[cp];
+                    int len = pp->trackLength[t];
+                    for (int s = 0; s < len; s++) {
+                        if (pp->steps[t][s].noteCount > 0) { hasContent = true; break; }
+                    }
+                    daw.arr.cells[b][t] = hasContent ? cp : ARR_EMPTY;
+                } else {
+                    daw.arr.cells[b][t] = ARR_EMPTY;
+                }
+            }
+        }
+
+        // Build launcher: unique clips per track
+        daw.launcher.active = false;
+        daw.launcher.quantize = 0;
+        for (int t = 0; t < ARR_MAX_TRACKS; t++) {
+            daw.launcher.tracks[t].playingSlot = -1;
+            daw.launcher.tracks[t].queuedSlot = -1;
+            daw.launcher.tracks[t].loopCount = 0;
+            for (int s = 0; s < LAUNCHER_MAX_SLOTS; s++) {
+                daw.launcher.tracks[t].pattern[s] = -1;
+                daw.launcher.tracks[t].state[s] = CLIP_EMPTY;
+                daw.launcher.tracks[t].nextAction[s] = NEXT_ACTION_LOOP;
+                daw.launcher.tracks[t].nextActionLoops[s] = 0;
+            }
+            // Fill with unique patterns for this track
+            for (int s = 0; s < uniqueCount[t]; s++) {
+                daw.launcher.tracks[t].pattern[s] = uniquePats[t][s];
+                daw.launcher.tracks[t].state[s] = CLIP_STOPPED;
+            }
+        }
+    }
+
     _mf_free(&midi);
     return true;
 }
