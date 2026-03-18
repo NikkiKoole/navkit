@@ -905,6 +905,9 @@ static void initEffectsContext(EffectsContext* ctx) {
 
     // Default BPM for beat-synced effects
     ctx->params.bpm = 120.0f;
+
+    // Master speed: 1.0 = normal (0.0 would freeze playback)
+    ctx->halfSpeedActive = 1.0f;
 }
 
 // ============================================================================

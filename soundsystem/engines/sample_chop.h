@@ -332,6 +332,7 @@ static RenderedPattern renderPatternToBuffer(const char *songPath, int patternId
     tempDaw->crossfader.sceneB = 1;
     tempDaw->crossfader.count = 8;
     tempDaw->stepCount = 16;
+    tempDaw->masterSpeed = 1.0f;
     tempDaw->song.loopsPerPattern = 2;
     tempDaw->masterVol = 0.8f;
     tempDaw->splitPoint = 60;

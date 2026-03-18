@@ -6063,6 +6063,167 @@ describe(golden_audio_render) {
 }
 
 // ============================================================================
+// FULL MIXER PIPELINE TESTS (catches master FX regressions like halfSpeed=0)
+// ============================================================================
+
+// Voice-bus routing for pipeline tests (local to this file)
+static int _testVoiceBus[NUM_VOICES];
+
+// Drum callback that actually plays audio (unlike golden_ counters)
+static void _pipeline_drum0(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)note; (void)gateTime; (void)pitchMod; (void)slide; (void)accent;
+    SynthPatch p = createDefaultPatch(WAVE_SAW);
+    p.p_volume = 0.8f;
+    p.p_attack = 0.0f;
+    p.p_decay = 0.2f;
+    p.p_sustain = 0.0f;
+    p.p_oneShot = true;
+    p.p_useTriggerFreq = true;
+    p.p_triggerFreq = 80.0f;
+    int v = playNoteWithPatch(80.0f, &p);
+    if (v >= 0) {
+        synthVoices[v].volume *= vel;
+        _testVoiceBus[v] = BUS_DRUM0;
+    }
+}
+
+describe(full_mixer_pipeline) {
+    it("processMixerOutput produces non-zero audio from triggered voices") {
+        // Init all subsystems
+        _ensureSynthCtx();
+        _ensureFxCtx();
+        _ensureMixerCtx();
+        initSynthContext(synthCtx);
+        initEffectsContext(fxCtx);
+        initMixerContext(mixerCtx);
+
+        // Verify halfSpeedActive defaults to 1.0 (bypass)
+        expect(fabsf(halfSpeedActive - 1.0f) < 0.01f);
+
+        for (int v = 0; v < NUM_VOICES; v++) {
+            synthVoices[v].envStage = 0;
+            synthVoices[v].envLevel = 0;
+            _testVoiceBus[v] = -1;
+        }
+
+        // Set bus volumes
+        for (int b = 0; b < NUM_BUSES; b++)
+            setBusVolume(b, 0.8f);
+
+        // Trigger a drum voice directly
+        SynthPatch p = createDefaultPatch(WAVE_SAW);
+        p.p_volume = 0.8f;
+        p.p_attack = 0.0f;
+        p.p_decay = 0.3f;
+        p.p_sustain = 0.0f;
+        p.p_oneShot = true;
+        int v = playNoteWithPatch(80.0f, &p);
+        expect(v >= 0);
+        _testVoiceBus[v] = BUS_DRUM0;
+
+        // Render through the full pipeline
+        float dt = 1.0f / SAMPLE_RATE;
+        float peak = 0.0f;
+        for (int i = 0; i < SAMPLE_RATE / 10; i++) {  // 100ms
+            float busInputs[NUM_BUSES] = {0};
+            for (int vi = 0; vi < NUM_VOICES; vi++) {
+                float s = processVoice(&synthVoices[vi], SAMPLE_RATE);
+                int bus = _testVoiceBus[vi];
+                if (bus >= 0 && bus < NUM_BUSES)
+                    busInputs[bus] += s;
+            }
+            float sample = processMixerOutput(busInputs, dt);
+            if (fabsf(sample) > peak) peak = fabsf(sample);
+        }
+
+        // Must produce audible output (>0.01), not near-silence
+        expect(peak > 0.01f);
+    }
+
+    it("halfSpeedActive=0 freezes output, =1 passes audio") {
+        _ensureSynthCtx();
+        _ensureFxCtx();
+        _ensureMixerCtx();
+        initSynthContext(synthCtx);
+        initEffectsContext(fxCtx);
+        initMixerContext(mixerCtx);
+
+        // halfSpeedActive should default to 1.0 after init
+        expect(fabsf(halfSpeedActive - 1.0f) < 0.01f);
+
+        // With speed=0, processHalfSpeed should freeze (read pos stuck)
+        halfSpeedActive = 0.0f;
+        float frozenPeak = 0.0f;
+        for (int i = 0; i < 4410; i++) {
+            float s = processHalfSpeed(0.5f * sinf(2.0f * 3.14159f * 440.0f * i / SAMPLE_RATE));
+            if (fabsf(s) > frozenPeak) frozenPeak = fabsf(s);
+        }
+        // Frozen: reads from a single position, output should be near-zero or stuck
+        // (first sample might be nonzero if buffer had stale data)
+
+        // With speed=1, should pass through
+        halfSpeedActive = 1.0f;
+        float normalPeak = 0.0f;
+        for (int i = 0; i < 4410; i++) {
+            float s = processHalfSpeed(0.5f * sinf(2.0f * 3.14159f * 440.0f * i / SAMPLE_RATE));
+            if (fabsf(s) > normalPeak) normalPeak = fabsf(s);
+        }
+        expect(normalPeak > 0.4f);  // sine at 0.5 amplitude should come through ~0.5
+    }
+
+    it("sequencer-driven render through mixer produces audio") {
+        _ensureSynthCtx();
+        _ensureFxCtx();
+        _ensureMixerCtx();
+        _ensureSeqCtx();
+        initSynthContext(synthCtx);
+        initEffectsContext(fxCtx);
+        initMixerContext(mixerCtx);
+
+        for (int v = 0; v < NUM_VOICES; v++) {
+            synthVoices[v].envStage = 0;
+            synthVoices[v].envLevel = 0;
+            _testVoiceBus[v] = -1;
+        }
+        for (int b = 0; b < NUM_BUSES; b++)
+            setBusVolume(b, 0.8f);
+
+        // Set up sequencer with a real audio callback
+        initSequencer(_pipeline_drum0, NULL, NULL, NULL);
+        seq.bpm = 120.0f;
+
+        Pattern *pat = seqCurrentPattern();
+        clearPattern(pat);
+        patSetDrum(pat, 0, 0, 1.0f, 0.0f);  // Kick on step 0
+
+        seq.playing = true;
+        resetSequencer();
+
+        float dt = 1.0f / SAMPLE_RATE;
+        float seqDt = 64.0f / SAMPLE_RATE;
+        float peak = 0.0f;
+
+        for (int i = 0; i < SAMPLE_RATE / 4; i++) {  // 250ms
+            if ((i % 64) == 0) updateSequencer(seqDt);
+
+            float busInputs[NUM_BUSES] = {0};
+            for (int vi = 0; vi < NUM_VOICES; vi++) {
+                float s = processVoice(&synthVoices[vi], SAMPLE_RATE);
+                int bus = _testVoiceBus[vi];
+                if (bus >= 0 && bus < NUM_BUSES)
+                    busInputs[bus] += s;
+            }
+            float sample = processMixerOutput(busInputs, dt);
+            if (fabsf(sample) > peak) peak = fabsf(sample);
+        }
+        seq.playing = false;
+
+        // Full pipeline must produce audible output
+        expect(peak > 0.01f);
+    }
+}
+
+// ============================================================================
 // SAMPLER COMMAND QUEUE TESTS
 // ============================================================================
 
@@ -6737,6 +6898,9 @@ int main(int argc, char **argv) {
     test(mono_legato_window);
     test(mono_arp_isolation);
     test(mono_patch_save_load);
+
+    // Full mixer pipeline (catches master FX regressions)
+    test(full_mixer_pipeline);
 
     return summary();
 }

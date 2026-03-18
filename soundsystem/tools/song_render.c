@@ -49,6 +49,7 @@ static DawState daw = {
     .transport = { .bpm = 120.0f },
     .crossfader = { .pos = 0.5f, .sceneB = 1, .count = 8 },
     .stepCount = 16,
+    .masterSpeed = 1.0f,
     .song = { .loopsPerPattern = 2 },
     .mixer = {
         .volume = {0.8f,0.8f,0.8f,0.8f,0.8f,0.8f,0.8f},
