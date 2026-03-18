@@ -758,11 +758,11 @@ static void dawSyncSequencer(void) {
                 }
                 seq.trackWrapped[t] = false;
             }
-            // Launcher overrides trackPatternIdx for tracks with active clips
+            // Launcher overrides trackPatternIdx — when launcher is active it owns all tracks
             if (lt->playingSlot >= 0) {
                 seq.trackPatternIdx[t] = lt->pattern[lt->playingSlot];
-            } else if (!daw.arr.arrMode) {
-                // No launcher clip and no arrangement: silence this track
+            } else {
+                // No launcher clip on this track: silence it
                 seq.trackPatternIdx[t] = -1;
             }
         }
