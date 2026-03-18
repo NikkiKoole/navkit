@@ -2,6 +2,7 @@
 
 [song]
 format = 2
+songName = "named"
 bpm = 120
 stepCount = 16
 grooveSwing = 0
@@ -1961,6 +1962,18 @@ length = 0
 loopsPerPattern = 2
 songMode = false
 
+[pertrack]
+arrMode = true
+arrLength = 2
+arr0 = 1 0
+arr1 = 1 1
+arr2 = 1 1
+arr3 = 1 1
+arr4 = 1 1
+arr5 = 1 1
+arr6 = 1 1
+arr7 = 1 1
+
 [pattern.0]
 drumTrackLength = 16 16 16 16
 melodyTrackLength = 16 16 16
@@ -1981,22 +1994,3 @@ d track=0 step=6 vel=0.8
 d track=0 step=8 vel=0.8
 d track=0 step=10 vel=0.8
 d track=0 step=12 vel=0.8
-d track=0 step=14 vel=0.8
-m track=0 step=3 note=C4 vel=0.8 gate=1
-m track=2 step=1 note=C4 vel=0.8 gate=1
-s step=9 slice=0 note=60 vel=0.8
-
-[pattern.2]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.8
-d track=0 step=3 vel=0.8
-d track=0 step=7 vel=0.8
-d track=0 step=11 vel=0.8
-m track=1 step=7 note=C4 vel=0.8 gate=1
-m track=2 step=0 note=C4 vel=0.8 gate=1
-m track=2 step=5 note=C4 vel=0.8 gate=1
-m track=2 step=9 note=C4 vel=0.8 gate=1
-m track=2 step=11 note=C4 vel=0.8 gate=1
-m track=2 step=14 note=C4 vel=0.8 gate=1
