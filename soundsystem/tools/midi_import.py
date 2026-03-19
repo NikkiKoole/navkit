@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 GM_PROGRAM_TO_PRESET = [
     11,130,130,114,56,57,18,112,51,45,15,23,11,46,47,60,  # 0-15
     6,106,39,39,106,119,119,119,62,18,62,44,118,63,129,51, # 16-31
-    58,20,1,115,117,117,52,61,108,107,107,58,43,17,126,29, # 32-47
+    58,20,1,115,117,117,52,61,43,43,50,58,43,17,126,29, # 32-47
     5,50,124,43,48,22,42,91,49,49,13,125,49,132,85,125,    # 48-63
     53,53,83,81,59,109,13,59,136,59,110,109,109,59,120,120, # 64-79
     146,147,0,65,63,40,127,128,139,138,137,90,82,86,121,122, # 80-95
@@ -214,52 +214,86 @@ def quantize_events(events, tpb, steps_per_pattern=16):
         patterns[pat_idx].drums.append(DrumEvent(track=track, step=step, velocity=vel))
 
     # --- Melody ---
-    # Assign channels to melody tracks (bass=0, lead=1, chord=2)
-    # Strategy: group channels by resolved preset (same preset = same track),
-    # then sort groups by average pitch: lowest → bass, highest → lead, rest → chord
+    # Use all 7 tracks: 4 drum (monophonic, pitched) + 3 melody (polyphonic).
+    # Polyphonic channels (multiple notes per step) → melody tracks.
+    # Monophonic channels → drum tracks (pitched via nudge field).
+    # Track numbers: drum 0-3, melody 0-2 (stored as track type, not combined index).
     if melody_events:
         ch_notes = defaultdict(list)
         ch_programs = defaultdict(int)
+        ch_step_poly = defaultdict(lambda: defaultdict(int))  # ch → (pat,step) → count
         for e in melody_events:
-            ch_notes[e.channel].append(e.note)
+            ch_notes[e.channel].append(e)
             ch_programs[e.channel] = e.program
 
-        # Group channels by resolved preset
-        preset_groups = defaultdict(list)  # preset_idx → [channel, ...]
-        for ch in ch_notes:
-            p = gm_program_preset(ch_programs[ch])
-            preset_idx = p if p >= 0 else -ch  # unique fallback per channel
-            preset_groups[preset_idx].append(ch)
-
-        # Compute weighted avg pitch per group
-        def group_avg_pitch(channels):
-            total, count = 0, 0
-            for ch in channels:
-                total += sum(ch_notes[ch])
-                count += len(ch_notes[ch])
-            return total / count if count else 60
-
-        sorted_groups = sorted(preset_groups.values(), key=group_avg_pitch)
-
-        ch_to_track = {}
-        if len(sorted_groups) == 1:
-            for ch in sorted_groups[0]:
-                ch_to_track[ch] = 0  # solo → bass
-        elif len(sorted_groups) == 2:
-            for ch in sorted_groups[0]:
-                ch_to_track[ch] = 0  # lower → bass
-            for ch in sorted_groups[1]:
-                ch_to_track[ch] = 1  # higher → lead
-        else:
-            for ch in sorted_groups[0]:
-                ch_to_track[ch] = 0   # lowest → bass
-            for ch in sorted_groups[-1]:
-                ch_to_track[ch] = 1  # highest → lead
-            for group in sorted_groups[1:-1]:
-                for ch in group:
-                    ch_to_track[ch] = 2  # middle → chord
-
+        # Determine max simultaneous notes per step per channel
         for e in melody_events:
+            pat_idx = int(e.start_tick / ticks_per_pattern)
+            if pat_idx >= num_patterns:
+                continue
+            local_tick = e.start_tick - pat_idx * ticks_per_pattern
+            step = round(local_tick / ticks_per_step)
+            if step >= steps_per_pattern:
+                step = 0
+                pat_idx += 1
+            ch_step_poly[e.channel][(pat_idx, step)] += 1
+
+        ch_max_poly = {}
+        for ch, step_counts in ch_step_poly.items():
+            ch_max_poly[ch] = max(step_counts.values()) if step_counts else 1
+
+        def ch_avg_pitch(ch):
+            notes = ch_notes[ch]
+            return sum(e.note for e in notes) / len(notes) if notes else 60
+
+        # Separate polyphonic (need melody tracks) from monophonic (can use drum tracks)
+        poly_channels = [ch for ch in ch_notes if ch_max_poly.get(ch, 1) > 1]
+        mono_channels = [ch for ch in ch_notes if ch_max_poly.get(ch, 1) <= 1]
+
+        # Sort each group by note count (most important first)
+        poly_channels.sort(key=lambda ch: len(ch_notes[ch]), reverse=True)
+        mono_channels.sort(key=lambda ch: len(ch_notes[ch]), reverse=True)
+
+        # Assign polyphonic channels to melody tracks (up to 3), sorted by pitch
+        melody_assigned = poly_channels[:3]
+        melody_assigned.sort(key=ch_avg_pitch)  # lowest → bass, highest → chord
+
+        # Overflow poly channels that don't fit → try drum tracks (will lose polyphony)
+        overflow_poly = poly_channels[3:]
+
+        # Assign monophonic + overflow to drum tracks (up to 4), sorted by pitch
+        drum_candidates = mono_channels + overflow_poly
+        drum_assigned = drum_candidates[:4]
+        drum_assigned.sort(key=ch_avg_pitch)
+
+        # Build channel → (track_type, track_index) map
+        # track_type: 'drum' (0-3) or 'melody' (0-2)
+        ch_to_track = {}  # ch → track index (0-3 for drums, 0-2 for melody)
+        ch_is_drum_track = {}  # ch → bool
+
+        for i, ch in enumerate(melody_assigned):
+            ch_to_track[ch] = i  # melody track 0=bass, 1=lead, 2=chord
+            ch_is_drum_track[ch] = False
+
+        for i, ch in enumerate(drum_assigned):
+            ch_to_track[ch] = i  # drum track 0-3
+            ch_is_drum_track[ch] = True
+
+        # Any remaining channels get merged into closest existing track by pitch
+        assigned_chs = set(ch_to_track.keys())
+        for ch in ch_notes:
+            if ch not in assigned_chs:
+                # Find closest assigned channel by avg pitch
+                my_pitch = ch_avg_pitch(ch)
+                best_ch = min(assigned_chs, key=lambda c: abs(ch_avg_pitch(c) - my_pitch))
+                ch_to_track[ch] = ch_to_track[best_ch]
+                ch_is_drum_track[ch] = ch_is_drum_track[best_ch]
+
+        # Quantize events into patterns
+        for e in melody_events:
+            ch = e.channel
+            if ch not in ch_to_track:
+                continue
             pat_idx = int(e.start_tick / ticks_per_pattern)
             if pat_idx >= num_patterns:
                 continue
@@ -267,26 +301,31 @@ def quantize_events(events, tpb, steps_per_pattern=16):
             step_f = local_tick / ticks_per_step
             step = round(step_f)
 
-            # Wrap boundary notes to next pattern's step 0
             if step >= steps_per_pattern:
                 step = 0
                 pat_idx += 1
                 if pat_idx >= num_patterns:
                     continue
 
-            # Sub-step nudge in sequencer ticks (24 ticks per 16th step)
-            frac = step_f - round(step_f)
-            nudge = max(-12, min(12, round(frac * 24)))
-
-            dur_steps = max(1, round(e.duration_tick / ticks_per_step))
-            gate = min(dur_steps, 64)
-            track = ch_to_track.get(e.channel, 0)
+            track = ch_to_track[ch]
             vel = e.velocity / 127.0
 
-            patterns[pat_idx].melody.append(MelodyEvent(
-                track=track, step=step, note=e.note,
-                velocity=vel, gate=gate, nudge=nudge
-            ))
+            if ch_is_drum_track[ch]:
+                # Drum track: pitch as octave offset from A4 (MIDI 69)
+                pitch = (e.note - 69) / 12.0
+                patterns[pat_idx].drums.append(DrumEvent(
+                    track=track, step=step, velocity=vel, pitch=pitch
+                ))
+            else:
+                # Melody track: full note with gate
+                frac = step_f - round(step_f)
+                nudge = max(-12, min(12, round(frac * 24)))
+                dur_steps = max(1, round(e.duration_tick / ticks_per_step))
+                gate = min(dur_steps, 64)
+                patterns[pat_idx].melody.append(MelodyEvent(
+                    track=track, step=step, note=e.note,
+                    velocity=vel, gate=gate, nudge=nudge
+                ))
 
     # Deduplicate: if same track+step has multiple drums, keep loudest
     for pat in patterns:
@@ -313,7 +352,12 @@ def quantize_events(events, tpb, steps_per_pattern=16):
                 deduped.append(m)
         pat.melody = deduped
 
-    return patterns
+    # Build channel→track map and note counts for preset assignment
+    result_ch_to_track = ch_to_track if melody_events else {}
+    result_ch_is_drum = ch_is_drum_track if melody_events else {}
+    result_ch_note_counts = {ch: len(notes) for ch, notes in ch_notes.items()} if melody_events else {}
+
+    return patterns, result_ch_to_track, result_ch_is_drum, result_ch_note_counts
 
 # ---------------------------------------------------------------------------
 # Preset loader — reads presets.txt (generated by preset_dump.c)
@@ -395,36 +439,44 @@ def write_patch_section(f, section_name, preset_idx):
         f.write("volume = 0.5\nfilterCutoff = 1\n")
         f.write("envelopeEnabled = true\nfilterEnabled = true\n")
 
-def write_song(f, bpm, patterns, channel_programs, steps_per_pattern):
+def write_song(f, bpm, patterns, channel_programs, steps_per_pattern,
+               ch_to_track=None, ch_is_drum=None, ch_note_counts=None):
     """Write a complete .song file."""
 
-    # Determine drum presets (pick most common GM drum per track)
+    # For each track slot, pick preset from the highest-note-count channel assigned to it
     drum_presets = [24, 25, 27, 26]  # default 808: kick, snare, CH, clap
-
-    # For melody, group channels by resolved preset (same logic as quantize_events)
     melody_presets = [1, 1, 1]  # fallback: Fat Bass
-    melody_ch_sorted = sorted(
-        ((ch, prog) for ch, prog in channel_programs.items() if ch != 9),
-        key=lambda x: x[0]
-    )
 
-    # Group by resolved preset
-    preset_groups = defaultdict(list)
-    for ch, prog in melody_ch_sorted:
-        p = gm_program_preset(prog)
-        preset_idx = p if p >= 0 else -ch
-        preset_groups[preset_idx].append((ch, prog))
-    unique_presets = list(preset_groups.keys())
+    if ch_to_track and ch_note_counts and ch_is_drum:
+        # Drum tracks (0-3): pick preset from primary channel
+        for track_idx in range(4):
+            best_ch = None
+            best_count = 0
+            for ch, t in ch_to_track.items():
+                if ch_is_drum.get(ch, False) and t == track_idx:
+                    if ch_note_counts.get(ch, 0) > best_count:
+                        best_count = ch_note_counts[ch]
+                        best_ch = ch
+            if best_ch is not None:
+                prog = channel_programs.get(best_ch, 0)
+                p = gm_program_preset(prog)
+                if p >= 0:
+                    drum_presets[track_idx] = p
 
-    if len(unique_presets) == 1:
-        melody_presets[0] = unique_presets[0] if unique_presets[0] >= 0 else 1
-    elif len(unique_presets) == 2:
-        melody_presets[0] = unique_presets[0] if unique_presets[0] >= 0 else 1
-        melody_presets[1] = unique_presets[1] if unique_presets[1] >= 0 else 1
-    elif len(unique_presets) >= 3:
-        melody_presets[0] = unique_presets[0] if unique_presets[0] >= 0 else 1
-        melody_presets[1] = unique_presets[-1] if unique_presets[-1] >= 0 else 1
-        melody_presets[2] = unique_presets[1] if unique_presets[1] >= 0 else 1
+        # Melody tracks (0-2): pick preset from primary channel
+        for track_idx in range(3):
+            best_ch = None
+            best_count = 0
+            for ch, t in ch_to_track.items():
+                if not ch_is_drum.get(ch, False) and t == track_idx:
+                    if ch_note_counts.get(ch, 0) > best_count:
+                        best_count = ch_note_counts[ch]
+                        best_ch = ch
+            if best_ch is not None:
+                prog = channel_programs.get(best_ch, 0)
+                p = gm_program_preset(prog)
+                if p >= 0:
+                    melody_presets[track_idx] = p
 
     # --- Write file ---
     f.write("# PixelSynth DAW song (format 2)\n")
@@ -611,14 +663,14 @@ def main():
         print_info(args.file, bpm, tpb, events, ch_programs, time_sig)
         sys.exit(0)
 
-    patterns = quantize_events(events, tpb, steps)
+    patterns, ch_to_track, ch_is_drum, ch_note_counts = quantize_events(events, tpb, steps)
 
     out_path = args.output
     if not out_path:
         out_path = args.file.rsplit('.', 1)[0] + '.song'
 
     with open(out_path, 'w') as f:
-        write_song(f, bpm, patterns, ch_programs, steps)
+        write_song(f, bpm, patterns, ch_programs, steps, ch_to_track, ch_is_drum, ch_note_counts)
 
     print(f"Wrote {out_path}")
     print(f"  BPM: {bpm:.1f}, Patterns: {len(patterns)}, Steps/pattern: {steps} ({time_sig[0]}/{time_sig[1]})")
@@ -632,17 +684,21 @@ def main():
     has_drums = any(e.channel == 9 for e in events)
     print(f"  Channels: {ch_count} melodic{' + drums' if has_drums else ''}")
 
-    # Show preset assignments
+    # Show track assignments with presets
+    melody_track_names = {0: 'melody:bass', 1: 'melody:lead', 2: 'melody:chord'}
+    drum_track_names = {0: 'drum:0', 1: 'drum:1', 2: 'drum:2', 3: 'drum:3'}
     presets = load_presets()
-    if presets:
-        melody_ch_sorted = sorted(
-            ((ch, prog) for ch, prog in ch_programs.items() if ch != 9),
-            key=lambda x: x[0]
-        )
-        for ch, prog in melody_ch_sorted:
+    if ch_to_track:
+        for ch in sorted(ch_to_track.keys()):
+            prog = ch_programs.get(ch, 0)
             pi = gm_program_preset(prog)
-            name = get_preset_name(pi) if pi >= 0 else "?"
-            print(f"  Ch {ch}: GM {prog} → {name} (preset {pi})")
+            name = get_preset_name(pi) if presets and pi >= 0 else "?"
+            t = ch_to_track[ch]
+            is_drum = ch_is_drum.get(ch, False)
+            tname = drum_track_names.get(t, '?') if is_drum else melody_track_names.get(t, '?')
+            notes = ch_note_counts.get(ch, 0)
+            poly = "mono" if is_drum else "poly"
+            print(f"  Ch {ch}: GM {prog} → {name} (preset {pi}) → {tname} ({poly}) [{notes} notes]")
 
     # Warn about limitations
     if len(patterns) >= 8:
@@ -654,7 +710,7 @@ def main():
                 print(f"  WARNING: MIDI has ~{actual} patterns, truncated to 64 (max)")
 
     if ch_count > 3:
-        print(f"  WARNING: {ch_count} melody channels mapped to 3 tracks (bass/lead/chord)")
+        print(f"  NOTE: {ch_count} melody channels mapped to 3 tracks (bass/lead/chord)")
 
 
 if __name__ == '__main__':
