@@ -80,7 +80,8 @@ extern Vector2 offset;
 extern Texture2D atlas;
 extern int currentViewZ;
 extern bool frontViewMode;
-extern int frontViewY;  // Which world-Y slice is the "front" row
+extern int frontViewY;      // Which world-Y slice is the "front" row
+extern int frontViewDepth;  // Number of depth layers visible (1-20)
 
 // Screen shake
 extern float screenShakeIntensity;

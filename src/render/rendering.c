@@ -3044,6 +3044,7 @@ static void DrawMist(void) {
 // Multiple world-Y slices shown as depth layers (back rows dimmed, front row bright)
 
 static void DrawFrontView(void) {
+    PROFILE_BEGIN(FrontView);
     float size = CELL_SIZE * zoom;
     Color skyColor = GetSkyColorForTime(timeOfDay);
 
@@ -3072,7 +3073,8 @@ static void DrawFrontView(void) {
     }
 
     // Draw depth layers back to front
-    int depthLayers = FRONT_VIEW_DEPTH_LAYERS;
+    int depthLayers = frontViewDepth;
+    if (depthLayers < 1) depthLayers = 1;
     int startY = frontViewY - depthLayers + 1;
     if (startY < 0) startY = 0;
 
@@ -3138,6 +3140,150 @@ static void DrawFrontView(void) {
             }
         }
 
+        // Draw grass overlay for this layer
+        for (int z = minZ; z < maxZ; z++) {
+            if (z <= 0) continue;
+            int zBelow = z - 1;
+            float screenY = offset.y + (gridDepth - 1 - z) * size - layerOffsetY;
+
+            for (int x = minX; x < maxX; x++) {
+                if (!IsWallNatural(x, worldY, zBelow) || GetWallMaterial(x, worldY, zBelow) != MAT_DIRT) continue;
+                CellType cellHere = grid[z][worldY][x];
+                if (cellHere != CELL_AIR) continue;
+                if (HAS_FLOOR(x, worldY, z)) continue;
+
+                VegetationType veg = GetVegetation(x, worldY, zBelow);
+                int surface = GET_CELL_SURFACE(x, worldY, zBelow);
+                int grassSprite;
+                bool isReeds = (veg == VEG_REEDS);
+                if (isReeds)                         grassSprite = SPRITE_grass_taller;
+                else if (veg >= VEG_GRASS_TALLER)    grassSprite = SPRITE_grass_taller;
+                else if (veg >= VEG_GRASS_TALL)      grassSprite = SPRITE_grass_tall;
+                else if (veg >= VEG_GRASS_SHORT)     grassSprite = SPRITE_grass;
+                else if (surface == SURFACE_TRAMPLED) grassSprite = SPRITE_grass_trampled;
+                else continue;
+
+                float screenX = offset.x + x * size;
+                Rectangle grassDest = {screenX, screenY, size, size};
+                Color grassTint = layerTint;
+                if (isReeds) grassTint = MultiplyColor(grassTint, (Color){120, 200, 180, 255});
+                else grassTint = MultiplyColor(grassTint, biomePresets[selectedBiome].grassTint);
+                DrawTexturePro(atlas, SpriteGetRect(grassSprite), grassDest, (Vector2){0,0}, 0, grassTint);
+            }
+        }
+
+        // Draw plant overlay for this layer
+        for (int i = 0; i < plantCount; i++) {
+            Plant* p = &plants[i];
+            if (!p->active) continue;
+            if (p->y != worldY) continue;
+            if (p->x < minX || p->x >= maxX) continue;
+            if (p->z < minZ || p->z >= maxZ) continue;
+            if (p->stage != PLANT_STAGE_RIPE) continue;
+
+            float screenX = offset.x + p->x * size;
+            float screenY = offset.y + (gridDepth - 1 - p->z) * size - layerOffsetY;
+            Rectangle dest = {screenX, screenY, size, size};
+            float inset = size * 0.25f;
+
+            switch (p->type) {
+                case PLANT_BERRY_BUSH: {
+                    Color t = MultiplyColor(layerTint, (Color){220, 50, 50, 255});
+                    DrawInsetSprite(SPRITE_division, dest, inset, t);
+                    break;
+                }
+                case PLANT_WILD_WHEAT: {
+                    Color t = MultiplyColor(layerTint, (Color){220, 190, 80, 255});
+                    DrawInsetSprite(SPRITE_grass_taller, dest, inset, t);
+                    break;
+                }
+                case PLANT_WILD_LENTILS: {
+                    Color t = MultiplyColor(layerTint, (Color){100, 160, 60, 255});
+                    DrawInsetSprite(SPRITE_grass_tall, dest, inset, t);
+                    break;
+                }
+                case PLANT_WILD_FLAX: {
+                    Color t = MultiplyColor(layerTint, (Color){140, 180, 220, 255});
+                    DrawInsetSprite(SPRITE_grass_tall, dest, inset, t);
+                    break;
+                }
+                default: break;
+            }
+        }
+
+        // Draw fire for this layer
+        if (fireActiveCells > 0) {
+            for (int z = minZ; z < maxZ; z++) {
+                float screenY = offset.y + (gridDepth - 1 - z) * size - layerOffsetY;
+                for (int x = minX; x < maxX; x++) {
+                    FireCell* fc = &fireGrid[z][worldY][x];
+                    int level = fc->level;
+
+                    if (level == 0 && HAS_CELL_FLAG(x, worldY, z, CELL_FLAG_BURNED)) {
+                        Rectangle dest = {offset.x + x * size, screenY, size, size};
+                        Color burnTint = {30, 22, 15, 100};
+                        burnTint.a = (unsigned char)(burnTint.a * brightness);
+                        DrawRectangleRec(dest, burnTint);
+                        continue;
+                    }
+                    if (level <= 0) continue;
+
+                    Color fireColor = FireLevelColor(level);
+                    fireColor.a = (unsigned char)(fireColor.a * brightness);
+                    Rectangle dest = {offset.x + x * size, screenY, size, size};
+                    DrawRectangleRec(dest, fireColor);
+                }
+            }
+        }
+
+        // Draw smoke for this layer
+        if (smokeActiveCells > 0) {
+            for (int z = minZ; z < maxZ; z++) {
+                float screenY = offset.y + (gridDepth - 1 - z) * size - layerOffsetY;
+                for (int x = minX; x < maxX; x++) {
+                    int level = GetSmokeLevel(x, worldY, z);
+                    if (level <= 0) continue;
+
+                    int alpha = 30 + (level * 25);
+                    if (alpha > 205) alpha = 205;
+                    alpha = (int)(alpha * brightness);
+                    Rectangle dest = {offset.x + x * size, screenY, size, size};
+                    DrawRectangleRec(dest, (Color){80, 80, 90, (unsigned char)alpha});
+                }
+            }
+        }
+
+        // Draw steam for this layer
+        if (steamActiveCells > 0) {
+            for (int z = minZ; z < maxZ; z++) {
+                float screenY = offset.y + (gridDepth - 1 - z) * size - layerOffsetY;
+                for (int x = minX; x < maxX; x++) {
+                    int level = GetSteamLevel(x, worldY, z);
+                    if (level <= 0) continue;
+
+                    int alpha = 40 + (level * 20);
+                    if (alpha > 180) alpha = 180;
+                    alpha = (int)(alpha * brightness);
+                    Rectangle dest = {offset.x + x * size, screenY, size, size};
+                    DrawRectangleRec(dest, (Color){220, 220, 230, (unsigned char)alpha});
+                }
+            }
+        }
+
+        // Draw water for this layer
+        for (int z = minZ; z < maxZ; z++) {
+            float screenY = offset.y + (gridDepth - 1 - z) * size - layerOffsetY;
+            for (int x = minX; x < maxX; x++) {
+                uint16_t water = waterGrid[z][worldY][x].level;
+                if (water == 0) continue;
+                float screenX = offset.x + x * size;
+                float waterHeight = size * ((float)water / 7.0f);
+                Rectangle waterDest = {screenX, screenY + (size - waterHeight), size, waterHeight};
+                unsigned char alpha = (unsigned char)(brightness * 180);
+                DrawRectangleRec(waterDest, (Color){30, 100, 200, alpha});
+            }
+        }
+
         // Draw items for this layer (after cells, before movers)
         float itemSize = size * 0.6f;
         for (int i = 0; i < itemHighWaterMark; i++) {
@@ -3191,31 +3337,8 @@ static void DrawFrontView(void) {
         }
     }
 
-    // Draw water
-    for (int layer = 0; layer < depthLayers; layer++) {
-        int worldY = startY + layer;
-        if (worldY < 0 || worldY >= gridHeight) continue;
-
-        float brightness = 0.3f + 0.7f * ((float)layer / (float)(depthLayers - 1));
-        float waterFloorH = size * 0.25f;
-        if (waterFloorH < 3.0f) waterFloorH = 3.0f;
-        float layerOffsetY = (depthLayers - 1 - layer) * waterFloorH;
-
-        for (int z = minZ; z < maxZ; z++) {
-            float screenY = offset.y + (gridDepth - 1 - z) * size - layerOffsetY;
-            for (int x = minX; x < maxX; x++) {
-                uint16_t water = waterGrid[z][worldY][x].level;
-                if (water == 0) continue;
-                float screenX = offset.x + x * size;
-                float waterHeight = size * ((float)water / 7.0f);
-                Rectangle waterDest = {screenX, screenY + (size - waterHeight), size, waterHeight};
-                unsigned char alpha = (unsigned char)(brightness * 180);
-                DrawRectangleRec(waterDest, (Color){30, 100, 200, alpha});
-            }
-        }
-    }
-
     // HUD label
-    DrawText(TextFormat("FRONT VIEW  Y-slice: %d  [</>: scroll depth]", frontViewY), 10, screenH - 30, 20, WHITE);
+    DrawTextShadow(TextFormat("FRONT VIEW  Y: %d  depth: %d  [</>: Y-slice] [[ ]]: depth]", frontViewY, frontViewDepth), 10, screenH - 60, 16, WHITE);
+    PROFILE_END(FrontView);
 }
 

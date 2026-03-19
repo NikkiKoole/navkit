@@ -219,8 +219,7 @@ z=0   [dirt] [dirt] [dirt──────]    |  [dirt] [dirt] [dirt]
 
 - **Front-facing wall sprites** — current top-down wall sprites work but aren't ideal
 - **Front-facing mover sprites** — characters facing you, much more characterful
-- **Fire/smoke/steam overlays** — not yet ported to front view
-- **Grass/plant/tree overlays** — not yet ported
 - **UI/input in front view** — currently observe-only, no designating/building
 - **Wall occlusion** — decide if front-row walls should hide back rooms
-- **Configurable depth layer count** — currently hardcoded to 5
+- **Smooth ladder z-movement** — movers snap z instantly (`mover.c:1454`) which looks like teleportation in front view since z maps to screen Y. Two approaches: (1) interpolate `m->z` in simulation with a climb speed, or (2) visual-only smoothing with a `displayZ` per mover that lerps toward `m->z` in the renderer. Option 2 is cheapest, no gameplay impact.
+- **Windows as see-through in front view** — `CELL_WINDOW` already has light-blue tint + light transmission. In front view, render windows semi-transparent so movers/items behind them are visible. Would make buildings feel alive — watching movers move inside their houses.

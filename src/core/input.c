@@ -2399,9 +2399,12 @@ void HandleInput(void) {
         }
     }
     // Front view depth scrolling (,/. scroll Y-slice instead of z-level)
+    // [/] adjust number of visible depth layers
     if (frontViewMode) {
         if (IsKeyPressed(KEY_PERIOD) && frontViewY < gridHeight - 1) frontViewY++;
         if (IsKeyPressed(KEY_COMMA) && frontViewY > 0) frontViewY--;
+        if (IsKeyPressed(KEY_RIGHT_BRACKET) && frontViewDepth < gridHeight) frontViewDepth++;
+        if (IsKeyPressed(KEY_LEFT_BRACKET) && frontViewDepth > 1) frontViewDepth--;
     }
 
     // Toggle dev/play UI

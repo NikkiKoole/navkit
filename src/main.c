@@ -34,7 +34,8 @@ Vector2 offset = {0, 0};
 Texture2D atlas;
 int currentViewZ = 1;  // Default to z=1 for DF-style (walking level above ground)
 bool frontViewMode = false;
-int frontViewY = 0;  // Which world-Y slice is the "front" row
+int frontViewY = 0;      // Which world-Y slice is the "front" row
+int frontViewDepth = 5;  // Number of depth layers visible
 
 // Screen shake
 float screenShakeIntensity = 0.0f;
@@ -1878,6 +1879,29 @@ int main(int argc, char** argv) {
         PieMenu_Draw();
 
         DrawMessages(GetScreenWidth(), GetScreenHeight());
+
+        // Front view toggle button (bottom-right corner)
+        {
+            const char* label = frontViewMode ? "[V] Top Down" : "[V] Front View";
+            int fontSize = 16;
+            int textW = MeasureText(label, fontSize);
+            int btnX = GetScreenWidth() - textW - 20;
+            int btnY = GetScreenHeight() - fontSize - 50;
+            int btnW = textW + 16;
+            int btnH = fontSize + 8;
+            Vector2 mouse = GetMousePosition();
+            bool hovered = mouse.x >= btnX && mouse.x < btnX + btnW && mouse.y >= btnY && mouse.y < btnY + btnH;
+            Color bgColor = hovered ? (Color){80, 80, 80, 200} : (Color){40, 40, 40, 180};
+            DrawRectangle(btnX, btnY, btnW, btnH, bgColor);
+            DrawRectangleLines(btnX, btnY, btnW, btnH, hovered ? WHITE : GRAY);
+            DrawTextShadow(label, btnX + 8, btnY + 4, fontSize, hovered ? WHITE : LIGHTGRAY);
+            if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                frontViewMode = !frontViewMode;
+                if (frontViewMode) {
+                    frontViewY = gridHeight / 2;
+                }
+            }
+        }
 
         if (!frontViewMode) {
         if (hoveredStockpile >= 0) {
