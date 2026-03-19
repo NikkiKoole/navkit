@@ -79,6 +79,8 @@ extern float zoom;
 extern Vector2 offset;
 extern Texture2D atlas;
 extern int currentViewZ;
+extern bool frontViewMode;
+extern int frontViewY;  // Which world-Y slice is the "front" row
 
 // Screen shake
 extern float screenShakeIntensity;

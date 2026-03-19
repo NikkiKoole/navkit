@@ -20,6 +20,7 @@
 #define MAX_VISIBLE_DEPTH    9
 #define SOURCE_MARKER_INSET  0.3f
 #define RAMP_OVERLAY_ALPHA   96
+#define FRONT_VIEW_DEPTH_LAYERS  5
 
 // Helper: calculate visible cell range with view frustum culling
 static void GetVisibleCellRange(float size, int* minX, int* minY, int* maxX, int* maxY) {
@@ -3036,5 +3037,185 @@ static void DrawMist(void) {
             DrawRectangleRec(dest, (Color){200, 200, 210, (unsigned char)alpha});
         }
     }
+}
+
+// --- Front View Mode ---
+// Renders the world from the front: screen X = world X, screen Y = world Z (bottom to top)
+// Multiple world-Y slices shown as depth layers (back rows dimmed, front row bright)
+
+static void DrawFrontView(void) {
+    float size = CELL_SIZE * zoom;
+    Color skyColor = GetSkyColorForTime(timeOfDay);
+
+    // Visible X range (reuse frustum culling logic)
+    int screenW = GetScreenWidth();
+    int screenH = GetScreenHeight();
+    int minX = 0, maxX = gridWidth;
+    if (cullDrawing) {
+        minX = (int)((-offset.x) / size) - 1;
+        maxX = (int)((-offset.x + screenW) / size) + 2;
+        if (minX < 0) minX = 0;
+        if (maxX > gridWidth) maxX = gridWidth;
+    }
+
+    // Visible Z range (screen Y maps to world Z, inverted: high Z at top)
+    int minZ = 0, maxZ = gridDepth;
+    if (cullDrawing) {
+        // screenY = offset.y + (gridDepth - 1 - z) * size
+        // z = gridDepth - 1 - (screenY - offset.y) / size
+        int zFromTop = (int)((screenH - offset.y) / size);
+        int zFromBot = (int)((-offset.y) / size) - 1;
+        minZ = gridDepth - 1 - zFromTop;
+        maxZ = gridDepth - zFromBot;
+        if (minZ < 0) minZ = 0;
+        if (maxZ > gridDepth) maxZ = gridDepth;
+    }
+
+    // Draw depth layers back to front
+    int depthLayers = FRONT_VIEW_DEPTH_LAYERS;
+    int startY = frontViewY - depthLayers + 1;
+    if (startY < 0) startY = 0;
+
+    for (int layer = 0; layer < depthLayers; layer++) {
+        int worldY = startY + layer;
+        if (worldY < 0 || worldY >= gridHeight) continue;
+
+        // Dimming: back layers darker, front layer full brightness
+        float brightness = 0.3f + 0.7f * ((float)layer / (float)(depthLayers - 1));
+        unsigned char b = (unsigned char)(brightness * 255);
+        Color layerTint = {b, b, b, 255};
+
+        // Depth offset per layer = floor thickness, so floor strips tile seamlessly on flat ground
+        float floorThickness = size * 0.25f;
+        if (floorThickness < 3.0f) floorThickness = 3.0f;
+        float layerOffsetY = (depthLayers - 1 - layer) * floorThickness;
+
+        for (int z = minZ; z < maxZ; z++) {
+            // Screen Y: z=0 at bottom, higher z goes up
+            float screenY = offset.y + (gridDepth - 1 - z) * size - layerOffsetY;
+
+            for (int x = minX; x < maxX; x++) {
+                CellType cell = grid[z][worldY][x];
+                float screenX = offset.x + x * size;
+                Rectangle dest = {screenX, screenY, size, size};
+
+                if (cell == CELL_AIR) {
+                    // Floor surfaces: squished sprite on all layers, edge details on front only
+                    float floorThickness = size * 0.25f;
+                    if (floorThickness < 3.0f) floorThickness = 3.0f;
+
+                    int floorSprite = -1;
+                    MaterialType floorMat = MAT_NONE;
+                    if (HAS_FLOOR(x, worldY, z)) {
+                        floorSprite = GetFloorSpriteAt(x, worldY, z);
+                        floorMat = GetFloorMaterial(x, worldY, z);
+                    } else if (z > 0 && CellIsSolid(grid[z-1][worldY][x])) {
+                        floorMat = GetWallMaterial(x, worldY, z-1);
+                        floorSprite = MaterialFloorSprite(floorMat);
+                    }
+
+                    if (floorSprite >= 0) {
+                        Color matTint = MultiplyColor(MaterialTint(floorMat), layerTint);
+                        float floorTop = screenY + size - floorThickness;
+
+                        // Top surface: squished sprite (all layers)
+                        Rectangle surfaceDest = {screenX, floorTop, size, floorThickness};
+                        DrawTexturePro(atlas, SpriteGetRect(floorSprite), surfaceDest, (Vector2){0,0}, 0, matTint);
+                    }
+                    // else: empty air, draw nothing
+                } else {
+                    // Solid cell (wall, dirt, tree, etc)
+                    int sprite = GetWallSpriteAt(x, worldY, z, cell);
+                    Color tint = layerTint;
+                    if ((cell == CELL_WALL && !IsWallNatural(x, worldY, z)) || cell == CELL_DOOR || cell == CELL_WINDOW) {
+                        tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, worldY, z)));
+                    }
+                    if (cell == CELL_WINDOW) {
+                        tint = MultiplyColor(tint, (Color){180, 220, 255, 200});
+                    }
+                    DrawTexturePro(atlas, SpriteGetRect(sprite), dest, (Vector2){0,0}, 0, tint);
+                }
+            }
+        }
+
+        // Draw items for this layer (after cells, before movers)
+        float itemSize = size * 0.6f;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            Item* it = &items[i];
+            if (!it->active) continue;
+            if (it->state == ITEM_CARRIED || it->state == ITEM_IN_STOCKPILE) continue;
+
+            int itemCellY = (int)(it->y / CELL_SIZE);
+            if (itemCellY != worldY) continue;
+
+            float isx = offset.x + (it->x / CELL_SIZE) * size + (size - itemSize) / 2.0f;
+            float isy = offset.y + (gridDepth - 1 - (int)it->z) * size - layerOffsetY + (size - itemSize) / 2.0f;
+            Rectangle itemDest = {isx, isy, itemSize, itemSize};
+
+            int sprite = ItemSpriteForTypeMaterial(it->type, it->material);
+            Color tint = MultiplyColor((Color){b, b, b, 255}, MaterialTint(it->material));
+            DrawTexturePro(atlas, SpriteGetRect(sprite), itemDest, (Vector2){0,0}, 0, tint);
+        }
+
+        // Draw movers for this layer (after cells+items)
+        // Use fractional Y to interpolate offset/brightness for smooth depth transitions
+        float moverSize = size * MOVER_SIZE;
+        for (int i = 0; i < moverCount; i++) {
+            Mover* m = &movers[i];
+            if (!m->active) continue;
+            if (m->transportState == TRANSPORT_RIDING) continue;
+
+            int moverCellY = (int)(m->y / CELL_SIZE);
+            if (moverCellY != worldY) continue;
+
+            // Fractional layer position for smooth interpolation
+            float fracY = m->y / CELL_SIZE;  // e.g. 5.7
+            float fracLayer = fracY - startY; // continuous layer index
+            float fracBrightness = 0.3f + 0.7f * (fracLayer / (float)(depthLayers - 1));
+            if (fracBrightness < 0.3f) fracBrightness = 0.3f;
+            if (fracBrightness > 1.0f) fracBrightness = 1.0f;
+            float fracLayerOffsetY = (depthLayers - 1 - fracLayer) * floorThickness;
+
+            float msx = offset.x + (m->x / CELL_SIZE) * size;
+            float msy = offset.y + (gridDepth - 1 - m->z) * size - fracLayerOffsetY;
+
+            float moverOffset = (size - moverSize) / 2.0f;
+            Rectangle moverDest = {msx + moverOffset, msy + moverOffset, moverSize, moverSize};
+
+            unsigned char mb = (unsigned char)(fracBrightness * 255);
+            Color moverColor = {mb, mb, mb, 255};
+            Color lightTint = GetLightColor((int)(m->x / CELL_SIZE), moverCellY, (int)m->z, skyColor);
+            moverColor = MultiplyColor(moverColor, lightTint);
+
+            DrawTexturePro(atlas, SpriteGetRect(SPRITE_head), moverDest, (Vector2){0,0}, 0, moverColor);
+        }
+    }
+
+    // Draw water
+    for (int layer = 0; layer < depthLayers; layer++) {
+        int worldY = startY + layer;
+        if (worldY < 0 || worldY >= gridHeight) continue;
+
+        float brightness = 0.3f + 0.7f * ((float)layer / (float)(depthLayers - 1));
+        float waterFloorH = size * 0.25f;
+        if (waterFloorH < 3.0f) waterFloorH = 3.0f;
+        float layerOffsetY = (depthLayers - 1 - layer) * waterFloorH;
+
+        for (int z = minZ; z < maxZ; z++) {
+            float screenY = offset.y + (gridDepth - 1 - z) * size - layerOffsetY;
+            for (int x = minX; x < maxX; x++) {
+                uint16_t water = waterGrid[z][worldY][x].level;
+                if (water == 0) continue;
+                float screenX = offset.x + x * size;
+                float waterHeight = size * ((float)water / 7.0f);
+                Rectangle waterDest = {screenX, screenY + (size - waterHeight), size, waterHeight};
+                unsigned char alpha = (unsigned char)(brightness * 180);
+                DrawRectangleRec(waterDest, (Color){30, 100, 200, alpha});
+            }
+        }
+    }
+
+    // HUD label
+    DrawText(TextFormat("FRONT VIEW  Y-slice: %d  [</>: scroll depth]", frontViewY), 10, screenH - 30, 20, WHITE);
 }
 

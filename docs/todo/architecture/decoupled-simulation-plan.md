@@ -153,3 +153,74 @@ After each phase:
 3. **Phase 3**: Write a simple test that creates a simulation, spawns a mover, updates it
 4. **Phase 4**: Run the new game - see movers rendered in 2.5D with depth sorting
 5. **Phase 5**: Movers display directional sprites instead of shapes
+
+---
+
+## Front View Mode (2026-03-19)
+
+> Status: **implemented (v1)**
+
+A second rendering mode alongside the existing top-down view. Not a replacement — both coexist, player toggles between them.
+
+### Reference
+
+SNES Zelda (A Link to the Past) style: **front-facing 3/4 view**. Not isometric, not side-on platformer. You see the front face of walls, a slight top-down angle on floors, characters facing you.
+
+### Coordinate Mapping
+
+```
+Screen X  =  World X
+Screen Y  =  World Z (height)
+Depth     =  World Y (into the screen), rendered as layers
+```
+
+This is the simplest possible projection — no rotation, no skew.
+
+### Dollhouse / Theatre Set Layering
+
+Multiple world-Y slices visible simultaneously, like a diorama with the front wall removed:
+
+```
+                depth (world Y) →
+                back rows (dimmed)       front row (bright)
+
+z=3   [sky]  [sky]  [roof──────]    |  [sky]  [sky]  [sky]
+z=2   [sky]  [sky]  [room  🧑 ]    |  [sky]  [tree] [sky]
+z=1   [grass][grass][wall-front]    |  [grass][trunk][grass]
+z=0   [dirt] [dirt] [dirt──────]    |  [dirt] [dirt] [dirt]
+```
+
+### What's Implemented (v1)
+
+**Controls:**
+- `V` — toggle front view mode on/off
+- `,`/`.` — scroll Y-slice (depth) in front view
+- `F` on mover — follow mode works in both views
+- Zoom/pan work as normal
+
+**Rendering (`DrawFrontView` in rendering.c):**
+- 5 depth layers drawn back-to-front, back rows dimmed (30%-100% brightness)
+- Depth offset per layer = floor thickness (`size * 0.25f`) — seamless tiling on flat ground
+- Floor surfaces: squished top-down sprite (gives texture at a glance)
+- Solid cells: existing 8x8 sprites, tinted per material
+- Water: blue rectangles scaled by water level
+- Movers/items drawn **per-layer** inside the layer loop for correct depth ordering
+- Movers use **fractional Y interpolation** for smooth depth transitions (no snapping)
+- Tooltips disabled in front view
+- Follow mode tracks mover X/Z position + updates frontViewY to mover's depth slice
+
+**Files changed:**
+- `src/game_state.h` — `frontViewMode`, `frontViewY` globals
+- `src/core/input.c` — V key toggle, depth scrolling
+- `src/main.c` — front view branch in render loop, follow mode, tooltip suppression
+- `src/render/rendering.c` — `DrawFrontView()` (~180 lines)
+
+### Future Work
+
+- **Front-facing wall sprites** — current top-down wall sprites work but aren't ideal
+- **Front-facing mover sprites** — characters facing you, much more characterful
+- **Fire/smoke/steam overlays** — not yet ported to front view
+- **Grass/plant/tree overlays** — not yet ported
+- **UI/input in front view** — currently observe-only, no designating/building
+- **Wall occlusion** — decide if front-row walls should hide back rooms
+- **Configurable depth layer count** — currently hardcoded to 5

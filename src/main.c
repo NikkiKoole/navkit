@@ -33,6 +33,8 @@ float zoom = 1.0f;
 Vector2 offset = {0, 0};
 Texture2D atlas;
 int currentViewZ = 1;  // Default to z=1 for DF-style (walking level above ground)
+bool frontViewMode = false;
+int frontViewY = 0;  // Which world-Y slice is the "front" row
 
 // Screen shake
 float screenShakeIntensity = 0.0f;
@@ -1332,13 +1334,25 @@ int main(int argc, char** argv) {
             } else {
                 float centerX = GetScreenWidth() * 0.5f;
                 float centerY = GetScreenHeight() * 0.5f;
-                float targetX = centerX - movers[followMoverIdx].x * zoom;
-                float targetY = centerY - movers[followMoverIdx].y * zoom;
                 float t = 10.0f * frameTime;
                 if (t > 1.0f) t = 1.0f;
-                offset.x += (targetX - offset.x) * t;
-                offset.y += (targetY - offset.y) * t;
-                currentViewZ = (int)movers[followMoverIdx].z;
+
+                if (frontViewMode) {
+                    // Front view: X from mover world X, Y from mover world Z
+                    float size = CELL_SIZE * zoom;
+                    float targetX = centerX - (movers[followMoverIdx].x / CELL_SIZE) * size;
+                    float targetY = centerY - (gridDepth - 1 - movers[followMoverIdx].z) * size;
+                    offset.x += (targetX - offset.x) * t;
+                    offset.y += (targetY - offset.y) * t;
+                    // Track mover's Y-slice as front depth layer
+                    frontViewY = (int)(movers[followMoverIdx].y / CELL_SIZE);
+                } else {
+                    float targetX = centerX - movers[followMoverIdx].x * zoom;
+                    float targetY = centerY - movers[followMoverIdx].y * zoom;
+                    offset.x += (targetX - offset.x) * t;
+                    offset.y += (targetY - offset.y) * t;
+                    currentViewZ = (int)movers[followMoverIdx].z;
+                }
             }
         }
 
@@ -1351,6 +1365,9 @@ int main(int argc, char** argv) {
         offset.x += shakeOffset.x;
         offset.y += shakeOffset.y;
 
+        if (frontViewMode) {
+            DrawFrontView();
+        } else {
         PROFILE_BEGIN(DrawCells);
         DrawCellGrid();
         DrawGrassOverlay();
@@ -1404,10 +1421,11 @@ int main(int argc, char** argv) {
         DrawAnimals();
         DrawTrains();
         DrawJobLines();
-        
+
         // Phase 5: Mist overlay (after all world elements, before UI)
         DrawMist();
         DrawFogOfWar();
+        } // end !frontViewMode
 
         // Draw workshop preview when in workshop placement mode
         // Workshop actions and WorkshopType enums are in the same order, so derive directly
@@ -1861,6 +1879,7 @@ int main(int argc, char** argv) {
 
         DrawMessages(GetScreenWidth(), GetScreenHeight());
 
+        if (!frontViewMode) {
         if (hoveredStockpile >= 0) {
             DrawStockpileTooltip(hoveredStockpile, GetMousePosition(), ScreenToGrid(GetMousePosition()));
         }
@@ -1913,6 +1932,7 @@ int main(int argc, char** argv) {
         }
 
         DrawTooltip();
+        } // end !frontViewMode tooltips
         Console_Draw();
 
         // Cutscene system (renders as overlay on top of game)

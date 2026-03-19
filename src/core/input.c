@@ -2391,6 +2391,19 @@ void HandleInput(void) {
     if (IsKeyPressed(KEY_PERIOD) && currentViewZ < gridDepth - 1) currentViewZ++;
     if (IsKeyPressed(KEY_COMMA) && currentViewZ > 0) currentViewZ--;
 
+    // Front view mode toggle
+    if (IsKeyPressed(KEY_V)) {
+        frontViewMode = !frontViewMode;
+        if (frontViewMode) {
+            frontViewY = gridHeight / 2;  // Start in the middle
+        }
+    }
+    // Front view depth scrolling (,/. scroll Y-slice instead of z-level)
+    if (frontViewMode) {
+        if (IsKeyPressed(KEY_PERIOD) && frontViewY < gridHeight - 1) frontViewY++;
+        if (IsKeyPressed(KEY_COMMA) && frontViewY > 0) frontViewY--;
+    }
+
     // Toggle dev/play UI
     if (IsKeyPressed(KEY_TAB)) {
         devUI = !devUI;
