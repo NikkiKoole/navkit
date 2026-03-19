@@ -326,6 +326,7 @@ typedef struct {
     int note;         // MIDI note number
     int step;         // Step when note-on occurred
     int track;        // Absolute track index (4-6 for melody)
+    int patternIdx;   // Pattern index when note-on occurred (for cross-pattern gate)
     bool active;
 } RecHeldNote;
 static RecHeldNote recHeld[REC_MAX_HELD];
@@ -535,6 +536,7 @@ static void dawRecordNoteOn(int midiNote, float velocity) {
             recHeld[i].note = midiNote;
             recHeld[i].step = qStep;
             recHeld[i].track = track;
+            recHeld[i].patternIdx = seq.currentPattern;
             recHeld[i].active = true;
             break;
         }
@@ -547,17 +549,38 @@ static void dawRecordNoteOff(int midiNote) {
         if (recHeld[i].active && recHeld[i].note == midiNote) {
             int track = recHeld[i].track;
             int startStep = recHeld[i].step;
+            int startPat = recHeld[i].patternIdx;
+            int curPat = seq.currentPattern;
 
-            Pattern *pat = dawPattern();
-            int trackLen = pat->trackLength[track];
-            if (trackLen <= 0) trackLen = 16;
+            // Get the pattern where the note started
+            Pattern *startPatPtr = &seq.patterns[startPat];
+            int startTrackLen = startPatPtr->trackLength[track];
+            if (startTrackLen <= 0) startTrackLen = 16;
 
             int curStep = seq.trackStep[track];
-            int gate = (curStep - startStep + trackLen) % trackLen;
-            if (gate < 1) gate = 1;
-            if (gate > 16) gate = 16;
+            int gate;
 
-            StepV2 *sv = &pat->steps[track][startStep];
+            if (curPat == startPat) {
+                // Same pattern: simple wrap
+                gate = (curStep - startStep + startTrackLen) % startTrackLen;
+            } else {
+                // Cross-pattern: sum steps from start to current position
+                // Steps remaining in the starting pattern
+                gate = startTrackLen - startStep;
+                // Steps from full patterns in between
+                for (int p = startPat + 1; p < curPat && p < SEQ_NUM_PATTERNS; p++) {
+                    int tl = seq.patterns[p].trackLength[track];
+                    if (tl <= 0) tl = 16;
+                    gate += tl;
+                }
+                // Steps into the current pattern
+                gate += curStep;
+            }
+
+            if (gate < 1) gate = 1;
+            if (gate > 64) gate = 64; // int8_t max practical (engine comment: 1-64)
+
+            StepV2 *sv = &startPatPtr->steps[track][startStep];
             int ni = stepV2FindNote(sv, midiNote);
             if (ni >= 0) sv->notes[ni].gate = (int8_t)gate;
 
@@ -1362,9 +1385,10 @@ static int prScrollNote = 48;     // Bottom visible MIDI note (C3)
 // Drag modes
 typedef enum { PR_DRAG_NONE, PR_DRAG_MOVE, PR_DRAG_LEFT, PR_DRAG_RIGHT } PRDragMode;
 static PRDragMode prDragMode = PR_DRAG_NONE;
-static int prDragStep = -1;       // Original step of note being dragged
+static int prDragStep = -1;       // Local step within pattern of note being dragged
 static int prDragVoice = -1;      // Which voice index within the step
 static int prDragNote = -1;       // Original pitch of note being dragged
+static int prDragPatIdx = -1;     // Pattern index of note being dragged (for chain view)
 static float prDragStartX = 0;    // Mouse X at drag start
 static float prDragStartY = 0;    // Mouse Y at drag start
 static int prDragOrigGate = 0;    // Gate at drag start
@@ -2921,7 +2945,6 @@ static void drawWorkPiano(float x, float y, float w, float h) {
     int prTrackCount = SEQ_MELODY_TRACKS + 1; // 3 melodic + sampler
 
     int steps = daw.stepCount;
-    Pattern *pat = dawPattern();
     bool isSamplerPR = (prTrack == SEQ_MELODY_TRACKS); // sampler is the 4th tab
     int mt = isSamplerPR ? SEQ_TRACK_SAMPLER : (SEQ_DRUM_TRACKS + prTrack);
     Color trackCol = prTrackColors[prTrack];
@@ -2941,11 +2964,12 @@ static void drawWorkPiano(float x, float y, float w, float h) {
 
     // Layout
     float topH = 18;     // Track selector row
+    float scrollbarH = 10; // horizontal scrollbar height
     float keyW = 36;     // Piano key width
     float gridX = x + keyW;
     float gridY = y + topH;
     float gridW = w - keyW;
-    float gridH = h - topH;
+    float gridH = h - topH - scrollbarH; // reserve space for scrollbar
     float noteH = 12;    // Fixed cell height (pixels per semitone)
     int visNotes = (int)(gridH / noteH);
     if (visNotes < 6) visNotes = 6;
@@ -3312,64 +3336,78 @@ static void drawWorkPiano(float x, float y, float w, float h) {
 
     // --- Mouse interaction ---
     // Hit-test: find which note (if any) the mouse is over, and which zone (left/middle/right)
-    int hitStep = -1;
+    // In chain view, iterates across all patterns in the chain.
+    int hitStep = -1;       // Local step within hitPatIdx
     int hitVoice = -1;
+    int hitPatIdx = -1;     // Pattern index where hit occurred
     int hitZone = 0; // 0=none, 1=left edge, 2=middle, 3=right edge
     float edgeW = stepW * 0.2f; // edge grab zone width
     if (edgeW < 4) edgeW = 4;
     if (edgeW > 12) edgeW = 12;
 
     if (CheckCollisionPointRec(mouse, gridRect)) {
-        for (int s = 0; s < steps && hitStep < 0; s++) {
-            StepV2 *sv = &pat->steps[mt][s];
-            for (int v = 0; v < sv->noteCount; v++) {
-                StepNote *sn = &sv->notes[v];
-                if (sn->note == SEQ_NOTE_OFF) continue;
-                int pitchIdx = sn->note - prScrollNote;
-                if (pitchIdx < 0 || pitchIdx >= visNotes) continue;
+        int hitGlobalOff = 0;
+        for (int ci = 0; ci < chainPatCount && hitStep < 0; ci++) {
+            int pi = chainPatStart + ci;
+            Pattern *cp = &seq.patterns[pi];
+            int trackLen = cp->trackLength[mt];
+            if (trackLen <= 0) trackLen = 16;
 
-                int gate = sn->gate;
-                if (gate <= 0) gate = 1;
-                float nudgeFrac = sn->nudge / 24.0f;
-                float gateNdgFrac = sn->gateNudge / 24.0f;
+            for (int s = 0; s < trackLen && hitStep < 0; s++) {
+                StepV2 *sv = &cp->steps[mt][s];
+                int gs = hitGlobalOff + s;
+                for (int v = 0; v < sv->noteCount; v++) {
+                    StepNote *sn = &sv->notes[v];
+                    if (sn->note == SEQ_NOTE_OFF) continue;
+                    int pitchIdx = sn->note - prScrollNote;
+                    if (pitchIdx < 0 || pitchIdx >= visNotes) continue;
 
-                float nX = gridX + (s + nudgeFrac) * stepW;
-                float nY = gridY + gridH - (pitchIdx + 1) * noteH;
-                float nW = (gate + gateNdgFrac) * stepW - 1;
-                if (nW < 3) nW = 3;
+                    int gate = sn->gate;
+                    if (gate <= 0) gate = 1;
+                    float nudgeFrac = sn->nudge / 24.0f;
+                    float gateNdgFrac = sn->gateNudge / 24.0f;
 
-                float margin = edgeW * 0.6f;
-                Rectangle noteR = {nX - margin, nY, nW + margin * 2, noteH};
-                if (CheckCollisionPointRec(mouse, noteR)) {
-                    hitStep = s;
-                    hitVoice = v;
-                    float relToLeft = mouse.x - nX;
-                    float relToRight = mouse.x - (nX + nW);
-                    if (nW < edgeW * 3.0f) {
-                        if (relToLeft < 0) hitZone = 1;
-                        else if (relToRight > 0) hitZone = 3;
-                        else hitZone = 2;
-                    } else {
-                        if (relToLeft < edgeW) hitZone = 1;
-                        else if (relToRight > -edgeW) hitZone = 3;
-                        else hitZone = 2;
+                    float nX = gridX + (gs - prChainScroll + nudgeFrac) * stepW;
+                    float nY = gridY + gridH - (pitchIdx + 1) * noteH;
+                    float nW = (gate + gateNdgFrac) * stepW - 1;
+                    if (nW < 3) nW = 3;
+
+                    float margin = edgeW * 0.6f;
+                    Rectangle noteR = {nX - margin, nY, nW + margin * 2, noteH};
+                    if (CheckCollisionPointRec(mouse, noteR)) {
+                        hitStep = s;
+                        hitVoice = v;
+                        hitPatIdx = pi;
+                        float relToLeft = mouse.x - nX;
+                        float relToRight = mouse.x - (nX + nW);
+                        if (nW < edgeW * 3.0f) {
+                            if (relToLeft < 0) hitZone = 1;
+                            else if (relToRight > 0) hitZone = 3;
+                            else hitZone = 2;
+                        } else {
+                            if (relToLeft < edgeW) hitZone = 1;
+                            else if (relToRight > -edgeW) hitZone = 3;
+                            else hitZone = 2;
+                        }
+                        break;
                     }
-                    break;
                 }
             }
+            hitGlobalOff += trackLen;
         }
     }
 
     // Cursor hint based on zone
-    if (prDragMode == PR_DRAG_NONE && hitStep >= 0 && hitVoice >= 0) {
-        StepNote *hitSn = &pat->steps[mt][hitStep].notes[hitVoice];
+    if (prDragMode == PR_DRAG_NONE && hitStep >= 0 && hitVoice >= 0 && hitPatIdx >= 0) {
+        Pattern *hitPat = &seq.patterns[hitPatIdx];
+        StepNote *hitSn = &hitPat->steps[mt][hitStep].notes[hitVoice];
         if (hitZone == 1 || hitZone == 3) {
             SetMouseCursor(MOUSE_CURSOR_RESIZE_EW);
             DrawTextShadow("<->", (int)mouse.x + 12, (int)mouse.y - 14, UI_FONT_SMALL, (Color){255,200,100,255});
         } else {
             SetMouseCursor(MOUSE_CURSOR_RESIZE_ALL);
             int nn = hitSn->note;
-            int voices = pat->steps[mt][hitStep].noteCount;
+            int voices = hitPat->steps[mt][hitStep].noteCount;
             if (isSamplerPR) {
                 DrawTextShadow(TextFormat("S%d pitch%+d step%d%s", hitSn->slice, nn-60, hitStep+1,
                                voices > 1 ? TextFormat(" [%d/%d]", hitVoice+1, voices) : ""),
@@ -3392,16 +3430,16 @@ static void drawWorkPiano(float x, float y, float w, float h) {
         // Hovering empty space
         float relX = mouse.x - gridX;
         float relY = (gridY + gridH) - mouse.y;
-        int hoverStep = (int)(relX / stepW);
+        int hoverGlobalStep = prChainScroll + (int)(relX / stepW);
         int hoverPitch = prScrollNote + (int)(relY / noteH);
-        if (hoverStep >= 0 && hoverStep < steps && hoverPitch >= 0 && hoverPitch <= 127) {
+        if (hoverGlobalStep >= 0 && hoverGlobalStep < totalSteps && hoverPitch >= 0 && hoverPitch <= 127) {
             float hoverY = gridY + gridH - (hoverPitch - prScrollNote + 1) * noteH;
-            float hoverX = gridX + hoverStep * stepW;
+            float hoverX = gridX + (hoverGlobalStep - prChainScroll) * stepW;
             DrawRectangleLinesEx((Rectangle){hoverX, hoverY, stepW, noteH}, 1, (Color){255,255,255,40});
             int ni = hoverPitch % 12; int no = hoverPitch / 12 - 1;
             DrawTextShadow(isSamplerPR
-                           ? TextFormat("pitch %+d step %d", hoverPitch - 60, hoverStep+1)
-                           : TextFormat("%s%d step %d", noteNames[ni], no, hoverStep+1),
+                           ? TextFormat("pitch %+d step %d", hoverPitch - 60, hoverGlobalStep+1)
+                           : TextFormat("%s%d step %d", noteNames[ni], no, hoverGlobalStep+1),
                            (int)mouse.x + 12, (int)mouse.y - 14, 9, UI_TEXT_SUBTLE);
         }
     } else if (prDragMode == PR_DRAG_NONE) {
@@ -3419,7 +3457,10 @@ static void drawWorkPiano(float x, float y, float w, float h) {
     if (prDragMode != PR_DRAG_NONE && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
         float dx = mouse.x - prDragStartX;
         float dy = mouse.y - prDragStartY;
-        StepV2 *dragSv = &pat->steps[mt][prDragStep];
+        Pattern *dragPat = &seq.patterns[prDragPatIdx];
+        int dragTrackLen = dragPat->trackLength[mt];
+        if (dragTrackLen <= 0) dragTrackLen = 16;
+        StepV2 *dragSv = &dragPat->steps[mt][prDragStep];
         // Safety: voice may have been removed externally
         if (prDragVoice >= 0 && prDragVoice < dragSv->noteCount) {
             StepNote *dragSn = &dragSv->notes[prDragVoice];
@@ -3428,7 +3469,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
                 // Resize right edge: continuous gate with sub-step precision
                 float totalTicks = prDragOrigGate * 24.0f + prDragOrigGateNudge + (dx / stepW) * 24.0f;
                 if (totalTicks < 1.0f) totalTicks = 1.0f;
-                int maxTicks = steps * 24;
+                int maxTicks = dragTrackLen * 24;
                 if (totalTicks > maxTicks) totalTicks = (float)maxTicks;
                 int newGate = (int)(totalTicks / 24.0f);
                 float newGateNudge = totalTicks - newGate * 24.0f;
@@ -3440,11 +3481,6 @@ static void drawWorkPiano(float x, float y, float w, float h) {
             }
             else if (prDragMode == PR_DRAG_LEFT) {
                 // Resize left edge: move start while keeping end fixed.
-                // End position (in ticks from pattern start) is constant:
-                int origStartStep = prDragStep; // step at drag-start (updated as we move)
-                // We track the original end from the very first drag-start values captured on click.
-                // origEnd = origStep*24 + origNudge + origGate*24 + origGateNudge
-                // But since prDragStep/prDragOrigNudge update as we drag, recompute end from current state:
                 int endTicks = prDragStep * 24 + dragSn->nudge + dragSn->gate * 24 + dragSn->gateNudge;
 
                 // New start position from mouse drag
@@ -3459,7 +3495,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
                 // Normalize nudge to -12..+12 range
                 if (newNudge > 12.0f) { newNudge -= 24.0f; newStartStep++; }
                 if (newStartStep < 0) { newStartStep = 0; newNudge = 0; }
-                if (newStartStep >= steps) { newStartStep = steps - 1; newNudge = 0; }
+                if (newStartStep >= dragTrackLen) { newStartStep = dragTrackLen - 1; newNudge = 0; }
                 if (newNudge < -12) newNudge = -12;
                 if (newNudge > 12) newNudge = 12;
 
@@ -3474,8 +3510,8 @@ static void drawWorkPiano(float x, float y, float w, float h) {
                 if (newGateNudge > 23) newGateNudge = 23;
 
                 if (newStartStep != prDragStep) {
-                    // Move voice to new step
-                    StepV2 *destSv = &pat->steps[mt][newStartStep];
+                    // Move voice to new step (within same pattern)
+                    StepV2 *destSv = &dragPat->steps[mt][newStartStep];
                     if (destSv->noteCount < SEQ_V2_MAX_POLY) {
                         StepNote noteCopy = *dragSn;
                         noteCopy.gate = (int8_t)newGate;
@@ -3515,10 +3551,10 @@ static void drawWorkPiano(float x, float y, float w, float h) {
                 if (newPitch < 0) newPitch = 0;
                 if (newPitch > 127) newPitch = 127;
 
-                if (newStep >= 0 && newStep < steps) {
+                if (newStep >= 0 && newStep < dragTrackLen) {
                     if (newStep != prDragStep) {
-                        // Move voice to new step
-                        StepV2 *destSv = &pat->steps[mt][newStep];
+                        // Move voice to new step (within same pattern)
+                        StepV2 *destSv = &dragPat->steps[mt][newStep];
                         if (destSv->noteCount < SEQ_V2_MAX_POLY) {
                             StepNote noteCopy = *dragSn;
                             noteCopy.note = (int8_t)newPitch;
@@ -3544,7 +3580,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
                     }
                     if (totalOffset < -12) totalOffset = -12;
                     if (totalOffset > 12) totalOffset = 12;
-                    StepNote *curSn = &pat->steps[mt][prDragStep].notes[prDragVoice];
+                    StepNote *curSn = &dragPat->steps[mt][prDragStep].notes[prDragVoice];
                     curSn->nudge = (int8_t)totalOffset;
                 }
             }
@@ -3559,11 +3595,13 @@ static void drawWorkPiano(float x, float y, float w, float h) {
     // --- Click to start drag or place/delete notes ---
     if (CheckCollisionPointRec(mouse, gridRect) && prDragMode == PR_DRAG_NONE) {
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            if (hitStep >= 0 && hitVoice >= 0) {
+            if (hitStep >= 0 && hitVoice >= 0 && hitPatIdx >= 0) {
                 // Clicked on existing note — start drag based on zone
-                StepNote *clickSn = &pat->steps[mt][hitStep].notes[hitVoice];
+                Pattern *clickPat = &seq.patterns[hitPatIdx];
+                StepNote *clickSn = &clickPat->steps[mt][hitStep].notes[hitVoice];
                 prDragStep = hitStep;
                 prDragVoice = hitVoice;
+                prDragPatIdx = hitPatIdx;
                 prDragNote = clickSn->note;
                 prDragStartX = mouse.x;
                 prDragStartY = mouse.y;
@@ -3576,14 +3614,31 @@ static void drawWorkPiano(float x, float y, float w, float h) {
                 else if (hitZone == 3) prDragMode = PR_DRAG_RIGHT;
                 else prDragMode = PR_DRAG_MOVE;
             } else {
-                // Clicked empty space (or different pitch on existing step) — add note
+                // Clicked empty space — resolve global step to (pattern, local step)
                 float relX = mouse.x - gridX;
                 float relY = (gridY + gridH) - mouse.y;
-                int newStep = (int)(relX / stepW);
+                int globalStep = prChainScroll + (int)(relX / stepW);
                 int newPitch = prScrollNote + (int)(relY / noteH);
-                if (newStep >= 0 && newStep < steps && newPitch >= 0 && newPitch <= 127) {
-                    StepV2 *sv = &pat->steps[mt][newStep];
-                    // Check this exact pitch doesn't already exist in the step
+
+                // Resolve global step → pattern + local step
+                int addPatIdx = -1, addLocalStep = -1;
+                {
+                    int acc = 0;
+                    for (int ci = 0; ci < chainPatCount; ci++) {
+                        int pi = chainPatStart + ci;
+                        int tl = seq.patterns[pi].trackLength[mt];
+                        if (tl <= 0) tl = 16;
+                        if (globalStep < acc + tl) {
+                            addPatIdx = pi;
+                            addLocalStep = globalStep - acc;
+                            break;
+                        }
+                        acc += tl;
+                    }
+                }
+
+                if (addPatIdx >= 0 && addLocalStep >= 0 && newPitch >= 0 && newPitch <= 127) {
+                    StepV2 *sv = &seq.patterns[addPatIdx].steps[mt][addLocalStep];
                     if (stepV2FindNote(sv, newPitch) < 0 && sv->noteCount < SEQ_V2_MAX_POLY) {
                         int vi = stepV2AddNote(sv, newPitch, velFloatToU8(0.8f), 1);
                         if (isSamplerPR && vi >= 0) sv->notes[vi].slice = 0;
@@ -3595,17 +3650,17 @@ static void drawWorkPiano(float x, float y, float w, float h) {
 
         // Right click: delete specific note under cursor
         if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-            if (hitStep >= 0 && hitVoice >= 0) {
-                stepV2RemoveNote(&pat->steps[mt][hitStep], hitVoice);
+            if (hitStep >= 0 && hitVoice >= 0 && hitPatIdx >= 0) {
+                stepV2RemoveNote(&seq.patterns[hitPatIdx].steps[mt][hitStep], hitVoice);
             }
             ui_consume_click();
         }
 
         // Sampler: scroll to change slice on hovered note
-        if (isSamplerPR && hitStep >= 0 && hitVoice >= 0 && prDragMode == PR_DRAG_NONE) {
+        if (isSamplerPR && hitStep >= 0 && hitVoice >= 0 && hitPatIdx >= 0 && prDragMode == PR_DRAG_NONE) {
             int delta = scrollDelta(GetMouseWheelMove(), 500 + hitStep * 10 + hitVoice);
             if (delta != 0) {
-                StepNote *sn = &pat->steps[mt][hitStep].notes[hitVoice];
+                StepNote *sn = &seq.patterns[hitPatIdx].steps[mt][hitStep].notes[hitVoice];
                 int newSlice = (int)sn->slice + delta;
                 if (newSlice < 0) newSlice = 0;
                 if (newSlice >= SAMPLER_MAX_SAMPLES) newSlice = SAMPLER_MAX_SAMPLES - 1;
@@ -3615,6 +3670,65 @@ static void drawWorkPiano(float x, float y, float w, float h) {
     }
 
     EndScissorMode();
+
+    // --- Horizontal scrollbar (when content overflows) ---
+    if (totalSteps > visSteps) {
+        static bool prScrollDragging = false;
+        float sbY = gridY + gridH + 1;
+        float sbX = gridX;
+        float sbW = gridW;
+        float sbH = scrollbarH - 2;
+
+        // Track background
+        DrawRectangle((int)sbX, (int)sbY, (int)sbW, (int)sbH, (Color){20,20,25,255});
+
+        // Thumb
+        float thumbRatio = (float)visSteps / (float)totalSteps;
+        float thumbW = sbW * thumbRatio;
+        if (thumbW < 20) thumbW = 20;
+        float scrollRange = (float)(totalSteps - visSteps);
+        float thumbX = sbX + (scrollRange > 0 ? (prChainScroll / scrollRange) * (sbW - thumbW) : 0);
+
+        Rectangle thumbR = {thumbX, sbY, thumbW, sbH};
+        bool thumbHov = CheckCollisionPointRec(mouse, thumbR);
+        Color thumbCol = prScrollDragging ? (Color){120,120,140,255}
+                       : (thumbHov ? (Color){90,90,110,255} : (Color){60,60,75,255});
+        DrawRectangleRounded(thumbR, 0.4f, 4, thumbCol);
+
+        // Drag interaction
+        Rectangle sbRect = {sbX, sbY, sbW, sbH};
+        if (CheckCollisionPointRec(mouse, sbRect)) {
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                prScrollDragging = true;
+                if (!thumbHov) {
+                    float clickRatio = (mouse.x - sbX - thumbW * 0.5f) / (sbW - thumbW);
+                    if (clickRatio < 0) clickRatio = 0;
+                    if (clickRatio > 1) clickRatio = 1;
+                    prChainScroll = (int)(clickRatio * scrollRange);
+                }
+                ui_consume_click();
+            }
+            // Scroll wheel on scrollbar area (no modifier needed)
+            float wh = GetMouseWheelMove();
+            if (wh > 0) prChainScroll -= 4;
+            if (wh < 0) prChainScroll += 4;
+            if (prChainScroll < 0) prChainScroll = 0;
+            if (prChainScroll > totalSteps - visSteps) prChainScroll = totalSteps - visSteps;
+        }
+        if (prScrollDragging) {
+            if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                float dragRatio = (mouse.x - sbX - thumbW * 0.5f) / (sbW - thumbW);
+                if (dragRatio < 0) dragRatio = 0;
+                if (dragRatio > 1) dragRatio = 1;
+                prChainScroll = (int)(dragRatio * scrollRange);
+                if (prChainScroll < 0) prChainScroll = 0;
+                if (prChainScroll > totalSteps - visSteps) prChainScroll = totalSteps - visSteps;
+            } else {
+                prScrollDragging = false;
+            }
+        }
+    }
+
     DrawRectangleLinesEx((Rectangle){x, y, w, h}, 1, UI_BORDER);
 }
 
@@ -7916,6 +8030,62 @@ static void drawWorkArrange(float x, float y, float w, float h) {
                 float px = gridX + (previewBar - arrScrollX) * cellW;
                 float py = gridY + previewTrack * cellH;
                 DrawRectangleLinesEx((Rectangle){px + 1, py + 1, (float)(cellW - 2), (float)(cellH - 2)}, 2, ORANGE);
+            }
+        }
+    }
+
+    // --- Horizontal scrollbar for arrangement (when content overflows) ---
+    if (arr->length > maxBarsVisible && maxBarsVisible > 0) {
+        static bool arrScrollDragging = false;
+        float sbY = gridY + gridH + 2;
+        float sbX = gridX;
+        float sbW = gridW;
+        float sbH = 8;
+
+        DrawRectangle((int)sbX, (int)sbY, (int)sbW, (int)sbH, (Color){20,20,25,255});
+
+        float thumbRatio = (float)maxBarsVisible / (float)arr->length;
+        float thumbW = sbW * thumbRatio;
+        if (thumbW < 20) thumbW = 20;
+        float scrollRange = (float)(arr->length - maxBarsVisible);
+        float thumbX = sbX + (scrollRange > 0 ? (arrScrollX / scrollRange) * (sbW - thumbW) : 0);
+
+        Rectangle thumbR = {thumbX, sbY, thumbW, sbH};
+        bool thumbHov = CheckCollisionPointRec(mouse, thumbR);
+        Color thumbCol = arrScrollDragging ? (Color){120,120,140,255}
+                       : (thumbHov ? (Color){90,90,110,255} : (Color){60,60,75,255});
+        DrawRectangleRounded(thumbR, 0.4f, 4, thumbCol);
+
+        Rectangle sbRect = {sbX, sbY, sbW, sbH};
+        if (CheckCollisionPointRec(mouse, sbRect)) {
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                arrScrollDragging = true;
+                if (!thumbHov) {
+                    float clickRatio = (mouse.x - sbX - thumbW * 0.5f) / (sbW - thumbW);
+                    if (clickRatio < 0) clickRatio = 0;
+                    if (clickRatio > 1) clickRatio = 1;
+                    arrScrollX = (int)(clickRatio * scrollRange);
+                }
+                ui_consume_click();
+            }
+            // Scroll wheel on scrollbar (no modifier needed)
+            int wheel = (int)GetMouseWheelMove();
+            if (wheel != 0) {
+                arrScrollX -= wheel;
+                if (arrScrollX < 0) arrScrollX = 0;
+                if (arrScrollX > arr->length - maxBarsVisible) arrScrollX = arr->length - maxBarsVisible;
+            }
+        }
+        if (arrScrollDragging) {
+            if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                float dragRatio = (mouse.x - sbX - thumbW * 0.5f) / (sbW - thumbW);
+                if (dragRatio < 0) dragRatio = 0;
+                if (dragRatio > 1) dragRatio = 1;
+                arrScrollX = (int)(dragRatio * scrollRange);
+                if (arrScrollX < 0) arrScrollX = 0;
+                if (arrScrollX > arr->length - maxBarsVisible) arrScrollX = arr->length - maxBarsVisible;
+            } else {
+                arrScrollDragging = false;
             }
         }
     }
