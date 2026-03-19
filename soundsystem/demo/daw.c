@@ -7605,8 +7605,19 @@ static void drawWorkArrange(float x, float y, float w, float h) {
     for (int t = 0; t < trackCount; t++) {
         float ty = gridY + t * cellH;
         Color tc = arrTrackColors[t];
-        DrawRectangle((int)x, (int)ty, (int)labelW - 2, cellH - 1, (Color){tc.r/4, tc.g/4, tc.b/4, 255});
-        DrawTextShadow(arrTrackNames[t], (int)x + 2, (int)ty + 8, 8, tc);
+        bool isSelected = (t == daw.selectedPatch);
+        Rectangle labelR = {x, ty, labelW - 2, (float)(cellH - 1)};
+        bool labelHov = CheckCollisionPointRec(mouse, labelR);
+        DrawRectangle((int)x, (int)ty, (int)labelW - 2, cellH - 1,
+                      isSelected ? (Color){tc.r/3, tc.g/3, tc.b/3, 255}
+                                 : (Color){tc.r/4, tc.g/4, tc.b/4, 255});
+        if (isSelected) DrawRectangleLinesEx(labelR, 1, tc);
+        DrawTextShadow(arrTrackNames[t], (int)x + 2, (int)ty + 8, 8,
+                       isSelected ? WHITE : (labelHov ? WHITE : tc));
+        if (labelHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            daw.selectedPatch = t;
+            ui_consume_click();
+        }
     }
 
     // === LAUNCHER PANEL (clip slots) ===

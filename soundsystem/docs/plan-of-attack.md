@@ -264,6 +264,7 @@ See also: `lua-conductor-architecture.md` — the conductor layer benefits from 
 | **Speech 8-bit** — Speak & Spell style, robotic lo-fi | Medium | Different from existing formant voice engine |
 | **Bass waveshaping** — non-linear waveshaping for heavy digital bass (Noise Engineering style) | Medium | |
 | **Blown bottle** — simple wind physical model | Small | Bowed + pipe engines done, this is the remaining PM extension |
+| **Granular from sampler slices** — use sampler slice audio as grain source instead of only SCW tables. `GranularSettings` gets a generic `(float* buf, int bufSize)` source pointer; `spawnGrain()`/`processGranularOscillator()` read from that instead of `scwTables[idx]`. Position knob scrubs through the slice, all other grain params (density, pitch, envelope, randomization) work as-is. Pairs with WAV pipeline (load real audio → granular texture). | Small-Medium | Contained change in synth_oscillators.h + patch UI to select source. Depends on sampler slices being loaded. |
 
 ### Game Audio
 
@@ -349,7 +350,7 @@ Features that separate a groove box from a full DAW. Sorted by architectural imp
 | What | Effort | Notes |
 |------|--------|-------|
 | **Timeline automation lanes** — draw continuous parameter curves over time (filter sweep across 8 bars, volume fade over a section). P-locks are per-step discrete; scenes/crossfader morph between 2 snapshots. Neither covers "draw a curve from bar 5 to bar 12." Natural home is the Arrangement view — draw curves per-track alongside the pattern blocks. | Large | Could be pattern-scoped (automation points within a pattern, interpolated at audio rate) or song-scoped (global timeline). Pattern-scoped is more tractable. See `todo-daw-ideas.md` §Automation. |
-| **Session View (clip launcher)** — Ableton Session View style: trigger any clip on any track independently, scenes fire rows. Engine already has `perTrackPatterns` + `trackPatternIdx` for per-track independence, and `Arrangement.cells[64][8]` is the right grid shape. Main work: per-track wrap detection (currently track-0 only), clip state machine (playing/queued/stopped), launch quantize. | Medium (~270 lines for bar-quantized MVP) | See `todo-daw-ideas.md` §Session View for full analysis. |
+| ~~**Clip Launcher (Bitwig/GarageBand-style)**~~ — Two-panel Arrange tab: launcher grid + arrangement timeline. Per-track clip triggering, scene launch, next actions (Stop/Next/Prev/First/Random/Return), drag launcher→arrangement, save/load, launch quantize (Bar/Beat/1-8/1-16), proper note cutoff. | — | **DONE**. Remaining polish: better visuals, per-clip quantize override, record→arrangement. See `todo-daw-ideas.md`. |
 
 ### Mixing & Metering
 

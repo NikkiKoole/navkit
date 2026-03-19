@@ -7,11 +7,12 @@
 3. ~~**Clip launcher polish**~~ — DONE (pulsing cells, progress fill, stop-queued blink, arrangement sound leak fix)
 4. ~~**MIDI import → per-track arrangement**~~ — DONE (auto-generates arr + launcher from MIDI drop)
 5. **WAV export for samples** — unblocks faster load, external sample import, standalone value
-6. **Automation lanes** — once arrangement is the primary composition tool
-7. **Record launcher → arrangement** — capture live jams as arrangement events
+6. **Edit-in-context** — click arrangement cell → jump to sequencer with that pattern+track selected. Pure UX, no engine change. See §Flexible Track Architecture below.
+7. **Automation lanes** — once arrangement is the primary composition tool
+8. **Record launcher → arrangement** — capture live jams as arrangement events
 
 **Not scheduled** (do when it hurts):
-- **Single-track clip patterns / flexible track types** — the current multi-track patterns already work with per-track arrangement. The "waste" is unused data in memory, not a functional problem. Do this when you keep bumping into "I want this bass line on a different track but it's stuck in a pattern with drums I don't want." See §Flexible Track Architecture below for the incremental path.
+- **Focused track editing / single-track clips** — dim other tracks in sequencer, per-track pattern forking, eventually true single-track patterns. See §Flexible Track Architecture levels 2-3 below.
 
 Converting existing song-mode songs to per-track arrangements is a good forcing function throughout — reveals what's clunky and guides design.
 
@@ -280,10 +281,15 @@ Add a collapsible launcher panel to `drawWorkArrange()`. Toggle button in the to
 
 **Current state**: a Pattern is 4 drum + 3 melody + 1 sampler, all baked together. With `perTrackPatterns`, the sequencer already reads only the relevant track from each pattern — so per-track arrangement works fine today. The "waste" is unused track data sitting in memory, not a functional problem.
 
+**Core workflow desire**: Play the arrangement, and simultaneously edit/create a pattern for a single instrument without disrupting the other tracks. Currently editing pattern 3 affects every track referencing it, and there's no quick way to jump from an arrangement cell to the right pattern+track in the sequencer.
+
 **Incremental path**:
-1. **Now**: do nothing. Multi-track patterns work. Arrangement/launcher assign `(pattern, track)` pairs.
-2. **When editing gets confusing**: add a "focused track" highlight in the sequencer view that shows which track matters for the selected arrangement/launcher cell. Pure UI change, no engine work.
-3. **When you need true clips**: allow patterns to be flagged as "single-track" — only track 0 has data, arrangement maps it to any destination track. This is the real refactor (`Pattern.steps[12][32]` assumptions, sequencer tick logic, save format).
+
+1. **Edit in context (pure UX, no engine change)** — Click an arrangement cell → switches to Sequencer tab with that pattern loaded and that track selected (`daw.selectedPatch = t`). Arrangement keeps playing. You still edit the full multi-track pattern, but you're looking at the right one for the right track. Track label click-to-select in arrangement is done (selects instrument). Next: wire arrangement cell click → sequencer navigation.
+
+2. **Focused track editing (small engine tweak)** — Same as above, but the sequencer view dims the other tracks and only shows the selected track prominently. When you want a different pattern for just one track, "duplicate pattern for this track" copies the current pattern to a new slot and reassigns only that track's arrangement cell to the copy. This lets you fork patterns per-track without the full single-track architecture.
+
+3. **Single-track patterns / clips (the real refactor)** — Patterns become clips that hold data for one track only. Arrangement maps `(clip, track)` pairs. Full `Pattern.steps[12][32]` assumptions, sequencer tick logic, and save format need updating.
 
 **Signal to start step 3**: you keep wanting to reuse the same riff on different tracks, or you want more than 3 melody tracks, or pattern editing feels wrong because 7 of 8 tracks are irrelevant.
 
