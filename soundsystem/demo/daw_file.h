@@ -49,7 +49,7 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _dw(f, "pulseWidth", p->p_pulseWidth); _dw(f, "pwmRate", p->p_pwmRate); _dw(f, "pwmDepth", p->p_pwmDepth);
     _dw(f, "vibratoRate", p->p_vibratoRate); _dw(f, "vibratoDepth", p->p_vibratoDepth);
     _dw(f, "filterCutoff", p->p_filterCutoff); _dw(f, "filterResonance", p->p_filterResonance);
-    _di(f, "filterType", p->p_filterType);
+    _di(f, "filterType", p->p_filterType); _di(f, "filterModel", p->p_filterModel);
     _dw(f, "filterEnvAmt", p->p_filterEnvAmt); _dw(f, "filterEnvAttack", p->p_filterEnvAttack);
     _dw(f, "filterEnvDecay", p->p_filterEnvDecay);
     _dw(f, "filterKeyTrack", p->p_filterKeyTrack);
@@ -128,6 +128,7 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _db(f, "useTriggerFreq", p->p_useTriggerFreq); _dw(f, "triggerFreq", p->p_triggerFreq);
     _db(f, "choke", p->p_choke);
     _db(f, "analogRolloff", p->p_analogRolloff); _db(f, "tubeSaturation", p->p_tubeSaturation);
+    _db(f, "analogVariance", p->p_analogVariance);
     _db(f, "ringMod", p->p_ringMod); _dw(f, "ringModFreq", p->p_ringModFreq);
     _dw(f, "wavefoldAmount", p->p_wavefoldAmount);
     _db(f, "hardSync", p->p_hardSync); _dw(f, "hardSyncRatio", p->p_hardSyncRatio);
@@ -329,6 +330,7 @@ static bool dawSave(const char *filepath) {
         snprintf(k, sizeof(k), "eqLowFreq%d", b); _dw(f, k, daw.mixer.eqLowFreq[b]);
         snprintf(k, sizeof(k), "eqHighFreq%d", b); _dw(f, k, daw.mixer.eqHighFreq[b]);
         snprintf(k, sizeof(k), "chorusOn%d", b); _db(f, k, daw.mixer.chorusOn[b]);
+        snprintf(k, sizeof(k), "chorusBBD%d", b); _db(f, k, daw.mixer.chorusBBD[b]);
         snprintf(k, sizeof(k), "chorusRate%d", b); _dw(f, k, daw.mixer.chorusRate[b]);
         snprintf(k, sizeof(k), "chorusDepth%d", b); _dw(f, k, daw.mixer.chorusDepth[b]);
         snprintf(k, sizeof(k), "chorusMix%d", b); _dw(f, k, daw.mixer.chorusMix[b]);
@@ -371,7 +373,8 @@ static bool dawSave(const char *filepath) {
     _dw(f, "distTone", daw.masterFx.distTone); _dw(f, "distMix", daw.masterFx.distMix); _di(f, "distMode", daw.masterFx.distMode);
     _db(f, "crushOn", daw.masterFx.crushOn); _dw(f, "crushBits", daw.masterFx.crushBits);
     _dw(f, "crushRate", daw.masterFx.crushRate); _dw(f, "crushMix", daw.masterFx.crushMix);
-    _db(f, "chorusOn", daw.masterFx.chorusOn); _dw(f, "chorusRate", daw.masterFx.chorusRate);
+    _db(f, "chorusOn", daw.masterFx.chorusOn); _db(f, "chorusBBD", daw.masterFx.chorusBBD);
+    _dw(f, "chorusRate", daw.masterFx.chorusRate);
     _dw(f, "chorusDepth", daw.masterFx.chorusDepth); _dw(f, "chorusMix", daw.masterFx.chorusMix);
     _db(f, "flangerOn", daw.masterFx.flangerOn); _dw(f, "flangerRate", daw.masterFx.flangerRate);
     _dw(f, "flangerDepth", daw.masterFx.flangerDepth); _dw(f, "flangerFeedback", daw.masterFx.flangerFeedback);
@@ -607,6 +610,7 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"filterCutoff")==0) p->p_filterCutoff = _dpf(val);
     else if (strcmp(key,"filterResonance")==0) p->p_filterResonance = _dpf(val);
     else if (strcmp(key,"filterType")==0) p->p_filterType = _dpi(val);
+    else if (strcmp(key,"filterModel")==0) p->p_filterModel = _dpi(val);
     else if (strcmp(key,"filterEnvAmt")==0) p->p_filterEnvAmt = _dpf(val);
     else if (strcmp(key,"filterEnvAttack")==0) p->p_filterEnvAttack = _dpf(val);
     else if (strcmp(key,"filterEnvDecay")==0) p->p_filterEnvDecay = _dpf(val);
@@ -750,6 +754,7 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"choke")==0) p->p_choke = _dpb(val);
     else if (strcmp(key,"analogRolloff")==0) p->p_analogRolloff = _dpb(val);
     else if (strcmp(key,"tubeSaturation")==0) p->p_tubeSaturation = _dpb(val);
+    else if (strcmp(key,"analogVariance")==0) p->p_analogVariance = _dpb(val);
     else if (strcmp(key,"ringMod")==0) p->p_ringMod = _dpb(val);
     else if (strcmp(key,"ringModFreq")==0) p->p_ringModFreq = _dpf(val);
     else if (strcmp(key,"wavefoldAmount")==0) p->p_wavefoldAmount = _dpf(val);
@@ -1153,6 +1158,7 @@ static bool dawLoad(const char *filepath) {
                     else if (strcmp(base,"eqLowFreq")==0) daw.mixer.eqLowFreq[b]=_dpf(val);
                     else if (strcmp(base,"eqHighFreq")==0) daw.mixer.eqHighFreq[b]=_dpf(val);
                     else if (strcmp(base,"chorusOn")==0) daw.mixer.chorusOn[b]=_dpb(val);
+                    else if (strcmp(base,"chorusBBD")==0) daw.mixer.chorusBBD[b]=_dpb(val);
                     else if (strcmp(base,"chorusRate")==0) daw.mixer.chorusRate[b]=_dpf(val);
                     else if (strcmp(base,"chorusDepth")==0) daw.mixer.chorusDepth[b]=_dpf(val);
                     else if (strcmp(base,"chorusMix")==0) daw.mixer.chorusMix[b]=_dpf(val);
@@ -1208,6 +1214,7 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"crushRate")==0) daw.masterFx.crushRate=_dpf(val);
             else if (strcmp(key,"crushMix")==0) daw.masterFx.crushMix=_dpf(val);
             else if (strcmp(key,"chorusOn")==0) daw.masterFx.chorusOn=_dpb(val);
+            else if (strcmp(key,"chorusBBD")==0) daw.masterFx.chorusBBD=_dpb(val);
             else if (strcmp(key,"chorusRate")==0) daw.masterFx.chorusRate=_dpf(val);
             else if (strcmp(key,"chorusDepth")==0) daw.masterFx.chorusDepth=_dpf(val);
             else if (strcmp(key,"chorusMix")==0) daw.masterFx.chorusMix=_dpf(val);

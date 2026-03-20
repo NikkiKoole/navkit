@@ -407,6 +407,7 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "clickLevel", p->p_clickLevel);
     _sf_writeFloat(f, "clickTime", p->p_clickTime);
     _sf_writeInt(f, "filterType", p->p_filterType);
+    _sf_writeInt(f, "filterModel", p->p_filterModel);
     // Algorithm modes
     _sf_writeInt(f, "noiseMode", p->p_noiseMode);
     _sf_writeInt(f, "oscMixMode", p->p_oscMixMode);
@@ -576,6 +577,7 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
     _sf_writeFloat(f, "crushRate", d->sfEffects.crushRate);
     _sf_writeFloat(f, "crushMix", d->sfEffects.crushMix);
     _sf_writeBool(f, "chorusEnabled", d->sfEffects.chorusEnabled);
+    _sf_writeBool(f, "chorusBBD", d->sfEffects.chorusBBD);
     _sf_writeFloat(f, "chorusRate", d->sfEffects.chorusRate);
     _sf_writeFloat(f, "chorusDepth", d->sfEffects.chorusDepth);
     _sf_writeFloat(f, "chorusMix", d->sfEffects.chorusMix);
@@ -690,6 +692,7 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
         _sf_writeFloat(f, "eqLowFreq", bus->eqLowFreq);
         _sf_writeFloat(f, "eqHighFreq", bus->eqHighFreq);
         _sf_writeBool(f, "chorusEnabled", bus->chorusEnabled);
+        _sf_writeBool(f, "chorusBBD", bus->chorusBBD);
         _sf_writeFloat(f, "chorusRate", bus->chorusRate);
         _sf_writeFloat(f, "chorusDepth", bus->chorusDepth);
         _sf_writeFloat(f, "chorusMix", bus->chorusMix);
@@ -938,6 +941,7 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "clickLevel") == 0) p->p_clickLevel = _sf_parseFloat(val);
     else if (strcmp(key, "clickTime") == 0) p->p_clickTime = _sf_parseFloat(val);
     else if (strcmp(key, "filterType") == 0) p->p_filterType = _sf_parseInt(val);
+    else if (strcmp(key, "filterModel") == 0) p->p_filterModel = _sf_parseInt(val);
     // Algorithm modes
     else if (strcmp(key, "noiseMode") == 0) p->p_noiseMode = _sf_parseInt(val);
     else if (strcmp(key, "oscMixMode") == 0) p->p_oscMixMode = _sf_parseInt(val);
@@ -1316,6 +1320,7 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
             else if (strcmp(key, "crushRate") == 0) d->sfEffects.crushRate = _sf_parseFloat(val);
             else if (strcmp(key, "crushMix") == 0) d->sfEffects.crushMix = _sf_parseFloat(val);
             else if (strcmp(key, "chorusEnabled") == 0) d->sfEffects.chorusEnabled = _sf_parseBool(val);
+            else if (strcmp(key, "chorusBBD") == 0) d->sfEffects.chorusBBD = _sf_parseBool(val);
             else if (strcmp(key, "chorusRate") == 0) d->sfEffects.chorusRate = _sf_parseFloat(val);
             else if (strcmp(key, "chorusDepth") == 0) d->sfEffects.chorusDepth = _sf_parseFloat(val);
             else if (strcmp(key, "chorusMix") == 0) d->sfEffects.chorusMix = _sf_parseFloat(val);
@@ -1430,6 +1435,7 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
                 else if (strcmp(key, "eqLowFreq") == 0) bus->eqLowFreq = _sf_parseFloat(val);
                 else if (strcmp(key, "eqHighFreq") == 0) bus->eqHighFreq = _sf_parseFloat(val);
                 else if (strcmp(key, "chorusEnabled") == 0) bus->chorusEnabled = _sf_parseBool(val);
+                else if (strcmp(key, "chorusBBD") == 0) bus->chorusBBD = _sf_parseBool(val);
                 else if (strcmp(key, "chorusRate") == 0) bus->chorusRate = _sf_parseFloat(val);
                 else if (strcmp(key, "chorusDepth") == 0) bus->chorusDepth = _sf_parseFloat(val);
                 else if (strcmp(key, "chorusMix") == 0) bus->chorusMix = _sf_parseFloat(val);

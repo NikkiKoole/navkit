@@ -159,6 +159,7 @@ static const int paramTabKeys[] = {KEY_ONE, KEY_TWO, KEY_THREE, KEY_FOUR};
 
 // Name arrays for new params
 static const char* filterTypeNames[] = {"LP", "HP", "BP", "1pLP", "1pHP", "ResoBP"};
+static const char* filterModelNames[] = {"SVF", "Ladder"};
 static const char* noiseModeNames[] = {"Mix", "Replace", "PerBurst"};
 static const char* oscMixModeNames[] = {"Weighted", "Additive"};
 static const char* noiseTypeNames[] = {"LFSR", "TimeHash"};
@@ -4562,6 +4563,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
 
         ui_col_sublabel(&c, "Filter:", ORANGE);
         ui_col_cycle(&c, "Type", filterTypeNames, 6, &p->p_filterType);
+        ui_col_cycle(&c, "Model", filterModelNames, FILTER_MODEL_COUNT, &p->p_filterModel);
         ui_col_float_p(&c, "Cut", &p->p_filterCutoff, 0.05f, 0.01f, 1.0f);
         drawLfoModIndicator(envX + 80, c.y - c.spacing, p->p_filterCutoff, lfoModViz.filterMod, 0.01f, 1.0f);
         ui_col_float_p(&c, "Res", &p->p_filterResonance, 0.05f, 0.0f, 1.02f);
@@ -4767,11 +4769,12 @@ static void drawParamPatch(float x, float y, float w, float h) {
         sectionHighlight(col5X + 2, secY, percColW, c.y - secY, clickActive);
         ui_col_space(&c, 6);
 
-        bool warmthActive = DB(p_analogRolloff) || DB(p_tubeSaturation);
+        bool warmthActive = DB(p_analogRolloff) || DB(p_tubeSaturation) || DB(p_analogVariance);
         secY = c.y;
         ui_col_sublabel(&c, "Warmth:", ORANGE);
         ui_col_toggle(&c, "Analog Rolloff", &p->p_analogRolloff);
         ui_col_toggle(&c, "Tube Sat", &p->p_tubeSaturation);
+        ui_col_toggle(&c, "Variance", &p->p_analogVariance);
         sectionHighlight(col5X + 2, secY, percColW, c.y - secY, warmthActive);
         ui_col_space(&c, 6);
 
@@ -5002,6 +5005,7 @@ static void drawParamBus(float x, float y, float w, float h) {
         // Chorus
         ToggleBoolS(rightX, ry, "Chorus", &daw.mixer.chorusOn[b], fs); ry += row;
         if (daw.mixer.chorusOn[b]) {
+            ToggleBoolS(rightX, ry, "BBD", &daw.mixer.chorusBBD[b], fs); ry += row;
             DraggableFloatS(rightX, ry, "Rate", &daw.mixer.chorusRate[b], 0.1f, 0.1f, 5.0f, fs); ry += row;
             DraggableFloatS(rightX, ry, "Depth", &daw.mixer.chorusDepth[b], 0.05f, 0.0f, 1.0f, fs); ry += row;
             DraggableFloatS(rightX, ry, "Mix", &daw.mixer.chorusMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
@@ -5174,6 +5178,7 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
     // 3: Chorus
     MFX_BEGIN("Chorus", &daw.masterFx.chorusOn)
     if (daw.masterFx.chorusOn) {
+        ToggleBoolS(rx, ry, "BBD", &daw.masterFx.chorusBBD, fs); ry += row;
         DraggableFloatS(rx, ry, "Rate", &daw.masterFx.chorusRate, 0.1f, 0.1f, 5.0f, fs); ry += row;
         DraggableFloatS(rx, ry, "Depth", &daw.masterFx.chorusDepth, 0.05f, 0.0f, 1.0f, fs); ry += row;
         DraggableFloatS(rx, ry, "Mix", &daw.masterFx.chorusMix, 0.05f, 0.0f, 1.0f, fs); ry += row;

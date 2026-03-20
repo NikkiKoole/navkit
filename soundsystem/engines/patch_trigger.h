@@ -30,6 +30,7 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     noteFilterCutoff = p->p_filterCutoff;
     noteFilterResonance = p->p_filterResonance;
     noteFilterType = p->p_filterType;
+    noteFilterModel = p->p_filterModel;
     noteFilterEnvAmt = p->p_filterEnvAmt;
     noteFilterEnvAttack = p->p_filterEnvAttack;
     noteFilterEnvDecay = p->p_filterEnvDecay;
@@ -174,6 +175,7 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     noteOneShot = p->p_oneShot;
     noteAnalogRolloff = p->p_analogRolloff;
     noteTubeSaturation = p->p_tubeSaturation;
+    noteAnalogVariance = p->p_analogVariance;
     noteRingMod = p->p_ringMod;
     noteRingModFreq = p->p_ringModFreq;
     noteWavefoldAmount = p->p_wavefoldAmount;

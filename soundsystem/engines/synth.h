@@ -446,6 +446,30 @@ typedef struct {
     float dcPrev;
 } PipeSettings;
 
+// Filter model enum: selects filter topology
+typedef enum {
+    FILTER_MODEL_SVF = 0,    // Simper/Cytomic SVF (default — clean, versatile)
+    FILTER_MODEL_LADDER = 1, // 4-pole TPT ladder (warm, resonant, Juno-style)
+    FILTER_MODEL_COUNT
+} FilterModel;
+
+// TPT ladder filter state (forward decl for Voice struct)
+#define LADDER_RESAMPLER_COEFS 12
+
+typedef struct {
+    float coef[LADDER_RESAMPLER_COEFS];
+    float x[LADDER_RESAMPLER_COEFS];
+    float y[LADDER_RESAMPLER_COEFS];
+} LadderResampler;
+
+typedef struct {
+    float s[4];             // Integrator states
+    float inputEnv;         // Peak envelope follower for adaptive noise
+    unsigned int noiseSeed; // Thermal noise PRNG
+    LadderResampler up;     // 2x upsampler
+    LadderResampler down;   // 2x downsampler
+} LadderState;
+
 // Voice structure (polyphonic synth voice)
 typedef struct {
     float frequency;
@@ -487,9 +511,11 @@ typedef struct {
     float filterCutoff;   // Base cutoff 0.0-1.0
     float filterResonance;// Resonance 0.0-1.0
     int filterType;       // 0=LP (default), 1=HP, 2=BP
+    int filterModel;      // 0=SVF (default), 1=Ladder (4-pole TPT)
     float filterKeyTrack; // 0 = fixed, 1 = cutoff tracks pitch (scale by freq/440)
     float filterLp;       // Filter state (lowpass)
     float filterBp;       // Filter state (bandpass, for resonance)
+    LadderState ladder;   // TPT ladder filter state (used when filterModel == FILTER_MODEL_LADDER)
     
     // Filter envelope
     float filterEnvAmt;   // Envelope amount (-1 to 1)
@@ -699,6 +725,140 @@ typedef struct {
 // Filter constants
 #define FILTER_RESONANCE_SCALE 0.98f  // Resonance multiplier (range: 1.0 no reso to ~0.02 self-oscillating)
 
+// ============================================================================
+// TPT LADDER FILTER (4-pole, based on IR3109 OTA topology)
+// ============================================================================
+// Ported from KR-106 (GPLv3). Four trapezoidal integrators with global
+// resonance feedback, OTA saturation on the feedback path, 2x oversampled
+// via polyphase IIR half-band filters.
+
+// Half-band polyphase IIR coefficients (Laurent de Soras' HIIR, WTFPL)
+static const float kLadderResamplerCoeffs[LADDER_RESAMPLER_COEFS] = {
+    0.036681502f, 0.136547625f, 0.274631759f, 0.423138617f,
+    0.561098698f, 0.677540050f, 0.769741834f, 0.839889625f,
+    0.892260818f, 0.931541960f, 0.962094548f, 0.987816371f
+};
+
+static inline void ladderResamplerInit(LadderResampler *r) {
+    for (int i = 0; i < LADDER_RESAMPLER_COEFS; i++) {
+        r->coef[i] = kLadderResamplerCoeffs[i];
+        r->x[i] = 0.0f;
+        r->y[i] = 0.0f;
+    }
+}
+
+static inline void ladderResamplerUpsample(LadderResampler *r, float input, float *out0, float *out1) {
+    float even = input, odd = input;
+    for (int i = 0; i < LADDER_RESAMPLER_COEFS; i += 2) {
+        float t0 = (even - r->y[i]) * r->coef[i] + r->x[i];
+        float t1 = (odd - r->y[i+1]) * r->coef[i+1] + r->x[i+1];
+        r->x[i] = even;   r->x[i+1] = odd;
+        r->y[i] = t0;     r->y[i+1] = t1;
+        even = t0;         odd = t1;
+    }
+    *out0 = even;
+    *out1 = odd;
+}
+
+static inline float ladderResamplerDownsample(LadderResampler *r, float in0, float in1) {
+    float spl0 = in1, spl1 = in0;
+    for (int i = 0; i < LADDER_RESAMPLER_COEFS; i += 2) {
+        float t0 = (spl0 - r->y[i]) * r->coef[i] + r->x[i];
+        float t1 = (spl1 - r->y[i+1]) * r->coef[i+1] + r->x[i+1];
+        r->x[i] = spl0;   r->x[i+1] = spl1;
+        r->y[i] = t0;     r->y[i+1] = t1;
+        spl0 = t0;         spl1 = t1;
+    }
+    return 0.5f * (spl0 + spl1);
+}
+
+static inline void ladderStateInit(LadderState *ls) {
+    ls->s[0] = ls->s[1] = ls->s[2] = ls->s[3] = 0.0f;
+    ls->inputEnv = 0.0f;
+    ls->noiseSeed = 123456789u;
+    ladderResamplerInit(&ls->up);
+    ladderResamplerInit(&ls->down);
+}
+
+// OTA saturation (Padé tanh approximant — cheaper than tanhf)
+static inline float ladderOTASat(float x) {
+    if (x > 3.0f) return 1.0f;
+    if (x < -3.0f) return -1.0f;
+    float x2 = x * x;
+    return x * (27.0f + x2) / (27.0f + 9.0f * x2);
+}
+
+// Resonance slider → feedback gain k (Juno-6 calibrated curve)
+static inline float ladderResK(float res) {
+    return 1.024f * (expf(2.128f * res) - 1.0f);
+}
+
+// Frequency compensation: keeps -3dB point on target as resonance changes
+static inline float ladderFreqComp(float k) {
+    float comp = (1.96f + 1.06f * k) / (1.0f + 2.16f * k);
+    return comp > 1.0f ? comp : 1.0f;
+}
+
+// Process one sample at 2x oversampled rate
+static inline float ladderProcessSample(LadderState *ls, float input, float frq, float res) {
+    float k = ladderResK(res);
+    frq *= ladderFreqComp(k);
+
+    float g = tanf(fminf(frq, 0.85f) * PI * 0.5f);
+    float g1 = g / (1.0f + g);
+    float G = g1 * g1 * g1 * g1;
+
+    // Adaptive thermal noise for self-oscillation seeding
+    ls->noiseSeed = ls->noiseSeed * 196314165u + 907633515u;
+    float white = (float)ls->noiseSeed / (float)0xFFFFFFFFu * 2.0f - 1.0f;
+    float absIn = fabsf(input);
+    ls->inputEnv = absIn > ls->inputEnv ? absIn : ls->inputEnv * 0.999f;
+    float stateE = fabsf(ls->s[0]) + fabsf(ls->s[1]) + fabsf(ls->s[2]) + fabsf(ls->s[3]);
+    float energy = ls->inputEnv > stateE ? ls->inputEnv : stateE;
+    input += white * (1e-3f / (1.0f + energy * 1000.0f));
+
+    // High-freq resonance limiter (OTA bandwidth rolloff)
+    float maxLoop = 1.2f - (frq > 0.3f ? (frq - 0.3f) : 0.0f);
+    if (maxLoop < 0.4f) maxLoop = 0.4f;
+    float maxK = maxLoop / (G > 1e-6f ? G : 1e-6f);
+    if (k > maxK) k = maxK;
+
+    float S = ls->s[0] * g1 * g1 * g1
+            + ls->s[1] * g1 * g1
+            + ls->s[2] * g1
+            + ls->s[3];
+
+    // Q compensation (BA662 drive boost at high resonance)
+    float comp = 1.0f + k * 0.06f;
+    float u = (input * comp - k * ladderOTASat(S)) / (1.0f + k * G);
+
+    // Linear TPT cascade (unconditionally stable)
+    float g1L = g1 * (1.0f + k * 0.0003f);
+    float v, s;
+    s = ls->s[0]; v = g1L * (u - s);   ls->s[0] = s + 2.0f * v; float lp1 = s + v;
+    s = ls->s[1]; v = g1L * (lp1 - s); ls->s[1] = s + 2.0f * v; float lp2 = s + v;
+    s = ls->s[2]; v = g1L * (lp2 - s); ls->s[2] = s + 2.0f * v; float lp3 = s + v;
+    s = ls->s[3]; v = g1L * (lp3 - s); ls->s[3] = s + 2.0f * v; float lp4 = s + v;
+
+    // Flush denormals
+    for (int i = 0; i < 4; i++)
+        if (fabsf(ls->s[i]) < 1e-15f) ls->s[i] = 0.0f;
+
+    return lp4;
+}
+
+// Main entry: 2x oversampled ladder filter
+// frq: normalized cutoff [0, ~0.9] where 1.0 = Nyquist
+// res: resonance [0, 1]
+static inline float ladderProcess(LadderState *ls, float input, float frq, float res) {
+    float up0, up1;
+    ladderResamplerUpsample(&ls->up, input, &up0, &up1);
+    float frq2x = frq * 0.5f;
+    float d0 = ladderProcessSample(ls, up0, frq2x, res);
+    float d1 = ladderProcessSample(ls, up1, frq2x, res);
+    return ladderResamplerDownsample(&ls->down, d0, d1);
+}
+
 typedef struct {
     float data[SCW_MAX_SIZE];
     int size;
@@ -759,6 +919,7 @@ typedef struct SynthContext {
     float noteFilterCutoff;
     float noteFilterResonance;
     int noteFilterType;          // 0=LP, 1=HP, 2=BP
+    int noteFilterModel;         // 0=SVF, 1=Ladder (FilterModel enum)
     float noteFilterKeyTrack;    // 0 = fixed, 1 = cutoff follows pitch
     float noteFilterEnvAmt;
     float noteFilterEnvAttack;
@@ -946,6 +1107,7 @@ typedef struct SynthContext {
     // Analog warmth
     bool noteAnalogRolloff;
     bool noteTubeSaturation;
+    bool noteAnalogVariance;  // Per-voice component tolerances (pitch, cutoff, envelope, gain)
 
     // Synthesis modes
     bool noteRingMod;
@@ -1109,6 +1271,7 @@ static void _ensureSynthCtx(void) {
 #define noteFilterCutoff (synthCtx->noteFilterCutoff)
 #define noteFilterResonance (synthCtx->noteFilterResonance)
 #define noteFilterType (synthCtx->noteFilterType)
+#define noteFilterModel (synthCtx->noteFilterModel)
 #define noteFilterKeyTrack (synthCtx->noteFilterKeyTrack)
 #define noteFilterEnvAmt (synthCtx->noteFilterEnvAmt)
 #define noteFilterEnvAttack (synthCtx->noteFilterEnvAttack)
@@ -1250,6 +1413,7 @@ static void _ensureSynthCtx(void) {
 #define noteNoiseType (synthCtx->noteNoiseType)
 #define noteAnalogRolloff (synthCtx->noteAnalogRolloff)
 #define noteTubeSaturation (synthCtx->noteTubeSaturation)
+#define noteAnalogVariance (synthCtx->noteAnalogVariance)
 #define noteRingMod (synthCtx->noteRingMod)
 #define noteRingModFreq (synthCtx->noteRingModFreq)
 #define noteWavefoldAmount (synthCtx->noteWavefoldAmount)
@@ -2164,7 +2328,30 @@ static float processVoice(Voice *v, float sampleRate) {
     // Also skip for noiseMode==2 overlap: per-burst noise applies its own filter in burst section
     bool filterActive = cutoff < 0.999f || res > 0.001f;
     if (filterActive && !skipNoiseMix) {
-        if (v->filterType == 3 || v->filterType == 4) {
+        if (v->filterModel == FILTER_MODEL_LADDER && v->filterType <= 2) {
+            // 4-pole TPT ladder filter (warm, resonant, Juno-style)
+            // LP-only topology; for HP/BP we run ladder LP then derive the output.
+            // Cutoff mapping: same c^2*0.75 as SVF for preset compatibility,
+            // then normalize to [0,1] where 1.0 = Nyquist.
+            float theta = cutoff * cutoff * 0.75f;
+            float normFreq = theta / PI;  // tanf(theta)/tan(PI) ≈ theta/PI for small theta
+            if (normFreq > 0.9f) normFreq = 0.9f;
+            float lp = ladderProcess(&v->ladder, sample, normFreq, res);
+            if (v->filterType == 1) {
+                // HP: subtract LP from input
+                sample = sample - lp;
+            } else if (v->filterType == 2) {
+                // BP: input minus LP gives HP, then we want the band around cutoff.
+                // Approximate BP by taking the difference between the signal and both extremes.
+                sample = sample - lp;  // HP approximation (ladder BP is less precise than SVF BP)
+                // Weight toward the resonant peak
+                sample *= (1.0f + res * 2.0f);
+            } else {
+                sample = lp;
+            }
+            if (sample > 4.0f) sample = 4.0f;
+            if (sample < -4.0f) sample = -4.0f;
+        } else if (v->filterType == 3 || v->filterType == 4) {
             // One-pole filter (matches drums.h topology — 6dB/oct, no resonance)
             // state += cutoff * (input - state); output = state (LP) or input - state (HP)
             v->filterLp += cutoff * (sample - v->filterLp);
@@ -2619,6 +2806,43 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->rolloffState = 0.0f;
     v->tubeSaturation = noteTubeSaturation;
 
+    // Per-voice analog variance: deterministic offsets seeded by voice index
+    // Models component tolerances in analog synths (capacitor/resistor variance)
+    if (noteAnalogVariance) {
+        // Simple hash: deterministic per-voice, different per parameter
+        unsigned int seed = (unsigned int)(voiceIdx * 2654435761u);
+        #define VARIANCE_FLOAT(s) (((float)((s) & 0xFFFF) / 65535.0f) * 2.0f - 1.0f)  // -1..+1
+
+        // Pitch: ±3 cents (barely perceptible, adds width to chords)
+        float pitchCents = VARIANCE_FLOAT(seed) * 3.0f;
+        v->frequency *= powf(2.0f, pitchCents / 1200.0f);
+        v->baseFrequency = v->frequency;
+
+        // Filter cutoff: ±5%
+        seed = seed * 2246822519u + 374761393u;
+        float cutoffVar = 1.0f + VARIANCE_FLOAT(seed) * 0.05f;
+        v->filterCutoff *= cutoffVar;
+        if (v->filterCutoff > 1.0f) v->filterCutoff = 1.0f;
+
+        // Envelope timing: ±8% on attack/decay/release
+        seed = seed * 2246822519u + 374761393u;
+        float envVar = 1.0f + VARIANCE_FLOAT(seed) * 0.08f;
+        v->attack *= envVar;
+        seed = seed * 2246822519u + 374761393u;
+        envVar = 1.0f + VARIANCE_FLOAT(seed) * 0.08f;
+        v->decay *= envVar;
+        seed = seed * 2246822519u + 374761393u;
+        envVar = 1.0f + VARIANCE_FLOAT(seed) * 0.08f;
+        v->release *= envVar;
+
+        // Volume: ±0.5 dB (~±6%)
+        seed = seed * 2246822519u + 374761393u;
+        float gainVar = 1.0f + VARIANCE_FLOAT(seed) * 0.06f;
+        v->volume *= gainVar;
+
+        #undef VARIANCE_FLOAT
+    }
+
     // Synthesis modes
     v->ringMod = noteRingMod;
     v->ringModFreq = noteRingModFreq;
@@ -2682,11 +2906,16 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
         v->filterResonance = 0.0f;
         v->filterKeyTrack = 0.0f;
         v->filterType = 0;
+        v->filterModel = FILTER_MODEL_SVF;
     } else {
         v->filterCutoff = noteFilterCutoff;
         v->filterResonance = noteFilterResonance;
         v->filterKeyTrack = noteFilterKeyTrack;
         v->filterType = noteFilterType;
+        v->filterModel = noteFilterModel;
+    }
+    if (v->filterModel == FILTER_MODEL_LADDER && !isGlideRetrigger) {
+        ladderStateInit(&v->ladder);
     }
     
     // Initialize arpeggiator from global params if enabled
@@ -2844,6 +3073,7 @@ static void resetNoteGlobals(void) {
     notePhaseReset = false;
     noteAnalogRolloff = false;
     noteTubeSaturation = false;
+    noteAnalogVariance = false;
     noteRingMod = false;
     noteRingModFreq = 2.0f;
     noteWavefoldAmount = 0.0f;
@@ -3105,13 +3335,15 @@ static void playVowelOnVoice(int voiceIdx, float freq, VowelType vowel) {
     v->envStage = 1;
     if (!noteFilterEnabled) {
         v->filterCutoff = 1.0f; v->filterResonance = 0.0f;
-        v->filterKeyTrack = 0.0f; v->filterType = 0;
+        v->filterKeyTrack = 0.0f; v->filterType = 0; v->filterModel = FILTER_MODEL_SVF;
     } else {
         v->filterCutoff = noteFilterCutoff; v->filterResonance = noteFilterResonance;
         v->filterKeyTrack = noteFilterKeyTrack; v->filterType = noteFilterType;
+        v->filterModel = noteFilterModel;
     }
     v->filterLp = oldFilterLp * 0.3f;
     v->filterBp = 0.0f;
+    if (v->filterModel == FILTER_MODEL_LADDER) ladderStateInit(&v->ladder);
     v->arpEnabled = false;
     v->scwIndex = -1;
 

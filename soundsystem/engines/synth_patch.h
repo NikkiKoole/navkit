@@ -35,6 +35,7 @@ typedef struct {
     float p_filterCutoff;
     float p_filterResonance;
     int p_filterType;             // 0=LP, 1=HP, 2=BP
+    int p_filterModel;            // 0=SVF (default), 1=Ladder (4-pole TPT)
     float p_filterEnvAmt;
     float p_filterEnvAttack;
     float p_filterEnvDecay;
@@ -236,6 +237,7 @@ typedef struct {
     // Analog warmth toggles
     bool p_analogRolloff;     // true = gentle 1-pole LP rolloff (removes digital harshness)
     bool p_tubeSaturation;    // true = even-harmonic tube-style warmth
+    bool p_analogVariance;    // true = per-voice component tolerances (pitch/cutoff/env/gain)
 
     // Synthesis modes (ring mod, wavefolding, hard sync)
     bool p_ringMod;           // true = multiply osc output by ring mod oscillator
@@ -275,6 +277,7 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_filterEnabled = true,
         .p_filterCutoff = 1.0f,
         .p_filterResonance = 0.0f,
+        .p_filterModel = 0,           // FILTER_MODEL_SVF
         .p_filterEnvAmt = 0.0f,
         .p_filterEnvAttack = 0.01f,
         .p_filterEnvDecay = 0.2f,
@@ -407,6 +410,7 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_choke = false,
         .p_analogRolloff = false,
         .p_tubeSaturation = false,
+        .p_analogVariance = false,
         .p_ringMod = false,
         .p_ringModFreq = 2.0f,
         .p_wavefoldAmount = 0.0f,

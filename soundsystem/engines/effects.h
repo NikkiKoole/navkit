@@ -42,6 +42,10 @@
 #define CHORUS_MIN_DELAY 0.005f       // 5ms minimum delay
 #define CHORUS_MAX_DELAY 0.030f       // 30ms maximum delay
 
+// BBD chorus mode constants (Juno-style bucket brigade delay)
+#define BBD_CHARGE_SAT 0.7f           // Charge-well saturation threshold
+#define BBD_ANTIPHASE 0.5f            // 180° antiphase offset for stereo
+
 // Flanger constants (short modulated delay with feedback)
 #define FLANGER_BUFFER_SIZE 512       // ~11ms at 44100Hz
 #define FLANGER_MIN_DELAY 0.0001f     // 0.1ms minimum delay
@@ -180,6 +184,7 @@ typedef struct {
 
     // Chorus
     bool chorusEnabled;
+    bool chorusBBD;          // true = BBD mode (antiphase stereo, charge saturation)
     float chorusRate;        // LFO rate Hz (0.1-5.0)
     float chorusDepth;       // Modulation depth (0-1)
     float chorusMix;         // Dry/wet (0-1)
@@ -316,6 +321,7 @@ typedef struct {
     
     // Chorus (dual LFO modulated delay for "wobbly" character)
     bool chorusEnabled;
+    bool chorusBBD;       // true = BBD mode (Juno-style: antiphase stereo, charge saturation)
     float chorusRate;     // LFO rate in Hz (0.1 - 5.0)
     float chorusDepth;    // Modulation depth (0-1)
     float chorusMix;      // Dry/wet (0-1)
@@ -1212,42 +1218,93 @@ static float clampToRange(float val, float min, float max) {
     return val;
 }
 
+// BBD charge-well saturation: models cumulative nonlinearity across BBD stages.
+// Signal clips softly above +/-0.7, adding warm even harmonics.
+static inline float bbdSaturate(float x) {
+    if (x > BBD_CHARGE_SAT) {
+        float excess = x - BBD_CHARGE_SAT;
+        return BBD_CHARGE_SAT + excess / (1.0f + excess * 3.0f);
+    }
+    if (x < -BBD_CHARGE_SAT) {
+        float excess = -x - BBD_CHARGE_SAT;
+        return -(BBD_CHARGE_SAT + excess / (1.0f + excess * 3.0f));
+    }
+    return x;
+}
+
 // Chorus - dual LFO modulated delay for "wobbly" and "cute" character
+// When chorusBBD is true, uses BBD-style processing: single LFO in antiphase
+// for stereo width, charge-well saturation for warmth, triangle LFO for
+// smoother sweeps (models Juno-6 chorus hardware).
 static float processChorus(float sample, float dt) {
     _ensureFxCtx();
     if (!fx.chorusEnabled) return sample;
-    
+
     float dry = sample;
-    
+
     // Write to chorus buffer
     fxCtx->chorusBuffer[fxCtx->chorusWritePos] = sample;
     fxCtx->chorusWritePos = (fxCtx->chorusWritePos + 1) % CHORUS_BUFFER_SIZE;
-    
-    // Advance LFO phases (dual LFOs for richer modulation)
-    fx.chorusPhase1 += fx.chorusRate * dt;
-    if (fx.chorusPhase1 >= 1.0f) fx.chorusPhase1 -= 1.0f;
-    fx.chorusPhase2 += fx.chorusRate * 1.1f * dt;
-    if (fx.chorusPhase2 >= 1.0f) fx.chorusPhase2 -= 1.0f;
-    
-    // Calculate modulated delay times
+
     float delayRange = CHORUS_MAX_DELAY - CHORUS_MIN_DELAY;
     float modAmount = fx.chorusDepth * delayRange * 0.5f;
-    float delay1 = clampToRange(fx.chorusDelay + sinf(fx.chorusPhase1 * 2.0f * PI) * modAmount, 
-                                CHORUS_MIN_DELAY, CHORUS_MAX_DELAY);
-    float delay2 = clampToRange(fx.chorusDelay + sinf(fx.chorusPhase2 * 2.0f * PI) * modAmount,
-                                CHORUS_MIN_DELAY, CHORUS_MAX_DELAY);
-    
-    // Read from both delay taps with interpolation
-    float wet1 = chorusReadInterpolated(delay1 * SAMPLE_RATE);
-    float wet2 = chorusReadInterpolated(delay2 * SAMPLE_RATE);
-    float wet = (wet1 + wet2) * 0.5f;
-    
-    // Optional feedback for flanging-style effects
-    if (fx.chorusFeedback > 0.0f) {
-        int writeIdx = (fxCtx->chorusWritePos - 1 + CHORUS_BUFFER_SIZE) % CHORUS_BUFFER_SIZE;
-        fxCtx->chorusBuffer[writeIdx] = sample + wet * fx.chorusFeedback;
+    float wet;
+
+    if (fx.chorusBBD) {
+        // BBD mode: single triangle LFO, antiphase taps, charge saturation
+        fx.chorusPhase1 += fx.chorusRate * dt;
+        if (fx.chorusPhase1 >= 1.0f) fx.chorusPhase1 -= 1.0f;
+
+        // Rounded triangle LFO (cubic soft-clip at peaks, models capacitor rounding)
+        float tri = fx.chorusPhase1 < 0.5f
+            ? fx.chorusPhase1 * 4.0f - 1.0f
+            : 3.0f - fx.chorusPhase1 * 4.0f;
+        tri = tri * (1.5f - 0.5f * tri * tri);  // cubic soft-clip
+
+        // Antiphase: tap1 uses +LFO, tap2 uses -LFO (180° apart)
+        float delay1 = clampToRange(fx.chorusDelay + tri * modAmount,
+                                    CHORUS_MIN_DELAY, CHORUS_MAX_DELAY);
+        float delay2 = clampToRange(fx.chorusDelay - tri * modAmount,
+                                    CHORUS_MIN_DELAY, CHORUS_MAX_DELAY);
+
+        // Read with Hermite interpolation
+        float wet1 = chorusReadInterpolated(delay1 * SAMPLE_RATE);
+        float wet2 = chorusReadInterpolated(delay2 * SAMPLE_RATE);
+
+        // BBD charge-well saturation
+        wet1 = bbdSaturate(wet1);
+        wet2 = bbdSaturate(wet2);
+
+        // Mono sum (stereo width comes from the antiphase when rendered stereo)
+        wet = (wet1 + wet2) * 0.5f;
+
+        // Optional feedback
+        if (fx.chorusFeedback > 0.0f) {
+            int writeIdx = (fxCtx->chorusWritePos - 1 + CHORUS_BUFFER_SIZE) % CHORUS_BUFFER_SIZE;
+            fxCtx->chorusBuffer[writeIdx] = sample + bbdSaturate(wet * fx.chorusFeedback);
+        }
+    } else {
+        // Classic mode: dual LFOs at slightly different rates
+        fx.chorusPhase1 += fx.chorusRate * dt;
+        if (fx.chorusPhase1 >= 1.0f) fx.chorusPhase1 -= 1.0f;
+        fx.chorusPhase2 += fx.chorusRate * 1.1f * dt;
+        if (fx.chorusPhase2 >= 1.0f) fx.chorusPhase2 -= 1.0f;
+
+        float delay1 = clampToRange(fx.chorusDelay + sinf(fx.chorusPhase1 * 2.0f * PI) * modAmount,
+                                    CHORUS_MIN_DELAY, CHORUS_MAX_DELAY);
+        float delay2 = clampToRange(fx.chorusDelay + sinf(fx.chorusPhase2 * 2.0f * PI) * modAmount,
+                                    CHORUS_MIN_DELAY, CHORUS_MAX_DELAY);
+
+        float wet1 = chorusReadInterpolated(delay1 * SAMPLE_RATE);
+        float wet2 = chorusReadInterpolated(delay2 * SAMPLE_RATE);
+        wet = (wet1 + wet2) * 0.5f;
+
+        if (fx.chorusFeedback > 0.0f) {
+            int writeIdx = (fxCtx->chorusWritePos - 1 + CHORUS_BUFFER_SIZE) % CHORUS_BUFFER_SIZE;
+            fxCtx->chorusBuffer[writeIdx] = sample + wet * fx.chorusFeedback;
+        }
     }
-    
+
     return dry * (1.0f - fx.chorusMix) + wet * fx.chorusMix;
 }
 
@@ -2060,33 +2117,59 @@ static float processBusEffects(float input, int busIndex, float dt) {
         state->busChorusBuf[state->busChorusWritePos] = sample;
         state->busChorusWritePos = (state->busChorusWritePos + 1) % CHORUS_BUFFER_SIZE;
 
-        // Advance LFOs
-        state->busChorusPhase1 += bus->chorusRate * (1.0f / SAMPLE_RATE);
-        if (state->busChorusPhase1 >= 1.0f) state->busChorusPhase1 -= 1.0f;
-        state->busChorusPhase2 += bus->chorusRate * 1.1f * (1.0f / SAMPLE_RATE);
-        if (state->busChorusPhase2 >= 1.0f) state->busChorusPhase2 -= 1.0f;
-
         float delayRange = CHORUS_MAX_DELAY - CHORUS_MIN_DELAY;
         float modAmount = bus->chorusDepth * delayRange * 0.5f;
-        float d1 = clampToRange(bus->chorusDelay + sinf(state->busChorusPhase1 * 2.0f * PI) * modAmount,
-                                CHORUS_MIN_DELAY, CHORUS_MAX_DELAY);
-        float d2 = clampToRange(bus->chorusDelay + sinf(state->busChorusPhase2 * 2.0f * PI) * modAmount,
-                                CHORUS_MIN_DELAY, CHORUS_MAX_DELAY);
+        float w1, w2;
 
-        // Read with interpolation
-        float rp1 = (float)state->busChorusWritePos - d1 * SAMPLE_RATE;
-        if (rp1 < 0) rp1 += CHORUS_BUFFER_SIZE;
-        int ci0 = (int)rp1 % CHORUS_BUFFER_SIZE;
-        int ci1 = (ci0 + 1) % CHORUS_BUFFER_SIZE;
-        float cf = rp1 - (int)rp1;
-        float w1 = state->busChorusBuf[ci0] * (1.0f - cf) + state->busChorusBuf[ci1] * cf;
+        if (bus->chorusBBD) {
+            // BBD mode: single triangle LFO, antiphase taps, charge saturation
+            state->busChorusPhase1 += bus->chorusRate * (1.0f / SAMPLE_RATE);
+            if (state->busChorusPhase1 >= 1.0f) state->busChorusPhase1 -= 1.0f;
 
-        float rp2 = (float)state->busChorusWritePos - d2 * SAMPLE_RATE;
-        if (rp2 < 0) rp2 += CHORUS_BUFFER_SIZE;
-        ci0 = (int)rp2 % CHORUS_BUFFER_SIZE;
-        ci1 = (ci0 + 1) % CHORUS_BUFFER_SIZE;
-        cf = rp2 - (int)rp2;
-        float w2 = state->busChorusBuf[ci0] * (1.0f - cf) + state->busChorusBuf[ci1] * cf;
+            float tri = state->busChorusPhase1 < 0.5f
+                ? state->busChorusPhase1 * 4.0f - 1.0f
+                : 3.0f - state->busChorusPhase1 * 4.0f;
+            tri = tri * (1.5f - 0.5f * tri * tri);
+
+            float d1 = clampToRange(bus->chorusDelay + tri * modAmount,
+                                    CHORUS_MIN_DELAY, CHORUS_MAX_DELAY);
+            float d2 = clampToRange(bus->chorusDelay - tri * modAmount,
+                                    CHORUS_MIN_DELAY, CHORUS_MAX_DELAY);
+
+            float rp1 = (float)state->busChorusWritePos - d1 * SAMPLE_RATE;
+            if (rp1 < 0) rp1 += CHORUS_BUFFER_SIZE;
+            w1 = bbdSaturate(hermiteInterp(state->busChorusBuf, CHORUS_BUFFER_SIZE, rp1));
+
+            float rp2 = (float)state->busChorusWritePos - d2 * SAMPLE_RATE;
+            if (rp2 < 0) rp2 += CHORUS_BUFFER_SIZE;
+            w2 = bbdSaturate(hermiteInterp(state->busChorusBuf, CHORUS_BUFFER_SIZE, rp2));
+        } else {
+            // Classic mode: dual LFOs at slightly different rates
+            state->busChorusPhase1 += bus->chorusRate * (1.0f / SAMPLE_RATE);
+            if (state->busChorusPhase1 >= 1.0f) state->busChorusPhase1 -= 1.0f;
+            state->busChorusPhase2 += bus->chorusRate * 1.1f * (1.0f / SAMPLE_RATE);
+            if (state->busChorusPhase2 >= 1.0f) state->busChorusPhase2 -= 1.0f;
+
+            float d1 = clampToRange(bus->chorusDelay + sinf(state->busChorusPhase1 * 2.0f * PI) * modAmount,
+                                    CHORUS_MIN_DELAY, CHORUS_MAX_DELAY);
+            float d2 = clampToRange(bus->chorusDelay + sinf(state->busChorusPhase2 * 2.0f * PI) * modAmount,
+                                    CHORUS_MIN_DELAY, CHORUS_MAX_DELAY);
+
+            // Linear interp (bus chorus — cheaper than Hermite, fine for per-bus)
+            float rp1 = (float)state->busChorusWritePos - d1 * SAMPLE_RATE;
+            if (rp1 < 0) rp1 += CHORUS_BUFFER_SIZE;
+            int ci0 = (int)rp1 % CHORUS_BUFFER_SIZE;
+            int ci1 = (ci0 + 1) % CHORUS_BUFFER_SIZE;
+            float cf = rp1 - (int)rp1;
+            w1 = state->busChorusBuf[ci0] * (1.0f - cf) + state->busChorusBuf[ci1] * cf;
+
+            float rp2 = (float)state->busChorusWritePos - d2 * SAMPLE_RATE;
+            if (rp2 < 0) rp2 += CHORUS_BUFFER_SIZE;
+            ci0 = (int)rp2 % CHORUS_BUFFER_SIZE;
+            ci1 = (ci0 + 1) % CHORUS_BUFFER_SIZE;
+            cf = rp2 - (int)rp2;
+            w2 = state->busChorusBuf[ci0] * (1.0f - cf) + state->busChorusBuf[ci1] * cf;
+        }
 
         float wet = (w1 + w2) * 0.5f;
         sample = chorusDry * (1.0f - bus->chorusMix) + wet * bus->chorusMix;

@@ -89,7 +89,7 @@ typedef struct {
 typedef struct {
     bool distOn;    float distDrive, distTone, distMix; int distMode;
     bool crushOn;   float crushBits, crushRate, crushMix;
-    bool chorusOn;  float chorusRate, chorusDepth, chorusMix;
+    bool chorusOn;  bool chorusBBD; float chorusRate, chorusDepth, chorusMix;
     bool flangerOn; float flangerRate, flangerDepth, flangerFeedback, flangerMix;
     bool phaserOn;  float phaserRate, phaserDepth, phaserMix, phaserFeedback; int phaserStages;
     bool combOn;    float combFreq, combFeedback, combMix, combDamping;
@@ -141,7 +141,7 @@ typedef struct {
     bool distOn[NUM_BUSES];    float distDrive[NUM_BUSES]; float distMix[NUM_BUSES]; int distMode[NUM_BUSES];
     bool eqOn[NUM_BUSES];      float eqLowGain[NUM_BUSES]; float eqHighGain[NUM_BUSES];
     float eqLowFreq[NUM_BUSES]; float eqHighFreq[NUM_BUSES];
-    bool chorusOn[NUM_BUSES];  float chorusRate[NUM_BUSES]; float chorusDepth[NUM_BUSES];
+    bool chorusOn[NUM_BUSES];  bool chorusBBD[NUM_BUSES]; float chorusRate[NUM_BUSES]; float chorusDepth[NUM_BUSES];
     float chorusMix[NUM_BUSES]; float chorusDelay[NUM_BUSES]; float chorusFB[NUM_BUSES];
     bool phaserOn[NUM_BUSES];  float phaserRate[NUM_BUSES]; float phaserDepth[NUM_BUSES];
     float phaserMix[NUM_BUSES]; float phaserFB[NUM_BUSES]; int phaserStages[NUM_BUSES];

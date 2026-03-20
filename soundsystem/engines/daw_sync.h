@@ -35,6 +35,7 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
     fx.crushRate       = d->masterFx.crushRate;
     fx.crushMix        = d->masterFx.crushMix;
     fx.chorusEnabled   = d->masterFx.chorusOn;
+    fx.chorusBBD       = d->masterFx.chorusBBD;
     fx.chorusRate      = d->masterFx.chorusRate;
     fx.chorusDepth     = d->masterFx.chorusDepth;
     fx.chorusMix       = d->masterFx.chorusMix;
@@ -148,6 +149,7 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
         setBusChorus(b, d->mixer.chorusOn[b], d->mixer.chorusRate[b],
                      d->mixer.chorusDepth[b], d->mixer.chorusMix[b],
                      d->mixer.chorusDelay[b], d->mixer.chorusFB[b]);
+        mixerCtx->bus[b].chorusBBD = d->mixer.chorusBBD[b];
         setBusPhaser(b, d->mixer.phaserOn[b], d->mixer.phaserRate[b],
                      d->mixer.phaserDepth[b], d->mixer.phaserMix[b],
                      d->mixer.phaserFB[b], d->mixer.phaserStages[b]);
