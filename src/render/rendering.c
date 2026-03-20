@@ -3083,7 +3083,7 @@ static void DrawFrontView(void) {
         if (worldY < 0 || worldY >= gridHeight) continue;
 
         // Dimming: back layers darker, front layer full brightness
-        float brightness = 0.3f + 0.7f * ((float)layer / (float)(depthLayers - 1));
+        float brightness = (depthLayers > 1) ? 0.3f + 0.7f * ((float)layer / (float)(depthLayers - 1)) : 1.0f;
         unsigned char b = (unsigned char)(brightness * 255);
         Color layerTint = {b, b, b, 255};
 
@@ -3125,6 +3125,16 @@ static void DrawFrontView(void) {
                         DrawTexturePro(atlas, SpriteGetRect(floorSprite), surfaceDest, (Vector2){0,0}, 0, matTint);
                     }
                     // else: empty air, draw nothing
+                } else if (CellIsRamp(cell)) {
+                    // Ramps: directional front-view sprites
+                    int sprite;
+                    if (cell == CELL_RAMP_E)      sprite = SPRITE_triangle_e;
+                    else if (cell == CELL_RAMP_W)  sprite = SPRITE_triangle_w;
+                    else                           sprite = SPRITE_full_block; // N/S ramps seen head-on
+                    Color tint = layerTint;
+                    MaterialType rampMat = GetWallMaterial(x, worldY, z);
+                    if (rampMat != MAT_NONE) tint = MultiplyColor(tint, MaterialTint(rampMat));
+                    DrawTexturePro(atlas, SpriteGetRect(sprite), dest, (Vector2){0,0}, 0, tint);
                 } else {
                     // Solid cell (wall, dirt, tree, etc)
                     int sprite = GetWallSpriteAt(x, worldY, z, cell);
@@ -3317,7 +3327,7 @@ static void DrawFrontView(void) {
             // Fractional layer position for smooth interpolation
             float fracY = m->y / CELL_SIZE;  // e.g. 5.7
             float fracLayer = fracY - startY; // continuous layer index
-            float fracBrightness = 0.3f + 0.7f * (fracLayer / (float)(depthLayers - 1));
+            float fracBrightness = (depthLayers > 1) ? 0.3f + 0.7f * (fracLayer / (float)(depthLayers - 1)) : 1.0f;
             if (fracBrightness < 0.3f) fracBrightness = 0.3f;
             if (fracBrightness > 1.0f) fracBrightness = 1.0f;
             float fracLayerOffsetY = (depthLayers - 1 - fracLayer) * floorThickness;

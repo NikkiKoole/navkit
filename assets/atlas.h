@@ -44,6 +44,7 @@
     #define SPRITE_tree_branch_birch SPRITE8X8_tree_branch_birch
     #define SPRITE_tree_branch_willow SPRITE8X8_tree_branch_willow
     #define SPRITE_tree_sapling_birch SPRITE8X8_tree_sapling_birch
+    #define SPRITE_triangle_e SPRITE8X8_triangle_e
     #define SPRITE_tree_stripped_log_willow SPRITE8X8_tree_stripped_log_willow
     #define SPRITE_tree_leaves_birch SPRITE8X8_tree_leaves_birch
     #define SPRITE_finish_messy SPRITE8X8_finish_messy
@@ -64,6 +65,7 @@
     #define SPRITE_tree_planks_oak SPRITE8X8_tree_planks_oak
     #define SPRITE_division SPRITE8X8_division
     #define SPRITE_tree_trunk_pine SPRITE8X8_tree_trunk_pine
+    #define SPRITE_triangle_w SPRITE8X8_triangle_w
     #define SPRITE_finish_rough SPRITE8X8_finish_rough
     #define SPRITE_ladder SPRITE8X8_ladder
     #define SPRITE_tree_bark_oak SPRITE8X8_tree_bark_oak
@@ -153,6 +155,7 @@
     #define SPRITE_tree_branch_birch SPRITE16X16_tree_branch_birch
     #define SPRITE_tree_branch_willow SPRITE16X16_tree_branch_willow
     #define SPRITE_tree_sapling_birch SPRITE16X16_tree_sapling_birch
+    #define SPRITE_triangle_e SPRITE16X16_triangle_e
     #define SPRITE_tree_stripped_log_willow SPRITE16X16_tree_stripped_log_willow
     #define SPRITE_tree_leaves_birch SPRITE16X16_tree_leaves_birch
     #define SPRITE_finish_messy SPRITE16X16_finish_messy
@@ -173,6 +176,7 @@
     #define SPRITE_tree_planks_oak SPRITE16X16_tree_planks_oak
     #define SPRITE_division SPRITE16X16_division
     #define SPRITE_tree_trunk_pine SPRITE16X16_tree_trunk_pine
+    #define SPRITE_triangle_w SPRITE16X16_triangle_w
     #define SPRITE_finish_rough SPRITE16X16_finish_rough
     #define SPRITE_ladder SPRITE16X16_ladder
     #define SPRITE_tree_bark_oak SPRITE16X16_tree_bark_oak
