@@ -6767,6 +6767,182 @@ describe(mono_patch_save_load) {
     }
 }
 
+// ============================================================================
+// CHAIN ADVANCE — STEP 0 TRIGGER CORRECTNESS
+// These tests verify that when the sequencer advances to a new pattern (via
+// chain or per-track patterns), step 0 triggers with the NEW pattern's data,
+// not the old pattern's data. Regression tests for the double-trigger bug.
+// ============================================================================
+
+static int sampler_trigger_count = 0;
+static int sampler_last_slice = -1;
+static float sampler_last_vel = 0.0f;
+static float sampler_last_pitchMod = 0.0f;
+static int sampler_trigger_log[32];  // pattern indices at each trigger
+static float sampler_vel_log[32];
+
+static void test_sampler_trigger(int note, float vel, float gateTime, float pitchMod, bool slide, bool accent) {
+    (void)gateTime; (void)slide; (void)accent;
+    if (sampler_trigger_count < 32) {
+        sampler_trigger_log[sampler_trigger_count] = note;
+        sampler_vel_log[sampler_trigger_count] = vel;
+    }
+    sampler_trigger_count++;
+    sampler_last_slice = note;
+    sampler_last_vel = vel;
+    sampler_last_pitchMod = pitchMod;
+}
+
+static void test_sampler_release(void) { /* one-shot */ }
+
+static void reset_sampler_counters(void) {
+    sampler_trigger_count = 0;
+    sampler_last_slice = -1;
+    sampler_last_vel = 0.0f;
+    sampler_last_pitchMod = 0.0f;
+    memset(sampler_trigger_log, -1, sizeof(sampler_trigger_log));
+    memset(sampler_vel_log, 0, sizeof(sampler_vel_log));
+}
+
+// Helper: set a sampler step (slice + note + velocity)
+static void setSamplerStep(Pattern *p, int step, int slice, int note, float vel) {
+    StepV2 *sv = &p->steps[SEQ_TRACK_SAMPLER][step];
+    sv->noteCount = 1;
+    sv->notes[0].slice = (uint8_t)slice;
+    sv->notes[0].note = (uint8_t)note;
+    sv->notes[0].velocity = velFloatToU8(vel);
+    sv->notes[0].nudge = 0;
+    sv->notes[0].slide = false;
+}
+
+// Helper: init sequencer for chain tests with short patterns
+static void init_chain_test(int stepCount) {
+    _ensureSeqCtx();
+    initSequencerContext(seqCtx);
+    for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++)
+        seq.trackVolume[t] = 1.0f;
+    for (int i = 0; i < SEQ_NUM_PATTERNS; i++) {
+        initPattern(&seq.patterns[i]);
+        for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++)
+            seq.patterns[i].trackLength[t] = stepCount;
+    }
+    seq.trackNoteOn[SEQ_TRACK_SAMPLER] = test_sampler_trigger;
+    seq.trackNoteOff[SEQ_TRACK_SAMPLER] = test_sampler_release;
+    seq.playing = true;
+    seq.bpm = 120.0f;
+    seq.ticksPerStep = SEQ_TICKS_PER_STEP_16TH;
+    seq.nextPattern = -1;
+    seq.chainPos = 0;
+    seq.chainLoopCount = 0;
+    seq.perTrackPatterns = false;
+}
+
+describe(chain_step0_trigger) {
+    it("should trigger new pattern step 0 after chain advance, not old pattern") {
+        reset_sampler_counters();
+        init_chain_test(2);  // 2-step patterns for fast wrap
+
+        // Pattern 0: slice 0, vel 0.5
+        setSamplerStep(&seq.patterns[0], 0, 0, 60, 0.5f);
+        // Pattern 1: slice 1, vel 0.9
+        setSamplerStep(&seq.patterns[1], 0, 1, 72, 0.9f);
+
+        seqChainAppend(0);
+        seqChainAppend(1);
+        seq.chainDefaultLoops = 1;
+        seq.currentPattern = 0;
+
+        // Run until 2 pattern ends (should play P0 then P1)
+        // Run until exactly 1 pattern end (P0 finishes → chain advances to P1)
+        float dt = 60.0f / (seq.bpm * (float)SEQ_PPQ);
+        int startPlayCount = seq.playCount;
+        for (int i = 0; i < 500 && seq.playCount == startPlayCount; i++)
+            updateSequencer(dt);
+
+        // Should have exactly 2 triggers: P0 step 0 + P1 step 0 (from chain advance)
+        // Bug would cause P0 step 0 to fire twice (old pattern data at boundary)
+        expect(sampler_trigger_count == 2);
+        // First trigger: slice 0 from pattern 0
+        expect(sampler_trigger_log[0] == 0);
+        expect_vel_eq(sampler_vel_log[0], 0.5f);
+        // Second trigger: slice 1 from pattern 1 (NOT slice 0 again)
+        expect(sampler_trigger_log[1] == 1);
+        expect_vel_eq(sampler_vel_log[1], 0.9f);
+    }
+
+    it("should not double-trigger step 0 at chain boundary") {
+        reset_sampler_counters();
+        init_chain_test(2);
+
+        // Pattern 0: slice 0, vel 0.5
+        setSamplerStep(&seq.patterns[0], 0, 0, 60, 0.5f);
+        // Pattern 1: slice 1, vel 0.9
+        setSamplerStep(&seq.patterns[1], 0, 1, 72, 0.9f);
+
+        seqChainAppend(0);
+        seqChainAppend(1);
+        seq.chainDefaultLoops = 1;
+        seq.currentPattern = 0;
+
+        // Run through exactly 1 pattern end (P0 finishes, P1 starts)
+        float dt = 60.0f / (seq.bpm * (float)SEQ_PPQ);
+        int startPlayCount = seq.playCount;
+        for (int i = 0; i < 500 && seq.playCount == startPlayCount; i++)
+            updateSequencer(dt);
+
+        // Exactly 2 triggers: P0 step 0 + P1 step 0 (from chain advance)
+        // Bug would cause 3: P0 step 0 + P0 step 0 again + P1 step 0
+        expect(sampler_trigger_count == 2);
+        expect(sampler_trigger_log[0] == 0);  // P0: slice 0
+        expect(sampler_trigger_log[1] == 1);  // P1: slice 1
+    }
+}
+
+describe(pertrack_step0_trigger) {
+    it("should not trigger old pattern step 0 when perTrackPatterns wraps") {
+        reset_sampler_counters();
+        init_chain_test(2);
+
+        // Pattern 0: slice 0, vel 0.5
+        setSamplerStep(&seq.patterns[0], 0, 0, 60, 0.5f);
+        // Pattern 1: slice 1, vel 0.9
+        setSamplerStep(&seq.patterns[1], 0, 1, 72, 0.9f);
+
+        // Use perTrackPatterns mode (arrangement/launcher)
+        seq.perTrackPatterns = true;
+        for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++)
+            seq.trackPatternIdx[t] = 0;  // start on pattern 0
+        seq.currentPattern = 0;
+
+        // Run until step wraps (2 steps)
+        float dt = 60.0f / (seq.bpm * (float)SEQ_PPQ);
+        int startPlayCount = seq.playCount;
+        for (int i = 0; i < 500 && seq.playCount == startPlayCount; i++)
+            updateSequencer(dt);
+
+        // Simulate sync callback: update trackPatternIdx + clear trackWrapped
+        for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++) {
+            seq.trackPatternIdx[t] = 1;
+            seq.trackWrapped[t] = false;
+        }
+
+        // Run one more tick so the deferred step 0 triggers with new pattern
+        for (int i = 0; i < 10; i++)
+            updateSequencer(dt);
+
+        // First trigger should be slice 0 (pattern 0's step 0)
+        expect(sampler_trigger_count >= 1);
+        expect(sampler_trigger_log[0] == 0);
+        expect_vel_eq(sampler_vel_log[0], 0.5f);
+
+        // The deferred step 0 after wrap should use pattern 1's data (slice 1)
+        // Bug would give slice 0 again (old pattern)
+        expect(sampler_trigger_count >= 2);
+        expect(sampler_trigger_log[1] == 1);
+        expect_vel_eq(sampler_vel_log[1], 0.9f);
+    }
+}
+
 static bool test_verbose = false;
 
 int main(int argc, char **argv) {
@@ -6901,6 +7077,10 @@ int main(int argc, char **argv) {
 
     // Full mixer pipeline (catches master FX regressions)
     test(full_mixer_pipeline);
+
+    // Chain advance step-0 trigger correctness
+    test(chain_step0_trigger);
+    test(pertrack_step0_trigger);
 
     return summary();
 }

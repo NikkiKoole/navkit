@@ -567,6 +567,9 @@ static bool dawSave(const char *filepath) {
         for (int t = 0; t < SEQ_MELODY_TRACKS && empty; t++)
             for (int s = 0; s < p->trackLength[SEQ_DRUM_TRACKS + t] && empty; s++)
                 if (patGetNote(p, SEQ_DRUM_TRACKS + t, s) != SEQ_NOTE_OFF) empty = false;
+        // Check sampler track
+        for (int s = 0; s < p->trackLength[SEQ_TRACK_SAMPLER] && empty; s++)
+            if (p->steps[SEQ_TRACK_SAMPLER][s].noteCount > 0) empty = false;
         if (p->plockCount > 0) empty = false;
         if (!empty) _dwWritePattern(f, i, p);
     }
@@ -975,6 +978,13 @@ static bool dawLoad(const char *filepath) {
 
     // Stop playback
     daw.transport.playing = false;
+
+    // Clear chop state so stale sourcePath doesn't trigger a re-bounce.
+    // If the file has a [sample] section, the parser will repopulate it.
+    // Skip during offline bounce — renderPatternToBuffer calls dawLoad internally.
+#ifdef DAW_HAS_CHOP_STATE
+    if (!_chopBounceActive) chopState.sourcePath[0] = '\0';
+#endif
 
     // Reset patterns
     for (int i = 0; i < SEQ_NUM_PATTERNS; i++) initPattern(&seq.patterns[i]);

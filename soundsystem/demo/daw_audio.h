@@ -640,7 +640,6 @@ static void dawSyncSequencer(void) {
             }
         }
         daw.transport.currentPattern = seq.currentPattern;
-        // Arrangement sync diagnostics (active when seqSoundLogEnabled, dump with F9)
         seqSoundLog("ARR_SYNC bar=%d curPat=%d tpi=[%d %d %d %d %d %d %d %d]",
             bar, seq.currentPattern,
             seq.trackPatternIdx[0], seq.trackPatternIdx[1],

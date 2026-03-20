@@ -849,15 +849,20 @@ static void chopParseChain(const char *path) {
     if (!f) return;
     chopState.songChainLen = 0;
     chopState.chainBpm = 120.0f;
+    int loopsPerPattern = 1;
+    int rawChain[64];
+    int rawLoops[64];  // per-section loop override (0 = use default)
+    int rawChainLen = 0;
+    memset(rawLoops, 0, sizeof(rawLoops));
     char line[512];
-    bool inChain = false, inTransport = false;
+    bool inArrangement = false, inTransport = false;
     while (fgets(line, sizeof(line), f)) {
         char *s = line;
         while (*s == ' ' || *s == '\t') s++;
         int len = (int)strlen(s);
         while (len > 0 && (s[len-1] == '\n' || s[len-1] == '\r' || s[len-1] == ' ')) s[--len] = 0;
         if (s[0] == '[') {
-            inChain = (strcmp(s, "[chain]") == 0);
+            inArrangement = (strcmp(s, "[arrangement]") == 0);
             inTransport = (strcmp(s, "[transport]") == 0);
             continue;
         }
@@ -865,24 +870,48 @@ static void chopParseChain(const char *path) {
             char *eq = strchr(s, '=');
             if (eq) chopState.chainBpm = strtof(eq + 1, NULL);
         }
-        if (inChain && strncmp(s, "order", 5) == 0) {
+        if (inArrangement && strncmp(s, "loopsPerPattern", 15) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) { int v = atoi(eq + 1); if (v >= 1) loopsPerPattern = v; }
+        }
+        if (inArrangement && strncmp(s, "patterns", 8) == 0) {
             char *eq = strchr(s, '=');
             if (!eq) continue;
             char *tok = eq + 1;
-            while (*tok && chopState.songChainLen < 64) {
+            while (*tok && rawChainLen < 64) {
                 while (*tok == ' ' || *tok == ',') tok++;
                 if (!*tok) break;
-                chopState.songChain[chopState.songChainLen++] = atoi(tok);
-                while (*tok && *tok != ',') tok++;
+                rawChain[rawChainLen++] = atoi(tok);
+                while (*tok && *tok != ' ' && *tok != ',') tok++;
+            }
+        }
+        if (inArrangement && strncmp(s, "loops", 5) == 0 && s[5] != 'P') {
+            // "loops = ..." but not "loopsPerPattern"
+            char *eq = strchr(s, '=');
+            if (!eq) continue;
+            char *tok = eq + 1;
+            int idx = 0;
+            while (*tok && idx < 64) {
+                while (*tok == ' ' || *tok == ',') tok++;
+                if (!*tok) break;
+                rawLoops[idx++] = atoi(tok);
+                while (*tok && *tok != ' ' && *tok != ',') tok++;
             }
         }
     }
     fclose(f);
-    if (chopState.songChainLen == 0) {
-        // No chain: default to all 8 patterns (some may be empty)
+    if (rawChainLen == 0) {
+        // No arrangement: default to all 8 patterns (some may be empty)
         for (int i = 0; i < SEQ_NUM_PATTERNS; i++)
-            chopState.songChain[i] = i;
-        chopState.songChainLen = SEQ_NUM_PATTERNS;
+            rawChain[i] = i;
+        rawChainLen = SEQ_NUM_PATTERNS;
+    }
+    // Expand chain: per-section loops override, else use loopsPerPattern
+    for (int i = 0; i < rawChainLen && chopState.songChainLen < 64; i++) {
+        int loops = (rawLoops[i] > 0) ? rawLoops[i] : loopsPerPattern;
+        for (int l = 0; l < loops && chopState.songChainLen < 64; l++) {
+            chopState.songChain[chopState.songChainLen++] = rawChain[i];
+        }
     }
 }
 
@@ -1008,6 +1037,8 @@ static bool chopBounceNextPattern(void) {
     return true;
 }
 
+static void chopApplySliceParams(void);  // forward declaration
+
 // Chop the current selection from fullData
 static void chopStateBounce(void) {
     chopSlicesClear();
@@ -1106,6 +1137,9 @@ static void chopStateBounce(void) {
         chopState.sliceParams[s].fadeInMs = -1.0f;
         chopState.sliceParams[s].fadeOutMs = -1.0f;
     }
+
+    // Apply default fade to sampler slots (click prevention)
+    chopApplySliceParams();
 }
 
 // Re-apply per-slice params to sampler slots (call after changing params)
@@ -5678,8 +5712,15 @@ static void dawHandleMusicalTyping(void) {
         // 1 key  → build chord from UI chord type via buildArpChord
         // 2+ keys → use held notes directly
         for (size_t i = 0; i < NUM_DAW_PIANO_KEYS; i++) {
-            if (IsKeyPressed(dawPianoKeys[i].key)) dawArpKeyHeld[i] = true;
-            if (IsKeyReleased(dawPianoKeys[i].key)) dawArpKeyHeld[i] = false;
+            int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
+            if (IsKeyPressed(dawPianoKeys[i].key)) {
+                dawArpKeyHeld[i] = true;
+                if (midiNote >= 0 && midiNote < NUM_MIDI_NOTES) midiNoteHeld[midiNote] = true;
+            }
+            if (IsKeyReleased(dawPianoKeys[i].key)) {
+                dawArpKeyHeld[i] = false;
+                if (midiNote >= 0 && midiNote < NUM_MIDI_NOTES) midiNoteHeld[midiNote] = false;
+            }
         }
 
         // Collect held keys
@@ -5777,12 +5818,14 @@ static void dawHandleMusicalTyping(void) {
                 }
                 // Record note into pattern
                 int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
+                if (midiNote >= 0 && midiNote < NUM_MIDI_NOTES) midiNoteHeld[midiNote] = true;
                 dawRecordNoteOn(midiNote, 0.8f);
                 // Track in mono note stack
                 if (patch->p_monoMode) monoStackPush(midiNote, freq);
             }
             if (IsKeyReleased(dawPianoKeys[i].key)) {
                 int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
+                if (midiNote >= 0 && midiNote < NUM_MIDI_NOTES) midiNoteHeld[midiNote] = false;
                 dawRecordNoteOff(midiNote);
             }
             if (IsKeyReleased(dawPianoKeys[i].key) && dawPianoKeyVoices[i] >= 0) {
@@ -6268,14 +6311,19 @@ static int drawChopWaveform(float bx, float by, float bw, float bh,
     }
 
     // Click detection
-    if (CheckCollisionPointRec(mouse, (Rectangle){bx, by, bw, bh}) &&
-        IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-        int samplePos = (int)(((mouse.x - bx - 2) / (bw - 4)) * length);
-        clicked = sliceCount - 1;
-        for (int s = 0; s < sliceCount; s++) {
-            if (samplePos < sliceStarts[s + 1]) { clicked = s; break; }
+    if (CheckCollisionPointRec(mouse, (Rectangle){bx, by, bw, bh})) {
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            int samplePos = (int)(((mouse.x - bx - 2) / (bw - 4)) * length);
+            clicked = sliceCount - 1;
+            for (int s = 0; s < sliceCount; s++) {
+                if (samplePos < sliceStarts[s + 1]) { clicked = s; break; }
+            }
+            ui_consume_click();
         }
-        ui_consume_click();
+        if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+            clicked = -2;  // signal: stop playback
+            ui_consume_click();
+        }
     }
 
     // Center line
@@ -6806,7 +6854,9 @@ static void drawWorkSample(float x, float y, float w, float h) {
                                         chopState.sliceCount,
                                         chopState.sliceLengths,
                                         chopState.selectedSlice);
-        if (clicked >= 0) {
+        if (clicked == -2) {
+            samplerStopAll();
+        } else if (clicked >= 0) {
             chopState.selectedSlice = clicked;
             if (clicked < chopState.sliceCount) {
                 chopApplySliceParams();

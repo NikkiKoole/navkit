@@ -486,6 +486,7 @@ typedef struct {
     int trackTriggerTick[SEQ_V2_MAX_TRACKS];                    // When to trigger (nudge-adjusted)
     bool trackTriggered[SEQ_V2_MAX_TRACKS];                     // Has this step been triggered?
     bool trackWrapped[SEQ_V2_MAX_TRACKS];                       // Track step wrapped to 0 (for clip launcher)
+    bool trackDeferredTrigger[SEQ_V2_MAX_TRACKS];               // Step 0 trigger deferred until sync updates pattern
     int launchQuantize;                                         // 0=bar, 1=1step, 2=2steps, 4=beat(4steps), 8=half-bar
     int trackGateRemaining[SEQ_V2_MAX_TRACKS][SEQ_V2_MAX_POLY];  // Per-voice gate countdown
     int trackCurrentNote[SEQ_V2_MAX_TRACKS][SEQ_V2_MAX_POLY];   // Per-voice currently playing note (-1 if none)
@@ -1427,6 +1428,19 @@ static void updateSequencer(float dt) {
                 p = p_global;
             }
 
+            // Deferred trigger: sync callback has updated trackPatternIdx,
+            // so now fire step 0 with the correct (new) pattern data.
+            if (seq.trackDeferredTrigger[track] && !seq.trackWrapped[track]) {
+                seq.trackDeferredTrigger[track] = false;
+                seq.trackTriggered[track] = false;  // allow trigger
+                int dStep = seq.trackStep[track];
+                StepV2 *dSv = trackSilent ? &_emptyStep : &p->steps[track][dStep];
+                float dStepDuration = (float)seq.ticksPerStep / (seq.bpm * (float)SEQ_PPQ / 60.0f);
+                if (dSv->noteCount > 0) {
+                    seqTriggerStep(p, track, dStep, dStepDuration);
+                }
+            }
+
             int step = seq.trackStep[track];
             int tick = seq.trackTick[track];
             StepV2 *sv = trackSilent ? &_emptyStep : &p->steps[track][step];
@@ -1505,13 +1519,6 @@ static void updateSequencer(float dt) {
                 seq.trackTriggered[track] = false;
                 seq.trackTriggerTick[track] = calcTrackTriggerTick(track);
 
-                // Check if new step should trigger immediately (nudge <= 0)
-                int newStep = seq.trackStep[track];
-                StepV2 *newSv = trackSilent ? &_emptyStep : &p->steps[track][newStep];
-                if (newSv->noteCount > 0 && seq.trackTriggerTick[track] <= 0) {
-                    seqTriggerStep(p, track, newStep, stepDuration);
-                }
-
                 // Flag per-track wrap (for clip launcher)
                 if (seq.trackStep[track] == 0 && prevStep != 0) {
                     seq.trackWrapped[track] = true;
@@ -1524,6 +1531,8 @@ static void updateSequencer(float dt) {
                 }
 
                 // Check if pattern completed (track 0 wraps as master)
+                // Must happen BEFORE step 0 trigger so the new pattern's step 0
+                // plays instead of the old pattern's step 0.
                 if (track == 0 && seq.trackStep[0] == 0 && prevStep != 0) {
                     seq.playCount++;
                     seqSoundLog("PATTERN_END  pat=%d playCount=%d", seq.currentPattern, seq.playCount);
@@ -1548,6 +1557,25 @@ static void updateSequencer(float dt) {
                                 memset(seq.trackStepPlayCount, 0, sizeof(seq.trackStepPlayCount));
                             }
                         }
+                    }
+                    // Re-fetch pattern pointers after potential change
+                    // so remaining tracks (1-7) see the new pattern
+                    p_global = seqCurrentPattern();
+                    p = p_global;
+                }
+
+                // Check if new step should trigger immediately (nudge <= 0)
+                // After chain advance so the NEW pattern's step 0 triggers, not the old one.
+                // In perTrackPatterns mode (launcher/arrangement), defer trigger until
+                // the sync callback has updated trackPatternIdx (next frame).
+                if (seq.perTrackPatterns && seq.trackWrapped[track]) {
+                    seq.trackDeferredTrigger[track] = true;
+                    seq.trackTriggered[track] = true;  // block normal trigger path
+                } else {
+                    int newStep = seq.trackStep[track];
+                    StepV2 *newSv = trackSilent ? &_emptyStep : &p->steps[track][newStep];
+                    if (newSv->noteCount > 0 && seq.trackTriggerTick[track] <= 0) {
+                        seqTriggerStep(p, track, newStep, stepDuration);
                     }
                 }
             }
