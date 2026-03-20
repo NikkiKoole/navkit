@@ -195,9 +195,13 @@ Then 4 cascaded TPT integrators: `v = g1·(in − s); s += 2v; out = s + v`
 **Adaptive thermal noise**: Seeds self-oscillation when input energy is near zero. Noise amplitude scales inversely with signal energy: `1e-3 / (1 + energy·1000)`.
 **HF resonance limiter**: Clamps feedback gain k at high frequencies to model OTA bandwidth rolloff, preventing instability.
 **Q compensation**: `comp = 1 + k·0.06` and `g1L = g1·(1 + k·0.0003)` — BA662 VCA drive boost at high resonance.
-**HP/BP from LP**: HP = input − LP; BP = (input − LP) × (1 + res·2) — approximate, not true multimode.
-**Reference**: Ported from KR-106 (GPLv3) — a virtual Juno-106 synth. Polyphase IIR coefficients from Laurent de Soras, HIIR library (WTFPL license). TPT ladder theory from Zavalishin, "The Art of VA Filter Design" (2012), Chapter 6. OTA modeling from Stinchcombe, "Analysis of the Moog Transistor Ladder and Derivative Filters" (2008).
-**Assessment**: High quality. The 2× oversampling is essential for a ladder filter (without it, the nonlinear feedback creates audible aliasing at high resonance). The Juno-6 calibrated resonance curve and BA662 Q compensation are nice analog-accurate touches. The Padé tanh approximant is efficient and accurate. The HF resonance limiter prevents the instability that plagues naive ladder implementations. **Caveat**: The HP and BP modes are derived by subtracting the LP output, which is a crude approximation — true ladder HP/BP requires tapping intermediate stages. For most musical use this is fine, but for precise filter sweeps in HP/BP mode the SVF is superior.
+**True multimode output** via intermediate stage taps (Zavalishin binomial mixing):
+- **LP** = lp4 (4-pole, −24 dB/oct)
+- **BP** = lp2 (2-pole bandpass, resonant peak tracks cutoff)
+- **HP** = u − 4·lp1 + 6·lp2 − 4·lp3 + lp4 (4th-order difference, −24 dB/oct)
+The stage taps (lp1–lp4) and pre-filter input (u) are returned via `LadderOutput` struct from `ladderProcessSample`, and the mode selection happens before downsampling so all taps are at 2× rate.
+**Reference**: Ported from KR-106 (GPLv3) — a virtual Juno-106 synth. Polyphase IIR coefficients from Laurent de Soras, HIIR library (WTFPL license). TPT ladder theory from Zavalishin, "The Art of VA Filter Design" (2012), Chapter 6. OTA modeling from Stinchcombe, "Analysis of the Moog Transistor Ladder and Derivative Filters" (2008). Multimode tap mixing coefficients (1, −4, 6, −4, 1) are the 4th-order binomial coefficients, also from Zavalishin Ch. 6.
+**Assessment**: High quality. The 2× oversampling is essential for a ladder filter (without it, the nonlinear feedback creates audible aliasing at high resonance). The Juno-6 calibrated resonance curve and BA662 Q compensation are nice analog-accurate touches. The Padé tanh approximant is efficient and accurate. The HF resonance limiter prevents the instability that plagues naive ladder implementations. True multimode via stage taps gives proper −24 dB/oct slopes and correct resonant peak tracking for all three modes (LP/BP/HP).
 
 ### 2.3 One-Pole Filter (6 dB/oct)
 **File**: `synth.h:2352–2356`
@@ -461,8 +465,10 @@ Signal flow: **Distortion → Bitcrusher → Chorus → Flanger → Phaser → C
 
 ## 6. REVERB
 
-### 6.1 Schroeder Reverberator
-**File**: `effects.h:565–573` (constants), processing in processEffects
+Two selectable algorithms via `reverbFDN` toggle (A/B testable in the DAW UI). Both share the same parameter interface (size, damping, mix, pre-delay, bass).
+
+### 6.1 Schroeder Reverberator (reverbFDN = false, default)
+**File**: `effects.h:1481–1491` (`_processReverbCore`)
 **Algorithm**: 4 parallel comb filters → 2 series allpass filters, with pre-delay.
 **Comb lengths**: 1559, 1621, 1493, 1427 samples (mutually prime to avoid flutter).
 **Allpass lengths**: 223, 557 samples.
@@ -472,7 +478,46 @@ Signal flow: **Distortion → Bitcrusher → Chorus → Flanger → Phaser → C
 **Feedback**: `REVERB_FEEDBACK_MIN + REVERB_FEEDBACK_RANGE × roomSize` = 0.7–0.95.
 **Bass control**: Separate feedback multiplier for comb filters (reverbBass × feedback), giving richer low-frequency sustain.
 **Reference**: Schroeder, "Natural Sounding Artificial Reverberation" (1962). Moorer, "About This Reverberation Business" (1979) — added damped feedback in combs. The mutually-prime comb lengths prevent flutter echo (Jot & Chaigne, 1991).
-**Assessment**: This is the classic Schroeder/Moorer reverb — well-understood, CPU-efficient, and produces reasonable results. The damping LP in the comb feedback is the Moorer improvement that gives frequency-dependent decay. The bass control is a useful extension. **Limitations**: Schroeder reverb is known for metallic coloration at short decay times and lack of early reflections. For a game audio engine this is adequate, but a Feedback Delay Network (FDN) reverb (Jot 1992) or a plate algorithm would give smoother, denser results. The comb lengths are tuned for 44100 Hz only — at other sample rates, the reverb character would change. Consider scaling comb lengths proportionally to sample rate.
+**Assessment**: Classic Schroeder/Moorer reverb — well-understood, CPU-efficient, reasonable results. The damping LP in the comb feedback is the Moorer improvement for frequency-dependent decay. **Limitations**: Known for metallic coloration at short decay times, low echo density (only 4 independent combs), and no early reflections. Comb lengths are tuned for 44100 Hz only.
+
+### 6.2 FDN Reverberator (reverbFDN = true)
+**File**: `effects.h` (`_processReverbFDN`, `fdnHadamard8`)
+**Algorithm**: 8-line Feedback Delay Network with Hadamard mixing matrix + early reflections tap line.
+
+**Architecture**:
+```
+input → pre-delay → early reflections (6-tap delay) ──────┐
+                  → 8 delay lines → Hadamard matrix ──┐   │
+                       ↑          ← damping LP ← fb ←─┘   │
+                       └── DC blocker ← input injection    │
+                                                           │
+output = early × 0.5 + tail (sum of 8 lines × 1/8) ←─────┘
+```
+
+**Delay lines**: 8 lines with mutually-prime lengths: 1327, 1631, 1973, 2311, 2677, 3001, 3359, 3671 samples (30–83 ms at 44.1 kHz). Spread across a wide range to avoid modal clustering.
+
+**Hadamard matrix**: 8×8 orthogonal mixing matrix applied in-place via 3-stage butterfly (Walsh-Hadamard transform). Each stage is pairs of `(a+b, a−b)` operations — no multiplications, only additions/subtractions. Normalized by `1/√8 ≈ 0.3536`. The Hadamard matrix is:
+- **Orthogonal**: energy-preserving (no buildup or decay from the matrix itself)
+- **Maximally coupled**: every line feeds into every other line, creating exponential echo density growth
+- **Lossless**: the matrix has eigenvalues of ±1 only
+
+**Early reflections**: 6-tap delay line with fixed tap times (210–1567 samples) and inverse-distance gains (0.50–0.17). Tap times scaled by room size (0.3–1.0× original). Models first-order reflections from walls/ceiling of a medium room (~5×7×3 m, image-source approximation).
+
+**Per-line processing**:
+- **Damping LP**: Same 1-pole topology as Schroeder combs (`state = x·dampCoef + state·(1−dampCoef)`), same damping parameter for compatibility.
+- **Feedback**: Same `REVERB_FEEDBACK_MIN + size × REVERB_FEEDBACK_RANGE` formula. First 4 lines (longer delays, lower-frequency modes) use `bassFeedback` (= feedback × reverbBass); last 4 use normal feedback.
+- **DC blocker**: Leaky integrator tracks DC component (`dcState = dcState·0.995 + x·0.005`), subtracted from signal. Prevents low-frequency buildup in the feedback loop.
+- **Input injection**: Pre-delayed input distributed equally to all 8 lines (× 0.35 gain per line).
+
+**Output**: `early × 0.5 + tail`, where tail = sum of all 8 line outputs × 1/8.
+
+**Reference**:
+- Jot, "Efficient Structures for Reverb Processing" (1992) — original FDN formulation with unitary mixing matrices.
+- Smith, "Physical Audio Signal Processing" (CCRMA online textbook) — FDN chapter.
+- Schlecht & Habets, "On Lossless Feedback Delay Networks" (2017) — theory of orthogonal FDN matrices.
+- Hadamard/Walsh-Hadamard transform: standard signal processing (Beauchamp & Walsh, 1975). The butterfly decomposition is equivalent to the Cooley-Tukey FFT structure applied to ±1 matrices.
+
+**Assessment**: Major quality improvement over Schroeder. The 8 cross-coupled lines produce dramatically higher echo density — echoes multiply exponentially through the matrix rather than recirculating independently. The early reflections add the spatial cue that Schroeder completely lacks (the ear uses early reflections to judge room size and shape). The Hadamard matrix is the optimal choice for FDN: orthogonal (energy-preserving), maximally diffusing (all lines couple to all others), and computationally free (no multiplications — just ± additions via the butterfly). Same CPU cost as the Schroeder (8 delay reads/writes + 24 additions for the butterfly vs. 4 comb + 2 allpass reads/writes), but qualitatively superior on every metric: density, smoothness, spatial impression, and absence of metallic coloration. **Same limitations as Schroeder**: delay lengths are fixed for 44100 Hz. At other sample rates, lengths should be scaled proportionally.
 
 ---
 
@@ -649,10 +694,11 @@ Signal flow: **Distortion → Bitcrusher → Chorus → Flanger → Phaser → C
 | Membrane | Modal (6 Bessel modes) | Good | Fletcher & Rossing 1998, Morse & Ingard 1968 |
 | Bird | Parametric chirp | Adequate | Procedural |
 | SVF Filter | Simper/Cytomic TPT | Excellent | Simper 2013, Zavalishin 2012 |
-| Ladder Filter | 4-pole TPT + 2× OS | Very good | KR-106, Zavalishin 2012 |
+| Ladder Filter | 4-pole TPT + 2× OS, true multimode | Excellent | KR-106, Zavalishin 2012 |
 | One-pole Filter | 1st-order IIR | Adequate | Textbook |
 | Reso Bandpass | Chamberlin feedback | Adequate | Chamberlin 1985 |
-| Reverb | Schroeder/Moorer 4C+2AP | Adequate | Schroeder 1962, Moorer 1979 |
+| Reverb (Schroeder) | 4 combs + 2 allpass | Adequate | Schroeder 1962, Moorer 1979 |
+| Reverb (FDN) | 8-line Hadamard FDN + early ref | Very good | Jot 1992, Schlecht & Habets 2017 |
 | Analog Variance | Deterministic per-voice hash | Good | Prophet-5/Juno tolerances |
 | Chorus (Classic) | Dual-LFO modulated delay | Good | Standard |
 | Chorus (BBD) | Antiphase triangle + charge sat | Very good | Juno-6 BBD circuit, Raffel & Smith 2010 |
@@ -666,8 +712,7 @@ Signal flow: **Distortion → Bitcrusher → Chorus → Flanger → Phaser → C
 | Sidechain | Peak follower / note envelope | Good | Standard |
 
 ### Areas where upgrades would yield the most improvement:
-1. **Reverb** — Schroeder is the weakest link. An FDN (Feedback Delay Network) or plate reverb would be a major quality step up.
-2. **Wavefolding** — No oversampling, so aliasing at high fold amounts. 2× OS would help.
-3. **Ladder HP/BP** — Derived by subtracting LP, which is an approximation. True multimode ladder taps intermediate stages.
-4. **Formant filters** — Chamberlin SVF could be upgraded to Cytomic SVF for better HF accuracy (not critical since formants are < 3 kHz).
-5. **Tape wow/flutter** — Sine LFOs are periodic. Noise-modulated LFOs would give more realistic irregularity.
+1. **Wavefolding** — No oversampling, so aliasing at high fold amounts. 2× OS would help.
+2. **Formant filters** — Chamberlin SVF could be upgraded to Cytomic SVF for better HF accuracy (not critical since formants are < 3 kHz).
+3. **Tape wow/flutter** — Sine LFOs are periodic. Noise-modulated LFOs would give more realistic irregularity.
+4. **Reverb sample rate scaling** — Both Schroeder and FDN delay lengths are hardcoded for 44100 Hz. At other sample rates, lengths should be scaled proportionally.

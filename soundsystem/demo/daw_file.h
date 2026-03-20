@@ -391,7 +391,7 @@ static bool dawSave(const char *filepath) {
     _db(f, "delayOn", daw.masterFx.delayOn); _dw(f, "delayTime", daw.masterFx.delayTime);
     _dw(f, "delayFeedback", daw.masterFx.delayFeedback); _dw(f, "delayTone", daw.masterFx.delayTone);
     _dw(f, "delayMix", daw.masterFx.delayMix);
-    _db(f, "reverbOn", daw.masterFx.reverbOn); _dw(f, "reverbSize", daw.masterFx.reverbSize);
+    _db(f, "reverbOn", daw.masterFx.reverbOn); _db(f, "reverbFDN", daw.masterFx.reverbFDN); _dw(f, "reverbSize", daw.masterFx.reverbSize);
     _dw(f, "reverbDamping", daw.masterFx.reverbDamping); _dw(f, "reverbPreDelay", daw.masterFx.reverbPreDelay);
     _dw(f, "reverbMix", daw.masterFx.reverbMix); _dw(f, "reverbBass", daw.masterFx.reverbBass);
     _db(f, "eqOn", daw.masterFx.eqOn); _dw(f, "eqLowGain", daw.masterFx.eqLowGain);
@@ -1245,6 +1245,7 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"delayTone")==0) daw.masterFx.delayTone=_dpf(val);
             else if (strcmp(key,"delayMix")==0) daw.masterFx.delayMix=_dpf(val);
             else if (strcmp(key,"reverbOn")==0) daw.masterFx.reverbOn=_dpb(val);
+            else if (strcmp(key,"reverbFDN")==0) daw.masterFx.reverbFDN=_dpb(val);
             else if (strcmp(key,"reverbSize")==0) daw.masterFx.reverbSize=_dpf(val);
             else if (strcmp(key,"reverbDamping")==0) daw.masterFx.reverbDamping=_dpf(val);
             else if (strcmp(key,"reverbPreDelay")==0) daw.masterFx.reverbPreDelay=_dpf(val);

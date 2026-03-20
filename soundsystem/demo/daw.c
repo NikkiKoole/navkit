@@ -5250,6 +5250,7 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
     // 9: Reverb
     MFX_BEGIN("Reverb", &daw.masterFx.reverbOn)
     if (daw.masterFx.reverbOn) {
+        ToggleBoolS(rx, ry, "FDN", &daw.masterFx.reverbFDN, fs); ry += row;
         DraggableFloatS(rx, ry, "Size", &daw.masterFx.reverbSize, 0.05f, 0.0f, 1.0f, fs); ry += row;
         DraggableFloatS(rx, ry, "Damp", &daw.masterFx.reverbDamping, 0.05f, 0.0f, 1.0f, fs); ry += row;
         DraggableFloatS(rx, ry, "PreD", &daw.masterFx.reverbPreDelay, 0.005f, 0.0f, 0.1f, fs); ry += row;

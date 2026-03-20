@@ -600,6 +600,7 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
     _sf_writeFloat(f, "combMix", d->sfEffects.combMix);
     _sf_writeFloat(f, "combDamping", d->sfEffects.combDamping);
     _sf_writeBool(f, "reverbEnabled", d->sfEffects.reverbEnabled);
+    _sf_writeBool(f, "reverbFDN", d->sfEffects.reverbFDN);
     _sf_writeFloat(f, "reverbSize", d->sfEffects.reverbSize);
     _sf_writeFloat(f, "reverbDamping", d->sfEffects.reverbDamping);
     _sf_writeFloat(f, "reverbMix", d->sfEffects.reverbMix);
@@ -1343,6 +1344,7 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
             else if (strcmp(key, "combMix") == 0) d->sfEffects.combMix = _sf_parseFloat(val);
             else if (strcmp(key, "combDamping") == 0) d->sfEffects.combDamping = _sf_parseFloat(val);
             else if (strcmp(key, "reverbEnabled") == 0) d->sfEffects.reverbEnabled = _sf_parseBool(val);
+            else if (strcmp(key, "reverbFDN") == 0) d->sfEffects.reverbFDN = _sf_parseBool(val);
             else if (strcmp(key, "reverbSize") == 0) d->sfEffects.reverbSize = _sf_parseFloat(val);
             else if (strcmp(key, "reverbDamping") == 0) d->sfEffects.reverbDamping = _sf_parseFloat(val);
             else if (strcmp(key, "reverbMix") == 0) d->sfEffects.reverbMix = _sf_parseFloat(val);

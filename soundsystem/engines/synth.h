@@ -462,6 +462,12 @@ typedef struct {
     float y[LADDER_RESAMPLER_COEFS];
 } LadderResampler;
 
+// Multimode output from ladder: 4 stage taps for LP/BP/HP mixing
+typedef struct {
+    float lp1, lp2, lp3, lp4;  // Stage outputs (1-pole, 2-pole, 3-pole, 4-pole)
+    float u;                     // Pre-filter input (needed for HP derivation)
+} LadderOutput;
+
 typedef struct {
     float s[4];             // Integrator states
     float inputEnv;         // Peak envelope follower for adaptive noise
@@ -800,7 +806,8 @@ static inline float ladderFreqComp(float k) {
 }
 
 // Process one sample at 2x oversampled rate
-static inline float ladderProcessSample(LadderState *ls, float input, float frq, float res) {
+// Returns all 4 stage taps + pre-filter input for true multimode output.
+static inline LadderOutput ladderProcessSample(LadderState *ls, float input, float frq, float res) {
     float k = ladderResK(res);
     frq *= ladderFreqComp(k);
 
@@ -844,18 +851,39 @@ static inline float ladderProcessSample(LadderState *ls, float input, float frq,
     for (int i = 0; i < 4; i++)
         if (fabsf(ls->s[i]) < 1e-15f) ls->s[i] = 0.0f;
 
-    return lp4;
+    return (LadderOutput){ lp1, lp2, lp3, lp4, u };
 }
 
-// Main entry: 2x oversampled ladder filter
+// Main entry: 2x oversampled ladder filter with multimode output
 // frq: normalized cutoff [0, ~0.9] where 1.0 = Nyquist
 // res: resonance [0, 1]
-static inline float ladderProcess(LadderState *ls, float input, float frq, float res) {
+// filterType: 0=LP (4-pole), 1=HP (4-pole), 2=BP (2-pole bandpass)
+static inline float ladderProcess(LadderState *ls, float input, float frq, float res, int filterType) {
     float up0, up1;
     ladderResamplerUpsample(&ls->up, input, &up0, &up1);
     float frq2x = frq * 0.5f;
-    float d0 = ladderProcessSample(ls, up0, frq2x, res);
-    float d1 = ladderProcessSample(ls, up1, frq2x, res);
+    LadderOutput o0 = ladderProcessSample(ls, up0, frq2x, res);
+    LadderOutput o1 = ladderProcessSample(ls, up1, frq2x, res);
+
+    // Select output based on filter type, then downsample.
+    // True multimode uses binomial tap mixing (Zavalishin 2012, ch.6):
+    //   LP = lp4
+    //   BP = lp2  (2-pole bandpass: resonant peak at cutoff)
+    //   HP = u - 4·lp1 + 6·lp2 - 4·lp3 + lp4  (4th-order difference)
+    float d0, d1;
+    if (filterType == 1) {
+        // HP: 4th-order highpass via alternating-sign tap mix
+        d0 = o0.u - 4.0f*o0.lp1 + 6.0f*o0.lp2 - 4.0f*o0.lp3 + o0.lp4;
+        d1 = o1.u - 4.0f*o1.lp1 + 6.0f*o1.lp2 - 4.0f*o1.lp3 + o1.lp4;
+    } else if (filterType == 2) {
+        // BP: 2-pole bandpass (stage 2 output = resonant peak at cutoff)
+        d0 = o0.lp2;
+        d1 = o1.lp2;
+    } else {
+        // LP: 4-pole lowpass (stage 4 output)
+        d0 = o0.lp4;
+        d1 = o1.lp4;
+    }
     return ladderResamplerDownsample(&ls->down, d0, d1);
 }
 
@@ -2330,25 +2358,14 @@ static float processVoice(Voice *v, float sampleRate) {
     if (filterActive && !skipNoiseMix) {
         if (v->filterModel == FILTER_MODEL_LADDER && v->filterType <= 2) {
             // 4-pole TPT ladder filter (warm, resonant, Juno-style)
-            // LP-only topology; for HP/BP we run ladder LP then derive the output.
+            // True multimode via intermediate stage taps (Zavalishin 2012):
+            //   LP = stage 4, BP = stage 2, HP = binomial tap mix
             // Cutoff mapping: same c^2*0.75 as SVF for preset compatibility,
             // then normalize to [0,1] where 1.0 = Nyquist.
             float theta = cutoff * cutoff * 0.75f;
             float normFreq = theta / PI;  // tanf(theta)/tan(PI) ≈ theta/PI for small theta
             if (normFreq > 0.9f) normFreq = 0.9f;
-            float lp = ladderProcess(&v->ladder, sample, normFreq, res);
-            if (v->filterType == 1) {
-                // HP: subtract LP from input
-                sample = sample - lp;
-            } else if (v->filterType == 2) {
-                // BP: input minus LP gives HP, then we want the band around cutoff.
-                // Approximate BP by taking the difference between the signal and both extremes.
-                sample = sample - lp;  // HP approximation (ladder BP is less precise than SVF BP)
-                // Weight toward the resonant peak
-                sample *= (1.0f + res * 2.0f);
-            } else {
-                sample = lp;
-            }
+            sample = ladderProcess(&v->ladder, sample, normFreq, res, v->filterType);
             if (sample > 4.0f) sample = 4.0f;
             if (sample < -4.0f) sample = -4.0f;
         } else if (v->filterType == 3 || v->filterType == 4) {

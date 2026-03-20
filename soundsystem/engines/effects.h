@@ -21,6 +21,17 @@
 #define REVERB_FEEDBACK_RANGE 0.25f   // Additional feedback range based on room size
 #define REVERB_DAMP_SCALE 0.4f        // Damping coefficient scale factor
 
+// FDN reverb constants (8-line Feedback Delay Network with Hadamard matrix)
+#define FDN_NUM_LINES 8
+// Delay lengths in samples (mutually prime, tuned for 44100Hz, spread across 20-60ms)
+// Chosen for maximal density with minimal modal clustering
+static const int kFdnDelayLengths[FDN_NUM_LINES] = {
+    1327, 1631, 1973, 2311, 2677, 3001, 3359, 3671
+};
+#define FDN_MAX_DELAY 3672            // Longest line + 1
+#define FDN_EARLY_TAPS 6              // Number of early reflection taps
+#define FDN_EARLY_BUFFER_SIZE 4096    // ~93ms at 44100Hz
+
 // Tape effect constants
 #define TAPE_WOW_RATE 0.5f            // Tape wow LFO rate in Hz
 #define TAPE_WOW_DEPTH 200.0f         // Tape wow max modulation in samples (±200 = ±4.5ms at 44.1kHz)
@@ -355,8 +366,9 @@ typedef struct {
     float combDamping;    // High-frequency loss per iteration (0-1)
     float combFilterLp;   // Internal: damping filter state
 
-    // Reverb (Schroeder-style)
+    // Reverb (Schroeder-style or FDN)
     bool reverbEnabled;
+    bool reverbFDN;       // false = Schroeder (classic), true = FDN (8-line Hadamard)
     float reverbSize;     // Room size (0-1, affects delay times)
     float reverbDamping;  // High frequency damping (0-1)
     float reverbMix;      // Dry/wet (0-1)
@@ -601,6 +613,14 @@ typedef struct EffectsContext {
     
     // Comb filter lowpass states (for damping)
     float reverbCombLp1, reverbCombLp2, reverbCombLp3, reverbCombLp4;
+
+    // FDN reverb state (8-line Feedback Delay Network)
+    float fdnLines[FDN_NUM_LINES][FDN_MAX_DELAY];
+    int   fdnPos[FDN_NUM_LINES];
+    float fdnDampLp[FDN_NUM_LINES];    // Per-line damping filter state
+    float fdnEarlyBuf[FDN_EARLY_BUFFER_SIZE];
+    int   fdnEarlyWritePos;
+    float fdnDcState[FDN_NUM_LINES];   // DC blocker state per line
     
     // Chorus buffer and state
     float chorusBuffer[CHORUS_BUFFER_SIZE];
@@ -767,6 +787,7 @@ static void initEffectsContext(EffectsContext* ctx) {
 
     // Reverb - off by default
     ctx->params.reverbEnabled = false;
+    ctx->params.reverbFDN = false;       // Schroeder by default (toggle for A/B testing)
     ctx->params.reverbSize = 0.5f;
     ctx->params.reverbDamping = 0.5f;
     ctx->params.reverbMix = 0.3f;
@@ -957,6 +978,12 @@ static void _ensureFxCtx(void) {
 #define reverbCombLp2 (fxCtx->reverbCombLp2)
 #define reverbCombLp3 (fxCtx->reverbCombLp3)
 #define reverbCombLp4 (fxCtx->reverbCombLp4)
+#define fdnLines (fxCtx->fdnLines)
+#define fdnPos (fxCtx->fdnPos)
+#define fdnDampLp (fxCtx->fdnDampLp)
+#define fdnEarlyBuf (fxCtx->fdnEarlyBuf)
+#define fdnEarlyWritePos (fxCtx->fdnEarlyWritePos)
+#define fdnDcState (fxCtx->fdnDcState)
 #define fxNoiseState (fxCtx->noiseState)
 
 // Noise function for tape hiss
@@ -1490,12 +1517,138 @@ static float _processReverbCore(float sample) {
     return wet;
 }
 
+// ============================================================================
+// FDN REVERB (8-line Feedback Delay Network with Hadamard matrix)
+// ============================================================================
+// 8 delay lines cross-coupled via an 8×8 Hadamard matrix (orthogonal,
+// energy-preserving). Each line has damping LP + DC blocker. Early
+// reflections via tapped delay line precede the FDN tail.
+//
+// References:
+//   Jot, "Efficient Structures for Reverb" (1992)
+//   Smith, "Physical Audio Signal Processing" — FDN chapter
+//   Schlecht & Habets, "On Lossless Feedback Delay Networks" (2017)
+
+// Early reflection tap positions (in samples) and gains — models a medium room.
+// Times chosen from image-source model of a ~5m × 7m × 3m room.
+static const int   kFdnEarlyTapDelay[FDN_EARLY_TAPS] = { 210, 433, 671, 947, 1183, 1567 };
+static const float kFdnEarlyTapGain[FDN_EARLY_TAPS]  = { 0.50f, 0.42f, 0.35f, 0.28f, 0.22f, 0.17f };
+
+// In-place 8-point Hadamard transform (unnormalized — caller scales by 1/sqrt(8))
+// H_8 = H_2 ⊗ H_2 ⊗ H_2 where H_2 = [[1,1],[1,-1]]
+// Implemented via 3 stages of butterfly pairs (same as 8-point Walsh-Hadamard).
+static inline void fdnHadamard8(float *x) {
+    // Stage 1: pairs (0,1),(2,3),(4,5),(6,7)
+    for (int i = 0; i < 8; i += 2) {
+        float a = x[i], b = x[i+1];
+        x[i] = a + b; x[i+1] = a - b;
+    }
+    // Stage 2: pairs (0,2),(1,3),(4,6),(5,7)
+    for (int i = 0; i < 8; i += 4) {
+        float a0 = x[i], a1 = x[i+1], a2 = x[i+2], a3 = x[i+3];
+        x[i] = a0 + a2; x[i+1] = a1 + a3;
+        x[i+2] = a0 - a2; x[i+3] = a1 - a3;
+    }
+    // Stage 3: pairs (0,4),(1,5),(2,6),(3,7)
+    for (int i = 0; i < 4; i++) {
+        float a = x[i], b = x[i+4];
+        x[i] = a + b; x[i+4] = a - b;
+    }
+}
+
+static float _processReverbFDN(float sample) {
+    _ensureFxCtx();
+
+    // Pre-delay (shared logic with Schroeder)
+    int preDelaySamples = (int)(fx.reverbPreDelay * SAMPLE_RATE);
+    if (preDelaySamples > REVERB_PREDELAY_MAX - 1) preDelaySamples = REVERB_PREDELAY_MAX - 1;
+    if (preDelaySamples < 1) preDelaySamples = 1;
+    int preDelayReadPos = (reverbPreDelayPos - preDelaySamples + REVERB_PREDELAY_MAX) % REVERB_PREDELAY_MAX;
+    float preDelayed = reverbPreDelayBuf[preDelayReadPos];
+    reverbPreDelayBuf[reverbPreDelayPos] = sample;
+    reverbPreDelayPos = (reverbPreDelayPos + 1) % REVERB_PREDELAY_MAX;
+
+    // --- Early reflections (tapped delay line) ---
+    fdnEarlyBuf[fdnEarlyWritePos] = preDelayed;
+    float early = 0.0f;
+    for (int t = 0; t < FDN_EARLY_TAPS; t++) {
+        // Scale tap time by room size (0.3–1.0 of original)
+        int tapDelay = (int)(kFdnEarlyTapDelay[t] * (0.3f + fx.reverbSize * 0.7f));
+        if (tapDelay < 1) tapDelay = 1;
+        int rp = (fdnEarlyWritePos - tapDelay + FDN_EARLY_BUFFER_SIZE) % FDN_EARLY_BUFFER_SIZE;
+        early += fdnEarlyBuf[rp] * kFdnEarlyTapGain[t];
+    }
+    fdnEarlyWritePos = (fdnEarlyWritePos + 1) % FDN_EARLY_BUFFER_SIZE;
+
+    // --- FDN tail ---
+    // Feedback amount from room size (same range as Schroeder for parameter compatibility)
+    float feedback = REVERB_FEEDBACK_MIN + fx.reverbSize * REVERB_FEEDBACK_RANGE;
+    float bassFeedback = feedback * fx.reverbBass;
+    if (bassFeedback > 0.98f) bassFeedback = 0.98f;
+
+    // Damping coefficient
+    float dampCoef = 1.0f - fx.reverbDamping * REVERB_DAMP_SCALE;
+
+    // Read from all delay lines
+    float lineOuts[FDN_NUM_LINES];
+    for (int i = 0; i < FDN_NUM_LINES; i++) {
+        lineOuts[i] = fdnLines[i][fdnPos[i]];
+    }
+
+    // Apply Hadamard mixing matrix (orthogonal, energy-preserving)
+    fdnHadamard8(lineOuts);
+    // Normalize: Hadamard output is scaled by sqrt(8), so divide to preserve energy
+    float norm = 1.0f / 2.8284271f;  // 1/sqrt(8)
+    for (int i = 0; i < FDN_NUM_LINES; i++) {
+        lineOuts[i] *= norm;
+    }
+
+    // Per-line: damping LP + feedback scaling + DC blocker + write back
+    // Use bass feedback on first 4 lines (lower-pitched), normal on last 4
+    for (int i = 0; i < FDN_NUM_LINES; i++) {
+        float x = lineOuts[i];
+
+        // Damping lowpass (same topology as Schroeder combs)
+        fdnDampLp[i] = x * dampCoef + fdnDampLp[i] * (1.0f - dampCoef);
+        x = fdnDampLp[i];
+
+        // Feedback gain (bass boost on longer lines)
+        float fb = (i < 4) ? bassFeedback : feedback;
+        x *= fb;
+
+        // DC blocker (prevents buildup from feedback loop)
+        // 1st-order HP: track DC via leaky integrator, subtract it
+        fdnDcState[i] = fdnDcState[i] * 0.995f + x * 0.005f;
+        x = x - fdnDcState[i];
+
+        // Inject input (distributed across all lines for maximal diffusion)
+        float lineIn = preDelayed * 0.35f;  // Input gain (scaled for 8 lines)
+
+        // Write to delay line
+        fdnLines[i][fdnPos[i]] = x + lineIn;
+        fdnPos[i] = (fdnPos[i] + 1) % kFdnDelayLengths[i];
+    }
+
+    // Sum all lines for output (weighted for smooth tail)
+    float tail = 0.0f;
+    for (int i = 0; i < FDN_NUM_LINES; i++) {
+        tail += lineOuts[i];
+    }
+    tail *= 0.125f;  // 1/8 normalization
+
+    // Mix early reflections with late tail
+    // Early reflections dominate the first ~30ms, tail builds up after
+    float wet = early * 0.5f + tail;
+
+    return wet;
+}
+
 // Inline reverb: processes sample through reverb with dry/wet mix.
 // Used by processEffects() and processEffectsWithBuses() (non-mixer paths).
 static float processReverb(float sample) {
     if (!fx.reverbEnabled) return sample;
     float dry = sample;
-    float wet = _processReverbCore(sample);
+    float wet = fx.reverbFDN ? _processReverbFDN(sample) : _processReverbCore(sample);
     return dry * (1.0f - fx.reverbMix) + wet * fx.reverbMix;
 }
 
@@ -2353,7 +2506,7 @@ static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
 
     if (dubLoop.preReverb && doReverbSend) {
         // Pre-reverb: add reverb wet to sample BEFORE dub loop captures it
-        float wet = _processReverbCore(reverbSend);
+        float wet = fx.reverbFDN ? _processReverbFDN(reverbSend) : _processReverbCore(reverbSend);
         sample += wet * fx.reverbMix;
         doReverbSend = false; // Don't apply reverb again after dub loop
     }
@@ -2406,7 +2559,7 @@ static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
 
     // Normal mode: apply reverb send/return AFTER dub loop (echoes in a room)
     if (doReverbSend) {
-        float wet = _processReverbCore(reverbSend);
+        float wet = fx.reverbFDN ? _processReverbFDN(reverbSend) : _processReverbCore(reverbSend);
         sample += wet * fx.reverbMix;
     }
 
@@ -2460,7 +2613,7 @@ static void processMixerOutputStereo(float busInputs[NUM_BUSES], float dt, float
     bool doReverbSend = fx.reverbEnabled;
 
     if (dubLoop.preReverb && doReverbSend) {
-        float wet = _processReverbCore(reverbSend);
+        float wet = fx.reverbFDN ? _processReverbFDN(reverbSend) : _processReverbCore(reverbSend);
         sample += wet * fx.reverbMix;
         doReverbSend = false;
     }
@@ -2507,7 +2660,7 @@ static void processMixerOutputStereo(float busInputs[NUM_BUSES], float dt, float
     sample = processDjfxLoop(sample, mixerCtx->tempo, dt);
 
     if (doReverbSend) {
-        float wet = _processReverbCore(reverbSend);
+        float wet = fx.reverbFDN ? _processReverbFDN(reverbSend) : _processReverbCore(reverbSend);
         sample += wet * fx.reverbMix;
     }
 

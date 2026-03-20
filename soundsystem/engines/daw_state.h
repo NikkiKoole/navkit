@@ -95,7 +95,7 @@ typedef struct {
     bool combOn;    float combFreq, combFeedback, combMix, combDamping;
     bool tapeOn;    float tapeSaturation, tapeWow, tapeFlutter, tapeHiss;
     bool delayOn;   float delayTime, delayFeedback, delayTone, delayMix;
-    bool reverbOn;  float reverbSize, reverbDamping, reverbPreDelay, reverbMix, reverbBass;
+    bool reverbOn;  bool reverbFDN; float reverbSize, reverbDamping, reverbPreDelay, reverbMix, reverbBass;
     bool eqOn;      float eqLowGain, eqHighGain, eqLowFreq, eqHighFreq;
     bool compOn;    float compThreshold, compRatio, compAttack, compRelease, compMakeup, compKnee;
     bool subBassBoost;

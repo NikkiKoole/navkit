@@ -66,6 +66,7 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
     fx.delayTone       = d->masterFx.delayTone;
     fx.delayMix        = d->masterFx.delayMix;
     fx.reverbEnabled   = d->masterFx.reverbOn;
+    fx.reverbFDN       = d->masterFx.reverbFDN;
     fx.reverbSize      = d->masterFx.reverbSize;
     fx.reverbDamping   = d->masterFx.reverbDamping;
     fx.reverbPreDelay  = d->masterFx.reverbPreDelay;
