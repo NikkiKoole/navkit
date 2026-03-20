@@ -367,10 +367,6 @@ int CountBeautySources(int cx, int cy, int cz, int radius) {
                 }
             }
 
-            // Plants (entity-based, at walking level)
-            if (GetPlantAt(nx, ny, cz)) {
-                count++;
-            }
         }
     }
     return count;
