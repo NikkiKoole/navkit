@@ -51,17 +51,24 @@ static float _processDubLoopCore(float selectedInput, float dt) {
     
     // Wow & flutter modulate the read offset (not write speed) for audible wobble.
     // Wow = slow tape-stretch (~0.4 Hz), Flutter = fast motor jitter (~5 Hz).
+    // Noise-modulated for realistic mechanical irregularity.
     float speed = dubLoopCurrentSpeed;
     float wowFlutterOffset = 0.0f;  // in samples, applied to read position
     if (p->wow > 0.0f) {
-        dubLoopWowPhase += 0.4f * dt;  // ~0.4 Hz
-        if (dubLoopWowPhase > 1.0f) dubLoopWowPhase -= 1.0f;
-        wowFlutterOffset += sinf(dubLoopWowPhase * 2.0f * PI) * p->wow * 40.0f;  // ±40 samples at wow=1
+        float wow = tapeWowFlutterLFO(&dubLoopWowPhase, &dubLoopWowNoise,
+                                       &dubLoopWowNoiseSeed,
+                                       0.4f, dt,
+                                       0.4f * 3.0f * dt,  // LP cutoff ~1.2 Hz
+                                       0.35f);  // 35% noise blend
+        wowFlutterOffset += wow * p->wow * 40.0f;  // ±40 samples at wow=1
     }
     if (p->flutter > 0.0f) {
-        dubLoopFlutterPhase += 5.0f * dt;  // ~5 Hz
-        if (dubLoopFlutterPhase > 1.0f) dubLoopFlutterPhase -= 1.0f;
-        wowFlutterOffset += sinf(dubLoopFlutterPhase * 2.0f * PI) * p->flutter * 8.0f;  // ±8 samples at flutter=1
+        float flutter = tapeWowFlutterLFO(&dubLoopFlutterPhase, &dubLoopFlutterNoise,
+                                           &dubLoopFlutterNoiseSeed,
+                                           5.0f, dt,
+                                           5.0f * 4.0f * dt,  // LP cutoff ~20 Hz
+                                           0.4f);  // 40% noise blend
+        wowFlutterOffset += flutter * p->flutter * 8.0f;  // ±8 samples at flutter=1
     }
     
     // Read from all heads and mix (with per-head drift for woozy feel)

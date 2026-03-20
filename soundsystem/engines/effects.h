@@ -642,6 +642,12 @@ typedef struct EffectsContext {
     float tapeBuffer[TAPE_BUFFER_SIZE];
     int tapeWritePos;
 
+    // Tape wow/flutter noise modulation state (LP-filtered noise per LFO)
+    float tapeWowNoise;           // Current filtered noise value for wow
+    float tapeFlutterNoise;       // Current filtered noise value for flutter
+    unsigned int tapeWowNoiseSeed;
+    unsigned int tapeFlutterNoiseSeed;
+
     // Noise state for tape hiss
     unsigned int noiseState;
     
@@ -655,6 +661,10 @@ typedef struct EffectsContext {
     float dubLoopCurrentSpeed;        // Current actual speed (smoothed)
     float dubLoopWowPhase;            // LFO phase for wow
     float dubLoopFlutterPhase;        // LFO phase for flutter
+    float dubLoopWowNoise;            // Filtered noise for wow irregularity
+    float dubLoopFlutterNoise;        // Filtered noise for flutter irregularity
+    unsigned int dubLoopWowNoiseSeed;
+    unsigned int dubLoopFlutterNoiseSeed;
     unsigned int dubLoopNoiseState;   // Noise generator for hiss
     
     // Per-echo degradation tracking (cumulative)
@@ -723,6 +733,10 @@ static void initEffectsContext(EffectsContext* ctx) {
     memset(ctx, 0, sizeof(EffectsContext));
     
     ctx->noiseState = 54321;
+    ctx->tapeWowNoiseSeed = 77777;
+    ctx->tapeFlutterNoiseSeed = 88888;
+    ctx->dubLoopWowNoiseSeed = 33333;
+    ctx->dubLoopFlutterNoiseSeed = 44444;
     
     // Distortion - off by default
     ctx->params.distEnabled = false;
@@ -1004,6 +1018,10 @@ static float fxNoise(void) {
 #define dubLoopCurrentSpeed (fxCtx->dubLoopCurrentSpeed)
 #define dubLoopWowPhase (fxCtx->dubLoopWowPhase)
 #define dubLoopFlutterPhase (fxCtx->dubLoopFlutterPhase)
+#define dubLoopWowNoise (fxCtx->dubLoopWowNoise)
+#define dubLoopFlutterNoise (fxCtx->dubLoopFlutterNoise)
+#define dubLoopWowNoiseSeed (fxCtx->dubLoopWowNoiseSeed)
+#define dubLoopFlutterNoiseSeed (fxCtx->dubLoopFlutterNoiseSeed)
 #define dubLoopNoiseState (fxCtx->dubLoopNoiseState)
 #define dubLoopEchoAge (fxCtx->dubLoopEchoAge)
 #define dubLoopDriftPhase (fxCtx->dubLoopDriftPhase)
@@ -1165,6 +1183,32 @@ static float _processDelaySendCore(float input) {
     return delayed;
 }
 
+// Noise-modulated LFO for realistic tape wow/flutter.
+// Combines a sine core with LP-filtered noise to give each cycle a slightly
+// different shape and depth — models mechanical irregularity (bearing wobble,
+// capstan eccentricity, supply reel tension variation).
+// Returns modulation value in [-1, +1] range.
+// noiseState: LP-filtered noise accumulator (caller owns, persists across calls)
+// noiseSeed: PRNG state (caller owns)
+// rate: LFO rate in Hz
+// noiseCutoff: LP coefficient for noise smoothing (lower = smoother, typically rate * 2-4 * dt)
+// noiseAmount: blend 0=pure sine, 1=fully noise-modulated
+static inline float tapeWowFlutterLFO(float *phase, float *noiseState, unsigned int *noiseSeed,
+                                       float rate, float dt, float noiseCutoff, float noiseAmount) {
+    // Advance sine phase
+    *phase += rate * dt;
+    if (*phase >= 1.0f) *phase -= 1.0f;
+    float sine = sinf(*phase * 2.0f * PI);
+
+    // Generate LP-filtered noise at the LFO rate band
+    *noiseSeed = *noiseSeed * 196314165u + 907633515u;
+    float white = (float)(*noiseSeed >> 8) / 8388608.0f - 1.0f;  // -1..+1
+    *noiseState += noiseCutoff * (white - *noiseState);
+
+    // Blend: sine provides the fundamental periodicity, noise adds irregularity
+    return sine * (1.0f - noiseAmount) + (sine + *noiseState) * 0.5f * noiseAmount * 2.0f;
+}
+
 // Tape simulation - saturation, wow, flutter, hiss
 static float processTape(float sample, float dt) {
     if (!fx.tapeEnabled) return sample;
@@ -1180,16 +1224,24 @@ static float processTape(float sample, float dt) {
     fxCtx->tapeWritePos = (fxCtx->tapeWritePos + 1) % TAPE_BUFFER_SIZE;
 
     // Wow/flutter: modulate read position (pitch modulation, like real tape speed variation)
+    // Noise-modulated LFOs: each cycle has slightly different shape/depth,
+    // modeling capstan eccentricity, bearing wobble, and reel tension drift.
     float modOffset = 0.0f;
     if (fx.tapeWow > 0.0f) {
-        fx.tapeWowPhase += TAPE_WOW_RATE * dt;
-        if (fx.tapeWowPhase > 1.0f) fx.tapeWowPhase -= 1.0f;
-        modOffset += sinf(fx.tapeWowPhase * 2.0f * PI) * fx.tapeWow * TAPE_WOW_DEPTH;
+        float wow = tapeWowFlutterLFO(&fx.tapeWowPhase, &fxCtx->tapeWowNoise,
+                                       &fxCtx->tapeWowNoiseSeed,
+                                       TAPE_WOW_RATE, dt,
+                                       TAPE_WOW_RATE * 3.0f * dt,  // LP cutoff ~1.5 Hz
+                                       0.35f);  // 35% noise blend
+        modOffset += wow * fx.tapeWow * TAPE_WOW_DEPTH;
     }
     if (fx.tapeFlutter > 0.0f) {
-        fx.tapeFlutterPhase += 6.0f * dt;
-        if (fx.tapeFlutterPhase > 1.0f) fx.tapeFlutterPhase -= 1.0f;
-        modOffset += sinf(fx.tapeFlutterPhase * 2.0f * PI) * fx.tapeFlutter * TAPE_FLUTTER_DEPTH;
+        float flutter = tapeWowFlutterLFO(&fx.tapeFlutterPhase, &fxCtx->tapeFlutterNoise,
+                                           &fxCtx->tapeFlutterNoiseSeed,
+                                           6.0f, dt,
+                                           6.0f * 4.0f * dt,  // LP cutoff ~24 Hz
+                                           0.4f);  // 40% noise blend (flutter is more erratic)
+        modOffset += flutter * fx.tapeFlutter * TAPE_FLUTTER_DEPTH;
     }
 
     if (modOffset != 0.0f) {

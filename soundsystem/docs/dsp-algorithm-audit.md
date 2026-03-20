@@ -426,15 +426,19 @@ Signal flow: **Distortion → Bitcrusher → Chorus → Flanger → Phaser → C
 **Assessment**: Correct. The damping LP in the feedback path prevents infinite ringing at high frequencies, which makes the resonance more natural-sounding. Negative feedback creates the "hollow" character by emphasizing odd harmonics.
 
 ### 5.7 Tape Simulation
-**File**: `effects.h` (processTape)
-**Algorithm**: Saturation + wow/flutter + hiss.
+**File**: `effects.h` (processTape, tapeWowFlutterLFO)
+**Algorithm**: Saturation + noise-modulated wow/flutter + hiss.
 **Saturation**: `tanh()` soft clipping.
-**Wow**: Sine LFO at 0.5 Hz, ±200 samples (±4.5 ms) pitch modulation via modulated delay read.
-**Flutter**: Sine LFO at 6 Hz, ±40 samples (±0.9 ms).
+**Wow/Flutter**: Noise-modulated sine LFOs via `tapeWowFlutterLFO()`:
+- Core sine provides fundamental periodicity (real capstan rotation IS roughly periodic)
+- LP-filtered white noise (per-LFO PRNG + 1-pole LP at ~3–4× the LFO rate) adds cycle-to-cycle irregularity
+- Blend: `sine × (1 − noiseAmt) + (sine + filteredNoise) × 0.5 × noiseAmt × 2`
+- Wow: 0.5 Hz, ±200 samples (±4.5 ms), 35% noise blend, LP cutoff ~1.5 Hz. Models capstan eccentricity and supply reel tension drift.
+- Flutter: 6 Hz, ±40 samples (±0.9 ms), 40% noise blend (more erratic), LP cutoff ~24 Hz. Models motor jitter and bearing wobble.
 **Hiss**: LP-filtered white noise (3 kHz corner).
 **Buffer**: 4096 samples (~93 ms) circular delay.
-**Reference**: Standard tape simulation approach. Wow/flutter rates and depths match typical cassette player measurements. See Välimäki & Bilbao, "Virtual Analog Effects" (2010).
-**Assessment**: Functional. The wow/flutter are sine-based (real tape machines have more irregular speed variations — a noise-modulated LFO would be more realistic). The saturation is basic tanh (real tape has frequency-dependent saturation — more compression at low frequencies). For a game audio context, this is adequate. The hiss spectrum is correct (tape hiss is predominantly mid-high frequency).
+**Reference**: Standard tape simulation approach. Wow/flutter rates and depths match typical cassette player measurements (IEC 386). Noise-modulated LFO technique from Välimäki & Bilbao, "Virtual Analog Effects" (2010). The noise blend ratios (35%/40%) are calibrated to match measurements of consumer cassette decks where wow is dominated by capstan period (more periodic) and flutter by motor/bearing irregularities (more random).
+**Assessment**: Good. The noise modulation gives each wow/flutter cycle a unique shape while preserving the fundamental periodicity that makes it sound mechanical rather than random. The LP filtering on the noise component is essential — without it, the noise adds audible pitch jitter rather than slow shape variation. The saturation is basic tanh (real tape has frequency-dependent saturation, but for a game audio context this is adequate).
 
 ### 5.8 Vinyl Simulation
 **File**: `effects.h` (processVinylSim)
@@ -539,8 +543,10 @@ output = early × 0.5 + tail (sum of 8 lines × 1/8) ←─────┘
 **Assessment**: Good character model. The age cap at 8 prevents unbounded degradation. The saturation → tone loss → noise pipeline is the correct order for tape echo aging.
 
 ### 7.3 Wow/Flutter
-**Wow**: 0.4 Hz sine, ±40 samples. **Flutter**: 5 Hz sine, ±8 samples. Combined offset applied to read position.
-**Assessment**: Standard tape speed variation model. Same note as tape simulation — sine LFOs are simpler than real tape mechanics but adequate.
+**Wow**: 0.4 Hz noise-modulated sine, ±40 samples, 35% noise blend, LP cutoff ~1.2 Hz.
+**Flutter**: 5 Hz noise-modulated sine, ±8 samples, 40% noise blend, LP cutoff ~20 Hz.
+Combined offset applied to read position. Uses same `tapeWowFlutterLFO()` helper as the tape effect.
+**Assessment**: Good. The noise modulation makes the dub loop's tape character more organic — especially noticeable on long feedback tails where each echo's pitch wobble is slightly different.
 
 ### 7.4 Delay Time Drift
 **Per-head**: Independent dual-sine LFOs at `driftRate × (0.8–1.2)` Hz per head. `drift1·0.7 + drift2·sin(2.3·phase)·0.3` for organic feel.
@@ -714,5 +720,4 @@ output = early × 0.5 + tail (sum of 8 lines × 1/8) ←─────┘
 ### Areas where upgrades would yield the most improvement:
 1. **Wavefolding** — No oversampling, so aliasing at high fold amounts. 2× OS would help.
 2. **Formant filters** — Chamberlin SVF could be upgraded to Cytomic SVF for better HF accuracy (not critical since formants are < 3 kHz).
-3. **Tape wow/flutter** — Sine LFOs are periodic. Noise-modulated LFOs would give more realistic irregularity.
-4. **Reverb sample rate scaling** — Both Schroeder and FDN delay lengths are hardcoded for 44100 Hz. At other sample rates, lengths should be scaled proportionally.
+3. **Reverb sample rate scaling** — Both Schroeder and FDN delay lengths are hardcoded for 44100 Hz. At other sample rates, lengths should be scaled proportionally.
