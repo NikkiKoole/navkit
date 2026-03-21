@@ -448,8 +448,11 @@ typedef struct {
     float dcPrev;
 } PipeSettings;
 
-// Electric piano (Rhodes) synthesis settings — tine modal bank + pickup nonlinearity
+// Electric piano synthesis settings — tine/reed modal bank + pickup nonlinearity
+// Supports both Rhodes (electromagnetic) and Wurlitzer (electrostatic) pickup types
 #define EPIANO_MODES 6
+#define EP_PICKUP_ELECTROMAGNETIC 0  // Rhodes: tine + tone bar, asymmetric (even harmonics)
+#define EP_PICKUP_ELECTROSTATIC   1  // Wurlitzer: reed, symmetric (odd harmonics)
 
 typedef struct {
     float modeRatios[EPIANO_MODES];   // Frequency ratios (inharmonic — tine + tone bar physics)
@@ -466,6 +469,7 @@ typedef struct {
     float strikeVelocity;    // Captured at note-on
     float dcBlockState;      // DC blocker state (pickup AC coupling)
     float dcBlockPrev;       // Previous input for DC blocker
+    int pickupType;          // EP_PICKUP_ELECTROMAGNETIC (Rhodes) or EP_PICKUP_ELECTROSTATIC (Wurli)
 } EPianoSettings;
 
 // Filter model enum: selects filter topology
@@ -1120,6 +1124,7 @@ typedef struct SynthContext {
     float epDecay;
     float epBell;
     float epBellTone;
+    int epPickupType;      // EP_PICKUP_ELECTROMAGNETIC or EP_PICKUP_ELECTROSTATIC
 
     // General pitch envelope globals
     float notePitchEnvAmount;
@@ -1280,6 +1285,7 @@ static void initSynthContext(SynthContext* ctx) {
     ctx->epDecay = 3.0f;
     ctx->epBell = 0.5f;
     ctx->epBellTone = 0.5f;
+    ctx->epPickupType = EP_PICKUP_ELECTROMAGNETIC;
 
     // Glide
     ctx->glideTime = 0.1f;
@@ -1470,6 +1476,7 @@ static void _ensureSynthCtx(void) {
 #define epDecay (synthCtx->epDecay)
 #define epBell (synthCtx->epBell)
 #define epBellTone (synthCtx->epBellTone)
+#define epPickupType (synthCtx->epPickupType)
 #define notePitchEnvAmount (synthCtx->notePitchEnvAmount)
 #define notePitchEnvDecay (synthCtx->notePitchEnvDecay)
 #define notePitchEnvCurve (synthCtx->notePitchEnvCurve)

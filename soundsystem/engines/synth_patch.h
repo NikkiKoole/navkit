@@ -183,6 +183,7 @@ typedef struct {
     float p_epDecay;          // Decay time in seconds (0.5-8.0)
     float p_epBell;           // Upper mode (bell) emphasis (0-1)
     float p_epBellTone;       // Bell inharmonicity (0=harmonic/organ, 1=inharmonic/bell)
+    int p_epPickupType;       // 0=electromagnetic (Rhodes), 1=electrostatic (Wurlitzer)
 
     // Bird
     int p_birdType;
@@ -396,6 +397,7 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_epDecay = 3.0f,
         .p_epBell = 0.5f,
         .p_epBellTone = 0.5f,
+        .p_epPickupType = 0,
         .p_birdType = BIRD_CHIRP,
         .p_birdChirpRange = 1.0f,
         .p_birdTrillRate = 0.0f,

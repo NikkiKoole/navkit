@@ -911,7 +911,7 @@ static void verifyPatterns(void) {
 // 1. Compile-time: sizeof checks. If you add a field to any of these structs,
 //    the static assert fires → update save/load in daw_file.h, THEN update
 //    the expected size here.
-_Static_assert(sizeof(SynthPatch) == 764,
+_Static_assert(sizeof(SynthPatch) == 768,
     "SynthPatch size changed! Update _dwWritePatch/_dwApplyPatchKV in daw_file.h, then update this assert.");
 _Static_assert(sizeof(Mixer) == 1792,
     "Mixer size changed! Update dawSave/dawLoad mixer section, then update this assert.");

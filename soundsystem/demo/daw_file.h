@@ -112,7 +112,7 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _dw(f, "epHardness", p->p_epHardness); _dw(f, "epToneBar", p->p_epToneBar);
     _dw(f, "epPickupPos", p->p_epPickupPos); _dw(f, "epPickupDist", p->p_epPickupDist);
     _dw(f, "epDecay", p->p_epDecay); _dw(f, "epBell", p->p_epBell);
-    _dw(f, "epBellTone", p->p_epBellTone);
+    _dw(f, "epBellTone", p->p_epBellTone); _di(f, "epPickupType", p->p_epPickupType);
     _dw(f, "pitchEnvAmount", p->p_pitchEnvAmount); _dw(f, "pitchEnvDecay", p->p_pitchEnvDecay);
     _dw(f, "pitchEnvCurve", p->p_pitchEnvCurve); _db(f, "pitchEnvLinear", p->p_pitchEnvLinear);
     _dw(f, "noiseMix", p->p_noiseMix); _dw(f, "noiseTone", p->p_noiseTone);
@@ -763,6 +763,7 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"epDecay")==0) p->p_epDecay = _dpf(val);
     else if (strcmp(key,"epBell")==0) p->p_epBell = _dpf(val);
     else if (strcmp(key,"epBellTone")==0) p->p_epBellTone = _dpf(val);
+    else if (strcmp(key,"epPickupType")==0) p->p_epPickupType = _dpi(val);
     else if (strcmp(key,"pitchEnvAmount")==0) p->p_pitchEnvAmount = _dpf(val);
     else if (strcmp(key,"pitchEnvDecay")==0) p->p_pitchEnvDecay = _dpf(val);
     else if (strcmp(key,"pitchEnvCurve")==0) p->p_pitchEnvCurve = _dpf(val);

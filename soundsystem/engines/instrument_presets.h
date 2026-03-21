@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 178
+#define NUM_INSTRUMENT_PRESETS 180
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -1922,25 +1922,32 @@ static void initInstrumentPresets(void) {
     // NEW MELODIC PRESETS (111-126)
     // ========================================================================
 
-    // Wurlitzer — grittier than Rhodes, bark on the attack, PD resonance
+    // Wurlitzer — electrostatic reed piano, reedy/nasal bark, odd harmonics
     instrumentPresets[111].name = "Wurlitzer";
-    instrumentPresets[111].patch.p_waveType = WAVE_PD;
-    instrumentPresets[111].patch.p_pdWaveType = 5;  // PD_WAVE_RESO1 — CZ-style resonant
-    instrumentPresets[111].patch.p_pdDistortion = 0.6f;
-    instrumentPresets[111].patch.p_attack = 0.003f;
-    instrumentPresets[111].patch.p_decay = 0.6f;
-    instrumentPresets[111].patch.p_sustain = 0.35f;
-    instrumentPresets[111].patch.p_release = 0.3f;
-    instrumentPresets[111].patch.p_filterCutoff = 0.55f;
-    instrumentPresets[111].patch.p_filterResonance = 0.15f;
-    instrumentPresets[111].patch.p_filterEnvAmt = 0.35f;
-    instrumentPresets[111].patch.p_filterEnvDecay = 0.25f;
+    instrumentPresets[111].patch.p_waveType = WAVE_EPIANO;
+    instrumentPresets[111].patch.p_epPickupType = EP_PICKUP_ELECTROSTATIC;
+    instrumentPresets[111].patch.p_epHardness = 0.5f;       // medium hammer
+    instrumentPresets[111].patch.p_epToneBar = 0.0f;        // no tone bar (reed, not tine)
+    instrumentPresets[111].patch.p_epPickupPos = 0.45f;     // slightly centered — clean fundamental
+    instrumentPresets[111].patch.p_epPickupDist = 0.6f;     // drives into odd-harmonic buzz easily
+    instrumentPresets[111].patch.p_epDecay = 1.8f;          // shorter than Rhodes (no tone bar sustain)
+    instrumentPresets[111].patch.p_epBell = 0.15f;          // minimal bell — reedy, not chimey
+    instrumentPresets[111].patch.p_epBellTone = 0.05f;      // mostly harmonic (reed modes are near-integer)
+    instrumentPresets[111].patch.p_attack = 0.002f;
+    instrumentPresets[111].patch.p_decay = 0.8f;
+    instrumentPresets[111].patch.p_sustain = 0.3f;
+    instrumentPresets[111].patch.p_release = 0.25f;
+    instrumentPresets[111].patch.p_clickLevel = 0.15f;      // reed snap on attack
+    instrumentPresets[111].patch.p_clickTime = 0.002f;
+    instrumentPresets[111].patch.p_filterEnabled = true;
+    instrumentPresets[111].patch.p_filterCutoff = 0.6f;
+    instrumentPresets[111].patch.p_filterResonance = 0.1f;
     instrumentPresets[111].patch.p_filterKeyTrack = 0.4f;
-    instrumentPresets[111].patch.p_vibratoRate = 5.0f;
-    instrumentPresets[111].patch.p_vibratoDepth = 0.06f;
-    instrumentPresets[111].patch.p_drive = 0.2f;
-    instrumentPresets[111].patch.p_tubeSaturation = true;
+    instrumentPresets[111].patch.p_vibratoRate = 6.0f;      // built-in 200A tremolo speed
+    instrumentPresets[111].patch.p_vibratoDepth = 0.05f;
+    instrumentPresets[111].patch.p_drive = 0.15f;
     instrumentPresets[111].patch.p_volume = 0.55f;
+    instrumentPresets[111].patch.p_velToDrive = 0.4f;       // gets barky with velocity
 
     // Clavinet — funky percussive pluck with wah-style filter sweep
     instrumentPresets[112].name = "Clavinet";
@@ -3246,6 +3253,66 @@ static void initInstrumentPresets(void) {
     instrumentPresets[177].patch.p_clickTime = 0.002f;
     instrumentPresets[177].patch.p_filterCutoff = 0.4f;    // closed at soft — dark bell
     instrumentPresets[177].patch.p_volume = 0.55f;
+
+    // Wurli Buzz — Supertramp "Dreamer" style: driven, nasal, buzzy, tremolo
+    // The 200A cranked into its built-in amp — reedy overdrive on every note,
+    // strong odd harmonics, the quintessential 70s prog Wurlitzer bark.
+    instrumentPresets[178].name = "Wurli Buzz";
+    instrumentPresets[178].patch.p_waveType = WAVE_EPIANO;
+    instrumentPresets[178].patch.p_epPickupType = EP_PICKUP_ELECTROSTATIC;
+    instrumentPresets[178].patch.p_epHardness = 0.65f;      // harder strike — more overtones
+    instrumentPresets[178].patch.p_epToneBar = 0.0f;        // no tone bar
+    instrumentPresets[178].patch.p_epPickupPos = 0.6f;      // offset — buzzy character
+    instrumentPresets[178].patch.p_epPickupDist = 0.8f;     // cranked — heavy odd-harmonic distortion
+    instrumentPresets[178].patch.p_epDecay = 1.5f;          // punchy, not too long
+    instrumentPresets[178].patch.p_epBell = 0.1f;           // almost no bell
+    instrumentPresets[178].patch.p_epBellTone = 0.02f;      // pure reed harmonics
+    instrumentPresets[178].patch.p_attack = 0.001f;
+    instrumentPresets[178].patch.p_decay = 0.7f;
+    instrumentPresets[178].patch.p_sustain = 0.35f;
+    instrumentPresets[178].patch.p_release = 0.2f;
+    instrumentPresets[178].patch.p_clickLevel = 0.2f;       // reed snap
+    instrumentPresets[178].patch.p_clickTime = 0.002f;
+    instrumentPresets[178].patch.p_drive = 0.3f;            // always a bit driven
+    instrumentPresets[178].patch.p_velToDrive = 0.5f;       // more bark on hard hits
+    instrumentPresets[178].patch.p_filterEnabled = true;
+    instrumentPresets[178].patch.p_filterCutoff = 0.5f;     // slightly nasal
+    instrumentPresets[178].patch.p_filterResonance = 0.15f; // hint of resonance for that honk
+    instrumentPresets[178].patch.p_filterKeyTrack = 0.5f;
+    instrumentPresets[178].patch.p_filterEnvAmt = 0.2f;     // opens on attack
+    instrumentPresets[178].patch.p_filterEnvDecay = 0.15f;
+    instrumentPresets[178].patch.p_vibratoRate = 5.8f;      // 200A tremolo
+    instrumentPresets[178].patch.p_vibratoDepth = 0.08f;    // noticeable wobble
+    instrumentPresets[178].patch.p_volume = 0.5f;
+
+    // Wurli Soul — Ray Charles / Donny Hathaway / "What'd I Say" style:
+    // warm, round, gentle — the mellow side of the Wurlitzer.
+    // Clean at soft dynamics, growls when you dig in.
+    instrumentPresets[179].name = "Wurli Soul";
+    instrumentPresets[179].patch.p_waveType = WAVE_EPIANO;
+    instrumentPresets[179].patch.p_epPickupType = EP_PICKUP_ELECTROSTATIC;
+    instrumentPresets[179].patch.p_epHardness = 0.35f;      // soft touch — round tone
+    instrumentPresets[179].patch.p_epToneBar = 0.0f;        // no tone bar
+    instrumentPresets[179].patch.p_epPickupPos = 0.3f;      // centered — warm fundamental
+    instrumentPresets[179].patch.p_epPickupDist = 0.4f;     // moderate — clean unless pushed
+    instrumentPresets[179].patch.p_epDecay = 2.2f;          // slightly longer for ballads
+    instrumentPresets[179].patch.p_epBell = 0.2f;           // touch of shimmer
+    instrumentPresets[179].patch.p_epBellTone = 0.03f;      // nearly pure harmonics
+    instrumentPresets[179].patch.p_attack = 0.003f;
+    instrumentPresets[179].patch.p_decay = 1.0f;
+    instrumentPresets[179].patch.p_sustain = 0.4f;
+    instrumentPresets[179].patch.p_release = 0.35f;
+    instrumentPresets[179].patch.p_clickLevel = 0.08f;      // gentle reed click
+    instrumentPresets[179].patch.p_clickTime = 0.003f;
+    instrumentPresets[179].patch.p_drive = 0.0f;            // clean at rest
+    instrumentPresets[179].patch.p_velToDrive = 0.6f;       // dig in = growl
+    instrumentPresets[179].patch.p_filterEnabled = true;
+    instrumentPresets[179].patch.p_filterCutoff = 0.65f;    // open, warm
+    instrumentPresets[179].patch.p_filterResonance = 0.05f; // no honk
+    instrumentPresets[179].patch.p_filterKeyTrack = 0.35f;
+    instrumentPresets[179].patch.p_vibratoRate = 6.2f;      // gentle tremolo
+    instrumentPresets[179].patch.p_vibratoDepth = 0.04f;    // subtle
+    instrumentPresets[179].patch.p_volume = 0.55f;
 }
 
 #endif // INSTRUMENT_PRESETS_H

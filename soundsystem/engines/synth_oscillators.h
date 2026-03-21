@@ -1612,50 +1612,54 @@ static void initPipe(Voice *v, float frequency, float sampleRate) {
 
 // Initialize EPiano settings at note-on.
 // Configures 6 mode amplitudes based on frequency register, pickup position,
-// hammer hardness, and velocity.
+// hammer hardness, and velocity. Supports both Rhodes (electromagnetic) and
+// Wurlitzer (electrostatic) pickup types.
 static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
     float vel = clampf(velocity * 2.0f, 0.0f, 1.0f); // normalize from volume (0-0.5 typical) to 0-1
+    int pickupT = epPickupType;
+    ep->pickupType = pickupT;
 
-    // Register variation: real Rhodes timbre changes across the keyboard.
-    // Low notes (~80 Hz): warm, piano-like, mostly fundamental, lots of bark potential.
-    // Mid notes (~300 Hz): classic Rhodes — balanced body + bell.
-    // High notes (~1200+ Hz): thin, bell-like, very inharmonic, short decay.
-    // freqNorm: 0 = low register, 1 = high register
+    // Register variation: timbre changes across the keyboard for both instruments.
+    // Rhodes: Low=warm/piano, Mid=classic, High=bell/thin
+    // Wurli:  Low=boxy/reedy/organ, Mid=classic bark, High=thin/buzzy
     float freqNorm = clampf((freq - 80.0f) / 1200.0f, 0.0f, 1.0f);
 
-    // Mode frequency ratios: blend between harmonic (pickup) and inharmonic (tine beam)
-    // epBellTone controls the blend: 0 = pure integer harmonics, 1 = cantilever beam modes
-    // Harmonic ratios: the sustained pickup tone (integer multiples from EM nonlinearity)
+    // Mode frequency ratios: blend between harmonic and instrument-specific inharmonic modes.
     static const float harmonicRatios[EPIANO_MODES] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-    // Inharmonic ratios: clamped-free cantilever beam bending modes (Euler-Bernoulli).
-    // f_n/f_1 = (beta_n/beta_1)² where beta_n are eigenvalues of the beam equation.
-    // Source: Fletcher & Rossing Ch.2, Irvine "Bending Frequencies of Beams" (vibrationdata.com)
-    static const float inharmonicRatios[EPIANO_MODES] = {1.0f, 6.27f, 17.55f, 34.39f, 56.84f, 84.91f};
+    // Rhodes: clamped-free cantilever beam bending modes (Euler-Bernoulli).
+    static const float rhodesInharmonic[EPIANO_MODES] = {1.0f, 6.27f, 17.55f, 34.39f, 56.84f, 84.91f};
+    // Wurlitzer: clamped-free reed modes — closer to odd harmonics than beam modes.
+    // Steel reeds vibrate with a strong odd-harmonic series (like a clarinet-ish spectrum)
+    // but with slight inharmonic stretch from stiffness. The 2nd partial is weak because
+    // the electrostatic pickup's symmetric geometry cancels even modes partially.
+    static const float wurliInharmonic[EPIANO_MODES] = {1.0f, 2.02f, 3.01f, 5.04f, 7.05f, 9.08f};
+
+    const float *inharmonicRatios = (pickupT == EP_PICKUP_ELECTROSTATIC) ? wurliInharmonic : rhodesInharmonic;
+
     float bt = epBellTone;
-    // High register naturally has more bell character (tine modes more prominent)
     float regBellBoost = freqNorm * 0.15f;
     float btEff = clampf(bt + regBellBoost, 0.0f, 1.0f);
-    // Per-mode blend: body modes (1-3) stay harmonic, bell modes (4-6) get inharmonicity.
-    // Physics: the sustained tone has integer harmonics from the pickup's nonlinear
-    // transfer function — there is no physical mechanism to detune them.
-    // The cantilever beam modes only appear in the ~5-20ms attack transient.
-    // So modes 1-2 are always at exact 1×/2× (the core pitched tone),
-    // mode 3 gets a tiny hint of stretch, and modes 4-6 carry the bell character.
+    // Per-mode blend: body modes stay harmonic, upper modes get inharmonicity.
     static const float modeBlendScale[EPIANO_MODES] = {0.0f, 0.0f, 0.05f, 0.4f, 0.8f, 1.0f};
+    // Wurli reed modes are already close to harmonic, so blend more aggressively
+    static const float wurliBlendScale[EPIANO_MODES] = {0.0f, 0.1f, 0.2f, 0.6f, 0.9f, 1.0f};
+    const float *blendScale = (pickupT == EP_PICKUP_ELECTROSTATIC) ? wurliBlendScale : modeBlendScale;
     float modeRatios[EPIANO_MODES];
     for (int i = 0; i < EPIANO_MODES; i++) {
-        float modeBt = btEff * modeBlendScale[i];
+        float modeBt = btEff * blendScale[i];
         modeRatios[i] = harmonicRatios[i] * (1.0f - modeBt) + inharmonicRatios[i] * modeBt;
     }
 
     // Pickup position profiles: centered (mellow) vs offset (bright).
-    // These model the electromagnetic coupling between tine and pickup coil.
-    // Centered: tine passes through coil center — fundamental dominates, clean tone.
-    // Offset: tine passes by coil edge — 2nd harmonic strong, brighter, more bark.
-    // Note: this is NOT the same as beam mode shapes (sin(n*pi*pos)) — it's about
-    // the pickup's magnetic flux geometry and its effect on the generated signal.
-    static const float centeredAmps[EPIANO_MODES] = {1.00f, 0.15f, 0.40f, 0.30f, 0.15f, 0.05f};
-    static const float offsetAmps[EPIANO_MODES]   = {0.50f, 1.00f, 0.25f, 0.60f, 0.30f, 0.12f};
+    // Rhodes (electromagnetic): models magnetic flux coupling between tine and pickup coil.
+    static const float rhodesCentered[EPIANO_MODES] = {1.00f, 0.15f, 0.40f, 0.30f, 0.15f, 0.05f};
+    static const float rhodesOffset[EPIANO_MODES]   = {0.50f, 1.00f, 0.25f, 0.60f, 0.30f, 0.12f};
+    // Wurli (electrostatic): reed vibrates between charged plates. More uniform coupling
+    // but the reed's own mode shapes favor odd harmonics. Centered = clean, offset = buzzy.
+    static const float wurliCentered[EPIANO_MODES]   = {1.00f, 0.10f, 0.55f, 0.08f, 0.35f, 0.05f};
+    static const float wurliOffset[EPIANO_MODES]     = {0.60f, 0.20f, 0.70f, 0.15f, 0.50f, 0.10f};
+    const float *centeredAmps = (pickupT == EP_PICKUP_ELECTROSTATIC) ? wurliCentered : rhodesCentered;
+    const float *offsetAmps   = (pickupT == EP_PICKUP_ELECTROSTATIC) ? wurliOffset : rhodesOffset;
     float pos = epPickupPos;
 
     // Velocity-dependent hammer hardness: real neoprene tips compress more at higher
@@ -1732,11 +1736,13 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
         }
     }
 
-    // Tone bar coupling: extends decay of fundamental AND 2nd partial.
-    // The tone bar is a resonant body tuned to reinforce the fundamental,
-    // but its own overtones couple to the 2nd partial as well.
-    ep->modeDecays[0] *= (1.0f + epToneBar * 1.5f);
-    ep->modeDecays[1] *= (1.0f + epToneBar * 0.6f); // 2nd partial gets some coupling
+    // Tone bar coupling (Rhodes only): extends decay of fundamental AND 2nd partial.
+    // The tone bar is a resonant body tuned to reinforce the fundamental.
+    // Wurlitzer has no tone bar — reeds decay naturally without reinforcement.
+    if (pickupT == EP_PICKUP_ELECTROMAGNETIC) {
+        ep->modeDecays[0] *= (1.0f + epToneBar * 1.5f);
+        ep->modeDecays[1] *= (1.0f + epToneBar * 0.6f);
+    }
 
     ep->hardness = hard;
     ep->toneBarCoupling = epToneBar;
@@ -1778,19 +1784,31 @@ static float processEPianoOscillator(Voice *v, float sampleRate) {
         }
     }
 
-    // Electromagnetic pickup nonlinearity: output = sum + k * sum² + k2 * sum³
-    // sum² generates even harmonics (bark), sum³ adds odd-harmonic growl
-    // Velocity drives tine closer to pickup, increasing nonlinearity beyond amplitude alone
+    // Pickup nonlinearity — differs by pickup type:
+    // Rhodes (electromagnetic): asymmetric sum² (even harmonics = bark) + sum³
+    // Wurli (electrostatic): symmetric sum³ + sum⁵ (odd harmonics = reedy/nasal buzz)
     float velBoost = 1.0f + ep->strikeVelocity * ep->pickupDist;
-    float k = ep->pickupDist * 1.2f * velBoost;
-    float k2 = ep->pickupDist * 0.3f * velBoost;
-    float output = sum + k * sum * sum + k2 * sum * sum * sum;
-
-    // Asymmetric soft-clip (positive peaks compress less = even harmonic preservation)
-    if (output >= 0.0f) {
+    float output;
+    if (ep->pickupType == EP_PICKUP_ELECTROSTATIC) {
+        // Electrostatic pickup: reed between two charged plates — symmetric response.
+        // Odd-order terms only (sum³, sum⁵) preserve the reed's odd-harmonic character.
+        float k3 = ep->pickupDist * 1.5f * velBoost;
+        float k5 = ep->pickupDist * 0.4f * velBoost;
+        float sum2 = sum * sum;
+        output = sum + k3 * sum * sum2 + k5 * sum * sum2 * sum2;
+        // Symmetric soft-clip (preserves odd harmonics)
         output = tanhf(output);
     } else {
-        output = tanhf(output * 0.85f) * 0.9f;
+        // Electromagnetic pickup: tine magnetizes asymmetrically.
+        float k = ep->pickupDist * 1.2f * velBoost;
+        float k2 = ep->pickupDist * 0.3f * velBoost;
+        output = sum + k * sum * sum + k2 * sum * sum * sum;
+        // Asymmetric soft-clip (positive peaks compress less = even harmonic preservation)
+        if (output >= 0.0f) {
+            output = tanhf(output);
+        } else {
+            output = tanhf(output * 0.85f) * 0.9f;
+        }
     }
 
     // DC blocker (pickup AC coupling) — removes DC from sum² term

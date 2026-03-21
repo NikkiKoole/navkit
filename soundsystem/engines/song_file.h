@@ -384,6 +384,7 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "epDecay", p->p_epDecay);
     _sf_writeFloat(f, "epBell", p->p_epBell);
     _sf_writeFloat(f, "epBellTone", p->p_epBellTone);
+    _sf_writeInt(f, "epPickupType", p->p_epPickupType);
     // Pitch envelope
     _sf_writeFloat(f, "pitchEnvAmount", p->p_pitchEnvAmount);
     _sf_writeFloat(f, "pitchEnvDecay", p->p_pitchEnvDecay);
@@ -975,6 +976,7 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "epDecay") == 0) p->p_epDecay = _sf_parseFloat(val);
     else if (strcmp(key, "epBell") == 0) p->p_epBell = _sf_parseFloat(val);
     else if (strcmp(key, "epBellTone") == 0) p->p_epBellTone = _sf_parseFloat(val);
+    else if (strcmp(key, "epPickupType") == 0) p->p_epPickupType = _sf_parseInt(val);
     // Pitch envelope
     else if (strcmp(key, "pitchEnvAmount") == 0) p->p_pitchEnvAmount = _sf_parseFloat(val);
     else if (strcmp(key, "pitchEnvDecay") == 0) p->p_pitchEnvDecay = _sf_parseFloat(val);

@@ -146,6 +146,7 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     epDecay = p->p_epDecay;
     epBell = p->p_epBell;
     epBellTone = p->p_epBellTone;
+    epPickupType = p->p_epPickupType;
     noteExpRelease = p->p_expRelease;
     notePitchEnvAmount = p->p_pitchEnvAmount;
     notePitchEnvDecay = p->p_pitchEnvDecay;

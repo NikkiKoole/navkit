@@ -4697,7 +4697,8 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "AM Rate", &p->p_birdAmRate, 1.0f, 0.0f, 20.0f);
             ui_col_float(&c, "AM Dep", &p->p_birdAmDepth, 0.05f, 0.0f, 1.0f);
         } else if (p->p_waveType == WAVE_EPIANO) {
-            ui_col_sublabel(&c, "EPiano:", UI_TEXT_SUBLABEL);
+            ui_col_sublabel(&c, p->p_epPickupType == EP_PICKUP_ELECTROSTATIC ? "Wurli:" : "Rhodes:", UI_TEXT_SUBLABEL);
+            ui_col_int(&c, "Pickup", &p->p_epPickupType, 1, 0, 1);
             ui_col_float(&c, "Hardnes", &p->p_epHardness, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "ToneBar", &p->p_epToneBar, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Pickup", &p->p_epPickupPos, 0.05f, 0.0f, 1.0f);
