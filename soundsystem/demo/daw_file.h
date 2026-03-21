@@ -120,6 +120,8 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _dw(f, "osc4Ratio", p->p_osc4Ratio); _dw(f, "osc4Level", p->p_osc4Level); _dw(f, "osc4Decay", p->p_osc4Decay);
     _dw(f, "osc5Ratio", p->p_osc5Ratio); _dw(f, "osc5Level", p->p_osc5Level); _dw(f, "osc5Decay", p->p_osc5Decay);
     _dw(f, "osc6Ratio", p->p_osc6Ratio); _dw(f, "osc6Level", p->p_osc6Level); _dw(f, "osc6Decay", p->p_osc6Decay);
+    _dw(f, "oscVelSens", p->p_oscVelSens);
+    _dw(f, "velToFilter", p->p_velToFilter); _dw(f, "velToClick", p->p_velToClick); _dw(f, "velToDrive", p->p_velToDrive);
     _dw(f, "drive", p->p_drive); _di(f, "driveMode", p->p_driveMode);
     _dw(f, "clickLevel", p->p_clickLevel); _dw(f, "clickTime", p->p_clickTime);
     _di(f, "noiseMode", p->p_noiseMode); _di(f, "oscMixMode", p->p_oscMixMode);
@@ -748,6 +750,10 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"osc6Ratio")==0) p->p_osc6Ratio = _dpf(val);
     else if (strcmp(key,"osc6Level")==0) p->p_osc6Level = _dpf(val);
     else if (strcmp(key,"osc6Decay")==0) p->p_osc6Decay = _dpf(val);
+    else if (strcmp(key,"oscVelSens")==0) p->p_oscVelSens = _dpf(val);
+    else if (strcmp(key,"velToFilter")==0) p->p_velToFilter = _dpf(val);
+    else if (strcmp(key,"velToClick")==0) p->p_velToClick = _dpf(val);
+    else if (strcmp(key,"velToDrive")==0) p->p_velToDrive = _dpf(val);
     else if (strcmp(key,"drive")==0) p->p_drive = _dpf(val);
     else if (strcmp(key,"driveMode")==0) p->p_driveMode = _dpi(val);
     else if (strcmp(key,"clickLevel")==0) p->p_clickLevel = _dpf(val);

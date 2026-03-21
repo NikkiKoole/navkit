@@ -5009,6 +5009,17 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, TextFormat("%s D", oscs[i].label), oscs[i].decay, 0.5f, 0.0f, 50.0f);
         }
         sectionHighlight(col7X + 2, secY, percColW, c.y - secY, oscActive);
+        ui_col_space(&c, 3);
+
+        // Velocity modulation targets
+        bool velActive = DF(p_oscVelSens) || DF(p_velToFilter) || DF(p_velToClick) || DF(p_velToDrive);
+        secY = c.y;
+        ui_col_sublabel(&c, "Velocity:", ORANGE);
+        ui_col_float(&c, "Osc Lvl", &p->p_oscVelSens, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Filter", &p->p_velToFilter, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Click", &p->p_velToClick, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Drive", &p->p_velToDrive, 0.05f, 0.0f, 1.0f);
+        sectionHighlight(col7X + 2, secY, percColW, c.y - secY, velActive);
     }
 
     (void)h;

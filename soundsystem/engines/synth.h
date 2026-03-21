@@ -1122,6 +1122,10 @@ typedef struct SynthContext {
     float noteOsc6Ratio;
     float noteOsc6Level;
     float noteOsc6Decay;
+    float noteOscVelSens;    // Extra osc velocity sensitivity (0=off, 1=full)
+    float noteVelToFilter;   // Velocity → filter cutoff offset
+    float noteVelToClick;    // Velocity → click level scaling
+    float noteVelToDrive;    // Velocity → drive amount
 
     // Drive/saturation
     float noteDrive;
@@ -1444,6 +1448,10 @@ static void _ensureSynthCtx(void) {
 #define noteOsc6Ratio (synthCtx->noteOsc6Ratio)
 #define noteOsc6Level (synthCtx->noteOsc6Level)
 #define noteOsc6Decay (synthCtx->noteOsc6Decay)
+#define noteOscVelSens (synthCtx->noteOscVelSens)
+#define noteVelToFilter (synthCtx->noteVelToFilter)
+#define noteVelToClick (synthCtx->noteVelToClick)
+#define noteVelToDrive (synthCtx->noteVelToDrive)
 #define noteDrive (synthCtx->noteDrive)
 #define noteDriveMode (synthCtx->noteDriveMode)
 #define noteExpDecay (synthCtx->noteExpDecay)
@@ -2823,38 +2831,50 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
 
     // Extra oscillators
     v->osc2Ratio = noteOsc2Ratio;
-    v->osc2Level = noteOsc2Level;
+    // Velocity scaling for extra osc levels: at velSens=1, soft notes suppress partials
+    float oscVelScale = 1.0f;
+    if (noteOscVelSens > 0.001f) {
+        oscVelScale = 1.0f - noteOscVelSens + noteOscVelSens * noteVolume;
+    }
+    v->osc2Level = noteOsc2Level * oscVelScale;
     v->osc2Phase = 0.0f;
     v->osc2Decay = noteOsc2Decay;
     v->osc2Env = 1.0f;
     v->osc3Ratio = noteOsc3Ratio;
-    v->osc3Level = noteOsc3Level;
+    v->osc3Level = noteOsc3Level * oscVelScale;
     v->osc3Phase = 0.0f;
     v->osc3Decay = noteOsc3Decay;
     v->osc3Env = 1.0f;
     v->osc4Ratio = noteOsc4Ratio;
-    v->osc4Level = noteOsc4Level;
+    v->osc4Level = noteOsc4Level * oscVelScale;
     v->osc4Phase = 0.0f;
     v->osc4Decay = noteOsc4Decay;
     v->osc4Env = 1.0f;
     v->osc5Ratio = noteOsc5Ratio;
-    v->osc5Level = noteOsc5Level;
+    v->osc5Level = noteOsc5Level * oscVelScale;
     v->osc5Phase = 0.0f;
     v->osc5Decay = noteOsc5Decay;
     v->osc5Env = 1.0f;
     v->osc6Ratio = noteOsc6Ratio;
-    v->osc6Level = noteOsc6Level;
+    v->osc6Level = noteOsc6Level * oscVelScale;
     v->osc6Phase = 0.0f;
     v->osc6Decay = noteOsc6Decay;
     v->osc6Env = 1.0f;
 
     // Drive & exp decay
     v->drive = noteDrive;
+    if (noteVelToDrive > 0.001f)
+        v->drive += noteVelToDrive * noteVolume;
     v->driveMode = noteDriveMode;
     v->expDecay = noteExpDecay;
 
-    // Click transient
-    v->clickLevel = noteClickLevel;
+    // Click transient (velocity-scaled if velToClick > 0)
+    {
+        float clickVelScale = 1.0f;
+        if (noteVelToClick > 0.001f)
+            clickVelScale = 1.0f - noteVelToClick + noteVelToClick * noteVolume;
+        v->clickLevel = noteClickLevel * clickVelScale;
+    }
     v->clickTime = noteClickTime > 0.001f ? noteClickTime : 0.005f;
     v->clickTimer = 0.0f;
 
@@ -2978,6 +2998,11 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
         v->filterModel = FILTER_MODEL_SVF;
     } else {
         v->filterCutoff = noteFilterCutoff;
+        // Velocity → filter cutoff offset
+        if (noteVelToFilter > 0.001f) {
+            v->filterCutoff += noteVelToFilter * noteVolume;
+            if (v->filterCutoff > 1.0f) v->filterCutoff = 1.0f;
+        }
         v->filterResonance = noteFilterResonance;
         v->filterKeyTrack = noteFilterKeyTrack;
         v->filterType = noteFilterType;
@@ -3128,6 +3153,10 @@ static void resetNoteGlobals(void) {
     noteOsc4Ratio = 1.0f;  noteOsc4Level = 0.0f;  noteOsc4Decay = 0.0f;
     noteOsc5Ratio = 1.0f;  noteOsc5Level = 0.0f;  noteOsc5Decay = 0.0f;
     noteOsc6Ratio = 1.0f;  noteOsc6Level = 0.0f;  noteOsc6Decay = 0.0f;
+    noteOscVelSens = 0.0f;
+    noteVelToFilter = 0.0f;
+    noteVelToClick = 0.0f;
+    noteVelToDrive = 0.0f;
     noteDrive = 0.0f;
     noteExpDecay = false;
     noteExpRelease = false;

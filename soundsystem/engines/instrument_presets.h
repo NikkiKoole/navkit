@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 174
+#define NUM_INSTRUMENT_PRESETS 177
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -3146,6 +3146,103 @@ static void initInstrumentPresets(void) {
     instrumentPresets[173].patch.p_osc3Ratio = 2.002f;     // octave up, slight detune
     instrumentPresets[173].patch.p_osc3Level = 0.3f;
     instrumentPresets[173].patch.p_volume = 0.55f;
+
+    // ========================================================================
+    // FENDER RHODES PRESETS (174-176)
+    // Fender Rhodes (1965): hammer → tine+tone bar (tuning fork) → pickup.
+    // Tine partials are inharmonic: ~1×, ~7×, ~21× fundamental.
+    // Soft playing = warm sine body. Hard playing = bright bell attack.
+    // Source: wikipedia, modwiggler, soundonsound "Synthesizing Pianos"
+    // ========================================================================
+
+    // Rhodes Warm — classic mellow Rhodes, gentle velocity response
+    // Corrected: tine partials are HARMONIC (2×, 3×, 4×, 5×), not inharmonic.
+    // Bell character from relative balance + faster upper harmonic decay.
+    // Bark from asymmetric pickup distortion (tube/even harmonics).
+    // Source: ep-forum.com, JASA 148(5) 2020, ISMA 2014 Rhodes nonlinearity paper
+    instrumentPresets[174].name = "Rhodes Warm";
+    instrumentPresets[174].patch.p_waveType = WAVE_SINE;
+    instrumentPresets[174].patch.p_attack = 0.003f;
+    instrumentPresets[174].patch.p_decay = 1.5f;
+    instrumentPresets[174].patch.p_sustain = 0.4f;
+    instrumentPresets[174].patch.p_release = 0.4f;
+    instrumentPresets[174].patch.p_clickLevel = 0.12f;     // gentle hammer thump
+    instrumentPresets[174].patch.p_clickTime = 0.004f;
+    instrumentPresets[174].patch.p_osc2Ratio = 2.0f;       // 2nd harmonic (octave)
+    instrumentPresets[174].patch.p_osc2Level = 0.3f;
+    instrumentPresets[174].patch.p_osc2Decay = 4.0f;        // decays faster than fundamental
+    instrumentPresets[174].patch.p_osc3Ratio = 3.0f;       // 3rd harmonic (fifth)
+    instrumentPresets[174].patch.p_osc3Level = 0.15f;
+    instrumentPresets[174].patch.p_osc3Decay = 6.0f;
+    instrumentPresets[174].patch.p_osc4Ratio = 4.0f;       // 4th harmonic
+    instrumentPresets[174].patch.p_osc4Level = 0.08f;
+    instrumentPresets[174].patch.p_osc4Decay = 8.0f;
+    instrumentPresets[174].patch.p_oscVelSens = 0.7f;      // soft=warm sine, hard=harmonics
+    instrumentPresets[174].patch.p_velToFilter = 0.2f;
+    instrumentPresets[174].patch.p_velToClick = 0.6f;
+    instrumentPresets[174].patch.p_velToDrive = 0.15f;     // pickup nonlinearity
+    instrumentPresets[174].patch.p_driveMode = DIST_ASYMMETRIC; // even harmonics (pickup nonlinearity)
+    instrumentPresets[174].patch.p_filterCutoff = 0.5f;
+    instrumentPresets[174].patch.p_volume = 0.65f;
+
+    // Rhodes Bright — funky, barking Rhodes. Pickup close to tine.
+    // Close pickup = 2nd harmonic dominant, more bark on hard hits.
+    instrumentPresets[175].name = "Rhodes Bright";
+    instrumentPresets[175].patch.p_waveType = WAVE_SINE;
+    instrumentPresets[175].patch.p_attack = 0.001f;
+    instrumentPresets[175].patch.p_decay = 1.0f;
+    instrumentPresets[175].patch.p_sustain = 0.3f;
+    instrumentPresets[175].patch.p_release = 0.3f;
+    instrumentPresets[175].patch.p_clickLevel = 0.25f;     // pronounced hammer
+    instrumentPresets[175].patch.p_clickTime = 0.003f;
+    instrumentPresets[175].patch.p_osc2Ratio = 2.0f;       // strong 2nd (close pickup)
+    instrumentPresets[175].patch.p_osc2Level = 0.5f;
+    instrumentPresets[175].patch.p_osc2Decay = 3.0f;
+    instrumentPresets[175].patch.p_osc3Ratio = 3.0f;
+    instrumentPresets[175].patch.p_osc3Level = 0.25f;
+    instrumentPresets[175].patch.p_osc3Decay = 5.0f;
+    instrumentPresets[175].patch.p_osc4Ratio = 4.0f;
+    instrumentPresets[175].patch.p_osc4Level = 0.12f;
+    instrumentPresets[175].patch.p_osc4Decay = 7.0f;
+    instrumentPresets[175].patch.p_osc5Ratio = 5.0f;       // 5th harmonic (major 3rd)
+    instrumentPresets[175].patch.p_osc5Level = 0.06f;
+    instrumentPresets[175].patch.p_osc5Decay = 10.0f;
+    instrumentPresets[175].patch.p_oscVelSens = 0.85f;
+    instrumentPresets[175].patch.p_velToFilter = 0.3f;
+    instrumentPresets[175].patch.p_velToClick = 0.8f;
+    instrumentPresets[175].patch.p_velToDrive = 0.4f;      // heavy bark on hard hits
+    instrumentPresets[175].patch.p_drive = 0.08f;          // baseline pickup warmth
+    instrumentPresets[175].patch.p_driveMode = DIST_ASYMMETRIC;
+    instrumentPresets[175].patch.p_filterCutoff = 0.6f;
+    instrumentPresets[175].patch.p_volume = 0.6f;
+
+    // Rhodes Suitcase — through the suitcase amp with tremolo character
+    instrumentPresets[176].name = "Rhodes Suite";
+    instrumentPresets[176].patch.p_waveType = WAVE_SINE;
+    instrumentPresets[176].patch.p_attack = 0.002f;
+    instrumentPresets[176].patch.p_decay = 1.8f;
+    instrumentPresets[176].patch.p_sustain = 0.35f;
+    instrumentPresets[176].patch.p_release = 0.5f;
+    instrumentPresets[176].patch.p_clickLevel = 0.15f;
+    instrumentPresets[176].patch.p_clickTime = 0.004f;
+    instrumentPresets[176].patch.p_osc2Ratio = 2.0f;
+    instrumentPresets[176].patch.p_osc2Level = 0.35f;
+    instrumentPresets[176].patch.p_osc2Decay = 4.0f;
+    instrumentPresets[176].patch.p_osc3Ratio = 3.0f;
+    instrumentPresets[176].patch.p_osc3Level = 0.15f;
+    instrumentPresets[176].patch.p_osc3Decay = 6.0f;
+    instrumentPresets[176].patch.p_osc4Ratio = 4.0f;
+    instrumentPresets[176].patch.p_osc4Level = 0.08f;
+    instrumentPresets[176].patch.p_osc4Decay = 8.0f;
+    instrumentPresets[176].patch.p_oscVelSens = 0.75f;
+    instrumentPresets[176].patch.p_velToFilter = 0.2f;
+    instrumentPresets[176].patch.p_velToClick = 0.5f;
+    instrumentPresets[176].patch.p_velToDrive = 0.25f;
+    instrumentPresets[176].patch.p_driveMode = DIST_ASYMMETRIC;
+    instrumentPresets[176].patch.p_filterCutoff = 0.45f;
+    instrumentPresets[176].patch.p_ampLfoRate = 4.5f;      // suitcase tremolo
+    instrumentPresets[176].patch.p_ampLfoDepth = 0.2f;
+    instrumentPresets[176].patch.p_volume = 0.6f;
 }
 
 #endif // INSTRUMENT_PRESETS_H

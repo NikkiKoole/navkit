@@ -167,6 +167,10 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     noteOsc6Ratio = p->p_osc6Ratio;
     noteOsc6Level = p->p_osc6Level;
     noteOsc6Decay = p->p_osc6Decay;
+    noteOscVelSens = p->p_oscVelSens;
+    noteVelToFilter = p->p_velToFilter;
+    noteVelToClick = p->p_velToClick;
+    noteVelToDrive = p->p_velToDrive;
     noteDrive = p->p_drive;
     noteDriveMode = p->p_driveMode;
     noteExpDecay = p->p_expDecay;

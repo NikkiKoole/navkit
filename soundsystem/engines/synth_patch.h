@@ -218,6 +218,12 @@ typedef struct {
     float p_osc6Ratio;        // Frequency ratio for 6th oscillator (0 = off)
     float p_osc6Level;        // Mix level (0-1)
     float p_osc6Decay;
+    float p_oscVelSens;       // Extra osc velocity sensitivity (0=off, 1=full: level scales with velocity)
+
+    // Velocity modulation targets
+    float p_velToFilter;      // Velocity → filter cutoff offset (0=off, 1=full range)
+    float p_velToClick;       // Velocity → click level scaling (0=off, 1=full)
+    float p_velToDrive;       // Velocity → drive amount (0=off, 1=full: hard hits saturate)
 
     // Drive/saturation
     float p_drive;            // 0 = clean, saturation amount (kick warmth, etc.)
@@ -408,6 +414,10 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_osc6Ratio = 0.0f,
         .p_osc6Level = 0.0f,
         .p_osc6Decay = 0.0f,
+        .p_oscVelSens = 0.0f,
+        .p_velToFilter = 0.0f,
+        .p_velToClick = 0.0f,
+        .p_velToDrive = 0.0f,
         .p_drive = 0.0f,
         .p_clickLevel = 0.0f,
         .p_clickTime = 0.005f,

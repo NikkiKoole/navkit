@@ -407,6 +407,10 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "osc6Ratio", p->p_osc6Ratio);
     _sf_writeFloat(f, "osc6Level", p->p_osc6Level);
     _sf_writeFloat(f, "osc6Decay", p->p_osc6Decay);
+    _sf_writeFloat(f, "oscVelSens", p->p_oscVelSens);
+    _sf_writeFloat(f, "velToFilter", p->p_velToFilter);
+    _sf_writeFloat(f, "velToClick", p->p_velToClick);
+    _sf_writeFloat(f, "velToDrive", p->p_velToDrive);
     // Drive, click, filter type
     _sf_writeFloat(f, "drive", p->p_drive);
     _sf_writeInt(f, "driveMode", p->p_driveMode);
@@ -948,6 +952,10 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "osc6Ratio") == 0) p->p_osc6Ratio = _sf_parseFloat(val);
     else if (strcmp(key, "osc6Level") == 0) p->p_osc6Level = _sf_parseFloat(val);
     else if (strcmp(key, "osc6Decay") == 0) p->p_osc6Decay = _sf_parseFloat(val);
+    else if (strcmp(key, "oscVelSens") == 0) p->p_oscVelSens = _sf_parseFloat(val);
+    else if (strcmp(key, "velToFilter") == 0) p->p_velToFilter = _sf_parseFloat(val);
+    else if (strcmp(key, "velToClick") == 0) p->p_velToClick = _sf_parseFloat(val);
+    else if (strcmp(key, "velToDrive") == 0) p->p_velToDrive = _sf_parseFloat(val);
     // Drive, click, filter type
     else if (strcmp(key, "drive") == 0) p->p_drive = _sf_parseFloat(val);
     else if (strcmp(key, "driveMode") == 0) p->p_driveMode = _sf_parseInt(val);
