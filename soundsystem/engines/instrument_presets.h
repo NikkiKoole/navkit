@@ -3180,10 +3180,10 @@ static void initInstrumentPresets(void) {
     instrumentPresets[174].patch.p_osc5Ratio = 13.0f;      // upper bell shimmer
     instrumentPresets[174].patch.p_osc5Level = 0.2f;
     instrumentPresets[174].patch.p_osc5Decay = 25.0f;       // very fast
-    instrumentPresets[174].patch.p_oscVelSens = 0.7f;      // soft=warm sine, hard=harmonics
+    instrumentPresets[174].patch.p_oscVelSens = 0.0f;      // bell always present (tine physics)
     instrumentPresets[174].patch.p_velToFilter = 0.2f;
     instrumentPresets[174].patch.p_velToClick = 0.6f;
-    instrumentPresets[174].patch.p_velToDrive = 0.15f;     // pickup nonlinearity
+    instrumentPresets[174].patch.p_velToDrive = 1.5f;      // pickup nonlinearity — needs >1 drive for audible bark
     instrumentPresets[174].patch.p_driveMode = DIST_ASYMMETRIC; // even harmonics (pickup nonlinearity)
     instrumentPresets[174].patch.p_filterCutoff = 0.5f;
     instrumentPresets[174].patch.p_volume = 0.65f;
@@ -3210,11 +3210,11 @@ static void initInstrumentPresets(void) {
     instrumentPresets[175].patch.p_osc5Ratio = 13.0f;      // upper bell
     instrumentPresets[175].patch.p_osc5Level = 0.3f;
     instrumentPresets[175].patch.p_osc5Decay = 22.0f;
-    instrumentPresets[175].patch.p_oscVelSens = 0.85f;
+    instrumentPresets[175].patch.p_oscVelSens = 0.0f;       // bell always present
     instrumentPresets[175].patch.p_velToFilter = 0.3f;
     instrumentPresets[175].patch.p_velToClick = 0.8f;
-    instrumentPresets[175].patch.p_velToDrive = 0.4f;      // heavy bark on hard hits
-    instrumentPresets[175].patch.p_drive = 0.08f;          // baseline pickup warmth
+    instrumentPresets[175].patch.p_velToDrive = 2.5f;      // heavy bark on hard hits
+    instrumentPresets[175].patch.p_drive = 0.15f;          // baseline pickup warmth
     instrumentPresets[175].patch.p_driveMode = DIST_ASYMMETRIC;
     instrumentPresets[175].patch.p_filterCutoff = 0.6f;
     instrumentPresets[175].patch.p_volume = 0.6f;
@@ -3240,10 +3240,10 @@ static void initInstrumentPresets(void) {
     instrumentPresets[176].patch.p_osc5Ratio = 13.0f;
     instrumentPresets[176].patch.p_osc5Level = 0.15f;
     instrumentPresets[176].patch.p_osc5Decay = 25.0f;
-    instrumentPresets[176].patch.p_oscVelSens = 0.75f;
+    instrumentPresets[176].patch.p_oscVelSens = 0.0f;       // bell always present
     instrumentPresets[176].patch.p_velToFilter = 0.2f;
     instrumentPresets[176].patch.p_velToClick = 0.5f;
-    instrumentPresets[176].patch.p_velToDrive = 0.25f;
+    instrumentPresets[176].patch.p_velToDrive = 1.8f;
     instrumentPresets[176].patch.p_driveMode = DIST_ASYMMETRIC;
     instrumentPresets[176].patch.p_filterCutoff = 0.45f;
     instrumentPresets[176].patch.p_ampLfoRate = 4.5f;      // suitcase tremolo
