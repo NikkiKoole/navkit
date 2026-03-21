@@ -326,6 +326,7 @@ static int prChainScroll = 0;     // Horizontal scroll offset (in steps) for cha
 typedef struct {
     int note;         // MIDI note number
     int step;         // Step when note-on occurred
+    int tick;         // Tick within step when note-on occurred (for sub-step gate)
     int track;        // Absolute track index (4-6 for melody)
     int patternIdx;   // Pattern index when note-on occurred (for cross-pattern gate)
     bool active;
@@ -555,6 +556,7 @@ static void dawRecordNoteOn(int midiNote, float velocity) {
         if (!recHeld[i].active) {
             recHeld[i].note = midiNote;
             recHeld[i].step = qStep;
+            recHeld[i].tick = tick;
             recHeld[i].track = track;
             recHeld[i].patternIdx = seq.currentPattern;
             recHeld[i].active = true;
@@ -569,6 +571,7 @@ static void dawRecordNoteOff(int midiNote) {
         if (recHeld[i].active && recHeld[i].note == midiNote) {
             int track = recHeld[i].track;
             int startStep = recHeld[i].step;
+            int startTick = recHeld[i].tick;
             int startPat = recHeld[i].patternIdx;
             int curPat = seq.currentPattern;
 
@@ -578,31 +581,53 @@ static void dawRecordNoteOff(int midiNote) {
             if (startTrackLen <= 0) startTrackLen = 16;
 
             int curStep = seq.trackStep[track];
-            int gate;
+            int curTick = seq.trackTick[track];
 
+            // Compute gate in ticks for sub-step precision
+            int totalTicksOn, totalTicksOff;
             if (curPat == startPat) {
-                // Same pattern: simple wrap
-                gate = (curStep - startStep + startTrackLen) % startTrackLen;
+                totalTicksOn = startStep * seq.ticksPerStep + startTick;
+                totalTicksOff = curStep * seq.ticksPerStep + curTick;
+                int patTicks = startTrackLen * seq.ticksPerStep;
+                int deltaTicks = (totalTicksOff - totalTicksOn + patTicks) % patTicks;
+                // Convert to steps + remainder
+                int gate = (deltaTicks + seq.ticksPerStep / 2) / seq.ticksPerStep;
+                if (gate < 1) gate = 1;
+                if (gate > 64) gate = 64;
+                int gateNudge = deltaTicks - gate * seq.ticksPerStep;
+                if (gateNudge < -23) gateNudge = -23;
+                if (gateNudge > 23) gateNudge = 23;
+
+                StepV2 *sv = &startPatPtr->steps[track][startStep];
+                int ni = stepV2FindNote(sv, midiNote);
+                if (ni >= 0) {
+                    sv->notes[ni].gate = (int8_t)gate;
+                    sv->notes[ni].gateNudge = (int8_t)gateNudge;
+                }
             } else {
-                // Cross-pattern: sum steps from start to current position
-                // Steps remaining in the starting pattern
-                gate = startTrackLen - startStep;
-                // Steps from full patterns in between
+                // Cross-pattern: sum ticks from start to current position
+                int deltaTicks = (startTrackLen - startStep) * seq.ticksPerStep - startTick;
                 for (int p = startPat + 1; p < curPat && p < SEQ_NUM_PATTERNS; p++) {
                     int tl = seq.patterns[p].trackLength[track];
                     if (tl <= 0) tl = 16;
-                    gate += tl;
+                    deltaTicks += tl * seq.ticksPerStep;
                 }
-                // Steps into the current pattern
-                gate += curStep;
+                deltaTicks += curStep * seq.ticksPerStep + curTick;
+
+                int gate = (deltaTicks + seq.ticksPerStep / 2) / seq.ticksPerStep;
+                if (gate < 1) gate = 1;
+                if (gate > 64) gate = 64;
+                int gateNudge = deltaTicks - gate * seq.ticksPerStep;
+                if (gateNudge < -23) gateNudge = -23;
+                if (gateNudge > 23) gateNudge = 23;
+
+                StepV2 *sv = &startPatPtr->steps[track][startStep];
+                int ni = stepV2FindNote(sv, midiNote);
+                if (ni >= 0) {
+                    sv->notes[ni].gate = (int8_t)gate;
+                    sv->notes[ni].gateNudge = (int8_t)gateNudge;
+                }
             }
-
-            if (gate < 1) gate = 1;
-            if (gate > 64) gate = 64; // int8_t max practical (engine comment: 1-64)
-
-            StepV2 *sv = &startPatPtr->steps[track][startStep];
-            int ni = stepV2FindNote(sv, midiNote);
-            if (ni >= 0) sv->notes[ni].gate = (int8_t)gate;
 
             recHeld[i].active = false;
             break;
@@ -8880,14 +8905,16 @@ int main(int argc, char *argv[]) {
             UnloadDroppedFiles(files);
         }
         dawUpdateRecording();
+        // Handle input BEFORE advancing the sequencer so recorded notes
+        // get stamped at the current step/tick, not one-frame-late.
+        dawHandleMusicalTyping();
+        dawHandleMidiInput();
         dawSyncEngineState();
         dawSyncSequencer();
         {
             float spd = (daw.masterSpeed > 0.01f) ? daw.masterSpeed : 1.0f;
             updateSequencer(GetFrameTime() * spd);
         }
-        dawHandleMusicalTyping();
-        dawHandleMidiInput();
         updateSpeech(GetFrameTime());
 
         BeginDrawing();
