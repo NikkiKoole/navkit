@@ -25,6 +25,10 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
     }
 
     // Master FX
+    fx.octaverEnabled  = d->masterFx.octaverOn;
+    fx.octaverMix      = d->masterFx.octaverMix;
+    fx.octaverSubLevel = d->masterFx.octaverSubLevel;
+    fx.octaverTone     = d->masterFx.octaverTone;
     fx.tremoloEnabled  = d->masterFx.tremoloOn;
     fx.tremoloRate     = d->masterFx.tremoloRate;
     fx.tremoloDepth    = d->masterFx.tremoloDepth;
@@ -155,6 +159,8 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
         setBusSolo(b, d->mixer.solo[b]);
         setBusReverbSend(b, d->mixer.reverbSend[b]);
         setBusDelaySend(b, d->mixer.delaySend[b]);
+        setBusOctaver(b, d->mixer.octaverOn[b], d->mixer.octaverMix[b],
+                      d->mixer.octaverSubLevel[b], d->mixer.octaverTone[b]);
         setBusTremolo(b, d->mixer.tremoloOn[b], d->mixer.tremoloRate[b],
                       d->mixer.tremoloDepth[b], d->mixer.tremoloShape[b]);
         setBusWah(b, d->mixer.wahOn[b], d->mixer.wahMode[b], d->mixer.wahRate[b],

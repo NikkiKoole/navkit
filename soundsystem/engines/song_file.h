@@ -617,6 +617,10 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
     _sf_writeFloat(f, "combFeedback", d->sfEffects.combFeedback);
     _sf_writeFloat(f, "combMix", d->sfEffects.combMix);
     _sf_writeFloat(f, "combDamping", d->sfEffects.combDamping);
+    _sf_writeBool(f, "octaverEnabled", d->sfEffects.octaverEnabled);
+    _sf_writeFloat(f, "octaverMix", d->sfEffects.octaverMix);
+    _sf_writeFloat(f, "octaverSubLevel", d->sfEffects.octaverSubLevel);
+    _sf_writeFloat(f, "octaverTone", d->sfEffects.octaverTone);
     _sf_writeBool(f, "tremoloEnabled", d->sfEffects.tremoloEnabled);
     _sf_writeFloat(f, "tremoloRate", d->sfEffects.tremoloRate);
     _sf_writeFloat(f, "tremoloDepth", d->sfEffects.tremoloDepth);
@@ -743,6 +747,10 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
         _sf_writeFloat(f, "combFeedback", bus->combFeedback);
         _sf_writeFloat(f, "combMix", bus->combMix);
         _sf_writeFloat(f, "combDamping", bus->combDamping);
+        _sf_writeBool(f, "octaverEnabled", bus->octaverEnabled);
+        _sf_writeFloat(f, "octaverMix", bus->octaverMix);
+        _sf_writeFloat(f, "octaverSubLevel", bus->octaverSubLevel);
+        _sf_writeFloat(f, "octaverTone", bus->octaverTone);
         _sf_writeBool(f, "tremoloEnabled", bus->tremoloEnabled);
         _sf_writeFloat(f, "tremoloRate", bus->tremoloRate);
         _sf_writeFloat(f, "tremoloDepth", bus->tremoloDepth);
@@ -1409,6 +1417,10 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
             else if (strcmp(key, "combFeedback") == 0) d->sfEffects.combFeedback = _sf_parseFloat(val);
             else if (strcmp(key, "combMix") == 0) d->sfEffects.combMix = _sf_parseFloat(val);
             else if (strcmp(key, "combDamping") == 0) d->sfEffects.combDamping = _sf_parseFloat(val);
+            else if (strcmp(key, "octaverEnabled") == 0) d->sfEffects.octaverEnabled = _sf_parseBool(val);
+            else if (strcmp(key, "octaverMix") == 0) d->sfEffects.octaverMix = _sf_parseFloat(val);
+            else if (strcmp(key, "octaverSubLevel") == 0) d->sfEffects.octaverSubLevel = _sf_parseFloat(val);
+            else if (strcmp(key, "octaverTone") == 0) d->sfEffects.octaverTone = _sf_parseFloat(val);
             else if (strcmp(key, "tremoloEnabled") == 0) d->sfEffects.tremoloEnabled = _sf_parseBool(val);
             else if (strcmp(key, "tremoloRate") == 0) d->sfEffects.tremoloRate = _sf_parseFloat(val);
             else if (strcmp(key, "tremoloDepth") == 0) d->sfEffects.tremoloDepth = _sf_parseFloat(val);
@@ -1535,6 +1547,10 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
                 else if (strcmp(key, "combFeedback") == 0) bus->combFeedback = _sf_parseFloat(val);
                 else if (strcmp(key, "combMix") == 0) bus->combMix = _sf_parseFloat(val);
                 else if (strcmp(key, "combDamping") == 0) bus->combDamping = _sf_parseFloat(val);
+                else if (strcmp(key, "octaverEnabled") == 0) bus->octaverEnabled = _sf_parseBool(val);
+                else if (strcmp(key, "octaverMix") == 0) bus->octaverMix = _sf_parseFloat(val);
+                else if (strcmp(key, "octaverSubLevel") == 0) bus->octaverSubLevel = _sf_parseFloat(val);
+                else if (strcmp(key, "octaverTone") == 0) bus->octaverTone = _sf_parseFloat(val);
                 else if (strcmp(key, "tremoloEnabled") == 0) bus->tremoloEnabled = _sf_parseBool(val);
                 else if (strcmp(key, "tremoloRate") == 0) bus->tremoloRate = _sf_parseFloat(val);
                 else if (strcmp(key, "tremoloDepth") == 0) bus->tremoloDepth = _sf_parseFloat(val);

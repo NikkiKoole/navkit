@@ -1283,7 +1283,9 @@ static float processWah(float sample) {
     }
 
     // Map sweep to center frequency (exponential)
-    float freq = fx.wahFreqLow * powf(fx.wahFreqHigh / fx.wahFreqLow, sweep);
+    float wLow = fx.wahFreqLow > 1.0f ? fx.wahFreqLow : 300.0f;
+    float wHigh = fx.wahFreqHigh > wLow ? fx.wahFreqHigh : 2500.0f;
+    float freq = wLow * powf(wHigh / wLow, sweep);
     if (freq > SAMPLE_RATE * 0.45f) freq = SAMPLE_RATE * 0.45f;
 
     // SVF bandpass
@@ -2463,6 +2465,20 @@ static float processBusEffects(float input, int busIndex, float dt) {
     
     float sample = input;
 
+    // === OCTAVER (sub-octave generator) ===
+    if (bus->octaverEnabled) {
+        if ((sample >= 0.0f && state->busOctaverPrevSample < 0.0f) ||
+            (sample < 0.0f && state->busOctaverPrevSample >= 0.0f)) {
+            state->busOctaverFlipFlop = -state->busOctaverFlipFlop;
+        }
+        state->busOctaverPrevSample = sample;
+        float sub = sample * state->busOctaverFlipFlop * bus->octaverSubLevel;
+        float cutoff = bus->octaverTone * bus->octaverTone * 0.5f + 0.01f;
+        state->busOctaverFilterLp += cutoff * (sub - state->busOctaverFilterLp);
+        sub = state->busOctaverFilterLp;
+        sample = sample * (1.0f - bus->octaverMix) + (sample + sub) * bus->octaverMix;
+    }
+
     // === TREMOLO (volume LFO) ===
     if (bus->tremoloEnabled) {
         float phase = state->busTremoloPhase;
@@ -2504,7 +2520,9 @@ static float processBusEffects(float input, int busIndex, float dt) {
             state->busWahPhase += bus->wahRate * (1.0f / SAMPLE_RATE);
             if (state->busWahPhase >= 1.0f) state->busWahPhase -= 1.0f;
         }
-        float wahFreq = bus->wahFreqLow * powf(bus->wahFreqHigh / bus->wahFreqLow, sweep);
+        float bwLow = bus->wahFreqLow > 1.0f ? bus->wahFreqLow : 300.0f;
+        float bwHigh = bus->wahFreqHigh > bwLow ? bus->wahFreqHigh : 2500.0f;
+        float wahFreq = bwLow * powf(bwHigh / bwLow, sweep);
         if (wahFreq > SAMPLE_RATE * 0.45f) wahFreq = SAMPLE_RATE * 0.45f;
         float wg = tanf(PI * wahFreq / SAMPLE_RATE);
         float wk = 2.0f - 2.0f * bus->wahResonance * 0.99f;
@@ -3190,6 +3208,17 @@ static void setBusComb(int bus, bool enabled, float freq, float feedback, float 
         mixerCtx->bus[bus].combFeedback = feedback;
         mixerCtx->bus[bus].combMix = mix;
         mixerCtx->bus[bus].combDamping = damping;
+    }
+}
+
+__attribute__((unused))
+static void setBusOctaver(int bus, bool enabled, float mix, float subLevel, float tone) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].octaverEnabled = enabled;
+        mixerCtx->bus[bus].octaverMix = mix;
+        mixerCtx->bus[bus].octaverSubLevel = subLevel;
+        mixerCtx->bus[bus].octaverTone = tone;
     }
 }
 

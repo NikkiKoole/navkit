@@ -1590,6 +1590,86 @@ describe(tremolo_effect) {
 }
 
 // ============================================================================
+// EFFECTS TESTS - OCTAVER
+// ============================================================================
+
+describe(octaver_effect) {
+    it("should pass through when disabled") {
+        _ensureFxCtx();
+        initEffects();
+
+        fx.octaverEnabled = false;
+
+        float input = 0.5f;
+        float output = processOctaver(input);
+
+        expect_float_eq(output, input);
+    }
+
+    it("should add sub content when enabled") {
+        _ensureFxCtx();
+        initEffects();
+
+        fx.octaverEnabled = true;
+        fx.octaverMix = 1.0f;
+        fx.octaverSubLevel = 1.0f;
+        fx.octaverTone = 1.0f;
+        fx.octaverFlipFlop = 1.0f;
+        fx.octaverPrevSample = 0.0f;
+        fx.octaverFilterLp = 0.0f;
+
+        // Feed a few positive samples — no zero crossing yet
+        float output = 0.0f;
+        for (int i = 0; i < 10; i++) {
+            output = processOctaver(0.5f);
+        }
+
+        // With mix=1, output = (input + sub) * 1.0
+        // Sub = input * flipFlop * subLevel, filtered
+        // Should differ from just the input alone
+        expect(output != 0.5f);
+    }
+
+    it("should toggle flip-flop on zero crossing") {
+        _ensureFxCtx();
+        initEffects();
+
+        fx.octaverEnabled = true;
+        fx.octaverMix = 1.0f;
+        fx.octaverSubLevel = 1.0f;
+        fx.octaverTone = 1.0f;
+        fx.octaverFlipFlop = 1.0f;
+        fx.octaverPrevSample = 0.1f;
+        fx.octaverFilterLp = 0.0f;
+
+        float flipBefore = fx.octaverFlipFlop;
+        // Cross zero: positive to negative
+        processOctaver(-0.1f);
+        float flipAfter = fx.octaverFlipFlop;
+
+        expect(flipAfter != flipBefore);
+        expect(flipAfter == -1.0f);
+    }
+
+    it("should work in bus effects chain") {
+        _ensureMixerCtx();
+        initMixerContext(mixerCtx);
+
+        setBusOctaver(0, true, 1.0f, 1.0f, 0.5f);
+        mixerCtx->busState[0].busOctaverFlipFlop = 1.0f;
+
+        float dt = 1.0f / SAMPLE_RATE;
+        float output = 0.0f;
+        for (int i = 0; i < 20; i++) {
+            output = processBusEffects(0.5f, 0, dt);
+        }
+
+        // Output should include sub content
+        expect(output != 0.5f);
+    }
+}
+
+// ============================================================================
 // EFFECTS TESTS - WAH
 // ============================================================================
 
@@ -7256,6 +7336,7 @@ int main(int argc, char **argv) {
     test(sidechain_effect);
     test(tape_effect);
     test(tremolo_effect);
+    test(octaver_effect);
     test(wah_effect);
     test(ringmod_effect);
     

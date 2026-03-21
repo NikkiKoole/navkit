@@ -87,6 +87,7 @@ typedef struct {
 } Sidechain;
 
 typedef struct {
+    bool octaverOn; float octaverMix, octaverSubLevel, octaverTone;
     bool tremoloOn; float tremoloRate, tremoloDepth; int tremoloShape;
     bool wahOn;     int wahMode; float wahRate, wahSensitivity, wahFreqLow, wahFreqHigh, wahResonance, wahMix;
     bool distOn;    float distDrive, distTone, distMix; int distMode;
@@ -140,6 +141,7 @@ typedef struct {
     bool mute[NUM_BUSES];
     bool solo[NUM_BUSES];
     // Per-bus FX
+    bool octaverOn[NUM_BUSES]; float octaverMix[NUM_BUSES]; float octaverSubLevel[NUM_BUSES]; float octaverTone[NUM_BUSES];
     bool tremoloOn[NUM_BUSES]; float tremoloRate[NUM_BUSES]; float tremoloDepth[NUM_BUSES]; int tremoloShape[NUM_BUSES];
     bool wahOn[NUM_BUSES]; int wahMode[NUM_BUSES]; float wahRate[NUM_BUSES]; float wahSensitivity[NUM_BUSES];
     float wahFreqLow[NUM_BUSES]; float wahFreqHigh[NUM_BUSES]; float wahResonance[NUM_BUSES]; float wahMix[NUM_BUSES];

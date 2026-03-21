@@ -376,15 +376,85 @@ output = bp × (1 + res×2)
 
 ## 5. MASTER EFFECTS CHAIN
 
-Signal flow: **Distortion → Bitcrusher → Chorus → Flanger → Phaser → Comb → Tape → Vinyl → Delay → [Dub Loop] → Rewind → TapeStop → BeatRepeat → DJFX Loop → Reverb → HalfSpeed**
+Signal flow: **Octaver → Tremolo → Wah → Distortion → Bitcrusher → Chorus → Flanger → Phaser → Comb → Ring Mod → Tape → Vinyl → Delay → [Dub Loop] → Rewind → TapeStop → BeatRepeat → DJFX Loop → Reverb → HalfSpeed**
 
-### 5.1 Distortion
+### 5.1 Octaver (Sub-Octave Generator)
+**File**: `effects.h` (processOctaver)
+**Algorithm**: Zero-crossing detection → flip-flop square wave at half frequency → multiply with input → lowpass tone control.
+**Core logic**:
+```
+if (sample crosses zero): flipFlop = −flipFlop
+sub = sample × flipFlop × subLevel
+filterLp += tone² × 0.5 × (sub − filterLp)    // 1-pole LP smoothing
+output = dry × (1 − mix) + (dry + sub) × mix
+```
+**Parameters**: Mix (0–1), SubLevel (0–1), Tone (0–1 → lowpass cutoff on sub signal).
+**Chain placement**: First in chain (before tremolo). Needs the cleanest possible signal for reliable zero-crossing tracking.
+**Reference**: Classic analog octaver design (Boss OC-2, EHX Octave Multiplexer). The zero-crossing → flip-flop → multiply topology is exactly how the OC-2's CMOS divider works: a Schmitt trigger detects zero crossings, a T flip-flop divides the frequency by 2, and the flip-flop output gates the original signal. The lowpass tone control models the OC-2's output filter that smooths the sub into a rounder shape.
+**Assessment**: Authentic analog octaver behavior. The zero-crossing approach works best on clean, monophonic signals — on polyphonic material or noisy signals it will produce a buzzy, glitchy sub-octave, which is actually the correct behavior of real analog octavers (the OC-2 is famously finicky about input signal quality). The 1-pole lowpass tone control is simple but effective — it smooths the harsh square-wave edges of the sub signal into a warmer, more usable tone. Real OC-2 circuits use a 2-pole LP for the sub output, so the tone control here is slightly gentler (6 dB/oct vs 12 dB/oct), but adequate for the musical application. **Possible enhancement**: Octave-up mode via full-wave rectification (`|sample|`), which doubles frequency rather than halving it — classic Octavia/Green Ringer sound.
+
+### 5.2 Tremolo (Volume LFO)
+**File**: `effects.h` (processTremolo)
+**Algorithm**: LFO-modulated volume attenuation with 3 waveform shapes.
+**Core logic**:
+```
+switch (shape):
+  SINE:     mod = 0.5 + 0.5 × sin(phase × 2π)
+  SQUARE:   mod = (phase < 0.5) ? 1.0 : 0.0
+  TRIANGLE: mod = phase < 0.5 ? phase×4−1 : 3−phase×4; mod = mod×0.5+0.5
+output = sample × (1 − depth × (1 − mod))
+```
+**Parameters**: Rate (0.5–20 Hz), Depth (0–1), Shape (sine/square/triangle).
+**Amplitude formula**: At depth=1, the signal swings between full volume (mod=1) and silence (mod=0). At depth=0.5, it swings between full and 50%. This is the standard "unipolar modulation depth" convention used by Fender amps, Boss TR-2, and most tremolo implementations.
+**Reference**: The simplest and oldest modulation effect — built into Fender amps since 1955 (Tremolux). The amplitude modulation formula `1 − depth × (1 − mod)` follows the convention where depth=0 means no effect and depth=1 means full modulation down to silence. This is the "bias-varying" tremolo (amplitude modulation) as distinct from Leslie-style tremolo (which is actually frequency modulation via Doppler shift). Equivalent to Boss TR-2, EHX Pulsar, Fender Vibrato channel.
+**Assessment**: Textbook correct. The three waveform shapes cover all classic tremolo styles: sine (smooth Fender-style), square (hard "chop" used in Morse code and stutter effects), triangle (gentle linear pulse). The LFO runs at audio-rate precision (per-sample phase increment), so even at 20 Hz there's no stepping or zipper noise. No tempo sync (could be added for rhythmic tremolo, but free-running Hz is the traditional approach). **Note**: The square shape creates an abrupt volume gate with no smoothing at the transitions, which can produce clicks at very low rates — real hardware often has a slight slew on the square wave transitions. For this application the raw square is fine (it's the desired "helicopter chop" effect).
+
+### 5.3 Wah / Auto-Wah (Swept Bandpass Filter)
+**File**: `effects.h` (processWah)
+**Algorithm**: State Variable Filter (Cytomic/Simper SVF) in bandpass mode, with center frequency controlled by LFO or envelope follower.
+**SVF (bandpass core)**:
+```
+g = tan(π × freq / sr)
+k = 2 − 2 × resonance × 0.99
+a1 = 1 / (1 + g(g + k))
+a2 = g × a1,  a3 = g × a2
+v3 = input − ic2eq
+v1 = a1 × ic1eq + a2 × v3       // bandpass output
+v2 = ic2eq + a2 × ic1eq + a3 × v3
+ic1eq = 2v1 − ic1eq;  ic2eq = 2v2 − ic2eq
+```
+**Sweep modes**:
+- **LFO** (WAH_MODE_LFO): Sine LFO at `wahRate` Hz → sweep position (0–1). Classic auto-wah rhythm.
+- **Envelope** (WAH_MODE_ENVELOPE): Peak envelope follower with fast attack (~0.01), slow release (~0.0001). Sensitivity scales input level. Harder playing = higher sweep = brighter.
+
+**Frequency mapping**: Exponential sweep from `freqLow` to `freqHigh`: `freq = freqLow × (freqHigh/freqLow)^sweep`. The exponential mapping is essential — human pitch perception is logarithmic, so a linear frequency sweep would sound like it's spending too long in the high range.
+**State clamping**: SVF states clamped to ±4 to prevent blowup at high resonance.
+**Parameters**: Mode (LFO/Envelope), Rate (0.5–10 Hz), Sensitivity (0.1–5.0), FreqLow (200–800 Hz), FreqHigh (800–4000 Hz), Resonance (0–1), Mix (0–1).
+**Reference**: Classic wah-wah pedal (Cry Baby, Dunlop GCB-95) is a single bandpass filter with foot-controlled center frequency. Auto-wah (Mutron III, Boss AW-3) replaces the foot controller with an envelope follower. The SVF bandpass is the modern digital equivalent of the original inductor-capacitor resonant circuit in the Cry Baby. The exponential frequency mapping matches how real wah pots work (log-taper potentiometer sweeps frequency exponentially).
+**Assessment**: Good quality. The Cytomic SVF gives correct bandpass behavior without the frequency warping issues of the Chamberlin SVF (which the bus filter section also uses). The exponential frequency sweep is the correct mapping for musical results. The envelope follower is a simple peak detector — real Mutron III uses an RMS detector with a more complex time constant, but the peak detector is adequate and snappier. The resonance range (up to 0.99) allows near-self-oscillation for quacky wah sounds without going unstable. **Possible enhancements**: (1) A "manual" mode where the sweep position is a static knob (for manual wah control). (2) An "expression" mode for MIDI CC control. (3) Band-boosted LP mode alongside the BP, as some wah pedals (like the original Cry Baby) use a resonant lowpass rather than pure bandpass.
+
+### 5.4 Ring Modulator (as Effect)
+**File**: `effects.h` (processRingMod)
+**Algorithm**: Multiply signal by a carrier sine oscillator at a fixed frequency.
+**Core logic**:
+```
+carrier = sin(phase × 2π)
+phase += freq / sampleRate
+wet = sample × carrier
+output = dry × (1 − mix) + wet × mix
+```
+**Parameters**: Freq (20–2000 Hz), Mix (0–1).
+**Reference**: Ring modulation produces sum and difference frequencies: if the input has a component at frequency `f`, and the carrier is at `fc`, the output contains `f+fc` and `f−fc` (but NOT the original `f` or `fc`). Named after the ring of diodes used in the original analog circuit (patented 1934, used in telephone multiplexing). Classic audio effects: Moog MF-102 Ring Modulator, EHX Ring Thing, Bode Frequency Shifter (which is a single-sideband ring modulator). Also the basis of the Dalek voice effect.
+**Note on voice-level vs effect-level**: PixelSynth already has ring modulation on the synth voice (`p_ringMod` in synth.h, which modulates at a multiple of the voice's own base frequency). This effect-level ring mod is different — it uses a fixed carrier frequency independent of the input pitch, which produces the characteristic inharmonic, metallic, bell-like tones. The voice-level ring mod tracks pitch (producing related harmonics); the effect-level one doesn't (producing atonal sum/difference frequencies).
+**Assessment**: Textbook correct. The implementation is the simplest possible ring modulator — a single carrier × signal multiplication with dry/wet blend. This is exactly what the Moog MF-102 does internally (minus the LFO modulation of the carrier frequency, which could be added). The fixed-frequency carrier produces the classic "robot voice" / metallic bell character. **Possible enhancements**: (1) LFO on the carrier frequency for time-varying metallic textures. (2) Square/triangle carrier options (different harmonic content in the sidebands). (3) Feedback path (carrier × signal → feed back into input) for more aggressive distortion character.
+
+### 5.5 Distortion
 **File**: `effects.h` (processDistortion)
 **Algorithm**: Same waveshaping modes as voice distortion (section 4.1) + post-distortion 1-pole LP tone control.
 **Tone**: `cutoff = tone²·0.5 + 0.1` — exponential curve, darker at low values.
 **Assessment**: Adequate. The tone control after distortion is essential for taming harshness. Same assessment as 4.1.
 
-### 5.2 Bitcrusher
+### 5.6 Bitcrusher
 **File**: `effects.h` (processBitcrusher)
 **Algorithm**: Sample rate reduction + bit depth reduction.
 **Rate reduction**: Hold sample value for `crushRate` consecutive samples (zero-order hold).
@@ -392,7 +462,7 @@ Signal flow: **Distortion → Bitcrusher → Chorus → Flanger → Phaser → C
 **Reference**: Standard bitcrusher algorithm. The zero-order hold is the simplest approach (more sophisticated approaches would use decimation + interpolation).
 **Assessment**: Correct. The zero-order hold creates the characteristic staircase aliasing. The bit reduction correctly quantizes to N-bit resolution. No dithering is applied (which is intentional — the quantization noise IS the effect).
 
-### 5.3 Chorus (Classic + BBD Mode)
+### 5.7 Chorus (Classic + BBD Mode)
 **File**: `effects.h:1218–1310` (processChorus + bbdSaturate)
 **Algorithm**: Two selectable modes — Classic (dual sine LFO) or BBD (Juno-style bucket brigade delay emulation).
 
@@ -413,7 +483,7 @@ Signal flow: **Distortion → Bitcrusher → Chorus → Flanger → Phaser → C
 **Reference**: Roland Juno-6/60/106 chorus circuit (MN3009 BBD chip). The antiphase stereo topology is documented in the Juno-6 service manual. BBD charge saturation modeling from Raffel & Smith, "A Simple Bucket-Brigade Device Model" (DAFx 2010). The cubic-clipped triangle LFO models the integrator capacitor in the Juno's clock circuit (Stinchcombe, "Analysis of BBD-Based Audio Effects", 2016).
 **Assessment**: Good Juno-style chorus. The antiphase single-LFO topology is historically accurate (the Juno uses exactly this). The charge-well saturation is the key to the BBD warmth — without it, a BBD chorus just sounds like a regular digital chorus. The cubic soft-clip on the triangle LFO is a nice touch that captures the rounded peaks of real BBD clock waveforms. **Note**: A more complete BBD model would include clock feedthrough noise (the characteristic "ticking" at low rates) and frequency-dependent signal loss across stages, but these are subtle effects that may not be worth the CPU cost. Both master and per-bus chorus support BBD mode.
 
-### 5.4 Flanger
+### 5.8 Flanger
 **File**: `effects.h` (processFlanger)
 **Algorithm**: Short modulated delay with feedback, triangle LFO.
 **Delay range**: 0.1–10 ms. Buffer: 512 samples (~11 ms).
@@ -423,7 +493,7 @@ Signal flow: **Distortion → Bitcrusher → Chorus → Flanger → Phaser → C
 **Reference**: Standard flanger design. The through-zero flanging with negative feedback is the classic technique.
 **Assessment**: Correct. The triangle LFO is the standard choice for flangers (smoother sweep than sine). Feedback clamping prevents runaway. Short delay times and high feedback create the characteristic jet-engine sound.
 
-### 5.5 Phaser
+### 5.9 Phaser
 **File**: `effects.h` (processPhaser)
 **Algorithm**: Cascade of 2–8 first-order allpass filters, LFO modulates allpass coefficient.
 **Allpass**: `output = −coeff × input + prev; prev = coeff × output + input` (standard first-order allpass).
@@ -432,7 +502,7 @@ Signal flow: **Distortion → Bitcrusher → Chorus → Flanger → Phaser → C
 **Reference**: Standard phaser design. See Smith, "Physical Audio Signal Processing", chapter on allpass filters.
 **Assessment**: Correct. Each allpass stage creates one notch in the frequency response. 4 stages (classic) = 2 notches, 8 stages = 4 notches. The sine LFO sweeps the notch frequencies for the characteristic sweeping effect. The allpass implementation is the standard textbook form.
 
-### 5.6 Comb Filter
+### 5.10 Comb Filter
 **File**: `effects.h` (processComb)
 **Algorithm**: Feedback delay line tuned to a specific pitch, with damping LP in feedback path.
 **Delay**: `samples = sr / frequency` (20–2000 Hz range).
@@ -441,7 +511,7 @@ Signal flow: **Distortion → Bitcrusher → Chorus → Flanger → Phaser → C
 **Reference**: Standard comb filter. This is essentially the same topology used in Karplus-Strong synthesis and in the reverb's comb filters.
 **Assessment**: Correct. The damping LP in the feedback path prevents infinite ringing at high frequencies, which makes the resonance more natural-sounding. Negative feedback creates the "hollow" character by emphasizing odd harmonics.
 
-### 5.7 Tape Simulation
+### 5.11 Tape Simulation
 **File**: `effects.h` (processTape, tapeWowFlutterLFO)
 **Algorithm**: Saturation + noise-modulated wow/flutter + hiss.
 **Saturation**: `tanh()` soft clipping.
@@ -456,7 +526,7 @@ Signal flow: **Distortion → Bitcrusher → Chorus → Flanger → Phaser → C
 **Reference**: Standard tape simulation approach. Wow/flutter rates and depths match typical cassette player measurements (IEC 386). Noise-modulated LFO technique from Välimäki & Bilbao, "Virtual Analog Effects" (2010). The noise blend ratios (35%/40%) are calibrated to match measurements of consumer cassette decks where wow is dominated by capstan period (more periodic) and flutter by motor/bearing irregularities (more random).
 **Assessment**: Good. The noise modulation gives each wow/flutter cycle a unique shape while preserving the fundamental periodicity that makes it sound mechanical rather than random. The LP filtering on the noise component is essential — without it, the noise adds audible pitch jitter rather than slow shape variation. The saturation is basic tanh (real tape has frequency-dependent saturation, but for a game audio context this is adequate).
 
-### 5.8 Vinyl Simulation
+### 5.12 Vinyl Simulation
 **File**: `effects.h` (processVinylSim)
 **Algorithm**: Pitch warp + surface noise + crackle + 2-pole tone LP.
 **Warp**: Slow sine LFO modulates delay read position (±150 samples = ±3.4 ms).
@@ -466,7 +536,7 @@ Signal flow: **Distortion → Bitcrusher → Chorus → Flanger → Phaser → C
 **Reference**: Common vinyl simulation technique. See Esquef & Välimäki, "Interpolation of Long Gaps in Audio Signals" for vinyl noise modeling.
 **Assessment**: Decent for character. The crackle model is simplistic (real vinyl crackle has a specific transient shape and spectral content related to physical groove damage). The 2-pole tone filter correctly models the HF rolloff of vinyl playback (RIAA-ish). The pitch warp captures the basic "warped record" effect.
 
-### 5.9 Delay
+### 5.13 Delay
 **File**: `effects.h` (processDelay)
 **Algorithm**: Circular buffer with Hermite interpolation, filtered feedback.
 **Buffer**: 2× sr samples (~2 seconds at 44.1 kHz).
@@ -475,7 +545,7 @@ Signal flow: **Distortion → Bitcrusher → Chorus → Flanger → Phaser → C
 **Reference**: Standard digital delay design.
 **Assessment**: Good. Hermite interpolation prevents clicks when delay time is modulated. The tone filter on feedback creates progressively darker repeats, which is the standard behavior of tape and analog delays.
 
-### 5.10 Send Delay
+### 5.14 Send Delay
 **File**: `effects.h` (_processDelaySendCore)
 **Algorithm**: Identical to master delay but in a separate buffer, always running.
 **Use**: Shared delay effect fed by per-bus delaySend knobs (send/return architecture).
@@ -610,7 +680,7 @@ Combined offset applied to read position. Uses same `tapeWowFlutterLFO()` helper
 ### 9.1 Bus Architecture
 **File**: `effects.h:108–281`
 **Buses**: 8 (4 drum + bass + lead + chord + sampler) + master.
-**Per-bus chain**: Filter (SVF) → Distortion → EQ → Delay → Chorus (Classic or BBD) → Phaser → Comb → Reverb Send → Delay Send → Compressor.
+**Per-bus chain**: Octaver → Tremolo → Wah → Filter (SVF) → EQ → Distortion → Compressor → Chorus (Classic or BBD) → Phaser → Comb → Ring Mod → Delay → Reverb Send → Delay Send.
 **Assessment**: Professional mixer topology. Send/return architecture for reverb and delay is correct. Per-bus chorus supports both Classic and BBD modes (same algorithm as master chorus — see section 5.3). Bus BBD mode uses Hermite interpolation; bus Classic mode uses linear interpolation (cheaper, adequate for per-bus use).
 
 ### 9.2 Per-Bus Compressor
@@ -722,6 +792,10 @@ Combined offset applied to read position. Uses same `tapeWowFlutterLFO()` helper
 | Reverb (Schroeder) | 4 combs + 2 allpass | Adequate | Schroeder 1962, Moorer 1979 |
 | Reverb (FDN) | 8-line Hadamard FDN + early ref | Very good | Jot 1992, Schlecht & Habets 2017 |
 | Analog Variance | Deterministic per-voice hash | Good | Prophet-5/Juno tolerances |
+| Octaver | Zero-crossing flip-flop + LP | Good | Boss OC-2 topology |
+| Tremolo | Volume LFO (sine/square/tri) | Good | Fender amp tremolo |
+| Wah / Auto-Wah | SVF bandpass + LFO/envelope | Good | Cry Baby / Mutron III |
+| Ring Mod (effect) | Carrier sine × signal | Good | Moog MF-102 |
 | Chorus (Classic) | Dual-LFO modulated delay | Good | Standard |
 | Chorus (BBD) | Antiphase triangle + charge sat | Very good | Juno-6 BBD circuit, Raffel & Smith 2010 |
 | Flanger | Short mod delay + feedback | Good | Standard |
@@ -737,3 +811,6 @@ Combined offset applied to read position. Uses same `tapeWowFlutterLFO()` helper
 1. **Wavefolding** — No oversampling, so aliasing at high fold amounts. 2× OS would help.
 2. **Formant filters** — Chamberlin SVF could be upgraded to Cytomic SVF for better HF accuracy (not critical since formants are < 3 kHz).
 3. **Reverb sample rate scaling** — Both Schroeder and FDN delay lengths are hardcoded for 44100 Hz. At other sample rates, lengths should be scaled proportionally.
+4. **Octaver** — Octave-up mode via full-wave rectification, tracking filter for polyphonic input.
+5. **Wah** — Manual/expression modes, sidechain LP mode alongside bandpass.
+6. **Ring Mod** — LFO on carrier frequency, square/triangle carrier options.

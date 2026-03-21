@@ -353,6 +353,10 @@ static bool dawSave(const char *filepath) {
         snprintf(k, sizeof(k), "combFB%d", b); _dw(f, k, daw.mixer.combFB[b]);
         snprintf(k, sizeof(k), "combMix%d", b); _dw(f, k, daw.mixer.combMix[b]);
         snprintf(k, sizeof(k), "combDamping%d", b); _dw(f, k, daw.mixer.combDamping[b]);
+        snprintf(k, sizeof(k), "octaverOn%d", b); _db(f, k, daw.mixer.octaverOn[b]);
+        snprintf(k, sizeof(k), "octaverMix%d", b); _dw(f, k, daw.mixer.octaverMix[b]);
+        snprintf(k, sizeof(k), "octaverSub%d", b); _dw(f, k, daw.mixer.octaverSubLevel[b]);
+        snprintf(k, sizeof(k), "octaverTone%d", b); _dw(f, k, daw.mixer.octaverTone[b]);
         snprintf(k, sizeof(k), "tremoloOn%d", b); _db(f, k, daw.mixer.tremoloOn[b]);
         snprintf(k, sizeof(k), "tremoloRate%d", b); _dw(f, k, daw.mixer.tremoloRate[b]);
         snprintf(k, sizeof(k), "tremoloDepth%d", b); _dw(f, k, daw.mixer.tremoloDepth[b]);
@@ -390,6 +394,8 @@ static bool dawSave(const char *filepath) {
 
     // [masterfx]
     fprintf(f, "\n[masterfx]\n");
+    _db(f, "octaverOn", daw.masterFx.octaverOn); _dw(f, "octaverMix", daw.masterFx.octaverMix);
+    _dw(f, "octaverSubLevel", daw.masterFx.octaverSubLevel); _dw(f, "octaverTone", daw.masterFx.octaverTone);
     _db(f, "tremoloOn", daw.masterFx.tremoloOn); _dw(f, "tremoloRate", daw.masterFx.tremoloRate);
     _dw(f, "tremoloDepth", daw.masterFx.tremoloDepth); _di(f, "tremoloShape", daw.masterFx.tremoloShape);
     _db(f, "wahOn", daw.masterFx.wahOn); _di(f, "wahMode", daw.masterFx.wahMode);
@@ -1231,6 +1237,10 @@ static bool dawLoad(const char *filepath) {
                     else if (strcmp(base,"combFB")==0) daw.mixer.combFB[b]=_dpf(val);
                     else if (strcmp(base,"combMix")==0) daw.mixer.combMix[b]=_dpf(val);
                     else if (strcmp(base,"combDamping")==0) daw.mixer.combDamping[b]=_dpf(val);
+                    else if (strcmp(base,"octaverOn")==0) daw.mixer.octaverOn[b]=_dpb(val);
+                    else if (strcmp(base,"octaverMix")==0) daw.mixer.octaverMix[b]=_dpf(val);
+                    else if (strcmp(base,"octaverSub")==0) daw.mixer.octaverSubLevel[b]=_dpf(val);
+                    else if (strcmp(base,"octaverTone")==0) daw.mixer.octaverTone[b]=_dpf(val);
                     else if (strcmp(base,"tremoloOn")==0) daw.mixer.tremoloOn[b]=_dpb(val);
                     else if (strcmp(base,"tremoloRate")==0) daw.mixer.tremoloRate[b]=_dpf(val);
                     else if (strcmp(base,"tremoloDepth")==0) daw.mixer.tremoloDepth[b]=_dpf(val);
@@ -1275,7 +1285,11 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"envHPFreq")==0) daw.sidechain.envHPFreq=_dpf(val);
             break;
         case _DW_SEC_MASTERFX:
-            if (strcmp(key,"tremoloOn")==0) daw.masterFx.tremoloOn=_dpb(val);
+            if (strcmp(key,"octaverOn")==0) daw.masterFx.octaverOn=_dpb(val);
+            else if (strcmp(key,"octaverMix")==0) daw.masterFx.octaverMix=_dpf(val);
+            else if (strcmp(key,"octaverSubLevel")==0) daw.masterFx.octaverSubLevel=_dpf(val);
+            else if (strcmp(key,"octaverTone")==0) daw.masterFx.octaverTone=_dpf(val);
+            else if (strcmp(key,"tremoloOn")==0) daw.masterFx.tremoloOn=_dpb(val);
             else if (strcmp(key,"tremoloRate")==0) daw.masterFx.tremoloRate=_dpf(val);
             else if (strcmp(key,"tremoloDepth")==0) daw.masterFx.tremoloDepth=_dpf(val);
             else if (strcmp(key,"tremoloShape")==0) daw.masterFx.tremoloShape=_dpi(val);

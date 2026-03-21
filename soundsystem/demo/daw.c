@@ -417,6 +417,19 @@ static DawState daw = {
         .filterCut = {1,1,1,1,1,1,1,1},
         .distDrive = {2,2,2,2,2,2,2,2},
         .distMix = {0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f},
+        .octaverMix = {0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f},
+        .octaverSubLevel = {0.8f,0.8f,0.8f,0.8f,0.8f,0.8f,0.8f,0.8f},
+        .octaverTone = {0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f},
+        .tremoloRate = {4,4,4,4,4,4,4,4},
+        .tremoloDepth = {0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f},
+        .wahRate = {2,2,2,2,2,2,2,2},
+        .wahSensitivity = {1,1,1,1,1,1,1,1},
+        .wahFreqLow = {300,300,300,300,300,300,300,300},
+        .wahFreqHigh = {2500,2500,2500,2500,2500,2500,2500,2500},
+        .wahResonance = {0.7f,0.7f,0.7f,0.7f,0.7f,0.7f,0.7f,0.7f},
+        .wahMix = {1,1,1,1,1,1,1,1},
+        .ringModFreq = {440,440,440,440,440,440,440,440},
+        .ringModMix = {0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f},
         .delayTime = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
         .delayFB = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
         .delayMix = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
@@ -425,6 +438,10 @@ static DawState daw = {
                     .envDepth = 0.8f, .envAttack = 0.005f, .envHold = 0.02f,
                     .envRelease = 0.15f, .envCurve = 1 },
     .masterFx = {
+        .octaverMix = 0.5f, .octaverSubLevel = 0.8f, .octaverTone = 0.5f,
+        .tremoloRate = 4.0f, .tremoloDepth = 0.5f,
+        .wahRate = 2.0f, .wahSensitivity = 1.0f, .wahFreqLow = 300.0f, .wahFreqHigh = 2500.0f, .wahResonance = 0.7f, .wahMix = 1.0f,
+        .ringModFreq = 440.0f, .ringModMix = 0.5f,
         .distDrive = 2.0f, .distTone = 0.7f, .distMix = 0.5f,
         .crushBits = 8.0f, .crushRate = 4.0f, .crushMix = 0.5f,
         .chorusRate = 1.0f, .chorusDepth = 0.3f, .chorusMix = 0.3f,
@@ -5187,6 +5204,15 @@ static void drawParamBus(float x, float y, float w, float h) {
         }
 
         // FX controls (right of fader, below pan/rev)
+        // Octaver
+        ToggleBoolS(rightX, ry, "Oct", &daw.mixer.octaverOn[b], fs); ry += row;
+        if (daw.mixer.octaverOn[b]) {
+            DraggableFloatS(rightX, ry, "Sub", &daw.mixer.octaverSubLevel[b], 0.05f, 0.0f, 1.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Tone", &daw.mixer.octaverTone[b], 0.05f, 0.0f, 1.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Mix", &daw.mixer.octaverMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
+        }
+        ry += 2;
+
         // Tremolo
         ToggleBoolS(rightX, ry, "Trem", &daw.mixer.tremoloOn[b], fs); ry += row;
         if (daw.mixer.tremoloOn[b]) {
@@ -5384,11 +5410,11 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
     // Disabled effects hide params but keep same width for stable layout.
     int fs = 11;
     int row = fs + 3;
-    float stripW = w / 16.0f;
+    float stripW = w / 17.0f;
     if (stripW > 140) stripW = 140;
 
     // Signal chain label at bottom
-    DrawTextShadow("Trem > Wah > Dist > Crush > Chorus > Flanger > Phaser > Comb > Ring > Tape > Vinyl > Dly > Rev > EQ > Comp",
+    DrawTextShadow("Oct > Trem > Wah > Dist > Crush > Chorus > Flanger > Phaser > Comb > Ring > Tape > Vinyl > Dly > Rev > EQ > Comp",
                    (int)(x+2), (int)(y+h-11), 9, UI_BORDER);
 
     float cx = x;
@@ -5408,7 +5434,16 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
         cx += stripW; \
     }
 
-    // 1: Tremolo
+    // 1: Octaver
+    MFX_BEGIN("Oct", &daw.masterFx.octaverOn)
+    if (daw.masterFx.octaverOn) {
+        DraggableFloatS(rx, ry, "Sub", &daw.masterFx.octaverSubLevel, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Tone", &daw.masterFx.octaverTone, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Mix", &daw.masterFx.octaverMix, 0.05f, 0.0f, 1.0f, fs); ry += row;
+    }
+    MFX_END()
+
+    // 2: Tremolo
     MFX_BEGIN("Trem", &daw.masterFx.tremoloOn)
     if (daw.masterFx.tremoloOn) {
         DraggableFloatS(rx, ry, "Rate", &daw.masterFx.tremoloRate, 0.5f, 0.5f, 20.0f, fs); ry += row;
