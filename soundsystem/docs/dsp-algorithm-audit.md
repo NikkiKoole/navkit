@@ -168,6 +168,61 @@ Complete inventory of every DSP algorithm in the soundsystem: what it is, how it
 **Cyan UI indicators**: Real-time visualization on affected parameter rows (filter cutoff, drive, click level, extra osc levels) showing the velocity-modulated value, matching the LFO orange indicator style.
 **Assessment**: Straightforward. The detuning is ratio-based (not cents-based), which is fine for the metallic percussion use case. For typical unison-lead sounds, a cents-based spread with even distribution (as described in the unison globals) would be more musical. Both modes are available. The per-oscillator decay + velocity modulation enable rich dynamic timbres: MT-70 style additive (static partials with independent decay), Rhodes (always-present bell + velocity-driven bark), and anything in between.
 
+### 1.17 Electric Piano / Rhodes (WAVE_EPIANO)
+**File**: `synth_oscillators.h:1590–1760`, init at `1615–1710`, process at `1713–1760`
+**Algorithm**: 6-mode modal synthesis (tine + tone bar) with electromagnetic pickup nonlinearity and DC blocker.
+
+**Physics model**: The Fender Rhodes (1965) is a tuning fork — a hammer strikes a tine (clamped-free cantilever beam) coupled to a brass tone bar, vibrating near an electromagnetic pickup. Two phenomena create the sound:
+1. **Attack transient** (~5–20 ms): cantilever beam bending modes (Euler-Bernoulli eigenvalues: 1×, 6.27×, 17.55×, 34.39×, 56.84×, 84.91×). Wildly inharmonic, decay in milliseconds, give the characteristic bell-like "chime."
+2. **Sustained tone**: the tine settles into simple harmonic motion, and the nonlinear electromagnetic pickup generates integer harmonics (2f, 3f, 4f…) via its transfer function.
+
+**Mode ratio blending**: `epBellTone` blends between harmonic ratios `{1, 2, 3, 4, 5, 6}` (sustained pickup tone) and cantilever beam ratios `{1, 6.27, 17.55, 34.39, 56.84, 84.91}` (attack transient). Per-mode blend scale `{0, 0, 0.05, 0.4, 0.8, 1.0}` keeps body modes (1–2) at exact integer ratios for clean pitch, while bell modes (4–6) carry the inharmonic attack character. This avoids the tuning issues that arise when even small amounts of beam inharmonicity shift the 2nd partial (e.g. 0.05 blend → 14 cents sharp, audible as beating in low registers).
+
+**Pickup position profiles**: Centered (fundamental dominant: 1.0, 0.15, 0.40, 0.30, 0.15, 0.05) vs offset (2nd harmonic dominant: 0.50, 1.00, 0.25, 0.60, 0.30, 0.12). These model electromagnetic coupling geometry, NOT beam mode shapes — an earlier `sin(n·π·pos)` model was rejected because it made the 2nd harmonic nearly as loud as the fundamental at offset positions, producing perceived pitch ambiguity.
+
+**Velocity model**:
+- Hammer hardness is velocity-dependent: `hard = epHardness + vel × (1 − epHardness) × 0.3` — neoprene tips compress more at higher velocity, brightening the spectrum.
+- Fundamental/body modes (1–3): `vel²` curve — quiet at pp, strong at ff.
+- Bell modes (4–6): `sqrt(vel)` curve — present even at soft hits (the "vibes" character).
+- Amplitude normalization: total mode sum ≈ velocity. Critical for bark — soft hits produce a small clean signal, hard hits drive the pickup nonlinearity.
+
+**Register variation** (pitch-dependent timbre): `freqNorm = clamp((freq − 80) / 1200, 0, 1)` maps the keyboard from low (0) to high (1). Affects:
+- Bell blend boost: +0.15 at top (upper register = more inharmonic, per Pfeifle DAFx-17)
+- Fundamental amplitude: thins 30% at top
+- Bell mode amplitude: brightens 40% at top
+- Decay: shortens 50% at top (measured: Eb2 = 3.88s, Eb6 = 0.45s — Shear 2011)
+
+**Pickup nonlinearity**: `output = sum + k·sum² + k2·sum³` where `k = pickupDist × 1.2 × (1 + vel × pickupDist)`, `k2 = pickupDist × 0.3 × (1 + vel × pickupDist)`. The `sum²` term generates even harmonics (bark), `sum³` adds odd-harmonic growl. Velocity drives the tine closer to the pickup, increasing nonlinearity beyond amplitude alone.
+
+**Asymmetric soft-clip**: `tanh(x)` for positive, `tanh(x × 0.85) × 0.9` for negative. Real pickups are asymmetric (tine passes by, not through the coil), preserving even harmonics through the clipping stage.
+
+**DC blocker**: `y[n] = x[n] − x[n−1] + 0.995 · y[n−1]` (~7 Hz cutoff at 44.1 kHz). Essential — the `sum²` nonlinearity generates a DC offset proportional to signal power.
+
+**Tone bar coupling**: Extends fundamental decay by up to 2.5× and 2nd partial by up to 1.6×. The tone bar is a resonant body tuned to reinforce the fundamental, with its own overtones coupling to the 2nd partial.
+
+**Decay model**: Per-mode decay factor `1 / (1 + (ratio − 1) × (0.3 + bellTone × 0.7))`. Body modes get gradual rolloff; with high bellTone the upper modes decay much faster (approaching the millisecond-scale decay of real beam modes). Register shortens base decay by up to 50% at the top of the keyboard.
+
+**Phase accumulation**: `fmodf(phase, 1.0)` instead of `phase -= floorf(phase)` — avoids float precision loss on long sustains (at 2 kHz after 4s = 8000 cycles, 23-bit mantissa loses ~0.001 precision).
+
+**Presets** (4):
+| # | Name | Character | Key settings |
+|---|------|-----------|--------------|
+| 174 | Rhodes Warm | Soft jazz, mellow | centered pickup, soft hammer, bellTone=0.08 |
+| 175 | Rhodes Bright | Funky, barking | offset pickup, hard hammer, velToDrive=1.5 |
+| 176 | Rhodes Suite | Suitcase amp | tremolo at 4.5 Hz, long sustain |
+| 177 | Rhodes Bark | Glass bell → savage bark | bellTone=0.25, velToDrive=3.0, high bell |
+
+**Reference**:
+- Shear & Wright, "The Electromagnetically Sustained Rhodes Piano" (UCSB Masters Thesis, 2011) — Q measurements, spectral analysis, tine dimensions
+- Pfeifle, "Real-time Physical Model of a Wurlitzer and Rhodes Electronic Piano" (DAFx-17, 2017) — beam model, transient analysis
+- Gabrielli, Cantarini, Castellini & Squartini, "The Rhodes electric piano: Analysis and simulation of the inharmonic overtones" (JASA 2020) — scanning laser vibrometry on actual tines
+- Pfeifle & Muenster, "Tone Production of the Wurlitzer and Rhodes E-Pianos" (DAGA/Springer 2017)
+- Fletcher & Rossing, "The Physics of Musical Instruments" (1998), Ch. 2 (beams), Ch. 12 (electric instruments)
+- Irvine, "Bending Frequencies of Beams, Rods, and Pipes" (vibrationdata.com) — Euler-Bernoulli eigenvalues
+- Sound On Sound, "Synthesizing Pianos" (Gordon Reid, 2001)
+
+**Assessment**: Good semi-physical model. The dual-nature approach (harmonic pickup modes for sustain + cantilever beam modes for bell attack) correctly reflects the measured physics: after ~5–20 ms the tine vibrates sinusoidally with no higher modes (Pfeifle 2017, Shear 2011). The per-mode blend scale is the key design decision — keeping body modes at exact integer ratios avoids the tuning artifacts that would otherwise occur due to the extreme beam eigenvalue spacing (6.27× for mode 2). The pickup nonlinearity polynomial is a reasonable approximation of the real electromagnetic coupling. **Possible enhancements**: (1) Release damper thump — the characteristic soft click when the damper pad contacts the tine on note-off. (2) Sympathetic resonance between adjacent tines. (3) Pitch-dependent mode ratios (the tine/bar coupling varies per key, affecting which beam modes are excited).
+
 ---
 
 ## 2. FILTERS

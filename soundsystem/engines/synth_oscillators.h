@@ -1589,31 +1589,78 @@ static void initPipe(Voice *v, float frequency, float sampleRate) {
 // ============================================================================
 // ELECTRIC PIANO (RHODES) — Tine modal bank + electromagnetic pickup nonlinearity
 // ============================================================================
+// Physics: The Rhodes is a tuning fork — hammer strikes a tine (cantilever beam)
+// coupled to a tone bar, vibrating near an electromagnetic pickup.
+//
+// Two phenomena create the sound:
+// 1. Attack transient: cantilever beam bending modes (wildly inharmonic: 1×, 6.27×,
+//    17.55×...) from Euler-Bernoulli beam equation. These decay in ~5-20ms but give
+//    the characteristic bell-like "chime" attack.
+// 2. Sustained tone: the tine settles into simple harmonic motion, and the nonlinear
+//    electromagnetic pickup generates integer harmonics (2f, 3f, 4f...) via its
+//    transfer function. This is what you hear after the attack.
+//
+// Our model blends between these via epBellTone: 0 = pure pickup harmonics (sustained),
+// 1 = cantilever beam modes (bell attack). The fast decay of upper modes naturally
+// handles the transient-vs-sustain split.
+//
+// References:
+// - Shear & Wright, "The Electromagnetically Sustained Rhodes Piano" (UCSB, 2011)
+// - Pfeifle, "Real-time Physical Model of a Rhodes" (DAFx-17, 2017)
+// - Gabrielli et al., "The Rhodes electric piano" (JASA 2020) — laser vibrometry
+// - Fletcher & Rossing, "The Physics of Musical Instruments" (1998)
 
 // Initialize EPiano settings at note-on.
-// Configures 6 harmonic mode amplitudes based on pickup position, hammer hardness, and velocity.
+// Configures 6 mode amplitudes based on frequency register, pickup position,
+// hammer hardness, and velocity.
 static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
-    (void)freq; // freq only needed for potential future pitch-dependent behavior
-
     float vel = clampf(velocity * 2.0f, 0.0f, 1.0f); // normalize from volume (0-0.5 typical) to 0-1
 
-    // Mode frequency ratios: blend between harmonic (organ) and inharmonic (bell)
-    // epBellTone controls the blend: 0 = pure harmonic, 1 = full tine+tone bar physics
-    static const float harmonicRatios[EPIANO_MODES]   = {1.0f, 2.0f, 3.0f, 4.0f,  5.0f,  6.0f};
-    static const float inharmonicRatios[EPIANO_MODES] = {1.0f, 2.0f, 3.5f, 7.0f, 11.0f, 15.0f};
-    float bt = epBellTone;
-    float modeRatios[EPIANO_MODES];
-    for (int i = 0; i < EPIANO_MODES; i++)
-        modeRatios[i] = harmonicRatios[i] * (1.0f - bt) + inharmonicRatios[i] * bt;
+    // Register variation: real Rhodes timbre changes across the keyboard.
+    // Low notes (~80 Hz): warm, piano-like, mostly fundamental, lots of bark potential.
+    // Mid notes (~300 Hz): classic Rhodes — balanced body + bell.
+    // High notes (~1200+ Hz): thin, bell-like, very inharmonic, short decay.
+    // freqNorm: 0 = low register, 1 = high register
+    float freqNorm = clampf((freq - 80.0f) / 1200.0f, 0.0f, 1.0f);
 
-    // Pickup position profiles: centered (mellow) vs offset (bright)
-    // Centered pickup: fundamental strong, bell modes moderate
-    // Offset pickup: 2nd partial dominates, bell modes brighter
+    // Mode frequency ratios: blend between harmonic (pickup) and inharmonic (tine beam)
+    // epBellTone controls the blend: 0 = pure integer harmonics, 1 = cantilever beam modes
+    // Harmonic ratios: the sustained pickup tone (integer multiples from EM nonlinearity)
+    static const float harmonicRatios[EPIANO_MODES] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    // Inharmonic ratios: clamped-free cantilever beam bending modes (Euler-Bernoulli).
+    // f_n/f_1 = (beta_n/beta_1)² where beta_n are eigenvalues of the beam equation.
+    // Source: Fletcher & Rossing Ch.2, Irvine "Bending Frequencies of Beams" (vibrationdata.com)
+    static const float inharmonicRatios[EPIANO_MODES] = {1.0f, 6.27f, 17.55f, 34.39f, 56.84f, 84.91f};
+    float bt = epBellTone;
+    // High register naturally has more bell character (tine modes more prominent)
+    float regBellBoost = freqNorm * 0.15f;
+    float btEff = clampf(bt + regBellBoost, 0.0f, 1.0f);
+    // Per-mode blend: body modes (1-3) stay harmonic, bell modes (4-6) get inharmonicity.
+    // Physics: the sustained tone has integer harmonics from the pickup's nonlinear
+    // transfer function — there is no physical mechanism to detune them.
+    // The cantilever beam modes only appear in the ~5-20ms attack transient.
+    // So modes 1-2 are always at exact 1×/2× (the core pitched tone),
+    // mode 3 gets a tiny hint of stretch, and modes 4-6 carry the bell character.
+    static const float modeBlendScale[EPIANO_MODES] = {0.0f, 0.0f, 0.05f, 0.4f, 0.8f, 1.0f};
+    float modeRatios[EPIANO_MODES];
+    for (int i = 0; i < EPIANO_MODES; i++) {
+        float modeBt = btEff * modeBlendScale[i];
+        modeRatios[i] = harmonicRatios[i] * (1.0f - modeBt) + inharmonicRatios[i] * modeBt;
+    }
+
+    // Pickup position profiles: centered (mellow) vs offset (bright).
+    // These model the electromagnetic coupling between tine and pickup coil.
+    // Centered: tine passes through coil center — fundamental dominates, clean tone.
+    // Offset: tine passes by coil edge — 2nd harmonic strong, brighter, more bark.
+    // Note: this is NOT the same as beam mode shapes (sin(n*pi*pos)) — it's about
+    // the pickup's magnetic flux geometry and its effect on the generated signal.
     static const float centeredAmps[EPIANO_MODES] = {1.00f, 0.15f, 0.40f, 0.30f, 0.15f, 0.05f};
     static const float offsetAmps[EPIANO_MODES]   = {0.50f, 1.00f, 0.25f, 0.60f, 0.30f, 0.12f};
-
     float pos = epPickupPos;
-    float hard = epHardness;
+
+    // Velocity-dependent hammer hardness: real neoprene tips compress more at higher
+    // velocity, effectively getting harder. Soft hits = mellow spectrum, hard hits = bright.
+    float hard = epHardness + vel * (1.0f - epHardness) * 0.3f;
     float velSq = vel * vel; // squared velocity curve
 
     for (int i = 0; i < EPIANO_MODES; i++) {
@@ -1622,17 +1669,23 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
         // Blend pickup position profiles
         float amp = centeredAmps[i] * (1.0f - pos) + offsetAmps[i] * pos;
 
-        // Hammer hardness: spectral tilt — soft hammer attenuates upper modes
+        // Hammer hardness: spectral tilt — soft hammer attenuates upper modes more
         float ratio = modeRatios[i];
-        amp *= hard + (1.0f - hard) / ratio;
+        amp *= hard + (1.0f - hard) / (1.0f + (ratio - 1.0f) * 0.5f);
 
         // Bell emphasis for modes 4-6
         if (i >= 3) amp *= (1.0f + epBell * 1.5f);
 
+        // Register scaling: high notes have less body, more bell
+        if (i == 0) {
+            amp *= (1.0f - freqNorm * 0.3f); // fundamental thins at top
+        } else if (i >= 3) {
+            amp *= (1.0f + freqNorm * 0.4f); // bell modes brighter at top
+        }
+
         // Velocity scaling: controls which modes are heard at different dynamics.
         // Fundamental/body use vel² (only loud at hard hits).
         // Bell modes use sqrt(vel) (present even at soft hits → vibes character).
-        // bellLevel controls how extreme this split is.
         // The actual bark comes from velToDrive on the preset, not from here.
         float velScale;
         if (i == 0) {
@@ -1645,7 +1698,6 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
         } else {
             // Bell modes: sqrt curve — prominent even at soft velocity
             float bellCurve = sqrtf(vel);
-            // bellLevel makes bell modes even more present at pp
             float mix = 0.3f + epBell * 0.4f; // how much sqrt vs linear (0.3-0.7)
             velScale = 0.05f + 0.95f * (bellCurve * mix + vel * (1.0f - mix));
         }
@@ -1655,8 +1707,15 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
         ep->modeAmps[i] = amp;
         ep->modePhases[i] = 0.0f;
 
-        // Decay: higher modes decay faster — baseDecay / sqrt(ratio)
-        ep->modeDecays[i] = epDecay / sqrtf(ratio);
+        // Decay: upper modes decay much faster than fundamental.
+        // For cantilever beam modes, higher modes decay roughly as 1/ratio² due to
+        // radiation loss and internal damping (Shear 2011: beam modes decay in ms).
+        // For pickup harmonics, upper harmonics decay faster but less drastically.
+        // The blend follows bellTone: more inharmonic = faster upper decay.
+        float decayFactor = 1.0f / (1.0f + (ratio - 1.0f) * (0.3f + btEff * 0.7f));
+        // Register: high notes have shorter decay (measured: Eb6=0.45s vs Eb2=3.88s)
+        float regDecay = epDecay * (1.0f - freqNorm * 0.5f);
+        ep->modeDecays[i] = regDecay * decayFactor;
     }
 
     // Normalize mode amplitudes so peak sum ≈ vel (soft=small signal, hard=big signal)
@@ -1673,8 +1732,11 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
         }
     }
 
-    // Tone bar coupling extends fundamental decay by up to 2.5×
+    // Tone bar coupling: extends decay of fundamental AND 2nd partial.
+    // The tone bar is a resonant body tuned to reinforce the fundamental,
+    // but its own overtones couple to the 2nd partial as well.
     ep->modeDecays[0] *= (1.0f + epToneBar * 1.5f);
+    ep->modeDecays[1] *= (1.0f + epToneBar * 0.6f); // 2nd partial gets some coupling
 
     ep->hardness = hard;
     ep->toneBarCoupling = epToneBar;
@@ -1698,10 +1760,12 @@ static float processEPianoOscillator(Voice *v, float sampleRate) {
     for (int i = 0; i < EPIANO_MODES; i++) {
         if (ep->modeAmps[i] < 0.0001f) continue;
 
-        // Advance phase for this mode (inharmonic ratios from tine+tone bar physics)
+        // Advance phase for this mode (blend of pickup harmonics + cantilever beam modes)
         float modeFreq = v->frequency * ep->modeRatios[i];
         ep->modePhases[i] += modeFreq * dt;
-        if (ep->modePhases[i] >= 1.0f) ep->modePhases[i] -= floorf(ep->modePhases[i]);
+        // fmodf avoids precision loss on long sustains (float mantissa = 23 bits,
+        // at 2kHz after 4s = 8000 cycles, floorf approach loses ~0.001 precision)
+        ep->modePhases[i] = fmodf(ep->modePhases[i], 1.0f);
 
         // Sine oscillator for this mode
         float modeSample = sinf(ep->modePhases[i] * 2.0f * PI) * ep->modeAmps[i];

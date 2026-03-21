@@ -164,9 +164,10 @@ static void printAnalysis(const char *name, int presetIdx, const AnalysisResult 
 // ============================================================================
 
 // Render a preset into a float buffer. Caller must free *outBuf if non-NULL.
+// velOverride < 0 means use patch default volume; >= 0 overrides noteVolume.
 static AnalysisResult renderPreset(int presetIdx, int midiNote, float noteOnSec, float totalSec,
                                     const char *wavPath, bool writeWavFile,
-                                    float **outBuf, int *outLen) {
+                                    float **outBuf, int *outLen, float velOverride) {
     // Init synth context
     static SynthContext ctx;
     memset(&ctx, 0, sizeof(ctx));
@@ -180,11 +181,22 @@ static AnalysisResult renderPreset(int presetIdx, int midiNote, float noteOnSec,
 
     initInstrumentPresets();
     SynthPatch *p = &instrumentPresets[presetIdx].patch;
+
+    // Override velocity/volume if requested — must patch the SynthPatch itself
+    // so applyPatchToGlobals() inside playNoteWithPatch() picks it up
+    float origVol = p->p_volume;
+    if (velOverride >= 0.0f) {
+        p->p_volume = velOverride;
+    }
+
     applyPatchToGlobals(p);
 
     float freq = 440.0f * powf(2.0f, (midiNote - 69) / 12.0f);
     int voiceIdx = playNoteWithPatch(freq, p);
     (void)voiceIdx;
+
+    // Restore original patch volume
+    p->p_volume = origVol;
 
     int totalSamples = (int)(totalSec * SAMPLE_RATE);
     int noteOnSamples = (int)(noteOnSec * SAMPLE_RATE);
@@ -235,6 +247,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "       preset_audition --all\n");
         fprintf(stderr, "\nOptions:\n");
         fprintf(stderr, "  -n <note>      MIDI note (default: 60)\n");
+        fprintf(stderr, "  -v <0.0-1.0>   Velocity/volume override (default: patch volume)\n");
         fprintf(stderr, "  -d <seconds>   Note-on duration (default: 1.0)\n");
         fprintf(stderr, "  -t <seconds>   Total render time (default: 2.0)\n");
         fprintf(stderr, "  -o <file.wav>  Output path (default: preset_<N>.wav)\n");
@@ -256,6 +269,7 @@ int main(int argc, char *argv[]) {
     int midiNote = 60;
     float noteOnSec = 1.0f;
     float totalSec = 2.0f;
+    float velOverride = -1.0f; // <0 = use patch default
     char *outputPath = NULL;
     char *refPath = NULL;
     char *csvDir = NULL;
@@ -265,6 +279,7 @@ int main(int argc, char *argv[]) {
     // Parse args
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-n") == 0 && i+1 < argc) { midiNote = atoi(argv[++i]); }
+        else if (strcmp(argv[i], "-v") == 0 && i+1 < argc) { velOverride = atof(argv[++i]); }
         else if (strcmp(argv[i], "-d") == 0 && i+1 < argc) { noteOnSec = atof(argv[++i]); }
         else if (strcmp(argv[i], "-t") == 0 && i+1 < argc) { totalSec = atof(argv[++i]); }
         else if (strcmp(argv[i], "-o") == 0 && i+1 < argc) { outputPath = argv[++i]; }
@@ -312,7 +327,7 @@ int main(int argc, char *argv[]) {
             int bufLen = 0;
             int noteOnSamples = (int)(noteOnSec * SAMPLE_RATE);
             AnalysisResult legacy = renderPreset(i, midiNote, noteOnSec, totalSec,
-                                                  wavName, !analysisOnly, &buf, &bufLen);
+                                                  wavName, !analysisOnly, &buf, &bufLen, -1.0f);
 
             // Run proper analysis
             WaAnalysis wa = waAnalyze(buf, bufLen, noteOnSamples);
@@ -497,7 +512,7 @@ int main(int argc, char *argv[]) {
             snprintf(wavName, sizeof(wavName), "preset_%03d_%s.wav", presetIdx, durNames[d]);
             for (char *c = wavName; *c; c++) { if (*c == '(' || *c == ')') *c = '_'; }
             AnalysisResult r = renderPreset(presetIdx, midiNote, dur, total,
-                                             wavName, !analysisOnly, NULL, NULL);
+                                             wavName, !analysisOnly, NULL, NULL, -1.0f);
             printf("  %-18s  peak=%.3f  rms=%.3f  attack=%.0fms  decay@%dms%s\n",
                    durNames[d], r.peakLevel, r.rmsLevel, r.attackTimeMs, r.silentAfterMs,
                    r.peakLevel < 0.01f ? " SILENT!" : (r.clipped ? " CLIP!" : ""));
@@ -514,7 +529,7 @@ int main(int argc, char *argv[]) {
             int bufLen = 0;
             int noteOnSamp = (int)(1.0f * SAMPLE_RATE);
             AnalysisResult r = renderPreset(presetIdx, notes[n], 1.0f, 2.5f,
-                                             wavName, !analysisOnly, &buf, &bufLen);
+                                             wavName, !analysisOnly, &buf, &bufLen, -1.0f);
             WaAnalysis wa = waAnalyze(buf, bufLen, noteOnSamp);
             float expectedFreq = 440.0f * powf(2.0f, (notes[n] - 69) / 12.0f);
             float cents = (wa.fundamental > 0 && wa.pitchConfidence > 0.3f)
@@ -547,7 +562,7 @@ int main(int argc, char *argv[]) {
         int noteOnSamples = (int)(noteOnSec * SAMPLE_RATE);
 
         AnalysisResult r = renderPreset(presetIdx, midiNote, noteOnSec, totalSec,
-                                         outputPath, !analysisOnly, &presetBuf, &presetLen);
+                                         outputPath, !analysisOnly, &presetBuf, &presetLen, velOverride);
         printAnalysis(instrumentPresets[presetIdx].name, presetIdx, &r, midiNote, noteOnSec);
 
         if (!analysisOnly) {
