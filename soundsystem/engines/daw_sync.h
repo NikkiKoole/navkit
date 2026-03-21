@@ -25,6 +25,18 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
     }
 
     // Master FX
+    fx.tremoloEnabled  = d->masterFx.tremoloOn;
+    fx.tremoloRate     = d->masterFx.tremoloRate;
+    fx.tremoloDepth    = d->masterFx.tremoloDepth;
+    fx.tremoloShape    = d->masterFx.tremoloShape;
+    fx.wahEnabled      = d->masterFx.wahOn;
+    fx.wahMode         = d->masterFx.wahMode;
+    fx.wahRate         = d->masterFx.wahRate;
+    fx.wahSensitivity  = d->masterFx.wahSensitivity;
+    fx.wahFreqLow      = d->masterFx.wahFreqLow;
+    fx.wahFreqHigh     = d->masterFx.wahFreqHigh;
+    fx.wahResonance    = d->masterFx.wahResonance;
+    fx.wahMix          = d->masterFx.wahMix;
     fx.distEnabled     = d->masterFx.distOn;
     fx.distDrive       = d->masterFx.distDrive;
     fx.distTone        = d->masterFx.distTone;
@@ -50,6 +62,9 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
     fx.phaserMix       = d->masterFx.phaserMix;
     fx.phaserFeedback  = d->masterFx.phaserFeedback;
     fx.phaserStages    = d->masterFx.phaserStages;
+    fx.ringModEnabled  = d->masterFx.ringModOn;
+    fx.ringModFreq     = d->masterFx.ringModFreq;
+    fx.ringModMix      = d->masterFx.ringModMix;
     fx.combEnabled     = d->masterFx.combOn;
     fx.combFreq        = d->masterFx.combFreq;
     fx.combFeedback    = d->masterFx.combFeedback;
@@ -140,6 +155,11 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
         setBusSolo(b, d->mixer.solo[b]);
         setBusReverbSend(b, d->mixer.reverbSend[b]);
         setBusDelaySend(b, d->mixer.delaySend[b]);
+        setBusTremolo(b, d->mixer.tremoloOn[b], d->mixer.tremoloRate[b],
+                      d->mixer.tremoloDepth[b], d->mixer.tremoloShape[b]);
+        setBusWah(b, d->mixer.wahOn[b], d->mixer.wahMode[b], d->mixer.wahRate[b],
+                  d->mixer.wahSensitivity[b], d->mixer.wahFreqLow[b], d->mixer.wahFreqHigh[b],
+                  d->mixer.wahResonance[b], d->mixer.wahMix[b]);
         setBusFilter(b, d->mixer.filterOn[b], d->mixer.filterCut[b],
                      d->mixer.filterRes[b], d->mixer.filterType[b]);
         setBusDistortion(b, d->mixer.distOn[b], d->mixer.distDrive[b],
@@ -156,6 +176,8 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
                      d->mixer.phaserFB[b], d->mixer.phaserStages[b]);
         setBusComb(b, d->mixer.combOn[b], d->mixer.combFreq[b],
                    d->mixer.combFB[b], d->mixer.combMix[b], d->mixer.combDamping[b]);
+        setBusRingMod(b, d->mixer.ringModOn[b], d->mixer.ringModFreq[b],
+                      d->mixer.ringModMix[b]);
         setBusDelay(b, d->mixer.delayOn[b], d->mixer.delayTime[b],
                     d->mixer.delayFB[b], d->mixer.delayMix[b]);
         setBusDelaySync(b, d->mixer.delaySync[b], d->mixer.delaySyncDiv[b]);

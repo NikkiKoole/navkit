@@ -89,6 +89,7 @@ typedef enum {
     WAVE_BOWED,      // Bowed string (waveguide + bow friction)
     WAVE_PIPE,       // Blown pipe (waveguide + jet excitation)
     WAVE_SINE,       // Pure sine wave
+    WAVE_EPIANO,     // Semi-physical Rhodes electric piano (tine modal bank + pickup nonlinearity)
 } WaveType;
 
 // Mono note priority mode
@@ -103,9 +104,9 @@ typedef enum {
 static const char* waveTypeNames[] = {
     "square", "saw", "triangle", "noise", "scw", "voice", "pluck",
     "additive", "mallet", "granular", "fm", "pd", "membrane", "bird",
-    "bowed", "pipe", "sine"
+    "bowed", "pipe", "sine", "epiano"
 };
-static const int waveTypeCount = 17;
+static const int waveTypeCount = 18;
 
 // LFO tempo sync divisions
 typedef enum {
@@ -447,6 +448,26 @@ typedef struct {
     float dcPrev;
 } PipeSettings;
 
+// Electric piano (Rhodes) synthesis settings — tine modal bank + pickup nonlinearity
+#define EPIANO_MODES 6
+
+typedef struct {
+    float modeRatios[EPIANO_MODES];   // Frequency ratios (inharmonic — tine + tone bar physics)
+    float modeAmpsInit[EPIANO_MODES]; // Initial amplitudes (from pickup pos + hardness + velocity)
+    float modeAmps[EPIANO_MODES];     // Current amplitude (decays over time)
+    float modeDecays[EPIANO_MODES];   // Per-mode decay time in seconds
+    float modePhases[EPIANO_MODES];   // Phase accumulators
+    float hardness;          // Hammer hardness (0=soft neoprene, 1=hard)
+    float toneBarCoupling;   // Fundamental sustain extension (0-1)
+    float pickupPos;         // 0=centered/mellow, 1=offset/bright
+    float pickupDist;        // 0=far/clean, 1=close/nonlinear
+    float decayTime;         // Base decay in seconds
+    float bellLevel;         // Upper mode emphasis (modes 4-6)
+    float strikeVelocity;    // Captured at note-on
+    float dcBlockState;      // DC blocker state (pickup AC coupling)
+    float dcBlockPrev;       // Previous input for DC blocker
+} EPianoSettings;
+
 // Filter model enum: selects filter topology
 typedef enum {
     FILTER_MODEL_SVF = 0,    // Simper/Cytomic SVF (default — clean, versatile)
@@ -639,6 +660,9 @@ typedef struct {
 
     // Blown pipe synthesis
     PipeSettings pipeSettings;
+
+    // Electric piano (Rhodes) synthesis
+    EPianoSettings epianoSettings;
 
     // General pitch envelope (kicks, toms, zaps)
     float pitchEnvAmount;    // Semitones to sweep
@@ -1088,6 +1112,15 @@ typedef struct SynthContext {
     float pipeBore;
     float pipeOverblow;
 
+    // Electric piano tweakables
+    float epHardness;
+    float epToneBar;
+    float epPickupPos;
+    float epPickupDist;
+    float epDecay;
+    float epBell;
+    float epBellTone;
+
     // General pitch envelope globals
     float notePitchEnvAmount;
     float notePitchEnvDecay;
@@ -1238,7 +1271,16 @@ static void initSynthContext(SynthContext* ctx) {
     // Bird defaults
     ctx->birdChirpRange = 1.0f;
     ctx->birdHarmonics = 0.2f;
-    
+
+    // Electric piano defaults
+    ctx->epHardness = 0.4f;
+    ctx->epToneBar = 0.5f;
+    ctx->epPickupPos = 0.3f;
+    ctx->epPickupDist = 0.4f;
+    ctx->epDecay = 3.0f;
+    ctx->epBell = 0.5f;
+    ctx->epBellTone = 0.5f;
+
     // Glide
     ctx->glideTime = 0.1f;
     
@@ -1421,6 +1463,13 @@ static void _ensureSynthCtx(void) {
 #define pipeEmbouchure (synthCtx->pipeEmbouchure)
 #define pipeBore (synthCtx->pipeBore)
 #define pipeOverblow (synthCtx->pipeOverblow)
+#define epHardness (synthCtx->epHardness)
+#define epToneBar (synthCtx->epToneBar)
+#define epPickupPos (synthCtx->epPickupPos)
+#define epPickupDist (synthCtx->epPickupDist)
+#define epDecay (synthCtx->epDecay)
+#define epBell (synthCtx->epBell)
+#define epBellTone (synthCtx->epBellTone)
 #define notePitchEnvAmount (synthCtx->notePitchEnvAmount)
 #define notePitchEnvDecay (synthCtx->notePitchEnvDecay)
 #define notePitchEnvCurve (synthCtx->notePitchEnvCurve)
@@ -2173,6 +2222,9 @@ static float processVoice(Voice *v, float sampleRate) {
             } else {
                 sample = sinf(v->phase * 2.0f * PI);
             }
+            break;
+        case WAVE_EPIANO:
+            sample = processEPianoOscillator(v, sampleRate);
             break;
     }
 
@@ -3402,6 +3454,20 @@ __attribute__((unused))
 static int playPipe(float freq) {
     int voiceIdx = initVoiceCommon(freq, WAVE_PIPE, &VOICE_INIT_PIPE, NULL);
     initPipe(&synthVoices[voiceIdx], freq, 44100.0f);
+    return voiceIdx;
+}
+
+// Electric piano init params
+static const VoiceInitParams VOICE_INIT_EPIANO = {
+    .supportsMono = true
+};
+
+// Play electric piano note
+__attribute__((unused))
+static int playEPiano(float freq) {
+    int voiceIdx = initVoiceCommon(freq, WAVE_EPIANO, &VOICE_INIT_EPIANO, NULL);
+    Voice *v = &synthVoices[voiceIdx];
+    initEPianoSettings(&v->epianoSettings, freq, noteVolume);
     return voiceIdx;
 }
 

@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 177
+#define NUM_INSTRUMENT_PRESETS 178
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -3155,100 +3155,96 @@ static void initInstrumentPresets(void) {
     // Source: wikipedia, modwiggler, soundonsound "Synthesizing Pianos"
     // ========================================================================
 
-    // Rhodes Warm — classic mellow Rhodes, gentle velocity response
-    // Corrected: tine partials are HARMONIC (2×, 3×, 4×, 5×), not inharmonic.
-    // Bell character from relative balance + faster upper harmonic decay.
-    // Bark from asymmetric pickup distortion (tube/even harmonics).
-    // Source: ep-forum.com, JASA 148(5) 2020, ISMA 2014 Rhodes nonlinearity paper
+    // Rhodes Warm — classic mellow Rhodes via WAVE_EPIANO engine
+    // Centered pickup, soft hammer, moderate decay — warm and round
     instrumentPresets[174].name = "Rhodes Warm";
-    instrumentPresets[174].patch.p_waveType = WAVE_SINE;
+    instrumentPresets[174].patch.p_waveType = WAVE_EPIANO;
     instrumentPresets[174].patch.p_attack = 0.003f;
     instrumentPresets[174].patch.p_decay = 1.5f;
     instrumentPresets[174].patch.p_sustain = 0.4f;
     instrumentPresets[174].patch.p_release = 0.4f;
-    instrumentPresets[174].patch.p_clickLevel = 0.12f;     // gentle hammer thump
+    instrumentPresets[174].patch.p_epHardness = 0.3f;      // soft hammer — mellow attack
+    instrumentPresets[174].patch.p_epToneBar = 0.6f;       // good fundamental sustain
+    instrumentPresets[174].patch.p_epPickupPos = 0.15f;    // near center — warm, fundamental-heavy
+    instrumentPresets[174].patch.p_epPickupDist = 0.3f;    // moderate distance — gentle bark
+    instrumentPresets[174].patch.p_epDecay = 3.5f;         // long decay
+    instrumentPresets[174].patch.p_epBell = 0.3f;          // subtle bell
+    instrumentPresets[174].patch.p_epBellTone = 0.3f;     // mostly harmonic, hint of bell
+    instrumentPresets[174].patch.p_clickLevel = 0.1f;      // gentle hammer thump
     instrumentPresets[174].patch.p_clickTime = 0.004f;
-    instrumentPresets[174].patch.p_osc2Ratio = 2.0f;       // 2nd harmonic (body warmth)
-    instrumentPresets[174].patch.p_osc2Level = 0.35f;
-    instrumentPresets[174].patch.p_osc2Decay = 3.0f;
-    instrumentPresets[174].patch.p_osc3Ratio = 3.0f;       // 3rd harmonic (body)
-    instrumentPresets[174].patch.p_osc3Level = 0.15f;
-    instrumentPresets[174].patch.p_osc3Decay = 5.0f;
-    instrumentPresets[174].patch.p_osc4Ratio = 7.0f;       // bell attack (tone bar transient)
-    instrumentPresets[174].patch.p_osc4Level = 0.4f;
-    instrumentPresets[174].patch.p_osc4Decay = 18.0f;       // fast decay — bell ting
-    instrumentPresets[174].patch.p_osc5Ratio = 13.0f;      // upper bell shimmer
-    instrumentPresets[174].patch.p_osc5Level = 0.2f;
-    instrumentPresets[174].patch.p_osc5Decay = 25.0f;       // very fast
-    instrumentPresets[174].patch.p_oscVelSens = 0.0f;      // bell always present (tine physics)
-    instrumentPresets[174].patch.p_velToFilter = 0.2f;
-    instrumentPresets[174].patch.p_velToClick = 0.6f;
-    instrumentPresets[174].patch.p_velToDrive = 1.5f;      // pickup nonlinearity — needs >1 drive for audible bark
-    instrumentPresets[174].patch.p_driveMode = DIST_ASYMMETRIC; // even harmonics (pickup nonlinearity)
-    instrumentPresets[174].patch.p_filterCutoff = 0.5f;
+    instrumentPresets[174].patch.p_filterCutoff = 0.55f;
     instrumentPresets[174].patch.p_volume = 0.65f;
 
-    // Rhodes Bright — funky, barking Rhodes. Pickup close to tine.
-    // Close pickup = 2nd harmonic dominant, more bark on hard hits.
+    // Rhodes Bright — funky, barking Rhodes via WAVE_EPIANO engine
+    // Offset pickup, harder hammer — 2nd harmonic dominant, bark on hard hits
     instrumentPresets[175].name = "Rhodes Bright";
-    instrumentPresets[175].patch.p_waveType = WAVE_SINE;
+    instrumentPresets[175].patch.p_waveType = WAVE_EPIANO;
     instrumentPresets[175].patch.p_attack = 0.001f;
     instrumentPresets[175].patch.p_decay = 1.0f;
     instrumentPresets[175].patch.p_sustain = 0.3f;
     instrumentPresets[175].patch.p_release = 0.3f;
-    instrumentPresets[175].patch.p_clickLevel = 0.25f;     // pronounced hammer
-    instrumentPresets[175].patch.p_clickTime = 0.003f;
-    instrumentPresets[175].patch.p_osc2Ratio = 2.0f;       // strong 2nd (close pickup)
-    instrumentPresets[175].patch.p_osc2Level = 0.5f;
-    instrumentPresets[175].patch.p_osc2Decay = 3.0f;
-    instrumentPresets[175].patch.p_osc3Ratio = 3.0f;
-    instrumentPresets[175].patch.p_osc3Level = 0.25f;
-    instrumentPresets[175].patch.p_osc3Decay = 5.0f;
-    instrumentPresets[175].patch.p_osc4Ratio = 7.0f;       // bell attack
-    instrumentPresets[175].patch.p_osc4Level = 0.55f;
-    instrumentPresets[175].patch.p_osc4Decay = 15.0f;
-    instrumentPresets[175].patch.p_osc5Ratio = 13.0f;      // upper bell
-    instrumentPresets[175].patch.p_osc5Level = 0.3f;
-    instrumentPresets[175].patch.p_osc5Decay = 22.0f;
-    instrumentPresets[175].patch.p_oscVelSens = 0.0f;       // bell always present
-    instrumentPresets[175].patch.p_velToFilter = 0.3f;
-    instrumentPresets[175].patch.p_velToClick = 0.8f;
-    instrumentPresets[175].patch.p_velToDrive = 2.5f;      // heavy bark on hard hits
-    instrumentPresets[175].patch.p_drive = 0.15f;          // baseline pickup warmth
+    instrumentPresets[175].patch.p_epHardness = 0.7f;      // hard hammer — bright attack
+    instrumentPresets[175].patch.p_epToneBar = 0.3f;       // shorter fundamental
+    instrumentPresets[175].patch.p_epPickupPos = 0.8f;     // offset — 2nd harmonic dominant
+    instrumentPresets[175].patch.p_epPickupDist = 0.7f;    // close pickup — heavy bark
+    instrumentPresets[175].patch.p_epDecay = 2.5f;
+    instrumentPresets[175].patch.p_epBell = 0.6f;          // prominent bell
+    instrumentPresets[175].patch.p_epBellTone = 0.5f;     // moderate inharmonicity
+    instrumentPresets[175].patch.p_velToDrive = 1.5f;     // bark on hard hits via drive circuit
+    instrumentPresets[175].patch.p_velToFilter = 0.3f;    // opens up on hard hits
     instrumentPresets[175].patch.p_driveMode = DIST_ASYMMETRIC;
-    instrumentPresets[175].patch.p_filterCutoff = 0.6f;
+    instrumentPresets[175].patch.p_clickLevel = 0.2f;      // pronounced hammer
+    instrumentPresets[175].patch.p_clickTime = 0.003f;
+    instrumentPresets[175].patch.p_filterCutoff = 0.65f;
     instrumentPresets[175].patch.p_volume = 0.6f;
 
-    // Rhodes Suitcase — through the suitcase amp with tremolo character
+    // Rhodes Suitcase — through the suitcase amp with tremolo
     instrumentPresets[176].name = "Rhodes Suite";
-    instrumentPresets[176].patch.p_waveType = WAVE_SINE;
+    instrumentPresets[176].patch.p_waveType = WAVE_EPIANO;
     instrumentPresets[176].patch.p_attack = 0.002f;
     instrumentPresets[176].patch.p_decay = 1.8f;
     instrumentPresets[176].patch.p_sustain = 0.35f;
     instrumentPresets[176].patch.p_release = 0.5f;
-    instrumentPresets[176].patch.p_clickLevel = 0.15f;
+    instrumentPresets[176].patch.p_epHardness = 0.35f;     // medium-soft
+    instrumentPresets[176].patch.p_epToneBar = 0.55f;
+    instrumentPresets[176].patch.p_epPickupPos = 0.25f;    // slightly warm
+    instrumentPresets[176].patch.p_epPickupDist = 0.35f;
+    instrumentPresets[176].patch.p_epDecay = 4.0f;         // long sustain
+    instrumentPresets[176].patch.p_epBell = 0.35f;
+    instrumentPresets[176].patch.p_epBellTone = 0.35f;
+    instrumentPresets[176].patch.p_clickLevel = 0.12f;
     instrumentPresets[176].patch.p_clickTime = 0.004f;
-    instrumentPresets[176].patch.p_osc2Ratio = 2.0f;
-    instrumentPresets[176].patch.p_osc2Level = 0.35f;
-    instrumentPresets[176].patch.p_osc2Decay = 3.0f;
-    instrumentPresets[176].patch.p_osc3Ratio = 3.0f;
-    instrumentPresets[176].patch.p_osc3Level = 0.15f;
-    instrumentPresets[176].patch.p_osc3Decay = 5.0f;
-    instrumentPresets[176].patch.p_osc4Ratio = 7.0f;       // bell
-    instrumentPresets[176].patch.p_osc4Level = 0.35f;
-    instrumentPresets[176].patch.p_osc4Decay = 18.0f;
-    instrumentPresets[176].patch.p_osc5Ratio = 13.0f;
-    instrumentPresets[176].patch.p_osc5Level = 0.15f;
-    instrumentPresets[176].patch.p_osc5Decay = 25.0f;
-    instrumentPresets[176].patch.p_oscVelSens = 0.0f;       // bell always present
-    instrumentPresets[176].patch.p_velToFilter = 0.2f;
-    instrumentPresets[176].patch.p_velToClick = 0.5f;
-    instrumentPresets[176].patch.p_velToDrive = 1.8f;
-    instrumentPresets[176].patch.p_driveMode = DIST_ASYMMETRIC;
-    instrumentPresets[176].patch.p_filterCutoff = 0.45f;
+    instrumentPresets[176].patch.p_filterCutoff = 0.5f;
     instrumentPresets[176].patch.p_ampLfoRate = 4.5f;      // suitcase tremolo
     instrumentPresets[176].patch.p_ampLfoDepth = 0.2f;
     instrumentPresets[176].patch.p_volume = 0.6f;
+
+    // Rhodes Bark — extreme dynamic range: glass bell soft, savage bark hard
+    // Bell character from high bellTone (inharmonic modes) + high bell (upper mode emphasis).
+    // Bark from velToDrive (velocity drives asymmetric distortion) + close pickup nonlinearity.
+    // Soft hits = shimmering vibes-like bell. Hard hits = growling, barking Rhodes.
+    instrumentPresets[177].name = "Rhodes Bark";
+    instrumentPresets[177].patch.p_waveType = WAVE_EPIANO;
+    instrumentPresets[177].patch.p_attack = 0.001f;
+    instrumentPresets[177].patch.p_decay = 1.2f;
+    instrumentPresets[177].patch.p_sustain = 0.3f;
+    instrumentPresets[177].patch.p_release = 0.3f;
+    instrumentPresets[177].patch.p_epHardness = 0.75f;     // hard hammer — bright attack
+    instrumentPresets[177].patch.p_epToneBar = 0.25f;      // short fundamental — punchy
+    instrumentPresets[177].patch.p_epPickupPos = 0.7f;     // offset — 2nd harmonic strong
+    instrumentPresets[177].patch.p_epPickupDist = 0.8f;    // close — pickup nonlinearity
+    instrumentPresets[177].patch.p_epDecay = 2.5f;
+    instrumentPresets[177].patch.p_epBell = 0.8f;          // big bell emphasis
+    instrumentPresets[177].patch.p_epBellTone = 0.85f;     // very inharmonic — vibes-like shimmer
+    instrumentPresets[177].patch.p_velToDrive = 3.0f;      // massive bark on hard hits
+    instrumentPresets[177].patch.p_velToFilter = 0.4f;     // filter opens with velocity
+    instrumentPresets[177].patch.p_velToClick = 0.8f;      // snappy attack on hard hits
+    instrumentPresets[177].patch.p_drive = 0.0f;           // clean at soft velocity
+    instrumentPresets[177].patch.p_driveMode = DIST_ASYMMETRIC; // even harmonics (pickup character)
+    instrumentPresets[177].patch.p_clickLevel = 0.25f;
+    instrumentPresets[177].patch.p_clickTime = 0.002f;
+    instrumentPresets[177].patch.p_filterCutoff = 0.4f;    // closed at soft — dark bell
+    instrumentPresets[177].patch.p_volume = 0.55f;
 }
 
 #endif // INSTRUMENT_PRESETS_H

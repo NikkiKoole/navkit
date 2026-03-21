@@ -1586,4 +1586,157 @@ static void initPipe(Voice *v, float frequency, float sampleRate) {
     ps->dcPrev = 0.0f;
 }
 
+// ============================================================================
+// ELECTRIC PIANO (RHODES) — Tine modal bank + electromagnetic pickup nonlinearity
+// ============================================================================
+
+// Initialize EPiano settings at note-on.
+// Configures 6 harmonic mode amplitudes based on pickup position, hammer hardness, and velocity.
+static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
+    (void)freq; // freq only needed for potential future pitch-dependent behavior
+
+    float vel = clampf(velocity * 2.0f, 0.0f, 1.0f); // normalize from volume (0-0.5 typical) to 0-1
+
+    // Mode frequency ratios: blend between harmonic (organ) and inharmonic (bell)
+    // epBellTone controls the blend: 0 = pure harmonic, 1 = full tine+tone bar physics
+    static const float harmonicRatios[EPIANO_MODES]   = {1.0f, 2.0f, 3.0f, 4.0f,  5.0f,  6.0f};
+    static const float inharmonicRatios[EPIANO_MODES] = {1.0f, 2.0f, 3.5f, 7.0f, 11.0f, 15.0f};
+    float bt = epBellTone;
+    float modeRatios[EPIANO_MODES];
+    for (int i = 0; i < EPIANO_MODES; i++)
+        modeRatios[i] = harmonicRatios[i] * (1.0f - bt) + inharmonicRatios[i] * bt;
+
+    // Pickup position profiles: centered (mellow) vs offset (bright)
+    // Centered pickup: fundamental strong, bell modes moderate
+    // Offset pickup: 2nd partial dominates, bell modes brighter
+    static const float centeredAmps[EPIANO_MODES] = {1.00f, 0.15f, 0.40f, 0.30f, 0.15f, 0.05f};
+    static const float offsetAmps[EPIANO_MODES]   = {0.50f, 1.00f, 0.25f, 0.60f, 0.30f, 0.12f};
+
+    float pos = epPickupPos;
+    float hard = epHardness;
+    float velSq = vel * vel; // squared velocity curve
+
+    for (int i = 0; i < EPIANO_MODES; i++) {
+        ep->modeRatios[i] = modeRatios[i];
+
+        // Blend pickup position profiles
+        float amp = centeredAmps[i] * (1.0f - pos) + offsetAmps[i] * pos;
+
+        // Hammer hardness: spectral tilt — soft hammer attenuates upper modes
+        float ratio = modeRatios[i];
+        amp *= hard + (1.0f - hard) / ratio;
+
+        // Bell emphasis for modes 4-6
+        if (i >= 3) amp *= (1.0f + epBell * 1.5f);
+
+        // Velocity scaling: controls which modes are heard at different dynamics.
+        // Fundamental/body use vel² (only loud at hard hits).
+        // Bell modes use sqrt(vel) (present even at soft hits → vibes character).
+        // bellLevel controls how extreme this split is.
+        // The actual bark comes from velToDrive on the preset, not from here.
+        float velScale;
+        if (i == 0) {
+            // Fundamental: vel² curve — quiet at pp, strong at ff
+            float fundPower = velSq * (1.0f - epBell * 0.5f) + vel * epBell * 0.5f;
+            velScale = 0.05f + 0.95f * fundPower;
+        } else if (i <= 2) {
+            // Body modes: between linear and squared
+            velScale = 0.05f + 0.95f * (vel * 0.4f + velSq * 0.6f);
+        } else {
+            // Bell modes: sqrt curve — prominent even at soft velocity
+            float bellCurve = sqrtf(vel);
+            // bellLevel makes bell modes even more present at pp
+            float mix = 0.3f + epBell * 0.4f; // how much sqrt vs linear (0.3-0.7)
+            velScale = 0.05f + 0.95f * (bellCurve * mix + vel * (1.0f - mix));
+        }
+        amp *= velScale;
+
+        ep->modeAmpsInit[i] = amp;
+        ep->modeAmps[i] = amp;
+        ep->modePhases[i] = 0.0f;
+
+        // Decay: higher modes decay faster — baseDecay / sqrt(ratio)
+        ep->modeDecays[i] = epDecay / sqrtf(ratio);
+    }
+
+    // Normalize mode amplitudes so peak sum ≈ vel (soft=small signal, hard=big signal)
+    // This is critical: the pickup nonlinearity is amplitude-dependent,
+    // so soft hits must produce a small clean signal, hard hits drive it into bark
+    float ampSum = 0.0f;
+    for (int i = 0; i < EPIANO_MODES; i++) ampSum += ep->modeAmps[i];
+    if (ampSum > 0.001f) {
+        float target = vel;  // signal amplitude tracks velocity
+        float scale = target / ampSum;
+        for (int i = 0; i < EPIANO_MODES; i++) {
+            ep->modeAmps[i] *= scale;
+            ep->modeAmpsInit[i] *= scale;
+        }
+    }
+
+    // Tone bar coupling extends fundamental decay by up to 2.5×
+    ep->modeDecays[0] *= (1.0f + epToneBar * 1.5f);
+
+    ep->hardness = hard;
+    ep->toneBarCoupling = epToneBar;
+    ep->pickupPos = pos;
+    ep->pickupDist = epPickupDist;
+    ep->decayTime = epDecay;
+    ep->bellLevel = epBell;
+    ep->strikeVelocity = vel;
+    ep->dcBlockState = 0.0f;
+    ep->dcBlockPrev = 0.0f;
+}
+
+// Process one sample of the electric piano oscillator.
+// Sums 6 harmonic sine modes with independent exponential decay,
+// then applies electromagnetic pickup nonlinearity (even harmonics / bark).
+static float processEPianoOscillator(Voice *v, float sampleRate) {
+    EPianoSettings *ep = &v->epianoSettings;
+    float dt = 1.0f / sampleRate;
+    float sum = 0.0f;
+
+    for (int i = 0; i < EPIANO_MODES; i++) {
+        if (ep->modeAmps[i] < 0.0001f) continue;
+
+        // Advance phase for this mode (inharmonic ratios from tine+tone bar physics)
+        float modeFreq = v->frequency * ep->modeRatios[i];
+        ep->modePhases[i] += modeFreq * dt;
+        if (ep->modePhases[i] >= 1.0f) ep->modePhases[i] -= floorf(ep->modePhases[i]);
+
+        // Sine oscillator for this mode
+        float modeSample = sinf(ep->modePhases[i] * 2.0f * PI) * ep->modeAmps[i];
+        sum += modeSample;
+
+        // Exponential decay
+        if (ep->modeDecays[i] > 0.0f) {
+            ep->modeAmps[i] *= 1.0f - dt / ep->modeDecays[i];
+            if (ep->modeAmps[i] < 0.0001f) ep->modeAmps[i] = 0.0f;
+        }
+    }
+
+    // Electromagnetic pickup nonlinearity: output = sum + k * sum² + k2 * sum³
+    // sum² generates even harmonics (bark), sum³ adds odd-harmonic growl
+    // Velocity drives tine closer to pickup, increasing nonlinearity beyond amplitude alone
+    float velBoost = 1.0f + ep->strikeVelocity * ep->pickupDist;
+    float k = ep->pickupDist * 1.2f * velBoost;
+    float k2 = ep->pickupDist * 0.3f * velBoost;
+    float output = sum + k * sum * sum + k2 * sum * sum * sum;
+
+    // Asymmetric soft-clip (positive peaks compress less = even harmonic preservation)
+    if (output >= 0.0f) {
+        output = tanhf(output);
+    } else {
+        output = tanhf(output * 0.85f) * 0.9f;
+    }
+
+    // DC blocker (pickup AC coupling) — removes DC from sum² term
+    // y[n] = x[n] - x[n-1] + R * y[n-1], R = 0.995 (~7 Hz cutoff at 44.1k)
+    float dcIn = output;
+    output = dcIn - ep->dcBlockPrev + 0.995f * ep->dcBlockState;
+    ep->dcBlockPrev = dcIn;
+    ep->dcBlockState = output;
+
+    return output;
+}
+
 #endif // PIXELSYNTH_SYNTH_OSCILLATORS_H

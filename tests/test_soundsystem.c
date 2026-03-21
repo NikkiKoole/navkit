@@ -1507,6 +1507,278 @@ describe(tape_effect) {
 }
 
 // ============================================================================
+// EFFECTS TESTS - TREMOLO
+// ============================================================================
+
+describe(tremolo_effect) {
+    it("should pass through when disabled") {
+        _ensureFxCtx();
+        initEffects();
+
+        fx.tremoloEnabled = false;
+
+        float input = 0.5f;
+        float output = processTremolo(input);
+
+        expect_float_eq(output, input);
+    }
+
+    it("should reduce amplitude when enabled with full depth") {
+        _ensureFxCtx();
+        initEffects();
+
+        fx.tremoloEnabled = true;
+        fx.tremoloRate = 4.0f;
+        fx.tremoloDepth = 1.0f;
+        fx.tremoloShape = TREMOLO_SHAPE_SINE;
+        fx.tremoloPhase = 0.5f; // At phase 0.5, sine = -1, so mod = 0
+
+        float input = 0.8f;
+        float output = processTremolo(input);
+
+        // At phase 0.5 with sine, mod = 0.5 + 0.5*sin(PI) = 0.5 + 0 = 0.5
+        // Actually sin(0.5 * 2 * PI) = sin(PI) = 0, so mod = 0.5
+        // output = 0.8 * (1.0 - 1.0 * (1.0 - 0.5)) = 0.8 * 0.5 = 0.4
+        expect(output < input);
+        expect(output > 0.0f);
+    }
+
+    it("should produce different waveforms for different shapes") {
+        _ensureFxCtx();
+        initEffects();
+
+        fx.tremoloEnabled = true;
+        fx.tremoloRate = 4.0f;
+        fx.tremoloDepth = 1.0f;
+
+        float input = 0.5f;
+        float results[3];
+
+        for (int shape = 0; shape < 3; shape++) {
+            initEffects();
+            fx.tremoloEnabled = true;
+            fx.tremoloRate = 4.0f;
+            fx.tremoloDepth = 1.0f;
+            fx.tremoloShape = shape;
+            fx.tremoloPhase = 0.25f; // Different shapes diverge here
+
+            results[shape] = processTremolo(input);
+        }
+
+        // At phase 0.25: sine != triangle != square
+        // Sine: mod = 0.5 + 0.5*sin(PI/2) = 1.0
+        // Square: mod = 1.0 (phase < 0.5)
+        // Triangle: mod = 0.25*4-1 = 0 -> (0*0.5+0.5) = 0.5
+        // So sine == square at 0.25, but triangle differs
+        expect(results[TREMOLO_SHAPE_TRIANGLE] != results[TREMOLO_SHAPE_SINE]);
+    }
+
+    it("should work in bus effects chain") {
+        _ensureMixerCtx();
+        initMixerContext(mixerCtx);
+
+        setBusTremolo(0, true, 4.0f, 1.0f, TREMOLO_SHAPE_SINE);
+        mixerCtx->busState[0].busTremoloPhase = 0.5f;
+
+        float input = 0.8f;
+        float dt = 1.0f / SAMPLE_RATE;
+        float output = processBusEffects(input, 0, dt);
+
+        // Should be reduced by tremolo
+        expect(fabsf(output) < fabsf(input));
+    }
+}
+
+// ============================================================================
+// EFFECTS TESTS - WAH
+// ============================================================================
+
+describe(wah_effect) {
+    it("should pass through when disabled") {
+        _ensureFxCtx();
+        initEffects();
+
+        fx.wahEnabled = false;
+
+        float input = 0.5f;
+        float output = processWah(input);
+
+        expect_float_eq(output, input);
+    }
+
+    it("should filter signal in LFO mode") {
+        _ensureFxCtx();
+        initEffects();
+
+        fx.wahEnabled = true;
+        fx.wahMode = WAH_MODE_LFO;
+        fx.wahRate = 2.0f;
+        fx.wahFreqLow = 300.0f;
+        fx.wahFreqHigh = 2500.0f;
+        fx.wahResonance = 0.7f;
+        fx.wahMix = 1.0f;
+        fx.wahPhase = 0.0f;
+
+        // Process several samples to let the filter settle
+        float output = 0.0f;
+        for (int i = 0; i < 100; i++) {
+            output = processWah(0.5f);
+        }
+
+        // With bandpass at 100% mix, output should differ from input
+        expect(output != 0.5f);
+    }
+
+    it("should respond to input level in envelope mode") {
+        _ensureFxCtx();
+        initEffects();
+
+        fx.wahEnabled = true;
+        fx.wahMode = WAH_MODE_ENVELOPE;
+        fx.wahSensitivity = 2.0f;
+        fx.wahFreqLow = 300.0f;
+        fx.wahFreqHigh = 2500.0f;
+        fx.wahResonance = 0.7f;
+        fx.wahMix = 1.0f;
+        fx.wahEnvelope = 0.0f;
+
+        // Feed loud signal — envelope should rise
+        for (int i = 0; i < 50; i++) {
+            processWah(0.8f);
+        }
+        float envAfterLoud = fx.wahEnvelope;
+        expect(envAfterLoud > 0.0f);
+
+        // Feed silence — envelope should decay
+        for (int i = 0; i < 1000; i++) {
+            processWah(0.0f);
+        }
+        expect(fx.wahEnvelope < envAfterLoud);
+    }
+
+    it("should mix dry and wet") {
+        _ensureFxCtx();
+        initEffects();
+
+        fx.wahEnabled = true;
+        fx.wahMode = WAH_MODE_LFO;
+        fx.wahRate = 2.0f;
+        fx.wahFreqLow = 300.0f;
+        fx.wahFreqHigh = 2500.0f;
+        fx.wahResonance = 0.7f;
+        fx.wahPhase = 0.0f;
+
+        // Process with full wet
+        initEffects();
+        fx.wahEnabled = true;
+        fx.wahMode = WAH_MODE_LFO;
+        fx.wahRate = 2.0f;
+        fx.wahFreqLow = 300.0f;
+        fx.wahFreqHigh = 2500.0f;
+        fx.wahResonance = 0.7f;
+        fx.wahMix = 1.0f;
+        float fullWet = 0.0f;
+        for (int i = 0; i < 50; i++) fullWet = processWah(0.5f);
+
+        // Process with 50% mix — should be between dry and wet
+        initEffects();
+        fx.wahEnabled = true;
+        fx.wahMode = WAH_MODE_LFO;
+        fx.wahRate = 2.0f;
+        fx.wahFreqLow = 300.0f;
+        fx.wahFreqHigh = 2500.0f;
+        fx.wahResonance = 0.7f;
+        fx.wahMix = 0.5f;
+        float halfMix = 0.0f;
+        for (int i = 0; i < 50; i++) halfMix = processWah(0.5f);
+
+        // Half mix should differ from full wet
+        expect(halfMix != fullWet);
+    }
+}
+
+// ============================================================================
+// EFFECTS TESTS - RING MODULATOR
+// ============================================================================
+
+describe(ringmod_effect) {
+    it("should pass through when disabled") {
+        _ensureFxCtx();
+        initEffects();
+
+        fx.ringModEnabled = false;
+
+        float input = 0.5f;
+        float output = processRingMod(input);
+
+        expect_float_eq(output, input);
+    }
+
+    it("should modulate signal when enabled") {
+        _ensureFxCtx();
+        initEffects();
+
+        fx.ringModEnabled = true;
+        fx.ringModFreq = 440.0f;
+        fx.ringModMix = 1.0f;
+        fx.ringModPhase = 0.25f; // sin(0.25 * 2PI) = sin(PI/2) = 1.0
+
+        float input = 0.5f;
+        float output = processRingMod(input);
+
+        // At phase 0.25, carrier = sin(PI/2) = 1.0, wet = 0.5 * 1.0 = 0.5
+        expect_float_eq(output, input);
+    }
+
+    it("should produce zero at carrier zero crossing") {
+        _ensureFxCtx();
+        initEffects();
+
+        fx.ringModEnabled = true;
+        fx.ringModFreq = 440.0f;
+        fx.ringModMix = 1.0f;
+        fx.ringModPhase = 0.0f; // sin(0) = 0
+
+        float input = 0.8f;
+        float output = processRingMod(input);
+
+        // At phase 0, carrier = sin(0) = 0, wet = 0.8 * 0 = 0
+        expect(fabsf(output) < 0.01f);
+    }
+
+    it("should mix dry and wet") {
+        _ensureFxCtx();
+        initEffects();
+
+        fx.ringModEnabled = true;
+        fx.ringModFreq = 440.0f;
+        fx.ringModMix = 0.5f;
+        fx.ringModPhase = 0.0f; // carrier = 0, wet = 0
+
+        float input = 0.8f;
+        float output = processRingMod(input);
+
+        // dry * 0.5 + wet * 0.5 = 0.8*0.5 + 0*0.5 = 0.4
+        expect(fabsf(output - 0.4f) < 0.01f);
+    }
+
+    it("should work in bus effects chain") {
+        _ensureMixerCtx();
+        initMixerContext(mixerCtx);
+
+        setBusRingMod(0, true, 440.0f, 1.0f);
+        mixerCtx->busState[0].busRingModPhase = 0.0f; // carrier = 0
+
+        float input = 0.8f;
+        float dt = 1.0f / SAMPLE_RATE;
+        float output = processBusEffects(input, 0, dt);
+
+        // Ring mod at zero crossing should nearly silence the signal
+        expect(fabsf(output) < 0.1f);
+    }
+}
+
+// ============================================================================
 // INTEGRATION TESTS
 // ============================================================================
 
@@ -6983,6 +7255,9 @@ int main(int argc, char **argv) {
     test(reverb_effect);
     test(sidechain_effect);
     test(tape_effect);
+    test(tremolo_effect);
+    test(wah_effect);
+    test(ringmod_effect);
     
     // Dub Loop tests (King Tubby style)
     test(dub_loop_basic);

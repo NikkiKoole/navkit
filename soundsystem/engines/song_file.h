@@ -376,6 +376,14 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "birdAmRate", p->p_birdAmRate);
     _sf_writeFloat(f, "birdAmDepth", p->p_birdAmDepth);
     _sf_writeFloat(f, "birdHarmonics", p->p_birdHarmonics);
+    // Electric piano
+    _sf_writeFloat(f, "epHardness", p->p_epHardness);
+    _sf_writeFloat(f, "epToneBar", p->p_epToneBar);
+    _sf_writeFloat(f, "epPickupPos", p->p_epPickupPos);
+    _sf_writeFloat(f, "epPickupDist", p->p_epPickupDist);
+    _sf_writeFloat(f, "epDecay", p->p_epDecay);
+    _sf_writeFloat(f, "epBell", p->p_epBell);
+    _sf_writeFloat(f, "epBellTone", p->p_epBellTone);
     // Pitch envelope
     _sf_writeFloat(f, "pitchEnvAmount", p->p_pitchEnvAmount);
     _sf_writeFloat(f, "pitchEnvDecay", p->p_pitchEnvDecay);
@@ -609,6 +617,21 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
     _sf_writeFloat(f, "combFeedback", d->sfEffects.combFeedback);
     _sf_writeFloat(f, "combMix", d->sfEffects.combMix);
     _sf_writeFloat(f, "combDamping", d->sfEffects.combDamping);
+    _sf_writeBool(f, "tremoloEnabled", d->sfEffects.tremoloEnabled);
+    _sf_writeFloat(f, "tremoloRate", d->sfEffects.tremoloRate);
+    _sf_writeFloat(f, "tremoloDepth", d->sfEffects.tremoloDepth);
+    _sf_writeInt(f, "tremoloShape", d->sfEffects.tremoloShape);
+    _sf_writeBool(f, "wahEnabled", d->sfEffects.wahEnabled);
+    _sf_writeInt(f, "wahMode", d->sfEffects.wahMode);
+    _sf_writeFloat(f, "wahRate", d->sfEffects.wahRate);
+    _sf_writeFloat(f, "wahSensitivity", d->sfEffects.wahSensitivity);
+    _sf_writeFloat(f, "wahFreqLow", d->sfEffects.wahFreqLow);
+    _sf_writeFloat(f, "wahFreqHigh", d->sfEffects.wahFreqHigh);
+    _sf_writeFloat(f, "wahResonance", d->sfEffects.wahResonance);
+    _sf_writeFloat(f, "wahMix", d->sfEffects.wahMix);
+    _sf_writeBool(f, "ringModEnabled", d->sfEffects.ringModEnabled);
+    _sf_writeFloat(f, "ringModFreq", d->sfEffects.ringModFreq);
+    _sf_writeFloat(f, "ringModMix", d->sfEffects.ringModMix);
     _sf_writeBool(f, "reverbEnabled", d->sfEffects.reverbEnabled);
     _sf_writeBool(f, "reverbFDN", d->sfEffects.reverbFDN);
     _sf_writeFloat(f, "reverbSize", d->sfEffects.reverbSize);
@@ -720,6 +743,21 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
         _sf_writeFloat(f, "combFeedback", bus->combFeedback);
         _sf_writeFloat(f, "combMix", bus->combMix);
         _sf_writeFloat(f, "combDamping", bus->combDamping);
+        _sf_writeBool(f, "tremoloEnabled", bus->tremoloEnabled);
+        _sf_writeFloat(f, "tremoloRate", bus->tremoloRate);
+        _sf_writeFloat(f, "tremoloDepth", bus->tremoloDepth);
+        _sf_writeInt(f, "tremoloShape", bus->tremoloShape);
+        _sf_writeBool(f, "wahEnabled", bus->wahEnabled);
+        _sf_writeInt(f, "wahMode", bus->wahMode);
+        _sf_writeFloat(f, "wahRate", bus->wahRate);
+        _sf_writeFloat(f, "wahSensitivity", bus->wahSensitivity);
+        _sf_writeFloat(f, "wahFreqLow", bus->wahFreqLow);
+        _sf_writeFloat(f, "wahFreqHigh", bus->wahFreqHigh);
+        _sf_writeFloat(f, "wahResonance", bus->wahResonance);
+        _sf_writeFloat(f, "wahMix", bus->wahMix);
+        _sf_writeBool(f, "ringModEnabled", bus->ringModEnabled);
+        _sf_writeFloat(f, "ringModFreq", bus->ringModFreq);
+        _sf_writeFloat(f, "ringModMix", bus->ringModMix);
         _sf_writeFloat(f, "reverbSend", bus->reverbSend);
     }
 
@@ -921,6 +959,14 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "birdAmRate") == 0) p->p_birdAmRate = _sf_parseFloat(val);
     else if (strcmp(key, "birdAmDepth") == 0) p->p_birdAmDepth = _sf_parseFloat(val);
     else if (strcmp(key, "birdHarmonics") == 0) p->p_birdHarmonics = _sf_parseFloat(val);
+    // Electric piano
+    else if (strcmp(key, "epHardness") == 0) p->p_epHardness = _sf_parseFloat(val);
+    else if (strcmp(key, "epToneBar") == 0) p->p_epToneBar = _sf_parseFloat(val);
+    else if (strcmp(key, "epPickupPos") == 0) p->p_epPickupPos = _sf_parseFloat(val);
+    else if (strcmp(key, "epPickupDist") == 0) p->p_epPickupDist = _sf_parseFloat(val);
+    else if (strcmp(key, "epDecay") == 0) p->p_epDecay = _sf_parseFloat(val);
+    else if (strcmp(key, "epBell") == 0) p->p_epBell = _sf_parseFloat(val);
+    else if (strcmp(key, "epBellTone") == 0) p->p_epBellTone = _sf_parseFloat(val);
     // Pitch envelope
     else if (strcmp(key, "pitchEnvAmount") == 0) p->p_pitchEnvAmount = _sf_parseFloat(val);
     else if (strcmp(key, "pitchEnvDecay") == 0) p->p_pitchEnvDecay = _sf_parseFloat(val);
@@ -1363,6 +1409,21 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
             else if (strcmp(key, "combFeedback") == 0) d->sfEffects.combFeedback = _sf_parseFloat(val);
             else if (strcmp(key, "combMix") == 0) d->sfEffects.combMix = _sf_parseFloat(val);
             else if (strcmp(key, "combDamping") == 0) d->sfEffects.combDamping = _sf_parseFloat(val);
+            else if (strcmp(key, "tremoloEnabled") == 0) d->sfEffects.tremoloEnabled = _sf_parseBool(val);
+            else if (strcmp(key, "tremoloRate") == 0) d->sfEffects.tremoloRate = _sf_parseFloat(val);
+            else if (strcmp(key, "tremoloDepth") == 0) d->sfEffects.tremoloDepth = _sf_parseFloat(val);
+            else if (strcmp(key, "tremoloShape") == 0) d->sfEffects.tremoloShape = _sf_parseInt(val);
+            else if (strcmp(key, "wahEnabled") == 0) d->sfEffects.wahEnabled = _sf_parseBool(val);
+            else if (strcmp(key, "wahMode") == 0) d->sfEffects.wahMode = _sf_parseInt(val);
+            else if (strcmp(key, "wahRate") == 0) d->sfEffects.wahRate = _sf_parseFloat(val);
+            else if (strcmp(key, "wahSensitivity") == 0) d->sfEffects.wahSensitivity = _sf_parseFloat(val);
+            else if (strcmp(key, "wahFreqLow") == 0) d->sfEffects.wahFreqLow = _sf_parseFloat(val);
+            else if (strcmp(key, "wahFreqHigh") == 0) d->sfEffects.wahFreqHigh = _sf_parseFloat(val);
+            else if (strcmp(key, "wahResonance") == 0) d->sfEffects.wahResonance = _sf_parseFloat(val);
+            else if (strcmp(key, "wahMix") == 0) d->sfEffects.wahMix = _sf_parseFloat(val);
+            else if (strcmp(key, "ringModEnabled") == 0) d->sfEffects.ringModEnabled = _sf_parseBool(val);
+            else if (strcmp(key, "ringModFreq") == 0) d->sfEffects.ringModFreq = _sf_parseFloat(val);
+            else if (strcmp(key, "ringModMix") == 0) d->sfEffects.ringModMix = _sf_parseFloat(val);
             else if (strcmp(key, "reverbEnabled") == 0) d->sfEffects.reverbEnabled = _sf_parseBool(val);
             else if (strcmp(key, "reverbFDN") == 0) d->sfEffects.reverbFDN = _sf_parseBool(val);
             else if (strcmp(key, "reverbSize") == 0) d->sfEffects.reverbSize = _sf_parseFloat(val);
@@ -1474,6 +1535,21 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
                 else if (strcmp(key, "combFeedback") == 0) bus->combFeedback = _sf_parseFloat(val);
                 else if (strcmp(key, "combMix") == 0) bus->combMix = _sf_parseFloat(val);
                 else if (strcmp(key, "combDamping") == 0) bus->combDamping = _sf_parseFloat(val);
+                else if (strcmp(key, "tremoloEnabled") == 0) bus->tremoloEnabled = _sf_parseBool(val);
+                else if (strcmp(key, "tremoloRate") == 0) bus->tremoloRate = _sf_parseFloat(val);
+                else if (strcmp(key, "tremoloDepth") == 0) bus->tremoloDepth = _sf_parseFloat(val);
+                else if (strcmp(key, "tremoloShape") == 0) bus->tremoloShape = _sf_parseInt(val);
+                else if (strcmp(key, "wahEnabled") == 0) bus->wahEnabled = _sf_parseBool(val);
+                else if (strcmp(key, "wahMode") == 0) bus->wahMode = _sf_parseInt(val);
+                else if (strcmp(key, "wahRate") == 0) bus->wahRate = _sf_parseFloat(val);
+                else if (strcmp(key, "wahSensitivity") == 0) bus->wahSensitivity = _sf_parseFloat(val);
+                else if (strcmp(key, "wahFreqLow") == 0) bus->wahFreqLow = _sf_parseFloat(val);
+                else if (strcmp(key, "wahFreqHigh") == 0) bus->wahFreqHigh = _sf_parseFloat(val);
+                else if (strcmp(key, "wahResonance") == 0) bus->wahResonance = _sf_parseFloat(val);
+                else if (strcmp(key, "wahMix") == 0) bus->wahMix = _sf_parseFloat(val);
+                else if (strcmp(key, "ringModEnabled") == 0) bus->ringModEnabled = _sf_parseBool(val);
+                else if (strcmp(key, "ringModFreq") == 0) bus->ringModFreq = _sf_parseFloat(val);
+                else if (strcmp(key, "ringModMix") == 0) bus->ringModMix = _sf_parseFloat(val);
                 else if (strcmp(key, "reverbSend") == 0) bus->reverbSend = _sf_parseFloat(val);
             }
             break;

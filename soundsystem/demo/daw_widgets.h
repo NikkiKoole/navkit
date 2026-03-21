@@ -87,6 +87,12 @@ static float waveThumbSample(int waveType, float t, int i) {
         case 15: // Pipe (breathy)
             v = sinf(t * 6.28f) * 0.8f + sinf(t * 18.84f) * 0.15f + ((float)((i * 3 + 7) % 11) / 55.0f);
             break;
+        case 17: // EPiano (bell + bark decay)
+        {
+            float ep = sinf(t * 6.28f) * 0.6f + sinf(t * 12.56f) * 0.4f + sinf(t * 25.12f) * 0.15f;
+            v = ep * expf(-t * 2.5f);
+            break;
+        }
         default: // Sine wave
             v = sinf(t * 6.28f);
             break;
@@ -116,7 +122,7 @@ static void drawWaveThumb(float x, float y, float w, float h, int waveType, bool
 
 static float drawWaveSelector(float x, float y, float w, int* wave) {
     int basicWaves[] = {WAVE_SQUARE, WAVE_SAW, WAVE_TRIANGLE, WAVE_SINE, WAVE_NOISE, WAVE_SCW};
-    int waveCount = 6, engineCount1 = 5, engineCount2 = 6;
+    int waveCount = 6, engineCount1 = 5, engineCount2 = 8;
     float thumbH = 20;
     Vector2 mouse = GetMousePosition();
     float totalH = 0;

@@ -87,12 +87,15 @@ typedef struct {
 } Sidechain;
 
 typedef struct {
+    bool tremoloOn; float tremoloRate, tremoloDepth; int tremoloShape;
+    bool wahOn;     int wahMode; float wahRate, wahSensitivity, wahFreqLow, wahFreqHigh, wahResonance, wahMix;
     bool distOn;    float distDrive, distTone, distMix; int distMode;
     bool crushOn;   float crushBits, crushRate, crushMix;
     bool chorusOn;  bool chorusBBD; float chorusRate, chorusDepth, chorusMix;
     bool flangerOn; float flangerRate, flangerDepth, flangerFeedback, flangerMix;
     bool phaserOn;  float phaserRate, phaserDepth, phaserMix, phaserFeedback; int phaserStages;
     bool combOn;    float combFreq, combFeedback, combMix, combDamping;
+    bool ringModOn; float ringModFreq, ringModMix;
     bool tapeOn;    float tapeSaturation, tapeWow, tapeFlutter, tapeHiss;
     bool delayOn;   float delayTime, delayFeedback, delayTone, delayMix;
     bool reverbOn;  bool reverbFDN; float reverbSize, reverbDamping, reverbPreDelay, reverbMix, reverbBass;
@@ -137,6 +140,9 @@ typedef struct {
     bool mute[NUM_BUSES];
     bool solo[NUM_BUSES];
     // Per-bus FX
+    bool tremoloOn[NUM_BUSES]; float tremoloRate[NUM_BUSES]; float tremoloDepth[NUM_BUSES]; int tremoloShape[NUM_BUSES];
+    bool wahOn[NUM_BUSES]; int wahMode[NUM_BUSES]; float wahRate[NUM_BUSES]; float wahSensitivity[NUM_BUSES];
+    float wahFreqLow[NUM_BUSES]; float wahFreqHigh[NUM_BUSES]; float wahResonance[NUM_BUSES]; float wahMix[NUM_BUSES];
     bool filterOn[NUM_BUSES];  float filterCut[NUM_BUSES]; float filterRes[NUM_BUSES]; int filterType[NUM_BUSES];
     bool distOn[NUM_BUSES];    float distDrive[NUM_BUSES]; float distMix[NUM_BUSES]; int distMode[NUM_BUSES];
     bool eqOn[NUM_BUSES];      float eqLowGain[NUM_BUSES]; float eqHighGain[NUM_BUSES];
@@ -147,6 +153,7 @@ typedef struct {
     float phaserMix[NUM_BUSES]; float phaserFB[NUM_BUSES]; int phaserStages[NUM_BUSES];
     bool combOn[NUM_BUSES];    float combFreq[NUM_BUSES]; float combFB[NUM_BUSES];
     float combMix[NUM_BUSES];  float combDamping[NUM_BUSES];
+    bool ringModOn[NUM_BUSES]; float ringModFreq[NUM_BUSES]; float ringModMix[NUM_BUSES];
     bool delayOn[NUM_BUSES];   bool delaySync[NUM_BUSES];  int delaySyncDiv[NUM_BUSES];
     float delayTime[NUM_BUSES]; float delayFB[NUM_BUSES];  float delayMix[NUM_BUSES];
     bool compOn[NUM_BUSES];    float compThreshold[NUM_BUSES]; float compRatio[NUM_BUSES];

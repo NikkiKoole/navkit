@@ -403,6 +403,7 @@ static const Color engineTints[] = {
     {50, 70, 50, 255},   // WAVE_BOWED    — green (physical)
     {45, 65, 55, 255},   // WAVE_PIPE     — green (physical)
     {40, 45, 75, 255},   // WAVE_SINE     — blue (basic)
+    {55, 60, 50, 255},   // WAVE_EPIANO   — warm green (physical/keys)
 };
 // busNames defined later with other bus arrays
 
@@ -4479,7 +4480,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
             bool hov = CheckCollisionPointRec(mouse, itemR);
             bool selected = (i == patchPresetIndex[daw.selectedPatch]);
             int wt = instrumentPresets[i].patch.p_waveType;
-            Color tint = (wt >= 0 && wt < 17) ? engineTints[wt] : UI_BG_BUTTON;
+            Color tint = (wt >= 0 && wt < 18) ? engineTints[wt] : UI_BG_BUTTON;
             if (selected) DrawRectangleRec(itemR, (Color){50,50,80,255});
             else if (hov) { DrawRectangleRec(itemR, tint); DrawRectangleRec(itemR, (Color){255,255,255,30}); }
             else DrawRectangleRec(itemR, tint);
@@ -4678,6 +4679,15 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_sublabel(&c, "Flutter:", UI_TEXT_SUBLABEL);
             ui_col_float(&c, "AM Rate", &p->p_birdAmRate, 1.0f, 0.0f, 20.0f);
             ui_col_float(&c, "AM Dep", &p->p_birdAmDepth, 0.05f, 0.0f, 1.0f);
+        } else if (p->p_waveType == WAVE_EPIANO) {
+            ui_col_sublabel(&c, "EPiano:", UI_TEXT_SUBLABEL);
+            ui_col_float(&c, "Hardnes", &p->p_epHardness, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "ToneBar", &p->p_epToneBar, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Pickup", &p->p_epPickupPos, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "PkDist", &p->p_epPickupDist, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Decay", &p->p_epDecay, 0.25f, 0.5f, 8.0f);
+            ui_col_float(&c, "Bell", &p->p_epBell, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "BlTone", &p->p_epBellTone, 0.05f, 0.0f, 1.0f);
         }
     }
 
@@ -5177,6 +5187,31 @@ static void drawParamBus(float x, float y, float w, float h) {
         }
 
         // FX controls (right of fader, below pan/rev)
+        // Tremolo
+        ToggleBoolS(rightX, ry, "Trem", &daw.mixer.tremoloOn[b], fs); ry += row;
+        if (daw.mixer.tremoloOn[b]) {
+            DraggableFloatS(rightX, ry, "Rate", &daw.mixer.tremoloRate[b], 0.5f, 0.5f, 20.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Depth", &daw.mixer.tremoloDepth[b], 0.05f, 0.0f, 1.0f, fs); ry += row;
+            { const char* shapeNames[] = {"Sine", "Square", "Tri"};
+              CycleOptionS(rightX, ry, "Shape", shapeNames, 3, &daw.mixer.tremoloShape[b], fs); ry += row; }
+        }
+        ry += 2;
+
+        // Wah
+        ToggleBoolS(rightX, ry, "Wah", &daw.mixer.wahOn[b], fs); ry += row;
+        if (daw.mixer.wahOn[b]) {
+            { const char* wahModeNames[] = {"LFO", "Env"};
+              CycleOptionS(rightX, ry, "Mode", wahModeNames, 2, &daw.mixer.wahMode[b], fs); ry += row; }
+            if (daw.mixer.wahMode[b] == WAH_MODE_LFO) {
+                DraggableFloatS(rightX, ry, "Rate", &daw.mixer.wahRate[b], 0.1f, 0.5f, 10.0f, fs); ry += row;
+            } else {
+                DraggableFloatS(rightX, ry, "Sens", &daw.mixer.wahSensitivity[b], 0.1f, 0.1f, 5.0f, fs); ry += row;
+            }
+            DraggableFloatS(rightX, ry, "Res", &daw.mixer.wahResonance[b], 0.05f, 0.0f, 1.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Mix", &daw.mixer.wahMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
+        }
+        ry += 2;
+
         // Filter
         ToggleBoolS(rightX, ry, "Filter", &daw.mixer.filterOn[b], fs); ry += row;
         if (daw.mixer.filterOn[b]) {
@@ -5236,6 +5271,14 @@ static void drawParamBus(float x, float y, float w, float h) {
             DraggableFloatS(rightX, ry, "Freq", &daw.mixer.combFreq[b], 5.0f, 20.0f, 2000.0f, fs); ry += row;
             DraggableFloatS(rightX, ry, "FB", &daw.mixer.combFB[b], 0.05f, -0.95f, 0.95f, fs); ry += row;
             DraggableFloatS(rightX, ry, "Mix", &daw.mixer.combMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
+        }
+        ry += 2;
+
+        // Ring Mod
+        ToggleBoolS(rightX, ry, "Ring", &daw.mixer.ringModOn[b], fs); ry += row;
+        if (daw.mixer.ringModOn[b]) {
+            DraggableFloatS(rightX, ry, "Freq", &daw.mixer.ringModFreq[b], 5.0f, 20.0f, 2000.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Mix", &daw.mixer.ringModMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
         }
         ry += 2;
 
@@ -5341,11 +5384,11 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
     // Disabled effects hide params but keep same width for stable layout.
     int fs = 11;
     int row = fs + 3;
-    float stripW = w / 13.0f;
+    float stripW = w / 16.0f;
     if (stripW > 140) stripW = 140;
 
     // Signal chain label at bottom
-    DrawTextShadow("Dist > Crush > Chorus > Flanger > Phaser > Comb > Tape > Vinyl > Delay > Reverb > EQ > Comp",
+    DrawTextShadow("Trem > Wah > Dist > Crush > Chorus > Flanger > Phaser > Comb > Ring > Tape > Vinyl > Dly > Rev > EQ > Comp",
                    (int)(x+2), (int)(y+h-11), 9, UI_BORDER);
 
     float cx = x;
@@ -5365,7 +5408,34 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
         cx += stripW; \
     }
 
-    // 1: Distortion
+    // 1: Tremolo
+    MFX_BEGIN("Trem", &daw.masterFx.tremoloOn)
+    if (daw.masterFx.tremoloOn) {
+        DraggableFloatS(rx, ry, "Rate", &daw.masterFx.tremoloRate, 0.5f, 0.5f, 20.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Depth", &daw.masterFx.tremoloDepth, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        { const char* shapeNames[] = {"Sine", "Square", "Tri"};
+          CycleOptionS(rx, ry, "Shape", shapeNames, 3, &daw.masterFx.tremoloShape, fs); ry += row; }
+    }
+    MFX_END()
+
+    // 2: Wah
+    MFX_BEGIN("Wah", &daw.masterFx.wahOn)
+    if (daw.masterFx.wahOn) {
+        { const char* wahModeNames[] = {"LFO", "Env"};
+          CycleOptionS(rx, ry, "Mode", wahModeNames, 2, &daw.masterFx.wahMode, fs); ry += row; }
+        if (daw.masterFx.wahMode == WAH_MODE_LFO) {
+            DraggableFloatS(rx, ry, "Rate", &daw.masterFx.wahRate, 0.1f, 0.5f, 10.0f, fs); ry += row;
+        } else {
+            DraggableFloatS(rx, ry, "Sens", &daw.masterFx.wahSensitivity, 0.1f, 0.1f, 5.0f, fs); ry += row;
+        }
+        DraggableFloatS(rx, ry, "LoHz", &daw.masterFx.wahFreqLow, 10.0f, 200.0f, 800.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "HiHz", &daw.masterFx.wahFreqHigh, 50.0f, 800.0f, 4000.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Res", &daw.masterFx.wahResonance, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Mix", &daw.masterFx.wahMix, 0.05f, 0.0f, 1.0f, fs); ry += row;
+    }
+    MFX_END()
+
+    // 3: Distortion
     MFX_BEGIN("Dist", &daw.masterFx.distOn)
     if (daw.masterFx.distOn) {
         CycleOptionS(rx, ry, "Mode", distModeNames, DIST_MODE_COUNT, &daw.masterFx.distMode, fs); ry += row;
@@ -5425,7 +5495,15 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
     }
     MFX_END()
 
-    // 7: Tape
+    // 7: Ring Mod
+    MFX_BEGIN("Ring", &daw.masterFx.ringModOn)
+    if (daw.masterFx.ringModOn) {
+        DraggableFloatS(rx, ry, "Freq", &daw.masterFx.ringModFreq, 5.0f, 20.0f, 2000.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Mix", &daw.masterFx.ringModMix, 0.05f, 0.0f, 1.0f, fs); ry += row;
+    }
+    MFX_END()
+
+    // 8: Tape
     MFX_BEGIN("Tape", &daw.masterFx.tapeOn)
     if (daw.masterFx.tapeOn) {
         DraggableFloatS(rx, ry, "Sat", &daw.masterFx.tapeSaturation, 0.05f, 0.0f, 1.0f, fs); ry += row;

@@ -139,6 +139,13 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     pipeEmbouchure = p->p_pipeEmbouchure;
     pipeBore = p->p_pipeBore;
     pipeOverblow = p->p_pipeOverblow;
+    epHardness = p->p_epHardness;
+    epToneBar = p->p_epToneBar;
+    epPickupPos = p->p_epPickupPos;
+    epPickupDist = p->p_epPickupDist;
+    epDecay = p->p_epDecay;
+    epBell = p->p_epBell;
+    epBellTone = p->p_epBellTone;
     noteExpRelease = p->p_expRelease;
     notePitchEnvAmount = p->p_pitchEnvAmount;
     notePitchEnvDecay = p->p_pitchEnvDecay;
@@ -218,6 +225,7 @@ static int playNoteWithPatch(float freq, const SynthPatch *p) {
         case WAVE_BIRD:     return playBird(freq, (BirdType)p->p_birdType);
         case WAVE_BOWED:    return playBowed(freq);
         case WAVE_PIPE:     return playPipe(freq);
+        case WAVE_EPIANO:   return playEPiano(freq);
         default:            return playNote(freq, wave);
     }
 }

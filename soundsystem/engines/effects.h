@@ -65,6 +65,15 @@ static const int kFdnDelayLengths[FDN_NUM_LINES] = {
 // Phaser constants (allpass filter chain with LFO)
 #define PHASER_MAX_STAGES 8           // Maximum allpass stages
 
+// Wah constants (swept bandpass filter)
+#define WAH_MODE_LFO      0
+#define WAH_MODE_ENVELOPE  1
+
+// Tremolo constants (volume LFO)
+#define TREMOLO_SHAPE_SINE     0
+#define TREMOLO_SHAPE_SQUARE   1
+#define TREMOLO_SHAPE_TRIANGLE 2
+
 // Comb filter constants (pitched delay with feedback)
 #define COMB_BUFFER_SIZE 2205         // SAMPLE_RATE / 20Hz = longest delay
 #define COMB_MIN_FREQ 20.0f           // Lowest pitch (longest delay)
@@ -217,6 +226,33 @@ typedef struct {
     float combMix;           // Dry/wet (0-1)
     float combDamping;       // 0-1
 
+    // Octaver (sub-octave generator)
+    bool octaverEnabled;
+    float octaverMix;        // Dry/wet (0-1)
+    float octaverSubLevel;   // Sub-octave level (0-1)
+    float octaverTone;       // Lowpass on sub (0-1)
+
+    // Tremolo (volume LFO)
+    bool tremoloEnabled;
+    float tremoloRate;       // LFO rate Hz (0.5-20.0)
+    float tremoloDepth;      // Modulation depth (0-1)
+    int   tremoloShape;      // TREMOLO_SHAPE_SINE, SQUARE, TRIANGLE
+
+    // Wah / Auto-wah
+    bool wahEnabled;
+    int   wahMode;           // WAH_MODE_LFO or WAH_MODE_ENVELOPE
+    float wahRate;           // LFO rate Hz (0.5-10.0)
+    float wahSensitivity;    // Envelope sensitivity (0.1-5.0)
+    float wahFreqLow;        // Sweep low freq Hz (200-800)
+    float wahFreqHigh;       // Sweep high freq Hz (800-4000)
+    float wahResonance;      // 0-1
+    float wahMix;            // Dry/wet (0-1)
+
+    // Ring modulator
+    bool ringModEnabled;
+    float ringModFreq;       // Carrier frequency Hz (20-2000)
+    float ringModMix;        // Dry/wet (0-1)
+
     // Reverb send
     float reverbSend;       // 0-1 (amount sent to master reverb)
 
@@ -265,6 +301,23 @@ typedef struct {
     float busCombBuf[COMB_BUFFER_SIZE];
     int busCombWritePos;
     float busCombFilterLp;
+
+    // Octaver state
+    float busOctaverPrevSample;
+    float busOctaverFlipFlop;
+    float busOctaverFilterLp;
+
+    // Tremolo state
+    float busTremoloPhase;
+
+    // Wah state
+    float busWahPhase;
+    float busWahEnvelope;
+    float busWahIc1eq;
+    float busWahIc2eq;
+
+    // Ring modulator state
+    float busRingModPhase;
 
     // Compressor state
     float compEnvelope;
@@ -357,6 +410,26 @@ typedef struct {
     float phaserFeedback; // Output → input feedback (-0.9 to 0.9, adds resonance)
     int   phaserStages;   // Number of allpass stages (2, 4, 6, or 8)
     float phaserPhase;    // Internal LFO phase
+
+    // Wah / Auto-wah (swept bandpass filter)
+    bool wahEnabled;
+    int   wahMode;            // WAH_MODE_LFO or WAH_MODE_ENVELOPE
+    float wahRate;            // LFO rate in Hz (0.5-10.0, for LFO mode)
+    float wahSensitivity;     // Envelope sensitivity (0.1-5.0, for envelope mode)
+    float wahFreqLow;         // Sweep low frequency Hz (200-800)
+    float wahFreqHigh;        // Sweep high frequency Hz (800-4000)
+    float wahResonance;       // 0-1 (maps to SVF Q)
+    float wahMix;             // Dry/wet (0-1)
+    float wahPhase;           // Internal: LFO phase
+    float wahEnvelope;        // Internal: envelope follower value
+    float wahIc1eq;           // Internal: SVF state
+    float wahIc2eq;           // Internal: SVF state
+
+    // Ring modulator (carrier sine × signal)
+    bool ringModEnabled;
+    float ringModFreq;        // Carrier frequency in Hz (20-2000)
+    float ringModMix;         // Dry/wet (0-1)
+    float ringModPhase;       // Internal carrier phase
 
     // Comb filter (pitched delay with feedback — metallic/resonant tones)
     bool combEnabled;
@@ -468,6 +541,22 @@ typedef struct {
 
     // DJFX looper (params only — state in EffectsContext)
     int djfxLoopDiv;          // Division: 0=1/4, 1=1/8, 2=1/16, 3=1/32
+
+    // Octaver (sub-octave generator via zero-crossing)
+    bool octaverEnabled;
+    float octaverMix;         // Dry/wet (0-1)
+    float octaverSubLevel;    // Sub-octave level (0-1)
+    float octaverTone;        // Lowpass on sub signal (0-1)
+    float octaverPrevSample;  // Internal: previous sample for zero-crossing
+    float octaverFlipFlop;    // Internal: +1 or -1 toggle
+    float octaverFilterLp;    // Internal: lowpass state
+
+    // Tremolo (volume LFO — Fender amp style)
+    bool tremoloEnabled;
+    float tremoloRate;        // LFO rate in Hz (0.5-20.0)
+    float tremoloDepth;       // Modulation depth (0-1)
+    int   tremoloShape;       // TREMOLO_SHAPE_SINE, SQUARE, TRIANGLE
+    float tremoloPhase;       // Internal LFO phase
 
     // Tempo (for beat-synced effects — set by caller or daw sync)
     float bpm;                // Current BPM (default 120)
@@ -791,6 +880,42 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->params.phaserStages = 4;         // Classic 4-stage
     ctx->params.phaserPhase = 0.0f;
 
+    // Octaver - off by default
+    ctx->params.octaverEnabled = false;
+    ctx->params.octaverMix = 0.5f;
+    ctx->params.octaverSubLevel = 0.8f;
+    ctx->params.octaverTone = 0.5f;
+    ctx->params.octaverPrevSample = 0.0f;
+    ctx->params.octaverFlipFlop = 1.0f;
+    ctx->params.octaverFilterLp = 0.0f;
+
+    // Tremolo - off by default
+    ctx->params.tremoloEnabled = false;
+    ctx->params.tremoloRate = 4.0f;         // 4Hz default
+    ctx->params.tremoloDepth = 0.5f;
+    ctx->params.tremoloShape = TREMOLO_SHAPE_SINE;
+    ctx->params.tremoloPhase = 0.0f;
+
+    // Wah - off by default
+    ctx->params.wahEnabled = false;
+    ctx->params.wahMode = WAH_MODE_LFO;
+    ctx->params.wahRate = 2.0f;
+    ctx->params.wahSensitivity = 1.0f;
+    ctx->params.wahFreqLow = 300.0f;
+    ctx->params.wahFreqHigh = 2500.0f;
+    ctx->params.wahResonance = 0.7f;
+    ctx->params.wahMix = 1.0f;
+    ctx->params.wahPhase = 0.0f;
+    ctx->params.wahEnvelope = 0.0f;
+    ctx->params.wahIc1eq = 0.0f;
+    ctx->params.wahIc2eq = 0.0f;
+
+    // Ring modulator - off by default
+    ctx->params.ringModEnabled = false;
+    ctx->params.ringModFreq = 440.0f;
+    ctx->params.ringModMix = 0.5f;
+    ctx->params.ringModPhase = 0.0f;
+
     // Comb filter - off by default
     ctx->params.combEnabled = false;
     ctx->params.combFreq = 200.0f;        // ~200Hz fundamental
@@ -1112,6 +1237,110 @@ static inline float hermiteInterp(float *buffer, int bufferSize, float readPos) 
 // ============================================================================
 // INDIVIDUAL EFFECTS
 // ============================================================================
+
+// Octaver - sub-octave via zero-crossing detection
+static float processOctaver(float sample) {
+    if (!fx.octaverEnabled) return sample;
+    // Zero-crossing detection
+    if ((sample >= 0.0f && fx.octaverPrevSample < 0.0f) ||
+        (sample < 0.0f && fx.octaverPrevSample >= 0.0f)) {
+        fx.octaverFlipFlop = -fx.octaverFlipFlop;
+    }
+    fx.octaverPrevSample = sample;
+    // Generate sub-octave signal (half-frequency square × input)
+    float sub = sample * fx.octaverFlipFlop * fx.octaverSubLevel;
+    // Tone control: lowpass to smooth the sub signal
+    float cutoff = fx.octaverTone * fx.octaverTone * 0.5f + 0.01f;
+    fx.octaverFilterLp += cutoff * (sub - fx.octaverFilterLp);
+    sub = fx.octaverFilterLp;
+    // Mix: blend original + sub
+    return sample * (1.0f - fx.octaverMix) + (sample + sub) * fx.octaverMix;
+}
+
+// Wah / Auto-wah - swept bandpass SVF
+static float processWah(float sample) {
+    if (!fx.wahEnabled) return sample;
+    float dry = sample;
+
+    // Determine sweep position (0-1)
+    float sweep;
+    if (fx.wahMode == WAH_MODE_ENVELOPE) {
+        // Envelope follower: peak detector with fast attack, slow release
+        float level = fabsf(sample) * fx.wahSensitivity;
+        float attackCoeff = 0.01f;   // Fast attack
+        float releaseCoeff = 0.0001f; // Slow release
+        if (level > fx.wahEnvelope)
+            fx.wahEnvelope += attackCoeff * (level - fx.wahEnvelope);
+        else
+            fx.wahEnvelope += releaseCoeff * (level - fx.wahEnvelope);
+        sweep = fx.wahEnvelope;
+        if (sweep > 1.0f) sweep = 1.0f;
+    } else {
+        // LFO mode: sine sweep
+        sweep = 0.5f + 0.5f * sinf(fx.wahPhase * 2.0f * PI);
+        fx.wahPhase += fx.wahRate * (1.0f / SAMPLE_RATE);
+        if (fx.wahPhase >= 1.0f) fx.wahPhase -= 1.0f;
+    }
+
+    // Map sweep to center frequency (exponential)
+    float freq = fx.wahFreqLow * powf(fx.wahFreqHigh / fx.wahFreqLow, sweep);
+    if (freq > SAMPLE_RATE * 0.45f) freq = SAMPLE_RATE * 0.45f;
+
+    // SVF bandpass
+    float g = tanf(PI * freq / SAMPLE_RATE);
+    float k = 2.0f - 2.0f * fx.wahResonance * 0.99f;
+    float a1 = 1.0f / (1.0f + g * (g + k));
+    float a2 = g * a1;
+    float a3 = g * a2;
+
+    float v3 = sample - fx.wahIc2eq;
+    float v1 = a1 * fx.wahIc1eq + a2 * v3;
+    float v2 = fx.wahIc2eq + a2 * fx.wahIc1eq + a3 * v3;
+    fx.wahIc1eq = 2.0f * v1 - fx.wahIc1eq;
+    fx.wahIc2eq = 2.0f * v2 - fx.wahIc2eq;
+    // Clamp to prevent blowup
+    if (fx.wahIc1eq > 4.0f) fx.wahIc1eq = 4.0f;
+    if (fx.wahIc1eq < -4.0f) fx.wahIc1eq = -4.0f;
+    if (fx.wahIc2eq > 4.0f) fx.wahIc2eq = 4.0f;
+    if (fx.wahIc2eq < -4.0f) fx.wahIc2eq = -4.0f;
+
+    float bp = v1; // Bandpass output
+    return dry * (1.0f - fx.wahMix) + bp * fx.wahMix;
+}
+
+// Ring modulator - carrier sine × signal
+static float processRingMod(float sample) {
+    if (!fx.ringModEnabled) return sample;
+    float carrier = sinf(fx.ringModPhase * 2.0f * PI);
+    fx.ringModPhase += fx.ringModFreq * (1.0f / SAMPLE_RATE);
+    if (fx.ringModPhase >= 1.0f) fx.ringModPhase -= (int)fx.ringModPhase;
+    float wet = sample * carrier;
+    return sample * (1.0f - fx.ringModMix) + wet * fx.ringModMix;
+}
+
+// Tremolo - volume LFO (Fender amp style)
+static float processTremolo(float sample) {
+    if (!fx.tremoloEnabled) return sample;
+    float phase = fx.tremoloPhase;
+    float mod;
+    switch (fx.tremoloShape) {
+        case TREMOLO_SHAPE_SQUARE:
+            mod = phase < 0.5f ? 1.0f : 0.0f;
+            break;
+        case TREMOLO_SHAPE_TRIANGLE:
+            mod = phase < 0.5f
+                ? phase * 4.0f - 1.0f
+                : 3.0f - phase * 4.0f;
+            mod = mod * 0.5f + 0.5f;
+            break;
+        default: // sine
+            mod = 0.5f + 0.5f * sinf(phase * 2.0f * PI);
+            break;
+    }
+    fx.tremoloPhase += fx.tremoloRate * (1.0f / SAMPLE_RATE);
+    if (fx.tremoloPhase >= 1.0f) fx.tremoloPhase -= 1.0f;
+    return sample * (1.0f - fx.tremoloDepth * (1.0f - mod));
+}
 
 // Distortion - multiple waveshaping modes
 static float processDistortion(float sample) {
@@ -1997,12 +2226,16 @@ static float applySidechainEnvelopeDucking(float signal, float gainMult) {
 // Process all effects (call on master output)
 static float processEffects(float sample, float dt) {
     _ensureFxCtx();
+    sample = processOctaver(sample);
+    sample = processTremolo(sample);
+    sample = processWah(sample);
     sample = processDistortion(sample);
     sample = processBitcrusher(sample);
     sample = processChorus(sample, dt);
     sample = processFlanger(sample, dt);
     sample = processPhaser(sample, dt);
     sample = processComb(sample);
+    sample = processRingMod(sample);
     sample = processTape(sample, dt);
     sample = processVinylSim(sample, dt);
     sample = processDelay(sample, dt);
@@ -2038,12 +2271,16 @@ static float processEffectsWithBuses(float drumBus, float synthBus, float dt) {
     // Mix for effects that don't have selective input
     float sample = drumBus + synthBus;
 
+    sample = processOctaver(sample);
+    sample = processTremolo(sample);
+    sample = processWah(sample);
     sample = processDistortion(sample);
     sample = processBitcrusher(sample);
     sample = processChorus(sample, dt);
     sample = processFlanger(sample, dt);
     sample = processPhaser(sample, dt);
     sample = processComb(sample);
+    sample = processRingMod(sample);
     sample = processTape(sample, dt);
     sample = processVinylSim(sample, dt);
     sample = processDelay(sample, dt);
@@ -2225,7 +2462,68 @@ static float processBusEffects(float input, int busIndex, float dt) {
     if (mixerCtx->anySoloed && !bus->solo) return 0.0f;
     
     float sample = input;
-    
+
+    // === TREMOLO (volume LFO) ===
+    if (bus->tremoloEnabled) {
+        float phase = state->busTremoloPhase;
+        float mod;
+        switch (bus->tremoloShape) {
+            case TREMOLO_SHAPE_SQUARE:
+                mod = phase < 0.5f ? 1.0f : 0.0f;
+                break;
+            case TREMOLO_SHAPE_TRIANGLE:
+                mod = phase < 0.5f
+                    ? phase * 4.0f - 1.0f
+                    : 3.0f - phase * 4.0f;
+                mod = mod * 0.5f + 0.5f;
+                break;
+            default: // sine
+                mod = 0.5f + 0.5f * sinf(phase * 2.0f * PI);
+                break;
+        }
+        state->busTremoloPhase += bus->tremoloRate * (1.0f / SAMPLE_RATE);
+        if (state->busTremoloPhase >= 1.0f) state->busTremoloPhase -= 1.0f;
+        sample *= (1.0f - bus->tremoloDepth * (1.0f - mod));
+    }
+
+    // === WAH / AUTO-WAH ===
+    if (bus->wahEnabled) {
+        float wahDry = sample;
+        float sweep;
+        if (bus->wahMode == WAH_MODE_ENVELOPE) {
+            float level = fabsf(sample) * bus->wahSensitivity;
+            float atkC = 0.01f, relC = 0.0001f;
+            if (level > state->busWahEnvelope)
+                state->busWahEnvelope += atkC * (level - state->busWahEnvelope);
+            else
+                state->busWahEnvelope += relC * (level - state->busWahEnvelope);
+            sweep = state->busWahEnvelope;
+            if (sweep > 1.0f) sweep = 1.0f;
+        } else {
+            sweep = 0.5f + 0.5f * sinf(state->busWahPhase * 2.0f * PI);
+            state->busWahPhase += bus->wahRate * (1.0f / SAMPLE_RATE);
+            if (state->busWahPhase >= 1.0f) state->busWahPhase -= 1.0f;
+        }
+        float wahFreq = bus->wahFreqLow * powf(bus->wahFreqHigh / bus->wahFreqLow, sweep);
+        if (wahFreq > SAMPLE_RATE * 0.45f) wahFreq = SAMPLE_RATE * 0.45f;
+        float wg = tanf(PI * wahFreq / SAMPLE_RATE);
+        float wk = 2.0f - 2.0f * bus->wahResonance * 0.99f;
+        float wa1 = 1.0f / (1.0f + wg * (wg + wk));
+        float wa2 = wg * wa1;
+        float wa3 = wg * wa2;
+        float wv3 = sample - state->busWahIc2eq;
+        float wv1 = wa1 * state->busWahIc1eq + wa2 * wv3;
+        float wv2 = state->busWahIc2eq + wa2 * state->busWahIc1eq + wa3 * wv3;
+        state->busWahIc1eq = 2.0f * wv1 - state->busWahIc1eq;
+        state->busWahIc2eq = 2.0f * wv2 - state->busWahIc2eq;
+        if (state->busWahIc1eq > 4.0f) state->busWahIc1eq = 4.0f;
+        if (state->busWahIc1eq < -4.0f) state->busWahIc1eq = -4.0f;
+        if (state->busWahIc2eq > 4.0f) state->busWahIc2eq = 4.0f;
+        if (state->busWahIc2eq < -4.0f) state->busWahIc2eq = -4.0f;
+        float wahBp = wv1;
+        sample = wahDry * (1.0f - bus->wahMix) + wahBp * bus->wahMix;
+    }
+
     // === FILTER (SVF - State Variable Filter) ===
     if (bus->filterEnabled) {
         // Map cutoff 0-1 to frequency (20Hz - 20kHz, exponential)
@@ -2439,6 +2737,15 @@ static float processBusEffects(float input, int busIndex, float dt) {
         sample = combDry * (1.0f - bus->combMix) + combDelayed * bus->combMix;
     }
 
+    // === RING MODULATOR ===
+    if (bus->ringModEnabled) {
+        float carrier = sinf(state->busRingModPhase * 2.0f * PI);
+        state->busRingModPhase += bus->ringModFreq * (1.0f / SAMPLE_RATE);
+        if (state->busRingModPhase >= 1.0f) state->busRingModPhase -= (int)state->busRingModPhase;
+        float wet = sample * carrier;
+        sample = sample * (1.0f - bus->ringModMix) + wet * bus->ringModMix;
+    }
+
     // === DELAY ===
     if (bus->delayEnabled) {
         int delaySamples = _getBusDelaySamples(bus, mixerCtx->tempo);
@@ -2540,12 +2847,16 @@ static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
     sample += delayWet * fx.delayMix;
 
     // Master effects chain
+    sample = processOctaver(sample);
+    sample = processTremolo(sample);
+    sample = processWah(sample);
     sample = processDistortion(sample);
     sample = processBitcrusher(sample);
     sample = processChorus(sample, dt);
     sample = processFlanger(sample, dt);
     sample = processPhaser(sample, dt);
     sample = processComb(sample);
+    sample = processRingMod(sample);
     sample = processTape(sample, dt);
     sample = processVinylSim(sample, dt);
     sample = processDelay(sample, dt);
@@ -2652,12 +2963,16 @@ static void processMixerOutputStereo(float busInputs[NUM_BUSES], float dt, float
 
     // Master effects chain runs on mid (mono) — identical to processMixerOutput
     float sample = mid;
+    sample = processOctaver(sample);
+    sample = processTremolo(sample);
+    sample = processWah(sample);
     sample = processDistortion(sample);
     sample = processBitcrusher(sample);
     sample = processChorus(sample, dt);
     sample = processFlanger(sample, dt);
     sample = processPhaser(sample, dt);
     sample = processComb(sample);
+    sample = processRingMod(sample);
     sample = processTape(sample, dt);
     sample = processVinylSim(sample, dt);
     sample = processDelay(sample, dt);
@@ -2875,6 +3190,43 @@ static void setBusComb(int bus, bool enabled, float freq, float feedback, float 
         mixerCtx->bus[bus].combFeedback = feedback;
         mixerCtx->bus[bus].combMix = mix;
         mixerCtx->bus[bus].combDamping = damping;
+    }
+}
+
+__attribute__((unused))
+static void setBusWah(int bus, bool enabled, int mode, float rate, float sensitivity,
+                      float freqLow, float freqHigh, float resonance, float mix) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].wahEnabled = enabled;
+        mixerCtx->bus[bus].wahMode = mode;
+        mixerCtx->bus[bus].wahRate = rate;
+        mixerCtx->bus[bus].wahSensitivity = sensitivity;
+        mixerCtx->bus[bus].wahFreqLow = freqLow;
+        mixerCtx->bus[bus].wahFreqHigh = freqHigh;
+        mixerCtx->bus[bus].wahResonance = resonance;
+        mixerCtx->bus[bus].wahMix = mix;
+    }
+}
+
+__attribute__((unused))
+static void setBusRingMod(int bus, bool enabled, float freq, float mix) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].ringModEnabled = enabled;
+        mixerCtx->bus[bus].ringModFreq = freq;
+        mixerCtx->bus[bus].ringModMix = mix;
+    }
+}
+
+__attribute__((unused))
+static void setBusTremolo(int bus, bool enabled, float rate, float depth, int shape) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].tremoloEnabled = enabled;
+        mixerCtx->bus[bus].tremoloRate = rate;
+        mixerCtx->bus[bus].tremoloDepth = depth;
+        mixerCtx->bus[bus].tremoloShape = shape;
     }
 }
 

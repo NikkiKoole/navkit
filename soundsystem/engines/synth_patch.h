@@ -175,6 +175,15 @@ typedef struct {
     float p_pipeBore;
     float p_pipeOverblow;
 
+    // Electric piano (Rhodes)
+    float p_epHardness;       // Hammer hardness (0=soft, 1=hard)
+    float p_epToneBar;        // Tone bar coupling (fundamental sustain, 0-1)
+    float p_epPickupPos;      // Pickup position (0=mellow, 1=bright)
+    float p_epPickupDist;     // Pickup distance (0=clean, 1=bark)
+    float p_epDecay;          // Decay time in seconds (0.5-8.0)
+    float p_epBell;           // Upper mode (bell) emphasis (0-1)
+    float p_epBellTone;       // Bell inharmonicity (0=harmonic/organ, 1=inharmonic/bell)
+
     // Bird
     int p_birdType;
     float p_birdChirpRange;
@@ -380,6 +389,13 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_pipeEmbouchure = 0.5f,
         .p_pipeBore = 0.5f,
         .p_pipeOverblow = 0.0f,
+        .p_epHardness = 0.4f,
+        .p_epToneBar = 0.5f,
+        .p_epPickupPos = 0.3f,
+        .p_epPickupDist = 0.4f,
+        .p_epDecay = 3.0f,
+        .p_epBell = 0.5f,
+        .p_epBellTone = 0.5f,
         .p_birdType = BIRD_CHIRP,
         .p_birdChirpRange = 1.0f,
         .p_birdTrillRate = 0.0f,
