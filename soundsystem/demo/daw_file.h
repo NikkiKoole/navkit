@@ -361,6 +361,12 @@ static bool dawSave(const char *filepath) {
         snprintf(k, sizeof(k), "tremoloRate%d", b); _dw(f, k, daw.mixer.tremoloRate[b]);
         snprintf(k, sizeof(k), "tremoloDepth%d", b); _dw(f, k, daw.mixer.tremoloDepth[b]);
         snprintf(k, sizeof(k), "tremoloShape%d", b); _di(f, k, daw.mixer.tremoloShape[b]);
+        snprintf(k, sizeof(k), "leslieOn%d", b); _db(f, k, daw.mixer.leslieOn[b]);
+        snprintf(k, sizeof(k), "leslieSpeed%d", b); _di(f, k, daw.mixer.leslieSpeed[b]);
+        snprintf(k, sizeof(k), "leslieDrive%d", b); _dw(f, k, daw.mixer.leslieDrive[b]);
+        snprintf(k, sizeof(k), "leslieBal%d", b); _dw(f, k, daw.mixer.leslieBalance[b]);
+        snprintf(k, sizeof(k), "leslieDopp%d", b); _dw(f, k, daw.mixer.leslieDoppler[b]);
+        snprintf(k, sizeof(k), "leslieMix%d", b); _dw(f, k, daw.mixer.leslieMix[b]);
         snprintf(k, sizeof(k), "wahOn%d", b); _db(f, k, daw.mixer.wahOn[b]);
         snprintf(k, sizeof(k), "wahMode%d", b); _di(f, k, daw.mixer.wahMode[b]);
         snprintf(k, sizeof(k), "wahRate%d", b); _dw(f, k, daw.mixer.wahRate[b]);
@@ -398,6 +404,9 @@ static bool dawSave(const char *filepath) {
     _dw(f, "octaverSubLevel", daw.masterFx.octaverSubLevel); _dw(f, "octaverTone", daw.masterFx.octaverTone);
     _db(f, "tremoloOn", daw.masterFx.tremoloOn); _dw(f, "tremoloRate", daw.masterFx.tremoloRate);
     _dw(f, "tremoloDepth", daw.masterFx.tremoloDepth); _di(f, "tremoloShape", daw.masterFx.tremoloShape);
+    _db(f, "leslieOn", daw.masterFx.leslieOn); _di(f, "leslieSpeed", daw.masterFx.leslieSpeed);
+    _dw(f, "leslieDrive", daw.masterFx.leslieDrive); _dw(f, "leslieBal", daw.masterFx.leslieBalance);
+    _dw(f, "leslieDopp", daw.masterFx.leslieDoppler); _dw(f, "leslieMix", daw.masterFx.leslieMix);
     _db(f, "wahOn", daw.masterFx.wahOn); _di(f, "wahMode", daw.masterFx.wahMode);
     _dw(f, "wahRate", daw.masterFx.wahRate); _dw(f, "wahSensitivity", daw.masterFx.wahSensitivity);
     _dw(f, "wahFreqLow", daw.masterFx.wahFreqLow); _dw(f, "wahFreqHigh", daw.masterFx.wahFreqHigh);
@@ -1246,6 +1255,12 @@ static bool dawLoad(const char *filepath) {
                     else if (strcmp(base,"tremoloRate")==0) daw.mixer.tremoloRate[b]=_dpf(val);
                     else if (strcmp(base,"tremoloDepth")==0) daw.mixer.tremoloDepth[b]=_dpf(val);
                     else if (strcmp(base,"tremoloShape")==0) daw.mixer.tremoloShape[b]=_dpi(val);
+                    else if (strcmp(base,"leslieOn")==0) daw.mixer.leslieOn[b]=_dpb(val);
+                    else if (strcmp(base,"leslieSpeed")==0) daw.mixer.leslieSpeed[b]=_dpi(val);
+                    else if (strcmp(base,"leslieDrive")==0) daw.mixer.leslieDrive[b]=_dpf(val);
+                    else if (strcmp(base,"leslieBal")==0) daw.mixer.leslieBalance[b]=_dpf(val);
+                    else if (strcmp(base,"leslieDopp")==0) daw.mixer.leslieDoppler[b]=_dpf(val);
+                    else if (strcmp(base,"leslieMix")==0) daw.mixer.leslieMix[b]=_dpf(val);
                     else if (strcmp(base,"wahOn")==0) daw.mixer.wahOn[b]=_dpb(val);
                     else if (strcmp(base,"wahMode")==0) daw.mixer.wahMode[b]=_dpi(val);
                     else if (strcmp(base,"wahRate")==0) daw.mixer.wahRate[b]=_dpf(val);
@@ -1294,6 +1309,12 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"tremoloRate")==0) daw.masterFx.tremoloRate=_dpf(val);
             else if (strcmp(key,"tremoloDepth")==0) daw.masterFx.tremoloDepth=_dpf(val);
             else if (strcmp(key,"tremoloShape")==0) daw.masterFx.tremoloShape=_dpi(val);
+            else if (strcmp(key,"leslieOn")==0) daw.masterFx.leslieOn=_dpb(val);
+            else if (strcmp(key,"leslieSpeed")==0) daw.masterFx.leslieSpeed=_dpi(val);
+            else if (strcmp(key,"leslieDrive")==0) daw.masterFx.leslieDrive=_dpf(val);
+            else if (strcmp(key,"leslieBal")==0) daw.masterFx.leslieBalance=_dpf(val);
+            else if (strcmp(key,"leslieDopp")==0) daw.masterFx.leslieDoppler=_dpf(val);
+            else if (strcmp(key,"leslieMix")==0) daw.masterFx.leslieMix=_dpf(val);
             else if (strcmp(key,"wahOn")==0) daw.masterFx.wahOn=_dpb(val);
             else if (strcmp(key,"wahMode")==0) daw.masterFx.wahMode=_dpi(val);
             else if (strcmp(key,"wahRate")==0) daw.masterFx.wahRate=_dpf(val);

@@ -33,6 +33,12 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
     fx.tremoloRate     = d->masterFx.tremoloRate;
     fx.tremoloDepth    = d->masterFx.tremoloDepth;
     fx.tremoloShape    = d->masterFx.tremoloShape;
+    fx.leslieEnabled   = d->masterFx.leslieOn;
+    fx.leslieSpeed     = d->masterFx.leslieSpeed;
+    fx.leslieDrive     = d->masterFx.leslieDrive;
+    fx.leslieBalance   = d->masterFx.leslieBalance;
+    fx.leslieDoppler   = d->masterFx.leslieDoppler;
+    fx.leslieMix       = d->masterFx.leslieMix;
     fx.wahEnabled      = d->masterFx.wahOn;
     fx.wahMode         = d->masterFx.wahMode;
     fx.wahRate         = d->masterFx.wahRate;
@@ -163,6 +169,9 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
                       d->mixer.octaverSubLevel[b], d->mixer.octaverTone[b]);
         setBusTremolo(b, d->mixer.tremoloOn[b], d->mixer.tremoloRate[b],
                       d->mixer.tremoloDepth[b], d->mixer.tremoloShape[b]);
+        setBusLeslie(b, d->mixer.leslieOn[b], d->mixer.leslieSpeed[b],
+                     d->mixer.leslieDrive[b], d->mixer.leslieBalance[b],
+                     d->mixer.leslieDoppler[b], d->mixer.leslieMix[b]);
         setBusWah(b, d->mixer.wahOn[b], d->mixer.wahMode[b], d->mixer.wahRate[b],
                   d->mixer.wahSensitivity[b], d->mixer.wahFreqLow[b], d->mixer.wahFreqHigh[b],
                   d->mixer.wahResonance[b], d->mixer.wahMix[b]);

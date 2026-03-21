@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 180
+#define NUM_INSTRUMENT_PRESETS 192
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -3313,6 +3313,243 @@ static void initInstrumentPresets(void) {
     instrumentPresets[179].patch.p_vibratoRate = 6.2f;      // gentle tremolo
     instrumentPresets[179].patch.p_vibratoDepth = 0.04f;    // subtle
     instrumentPresets[179].patch.p_volume = 0.55f;
+
+    // ========================================================================
+    // CLAVINET PRESETS (180-182)
+    // Hohner Clavinet D6 (1971): tangent strikes string from below, yarn-wound
+    // damper pad releases. Two single-coil pickups (neck/bridge) under strings.
+    // Short steel strings = nearly harmonic partials with stiffness stretch.
+    // Character: bright, percussive, funky. Fast decay, no sustain.
+    // Source: Sound On Sound "Synth Secrets: Clavinet", Vintage Vibe tech docs
+    // ========================================================================
+
+    // Clav Funky — the classic Stevie Wonder / Herbie Hancock funk sound.
+    // Bridge pickup, hard attack, wah-style filter envelope. "Superstition" tone.
+    instrumentPresets[180].name = "Clav Funky";
+    instrumentPresets[180].patch.p_waveType = WAVE_EPIANO;
+    instrumentPresets[180].patch.p_epPickupType = EP_PICKUP_CONTACT;
+    instrumentPresets[180].patch.p_epHardness = 0.8f;       // hard tangent strike — bright attack
+    instrumentPresets[180].patch.p_epToneBar = 0.0f;        // no tone bar (not a Rhodes)
+    instrumentPresets[180].patch.p_epPickupPos = 0.75f;     // bridge pickup — snappy, bright
+    instrumentPresets[180].patch.p_epPickupDist = 0.6f;     // moderate — funky honk
+    instrumentPresets[180].patch.p_epDecay = 1.0f;          // short decay
+    instrumentPresets[180].patch.p_epBell = 0.15f;          // touch of damper shimmer
+    instrumentPresets[180].patch.p_epBellTone = 0.3f;       // some damper pad inharmonicity
+    instrumentPresets[180].patch.p_attack = 0.001f;
+    instrumentPresets[180].patch.p_decay = 0.5f;
+    instrumentPresets[180].patch.p_sustain = 0.25f;
+    instrumentPresets[180].patch.p_release = 0.12f;         // fast release — percussive
+    instrumentPresets[180].patch.p_clickLevel = 0.35f;      // tangent pluck click
+    instrumentPresets[180].patch.p_clickTime = 0.002f;
+    instrumentPresets[180].patch.p_drive = 0.1f;            // slight edge
+    instrumentPresets[180].patch.p_velToDrive = 1.0f;       // dig in = more funk
+    instrumentPresets[180].patch.p_velToClick = 0.5f;       // harder = clickier
+    instrumentPresets[180].patch.p_filterEnabled = true;
+    instrumentPresets[180].patch.p_filterCutoff = 0.5f;     // wah territory
+    instrumentPresets[180].patch.p_filterResonance = 0.3f;  // honky resonance
+    instrumentPresets[180].patch.p_filterKeyTrack = 0.6f;   // opens for high notes
+    instrumentPresets[180].patch.p_filterEnvAmt = 0.4f;     // wah sweep on attack
+    instrumentPresets[180].patch.p_filterEnvDecay = 0.1f;   // fast filter snap
+    instrumentPresets[180].patch.p_volume = 0.6f;
+
+    // Clav Mellow — neck pickup, softer touch. Bill Withers / reggae comping.
+    // Warm and round but still percussive — the "rhythm guitar" Clavinet sound.
+    instrumentPresets[181].name = "Clav Mellow";
+    instrumentPresets[181].patch.p_waveType = WAVE_EPIANO;
+    instrumentPresets[181].patch.p_epPickupType = EP_PICKUP_CONTACT;
+    instrumentPresets[181].patch.p_epHardness = 0.45f;      // softer touch — warmer
+    instrumentPresets[181].patch.p_epToneBar = 0.0f;
+    instrumentPresets[181].patch.p_epPickupPos = 0.25f;     // neck pickup — warm, round
+    instrumentPresets[181].patch.p_epPickupDist = 0.35f;    // gentle nonlinearity
+    instrumentPresets[181].patch.p_epDecay = 1.4f;          // slightly longer
+    instrumentPresets[181].patch.p_epBell = 0.1f;           // minimal shimmer
+    instrumentPresets[181].patch.p_epBellTone = 0.15f;      // mostly harmonic
+    instrumentPresets[181].patch.p_attack = 0.002f;
+    instrumentPresets[181].patch.p_decay = 0.8f;
+    instrumentPresets[181].patch.p_sustain = 0.3f;
+    instrumentPresets[181].patch.p_release = 0.18f;
+    instrumentPresets[181].patch.p_clickLevel = 0.15f;      // soft pluck
+    instrumentPresets[181].patch.p_clickTime = 0.003f;
+    instrumentPresets[181].patch.p_drive = 0.0f;
+    instrumentPresets[181].patch.p_velToDrive = 0.4f;       // mild growl on hard hits
+    instrumentPresets[181].patch.p_filterEnabled = true;
+    instrumentPresets[181].patch.p_filterCutoff = 0.55f;    // warm but not dark
+    instrumentPresets[181].patch.p_filterResonance = 0.1f;  // no honk
+    instrumentPresets[181].patch.p_filterKeyTrack = 0.4f;
+    instrumentPresets[181].patch.p_volume = 0.6f;
+
+    // Clav Driven — both pickups cranked through an amp. Led Zeppelin / funk-rock.
+    // Aggressive, distorted, almost guitar-like. "Trampled Under Foot" territory.
+    instrumentPresets[182].name = "Clav Driven";
+    instrumentPresets[182].patch.p_waveType = WAVE_EPIANO;
+    instrumentPresets[182].patch.p_epPickupType = EP_PICKUP_CONTACT;
+    instrumentPresets[182].patch.p_epHardness = 0.85f;      // hard strike — maximum brightness
+    instrumentPresets[182].patch.p_epToneBar = 0.0f;
+    instrumentPresets[182].patch.p_epPickupPos = 0.5f;      // both pickups (middle)
+    instrumentPresets[182].patch.p_epPickupDist = 0.85f;    // close — heavy nonlinearity
+    instrumentPresets[182].patch.p_epDecay = 0.8f;          // short and punchy
+    instrumentPresets[182].patch.p_epBell = 0.25f;          // damper character
+    instrumentPresets[182].patch.p_epBellTone = 0.4f;       // inharmonic edge
+    instrumentPresets[182].patch.p_attack = 0.001f;
+    instrumentPresets[182].patch.p_decay = 0.4f;
+    instrumentPresets[182].patch.p_sustain = 0.2f;
+    instrumentPresets[182].patch.p_release = 0.1f;          // very fast release
+    instrumentPresets[182].patch.p_clickLevel = 0.4f;       // aggressive pluck
+    instrumentPresets[182].patch.p_clickTime = 0.002f;
+    instrumentPresets[182].patch.p_drive = 0.25f;           // always driven
+    instrumentPresets[182].patch.p_velToDrive = 2.0f;       // hard hits = overdrive
+    instrumentPresets[182].patch.p_velToClick = 0.7f;       // snappy at hard dynamics
+    instrumentPresets[182].patch.p_driveMode = DIST_ASYMMETRIC;
+    instrumentPresets[182].patch.p_filterEnabled = true;
+    instrumentPresets[182].patch.p_filterCutoff = 0.65f;    // open — let the grit through
+    instrumentPresets[182].patch.p_filterResonance = 0.2f;  // slight edge
+    instrumentPresets[182].patch.p_filterKeyTrack = 0.5f;
+    instrumentPresets[182].patch.p_filterEnvAmt = 0.25f;    // attack opens filter
+    instrumentPresets[182].patch.p_filterEnvDecay = 0.08f;  // fast snap
+    instrumentPresets[182].patch.p_volume = 0.55f;
+
+    // ========================================================================
+    // ORGAN PRESETS (Hammond drawbar registrations) — WAVE_ORGAN
+    // ========================================================================
+    // Drawbar order: 16' 5⅓' 8' 4' 2⅔' 2' 1⅗' 1⅓' 1'
+    // Levels 0-8 mapped to 0.0-1.0 (divided by 8)
+
+    // Jimmy Smith Jazz — fat sub + fundamental, no upper harmonics
+    // Classic jazz organ: warm, round, slightly overdriven through Leslie
+    instrumentPresets[183].name = "Jimmy Smith";
+    instrumentPresets[183].patch.p_waveType = WAVE_ORGAN;
+    instrumentPresets[183].patch.p_attack = 0.001f;
+    instrumentPresets[183].patch.p_decay = 0.0f;
+    instrumentPresets[183].patch.p_sustain = 1.0f;
+    instrumentPresets[183].patch.p_release = 0.05f;
+    instrumentPresets[183].patch.p_orgDrawbar[0] = 1.0f;    // 16' = 8
+    instrumentPresets[183].patch.p_orgDrawbar[1] = 1.0f;    // 5⅓' = 8
+    instrumentPresets[183].patch.p_orgDrawbar[2] = 1.0f;    // 8' = 8
+    instrumentPresets[183].patch.p_orgClick = 0.2f;
+    instrumentPresets[183].patch.p_orgPercOn = 1;
+    instrumentPresets[183].patch.p_orgPercHarmonic = 0;
+    instrumentPresets[183].patch.p_orgPercFast = 1;
+    instrumentPresets[183].patch.p_volume = 0.55f;
+    instrumentPresets[183].patch.p_orgVibratoMode = 6;  // C3 — Smith always ran full chorus
+
+    // Gospel Full — all drawbars maxed, massive choir sound
+    instrumentPresets[184].name = "Gospel Full";
+    instrumentPresets[184].patch.p_waveType = WAVE_ORGAN;
+    instrumentPresets[184].patch.p_attack = 0.001f;
+    instrumentPresets[184].patch.p_sustain = 1.0f;
+    instrumentPresets[184].patch.p_release = 0.05f;
+    for (int i = 0; i < ORGAN_DRAWBARS; i++)
+        instrumentPresets[184].patch.p_orgDrawbar[i] = 1.0f;  // 888888888
+    instrumentPresets[184].patch.p_orgClick = 0.4f;
+    instrumentPresets[184].patch.p_orgPercOn = 1;
+    instrumentPresets[184].patch.p_orgPercHarmonic = 0;
+    instrumentPresets[184].patch.p_orgPercFast = 1;
+    instrumentPresets[184].patch.p_orgCrosstalk = 0.3f;
+    instrumentPresets[184].patch.p_volume = 0.45f;
+    instrumentPresets[184].patch.p_orgVibratoMode = 6;  // C3 — full shimmer
+
+    // Jon Lord Rock — Deep Purple growl, 888600000
+    instrumentPresets[185].name = "Jon Lord Rock";
+    instrumentPresets[185].patch.p_waveType = WAVE_ORGAN;
+    instrumentPresets[185].patch.p_attack = 0.001f;
+    instrumentPresets[185].patch.p_sustain = 1.0f;
+    instrumentPresets[185].patch.p_release = 0.05f;
+    instrumentPresets[185].patch.p_orgDrawbar[0] = 1.0f;     // 16' = 8
+    instrumentPresets[185].patch.p_orgDrawbar[1] = 1.0f;     // 5⅓' = 8
+    instrumentPresets[185].patch.p_orgDrawbar[2] = 1.0f;     // 8' = 8
+    instrumentPresets[185].patch.p_orgDrawbar[3] = 0.75f;    // 4' = 6
+    instrumentPresets[185].patch.p_orgClick = 0.5f;
+    instrumentPresets[185].patch.p_orgCrosstalk = 0.4f;
+    instrumentPresets[185].patch.p_drive = 0.15f;
+    instrumentPresets[185].patch.p_volume = 0.50f;
+    instrumentPresets[185].patch.p_orgVibratoMode = 3;  // V3 — vibrato for the growl
+
+    // Booker T Green — Green Onions, 886000000
+    instrumentPresets[186].name = "Booker T Green";
+    instrumentPresets[186].patch.p_waveType = WAVE_ORGAN;
+    instrumentPresets[186].patch.p_attack = 0.001f;
+    instrumentPresets[186].patch.p_sustain = 1.0f;
+    instrumentPresets[186].patch.p_release = 0.05f;
+    instrumentPresets[186].patch.p_orgDrawbar[0] = 1.0f;     // 16' = 8
+    instrumentPresets[186].patch.p_orgDrawbar[1] = 1.0f;     // 5⅓' = 8
+    instrumentPresets[186].patch.p_orgDrawbar[2] = 0.75f;    // 8' = 6
+    instrumentPresets[186].patch.p_orgClick = 0.15f;
+    instrumentPresets[186].patch.p_volume = 0.55f;
+    instrumentPresets[186].patch.p_orgVibratoMode = 4;  // C1 — subtle 60s clean
+
+    // Ballad — sub + fundamental + shimmer, 808000004
+    instrumentPresets[187].name = "Organ Ballad";
+    instrumentPresets[187].patch.p_waveType = WAVE_ORGAN;
+    instrumentPresets[187].patch.p_attack = 0.001f;
+    instrumentPresets[187].patch.p_sustain = 1.0f;
+    instrumentPresets[187].patch.p_release = 0.1f;
+    instrumentPresets[187].patch.p_orgDrawbar[0] = 1.0f;     // 16' = 8
+    instrumentPresets[187].patch.p_orgDrawbar[2] = 1.0f;     // 8' = 8
+    instrumentPresets[187].patch.p_orgDrawbar[8] = 0.5f;     // 1' = 4
+    instrumentPresets[187].patch.p_orgPercOn = 1;
+    instrumentPresets[187].patch.p_orgPercHarmonic = 1;       // 3rd harmonic
+    instrumentPresets[187].patch.p_orgPercSoft = 1;
+    instrumentPresets[187].patch.p_volume = 0.55f;
+    instrumentPresets[187].patch.p_orgVibratoMode = 5;  // C2 — medium warmth
+
+    // Reggae Bubble — skanky upstroke organ, 006060000
+    instrumentPresets[188].name = "Reggae Bubble";
+    instrumentPresets[188].patch.p_waveType = WAVE_ORGAN;
+    instrumentPresets[188].patch.p_attack = 0.001f;
+    instrumentPresets[188].patch.p_sustain = 1.0f;
+    instrumentPresets[188].patch.p_release = 0.03f;
+    instrumentPresets[188].patch.p_orgDrawbar[2] = 0.75f;    // 8' = 6
+    instrumentPresets[188].patch.p_orgDrawbar[4] = 0.75f;    // 2⅔' = 6
+    instrumentPresets[188].patch.p_volume = 0.55f;
+
+    // Larry Young — Unity-era jazz, 888800000
+    instrumentPresets[189].name = "Larry Young";
+    instrumentPresets[189].patch.p_waveType = WAVE_ORGAN;
+    instrumentPresets[189].patch.p_attack = 0.001f;
+    instrumentPresets[189].patch.p_sustain = 1.0f;
+    instrumentPresets[189].patch.p_release = 0.05f;
+    instrumentPresets[189].patch.p_orgDrawbar[0] = 1.0f;     // 16' = 8
+    instrumentPresets[189].patch.p_orgDrawbar[1] = 1.0f;     // 5⅓' = 8
+    instrumentPresets[189].patch.p_orgDrawbar[2] = 1.0f;     // 8' = 8
+    instrumentPresets[189].patch.p_orgDrawbar[3] = 1.0f;     // 4' = 8
+    instrumentPresets[189].patch.p_orgClick = 0.3f;
+    instrumentPresets[189].patch.p_orgPercOn = 1;
+    instrumentPresets[189].patch.p_orgPercHarmonic = 1;       // 3rd harmonic
+    instrumentPresets[189].patch.p_orgPercFast = 1;
+    instrumentPresets[189].patch.p_volume = 0.50f;
+    instrumentPresets[189].patch.p_orgVibratoMode = 5;  // C2 — modern jazz
+
+    // Keith Emerson — prog bombast, 888808008
+    instrumentPresets[190].name = "Emerson Prog";
+    instrumentPresets[190].patch.p_waveType = WAVE_ORGAN;
+    instrumentPresets[190].patch.p_attack = 0.001f;
+    instrumentPresets[190].patch.p_sustain = 1.0f;
+    instrumentPresets[190].patch.p_release = 0.05f;
+    instrumentPresets[190].patch.p_orgDrawbar[0] = 1.0f;     // 16' = 8
+    instrumentPresets[190].patch.p_orgDrawbar[1] = 1.0f;     // 5⅓' = 8
+    instrumentPresets[190].patch.p_orgDrawbar[2] = 1.0f;     // 8' = 8
+    instrumentPresets[190].patch.p_orgDrawbar[3] = 1.0f;     // 4' = 8
+    instrumentPresets[190].patch.p_orgDrawbar[5] = 1.0f;     // 2' = 8
+    instrumentPresets[190].patch.p_orgDrawbar[8] = 1.0f;     // 1' = 8
+    instrumentPresets[190].patch.p_orgClick = 0.5f;
+    instrumentPresets[190].patch.p_orgPercOn = 1;
+    instrumentPresets[190].patch.p_orgPercFast = 0;           // slow percussion
+    instrumentPresets[190].patch.p_orgCrosstalk = 0.3f;
+    instrumentPresets[190].patch.p_drive = 0.1f;
+    instrumentPresets[190].patch.p_volume = 0.45f;
+    instrumentPresets[190].patch.p_orgVibratoMode = 3;  // V3 — heavy vibrato
+
+    // Soft Combo — cocktail lounge, 006600400
+    instrumentPresets[191].name = "Soft Combo";
+    instrumentPresets[191].patch.p_waveType = WAVE_ORGAN;
+    instrumentPresets[191].patch.p_attack = 0.001f;
+    instrumentPresets[191].patch.p_sustain = 1.0f;
+    instrumentPresets[191].patch.p_release = 0.08f;
+    instrumentPresets[191].patch.p_orgDrawbar[2] = 0.75f;    // 8' = 6
+    instrumentPresets[191].patch.p_orgDrawbar[3] = 0.75f;    // 4' = 6
+    instrumentPresets[191].patch.p_orgDrawbar[6] = 0.5f;     // 1⅗' = 4
+    instrumentPresets[191].patch.p_volume = 0.55f;
+    instrumentPresets[191].patch.p_orgVibratoMode = 4;  // C1 — gentle lounge shimmer
 }
 
 #endif // INSTRUMENT_PRESETS_H

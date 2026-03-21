@@ -89,6 +89,7 @@ typedef struct {
 typedef struct {
     bool octaverOn; float octaverMix, octaverSubLevel, octaverTone;
     bool tremoloOn; float tremoloRate, tremoloDepth; int tremoloShape;
+    bool leslieOn;  int leslieSpeed; float leslieDrive, leslieBalance, leslieDoppler, leslieMix;
     bool wahOn;     int wahMode; float wahRate, wahSensitivity, wahFreqLow, wahFreqHigh, wahResonance, wahMix;
     bool distOn;    float distDrive, distTone, distMix; int distMode;
     bool crushOn;   float crushBits, crushRate, crushMix;
@@ -143,6 +144,8 @@ typedef struct {
     // Per-bus FX
     bool octaverOn[NUM_BUSES]; float octaverMix[NUM_BUSES]; float octaverSubLevel[NUM_BUSES]; float octaverTone[NUM_BUSES];
     bool tremoloOn[NUM_BUSES]; float tremoloRate[NUM_BUSES]; float tremoloDepth[NUM_BUSES]; int tremoloShape[NUM_BUSES];
+    bool leslieOn[NUM_BUSES]; int leslieSpeed[NUM_BUSES]; float leslieDrive[NUM_BUSES];
+    float leslieBalance[NUM_BUSES]; float leslieDoppler[NUM_BUSES]; float leslieMix[NUM_BUSES];
     bool wahOn[NUM_BUSES]; int wahMode[NUM_BUSES]; float wahRate[NUM_BUSES]; float wahSensitivity[NUM_BUSES];
     float wahFreqLow[NUM_BUSES]; float wahFreqHigh[NUM_BUSES]; float wahResonance[NUM_BUSES]; float wahMix[NUM_BUSES];
     bool filterOn[NUM_BUSES];  float filterCut[NUM_BUSES]; float filterRes[NUM_BUSES]; int filterType[NUM_BUSES];

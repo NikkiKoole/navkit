@@ -236,6 +236,10 @@ extern MoverRenderData moverRenderData[MAX_MOVERS];
 // Screen/Grid coordinate conversion
 Vector2 ScreenToGrid(Vector2 screen);
 Vector2 ScreenToWorld(Vector2 screen);
+Vector2 ScreenToGridFrontView(Vector2 screen);   // returns (gridX, gridZ) — worldY = frontViewY
+Vector2 ScreenToWorldFrontView(Vector2 screen);   // returns (worldX, worldZ) — worldY = frontViewY*CELL_SIZE
+int GetMoverAtFrontView(float worldX, int worldZ, int yStart, int yEnd);
+int GetAnimalAtFrontView(float worldX, int worldZ, int yStart, int yEnd);
 
 // Get random color for agents/movers
 Color GetRandomColor(void);

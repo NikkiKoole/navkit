@@ -172,7 +172,8 @@ static const char* noiseTypeNames[] = {"LFSR", "TimeHash"};
 // Note: waveNames[] is capitalized for UI display. Canonical lowercase names
 // (square, saw, triangle, etc.) are in synth.h:waveTypeNames[] for file I/O.
 static const char* waveNames[] = {"Square", "Saw", "Triangle", "Noise", "SCW",
-    "Voice", "Pluck", "Additive", "Mallet", "Granular", "FM", "PD", "Membrane", "Bird", "Bowed", "Pipe", "Sine"};
+    "Voice", "Pluck", "Additive", "Mallet", "Granular", "FM", "PD", "Membrane", "Bird", "Bowed", "Pipe", "Sine",
+    "EPiano", "Organ"};
 static const char* vowelNames[] = {"A", "E", "I", "O", "U"};
 static const char* additivePresetNames[] = {"Organ", "Bell", "Choir", "Brass", "Strings"};
 static const char* malletPresetNames[] = {"Marimba", "Vibes", "Xylo", "Glock", "Tubular"};
@@ -405,6 +406,7 @@ static const Color engineTints[] = {
     {45, 65, 55, 255},   // WAVE_PIPE     — green (physical)
     {40, 45, 75, 255},   // WAVE_SINE     — blue (basic)
     {55, 60, 50, 255},   // WAVE_EPIANO   — warm green (physical/keys)
+    {60, 55, 45, 255},   // WAVE_ORGAN    — warm amber (keys/electromechanical)
 };
 // busNames defined later with other bus arrays
 
@@ -423,6 +425,10 @@ static DawState daw = {
         .octaverTone = {0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f},
         .tremoloRate = {4,4,4,4,4,4,4,4},
         .tremoloDepth = {0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f},
+        .leslieSpeed = {1,1,1,1,1,1,1,1},
+        .leslieBalance = {0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f},
+        .leslieDoppler = {0.7f,0.7f,0.7f,0.7f,0.7f,0.7f,0.7f,0.7f},
+        .leslieMix = {1,1,1,1,1,1,1,1},
         .wahRate = {2,2,2,2,2,2,2,2},
         .wahSensitivity = {1,1,1,1,1,1,1,1},
         .wahFreqLow = {300,300,300,300,300,300,300,300},
@@ -441,6 +447,7 @@ static DawState daw = {
     .masterFx = {
         .octaverMix = 0.5f, .octaverSubLevel = 0.8f, .octaverTone = 0.5f,
         .tremoloRate = 4.0f, .tremoloDepth = 0.5f,
+        .leslieBalance = 0.5f, .leslieDoppler = 0.7f, .leslieMix = 1.0f,
         .wahRate = 2.0f, .wahSensitivity = 1.0f, .wahFreqLow = 300.0f, .wahFreqHigh = 2500.0f, .wahResonance = 0.7f, .wahMix = 1.0f,
         .ringModFreq = 440.0f, .ringModMix = 0.5f,
         .distDrive = 2.0f, .distTone = 0.7f, .distMix = 0.5f,
@@ -4722,8 +4729,8 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "AM Rate", &p->p_birdAmRate, 1.0f, 0.0f, 20.0f);
             ui_col_float(&c, "AM Dep", &p->p_birdAmDepth, 0.05f, 0.0f, 1.0f);
         } else if (p->p_waveType == WAVE_EPIANO) {
-            ui_col_sublabel(&c, p->p_epPickupType == EP_PICKUP_ELECTROSTATIC ? "Wurli:" : "Rhodes:", UI_TEXT_SUBLABEL);
-            ui_col_int(&c, "Pickup", &p->p_epPickupType, 1, 0, 1);
+            { static const char *epPickupNames[] = {"Rhodes", "Wurli", "Clav"};
+            ui_col_cycle(&c, "Pickup", epPickupNames, 3, &p->p_epPickupType); }
             ui_col_float(&c, "Hardnes", &p->p_epHardness, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "ToneBar", &p->p_epToneBar, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Pickup", &p->p_epPickupPos, 0.05f, 0.0f, 1.0f);
@@ -4731,6 +4738,23 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "Decay", &p->p_epDecay, 0.25f, 0.5f, 8.0f);
             ui_col_float(&c, "Bell", &p->p_epBell, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "BlTone", &p->p_epBellTone, 0.05f, 0.0f, 1.0f);
+        } else if (p->p_waveType == WAVE_ORGAN) {
+            ui_col_sublabel(&c, "Drawbars:", UI_TEXT_SUBLABEL);
+            static const char* dbNames[] = {"16'","5.3'","8'","4'","2.6'","2'","1.6'","1.3'","1'"};
+            for (int db = 0; db < ORGAN_DRAWBARS; db++)
+                ui_col_float(&c, dbNames[db], &p->p_orgDrawbar[db], 0.125f, 0.0f, 1.0f);
+            ui_col_sublabel(&c, "Character:", UI_TEXT_SUBLABEL);
+            ui_col_float(&c, "Click", &p->p_orgClick, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "XTalk", &p->p_orgCrosstalk, 0.05f, 0.0f, 1.0f);
+            ui_col_sublabel(&c, "Vibrato:", UI_TEXT_SUBLABEL);
+            ui_col_int(&c, "V/C", &p->p_orgVibratoMode, 1, 0, 6);
+            ui_col_sublabel(&c, "Percussion:", UI_TEXT_SUBLABEL);
+            ui_col_int(&c, "Perc", &p->p_orgPercOn, 1, 0, 1);
+            if (p->p_orgPercOn) {
+                ui_col_int(&c, "Harm", &p->p_orgPercHarmonic, 1, 0, 1);
+                ui_col_int(&c, "Soft", &p->p_orgPercSoft, 1, 0, 1);
+                ui_col_int(&c, "Fast", &p->p_orgPercFast, 1, 0, 1);
+            }
         }
     }
 
@@ -5249,6 +5273,18 @@ static void drawParamBus(float x, float y, float w, float h) {
         }
         ry += 2;
 
+        // Leslie
+        ToggleBoolS(rightX, ry, "Leslie", &daw.mixer.leslieOn[b], fs); ry += row;
+        if (daw.mixer.leslieOn[b]) {
+            { const char* speedNames[] = {"Stop", "Slow", "Fast"};
+              CycleOptionS(rightX, ry, "Speed", speedNames, 3, &daw.mixer.leslieSpeed[b], fs); ry += row; }
+            DraggableFloatS(rightX, ry, "Drive", &daw.mixer.leslieDrive[b], 0.05f, 0.0f, 1.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Bal", &daw.mixer.leslieBalance[b], 0.05f, 0.0f, 1.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Dopp", &daw.mixer.leslieDoppler[b], 0.05f, 0.0f, 1.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Mix", &daw.mixer.leslieMix[b], 0.05f, 0.0f, 1.0f, fs); ry += row;
+        }
+        ry += 2;
+
         // Wah
         ToggleBoolS(rightX, ry, "Wah", &daw.mixer.wahOn[b], fs); ry += row;
         if (daw.mixer.wahOn[b]) {
@@ -5561,6 +5597,18 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
     if (daw.masterFx.ringModOn) {
         DraggableFloatS(rx, ry, "Freq", &daw.masterFx.ringModFreq, 5.0f, 20.0f, 2000.0f, fs); ry += row;
         DraggableFloatS(rx, ry, "Mix", &daw.masterFx.ringModMix, 0.05f, 0.0f, 1.0f, fs); ry += row;
+    }
+    MFX_END()
+
+    // 7b: Leslie Rotary Speaker
+    MFX_BEGIN("Leslie", &daw.masterFx.leslieOn)
+    if (daw.masterFx.leslieOn) {
+        { const char* speedNames[] = {"Stop", "Slow", "Fast"};
+          CycleOptionS(rx, ry, "Speed", speedNames, 3, &daw.masterFx.leslieSpeed, fs); ry += row; }
+        DraggableFloatS(rx, ry, "Drive", &daw.masterFx.leslieDrive, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Bal", &daw.masterFx.leslieBalance, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Dopp", &daw.masterFx.leslieDoppler, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Mix", &daw.masterFx.leslieMix, 0.05f, 0.0f, 1.0f, fs); ry += row;
     }
     MFX_END()
 

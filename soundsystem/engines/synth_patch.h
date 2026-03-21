@@ -185,6 +185,16 @@ typedef struct {
     float p_epBellTone;       // Bell inharmonicity (0=harmonic/organ, 1=inharmonic/bell)
     int p_epPickupType;       // 0=electromagnetic (Rhodes), 1=electrostatic (Wurlitzer)
 
+    // Organ (Hammond drawbar)
+    float p_orgDrawbar[ORGAN_DRAWBARS]; // 9 drawbar levels 0-1 (maps from 0-8)
+    float p_orgClick;                    // Key click amount 0-1
+    int   p_orgPercOn;                   // Percussion on/off
+    int   p_orgPercHarmonic;             // 0=2nd, 1=3rd harmonic
+    int   p_orgPercSoft;                 // 0=normal, 1=soft (-3dB)
+    int   p_orgPercFast;                 // 0=slow (~500ms), 1=fast (~200ms)
+    float p_orgCrosstalk;                // Tonewheel leakage 0-1
+    int   p_orgVibratoMode;              // Scanner V/C: 0=off, 1-3=V1-V3, 4-6=C1-C3
+
     // Bird
     int p_birdType;
     float p_birdChirpRange;
@@ -398,6 +408,14 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_epBell = 0.5f,
         .p_epBellTone = 0.5f,
         .p_epPickupType = 0,
+        .p_orgDrawbar = {0,0,1,0,0,0,0,0,0},
+        .p_orgClick = 0.3f,
+        .p_orgPercOn = 0,
+        .p_orgPercHarmonic = 0,
+        .p_orgPercSoft = 0,
+        .p_orgPercFast = 1,
+        .p_orgCrosstalk = 0.0f,
+        .p_orgVibratoMode = 0,
         .p_birdType = BIRD_CHIRP,
         .p_birdChirpRange = 1.0f,
         .p_birdTrillRate = 0.0f,

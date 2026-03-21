@@ -1932,25 +1932,48 @@ void HandleInput(void) {
     int pending = InputMode_GetPendingKey();
     if (pending != 0) currentPendingKey = pending;
     
+    int gx, gy, gz;  // grid coords for hover detection (gy=worldY, gz=worldZ)
+    if (frontViewMode) {
+        Vector2 fv = ScreenToGridFrontView(GetMousePosition());
+        gx = (int)fv.x;
+        gz = (int)fv.y;  // .y holds gridZ in frontview
+        gy = frontViewY;  // front layer Y
+    } else {
+        Vector2 mouseGrid = ScreenToGrid(GetMousePosition());
+        gx = (int)mouseGrid.x;
+        gy = (int)mouseGrid.y;
+        gz = currentViewZ;
+    }
+    // Keep these available for downstream code (quickEdit, trains, etc.)
     Vector2 mouseGrid = ScreenToGrid(GetMousePosition());
     int z = currentViewZ;
-    
+
     // Update hover states
     int prevHoveredStockpile = hoveredStockpile;
-    hoveredStockpile = GetStockpileAtGrid((int)mouseGrid.x, (int)mouseGrid.y, z);
+    hoveredStockpile = GetStockpileAtGrid(gx, gy, gz);
     if (hoveredStockpile != prevHoveredStockpile) activeFilterCategory = -1;
-    hoveredWorkshop = FindWorkshopAt((int)mouseGrid.x, (int)mouseGrid.y, z);
+    hoveredWorkshop = FindWorkshopAt(gx, gy, gz);
     if (paused) {
-        Vector2 mouseWorld = ScreenToWorld(GetMousePosition());
-        hoveredMover = GetMoverAtWorldPos(mouseWorld.x, mouseWorld.y, z);
-        hoveredAnimal = GetAnimalAtWorldPos(mouseWorld.x, mouseWorld.y, z);
-        hoveredItemCount = GetItemsAtCell((int)mouseGrid.x, (int)mouseGrid.y, z, hoveredItemCell, 16);
+        if (frontViewMode) {
+            int depthLayers = frontViewDepth;
+            if (depthLayers < 1) depthLayers = 1;
+            int startY = frontViewY - depthLayers + 1;
+            if (startY < 0) startY = 0;
+            Vector2 fvWorld = ScreenToWorldFrontView(GetMousePosition());
+            hoveredMover = GetMoverAtFrontView(fvWorld.x, gz, startY, frontViewY);
+            hoveredAnimal = GetAnimalAtFrontView(fvWorld.x, gz, startY, frontViewY);
+        } else {
+            Vector2 mouseWorld = ScreenToWorld(GetMousePosition());
+            hoveredMover = GetMoverAtWorldPos(mouseWorld.x, mouseWorld.y, gz);
+            hoveredAnimal = GetAnimalAtWorldPos(mouseWorld.x, mouseWorld.y, gz);
+        }
+        hoveredItemCount = GetItemsAtCell(gx, gy, gz, hoveredItemCell, 16);
         // Check for designation hover (any type, not just mine)
-        Designation* d = GetDesignation((int)mouseGrid.x, (int)mouseGrid.y, z);
+        Designation* d = GetDesignation(gx, gy, gz);
         if (d && d->type != DESIGNATION_NONE) {
-            hoveredDesignationX = (int)mouseGrid.x;
-            hoveredDesignationY = (int)mouseGrid.y;
-            hoveredDesignationZ = z;
+            hoveredDesignationX = gx;
+            hoveredDesignationY = gy;
+            hoveredDesignationZ = gz;
         } else {
             hoveredDesignationX = -1;
             hoveredDesignationY = -1;

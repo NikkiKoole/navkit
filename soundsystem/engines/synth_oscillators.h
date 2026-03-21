@@ -1612,16 +1612,17 @@ static void initPipe(Voice *v, float frequency, float sampleRate) {
 
 // Initialize EPiano settings at note-on.
 // Configures 6 mode amplitudes based on frequency register, pickup position,
-// hammer hardness, and velocity. Supports both Rhodes (electromagnetic) and
-// Wurlitzer (electrostatic) pickup types.
+// hammer hardness, and velocity. Supports Rhodes (electromagnetic), Wurlitzer
+// (electrostatic), and Clavinet (contact) pickup types.
 static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
     float vel = clampf(velocity * 2.0f, 0.0f, 1.0f); // normalize from volume (0-0.5 typical) to 0-1
     int pickupT = epPickupType;
     ep->pickupType = pickupT;
 
-    // Register variation: timbre changes across the keyboard for both instruments.
+    // Register variation: timbre changes across the keyboard for all instruments.
     // Rhodes: Low=warm/piano, Mid=classic, High=bell/thin
     // Wurli:  Low=boxy/reedy/organ, Mid=classic bark, High=thin/buzzy
+    // Clav:   Low=thick/thumpy, Mid=funky, High=thin/percussive/clicky
     float freqNorm = clampf((freq - 80.0f) / 1200.0f, 0.0f, 1.0f);
 
     // Mode frequency ratios: blend between harmonic and instrument-specific inharmonic modes.
@@ -1633,8 +1634,16 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
     // but with slight inharmonic stretch from stiffness. The 2nd partial is weak because
     // the electrostatic pickup's symmetric geometry cancels even modes partially.
     static const float wurliInharmonic[EPIANO_MODES] = {1.0f, 2.02f, 3.01f, 5.04f, 7.05f, 9.08f};
+    // Clavinet D6: short steel string under tension with yarn-wound damper pad.
+    // Nearly harmonic (stiff string, not a beam), with slight inharmonicity from
+    // string stiffness (B coefficient). Upper modes include damper pad resonance —
+    // the characteristic "twang" comes from the pad releasing the string.
+    // Mode 5-6: damper/body resonance (more inharmonic, fast-decaying).
+    static const float clavinetInharmonic[EPIANO_MODES] = {1.0f, 2.003f, 3.012f, 4.028f, 5.15f, 6.35f};
 
-    const float *inharmonicRatios = (pickupT == EP_PICKUP_ELECTROSTATIC) ? wurliInharmonic : rhodesInharmonic;
+    const float *inharmonicRatios =
+        (pickupT == EP_PICKUP_CONTACT) ? clavinetInharmonic :
+        (pickupT == EP_PICKUP_ELECTROSTATIC) ? wurliInharmonic : rhodesInharmonic;
 
     float bt = epBellTone;
     float regBellBoost = freqNorm * 0.15f;
@@ -1643,7 +1652,12 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
     static const float modeBlendScale[EPIANO_MODES] = {0.0f, 0.0f, 0.05f, 0.4f, 0.8f, 1.0f};
     // Wurli reed modes are already close to harmonic, so blend more aggressively
     static const float wurliBlendScale[EPIANO_MODES] = {0.0f, 0.1f, 0.2f, 0.6f, 0.9f, 1.0f};
-    const float *blendScale = (pickupT == EP_PICKUP_ELECTROSTATIC) ? wurliBlendScale : modeBlendScale;
+    // Clavinet string modes are nearly harmonic — only upper modes (damper pad)
+    // get significant inharmonicity. Body modes stay locked to partials.
+    static const float clavinetBlendScale[EPIANO_MODES] = {0.0f, 0.0f, 0.05f, 0.2f, 0.5f, 0.75f};
+    const float *blendScale =
+        (pickupT == EP_PICKUP_CONTACT) ? clavinetBlendScale :
+        (pickupT == EP_PICKUP_ELECTROSTATIC) ? wurliBlendScale : modeBlendScale;
     float modeRatios[EPIANO_MODES];
     for (int i = 0; i < EPIANO_MODES; i++) {
         float modeBt = btEff * blendScale[i];
@@ -1658,8 +1672,18 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
     // but the reed's own mode shapes favor odd harmonics. Centered = clean, offset = buzzy.
     static const float wurliCentered[EPIANO_MODES]   = {1.00f, 0.10f, 0.55f, 0.08f, 0.35f, 0.05f};
     static const float wurliOffset[EPIANO_MODES]     = {0.60f, 0.20f, 0.70f, 0.15f, 0.50f, 0.10f};
-    const float *centeredAmps = (pickupT == EP_PICKUP_ELECTROSTATIC) ? wurliCentered : rhodesCentered;
-    const float *offsetAmps   = (pickupT == EP_PICKUP_ELECTROSTATIC) ? wurliOffset : rhodesOffset;
+    // Clavinet D6: two single-coil pickups under the strings (like a guitar).
+    // "Neck" position (centered) = warm, fundamental-heavy, damper pad resonance audible.
+    // "Bridge" position (offset) = bright, snappy, strong upper partials, the funk sound.
+    // Real D6 has a 4-position pickup selector; we interpolate between the two extremes.
+    static const float clavinetCentered[EPIANO_MODES] = {1.00f, 0.30f, 0.20f, 0.35f, 0.15f, 0.06f};
+    static const float clavinetOffset[EPIANO_MODES]   = {0.60f, 0.55f, 0.50f, 0.20f, 0.30f, 0.10f};
+    const float *centeredAmps =
+        (pickupT == EP_PICKUP_CONTACT) ? clavinetCentered :
+        (pickupT == EP_PICKUP_ELECTROSTATIC) ? wurliCentered : rhodesCentered;
+    const float *offsetAmps =
+        (pickupT == EP_PICKUP_CONTACT) ? clavinetOffset :
+        (pickupT == EP_PICKUP_ELECTROSTATIC) ? wurliOffset : rhodesOffset;
     float pos = epPickupPos;
 
     // Velocity-dependent hammer hardness: real neoprene tips compress more at higher
@@ -1738,7 +1762,7 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
 
     // Tone bar coupling (Rhodes only): extends decay of fundamental AND 2nd partial.
     // The tone bar is a resonant body tuned to reinforce the fundamental.
-    // Wurlitzer has no tone bar — reeds decay naturally without reinforcement.
+    // Wurlitzer and Clavinet have no tone bar — decay naturally without reinforcement.
     if (pickupT == EP_PICKUP_ELECTROMAGNETIC) {
         ep->modeDecays[0] *= (1.0f + epToneBar * 1.5f);
         ep->modeDecays[1] *= (1.0f + epToneBar * 0.6f);
@@ -1757,7 +1781,7 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
 
 // Process one sample of the electric piano oscillator.
 // Sums 6 harmonic sine modes with independent exponential decay,
-// then applies electromagnetic pickup nonlinearity (even harmonics / bark).
+// then applies pickup nonlinearity (Rhodes/Wurli/Clavinet).
 static float processEPianoOscillator(Voice *v, float sampleRate) {
     EPianoSettings *ep = &v->epianoSettings;
     float dt = 1.0f / sampleRate;
@@ -1787,9 +1811,22 @@ static float processEPianoOscillator(Voice *v, float sampleRate) {
     // Pickup nonlinearity — differs by pickup type:
     // Rhodes (electromagnetic): asymmetric sum² (even harmonics = bark) + sum³
     // Wurli (electrostatic): symmetric sum³ + sum⁵ (odd harmonics = reedy/nasal buzz)
+    // Clavinet (contact): mixed even+odd (sum² + sum³), symmetric clip — funky twang
     float velBoost = 1.0f + ep->strikeVelocity * ep->pickupDist;
     float output;
-    if (ep->pickupType == EP_PICKUP_ELECTROSTATIC) {
+    if (ep->pickupType == EP_PICKUP_CONTACT) {
+        // Contact/magnetic pickup: string plucked by tangent, two single-coil pickups.
+        // The Clavinet's character is brighter and more aggressive than Rhodes —
+        // the short string produces a rich harmonic series, and the pickup sees both
+        // even and odd harmonics. sum² gives the funky "honk", sum³ adds bite.
+        float k2 = ep->pickupDist * 0.8f * velBoost;   // even harmonics (honk/wah)
+        float k3 = ep->pickupDist * 1.0f * velBoost;   // odd harmonics (bite/growl)
+        float sum2 = sum * sum;
+        output = sum + k2 * sum2 + k3 * sum * sum2;
+        // Symmetric soft-clip — the Clavinet's pickup response is more symmetric
+        // than Rhodes (no tine-passing-coil asymmetry), but clips harder
+        output = tanhf(output * 1.2f);
+    } else if (ep->pickupType == EP_PICKUP_ELECTROSTATIC) {
         // Electrostatic pickup: reed between two charged plates — symmetric response.
         // Odd-order terms only (sum³, sum⁵) preserve the reed's odd-harmonic character.
         float k3 = ep->pickupDist * 1.5f * velBoost;
@@ -1819,6 +1856,130 @@ static float processEPianoOscillator(Voice *v, float sampleRate) {
     ep->dcBlockState = output;
 
     return output;
+}
+
+// ============================================================================
+// ORGAN (HAMMOND DRAWBAR) SYNTHESIS
+// ============================================================================
+// 9-drawbar tonewheel organ with key click, single-trigger percussion,
+// and tonewheel crosstalk. Drawbar ratios from Hammond B3:
+//   16'=0.5  5⅓'=1.5  8'=1.0  4'=2.0  2⅔'=3.0  2'=4.0  1⅗'=5.0  1⅓'=6.0  1'=8.0
+
+static const float organDrawbarRatios[ORGAN_DRAWBARS] = {
+    0.5f, 1.5f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 8.0f
+};
+
+static void initOrganSettings(OrganSettings *os, float freq, float velocity) {
+    (void)freq;
+    float vel = clampf(velocity * 2.0f, 0.0f, 1.0f);
+
+    // Cache drawbar levels from globals
+    for (int i = 0; i < ORGAN_DRAWBARS; i++) {
+        os->drawbarLevels[i] = orgDrawbars[i];
+        os->drawbarPhases[i] = 0.0f;
+    }
+
+    // Key click: velocity-scaled noise burst
+    os->clickEnv = orgClick * vel;
+
+    // Percussion: single-trigger — only fires if no other organ keys are held
+    if (orgPercOn && orgPercKeysHeld == 0) {
+        os->percEnv = 1.0f;
+    } else {
+        os->percEnv = 0.0f;
+    }
+    os->percPhase = 0.0f;
+    orgPercKeysHeld++;
+
+    // Scanner vibrato: clear delay buffer
+    for (int i = 0; i < ORGAN_VIBRATO_BUFSIZE; i++) os->vibratoBuffer[i] = 0.0f;
+    os->vibratoWritePos = 0;
+    os->scannerPhase = 0.0f;
+}
+
+static float processOrganOscillator(Voice *v, float sampleRate) {
+    OrganSettings *os = &v->organSettings;
+    float dt = 1.0f / sampleRate;
+    float sum = 0.0f;
+    float ampSum = 0.0f;
+
+    // Sum 9 drawbar sine oscillators
+    for (int i = 0; i < ORGAN_DRAWBARS; i++) {
+        float level = os->drawbarLevels[i];
+        if (level < 0.001f) continue;
+
+        float drawbarFreq = v->frequency * organDrawbarRatios[i];
+
+        // Skip if above Nyquist
+        if (drawbarFreq >= sampleRate * 0.5f) continue;
+
+        os->drawbarPhases[i] += drawbarFreq * dt;
+        os->drawbarPhases[i] = fmodf(os->drawbarPhases[i], 1.0f);
+
+        float s = sinf(os->drawbarPhases[i] * 2.0f * PI) * level;
+        sum += s;
+        ampSum += level;
+
+        // Tonewheel crosstalk: subtle leakage from adjacent wheels (~-36dB)
+        if (orgCrosstalk > 0.001f) {
+            sum += sinf((os->drawbarPhases[i] + 0.037f) * 2.0f * PI)
+                   * level * orgCrosstalk * 0.015f;
+        }
+    }
+
+    // Normalize to prevent clipping when many drawbars are active
+    if (ampSum > 1.0f) {
+        sum /= ampSum;
+    }
+
+    // Key click: filtered noise burst with ~3ms exponential decay
+    if (os->clickEnv > 0.0001f) {
+        sum += noise() * os->clickEnv * 0.5f;
+        os->clickEnv *= 1.0f - dt / 0.003f;
+        if (os->clickEnv < 0.0001f) os->clickEnv = 0.0f;
+    }
+
+    // Percussion: 2nd or 3rd harmonic with fast decay (single-trigger)
+    if (os->percEnv > 0.0001f) {
+        float percRatio = (orgPercHarmonic == 1) ? 3.0f : 2.0f;
+        os->percPhase += v->frequency * percRatio * dt;
+        os->percPhase = fmodf(os->percPhase, 1.0f);
+        float percLevel = orgPercSoft ? 0.5f : 1.0f;
+        float percDecay = orgPercFast ? 0.2f : 0.5f;
+        sum += sinf(os->percPhase * 2.0f * PI) * os->percEnv * percLevel * 0.5f;
+        os->percEnv *= 1.0f - dt / percDecay;
+        if (os->percEnv < 0.0001f) os->percEnv = 0.0f;
+    }
+
+    // Scanner vibrato/chorus (Hammond V/C system)
+    // Delay-line scanner: 6.9 Hz sine LFO modulates read position in short buffer.
+    // V modes = wet only (pitch vibrato), C modes = 50/50 dry+wet (chorus shimmer).
+    if (orgVibratoMode > 0 && orgVibratoMode <= 6) {
+        // Depth in samples: V1/C1=±0.15ms, V2/C2=±0.40ms, V3/C3=±0.70ms
+        static const float depthSamples[] = {0.0f, 6.6f, 17.6f, 30.9f, 6.6f, 17.6f, 30.9f};
+        float depth = depthSamples[orgVibratoMode];
+        bool isChorus = (orgVibratoMode >= 4);
+
+        // Write mixed drawbar sum into delay buffer
+        os->vibratoBuffer[os->vibratoWritePos] = sum;
+
+        // Scanner LFO: 6.9 Hz (locked to tonewheel motor, 60Hz/8.7 gear ratio)
+        os->scannerPhase += 6.9f * dt;
+        if (os->scannerPhase >= 1.0f) os->scannerPhase -= 1.0f;
+        float lfo = sinf(os->scannerPhase * 2.0f * PI);
+
+        // Modulated read from buffer center (32 samples ≈ 0.73ms)
+        float readDelay = 32.0f + lfo * depth;
+        float readPos = (float)os->vibratoWritePos - readDelay;
+        if (readPos < 0.0f) readPos += ORGAN_VIBRATO_BUFSIZE;
+        float wet = cubicHermite(os->vibratoBuffer, ORGAN_VIBRATO_BUFSIZE, readPos);
+
+        os->vibratoWritePos = (os->vibratoWritePos + 1) % ORGAN_VIBRATO_BUFSIZE;
+
+        sum = isChorus ? 0.5f * sum + 0.5f * wet : wet;
+    }
+
+    return sum;
 }
 
 #endif // PIXELSYNTH_SYNTH_OSCILLATORS_H

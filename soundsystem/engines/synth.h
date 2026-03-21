@@ -90,6 +90,7 @@ typedef enum {
     WAVE_PIPE,       // Blown pipe (waveguide + jet excitation)
     WAVE_SINE,       // Pure sine wave
     WAVE_EPIANO,     // Semi-physical Rhodes electric piano (tine modal bank + pickup nonlinearity)
+    WAVE_ORGAN,      // 9-drawbar tonewheel organ (Hammond B3)
 } WaveType;
 
 // Mono note priority mode
@@ -104,9 +105,9 @@ typedef enum {
 static const char* waveTypeNames[] = {
     "square", "saw", "triangle", "noise", "scw", "voice", "pluck",
     "additive", "mallet", "granular", "fm", "pd", "membrane", "bird",
-    "bowed", "pipe", "sine", "epiano"
+    "bowed", "pipe", "sine", "epiano", "organ"
 };
-static const int waveTypeCount = 18;
+static const int waveTypeCount = 19;
 
 // LFO tempo sync divisions
 typedef enum {
@@ -448,11 +449,12 @@ typedef struct {
     float dcPrev;
 } PipeSettings;
 
-// Electric piano synthesis settings — tine/reed modal bank + pickup nonlinearity
-// Supports both Rhodes (electromagnetic) and Wurlitzer (electrostatic) pickup types
+// Electric piano synthesis settings — tine/reed/string modal bank + pickup nonlinearity
+// Supports Rhodes (electromagnetic), Wurlitzer (electrostatic), and Clavinet (contact) pickup types
 #define EPIANO_MODES 6
 #define EP_PICKUP_ELECTROMAGNETIC 0  // Rhodes: tine + tone bar, asymmetric (even harmonics)
 #define EP_PICKUP_ELECTROSTATIC   1  // Wurlitzer: reed, symmetric (odd harmonics)
+#define EP_PICKUP_CONTACT         2  // Clavinet: string + damper pad, mixed harmonics
 
 typedef struct {
     float modeRatios[EPIANO_MODES];   // Frequency ratios (inharmonic — tine + tone bar physics)
@@ -471,6 +473,22 @@ typedef struct {
     float dcBlockPrev;       // Previous input for DC blocker
     int pickupType;          // EP_PICKUP_ELECTROMAGNETIC (Rhodes) or EP_PICKUP_ELECTROSTATIC (Wurli)
 } EPianoSettings;
+
+// Organ (Hammond drawbar) synthesis settings — 9 sine drawbars + key click + percussion
+#define ORGAN_DRAWBARS 9
+#define ORGAN_VIBRATO_BUFSIZE 64  // ~1.5ms delay line for scanner vibrato
+
+typedef struct {
+    float drawbarLevels[ORGAN_DRAWBARS]; // Cached drawbar levels at note-on
+    float drawbarPhases[ORGAN_DRAWBARS]; // Phase accumulators per drawbar
+    float clickEnv;                       // Key click envelope (fast decay)
+    float percEnv;                        // Percussion envelope (single-trigger)
+    float percPhase;                      // Percussion oscillator phase
+    // Scanner vibrato/chorus (Hammond V/C system)
+    float vibratoBuffer[ORGAN_VIBRATO_BUFSIZE]; // Short delay line for scanner
+    int   vibratoWritePos;                       // Circular buffer write position
+    float scannerPhase;                          // Scanner LFO phase [0,1)
+} OrganSettings;
 
 // Filter model enum: selects filter topology
 typedef enum {
@@ -667,6 +685,9 @@ typedef struct {
 
     // Electric piano (Rhodes) synthesis
     EPianoSettings epianoSettings;
+
+    // Organ (Hammond drawbar) synthesis
+    OrganSettings organSettings;
 
     // General pitch envelope (kicks, toms, zaps)
     float pitchEnvAmount;    // Semitones to sweep
@@ -1124,7 +1145,18 @@ typedef struct SynthContext {
     float epDecay;
     float epBell;
     float epBellTone;
-    int epPickupType;      // EP_PICKUP_ELECTROMAGNETIC or EP_PICKUP_ELECTROSTATIC
+    int epPickupType;      // EP_PICKUP_ELECTROMAGNETIC, EP_PICKUP_ELECTROSTATIC, or EP_PICKUP_CONTACT
+
+    // Organ (Hammond drawbar) tweakables
+    float orgDrawbars[ORGAN_DRAWBARS]; // Drawbar levels 0-1 (maps from 0-8 integer)
+    float orgClick;                     // Key click amount 0-1
+    int   orgPercOn;                    // Percussion on/off
+    int   orgPercHarmonic;              // 0=2nd, 1=3rd harmonic
+    int   orgPercSoft;                  // 0=normal, 1=soft (-3dB)
+    int   orgPercFast;                  // 0=slow (~500ms), 1=fast (~200ms)
+    float orgCrosstalk;                 // Tonewheel leakage 0-1
+    int   orgPercKeysHeld;              // Global: count of held organ keys (for single-trigger percussion)
+    int   orgVibratoMode;               // Scanner V/C: 0=off, 1=V1, 2=V2, 3=V3, 4=C1, 5=C2, 6=C3
 
     // General pitch envelope globals
     float notePitchEnvAmount;
@@ -1286,6 +1318,18 @@ static void initSynthContext(SynthContext* ctx) {
     ctx->epBell = 0.5f;
     ctx->epBellTone = 0.5f;
     ctx->epPickupType = EP_PICKUP_ELECTROMAGNETIC;
+
+    // Organ defaults
+    for (int i = 0; i < ORGAN_DRAWBARS; i++) ctx->orgDrawbars[i] = 0.0f;
+    ctx->orgDrawbars[2] = 1.0f;  // 8' fundamental at full
+    ctx->orgClick = 0.3f;
+    ctx->orgPercOn = 0;
+    ctx->orgPercHarmonic = 0;
+    ctx->orgPercSoft = 0;
+    ctx->orgPercFast = 1;
+    ctx->orgCrosstalk = 0.0f;
+    ctx->orgPercKeysHeld = 0;
+    ctx->orgVibratoMode = 0;
 
     // Glide
     ctx->glideTime = 0.1f;
@@ -1477,6 +1521,15 @@ static void _ensureSynthCtx(void) {
 #define epBell (synthCtx->epBell)
 #define epBellTone (synthCtx->epBellTone)
 #define epPickupType (synthCtx->epPickupType)
+#define orgDrawbars (synthCtx->orgDrawbars)
+#define orgClick (synthCtx->orgClick)
+#define orgPercOn (synthCtx->orgPercOn)
+#define orgPercHarmonic (synthCtx->orgPercHarmonic)
+#define orgPercSoft (synthCtx->orgPercSoft)
+#define orgPercFast (synthCtx->orgPercFast)
+#define orgCrosstalk (synthCtx->orgCrosstalk)
+#define orgPercKeysHeld (synthCtx->orgPercKeysHeld)
+#define orgVibratoMode (synthCtx->orgVibratoMode)
 #define notePitchEnvAmount (synthCtx->notePitchEnvAmount)
 #define notePitchEnvDecay (synthCtx->notePitchEnvDecay)
 #define notePitchEnvCurve (synthCtx->notePitchEnvCurve)
@@ -2233,6 +2286,9 @@ static float processVoice(Voice *v, float sampleRate) {
         case WAVE_EPIANO:
             sample = processEPianoOscillator(v, sampleRate);
             break;
+        case WAVE_ORGAN:
+            sample = processOrganOscillator(v, sampleRate);
+            break;
     }
 
     // Restore FM modIndex base value after oscillator processing
@@ -2708,11 +2764,14 @@ static void monoStackClear(void) {
 // Release a note
 static void releaseNote(int voiceIdx) {
     if (voiceIdx < 0 || voiceIdx >= NUM_VOICES) return;
-    if (synthVoices[voiceIdx].envStage > 0 && synthVoices[voiceIdx].envStage < 4) {
-        synthVoices[voiceIdx].releaseLevel = synthVoices[voiceIdx].envLevel;
-        synthVoices[voiceIdx].envStage = 4;
-        synthVoices[voiceIdx].envPhase = 0.0f;
-        synthVoices[voiceIdx].arpEnabled = false; // Stop arp from retriggering
+    Voice *rv = &synthVoices[voiceIdx];
+    if (rv->envStage > 0 && rv->envStage < 4) {
+        rv->releaseLevel = rv->envLevel;
+        rv->envStage = 4;
+        rv->envPhase = 0.0f;
+        rv->arpEnabled = false; // Stop arp from retriggering
+        // Organ: decrement held key count for single-trigger percussion
+        if (rv->wave == WAVE_ORGAN && orgPercKeysHeld > 0) orgPercKeysHeld--;
     }
 }
 
@@ -3475,6 +3534,20 @@ static int playEPiano(float freq) {
     int voiceIdx = initVoiceCommon(freq, WAVE_EPIANO, &VOICE_INIT_EPIANO, NULL);
     Voice *v = &synthVoices[voiceIdx];
     initEPianoSettings(&v->epianoSettings, freq, noteVolume);
+    return voiceIdx;
+}
+
+// Organ init params
+static const VoiceInitParams VOICE_INIT_ORGAN = {
+    .supportsMono = true
+};
+
+// Play organ note
+__attribute__((unused))
+static int playOrgan(float freq) {
+    int voiceIdx = initVoiceCommon(freq, WAVE_ORGAN, &VOICE_INIT_ORGAN, NULL);
+    Voice *v = &synthVoices[voiceIdx];
+    initOrganSettings(&v->organSettings, freq, noteVolume);
     return voiceIdx;
 }
 

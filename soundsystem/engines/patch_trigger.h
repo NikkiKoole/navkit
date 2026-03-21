@@ -147,6 +147,14 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     epBell = p->p_epBell;
     epBellTone = p->p_epBellTone;
     epPickupType = p->p_epPickupType;
+    for (int i = 0; i < ORGAN_DRAWBARS; i++) orgDrawbars[i] = p->p_orgDrawbar[i];
+    orgClick = p->p_orgClick;
+    orgPercOn = p->p_orgPercOn;
+    orgPercHarmonic = p->p_orgPercHarmonic;
+    orgPercSoft = p->p_orgPercSoft;
+    orgPercFast = p->p_orgPercFast;
+    orgCrosstalk = p->p_orgCrosstalk;
+    orgVibratoMode = p->p_orgVibratoMode;
     noteExpRelease = p->p_expRelease;
     notePitchEnvAmount = p->p_pitchEnvAmount;
     notePitchEnvDecay = p->p_pitchEnvDecay;
@@ -227,6 +235,7 @@ static int playNoteWithPatch(float freq, const SynthPatch *p) {
         case WAVE_BOWED:    return playBowed(freq);
         case WAVE_PIPE:     return playPipe(freq);
         case WAVE_EPIANO:   return playEPiano(freq);
+        case WAVE_ORGAN:    return playOrgan(freq);
         default:            return playNote(freq, wave);
     }
 }

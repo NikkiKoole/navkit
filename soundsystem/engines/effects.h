@@ -74,6 +74,24 @@ static const int kFdnDelayLengths[FDN_NUM_LINES] = {
 #define TREMOLO_SHAPE_SQUARE   1
 #define TREMOLO_SHAPE_TRIANGLE 2
 
+// Leslie rotary speaker constants
+#define LESLIE_BUFFER_SIZE 512            // ~11.6ms at 44100Hz (horn Doppler delay)
+#define LESLIE_CROSSOVER_FREQ 800.0f      // Hz, drum/horn crossover
+#define LESLIE_BASE_DELAY_MS 3.0f         // Horn base delay (center of modulation)
+#define LESLIE_MAX_DOPPLER_MS 0.5f        // Max Doppler excursion ±0.5ms
+#define LESLIE_HORN_SLOW   0.8f           // Chorale horn rate Hz (48 RPM)
+#define LESLIE_HORN_FAST   6.6f           // Tremolo horn rate Hz (396 RPM)
+#define LESLIE_DRUM_SLOW   0.7f           // Chorale drum rate Hz (42 RPM)
+#define LESLIE_DRUM_FAST   5.8f           // Tremolo drum rate Hz (348 RPM)
+#define LESLIE_HORN_ACCEL_TC 0.7f         // Horn spin-up time constant (s)
+#define LESLIE_HORN_DECEL_TC 1.2f         // Horn spin-down time constant (s)
+#define LESLIE_DRUM_ACCEL_TC 4.0f         // Drum spin-up time constant (s)
+#define LESLIE_DRUM_DECEL_TC 5.0f         // Drum spin-down time constant (s)
+#define LESLIE_SPEED_STOP 0
+#define LESLIE_SPEED_SLOW 1
+#define LESLIE_SPEED_FAST 2
+#define LESLIE_CROSS_COEFF 0.1074f        // 1-exp(-2*PI*800/44100), precomputed
+
 // Comb filter constants (pitched delay with feedback)
 #define COMB_BUFFER_SIZE 2205         // SAMPLE_RATE / 20Hz = longest delay
 #define COMB_MIN_FREQ 20.0f           // Lowest pitch (longest delay)
@@ -238,6 +256,14 @@ typedef struct {
     float tremoloDepth;      // Modulation depth (0-1)
     int   tremoloShape;      // TREMOLO_SHAPE_SINE, SQUARE, TRIANGLE
 
+    // Leslie rotary speaker
+    bool  leslieEnabled;
+    int   leslieSpeed;       // LESLIE_SPEED_STOP/SLOW/FAST
+    float leslieDrive;
+    float leslieBalance;
+    float leslieDoppler;
+    float leslieMix;
+
     // Wah / Auto-wah
     bool wahEnabled;
     int   wahMode;           // WAH_MODE_LFO or WAH_MODE_ENVELOPE
@@ -309,6 +335,13 @@ typedef struct {
 
     // Tremolo state
     float busTremoloPhase;
+
+    // Leslie state
+    float busLeslieBuf[LESLIE_BUFFER_SIZE];
+    int   busLeslieWritePos;
+    float busLeslieHornPhase, busLeslieDrumPhase;
+    float busLeslieHornRate, busLeslieDrumRate;
+    float busLeslieCrossLp;
 
     // Wah state
     float busWahPhase;
@@ -558,6 +591,14 @@ typedef struct {
     int   tremoloShape;       // TREMOLO_SHAPE_SINE, SQUARE, TRIANGLE
     float tremoloPhase;       // Internal LFO phase
 
+    // Leslie rotary speaker
+    bool  leslieEnabled;
+    int   leslieSpeed;        // LESLIE_SPEED_STOP/SLOW/FAST
+    float leslieDrive;        // Pre-amp overdrive 0-1
+    float leslieBalance;      // Horn/drum balance (0=drum, 0.5=equal, 1=horn)
+    float leslieDoppler;      // Horn Doppler depth 0-1
+    float leslieMix;          // Dry/wet 0-1
+
     // Tempo (for beat-synced effects — set by caller or daw sync)
     float bpm;                // Current BPM (default 120)
 } Effects;
@@ -714,6 +755,13 @@ typedef struct EffectsContext {
     // Chorus buffer and state
     float chorusBuffer[CHORUS_BUFFER_SIZE];
     int chorusWritePos;
+
+    // Leslie buffer and state
+    float leslieBuffer[LESLIE_BUFFER_SIZE];
+    int   leslieWritePos;
+    float leslieHornPhase, leslieDrumPhase;
+    float leslieHornRate, leslieDrumRate;
+    float leslieCrossoverLp;
 
     // Flanger buffer and state
     float flangerBuffer[FLANGER_BUFFER_SIZE];
@@ -895,6 +943,14 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->params.tremoloDepth = 0.5f;
     ctx->params.tremoloShape = TREMOLO_SHAPE_SINE;
     ctx->params.tremoloPhase = 0.0f;
+
+    // Leslie - off by default
+    ctx->params.leslieEnabled = false;
+    ctx->params.leslieSpeed = LESLIE_SPEED_SLOW;
+    ctx->params.leslieDrive = 0.0f;
+    ctx->params.leslieBalance = 0.5f;
+    ctx->params.leslieDoppler = 0.7f;
+    ctx->params.leslieMix = 1.0f;
 
     // Wah - off by default
     ctx->params.wahEnabled = false;
@@ -1342,6 +1398,91 @@ static float processTremolo(float sample) {
     fx.tremoloPhase += fx.tremoloRate * (1.0f / SAMPLE_RATE);
     if (fx.tremoloPhase >= 1.0f) fx.tremoloPhase -= 1.0f;
     return sample * (1.0f - fx.tremoloDepth * (1.0f - mod));
+}
+
+// Leslie rotary speaker — horn (treble) with Doppler + AM, drum (bass) with AM
+// Models the Leslie 122: 1-pole crossover at 800 Hz, independent horn/drum rotors
+// with asymmetric spin-up/down (horn light/fast, drum heavy/slow).
+static float leslieReadInterpolated(float delaySamples) {
+    float readPos = (float)fxCtx->leslieWritePos - delaySamples;
+    if (readPos < 0) readPos += LESLIE_BUFFER_SIZE;
+    return hermiteInterp(fxCtx->leslieBuffer, LESLIE_BUFFER_SIZE, readPos);
+}
+
+static float processLeslie(float sample, float dt) {
+    _ensureFxCtx();
+    if (!fx.leslieEnabled) return sample;
+
+    float dry = sample;
+
+    // Pre-amp overdrive (tube amp before cabinet)
+    if (fx.leslieDrive > 0.001f) {
+        float gain = 1.0f + fx.leslieDrive * 5.0f;
+        sample *= gain;
+        // Padé approximant of tanh (fast, no libm call)
+        float x2 = sample * sample;
+        sample = sample * (27.0f + x2) / (27.0f + 9.0f * x2);
+    }
+
+    // Rate slewing — horn and drum ramp independently toward target speed
+    float hornTarget, drumTarget;
+    switch (fx.leslieSpeed) {
+        case LESLIE_SPEED_STOP: hornTarget = 0.0f; drumTarget = 0.0f; break;
+        case LESLIE_SPEED_FAST: hornTarget = LESLIE_HORN_FAST; drumTarget = LESLIE_DRUM_FAST; break;
+        default:                hornTarget = LESLIE_HORN_SLOW; drumTarget = LESLIE_DRUM_SLOW; break;
+    }
+    float hornTc = (hornTarget > fxCtx->leslieHornRate) ? LESLIE_HORN_ACCEL_TC : LESLIE_HORN_DECEL_TC;
+    float drumTc = (drumTarget > fxCtx->leslieDrumRate) ? LESLIE_DRUM_ACCEL_TC : LESLIE_DRUM_DECEL_TC;
+    float hornAlpha = dt / hornTc;
+    float drumAlpha = dt / drumTc;
+    if (hornAlpha > 1.0f) hornAlpha = 1.0f;
+    if (drumAlpha > 1.0f) drumAlpha = 1.0f;
+    fxCtx->leslieHornRate += hornAlpha * (hornTarget - fxCtx->leslieHornRate);
+    fxCtx->leslieDrumRate += drumAlpha * (drumTarget - fxCtx->leslieDrumRate);
+
+    // 1-pole crossover at 800 Hz (LP + HP = perfect reconstruction)
+    fxCtx->leslieCrossoverLp += LESLIE_CROSS_COEFF * (sample - fxCtx->leslieCrossoverLp);
+    float lo = fxCtx->leslieCrossoverLp;   // drum band
+    float hi = sample - lo;                 // horn band
+
+    // Drum rotor: gentle sine AM (30% depth, bass doesn't need Doppler)
+    fxCtx->leslieDrumPhase += fxCtx->leslieDrumRate * dt;
+    if (fxCtx->leslieDrumPhase >= 1.0f) fxCtx->leslieDrumPhase -= 1.0f;
+    float drumAM = 1.0f - 0.3f * (0.5f - 0.5f * cosf(fxCtx->leslieDrumPhase * 2.0f * PI));
+    lo *= drumAM;
+
+    // Horn rotor: AM + Doppler via modulated delay
+    // Write treble to delay buffer
+    fxCtx->leslieBuffer[fxCtx->leslieWritePos] = hi;
+    fxCtx->leslieWritePos = (fxCtx->leslieWritePos + 1) % LESLIE_BUFFER_SIZE;
+
+    fxCtx->leslieHornPhase += fxCtx->leslieHornRate * dt;
+    if (fxCtx->leslieHornPhase >= 1.0f) fxCtx->leslieHornPhase -= 1.0f;
+
+    // Shaped AM: cos + 2nd harmonic gives directional horn bell pattern
+    // (sharper peak facing mic, flatter trough facing away)
+    float hornAngle = fxCtx->leslieHornPhase * 2.0f * PI;
+    float hornAM = 0.5f + 0.5f * cosf(hornAngle) + 0.12f * cosf(2.0f * hornAngle);
+    hornAM = hornAM * 0.75f + 0.15f;
+    if (hornAM < 0.1f) hornAM = 0.1f;
+    if (hornAM > 1.0f) hornAM = 1.0f;
+
+    // Doppler: modulated delay tap (pitch wobble from horn rotation)
+    float baseDelaySamples = LESLIE_BASE_DELAY_MS * 0.001f * SAMPLE_RATE;
+    float dopplerExcursion = LESLIE_MAX_DOPPLER_MS * 0.001f * SAMPLE_RATE * fx.leslieDoppler;
+    float delaySamples = baseDelaySamples + dopplerExcursion * sinf(hornAngle);
+    hi = leslieReadInterpolated(delaySamples);
+    hi *= hornAM;
+
+    // Recombine with balance control
+    float bal = fx.leslieBalance;
+    float drumLevel = 2.0f * (1.0f - bal);
+    float hornLevel = 2.0f * bal;
+    if (drumLevel > 1.0f) drumLevel = 1.0f;
+    if (hornLevel > 1.0f) hornLevel = 1.0f;
+    float wet = lo * drumLevel + hi * hornLevel;
+
+    return dry * (1.0f - fx.leslieMix) + wet * fx.leslieMix;
 }
 
 // Distortion - multiple waveshaping modes
@@ -2231,6 +2372,7 @@ static float processEffects(float sample, float dt) {
     sample = processOctaver(sample);
     sample = processTremolo(sample);
     sample = processWah(sample);
+    sample = processLeslie(sample, dt);
     sample = processDistortion(sample);
     sample = processBitcrusher(sample);
     sample = processChorus(sample, dt);
@@ -2276,6 +2418,7 @@ static float processEffectsWithBuses(float drumBus, float synthBus, float dt) {
     sample = processOctaver(sample);
     sample = processTremolo(sample);
     sample = processWah(sample);
+    sample = processLeslie(sample, dt);
     sample = processDistortion(sample);
     sample = processBitcrusher(sample);
     sample = processChorus(sample, dt);
@@ -2540,6 +2683,70 @@ static float processBusEffects(float input, int busIndex, float dt) {
         if (state->busWahIc2eq < -4.0f) state->busWahIc2eq = -4.0f;
         float wahBp = wv1;
         sample = wahDry * (1.0f - bus->wahMix) + wahBp * bus->wahMix;
+    }
+
+    // === LESLIE ROTARY SPEAKER ===
+    if (bus->leslieEnabled) {
+        float lDry = sample;
+
+        // Pre-amp overdrive
+        if (bus->leslieDrive > 0.001f) {
+            float gain = 1.0f + bus->leslieDrive * 5.0f;
+            sample *= gain;
+            float x2 = sample * sample;
+            sample = sample * (27.0f + x2) / (27.0f + 9.0f * x2);
+        }
+
+        // Rate slewing
+        float hornTgt = (bus->leslieSpeed == LESLIE_SPEED_FAST) ? LESLIE_HORN_FAST :
+                         (bus->leslieSpeed == LESLIE_SPEED_STOP) ? 0.0f : LESLIE_HORN_SLOW;
+        float drumTgt = (bus->leslieSpeed == LESLIE_SPEED_FAST) ? LESLIE_DRUM_FAST :
+                         (bus->leslieSpeed == LESLIE_SPEED_STOP) ? 0.0f : LESLIE_DRUM_SLOW;
+        float hTc = (hornTgt > state->busLeslieHornRate) ? LESLIE_HORN_ACCEL_TC : LESLIE_HORN_DECEL_TC;
+        float dTc = (drumTgt > state->busLeslieDrumRate) ? LESLIE_DRUM_ACCEL_TC : LESLIE_DRUM_DECEL_TC;
+        float hA = dt / hTc; if (hA > 1.0f) hA = 1.0f;
+        float dA = dt / dTc; if (dA > 1.0f) dA = 1.0f;
+        state->busLeslieHornRate += hA * (hornTgt - state->busLeslieHornRate);
+        state->busLeslieDrumRate += dA * (drumTgt - state->busLeslieDrumRate);
+
+        // 1-pole crossover at 800 Hz
+        state->busLeslieCrossLp += LESLIE_CROSS_COEFF * (sample - state->busLeslieCrossLp);
+        float lo = state->busLeslieCrossLp;
+        float hi = sample - lo;
+
+        // Drum AM
+        state->busLeslieDrumPhase += state->busLeslieDrumRate * dt;
+        if (state->busLeslieDrumPhase >= 1.0f) state->busLeslieDrumPhase -= 1.0f;
+        float drumAM = 1.0f - 0.3f * (0.5f - 0.5f * cosf(state->busLeslieDrumPhase * 2.0f * PI));
+        lo *= drumAM;
+
+        // Horn: delay buffer + AM + Doppler
+        state->busLeslieBuf[state->busLeslieWritePos] = hi;
+        state->busLeslieWritePos = (state->busLeslieWritePos + 1) % LESLIE_BUFFER_SIZE;
+
+        state->busLeslieHornPhase += state->busLeslieHornRate * dt;
+        if (state->busLeslieHornPhase >= 1.0f) state->busLeslieHornPhase -= 1.0f;
+
+        float hornAngle = state->busLeslieHornPhase * 2.0f * PI;
+        float hornAM = 0.5f + 0.5f * cosf(hornAngle) + 0.12f * cosf(2.0f * hornAngle);
+        hornAM = hornAM * 0.75f + 0.15f;
+        if (hornAM < 0.1f) hornAM = 0.1f;
+        if (hornAM > 1.0f) hornAM = 1.0f;
+
+        float baseDelay = LESLIE_BASE_DELAY_MS * 0.001f * SAMPLE_RATE;
+        float dopplerExc = LESLIE_MAX_DOPPLER_MS * 0.001f * SAMPLE_RATE * bus->leslieDoppler;
+        float delSamples = baseDelay + dopplerExc * sinf(hornAngle);
+        float readPos = (float)state->busLeslieWritePos - delSamples;
+        if (readPos < 0) readPos += LESLIE_BUFFER_SIZE;
+        hi = hermiteInterp(state->busLeslieBuf, LESLIE_BUFFER_SIZE, readPos);
+        hi *= hornAM;
+
+        // Recombine
+        float bal = bus->leslieBalance;
+        float dLvl = 2.0f * (1.0f - bal); if (dLvl > 1.0f) dLvl = 1.0f;
+        float hLvl = 2.0f * bal;           if (hLvl > 1.0f) hLvl = 1.0f;
+        float wet = lo * dLvl + hi * hLvl;
+        sample = lDry * (1.0f - bus->leslieMix) + wet * bus->leslieMix;
     }
 
     // === FILTER (SVF - State Variable Filter) ===
@@ -2868,6 +3075,7 @@ static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
     sample = processOctaver(sample);
     sample = processTremolo(sample);
     sample = processWah(sample);
+    sample = processLeslie(sample, dt);
     sample = processDistortion(sample);
     sample = processBitcrusher(sample);
     sample = processChorus(sample, dt);
@@ -2984,6 +3192,7 @@ static void processMixerOutputStereo(float busInputs[NUM_BUSES], float dt, float
     sample = processOctaver(sample);
     sample = processTremolo(sample);
     sample = processWah(sample);
+    sample = processLeslie(sample, dt);
     sample = processDistortion(sample);
     sample = processBitcrusher(sample);
     sample = processChorus(sample, dt);
@@ -3256,6 +3465,20 @@ static void setBusTremolo(int bus, bool enabled, float rate, float depth, int sh
         mixerCtx->bus[bus].tremoloRate = rate;
         mixerCtx->bus[bus].tremoloDepth = depth;
         mixerCtx->bus[bus].tremoloShape = shape;
+    }
+}
+
+__attribute__((unused))
+static void setBusLeslie(int bus, bool enabled, int speed, float drive,
+                         float balance, float doppler, float mix) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].leslieEnabled = enabled;
+        mixerCtx->bus[bus].leslieSpeed = speed;
+        mixerCtx->bus[bus].leslieDrive = drive;
+        mixerCtx->bus[bus].leslieBalance = balance;
+        mixerCtx->bus[bus].leslieDoppler = doppler;
+        mixerCtx->bus[bus].leslieMix = mix;
     }
 }
 

@@ -329,6 +329,23 @@ Vector2 ScreenToWorld(Vector2 screen) {
     return (Vector2){(screen.x - offset.x) / zoom, (screen.y - offset.y) / zoom};
 }
 
+// Front-view coordinate mapping: screen → (gridX, gridZ), worldY = frontViewY
+// Returns gridX in .x and gridZ in .y (note: .y is Z, not Y!)
+Vector2 ScreenToGridFrontView(Vector2 screen) {
+    float size = CELL_SIZE * zoom;
+    float gridX = (screen.x - offset.x) / size;
+    // screenY = offset.y + (gridDepth - 1 - z) * size  (front layer has layerOffsetY=0)
+    float gridZ = (float)(gridDepth - 1) - (screen.y - offset.y) / size;
+    return (Vector2){gridX, gridZ};
+}
+
+// Front-view world mapping: screen → (worldX, worldZ_as_float), worldY = frontViewY * CELL_SIZE
+Vector2 ScreenToWorldFrontView(Vector2 screen) {
+    float worldX = (screen.x - offset.x) / zoom;
+    float worldZ = (float)(gridDepth - 1) * CELL_SIZE - (screen.y - offset.y) / zoom;
+    return (Vector2){worldX, worldZ};
+}
+
 int GetStockpileAtGrid(int gx, int gy, int gz) {
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         Stockpile* sp = &stockpiles[i];
@@ -378,6 +395,50 @@ int GetAnimalAtWorldPos(float wx, float wy, int wz) {
         float dist = sqrtf(dx*dx + dy*dy);
         if (dist < radius && dist < bestDist) {
             bestDist = dist;
+            bestIdx = i;
+        }
+    }
+    return bestIdx;
+}
+
+// Front-view mover finder: match by worldX and worldZ, filter by Y-slice range
+int GetMoverAtFrontView(float worldX, int worldZ, int yStart, int yEnd) {
+    float bestDist = 999999.0f;
+    int bestIdx = -1;
+    float radius = CELL_SIZE * 0.6f;
+
+    for (int i = 0; i < moverCount; i++) {
+        Mover* m = &movers[i];
+        if (!m->active) continue;
+        if ((int)m->z != worldZ) continue;
+        int moverCellY = (int)(m->y / CELL_SIZE);
+        if (moverCellY < yStart || moverCellY > yEnd) continue;
+
+        float dx = m->x - worldX;
+        if (fabsf(dx) < radius && fabsf(dx) < bestDist) {
+            bestDist = fabsf(dx);
+            bestIdx = i;
+        }
+    }
+    return bestIdx;
+}
+
+// Front-view animal finder: match by worldX and worldZ, filter by Y-slice range
+int GetAnimalAtFrontView(float worldX, int worldZ, int yStart, int yEnd) {
+    float bestDist = 999999.0f;
+    int bestIdx = -1;
+    float radius = CELL_SIZE * 0.6f;
+
+    for (int i = 0; i < animalCount; i++) {
+        Animal* a = &animals[i];
+        if (!a->active) continue;
+        if ((int)a->z != worldZ) continue;
+        int animalCellY = (int)(a->y / CELL_SIZE);
+        if (animalCellY < yStart || animalCellY > yEnd) continue;
+
+        float dx = a->x - worldX;
+        if (fabsf(dx) < radius && fabsf(dx) < bestDist) {
+            bestDist = fabsf(dx);
             bestIdx = i;
         }
     }
@@ -1903,9 +1964,25 @@ int main(int argc, char** argv) {
             }
         }
 
-        if (!frontViewMode) {
+        // Compute tooltip grid coordinates (view-mode aware)
+        {
+        int ttX, ttY, ttZ;  // tooltip cell coords
+        Vector2 ttGridVec;
+        if (frontViewMode) {
+            Vector2 fv = ScreenToGridFrontView(GetMousePosition());
+            ttX = (int)fv.x;
+            ttZ = (int)fv.y;  // .y holds gridZ in frontview
+            ttY = frontViewY;
+            ttGridVec = (Vector2){(float)ttX, (float)ttY};
+        } else {
+            ttGridVec = ScreenToGrid(GetMousePosition());
+            ttX = (int)ttGridVec.x;
+            ttY = (int)ttGridVec.y;
+            ttZ = currentViewZ;
+        }
+
         if (hoveredStockpile >= 0) {
-            DrawStockpileTooltip(hoveredStockpile, GetMousePosition(), ScreenToGrid(GetMousePosition()));
+            DrawStockpileTooltip(hoveredStockpile, GetMousePosition(), ttGridVec);
         }
 
         if (hoveredWorkshop >= 0 && hoveredStockpile < 0) {
@@ -1921,42 +1998,39 @@ int main(int argc, char** argv) {
         }
 
         if (hoveredItemCount > 0 && hoveredMover < 0 && hoveredStockpile < 0) {
-            Vector2 mouseGrid = ScreenToGrid(GetMousePosition());
-            DrawItemTooltip(hoveredItemCell, hoveredItemCount, GetMousePosition(), (int)mouseGrid.x, (int)mouseGrid.y);
+            DrawItemTooltip(hoveredItemCell, hoveredItemCount, GetMousePosition(), ttX, ttY);
         }
 
         if (hoveredStockpile < 0 && hoveredMover < 0 && hoveredItemCount == 0 && hoveredWorkshop < 0) {
-            Vector2 mouseGrid = ScreenToGrid(GetMousePosition());
-            int cellX = (int)mouseGrid.x;
-            int cellY = (int)mouseGrid.y;
-            if (cellX >= 0 && cellX < gridWidth && cellY >= 0 && cellY < gridHeight) {
+            if (ttX >= 0 && ttX < gridWidth && ttY >= 0 && ttY < gridHeight &&
+                ttZ >= 0 && ttZ < gridDepth) {
                 // Check for train station at this cell
-                int stIdx = GetStationAt(cellX, cellY, currentViewZ);
+                int stIdx = GetStationAt(ttX, ttY, ttZ);
                 if (stIdx >= 0) {
                     DrawStationTooltip(stIdx, GetMousePosition());
                 }
                 // Check for blueprint at this cell
-                else if (GetBlueprintAt(cellX, cellY, currentViewZ) >= 0) {
-                    DrawBlueprintTooltip(GetBlueprintAt(cellX, cellY, currentViewZ), GetMousePosition());
+                else if (GetBlueprintAt(ttX, ttY, ttZ) >= 0) {
+                    DrawBlueprintTooltip(GetBlueprintAt(ttX, ttY, ttZ), GetMousePosition());
                 }
                 // Check for any designation at this cell
-                else if (GetDesignation(cellX, cellY, currentViewZ) != NULL) {
-                    DrawDesignationTooltip(cellX, cellY, currentViewZ, GetMousePosition());
+                else if (GetDesignation(ttX, ttY, ttZ) != NULL) {
+                    DrawDesignationTooltip(ttX, ttY, ttZ, GetMousePosition());
                 }
                 else if (paused) {
                     // When paused, show comprehensive cell info
-                    DrawCellTooltip(cellX, cellY, currentViewZ, GetMousePosition());
-                } else if (HasWater(cellX, cellY, currentViewZ) ||
-                    waterGrid[currentViewZ][cellY][cellX].isSource ||
-                    waterGrid[currentViewZ][cellY][cellX].isDrain) {
+                    DrawCellTooltip(ttX, ttY, ttZ, GetMousePosition());
+                } else if (HasWater(ttX, ttY, ttZ) ||
+                    waterGrid[ttZ][ttY][ttX].isSource ||
+                    waterGrid[ttZ][ttY][ttX].isDrain) {
                     // When running, only show water tooltip if there's water
-                    DrawWaterTooltip(cellX, cellY, currentViewZ, GetMousePosition());
+                    DrawWaterTooltip(ttX, ttY, ttZ, GetMousePosition());
                 }
             }
         }
 
         DrawTooltip();
-        } // end !frontViewMode tooltips
+        }
         Console_Draw();
 
         // Cutscene system (renders as overlay on top of game)

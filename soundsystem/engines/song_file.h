@@ -385,6 +385,18 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "epBell", p->p_epBell);
     _sf_writeFloat(f, "epBellTone", p->p_epBellTone);
     _sf_writeInt(f, "epPickupType", p->p_epPickupType);
+    // Organ
+    for (int db = 0; db < ORGAN_DRAWBARS; db++) {
+        char dbKey[16]; snprintf(dbKey, sizeof(dbKey), "orgDrawbar%d", db);
+        _sf_writeFloat(f, dbKey, p->p_orgDrawbar[db]);
+    }
+    _sf_writeFloat(f, "orgClick", p->p_orgClick);
+    _sf_writeInt(f, "orgPercOn", p->p_orgPercOn);
+    _sf_writeInt(f, "orgPercHarmonic", p->p_orgPercHarmonic);
+    _sf_writeInt(f, "orgPercSoft", p->p_orgPercSoft);
+    _sf_writeInt(f, "orgPercFast", p->p_orgPercFast);
+    _sf_writeFloat(f, "orgCrosstalk", p->p_orgCrosstalk);
+    _sf_writeInt(f, "orgVibratoMode", p->p_orgVibratoMode);
     // Pitch envelope
     _sf_writeFloat(f, "pitchEnvAmount", p->p_pitchEnvAmount);
     _sf_writeFloat(f, "pitchEnvDecay", p->p_pitchEnvDecay);
@@ -626,6 +638,12 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
     _sf_writeFloat(f, "tremoloRate", d->sfEffects.tremoloRate);
     _sf_writeFloat(f, "tremoloDepth", d->sfEffects.tremoloDepth);
     _sf_writeInt(f, "tremoloShape", d->sfEffects.tremoloShape);
+    _sf_writeBool(f, "leslieEnabled", d->sfEffects.leslieEnabled);
+    _sf_writeInt(f, "leslieSpeed", d->sfEffects.leslieSpeed);
+    _sf_writeFloat(f, "leslieDrive", d->sfEffects.leslieDrive);
+    _sf_writeFloat(f, "leslieBalance", d->sfEffects.leslieBalance);
+    _sf_writeFloat(f, "leslieDoppler", d->sfEffects.leslieDoppler);
+    _sf_writeFloat(f, "leslieMix", d->sfEffects.leslieMix);
     _sf_writeBool(f, "wahEnabled", d->sfEffects.wahEnabled);
     _sf_writeInt(f, "wahMode", d->sfEffects.wahMode);
     _sf_writeFloat(f, "wahRate", d->sfEffects.wahRate);
@@ -756,6 +774,12 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
         _sf_writeFloat(f, "tremoloRate", bus->tremoloRate);
         _sf_writeFloat(f, "tremoloDepth", bus->tremoloDepth);
         _sf_writeInt(f, "tremoloShape", bus->tremoloShape);
+        _sf_writeBool(f, "leslieEnabled", bus->leslieEnabled);
+        _sf_writeInt(f, "leslieSpeed", bus->leslieSpeed);
+        _sf_writeFloat(f, "leslieDrive", bus->leslieDrive);
+        _sf_writeFloat(f, "leslieBalance", bus->leslieBalance);
+        _sf_writeFloat(f, "leslieDoppler", bus->leslieDoppler);
+        _sf_writeFloat(f, "leslieMix", bus->leslieMix);
         _sf_writeBool(f, "wahEnabled", bus->wahEnabled);
         _sf_writeInt(f, "wahMode", bus->wahMode);
         _sf_writeFloat(f, "wahRate", bus->wahRate);
@@ -977,6 +1001,18 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "epBell") == 0) p->p_epBell = _sf_parseFloat(val);
     else if (strcmp(key, "epBellTone") == 0) p->p_epBellTone = _sf_parseFloat(val);
     else if (strcmp(key, "epPickupType") == 0) p->p_epPickupType = _sf_parseInt(val);
+    // Organ
+    else if (strncmp(key, "orgDrawbar", 10) == 0) {
+        int idx = atoi(key + 10);
+        if (idx >= 0 && idx < ORGAN_DRAWBARS) p->p_orgDrawbar[idx] = _sf_parseFloat(val);
+    }
+    else if (strcmp(key, "orgClick") == 0) p->p_orgClick = _sf_parseFloat(val);
+    else if (strcmp(key, "orgPercOn") == 0) p->p_orgPercOn = _sf_parseInt(val);
+    else if (strcmp(key, "orgPercHarmonic") == 0) p->p_orgPercHarmonic = _sf_parseInt(val);
+    else if (strcmp(key, "orgPercSoft") == 0) p->p_orgPercSoft = _sf_parseInt(val);
+    else if (strcmp(key, "orgPercFast") == 0) p->p_orgPercFast = _sf_parseInt(val);
+    else if (strcmp(key, "orgCrosstalk") == 0) p->p_orgCrosstalk = _sf_parseFloat(val);
+    else if (strcmp(key, "orgVibratoMode") == 0) p->p_orgVibratoMode = _sf_parseInt(val);
     // Pitch envelope
     else if (strcmp(key, "pitchEnvAmount") == 0) p->p_pitchEnvAmount = _sf_parseFloat(val);
     else if (strcmp(key, "pitchEnvDecay") == 0) p->p_pitchEnvDecay = _sf_parseFloat(val);
@@ -1427,6 +1463,12 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
             else if (strcmp(key, "tremoloRate") == 0) d->sfEffects.tremoloRate = _sf_parseFloat(val);
             else if (strcmp(key, "tremoloDepth") == 0) d->sfEffects.tremoloDepth = _sf_parseFloat(val);
             else if (strcmp(key, "tremoloShape") == 0) d->sfEffects.tremoloShape = _sf_parseInt(val);
+            else if (strcmp(key, "leslieEnabled") == 0) d->sfEffects.leslieEnabled = _sf_parseBool(val);
+            else if (strcmp(key, "leslieSpeed") == 0) d->sfEffects.leslieSpeed = _sf_parseInt(val);
+            else if (strcmp(key, "leslieDrive") == 0) d->sfEffects.leslieDrive = _sf_parseFloat(val);
+            else if (strcmp(key, "leslieBalance") == 0) d->sfEffects.leslieBalance = _sf_parseFloat(val);
+            else if (strcmp(key, "leslieDoppler") == 0) d->sfEffects.leslieDoppler = _sf_parseFloat(val);
+            else if (strcmp(key, "leslieMix") == 0) d->sfEffects.leslieMix = _sf_parseFloat(val);
             else if (strcmp(key, "wahEnabled") == 0) d->sfEffects.wahEnabled = _sf_parseBool(val);
             else if (strcmp(key, "wahMode") == 0) d->sfEffects.wahMode = _sf_parseInt(val);
             else if (strcmp(key, "wahRate") == 0) d->sfEffects.wahRate = _sf_parseFloat(val);
@@ -1557,6 +1599,12 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
                 else if (strcmp(key, "tremoloRate") == 0) bus->tremoloRate = _sf_parseFloat(val);
                 else if (strcmp(key, "tremoloDepth") == 0) bus->tremoloDepth = _sf_parseFloat(val);
                 else if (strcmp(key, "tremoloShape") == 0) bus->tremoloShape = _sf_parseInt(val);
+                else if (strcmp(key, "leslieEnabled") == 0) bus->leslieEnabled = _sf_parseBool(val);
+                else if (strcmp(key, "leslieSpeed") == 0) bus->leslieSpeed = _sf_parseInt(val);
+                else if (strcmp(key, "leslieDrive") == 0) bus->leslieDrive = _sf_parseFloat(val);
+                else if (strcmp(key, "leslieBalance") == 0) bus->leslieBalance = _sf_parseFloat(val);
+                else if (strcmp(key, "leslieDoppler") == 0) bus->leslieDoppler = _sf_parseFloat(val);
+                else if (strcmp(key, "leslieMix") == 0) bus->leslieMix = _sf_parseFloat(val);
                 else if (strcmp(key, "wahEnabled") == 0) bus->wahEnabled = _sf_parseBool(val);
                 else if (strcmp(key, "wahMode") == 0) bus->wahMode = _sf_parseInt(val);
                 else if (strcmp(key, "wahRate") == 0) bus->wahRate = _sf_parseFloat(val);
