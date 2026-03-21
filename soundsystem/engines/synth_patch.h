@@ -85,6 +85,7 @@ typedef struct {
 
     // Mono/Glide
     bool p_monoMode;
+    bool p_monoRetrigger;   // true = retrigger envelope on every note, false = legato (glide only)
     float p_glideTime;
     float p_legatoWindow;   // seconds: note-on within this time after release → legato (0=off)
     int p_notePriority;     // NotePriority: 0=last, 1=low, 2=high
@@ -204,14 +205,19 @@ typedef struct {
     // Extra oscillators (metallic hihats, cowbell, fifth stacking)
     float p_osc2Ratio;        // Frequency ratio for 2nd oscillator (0 = off)
     float p_osc2Level;        // Mix level (0-1)
+    float p_osc2Decay;        // Per-osc decay rate (0=sustain, >0=exp decay speed)
     float p_osc3Ratio;        // Frequency ratio for 3rd oscillator (0 = off)
     float p_osc3Level;        // Mix level (0-1)
+    float p_osc3Decay;
     float p_osc4Ratio;        // Frequency ratio for 4th oscillator (0 = off)
     float p_osc4Level;        // Mix level (0-1)
+    float p_osc4Decay;
     float p_osc5Ratio;        // Frequency ratio for 5th oscillator (0 = off)
     float p_osc5Level;        // Mix level (0-1)
+    float p_osc5Decay;
     float p_osc6Ratio;        // Frequency ratio for 6th oscillator (0 = off)
     float p_osc6Level;        // Mix level (0-1)
+    float p_osc6Decay;
 
     // Drive/saturation
     float p_drive;            // 0 = clean, saturation amount (kick warmth, etc.)
@@ -306,6 +312,7 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_pitchLfoShape = 0,
         .p_pitchLfoSync = 0,
         .p_monoMode = false,
+        .p_monoRetrigger = false,
         .p_glideTime = 0.1f,
         .p_legatoWindow = 0.015f,  // 15ms — forgives sloppy finger transitions in mono mode
         .p_notePriority = 0,      // NOTE_PRIORITY_LAST
@@ -388,14 +395,19 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_retriggerBurstDecay = 0.02f,
         .p_osc2Ratio = 0.0f,
         .p_osc2Level = 0.0f,
+        .p_osc2Decay = 0.0f,
         .p_osc3Ratio = 0.0f,
         .p_osc3Level = 0.0f,
+        .p_osc3Decay = 0.0f,
         .p_osc4Ratio = 0.0f,
         .p_osc4Level = 0.0f,
+        .p_osc4Decay = 0.0f,
         .p_osc5Ratio = 0.0f,
         .p_osc5Level = 0.0f,
+        .p_osc5Decay = 0.0f,
         .p_osc6Ratio = 0.0f,
         .p_osc6Level = 0.0f,
+        .p_osc6Decay = 0.0f,
         .p_drive = 0.0f,
         .p_clickLevel = 0.0f,
         .p_clickTime = 0.005f,

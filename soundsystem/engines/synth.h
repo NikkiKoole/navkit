@@ -88,6 +88,7 @@ typedef enum {
     WAVE_BIRD,       // Bird vocalization synthesis
     WAVE_BOWED,      // Bowed string (waveguide + bow friction)
     WAVE_PIPE,       // Blown pipe (waveguide + jet excitation)
+    WAVE_SINE,       // Pure sine wave
 } WaveType;
 
 // Mono note priority mode
@@ -102,9 +103,9 @@ typedef enum {
 static const char* waveTypeNames[] = {
     "square", "saw", "triangle", "noise", "scw", "voice", "pluck",
     "additive", "mallet", "granular", "fm", "pd", "membrane", "bird",
-    "bowed", "pipe"
+    "bowed", "pipe", "sine"
 };
-static const int waveTypeCount = 16;
+static const int waveTypeCount = 17;
 
 // LFO tempo sync divisions
 typedef enum {
@@ -664,16 +665,20 @@ typedef struct {
     float burstTimers[16];   // Per-burst timers for overlap mode
     float burstDecay;        // Decay time for each burst
 
-    // Extra oscillators
+    // Extra oscillators (ratio=freq multiplier, level=mix, decay=per-osc envelope rate, 0=no decay)
     float osc2Ratio;         // Freq ratio for 2nd osc (0 = off)
     float osc2Level;         // Mix level
     float osc2Phase;         // Phase accumulator
+    float osc2Decay;         // Decay rate (0=sustain, >0=exp decay speed)
+    float osc2Env;           // Current envelope level (1.0 at trigger, decays toward 0)
     float osc3Ratio;         // Freq ratio for 3rd osc (0 = off)
     float osc3Level;         // Mix level
     float osc3Phase;         // Phase accumulator
-    float osc4Ratio, osc4Level, osc4Phase;  // 4th osc
-    float osc5Ratio, osc5Level, osc5Phase;  // 5th osc
-    float osc6Ratio, osc6Level, osc6Phase;  // 6th osc (808 hihat has 6 metallic partials)
+    float osc3Decay;
+    float osc3Env;
+    float osc4Ratio, osc4Level, osc4Phase, osc4Decay, osc4Env;  // 4th osc
+    float osc5Ratio, osc5Level, osc5Phase, osc5Decay, osc5Env;  // 5th osc
+    float osc6Ratio, osc6Level, osc6Phase, osc6Decay, osc6Env;  // 6th osc (808 hihat has 6 metallic partials)
 
     // Drive/saturation
     float drive;             // 0 = clean, >0 = saturation amount
@@ -919,6 +924,7 @@ typedef struct SynthContext {
     
     // Mono mode state
     bool monoMode;
+    bool monoRetrigger;   // true = retrigger envelope on every note, false = legato
     float glideTime;
     float legatoWindow;   // seconds: note-on within this window after release → legato
     int monoVoiceIdx;
@@ -1103,14 +1109,19 @@ typedef struct SynthContext {
     // Extra oscillators
     float noteOsc2Ratio;
     float noteOsc2Level;
+    float noteOsc2Decay;
     float noteOsc3Ratio;
     float noteOsc3Level;
+    float noteOsc3Decay;
     float noteOsc4Ratio;
     float noteOsc4Level;
+    float noteOsc4Decay;
     float noteOsc5Ratio;
     float noteOsc5Level;
+    float noteOsc5Decay;
     float noteOsc6Ratio;
     float noteOsc6Level;
+    float noteOsc6Decay;
 
     // Drive/saturation
     float noteDrive;
@@ -1276,6 +1287,7 @@ static void _ensureSynthCtx(void) {
 #define scaleRoot (synthCtx->scaleRoot)
 #define scaleType (synthCtx->scaleType)
 #define monoMode (synthCtx->monoMode)
+#define monoRetrigger (synthCtx->monoRetrigger)
 #define glideTime (synthCtx->glideTime)
 #define legatoWindow (synthCtx->legatoWindow)
 #define monoVoiceIdx (synthCtx->monoVoiceIdx)
@@ -1419,14 +1431,19 @@ static void _ensureSynthCtx(void) {
 #define noteRetriggerBurstDecay (synthCtx->noteRetriggerBurstDecay)
 #define noteOsc2Ratio (synthCtx->noteOsc2Ratio)
 #define noteOsc2Level (synthCtx->noteOsc2Level)
+#define noteOsc2Decay (synthCtx->noteOsc2Decay)
 #define noteOsc3Ratio (synthCtx->noteOsc3Ratio)
 #define noteOsc3Level (synthCtx->noteOsc3Level)
+#define noteOsc3Decay (synthCtx->noteOsc3Decay)
 #define noteOsc4Ratio (synthCtx->noteOsc4Ratio)
 #define noteOsc4Level (synthCtx->noteOsc4Level)
+#define noteOsc4Decay (synthCtx->noteOsc4Decay)
 #define noteOsc5Ratio (synthCtx->noteOsc5Ratio)
 #define noteOsc5Level (synthCtx->noteOsc5Level)
+#define noteOsc5Decay (synthCtx->noteOsc5Decay)
 #define noteOsc6Ratio (synthCtx->noteOsc6Ratio)
 #define noteOsc6Level (synthCtx->noteOsc6Level)
+#define noteOsc6Decay (synthCtx->noteOsc6Decay)
 #define noteDrive (synthCtx->noteDrive)
 #define noteDriveMode (synthCtx->noteDriveMode)
 #define noteExpDecay (synthCtx->noteExpDecay)
@@ -2134,6 +2151,21 @@ static float processVoice(Voice *v, float sampleRate) {
         case WAVE_PIPE:
             sample = processPipeOscillator(v, sampleRate);
             break;
+        case WAVE_SINE:
+            if (v->unisonCount > 1) {
+                float sinPhaseInc = v->frequency / sampleRate;
+                for (int u = 0; u < v->unisonCount; u++) {
+                    float detune = getUnisonDetuneMultiplier(u, v->unisonCount, v->unisonDetune);
+                    float udt = sinPhaseInc * detune;
+                    v->unisonPhases[u] += udt;
+                    if (v->unisonPhases[u] >= 1.0f) v->unisonPhases[u] -= 1.0f;
+                    sample += sinf(v->unisonPhases[u] * 2.0f * PI);
+                }
+                sample /= (float)v->unisonCount;
+            } else {
+                sample = sinf(v->phase * 2.0f * PI);
+            }
+            break;
     }
 
     // Restore FM modIndex base value after oscillator processing
@@ -2144,7 +2176,8 @@ static float processVoice(Voice *v, float sampleRate) {
     // Extra oscillators (metallic hihats, cowbell, fifth stacking — up to 6 total)
     if (v->osc2Level > 0.001f && v->osc2Ratio > 0.001f) {
         // Helper: generate one extra oscillator sample from phase + wave type
-        #define EXTRA_OSC(phase, ratio, level, sampleRate) do { \
+        // decay/env: per-osc amplitude envelope (decay>0 = exponential decay, 0 = sustain)
+        #define EXTRA_OSC(phase, ratio, level, decay, env, sampleRate) do { \
             float _inc = v->frequency * (ratio) / (sampleRate); \
             (phase) += _inc; \
             if ((phase) >= 1.0f) (phase) -= 1.0f; \
@@ -2153,24 +2186,30 @@ static float processVoice(Voice *v, float sampleRate) {
                 case WAVE_SQUARE: _osc = polyblepSquare((phase), 0.5f, _inc); break; \
                 case WAVE_SAW:    _osc = polyblepSaw((phase), _inc); break; \
                 case WAVE_TRIANGLE: _osc = 4.0f * fabsf((phase) - 0.5f) - 1.0f; break; \
+                case WAVE_SINE:   _osc = sinf((phase) * 2.0f * PI); break; \
                 default:          _osc = sinf((phase) * 2.0f * PI); break; \
             } \
-            mixSum += _osc * (level); \
-            totalWeight += (level); \
+            float _envLevel = (env); \
+            if ((decay) > 0.0f) { \
+                (env) *= 1.0f - (decay) / (sampleRate); \
+                if ((env) < 0.001f) (env) = 0.0f; \
+            } \
+            mixSum += _osc * (level) * _envLevel; \
+            totalWeight += (level) * _envLevel; \
         } while(0)
 
         float mixSum = sample;  // main osc contributes weight 1.0
         float totalWeight = 1.0f;
 
-        EXTRA_OSC(v->osc2Phase, v->osc2Ratio, v->osc2Level, sampleRate);
+        EXTRA_OSC(v->osc2Phase, v->osc2Ratio, v->osc2Level, v->osc2Decay, v->osc2Env, sampleRate);
         if (v->osc3Level > 0.001f && v->osc3Ratio > 0.001f)
-            EXTRA_OSC(v->osc3Phase, v->osc3Ratio, v->osc3Level, sampleRate);
+            EXTRA_OSC(v->osc3Phase, v->osc3Ratio, v->osc3Level, v->osc3Decay, v->osc3Env, sampleRate);
         if (v->osc4Level > 0.001f && v->osc4Ratio > 0.001f)
-            EXTRA_OSC(v->osc4Phase, v->osc4Ratio, v->osc4Level, sampleRate);
+            EXTRA_OSC(v->osc4Phase, v->osc4Ratio, v->osc4Level, v->osc4Decay, v->osc4Env, sampleRate);
         if (v->osc5Level > 0.001f && v->osc5Ratio > 0.001f)
-            EXTRA_OSC(v->osc5Phase, v->osc5Ratio, v->osc5Level, sampleRate);
+            EXTRA_OSC(v->osc5Phase, v->osc5Ratio, v->osc5Level, v->osc5Decay, v->osc5Env, sampleRate);
         if (v->osc6Level > 0.001f && v->osc6Ratio > 0.001f)
-            EXTRA_OSC(v->osc6Phase, v->osc6Ratio, v->osc6Level, sampleRate);
+            EXTRA_OSC(v->osc6Phase, v->osc6Ratio, v->osc6Level, v->osc6Decay, v->osc6Env, sampleRate);
 
         if (v->oscMixMode == 1) {
             // Additive sum: all oscillators just sum (drums.h hihat style)
@@ -2707,11 +2746,14 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
         voiceIdx = monoVoiceIdx;
         Voice *monoV = &synthVoices[voiceIdx];
         if (monoV->envStage > 0 && monoV->envStage < 4) {
-            // Active note (not released) - do legato glide
+            // Active note (not released)
             isGlide = true;
-        } else if (monoV->envStage == 4 && legatoWindow > 0.0f && monoV->envPhase < legatoWindow
+            if (monoRetrigger) isGlideRetrigger = true; // retrigger envelope, keep glide
+        } else if (monoV->envStage == 4 && legatoWindow > 0.0f
+                   && monoV->envPhase > 0.0005f  // >0.5ms: skip same-frame noteOff→noteOn (sequencer)
+                   && monoV->envPhase < legatoWindow
                    && monoV->releaseLevel > 0.01f) {
-            // Voice just released but within legato window and still audible — legato glide
+            // Voice released recently but within legato window and still audible — legato glide
             // Retrigger envelope from current level (don't snap to sustain which may be 0)
             isGlide = true;
             monoV->envStage = 2;  // back to decay (will naturally reach sustain)
@@ -2783,18 +2825,28 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->osc2Ratio = noteOsc2Ratio;
     v->osc2Level = noteOsc2Level;
     v->osc2Phase = 0.0f;
+    v->osc2Decay = noteOsc2Decay;
+    v->osc2Env = 1.0f;
     v->osc3Ratio = noteOsc3Ratio;
     v->osc3Level = noteOsc3Level;
     v->osc3Phase = 0.0f;
+    v->osc3Decay = noteOsc3Decay;
+    v->osc3Env = 1.0f;
     v->osc4Ratio = noteOsc4Ratio;
     v->osc4Level = noteOsc4Level;
     v->osc4Phase = 0.0f;
+    v->osc4Decay = noteOsc4Decay;
+    v->osc4Env = 1.0f;
     v->osc5Ratio = noteOsc5Ratio;
     v->osc5Level = noteOsc5Level;
     v->osc5Phase = 0.0f;
+    v->osc5Decay = noteOsc5Decay;
+    v->osc5Env = 1.0f;
     v->osc6Ratio = noteOsc6Ratio;
     v->osc6Level = noteOsc6Level;
     v->osc6Phase = 0.0f;
+    v->osc6Decay = noteOsc6Decay;
+    v->osc6Env = 1.0f;
 
     // Drive & exp decay
     v->drive = noteDrive;
@@ -2958,7 +3010,7 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->scwIndex = -1;
     
     // Initialize unison (for synth waves only)
-    if (wave == WAVE_SQUARE || wave == WAVE_SAW || wave == WAVE_TRIANGLE) {
+    if (wave == WAVE_SQUARE || wave == WAVE_SAW || wave == WAVE_TRIANGLE || wave == WAVE_SINE) {
         v->unisonCount = noteUnisonCount;
         v->unisonDetune = noteUnisonDetune;
         v->unisonMix = noteUnisonMix;
@@ -3071,11 +3123,11 @@ static void resetNoteGlobals(void) {
     noteNoiseMode = 0;
     noteNoiseType = 0;
     noteNoiseLPBypass = false;
-    noteOsc2Ratio = 1.0f;  noteOsc2Level = 0.0f;
-    noteOsc3Ratio = 1.0f;  noteOsc3Level = 0.0f;
-    noteOsc4Ratio = 1.0f;  noteOsc4Level = 0.0f;
-    noteOsc5Ratio = 1.0f;  noteOsc5Level = 0.0f;
-    noteOsc6Ratio = 1.0f;  noteOsc6Level = 0.0f;
+    noteOsc2Ratio = 1.0f;  noteOsc2Level = 0.0f;  noteOsc2Decay = 0.0f;
+    noteOsc3Ratio = 1.0f;  noteOsc3Level = 0.0f;  noteOsc3Decay = 0.0f;
+    noteOsc4Ratio = 1.0f;  noteOsc4Level = 0.0f;  noteOsc4Decay = 0.0f;
+    noteOsc5Ratio = 1.0f;  noteOsc5Level = 0.0f;  noteOsc5Decay = 0.0f;
+    noteOsc6Ratio = 1.0f;  noteOsc6Level = 0.0f;  noteOsc6Decay = 0.0f;
     noteDrive = 0.0f;
     noteExpDecay = false;
     noteExpRelease = false;
@@ -3106,6 +3158,7 @@ static void resetNoteGlobals(void) {
     noteUnisonDetune = 0.0f;
     noteUnisonMix = 0.5f;
     monoMode = false;
+    monoRetrigger = false;
     glideTime = 0.0f;
     legatoWindow = 0.0f;
     notePriority = NOTE_PRIORITY_LAST;

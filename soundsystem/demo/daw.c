@@ -172,7 +172,7 @@ static const char* noiseTypeNames[] = {"LFSR", "TimeHash"};
 // Note: waveNames[] is capitalized for UI display. Canonical lowercase names
 // (square, saw, triangle, etc.) are in synth.h:waveTypeNames[] for file I/O.
 static const char* waveNames[] = {"Square", "Saw", "Triangle", "Noise", "SCW",
-    "Voice", "Pluck", "Additive", "Mallet", "Granular", "FM", "PD", "Membrane", "Bird", "Bowed", "Pipe"};
+    "Voice", "Pluck", "Additive", "Mallet", "Granular", "FM", "PD", "Membrane", "Bird", "Bowed", "Pipe", "Sine"};
 static const char* vowelNames[] = {"A", "E", "I", "O", "U"};
 static const char* additivePresetNames[] = {"Organ", "Bell", "Choir", "Brass", "Strings"};
 static const char* malletPresetNames[] = {"Marimba", "Vibes", "Xylo", "Glock", "Tubular"};
@@ -402,6 +402,7 @@ static const Color engineTints[] = {
     {45, 65, 50, 255},   // WAVE_BIRD     — green (physical)
     {50, 70, 50, 255},   // WAVE_BOWED    — green (physical)
     {45, 65, 55, 255},   // WAVE_PIPE     — green (physical)
+    {40, 45, 75, 255},   // WAVE_SINE     — blue (basic)
 };
 // busNames defined later with other bus arrays
 
@@ -4377,6 +4378,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
 
     // If preset picker is open, skip all column content (drawn after return)
     if (presetPickerOpen) {
+        static float presetScrollX = 0.0f;
         // Draw popup on top
         float popX = x + 4, popY = presetRowY + 20;
         float margin = 20;
@@ -4386,24 +4388,51 @@ static void drawParamPatch(float x, float y, float w, float h) {
         if (pcols < 1) pcols = 1;
         int perCol = (NUM_INSTRUMENT_PRESETS + pcols - 1) / pcols;
         float colW0 = 110;
-        float popW = pcols * colW0 + 12;
-        float popH = perCol * 18 + 8;
+        float totalW = pcols * colW0 + 12;
+        float popW = totalW;
+        float maxPopW = SCREEN_WIDTH - popX - 10;
+        bool needsScroll = (popW > maxPopW);
+        if (needsScroll) popW = maxPopW;
+        float scrollBarH = 14;
+        float popH = perCol * 18 + 8 + (needsScroll ? scrollBarH + 4 : 0);
         Vector2 mouse = GetMousePosition();
 
+        // Clamp scroll
+        float maxScroll = needsScroll ? (totalW - popW) : 0;
+        if (presetScrollX > maxScroll) presetScrollX = maxScroll;
+        if (presetScrollX < 0) presetScrollX = 0;
+
+        // Scroll with mouse wheel when hovering popup
+        Rectangle popR = {popX, popY, popW, popH};
+        if (CheckCollisionPointRec(mouse, popR)) {
+            float wheel = GetMouseWheelMove();
+            if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT))
+                presetScrollX -= wheel * 60.0f;
+            else
+                presetScrollX -= wheel * 60.0f;
+            if (presetScrollX < 0) presetScrollX = 0;
+            if (presetScrollX > maxScroll) presetScrollX = maxScroll;
+        }
+
         DrawRectangle((int)popX, (int)popY, (int)popW, (int)popH, UI_BG_POPUP);
-        DrawRectangleLinesEx((Rectangle){popX,popY,popW,popH}, 1, UI_BORDER_LIGHT);
+        DrawRectangleLinesEx(popR, 1, UI_BORDER_LIGHT);
+
+        // Clip to popup area
+        BeginScissorMode((int)popX, (int)popY, (int)popW, (int)(popH - (needsScroll ? scrollBarH + 4 : 0)));
 
         float colW = colW0;
         bool clickedItem = false;
         for (int i = 0; i < NUM_INSTRUMENT_PRESETS; i++) {
             int col = i / perCol, row = i % perCol;
-            float ix = popX + col * colW + 6;
+            float ix = popX + col * colW + 6 - presetScrollX;
             float iy = popY + 4 + row * 18;
+            // Skip if off-screen
+            if (ix + colW < popX || ix > popX + popW) continue;
             Rectangle itemR = {ix - 2, iy, colW - 4, 17};
             bool hov = CheckCollisionPointRec(mouse, itemR);
             bool selected = (i == patchPresetIndex[daw.selectedPatch]);
             int wt = instrumentPresets[i].patch.p_waveType;
-            Color tint = (wt >= 0 && wt < 16) ? engineTints[wt] : UI_BG_BUTTON;
+            Color tint = (wt >= 0 && wt < 17) ? engineTints[wt] : UI_BG_BUTTON;
             if (selected) DrawRectangleRec(itemR, (Color){50,50,80,255});
             else if (hov) { DrawRectangleRec(itemR, tint); DrawRectangleRec(itemR, (Color){255,255,255,30}); }
             else DrawRectangleRec(itemR, tint);
@@ -4418,8 +4447,51 @@ static void drawParamPatch(float x, float y, float w, float h) {
             }
         }
 
+        EndScissorMode();
+
+        // Horizontal scroll bar
+        if (needsScroll) {
+            float barY = popY + popH - scrollBarH - 2;
+            float barX = popX + 4;
+            float barW = popW - 8;
+            DrawRectangle((int)barX, (int)barY, (int)barW, (int)scrollBarH, (Color){30,30,35,255});
+            // Thumb
+            float thumbRatio = popW / totalW;
+            float thumbW = barW * thumbRatio;
+            if (thumbW < 20) thumbW = 20;
+            float thumbX = barX + (presetScrollX / maxScroll) * (barW - thumbW);
+            Rectangle thumbR = {thumbX, barY, thumbW, scrollBarH};
+            bool thumbHov = CheckCollisionPointRec(mouse, thumbR);
+            DrawRectangleRec(thumbR, thumbHov ? (Color){100,100,120,255} : (Color){60,60,75,255});
+            // Drag scroll bar
+            static bool presetScrollDragging = false;
+            static float presetScrollDragStart = 0;
+            if (thumbHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                presetScrollDragging = true;
+                presetScrollDragStart = mouse.x - thumbX;
+                ui_consume_click();
+            }
+            if (presetScrollDragging) {
+                if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                    float newThumbX = mouse.x - presetScrollDragStart;
+                    presetScrollX = ((newThumbX - barX) / (barW - thumbW)) * maxScroll;
+                    if (presetScrollX < 0) presetScrollX = 0;
+                    if (presetScrollX > maxScroll) presetScrollX = maxScroll;
+                } else {
+                    presetScrollDragging = false;
+                }
+            }
+            // Click in track to jump
+            Rectangle barR = {barX, barY, barW, scrollBarH};
+            if (!presetScrollDragging && CheckCollisionPointRec(mouse, barR) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                presetScrollX = ((mouse.x - barX - thumbW/2) / (barW - thumbW)) * maxScroll;
+                if (presetScrollX < 0) presetScrollX = 0;
+                if (presetScrollX > maxScroll) presetScrollX = maxScroll;
+                ui_consume_click();
+            }
+        }
+
         // Click outside popup closes it (also exclude the preset button itself)
-        Rectangle popR = {popX, popY, popW, popH};
         Rectangle btnR = {x + 4, presetRowY, 200, 20};
         if (!clickedItem && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)
             && !CheckCollisionPointRec(mouse, popR)
@@ -4671,6 +4743,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_sublabel(&c, "Mono/Glide:", ORANGE);
             ui_col_toggle(&c, "Mono", &p->p_monoMode);
             if (p->p_monoMode) {
+                ui_col_toggle(&c, "Retrigger", &p->p_monoRetrigger);
                 ui_col_float(&c, "Glide", &p->p_glideTime, 0.02f, 0.01f, 1.0f);
                 ui_col_float(&c, "Legato", &p->p_legatoWindow, 0.005f, 0.0f, 0.1f);
                 static const char *priorityNames[] = {"Last", "Low", "High"};
@@ -4682,7 +4755,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_space(&c, 3);
         }
 
-        if (p->p_waveType <= WAVE_TRIANGLE) {
+        if (p->p_waveType <= WAVE_TRIANGLE || p->p_waveType == WAVE_SINE) {
             bool uniActive = DI(p_unisonCount) || DF(p_unisonDetune) || DF(p_unisonMix);
             secY = c.y;
             ui_col_sublabel(&c, "Unison:", ORANGE);
@@ -4884,16 +4957,56 @@ static void drawParamPatch(float x, float y, float w, float h) {
         ui_col_cycle(&c, "MixMode", oscMixModeNames, 2, &p->p_oscMixMode);
         ui_col_space(&c, 3);
 
-        struct { const char* label; float *ratio, *level; } oscs[] = {
-            {"Osc2", &p->p_osc2Ratio, &p->p_osc2Level},
-            {"Osc3", &p->p_osc3Ratio, &p->p_osc3Level},
-            {"Osc4", &p->p_osc4Ratio, &p->p_osc4Level},
-            {"Osc5", &p->p_osc5Ratio, &p->p_osc5Level},
-            {"Osc6", &p->p_osc6Ratio, &p->p_osc6Level},
+        struct { const char* label; float *ratio, *level, *decay; } oscs[] = {
+            {"Osc2", &p->p_osc2Ratio, &p->p_osc2Level, &p->p_osc2Decay},
+            {"Osc3", &p->p_osc3Ratio, &p->p_osc3Level, &p->p_osc3Decay},
+            {"Osc4", &p->p_osc4Ratio, &p->p_osc4Level, &p->p_osc4Decay},
+            {"Osc5", &p->p_osc5Ratio, &p->p_osc5Level, &p->p_osc5Decay},
+            {"Osc6", &p->p_osc6Ratio, &p->p_osc6Level, &p->p_osc6Decay},
         };
         for (int i = 0; i < 5; i++) {
             ui_col_float(&c, TextFormat("%s R", oscs[i].label), oscs[i].ratio, 0.1f, 0.0f, 16.0f);
+            // Inline semitone -/label/+ on the ratio row (drawn after ui_col_float advanced c.y)
+            {
+                float r = *oscs[i].ratio;
+                float st = (r > 0.001f) ? 12.0f * log2f(r) : 0.0f;
+                float rowH = c.spacing;
+                float ry = c.y - rowH;  // go back to the row we just drew
+                float btnW = 12, btnH = rowH - 1;
+                float rightEdge = c.x + percColW + 16;
+                Vector2 mouse = GetMousePosition();
+                // [+] button
+                float plusX = rightEdge - btnW;
+                Rectangle plusR = {plusX, ry, btnW, btnH};
+                bool plusHov = CheckCollisionPointRec(mouse, plusR);
+                DrawRectangleRec(plusR, plusHov ? UI_BG_HOVER : (Color){40,40,50,255});
+                DrawTextShadow("+", (int)plusX + 3, (int)ry + 1, 8, plusHov ? WHITE : UI_TEXT_DIM);
+                if (plusHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                    // Snap to nearest semitone then go up 1
+                    int stInt = (r > 0.001f) ? (int)roundf(st) : -1;
+                    *oscs[i].ratio = clampf(powf(2.0f, (stInt + 1) / 12.0f), 0.0f, 16.0f);
+                    ui_consume_click();
+                }
+                // Semitone label
+                float lblW = 28;
+                float lblX = plusX - lblW;
+                DrawTextShadow(TextFormat("%+.0fst", st), (int)lblX, (int)ry + 1, 8, UI_TEXT_DIM);
+                // [-] button
+                float minusX = lblX - btnW;
+                Rectangle minusR = {minusX, ry, btnW, btnH};
+                bool minusHov = CheckCollisionPointRec(mouse, minusR);
+                DrawRectangleRec(minusR, minusHov ? UI_BG_HOVER : (Color){40,40,50,255});
+                DrawTextShadow("-", (int)minusX + 4, (int)ry + 1, 8, minusHov ? WHITE : UI_TEXT_DIM);
+                if (minusHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                    // Snap to nearest semitone then go down 1
+                    int stInt = (r > 0.001f) ? (int)roundf(st) : 1;
+                    float newR = powf(2.0f, (stInt - 1) / 12.0f);
+                    *oscs[i].ratio = clampf(newR, 0.0f, 16.0f);
+                    ui_consume_click();
+                }
+            }
             ui_col_float(&c, TextFormat("%s L", oscs[i].label), oscs[i].level, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, TextFormat("%s D", oscs[i].label), oscs[i].decay, 0.5f, 0.0f, 50.0f);
         }
         sectionHighlight(col7X + 2, secY, percColW, c.y - secY, oscActive);
     }
@@ -7873,6 +7986,19 @@ static void drawWorkArrange(float x, float y, float w, float h) {
                             lt->state[s] = (newPat >= 0) ? CLIP_STOPPED : CLIP_EMPTY;
                         }
                     }
+                    // +/- keys: change pattern
+                    if (IsKeyPressed(KEY_EQUAL) || IsKeyPressed(KEY_KP_ADD)) {
+                        int newPat = pat + 1;
+                        if (newPat >= SEQ_NUM_PATTERNS) newPat = SEQ_NUM_PATTERNS - 1;
+                        lt->pattern[s] = newPat;
+                        lt->state[s] = (newPat >= 0) ? CLIP_STOPPED : CLIP_EMPTY;
+                    }
+                    if (IsKeyPressed(KEY_MINUS) || IsKeyPressed(KEY_KP_SUBTRACT)) {
+                        int newPat = pat - 1;
+                        if (newPat < -1) newPat = -1;
+                        lt->pattern[s] = newPat;
+                        lt->state[s] = (newPat >= 0) ? CLIP_STOPPED : CLIP_EMPTY;
+                    }
                     // Middle-click: start drag to arrangement
                     if (!empty && IsMouseButtonPressed(MOUSE_MIDDLE_BUTTON)) {
                         arrDragging = true;
@@ -8048,6 +8174,17 @@ static void drawWorkArrange(float x, float y, float w, float h) {
                     int newPat = pat + wheel;
                     if (newPat < -1) newPat = -1;  // -1 = empty
                     if (newPat >= SEQ_NUM_PATTERNS) newPat = SEQ_NUM_PATTERNS - 1;
+                    arr->cells[b][t] = newPat;
+                }
+                // +/- keys: change pattern index
+                if (IsKeyPressed(KEY_EQUAL) || IsKeyPressed(KEY_KP_ADD)) {
+                    int newPat = pat + 1;
+                    if (newPat >= SEQ_NUM_PATTERNS) newPat = SEQ_NUM_PATTERNS - 1;
+                    arr->cells[b][t] = newPat;
+                }
+                if (IsKeyPressed(KEY_MINUS) || IsKeyPressed(KEY_KP_SUBTRACT)) {
+                    int newPat = pat - 1;
+                    if (newPat < -1) newPat = -1;
                     arr->cells[b][t] = newPat;
                 }
 

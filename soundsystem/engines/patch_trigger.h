@@ -65,6 +65,7 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     notePitchLfoPhaseOffset = p->p_pitchLfoPhaseOffset;
     noteScwIndex = p->p_scwIndex;
     monoMode = p->p_monoMode;
+    monoRetrigger = p->p_monoRetrigger;
     glideTime = p->p_glideTime;
     legatoWindow = p->p_legatoWindow;
     notePriority = (NotePriority)p->p_notePriority;
@@ -153,14 +154,19 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     noteRetriggerBurstDecay = p->p_retriggerBurstDecay;
     noteOsc2Ratio = p->p_osc2Ratio;
     noteOsc2Level = p->p_osc2Level;
+    noteOsc2Decay = p->p_osc2Decay;
     noteOsc3Ratio = p->p_osc3Ratio;
     noteOsc3Level = p->p_osc3Level;
+    noteOsc3Decay = p->p_osc3Decay;
     noteOsc4Ratio = p->p_osc4Ratio;
     noteOsc4Level = p->p_osc4Level;
+    noteOsc4Decay = p->p_osc4Decay;
     noteOsc5Ratio = p->p_osc5Ratio;
     noteOsc5Level = p->p_osc5Level;
+    noteOsc5Decay = p->p_osc5Decay;
     noteOsc6Ratio = p->p_osc6Ratio;
     noteOsc6Level = p->p_osc6Level;
+    noteOsc6Decay = p->p_osc6Decay;
     noteDrive = p->p_drive;
     noteDriveMode = p->p_driveMode;
     noteExpDecay = p->p_expDecay;

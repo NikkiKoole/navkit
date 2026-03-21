@@ -145,12 +145,21 @@ Complete inventory of every DSP algorithm in the soundsystem: what it is, how it
 **Reference**: Not based on a specific physical model. General bird vocalization synthesis approach similar to Lucass & Müller, "Synthesis of Bird Song" (various implementations). The logarithmic frequency interpolation is the correct approach for musical pitch sweeps.
 **Assessment**: Effective for game ambience. This is a parametric/procedural approach rather than a physical model (a physical model would simulate the syrinx — the bird's vocal organ — using pressure-driven oscillators). The parametric approach is appropriate for a game engine where controllability and CPU efficiency matter more than acoustic accuracy. The 6 presets cover common garden bird sounds well.
 
-### 1.15 Unison / Multi-Oscillator
+### 1.15 Pure Sine (WAVE_SINE)
+**File**: `synth.h` (main oscillator switch)
+**Algorithm**: `sinf(phase * 2π)` — mathematically pure sine wave, no harmonics.
+**Unison**: Supports multi-oscillator unison (up to 4 voices with detune), same as square/saw/triangle.
+**Reference**: The fundamental building block of all sound. Fourier's theorem.
+**Assessment**: Added to complete the basic waveform set (square, saw, triangle, noise, sine). Previously sine was only available indirectly via FM with zero modulation index or additive with a single harmonic. Essential for Casio MT-70 style additive patches where the base timbre must be a clean sine, and for sub-bass, test tones, and simple organ/flute sounds.
+
+### 1.16 Unison / Multi-Oscillator
 **File**: `synth.h:2114–2153`
-**Algorithm**: Up to 6 extra oscillators at configurable frequency ratios and levels
-**Mix modes**: Weighted average (default) or additive sum (for metallic hihat/cowbell sounds)
-**Reference**: Standard detuned unison technique used in virtually all analog and VA synths.
-**Assessment**: Straightforward. The detuning is ratio-based (not cents-based), which is fine for the metallic percussion use case. For typical unison-lead sounds, a cents-based spread with even distribution (as described in the unison globals) would be more musical. Both modes are available.
+**Algorithm**: Up to 6 extra oscillators at configurable frequency ratios, levels, and independent per-oscillator decay envelopes.
+**Mix modes**: Weighted average (default) or additive sum (for metallic hihat/cowbell sounds).
+**Per-oscillator decay**: Each extra osc (osc2–osc6) has a `decay` parameter (0 = sustain with main envelope, >0 = independent exponential decay rate). On note trigger, the per-osc envelope starts at 1.0 and decays via `env *= 1 - decay/sampleRate`. This enables timbral evolution where overtones fade independently of the fundamental — the core technique behind Casio MT-70 (1982) additive sine synthesis and similar early digital keyboards.
+**UI**: Semitone +/- buttons on ratio knobs allow quick interval-based tuning (left-click = +1 semitone, right-click = -1 semitone). The ratio value is multiplied/divided by `2^(1/12)`.
+**Reference**: Standard detuned unison technique used in virtually all analog and VA synths. The per-oscillator decay is conceptually similar to how early Casio/Yamaha digital keyboards shaped timbres — each partial had its own amplitude envelope, typically a simple exponential decay.
+**Assessment**: Straightforward. The detuning is ratio-based (not cents-based), which is fine for the metallic percussion use case. For typical unison-lead sounds, a cents-based spread with even distribution (as described in the unison globals) would be more musical. Both modes are available. The per-oscillator decay addition enables a much wider timbral palette from the extra oscillators, from sustained organ-like partials to bell/chime sounds where upper partials die away quickly.
 
 ---
 

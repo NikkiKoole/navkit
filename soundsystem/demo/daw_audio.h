@@ -632,11 +632,12 @@ static void dawSyncSequencer(void) {
             seq.chain[i] = (pat0 >= 0) ? pat0 : 0;
             seq.chainLoops[i] = 0;  // use default
         }
-        // Set per-track patterns for current bar
+        // Set per-track patterns for current bar + clear wrap flags
         int bar = seq.chainPos;
         if (bar >= 0 && bar < daw.arr.length) {
             for (int t = 0; t < seq.trackCount; t++) {
                 seq.trackPatternIdx[t] = (t < ARR_MAX_TRACKS) ? daw.arr.cells[bar][t] : -1;
+                seq.trackWrapped[t] = false;
             }
         }
         daw.transport.currentPattern = seq.currentPattern;

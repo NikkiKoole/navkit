@@ -302,6 +302,7 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "unisonDetune", p->p_unisonDetune);
     _sf_writeFloat(f, "unisonMix", p->p_unisonMix);
     _sf_writeBool(f, "monoMode", p->p_monoMode);
+    _sf_writeBool(f, "monoRetrigger", p->p_monoRetrigger);
     _sf_writeFloat(f, "glideTime", p->p_glideTime);
     _sf_writeFloat(f, "legatoWindow", p->p_legatoWindow);
     _sf_writeInt(f, "notePriority", p->p_notePriority);
@@ -393,14 +394,19 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     // Extra oscillators
     _sf_writeFloat(f, "osc2Ratio", p->p_osc2Ratio);
     _sf_writeFloat(f, "osc2Level", p->p_osc2Level);
+    _sf_writeFloat(f, "osc2Decay", p->p_osc2Decay);
     _sf_writeFloat(f, "osc3Ratio", p->p_osc3Ratio);
     _sf_writeFloat(f, "osc3Level", p->p_osc3Level);
+    _sf_writeFloat(f, "osc3Decay", p->p_osc3Decay);
     _sf_writeFloat(f, "osc4Ratio", p->p_osc4Ratio);
     _sf_writeFloat(f, "osc4Level", p->p_osc4Level);
+    _sf_writeFloat(f, "osc4Decay", p->p_osc4Decay);
     _sf_writeFloat(f, "osc5Ratio", p->p_osc5Ratio);
     _sf_writeFloat(f, "osc5Level", p->p_osc5Level);
+    _sf_writeFloat(f, "osc5Decay", p->p_osc5Decay);
     _sf_writeFloat(f, "osc6Ratio", p->p_osc6Ratio);
     _sf_writeFloat(f, "osc6Level", p->p_osc6Level);
+    _sf_writeFloat(f, "osc6Decay", p->p_osc6Decay);
     // Drive, click, filter type
     _sf_writeFloat(f, "drive", p->p_drive);
     _sf_writeInt(f, "driveMode", p->p_driveMode);
@@ -837,6 +843,7 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "unisonDetune") == 0) p->p_unisonDetune = _sf_parseFloat(val);
     else if (strcmp(key, "unisonMix") == 0) p->p_unisonMix = _sf_parseFloat(val);
     else if (strcmp(key, "monoMode") == 0) p->p_monoMode = _sf_parseBool(val);
+    else if (strcmp(key, "monoRetrigger") == 0) p->p_monoRetrigger = _sf_parseBool(val);
     else if (strcmp(key, "glideTime") == 0) p->p_glideTime = _sf_parseFloat(val);
     else if (strcmp(key, "legatoWindow") == 0) p->p_legatoWindow = _sf_parseFloat(val);
     else if (strcmp(key, "notePriority") == 0) p->p_notePriority = _sf_parseInt(val);
@@ -928,14 +935,19 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     // Extra oscillators
     else if (strcmp(key, "osc2Ratio") == 0) p->p_osc2Ratio = _sf_parseFloat(val);
     else if (strcmp(key, "osc2Level") == 0) p->p_osc2Level = _sf_parseFloat(val);
+    else if (strcmp(key, "osc2Decay") == 0) p->p_osc2Decay = _sf_parseFloat(val);
     else if (strcmp(key, "osc3Ratio") == 0) p->p_osc3Ratio = _sf_parseFloat(val);
     else if (strcmp(key, "osc3Level") == 0) p->p_osc3Level = _sf_parseFloat(val);
+    else if (strcmp(key, "osc3Decay") == 0) p->p_osc3Decay = _sf_parseFloat(val);
     else if (strcmp(key, "osc4Ratio") == 0) p->p_osc4Ratio = _sf_parseFloat(val);
     else if (strcmp(key, "osc4Level") == 0) p->p_osc4Level = _sf_parseFloat(val);
+    else if (strcmp(key, "osc4Decay") == 0) p->p_osc4Decay = _sf_parseFloat(val);
     else if (strcmp(key, "osc5Ratio") == 0) p->p_osc5Ratio = _sf_parseFloat(val);
     else if (strcmp(key, "osc5Level") == 0) p->p_osc5Level = _sf_parseFloat(val);
+    else if (strcmp(key, "osc5Decay") == 0) p->p_osc5Decay = _sf_parseFloat(val);
     else if (strcmp(key, "osc6Ratio") == 0) p->p_osc6Ratio = _sf_parseFloat(val);
     else if (strcmp(key, "osc6Level") == 0) p->p_osc6Level = _sf_parseFloat(val);
+    else if (strcmp(key, "osc6Decay") == 0) p->p_osc6Decay = _sf_parseFloat(val);
     // Drive, click, filter type
     else if (strcmp(key, "drive") == 0) p->p_drive = _sf_parseFloat(val);
     else if (strcmp(key, "driveMode") == 0) p->p_driveMode = _sf_parseInt(val);

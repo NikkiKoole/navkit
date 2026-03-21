@@ -115,17 +115,19 @@ static void drawWaveThumb(float x, float y, float w, float h, int waveType, bool
 }
 
 static float drawWaveSelector(float x, float y, float w, int* wave) {
-    int waveCount = 5, engineCount1 = 5, engineCount2 = 6;
+    int basicWaves[] = {WAVE_SQUARE, WAVE_SAW, WAVE_TRIANGLE, WAVE_SINE, WAVE_NOISE, WAVE_SCW};
+    int waveCount = 6, engineCount1 = 5, engineCount2 = 6;
     float thumbH = 20;
     Vector2 mouse = GetMousePosition();
     float totalH = 0;
 
     float thumbW = (w - (waveCount - 1) * 2) / waveCount;
     for (int i = 0; i < waveCount; i++) {
+        int wi = basicWaves[i];
         float tx = x + i * (thumbW + 2), ty = y;
-        bool sel = (i == *wave), hov = CheckCollisionPointRec(mouse, (Rectangle){tx, ty, thumbW, thumbH});
-        drawWaveThumb(tx, ty, thumbW, thumbH, i, sel, hov);
-        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { *wave = i; ui_consume_click(); }
+        bool sel = (wi == *wave), hov = CheckCollisionPointRec(mouse, (Rectangle){tx, ty, thumbW, thumbH});
+        drawWaveThumb(tx, ty, thumbW, thumbH, wi, sel, hov);
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { *wave = wi; ui_consume_click(); }
     }
     totalH += thumbH + 2;
 

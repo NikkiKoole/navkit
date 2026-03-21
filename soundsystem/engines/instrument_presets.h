@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 154
+#define NUM_INSTRUMENT_PRESETS 174
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -2801,6 +2801,351 @@ static void initInstrumentPresets(void) {
     instrumentPresets[153].patch.p_useTriggerFreq = true;
     instrumentPresets[153].patch.p_triggerFreq = 60.0f;
     instrumentPresets[153].patch.p_volume = 0.5f;
+
+    // ========================================================================
+    // MT-70 PRESETS (154-163)
+    // Casio MT-70 (1982): 2 mixed sine waves with different digital envelopes.
+    // Source: weltenschule.de/TableHooters/Casio_MT-70.html
+    // ========================================================================
+
+    // MT-70 Piano — "plain sine wave with decay envelope" — the dullest piano ever
+    instrumentPresets[154].name = "MT70 Piano";
+    instrumentPresets[154].patch.p_waveType = WAVE_SINE;
+    instrumentPresets[154].patch.p_attack = 0.002f;
+    instrumentPresets[154].patch.p_decay = 0.8f;
+    instrumentPresets[154].patch.p_sustain = 0.0f;
+    instrumentPresets[154].patch.p_release = 0.3f;
+    instrumentPresets[154].patch.p_filterCutoff = 0.6f;
+    instrumentPresets[154].patch.p_volume = 0.7f;
+
+    // MT-70 Pipe Organ — sustained Hammond-like: fundamental + 3rd harmonic (odd harmonics)
+    instrumentPresets[155].name = "MT70 Organ";
+    instrumentPresets[155].patch.p_waveType = WAVE_SINE;
+    instrumentPresets[155].patch.p_attack = 0.01f;
+    instrumentPresets[155].patch.p_decay = 0.1f;
+    instrumentPresets[155].patch.p_sustain = 0.8f;
+    instrumentPresets[155].patch.p_release = 0.08f;
+    instrumentPresets[155].patch.p_osc2Ratio = 3.0f;   // 3rd harmonic (odd, organ character)
+    instrumentPresets[155].patch.p_osc2Level = 0.4f;
+    instrumentPresets[155].patch.p_osc2Decay = 0.0f;    // sustains
+    instrumentPresets[155].patch.p_filterCutoff = 0.7f;
+    instrumentPresets[155].patch.p_volume = 0.6f;
+
+    // MT-70 Flute — pure sine with gentle attack, one of the "more realistic" sounds
+    instrumentPresets[156].name = "MT70 Flute";
+    instrumentPresets[156].patch.p_waveType = WAVE_SINE;
+    instrumentPresets[156].patch.p_attack = 0.05f;
+    instrumentPresets[156].patch.p_decay = 0.1f;
+    instrumentPresets[156].patch.p_sustain = 0.7f;
+    instrumentPresets[156].patch.p_release = 0.12f;
+    instrumentPresets[156].patch.p_osc2Ratio = 2.0f;    // octave overtone
+    instrumentPresets[156].patch.p_osc2Level = 0.15f;
+    instrumentPresets[156].patch.p_osc2Decay = 3.0f;     // overtone fades, leaving pure fundamental
+    instrumentPresets[156].patch.p_filterCutoff = 0.65f;
+    instrumentPresets[156].patch.p_volume = 0.65f;
+
+    // MT-70 Vibraphone — sine with decay, "one of the more realistic timbres"
+    instrumentPresets[157].name = "MT70 Vibes";
+    instrumentPresets[157].patch.p_waveType = WAVE_SINE;
+    instrumentPresets[157].patch.p_attack = 0.002f;
+    instrumentPresets[157].patch.p_decay = 1.2f;
+    instrumentPresets[157].patch.p_sustain = 0.0f;
+    instrumentPresets[157].patch.p_release = 0.4f;
+    instrumentPresets[157].patch.p_osc2Ratio = 4.0f;    // 2nd partial (vibes are ~4:1)
+    instrumentPresets[157].patch.p_osc2Level = 0.3f;
+    instrumentPresets[157].patch.p_osc2Decay = 5.0f;     // overtone decays faster than fundamental
+    instrumentPresets[157].patch.p_filterCutoff = 0.75f;
+    instrumentPresets[157].patch.p_volume = 0.7f;
+
+    // MT-70 Chime — "2 partial tones with 5 notes distance, same percussive decay"
+    instrumentPresets[158].name = "MT70 Chime";
+    instrumentPresets[158].patch.p_waveType = WAVE_SINE;
+    instrumentPresets[158].patch.p_attack = 0.001f;
+    instrumentPresets[158].patch.p_decay = 1.5f;
+    instrumentPresets[158].patch.p_sustain = 0.0f;
+    instrumentPresets[158].patch.p_release = 0.5f;
+    instrumentPresets[158].patch.p_osc2Ratio = 1.335f;  // 5 semitones up (perfect 4th)
+    instrumentPresets[158].patch.p_osc2Level = 0.8f;
+    instrumentPresets[158].patch.p_osc2Decay = 0.0f;     // same decay as main (follows main env)
+    instrumentPresets[158].patch.p_filterCutoff = 0.85f;
+    instrumentPresets[158].patch.p_volume = 0.7f;
+
+    // MT-70 Synth Bells — 3 sines: octave+0, octave+2, octave+1 with decay
+    instrumentPresets[159].name = "MT70 Bells";
+    instrumentPresets[159].patch.p_waveType = WAVE_SINE;
+    instrumentPresets[159].patch.p_attack = 0.001f;
+    instrumentPresets[159].patch.p_decay = 1.0f;
+    instrumentPresets[159].patch.p_sustain = 0.0f;
+    instrumentPresets[159].patch.p_release = 0.6f;
+    instrumentPresets[159].patch.p_osc2Ratio = 4.0f;    // octave+2 (2 octaves up)
+    instrumentPresets[159].patch.p_osc2Level = 0.5f;
+    instrumentPresets[159].patch.p_osc2Decay = 4.0f;     // decays faster
+    instrumentPresets[159].patch.p_osc3Ratio = 2.0f;    // octave+1 (1 octave up)
+    instrumentPresets[159].patch.p_osc3Level = 0.6f;
+    instrumentPresets[159].patch.p_osc3Decay = 2.5f;     // medium decay
+    instrumentPresets[159].patch.p_filterCutoff = 0.9f;
+    instrumentPresets[159].patch.p_volume = 0.6f;
+
+    // MT-70 Cosmic Flute — percussive click, crossfades from high to medium octave sine
+    instrumentPresets[160].name = "MT70 Cosmic";
+    instrumentPresets[160].patch.p_waveType = WAVE_SINE;
+    instrumentPresets[160].patch.p_attack = 0.002f;
+    instrumentPresets[160].patch.p_decay = 0.15f;
+    instrumentPresets[160].patch.p_sustain = 0.6f;
+    instrumentPresets[160].patch.p_release = 0.15f;
+    instrumentPresets[160].patch.p_clickLevel = 0.3f;   // percussive click
+    instrumentPresets[160].patch.p_clickTime = 0.008f;
+    instrumentPresets[160].patch.p_osc2Ratio = 2.0f;    // high octave
+    instrumentPresets[160].patch.p_osc2Level = 0.7f;
+    instrumentPresets[160].patch.p_osc2Decay = 6.0f;     // fades out, leaving medium octave
+    instrumentPresets[160].patch.p_filterCutoff = 0.7f;
+    instrumentPresets[160].patch.p_volume = 0.65f;
+
+    // MT-70 Jazz Organ 2 — Hammond with percussive key click
+    instrumentPresets[161].name = "MT70 JzOrg2";
+    instrumentPresets[161].patch.p_waveType = WAVE_SINE;
+    instrumentPresets[161].patch.p_attack = 0.002f;
+    instrumentPresets[161].patch.p_decay = 0.1f;
+    instrumentPresets[161].patch.p_sustain = 0.75f;
+    instrumentPresets[161].patch.p_release = 0.06f;
+    instrumentPresets[161].patch.p_clickLevel = 0.4f;   // percussive key click
+    instrumentPresets[161].patch.p_clickTime = 0.005f;
+    instrumentPresets[161].patch.p_osc2Ratio = 3.0f;    // 3rd harmonic
+    instrumentPresets[161].patch.p_osc2Level = 0.35f;
+    instrumentPresets[161].patch.p_osc2Decay = 8.0f;     // click partial fades leaving fundamental
+    instrumentPresets[161].patch.p_filterCutoff = 0.65f;
+    instrumentPresets[161].patch.p_volume = 0.6f;
+
+    // MT-70 Celesta — music box, "bass resembles steel drum"
+    instrumentPresets[162].name = "MT70 Celesta";
+    instrumentPresets[162].patch.p_waveType = WAVE_SINE;
+    instrumentPresets[162].patch.p_attack = 0.001f;
+    instrumentPresets[162].patch.p_decay = 0.6f;
+    instrumentPresets[162].patch.p_sustain = 0.0f;
+    instrumentPresets[162].patch.p_release = 0.3f;
+    instrumentPresets[162].patch.p_osc2Ratio = 3.0f;    // 3rd harmonic for brightness
+    instrumentPresets[162].patch.p_osc2Level = 0.5f;
+    instrumentPresets[162].patch.p_osc2Decay = 4.0f;     // overtone fades faster
+    instrumentPresets[162].patch.p_filterCutoff = 0.85f;
+    instrumentPresets[162].patch.p_volume = 0.7f;
+
+    // MT-70 Banjo — "hollow and resonant", plucky sine
+    instrumentPresets[163].name = "MT70 Banjo";
+    instrumentPresets[163].patch.p_waveType = WAVE_SINE;
+    instrumentPresets[163].patch.p_attack = 0.001f;
+    instrumentPresets[163].patch.p_decay = 0.4f;
+    instrumentPresets[163].patch.p_sustain = 0.0f;
+    instrumentPresets[163].patch.p_release = 0.15f;
+    instrumentPresets[163].patch.p_osc2Ratio = 2.0f;    // octave
+    instrumentPresets[163].patch.p_osc2Level = 0.6f;
+    instrumentPresets[163].patch.p_osc2Decay = 8.0f;     // octave decays fast = hollow body
+    instrumentPresets[163].patch.p_osc3Ratio = 3.0f;    // 3rd for resonance
+    instrumentPresets[163].patch.p_osc3Level = 0.3f;
+    instrumentPresets[163].patch.p_osc3Decay = 12.0f;    // very fast decay
+    instrumentPresets[163].patch.p_filterCutoff = 0.7f;
+    instrumentPresets[163].patch.p_volume = 0.65f;
+
+    // ========================================================================
+    // MINIMOOG PRESETS (164-169)
+    // Minimoog Model D (1970): 3 oscillators → mixer → 4-pole ladder LPF → VCA.
+    // Monophonic. The "fat" sound = detuned saws + ladder filter + overdrive.
+    // Source: soundonsound.com, avarethtaika.com/minimoog-sound-design
+    // ========================================================================
+
+    // Moog Bass — 2 saws + square octave below, ladder filter, plucky decay
+    // The classic: deep, fat, punchy. "Two saws in unison with a square an
+    // octave below, all at max, into the filter with minimum cutoff, ~75%
+    // resonance, 50% mod amount, plucky decay envelopes."
+    instrumentPresets[164].name = "Moog Bass";
+    instrumentPresets[164].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[164].patch.p_attack = 0.002f;
+    instrumentPresets[164].patch.p_decay = 0.35f;
+    instrumentPresets[164].patch.p_sustain = 0.0f;
+    instrumentPresets[164].patch.p_release = 0.06f;
+    instrumentPresets[164].patch.p_filterModel = 1;        // ladder (4-pole, Moog-style)
+    instrumentPresets[164].patch.p_filterCutoff = 0.15f;   // low cutoff
+    instrumentPresets[164].patch.p_filterResonance = 0.55f; // ~75% emphasis
+    instrumentPresets[164].patch.p_filterEnvAmt = 0.5f;    // 50% mod amount
+    instrumentPresets[164].patch.p_filterEnvDecay = 0.25f;
+    instrumentPresets[164].patch.p_osc2Ratio = 1.005f;     // 2nd saw, slightly detuned
+    instrumentPresets[164].patch.p_osc2Level = 0.8f;
+    instrumentPresets[164].patch.p_osc3Ratio = 0.5f;       // square one octave below
+    instrumentPresets[164].patch.p_osc3Level = 0.7f;
+    instrumentPresets[164].patch.p_drive = 0.2f;           // warm overdrive into filter
+    instrumentPresets[164].patch.p_monoMode = true;
+    instrumentPresets[164].patch.p_glideTime = 0.03f;
+    instrumentPresets[164].patch.p_volume = 0.7f;
+
+    // Moog Thriller — the Michael Jackson "Thriller" bass
+    // Saw osc, tight filter envelope crack, moderate resonance, punchy
+    instrumentPresets[165].name = "Moog Thriller";
+    instrumentPresets[165].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[165].patch.p_attack = 0.001f;
+    instrumentPresets[165].patch.p_decay = 0.5f;
+    instrumentPresets[165].patch.p_sustain = 0.3f;
+    instrumentPresets[165].patch.p_release = 0.08f;
+    instrumentPresets[165].patch.p_filterModel = 1;
+    instrumentPresets[165].patch.p_filterCutoff = 0.12f;   // ~3/10 cutoff
+    instrumentPresets[165].patch.p_filterResonance = 0.35f; // moderate emphasis
+    instrumentPresets[165].patch.p_filterEnvAmt = 0.4f;    // 40% — filter crack
+    instrumentPresets[165].patch.p_filterEnvDecay = 0.15f;  // quick snap
+    instrumentPresets[165].patch.p_osc2Ratio = 0.998f;     // slight detune down
+    instrumentPresets[165].patch.p_osc2Level = 0.6f;
+    instrumentPresets[165].patch.p_drive = 0.15f;
+    instrumentPresets[165].patch.p_monoMode = true;
+    instrumentPresets[165].patch.p_glideTime = 0.04f;
+    instrumentPresets[165].patch.p_volume = 0.7f;
+
+    // Moog Lead — slow attack saws, filter sweep, prog rock lead
+    // "Two saws together, slow attack and decay, filter low cutoff,
+    // moderate resonance and mod amount."
+    instrumentPresets[166].name = "Moog Lead";
+    instrumentPresets[166].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[166].patch.p_attack = 0.15f;         // slow attack
+    instrumentPresets[166].patch.p_decay = 0.6f;
+    instrumentPresets[166].patch.p_sustain = 0.6f;
+    instrumentPresets[166].patch.p_release = 0.3f;
+    instrumentPresets[166].patch.p_filterModel = 1;
+    instrumentPresets[166].patch.p_filterCutoff = 0.25f;
+    instrumentPresets[166].patch.p_filterResonance = 0.4f;
+    instrumentPresets[166].patch.p_filterEnvAmt = 0.35f;
+    instrumentPresets[166].patch.p_filterEnvDecay = 0.5f;
+    instrumentPresets[166].patch.p_osc2Ratio = 1.003f;     // detuned saw
+    instrumentPresets[166].patch.p_osc2Level = 0.8f;
+    instrumentPresets[166].patch.p_drive = 0.1f;
+    instrumentPresets[166].patch.p_monoMode = true;
+    instrumentPresets[166].patch.p_glideTime = 0.08f;       // smooth portamento
+    instrumentPresets[166].patch.p_volume = 0.65f;
+
+    // Moog Sci-Fi — self-oscillating filter sweep, no oscillators
+    // "All oscillators off, filter 50% cutoff, maximum resonance, short plucky
+    // envelope, keytrack enabled."
+    instrumentPresets[167].name = "Moog Sci-Fi";
+    instrumentPresets[167].patch.p_waveType = WAVE_SINE;   // quiet fundamental
+    instrumentPresets[167].patch.p_attack = 0.001f;
+    instrumentPresets[167].patch.p_decay = 0.3f;
+    instrumentPresets[167].patch.p_sustain = 0.0f;
+    instrumentPresets[167].patch.p_release = 0.2f;
+    instrumentPresets[167].patch.p_filterModel = 1;
+    instrumentPresets[167].patch.p_filterCutoff = 0.5f;
+    instrumentPresets[167].patch.p_filterResonance = 0.95f; // max — self-oscillation
+    instrumentPresets[167].patch.p_filterEnvAmt = 0.6f;
+    instrumentPresets[167].patch.p_filterEnvDecay = 0.2f;
+    instrumentPresets[167].patch.p_volume = 0.5f;
+
+    // Moog Vocal — sawtooth + triangle modulating filter, vowel-like
+    // "VCO1: 32' saw at max. VCO3: 2-4' triangle modulates filter ~75%.
+    // Filter: 25% cutoff, 60% resonance, tiny mod from moderate filter env."
+    instrumentPresets[168].name = "Moog Vocal";
+    instrumentPresets[168].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[168].patch.p_attack = 0.01f;
+    instrumentPresets[168].patch.p_decay = 0.2f;
+    instrumentPresets[168].patch.p_sustain = 0.8f;
+    instrumentPresets[168].patch.p_release = 0.15f;
+    instrumentPresets[168].patch.p_filterModel = 1;
+    instrumentPresets[168].patch.p_filterCutoff = 0.25f;
+    instrumentPresets[168].patch.p_filterResonance = 0.6f;
+    instrumentPresets[168].patch.p_filterEnvAmt = 0.15f;    // tiny
+    instrumentPresets[168].patch.p_filterEnvDecay = 0.4f;
+    instrumentPresets[168].patch.p_filterLfoRate = 4.5f;     // osc3 as slow modulator
+    instrumentPresets[168].patch.p_filterLfoDepth = 0.35f;   // modulates filter ~75% depth
+    instrumentPresets[168].patch.p_monoMode = true;
+    instrumentPresets[168].patch.p_volume = 0.65f;
+
+    // Moog Sub — deep sub-bass, triangle + saw one octave below
+    // For when you need floor-shaking low end
+    instrumentPresets[169].name = "Moog Sub";
+    instrumentPresets[169].patch.p_waveType = WAVE_TRIANGLE;
+    instrumentPresets[169].patch.p_attack = 0.005f;
+    instrumentPresets[169].patch.p_decay = 0.2f;
+    instrumentPresets[169].patch.p_sustain = 0.7f;
+    instrumentPresets[169].patch.p_release = 0.1f;
+    instrumentPresets[169].patch.p_filterModel = 1;
+    instrumentPresets[169].patch.p_filterCutoff = 0.2f;
+    instrumentPresets[169].patch.p_filterResonance = 0.2f;  // gentle
+    instrumentPresets[169].patch.p_filterEnvAmt = 0.15f;
+    instrumentPresets[169].patch.p_filterEnvDecay = 0.15f;
+    instrumentPresets[169].patch.p_osc2Ratio = 0.5f;        // saw one octave below
+    instrumentPresets[169].patch.p_osc2Level = 0.5f;
+    instrumentPresets[169].patch.p_drive = 0.1f;
+    instrumentPresets[169].patch.p_monoMode = true;
+    instrumentPresets[169].patch.p_glideTime = 0.02f;
+    instrumentPresets[169].patch.p_volume = 0.7f;
+
+    // ========================================================================
+    // OBERHEIM OB-Xa PRESETS (170-173)
+    // Oberheim OB-Xa (1981): 2 VCOs (CEM3340, saw/pulse) → switchable 2/4-pole
+    // filter (CEM3320) → VCA. 4/6/8-voice poly. Famous for brass stabs & pads.
+    // Source: syntorial.com, musictech.com, presetpatch.com
+    // ========================================================================
+
+    // OBXa Brass — the "Jump" brass stab. 2 detuned saws, bright, punchy.
+    // "Saw, 4 unison voices, 9 cents detune, cutoff 85%, resonance 25%,
+    // attack 0, decay 10s, sustain 0%, release 80ms."
+    instrumentPresets[170].name = "OBXa Brass";
+    instrumentPresets[170].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[170].patch.p_attack = 0.001f;
+    instrumentPresets[170].patch.p_decay = 2.0f;           // long decay
+    instrumentPresets[170].patch.p_sustain = 0.75f;
+    instrumentPresets[170].patch.p_release = 0.08f;
+    instrumentPresets[170].patch.p_filterCutoff = 0.85f;   // bright
+    instrumentPresets[170].patch.p_filterResonance = 0.25f;
+    instrumentPresets[170].patch.p_unisonCount = 4;
+    instrumentPresets[170].patch.p_unisonDetune = 9.0f;    // 9 cents
+    instrumentPresets[170].patch.p_unisonMix = 0.7f;
+    instrumentPresets[170].patch.p_volume = 0.6f;
+
+    // OBXa Pad — lush detuned pad, 2-pole (SVF) filter for warmth
+    // The OB-Xa's 2-pole mode gave smoother, warmer pads than 4-pole.
+    instrumentPresets[171].name = "OBXa Pad";
+    instrumentPresets[171].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[171].patch.p_attack = 0.3f;
+    instrumentPresets[171].patch.p_decay = 0.5f;
+    instrumentPresets[171].patch.p_sustain = 0.7f;
+    instrumentPresets[171].patch.p_release = 0.6f;
+    instrumentPresets[171].patch.p_filterModel = 0;        // SVF (2-pole, OB-Xa 12dB mode)
+    instrumentPresets[171].patch.p_filterCutoff = 0.5f;
+    instrumentPresets[171].patch.p_filterResonance = 0.15f;
+    instrumentPresets[171].patch.p_filterEnvAmt = 0.2f;
+    instrumentPresets[171].patch.p_filterEnvDecay = 0.8f;
+    instrumentPresets[171].patch.p_osc2Ratio = 1.004f;     // slight detune
+    instrumentPresets[171].patch.p_osc2Level = 0.7f;
+    instrumentPresets[171].patch.p_volume = 0.6f;
+
+    // OBXa Stab — short punchy brass stab, 4-pole for bite
+    instrumentPresets[172].name = "OBXa Stab";
+    instrumentPresets[172].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[172].patch.p_attack = 0.001f;
+    instrumentPresets[172].patch.p_decay = 0.25f;
+    instrumentPresets[172].patch.p_sustain = 0.0f;
+    instrumentPresets[172].patch.p_release = 0.05f;
+    instrumentPresets[172].patch.p_filterModel = 1;        // ladder (4-pole, OB-Xa 24dB mode)
+    instrumentPresets[172].patch.p_filterCutoff = 0.3f;
+    instrumentPresets[172].patch.p_filterResonance = 0.2f;
+    instrumentPresets[172].patch.p_filterEnvAmt = 0.6f;    // strong filter snap
+    instrumentPresets[172].patch.p_filterEnvDecay = 0.15f;
+    instrumentPresets[172].patch.p_unisonCount = 2;
+    instrumentPresets[172].patch.p_unisonDetune = 12.0f;
+    instrumentPresets[172].patch.p_unisonMix = 0.6f;
+    instrumentPresets[172].patch.p_volume = 0.65f;
+
+    // OBXa Strings — the lush Oberheim string pad, slow attack, warm filter
+    instrumentPresets[173].name = "OBXa Strings";
+    instrumentPresets[173].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[173].patch.p_attack = 0.5f;
+    instrumentPresets[173].patch.p_decay = 0.3f;
+    instrumentPresets[173].patch.p_sustain = 0.8f;
+    instrumentPresets[173].patch.p_release = 0.8f;
+    instrumentPresets[173].patch.p_filterModel = 0;        // SVF (2-pole, smooth)
+    instrumentPresets[173].patch.p_filterCutoff = 0.45f;
+    instrumentPresets[173].patch.p_filterResonance = 0.1f;
+    instrumentPresets[173].patch.p_filterEnvAmt = 0.15f;
+    instrumentPresets[173].patch.p_filterEnvDecay = 1.0f;
+    instrumentPresets[173].patch.p_osc2Ratio = 0.998f;     // detuned down
+    instrumentPresets[173].patch.p_osc2Level = 0.8f;
+    instrumentPresets[173].patch.p_osc3Ratio = 2.002f;     // octave up, slight detune
+    instrumentPresets[173].patch.p_osc3Level = 0.3f;
+    instrumentPresets[173].patch.p_volume = 0.55f;
 }
 
 #endif // INSTRUMENT_PRESETS_H

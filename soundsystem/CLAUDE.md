@@ -1,6 +1,6 @@
 # Soundsystem (PixelSynth)
 
-Header-only synthesized audio engine (~36K lines). 16 synthesis engines, 32-voice polyphony (+8-voice sampler), 148 presets, step sequencer, full effects chain, built-in DAW.
+Header-only synthesized audio engine (~36K lines). 17 synthesis engines, 32-voice polyphony (+8-voice sampler), 164 presets, step sequencer, full effects chain, built-in DAW.
 
 ## Build & Run
 
@@ -38,10 +38,10 @@ soundsystem/
 ├── soundsystem.h              # Main include (pulls in all engines)
 ├── engines/
 │   ├── synth.h                # Synth engine: voice processing, triggers, SFX (~2870 lines)
-│   ├── synth_oscillators.h   # 16 oscillator implementations (~1550 lines, extracted from synth.h)
+│   ├── synth_oscillators.h   # Complex oscillator engines (~1550 lines, extracted from synth.h)
 │   ├── synth_scale.h          # Scale lock system (~114 lines, extracted from synth.h)
 │   ├── synth_patch.h          # SynthPatch struct (200+ p_ fields)
-│   ├── instrument_presets.h   # 148 presets (melodic + drums: 808/909/CR-78/orchestral/hand) (~1850 lines)
+│   ├── instrument_presets.h   # 164 presets (melodic + drums: 808/909/CR-78/orchestral/hand) (~1850 lines)
 │   ├── effects.h              # Effects chain + bus mixer (8 buses, 16 master FX) (~1516 lines)
 │   ├── dub_loop.h             # King Tubby tape delay (~310 lines, extracted from effects.h)
 │   ├── rewind.h               # Vinyl spinback effect (~165 lines, extracted from effects.h)
@@ -153,7 +153,7 @@ Each subsystem has a global pointer (`synthCtx`, `fxCtx`, `seqCtx`, `samplerCtx`
 - 1-600: Types — WaveType enum, Voice struct, synthesis settings structs
 - 600-950: SynthContext struct (all globals) + init + macros
 - 950-1320: Helpers — noise, clampf, LFO, arpeggiator utils
-- 1320: `#include "synth_oscillators.h"` (1550 lines — all 16 oscillator process/init functions)
+- 1320: `#include "synth_oscillators.h"` (1550 lines — complex oscillator engines (basic waveforms — square/saw/triangle/sine/noise — are inline in synth.h))
 - 1322-1920: processVoice() — per-voice DSP pipeline (envelope, filter, mixing)
 - 1920-2100: Voice management — findVoice, releaseNote, initVoiceCommon
 - 2100-2650: Note triggers — playNote, playPluck, playFM, etc.
@@ -213,7 +213,10 @@ Waves 0-2 complete. Near-term TODO (per `docs/plan-of-attack.md`):
 - Per-LFO phase offset (0.0-1.0) — patches can run inverted relative to each other
 - FM mod index LFO (5th LFO, shown for FM patches only)
 - Real-time note recording: keyboard/MIDI → pattern with free/quantized modes, overdub/replace, gate tracking, pattern lock for song mode. F7 toggle, transport bar UI.
-- 148 presets (was 111): added 909 kit, DX7 FM series, Wurlitzer, Clavinet, world instruments, SNES kit, pads
+- WAVE_SINE oscillator: pure sine wave with unison support, completes the basic waveform set
+- Per-oscillator decay on extra oscillators (osc2-6): independent exponential envelope per partial, enables MT-70 style additive timbres
+- Semitone +/- buttons on extra osc ratio knobs (left-click = +1st, right-click = -1st)
+- 164 presets (was 111): added 909 kit, DX7 FM series, Wurlitzer, Clavinet, world instruments, SNES kit, pads, 10 Casio MT-70 presets
 - 8 buses (was 7): added BUS_SAMPLER for chop/flip slice playback
 - Per-bus effects expanded: +EQ, chorus, phaser, comb filter (was: filter/dist/delay/reverb-send only)
 - Master effects expanded: +chorus, flanger, phaser, comb, multiband, sub-bass boost, sidechain envelope
