@@ -229,7 +229,9 @@ Pickup type selected via `epPickupType`: `EP_PICKUP_ELECTROMAGNETIC` (0), `EP_PI
 
 **Velocity model** (shared by all pickup types):
 - Hammer hardness is velocity-dependent: `hard = epHardness + vel × (1 − epHardness) × 0.3`
-- Fundamental/body modes (1–3): `vel²` curve — quiet at pp, strong at ff.
+- Fundamental (mode 0): `vel²` curve (with `epBell`-dependent linear blend) — quiet at pp, strong at ff.
+- 2nd partial (mode 1): linear-dominant curve (`vel × 0.6 + vel² × 0.4`) — tracks the fundamental more closely than other body modes. This is critical for Rhodes warmth: the 2nd partial is the key even harmonic from the electromagnetic pickup. An earlier version used the same `vel²`-dominant curve as the 3rd partial, causing the 2nd partial to vanish at soft dynamics, producing a hollow bell with odd/even ratio >60 instead of the warm, round Rhodes pianissimo (target: odd/even <1.0).
+- 3rd partial (mode 2): `vel²` dominant (`vel × 0.4 + vel² × 0.6`).
 - Bell modes (4–6): `sqrt(vel)` curve — present even at soft hits (vibes character).
 - Amplitude normalization: total mode sum ≈ velocity. Critical — soft hits produce a small clean signal, hard hits drive pickup nonlinearity.
 
@@ -251,7 +253,7 @@ Pickup type selected via `epPickupType`: `EP_PICKUP_ELECTROMAGNETIC` (0), `EP_PI
 | 174 | Rhodes Warm | EM | Soft jazz, mellow | centered, soft hammer, bellTone=0.08 |
 | 175 | Rhodes Bright | EM | Funky, barking | offset, hard hammer, velToDrive=1.5 |
 | 176 | Rhodes Suite | EM | Suitcase amp | tremolo at 4.5 Hz, long sustain |
-| 177 | Rhodes Bark | EM | Glass bell → savage bark | bellTone=0.25, velToDrive=3.0, high bell |
+| 177 | Rhodes Bark | EM | Glass bell → savage bark | bellTone=0.2, velToDrive=4.0, pickupDist=0.5, toneBar=0.35 |
 | 178 | Wurli Buzz | ES | Supertramp "Dreamer" | driven, nasal, tremolo |
 | 179 | Wurli Soul | ES | Ray Charles ballad | warm, clean, gentle tremolo |
 | 180 | Clav Funky | CT | Stevie Wonder funk | bridge pickup, wah filter, hard attack |
@@ -263,14 +265,26 @@ Pickup type selected via `epPickupType`: `EP_PICKUP_ELECTROMAGNETIC` (0), `EP_PI
 | Preset | Odd/Even | Inharmonicity | Brightness | Fund% | Partials |
 |--------|----------|---------------|------------|-------|----------|
 | Rhodes Warm | 2.44 | 1.00 (metallic) | 377 Hz | 47% | 9 |
+| Rhodes Bright | 2.63 | 0.15 (slight) | 805 Hz | 36% | 13 |
 | Rhodes Suite | 1.67 | 1.00 (metallic) | 457 Hz | 49% | 11 |
+| Rhodes Bark | 2.14 | 0.71 (metallic) | 733 Hz | 24% | — |
 | Wurli Buzz | 5.18 (hollow) | 0.28 | 488 Hz | 37% | 10 |
 | Wurli Soul | 6.92 (hollow) | 0.40 | 429 Hz | 46% | 8 |
 | Clav Funky | 1.84 | 0.07 (slight) | 562 Hz | 34% | 12 |
 | Clav Mellow | 2.39 | 0.07 (slight) | 409 Hz | 52% | 9 |
 | Clav Driven | 1.80 | 0.06 (slight) | 539 Hz | 38% | 14 |
 
-Key observations: Rhodes odd/even ~2 (warm, balanced — was ~6.5 before amplitude profile fix), Wurli ~5–7 (hollow, odd-harmonic reed character), Clavinet ~1.8–2.4 (most balanced — mixed even+odd nonlinearity). Clavinet inharmonicity is very low (0.06–0.07, stiff string) vs Rhodes (1.00, cantilever beam) vs Wurli (0.28–0.40, reed).
+**Rhodes Bark velocity sweep** — the bell-to-bark transition:
+
+| Velocity | Odd/Even | Inharm | Noise | Character |
+|----------|----------|--------|-------|-----------|
+| 0.15 (pp) | 0.54 (even-rich) | 0.48 | 15% | Warm glass bell — 2nd partial dominates |
+| 0.30 (mp) | 3.18 | 0.37 | 10% | Transition zone — body emerging |
+| 0.55 (ff) | 2.14 | 0.71 | 15% | Full bark — velToDrive saturates |
+
+The soft bell reads as even-harmonic-dominant (odd/even 0.54) because the 2nd partial's linear velocity curve keeps it audible relative to the fundamental at pianissimo. An earlier version with a `vel²`-dominant 2nd partial produced odd/even >60 at soft dynamics — a hollow, organ-like bell instead of the warm Rhodes character.
+
+Key observations: Rhodes odd/even ~2 (warm, balanced — was ~6.5 before amplitude profile fix), Wurli ~5–7 (hollow, odd-harmonic reed character), Clavinet ~1.8–2.4 (most balanced — mixed even+odd nonlinearity). Clavinet inharmonicity is very low (0.06–0.07, stiff string) vs Rhodes (~0.7–1.0, cantilever beam) vs Wurli (0.28–0.40, reed).
 
 **Reference**:
 - Shear & Wright, "The Electromagnetically Sustained Rhodes Piano" (UCSB Masters Thesis, 2011) — Q measurements, spectral analysis, tine dimensions
@@ -282,7 +296,7 @@ Key observations: Rhodes odd/even ~2 (warm, balanced — was ~6.5 before amplitu
 - Sound On Sound, "Synthesizing Pianos" (Gordon Reid, 2001)
 - Sound On Sound, "Synth Secrets: Clavinet" (Gordon Reid, 2002) — Clavinet D6 mechanics and synthesis
 
-**Assessment**: Good semi-physical model with three distinct pickup characters. The dual-nature approach (harmonic pickup modes for sustain + inharmonic modes for attack transient) correctly reflects measured physics. Key design decisions: (1) per-mode blend scales keep body modes at integer ratios to avoid tuning artifacts; (2) Rhodes pickup nonlinearity has a velocity-independent baseline (`kBase = 0.4`) that prevents the hollow odd-harmonic character pure modal sines would otherwise produce; (3) Clavinet's nearly-harmonic string modes (inharmonicity ~0.07) correctly differentiate it from the metallic Rhodes (~1.0) and reed-like Wurli (~0.3). **Possible enhancements**: (1) Release damper thump — the characteristic soft click when the damper pad contacts the tine on note-off. (2) Sympathetic resonance between adjacent tines. (3) Per-preset bus effect hints (chorus, stereo tremolo, compression) — currently presets are dry.
+**Assessment**: Good semi-physical model with three distinct pickup characters. The dual-nature approach (harmonic pickup modes for sustain + inharmonic modes for attack transient) correctly reflects measured physics. Key design decisions: (1) per-mode blend scales keep body modes at integer ratios to avoid tuning artifacts; (2) Rhodes pickup nonlinearity has a velocity-independent baseline (`kBase = 0.4`) that prevents the hollow odd-harmonic character pure modal sines would otherwise produce; (3) the 2nd partial has its own linear-dominant velocity curve, keeping it audible at soft dynamics for the warm bell sound (earlier `vel²` curve produced hollow pp with odd/even >60); (4) Clavinet's nearly-harmonic string modes (inharmonicity ~0.07) correctly differentiate it from the metallic Rhodes (~1.0) and reed-like Wurli (~0.3). **Possible enhancements**: (1) Release damper thump — the characteristic soft click when the damper pad contacts the tine on note-off. (2) Sympathetic resonance between adjacent tines. (3) Per-preset bus effect hints (chorus, stereo tremolo, compression) — currently presets are dry.
 
 ### 1.18 Tonewheel Organ / Hammond B3 (WAVE_ORGAN)
 **File**: `synth_oscillators.h:1872–1980`, init at `1872–1897`, process at `1899–1980`
@@ -344,6 +358,210 @@ V modes output wet signal only (pitch vibrato). C modes output 50% dry + 50% wet
 - Hammond B3 Service Manual (1955) — tonewheel specifications, drawbar ratios, percussion circuit schematic
 
 **Assessment**: Good additive model with authentic Hammond-specific features. The drawbar ratios are exact Hammond B3 values (not approximations). The key click noise burst is a reasonable stand-in for the actual busbar contact bounce (a more accurate model would use a burst of all 9 drawbar harmonics at random phases, but noise is perceptually close). Single-trigger percussion correctly models the shared capacitor circuit. The scanner vibrato/chorus uses a delay-line approach (Approach A from Pakarinen 2009) which naturally produces frequency-dependent phase shifts — higher harmonics accumulate more phase shift per sample of delay, creating the characteristic "swirling" timbre that distinguishes Hammond V/C from plain pitch vibrato. **Possible enhancements**: (1) Preamp overdrive — tube-style even-harmonic distortion scaled by drawbar sum (more drawbars = hotter signal = more natural drive). (2) Transistor organ modes (Vox Continental, Farfisa) — square/pulse waveforms with tab-stop filtering instead of sine drawbars. (3) Tonewheel wear — subtle per-wheel frequency drift and harmonic distortion for a more "played-in" character. (4) Scanner vibrato LFO shape — rounded triangle (closer to real scanner scan pattern) instead of pure sine.
+
+### 1.19 Metallic Percussion (WAVE_METALLIC)
+**File**: `synth_oscillators.h:1347–1811`, init at `1383–1639`, process at `1641–1811`
+**Algorithm**: 6 square/sine oscillators arranged as 3 ring-modulated pairs, with per-partial exponential decay, HP-filtered noise layer, and pitch envelope.
+
+**Core topology** (authentic 808/909 hihat):
+```
+Pair 0: osc[0] × osc[1]  ──┐
+Pair 1: osc[2] × osc[3]  ──┼── ringOut (weighted sum)
+Pair 2: osc[4] × osc[5]  ──┘
+                              ──→ ringMix crossfade ──→ + HP noise ──→ output
+osc[0] + osc[1] + ... + osc[5] ──→ addOut
+```
+
+**Ring modulation**: Each pair multiplied together produces sum and difference frequencies — `cos(A)·cos(B) = ½[cos(A−B) + cos(A+B)]`. With 6 oscillators at inharmonic ratios, the 3 pairs generate 6 sum/difference tones that are not harmonically related to the fundamental, creating the characteristic metallic "clang" that distinguishes real 808 hihats from simple additive mixing.
+
+**808 ratios**: `{1.0, 1.4471, 1.617, 1.9265, 2.5028, 2.6637}` — from the Roland TR-808 service notes. The 808 uses 6 metal-square oscillators at these ratios, ring-modulated in pairs through bridged-T bandpass circuits.
+
+**909 ratios**: `{1.0, 1.4953, 1.6388, 1.9533, 2.5316, 2.7074}` — slightly different from 808, producing a brighter, more brittle character with more harmonic spread.
+
+**Brightness**: Crossfade between sine and square per oscillator (`sine + brightness × (square − sine)`). Sine modes (brightness=0) produce pure bell/chime tones; square modes (brightness=1) produce the harsh metallic character of the 808.
+
+**Per-partial decay**: Each of the 6 oscillators decays independently: `modeAmps[i] *= (1 − dt / modeDecays[i])`. Higher partials decay faster than lower ones, so the sound evolves from bright initial "tss" to darker sustain "shh" — matching real cymbal behavior where high-frequency modes radiate energy faster.
+
+**Pitch envelope**: `pitchMult = 1 + (semitones/12) × exp(−t / decay)`. A small pitch drop in the first few milliseconds gives the sharp attack transient "tick" that makes 808 hihats cut through a mix.
+
+**HP noise layer**: White noise via `noise()` → 1-pole HP filter (subtraction from LP state) at configurable cutoff. Adds sizzle/air to cymbals. Amount controllable per preset (0.15 for 808, 0.25–0.30 for 909, 0 for cowbell/bell).
+
+**Mix formula**: `out = addOut + ringMix × (ringOut − addOut)`. At ringMix=0, output is pure additive (same as the old WAVE_SQUARE-based hihat presets). At ringMix=0.85–0.9, output is predominantly ring-modulated (authentic 808/909).
+
+**Presets** (11):
+| # | Preset | Ratios | Ring | Noise | Bright | Character |
+|---|--------|--------|------|-------|--------|-----------|
+| 808 CH | 808 | 0.85 | 0.15 | 1.0 | Tight sizzle, choke-able |
+| 808 OH | 808 | 0.85 | 0.12 | 1.0 | Same character, longer ring |
+| 909 CH | 909 | 0.9 | 0.25 | 1.0 | Brighter, more noise |
+| 909 OH | 909 | 0.9 | 0.3 | 1.0 | Bright, washy |
+| Ride | Wide spread | 0.7 | 0.08 | 0.7 | Long shimmer, subtle |
+| Crash | Wide spread | 0.75 | 0.2 | 0.8 | Bright burst, very long tail |
+| Cowbell | 1:1.504 | 0.0 | 0.0 | 1.0 | Two-tone, additive (1 pair only) |
+| Bell | Near-harmonic | 0.3 | 0.0 | 0.0 | Tubular bell, sine modes |
+| Gong | Low cluster | 0.5 | 0.05 | 0.2 | Very long decay, pitch drop |
+| Agogo | 1:2.8:4.1 | 0.4 | 0.0 | 0.5 | Bright bell, 3 modes only |
+| Triangle | 1:2.76:5.4 | 0.2 | 0.02 | 0.0 | Almost pure sine, very long ring |
+
+**Reference**:
+- Roland TR-808 Service Manual (1980) — oscillator circuit, frequency ratios, HP filter topology
+- Roland TR-909 Service Manual (1983) — modified oscillator ratios, noise mixer
+- Bilbao, "Numerical Sound Synthesis" (2009) — modal synthesis of metallic percussion
+- Fletcher & Rossing, "The Physics of Musical Instruments" (1998), Ch. 20 (cymbals and gongs) — Bessel/circular plate mode analysis, decay rate vs. frequency relationship
+
+**Assessment**: Significant improvement over the previous WAVE_SQUARE additive approach for hihats. The ring modulation is the key — additive mixing of inharmonic squares produces a buzzy chord, while ring-mod produces the actual sum/difference frequency spectrum that defines the 808 sound. The per-partial decay adds the timbral evolution that real cymbals exhibit. The brightness control enables the full range from pure sine bells to harsh metallic hats in one engine. 6 oscillators is the correct count for 808/909 (matching the original hardware). For cymbals, real instruments have hundreds of modes — 6 is a deliberate simplification that captures the essential character. **Possible enhancements**: (1) Choke envelope — a fast amplitude kill triggered by a subsequent closed hihat, with a brief "zzip" transient. Currently choke is handled by the voice system's `p_choke` flag, which is adequate. (2) Velocity-to-brightness mapping for natural dynamics.
+
+### 1.20 Guitar Body (WAVE_GUITAR)
+**File**: `synth_oscillators.h:1817–2060`, init at `1849–2015`, process at `2017–2060`
+**Algorithm**: Karplus-Strong plucked string (reusing WAVE_PLUCK infrastructure) → pick position comb filter → sitar-style bridge buzz → 4 parallel biquad body resonators → dry/wet mix.
+
+**Signal flow**:
+```
+Noise burst ──→ pick position comb ──→ KS delay line (string)
+                                            │
+                                            ├──→ bridge buzz (nonlinear)
+                                            │
+                                            ├──→ 4× biquad BPF (body) ──→ bodyMix
+                                            │                                │
+                                            └──→ dry string ────────────────→ output
+```
+
+**String model**: Reuses the exact Karplus-Strong delay line from WAVE_PLUCK — same allpass fractional tuning, same brightness/damping LP filter. The guitar engine adds post-processing to color the raw string output with body resonance.
+
+**Pick position** (excitation comb filter): Applied to the initial noise burst at note-on. Creates a comb-notch at `sampleRate / (pickPos × ksLength)` and its harmonics. Near bridge (pickPos=0): all harmonics present → bright, twangy. Near center (pickPos=1): notch suppresses harmonics near the midpoint → warm, round. Implementation: `ksBuffer[i] = (noise[i] + noise[(i + pickSample) % len]) × 0.5` — a feedforward comb filter that notches frequencies where the pick position coincides with a vibration node.
+
+**Reference**: Smith, "Physical Audio Signal Processing" — the pick position comb filter is the standard technique for modeling where a string is plucked. This is equivalent to the spatial impulse response at the pluck point: a delta function convolved with its reflection from the nearest boundary.
+
+**Bridge buzz** (sitar jawari): Nonlinear waveguide termination that clips the string displacement against a curved bridge surface. When the string amplitude exceeds a threshold (`1 − buzzAmount × 0.8`), the excess is soft-clipped via `tanh(excess × 5)`, and a fraction of the buzz energy is fed back into the delay line halfway around the loop. This models the jawari — the sitar's curved bridge that allows the vibrating string to contact the bridge surface, creating the characteristic sustained buzzing/rattling timbre.
+
+**Reference**: Valimaki & Tolonen, "Development and Calibration of a Guitar Synthesizer" (1998) — bridge buzz modeling. The jawari (sitar bridge) is described in Sengupta, Sengupta & Bose, "Interaction of Vibrating String with a Curved Bridge" (Indian J. Physics, 2001).
+
+**Body resonator**: 4 parallel biquad bandpass filters, each tuned to a specific body formant frequency. The biquads use the standard cookbook formula:
+```
+w0 = 2π × freq / sr
+alpha = sin(w0) × sinh(ln(2)/2 × BW × w0 / sin(w0))
+b0 = alpha × gain / a0
+b2 = −alpha × gain / a0
+a1 = −2cos(w0) / a0
+a2 = (1 − alpha) / a0
+```
+Transposed direct form II implementation (2 state variables per biquad). The body formants are **fixed frequencies** independent of the string pitch — a guitar body resonates at the same frequencies regardless of which note is played (unlike a voice, which changes formants for different vowels). This is physically correct: the body is a passive resonator excited by the string.
+
+**Preset formants** (Hz):
+| Preset | F1 | F2 | F3 | F4 | Character |
+|--------|-----|-----|------|------|-----------|
+| Acoustic | 98 | 204 | 390 | 810 | Spruce/mahogany dreadnought |
+| Classical | 90 | 185 | 350 | 700 | Cedar/rosewood, warm |
+| Banjo | 260 | 480 | 920 | 1800 | Membrane body, sharp mid peak |
+| Sitar | 80 | 170 | 420 | 1100 | Gourd, + jawari buzz (0.6) |
+| Oud | 75 | 155 | 310 | 620 | Deep round body |
+| Koto | 130 | 350 | 850 | 2200 | Bright, bridge emphasis |
+| Harp | 100 | 250 | 500 | 1000 | Minimal body (mix=0.15) |
+| Ukulele | 180 | 380 | 720 | 1400 | Small body, warm mid |
+
+**Reference**:
+- Elejabarrieta, Ezcurra & Santamaría, "Coupled modes of the resonance box of the guitar" (JASA, 2002) — measured guitar body mode frequencies and Q factors
+- Fletcher & Rossing, "The Physics of Musical Instruments" (1998), Ch. 9 (guitars) — body mode analysis, soundboard coupling
+- Karjalainen, Mäki-Patola & Kanerva, "Body Modeling Techniques for String Instrument Synthesis" (ICMC, 2004) — biquad body modeling approach
+- Smith, "Physical Audio Signal Processing" (CCRMA) — pick position comb filter, string-body coupling
+
+**Assessment**: Good coupled string+body model using the established technique of biquad body formants. The 4 parallel biquads capture the first 4 body modes which are the most perceptually important (the "signature" of the instrument body). The pick position comb filter correctly changes the harmonic content of the excitation. The bridge buzz is a nice addition for sitar — the soft-clip + feedback approach is simpler than a full nonlinear termination model but captures the essential character. The bodyMix parameter allows continuous blending from raw KS wire (pluck) to full body resonance, making it easy to dial in the right amount of character. **Possible enhancements**: (1) String-body coupling feedback — the body resonances should slightly modify the string's vibration via impedance coupling at the bridge (currently one-directional: string→body only). (2) Per-string body response — in reality, different strings couple differently to the body depending on their angle and the bridge saddle position. (3) Sympathetic string resonance — open strings ringing in response to played notes, which is the defining character of sitar (and important for harp and 12-string guitar).
+
+### 1.21 Single/Double Reed (WAVE_REED)
+**File**: `synth_oscillators.h`, init at `initReed()`, process at `processReedOscillator()`
+**Algorithm**: Bore waveguide + pressure-driven reed reflection function (STK Clarinet-style).
+
+**Physics model**: A reed (cane, plastic, or metal) acts as a pressure-controlled valve at the mouthpiece end of a bore waveguide. The bore delay line determines the pitch; the reed's nonlinear reflection function sustains oscillation by modulating the returning bore wave with mouth pressure.
+
+**Signal flow**:
+```
+boreReturn = boreBuf[boreIdx]
+lpState = LP_filter(boreReturn)         // bore wall losses
+pMinus = -0.95 * lpState               // open-end reflection (invert + loss)
+pressureDiff = pMinus - blowPressure
+reedRefl = offset + slope * pressureDiff  // reed table, clamped [-1,1]
+boreInput = Pm + pressureDiff * reedRefl
+boreBuf[boreIdx] = boreInput
+output = DC_block(boreReturn)
+```
+
+**Reed table**: Linear function with hard clamp — `offset + slope * x`, where offset (0.3–0.7) is the rest opening controlled by `aperture`, and slope (−0.4 to −0.9) is the stiffness response. Hard clamp to [−1,1] models the reed beating against the lay.
+
+**Bore conicity**: The `bore` parameter (0=cylindrical, 1=conical) controls:
+- LP filter coefficient (0.55 cylindrical → 0.92 conical) — cylindrical is darker
+- Even harmonic injection for conical bores (asymmetric saturation via `tanh + x²` for bore > 0.3)
+- This is the key timbral differentiator: clarinet (cylindrical, odd harmonics only) vs sax (conical, all harmonics)
+
+**Parameters**: blowPressure (0–1), stiffness (0–1), aperture (0–1), bore (0–1), vibratoDepth (0–1).
+
+**Presets** (6):
+| # | Name | Bore | Character |
+|---|------|------|-----------|
+| 192 | Clarinet | 0.0 (cyl) | Dark, hollow, woody — odd harmonics |
+| 193 | Soprano Sax | 0.9 (con) | Bright, cutting, edgy |
+| 194 | Alto Sax | 0.75 (con) | Warm, round, classic jazz |
+| 195 | Tenor Sax | 0.8 (con) | Rich, breathy, full |
+| 196 | Oboe | 0.55 (con) | Nasal, penetrating — stiff double reed |
+| 197 | Harmonica | 0.1 (cyl) | Warm, buzzy, blues — soft free reed |
+
+**Reference**:
+- McIntyre, Schumacher & Woodhouse, "On the Oscillations of Musical Instruments" (JASA 1983)
+- Cook, "Real Sound Synthesis for Interactive Applications" (2002), Ch. 10
+- Scavone, STK Clarinet class
+- Guillemain et al., "Digital synthesis of self-sustained instruments" (2005)
+- Bilbao, "Numerical Sound Synthesis" (2009) — reed valve discretization
+
+**Assessment**: Good STK-derived model. The reed table (offset + slope, clipped) is the proven approach from Cook/Scavone. The bore conicity parameter successfully differentiates cylindrical (clarinet, odd harmonics) from conical (sax, all harmonics) via both the LP coefficient range and the even-harmonic injection nonlinearity. The 6 presets span a wide timbral range from hollow clarinet to nasal oboe to buzzy harmonica. **Possible enhancements**: (1) Register hole for overblowing (clarinet 12th, sax octave). (2) Tonehole scattering junction for more realistic fingering transitions. (3) Two-delay-line conical bore model (STK Saxofony) for more accurate sax physics.
+
+### 1.22 Brass / Lip Valve (WAVE_BRASS)
+**File**: `synth_oscillators.h`, init at `initBrass()`, process at `processBrassOscillator()`
+**Algorithm**: Bore waveguide + memoryless lip nonlinearity (STK Brass-style).
+
+**Physics model**: The player's lips act as a nonlinear reflector at the mouthpiece end of a bore waveguide. Unlike a physical lip oscillator (Vergez & Rodet 1997, Adachi & Sato 1995), STK uses a **memoryless nonlinearity** — the lip has no resonant frequency of its own, so the bore delay line alone determines the pitch. This approach always self-oscillates at the correct frequency.
+
+**Signal flow**:
+```
+boreReturn = boreBuf[boreIdx]
+lpState = LP_filter(boreReturn)         // bore wall + bell losses
+pMinus = lpState * -0.95               // bell reflection
+[optional: mute LP stage]
+pressureDiff = pMinus - blowPressure
+lipRefl = tanh((offset + slope * pressureDiff) * gain)  // lip table
+boreInput = Pm + pressureDiff * lipRefl
+boreBuf[boreIdx] = boreInput
+output = DC_block(lpState)
+```
+
+**Lip nonlinearity**: Same structure as reed (offset + slope * input) but with `tanh()` soft-saturation instead of hard clamp. This produces smoother harmonic content — warmer and rounder than reed, matching the character of brass instruments where the lip mass smooths the valve action.
+
+**Bore conicity**: `bore` parameter controls the LP filter coefficient:
+- Cylindrical (trumpet, bore=0): LP coeff 0.90 → bright, projecting, strong upper harmonics
+- Conical (French horn, bore=1): LP coeff 0.70 → dark, mellow, fewer overtones
+
+**Lip tension**: Controls the `tanh` gain — higher tension → more aggressive saturation → brighter, brassier tone with more odd harmonics. Low tension → gentle curve → warm, round.
+
+**Mute**: Optional second LP stage that darkens and nasalizes the tone (harmon/cup mute effect). Applied after the bell reflection, before the lip sees the returning wave.
+
+**Parameters**: blowPressure (0–1), lipTension (0–1), lipAperture (0–1), bore (0–1), mute (0–1).
+
+**Presets** (6):
+| # | Name | Bore | Mute | Character |
+|---|------|------|------|-----------|
+| 204 | Trumpet | 0.0 | 0.0 | Bright, projecting, brassy |
+| 205 | Muted Trumpet | 0.1 | 0.65 | Nasal, distant — Miles Davis |
+| 206 | Trombone | 0.2 | 0.0 | Warm, powerful, slide character |
+| 207 | French Horn | 0.85 | 0.0 | Dark, mellow, complex — conical |
+| 208 | Tuba | 0.95 | 0.0 | Deep, round, very dark |
+| 209 | Flugelhorn | 0.7 | 0.0 | Soft, lyrical, warm — between trumpet and horn |
+
+**Reference**:
+- Cook, "Real Sound Synthesis for Interactive Applications" (2002), Ch. 10
+- Scavone, STK Brass class — memoryless lip nonlinearity approach
+- Adachi & Sato, "Time-domain simulation of sound production in the brass instrument" (JASA 1995) — physical lip model (not used, but informed parameter choices)
+- Vergez & Rodet, "Trumpet and trumpet player: model and simulation in a musical context" (ICMC 1997)
+- Campbell, Gilbert & Myers, "The Science of Brass Instruments" (Springer 2021)
+
+**Assessment**: Good STK-derived model. The memoryless lip approach is the correct engineering choice — it always oscillates at the bore pitch (no mode-locking issues), is CPU-cheap, and sounds musical. The `tanh` soft-saturation successfully differentiates brass from reed (which uses hard clamp). The single-LP + mute architecture keeps the feedback loop gain high enough for sustained oscillation while the bore parameter provides meaningful timbral variation from bright trumpet to dark tuba. The mute parameter adds a useful performance dimension. **Possible enhancements**: (1) Slide/valve transition effects — pitch glide between notes with characteristic "blat." (2) Growl/multiphonic — modulate lip tension with a low-frequency oscillator for vocal-fold interaction. (3) Bell radiation filter — frequency-dependent radiation pattern (highs are more directional in brass).
 
 ---
 
@@ -1006,6 +1224,8 @@ Combined offset applied to read position. Uses same `tapeWowFlutterLFO()` helper
 | Bird | Parametric chirp | Adequate | Procedural |
 | Electric Piano | 6-mode modal + pickup nonlinearity | Good | Shear 2011, Pfeifle 2017 |
 | Organ (Hammond) | 9-drawbar sine bank + click/perc/scanner V/C | Good | Pekonen 2011, Pakarinen 2009 |
+| Metallic Perc | 6-osc ring-mod pairs + per-partial decay | Good | TR-808/909 service manuals |
+| Guitar Body | KS string + pick comb + 4 biquad body modes | Good | Elejabarrieta 2002, Karjalainen 2004 |
 | Leslie Speaker | Crossover + dual-rotor AM/Doppler + slew | Good | Smith & Abel 1999, Werner 2016 |
 | SVF Filter | Simper/Cytomic TPT | Excellent | Simper 2013, Zavalishin 2012 |
 | Ladder Filter | 4-pole TPT + 2× OS, true multimode | Excellent | KR-106, Zavalishin 2012 |

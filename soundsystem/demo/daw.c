@@ -173,13 +173,15 @@ static const char* noiseTypeNames[] = {"LFSR", "TimeHash"};
 // (square, saw, triangle, etc.) are in synth.h:waveTypeNames[] for file I/O.
 static const char* waveNames[] = {"Square", "Saw", "Triangle", "Noise", "SCW",
     "Voice", "Pluck", "Additive", "Mallet", "Granular", "FM", "PD", "Membrane", "Bird", "Bowed", "Pipe", "Sine",
-    "EPiano", "Organ"};
+    "EPiano", "Organ", "Reed", "Metallic", "Brass", "Guitar"};
 static const char* vowelNames[] = {"A", "E", "I", "O", "U"};
 static const char* additivePresetNames[] = {"Organ", "Bell", "Choir", "Brass", "Strings"};
 static const char* malletPresetNames[] = {"Marimba", "Vibes", "Xylo", "Glock", "Tubular"};
 static const char* fmAlgNames[] = {"Stack", "Parallel", "Branch", "Pair"};
 static const char* pdWaveNames[] = {"Saw", "Square", "Pulse", "SyncSaw", "SyncSq"};
 static const char* membranePresetNames[] = {"Tabla", "Conga", "Bongo", "Djembe", "Tom"};
+static const char* metallicPresetNames[] = {"808 CH", "808 OH", "909 CH", "909 OH", "Ride", "Crash", "Cowbell", "Bell", "Gong", "Agogo", "Triangle"};
+static const char* guitarPresetNames[] = {"Acoustic", "Classical", "Banjo", "Sitar", "Oud", "Koto", "Harp", "Ukulele"};
 static const char* birdTypeNames[] = {"Sparrow", "Robin", "Wren", "Finch", "Nightingale"};
 static const char* arpModeNames[] = {"Up", "Down", "UpDown", "Random"};
 static const char* arpChordNames[] = {"Octave", "Major", "Minor", "Dom7", "Min7", "Sus4", "Power"};
@@ -407,6 +409,9 @@ static const Color engineTints[] = {
     {40, 45, 75, 255},   // WAVE_SINE     — blue (basic)
     {55, 60, 50, 255},   // WAVE_EPIANO   — warm green (physical/keys)
     {60, 55, 45, 255},   // WAVE_ORGAN    — warm amber (keys/electromechanical)
+    {50, 68, 52, 255},   // WAVE_REED     — green (physical)
+    {85, 55, 40, 255},   // WAVE_METALLIC — orange/red (percussion)
+    {55, 72, 48, 255},   // WAVE_BRASS    — green (physical)
 };
 // busNames defined later with other bus arrays
 
@@ -4717,6 +4722,35 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "Embou", &p->p_pipeEmbouchure, 0.05f, 0.1f, 1.0f);
             ui_col_float(&c, "Bore", &p->p_pipeBore, 0.05f, 0.1f, 0.9f);
             ui_col_float(&c, "Overblow", &p->p_pipeOverblow, 0.05f, 0.0f, 1.0f);
+        } else if (p->p_waveType == WAVE_REED) {
+            ui_col_sublabel(&c, "Reed:", UI_TEXT_SUBLABEL);
+            ui_col_float(&c, "Blow", &p->p_reedBlowPressure, 0.05f, 0.1f, 1.0f);
+            ui_col_float(&c, "Stiff", &p->p_reedStiffness, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Apertr", &p->p_reedAperture, 0.05f, 0.1f, 1.0f);
+            ui_col_float(&c, "Bore", &p->p_reedBore, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Vibrat", &p->p_reedVibratoDepth, 0.05f, 0.0f, 1.0f);
+        } else if (p->p_waveType == WAVE_BRASS) {
+            ui_col_sublabel(&c, "Brass:", UI_TEXT_SUBLABEL);
+            ui_col_float(&c, "Blow", &p->p_brassBlowPressure, 0.05f, 0.1f, 1.0f);
+            ui_col_float(&c, "LipTns", &p->p_brassLipTension, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "LipApr", &p->p_brassLipAperture, 0.05f, 0.1f, 1.0f);
+            ui_col_float(&c, "Bore", &p->p_brassBore, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Mute", &p->p_brassMute, 0.05f, 0.0f, 1.0f);
+        } else if (p->p_waveType == WAVE_METALLIC) {
+            ui_col_sublabel(&c, "Metallic:", UI_TEXT_SUBLABEL);
+            ui_col_cycle(&c, "Preset", metallicPresetNames, METALLIC_COUNT, &p->p_metallicPreset);
+            ui_col_float(&c, "Ring", &p->p_metallicRingMix, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Noise", &p->p_metallicNoiseLevel, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Bright", &p->p_metallicBrightness, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "PitchE", &p->p_metallicPitchEnv, 0.5f, 0.0f, 12.0f);
+            ui_col_float(&c, "PEDcy", &p->p_metallicPitchEnvDecay, 0.005f, 0.001f, 0.1f);
+        } else if (p->p_waveType == WAVE_GUITAR) {
+            ui_col_sublabel(&c, "Guitar:", UI_TEXT_SUBLABEL);
+            ui_col_cycle(&c, "Preset", guitarPresetNames, GUITAR_COUNT, &p->p_guitarPreset);
+            ui_col_float(&c, "Body", &p->p_guitarBodyMix, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Bright", &p->p_guitarBodyBrightness, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Pick", &p->p_guitarPickPosition, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Buzz", &p->p_guitarBuzz, 0.05f, 0.0f, 1.0f);
         } else if (p->p_waveType == WAVE_BIRD) {
             ui_col_sublabel(&c, "Bird:", UI_TEXT_SUBLABEL);
             ui_col_cycle(&c, "Type", birdTypeNames, 5, &p->p_birdType);

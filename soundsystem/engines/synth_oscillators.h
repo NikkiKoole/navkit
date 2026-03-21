@@ -332,6 +332,224 @@ static float processPipeOscillator(Voice *v, float sampleRate) {
     return dcOut * 2.0f;
 }
 
+// Reed instrument oscillator — single/double reed waveguide model
+// Based on McIntyre/Schumacher/Woodhouse (1983) pressure-driven reed valve
+// coupled to a cylindrical or conical bore. The reed acts as a nonlinear
+// reflection function at the mouthpiece end of the bore waveguide.
+//
+// Physics:
+//   mouth pressure (Pm) → reed gap → flow into bore → bore waveguide → bell
+//   The reed displacement x = (Pm - Pbore) / stiffness, clamped to [0,1].
+//   Flow through the gap: U = x * sqrt(|Pm - Pbore|) * sign(Pm - Pbore)
+//   This is the Bernoulli flow model. We use a polynomial approximation:
+//   U = x * (1 - x) which captures the essential nonlinear valve behavior —
+//   flow increases with opening but drops as the reed closes against the lay.
+//
+// Bore: single delay line. Cylindrical bore (clarinet) overblows at the 12th
+// (3rd harmonic) due to closed-end reflection. Conical bore (sax) overblows
+// at the octave. The bore parameter crossfades between these reflection types.
+//
+// References:
+//   - McIntyre, Schumacher & Woodhouse, "On the Oscillations of Musical
+//     Instruments" (JASA 1983) — the canonical reed oscillation model
+//   - Bilbao, "Numerical Sound Synthesis" (2009) — reed valve discretization
+//   - Cook, "Real Sound Synthesis for Interactive Applications" (2002), Ch. 10
+//   - Scavone (STK Clarinet/Saxofony classes)
+//   - Guillemain et al., "Digital synthesis of self-sustained instruments" (2005)
+static float processReedOscillator(Voice *v, float sampleRate) {
+    (void)sampleRate;
+    ReedSettings *rs = &v->reedSettings;
+    if (rs->boreLen <= 0) return 0.0f;
+
+    // Lip vibrato — subtle pressure modulation (5-7 Hz typical)
+    float vibrato = 0.0f;
+    if (rs->vibratoDepth > 0.0f) {
+        rs->vibratoPhase += 5.8f / sampleRate;
+        if (rs->vibratoPhase >= 1.0f) rs->vibratoPhase -= 1.0f;
+        vibrato = sinf(rs->vibratoPhase * 2.0f * PI) * rs->vibratoDepth * 0.1f;
+    }
+
+    // Mouth pressure with vibrato
+    float Pm = rs->blowPressure + vibrato;
+
+    // === Bore delay line: read returning wave ===
+    float boreReturn = rs->boreBuf[rs->boreIdx];
+
+    // === Bell-end filtering ===
+    // Bore shape dramatically affects the tone:
+    //
+    // Cylindrical bore (clarinet, bore=0): The closed reed end + open bell
+    // create a half-wave resonator with ODD harmonics only. The bore walls
+    // absorb highs, giving a dark, hollow, woody tone. Heavy LP filtering.
+    //
+    // Conical bore (sax, bore=0.7-0.9): Acts like open-open pipe, ALL harmonics
+    // present. The flaring bell radiates highs efficiently. Less LP filtering,
+    // brighter tone, more "edge."
+    //
+    // Narrow conical (oboe, bore=0.5-0.6): Still all harmonics but the narrow
+    // bore emphasizes upper partials → nasal, penetrating quality.
+
+    // 1-pole LP: bore wall + radiation losses
+    // Cylindrical: heavy filtering (dark, hollow) → lpCoeff = 0.55
+    // Conical: light filtering (bright, edgy) → lpCoeff = 0.92
+    float lpCoeff = 0.55f + rs->bore * 0.37f;
+    rs->lpState = rs->lpState * (1.0f - lpCoeff) + boreReturn * lpCoeff;
+
+    // Open-end reflection coefficient
+    // All bore types invert at the open bell end, but loss varies:
+    // Cylindrical: more loss at bell (less radiation) → -0.95
+    // Conical: flared bell radiates more → -0.85
+    float endRefl = -0.95f + rs->bore * 0.10f;
+    float boreFiltered = rs->lpState;
+
+    // === Reed reflection function ===
+    // pressureDiff = reflected bore pressure - mouth pressure
+    float pressureDiff = endRefl * boreFiltered - Pm;
+
+    // Reed table: offset + slope * input, clamped to [-1, 1]
+    //
+    // Aperture controls the rest opening — how much air flows with no bore
+    // pressure. Wide aperture (harmonica) = easy to blow, warm fundamental.
+    // Narrow aperture (oboe) = resistant, bright, complex harmonics.
+    //
+    // Stiffness controls how the reed responds to pressure changes.
+    // Soft reed: gentle response, smooth tone, fewer upper harmonics
+    // Stiff reed: aggressive response, bright attack, rich harmonics, nasal edge
+    float reedOffset = 0.3f + rs->aperture * 0.4f;  // 0.3-0.7: wide range
+    float reedSlope = -0.4f - rs->stiffness * 0.5f;  // -0.4 to -0.9: dramatic range
+    float reedRefl = reedOffset + reedSlope * pressureDiff;
+    reedRefl = clampf(reedRefl, -1.0f, 1.0f);
+
+    // Bore input: mouth pressure + reflected pressure modulated by reed
+    float boreInput = Pm + pressureDiff * reedRefl;
+
+    // === Even harmonic injection for conical bores ===
+    // Cylindrical bores naturally suppress even harmonics (odd-only resonance).
+    // Conical bores support all harmonics. To emphasize this difference,
+    // add a small nonlinear term that generates even harmonics for conical bores.
+    // tanh(x) is odd-symmetric but tanh(x + bias) breaks symmetry → even harmonics.
+    if (rs->bore > 0.3f) {
+        float conicalDrive = (rs->bore - 0.3f) * 0.7f; // 0 at bore=0.3, ~0.5 at bore=1
+        boreInput = tanhf(boreInput * (1.0f + conicalDrive * 2.0f)) / (1.0f + conicalDrive * 2.0f);
+        // Asymmetric clip for even harmonics (sax "buzz")
+        boreInput += conicalDrive * boreInput * boreInput * 0.3f;
+    }
+
+    // Write into bore delay line
+    rs->boreBuf[rs->boreIdx] = boreInput;
+
+    // Advance bore waveguide
+    rs->boreIdx = (rs->boreIdx + 1) % rs->boreLen;
+
+    // Output: pressure at bell (bore output before reflection)
+    float out = boreReturn;
+
+    // DC blocking (essential — reed model has large DC from steady blow pressure)
+    float dcOut = out - rs->dcPrev + 0.995f * rs->dcState;
+    rs->dcPrev = out;
+    rs->dcState = dcOut;
+
+    return dcOut * 1.5f;
+}
+
+// Brass instrument oscillator — lip-valve waveguide model
+// Based on Adachi & Sato (1995), Cook "Real Sound Synthesis" (2002), STK Brass.
+//
+// Physics:
+//   The player's lips act as a pressure-controlled oscillator (mass-spring system)
+//   coupled to a bore waveguide. Unlike a reed (which is a passive valve driven by
+//   bore pressure), the lips have their own resonant frequency that must be near a
+//   bore resonance for oscillation to occur — this is "mode locking."
+//
+//   blow pressure (Pm) → lip oscillator → flow into bore → bore waveguide → bell
+//
+//   The lip model: a damped harmonic oscillator whose equilibrium position is
+//   modulated by the pressure difference across the lips. The flow through the
+//   lip gap is proportional to lip opening × pressure difference.
+//
+// Bore types:
+//   Cylindrical (trumpet, bore=0): bright, projecting, strong upper harmonics
+//   Conical (French horn, bore=1): warm, mellow, complex, weaker upper harmonics
+//   Bell flare: all brass instruments have a flare, modeled as a 2-pole LP
+//
+// Mute: reduces high frequencies and adds a nasal quality (harmon mute effect)
+//
+// References:
+//   - Adachi & Sato, "Time-domain simulation of sound production in the brass
+//     instrument" (JASA 1995) — lip oscillator model
+//   - Cook, "Real Sound Synthesis for Interactive Applications" (2002), Ch. 10
+//   - Scavone, STK Brass class
+//   - Vergez & Rodet, "Trumpet and trumpet player: model and simulation in a
+//     musical context" (ICMC 1997) — lip dynamics
+//   - Campbell, Gilbert & Myers, "The Science of Brass Instruments" (Springer 2021)
+static float processBrassOscillator(Voice *v, float sampleRate) {
+    (void)sampleRate;
+    BrassSettings *bs = &v->brassSettings;
+    if (bs->boreLen <= 0) return 0.0f;
+
+    float Pm = bs->blowPressure;
+
+    // === Bore delay line: read returning wave ===
+    float boreReturn = bs->boreBuf[bs->boreIdx];
+
+    // === Bell-end processing (STK-style: single LP + reflection) ===
+    // One LP filter for bore wall + bell radiation losses.
+    // Bore parameter controls the cutoff:
+    //   Cylindrical (trumpet, bore=0): bright → high LP coeff (passes more HF)
+    //   Conical (horn, bore=1): dark, mellow → lower LP coeff (rolls off HF)
+    float lpCoeff = 0.7f + (1.0f - bs->bore) * 0.2f; // 0.90 trumpet, 0.70 horn
+    bs->lpState = bs->lpState * (1.0f - lpCoeff) + boreReturn * lpCoeff;
+
+    // Bell reflection: invert + small loss (STK uses -0.95)
+    float pMinus = bs->lpState * -0.95f;
+
+    // Mute: additional LP stage that darkens and nasalizes
+    if (bs->mute > 0.01f) {
+        float muteCoeff = 1.0f - bs->mute * 0.5f;
+        bs->lpState2 = bs->lpState2 * (1.0f - muteCoeff) + pMinus * muteCoeff;
+        pMinus = bs->lpState2;
+    }
+
+    // === Lip reflection (STK memoryless nonlinearity) ===
+    // The lip has no resonant frequency — the bore delay alone sets the pitch.
+    // The nonlinear function sustains oscillation and shapes harmonics.
+    //
+    // Reed-proven structure:
+    //   pressureDiff = reflected_bore - blow_pressure
+    //   lipRefl = table(pressureDiff)
+    //   boreInput = Pm + pressureDiff * lipRefl
+    //
+    // Brass character: tanh soft-saturation (smoother than reed's hard clamp)
+    // + lipTension scales the nonlinearity for brighter/darker timbres
+
+    float pressureDiff = pMinus - Pm;
+
+    // Lip table with tanh saturation
+    float lipOffset = 0.35f + bs->lipAperture * 0.3f;   // 0.35-0.65
+    float lipSlope = -0.5f - bs->lipTension * 0.3f;      // -0.5 to -0.8
+    float lipRefl = lipOffset + lipSlope * pressureDiff;
+    lipRefl = tanhf(lipRefl * (1.2f + bs->lipTension * 0.8f));
+
+    // Bore input: blow pressure + pressure difference × lip reflection
+    float boreInput = Pm + pressureDiff * lipRefl;
+
+    // Write into bore delay line
+    bs->boreBuf[bs->boreIdx] = boreInput;
+
+    // Advance bore waveguide
+    bs->boreIdx = (bs->boreIdx + 1) % bs->boreLen;
+
+    // Output: radiated sound at bell (bore return after LP = what radiates)
+    float out = bs->lpState;
+
+    // DC blocking
+    float dcOut = out - bs->dcPrev + 0.995f * bs->dcState;
+    bs->dcPrev = out;
+    bs->dcState = dcOut;
+
+    return dcOut * 4.0f;
+}
+
 // Additive synthesis oscillator
 static float processAdditiveOscillator(Voice *v, float sampleRate) {
     AdditiveSettings *as = &v->additiveSettings;
@@ -1246,6 +1464,558 @@ static float processMembraneOscillator(Voice *v, float sampleRate) {
     return out * 0.6f;
 }
 
+// ============================================================================
+// METALLIC PERCUSSION (ring-mod of square wave pairs — 808/909/cymbal/bell)
+// ============================================================================
+
+// Classic 808 hihat ratios: 6 square oscillators ring-modulated in pairs
+// Reference: Roland TR-808 service notes — 6 metal-square oscillators
+static const float metallic808Ratios[6] = {
+    1.0f, 1.4471f, 1.6170f, 1.9265f, 2.5028f, 2.6637f
+};
+
+// 909 uses slightly different ratios with more harmonic content
+static const float metallic909Ratios[6] = {
+    1.0f, 1.4953f, 1.6388f, 1.9533f, 2.5316f, 2.7074f
+};
+
+// Initialize metallic percussion with preset
+static void initMetallicPreset(MetallicSettings *ms, MetallicPreset preset) {
+    ms->preset = preset;
+
+    // Reset phases and noise state
+    for (int i = 0; i < 6; i++) {
+        ms->modePhases[i] = 0.0f;
+    }
+    ms->noiseLPState = 0.0f;
+    ms->pitchEnvTime = 0.0f;
+
+    switch (preset) {
+        case METALLIC_808_CH:
+            // 808 closed hihat: tight, sizzly, short decay
+            for (int i = 0; i < 6; i++) ms->ratios[i] = metallic808Ratios[i];
+            ms->modeAmpsInit[0] = 1.0f; ms->modeAmpsInit[1] = 0.9f;
+            ms->modeAmpsInit[2] = 0.8f; ms->modeAmpsInit[3] = 0.7f;
+            ms->modeAmpsInit[4] = 0.6f; ms->modeAmpsInit[5] = 0.5f;
+            ms->modeDecays[0] = 0.08f; ms->modeDecays[1] = 0.06f;
+            ms->modeDecays[2] = 0.05f; ms->modeDecays[3] = 0.04f;
+            ms->modeDecays[4] = 0.03f; ms->modeDecays[5] = 0.025f;
+            ms->ringMix = 0.85f;
+            ms->noiseLevel = 0.15f;
+            ms->noiseHPCutoff = 0.6f;
+            ms->brightness = 1.0f;      // Full square waves
+            ms->pitchEnvAmount = 1.5f;   // Subtle attack transient
+            ms->pitchEnvDecay = 0.005f;
+            break;
+
+        case METALLIC_808_OH:
+            // 808 open hihat: same character, longer ring
+            for (int i = 0; i < 6; i++) ms->ratios[i] = metallic808Ratios[i];
+            ms->modeAmpsInit[0] = 1.0f; ms->modeAmpsInit[1] = 0.9f;
+            ms->modeAmpsInit[2] = 0.8f; ms->modeAmpsInit[3] = 0.7f;
+            ms->modeAmpsInit[4] = 0.6f; ms->modeAmpsInit[5] = 0.5f;
+            ms->modeDecays[0] = 0.5f;  ms->modeDecays[1] = 0.4f;
+            ms->modeDecays[2] = 0.35f; ms->modeDecays[3] = 0.3f;
+            ms->modeDecays[4] = 0.25f; ms->modeDecays[5] = 0.2f;
+            ms->ringMix = 0.85f;
+            ms->noiseLevel = 0.12f;
+            ms->noiseHPCutoff = 0.55f;
+            ms->brightness = 1.0f;
+            ms->pitchEnvAmount = 1.5f;
+            ms->pitchEnvDecay = 0.005f;
+            break;
+
+        case METALLIC_909_CH:
+            // 909 closed hihat: brighter, more noise
+            for (int i = 0; i < 6; i++) ms->ratios[i] = metallic909Ratios[i];
+            ms->modeAmpsInit[0] = 1.0f; ms->modeAmpsInit[1] = 0.85f;
+            ms->modeAmpsInit[2] = 0.75f; ms->modeAmpsInit[3] = 0.65f;
+            ms->modeAmpsInit[4] = 0.55f; ms->modeAmpsInit[5] = 0.45f;
+            ms->modeDecays[0] = 0.06f; ms->modeDecays[1] = 0.05f;
+            ms->modeDecays[2] = 0.04f; ms->modeDecays[3] = 0.035f;
+            ms->modeDecays[4] = 0.03f; ms->modeDecays[5] = 0.025f;
+            ms->ringMix = 0.9f;
+            ms->noiseLevel = 0.25f;
+            ms->noiseHPCutoff = 0.65f;
+            ms->brightness = 1.0f;
+            ms->pitchEnvAmount = 2.0f;
+            ms->pitchEnvDecay = 0.003f;
+            break;
+
+        case METALLIC_909_OH:
+            // 909 open hihat: bright, washy
+            for (int i = 0; i < 6; i++) ms->ratios[i] = metallic909Ratios[i];
+            ms->modeAmpsInit[0] = 1.0f; ms->modeAmpsInit[1] = 0.85f;
+            ms->modeAmpsInit[2] = 0.75f; ms->modeAmpsInit[3] = 0.65f;
+            ms->modeAmpsInit[4] = 0.55f; ms->modeAmpsInit[5] = 0.45f;
+            ms->modeDecays[0] = 0.6f;  ms->modeDecays[1] = 0.5f;
+            ms->modeDecays[2] = 0.4f;  ms->modeDecays[3] = 0.35f;
+            ms->modeDecays[4] = 0.3f;  ms->modeDecays[5] = 0.25f;
+            ms->ringMix = 0.9f;
+            ms->noiseLevel = 0.3f;
+            ms->noiseHPCutoff = 0.6f;
+            ms->brightness = 1.0f;
+            ms->pitchEnvAmount = 2.0f;
+            ms->pitchEnvDecay = 0.003f;
+            break;
+
+        case METALLIC_RIDE:
+            // Ride cymbal: higher ratios, long shimmer, less noise
+            ms->ratios[0] = 1.0f;   ms->ratios[1] = 2.12f;
+            ms->ratios[2] = 3.36f;  ms->ratios[3] = 4.15f;
+            ms->ratios[4] = 5.43f;  ms->ratios[5] = 6.28f;
+            ms->modeAmpsInit[0] = 1.0f; ms->modeAmpsInit[1] = 0.7f;
+            ms->modeAmpsInit[2] = 0.5f; ms->modeAmpsInit[3] = 0.35f;
+            ms->modeAmpsInit[4] = 0.25f; ms->modeAmpsInit[5] = 0.15f;
+            ms->modeDecays[0] = 3.0f;  ms->modeDecays[1] = 2.5f;
+            ms->modeDecays[2] = 2.0f;  ms->modeDecays[3] = 1.5f;
+            ms->modeDecays[4] = 1.0f;  ms->modeDecays[5] = 0.7f;
+            ms->ringMix = 0.7f;
+            ms->noiseLevel = 0.08f;
+            ms->noiseHPCutoff = 0.7f;
+            ms->brightness = 0.7f;      // Slightly softer than square
+            ms->pitchEnvAmount = 0.5f;
+            ms->pitchEnvDecay = 0.008f;
+            break;
+
+        case METALLIC_CRASH:
+            // Crash cymbal: bright burst, very long tail
+            ms->ratios[0] = 1.0f;   ms->ratios[1] = 2.24f;
+            ms->ratios[2] = 3.55f;  ms->ratios[3] = 4.62f;
+            ms->ratios[4] = 5.81f;  ms->ratios[5] = 7.07f;
+            ms->modeAmpsInit[0] = 1.0f; ms->modeAmpsInit[1] = 0.8f;
+            ms->modeAmpsInit[2] = 0.7f; ms->modeAmpsInit[3] = 0.5f;
+            ms->modeAmpsInit[4] = 0.4f; ms->modeAmpsInit[5] = 0.3f;
+            ms->modeDecays[0] = 5.0f;  ms->modeDecays[1] = 4.0f;
+            ms->modeDecays[2] = 3.0f;  ms->modeDecays[3] = 2.0f;
+            ms->modeDecays[4] = 1.5f;  ms->modeDecays[5] = 1.0f;
+            ms->ringMix = 0.75f;
+            ms->noiseLevel = 0.2f;
+            ms->noiseHPCutoff = 0.5f;
+            ms->brightness = 0.8f;
+            ms->pitchEnvAmount = 3.0f;
+            ms->pitchEnvDecay = 0.01f;
+            break;
+
+        case METALLIC_COWBELL:
+            // 808 cowbell: 2 detuned squares, no noise, sine-ish
+            ms->ratios[0] = 1.0f;   ms->ratios[1] = 1.504f;  // Classic 800/540 Hz ratio
+            ms->ratios[2] = 0.0f;   ms->ratios[3] = 0.0f;    // Only 1 pair active
+            ms->ratios[4] = 0.0f;   ms->ratios[5] = 0.0f;
+            ms->modeAmpsInit[0] = 1.0f; ms->modeAmpsInit[1] = 0.8f;
+            ms->modeAmpsInit[2] = 0.0f; ms->modeAmpsInit[3] = 0.0f;
+            ms->modeAmpsInit[4] = 0.0f; ms->modeAmpsInit[5] = 0.0f;
+            ms->modeDecays[0] = 0.6f;  ms->modeDecays[1] = 0.5f;
+            ms->modeDecays[2] = 0.0f;  ms->modeDecays[3] = 0.0f;
+            ms->modeDecays[4] = 0.0f;  ms->modeDecays[5] = 0.0f;
+            ms->ringMix = 0.0f;        // Additive for cowbell (ring-mod sounds wrong)
+            ms->noiseLevel = 0.0f;
+            ms->noiseHPCutoff = 0.5f;
+            ms->brightness = 1.0f;
+            ms->pitchEnvAmount = 0.0f;
+            ms->pitchEnvDecay = 0.01f;
+            break;
+
+        case METALLIC_BELL:
+            // Tubular bell / chime: pure sine modes, long sustain
+            ms->ratios[0] = 1.0f;   ms->ratios[1] = 2.0f;
+            ms->ratios[2] = 3.0f;   ms->ratios[3] = 4.2f;
+            ms->ratios[4] = 5.4f;   ms->ratios[5] = 6.8f;
+            ms->modeAmpsInit[0] = 1.0f; ms->modeAmpsInit[1] = 0.6f;
+            ms->modeAmpsInit[2] = 0.35f; ms->modeAmpsInit[3] = 0.2f;
+            ms->modeAmpsInit[4] = 0.12f; ms->modeAmpsInit[5] = 0.06f;
+            ms->modeDecays[0] = 4.0f;  ms->modeDecays[1] = 3.0f;
+            ms->modeDecays[2] = 2.0f;  ms->modeDecays[3] = 1.5f;
+            ms->modeDecays[4] = 1.0f;  ms->modeDecays[5] = 0.7f;
+            ms->ringMix = 0.3f;        // Slight ring-mod for inharmonicity
+            ms->noiseLevel = 0.0f;
+            ms->noiseHPCutoff = 0.5f;
+            ms->brightness = 0.0f;      // Pure sine modes
+            ms->pitchEnvAmount = 0.0f;
+            ms->pitchEnvDecay = 0.01f;
+            break;
+
+        case METALLIC_GONG:
+            // Tam-tam / gong: very low, long decay, pitch drop
+            ms->ratios[0] = 1.0f;   ms->ratios[1] = 1.32f;
+            ms->ratios[2] = 1.65f;  ms->ratios[3] = 2.14f;
+            ms->ratios[4] = 2.76f;  ms->ratios[5] = 3.45f;
+            ms->modeAmpsInit[0] = 1.0f; ms->modeAmpsInit[1] = 0.7f;
+            ms->modeAmpsInit[2] = 0.5f; ms->modeAmpsInit[3] = 0.35f;
+            ms->modeAmpsInit[4] = 0.25f; ms->modeAmpsInit[5] = 0.15f;
+            ms->modeDecays[0] = 8.0f;  ms->modeDecays[1] = 7.0f;
+            ms->modeDecays[2] = 5.0f;  ms->modeDecays[3] = 4.0f;
+            ms->modeDecays[4] = 3.0f;  ms->modeDecays[5] = 2.0f;
+            ms->ringMix = 0.5f;
+            ms->noiseLevel = 0.05f;
+            ms->noiseHPCutoff = 0.3f;
+            ms->brightness = 0.2f;      // Mostly sine, slight edge
+            ms->pitchEnvAmount = 4.0f;  // Characteristic pitch drop
+            ms->pitchEnvDecay = 0.05f;
+            break;
+
+        case METALLIC_AGOGO:
+            // Agogo bell: bright, short, two prominent modes
+            ms->ratios[0] = 1.0f;   ms->ratios[1] = 2.8f;
+            ms->ratios[2] = 4.1f;   ms->ratios[3] = 0.0f;
+            ms->ratios[4] = 0.0f;   ms->ratios[5] = 0.0f;
+            ms->modeAmpsInit[0] = 1.0f; ms->modeAmpsInit[1] = 0.5f;
+            ms->modeAmpsInit[2] = 0.2f; ms->modeAmpsInit[3] = 0.0f;
+            ms->modeAmpsInit[4] = 0.0f; ms->modeAmpsInit[5] = 0.0f;
+            ms->modeDecays[0] = 1.0f;  ms->modeDecays[1] = 0.6f;
+            ms->modeDecays[2] = 0.3f;  ms->modeDecays[3] = 0.0f;
+            ms->modeDecays[4] = 0.0f;  ms->modeDecays[5] = 0.0f;
+            ms->ringMix = 0.4f;
+            ms->noiseLevel = 0.0f;
+            ms->noiseHPCutoff = 0.5f;
+            ms->brightness = 0.5f;
+            ms->pitchEnvAmount = 1.0f;
+            ms->pitchEnvDecay = 0.003f;
+            break;
+
+        case METALLIC_TRIANGLE:
+        default:
+            // Triangle (instrument): very pure, long ring, almost sine
+            ms->ratios[0] = 1.0f;   ms->ratios[1] = 2.76f;
+            ms->ratios[2] = 5.40f;  ms->ratios[3] = 0.0f;
+            ms->ratios[4] = 0.0f;   ms->ratios[5] = 0.0f;
+            ms->modeAmpsInit[0] = 1.0f; ms->modeAmpsInit[1] = 0.15f;
+            ms->modeAmpsInit[2] = 0.05f; ms->modeAmpsInit[3] = 0.0f;
+            ms->modeAmpsInit[4] = 0.0f; ms->modeAmpsInit[5] = 0.0f;
+            ms->modeDecays[0] = 6.0f;  ms->modeDecays[1] = 3.0f;
+            ms->modeDecays[2] = 1.5f;  ms->modeDecays[3] = 0.0f;
+            ms->modeDecays[4] = 0.0f;  ms->modeDecays[5] = 0.0f;
+            ms->ringMix = 0.2f;
+            ms->noiseLevel = 0.02f;
+            ms->noiseHPCutoff = 0.8f;
+            ms->brightness = 0.0f;      // Pure sine
+            ms->pitchEnvAmount = 0.0f;
+            ms->pitchEnvDecay = 0.01f;
+            break;
+    }
+
+    // Copy initial amplitudes
+    for (int i = 0; i < 6; i++) {
+        ms->modeAmps[i] = ms->modeAmpsInit[i];
+    }
+}
+
+// Process metallic percussion oscillator
+// Core DSP: 6 oscillators in 3 ring-mod pairs with per-partial decay
+static float processMetallicOscillator(Voice *v, float sampleRate) {
+    MetallicSettings *ms = &v->metallicSettings;
+    float dt = 1.0f / sampleRate;
+    float out = 0.0f;
+
+    // Pitch envelope (attack transient — pitch drops quickly after strike)
+    float pitchMult = 1.0f;
+    if (ms->pitchEnvAmount > 0.0f && ms->pitchEnvDecay > 0.0f) {
+        float envVal = expf(-ms->pitchEnvTime / ms->pitchEnvDecay);
+        pitchMult = 1.0f + (ms->pitchEnvAmount / 12.0f) * envVal;  // semitones to ratio
+        ms->pitchEnvTime += dt;
+    }
+
+    // Generate 6 oscillator samples
+    float osc[6];
+    for (int i = 0; i < 6; i++) {
+        if (ms->modeAmps[i] < 0.0001f || ms->ratios[i] <= 0.0f) {
+            osc[i] = 0.0f;
+            continue;
+        }
+
+        float freq = v->frequency * ms->ratios[i] * pitchMult;
+
+        // Skip if above Nyquist
+        if (freq >= sampleRate * 0.5f) {
+            osc[i] = 0.0f;
+            continue;
+        }
+
+        // Advance phase
+        ms->modePhases[i] += freq * dt;
+        if (ms->modePhases[i] >= 1.0f) ms->modePhases[i] -= 1.0f;
+
+        // Generate waveform: crossfade sine → square based on brightness
+        float sine = sinf(ms->modePhases[i] * 2.0f * PI);
+        if (ms->brightness <= 0.001f) {
+            osc[i] = sine;
+        } else {
+            float square = (ms->modePhases[i] < 0.5f) ? 1.0f : -1.0f;
+            osc[i] = sine + ms->brightness * (square - sine);
+        }
+
+        // Per-oscillator exponential decay
+        float decayRate = 1.0f / fmaxf(ms->modeDecays[i], 0.001f);
+        ms->modeAmps[i] *= (1.0f - decayRate * dt);
+        if (ms->modeAmps[i] < 0.00001f) ms->modeAmps[i] = 0.0f;
+    }
+
+    // Mix: ring-mod pairs + additive blend
+    // Ring-mod: osc[0]*osc[1], osc[2]*osc[3], osc[4]*osc[5]
+    // Additive: sum of all oscillators weighted by amplitude
+    float ringOut = 0.0f;
+    float addOut = 0.0f;
+
+    for (int p = 0; p < 3; p++) {
+        int i0 = p * 2;
+        int i1 = p * 2 + 1;
+        float a0 = ms->modeAmps[i0];
+        float a1 = ms->modeAmps[i1];
+        if (a0 > 0.0001f && a1 > 0.0001f) {
+            ringOut += osc[i0] * osc[i1] * a0 * a1;
+        }
+        addOut += osc[i0] * a0 + osc[i1] * a1;
+    }
+
+    // Normalize additive (6 oscillators) vs ring (3 pairs)
+    addOut *= 0.25f;
+    ringOut *= 0.5f;
+
+    out = addOut + ms->ringMix * (ringOut - addOut);
+
+    // HP-filtered noise layer (sizzle)
+    if (ms->noiseLevel > 0.001f) {
+        float n = noise();
+        // One-pole LP then subtract for HP
+        ms->noiseLPState += ms->noiseHPCutoff * (n - ms->noiseLPState);
+        float hpNoise = n - ms->noiseLPState;
+        out += hpNoise * ms->noiseLevel;
+    }
+
+    return out * 0.5f;
+}
+
+// ============================================================================
+// GUITAR BODY (KS string + body resonator biquads)
+// ============================================================================
+
+// Set up a biquad bandpass filter for body resonance
+static void initBodyBiquad(BodyBiquad *bq, float centerFreq, float bandwidth, float gain, float sampleRate) {
+    float w0 = 2.0f * PI * centerFreq / sampleRate;
+    float sinW0 = sinf(w0);
+    float cosW0 = cosf(w0);
+    float alpha = sinW0 * sinhf(logf(2.0f) / 2.0f * bandwidth * w0 / sinW0);
+
+    float a0 = 1.0f + alpha;
+    bq->b0 = (alpha * gain) / a0;
+    bq->b1 = 0.0f;
+    bq->b2 = (-alpha * gain) / a0;
+    bq->a1 = (-2.0f * cosW0) / a0;
+    bq->a2 = (1.0f - alpha) / a0;
+    bq->z1 = 0.0f;
+    bq->z2 = 0.0f;
+}
+
+// Process one sample through biquad (transposed direct form II)
+static inline float processBodyBiquad(BodyBiquad *bq, float in) {
+    float out = bq->b0 * in + bq->z1;
+    bq->z1 = bq->b1 * in - bq->a1 * out + bq->z2;
+    bq->z2 = bq->b2 * in - bq->a2 * out;
+    return out;
+}
+
+// Initialize guitar body resonator for a given preset
+static void initGuitarPreset(GuitarSettings *gs, GuitarPreset preset, float freq, float sampleRate) {
+    gs->preset = preset;
+    gs->buzzState = 0.0f;
+
+    // Body formant frequencies, bandwidths, and gains per preset
+    // These model the resonant peaks of the instrument body
+    // Reference: Elejabarrieta et al. (2002), guitar body mode measurements
+    float formants[GUITAR_BODY_MODES];    // Center frequencies (Hz)
+    float bandwidths[GUITAR_BODY_MODES];  // Bandwidth in octaves
+    float gains[GUITAR_BODY_MODES];       // Relative gain
+
+    (void)freq;  // Formants are body-fixed, not pitch-dependent
+
+    switch (preset) {
+        case GUITAR_ACOUSTIC:
+            // Steel-string acoustic: strong low-mid body, ~100/200/400/800 Hz
+            formants[0] = 98.0f;   bandwidths[0] = 0.8f; gains[0] = 1.0f;
+            formants[1] = 204.0f;  bandwidths[1] = 0.6f; gains[1] = 0.8f;
+            formants[2] = 390.0f;  bandwidths[2] = 0.5f; gains[2] = 0.5f;
+            formants[3] = 810.0f;  bandwidths[3] = 0.4f; gains[3] = 0.3f;
+            gs->bodyMix = 0.6f;
+            gs->bodyBrightness = 0.5f;
+            gs->pickPosition = 0.3f;
+            gs->buzzAmount = 0.0f;
+            break;
+
+        case GUITAR_CLASSICAL:
+            // Nylon: warmer, broader low resonance, softer highs
+            formants[0] = 90.0f;   bandwidths[0] = 1.0f; gains[0] = 1.0f;
+            formants[1] = 185.0f;  bandwidths[1] = 0.7f; gains[1] = 0.9f;
+            formants[2] = 350.0f;  bandwidths[2] = 0.6f; gains[2] = 0.4f;
+            formants[3] = 700.0f;  bandwidths[3] = 0.5f; gains[3] = 0.2f;
+            gs->bodyMix = 0.65f;
+            gs->bodyBrightness = 0.35f;
+            gs->pickPosition = 0.45f;   // Pluck nearer to center
+            gs->buzzAmount = 0.0f;
+            break;
+
+        case GUITAR_BANJO:
+            // Banjo: membrane body, sharp midrange peak, fast decay
+            formants[0] = 260.0f;  bandwidths[0] = 0.4f; gains[0] = 1.0f;
+            formants[1] = 480.0f;  bandwidths[1] = 0.3f; gains[1] = 0.7f;
+            formants[2] = 920.0f;  bandwidths[2] = 0.3f; gains[2] = 0.5f;
+            formants[3] = 1800.0f; bandwidths[3] = 0.4f; gains[3] = 0.25f;
+            gs->bodyMix = 0.7f;
+            gs->bodyBrightness = 0.7f;
+            gs->pickPosition = 0.2f;    // Near bridge
+            gs->buzzAmount = 0.0f;
+            break;
+
+        case GUITAR_SITAR:
+            // Sitar: gourd resonator, strong low formant, jawari buzz
+            formants[0] = 80.0f;   bandwidths[0] = 0.6f; gains[0] = 1.0f;
+            formants[1] = 170.0f;  bandwidths[1] = 0.5f; gains[1] = 0.7f;
+            formants[2] = 420.0f;  bandwidths[2] = 0.4f; gains[2] = 0.4f;
+            formants[3] = 1100.0f; bandwidths[3] = 0.5f; gains[3] = 0.35f;
+            gs->bodyMix = 0.55f;
+            gs->bodyBrightness = 0.6f;
+            gs->pickPosition = 0.25f;
+            gs->buzzAmount = 0.6f;      // Jawari bridge buzz
+            break;
+
+        case GUITAR_OUD:
+            // Oud: deep round body, strong low resonance
+            formants[0] = 75.0f;   bandwidths[0] = 0.9f; gains[0] = 1.0f;
+            formants[1] = 155.0f;  bandwidths[1] = 0.7f; gains[1] = 0.85f;
+            formants[2] = 310.0f;  bandwidths[2] = 0.5f; gains[2] = 0.45f;
+            formants[3] = 620.0f;  bandwidths[3] = 0.4f; gains[3] = 0.2f;
+            gs->bodyMix = 0.65f;
+            gs->bodyBrightness = 0.4f;
+            gs->pickPosition = 0.35f;
+            gs->buzzAmount = 0.0f;
+            break;
+
+        case GUITAR_KOTO:
+            // Koto: bright, sparse resonance, bridge emphasis
+            formants[0] = 130.0f;  bandwidths[0] = 0.5f; gains[0] = 0.7f;
+            formants[1] = 350.0f;  bandwidths[1] = 0.3f; gains[1] = 1.0f;
+            formants[2] = 850.0f;  bandwidths[2] = 0.3f; gains[2] = 0.6f;
+            formants[3] = 2200.0f; bandwidths[3] = 0.4f; gains[3] = 0.3f;
+            gs->bodyMix = 0.5f;
+            gs->bodyBrightness = 0.75f;
+            gs->pickPosition = 0.15f;    // Very close to bridge
+            gs->buzzAmount = 0.1f;       // Slight sawari buzz
+            break;
+
+        case GUITAR_HARP:
+            // Harp: minimal body, long sustain, clean
+            formants[0] = 100.0f;  bandwidths[0] = 1.2f; gains[0] = 0.3f;
+            formants[1] = 250.0f;  bandwidths[1] = 1.0f; gains[1] = 0.2f;
+            formants[2] = 500.0f;  bandwidths[2] = 0.8f; gains[2] = 0.15f;
+            formants[3] = 1000.0f; bandwidths[3] = 0.6f; gains[3] = 0.1f;
+            gs->bodyMix = 0.15f;         // Very little body color
+            gs->bodyBrightness = 0.55f;
+            gs->pickPosition = 0.5f;     // Center pluck (finger near middle)
+            gs->buzzAmount = 0.0f;
+            break;
+
+        case GUITAR_UKULELE:
+        default:
+            // Ukulele: small body, warm, midrange emphasis
+            formants[0] = 180.0f;  bandwidths[0] = 0.7f; gains[0] = 1.0f;
+            formants[1] = 380.0f;  bandwidths[1] = 0.5f; gains[1] = 0.75f;
+            formants[2] = 720.0f;  bandwidths[2] = 0.4f; gains[2] = 0.4f;
+            formants[3] = 1400.0f; bandwidths[3] = 0.4f; gains[3] = 0.2f;
+            gs->bodyMix = 0.6f;
+            gs->bodyBrightness = 0.45f;
+            gs->pickPosition = 0.4f;
+            gs->buzzAmount = 0.0f;
+            break;
+    }
+
+    // Initialize body biquads
+    for (int i = 0; i < GUITAR_BODY_MODES; i++) {
+        // Scale high formant gains by brightness
+        float brightScale = (i < 2) ? 1.0f : gs->bodyBrightness;
+        initBodyBiquad(&gs->body[i], formants[i], bandwidths[i],
+                       gains[i] * brightScale, sampleRate);
+    }
+}
+
+// Apply pick position to KS excitation buffer
+// Near bridge (0): all harmonics present -> bright, twangy
+// Near center (1): odd harmonics suppressed -> warm, round
+// Comb-notch filter on the initial noise burst
+static void applyPickPosition(Voice *v, float pickPos) {
+    if (v->ksLength <= 0) return;
+
+    // Pick position creates a notch at harmonics of (sampleRate / pickPos)
+    int pickSample = (int)(pickPos * (float)v->ksLength);
+    if (pickSample < 1) pickSample = 1;
+    if (pickSample >= v->ksLength) pickSample = v->ksLength - 1;
+
+    // In-place comb filter on noise burst
+    // Temp copy since we read from positions we'll overwrite
+    float temp[2048];
+    for (int i = 0; i < v->ksLength; i++) {
+        temp[i] = v->ksBuffer[i];
+    }
+    for (int i = 0; i < v->ksLength; i++) {
+        int delayed = (i + pickSample) % v->ksLength;
+        v->ksBuffer[i] = (temp[i] + temp[delayed]) * 0.5f;
+    }
+}
+
+// Process guitar oscillator: KS string -> body resonator -> optional buzz
+static float processGuitarOscillator(Voice *v, float sampleRate) {
+    if (v->ksLength <= 0) return 0.0f;
+    GuitarSettings *gs = &v->guitarSettings;
+
+    // Step 1: Run Karplus-Strong string (same as processPluckOscillator)
+    float stringSample = v->ksBuffer[v->ksIndex];
+
+    int nextIndex = (v->ksIndex + 1) % v->ksLength;
+    float nextSample = v->ksBuffer[nextIndex];
+
+    float avg = (stringSample + nextSample) * 0.5f;
+    float bright = v->ksBrightness;
+    float blended = avg + (stringSample - avg) * bright;
+    float damp = pluckDamp;
+    float filtered = v->ksLastSample + (blended - v->ksLastSample) * (1.0f - damp * 0.8f);
+    filtered *= v->ksDamping;
+    v->ksLastSample = filtered;
+
+    // Allpass fractional delay tuning
+    float apOut = v->ksAllpassCoeff * filtered + v->ksAllpassState;
+    v->ksAllpassState = filtered - v->ksAllpassCoeff * apOut;
+
+    v->ksBuffer[v->ksIndex] = apOut;
+    v->ksIndex = nextIndex;
+
+    // Step 2: Sitar-style bridge buzz (jawari)
+    // Nonlinear waveguide termination - clips the string against a curved bridge
+    float buzzed = stringSample;
+    if (gs->buzzAmount > 0.001f) {
+        float threshold = 1.0f - gs->buzzAmount * 0.8f;
+        if (fabsf(buzzed) > threshold) {
+            float excess = fabsf(buzzed) - threshold;
+            float sign = (buzzed >= 0.0f) ? 1.0f : -1.0f;
+            // Tanh-shaped buzz - rapid nonlinear contact
+            buzzed = sign * (threshold + tanhf(excess * 5.0f) * (1.0f - threshold));
+        }
+        // Feed some buzz energy back into the delay line for sustained buzzing
+        v->ksBuffer[(v->ksIndex + v->ksLength / 2) % v->ksLength] +=
+            (buzzed - stringSample) * gs->buzzAmount * 0.1f;
+    }
+
+    // Step 3: Body resonator - parallel biquad bandpass filters
+    float bodyOut = 0.0f;
+    for (int i = 0; i < GUITAR_BODY_MODES; i++) {
+        bodyOut += processBodyBiquad(&gs->body[i], buzzed);
+    }
+    bodyOut *= 0.35f;  // Normalize (4 parallel bandpasses)
+
+    // Step 4: Mix dry string + wet body
+    (void)sampleRate;
+    float out = buzzed + gs->bodyMix * (bodyOut - buzzed * 0.3f);
+
+    return out;
+}
+
 // Initialize bird with preset
 static void initBirdPreset(BirdSettings *bs, BirdType type, float baseFreq) {
     bs->type = type;
@@ -1584,6 +2354,83 @@ static void initPipe(Voice *v, float frequency, float sampleRate) {
     ps->lpState = 0.0f;
     ps->dcState = 0.0f;
     ps->dcPrev = 0.0f;
+}
+
+// Initialize reed instrument waveguide
+// The delay line represents the full round-trip through the bore.
+// For cylindrical bore (clarinet), the closed reed end reflects with same sign,
+// creating odd-harmonic series. For conical bore (sax), the open end reflects
+// with inverted sign, creating all harmonics.
+static void initReed(Voice *v, float frequency, float sampleRate) {
+    ReedSettings *rs = &v->reedSettings;
+
+    // Bore delay = half-wavelength (one-way trip through the bore).
+    // The -1 reflection at the open end provides the return trip,
+    // so total round trip = 2 * boreLen samples = one full period.
+    int boreLen = (int)(sampleRate / frequency / 2.0f);
+    if (boreLen > 1023) boreLen = 1023;
+    if (boreLen < 4) boreLen = 4;
+
+    rs->boreLen = boreLen;
+    rs->boreIdx = 0;
+
+    // Seed bore with tiny noise (faster startup than silence)
+    for (int i = 0; i < rs->boreLen; i++) {
+        rs->boreBuf[i] = noise() * 0.01f;
+    }
+
+    rs->blowPressure = reedBlowPressure;
+    rs->stiffness = reedStiffness;
+    rs->aperture = reedAperture;
+    rs->bore = reedBore;
+    rs->vibratoDepth = reedVibratoDepth;
+
+    // Reed starts at rest position (aperture opening)
+    rs->reedX = reedAperture;
+    rs->reedV = 0.0f;
+    rs->lpState = 0.0f;
+    rs->dcState = 0.0f;
+    rs->dcPrev = 0.0f;
+    rs->vibratoPhase = 0.0f;
+}
+
+// Initialize brass instrument waveguide
+// The lip oscillator frequency is set slightly above the bore fundamental
+// to encourage mode-locking (the lip will pull down to the bore resonance).
+static void initBrass(Voice *v, float frequency, float sampleRate) {
+    BrassSettings *bs = &v->brassSettings;
+
+    // Bore delay = half-wavelength (same as reed — round trip with bell reflection)
+    int boreLen = (int)(sampleRate / frequency / 2.0f);
+    if (boreLen > 1023) boreLen = 1023;
+    if (boreLen < 4) boreLen = 4;
+
+    bs->boreLen = boreLen;
+    bs->boreIdx = 0;
+
+    // Seed bore with tiny noise (helps oscillation startup)
+    for (int i = 0; i < bs->boreLen; i++) {
+        bs->boreBuf[i] = noise() * 0.005f;
+    }
+
+    bs->blowPressure = brassBlowPressure;
+    bs->lipTension = brassLipTension;
+    bs->lipAperture = brassLipAperture;
+    bs->bore = brassBore;
+    bs->mute = brassMute;
+
+    // Lip resonant frequency: set slightly above the target pitch
+    // The lip will lock to the nearest bore mode during oscillation
+    // Higher lip tension → higher frequency (tighter embouchure)
+    bs->lipFreq = frequency * (1.0f + brassLipTension * 0.15f);
+
+    // Lip starts at rest (equilibrium opening)
+    bs->lipX = brassLipAperture * 0.5f;
+    bs->lipV = 0.0f;
+    bs->lpState = 0.0f;
+    bs->lpState2 = 0.0f;
+    bs->dcState = 0.0f;
+    bs->dcPrev = 0.0f;
 }
 
 // ============================================================================

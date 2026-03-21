@@ -91,6 +91,10 @@ typedef enum {
     WAVE_SINE,       // Pure sine wave
     WAVE_EPIANO,     // Semi-physical Rhodes electric piano (tine modal bank + pickup nonlinearity)
     WAVE_ORGAN,      // 9-drawbar tonewheel organ (Hammond B3)
+    WAVE_REED,       // Single/double reed (clarinet/sax/oboe waveguide)
+    WAVE_METALLIC,   // Ring-mod metallic percussion (808 hihat, cymbal, bell, gong)
+    WAVE_BRASS,      // Lip-valve waveguide (trumpet/trombone/horn)
+    WAVE_GUITAR,     // Plucked string + body resonator (acoustic guitar, banjo, sitar, oud)
 } WaveType;
 
 // Mono note priority mode
@@ -105,9 +109,9 @@ typedef enum {
 static const char* waveTypeNames[] = {
     "square", "saw", "triangle", "noise", "scw", "voice", "pluck",
     "additive", "mallet", "granular", "fm", "pd", "membrane", "bird",
-    "bowed", "pipe", "sine", "epiano", "organ"
+    "bowed", "pipe", "sine", "epiano", "organ", "reed", "metallic", "brass", "guitar"
 };
-static const int waveTypeCount = 19;
+static const int waveTypeCount = 23;
 
 // LFO tempo sync divisions
 typedef enum {
@@ -362,6 +366,71 @@ typedef struct {
     float pitchBendTime;     // Current bend time
 } MembraneSettings;
 
+// Metallic percussion synthesis (ring-mod of square wave pairs — 808/909 hihat, cymbal, bell, gong)
+typedef enum {
+    METALLIC_808_CH,     // 808 closed hihat
+    METALLIC_808_OH,     // 808 open hihat
+    METALLIC_909_CH,     // 909 closed hihat
+    METALLIC_909_OH,     // 909 open hihat
+    METALLIC_RIDE,       // Ride cymbal
+    METALLIC_CRASH,      // Crash cymbal
+    METALLIC_COWBELL,    // 808 cowbell
+    METALLIC_BELL,       // Tubular bell / chime
+    METALLIC_GONG,       // Tam-tam / gong
+    METALLIC_AGOGO,      // Agogo bell
+    METALLIC_TRIANGLE,   // Triangle
+    METALLIC_COUNT
+} MetallicPreset;
+
+typedef struct {
+    MetallicPreset preset;
+    // 6 oscillators arranged as 3 ring-mod pairs
+    float ratios[6];         // Frequency ratios (pair 0: [0]*[1], pair 1: [2]*[3], pair 2: [4]*[5])
+    float modeAmps[6];       // Per-oscillator amplitude (set at trigger, decays independently)
+    float modeAmpsInit[6];   // Initial amplitudes (for reset)
+    float modeDecays[6];     // Per-oscillator decay time in seconds
+    float modePhases[6];     // Phase accumulators
+    float ringMix;           // 0=pure additive, 1=pure ring-mod (0.8-1.0 for authentic 808)
+    float noiseLevel;        // HP-filtered noise layer (sizzle)
+    float noiseLPState;      // One-pole LP state for noise HP filter
+    float noiseHPCutoff;     // HP filter cutoff for noise (0-1, higher = brighter)
+    float pitchEnvAmount;    // Pitch envelope semitones (attack transient)
+    float pitchEnvDecay;     // Pitch envelope decay time
+    float pitchEnvTime;      // Current pitch envelope time
+    float brightness;        // Controls oscillator waveform (0=sine, 1=square)
+} MetallicSettings;
+
+// Guitar body synthesis (KS string + body resonator)
+typedef enum {
+    GUITAR_ACOUSTIC,     // Steel-string acoustic (spruce/mahogany)
+    GUITAR_CLASSICAL,    // Nylon-string classical (cedar/rosewood)
+    GUITAR_BANJO,        // Banjo (membrane + tone ring)
+    GUITAR_SITAR,        // Sitar (jawari buzz + sympathetic strings)
+    GUITAR_OUD,          // Oud (round body, deep resonance)
+    GUITAR_KOTO,         // Koto (bridges, bright attack)
+    GUITAR_HARP,         // Concert harp (minimal body, long sustain)
+    GUITAR_UKULELE,      // Ukulele (small body, warm)
+    GUITAR_COUNT
+} GuitarPreset;
+
+// Biquad filter state for body resonator
+typedef struct {
+    float b0, b1, b2, a1, a2;  // Coefficients
+    float z1, z2;               // State variables
+} BodyBiquad;
+
+#define GUITAR_BODY_MODES 4
+
+typedef struct {
+    GuitarPreset preset;
+    BodyBiquad body[GUITAR_BODY_MODES];  // Body resonator formants
+    float bodyMix;           // 0=dry string only, 1=full body resonance
+    float bodyBrightness;    // Body tone (0=dark/muffled, 1=bright/open)
+    float pickPosition;      // Where string is plucked (0=bridge, 1=neck)
+    float buzzAmount;        // Sitar-style bridge buzz (0=clean, 1=full buzz)
+    float buzzState;         // Internal state for buzz nonlinearity
+} GuitarSettings;
+
 // Bird vocalization synthesis settings
 typedef enum {
     BIRD_CHIRP,          // Simple chirp (up or down sweep)
@@ -448,6 +517,49 @@ typedef struct {
     float dcState;        // DC blocker
     float dcPrev;
 } PipeSettings;
+
+// Reed instrument synthesis settings (single/double reed waveguide model)
+// Bore waveguide + pressure-driven reed valve at mouthpiece
+typedef struct {
+    float blowPressure;   // 0-1: mouth pressure driving reed
+    float stiffness;      // 0-1: reed spring constant (bright/dark)
+    float aperture;       // 0-1: rest opening of reed gap
+    float bore;           // 0-1: bore conicity (0=cylindrical/clarinet, 1=conical/sax)
+    float vibratoDepth;   // 0-1: lip vibrato depth
+    // Bore delay line
+    float boreBuf[1024];
+    int boreLen;
+    int boreIdx;
+    // Reed state
+    float reedX;          // Reed displacement
+    float reedV;          // Reed velocity (for 2nd order model)
+    float lpState;        // Bore loss filter state
+    float dcState;        // DC blocker
+    float dcPrev;
+    float vibratoPhase;   // Lip vibrato LFO phase
+} ReedSettings;
+
+// Brass instrument synthesis settings (lip-valve waveguide model)
+// Bore waveguide + oscillating lip model at mouthpiece
+typedef struct {
+    float blowPressure;   // 0-1: mouth pressure driving lips
+    float lipTension;     // 0-1: lip tension (controls lip resonant frequency)
+    float lipAperture;    // 0-1: rest opening of lip gap
+    float bore;           // 0-1: bore conicity (0=cylindrical/trumpet, 1=conical/horn)
+    float mute;           // 0-1: bell damping (0=open, 1=fully muted)
+    // Bore delay line
+    float boreBuf[1024];
+    int boreLen;
+    int boreIdx;
+    // Lip oscillator state (2nd-order mass-spring)
+    float lipX;           // Lip displacement (opening)
+    float lipV;           // Lip velocity
+    float lipFreq;        // Lip resonant frequency (Hz)
+    float lpState;        // Bore loss filter state
+    float lpState2;       // Second LP for bell radiation
+    float dcState;        // DC blocker
+    float dcPrev;
+} BrassSettings;
 
 // Electric piano synthesis settings — tine/reed/string modal bank + pickup nonlinearity
 // Supports Rhodes (electromagnetic), Wurlitzer (electrostatic), and Clavinet (contact) pickup types
@@ -683,11 +795,23 @@ typedef struct {
     // Blown pipe synthesis
     PipeSettings pipeSettings;
 
+    // Reed instrument synthesis
+    ReedSettings reedSettings;
+
+    // Brass instrument synthesis
+    BrassSettings brassSettings;
+
     // Electric piano (Rhodes) synthesis
     EPianoSettings epianoSettings;
 
     // Organ (Hammond drawbar) synthesis
     OrganSettings organSettings;
+
+    // Metallic percussion synthesis
+    MetallicSettings metallicSettings;
+
+    // Guitar body synthesis
+    GuitarSettings guitarSettings;
 
     // General pitch envelope (kicks, toms, zaps)
     float pitchEnvAmount;    // Semitones to sweep
@@ -1116,7 +1240,22 @@ typedef struct SynthContext {
     float membraneStrike;
     float membraneBend;
     float membraneBendDecay;
-    
+
+    // Metallic tweakables
+    int metallicPreset;
+    float metallicRingMix;
+    float metallicNoiseLevel;
+    float metallicBrightness;
+    float metallicPitchEnv;
+    float metallicPitchEnvDecay;
+
+    // Guitar tweakables
+    int guitarPreset;
+    float guitarBodyMix;
+    float guitarBodyBrightness;
+    float guitarPickPosition;
+    float guitarBuzz;
+
     // Bird tweakables
     int birdType;
     float birdChirpRange;
@@ -1136,6 +1275,20 @@ typedef struct SynthContext {
     float pipeEmbouchure;
     float pipeBore;
     float pipeOverblow;
+
+    // Reed instrument tweakables
+    float reedStiffness;
+    float reedAperture;
+    float reedBlowPressure;
+    float reedBore;
+    float reedVibratoDepth;
+
+    // Brass instrument tweakables
+    float brassBlowPressure;
+    float brassLipTension;
+    float brassLipAperture;
+    float brassBore;
+    float brassMute;
 
     // Electric piano tweakables
     float epHardness;
@@ -1304,7 +1457,22 @@ static void initSynthContext(SynthContext* ctx) {
     ctx->membraneStrike = 0.3f;
     ctx->membraneBend = 0.15f;
     ctx->membraneBendDecay = 0.08f;
-    
+
+    // Metallic defaults
+    ctx->metallicPreset = METALLIC_808_CH;
+    ctx->metallicRingMix = 0.85f;
+    ctx->metallicNoiseLevel = 0.15f;
+    ctx->metallicBrightness = 1.0f;
+    ctx->metallicPitchEnv = 0.0f;
+    ctx->metallicPitchEnvDecay = 0.01f;
+
+    // Guitar defaults
+    ctx->guitarPreset = GUITAR_ACOUSTIC;
+    ctx->guitarBodyMix = 0.6f;
+    ctx->guitarBodyBrightness = 0.5f;
+    ctx->guitarPickPosition = 0.3f;
+    ctx->guitarBuzz = 0.0f;
+
     // Bird defaults
     ctx->birdChirpRange = 1.0f;
     ctx->birdHarmonics = 0.2f;
@@ -1499,6 +1667,17 @@ static void _ensureSynthCtx(void) {
 #define membraneStrike (synthCtx->membraneStrike)
 #define membraneBend (synthCtx->membraneBend)
 #define membraneBendDecay (synthCtx->membraneBendDecay)
+#define metallicPreset (synthCtx->metallicPreset)
+#define metallicRingMix (synthCtx->metallicRingMix)
+#define metallicNoiseLevel (synthCtx->metallicNoiseLevel)
+#define metallicBrightness (synthCtx->metallicBrightness)
+#define metallicPitchEnv (synthCtx->metallicPitchEnv)
+#define metallicPitchEnvDecay (synthCtx->metallicPitchEnvDecay)
+#define guitarPreset (synthCtx->guitarPreset)
+#define guitarBodyMix (synthCtx->guitarBodyMix)
+#define guitarBodyBrightness (synthCtx->guitarBodyBrightness)
+#define guitarPickPosition (synthCtx->guitarPickPosition)
+#define guitarBuzz (synthCtx->guitarBuzz)
 #define birdType (synthCtx->birdType)
 #define birdChirpRange (synthCtx->birdChirpRange)
 #define birdTrillRate (synthCtx->birdTrillRate)
@@ -1513,6 +1692,16 @@ static void _ensureSynthCtx(void) {
 #define pipeEmbouchure (synthCtx->pipeEmbouchure)
 #define pipeBore (synthCtx->pipeBore)
 #define pipeOverblow (synthCtx->pipeOverblow)
+#define reedStiffness (synthCtx->reedStiffness)
+#define reedAperture (synthCtx->reedAperture)
+#define reedBlowPressure (synthCtx->reedBlowPressure)
+#define reedBore (synthCtx->reedBore)
+#define reedVibratoDepth (synthCtx->reedVibratoDepth)
+#define brassBlowPressure (synthCtx->brassBlowPressure)
+#define brassLipTension (synthCtx->brassLipTension)
+#define brassLipAperture (synthCtx->brassLipAperture)
+#define brassBore (synthCtx->brassBore)
+#define brassMute (synthCtx->brassMute)
 #define epHardness (synthCtx->epHardness)
 #define epToneBar (synthCtx->epToneBar)
 #define epPickupPos (synthCtx->epPickupPos)
@@ -2268,6 +2457,12 @@ static float processVoice(Voice *v, float sampleRate) {
         case WAVE_PIPE:
             sample = processPipeOscillator(v, sampleRate);
             break;
+        case WAVE_REED:
+            sample = processReedOscillator(v, sampleRate);
+            break;
+        case WAVE_BRASS:
+            sample = processBrassOscillator(v, sampleRate);
+            break;
         case WAVE_SINE:
             if (v->unisonCount > 1) {
                 float sinPhaseInc = v->frequency / sampleRate;
@@ -2288,6 +2483,12 @@ static float processVoice(Voice *v, float sampleRate) {
             break;
         case WAVE_ORGAN:
             sample = processOrganOscillator(v, sampleRate);
+            break;
+        case WAVE_METALLIC:
+            sample = processMetallicOscillator(v, sampleRate);
+            break;
+        case WAVE_GUITAR:
+            sample = processGuitarOscillator(v, sampleRate);
             break;
     }
 
@@ -3523,6 +3724,32 @@ static int playPipe(float freq) {
     return voiceIdx;
 }
 
+// Reed instrument init params
+static const VoiceInitParams VOICE_INIT_REED = {
+    .supportsMono = true
+};
+
+// Play reed instrument note
+__attribute__((unused))
+static int playReed(float freq) {
+    int voiceIdx = initVoiceCommon(freq, WAVE_REED, &VOICE_INIT_REED, NULL);
+    initReed(&synthVoices[voiceIdx], freq, 44100.0f);
+    return voiceIdx;
+}
+
+// Brass instrument init params
+static const VoiceInitParams VOICE_INIT_BRASS = {
+    .supportsMono = true
+};
+
+// Play brass instrument note
+__attribute__((unused))
+static int playBrass(float freq) {
+    int voiceIdx = initVoiceCommon(freq, WAVE_BRASS, &VOICE_INIT_BRASS, NULL);
+    initBrass(&synthVoices[voiceIdx], freq, 44100.0f);
+    return voiceIdx;
+}
+
 // Electric piano init params
 static const VoiceInitParams VOICE_INIT_EPIANO = {
     .supportsMono = true
@@ -3548,6 +3775,48 @@ static int playOrgan(float freq) {
     int voiceIdx = initVoiceCommon(freq, WAVE_ORGAN, &VOICE_INIT_ORGAN, NULL);
     Voice *v = &synthVoices[voiceIdx];
     initOrganSettings(&v->organSettings, freq, noteVolume);
+    return voiceIdx;
+}
+
+// Metallic percussion init params
+static const VoiceInitParams VOICE_INIT_METALLIC = {
+    .supportsMono = true
+};
+
+// Play metallic percussion note
+__attribute__((unused))
+static int playMetallic(float freq, MetallicPreset preset) {
+    int voiceIdx = initVoiceCommon(freq, WAVE_METALLIC, &VOICE_INIT_METALLIC, NULL);
+    Voice *v = &synthVoices[voiceIdx];
+    initMetallicPreset(&v->metallicSettings, preset);
+    v->metallicSettings.ringMix = metallicRingMix;
+    v->metallicSettings.noiseLevel = metallicNoiseLevel;
+    v->metallicSettings.brightness = metallicBrightness;
+    v->metallicSettings.pitchEnvAmount = metallicPitchEnv;
+    v->metallicSettings.pitchEnvDecay = metallicPitchEnvDecay;
+    return voiceIdx;
+}
+
+// Guitar init params
+static const VoiceInitParams VOICE_INIT_GUITAR = {
+    .supportsMono = false
+};
+
+// Play guitar note (KS string + body resonator)
+__attribute__((unused))
+static int playGuitar(float freq, GuitarPreset preset) {
+    int voiceIdx = initVoiceCommon(freq, WAVE_GUITAR, &VOICE_INIT_GUITAR, NULL);
+    Voice *v = &synthVoices[voiceIdx];
+    // Initialize KS string (reuse pluck infrastructure)
+    initPluck(v, freq, 44100.0f, pluckBrightness, pluckDamping);
+    // Initialize body resonator
+    initGuitarPreset(&v->guitarSettings, preset, freq, 44100.0f);
+    v->guitarSettings.bodyMix = guitarBodyMix;
+    v->guitarSettings.bodyBrightness = guitarBodyBrightness;
+    v->guitarSettings.pickPosition = guitarPickPosition;
+    v->guitarSettings.buzzAmount = guitarBuzz;
+    // Apply pick position to excitation — filter the noise burst
+    applyPickPosition(v, v->guitarSettings.pickPosition);
     return voiceIdx;
 }
 

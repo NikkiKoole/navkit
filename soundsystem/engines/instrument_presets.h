@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 192
+#define NUM_INSTRUMENT_PRESETS 218
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -3550,6 +3550,393 @@ static void initInstrumentPresets(void) {
     instrumentPresets[191].patch.p_orgDrawbar[6] = 0.5f;     // 1⅗' = 4
     instrumentPresets[191].patch.p_volume = 0.55f;
     instrumentPresets[191].patch.p_orgVibratoMode = 4;  // C1 — gentle lounge shimmer
+
+    // ========================================================================
+    // REED INSTRUMENTS (192-197) — Single/double reed waveguide
+    // ========================================================================
+
+    // 192: Clarinet — cylindrical bore, odd harmonics, dark & hollow
+    instrumentPresets[192].name = "Clarinet";
+    instrumentPresets[192].patch.p_waveType = WAVE_REED;
+    instrumentPresets[192].patch.p_reedBlowPressure = 0.55f;
+    instrumentPresets[192].patch.p_reedStiffness = 0.35f;    // soft cane reed → smooth, dark
+    instrumentPresets[192].patch.p_reedAperture = 0.6f;      // moderate opening
+    instrumentPresets[192].patch.p_reedBore = 0.0f;          // cylindrical → odd harmonics only
+    instrumentPresets[192].patch.p_reedVibratoDepth = 0.15f;
+    instrumentPresets[192].patch.p_attack = 0.02f;
+    instrumentPresets[192].patch.p_decay = 0.1f;
+    instrumentPresets[192].patch.p_sustain = 0.9f;
+    instrumentPresets[192].patch.p_release = 0.08f;
+    instrumentPresets[192].patch.p_volume = 0.6f;
+
+    // 193: Soprano Sax — conical bore, bright and cutting
+    instrumentPresets[193].name = "Soprano Sax";
+    instrumentPresets[193].patch.p_waveType = WAVE_REED;
+    instrumentPresets[193].patch.p_reedBlowPressure = 0.65f;  // strong breath
+    instrumentPresets[193].patch.p_reedStiffness = 0.7f;     // stiff → bright, edgy
+    instrumentPresets[193].patch.p_reedAperture = 0.4f;      // narrow → more complex spectrum
+    instrumentPresets[193].patch.p_reedBore = 0.9f;          // strongly conical → all harmonics
+    instrumentPresets[193].patch.p_reedVibratoDepth = 0.35f;
+    instrumentPresets[193].patch.p_attack = 0.01f;
+    instrumentPresets[193].patch.p_decay = 0.1f;
+    instrumentPresets[193].patch.p_sustain = 0.85f;
+    instrumentPresets[193].patch.p_release = 0.1f;
+    instrumentPresets[193].patch.p_volume = 0.55f;
+
+    // 194: Alto Sax — conical bore, warm and round, classic jazz
+    instrumentPresets[194].name = "Alto Sax";
+    instrumentPresets[194].patch.p_waveType = WAVE_REED;
+    instrumentPresets[194].patch.p_reedBlowPressure = 0.5f;
+    instrumentPresets[194].patch.p_reedStiffness = 0.45f;    // medium reed
+    instrumentPresets[194].patch.p_reedAperture = 0.65f;     // wider → warmer fundamental
+    instrumentPresets[194].patch.p_reedBore = 0.75f;         // conical
+    instrumentPresets[194].patch.p_reedVibratoDepth = 0.25f;
+    instrumentPresets[194].patch.p_attack = 0.02f;
+    instrumentPresets[194].patch.p_decay = 0.1f;
+    instrumentPresets[194].patch.p_sustain = 0.85f;
+    instrumentPresets[194].patch.p_release = 0.1f;
+    instrumentPresets[194].patch.p_volume = 0.6f;
+
+    // 195: Tenor Sax — conical bore, rich and breathy, Coltrane
+    instrumentPresets[195].name = "Tenor Sax";
+    instrumentPresets[195].patch.p_waveType = WAVE_REED;
+    instrumentPresets[195].patch.p_reedBlowPressure = 0.5f;
+    instrumentPresets[195].patch.p_reedStiffness = 0.3f;     // soft big reed → smooth
+    instrumentPresets[195].patch.p_reedAperture = 0.75f;     // wide → strong fundamental
+    instrumentPresets[195].patch.p_reedBore = 0.8f;          // conical
+    instrumentPresets[195].patch.p_reedVibratoDepth = 0.4f;   // wide vibrato
+    instrumentPresets[195].patch.p_attack = 0.025f;
+    instrumentPresets[195].patch.p_decay = 0.1f;
+    instrumentPresets[195].patch.p_sustain = 0.9f;
+    instrumentPresets[195].patch.p_release = 0.12f;
+    instrumentPresets[195].patch.p_volume = 0.6f;
+
+    // 196: Oboe — stiff double reed, narrow conical bore, nasal & penetrating
+    instrumentPresets[196].name = "Oboe";
+    instrumentPresets[196].patch.p_waveType = WAVE_REED;
+    instrumentPresets[196].patch.p_reedBlowPressure = 0.7f;   // high pressure for double reed
+    instrumentPresets[196].patch.p_reedStiffness = 0.9f;      // very stiff → buzzy, nasal
+    instrumentPresets[196].patch.p_reedAperture = 0.2f;       // very narrow → intense harmonics
+    instrumentPresets[196].patch.p_reedBore = 0.55f;          // narrow conical
+    instrumentPresets[196].patch.p_reedVibratoDepth = 0.2f;
+    instrumentPresets[196].patch.p_attack = 0.008f;
+    instrumentPresets[196].patch.p_decay = 0.08f;
+    instrumentPresets[196].patch.p_sustain = 0.85f;
+    instrumentPresets[196].patch.p_release = 0.06f;
+    instrumentPresets[196].patch.p_volume = 0.5f;
+
+    // 197: Harmonica — soft free reed, minimal bore, warm & buzzy
+    instrumentPresets[197].name = "Harmonica";
+    instrumentPresets[197].patch.p_waveType = WAVE_REED;
+    instrumentPresets[197].patch.p_reedBlowPressure = 0.4f;   // gentle breath
+    instrumentPresets[197].patch.p_reedStiffness = 0.15f;     // very soft free reed
+    instrumentPresets[197].patch.p_reedAperture = 0.85f;      // wide open → strong fundamental
+    instrumentPresets[197].patch.p_reedBore = 0.1f;           // almost no bore → cylindrical-ish
+    instrumentPresets[197].patch.p_reedVibratoDepth = 0.5f;   // hand-wah vibrato
+    instrumentPresets[197].patch.p_attack = 0.03f;
+    instrumentPresets[197].patch.p_decay = 0.05f;
+    instrumentPresets[197].patch.p_sustain = 0.9f;
+    instrumentPresets[197].patch.p_release = 0.08f;
+    instrumentPresets[197].patch.p_volume = 0.55f;
+
+    // ========================================================================
+    // METALLIC PERCUSSION (ring-mod engine — authentic 808/909/cymbals)
+    // ========================================================================
+
+    // 198: Metallic 808 CH — ring-mod hihat, tight and sizzly
+    instrumentPresets[198].name = "M-808 CH";
+    instrumentPresets[198].patch.p_waveType = WAVE_METALLIC;
+    instrumentPresets[198].patch.p_metallicPreset = METALLIC_808_CH;
+    instrumentPresets[198].patch.p_attack = 0.0f;
+    instrumentPresets[198].patch.p_decay = 0.05f;
+    instrumentPresets[198].patch.p_sustain = 0.0f;
+    instrumentPresets[198].patch.p_release = 0.02f;
+    instrumentPresets[198].patch.p_expDecay = true;
+    instrumentPresets[198].patch.p_volume = 0.4f;
+    instrumentPresets[198].patch.p_useTriggerFreq = true;
+    instrumentPresets[198].patch.p_triggerFreq = 460.0f;
+    instrumentPresets[198].patch.p_choke = true;
+
+    // 199: Metallic 808 OH — ring-mod open hihat
+    instrumentPresets[199].name = "M-808 OH";
+    instrumentPresets[199].patch.p_waveType = WAVE_METALLIC;
+    instrumentPresets[199].patch.p_metallicPreset = METALLIC_808_OH;
+    instrumentPresets[199].patch.p_attack = 0.0f;
+    instrumentPresets[199].patch.p_decay = 0.4f;
+    instrumentPresets[199].patch.p_sustain = 0.0f;
+    instrumentPresets[199].patch.p_release = 0.1f;
+    instrumentPresets[199].patch.p_expDecay = true;
+    instrumentPresets[199].patch.p_volume = 0.4f;
+    instrumentPresets[199].patch.p_useTriggerFreq = true;
+    instrumentPresets[199].patch.p_triggerFreq = 460.0f;
+    instrumentPresets[199].patch.p_choke = true;
+
+    // 200: Metallic 909 CH — brighter, more noise
+    instrumentPresets[200].name = "M-909 CH";
+    instrumentPresets[200].patch.p_waveType = WAVE_METALLIC;
+    instrumentPresets[200].patch.p_metallicPreset = METALLIC_909_CH;
+    instrumentPresets[200].patch.p_attack = 0.0f;
+    instrumentPresets[200].patch.p_decay = 0.06f;
+    instrumentPresets[200].patch.p_sustain = 0.0f;
+    instrumentPresets[200].patch.p_release = 0.02f;
+    instrumentPresets[200].patch.p_expDecay = true;
+    instrumentPresets[200].patch.p_volume = 0.4f;
+    instrumentPresets[200].patch.p_useTriggerFreq = true;
+    instrumentPresets[200].patch.p_triggerFreq = 460.0f;
+    instrumentPresets[200].patch.p_choke = true;
+
+    // 201: Metallic Ride — long shimmer cymbal
+    instrumentPresets[201].name = "M-Ride";
+    instrumentPresets[201].patch.p_waveType = WAVE_METALLIC;
+    instrumentPresets[201].patch.p_metallicPreset = METALLIC_RIDE;
+    instrumentPresets[201].patch.p_attack = 0.0f;
+    instrumentPresets[201].patch.p_decay = 3.0f;
+    instrumentPresets[201].patch.p_sustain = 0.0f;
+    instrumentPresets[201].patch.p_release = 0.5f;
+    instrumentPresets[201].patch.p_expDecay = true;
+    instrumentPresets[201].patch.p_volume = 0.35f;
+    instrumentPresets[201].patch.p_useTriggerFreq = true;
+    instrumentPresets[201].patch.p_triggerFreq = 300.0f;
+
+    // 202: Metallic Crash — bright burst, long tail
+    instrumentPresets[202].name = "M-Crash";
+    instrumentPresets[202].patch.p_waveType = WAVE_METALLIC;
+    instrumentPresets[202].patch.p_metallicPreset = METALLIC_CRASH;
+    instrumentPresets[202].patch.p_attack = 0.0f;
+    instrumentPresets[202].patch.p_decay = 5.0f;
+    instrumentPresets[202].patch.p_sustain = 0.0f;
+    instrumentPresets[202].patch.p_release = 1.0f;
+    instrumentPresets[202].patch.p_expDecay = true;
+    instrumentPresets[202].patch.p_volume = 0.35f;
+    instrumentPresets[202].patch.p_useTriggerFreq = true;
+    instrumentPresets[202].patch.p_triggerFreq = 250.0f;
+
+    // 203: Metallic Cowbell — 808 cowbell, two-tone
+    instrumentPresets[203].name = "M-Cowbell";
+    instrumentPresets[203].patch.p_waveType = WAVE_METALLIC;
+    instrumentPresets[203].patch.p_metallicPreset = METALLIC_COWBELL;
+    instrumentPresets[203].patch.p_attack = 0.0f;
+    instrumentPresets[203].patch.p_decay = 0.5f;
+    instrumentPresets[203].patch.p_sustain = 0.0f;
+    instrumentPresets[203].patch.p_release = 0.05f;
+    instrumentPresets[203].patch.p_expDecay = true;
+    instrumentPresets[203].patch.p_volume = 0.45f;
+    instrumentPresets[203].patch.p_useTriggerFreq = true;
+    instrumentPresets[203].patch.p_triggerFreq = 560.0f;
+
+    // ========================================================================
+    // BRASS INSTRUMENTS (204-209) — Lip-valve waveguide
+    // ========================================================================
+
+    // 204: Trumpet — cylindrical bore, bright and projecting
+    instrumentPresets[204].name = "Trumpet";
+    instrumentPresets[204].patch.p_waveType = WAVE_BRASS;
+    instrumentPresets[204].patch.p_brassBlowPressure = 0.6f;
+    instrumentPresets[204].patch.p_brassLipTension = 0.6f;    // medium-tight → bright, clear
+    instrumentPresets[204].patch.p_brassLipAperture = 0.5f;
+    instrumentPresets[204].patch.p_brassBore = 0.0f;          // cylindrical → bright, brassy
+    instrumentPresets[204].patch.p_brassMute = 0.0f;          // open bell
+    instrumentPresets[204].patch.p_attack = 0.015f;
+    instrumentPresets[204].patch.p_decay = 0.1f;
+    instrumentPresets[204].patch.p_sustain = 0.9f;
+    instrumentPresets[204].patch.p_release = 0.08f;
+    instrumentPresets[204].patch.p_volume = 0.6f;
+
+    // 205: Muted Trumpet — harmon mute, nasal jazz tone (Miles Davis)
+    instrumentPresets[205].name = "Muted Trumpet";
+    instrumentPresets[205].patch.p_waveType = WAVE_BRASS;
+    instrumentPresets[205].patch.p_brassBlowPressure = 0.6f;   // need more pressure to overcome mute
+    instrumentPresets[205].patch.p_brassLipTension = 0.55f;
+    instrumentPresets[205].patch.p_brassLipAperture = 0.5f;
+    instrumentPresets[205].patch.p_brassBore = 0.1f;
+    instrumentPresets[205].patch.p_brassMute = 0.65f;          // moderate mute → nasal but still speaks
+    instrumentPresets[205].patch.p_attack = 0.02f;
+    instrumentPresets[205].patch.p_decay = 0.1f;
+    instrumentPresets[205].patch.p_sustain = 0.85f;
+    instrumentPresets[205].patch.p_release = 0.1f;
+    instrumentPresets[205].patch.p_volume = 0.55f;
+
+    // 206: Trombone — cylindrical bore, warm and powerful
+    instrumentPresets[206].name = "Trombone";
+    instrumentPresets[206].patch.p_waveType = WAVE_BRASS;
+    instrumentPresets[206].patch.p_brassBlowPressure = 0.55f;
+    instrumentPresets[206].patch.p_brassLipTension = 0.35f;   // relaxed lips → lower, warmer
+    instrumentPresets[206].patch.p_brassLipAperture = 0.6f;   // wider → bigger sound
+    instrumentPresets[206].patch.p_brassBore = 0.2f;          // mostly cylindrical, slight flare
+    instrumentPresets[206].patch.p_brassMute = 0.0f;
+    instrumentPresets[206].patch.p_attack = 0.025f;
+    instrumentPresets[206].patch.p_decay = 0.1f;
+    instrumentPresets[206].patch.p_sustain = 0.9f;
+    instrumentPresets[206].patch.p_release = 0.1f;
+    instrumentPresets[206].patch.p_volume = 0.6f;
+
+    // 207: French Horn — conical bore, warm and mellow
+    instrumentPresets[207].name = "French Horn";
+    instrumentPresets[207].patch.p_waveType = WAVE_BRASS;
+    instrumentPresets[207].patch.p_brassBlowPressure = 0.5f;
+    instrumentPresets[207].patch.p_brassLipTension = 0.5f;
+    instrumentPresets[207].patch.p_brassLipAperture = 0.55f;
+    instrumentPresets[207].patch.p_brassBore = 0.85f;         // strongly conical → dark, mellow
+    instrumentPresets[207].patch.p_brassMute = 0.0f;
+    instrumentPresets[207].patch.p_attack = 0.03f;
+    instrumentPresets[207].patch.p_decay = 0.15f;
+    instrumentPresets[207].patch.p_sustain = 0.85f;
+    instrumentPresets[207].patch.p_release = 0.15f;
+    instrumentPresets[207].patch.p_volume = 0.55f;
+
+    // 208: Tuba — conical bore, deep and round
+    instrumentPresets[208].name = "Tuba";
+    instrumentPresets[208].patch.p_waveType = WAVE_BRASS;
+    instrumentPresets[208].patch.p_brassBlowPressure = 0.45f;  // less pressure, big bore
+    instrumentPresets[208].patch.p_brassLipTension = 0.2f;     // very relaxed → low, fat
+    instrumentPresets[208].patch.p_brassLipAperture = 0.7f;    // wide → round, deep
+    instrumentPresets[208].patch.p_brassBore = 0.95f;          // fully conical → very dark
+    instrumentPresets[208].patch.p_brassMute = 0.0f;
+    instrumentPresets[208].patch.p_attack = 0.04f;
+    instrumentPresets[208].patch.p_decay = 0.1f;
+    instrumentPresets[208].patch.p_sustain = 0.9f;
+    instrumentPresets[208].patch.p_release = 0.12f;
+    instrumentPresets[208].patch.p_volume = 0.6f;
+
+    // 209: Flugelhorn — conical bore, soft and lyrical
+    instrumentPresets[209].name = "Flugelhorn";
+    instrumentPresets[209].patch.p_waveType = WAVE_BRASS;
+    instrumentPresets[209].patch.p_brassBlowPressure = 0.5f;
+    instrumentPresets[209].patch.p_brassLipTension = 0.45f;
+    instrumentPresets[209].patch.p_brassLipAperture = 0.6f;   // wider → softer, rounder
+    instrumentPresets[209].patch.p_brassBore = 0.7f;          // conical → warm, flugelhorn character
+    instrumentPresets[209].patch.p_brassMute = 0.0f;
+    instrumentPresets[209].patch.p_attack = 0.025f;
+    instrumentPresets[209].patch.p_decay = 0.1f;
+    instrumentPresets[209].patch.p_sustain = 0.85f;
+    instrumentPresets[209].patch.p_release = 0.1f;
+    instrumentPresets[209].patch.p_volume = 0.55f;
+
+    // ========================================================================
+    // GUITAR BODY (KS string + body resonator)
+    // ========================================================================
+
+    // 210: Acoustic Guitar — steel-string, full body
+    instrumentPresets[210].name = "Acoustic Gtr";
+    instrumentPresets[210].patch.p_waveType = WAVE_GUITAR;
+    instrumentPresets[210].patch.p_guitarPreset = GUITAR_ACOUSTIC;
+    instrumentPresets[210].patch.p_pluckBrightness = 0.6f;
+    instrumentPresets[210].patch.p_pluckDamping = 0.997f;
+    instrumentPresets[210].patch.p_guitarBodyMix = 0.6f;
+    instrumentPresets[210].patch.p_guitarBodyBrightness = 0.5f;
+    instrumentPresets[210].patch.p_guitarPickPosition = 0.3f;
+    instrumentPresets[210].patch.p_attack = 0.0f;
+    instrumentPresets[210].patch.p_decay = 2.0f;
+    instrumentPresets[210].patch.p_sustain = 0.0f;
+    instrumentPresets[210].patch.p_release = 0.1f;
+    instrumentPresets[210].patch.p_volume = 0.5f;
+
+    // 211: Classical Guitar — nylon, warm, fingerpicked
+    instrumentPresets[211].name = "Classical Gtr";
+    instrumentPresets[211].patch.p_waveType = WAVE_GUITAR;
+    instrumentPresets[211].patch.p_guitarPreset = GUITAR_CLASSICAL;
+    instrumentPresets[211].patch.p_pluckBrightness = 0.35f;
+    instrumentPresets[211].patch.p_pluckDamping = 0.998f;
+    instrumentPresets[211].patch.p_guitarBodyMix = 0.65f;
+    instrumentPresets[211].patch.p_guitarBodyBrightness = 0.35f;
+    instrumentPresets[211].patch.p_guitarPickPosition = 0.45f;
+    instrumentPresets[211].patch.p_attack = 0.0f;
+    instrumentPresets[211].patch.p_decay = 2.5f;
+    instrumentPresets[211].patch.p_sustain = 0.0f;
+    instrumentPresets[211].patch.p_release = 0.15f;
+    instrumentPresets[211].patch.p_volume = 0.5f;
+
+    // 212: Banjo — twangy, bright, fast decay
+    instrumentPresets[212].name = "Banjo";
+    instrumentPresets[212].patch.p_waveType = WAVE_GUITAR;
+    instrumentPresets[212].patch.p_guitarPreset = GUITAR_BANJO;
+    instrumentPresets[212].patch.p_pluckBrightness = 0.8f;
+    instrumentPresets[212].patch.p_pluckDamping = 0.993f;    // Shorter sustain
+    instrumentPresets[212].patch.p_guitarBodyMix = 0.7f;
+    instrumentPresets[212].patch.p_guitarBodyBrightness = 0.7f;
+    instrumentPresets[212].patch.p_guitarPickPosition = 0.2f;
+    instrumentPresets[212].patch.p_attack = 0.0f;
+    instrumentPresets[212].patch.p_decay = 1.0f;
+    instrumentPresets[212].patch.p_sustain = 0.0f;
+    instrumentPresets[212].patch.p_release = 0.05f;
+    instrumentPresets[212].patch.p_volume = 0.5f;
+
+    // 213: Sitar — buzzy, resonant, drone character
+    instrumentPresets[213].name = "Sitar";
+    instrumentPresets[213].patch.p_waveType = WAVE_GUITAR;
+    instrumentPresets[213].patch.p_guitarPreset = GUITAR_SITAR;
+    instrumentPresets[213].patch.p_pluckBrightness = 0.55f;
+    instrumentPresets[213].patch.p_pluckDamping = 0.998f;
+    instrumentPresets[213].patch.p_guitarBodyMix = 0.55f;
+    instrumentPresets[213].patch.p_guitarBodyBrightness = 0.6f;
+    instrumentPresets[213].patch.p_guitarPickPosition = 0.25f;
+    instrumentPresets[213].patch.p_guitarBuzz = 0.6f;
+    instrumentPresets[213].patch.p_attack = 0.0f;
+    instrumentPresets[213].patch.p_decay = 3.0f;
+    instrumentPresets[213].patch.p_sustain = 0.0f;
+    instrumentPresets[213].patch.p_release = 0.2f;
+    instrumentPresets[213].patch.p_volume = 0.45f;
+
+    // 214: Oud — deep, round, Middle Eastern
+    instrumentPresets[214].name = "Oud";
+    instrumentPresets[214].patch.p_waveType = WAVE_GUITAR;
+    instrumentPresets[214].patch.p_guitarPreset = GUITAR_OUD;
+    instrumentPresets[214].patch.p_pluckBrightness = 0.45f;
+    instrumentPresets[214].patch.p_pluckDamping = 0.997f;
+    instrumentPresets[214].patch.p_guitarBodyMix = 0.65f;
+    instrumentPresets[214].patch.p_guitarBodyBrightness = 0.4f;
+    instrumentPresets[214].patch.p_guitarPickPosition = 0.35f;
+    instrumentPresets[214].patch.p_attack = 0.0f;
+    instrumentPresets[214].patch.p_decay = 2.0f;
+    instrumentPresets[214].patch.p_sustain = 0.0f;
+    instrumentPresets[214].patch.p_release = 0.12f;
+    instrumentPresets[214].patch.p_volume = 0.5f;
+
+    // 215: Koto — bright, sharp, Japanese
+    instrumentPresets[215].name = "Koto";
+    instrumentPresets[215].patch.p_waveType = WAVE_GUITAR;
+    instrumentPresets[215].patch.p_guitarPreset = GUITAR_KOTO;
+    instrumentPresets[215].patch.p_pluckBrightness = 0.7f;
+    instrumentPresets[215].patch.p_pluckDamping = 0.996f;
+    instrumentPresets[215].patch.p_guitarBodyMix = 0.5f;
+    instrumentPresets[215].patch.p_guitarBodyBrightness = 0.75f;
+    instrumentPresets[215].patch.p_guitarPickPosition = 0.15f;
+    instrumentPresets[215].patch.p_guitarBuzz = 0.1f;
+    instrumentPresets[215].patch.p_attack = 0.0f;
+    instrumentPresets[215].patch.p_decay = 1.5f;
+    instrumentPresets[215].patch.p_sustain = 0.0f;
+    instrumentPresets[215].patch.p_release = 0.08f;
+    instrumentPresets[215].patch.p_volume = 0.5f;
+
+    // 216: Harp — clean, long sustain, minimal body
+    instrumentPresets[216].name = "Harp";
+    instrumentPresets[216].patch.p_waveType = WAVE_GUITAR;
+    instrumentPresets[216].patch.p_guitarPreset = GUITAR_HARP;
+    instrumentPresets[216].patch.p_pluckBrightness = 0.5f;
+    instrumentPresets[216].patch.p_pluckDamping = 0.9995f;   // Very long sustain
+    instrumentPresets[216].patch.p_guitarBodyMix = 0.15f;
+    instrumentPresets[216].patch.p_guitarBodyBrightness = 0.55f;
+    instrumentPresets[216].patch.p_guitarPickPosition = 0.5f;
+    instrumentPresets[216].patch.p_attack = 0.0f;
+    instrumentPresets[216].patch.p_decay = 4.0f;
+    instrumentPresets[216].patch.p_sustain = 0.0f;
+    instrumentPresets[216].patch.p_release = 0.3f;
+    instrumentPresets[216].patch.p_volume = 0.45f;
+
+    // 217: Ukulele — small, warm, cheerful
+    instrumentPresets[217].name = "Ukulele";
+    instrumentPresets[217].patch.p_waveType = WAVE_GUITAR;
+    instrumentPresets[217].patch.p_guitarPreset = GUITAR_UKULELE;
+    instrumentPresets[217].patch.p_pluckBrightness = 0.45f;
+    instrumentPresets[217].patch.p_pluckDamping = 0.995f;
+    instrumentPresets[217].patch.p_guitarBodyMix = 0.6f;
+    instrumentPresets[217].patch.p_guitarBodyBrightness = 0.45f;
+    instrumentPresets[217].patch.p_guitarPickPosition = 0.4f;
+    instrumentPresets[217].patch.p_attack = 0.0f;
+    instrumentPresets[217].patch.p_decay = 1.5f;
+    instrumentPresets[217].patch.p_sustain = 0.0f;
+    instrumentPresets[217].patch.p_release = 0.08f;
+    instrumentPresets[217].patch.p_volume = 0.5f;
 }
 
 #endif // INSTRUMENT_PRESETS_H

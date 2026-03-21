@@ -164,6 +164,21 @@ typedef struct {
     float p_membraneBend;
     float p_membraneBendDecay;
 
+    // Metallic percussion
+    int p_metallicPreset;
+    float p_metallicRingMix;
+    float p_metallicNoiseLevel;
+    float p_metallicBrightness;
+    float p_metallicPitchEnv;
+    float p_metallicPitchEnvDecay;
+
+    // Guitar body
+    int p_guitarPreset;
+    float p_guitarBodyMix;
+    float p_guitarBodyBrightness;
+    float p_guitarPickPosition;
+    float p_guitarBuzz;
+
     // Bowed string
     float p_bowPressure;
     float p_bowSpeed;
@@ -174,6 +189,20 @@ typedef struct {
     float p_pipeEmbouchure;
     float p_pipeBore;
     float p_pipeOverblow;
+
+    // Reed instrument (clarinet/sax/oboe)
+    float p_reedStiffness;
+    float p_reedAperture;
+    float p_reedBlowPressure;
+    float p_reedBore;
+    float p_reedVibratoDepth;
+
+    // Brass instrument (trumpet/trombone/horn)
+    float p_brassBlowPressure;
+    float p_brassLipTension;
+    float p_brassLipAperture;
+    float p_brassBore;
+    float p_brassMute;
 
     // Electric piano (Rhodes)
     float p_epHardness;       // Hammer hardness (0=soft, 1=hard)
@@ -393,6 +422,17 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_membraneStrike = 0.3f,
         .p_membraneBend = 0.15f,
         .p_membraneBendDecay = 0.08f,
+        .p_metallicPreset = METALLIC_808_CH,
+        .p_metallicRingMix = 0.85f,
+        .p_metallicNoiseLevel = 0.15f,
+        .p_metallicBrightness = 1.0f,
+        .p_metallicPitchEnv = 0.0f,
+        .p_metallicPitchEnvDecay = 0.01f,
+        .p_guitarPreset = GUITAR_ACOUSTIC,
+        .p_guitarBodyMix = 0.6f,
+        .p_guitarBodyBrightness = 0.5f,
+        .p_guitarPickPosition = 0.3f,
+        .p_guitarBuzz = 0.0f,
         .p_bowPressure = 0.5f,
         .p_bowSpeed = 0.5f,
         .p_bowPosition = 0.13f,
@@ -400,6 +440,16 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_pipeEmbouchure = 0.5f,
         .p_pipeBore = 0.5f,
         .p_pipeOverblow = 0.0f,
+        .p_reedStiffness = 0.5f,
+        .p_reedAperture = 0.6f,
+        .p_reedBlowPressure = 0.5f,
+        .p_reedBore = 0.0f,
+        .p_reedVibratoDepth = 0.0f,
+        .p_brassBlowPressure = 0.5f,
+        .p_brassLipTension = 0.5f,
+        .p_brassLipAperture = 0.5f,
+        .p_brassBore = 0.0f,
+        .p_brassMute = 0.0f,
         .p_epHardness = 0.4f,
         .p_epToneBar = 0.5f,
         .p_epPickupPos = 0.3f,
