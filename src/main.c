@@ -329,20 +329,103 @@ Vector2 ScreenToWorld(Vector2 screen) {
     return (Vector2){(screen.x - offset.x) / zoom, (screen.y - offset.y) / zoom};
 }
 
-// Front-view coordinate mapping: screen → (gridX, gridZ), worldY = frontViewY
+// Front-view coordinate mapping for a specific layer.
 // Returns gridX in .x and gridZ in .y (note: .y is Z, not Y!)
-Vector2 ScreenToGridFrontView(Vector2 screen) {
+// layer=0 is backmost, layer=depthLayers-1 is frontmost.
+Vector2 ScreenToGridFrontViewLayer(Vector2 screen, int layer, int depthLayers) {
     float size = CELL_SIZE * zoom;
+    float floorThickness = size * 0.25f;
+    if (floorThickness < 3.0f) floorThickness = 3.0f;
+    float layerOffsetY = (depthLayers - 1 - layer) * floorThickness;
     float gridX = (screen.x - offset.x) / size;
-    // screenY = offset.y + (gridDepth - 1 - z) * size  (front layer has layerOffsetY=0)
-    float gridZ = (float)(gridDepth - 1) - (screen.y - offset.y) / size;
+    // Invert: screenY = offset.y + (gridDepth - 1 - z) * size - layerOffsetY
+    float gridZ = (float)(gridDepth - 1) - (screen.y + layerOffsetY - offset.y) / size;
     return (Vector2){gridX, gridZ};
 }
 
-// Front-view world mapping: screen → (worldX, worldZ_as_float), worldY = frontViewY * CELL_SIZE
-Vector2 ScreenToWorldFrontView(Vector2 screen) {
+// Convenience: front layer (layerOffsetY=0)
+Vector2 ScreenToGridFrontView(Vector2 screen) {
+    int depthLayers = frontViewDepth;
+    if (depthLayers < 1) depthLayers = 1;
+    return ScreenToGridFrontViewLayer(screen, depthLayers - 1, depthLayers);
+}
+
+// Front-view: find the best (x, y, z) under the cursor by iterating layers front-to-back.
+// Returns true if a valid cell was found, fills outX/outY/outZ.
+// "Valid" = in bounds and not empty air (has a solid cell, floor, item, mover, etc.)
+bool FrontViewPickCell(Vector2 screen, int *outX, int *outY, int *outZ) {
+    int depthLayers = frontViewDepth;
+    if (depthLayers < 1) depthLayers = 1;
+    int startY = frontViewY - depthLayers + 1;
+    if (startY < 0) startY = 0;
+
+    // Iterate front to back (frontmost layer = highest priority)
+    for (int layer = depthLayers - 1; layer >= 0; layer--) {
+        int worldY = startY + layer;
+        if (worldY < 0 || worldY >= gridHeight) continue;
+
+        Vector2 gv = ScreenToGridFrontViewLayer(screen, layer, depthLayers);
+        int gx = (int)gv.x;
+        int gz = (int)gv.y;
+        if (gx < 0 || gx >= gridWidth || gz < 0 || gz >= gridDepth) continue;
+
+        // Check if there's anything interesting at this cell
+        CellType cell = grid[gz][worldY][gx];
+        bool hasContent = (cell != CELL_AIR)
+            || HAS_FLOOR(gx, worldY, gz)
+            || (gz > 0 && CellIsSolid(grid[gz - 1][worldY][gx]))  // standing surface
+            || waterGrid[gz][worldY][gx].level > 0;
+
+        // Also check for entities at this position
+        if (!hasContent) {
+            for (int i = 0; i < itemHighWaterMark; i++) {
+                Item* it = &items[i];
+                if (!it->active) continue;
+                if (it->state == ITEM_CARRIED || it->state == ITEM_IN_STOCKPILE) continue;
+                if ((int)(it->y / CELL_SIZE) == worldY &&
+                    (int)(it->x / CELL_SIZE) == gx &&
+                    (int)it->z == gz) {
+                    hasContent = true;
+                    break;
+                }
+            }
+        }
+        if (!hasContent) {
+            for (int i = 0; i < moverCount; i++) {
+                Mover* m = &movers[i];
+                if (!m->active) continue;
+                if ((int)(m->y / CELL_SIZE) == worldY &&
+                    (int)(m->x / CELL_SIZE) == gx &&
+                    (int)m->z == gz) {
+                    hasContent = true;
+                    break;
+                }
+            }
+        }
+
+        if (hasContent) {
+            *outX = gx;
+            *outY = worldY;
+            *outZ = gz;
+            return true;
+        }
+    }
+
+    // Fallback: front layer even if empty
+    Vector2 gv = ScreenToGridFrontViewLayer(screen, depthLayers - 1, depthLayers);
+    *outX = (int)gv.x;
+    *outY = frontViewY;
+    *outZ = (int)gv.y;
+    return false;
+}
+
+// Front-view world mapping for a specific layer
+static Vector2 ScreenToWorldFrontViewLayer(Vector2 screen, int layer, int depthLayers) {
+    float floorThickness = CELL_SIZE * zoom * 0.25f;
+    if (floorThickness < 3.0f) floorThickness = 3.0f;
+    float layerOffsetY = (depthLayers - 1 - layer) * floorThickness;
     float worldX = (screen.x - offset.x) / zoom;
-    float worldZ = (float)(gridDepth - 1) * CELL_SIZE - (screen.y - offset.y) / zoom;
+    float worldZ = (float)(gridDepth - 1) * CELL_SIZE - (screen.y + layerOffsetY - offset.y) / zoom;
     return (Vector2){worldX, worldZ};
 }
 
@@ -1969,16 +2052,20 @@ int main(int argc, char** argv) {
         int ttX, ttY, ttZ;  // tooltip cell coords
         Vector2 ttGridVec;
         if (frontViewMode) {
-            Vector2 fv = ScreenToGridFrontView(GetMousePosition());
-            ttX = (int)fv.x;
-            ttZ = (int)fv.y;  // .y holds gridZ in frontview
-            ttY = frontViewY;
+            FrontViewPickCell(GetMousePosition(), &ttX, &ttY, &ttZ);
             ttGridVec = (Vector2){(float)ttX, (float)ttY};
         } else {
             ttGridVec = ScreenToGrid(GetMousePosition());
             ttX = (int)ttGridVec.x;
             ttY = (int)ttGridVec.y;
             ttZ = currentViewZ;
+        }
+
+        // Debug: show computed grid coords near mouse cursor
+        {
+            Vector2 mp = GetMousePosition();
+            const char* coordText = TextFormat("x:%d y:%d z:%d", ttX, ttY, ttZ);
+            DrawTextShadow(coordText, (int)mp.x + 16, (int)mp.y - 16, 14, YELLOW);
         }
 
         if (hoveredStockpile >= 0) {

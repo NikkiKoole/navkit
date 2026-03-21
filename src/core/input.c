@@ -1934,14 +1934,11 @@ void HandleInput(void) {
     
     int gx, gy, gz;  // grid coords for hover detection (gy=worldY, gz=worldZ)
     if (frontViewMode) {
-        Vector2 fv = ScreenToGridFrontView(GetMousePosition());
-        gx = (int)fv.x;
-        gz = (int)fv.y;  // .y holds gridZ in frontview
-        gy = frontViewY;  // front layer Y
+        FrontViewPickCell(GetMousePosition(), &gx, &gy, &gz);
     } else {
-        Vector2 mouseGrid = ScreenToGrid(GetMousePosition());
-        gx = (int)mouseGrid.x;
-        gy = (int)mouseGrid.y;
+        Vector2 mouseGrid2 = ScreenToGrid(GetMousePosition());
+        gx = (int)mouseGrid2.x;
+        gy = (int)mouseGrid2.y;
         gz = currentViewZ;
     }
     // Keep these available for downstream code (quickEdit, trains, etc.)
@@ -1955,13 +1952,15 @@ void HandleInput(void) {
     hoveredWorkshop = FindWorkshopAt(gx, gy, gz);
     if (paused) {
         if (frontViewMode) {
+            // In frontview, movers/animals already found by FrontViewPickCell's Y range.
+            // Use the picked gz to find movers across visible layers.
             int depthLayers = frontViewDepth;
             if (depthLayers < 1) depthLayers = 1;
             int startY = frontViewY - depthLayers + 1;
             if (startY < 0) startY = 0;
-            Vector2 fvWorld = ScreenToWorldFrontView(GetMousePosition());
-            hoveredMover = GetMoverAtFrontView(fvWorld.x, gz, startY, frontViewY);
-            hoveredAnimal = GetAnimalAtFrontView(fvWorld.x, gz, startY, frontViewY);
+            float worldX = (GetMousePosition().x - offset.x) / zoom;
+            hoveredMover = GetMoverAtFrontView(worldX, gz, startY, frontViewY);
+            hoveredAnimal = GetAnimalAtFrontView(worldX, gz, startY, frontViewY);
         } else {
             Vector2 mouseWorld = ScreenToWorld(GetMousePosition());
             hoveredMover = GetMoverAtWorldPos(mouseWorld.x, mouseWorld.y, gz);
