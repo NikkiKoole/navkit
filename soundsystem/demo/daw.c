@@ -718,6 +718,7 @@ static struct {
     float ampMod;          // last ampLfoMod
     float pitchMod;        // last pitchLfoMod
     float fmMod;           // last fmLfoMod
+    float velocity;        // voice volume (velocity) for vel mod viz
 } lfoModViz;
 
 // sample_chop.h needed here for chopStateBounce (RenderedPattern, chopEqual, etc.)
@@ -4237,6 +4238,52 @@ static void drawLfoModIndicator(float x, float y, float baseVal, float modVal, f
     DrawTextShadow(TextFormat("%.2f", modded), (int)(barX + barW + 4), (int)(barY - 3), UI_FONT_SMALL, (Color){255, 160, 60, 200});
 }
 
+// Draw a small cyan velocity modulation indicator (same style as LFO orange).
+// Shows how velocity shifts a parameter from its base value.
+// vel = current voice velocity (0-1), amount = velTo* param, squared curve applied.
+static void drawVelModIndicator(float x, float y, float baseVal, float amount, float mn, float mx, float vel) {
+    if (!lfoModViz.active || amount < 0.001f) return;
+    float range = mx - mn;
+    if (range < 0.001f) return;
+    float velSq = vel * vel;
+    float modded = baseVal + amount * velSq;
+    if (modded < mn) modded = mn;
+    if (modded > mx) modded = mx;
+    float barW = 40.0f, barH = 3.0f;
+    float barX = x, barY = y + 5;
+    float baseFrac = (baseVal - mn) / range;
+    float modFrac = (modded - mn) / range;
+    DrawRectangle((int)barX, (int)barY, (int)barW, (int)barH, (Color){40, 40, 50, 200});
+    DrawRectangle((int)(barX + baseFrac * barW), (int)(barY - 1), 1, (int)(barH + 2), (Color){100, 100, 120, 200});
+    float left = baseFrac < modFrac ? baseFrac : modFrac;
+    float right = baseFrac < modFrac ? modFrac : baseFrac;
+    DrawRectangle((int)(barX + left * barW), (int)barY, (int)((right - left) * barW) + 1, (int)barH, (Color){80, 220, 220, 200});
+    DrawTextShadow(TextFormat("%.2f", modded), (int)(barX + barW + 4), (int)(barY - 3), UI_FONT_SMALL, (Color){80, 220, 220, 200});
+}
+
+// Draw velocity scaling indicator for multiplicative params (osc level, click).
+// Shows effective level = base * scale where scale uses squared velocity curve.
+static void drawVelScaleIndicator(float x, float y, float baseVal, float velSens, float mn, float mx, float vel) {
+    if (!lfoModViz.active || velSens < 0.001f) return;
+    float range = mx - mn;
+    if (range < 0.001f) return;
+    float velSq = vel * vel;
+    float scale = 1.0f - velSens + velSens * velSq;
+    float modded = baseVal * scale;
+    if (modded < mn) modded = mn;
+    if (modded > mx) modded = mx;
+    float barW = 40.0f, barH = 3.0f;
+    float barX = x, barY = y + 5;
+    float baseFrac = (baseVal - mn) / range;
+    float modFrac = (modded - mn) / range;
+    DrawRectangle((int)barX, (int)barY, (int)barW, (int)barH, (Color){40, 40, 50, 200});
+    DrawRectangle((int)(barX + baseFrac * barW), (int)(barY - 1), 1, (int)(barH + 2), (Color){100, 100, 120, 200});
+    float left = baseFrac < modFrac ? baseFrac : modFrac;
+    float right = baseFrac < modFrac ? modFrac : baseFrac;
+    DrawRectangle((int)(barX + left * barW), (int)barY, (int)((right - left) * barW) + 1, (int)barH, (Color){80, 220, 220, 200});
+    DrawTextShadow(TextFormat("%.2f", modded), (int)(barX + barW + 4), (int)(barY - 3), UI_FONT_SMALL, (Color){80, 220, 220, 200});
+}
+
 // Sampler patch view — shown instead of synth params when sampler track is selected
 static void drawParamSampler(float x, float y, float w, float h) {
     _ensureSamplerCtx();
@@ -4672,6 +4719,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
         ui_col_cycle(&c, "Model", filterModelNames, FILTER_MODEL_COUNT, &p->p_filterModel);
         ui_col_float_p(&c, "Cut", &p->p_filterCutoff, 0.05f, 0.01f, 1.0f);
         drawLfoModIndicator(envX + 80, c.y - c.spacing, p->p_filterCutoff, lfoModViz.filterMod, 0.01f, 1.0f);
+        drawVelModIndicator(envX + 80, c.y - c.spacing + 8, p->p_filterCutoff, p->p_velToFilter, 0.01f, 1.0f, lfoModViz.velocity);
         ui_col_float_p(&c, "Res", &p->p_filterResonance, 0.05f, 0.0f, 1.02f);
         drawLfoModIndicator(envX + 80, c.y - c.spacing, p->p_filterResonance, lfoModViz.resoMod, 0.0f, 1.02f);
         ui_col_float_p(&c, "EnvAmt", &p->p_filterEnvAmt, 0.05f, -1.0f, 1.0f);
@@ -4865,6 +4913,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
         ui_col_sublabel(&c, "Drive:", ORANGE);
         ui_col_cycle(&c, "Mode", distModeNames, DIST_MODE_COUNT, &p->p_driveMode);
         ui_col_float(&c, "Drive", &p->p_drive, 0.05f, 0.0f, 1.0f);
+        drawVelModIndicator(col5X + 80, c.y - c.spacing, p->p_drive, p->p_velToDrive, 0.0f, 1.0f, lfoModViz.velocity);
         sectionHighlight(col5X + 2, secY, percColW, c.y - secY, driveActive);
         ui_col_space(&c, 6);
 
@@ -4872,6 +4921,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
         secY = c.y;
         ui_col_sublabel(&c, "Click:", ORANGE);
         ui_col_float(&c, "Level", &p->p_clickLevel, 0.05f, 0.0f, 1.0f);
+        drawVelScaleIndicator(col5X + 80, c.y - c.spacing, p->p_clickLevel, p->p_velToClick, 0.0f, 1.0f, lfoModViz.velocity);
         ui_col_float(&c, "Time", &p->p_clickTime, 0.002f, 0.001f, 0.05f);
         sectionHighlight(col5X + 2, secY, percColW, c.y - secY, clickActive);
         ui_col_space(&c, 6);
@@ -5006,6 +5056,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
                 }
             }
             ui_col_float(&c, TextFormat("%s L", oscs[i].label), oscs[i].level, 0.05f, 0.0f, 1.0f);
+            drawVelScaleIndicator(col7X + 80, c.y - c.spacing, *oscs[i].level, p->p_oscVelSens, 0.0f, 1.0f, lfoModViz.velocity);
             ui_col_float(&c, TextFormat("%s D", oscs[i].label), oscs[i].decay, 0.5f, 0.0f, 50.0f);
         }
         sectionHighlight(col7X + 2, secY, percColW, c.y - secY, oscActive);
@@ -5015,10 +5066,10 @@ static void drawParamPatch(float x, float y, float w, float h) {
         bool velActive = DF(p_oscVelSens) || DF(p_velToFilter) || DF(p_velToClick) || DF(p_velToDrive);
         secY = c.y;
         ui_col_sublabel(&c, "Velocity:", ORANGE);
-        ui_col_float(&c, "Osc Lvl", &p->p_oscVelSens, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Filter", &p->p_velToFilter, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Click", &p->p_velToClick, 0.05f, 0.0f, 1.0f);
-        ui_col_float(&c, "Drive", &p->p_velToDrive, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&c, "Osc Lvl", &p->p_oscVelSens, 0.05f, 0.0f, 5.0f);
+        ui_col_float(&c, "Filter", &p->p_velToFilter, 0.05f, 0.0f, 5.0f);
+        ui_col_float(&c, "Click", &p->p_velToClick, 0.05f, 0.0f, 5.0f);
+        ui_col_float(&c, "Drive", &p->p_velToDrive, 0.05f, 0.0f, 5.0f);
         sectionHighlight(col7X + 2, secY, percColW, c.y - secY, velActive);
     }
 
@@ -8791,6 +8842,7 @@ int main(int argc, char *argv[]) {
                     lfoModViz.ampMod = v->lastAmpLfoMod;
                     lfoModViz.pitchMod = v->lastPitchLfoMod;
                     lfoModViz.fmMod = v->lastFmLfoMod;
+                    lfoModViz.velocity = v->volume;
                     break;
                 }
             }

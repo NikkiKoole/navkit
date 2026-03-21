@@ -2832,9 +2832,13 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     // Extra oscillators
     v->osc2Ratio = noteOsc2Ratio;
     // Velocity scaling for extra osc levels: at velSens=1, soft notes suppress partials
+    // Velocity scaling for extra osc levels: exponential curve (vel²) for
+    // dramatic contrast — soft playing nearly suppresses partials, hard hits
+    // bring them out strongly. Models Rhodes tine/pickup behavior.
     float oscVelScale = 1.0f;
     if (noteOscVelSens > 0.001f) {
-        oscVelScale = 1.0f - noteOscVelSens + noteOscVelSens * noteVolume;
+        float velCurved = noteVolume * noteVolume;  // squared: soft=0.25, mid=0.56, hard=1.0
+        oscVelScale = 1.0f - noteOscVelSens + noteOscVelSens * velCurved;
     }
     v->osc2Level = noteOsc2Level * oscVelScale;
     v->osc2Phase = 0.0f;
@@ -2864,15 +2868,17 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     // Drive & exp decay
     v->drive = noteDrive;
     if (noteVelToDrive > 0.001f)
-        v->drive += noteVelToDrive * noteVolume;
+        v->drive += noteVelToDrive * noteVolume * noteVolume;
     v->driveMode = noteDriveMode;
     v->expDecay = noteExpDecay;
 
     // Click transient (velocity-scaled if velToClick > 0)
     {
         float clickVelScale = 1.0f;
-        if (noteVelToClick > 0.001f)
-            clickVelScale = 1.0f - noteVelToClick + noteVelToClick * noteVolume;
+        if (noteVelToClick > 0.001f) {
+            float velSq = noteVolume * noteVolume;
+            clickVelScale = 1.0f - noteVelToClick + noteVelToClick * velSq;
+        }
         v->clickLevel = noteClickLevel * clickVelScale;
     }
     v->clickTime = noteClickTime > 0.001f ? noteClickTime : 0.005f;
@@ -3000,7 +3006,7 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
         v->filterCutoff = noteFilterCutoff;
         // Velocity → filter cutoff offset
         if (noteVelToFilter > 0.001f) {
-            v->filterCutoff += noteVelToFilter * noteVolume;
+            v->filterCutoff += noteVelToFilter * noteVolume * noteVolume;
             if (v->filterCutoff > 1.0f) v->filterCutoff = 1.0f;
         }
         v->filterResonance = noteFilterResonance;
