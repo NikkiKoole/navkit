@@ -168,49 +168,109 @@ Complete inventory of every DSP algorithm in the soundsystem: what it is, how it
 **Cyan UI indicators**: Real-time visualization on affected parameter rows (filter cutoff, drive, click level, extra osc levels) showing the velocity-modulated value, matching the LFO orange indicator style.
 **Assessment**: Straightforward. The detuning is ratio-based (not cents-based), which is fine for the metallic percussion use case. For typical unison-lead sounds, a cents-based spread with even distribution (as described in the unison globals) would be more musical. Both modes are available. The per-oscillator decay + velocity modulation enable rich dynamic timbres: MT-70 style additive (static partials with independent decay), Rhodes (always-present bell + velocity-driven bark), and anything in between.
 
-### 1.17 Electric Piano / Rhodes (WAVE_EPIANO)
-**File**: `synth_oscillators.h:1590–1760`, init at `1615–1710`, process at `1713–1760`
-**Algorithm**: 6-mode modal synthesis (tine + tone bar) with electromagnetic pickup nonlinearity and DC blocker.
+### 1.17 Electric Piano (WAVE_EPIANO)
+**File**: `synth_oscillators.h:1590–1860`, init at `1617–1770`, process at `1785–1860`
+**Algorithm**: 6-mode modal synthesis with 3 pickup types (Rhodes/Wurlitzer/Clavinet), per-type nonlinearity, and DC blocker.
 
-**Physics model**: The Fender Rhodes (1965) is a tuning fork — a hammer strikes a tine (clamped-free cantilever beam) coupled to a brass tone bar, vibrating near an electromagnetic pickup. Two phenomena create the sound:
-1. **Attack transient** (~5–20 ms): cantilever beam bending modes (Euler-Bernoulli eigenvalues: 1×, 6.27×, 17.55×, 34.39×, 56.84×, 84.91×). Wildly inharmonic, decay in milliseconds, give the characteristic bell-like "chime."
-2. **Sustained tone**: the tine settles into simple harmonic motion, and the nonlinear electromagnetic pickup generates integer harmonics (2f, 3f, 4f…) via its transfer function.
+**Physics model**: Three instruments share a common 6-mode modal engine, differentiated by mode ratios, amplitude profiles, and pickup nonlinearity:
 
-**Mode ratio blending**: `epBellTone` blends between harmonic ratios `{1, 2, 3, 4, 5, 6}` (sustained pickup tone) and cantilever beam ratios `{1, 6.27, 17.55, 34.39, 56.84, 84.91}` (attack transient). Per-mode blend scale `{0, 0, 0.05, 0.4, 0.8, 1.0}` keeps body modes (1–2) at exact integer ratios for clean pitch, while bell modes (4–6) carry the inharmonic attack character. This avoids the tuning issues that arise when even small amounts of beam inharmonicity shift the 2nd partial (e.g. 0.05 blend → 14 cents sharp, audible as beating in low registers).
+| | Rhodes (1965) | Wurlitzer (1954) | Clavinet D6 (1971) |
+|---|---|---|---|
+| **Exciter** | Hammer → tine + tone bar | Hammer → steel reed | Tangent → string + damper pad |
+| **Resonator** | Cantilever beam (tuning fork) | Clamped-free reed | Short steel string |
+| **Pickup** | Electromagnetic (asymmetric) | Electrostatic (symmetric) | Contact/magnetic (mixed) |
+| **Inharmonic ratios** | 1, 6.27, 17.55, 34.39, 56.84, 84.91 | 1, 2.02, 3.01, 5.04, 7.05, 9.08 | 1, 2.003, 3.012, 4.028, 5.15, 6.35 |
+| **Character** | Bell attack + warm sustain | Reedy/nasal, odd harmonics | Bright, percussive, funky |
 
-**Pickup position profiles**: Centered (fundamental dominant: 1.0, 0.15, 0.40, 0.30, 0.15, 0.05) vs offset (2nd harmonic dominant: 0.50, 1.00, 0.25, 0.60, 0.30, 0.12). These model electromagnetic coupling geometry, NOT beam mode shapes — an earlier `sin(n·π·pos)` model was rejected because it made the 2nd harmonic nearly as loud as the fundamental at offset positions, producing perceived pitch ambiguity.
+Pickup type selected via `epPickupType`: `EP_PICKUP_ELECTROMAGNETIC` (0), `EP_PICKUP_ELECTROSTATIC` (1), `EP_PICKUP_CONTACT` (2).
 
-**Velocity model**:
-- Hammer hardness is velocity-dependent: `hard = epHardness + vel × (1 − epHardness) × 0.3` — neoprene tips compress more at higher velocity, brightening the spectrum.
+#### Rhodes (electromagnetic)
+
+**Physics**: Hammer strikes a tine (clamped-free cantilever beam) coupled to a brass tone bar, vibrating near an electromagnetic pickup. Two phenomena:
+1. **Attack transient** (~5–20 ms): cantilever beam bending modes (Euler-Bernoulli eigenvalues: 1×, 6.27×, 17.55×, 34.39×, 56.84×, 84.91×). Wildly inharmonic, decay in milliseconds — the bell "chime."
+2. **Sustained tone**: tine settles into simple harmonic motion; the nonlinear electromagnetic pickup generates integer harmonics via its transfer function.
+
+**Mode ratio blending**: `epBellTone` blends between harmonic ratios `{1, 2, 3, 4, 5, 6}` (sustained pickup tone) and cantilever beam ratios (attack transient). Per-mode blend scale `{0, 0, 0.05, 0.4, 0.8, 1.0}` keeps body modes (1–2) at exact integer ratios for clean pitch, while bell modes (4–6) carry the inharmonic attack character.
+
+**Pickup position profiles**: Centered (1.0, 0.55, 0.12, 0.18, 0.08, 0.03) vs offset (0.40, 1.0, 0.20, 0.50, 0.15, 0.06). The 2nd partial is strong even at centered position (0.55) — measured Rhodes spectra (Gabrielli 2020) show the 2nd partial at 60–80% of fundamental. An earlier profile with weaker 2nd partial (0.15) and stronger 3rd (0.40) produced a hollow, square-wave-like spectrum that didn't match real Rhodes recordings.
+
+**Pickup nonlinearity**: `output = sum + k·sum² + k2·sum³` with a velocity-independent baseline:
+- `k = 0.4 + pickupDist × 1.0 × velBoost` — the `sum²` term generates even harmonics (warmth/bark)
+- `k2 = 0.12 + pickupDist × 0.25 × velBoost`
+- `kBase = 0.4` is always-on: real Rhodes pickups have inherent asymmetry from the coil geometry even at soft dynamics. An earlier version gated the nonlinearity entirely by `pickupDist × velocity`, producing a hollow odd-harmonic-dominant sound at moderate dynamics (odd/even ratio ~6.5 vs target ~2.0).
+
+**Asymmetric soft-clip**: `tanh(x)` for positive, `tanh(x × 0.85) × 0.9` for negative. Real pickups are asymmetric (tine passes by, not through the coil), preserving even harmonics through the clipping stage.
+
+**Tone bar coupling** (Rhodes only): Extends fundamental decay by up to 2.5× and 2nd partial by up to 1.6×. The tone bar is a resonant body tuned to reinforce the fundamental.
+
+#### Wurlitzer (electrostatic)
+
+**Physics**: Hammer strikes a steel reed vibrating between two charged plates (electrostatic pickup). The symmetric capacitive geometry cancels even modes partially, producing a strong odd-harmonic series (clarinet-like). Mode ratios `{1, 2.02, 3.01, 5.04, 7.05, 9.08}` reflect this — note the gap at the 4th partial (jumps to 5.04), emphasizing odd harmonics.
+
+**Pickup position profiles**: Centered (1.0, 0.10, 0.55, 0.08, 0.35, 0.05) — note the strong 3rd and 5th (odd) vs weak 2nd and 4th (even). Offset (0.60, 0.20, 0.70, 0.15, 0.50, 0.10) — buzzy, more upper partials.
+
+**Pickup nonlinearity**: Symmetric odd-order only: `output = sum + k3·sum³ + k5·sum⁵` with `k3 = pickupDist × 1.5 × velBoost`, `k5 = pickupDist × 0.4 × velBoost`. Odd-order terms preserve the reed's odd-harmonic character. Symmetric `tanh` soft-clip (no asymmetry).
+
+**No tone bar coupling** — reeds decay naturally without reinforcement.
+
+#### Clavinet (contact)
+
+**Physics**: A tangent strikes a short steel string from below; a yarn-wound damper pad releases, producing the characteristic "twang." Two single-coil magnetic pickups under the strings (neck/bridge, like a guitar). The string is nearly harmonic — stiff string inharmonicity is subtle (B coefficient stretch), unlike the wild cantilever beam modes of Rhodes.
+
+**Mode ratios**: `{1, 2.003, 3.012, 4.028, 5.15, 6.35}` — nearly harmonic body (modes 1–4), with damper pad resonance adding inharmonicity in upper modes (5–6). Blend scale `{0, 0, 0.05, 0.2, 0.5, 0.75}` — conservative, body modes stay locked to partials.
+
+**Pickup position profiles**: Neck/centered (1.0, 0.30, 0.20, 0.35, 0.15, 0.06) — warm, fundamental-heavy. Bridge/offset (0.60, 0.55, 0.50, 0.20, 0.30, 0.10) — bright, strong upper partials (the funk sound). Models the real D6's 4-position pickup selector as a continuous interpolation.
+
+**Pickup nonlinearity**: Mixed even+odd harmonics: `output = sum + k2·sum² + k3·sum³` with `k2 = pickupDist × 0.8 × velBoost` (even — honk/wah), `k3 = pickupDist × 1.0 × velBoost` (odd — bite/growl). Symmetric clip `tanh(output × 1.2)` — clips harder than Wurli but without Rhodes asymmetry.
+
+**No tone bar coupling** — strings decay naturally. Short decay (0.5–1.2s vs Rhodes 3–4s).
+
+#### Common engine details
+
+**Velocity model** (shared by all pickup types):
+- Hammer hardness is velocity-dependent: `hard = epHardness + vel × (1 − epHardness) × 0.3`
 - Fundamental/body modes (1–3): `vel²` curve — quiet at pp, strong at ff.
-- Bell modes (4–6): `sqrt(vel)` curve — present even at soft hits (the "vibes" character).
-- Amplitude normalization: total mode sum ≈ velocity. Critical for bark — soft hits produce a small clean signal, hard hits drive the pickup nonlinearity.
+- Bell modes (4–6): `sqrt(vel)` curve — present even at soft hits (vibes character).
+- Amplitude normalization: total mode sum ≈ velocity. Critical — soft hits produce a small clean signal, hard hits drive pickup nonlinearity.
 
-**Register variation** (pitch-dependent timbre): `freqNorm = clamp((freq − 80) / 1200, 0, 1)` maps the keyboard from low (0) to high (1). Affects:
+**Register variation** (pitch-dependent timbre): `freqNorm = clamp((freq − 80) / 1200, 0, 1)` maps keyboard from low (0) to high (1). Affects:
 - Bell blend boost: +0.15 at top (upper register = more inharmonic, per Pfeifle DAFx-17)
 - Fundamental amplitude: thins 30% at top
 - Bell mode amplitude: brightens 40% at top
 - Decay: shortens 50% at top (measured: Eb2 = 3.88s, Eb6 = 0.45s — Shear 2011)
 
-**Pickup nonlinearity**: `output = sum + k·sum² + k2·sum³` where `k = pickupDist × 1.2 × (1 + vel × pickupDist)`, `k2 = pickupDist × 0.3 × (1 + vel × pickupDist)`. The `sum²` term generates even harmonics (bark), `sum³` adds odd-harmonic growl. Velocity drives the tine closer to the pickup, increasing nonlinearity beyond amplitude alone.
+**DC blocker**: `y[n] = x[n] − x[n−1] + 0.995 · y[n−1]` (~7 Hz cutoff at 44.1 kHz). Essential — the `sum²` nonlinearity generates DC offset proportional to signal power.
 
-**Asymmetric soft-clip**: `tanh(x)` for positive, `tanh(x × 0.85) × 0.9` for negative. Real pickups are asymmetric (tine passes by, not through the coil), preserving even harmonics through the clipping stage.
+**Decay model**: Per-mode decay factor `1 / (1 + (ratio − 1) × (0.3 + bellTone × 0.7))`. Body modes get gradual rolloff; with high bellTone the upper modes decay much faster. Register shortens base decay by up to 50% at the top of the keyboard.
 
-**DC blocker**: `y[n] = x[n] − x[n−1] + 0.995 · y[n−1]` (~7 Hz cutoff at 44.1 kHz). Essential — the `sum²` nonlinearity generates a DC offset proportional to signal power.
+**Phase accumulation**: `fmodf(phase, 1.0)` instead of `phase -= floorf(phase)` — avoids float precision loss on long sustains.
 
-**Tone bar coupling**: Extends fundamental decay by up to 2.5× and 2nd partial by up to 1.6×. The tone bar is a resonant body tuned to reinforce the fundamental, with its own overtones coupling to the 2nd partial.
+**Presets** (10):
+| # | Name | Pickup | Character | Key settings |
+|---|------|--------|-----------|--------------|
+| 174 | Rhodes Warm | EM | Soft jazz, mellow | centered, soft hammer, bellTone=0.08 |
+| 175 | Rhodes Bright | EM | Funky, barking | offset, hard hammer, velToDrive=1.5 |
+| 176 | Rhodes Suite | EM | Suitcase amp | tremolo at 4.5 Hz, long sustain |
+| 177 | Rhodes Bark | EM | Glass bell → savage bark | bellTone=0.25, velToDrive=3.0, high bell |
+| 178 | Wurli Buzz | ES | Supertramp "Dreamer" | driven, nasal, tremolo |
+| 179 | Wurli Soul | ES | Ray Charles ballad | warm, clean, gentle tremolo |
+| 180 | Clav Funky | CT | Stevie Wonder funk | bridge pickup, wah filter, hard attack |
+| 181 | Clav Mellow | CT | Bill Withers / reggae | neck pickup, warm, soft touch |
+| 182 | Clav Driven | CT | Led Zeppelin rock | both pickups, heavy distortion |
 
-**Decay model**: Per-mode decay factor `1 / (1 + (ratio − 1) × (0.3 + bellTone × 0.7))`. Body modes get gradual rolloff; with high bellTone the upper modes decay much faster (approaching the millisecond-scale decay of real beam modes). Register shortens base decay by up to 50% at the top of the keyboard.
+**Spectral analysis** (preset-audition at C4, compared to pure sine reference):
 
-**Phase accumulation**: `fmodf(phase, 1.0)` instead of `phase -= floorf(phase)` — avoids float precision loss on long sustains (at 2 kHz after 4s = 8000 cycles, 23-bit mantissa loses ~0.001 precision).
+| Preset | Odd/Even | Inharmonicity | Brightness | Fund% | Partials |
+|--------|----------|---------------|------------|-------|----------|
+| Rhodes Warm | 2.44 | 1.00 (metallic) | 377 Hz | 47% | 9 |
+| Rhodes Suite | 1.67 | 1.00 (metallic) | 457 Hz | 49% | 11 |
+| Wurli Buzz | 5.18 (hollow) | 0.28 | 488 Hz | 37% | 10 |
+| Wurli Soul | 6.92 (hollow) | 0.40 | 429 Hz | 46% | 8 |
+| Clav Funky | 1.84 | 0.07 (slight) | 562 Hz | 34% | 12 |
+| Clav Mellow | 2.39 | 0.07 (slight) | 409 Hz | 52% | 9 |
+| Clav Driven | 1.80 | 0.06 (slight) | 539 Hz | 38% | 14 |
 
-**Presets** (4):
-| # | Name | Character | Key settings |
-|---|------|-----------|--------------|
-| 174 | Rhodes Warm | Soft jazz, mellow | centered pickup, soft hammer, bellTone=0.08 |
-| 175 | Rhodes Bright | Funky, barking | offset pickup, hard hammer, velToDrive=1.5 |
-| 176 | Rhodes Suite | Suitcase amp | tremolo at 4.5 Hz, long sustain |
-| 177 | Rhodes Bark | Glass bell → savage bark | bellTone=0.25, velToDrive=3.0, high bell |
+Key observations: Rhodes odd/even ~2 (warm, balanced — was ~6.5 before amplitude profile fix), Wurli ~5–7 (hollow, odd-harmonic reed character), Clavinet ~1.8–2.4 (most balanced — mixed even+odd nonlinearity). Clavinet inharmonicity is very low (0.06–0.07, stiff string) vs Rhodes (1.00, cantilever beam) vs Wurli (0.28–0.40, reed).
 
 **Reference**:
 - Shear & Wright, "The Electromagnetically Sustained Rhodes Piano" (UCSB Masters Thesis, 2011) — Q measurements, spectral analysis, tine dimensions
@@ -220,8 +280,70 @@ Complete inventory of every DSP algorithm in the soundsystem: what it is, how it
 - Fletcher & Rossing, "The Physics of Musical Instruments" (1998), Ch. 2 (beams), Ch. 12 (electric instruments)
 - Irvine, "Bending Frequencies of Beams, Rods, and Pipes" (vibrationdata.com) — Euler-Bernoulli eigenvalues
 - Sound On Sound, "Synthesizing Pianos" (Gordon Reid, 2001)
+- Sound On Sound, "Synth Secrets: Clavinet" (Gordon Reid, 2002) — Clavinet D6 mechanics and synthesis
 
-**Assessment**: Good semi-physical model. The dual-nature approach (harmonic pickup modes for sustain + cantilever beam modes for bell attack) correctly reflects the measured physics: after ~5–20 ms the tine vibrates sinusoidally with no higher modes (Pfeifle 2017, Shear 2011). The per-mode blend scale is the key design decision — keeping body modes at exact integer ratios avoids the tuning artifacts that would otherwise occur due to the extreme beam eigenvalue spacing (6.27× for mode 2). The pickup nonlinearity polynomial is a reasonable approximation of the real electromagnetic coupling. **Possible enhancements**: (1) Release damper thump — the characteristic soft click when the damper pad contacts the tine on note-off. (2) Sympathetic resonance between adjacent tines. (3) Pitch-dependent mode ratios (the tine/bar coupling varies per key, affecting which beam modes are excited).
+**Assessment**: Good semi-physical model with three distinct pickup characters. The dual-nature approach (harmonic pickup modes for sustain + inharmonic modes for attack transient) correctly reflects measured physics. Key design decisions: (1) per-mode blend scales keep body modes at integer ratios to avoid tuning artifacts; (2) Rhodes pickup nonlinearity has a velocity-independent baseline (`kBase = 0.4`) that prevents the hollow odd-harmonic character pure modal sines would otherwise produce; (3) Clavinet's nearly-harmonic string modes (inharmonicity ~0.07) correctly differentiate it from the metallic Rhodes (~1.0) and reed-like Wurli (~0.3). **Possible enhancements**: (1) Release damper thump — the characteristic soft click when the damper pad contacts the tine on note-off. (2) Sympathetic resonance between adjacent tines. (3) Per-preset bus effect hints (chorus, stereo tremolo, compression) — currently presets are dry.
+
+### 1.18 Tonewheel Organ / Hammond B3 (WAVE_ORGAN)
+**File**: `synth_oscillators.h:1872–1980`, init at `1872–1897`, process at `1899–1980`
+**Algorithm**: 9-drawbar additive synthesis (sine bank at Hammond ratios) + key click + single-trigger percussion + tonewheel crosstalk + scanner vibrato/chorus.
+
+**Physics model**: The Hammond B3 (1955) uses 91 spinning tonewheels (electromagnetic tone generators) to produce near-pure sine waves. 9 drawbars mix specific harmonics at adjustable levels, routed through a preamp and typically a Leslie rotary speaker cabinet. The engine models four distinct components of the Hammond sound:
+
+**Drawbar synthesis**: 9 sine oscillators at non-standard Hammond ratios:
+```
+Drawbar  Footage  Ratio   Interval
+  1       16'     0.5     Sub-octave
+  2       5⅓'    1.5     Fifth above sub (= 3rd harmonic of 16')
+  3       8'      1.0     Fundamental (unison)
+  4       4'      2.0     Octave
+  5       2⅔'    3.0     Octave + fifth
+  6       2'      4.0     Two octaves
+  7       1⅗'    5.0     Two octaves + major third
+  8       1⅓'    6.0     Two octaves + fifth
+  9       1'      8.0     Three octaves
+```
+Each drawbar level is 0–1 (maps from the Hammond's 0–8 integer scale). Drawbar 7 (1⅗', the major 3rd) is the "color" drawbar that gives Hammond its unique harmonic flavor vs a simple additive organ. Phase accumulators use `fmodf` for precision on long sustains. Output is normalized by the sum of active drawbar levels to prevent clipping when many drawbars are engaged.
+
+**Key click**: On note-on, a velocity-scaled noise burst (`noise() × clickEnv × 0.5`) with ~3ms exponential decay (`clickEnv *= 1 − dt/0.003`). Models the contact bounce when a Hammond key closes its 9 busbars. Real Hammonds had varying amounts of click depending on key condition — players often preferred more click (the B3 redesigns that eliminated it were unpopular). Amount controllable via `orgClick` (0–1).
+
+**Percussion**: A fast-decaying sine at the 2nd or 3rd harmonic, triggered on note attack. Critical Hammond feature with unique behavior:
+- **Single-trigger**: Only the first note in a chord gets percussion. Tracked via global `orgPercKeysHeld` counter — percussion fires when count is 0, incremented on note-on, decremented on note-off.
+- **Non-retriggerable**: Must release all keys before percussion fires again (the Hammond percussion circuit shared a single capacitor across the entire keyboard).
+- Fast decay (~200ms) or slow decay (~500ms), soft (−3dB) or normal volume. `percEnv *= 1 − dt/percDecay`.
+
+**Tonewheel crosstalk**: Adds subtle leakage from adjacent tonewheels (~−36dB): `sin((phase + 0.037) × 2π) × level × crosstalk × 0.015`. The 0.037 phase offset models the physical proximity of adjacent wheels on the shared shaft. This is what makes a vintage Hammond sound "alive" vs a sterile additive synth — the real instruments had measurable crosstalk between wheels sharing the same tone generator.
+
+**Scanner vibrato/chorus** (Hammond V/C system): Per-voice delay-line effect modeled after the Hammond's unique mechanical scanner — a rotating capacitor that sweeps across 9 taps of an LC delay line. Implementation: 64-sample circular buffer (~1.45ms at 44100 Hz) with a 6.9 Hz sine LFO (locked to the tonewheel motor: 60 Hz mains ÷ 8.7 gear ratio) modulating the read position around a center tap at 32 samples. 6 modes:
+- V1/C1: ±6.6 samples (±0.15ms) — subtle shimmer
+- V2/C2: ±17.6 samples (±0.40ms) — classic warm chorus
+- V3/C3: ±30.9 samples (±0.70ms) — full dramatic vibrato
+
+V modes output wet signal only (pitch vibrato). C modes output 50% dry + 50% wet (chorus — the phase difference creates frequency-dependent cancellation/reinforcement, giving the characteristic swirling depth). C3 is *the* classic Hammond jazz/gospel sound. Read position uses `cubicHermite` interpolation for smooth pitch modulation without aliasing.
+
+**Signal chain**: Drawbar sum → Scanner V/C → Key click + Percussion → (external: Leslie rotary speaker, bus effects)
+
+**Presets** (9):
+| # | Name | Drawbars | V/C | Character |
+|---|------|----------|-----|-----------|
+| 183 | Jimmy Smith | 888000000 | C3 | Fat jazz, full chorus |
+| 184 | Gospel Full | 888888888 | C3 | All drawbars, massive choir |
+| 185 | Jon Lord Rock | 888600000 | V3 | Deep Purple growl |
+| 186 | Booker T Green | 886000000 | C1 | Green Onions, subtle |
+| 187 | Organ Ballad | 808000004 | C2 | Sub + fund + shimmer |
+| 188 | Reggae Bubble | 006060000 | Off | Tight staccato skank |
+| 189 | Larry Young | 888800000 | C2 | Unity-era modern jazz |
+| 190 | Emerson Prog | 888808008 | V3 | ELP bombast |
+| 191 | Soft Combo | 006600400 | C1 | Cocktail lounge |
+
+**Reference**:
+- Smith & Abel, "Closed-Form Swept Sine Delay for Leslie Speaker" (ICMC 1999) — scanner delay analysis
+- Pekonen, Pihlajamäki & Välimäki, "Computationally Efficient Hammond Organ Synthesis" (DAFx 2011) — tonewheel model, crosstalk measurements
+- Werner & Smith, "The Leslie Speaker Cabinet" (DAFx 2016) — Leslie + scanner interaction
+- Pakarinen & Välimäki, "Physical Modeling of the Hammond Organ Vibrato/Chorus" (DAFx 2009) — scanner delay line analysis, LC line measurements
+- Hammond B3 Service Manual (1955) — tonewheel specifications, drawbar ratios, percussion circuit schematic
+
+**Assessment**: Good additive model with authentic Hammond-specific features. The drawbar ratios are exact Hammond B3 values (not approximations). The key click noise burst is a reasonable stand-in for the actual busbar contact bounce (a more accurate model would use a burst of all 9 drawbar harmonics at random phases, but noise is perceptually close). Single-trigger percussion correctly models the shared capacitor circuit. The scanner vibrato/chorus uses a delay-line approach (Approach A from Pakarinen 2009) which naturally produces frequency-dependent phase shifts — higher harmonics accumulate more phase shift per sample of delay, creating the characteristic "swirling" timbre that distinguishes Hammond V/C from plain pitch vibrato. **Possible enhancements**: (1) Preamp overdrive — tube-style even-harmonic distortion scaled by drawbar sum (more drawbars = hotter signal = more natural drive). (2) Transistor organ modes (Vox Continental, Farfisa) — square/pulse waveforms with tab-stop filtering instead of sine drawbars. (3) Tonewheel wear — subtle per-wheel frequency drift and harmonic distortion for a more "played-in" character. (4) Scanner vibrato LFO shape — rounded triangle (closer to real scanner scan pattern) instead of pure sine.
 
 ---
 
@@ -606,6 +728,48 @@ output = dry × (1 − mix) + wet × mix
 **Use**: Shared delay effect fed by per-bus delaySend knobs (send/return architecture).
 **Assessment**: Correct send/return topology.
 
+### 5.15 Leslie Rotary Speaker
+**File**: `effects.h` (processLeslie), chain position: after Wah, before Distortion
+**Algorithm**: Crossover split → independent horn (treble) and drum (bass) rotor simulation with AM + Doppler pitch modulation, tube preamp overdrive, and spin-up/down inertia modeling.
+
+**Physics model**: The Leslie 122 (1941) is a rotating speaker cabinet with two elements: a treble horn (directional, spinning fast) and a bass drum (omnidirectional baffle, spinning slow). The rotation creates amplitude modulation (directional beam pattern) and Doppler pitch shift (changing distance to microphone). The horn and drum have different masses, so they accelerate and decelerate at different rates — the mismatch creates the signature "swirl" during speed transitions.
+
+**Signal flow**:
+1. **Pre-amp overdrive**: Padé approximant of tanh — `x(27+x²)/(27+9x²)`, gain 1–6×. Models the tube preamp that drives the Leslie amp. Even-harmonic character from the asymmetric tube response.
+2. **1-pole crossover** at 800 Hz: `LP += 0.1074 × (input − LP)`, `HP = input − LP`. Perfect reconstruction (LP + HP = original). Coefficient precomputed: `1 − exp(−2π×800/44100) ≈ 0.1074`. Authentic — the real Leslie 122 uses a simple passive LC crossover.
+3. **Drum rotor** (bass, <800 Hz): Sine AM at 30% depth. `drumAM = 1 − 0.3 × (0.5 − 0.5 × cos(drumPhase × 2π))`. Gentle modulation — bass frequencies are felt, not heard spinning.
+4. **Horn rotor** (treble, >800 Hz): Shaped AM + Doppler via modulated delay.
+   - **AM**: `0.5 + 0.5×cos(θ) + 0.12×cos(2θ)`, scaled to 0.1–1.0. The 2nd harmonic creates a sharper peak (horn facing mic) and flatter trough (horn facing away), modeling the directional beam pattern of the real horn bell.
+   - **Doppler**: 512-sample circular delay buffer. Base delay 3.0ms (horn-to-mic distance ~1m), ±0.5ms excursion (horn radius ~15cm). Read position modulated by `sin(hornPhase × 2π) × dopplerDepth`. Hermite interpolation for smooth pitch transitions.
+5. **Recombine**: Balance control (0=drum only, 0.5=equal, 1=horn only), dry/wet mix.
+
+**Rate slewing** (the key to the Leslie sound):
+| Parameter | Value | Source |
+|---|---|---|
+| Horn slow (chorale) | 0.8 Hz (48 RPM) | Smith/Abel 1999 |
+| Horn fast (tremolo) | 6.6 Hz (396 RPM) | Smith/Abel 1999 |
+| Drum slow | 0.7 Hz (42 RPM) | Smith/Abel 1999 |
+| Drum fast | 5.8 Hz (348 RPM) | Smith/Abel 1999 |
+| Horn accel TC | 0.7s | Light plastic horn |
+| Horn decel TC | 1.2s | Coasts longer |
+| Drum accel TC | 4.0s | Heavy wooden drum |
+| Drum decel TC | 5.0s | Heavy inertia |
+
+Exponential slew: `rate += (target − rate) × dt/TC`. The horn reaches full speed in ~0.7s while the drum takes ~4s — during a slow→fast transition, the horn is already at full tremolo while the drum is still lumbering up. This mismatch creates the classic Leslie "swirl" that no simple tremolo can replicate.
+
+**Speed modes**: Stop (0 Hz), Slow/Chorale, Fast/Tremolo. Matches the real Leslie's 2-position rocker switch + brake.
+
+**Parameters**: leslieSpeed (3-way: stop/slow/fast), leslieDrive (0–1), leslieBalance (0–1), leslieDoppler (0–1), leslieMix (0–1).
+
+**Bus version**: Full per-bus Leslie available (independent state per bus), enabling dedicated organ bus routing.
+
+**Reference**:
+- Smith & Abel, "Closed-Form Swept Sine Delay for Leslie Speaker" (ICMC 1999) — Doppler delay analysis, rotation speed measurements
+- Werner & Smith, "The Leslie Speaker Cabinet" (DAFx 2016) — comprehensive cabinet model
+- Pekonen et al., "Computationally Efficient Hammond Organ Synthesis" (DAFx 2011) — Leslie parameters
+
+**Assessment**: Good mono Leslie model. The dual-rotor simulation with independent slew rates correctly captures the most important perceptual feature — the speed transition "swirl." The shaped horn AM (cos + 2nd harmonic) is more accurate than a simple sine and produces the characteristic asymmetric amplitude pattern of a directional horn. The Doppler delay with Hermite interpolation produces clean pitch modulation without aliasing. **Possible enhancements**: (1) Stereo output — real Leslie recordings use two mics, producing L/R phase spread that's impossible to replicate in mono. (2) Cabinet resonance/coloring — the wooden cabinet has its own frequency response. (3) Horn reflection — at close mic distance, the horn produces a comb-filter effect from the reflected path off the cabinet walls.
+
 ---
 
 ## 6. REVERB
@@ -840,6 +1004,9 @@ Combined offset applied to read position. Uses same `tapeWowFlutterLFO()` helper
 | Phase Distortion | CZ-style phase warp | Good | Casio CZ-101 (1984) |
 | Membrane | Modal (6 Bessel modes) | Good | Fletcher & Rossing 1998, Morse & Ingard 1968 |
 | Bird | Parametric chirp | Adequate | Procedural |
+| Electric Piano | 6-mode modal + pickup nonlinearity | Good | Shear 2011, Pfeifle 2017 |
+| Organ (Hammond) | 9-drawbar sine bank + click/perc/scanner V/C | Good | Pekonen 2011, Pakarinen 2009 |
+| Leslie Speaker | Crossover + dual-rotor AM/Doppler + slew | Good | Smith & Abel 1999, Werner 2016 |
 | SVF Filter | Simper/Cytomic TPT | Excellent | Simper 2013, Zavalishin 2012 |
 | Ladder Filter | 4-pole TPT + 2× OS, true multimode | Excellent | KR-106, Zavalishin 2012 |
 | One-pole Filter | 1st-order IIR | Adequate | Textbook |

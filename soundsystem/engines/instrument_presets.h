@@ -3237,21 +3237,21 @@ static void initInstrumentPresets(void) {
     instrumentPresets[177].patch.p_decay = 1.2f;
     instrumentPresets[177].patch.p_sustain = 0.3f;
     instrumentPresets[177].patch.p_release = 0.3f;
-    instrumentPresets[177].patch.p_epHardness = 0.75f;     // hard hammer — bright attack
-    instrumentPresets[177].patch.p_epToneBar = 0.25f;      // short fundamental — punchy
-    instrumentPresets[177].patch.p_epPickupPos = 0.7f;     // offset — 2nd harmonic strong
-    instrumentPresets[177].patch.p_epPickupDist = 0.8f;    // close — pickup nonlinearity
-    instrumentPresets[177].patch.p_epDecay = 2.5f;
-    instrumentPresets[177].patch.p_epBell = 0.8f;          // big bell emphasis
-    instrumentPresets[177].patch.p_epBellTone = 0.25f;    // noticeable inharmonicity for shimmer
-    instrumentPresets[177].patch.p_velToDrive = 3.0f;      // massive bark on hard hits
-    instrumentPresets[177].patch.p_velToFilter = 0.4f;     // filter opens with velocity
-    instrumentPresets[177].patch.p_velToClick = 0.8f;      // snappy attack on hard hits
+    instrumentPresets[177].patch.p_epHardness = 0.65f;     // medium-hard — bell needs some softness
+    instrumentPresets[177].patch.p_epToneBar = 0.35f;      // moderate tone bar — sustains the bell
+    instrumentPresets[177].patch.p_epPickupPos = 0.55f;    // between centered/offset — bell+bark balance
+    instrumentPresets[177].patch.p_epPickupDist = 0.5f;    // moderate — baseline nonlinearity is stronger now
+    instrumentPresets[177].patch.p_epDecay = 3.0f;         // longer for bell sustain
+    instrumentPresets[177].patch.p_epBell = 0.7f;          // strong bell emphasis
+    instrumentPresets[177].patch.p_epBellTone = 0.2f;      // inharmonic shimmer
+    instrumentPresets[177].patch.p_velToDrive = 4.0f;      // bark comes from drive circuit, not pickup dist
+    instrumentPresets[177].patch.p_velToFilter = 0.5f;     // filter opens wide on hard hits
+    instrumentPresets[177].patch.p_velToClick = 0.6f;      // click scales with velocity
     instrumentPresets[177].patch.p_drive = 0.0f;           // clean at soft velocity
     instrumentPresets[177].patch.p_driveMode = DIST_ASYMMETRIC; // even harmonics (pickup character)
-    instrumentPresets[177].patch.p_clickLevel = 0.25f;
-    instrumentPresets[177].patch.p_clickTime = 0.002f;
-    instrumentPresets[177].patch.p_filterCutoff = 0.4f;    // closed at soft — dark bell
+    instrumentPresets[177].patch.p_clickLevel = 0.2f;
+    instrumentPresets[177].patch.p_clickTime = 0.003f;     // slightly longer click for bell
+    instrumentPresets[177].patch.p_filterCutoff = 0.35f;   // darker at rest — bell is mellow
     instrumentPresets[177].patch.p_volume = 0.55f;
 
     // Wurli Buzz — Supertramp "Dreamer" style: driven, nasal, buzzy, tremolo
