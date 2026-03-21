@@ -1666,8 +1666,13 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
 
     // Pickup position profiles: centered (mellow) vs offset (bright).
     // Rhodes (electromagnetic): models magnetic flux coupling between tine and pickup coil.
-    static const float rhodesCentered[EPIANO_MODES] = {1.00f, 0.15f, 0.40f, 0.30f, 0.15f, 0.05f};
-    static const float rhodesOffset[EPIANO_MODES]   = {0.50f, 1.00f, 0.25f, 0.60f, 0.30f, 0.12f};
+    // Centered: fundamental + strong 2nd partial. The electromagnetic pickup always couples
+    // to the 2nd partial — it's what gives Rhodes its warmth vs a hollow organ sound.
+    // Offset: 2nd harmonic dominant (the "bark" position), 4th partial also strong.
+    // Measured Rhodes spectra (Gabrielli 2020, Shear 2011) show the 2nd partial at
+    // 60-80% of fundamental at centered position, rising to equal or greater at offset.
+    static const float rhodesCentered[EPIANO_MODES] = {1.00f, 0.55f, 0.12f, 0.18f, 0.08f, 0.03f};
+    static const float rhodesOffset[EPIANO_MODES]   = {0.40f, 1.00f, 0.20f, 0.50f, 0.15f, 0.06f};
     // Wurli (electrostatic): reed vibrates between charged plates. More uniform coupling
     // but the reed's own mode shapes favor odd harmonics. Centered = clean, offset = buzzy.
     static const float wurliCentered[EPIANO_MODES]   = {1.00f, 0.10f, 0.55f, 0.08f, 0.35f, 0.05f};
@@ -1720,8 +1725,14 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
             // Fundamental: vel² curve — quiet at pp, strong at ff
             float fundPower = velSq * (1.0f - epBell * 0.5f) + vel * epBell * 0.5f;
             velScale = 0.05f + 0.95f * fundPower;
-        } else if (i <= 2) {
-            // Body modes: between linear and squared
+        } else if (i == 1) {
+            // 2nd partial: the key even harmonic for Rhodes warmth. Must track the
+            // fundamental more closely than other body modes — if it disappears at
+            // soft dynamics the sound becomes hollow/organ-like. Use linear curve
+            // (between fundamental and body) so it's always audible relative to fund.
+            velScale = 0.08f + 0.92f * (vel * 0.6f + velSq * 0.4f);
+        } else if (i == 2) {
+            // 3rd partial (body): vel² dominant
             velScale = 0.05f + 0.95f * (vel * 0.4f + velSq * 0.6f);
         } else {
             // Bell modes: sqrt curve — prominent even at soft velocity
@@ -1837,8 +1848,16 @@ static float processEPianoOscillator(Voice *v, float sampleRate) {
         output = tanhf(output);
     } else {
         // Electromagnetic pickup: tine magnetizes asymmetrically.
-        float k = ep->pickupDist * 1.2f * velBoost;
-        float k2 = ep->pickupDist * 0.3f * velBoost;
+        // Real Rhodes pickups have a baseline asymmetry even at soft dynamics —
+        // the tine's proximity to the coil creates a nonlinear flux coupling that
+        // always generates some even harmonics. This isn't an on/off effect.
+        // kBase provides a floor so soft hits still have warmth (not just odd partials).
+        // The sum² term (k) is the primary even-harmonic generator; it needs a strong
+        // baseline to avoid the hollow/square-wave character that pure modal sines produce.
+        // kBase is pickup-distance-independent — the asymmetry is inherent in the geometry.
+        float kBase = 0.4f;  // always-on even harmonics from coil asymmetry
+        float k = kBase + ep->pickupDist * 1.0f * velBoost;
+        float k2 = 0.12f + ep->pickupDist * 0.25f * velBoost;
         output = sum + k * sum * sum + k2 * sum * sum * sum;
         // Asymmetric soft-clip (positive peaks compress less = even harmonic preservation)
         if (output >= 0.0f) {
