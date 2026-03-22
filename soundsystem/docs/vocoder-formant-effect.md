@@ -74,6 +74,62 @@ Classic vocoder: one bus is the **carrier** (synth), another is the **modulator*
 | **Whisper** | Breathy air | Very wide Q (almost flat), shift 1.2, low wet |
 | **Demon** | Subharmonic growl | Shift 0.4, tight Q, morph O↔AH |
 
+## How It Talks — Formant Control Modes
+
+The filter bank alone just colors the tone. To make it actually *speak* or *move*, something needs to drive the formant changes over time. Five control modes, from simple to complex:
+
+### Mode A: Static Vowel
+Fixed vowel shape. User picks A/E/I/O/U, everything that plays on this bus sounds "vocal" in that vowel. Simple, useful for tonal coloring. No sequencing needed.
+
+### Mode B: LFO Morph (auto-vowel sweep)
+An LFO sweeps `morphBlend` between two vowel presets continuously. Already specced via `formantMorphRate`. Creates the "wah-wah vocal" effect. The Alien and Choir fun presets use this. Musical but not speech-like — more like a filter sweep with a vocal character.
+
+### Mode C: Envelope Follower (dynamics-driven)
+Input amplitude drives the morph position: loud notes → open vowel (A), quiet → closed vowel (U). Makes the formant track the dynamics of the playing. This is what "Talk Box" mode does in the fun presets.
+
+**Implementation**: per-bus envelope follower (simple 1-pole LP on `fabsf(input)`) → maps 0-1 amplitude to 0-1 morph blend. Already have envelope followers in the sidechain code — same approach.
+
+**Musical use**: Play a saw bass with accents → the accented notes sound like "wah" and the quiet ones sound like "woo". Drums through it → kick opens up, hats stay closed.
+
+### Mode D: Step Vowel Sequence (p-lock driven)
+A per-step vowel target, programmed in the sequencer. On step 1 the formant is "A", step 5 is "E", step 9 is "O". The formant morphs smoothly between steps.
+
+**Two approaches**:
+
+1. **P-lock on formant preset** — add `PLOCK_FORMANT_VOWEL` to the p-lock parameter list. Each step can lock a different vowel. The formant effect reads the current p-locked value and morphs toward it. This is the cleanest integration — uses existing p-lock infrastructure, no new sequencer concepts. The step inspector shows a vowel cycle widget when the formant effect is enabled.
+
+2. **Dedicated vowel lane** — a separate row in the sequencer grid showing vowel symbols (A/E/I/O/U) per step, like a mini piano roll for vowels. More visual but needs new UI and data structures.
+
+**Recommendation**: Start with p-locks (approach 1). It's the least new code and lets users program vowel sequences today using familiar tools. The dedicated lane could come later as a visual improvement.
+
+**Musical use**: Program "A-A-E-E-I-I-O-O" on a 16-step pattern → a saw lead literally "sings" through vowels in rhythm. Combined with the melody notes, you get talk-box style vocal leads.
+
+### Mode E: Text-to-Phoneme Sequence
+Type a word or phrase → it gets converted to a phoneme sequence → the formant effect steps through phonemes in time with the sequencer or at a fixed rate.
+
+We already have the building blocks:
+- `charToVFPhoneme()` maps text to phonemes
+- The VoicForm phoneme table has formant data for 32 phonemes
+- The speech queue system knows how to step through characters
+
+**For the bus effect version**: the text would be stored per-bus (or per-pattern), and the effect would advance through the phoneme list on each sequencer step (or at a configurable rate). Consonant phonemes would modulate differently — fricatives (S/SH) could boost the noise band, plosives (T/K) could add a transient burst to the filter.
+
+This is the most ambitious mode but also the most unique — no commercial DAW has "type a word and your synth says it as a bus effect."
+
+**Musical use**: Type "hello" on the bass track → the bass line morphs through H-E-L-L-O on successive steps. Type "robot" on the lead → each note gets a different consonant/vowel shape.
+
+### Control Mode Summary
+
+| Mode | Driver | Effort | When to use |
+|------|--------|--------|-------------|
+| A: Static | Manual knob | Done (basic) | Tonal coloring |
+| B: LFO | Automatic oscillation | Done (morphRate) | Pads, sweeps, alien FX |
+| C: Envelope | Input dynamics | Small (add env follower) | Dynamic expression, wah |
+| D: Step Sequence | P-locks per step | Medium (add PLOCK param) | Talk-box leads, rhythmic vowels |
+| E: Text-to-Phoneme | Typed text | Medium (reuse speech code) | Speaking bass lines, unique FX |
+
+**Implementation order**: A and B come free with the basic effect. C is a small addition. D is medium but very musical. E is the stretch goal.
+
 ## Implementation Approach
 
 ### Where it lives
@@ -136,6 +192,7 @@ This requires **cross-bus routing** (sidechain from modulator bus to carrier bus
 
 ## Implementation Order
 
+### Phase 1: Core Effect (Small)
 1. Add `BusFormantEffect` struct to `effects.h`
 2. Add formant preset table (reuse data from VoicForm phoneme table)
 3. Implement `processFormantEffect()` — 4 SVF + morph + mix
@@ -144,5 +201,31 @@ This requires **cross-bus routing** (sidechain from modulator bus to carrier bus
 6. DAW UI in Bus FX tab
 7. Song/DAW file save/load
 8. Fun presets (Robot, Monster, Chipmunk, etc.)
+→ Gives you modes A (static) and B (LFO morph) out of the box.
 
-Estimated effort: **Small-Medium** — most of the DSP already exists (FormantFilter, phoneme data). The new code is mainly wiring it as a bus effect and adding presets.
+### Phase 2: Envelope Follower (Small)
+9. Add per-bus envelope follower (1-pole LP on input amplitude)
+10. Map envelope output to morph blend
+11. Add env follower amount/speed params to UI
+→ Gives you mode C (dynamics-driven vowels).
+
+### Phase 3: P-lock Vowel Sequence (Medium)
+12. Add `PLOCK_FORMANT_VOWEL` parameter type
+13. Formant effect reads current p-locked vowel as morph target
+14. Step inspector shows vowel cycle widget when formant enabled
+→ Gives you mode D (programmed vowel patterns per step).
+
+### Phase 4: Text-to-Phoneme (Medium)
+15. Per-bus text buffer (short string, e.g. 32 chars)
+16. Convert text to phoneme sequence on edit
+17. Step through phonemes synced to sequencer or at fixed rate
+18. Consonant phonemes modulate filter differently (noise burst, transient)
+→ Gives you mode E (type a word, synth speaks it).
+
+### Phase 5: Full Vocoder (Large, later)
+19. Cross-bus sidechain routing (modulator → carrier)
+20. 8-16 band envelope analysis on modulator
+21. Apply modulator envelopes to carrier's formant bands
+→ Classic vocoder. Depends on sidechain bus routing from the roadmap.
+
+Estimated effort: Phase 1 is **Small** (most DSP exists). Each subsequent phase adds incrementally. The full stack through Phase 4 is **Medium** total.
