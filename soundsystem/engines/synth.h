@@ -496,6 +496,8 @@ typedef struct {
     float pickPosition;      // Where string is plucked (0=bridge, 1=neck)
     float buzzAmount;        // Sitar-style bridge buzz (0=clean, 1=full buzz)
     float buzzState;         // Internal state for buzz nonlinearity
+    float stringDamping;     // Per-preset KS damping override (0=use global, >0=override)
+    float stringBrightness;  // Per-preset KS brightness override (-1=use global, >=0=override)
 } GuitarSettings;
 
 // Stiff string synthesis (piano/harpsichord/dulcimer)

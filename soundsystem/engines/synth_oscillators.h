@@ -1994,6 +1994,8 @@ static void initGuitarPreset(GuitarSettings *gs, GuitarPreset preset, float freq
             gs->bodyBrightness = 0.5f;
             gs->pickPosition = 0.3f;
             gs->buzzAmount = 0.0f;
+            gs->stringDamping = 0.9985f;   // Medium sustain (steel strings)
+            gs->stringBrightness = 0.5f;   // Balanced
             break;
 
         case GUITAR_CLASSICAL:
@@ -2004,20 +2006,24 @@ static void initGuitarPreset(GuitarSettings *gs, GuitarPreset preset, float freq
             formants[3] = 700.0f;  bandwidths[3] = 0.5f; gains[3] = 0.2f;
             gs->bodyMix = 0.65f;
             gs->bodyBrightness = 0.35f;
-            gs->pickPosition = 0.45f;   // Pluck nearer to center
+            gs->pickPosition = 0.45f;      // Pluck nearer to center
             gs->buzzAmount = 0.0f;
+            gs->stringDamping = 0.9975f;   // Shorter sustain (nylon damps faster)
+            gs->stringBrightness = 0.25f;  // Warm, mellow — nylon absorbs highs
             break;
 
         case GUITAR_BANJO:
-            // Banjo: membrane body, sharp midrange peak, fast decay
+            // Banjo: membrane body, sharp midrange peak, bright twang
             formants[0] = 260.0f;  bandwidths[0] = 0.4f; gains[0] = 1.0f;
             formants[1] = 480.0f;  bandwidths[1] = 0.3f; gains[1] = 0.7f;
             formants[2] = 920.0f;  bandwidths[2] = 0.3f; gains[2] = 0.5f;
             formants[3] = 1800.0f; bandwidths[3] = 0.4f; gains[3] = 0.25f;
-            gs->bodyMix = 0.7f;
+            gs->bodyMix = 0.75f;
             gs->bodyBrightness = 0.7f;
-            gs->pickPosition = 0.2f;    // Near bridge
+            gs->pickPosition = 0.15f;      // Very near bridge — maximum twang
             gs->buzzAmount = 0.0f;
+            gs->stringDamping = 0.9990f;   // Medium-long (membrane resonates)
+            gs->stringBrightness = 0.8f;   // Bright, metallic attack
             break;
 
         case GUITAR_SITAR:
@@ -2029,56 +2035,66 @@ static void initGuitarPreset(GuitarSettings *gs, GuitarPreset preset, float freq
             gs->bodyMix = 0.55f;
             gs->bodyBrightness = 0.6f;
             gs->pickPosition = 0.25f;
-            gs->buzzAmount = 0.6f;      // Jawari bridge buzz
+            gs->buzzAmount = 0.6f;         // Jawari bridge buzz
+            gs->stringDamping = 0.9990f;   // Long sustain (steel + jawari sustains)
+            gs->stringBrightness = 0.55f;  // Medium-bright
             break;
 
         case GUITAR_OUD:
-            // Oud: deep round body, strong low resonance
+            // Oud: deep round body, strong low resonance, short dark notes
             formants[0] = 75.0f;   bandwidths[0] = 0.9f; gains[0] = 1.0f;
             formants[1] = 155.0f;  bandwidths[1] = 0.7f; gains[1] = 0.85f;
             formants[2] = 310.0f;  bandwidths[2] = 0.5f; gains[2] = 0.45f;
             formants[3] = 620.0f;  bandwidths[3] = 0.4f; gains[3] = 0.2f;
-            gs->bodyMix = 0.65f;
-            gs->bodyBrightness = 0.4f;
+            gs->bodyMix = 0.75f;           // Strong body (round bowl resonator)
+            gs->bodyBrightness = 0.3f;
             gs->pickPosition = 0.35f;
             gs->buzzAmount = 0.0f;
+            gs->stringDamping = 0.9965f;   // Short sustain (gut strings, heavy damping)
+            gs->stringBrightness = 0.2f;   // Very dark — gut strings, deep body
             break;
 
         case GUITAR_KOTO:
-            // Koto: bright, sparse resonance, bridge emphasis
+            // Koto: bright, percussive attack, long ring, hard bridges
             formants[0] = 130.0f;  bandwidths[0] = 0.5f; gains[0] = 0.7f;
             formants[1] = 350.0f;  bandwidths[1] = 0.3f; gains[1] = 1.0f;
             formants[2] = 850.0f;  bandwidths[2] = 0.3f; gains[2] = 0.6f;
             formants[3] = 2200.0f; bandwidths[3] = 0.4f; gains[3] = 0.3f;
             gs->bodyMix = 0.5f;
-            gs->bodyBrightness = 0.75f;
-            gs->pickPosition = 0.15f;    // Very close to bridge
-            gs->buzzAmount = 0.1f;       // Slight sawari buzz
+            gs->bodyBrightness = 0.8f;
+            gs->pickPosition = 0.12f;      // Very close to bridge — max brightness
+            gs->buzzAmount = 0.1f;         // Slight sawari buzz
+            gs->stringDamping = 0.9992f;   // Long ring (silk strings, hard bridges)
+            gs->stringBrightness = 0.85f;  // Very bright — hard plectrum, bridge contact
             break;
 
         case GUITAR_HARP:
-            // Harp: minimal body, long sustain, clean
+            // Harp: minimal body, very long sustain, clear and open
             formants[0] = 100.0f;  bandwidths[0] = 1.2f; gains[0] = 0.3f;
             formants[1] = 250.0f;  bandwidths[1] = 1.0f; gains[1] = 0.2f;
             formants[2] = 500.0f;  bandwidths[2] = 0.8f; gains[2] = 0.15f;
             formants[3] = 1000.0f; bandwidths[3] = 0.6f; gains[3] = 0.1f;
-            gs->bodyMix = 0.15f;         // Very little body color
+            gs->bodyMix = 0.15f;           // Very little body color
             gs->bodyBrightness = 0.55f;
-            gs->pickPosition = 0.5f;     // Center pluck (finger near middle)
+            gs->pickPosition = 0.5f;       // Center pluck (finger near middle)
             gs->buzzAmount = 0.0f;
+            gs->stringDamping = 0.9995f;   // Very long sustain (concert harp rings)
+            gs->stringBrightness = 0.6f;   // Clear, open — not dark, not harsh
             break;
 
         case GUITAR_UKULELE:
         default:
-            // Ukulele: small body, warm, midrange emphasis
+            // Ukulele: small body, warm but percussive, short sustain
             formants[0] = 180.0f;  bandwidths[0] = 0.7f; gains[0] = 1.0f;
             formants[1] = 380.0f;  bandwidths[1] = 0.5f; gains[1] = 0.75f;
             formants[2] = 720.0f;  bandwidths[2] = 0.4f; gains[2] = 0.4f;
             formants[3] = 1400.0f; bandwidths[3] = 0.4f; gains[3] = 0.2f;
-            gs->bodyMix = 0.6f;
+            gs->bodyMix = 0.65f;
             gs->bodyBrightness = 0.45f;
             gs->pickPosition = 0.4f;
             gs->buzzAmount = 0.0f;
+            gs->stringDamping = 0.9970f;   // Short sustain (nylon + small body)
+            gs->stringBrightness = 0.35f;  // Warm — nylon strings, small resonator
             break;
     }
 
@@ -2120,18 +2136,20 @@ static float processGuitarOscillator(Voice *v, float sampleRate) {
     if (v->ksLength <= 0) return 0.0f;
     GuitarSettings *gs = &v->guitarSettings;
 
-    // Step 1: Run Karplus-Strong string (same as processPluckOscillator)
+    // Step 1: Run Karplus-Strong string with per-preset damping/brightness
     float stringSample = v->ksBuffer[v->ksIndex];
 
     int nextIndex = (v->ksIndex + 1) % v->ksLength;
     float nextSample = v->ksBuffer[nextIndex];
 
+    // Use per-preset string character (overrides global pluck params)
+    float bright = (gs->stringBrightness >= 0.0f) ? gs->stringBrightness : v->ksBrightness;
     float avg = (stringSample + nextSample) * 0.5f;
-    float bright = v->ksBrightness;
     float blended = avg + (stringSample - avg) * bright;
     float damp = pluckDamp;
     float filtered = v->ksLastSample + (blended - v->ksLastSample) * (1.0f - damp * 0.8f);
-    filtered *= v->ksDamping;
+    float damping = (gs->stringDamping > 0.0f) ? gs->stringDamping : v->ksDamping;
+    filtered *= damping;
     v->ksLastSample = filtered;
 
     // Step 2: Jawari bridge — amplitude-dependent delay modulation
