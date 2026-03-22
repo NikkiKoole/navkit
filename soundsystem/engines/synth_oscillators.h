@@ -2134,28 +2134,32 @@ static float processGuitarOscillator(Voice *v, float sampleRate) {
     filtered *= v->ksDamping;
     v->ksLastSample = filtered;
 
-    // Allpass fractional delay tuning
-    float apOut = v->ksAllpassCoeff * filtered + v->ksAllpassState;
-    v->ksAllpassState = filtered - v->ksAllpassCoeff * apOut;
+    // Step 2: Jawari bridge — amplitude-dependent delay modulation
+    // When the string vibrates with large amplitude, it wraps around the curved
+    // bridge surface, shortening the effective vibrating length (raising pitch).
+    // As amplitude decays, the string lifts off and pitch drops back — this creates
+    // the characteristic descending "precursor" harmonic sweep of sitar/tanpura.
+    float apCoeff = v->ksAllpassCoeff;
+    if (gs->buzzAmount > 0.001f) {
+        float amplitude = fabsf(filtered);
+        // Parabolic bridge profile: length reduction ∝ amplitude²
+        // Modulate the allpass coefficient to shorten effective delay
+        float mod = amplitude * amplitude * gs->buzzAmount * 1.5f;
+        if (mod > 0.9f) mod = 0.9f;
+        // Reducing the allpass coeff shortens the fractional delay → higher pitch
+        apCoeff = apCoeff * (1.0f - mod);
+        if (apCoeff < -0.99f) apCoeff = -0.99f;
+        if (apCoeff > 0.99f) apCoeff = 0.99f;
+    }
+
+    // Allpass fractional delay tuning (with jawari modulation)
+    float apOut = apCoeff * filtered + v->ksAllpassState;
+    v->ksAllpassState = filtered - apCoeff * apOut;
 
     v->ksBuffer[v->ksIndex] = apOut;
     v->ksIndex = nextIndex;
 
-    // Step 2: Sitar-style bridge buzz (jawari)
-    // Nonlinear waveguide termination - clips the string against a curved bridge
     float buzzed = stringSample;
-    if (gs->buzzAmount > 0.001f) {
-        float threshold = 1.0f - gs->buzzAmount * 0.8f;
-        if (fabsf(buzzed) > threshold) {
-            float excess = fabsf(buzzed) - threshold;
-            float sign = (buzzed >= 0.0f) ? 1.0f : -1.0f;
-            // Tanh-shaped buzz - rapid nonlinear contact
-            buzzed = sign * (threshold + tanhf(excess * 5.0f) * (1.0f - threshold));
-        }
-        // Feed some buzz energy back into the delay line for sustained buzzing
-        v->ksBuffer[(v->ksIndex + v->ksLength / 2) % v->ksLength] +=
-            (buzzed - stringSample) * gs->buzzAmount * 0.1f;
-    }
 
     // Step 3: Body resonator - parallel biquad bandpass filters
     float bodyOut = 0.0f;
