@@ -176,13 +176,30 @@ def parse_midi(filepath):
 # Quantization & pattern assignment
 # ---------------------------------------------------------------------------
 
-def quantize_events(events, tpb, steps_per_pattern=16):
+def quantize_events(events, tpb, steps_per_pattern=16, include_channels=None,
+                     channel_map=None, start_pattern=0):
     """Convert NoteEvent list into PatternData list.
 
     Steps are 16th notes (tpb/4 ticks each). Patterns are `steps_per_pattern` steps.
+
+    include_channels: set of channel numbers to include (None = all)
+    channel_map: dict of {channel: 'bass'|'lead'|'chord'|'drum0'..'drum3'} for explicit assignment
+    start_pattern: skip this many patterns from the beginning (offset into the MIDI)
     """
     ticks_per_step = tpb / 4  # 16th note
     ticks_per_pattern = ticks_per_step * steps_per_pattern
+    start_tick_offset = start_pattern * ticks_per_pattern
+
+    # Filter by included channels
+    if include_channels is not None:
+        events = [e for e in events if e.channel in include_channels]
+
+    # Shift all events by start offset
+    if start_tick_offset > 0:
+        events = [NoteEvent(channel=e.channel, note=e.note, velocity=e.velocity,
+                            start_tick=e.start_tick - start_tick_offset,
+                            duration_tick=e.duration_tick, program=e.program)
+                  for e in events if e.start_tick >= start_tick_offset]
 
     # Separate drum (ch9) from melodic
     drum_events = [e for e in events if e.channel == 9]
@@ -271,23 +288,36 @@ def quantize_events(events, tpb, steps_per_pattern=16):
         ch_to_track = {}  # ch → track index (0-3 for drums, 0-2 for melody)
         ch_is_drum_track = {}  # ch → bool
 
-        for i, ch in enumerate(melody_assigned):
-            ch_to_track[ch] = i  # melody track 0=bass, 1=lead, 2=chord
-            ch_is_drum_track[ch] = False
+        # Use explicit channel_map if provided
+        if channel_map:
+            track_name_to_idx = {
+                'bass': (0, False), 'lead': (1, False), 'chord': (2, False),
+                'drum0': (0, True), 'drum1': (1, True), 'drum2': (2, True), 'drum3': (3, True),
+            }
+            for ch in ch_notes:
+                if ch in channel_map:
+                    track_idx, is_drum = track_name_to_idx[channel_map[ch]]
+                    ch_to_track[ch] = track_idx
+                    ch_is_drum_track[ch] = is_drum
+                # Channels not in channel_map are dropped (not merged)
+        else:
+            for i, ch in enumerate(melody_assigned):
+                ch_to_track[ch] = i  # melody track 0=bass, 1=lead, 2=chord
+                ch_is_drum_track[ch] = False
 
-        for i, ch in enumerate(drum_assigned):
-            ch_to_track[ch] = i  # drum track 0-3
-            ch_is_drum_track[ch] = True
+            for i, ch in enumerate(drum_assigned):
+                ch_to_track[ch] = i  # drum track 0-3
+                ch_is_drum_track[ch] = True
 
-        # Any remaining channels get merged into closest existing track by pitch
-        assigned_chs = set(ch_to_track.keys())
-        for ch in ch_notes:
-            if ch not in assigned_chs:
-                # Find closest assigned channel by avg pitch
-                my_pitch = ch_avg_pitch(ch)
-                best_ch = min(assigned_chs, key=lambda c: abs(ch_avg_pitch(c) - my_pitch))
-                ch_to_track[ch] = ch_to_track[best_ch]
-                ch_is_drum_track[ch] = ch_is_drum_track[best_ch]
+            # Any remaining channels get merged into closest existing track by pitch
+            assigned_chs = set(ch_to_track.keys())
+            for ch in ch_notes:
+                if ch not in assigned_chs:
+                    # Find closest assigned channel by avg pitch
+                    my_pitch = ch_avg_pitch(ch)
+                    best_ch = min(assigned_chs, key=lambda c: abs(ch_avg_pitch(c) - my_pitch))
+                    ch_to_track[ch] = ch_to_track[best_ch]
+                    ch_is_drum_track[ch] = ch_is_drum_track[best_ch]
 
         # Quantize events into patterns
         for e in melody_events:
@@ -440,7 +470,8 @@ def write_patch_section(f, section_name, preset_idx):
         f.write("envelopeEnabled = true\nfilterEnabled = true\n")
 
 def write_song(f, bpm, patterns, channel_programs, steps_per_pattern,
-               ch_to_track=None, ch_is_drum=None, ch_note_counts=None):
+               ch_to_track=None, ch_is_drum=None, ch_note_counts=None,
+               preset_overrides=None):
     """Write a complete .song file."""
 
     # For each track slot, pick preset from the highest-note-count channel assigned to it
@@ -477,6 +508,15 @@ def write_song(f, bpm, patterns, channel_programs, steps_per_pattern,
                 p = gm_program_preset(prog)
                 if p >= 0:
                     melody_presets[track_idx] = p
+
+    # Apply preset overrides
+    if preset_overrides:
+        all_presets_tmp = drum_presets + melody_presets
+        for patch_idx, preset_idx in preset_overrides.items():
+            if patch_idx < 4:
+                drum_presets[patch_idx] = preset_idx
+            else:
+                melody_presets[patch_idx - 4] = preset_idx
 
     # --- Write file ---
     f.write("# PixelSynth DAW song (format 2)\n")
@@ -642,7 +682,50 @@ def main():
                         help='Steps per pattern (0=auto from time sig, or 12/16/20/24/32)')
     parser.add_argument('--info', action='store_true',
                         help='Analyze MIDI file without writing .song')
+    parser.add_argument('--include', type=str, default=None,
+                        help='Comma-separated MIDI channels to include (e.g. "0,1,2,9")')
+    parser.add_argument('--map', type=str, nargs='*', default=None,
+                        help='Explicit channel→track mapping: CH:TRACK (e.g. "1:bass 2:lead 0:chord 3:drum0"). '
+                             'TRACK is bass/lead/chord/drum0/drum1/drum2/drum3. '
+                             'Ch 9 always auto-splits to drum tracks by GM drum map.')
+    parser.add_argument('--preset', type=str, nargs='*', default=None,
+                        help='Override preset for a track: TRACK:PRESET_IDX (e.g. "lead:62 chord:118")')
+    parser.add_argument('--start', type=int, default=0,
+                        help='Skip this many patterns from the start of the MIDI (default: 0)')
     args = parser.parse_args()
+
+    # Parse --include
+    include_channels = None
+    if args.include:
+        include_channels = set(int(c.strip()) for c in args.include.split(','))
+
+    # Parse --map
+    channel_map = None
+    if args.map:
+        channel_map = {}
+        valid_tracks = {'bass', 'lead', 'chord', 'drum0', 'drum1', 'drum2', 'drum3'}
+        for mapping in args.map:
+            ch_str, track_name = mapping.split(':')
+            ch = int(ch_str)
+            if track_name not in valid_tracks:
+                print(f"ERROR: invalid track '{track_name}'. Use: {', '.join(sorted(valid_tracks))}", file=sys.stderr)
+                sys.exit(1)
+            channel_map[ch] = track_name
+        # If --map is used, auto-derive --include from mapped channels + ch9
+        if include_channels is None:
+            include_channels = set(channel_map.keys()) | {9}
+
+    # Parse --preset overrides
+    preset_overrides = {}
+    if args.preset:
+        track_to_patch_idx = {'drum0': 0, 'drum1': 1, 'drum2': 2, 'drum3': 3,
+                              'bass': 4, 'lead': 5, 'chord': 6}
+        for ov in args.preset:
+            track_name, pidx = ov.split(':')
+            if track_name not in track_to_patch_idx:
+                print(f"ERROR: invalid track '{track_name}' for --preset", file=sys.stderr)
+                sys.exit(1)
+            preset_overrides[track_to_patch_idx[track_name]] = int(pidx)
 
     # Check for presets.txt
     if not os.path.exists(_find_presets_file()):
@@ -663,14 +746,17 @@ def main():
         print_info(args.file, bpm, tpb, events, ch_programs, time_sig)
         sys.exit(0)
 
-    patterns, ch_to_track, ch_is_drum, ch_note_counts = quantize_events(events, tpb, steps)
+    patterns, ch_to_track, ch_is_drum, ch_note_counts = quantize_events(
+        events, tpb, steps, include_channels=include_channels, channel_map=channel_map,
+        start_pattern=args.start)
 
     out_path = args.output
     if not out_path:
         out_path = args.file.rsplit('.', 1)[0] + '.song'
 
     with open(out_path, 'w') as f:
-        write_song(f, bpm, patterns, ch_programs, steps, ch_to_track, ch_is_drum, ch_note_counts)
+        write_song(f, bpm, patterns, ch_programs, steps, ch_to_track, ch_is_drum, ch_note_counts,
+                   preset_overrides=preset_overrides)
 
     print(f"Wrote {out_path}")
     print(f"  BPM: {bpm:.1f}, Patterns: {len(patterns)}, Steps/pattern: {steps} ({time_sig[0]}/{time_sig[1]})")

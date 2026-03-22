@@ -1,0 +1,468 @@
+# PixelSynth DAW song (format 2)
+
+[song]
+songName = "Alleycat"
+format = 2
+bpm = 91
+stepCount = 16
+grooveSwing = 0
+grooveJitter = 0
+
+[scale]
+enabled = false
+root = 0
+type = 0
+
+[groove]
+kickNudge = 0
+snareDelay = 0
+hatNudge = 0
+clapDelay = 0
+swing = 0
+jitter = 0
+trackSwing0 = 0
+trackTranspose0 = 0
+trackSwing1 = 0
+trackTranspose1 = 0
+trackSwing2 = 0
+trackTranspose2 = 0
+trackSwing3 = 0
+trackTranspose3 = 0
+trackSwing4 = 0
+trackTranspose4 = 0
+trackSwing5 = 0
+trackTranspose5 = 0
+trackSwing6 = 0
+trackTranspose6 = 0
+trackSwing7 = 0
+trackTranspose7 = 0
+trackSwing8 = 0
+trackTranspose8 = 0
+trackSwing9 = 0
+trackTranspose9 = 0
+trackSwing10 = 0
+trackTranspose10 = 0
+trackSwing11 = 0
+trackTranspose11 = 0
+melodyTimingJitter = 0
+melodyVelocityJitter = 0
+
+[settings]
+masterVol = 0.7
+voiceRandomVowel = false
+
+[patch.4]
+name = "Chip Lead"
+waveType = square
+attack = 0.005
+decay = 0.1
+sustain = 0.7
+release = 0.05
+expRelease = false
+expDecay = false
+oneShot = false
+volume = 0.45
+pulseWidth = 0.5
+pwmRate = 0
+pwmDepth = 0
+vibratoRate = 0
+vibratoDepth = 0
+filterCutoff = 0.85
+filterResonance = 0.1
+filterType = 0
+filterEnvAmt = 0
+filterEnvAttack = 0.01
+filterEnvDecay = 0.2
+filterKeyTrack = 0
+filterLfoRate = 0
+filterLfoDepth = 0
+filterLfoShape = 0
+delayMix = 0
+delaySend = 0
+reverbSend = 0.15
+pan = 0
+glideTime = 0
+monoMode = false
+
+[patch.5]
+name = "Chip Bass"
+waveType = square
+attack = 0.003
+decay = 0.15
+sustain = 0.6
+release = 0.04
+expRelease = false
+expDecay = false
+oneShot = false
+volume = 0.4
+pulseWidth = 0.35
+pwmRate = 0
+pwmDepth = 0
+vibratoRate = 0
+vibratoDepth = 0
+filterCutoff = 0.6
+filterResonance = 0.15
+filterType = 0
+filterEnvAmt = 0.2
+filterEnvAttack = 0.005
+filterEnvDecay = 0.3
+filterKeyTrack = 0
+filterLfoRate = 0
+filterLfoDepth = 0
+filterLfoShape = 0
+delayMix = 0
+delaySend = 0
+reverbSend = 0.1
+pan = 0
+glideTime = 0
+monoMode = true
+
+[chain]
+length = 18
+patterns = 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17
+
+[pattern.0]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=1 step=0 note=C4 vel=0.7 gate=1
+m track=1 step=2 note=C4 vel=0.7 gate=1
+m track=1 step=4 note=B3 vel=0.7 gate=1
+m track=1 step=6 note=B3 vel=0.7 gate=1
+m track=1 step=8 note=A3 vel=0.7 gate=1
+m track=1 step=9 note=B3 vel=0.7 gate=1
+m track=1 step=10 note=A3 vel=0.7 gate=1
+m track=1 step=11 note=G3 vel=0.7 gate=1
+m track=1 step=13 note=G3 vel=0.7 gate=1
+m track=1 step=14 note=G3 vel=0.7 gate=1
+m track=1 step=15 note=A3 vel=0.7 gate=1
+
+[pattern.1]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=1 step=2 note=C4 vel=0.7 gate=1
+m track=1 step=6 note=B3 vel=0.7 gate=1
+m track=1 step=10 note=A3 vel=0.7 gate=1
+m track=1 step=11 note=G3 vel=0.7 gate=1
+
+[pattern.2]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=1 step=0 note=C5 vel=0.7 gate=1
+m track=1 step=2 note=C5 vel=0.7 gate=1
+m track=1 step=3 note=B4 vel=0.7 gate=1
+m track=1 step=4 note=C5 vel=0.7 gate=1
+m track=1 step=6 note=B4 vel=0.7 gate=1
+m track=1 step=7 note=A4 vel=0.7 gate=1
+m track=1 step=8 note=B4 vel=0.7 gate=1
+m track=1 step=9 note=B4 vel=0.7 gate=1
+m track=1 step=10 note=A4 vel=0.7 gate=1
+m track=1 step=11 note=G4 vel=0.7 gate=1
+m track=1 step=13 note=G4 vel=0.7 gate=1
+m track=1 step=14 note=G4 vel=0.7 gate=1
+m track=1 step=15 note=A4 vel=0.7 gate=1
+
+[pattern.3]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=1 step=2 note=C5 vel=0.7 gate=1
+m track=1 step=5 note=B4 vel=0.7 gate=1
+m track=1 step=6 note=B4 vel=0.7 gate=1
+m track=1 step=9 note=F#4 vel=0.7 gate=1
+m track=1 step=10 note=G4 vel=0.7 gate=1
+m track=1 step=11 note=G4 vel=0.7 gate=1
+m track=1 step=15 note=G#5 vel=0.7 gate=1
+
+[pattern.4]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=1 step=0 note=B5 vel=0.7 gate=1
+m track=1 step=2 note=C6 vel=0.7 gate=1
+m track=1 step=3 note=B5 vel=0.7 gate=1
+m track=1 step=4 note=C6 vel=0.7 gate=1
+m track=1 step=5 note=B5 vel=0.7 gate=1
+m track=1 step=6 note=C6 vel=0.7 gate=1
+m track=1 step=7 note=A5 vel=0.7 gate=1
+m track=1 step=8 note=B5 vel=0.7 gate=1
+m track=1 step=9 note=B5 vel=0.7 gate=1
+m track=1 step=10 note=A5 vel=0.7 gate=1
+m track=1 step=11 note=A5 vel=0.7 gate=1
+m track=1 step=13 note=G5 vel=0.7 gate=1
+m track=1 step=14 note=G5 vel=0.7 gate=1
+m track=1 step=15 note=A5 vel=0.7 gate=1
+
+[pattern.5]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=1 step=2 note=C6 vel=0.7 gate=1
+m track=1 step=3 note=C6 vel=0.7 gate=1
+m track=1 step=5 note=B5 vel=0.7 gate=1
+m track=1 step=6 note=B5 vel=0.7 gate=1
+m track=1 step=9 note=F#5 vel=0.7 gate=1
+m track=1 step=10 note=G5 vel=0.7 gate=1
+m track=1 step=11 note=G5 vel=0.7 gate=1
+m track=1 step=14 note=G5 vel=0.7 gate=1
+m track=1 step=15 note=E5 vel=0.7 gate=1
+
+[pattern.6]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=1 step=0 note=C#5 vel=0.7 gate=1
+m track=1 step=2 note=C6 vel=0.7 gate=1
+m track=1 step=3 note=B4 vel=0.7 gate=1
+m track=1 step=4 note=C5 vel=0.7 gate=1
+m track=1 step=6 note=B5 vel=0.7 gate=1
+m track=1 step=7 note=A4 vel=0.7 gate=1
+m track=1 step=8 note=B4 vel=0.7 gate=1
+m track=1 step=9 note=B4 vel=0.7 gate=1
+m track=1 step=11 note=A4 vel=0.7 gate=1
+m track=1 step=12 note=G4 vel=0.7 gate=1
+m track=1 step=14 note=G6 vel=0.7 gate=1
+
+[pattern.7]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=1 step=1 note=C5 vel=0.7 gate=1
+m track=1 step=2 note=C5 vel=0.7 gate=1
+m track=1 step=5 note=B5 vel=0.7 gate=1
+m track=1 step=6 note=B5 vel=0.7 gate=1
+m track=1 step=7 note=B5 vel=0.7 gate=1
+m track=1 step=8 note=C6 vel=0.7 gate=1
+m track=1 step=9 note=D#6 vel=0.7 gate=1
+m track=1 step=11 note=G6 vel=0.7 gate=1
+m track=0 step=9 note=F6 vel=0.6 gate=1
+m track=0 step=10 note=A6 vel=0.6 gate=1
+
+[pattern.8]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=1 step=0 note=C5 vel=0.7 gate=1
+m track=1 step=1 note=G5 vel=0.7 gate=1
+m track=1 step=2 note=C5 vel=0.7 gate=1
+m track=1 step=3 note=E5 vel=0.7 gate=1
+m track=1 step=4 note=B4 vel=0.7 gate=1
+m track=1 step=5 note=B4 vel=0.7 gate=1
+m track=1 step=6 note=B4 vel=0.7 gate=1
+m track=1 step=8 note=A4 vel=0.7 gate=1
+m track=1 step=9 note=A4 vel=0.7 gate=1
+m track=1 step=10 note=A4 vel=0.7 gate=1
+m track=1 step=11 note=G4 vel=0.7 gate=1
+m track=1 step=12 note=B4 vel=0.7 gate=1
+m track=1 step=13 note=G4 vel=0.7 gate=1
+m track=1 step=14 note=G4 vel=0.7 gate=1
+m track=1 step=15 note=A4 vel=0.7 gate=1
+
+[pattern.9]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=1 step=2 note=C5 vel=0.7 gate=1
+m track=1 step=3 note=G5 vel=0.7 gate=1
+m track=1 step=4 note=G5 vel=0.7 gate=1
+m track=1 step=6 note=B5 vel=0.7 gate=1
+m track=1 step=7 note=B5 vel=0.7 gate=1
+m track=1 step=8 note=C6 vel=0.7 gate=1
+m track=1 step=10 note=A4 vel=0.7 gate=1
+m track=1 step=11 note=B5 vel=0.7 gate=1
+m track=1 step=12 note=B5 vel=0.7 gate=1
+m track=1 step=13 note=B5 vel=0.7 gate=1
+m track=1 step=14 note=B5 vel=0.7 gate=1
+m track=1 step=15 note=B5 vel=0.7 gate=1
+m track=0 step=6 note=B4 vel=0.6 gate=1
+m track=0 step=7 note=B4 vel=0.6 gate=1
+m track=0 step=8 note=B4 vel=0.6 gate=1
+m track=0 step=11 note=G4 vel=0.6 gate=1
+m track=0 step=12 note=G4 vel=0.6 gate=1
+m track=0 step=13 note=G4 vel=0.6 gate=1
+m track=0 step=14 note=G4 vel=0.6 gate=1
+m track=0 step=15 note=G4 vel=0.6 gate=1
+
+[pattern.10]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=1 step=0 note=B5 vel=0.7 gate=1
+m track=1 step=1 note=G6 vel=0.7 gate=1
+m track=1 step=2 note=C5 vel=0.7 gate=1
+m track=1 step=3 note=E6 vel=0.7 gate=1
+m track=1 step=4 note=B4 vel=0.7 gate=1
+m track=1 step=5 note=B4 vel=0.7 gate=1
+m track=1 step=6 note=D6 vel=0.7 gate=1
+m track=1 step=7 note=B4 vel=0.7 gate=1
+m track=1 step=8 note=C6 vel=0.7 gate=1
+m track=1 step=9 note=C6 vel=0.7 gate=1
+m track=1 step=10 note=D6 vel=0.7 gate=1
+m track=1 step=11 note=C6 vel=0.7 gate=1
+m track=1 step=12 note=C6 vel=0.7 gate=1
+m track=1 step=13 note=B5 vel=0.7 gate=1
+m track=1 step=14 note=B5 vel=0.7 gate=1
+m track=0 step=0 note=C5 vel=0.6 gate=1
+m track=0 step=8 note=A4 vel=0.6 gate=1
+m track=0 step=9 note=A4 vel=0.6 gate=1
+m track=0 step=10 note=B4 vel=0.6 gate=1
+m track=0 step=11 note=A4 vel=0.6 gate=1
+m track=0 step=12 note=G4 vel=0.6 gate=1
+m track=0 step=13 note=G4 vel=0.6 gate=1
+m track=0 step=14 note=G4 vel=0.6 gate=1
+m track=0 step=15 note=D5 vel=0.6 gate=1
+
+[pattern.11]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=1 step=0 note=G5 vel=0.7 gate=1
+m track=1 step=2 note=G5 vel=0.7 gate=1
+m track=1 step=3 note=G6 vel=0.7 gate=1
+m track=1 step=4 note=G6 vel=0.7 gate=1
+m track=1 step=5 note=G6 vel=0.7 gate=1
+m track=1 step=6 note=B6 vel=0.7 gate=1
+m track=1 step=8 note=B4 vel=0.7 gate=1
+m track=1 step=10 note=A4 vel=0.7 gate=1
+m track=1 step=12 note=C#7 vel=0.7 gate=1
+m track=1 step=13 note=A4 vel=0.7 gate=1
+m track=1 step=14 note=D7 vel=0.7 gate=1
+m track=1 step=15 note=D7 vel=0.7 gate=1
+m track=0 step=0 note=B4 vel=0.6 gate=1
+m track=0 step=1 note=D5 vel=0.6 gate=1
+m track=0 step=2 note=C5 vel=0.6 gate=1
+m track=0 step=6 note=B4 vel=0.6 gate=1
+m track=0 step=13 note=G4 vel=0.6 gate=1
+m track=0 step=14 note=G4 vel=0.6 gate=1
+m track=0 step=15 note=G4 vel=0.6 gate=1
+
+[pattern.12]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=1 step=0 note=D7 vel=0.7 gate=1
+m track=1 step=1 note=E7 vel=0.7 gate=1
+m track=1 step=2 note=F7 vel=0.7 gate=1
+m track=1 step=3 note=G6 vel=0.7 gate=1
+m track=1 step=4 note=E6 vel=0.7 gate=1
+m track=1 step=5 note=G6 vel=0.7 gate=1
+m track=1 step=6 note=D6 vel=0.7 gate=1
+m track=1 step=7 note=G6 vel=0.7 gate=1
+m track=1 step=8 note=D6 vel=0.7 gate=1
+m track=1 step=9 note=G6 vel=0.7 gate=1
+m track=1 step=10 note=C6 vel=0.7 gate=1
+m track=1 step=11 note=G6 vel=0.7 gate=1
+m track=1 step=12 note=C6 vel=0.7 gate=1
+m track=1 step=13 note=D6 vel=0.7 gate=1
+m track=1 step=14 note=D6 vel=0.7 gate=1
+m track=1 step=15 note=A#6 vel=0.7 gate=1
+m track=0 step=0 note=G#4 vel=0.6 gate=1
+m track=0 step=1 note=A4 vel=0.6 gate=1
+m track=0 step=2 note=C4 vel=0.6 gate=1
+m track=0 step=4 note=C4 vel=0.6 gate=1
+m track=0 step=6 note=B3 vel=0.6 gate=1
+m track=0 step=8 note=B3 vel=0.6 gate=1
+m track=0 step=10 note=A3 vel=0.6 gate=1
+m track=0 step=11 note=B3 vel=0.6 gate=1
+m track=0 step=12 note=A3 vel=0.6 gate=1
+m track=0 step=13 note=G3 vel=0.6 gate=1
+
+[pattern.13]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=1 step=0 note=G6 vel=0.7 gate=1
+m track=1 step=1 note=A#6 vel=0.7 gate=1
+m track=1 step=2 note=G6 vel=0.7 gate=1
+m track=1 step=3 note=G7 vel=0.7 gate=1
+m track=1 step=4 note=E7 vel=0.7 gate=1
+m track=1 step=5 note=G6 vel=0.7 gate=1
+m track=1 step=6 note=G6 vel=0.7 gate=1
+m track=1 step=7 note=G7 vel=0.7 gate=1
+m track=1 step=8 note=D7 vel=0.7 gate=1
+m track=1 step=9 note=G6 vel=0.7 gate=1
+m track=1 step=10 note=G7 vel=0.7 gate=1
+m track=1 step=11 note=F#7 vel=0.7 gate=1
+m track=1 step=12 note=F#7 vel=0.7 gate=1
+m track=1 step=13 note=E7 vel=0.7 gate=1
+m track=1 step=15 note=A#4 vel=0.7 gate=1
+m track=0 step=4 note=C4 vel=0.6 gate=1
+m track=0 step=8 note=B3 vel=0.6 gate=1
+m track=0 step=12 note=A3 vel=0.6 gate=1
+m track=0 step=13 note=G3 vel=0.6 gate=1
+m track=0 step=14 note=B4 vel=0.6 gate=1
+
+[pattern.14]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=1 step=0 note=A#4 vel=0.7 gate=1
+m track=1 step=1 note=G4 vel=0.7 gate=1
+m track=1 step=2 note=A6 vel=0.7 gate=1
+m track=1 step=3 note=G6 vel=0.7 gate=1
+m track=1 step=4 note=A#6 vel=0.7 gate=1
+m track=1 step=5 note=A6 vel=0.7 gate=1
+m track=1 step=6 note=F6 vel=0.7 gate=1
+m track=1 step=7 note=D6 vel=0.7 gate=1
+m track=1 step=8 note=C6 vel=0.7 gate=1
+m track=1 step=9 note=A#5 vel=0.7 gate=1
+m track=1 step=10 note=D6 vel=0.7 gate=1
+m track=1 step=11 note=D#6 vel=0.7 gate=1
+m track=1 step=12 note=G6 vel=0.7 gate=1
+m track=1 step=13 note=A6 vel=0.7 gate=1
+m track=1 step=14 note=G3 vel=0.7 gate=1
+m track=1 step=15 note=G4 vel=0.7 gate=1
+m track=0 step=1 note=C4 vel=0.6 gate=1
+m track=0 step=10 note=A3 vel=0.6 gate=1
+m track=0 step=11 note=B3 vel=0.6 gate=1
+m track=0 step=13 note=A3 vel=0.6 gate=1
+
+[pattern.15]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=1 step=0 note=G4 vel=0.7 gate=1
+m track=1 step=1 note=G4 vel=0.7 gate=1
+m track=1 step=2 note=E7 vel=0.7 gate=1
+m track=1 step=3 note=G7 vel=0.7 gate=1
+m track=1 step=4 note=E7 vel=0.7 gate=1
+m track=1 step=5 note=G7 vel=0.7 gate=1
+m track=1 step=6 note=G7 vel=0.7 gate=1
+m track=1 step=7 note=F7 vel=0.7 gate=1
+m track=1 step=8 note=C#7 vel=0.7 gate=1
+m track=1 step=9 note=G6 vel=0.7 gate=1
+m track=1 step=10 note=A6 vel=0.7 gate=1
+m track=1 step=11 note=G6 vel=0.7 gate=1
+m track=1 step=12 note=C#6 vel=0.7 gate=1
+m track=1 step=13 note=C6 vel=0.7 gate=1
+m track=0 step=1 note=C4 vel=0.6 gate=1
+m track=0 step=3 note=C4 vel=0.6 gate=1
+m track=0 step=5 note=B3 vel=0.6 gate=1
+m track=0 step=11 note=A3 vel=0.6 gate=1
+m track=0 step=13 note=G3 vel=0.6 gate=1
+m track=0 step=14 note=G3 vel=0.6 gate=1
+m track=0 step=15 note=A#3 vel=0.6 gate=1
+
+[pattern.16]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=1 step=1 note=B4 vel=0.7 gate=1
+m track=1 step=2 note=C5 vel=0.7 gate=1
+m track=1 step=3 note=G5 vel=0.7 gate=1
+m track=1 step=4 note=E6 vel=0.7 gate=1
+m track=1 step=5 note=B5 vel=0.7 gate=1
+m track=1 step=8 note=D6 vel=0.7 gate=1
+m track=1 step=9 note=A6 vel=0.7 gate=1
+m track=1 step=15 note=F6 vel=0.7 gate=1
+m track=0 step=0 note=G4 vel=0.6 gate=1
+m track=0 step=1 note=B3 vel=0.6 gate=1
+m track=0 step=2 note=E4 vel=0.6 gate=1
+m track=0 step=3 note=G4 vel=0.6 gate=1
+m track=0 step=5 note=B3 vel=0.6 gate=1
+m track=0 step=6 note=B4 vel=0.6 gate=1
+m track=0 step=7 note=F#4 vel=0.6 gate=1
+m track=0 step=8 note=F#5 vel=0.6 gate=1
+m track=0 step=9 note=A5 vel=0.6 gate=1
+m track=0 step=10 note=A4 vel=0.6 gate=1
+m track=0 step=11 note=E4 vel=0.6 gate=1
+m track=0 step=12 note=B3 vel=0.6 gate=1
+m track=0 step=13 note=G4 vel=0.6 gate=1
+m track=0 step=14 note=F5 vel=0.6 gate=1
+m track=0 step=15 note=D6 vel=0.6 gate=1
+
+[pattern.17]
+drumTrackLength = 16 16 16 16
+melodyTrackLength = 16 16 16
+m track=1 step=0 note=B6 vel=0.7 gate=1
+m track=1 step=1 note=G7 vel=0.7 gate=1
+m track=1 step=2 note=F#7 vel=0.7 gate=1
+m track=1 step=3 note=G7 vel=0.7 gate=1
+m track=1 step=4 note=F#7 vel=0.7 gate=1
+m track=1 step=5 note=G7 vel=0.7 gate=1
+m track=1 step=9 note=G3 vel=0.7 gate=1
