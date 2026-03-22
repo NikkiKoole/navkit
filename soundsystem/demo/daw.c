@@ -1366,6 +1366,7 @@ static char dawStatusMsg[64] = "";
 static double dawStatusTime = 0.0;
 static char dawFilePath[512] = "soundsystem/demo/songs/scratch.song";
 static bool editingSongName = false;
+static bool speechTextEditing = false;
 static char songNameEditBuf[64] = "";
 static int songNameEditCursor = 0;
 
@@ -1417,7 +1418,7 @@ static int dawTextCursorX(const char *buf, int cursor, int fontSize) {
 
 // True when any text field is actively being edited (gates musical typing)
 static bool dawTextFieldActive(void) {
-    return editingSongName || presetSearchActive;
+    return editingSongName || presetSearchActive || speechTextEditing;
 }
 
 // Simple fuzzy match: all chars of needle must appear in haystack in order (case-insensitive)
@@ -6628,9 +6629,12 @@ typedef struct {
     float intonation;  // -1.0 = falling (answer), 0 = flat, +1.0 = rising (question)
     bool active;
     int voiceIdx;
+    bool useVoicForm;  // true = WAVE_VOICFORM, false = WAVE_VOICE (legacy)
+    int presetIdx;     // VoicForm preset index (240-247), used when useVoicForm=true
 } SpeechQueue;
 
 static SpeechQueue speechQueue = {0};
+static bool speechUseVoicForm = true;
 
 static VowelType charToVowel(char c) {
     if (c >= 'A' && c <= 'Z') c += 32;
@@ -6649,6 +6653,47 @@ static VowelType charToVowel(char c) {
     }
 }
 
+// Map ASCII character to VoicForm phoneme — proper consonant mappings
+static int charToVFPhoneme(char c) {
+    if (c >= 'A' && c <= 'Z') c += 32;
+    switch (c) {
+        // Vowels
+        case 'a': return VF_A;
+        case 'e': return VF_E;
+        case 'i': return VF_I;
+        case 'o': return VF_O;
+        case 'u': return VF_U;
+        // Nasals/liquids
+        case 'm': return VF_M;
+        case 'n': return VF_N;
+        case 'l': return VF_L;
+        case 'r': return VF_R;
+        case 'w': return VF_W;
+        case 'y': return VF_Y;
+        // Fricatives
+        case 'f': return VF_F;
+        case 'v': return VF_V;
+        case 's': return VF_S;
+        case 'z': return VF_Z;
+        case 'h': return VF_AH; // 'h' → breathy vowel
+        // Plosives
+        case 'b': return VF_B;
+        case 'd': return VF_D;
+        case 'g': return VF_G;
+        case 'p': return VF_P;
+        case 't': return VF_T;
+        case 'k': case 'c': case 'q': return VF_K;
+        case 'j': return VF_ZH;
+        case 'x': return VF_S;  // approximate
+        default: return VF_AH;
+    }
+}
+
+// Is this phoneme a consonant? (affects timing — consonants are shorter)
+static bool isVFConsonant(int ph) {
+    return ph >= VF_M; // nasals, fricatives, plosives are all after vowels in the enum
+}
+
 static float charToPitch(char c) {
     if (c >= 'A' && c <= 'Z') c += 32;
     int val = (c * 7) % 12;
@@ -6657,6 +6702,11 @@ static float charToPitch(char c) {
 
 static void speakWithIntonation(const char *text, float speed, float pitch, float variation, float intonation) {
     SpeechQueue *sq = &speechQueue;
+    // Stop any currently speaking voice
+    if (sq->active) {
+        releaseNote(sq->voiceIdx);
+        sq->active = false;
+    }
     int len = 0;
     while (text[len] && len < SPEECH_MAX - 1) {
         sq->text[len] = text[len];
@@ -6672,6 +6722,7 @@ static void speakWithIntonation(const char *text, float speed, float pitch, floa
     sq->intonation = clampf(intonation, -1.0f, 1.0f);
     sq->active = true;
     sq->voiceIdx = NUM_VOICES - 1;
+    sq->useVoicForm = false;  // default to legacy; callers override if needed
 }
 
 static const char* babbleSyllables[] = {
@@ -6722,30 +6773,79 @@ static void updateSpeech(float dt) {
             releaseNote(sq->voiceIdx);
             return;
         }
-        VowelType vowel = charToVowel(c);
+
         float pitchMod = charToPitch(c);
         synthNoiseState = synthNoiseState * 1103515245 + 12345;
         float randVar = 1.0f + ((float)(synthNoiseState >> 16) / 65535.0f - 0.5f) * sq->pitchVariation;
         float progress = (float)sq->index / (float)sq->length;
         float intonationMod = 1.0f + sq->intonation * 0.3f * progress;
         float baseFreq = 200.0f * sq->basePitch * pitchMod * randVar * intonationMod;
-        Voice *v = &synthVoices[sq->voiceIdx];
-        if (v->envStage > 0 && v->wave == WAVE_VOICE) {
-            v->voiceSettings.nextVowel = vowel;
-            v->voiceSettings.vowelBlend = 0.0f;
-            v->frequency = baseFreq;
-            v->baseFrequency = baseFreq;
+
+        if (sq->useVoicForm) {
+            // --- VoicForm path: drive phoneme morph on the voice ---
+            int phoneme = charToVFPhoneme(c);
+            Voice *v = &synthVoices[sq->voiceIdx];
+            if (v->envStage > 0 && v->wave == WAVE_VOICFORM) {
+                // Voice already running — morph to new phoneme
+                VoicFormSettings *vf = &v->voicformSettings;
+                vf->phonemeCurrent = vf->phonemeTarget;
+                vf->phonemeTarget = phoneme;
+                vf->morphBlend = 0.0f;
+                vf->morphRate = sq->speed * 2.0f; // morph at 2x letter rate for smooth transitions
+                v->frequency = baseFreq;
+                v->baseFrequency = baseFreq;
+                // Plosive consonants get a burst
+                if (phoneme >= VF_B && phoneme <= VF_CH) {
+                    vf->burstPhoneme = phoneme;
+                    vf->burstTime = 0.0f;
+                    vf->burstLevel = 0.6f;
+                }
+            } else {
+                // Start fresh VoicForm voice — apply selected preset then override phoneme
+                {
+                    SynthPatch *pp = &instrumentPresets[sq->presetIdx].patch;
+                    applyPatchToGlobals(pp);
+                    // Override phoneme and morph for speech
+                    vfPhoneme = phoneme;
+                    vfPhonemeTarget = phoneme;
+                    vfMorphRate = sq->speed * 2.0f;
+                    vfConsonant = (phoneme >= VF_B && phoneme <= VF_CH) ? phoneme : -1;
+                    sq->voiceIdx = playVoicForm(baseFreq, phoneme);
+                }
+            }
+            // Consonants are shorter than vowels
+            float duration = isVFConsonant(phoneme) ? 0.6f / sq->speed : 1.0f / sq->speed;
+            sq->timer = duration;
         } else {
-            playVowelOnVoice(sq->voiceIdx, baseFreq, vowel);
+            // --- Legacy WAVE_VOICE path ---
+            VowelType vowel = charToVowel(c);
+            Voice *v = &synthVoices[sq->voiceIdx];
+            if (v->envStage > 0 && v->wave == WAVE_VOICE) {
+                v->voiceSettings.nextVowel = vowel;
+                v->voiceSettings.vowelBlend = 0.0f;
+                v->frequency = baseFreq;
+                v->baseFrequency = baseFreq;
+            } else {
+                playVowelOnVoice(sq->voiceIdx, baseFreq, vowel);
+            }
+            sq->timer = 1.0f / sq->speed;
         }
-        sq->timer = 1.0f / sq->speed;
     }
+
+    // Smooth morph between phonemes/vowels
     Voice *v = &synthVoices[sq->voiceIdx];
-    if (v->envStage > 0 && v->wave == WAVE_VOICE) {
-        v->voiceSettings.vowelBlend += dt * sq->speed * 2.0f;
-        if (v->voiceSettings.vowelBlend >= 1.0f) {
-            v->voiceSettings.vowelBlend = 0.0f;
-            v->voiceSettings.vowel = v->voiceSettings.nextVowel;
+    if (sq->useVoicForm) {
+        if (v->envStage > 0 && v->wave == WAVE_VOICFORM) {
+            // VoicForm morph is handled internally by processVoicFormOscillator
+            // Nothing extra needed here
+        }
+    } else {
+        if (v->envStage > 0 && v->wave == WAVE_VOICE) {
+            v->voiceSettings.vowelBlend += dt * sq->speed * 2.0f;
+            if (v->voiceSettings.vowelBlend >= 1.0f) {
+                v->voiceSettings.vowelBlend = 0.0f;
+                v->voiceSettings.vowel = v->voiceSettings.nextVowel;
+            }
         }
     }
 }
@@ -7982,6 +8082,12 @@ static void drawWorkSample(float x, float y, float w, float h) {
 static float babblePitch = 1.0f;
 static float babbleMood = 0.5f;
 static float babbleDuration = 2.0f;
+static char speechTextBuf[SPEECH_MAX] = "hello world";
+static int speechTextCursor = 11;
+// speechTextEditing declared near editingSongName (line ~1369) for dawTextFieldActive()
+static float speechSpeed = 10.0f;
+static int speechPresetIdx = 0;  // index into VoicForm presets (0-7 → presets 240-247)
+static const char* speechPresetNames[] = {"VF Choir", "Talk Box", "Robot", "Whisper", "Gregorian", "Soprano", "Bass Vocal", "Plosive"};
 
 static void drawWorkVoice(float x, float y, float w, float h) {
     (void)w; (void)h;
@@ -8020,6 +8126,71 @@ static void drawWorkVoice(float x, float y, float w, float h) {
         DrawTextShadow("Speaking...", (int)sx, (int)sy, UI_FONT_SMALL, GREEN);
         DrawTextShadow(speechQueue.text, (int)sx, (int)sy + 14, UI_FONT_SMALL, GRAY);
     }
+    sy += 24;
+
+    // --- Text-to-speech input (uses VoicForm engine) ---
+    DrawTextShadow("Type to Speak (VoicForm):", (int)sx, (int)sy, UI_FONT_SMALL, UI_TEXT_SUBLABEL);
+    sy += 16;
+
+    // Text input field
+    Rectangle textR = {sx, sy, 380, 22};
+    bool textHov = CheckCollisionPointRec(mouse, textR);
+    DrawRectangleRec(textR, speechTextEditing ? (Color){40,40,60,255} : UI_BG_BUTTON);
+    DrawRectangleLinesEx(textR, 1, speechTextEditing ? GREEN : (textHov ? UI_BORDER_LIGHT : UI_BORDER));
+    DrawTextShadow(speechTextBuf, (int)sx + 4, (int)sy + 5, UI_FONT_SMALL,
+                   speechTextBuf[0] ? WHITE : GRAY);
+    if (speechTextEditing) {
+        // Draw cursor
+        int cx = dawTextCursorX(speechTextBuf, speechTextCursor, UI_FONT_SMALL);
+        DrawLine((int)(sx + 4 + cx), (int)sy + 3, (int)(sx + 4 + cx), (int)sy + 19, GREEN);
+        int result = dawTextEdit(speechTextBuf, SPEECH_MAX, &speechTextCursor);
+        if (result == 1) {
+            // Enter pressed — speak the text using VoicForm
+            speakWithIntonation(speechTextBuf, speechSpeed, babblePitch, 0.15f, 0.0f);
+            speechQueue.useVoicForm = true;
+            speechQueue.presetIdx = 240 + speechPresetIdx;
+            speechTextEditing = false;
+        } else if (result == -1) {
+            speechTextEditing = false;
+        }
+    } else if (textHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        speechTextEditing = true;
+        speechTextCursor = (int)strlen(speechTextBuf);
+        ui_consume_click();
+    }
+    sy += 28;
+
+    // Preset + Speed
+    UIColumn c2 = ui_column(sx, sy, 15);
+    ui_col_cycle(&c2, "Voice", speechPresetNames, 8, &speechPresetIdx);
+    ui_col_float(&c2, "Speed", &speechSpeed, 1.0f, 1.0f, 30.0f);
+    sy = c2.y + 8;
+
+    Rectangle speakR = {sx, sy, 80, 22};
+    bool speakHov = CheckCollisionPointRec(mouse, speakR);
+    DrawRectangleRec(speakR, speakHov ? (Color){40,80,40,255} : UI_BG_BUTTON);
+    DrawRectangleLinesEx(speakR, 1, speakHov ? GREEN : UI_BORDER);
+    int stw = MeasureTextUI("Speak", UI_FONT_SMALL);
+    DrawTextShadow("Speak", (int)(speakR.x + (80 - stw) / 2), (int)sy + 5, UI_FONT_SMALL, GREEN);
+    if (speakHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && speechTextBuf[0]) {
+        speakWithIntonation(speechTextBuf, speechSpeed, babblePitch, 0.15f, 0.0f);
+        speechQueue.useVoicForm = true;
+        speechQueue.presetIdx = 240 + speechPresetIdx;
+        ui_consume_click();
+    }
+    sy += 30;
+
+    // --- VoicForm tweaks — edit the selected preset's voice params ---
+    SynthPatch *vp = &instrumentPresets[240 + speechPresetIdx].patch;
+    DrawTextShadow("Voice Tweaks:", (int)sx, (int)sy, UI_FONT_SMALL, UI_TEXT_SUBLABEL);
+    sy += 16;
+    UIColumn c3 = ui_column(sx, sy, 15);
+    ui_col_float(&c3, "FShift", &vp->p_vfFormantShift, 0.05f, 0.5f, 2.0f);
+    ui_col_float(&c3, "Aspir", &vp->p_vfAspiration, 0.05f, 0.0f, 1.0f);
+    ui_col_float(&c3, "Tilt", &vp->p_vfSpectralTilt, 0.05f, 0.0f, 1.0f);
+    ui_col_float(&c3, "OpenQ", &vp->p_vfOpenQuotient, 0.02f, 0.3f, 0.7f);
+    ui_col_float(&c3, "VibDep", &vp->p_vfVibratoDepth, 0.02f, 0.0f, 1.0f);
+    ui_col_float(&c3, "VibRt", &vp->p_vfVibratoRate, 0.5f, 3.0f, 8.0f);
 }
 
 // ============================================================================
