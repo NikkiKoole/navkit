@@ -95,6 +95,8 @@ typedef enum {
     WAVE_METALLIC,   // Ring-mod metallic percussion (808 hihat, cymbal, bell, gong)
     WAVE_BRASS,      // Lip-valve waveguide (trumpet/trombone/horn)
     WAVE_GUITAR,     // Plucked string + body resonator (acoustic guitar, banjo, sitar, oud)
+    WAVE_STIFKARP,   // Stiff string (piano/harpsichord/dulcimer — KS + allpass dispersion)
+    WAVE_SHAKER,     // Particle collision percussion (PhISM: maraca, cabasa, tambourine)
 } WaveType;
 
 // Mono note priority mode
@@ -109,9 +111,10 @@ typedef enum {
 static const char* waveTypeNames[] = {
     "square", "saw", "triangle", "noise", "scw", "voice", "pluck",
     "additive", "mallet", "granular", "fm", "pd", "membrane", "bird",
-    "bowed", "pipe", "sine", "epiano", "organ", "reed", "metallic", "brass", "guitar"
+    "bowed", "pipe", "sine", "epiano", "organ", "reed", "metallic", "brass", "guitar", "stifkarp",
+    "shaker"
 };
-static const int waveTypeCount = 23;
+static const int waveTypeCount = 25;
 
 // LFO tempo sync divisions
 typedef enum {
@@ -430,6 +433,103 @@ typedef struct {
     float buzzAmount;        // Sitar-style bridge buzz (0=clean, 1=full buzz)
     float buzzState;         // Internal state for buzz nonlinearity
 } GuitarSettings;
+
+// Stiff string synthesis (piano/harpsichord/dulcimer)
+typedef enum {
+    STIFKARP_PIANO,          // Grand piano (felt hammer, spruce soundboard)
+    STIFKARP_BRIGHT_PIANO,   // Concert grand (harder hammers, more shimmer)
+    STIFKARP_HARPSICHORD,    // Harpsichord (plectrum pluck, bright, fast release)
+    STIFKARP_DULCIMER,       // Hammered dulcimer (metallic shimmer)
+    STIFKARP_CLAVICHORD,     // Clavichord (tangent strike, intimate)
+    STIFKARP_PREPARED,       // Prepared piano (bolts/rubber on strings)
+    STIFKARP_HONKYTONK,      // Honky-tonk piano (detuned double strings)
+    STIFKARP_CELESTA,        // Celesta (metal plates + resonator, bell-like)
+    STIFKARP_COUNT
+} StifKarpPreset;
+
+#define STIFKARP_DISPERSION_STAGES 4
+#define STIFKARP_BODY_MODES 4
+
+typedef struct {
+    StifKarpPreset preset;
+
+    // Dispersion allpass chain (inharmonicity)
+    float dispCoeffs[STIFKARP_DISPERSION_STAGES];
+    float dispStates[STIFKARP_DISPERSION_STAGES];
+    int   dispStages;
+
+    // Excitation shaping
+    float hammerHardness;     // 0=soft felt, 1=hard steel
+    float strikePosition;     // 0=end, 0.5=center
+
+    // Loop filter
+    float loopFilterState;
+    float loopFilterCoeff;
+
+    // Damper
+    float damperGain;         // 0=fully damped, 1=sustain pedal
+    float damperState;
+
+    // Soundboard body resonator (reuses BodyBiquad from guitar)
+    BodyBiquad body[STIFKARP_BODY_MODES];
+    float bodyMix;
+    float bodyBrightness;
+
+    // Sympathetic resonance
+    float sympatheticLevel;
+
+    // Prepared piano buzz
+    float buzzAmount;
+} StifKarpSettings;
+
+// Shaker percussion synthesis (PhISM particle collision model)
+typedef enum {
+    SHAKER_MARACA,        // Classic maraca: ~20 particles, medium resonance
+    SHAKER_CABASA,        // Metal beads on gourd: dense, bright, short
+    SHAKER_TAMBOURINE,    // Jingles: tonal resonance, medium particles
+    SHAKER_SLEIGH_BELLS,  // Bright metal, many particles, long sustain
+    SHAKER_BAMBOO,        // Bamboo chimes: sparse, lower pitched, long ring
+    SHAKER_RAIN_STICK,    // Many particles, very slow decay, wide spectrum
+    SHAKER_GUIRO,         // Scraping: periodic rather than random collisions
+    SHAKER_SANDPAPER,     // Dense noise, tight bandwidth, short
+    SHAKER_COUNT
+} ShakerPreset;
+
+#define SHAKER_NUM_RESONATORS 4
+
+// 2-pole SVF bandpass resonator state
+typedef struct {
+    float freq;       // Center frequency (Hz)
+    float bw;         // Bandwidth (Hz)
+    float y1, y2;     // SVF state variables
+    float gain;       // Resonator output gain
+} ShakerResonator;
+
+typedef struct {
+    ShakerPreset preset;
+
+    // Particle system (statistical, no per-particle buffers)
+    int numParticles;         // 8-64 particles
+    float particleEnergy;     // Current shaking energy (0-1, decays each sample)
+    float systemDecay;        // Per-sample decay rate (e.g. 0.9995)
+    float collisionProb;      // Base collision probability per particle (0-0.05)
+    float collisionGain;      // Impulse amplitude on collision (scales with energy)
+
+    // Resonator bank (container shape/material)
+    ShakerResonator res[SHAKER_NUM_RESONATORS];
+    int numResonators;        // Active resonators (2-4)
+
+    // Guiro-style scraping mode
+    float scrapeRate;         // 0 = random collisions, >0 = periodic collision rate (Hz)
+    float scrapePhase;        // Phase accumulator for periodic mode
+    float scrapeJitter;       // Timing randomness in scrape mode (0-1)
+
+    // Output
+    float soundLevel;         // Final output amplitude scaling
+
+    // Per-voice noise state (avoid global noise correlation across voices)
+    unsigned int noiseState;  // Local LFSR seed
+} ShakerSettings;
 
 // Bird vocalization synthesis settings
 typedef enum {
@@ -812,6 +912,12 @@ typedef struct {
 
     // Guitar body synthesis
     GuitarSettings guitarSettings;
+
+    // Stiff string (piano/harpsichord) synthesis
+    StifKarpSettings stifkarpSettings;
+
+    // Shaker (particle collision) synthesis
+    ShakerSettings shakerSettings;
 
     // General pitch envelope (kicks, toms, zaps)
     float pitchEnvAmount;    // Semitones to sweep
@@ -1256,6 +1362,24 @@ typedef struct SynthContext {
     float guitarPickPosition;
     float guitarBuzz;
 
+    // StifKarp tweakables
+    int stifkarpPreset;
+    float stifkarpHardness;
+    float stifkarpStiffness;
+    float stifkarpStrikePos;
+    float stifkarpBodyMix;
+    float stifkarpBodyBrightness;
+    float stifkarpDamper;
+    float stifkarpSympathetic;
+
+    // Shaker tweakables
+    int shakerPreset;
+    float shakerParticles;     // 0-1 maps to 8-64 particles
+    float shakerDecayRate;     // 0-1 maps to systemDecay range
+    float shakerResonance;     // Tightness of resonator bandwidth (0=wide, 1=tight)
+    float shakerBrightness;    // Shifts resonator frequencies up (0-1)
+    float shakerScrape;        // 0 = random, 1 = fully periodic (guiro mode)
+
     // Bird tweakables
     int birdType;
     float birdChirpRange;
@@ -1473,6 +1597,24 @@ static void initSynthContext(SynthContext* ctx) {
     ctx->guitarPickPosition = 0.3f;
     ctx->guitarBuzz = 0.0f;
 
+    // StifKarp defaults
+    ctx->stifkarpPreset = STIFKARP_PIANO;
+    ctx->stifkarpHardness = 0.45f;
+    ctx->stifkarpStiffness = 0.25f;
+    ctx->stifkarpStrikePos = 0.12f;
+    ctx->stifkarpBodyMix = 0.45f;
+    ctx->stifkarpBodyBrightness = 0.5f;
+    ctx->stifkarpDamper = 0.9f;
+    ctx->stifkarpSympathetic = 0.15f;
+
+    // Shaker defaults
+    ctx->shakerPreset = SHAKER_MARACA;
+    ctx->shakerParticles = 0.22f;
+    ctx->shakerDecayRate = 0.5f;
+    ctx->shakerResonance = 0.5f;
+    ctx->shakerBrightness = 0.5f;
+    ctx->shakerScrape = 0.0f;
+
     // Bird defaults
     ctx->birdChirpRange = 1.0f;
     ctx->birdHarmonics = 0.2f;
@@ -1678,6 +1820,20 @@ static void _ensureSynthCtx(void) {
 #define guitarBodyBrightness (synthCtx->guitarBodyBrightness)
 #define guitarPickPosition (synthCtx->guitarPickPosition)
 #define guitarBuzz (synthCtx->guitarBuzz)
+#define stifkarpPreset (synthCtx->stifkarpPreset)
+#define stifkarpHardness (synthCtx->stifkarpHardness)
+#define stifkarpStiffness (synthCtx->stifkarpStiffness)
+#define stifkarpStrikePos (synthCtx->stifkarpStrikePos)
+#define stifkarpBodyMix (synthCtx->stifkarpBodyMix)
+#define stifkarpBodyBrightness (synthCtx->stifkarpBodyBrightness)
+#define stifkarpDamper (synthCtx->stifkarpDamper)
+#define stifkarpSympathetic (synthCtx->stifkarpSympathetic)
+#define shakerPreset (synthCtx->shakerPreset)
+#define shakerParticles (synthCtx->shakerParticles)
+#define shakerDecayRate (synthCtx->shakerDecayRate)
+#define shakerResonance (synthCtx->shakerResonance)
+#define shakerBrightness (synthCtx->shakerBrightness)
+#define shakerScrape (synthCtx->shakerScrape)
 #define birdType (synthCtx->birdType)
 #define birdChirpRange (synthCtx->birdChirpRange)
 #define birdTrillRate (synthCtx->birdTrillRate)
@@ -2489,6 +2645,12 @@ static float processVoice(Voice *v, float sampleRate) {
             break;
         case WAVE_GUITAR:
             sample = processGuitarOscillator(v, sampleRate);
+            break;
+        case WAVE_STIFKARP:
+            sample = processStifKarpOscillator(v, sampleRate);
+            break;
+        case WAVE_SHAKER:
+            sample = processShakerOscillator(v, sampleRate);
             break;
     }
 
@@ -3817,6 +3979,77 @@ static int playGuitar(float freq, GuitarPreset preset) {
     v->guitarSettings.buzzAmount = guitarBuzz;
     // Apply pick position to excitation — filter the noise burst
     applyPickPosition(v, v->guitarSettings.pickPosition);
+    return voiceIdx;
+}
+
+// StifKarp init params
+static const VoiceInitParams VOICE_INIT_STIFKARP = {
+    .supportsMono = true
+};
+
+// Play stiff string note (piano/harpsichord/dulcimer)
+__attribute__((unused))
+static int playStifKarp(float freq, StifKarpPreset preset) {
+    int voiceIdx = initVoiceCommon(freq, WAVE_STIFKARP, &VOICE_INIT_STIFKARP, NULL);
+    Voice *v = &synthVoices[voiceIdx];
+    // Initialize KS string (reuse pluck infrastructure)
+    initPluck(v, freq, 44100.0f, pluckBrightness, pluckDamping);
+    // Shape excitation based on hammer hardness
+    initStifKarpExcitation(v, stifkarpHardness);
+    // Initialize dispersion chain for inharmonicity
+    initStifKarpDispersion(&v->stifkarpSettings, stifkarpStiffness, freq, 44100.0f);
+    // Initialize body resonator for preset
+    initStifKarpPreset(&v->stifkarpSettings, preset, freq, 44100.0f);
+    v->stifkarpSettings.bodyMix = stifkarpBodyMix;
+    v->stifkarpSettings.bodyBrightness = stifkarpBodyBrightness;
+    v->stifkarpSettings.damperGain = stifkarpDamper;
+    v->stifkarpSettings.damperState = stifkarpDamper;
+    v->stifkarpSettings.sympatheticLevel = stifkarpSympathetic;
+    // Apply strike position to excitation
+    applyPickPosition(v, stifkarpStrikePos);
+    return voiceIdx;
+}
+
+// Shaker init params (percussion, no glide)
+static const VoiceInitParams VOICE_INIT_SHAKER = {
+    .supportsMono = false
+};
+
+// Play shaker percussion note (PhISM particle collision model)
+__attribute__((unused))
+static int playShaker(float freq, ShakerPreset preset) {
+    int voiceIdx = initVoiceCommon(freq, WAVE_SHAKER, &VOICE_INIT_SHAKER, NULL);
+    Voice *v = &synthVoices[voiceIdx];
+    initShakerPreset(&v->shakerSettings, preset);
+
+    // Apply tweakable overrides from globals
+    // Map 0-1 particle knob to 8-64
+    int particleOverride = 8 + (int)(shakerParticles * 56.0f);
+    if (particleOverride < 8) particleOverride = 8;
+    if (particleOverride > 64) particleOverride = 64;
+    v->shakerSettings.numParticles = particleOverride;
+
+    // Map 0-1 decay rate to systemDecay range (0.998 to 0.9999)
+    v->shakerSettings.systemDecay = 0.998f + shakerDecayRate * 0.0019f;
+
+    // Adjust resonator bandwidth based on resonance knob (0=wide, 1=tight)
+    float bwScale = 1.5f - shakerResonance * 1.3f;  // 1.5x to 0.2x
+    for (int i = 0; i < v->shakerSettings.numResonators; i++) {
+        v->shakerSettings.res[i].bw *= bwScale;
+    }
+
+    // Brightness shifts all resonator frequencies up
+    float freqMult = 1.0f + shakerBrightness * 0.8f;  // 1.0x to 1.8x
+    for (int i = 0; i < v->shakerSettings.numResonators; i++) {
+        v->shakerSettings.res[i].freq *= freqMult;
+    }
+
+    // Scrape mode (0=random, blend toward periodic)
+    if (shakerScrape > 0.01f) {
+        v->shakerSettings.scrapeRate = shakerScrape * 200.0f;  // Up to 200 Hz
+        v->shakerSettings.collisionProb *= (1.0f - shakerScrape * 0.8f);
+    }
+
     return voiceIdx;
 }
 

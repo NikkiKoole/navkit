@@ -2016,6 +2016,271 @@ static float processGuitarOscillator(Voice *v, float sampleRate) {
     return out;
 }
 
+// ============================================================================
+// STIFKARP (stiff string — piano/harpsichord/dulcimer)
+// ============================================================================
+
+// Shape excitation noise burst based on hammer hardness
+// Soft hammer = mellow (LP filtered), hard hammer = bright (raw noise)
+static void initStifKarpExcitation(Voice *v, float hardness) {
+    if (v->ksLength <= 0) return;
+
+    // Low-pass filter the noise burst to simulate hammer felt
+    // hardness 0 = very soft felt (heavy filtering), 1 = hard steel (minimal filtering)
+    float cutoff = 0.05f + hardness * 0.85f;
+    float state = 0.0f;
+    for (int i = 0; i < v->ksLength; i++) {
+        state += cutoff * (v->ksBuffer[i] - state);
+        v->ksBuffer[i] = state;
+    }
+
+    // Normalize to prevent volume differences between soft/hard
+    float maxAmp = 0.0f;
+    for (int i = 0; i < v->ksLength; i++) {
+        float a = fabsf(v->ksBuffer[i]);
+        if (a > maxAmp) maxAmp = a;
+    }
+    if (maxAmp > 0.001f) {
+        float scale = 1.0f / maxAmp;
+        for (int i = 0; i < v->ksLength; i++) {
+            v->ksBuffer[i] *= scale;
+        }
+    }
+}
+
+// Initialize allpass dispersion chain for string stiffness/inharmonicity
+// stiffness: 0-1 user param, maps to inharmonicity coefficient B
+// Higher B = more stretched upper partials (piano ~0.0001-0.01)
+static void initStifKarpDispersion(StifKarpSettings *sk, float stiffness, float freq, float sampleRate) {
+    // Quadratic mapping for musical control — low values have subtle effect
+    float B = stiffness * stiffness * 0.015f;
+
+    // Scale stiffness with frequency — treble strings are more inharmonic
+    float freqScale = 1.0f + (freq - 261.0f) / 2000.0f;
+    if (freqScale < 0.5f) freqScale = 0.5f;
+    if (freqScale > 3.0f) freqScale = 3.0f;
+    B *= freqScale;
+
+    // Number of active dispersion stages (more = more accurate but heavier)
+    sk->dispStages = (stiffness < 0.1f) ? 1 :
+                     (stiffness < 0.4f) ? 2 :
+                     (stiffness < 0.7f) ? 3 : STIFKARP_DISPERSION_STAGES;
+
+    // Compute allpass coefficients
+    // Each stage adds phase shift that stretches upper partials
+    for (int i = 0; i < STIFKARP_DISPERSION_STAGES; i++) {
+        if (i < sk->dispStages) {
+            // Target phase shift increases per stage
+            float phaseTarget = B * (float)(i + 1) * freq / sampleRate;
+            if (phaseTarget > 0.9f) phaseTarget = 0.9f;
+            sk->dispCoeffs[i] = (1.0f - phaseTarget) / (1.0f + phaseTarget);
+        } else {
+            sk->dispCoeffs[i] = 0.0f;
+        }
+        sk->dispStates[i] = 0.0f;
+    }
+}
+
+// Initialize body resonator for a given stiff string preset
+static void initStifKarpPreset(StifKarpSettings *sk, StifKarpPreset preset, float freq, float sampleRate) {
+    sk->preset = preset;
+    sk->loopFilterState = 0.0f;
+    sk->buzzAmount = 0.0f;
+
+    float formants[STIFKARP_BODY_MODES];
+    float bandwidths[STIFKARP_BODY_MODES];
+    float gains[STIFKARP_BODY_MODES];
+
+    (void)freq;  // Body formants are fixed, not pitch-dependent
+
+    switch (preset) {
+        default:
+        case STIFKARP_PIANO:
+            // Grand piano soundboard: spruce top, strong low resonance
+            formants[0] = 65.0f;   bandwidths[0] = 1.0f;  gains[0] = 1.0f;
+            formants[1] = 130.0f;  bandwidths[1] = 0.8f;  gains[1] = 0.7f;
+            formants[2] = 260.0f;  bandwidths[2] = 0.6f;  gains[2] = 0.4f;
+            formants[3] = 520.0f;  bandwidths[3] = 0.5f;  gains[3] = 0.2f;
+            sk->loopFilterCoeff = 0.18f;  // Warm, felt-damped — strong LP
+            sk->hammerHardness = 0.45f;
+            sk->strikePosition = 0.12f;
+            break;
+
+        case STIFKARP_BRIGHT_PIANO:
+            // Concert grand: harder hammers, more overtones, longer soundboard
+            formants[0] = 60.0f;   bandwidths[0] = 1.0f;  gains[0] = 1.0f;
+            formants[1] = 125.0f;  bandwidths[1] = 0.8f;  gains[1] = 0.8f;
+            formants[2] = 280.0f;  bandwidths[2] = 0.6f;  gains[2] = 0.5f;
+            formants[3] = 600.0f;  bandwidths[3] = 0.5f;  gains[3] = 0.35f;
+            sk->loopFilterCoeff = 0.3f;   // Brighter than regular piano
+            sk->hammerHardness = 0.65f;
+            sk->strikePosition = 0.11f;
+            break;
+
+        case STIFKARP_HARPSICHORD:
+            // Smaller case, bright plectrum, sharp attack, fast decay
+            formants[0] = 200.0f;  bandwidths[0] = 0.5f;  gains[0] = 0.8f;
+            formants[1] = 400.0f;  bandwidths[1] = 0.4f;  gains[1] = 0.6f;
+            formants[2] = 900.0f;  bandwidths[2] = 0.3f;  gains[2] = 0.4f;
+            formants[3] = 1800.0f; bandwidths[3] = 0.3f;  gains[3] = 0.2f;
+            sk->loopFilterCoeff = 0.7f;   // Very bright — metal plectrum snap
+            sk->hammerHardness = 0.9f;
+            sk->strikePosition = 0.08f;   // Near bridge (plectrum)
+            break;
+
+        case STIFKARP_DULCIMER:
+            // Trapezoidal body, hammered wire strings, metallic shimmer
+            formants[0] = 180.0f;  bandwidths[0] = 0.6f;  gains[0] = 1.0f;
+            formants[1] = 360.0f;  bandwidths[1] = 0.5f;  gains[1] = 0.7f;
+            formants[2] = 720.0f;  bandwidths[2] = 0.4f;  gains[2] = 0.45f;
+            formants[3] = 1500.0f; bandwidths[3] = 0.3f;  gains[3] = 0.25f;
+            sk->loopFilterCoeff = 0.5f;   // Medium bright — wire strings
+            sk->hammerHardness = 0.7f;
+            sk->strikePosition = 0.15f;
+            break;
+
+        case STIFKARP_CLAVICHORD:
+            // Minimal body, tangent strike (very soft), intimate sound
+            formants[0] = 150.0f;  bandwidths[0] = 0.8f;  gains[0] = 0.5f;
+            formants[1] = 300.0f;  bandwidths[1] = 0.6f;  gains[1] = 0.3f;
+            formants[2] = 600.0f;  bandwidths[2] = 0.4f;  gains[2] = 0.15f;
+            formants[3] = 1200.0f; bandwidths[3] = 0.3f;  gains[3] = 0.08f;
+            sk->loopFilterCoeff = 0.1f;   // Very dark — muffled, intimate
+            sk->hammerHardness = 0.2f;
+            sk->strikePosition = 0.5f;    // Tangent strikes at center
+            break;
+
+        case STIFKARP_PREPARED:
+            // Piano with objects on strings — irregular buzz, muted partials
+            formants[0] = 65.0f;   bandwidths[0] = 1.0f;  gains[0] = 0.9f;
+            formants[1] = 140.0f;  bandwidths[1] = 0.7f;  gains[1] = 0.6f;
+            formants[2] = 280.0f;  bandwidths[2] = 0.5f;  gains[2] = 0.3f;
+            formants[3] = 550.0f;  bandwidths[3] = 0.4f;  gains[3] = 0.15f;
+            sk->loopFilterCoeff = 0.15f;  // Dark — objects damping the string
+            sk->hammerHardness = 0.5f;
+            sk->strikePosition = 0.2f;
+            sk->buzzAmount = 0.4f;        // Bolts rattling on strings
+            break;
+
+        case STIFKARP_HONKYTONK:
+            // Detuned upright — uses unison for beating, slightly muffled
+            formants[0] = 70.0f;   bandwidths[0] = 0.9f;  gains[0] = 0.9f;
+            formants[1] = 145.0f;  bandwidths[1] = 0.7f;  gains[1] = 0.6f;
+            formants[2] = 300.0f;  bandwidths[2] = 0.5f;  gains[2] = 0.35f;
+            formants[3] = 600.0f;  bandwidths[3] = 0.4f;  gains[3] = 0.2f;
+            sk->loopFilterCoeff = 0.2f;   // Muffled — old worn felt hammers
+            sk->hammerHardness = 0.55f;
+            sk->strikePosition = 0.13f;
+            break;
+
+        case STIFKARP_CELESTA:
+            // Metal plates + wooden resonator, bell-like, high stiffness
+            formants[0] = 400.0f;  bandwidths[0] = 0.4f;  gains[0] = 0.8f;
+            formants[1] = 800.0f;  bandwidths[1] = 0.3f;  gains[1] = 0.6f;
+            formants[2] = 1600.0f; bandwidths[2] = 0.3f;  gains[2] = 0.4f;
+            formants[3] = 3200.0f; bandwidths[3] = 0.2f;  gains[3] = 0.2f;
+            sk->loopFilterCoeff = 0.6f;   // Bright — metal plates ring clearly
+            sk->hammerHardness = 0.35f;
+            sk->strikePosition = 0.25f;
+            break;
+    }
+
+    // Initialize body biquads
+    for (int i = 0; i < STIFKARP_BODY_MODES; i++) {
+        // Scale gains by body brightness
+        float g = gains[i] * (0.5f + sk->bodyBrightness * 0.5f);
+        initBodyBiquad(&sk->body[i], formants[i], bandwidths[i], g, sampleRate);
+    }
+}
+
+// Process stiff string oscillator: KS + dispersion chain + body resonator
+static float processStifKarpOscillator(Voice *v, float sampleRate) {
+    if (v->ksLength <= 0) return 0.0f;
+    StifKarpSettings *sk = &v->stifkarpSettings;
+
+    // Step 1: Read from delay line
+    float stringSample = v->ksBuffer[v->ksIndex];
+    int nextIndex = (v->ksIndex + 1) % v->ksLength;
+    float nextSample = v->ksBuffer[nextIndex];
+
+    // Step 2: Loop filter (brightness decay — higher partials lose energy faster)
+    // Damper modulates the effective damping: at full damper (1.0) = normal sustain,
+    // at zero damper = increased energy loss per sample (faster decay)
+    float avg = (stringSample + nextSample) * 0.5f;
+    float bright = v->ksBrightness;
+    float blended = avg + (stringSample - avg) * bright;
+    float damp = pluckDamp;
+    float filtered = v->ksLastSample + (blended - v->ksLastSample) * (1.0f - damp * 0.8f);
+    // Damper: smoothly ramp toward target gain
+    sk->damperState += (sk->damperGain - sk->damperState) * 0.0005f;
+    // At damperState=1.0: effectiveDamping = ksDamping (normal)
+    // At damperState=0.0: effectiveDamping = ksDamping * 0.992 (faster decay)
+    float effectiveDamping = v->ksDamping * (0.992f + 0.008f * sk->damperState);
+    filtered *= effectiveDamping;
+    v->ksLastSample = filtered;
+
+    // Step 3: Dispersion — cascade of allpass filters (the stiff-string magic)
+    // Each allpass adds frequency-dependent phase shift, stretching upper partials sharp
+    float dispersed = filtered;
+    for (int i = 0; i < sk->dispStages; i++) {
+        float C = sk->dispCoeffs[i];
+        float apOut = C * dispersed + sk->dispStates[i];
+        sk->dispStates[i] = dispersed - C * apOut;
+        dispersed = apOut;
+    }
+
+    // Step 4: Fractional delay allpass (pitch tuning)
+    float apOut = v->ksAllpassCoeff * dispersed + v->ksAllpassState;
+    v->ksAllpassState = dispersed - v->ksAllpassCoeff * apOut;
+
+    // Step 5: Write back to delay line
+    v->ksBuffer[v->ksIndex] = apOut;
+    v->ksIndex = nextIndex;
+
+    // Step 6: Prepared piano buzz (optional — objects rattling on strings)
+    float out = stringSample;
+    if (sk->buzzAmount > 0.001f) {
+        float threshold = 1.0f - sk->buzzAmount * 0.7f;
+        if (fabsf(out) > threshold) {
+            float excess = fabsf(out) - threshold;
+            float sign = (out >= 0.0f) ? 1.0f : -1.0f;
+            out = sign * (threshold + tanhf(excess * 4.0f) * (1.0f - threshold));
+        }
+        // Feed buzz energy back for sustained rattling
+        v->ksBuffer[(v->ksIndex + v->ksLength / 2) % v->ksLength] +=
+            (out - stringSample) * sk->buzzAmount * 0.08f;
+    }
+
+    // Step 7: Output tone filter — per-preset character shaping
+    // loopFilterCoeff: low = dark/muffled (clavichord 0.3), high = bright/jangly (harpsichord 0.55)
+    // 1-pole LP on the output: coeff controls how much high-frequency passes through
+    sk->loopFilterState += sk->loopFilterCoeff * (out - sk->loopFilterState);
+    out = sk->loopFilterState;
+
+    // Step 8: Body resonator (soundboard/case)
+    float bodyOut = 0.0f;
+    for (int i = 0; i < STIFKARP_BODY_MODES; i++) {
+        bodyOut += processBodyBiquad(&sk->body[i], out);
+    }
+    bodyOut *= 0.35f;
+
+    // Step 9: Mix dry string + wet body — proper crossfade
+    // At bodyMix=0: pure filtered string. At bodyMix=1: full body resonance.
+    out = out * (1.0f - sk->bodyMix * 0.6f) + bodyOut * sk->bodyMix;
+
+    // Step 10: Sympathetic resonance — feed tiny amount back at 3rd partial
+    if (sk->sympatheticLevel > 0.001f) {
+        int sympTap = v->ksLength / 3;
+        if (sympTap > 0) {
+            v->ksBuffer[(v->ksIndex + sympTap) % v->ksLength] +=
+                out * sk->sympatheticLevel * 0.015f;
+        }
+    }
+
+    (void)sampleRate;
+    return out;
+}
+
 // Initialize bird with preset
 static void initBirdPreset(BirdSettings *bs, BirdType type, float baseFreq) {
     bs->type = type;
@@ -2846,6 +3111,197 @@ static float processOrganOscillator(Voice *v, float sampleRate) {
     }
 
     return sum;
+}
+
+// ============================================================================
+// SHAKER PERCUSSION (PhISM particle collision model — Cook 1997)
+// ============================================================================
+
+// Per-voice noise for shaker (avoids correlation between simultaneous voices)
+static inline float shakerNoise(unsigned int *state) {
+    *state = *state * 1103515245u + 12345u;
+    return (float)(*state >> 16) / 32768.0f - 1.0f;
+}
+
+// Random float 0-1 from shaker state
+static inline float shakerRand01(unsigned int *state) {
+    *state = *state * 1103515245u + 12345u;
+    return (float)(*state >> 16) / 65536.0f;
+}
+
+// Resonator preset data: {freq, bandwidth, gain} per resonator per preset
+typedef struct {
+    float freq;
+    float bw;
+    float gain;
+} ShakerResPreset;
+
+static const ShakerResPreset shakerResData[SHAKER_COUNT][SHAKER_NUM_RESONATORS] = {
+    // MARACA: gourd shell resonance, mid-bright
+    {{ 3200.0f, 350.0f, 1.0f }, { 6500.0f, 500.0f, 0.6f },
+     { 9800.0f, 700.0f, 0.3f }, { 1800.0f, 250.0f, 0.4f }},
+    // CABASA: metal beads, bright and dense
+    {{ 5000.0f, 400.0f, 1.0f }, { 8200.0f, 600.0f, 0.7f },
+     { 11500.0f, 800.0f, 0.4f }, { 3500.0f, 300.0f, 0.5f }},
+    // TAMBOURINE: jingles have tonal peaks
+    {{ 2800.0f, 120.0f, 1.0f }, { 5600.0f, 150.0f, 0.8f },
+     { 8400.0f, 200.0f, 0.5f }, { 11200.0f, 300.0f, 0.3f }},
+    // SLEIGH BELLS: bright metal, tight resonance
+    {{ 4500.0f, 100.0f, 1.0f }, { 6800.0f, 120.0f, 0.9f },
+     { 9200.0f, 150.0f, 0.6f }, { 12000.0f, 200.0f, 0.4f }},
+    // BAMBOO: lower-pitched, woody
+    {{ 1200.0f, 200.0f, 1.0f }, { 2800.0f, 300.0f, 0.5f },
+     { 4200.0f, 400.0f, 0.25f }, { 800.0f, 150.0f, 0.3f }},
+    // RAIN STICK: wide spectrum, many frequencies
+    {{ 1600.0f, 600.0f, 0.8f }, { 4000.0f, 800.0f, 0.6f },
+     { 7500.0f, 1000.0f, 0.4f }, { 2400.0f, 500.0f, 0.5f }},
+    // GUIRO: scraping resonance, focused
+    {{ 2500.0f, 200.0f, 1.0f }, { 4000.0f, 250.0f, 0.7f },
+     { 5800.0f, 300.0f, 0.4f }, { 1500.0f, 180.0f, 0.3f }},
+    // SANDPAPER: dense, wide bandwidth noise
+    {{ 4000.0f, 1200.0f, 0.8f }, { 8000.0f, 1500.0f, 0.6f },
+     { 2000.0f, 800.0f, 0.5f }, { 12000.0f, 2000.0f, 0.3f }},
+};
+
+// Preset parameter table
+typedef struct {
+    int numParticles;
+    float systemDecay;
+    float collisionProb;
+    float collisionGain;
+    int numResonators;
+    float scrapeRate;      // 0 = random, >0 = Hz for periodic
+    float scrapeJitter;
+    float soundLevel;
+} ShakerPresetParams;
+
+static const ShakerPresetParams shakerPresetData[SHAKER_COUNT] = {
+    // MARACA: 20 particles, medium decay, classic
+    { 20, 0.9994f, 0.04f,  0.7f,  4, 0.0f,   0.0f, 0.45f },
+    // CABASA: 40 particles, fast decay, dense bright
+    { 40, 0.9990f, 0.06f,  0.5f,  4, 0.0f,   0.0f, 0.40f },
+    // TAMBOURINE: 24 particles, medium decay, tonal jingles
+    { 24, 0.9993f, 0.035f, 0.65f, 4, 0.0f,   0.0f, 0.50f },
+    // SLEIGH BELLS: 48 particles, long sustain, bright metal
+    { 48, 0.9997f, 0.03f,  0.55f, 4, 0.0f,   0.0f, 0.40f },
+    // BAMBOO: 10 particles, long ring, sparse
+    { 10, 0.9996f, 0.025f, 0.9f,  3, 0.0f,   0.0f, 0.50f },
+    // RAIN STICK: 64 particles, very slow decay, many tiny hits
+    { 64, 0.9998f, 0.015f, 0.35f, 4, 0.0f,   0.0f, 0.35f },
+    // GUIRO: 12 particles, periodic scraping
+    { 12, 0.9992f, 0.05f,  0.8f,  3, 120.0f, 0.2f, 0.50f },
+    // SANDPAPER: 50 particles, short decay, dense noise
+    { 50, 0.9985f, 0.07f,  0.3f,  4, 0.0f,   0.0f, 0.35f },
+};
+
+// Initialize shaker preset from data tables
+static void initShakerPreset(ShakerSettings *ss, ShakerPreset preset) {
+    if (preset < 0 || preset >= SHAKER_COUNT) preset = SHAKER_MARACA;
+    ss->preset = preset;
+
+    const ShakerPresetParams *pp = &shakerPresetData[preset];
+    const ShakerResPreset *rp = shakerResData[preset];
+
+    ss->numParticles = pp->numParticles;
+    ss->particleEnergy = 1.0f;   // Full energy at note-on
+    ss->systemDecay = pp->systemDecay;
+    ss->collisionProb = pp->collisionProb;
+    ss->collisionGain = pp->collisionGain;
+    ss->numResonators = pp->numResonators;
+    ss->scrapeRate = pp->scrapeRate;
+    ss->scrapePhase = 0.0f;
+    ss->scrapeJitter = pp->scrapeJitter;
+    ss->soundLevel = pp->soundLevel;
+
+    // Seed per-voice noise (will be xored with voice index for uniqueness)
+    ss->noiseState = 0xDEADBEEF;
+
+    // Initialize resonators from preset data
+    for (int i = 0; i < SHAKER_NUM_RESONATORS; i++) {
+        ss->res[i].freq = rp[i].freq;
+        ss->res[i].bw = rp[i].bw;
+        ss->res[i].gain = rp[i].gain;
+        ss->res[i].y1 = 0.0f;
+        ss->res[i].y2 = 0.0f;
+    }
+}
+
+// SVF bandpass resonator (same topology as existing formant filter)
+static inline float processShakerResonator(ShakerResonator *r, float input, float sampleRate) {
+    float fc = 2.0f * sinf(PI * r->freq / sampleRate);
+    if (fc > 0.99f) fc = 0.99f;
+    float q = r->freq / (r->bw + 1.0f);
+    if (q < 0.5f) q = 0.5f;
+    if (q > 30.0f) q = 30.0f;
+
+    r->y1 += fc * r->y2;                    // lowpass
+    float hp = input - r->y1 - r->y2 / q;   // highpass
+    r->y2 += fc * hp;                        // bandpass
+
+    return r->y2 * r->gain;
+}
+
+// Main shaker oscillator — PhISM particle collision model
+static float processShakerOscillator(Voice *v, float sampleRate) {
+    ShakerSettings *ss = &v->shakerSettings;
+    float dt = 1.0f / sampleRate;
+
+    // Decay shaking energy
+    ss->particleEnergy *= ss->systemDecay;
+
+    // While key is held (attack/decay/sustain), maintain energy floor
+    // so shaker keeps producing sound — like continuously shaking
+    if (v->envStage >= 1 && v->envStage <= 3) {
+        if (ss->particleEnergy < 0.3f) ss->particleEnergy = 0.3f;
+    }
+
+    // Re-boost energy on retrigger (envelope restart = new shake burst)
+    if (v->envStage == 1 && v->envPhase < 0.002f) {
+        ss->particleEnergy = 1.0f;
+    }
+
+    if (ss->particleEnergy < 0.0001f) return 0.0f;  // Silent, skip processing
+
+    // Calculate collision impulse for this sample
+    float impulse = 0.0f;
+
+    if (ss->scrapeRate > 0.0f) {
+        // GUIRO MODE: periodic collisions with jitter
+        ss->scrapePhase += ss->scrapeRate * dt;
+        if (ss->scrapePhase >= 1.0f) {
+            ss->scrapePhase -= 1.0f;
+            float jitterOffset = ss->scrapeJitter * (shakerNoise(&ss->noiseState) * 0.5f);
+            impulse = ss->collisionGain * ss->particleEnergy * (1.0f + jitterOffset);
+        }
+    } else {
+        // RANDOM COLLISION MODE (PhISM)
+        // Expected collisions per sample (binomial approximation)
+        float expectedCollisions = (float)ss->numParticles * ss->collisionProb * ss->particleEnergy;
+
+        // Integer part: guaranteed collisions
+        int numCollisions = (int)expectedCollisions;
+        // Fractional part: probabilistic extra collision
+        float fracPart = expectedCollisions - (float)numCollisions;
+        if (shakerRand01(&ss->noiseState) < fracPart) {
+            numCollisions++;
+        }
+
+        // Each collision contributes a random-amplitude impulse
+        for (int c = 0; c < numCollisions; c++) {
+            float amp = ss->collisionGain * ss->particleEnergy;
+            // Random amplitude variation (particles hit at different velocities)
+            amp *= (0.7f + 0.6f * shakerRand01(&ss->noiseState));
+            impulse += amp * shakerNoise(&ss->noiseState);
+        }
+    }
+
+    // Feed impulse through resonator bank
+    float out = 0.0f;
+    for (int i = 0; i < ss->numResonators; i++) {
+        out += processShakerResonator(&ss->res[i], impulse, sampleRate);
+    }
+
+    return out * ss->soundLevel;
 }
 
 #endif // PIXELSYNTH_SYNTH_OSCILLATORS_H

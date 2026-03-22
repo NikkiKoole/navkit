@@ -179,6 +179,24 @@ typedef struct {
     float p_guitarPickPosition;
     float p_guitarBuzz;
 
+    // Stiff string (piano/harpsichord/dulcimer)
+    int   p_stifkarpPreset;
+    float p_stifkarpHardness;
+    float p_stifkarpStiffness;
+    float p_stifkarpStrikePos;
+    float p_stifkarpBodyMix;
+    float p_stifkarpBodyBrightness;
+    float p_stifkarpDamper;
+    float p_stifkarpSympathetic;
+
+    // Shaker (particle collision)
+    int   p_shakerPreset;
+    float p_shakerParticles;    // 0-1: particle density (8-64 mapped)
+    float p_shakerDecayRate;    // 0-1: system energy decay speed
+    float p_shakerResonance;    // 0-1: resonator Q factor
+    float p_shakerBrightness;   // 0-1: resonator freq shift
+    float p_shakerScrape;       // 0-1: random vs periodic collision
+
     // Bowed string
     float p_bowPressure;
     float p_bowSpeed;
@@ -433,6 +451,20 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_guitarBodyBrightness = 0.5f,
         .p_guitarPickPosition = 0.3f,
         .p_guitarBuzz = 0.0f,
+        .p_stifkarpPreset = STIFKARP_PIANO,
+        .p_stifkarpHardness = 0.45f,
+        .p_stifkarpStiffness = 0.25f,
+        .p_stifkarpStrikePos = 0.12f,
+        .p_stifkarpBodyMix = 0.45f,
+        .p_stifkarpBodyBrightness = 0.5f,
+        .p_stifkarpDamper = 0.9f,
+        .p_stifkarpSympathetic = 0.15f,
+        .p_shakerPreset = SHAKER_MARACA,
+        .p_shakerParticles = 0.22f,
+        .p_shakerDecayRate = 0.5f,
+        .p_shakerResonance = 0.5f,
+        .p_shakerBrightness = 0.5f,
+        .p_shakerScrape = 0.0f,
         .p_bowPressure = 0.5f,
         .p_bowSpeed = 0.5f,
         .p_bowPosition = 0.13f,

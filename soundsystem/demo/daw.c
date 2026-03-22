@@ -412,6 +412,9 @@ static const Color engineTints[] = {
     {50, 68, 52, 255},   // WAVE_REED     — green (physical)
     {85, 55, 40, 255},   // WAVE_METALLIC — orange/red (percussion)
     {55, 72, 48, 255},   // WAVE_BRASS    — green (physical)
+    {48, 68, 50, 255},   // WAVE_GUITAR   — green (physical)
+    {55, 65, 50, 255},   // WAVE_STIFKARP — green (physical/keys)
+    {85, 60, 40, 255},   // WAVE_SHAKER   — orange/red (percussion)
 };
 // busNames defined later with other bus arrays
 
@@ -4866,6 +4869,15 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "Bright", &p->p_stifkarpBodyBrightness, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Damper", &p->p_stifkarpDamper, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Sympath", &p->p_stifkarpSympathetic, 0.02f, 0.0f, 0.5f);
+        } else if (p->p_waveType == WAVE_SHAKER) {
+            ui_col_sublabel(&c, "Shaker:", UI_TEXT_SUBLABEL);
+            static const char* shakerPresetNames[] = {"Maraca", "Cabasa", "Tambour", "Sleigh", "Bamboo", "Rain", "Guiro", "Sand"};
+            ui_col_cycle(&c, "Preset", shakerPresetNames, SHAKER_COUNT, &p->p_shakerPreset);
+            ui_col_float(&c, "Particl", &p->p_shakerParticles, 0.02f, 0.0f, 1.0f);
+            ui_col_float(&c, "Decay", &p->p_shakerDecayRate, 0.02f, 0.0f, 1.0f);
+            ui_col_float(&c, "Reson", &p->p_shakerResonance, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Bright", &p->p_shakerBrightness, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Scrape", &p->p_shakerScrape, 0.05f, 0.0f, 1.0f);
         } else if (p->p_waveType == WAVE_BIRD) {
             ui_col_sublabel(&c, "Bird:", UI_TEXT_SUBLABEL);
             ui_col_cycle(&c, "Type", birdTypeNames, 5, &p->p_birdType);

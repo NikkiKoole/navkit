@@ -17,7 +17,7 @@ Inventory of synthesis engines based on STK (Synthesis Toolkit) and related phys
 
 - [ ] **Saxofony** — conical bore reed with 2 delay lines (vs reed's single bore). Better sax model: the conical bore acts as two coupled waveguides with different impedances. Would replace the sax presets on WAVE_REED or become WAVE_SAX. Ref: STK Saxofony, Cook Ch.10.
 - [ ] **BlowHole** — clarinet with register hole + tonehole scattering junctions. Enables overblowing (12th for clarinet, octave for sax) and more realistic fingering transitions. Could extend WAVE_REED with a `registerHole` param. Ref: STK BlowHole, Scavone thesis.
-- [ ] **StifKarp** — stiff string (piano-like). Extends Karplus-Strong with allpass chain for frequency-dependent dispersion (inharmonicity). The "string piano" sound — could become WAVE_PIANO or extend WAVE_PLUCK. Ref: STK StifKarp, Jaffe & Smith.
+- [x] **StifKarp** (`WAVE_STIFKARP`) — stiff string with allpass dispersion chain for inharmonicity. 8 presets: Grand Piano, Bright Piano, Harpsichord, Dulcimer, Clavichord, Prepared Piano, Honky Tonk, Celesta. Ref: STK StifKarp, Jaffe & Smith.
 - [ ] **Sitar** — plucked string with sympathetic string resonance + jawari bridge buzz (nonlinear bridge termination). The bridge buzz is key — a conditional reflection that activates when amplitude exceeds a threshold. Ref: STK Sitar, Valimaki.
 - [ ] **Mandolin** — paired strings (course) with body resonance filter. Two coupled KS delay lines detuned by ~2 cents + body impulse response (short FIR or modal filter). Ref: STK Mandolin, Smith.
 - [ ] **BandedWG** — banded waveguide synthesis for struck/bowed bars, glass, and bowls. Uses a bank of bandpass-filtered delay lines, each tuned to a mode of the vibrating body. Great for: glass harmonica, Tibetan singing bowl, bowed vibraphone, wine glass. Very different sound from anything currently in PixelSynth. Ref: STK BandedWG, Essl & Cook "Banded Waveguides" (ICMC 1999).
@@ -25,7 +25,7 @@ Inventory of synthesis engines based on STK (Synthesis Toolkit) and related phys
 
 ## TODO — Collision / Particle
 
-- [ ] **Shakers** — collision-based particle model. N particles bouncing inside a container: maraca, tambourine, sleigh bells, guiro, bamboo chimes, sandpaper. Each "grain" is a short resonant impulse triggered by a random collision event. Energy decays with shaking intensity. Great for percussion variety. Ref: STK Shakers, Cook "Physically Informed Sonic Modeling" (PhISM, 1997).
+- [x] **Shakers** (`WAVE_SHAKER`) — collision-based particle model (PhISM). Statistical collision engine with SVF resonator bank. 8 presets: maraca, cabasa, tambourine, sleigh bells, bamboo, rain stick, guiro (periodic scrape mode), sandpaper. Ref: STK Shakers, Cook "Physically Informed Sonic Modeling" (PhISM, 1997).
 
 ## TODO — Voice / Formant
 
@@ -39,8 +39,8 @@ Inventory of synthesis engines based on STK (Synthesis Toolkit) and related phys
 
 High impact (unique sounds not covered by existing engines):
 1. **BandedWG** — completely new timbral territory (glass, bowls, bowed metal)
-2. **Shakers** — fills the percussion gap (no particle-based sounds yet)
-3. **StifKarp** — piano strings, the biggest missing instrument family
+2. ~~**Shakers**~~ — ✅ DONE (WAVE_SHAKER, 8 presets)
+3. ~~**StifKarp**~~ — ✅ DONE (WAVE_STIFKARP, 8 presets)
 4. **Sitar** — unique character, bridge buzz is novel
 
 Medium impact (improve existing sounds):

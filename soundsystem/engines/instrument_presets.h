@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 218
+#define NUM_INSTRUMENT_PRESETS 234
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -3937,6 +3937,336 @@ static void initInstrumentPresets(void) {
     instrumentPresets[217].patch.p_sustain = 0.0f;
     instrumentPresets[217].patch.p_release = 0.08f;
     instrumentPresets[217].patch.p_volume = 0.5f;
+
+    // === StifKarp (stiff string) presets ===
+
+    // 218: Grand Piano — warm felt hammer, spruce soundboard, natural inharmonicity
+    instrumentPresets[218].name = "Grand Piano";
+    instrumentPresets[218].patch.p_waveType = WAVE_STIFKARP;
+    instrumentPresets[218].patch.p_stifkarpPreset = STIFKARP_PIANO;
+    instrumentPresets[218].patch.p_pluckBrightness = 0.55f;
+    instrumentPresets[218].patch.p_pluckDamping = 0.9992f;
+    instrumentPresets[218].patch.p_stifkarpHardness = 0.45f;
+    instrumentPresets[218].patch.p_stifkarpStiffness = 0.25f;
+    instrumentPresets[218].patch.p_stifkarpStrikePos = 0.12f;
+    instrumentPresets[218].patch.p_stifkarpBodyMix = 0.7f;
+    instrumentPresets[218].patch.p_stifkarpBodyBrightness = 0.5f;
+    instrumentPresets[218].patch.p_stifkarpDamper = 0.9f;
+    instrumentPresets[218].patch.p_stifkarpSympathetic = 0.15f;
+    instrumentPresets[218].patch.p_attack = 0.0f;
+    instrumentPresets[218].patch.p_decay = 4.0f;
+    instrumentPresets[218].patch.p_sustain = 0.0f;
+    instrumentPresets[218].patch.p_release = 0.3f;
+    instrumentPresets[218].patch.p_expDecay = true;
+    instrumentPresets[218].patch.p_volume = 0.5f;
+
+    // 219: Bright Piano — concert grand, harder hammers, more shimmer
+    instrumentPresets[219].name = "Bright Piano";
+    instrumentPresets[219].patch.p_waveType = WAVE_STIFKARP;
+    instrumentPresets[219].patch.p_stifkarpPreset = STIFKARP_BRIGHT_PIANO;
+    instrumentPresets[219].patch.p_pluckBrightness = 0.7f;
+    instrumentPresets[219].patch.p_pluckDamping = 0.9994f;
+    instrumentPresets[219].patch.p_stifkarpHardness = 0.65f;
+    instrumentPresets[219].patch.p_stifkarpStiffness = 0.3f;
+    instrumentPresets[219].patch.p_stifkarpStrikePos = 0.11f;
+    instrumentPresets[219].patch.p_stifkarpBodyMix = 0.65f;
+    instrumentPresets[219].patch.p_stifkarpBodyBrightness = 0.65f;
+    instrumentPresets[219].patch.p_stifkarpDamper = 0.95f;
+    instrumentPresets[219].patch.p_stifkarpSympathetic = 0.2f;
+    instrumentPresets[219].patch.p_attack = 0.0f;
+    instrumentPresets[219].patch.p_decay = 5.0f;
+    instrumentPresets[219].patch.p_sustain = 0.0f;
+    instrumentPresets[219].patch.p_release = 0.4f;
+    instrumentPresets[219].patch.p_expDecay = true;
+    instrumentPresets[219].patch.p_volume = 0.5f;
+
+    // 220: Harpsichord — plectrum pluck, bright, jangly, fast decay
+    instrumentPresets[220].name = "Harpsichord";
+    instrumentPresets[220].patch.p_waveType = WAVE_STIFKARP;
+    instrumentPresets[220].patch.p_stifkarpPreset = STIFKARP_HARPSICHORD;
+    instrumentPresets[220].patch.p_pluckBrightness = 0.85f;
+    instrumentPresets[220].patch.p_pluckDamping = 0.997f;
+    instrumentPresets[220].patch.p_stifkarpHardness = 0.9f;
+    instrumentPresets[220].patch.p_stifkarpStiffness = 0.15f;
+    instrumentPresets[220].patch.p_stifkarpStrikePos = 0.08f;
+    instrumentPresets[220].patch.p_stifkarpBodyMix = 0.25f;
+    instrumentPresets[220].patch.p_stifkarpBodyBrightness = 0.7f;
+    instrumentPresets[220].patch.p_stifkarpDamper = 0.0f;
+    instrumentPresets[220].patch.p_stifkarpSympathetic = 0.0f;
+    instrumentPresets[220].patch.p_attack = 0.0f;
+    instrumentPresets[220].patch.p_decay = 1.5f;
+    instrumentPresets[220].patch.p_sustain = 0.0f;
+    instrumentPresets[220].patch.p_release = 0.05f;
+    instrumentPresets[220].patch.p_expDecay = true;
+    instrumentPresets[220].patch.p_filterCutoff = 0.8f;
+    instrumentPresets[220].patch.p_volume = 0.5f;
+
+    // 221: Hammered Dulcimer — metallic shimmer, prominent body, long sustain
+    instrumentPresets[221].name = "Dulcimer";
+    instrumentPresets[221].patch.p_waveType = WAVE_STIFKARP;
+    instrumentPresets[221].patch.p_stifkarpPreset = STIFKARP_DULCIMER;
+    instrumentPresets[221].patch.p_pluckBrightness = 0.65f;
+    instrumentPresets[221].patch.p_pluckDamping = 0.9988f;
+    instrumentPresets[221].patch.p_stifkarpHardness = 0.7f;
+    instrumentPresets[221].patch.p_stifkarpStiffness = 0.4f;
+    instrumentPresets[221].patch.p_stifkarpStrikePos = 0.15f;
+    instrumentPresets[221].patch.p_stifkarpBodyMix = 0.75f;
+    instrumentPresets[221].patch.p_stifkarpBodyBrightness = 0.6f;
+    instrumentPresets[221].patch.p_stifkarpDamper = 1.0f;
+    instrumentPresets[221].patch.p_stifkarpSympathetic = 0.25f;
+    instrumentPresets[221].patch.p_attack = 0.0f;
+    instrumentPresets[221].patch.p_decay = 3.0f;
+    instrumentPresets[221].patch.p_sustain = 0.0f;
+    instrumentPresets[221].patch.p_release = 0.15f;
+    instrumentPresets[221].patch.p_expDecay = true;
+    instrumentPresets[221].patch.p_volume = 0.5f;
+
+    // 222: Clavichord — soft tangent, intimate, minimal body
+    instrumentPresets[222].name = "Clavichord";
+    instrumentPresets[222].patch.p_waveType = WAVE_STIFKARP;
+    instrumentPresets[222].patch.p_stifkarpPreset = STIFKARP_CLAVICHORD;
+    instrumentPresets[222].patch.p_pluckBrightness = 0.35f;
+    instrumentPresets[222].patch.p_pluckDamping = 0.998f;
+    instrumentPresets[222].patch.p_stifkarpHardness = 0.2f;
+    instrumentPresets[222].patch.p_stifkarpStiffness = 0.1f;
+    instrumentPresets[222].patch.p_stifkarpStrikePos = 0.5f;
+    instrumentPresets[222].patch.p_stifkarpBodyMix = 0.1f;
+    instrumentPresets[222].patch.p_stifkarpBodyBrightness = 0.35f;
+    instrumentPresets[222].patch.p_stifkarpDamper = 0.7f;
+    instrumentPresets[222].patch.p_stifkarpSympathetic = 0.05f;
+    instrumentPresets[222].patch.p_attack = 0.005f;
+    instrumentPresets[222].patch.p_decay = 2.0f;
+    instrumentPresets[222].patch.p_sustain = 0.15f;
+    instrumentPresets[222].patch.p_release = 0.1f;
+    instrumentPresets[222].patch.p_expDecay = true;
+    instrumentPresets[222].patch.p_volume = 0.4f;
+
+    // 223: Prepared Piano — bolts on strings, rattling buzz
+    instrumentPresets[223].name = "Prepared Piano";
+    instrumentPresets[223].patch.p_waveType = WAVE_STIFKARP;
+    instrumentPresets[223].patch.p_stifkarpPreset = STIFKARP_PREPARED;
+    instrumentPresets[223].patch.p_pluckBrightness = 0.5f;
+    instrumentPresets[223].patch.p_pluckDamping = 0.998f;
+    instrumentPresets[223].patch.p_stifkarpHardness = 0.5f;
+    instrumentPresets[223].patch.p_stifkarpStiffness = 0.35f;
+    instrumentPresets[223].patch.p_stifkarpStrikePos = 0.2f;
+    instrumentPresets[223].patch.p_stifkarpBodyMix = 0.6f;
+    instrumentPresets[223].patch.p_stifkarpBodyBrightness = 0.4f;
+    instrumentPresets[223].patch.p_stifkarpDamper = 0.85f;
+    instrumentPresets[223].patch.p_stifkarpSympathetic = 0.1f;
+    instrumentPresets[223].patch.p_attack = 0.0f;
+    instrumentPresets[223].patch.p_decay = 2.5f;
+    instrumentPresets[223].patch.p_sustain = 0.0f;
+    instrumentPresets[223].patch.p_release = 0.2f;
+    instrumentPresets[223].patch.p_expDecay = true;
+    instrumentPresets[223].patch.p_volume = 0.45f;
+
+    // 224: Honky Tonk — detuned upright piano, chorus beating
+    instrumentPresets[224].name = "Honky Tonk";
+    instrumentPresets[224].patch.p_waveType = WAVE_STIFKARP;
+    instrumentPresets[224].patch.p_stifkarpPreset = STIFKARP_HONKYTONK;
+    instrumentPresets[224].patch.p_pluckBrightness = 0.5f;
+    instrumentPresets[224].patch.p_pluckDamping = 0.9985f;
+    instrumentPresets[224].patch.p_stifkarpHardness = 0.55f;
+    instrumentPresets[224].patch.p_stifkarpStiffness = 0.2f;
+    instrumentPresets[224].patch.p_stifkarpStrikePos = 0.13f;
+    instrumentPresets[224].patch.p_stifkarpBodyMix = 0.35f;
+    instrumentPresets[224].patch.p_stifkarpBodyBrightness = 0.4f;
+    instrumentPresets[224].patch.p_stifkarpDamper = 0.8f;
+    instrumentPresets[224].patch.p_stifkarpSympathetic = 0.1f;
+    instrumentPresets[224].patch.p_unisonCount = 2;
+    instrumentPresets[224].patch.p_unisonDetune = 8.0f;
+    instrumentPresets[224].patch.p_unisonMix = 0.8f;
+    instrumentPresets[224].patch.p_attack = 0.0f;
+    instrumentPresets[224].patch.p_decay = 3.0f;
+    instrumentPresets[224].patch.p_sustain = 0.0f;
+    instrumentPresets[224].patch.p_release = 0.2f;
+    instrumentPresets[224].patch.p_expDecay = true;
+    instrumentPresets[224].patch.p_volume = 0.45f;
+
+    // 225: Celesta — metal plates + resonator, bell-like, high stiffness
+    instrumentPresets[225].name = "Celesta";
+    instrumentPresets[225].patch.p_waveType = WAVE_STIFKARP;
+    instrumentPresets[225].patch.p_stifkarpPreset = STIFKARP_CELESTA;
+    instrumentPresets[225].patch.p_pluckBrightness = 0.6f;
+    instrumentPresets[225].patch.p_pluckDamping = 0.999f;
+    instrumentPresets[225].patch.p_stifkarpHardness = 0.35f;
+    instrumentPresets[225].patch.p_stifkarpStiffness = 0.6f;
+    instrumentPresets[225].patch.p_stifkarpStrikePos = 0.25f;
+    instrumentPresets[225].patch.p_stifkarpBodyMix = 0.5f;
+    instrumentPresets[225].patch.p_stifkarpBodyBrightness = 0.65f;
+    instrumentPresets[225].patch.p_stifkarpDamper = 1.0f;
+    instrumentPresets[225].patch.p_stifkarpSympathetic = 0.1f;
+    instrumentPresets[225].patch.p_attack = 0.0f;
+    instrumentPresets[225].patch.p_decay = 3.5f;
+    instrumentPresets[225].patch.p_sustain = 0.0f;
+    instrumentPresets[225].patch.p_release = 0.5f;
+    instrumentPresets[225].patch.p_expDecay = true;
+    instrumentPresets[225].patch.p_volume = 0.45f;
+
+    // ========================================================================
+    // SHAKER PERCUSSION (PhISM particle collision models)
+    // ========================================================================
+
+    // 226: Maraca — classic Latin shaker
+    instrumentPresets[226].name = "Maraca";
+    instrumentPresets[226].patch = createDefaultPatch(WAVE_SHAKER);
+    instrumentPresets[226].patch.p_shakerPreset = SHAKER_MARACA;
+    instrumentPresets[226].patch.p_shakerParticles = 0.22f;
+    instrumentPresets[226].patch.p_shakerDecayRate = 0.47f;
+    instrumentPresets[226].patch.p_shakerResonance = 0.5f;
+    instrumentPresets[226].patch.p_shakerBrightness = 0.5f;
+    instrumentPresets[226].patch.p_shakerScrape = 0.0f;
+    instrumentPresets[226].patch.p_envelopeEnabled = true;
+    instrumentPresets[226].patch.p_attack = 0.001f;
+    instrumentPresets[226].patch.p_decay = 0.3f;
+    instrumentPresets[226].patch.p_sustain = 0.0f;
+    instrumentPresets[226].patch.p_release = 0.15f;
+    instrumentPresets[226].patch.p_expDecay = true;
+    instrumentPresets[226].patch.p_oneShot = true;
+    instrumentPresets[226].patch.p_useTriggerFreq = true;
+    instrumentPresets[226].patch.p_triggerFreq = 3200.0f;
+    instrumentPresets[226].patch.p_volume = 0.55f;
+
+    // 227: Cabasa — metal beads, bright, snappy
+    instrumentPresets[227].name = "Cabasa";
+    instrumentPresets[227].patch = createDefaultPatch(WAVE_SHAKER);
+    instrumentPresets[227].patch.p_shakerPreset = SHAKER_CABASA;
+    instrumentPresets[227].patch.p_shakerParticles = 0.57f;
+    instrumentPresets[227].patch.p_shakerDecayRate = 0.20f;
+    instrumentPresets[227].patch.p_shakerResonance = 0.6f;
+    instrumentPresets[227].patch.p_shakerBrightness = 0.7f;
+    instrumentPresets[227].patch.p_shakerScrape = 0.0f;
+    instrumentPresets[227].patch.p_envelopeEnabled = true;
+    instrumentPresets[227].patch.p_attack = 0.001f;
+    instrumentPresets[227].patch.p_decay = 0.15f;
+    instrumentPresets[227].patch.p_sustain = 0.0f;
+    instrumentPresets[227].patch.p_release = 0.08f;
+    instrumentPresets[227].patch.p_expDecay = true;
+    instrumentPresets[227].patch.p_oneShot = true;
+    instrumentPresets[227].patch.p_useTriggerFreq = true;
+    instrumentPresets[227].patch.p_triggerFreq = 5000.0f;
+    instrumentPresets[227].patch.p_volume = 0.50f;
+
+    // 228: Tambourine — jingly, tonal shimmer
+    instrumentPresets[228].name = "Tambourine";
+    instrumentPresets[228].patch = createDefaultPatch(WAVE_SHAKER);
+    instrumentPresets[228].patch.p_shakerPreset = SHAKER_TAMBOURINE;
+    instrumentPresets[228].patch.p_shakerParticles = 0.29f;
+    instrumentPresets[228].patch.p_shakerDecayRate = 0.45f;
+    instrumentPresets[228].patch.p_shakerResonance = 0.7f;
+    instrumentPresets[228].patch.p_shakerBrightness = 0.6f;
+    instrumentPresets[228].patch.p_shakerScrape = 0.0f;
+    instrumentPresets[228].patch.p_envelopeEnabled = true;
+    instrumentPresets[228].patch.p_attack = 0.001f;
+    instrumentPresets[228].patch.p_decay = 0.3f;
+    instrumentPresets[228].patch.p_sustain = 0.6f;
+    instrumentPresets[228].patch.p_release = 0.2f;
+    instrumentPresets[228].patch.p_expDecay = true;
+    instrumentPresets[228].patch.p_oneShot = false;
+    instrumentPresets[228].patch.p_useTriggerFreq = true;
+    instrumentPresets[228].patch.p_triggerFreq = 2800.0f;
+    instrumentPresets[228].patch.p_volume = 0.55f;
+
+    // 229: Sleigh Bells — bright, festive, long shimmer
+    instrumentPresets[229].name = "Sleigh Bells";
+    instrumentPresets[229].patch = createDefaultPatch(WAVE_SHAKER);
+    instrumentPresets[229].patch.p_shakerPreset = SHAKER_SLEIGH_BELLS;
+    instrumentPresets[229].patch.p_shakerParticles = 0.71f;
+    instrumentPresets[229].patch.p_shakerDecayRate = 0.80f;
+    instrumentPresets[229].patch.p_shakerResonance = 0.75f;
+    instrumentPresets[229].patch.p_shakerBrightness = 0.8f;
+    instrumentPresets[229].patch.p_shakerScrape = 0.0f;
+    instrumentPresets[229].patch.p_envelopeEnabled = true;
+    instrumentPresets[229].patch.p_attack = 0.001f;
+    instrumentPresets[229].patch.p_decay = 0.5f;
+    instrumentPresets[229].patch.p_sustain = 0.5f;
+    instrumentPresets[229].patch.p_release = 0.4f;
+    instrumentPresets[229].patch.p_expDecay = true;
+    instrumentPresets[229].patch.p_oneShot = false;
+    instrumentPresets[229].patch.p_useTriggerFreq = true;
+    instrumentPresets[229].patch.p_triggerFreq = 4500.0f;
+    instrumentPresets[229].patch.p_volume = 0.45f;
+
+    // 230: Bamboo Chime — sparse, woody, lower
+    instrumentPresets[230].name = "Bamboo";
+    instrumentPresets[230].patch = createDefaultPatch(WAVE_SHAKER);
+    instrumentPresets[230].patch.p_shakerPreset = SHAKER_BAMBOO;
+    instrumentPresets[230].patch.p_shakerParticles = 0.04f;
+    instrumentPresets[230].patch.p_shakerDecayRate = 0.70f;
+    instrumentPresets[230].patch.p_shakerResonance = 0.55f;
+    instrumentPresets[230].patch.p_shakerBrightness = 0.3f;
+    instrumentPresets[230].patch.p_shakerScrape = 0.0f;
+    instrumentPresets[230].patch.p_envelopeEnabled = true;
+    instrumentPresets[230].patch.p_attack = 0.001f;
+    instrumentPresets[230].patch.p_decay = 1.0f;
+    instrumentPresets[230].patch.p_sustain = 0.0f;
+    instrumentPresets[230].patch.p_release = 0.3f;
+    instrumentPresets[230].patch.p_expDecay = true;
+    instrumentPresets[230].patch.p_oneShot = true;
+    instrumentPresets[230].patch.p_useTriggerFreq = true;
+    instrumentPresets[230].patch.p_triggerFreq = 1200.0f;
+    instrumentPresets[230].patch.p_volume = 0.55f;
+
+    // 231: Rain Stick — ambient, slow cascade, wide spectrum
+    instrumentPresets[231].name = "Rain Stick";
+    instrumentPresets[231].patch = createDefaultPatch(WAVE_SHAKER);
+    instrumentPresets[231].patch.p_shakerPreset = SHAKER_RAIN_STICK;
+    instrumentPresets[231].patch.p_shakerParticles = 1.0f;
+    instrumentPresets[231].patch.p_shakerDecayRate = 0.95f;
+    instrumentPresets[231].patch.p_shakerResonance = 0.3f;
+    instrumentPresets[231].patch.p_shakerBrightness = 0.4f;
+    instrumentPresets[231].patch.p_shakerScrape = 0.0f;
+    instrumentPresets[231].patch.p_envelopeEnabled = true;
+    instrumentPresets[231].patch.p_attack = 0.01f;
+    instrumentPresets[231].patch.p_decay = 1.0f;
+    instrumentPresets[231].patch.p_sustain = 0.4f;
+    instrumentPresets[231].patch.p_release = 1.0f;
+    instrumentPresets[231].patch.p_expDecay = true;
+    instrumentPresets[231].patch.p_oneShot = false;
+    instrumentPresets[231].patch.p_useTriggerFreq = true;
+    instrumentPresets[231].patch.p_triggerFreq = 2000.0f;
+    instrumentPresets[231].patch.p_volume = 0.50f;
+
+    // 232: Guiro — scraping, periodic texture
+    instrumentPresets[232].name = "Guiro";
+    instrumentPresets[232].patch = createDefaultPatch(WAVE_SHAKER);
+    instrumentPresets[232].patch.p_shakerPreset = SHAKER_GUIRO;
+    instrumentPresets[232].patch.p_shakerParticles = 0.07f;
+    instrumentPresets[232].patch.p_shakerDecayRate = 0.35f;
+    instrumentPresets[232].patch.p_shakerResonance = 0.5f;
+    instrumentPresets[232].patch.p_shakerBrightness = 0.45f;
+    instrumentPresets[232].patch.p_shakerScrape = 0.7f;
+    instrumentPresets[232].patch.p_envelopeEnabled = true;
+    instrumentPresets[232].patch.p_attack = 0.001f;
+    instrumentPresets[232].patch.p_decay = 0.4f;
+    instrumentPresets[232].patch.p_sustain = 0.0f;
+    instrumentPresets[232].patch.p_release = 0.1f;
+    instrumentPresets[232].patch.p_expDecay = true;
+    instrumentPresets[232].patch.p_oneShot = true;
+    instrumentPresets[232].patch.p_useTriggerFreq = true;
+    instrumentPresets[232].patch.p_triggerFreq = 2500.0f;
+    instrumentPresets[232].patch.p_volume = 0.55f;
+
+    // 233: Sandpaper — dense noise texture, short
+    instrumentPresets[233].name = "Sandpaper";
+    instrumentPresets[233].patch = createDefaultPatch(WAVE_SHAKER);
+    instrumentPresets[233].patch.p_shakerPreset = SHAKER_SANDPAPER;
+    instrumentPresets[233].patch.p_shakerParticles = 0.75f;
+    instrumentPresets[233].patch.p_shakerDecayRate = 0.10f;
+    instrumentPresets[233].patch.p_shakerResonance = 0.2f;
+    instrumentPresets[233].patch.p_shakerBrightness = 0.5f;
+    instrumentPresets[233].patch.p_shakerScrape = 0.0f;
+    instrumentPresets[233].patch.p_envelopeEnabled = true;
+    instrumentPresets[233].patch.p_attack = 0.001f;
+    instrumentPresets[233].patch.p_decay = 0.12f;
+    instrumentPresets[233].patch.p_sustain = 0.0f;
+    instrumentPresets[233].patch.p_release = 0.05f;
+    instrumentPresets[233].patch.p_expDecay = true;
+    instrumentPresets[233].patch.p_oneShot = true;
+    instrumentPresets[233].patch.p_useTriggerFreq = true;
+    instrumentPresets[233].patch.p_triggerFreq = 4000.0f;
+    instrumentPresets[233].patch.p_volume = 0.50f;
 }
 
 #endif // INSTRUMENT_PRESETS_H
