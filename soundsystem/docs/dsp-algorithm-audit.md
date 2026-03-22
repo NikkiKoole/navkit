@@ -563,6 +563,58 @@ output = DC_block(lpState)
 
 **Assessment**: Good STK-derived model. The memoryless lip approach is the correct engineering choice — it always oscillates at the bore pitch (no mode-locking issues), is CPU-cheap, and sounds musical. The `tanh` soft-saturation successfully differentiates brass from reed (which uses hard clamp). The single-LP + mute architecture keeps the feedback loop gain high enough for sustained oscillation while the bore parameter provides meaningful timbral variation from bright trumpet to dark tuba. The mute parameter adds a useful performance dimension. **Possible enhancements**: (1) Slide/valve transition effects — pitch glide between notes with characteristic "blat." (2) Growl/multiphonic — modulate lip tension with a low-frequency oscillator for vocal-fold interaction. (3) Bell radiation filter — frequency-dependent radiation pattern (highs are more directional in brass).
 
+### 1.23 Shaker / Particle Collision Percussion (WAVE_SHAKER)
+**File**: `synth_oscillators.h:3117–3300`
+**Algorithm**: PhISM (Physically Informed Stochastic Model) — statistical particle collision with resonator bank
+**Reference**: Cook, "Physically Informed Sonic Modeling (PhISM): Synthesis of Percussive Sounds" (Computer Music Journal, 1997). STK Shakers class.
+
+**Architecture**: Unlike waveguide (reed/brass/pipe) or modal (mallet/membrane) engines, shakers use a stochastic excitation model. No delay lines, no mode summation — just random collision events filtered through resonators.
+
+**Signal flow**:
+```
+Particle Energy (exponential decay per sample)
+    │
+    ├── Per-sample collision check (statistical, not per-particle)
+    │   Expected collisions = numParticles × collisionProb × energy
+    │   Each collision → random-amplitude impulse
+    │
+    └── Guiro mode: periodic collisions at scrapeRate Hz + jitter
+            │
+            v
+    Resonator Bank (4 × SVF bandpass)
+    Each resonator: Chamberlin SVF in bandpass mode
+        fc = 2·sin(π·freq/sr), Q = freq/(bw+1)
+        LP += fc·BP; HP = input − LP − BP/Q; BP += fc·HP
+    Output = Σ(BP × gain) per resonator
+            │
+            v
+    Output × soundLevel
+```
+
+**Key optimization**: No per-particle state. Cook's original PhISM uses statistical simulation — the number of collisions per sample follows a binomial distribution approximated by its expected value. At typical parameters this yields 0–2 collisions per sample, making the engine extremely cheap (~25 FLOPs/sample: 4 SVF iterations + collision logic).
+
+**Collision model**: Each collision generates a noise impulse scaled by `collisionGain × particleEnergy × randomAmplitude(0.7–1.3)`. The random amplitude variation simulates particles hitting at different velocities. In guiro mode, collisions are periodic (phase accumulator at `scrapeRate` Hz) with configurable timing jitter.
+
+**Resonator bank**: 4 Chamberlin SVF bandpass filters, each with preset-specific center frequency, bandwidth, and gain. These model the container's acoustic resonances — a gourd (maraca) has different modes than metal jingles (tambourine) or bamboo tubes. The SVF topology is identical to the formant filters in WAVE_VOICE (§1.4).
+
+**Energy model**: `particleEnergy` starts at 1.0 on note-on and decays by `systemDecay` each sample (e.g., 0.9994 = ~6600 samples ≈ 150ms at 44.1kHz). While the ADSR envelope is in attack/decay/sustain (key held), energy is floored at 0.3 — continuous shaking. On retrigger (envelope restart), energy re-boosts to 1.0 for a fresh shake burst.
+
+**Parameters**: particles (0–1 → 8–64 count), decayRate (0–1 → systemDecay 0.998–0.9999), resonance (bandwidth scaling 1.5x–0.2x), brightness (frequency shift 1.0x–1.8x), scrape (0=random, 1=fully periodic at 200 Hz).
+
+**Presets** (8):
+| # | Name | Particles | Decay | Resonators | Character |
+|---|------|-----------|-------|------------|-----------|
+| 226 | Maraca | 20 | 0.9994 | 3.2/6.5/9.8/1.8 kHz | Classic Latin shaker — gourd shell |
+| 227 | Cabasa | 40 | 0.9990 | 5.0/8.2/11.5/3.5 kHz | Metal beads on gourd — bright, snappy |
+| 228 | Tambourine | 24 | 0.9993 | 2.8/5.6/8.4/11.2 kHz | Tonal jingles — tight Q, sustains |
+| 229 | Sleigh Bells | 48 | 0.9997 | 4.5/6.8/9.2/12.0 kHz | Bright metal, many particles, long shimmer |
+| 230 | Bamboo | 10 | 0.9996 | 1.2/2.8/4.2/0.8 kHz | Sparse woody chime — lower, fewer hits |
+| 231 | Rain Stick | 64 | 0.9998 | 1.6/4.0/7.5/2.4 kHz | Ambient cascade — wide BW, very slow decay |
+| 232 | Guiro | 12 | 0.9992 | 2.5/4.0/5.8/1.5 kHz | Periodic scraping at 120 Hz + jitter |
+| 233 | Sandpaper | 50 | 0.9985 | 4.0/8.0/2.0/12.0 kHz | Dense noise burst — wide BW, short |
+
+**Assessment**: Faithful implementation of Cook's PhISM. The statistical collision approximation is the correct choice — it's what the original paper recommends, and avoids the O(N) per-particle overhead that would make 64-particle presets expensive. The SVF resonator bank gives good timbral variety across presets. The sustained-energy floor and retrigger re-boost are extensions beyond the original PhISM that make the engine more playable as a musical instrument (not just a one-shot trigger). **Possible enhancements**: (1) Velocity-sensitive particle count (harder hits = more particles). (2) Position modulation — tilt the shaker over time to shift resonator frequencies. (3) Per-resonator decay (different modes ring out at different rates, like metallic). (4) Sympathetic excitation from other voices (shaker rattles when bass hits).
+
 ---
 
 ## 2. FILTERS
