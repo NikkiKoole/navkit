@@ -419,22 +419,34 @@ osc[0] + osc[1] + ... + osc[5] ──→ addOut
 ```
 Noise burst ──→ pick position comb ──→ KS delay line (string)
                                             │
-                                            ├──→ bridge buzz (nonlinear)
+                                     ┌──────┤
+                                     │      │
+                              KS LP filter (per-preset brightness/damping)
+                                     │
+                              jawari bridge (amplitude-dependent delay mod)
+                                     │
+                              DC blocker (1st-order HP ~3.5 Hz)
+                                     │
+                                     └──→ write back to delay line
                                             │
                                             ├──→ 4× biquad BPF (body) ──→ bodyMix
                                             │                                │
                                             └──→ dry string ────────────────→ output
 ```
 
-**String model**: Reuses the exact Karplus-Strong delay line from WAVE_PLUCK — same allpass fractional tuning, same brightness/damping LP filter. The guitar engine adds post-processing to color the raw string output with body resonance.
+**String model**: KS delay line with **per-preset damping and brightness** that override the global pluck parameters. Each preset has its own `stringDamping` (0.9965–0.9995, controls sustain length) and `stringBrightness` (0.20–0.85, controls the LP filter's harmonic rolloff). This is the primary source of timbral differentiation — a koto (bright=0.85, long ring) sounds fundamentally different from an oud (bright=0.20, short decay) even before body resonance.
+
+**DC blocker**: A 1st-order highpass filter (`y[n] = x[n] − x[n−1] + 0.995·y[n−1]`, cutoff ~3.5 Hz) inside the KS feedback loop. This prevents DC offset accumulation on long-sustain presets (especially harp at damping=0.9995) which would otherwise saturate the effects chain and cause silence when multiple notes are held.
 
 **Pick position** (excitation comb filter): Applied to the initial noise burst at note-on. Creates a comb-notch at `sampleRate / (pickPos × ksLength)` and its harmonics. Near bridge (pickPos=0): all harmonics present → bright, twangy. Near center (pickPos=1): notch suppresses harmonics near the midpoint → warm, round. Implementation: `ksBuffer[i] = (noise[i] + noise[(i + pickSample) % len]) × 0.5` — a feedforward comb filter that notches frequencies where the pick position coincides with a vibration node.
 
 **Reference**: Smith, "Physical Audio Signal Processing" — the pick position comb filter is the standard technique for modeling where a string is plucked. This is equivalent to the spatial impulse response at the pluck point: a delta function convolved with its reflection from the nearest boundary.
 
-**Bridge buzz** (sitar jawari): Nonlinear waveguide termination that clips the string displacement against a curved bridge surface. When the string amplitude exceeds a threshold (`1 − buzzAmount × 0.8`), the excess is soft-clipped via `tanh(excess × 5)`, and a fraction of the buzz energy is fed back into the delay line halfway around the loop. This models the jawari — the sitar's curved bridge that allows the vibrating string to contact the bridge surface, creating the characteristic sustained buzzing/rattling timbre.
+**Bridge buzz** (jawari — amplitude-dependent delay modulation): Models the sitar's curved parabolic bridge by modulating the KS allpass fractional delay coefficient based on signal amplitude. When the string vibrates with large amplitude, it wraps around the bridge surface, shortening the effective vibrating length (raising pitch). As the note decays, the string lifts off → pitch drops back to nominal. This creates the characteristic **descending "precursor"** — a burst of high harmonics that sweeps downward during decay.
 
-**Reference**: Valimaki & Tolonen, "Development and Calibration of a Guitar Synthesizer" (1998) — bridge buzz modeling. The jawari (sitar bridge) is described in Sengupta, Sengupta & Bose, "Interaction of Vibrating String with a Curved Bridge" (Indian J. Physics, 2001).
+Implementation: `apCoeff = baseCoeff × (1 − amplitude² × buzzAmount × 1.5)`. The squared amplitude models the parabolic bridge profile. The modulated coefficient changes the fractional delay, which is equivalent to time-varying string length. This is the physically correct mechanism (van Walstijn & Bridges 2016), unlike the earlier tanh soft-clipping approach which sounded like distortion rather than a real jawari.
+
+**Reference**: van Walstijn & Bridges, "A Real-Time Synthesis Oriented Tanpura Model" (2016) — amplitude-dependent string length modulation. Siddiq, "A Physical Model of the Nonlinear Sitar String" (2012). Smith, "Physical Audio Signal Processing" (CCRMA) — string length modulation.
 
 **Body resonator**: 4 parallel biquad bandpass filters, each tuned to a specific body formant frequency. The biquads use the standard cookbook formula:
 ```
@@ -447,17 +459,17 @@ a2 = (1 − alpha) / a0
 ```
 Transposed direct form II implementation (2 state variables per biquad). The body formants are **fixed frequencies** independent of the string pitch — a guitar body resonates at the same frequencies regardless of which note is played (unlike a voice, which changes formants for different vowels). This is physically correct: the body is a passive resonator excited by the string.
 
-**Preset formants** (Hz):
-| Preset | F1 | F2 | F3 | F4 | Character |
-|--------|-----|-----|------|------|-----------|
-| Acoustic | 98 | 204 | 390 | 810 | Spruce/mahogany dreadnought |
-| Classical | 90 | 185 | 350 | 700 | Cedar/rosewood, warm |
-| Banjo | 260 | 480 | 920 | 1800 | Membrane body, sharp mid peak |
-| Sitar | 80 | 170 | 420 | 1100 | Gourd, + jawari buzz (0.6) |
-| Oud | 75 | 155 | 310 | 620 | Deep round body |
-| Koto | 130 | 350 | 850 | 2200 | Bright, bridge emphasis |
-| Harp | 100 | 250 | 500 | 1000 | Minimal body (mix=0.15) |
-| Ukulele | 180 | 380 | 720 | 1400 | Small body, warm mid |
+**Presets** (body formants, string character, spectral centroid):
+| Preset | F1–F4 (Hz) | Damping | Bright | Centroid | Character |
+|--------|-------------|---------|--------|----------|-----------|
+| Acoustic | 98/204/390/810 | 0.9985 | 0.50 | 2504 Hz | Steel-string dreadnought, balanced |
+| Classical | 90/185/350/700 | 0.9975 | 0.25 | 2426 Hz | Nylon, warm and mellow |
+| Banjo | 260/480/920/1800 | 0.9990 | 0.80 | 2906 Hz | Membrane body, bright twang |
+| Sitar | 80/170/420/1100 | 0.9990 | 0.55 | 2294 Hz | Gourd + jawari buzz (0.6) |
+| Oud | 75/155/310/620 | 0.9965 | 0.20 | 2211 Hz | Gut strings, darkest, shortest |
+| Koto | 130/350/850/2200 | 0.9992 | 0.85 | 3184 Hz | Hard bridge, brightest, long ring |
+| Harp | 100/250/500/1000 | 0.9995 | 0.60 | 2855 Hz | Minimal body, longest sustain |
+| Ukulele | 180/380/720/1400 | 0.9970 | 0.35 | 2302 Hz | Small body, warm, percussive |
 
 **Reference**:
 - Elejabarrieta, Ezcurra & Santamaría, "Coupled modes of the resonance box of the guitar" (JASA, 2002) — measured guitar body mode frequencies and Q factors
@@ -465,7 +477,7 @@ Transposed direct form II implementation (2 state variables per biquad). The bod
 - Karjalainen, Mäki-Patola & Kanerva, "Body Modeling Techniques for String Instrument Synthesis" (ICMC, 2004) — biquad body modeling approach
 - Smith, "Physical Audio Signal Processing" (CCRMA) — pick position comb filter, string-body coupling
 
-**Assessment**: Good coupled string+body model using the established technique of biquad body formants. The 4 parallel biquads capture the first 4 body modes which are the most perceptually important (the "signature" of the instrument body). The pick position comb filter correctly changes the harmonic content of the excitation. The bridge buzz is a nice addition for sitar — the soft-clip + feedback approach is simpler than a full nonlinear termination model but captures the essential character. The bodyMix parameter allows continuous blending from raw KS wire (pluck) to full body resonance, making it easy to dial in the right amount of character. **Possible enhancements**: (1) String-body coupling feedback — the body resonances should slightly modify the string's vibration via impedance coupling at the bridge (currently one-directional: string→body only). (2) Per-string body response — in reality, different strings couple differently to the body depending on their angle and the bridge saddle position. (3) Sympathetic string resonance — open strings ringing in response to played notes, which is the defining character of sitar (and important for harp and 12-string guitar).
+**Assessment**: Good coupled string+body model with strong per-preset differentiation. The per-preset damping (0.9965–0.9995) and brightness (0.20–0.85) create a 973 Hz spectral centroid spread between the darkest preset (oud, 2211 Hz) and brightest (koto, 3184 Hz) — a clearly audible difference. The amplitude-dependent delay modulation for jawari bridge buzz is physically correct (models parabolic bridge contact geometry) and produces the characteristic descending precursor sweep of sitar/tanpura. The DC blocker in the KS loop prevents the silence bug that occurred when stacking long-sustain harp notes. **Possible enhancements**: (1) String-body coupling feedback — body resonances modifying string vibration via bridge impedance. (2) Sympathetic string resonance — open strings ringing in response to played notes (defining sitar character). (3) Per-string body response for different bridge coupling angles.
 
 ### 1.21 Single/Double Reed (WAVE_REED)
 **File**: `synth_oscillators.h`, init at `initReed()`, process at `processReedOscillator()`
