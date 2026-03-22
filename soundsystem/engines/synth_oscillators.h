@@ -344,8 +344,20 @@ static float processPluckOscillator(Voice *v, float sampleRate) {
     (void)sampleRate;
     if (v->ksLength <= 0) return 0.0f;
 
-    // Read from delay line
-    float sample = v->ksBuffer[v->ksIndex];
+    // Fractional delay read for pitch tracking (arp/glide/pitch LFO)
+    float plkRatio = (v->ksInitFreq > 20.0f) ? (v->frequency / v->ksInitFreq) : 1.0f;
+    if (plkRatio < 0.25f) plkRatio = 0.25f;
+    if (plkRatio > 4.0f) plkRatio = 4.0f;
+    float plkEffLen = (float)v->ksLength / plkRatio;
+    if (plkEffLen < 2.0f) plkEffLen = 2.0f;
+    if (plkEffLen > (float)v->ksLength) plkEffLen = (float)v->ksLength;
+    float plkReadPos = (float)v->ksIndex - plkEffLen;
+    while (plkReadPos < 0.0f) plkReadPos += (float)v->ksLength;
+    int plkIdx0 = (int)plkReadPos;
+    if (plkIdx0 >= v->ksLength) plkIdx0 -= v->ksLength;
+    int plkIdx1 = (plkIdx0 + 1 < v->ksLength) ? plkIdx0 + 1 : 0;
+    float plkFrac = plkReadPos - floorf(plkReadPos);
+    float sample = v->ksBuffer[plkIdx0] + plkFrac * (v->ksBuffer[plkIdx1] - v->ksBuffer[plkIdx0]);
 
     // Get next sample for averaging (Karplus-Strong lowpass)
     int nextIndex = (v->ksIndex + 1) % v->ksLength;
@@ -390,9 +402,34 @@ static float processBowedOscillator(Voice *v, float sampleRate) {
     // Each delay line is a circular buffer; a signal written at idx is read
     // back after `len` samples, representing the round-trip to that end.
 
-    // Read returning waves at bow point (completed round-trip through delay)
-    float nutReturn = bs->nutBuf[bs->nutIdx];
-    float bridgeReturn = bs->bridgeBuf[bs->bridgeIdx];
+    // Fractional delay read for pitch tracking (arp/glide/pitch LFO)
+    float bowPitchRatio = (bs->initFreq > 20.0f) ? (v->frequency / bs->initFreq) : 1.0f;
+    if (bowPitchRatio < 0.25f) bowPitchRatio = 0.25f;
+    if (bowPitchRatio > 4.0f) bowPitchRatio = 4.0f;
+
+    // Nut delay: fractional read
+    float nutEffLen = (float)bs->nutLen / bowPitchRatio;
+    if (nutEffLen < 2.0f) nutEffLen = 2.0f;
+    if (nutEffLen > (float)bs->nutLen) nutEffLen = (float)bs->nutLen;
+    float nutReadPos = (float)bs->nutIdx - nutEffLen;
+    while (nutReadPos < 0.0f) nutReadPos += (float)bs->nutLen;
+    int nIdx0 = (int)nutReadPos;
+    if (nIdx0 >= bs->nutLen) nIdx0 -= bs->nutLen;
+    int nIdx1 = (nIdx0 + 1 < bs->nutLen) ? nIdx0 + 1 : 0;
+    float nFrac = nutReadPos - floorf(nutReadPos);
+    float nutReturn = bs->nutBuf[nIdx0] + nFrac * (bs->nutBuf[nIdx1] - bs->nutBuf[nIdx0]);
+
+    // Bridge delay: fractional read
+    float brEffLen = (float)bs->bridgeLen / bowPitchRatio;
+    if (brEffLen < 2.0f) brEffLen = 2.0f;
+    if (brEffLen > (float)bs->bridgeLen) brEffLen = (float)bs->bridgeLen;
+    float brReadPos = (float)bs->bridgeIdx - brEffLen;
+    while (brReadPos < 0.0f) brReadPos += (float)bs->bridgeLen;
+    int brIdx0 = (int)brReadPos;
+    if (brIdx0 >= bs->bridgeLen) brIdx0 -= bs->bridgeLen;
+    int brIdx1 = (brIdx0 + 1 < bs->bridgeLen) ? brIdx0 + 1 : 0;
+    float brFrac = brReadPos - floorf(brReadPos);
+    float bridgeReturn = bs->bridgeBuf[brIdx0] + brFrac * (bs->bridgeBuf[brIdx1] - bs->bridgeBuf[brIdx0]);
 
     // String velocity at bow contact = sum of returning traveling waves
     float vStringAtBow = nutReturn + bridgeReturn;
@@ -442,8 +479,21 @@ static float processPipeOscillator(Voice *v, float sampleRate) {
     // Single bore delay line, jet delay, nonlinear jet deflection.
     // Mouth-end reflection coefficient creates oscillation via sign alternation.
 
-    // Read returning signal from bore delay (full round-trip)
-    float boreReturn = ps->lowerBuf[ps->boreIdx];
+    // Fractional delay read for pitch tracking (arp/glide/pitch LFO)
+    // Pitch ratio scales the effective bore length: higher pitch = shorter delay
+    float pitchRatio = (ps->initFreq > 20.0f) ? (v->frequency / ps->initFreq) : 1.0f;
+    if (pitchRatio < 0.25f) pitchRatio = 0.25f;
+    if (pitchRatio > 4.0f) pitchRatio = 4.0f;
+    float effectiveLen = (float)ps->boreLen / pitchRatio;
+    if (effectiveLen < 2.0f) effectiveLen = 2.0f;
+    if (effectiveLen > (float)(ps->boreLen)) effectiveLen = (float)(ps->boreLen);
+    float readPos = (float)ps->boreIdx - effectiveLen;
+    while (readPos < 0.0f) readPos += (float)ps->boreLen;
+    int idx0 = (int)readPos;
+    if (idx0 >= ps->boreLen) idx0 -= ps->boreLen;
+    int idx1 = (idx0 + 1 < ps->boreLen) ? idx0 + 1 : 0;
+    float frac = readPos - floorf(readPos);
+    float boreReturn = ps->lowerBuf[idx0] + frac * (ps->lowerBuf[idx1] - ps->lowerBuf[idx0]);
 
     // Open-end reflection: invert + loss + lowpass (radiation impedance)
     float openFiltered = -boreReturn * 0.9f;
@@ -527,8 +577,20 @@ static float processReedOscillator(Voice *v, float sampleRate) {
     // Mouth pressure with vibrato
     float Pm = rs->blowPressure + vibrato;
 
-    // === Bore delay line: read returning wave ===
-    float boreReturn = rs->boreBuf[rs->boreIdx];
+    // === Bore delay line: fractional read for pitch tracking ===
+    float rPitchRatio = (rs->initFreq > 20.0f) ? (v->frequency / rs->initFreq) : 1.0f;
+    if (rPitchRatio < 0.25f) rPitchRatio = 0.25f;
+    if (rPitchRatio > 4.0f) rPitchRatio = 4.0f;
+    float rEffLen = (float)rs->boreLen / rPitchRatio;
+    if (rEffLen < 2.0f) rEffLen = 2.0f;
+    if (rEffLen > (float)(rs->boreLen)) rEffLen = (float)(rs->boreLen);
+    float rReadPos = (float)rs->boreIdx - rEffLen;
+    while (rReadPos < 0.0f) rReadPos += (float)rs->boreLen;
+    int rIdx0 = (int)rReadPos;
+    if (rIdx0 >= rs->boreLen) rIdx0 -= rs->boreLen;
+    int rIdx1 = (rIdx0 + 1 < rs->boreLen) ? rIdx0 + 1 : 0;
+    float rFrac = rReadPos - floorf(rReadPos);
+    float boreReturn = rs->boreBuf[rIdx0] + rFrac * (rs->boreBuf[rIdx1] - rs->boreBuf[rIdx0]);
 
     // === Bell-end filtering ===
     // Bore shape dramatically affects the tone:
@@ -644,8 +706,20 @@ static float processBrassOscillator(Voice *v, float sampleRate) {
 
     float Pm = bs->blowPressure;
 
-    // === Bore delay line: read returning wave ===
-    float boreReturn = bs->boreBuf[bs->boreIdx];
+    // === Bore delay line: fractional read for pitch tracking ===
+    float bPitchRatio = (bs->initFreq > 20.0f) ? (v->frequency / bs->initFreq) : 1.0f;
+    if (bPitchRatio < 0.25f) bPitchRatio = 0.25f;
+    if (bPitchRatio > 4.0f) bPitchRatio = 4.0f;
+    float bEffLen = (float)bs->boreLen / bPitchRatio;
+    if (bEffLen < 2.0f) bEffLen = 2.0f;
+    if (bEffLen > (float)(bs->boreLen)) bEffLen = (float)(bs->boreLen);
+    float bReadPos = (float)bs->boreIdx - bEffLen;
+    while (bReadPos < 0.0f) bReadPos += (float)bs->boreLen;
+    int bIdx0 = (int)bReadPos;
+    if (bIdx0 >= bs->boreLen) bIdx0 -= bs->boreLen;
+    int bIdx1 = (bIdx0 + 1 < bs->boreLen) ? bIdx0 + 1 : 0;
+    float bFrac = bReadPos - floorf(bReadPos);
+    float boreReturn = bs->boreBuf[bIdx0] + bFrac * (bs->boreBuf[bIdx1] - bs->boreBuf[bIdx0]);
 
     // === Bell-end processing (STK-style: single LP + reflection) ===
     // One LP filter for bore wall + bell radiation losses.
@@ -665,25 +739,24 @@ static float processBrassOscillator(Voice *v, float sampleRate) {
         pMinus = bs->lpState2;
     }
 
-    // === Lip reflection (STK memoryless nonlinearity) ===
-    // The lip has no resonant frequency — the bore delay alone sets the pitch.
-    // The nonlinear function sustains oscillation and shapes harmonics.
+    // === Lip reflection (same structure as reed — proven to self-oscillate) ===
+    // pressureDiff = reflected bore pressure - blow pressure
+    // lipRefl = table(pressureDiff)    → reflection coefficient
+    // boreInput = Pm + pressureDiff * lipRefl
     //
-    // Reed-proven structure:
-    //   pressureDiff = reflected_bore - blow_pressure
-    //   lipRefl = table(pressureDiff)
-    //   boreInput = Pm + pressureDiff * lipRefl
-    //
-    // Brass character: tanh soft-saturation (smoother than reed's hard clamp)
-    // + lipTension scales the nonlinearity for brighter/darker timbres
+    // Brass vs reed: wider aperture range (lips are softer than cane),
+    // tanh saturation instead of hard clamp (smoother harmonic series = brass warmth).
+    // lipTension brightens by steepening the slope (tighter embouchure = more harmonics).
 
     float pressureDiff = pMinus - Pm;
 
-    // Lip table with tanh saturation
-    float lipOffset = 0.35f + bs->lipAperture * 0.3f;   // 0.35-0.65
-    float lipSlope = -0.5f - bs->lipTension * 0.3f;      // -0.5 to -0.8
+    // Lip table: same proven offset+slope structure as reed
+    // Aperture = rest opening, lipTension = stiffness (like reed stiffness)
+    float lipOffset = 0.3f + bs->lipAperture * 0.4f;    // 0.3-0.7 (matches reed range)
+    float lipSlope = -0.4f - bs->lipTension * 0.5f;     // -0.4 to -0.9
     float lipRefl = lipOffset + lipSlope * pressureDiff;
-    lipRefl = tanhf(lipRefl * (1.2f + bs->lipTension * 0.8f));
+    // Soft clamp via tanh for brass warmth (reed uses hard clamp)
+    lipRefl = tanhf(lipRefl * 2.0f) * 0.5f + 0.5f * clampf(lipRefl, -1.0f, 1.0f);
 
     // Bore input: blow pressure + pressure difference × lip reflection
     float boreInput = Pm + pressureDiff * lipRefl;
@@ -702,7 +775,7 @@ static float processBrassOscillator(Voice *v, float sampleRate) {
     bs->dcPrev = out;
     bs->dcState = dcOut;
 
-    return dcOut * 4.0f;
+    return dcOut * 1.5f;
 }
 
 // Additive synthesis oscillator
@@ -2137,7 +2210,20 @@ static float processGuitarOscillator(Voice *v, float sampleRate) {
     GuitarSettings *gs = &v->guitarSettings;
 
     // Step 1: Run Karplus-Strong string with per-preset damping/brightness
-    float stringSample = v->ksBuffer[v->ksIndex];
+    // Fractional delay read for pitch tracking (arp/glide/pitch LFO)
+    float gRatio = (v->ksInitFreq > 20.0f) ? (v->frequency / v->ksInitFreq) : 1.0f;
+    if (gRatio < 0.25f) gRatio = 0.25f;
+    if (gRatio > 4.0f) gRatio = 4.0f;
+    float gEffLen = (float)v->ksLength / gRatio;
+    if (gEffLen < 2.0f) gEffLen = 2.0f;
+    if (gEffLen > (float)v->ksLength) gEffLen = (float)v->ksLength;
+    float gReadPos = (float)v->ksIndex - gEffLen;
+    while (gReadPos < 0.0f) gReadPos += (float)v->ksLength;
+    int gIdx0 = (int)gReadPos;
+    if (gIdx0 >= v->ksLength) gIdx0 -= v->ksLength;
+    int gIdx1 = (gIdx0 + 1 < v->ksLength) ? gIdx0 + 1 : 0;
+    float gFrac = gReadPos - floorf(gReadPos);
+    float stringSample = v->ksBuffer[gIdx0] + gFrac * (v->ksBuffer[gIdx1] - v->ksBuffer[gIdx0]);
 
     int nextIndex = (v->ksIndex + 1) % v->ksLength;
     float nextSample = v->ksBuffer[nextIndex];
@@ -2380,8 +2466,20 @@ static float processStifKarpOscillator(Voice *v, float sampleRate) {
     if (v->ksLength <= 0) return 0.0f;
     StifKarpSettings *sk = &v->stifkarpSettings;
 
-    // Step 1: Read from delay line
-    float stringSample = v->ksBuffer[v->ksIndex];
+    // Step 1: Fractional delay read for pitch tracking (arp/glide/pitch LFO)
+    float skRatio = (v->ksInitFreq > 20.0f) ? (v->frequency / v->ksInitFreq) : 1.0f;
+    if (skRatio < 0.25f) skRatio = 0.25f;
+    if (skRatio > 4.0f) skRatio = 4.0f;
+    float skEffLen = (float)v->ksLength / skRatio;
+    if (skEffLen < 2.0f) skEffLen = 2.0f;
+    if (skEffLen > (float)v->ksLength) skEffLen = (float)v->ksLength;
+    float skReadPos = (float)v->ksIndex - skEffLen;
+    while (skReadPos < 0.0f) skReadPos += (float)v->ksLength;
+    int skIdx0 = (int)skReadPos;
+    if (skIdx0 >= v->ksLength) skIdx0 -= v->ksLength;
+    int skIdx1 = (skIdx0 + 1 < v->ksLength) ? skIdx0 + 1 : 0;
+    float skFrac = skReadPos - floorf(skReadPos);
+    float stringSample = v->ksBuffer[skIdx0] + skFrac * (v->ksBuffer[skIdx1] - v->ksBuffer[skIdx0]);
     int nextIndex = (v->ksIndex + 1) % v->ksLength;
     float nextSample = v->ksBuffer[nextIndex];
 
@@ -2732,6 +2830,7 @@ static void initPluck(Voice *v, float frequency, float sampleRate, float brightn
     v->ksBrightness = clampf(brightness, 0.0f, 1.0f);
     v->ksDamping = clampf(damping, 0.9f, 0.9999f);
     v->ksLastSample = 0.0f;
+    v->ksInitFreq = frequency;
 
     // Fill buffer with noise burst (the "pluck" excitation)
     for (int i = 0; i < v->ksLength; i++) {
@@ -2768,6 +2867,7 @@ static void initBowed(Voice *v, float frequency, float sampleRate) {
     bs->pressure = bowPressure;
     bs->velocity = bowSpeed * 0.2f;  // scale to reasonable physical range
     bs->position = pos;
+    bs->initFreq = frequency;
 }
 
 // Initialize blown pipe waveguide
@@ -2801,6 +2901,7 @@ static void initPipe(Voice *v, float frequency, float sampleRate) {
     ps->lpState = 0.0f;
     ps->dcState = 0.0f;
     ps->dcPrev = 0.0f;
+    ps->initFreq = frequency;
 }
 
 // Initialize reed instrument waveguide
@@ -2839,6 +2940,7 @@ static void initReed(Voice *v, float frequency, float sampleRate) {
     rs->dcState = 0.0f;
     rs->dcPrev = 0.0f;
     rs->vibratoPhase = 0.0f;
+    rs->initFreq = frequency;
 }
 
 // Initialize brass instrument waveguide
@@ -2878,6 +2980,7 @@ static void initBrass(Voice *v, float frequency, float sampleRate) {
     bs->lpState2 = 0.0f;
     bs->dcState = 0.0f;
     bs->dcPrev = 0.0f;
+    bs->initFreq = frequency;
 }
 
 // ============================================================================
@@ -3548,6 +3651,7 @@ static void initBandedWGPreset(BandedWGSettings *bw, float *ksBuffer,
     bw->soundLevel = pp->soundLevel;
     bw->dcState = 0.0f;
     bw->dcPrev = 0.0f;
+    bw->initFreq = freq;
 
     // BiQuad bandpass radius (from STK: 1.0 - PI * 32 / sampleRate)
     float radius = 1.0f - PI * 32.0f / sampleRate;
@@ -3650,6 +3754,11 @@ static float processBandedWGOscillator(Voice *v, float sampleRate) {
         }
     }
 
+    // Pitch ratio for dynamic pitch tracking (arp/glide/pitch LFO)
+    float bwPitchRatio = (bw->initFreq > 20.0f) ? (v->frequency / bw->initFreq) : 1.0f;
+    if (bwPitchRatio < 0.25f) bwPitchRatio = 0.25f;
+    if (bwPitchRatio > 4.0f) bwPitchRatio = 4.0f;
+
     // 2. Process each mode: bandpass(input + gain * delay_out) → delay
     float out = 0.0f;
 
@@ -3659,8 +3768,17 @@ static float processBandedWGOscillator(Voice *v, float sampleRate) {
         int idx = bw->modeIdx[m];
         if (len <= 0) continue;
 
-        // Read delay line output
-        float delayOut = v->ksBuffer[off + idx];
+        // Fractional delay read for pitch tracking
+        float bwEffLen = (float)len / bwPitchRatio;
+        if (bwEffLen < 1.0f) bwEffLen = 1.0f;
+        if (bwEffLen > (float)len) bwEffLen = (float)len;
+        float bwReadPos = (float)idx - bwEffLen;
+        while (bwReadPos < 0.0f) bwReadPos += (float)len;
+        int bwIdx0 = (int)bwReadPos;
+        if (bwIdx0 >= len) bwIdx0 -= len;
+        int bwIdx1 = (bwIdx0 + 1 < len) ? bwIdx0 + 1 : 0;
+        float bwFrac = bwReadPos - floorf(bwReadPos);
+        float delayOut = v->ksBuffer[off + bwIdx0] + bwFrac * (v->ksBuffer[off + bwIdx1] - v->ksBuffer[off + bwIdx0]);
 
         // Bandpass filter: input + feedback * delay_out (STK topology)
         float bpInput = input + bw->feedbackGain[m] * delayOut;

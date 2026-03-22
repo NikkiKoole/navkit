@@ -5085,7 +5085,9 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_space(&c, 3);
         }
 
-        if (p->p_waveType <= WAVE_TRIANGLE || p->p_waveType == WAVE_SINE) {
+        if (p->p_waveType <= WAVE_TRIANGLE || p->p_waveType == WAVE_SINE ||
+            p->p_waveType == WAVE_FM || p->p_waveType == WAVE_PD ||
+            p->p_waveType == WAVE_ADDITIVE || p->p_waveType == WAVE_SCW) {
             bool uniActive = DI(p_unisonCount) || DF(p_unisonDetune) || DF(p_unisonMix);
             secY = c.y;
             ui_col_sublabel(&c, "Unison:", ORANGE);

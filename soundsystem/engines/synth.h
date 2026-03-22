@@ -642,6 +642,7 @@ typedef struct {
     // DC blocker
     float dcState;
     float dcPrev;
+    float initFreq;           // Frequency at init (for arp/glide pitch tracking)
 } BandedWGSettings;
 
 // Bird vocalization synthesis settings
@@ -710,6 +711,7 @@ typedef struct {
     int bridgeIdx;
     float nutRefl;        // reflection filter state (nut end)
     float bridgeRefl;     // reflection filter state (bridge end)
+    float initFreq;       // frequency at init (for arp/glide pitch tracking)
 } BowedSettings;
 
 // Blown pipe synthesis settings (Fletcher/Verge jet-drive model)
@@ -729,6 +731,7 @@ typedef struct {
     float lpState;        // bore loss filter state
     float dcState;        // DC blocker
     float dcPrev;
+    float initFreq;       // frequency at init (for arp/glide pitch tracking)
 } PipeSettings;
 
 // Reed instrument synthesis settings (single/double reed waveguide model)
@@ -750,6 +753,7 @@ typedef struct {
     float dcState;        // DC blocker
     float dcPrev;
     float vibratoPhase;   // Lip vibrato LFO phase
+    float initFreq;       // frequency at init (for arp/glide pitch tracking)
 } ReedSettings;
 
 // Brass instrument synthesis settings (lip-valve waveguide model)
@@ -772,6 +776,7 @@ typedef struct {
     float lpState2;       // Second LP for bell radiation
     float dcState;        // DC blocker
     float dcPrev;
+    float initFreq;       // frequency at init (for arp/glide pitch tracking)
 } BrassSettings;
 
 // Electric piano synthesis settings — tine/reed/string modal bank + pickup nonlinearity
@@ -980,6 +985,7 @@ typedef struct {
     float ksLastSample;     // For lowpass filter
     float ksAllpassState;   // Allpass fractional delay state (Jaffe-Smith tuning)
     float ksAllpassCoeff;   // Allpass coefficient for fractional sample delay
+    float ksInitFreq;       // Frequency at init (for arp/glide pitch tracking)
     
     // Additive synthesis
     AdditiveSettings additiveSettings;
@@ -2563,6 +2569,31 @@ static float processVoice(Voice *v, float sampleRate) {
                 v->envStage = 1; // restart from attack
             }
 
+            // Re-excite KS buffer on each arp step (pluck/guitar/stifkarp need
+            // a fresh noise burst per note — pitch-bending a decaying string sounds wrong)
+            if (v->wave == WAVE_PLUCK || v->wave == WAVE_GUITAR || v->wave == WAVE_STIFKARP) {
+                // Full re-init: overwrite buffer with fresh noise (like initPluck)
+                for (int i = 0; i < v->ksLength; i++) {
+                    v->ksBuffer[i] = noise();
+                }
+                // Reset filter states so the new excitation starts clean
+                v->ksLastSample = 0.0f;
+                v->ksAllpassState = 0.0f;
+                // Reset dispersion chain for stifkarp
+                if (v->wave == WAVE_STIFKARP) {
+                    StifKarpSettings *sk = &v->stifkarpSettings;
+                    for (int i = 0; i < sk->dispStages; i++) {
+                        sk->dispStates[i] = 0.0f;
+                    }
+                    sk->loopFilterState = 0.0f;
+                }
+                // Reset guitar DC blocker
+                if (v->wave == WAVE_GUITAR) {
+                    v->guitarSettings.dcState = 0.0f;
+                    v->guitarSettings.dcPrev = 0.0f;
+                }
+            }
+
             // Retrigger bird chirp on each arp step
             if (v->wave == WAVE_BIRD) {
                 v->birdSettings.chirpTime = 0.0f;
@@ -2751,8 +2782,20 @@ static float processVoice(Voice *v, float sampleRate) {
         case WAVE_SCW:
             if (v->scwIndex >= 0 && v->scwIndex < scwCount && scwTables[v->scwIndex].loaded) {
                 SCWTable* table = &scwTables[v->scwIndex];
-                float pos = v->phase * table->size;
-                sample = cubicHermite(table->data, table->size, pos);
+                if (v->unisonCount > 1) {
+                    float scwPhaseInc = v->frequency / sampleRate;
+                    for (int u = 0; u < v->unisonCount; u++) {
+                        float detune = getUnisonDetuneMultiplier(u, v->unisonCount, v->unisonDetune);
+                        v->unisonPhases[u] += scwPhaseInc * detune;
+                        if (v->unisonPhases[u] >= 1.0f) v->unisonPhases[u] -= 1.0f;
+                        float pos = v->unisonPhases[u] * table->size;
+                        sample += cubicHermite(table->data, table->size, pos);
+                    }
+                    sample /= (float)v->unisonCount;
+                } else {
+                    float pos = v->phase * table->size;
+                    sample = cubicHermite(table->data, table->size, pos);
+                }
             }
             break;
         case WAVE_VOICE:
@@ -2762,7 +2805,31 @@ static float processVoice(Voice *v, float sampleRate) {
             sample = processPluckOscillator(v, sampleRate);
             break;
         case WAVE_ADDITIVE:
-            sample = processAdditiveOscillator(v, sampleRate);
+            if (v->unisonCount > 1) {
+                AdditiveSettings *as = &v->additiveSettings;
+                float addBaseFreq = v->frequency;
+                // Save harmonic phases (so they don't advance N times)
+                float savedHarmPhases[ADDITIVE_MAX_HARMONICS];
+                for (int i = 0; i < ADDITIVE_MAX_HARMONICS; i++)
+                    savedHarmPhases[i] = as->harmonicPhases[i];
+                for (int u = 0; u < v->unisonCount; u++) {
+                    float detune = getUnisonDetuneMultiplier(u, v->unisonCount, v->unisonDetune);
+                    v->frequency = addBaseFreq * detune;
+                    // Restore phases for each copy
+                    for (int i = 0; i < ADDITIVE_MAX_HARMONICS; i++)
+                        as->harmonicPhases[i] = savedHarmPhases[i];
+                    sample += processAdditiveOscillator(v, sampleRate);
+                }
+                // Advance phases once with base frequency
+                v->frequency = addBaseFreq;
+                for (int i = 0; i < ADDITIVE_MAX_HARMONICS; i++)
+                    as->harmonicPhases[i] = savedHarmPhases[i];
+                // Let one clean call advance them
+                (void)processAdditiveOscillator(v, sampleRate);
+                sample /= (float)v->unisonCount;
+            } else {
+                sample = processAdditiveOscillator(v, sampleRate);
+            }
             break;
         case WAVE_MALLET:
             sample = processMalletOscillator(v, sampleRate);
@@ -2771,10 +2838,55 @@ static float processVoice(Voice *v, float sampleRate) {
             sample = processGranularOscillator(v, sampleRate);
             break;
         case WAVE_FM:
-            sample = processFMOscillator(v, sampleRate);
+            if (v->unisonCount > 1) {
+                FMSettings *fm = &v->fmSettings;
+                float fmBaseFreq = v->frequency;
+                float fmPhaseInc = fmBaseFreq / sampleRate;
+                // Save modulator state (so it doesn't advance N times)
+                float savedModPhase = fm->modPhase;
+                float savedMod2Phase = fm->mod2Phase;
+                float savedFbSample = fm->fbSample;
+                for (int u = 0; u < v->unisonCount; u++) {
+                    float detune = getUnisonDetuneMultiplier(u, v->unisonCount, v->unisonDetune);
+                    // Advance carrier phase per-copy with detune
+                    v->unisonPhases[u] += fmPhaseInc * detune;
+                    if (v->unisonPhases[u] >= 1.0f) v->unisonPhases[u] -= 1.0f;
+                    v->phase = v->unisonPhases[u];
+                    v->frequency = fmBaseFreq * detune;
+                    // Restore modulator state for each copy
+                    fm->modPhase = savedModPhase;
+                    fm->mod2Phase = savedMod2Phase;
+                    fm->fbSample = savedFbSample;
+                    sample += processFMOscillator(v, sampleRate);
+                }
+                // Advance modulators once with base frequency
+                float modDt = 1.0f / sampleRate;
+                fm->modPhase = savedModPhase + fmBaseFreq * fm->modRatio * modDt;
+                if (fm->modPhase >= 1.0f) fm->modPhase -= 1.0f;
+                fm->mod2Phase = savedMod2Phase + fmBaseFreq * fm->mod2Ratio * modDt;
+                if (fm->mod2Phase >= 1.0f) fm->mod2Phase -= 1.0f;
+                v->frequency = fmBaseFreq;
+                sample /= (float)v->unisonCount;
+            } else {
+                sample = processFMOscillator(v, sampleRate);
+            }
             break;
         case WAVE_PD:
-            sample = processPDOscillator(v, sampleRate);
+            if (v->unisonCount > 1) {
+                float pdPhaseInc = v->frequency / sampleRate;
+                for (int u = 0; u < v->unisonCount; u++) {
+                    float detune = getUnisonDetuneMultiplier(u, v->unisonCount, v->unisonDetune);
+                    v->unisonPhases[u] += pdPhaseInc * detune;
+                    if (v->unisonPhases[u] >= 1.0f) v->unisonPhases[u] -= 1.0f;
+                    float savedPhase = v->phase;
+                    v->phase = v->unisonPhases[u];
+                    sample += processPDOscillator(v, sampleRate);
+                    v->phase = savedPhase;
+                }
+                sample /= (float)v->unisonCount;
+            } else {
+                sample = processPDOscillator(v, sampleRate);
+            }
             break;
         case WAVE_MEMBRANE:
             sample = processMembraneOscillator(v, sampleRate);
@@ -3702,8 +3814,9 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     }
     v->scwIndex = -1;
     
-    // Initialize unison (for synth waves only)
-    if (wave == WAVE_SQUARE || wave == WAVE_SAW || wave == WAVE_TRIANGLE || wave == WAVE_SINE) {
+    // Initialize unison (basic waves + FM/PD/additive/SCW)
+    if (wave == WAVE_SQUARE || wave == WAVE_SAW || wave == WAVE_TRIANGLE || wave == WAVE_SINE ||
+        wave == WAVE_FM || wave == WAVE_PD || wave == WAVE_ADDITIVE || wave == WAVE_SCW) {
         v->unisonCount = noteUnisonCount;
         v->unisonDetune = noteUnisonDetune;
         v->unisonMix = noteUnisonMix;

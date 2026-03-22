@@ -3787,9 +3787,9 @@ static void initInstrumentPresets(void) {
     // 208: Tuba — conical bore, deep and round
     instrumentPresets[208].name = "Tuba";
     instrumentPresets[208].patch.p_waveType = WAVE_BRASS;
-    instrumentPresets[208].patch.p_brassBlowPressure = 0.45f;  // less pressure, big bore
-    instrumentPresets[208].patch.p_brassLipTension = 0.2f;     // very relaxed → low, fat
-    instrumentPresets[208].patch.p_brassLipAperture = 0.7f;    // wide → round, deep
+    instrumentPresets[208].patch.p_brassBlowPressure = 0.55f;  // needs pressure to overcome conical bore losses
+    instrumentPresets[208].patch.p_brassLipTension = 0.25f;    // relaxed → low, fat
+    instrumentPresets[208].patch.p_brassLipAperture = 0.65f;   // wide → round, deep
     instrumentPresets[208].patch.p_brassBore = 0.95f;          // fully conical → very dark
     instrumentPresets[208].patch.p_brassMute = 0.0f;
     instrumentPresets[208].patch.p_attack = 0.04f;
