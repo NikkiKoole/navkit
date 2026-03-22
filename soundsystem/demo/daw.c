@@ -6619,11 +6619,17 @@ static void drawWorkMidi(float x, float y, float w, float h) {
 // ============================================================================
 
 #define SPEECH_MAX 64
+#define SPEECH_PHONEME_MAX 128  // parsed phoneme sequence (text expands: digraphs collapse, but {XX} expand)
+
+// Special phoneme values for pauses/punctuation
+#define SP_PAUSE_SHORT -1   // space
+#define SP_PAUSE_LONG  -2   // comma, period
 
 typedef struct {
-    char text[SPEECH_MAX];
+    char text[SPEECH_MAX];       // original text (for display)
+    int phonemes[SPEECH_PHONEME_MAX]; // pre-parsed phoneme sequence (VFPhoneme values or SP_PAUSE_*)
     int index;
-    int length;
+    int length;                  // number of phonemes in sequence
     float timer;
     float speed;
     float basePitch;
@@ -6655,7 +6661,7 @@ static VowelType charToVowel(char c) {
     }
 }
 
-// Map ASCII character to VoicForm phoneme — proper consonant mappings
+// Map single ASCII character to VoicForm phoneme (fallback for chars not matched by digraphs)
 static int charToVFPhoneme(char c) {
     if (c >= 'A' && c <= 'Z') c += 32;
     switch (c) {
@@ -6691,6 +6697,109 @@ static int charToVFPhoneme(char c) {
     }
 }
 
+// ARPABET name → VFPhoneme lookup. Returns -1 if not recognized.
+static int arpabetToVFPhoneme(const char *name, int len) {
+    // Table of ARPABET codes mapped to VFPhoneme values
+    // Sorted by length (3-letter first, then 2-letter) for greedy matching
+    static const struct { const char *code; int len; int phoneme; } table[] = {
+        // 2-letter ARPABET codes
+        {"AA", 2, VF_A},    {"AE", 2, VF_AE},   {"AH", 2, VF_AH},
+        {"AO", 2, VF_AW},   {"AW", 2, VF_AW},   {"ER", 2, VF_ER},
+        {"EH", 2, VF_E},    {"IY", 2, VF_I},     {"IH", 2, VF_I},
+        {"OW", 2, VF_O},    {"OY", 2, VF_O},     {"UW", 2, VF_U},
+        {"UH", 2, VF_UH},   {"SH", 2, VF_SH},   {"ZH", 2, VF_ZH},
+        {"TH", 2, VF_TH},   {"DH", 2, VF_DH},   {"CH", 2, VF_CH},
+        {"JH", 2, VF_ZH},   {"NG", 2, VF_NG},   {"HH", 2, VF_AH},
+        // 1-letter codes (single consonants/vowels)
+        {"M",  1, VF_M},    {"N",  1, VF_N},     {"L",  1, VF_L},
+        {"R",  1, VF_R},    {"W",  1, VF_W},     {"Y",  1, VF_Y},
+        {"F",  1, VF_F},    {"V",  1, VF_V},     {"S",  1, VF_S},
+        {"Z",  1, VF_Z},    {"B",  1, VF_B},     {"D",  1, VF_D},
+        {"G",  1, VF_G},    {"P",  1, VF_P},     {"T",  1, VF_T},
+        {"K",  1, VF_K},
+    };
+    for (int i = 0; i < (int)(sizeof(table)/sizeof(table[0])); i++) {
+        if (table[i].len == len) {
+            bool match = true;
+            for (int j = 0; j < len; j++) {
+                char a = name[j];
+                if (a >= 'a' && a <= 'z') a -= 32; // to uppercase
+                if (a != table[i].code[j]) { match = false; break; }
+            }
+            if (match) return table[i].phoneme;
+        }
+    }
+    return -1;
+}
+
+// Parse text into a phoneme sequence, handling:
+//   1. {XX} ARPABET escapes — e.g. {AE}, {SH}, {NG}, {ER}
+//   2. English digraphs — sh, ch, th, ng, er, aw, oo, ee
+//   3. Single character fallback
+// Returns number of phonemes written.
+static int parseTextToPhonemes(const char *text, int *out, int maxOut) {
+    int n = 0;
+    int i = 0;
+    while (text[i] && n < maxOut) {
+        char c = text[i];
+
+        // --- ARPABET escape: {CODE} ---
+        if (c == '{') {
+            int start = i + 1;
+            int end = start;
+            while (text[end] && text[end] != '}' && (end - start) < 4) end++;
+            if (text[end] == '}' && end > start) {
+                int ph = arpabetToVFPhoneme(&text[start], end - start);
+                if (ph >= 0) {
+                    out[n++] = ph;
+                    i = end + 1;
+                    continue;
+                }
+            }
+            // Malformed brace — treat '{' as literal, skip it
+            i++;
+            continue;
+        }
+
+        // --- Pauses ---
+        if (c == ' ') { out[n++] = SP_PAUSE_SHORT; i++; continue; }
+        if (c == ',' || c == '.' || c == '!' || c == '?') { out[n++] = SP_PAUSE_LONG; i++; continue; }
+
+        // --- English digraphs (check two-char combos first) ---
+        char lo = (c >= 'A' && c <= 'Z') ? c + 32 : c;
+        char next = text[i+1];
+        char lo2 = (next >= 'A' && next <= 'Z') ? next + 32 : next;
+        if (next) {
+            int digraph = -1;
+            if      (lo == 's' && lo2 == 'h') digraph = VF_SH;
+            else if (lo == 'c' && lo2 == 'h') digraph = VF_CH;
+            else if (lo == 't' && lo2 == 'h') digraph = VF_TH;
+            else if (lo == 'n' && lo2 == 'g') digraph = VF_NG;
+            else if (lo == 'e' && lo2 == 'r') digraph = VF_ER;
+            else if (lo == 'a' && lo2 == 'w') digraph = VF_AW;
+            else if (lo == 'o' && lo2 == 'o') digraph = VF_U;   // "oo" → /uː/
+            else if (lo == 'e' && lo2 == 'e') digraph = VF_I;   // "ee" → /iː/
+            else if (lo == 'z' && lo2 == 'h') digraph = VF_ZH;
+            else if (lo == 'd' && lo2 == 'h') digraph = VF_DH;  // explicit "dh"
+            if (digraph >= 0) {
+                out[n++] = digraph;
+                i += 2;
+                continue;
+            }
+        }
+
+        // --- Single character fallback ---
+        if ((lo >= 'a' && lo <= 'z')) {
+            out[n++] = charToVFPhoneme(lo);
+            i++;
+        } else {
+            // Skip non-alpha, non-punctuation chars
+            i++;
+        }
+    }
+    return n;
+}
+
 // Is this phoneme a consonant? (affects timing — consonants are shorter)
 static bool isVFConsonant(int ph) {
     return ph >= VF_M; // nasals, fricatives, plosives are all after vowels in the enum
@@ -6715,7 +6824,8 @@ static void speakWithIntonation(const char *text, float speed, float pitch, floa
         len++;
     }
     sq->text[len] = '\0';
-    sq->length = len;
+    // Pre-parse text into phoneme sequence (digraphs + ARPABET escapes)
+    sq->length = parseTextToPhonemes(text, sq->phonemes, SPEECH_PHONEME_MAX);
     sq->index = -1;
     sq->timer = 0.0f;
     sq->speed = clampf(speed, 1.0f, 30.0f);
@@ -6769,14 +6879,23 @@ static void updateSpeech(float dt) {
             releaseNote(sq->voiceIdx);
             return;
         }
-        char c = sq->text[sq->index];
-        if (c == ' ' || c == ',' || c == '.') {
-            sq->timer = (c == ' ') ? 0.5f / sq->speed : 1.0f / sq->speed;
+        int ph = sq->phonemes[sq->index];
+
+        // Pauses
+        if (ph == SP_PAUSE_SHORT) {
+            sq->timer = 0.5f / sq->speed;
+            releaseNote(sq->voiceIdx);
+            return;
+        }
+        if (ph == SP_PAUSE_LONG) {
+            sq->timer = 1.0f / sq->speed;
             releaseNote(sq->voiceIdx);
             return;
         }
 
-        float pitchMod = charToPitch(c);
+        // Pitch variation based on phoneme value (replaces charToPitch)
+        int pitchVal = (ph * 7) % 12;
+        float pitchMod = 1.0f + (pitchVal - 6) * 0.05f;
         synthNoiseState = synthNoiseState * 1103515245 + 12345;
         float randVar = 1.0f + ((float)(synthNoiseState >> 16) / 65535.0f - 0.5f) * sq->pitchVariation;
         float progress = (float)sq->index / (float)sq->length;
@@ -6785,7 +6904,7 @@ static void updateSpeech(float dt) {
 
         if (sq->useVoicForm) {
             // --- VoicForm path: drive phoneme morph on the voice ---
-            int phoneme = charToVFPhoneme(c);
+            int phoneme = ph;
             Voice *v = &synthVoices[sq->voiceIdx];
             if (v->envStage > 0 && v->wave == WAVE_VOICFORM) {
                 // Voice already running — morph to new phoneme
@@ -6819,8 +6938,14 @@ static void updateSpeech(float dt) {
             float duration = isVFConsonant(phoneme) ? 0.6f / sq->speed : 1.0f / sq->speed;
             sq->timer = duration;
         } else {
-            // --- Legacy WAVE_VOICE path ---
-            VowelType vowel = charToVowel(c);
+            // --- Legacy WAVE_VOICE path (only 5 vowels, rough mapping from phoneme) ---
+            VowelType vowel;
+            if      (ph == VF_A || ph == VF_AE || ph == VF_AH) vowel = VOWEL_A;
+            else if (ph == VF_E || ph == VF_ER)                vowel = VOWEL_E;
+            else if (ph == VF_I)                                vowel = VOWEL_I;
+            else if (ph == VF_O || ph == VF_AW)                vowel = VOWEL_O;
+            else if (ph == VF_U || ph == VF_UH)                vowel = VOWEL_U;
+            else                                                vowel = VOWEL_A;
             Voice *v = &synthVoices[sq->voiceIdx];
             if (v->envStage > 0 && v->wave == WAVE_VOICE) {
                 v->voiceSettings.nextVowel = vowel;
@@ -8162,10 +8287,11 @@ static void drawWorkVoice(float x, float y, float w, float h) {
     }
     sy += 28;
 
-    // Preset + Speed
+    // Preset + Speed + Pitch
     UIColumn c2 = ui_column(sx, sy, 15);
     ui_col_cycle(&c2, "Voice", speechPresetNames, 8, &speechPresetIdx);
     ui_col_float(&c2, "Speed", &speechSpeed, 1.0f, 1.0f, 30.0f);
+    ui_col_float(&c2, "Pitch", &babblePitch, 0.05f, 0.3f, 3.0f);
     sy = c2.y + 8;
 
     Rectangle speakR = {sx, sy, 80, 22};
@@ -9357,6 +9483,7 @@ int main(int argc, char *argv[]) {
         // === WORKSPACE TAB BAR ===
         int workInt = (int)workTab;
         drawTabBar(CONTENT_X, WORK_TAB_Y, CONTENT_W, workTabNames, workTabKeys, WORK_COUNT, &workInt, "F");
+        if ((WorkTab)workInt != WORK_VOICE) speechTextEditing = false;
         workTab = (WorkTab)workInt;
 
         // Dynamic split: when params collapsed, push split to bottom (just tab bar visible)

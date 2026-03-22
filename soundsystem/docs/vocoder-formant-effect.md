@@ -108,15 +108,24 @@ A per-step vowel target, programmed in the sequencer. On step 1 the formant is "
 Type a word or phrase → it gets converted to a phoneme sequence → the formant effect steps through phonemes in time with the sequencer or at a fixed rate.
 
 We already have the building blocks:
-- `charToVFPhoneme()` maps text to phonemes
-- The VoicForm phoneme table has formant data for 32 phonemes
-- The speech queue system knows how to step through characters
+- `parseTextToPhonemes()` converts text to a pre-parsed phoneme sequence, supporting:
+  1. **English digraphs** — `sh`→SH, `ch`→CH, `th`→TH, `ng`→NG, `er`→ER, `aw`→AW, `oo`→U, `ee`→I, `zh`→ZH, `dh`→DH
+  2. **ARPABET escapes** — `{AE}` (cat), `{AH}` (but), `{AO}`/`{AW}` (dog), `{UH}` (book), `{ER}` (bird), `{SH}`, `{CH}`, `{DH}`, `{NG}`, `{TH}`, `{ZH}`, `{JH}`, `{HH}`, `{IY}`, `{IH}`, `{OW}`, `{OY}`, `{UW}`, `{EH}`, `{AA}`, and all single-letter ARPABET codes
+  3. **Single letter fallback** — `a`→A, `s`→S, `b`→B, etc.
+- The VoicForm phoneme table has formant data for all 32 phonemes (10 vowels, 8 nasals/liquids, 7 fricatives, 7 plosives)
+- The speech queue system pre-parses text into a phoneme array and steps through it, with pauses for spaces/punctuation
 
-**For the bus effect version**: the text would be stored per-bus (or per-pattern), and the effect would advance through the phoneme list on each sequencer step (or at a configurable rate). Consonant phonemes would modulate differently — fricatives (S/SH) could boost the noise band, plosives (T/K) could add a transient burst to the filter.
+**Example input strings**:
+- `the sheep sang` — digraphs handle TH, SH, NG automatically
+- `c{AE}t` — ARPABET escape for precise "cat" vowel (short A)
+- `b{ER}ds s{IY}ng {AE}t d{AO}n` — "birds sing at dawn" with exact vowels
+- `{DH}{AH} {CH}{ER}{CH}` — "the church" fully specified in ARPABET
+
+**For the bus effect version**: the text would be stored per-bus (or per-pattern), and `parseTextToPhonemes()` would pre-parse it into a phoneme array. The effect advances through phonemes on each sequencer step (or at a configurable rate). Consonant phonemes modulate differently — fricatives (S/SH) boost the noise band, plosives (T/K) add a transient burst to the filter.
 
 This is the most ambitious mode but also the most unique — no commercial DAW has "type a word and your synth says it as a bus effect."
 
-**Musical use**: Type "hello" on the bass track → the bass line morphs through H-E-L-L-O on successive steps. Type "robot" on the lead → each note gets a different consonant/vowel shape.
+**Musical use**: Type "hello" on the bass track → the bass line morphs through H-E-L-L-O on successive steps. Type `r{UH}b{AO}t` on the lead → each note gets the precise vowel shape for "robot".
 
 ### Control Mode Summary
 
@@ -217,10 +226,10 @@ This requires **cross-bus routing** (sidechain from modulator bus to carrier bus
 
 ### Phase 4: Text-to-Phoneme (Medium)
 15. Per-bus text buffer (short string, e.g. 32 chars)
-16. Convert text to phoneme sequence on edit
+16. ~~Convert text to phoneme sequence on edit~~ — DONE: `parseTextToPhonemes()` handles digraphs + ARPABET escapes + single-char fallback, outputs pre-parsed `int[]` phoneme array
 17. Step through phonemes synced to sequencer or at fixed rate
 18. Consonant phonemes modulate filter differently (noise burst, transient)
-→ Gives you mode E (type a word, synth speaks it).
+→ Gives you mode E (type a word, synth speaks it). Text parsing is already implemented in the Voice tab (daw.c) — Phase 4 reuses it for the bus effect.
 
 ### Phase 5: Full Vocoder (Large, later)
 19. Cross-bus sidechain routing (modulator → carrier)
@@ -228,4 +237,4 @@ This requires **cross-bus routing** (sidechain from modulator bus to carrier bus
 21. Apply modulator envelopes to carrier's formant bands
 → Classic vocoder. Depends on sidechain bus routing from the roadmap.
 
-Estimated effort: Phase 1 is **Small** (most DSP exists). Each subsequent phase adds incrementally. The full stack through Phase 4 is **Medium** total.
+Estimated effort: Phase 1 is **Small** (most DSP exists). Each subsequent phase adds incrementally. The full stack through Phase 4 is **Medium** total. The text-to-phoneme parser (`parseTextToPhonemes`) is already implemented and tested in the Voice tab — Phase 4 just needs to wire it into the bus effect.
