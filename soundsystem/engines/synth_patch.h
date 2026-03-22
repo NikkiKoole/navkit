@@ -197,6 +197,14 @@ typedef struct {
     float p_shakerBrightness;   // 0-1: resonator freq shift
     float p_shakerScrape;       // 0-1: random vs periodic collision
 
+    // BandedWG (banded waveguide)
+    int   p_bandedwgPreset;
+    float p_bandedwgBowPressure;   // 0-1: bow force / strike intensity
+    float p_bandedwgBowSpeed;      // 0-1: bow velocity
+    float p_bandedwgStrikePos;     // 0-1: excitation position
+    float p_bandedwgBrightness;    // 0-1: material brightness
+    float p_bandedwgSustain;       // 0-1: mode decay/ring time
+
     // Bowed string
     float p_bowPressure;
     float p_bowSpeed;
@@ -465,6 +473,12 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_shakerResonance = 0.5f,
         .p_shakerBrightness = 0.5f,
         .p_shakerScrape = 0.0f,
+        .p_bandedwgPreset = BANDEDWG_GLASS,
+        .p_bandedwgBowPressure = 0.5f,
+        .p_bandedwgBowSpeed = 0.5f,
+        .p_bandedwgStrikePos = 0.5f,
+        .p_bandedwgBrightness = 0.6f,
+        .p_bandedwgSustain = 0.7f,
         .p_bowPressure = 0.5f,
         .p_bowSpeed = 0.5f,
         .p_bowPosition = 0.13f,

@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 234
+#define NUM_INSTRUMENT_PRESETS 240
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -4146,7 +4146,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[227].patch.p_oneShot = true;
     instrumentPresets[227].patch.p_useTriggerFreq = true;
     instrumentPresets[227].patch.p_triggerFreq = 5000.0f;
-    instrumentPresets[227].patch.p_volume = 0.50f;
+    instrumentPresets[227].patch.p_volume = 0.22f;
 
     // 228: Tambourine — jingly, tonal shimmer
     instrumentPresets[228].name = "Tambourine";
@@ -4166,7 +4166,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[228].patch.p_oneShot = false;
     instrumentPresets[228].patch.p_useTriggerFreq = true;
     instrumentPresets[228].patch.p_triggerFreq = 2800.0f;
-    instrumentPresets[228].patch.p_volume = 0.55f;
+    instrumentPresets[228].patch.p_volume = 0.40f;
 
     // 229: Sleigh Bells — bright, festive, long shimmer
     instrumentPresets[229].name = "Sleigh Bells";
@@ -4186,7 +4186,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[229].patch.p_oneShot = false;
     instrumentPresets[229].patch.p_useTriggerFreq = true;
     instrumentPresets[229].patch.p_triggerFreq = 4500.0f;
-    instrumentPresets[229].patch.p_volume = 0.45f;
+    instrumentPresets[229].patch.p_volume = 0.22f;
 
     // 230: Bamboo Chime — sparse, woody, lower
     instrumentPresets[230].name = "Bamboo";
@@ -4267,6 +4267,110 @@ static void initInstrumentPresets(void) {
     instrumentPresets[233].patch.p_useTriggerFreq = true;
     instrumentPresets[233].patch.p_triggerFreq = 4000.0f;
     instrumentPresets[233].patch.p_volume = 0.50f;
+
+    // ========================================================================
+    // BANDED WAVEGUIDE (glass, bowls, bowed bars, chimes)
+    // ========================================================================
+
+    // 234: Glass Harmonica — bowed, pure, ethereal
+    instrumentPresets[234].name = "Glass Harmonica";
+    instrumentPresets[234].patch = createDefaultPatch(WAVE_BANDEDWG);
+    instrumentPresets[234].patch.p_bandedwgPreset = BANDEDWG_GLASS;
+    instrumentPresets[234].patch.p_bandedwgBowPressure = 0.4f;
+    instrumentPresets[234].patch.p_bandedwgBowSpeed = 0.6f;
+    instrumentPresets[234].patch.p_bandedwgStrikePos = 0.5f;
+    instrumentPresets[234].patch.p_bandedwgBrightness = 0.8f;
+    instrumentPresets[234].patch.p_bandedwgSustain = 0.85f;
+    instrumentPresets[234].patch.p_envelopeEnabled = true;
+    instrumentPresets[234].patch.p_attack = 0.15f;
+    instrumentPresets[234].patch.p_decay = 0.3f;
+    instrumentPresets[234].patch.p_sustain = 0.9f;
+    instrumentPresets[234].patch.p_release = 1.5f;
+    instrumentPresets[234].patch.p_volume = 0.50f;
+
+    // 235: Singing Bowl — bowed, warm, beating modes, meditative
+    instrumentPresets[235].name = "Singing Bowl";
+    instrumentPresets[235].patch = createDefaultPatch(WAVE_BANDEDWG);
+    instrumentPresets[235].patch.p_bandedwgPreset = BANDEDWG_SINGING_BOWL;
+    instrumentPresets[235].patch.p_bandedwgBowPressure = 0.5f;
+    instrumentPresets[235].patch.p_bandedwgBowSpeed = 0.4f;
+    instrumentPresets[235].patch.p_bandedwgStrikePos = 0.3f;
+    instrumentPresets[235].patch.p_bandedwgBrightness = 0.5f;
+    instrumentPresets[235].patch.p_bandedwgSustain = 0.9f;
+    instrumentPresets[235].patch.p_envelopeEnabled = true;
+    instrumentPresets[235].patch.p_attack = 0.2f;
+    instrumentPresets[235].patch.p_decay = 0.4f;
+    instrumentPresets[235].patch.p_sustain = 0.85f;
+    instrumentPresets[235].patch.p_release = 2.0f;
+    instrumentPresets[235].patch.p_volume = 0.55f;
+
+    // 236: Bowed Vibraphone — bright, metallic sustain
+    instrumentPresets[236].name = "Bowed Vibes";
+    instrumentPresets[236].patch = createDefaultPatch(WAVE_BANDEDWG);
+    instrumentPresets[236].patch.p_bandedwgPreset = BANDEDWG_VIBRAPHONE;
+    instrumentPresets[236].patch.p_bandedwgBowPressure = 0.45f;
+    instrumentPresets[236].patch.p_bandedwgBowSpeed = 0.5f;
+    instrumentPresets[236].patch.p_bandedwgStrikePos = 0.6f;
+    instrumentPresets[236].patch.p_bandedwgBrightness = 0.75f;
+    instrumentPresets[236].patch.p_bandedwgSustain = 0.8f;
+    instrumentPresets[236].patch.p_envelopeEnabled = true;
+    instrumentPresets[236].patch.p_attack = 0.1f;
+    instrumentPresets[236].patch.p_decay = 0.3f;
+    instrumentPresets[236].patch.p_sustain = 0.8f;
+    instrumentPresets[236].patch.p_release = 1.0f;
+    instrumentPresets[236].patch.p_volume = 0.50f;
+
+    // 237: Wine Glass — bowed, very pure, high, delicate
+    instrumentPresets[237].name = "Wine Glass";
+    instrumentPresets[237].patch = createDefaultPatch(WAVE_BANDEDWG);
+    instrumentPresets[237].patch.p_bandedwgPreset = BANDEDWG_WINE_GLASS;
+    instrumentPresets[237].patch.p_bandedwgBowPressure = 0.3f;
+    instrumentPresets[237].patch.p_bandedwgBowSpeed = 0.7f;
+    instrumentPresets[237].patch.p_bandedwgStrikePos = 0.5f;
+    instrumentPresets[237].patch.p_bandedwgBrightness = 0.9f;
+    instrumentPresets[237].patch.p_bandedwgSustain = 0.9f;
+    instrumentPresets[237].patch.p_envelopeEnabled = true;
+    instrumentPresets[237].patch.p_attack = 0.25f;
+    instrumentPresets[237].patch.p_decay = 0.2f;
+    instrumentPresets[237].patch.p_sustain = 0.95f;
+    instrumentPresets[237].patch.p_release = 2.0f;
+    instrumentPresets[237].patch.p_volume = 0.45f;
+
+    // 238: Prayer Bowl — struck, deep, long ring
+    instrumentPresets[238].name = "Prayer Bowl";
+    instrumentPresets[238].patch = createDefaultPatch(WAVE_BANDEDWG);
+    instrumentPresets[238].patch.p_bandedwgPreset = BANDEDWG_PRAYER_BOWL;
+    instrumentPresets[238].patch.p_bandedwgBowPressure = 0.9f;
+    instrumentPresets[238].patch.p_bandedwgBowSpeed = 0.5f;
+    instrumentPresets[238].patch.p_bandedwgStrikePos = 0.4f;
+    instrumentPresets[238].patch.p_bandedwgBrightness = 0.5f;
+    instrumentPresets[238].patch.p_bandedwgSustain = 0.95f;
+    instrumentPresets[238].patch.p_envelopeEnabled = true;
+    instrumentPresets[238].patch.p_attack = 0.001f;
+    instrumentPresets[238].patch.p_decay = 3.0f;
+    instrumentPresets[238].patch.p_sustain = 0.0f;
+    instrumentPresets[238].patch.p_release = 2.0f;
+    instrumentPresets[238].patch.p_expDecay = true;
+    instrumentPresets[238].patch.p_oneShot = true;
+    instrumentPresets[238].patch.p_volume = 0.70f;
+
+    // 239: Tubular Chime — struck, bright, harmonic
+    instrumentPresets[239].name = "Tubular Chime";
+    instrumentPresets[239].patch = createDefaultPatch(WAVE_BANDEDWG);
+    instrumentPresets[239].patch.p_bandedwgPreset = BANDEDWG_TUBULAR;
+    instrumentPresets[239].patch.p_bandedwgBowPressure = 0.85f;
+    instrumentPresets[239].patch.p_bandedwgBowSpeed = 0.5f;
+    instrumentPresets[239].patch.p_bandedwgStrikePos = 0.5f;
+    instrumentPresets[239].patch.p_bandedwgBrightness = 0.7f;
+    instrumentPresets[239].patch.p_bandedwgSustain = 0.8f;
+    instrumentPresets[239].patch.p_envelopeEnabled = true;
+    instrumentPresets[239].patch.p_attack = 0.001f;
+    instrumentPresets[239].patch.p_decay = 2.5f;
+    instrumentPresets[239].patch.p_sustain = 0.0f;
+    instrumentPresets[239].patch.p_release = 1.5f;
+    instrumentPresets[239].patch.p_expDecay = true;
+    instrumentPresets[239].patch.p_oneShot = true;
+    instrumentPresets[239].patch.p_volume = 0.65f;
 }
 
 #endif // INSTRUMENT_PRESETS_H

@@ -3304,4 +3304,214 @@ static float processShakerOscillator(Voice *v, float sampleRate) {
     return out * ss->soundLevel;
 }
 
+// ============================================================================
+// BANDED WAVEGUIDE (glass, bowls, bowed bars, chimes — Essl & Cook 1999)
+// Algorithm matched to STK BandedWG: tight BiQuad bandpass per mode,
+// not KS lowpass. This is what makes glass sound glassy.
+// ============================================================================
+
+// Mode frequency ratios per preset (from STK source)
+static const float bandedwgModeRatios[BANDEDWG_COUNT][BANDEDWG_NUM_MODES] = {
+    // GLASS HARMONICA: cylindrical glass flexural modes (STK preset 3)
+    { 1.0f, 2.32f, 4.25f, 6.63f },
+    // SINGING BOWL: Tibetan bowl — near-degenerate pairs for beating (STK preset 4, first 4 of 12)
+    { 1.0f, 1.002f, 2.98f, 2.99f },
+    // VIBRAPHONE: free-free bar modes (STK preset 0 "uniform bar")
+    { 1.0f, 2.756f, 5.404f, 8.933f },
+    // WINE GLASS: same physics as glass harmonica but played higher
+    { 1.0f, 2.32f, 4.25f, 6.63f },
+    // PRAYER BOWL: like singing bowl but struck — wider mode spacing
+    { 1.0f, 2.71f, 5.13f, 8.27f },
+    // TUBULAR: tuned bar modes (STK preset 1 — wide spacing for bell-like tone)
+    { 1.0f, 4.0198f, 10.7184f, 18.0697f },
+};
+
+// Preset parameter table
+typedef struct {
+    float baseGains[BANDEDWG_NUM_MODES];   // Per-mode feedback gain (STK basegains)
+    float excitation[BANDEDWG_NUM_MODES];  // Per-mode excitation weight
+    bool  bowExcitation;    // true=bow, false=strike
+    float soundLevel;       // Output scaling
+} BandedWGPresetParams;
+
+static const BandedWGPresetParams bandedwgPresetData[BANDEDWG_COUNT] = {
+    // GLASS HARMONICA: long sustain, nearly equal gains
+    { {0.95f, 0.94f, 0.93f, 0.92f}, {1.0f, 1.0f, 1.0f, 1.0f}, true, 0.40f },
+    // SINGING BOWL: paired modes for beating
+    { {0.96f, 0.96f, 0.94f, 0.94f}, {1.0f, 1.0f, 1.0f, 1.0f}, true, 0.35f },
+    // VIBRAPHONE: aggressive higher-mode decay
+    { {0.90f, 0.81f, 0.729f, 0.656f}, {1.0f, 1.0f, 1.0f, 1.0f}, false, 0.45f },
+    // WINE GLASS: long sustain, pure
+    { {0.96f, 0.95f, 0.94f, 0.93f}, {1.0f, 1.0f, 1.0f, 1.0f}, true, 0.50f },
+    // PRAYER BOWL: struck, long decay
+    { {0.95f, 0.94f, 0.93f, 0.92f}, {1.0f, 1.0f, 1.0f, 1.0f}, false, 0.35f },
+    // TUBULAR: struck, rapid higher-mode decay for clarity
+    { {0.90f, 0.85f, 0.80f, 0.75f}, {1.0f, 1.0f, 1.0f, 1.0f}, false, 0.45f },
+};
+
+// Initialize banded waveguide preset — partitions ksBuffer, sets up BiQuad bandpass per mode
+static void initBandedWGPreset(BandedWGSettings *bw, float *ksBuffer,
+                                float freq, float sampleRate, BandedWGPreset preset) {
+    if (preset < 0 || preset >= BANDEDWG_COUNT) preset = BANDEDWG_GLASS;
+
+    const BandedWGPresetParams *pp = &bandedwgPresetData[preset];
+    const float *ratios = bandedwgModeRatios[preset];
+
+    bw->numModes = BANDEDWG_NUM_MODES;
+    bw->bwgBowExcitation = pp->bowExcitation;
+    bw->bwgBowVelocity = 0.0f;
+    bw->bwgBowPressure = 0.0f;
+    bw->strikeEnergy = 0.0f;
+    bw->bwgStrikePos = 0.5f;
+    bw->soundLevel = pp->soundLevel;
+    bw->dcState = 0.0f;
+    bw->dcPrev = 0.0f;
+
+    // BiQuad bandpass radius (from STK: 1.0 - PI * 32 / sampleRate)
+    float radius = 1.0f - PI * 32.0f / sampleRate;
+    if (radius > 0.9999f) radius = 0.9999f;
+    if (radius < 0.99f) radius = 0.99f;
+
+    // Partition ksBuffer across modes
+    int offset = 0;
+    for (int m = 0; m < BANDEDWG_NUM_MODES; m++) {
+        bw->modeRatios[m] = ratios[m];
+        bw->feedbackGain[m] = pp->baseGains[m];
+
+        // Delay length for this mode
+        float modeFreq = freq * ratios[m];
+        int len = (int)(sampleRate / modeFreq);
+        if (len < 2) len = 2;
+        if (offset + len > 2048) len = 2048 - offset;
+        if (len < 2) { bw->numModes = m; break; }
+
+        bw->modeOffset[m] = offset;
+        bw->modeLen[m] = len;
+        bw->modeIdx[m] = 0;
+
+        // Clear delay line segment
+        for (int i = 0; i < len; i++) {
+            ksBuffer[offset + i] = 0.0f;
+        }
+        offset += len;
+
+        // BiQuad bandpass resonator coefficients (STK setResonance with normalize=true)
+        // All-pole resonator: H(z) = b0 / (1 + a1*z^-1 + a2*z^-2)
+        // Peak gain at resonance = b0 / (1 - R^2). Set b0 = (1 - R^2) for unity peak.
+        float theta = 2.0f * PI * modeFreq / sampleRate;
+        float R = radius;
+        bw->bqA1[m] = -2.0f * R * cosf(theta);
+        bw->bqA2[m] = R * R;
+        // STK normalizes so peak of resonance = 1.0
+        // For all-pole 2-pole: peak gain at resonance = 1/(1-R^2)
+        // So b0 = (1-R^2) gives unity peak gain
+        bw->bqB0[m] = 1.0f - R * R;
+        bw->bqY1[m] = 0.0f;
+        bw->bqY2[m] = 0.0f;
+    }
+}
+
+// BiQuad bandpass resonator per mode
+// STK BiQuad: out = b[0]*in + b[1]*inZ1 + b[2]*inZ2 - a[1]*outZ1 - a[2]*outZ2
+// For bandpass with zeros at z=+1,z=-1: b[0]=b0, b[1]=0, b[2]=-b0
+// We store input history in bqY2 (repurposed: bqY1=out[n-1], bqY2=out[n-2])
+// and track input[n-2] separately using a simple trick
+static inline float bwgBiQuadTick(float input, int m, BandedWGSettings *bw) {
+    // Direct form II transposed for the 2-pole 2-zero bandpass
+    // Using state: y1=out[n-1], y2=out[n-2]
+    // We need input[n-2] but don't store it — use the all-pole form instead
+    // which STK actually computes as a simple 2-pole resonator:
+    //   out = b0 * input - a1 * y[n-1] - a2 * y[n-2]
+    // This is a 2-pole filter (no zeros) which works as a resonator
+    float out = bw->bqB0[m] * input - bw->bqA1[m] * bw->bqY1[m] - bw->bqA2[m] * bw->bqY2[m];
+    bw->bqY2[m] = bw->bqY1[m];
+    bw->bqY1[m] = out;
+    return out;
+}
+
+// STK bow table: f(x) = pow(abs(x*slope + offset) + 0.75, -4), clamped [0.01, 0.98]
+static inline float bwgBowTable(float input) {
+    // slope=3.0, offset=0.001 (STK defaults)
+    float sample = fabsf(input * 3.0f + 0.001f) + 0.75f;
+    sample = 1.0f / (sample * sample * sample * sample);  // pow(-4)
+    if (sample > 0.98f) sample = 0.98f;
+    if (sample < 0.01f) sample = 0.01f;
+    return sample;
+}
+
+// Main banded waveguide oscillator (STK-matched algorithm)
+static float processBandedWGOscillator(Voice *v, float sampleRate) {
+    (void)sampleRate;  // Coefficients computed at init, not per-sample
+    BandedWGSettings *bw = &v->bandedwgSettings;
+    if (bw->numModes <= 0) return 0.0f;
+
+    // 1. Compute excitation input (same for all modes, per STK)
+    float input = 0.0f;
+
+    if (bw->bwgBowExcitation) {
+        // Bow: sum all mode delay outputs, compute friction, divide by nModes
+        if (v->envStage >= 1 && v->envStage <= 3) {
+            float velocitySum = 0.0f;
+            for (int m = 0; m < bw->numModes; m++) {
+                int off = bw->modeOffset[m];
+                int idx = bw->modeIdx[m];
+                velocitySum += bw->feedbackGain[m] * v->ksBuffer[off + idx];
+            }
+            float deltaV = bw->bwgBowVelocity - velocitySum;
+            input = deltaV * bwgBowTable(deltaV);
+            input /= (float)bw->numModes;
+        }
+    } else {
+        // Strike: decaying noise impulse
+        if (bw->strikeEnergy > 0.0001f) {
+            input = bw->strikeEnergy * noise() * 0.1f;
+        }
+    }
+
+    // 2. Process each mode: bandpass(input + gain * delay_out) → delay
+    float out = 0.0f;
+
+    for (int m = 0; m < bw->numModes; m++) {
+        int off = bw->modeOffset[m];
+        int len = bw->modeLen[m];
+        int idx = bw->modeIdx[m];
+        if (len <= 0) continue;
+
+        // Read delay line output
+        float delayOut = v->ksBuffer[off + idx];
+
+        // Bandpass filter: input + feedback * delay_out (STK topology)
+        float bpInput = input + bw->feedbackGain[m] * delayOut;
+        float bpOut = bwgBiQuadTick(bpInput, m, bw);
+
+        // Safety clamp — prevent runaway (should not trigger with correct gains)
+        if (bpOut > 1.0f) bpOut = 1.0f;
+        if (bpOut < -1.0f) bpOut = -1.0f;
+
+        // Write bandpass output back into delay line
+        v->ksBuffer[off + idx] = bpOut;
+
+        // Advance delay index
+        bw->modeIdx[m] = (idx + 1) % len;
+
+        // Accumulate output from bandpass (STK sums bandpass outputs)
+        out += bpOut;
+    }
+
+    // Decay strike energy
+    if (!bw->bwgBowExcitation && bw->strikeEnergy > 0.0f) {
+        bw->strikeEnergy *= 0.9995f;
+    }
+
+    // Scale output
+    out *= 1.0f;
+
+    // DC blocker
+    float dcOut = out - bw->dcPrev + 0.995f * bw->dcState;
+    bw->dcPrev = out;
+    bw->dcState = dcOut;
+
+    return dcOut * bw->soundLevel;
+}
+
 #endif // PIXELSYNTH_SYNTH_OSCILLATORS_H

@@ -150,6 +150,12 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     shakerResonance = p->p_shakerResonance;
     shakerBrightness = p->p_shakerBrightness;
     shakerScrape = p->p_shakerScrape;
+    bandedwgPreset = p->p_bandedwgPreset;
+    bandedwgBowPressure = p->p_bandedwgBowPressure;
+    bandedwgBowSpeed = p->p_bandedwgBowSpeed;
+    bandedwgStrikePos = p->p_bandedwgStrikePos;
+    bandedwgBrightness = p->p_bandedwgBrightness;
+    bandedwgSustain = p->p_bandedwgSustain;
     birdType = p->p_birdType;
     birdChirpRange = p->p_birdChirpRange;
     birdTrillRate = p->p_birdTrillRate;
@@ -270,6 +276,7 @@ static int playNoteWithPatch(float freq, const SynthPatch *p) {
         case WAVE_GUITAR:   return playGuitar(freq, (GuitarPreset)p->p_guitarPreset);
         case WAVE_STIFKARP: return playStifKarp(freq, (StifKarpPreset)p->p_stifkarpPreset);
         case WAVE_SHAKER:   return playShaker(freq, (ShakerPreset)p->p_shakerPreset);
+        case WAVE_BANDEDWG: return playBandedWG(freq, (BandedWGPreset)p->p_bandedwgPreset);
         case WAVE_BIRD:     return playBird(freq, (BirdType)p->p_birdType);
         case WAVE_BOWED:    return playBowed(freq);
         case WAVE_PIPE:     return playPipe(freq);

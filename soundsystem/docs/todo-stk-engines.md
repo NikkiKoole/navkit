@@ -20,7 +20,7 @@ Inventory of synthesis engines based on STK (Synthesis Toolkit) and related phys
 - [x] **StifKarp** (`WAVE_STIFKARP`) — stiff string with allpass dispersion chain for inharmonicity. 8 presets: Grand Piano, Bright Piano, Harpsichord, Dulcimer, Clavichord, Prepared Piano, Honky Tonk, Celesta. Ref: STK StifKarp, Jaffe & Smith.
 - [ ] **Sitar** — plucked string with sympathetic string resonance + jawari bridge buzz (nonlinear bridge termination). The bridge buzz is key — a conditional reflection that activates when amplitude exceeds a threshold. Ref: STK Sitar, Valimaki.
 - [ ] **Mandolin** — paired strings (course) with body resonance filter. Two coupled KS delay lines detuned by ~2 cents + body impulse response (short FIR or modal filter). Ref: STK Mandolin, Smith.
-- [ ] **BandedWG** — banded waveguide synthesis for struck/bowed bars, glass, and bowls. Uses a bank of bandpass-filtered delay lines, each tuned to a mode of the vibrating body. Great for: glass harmonica, Tibetan singing bowl, bowed vibraphone, wine glass. Very different sound from anything currently in PixelSynth. Ref: STK BandedWG, Essl & Cook "Banded Waveguides" (ICMC 1999).
+- [x] **BandedWG** (`WAVE_BANDEDWG`) — banded waveguide synthesis with 4 bandpass-filtered delay lines per mode, bow friction + strike excitation. 6 presets: glass harmonica, singing bowl, bowed vibraphone, wine glass, prayer bowl, tubular chime. Reuses ksBuffer[2048] — zero additional memory. Ref: STK BandedWG, Essl & Cook "Banded Waveguides" (ICMC 1999).
 - [ ] **Whistle** — referee/sports whistle. Helmholtz resonator + turbulent noise excitation. Simple but fun for game SFX. Ref: STK Whistle, Cook.
 
 ## TODO — Collision / Particle
@@ -38,7 +38,7 @@ Inventory of synthesis engines based on STK (Synthesis Toolkit) and related phys
 ## Priority Ranking
 
 High impact (unique sounds not covered by existing engines):
-1. **BandedWG** — completely new timbral territory (glass, bowls, bowed metal)
+1. ~~**BandedWG**~~ — ✅ DONE (WAVE_BANDEDWG, 6 presets)
 2. ~~**Shakers**~~ — ✅ DONE (WAVE_SHAKER, 8 presets)
 3. ~~**StifKarp**~~ — ✅ DONE (WAVE_STIFKARP, 8 presets)
 4. **Sitar** — unique character, bridge buzz is novel

@@ -678,6 +678,64 @@ This is the primary timbral differentiator between presets.
 
 **Assessment**: Good stiff-string model filling the "metal string" gap between WAVE_PLUCK (nylon/gut) and WAVE_MALLET (bars). The allpass dispersion chain is the standard approach and successfully stretches upper partials for piano shimmer. The per-preset output tone filter (0.1-0.7 range) provides strong timbral differentiation — spectral centroids span 917-2170 Hz across presets. Memory cost is ~190 bytes/voice (reuses existing `ksBuffer[2048]`). **Possible enhancements**: (1) Velocity-dependent hammer hardness — harder at ff, softer at pp. (2) Multi-string coupling — 2-3 strings per note with slow beating. (3) Global sustain pedal — prevent note-off from engaging damper. (4) Duplex scale resonance.
 
+### 1.25 Banded Waveguide (WAVE_BANDEDWG)
+**File**: `synth_oscillators.h:3327–3484`
+**Algorithm**: Banded waveguide synthesis — N parallel delay lines with tight BiQuad bandpass resonators (not KS lowpass), driven by bow friction or strike excitation. Matched to STK BandedWG.
+**Reference**: Essl & Cook, "Banded Waveguides on Circular Topologies and of Beating Modes: Tibetan Singing Bowls and Glass Harmonicas" (ICMC 1999). STK BandedWG class.
+
+**Architecture**: Unlike standard waveguides (reed/brass — single bore delay line) or modal synthesis (mallet/membrane — sinusoidal modes), BandedWG places each vibration mode in its own feedback delay line. Modes are self-sustaining under continuous excitation (bowing), producing the characteristic sustained tones of glass and metal instruments.
+
+**Signal flow** (matched to STK BandedWG tick loop):
+```
+1. Compute excitation (same input for ALL modes):
+   Bow mode:  velocitySum = Σ(gain[k] × delay[k])
+              deltaV = bowVelocity - velocitySum
+              input = deltaV × bowTable(deltaV) / nModes
+   Strike:    input = strikeEnergy × noise × 0.1
+
+2. For each mode m (4 parallel):
+   bpInput = input + feedbackGain[m] × delay[m]
+   bpOut = BiQuad_bandpass(bpInput)    ← tight 2-pole resonator (R≈0.9977)
+   delay[m].write(bpOut)               ← clamp ±1.0
+   out += bpOut
+
+3. out → DC blocker → × soundLevel → Output
+```
+
+**Critical design**: The BiQuad bandpass (not KS lowpass) is what makes glass sound glassy. KS lowpass progressively dulls all harmonics (string timbre). The tight bandpass keeps each mode ringing at its exact frequency with no spectral evolution — pure partials that only change in amplitude, which is how glass and metal behave in reality.
+
+**Memory**: Zero additional cost — partitions `ksBuffer[2048]` (already in every Voice struct for pluck/guitar/stifkarp, mutually exclusive). At C4 (261.6 Hz) with glass ratios (1.0, 2.32, 4.25, 6.63): delay lengths are 168+76+42+27 = 313 samples. Even at A1 (55 Hz): ~1334 total, well within 2048.
+
+**BiQuad bandpass resonator**: 2-pole all-pole resonator per mode. Radius R = 1 − π·32/sampleRate ≈ 0.9977 at 44.1kHz (from STK). Coefficients: a1 = −2R·cos(θ), a2 = R², b0 = 1−R² (normalized for unity peak gain). This creates an extremely narrow resonance peak — each mode only allows energy at its exact frequency to circulate.
+
+**Bow excitation** (STK BowTable): `f(x) = (|x·3 + 0.001| + 0.75)^(−4)`, clamped [0.01, 0.98]. This is a bell-shaped friction curve — maximum friction when bow-string velocity difference is small (sticking), drops off when slipping. Sum of all delay outputs weighted by feedbackGain is subtracted from bowVelocity, then multiplied by the bow table output. Same input is fed to ALL modes equally (divided by nModes).
+
+**Strike excitation**: At note-on, delay lines are pre-loaded with noise proportional to delay length (STK pluck pattern: longer delay lines get more samples filled). Residual energy decays at 0.9995/sample (~3s to -60dB).
+
+**Mode frequency ratios** (physics-derived, per preset):
+| Preset | Ratios | Physical basis |
+|--------|--------|----------------|
+| Glass | 1.0, 2.32, 4.25, 6.63 | Flexural modes of a cylinder (STK preset 3) |
+| Singing Bowl | 1.0, 1.002, 2.98, 2.99 | Near-degenerate pairs for beating (STK preset 4) |
+| Vibraphone | 1.0, 2.756, 5.404, 8.933 | Free-free uniform bar (STK preset 0) |
+| Wine Glass | 1.0, 2.32, 4.25, 6.63 | Thin shell (same as glass) |
+| Prayer Bowl | 1.0, 2.71, 5.13, 8.27 | Bowl modes, wider spacing than singing bowl |
+| Tubular | 1.0, 4.0198, 10.7184, 18.0697 | Tuned bar (STK preset 1) — wide spacing |
+
+**Parameters**: bowPressure (0–1: friction force), bowSpeed (0–1: bow velocity), strikePos (0–1: excitation position — `sin²` weighting), brightness (0–1: maps to reflCoeff 0.85–0.995), sustain (0–1: scales bandpass bandwidth 1.5×–0.2×).
+
+**Presets** (6):
+| # | Name | Excitation | Ratios | Character |
+|---|------|-----------|--------|-----------|
+| 234 | Glass Harmonica | bow | glass | Pure, ethereal, slow onset (attack 150ms) |
+| 235 | Singing Bowl | bow | bowl | Warm, beating between close modes, meditative |
+| 236 | Bowed Vibes | bow | bar | Bright metallic sustain |
+| 237 | Wine Glass | bow | glass | Very pure, high, delicate (attack 250ms) |
+| 238 | Prayer Bowl | strike | bowl | Deep, long ring, one-shot |
+| 239 | Tubular Chime | strike | tube | Bright, harmonic, one-shot |
+
+**Assessment**: Faithful implementation of Essl & Cook / STK BandedWG. The tight BiQuad bandpass resonators (R≈0.9977) are the key difference from KS — they keep each mode ringing as a pure partial with no spectral evolution, which is what makes glass and metal instruments sound crystalline rather than stringy. The STK bow table (bell-shaped friction curve with ⁻⁴ exponent) creates stable self-sustaining oscillation. Singing bowl uses near-degenerate mode pairs (1.0/1.002) for characteristic beating. Tubular chime uses STK's tuned bar ratios (1.0, 4.02, 10.72, 18.07) for wide spacing — sonically very different from prayer bowl. Memory cost is zero (reuses ksBuffer[2048]). **Possible enhancements**: (1) Expand singing bowl to 12 modes (STK uses 12 for full pair structure). (2) Integration constant for bow velocity smoothing (STK CC#11). (3) Per-mode excitation weighting for struck presets (STK Tibetan bowl has non-uniform excitation). (4) Sympathetic mode excitation across voices.
+
 ---
 
 ## 2. FILTERS

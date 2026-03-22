@@ -390,31 +390,52 @@ static const Color busColors[] = {
 // Engine tint colors for preset picker (indexed by WaveType)
 // Basic waveforms = blue, physical models = green, FM/PD/synthesis = orange, drums/voice = red/purple
 static const Color engineTints[] = {
-    {50, 55, 85, 255},   // WAVE_SQUARE   — blue (basic)
-    {55, 60, 90, 255},   // WAVE_SAW      — blue
-    {45, 50, 80, 255},   // WAVE_TRIANGLE — blue
-    {75, 45, 55, 255},   // WAVE_NOISE    — purple
-    {65, 55, 40, 255},   // WAVE_SCW      — orange (wavetable)
-    {75, 45, 60, 255},   // WAVE_VOICE    — purple (formant)
-    {45, 70, 50, 255},   // WAVE_PLUCK    — green (physical)
-    {75, 60, 35, 255},   // WAVE_ADDITIVE — orange (synthesis)
-    {50, 75, 55, 255},   // WAVE_MALLET   — green (physical)
-    {70, 55, 40, 255},   // WAVE_GRANULAR — orange (synthesis)
-    {80, 60, 35, 255},   // WAVE_FM       — orange (synthesis)
-    {70, 50, 40, 255},   // WAVE_PD       — orange (synthesis)
-    {80, 50, 45, 255},   // WAVE_MEMBRANE — red (drum)
-    {45, 65, 50, 255},   // WAVE_BIRD     — green (physical)
-    {50, 70, 50, 255},   // WAVE_BOWED    — green (physical)
-    {45, 65, 55, 255},   // WAVE_PIPE     — green (physical)
-    {40, 45, 75, 255},   // WAVE_SINE     — blue (basic)
-    {55, 60, 50, 255},   // WAVE_EPIANO   — warm green (physical/keys)
-    {60, 55, 45, 255},   // WAVE_ORGAN    — warm amber (keys/electromechanical)
-    {50, 68, 52, 255},   // WAVE_REED     — green (physical)
-    {85, 55, 40, 255},   // WAVE_METALLIC — orange/red (percussion)
-    {55, 72, 48, 255},   // WAVE_BRASS    — green (physical)
-    {48, 68, 50, 255},   // WAVE_GUITAR   — green (physical)
-    {55, 65, 50, 255},   // WAVE_STIFKARP — green (physical/keys)
-    {85, 60, 40, 255},   // WAVE_SHAKER   — orange/red (percussion)
+    // --- Subtractive / Basic waveforms: warm amber ---
+    {80, 60, 35, 255},   // WAVE_SQUARE   — amber (analog/subtractive)
+    {85, 65, 35, 255},   // WAVE_SAW      — amber
+    {75, 58, 38, 255},   // WAVE_TRIANGLE — amber
+    // --- Noise: neutral gray ---
+    {55, 55, 58, 255},   // WAVE_NOISE    — gray (broadband)
+    // --- Wavetable: teal ---
+    {35, 70, 72, 255},   // WAVE_SCW      — teal (wavetable/morphing)
+    // --- Voice/Formant: pink/magenta ---
+    {82, 42, 65, 255},   // WAVE_VOICE    — magenta (vocal/human)
+    // --- Physical modeling: natural green family ---
+    {42, 68, 48, 255},   // WAVE_PLUCK    — green (physical string)
+    // --- Additive: bright warm ---
+    {78, 68, 35, 255},   // WAVE_ADDITIVE — gold (all harmonics)
+    // --- Physical modeling: green ---
+    {48, 72, 45, 255},   // WAVE_MALLET   — green (physical percussion)
+    // --- Granular: purple ---
+    {68, 42, 78, 255},   // WAVE_GRANULAR — purple (experimental)
+    // --- FM: cool blue/cyan ---
+    {38, 58, 85, 255},   // WAVE_FM       — cool blue (digital/metallic)
+    // --- Phase distortion: blue-teal ---
+    {38, 62, 78, 255},   // WAVE_PD       — blue-teal (digital)
+    // --- Percussion: red/orange ---
+    {85, 45, 38, 255},   // WAVE_MEMBRANE — red (drum/percussion)
+    // --- Physical modeling: green family ---
+    {45, 65, 42, 255},   // WAVE_BIRD     — green (physical/natural)
+    {48, 70, 50, 255},   // WAVE_BOWED    — green (physical string)
+    {42, 62, 55, 255},   // WAVE_PIPE     — green-teal (physical wind)
+    // --- Basic sine: amber ---
+    {72, 55, 38, 255},   // WAVE_SINE     — amber (basic/pure)
+    // --- Keys: warm yellow/gold ---
+    {82, 70, 38, 255},   // WAVE_EPIANO   — gold (keys)
+    {78, 65, 35, 255},   // WAVE_ORGAN    — gold (keys/electromechanical)
+    // --- Reed/Woodwind: warm brown-green ---
+    {62, 58, 38, 255},   // WAVE_REED     — brown-green (woodwind)
+    // --- Percussion: red/orange ---
+    {88, 48, 35, 255},   // WAVE_METALLIC — red-orange (metallic percussion)
+    // --- Brass: gold/amber ---
+    {85, 68, 32, 255},   // WAVE_BRASS    — gold (brass)
+    // --- Physical modeling: green ---
+    {50, 65, 42, 255},   // WAVE_GUITAR   — green (physical string)
+    {55, 62, 45, 255},   // WAVE_STIFKARP — green (physical string/keys)
+    // --- Percussion: red/orange ---
+    {82, 52, 38, 255},   // WAVE_SHAKER   — orange-red (percussion)
+    // --- Physical modeling: green ---
+    {45, 68, 52, 255},   // WAVE_BANDEDWG — green (physical resonator)
 };
 // busNames defined later with other bus arrays
 
@@ -4878,6 +4899,15 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "Reson", &p->p_shakerResonance, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Bright", &p->p_shakerBrightness, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Scrape", &p->p_shakerScrape, 0.05f, 0.0f, 1.0f);
+        } else if (p->p_waveType == WAVE_BANDEDWG) {
+            ui_col_sublabel(&c, "BandedWG:", UI_TEXT_SUBLABEL);
+            static const char* bwgPresetNames[] = {"Glass", "SngBwl", "Vibes", "Wine", "Prayer", "Tube"};
+            ui_col_cycle(&c, "Preset", bwgPresetNames, BANDEDWG_COUNT, &p->p_bandedwgPreset);
+            ui_col_float(&c, "BwPres", &p->p_bandedwgBowPressure, 0.02f, 0.0f, 1.0f);
+            ui_col_float(&c, "BwSpd", &p->p_bandedwgBowSpeed, 0.02f, 0.0f, 1.0f);
+            ui_col_float(&c, "Strike", &p->p_bandedwgStrikePos, 0.02f, 0.0f, 1.0f);
+            ui_col_float(&c, "Bright", &p->p_bandedwgBrightness, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Sustn", &p->p_bandedwgSustain, 0.05f, 0.0f, 1.0f);
         } else if (p->p_waveType == WAVE_BIRD) {
             ui_col_sublabel(&c, "Bird:", UI_TEXT_SUBLABEL);
             ui_col_cycle(&c, "Type", birdTypeNames, 5, &p->p_birdType);

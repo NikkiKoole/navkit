@@ -387,6 +387,12 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "shakerResonance", p->p_shakerResonance);
     _sf_writeFloat(f, "shakerBrightness", p->p_shakerBrightness);
     _sf_writeFloat(f, "shakerScrape", p->p_shakerScrape);
+    _sf_writeInt(f, "bandedwgPreset", p->p_bandedwgPreset);
+    _sf_writeFloat(f, "bandedwgBowPressure", p->p_bandedwgBowPressure);
+    _sf_writeFloat(f, "bandedwgBowSpeed", p->p_bandedwgBowSpeed);
+    _sf_writeFloat(f, "bandedwgStrikePos", p->p_bandedwgStrikePos);
+    _sf_writeFloat(f, "bandedwgBrightness", p->p_bandedwgBrightness);
+    _sf_writeFloat(f, "bandedwgSustain", p->p_bandedwgSustain);
     _sf_writeFloat(f, "bowPressure", p->p_bowPressure);
     _sf_writeFloat(f, "bowSpeed", p->p_bowSpeed);
     _sf_writeFloat(f, "bowPosition", p->p_bowPosition);
@@ -1038,6 +1044,12 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "shakerResonance") == 0) p->p_shakerResonance = _sf_parseFloat(val);
     else if (strcmp(key, "shakerBrightness") == 0) p->p_shakerBrightness = _sf_parseFloat(val);
     else if (strcmp(key, "shakerScrape") == 0) p->p_shakerScrape = _sf_parseFloat(val);
+    else if (strcmp(key, "bandedwgPreset") == 0) p->p_bandedwgPreset = _sf_parseInt(val);
+    else if (strcmp(key, "bandedwgBowPressure") == 0) p->p_bandedwgBowPressure = _sf_parseFloat(val);
+    else if (strcmp(key, "bandedwgBowSpeed") == 0) p->p_bandedwgBowSpeed = _sf_parseFloat(val);
+    else if (strcmp(key, "bandedwgStrikePos") == 0) p->p_bandedwgStrikePos = _sf_parseFloat(val);
+    else if (strcmp(key, "bandedwgBrightness") == 0) p->p_bandedwgBrightness = _sf_parseFloat(val);
+    else if (strcmp(key, "bandedwgSustain") == 0) p->p_bandedwgSustain = _sf_parseFloat(val);
     else if (strcmp(key, "bowPressure") == 0) p->p_bowPressure = _sf_parseFloat(val);
     else if (strcmp(key, "bowSpeed") == 0) p->p_bowSpeed = _sf_parseFloat(val);
     else if (strcmp(key, "bowPosition") == 0) p->p_bowPosition = _sf_parseFloat(val);

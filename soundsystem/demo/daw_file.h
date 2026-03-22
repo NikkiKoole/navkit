@@ -122,6 +122,9 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _di(f, "shakerPreset", p->p_shakerPreset); _dw(f, "shakerParticles", p->p_shakerParticles);
     _dw(f, "shakerDecayRate", p->p_shakerDecayRate); _dw(f, "shakerResonance", p->p_shakerResonance);
     _dw(f, "shakerBrightness", p->p_shakerBrightness); _dw(f, "shakerScrape", p->p_shakerScrape);
+    _di(f, "bandedwgPreset", p->p_bandedwgPreset); _dw(f, "bandedwgBowPressure", p->p_bandedwgBowPressure);
+    _dw(f, "bandedwgBowSpeed", p->p_bandedwgBowSpeed); _dw(f, "bandedwgStrikePos", p->p_bandedwgStrikePos);
+    _dw(f, "bandedwgBrightness", p->p_bandedwgBrightness); _dw(f, "bandedwgSustain", p->p_bandedwgSustain);
     _di(f, "birdType", p->p_birdType); _dw(f, "birdChirpRange", p->p_birdChirpRange);
     _dw(f, "birdTrillRate", p->p_birdTrillRate); _dw(f, "birdTrillDepth", p->p_birdTrillDepth);
     _dw(f, "birdAmRate", p->p_birdAmRate); _dw(f, "birdAmDepth", p->p_birdAmDepth);
@@ -804,6 +807,12 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"shakerResonance")==0) p->p_shakerResonance = _dpf(val);
     else if (strcmp(key,"shakerBrightness")==0) p->p_shakerBrightness = _dpf(val);
     else if (strcmp(key,"shakerScrape")==0) p->p_shakerScrape = _dpf(val);
+    else if (strcmp(key,"bandedwgPreset")==0) p->p_bandedwgPreset = _dpi(val);
+    else if (strcmp(key,"bandedwgBowPressure")==0) p->p_bandedwgBowPressure = _dpf(val);
+    else if (strcmp(key,"bandedwgBowSpeed")==0) p->p_bandedwgBowSpeed = _dpf(val);
+    else if (strcmp(key,"bandedwgStrikePos")==0) p->p_bandedwgStrikePos = _dpf(val);
+    else if (strcmp(key,"bandedwgBrightness")==0) p->p_bandedwgBrightness = _dpf(val);
+    else if (strcmp(key,"bandedwgSustain")==0) p->p_bandedwgSustain = _dpf(val);
     else if (strcmp(key,"birdType")==0) p->p_birdType = _dpi(val);
     else if (strcmp(key,"birdChirpRange")==0) p->p_birdChirpRange = _dpf(val);
     else if (strcmp(key,"birdTrillRate")==0) p->p_birdTrillRate = _dpf(val);

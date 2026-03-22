@@ -97,6 +97,8 @@ typedef enum {
     WAVE_GUITAR,     // Plucked string + body resonator (acoustic guitar, banjo, sitar, oud)
     WAVE_STIFKARP,   // Stiff string (piano/harpsichord/dulcimer — KS + allpass dispersion)
     WAVE_SHAKER,     // Particle collision percussion (PhISM: maraca, cabasa, tambourine)
+    WAVE_BANDEDWG,   // Banded waveguide (glass harmonica, singing bowl, vibraphone, chime)
+    WAVE_VOICFORM,   // 4-formant voice (LF glottal + phoneme morph + consonants)
 } WaveType;
 
 // Mono note priority mode
@@ -112,9 +114,9 @@ static const char* waveTypeNames[] = {
     "square", "saw", "triangle", "noise", "scw", "voice", "pluck",
     "additive", "mallet", "granular", "fm", "pd", "membrane", "bird",
     "bowed", "pipe", "sine", "epiano", "organ", "reed", "metallic", "brass", "guitar", "stifkarp",
-    "shaker"
+    "shaker", "bandedwg", "voicform"
 };
-static const int waveTypeCount = 25;
+static const int waveTypeCount = 27;
 
 // LFO tempo sync divisions
 typedef enum {
@@ -531,6 +533,51 @@ typedef struct {
     unsigned int noiseState;  // Local LFSR seed
 } ShakerSettings;
 
+// Banded waveguide synthesis (glass, bowls, bowed bars, chimes)
+typedef enum {
+    BANDEDWG_GLASS,         // Glass harmonica (bowed, pure partials)
+    BANDEDWG_SINGING_BOWL,  // Tibetan singing bowl (bowed, beating modes)
+    BANDEDWG_VIBRAPHONE,    // Bowed vibraphone bar (bright, metallic)
+    BANDEDWG_WINE_GLASS,    // Wine glass (finger-on-rim, high pure)
+    BANDEDWG_PRAYER_BOWL,   // Large prayer bowl (struck, deep, long decay)
+    BANDEDWG_TUBULAR,       // Tubular chime (struck, harmonic)
+    BANDEDWG_COUNT
+} BandedWGPreset;
+
+#define BANDEDWG_NUM_MODES 4
+
+typedef struct {
+    // Per-mode delay line state (partitioned within Voice.ksBuffer[2048])
+    int modeOffset[BANDEDWG_NUM_MODES];    // Start index in ksBuffer
+    int modeLen[BANDEDWG_NUM_MODES];       // Delay length (samples)
+    int modeIdx[BANDEDWG_NUM_MODES];       // Current read/write position
+    float feedbackGain[BANDEDWG_NUM_MODES]; // Per-mode loop gain (STK basegains)
+
+    // Per-mode BiQuad bandpass resonator (2-pole 2-zero, normalized)
+    float bqA1[BANDEDWG_NUM_MODES];        // BiQuad coefficient a1 (= -2R cos θ)
+    float bqA2[BANDEDWG_NUM_MODES];        // BiQuad coefficient a2 (= R²)
+    float bqB0[BANDEDWG_NUM_MODES];        // BiQuad coefficient b0 (normalized gain)
+    float bqY1[BANDEDWG_NUM_MODES];        // BiQuad state y[n-1]
+    float bqY2[BANDEDWG_NUM_MODES];        // BiQuad state y[n-2]
+
+    // Mode frequency ratios
+    float modeRatios[BANDEDWG_NUM_MODES];
+
+    // Excitation
+    bool bwgBowExcitation;    // true = bow (continuous), false = strike (one-shot)
+    float bwgBowVelocity;     // Current bow speed
+    float bwgBowPressure;     // Current bow pressure
+    float bwgStrikePos;       // 0-1: which modes get excited
+    float strikeEnergy;       // Decaying impulse energy for struck mode
+
+    int numModes;             // Active modes (usually 4)
+    float soundLevel;         // Output gain
+
+    // DC blocker
+    float dcState;
+    float dcPrev;
+} BandedWGSettings;
+
 // Bird vocalization synthesis settings
 typedef enum {
     BIRD_CHIRP,          // Simple chirp (up or down sweep)
@@ -918,6 +965,9 @@ typedef struct {
 
     // Shaker (particle collision) synthesis
     ShakerSettings shakerSettings;
+
+    // Banded waveguide synthesis
+    BandedWGSettings bandedwgSettings;
 
     // General pitch envelope (kicks, toms, zaps)
     float pitchEnvAmount;    // Semitones to sweep
@@ -1380,6 +1430,14 @@ typedef struct SynthContext {
     float shakerBrightness;    // Shifts resonator frequencies up (0-1)
     float shakerScrape;        // 0 = random, 1 = fully periodic (guiro mode)
 
+    // BandedWG tweakables
+    int bandedwgPreset;
+    float bandedwgBowPressure;   // 0-1: bow force / strike intensity
+    float bandedwgBowSpeed;      // 0-1: bow velocity
+    float bandedwgStrikePos;     // 0-1: excitation position
+    float bandedwgBrightness;    // 0-1: material brightness
+    float bandedwgSustain;       // 0-1: mode decay/ring time
+
     // Bird tweakables
     int birdType;
     float birdChirpRange;
@@ -1615,6 +1673,14 @@ static void initSynthContext(SynthContext* ctx) {
     ctx->shakerBrightness = 0.5f;
     ctx->shakerScrape = 0.0f;
 
+    // BandedWG defaults
+    ctx->bandedwgPreset = BANDEDWG_GLASS;
+    ctx->bandedwgBowPressure = 0.5f;
+    ctx->bandedwgBowSpeed = 0.5f;
+    ctx->bandedwgStrikePos = 0.5f;
+    ctx->bandedwgBrightness = 0.6f;
+    ctx->bandedwgSustain = 0.7f;
+
     // Bird defaults
     ctx->birdChirpRange = 1.0f;
     ctx->birdHarmonics = 0.2f;
@@ -1834,6 +1900,12 @@ static void _ensureSynthCtx(void) {
 #define shakerResonance (synthCtx->shakerResonance)
 #define shakerBrightness (synthCtx->shakerBrightness)
 #define shakerScrape (synthCtx->shakerScrape)
+#define bandedwgPreset (synthCtx->bandedwgPreset)
+#define bandedwgBowPressure (synthCtx->bandedwgBowPressure)
+#define bandedwgBowSpeed (synthCtx->bandedwgBowSpeed)
+#define bandedwgStrikePos (synthCtx->bandedwgStrikePos)
+#define bandedwgBrightness (synthCtx->bandedwgBrightness)
+#define bandedwgSustain (synthCtx->bandedwgSustain)
 #define birdType (synthCtx->birdType)
 #define birdChirpRange (synthCtx->birdChirpRange)
 #define birdTrillRate (synthCtx->birdTrillRate)
@@ -2651,6 +2723,9 @@ static float processVoice(Voice *v, float sampleRate) {
             break;
         case WAVE_SHAKER:
             sample = processShakerOscillator(v, sampleRate);
+            break;
+        case WAVE_BANDEDWG:
+            sample = processBandedWGOscillator(v, sampleRate);
             break;
     }
 
@@ -4048,6 +4123,57 @@ static int playShaker(float freq, ShakerPreset preset) {
     if (shakerScrape > 0.01f) {
         v->shakerSettings.scrapeRate = shakerScrape * 200.0f;  // Up to 200 Hz
         v->shakerSettings.collisionProb *= (1.0f - shakerScrape * 0.8f);
+    }
+
+    return voiceIdx;
+}
+
+// BandedWG init params (bowed presets benefit from legato/glide)
+static const VoiceInitParams VOICE_INIT_BANDEDWG = {
+    .supportsMono = true
+};
+
+// Play banded waveguide note (glass, bowls, bowed bars, chimes)
+__attribute__((unused))
+static int playBandedWG(float freq, BandedWGPreset preset) {
+    int voiceIdx = initVoiceCommon(freq, WAVE_BANDEDWG, &VOICE_INIT_BANDEDWG, NULL);
+    Voice *v = &synthVoices[voiceIdx];
+    initBandedWGPreset(&v->bandedwgSettings, v->ksBuffer, freq, 44100.0f, preset);
+
+    // Apply tweakable overrides
+    // Bow velocity mapped from 0-1 knob to STK range (~0.0-0.15)
+    v->bandedwgSettings.bwgBowVelocity = bandedwgBowSpeed * 0.15f;
+    v->bandedwgSettings.bwgBowPressure = bandedwgBowPressure;
+    v->bandedwgSettings.bwgStrikePos = bandedwgStrikePos;
+
+    // Brightness scales feedback gains (STK baseGain_: 0.9 to 1.0 range)
+    float baseGainMult = 0.9f + bandedwgBrightness * 0.1f;
+    for (int i = 0; i < v->bandedwgSettings.numModes; i++) {
+        v->bandedwgSettings.feedbackGain[i] *= baseGainMult;
+    }
+
+    // Sustain scales feedback gains further
+    float sustainMult = 0.9f + bandedwgSustain * 0.1f;
+    for (int i = 0; i < v->bandedwgSettings.numModes; i++) {
+        v->bandedwgSettings.feedbackGain[i] *= sustainMult;
+    }
+
+    // For struck presets, pre-load delay lines with energy (STK pluck pattern)
+    if (!v->bandedwgSettings.bwgBowExcitation) {
+        int minLen = v->bandedwgSettings.modeLen[v->bandedwgSettings.numModes - 1];
+        if (minLen < 1) minLen = 1;
+        for (int m = 0; m < v->bandedwgSettings.numModes; m++) {
+            int len = v->bandedwgSettings.modeLen[m];
+            int off = v->bandedwgSettings.modeOffset[m];
+            // Pre-fill proportional to delay length (STK pattern)
+            int fills = len / minLen;
+            if (fills < 1) fills = 1;
+            for (int j = 0; j < fills && j < len; j++) {
+                v->ksBuffer[off + j] = noise() * bandedwgBowPressure * 0.3f
+                                      / (float)v->bandedwgSettings.numModes;
+            }
+        }
+        v->bandedwgSettings.strikeEnergy = bandedwgBowPressure;
     }
 
     return voiceIdx;
