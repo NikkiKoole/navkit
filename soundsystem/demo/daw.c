@@ -762,6 +762,9 @@ static SynthPatch patchPresetSnapshot[NUM_PATCHES];
 static bool presetPickerOpen = false;
 static bool presetPickerJustClosed = false;
 static bool presetsInitialized = false;
+static bool presetSearchActive = false;
+static char presetSearchBuf[64] = "";
+static int presetSearchCursor = 0;
 
 static bool patchesInit = false;
 
@@ -1386,6 +1389,24 @@ static int dawTextCursorX(const char *buf, int cursor, int fontSize) {
     return MeasureTextUI(tmp, fontSize);
 }
 
+// True when any text field is actively being edited (gates musical typing)
+static bool dawTextFieldActive(void) {
+    return editingSongName || presetSearchActive;
+}
+
+// Simple fuzzy match: all chars of needle must appear in haystack in order (case-insensitive)
+static bool fuzzyMatch(const char *needle, const char *haystack) {
+    const char *n = needle;
+    const char *h = haystack;
+    while (*n && *h) {
+        char nc = (*n >= 'A' && *n <= 'Z') ? (*n + 32) : *n;
+        char hc = (*h >= 'A' && *h <= 'Z') ? (*h + 32) : *h;
+        if (nc == hc) n++;
+        h++;
+    }
+    return *n == '\0';
+}
+
 // Forward declarations for sequencer integration
 static void dawStopSequencer(void);
 static void dawReleaseVoicesForPatch(int patchIdx);
@@ -1530,7 +1551,7 @@ static bool drawTabBar(float x, float y, float w, const char** names, const int*
             *current = i;
             ui_consume_click();
         }
-        if (IsKeyPressed(keys[i])) {
+        if (!dawTextFieldActive() && IsKeyPressed(keys[i])) {
             if (act) reClicked = true;
             *current = i;
         }
@@ -4469,6 +4490,13 @@ static void drawParamPatch(float x, float y, float w, float h) {
         Rectangle presetR = {x + 4, y, (float)tw, 18};
         if (CheckCollisionPointRec(GetMousePosition(), presetR) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             presetPickerOpen = !presetPickerOpen;
+            if (presetPickerOpen) {
+                presetSearchBuf[0] = '\0';
+                presetSearchCursor = 0;
+                presetSearchActive = true;
+            } else {
+                presetSearchActive = false;
+            }
             ui_consume_click();
         }
 
@@ -4481,14 +4509,53 @@ static void drawParamPatch(float x, float y, float w, float h) {
     // If preset picker is open, skip all column content (drawn after return)
     if (presetPickerOpen) {
         static float presetScrollX = 0.0f;
-        // Draw popup on top
+        Vector2 mouse = GetMousePosition();
+
+        // Search field at top of popup
+        float searchH = 22;
         float popX = x + 4, popY = presetRowY + 20;
+
+        // Handle search text input (before layout so filtered count is up-to-date)
+        if (presetSearchActive) {
+            int result = dawTextEdit(presetSearchBuf, 64, &presetSearchCursor);
+            if (result == -1) { // Escape closes picker
+                presetPickerOpen = false;
+                presetSearchActive = false;
+                presetPickerJustClosed = true;
+                return;
+            }
+            if (result == 1 && presetSearchBuf[0]) {
+                // Enter selects first matching preset
+                for (int i = 0; i < NUM_INSTRUMENT_PRESETS; i++) {
+                    if (fuzzyMatch(presetSearchBuf, instrumentPresets[i].name)) {
+                        loadPresetIntoPatch(daw.selectedPatch, i);
+                        presetPickerOpen = false;
+                        presetSearchActive = false;
+                        presetPickerJustClosed = true;
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Build filtered list
+        bool hasFilter = presetSearchBuf[0] != '\0';
+        int filteredIndices[NUM_INSTRUMENT_PRESETS];
+        int filteredCount = 0;
+        for (int i = 0; i < NUM_INSTRUMENT_PRESETS; i++) {
+            if (!hasFilter || fuzzyMatch(presetSearchBuf, instrumentPresets[i].name)) {
+                filteredIndices[filteredCount++] = i;
+            }
+        }
+
+        // Layout
         float margin = 20;
-        float maxH = SCREEN_HEIGHT - popY - margin;
+        float maxH = SCREEN_HEIGHT - popY - margin - searchH;
         int maxRows = (int)((maxH - 8) / 18);
-        int pcols = (NUM_INSTRUMENT_PRESETS + maxRows - 1) / maxRows;
+        if (maxRows < 1) maxRows = 1;
+        int pcols = (filteredCount + maxRows - 1) / maxRows;
         if (pcols < 1) pcols = 1;
-        int perCol = (NUM_INSTRUMENT_PRESETS + pcols - 1) / pcols;
+        int perCol = (filteredCount + pcols - 1) / pcols;
         float colW0 = 110;
         float totalW = pcols * colW0 + 12;
         float popW = totalW;
@@ -4496,8 +4563,15 @@ static void drawParamPatch(float x, float y, float w, float h) {
         bool needsScroll = (popW > maxPopW);
         if (needsScroll) popW = maxPopW;
         float scrollBarH = 14;
-        float popH = perCol * 18 + 8 + (needsScroll ? scrollBarH + 4 : 0);
-        Vector2 mouse = GetMousePosition();
+        float itemAreaH = perCol * 18 + 8 + (needsScroll ? scrollBarH + 4 : 0);
+        float popH = searchH + itemAreaH;
+
+        // Reset scroll when filter changes
+        static int prevFilteredCount = -1;
+        if (filteredCount != prevFilteredCount) {
+            presetScrollX = 0;
+            prevFilteredCount = filteredCount;
+        }
 
         // Clamp scroll
         float maxScroll = needsScroll ? (totalW - popW) : 0;
@@ -4508,10 +4582,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
         Rectangle popR = {popX, popY, popW, popH};
         if (CheckCollisionPointRec(mouse, popR)) {
             float wheel = GetMouseWheelMove();
-            if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT))
-                presetScrollX -= wheel * 60.0f;
-            else
-                presetScrollX -= wheel * 60.0f;
+            presetScrollX -= wheel * 60.0f;
             if (presetScrollX < 0) presetScrollX = 0;
             if (presetScrollX > maxScroll) presetScrollX = maxScroll;
         }
@@ -4519,15 +4590,46 @@ static void drawParamPatch(float x, float y, float w, float h) {
         DrawRectangle((int)popX, (int)popY, (int)popW, (int)popH, UI_BG_POPUP);
         DrawRectangleLinesEx(popR, 1, UI_BORDER_LIGHT);
 
-        // Clip to popup area
-        BeginScissorMode((int)popX, (int)popY, (int)popW, (int)(popH - (needsScroll ? scrollBarH + 4 : 0)));
+        // Draw search field
+        {
+            float sfx = popX + 4, sfy = popY + 3;
+            float sfW = popW - 8;
+            Rectangle sfR = {sfx, sfy, sfW, 16};
+            DrawRectangleRec(sfR, UI_BG_PANEL);
+            DrawRectangleLinesEx(sfR, 1, presetSearchActive ? UI_ACCENT_BLUE : UI_BORDER_SUBTLE);
+            if (presetSearchBuf[0]) {
+                DrawTextShadow(presetSearchBuf, (int)sfx + 4, (int)sfy + 2, UI_FONT_SMALL, WHITE);
+                int cx = dawTextCursorX(presetSearchBuf, presetSearchCursor, UI_FONT_SMALL);
+                if ((int)(GetTime()*3) % 2) DrawRectangle((int)sfx + 4 + cx, (int)sfy + 2, 1, 12, WHITE);
+            } else {
+                DrawTextShadow("search...", (int)sfx + 4, (int)sfy + 2, UI_FONT_SMALL, UI_BORDER_LIGHT);
+                if ((int)(GetTime()*3) % 2) DrawRectangle((int)sfx + 4, (int)sfy + 2, 1, 12, WHITE);
+            }
+            // Click search field to focus
+            if (CheckCollisionPointRec(mouse, sfR) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                presetSearchActive = true;
+                ui_consume_click();
+            }
+            // Show match count
+            if (hasFilter) {
+                const char *countTxt = TextFormat("%d", filteredCount);
+                int ctw = MeasureTextUI(countTxt, UI_FONT_SMALL);
+                DrawTextShadow(countTxt, (int)(sfx + sfW - ctw - 6), (int)sfy + 2, UI_FONT_SMALL, UI_TEXT_LABEL);
+            }
+        }
+
+        float itemY0 = popY + searchH;
+
+        // Clip to item area
+        BeginScissorMode((int)popX, (int)itemY0, (int)popW, (int)(itemAreaH - (needsScroll ? scrollBarH + 4 : 0)));
 
         float colW = colW0;
         bool clickedItem = false;
-        for (int i = 0; i < NUM_INSTRUMENT_PRESETS; i++) {
-            int col = i / perCol, row = i % perCol;
+        for (int fi = 0; fi < filteredCount; fi++) {
+            int i = filteredIndices[fi];
+            int col = fi / perCol, row = fi % perCol;
             float ix = popX + col * colW + 6 - presetScrollX;
-            float iy = popY + 4 + row * 18;
+            float iy = itemY0 + 4 + row * 18;
             // Skip if off-screen
             if (ix + colW < popX || ix > popX + popW) continue;
             Rectangle itemR = {ix - 2, iy, colW - 4, 17};
@@ -4543,6 +4645,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 loadPresetIntoPatch(daw.selectedPatch, i);
                 presetPickerOpen = false;
+                presetSearchActive = false;
                 presetPickerJustClosed = true;
                 clickedItem = true;
                 ui_consume_click();
@@ -4599,6 +4702,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
             && !CheckCollisionPointRec(mouse, popR)
             && !CheckCollisionPointRec(mouse, btnR)) {
             presetPickerOpen = false;
+            presetSearchActive = false;
             ui_consume_click();
         }
         return;
@@ -4751,6 +4855,17 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "Bright", &p->p_guitarBodyBrightness, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Pick", &p->p_guitarPickPosition, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Buzz", &p->p_guitarBuzz, 0.05f, 0.0f, 1.0f);
+        } else if (p->p_waveType == WAVE_STIFKARP) {
+            ui_col_sublabel(&c, "StifKarp:", UI_TEXT_SUBLABEL);
+            static const char* stifkarpPresetNames[] = {"Piano", "Bright", "Harpsi", "Dulcimer", "Clavi", "Prepared", "Honky", "Celesta"};
+            ui_col_cycle(&c, "Preset", stifkarpPresetNames, STIFKARP_COUNT, &p->p_stifkarpPreset);
+            ui_col_float(&c, "Hard", &p->p_stifkarpHardness, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Stiff", &p->p_stifkarpStiffness, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Strike", &p->p_stifkarpStrikePos, 0.02f, 0.0f, 0.5f);
+            ui_col_float(&c, "Body", &p->p_stifkarpBodyMix, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Bright", &p->p_stifkarpBodyBrightness, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Damper", &p->p_stifkarpDamper, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Sympath", &p->p_stifkarpSympathetic, 0.02f, 0.0f, 0.5f);
         } else if (p->p_waveType == WAVE_BIRD) {
             ui_col_sublabel(&c, "Bird:", UI_TEXT_SUBLABEL);
             ui_col_cycle(&c, "Type", birdTypeNames, 5, &p->p_birdType);
@@ -6096,6 +6211,8 @@ static void drawDebugPanel(void) {
 }
 
 static void dawHandleMusicalTyping(void) {
+    // Don't trigger sounds while typing in text fields
+    if (dawTextFieldActive()) return;
     // Octave: Z down, X up
     if (IsKeyPressed(KEY_Z) && dawCurrentOctave > 1) dawCurrentOctave--;
     if (IsKeyPressed(KEY_X) && dawCurrentOctave < 7) dawCurrentOctave++;
@@ -8928,7 +9045,7 @@ int main(int argc, char *argv[]) {
     dawInitSequencer();
 
     while (!WindowShouldClose()) {
-        if (IsKeyPressed(KEY_SPACE)) {
+        if (!dawTextFieldActive() && IsKeyPressed(KEY_SPACE)) {
             daw.transport.playing = !daw.transport.playing;
             if (!daw.transport.playing) dawStopSequencer();
         }
