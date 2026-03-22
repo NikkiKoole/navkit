@@ -2174,7 +2174,12 @@ static float processGuitarOscillator(Voice *v, float sampleRate) {
     float apOut = apCoeff * filtered + v->ksAllpassState;
     v->ksAllpassState = filtered - apCoeff * apOut;
 
-    v->ksBuffer[v->ksIndex] = apOut;
+    // DC blocker in the loop (prevents DC buildup on long-sustain presets like harp)
+    float dcOut = apOut - gs->dcPrev + 0.995f * gs->dcState;
+    gs->dcPrev = apOut;
+    gs->dcState = dcOut;
+
+    v->ksBuffer[v->ksIndex] = dcOut;
     v->ksIndex = nextIndex;
 
     float buzzed = stringSample;

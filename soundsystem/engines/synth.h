@@ -498,6 +498,8 @@ typedef struct {
     float buzzState;         // Internal state for buzz nonlinearity
     float stringDamping;     // Per-preset KS damping override (0=use global, >0=override)
     float stringBrightness;  // Per-preset KS brightness override (-1=use global, >=0=override)
+    float dcState;           // DC blocker state (prevents buildup on long-sustain presets)
+    float dcPrev;            // DC blocker input history
 } GuitarSettings;
 
 // Stiff string synthesis (piano/harpsichord/dulcimer)
