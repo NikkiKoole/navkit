@@ -4639,7 +4639,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
             bool hov = CheckCollisionPointRec(mouse, itemR);
             bool selected = (i == patchPresetIndex[daw.selectedPatch]);
             int wt = instrumentPresets[i].patch.p_waveType;
-            Color tint = (wt >= 0 && wt < 18) ? engineTints[wt] : UI_BG_BUTTON;
+            Color tint = (wt >= 0 && wt < (int)(sizeof(engineTints)/sizeof(engineTints[0]))) ? engineTints[wt] : UI_BG_BUTTON;
             if (selected) DrawRectangleRec(itemR, (Color){50,50,80,255});
             else if (hov) { DrawRectangleRec(itemR, tint); DrawRectangleRec(itemR, (Color){255,255,255,30}); }
             else DrawRectangleRec(itemR, tint);

@@ -615,6 +615,69 @@ Particle Energy (exponential decay per sample)
 
 **Assessment**: Faithful implementation of Cook's PhISM. The statistical collision approximation is the correct choice — it's what the original paper recommends, and avoids the O(N) per-particle overhead that would make 64-particle presets expensive. The SVF resonator bank gives good timbral variety across presets. The sustained-energy floor and retrigger re-boost are extensions beyond the original PhISM that make the engine more playable as a musical instrument (not just a one-shot trigger). **Possible enhancements**: (1) Velocity-sensitive particle count (harder hits = more particles). (2) Position modulation — tilt the shaker over time to shift resonator frequencies. (3) Per-resonator decay (different modes ring out at different rates, like metallic). (4) Sympathetic excitation from other voices (shaker rattles when bass hits).
 
+### 1.24 Stiff String / Piano (WAVE_STIFKARP)
+**File**: `synth_oscillators.h`, init at `initStifKarpExcitation()`, `initStifKarpDispersion()`, `initStifKarpPreset()`, process at `processStifKarpOscillator()`
+**Algorithm**: Karplus-Strong (reusing WAVE_PLUCK) + cascaded allpass dispersion chain for inharmonicity + per-preset output tone filter + 4 biquad body resonators.
+**Reference**: Jaffe & Smith, "Extensions of the Karplus-Strong Plucked-String Algorithm" (CMJ, 1983). Bank, "Physics-Based Sound Synthesis of the Piano" (Helsinki Univ. Tech., 2000). STK StifKarp class.
+
+**Signal flow**:
+```
+Noise burst ──→ hammer hardness LP ──→ normalize ──→ pick position comb
+                                                           │
+KS delay line ◄────────── Thiran fractional delay ◄── allpass dispersion
+     │                                                      ▲
+     └──→ KS loop filter (avg + brightness + damping) ──────┘
+                                                    │
+     stringSample ──→ output tone filter (1-pole LP, per-preset)
+                           │
+                      ├──→ buzz (prepared piano, tanh soft-clip)
+                      │
+                      ├──→ 4× biquad BPF body ──→ crossfade mix ──→ output
+                      │
+                      └──→ sympathetic feedback (3rd partial tap)
+```
+
+**Key differentiator — allpass dispersion chain**: Real stiff strings (piano wire, metal plates) exhibit frequency-dependent phase velocity — higher harmonics arrive slightly sharp of integer ratios. This **inharmonicity** is characterized by `f_n = n × f₁ × √(1 + B × n²)`, where B ranges from ~0.0001 (bass piano strings) to ~0.01 (treble).
+
+A cascade of 1-4 first-order allpass filters in the delay loop approximates this dispersion:
+```
+for each stage i (1-4):
+    C[i] = (1 − phaseTarget) / (1 + phaseTarget)
+    apOut = C[i] × input + state[i]
+    state[i] = input − C[i] × apOut
+    input = apOut
+```
+Where `B = stiffness² × 0.015 × freqScale` and `phaseTarget = B × (i+1) × freq / sr`. The number of active stages scales with the stiffness parameter (low stiffness = 1 stage, high = 4).
+
+**Hammer hardness shaping**: Initial noise burst LP-filtered at note-on. `hardness` 0 (soft felt) → heavy filtering leaving fundamental-heavy energy. `hardness` 1 (hard steel) → full noise spectrum. Normalized post-filter to prevent volume differences.
+
+**Output tone filter**: 1-pole LP on the output (NOT in the feedback loop — avoids killing sustain). Per-preset `loopFilterCoeff` controls character with a 7× range:
+- 0.10 = clavichord (very dark, muffled)
+- 0.18 = grand piano (warm felt)
+- 0.70 = harpsichord (bright, jangly)
+
+This is the primary timbral differentiator between presets.
+
+**Damper**: Modulates effective per-sample damping: `effectiveDamping = ksDamping × (0.992 + 0.008 × damperState)`. At full damper (1.0) = normal sustain. At zero = 0.8% additional per-sample loss. Smooth ramp (0.0005/sample) prevents clicks.
+
+**Body resonator**: 4 parallel biquad BPFs (same architecture as WAVE_GUITAR). Mix uses proper crossfade: `out × (1 − bodyMix×0.6) + bodyOut × bodyMix`.
+
+**Sympathetic resonance**: Output fed back into delay line at `ksLength/3` tap point at low level (0.015 × sympatheticLevel), exciting the 3rd partial.
+
+**Presets** (8):
+| # | Name | Tone | Body | F1-F4 (Hz) | Character |
+|---|------|------|------|-------------|-----------|
+| 218 | Grand Piano | 0.18 | 0.70 | 65/130/260/520 | Warm, spruce soundboard |
+| 219 | Bright Piano | 0.30 | 0.65 | 60/125/280/600 | Concert grand, shimmer |
+| 220 | Harpsichord | 0.70 | 0.25 | 200/400/900/1800 | Bright plectrum snap |
+| 221 | Dulcimer | 0.50 | 0.75 | 180/360/720/1500 | Metallic wire shimmer |
+| 222 | Clavichord | 0.10 | 0.10 | 150/300/600/1200 | Very dark, intimate |
+| 223 | Prepared | 0.15 | 0.60 | 65/140/280/550 | Dark + bolt buzz (0.4) |
+| 224 | Honky Tonk | 0.20 | 0.35 | 70/145/300/600 | Muffled, unison beating |
+| 225 | Celesta | 0.60 | 0.50 | 400/800/1600/3200 | Metal plates, bell-like |
+
+**Assessment**: Good stiff-string model filling the "metal string" gap between WAVE_PLUCK (nylon/gut) and WAVE_MALLET (bars). The allpass dispersion chain is the standard approach and successfully stretches upper partials for piano shimmer. The per-preset output tone filter (0.1-0.7 range) provides strong timbral differentiation — spectral centroids span 917-2170 Hz across presets. Memory cost is ~190 bytes/voice (reuses existing `ksBuffer[2048]`). **Possible enhancements**: (1) Velocity-dependent hammer hardness — harder at ff, softer at pp. (2) Multi-string coupling — 2-3 strings per note with slow beating. (3) Global sustain pedal — prevent note-off from engaging damper. (4) Duplex scale resonance.
+
 ---
 
 ## 2. FILTERS
@@ -1278,6 +1341,8 @@ Combined offset applied to read position. Uses same `tapeWowFlutterLFO()` helper
 | Organ (Hammond) | 9-drawbar sine bank + click/perc/scanner V/C | Good | Pekonen 2011, Pakarinen 2009 |
 | Metallic Perc | 6-osc ring-mod pairs + per-partial decay | Good | TR-808/909 service manuals |
 | Guitar Body | KS string + pick comb + 4 biquad body modes | Good | Elejabarrieta 2002, Karjalainen 2004 |
+| Stiff String | KS + allpass dispersion + tone filter + body | Good | Jaffe & Smith 1983, Bank 2000, STK StifKarp |
+| Shaker (PhISM) | Statistical collision + 4× SVF resonators | Good | Cook 1997, STK Shakers |
 | Leslie Speaker | Crossover + dual-rotor AM/Doppler + slew | Good | Smith & Abel 1999, Werner 2016 |
 | SVF Filter | Simper/Cytomic TPT | Excellent | Simper 2013, Zavalishin 2012 |
 | Ladder Filter | 4-pole TPT + 2× OS, true multimode | Excellent | KR-106, Zavalishin 2012 |
