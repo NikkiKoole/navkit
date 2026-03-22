@@ -205,6 +205,18 @@ typedef struct {
     float p_bandedwgBrightness;    // 0-1: material brightness
     float p_bandedwgSustain;       // 0-1: mode decay/ring time
 
+    // VoicForm (4-formant voice)
+    int   p_vfPhoneme;            // Current phoneme (VFPhoneme enum, 0-31)
+    int   p_vfPhonemeTarget;      // Target phoneme for morph (-1 = same)
+    float p_vfMorphRate;          // Morph speed (0.5-50 Hz)
+    float p_vfAspiration;         // Breathiness (0-1)
+    float p_vfOpenQuotient;       // Glottal open quotient (0.3-0.7)
+    float p_vfSpectralTilt;       // Brightness (0=bright, 1=dark)
+    float p_vfFormantShift;       // Vocal tract length (0.5-2.0)
+    float p_vfVibratoDepth;       // Voice vibrato semitones (0-1)
+    float p_vfVibratoRate;        // Voice vibrato Hz (3-8)
+    int   p_vfConsonant;          // Consonant burst phoneme (-1=none)
+
     // Bowed string
     float p_bowPressure;
     float p_bowSpeed;
@@ -479,6 +491,16 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_bandedwgStrikePos = 0.5f,
         .p_bandedwgBrightness = 0.6f,
         .p_bandedwgSustain = 0.7f,
+        .p_vfPhoneme = 0,
+        .p_vfPhonemeTarget = -1,
+        .p_vfMorphRate = 5.0f,
+        .p_vfAspiration = 0.1f,
+        .p_vfOpenQuotient = 0.5f,
+        .p_vfSpectralTilt = 0.3f,
+        .p_vfFormantShift = 1.0f,
+        .p_vfVibratoDepth = 0.15f,
+        .p_vfVibratoRate = 5.5f,
+        .p_vfConsonant = -1,
         .p_bowPressure = 0.5f,
         .p_bowSpeed = 0.5f,
         .p_bowPosition = 0.13f,

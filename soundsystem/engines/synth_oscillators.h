@@ -183,6 +183,161 @@ static float processVoiceOscillator(Voice *v, float sampleRate) {
     return out * 0.7f;
 }
 
+// ============================================================================
+// VOICFORM (4-formant voice with phoneme interpolation)
+// ============================================================================
+
+// Phoneme table — Klatt 1980 / Peterson & Barney 1952 formant data
+// F1-F4 frequencies, bandwidths, amplitudes for a male adult voice
+static const VFPhonemeEntry vfPhonemeTable[VF_PHONEME_COUNT] = {
+    // Vowels — voiced, no noise
+    //              F1     F2     F3     F4        BW1   BW2   BW3   BW4     A1    A2    A3    A4    noise  voiced
+    [VF_A]  = {{ 730, 1090, 2440, 3400}, { 90, 110, 140, 180}, {1.0f,0.5f,0.3f,0.1f}, 0.0f, true},
+    [VF_E]  = {{ 530, 1840, 2480, 3400}, { 70, 100, 130, 170}, {1.0f,0.7f,0.3f,0.1f}, 0.0f, true},
+    [VF_I]  = {{ 270, 2290, 3010, 3400}, { 60,  90, 120, 170}, {1.0f,0.5f,0.2f,0.1f}, 0.0f, true},
+    [VF_O]  = {{ 570,  840, 2410, 3400}, { 80, 100, 140, 180}, {1.0f,0.4f,0.2f,0.1f}, 0.0f, true},
+    [VF_U]  = {{ 300,  870, 2240, 3400}, { 65,  90, 130, 170}, {1.0f,0.3f,0.15f,0.08f},0.0f, true},
+    [VF_AE] = {{ 660, 1720, 2410, 3400}, { 80, 110, 140, 180}, {1.0f,0.6f,0.3f,0.1f}, 0.0f, true},
+    [VF_AH] = {{ 520, 1190, 2390, 3400}, { 75, 100, 130, 170}, {1.0f,0.45f,0.25f,0.1f},0.0f, true},
+    [VF_AW] = {{ 570,  840, 2410, 3400}, { 80, 100, 140, 180}, {1.0f,0.4f,0.2f,0.1f}, 0.0f, true},
+    [VF_UH] = {{ 440, 1020, 2240, 3400}, { 70,  95, 130, 170}, {1.0f,0.4f,0.2f,0.08f},0.0f, true},
+    [VF_ER] = {{ 490, 1350, 1690, 3400}, { 75, 100, 120, 170}, {1.0f,0.5f,0.4f,0.1f}, 0.0f, true},
+    // Nasals/liquids/glides — voiced, nasal has low F1, anti-formant
+    [VF_M]  = {{ 200, 1200, 2500, 3400}, {100, 120, 150, 200}, {0.3f,0.15f,0.1f,0.05f},0.0f, true},
+    [VF_N]  = {{ 200, 1700, 2500, 3400}, {100, 120, 150, 200}, {0.3f,0.2f,0.1f,0.05f}, 0.0f, true},
+    [VF_NG] = {{ 200, 1700, 2700, 3400}, {100, 120, 150, 200}, {0.25f,0.15f,0.1f,0.05f},0.0f,true},
+    [VF_L]  = {{ 350, 1050, 2400, 3400}, { 80, 100, 130, 170}, {0.6f,0.3f,0.2f,0.1f}, 0.0f, true},
+    [VF_R]  = {{ 420, 1300, 1600, 3400}, { 80, 100, 120, 170}, {0.5f,0.3f,0.3f,0.1f}, 0.0f, true},
+    [VF_W]  = {{ 300,  610, 2200, 3400}, { 65,  90, 130, 170}, {0.5f,0.2f,0.1f,0.05f}, 0.0f, true},
+    [VF_Y]  = {{ 260, 2070, 3020, 3400}, { 60,  90, 130, 170}, {0.5f,0.3f,0.15f,0.05f},0.0f, true},
+    [VF_DH] = {{ 300, 1700, 2500, 3400}, { 80, 110, 140, 180}, {0.4f,0.2f,0.15f,0.05f},0.15f,true},
+    // Fricatives — unvoiced (noise-excited), or voiced+noise
+    [VF_F]  = {{ 300, 1700, 3500, 5500}, {100, 150, 200, 300}, {0.1f,0.1f,0.2f,0.15f}, 0.5f, false},
+    [VF_V]  = {{ 300, 1700, 3500, 5500}, {100, 150, 200, 300}, {0.2f,0.15f,0.2f,0.1f}, 0.35f, true},
+    [VF_S]  = {{ 300, 1700, 5000, 7000}, {100, 150, 250, 400}, {0.05f,0.05f,0.3f,0.4f},0.9f, false},
+    [VF_Z]  = {{ 300, 1700, 5000, 7000}, {100, 150, 250, 400}, {0.15f,0.1f,0.25f,0.3f},0.6f, true},
+    [VF_SH] = {{ 300, 1700, 3800, 6000}, {100, 150, 200, 350}, {0.05f,0.05f,0.35f,0.3f},0.85f,false},
+    [VF_ZH] = {{ 300, 1700, 3800, 6000}, {100, 150, 200, 350}, {0.15f,0.1f,0.3f,0.2f}, 0.5f, true},
+    [VF_TH] = {{ 300, 1700, 4500, 6500}, {100, 150, 250, 350}, {0.08f,0.08f,0.15f,0.1f},0.4f, false},
+    // Plosives — short burst, noise-only
+    [VF_B]  = {{ 300, 1100, 2500, 3400}, {100, 120, 150, 200}, {0.3f,0.2f,0.1f,0.05f}, 0.3f, true},
+    [VF_D]  = {{ 300, 1700, 2500, 3400}, {100, 120, 150, 200}, {0.2f,0.25f,0.15f,0.05f},0.4f, true},
+    [VF_G]  = {{ 300, 1700, 2700, 3400}, {100, 120, 150, 200}, {0.2f,0.2f,0.2f,0.05f}, 0.35f, true},
+    [VF_P]  = {{ 300, 1100, 2500, 3400}, {100, 120, 150, 200}, {0.1f,0.1f,0.05f,0.02f},0.6f, false},
+    [VF_T]  = {{ 300, 1700, 3500, 5500}, {100, 120, 200, 300}, {0.1f,0.1f,0.15f,0.1f}, 0.7f, false},
+    [VF_K]  = {{ 300, 1700, 3000, 4500}, {100, 120, 180, 250}, {0.1f,0.15f,0.15f,0.08f},0.6f, false},
+    [VF_CH] = {{ 300, 1700, 3800, 6000}, {100, 120, 200, 350}, {0.1f,0.1f,0.25f,0.2f}, 0.8f, false},
+};
+
+// Phoneme name strings for DAW UI
+static const char* vfPhonemeNames[] = {
+    "A","E","I","O","U","AE","AH","AW","UH","ER",
+    "M","N","NG","L","R","W","Y","DH",
+    "F","V","S","Z","SH","ZH","TH",
+    "B","D","G","P","T","K","CH"
+};
+
+// Process VoicForm oscillator: LF glottal source → 4 formant SVFs → phoneme morph
+static float processVoicFormOscillator(Voice *v, float sampleRate) {
+    VoicFormSettings *vf = &v->voicformSettings;
+
+    // Step 1: Advance phoneme morph
+    if (vf->phonemeCurrent != vf->phonemeTarget) {
+        vf->morphBlend += vf->morphRate / sampleRate;
+        if (vf->morphBlend >= 1.0f) {
+            vf->phonemeCurrent = vf->phonemeTarget;
+            vf->morphBlend = 0.0f;
+        }
+    }
+
+    // Step 2: Interpolate phoneme formant parameters
+    int pc = vf->phonemeCurrent;
+    int pt = vf->phonemeTarget;
+    if (pc < 0 || pc >= VF_PHONEME_COUNT) pc = VF_A;
+    if (pt < 0 || pt >= VF_PHONEME_COUNT) pt = pc;
+    const VFPhonemeEntry *cur = &vfPhonemeTable[pc];
+    const VFPhonemeEntry *tgt = &vfPhonemeTable[pt];
+    float b = vf->morphBlend;
+    float ib = 1.0f - b;
+
+    float freq4[4], bw4[4], amp4[4];
+    for (int i = 0; i < 4; i++) {
+        freq4[i] = (cur->freq[i] * ib + tgt->freq[i] * b) * vf->formantShift;
+        bw4[i] = cur->bw[i] * ib + tgt->bw[i] * b;
+        amp4[i] = cur->amp[i] * ib + tgt->amp[i] * b;
+    }
+    float noiseGain = cur->noiseGain * ib + tgt->noiseGain * b;
+    bool voiced = cur->voiced || tgt->voiced;
+
+    // Step 3: Vibrato
+    vf->vibratoPhase += vf->vibratoRate / sampleRate;
+    if (vf->vibratoPhase >= 1.0f) vf->vibratoPhase -= 1.0f;
+    float vibrato = sinf(vf->vibratoPhase * 2.0f * PI) * vf->vibratoDepth;
+    float freqMod = v->frequency * powf(2.0f, vibrato / 12.0f);
+
+    // Step 4: Glottal source — Rosenberg polynomial pulse
+    float source = 0.0f;
+    if (voiced) {
+        v->phase += freqMod / sampleRate;
+        if (v->phase >= 1.0f) v->phase -= 1.0f;
+        float t = v->phase;
+        float oq = vf->openQuotient; // Tp/T0 ratio (0.3-0.7)
+        float te = oq + 0.1f;        // Closure ends slightly after peak
+        if (te > 0.95f) te = 0.95f;
+
+        if (t < oq) {
+            // Open phase: Rosenberg polynomial (smooth rise to peak)
+            float tn = t / oq;
+            source = 3.0f * tn * tn - 2.0f * tn * tn * tn;
+        } else if (t < te) {
+            // Closing phase: half-cosine fall
+            float tn = (t - oq) / (te - oq);
+            source = 0.5f * (1.0f + cosf(tn * PI));
+        } else {
+            // Closed phase
+            source = 0.0f;
+        }
+
+        // Spectral tilt: 1-pole LP darkens the source
+        // tilt 0 = bright (bypass), tilt 1 = very dark
+        float tiltCoeff = 0.2f + vf->spectralTilt * 0.75f;
+        vf->tiltState += tiltCoeff * (source - vf->tiltState);
+        source = source * (1.0f - vf->spectralTilt * 0.7f) + vf->tiltState * vf->spectralTilt * 0.7f;
+    }
+
+    // Step 5: Aspiration noise — mix with glottal
+    float aspirationNoise = noise() * vf->aspiration;
+    source = source * (1.0f - vf->aspiration * 0.5f) + aspirationNoise;
+
+    // Also add phoneme-specific noise (fricatives)
+    if (noiseGain > 0.001f) {
+        source += noise() * noiseGain * 0.7f;
+    }
+
+    // Step 6: Consonant burst at note-on (decays over ~20ms)
+    if (vf->burstLevel > 0.001f) {
+        vf->burstTime += 1.0f / sampleRate;
+        float burstDuration = 0.025f; // 25ms burst
+        if (vf->burstTime < burstDuration) {
+            float burstEnv = vf->burstLevel * (1.0f - vf->burstTime / burstDuration);
+            source += noise() * burstEnv * 0.8f;
+        } else {
+            vf->burstLevel = 0.0f;
+        }
+    }
+
+    // Step 7: Process through 4 formant filters and sum
+    float out = 0.0f;
+    for (int i = 0; i < 4; i++) {
+        // Update formant filter frequency and bandwidth
+        vf->formants[i].freq = freq4[i];
+        vf->formants[i].bw = bw4[i];
+        out += processFormantFilter(&vf->formants[i], source, sampleRate) * amp4[i];
+    }
+
+    return out * 0.7f;
+}
+
 // Karplus-Strong plucked string oscillator
 // With allpass fractional delay for accurate pitch tuning (Jaffe & Smith 1983)
 static float processPluckOscillator(Voice *v, float sampleRate) {

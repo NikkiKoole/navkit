@@ -211,6 +211,68 @@ typedef struct VoiceSettings {
     float pitchEnvTimer;   // Current time in envelope
 } VoiceSettings;
 
+// VoicForm (4-formant voice with phoneme interpolation)
+typedef enum {
+    // Vowels (10)
+    VF_A,     // "ah" as in father
+    VF_E,     // "eh" as in bed
+    VF_I,     // "ee" as in see
+    VF_O,     // "oh" as in go
+    VF_U,     // "oo" as in boot
+    VF_AE,    // "ae" as in cat
+    VF_AH,    // "uh" as in but
+    VF_AW,    // "aw" as in dog
+    VF_UH,    // "uh" as in book
+    VF_ER,    // "er" as in bird
+    // Nasals/liquids/glides (8)
+    VF_M, VF_N, VF_NG, VF_L, VF_R, VF_W, VF_Y, VF_DH,
+    // Fricatives (7)
+    VF_F, VF_V, VF_S, VF_Z, VF_SH, VF_ZH, VF_TH,
+    // Plosives (7)
+    VF_B, VF_D, VF_G, VF_P, VF_T, VF_K, VF_CH,
+    VF_PHONEME_COUNT
+} VFPhoneme;
+
+typedef struct {
+    float freq[4];      // F1-F4 center frequencies (Hz)
+    float bw[4];        // F1-F4 bandwidths (Hz)
+    float amp[4];       // F1-F4 relative amplitudes (0-1)
+    float noiseGain;    // Aspiration/friction noise level (0-1)
+    bool voiced;        // true = glottal source, false = noise-only
+} VFPhonemeEntry;
+
+typedef struct {
+    // Phoneme interpolation
+    int phonemeCurrent;
+    int phonemeTarget;
+    float morphBlend;       // 0.0 = current, 1.0 = target
+    float morphRate;        // Blend speed in Hz
+
+    // 4 formant filters (reuses FormantFilter from WAVE_VOICE)
+    FormantFilter formants[4];
+
+    // Glottal model state
+    float openQuotient;     // Tp/T0 ratio (0.3-0.7)
+    float spectralTilt;     // 0=bright, 1=dark
+    float tiltState;        // 1-pole LP state for tilt
+
+    // Aspiration
+    float aspiration;       // 0-1 noise mixed with glottal
+
+    // Consonant burst
+    float burstTime;        // Time since note-on
+    float burstLevel;       // Current burst envelope level
+    int burstPhoneme;       // Which consonant (-1 = none)
+
+    // Vibrato
+    float vibratoPhase;
+    float vibratoRate;
+    float vibratoDepth;
+
+    // Formant shift (vocal tract length)
+    float formantShift;     // 0.5-2.0 (1.0 = normal)
+} VoicFormSettings;
+
 // Additive synthesis settings
 #define ADDITIVE_MAX_HARMONICS 16
 
@@ -969,6 +1031,9 @@ typedef struct {
     // Banded waveguide synthesis
     BandedWGSettings bandedwgSettings;
 
+    // VoicForm (4-formant voice) synthesis
+    VoicFormSettings voicformSettings;
+
     // General pitch envelope (kicks, toms, zaps)
     float pitchEnvAmount;    // Semitones to sweep
     float pitchEnvDecay;     // Decay time in seconds
@@ -1438,6 +1503,18 @@ typedef struct SynthContext {
     float bandedwgBrightness;    // 0-1: material brightness
     float bandedwgSustain;       // 0-1: mode decay/ring time
 
+    // VoicForm tweakables
+    int vfPhoneme;
+    int vfPhonemeTarget;
+    float vfMorphRate;
+    float vfAspiration;
+    float vfOpenQuotient;
+    float vfSpectralTilt;
+    float vfFormantShift;
+    float vfVibratoDepth;
+    float vfVibratoRate;
+    int vfConsonant;
+
     // Bird tweakables
     int birdType;
     float birdChirpRange;
@@ -1681,6 +1758,18 @@ static void initSynthContext(SynthContext* ctx) {
     ctx->bandedwgBrightness = 0.6f;
     ctx->bandedwgSustain = 0.7f;
 
+    // VoicForm defaults
+    ctx->vfPhoneme = VF_A;
+    ctx->vfPhonemeTarget = -1;
+    ctx->vfMorphRate = 5.0f;
+    ctx->vfAspiration = 0.1f;
+    ctx->vfOpenQuotient = 0.5f;
+    ctx->vfSpectralTilt = 0.3f;
+    ctx->vfFormantShift = 1.0f;
+    ctx->vfVibratoDepth = 0.15f;
+    ctx->vfVibratoRate = 5.5f;
+    ctx->vfConsonant = -1;
+
     // Bird defaults
     ctx->birdChirpRange = 1.0f;
     ctx->birdHarmonics = 0.2f;
@@ -1906,6 +1995,16 @@ static void _ensureSynthCtx(void) {
 #define bandedwgStrikePos (synthCtx->bandedwgStrikePos)
 #define bandedwgBrightness (synthCtx->bandedwgBrightness)
 #define bandedwgSustain (synthCtx->bandedwgSustain)
+#define vfPhoneme (synthCtx->vfPhoneme)
+#define vfPhonemeTarget (synthCtx->vfPhonemeTarget)
+#define vfMorphRate (synthCtx->vfMorphRate)
+#define vfAspiration (synthCtx->vfAspiration)
+#define vfOpenQuotient (synthCtx->vfOpenQuotient)
+#define vfSpectralTilt (synthCtx->vfSpectralTilt)
+#define vfFormantShift (synthCtx->vfFormantShift)
+#define vfVibratoDepth (synthCtx->vfVibratoDepth)
+#define vfVibratoRate (synthCtx->vfVibratoRate)
+#define vfConsonant (synthCtx->vfConsonant)
 #define birdType (synthCtx->birdType)
 #define birdChirpRange (synthCtx->birdChirpRange)
 #define birdTrillRate (synthCtx->birdTrillRate)
@@ -2726,6 +2825,9 @@ static float processVoice(Voice *v, float sampleRate) {
             break;
         case WAVE_BANDEDWG:
             sample = processBandedWGOscillator(v, sampleRate);
+            break;
+        case WAVE_VOICFORM:
+            sample = processVoicFormOscillator(v, sampleRate);
             break;
     }
 
@@ -4176,6 +4278,35 @@ static int playBandedWG(float freq, BandedWGPreset preset) {
         v->bandedwgSettings.strikeEnergy = bandedwgBowPressure;
     }
 
+    return voiceIdx;
+}
+
+// VoicForm init params
+static const VoiceInitParams VOICE_INIT_VOICFORM = {
+    .supportsMono = true
+};
+
+// Play VoicForm note (4-formant voice with phoneme morph)
+__attribute__((unused))
+static int playVoicForm(float freq, int phoneme) {
+    int voiceIdx = initVoiceCommon(freq, WAVE_VOICFORM, &VOICE_INIT_VOICFORM, NULL);
+    Voice *v = &synthVoices[voiceIdx];
+    VoicFormSettings *vf = &v->voicformSettings;
+    memset(vf, 0, sizeof(VoicFormSettings));
+    vf->phonemeCurrent = phoneme;
+    vf->phonemeTarget = (vfPhonemeTarget >= 0) ? vfPhonemeTarget : phoneme;
+    vf->morphBlend = 0.0f;
+    vf->morphRate = vfMorphRate;
+    vf->openQuotient = vfOpenQuotient;
+    vf->spectralTilt = vfSpectralTilt;
+    vf->aspiration = vfAspiration;
+    vf->formantShift = vfFormantShift;
+    vf->vibratoRate = vfVibratoRate;
+    vf->vibratoDepth = vfVibratoDepth;
+    // Consonant burst at note-on
+    vf->burstPhoneme = vfConsonant;
+    vf->burstTime = 0.0f;
+    vf->burstLevel = (vfConsonant >= 0) ? 1.0f : 0.0f;
     return voiceIdx;
 }
 

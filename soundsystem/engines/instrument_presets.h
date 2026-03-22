@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 240
+#define NUM_INSTRUMENT_PRESETS 248
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -4371,6 +4371,160 @@ static void initInstrumentPresets(void) {
     instrumentPresets[239].patch.p_expDecay = true;
     instrumentPresets[239].patch.p_oneShot = true;
     instrumentPresets[239].patch.p_volume = 0.65f;
+
+    // === VoicForm (4-formant voice) presets ===
+
+    // 240: VoicForm Choir — vowel A morphing to O, slow, pad-like
+    instrumentPresets[240].name = "VF Choir";
+    instrumentPresets[240].patch.p_waveType = WAVE_VOICFORM;
+    instrumentPresets[240].patch.p_vfPhoneme = VF_A;
+    instrumentPresets[240].patch.p_vfPhonemeTarget = VF_O;
+    instrumentPresets[240].patch.p_vfMorphRate = 1.5f;
+    instrumentPresets[240].patch.p_vfAspiration = 0.15f;
+    instrumentPresets[240].patch.p_vfOpenQuotient = 0.55f;
+    instrumentPresets[240].patch.p_vfSpectralTilt = 0.35f;
+    instrumentPresets[240].patch.p_vfFormantShift = 0.85f;
+    instrumentPresets[240].patch.p_vfVibratoDepth = 0.2f;
+    instrumentPresets[240].patch.p_vfVibratoRate = 5.0f;
+    instrumentPresets[240].patch.p_vfConsonant = -1;
+    instrumentPresets[240].patch.p_attack = 0.15f;
+    instrumentPresets[240].patch.p_decay = 0.3f;
+    instrumentPresets[240].patch.p_sustain = 0.8f;
+    instrumentPresets[240].patch.p_release = 0.5f;
+    instrumentPresets[240].patch.p_volume = 0.35f;
+
+    // 241: Talk Box — fast A↔I morph, funky lead
+    instrumentPresets[241].name = "Talk Box";
+    instrumentPresets[241].patch.p_waveType = WAVE_VOICFORM;
+    instrumentPresets[241].patch.p_vfPhoneme = VF_A;
+    instrumentPresets[241].patch.p_vfPhonemeTarget = VF_I;
+    instrumentPresets[241].patch.p_vfMorphRate = 30.0f;
+    instrumentPresets[241].patch.p_vfAspiration = 0.05f;
+    instrumentPresets[241].patch.p_vfOpenQuotient = 0.45f;
+    instrumentPresets[241].patch.p_vfSpectralTilt = 0.1f;
+    instrumentPresets[241].patch.p_vfFormantShift = 1.0f;
+    instrumentPresets[241].patch.p_vfVibratoDepth = 0.0f;
+    instrumentPresets[241].patch.p_vfVibratoRate = 5.5f;
+    instrumentPresets[241].patch.p_vfConsonant = -1;
+    instrumentPresets[241].patch.p_attack = 0.005f;
+    instrumentPresets[241].patch.p_decay = 0.1f;
+    instrumentPresets[241].patch.p_sustain = 0.9f;
+    instrumentPresets[241].patch.p_release = 0.1f;
+    instrumentPresets[241].patch.p_volume = 0.35f;
+
+    // 242: Robot Voice — vowel E, no vibrato, Kraftwerk
+    instrumentPresets[242].name = "Robot Voice";
+    instrumentPresets[242].patch.p_waveType = WAVE_VOICFORM;
+    instrumentPresets[242].patch.p_vfPhoneme = VF_E;
+    instrumentPresets[242].patch.p_vfPhonemeTarget = -1;
+    instrumentPresets[242].patch.p_vfMorphRate = 5.0f;
+    instrumentPresets[242].patch.p_vfAspiration = 0.0f;
+    instrumentPresets[242].patch.p_vfOpenQuotient = 0.4f;
+    instrumentPresets[242].patch.p_vfSpectralTilt = 0.0f;
+    instrumentPresets[242].patch.p_vfFormantShift = 0.7f;
+    instrumentPresets[242].patch.p_vfVibratoDepth = 0.0f;
+    instrumentPresets[242].patch.p_vfVibratoRate = 5.5f;
+    instrumentPresets[242].patch.p_vfConsonant = -1;
+    instrumentPresets[242].patch.p_attack = 0.001f;
+    instrumentPresets[242].patch.p_decay = 0.05f;
+    instrumentPresets[242].patch.p_sustain = 1.0f;
+    instrumentPresets[242].patch.p_release = 0.05f;
+    instrumentPresets[242].patch.p_volume = 0.5f;
+
+    // 243: Whisper Pad — high aspiration, breathy texture
+    instrumentPresets[243].name = "Whisper";
+    instrumentPresets[243].patch.p_waveType = WAVE_VOICFORM;
+    instrumentPresets[243].patch.p_vfPhoneme = VF_U;
+    instrumentPresets[243].patch.p_vfPhonemeTarget = VF_AH;
+    instrumentPresets[243].patch.p_vfMorphRate = 2.0f;
+    instrumentPresets[243].patch.p_vfAspiration = 0.8f;
+    instrumentPresets[243].patch.p_vfOpenQuotient = 0.6f;
+    instrumentPresets[243].patch.p_vfSpectralTilt = 0.85f;
+    instrumentPresets[243].patch.p_vfFormantShift = 1.1f;
+    instrumentPresets[243].patch.p_vfVibratoDepth = 0.05f;
+    instrumentPresets[243].patch.p_vfVibratoRate = 4.0f;
+    instrumentPresets[243].patch.p_vfConsonant = -1;
+    instrumentPresets[243].patch.p_attack = 0.2f;
+    instrumentPresets[243].patch.p_decay = 0.5f;
+    instrumentPresets[243].patch.p_sustain = 0.6f;
+    instrumentPresets[243].patch.p_release = 0.8f;
+    instrumentPresets[243].patch.p_volume = 0.35f;
+
+    // 244: Gregorian — vowel O, slow vibrato, monastic chant
+    instrumentPresets[244].name = "Gregorian";
+    instrumentPresets[244].patch.p_waveType = WAVE_VOICFORM;
+    instrumentPresets[244].patch.p_vfPhoneme = VF_O;
+    instrumentPresets[244].patch.p_vfPhonemeTarget = VF_U;
+    instrumentPresets[244].patch.p_vfMorphRate = 0.8f;
+    instrumentPresets[244].patch.p_vfAspiration = 0.08f;
+    instrumentPresets[244].patch.p_vfOpenQuotient = 0.6f;
+    instrumentPresets[244].patch.p_vfSpectralTilt = 0.4f;
+    instrumentPresets[244].patch.p_vfFormantShift = 0.9f;
+    instrumentPresets[244].patch.p_vfVibratoDepth = 0.12f;
+    instrumentPresets[244].patch.p_vfVibratoRate = 4.0f;
+    instrumentPresets[244].patch.p_vfConsonant = -1;
+    instrumentPresets[244].patch.p_attack = 0.1f;
+    instrumentPresets[244].patch.p_decay = 0.3f;
+    instrumentPresets[244].patch.p_sustain = 0.85f;
+    instrumentPresets[244].patch.p_release = 0.4f;
+    instrumentPresets[244].patch.p_volume = 0.5f;
+
+    // 245: Soprano — vowel I, high formant shift, operatic
+    instrumentPresets[245].name = "Soprano";
+    instrumentPresets[245].patch.p_waveType = WAVE_VOICFORM;
+    instrumentPresets[245].patch.p_vfPhoneme = VF_I;
+    instrumentPresets[245].patch.p_vfPhonemeTarget = VF_A;
+    instrumentPresets[245].patch.p_vfMorphRate = 3.0f;
+    instrumentPresets[245].patch.p_vfAspiration = 0.05f;
+    instrumentPresets[245].patch.p_vfOpenQuotient = 0.5f;
+    instrumentPresets[245].patch.p_vfSpectralTilt = 0.15f;
+    instrumentPresets[245].patch.p_vfFormantShift = 1.3f;
+    instrumentPresets[245].patch.p_vfVibratoDepth = 0.3f;
+    instrumentPresets[245].patch.p_vfVibratoRate = 6.0f;
+    instrumentPresets[245].patch.p_vfConsonant = -1;
+    instrumentPresets[245].patch.p_attack = 0.05f;
+    instrumentPresets[245].patch.p_decay = 0.2f;
+    instrumentPresets[245].patch.p_sustain = 0.9f;
+    instrumentPresets[245].patch.p_release = 0.3f;
+    instrumentPresets[245].patch.p_volume = 0.3f;
+
+    // 246: Bass Vocal — vowel O, low formant shift, deep
+    instrumentPresets[246].name = "Bass Vocal";
+    instrumentPresets[246].patch.p_waveType = WAVE_VOICFORM;
+    instrumentPresets[246].patch.p_vfPhoneme = VF_O;
+    instrumentPresets[246].patch.p_vfPhonemeTarget = -1;
+    instrumentPresets[246].patch.p_vfMorphRate = 5.0f;
+    instrumentPresets[246].patch.p_vfAspiration = 0.1f;
+    instrumentPresets[246].patch.p_vfOpenQuotient = 0.4f;
+    instrumentPresets[246].patch.p_vfSpectralTilt = 0.5f;
+    instrumentPresets[246].patch.p_vfFormantShift = 0.65f;
+    instrumentPresets[246].patch.p_vfVibratoDepth = 0.1f;
+    instrumentPresets[246].patch.p_vfVibratoRate = 5.0f;
+    instrumentPresets[246].patch.p_vfConsonant = -1;
+    instrumentPresets[246].patch.p_attack = 0.03f;
+    instrumentPresets[246].patch.p_decay = 0.2f;
+    instrumentPresets[246].patch.p_sustain = 0.85f;
+    instrumentPresets[246].patch.p_release = 0.2f;
+    instrumentPresets[246].patch.p_volume = 0.55f;
+
+    // 247: Plosive Lead — consonant T burst → vowel A, percussive
+    instrumentPresets[247].name = "Plosive Lead";
+    instrumentPresets[247].patch.p_waveType = WAVE_VOICFORM;
+    instrumentPresets[247].patch.p_vfPhoneme = VF_A;
+    instrumentPresets[247].patch.p_vfPhonemeTarget = VF_E;
+    instrumentPresets[247].patch.p_vfMorphRate = 8.0f;
+    instrumentPresets[247].patch.p_vfAspiration = 0.05f;
+    instrumentPresets[247].patch.p_vfOpenQuotient = 0.45f;
+    instrumentPresets[247].patch.p_vfSpectralTilt = 0.15f;
+    instrumentPresets[247].patch.p_vfFormantShift = 1.0f;
+    instrumentPresets[247].patch.p_vfVibratoDepth = 0.0f;
+    instrumentPresets[247].patch.p_vfVibratoRate = 5.5f;
+    instrumentPresets[247].patch.p_vfConsonant = VF_T;
+    instrumentPresets[247].patch.p_attack = 0.001f;
+    instrumentPresets[247].patch.p_decay = 0.3f;
+    instrumentPresets[247].patch.p_sustain = 0.7f;
+    instrumentPresets[247].patch.p_release = 0.15f;
+    instrumentPresets[247].patch.p_volume = 0.3f;
 }
 
 #endif // INSTRUMENT_PRESETS_H

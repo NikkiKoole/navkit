@@ -156,6 +156,16 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     bandedwgStrikePos = p->p_bandedwgStrikePos;
     bandedwgBrightness = p->p_bandedwgBrightness;
     bandedwgSustain = p->p_bandedwgSustain;
+    vfPhoneme = p->p_vfPhoneme;
+    vfPhonemeTarget = p->p_vfPhonemeTarget;
+    vfMorphRate = p->p_vfMorphRate;
+    vfAspiration = p->p_vfAspiration;
+    vfOpenQuotient = p->p_vfOpenQuotient;
+    vfSpectralTilt = p->p_vfSpectralTilt;
+    vfFormantShift = p->p_vfFormantShift;
+    vfVibratoDepth = p->p_vfVibratoDepth;
+    vfVibratoRate = p->p_vfVibratoRate;
+    vfConsonant = p->p_vfConsonant;
     birdType = p->p_birdType;
     birdChirpRange = p->p_birdChirpRange;
     birdTrillRate = p->p_birdTrillRate;
@@ -277,6 +287,7 @@ static int playNoteWithPatch(float freq, const SynthPatch *p) {
         case WAVE_STIFKARP: return playStifKarp(freq, (StifKarpPreset)p->p_stifkarpPreset);
         case WAVE_SHAKER:   return playShaker(freq, (ShakerPreset)p->p_shakerPreset);
         case WAVE_BANDEDWG: return playBandedWG(freq, (BandedWGPreset)p->p_bandedwgPreset);
+        case WAVE_VOICFORM: return playVoicForm(freq, p->p_vfPhoneme);
         case WAVE_BIRD:     return playBird(freq, (BirdType)p->p_birdType);
         case WAVE_BOWED:    return playBowed(freq);
         case WAVE_PIPE:     return playPipe(freq);

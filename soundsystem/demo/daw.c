@@ -436,6 +436,8 @@ static const Color engineTints[] = {
     {82, 52, 38, 255},   // WAVE_SHAKER   — orange-red (percussion)
     // --- Physical modeling: green ---
     {45, 68, 52, 255},   // WAVE_BANDEDWG — green (physical resonator)
+    // --- Voice: purple ---
+    {70, 45, 80, 255},   // WAVE_VOICFORM — purple (vocal synthesis)
 };
 // busNames defined later with other bus arrays
 
@@ -4908,6 +4910,17 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "Strike", &p->p_bandedwgStrikePos, 0.02f, 0.0f, 1.0f);
             ui_col_float(&c, "Bright", &p->p_bandedwgBrightness, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Sustn", &p->p_bandedwgSustain, 0.05f, 0.0f, 1.0f);
+        } else if (p->p_waveType == WAVE_VOICFORM) {
+            ui_col_sublabel(&c, "VoicForm:", UI_TEXT_SUBLABEL);
+            ui_col_cycle(&c, "Phoneme", vfPhonemeNames, VF_PHONEME_COUNT, &p->p_vfPhoneme);
+            ui_col_int(&c, "Target", &p->p_vfPhonemeTarget, 1, -1, VF_PHONEME_COUNT - 1);
+            ui_col_float(&c, "Morph", &p->p_vfMorphRate, 0.5f, 0.5f, 50.0f);
+            ui_col_float(&c, "Aspir", &p->p_vfAspiration, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "OpenQ", &p->p_vfOpenQuotient, 0.02f, 0.3f, 0.7f);
+            ui_col_float(&c, "Tilt", &p->p_vfSpectralTilt, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "FShift", &p->p_vfFormantShift, 0.05f, 0.5f, 2.0f);
+            ui_col_float(&c, "VibDep", &p->p_vfVibratoDepth, 0.02f, 0.0f, 1.0f);
+            ui_col_float(&c, "VibRt", &p->p_vfVibratoRate, 0.5f, 3.0f, 8.0f);
         } else if (p->p_waveType == WAVE_BIRD) {
             ui_col_sublabel(&c, "Bird:", UI_TEXT_SUBLABEL);
             ui_col_cycle(&c, "Type", birdTypeNames, 5, &p->p_birdType);

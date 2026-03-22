@@ -125,6 +125,11 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _di(f, "bandedwgPreset", p->p_bandedwgPreset); _dw(f, "bandedwgBowPressure", p->p_bandedwgBowPressure);
     _dw(f, "bandedwgBowSpeed", p->p_bandedwgBowSpeed); _dw(f, "bandedwgStrikePos", p->p_bandedwgStrikePos);
     _dw(f, "bandedwgBrightness", p->p_bandedwgBrightness); _dw(f, "bandedwgSustain", p->p_bandedwgSustain);
+    _di(f, "vfPhoneme", p->p_vfPhoneme); _di(f, "vfPhonemeTarget", p->p_vfPhonemeTarget);
+    _dw(f, "vfMorphRate", p->p_vfMorphRate); _dw(f, "vfAspiration", p->p_vfAspiration);
+    _dw(f, "vfOpenQuotient", p->p_vfOpenQuotient); _dw(f, "vfSpectralTilt", p->p_vfSpectralTilt);
+    _dw(f, "vfFormantShift", p->p_vfFormantShift); _dw(f, "vfVibratoDepth", p->p_vfVibratoDepth);
+    _dw(f, "vfVibratoRate", p->p_vfVibratoRate); _di(f, "vfConsonant", p->p_vfConsonant);
     _di(f, "birdType", p->p_birdType); _dw(f, "birdChirpRange", p->p_birdChirpRange);
     _dw(f, "birdTrillRate", p->p_birdTrillRate); _dw(f, "birdTrillDepth", p->p_birdTrillDepth);
     _dw(f, "birdAmRate", p->p_birdAmRate); _dw(f, "birdAmDepth", p->p_birdAmDepth);
@@ -813,6 +818,16 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"bandedwgStrikePos")==0) p->p_bandedwgStrikePos = _dpf(val);
     else if (strcmp(key,"bandedwgBrightness")==0) p->p_bandedwgBrightness = _dpf(val);
     else if (strcmp(key,"bandedwgSustain")==0) p->p_bandedwgSustain = _dpf(val);
+    else if (strcmp(key,"vfPhoneme")==0) p->p_vfPhoneme = _dpi(val);
+    else if (strcmp(key,"vfPhonemeTarget")==0) p->p_vfPhonemeTarget = _dpi(val);
+    else if (strcmp(key,"vfMorphRate")==0) p->p_vfMorphRate = _dpf(val);
+    else if (strcmp(key,"vfAspiration")==0) p->p_vfAspiration = _dpf(val);
+    else if (strcmp(key,"vfOpenQuotient")==0) p->p_vfOpenQuotient = _dpf(val);
+    else if (strcmp(key,"vfSpectralTilt")==0) p->p_vfSpectralTilt = _dpf(val);
+    else if (strcmp(key,"vfFormantShift")==0) p->p_vfFormantShift = _dpf(val);
+    else if (strcmp(key,"vfVibratoDepth")==0) p->p_vfVibratoDepth = _dpf(val);
+    else if (strcmp(key,"vfVibratoRate")==0) p->p_vfVibratoRate = _dpf(val);
+    else if (strcmp(key,"vfConsonant")==0) p->p_vfConsonant = _dpi(val);
     else if (strcmp(key,"birdType")==0) p->p_birdType = _dpi(val);
     else if (strcmp(key,"birdChirpRange")==0) p->p_birdChirpRange = _dpf(val);
     else if (strcmp(key,"birdTrillRate")==0) p->p_birdTrillRate = _dpf(val);
