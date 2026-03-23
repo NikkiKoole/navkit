@@ -1471,6 +1471,7 @@ static bool isPatchDirty(int patchIdx) {
 static void loadPresetIntoPatch(int patchIdx, int presetIdx) {
     if (!presetsInitialized) { initInstrumentPresets(); presetsInitialized = true; }
     dawReleaseVoicesForPatch(patchIdx);
+    monoStackClear();  // Prevent stale mono notes from blocking release on new preset
     daw.patches[patchIdx] = instrumentPresets[presetIdx].patch;
     // Copy preset name into patch p_name
     snprintf(daw.patches[patchIdx].p_name, 32, "%s", instrumentPresets[presetIdx].name);
