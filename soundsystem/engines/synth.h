@@ -781,7 +781,7 @@ typedef struct {
 
 // Electric piano synthesis settings — tine/reed/string modal bank + pickup nonlinearity
 // Supports Rhodes (electromagnetic), Wurlitzer (electrostatic), and Clavinet (contact) pickup types
-#define EPIANO_MODES 6
+#define EPIANO_MODES 12
 #define EP_PICKUP_ELECTROMAGNETIC 0  // Rhodes: tine + tone bar, asymmetric (even harmonics)
 #define EP_PICKUP_ELECTROSTATIC   1  // Wurlitzer: reed, symmetric (odd harmonics)
 #define EP_PICKUP_CONTACT         2  // Clavinet: string + damper pad, mixed harmonics
@@ -799,6 +799,7 @@ typedef struct {
     float decayTime;         // Base decay in seconds
     float bellLevel;         // Upper mode emphasis (modes 4-6)
     float strikeVelocity;    // Captured at note-on
+    float freqNorm;          // Register position (0=low, 1=high) for pickup scaling
     float dcBlockState;      // DC blocker state (pickup AC coupling)
     float dcBlockPrev;       // Previous input for DC blocker
     int pickupType;          // EP_PICKUP_ELECTROMAGNETIC (Rhodes) or EP_PICKUP_ELECTROSTATIC (Wurli)
@@ -1571,6 +1572,7 @@ typedef struct SynthContext {
     float epDecay;
     float epBell;
     float epBellTone;
+    int epRatioSet;        // 0=beam (original), 1=tine+spring (realistic)
     int epPickupType;      // EP_PICKUP_ELECTROMAGNETIC, EP_PICKUP_ELECTROSTATIC, or EP_PICKUP_CONTACT
 
     // Organ (Hammond drawbar) tweakables
@@ -2051,6 +2053,7 @@ static void _ensureSynthCtx(void) {
 #define epDecay (synthCtx->epDecay)
 #define epBell (synthCtx->epBell)
 #define epBellTone (synthCtx->epBellTone)
+#define epRatioSet (synthCtx->epRatioSet)
 #define epPickupType (synthCtx->epPickupType)
 #define orgDrawbars (synthCtx->orgDrawbars)
 #define orgClick (synthCtx->orgClick)

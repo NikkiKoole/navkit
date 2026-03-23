@@ -198,6 +198,7 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     epDecay = p->p_epDecay;
     epBell = p->p_epBell;
     epBellTone = p->p_epBellTone;
+    epRatioSet = p->p_epRatioSet;
     epPickupType = p->p_epPickupType;
     for (int i = 0; i < ORGAN_DRAWBARS; i++) orgDrawbars[i] = p->p_orgDrawbar[i];
     orgClick = p->p_orgClick;

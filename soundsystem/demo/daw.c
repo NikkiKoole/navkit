@@ -4982,6 +4982,10 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "Decay", &p->p_epDecay, 0.25f, 0.5f, 8.0f);
             ui_col_float(&c, "Bell", &p->p_epBell, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "BlTone", &p->p_epBellTone, 0.05f, 0.0f, 1.0f);
+            if (p->p_epPickupType == 0) { // Rhodes only
+                static const char *ratioNames[] = {"Beam", "Tine"};
+                ui_col_cycle(&c, "Ratios", ratioNames, 2, &p->p_epRatioSet);
+            }
         } else if (p->p_waveType == WAVE_ORGAN) {
             ui_col_sublabel(&c, "Drawbars:", UI_TEXT_SUBLABEL);
             static const char* dbNames[] = {"16'","5.3'","8'","4'","2.6'","2'","1.6'","1.3'","1'"};

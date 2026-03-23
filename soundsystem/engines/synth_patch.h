@@ -251,6 +251,7 @@ typedef struct {
     float p_epDecay;          // Decay time in seconds (0.5-8.0)
     float p_epBell;           // Upper mode (bell) emphasis (0-1)
     float p_epBellTone;       // Bell inharmonicity (0=harmonic/organ, 1=inharmonic/bell)
+    int p_epRatioSet;         // 0=beam (Euler-Bernoulli), 1=tine+spring (measured)
     int p_epPickupType;       // 0=electromagnetic (Rhodes), 1=electrostatic (Wurlitzer)
 
     // Organ (Hammond drawbar)
@@ -527,6 +528,7 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_epDecay = 3.0f,
         .p_epBell = 0.5f,
         .p_epBellTone = 0.5f,
+        .p_epRatioSet = 0,
         .p_epPickupType = 0,
         .p_orgDrawbar = {0,0,1,0,0,0,0,0,0},
         .p_orgClick = 0.3f,

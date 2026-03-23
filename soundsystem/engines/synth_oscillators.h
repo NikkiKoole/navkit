@@ -3023,38 +3023,61 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
     float freqNorm = clampf((freq - 80.0f) / 1200.0f, 0.0f, 1.0f);
 
     // Mode frequency ratios: blend between harmonic and instrument-specific inharmonic modes.
-    static const float harmonicRatios[EPIANO_MODES] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-    // Rhodes: clamped-free cantilever beam bending modes (Euler-Bernoulli).
-    static const float rhodesInharmonic[EPIANO_MODES] = {1.0f, 6.27f, 17.55f, 34.39f, 56.84f, 84.91f};
+    static const float harmonicRatios[EPIANO_MODES] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
+    // Rhodes ratio set 0: clamped-free cantilever beam bending modes (Euler-Bernoulli).
+    // Pure theory — wildly inharmonic upper partials (6.27×, 17.55×...).
+    static const float rhodesBeam[EPIANO_MODES] = {1.0f, 6.27f, 17.55f, 34.39f, 56.84f, 84.91f, 120.0f, 162.0f, 211.0f, 267.0f, 330.0f, 400.0f};
+    // Rhodes ratio set 1: tine+spring measured partials (Shear 2011, Gabrielli 2020).
+    // Real Rhodes tines are tuned by a spring — the coupling pulls upper modes
+    // much closer to harmonic than a bare beam. Bell character comes from modes 3-4
+    // at ~4.2× and ~9.5× (a bright minor-ish shimmer, not metallic buzz).
+    static const float rhodesTineSpring[EPIANO_MODES] = {1.0f, 4.2f, 9.5f, 16.3f, 24.8f, 35.0f, 47.0f, 61.0f, 77.0f, 95.0f, 115.0f, 137.0f};
+    // Blend scales for tine+spring: body modes (0-2) stay harmonic, only bell
+    // partials (3-5) get inharmonicity — prevents detuning when sweeping bellTone
+    static const float modeBlendScaleTineSpring[EPIANO_MODES] = {0.0f, 0.0f, 0.0f, 0.5f, 0.8f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+    const float *rhodesInharmonic = (epRatioSet == 1) ? rhodesTineSpring : rhodesBeam;
     // Wurlitzer: clamped-free reed modes — closer to odd harmonics than beam modes.
     // Steel reeds vibrate with a strong odd-harmonic series (like a clarinet-ish spectrum)
     // but with slight inharmonic stretch from stiffness. The 2nd partial is weak because
     // the electrostatic pickup's symmetric geometry cancels even modes partially.
-    static const float wurliInharmonic[EPIANO_MODES] = {1.0f, 2.02f, 3.01f, 5.04f, 7.05f, 9.08f};
+    static const float wurliInharmonic[EPIANO_MODES] = {1.0f, 2.02f, 3.01f, 5.04f, 7.05f, 9.08f, 11.1f, 13.1f, 15.2f, 17.2f, 19.3f, 21.3f};
     // Clavinet D6: short steel string under tension with yarn-wound damper pad.
     // Nearly harmonic (stiff string, not a beam), with slight inharmonicity from
     // string stiffness (B coefficient). Upper modes include damper pad resonance —
     // the characteristic "twang" comes from the pad releasing the string.
     // Mode 5-6: damper/body resonance (more inharmonic, fast-decaying).
-    static const float clavinetInharmonic[EPIANO_MODES] = {1.0f, 2.003f, 3.012f, 4.028f, 5.15f, 6.35f};
+    static const float clavinetInharmonic[EPIANO_MODES] = {1.0f, 2.003f, 3.012f, 4.028f, 5.15f, 6.35f, 7.6f, 8.9f, 10.2f, 11.6f, 13.0f, 14.5f};
 
     const float *inharmonicRatios =
         (pickupT == EP_PICKUP_CONTACT) ? clavinetInharmonic :
         (pickupT == EP_PICKUP_ELECTROSTATIC) ? wurliInharmonic : rhodesInharmonic;
 
     float bt = epBellTone;
-    float regBellBoost = freqNorm * 0.15f;
-    float btEff = clampf(bt + regBellBoost, 0.0f, 1.0f);
+    float btEff;
+    if (pickupT == EP_PICKUP_ELECTROMAGNETIC) {
+        // Rhodes: inharmonicity scales with register.
+        // Low register = nearly harmonic (warm, piano-like richness from pickup).
+        // High register = more bell character but still moderate.
+        // Velocity has minimal effect on inharmonicity — the *amplitude* of bell
+        // modes changes with velocity (handled in velScale below), not their tuning.
+        float regScale = freqNorm * freqNorm;          // quadratic: ~0 at bottom, 1.0 at top
+        btEff = clampf(bt * regScale, 0.0f, 1.0f);
+    } else {
+        // Wurli / Clav: original behavior
+        float regBellBoost = freqNorm * 0.15f;
+        btEff = clampf(bt + regBellBoost, 0.0f, 1.0f);
+    }
     // Per-mode blend: body modes stay harmonic, upper modes get inharmonicity.
-    static const float modeBlendScale[EPIANO_MODES] = {0.0f, 0.0f, 0.05f, 0.4f, 0.8f, 1.0f};
+    static const float modeBlendScale[EPIANO_MODES] = {0.0f, 0.0f, 0.05f, 0.4f, 0.8f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
     // Wurli reed modes are already close to harmonic, so blend more aggressively
-    static const float wurliBlendScale[EPIANO_MODES] = {0.0f, 0.1f, 0.2f, 0.6f, 0.9f, 1.0f};
+    static const float wurliBlendScale[EPIANO_MODES] = {0.0f, 0.1f, 0.2f, 0.6f, 0.9f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
     // Clavinet string modes are nearly harmonic — only upper modes (damper pad)
     // get significant inharmonicity. Body modes stay locked to partials.
-    static const float clavinetBlendScale[EPIANO_MODES] = {0.0f, 0.0f, 0.05f, 0.2f, 0.5f, 0.75f};
+    static const float clavinetBlendScale[EPIANO_MODES] = {0.0f, 0.0f, 0.05f, 0.2f, 0.5f, 0.75f, 0.85f, 0.9f, 0.95f, 1.0f, 1.0f, 1.0f};
+    const float *rhodesBlendScale = (epRatioSet == 1) ? modeBlendScaleTineSpring : modeBlendScale;
     const float *blendScale =
         (pickupT == EP_PICKUP_CONTACT) ? clavinetBlendScale :
-        (pickupT == EP_PICKUP_ELECTROSTATIC) ? wurliBlendScale : modeBlendScale;
+        (pickupT == EP_PICKUP_ELECTROSTATIC) ? wurliBlendScale : rhodesBlendScale;
     float modeRatios[EPIANO_MODES];
     for (int i = 0; i < EPIANO_MODES; i++) {
         float modeBt = btEff * blendScale[i];
@@ -3062,24 +3085,28 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
     }
 
     // Pickup position profiles: centered (mellow) vs offset (bright).
-    // Rhodes (electromagnetic): models magnetic flux coupling between tine and pickup coil.
-    // Centered: fundamental + strong 2nd partial. The electromagnetic pickup always couples
-    // to the 2nd partial — it's what gives Rhodes its warmth vs a hollow organ sound.
-    // Offset: 2nd harmonic dominant (the "bark" position), 4th partial also strong.
-    // Measured Rhodes spectra (Gabrielli 2020, Shear 2011) show the 2nd partial at
-    // 60-80% of fundamental at centered position, rising to equal or greater at offset.
-    static const float rhodesCentered[EPIANO_MODES] = {1.00f, 0.55f, 0.12f, 0.18f, 0.08f, 0.03f};
-    static const float rhodesOffset[EPIANO_MODES]   = {0.40f, 1.00f, 0.20f, 0.50f, 0.15f, 0.06f};
+    // Rhodes (electromagnetic): the modal bank represents the TINE vibration before pickup.
+    // The pickup nonlinearity (sum², sum³) generates even harmonics from this input.
+    // So the modal bank should be fundamental-heavy — let the pickup do the harmonic work.
+    // Measured sample data (B1 vel3): real Rhodes partials are 100/3/82/77/17/34%
+    // but most of the upper harmonic energy comes from pickup intermodulation, not modes.
+    // Centered: clean fundamental, small 2nd (pickup generates the rest).
+    // Offset: 2nd partial stronger (tine closer to coil edge = more flux change at 2f).
+    // Rhodes modal amplitudes: upper modes (7-12) provide material for pickup intermodulation
+    // to generate the rich harmonic series measured in real Rhodes low register.
+    // These are pre-pickup tine amplitudes — the pickup sum²/sum³ further shapes them.
+    static const float rhodesCentered[EPIANO_MODES] = {1.00f, 0.04f, 0.03f, 0.06f, 0.03f, 0.02f, 0.015f, 0.012f, 0.010f, 0.008f, 0.006f, 0.004f};
+    static const float rhodesOffset[EPIANO_MODES]   = {0.60f, 0.35f, 0.08f, 0.20f, 0.08f, 0.05f, 0.04f, 0.03f, 0.025f, 0.02f, 0.015f, 0.01f};
     // Wurli (electrostatic): reed vibrates between charged plates. More uniform coupling
     // but the reed's own mode shapes favor odd harmonics. Centered = clean, offset = buzzy.
-    static const float wurliCentered[EPIANO_MODES]   = {1.00f, 0.10f, 0.55f, 0.08f, 0.35f, 0.05f};
-    static const float wurliOffset[EPIANO_MODES]     = {0.60f, 0.20f, 0.70f, 0.15f, 0.50f, 0.10f};
+    static const float wurliCentered[EPIANO_MODES]   = {1.00f, 0.10f, 0.55f, 0.08f, 0.35f, 0.05f, 0, 0, 0, 0, 0, 0};
+    static const float wurliOffset[EPIANO_MODES]     = {0.60f, 0.20f, 0.70f, 0.15f, 0.50f, 0.10f, 0, 0, 0, 0, 0, 0};
     // Clavinet D6: two single-coil pickups under the strings (like a guitar).
     // "Neck" position (centered) = warm, fundamental-heavy, damper pad resonance audible.
     // "Bridge" position (offset) = bright, snappy, strong upper partials, the funk sound.
     // Real D6 has a 4-position pickup selector; we interpolate between the two extremes.
-    static const float clavinetCentered[EPIANO_MODES] = {1.00f, 0.30f, 0.20f, 0.35f, 0.15f, 0.06f};
-    static const float clavinetOffset[EPIANO_MODES]   = {0.60f, 0.55f, 0.50f, 0.20f, 0.30f, 0.10f};
+    static const float clavinetCentered[EPIANO_MODES] = {1.00f, 0.30f, 0.20f, 0.35f, 0.15f, 0.06f, 0, 0, 0, 0, 0, 0};
+    static const float clavinetOffset[EPIANO_MODES]   = {0.60f, 0.55f, 0.50f, 0.20f, 0.30f, 0.10f, 0, 0, 0, 0, 0, 0};
     const float *centeredAmps =
         (pickupT == EP_PICKUP_CONTACT) ? clavinetCentered :
         (pickupT == EP_PICKUP_ELECTROSTATIC) ? wurliCentered : rhodesCentered;
@@ -3106,36 +3133,64 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
         // Bell emphasis for modes 4-6
         if (i >= 3) amp *= (1.0f + epBell * 1.5f);
 
-        // Register scaling: high notes have less body, more bell
-        if (i == 0) {
-            amp *= (1.0f - freqNorm * 0.3f); // fundamental thins at top
-        } else if (i >= 3) {
-            amp *= (1.0f + freqNorm * 0.4f); // bell modes brighter at top
-        }
-
-        // Velocity scaling: controls which modes are heard at different dynamics.
-        // Fundamental/body use vel² (only loud at hard hits).
-        // Bell modes use sqrt(vel) (present even at soft hits → vibes character).
-        // The actual bark comes from velToDrive on the preset, not from here.
+        // Register scaling: high notes have less body, more/less bell
         float velScale;
-        if (i == 0) {
-            // Fundamental: vel² curve — quiet at pp, strong at ff
-            float fundPower = velSq * (1.0f - epBell * 0.5f) + vel * epBell * 0.5f;
-            velScale = 0.05f + 0.95f * fundPower;
-        } else if (i == 1) {
-            // 2nd partial: the key even harmonic for Rhodes warmth. Must track the
-            // fundamental more closely than other body modes — if it disappears at
-            // soft dynamics the sound becomes hollow/organ-like. Use linear curve
-            // (between fundamental and body) so it's always audible relative to fund.
-            velScale = 0.08f + 0.92f * (vel * 0.6f + velSq * 0.4f);
-        } else if (i == 2) {
-            // 3rd partial (body): vel² dominant
-            velScale = 0.05f + 0.95f * (vel * 0.4f + velSq * 0.6f);
+        if (pickupT == EP_PICKUP_ELECTROMAGNETIC) {
+            // Rhodes register scaling: fundamental dominates more at top.
+            // Real Rhodes top octave (D6+) is nearly pure sine — all upper modes
+            // must vanish. Use quadratic thinning above freqNorm 0.6 for steep rolloff.
+            {
+                if (i == 0) {
+                    amp *= (1.0f - freqNorm * 0.15f);
+                } else {
+                    // All upper modes: scale down with register using a steep curve.
+                    // Playing range (G3-B4, freqNorm 0.1-0.35): gentle rolloff.
+                    // Top octave (D6+, freqNorm 0.8+): nearly zero.
+                    // pow(1-fn, 3) gives: fn=0.3→0.34, fn=0.5→0.125, fn=0.8→0.008, fn=0.9→0.001
+                    float keep = (1.0f - freqNorm);
+                    keep = keep * keep * keep; // cubic
+                    if (i >= 3) keep *= keep;  // bell: 6th power — extra steep
+                    amp *= keep;
+                }
+            }
+
+            // Rhodes velocity scaling (measured against real samples):
+            // Reference shows upper partials are present even at pp — the real
+            // hammer always excites some overtones. Use linear curves with
+            // moderate floors so soft hits have warmth, not just fundamental.
+            if (i == 0) {
+                velScale = 0.15f + 0.85f * (vel * 0.6f + velSq * 0.4f);
+            } else if (i == 1) {
+                // 2nd partial: always audible
+                velScale = 0.20f + 0.80f * (vel * 0.7f + velSq * 0.3f);
+            } else if (i == 2) {
+                velScale = 0.15f + 0.85f * (vel * 0.6f + velSq * 0.4f);
+            } else {
+                // Bell/upper modes: present at soft hits (vibes shimmer),
+                // stronger at ff. Linear-ish with decent floor.
+                float bellPower = vel * 0.5f + velSq * 0.5f;
+                velScale = 0.08f + 0.92f * bellPower;
+            }
         } else {
-            // Bell modes: sqrt curve — prominent even at soft velocity
-            float bellCurve = sqrtf(vel);
-            float mix = 0.3f + epBell * 0.4f; // how much sqrt vs linear (0.3-0.7)
-            velScale = 0.05f + 0.95f * (bellCurve * mix + vel * (1.0f - mix));
+            // Wurli / Clav: original curves
+            if (i == 0) {
+                amp *= (1.0f - freqNorm * 0.3f);
+            } else if (i >= 3) {
+                amp *= (1.0f + freqNorm * 0.4f); // bell brighter at top
+            }
+
+            if (i == 0) {
+                float fundPower = velSq * (1.0f - epBell * 0.5f) + vel * epBell * 0.5f;
+                velScale = 0.05f + 0.95f * fundPower;
+            } else if (i == 1) {
+                velScale = 0.08f + 0.92f * (vel * 0.6f + velSq * 0.4f);
+            } else if (i == 2) {
+                velScale = 0.05f + 0.95f * (vel * 0.4f + velSq * 0.6f);
+            } else {
+                float bellCurve = sqrtf(vel);
+                float mix = 0.3f + epBell * 0.4f;
+                velScale = 0.05f + 0.95f * (bellCurve * mix + vel * (1.0f - mix));
+            }
         }
         amp *= velScale;
 
@@ -3143,14 +3198,17 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
         ep->modeAmps[i] = amp;
         ep->modePhases[i] = 0.0f;
 
-        // Decay: upper modes decay much faster than fundamental.
-        // For cantilever beam modes, higher modes decay roughly as 1/ratio² due to
-        // radiation loss and internal damping (Shear 2011: beam modes decay in ms).
-        // For pickup harmonics, upper harmonics decay faster but less drastically.
-        // The blend follows bellTone: more inharmonic = faster upper decay.
-        float decayFactor = 1.0f / (1.0f + (ratio - 1.0f) * (0.3f + btEff * 0.7f));
-        // Register: high notes have shorter decay (measured: Eb6=0.45s vs Eb2=3.88s)
-        float regDecay = epDecay * (1.0f - freqNorm * 0.5f);
+        // Decay: upper modes decay faster than fundamental
+        float decayFactor, regDecay;
+        if (pickupT == EP_PICKUP_ELECTROMAGNETIC) {
+            // Rhodes: gentler upper-mode decay, less register scaling
+            decayFactor = 1.0f / (1.0f + (ratio - 1.0f) * (0.2f + btEff * 0.5f));
+            regDecay = epDecay * (1.0f - freqNorm * 0.35f);
+        } else {
+            // Wurli / Clav: original decay curves
+            decayFactor = 1.0f / (1.0f + (ratio - 1.0f) * (0.3f + btEff * 0.7f));
+            regDecay = epDecay * (1.0f - freqNorm * 0.5f);
+        }
         ep->modeDecays[i] = regDecay * decayFactor;
     }
 
@@ -3160,7 +3218,13 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
     float ampSum = 0.0f;
     for (int i = 0; i < EPIANO_MODES; i++) ampSum += ep->modeAmps[i];
     if (ampSum > 0.001f) {
-        float target = vel;  // signal amplitude tracks velocity
+        // Rhodes: compressed curve with floor so soft hits still excite pickup.
+        // vel^1.5 alone gives 0.058 at vel=0.15 — too quiet for pickup nonlinearity.
+        // Floor of 0.15 ensures even pp hits generate some even harmonics.
+        // Wurli/Clav: linear (original).
+        float target = (pickupT == EP_PICKUP_ELECTROMAGNETIC)
+            ? 0.15f + 0.85f * sqrtf(vel) * vel   // floor + compressed
+            : vel;
         float scale = target / ampSum;
         for (int i = 0; i < EPIANO_MODES; i++) {
             ep->modeAmps[i] *= scale;
@@ -3183,6 +3247,7 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
     ep->decayTime = epDecay;
     ep->bellLevel = epBell;
     ep->strikeVelocity = vel;
+    ep->freqNorm = freqNorm;
     ep->dcBlockState = 0.0f;
     ep->dcBlockPrev = 0.0f;
 }
@@ -3245,22 +3310,24 @@ static float processEPianoOscillator(Voice *v, float sampleRate) {
         output = tanhf(output);
     } else {
         // Electromagnetic pickup: tine magnetizes asymmetrically.
-        // Real Rhodes pickups have a baseline asymmetry even at soft dynamics —
-        // the tine's proximity to the coil creates a nonlinear flux coupling that
-        // always generates some even harmonics. This isn't an on/off effect.
-        // kBase provides a floor so soft hits still have warmth (not just odd partials).
-        // The sum² term (k) is the primary even-harmonic generator; it needs a strong
-        // baseline to avoid the hollow/square-wave character that pure modal sines produce.
-        // kBase is pickup-distance-independent — the asymmetry is inherent in the geometry.
-        float kBase = 0.4f;  // always-on even harmonics from coil asymmetry
-        float k = kBase + ep->pickupDist * 1.0f * velBoost;
-        float k2 = 0.12f + ep->pickupDist * 0.25f * velBoost;
-        output = sum + k * sum * sum + k2 * sum * sum * sum;
-        // Asymmetric soft-clip (positive peaks compress less = even harmonic preservation)
+        // Nonlinearity decreases with register — high tines are short,
+        // barely excite the coil, output approaches pure sine.
+        // Low tines are long, drive the pickup hard = rich harmonics.
+        // Quadratic falloff: 1.0 at low, ~0.04 at top (nearly pure sine)
+        float regDist = (1.0f - ep->freqNorm) * (1.0f - ep->freqNorm);
+        float kBase = 0.25f * regDist;
+        float k = kBase + ep->pickupDist * 1.2f * velBoost * regDist;
+        float k2 = (0.20f + ep->pickupDist * 0.5f * velBoost) * regDist;
+        float sum2 = sum * sum;
+        float sum3 = sum * sum2;
+        float k3 = ep->pickupDist * 0.3f * velBoost * regDist;
+        output = sum + k * sum2 + k2 * sum3 + k3 * sum2 * sum3;
+        // Asymmetric soft-clip — also register-scaled
+        float clipDrive = 1.0f + ep->pickupDist * 0.5f * regDist;
         if (output >= 0.0f) {
-            output = tanhf(output);
+            output = tanhf(output * clipDrive);
         } else {
-            output = tanhf(output * 0.85f) * 0.9f;
+            output = tanhf(output * clipDrive * 0.85f) * 0.9f;
         }
     }
 

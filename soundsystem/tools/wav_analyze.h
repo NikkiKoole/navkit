@@ -944,6 +944,98 @@ static void waPrintComparison(const WaComparison *cmp, const WaAnalysis *preset,
         printf("    (none — close match!)\n");
     }
     printf("\n");
+
+    // Per-partial breakdown: match partials by frequency proximity
+    if (preset->numPartials > 0 || reference->numPartials > 0) {
+        printf("  Partials (preset vs reference):\n");
+        printf("    %-6s  %-10s %-10s %-7s  %-10s %-10s %-7s  %s\n",
+               "Mode", "P.Freq", "P.Amp", "P.Ratio", "R.Freq", "R.Amp", "R.Ratio", "Delta");
+        printf("    %-6s  %-10s %-10s %-7s  %-10s %-10s %-7s  %s\n",
+               "----", "------", "-----", "-------", "------", "-----", "-------", "-----");
+
+        // Determine max partials to show
+        int maxP = preset->numPartials > reference->numPartials
+                   ? preset->numPartials : reference->numPartials;
+        if (maxP > 12) maxP = 12;
+
+        // Track which reference partials have been matched
+        bool refUsed[WA_PARTIALS_MAX] = {false};
+
+        for (int i = 0; i < maxP; i++) {
+            // Preset partial
+            float pFreq = 0, pAmp = 0, pRatio = 0;
+            if (i < preset->numPartials) {
+                pFreq = preset->partialFreqs[i];
+                pAmp = preset->partialAmps[i];
+                pRatio = (preset->fundamental > 20.0f) ? pFreq / preset->fundamental : 0;
+            }
+
+            // Find closest unmatched reference partial
+            float rFreq = 0, rAmp = 0, rRatio = 0;
+            int bestRef = -1;
+            float bestDist = 1e9f;
+            for (int j = 0; j < reference->numPartials; j++) {
+                if (refUsed[j]) continue;
+                float dist = fabsf(reference->partialFreqs[j] - pFreq);
+                // Also try matching by ratio if fundamental is known
+                if (pRatio > 0.5f && reference->fundamental > 20.0f) {
+                    float rr = reference->partialFreqs[j] / reference->fundamental;
+                    float ratioDist = fabsf(rr - pRatio) * preset->fundamental;
+                    if (ratioDist < dist) dist = ratioDist;
+                }
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestRef = j;
+                }
+            }
+            if (bestRef >= 0 && bestDist < pFreq * 0.3f) { // within 30% to count as match
+                refUsed[bestRef] = true;
+                rFreq = reference->partialFreqs[bestRef];
+                rAmp = reference->partialAmps[bestRef];
+                rRatio = (reference->fundamental > 20.0f)
+                    ? rFreq / reference->fundamental : 0;
+            } else if (i < reference->numPartials && !refUsed[i]) {
+                // No good match — show reference partial at same index
+                rFreq = reference->partialFreqs[i];
+                rAmp = reference->partialAmps[i];
+                rRatio = (reference->fundamental > 20.0f)
+                    ? rFreq / reference->fundamental : 0;
+                refUsed[i] = true;
+            }
+
+            // Format delta
+            char delta[64] = "";
+            if (pAmp > 0.001f && rAmp > 0.001f) {
+                float ampDiffDb = 20.0f * log10f(pAmp / rAmp);
+                float centsDiff = (pFreq > 20.0f && rFreq > 20.0f)
+                    ? 1200.0f * log2f(pFreq / rFreq) : 0;
+                snprintf(delta, sizeof(delta), "%+.1fdB %+.0fc",
+                         ampDiffDb, centsDiff);
+            } else if (pAmp > 0.001f) {
+                snprintf(delta, sizeof(delta), "EXTRA");
+            } else if (rAmp > 0.001f) {
+                snprintf(delta, sizeof(delta), "MISSING");
+            }
+
+            printf("    %-6d  %7.1f Hz %5.1f%%   x%-5.2f  %7.1f Hz %5.1f%%   x%-5.2f  %s\n",
+                   i + 1,
+                   pFreq, pAmp * 100.0f, pRatio,
+                   rFreq, rAmp * 100.0f, rRatio,
+                   delta);
+        }
+
+        // Show any unmatched reference partials
+        for (int j = 0; j < reference->numPartials && j < WA_PARTIALS_MAX; j++) {
+            if (!refUsed[j] && reference->partialAmps[j] > 0.01f) {
+                float rRatio = (reference->fundamental > 20.0f)
+                    ? reference->partialFreqs[j] / reference->fundamental : 0;
+                printf("    %-6s  %10s %10s %7s  %7.1f Hz %5.1f%%   x%-5.2f  MISSING in preset\n",
+                       "-", "", "", "", reference->partialFreqs[j],
+                       reference->partialAmps[j] * 100.0f, rRatio);
+            }
+        }
+        printf("\n");
+    }
 }
 
 // ============================================================================
