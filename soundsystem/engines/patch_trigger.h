@@ -282,17 +282,13 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     noteFbSpacing = p->p_fbSpacing;
     noteFbAlpha = p->p_fbAlpha;
     noteFbBeta = p->p_fbBeta;
-    noteFbQ1 = p->p_fbQ1;
-    noteFbQ2 = p->p_fbQ2;
-    noteFbQ3 = p->p_fbQ3;
+    noteFbQ = p->p_fbQ;
     noteFbKeyTrack = p->p_fbKeyTrack;
     noteFbMorphOsc = p->p_fbMorphOsc;
-    noteFbLayout = p->p_fbLayout;
     noteFbRandomize = p->p_fbRandomize;
     noteFbEnvAlpha = p->p_fbEnvAlpha;
     noteFbLfoRate = p->p_fbLfoRate;
     noteFbLfoAlpha = p->p_fbLfoAlpha;
-    noteFbLfoBeta = p->p_fbLfoBeta;
     noteFbLfoShape = p->p_fbLfoShape;
     noteFbNoiseMix = p->p_fbNoiseMix;
 }

@@ -1236,16 +1236,14 @@ typedef struct {
     float fbSpacing;
     float fbAlpha;
     float fbBeta;
-    float fbQ1, fbQ2, fbQ3;
+    float fbQ;                      // Single Q → LP×0.7, BP2×1.0, BP3×1.3
     float fbKeyTrack;
     float fbMorphOsc;
-    int fbLayout;                   // 0 = 3×BPF, 1 = LP+2×BPF
-    float fbRandomize;              // Per-note random variation amount
-    float fbEnvAlpha;               // Filter envelope → Alpha depth
-    float fbLfoRate;                // Filterbank LFO rate (Hz)
-    float fbLfoAlpha;               // Filterbank LFO → Alpha depth
-    float fbLfoBeta;                // Filterbank LFO → Beta depth
-    int fbLfoShape;                 // Filterbank LFO shape
+    float fbRandomize;
+    float fbEnvAlpha;
+    float fbLfoRate;
+    float fbLfoAlpha;
+    int fbLfoShape;
     float fbLfoPhase;               // Filterbank LFO phase (runtime state)
     float fbLfoSH;                  // Filterbank LFO S&H value
     float fbNoiseMix;               // Noise into filterbank input
@@ -1813,15 +1811,13 @@ typedef struct SynthContext {
     float noteFbSpacing;
     float noteFbAlpha;
     float noteFbBeta;
-    float noteFbQ1, noteFbQ2, noteFbQ3;
+    float noteFbQ;
     float noteFbKeyTrack;
     float noteFbMorphOsc;
-    int noteFbLayout;
     float noteFbRandomize;
     float noteFbEnvAlpha;
     float noteFbLfoRate;
     float noteFbLfoAlpha;
-    float noteFbLfoBeta;
     int noteFbLfoShape;
     float noteFbNoiseMix;
 
@@ -2318,17 +2314,13 @@ static void _ensureSynthCtx(void) {
 #define noteFbSpacing (synthCtx->noteFbSpacing)
 #define noteFbAlpha (synthCtx->noteFbAlpha)
 #define noteFbBeta (synthCtx->noteFbBeta)
-#define noteFbQ1 (synthCtx->noteFbQ1)
-#define noteFbQ2 (synthCtx->noteFbQ2)
-#define noteFbQ3 (synthCtx->noteFbQ3)
+#define noteFbQ (synthCtx->noteFbQ)
 #define noteFbKeyTrack (synthCtx->noteFbKeyTrack)
 #define noteFbMorphOsc (synthCtx->noteFbMorphOsc)
-#define noteFbLayout (synthCtx->noteFbLayout)
 #define noteFbRandomize (synthCtx->noteFbRandomize)
 #define noteFbEnvAlpha (synthCtx->noteFbEnvAlpha)
 #define noteFbLfoRate (synthCtx->noteFbLfoRate)
 #define noteFbLfoAlpha (synthCtx->noteFbLfoAlpha)
-#define noteFbLfoBeta (synthCtx->noteFbLfoBeta)
 #define noteFbLfoShape (synthCtx->noteFbLfoShape)
 #define noteFbNoiseMix (synthCtx->noteFbNoiseMix)
 #define sfxRandomize (synthCtx->sfxRandomize)
@@ -3520,10 +3512,11 @@ static float processVoice(Voice *v, float sampleRate) {
             }
             modAlpha = clampf(modAlpha, 0.0f, 1.0f);
 
-            // Modulate Beta with filterbank LFO
+            // Auto-derive Beta modulation: inverse of Alpha LFO at 30%
+            // As Alpha sweeps up, spacing slightly narrows → linked 2D movement
             float modBeta = v->fbBeta;
-            if (v->fbLfoBeta != 0.0f) {
-                modBeta += fbLfo * v->fbLfoBeta;
+            if (v->fbLfoAlpha != 0.0f) {
+                modBeta -= fbLfo * v->fbLfoAlpha * 0.3f;
             }
             modBeta = clampf(modBeta, 0.0f, 1.0f);
 
@@ -3548,27 +3541,27 @@ static float processVoice(Voice *v, float sampleRate) {
             f2 = clampf(f2, 20.0f, 18000.0f);
             f3 = clampf(f3, 20.0f, 18000.0f);
 
+            // Derive per-filter Q from single knob: LP warm, BP2 neutral, BP3 bright
+            float q1 = v->fbQ * 0.7f;   // LP: less resonant, warmer
+            float q2 = v->fbQ;           // BP2: as set
+            float q3 = v->fbQ * 1.3f;   // BP3: more bite on top
+
             // Set filter parameters (bw = freq/Q for SVF)
             v->formantBands[0].freq = f1;
-            v->formantBands[0].bw = f1 / v->fbQ1;
+            v->formantBands[0].bw = f1 / q1;
             v->formantBands[1].freq = f2;
-            v->formantBands[1].bw = f2 / v->fbQ2;
+            v->formantBands[1].bw = f2 / q2;
             v->formantBands[2].freq = f3;
-            v->formantBands[2].bw = f3 / v->fbQ3;
+            v->formantBands[2].bw = f3 / q3;
 
-            // Mix noise into filterbank input (pink noise character)
+            // Mix noise into filterbank input
             float fbInput = sample;
             if (v->fbNoiseMix > 0.001f) {
                 fbInput = sample * (1.0f - v->fbNoiseMix) + noise() * v->fbNoiseMix;
             }
 
-            // Process: layout 0 = 3×BPF (RA-9), layout 1 = LP+2×BPF (RA-99)
-            float formantOut;
-            if (v->fbLayout == 1) {
-                formantOut = processFormantFilterLP(&v->formantBands[0], fbInput, sampleRate);
-            } else {
-                formantOut = processFormantFilter(&v->formantBands[0], fbInput, sampleRate);
-            }
+            // Always LP+2×BPF (RA-99 topology)
+            float formantOut = processFormantFilterLP(&v->formantBands[0], fbInput, sampleRate);
             formantOut += processFormantFilter(&v->formantBands[1], fbInput, sampleRate);
             formantOut += processFormantFilter(&v->formantBands[2], fbInput, sampleRate);
             formantOut *= 0.333f;
@@ -4134,17 +4127,13 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->fbSpacing = noteFbSpacing;
     v->fbAlpha = noteFbAlpha;
     v->fbBeta = noteFbBeta;
-    v->fbQ1 = noteFbQ1;
-    v->fbQ2 = noteFbQ2;
-    v->fbQ3 = noteFbQ3;
+    v->fbQ = noteFbQ;
     v->fbKeyTrack = noteFbKeyTrack;
     v->fbMorphOsc = noteFbMorphOsc;
-    v->fbLayout = noteFbLayout;
     v->fbRandomize = noteFbRandomize;
     v->fbEnvAlpha = noteFbEnvAlpha;
     v->fbLfoRate = noteFbLfoRate;
     v->fbLfoAlpha = noteFbLfoAlpha;
-    v->fbLfoBeta = noteFbLfoBeta;
     v->fbLfoShape = noteFbLfoShape;
     v->fbLfoPhase = 0.0f;
     v->fbLfoSH = 0.0f;
@@ -4161,10 +4150,8 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
         // Alpha/Beta: random walk within 0..1
         v->fbAlpha = clampf(v->fbAlpha + FB_RAND() * r * 0.3f, 0.0f, 1.0f);
         v->fbBeta  = clampf(v->fbBeta  + FB_RAND() * r * 0.3f, 0.0f, 1.0f);
-        // Q values: ±50% at full randomize (keeps them positive)
-        v->fbQ1 *= 1.0f + FB_RAND() * r * 0.3f;
-        v->fbQ2 *= 1.0f + FB_RAND() * r * 0.3f;
-        v->fbQ3 *= 1.0f + FB_RAND() * r * 0.3f;
+        // Q: ±30% at full randomize
+        v->fbQ *= 1.0f + FB_RAND() * r * 0.3f;
         // Spacing: slight variation
         v->fbSpacing *= 1.0f + FB_RAND() * r * 0.15f;
         // Morph: subtle osc shape variation

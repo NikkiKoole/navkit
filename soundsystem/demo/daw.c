@@ -5352,15 +5352,11 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_cycle(&c, "Mode", formantModeNames, 2, &p->p_formantMode);
             if (p->p_formantMode == 1) {
                 // Filterbank mode (Grenadier RA-99 style)
-                static const char* fbLayoutNames[] = {"3xBPF", "LP+2xBPF"};
-                ui_col_cycle(&c, "Layout", fbLayoutNames, 2, &p->p_fbLayout);
                 ui_col_float(&c, "Base", &p->p_fbBaseFreq, 10.0f, 50.0f, 5000.0f);
                 ui_col_float(&c, "Space", &p->p_fbSpacing, 0.1f, 1.0f, 8.0f);
                 ui_col_float(&c, "Alpha", &p->p_fbAlpha, 0.02f, 0.0f, 1.0f);
                 ui_col_float(&c, "Beta", &p->p_fbBeta, 0.02f, 0.0f, 1.0f);
-                ui_col_float(&c, "Q1", &p->p_fbQ1, 0.5f, 0.5f, 20.0f);
-                ui_col_float(&c, "Q2", &p->p_fbQ2, 0.5f, 0.5f, 20.0f);
-                ui_col_float(&c, "Q3", &p->p_fbQ3, 0.5f, 0.5f, 20.0f);
+                ui_col_float(&c, "Q", &p->p_fbQ, 0.5f, 0.5f, 20.0f);
                 ui_col_float(&c, "KeyTrk", &p->p_fbKeyTrack, 0.05f, 0.0f, 1.0f);
                 ui_col_float(&c, "Rand", &p->p_fbRandomize, 0.05f, 0.0f, 1.0f);
                 ui_col_float(&c, "Mix", &p->p_formantMix, 0.05f, 0.0f, 1.0f);
@@ -5369,7 +5365,6 @@ static void drawParamPatch(float x, float y, float w, float h) {
                 ui_col_float(&c, "LRate", &p->p_fbLfoRate, 0.1f, 0.0f, 20.0f);
                 ui_col_cycle(&c, "LShape", lfoShapeNames, 5, &p->p_fbLfoShape);
                 ui_col_float(&c, "LfoA", &p->p_fbLfoAlpha, 0.05f, -1.0f, 1.0f);
-                ui_col_float(&c, "LfoB", &p->p_fbLfoBeta, 0.05f, -1.0f, 1.0f);
                 ui_col_float(&c, "Noise", &p->p_fbNoiseMix, 0.05f, 0.0f, 1.0f);
             } else {
                 // Phoneme mode (existing)

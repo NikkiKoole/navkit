@@ -376,17 +376,13 @@ typedef struct {
     float p_fbSpacing;            // Frequency spacing multiplier between filters (1.0-8.0)
     float p_fbAlpha;              // Alpha axis: sweeps all filter freqs (0.0-1.0)
     float p_fbBeta;               // Beta axis: spreads/narrows filter spacing (0.0-1.0)
-    float p_fbQ1;                 // Q for filter 1 / LP (0.5-20.0)
-    float p_fbQ2;                 // Q for filter 2 / BP (0.5-20.0)
-    float p_fbQ3;                 // Q for filter 3 / BP (0.5-20.0)
+    float p_fbQ;                  // Filterbank resonance (0.5-20.0), LP=Q×0.7, BP2=Q, BP3=Q×1.3
     float p_fbKeyTrack;           // 0 = fixed base freq, 1 = tracks note pitch
     float p_fbMorphOsc;           // Trapezoid morph: 0 = triangle, 1 = square
-    int p_fbLayout;               // 0 = 3×BPF (RA-9), 1 = LP+2×BPF (RA-99)
     float p_fbRandomize;          // Per-note random variation amount (0=none, 1=wild)
     float p_fbEnvAlpha;           // Filter envelope → Alpha depth (-1..+1, bipolar)
     float p_fbLfoRate;            // Filterbank LFO rate in Hz (0..20)
     float p_fbLfoAlpha;           // Filterbank LFO → Alpha depth (-1..+1)
-    float p_fbLfoBeta;            // Filterbank LFO → Beta depth (-1..+1)
     int p_fbLfoShape;             // Filterbank LFO shape (0=sin,1=tri,2=sq,3=saw,4=S&H)
     float p_fbNoiseMix;           // Noise mixed into filterbank input (0..1)
 
@@ -661,17 +657,13 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_fbSpacing = 2.5f,
         .p_fbAlpha = 0.5f,
         .p_fbBeta = 0.5f,
-        .p_fbQ1 = 2.0f,
-        .p_fbQ2 = 4.0f,
-        .p_fbQ3 = 4.0f,
+        .p_fbQ = 4.0f,
         .p_fbKeyTrack = 0.0f,
         .p_fbMorphOsc = 0.0f,
-        .p_fbLayout = 1,
         .p_fbRandomize = 0.0f,
         .p_fbEnvAlpha = 0.0f,
         .p_fbLfoRate = 0.0f,
         .p_fbLfoAlpha = 0.0f,
-        .p_fbLfoBeta = 0.0f,
         .p_fbLfoShape = 0,
         .p_fbNoiseMix = 0.0f,
         .p_acidMode = false,

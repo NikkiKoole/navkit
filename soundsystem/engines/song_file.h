@@ -531,17 +531,13 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "fbSpacing", p->p_fbSpacing);
     _sf_writeFloat(f, "fbAlpha", p->p_fbAlpha);
     _sf_writeFloat(f, "fbBeta", p->p_fbBeta);
-    _sf_writeFloat(f, "fbQ1", p->p_fbQ1);
-    _sf_writeFloat(f, "fbQ2", p->p_fbQ2);
-    _sf_writeFloat(f, "fbQ3", p->p_fbQ3);
+    _sf_writeFloat(f, "fbQ", p->p_fbQ);
     _sf_writeFloat(f, "fbKeyTrack", p->p_fbKeyTrack);
     _sf_writeFloat(f, "fbMorphOsc", p->p_fbMorphOsc);
-    _sf_writeInt(f, "fbLayout", p->p_fbLayout);
     _sf_writeFloat(f, "fbRandomize", p->p_fbRandomize);
     _sf_writeFloat(f, "fbEnvAlpha", p->p_fbEnvAlpha);
     _sf_writeFloat(f, "fbLfoRate", p->p_fbLfoRate);
     _sf_writeFloat(f, "fbLfoAlpha", p->p_fbLfoAlpha);
-    _sf_writeFloat(f, "fbLfoBeta", p->p_fbLfoBeta);
     _sf_writeInt(f, "fbLfoShape", p->p_fbLfoShape);
     _sf_writeFloat(f, "fbNoiseMix", p->p_fbNoiseMix);
 }
@@ -1235,17 +1231,18 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "fbSpacing") == 0) p->p_fbSpacing = _sf_parseFloat(val);
     else if (strcmp(key, "fbAlpha") == 0) p->p_fbAlpha = _sf_parseFloat(val);
     else if (strcmp(key, "fbBeta") == 0) p->p_fbBeta = _sf_parseFloat(val);
-    else if (strcmp(key, "fbQ1") == 0) p->p_fbQ1 = _sf_parseFloat(val);
-    else if (strcmp(key, "fbQ2") == 0) p->p_fbQ2 = _sf_parseFloat(val);
-    else if (strcmp(key, "fbQ3") == 0) p->p_fbQ3 = _sf_parseFloat(val);
+    else if (strcmp(key, "fbQ") == 0) p->p_fbQ = _sf_parseFloat(val);
+    else if (strcmp(key, "fbQ1") == 0) p->p_fbQ = _sf_parseFloat(val); // legacy: use Q1 as single Q
+    else if (strcmp(key, "fbQ2") == 0) {} // legacy: ignored
+    else if (strcmp(key, "fbQ3") == 0) {} // legacy: ignored
     else if (strcmp(key, "fbKeyTrack") == 0) p->p_fbKeyTrack = _sf_parseFloat(val);
     else if (strcmp(key, "fbMorphOsc") == 0) p->p_fbMorphOsc = _sf_parseFloat(val);
-    else if (strcmp(key, "fbLayout") == 0) p->p_fbLayout = _sf_parseInt(val);
+    else if (strcmp(key, "fbLayout") == 0) {} // legacy: always LP+2×BPF now
     else if (strcmp(key, "fbRandomize") == 0) p->p_fbRandomize = _sf_parseFloat(val);
     else if (strcmp(key, "fbEnvAlpha") == 0) p->p_fbEnvAlpha = _sf_parseFloat(val);
     else if (strcmp(key, "fbLfoRate") == 0) p->p_fbLfoRate = _sf_parseFloat(val);
     else if (strcmp(key, "fbLfoAlpha") == 0) p->p_fbLfoAlpha = _sf_parseFloat(val);
-    else if (strcmp(key, "fbLfoBeta") == 0) p->p_fbLfoBeta = _sf_parseFloat(val);
+    else if (strcmp(key, "fbLfoBeta") == 0) {} // legacy: auto-derived from LfoAlpha now
     else if (strcmp(key, "fbLfoShape") == 0) p->p_fbLfoShape = _sf_parseInt(val);
     else if (strcmp(key, "fbNoiseMix") == 0) p->p_fbNoiseMix = _sf_parseFloat(val);
     // Unknown keys silently skipped (future-proof)

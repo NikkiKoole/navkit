@@ -7313,10 +7313,7 @@ describe(filterbank_mode) {
         p.p_fbSpacing = 2.5f;
         p.p_fbAlpha = 0.5f;
         p.p_fbBeta = 0.5f;
-        p.p_fbQ1 = 2.0f;
-        p.p_fbQ2 = 4.0f;
-        p.p_fbQ3 = 4.0f;
-        p.p_fbLayout = 1;
+        p.p_fbQ = 2.0f;
         p.p_envelopeEnabled = false;
 
         int voice = playNoteWithPatch(220.0f, &p);
@@ -7344,10 +7341,7 @@ describe(filterbank_mode) {
         p1.p_formantMix = 1.0f;
         p1.p_fbBaseFreq = 400.0f;
         p1.p_fbSpacing = 2.5f;
-        p1.p_fbQ1 = 4.0f;
-        p1.p_fbQ2 = 4.0f;
-        p1.p_fbQ3 = 4.0f;
-        p1.p_fbLayout = 1;
+        p1.p_fbQ = 4.0f;
         p1.p_envelopeEnabled = false;
 
         int v1 = playNoteWithPatch(220.0f, &p1);
@@ -7384,11 +7378,8 @@ describe(filterbank_mode) {
         p.p_formantMix = 1.0f;
         p.p_fbBaseFreq = 300.0f;
         p.p_fbSpacing = 3.0f;
-        p.p_fbQ1 = 4.0f;
-        p.p_fbQ2 = 6.0f;
-        p.p_fbQ3 = 6.0f;
+        p.p_fbQ = 4.0f;
         p.p_fbAlpha = 0.2f;
-        p.p_fbLayout = 0;
         p.p_envelopeEnabled = false;
 
         // Run with low alpha
@@ -7458,15 +7449,11 @@ describe(filterbank_mode) {
         original.p_fbSpacing = 3.5f;
         original.p_fbAlpha = 0.7f;
         original.p_fbBeta = 0.3f;
-        original.p_fbQ1 = 5.0f;
-        original.p_fbQ2 = 8.0f;
-        original.p_fbQ3 = 6.0f;
+        original.p_fbQ = 5.0f;
         original.p_fbKeyTrack = 0.5f;
         original.p_fbMorphOsc = 0.4f;
-        original.p_fbLayout = 1;
         original.p_fbEnvAlpha = 0.6f;
         original.p_fbLfoAlpha = -0.3f;
-        original.p_fbLfoBeta = 0.2f;
         original.p_fbNoiseMix = 0.15f;
 
         // Write to temp file
@@ -7499,15 +7486,11 @@ describe(filterbank_mode) {
         expect(fabsf(loaded.p_fbSpacing - 3.5f) < 0.01f);
         expect(fabsf(loaded.p_fbAlpha - 0.7f) < 0.01f);
         expect(fabsf(loaded.p_fbBeta - 0.3f) < 0.01f);
-        expect(fabsf(loaded.p_fbQ1 - 5.0f) < 0.1f);
-        expect(fabsf(loaded.p_fbQ2 - 8.0f) < 0.1f);
-        expect(fabsf(loaded.p_fbQ3 - 6.0f) < 0.1f);
+        expect(fabsf(loaded.p_fbQ - 5.0f) < 0.1f);
         expect(fabsf(loaded.p_fbKeyTrack - 0.5f) < 0.01f);
         expect(fabsf(loaded.p_fbMorphOsc - 0.4f) < 0.01f);
-        expect(loaded.p_fbLayout == 1);
         expect(fabsf(loaded.p_fbEnvAlpha - 0.6f) < 0.01f);
         expect(fabsf(loaded.p_fbLfoAlpha - (-0.3f)) < 0.01f);
-        expect(fabsf(loaded.p_fbLfoBeta - 0.2f) < 0.01f);
         expect(fabsf(loaded.p_fbNoiseMix - 0.15f) < 0.01f);
     }
 
@@ -7523,9 +7506,7 @@ describe(filterbank_mode) {
         p1.p_formantMix = 1.0f;
         p1.p_fbBaseFreq = 300.0f;
         p1.p_fbSpacing = 3.0f;
-        p1.p_fbQ1 = 4.0f;
-        p1.p_fbQ2 = 6.0f;
-        p1.p_fbQ3 = 6.0f;
+        p1.p_fbQ = 4.0f;
         p1.p_fbEnvAlpha = 0.0f;
         p1.p_filterEnvAmt = 0.5f;
         p1.p_filterEnvDecay = 0.1f;
@@ -7563,9 +7544,7 @@ describe(filterbank_mode) {
         p1.p_formantMix = 1.0f;
         p1.p_fbBaseFreq = 400.0f;
         p1.p_fbSpacing = 2.5f;
-        p1.p_fbQ1 = 6.0f;
-        p1.p_fbQ2 = 6.0f;
-        p1.p_fbQ3 = 6.0f;
+        p1.p_fbQ = 6.0f;
         p1.p_fbNoiseMix = 0.0f;
         p1.p_envelopeEnabled = false;
 
