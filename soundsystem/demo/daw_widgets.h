@@ -120,7 +120,7 @@ static void drawWaveThumb(float x, float y, float w, float h, int waveType, bool
     }
 }
 
-static float drawWaveSelector(float x, float y, float w, int* wave) {
+static float drawWaveSelector(float x, float y, float w, int* wave, float* trapMorph) {
     int basicWaves[] = {WAVE_SQUARE, WAVE_SAW, WAVE_TRIANGLE, WAVE_SINE, WAVE_NOISE, WAVE_SCW};
     int waveCount = 6, engineCount1 = 5, engineCount2 = 8;
     float thumbH = 20;
@@ -134,6 +134,30 @@ static float drawWaveSelector(float x, float y, float w, int* wave) {
         bool sel = (wi == *wave), hov = CheckCollisionPointRec(mouse, (Rectangle){tx, ty, thumbW, thumbH});
         drawWaveThumb(tx, ty, thumbW, thumbH, wi, sel, hov);
         if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { *wave = wi; ui_consume_click(); }
+    }
+    // Trapezoid button — small "T" toggle right after the waveform row
+    if (trapMorph) {
+        bool trapOn = *trapMorph > 0.01f;
+        float btnW = 14, btnH = thumbH;
+        float bx = x + waveCount * (thumbW + 2), by = y;
+        Color bg = trapOn ? ((Color){120, 80, 30, 255}) : UI_BG_PANEL;
+        bool hov = CheckCollisionPointRec(mouse, (Rectangle){bx, by, btnW, btnH});
+        if (hov) bg = trapOn ? ((Color){150, 100, 40, 255}) : UI_BG_HOVER;
+        DrawRectangle((int)bx, (int)by, (int)btnW, (int)btnH, bg);
+        DrawRectangleLinesEx((Rectangle){bx, by, btnW, btnH}, 1, trapOn ? ORANGE : UI_BORDER);
+        // Draw trapezoid shape inside button
+        float cx = bx + 2, cy = by + 2, cw = btnW - 4, ch = btnH - 4;
+        float mid = cy + ch * 0.5f;
+        Color lc = trapOn ? WHITE : UI_TEXT_SUBTLE;
+        float flat = cw * 0.2f;
+        DrawLine((int)cx, (int)(mid+ch*0.35f), (int)(cx+flat), (int)(mid-ch*0.35f), lc);
+        DrawLine((int)(cx+flat), (int)(mid-ch*0.35f), (int)(cx+cw-flat), (int)(mid-ch*0.35f), lc);
+        DrawLine((int)(cx+cw-flat), (int)(mid-ch*0.35f), (int)(cx+cw), (int)(mid+ch*0.35f), lc);
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            *trapMorph = trapOn ? 0.0f : 0.5f;
+            if (!trapOn) *wave = WAVE_TRIANGLE; // auto-select triangle
+            ui_consume_click();
+        }
     }
     totalH += thumbH + 2;
 

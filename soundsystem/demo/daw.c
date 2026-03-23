@@ -4804,7 +4804,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
     {
         UIColumn c = PCOL(col1X + 8, y);
         ui_col_sublabel(&c, TextFormat("OSC: %s [%s]", daw.patches[daw.selectedPatch].p_name, waveNames[p->p_waveType]), ORANGE);
-        c.y += drawWaveSelector(c.x, c.y, col1W - 16, &p->p_waveType);
+        c.y += drawWaveSelector(c.x, c.y, col1W - 16, &p->p_waveType, &p->p_fbMorphOsc);
         ui_col_toggle(&c, "Fixed Freq", &p->p_useTriggerFreq);
         if (p->p_useTriggerFreq) {
             ui_col_float(&c, "Freq Hz", &p->p_triggerFreq, 10.0f, 20.0f, 5000.0f);
