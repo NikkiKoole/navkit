@@ -3099,8 +3099,10 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
     static const float rhodesOffset[EPIANO_MODES]   = {0.60f, 0.35f, 0.08f, 0.20f, 0.08f, 0.05f, 0.04f, 0.03f, 0.025f, 0.02f, 0.015f, 0.01f};
     // Wurli (electrostatic): reed vibrates between charged plates. More uniform coupling
     // but the reed's own mode shapes favor odd harmonics. Centered = clean, offset = buzzy.
-    static const float wurliCentered[EPIANO_MODES]   = {1.00f, 0.10f, 0.55f, 0.08f, 0.35f, 0.05f, 0, 0, 0, 0, 0, 0};
-    static const float wurliOffset[EPIANO_MODES]     = {0.60f, 0.20f, 0.70f, 0.15f, 0.50f, 0.10f, 0, 0, 0, 0, 0, 0};
+    // Wurli: odd-harmonic dominant reed spectrum, with some even harmonics.
+    // Measured C4: fund=100, 2nd=9, 3rd=42, 4th=15, 5th=6, 6th=6.
+    static const float wurliCentered[EPIANO_MODES]   = {1.00f, 0.08f, 0.45f, 0.12f, 0.10f, 0.04f, 0, 0, 0, 0, 0, 0};
+    static const float wurliOffset[EPIANO_MODES]     = {0.60f, 0.15f, 0.60f, 0.20f, 0.20f, 0.08f, 0, 0, 0, 0, 0, 0};
     // Clavinet D6: two single-coil pickups under the strings (like a guitar).
     // "Neck" position (centered) = warm, fundamental-heavy, damper pad resonance audible.
     // "Bridge" position (offset) = bright, snappy, strong upper partials, the funk sound.
@@ -3171,12 +3173,40 @@ static void initEPianoSettings(EPianoSettings *ep, float freq, float velocity) {
                 float bellPower = vel * 0.5f + velSq * 0.5f;
                 velScale = 0.08f + 0.92f * bellPower;
             }
+        } else if (pickupT == EP_PICKUP_ELECTROSTATIC) {
+            // Wurli: reed vibration. Upper partials thin at high register
+            // (real Wurli 200A: C6 is nearly fundamental-only, A6 is pure sine).
+            // Odd harmonics (3rd, 5th) dominate but must vanish at top.
+            {
+                float keep = (1.0f - freqNorm);
+                keep = keep * keep; // quadratic rolloff
+                if (i == 0) {
+                    amp *= (1.0f - freqNorm * 0.15f);
+                } else if (i <= 2) {
+                    amp *= keep;            // body modes thin at top
+                } else {
+                    amp *= keep * keep;     // upper modes: 4th power — steep
+                }
+            }
+
+            // Wurli velocity: odd harmonics present at soft, grow with velocity
+            if (i == 0) {
+                velScale = 0.10f + 0.90f * (vel * 0.6f + velSq * 0.4f);
+            } else if (i == 1) {
+                velScale = 0.08f + 0.92f * (vel * 0.6f + velSq * 0.4f);
+            } else if (i == 2) {
+                // 3rd partial (dominant odd harmonic): always present
+                velScale = 0.12f + 0.88f * (vel * 0.6f + velSq * 0.4f);
+            } else {
+                // Upper odd modes: vel² with low floor
+                velScale = 0.05f + 0.95f * velSq;
+            }
         } else {
-            // Wurli / Clav: original curves
+            // Clav: original curves (no reference samples yet)
             if (i == 0) {
                 amp *= (1.0f - freqNorm * 0.3f);
             } else if (i >= 3) {
-                amp *= (1.0f + freqNorm * 0.4f); // bell brighter at top
+                amp *= (1.0f + freqNorm * 0.4f);
             }
 
             if (i == 0) {
@@ -3302,8 +3332,10 @@ static float processEPianoOscillator(Voice *v, float sampleRate) {
     } else if (ep->pickupType == EP_PICKUP_ELECTROSTATIC) {
         // Electrostatic pickup: reed between two charged plates — symmetric response.
         // Odd-order terms only (sum³, sum⁵) preserve the reed's odd-harmonic character.
-        float k3 = ep->pickupDist * 1.5f * velBoost;
-        float k5 = ep->pickupDist * 0.4f * velBoost;
+        // Register-scaled: high register reeds are short, less nonlinear.
+        float regDist = (1.0f - ep->freqNorm) * (1.0f - ep->freqNorm);
+        float k3 = ep->pickupDist * 1.5f * velBoost * regDist;
+        float k5 = ep->pickupDist * 0.4f * velBoost * regDist;
         float sum2 = sum * sum;
         output = sum + k3 * sum * sum2 + k5 * sum * sum2 * sum2;
         // Symmetric soft-clip (preserves odd harmonics)
