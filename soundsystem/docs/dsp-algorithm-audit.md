@@ -169,122 +169,139 @@ Complete inventory of every DSP algorithm in the soundsystem: what it is, how it
 **Assessment**: Straightforward. The detuning is ratio-based (not cents-based), which is fine for the metallic percussion use case. For typical unison-lead sounds, a cents-based spread with even distribution (as described in the unison globals) would be more musical. Both modes are available. The per-oscillator decay + velocity modulation enable rich dynamic timbres: MT-70 style additive (static partials with independent decay), Rhodes (always-present bell + velocity-driven bark), and anything in between.
 
 ### 1.17 Electric Piano (WAVE_EPIANO)
-**File**: `synth_oscillators.h:1590–1860`, init at `1617–1770`, process at `1785–1860`
-**Algorithm**: 6-mode modal synthesis with 3 pickup types (Rhodes/Wurlitzer/Clavinet), per-type nonlinearity, and DC blocker.
+**File**: `synth_oscillators.h`, init at `initEPianoSettings()`, process at `processEPianoOscillator()`
+**Algorithm**: 12-mode modal synthesis with 3 pickup types (Rhodes/Wurlitzer/Clavinet), per-type nonlinearity with register scaling, and DC blocker. Tuned against real instrument samples.
 
-**Physics model**: Three instruments share a common 6-mode modal engine, differentiated by mode ratios, amplitude profiles, and pickup nonlinearity:
+**Physics model**: Three instruments share a common 12-mode modal engine, fully branched per pickup type for register scaling, velocity curves, pickup nonlinearity, and decay:
 
-| | Rhodes (1965) | Wurlitzer (1954) | Clavinet D6 (1971) |
+| | Rhodes (1965) | Wurlitzer 200A (1954) | Clavinet D6 (1971) |
 |---|---|---|---|
 | **Exciter** | Hammer → tine + tone bar | Hammer → steel reed | Tangent → string + damper pad |
 | **Resonator** | Cantilever beam (tuning fork) | Clamped-free reed | Short steel string |
 | **Pickup** | Electromagnetic (asymmetric) | Electrostatic (symmetric) | Contact/magnetic (mixed) |
-| **Inharmonic ratios** | 1, 6.27, 17.55, 34.39, 56.84, 84.91 | 1, 2.02, 3.01, 5.04, 7.05, 9.08 | 1, 2.003, 3.012, 4.028, 5.15, 6.35 |
+| **Modes used** | 12 (upper modes feed pickup intermod) | 6 (modes 7-12 zeroed) | 6 (modes 7-12 zeroed) |
 | **Character** | Bell attack + warm sustain | Reedy/nasal, odd harmonics | Bright, percussive, funky |
 
 Pickup type selected via `epPickupType`: `EP_PICKUP_ELECTROMAGNETIC` (0), `EP_PICKUP_ELECTROSTATIC` (1), `EP_PICKUP_CONTACT` (2).
 
 #### Rhodes (electromagnetic)
 
-**Physics**: Hammer strikes a tine (clamped-free cantilever beam) coupled to a brass tone bar, vibrating near an electromagnetic pickup. Two phenomena:
-1. **Attack transient** (~5–20 ms): cantilever beam bending modes (Euler-Bernoulli eigenvalues: 1×, 6.27×, 17.55×, 34.39×, 56.84×, 84.91×). Wildly inharmonic, decay in milliseconds — the bell "chime."
-2. **Sustained tone**: tine settles into simple harmonic motion; the nonlinear electromagnetic pickup generates integer harmonics via its transfer function.
+**Physics**: Hammer strikes a tine (clamped-free cantilever beam) coupled to a brass tone bar, vibrating near an electromagnetic pickup.
 
-**Mode ratio blending**: `epBellTone` blends between harmonic ratios `{1, 2, 3, 4, 5, 6}` (sustained pickup tone) and cantilever beam ratios (attack transient). Per-mode blend scale `{0, 0, 0.05, 0.4, 0.8, 1.0}` keeps body modes (1–2) at exact integer ratios for clean pitch, while bell modes (4–6) carry the inharmonic attack character.
+**Ratio sets** (`p_epRatioSet`, UI toggle "Beam" vs "Tine"):
+- **Set 0 (Beam)**: Euler-Bernoulli eigenvalues `{1, 6.27, 17.55, 34.39, 56.84, 84.91, 120, 162, 211, 267, 330, 400}` — pure theory, wildly inharmonic upper partials.
+- **Set 1 (Tine+spring)**: Measured ratios `{1, 4.2, 9.5, 16.3, 24.8, 35, 47, 61, 77, 95, 115, 137}` — real Rhodes tines are tuned by a spring that pulls upper modes closer to harmonic (Shear 2011, Gabrielli 2020). **Default for all Rhodes presets.**
 
-**Pickup position profiles**: Centered (1.0, 0.55, 0.12, 0.18, 0.08, 0.03) vs offset (0.40, 1.0, 0.20, 0.50, 0.15, 0.06). The 2nd partial is strong even at centered position (0.55) — measured Rhodes spectra (Gabrielli 2020) show the 2nd partial at 60–80% of fundamental. An earlier profile with weaker 2nd partial (0.15) and stronger 3rd (0.40) produced a hollow, square-wave-like spectrum that didn't match real Rhodes recordings.
+**Mode ratio blending**: `epBellTone` blends between harmonic ratios `{1, 2, 3, ..., 12}` and the selected inharmonic set. Bell blend is **register-scaled**: `btEff = bellTone × freqNorm²` — quadratic, so low register is nearly harmonic (warm piano-like) while high register gets bell character. This was tuned against real Rhodes samples where B1 has inharmonicity 0.02 (nearly pure) while B4 has 0.14.
 
-**Pickup nonlinearity**: `output = sum + k·sum² + k2·sum³` with a velocity-independent baseline:
-- `k = 0.4 + pickupDist × 1.0 × velBoost` — the `sum²` term generates even harmonics (warmth/bark)
-- `k2 = 0.12 + pickupDist × 0.25 × velBoost`
-- `kBase = 0.4` is always-on: real Rhodes pickups have inherent asymmetry from the coil geometry even at soft dynamics. An earlier version gated the nonlinearity entirely by `pickupDist × velocity`, producing a hollow odd-harmonic-dominant sound at moderate dynamics (odd/even ratio ~6.5 vs target ~2.0).
+Per-mode blend scale (tine set): `{0, 0, 0, 0.5, 0.8, 1, 1, 1, 1, 1, 1, 1}` — body modes (1-3) locked to harmonic ratios, bell modes (4+) get inharmonicity. This prevents detuning when sweeping bellTone.
 
-**Asymmetric soft-clip**: `tanh(x)` for positive, `tanh(x × 0.85) × 0.9` for negative. Real pickups are asymmetric (tine passes by, not through the coil), preserving even harmonics through the clipping stage.
+**Pickup position profiles** — fundamental-heavy, letting the pickup nonlinearity generate harmonics:
+- Centered: `{1.0, 0.04, 0.03, 0.06, 0.03, 0.02, 0.015, 0.012, 0.010, 0.008, 0.006, 0.004}`
+- Offset: `{0.60, 0.35, 0.08, 0.20, 0.08, 0.05, 0.04, 0.03, 0.025, 0.02, 0.015, 0.01}`
 
-**Tone bar coupling** (Rhodes only): Extends fundamental decay by up to 2.5× and 2nd partial by up to 1.6×. The tone bar is a resonant body tuned to reinforce the fundamental.
+The 2nd partial is deliberately low in the modal bank (0.04 centered) because the pickup `sum²` nonlinearity generates strong 2nd harmonics. Earlier profiles had the 2nd partial at 0.55, which combined with pickup distortion produced +25dB excess at the 2nd harmonic vs real Rhodes samples.
+
+**Register scaling** (all upper modes): Cubic/6th-power rolloff with frequency:
+- Body modes (1-2): `(1 - freqNorm)³ × 0.95` — gentle in playing range, near-zero at top octave
+- Bell modes (3+): `(1 - freqNorm)⁶` — extremely steep, zero at D6+
+
+Real Rhodes top octave (D6-C7) is nearly a pure sine — measured samples show only fundamental with <1% 2nd partial. The steep rolloff matches this.
+
+**Velocity scaling** (Rhodes-specific):
+- Fundamental: floor 0.15, linear+vel² blend
+- 2nd partial: floor 0.20, linear-dominant — always audible for warmth
+- 3rd partial: floor 0.15, balanced blend
+- Bell modes (4+): floor 0.08, vel² curve — quiet at pp, present at ff
+
+**Pickup nonlinearity** — register-scaled (`regDist = (1 - freqNorm)²`):
+- `sum²` (even harmonics): `k = (0.25 + pickupDist × 1.2 × velBoost) × regDist`
+- `sum³` (odd + intermod): `k2 = (0.20 + pickupDist × 0.5 × velBoost) × regDist`
+- `sum⁵` (upper harmonics): `k3 = pickupDist × 0.3 × velBoost × regDist`
+- Asymmetric soft-clip with register-scaled drive: `tanh(x × clipDrive)` positive, `tanh(x × clipDrive × 0.85) × 0.9` negative
+
+The register scaling is critical: low register tines are long, drive the pickup hard (regDist≈1.0), generating rich harmonics up to the 18th partial. High register tines are short, barely excite the pickup (regDist≈0.04 at D6), output approaches pure sine — matching real Rhodes measurements.
+
+**Normalization**: `target = 0.15 + 0.85 × vel^1.5` — compressed curve with floor. The floor ensures even pp hits produce enough signal to drive the pickup into generating some even harmonics (without it, vel=0.15 gives target=0.058, too quiet for audible pickup distortion).
+
+**Tone bar coupling** (Rhodes only): Extends fundamental decay by up to 2.5× and 2nd partial by up to 1.6×.
+
+**Decay** (Rhodes-specific): `decayFactor = 1 / (1 + (ratio-1) × (0.2 + btEff × 0.5))`, register scaling `epDecay × (1 - freqNorm × 0.35)` — gentler than Wurli/Clav.
 
 #### Wurlitzer (electrostatic)
 
-**Physics**: Hammer strikes a steel reed vibrating between two charged plates (electrostatic pickup). The symmetric capacitive geometry cancels even modes partially, producing a strong odd-harmonic series (clarinet-like). Mode ratios `{1, 2.02, 3.01, 5.04, 7.05, 9.08}` reflect this — note the gap at the 4th partial (jumps to 5.04), emphasizing odd harmonics.
+**Physics**: Hammer strikes a steel reed vibrating between two charged plates (electrostatic pickup). The symmetric capacitive geometry cancels even modes partially, producing a strong odd-harmonic series (clarinet-like).
 
-**Pickup position profiles**: Centered (1.0, 0.10, 0.55, 0.08, 0.35, 0.05) — note the strong 3rd and 5th (odd) vs weak 2nd and 4th (even). Offset (0.60, 0.20, 0.70, 0.15, 0.50, 0.10) — buzzy, more upper partials.
+**Mode ratios**: `{1, 2.02, 3.01, 5.04, 7.05, 9.08}` (modes 7-12 zeroed). Note the gap at the 4th partial (jumps to 5.04), emphasizing odd harmonics.
 
-**Pickup nonlinearity**: Symmetric odd-order only: `output = sum + k3·sum³ + k5·sum⁵` with `k3 = pickupDist × 1.5 × velBoost`, `k5 = pickupDist × 0.4 × velBoost`. Odd-order terms preserve the reed's odd-harmonic character. Symmetric `tanh` soft-clip (no asymmetry).
+**Pickup position profiles** (tuned against real Wurlitzer 200A samples):
+- Centered: `{1.0, 0.08, 0.45, 0.12, 0.10, 0.04}` — 3rd harmonic dominant, moderate 4th
+- Offset: `{0.60, 0.15, 0.60, 0.20, 0.20, 0.08}` — buzzy, stronger upper partials
+
+Measured C4 partials from real Wurli 200A: fund=100%, 2nd=9%, 3rd=42%, 4th=15%, 5th=6%, 6th=6%. Earlier profiles had mode 5 at 0.35 (vs real 6.3%), producing an overly buzzy sound.
+
+**Register scaling** (Wurli-specific): Quadratic thinning for body modes, 4th-power for upper modes. Real Wurli 200A at C6 is nearly fundamental-only; at A6 it's a pure sine.
+
+**Pickup nonlinearity** — register-scaled (`regDist = (1 - freqNorm)²`):
+- Symmetric odd-order: `sum³` (`k3 = pickupDist × 1.5 × velBoost × regDist`) + `sum⁵` (`k5 = pickupDist × 0.4 × velBoost × regDist`)
+- Symmetric `tanh` soft-clip (no asymmetry)
+
+**Velocity scaling** (Wurli-specific): 3rd partial has higher floor (0.12) — always present as the defining Wurli character. Upper modes use vel² with low floor (0.05).
+
+**Decay**: Original curves — `decayFactor = 1 / (1 + (ratio-1) × (0.3 + btEff × 0.7))`, register scaling 50%.
 
 **No tone bar coupling** — reeds decay naturally without reinforcement.
 
 #### Clavinet (contact)
 
-**Physics**: A tangent strikes a short steel string from below; a yarn-wound damper pad releases, producing the characteristic "twang." Two single-coil magnetic pickups under the strings (neck/bridge, like a guitar). The string is nearly harmonic — stiff string inharmonicity is subtle (B coefficient stretch), unlike the wild cantilever beam modes of Rhodes.
+**Physics**: A tangent strikes a short steel string from below; a yarn-wound damper pad releases, producing the characteristic "twang." Two single-coil magnetic pickups under the strings (neck/bridge, like a guitar). Nearly harmonic — stiff string inharmonicity is subtle.
 
-**Mode ratios**: `{1, 2.003, 3.012, 4.028, 5.15, 6.35}` — nearly harmonic body (modes 1–4), with damper pad resonance adding inharmonicity in upper modes (5–6). Blend scale `{0, 0, 0.05, 0.2, 0.5, 0.75}` — conservative, body modes stay locked to partials.
+**Mode ratios**: `{1, 2.003, 3.012, 4.028, 5.15, 6.35}` (modes 7-12 zeroed). Blend scale `{0, 0, 0.05, 0.2, 0.5, 0.75, 0.85, 0.9, 0.95, 1, 1, 1}`.
 
-**Pickup position profiles**: Neck/centered (1.0, 0.30, 0.20, 0.35, 0.15, 0.06) — warm, fundamental-heavy. Bridge/offset (0.60, 0.55, 0.50, 0.20, 0.30, 0.10) — bright, strong upper partials (the funk sound). Models the real D6's 4-position pickup selector as a continuous interpolation.
+**Pickup profiles**: Neck/centered `{1.0, 0.30, 0.20, 0.35, 0.15, 0.06}` — warm. Bridge/offset `{0.60, 0.55, 0.50, 0.20, 0.30, 0.10}` — bright funk sound.
 
-**Pickup nonlinearity**: Mixed even+odd harmonics: `output = sum + k2·sum² + k3·sum³` with `k2 = pickupDist × 0.8 × velBoost` (even — honk/wah), `k3 = pickupDist × 1.0 × velBoost` (odd — bite/growl). Symmetric clip `tanh(output × 1.2)` — clips harder than Wurli but without Rhodes asymmetry.
+**Pickup nonlinearity**: Mixed even+odd: `sum²` (k2 = pickupDist × 0.8 × velBoost) + `sum³` (k3 = pickupDist × 1.0 × velBoost). Symmetric clip `tanh(output × 1.2)`. **Not register-scaled** (no reference samples for validation).
 
-**No tone bar coupling** — strings decay naturally. Short decay (0.5–1.2s vs Rhodes 3–4s).
+**Velocity/register**: Original curves (not yet tuned against reference samples).
 
 #### Common engine details
 
-**Velocity model** (shared by all pickup types):
-- Hammer hardness is velocity-dependent: `hard = epHardness + vel × (1 − epHardness) × 0.3`
-- Fundamental (mode 0): `vel²` curve (with `epBell`-dependent linear blend) — quiet at pp, strong at ff.
-- 2nd partial (mode 1): linear-dominant curve (`vel × 0.6 + vel² × 0.4`) — tracks the fundamental more closely than other body modes. This is critical for Rhodes warmth: the 2nd partial is the key even harmonic from the electromagnetic pickup. An earlier version used the same `vel²`-dominant curve as the 3rd partial, causing the 2nd partial to vanish at soft dynamics, producing a hollow bell with odd/even ratio >60 instead of the warm, round Rhodes pianissimo (target: odd/even <1.0).
-- 3rd partial (mode 2): `vel²` dominant (`vel × 0.4 + vel² × 0.6`).
-- Bell modes (4–6): `sqrt(vel)` curve — present even at soft hits (vibes character).
-- Amplitude normalization: total mode sum ≈ velocity. Critical — soft hits produce a small clean signal, hard hits drive pickup nonlinearity.
-
-**Register variation** (pitch-dependent timbre): `freqNorm = clamp((freq − 80) / 1200, 0, 1)` maps keyboard from low (0) to high (1). Affects:
-- Bell blend boost: +0.15 at top (upper register = more inharmonic, per Pfeifle DAFx-17)
-- Fundamental amplitude: thins 30% at top
-- Bell mode amplitude: brightens 40% at top
-- Decay: shortens 50% at top (measured: Eb2 = 3.88s, Eb6 = 0.45s — Shear 2011)
-
 **DC blocker**: `y[n] = x[n] − x[n−1] + 0.995 · y[n−1]` (~7 Hz cutoff at 44.1 kHz). Essential — the `sum²` nonlinearity generates DC offset proportional to signal power.
-
-**Decay model**: Per-mode decay factor `1 / (1 + (ratio − 1) × (0.3 + bellTone × 0.7))`. Body modes get gradual rolloff; with high bellTone the upper modes decay much faster. Register shortens base decay by up to 50% at the top of the keyboard.
 
 **Phase accumulation**: `fmodf(phase, 1.0)` instead of `phase -= floorf(phase)` — avoids float precision loss on long sustains.
 
-**Presets** (10):
+**Presets** (9):
 | # | Name | Pickup | Character | Key settings |
 |---|------|--------|-----------|--------------|
-| 174 | Rhodes Warm | EM | Soft jazz, mellow | centered, soft hammer, bellTone=0.08 |
-| 175 | Rhodes Bright | EM | Funky, barking | offset, hard hammer, velToDrive=1.5 |
-| 176 | Rhodes Suite | EM | Suitcase amp | tremolo at 4.5 Hz, long sustain |
-| 177 | Rhodes Bark | EM | Glass bell → savage bark | bellTone=0.2, velToDrive=4.0, pickupDist=0.5, toneBar=0.35 |
+| 174 | Rhodes Warm | EM | Classic mellow — ballads, neo-soul | centered, soft hammer, drive=0.44, velToDrive=3.0, tine ratios |
+| 175 | Rhodes Bright | EM | Funky, cutting — comps, riffs | far offset, hard hammer, drive=0.55, velToDrive=2.5, vel→filter wah |
+| 176 | Rhodes Suite | EM | Dreamy suitcase — pads, slow ballads | very soft hammer, max tone bar, long release, tremolo 4.5Hz |
+| 177 | Rhodes Bark | EM | Glass bell → savage growl | zero drive at pp, velToDrive=5.0, vel→filter+click, pickupDist=0.7 |
 | 178 | Wurli Buzz | ES | Supertramp "Dreamer" | driven, nasal, tremolo |
 | 179 | Wurli Soul | ES | Ray Charles ballad | warm, clean, gentle tremolo |
 | 180 | Clav Funky | CT | Stevie Wonder funk | bridge pickup, wah filter, hard attack |
 | 181 | Clav Mellow | CT | Bill Withers / reggae | neck pickup, warm, soft touch |
 | 182 | Clav Driven | CT | Led Zeppelin rock | both pickups, heavy distortion |
 
-**Spectral analysis** (preset-audition at C4, compared to pure sine reference):
+**Reference comparison** (preset-audition vs real instrument samples):
 
-| Preset | Odd/Even | Inharmonicity | Brightness | Fund% | Partials |
-|--------|----------|---------------|------------|-------|----------|
-| Rhodes Warm | 2.44 | 1.00 (metallic) | 377 Hz | 47% | 9 |
-| Rhodes Bright | 2.63 | 0.15 (slight) | 805 Hz | 36% | 13 |
-| Rhodes Suite | 1.67 | 1.00 (metallic) | 457 Hz | 49% | 11 |
-| Rhodes Bark | 2.14 | 0.71 (metallic) | 733 Hz | 24% | — |
-| Wurli Buzz | 5.18 (hollow) | 0.28 | 488 Hz | 37% | 10 |
-| Wurli Soul | 6.92 (hollow) | 0.40 | 429 Hz | 46% | 8 |
-| Clav Funky | 1.84 | 0.07 (slight) | 562 Hz | 34% | 12 |
-| Clav Mellow | 2.39 | 0.07 (slight) | 409 Hz | 52% | 9 |
-| Clav Driven | 1.80 | 0.06 (slight) | 539 Hz | 38% | 14 |
+Rhodes Warm (174) vs real Rhodes samples (multi-velocity, full register):
 
-**Rhodes Bark velocity sweep** — the bell-to-bark transition:
+| Register | Spectrum match | Key finding |
+|----------|---------------|-------------|
+| G3-D4 (mid) | **98-99%** | Near-perfect harmonic content |
+| B4 | **95%** | Mode 2 within 2.5dB of reference |
+| B1 (low) | **91-99%** | Harmonic at low register (inharm=0.00), rich from pickup |
+| D6-C7 (top) | 65% | 2-3% residual 2nd partial (real Rhodes is pure sine) |
 
-| Velocity | Odd/Even | Inharm | Noise | Character |
-|----------|----------|--------|-------|-----------|
-| 0.15 (pp) | 0.54 (even-rich) | 0.48 | 15% | Warm glass bell — 2nd partial dominates |
-| 0.30 (mp) | 3.18 | 0.37 | 10% | Transition zone — body emerging |
-| 0.55 (ff) | 2.14 | 0.71 | 15% | Full bark — velToDrive saturates |
+Wurlitzer (111) vs real Wurlitzer 200A samples:
 
-The soft bell reads as even-harmonic-dominant (odd/even 0.54) because the 2nd partial's linear velocity curve keeps it audible relative to the fundamental at pianissimo. An earlier version with a `vel²`-dominant 2nd partial produced odd/even >60 at soft dynamics — a hollow, organ-like bell instead of the warm Rhodes character.
-
-Key observations: Rhodes odd/even ~2 (warm, balanced — was ~6.5 before amplitude profile fix), Wurli ~5–7 (hollow, odd-harmonic reed character), Clavinet ~1.8–2.4 (most balanced — mixed even+odd nonlinearity). Clavinet inharmonicity is very low (0.06–0.07, stiff string) vs Rhodes (~0.7–1.0, cantilever beam) vs Wurli (0.28–0.40, reed).
+| Register | Spectrum match | Key finding |
+|----------|---------------|-------------|
+| A4 | **90-93%** | Good match across velocities |
+| C6 | **95-97%** | Register scaling working well |
+| C2 (low) soft | **92%** | Solid |
+| C4 (mid) | 60-63% | Mode balance needs further preset tuning |
 
 **Reference**:
 - Shear & Wright, "The Electromagnetically Sustained Rhodes Piano" (UCSB Masters Thesis, 2011) — Q measurements, spectral analysis, tine dimensions
@@ -292,11 +309,12 @@ Key observations: Rhodes odd/even ~2 (warm, balanced — was ~6.5 before amplitu
 - Gabrielli, Cantarini, Castellini & Squartini, "The Rhodes electric piano: Analysis and simulation of the inharmonic overtones" (JASA 2020) — scanning laser vibrometry on actual tines
 - Pfeifle & Muenster, "Tone Production of the Wurlitzer and Rhodes E-Pianos" (DAGA/Springer 2017)
 - Fletcher & Rossing, "The Physics of Musical Instruments" (1998), Ch. 2 (beams), Ch. 12 (electric instruments)
-- Irvine, "Bending Frequencies of Beams, Rods, and Pipes" (vibrationdata.com) — Euler-Bernoulli eigenvalues
 - Sound On Sound, "Synthesizing Pianos" (Gordon Reid, 2001)
 - Sound On Sound, "Synth Secrets: Clavinet" (Gordon Reid, 2002) — Clavinet D6 mechanics and synthesis
+- Real Rhodes samples (multi-velocity, B1-C7) — used for per-partial spectral matching
+- Real Wurlitzer 200A samples (Pie-finger sample set, 3 velocity layers, C2-A6) — used for register/velocity tuning
 
-**Assessment**: Good semi-physical model with three distinct pickup characters. The dual-nature approach (harmonic pickup modes for sustain + inharmonic modes for attack transient) correctly reflects measured physics. Key design decisions: (1) per-mode blend scales keep body modes at integer ratios to avoid tuning artifacts; (2) Rhodes pickup nonlinearity has a velocity-independent baseline (`kBase = 0.4`) that prevents the hollow odd-harmonic character pure modal sines would otherwise produce; (3) the 2nd partial has its own linear-dominant velocity curve, keeping it audible at soft dynamics for the warm bell sound (earlier `vel²` curve produced hollow pp with odd/even >60); (4) Clavinet's nearly-harmonic string modes (inharmonicity ~0.07) correctly differentiate it from the metallic Rhodes (~1.0) and reed-like Wurli (~0.3). **Possible enhancements**: (1) Release damper thump — the characteristic soft click when the damper pad contacts the tine on note-off. (2) Sympathetic resonance between adjacent tines. (3) Per-preset bus effect hints (chorus, stereo tremolo, compression) — currently presets are dry.
+**Assessment**: Good semi-physical model with three fully distinct pickup characters. Each instrument has its own register scaling, velocity curves, pickup nonlinearity, and decay model — branched per pickup type, not shared. Key design decisions validated against real samples: (1) Rhodes modal bank is fundamental-heavy (2nd partial at 0.04), letting the pickup nonlinearity generate even harmonics — prevents the +25dB 2nd-partial excess the old 0.55 profile produced; (2) Register-scaled pickup distortion (quadratic falloff) matches the real instrument: rich harmonics at low register, pure sine at top octave; (3) Tine+spring ratio set (measured) replaces Euler-Bernoulli beam theory for more musical bell character; (4) 12 modes for Rhodes provide material for pickup intermodulation to generate the rich 18-partial harmonic series measured in real low-register samples; (5) Wurli mode 5 reduced from 0.35→0.10 to match measured 6.3% at C4. **Possible enhancements**: (1) Release damper thump on note-off. (2) Sympathetic resonance between adjacent tines. (3) Clavinet reference sample comparison (no samples available yet).
 
 ### 1.18 Tonewheel Organ / Hammond B3 (WAVE_ORGAN)
 **File**: `synth_oscillators.h:1872–1980`, init at `1872–1897`, process at `1899–1980`
@@ -1407,7 +1425,7 @@ Combined offset applied to read position. Uses same `tapeWowFlutterLFO()` helper
 | Phase Distortion | CZ-style phase warp | Good | Casio CZ-101 (1984) |
 | Membrane | Modal (6 Bessel modes) | Good | Fletcher & Rossing 1998, Morse & Ingard 1968 |
 | Bird | Parametric chirp | Adequate | Procedural |
-| Electric Piano | 6-mode modal + pickup nonlinearity | Good | Shear 2011, Pfeifle 2017 |
+| Electric Piano | 12-mode modal + register-scaled pickup nonlinearity (3 types) | Good | Shear 2011, Gabrielli 2020, real sample comparison |
 | Organ (Hammond) | 9-drawbar sine bank + click/perc/scanner V/C | Good | Pekonen 2011, Pakarinen 2009 |
 | Metallic Perc | 6-osc ring-mod pairs + per-partial decay | Good | TR-808/909 service manuals |
 | Guitar Body | KS string + pick comb + 4 biquad body modes | Good | Elejabarrieta 2002, Karjalainen 2004 |
