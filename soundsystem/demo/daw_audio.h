@@ -282,6 +282,12 @@ static void dawReleaseVoicesForPatch(int patchIdx) {
         int mt = patchIdx - SEQ_DRUM_TRACKS;
         for (int vi = 0; vi < SEQ_V2_MAX_POLY; vi++) dawMelodyVoice[mt][vi] = -1;
         dawMelodyVoiceCount[mt] = 0;
+        // Clear mono voice reservation so stale mono state doesn't leak into the new preset
+        int mvi = dawMonoVoiceIdx[mt];
+        if (mvi >= 0) {
+            synthCtx->voices[mvi].monoReserved = false;
+            dawMonoVoiceIdx[mt] = -1;
+        }
     }
 }
 

@@ -68,7 +68,7 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _di(f, "arpChord", p->p_arpChord);
     _di(f, "unisonCount", p->p_unisonCount); _dw(f, "unisonDetune", p->p_unisonDetune);
     _dw(f, "unisonMix", p->p_unisonMix);
-    _db(f, "monoMode", p->p_monoMode); _db(f, "monoRetrigger", p->p_monoRetrigger); _dw(f, "glideTime", p->p_glideTime);
+    _db(f, "monoMode", p->p_monoMode); _db(f, "monoRetrigger", p->p_monoRetrigger); _db(f, "monoHardRetrigger", p->p_monoHardRetrigger); _dw(f, "glideTime", p->p_glideTime);
     _dw(f, "legatoWindow", p->p_legatoWindow); _di(f, "notePriority", p->p_notePriority);
     _dw(f, "pluckBrightness", p->p_pluckBrightness); _dw(f, "pluckDamping", p->p_pluckDamping);
     _dw(f, "pluckDamp", p->p_pluckDamp);
@@ -717,6 +717,7 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"unisonMix")==0) p->p_unisonMix = _dpf(val);
     else if (strcmp(key,"monoMode")==0) p->p_monoMode = _dpb(val);
     else if (strcmp(key,"monoRetrigger")==0) p->p_monoRetrigger = _dpb(val);
+    else if (strcmp(key,"monoHardRetrigger")==0) p->p_monoHardRetrigger = _dpb(val);
     else if (strcmp(key,"glideTime")==0) p->p_glideTime = _dpf(val);
     else if (strcmp(key,"legatoWindow")==0) p->p_legatoWindow = _dpf(val);
     else if (strcmp(key,"notePriority")==0) p->p_notePriority = _dpi(val);

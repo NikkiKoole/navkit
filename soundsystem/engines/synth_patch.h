@@ -86,6 +86,7 @@ typedef struct {
     // Mono/Glide
     bool p_monoMode;
     bool p_monoRetrigger;   // true = retrigger envelope on every note, false = legato (glide only)
+    bool p_monoHardRetrigger; // true = envelope restarts from zero (punchy arp), false = from current level (smooth)
     float p_glideTime;
     float p_legatoWindow;   // seconds: note-on within this time after release → legato (0=off)
     int p_notePriority;     // NotePriority: 0=last, 1=low, 2=high
@@ -406,6 +407,7 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_pitchLfoSync = 0,
         .p_monoMode = false,
         .p_monoRetrigger = false,
+        .p_monoHardRetrigger = false,
         .p_glideTime = 0.1f,
         .p_legatoWindow = 0.015f,  // 15ms — forgives sloppy finger transitions in mono mode
         .p_notePriority = 0,      // NOTE_PRIORITY_LAST

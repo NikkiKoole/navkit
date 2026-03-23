@@ -881,6 +881,9 @@ typedef struct {
     float releaseLevel;   // envLevel captured at release start (for linear fade)
     int envStage;         // 0=off, 1=attack, 2=decay, 3=sustain, 4=release
     bool expRelease;      // false=linear (tight, predictable), true=exponential (natural tail)
+    int antiClickSamples;   // samples remaining in anti-click fade (0=inactive)
+    float antiClickSample;  // captured last output sample at retrigger, fades to 0
+    float prevOutput;       // previous frame's final output (for anti-click capture)
     bool oneShot;         // true=skip sustain, go straight to release after decay
     bool monoReserved;    // true = reserved for mono track, findVoice() should avoid stealing
 
@@ -1329,6 +1332,7 @@ typedef struct SynthContext {
     // Mono mode state
     bool monoMode;
     bool monoRetrigger;   // true = retrigger envelope on every note, false = legato
+    bool monoHardRetrigger; // true = envelope from zero, false = from current level
     float glideTime;
     float legatoWindow;   // seconds: note-on within this window after release → legato
     int monoVoiceIdx;
@@ -1859,6 +1863,7 @@ static void _ensureSynthCtx(void) {
 #define scaleType (synthCtx->scaleType)
 #define monoMode (synthCtx->monoMode)
 #define monoRetrigger (synthCtx->monoRetrigger)
+#define monoHardRetrigger (synthCtx->monoHardRetrigger)
 #define glideTime (synthCtx->glideTime)
 #define legatoWindow (synthCtx->legatoWindow)
 #define monoVoiceIdx (synthCtx->monoVoiceIdx)
@@ -2502,6 +2507,7 @@ static float processVoice(Voice *v, float sampleRate) {
                 }
             } else {
                 // Classic mode: reset envelope to attack
+                if (v->envLevel > 0.01f) { v->antiClickSamples = 44; v->antiClickSample = v->prevOutput; }
                 v->envPhase = 0.0f;
                 v->envLevel = 0.0f;
                 v->envStage = 1;
@@ -2563,10 +2569,19 @@ static float processVoice(Voice *v, float sampleRate) {
 
             // Retrigger envelope on each arp step (needed for percussive sounds
             // where sustain=0 means the voice dies before the next arp tick)
-            if (v->envStage == 0 || v->envStage == 4 || v->sustain < 0.001f) {
+            if (v->envStage == 0 || v->envStage == 4 || v->sustain < 0.001f || monoHardRetrigger) {
+                // Anti-click: fade out old signal over ~1ms before restarting
+                if (v->envLevel > 0.01f) { v->antiClickSamples = 44; v->antiClickSample = v->prevOutput; }
                 v->envPhase = 0.0f;
                 v->envLevel = 0.0f;
                 v->envStage = 1; // restart from attack
+                if (monoHardRetrigger) {
+                    // Restart filter envelope (for the filter sweep) but keep
+                    // the filter's signal state intact — zeroing filterLp/ladder
+                    // silences the output on fast arp rates
+                    v->filterEnvLevel = 0.0f;
+                    v->filterEnvPhase = 0.0f;
+                }
             }
 
             // Re-excite KS buffer on each arp step (pluck/guitar/stifkarp need
@@ -3322,7 +3337,18 @@ static float processVoice(Voice *v, float sampleRate) {
     float ampMod = 1.0f - ampLfoMod * 0.5f - 0.5f * v->ampLfoDepth;  // Center the modulation
     ampMod = clampf(ampMod, 0.0f, 1.0f);
 
-    return sample * env * v->volume * ampMod;
+    float out = sample * env * v->volume * ampMod;
+
+    // Anti-click: crossfade from the old signal to the new over ~1ms
+    // Prevents pops when envelope retriggers snap the level down
+    if (v->antiClickSamples > 0) {
+        float t = (float)v->antiClickSamples / 44.0f; // 1.0 → 0.0 over 44 samples (~1ms)
+        out = out * (1.0f - t) + v->antiClickSample * t;
+        v->antiClickSamples--;
+    }
+
+    v->prevOutput = out;
+    return out;
 }
 
 // ============================================================================
@@ -3752,16 +3778,21 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
 
     if (!isGlide || isGlideRetrigger) {
         v->envPhase = 0.0f;
+        // Anti-click ramp on any retrigger that drops the level significantly
+        if (v->envLevel > 0.01f) { v->antiClickSamples = 44; v->antiClickSample = v->prevOutput; }
         // On glide retrigger (voice was in release), start attack from current level
         // for a smooth transition. On mono retrigger, same idea.
-        if ((isGlideRetrigger || isMonoRetrigger) && v->envLevel > 0.0f) {
+        // Hard retrigger: always from zero (punchy arp sound).
+        if (monoHardRetrigger) {
+            v->envLevel = 0.0f;
+        } else if ((isGlideRetrigger || isMonoRetrigger) && v->envLevel > 0.0f) {
             // Keep current level but restart attack from there
             v->envLevel = fmaxf(v->envLevel, 0.1f);  // At least 10% to be audible
         } else {
             v->envLevel = 0.0f;
         }
         v->envStage = 1;
-        if (!isGlideRetrigger) {
+        if (!isGlideRetrigger || monoHardRetrigger) {
             v->filterLp = oldFilterLp * 0.3f;
             v->filterBp = 0.0f;
         }
@@ -3788,7 +3819,7 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
         v->filterType = noteFilterType;
         v->filterModel = noteFilterModel;
     }
-    if (v->filterModel == FILTER_MODEL_LADDER && !isGlideRetrigger) {
+    if (v->filterModel == FILTER_MODEL_LADDER && !isGlide) {
         ladderStateInit(&v->ladder);
     }
     
@@ -3969,6 +4000,7 @@ static void resetNoteGlobals(void) {
     noteUnisonMix = 0.5f;
     monoMode = false;
     monoRetrigger = false;
+    monoHardRetrigger = false;
     glideTime = 0.0f;
     legatoWindow = 0.0f;
     notePriority = NOTE_PRIORITY_LAST;

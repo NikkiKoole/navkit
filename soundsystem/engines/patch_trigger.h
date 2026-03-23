@@ -66,6 +66,7 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     noteScwIndex = p->p_scwIndex;
     monoMode = p->p_monoMode;
     monoRetrigger = p->p_monoRetrigger;
+    monoHardRetrigger = p->p_monoHardRetrigger;
     glideTime = p->p_glideTime;
     legatoWindow = p->p_legatoWindow;
     notePriority = (NotePriority)p->p_notePriority;

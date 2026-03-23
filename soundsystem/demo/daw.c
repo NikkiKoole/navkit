@@ -4505,16 +4505,44 @@ static void drawParamPatch(float x, float y, float w, float h) {
     {
         int fs = 14;
 
-        // Preset button (left)
+        // Preset nav: [<] [>] then preset name
         int pi = patchPresetIndex[daw.selectedPatch];
         const char* presetName = (pi >= 0) ? instrumentPresets[pi].name : "Custom";
         bool dirty = isPatchDirty(daw.selectedPatch);
+
+        // Prev/Next preset buttons (fixed position)
+        float btnX = x + 4;
+        float btnY = y;
+        float btnW = 18, btnH = 18;
+        Rectangle prevR = {btnX, btnY, btnW, btnH};
+        Rectangle nextR = {btnX + btnW + 2, btnY, btnW, btnH};
+        Vector2 mp = GetMousePosition();
+        bool hoverPrev = CheckCollisionPointRec(mp, prevR);
+        bool hoverNext = CheckCollisionPointRec(mp, nextR);
+        DrawRectangleRec(prevR, hoverPrev ? (Color){80,80,120,255} : (Color){50,50,80,255});
+        DrawRectangleRec(nextR, hoverNext ? (Color){80,80,120,255} : (Color){50,50,80,255});
+        DrawTextShadow("<", (int)(btnX + 5), (int)(btnY + 2), fs, (Color){180,180,220,255});
+        DrawTextShadow(">", (int)(btnX + btnW + 2 + 5), (int)(btnY + 2), fs, (Color){180,180,220,255});
+        if (hoverPrev && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            int newIdx = (pi >= 0) ? pi - 1 : NUM_INSTRUMENT_PRESETS - 1;
+            if (newIdx < 0) newIdx = NUM_INSTRUMENT_PRESETS - 1;
+            loadPresetIntoPatch(daw.selectedPatch, newIdx);
+            ui_consume_click();
+        }
+        if (hoverNext && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            int newIdx = (pi >= 0) ? pi + 1 : 0;
+            if (newIdx >= NUM_INSTRUMENT_PRESETS) newIdx = 0;
+            loadPresetIntoPatch(daw.selectedPatch, newIdx);
+            ui_consume_click();
+        }
+
+        // Preset name button (after nav buttons)
+        float nameX = btnX + btnW * 2 + 6;
         const char* display = dirty ? TextFormat("[%s *]", presetName) : TextFormat("[%s]", presetName);
+        DrawTextShadow(display, (int)nameX, (int)y + 2, fs, (Color){180,180,220,255});
 
-        DrawTextShadow(display, (int)x + 8, (int)y + 2, fs, (Color){180,180,220,255});
-
-        int tw = MeasureTextUI(display, fs) + 16;
-        Rectangle presetR = {x + 4, y, (float)tw, 18};
+        int tw = MeasureTextUI(display, fs) + 8;
+        Rectangle presetR = {nameX - 2, y, (float)tw, 18};
         if (CheckCollisionPointRec(GetMousePosition(), presetR) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             presetPickerOpen = !presetPickerOpen;
             if (presetPickerOpen) {
@@ -4526,8 +4554,19 @@ static void drawParamPatch(float x, float y, float w, float h) {
             }
             ui_consume_click();
         }
-
-        // (sub-tabs removed — everything is on one page now)
+        // Keyboard shortcuts: , (prev) and . (next) preset
+        if (!presetPickerOpen && !presetSearchActive) {
+            if (IsKeyPressed(KEY_COMMA)) {
+                int newIdx = (pi >= 0) ? pi - 1 : NUM_INSTRUMENT_PRESETS - 1;
+                if (newIdx < 0) newIdx = NUM_INSTRUMENT_PRESETS - 1;
+                loadPresetIntoPatch(daw.selectedPatch, newIdx);
+            }
+            if (IsKeyPressed(KEY_PERIOD)) {
+                int newIdx = (pi >= 0) ? pi + 1 : 0;
+                if (newIdx >= NUM_INSTRUMENT_PRESETS) newIdx = 0;
+                loadPresetIntoPatch(daw.selectedPatch, newIdx);
+            }
+        }
 
         y += 20;
         h -= 20;
@@ -5074,7 +5113,9 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_toggle(&c, "Mono", &p->p_monoMode);
             if (p->p_monoMode) {
                 ui_col_toggle(&c, "Retrigger", &p->p_monoRetrigger);
-                ui_col_float(&c, "Glide", &p->p_glideTime, 0.02f, 0.01f, 1.0f);
+                if (p->p_monoRetrigger)
+                    ui_col_toggle(&c, "Hard", &p->p_monoHardRetrigger);
+                ui_col_float(&c, "Glide", &p->p_glideTime, 0.02f, 0.0f, 1.0f);
                 ui_col_float(&c, "Legato", &p->p_legatoWindow, 0.005f, 0.0f, 0.1f);
                 static const char *priorityNames[] = {"Last", "Low", "High"};
                 int prio = p->p_notePriority;

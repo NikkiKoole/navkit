@@ -303,6 +303,7 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "unisonMix", p->p_unisonMix);
     _sf_writeBool(f, "monoMode", p->p_monoMode);
     _sf_writeBool(f, "monoRetrigger", p->p_monoRetrigger);
+    _sf_writeBool(f, "monoHardRetrigger", p->p_monoHardRetrigger);
     _sf_writeFloat(f, "glideTime", p->p_glideTime);
     _sf_writeFloat(f, "legatoWindow", p->p_legatoWindow);
     _sf_writeInt(f, "notePriority", p->p_notePriority);
@@ -970,6 +971,7 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "unisonMix") == 0) p->p_unisonMix = _sf_parseFloat(val);
     else if (strcmp(key, "monoMode") == 0) p->p_monoMode = _sf_parseBool(val);
     else if (strcmp(key, "monoRetrigger") == 0) p->p_monoRetrigger = _sf_parseBool(val);
+    else if (strcmp(key, "monoHardRetrigger") == 0) p->p_monoHardRetrigger = _sf_parseBool(val);
     else if (strcmp(key, "glideTime") == 0) p->p_glideTime = _sf_parseFloat(val);
     else if (strcmp(key, "legatoWindow") == 0) p->p_legatoWindow = _sf_parseFloat(val);
     else if (strcmp(key, "notePriority") == 0) p->p_notePriority = _sf_parseInt(val);
