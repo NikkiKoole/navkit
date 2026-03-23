@@ -525,6 +525,7 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "formantShift", p->p_formantShift);
     _sf_writeFloat(f, "formantQ", p->p_formantQ);
     _sf_writeFloat(f, "formantMix", p->p_formantMix);
+    _sf_writeBool(f, "formantRandom", p->p_formantRandom);
 }
 
 static void _sf_writePattern(FILE *f, int idx, const Pattern *p) {
@@ -1210,6 +1211,7 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "formantShift") == 0) p->p_formantShift = _sf_parseFloat(val);
     else if (strcmp(key, "formantQ") == 0) p->p_formantQ = _sf_parseFloat(val);
     else if (strcmp(key, "formantMix") == 0) p->p_formantMix = _sf_parseFloat(val);
+    else if (strcmp(key, "formantRandom") == 0) p->p_formantRandom = _sf_parseBool(val);
     // Unknown keys silently skipped (future-proof)
 }
 

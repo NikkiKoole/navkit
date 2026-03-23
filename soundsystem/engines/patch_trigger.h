@@ -276,6 +276,7 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     noteFormantShift = p->p_formantShift;
     noteFormantQ = p->p_formantQ;
     noteFormantMix = p->p_formantMix;
+    noteFormantRandom = p->p_formantRandom;
 }
 
 // Play a note using a SynthPatch. Sets all globals from the patch,

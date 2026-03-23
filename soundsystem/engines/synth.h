@@ -1784,6 +1784,7 @@ typedef struct SynthContext {
     float noteFormantShift;
     float noteFormantQ;
     float noteFormantMix;
+    bool noteFormantRandom;
 
     // SFX randomization
     bool sfxRandomize;
@@ -2272,6 +2273,7 @@ static void _ensureSynthCtx(void) {
 #define noteFormantShift (synthCtx->noteFormantShift)
 #define noteFormantQ (synthCtx->noteFormantQ)
 #define noteFormantMix (synthCtx->noteFormantMix)
+#define noteFormantRandom (synthCtx->noteFormantRandom)
 #define sfxRandomize (synthCtx->sfxRandomize)
 
 // ============================================================================
@@ -3953,6 +3955,14 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->formantEnabled = noteFormantEnabled;
     v->formantFrom = noteFormantFrom;
     v->formantTo = noteFormantTo;
+    if (noteFormantRandom && noteFormantEnabled) {
+        // Quick LCG hash seeded from voice index + a rotating counter
+        static unsigned int formantRandState = 12345;
+        formantRandState = formantRandState * 1664525u + 1013904223u;
+        v->formantFrom = (int)(formantRandState >> 16) % VF_PHONEME_COUNT;
+        formantRandState = formantRandState * 1664525u + 1013904223u;
+        v->formantTo = (int)(formantRandState >> 16) % VF_PHONEME_COUNT;
+    }
     v->formantMorphTime = noteFormantMorphTime;
     v->formantMorphPhase = 0.0f;
     v->formantShift = noteFormantShift;

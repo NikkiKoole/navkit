@@ -368,6 +368,7 @@ typedef struct {
     float p_formantShift;     // Scale all formant freqs (0.5=monster, 2.0=chipmunk)
     float p_formantQ;         // Bandwidth multiplier (0.5=wide, 3.0=sharp/nasal)
     float p_formantMix;       // Dry/wet blend (0=dry, 1=full formant)
+    bool p_formantRandom;     // Randomize from/to phoneme on each note trigger
 
     // 303 acid mode
     bool p_acidMode;          // true = authentic TB-303 slide/accent behavior
@@ -634,6 +635,7 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_formantShift = 1.0f,
         .p_formantQ = 1.0f,
         .p_formantMix = 0.8f,
+        .p_formantRandom = false,
         .p_acidMode = false,
         .p_accentSweepAmt = 0.5f,
         .p_gimmickDipAmt = 0.3f,

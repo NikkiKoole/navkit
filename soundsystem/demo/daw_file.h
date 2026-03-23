@@ -180,6 +180,7 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _dw(f, "formantShift", p->p_formantShift);
     _dw(f, "formantQ", p->p_formantQ);
     _dw(f, "formantMix", p->p_formantMix);
+    _db(f, "formantRandom", p->p_formantRandom);
 }
 
 // ============================================================================
@@ -931,6 +932,7 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"formantShift")==0) p->p_formantShift = _dpf(val);
     else if (strcmp(key,"formantQ")==0) p->p_formantQ = _dpf(val);
     else if (strcmp(key,"formantMix")==0) p->p_formantMix = _dpf(val);
+    else if (strcmp(key,"formantRandom")==0) p->p_formantRandom = _dpb(val);
 }
 
 static int _dwParseIntList(const char *val, int *out, int maxCount) {
