@@ -194,8 +194,10 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _di(f, "fbLayout", p->p_fbLayout);
     _dw(f, "fbRandomize", p->p_fbRandomize);
     _dw(f, "fbEnvAlpha", p->p_fbEnvAlpha);
+    _dw(f, "fbLfoRate", p->p_fbLfoRate);
     _dw(f, "fbLfoAlpha", p->p_fbLfoAlpha);
     _dw(f, "fbLfoBeta", p->p_fbLfoBeta);
+    _di(f, "fbLfoShape", p->p_fbLfoShape);
     _dw(f, "fbNoiseMix", p->p_fbNoiseMix);
 }
 
@@ -962,8 +964,10 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"fbLayout")==0) p->p_fbLayout = _dpi(val);
     else if (strcmp(key,"fbRandomize")==0) p->p_fbRandomize = _dpf(val);
     else if (strcmp(key,"fbEnvAlpha")==0) p->p_fbEnvAlpha = _dpf(val);
+    else if (strcmp(key,"fbLfoRate")==0) p->p_fbLfoRate = _dpf(val);
     else if (strcmp(key,"fbLfoAlpha")==0) p->p_fbLfoAlpha = _dpf(val);
     else if (strcmp(key,"fbLfoBeta")==0) p->p_fbLfoBeta = _dpf(val);
+    else if (strcmp(key,"fbLfoShape")==0) p->p_fbLfoShape = _dpi(val);
     else if (strcmp(key,"fbNoiseMix")==0) p->p_fbNoiseMix = _dpf(val);
 }
 

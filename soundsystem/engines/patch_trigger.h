@@ -290,8 +290,10 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     noteFbLayout = p->p_fbLayout;
     noteFbRandomize = p->p_fbRandomize;
     noteFbEnvAlpha = p->p_fbEnvAlpha;
+    noteFbLfoRate = p->p_fbLfoRate;
     noteFbLfoAlpha = p->p_fbLfoAlpha;
     noteFbLfoBeta = p->p_fbLfoBeta;
+    noteFbLfoShape = p->p_fbLfoShape;
     noteFbNoiseMix = p->p_fbNoiseMix;
 }
 

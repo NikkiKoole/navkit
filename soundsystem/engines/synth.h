@@ -1242,8 +1242,12 @@ typedef struct {
     int fbLayout;                   // 0 = 3×BPF, 1 = LP+2×BPF
     float fbRandomize;              // Per-note random variation amount
     float fbEnvAlpha;               // Filter envelope → Alpha depth
-    float fbLfoAlpha;               // Filter LFO → Alpha depth
-    float fbLfoBeta;                // Filter LFO → Beta depth
+    float fbLfoRate;                // Filterbank LFO rate (Hz)
+    float fbLfoAlpha;               // Filterbank LFO → Alpha depth
+    float fbLfoBeta;                // Filterbank LFO → Beta depth
+    int fbLfoShape;                 // Filterbank LFO shape
+    float fbLfoPhase;               // Filterbank LFO phase (runtime state)
+    float fbLfoSH;                  // Filterbank LFO S&H value
     float fbNoiseMix;               // Noise into filterbank input
     float fbDcX, fbDcY;             // DC blocker state (1-pole HPF)
 
@@ -1815,8 +1819,10 @@ typedef struct SynthContext {
     int noteFbLayout;
     float noteFbRandomize;
     float noteFbEnvAlpha;
+    float noteFbLfoRate;
     float noteFbLfoAlpha;
     float noteFbLfoBeta;
+    int noteFbLfoShape;
     float noteFbNoiseMix;
 
     // SFX randomization
@@ -2320,8 +2326,10 @@ static void _ensureSynthCtx(void) {
 #define noteFbLayout (synthCtx->noteFbLayout)
 #define noteFbRandomize (synthCtx->noteFbRandomize)
 #define noteFbEnvAlpha (synthCtx->noteFbEnvAlpha)
+#define noteFbLfoRate (synthCtx->noteFbLfoRate)
 #define noteFbLfoAlpha (synthCtx->noteFbLfoAlpha)
 #define noteFbLfoBeta (synthCtx->noteFbLfoBeta)
+#define noteFbLfoShape (synthCtx->noteFbLfoShape)
 #define noteFbNoiseMix (synthCtx->noteFbNoiseMix)
 #define sfxRandomize (synthCtx->sfxRandomize)
 
@@ -3498,20 +3506,24 @@ static float processVoice(Voice *v, float sampleRate) {
         if (v->formantMode == 1) {
             // === FILTERBANK MODE (Grenadier RA-99 style) ===
 
-            // Modulate Alpha with filter envelope and filter LFO
+            // Dedicated filterbank LFO (independent of filter LFO)
+            float fbLfo = processLfo(&v->fbLfoPhase, &v->fbLfoSH,
+                                      v->fbLfoRate, 1.0f, v->fbLfoShape, dt);
+
+            // Modulate Alpha with filter envelope and filterbank LFO
             float modAlpha = v->fbAlpha;
             if (v->fbEnvAlpha != 0.0f) {
                 modAlpha += v->filterEnvLevel * v->fbEnvAlpha;
             }
             if (v->fbLfoAlpha != 0.0f) {
-                modAlpha += filterLfoMod * v->fbLfoAlpha;
+                modAlpha += fbLfo * v->fbLfoAlpha;
             }
             modAlpha = clampf(modAlpha, 0.0f, 1.0f);
 
-            // Modulate Beta with filter LFO
+            // Modulate Beta with filterbank LFO
             float modBeta = v->fbBeta;
             if (v->fbLfoBeta != 0.0f) {
-                modBeta += filterLfoMod * v->fbLfoBeta;
+                modBeta += fbLfo * v->fbLfoBeta;
             }
             modBeta = clampf(modBeta, 0.0f, 1.0f);
 
@@ -4130,8 +4142,12 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->fbLayout = noteFbLayout;
     v->fbRandomize = noteFbRandomize;
     v->fbEnvAlpha = noteFbEnvAlpha;
+    v->fbLfoRate = noteFbLfoRate;
     v->fbLfoAlpha = noteFbLfoAlpha;
     v->fbLfoBeta = noteFbLfoBeta;
+    v->fbLfoShape = noteFbLfoShape;
+    v->fbLfoPhase = 0.0f;
+    v->fbLfoSH = 0.0f;
     v->fbNoiseMix = noteFbNoiseMix;
 
     // Per-note filterbank randomization — vary params each trigger for acid character
