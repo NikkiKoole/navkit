@@ -488,6 +488,11 @@ Transposed direct form II implementation (2 state variables per biquad). The bod
 | Koto | 130/350/850/2200 | 0.9992 | 0.85 | 3184 Hz | Hard bridge, brightest, long ring |
 | Harp | 100/250/500/1000 | 0.9995 | 0.60 | 2855 Hz | Minimal body, longest sustain |
 | Ukulele | 180/380/720/1400 | 0.9970 | 0.35 | 2302 Hz | Small body, warm, percussive |
+| Single Coil | 3500/1800/250/800 | 0.9993 | 0.70 | ~2500 Hz | Strat-like, bright/glassy pickup peak |
+| Humbucker | 2500/1200/300/600 | 0.9994 | 0.55 | ~2100 Hz | Les Paul-like, warm/fat mid-push |
+| Jazz Box | 2000/800/200/450 | 0.9990 | 0.35 | ~2100 Hz | Semi-hollow archtop, warm/round |
+
+**Electric guitar presets** — pickup resonance model: The same 4 biquad body resonators are repurposed as a magnetic pickup model. In an acoustic guitar, the body biquads simulate broad wooden body resonances (65-1800 Hz). In an electric guitar, they simulate the pickup's electromagnetic response: a sharp resonant peak at 2-5 kHz from pickup inductance + cable capacitance, plus subtle wood coloration at low gain. Key differences from acoustic presets: (1) Primary formant at 2000-3500 Hz with narrow bandwidth (0.2-0.3 oct) = the pickup's characteristic Q peak. Single coils peak higher (~3.5 kHz, bright/nasal) than humbuckers (~2.5 kHz, warm/fat). (2) Much higher string damping (0.9990-0.9994) = longer sustain since solid body doesn't absorb energy. (3) Lower body mix = less acoustic body contribution. These presets produce clean electric tones; the character emerges when processed through bus effects (distortion, wah, chorus).
 
 **Reference**:
 - Elejabarrieta, Ezcurra & Santamaría, "Coupled modes of the resonance box of the guitar" (JASA, 2002) — measured guitar body mode frequencies and Q factors
@@ -652,19 +657,25 @@ Particle Energy (exponential decay per sample)
 
 **Signal flow**:
 ```
-Noise burst ──→ hammer hardness LP ──→ normalize ──→ pick position comb
+Noise burst ──→ hammer hardness LP ──→ normalize ──→ strike position comb
                                                            │
 KS delay line ◄────────── Thiran fractional delay ◄── allpass dispersion
      │                                                      ▲
      └──→ KS loop filter (avg + brightness + damping) ──────┘
                                                     │
-     stringSample ──→ output tone filter (1-pole LP, per-preset)
-                           │
-                      ├──→ buzz (prepared piano, tanh soft-clip)
-                      │
-                      ├──→ 4× biquad BPF body ──→ crossfade mix ──→ output
-                      │
-                      └──→ sympathetic feedback (3rd partial tap)
+     stringSample ─┬──→ [if double string: + string2 × 0.7]
+                   │                                │
+                   └──→ output tone filter (1-pole LP, per-preset)
+                             │
+                        ├──→ buzz (prepared piano, tanh soft-clip)
+                        │
+                        ├──→ 4× biquad BPF body ──→ crossfade mix ──→ output
+                        │
+                        └──→ sympathetic feedback (3rd partial tap)
+
+Double string (piano/honkytonk only):
+  Same KS + dispersion pipeline in ks2Buffer, detuned by p_stifkarpDetune cents.
+  Mixed at 0.7× each (slight boost over single string for fullness).
 ```
 
 **Key differentiator — allpass dispersion chain**: Real stiff strings (piano wire, metal plates) exhibit frequency-dependent phase velocity — higher harmonics arrive slightly sharp of integer ratios. This **inharmonicity** is characterized by `f_n = n × f₁ × √(1 + B × n²)`, where B ranges from ~0.0001 (bass piano strings) to ~0.01 (treble).
@@ -694,19 +705,21 @@ This is the primary timbral differentiator between presets.
 
 **Sympathetic resonance**: Output fed back into delay line at `ksLength/3` tap point at low level (0.015 × sympatheticLevel), exciting the 3rd partial.
 
-**Presets** (8):
-| # | Name | Tone | Body | F1-F4 (Hz) | Character |
-|---|------|------|------|-------------|-----------|
-| 218 | Grand Piano | 0.18 | 0.70 | 65/130/260/520 | Warm, spruce soundboard |
-| 219 | Bright Piano | 0.30 | 0.65 | 60/125/280/600 | Concert grand, shimmer |
-| 220 | Harpsichord | 0.70 | 0.25 | 200/400/900/1800 | Bright plectrum snap |
-| 221 | Dulcimer | 0.50 | 0.75 | 180/360/720/1500 | Metallic wire shimmer |
-| 222 | Clavichord | 0.10 | 0.10 | 150/300/600/1200 | Very dark, intimate |
-| 223 | Prepared | 0.15 | 0.60 | 65/140/280/550 | Dark + bolt buzz (0.4) |
-| 224 | Honky Tonk | 0.20 | 0.35 | 70/145/300/600 | Muffled, unison beating |
-| 225 | Celesta | 0.60 | 0.50 | 400/800/1600/3200 | Metal plates, bell-like |
+**Double string** (piano presets only): A second independent KS+dispersion pipeline runs in `ks2Buffer[2048]`, detuned by `p_stifkarpDetune` cents. Both strings share the same dispersion coefficients and body resonator. The detune creates natural chorus/beating from the two slightly-different frequencies interfering. Real pianos use 2-3 strings per note with ~1-2 cents variation. Enabled per-preset or via the DAW "Detune" knob (0 = off/single string, >0 = double string at that detune).
 
-**Assessment**: Good stiff-string model filling the "metal string" gap between WAVE_PLUCK (nylon/gut) and WAVE_MALLET (bars). The allpass dispersion chain is the standard approach and successfully stretches upper partials for piano shimmer. The per-preset output tone filter (0.1-0.7 range) provides strong timbral differentiation — spectral centroids span 917-2170 Hz across presets. Memory cost is ~190 bytes/voice (reuses existing `ksBuffer[2048]`). **Possible enhancements**: (1) Velocity-dependent hammer hardness — harder at ff, softer at pp. (2) Multi-string coupling — 2-3 strings per note with slow beating. (3) Global sustain pedal — prevent note-off from engaging damper. (4) Duplex scale resonance.
+**Presets** (8):
+| # | Name | Tone | Body | F1-F4 (Hz) | Detune | Character |
+|---|------|------|------|-------------|--------|-----------|
+| 218 | Grand Piano | 0.25 | 0.70 | 65/155/440/1800 | 1.2¢ | Warm, double string, mid-presence body |
+| 219 | Bright Piano | 0.35 | 0.65 | 60/150/480/2200 | 0.8¢ | Concert grand, shimmer, tight double |
+| 220 | Harpsichord | 0.70 | 0.25 | 200/400/900/1800 | — | Bright plectrum snap |
+| 221 | Dulcimer | 0.50 | 0.75 | 180/360/720/1500 | — | Metallic wire shimmer |
+| 222 | Clavichord | 0.10 | 0.10 | 150/300/600/1200 | — | Very dark, intimate |
+| 223 | Prepared | 0.15 | 0.60 | 65/140/280/550 | — | Dark + bolt buzz (0.4) |
+| 224 | Honky Tonk | 0.20 | 0.35 | 70/145/300/600 | 6.0¢ | Wide detune wobble, double string |
+| 225 | Celesta | 0.60 | 0.50 | 400/800/1600/3200 | — | Metal plates, bell-like |
+
+**Assessment**: Good stiff-string model filling the "metal string" gap between WAVE_PLUCK (nylon/gut) and WAVE_MALLET (bars). The allpass dispersion chain is the standard approach and successfully stretches upper partials for piano shimmer. The per-preset output tone filter (0.1-0.7 range) provides strong timbral differentiation. Double-string addition gives piano presets the chorus width of real multi-string instruments. Memory cost is ~8.4 KB/voice for double-string presets (2× ksBuffer[2048]). **Possible enhancements**: (1) Velocity-dependent hammer hardness. (2) Triple string (third detuned string for even more width). (3) Global sustain pedal. (4) Duplex scale resonance.
 
 ### 1.25 Banded Waveguide (WAVE_BANDEDWG)
 **File**: `synth_oscillators.h:3327–3484`
@@ -765,6 +778,81 @@ This is the primary timbral differentiator between presets.
 | 239 | Tubular Chime | strike | tube | Bright, harmonic, one-shot |
 
 **Assessment**: Faithful implementation of Essl & Cook / STK BandedWG. The tight BiQuad bandpass resonators (R≈0.9977) are the key difference from KS — they keep each mode ringing as a pure partial with no spectral evolution, which is what makes glass and metal instruments sound crystalline rather than stringy. The STK bow table (bell-shaped friction curve with ⁻⁴ exponent) creates stable self-sustaining oscillation. Singing bowl uses near-degenerate mode pairs (1.0/1.002) for characteristic beating. Tubular chime uses STK's tuned bar ratios (1.0, 4.02, 10.72, 18.07) for wide spacing — sonically very different from prayer bowl. Memory cost is zero (reuses ksBuffer[2048]). **Possible enhancements**: (1) Expand singing bowl to 12 modes (STK uses 12 for full pair structure). (2) Integration constant for bow velocity smoothing (STK CC#11). (3) Per-mode excitation weighting for struck presets (STK Tibetan bowl has non-uniform excitation). (4) Sympathetic mode excitation across voices.
+
+### 1.26 4-Formant Voice (WAVE_VOICFORM)
+**File**: `synth_oscillators.h`, `processVoicFormOscillator()`
+**Algorithm**: Liljencrants-Fant (LF) glottal pulse → 4 parallel biquad formant filters + phoneme interpolation + consonant noise bursts.
+**Reference**: Cook, "Singing Voice Synthesis" (2001). STK VoicForm class. Fant, "Acoustic Theory of Speech Production" (1970).
+
+**Upgrade over WAVE_VOICE**: Uses LF glottal pulse (more realistic than the simple sine pulse in WAVE_VOICE), 4 formants instead of 3, full phoneme table with smooth interpolation between vowels, and consonant/aspiration noise. Text-to-speech UI with ARPABET parser.
+
+**Assessment**: Substantial improvement over the basic WAVE_VOICE formant engine. The 4th formant adds high-frequency presence. The phoneme interpolation creates natural vowel transitions. Consonant noise bursts add intelligibility for text-to-speech applications.
+
+### 1.27 Paired Course Strings / Mandolin (WAVE_MANDOLIN)
+**File**: `synth_oscillators.h`, `initMandolinPreset()`, `processMandolinOscillator()`
+**Algorithm**: Two independent Karplus-Strong delay lines (course pair) detuned by configurable cents + 3 parallel biquad body resonators + pick position comb filter + DC blocker.
+**Reference**: STK Mandolin (Smith). Karplus & Strong 1983. Elejabarrieta et al. 2002 (body modes).
+
+**Signal flow**:
+```
+Noise burst 1 ──→ pick position comb ──→ KS delay line 1 (primary, Voice.ksBuffer)
+Noise burst 2 ──→ pick position comb ──→ KS delay line 2 (detuned, MandolinSettings.ks2Buffer)
+                                              │                │
+                                              └───── mix ──────┘
+                                                      │
+                                              DC blocker ──→ 3× biquad BPF body ──→ crossfade ──→ output
+```
+
+**Key feature — course detuning**: Real mandolins have paired strings per course, tuned to nominally the same pitch but with ~1-4 cents variation. This creates natural beating/chorus without any LFO or modulation — just two slightly-different frequencies interfering. The `p_mandolinCourseDetune` parameter controls this (in cents). Each string has independent noise excitation, KS loop filtering, allpass fractional delay tuning, and damping.
+
+**Body resonator**: 3 parallel biquad bandpasses (lighter than guitar's 4). Per-preset formant frequencies model different instrument bodies.
+
+**Presets** (4):
+| # | Name | Detune | Body Hz | Character |
+|---|------|--------|---------|-----------|
+| 248 | Neapolitan | 2.0¢ | 250/520/1200 | Classic arched top, bright singing |
+| 249 | Flatback | 2.5¢ | 200/420/900 | Portuguese, warmer, quicker decay |
+| 250 | Bouzouki | 1.5¢ | 160/380/850 | Irish, deeper body, long ring |
+| 251 | Charango | 3.0¢ | 320/680/1600 | Andean, tiny body, very bright |
+
+**Assessment**: Clean implementation reusing proven KS infrastructure. The dual-string approach is the standard technique for mandolin-family instruments. Memory cost is 8.2 KB/voice (2× ksBuffer[2048]). The 3-mode body is sufficient for the mandolin family's lighter resonance. **Possible enhancements**: (1) Per-string damping variation for more organic decay. (2) Sympathetic string coupling between the two courses.
+
+### 1.28 Pea Whistle (WAVE_WHISTLE)
+**File**: `synth_oscillators.h`, `initWhistlePreset()`, `processWhistleOscillator()`
+**Algorithm**: Sine oscillator (primary tone) + 2D pea-in-can physics simulation for amplitude/frequency modulation + additive noise for breath texture.
+**Reference**: Cook, "Real Sound Synthesis for Interactive Applications" Ch.15, STK Whistle class.
+
+**Signal flow**:
+```
+                    ┌─── pea physics (2D position/velocity in circular can) ───┐
+                    │                                                           │
+noise() ──→ pea velocity perturbation (near fipple)                            │
+                    │                                                           │
+                    ├──→ fipple distance ──→ exp(-d·0.01) ──→ LP (0.0015) ─────┤
+                    │                                    │smoothMod│            │
+                    │              gain = (0.85 + fippleGainMod × smoothMod)    │
+                    │              freqMod = 1 + fippleFreqMod × 0.02 × (0.5 − smoothMod)
+                    │                                                           │
+                    └──→ can wall bounce (reflect velocity, apply canLoss) ─────┘
+                                            │
+v->phase (from processVoice) ──→ sin((phase + freqMod) × 2π) = sineOut
+                                            │
+                         env × gain × (sineOut + noiseGain × noise) ──→ output
+```
+
+**Key design — sine oscillator, not filtered noise**: The original implementation used noise → resonant filter, which sounded like wind. Real whistles are self-oscillating instruments where the air column sustains a deterministic tone. Cook's model uses a sine oscillator as the primary sound source, with the pea physics creating slow amplitude/frequency modulation. Noise is mixed at low level (5-25%) for breathiness only.
+
+**Pea physics**: 2D particle (position + velocity) bouncing inside a circular can boundary. Gravity pulls the pea down, angular forces create orbital motion. Near the fipple (edge at top of can), breath pressure perturbs the pea velocity via noise. Can wall collisions reflect velocity with energy loss (`canLoss`). The pea's distance to the fipple is exponentially mapped and heavily LP-smoothed (~10 Hz cutoff) to extract only the slow orbital motion as modulation — without this smoothing the chaotic bouncing sounds like noise.
+
+**Presets** (4):
+| # | Name | Breath | Noise | FreqMod | Gravity | Character |
+|---|------|--------|-------|---------|---------|-----------|
+| 252 | Referee | 0.85 | 12% | 0.5 | 20 | Strong trill, sharp pea whistle |
+| 253 | Slide | 0.75 | 8% | 0.25 | 5 | Minimal pea, pitch from LFO |
+| 254 | Train | 0.90 | 25% | 0.3 | 15 | Breathy, steamy, slow attack |
+| 255 | Cuckoo | 0.60 | 5% | 0.15 | 2 | Near-pure sine, gentle |
+
+**Assessment**: Faithful adaptation of Cook's STK Whistle. The sine-based approach produces a convincingly tonal whistle sound. The heavy LP smoothing on fipple distance (0.0015 coefficient ≈ 10 Hz cutoff) is critical for preventing the chaotic pea bouncing from sounding noisy. The `v->phase` integration (from processVoice) is used instead of a separate phase accumulator to avoid double-phasing. Memory cost is minimal (~100 bytes/voice, no delay buffers). **Possible enhancements**: (1) Sub-sampled pea physics (run at 1/4 rate for CPU savings). (2) Second pea for richer trill patterns. (3) Breath pressure envelope shapes (crescendo/decrescendo).
 
 ---
 
@@ -1428,8 +1516,11 @@ Combined offset applied to read position. Uses same `tapeWowFlutterLFO()` helper
 | Electric Piano | 12-mode modal + register-scaled pickup nonlinearity (3 types) | Good | Shear 2011, Gabrielli 2020, real sample comparison |
 | Organ (Hammond) | 9-drawbar sine bank + click/perc/scanner V/C | Good | Pekonen 2011, Pakarinen 2009 |
 | Metallic Perc | 6-osc ring-mod pairs + per-partial decay | Good | TR-808/909 service manuals |
-| Guitar Body | KS string + pick comb + 4 biquad body modes | Good | Elejabarrieta 2002, Karjalainen 2004 |
-| Stiff String | KS + allpass dispersion + tone filter + body | Good | Jaffe & Smith 1983, Bank 2000, STK StifKarp |
+| Guitar Body | KS string + pick comb + 4 biquad body/pickup modes | Good | Elejabarrieta 2002, Karjalainen 2004 |
+| Stiff String | KS + allpass dispersion + double string + body | Good | Jaffe & Smith 1983, Bank 2000, STK StifKarp |
+| VoicForm | LF glottal + 4 biquad formants + phoneme morph | Good | Cook 2001, STK VoicForm |
+| Mandolin | Dual KS course pair + 3 biquad body modes | Good | STK Mandolin, Smith |
+| Whistle | Sine + 2D pea physics modulation + noise texture | Good | Cook 2002, STK Whistle |
 | Shaker (PhISM) | Statistical collision + 4× SVF resonators | Good | Cook 1997, STK Shakers |
 | Leslie Speaker | Crossover + dual-rotor AM/Doppler + slew | Good | Smith & Abel 1999, Werner 2016 |
 | SVF Filter | Simper/Cytomic TPT | Excellent | Simper 2013, Zavalishin 2012 |

@@ -2156,7 +2156,6 @@ static void initGuitarPreset(GuitarSettings *gs, GuitarPreset preset, float freq
             break;
 
         case GUITAR_UKULELE:
-        default:
             // Ukulele: small body, warm but percussive, short sustain
             formants[0] = 180.0f;  bandwidths[0] = 0.7f; gains[0] = 1.0f;
             formants[1] = 380.0f;  bandwidths[1] = 0.5f; gains[1] = 0.75f;
@@ -2168,6 +2167,59 @@ static void initGuitarPreset(GuitarSettings *gs, GuitarPreset preset, float freq
             gs->buzzAmount = 0.0f;
             gs->stringDamping = 0.9970f;   // Short sustain (nylon + small body)
             gs->stringBrightness = 0.35f;  // Warm — nylon strings, small resonator
+            break;
+
+        // === Electric guitar presets ===
+        // Body biquads repurposed as magnetic pickup resonance model:
+        // - Mode 0: pickup inductance resonance (the defining peak, 2-5 kHz)
+        // - Mode 1: secondary resonance / cable capacitance rolloff
+        // - Modes 2-3: subtle body/neck wood coloration (very low gain)
+        // Narrow bandwidths (0.15-0.3 oct) = sharp pickup Q, unlike acoustic body's broad modes
+
+        case GUITAR_SINGLE_COIL:
+            // Strat-style single coil: bright, glassy, snappy, characteristic ~3.5 kHz peak
+            // Magnetic pickup: high inductance + cable capacitance = resonant peak
+            formants[0] = 3500.0f; bandwidths[0] = 0.2f; gains[0] = 1.0f;   // Pickup resonance
+            formants[1] = 1800.0f; bandwidths[1] = 0.3f; gains[1] = 0.3f;   // Secondary
+            formants[2] = 250.0f;  bandwidths[2] = 0.8f; gains[2] = 0.1f;   // Subtle body wood
+            formants[3] = 800.0f;  bandwidths[3] = 0.5f; gains[3] = 0.08f;  // Neck resonance
+            gs->bodyMix = 0.45f;           // Moderate — pickup, not air resonance
+            gs->bodyBrightness = 0.9f;     // Bright — let the pickup peak through
+            gs->pickPosition = 0.16f;      // Bridge pickup position
+            gs->buzzAmount = 0.0f;
+            gs->stringDamping = 0.9993f;   // Long sustain — solid body doesn't absorb
+            gs->stringBrightness = 0.7f;   // Bright steel strings
+            break;
+
+        case GUITAR_HUMBUCKER:
+            // Les Paul-style humbucker: warm, fat, thick midrange, ~2.5 kHz peak
+            // Dual-coil cancels hum + rolls off highs = warmer, wider peak
+            formants[0] = 2500.0f; bandwidths[0] = 0.25f; gains[0] = 1.0f;  // Pickup resonance (lower than SC)
+            formants[1] = 1200.0f; bandwidths[1] = 0.4f;  gains[1] = 0.45f; // Mid-push
+            formants[2] = 300.0f;  bandwidths[2] = 0.7f;  gains[2] = 0.15f; // Mahogany warmth
+            formants[3] = 600.0f;  bandwidths[3] = 0.5f;  gains[3] = 0.12f; // Low-mid body
+            gs->bodyMix = 0.50f;           // Slightly more than single coil
+            gs->bodyBrightness = 0.65f;    // Warmer than single coil
+            gs->pickPosition = 0.22f;      // Bridge pickup, slightly further from bridge
+            gs->buzzAmount = 0.0f;
+            gs->stringDamping = 0.9994f;   // Very long sustain — heavy mahogany body
+            gs->stringBrightness = 0.55f;  // Medium — humbuckers are mellower
+            break;
+
+        case GUITAR_JAZZBOX:
+        default:
+            // Semi-hollow jazz guitar: neck pickup, warm/round, mild body resonance
+            // Archtop body contributes some acoustic character + floating humbucker
+            formants[0] = 2000.0f; bandwidths[0] = 0.3f;  gains[0] = 0.8f;  // Pickup (lowest, warmest)
+            formants[1] = 800.0f;  bandwidths[1] = 0.5f;  gains[1] = 0.5f;  // Archtop body resonance
+            formants[2] = 200.0f;  bandwidths[2] = 0.9f;  gains[2] = 0.25f; // f-hole air resonance
+            formants[3] = 450.0f;  bandwidths[3] = 0.6f;  gains[3] = 0.2f;  // Spruce top
+            gs->bodyMix = 0.55f;           // More body than solid-body electrics
+            gs->bodyBrightness = 0.4f;     // Dark/warm — jazz tone knob rolled off
+            gs->pickPosition = 0.45f;      // Neck pickup — warm, round
+            gs->buzzAmount = 0.0f;
+            gs->stringDamping = 0.9990f;   // Good sustain but less than solid body
+            gs->stringBrightness = 0.35f;  // Warm flatwound feel
             break;
     }
 
@@ -2285,6 +2337,378 @@ static float processGuitarOscillator(Voice *v, float sampleRate) {
 }
 
 // ============================================================================
+// MANDOLIN (paired course strings + body resonator)
+// ============================================================================
+
+// Apply pick position filter to a standalone buffer (for mandolin's 2nd course string)
+static void applyPickPositionBuffer(float *buf, int length, float pickPos) {
+    if (length <= 0) return;
+    int pickSample = (int)(pickPos * (float)length);
+    if (pickSample < 1) pickSample = 1;
+    if (pickSample >= length) pickSample = length - 1;
+    float temp[2048];
+    for (int i = 0; i < length; i++) temp[i] = buf[i];
+    for (int i = 0; i < length; i++) {
+        int delayed = (i + pickSample) % length;
+        buf[i] = (temp[i] + temp[delayed]) * 0.5f;
+    }
+}
+
+// Initialize mandolin body resonator and second course string
+static void initMandolinPreset(MandolinSettings *ms, MandolinPreset preset,
+                                float freq, float sampleRate, float courseDetune) {
+    ms->preset = preset;
+    ms->courseDetune = courseDetune;
+
+    float formants[MANDOLIN_BODY_MODES];
+    float bandwidths[MANDOLIN_BODY_MODES];
+    float gains[MANDOLIN_BODY_MODES];
+
+    (void)freq;  // Body formants are fixed, not pitch-dependent
+
+    switch (preset) {
+        case MANDOLIN_NEAPOLITAN:
+            // Classic Neapolitan: arched top, bright singing tone, strong mid presence
+            // Body modes: ~250 Hz (air), ~500 Hz (top plate), ~1200 Hz (bridge)
+            formants[0] = 250.0f;  bandwidths[0] = 0.5f; gains[0] = 1.0f;
+            formants[1] = 520.0f;  bandwidths[1] = 0.4f; gains[1] = 0.8f;
+            formants[2] = 1200.0f; bandwidths[2] = 0.3f; gains[2] = 0.4f;
+            ms->bodyMix = 0.55f;
+            ms->pickPosition = 0.2f;
+            ms->stringDamping = 0.9980f;    // Medium sustain (steel courses)
+            ms->stringBrightness = 0.65f;   // Bright — plectrum attack
+            break;
+
+        case MANDOLIN_FLATBACK:
+            // Portuguese/flatback: warmer, rounder, less projection
+            formants[0] = 200.0f;  bandwidths[0] = 0.6f; gains[0] = 1.0f;
+            formants[1] = 420.0f;  bandwidths[1] = 0.5f; gains[1] = 0.7f;
+            formants[2] = 900.0f;  bandwidths[2] = 0.4f; gains[2] = 0.3f;
+            ms->bodyMix = 0.60f;
+            ms->pickPosition = 0.3f;
+            ms->stringDamping = 0.9970f;    // Shorter sustain (flat back absorbs)
+            ms->stringBrightness = 0.45f;   // Warmer
+            break;
+
+        case MANDOLIN_BOUZOUKI:
+            // Irish bouzouki: deeper body, longer scale, more bass, ringing sustain
+            formants[0] = 160.0f;  bandwidths[0] = 0.7f; gains[0] = 1.0f;
+            formants[1] = 380.0f;  bandwidths[1] = 0.5f; gains[1] = 0.85f;
+            formants[2] = 850.0f;  bandwidths[2] = 0.4f; gains[2] = 0.35f;
+            ms->bodyMix = 0.50f;
+            ms->pickPosition = 0.25f;
+            ms->stringDamping = 0.9988f;    // Long sustain (large body, steel)
+            ms->stringBrightness = 0.55f;   // Medium-bright
+            break;
+
+        case MANDOLIN_CHARANGO:
+        default:
+            // Andean charango: tiny body, very bright, short, nylon/gut feel
+            formants[0] = 320.0f;  bandwidths[0] = 0.4f; gains[0] = 1.0f;
+            formants[1] = 680.0f;  bandwidths[1] = 0.3f; gains[1] = 0.6f;
+            formants[2] = 1600.0f; bandwidths[2] = 0.3f; gains[2] = 0.35f;
+            ms->bodyMix = 0.65f;
+            ms->pickPosition = 0.15f;
+            ms->stringDamping = 0.9960f;    // Short sustain (tiny body, nylon)
+            ms->stringBrightness = 0.75f;   // Very bright — small resonator
+            break;
+    }
+
+    // Initialize body biquads
+    for (int i = 0; i < MANDOLIN_BODY_MODES; i++) {
+        float brightScale = (i < 1) ? 1.0f : ms->bodyMix;
+        initBodyBiquad(&ms->body[i], formants[i], bandwidths[i],
+                       gains[i] * brightScale, sampleRate);
+    }
+
+    // Initialize second course string detuned by courseDetune cents
+    // cents → frequency ratio: ratio = 2^(cents/1200)
+    float detuneRatio = powf(2.0f, courseDetune / 1200.0f);
+    float freq2 = freq * detuneRatio;
+    float idealLen2 = sampleRate / freq2;
+    ms->ks2Length = (int)idealLen2;
+    if (ms->ks2Length > 2047) ms->ks2Length = 2047;
+    if (ms->ks2Length < 2) ms->ks2Length = 2;
+
+    float frac2 = idealLen2 - (float)ms->ks2Length;
+    ms->ks2AllpassCoeff = (1.0f - frac2) / (1.0f + frac2);
+    ms->ks2AllpassState = 0.0f;
+    ms->ks2Index = 0;
+    ms->ks2Brightness = ms->stringBrightness;
+    ms->ks2Damping = ms->stringDamping;
+    ms->ks2LastSample = 0.0f;
+    ms->dcState = 0.0f;
+    ms->dcPrev = 0.0f;
+
+    // Fill second buffer with noise (independent from primary string)
+    for (int i = 0; i < ms->ks2Length; i++) {
+        ms->ks2Buffer[i] = noise();
+    }
+}
+
+// Process mandolin oscillator: two KS strings (course pair) → body resonator
+static float processMandolinOscillator(Voice *v, float sampleRate) {
+    if (v->ksLength <= 0) return 0.0f;
+    MandolinSettings *ms = &v->mandolinSettings;
+
+    // --- String 1 (primary, uses Voice's ksBuffer) ---
+    float gRatio = (v->ksInitFreq > 20.0f) ? (v->frequency / v->ksInitFreq) : 1.0f;
+    if (gRatio < 0.25f) gRatio = 0.25f;
+    if (gRatio > 4.0f) gRatio = 4.0f;
+
+    // String 1: fractional delay read
+    float effLen1 = (float)v->ksLength / gRatio;
+    if (effLen1 < 2.0f) effLen1 = 2.0f;
+    if (effLen1 > (float)v->ksLength) effLen1 = (float)v->ksLength;
+    float readPos1 = (float)v->ksIndex - effLen1;
+    while (readPos1 < 0.0f) readPos1 += (float)v->ksLength;
+    int idx0_1 = (int)readPos1;
+    if (idx0_1 >= v->ksLength) idx0_1 -= v->ksLength;
+    int idx1_1 = (idx0_1 + 1 < v->ksLength) ? idx0_1 + 1 : 0;
+    float frac1 = readPos1 - floorf(readPos1);
+    float s1 = v->ksBuffer[idx0_1] + frac1 * (v->ksBuffer[idx1_1] - v->ksBuffer[idx0_1]);
+
+    int next1 = (v->ksIndex + 1) % v->ksLength;
+    float bright1 = (ms->stringBrightness >= 0.0f) ? ms->stringBrightness : v->ksBrightness;
+    float avg1 = (s1 + v->ksBuffer[next1]) * 0.5f;
+    float blended1 = avg1 + (s1 - avg1) * bright1;
+    float damp = pluckDamp;
+    float filtered1 = v->ksLastSample + (blended1 - v->ksLastSample) * (1.0f - damp * 0.8f);
+    float damping1 = (ms->stringDamping > 0.0f) ? ms->stringDamping : v->ksDamping;
+    filtered1 *= damping1;
+    v->ksLastSample = filtered1;
+
+    float ap1 = v->ksAllpassCoeff * filtered1 + v->ksAllpassState;
+    v->ksAllpassState = filtered1 - v->ksAllpassCoeff * ap1;
+    v->ksBuffer[v->ksIndex] = ap1;
+    v->ksIndex = next1;
+
+    // --- String 2 (detuned course, uses mandolinSettings.ks2Buffer) ---
+    float effLen2 = (float)ms->ks2Length / gRatio;
+    if (effLen2 < 2.0f) effLen2 = 2.0f;
+    if (effLen2 > (float)ms->ks2Length) effLen2 = (float)ms->ks2Length;
+    float readPos2 = (float)ms->ks2Index - effLen2;
+    while (readPos2 < 0.0f) readPos2 += (float)ms->ks2Length;
+    int idx0_2 = (int)readPos2;
+    if (idx0_2 >= ms->ks2Length) idx0_2 -= ms->ks2Length;
+    int idx1_2 = (idx0_2 + 1 < ms->ks2Length) ? idx0_2 + 1 : 0;
+    float frac2 = readPos2 - floorf(readPos2);
+    float s2 = ms->ks2Buffer[idx0_2] + frac2 * (ms->ks2Buffer[idx1_2] - ms->ks2Buffer[idx0_2]);
+
+    int next2 = (ms->ks2Index + 1) % ms->ks2Length;
+    float bright2 = ms->ks2Brightness;
+    float avg2 = (s2 + ms->ks2Buffer[next2]) * 0.5f;
+    float blended2 = avg2 + (s2 - avg2) * bright2;
+    float filtered2 = ms->ks2LastSample + (blended2 - ms->ks2LastSample) * (1.0f - damp * 0.8f);
+    float damping2 = ms->ks2Damping;
+    filtered2 *= damping2;
+    ms->ks2LastSample = filtered2;
+
+    float ap2 = ms->ks2AllpassCoeff * filtered2 + ms->ks2AllpassState;
+    ms->ks2AllpassState = filtered2 - ms->ks2AllpassCoeff * ap2;
+    ms->ks2Buffer[ms->ks2Index] = ap2;
+    ms->ks2Index = next2;
+
+    // --- Mix course pair ---
+    float stringMix = (s1 + s2) * 0.5f;
+
+    // --- DC blocker ---
+    float dcOut = stringMix - ms->dcPrev + 0.995f * ms->dcState;
+    ms->dcPrev = stringMix;
+    ms->dcState = dcOut;
+
+    // --- Body resonator (3 parallel biquad bandpasses) ---
+    float bodyOut = 0.0f;
+    for (int i = 0; i < MANDOLIN_BODY_MODES; i++) {
+        bodyOut += processBodyBiquad(&ms->body[i], dcOut);
+    }
+    bodyOut *= 0.4f;  // Normalize (3 parallel bandpasses)
+
+    // --- Mix dry strings + wet body ---
+    (void)sampleRate;
+    float out = dcOut + ms->bodyMix * (bodyOut - dcOut * 0.25f);
+
+    return out;
+}
+
+// ============================================================================
+// WHISTLE (pea whistle — sine oscillator + 2D pea physics)
+// ============================================================================
+// Cook's STK Whistle model: a sine oscillator (the self-sustaining cavity tone)
+// is modulated by a pea bouncing inside a cylindrical can. The pea's proximity
+// to the fipple (edge) controls both amplitude (gain²) and frequency.
+// Noise is added at low level for breathiness, NOT as the primary sound source.
+// Ref: STK Whistle, Cook "Real Sound Synthesis" Ch.15.
+
+#define WHISTLE_CAN_RADIUS   100.0f
+#define WHISTLE_PEA_RADIUS   30.0f
+#define WHISTLE_BUMP_RADIUS  5.0f
+#define WHISTLE_TICK_SIZE    0.004f
+
+// Initialize whistle preset
+static void initWhistlePreset(WhistleSettings *ws, WhistlePreset preset,
+                               float freq, float sampleRate) {
+    (void)sampleRate;
+    ws->preset = preset;
+    ws->baseFreq = freq;
+    ws->sinePhase = 0.0f;
+
+    // Pea starts near center with small random velocity
+    ws->peaX = 0.0f;
+    ws->peaY = 0.0f;
+    ws->peaVx = 35.0f;
+    ws->peaVy = 15.0f;
+    ws->canRadius = WHISTLE_CAN_RADIUS;
+    ws->peaRadius = WHISTLE_PEA_RADIUS;
+
+    ws->fippleLpState = 0.0f;
+    ws->envLevel = 0.0f;
+    ws->dcState = 0.0f;
+    ws->dcPrev = 0.0f;
+
+    switch (preset) {
+        case WHISTLE_REFEREE:
+            // Classic pea whistle: strong trill, sharp attack
+            ws->breathLevel = 0.85f;
+            ws->noiseGain = 0.12f;
+            ws->fippleFreqMod = 0.5f;
+            ws->fippleGainMod = 0.5f;
+            ws->canLoss = 0.97f;
+            ws->gravity = 20.0f;
+            ws->envRate = 0.005f;
+            break;
+
+        case WHISTLE_SLIDE:
+            // Slide whistle: no pea, pure tone, pitch from LFO
+            ws->breathLevel = 0.75f;
+            ws->noiseGain = 0.08f;
+            ws->fippleFreqMod = 0.25f;
+            ws->fippleGainMod = 0.15f;    // Less pea modulation
+            ws->canLoss = 0.99f;          // Pea barely bounces
+            ws->gravity = 5.0f;           // Low gravity = slow pea
+            ws->envRate = 0.003f;
+            ws->peaRadius = 5.0f;         // Tiny pea = minimal warble
+            break;
+
+        case WHISTLE_TRAIN:
+            // Steam train: breathy, rich, slower envelope
+            ws->breathLevel = 0.90f;
+            ws->noiseGain = 0.25f;        // More breath noise
+            ws->fippleFreqMod = 0.3f;
+            ws->fippleGainMod = 0.4f;
+            ws->canLoss = 0.95f;          // More energy loss
+            ws->gravity = 15.0f;
+            ws->envRate = 0.001f;         // Slow attack
+            break;
+
+        case WHISTLE_CUCKOO:
+        default:
+            // Cuckoo: pure, soft, minimal pea
+            ws->breathLevel = 0.60f;
+            ws->noiseGain = 0.05f;        // Very little noise
+            ws->fippleFreqMod = 0.15f;
+            ws->fippleGainMod = 0.1f;     // Minimal pea modulation
+            ws->canLoss = 0.99f;
+            ws->gravity = 2.0f;           // Very gentle
+            ws->envRate = 0.008f;
+            ws->peaRadius = 3.0f;         // Tiny = almost pure tone
+            break;
+    }
+}
+
+// Process whistle: sine oscillator + pea-in-can physics modulation
+static float processWhistleOscillator(Voice *v, float sampleRate) {
+    (void)sampleRate;
+    WhistleSettings *ws = &v->whistleSettings;
+    float n = noise();
+
+    // --- Breath envelope (ramps up to breathLevel) ---
+    if (ws->envLevel < ws->breathLevel)
+        ws->envLevel += ws->envRate;
+    if (ws->envLevel > ws->breathLevel)
+        ws->envLevel = ws->breathLevel;
+    float env = ws->envLevel;
+
+    // --- Pea physics (2D particle in cylindrical can) ---
+
+    // Fipple/bumper position is at top of can (0, canRadius)
+    float bumpX = 0.0f;
+    float bumpY = ws->canRadius - WHISTLE_BUMP_RADIUS;
+
+    // Distance from pea to fipple
+    float dx = ws->peaX - bumpX;
+    float dy = ws->peaY - bumpY;
+    float fippleDist = sqrtf(dx * dx + dy * dy);
+
+    // When pea is near fipple, breath kicks it around (jet excitation)
+    if (fippleDist < WHISTLE_BUMP_RADIUS + ws->peaRadius) {
+        ws->peaVx += env * WHISTLE_TICK_SIZE * 2000.0f * n;
+        ws->peaVy += -env * WHISTLE_TICK_SIZE * 1000.0f * (1.0f + n);
+    }
+
+    // Gravity + angular circulation (makes pea orbit)
+    float distFromCenter = sqrtf(ws->peaX * ws->peaX + ws->peaY * ws->peaY);
+    if (distFromCenter > 0.001f) {
+        float nx2 = ws->peaX / distFromCenter;
+        float ny2 = ws->peaY / distFromCenter;
+        // Angular push (tangential)
+        float angularForce = 0.3f * distFromCenter / ws->canRadius;
+        float pushMag = (0.9f + 0.1f * n) * env * 0.6f * WHISTLE_TICK_SIZE;
+        // Tangential = (-ny, nx) rotated by angular offset
+        ws->peaVx += pushMag * (-ny2 * angularForce + nx2 * 0.1f);
+        ws->peaVy += pushMag * (nx2 * angularForce + ny2 * 0.1f)
+                     - ws->gravity * WHISTLE_TICK_SIZE;
+    }
+
+    // Update pea position
+    ws->peaX += ws->peaVx * WHISTLE_TICK_SIZE;
+    ws->peaY += ws->peaVy * WHISTLE_TICK_SIZE;
+
+    // Can wall collision (circular boundary)
+    float maxDist = ws->canRadius - ws->peaRadius;
+    if (distFromCenter > maxDist && distFromCenter > 0.001f) {
+        // Reflect velocity off circular wall
+        float normX = ws->peaX / distFromCenter;
+        float normY = ws->peaY / distFromCenter;
+        // Remove normal component (reflect)
+        float vDotN = ws->peaVx * normX + ws->peaVy * normY;
+        if (vDotN > 0.0f) {  // Only if moving outward
+            ws->peaVx -= 2.0f * vDotN * normX;
+            ws->peaVy -= 2.0f * vDotN * normY;
+        }
+        // Apply energy loss
+        ws->peaVx *= ws->canLoss;
+        ws->peaVy *= ws->canLoss;
+        // Push pea back inside
+        ws->peaX = normX * maxDist;
+        ws->peaY = normY * maxDist;
+    }
+
+    // --- Fipple distance → gain and frequency modulation ---
+    // Exponential falloff: closer to fipple = stronger effect
+    float mod = expf(-fippleDist * 0.01f);
+    // HEAVY smoothing: cutoff ~10 Hz (coeff = 2π*10/44100 ≈ 0.0014)
+    // Only the slow pea orbital motion comes through, not chaotic bouncing
+    ws->fippleLpState += 0.0015f * (mod - ws->fippleLpState);
+    float smoothMod = ws->fippleLpState;
+
+    // Gain: gentle amplitude modulation from pea proximity
+    // Base gain near 1.0 with small modulation on top (not squared — too harsh)
+    float gain = 0.85f + ws->fippleGainMod * smoothMod;
+
+    // --- Sine oscillator (primary tone) ---
+    // Use v->phase (0-1, already advanced by processVoice at note frequency)
+    // Add subtle FM from pea proximity for the whistle wobble
+    float freqMod = ws->fippleFreqMod * 0.02f * (0.5f - smoothMod);
+    float sineOut = sinf((v->phase + freqMod) * 2.0f * PI);
+
+    // --- Mix: sine dominates, small noise for breathiness ---
+    float mix = env * gain * (sineOut + ws->noiseGain * n);
+
+    return mix;
+}
+
+// ============================================================================
 // STIFKARP (stiff string — piano/harpsichord/dulcimer)
 // ============================================================================
 
@@ -2354,6 +2778,8 @@ static void initStifKarpPreset(StifKarpSettings *sk, StifKarpPreset preset, floa
     sk->preset = preset;
     sk->loopFilterState = 0.0f;
     sk->buzzAmount = 0.0f;
+    sk->useDoubleString = false;
+    sk->doubleDetuneCents = 0.0f;
 
     float formants[STIFKARP_BODY_MODES];
     float bandwidths[STIFKARP_BODY_MODES];
@@ -2364,25 +2790,29 @@ static void initStifKarpPreset(StifKarpSettings *sk, StifKarpPreset preset, floa
     switch (preset) {
         default:
         case STIFKARP_PIANO:
-            // Grand piano soundboard: spruce top, strong low resonance
+            // Grand piano soundboard: spruce top, strong low + mid-presence resonance
             formants[0] = 65.0f;   bandwidths[0] = 1.0f;  gains[0] = 1.0f;
-            formants[1] = 130.0f;  bandwidths[1] = 0.8f;  gains[1] = 0.7f;
-            formants[2] = 260.0f;  bandwidths[2] = 0.6f;  gains[2] = 0.4f;
-            formants[3] = 520.0f;  bandwidths[3] = 0.5f;  gains[3] = 0.2f;
-            sk->loopFilterCoeff = 0.18f;  // Warm, felt-damped — strong LP
+            formants[1] = 155.0f;  bandwidths[1] = 0.7f;  gains[1] = 0.7f;
+            formants[2] = 440.0f;  bandwidths[2] = 0.5f;  gains[2] = 0.45f;
+            formants[3] = 1800.0f; bandwidths[3] = 0.4f;  gains[3] = 0.2f;
+            sk->loopFilterCoeff = 0.25f;  // Slightly brighter than before
             sk->hammerHardness = 0.45f;
             sk->strikePosition = 0.12f;
+            sk->useDoubleString = true;
+            sk->doubleDetuneCents = 1.2f; // Real piano: ~1-2 cents between trichord strings
             break;
 
         case STIFKARP_BRIGHT_PIANO:
             // Concert grand: harder hammers, more overtones, longer soundboard
             formants[0] = 60.0f;   bandwidths[0] = 1.0f;  gains[0] = 1.0f;
-            formants[1] = 125.0f;  bandwidths[1] = 0.8f;  gains[1] = 0.8f;
-            formants[2] = 280.0f;  bandwidths[2] = 0.6f;  gains[2] = 0.5f;
-            formants[3] = 600.0f;  bandwidths[3] = 0.5f;  gains[3] = 0.35f;
-            sk->loopFilterCoeff = 0.3f;   // Brighter than regular piano
+            formants[1] = 150.0f;  bandwidths[1] = 0.7f;  gains[1] = 0.8f;
+            formants[2] = 480.0f;  bandwidths[2] = 0.5f;  gains[2] = 0.5f;
+            formants[3] = 2200.0f; bandwidths[3] = 0.4f;  gains[3] = 0.3f;
+            sk->loopFilterCoeff = 0.35f;  // Brighter than regular piano
             sk->hammerHardness = 0.65f;
             sk->strikePosition = 0.11f;
+            sk->useDoubleString = true;
+            sk->doubleDetuneCents = 0.8f; // Concert grand: tighter tuning
             break;
 
         case STIFKARP_HARPSICHORD:
@@ -2431,7 +2861,7 @@ static void initStifKarpPreset(StifKarpSettings *sk, StifKarpPreset preset, floa
             break;
 
         case STIFKARP_HONKYTONK:
-            // Detuned upright — uses unison for beating, slightly muffled
+            // Detuned upright — double strings with wide detune for beating
             formants[0] = 70.0f;   bandwidths[0] = 0.9f;  gains[0] = 0.9f;
             formants[1] = 145.0f;  bandwidths[1] = 0.7f;  gains[1] = 0.6f;
             formants[2] = 300.0f;  bandwidths[2] = 0.5f;  gains[2] = 0.35f;
@@ -2439,6 +2869,8 @@ static void initStifKarpPreset(StifKarpSettings *sk, StifKarpPreset preset, floa
             sk->loopFilterCoeff = 0.2f;   // Muffled — old worn felt hammers
             sk->hammerHardness = 0.55f;
             sk->strikePosition = 0.13f;
+            sk->useDoubleString = true;
+            sk->doubleDetuneCents = 6.0f; // Wide detune — the honkytonk wobble
             break;
 
         case STIFKARP_CELESTA:
@@ -2458,6 +2890,69 @@ static void initStifKarpPreset(StifKarpSettings *sk, StifKarpPreset preset, floa
         // Scale gains by body brightness
         float g = gains[i] * (0.5f + sk->bodyBrightness * 0.5f);
         initBodyBiquad(&sk->body[i], formants[i], bandwidths[i], g, sampleRate);
+    }
+}
+
+// Initialize second string for double-string piano presets
+static void initStifKarpDoubleString(StifKarpSettings *sk, float freq, float sampleRate,
+                                      float brightness, float damping, float stiffness,
+                                      float hardness, float strikePos) {
+    // Detune second string
+    float detuneRatio = powf(2.0f, sk->doubleDetuneCents / 1200.0f);
+    float freq2 = freq * detuneRatio;
+    float idealLen = sampleRate / freq2;
+    sk->ks2Length = (int)idealLen;
+    if (sk->ks2Length > 2047) sk->ks2Length = 2047;
+    if (sk->ks2Length < 2) sk->ks2Length = 2;
+
+    float frac = idealLen - (float)sk->ks2Length;
+    sk->ks2AllpassCoeff = (1.0f - frac) / (1.0f + frac);
+    sk->ks2AllpassState = 0.0f;
+    sk->ks2Index = 0;
+    sk->ks2Brightness = clampf(brightness, 0.0f, 1.0f);
+    sk->ks2Damping = clampf(damping, 0.9f, 0.9999f);
+    sk->ks2LastSample = 0.0f;
+
+    // Fill with noise excitation
+    for (int i = 0; i < sk->ks2Length; i++) {
+        sk->ks2Buffer[i] = noise();
+    }
+
+    // Apply hammer hardness filter (same as primary string)
+    float cutoff = 0.05f + hardness * 0.85f;
+    float state = 0.0f;
+    for (int i = 0; i < sk->ks2Length; i++) {
+        state += cutoff * (sk->ks2Buffer[i] - state);
+        sk->ks2Buffer[i] = state;
+    }
+    // Normalize
+    float maxAmp = 0.0f;
+    for (int i = 0; i < sk->ks2Length; i++) {
+        float a = fabsf(sk->ks2Buffer[i]);
+        if (a > maxAmp) maxAmp = a;
+    }
+    if (maxAmp > 0.001f) {
+        float scale = 1.0f / maxAmp;
+        for (int i = 0; i < sk->ks2Length; i++) sk->ks2Buffer[i] *= scale;
+    }
+
+    // Apply strike position filter
+    applyPickPositionBuffer(sk->ks2Buffer, sk->ks2Length, strikePos);
+
+    // Initialize dispersion for second string
+    float B = stiffness * stiffness * 0.015f;
+    float freqScale = 1.0f + (freq2 - 261.0f) / 2000.0f;
+    if (freqScale < 0.5f) freqScale = 0.5f;
+    if (freqScale > 3.0f) freqScale = 3.0f;
+    B *= freqScale;
+    int stages = (stiffness < 0.1f) ? 1 : (stiffness < 0.4f) ? 2 : (stiffness < 0.7f) ? 3 : STIFKARP_DISPERSION_STAGES;
+    for (int i = 0; i < STIFKARP_DISPERSION_STAGES; i++) {
+        if (i < stages) {
+            float phaseTarget = B * (float)(i + 1) * freq2 / sampleRate;
+            if (phaseTarget > 0.9f) phaseTarget = 0.9f;
+            // Reuse same dispCoeffs — close enough for slight detune
+        }
+        sk->ks2DispStates[i] = 0.0f;
     }
 }
 
@@ -2517,8 +3012,51 @@ static float processStifKarpOscillator(Voice *v, float sampleRate) {
     v->ksBuffer[v->ksIndex] = apOut;
     v->ksIndex = nextIndex;
 
-    // Step 6: Prepared piano buzz (optional — objects rattling on strings)
+    // Step 6: Second string (piano double/triple strings)
     float out = stringSample;
+    if (sk->useDoubleString && sk->ks2Length > 0) {
+        // Run second KS string with same pitch tracking ratio
+        float effLen2 = (float)sk->ks2Length / skRatio;
+        if (effLen2 < 2.0f) effLen2 = 2.0f;
+        if (effLen2 > (float)sk->ks2Length) effLen2 = (float)sk->ks2Length;
+        float readPos2 = (float)sk->ks2Index - effLen2;
+        while (readPos2 < 0.0f) readPos2 += (float)sk->ks2Length;
+        int idx0_2 = (int)readPos2;
+        if (idx0_2 >= sk->ks2Length) idx0_2 -= sk->ks2Length;
+        int idx1_2 = (idx0_2 + 1 < sk->ks2Length) ? idx0_2 + 1 : 0;
+        float frac2 = readPos2 - floorf(readPos2);
+        float s2 = sk->ks2Buffer[idx0_2] + frac2 * (sk->ks2Buffer[idx1_2] - sk->ks2Buffer[idx0_2]);
+
+        int next2 = (sk->ks2Index + 1) % sk->ks2Length;
+
+        // Loop filter + damping for second string
+        float avg2 = (s2 + sk->ks2Buffer[next2]) * 0.5f;
+        float blended2 = avg2 + (s2 - avg2) * sk->ks2Brightness;
+        float filtered2 = sk->ks2LastSample + (blended2 - sk->ks2LastSample) * (1.0f - damp * 0.8f);
+        filtered2 *= effectiveDamping;
+        sk->ks2LastSample = filtered2;
+
+        // Dispersion chain for second string (reuse primary coefficients)
+        float dispersed2 = filtered2;
+        for (int i = 0; i < sk->dispStages; i++) {
+            float C = sk->dispCoeffs[i];
+            float ap2 = C * dispersed2 + sk->ks2DispStates[i];
+            sk->ks2DispStates[i] = dispersed2 - C * ap2;
+            dispersed2 = ap2;
+        }
+
+        // Allpass fractional delay
+        float ap2 = sk->ks2AllpassCoeff * dispersed2 + sk->ks2AllpassState;
+        sk->ks2AllpassState = dispersed2 - sk->ks2AllpassCoeff * ap2;
+
+        sk->ks2Buffer[sk->ks2Index] = ap2;
+        sk->ks2Index = next2;
+
+        // Mix both strings (0.7 each — slight boost over single for fullness)
+        out = (stringSample + s2) * 0.7f;
+    }
+
+    // Step 7: Prepared piano buzz (optional — objects rattling on strings)
     if (sk->buzzAmount > 0.001f) {
         float threshold = 1.0f - sk->buzzAmount * 0.7f;
         if (fabsf(out) > threshold) {

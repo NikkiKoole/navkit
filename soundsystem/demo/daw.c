@@ -173,7 +173,8 @@ static const char* noiseTypeNames[] = {"LFSR", "TimeHash"};
 // (square, saw, triangle, etc.) are in synth.h:waveTypeNames[] for file I/O.
 static const char* waveNames[] = {"Square", "Saw", "Triangle", "Noise", "SCW",
     "Voice", "Pluck", "Additive", "Mallet", "Granular", "FM", "PD", "Membrane", "Bird", "Bowed", "Pipe", "Sine",
-    "EPiano", "Organ", "Reed", "Metallic", "Brass", "Guitar"};
+    "EPiano", "Organ", "Reed", "Metallic", "Brass", "Guitar", "Mandolin",
+    "StifKarp", "Shaker", "BandedWG", "VoicForm", "Whistle"};
 static const char* vowelNames[] = {"A", "E", "I", "O", "U"};
 static const char* additivePresetNames[] = {"Organ", "Bell", "Choir", "Brass", "Strings"};
 static const char* malletPresetNames[] = {"Marimba", "Vibes", "Xylo", "Glock", "Tubular"};
@@ -181,7 +182,9 @@ static const char* fmAlgNames[] = {"Stack", "Parallel", "Branch", "Pair"};
 static const char* pdWaveNames[] = {"Saw", "Square", "Pulse", "SyncSaw", "SyncSq"};
 static const char* membranePresetNames[] = {"Tabla", "Conga", "Bongo", "Djembe", "Tom"};
 static const char* metallicPresetNames[] = {"808 CH", "808 OH", "909 CH", "909 OH", "Ride", "Crash", "Cowbell", "Bell", "Gong", "Agogo", "Triangle"};
-static const char* guitarPresetNames[] = {"Acoustic", "Classical", "Banjo", "Sitar", "Oud", "Koto", "Harp", "Ukulele"};
+static const char* guitarPresetNames[] = {"Acoustic", "Classical", "Banjo", "Sitar", "Oud", "Koto", "Harp", "Ukulele", "SingleCoil", "Humbucker", "JazzBox"};
+static const char* mandolinPresetNames[] = {"Neapolitan", "Flatback", "Bouzouki", "Charango"};
+static const char* whistlePresetNames[] = {"Referee", "Slide", "Train", "Cuckoo"};
 static const char* birdTypeNames[] = {"Sparrow", "Robin", "Wren", "Finch", "Nightingale"};
 static const char* arpModeNames[] = {"Up", "Down", "UpDown", "Random"};
 static const char* arpChordNames[] = {"Octave", "Major", "Minor", "Dom7", "Min7", "Sus4", "Power"};
@@ -431,6 +434,7 @@ static const Color engineTints[] = {
     {85, 68, 32, 255},   // WAVE_BRASS    — gold (brass)
     // --- Physical modeling: green ---
     {50, 65, 42, 255},   // WAVE_GUITAR   — green (physical string)
+    {48, 68, 40, 255},   // WAVE_MANDOLIN — green (physical paired course)
     {55, 62, 45, 255},   // WAVE_STIFKARP — green (physical string/keys)
     // --- Percussion: red/orange ---
     {82, 52, 38, 255},   // WAVE_SHAKER   — orange-red (percussion)
@@ -438,6 +442,8 @@ static const Color engineTints[] = {
     {45, 68, 52, 255},   // WAVE_BANDEDWG — green (physical resonator)
     // --- Voice: purple ---
     {70, 45, 80, 255},   // WAVE_VOICFORM — purple (vocal synthesis)
+    // --- Wind: teal ---
+    {40, 75, 70, 255},   // WAVE_WHISTLE  — teal (wind/air instrument)
 };
 // busNames defined later with other bus arrays
 
@@ -4921,6 +4927,18 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "Bright", &p->p_guitarBodyBrightness, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Pick", &p->p_guitarPickPosition, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Buzz", &p->p_guitarBuzz, 0.05f, 0.0f, 1.0f);
+        } else if (p->p_waveType == WAVE_MANDOLIN) {
+            ui_col_sublabel(&c, "Mandolin:", UI_TEXT_SUBLABEL);
+            ui_col_cycle(&c, "Preset", mandolinPresetNames, MANDOLIN_COUNT, &p->p_mandolinPreset);
+            ui_col_float(&c, "Body", &p->p_mandolinBodyMix, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Detune", &p->p_mandolinCourseDetune, 0.5f, 0.0f, 10.0f);
+            ui_col_float(&c, "Pick", &p->p_mandolinPickPosition, 0.05f, 0.0f, 1.0f);
+        } else if (p->p_waveType == WAVE_WHISTLE) {
+            ui_col_sublabel(&c, "Whistle:", UI_TEXT_SUBLABEL);
+            ui_col_cycle(&c, "Preset", whistlePresetNames, WHISTLE_COUNT, &p->p_whistlePreset);
+            ui_col_float(&c, "Breath", &p->p_whistleBreath, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&c, "Noise", &p->p_whistleNoiseGain, 0.02f, 0.0f, 0.5f);
+            ui_col_float(&c, "FreqMod", &p->p_whistleFippleFreqMod, 0.05f, 0.0f, 1.0f);
         } else if (p->p_waveType == WAVE_STIFKARP) {
             ui_col_sublabel(&c, "StifKarp:", UI_TEXT_SUBLABEL);
             static const char* stifkarpPresetNames[] = {"Piano", "Bright", "Harpsi", "Dulcimer", "Clavi", "Prepared", "Honky", "Celesta"};
@@ -4932,6 +4950,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "Bright", &p->p_stifkarpBodyBrightness, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Damper", &p->p_stifkarpDamper, 0.05f, 0.0f, 1.0f);
             ui_col_float(&c, "Sympath", &p->p_stifkarpSympathetic, 0.02f, 0.0f, 0.5f);
+            ui_col_float(&c, "Detune", &p->p_stifkarpDetune, 0.5f, 0.0f, 15.0f);
         } else if (p->p_waveType == WAVE_SHAKER) {
             ui_col_sublabel(&c, "Shaker:", UI_TEXT_SUBLABEL);
             static const char* shakerPresetNames[] = {"Maraca", "Cabasa", "Tambour", "Sleigh", "Bamboo", "Rain", "Guiro", "Sand"};

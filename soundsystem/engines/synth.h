@@ -95,10 +95,12 @@ typedef enum {
     WAVE_METALLIC,   // Ring-mod metallic percussion (808 hihat, cymbal, bell, gong)
     WAVE_BRASS,      // Lip-valve waveguide (trumpet/trombone/horn)
     WAVE_GUITAR,     // Plucked string + body resonator (acoustic guitar, banjo, sitar, oud)
+    WAVE_MANDOLIN,   // Paired course strings + body resonator (mandolin, bouzouki, charango)
     WAVE_STIFKARP,   // Stiff string (piano/harpsichord/dulcimer — KS + allpass dispersion)
     WAVE_SHAKER,     // Particle collision percussion (PhISM: maraca, cabasa, tambourine)
     WAVE_BANDEDWG,   // Banded waveguide (glass harmonica, singing bowl, vibraphone, chime)
     WAVE_VOICFORM,   // 4-formant voice (LF glottal + phoneme morph + consonants)
+    WAVE_WHISTLE,    // Helmholtz resonator whistle (referee, slide, train, cuckoo)
 } WaveType;
 
 // Mono note priority mode
@@ -113,10 +115,10 @@ typedef enum {
 static const char* waveTypeNames[] = {
     "square", "saw", "triangle", "noise", "scw", "voice", "pluck",
     "additive", "mallet", "granular", "fm", "pd", "membrane", "bird",
-    "bowed", "pipe", "sine", "epiano", "organ", "reed", "metallic", "brass", "guitar", "stifkarp",
-    "shaker", "bandedwg", "voicform"
+    "bowed", "pipe", "sine", "epiano", "organ", "reed", "metallic", "brass", "guitar", "mandolin",
+    "stifkarp", "shaker", "bandedwg", "voicform", "whistle"
 };
-static const int waveTypeCount = 27;
+static const int waveTypeCount = 29;
 
 // LFO tempo sync divisions
 typedef enum {
@@ -477,6 +479,9 @@ typedef enum {
     GUITAR_KOTO,         // Koto (bridges, bright attack)
     GUITAR_HARP,         // Concert harp (minimal body, long sustain)
     GUITAR_UKULELE,      // Ukulele (small body, warm)
+    GUITAR_SINGLE_COIL,  // Electric: single-coil pickup (Strat-like, bright/glassy)
+    GUITAR_HUMBUCKER,    // Electric: humbucker pickup (Les Paul-like, warm/fat)
+    GUITAR_JAZZBOX,      // Electric: semi-hollow, neck pickup (warm/round)
     GUITAR_COUNT
 } GuitarPreset;
 
@@ -501,6 +506,74 @@ typedef struct {
     float dcState;           // DC blocker state (prevents buildup on long-sustain presets)
     float dcPrev;            // DC blocker input history
 } GuitarSettings;
+
+// Mandolin synthesis (paired course strings + body resonator)
+typedef enum {
+    MANDOLIN_NEAPOLITAN,     // Classic Neapolitan mandolin (bright, singing sustain)
+    MANDOLIN_FLATBACK,       // Flatback/Portuguese (warmer, rounder, quicker decay)
+    MANDOLIN_BOUZOUKI,       // Irish bouzouki (deeper body, longer scale, ringing)
+    MANDOLIN_CHARANGO,       // Andean charango (small body, bright, nylon/gut courses)
+    MANDOLIN_COUNT
+} MandolinPreset;
+
+#define MANDOLIN_BODY_MODES 3
+
+typedef struct {
+    MandolinPreset preset;
+    BodyBiquad body[MANDOLIN_BODY_MODES];  // Body resonator (3 modes — lighter than guitar)
+    float bodyMix;             // 0=dry strings only, 1=full body resonance
+    float courseDetune;        // Detune between paired strings in cents (typ. 1-4)
+    float pickPosition;        // 0=bridge (bright), 1=neck (warm)
+    float stringDamping;       // Per-preset KS damping
+    float stringBrightness;    // Per-preset KS brightness
+    float dcState;             // DC blocker state
+    float dcPrev;              // DC blocker input history
+    // Second KS delay line for course pair
+    float ks2Buffer[2048];     // Second string delay line
+    int ks2Length;
+    int ks2Index;
+    float ks2Damping;
+    float ks2Brightness;
+    float ks2LastSample;
+    float ks2AllpassState;
+    float ks2AllpassCoeff;
+} MandolinSettings;
+
+// Whistle synthesis (Helmholtz resonator + turbulent noise)
+typedef enum {
+    WHISTLE_REFEREE,     // Sharp pea whistle (high Q, strong attack)
+    WHISTLE_SLIDE,       // Slide whistle (pitch sweep via breath)
+    WHISTLE_TRAIN,       // Steam train whistle (breathy, lower, harmonics)
+    WHISTLE_CUCKOO,      // Cuckoo clock whistle (pure, soft, two-tone ready)
+    WHISTLE_COUNT
+} WhistlePreset;
+
+typedef struct {
+    WhistlePreset preset;
+    // Sine oscillator (primary tone source)
+    float sinePhase;           // Phase accumulator (0-2π)
+    float baseFreq;            // Base frequency from note
+    // Pea physics (2D particle in a cylindrical can)
+    float peaX, peaY;          // Pea position
+    float peaVx, peaVy;        // Pea velocity
+    float canRadius;           // Can cavity radius
+    float peaRadius;           // Pea radius
+    // Pea modulation smoothing
+    float fippleLpState;       // Smoothed fipple distance → gain/freq mod
+    // Parameters
+    float breathLevel;         // Breath pressure (0-1)
+    float noiseGain;           // Noise mix level (0-1, typ. 0.1-0.3)
+    float fippleFreqMod;       // How much pea position modulates pitch (0-1)
+    float fippleGainMod;       // How much pea distance modulates amplitude (0-1)
+    float canLoss;             // Energy loss on can wall bounce (0.9-0.99)
+    float gravity;             // Downward force on pea
+    // Envelope
+    float envLevel;            // Current breath envelope level (ramps up)
+    float envRate;             // Envelope attack rate
+    // DC blocker
+    float dcState;
+    float dcPrev;
+} WhistleSettings;
 
 // Stiff string synthesis (piano/harpsichord/dulcimer)
 typedef enum {
@@ -548,6 +621,19 @@ typedef struct {
 
     // Prepared piano buzz
     float buzzAmount;
+
+    // Double string (piano/honkytonk: 2-3 strings per note, slightly detuned)
+    bool useDoubleString;
+    float doubleDetuneCents;       // Detune in cents (piano ~1-2, honkytonk ~5-8)
+    float ks2Buffer[2048];         // Second string delay line
+    int ks2Length;
+    int ks2Index;
+    float ks2Damping;
+    float ks2Brightness;
+    float ks2LastSample;
+    float ks2AllpassState;
+    float ks2AllpassCoeff;
+    float ks2DispStates[STIFKARP_DISPERSION_STAGES];
 } StifKarpSettings;
 
 // Shaker percussion synthesis (PhISM particle collision model)
@@ -1036,6 +1122,12 @@ typedef struct {
     // Guitar body synthesis
     GuitarSettings guitarSettings;
 
+    // Mandolin (paired course strings) synthesis
+    MandolinSettings mandolinSettings;
+
+    // Whistle (Helmholtz resonator) synthesis
+    WhistleSettings whistleSettings;
+
     // Stiff string (piano/harpsichord) synthesis
     StifKarpSettings stifkarpSettings;
 
@@ -1492,6 +1584,18 @@ typedef struct SynthContext {
     float guitarPickPosition;
     float guitarBuzz;
 
+    // Mandolin tweakables
+    int mandolinPreset;
+    float mandolinBodyMix;
+    float mandolinCourseDetune;
+    float mandolinPickPosition;
+
+    // Whistle tweakables
+    int whistlePreset;
+    float whistleBreath;
+    float whistleNoiseGain;
+    float whistleFippleFreqMod;
+
     // StifKarp tweakables
     int stifkarpPreset;
     float stifkarpHardness;
@@ -1501,6 +1605,7 @@ typedef struct SynthContext {
     float stifkarpBodyBrightness;
     float stifkarpDamper;
     float stifkarpSympathetic;
+    float stifkarpDetune;
 
     // Shaker tweakables
     int shakerPreset;
@@ -1748,6 +1853,18 @@ static void initSynthContext(SynthContext* ctx) {
     ctx->guitarPickPosition = 0.3f;
     ctx->guitarBuzz = 0.0f;
 
+    // Mandolin defaults
+    ctx->mandolinPreset = MANDOLIN_NEAPOLITAN;
+    ctx->mandolinBodyMix = 0.55f;
+    ctx->mandolinCourseDetune = 2.0f;
+    ctx->mandolinPickPosition = 0.2f;
+
+    // Whistle defaults
+    ctx->whistlePreset = WHISTLE_REFEREE;
+    ctx->whistleBreath = 0.8f;
+    ctx->whistleNoiseGain = 0.15f;
+    ctx->whistleFippleFreqMod = 0.5f;
+
     // StifKarp defaults
     ctx->stifkarpPreset = STIFKARP_PIANO;
     ctx->stifkarpHardness = 0.45f;
@@ -1757,6 +1874,7 @@ static void initSynthContext(SynthContext* ctx) {
     ctx->stifkarpBodyBrightness = 0.5f;
     ctx->stifkarpDamper = 0.9f;
     ctx->stifkarpSympathetic = 0.15f;
+    ctx->stifkarpDetune = 0.0f;
 
     // Shaker defaults
     ctx->shakerPreset = SHAKER_MARACA;
@@ -1992,6 +2110,14 @@ static void _ensureSynthCtx(void) {
 #define guitarBodyBrightness (synthCtx->guitarBodyBrightness)
 #define guitarPickPosition (synthCtx->guitarPickPosition)
 #define guitarBuzz (synthCtx->guitarBuzz)
+#define mandolinPreset (synthCtx->mandolinPreset)
+#define mandolinBodyMix (synthCtx->mandolinBodyMix)
+#define mandolinCourseDetune (synthCtx->mandolinCourseDetune)
+#define mandolinPickPosition (synthCtx->mandolinPickPosition)
+#define whistlePreset (synthCtx->whistlePreset)
+#define whistleBreath (synthCtx->whistleBreath)
+#define whistleNoiseGain (synthCtx->whistleNoiseGain)
+#define whistleFippleFreqMod (synthCtx->whistleFippleFreqMod)
 #define stifkarpPreset (synthCtx->stifkarpPreset)
 #define stifkarpHardness (synthCtx->stifkarpHardness)
 #define stifkarpStiffness (synthCtx->stifkarpStiffness)
@@ -2000,6 +2126,7 @@ static void _ensureSynthCtx(void) {
 #define stifkarpBodyBrightness (synthCtx->stifkarpBodyBrightness)
 #define stifkarpDamper (synthCtx->stifkarpDamper)
 #define stifkarpSympathetic (synthCtx->stifkarpSympathetic)
+#define stifkarpDetune (synthCtx->stifkarpDetune)
 #define shakerPreset (synthCtx->shakerPreset)
 #define shakerParticles (synthCtx->shakerParticles)
 #define shakerDecayRate (synthCtx->shakerDecayRate)
@@ -2951,6 +3078,9 @@ static float processVoice(Voice *v, float sampleRate) {
         case WAVE_GUITAR:
             sample = processGuitarOscillator(v, sampleRate);
             break;
+        case WAVE_MANDOLIN:
+            sample = processMandolinOscillator(v, sampleRate);
+            break;
         case WAVE_STIFKARP:
             sample = processStifKarpOscillator(v, sampleRate);
             break;
@@ -2962,6 +3092,9 @@ static float processVoice(Voice *v, float sampleRate) {
             break;
         case WAVE_VOICFORM:
             sample = processVoicFormOscillator(v, sampleRate);
+            break;
+        case WAVE_WHISTLE:
+            sample = processWhistleOscillator(v, sampleRate);
             break;
     }
 
@@ -4311,6 +4444,46 @@ static int playGuitar(float freq, GuitarPreset preset) {
     return voiceIdx;
 }
 
+// Mandolin init params
+static const VoiceInitParams VOICE_INIT_MANDOLIN = {
+    .supportsMono = false
+};
+
+// Play mandolin note (paired course KS strings + body resonator)
+__attribute__((unused))
+static int playMandolin(float freq, MandolinPreset preset) {
+    int voiceIdx = initVoiceCommon(freq, WAVE_MANDOLIN, &VOICE_INIT_MANDOLIN, NULL);
+    Voice *v = &synthVoices[voiceIdx];
+    // Initialize primary KS string
+    initPluck(v, freq, 44100.0f, pluckBrightness, pluckDamping);
+    // Initialize mandolin preset (body + second course string)
+    initMandolinPreset(&v->mandolinSettings, preset, freq, 44100.0f, mandolinCourseDetune);
+    v->mandolinSettings.bodyMix = mandolinBodyMix;
+    v->mandolinSettings.pickPosition = mandolinPickPosition;
+    // Apply pick position to both excitation buffers
+    applyPickPosition(v, v->mandolinSettings.pickPosition);
+    applyPickPositionBuffer(v->mandolinSettings.ks2Buffer, v->mandolinSettings.ks2Length,
+                            v->mandolinSettings.pickPosition);
+    return voiceIdx;
+}
+
+// Whistle init params
+static const VoiceInitParams VOICE_INIT_WHISTLE = {
+    .supportsMono = true
+};
+
+// Play whistle note (sine + pea physics)
+__attribute__((unused))
+static int playWhistle(float freq, WhistlePreset preset) {
+    int voiceIdx = initVoiceCommon(freq, WAVE_WHISTLE, &VOICE_INIT_WHISTLE, NULL);
+    Voice *v = &synthVoices[voiceIdx];
+    initWhistlePreset(&v->whistleSettings, preset, freq, 44100.0f);
+    v->whistleSettings.breathLevel = whistleBreath;
+    v->whistleSettings.noiseGain = whistleNoiseGain;
+    v->whistleSettings.fippleFreqMod = whistleFippleFreqMod;
+    return voiceIdx;
+}
+
 // StifKarp init params
 static const VoiceInitParams VOICE_INIT_STIFKARP = {
     .supportsMono = true
@@ -4336,6 +4509,16 @@ static int playStifKarp(float freq, StifKarpPreset preset) {
     v->stifkarpSettings.sympatheticLevel = stifkarpSympathetic;
     // Apply strike position to excitation
     applyPickPosition(v, stifkarpStrikePos);
+    // Double string: patch detune > 0 overrides preset, enables double string
+    if (stifkarpDetune > 0.0f) {
+        v->stifkarpSettings.useDoubleString = true;
+        v->stifkarpSettings.doubleDetuneCents = stifkarpDetune;
+    }
+    if (v->stifkarpSettings.useDoubleString) {
+        initStifKarpDoubleString(&v->stifkarpSettings, freq, 44100.0f,
+                                  pluckBrightness, pluckDamping, stifkarpStiffness,
+                                  stifkarpHardness, stifkarpStrikePos);
+    }
     return voiceIdx;
 }
 

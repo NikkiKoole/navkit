@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 248
+#define NUM_INSTRUMENT_PRESETS 259
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -3968,6 +3968,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[218].patch.p_stifkarpBodyBrightness = 0.5f;
     instrumentPresets[218].patch.p_stifkarpDamper = 0.9f;
     instrumentPresets[218].patch.p_stifkarpSympathetic = 0.15f;
+    instrumentPresets[218].patch.p_stifkarpDetune = 1.2f;
     instrumentPresets[218].patch.p_attack = 0.0f;
     instrumentPresets[218].patch.p_decay = 4.0f;
     instrumentPresets[218].patch.p_sustain = 0.0f;
@@ -3988,6 +3989,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[219].patch.p_stifkarpBodyBrightness = 0.65f;
     instrumentPresets[219].patch.p_stifkarpDamper = 0.95f;
     instrumentPresets[219].patch.p_stifkarpSympathetic = 0.2f;
+    instrumentPresets[219].patch.p_stifkarpDetune = 0.8f;
     instrumentPresets[219].patch.p_attack = 0.0f;
     instrumentPresets[219].patch.p_decay = 5.0f;
     instrumentPresets[219].patch.p_sustain = 0.0f;
@@ -4089,6 +4091,7 @@ static void initInstrumentPresets(void) {
     instrumentPresets[224].patch.p_stifkarpBodyBrightness = 0.4f;
     instrumentPresets[224].patch.p_stifkarpDamper = 0.8f;
     instrumentPresets[224].patch.p_stifkarpSympathetic = 0.1f;
+    instrumentPresets[224].patch.p_stifkarpDetune = 6.0f;
     instrumentPresets[224].patch.p_unisonCount = 2;
     instrumentPresets[224].patch.p_unisonDetune = 8.0f;
     instrumentPresets[224].patch.p_unisonMix = 0.8f;
@@ -4540,6 +4543,177 @@ static void initInstrumentPresets(void) {
     instrumentPresets[247].patch.p_sustain = 0.7f;
     instrumentPresets[247].patch.p_release = 0.15f;
     instrumentPresets[247].patch.p_volume = 0.3f;
+
+    // ========================================================================
+    // MANDOLIN (paired course strings + body resonator)
+    // ========================================================================
+
+    // 248: Neapolitan Mandolin — classic arched top, bright singing tone
+    instrumentPresets[248].name = "Mandolin";
+    instrumentPresets[248].patch.p_waveType = WAVE_MANDOLIN;
+    instrumentPresets[248].patch.p_mandolinPreset = MANDOLIN_NEAPOLITAN;
+    instrumentPresets[248].patch.p_pluckBrightness = 0.65f;
+    instrumentPresets[248].patch.p_pluckDamping = 0.997f;
+    instrumentPresets[248].patch.p_mandolinBodyMix = 0.55f;
+    instrumentPresets[248].patch.p_mandolinCourseDetune = 2.0f;
+    instrumentPresets[248].patch.p_mandolinPickPosition = 0.2f;
+    instrumentPresets[248].patch.p_attack = 0.0f;
+    instrumentPresets[248].patch.p_decay = 1.5f;
+    instrumentPresets[248].patch.p_sustain = 0.0f;
+    instrumentPresets[248].patch.p_release = 0.08f;
+    instrumentPresets[248].patch.p_volume = 0.5f;
+
+    // 249: Flatback Mandolin — Portuguese style, warmer, rounder
+    instrumentPresets[249].name = "Flatback Mando";
+    instrumentPresets[249].patch.p_waveType = WAVE_MANDOLIN;
+    instrumentPresets[249].patch.p_mandolinPreset = MANDOLIN_FLATBACK;
+    instrumentPresets[249].patch.p_pluckBrightness = 0.45f;
+    instrumentPresets[249].patch.p_pluckDamping = 0.996f;
+    instrumentPresets[249].patch.p_mandolinBodyMix = 0.60f;
+    instrumentPresets[249].patch.p_mandolinCourseDetune = 2.5f;
+    instrumentPresets[249].patch.p_mandolinPickPosition = 0.3f;
+    instrumentPresets[249].patch.p_attack = 0.0f;
+    instrumentPresets[249].patch.p_decay = 1.2f;
+    instrumentPresets[249].patch.p_sustain = 0.0f;
+    instrumentPresets[249].patch.p_release = 0.1f;
+    instrumentPresets[249].patch.p_volume = 0.5f;
+
+    // 250: Bouzouki — Irish bouzouki, deeper body, long ringing sustain
+    instrumentPresets[250].name = "Bouzouki";
+    instrumentPresets[250].patch.p_waveType = WAVE_MANDOLIN;
+    instrumentPresets[250].patch.p_mandolinPreset = MANDOLIN_BOUZOUKI;
+    instrumentPresets[250].patch.p_pluckBrightness = 0.55f;
+    instrumentPresets[250].patch.p_pluckDamping = 0.998f;
+    instrumentPresets[250].patch.p_mandolinBodyMix = 0.50f;
+    instrumentPresets[250].patch.p_mandolinCourseDetune = 1.5f;
+    instrumentPresets[250].patch.p_mandolinPickPosition = 0.25f;
+    instrumentPresets[250].patch.p_attack = 0.0f;
+    instrumentPresets[250].patch.p_decay = 2.5f;
+    instrumentPresets[250].patch.p_sustain = 0.0f;
+    instrumentPresets[250].patch.p_release = 0.15f;
+    instrumentPresets[250].patch.p_volume = 0.5f;
+
+    // 251: Charango — Andean, tiny body, very bright and percussive
+    instrumentPresets[251].name = "Charango";
+    instrumentPresets[251].patch.p_waveType = WAVE_MANDOLIN;
+    instrumentPresets[251].patch.p_mandolinPreset = MANDOLIN_CHARANGO;
+    instrumentPresets[251].patch.p_pluckBrightness = 0.75f;
+    instrumentPresets[251].patch.p_pluckDamping = 0.994f;
+    instrumentPresets[251].patch.p_mandolinBodyMix = 0.65f;
+    instrumentPresets[251].patch.p_mandolinCourseDetune = 3.0f;
+    instrumentPresets[251].patch.p_mandolinPickPosition = 0.15f;
+    instrumentPresets[251].patch.p_attack = 0.0f;
+    instrumentPresets[251].patch.p_decay = 0.8f;
+    instrumentPresets[251].patch.p_sustain = 0.0f;
+    instrumentPresets[251].patch.p_release = 0.05f;
+    instrumentPresets[251].patch.p_volume = 0.5f;
+
+    // ========================================================================
+    // WHISTLE (Helmholtz resonator + turbulent noise)
+    // ========================================================================
+
+    // 252: Referee Whistle — sharp, piercing pea whistle with trill
+    instrumentPresets[252].name = "Referee Whistle";
+    instrumentPresets[252].patch.p_waveType = WAVE_WHISTLE;
+    instrumentPresets[252].patch.p_whistlePreset = WHISTLE_REFEREE;
+    instrumentPresets[252].patch.p_whistleBreath = 0.85f;
+    instrumentPresets[252].patch.p_whistleNoiseGain = 0.12f;
+    instrumentPresets[252].patch.p_whistleFippleFreqMod = 0.5f;
+    instrumentPresets[252].patch.p_attack = 0.01f;
+    instrumentPresets[252].patch.p_decay = 0.3f;
+    instrumentPresets[252].patch.p_sustain = 0.8f;
+    instrumentPresets[252].patch.p_release = 0.05f;
+    instrumentPresets[252].patch.p_volume = 0.45f;
+
+    // 253: Slide Whistle — swooping pitch, playful, minimal pea
+    instrumentPresets[253].name = "Slide Whistle";
+    instrumentPresets[253].patch.p_waveType = WAVE_WHISTLE;
+    instrumentPresets[253].patch.p_whistlePreset = WHISTLE_SLIDE;
+    instrumentPresets[253].patch.p_whistleBreath = 0.75f;
+    instrumentPresets[253].patch.p_whistleNoiseGain = 0.08f;
+    instrumentPresets[253].patch.p_whistleFippleFreqMod = 0.25f;
+    instrumentPresets[253].patch.p_attack = 0.02f;
+    instrumentPresets[253].patch.p_decay = 0.5f;
+    instrumentPresets[253].patch.p_sustain = 0.7f;
+    instrumentPresets[253].patch.p_release = 0.1f;
+    instrumentPresets[253].patch.p_pitchLfoRate = 3.0f;
+    instrumentPresets[253].patch.p_pitchLfoDepth = 0.15f;
+    instrumentPresets[253].patch.p_volume = 0.45f;
+
+    // 254: Train Whistle — breathy, steamy, haunting
+    instrumentPresets[254].name = "Train Whistle";
+    instrumentPresets[254].patch.p_waveType = WAVE_WHISTLE;
+    instrumentPresets[254].patch.p_whistlePreset = WHISTLE_TRAIN;
+    instrumentPresets[254].patch.p_whistleBreath = 0.90f;
+    instrumentPresets[254].patch.p_whistleNoiseGain = 0.25f;
+    instrumentPresets[254].patch.p_whistleFippleFreqMod = 0.3f;
+    instrumentPresets[254].patch.p_attack = 0.08f;
+    instrumentPresets[254].patch.p_decay = 1.0f;
+    instrumentPresets[254].patch.p_sustain = 0.6f;
+    instrumentPresets[254].patch.p_release = 0.3f;
+    instrumentPresets[254].patch.p_volume = 0.45f;
+
+    // 255: Cuckoo — soft, pure, almost no pea warble
+    instrumentPresets[255].name = "Cuckoo";
+    instrumentPresets[255].patch.p_waveType = WAVE_WHISTLE;
+    instrumentPresets[255].patch.p_whistlePreset = WHISTLE_CUCKOO;
+    instrumentPresets[255].patch.p_whistleBreath = 0.60f;
+    instrumentPresets[255].patch.p_whistleNoiseGain = 0.05f;
+    instrumentPresets[255].patch.p_whistleFippleFreqMod = 0.15f;
+    instrumentPresets[255].patch.p_attack = 0.005f;
+    instrumentPresets[255].patch.p_decay = 0.4f;
+    instrumentPresets[255].patch.p_sustain = 0.0f;
+    instrumentPresets[255].patch.p_release = 0.08f;
+    instrumentPresets[255].patch.p_volume = 0.45f;
+
+    // ========================================================================
+    // ELECTRIC GUITAR (pickup resonance model via WAVE_GUITAR)
+    // ========================================================================
+
+    // 256: Single Coil Clean — Strat-like, bright, glassy, snappy
+    instrumentPresets[256].name = "Single Coil";
+    instrumentPresets[256].patch.p_waveType = WAVE_GUITAR;
+    instrumentPresets[256].patch.p_guitarPreset = GUITAR_SINGLE_COIL;
+    instrumentPresets[256].patch.p_pluckBrightness = 0.7f;
+    instrumentPresets[256].patch.p_pluckDamping = 0.9985f;
+    instrumentPresets[256].patch.p_guitarBodyMix = 0.45f;
+    instrumentPresets[256].patch.p_guitarBodyBrightness = 0.9f;
+    instrumentPresets[256].patch.p_guitarPickPosition = 0.16f;
+    instrumentPresets[256].patch.p_attack = 0.0f;
+    instrumentPresets[256].patch.p_decay = 3.0f;
+    instrumentPresets[256].patch.p_sustain = 0.0f;
+    instrumentPresets[256].patch.p_release = 0.1f;
+    instrumentPresets[256].patch.p_volume = 0.5f;
+
+    // 257: Humbucker Clean — Les Paul-like, warm, fat, thick midrange
+    instrumentPresets[257].name = "Humbucker";
+    instrumentPresets[257].patch.p_waveType = WAVE_GUITAR;
+    instrumentPresets[257].patch.p_guitarPreset = GUITAR_HUMBUCKER;
+    instrumentPresets[257].patch.p_pluckBrightness = 0.55f;
+    instrumentPresets[257].patch.p_pluckDamping = 0.999f;
+    instrumentPresets[257].patch.p_guitarBodyMix = 0.50f;
+    instrumentPresets[257].patch.p_guitarBodyBrightness = 0.65f;
+    instrumentPresets[257].patch.p_guitarPickPosition = 0.22f;
+    instrumentPresets[257].patch.p_attack = 0.0f;
+    instrumentPresets[257].patch.p_decay = 3.5f;
+    instrumentPresets[257].patch.p_sustain = 0.0f;
+    instrumentPresets[257].patch.p_release = 0.12f;
+    instrumentPresets[257].patch.p_volume = 0.5f;
+
+    // 258: Jazz Box — semi-hollow archtop, neck pickup, warm/round
+    instrumentPresets[258].name = "Jazz Box";
+    instrumentPresets[258].patch.p_waveType = WAVE_GUITAR;
+    instrumentPresets[258].patch.p_guitarPreset = GUITAR_JAZZBOX;
+    instrumentPresets[258].patch.p_pluckBrightness = 0.4f;
+    instrumentPresets[258].patch.p_pluckDamping = 0.998f;
+    instrumentPresets[258].patch.p_guitarBodyMix = 0.55f;
+    instrumentPresets[258].patch.p_guitarBodyBrightness = 0.4f;
+    instrumentPresets[258].patch.p_guitarPickPosition = 0.45f;
+    instrumentPresets[258].patch.p_attack = 0.0f;
+    instrumentPresets[258].patch.p_decay = 2.5f;
+    instrumentPresets[258].patch.p_sustain = 0.0f;
+    instrumentPresets[258].patch.p_release = 0.15f;
+    instrumentPresets[258].patch.p_volume = 0.5f;
 }
 
 #endif // INSTRUMENT_PRESETS_H

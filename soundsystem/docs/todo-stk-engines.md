@@ -21,9 +21,9 @@ Inventory of synthesis engines based on STK (Synthesis Toolkit) and related phys
 - [ ] **BlowHole** — clarinet with register hole + tonehole scattering junctions. Enables overblowing (12th for clarinet, octave for sax) and more realistic fingering transitions. Could extend WAVE_REED with a `registerHole` param. Ref: STK BlowHole, Scavone thesis.
 - [x] **StifKarp** (`WAVE_STIFKARP`) — stiff string with allpass dispersion chain for inharmonicity. 8 presets: Grand Piano, Bright Piano, Harpsichord, Dulcimer, Clavichord, Prepared Piano, Honky Tonk, Celesta. Ref: STK StifKarp, Jaffe & Smith.
 - [x] **Sitar** — covered by `WAVE_GUITAR` sitar preset with amplitude-dependent delay modulation for jawari bridge buzz. Ref: STK Sitar, Valimaki.
-- [ ] **Mandolin** — paired strings (course) with body resonance filter. Two coupled KS delay lines detuned by ~2 cents + body impulse response (short FIR or modal filter). Ref: STK Mandolin, Smith.
+- [x] **Mandolin** (`WAVE_MANDOLIN`) — paired course strings with 3-mode body resonator. Two independent KS delay lines detuned by configurable cents (typ. 1-4) + 3 parallel biquad body modes + pick position + DC blocker. 4 presets: Neapolitan, Flatback, Bouzouki, Charango. Ref: STK Mandolin, Smith.
 - [x] **BandedWG** (`WAVE_BANDEDWG`) — banded waveguide synthesis with 4 bandpass-filtered delay lines per mode, bow friction + strike excitation. 6 presets: glass harmonica, singing bowl, bowed vibraphone, wine glass, prayer bowl, tubular chime. Reuses ksBuffer[2048] — zero additional memory. Ref: STK BandedWG, Essl & Cook "Banded Waveguides" (ICMC 1999).
-- [ ] **Whistle** — referee/sports whistle. Helmholtz resonator + turbulent noise excitation. Simple but fun for game SFX. Ref: STK Whistle, Cook.
+- [x] **Whistle** (`WAVE_WHISTLE`) — Cook pea whistle model: sine oscillator (primary tone) + 2D pea-in-can physics simulation for amplitude/frequency modulation + additive noise for breath texture. Pea bounces off circular can wall with gravity and energy loss, creating characteristic trill. 4 presets: Referee (strong trill), Slide (minimal pea, pitch LFO), Train (breathy, slow attack), Cuckoo (near-pure tone). Ref: STK Whistle, Cook.
 
 ## TODO — Collision / Particle
 
@@ -39,7 +39,7 @@ Inventory of synthesis engines based on STK (Synthesis Toolkit) and related phys
 
 ## Priority Ranking
 
-Completed (8 of 13):
+Completed (10 of 13):
 1. ~~**BandedWG**~~ — ✅ DONE (WAVE_BANDEDWG, 6 presets)
 2. ~~**Shakers**~~ — ✅ DONE (WAVE_SHAKER, 8 presets)
 3. ~~**StifKarp**~~ — ✅ DONE (WAVE_STIFKARP, 8 presets)
@@ -48,10 +48,10 @@ Completed (8 of 13):
 6. ~~**Guitar**~~ — ✅ DONE (WAVE_GUITAR, acoustic/banjo/sitar/oud)
 7. ~~**Reed/Clarinet**~~ — ✅ DONE (WAVE_REED, 6 presets)
 8. ~~**Brass**~~ — ✅ DONE (WAVE_BRASS, 6 presets)
+9. ~~**Mandolin**~~ — ✅ DONE (WAVE_MANDOLIN, 4 presets)
+10. ~~**Whistle**~~ — ✅ DONE (WAVE_WHISTLE, 4 presets)
 
-Remaining TODO:
-1. **Saxofony** — conical bore for better sax (medium impact)
-2. **BlowHole** — register hole overblowing for reed (medium)
-3. **Mandolin** — paired course strings (lower)
-4. **Whistle** — Helmholtz resonator, fun SFX (simple)
-5. **Resonate** — generic resonator, utility (low)
+Remaining TODO (low priority — diminishing returns):
+1. **Saxofony** — conical bore for better sax (marginal over WAVE_REED sax presets)
+2. **BlowHole** — register hole overblowing for reed (marginal)
+3. **Resonate** — generic resonator, utility (low)

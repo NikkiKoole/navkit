@@ -137,6 +137,14 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     guitarBodyBrightness = p->p_guitarBodyBrightness;
     guitarPickPosition = p->p_guitarPickPosition;
     guitarBuzz = p->p_guitarBuzz;
+    mandolinPreset = p->p_mandolinPreset;
+    mandolinBodyMix = p->p_mandolinBodyMix;
+    mandolinCourseDetune = p->p_mandolinCourseDetune;
+    mandolinPickPosition = p->p_mandolinPickPosition;
+    whistlePreset = p->p_whistlePreset;
+    whistleBreath = p->p_whistleBreath;
+    whistleNoiseGain = p->p_whistleNoiseGain;
+    whistleFippleFreqMod = p->p_whistleFippleFreqMod;
     stifkarpPreset = p->p_stifkarpPreset;
     stifkarpHardness = p->p_stifkarpHardness;
     stifkarpStiffness = p->p_stifkarpStiffness;
@@ -145,6 +153,7 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     stifkarpBodyBrightness = p->p_stifkarpBodyBrightness;
     stifkarpDamper = p->p_stifkarpDamper;
     stifkarpSympathetic = p->p_stifkarpSympathetic;
+    stifkarpDetune = p->p_stifkarpDetune;
     shakerPreset = p->p_shakerPreset;
     shakerParticles = p->p_shakerParticles;
     shakerDecayRate = p->p_shakerDecayRate;
@@ -286,10 +295,12 @@ static int playNoteWithPatch(float freq, const SynthPatch *p) {
         case WAVE_MEMBRANE: return playMembrane(freq, (MembranePreset)p->p_membranePreset);
         case WAVE_METALLIC: return playMetallic(freq, (MetallicPreset)p->p_metallicPreset);
         case WAVE_GUITAR:   return playGuitar(freq, (GuitarPreset)p->p_guitarPreset);
+        case WAVE_MANDOLIN: return playMandolin(freq, (MandolinPreset)p->p_mandolinPreset);
         case WAVE_STIFKARP: return playStifKarp(freq, (StifKarpPreset)p->p_stifkarpPreset);
         case WAVE_SHAKER:   return playShaker(freq, (ShakerPreset)p->p_shakerPreset);
         case WAVE_BANDEDWG: return playBandedWG(freq, (BandedWGPreset)p->p_bandedwgPreset);
         case WAVE_VOICFORM: return playVoicForm(freq, p->p_vfPhoneme);
+        case WAVE_WHISTLE:  return playWhistle(freq, (WhistlePreset)p->p_whistlePreset);
         case WAVE_BIRD:     return playBird(freq, (BirdType)p->p_birdType);
         case WAVE_BOWED:    return playBowed(freq);
         case WAVE_PIPE:     return playPipe(freq);

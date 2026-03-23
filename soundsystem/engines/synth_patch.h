@@ -180,6 +180,18 @@ typedef struct {
     float p_guitarPickPosition;
     float p_guitarBuzz;
 
+    // Mandolin (paired course strings)
+    int p_mandolinPreset;
+    float p_mandolinBodyMix;
+    float p_mandolinCourseDetune;
+    float p_mandolinPickPosition;
+
+    // Whistle (pea physics + sine)
+    int p_whistlePreset;
+    float p_whistleBreath;
+    float p_whistleNoiseGain;
+    float p_whistleFippleFreqMod;
+
     // Stiff string (piano/harpsichord/dulcimer)
     int   p_stifkarpPreset;
     float p_stifkarpHardness;
@@ -189,6 +201,7 @@ typedef struct {
     float p_stifkarpBodyBrightness;
     float p_stifkarpDamper;
     float p_stifkarpSympathetic;
+    float p_stifkarpDetune;        // Double-string detune in cents (0=off, >0=enables double string)
 
     // Shaker (particle collision)
     int   p_shakerPreset;
@@ -474,6 +487,14 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_guitarBodyBrightness = 0.5f,
         .p_guitarPickPosition = 0.3f,
         .p_guitarBuzz = 0.0f,
+        .p_mandolinPreset = MANDOLIN_NEAPOLITAN,
+        .p_mandolinBodyMix = 0.55f,
+        .p_mandolinCourseDetune = 2.0f,
+        .p_mandolinPickPosition = 0.2f,
+        .p_whistlePreset = WHISTLE_REFEREE,
+        .p_whistleBreath = 0.8f,
+        .p_whistleNoiseGain = 0.15f,
+        .p_whistleFippleFreqMod = 0.5f,
         .p_stifkarpPreset = STIFKARP_PIANO,
         .p_stifkarpHardness = 0.45f,
         .p_stifkarpStiffness = 0.25f,
@@ -482,6 +503,7 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_stifkarpBodyBrightness = 0.5f,
         .p_stifkarpDamper = 0.9f,
         .p_stifkarpSympathetic = 0.15f,
+        .p_stifkarpDetune = 0.0f,
         .p_shakerPreset = SHAKER_MARACA,
         .p_shakerParticles = 0.22f,
         .p_shakerDecayRate = 0.5f,

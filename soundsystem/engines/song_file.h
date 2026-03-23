@@ -374,6 +374,14 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "guitarBodyBrightness", p->p_guitarBodyBrightness);
     _sf_writeFloat(f, "guitarPickPosition", p->p_guitarPickPosition);
     _sf_writeFloat(f, "guitarBuzz", p->p_guitarBuzz);
+    _sf_writeInt(f, "mandolinPreset", p->p_mandolinPreset);
+    _sf_writeFloat(f, "mandolinBodyMix", p->p_mandolinBodyMix);
+    _sf_writeFloat(f, "mandolinCourseDetune", p->p_mandolinCourseDetune);
+    _sf_writeFloat(f, "mandolinPickPosition", p->p_mandolinPickPosition);
+    _sf_writeInt(f, "whistlePreset", p->p_whistlePreset);
+    _sf_writeFloat(f, "whistleBreath", p->p_whistleBreath);
+    _sf_writeFloat(f, "whistleNoiseGain", p->p_whistleNoiseGain);
+    _sf_writeFloat(f, "whistleFippleFreqMod", p->p_whistleFippleFreqMod);
     _sf_writeInt(f, "stifkarpPreset", p->p_stifkarpPreset);
     _sf_writeFloat(f, "stifkarpHardness", p->p_stifkarpHardness);
     _sf_writeFloat(f, "stifkarpStiffness", p->p_stifkarpStiffness);
@@ -382,6 +390,7 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "stifkarpBodyBrightness", p->p_stifkarpBodyBrightness);
     _sf_writeFloat(f, "stifkarpDamper", p->p_stifkarpDamper);
     _sf_writeFloat(f, "stifkarpSympathetic", p->p_stifkarpSympathetic);
+    _sf_writeFloat(f, "stifkarpDetune", p->p_stifkarpDetune);
     _sf_writeInt(f, "shakerPreset", p->p_shakerPreset);
     _sf_writeFloat(f, "shakerParticles", p->p_shakerParticles);
     _sf_writeFloat(f, "shakerDecayRate", p->p_shakerDecayRate);
@@ -1042,6 +1051,14 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "guitarBodyBrightness") == 0) p->p_guitarBodyBrightness = _sf_parseFloat(val);
     else if (strcmp(key, "guitarPickPosition") == 0) p->p_guitarPickPosition = _sf_parseFloat(val);
     else if (strcmp(key, "guitarBuzz") == 0) p->p_guitarBuzz = _sf_parseFloat(val);
+    else if (strcmp(key, "mandolinPreset") == 0) p->p_mandolinPreset = _sf_parseInt(val);
+    else if (strcmp(key, "mandolinBodyMix") == 0) p->p_mandolinBodyMix = _sf_parseFloat(val);
+    else if (strcmp(key, "mandolinCourseDetune") == 0) p->p_mandolinCourseDetune = _sf_parseFloat(val);
+    else if (strcmp(key, "mandolinPickPosition") == 0) p->p_mandolinPickPosition = _sf_parseFloat(val);
+    else if (strcmp(key, "whistlePreset") == 0) p->p_whistlePreset = _sf_parseInt(val);
+    else if (strcmp(key, "whistleBreath") == 0) p->p_whistleBreath = _sf_parseFloat(val);
+    else if (strcmp(key, "whistleNoiseGain") == 0) p->p_whistleNoiseGain = _sf_parseFloat(val);
+    else if (strcmp(key, "whistleFippleFreqMod") == 0) p->p_whistleFippleFreqMod = _sf_parseFloat(val);
     else if (strcmp(key, "stifkarpPreset") == 0) p->p_stifkarpPreset = _sf_parseInt(val);
     else if (strcmp(key, "stifkarpHardness") == 0) p->p_stifkarpHardness = _sf_parseFloat(val);
     else if (strcmp(key, "stifkarpStiffness") == 0) p->p_stifkarpStiffness = _sf_parseFloat(val);
@@ -1050,6 +1067,7 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "stifkarpBodyBrightness") == 0) p->p_stifkarpBodyBrightness = _sf_parseFloat(val);
     else if (strcmp(key, "stifkarpDamper") == 0) p->p_stifkarpDamper = _sf_parseFloat(val);
     else if (strcmp(key, "stifkarpSympathetic") == 0) p->p_stifkarpSympathetic = _sf_parseFloat(val);
+    else if (strcmp(key, "stifkarpDetune") == 0) p->p_stifkarpDetune = _sf_parseFloat(val);
     else if (strcmp(key, "shakerPreset") == 0) p->p_shakerPreset = _sf_parseInt(val);
     else if (strcmp(key, "shakerParticles") == 0) p->p_shakerParticles = _sf_parseFloat(val);
     else if (strcmp(key, "shakerDecayRate") == 0) p->p_shakerDecayRate = _sf_parseFloat(val);

@@ -1,6 +1,6 @@
 # Soundsystem (PixelSynth)
 
-Header-only synthesized audio engine (~36K lines). 17 synthesis engines, 32-voice polyphony (+8-voice sampler), 177 presets, step sequencer, full effects chain, built-in DAW.
+Header-only synthesized audio engine (~36K lines). 19 synthesis engines, 32-voice polyphony (+8-voice sampler), 259 presets, step sequencer, full effects chain, built-in DAW.
 
 ## Build & Run
 
@@ -20,7 +20,7 @@ make jukebox-test        # play songs without the full game
 ./jukebox-test 0         # play song by index
 
 # Tests
-make test_soundsystem    # 248 tests, 745 assertions (sequencer, synth, effects, integration)
+make test_soundsystem    # 303 tests, 2073 assertions (sequencer, synth, effects, integration)
 
 # Tools
 make preset-audition     # headless preset → WAV renderer + spectral analysis
@@ -41,7 +41,7 @@ soundsystem/
 │   ├── synth_oscillators.h   # Complex oscillator engines (~1550 lines, extracted from synth.h)
 │   ├── synth_scale.h          # Scale lock system (~114 lines, extracted from synth.h)
 │   ├── synth_patch.h          # SynthPatch struct (200+ p_ fields)
-│   ├── instrument_presets.h   # 177 presets (melodic + drums: 808/909/CR-78/orchestral/hand) (~1850 lines)
+│   ├── instrument_presets.h   # 259 presets (melodic + drums: 808/909/CR-78/orchestral/hand) (~1850 lines)
 │   ├── effects.h              # Effects chain + bus mixer (8 buses, 16 master FX) (~1516 lines)
 │   ├── dub_loop.h             # King Tubby tape delay (~310 lines, extracted from effects.h)
 │   ├── rewind.h               # Vinyl spinback effect (~165 lines, extracted from effects.h)
@@ -218,7 +218,7 @@ Waves 0-2 complete. Near-term TODO (per `docs/plan-of-attack.md`):
 - Semitone +/- buttons on extra osc ratio knobs (left-click = +1st, right-click = -1st)
 - Velocity modulation system: 4 targets (osc level, filter, click, drive) with squared curve, cyan UI indicators
 - Mono retrigger toggle (envelope restarts on every note vs legato glide)
-- 177 presets (was 111): added 909 kit, DX7 FM series, Wurlitzer, Clavinet, world instruments, SNES kit, pads, 10 Casio MT-70, 6 Minimoog, 4 OB-Xa, 3 Rhodes
+- 259 presets (was 177): added mandolin (4: Neapolitan/Flatback/Bouzouki/Charango), whistle (4: Referee/Slide/Train/Cuckoo), plus earlier 909 kit, DX7 FM series, Wurlitzer, Clavinet, world instruments, SNES kit, pads, 10 Casio MT-70, 6 Minimoog, 4 OB-Xa, 3 Rhodes
 - 8 buses (was 7): added BUS_SAMPLER for chop/flip slice playback
 - Per-bus effects expanded: +EQ, chorus, phaser, comb filter (was: filter/dist/delay/reverb-send only)
 - Master effects expanded: +chorus, flanger, phaser, comb, multiband, sub-bass boost, sidechain envelope

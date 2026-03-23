@@ -55,7 +55,7 @@ All preset-only work — no engine changes. See `done/missing-melodic-instrument
 
 **Added (140-145):** 909 Kick, 909 Snare, 909 Clap, 909 CH, 909 OH, 909 Rim.
 
-**Engine coverage now:** All 16 engines have presets. FM went from 4→10 presets (DX7 series). Granular has 2 presets. SCW/wavetable still at 0 (needs good cycle content).
+**Engine coverage now:** All 19 engines have presets (added WAVE_MANDOLIN with 4 presets, WAVE_WHISTLE with 4 presets). FM went from 4→10 presets (DX7 series). Granular has 2 presets. SCW/wavetable still at 0 (needs good cycle content). Total: 256 presets.
 
 **Preset audit** (see `docs/preset-audit.md`): Found exact duplicates (Mel Tabla=Tabla), near-dupes (Chip Lead≈Piku Accord, Marimba≈Kalimba), and 5 same-name collisions (Glockenspiel×2, Xylophone×2, PD Bass×2, PD Lead×2, Tubular Bell(s)×2). Cleanup TODO.
 
