@@ -5363,6 +5363,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
                 ui_col_sublabel(&c, "Mod:", ORANGE);
                 ui_col_float(&c, "EnvA", &p->p_fbEnvAlpha, 0.05f, -1.0f, 1.0f);
                 ui_col_float(&c, "LRate", &p->p_fbLfoRate, 0.1f, 0.0f, 20.0f);
+                ui_col_cycle(&c, "LSync", lfoSyncNames, LFO_SYNC_COUNT, &p->p_fbLfoSync);
                 ui_col_cycle(&c, "LShape", lfoShapeNames, 5, &p->p_fbLfoShape);
                 ui_col_float(&c, "LfoA", &p->p_fbLfoAlpha, 0.05f, -1.0f, 1.0f);
                 ui_col_float(&c, "Noise", &p->p_fbNoiseMix, 0.05f, 0.0f, 1.0f);

@@ -382,6 +382,7 @@ typedef struct {
     float p_fbRandomize;          // Per-note random variation amount (0=none, 1=wild)
     float p_fbEnvAlpha;           // Filter envelope → Alpha depth (-1..+1, bipolar)
     float p_fbLfoRate;            // Filterbank LFO rate in Hz (0..20)
+    int p_fbLfoSync;              // Tempo sync (LfoSyncDiv, 0=off, overrides rate)
     float p_fbLfoAlpha;           // Filterbank LFO → Alpha depth (-1..+1)
     int p_fbLfoShape;             // Filterbank LFO shape (0=sin,1=tri,2=sq,3=saw,4=S&H)
     float p_fbNoiseMix;           // Noise mixed into filterbank input (0..1)
@@ -663,6 +664,7 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_fbRandomize = 0.0f,
         .p_fbEnvAlpha = 0.0f,
         .p_fbLfoRate = 0.0f,
+        .p_fbLfoSync = 0,
         .p_fbLfoAlpha = 0.0f,
         .p_fbLfoShape = 0,
         .p_fbNoiseMix = 0.0f,

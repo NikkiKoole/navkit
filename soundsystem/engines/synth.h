@@ -1242,6 +1242,7 @@ typedef struct {
     float fbRandomize;
     float fbEnvAlpha;
     float fbLfoRate;
+    int fbLfoSync;
     float fbLfoAlpha;
     int fbLfoShape;
     float fbLfoPhase;               // Filterbank LFO phase (runtime state)
@@ -1817,6 +1818,7 @@ typedef struct SynthContext {
     float noteFbRandomize;
     float noteFbEnvAlpha;
     float noteFbLfoRate;
+    int noteFbLfoSync;
     float noteFbLfoAlpha;
     int noteFbLfoShape;
     float noteFbNoiseMix;
@@ -2320,6 +2322,7 @@ static void _ensureSynthCtx(void) {
 #define noteFbRandomize (synthCtx->noteFbRandomize)
 #define noteFbEnvAlpha (synthCtx->noteFbEnvAlpha)
 #define noteFbLfoRate (synthCtx->noteFbLfoRate)
+#define noteFbLfoSync (synthCtx->noteFbLfoSync)
 #define noteFbLfoAlpha (synthCtx->noteFbLfoAlpha)
 #define noteFbLfoShape (synthCtx->noteFbLfoShape)
 #define noteFbNoiseMix (synthCtx->noteFbNoiseMix)
@@ -3499,8 +3502,12 @@ static float processVoice(Voice *v, float sampleRate) {
             // === FILTERBANK MODE (Grenadier RA-99 style) ===
 
             // Dedicated filterbank LFO (independent of filter LFO)
+            float fbLfoRate = v->fbLfoRate;
+            if (v->fbLfoSync != LFO_SYNC_OFF) {
+                fbLfoRate = getLfoRateFromSync(synthBpm, v->fbLfoSync);
+            }
             float fbLfo = processLfo(&v->fbLfoPhase, &v->fbLfoSH,
-                                      v->fbLfoRate, 1.0f, v->fbLfoShape, dt);
+                                      fbLfoRate, 1.0f, v->fbLfoShape, dt);
 
             // Modulate Alpha with filter envelope and filterbank LFO
             float modAlpha = v->fbAlpha;
@@ -4143,6 +4150,7 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->fbRandomize = noteFbRandomize;
     v->fbEnvAlpha = noteFbEnvAlpha;
     v->fbLfoRate = noteFbLfoRate;
+    v->fbLfoSync = noteFbLfoSync;
     v->fbLfoAlpha = noteFbLfoAlpha;
     v->fbLfoShape = noteFbLfoShape;
     v->fbLfoPhase = 0.0f;

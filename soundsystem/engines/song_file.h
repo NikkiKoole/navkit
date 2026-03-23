@@ -537,6 +537,7 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "fbRandomize", p->p_fbRandomize);
     _sf_writeFloat(f, "fbEnvAlpha", p->p_fbEnvAlpha);
     _sf_writeFloat(f, "fbLfoRate", p->p_fbLfoRate);
+    _sf_writeInt(f, "fbLfoSync", p->p_fbLfoSync);
     _sf_writeFloat(f, "fbLfoAlpha", p->p_fbLfoAlpha);
     _sf_writeInt(f, "fbLfoShape", p->p_fbLfoShape);
     _sf_writeFloat(f, "fbNoiseMix", p->p_fbNoiseMix);
@@ -1241,6 +1242,7 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "fbRandomize") == 0) p->p_fbRandomize = _sf_parseFloat(val);
     else if (strcmp(key, "fbEnvAlpha") == 0) p->p_fbEnvAlpha = _sf_parseFloat(val);
     else if (strcmp(key, "fbLfoRate") == 0) p->p_fbLfoRate = _sf_parseFloat(val);
+    else if (strcmp(key, "fbLfoSync") == 0) p->p_fbLfoSync = _sf_parseInt(val);
     else if (strcmp(key, "fbLfoAlpha") == 0) p->p_fbLfoAlpha = _sf_parseFloat(val);
     else if (strcmp(key, "fbLfoBeta") == 0) {} // legacy: auto-derived from LfoAlpha now
     else if (strcmp(key, "fbLfoShape") == 0) p->p_fbLfoShape = _sf_parseInt(val);
