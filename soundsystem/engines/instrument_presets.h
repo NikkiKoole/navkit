@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 259
+#define NUM_INSTRUMENT_PRESETS 263
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -4714,6 +4714,113 @@ static void initInstrumentPresets(void) {
     instrumentPresets[258].patch.p_sustain = 0.0f;
     instrumentPresets[258].patch.p_release = 0.15f;
     instrumentPresets[258].patch.p_volume = 0.5f;
+
+    // === Filterbank presets (Grenadier RA-99 style) ===
+
+    // 259: Grenadier Acid — Classic acid squelch, trapezoid osc into resonant filterbank
+    instrumentPresets[259].name = "Grenadier Acid";
+    instrumentPresets[259].patch.p_waveType = WAVE_TRIANGLE;
+    instrumentPresets[259].patch.p_formantEnabled = true;
+    instrumentPresets[259].patch.p_formantMode = 1;
+    instrumentPresets[259].patch.p_formantMix = 0.95f;
+    instrumentPresets[259].patch.p_fbBaseFreq = 250.0f;
+    instrumentPresets[259].patch.p_fbSpacing = 3.0f;
+    instrumentPresets[259].patch.p_fbAlpha = 0.5f;
+    instrumentPresets[259].patch.p_fbBeta = 0.5f;
+    instrumentPresets[259].patch.p_fbQ1 = 4.0f;
+    instrumentPresets[259].patch.p_fbQ2 = 8.0f;
+    instrumentPresets[259].patch.p_fbQ3 = 6.0f;
+    instrumentPresets[259].patch.p_fbKeyTrack = 0.3f;
+    instrumentPresets[259].patch.p_fbMorphOsc = 0.4f;
+    instrumentPresets[259].patch.p_fbLayout = 1;
+    instrumentPresets[259].patch.p_fbRandomize = 0.35f;
+    instrumentPresets[259].patch.p_monoMode = true;
+    instrumentPresets[259].patch.p_monoRetrigger = true;
+    instrumentPresets[259].patch.p_glideTime = 0.03f;
+    instrumentPresets[259].patch.p_attack = 0.005f;
+    instrumentPresets[259].patch.p_decay = 0.3f;
+    instrumentPresets[259].patch.p_sustain = 0.6f;
+    instrumentPresets[259].patch.p_release = 0.15f;
+    instrumentPresets[259].patch.p_filterEnabled = true;
+    instrumentPresets[259].patch.p_filterCutoff = 0.4f;
+    instrumentPresets[259].patch.p_filterResonance = 0.3f;
+    instrumentPresets[259].patch.p_filterEnvAmt = 0.5f;
+    instrumentPresets[259].patch.p_filterEnvDecay = 0.2f;
+    instrumentPresets[259].patch.p_volume = 0.45f;
+
+    // 260: Grenadier Bass — Deep sub filterbank, LP-heavy, minimal spacing
+    instrumentPresets[260].name = "Grenadier Bass";
+    instrumentPresets[260].patch.p_waveType = WAVE_TRIANGLE;
+    instrumentPresets[260].patch.p_formantEnabled = true;
+    instrumentPresets[260].patch.p_formantMode = 1;
+    instrumentPresets[260].patch.p_formantMix = 0.9f;
+    instrumentPresets[260].patch.p_fbBaseFreq = 120.0f;
+    instrumentPresets[260].patch.p_fbSpacing = 2.0f;
+    instrumentPresets[260].patch.p_fbAlpha = 0.45f;
+    instrumentPresets[260].patch.p_fbBeta = 0.3f;
+    instrumentPresets[260].patch.p_fbQ1 = 3.0f;
+    instrumentPresets[260].patch.p_fbQ2 = 5.0f;
+    instrumentPresets[260].patch.p_fbQ3 = 4.0f;
+    instrumentPresets[260].patch.p_fbKeyTrack = 0.7f;
+    instrumentPresets[260].patch.p_fbMorphOsc = 0.7f;
+    instrumentPresets[260].patch.p_fbLayout = 1;
+    instrumentPresets[260].patch.p_monoMode = true;
+    instrumentPresets[260].patch.p_monoRetrigger = true;
+    instrumentPresets[260].patch.p_glideTime = 0.02f;
+    instrumentPresets[260].patch.p_attack = 0.002f;
+    instrumentPresets[260].patch.p_decay = 0.4f;
+    instrumentPresets[260].patch.p_sustain = 0.5f;
+    instrumentPresets[260].patch.p_release = 0.1f;
+    instrumentPresets[260].patch.p_volume = 0.5f;
+
+    // 261: Grenadier Drone — Wide spacing, slow LFO on alpha, all BPF
+    instrumentPresets[261].name = "Grenadier Drone";
+    instrumentPresets[261].patch.p_waveType = WAVE_SAW;
+    instrumentPresets[261].patch.p_formantEnabled = true;
+    instrumentPresets[261].patch.p_formantMode = 1;
+    instrumentPresets[261].patch.p_formantMix = 0.85f;
+    instrumentPresets[261].patch.p_fbBaseFreq = 180.0f;
+    instrumentPresets[261].patch.p_fbSpacing = 4.0f;
+    instrumentPresets[261].patch.p_fbAlpha = 0.5f;
+    instrumentPresets[261].patch.p_fbBeta = 0.7f;
+    instrumentPresets[261].patch.p_fbQ1 = 6.0f;
+    instrumentPresets[261].patch.p_fbQ2 = 8.0f;
+    instrumentPresets[261].patch.p_fbQ3 = 10.0f;
+    instrumentPresets[261].patch.p_fbKeyTrack = 0.0f;
+    instrumentPresets[261].patch.p_fbMorphOsc = 0.0f;
+    instrumentPresets[261].patch.p_fbLayout = 0;
+    instrumentPresets[261].patch.p_attack = 0.8f;
+    instrumentPresets[261].patch.p_decay = 0.5f;
+    instrumentPresets[261].patch.p_sustain = 0.8f;
+    instrumentPresets[261].patch.p_release = 1.5f;
+    instrumentPresets[261].patch.p_filterLfoRate = 0.15f;
+    instrumentPresets[261].patch.p_filterLfoDepth = 0.3f;
+    instrumentPresets[261].patch.p_volume = 0.4f;
+
+    // 262: Grenadier Perc — Short percussive hit, high base freq, no sustain
+    instrumentPresets[262].name = "Grenadier Perc";
+    instrumentPresets[262].patch.p_waveType = WAVE_TRIANGLE;
+    instrumentPresets[262].patch.p_formantEnabled = true;
+    instrumentPresets[262].patch.p_formantMode = 1;
+    instrumentPresets[262].patch.p_formantMix = 1.0f;
+    instrumentPresets[262].patch.p_fbBaseFreq = 800.0f;
+    instrumentPresets[262].patch.p_fbSpacing = 2.5f;
+    instrumentPresets[262].patch.p_fbAlpha = 0.6f;
+    instrumentPresets[262].patch.p_fbBeta = 0.5f;
+    instrumentPresets[262].patch.p_fbQ1 = 10.0f;
+    instrumentPresets[262].patch.p_fbQ2 = 12.0f;
+    instrumentPresets[262].patch.p_fbQ3 = 8.0f;
+    instrumentPresets[262].patch.p_fbKeyTrack = 0.0f;
+    instrumentPresets[262].patch.p_fbMorphOsc = 0.2f;
+    instrumentPresets[262].patch.p_fbLayout = 0;
+    instrumentPresets[262].patch.p_attack = 0.001f;
+    instrumentPresets[262].patch.p_decay = 0.15f;
+    instrumentPresets[262].patch.p_sustain = 0.0f;
+    instrumentPresets[262].patch.p_release = 0.08f;
+    instrumentPresets[262].patch.p_oneShot = true;
+    instrumentPresets[262].patch.p_pitchEnvAmount = 12.0f;
+    instrumentPresets[262].patch.p_pitchEnvDecay = 0.05f;
+    instrumentPresets[262].patch.p_volume = 0.5f;
 }
 
 #endif // INSTRUMENT_PRESETS_H

@@ -526,6 +526,18 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "formantQ", p->p_formantQ);
     _sf_writeFloat(f, "formantMix", p->p_formantMix);
     _sf_writeBool(f, "formantRandom", p->p_formantRandom);
+    _sf_writeInt(f, "formantMode", p->p_formantMode);
+    _sf_writeFloat(f, "fbBaseFreq", p->p_fbBaseFreq);
+    _sf_writeFloat(f, "fbSpacing", p->p_fbSpacing);
+    _sf_writeFloat(f, "fbAlpha", p->p_fbAlpha);
+    _sf_writeFloat(f, "fbBeta", p->p_fbBeta);
+    _sf_writeFloat(f, "fbQ1", p->p_fbQ1);
+    _sf_writeFloat(f, "fbQ2", p->p_fbQ2);
+    _sf_writeFloat(f, "fbQ3", p->p_fbQ3);
+    _sf_writeFloat(f, "fbKeyTrack", p->p_fbKeyTrack);
+    _sf_writeFloat(f, "fbMorphOsc", p->p_fbMorphOsc);
+    _sf_writeInt(f, "fbLayout", p->p_fbLayout);
+    _sf_writeFloat(f, "fbRandomize", p->p_fbRandomize);
 }
 
 static void _sf_writePattern(FILE *f, int idx, const Pattern *p) {
@@ -1212,6 +1224,18 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "formantQ") == 0) p->p_formantQ = _sf_parseFloat(val);
     else if (strcmp(key, "formantMix") == 0) p->p_formantMix = _sf_parseFloat(val);
     else if (strcmp(key, "formantRandom") == 0) p->p_formantRandom = _sf_parseBool(val);
+    else if (strcmp(key, "formantMode") == 0) p->p_formantMode = _sf_parseInt(val);
+    else if (strcmp(key, "fbBaseFreq") == 0) p->p_fbBaseFreq = _sf_parseFloat(val);
+    else if (strcmp(key, "fbSpacing") == 0) p->p_fbSpacing = _sf_parseFloat(val);
+    else if (strcmp(key, "fbAlpha") == 0) p->p_fbAlpha = _sf_parseFloat(val);
+    else if (strcmp(key, "fbBeta") == 0) p->p_fbBeta = _sf_parseFloat(val);
+    else if (strcmp(key, "fbQ1") == 0) p->p_fbQ1 = _sf_parseFloat(val);
+    else if (strcmp(key, "fbQ2") == 0) p->p_fbQ2 = _sf_parseFloat(val);
+    else if (strcmp(key, "fbQ3") == 0) p->p_fbQ3 = _sf_parseFloat(val);
+    else if (strcmp(key, "fbKeyTrack") == 0) p->p_fbKeyTrack = _sf_parseFloat(val);
+    else if (strcmp(key, "fbMorphOsc") == 0) p->p_fbMorphOsc = _sf_parseFloat(val);
+    else if (strcmp(key, "fbLayout") == 0) p->p_fbLayout = _sf_parseInt(val);
+    else if (strcmp(key, "fbRandomize") == 0) p->p_fbRandomize = _sf_parseFloat(val);
     // Unknown keys silently skipped (future-proof)
 }
 

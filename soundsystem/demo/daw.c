@@ -5345,13 +5345,33 @@ static void drawParamPatch(float x, float y, float w, float h) {
         ui_col_sublabel(&c, "Formant:", ORANGE);
         ui_col_toggle(&c, "Enable", &p->p_formantEnabled);
         if (p->p_formantEnabled) {
-            ui_col_toggle(&c, "Random", &p->p_formantRandom);
-            ui_col_cycle(&c, "From", vfPhonemeNames, VF_PHONEME_COUNT, &p->p_formantFrom);
-            ui_col_cycle(&c, "To", vfPhonemeNames, VF_PHONEME_COUNT, &p->p_formantTo);
-            ui_col_float(&c, "Morph", &p->p_formantMorphTime, 0.01f, 0.01f, 2.0f);
-            ui_col_float(&c, "Shift", &p->p_formantShift, 0.05f, 0.5f, 2.0f);
-            ui_col_float(&c, "Q", &p->p_formantQ, 0.1f, 0.5f, 3.0f);
-            ui_col_float(&c, "Mix", &p->p_formantMix, 0.05f, 0.0f, 1.0f);
+            static const char* formantModeNames[] = {"Phoneme", "Filterbank"};
+            ui_col_cycle(&c, "Mode", formantModeNames, 2, &p->p_formantMode);
+            if (p->p_formantMode == 1) {
+                // Filterbank mode (Grenadier RA-99 style)
+                static const char* fbLayoutNames[] = {"3xBPF", "LP+2xBPF"};
+                ui_col_cycle(&c, "Layout", fbLayoutNames, 2, &p->p_fbLayout);
+                ui_col_float(&c, "Base", &p->p_fbBaseFreq, 10.0f, 50.0f, 5000.0f);
+                ui_col_float(&c, "Space", &p->p_fbSpacing, 0.1f, 1.0f, 8.0f);
+                ui_col_float(&c, "Alpha", &p->p_fbAlpha, 0.02f, 0.0f, 1.0f);
+                ui_col_float(&c, "Beta", &p->p_fbBeta, 0.02f, 0.0f, 1.0f);
+                ui_col_float(&c, "Q1", &p->p_fbQ1, 0.5f, 0.5f, 20.0f);
+                ui_col_float(&c, "Q2", &p->p_fbQ2, 0.5f, 0.5f, 20.0f);
+                ui_col_float(&c, "Q3", &p->p_fbQ3, 0.5f, 0.5f, 20.0f);
+                ui_col_float(&c, "KeyTrk", &p->p_fbKeyTrack, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&c, "Morph", &p->p_fbMorphOsc, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&c, "Rand", &p->p_fbRandomize, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&c, "Mix", &p->p_formantMix, 0.05f, 0.0f, 1.0f);
+            } else {
+                // Phoneme mode (existing)
+                ui_col_toggle(&c, "Random", &p->p_formantRandom);
+                ui_col_cycle(&c, "From", vfPhonemeNames, VF_PHONEME_COUNT, &p->p_formantFrom);
+                ui_col_cycle(&c, "To", vfPhonemeNames, VF_PHONEME_COUNT, &p->p_formantTo);
+                ui_col_float(&c, "Morph", &p->p_formantMorphTime, 0.01f, 0.01f, 2.0f);
+                ui_col_float(&c, "Shift", &p->p_formantShift, 0.05f, 0.5f, 2.0f);
+                ui_col_float(&c, "Q", &p->p_formantQ, 0.1f, 0.5f, 3.0f);
+                ui_col_float(&c, "Mix", &p->p_formantMix, 0.05f, 0.0f, 1.0f);
+            }
         }
         sectionHighlight(col6X + 2, secY, percColW, c.y - secY, formantActive);
 

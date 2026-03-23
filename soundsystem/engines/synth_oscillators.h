@@ -41,12 +41,35 @@ static const float formantAmp[VOWEL_COUNT][3] = {
 static float processFormantFilter(FormantFilter *f, float input, float sampleRate) {
     float fc = clampf(2.0f * sinf(PI * f->freq / sampleRate), 0.001f, 0.99f);
     float q = clampf(f->freq / (f->bw + 1.0f), 0.5f, 20.0f);
-    
+
     f->low += fc * f->band;
     f->high = input - f->low - f->band / q;
     f->band += fc * f->high;
-    
+
     return f->band;
+}
+
+// Same SVF topology but returns lowpass output (for filterbank mode filter 1)
+static float processFormantFilterLP(FormantFilter *f, float input, float sampleRate) {
+    float fc = clampf(2.0f * sinf(PI * f->freq / sampleRate), 0.001f, 0.99f);
+    float q = clampf(f->freq / (f->bw + 1.0f), 0.5f, 20.0f);
+
+    f->low += fc * f->band;
+    f->high = input - f->low - f->band / q;
+    f->band += fc * f->high;
+
+    return f->low;
+}
+
+// Trapezoid oscillator: continuous morph from triangle (morph=0) to square (morph=1)
+// Clamps a scaled triangle — gain increases with morph, flattening peaks into plateaus
+static inline float trapezoidOsc(float phase, float morph) {
+    float tri = 4.0f * fabsf(phase - 0.5f) - 1.0f;
+    float gain = 1.0f / (1.0f - morph * 0.99f + 0.01f);
+    float out = tri * gain;
+    if (out > 1.0f) out = 1.0f;
+    if (out < -1.0f) out = -1.0f;
+    return out;
 }
 
 // Voice oscillator (formant synthesis)

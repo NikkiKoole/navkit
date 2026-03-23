@@ -7295,6 +7295,215 @@ describe(pertrack_step0_trigger) {
     }
 }
 
+// ============================================================================
+// FILTERBANK MODE (Grenadier RA-99 style)
+// ============================================================================
+
+describe(filterbank_mode) {
+    it("should produce output with filterbank mode enabled") {
+        SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_TRIANGLE);
+        p.p_formantEnabled = true;
+        p.p_formantMode = 1;
+        p.p_formantMix = 1.0f;
+        p.p_fbBaseFreq = 400.0f;
+        p.p_fbSpacing = 2.5f;
+        p.p_fbAlpha = 0.5f;
+        p.p_fbBeta = 0.5f;
+        p.p_fbQ1 = 2.0f;
+        p.p_fbQ2 = 4.0f;
+        p.p_fbQ3 = 4.0f;
+        p.p_fbLayout = 1;
+        p.p_envelopeEnabled = false;
+
+        int voice = playNoteWithPatch(220.0f, &p);
+        expect(voice >= 0);
+
+        // Run some samples and check we get non-zero output
+        float maxSample = 0.0f;
+        for (int i = 0; i < 1000; i++) {
+            float out = processVoice(&synthVoices[voice], 44100.0f);
+            if (fabsf(out) > maxSample) maxSample = fabsf(out);
+        }
+        expect(maxSample > 0.001f);
+        releaseNote(voice);
+    }
+
+    it("should differ from phoneme mode output") {
+        SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        // Filterbank mode
+        SynthPatch p1 = createDefaultPatch(WAVE_TRIANGLE);
+        p1.p_formantEnabled = true;
+        p1.p_formantMode = 1;
+        p1.p_formantMix = 1.0f;
+        p1.p_fbBaseFreq = 400.0f;
+        p1.p_fbSpacing = 2.5f;
+        p1.p_fbQ1 = 4.0f;
+        p1.p_fbQ2 = 4.0f;
+        p1.p_fbQ3 = 4.0f;
+        p1.p_fbLayout = 1;
+        p1.p_envelopeEnabled = false;
+
+        int v1 = playNoteWithPatch(220.0f, &p1);
+        float sum1 = 0.0f;
+        for (int i = 0; i < 500; i++)
+            sum1 += processVoice(&synthVoices[v1], 44100.0f);
+        releaseNote(v1);
+
+        // Phoneme mode
+        SynthPatch p2 = createDefaultPatch(WAVE_TRIANGLE);
+        p2.p_formantEnabled = true;
+        p2.p_formantMode = 0;
+        p2.p_formantMix = 1.0f;
+        p2.p_envelopeEnabled = false;
+
+        int v2 = playNoteWithPatch(220.0f, &p2);
+        float sum2 = 0.0f;
+        for (int i = 0; i < 500; i++)
+            sum2 += processVoice(&synthVoices[v2], 44100.0f);
+        releaseNote(v2);
+
+        // Outputs should be different (different filter topologies)
+        expect(fabsf(sum1 - sum2) > 0.01f);
+    }
+
+    it("should change output when alpha is swept") {
+        SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_SAW);
+        p.p_formantEnabled = true;
+        p.p_formantMode = 1;
+        p.p_formantMix = 1.0f;
+        p.p_fbBaseFreq = 300.0f;
+        p.p_fbSpacing = 3.0f;
+        p.p_fbQ1 = 4.0f;
+        p.p_fbQ2 = 6.0f;
+        p.p_fbQ3 = 6.0f;
+        p.p_fbAlpha = 0.2f;
+        p.p_fbLayout = 0;
+        p.p_envelopeEnabled = false;
+
+        // Run with low alpha
+        int v1 = playNoteWithPatch(220.0f, &p);
+        float sumLow = 0.0f;
+        for (int i = 0; i < 500; i++)
+            sumLow += fabsf(processVoice(&synthVoices[v1], 44100.0f));
+        releaseNote(v1);
+
+        // Run with high alpha
+        p.p_fbAlpha = 0.8f;
+        int v2 = playNoteWithPatch(220.0f, &p);
+        float sumHigh = 0.0f;
+        for (int i = 0; i < 500; i++)
+            sumHigh += fabsf(processVoice(&synthVoices[v2], 44100.0f));
+        releaseNote(v2);
+
+        // Different alpha values should produce different spectral content
+        expect(fabsf(sumLow - sumHigh) > 0.01f);
+    }
+
+    it("should produce trapezoid waveform with fbMorphOsc") {
+        SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        // Pure triangle (morph=0)
+        SynthPatch pTri = createDefaultPatch(WAVE_TRIANGLE);
+        pTri.p_envelopeEnabled = false;
+        pTri.p_formantEnabled = false;
+        pTri.p_filterEnabled = false;
+
+        int v1 = playNoteWithPatch(440.0f, &pTri);
+        float sumTri = 0.0f;
+        for (int i = 0; i < 500; i++) {
+            float s = processVoice(&synthVoices[v1], 44100.0f);
+            sumTri += s * s;
+        }
+        releaseNote(v1);
+
+        // Trapezoid (morph=0.8, approaching square)
+        SynthPatch pTrap = createDefaultPatch(WAVE_TRIANGLE);
+        pTrap.p_envelopeEnabled = false;
+        pTrap.p_formantEnabled = false;
+        pTrap.p_filterEnabled = false;
+        pTrap.p_fbMorphOsc = 0.8f;
+
+        int v2 = playNoteWithPatch(440.0f, &pTrap);
+        float sumTrap = 0.0f;
+        for (int i = 0; i < 500; i++) {
+            float s = processVoice(&synthVoices[v2], 44100.0f);
+            sumTrap += s * s;
+        }
+        releaseNote(v2);
+
+        // Both should produce output, and trapezoid should differ from triangle
+        expect(sumTri > 0.1f);
+        expect(sumTrap > 0.1f);
+        expect(fabsf(sumTrap - sumTri) > 0.1f);
+    }
+
+    it("should save and load filterbank params via song file") {
+        SynthPatch original = createDefaultPatch(WAVE_TRIANGLE);
+        original.p_formantEnabled = true;
+        original.p_formantMode = 1;
+        original.p_fbBaseFreq = 350.0f;
+        original.p_fbSpacing = 3.5f;
+        original.p_fbAlpha = 0.7f;
+        original.p_fbBeta = 0.3f;
+        original.p_fbQ1 = 5.0f;
+        original.p_fbQ2 = 8.0f;
+        original.p_fbQ3 = 6.0f;
+        original.p_fbKeyTrack = 0.5f;
+        original.p_fbMorphOsc = 0.4f;
+        original.p_fbLayout = 1;
+
+        // Write to temp file
+        FILE *f = fopen("/tmp/test_fb_patch.song", "w");
+        expect(f != NULL);
+        _sf_writePatch(f, "instrument.0", &original);
+        fclose(f);
+
+        // Read back
+        SynthPatch loaded = createDefaultPatch(WAVE_SAW);
+        f = fopen("/tmp/test_fb_patch.song", "r");
+        expect(f != NULL);
+        char line[512];
+        while (fgets(line, sizeof(line), f)) {
+            char *eq = strchr(line, '=');
+            if (!eq) continue;
+            *eq = '\0';
+            char *key = line; while (*key == ' ') key++;
+            // Trim trailing spaces from key
+            char *kend = eq - 1; while (kend > key && *kend == ' ') *kend-- = '\0';
+            char *val = eq + 1; while (*val == ' ') val++;
+            // Trim newline
+            char *nl = strchr(val, '\n'); if (nl) *nl = '\0';
+            _sf_applyPatchKV(&loaded, key, val);
+        }
+        fclose(f);
+
+        expect(loaded.p_formantMode == 1);
+        expect(fabsf(loaded.p_fbBaseFreq - 350.0f) < 0.1f);
+        expect(fabsf(loaded.p_fbSpacing - 3.5f) < 0.01f);
+        expect(fabsf(loaded.p_fbAlpha - 0.7f) < 0.01f);
+        expect(fabsf(loaded.p_fbBeta - 0.3f) < 0.01f);
+        expect(fabsf(loaded.p_fbQ1 - 5.0f) < 0.1f);
+        expect(fabsf(loaded.p_fbQ2 - 8.0f) < 0.1f);
+        expect(fabsf(loaded.p_fbQ3 - 6.0f) < 0.1f);
+        expect(fabsf(loaded.p_fbKeyTrack - 0.5f) < 0.01f);
+        expect(fabsf(loaded.p_fbMorphOsc - 0.4f) < 0.01f);
+        expect(loaded.p_fbLayout == 1);
+    }
+}
+
 static bool test_verbose = false;
 
 int main(int argc, char **argv) {
@@ -7437,6 +7646,9 @@ int main(int argc, char **argv) {
     // Chain advance step-0 trigger correctness
     test(chain_step0_trigger);
     test(pertrack_step0_trigger);
+
+    // Filterbank mode (Grenadier RA-99)
+    test(filterbank_mode);
 
     return summary();
 }

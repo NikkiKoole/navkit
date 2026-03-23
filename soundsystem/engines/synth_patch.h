@@ -370,6 +370,20 @@ typedef struct {
     float p_formantMix;       // Dry/wet blend (0=dry, 1=full formant)
     bool p_formantRandom;     // Randomize from/to phoneme on each note trigger
 
+    // Filterbank mode (Grenadier RA-99 style: LP + 2×BP, free-form frequencies)
+    int p_formantMode;            // 0 = phoneme (default), 1 = filterbank
+    float p_fbBaseFreq;           // Filterbank base frequency in Hz (50-5000)
+    float p_fbSpacing;            // Frequency spacing multiplier between filters (1.0-8.0)
+    float p_fbAlpha;              // Alpha axis: sweeps all filter freqs (0.0-1.0)
+    float p_fbBeta;               // Beta axis: spreads/narrows filter spacing (0.0-1.0)
+    float p_fbQ1;                 // Q for filter 1 / LP (0.5-20.0)
+    float p_fbQ2;                 // Q for filter 2 / BP (0.5-20.0)
+    float p_fbQ3;                 // Q for filter 3 / BP (0.5-20.0)
+    float p_fbKeyTrack;           // 0 = fixed base freq, 1 = tracks note pitch
+    float p_fbMorphOsc;           // Trapezoid morph: 0 = triangle, 1 = square
+    int p_fbLayout;               // 0 = 3×BPF (RA-9), 1 = LP+2×BPF (RA-99)
+    float p_fbRandomize;          // Per-note random variation amount (0=none, 1=wild)
+
     // 303 acid mode
     bool p_acidMode;          // true = authentic TB-303 slide/accent behavior
     float p_accentSweepAmt;   // Accent sweep circuit intensity (0-1, default 0.5)
@@ -636,6 +650,18 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_formantQ = 1.0f,
         .p_formantMix = 0.8f,
         .p_formantRandom = false,
+        .p_formantMode = 0,
+        .p_fbBaseFreq = 400.0f,
+        .p_fbSpacing = 2.5f,
+        .p_fbAlpha = 0.5f,
+        .p_fbBeta = 0.5f,
+        .p_fbQ1 = 2.0f,
+        .p_fbQ2 = 4.0f,
+        .p_fbQ3 = 4.0f,
+        .p_fbKeyTrack = 0.0f,
+        .p_fbMorphOsc = 0.0f,
+        .p_fbLayout = 1,
+        .p_fbRandomize = 0.0f,
         .p_acidMode = false,
         .p_accentSweepAmt = 0.5f,
         .p_gimmickDipAmt = 0.3f,

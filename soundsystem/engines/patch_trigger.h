@@ -277,6 +277,18 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     noteFormantQ = p->p_formantQ;
     noteFormantMix = p->p_formantMix;
     noteFormantRandom = p->p_formantRandom;
+    noteFormantMode = p->p_formantMode;
+    noteFbBaseFreq = p->p_fbBaseFreq;
+    noteFbSpacing = p->p_fbSpacing;
+    noteFbAlpha = p->p_fbAlpha;
+    noteFbBeta = p->p_fbBeta;
+    noteFbQ1 = p->p_fbQ1;
+    noteFbQ2 = p->p_fbQ2;
+    noteFbQ3 = p->p_fbQ3;
+    noteFbKeyTrack = p->p_fbKeyTrack;
+    noteFbMorphOsc = p->p_fbMorphOsc;
+    noteFbLayout = p->p_fbLayout;
+    noteFbRandomize = p->p_fbRandomize;
 }
 
 // Play a note using a SynthPatch. Sets all globals from the patch,

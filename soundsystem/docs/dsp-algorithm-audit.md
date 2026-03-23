@@ -933,6 +933,23 @@ output = bp × (1 + res×2)
 **Reference**: Hal Chamberlin, "Musical Applications of Microprocessors" (1985).
 **Assessment**: Same caveats as 2.4. For formant filtering where center frequencies are typically below 3 kHz, the Chamberlin approximation is adequate. The Q calculation is correct (center frequency divided by bandwidth).
 
+### 2.5b Filterbank Mode (Grenadier RA-99 Style)
+**File**: `synth.h` (processVoice formant section), `synth_oscillators.h:52–60` (processFormantFilterLP)
+**Algorithm**: 3 parallel voltage-controlled filters (1×LP + 2×BP, or 3×BP) with 2-axis frequency control, inspired by the Grendel RA-99 Grenadier synthesizer's triple filterbank architecture.
+**Filter topology**: Reuses the existing Chamberlin SVF formant filters (section 2.5) but drives them from user-specified parameters instead of phoneme tables:
+- Filter 1: Lowpass (RA-99 layout) or bandpass (RA-9 layout) at base frequency
+- Filter 2: Bandpass at `baseFreq × spacing`
+- Filter 3: Bandpass at `baseFreq × spacing²`
+**Alpha/Beta 2-axis control**: Alpha sweeps all filter frequencies exponentially (`baseFreq × 2^((alpha−0.5)×4)`, ±2 octaves). Beta controls how much the spacing parameter applies (`spacing_eff = 1 + (spacing−1) × (0.3 + beta×0.7)`), from tight cluster to wide spread.
+**Key tracking**: Optional pitch-following (`fbKeyTrack`), scaling base frequency relative to C4 (261.63 Hz).
+**Per-note randomization**: `fbRandomize` (0–1) applies random variation on each note trigger to base freq (±1 octave), alpha/beta (±0.3), Q values (±30%), spacing (±15%), and osc morph (±0.2). Uses LCG PRNG. This emulates the analog instability and knob-tweaking character of CMOS-based hardware.
+**DC blocker**: Julius O. Smith 1st-order HPF (`y[n] = x[n] − x[n−1] + R·y[n−1]`, R=0.995 ≈ 35 Hz) after the filter sum. Required because the LP filter path and SVF integrator drift accumulate DC.
+**Soft clipping**: `tanhf()` on filterbank output when |out| > 1.0, providing warm overdrive character.
+**Normalization**: Sum of 3 filters × 0.333.
+**Trapezoid oscillator**: Companion feature — continuous triangle→square morph via gain-clamped triangle: `clamp(tri × gain, −1, 1)` where `gain = 1/(1 − morph×0.99 + 0.01)`. At morph=0 → pure triangle, morph=1 → square. Used when `WAVE_TRIANGLE` is selected with `fbMorphOsc > 0`. This emulates the RA-99's "variable trapezoid" VCO.
+**Reference**: Grendel RA-99 Grenadier (Rare Waves, 2020) — CMOS analog semi-modular synth with triple parallel voltage-controlled filterbank. The original uses Alpha/Beta knobs to sweep 3 resonant filters in a 2D parameter space. The TB-303's filter has been cited as a tonal reference point (GreatSynthesizers, 2015). The DC blocker is from Smith, "Introduction to Digital Filters" (CCRMA). The trapezoid morph is a standard waveshaping technique (hard clipping of a triangle wave).
+**Assessment**: Effective emulation of the RA-99's core architecture. The Chamberlin SVF is adequate for the bandpass filters (center frequencies typically < 5 kHz). The exponential Alpha mapping gives musically useful sweeps. The LP+2×BP topology matches the RA-99 exactly (the RA-9 used 3×BPF, available via `fbLayout=0`). The per-note randomization adds the analog character that makes CMOS synths feel alive. The main limitation vs. the hardware is that real CMOS oscillators have continuous analog drift, while our randomization is per-note — adding a slow per-sample LFO drift on the filter frequencies would improve realism further.
+
 ### 2.6 Bus SVF Filter
 **File**: `effects.h` (bus processing section)
 **Algorithm**: Same Simper/Cytomic SVF as voice filter (section 2.1), with identical equations.

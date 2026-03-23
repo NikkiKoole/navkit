@@ -181,6 +181,18 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _dw(f, "formantQ", p->p_formantQ);
     _dw(f, "formantMix", p->p_formantMix);
     _db(f, "formantRandom", p->p_formantRandom);
+    _di(f, "formantMode", p->p_formantMode);
+    _dw(f, "fbBaseFreq", p->p_fbBaseFreq);
+    _dw(f, "fbSpacing", p->p_fbSpacing);
+    _dw(f, "fbAlpha", p->p_fbAlpha);
+    _dw(f, "fbBeta", p->p_fbBeta);
+    _dw(f, "fbQ1", p->p_fbQ1);
+    _dw(f, "fbQ2", p->p_fbQ2);
+    _dw(f, "fbQ3", p->p_fbQ3);
+    _dw(f, "fbKeyTrack", p->p_fbKeyTrack);
+    _dw(f, "fbMorphOsc", p->p_fbMorphOsc);
+    _di(f, "fbLayout", p->p_fbLayout);
+    _dw(f, "fbRandomize", p->p_fbRandomize);
 }
 
 // ============================================================================
@@ -933,6 +945,18 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"formantQ")==0) p->p_formantQ = _dpf(val);
     else if (strcmp(key,"formantMix")==0) p->p_formantMix = _dpf(val);
     else if (strcmp(key,"formantRandom")==0) p->p_formantRandom = _dpb(val);
+    else if (strcmp(key,"formantMode")==0) p->p_formantMode = _dpi(val);
+    else if (strcmp(key,"fbBaseFreq")==0) p->p_fbBaseFreq = _dpf(val);
+    else if (strcmp(key,"fbSpacing")==0) p->p_fbSpacing = _dpf(val);
+    else if (strcmp(key,"fbAlpha")==0) p->p_fbAlpha = _dpf(val);
+    else if (strcmp(key,"fbBeta")==0) p->p_fbBeta = _dpf(val);
+    else if (strcmp(key,"fbQ1")==0) p->p_fbQ1 = _dpf(val);
+    else if (strcmp(key,"fbQ2")==0) p->p_fbQ2 = _dpf(val);
+    else if (strcmp(key,"fbQ3")==0) p->p_fbQ3 = _dpf(val);
+    else if (strcmp(key,"fbKeyTrack")==0) p->p_fbKeyTrack = _dpf(val);
+    else if (strcmp(key,"fbMorphOsc")==0) p->p_fbMorphOsc = _dpf(val);
+    else if (strcmp(key,"fbLayout")==0) p->p_fbLayout = _dpi(val);
+    else if (strcmp(key,"fbRandomize")==0) p->p_fbRandomize = _dpf(val);
 }
 
 static int _dwParseIntList(const char *val, int *out, int maxCount) {

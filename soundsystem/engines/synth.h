@@ -1230,6 +1230,19 @@ typedef struct {
     float formantMix;           // Dry/wet
     FormantFilter formantBands[FORMANT_EFFECT_BANDS]; // 4 SVF bandpasses
 
+    // Filterbank mode state (Grenadier RA-99 style)
+    int formantMode;                // 0 = phoneme, 1 = filterbank
+    float fbBaseFreq;
+    float fbSpacing;
+    float fbAlpha;
+    float fbBeta;
+    float fbQ1, fbQ2, fbQ3;
+    float fbKeyTrack;
+    float fbMorphOsc;
+    int fbLayout;                   // 0 = 3×BPF, 1 = LP+2×BPF
+    float fbRandomize;              // Per-note random variation amount
+    float fbDcX, fbDcY;             // DC blocker state (1-pole HPF)
+
     // Synthesis modes
     bool ringMod;            // Ring modulation
     float ringModFreq;       // Ring mod frequency ratio
@@ -1786,6 +1799,18 @@ typedef struct SynthContext {
     float noteFormantMix;
     bool noteFormantRandom;
 
+    // Filterbank mode globals
+    int noteFormantMode;
+    float noteFbBaseFreq;
+    float noteFbSpacing;
+    float noteFbAlpha;
+    float noteFbBeta;
+    float noteFbQ1, noteFbQ2, noteFbQ3;
+    float noteFbKeyTrack;
+    float noteFbMorphOsc;
+    int noteFbLayout;
+    float noteFbRandomize;
+
     // SFX randomization
     bool sfxRandomize;
 } SynthContext;
@@ -2274,6 +2299,18 @@ static void _ensureSynthCtx(void) {
 #define noteFormantQ (synthCtx->noteFormantQ)
 #define noteFormantMix (synthCtx->noteFormantMix)
 #define noteFormantRandom (synthCtx->noteFormantRandom)
+#define noteFormantMode (synthCtx->noteFormantMode)
+#define noteFbBaseFreq (synthCtx->noteFbBaseFreq)
+#define noteFbSpacing (synthCtx->noteFbSpacing)
+#define noteFbAlpha (synthCtx->noteFbAlpha)
+#define noteFbBeta (synthCtx->noteFbBeta)
+#define noteFbQ1 (synthCtx->noteFbQ1)
+#define noteFbQ2 (synthCtx->noteFbQ2)
+#define noteFbQ3 (synthCtx->noteFbQ3)
+#define noteFbKeyTrack (synthCtx->noteFbKeyTrack)
+#define noteFbMorphOsc (synthCtx->noteFbMorphOsc)
+#define noteFbLayout (synthCtx->noteFbLayout)
+#define noteFbRandomize (synthCtx->noteFbRandomize)
 #define sfxRandomize (synthCtx->sfxRandomize)
 
 // ============================================================================
@@ -2937,7 +2974,22 @@ static float processVoice(Voice *v, float sampleRate) {
             break;
         case WAVE_TRIANGLE:
             // PolyBLEP anti-aliased triangle (integrated bandlimited square)
-            if (v->unisonCount > 1) {
+            if (v->fbMorphOsc > 0.001f) {
+                // Trapezoid mode: morph triangle → square (Grenadier-style variable waveform)
+                if (v->unisonCount > 1) {
+                    float triPhaseInc = v->frequency / sampleRate;
+                    for (int u = 0; u < v->unisonCount; u++) {
+                        float detune = getUnisonDetuneMultiplier(u, v->unisonCount, v->unisonDetune);
+                        float udt = triPhaseInc * detune;
+                        v->unisonPhases[u] += udt;
+                        if (v->unisonPhases[u] >= 1.0f) v->unisonPhases[u] -= 1.0f;
+                        sample += trapezoidOsc(v->unisonPhases[u], v->fbMorphOsc);
+                    }
+                    sample /= (float)v->unisonCount;
+                } else {
+                    sample = trapezoidOsc(v->phase, v->fbMorphOsc);
+                }
+            } else if (v->unisonCount > 1) {
                 float triPhaseInc = v->frequency / sampleRate;
                 for (int u = 0; u < v->unisonCount; u++) {
                     float detune = getUnisonDetuneMultiplier(u, v->unisonCount, v->unisonDetune);
@@ -3431,38 +3483,100 @@ static float processVoice(Voice *v, float sampleRate) {
 
     // Per-voice formant filter (vowel shaping — runs after SVF, before envelope)
     if (v->formantEnabled) {
-        // Advance morph phase
-        if (v->formantMorphTime > 0.001f) {
-            v->formantMorphPhase += dt / v->formantMorphTime;
-            if (v->formantMorphPhase > 1.0f) v->formantMorphPhase = 1.0f;
+        if (v->formantMode == 1) {
+            // === FILTERBANK MODE (Grenadier RA-99 style) ===
+            // Alpha sweeps base frequency (exponential, 4-octave range)
+            // Beta controls spacing between filters (narrow → wide)
+            float alphaScale = powf(2.0f, (v->fbAlpha - 0.5f) * 4.0f); // ±2 octaves
+            float baseF = v->fbBaseFreq * alphaScale;
+
+            // Key tracking: shift base frequency by note pitch
+            if (v->fbKeyTrack > 0.001f) {
+                float noteRatio = v->frequency / 261.63f; // relative to C4
+                baseF *= 1.0f + (noteRatio - 1.0f) * v->fbKeyTrack;
+            }
+
+            // Beta controls spacing: 0 = tight cluster, 1 = wide spread
+            float spacing = 1.0f + (v->fbSpacing - 1.0f) * (0.3f + v->fbBeta * 0.7f);
+            float f1 = baseF;
+            float f2 = baseF * spacing;
+            float f3 = baseF * spacing * spacing;
+
+            // Clamp to audible range
+            f1 = clampf(f1, 20.0f, 18000.0f);
+            f2 = clampf(f2, 20.0f, 18000.0f);
+            f3 = clampf(f3, 20.0f, 18000.0f);
+
+            // Set filter parameters (bw = freq/Q for SVF)
+            v->formantBands[0].freq = f1;
+            v->formantBands[0].bw = f1 / v->fbQ1;
+            v->formantBands[1].freq = f2;
+            v->formantBands[1].bw = f2 / v->fbQ2;
+            v->formantBands[2].freq = f3;
+            v->formantBands[2].bw = f3 / v->fbQ3;
+
+            // Process: layout 0 = 3×BPF (RA-9), layout 1 = LP+2×BPF (RA-99)
+            float formantOut;
+            if (v->fbLayout == 1) {
+                formantOut = processFormantFilterLP(&v->formantBands[0], sample, sampleRate);
+            } else {
+                formantOut = processFormantFilter(&v->formantBands[0], sample, sampleRate);
+            }
+            formantOut += processFormantFilter(&v->formantBands[1], sample, sampleRate);
+            formantOut += processFormantFilter(&v->formantBands[2], sample, sampleRate);
+            formantOut *= 0.333f;
+
+            // DC blocker (Julius O. Smith): y[n] = x[n] - x[n-1] + R*y[n-1]
+            // R = 0.995 ≈ 35 Hz cutoff at 44.1 kHz — removes DC without affecting bass
+            {
+                float dcR = 0.995f;
+                float dcOut = formantOut - v->fbDcX + dcR * v->fbDcY;
+                v->fbDcX = formantOut;
+                v->fbDcY = dcOut;
+                formantOut = dcOut;
+            }
+
+            // Soft-clip the filterbank output for warm overdrive character
+            if (formantOut > 1.0f || formantOut < -1.0f) {
+                formantOut = tanhf(formantOut);
+            }
+
+            sample = sample * (1.0f - v->formantMix) + formantOut * v->formantMix;
         } else {
-            v->formantMorphPhase = 1.0f;
+            // === PHONEME MODE (existing behavior) ===
+            // Advance morph phase
+            if (v->formantMorphTime > 0.001f) {
+                v->formantMorphPhase += dt / v->formantMorphTime;
+                if (v->formantMorphPhase > 1.0f) v->formantMorphPhase = 1.0f;
+            } else {
+                v->formantMorphPhase = 1.0f;
+            }
+
+            // Look up from/to phoneme entries
+            int fromIdx = v->formantFrom;
+            int toIdx = v->formantTo;
+            if (fromIdx < 0 || fromIdx >= VF_PHONEME_COUNT) fromIdx = VF_A;
+            if (toIdx < 0 || toIdx >= VF_PHONEME_COUNT) toIdx = VF_A;
+            const VFPhonemeEntry *fromE = &vfPhonemeTable[fromIdx];
+            const VFPhonemeEntry *toE = &vfPhonemeTable[toIdx];
+            float blend = v->formantMorphPhase;
+            float iblend = 1.0f - blend;
+
+            // Process 4 parallel bandpass filters and sum
+            float formantOut = 0.0f;
+            for (int i = 0; i < FORMANT_EFFECT_BANDS; i++) {
+                float freq = (fromE->freq[i] * iblend + toE->freq[i] * blend) * v->formantShift;
+                float bw = (fromE->bw[i] * iblend + toE->bw[i] * blend) / v->formantQ;
+                float amp = fromE->amp[i] * iblend + toE->amp[i] * blend;
+
+                v->formantBands[i].freq = freq;
+                v->formantBands[i].bw = bw;
+                formantOut += processFormantFilter(&v->formantBands[i], sample, sampleRate) * amp;
+            }
+
+            // Dry/wet mix
+            sample = sample * (1.0f - v->formantMix) + formantOut * v->formantMix;
         }
-
-        // Look up from/to phoneme entries
-        int fromIdx = v->formantFrom;
-        int toIdx = v->formantTo;
-        if (fromIdx < 0 || fromIdx >= VF_PHONEME_COUNT) fromIdx = VF_A;
-        if (toIdx < 0 || toIdx >= VF_PHONEME_COUNT) toIdx = VF_A;
-        const VFPhonemeEntry *fromE = &vfPhonemeTable[fromIdx];
-        const VFPhonemeEntry *toE = &vfPhonemeTable[toIdx];
-        float blend = v->formantMorphPhase;
-        float iblend = 1.0f - blend;
-
-        // Process 4 parallel bandpass filters and sum
-        float formantOut = 0.0f;
-        for (int i = 0; i < FORMANT_EFFECT_BANDS; i++) {
-            float freq = (fromE->freq[i] * iblend + toE->freq[i] * blend) * v->formantShift;
-            float bw = (fromE->bw[i] * iblend + toE->bw[i] * blend) / v->formantQ;
-            float amp = fromE->amp[i] * iblend + toE->amp[i] * blend;
-
-            v->formantBands[i].freq = freq;
-            v->formantBands[i].bw = bw;
-            formantOut += processFormantFilter(&v->formantBands[i], sample, sampleRate) * amp;
-        }
-
-        // Dry/wet mix
-        sample = sample * (1.0f - v->formantMix) + formantOut * v->formantMix;
     }
 
     // Apply amplitude envelope
@@ -3968,6 +4082,40 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->formantShift = noteFormantShift;
     v->formantQ = noteFormantQ;
     v->formantMix = noteFormantMix;
+    v->formantMode = noteFormantMode;
+    v->fbBaseFreq = noteFbBaseFreq;
+    v->fbSpacing = noteFbSpacing;
+    v->fbAlpha = noteFbAlpha;
+    v->fbBeta = noteFbBeta;
+    v->fbQ1 = noteFbQ1;
+    v->fbQ2 = noteFbQ2;
+    v->fbQ3 = noteFbQ3;
+    v->fbKeyTrack = noteFbKeyTrack;
+    v->fbMorphOsc = noteFbMorphOsc;
+    v->fbLayout = noteFbLayout;
+    v->fbRandomize = noteFbRandomize;
+
+    // Per-note filterbank randomization — vary params each trigger for acid character
+    if (v->formantMode == 1 && v->fbRandomize > 0.001f) {
+        static unsigned int fbRandState = 77777;
+        #define FB_RAND() (fbRandState = fbRandState * 1664525u + 1013904223u, \
+                          (float)(fbRandState >> 16) / 32768.0f - 1.0f) // -1..+1
+        float r = v->fbRandomize;
+        // Base freq: ±1 octave at full randomize
+        v->fbBaseFreq *= powf(2.0f, FB_RAND() * r * 0.5f);
+        // Alpha/Beta: random walk within 0..1
+        v->fbAlpha = clampf(v->fbAlpha + FB_RAND() * r * 0.3f, 0.0f, 1.0f);
+        v->fbBeta  = clampf(v->fbBeta  + FB_RAND() * r * 0.3f, 0.0f, 1.0f);
+        // Q values: ±50% at full randomize (keeps them positive)
+        v->fbQ1 *= 1.0f + FB_RAND() * r * 0.3f;
+        v->fbQ2 *= 1.0f + FB_RAND() * r * 0.3f;
+        v->fbQ3 *= 1.0f + FB_RAND() * r * 0.3f;
+        // Spacing: slight variation
+        v->fbSpacing *= 1.0f + FB_RAND() * r * 0.15f;
+        // Morph: subtle osc shape variation
+        v->fbMorphOsc = clampf(v->fbMorphOsc + FB_RAND() * r * 0.2f, 0.0f, 1.0f);
+        #undef FB_RAND
+    }
     for (int i = 0; i < FORMANT_EFFECT_BANDS; i++) {
         v->formantBands[i] = (FormantFilter){0};
     }
