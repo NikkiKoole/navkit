@@ -4817,6 +4817,9 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float_p(&c, "Width", &p->p_pulseWidth, 0.05f, 0.1f, 0.9f);
             ui_col_float(&c, "Rate", &p->p_pwmRate, 0.5f, 0.1f, 20.0f);
             ui_col_float(&c, "Depth", &p->p_pwmDepth, 0.02f, 0.0f, 0.4f);
+        } else if (p->p_waveType == WAVE_TRIANGLE) {
+            ui_col_sublabel(&c, "Shape:", UI_TEXT_SUBLABEL);
+            ui_col_float(&c, "Morph", &p->p_fbMorphOsc, 0.05f, 0.0f, 1.0f);
         } else if (p->p_waveType == WAVE_SCW) {
             ui_col_sublabel(&c, "Wavetable:", UI_TEXT_SUBLABEL);
             ui_col_int(&c, "SCW", &p->p_scwIndex, 0.3f, 0, 20);
@@ -5359,7 +5362,6 @@ static void drawParamPatch(float x, float y, float w, float h) {
                 ui_col_float(&c, "Q2", &p->p_fbQ2, 0.5f, 0.5f, 20.0f);
                 ui_col_float(&c, "Q3", &p->p_fbQ3, 0.5f, 0.5f, 20.0f);
                 ui_col_float(&c, "KeyTrk", &p->p_fbKeyTrack, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&c, "Morph", &p->p_fbMorphOsc, 0.05f, 0.0f, 1.0f);
                 ui_col_float(&c, "Rand", &p->p_fbRandomize, 0.05f, 0.0f, 1.0f);
                 ui_col_float(&c, "Mix", &p->p_formantMix, 0.05f, 0.0f, 1.0f);
                 ui_col_sublabel(&c, "Mod:", ORANGE);
