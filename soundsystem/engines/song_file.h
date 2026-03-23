@@ -517,6 +517,14 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeBool(f, "acidMode", p->p_acidMode);
     _sf_writeFloat(f, "accentSweepAmt", p->p_accentSweepAmt);
     _sf_writeFloat(f, "gimmickDipAmt", p->p_gimmickDipAmt);
+    // Per-voice formant filter
+    _sf_writeBool(f, "formantEnabled", p->p_formantEnabled);
+    _sf_writeInt(f, "formantFrom", p->p_formantFrom);
+    _sf_writeInt(f, "formantTo", p->p_formantTo);
+    _sf_writeFloat(f, "formantMorphTime", p->p_formantMorphTime);
+    _sf_writeFloat(f, "formantShift", p->p_formantShift);
+    _sf_writeFloat(f, "formantQ", p->p_formantQ);
+    _sf_writeFloat(f, "formantMix", p->p_formantMix);
 }
 
 static void _sf_writePattern(FILE *f, int idx, const Pattern *p) {
@@ -1194,6 +1202,14 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "acidMode") == 0) p->p_acidMode = _sf_parseBool(val);
     else if (strcmp(key, "accentSweepAmt") == 0) p->p_accentSweepAmt = _sf_parseFloat(val);
     else if (strcmp(key, "gimmickDipAmt") == 0) p->p_gimmickDipAmt = _sf_parseFloat(val);
+    // Per-voice formant filter
+    else if (strcmp(key, "formantEnabled") == 0) p->p_formantEnabled = _sf_parseBool(val);
+    else if (strcmp(key, "formantFrom") == 0) p->p_formantFrom = _sf_parseInt(val);
+    else if (strcmp(key, "formantTo") == 0) p->p_formantTo = _sf_parseInt(val);
+    else if (strcmp(key, "formantMorphTime") == 0) p->p_formantMorphTime = _sf_parseFloat(val);
+    else if (strcmp(key, "formantShift") == 0) p->p_formantShift = _sf_parseFloat(val);
+    else if (strcmp(key, "formantQ") == 0) p->p_formantQ = _sf_parseFloat(val);
+    else if (strcmp(key, "formantMix") == 0) p->p_formantMix = _sf_parseFloat(val);
     // Unknown keys silently skipped (future-proof)
 }
 

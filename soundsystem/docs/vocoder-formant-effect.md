@@ -1,8 +1,14 @@
 # Vocoder / Formant Filter Effect
 
-Bus effect that applies vocal formant filtering to any audio input. Turns saw leads into robot voices, pads into choirs, drums into talking percussion. Inspired by GarageBand iOS voice effects (Robot/Monster/Chipmunk/Alien).
+Formant (vowel-shaped) filtering that turns any instrument into a talking/vocal sound. Inspired by Daft Punk's vocoder ("Around the World", "Harder Better Faster Stronger", "Technologic") and GarageBand iOS voice effects (Robot/Monster/Chipmunk/Alien).
 
-## Why an Effect (not an Oscillator)
+> **Current plan (revised)**: Build as a **per-voice patch parameter first** (like the existing SVF filter), not a bus effect. This lets each note have its own vowel pair via p-locks — critical for the "each note speaks" use case. The bus effect version is Phase 4 (optional, for global coloring). See "Revised Implementation Order" at the bottom for the full plan.
+>
+> Key insight: a bus effect doesn't know when individual notes start/stop — it just sees mixed audio. So it can't change the vowel on note boundaries. Per-voice formant gets triggered at note-on with a specific from→to vowel pair per step.
+
+## Original Bus Effect Spec (reference — superseded by per-voice approach below)
+
+### Why an Effect (not an Oscillator)
 
 The existing WAVE_VOICE and WAVE_VOICFORM are oscillators — they generate sound from scratch. A formant **effect** processes existing audio through vowel-shaped filters. This is more versatile:
 - Apply to any track (melodic, drums, sampler)
@@ -190,46 +196,165 @@ In the Bus FX tab, add a "Formant" section (like the existing Chorus/Phaser sect
 ### Song/DAW file
 Add formant fields to `BusEffects` save/load in `song_file.h` and `daw_file.h`.
 
-## Future: Full Vocoder (Mode 2)
+## Per-Voice vs Per-Bus: Where Should Formants Live?
 
-After the formant effect works, a full vocoder would:
+The spec above describes a **bus effect** — one formant filter shared by all notes on a track. This is good for global coloring (everything sounds robotic) but has a key limitation: **all notes get the same vowel at the same time.** A bus effect doesn't know when individual notes start or stop — it just sees a mixed audio stream.
+
+For "talking" melodies — where each note in a sequence says a different vowel — the formant needs to be **per-voice** (per-note). Example: program 4 chip square notes in the sequencer and make each one say something different (step 1 = "AH", step 2 = "EE", step 3 = "OH", step 4 = "OO"). A bus effect can't do this because it applies one filter to the mixed output. A per-voice formant filter, controlled via p-locks, gives each note its own vowel shape.
+
+This is closer to how WAVE_VOICFORM already works (formant filters on the oscillator output), but generalized to work with **any** oscillator — saw, square, FM, pluck, guitar, etc. It would be a second filter stage in the voice processing chain (like the existing SVF filter, but using formant bandpasses instead).
+
+**Recommendation: per-voice first, bus later.**
+
+The per-voice approach is the one that enables the Daft Punk "each note speaks" use case — which is the primary goal. The bus version is nice-to-have for global coloring but secondary. Both share the same formant table and DSP code.
+
+## Per-Voice Formant Filter — Detailed Design
+
+### Concept
+
+Add a **formant filter** as a regular patch parameter, like the existing SVF filter. It shows up in the params panel for every instrument. When enabled, the voice's audio runs through 4 parallel SVF bandpasses tuned to vowel formant frequencies. Each note morphs from a "from" vowel to a "to" vowel over a configurable time, creating the characteristic "talking" movement.
+
+### Why From → To (not just a single vowel)
+
+A static vowel is just a fixed EQ — it colors the tone but doesn't "talk". The movement between two vowels is what creates the vocal quality. Each note needs:
+- **From vowel** — the shape at note onset (e.g. "A")
+- **To vowel** — the shape it morphs toward (e.g. "O")
+- **Morph time** — how fast it transitions (patch-level, same for all notes)
+
+This gives each note a "wah" / "aow" / "eee-ooo" movement. Different from/to pairs on different steps = the melody "speaks".
+
+### Patch Parameters (in params panel, all instruments)
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `p_formantEnabled` | bool | Enable formant filter |
+| `p_formantFrom` | 0-31 (VFPhoneme) | Starting phoneme (vowels, nasals, fricatives, plosives) |
+| `p_formantTo` | 0-31 (VFPhoneme) | Target phoneme for morph |
+| `p_formantMorphTime` | 0.01-2.0s | Time to morph from → to |
+| `p_formantShift` | 0.5-2.0 | Scale all formant freqs (tract length: 0.5=monster, 2.0=chipmunk) |
+| `p_formantQ` | 0.5-3.0 | Resonance / bandwidth (higher = sharper, more nasal) |
+| `p_formantMix` | 0-1 | Dry/wet blend |
+
+### DAW UI
+
+In the Patch tab params panel, add a "Formant" section (like the existing Filter section). Shows for all wave types:
+
+```
+[Formant: ON ]
+From: [A]  To: [O]   Morph: 0.15s
+Shift: 1.0   Q: 1.0   Mix: 0.8
+```
+
+This is ~6 knobs/toggles — same footprint as the existing filter section.
+
+### Per-Voice State (Voice struct)
+
+```c
+// Formant filter (vowel shaping)
+bool formantEnabled;
+int formantFrom;            // Starting vowel (0-4)
+int formantTo;              // Target vowel (0-4)
+float formantMorphTime;     // Seconds to morph
+float formantMorphPhase;    // Current morph progress (0-1)
+float formantShift;         // Frequency multiplier
+float formantQ;             // Bandwidth multiplier
+float formantMix;           // Dry/wet
+FormantFilter formantBands[4]; // 4 SVF bandpasses (reuse existing type)
+```
+
+~100 bytes per voice. The `FormantFilter` / Chamberlin SVF bandpass already exists in the codebase (used by WAVE_VOICE).
+
+### Processing (in processVoice, after existing SVF filter)
+
+```
+if (formantEnabled) {
+    1. Advance morphPhase: phase += dt / morphTime (clamp to 1.0)
+    2. Interpolate formant freqs/BWs/amps between From and To vowel tables
+    3. Scale freqs by formantShift, BWs by 1/formantQ
+    4. Process sample through 4 parallel SVF bandpasses
+    5. Sum band outputs
+    6. Mix: sample = sample * (1-mix) + formantOut * mix
+}
+```
+
+About 25 FLOPs per sample when enabled. Negligible.
+
+### P-Locks (Phase 2 — comes almost for free)
+
+Once the formant filter exists as a patch parameter, adding p-lock support is trivial:
+
+1. Add two new p-lock params to the enum:
+   - `PLOCK_FORMANT_FROM` — override "from" vowel per step
+   - `PLOCK_FORMANT_TO` — override "to" vowel per step
+
+2. At note trigger (daw_audio.h), query p-locks:
+   ```c
+   int pFrom = (int)plockValue(PLOCK_FORMANT_FROM, p->p_formantFrom);
+   int pTo = (int)plockValue(PLOCK_FORMANT_TO, p->p_formantTo);
+   ```
+
+3. Step inspector UI: two vowel cycle widgets (From/To) per step, same L-drag/R-click pattern as existing p-lock knobs.
+
+This is what enables programming "A→O, E→I, O→U, A→E" across 4 steps — each note gets its own vowel pair from the p-lock.
+
+### Formant Data
+
+Reuse the VoicForm phoneme table (already in synth_oscillators.h). 5 basic vowels:
+
+| Vowel | F1 | F2 | F3 | F4 |
+|-------|-----|------|------|------|
+| A (ah) | 730 | 1090 | 2440 | 3400 |
+| E (eh) | 530 | 1840 | 2480 | 3400 |
+| I (ee) | 270 | 2290 | 3010 | 3400 |
+| O (oh) | 570 | 840 | 2410 | 3400 |
+| U (oo) | 300 | 870 | 2240 | 3400 |
+
+The formantShift parameter scales all frequencies uniformly (0.5 = deep/monster, 2.0 = chipmunk).
+
+## Future: Full Vocoder
+
+After the per-voice formant works, a full vocoder would:
 1. Split modulator (voice) into N frequency bands (8-16)
 2. Extract envelope of each band (envelope follower)
 3. Apply those envelopes to corresponding bands of the carrier (synth)
 
-This requires **cross-bus routing** (sidechain from modulator bus to carrier bus), which is already on the roadmap. The formant filter bank from mode 1 can be reused for the band-splitting.
+This requires **cross-bus routing** (sidechain from modulator bus to carrier bus), which is already on the roadmap. The formant filter bank from the per-voice version can be reused for the band-splitting.
 
-## Implementation Order
+## Future: Bus Formant Effect
 
-### Phase 1: Core Effect (Small)
-1. Add `BusFormantEffect` struct to `effects.h`
-2. Add formant preset table (reuse data from VoicForm phoneme table)
-3. Implement `processFormantEffect()` — 4 SVF + morph + mix
-4. Wire into bus processing chain (after distortion)
-5. Add parameters to `BusEffects` struct
-6. DAW UI in Bus FX tab
-7. Song/DAW file save/load
-8. Fun presets (Robot, Monster, Chipmunk, etc.)
-→ Gives you modes A (static) and B (LFO morph) out of the box.
+The original bus-level effect (Modes A-E from the top of this doc) is still useful for global coloring, LFO sweeps, and "everything on this track sounds robotic." It can be added later as a separate, simpler feature using the same formant tables and SVF code. The bus version handles the Robot/Monster/Chipmunk fun presets well. But the per-voice version should come first since it enables the more musical "each note speaks" use case.
 
-### Phase 2: Envelope Follower (Small)
-9. Add per-bus envelope follower (1-pole LP on input amplitude)
-10. Map envelope output to morph blend
-11. Add env follower amount/speed params to UI
-→ Gives you mode C (dynamics-driven vowels).
+## Revised Implementation Order
 
-### Phase 3: P-lock Vowel Sequence (Medium)
-12. Add `PLOCK_FORMANT_VOWEL` parameter type
-13. Formant effect reads current p-locked vowel as morph target
-14. Step inspector shows vowel cycle widget when formant enabled
-→ Gives you mode D (programmed vowel patterns per step).
+### Phase 1: Per-Voice Formant Filter — DONE ✅
+1. ~~Add formant table~~ — reuses full VoicForm phoneme table (32 phonemes × 4 formants) directly
+2. ~~Add `p_formant*` fields to SynthPatch + defaults~~ — 7 fields: enabled, from, to, morphTime, shift, Q, mix
+3. ~~Add per-voice formant state to Voice struct~~ — 4 SVF bandpasses + morph phase
+4. ~~Implement formant processing in processVoice~~ — after SVF filter, before amplitude envelope
+5. ~~Wire patch → voice in applyPatchToGlobals / note trigger~~ — globals + macros + initVoiceCommon
+6. ~~DAW UI: Formant section in Patch tab params panel~~ — below Retrigger in col 6, From/To cycle through all 32 phonemes
+7. ~~Song/DAW file save/load for new fields~~ — both song_file.h and daw_file.h
+→ **Result**: Any instrument can morph between any two of 32 phonemes per note. Not just vowels — nasals (M/N/NG), fricatives (S/SH), plosives (T/K), liquids (L/R) all available.
 
-### Phase 4: Text-to-Phoneme (Medium)
-15. Per-bus text buffer (short string, e.g. 32 chars)
-16. ~~Convert text to phoneme sequence on edit~~ — DONE: `parseTextToPhonemes()` handles digraphs + ARPABET escapes + single-char fallback, outputs pre-parsed `int[]` phoneme array
-17. Step through phonemes synced to sequencer or at fixed rate
-18. Consonant phonemes modulate filter differently (noise burst, transient)
-→ Gives you mode E (type a word, synth speaks it). Text parsing is already implemented in the Voice tab (daw.c) — Phase 4 reuses it for the bus effect.
+### Phase 2: P-Lock Vowel Per Step (Small)
+8. Add `PLOCK_FORMANT_FROM` + `PLOCK_FORMANT_TO` to PLockParam enum
+9. Apply p-locks at note trigger (same pattern as PLOCK_FILTER_CUTOFF)
+10. Step inspector UI: two vowel cycle widgets per step
+→ **Result**: Each step in the sequencer can have its own from→to vowel pair. Program "A→O, E→I, O→U, A→E" = the melody talks.
+
+### Phase 3: Text-to-Phoneme Sequence (Medium)
+11. Per-patch text buffer (short string, e.g. 32 chars)
+12. `parseTextToPhonemes()` converts text to phoneme sequence (already implemented in VoicForm UI)
+13. Sequencer steps auto-fill from/to p-locks from the phoneme sequence
+14. Consonant phonemes: fricatives (S/SH) boost noise band, plosives (T/K) add transient
+→ **Result**: Type "hello" → the melody steps through H-E-L-L-O vowels automatically.
+
+### Phase 4: Bus Formant Effect (Small, optional)
+15. Add `BusFormantEffect` to effects.h (4 SVF + morph + mix, ~120 bytes/bus)
+16. Wire into bus chain after distortion
+17. DAW Bus FX tab UI
+18. Fun presets (Robot, Monster, Chipmunk, Alien, Choir, Talk Box, Whisper, Demon)
+→ **Result**: Global vocal coloring for any bus. Good for pads, ambient, effects.
 
 ### Phase 5: Full Vocoder (Large, later)
 19. Cross-bus sidechain routing (modulator → carrier)
@@ -237,4 +362,18 @@ This requires **cross-bus routing** (sidechain from modulator bus to carrier bus
 21. Apply modulator envelopes to carrier's formant bands
 → Classic vocoder. Depends on sidechain bus routing from the roadmap.
 
-Estimated effort: Phase 1 is **Small** (most DSP exists). Each subsequent phase adds incrementally. The full stack through Phase 4 is **Medium** total. The text-to-phoneme parser (`parseTextToPhonemes`) is already implemented and tested in the Voice tab — Phase 4 just needs to wire it into the bus effect.
+## Key Files (for implementation)
+
+| What | Where | Notes |
+|------|-------|-------|
+| Formant freq/BW/amp data | `synth_oscillators.h` (~line 190, VoicForm phoneme table) | 32 phonemes × 4 formants, reuse for vowel presets |
+| FormantFilter struct | `synth.h` (search `FormantFilter`) | Chamberlin SVF bandpass, used by WAVE_VOICE |
+| Voice struct | `synth.h` (~line 970) | Add formant state here (after existing filter fields) |
+| processVoice | `synth.h` (~line 2815) | Insert formant processing after SVF filter section |
+| SynthPatch struct | `synth_patch.h` | Add `p_formant*` fields |
+| patch_trigger.h | `applyPatchToGlobals()` | Wire patch → globals |
+| P-lock enum | `sequencer.h` (PLockParam, ~line 241) | Add PLOCK_FORMANT_FROM/TO |
+| P-lock application | `daw_audio.h` (~line 406, melody trigger) | Query plockValue() at note-on |
+| Step inspector UI | `daw.c` (~line 2949, melody p-locks section) | Add vowel cycle widgets |
+| Patch params UI | `daw.c` (~line 4917, per-waveType params) | Add Formant section (all wave types) |
+| parseTextToPhonemes | `daw.c` (VoicForm/Voice tab section) | Already implemented, reuse for Phase 3 |

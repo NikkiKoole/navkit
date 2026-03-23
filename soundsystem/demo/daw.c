@@ -5338,6 +5338,21 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "Curve", &p->p_retriggerCurve, 0.05f, 0.0f, 1.0f);
         }
         sectionHighlight(col6X + 2, secY, percColW, c.y - secY, retrigActive);
+        ui_col_space(&c, 6);
+
+        bool formantActive = DB(p_formantEnabled);
+        secY = c.y;
+        ui_col_sublabel(&c, "Formant:", ORANGE);
+        ui_col_toggle(&c, "Enable", &p->p_formantEnabled);
+        if (p->p_formantEnabled) {
+            ui_col_cycle(&c, "From", vfPhonemeNames, VF_PHONEME_COUNT, &p->p_formantFrom);
+            ui_col_cycle(&c, "To", vfPhonemeNames, VF_PHONEME_COUNT, &p->p_formantTo);
+            ui_col_float(&c, "Morph", &p->p_formantMorphTime, 0.01f, 0.01f, 2.0f);
+            ui_col_float(&c, "Shift", &p->p_formantShift, 0.05f, 0.5f, 2.0f);
+            ui_col_float(&c, "Q", &p->p_formantQ, 0.1f, 0.5f, 3.0f);
+            ui_col_float(&c, "Mix", &p->p_formantMix, 0.05f, 0.0f, 1.0f);
+        }
+        sectionHighlight(col6X + 2, secY, percColW, c.y - secY, formantActive);
 
         ui_col_space(&c, 4);
         ui_col_toggle(&c, "PhaseReset", &p->p_phaseReset);

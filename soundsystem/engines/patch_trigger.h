@@ -269,6 +269,13 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     noteWavefoldAmount = p->p_wavefoldAmount;
     noteHardSync = p->p_hardSync;
     noteHardSyncRatio = p->p_hardSyncRatio;
+    noteFormantEnabled = p->p_formantEnabled;
+    noteFormantFrom = p->p_formantFrom;
+    noteFormantTo = p->p_formantTo;
+    noteFormantMorphTime = p->p_formantMorphTime;
+    noteFormantShift = p->p_formantShift;
+    noteFormantQ = p->p_formantQ;
+    noteFormantMix = p->p_formantMix;
 }
 
 // Play a note using a SynthPatch. Sets all globals from the patch,

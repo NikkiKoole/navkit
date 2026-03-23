@@ -173,6 +173,13 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     // 303 acid mode
     _db(f, "acidMode", p->p_acidMode);
     _dw(f, "accentSweepAmt", p->p_accentSweepAmt); _dw(f, "gimmickDipAmt", p->p_gimmickDipAmt);
+    // Per-voice formant filter
+    _db(f, "formantEnabled", p->p_formantEnabled);
+    _di(f, "formantFrom", p->p_formantFrom); _di(f, "formantTo", p->p_formantTo);
+    _dw(f, "formantMorphTime", p->p_formantMorphTime);
+    _dw(f, "formantShift", p->p_formantShift);
+    _dw(f, "formantQ", p->p_formantQ);
+    _dw(f, "formantMix", p->p_formantMix);
 }
 
 // ============================================================================
@@ -916,6 +923,14 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"acidMode")==0) p->p_acidMode = _dpb(val);
     else if (strcmp(key,"accentSweepAmt")==0) p->p_accentSweepAmt = _dpf(val);
     else if (strcmp(key,"gimmickDipAmt")==0) p->p_gimmickDipAmt = _dpf(val);
+    // Per-voice formant filter
+    else if (strcmp(key,"formantEnabled")==0) p->p_formantEnabled = _dpb(val);
+    else if (strcmp(key,"formantFrom")==0) p->p_formantFrom = _dpi(val);
+    else if (strcmp(key,"formantTo")==0) p->p_formantTo = _dpi(val);
+    else if (strcmp(key,"formantMorphTime")==0) p->p_formantMorphTime = _dpf(val);
+    else if (strcmp(key,"formantShift")==0) p->p_formantShift = _dpf(val);
+    else if (strcmp(key,"formantQ")==0) p->p_formantQ = _dpf(val);
+    else if (strcmp(key,"formantMix")==0) p->p_formantMix = _dpf(val);
 }
 
 static int _dwParseIntList(const char *val, int *out, int maxCount) {

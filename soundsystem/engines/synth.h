@@ -176,6 +176,9 @@ typedef enum {
     VOWEL_COUNT
 } VowelType;
 
+// Number of formant bands for per-voice formant effect
+#define FORMANT_EFFECT_BANDS 4
+
 // Formant filter (bandpass for voice synthesis) - defined here, used in formant.h
 typedef struct {
     float freq;
@@ -1216,6 +1219,17 @@ typedef struct {
     float rolloffState;      // Filter state for rolloff
     bool tubeSaturation;     // Even-harmonic tube warmth
 
+    // Per-voice formant filter (vowel shaping)
+    bool formantEnabled;
+    int formantFrom;            // Starting phoneme (VFPhoneme, 0-31)
+    int formantTo;              // Target phoneme (VFPhoneme, 0-31)
+    float formantMorphTime;     // Seconds to morph
+    float formantMorphPhase;    // Current morph progress (0-1)
+    float formantShift;         // Frequency multiplier
+    float formantQ;             // Bandwidth multiplier
+    float formantMix;           // Dry/wet
+    FormantFilter formantBands[FORMANT_EFFECT_BANDS]; // 4 SVF bandpasses
+
     // Synthesis modes
     bool ringMod;            // Ring modulation
     float ringModFreq;       // Ring mod frequency ratio
@@ -1762,6 +1776,15 @@ typedef struct SynthContext {
     bool noteHardSync;
     float noteHardSyncRatio;
 
+    // Per-voice formant effect
+    bool noteFormantEnabled;
+    int noteFormantFrom;
+    int noteFormantTo;
+    float noteFormantMorphTime;
+    float noteFormantShift;
+    float noteFormantQ;
+    float noteFormantMix;
+
     // SFX randomization
     bool sfxRandomize;
 } SynthContext;
@@ -2242,6 +2265,13 @@ static void _ensureSynthCtx(void) {
 #define noteWavefoldAmount (synthCtx->noteWavefoldAmount)
 #define noteHardSync (synthCtx->noteHardSync)
 #define noteHardSyncRatio (synthCtx->noteHardSyncRatio)
+#define noteFormantEnabled (synthCtx->noteFormantEnabled)
+#define noteFormantFrom (synthCtx->noteFormantFrom)
+#define noteFormantTo (synthCtx->noteFormantTo)
+#define noteFormantMorphTime (synthCtx->noteFormantMorphTime)
+#define noteFormantShift (synthCtx->noteFormantShift)
+#define noteFormantQ (synthCtx->noteFormantQ)
+#define noteFormantMix (synthCtx->noteFormantMix)
 #define sfxRandomize (synthCtx->sfxRandomize)
 
 // ============================================================================
@@ -3396,7 +3426,43 @@ static float processVoice(Voice *v, float sampleRate) {
             if (sample < -4.0f) sample = -4.0f;
         }
     }
-    
+
+    // Per-voice formant filter (vowel shaping — runs after SVF, before envelope)
+    if (v->formantEnabled) {
+        // Advance morph phase
+        if (v->formantMorphTime > 0.001f) {
+            v->formantMorphPhase += dt / v->formantMorphTime;
+            if (v->formantMorphPhase > 1.0f) v->formantMorphPhase = 1.0f;
+        } else {
+            v->formantMorphPhase = 1.0f;
+        }
+
+        // Look up from/to phoneme entries
+        int fromIdx = v->formantFrom;
+        int toIdx = v->formantTo;
+        if (fromIdx < 0 || fromIdx >= VF_PHONEME_COUNT) fromIdx = VF_A;
+        if (toIdx < 0 || toIdx >= VF_PHONEME_COUNT) toIdx = VF_A;
+        const VFPhonemeEntry *fromE = &vfPhonemeTable[fromIdx];
+        const VFPhonemeEntry *toE = &vfPhonemeTable[toIdx];
+        float blend = v->formantMorphPhase;
+        float iblend = 1.0f - blend;
+
+        // Process 4 parallel bandpass filters and sum
+        float formantOut = 0.0f;
+        for (int i = 0; i < FORMANT_EFFECT_BANDS; i++) {
+            float freq = (fromE->freq[i] * iblend + toE->freq[i] * blend) * v->formantShift;
+            float bw = (fromE->bw[i] * iblend + toE->bw[i] * blend) / v->formantQ;
+            float amp = fromE->amp[i] * iblend + toE->amp[i] * blend;
+
+            v->formantBands[i].freq = freq;
+            v->formantBands[i].bw = bw;
+            formantOut += processFormantFilter(&v->formantBands[i], sample, sampleRate) * amp;
+        }
+
+        // Dry/wet mix
+        sample = sample * (1.0f - v->formantMix) + formantOut * v->formantMix;
+    }
+
     // Apply amplitude envelope
     float env;
     if (v->retriggerOverlap && v->retriggerCount > 0) {
@@ -3882,6 +3948,19 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->hardSync = noteHardSync;
     v->hardSyncRatio = noteHardSyncRatio;
     v->hardSyncPhase = 0.0f;
+
+    // Per-voice formant filter
+    v->formantEnabled = noteFormantEnabled;
+    v->formantFrom = noteFormantFrom;
+    v->formantTo = noteFormantTo;
+    v->formantMorphTime = noteFormantMorphTime;
+    v->formantMorphPhase = 0.0f;
+    v->formantShift = noteFormantShift;
+    v->formantQ = noteFormantQ;
+    v->formantMix = noteFormantMix;
+    for (int i = 0; i < FORMANT_EFFECT_BANDS; i++) {
+        v->formantBands[i] = (FormantFilter){0};
+    }
 
     // PWM
     v->pulseWidth = notePulseWidth;

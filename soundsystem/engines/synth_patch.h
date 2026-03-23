@@ -360,6 +360,15 @@ typedef struct {
     bool p_hardSync;          // true = master osc resets slave phase
     float p_hardSyncRatio;    // Master/slave frequency ratio (e.g. 1.5)
 
+    // Per-voice formant filter (vowel shaping — works with any oscillator)
+    bool p_formantEnabled;    // Enable formant filter
+    int p_formantFrom;        // Starting phoneme (VFPhoneme enum, 0-31)
+    int p_formantTo;          // Target phoneme for morph
+    float p_formantMorphTime; // Seconds to morph from → to (0.01-2.0)
+    float p_formantShift;     // Scale all formant freqs (0.5=monster, 2.0=chipmunk)
+    float p_formantQ;         // Bandwidth multiplier (0.5=wide, 3.0=sharp/nasal)
+    float p_formantMix;       // Dry/wet blend (0=dry, 1=full formant)
+
     // 303 acid mode
     bool p_acidMode;          // true = authentic TB-303 slide/accent behavior
     float p_accentSweepAmt;   // Accent sweep circuit intensity (0-1, default 0.5)
@@ -618,6 +627,13 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_wavefoldAmount = 0.0f,
         .p_hardSync = false,
         .p_hardSyncRatio = 1.5f,
+        .p_formantEnabled = false,
+        .p_formantFrom = VF_A,
+        .p_formantTo = VF_O,
+        .p_formantMorphTime = 0.15f,
+        .p_formantShift = 1.0f,
+        .p_formantQ = 1.0f,
+        .p_formantMix = 0.8f,
         .p_acidMode = false,
         .p_accentSweepAmt = 0.5f,
         .p_gimmickDipAmt = 0.3f,
