@@ -3554,6 +3554,16 @@ static float processVoice(Voice *v, float sampleRate) {
             v->formantBands[2].freq = f3;
             v->formantBands[2].bw = f3 / q3;
 
+            // Drain SVF states when Q is low — prevents DC from stored energy
+            if (v->fbQ < 1.0f) {
+                float drain = 0.99f - (1.0f - v->fbQ) * 0.04f; // lower Q = faster drain
+                for (int i = 0; i < 3; i++) {
+                    v->formantBands[i].low *= drain;
+                    v->formantBands[i].band *= drain;
+                    v->formantBands[i].high *= drain;
+                }
+            }
+
             // Mix noise into filterbank input
             float fbInput = sample;
             if (v->fbNoiseMix > 0.001f) {
