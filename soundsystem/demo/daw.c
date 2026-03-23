@@ -115,7 +115,7 @@ static inline void loadEmbeddedSCWs(void) {}
 #define MAX_SAMPLES_PER_UPDATE 4096
 
 #define SCREEN_WIDTH 1200
-#define SCREEN_HEIGHT 800
+#define SCREEN_HEIGHT 900
 
 // ============================================================================
 // LAYOUT
@@ -5362,6 +5362,11 @@ static void drawParamPatch(float x, float y, float w, float h) {
                 ui_col_float(&c, "Morph", &p->p_fbMorphOsc, 0.05f, 0.0f, 1.0f);
                 ui_col_float(&c, "Rand", &p->p_fbRandomize, 0.05f, 0.0f, 1.0f);
                 ui_col_float(&c, "Mix", &p->p_formantMix, 0.05f, 0.0f, 1.0f);
+                ui_col_sublabel(&c, "Mod:", ORANGE);
+                ui_col_float(&c, "EnvA", &p->p_fbEnvAlpha, 0.05f, -1.0f, 1.0f);
+                ui_col_float(&c, "LfoA", &p->p_fbLfoAlpha, 0.05f, -1.0f, 1.0f);
+                ui_col_float(&c, "LfoB", &p->p_fbLfoBeta, 0.05f, -1.0f, 1.0f);
+                ui_col_float(&c, "Noise", &p->p_fbNoiseMix, 0.05f, 0.0f, 1.0f);
             } else {
                 // Phoneme mode (existing)
                 ui_col_toggle(&c, "Random", &p->p_formantRandom);

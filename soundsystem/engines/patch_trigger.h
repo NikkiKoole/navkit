@@ -289,6 +289,10 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     noteFbMorphOsc = p->p_fbMorphOsc;
     noteFbLayout = p->p_fbLayout;
     noteFbRandomize = p->p_fbRandomize;
+    noteFbEnvAlpha = p->p_fbEnvAlpha;
+    noteFbLfoAlpha = p->p_fbLfoAlpha;
+    noteFbLfoBeta = p->p_fbLfoBeta;
+    noteFbNoiseMix = p->p_fbNoiseMix;
 }
 
 // Play a note using a SynthPatch. Sets all globals from the patch,

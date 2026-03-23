@@ -383,6 +383,10 @@ typedef struct {
     float p_fbMorphOsc;           // Trapezoid morph: 0 = triangle, 1 = square
     int p_fbLayout;               // 0 = 3×BPF (RA-9), 1 = LP+2×BPF (RA-99)
     float p_fbRandomize;          // Per-note random variation amount (0=none, 1=wild)
+    float p_fbEnvAlpha;           // Filter envelope → Alpha depth (-1..+1, bipolar)
+    float p_fbLfoAlpha;           // Filter LFO → Alpha depth (-1..+1)
+    float p_fbLfoBeta;            // Filter LFO → Beta depth (-1..+1)
+    float p_fbNoiseMix;           // Noise mixed into filterbank input (0..1)
 
     // 303 acid mode
     bool p_acidMode;          // true = authentic TB-303 slide/accent behavior
@@ -662,6 +666,10 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_fbMorphOsc = 0.0f,
         .p_fbLayout = 1,
         .p_fbRandomize = 0.0f,
+        .p_fbEnvAlpha = 0.0f,
+        .p_fbLfoAlpha = 0.0f,
+        .p_fbLfoBeta = 0.0f,
+        .p_fbNoiseMix = 0.0f,
         .p_acidMode = false,
         .p_accentSweepAmt = 0.5f,
         .p_gimmickDipAmt = 0.3f,

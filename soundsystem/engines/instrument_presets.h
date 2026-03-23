@@ -4734,6 +4734,8 @@ static void initInstrumentPresets(void) {
     instrumentPresets[259].patch.p_fbMorphOsc = 0.4f;
     instrumentPresets[259].patch.p_fbLayout = 1;
     instrumentPresets[259].patch.p_fbRandomize = 0.35f;
+    instrumentPresets[259].patch.p_fbEnvAlpha = 0.6f;
+    instrumentPresets[259].patch.p_fbLfoAlpha = 0.15f;
     instrumentPresets[259].patch.p_monoMode = true;
     instrumentPresets[259].patch.p_monoRetrigger = true;
     instrumentPresets[259].patch.p_glideTime = 0.03f;
@@ -4789,6 +4791,9 @@ static void initInstrumentPresets(void) {
     instrumentPresets[261].patch.p_fbKeyTrack = 0.0f;
     instrumentPresets[261].patch.p_fbMorphOsc = 0.0f;
     instrumentPresets[261].patch.p_fbLayout = 0;
+    instrumentPresets[261].patch.p_fbLfoAlpha = 0.3f;
+    instrumentPresets[261].patch.p_fbLfoBeta = 0.2f;
+    instrumentPresets[261].patch.p_fbNoiseMix = 0.15f;
     instrumentPresets[261].patch.p_attack = 0.8f;
     instrumentPresets[261].patch.p_decay = 0.5f;
     instrumentPresets[261].patch.p_sustain = 0.8f;

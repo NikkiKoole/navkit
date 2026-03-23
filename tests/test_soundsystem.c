@@ -7464,6 +7464,10 @@ describe(filterbank_mode) {
         original.p_fbKeyTrack = 0.5f;
         original.p_fbMorphOsc = 0.4f;
         original.p_fbLayout = 1;
+        original.p_fbEnvAlpha = 0.6f;
+        original.p_fbLfoAlpha = -0.3f;
+        original.p_fbLfoBeta = 0.2f;
+        original.p_fbNoiseMix = 0.15f;
 
         // Write to temp file
         FILE *f = fopen("/tmp/test_fb_patch.song", "w");
@@ -7501,6 +7505,94 @@ describe(filterbank_mode) {
         expect(fabsf(loaded.p_fbKeyTrack - 0.5f) < 0.01f);
         expect(fabsf(loaded.p_fbMorphOsc - 0.4f) < 0.01f);
         expect(loaded.p_fbLayout == 1);
+        expect(fabsf(loaded.p_fbEnvAlpha - 0.6f) < 0.01f);
+        expect(fabsf(loaded.p_fbLfoAlpha - (-0.3f)) < 0.01f);
+        expect(fabsf(loaded.p_fbLfoBeta - 0.2f) < 0.01f);
+        expect(fabsf(loaded.p_fbNoiseMix - 0.15f) < 0.01f);
+    }
+
+    it("should modulate alpha with filter envelope") {
+        SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        // Without envelope modulation
+        SynthPatch p1 = createDefaultPatch(WAVE_SAW);
+        p1.p_formantEnabled = true;
+        p1.p_formantMode = 1;
+        p1.p_formantMix = 1.0f;
+        p1.p_fbBaseFreq = 300.0f;
+        p1.p_fbSpacing = 3.0f;
+        p1.p_fbQ1 = 4.0f;
+        p1.p_fbQ2 = 6.0f;
+        p1.p_fbQ3 = 6.0f;
+        p1.p_fbEnvAlpha = 0.0f;
+        p1.p_filterEnvAmt = 0.5f;
+        p1.p_filterEnvDecay = 0.1f;
+        p1.p_envelopeEnabled = false;
+
+        int v1 = playNoteWithPatch(220.0f, &p1);
+        float sum1 = 0.0f;
+        for (int i = 0; i < 500; i++)
+            sum1 += fabsf(processVoice(&synthVoices[v1], 44100.0f));
+        releaseNote(v1);
+
+        // With strong envelope → alpha modulation
+        SynthPatch p2 = p1;
+        p2.p_fbEnvAlpha = 0.8f;
+
+        int v2 = playNoteWithPatch(220.0f, &p2);
+        float sum2 = 0.0f;
+        for (int i = 0; i < 500; i++)
+            sum2 += fabsf(processVoice(&synthVoices[v2], 44100.0f));
+        releaseNote(v2);
+
+        // Envelope modulation should change the output character
+        expect(fabsf(sum1 - sum2) > 0.01f);
+    }
+
+    it("should mix noise into filterbank input") {
+        SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        // Without noise
+        SynthPatch p1 = createDefaultPatch(WAVE_TRIANGLE);
+        p1.p_formantEnabled = true;
+        p1.p_formantMode = 1;
+        p1.p_formantMix = 1.0f;
+        p1.p_fbBaseFreq = 400.0f;
+        p1.p_fbSpacing = 2.5f;
+        p1.p_fbQ1 = 6.0f;
+        p1.p_fbQ2 = 6.0f;
+        p1.p_fbQ3 = 6.0f;
+        p1.p_fbNoiseMix = 0.0f;
+        p1.p_envelopeEnabled = false;
+
+        int v1 = playNoteWithPatch(220.0f, &p1);
+        float energy1 = 0.0f;
+        for (int i = 0; i < 1000; i++) {
+            float s = processVoice(&synthVoices[v1], 44100.0f);
+            energy1 += s * s;
+        }
+        releaseNote(v1);
+
+        // With noise mixed in
+        SynthPatch p2 = p1;
+        p2.p_fbNoiseMix = 0.5f;
+
+        int v2 = playNoteWithPatch(220.0f, &p2);
+        float energy2 = 0.0f;
+        for (int i = 0; i < 1000; i++) {
+            float s = processVoice(&synthVoices[v2], 44100.0f);
+            energy2 += s * s;
+        }
+        releaseNote(v2);
+
+        // Both should produce output, and they should differ
+        expect(energy1 > 0.001f);
+        expect(energy2 > 0.001f);
+        expect(fabsf(energy1 - energy2) > 0.001f);
     }
 }
 

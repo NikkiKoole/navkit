@@ -538,6 +538,10 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "fbMorphOsc", p->p_fbMorphOsc);
     _sf_writeInt(f, "fbLayout", p->p_fbLayout);
     _sf_writeFloat(f, "fbRandomize", p->p_fbRandomize);
+    _sf_writeFloat(f, "fbEnvAlpha", p->p_fbEnvAlpha);
+    _sf_writeFloat(f, "fbLfoAlpha", p->p_fbLfoAlpha);
+    _sf_writeFloat(f, "fbLfoBeta", p->p_fbLfoBeta);
+    _sf_writeFloat(f, "fbNoiseMix", p->p_fbNoiseMix);
 }
 
 static void _sf_writePattern(FILE *f, int idx, const Pattern *p) {
@@ -1236,6 +1240,10 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "fbMorphOsc") == 0) p->p_fbMorphOsc = _sf_parseFloat(val);
     else if (strcmp(key, "fbLayout") == 0) p->p_fbLayout = _sf_parseInt(val);
     else if (strcmp(key, "fbRandomize") == 0) p->p_fbRandomize = _sf_parseFloat(val);
+    else if (strcmp(key, "fbEnvAlpha") == 0) p->p_fbEnvAlpha = _sf_parseFloat(val);
+    else if (strcmp(key, "fbLfoAlpha") == 0) p->p_fbLfoAlpha = _sf_parseFloat(val);
+    else if (strcmp(key, "fbLfoBeta") == 0) p->p_fbLfoBeta = _sf_parseFloat(val);
+    else if (strcmp(key, "fbNoiseMix") == 0) p->p_fbNoiseMix = _sf_parseFloat(val);
     // Unknown keys silently skipped (future-proof)
 }
 
