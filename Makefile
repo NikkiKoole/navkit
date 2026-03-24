@@ -151,7 +151,7 @@ $(BINDIR)/%: $(RAYLIB_LIB) | $(BINDIR)
 
 SOUNDSYSTEM_HEADERS := $(wildcard soundsystem/engines/*.h soundsystem/demo/*.h soundsystem/soundsystem.h)
 
-DAW_CFLAGS := -std=c11 -pedantic -O1 -g -I. -Ivendor -Wall -Wextra -Wno-shadow -Wno-unused-function -Wno-unused-variable
+DAW_CFLAGS := -std=c11 -pedantic -O0 -g -I. -Ivendor -Wall -Wextra -Wno-shadow -Wno-unused-function -Wno-unused-variable
 
 $(BINDIR)/soundsystem-daw: $(soundsystem-daw_SRC) $(SOUNDSYSTEM_HEADERS) | $(BINDIR)
 	$(CC) $(DAW_CFLAGS) -o $@ $(soundsystem-daw_SRC) $(LDFLAGS)
