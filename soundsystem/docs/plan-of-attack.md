@@ -18,23 +18,22 @@ Instruments and effects are considered complete — 29 engines, 263 presets, com
 ### 1. Scenes + Crossfader System
 - **Spec:** `scene-crossfader-spec.md`
 - **Effort:** Medium (~750 LOC)
+- **Prerequisite:** Live params Phase 1-2 (#3) — crossfader writes to patch `p_` fields, voices must re-read them per-sample for smooth morphing on held notes
 - **What:** Complete snapshot storage (8 slots) of all sound state (patches, effects, mixer, BPM) with smooth morphing via 0-1 crossfader
 - **State:** UI shell exists (Song tab scene buttons, Mix tab XFade controls) but no backing logic — scenes never save/load, crossfader never blends
 - **Why first:** Linchpin for adaptive game audio (calm→combat morphing). Blocks the C conductor and crossfader automation. Everything downstream depends on this
 - **Counterpoint:** The game-side interactive music doc (`docs/doing/interactive-music-system.md`) argues the crossfader may not be needed — pattern switching + track volume fading + dub loop transitions cover ~90% of the use cases. That doc proposes a simpler **Music Director** (mood-driven song/pattern selection + vertical layering) as the primary approach, with scenes/crossfader only if that feels too coarse. See also `docs/todo/ensemble-stations.md` for diegetic music (movers playing instruments at stations)
 
-### 2. Test Coverage (3 Critical Gaps)
-- **Effort:** Medium (~900 LOC total)
-- **Patch trigger correctness** — `applyPatchToGlobals()` copies 140+ fields, every note uses it, zero tests. High crash risk
-- **Rhythm pattern generator** — `applyRhythmPattern()` with 5 variations, untested
-- **Synth oscillator types** — 8+ wave types (~1500 LOC in engines), only basic square/saw tested. Pluck, bird, membrane, PD, FM, granular, additive, mallet all uncovered
+### ~~2. Test Coverage (3 Critical Gaps)~~ — DONE
+All three gaps filled: patch trigger (8+ suites, 140+ fields), rhythm patterns (all 14 styles, 5 variations, prob maps, euclidean), synth oscillators (10 describe blocks covering all major wave types). See `done/test-gaps-audit-soundsystem.md`. Remaining minor gaps: sampler WAV loading (deferred until sampler improvements), effects edge cases (low risk).
 
-### 3. Live Parameter Updates
-- **Spec:** `live-parameter-update.md`
-- **Effort:** Small (~50 LOC)
-- **What:** Knob tweaks while holding a note should affect tone instantly, not just on next note-on. Add `const SynthPatch *patch` pointer to Voice, read params live each sample
+### 3. Live Parameters + Mod Matrix
+- **Spec:** `live-params-and-mod-matrix.md` (unified doc, supersedes old separate specs)
+- **Effort:** Medium-large (~1100-1250 LOC across 7 phases)
+- **What:** Phase 1-2: patch pointer on Voice + live param reads (knob tweaks affect held notes). Phase 3-7: mod matrix with flexible source→destination routing (velocity, note number, LFOs, envelope → any param)
 - **Pain point:** Filterbank, filter cutoff, wavefold — all frozen at note-on currently
-- **Bonus:** MIDI CC gets this for free since MIDI Learn already writes to patch fields
+- **Bonus:** MIDI CC gets live params for free. Also prerequisite for crossfader (#1) to work on held notes
+- **Key insight:** Phase 1-2 (live params, ~250-350 LOC) unlocks both crossfader and mod matrix. Phase 2 is the most labor-intensive — touches 50-100 read sites across every oscillator engine
 
 ## Priority 2 — Good Value, Can Wait
 
@@ -50,16 +49,13 @@ Instruments and effects are considered complete — 29 engines, 263 presets, com
 
 ### 5. Pure C Conductor (Game Integration)
 - **Effort:** Small-medium (~200-400 LOC)
-- **Depends on:** Bridge API additions (track volume, pattern queue). Scenes/crossfader optional — see counterpoint in #1
+- **Depends on:** Bridge API additions (track volume, pattern queue). Scenes/crossfader optional — see counterpoint in #1. Full Lua version: `lua-conductor-architecture.md`
 - **What:** Map game state (fire danger, time of day, job count) → song selection, pattern switching, and track volume fading
 - **Full spec:** `docs/doing/interactive-music-system.md` — 7-step implementation plan covering music director, SFX system, beat-synced events, ambient layers, and composition guidelines
 - **Why not Lua:** Pure C avoids new dependency, sufficient for colony sim logic. Full Lua conductor (`lua-conductor-architecture.md`) deferred until this proves value
 
-### 6. Mod Matrix Phases 1-3
-- **Spec:** `mod-matrix-design.md`
-- **Effort:** Medium (~350 LOC for phases 1-3)
-- **What:** Unified routing for sources (velocity, note number, LFOs) → destinations (filter, drive, click, osc level, pitch, FM depth, EP params) with per-route amount and curve
-- **Value:** Register-dependent Rhodes (low=warm, high=bright), flexible LFO routing, generalized velocity. Phases 1-3 are the winners; phases 4-5 (LFO migration, DAW UI) are polish
+### ~~6. Mod Matrix~~ — Merged into #3
+Now part of `live-params-and-mod-matrix.md` (Phases 3-7). Shares the same foundation (patch pointer on Voice) as live params.
 
 ### 7. Edit-in-Context
 - **Effort:** Small (~50 LOC)
