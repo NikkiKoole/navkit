@@ -1,5 +1,7 @@
 # DAW Ideas (2026-03-18)
 
+> Status: PARTIALLY DONE (remaining items tracked in plan-of-attack.md)
+
 ## Suggested Order
 
 1. ~~**Piano roll fixes**~~ — DONE (fixed cell height, click-to-audition keys)

@@ -1,5 +1,7 @@
 # PixelSynth Roadmap
 
+> Status: OUTDATED (superseded by plan-of-attack.md; needs refresh to reflect current code)
+
 A comprehensive feature roadmap for building a full-featured music creation tool that works for both standalone music production AND dynamic game audio.
 
 ---

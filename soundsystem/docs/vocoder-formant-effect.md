@@ -1,5 +1,7 @@
 # Vocoder / Formant Filter Effect
 
+> Status: PROPOSAL (not implemented)
+
 Formant (vowel-shaped) filtering that turns any instrument into a talking/vocal sound. Inspired by Daft Punk's vocoder ("Around the World", "Harder Better Faster Stronger", "Technologic") and GarageBand iOS voice effects (Robot/Monster/Chipmunk/Alien).
 
 > **Current plan (revised)**: Build as a **per-voice patch parameter first** (like the existing SVF filter), not a bus effect. This lets each note have its own vowel pair via p-locks — critical for the "each note speaks" use case. The bus effect version is Phase 4 (optional, for global coloring). See "Revised Implementation Order" at the bottom for the full plan.

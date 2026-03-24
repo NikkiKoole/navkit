@@ -1,5 +1,7 @@
 # Soundsystem Feature Ideas
 
+> Status: OUTDATED (mixing/routing, sidechain, and choke behavior are now implemented; kept for historical context)
+
 Analysis of potential features: choke groups, sidechaining, mixing/routing, and modulation matrix.
 
 ## Feature Overview

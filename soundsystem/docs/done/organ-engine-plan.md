@@ -1,5 +1,7 @@
 # Organ Engine Plan (WAVE_ORGAN + Leslie)
 
+> Status: READY TO MOVE TO `done/` (WAVE_ORGAN + Leslie implemented; refer to code for exact params)
+
 Inspired by Yamaha Reface YC — modelling 5 organ types: Hammond B3 (H1/H2), Vox Continental, Farfisa, Ace Tone.
 
 ---

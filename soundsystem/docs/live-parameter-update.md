@@ -1,5 +1,7 @@
 # Live Parameter Update for Filterbank (and all voice params)
 
+> Status: ACTIVE TODO
+
 ## Problem
 
 Tweaking filterbank knobs (Alpha, Q, Spacing, Noise, etc.) while holding a note has no effect. The change only applies on the **next** note trigger. This feels wrong for a filterbank — real analog filterbanks (Grendel RA-99, MS-20, DFAM) respond instantly because knobs are voltage-connected to the circuit.

@@ -1,5 +1,7 @@
 # Modulation Matrix Design
 
+> Status: PROPOSAL (not implemented)
+
 ## What Problem Does This Solve?
 
 We already have three modulation systems doing real work, but they're all hardwired:

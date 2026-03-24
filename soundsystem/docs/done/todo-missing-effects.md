@@ -1,5 +1,7 @@
 # Missing Effects — Guitar Pedal Perspective
 
+> Status: READY TO MOVE TO `done/` (all items below are now implemented; kept for historical reference)
+
 Comparing PixelSynth's effects chain against a classic pedalboard.
 
 ## What We Have
@@ -23,6 +25,8 @@ Comparing PixelSynth's effects chain against a classic pedalboard.
 | Sub-bass boost | — | Master |
 
 ## What's Missing
+
+Note: All items in this section are implemented in current code (per-bus and/or master). Treat this list as historical context only.
 
 ### 1. Tremolo ⭐ (easy, high value)
 Simple volume LFO. Fender amps had it built in. The most basic modulation effect.

@@ -1,5 +1,7 @@
 # Scene & Crossfader System — Spec for DAW Migration
 
+> Status: ACTIVE SPEC (not implemented yet)
+
 Extracted from `prototype.c`. The DAW already has `Crossfader` struct + UI shell (`daw.c:163-167`, Song tab scenes section, Mix tab XFade controls) but **no scene storage or blend logic**. This doc describes what to implement.
 
 ---
@@ -73,7 +75,7 @@ Inspired by: Elektron Octatrack scenes, Ableton Session View.
 
 typedef struct {
     bool initialized;
-    SynthPatch patches[SEQ_V2_MAX_TRACKS];  // 7 tracks (4 drum + 3 melody)
+    SynthPatch patches[SEQ_V2_MAX_TRACKS];  // 12 tracks (4 drum + 7 melody + 1 sampler)
     Mixer mixer;
     MasterFX masterFx;
     TapeFX tapeFx;

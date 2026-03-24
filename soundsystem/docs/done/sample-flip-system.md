@@ -1,5 +1,7 @@
 # Sample Flip System — Implementation Document
 
+> Status: READY TO MOVE TO `done/` (system implemented; sampler routed through BUS_SAMPLER)
+
 PixelSynth can synthesize full songs from scratch. What it can't do yet is **eat its own output** — take a rendered bar of a self-made song, chop it into slices, and replay those slices as a new instrument. This is the core of hip-hop production: sample, chop, flip.
 
 Every `.song` file in the library becomes a potential sample source. Since they're all synthesized, the whole pipeline is self-contained — no external WAV files needed.
@@ -13,13 +15,13 @@ The chop/flip system is fully functional: bounce any .song pattern, slice it (eq
 2. ~~**Auto fade**~~ — **DONE** (2026-03-16). Global default 1ms + per-slice fade-in/fade-out override.
 3. ~~**Sampler patch UI**~~ — **DONE** (2026-03-16). Minimal view when sampler track selected: master volume, active voices, loaded slice list with playing indicator.
 4. ~~**Save/load**~~ — **DONE** (2026-03-16). Recipe-based `[sample]` section in `.daw` format with re-bounce on load.
-5. **Bus routing** — route sampler through an existing bus, or add a new BUS_SAMPLER?
+5. ~~**Bus routing**~~ — **DONE** (sampler routed through BUS_SAMPLER)
 
 ---
 
 ## Design Principle: Synth Drums Stay Synthesized
 
-Drums are 100% real-time synthesized via `SynthPatch` presets (808, CR-78, orchestral, hand drums — 35 presets total at indices 24-58 in `instrument_presets.h`). The sampler engine is **not** used for drum playback. This is intentional:
+Drums are 100% real-time synthesized via `SynthPatch` presets (808/909/CR-78/orchestral/hand drums and more) in `instrument_presets.h`. The sampler engine is **not** used for drum playback. This is intentional:
 
 - Real-time synthesis has liveliness that static samples flatten
 - No WAV files to ship (the old embedded CR-78 samples have been removed)
@@ -43,7 +45,7 @@ Dedicated Sampler track (track 7, TRACK_SAMPLER in sequencer)
     │ each step selects a slice by number, scroll wheel to change
     │ + optional drum pad mapping (chopSliceMap[4])
     v
-processSamplerStereo() → mixed into master output in DawAudioCallback
+processSamplerStereo() → mixed into BUS_SAMPLER in DawAudioCallback
 ```
 
 ### Key Files
@@ -196,7 +198,7 @@ Slices that cut each other off (like open/closed hihat). Add a `chokeGroup` fiel
 The current sampler track shows slice numbers in small cells. For a more MPC-like experience: a 4x4 pad grid in the Sample tab showing slices 0-15 as clickable pads. Click to preview, drag to reorder, highlight which pads are used in the current pattern. Lower priority — the sequencer grid works, just not as visual.
 
 ### Sampler bus routing
-Currently sampler output goes directly to master (post bus mixer). For effects processing, route sampler through a bus (e.g. BUS_DRUM0 or a new BUS_SAMPLER). This would let you apply per-bus filter, distortion, delay, reverb send to the chop output. Requires adding sampler output into the `busInputs[]` array in `DawAudioCallback` instead of mixing after the mixer.
+DONE — sampler output is routed through `BUS_SAMPLER`, enabling per-bus processing.
 
 ---
 

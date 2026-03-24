@@ -1,6 +1,8 @@
 
 # PixelSynth DAW UX
 
+> Status: HISTORICAL SNAPSHOT (may be out of date)
+
 ## Final Decision: 3-Zone Layout (2026-03-09)
 
 After iterating through several approaches, we landed on an **opinionated 3-zone layout** in `daw.c`. Here's the journey and the reasoning.

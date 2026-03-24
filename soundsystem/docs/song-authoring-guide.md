@@ -5,14 +5,16 @@ How to write songs in the PixelSynth soundsystem, either as C code in `songs.h` 
 ## Architecture Overview
 
 ```
-8 patterns × 7 tracks × 32 steps
+Engine capacity: 64 patterns × 12 tracks × 32 steps
 ├── Tracks 0-3: Drums (kick, snare, hihat, clap/perc)
-├── Track 4: Bass (melodic)
-├── Track 5: Lead (melodic)
-└── Track 6: Chords (melodic, polyphonic)
+├── Tracks 4-6: Bass/Lead/Chord (melodic)
+├── Track 7: Sampler (slice playback)
+└── Tracks 8-11: Extra melodic tracks (same behavior as 4-6)
+
+Bridge songs in `songs.h` currently use tracks 0-6 only.
 ```
 
-Each track has an assigned **SynthPatch** (preset) from `instrument_presets.h` (148 presets: melodic, drums, FM, physical models, chip sounds). Drum tracks trigger one-shot hits; melody tracks play pitched notes with gate, slide, accent.
+Each track has an assigned **SynthPatch** (preset) from `instrument_presets.h` (263 presets: melodic, drums, FM, physical models, chip sounds). Drum tracks trigger one-shot hits; melody tracks play pitched notes with gate, slide, accent.
 
 ## Writing Songs in C (songs.h)
 
@@ -256,8 +258,8 @@ Scale types: `SCALE_CHROMATIC`, `SCALE_MAJOR`, `SCALE_MINOR`, `SCALE_PENTATONIC`
 | 15 | Piku Glock | Mallet | Toy glockenspiel |
 | 21 | Mac Keys | FM | Rhodes-like electric piano |
 | 23 | Mac Vibes | FM | Vibraphone |
-| 24-27 | 808 Kit | Various | Kick, Snare, CH (hihat), Clap |
-| 38 | Warm Tri | Triangle | Soft sub-bass |
+| 24-29 | 808 Kit | Various | Kick, Snare, Clap, CH, OH, Tom |
+| 38 | Warm Tri Bass | Triangle | Soft sub-bass |
 | 39 | Dark Organ | Additive | Organ drone |
 | 40 | Eerie Vowel | Voice | Breathy vowel |
 | 41 | Tri Sub | Triangle | Pure sub-bass |
@@ -268,12 +270,12 @@ Scale types: `SCALE_CHROMATIC`, `SCALE_MAJOR`, `SCALE_MINOR`, `SCALE_PENTATONIC`
 | 146 | Chip Square | Square | NES/C64 bass |
 | 147 | Chip Saw | Saw | NES/C64 lead |
 
-Full list: 148 presets. Run `make preset-audition && ./build/bin/preset-audition --all` to hear them all.
+Full list: 263 presets. Run `make preset-audition && ./build/bin/preset-audition --all` to hear them all.
 
 ## Song Design Patterns
 
 ### Build-up arrangement
-Patterns 0-1: drums only → 2-3: add bass → 4-5: add melody → 6-7: full + variation. The M.U.L.E. songs use this layered build structure across 8 patterns.
+For 8-pattern songs: 0-1 drums only → 2-3 add bass → 4-5 add melody → 6-7 full + variation. The M.U.L.E. songs use this layered build structure across 8 patterns.
 
 ### Variation via conditional triggers
 Put fills and ghost notes with `COND_1_4` or `COND_FILL` so the pattern evolves without needing extra patterns.

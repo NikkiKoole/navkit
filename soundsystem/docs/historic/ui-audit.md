@@ -1,5 +1,7 @@
 # DAW UI Audit — Style Inventory & Inconsistencies
 
+> Status: HISTORICAL SNAPSHOT (may be out of date)
+
 ## Files Examined
 - `shared/ui.h` — widget library (DraggableFloat, ToggleBool, CycleOption, PushButton, UIColumn)
 - `soundsystem/demo/daw.c` — main UI rendering (~5600 lines)

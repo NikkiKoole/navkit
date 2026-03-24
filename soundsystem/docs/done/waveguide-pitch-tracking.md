@@ -1,8 +1,10 @@
 # Waveguide Pitch Tracking — Arp, Glide & Pitch LFO for All Engines
 
+> Status: READY TO MOVE TO `done/` (implemented; table updated to current engine count)
+
 ## Summary
 
-All 27 synthesis engines now support dynamic pitch tracking (arpeggiator, glide/portamento, pitch LFO). The 8 waveguide-based engines previously had their pitch frozen at init time because they used fixed delay line lengths. This was fixed by adding fractional delay line reading that tracks `v->frequency` each sample.
+All 29 synthesis engines now support dynamic pitch tracking (arpeggiator, glide/portamento, pitch LFO). The 8 waveguide-based engines previously had their pitch frozen at init time because they used fixed delay line lengths. This was fixed by adding fractional delay line reading that tracks `v->frequency` each sample.
 
 ## What Was Done
 
@@ -87,6 +89,7 @@ These use `v->frequency` directly in their per-sample oscillator loop:
 | Organ | ✅ | ✅ | ✅ | ❌ | ❌ | OK |
 | Granular | ✅ | ✅ | ✅ | ❌ | ❌ | OK |
 | Bird | ✅ | ✅ | ✅ | ❌ | ❌ | OK (own pitch sweep) |
+| Shaker | ✅ | ✅ | ✅ | ❌ | ❌ | OK |
 | Bowed | ✅ | ✅ | ✅ | ❌ | ❌ | **Done** |
 | Pipe | ✅ | ✅ | ✅ | ❌ | ❌ | **Done** |
 | Reed | ✅ | ✅ | ✅ | ❌ | ❌ | **Done** |
@@ -95,6 +98,7 @@ These use `v->frequency` directly in their per-sample oscillator loop:
 | Guitar | ✅ | ✅ | ✅ | ❌ | ❌ | **Done** |
 | StifKarp | ✅ | ✅ | ✅ | ❌ | ❌ | **Done** |
 | BandedWG | ✅ | ✅ | ✅ | ❌ | ❌ | **Done** |
+| Whistle | ✅ | ✅ | ✅ | ❌ | ❌ | OK |
 
 ## Unison for FM, PD, Additive, SCW (COMPLETE)
 

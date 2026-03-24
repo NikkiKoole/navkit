@@ -1,5 +1,7 @@
 # Lua Conductor / Portable Engine Architecture
 
+> Status: PROPOSAL (not implemented)
+
 ## Overview
 
 Split the sound system into a compiled C engine (the instrument) and a scripted Lua layer (the conductor). The C engine makes sound; Lua decides what sound to make based on game state.
