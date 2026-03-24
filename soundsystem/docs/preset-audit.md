@@ -1,95 +1,148 @@
 # Preset Similarity Audit
 
-Rendered all 146 presets through `preset-audition` and compared spectral centroid, RMS level, decay time, attack time, and crest factor. Listed below are presets that sound nearly identical or suspiciously similar.
+Rendered all 263 presets through `preset-audition --audit` and compared using
+weighted feature-vector distance across 11 dimensions: spectral shape (32 perceptual bands),
+brightness, attack, decay, noise content, inharmonicity, odd/even ratio, fundamental strength,
+transient sharpness, RMS and peak levels. Lower distance = more similar.
 
-## Near-Identical (distance < 0.01) — likely duplicates
+## Near-Identical (distance < 0.08) — likely duplicates
 
-### [54] Mel Tabla ↔ [96] Tabla
-- **Distance: 0.000** — exactly identical in every metric
-- Both use WAVE_MEMBRANE with the same settings
-- **Action:** Remove one. Keep [96] Tabla (cleaner name), remove [54] Mel Tabla
+### [54] Mel Tabla <-> [96] Tabla
+- **Distance: 0.0648** (band=0.001)
+- Virtually identical across all metrics
+- **Action:** Remove one or differentiate
 
-### [121] Grain Pad ↔ [122] Grain Shimmer
-- **Distance: 0.000** — both silent in 1s render (slow attack granular, no audible output)
-- They likely differ when held longer, but the preset-audition can't capture that
-- **Action:** Verify manually in DAW with held notes. If truly different, keep both. If not, merge.
+## Very Similar (distance 0.08-0.15) — worth differentiating
 
-### [0] Chip Lead ↔ [12] Piku Accord
-- **Distance: 0.004** — virtually identical sound
-- Both are basic square waves with similar envelopes
-- **Action:** Differentiate Piku Accord (add chord arp? different filter?) or remove one
+### [6] Chip Organ <-> [146] Chip Square
+- **Distance: 0.0875** (band=0.009)
+- Brightness diff: -78 Hz
+- **Action:** Verify they sound different in musical context
 
-### [11] Marimba ↔ [60] Kalimba
-- **Distance: 0.008** — very similar mallet sounds
-- Both use WAVE_MALLET with similar settings
-- **Action:** Differentiate Kalimba (shorter decay, more metallic brightness, higher pitch?) or remove one
+### [2] Arp Pad <-> [9] Power Arp
+- **Distance: 0.1056** (band=0.018)
+- **Action:** Verify they sound different in musical context
 
-## Very Similar (distance 0.01-0.03) — worth differentiating
+### [11] Marimba <-> [23] Mac Vibes
+- **Distance: 0.1079** (band=0.018)
+- **Action:** Verify they sound different in musical context
 
-### [29] 808 Tom ↔ [140] 909 Kick
-- **Distance: 0.015** — similar pitch sweep + sine body
-- 808 Tom is pitched higher (80Hz base) with triangle blend; 909 Kick is at 55Hz with click
-- **Action:** They serve different purposes (tom vs kick) but sound close on analysis. The 909 Kick could use more differentiation — stronger click, more punch.
+### [194] Alto Sax <-> [196] Oboe
+- **Distance: 0.1274** (band=0.037)
+- Brightness diff: -51 Hz
+- **Action:** Verify they sound different in musical context
 
-### [15] Piku Glock ↔ [45] Glockenspiel
-- **Distance: 0.019** — same instrument, different preset series
-- Both are mallet glockenspiel sounds
-- **Action:** Remove [15] Piku Glock (the generic [45] Glockenspiel is better named)
+### [72] Bongo Lo <-> [96] Tabla
+- **Distance: 0.1283** (band=0.049)
+- **Action:** Verify they sound different in musical context
 
-### [45] Glockenspiel ↔ [87] Glockenspiel
-- **Same name!** Two presets called "Glockenspiel"
-- [45] uses WAVE_MALLET, [87] uses WAVE_ADDITIVE — different engines
-- **Action:** Rename [87] to "Add Glockenspiel" or "Glock (Additive)" to distinguish
+### [11] Marimba <-> [47] Tubular Bell
+- **Distance: 0.1326** (band=0.054)
+- **Action:** Verify they sound different in musical context
 
-### [46] Xylophone ↔ [88] Xylophone
-- **Same name!** Two presets called "Xylophone"
-- [46] uses WAVE_MALLET, [88] uses WAVE_ADDITIVE
-- **Action:** Rename [88] to "Add Xylophone" or "Xylo (Additive)"
+### [111] Wurlitzer <-> [179] Wurli Soul
+- **Distance: 0.1352** (band=0.047)
+- **Action:** Verify they sound different in musical context
 
-### [47] Tubular Bell ↔ [89] Tubular Bells
-- **Nearly same name!** "Tubular Bell" vs "Tubular Bells"
-- [47] uses WAVE_MALLET, [89] uses WAVE_ADDITIVE
-- **Action:** Rename [89] to "Add Tub Bell" or "Tubular (Additive)"
+### [206] Trombone <-> [209] Flugelhorn
+- **Distance: 0.1396** (band=0.034)
+- **Action:** Verify they sound different in musical context
 
-### [54] Mel Tabla / [73] Conga Hi / [74] Conga Lo / [96] Tabla
-- **Cluster of similar membrane percussion** (distances 0.021-0.023 between all pairs)
-- All use WAVE_MEMBRANE, only differ in trigger frequency
-- **Action:** Mel Tabla is identical to Tabla (remove one). Congas are fine as a pair. Ensure Tabla sounds distinct from Conga.
+## Somewhat Similar (distance 0.15-0.25) — review if intended
 
-### [58] Upright Bass ↔ [126] SNES Harp
-- **Distance: 0.022** — both pluck-based, similar spectral profile
-- Different engines (Upright = bowed init?, SNES Harp = pluck) but similar output
-- **Action:** Verify they sound different when played across range. May need more tonal differentiation.
+- [23] Mac Vibes <-> [47] Tubular Bell  (dist=0.150, bright=-21Hz, attack=+0ms)
+- [3] Wobble <-> [9] Power Arp  (dist=0.154, bright=+86Hz, attack=+0ms)
+- [15] Piku Glock <-> [45] Glockenspiel  (dist=0.160, bright=+3Hz, attack=+0ms)
+- [54] Mel Tabla <-> [72] Bongo Lo  (dist=0.163, bright=-14Hz, attack=+0ms)
+- [2] Arp Pad <-> [3] Wobble  (dist=0.167, bright=-122Hz, attack=+4ms)
+- [1] Fat Bass <-> [125] SNES Brass  (dist=0.171, bright=-1Hz, attack=+0ms)
+- [61] Sub Bass <-> [154] MT70 Piano  (dist=0.180, bright=-0Hz, attack=+4ms)
+- [192] Clarinet <-> [205] Muted Trumpet  (dist=0.180, bright=+61Hz, attack=-13ms)
+- [49] Brass <-> [91] Brass Stab  (dist=0.185, bright=-4Hz, attack=+31ms)
+- [111] Wurlitzer <-> [178] Wurli Buzz  (dist=0.186, bright=-8Hz, attack=+1ms)
+- [127] Mono Lead <-> [163] MT70 Banjo  (dist=0.191, bright=+68Hz, attack=+3ms)
+- [193] Soprano Sax <-> [195] Tenor Sax  (dist=0.191, bright=+52Hz, attack=-29ms)
+- [207] French Horn <-> [209] Flugelhorn  (dist=0.194, bright=-2Hz, attack=-8ms)
+- [211] Classical Gtr <-> [258] Jazz Box  (dist=0.197, bright=-30Hz, attack=+0ms)
+- [178] Wurli Buzz <-> [179] Wurli Soul  (dist=0.198, bright=+30Hz, attack=-2ms)
+- [204] Trumpet <-> [206] Trombone  (dist=0.206, bright=+16Hz, attack=-29ms)
+- [155] MT70 Organ <-> [162] MT70 Celesta  (dist=0.207, bright=-7Hz, attack=+5ms)
+- [206] Trombone <-> [207] French Horn  (dist=0.214, bright=-0Hz, attack=+4ms)
+- [129] Screamer <-> [170] OBXa Brass  (dist=0.217, bright=-52Hz, attack=+1ms)
+- [2] Arp Pad <-> [20] Mac Bass  (dist=0.217, bright=+50Hz, attack=-0ms)
+- [127] Mono Lead <-> [181] Clav Mellow  (dist=0.223, bright=+14Hz, attack=+1ms)
+- [46] Xylophone <-> [259] Grenadier Acid  (dist=0.224, bright=-24Hz, attack=-1ms)
+- [19] Mac Juno <-> [92] Add Strings  (dist=0.227, bright=+109Hz, attack=-15ms)
+- [205] Muted Trumpet <-> [207] French Horn  (dist=0.227, bright=+65Hz, attack=-27ms)
+- [46] Xylophone <-> [88] Xylophone  (dist=0.230, bright=-8Hz, attack=+0ms)
+- [194] Alto Sax <-> [207] French Horn  (dist=0.232, bright=+15Hz, attack=-33ms)
+- [23] Mac Vibes <-> [259] Grenadier Acid  (dist=0.233, bright=+2Hz, attack=-1ms)
+- [1] Fat Bass <-> [9] Power Arp  (dist=0.239, bright=-0Hz, attack=+0ms)
+- [3] Wobble <-> [129] Screamer  (dist=0.239, bright=+52Hz, attack=+5ms)
+- [196] Oboe <-> [207] French Horn  (dist=0.241, bright=+66Hz, attack=-40ms)
+- [17] Piku Pluck <-> [117] Slap Bass  (dist=0.241, bright=-133Hz, attack=-0ms)
+- [48] Choir <-> [50] Strings Sect  (dist=0.243, bright=-8Hz, attack=-47ms)
+- [125] SNES Brass <-> [181] Clav Mellow  (dist=0.245, bright=+182Hz, attack=+4ms)
 
-### [83] WC Lead ↔ [125] SNES Brass
-- **Distance: 0.025** — West Coast lead vs SNES brass
-- Similar spectral centroid and envelope
-- **Action:** Minor concern — they use different synthesis techniques (wavefold vs wavetable). Likely sound different in musical context.
-
-## Duplicate Name Issues (regardless of similarity)
+## Duplicate Name Issues
 
 | Preset A | Preset B | Issue |
 |----------|----------|-------|
-| [45] Glockenspiel | [87] Glockenspiel | Same name, different engine (mallet vs additive) |
-| [46] Xylophone | [88] Xylophone | Same name, different engine |
-| [47] Tubular Bell | [89] Tubular Bells | Near-same name, different engine |
-| [52] PD Bass | [94] PD Bass | Same name! Both phase distortion bass |
-| [53] PD Lead | [95] PD Lead | Same name! Both phase distortion lead |
-| [48] Choir | [90] Choir Pad | Similar names, likely similar |
-| [49] Brass | [91] Brass Stab | Similar names |
-| [50] Strings Sect | [92] Add Strings | Similar names |
-| [51] Crystal Bell | [93] Add Bell | Similar concept |
+| [45] Glockenspiel | [87] Glockenspiel | **Same name!** |
+| [46] Xylophone | [88] Xylophone | **Same name!** |
+| [52] PD Bass | [94] PD Bass | **Same name!** |
+| [53] PD Lead | [95] PD Lead | **Same name!** |
+| [70] Tambourine | [228] Tambourine | **Same name!** |
+| [98] Guiro | [232] Guiro | **Same name!** |
+| [101] Cabasa | [227] Cabasa | **Same name!** |
+| [27] 808 CH | [28] 808 OH | Near-same name (1 char diff) |
+| [37] Maracas | [226] Maraca | Near-same name (1 char diff) |
+| [47] Tubular Bell | [89] Tubular Bells | Near-same name (1 char diff) |
+| [112] Clavinet | [192] Clarinet | Near-same name (1 char diff) |
+| [143] 909 CH | [144] 909 OH | Near-same name (1 char diff) |
+| [198] M-808 CH | [199] M-808 OH | Near-same name (1 char diff) |
 
-## Summary of Recommended Actions
+## Per-Preset Issues
 
-1. **Remove** [54] Mel Tabla (exact duplicate of [96] Tabla)
-2. **Remove or differentiate** [15] Piku Glock (duplicate of [45] Glockenspiel)
-3. **Rename** duplicately-named presets ([87], [88], [89], [94], [95]) to include engine type
-4. **Differentiate** [0] Chip Lead vs [12] Piku Accord — nearly identical square waves
-5. **Differentiate** [11] Marimba vs [60] Kalimba — nearly identical mallet sounds
-6. **Verify** [121] Grain Pad vs [122] Grain Shimmer with held notes in DAW
-7. **Verify** [52] PD Bass vs [94] PD Bass and [53] PD Lead vs [95] PD Lead — same names, check if same params
+### Silent (3)
+- [102] Vinyl Crackle (peak=0.0096)
+- [121] Grain Pad (peak=0.0000)
+- [122] Grain Shimmer (peak=0.0000)
+
+### Clipping (1)
+- [167] Moog Sci-Fi (peak=1.145)
+
+### High DC Offset (13)
+- [7] Lofi Keys (DC=+0.0364)
+- [38] Warm Tri Bass (DC=+0.0278)
+- [41] Tri Sub (DC=+0.0502)
+- [52] PD Bass (DC=-0.0486)
+- [59] Flute (DC=+0.0358)
+- [65] Sync Lead (DC=-0.0160)
+- [79] Triangle (DC=+0.0225)
+- [85] Sync Brass (DC=-0.0224)
+- [120] Ocarina (DC=+0.0440)
+- [132] DX7 Brass (DC=-0.0286)
+- [169] Moog Sub (DC=+0.0295)
+- [174] Rhodes Warm (DC=-0.0306)
+- [176] Rhodes Suite (DC=-0.0183)
+
+## Summary
+
+- **Total presets:** 263
+- **Pairs with distance < 0.25:** 42 (from 34453 total)
+- **Near-identical (<0.08):** 1 pairs
+- **Very similar (0.08-0.15):** 8 pairs
+- **Somewhat similar (0.15-0.25):** 33 pairs
+- **Silent:** 3, **Clipping:** 1, **DC offset:** 13
 
 ---
 
-*Generated 2026-03-14 by rendering all 146 presets through preset-audition and comparing 6 spectral/envelope features across 10,585 preset pairs.*
+**Note on methodology:** Each preset is rendered independently, so non-deterministic synth elements
+(noise generators, LFO phase, random initial conditions) add ~0.05-0.07 noise floor to distances.
+Presets using `WAVE_MEMBRANE` or other stochastic engines may appear more different than they
+actually are. When in doubt, listen to both presets side by side.
+
+*Generated 2026-03-24 by `preset-audition --audit` — 263 presets rendered at MIDI 60, 1.0s note-on,
+2.0s total. Feature-vector distance across 11 weighted dimensions (spectral shape, brightness, attack,
+decay, noise content, inharmonicity, odd/even ratio, fundamental strength, transient sharpness, levels).*

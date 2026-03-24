@@ -245,6 +245,7 @@ int main(int argc, char *argv[]) {
     if (argc < 2) {
         fprintf(stderr, "Usage: preset_audition <preset_index> [options]\n");
         fprintf(stderr, "       preset_audition --all\n");
+        fprintf(stderr, "       preset_audition --audit\n");
         fprintf(stderr, "\nOptions:\n");
         fprintf(stderr, "  -n <note>      MIDI note (default: 60)\n");
         fprintf(stderr, "  -v <0.0-1.0>   Velocity/volume override (default: patch volume)\n");
@@ -260,10 +261,11 @@ int main(int argc, char *argv[]) {
     }
 
     // Check modes
-    bool allMode = false, multiMode = false;
+    bool allMode = false, multiMode = false, auditMode = false;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--all") == 0) allMode = true;
         if (strcmp(argv[i], "--multi") == 0) multiMode = true;
+        if (strcmp(argv[i], "--audit") == 0) auditMode = true;
     }
 
     int midiNote = 60;
@@ -286,13 +288,301 @@ int main(int argc, char *argv[]) {
         else if (strcmp(argv[i], "--ref") == 0 && i+1 < argc) { refPath = argv[++i]; }
         else if (strcmp(argv[i], "--csv") == 0 && i+1 < argc) { csvDir = argv[++i]; }
         else if (strcmp(argv[i], "-a") == 0) { analysisOnly = true; }
-        else if (strcmp(argv[i], "--all") == 0 || strcmp(argv[i], "--multi") == 0) { /* handled above */ }
+        else if (strcmp(argv[i], "--all") == 0 || strcmp(argv[i], "--multi") == 0 || strcmp(argv[i], "--audit") == 0) { /* handled above */ }
         else if (presetIdx < 0 && argv[i][0] != '-') { presetIdx = atoi(argv[i]); }
     }
 
     initInstrumentPresets();
 
-    if (allMode) {
+    if (auditMode) {
+        // === SIMILARITY AUDIT ===
+        // Render all presets, compute pairwise similarity, output markdown report
+        int N = NUM_INSTRUMENT_PRESETS;
+        fprintf(stderr, "Rendering %d presets for similarity audit...\n", N);
+
+        float **bufs = (float **)calloc(N, sizeof(float *));
+        int *bufLens = (int *)calloc(N, sizeof(int));
+        WaAnalysis *analyses = (WaAnalysis *)calloc(N, sizeof(WaAnalysis));
+        float *peaks = (float *)calloc(N, sizeof(float));
+        int noteOnSamples = (int)(noteOnSec * SAMPLE_RATE);
+
+        for (int i = 0; i < N; i++) {
+            AnalysisResult legacy = renderPreset(i, midiNote, noteOnSec, totalSec,
+                                                   NULL, false, &bufs[i], &bufLens[i], -1.0f);
+            analyses[i] = waAnalyze(bufs[i], bufLens[i], noteOnSamples);
+            peaks[i] = legacy.peakLevel;
+            if ((i + 1) % 50 == 0) fprintf(stderr, "  rendered %d/%d\n", i + 1, N);
+        }
+        fprintf(stderr, "Computing %d pairwise distances...\n", N * (N - 1) / 2);
+
+        // Feature-vector distance: Euclidean on normalized features
+        // More discriminating than correlation-based similarity for cross-preset comparison
+        typedef struct {
+            int a, b;
+            float distance;
+            // Keep individual diffs for reporting
+            float brightDiff, attackDiff, decayDiff, noiseDiff, inharmDiff, oddEvenDiff;
+            float bandDist;  // L2 distance of normalized band energy
+        } SimilarPair;
+        int maxPairs = 2000;
+        SimilarPair *pairs = (SimilarPair *)calloc(maxPairs, sizeof(SimilarPair));
+        int nPairs = 0;
+
+        // Pre-compute normalized band energy vectors (unit length)
+        float (*normBands)[WA_SPECTRAL_BANDS] = calloc(N, sizeof(float[WA_SPECTRAL_BANDS]));
+        for (int i = 0; i < N; i++) {
+            double mag = 0;
+            for (int b = 0; b < WA_SPECTRAL_BANDS; b++)
+                mag += (double)analyses[i].bandEnergy[b] * analyses[i].bandEnergy[b];
+            mag = sqrt(mag);
+            if (mag > 1e-10) {
+                for (int b = 0; b < WA_SPECTRAL_BANDS; b++)
+                    normBands[i][b] = analyses[i].bandEnergy[b] / (float)mag;
+            }
+        }
+
+        for (int i = 0; i < N; i++) {
+            if (peaks[i] < 0.01f) continue;  // skip silent
+            for (int j = i + 1; j < N; j++) {
+                if (peaks[j] < 0.01f) continue;
+
+                WaAnalysis *a = &analyses[i], *b = &analyses[j];
+
+                // Spectral shape distance (L2 on normalized band energy)
+                float bandDist = 0;
+                for (int k = 0; k < WA_SPECTRAL_BANDS; k++) {
+                    float d = normBands[i][k] - normBands[j][k];
+                    bandDist += d * d;
+                }
+                bandDist = sqrtf(bandDist);
+
+                // Quick filter: if spectral shape is very different, skip
+                if (bandDist > 0.5f) continue;
+
+                // Feature distances (each normalized to ~0-1 range)
+                float dBright = (a->spectralCentroid - b->spectralCentroid) / 3000.0f;
+                float dAttack = (a->attackTimeMs - b->attackTimeMs) / 200.0f;
+                float dDecay  = (a->decayTimeMs - b->decayTimeMs) / 2000.0f;
+                float dNoise  = a->noiseContent - b->noiseContent;
+                float dInharm = a->inharmonicity - b->inharmonicity;
+                // Clamp oddEvenRatio before comparison (can blow up when even harmonics ≈ 0)
+                float oeA = wa_clampf(a->oddEvenRatio, 0.0f, 5.0f);
+                float oeB = wa_clampf(b->oddEvenRatio, 0.0f, 5.0f);
+                float dOddEv  = (oeA - oeB) / 3.0f;
+                float dFundSt = a->fundamentalStrength - b->fundamentalStrength;
+                float dTransient = (a->transientSharpness - b->transientSharpness) / 15.0f;
+                // Use log ratio for levels (perceptually meaningful, stable across renders)
+                float dRMS = (a->rmsLevel > 0.001f && b->rmsLevel > 0.001f)
+                    ? logf(a->rmsLevel / b->rmsLevel) / 2.0f : 0.0f;
+                float dPeak = (a->peakLevel > 0.001f && b->peakLevel > 0.001f)
+                    ? logf(a->peakLevel / b->peakLevel) / 2.0f : 0.0f;
+
+                // Weighted distance
+                float dist = sqrtf(
+                    5.0f * bandDist * bandDist +      // spectral shape (heaviest — this is the "timbre fingerprint")
+                    2.0f * dBright * dBright +         // brightness (spectral centroid)
+                    1.0f * dAttack * dAttack +         // attack time
+                    0.5f * dDecay * dDecay +           // decay (low weight: noisy for percussive sounds)
+                    2.0f * dNoise * dNoise +           // noise content
+                    1.5f * dInharm * dInharm +         // inharmonicity
+                    0.8f * dOddEv * dOddEv +           // odd/even ratio
+                    0.5f * dFundSt * dFundSt +         // fundamental strength
+                    0.5f * dTransient * dTransient +   // transient sharpness
+                    0.3f * dRMS * dRMS +               // RMS level
+                    0.3f * dPeak * dPeak               // peak level
+                );
+
+                if (dist < 0.25f && nPairs < maxPairs) {
+                    pairs[nPairs++] = (SimilarPair){
+                        .a = i, .b = j,
+                        .distance = dist,
+                        .brightDiff = a->spectralCentroid - b->spectralCentroid,
+                        .attackDiff = a->attackTimeMs - b->attackTimeMs,
+                        .decayDiff  = a->decayTimeMs - b->decayTimeMs,
+                        .noiseDiff  = a->noiseContent - b->noiseContent,
+                        .inharmDiff = a->inharmonicity - b->inharmonicity,
+                        .oddEvenDiff = a->oddEvenRatio - b->oddEvenRatio,
+                        .bandDist = bandDist,
+                    };
+                }
+            }
+        }
+        free(normBands);
+
+        // Sort by distance ascending (most similar first)
+        for (int i = 0; i < nPairs - 1; i++) {
+            for (int j = i + 1; j < nPairs; j++) {
+                if (pairs[j].distance < pairs[i].distance) {
+                    SimilarPair tmp = pairs[i];
+                    pairs[i] = pairs[j];
+                    pairs[j] = tmp;
+                }
+            }
+        }
+
+        // --- Output markdown ---
+        printf("# Preset Similarity Audit\n\n");
+        printf("Rendered all %d presets through `preset-audition --audit` and compared using\n", N);
+        printf("weighted feature-vector distance across 11 dimensions: spectral shape (32 perceptual bands),\n");
+        printf("brightness, attack, decay, noise content, inharmonicity, odd/even ratio, fundamental strength,\n");
+        printf("transient sharpness, RMS and peak levels. Lower distance = more similar.\n\n");
+
+        // Near-identical (distance < 0.08)
+        // Note: synth has non-deterministic elements (noise, LFO phase), so identical
+        // presets rendered separately produce distance ~0.05-0.07 — threshold accounts for this.
+        printf("## Near-Identical (distance < 0.08) — likely duplicates\n\n");
+        bool foundAny = false;
+        for (int i = 0; i < nPairs; i++) {
+            if (pairs[i].distance >= 0.08f) break;
+            SimilarPair *p = &pairs[i];
+            foundAny = true;
+            printf("### [%d] %s <-> [%d] %s\n", p->a, instrumentPresets[p->a].name,
+                   p->b, instrumentPresets[p->b].name);
+            printf("- **Distance: %.4f** (band=%.3f)\n", p->distance, p->bandDist);
+            if (fabsf(p->brightDiff) < 50.0f && fabsf(p->attackDiff) < 5.0f && fabsf(p->noiseDiff) < 0.05f)
+                printf("- Virtually identical across all metrics\n");
+            else {
+                if (fabsf(p->brightDiff) >= 50.0f) printf("- Brightness diff: %+.0f Hz\n", p->brightDiff);
+                if (fabsf(p->attackDiff) >= 5.0f) printf("- Attack diff: %+.0f ms\n", p->attackDiff);
+                if (fabsf(p->noiseDiff) >= 0.05f) printf("- Noise diff: %+.0f%%\n", p->noiseDiff * 100.0f);
+            }
+            printf("- **Action:** Remove one or differentiate\n\n");
+        }
+        if (!foundAny) printf("(none found)\n\n");
+
+        // Very similar (0.08 <= distance < 0.15)
+        printf("## Very Similar (distance 0.08-0.15) — worth differentiating\n\n");
+        foundAny = false;
+        for (int i = 0; i < nPairs; i++) {
+            if (pairs[i].distance < 0.08f) continue;
+            if (pairs[i].distance >= 0.15f) break;
+            SimilarPair *p = &pairs[i];
+            foundAny = true;
+            printf("### [%d] %s <-> [%d] %s\n", p->a, instrumentPresets[p->a].name,
+                   p->b, instrumentPresets[p->b].name);
+            printf("- **Distance: %.4f** (band=%.3f)\n", p->distance, p->bandDist);
+            if (fabsf(p->brightDiff) >= 50.0f) printf("- Brightness diff: %+.0f Hz\n", p->brightDiff);
+            if (fabsf(p->attackDiff) >= 10.0f) printf("- Attack diff: %+.0f ms\n", p->attackDiff);
+            if (fabsf(p->noiseDiff) >= 0.05f) printf("- Noise diff: %+.0f%%\n", p->noiseDiff * 100.0f);
+            if (fabsf(p->inharmDiff) >= 0.1f) printf("- Inharmonicity diff: %+.0f%%\n", p->inharmDiff * 100.0f);
+            printf("- **Action:** Verify they sound different in musical context\n\n");
+        }
+        if (!foundAny) printf("(none found)\n\n");
+
+        // Somewhat similar (0.15 <= distance < 0.25)
+        printf("## Somewhat Similar (distance 0.15-0.25) — review if intended\n\n");
+        foundAny = false;
+        for (int i = 0; i < nPairs; i++) {
+            if (pairs[i].distance < 0.15f) continue;
+            if (pairs[i].distance >= 0.25f) break;
+            SimilarPair *p = &pairs[i];
+            foundAny = true;
+            printf("- [%d] %s <-> [%d] %s  (dist=%.3f, bright=%+.0fHz, attack=%+.0fms)\n",
+                   p->a, instrumentPresets[p->a].name,
+                   p->b, instrumentPresets[p->b].name,
+                   p->distance, p->brightDiff, p->attackDiff);
+        }
+        if (!foundAny) printf("(none found)\n\n");
+        else printf("\n");
+
+        // Duplicate/similar names
+        printf("## Duplicate Name Issues\n\n");
+        printf("| Preset A | Preset B | Issue |\n");
+        printf("|----------|----------|-------|\n");
+        bool foundNameIssue = false;
+        for (int i = 0; i < N; i++) {
+            if (peaks[i] < 0.01f) continue;
+            for (int j = i + 1; j < N; j++) {
+                if (peaks[j] < 0.01f) continue;
+                const char *nA = instrumentPresets[i].name;
+                const char *nB = instrumentPresets[j].name;
+                if (strcmp(nA, nB) == 0) {
+                    printf("| [%d] %s | [%d] %s | **Same name!** |\n", i, nA, j, nB);
+                    foundNameIssue = true;
+                }
+            }
+        }
+        // Check near-duplicate names (one is prefix of other, or differ by 1 char)
+        for (int i = 0; i < N; i++) {
+            if (peaks[i] < 0.01f) continue;
+            for (int j = i + 1; j < N; j++) {
+                if (peaks[j] < 0.01f) continue;
+                const char *nA = instrumentPresets[i].name;
+                const char *nB = instrumentPresets[j].name;
+                if (strcmp(nA, nB) == 0) continue;  // already reported
+                int lenA = (int)strlen(nA), lenB = (int)strlen(nB);
+                // Check if names differ only by a trailing 's' or space
+                if (abs(lenA - lenB) <= 1) {
+                    int diffs = 0;
+                    int minLen = lenA < lenB ? lenA : lenB;
+                    for (int c = 0; c < minLen; c++) {
+                        if (nA[c] != nB[c]) diffs++;
+                    }
+                    diffs += abs(lenA - lenB);
+                    if (diffs <= 1) {
+                        printf("| [%d] %s | [%d] %s | Near-same name (1 char diff) |\n", i, nA, j, nB);
+                        foundNameIssue = true;
+                    }
+                }
+            }
+        }
+        if (!foundNameIssue) printf("| (none found) | | |\n");
+
+        // Per-preset issues (same as --all but brief)
+        printf("\n## Per-Preset Issues\n\n");
+        int nSilent = 0, nClip = 0, nDC = 0;
+        for (int i = 0; i < N; i++) {
+            if (peaks[i] < 0.01f) nSilent++;
+            if (peaks[i] > 1.0f) nClip++;
+            if (fabsf(analyses[i].dcOffset) > 0.01f) nDC++;
+        }
+        if (nSilent > 0) {
+            printf("### Silent (%d)\n", nSilent);
+            for (int i = 0; i < N; i++)
+                if (peaks[i] < 0.01f)
+                    printf("- [%d] %s (peak=%.4f)\n", i, instrumentPresets[i].name, peaks[i]);
+            printf("\n");
+        }
+        if (nClip > 0) {
+            printf("### Clipping (%d)\n", nClip);
+            for (int i = 0; i < N; i++)
+                if (peaks[i] > 1.0f)
+                    printf("- [%d] %s (peak=%.3f)\n", i, instrumentPresets[i].name, peaks[i]);
+            printf("\n");
+        }
+        if (nDC > 0) {
+            printf("### High DC Offset (%d)\n", nDC);
+            for (int i = 0; i < N; i++)
+                if (fabsf(analyses[i].dcOffset) > 0.01f)
+                    printf("- [%d] %s (DC=%+.4f)\n", i, instrumentPresets[i].name, analyses[i].dcOffset);
+            printf("\n");
+        }
+
+        // Summary
+        printf("## Summary\n\n");
+        printf("- **Total presets:** %d\n", N);
+        printf("- **Pairs with distance < 0.25:** %d (from %d total)\n",
+               nPairs, N * (N - 1) / 2);
+        int nNearly = 0, nVery = 0, nSomewhat = 0;
+        for (int i = 0; i < nPairs; i++) {
+            if (pairs[i].distance < 0.08f) nNearly++;
+            else if (pairs[i].distance < 0.15f) nVery++;
+            else if (pairs[i].distance < 0.25f) nSomewhat++;
+        }
+        printf("- **Near-identical (<0.08):** %d pairs\n", nNearly);
+        printf("- **Very similar (0.08-0.15):** %d pairs\n", nVery);
+        printf("- **Somewhat similar (0.15-0.25):** %d pairs\n", nSomewhat);
+        printf("- **Silent:** %d, **Clipping:** %d, **DC offset:** %d\n", nSilent, nClip, nDC);
+        printf("\n---\n\n");
+        printf("*Generated by `preset-audition --audit` — %d presets rendered at MIDI %d, "
+               "%.1fs note-on, %.1fs total. Feature-vector distance across 11 weighted dimensions.*\n",
+               N, midiNote, noteOnSec, totalSec);
+
+        // Cleanup
+        for (int i = 0; i < N; i++) free(bufs[i]);
+        free(bufs); free(bufLens); free(analyses); free(peaks); free(pairs);
+
+    } else if (allMode) {
         // --- Render all presets with proper pitch detection ---
         printf("Rendering all %d presets (MIDI %d, %.1fs on, %.1fs total)\n",
                NUM_INSTRUMENT_PRESETS, midiNote, noteOnSec, totalSec);
