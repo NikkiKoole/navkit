@@ -40,6 +40,8 @@ The director does not generate music. It **selects, layers, morphs, and punctuat
 
 ---
 
+**See also:** `soundsystem/docs/plan-of-attack.md` for the engine-side TODO list (scenes/crossfader, mod matrix, live params, performance). That doc lists scenes/crossfader as priority 1 for the engine — but this doc argues the music director + vertical layering may be sufficient without it. The two approaches aren't mutually exclusive: the music director can use scenes/crossfader if they exist, or work with pattern switching + track volumes alone.
+
 ## Phase 1: Music Director — Mood-Driven Song Selection
 
 **Goal**: The right music plays at the right time, with smooth transitions.
@@ -158,6 +160,22 @@ This was spec'd in `soundsystem/docs/scene-crossfader-spec.md`, but the need has
 - **Song switching** with dub loop/rewind transitions covers vibe changes.
 
 Together these cover ~90% of what the crossfader would do, without the complexity of snapshot storage and interpolation. If Phases 1-2 feel too coarse in practice, revisit — but start without it.
+
+### Why the Music Director Wins Over the Crossfader
+
+The crossfader solves a problem this game might not have. It's designed for smooth morphing between two complete sound states — great for a DJ or a linear game with scripted moments. But colony sim state is **multi-dimensional** (time of day, mood, activity, danger — all independent). One float can't capture that.
+
+What we actually need is already simpler:
+
+- **Horizontal** (pattern switching): tension rises → queue a denser pattern at bar boundary. `seqQueuePattern()` already does this seamlessly.
+- **Vertical** (track volumes): movers idle → fade out drums. Fire starts → fade in tension percussion. `seqSetTrackVolume()` with lerps. This is the real power move — it's how iMUSE worked and maps perfectly to colony state (each track = a game signal).
+- **Transitions**: dub loop throw and vinyl rewind already exist for song switches, covering the "jarring gap" problem.
+
+The crossfader adds complexity for marginal gain: snapshotting 8 scenes × (200+ patch fields + effects + mixer) is a lot of state to manage, serialize, and interpolate. And you still need the music director to decide *when* to move the crossfader — so you'd be building two systems instead of one.
+
+The one thing scenes would buy that the music director can't easily do is morphing *timbres* (e.g., Rhodes gets brighter as danger rises). But that's what the mod matrix is for — velocity/note-number routing to filter/drive handles register-dependent timbres per-patch, without a global crossfader.
+
+**Recommendation:** Build the music director first (tension/vibe → pattern + track volumes). Skip scenes/crossfader entirely for now. If vertical layering + pattern switching feels too coarse after real playtesting, then there's a concrete problem to solve with scenes. The ensemble stations concept (movers arriving/leaving = tracks entering/leaving) gets emergent adaptive music for free — that's the unique version of this.
 
 ---
 

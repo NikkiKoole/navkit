@@ -41,6 +41,7 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     if (p->p_waveType >= 0 && p->p_waveType < _dwWaveCount) fprintf(f, "waveType = %s\n", _dwWaveNames[p->p_waveType]);
     else _di(f, "waveType", p->p_waveType);
     _di(f, "scwIndex", p->p_scwIndex);
+    _db(f, "envelopeEnabled", p->p_envelopeEnabled);
     _dw(f, "attack", p->p_attack); _dw(f, "decay", p->p_decay);
     _dw(f, "sustain", p->p_sustain); _dw(f, "release", p->p_release);
     _db(f, "expRelease", p->p_expRelease); _db(f, "expDecay", p->p_expDecay);
@@ -48,6 +49,7 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _dw(f, "volume", p->p_volume);
     _dw(f, "pulseWidth", p->p_pulseWidth); _dw(f, "pwmRate", p->p_pwmRate); _dw(f, "pwmDepth", p->p_pwmDepth);
     _dw(f, "vibratoRate", p->p_vibratoRate); _dw(f, "vibratoDepth", p->p_vibratoDepth);
+    _db(f, "filterEnabled", p->p_filterEnabled);
     _dw(f, "filterCutoff", p->p_filterCutoff); _dw(f, "filterResonance", p->p_filterResonance);
     _di(f, "filterType", p->p_filterType); _di(f, "filterModel", p->p_filterModel);
     _dw(f, "filterEnvAmt", p->p_filterEnvAmt); _dw(f, "filterEnvAttack", p->p_filterEnvAttack);
@@ -101,6 +103,9 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _di(f, "membranePreset", p->p_membranePreset); _dw(f, "membraneDamping", p->p_membraneDamping);
     _dw(f, "membraneStrike", p->p_membraneStrike); _dw(f, "membraneBend", p->p_membraneBend);
     _dw(f, "membraneBendDecay", p->p_membraneBendDecay);
+    _di(f, "metallicPreset", p->p_metallicPreset); _dw(f, "metallicRingMix", p->p_metallicRingMix);
+    _dw(f, "metallicNoiseLevel", p->p_metallicNoiseLevel); _dw(f, "metallicBrightness", p->p_metallicBrightness);
+    _dw(f, "metallicPitchEnv", p->p_metallicPitchEnv); _dw(f, "metallicPitchEnvDecay", p->p_metallicPitchEnvDecay);
     _dw(f, "bowPressure", p->p_bowPressure); _dw(f, "bowSpeed", p->p_bowSpeed);
     _dw(f, "bowPosition", p->p_bowPosition);
     _dw(f, "pipeBreath", p->p_pipeBreath); _dw(f, "pipeEmbouchure", p->p_pipeEmbouchure);
@@ -145,6 +150,9 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _dw(f, "epPickupPos", p->p_epPickupPos); _dw(f, "epPickupDist", p->p_epPickupDist);
     _dw(f, "epDecay", p->p_epDecay); _dw(f, "epBell", p->p_epBell);
     _dw(f, "epBellTone", p->p_epBellTone); _di(f, "epPickupType", p->p_epPickupType);
+    _di(f, "epRatioSet", p->p_epRatioSet);
+    for (int i = 0; i < ORGAN_DRAWBARS; i++) { char k[20]; snprintf(k,sizeof(k),"orgDrawbar%d",i); _dw(f, k, p->p_orgDrawbar[i]); }
+    _dw(f, "orgClick", p->p_orgClick); _dw(f, "orgCrosstalk", p->p_orgCrosstalk);
     _dw(f, "pitchEnvAmount", p->p_pitchEnvAmount); _dw(f, "pitchEnvDecay", p->p_pitchEnvDecay);
     _dw(f, "pitchEnvCurve", p->p_pitchEnvCurve); _db(f, "pitchEnvLinear", p->p_pitchEnvLinear);
     _dw(f, "noiseMix", p->p_noiseMix); _dw(f, "noiseTone", p->p_noiseTone);
@@ -696,6 +704,7 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     if (strcmp(key,"name")==0) { char t[64]; strncpy(t,val,63); t[63]=0; _dwStripQuotes(t); strncpy(p->p_name,t,31); p->p_name[31]=0; }
     else if (strcmp(key,"waveType")==0) p->p_waveType = _dwLookupWave(val);
     else if (strcmp(key,"scwIndex")==0) p->p_scwIndex = _dpi(val);
+    else if (strcmp(key,"envelopeEnabled")==0) p->p_envelopeEnabled = _dpb(val);
     else if (strcmp(key,"attack")==0) p->p_attack = _dpf(val);
     else if (strcmp(key,"decay")==0) p->p_decay = _dpf(val);
     else if (strcmp(key,"sustain")==0) p->p_sustain = _dpf(val);
@@ -709,6 +718,7 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"pwmDepth")==0) p->p_pwmDepth = _dpf(val);
     else if (strcmp(key,"vibratoRate")==0) p->p_vibratoRate = _dpf(val);
     else if (strcmp(key,"vibratoDepth")==0) p->p_vibratoDepth = _dpf(val);
+    else if (strcmp(key,"filterEnabled")==0) p->p_filterEnabled = _dpb(val);
     else if (strcmp(key,"filterCutoff")==0) p->p_filterCutoff = _dpf(val);
     else if (strcmp(key,"filterResonance")==0) p->p_filterResonance = _dpf(val);
     else if (strcmp(key,"filterType")==0) p->p_filterType = _dpi(val);
@@ -807,6 +817,12 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"membraneStrike")==0) p->p_membraneStrike = _dpf(val);
     else if (strcmp(key,"membraneBend")==0) p->p_membraneBend = _dpf(val);
     else if (strcmp(key,"membraneBendDecay")==0) p->p_membraneBendDecay = _dpf(val);
+    else if (strcmp(key,"metallicPreset")==0) p->p_metallicPreset = _dpi(val);
+    else if (strcmp(key,"metallicRingMix")==0) p->p_metallicRingMix = _dpf(val);
+    else if (strcmp(key,"metallicNoiseLevel")==0) p->p_metallicNoiseLevel = _dpf(val);
+    else if (strcmp(key,"metallicBrightness")==0) p->p_metallicBrightness = _dpf(val);
+    else if (strcmp(key,"metallicPitchEnv")==0) p->p_metallicPitchEnv = _dpf(val);
+    else if (strcmp(key,"metallicPitchEnvDecay")==0) p->p_metallicPitchEnvDecay = _dpf(val);
     else if (strcmp(key,"bowPressure")==0) p->p_bowPressure = _dpf(val);
     else if (strcmp(key,"bowSpeed")==0) p->p_bowSpeed = _dpf(val);
     else if (strcmp(key,"bowPosition")==0) p->p_bowPosition = _dpf(val);
@@ -883,6 +899,10 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"epBell")==0) p->p_epBell = _dpf(val);
     else if (strcmp(key,"epBellTone")==0) p->p_epBellTone = _dpf(val);
     else if (strcmp(key,"epPickupType")==0) p->p_epPickupType = _dpi(val);
+    else if (strcmp(key,"epRatioSet")==0) p->p_epRatioSet = _dpi(val);
+    else if (strncmp(key,"orgDrawbar",10)==0 && key[10]>='0' && key[10]<='8' && key[11]=='\0') p->p_orgDrawbar[key[10]-'0'] = _dpf(val);
+    else if (strcmp(key,"orgClick")==0) p->p_orgClick = _dpf(val);
+    else if (strcmp(key,"orgCrosstalk")==0) p->p_orgCrosstalk = _dpf(val);
     else if (strcmp(key,"pitchEnvAmount")==0) p->p_pitchEnvAmount = _dpf(val);
     else if (strcmp(key,"pitchEnvDecay")==0) p->p_pitchEnvDecay = _dpf(val);
     else if (strcmp(key,"pitchEnvCurve")==0) p->p_pitchEnvCurve = _dpf(val);

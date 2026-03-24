@@ -301,6 +301,8 @@ Add a collapsible launcher panel to `drawWorkArrange()`. Toggle button in the to
 
 Option 1 is the simpler starting point. Option 2 is where it eventually wants to go (Bitwig: hybrid tracks that handle any content).
 
+**Related**: `unified-synth-drums.md` has an open question about removing the `TRACK_DRUM` vs `TRACK_MELODIC` sequencer distinction entirely. Drums already use `SynthPatch` like melodic tracks — the remaining difference is behavioral (one-shot vs gated, Dilla per-instrument nudge). Option 2 here would naturally resolve that: if any track can be anything, the drum/melodic split goes away and track behavior becomes a per-track setting rather than a type.
+
 ## Automation Lanes in Arrangement View
 - The arrangement view is the natural home for automation — draw parameter curves per-track alongside the pattern blocks
 - P-locks are per-step discrete, scenes/crossfader morph between 2 snapshots — neither covers "draw a curve from bar 5 to bar 12"
