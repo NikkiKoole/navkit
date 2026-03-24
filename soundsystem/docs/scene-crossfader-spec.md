@@ -1,6 +1,9 @@
 # Scene & Crossfader System — Spec for DAW Migration
 
 > Status: ACTIVE SPEC (not implemented yet)
+> Part of: **Sound System Feature Chain**
+> **Prerequisite:** Live param reads (`live-params-and-mod-matrix.md` Phases 1-2) — crossfader writes to patch `p_` fields, voices must re-read them per-sample for smooth morphing to work on held notes.
+> **Enables:** Lua conductor (`lua-conductor-architecture.md`) — conductor drives crossfader position based on game state.
 
 Extracted from `prototype.c`. The DAW already has `Crossfader` struct + UI shell (`daw.c:163-167`, Song tab scenes section, Mix tab XFade controls) but **no scene storage or blend logic**. This doc describes what to implement.
 

@@ -1076,6 +1076,98 @@ void SoundSynthPlaySongGymnopedie(SoundSynth* synth) {
     startSongPlayback(synth, sp->bpm);
 }
 
+void SoundSynthPlaySongOscarLofi(SoundSynth* synth) {
+    if (!synth || !synth->audioReady) return;
+    useSoundSystem(&synth->ss);
+
+    SoundSynthStopSong(synth);
+
+    setMelodyCallbacks(0, melodyTriggerBass, melodyReleaseBass);
+    setMelodyCallbacks(1, melodyTriggerLead, melodyReleaseLead);
+    setMelodyCallbacks(2, melodyTriggerChord, melodyReleaseChord);
+
+    Song_OscarLofi_ConfigureVoices();
+
+    SongPlayer* sp = &synth->songPlayer;
+    Song_OscarLofi_Load(sp->patterns);
+    sp->patternCount = 8;
+    sp->currentPattern = 0;
+    sp->loopsOnCurrent = 0;
+    sp->loopsPerPattern = 1;
+    sp->bpm = SONG_OSCAR_LOFI_BPM;
+
+    startSongPlayback(synth, sp->bpm);
+}
+
+void SoundSynthPlaySongDreamer(SoundSynth* synth) {
+    if (!synth || !synth->audioReady) return;
+    useSoundSystem(&synth->ss);
+
+    SoundSynthStopSong(synth);
+
+    setMelodyCallbacks(0, melodyTriggerBass, melodyReleaseBass);
+    setMelodyCallbacks(1, melodyTriggerLead, melodyReleaseLead);
+    setMelodyCallbacks(2, melodyTriggerChord, melodyReleaseChord);
+
+    Song_Dreamer_ConfigureVoices();
+
+    SongPlayer* sp = &synth->songPlayer;
+    Song_Dreamer_Load(sp->patterns);
+    sp->patternCount = 8;
+    sp->currentPattern = 0;
+    sp->loopsOnCurrent = 0;
+    sp->loopsPerPattern = 1;
+    sp->bpm = SONG_DREAMER_BPM;
+
+    startSongPlayback(synth, sp->bpm);
+}
+
+void SoundSynthPlaySongSaladDaze(SoundSynth* synth) {
+    if (!synth || !synth->audioReady) return;
+    useSoundSystem(&synth->ss);
+
+    SoundSynthStopSong(synth);
+
+    setMelodyCallbacks(0, melodyTriggerBass, melodyReleaseBass);
+    setMelodyCallbacks(1, melodyTriggerLead, melodyReleaseLead);
+    setMelodyCallbacks(2, melodyTriggerChord, melodyReleaseChord);
+
+    Song_SaladDaze_ConfigureVoices();
+
+    SongPlayer* sp = &synth->songPlayer;
+    Song_SaladDaze_Load(sp->patterns);
+    sp->patternCount = 8;
+    sp->currentPattern = 0;
+    sp->loopsOnCurrent = 0;
+    sp->loopsPerPattern = 1;
+    sp->bpm = SONG_SALAD_DAZE_BPM;
+
+    startSongPlayback(synth, sp->bpm);
+}
+
+void SoundSynthPlaySongEmergence(SoundSynth* synth) {
+    if (!synth || !synth->audioReady) return;
+    useSoundSystem(&synth->ss);
+
+    SoundSynthStopSong(synth);
+
+    setMelodyCallbacks(0, melodyTriggerBass, melodyReleaseBass);
+    setMelodyCallbacks(1, melodyTriggerLead, melodyReleaseLead);
+    setMelodyCallbacks(2, melodyTriggerChord, melodyReleaseChord);
+
+    Song_Emergence_ConfigureVoices();
+
+    SongPlayer* sp = &synth->songPlayer;
+    Song_Emergence_Load(sp->patterns);
+    sp->patternCount = 8;
+    sp->currentPattern = 0;
+    sp->loopsOnCurrent = 0;
+    sp->loopsPerPattern = 1;
+    sp->bpm = SONG_EMERGENCE_BPM;
+
+    startSongPlayback(synth, sp->bpm);
+}
+
 void SoundSynthStopSong(SoundSynth* synth) {
     if (!synth || !synth->audioReady) return;
     useSoundSystem(&synth->ss);
@@ -1259,6 +1351,10 @@ static const JukeboxEntry jukeboxSongs[] = {
     { "M.U.L.E. Theme",        SoundSynthPlaySongMule },
     { "M.U.L.E. v2 (MIDI)",    SoundSynthPlaySongMule2 },
     { "Gymnopedie No.1",        SoundSynthPlaySongGymnopedie },
+    { "Oscar Lofi",              SoundSynthPlaySongOscarLofi },
+    { "Dreamer",                 SoundSynthPlaySongDreamer },
+    { "Salad Daze",              SoundSynthPlaySongSaladDaze },
+    { "Emergence",               SoundSynthPlaySongEmergence },
 };
 
 #define JUKEBOX_SONG_COUNT (int)(sizeof(jukeboxSongs) / sizeof(jukeboxSongs[0]))

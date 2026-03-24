@@ -1,6 +1,11 @@
 # Lua Conductor / Portable Engine Architecture
 
 > Status: PROPOSAL (not implemented)
+> Part of: **Sound System Feature Chain**
+> **Prerequisites:**
+> 1. Live param reads (`live-params-and-mod-matrix.md` Phases 1-2) — patch pointer on Voice
+> 2. Scenes + crossfader (`scene-crossfader-spec.md`) — the engine feature this layer drives
+> 3. Bridge API additions (`sound_synth_bridge.h`) — bus volume/filter setters, crossfade, queue song, stingers
 
 ## Overview
 

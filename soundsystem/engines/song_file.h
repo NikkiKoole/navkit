@@ -446,6 +446,7 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "epBell", p->p_epBell);
     _sf_writeFloat(f, "epBellTone", p->p_epBellTone);
     _sf_writeInt(f, "epPickupType", p->p_epPickupType);
+    _sf_writeInt(f, "epRatioSet", p->p_epRatioSet);
     // Organ
     for (int db = 0; db < ORGAN_DRAWBARS; db++) {
         char dbKey[16]; snprintf(dbKey, sizeof(dbKey), "orgDrawbar%d", db);
@@ -1147,6 +1148,7 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "epBell") == 0) p->p_epBell = _sf_parseFloat(val);
     else if (strcmp(key, "epBellTone") == 0) p->p_epBellTone = _sf_parseFloat(val);
     else if (strcmp(key, "epPickupType") == 0) p->p_epPickupType = _sf_parseInt(val);
+    else if (strcmp(key, "epRatioSet") == 0) p->p_epRatioSet = _sf_parseInt(val);
     // Organ
     else if (strncmp(key, "orgDrawbar", 10) == 0) {
         int idx = atoi(key + 10);

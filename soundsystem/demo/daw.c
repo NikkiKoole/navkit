@@ -60,23 +60,23 @@ static inline bool ui_col_button(UIColumn *c, const char *l) { (void)c; (void)l;
 static inline void ui_col_float_pair(UIColumn *c, const char *l1, float *v1, float s1, float n1, float x1, const char *l2, float *v2, float s2, float n2, float x2) { (void)c; (void)l1; (void)v1; (void)s1; (void)n1; (void)x1; (void)l2; (void)v2; (void)s2; (void)n2; (void)x2; }
 static inline void ui_col_cycle_float_pair(UIColumn *c, const char *cl, const char **o, int cnt, int *cv, const char *fl, float *fv, float fs, float fn, float fx) { (void)c; (void)cl; (void)o; (void)cnt; (void)cv; (void)fl; (void)fv; (void)fs; (void)fn; (void)fx; }
 // Stub MIDI input
-static inline void MidiInput_Init(void) {}
-static inline void MidiInput_Shutdown(void) {}
+static inline void midiInputInit(void) {}
+static inline void midiInputShutdown(void) {}
 typedef enum { MIDI_NOTE_ON, MIDI_NOTE_OFF, MIDI_CC, MIDI_PITCH_BEND } MidiEventType;
 typedef struct { MidiEventType type; unsigned char channel, data1, data2; } MidiEvent;
-static inline int MidiInput_Poll(MidiEvent *e, int max) { (void)e; (void)max; return 0; }
-static inline bool MidiInput_IsConnected(void) { return false; }
-static inline const char *MidiInput_DeviceName(void) { return ""; }
+static inline int midiInputPoll(MidiEvent *e, int max) { (void)e; (void)max; return 0; }
+static inline bool midiInputIsConnected(void) { return false; }
+static inline const char *midiInputDeviceName(void) { return ""; }
 #define MIDI_LEARN_MAX_MAPPINGS 64
 typedef struct { float *target; float min, max; int cc; char label[32]; bool active; } MidiCCMapping;
 typedef struct { MidiCCMapping mappings[MIDI_LEARN_MAX_MAPPINGS]; int count; bool learning; float *learnTarget; float learnMin, learnMax; char learnLabel[32]; } MidiLearnState;
 static MidiLearnState g_midiLearn = {0};
-static inline void MidiLearn_Arm(float *t, float mn, float mx, const char *l) { (void)t; (void)mn; (void)mx; (void)l; }
-static inline void MidiLearn_Cancel(void) {}
-static inline bool MidiLearn_IsWaiting(float *t) { (void)t; return false; }
-static inline int MidiLearn_GetCC(float *t) { (void)t; return -1; }
-static inline bool MidiLearn_ProcessCC(int cc, float v) { (void)cc; (void)v; return false; }
-static inline void MidiLearn_ClearAll(void) {}
+static inline void midiLearnArm(float *t, float mn, float mx, const char *l) { (void)t; (void)mn; (void)mx; (void)l; }
+static inline void midiLearnCancel(void) {}
+static inline bool midiLearnIsWaiting(float *t) { (void)t; return false; }
+static inline int midiLearnGetCC(float *t) { (void)t; return -1; }
+static inline bool midiLearnProcessCC(int cc, float v) { (void)cc; (void)v; return false; }
+static inline void midiLearnClearAll(void) {}
 // Stub SCW data
 static inline void loadEmbeddedSCWs(void) {}
 #else
@@ -6534,9 +6534,9 @@ static void drawWorkMidi(float x, float y, float w, float h) {
     // --- MIDI Device Status ---
     DrawTextShadow("MIDI Device", (int)sx, (int)sy, UI_FONT_SMALL, WHITE);
     sy += 16;
-    if (MidiInput_IsConnected()) {
+    if (midiInputIsConnected()) {
         DrawRectangle((int)sx, (int)sy, 8, 8, GREEN);
-        DrawTextShadow(MidiInput_DeviceName(), (int)sx + 12, (int)sy - 1, UI_FONT_SMALL, LIGHTGRAY);
+        DrawTextShadow(midiInputDeviceName(), (int)sx + 12, (int)sy - 1, UI_FONT_SMALL, LIGHTGRAY);
     } else {
         DrawRectangle((int)sx, (int)sy, 8, 8, UI_BG_RED_MED);
         DrawTextShadow("No device — plug in a MIDI controller", (int)sx + 12, (int)sy - 1, UI_FONT_SMALL, UI_TEXT_SUBTLE);
@@ -6714,7 +6714,7 @@ static void drawWorkMidi(float x, float y, float w, float h) {
         DrawRectangleLinesEx(clrR, 1, UI_BG_RED_MED);
         DrawTextShadow("Clear All", (int)x + 10, (int)sy + 2, UI_FONT_SMALL, clrHov ? WHITE : (Color){180,100,100,255});
         if (clrHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            MidiLearn_ClearAll();
+            midiLearnClearAll();
             ui_consume_click();
         }
     }
@@ -9198,7 +9198,7 @@ static float midiNoteToPlayFreq(int note, int octaveOffset) {
 
 static void dawHandleMidiInput(void) {
     MidiEvent midiEvents[64];
-    int midiCount = MidiInput_Poll(midiEvents, 64);
+    int midiCount = midiInputPoll(midiEvents, 64);
 
     for (int i = 0; i < midiCount; i++) {
         MidiEvent *ev = &midiEvents[i];
@@ -9309,7 +9309,7 @@ static void dawHandleMidiInput(void) {
                 float val = ev->data2 / 127.0f;
 
                 // MIDI Learn gets first crack
-                bool learned = MidiLearn_ProcessCC(cc, val);
+                bool learned = midiLearnProcessCC(cc, val);
 
                 if (learned) {
                     // Push learned param changes to active MIDI voices
@@ -9496,8 +9496,8 @@ int main(int argc, char *argv[]) {
         midiSplitLeftVoices[i] = -1;
         midiSplitRightVoices[i] = -1;
     }
-    MidiInput_Init();
-    ui_set_midi_learn_hooks(MidiLearn_Arm, MidiLearn_IsWaiting, MidiLearn_GetCC);
+    midiInputInit();
+    ui_set_midi_learn_hooks(midiLearnArm, midiLearnIsWaiting, midiLearnGetCC);
 
     Font font = LoadEmbeddedFont();
     ui_init(&font);
@@ -9703,7 +9703,7 @@ int main(int argc, char *argv[]) {
         EndDrawing();
     }
 
-    MidiInput_Shutdown();
+    midiInputShutdown();
     UnloadAudioStream(dawStream);
     CloseAudioDevice();
     UnloadFont(font);

@@ -1,7 +1,7 @@
 # Soundsystem DOD / Performance Audit (Casey Muratori Style)
 
-**Date**: 2026-03-11
-**Scope**: `soundsystem/` — synth engine, drums, effects, sequencer, sampler, DAW/demo
+**Date**: 2026-03-11 (updated 2026-03-24)
+**Scope**: `soundsystem/` — synth engine, effects, sequencer, sampler, DAW/demo
 
 **Total static memory**: ~3.3MB (excluding loaded samples)
 
@@ -170,26 +170,9 @@ typedef struct {
 
 ---
 
-### 4. Pattern struct: v1 + v2 data duplication = ~24KB per pattern
+### ~~4. Pattern struct: v1 + v2 data duplication~~ **Done**
 
-**File**: `sequencer.h:284-319`
-
-During the v1→v2 transition, every Pattern contains BOTH representations:
-
-| Data | Size |
-|---|---|
-| v1 drum arrays (steps, velocity, pitch, prob, cond) | ~2.2KB |
-| v1 melody arrays (note, vel, gate, prob, cond, slide, accent, sustain) | ~2.5KB |
-| v2 StepV2[12][32] (46 bytes × 384) | **17.7KB** |
-| PLocks + index | ~1.3KB |
-| Overrides | ~60B |
-| **Total per pattern** | **~24KB** |
-
-8 patterns = **192KB**. The v1 data is ~4.7KB per pattern of pure duplication (already represented in v2). Every `patSet*` function dual-writes to both v1 and v2 (see the many `// v2 dual-write` comments), doubling write bandwidth.
-
-**Fix**: Complete the v2 migration (Phase 4 per `sequencer-v2-plan.md`) and delete all v1 arrays. This halves pattern memory and eliminates dual-write overhead.
-
-**Estimated improvement**: 2x less memory, 2x less write bandwidth in step editing paths.
+V2 migration complete — all v1 arrays (`drumSteps`, `drumVelocity`, `drumPitch`, `drumProb`, `drumCond`, melody equivalents) removed. Pattern struct now contains only v2 `StepV2[12][32]` + PLocks. No more dual-writes.
 
 ---
 
@@ -241,7 +224,7 @@ With typical density (5-15 grains active), this checks 17-27 inactive grains per
 
 ### 7. sinf() calls in hot audio paths
 
-**Files**: `synth.h`, `drums.h` — multiple `sinf()` calls per voice per sample
+**Files**: `synth.h`, `synth_oscillators.h`, `effects.h` — multiple `sinf()` calls per voice per sample
 
 Phase accumulation → `sinf(phase * 2π)` is the core of most oscillators. `sinf()` is expensive (~20-50 cycles depending on implementation). With 32 voices × potentially multiple oscillators (osc2-osc6), this can be 100+ `sinf()` calls per sample.
 
@@ -312,13 +295,11 @@ Multiple `memset(seq.trackStepPlayCount, ...)` calls on pattern switch. These ar
 
 ## ALREADY GOOD
 
-- **Drum voice processing**: Clean switch dispatch by drum type, no function pointers. Direct `sinf()` + `expDecay()` per voice. Compact DrumVoice struct (~80B).
 - **Static allocation everywhere**: No malloc in audio callback. All voices, patterns, effects contexts are static globals or stack-local. This is correct.
 - **Circular buffer pattern**: Delay lines, reverb combs, chorus/flanger all use modular ring buffers with read/write pointers. Memory-efficient, no allocation.
 - **P-lock linked list**: `nextInStep` chaining avoids per-step scanning of all 128 p-locks. Only iterate locks that apply to the current step. Good sparse access pattern.
 - **StepV2 packing**: 46 bytes per step with uint8_t fields and compact StepNote (7 bytes). Well-packed for cache.
 - **Embedded SCW data**: Optional compile-time embedding (`scw_data.h`) avoids runtime file I/O. Good for embedded/game use.
-- **DrumsContext is compact**: 16 voices × 80B = 1.3KB. Fits in L1. Hot path (processDrumVoice) touches ~30B per voice. Clean.
 - **Sequencer tick is efficient**: 96 PPQ tick loop checks per-track counters, only triggers on exact tick match. No wasted iteration.
 
 ---
@@ -330,13 +311,13 @@ Multiple `memset(seq.trackStepPlayCount, ...)` calls on pattern switch. These ar
 | 1 | Voice struct hot/cold split (10KB → 100B hot) | 320KB wasted in L1/L2 | Medium | 5-20x voice loop |
 | 2 | Bus delay buffers always allocated (1.2MB) | 1.2MB cache pressure | Low | 2-7x cache reduction |
 | 3 | Effects buffers always allocated (1.6MB) | 1.6MB when effects off | Low | 3-5x when effects off |
-| 4 | Pattern v1+v2 duplication (17.7KB wasted/pat) | 142KB wasted, 2x writes | Medium (finish v2 migration) | 2x pattern memory |
+| ~~4~~ | ~~Pattern v1+v2 duplication~~ | ~~142KB wasted~~ | Done — v2 migration complete | ~~2x pattern memory~~ |
 | 5 | Prime-sized reverb combs (modulo division) | 176K divisions/sec | Low | 2-3x reverb |
 | 6 | Granular 32-slot scan | 900B per sample | Low | Minor |
 | 7 | sinf() in hot audio paths | CPU cycles | Medium | 2-5x sine-heavy patches |
 | 8 | Sequencer function pointer dispatch | Branch misprediction | Low | Negligible |
 
-**Priority order**: #1 (Voice split) >> #4 (v2 migration) > #7 (fast sine) > #5 (reverb P2) > #2/#3 (lazy buffers) > #6 > #8
+**Priority order**: #1 (Voice split) >> #7 (fast sine, selective) > #5 (reverb P2) > #2/#3 (lazy buffers) > #6 > #8
 
 ---
 

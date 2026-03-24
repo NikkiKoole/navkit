@@ -867,7 +867,7 @@ typedef struct EffectsContext {
 
 // Initialize an effects context with default values
 static void initEffectsContext(EffectsContext* ctx) {
-    memset(ctx, 0, sizeof(EffectsContext));
+    memset(ctx, 0, sizeof(*ctx));
     
     ctx->noiseState = 54321;
     ctx->tapeWowNoiseSeed = 77777;
@@ -2537,7 +2537,7 @@ static void initBusDefaults(BusEffects* bus) {
 
 // Initialize mixer context
 static void initMixerContext(MixerContext* ctx) {
-    memset(ctx, 0, sizeof(MixerContext));
+    memset(ctx, 0, sizeof(*ctx));
     
     for (int i = 0; i < NUM_BUSES; i++) {
         initBusDefaults(&ctx->bus[i]);

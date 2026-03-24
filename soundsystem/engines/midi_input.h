@@ -1,6 +1,6 @@
 // midi_input.h — CoreMIDI keyboard input (macOS)
 // Gracefully no-ops when no MIDI device is connected.
-// Include once, call MidiInput_Init/Poll/Shutdown from your main loop.
+// Include once, call midiInputInit/Poll/Shutdown from your main loop.
 
 #ifndef MIDI_INPUT_H
 #define MIDI_INPUT_H
@@ -42,18 +42,18 @@ static MidiInputState g_midiInput = {0};
 // ============================================================================
 
 // Initialize MIDI input. No-op if no device found. Safe to call always.
-static void MidiInput_Init(void);
+static void midiInputInit(void);
 
 // Poll for pending MIDI events. Returns number of events written to `out`.
 // Non-blocking — returns 0 if no events available.
-static int MidiInput_Poll(MidiEvent *out, int maxEvents);
+static int midiInputPoll(MidiEvent *out, int maxEvents);
 
 // Clean up. Safe to call even if Init was a no-op.
-static void MidiInput_Shutdown(void);
+static void midiInputShutdown(void);
 
 // Query state
-static bool MidiInput_IsConnected(void);
-static const char *MidiInput_DeviceName(void);
+static bool midiInputIsConnected(void);
+static const char *midiInputDeviceName(void);
 
 // ============================================================================
 // IMPLEMENTATION
@@ -186,7 +186,7 @@ static void midiInput_notifyProc(const MIDINotification *msg, void *refCon) {
     }
 }
 
-static void MidiInput_Init(void) {
+static void midiInputInit(void) {
     memset(&g_midiInput, 0, sizeof(g_midiInput));
 
     // Create MIDI client
@@ -241,7 +241,7 @@ static void MidiInput_Init(void) {
     printf("[MIDI] Connected: %s\n", g_midiInput.deviceName);
 }
 
-static int MidiInput_Poll(MidiEvent *out, int maxEvents) {
+static int midiInputPoll(MidiEvent *out, int maxEvents) {
     int count = 0;
     while (count < maxEvents && g_midiInput.readPos != g_midiInput.writePos) {
         out[count++] = g_midiInput.events[g_midiInput.readPos];
@@ -250,7 +250,7 @@ static int MidiInput_Poll(MidiEvent *out, int maxEvents) {
     return count;
 }
 
-static void MidiInput_Shutdown(void) {
+static void midiInputShutdown(void) {
     if (g_midiPort && g_midiSource) {
         MIDIPortDisconnectSource(g_midiPort, g_midiSource);
     }
@@ -266,11 +266,11 @@ static void MidiInput_Shutdown(void) {
     g_midiInput.deviceConnected = false;
 }
 
-static bool MidiInput_IsConnected(void) {
+static bool midiInputIsConnected(void) {
     return g_midiInput.deviceConnected;
 }
 
-static const char *MidiInput_DeviceName(void) {
+static const char *midiInputDeviceName(void) {
     if (g_midiInput.deviceConnected) return g_midiInput.deviceName;
     return "No MIDI device";
 }
@@ -280,18 +280,18 @@ static const char *MidiInput_DeviceName(void) {
 // NON-APPLE STUBS — compile cleanly, do nothing
 // ============================================================================
 
-static void MidiInput_Init(void) {
+static void midiInputInit(void) {
     memset(&g_midiInput, 0, sizeof(g_midiInput));
 }
 
-static int MidiInput_Poll(MidiEvent *out, int maxEvents) {
+static int midiInputPoll(MidiEvent *out, int maxEvents) {
     (void)out; (void)maxEvents;
     return 0;
 }
 
-static void MidiInput_Shutdown(void) {}
-static bool MidiInput_IsConnected(void) { return false; }
-static const char *MidiInput_DeviceName(void) { return "MIDI not supported"; }
+static void midiInputShutdown(void) {}
+static bool midiInputIsConnected(void) { return false; }
+static const char *midiInputDeviceName(void) { return "MIDI not supported"; }
 
 #endif // __APPLE__
 
@@ -324,7 +324,7 @@ static MidiLearnState g_midiLearn = {0};
 
 // Arm a parameter for MIDI learn (call when user right-clicks a knob).
 // If already waiting, cancels. If already mapped, removes the mapping.
-static void MidiLearn_Arm(float *target, float min, float max, const char *label) {
+static void midiLearnArm(float *target, float min, float max, const char *label) {
     // If already waiting on this same parameter, cancel learn
     if (g_midiLearn.learning && g_midiLearn.learnTarget == target) {
         g_midiLearn.learning = false;
@@ -357,18 +357,18 @@ static void MidiLearn_Arm(float *target, float min, float max, const char *label
 }
 
 // Cancel learn mode without mapping
-static void MidiLearn_Cancel(void) {
+static void midiLearnCancel(void) {
     g_midiLearn.learning = false;
     g_midiLearn.learnTarget = NULL;
 }
 
 // Check if a parameter is in learn-waiting state
-static bool MidiLearn_IsWaiting(float *target) {
+static bool midiLearnIsWaiting(float *target) {
     return g_midiLearn.learning && g_midiLearn.learnTarget == target;
 }
 
 // Get the CC number mapped to a parameter, or -1 if not mapped
-static int MidiLearn_GetCC(float *target) {
+static int midiLearnGetCC(float *target) {
     for (int i = 0; i < g_midiLearn.count; i++) {
         if (g_midiLearn.mappings[i].active && g_midiLearn.mappings[i].target == target) {
             return g_midiLearn.mappings[i].cc;
@@ -379,7 +379,7 @@ static int MidiLearn_GetCC(float *target) {
 
 // Process a CC event: complete learn if pending, or apply mapped value.
 // Call this for every MIDI_CC event. Returns true if the CC was consumed.
-static bool MidiLearn_ProcessCC(int cc, float value01) {
+static bool midiLearnProcessCC(int cc, float value01) {
     // If learning, bind this CC
     if (g_midiLearn.learning && g_midiLearn.learnTarget) {
         // Remove any existing mapping for this CC (one CC = one param)
@@ -425,7 +425,7 @@ static bool MidiLearn_ProcessCC(int cc, float value01) {
 }
 
 // Clear all mappings
-static void MidiLearn_ClearAll(void) {
+static void midiLearnClearAll(void) {
     g_midiLearn.count = 0;
     g_midiLearn.learning = false;
     g_midiLearn.learnTarget = NULL;
