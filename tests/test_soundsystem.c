@@ -39,11 +39,14 @@
 #undef monoVoiceIdx
 #undef fmModRatio
 #undef fmModIndex
+
+
 // Note: don't undef 'seq' as it's used throughout the tests
 
 // Song file format (needs SynthPatch + engine types, macros already undef'd above)
 #include "../soundsystem/engines/synth_patch.h"
 #include "../soundsystem/engines/song_file.h"
+#include "../soundsystem/engines/rhythm_patterns.h"
 
 // Test helpers
 #define FLOAT_EPSILON 0.0001f
@@ -59,7 +62,7 @@
 describe(plock_system) {
     it("should add a p-lock to an empty pattern") {
         _ensureSeqCtx();
-        Pattern p;
+        static Pattern p;
         initPattern(&p);
         
         bool result = seqSetPLock(&p, 0, 0, PLOCK_FILTER_CUTOFF, 0.75f);
@@ -74,7 +77,7 @@ describe(plock_system) {
     
     it("should update existing p-lock value") {
         _ensureSeqCtx();
-        Pattern p;
+        static Pattern p;
         initPattern(&p);
         
         seqSetPLock(&p, 0, 0, PLOCK_FILTER_CUTOFF, 0.5f);
@@ -86,7 +89,7 @@ describe(plock_system) {
     
     it("should add multiple p-locks to same step") {
         _ensureSeqCtx();
-        Pattern p;
+        static Pattern p;
         initPattern(&p);
         
         seqSetPLock(&p, 0, 0, PLOCK_FILTER_CUTOFF, 0.5f);
@@ -101,7 +104,7 @@ describe(plock_system) {
     
     it("should return default value when no p-lock exists") {
         _ensureSeqCtx();
-        Pattern p;
+        static Pattern p;
         initPattern(&p);
         
         float value = seqGetPLock(&p, 0, 0, PLOCK_FILTER_CUTOFF, 0.42f);
@@ -111,7 +114,7 @@ describe(plock_system) {
     
     it("should find p-lock using index lookup") {
         _ensureSeqCtx();
-        Pattern p;
+        static Pattern p;
         initPattern(&p);
         
         seqSetPLock(&p, 2, 5, PLOCK_VOLUME, 0.8f);
@@ -126,7 +129,7 @@ describe(plock_system) {
     
     it("should clear a specific p-lock") {
         _ensureSeqCtx();
-        Pattern p;
+        static Pattern p;
         initPattern(&p);
         
         seqSetPLock(&p, 0, 0, PLOCK_FILTER_CUTOFF, 0.5f);
@@ -141,7 +144,7 @@ describe(plock_system) {
     
     it("should clear all p-locks for a step") {
         _ensureSeqCtx();
-        Pattern p;
+        static Pattern p;
         initPattern(&p);
         
         seqSetPLock(&p, 0, 0, PLOCK_FILTER_CUTOFF, 0.5f);
@@ -157,7 +160,7 @@ describe(plock_system) {
     
     it("should check if step has p-locks") {
         _ensureSeqCtx();
-        Pattern p;
+        static Pattern p;
         initPattern(&p);
         
         expect(seqHasPLocks(&p, 0, 0) == false);
@@ -170,7 +173,7 @@ describe(plock_system) {
     
     it("should prepare p-locks for trigger callback") {
         _ensureSeqCtx();
-        Pattern p;
+        static Pattern p;
         initPattern(&p);
         
         seqSetPLock(&p, 0, 0, PLOCK_FILTER_CUTOFF, 0.6f);
@@ -188,7 +191,7 @@ describe(plock_system) {
     
     it("should use plockValue helper correctly") {
         _ensureSeqCtx();
-        Pattern p;
+        static Pattern p;
         initPattern(&p);
         
         seqSetPLock(&p, 0, 0, PLOCK_VOLUME, 0.5f);
@@ -200,7 +203,7 @@ describe(plock_system) {
     
     it("should handle maximum p-locks per pattern") {
         _ensureSeqCtx();
-        Pattern p;
+        static Pattern p;
         initPattern(&p);
         
         // Fill up to max
@@ -221,7 +224,7 @@ describe(plock_system) {
     
     it("should rebuild index after clearing p-locks") {
         _ensureSeqCtx();
-        Pattern p;
+        static Pattern p;
         initPattern(&p);
         
         // Add p-locks across multiple steps
@@ -479,7 +482,7 @@ describe(dilla_timing) {
 
 describe(pattern_management) {
     it("should initialize pattern with default values") {
-        Pattern p;
+        static Pattern p;
         initPattern(&p);
         
         // All drum steps should be off
@@ -736,7 +739,7 @@ describe(flam_effect) {
 
 describe(synth_context) {
     it("should initialize synth context with defaults") {
-        SynthContext ctx;
+        static SynthContext ctx;
         initSynthContext(&ctx);
         
         expect_float_eq(ctx.masterVolume, 0.5f);
@@ -749,7 +752,7 @@ describe(synth_context) {
     }
     
     it("should initialize all voices as inactive") {
-        SynthContext ctx;
+        static SynthContext ctx;
         initSynthContext(&ctx);
         
         for (int i = 0; i < NUM_VOICES; i++) {
@@ -1168,7 +1171,7 @@ describe(mallet_synthesis) {
 
 describe(effects_context) {
     it("should initialize effects context with defaults") {
-        EffectsContext ctx;
+        static EffectsContext ctx;
         initEffectsContext(&ctx);
         
         expect(ctx.params.distEnabled == false);
@@ -1180,7 +1183,7 @@ describe(effects_context) {
     }
     
     it("should have sensible default parameters") {
-        EffectsContext ctx;
+        static EffectsContext ctx;
         initEffectsContext(&ctx);
         
         expect_float_eq(ctx.params.distDrive, 2.0f);
@@ -3326,7 +3329,7 @@ describe(unison_detune) {
 
 describe(multi_instance_isolation) {
     it("should allow separate synth contexts without interference") {
-        SynthContext ctx1, ctx2;
+        static SynthContext ctx1, ctx2;
         initSynthContext(&ctx1);
         initSynthContext(&ctx2);
         
@@ -3345,7 +3348,7 @@ describe(multi_instance_isolation) {
     }
     
     it("should allow separate effects contexts without interference") {
-        EffectsContext ctx1, ctx2;
+        static EffectsContext ctx1, ctx2;
         initEffectsContext(&ctx1);
         initEffectsContext(&ctx2);
         
@@ -3368,7 +3371,7 @@ describe(multi_instance_isolation) {
     }
     
     it("should allow separate sequencer contexts without interference") {
-        SequencerContext seqCtxLocal1, seqCtxLocal2;
+        static SequencerContext seqCtxLocal1, seqCtxLocal2;
         initSequencerContext(&seqCtxLocal1);
         initSequencerContext(&seqCtxLocal2);
 
@@ -4246,7 +4249,7 @@ static void reset_chord_counters(void) {
 describe(v2_multi_note_steps) {
     it("should store custom chord notes via patSetChordCustom") {
         _ensureSeqCtx();
-        Pattern p;
+        static Pattern p;
         initPattern(&p);
 
         patSetChordCustom(&p, SEQ_DRUM_TRACKS + 0, 0, 0.8f, 4, 62, 68, 72, 79);
@@ -4262,7 +4265,7 @@ describe(v2_multi_note_steps) {
 
     it("should store triad chord notes via patSetChord") {
         _ensureSeqCtx();
-        Pattern p;
+        static Pattern p;
         initPattern(&p);
 
         // D minor triad: D3=50, F3=53, A3=57
@@ -4582,7 +4585,7 @@ describe(melody_sustain) {
 
     it("should initialize sustain to false in initPattern") {
         _ensureSeqCtx();
-        Pattern p;
+        static Pattern p;
         initPattern(&p);
 
         for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
@@ -4793,7 +4796,7 @@ describe(song_file_round_trip) {
         _ensureSeqCtx();
         const char *path = "/tmp/test_song_roundtrip.song";
 
-        SongFileData orig;
+        static SongFileData orig;
         songFileDataInit(&orig);
         strcpy(orig.name, "Test Song");
         orig.bpm = 95.5f;
@@ -4815,7 +4818,7 @@ describe(song_file_round_trip) {
         bool saved = songFileSave(path, &orig);
         expect(saved);
 
-        SongFileData loaded;
+        static SongFileData loaded;
         songFileDataInit(&loaded);
         bool ok = songFileLoad(path, &loaded);
         expect(ok);
@@ -4843,7 +4846,7 @@ describe(song_file_round_trip) {
         _ensureSeqCtx();
         const char *path = "/tmp/test_song_effects.song";
 
-        SongFileData orig;
+        static SongFileData orig;
         songFileDataInit(&orig);
         orig.sfEffects.distEnabled = true;
         orig.sfEffects.distDrive = 0.7f;
@@ -4857,7 +4860,7 @@ describe(song_file_round_trip) {
         bool saved = songFileSave(path, &orig);
         expect(saved);
 
-        SongFileData loaded;
+        static SongFileData loaded;
         songFileDataInit(&loaded);
         bool ok = songFileLoad(path, &loaded);
         expect(ok);
@@ -4878,7 +4881,7 @@ describe(song_file_round_trip) {
         _ensureSeqCtx();
         const char *path = "/tmp/test_song_dub.song";
 
-        SongFileData orig;
+        static SongFileData orig;
         songFileDataInit(&orig);
         orig.sfDubLoop.enabled = true;
         orig.sfDubLoop.feedback = 0.6f;
@@ -4893,7 +4896,7 @@ describe(song_file_round_trip) {
         bool saved = songFileSave(path, &orig);
         expect(saved);
 
-        SongFileData loaded;
+        static SongFileData loaded;
         songFileDataInit(&loaded);
         bool ok = songFileLoad(path, &loaded);
         expect(ok);
@@ -4988,7 +4991,7 @@ describe(song_file_pattern_events) {
         _ensureSeqCtx();
         const char *path = "/tmp/test_song_pattern.song";
 
-        SongFileData orig;
+        static SongFileData orig;
         songFileDataInit(&orig);
         // Set some drum steps on pattern 0
         patSetDrum(&orig.patterns[0], 0, 0, 0.8f, 0.0f);   // kick on step 0
@@ -5000,7 +5003,7 @@ describe(song_file_pattern_events) {
         bool saved = songFileSave(path, &orig);
         expect(saved);
 
-        SongFileData loaded;
+        static SongFileData loaded;
         songFileDataInit(&loaded);
         bool ok = songFileLoad(path, &loaded);
         expect(ok);
@@ -5020,7 +5023,7 @@ describe(song_file_pattern_events) {
         _ensureSeqCtx();
         const char *path = "/tmp/test_song_melody.song";
 
-        SongFileData orig;
+        static SongFileData orig;
         songFileDataInit(&orig);
         // Set melody on track 0 (bass), pattern 0
         int t = SEQ_DRUM_TRACKS + 0;
@@ -5032,7 +5035,7 @@ describe(song_file_pattern_events) {
         bool saved = songFileSave(path, &orig);
         expect(saved);
 
-        SongFileData loaded;
+        static SongFileData loaded;
         songFileDataInit(&loaded);
         bool ok = songFileLoad(path, &loaded);
         expect(ok);
@@ -5055,7 +5058,7 @@ describe(song_file_pattern_events) {
         _ensureSeqCtx();
         const char *path = "/tmp/test_song_plocks.song";
 
-        SongFileData orig;
+        static SongFileData orig;
         songFileDataInit(&orig);
         // Add p-locks: track 5 (lead = drum_tracks + 1), step 0 + 4
         int t = SEQ_DRUM_TRACKS + 1;  // lead track (absolute index)
@@ -5072,7 +5075,7 @@ describe(song_file_pattern_events) {
         bool saved = songFileSave(path, &orig);
         expect(saved);
 
-        SongFileData loaded;
+        static SongFileData loaded;
         songFileDataInit(&loaded);
         bool ok = songFileLoad(path, &loaded);
         expect(ok);
@@ -5144,7 +5147,7 @@ describe(chain_file_round_trip) {
         _ensureSeqCtx();
         const char *path = "/tmp/test_song_chain.song";
 
-        SongFileData orig;
+        static SongFileData orig;
         songFileDataInit(&orig);
         orig.chainLength = 5;
         orig.chain[0] = 0;
@@ -5156,7 +5159,7 @@ describe(chain_file_round_trip) {
         bool saved = songFileSave(path, &orig);
         expect(saved);
 
-        SongFileData loaded;
+        static SongFileData loaded;
         songFileDataInit(&loaded);
         bool ok = songFileLoad(path, &loaded);
         expect(ok);
@@ -5175,13 +5178,13 @@ describe(chain_file_round_trip) {
         _ensureSeqCtx();
         const char *path = "/tmp/test_song_nochain.song";
 
-        SongFileData orig;
+        static SongFileData orig;
         songFileDataInit(&orig);
         // No chain set — chainLength stays 0
 
         songFileSave(path, &orig);
 
-        SongFileData loaded;
+        static SongFileData loaded;
         songFileDataInit(&loaded);
         songFileLoad(path, &loaded);
 
@@ -6708,7 +6711,7 @@ static void advanceVoice(Voice *v, int samples) {
 
 describe(mono_note_stack) {
     it("should push and pop notes in LIFO order (last priority)") {
-        SynthContext ctx;
+        static SynthContext ctx;
         setupMonoCtx(&ctx);
 
         monoStackPush(60, 261.63f);
@@ -6736,7 +6739,7 @@ describe(mono_note_stack) {
     }
 
     it("should return lowest note in LOW priority mode") {
-        SynthContext ctx;
+        static SynthContext ctx;
         setupMonoCtx(&ctx);
         ctx.notePriority = NOTE_PRIORITY_LOW;
 
@@ -6752,7 +6755,7 @@ describe(mono_note_stack) {
     }
 
     it("should return highest note in HIGH priority mode") {
-        SynthContext ctx;
+        static SynthContext ctx;
         setupMonoCtx(&ctx);
         ctx.notePriority = NOTE_PRIORITY_HIGH;
 
@@ -6768,7 +6771,7 @@ describe(mono_note_stack) {
     }
 
     it("should handle duplicate push (re-press same key)") {
-        SynthContext ctx;
+        static SynthContext ctx;
         setupMonoCtx(&ctx);
 
         monoStackPush(60, 261.63f);
@@ -6783,7 +6786,7 @@ describe(mono_note_stack) {
     }
 
     it("should clear stack") {
-        SynthContext ctx;
+        static SynthContext ctx;
         setupMonoCtx(&ctx);
 
         monoStackPush(60, 261.63f);
@@ -6803,7 +6806,7 @@ describe(mono_note_stack) {
 
 describe(mono_voice_lifecycle) {
     it("should play a note and produce audio in mono mode") {
-        SynthContext ctx;
+        static SynthContext ctx;
         setupMonoCtx(&ctx);
         ctx.monoMode = true;
         ctx.glideTime = 0.06f;
@@ -6830,7 +6833,7 @@ describe(mono_voice_lifecycle) {
     }
 
     it("should glide when second note pressed while first held") {
-        SynthContext ctx;
+        static SynthContext ctx;
         setupMonoCtx(&ctx);
         ctx.monoMode = true;
         ctx.glideTime = 0.06f;
@@ -6857,7 +6860,7 @@ describe(mono_voice_lifecycle) {
     }
 
     it("should retrigger envelope on fresh note after full release") {
-        SynthContext ctx;
+        static SynthContext ctx;
         setupMonoCtx(&ctx);
         ctx.monoMode = true;
         ctx.glideTime = 0.06f;
@@ -6895,7 +6898,7 @@ describe(mono_voice_lifecycle) {
     }
 
     it("should retrigger after release with zero sustain (acid preset)") {
-        SynthContext ctx;
+        static SynthContext ctx;
         setupMonoCtx(&ctx);
         ctx.monoMode = true;
         ctx.glideTime = 0.06f;
@@ -6936,7 +6939,7 @@ describe(mono_voice_lifecycle) {
     }
 
     it("should produce audio on second note with zero sustain (acid glide bug)") {
-        SynthContext ctx;
+        static SynthContext ctx;
         setupMonoCtx(&ctx);
         ctx.monoMode = true;
         ctx.glideTime = 0.06f;
@@ -6976,7 +6979,7 @@ describe(mono_voice_lifecycle) {
 
 describe(mono_legato_window) {
     it("should treat note within legato window as glide not retrigger") {
-        SynthContext ctx;
+        static SynthContext ctx;
         setupMonoCtx(&ctx);
         ctx.monoMode = true;
         ctx.glideTime = 0.06f;
@@ -7016,7 +7019,7 @@ describe(mono_legato_window) {
     }
 
     it("should retrigger normally outside legato window") {
-        SynthContext ctx;
+        static SynthContext ctx;
         setupMonoCtx(&ctx);
         ctx.monoMode = true;
         ctx.glideTime = 0.06f;
@@ -7054,7 +7057,7 @@ describe(mono_legato_window) {
 
 describe(mono_arp_isolation) {
     it("should clear mono stack when arp uses the voice") {
-        SynthContext ctx;
+        static SynthContext ctx;
         setupMonoCtx(&ctx);
 
         // Push some notes
@@ -7068,7 +7071,7 @@ describe(mono_arp_isolation) {
     }
 
     it("should have empty stack after clear for clean mono takeover") {
-        SynthContext ctx;
+        static SynthContext ctx;
         setupMonoCtx(&ctx);
 
         monoStackPush(60, 261.63f);
@@ -7301,7 +7304,7 @@ describe(pertrack_step0_trigger) {
 
 describe(filterbank_mode) {
     it("should produce output with filterbank mode enabled") {
-        SoundSystem ss;
+        static SoundSystem ss;
         initSoundSystem(&ss);
         useSoundSystem(&ss);
 
@@ -7330,7 +7333,7 @@ describe(filterbank_mode) {
     }
 
     it("should differ from phoneme mode output") {
-        SoundSystem ss;
+        static SoundSystem ss;
         initSoundSystem(&ss);
         useSoundSystem(&ss);
 
@@ -7368,7 +7371,7 @@ describe(filterbank_mode) {
     }
 
     it("should change output when alpha is swept") {
-        SoundSystem ss;
+        static SoundSystem ss;
         initSoundSystem(&ss);
         useSoundSystem(&ss);
 
@@ -7402,7 +7405,7 @@ describe(filterbank_mode) {
     }
 
     it("should produce trapezoid waveform with fbMorphOsc") {
-        SoundSystem ss;
+        static SoundSystem ss;
         initSoundSystem(&ss);
         useSoundSystem(&ss);
 
@@ -7495,7 +7498,7 @@ describe(filterbank_mode) {
     }
 
     it("should modulate alpha with filter envelope") {
-        SoundSystem ss;
+        static SoundSystem ss;
         initSoundSystem(&ss);
         useSoundSystem(&ss);
 
@@ -7533,7 +7536,7 @@ describe(filterbank_mode) {
     }
 
     it("should mix noise into filterbank input") {
-        SoundSystem ss;
+        static SoundSystem ss;
         initSoundSystem(&ss);
         useSoundSystem(&ss);
 
@@ -7572,6 +7575,1432 @@ describe(filterbank_mode) {
         expect(energy1 > 0.001f);
         expect(energy2 > 0.001f);
         expect(fabsf(energy1 - energy2) > 0.001f);
+    }
+}
+
+// ============================================================================
+// AREA 1: PATCH TRIGGER (applyPatchToGlobals) TESTS
+// ============================================================================
+// Undef ALL synth macros that map to SynthContext fields so we can use offsetof.
+// These undefs are placed AFTER all existing tests so they don't break anything above.
+#undef noteVolume
+#undef noteEnvelopeEnabled
+#undef noteFilterEnabled
+#undef noteFilterCutoff
+#undef noteFilterResonance
+#undef noteFilterType
+#undef noteFilterModel
+#undef noteFilterEnvAmt
+#undef noteFilterKeyTrack
+#undef noteFilterEnvAttack
+#undef noteFilterEnvDecay
+#undef noteFilterLfoRate
+#undef noteFilterLfoDepth
+#undef noteFilterLfoShape
+#undef noteFilterLfoSync
+#undef noteFilterLfoPhaseOffset
+#undef noteResoLfoRate
+#undef noteResoLfoDepth
+#undef noteResoLfoShape
+#undef noteResoLfoSync
+#undef noteResoLfoPhaseOffset
+#undef noteAmpLfoRate
+#undef noteAmpLfoDepth
+#undef noteAmpLfoShape
+#undef noteAmpLfoSync
+#undef noteAmpLfoPhaseOffset
+#undef notePitchLfoRate
+#undef notePitchLfoDepth
+#undef notePitchLfoShape
+#undef notePitchLfoSync
+#undef notePitchLfoPhaseOffset
+#undef noteFmLfoRate
+#undef noteFmLfoDepth
+#undef noteFmLfoPhaseOffset
+#undef fmFeedback
+#undef fmMod2Ratio
+#undef fmMod2Index
+#undef fmAlgorithm
+#undef monoRetrigger
+#undef monoHardRetrigger
+#undef pluckBrightness
+#undef pluckDamping
+#undef pluckDamp
+#undef additivePreset
+#undef additiveBrightness
+#undef additiveShimmer
+#undef additiveInharmonicity
+#undef orgDrawbars
+#undef orgClick
+#undef orgPercOn
+#undef orgCrosstalk
+#undef epHardness
+#undef epToneBar
+#undef epPickupPos
+#undef epPickupDist
+#undef epDecay
+#undef epBell
+#undef epBellTone
+#undef epRatioSet
+#undef epPickupType
+#undef noteNoiseMix
+#undef noteNoiseDecay
+#undef noteDrive
+#undef noteClickLevel
+#undef noteClickTime
+#undef noteRetriggerCount
+#undef noteRetriggerSpread
+#undef noteWavefoldAmount
+#undef noteFbBaseFreq
+#undef noteFbSpacing
+#undef noteFbAlpha
+#undef noteFbBeta
+#undef noteFbQ
+#undef noteFbKeyTrack
+#undef noteFbNoiseMix
+#undef noteFbLfoRate
+#undef noteFbLfoAlpha
+#undef bowPressure
+#undef bowSpeed
+#undef bowPosition
+#undef pipeBreath
+#undef pipeEmbouchure
+#undef pipeBore
+#undef reedStiffness
+#undef reedAperture
+#undef reedBlowPressure
+#undef brassBlowPressure
+#undef brassLipTension
+#undef brassMute
+#undef noteOsc2Ratio
+#undef noteOsc2Level
+#undef noteOsc2Decay
+#undef noteOsc3Ratio
+#undef noteOsc3Level
+#undef noteOsc3Decay
+#undef noteOscVelSens
+#undef noteVelToFilter
+#undef noteVelToClick
+#undef noteVelToDrive
+#undef noteFormantEnabled
+#undef noteFormantFrom
+#undef noteFormantTo
+#undef noteFormantMorphTime
+#undef noteFormantShift
+#undef noteFormantQ
+#undef noteFormantMix
+#undef noteFormantRandom
+#undef noteFormantMode
+#undef notePulseWidth
+
+// Now that macros are undef'd, we can use synthCtx->fieldName directly
+// (the actual struct fields, not the convenience macros)
+
+describe(patch_trigger_globals) {
+    it("should copy envelope parameters") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_SAW);
+        p.p_attack = 0.42f;
+        p.p_decay = 0.33f;
+        p.p_sustain = 0.77f;
+        p.p_release = 0.88f;
+        p.p_volume = 0.65f;
+        p.p_envelopeEnabled = true;
+        applyPatchToGlobals(&p);
+
+        expect_float_eq(synthCtx->noteAttack, 0.42f);
+        expect_float_eq(synthCtx->noteDecay, 0.33f);
+        expect_float_eq(synthCtx->noteSustain, 0.77f);
+        expect_float_eq(synthCtx->noteRelease, 0.88f);
+        expect_float_eq(synthCtx->noteVolume, 0.65f);
+        expect(synthCtx->noteEnvelopeEnabled == true);
+    }
+
+    it("should copy filter parameters") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_SAW);
+        p.p_filterEnabled = true;
+        p.p_filterCutoff = 0.6f;
+        p.p_filterResonance = 0.4f;
+        p.p_filterType = 1;
+        p.p_filterModel = 1;
+        p.p_filterEnvAmt = 0.5f;
+        p.p_filterKeyTrack = 0.7f;
+        p.p_filterEnvAttack = 0.12f;
+        p.p_filterEnvDecay = 0.34f;
+        applyPatchToGlobals(&p);
+
+        expect(synthCtx->noteFilterEnabled == true);
+        expect_float_eq(synthCtx->noteFilterCutoff, 0.6f);
+        expect_float_eq(synthCtx->noteFilterResonance, 0.4f);
+        expect(synthCtx->noteFilterType == 1);
+        expect(synthCtx->noteFilterModel == 1);
+        expect_float_eq(synthCtx->noteFilterEnvAmt, 0.5f);
+        expect_float_eq(synthCtx->noteFilterKeyTrack, 0.7f);
+        expect_float_eq(synthCtx->noteFilterEnvAttack, 0.12f);
+        expect_float_eq(synthCtx->noteFilterEnvDecay, 0.34f);
+    }
+
+    it("should copy all four LFO groups") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_SAW);
+        p.p_filterLfoRate = 1.1f; p.p_filterLfoDepth = 0.22f; p.p_filterLfoShape = 2; p.p_filterLfoSync = 3; p.p_filterLfoPhaseOffset = 0.1f;
+        p.p_resoLfoRate = 2.2f; p.p_resoLfoDepth = 0.33f; p.p_resoLfoShape = 1; p.p_resoLfoSync = 2; p.p_resoLfoPhaseOffset = 0.2f;
+        p.p_ampLfoRate = 3.3f; p.p_ampLfoDepth = 0.44f; p.p_ampLfoShape = 3; p.p_ampLfoSync = 1; p.p_ampLfoPhaseOffset = 0.3f;
+        p.p_pitchLfoRate = 4.4f; p.p_pitchLfoDepth = 0.55f; p.p_pitchLfoShape = 0; p.p_pitchLfoSync = 4; p.p_pitchLfoPhaseOffset = 0.4f;
+        applyPatchToGlobals(&p);
+
+        expect_float_eq(synthCtx->noteFilterLfoRate, 1.1f);
+        expect_float_eq(synthCtx->noteFilterLfoDepth, 0.22f);
+        expect(synthCtx->noteFilterLfoShape == 2);
+        expect_float_eq(synthCtx->noteFilterLfoPhaseOffset, 0.1f);
+        expect_float_eq(synthCtx->noteResoLfoRate, 2.2f);
+        expect_float_eq(synthCtx->noteResoLfoDepth, 0.33f);
+        expect(synthCtx->noteResoLfoShape == 1);
+        expect_float_eq(synthCtx->noteResoLfoPhaseOffset, 0.2f);
+        expect_float_eq(synthCtx->noteAmpLfoRate, 3.3f);
+        expect_float_eq(synthCtx->noteAmpLfoDepth, 0.44f);
+        expect(synthCtx->noteAmpLfoShape == 3);
+        expect_float_eq(synthCtx->noteAmpLfoPhaseOffset, 0.3f);
+        expect_float_eq(synthCtx->notePitchLfoRate, 4.4f);
+        expect_float_eq(synthCtx->notePitchLfoDepth, 0.55f);
+        expect(synthCtx->notePitchLfoShape == 0);
+        expect_float_eq(synthCtx->notePitchLfoPhaseOffset, 0.4f);
+    }
+
+    it("should copy FM synthesis parameters") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_FM);
+        p.p_fmModRatio = 3.5f;
+        p.p_fmModIndex = 4.0f;
+        p.p_fmFeedback = 0.3f;
+        p.p_fmMod2Ratio = 1.5f;
+        p.p_fmMod2Index = 2.0f;
+        p.p_fmAlgorithm = 1;
+        p.p_fmLfoRate = 5.5f;
+        p.p_fmLfoDepth = 0.66f;
+        p.p_fmLfoPhaseOffset = 0.5f;
+        applyPatchToGlobals(&p);
+
+        expect_float_eq(synthCtx->fmModRatio, 3.5f);
+        expect_float_eq(synthCtx->fmModIndex, 4.0f);
+        expect_float_eq(synthCtx->fmFeedback, 0.3f);
+        expect_float_eq(synthCtx->fmMod2Ratio, 1.5f);
+        expect_float_eq(synthCtx->fmMod2Index, 2.0f);
+        expect(synthCtx->fmAlgorithm == 1);
+        expect_float_eq(synthCtx->noteFmLfoRate, 5.5f);
+        expect_float_eq(synthCtx->noteFmLfoDepth, 0.66f);
+        expect_float_eq(synthCtx->noteFmLfoPhaseOffset, 0.5f);
+    }
+
+    it("should copy mono mode and glide parameters") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_SAW);
+        p.p_monoMode = true;
+        p.p_monoRetrigger = true;
+        p.p_monoHardRetrigger = true;
+        p.p_glideTime = 0.25f;
+        p.p_legatoWindow = 0.03f;
+        p.p_notePriority = 2;
+        applyPatchToGlobals(&p);
+
+        expect(synthCtx->monoMode == true);
+        expect(synthCtx->monoRetrigger == true);
+        expect(synthCtx->monoHardRetrigger == true);
+        expect_float_eq(synthCtx->glideTime, 0.25f);
+        expect_float_eq(synthCtx->legatoWindow, 0.03f);
+        expect(synthCtx->notePriority == 2);
+    }
+
+    it("should copy pluck and additive parameters") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_PLUCK);
+        p.p_pluckBrightness = 0.8f;
+        p.p_pluckDamping = 0.99f;
+        p.p_pluckDamp = 0.3f;
+        p.p_additivePreset = 2;
+        p.p_additiveBrightness = 0.7f;
+        p.p_additiveShimmer = 0.4f;
+        p.p_additiveInharmonicity = 0.2f;
+        applyPatchToGlobals(&p);
+
+        expect_float_eq(synthCtx->pluckBrightness, 0.8f);
+        expect_float_eq(synthCtx->pluckDamping, 0.99f);
+        expect_float_eq(synthCtx->pluckDamp, 0.3f);
+        expect(synthCtx->additivePreset == 2);
+        expect_float_eq(synthCtx->additiveBrightness, 0.7f);
+        expect_float_eq(synthCtx->additiveShimmer, 0.4f);
+        expect_float_eq(synthCtx->additiveInharmonicity, 0.2f);
+    }
+
+    it("should copy organ drawbar array and params") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_ORGAN);
+        float bars[9] = {1.0f, 0.8f, 0.6f, 0.4f, 0.2f, 0.1f, 0.3f, 0.5f, 0.7f};
+        for (int i = 0; i < 9; i++) p.p_orgDrawbar[i] = bars[i];
+        p.p_orgClick = 0.5f;
+        p.p_orgPercOn = true;
+        p.p_orgCrosstalk = 0.1f;
+        applyPatchToGlobals(&p);
+
+        for (int i = 0; i < 9; i++) {
+            float *dbars = (float*)((char*)synthCtx + offsetof(SynthContext, orgDrawbars));
+            expect_float_eq(dbars[i], bars[i]);
+        }
+        expect_float_eq(synthCtx->orgClick, 0.5f);
+        expect(synthCtx->orgPercOn == true);
+        expect_float_eq(synthCtx->orgCrosstalk, 0.1f);
+    }
+
+    it("should copy electric piano parameters") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_EPIANO);
+        p.p_epHardness = 0.7f;
+        p.p_epToneBar = 0.3f;
+        p.p_epPickupPos = 0.5f;
+        p.p_epPickupDist = 0.4f;
+        p.p_epDecay = 4.0f;
+        p.p_epBell = 0.6f;
+        p.p_epBellTone = 0.2f;
+        p.p_epRatioSet = 1;
+        p.p_epPickupType = 2;
+        applyPatchToGlobals(&p);
+
+        expect_float_eq(synthCtx->epHardness, 0.7f);
+        expect_float_eq(synthCtx->epToneBar, 0.3f);
+        expect_float_eq(synthCtx->epPickupPos, 0.5f);
+        expect_float_eq(synthCtx->epPickupDist, 0.4f);
+        expect_float_eq(synthCtx->epDecay, 4.0f);
+        expect_float_eq(synthCtx->epBell, 0.6f);
+        expect_float_eq(synthCtx->epBellTone, 0.2f);
+        expect(synthCtx->epRatioSet == 1);
+        expect(synthCtx->epPickupType == 2);
+    }
+
+    it("should copy noise/drive/click parameters") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_SAW);
+        p.p_noiseMix = 0.3f;
+        p.p_noiseDecay = 0.5f;
+        p.p_drive = 0.7f;
+        p.p_clickLevel = 0.8f;
+        p.p_clickTime = 0.02f;
+        p.p_retriggerCount = 3;
+        p.p_retriggerSpread = 0.1f;
+        p.p_wavefoldAmount = 0.4f;
+        applyPatchToGlobals(&p);
+
+        expect_float_eq(synthCtx->noteNoiseMix, 0.3f);
+        expect_float_eq(synthCtx->noteNoiseDecay, 0.5f);
+        expect_float_eq(synthCtx->noteDrive, 0.7f);
+        expect_float_eq(synthCtx->noteClickLevel, 0.8f);
+        expect_float_eq(synthCtx->noteClickTime, 0.02f);
+        expect(synthCtx->noteRetriggerCount == 3);
+        expect_float_eq(synthCtx->noteRetriggerSpread, 0.1f);
+        expect_float_eq(synthCtx->noteWavefoldAmount, 0.4f);
+    }
+
+    it("should copy filterbank parameters") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_SAW);
+        p.p_fbBaseFreq = 300.0f;
+        p.p_fbSpacing = 2.0f;
+        p.p_fbAlpha = 0.6f;
+        p.p_fbBeta = 0.4f;
+        p.p_fbQ = 3.0f;
+        p.p_fbKeyTrack = 0.5f;
+        p.p_fbNoiseMix = 0.15f;
+        p.p_fbLfoRate = 1.5f;
+        p.p_fbLfoAlpha = 0.3f;
+        applyPatchToGlobals(&p);
+
+        expect_float_eq(synthCtx->noteFbBaseFreq, 300.0f);
+        expect_float_eq(synthCtx->noteFbSpacing, 2.0f);
+        expect_float_eq(synthCtx->noteFbAlpha, 0.6f);
+        expect_float_eq(synthCtx->noteFbBeta, 0.4f);
+        expect_float_eq(synthCtx->noteFbQ, 3.0f);
+        expect_float_eq(synthCtx->noteFbKeyTrack, 0.5f);
+        expect_float_eq(synthCtx->noteFbNoiseMix, 0.15f);
+        expect_float_eq(synthCtx->noteFbLfoRate, 1.5f);
+        expect_float_eq(synthCtx->noteFbLfoAlpha, 0.3f);
+    }
+
+    it("should copy physical model parameters") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_BOWED);
+        p.p_bowPressure = 0.6f; p.p_bowSpeed = 0.4f; p.p_bowPosition = 0.3f;
+        p.p_pipeBreath = 0.5f; p.p_pipeEmbouchure = 0.7f; p.p_pipeBore = 0.2f;
+        p.p_reedStiffness = 0.8f; p.p_reedAperture = 0.3f; p.p_reedBlowPressure = 0.9f;
+        p.p_brassBlowPressure = 0.7f; p.p_brassLipTension = 0.5f; p.p_brassMute = 0.2f;
+        applyPatchToGlobals(&p);
+
+        expect_float_eq(synthCtx->bowPressure, 0.6f);
+        expect_float_eq(synthCtx->bowSpeed, 0.4f);
+        expect_float_eq(synthCtx->bowPosition, 0.3f);
+        expect_float_eq(synthCtx->pipeBreath, 0.5f);
+        expect_float_eq(synthCtx->pipeEmbouchure, 0.7f);
+        expect_float_eq(synthCtx->pipeBore, 0.2f);
+        expect_float_eq(synthCtx->reedStiffness, 0.8f);
+        expect_float_eq(synthCtx->reedAperture, 0.3f);
+        expect_float_eq(synthCtx->reedBlowPressure, 0.9f);
+        expect_float_eq(synthCtx->brassBlowPressure, 0.7f);
+        expect_float_eq(synthCtx->brassLipTension, 0.5f);
+        expect_float_eq(synthCtx->brassMute, 0.2f);
+    }
+
+    it("should copy extra oscillator and velocity parameters") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_SAW);
+        p.p_osc2Ratio = 2.0f; p.p_osc2Level = 0.5f; p.p_osc2Decay = 0.3f;
+        p.p_osc3Ratio = 3.0f; p.p_osc3Level = 0.4f; p.p_osc3Decay = 0.2f;
+        p.p_oscVelSens = 0.8f;
+        p.p_velToFilter = 0.6f;
+        p.p_velToClick = 0.4f;
+        p.p_velToDrive = 0.3f;
+        applyPatchToGlobals(&p);
+
+        expect_float_eq(synthCtx->noteOsc2Ratio, 2.0f);
+        expect_float_eq(synthCtx->noteOsc2Level, 0.5f);
+        expect_float_eq(synthCtx->noteOsc2Decay, 0.3f);
+        expect_float_eq(synthCtx->noteOsc3Ratio, 3.0f);
+        expect_float_eq(synthCtx->noteOsc3Level, 0.4f);
+        expect_float_eq(synthCtx->noteOsc3Decay, 0.2f);
+        expect_float_eq(synthCtx->noteOscVelSens, 0.8f);
+        expect_float_eq(synthCtx->noteVelToFilter, 0.6f);
+        expect_float_eq(synthCtx->noteVelToClick, 0.4f);
+        expect_float_eq(synthCtx->noteVelToDrive, 0.3f);
+    }
+
+    it("should copy formant parameters") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_SAW);
+        p.p_formantEnabled = true;
+        p.p_formantFrom = 1;
+        p.p_formantTo = 3;
+        p.p_formantMorphTime = 0.5f;
+        p.p_formantShift = 0.2f;
+        p.p_formantQ = 4.0f;
+        p.p_formantMix = 0.8f;
+        p.p_formantRandom = true;
+        p.p_formantMode = 1;
+        applyPatchToGlobals(&p);
+
+        expect(synthCtx->noteFormantEnabled == true);
+        expect(synthCtx->noteFormantFrom == 1);
+        expect(synthCtx->noteFormantTo == 3);
+        expect_float_eq(synthCtx->noteFormantMorphTime, 0.5f);
+        expect_float_eq(synthCtx->noteFormantShift, 0.2f);
+        expect_float_eq(synthCtx->noteFormantQ, 4.0f);
+        expect_float_eq(synthCtx->noteFormantMix, 0.8f);
+        expect(synthCtx->noteFormantRandom == true);
+        expect(synthCtx->noteFormantMode == 1);
+    }
+}
+
+describe(patch_trigger_dispatch) {
+    it("should dispatch WAVE_PLUCK to playPluck") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_PLUCK);
+        p.p_envelopeEnabled = false;
+        int v = playNoteWithPatch(440.0f, &p);
+        expect(v >= 0);
+        expect(synthVoices[v].wave == WAVE_PLUCK);
+        releaseNote(v);
+    }
+
+    it("should dispatch WAVE_FM to playFM") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_FM);
+        int v = playNoteWithPatch(440.0f, &p);
+        expect(v >= 0);
+        expect(synthVoices[v].wave == WAVE_FM);
+        releaseNote(v);
+    }
+
+    it("should dispatch WAVE_MEMBRANE to playMembrane") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_MEMBRANE);
+        int v = playNoteWithPatch(440.0f, &p);
+        expect(v >= 0);
+        expect(synthVoices[v].wave == WAVE_MEMBRANE);
+        releaseNote(v);
+    }
+
+    it("should dispatch basic wave types via default path") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        WaveType basics[] = {WAVE_SQUARE, WAVE_SAW, WAVE_TRIANGLE, WAVE_SINE, WAVE_NOISE};
+        for (int i = 0; i < 5; i++) {
+            SynthPatch p = createDefaultPatch(basics[i]);
+            p.p_envelopeEnabled = false;
+            int v = playNoteWithPatch(440.0f, &p);
+            expect(v >= 0);
+            expect(synthVoices[v].wave == basics[i]);
+            releaseNote(v);
+        }
+    }
+
+    it("should use trigger frequency when p_useTriggerFreq is set") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_SAW);
+        p.p_useTriggerFreq = true;
+        p.p_triggerFreq = 80.0f;
+        p.p_envelopeEnabled = false;
+        int v = playNoteWithPatch(440.0f, &p);
+        expect(v >= 0);
+        // Voice frequency should be 80.0, not 440.0
+        expect_float_near(synthVoices[v].frequency, 80.0f, 0.1f);
+        releaseNote(v);
+    }
+
+    it("should convert MIDI note to correct frequency") {
+        expect_float_near(patchMidiToFreq(69), 440.0f, 0.01f);
+        expect_float_near(patchMidiToFreq(60), 261.63f, 0.01f);
+        expect_float_near(patchMidiToFreq(81), 880.0f, 0.01f);
+    }
+}
+
+// ============================================================================
+// AREA 2: RHYTHM PATTERN GENERATOR TESTS
+// ============================================================================
+
+describe(rhythm_pattern_basic) {
+    it("should apply rock pattern to drum tracks") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+
+        static Pattern pat;
+        clearPattern(&pat);
+        RhythmGenerator gen;
+        initRhythmGenerator(&gen);
+        gen.style = RHYTHM_ROCK;
+        gen.variation = RHYTHM_VAR_NONE;
+        gen.humanize = 0.0f;
+        gen.intensity = 1.0f;
+        applyRhythmPattern(&pat, &gen);
+
+        // Rock: kick at 0,4,8,12
+        expect(patGetDrum(&pat, 0, 0) == true);
+        expect(patGetDrum(&pat, 0, 4) == true);
+        expect(patGetDrum(&pat, 0, 8) == true);
+        expect(patGetDrum(&pat, 0, 12) == true);
+        // Rock: snare at 4,12
+        expect(patGetDrum(&pat, 1, 4) == true);
+        expect(patGetDrum(&pat, 1, 12) == true);
+        expect(patGetDrum(&pat, 1, 0) == false);
+        // Rock: hihat at even steps
+        expect(patGetDrum(&pat, 2, 0) == true);
+        expect(patGetDrum(&pat, 2, 2) == true);
+    }
+
+    it("should set waltz pattern length to 12") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+
+        static Pattern pat;
+        clearPattern(&pat);
+        RhythmGenerator gen;
+        initRhythmGenerator(&gen);
+        gen.style = RHYTHM_WALTZ;
+        gen.variation = RHYTHM_VAR_NONE;
+        gen.humanize = 0.0f;
+        gen.intensity = 1.0f;
+        applyRhythmPattern(&pat, &gen);
+
+        expect(pat.trackLength[0] == 12);
+        expect(pat.trackLength[1] == 12);
+    }
+
+    it("should scale velocities by intensity") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+
+        static Pattern pat;
+        clearPattern(&pat);
+        RhythmGenerator gen;
+        initRhythmGenerator(&gen);
+        gen.style = RHYTHM_ROCK;
+        gen.variation = RHYTHM_VAR_NONE;
+        gen.humanize = 0.0f;
+        gen.intensity = 0.5f;
+        applyRhythmPattern(&pat, &gen);
+
+        // Rock kick at step 0 has base velocity 1.0, scaled to 0.5
+        float vel = patGetDrumVel(&pat, 0, 0);
+        expect_float_near(vel, 0.5f, VEL_EPSILON);
+    }
+
+    it("should handle NULL arguments safely") {
+        RhythmGenerator gen;
+        initRhythmGenerator(&gen);
+        applyRhythmPattern(NULL, &gen);   // should not crash
+
+        static Pattern pat;
+        clearPattern(&pat);
+        applyRhythmPattern(&pat, NULL);   // should not crash
+    }
+
+    it("should apply all 14 styles without crashing") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+
+        for (int s = 0; s < RHYTHM_COUNT; s++) {
+            static Pattern pat;
+            clearPattern(&pat);
+            RhythmGenerator gen;
+            initRhythmGenerator(&gen);
+            gen.style = (RhythmStyle)s;
+            gen.variation = RHYTHM_VAR_NONE;
+            gen.humanize = 0.0f;
+            gen.intensity = 1.0f;
+            applyRhythmPattern(&pat, &gen);
+
+            // Every style should have at least one active step across all tracks
+            bool anyHit = false;
+            for (int t = 0; t < 4 && !anyHit; t++)
+                for (int st = 0; st < 16 && !anyHit; st++)
+                    if (patGetDrum(&pat, t, st)) anyHit = true;
+            expect(anyHit);
+        }
+    }
+}
+
+describe(rhythm_variation_modes) {
+    it("NONE should match base pattern exactly") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+
+        static Pattern pat;
+        clearPattern(&pat);
+        RhythmGenerator gen;
+        initRhythmGenerator(&gen);
+        gen.style = RHYTHM_ROCK;
+        gen.variation = RHYTHM_VAR_NONE;
+        gen.humanize = 0.0f;
+        gen.intensity = 1.0f;
+        applyRhythmPattern(&pat, &gen);
+
+        // Verify against raw data
+        const RhythmPatternData *src = &rhythmPatterns[RHYTHM_ROCK];
+        for (int step = 0; step < 16; step++) {
+            if (src->kick[step] > 0.0f) {
+                expect(patGetDrum(&pat, 0, step) == true);
+            } else {
+                expect(patGetDrum(&pat, 0, step) == false);
+            }
+        }
+    }
+
+    it("SPARSE should reduce hit count") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+
+        // FUNK has ghost notes (velocity < 0.7) that SPARSE can remove
+        static Pattern patBase, patSparse;
+        clearPattern(&patBase);
+        clearPattern(&patSparse);
+
+        RhythmGenerator gen;
+        initRhythmGenerator(&gen);
+        gen.style = RHYTHM_FUNK;
+        gen.variation = RHYTHM_VAR_NONE;
+        gen.humanize = 0.0f;
+        gen.intensity = 1.0f;
+        gen.noiseState = 12345;
+        applyRhythmPattern(&patBase, &gen);
+
+        gen.variation = RHYTHM_VAR_SPARSE;
+        gen.noiseState = 12345;
+        applyRhythmPattern(&patSparse, &gen);
+
+        int baseHits = 0, sparseHits = 0;
+        for (int t = 0; t < 4; t++)
+            for (int s = 0; s < 16; s++) {
+                if (patGetDrum(&patBase, t, s)) baseHits++;
+                if (patGetDrum(&patSparse, t, s)) sparseHits++;
+            }
+        expect(sparseHits <= baseHits);
+    }
+
+    it("BUSY should add ghost notes") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+
+        static Pattern patBase, patBusy;
+        clearPattern(&patBase);
+        clearPattern(&patBusy);
+
+        RhythmGenerator gen;
+        initRhythmGenerator(&gen);
+        gen.style = RHYTHM_ROCK;
+        gen.variation = RHYTHM_VAR_NONE;
+        gen.humanize = 0.0f;
+        gen.intensity = 1.0f;
+        gen.noiseState = 12345;
+        applyRhythmPattern(&patBase, &gen);
+
+        gen.variation = RHYTHM_VAR_BUSY;
+        gen.noiseState = 12345;
+        applyRhythmPattern(&patBusy, &gen);
+
+        int baseHits = 0, busyHits = 0;
+        for (int t = 0; t < 4; t++)
+            for (int s = 0; s < 16; s++) {
+                if (patGetDrum(&patBase, t, s)) baseHits++;
+                if (patGetDrum(&patBusy, t, s)) busyHits++;
+            }
+        expect(busyHits >= baseHits);
+    }
+
+    it("all variations should not crash for any style") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+
+        for (int s = 0; s < RHYTHM_COUNT; s++) {
+            for (int v = 0; v < RHYTHM_VAR_COUNT; v++) {
+                static Pattern pat;
+                clearPattern(&pat);
+                RhythmGenerator gen;
+                initRhythmGenerator(&gen);
+                gen.style = (RhythmStyle)s;
+                gen.variation = (RhythmVariation)v;
+                gen.noiseState = 42;
+                applyRhythmPattern(&pat, &gen);
+            }
+        }
+        expect(true); // survived without crashing
+    }
+}
+
+describe(rhythm_prob_map) {
+    it("density 1.0 should produce many hits") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+
+        static Pattern pat;
+        clearPattern(&pat);
+        RhythmGenerator gen;
+        initRhythmGenerator(&gen);
+        gen.mode = RHYTHM_MODE_PROB_MAP;
+        gen.density = 1.0f;
+        gen.humanize = 0.0f;
+        gen.intensity = 1.0f;
+        gen.randomize = 0.0f;
+        applyRhythmProbMap(&pat, &gen);
+
+        int hits = 0;
+        for (int t = 0; t < 4; t++)
+            for (int s = 0; s < 16; s++)
+                if (patGetDrum(&pat, t, s)) hits++;
+        expect(hits > 10);
+    }
+
+    it("density 0.0 should produce empty pattern") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+
+        static Pattern pat;
+        clearPattern(&pat);
+        RhythmGenerator gen;
+        initRhythmGenerator(&gen);
+        gen.mode = RHYTHM_MODE_PROB_MAP;
+        gen.density = 0.0f;
+        gen.humanize = 0.0f;
+        gen.randomize = 0.0f;
+        applyRhythmProbMap(&pat, &gen);
+
+        int hits = 0;
+        for (int t = 0; t < 4; t++)
+            for (int s = 0; s < 16; s++)
+                if (patGetDrum(&pat, t, s)) hits++;
+        expect(hits == 0);
+    }
+
+    it("generateRhythm dispatches to correct mode") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+
+        static Pattern p1, p2;
+        clearPattern(&p1);
+        clearPattern(&p2);
+
+        RhythmGenerator gen;
+        initRhythmGenerator(&gen);
+        gen.humanize = 0.0f;
+        gen.intensity = 1.0f;
+
+        gen.mode = RHYTHM_MODE_CLASSIC;
+        gen.noiseState = 42;
+        generateRhythm(&p1, &gen);
+
+        gen.mode = RHYTHM_MODE_PROB_MAP;
+        gen.noiseState = 42;
+        gen.density = 0.8f;
+        gen.randomize = 0.0f;
+        generateRhythm(&p2, &gen);
+
+        // They should produce different patterns
+        bool differ = false;
+        for (int t = 0; t < 4 && !differ; t++)
+            for (int s = 0; s < 16 && !differ; s++)
+                if (patGetDrum(&p1, t, s) != patGetDrum(&p2, t, s))
+                    differ = true;
+        expect(differ);
+    }
+}
+
+describe(rhythm_euclidean) {
+    it("euclidean(8,3,0) should produce tresillo") {
+        bool out[32] = {false};
+        euclidean(out, 8, 3, 0);
+        // Tresillo: hits at 0, 3, 5 (or equivalent distribution)
+        int hits = 0;
+        for (int i = 0; i < 8; i++) if (out[i]) hits++;
+        expect(hits == 3);
+    }
+
+    it("euclidean(16,4,0) should produce 4 evenly spaced hits") {
+        bool out[32] = {false};
+        euclidean(out, 16, 4, 0);
+        int hits = 0;
+        for (int i = 0; i < 16; i++) if (out[i]) hits++;
+        expect(hits == 4);
+    }
+
+    it("rotation should shift pattern") {
+        bool out0[32] = {false};
+        bool out1[32] = {false};
+        euclidean(out0, 8, 3, 0);
+        euclidean(out1, 8, 3, 1);
+
+        // Rotated pattern should differ from original
+        bool differ = false;
+        for (int i = 0; i < 8; i++)
+            if (out0[i] != out1[i]) differ = true;
+        expect(differ);
+
+        // Same number of hits
+        int hits0 = 0, hits1 = 0;
+        for (int i = 0; i < 8; i++) {
+            if (out0[i]) hits0++;
+            if (out1[i]) hits1++;
+        }
+        expect(hits0 == hits1);
+    }
+
+    it("applyEuclideanToTrack should set track length and hits") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+
+        static Pattern pat;
+        clearPattern(&pat);
+        applyEuclideanToTrack(&pat, 0, 5, 12, 0, 0.8f);
+
+        expect(pat.trackLength[0] == 12);
+        int hits = 0;
+        for (int s = 0; s < 12; s++)
+            if (patGetDrum(&pat, 0, s)) hits++;
+        expect(hits == 5);
+    }
+}
+
+describe(rhythm_helpers) {
+    it("getRhythmSwing returns correct swing") {
+        RhythmGenerator gen;
+        initRhythmGenerator(&gen);
+        gen.mode = RHYTHM_MODE_CLASSIC;
+        gen.style = RHYTHM_SHUFFLE;
+        expect(getRhythmSwing(&gen) == 10);
+        gen.style = RHYTHM_ROCK;
+        expect(getRhythmSwing(&gen) == 0);
+    }
+
+    it("getRhythmRecommendedBpm returns correct BPM") {
+        RhythmGenerator gen;
+        initRhythmGenerator(&gen);
+        gen.mode = RHYTHM_MODE_CLASSIC;
+        gen.style = RHYTHM_REGGAE;
+        expect(getRhythmRecommendedBpm(&gen) == 80);
+        gen.style = RHYTHM_HOUSE;
+        expect(getRhythmRecommendedBpm(&gen) == 124);
+    }
+}
+
+// ============================================================================
+// AREA 3: SYNTH OSCILLATOR TYPE COVERAGE
+// ============================================================================
+
+// Helper: play note, generate samples, check non-zero bounded output
+#define OSC_TEST_SAMPLES (SAMPLE_RATE / 10)  // 4410 samples = 100ms
+
+describe(oscillator_pluck) {
+    it("should produce decaying output") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_PLUCK);
+        p.p_envelopeEnabled = false;
+        int v = playNoteWithPatch(440.0f, &p);
+        expect(v >= 0);
+
+        float energy1 = 0, energy2 = 0;
+        for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+            float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+            if (i < OSC_TEST_SAMPLES / 2) energy1 += s * s;
+            else energy2 += s * s;
+        }
+        expect(energy1 > 0.001f);
+        expect(energy1 > energy2);  // decaying
+        releaseNote(v);
+    }
+
+    it("should produce audio for all guitar presets") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        for (int preset = 0; preset < GUITAR_COUNT; preset++) {
+            initSynthContext(synthCtx);
+            int v = playGuitar(440.0f, (GuitarPreset)preset);
+            expect(v >= 0);
+            float peak = 0;
+            for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+                float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+                if (fabsf(s) > peak) peak = fabsf(s);
+            }
+            expect(peak > 0.001f);
+        }
+    }
+}
+
+describe(oscillator_bird) {
+    it("should produce audio for all bird types") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        for (int type = 0; type < BIRD_COUNT; type++) {
+            initSynthContext(synthCtx);
+            int v = playBird(440.0f, (BirdType)type);
+            expect(v >= 0);
+            float peak = 0;
+            for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+                float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+                if (fabsf(s) > peak) peak = fabsf(s);
+            }
+            expect(peak > 0.001f);
+        }
+    }
+}
+
+describe(oscillator_membrane) {
+    it("should produce audio for all membrane presets") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        for (int preset = 0; preset < MEMBRANE_COUNT; preset++) {
+            initSynthContext(synthCtx);
+            int v = playMembrane(200.0f, (MembranePreset)preset);
+            expect(v >= 0);
+            float peak = 0;
+            for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+                float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+                if (fabsf(s) > peak) peak = fabsf(s);
+            }
+            expect(peak > 0.001f);
+        }
+    }
+
+    it("should decay naturally") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        int v = playMembrane(200.0f, 0);
+        expect(v >= 0);
+        float energy1 = 0, energy2 = 0;
+        for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+            float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+            if (i < OSC_TEST_SAMPLES / 2) energy1 += s * s;
+            else energy2 += s * s;
+        }
+        expect(energy1 > 0.001f);
+        expect(energy1 > energy2);
+    }
+}
+
+describe(oscillator_pd) {
+    it("should produce audio with PD synthesis") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_PD);
+        p.p_envelopeEnabled = false;
+        int v = playNoteWithPatch(440.0f, &p);
+        expect(v >= 0);
+        float peak = 0;
+        for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+            float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+            if (fabsf(s) > peak) peak = fabsf(s);
+        }
+        expect(peak > 0.001f);
+        releaseNote(v);
+    }
+}
+
+describe(oscillator_fm) {
+    it("should produce audio with FM synthesis") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_FM);
+        p.p_fmModRatio = 2.0f;
+        p.p_fmModIndex = 3.0f;
+        p.p_envelopeEnabled = false;
+        int v = playNoteWithPatch(440.0f, &p);
+        expect(v >= 0);
+        float peak = 0;
+        for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+            float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+            if (fabsf(s) > peak) peak = fabsf(s);
+        }
+        expect(peak > 0.01f);
+        releaseNote(v);
+    }
+}
+
+describe(oscillator_physical_models) {
+    it("bowed string should produce sustained audio") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        int v = playBowed(220.0f);
+        expect(v >= 0);
+        float peak = 0;
+        // Physical models need long warmup (excitation ramp-up)
+        for (int i = 0; i < SAMPLE_RATE; i++) {
+            float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+            if (fabsf(s) > peak) peak = fabsf(s);
+        }
+        expect(peak > 0.0001f);
+        releaseNote(v);
+    }
+
+    it("pipe should produce audio") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        int v = playPipe(440.0f);
+        expect(v >= 0);
+        float peak = 0;
+        for (int i = 0; i < SAMPLE_RATE; i++) {
+            float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+            if (fabsf(s) > peak) peak = fabsf(s);
+        }
+        expect(peak > 0.0001f);
+        releaseNote(v);
+    }
+
+    it("reed should produce audio") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        int v = playReed(440.0f);
+        expect(v >= 0);
+        float peak = 0;
+        for (int i = 0; i < SAMPLE_RATE; i++) {
+            float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+            if (fabsf(s) > peak) peak = fabsf(s);
+        }
+        expect(peak > 0.0001f);
+        releaseNote(v);
+    }
+
+    it("brass should produce audio") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        int v = playBrass(220.0f);
+        expect(v >= 0);
+        float peak = 0;
+        for (int i = 0; i < SAMPLE_RATE; i++) {
+            float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+            if (fabsf(s) > peak) peak = fabsf(s);
+        }
+        expect(peak > 0.0001f);
+        releaseNote(v);
+    }
+
+    it("all whistle presets should produce audio") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        for (int preset = 0; preset < WHISTLE_COUNT; preset++) {
+            initSynthContext(synthCtx);
+            int v = playWhistle(880.0f, (WhistlePreset)preset);
+            expect(v >= 0);
+            float peak = 0;
+            for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+                float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+                if (fabsf(s) > peak) peak = fabsf(s);
+            }
+            expect(peak > 0.001f);
+        }
+    }
+
+    it("all bandedWG presets should produce audio") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        for (int preset = 0; preset < BANDEDWG_COUNT; preset++) {
+            initSynthContext(synthCtx);
+            int v = playBandedWG(440.0f, (BandedWGPreset)preset);
+            expect(v >= 0);
+            float peak = 0;
+            for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+                float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+                if (fabsf(s) > peak) peak = fabsf(s);
+            }
+            expect(peak > 0.001f);
+        }
+    }
+}
+
+describe(oscillator_keyboards) {
+    it("epiano should produce audio") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        int v = playEPiano(440.0f);
+        expect(v >= 0);
+        float peak = 0;
+        for (int i = 0; i < OSC_TEST_SAMPLES * 2; i++) {
+            float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+            if (fabsf(s) > peak) peak = fabsf(s);
+        }
+        expect(peak > 0.001f);
+        releaseNote(v);
+    }
+
+    it("organ should produce sustained audio") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_ORGAN);
+        p.p_orgDrawbar[0] = 1.0f;
+        p.p_orgDrawbar[1] = 0.8f;
+        p.p_envelopeEnabled = false;
+        int v = playNoteWithPatch(440.0f, &p);
+        expect(v >= 0);
+        float peak = 0;
+        for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+            float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+            if (fabsf(s) > peak) peak = fabsf(s);
+        }
+        expect(peak > 0.001f);
+        releaseNote(v);
+    }
+
+    it("all stifkarp presets should produce audio") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        for (int preset = 0; preset < STIFKARP_COUNT; preset++) {
+            initSynthContext(synthCtx);
+            int v = playStifKarp(440.0f, (StifKarpPreset)preset);
+            expect(v >= 0);
+            float peak = 0;
+            for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+                float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+                if (fabsf(s) > peak) peak = fabsf(s);
+            }
+            expect(peak > 0.001f);
+        }
+    }
+}
+
+describe(oscillator_percussion) {
+    it("all metallic presets should produce audio") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        for (int preset = 0; preset < METALLIC_COUNT; preset++) {
+            initSynthContext(synthCtx);
+            int v = playMetallic(440.0f, (MetallicPreset)preset);
+            expect(v >= 0);
+            float peak = 0;
+            for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+                float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+                if (fabsf(s) > peak) peak = fabsf(s);
+            }
+            expect(peak > 0.001f);
+        }
+    }
+
+    it("all shaker presets should produce audio") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        for (int preset = 0; preset < SHAKER_COUNT; preset++) {
+            initSynthContext(synthCtx);
+            int v = playShaker(440.0f, (ShakerPreset)preset);
+            expect(v >= 0);
+            float peak = 0;
+            for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+                float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+                if (fabsf(s) > peak) peak = fabsf(s);
+            }
+            expect(peak > 0.001f);
+        }
+    }
+
+    it("all mandolin presets should produce audio") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        for (int preset = 0; preset < MANDOLIN_COUNT; preset++) {
+            initSynthContext(synthCtx);
+            int v = playMandolin(440.0f, (MandolinPreset)preset);
+            expect(v >= 0);
+            float peak = 0;
+            for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+                float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+                if (fabsf(s) > peak) peak = fabsf(s);
+            }
+            expect(peak > 0.001f);
+        }
+    }
+
+    it("all mallet presets should produce audio") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        for (int preset = 0; preset < MALLET_PRESET_COUNT; preset++) {
+            initSynthContext(synthCtx);
+            int v = playMallet(440.0f, (MalletPreset)preset);
+            expect(v >= 0);
+            float peak = 0;
+            for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+                float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+                if (fabsf(s) > peak) peak = fabsf(s);
+            }
+            expect(peak > 0.001f);
+        }
+    }
+}
+
+describe(oscillator_voicform) {
+    it("should produce audio") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        int v = playVoicForm(220.0f, 0);
+        expect(v >= 0);
+        float peak = 0;
+        for (int i = 0; i < OSC_TEST_SAMPLES * 2; i++) {
+            float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+            if (fabsf(s) > peak) peak = fabsf(s);
+        }
+        expect(peak > 0.001f);
+        releaseNote(v);
+    }
+
+    it("different phonemes should produce different timbres") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        initSynthContext(synthCtx);
+        int v1 = playVoicForm(220.0f, 0);
+        float sum1 = 0;
+        for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+            float s = processVoice(&synthVoices[v1], (float)SAMPLE_RATE);
+            sum1 += fabsf(s);
+        }
+        releaseNote(v1);
+
+        initSynthContext(synthCtx);
+        int v2 = playVoicForm(220.0f, 5);
+        float sum2 = 0;
+        for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+            float s = processVoice(&synthVoices[v2], (float)SAMPLE_RATE);
+            sum2 += fabsf(s);
+        }
+        releaseNote(v2);
+
+        expect(sum1 > 0.01f);
+        expect(sum2 > 0.01f);
+        expect(fabsf(sum1 - sum2) > 0.001f);
+    }
+}
+
+describe(oscillator_sine) {
+    it("should produce clean sine output") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        SynthPatch p = createDefaultPatch(WAVE_SINE);
+        p.p_envelopeEnabled = false;
+        int v = playNoteWithPatch(440.0f, &p);
+        expect(v >= 0);
+
+        float peak = 0;
+        int zeroCrossings = 0;
+        float prev = 0;
+        for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+            float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+            if (fabsf(s) > peak) peak = fabsf(s);
+            if (i > 0 && ((prev >= 0 && s < 0) || (prev < 0 && s >= 0)))
+                zeroCrossings++;
+            prev = s;
+        }
+        expect(peak > 0.01f);
+        // 440 Hz = ~880 zero crossings per second, 100ms = ~88
+        expect(zeroCrossings > 70 && zeroCrossings < 110);
+        releaseNote(v);
+    }
+}
+
+describe(oscillator_bounds) {
+    it("no oscillator type should exceed output bounds") {
+        static SoundSystem ss;
+        initSoundSystem(&ss);
+        useSoundSystem(&ss);
+
+        // Test each wave type that has a play function
+        WaveType types[] = {
+            WAVE_SQUARE, WAVE_SAW, WAVE_TRIANGLE, WAVE_SINE, WAVE_NOISE,
+            WAVE_PLUCK, WAVE_FM, WAVE_PD, WAVE_ADDITIVE, WAVE_VOICE,
+            WAVE_MEMBRANE, WAVE_BIRD, WAVE_BOWED, WAVE_PIPE, WAVE_REED,
+            WAVE_BRASS, WAVE_EPIANO, WAVE_ORGAN, WAVE_METALLIC, WAVE_GUITAR,
+            WAVE_MANDOLIN, WAVE_STIFKARP, WAVE_SHAKER, WAVE_BANDEDWG,
+            WAVE_VOICFORM, WAVE_WHISTLE, WAVE_MALLET
+        };
+        int numTypes = sizeof(types) / sizeof(types[0]);
+
+        for (int t = 0; t < numTypes; t++) {
+            initSynthContext(synthCtx);
+            SynthPatch p = createDefaultPatch(types[t]);
+            p.p_envelopeEnabled = false;
+            int v = playNoteWithPatch(440.0f, &p);
+            if (v < 0) continue;
+
+            bool bounded = true;
+            for (int i = 0; i < OSC_TEST_SAMPLES; i++) {
+                float s = processVoice(&synthVoices[v], (float)SAMPLE_RATE);
+                if (fabsf(s) > 5.0f) { bounded = false; break; }
+            }
+            expect(bounded);
+            releaseNote(v);
+        }
     }
 }
 
@@ -7720,6 +9149,30 @@ int main(int argc, char **argv) {
 
     // Filterbank mode (Grenadier RA-99)
     test(filterbank_mode);
+
+    // Patch trigger tests (disabled)
+    test(patch_trigger_globals);
+    test(patch_trigger_dispatch);
+
+    // Rhythm pattern tests (disabled)
+    test(rhythm_pattern_basic);
+    test(rhythm_variation_modes);
+    test(rhythm_prob_map);
+    test(rhythm_euclidean);
+    test(rhythm_helpers);
+
+    // Oscillator type coverage (disabled)
+    test(oscillator_pluck);
+    test(oscillator_bird);
+    test(oscillator_membrane);
+    test(oscillator_pd);
+    test(oscillator_fm);
+    test(oscillator_physical_models);
+    test(oscillator_keyboards);
+    test(oscillator_percussion);
+    test(oscillator_voicform);
+    test(oscillator_sine);
+    test(oscillator_bounds);
 
     return summary();
 }
