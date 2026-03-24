@@ -1,6 +1,6 @@
 # Soundsystem (PixelSynth)
 
-Header-only synthesized audio engine (~36K lines). 19 synthesis engines, 32-voice polyphony (+8-voice sampler), 259 presets, step sequencer, full effects chain, built-in DAW.
+Header-only synthesized audio engine (~36K lines). 29 synthesis engines, 32-voice polyphony (+8-voice sampler), 263 presets, step sequencer, full effects chain, built-in DAW.
 
 ## Build & Run
 
@@ -41,11 +41,11 @@ soundsystem/
 │   ├── synth_oscillators.h   # Complex oscillator engines (~1550 lines, extracted from synth.h)
 │   ├── synth_scale.h          # Scale lock system (~114 lines, extracted from synth.h)
 │   ├── synth_patch.h          # SynthPatch struct (200+ p_ fields)
-│   ├── instrument_presets.h   # 259 presets (melodic + drums: 808/909/CR-78/orchestral/hand) (~1850 lines)
-│   ├── effects.h              # Effects chain + bus mixer (8 buses, 16 master FX) (~1516 lines)
+│   ├── instrument_presets.h   # 263 presets (melodic + drums: 808/909/CR-78/orchestral/hand) (~1850 lines)
+│   ├── effects.h              # Effects chain + bus mixer (8 buses, 27 master FX) (~1516 lines)
 │   ├── dub_loop.h             # King Tubby tape delay (~310 lines, extracted from effects.h)
 │   ├── rewind.h               # Vinyl spinback effect (~165 lines, extracted from effects.h)
-│   ├── sequencer.h            # Step sequencer v2 (96 PPQ, 8 tracks: 4 drum + 3 melody + 1 sampler) (~1735 lines)
+│   ├── sequencer.h            # Step sequencer v2 (96 PPQ, 12 tracks: 4 drum + 7 melody + 1 sampler) (~1735 lines)
 │   ├── sequencer_plocks.h     # Parameter lock subsystem (~170 lines, extracted from sequencer.h)
 │   ├── patch_trigger.h        # SynthPatch → synth globals applicator
 │   ├── sampler.h              # Sample playback (8-voice, 32 slots)
@@ -77,7 +77,7 @@ src/sound/
 ├── sound_synth_bridge.c       # Implementation (audio callback, jukebox: 15 entries)
 ├── sound_phrase.h             # Procedural phrase generation (bird, vowel, tone)
 ├── sound_phrase.c             # Phrase logic
-└── songs.h                    # 17 built-in songs (all exported to .song via bridge_export)
+└── songs.h                    # 18 built-in songs (all exported to .song via bridge_export)
 ```
 
 ## Architecture
@@ -88,7 +88,7 @@ src/sound/
 typedef struct SoundSystem {
     SynthContext   synth;       // 32 polyphonic voices + synthesis globals
     EffectsContext effects;     // per-bus effects + master chain + dub loop
-    SequencerContext sequencer; // 8 patterns × 12 tracks × 32 steps
+    SequencerContext sequencer; // 64 patterns × 12 tracks × 32 steps
     SamplerContext sampler;     // 32 sample slots, 8 playback voices
 } SoundSystem;
 ```
@@ -103,10 +103,10 @@ Sequencer (96 PPQ clock)
 Synth (32 voices, per-voice: oscillator → ADSR → SVF filter → LFO mod)
     │ + Sampler (WAV playback)
     v
-Bus Mixer (8 buses: 4 drum + 3 melodic + 1 sampler, per-bus filter/dist/delay/EQ/chorus/phaser/comb/reverb-send)
+Bus Mixer (8 buses: 4 drum + 3 melodic + 1 sampler, per-bus filter/dist/delay/EQ/chorus/phaser/comb/ring-mod/octaver/tremolo/wah/leslie/comp + reverb/delay sends)
     v
-Master Effects (distortion → chorus → flanger → phaser → comb → tape → delay → bitcrusher → reverb → sidechain → multiband → sub-bass → EQ → compressor)
-    │ + Dub Loop (King Tubby tape delay) + Rewind (vinyl spinback)
+Master Effects (octaver → tremolo → wah → leslie → distortion → bitcrusher → chorus → flanger → phaser → comb → ring mod → tape → vinyl → delay → reverb → sidechain → multiband → EQ → sub-bass → compressor)
+    │ + Performance FX: dub loop, rewind, tape stop, beat repeat, DJFX loop, half-speed
     v
 Audio Output
 ```
@@ -124,6 +124,7 @@ Each subsystem has a global pointer (`synthCtx`, `fxCtx`, `seqCtx`, `samplerCtx`
 - Tracks 0-3: Drum (step on/off triggers)
 - Tracks 4-6: Melodic — bass, lead, chord (note value + slide/accent)
 - Track 7: Sampler (TRACK_SAMPLER) — note field selects slice, one-shot playback
+- Tracks 8-11: Extra melodic tracks (same step/note behavior as 4-6)
 - Each track has independent step count (polyrhythmic), note pools, conditional triggers
 
 ## Key Patterns
@@ -218,13 +219,13 @@ Waves 0-2 complete. Near-term TODO (per `docs/plan-of-attack.md`):
 - Semitone +/- buttons on extra osc ratio knobs (left-click = +1st, right-click = -1st)
 - Velocity modulation system: 4 targets (osc level, filter, click, drive) with squared curve, cyan UI indicators
 - Mono retrigger toggle (envelope restarts on every note vs legato glide)
-- 259 presets (was 177): added mandolin (4: Neapolitan/Flatback/Bouzouki/Charango), whistle (4: Referee/Slide/Train/Cuckoo), plus earlier 909 kit, DX7 FM series, Wurlitzer, Clavinet, world instruments, SNES kit, pads, 10 Casio MT-70, 6 Minimoog, 4 OB-Xa, 3 Rhodes
+- 263 presets (was 177): added mandolin (4: Neapolitan/Flatback/Bouzouki/Charango), whistle (4: Referee/Slide/Train/Cuckoo), plus earlier 909 kit, DX7 FM series, Wurlitzer, Clavinet, world instruments, SNES kit, pads, 10 Casio MT-70, 6 Minimoog, 4 OB-Xa, 3 Rhodes
 - 8 buses (was 7): added BUS_SAMPLER for chop/flip slice playback
 - Per-bus effects expanded: +EQ, chorus, phaser, comb filter (was: filter/dist/delay/reverb-send only)
 - Master effects expanded: +chorus, flanger, phaser, comb, multiband, sub-bass boost, sidechain envelope
 
 ### Bridge → .song migration (COMPLETE)
-All 17 songs in `songs.h` are registered in `bridge_export.c` and exported to `demo/songs/`:
+17 songs are registered in `bridge_export.c` and exported to `demo/songs/`:
 - dormitory, gymnopedie, mule2, suspense, jazz, dilla, atmosphere, mrlucky, happybirthday, monksmood, summertime, house, deephouse, oscarlofi, dreamer, saladdaze, emergence
 - 4 songs (oscarlofi, dreamer, saladdaze, emergence) are exported but not yet wired into the jukebox
 - M.U.L.E. v1 (original) is in jukebox but not in bridge_export (v2 MIDI version exported instead)

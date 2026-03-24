@@ -95,7 +95,7 @@ Complete inventory of every DSP algorithm in the soundsystem: what it is, how it
 **Interpolation**: Cubic Hermite for reading source table.
 **Normalization**: `out /= sqrt(expectedOverlap)` where overlap = density × size. The sqrt gives perceptually constant loudness.
 **Reference**: Roads, "Microsound" (2001) — the definitive text on granular synthesis. Hanning window is the standard grain envelope (minimal spectral leakage while avoiding clicks). The sqrt normalization is from the Gabor/granular amplitude theory.
-**Assessment**: Clean asynchronous granular implementation. Max 16 grains (GRANULAR_MAX_GRAINS), which is sufficient for most textures. The cubic Hermite interpolation is good. The randomization is basic (uniform distribution for position and amplitude, semitone-based for pitch) — more advanced implementations might use Gaussian distributions, but uniform is fine for musical use.
+**Assessment**: Clean asynchronous granular implementation. Max 32 grains (GRANULAR_MAX_GRAINS), which is sufficient for most textures. The cubic Hermite interpolation is good. The randomization is basic (uniform distribution for position and amplitude, semitone-based for pitch) — more advanced implementations might use Gaussian distributions, but uniform is fine for musical use.
 
 ### 1.11 FM Synthesis (WAVE_FM)
 **File**: `synth_oscillators.h:884–949`
@@ -1425,7 +1425,7 @@ Combined offset applied to read position. Uses same `tapeWowFlutterLFO()` helper
 ### 9.1 Bus Architecture
 **File**: `effects.h:108–281`
 **Buses**: 8 (4 drum + bass + lead + chord + sampler) + master.
-**Per-bus chain**: Octaver → Tremolo → Wah → Filter (SVF) → EQ → Distortion → Compressor → Chorus (Classic or BBD) → Phaser → Comb → Ring Mod → Delay → Reverb Send → Delay Send.
+**Per-bus chain**: Octaver → Tremolo → Wah → Leslie → Filter (SVF) → EQ → Distortion → Compressor → Chorus (Classic or BBD) → Phaser → Comb → Ring Mod → Delay → Reverb Send → Delay Send.
 **Assessment**: Professional mixer topology. Send/return architecture for reverb and delay is correct. Per-bus chorus supports both Classic and BBD modes (same algorithm as master chorus — see section 5.3). Bus BBD mode uses Hermite interpolation; bus Classic mode uses linear interpolation (cheaper, adequate for per-bus use).
 
 ### 9.2 Per-Bus Compressor

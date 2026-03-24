@@ -1,8 +1,8 @@
 # PixelSynth
 
-A header-only synthesized audio engine for games. 16 oscillator types, 16 master effects, 8 per-bus effects, a drum machine, step sequencer, sample playback, and a built-in DAW — all generated in real-time with zero sample dependencies.
+A header-only synthesized audio engine for games. 29 oscillator types, 27 master effects, 13 per-bus effects (+ reverb/delay sends), a drum machine, step sequencer, sample playback, and a built-in DAW — all generated in real-time with zero sample dependencies.
 
-148 instrument presets ship out of the box. 32-voice polyphony (+ 8-voice sampler). 44.1 kHz / 48 kHz.
+263 instrument presets ship out of the box. 32-voice polyphony (+ 8-voice sampler). 44.1 kHz / 48 kHz.
 
 ## Synthesis Engines
 
@@ -171,7 +171,14 @@ Bounce any pattern to audio, slice it into equal-length or transient-detected ch
 - **Chorus** — dual-LFO modulated delay with feedback
 - **Phaser** — allpass filter chain (2/4/6/8 stages), LFO modulated
 - **Comb Filter** — pitched delay (20-2000 Hz) with feedback and damping
+- **Ring Mod** — carrier sine × signal
+- **Octaver** — sub-octave generator
+- **Tremolo** — volume LFO
+- **Wah / Auto-Wah** — swept bandpass filter
+- **Leslie** — rotary speaker emulation
+- **Compressor** — per-bus dynamics
 - **Reverb Send** — per-bus send amount to master reverb
+- **Delay Send** — per-bus send amount to master delay
 
 Plus per-bus volume, pan, mute, and solo.
 
@@ -184,10 +191,16 @@ Plus per-bus volume, pan, mute, and solo.
 | **Chorus** | Dual-LFO modulated delay (5-30ms), 90-degree offset for stereo width, feedback for flanging |
 | **Flanger** | Short modulated delay (0.1-10ms) with bipolar feedback (-0.95 to +0.95) |
 | **Phaser** | Allpass filter chain (up to 8 stages), LFO modulated |
+| **Wah / Auto-Wah** | Swept bandpass (LFO or envelope) |
+| **Ring Mod** | Carrier sine × signal |
 | **Comb Filter** | Pitched delay (20-2000 Hz) with feedback and damping |
+| **Octaver** | Sub-octave generator (zero-crossing) |
+| **Tremolo** | Volume LFO (sine/square/triangle) |
+| **Leslie** | Rotary speaker emulation |
 | **Tape Saturation** | Wow (slow wobble), flutter (fast wobble), saturation/warmth, hiss |
+| **Vinyl Sim** | Crackle, surface noise, warp, tone darkening |
 | **Delay** | 0.05-1.0s, feedback with tone-filtered repeats |
-| **Reverb** | Schroeder algorithm — 4 parallel comb filters + 2 series allpass. Room size, damping, pre-delay |
+| **Reverb** | Schroeder or FDN (8-line Hadamard) with room size, damping, pre-delay |
 | **Sidechain Compression** | Source: kick/snare/clap/hihat/all drums. Target: bass/lead/chord/all. Configurable depth, attack, release, HP preserve |
 | **Sidechain Envelope** | Note-triggered LFO/Kickstart ducking with 3 curve types (mutually exclusive with sidechain compression) |
 | **Multiband** | 3-band split (Linkwitz-Riley crossover) with per-band gain and drive |
@@ -196,6 +209,10 @@ Plus per-bus volume, pan, mute, and solo.
 | **Master Compressor** | Threshold, ratio (1:1-20:1), attack, release, makeup gain, soft knee |
 | **Dub Loop** | King Tubby-style tape delay — see below |
 | **Rewind** | Vinyl spinback effect — see below |
+| **Tape Stop** | Tape stop with optional spin-back |
+| **Beat Repeat** | Beat-synced stutter with decay/pitch |
+| **DJFX Looper** | Beat-synced loop capture |
+| **Half-Speed** | 0.5x / 2.0x playback with crossfade |
 
 ### Dub Loop (King Tubby Style)
 
@@ -214,8 +231,8 @@ Captures audio into a 3-second buffer and plays it backwards with decelerating s
 ### Core Features
 
 - **96 PPQ** timing (MPC-style), 16th or 32nd note resolution
-- **Up to 32 steps** per pattern, **8 pattern slots** with queued switching
-- **4 drum tracks** + **3 melody tracks** (bass, lead, chord) + **1 sampler track** (chop/flip slices)
+- **Up to 32 steps** per pattern, **64 pattern slots** with queued switching
+- **12 tracks** — **4 drum** + **7 melody** + **1 sampler** (engine max; DAW grid shows 8 by default)
 - **Per-step**: velocity, pitch, probability, gate time, sustain
 - **Pattern chain** for song arrangement
 - **Real-time recording** — keyboard/MIDI input with free or quantized mode, overdub/replace, gate tracking
@@ -251,9 +268,9 @@ Rock, Pop, Disco, Funk, Bossa Nova, Cha-Cha, Swing, Foxtrot, Reggae, Hip-Hop, Ho
 
 ## Preset System
 
-### 148 Instrument Presets
+### 263 Instrument Presets
 
-All presets stored as `SynthPatch` structs (indices 0-147). Categories include:
+All presets stored as `SynthPatch` structs (indices 0-262). Categories include:
 
 - **Leads** — Chip Lead, Sync Lead, Wavefold Lead, Mono Lead, Hoover, Screamer, various FM/PD leads
 - **Bass** — Fat Bass, Wobble, Sub Bass, FM Bass, Fretless Bass, Slap Bass, West Coast Bass, Chip Square/Saw
@@ -273,9 +290,9 @@ All presets stored as `SynthPatch` structs (indices 0-147). Categories include:
 
 ## Song Player / Jukebox
 
-15 pre-composed songs with instrument setup, pattern loading, and tempo configuration:
+14 pre-composed songs with instrument setup, pattern loading, and tempo configuration, plus a scratch slot:
 
-Dormitory Ambient, Suspense, Jazz Call & Response, House, Deep House, Dilla Hip-Hop, Atmosphere, Mr Lucky, Happy Birthday, Monk's Mood, Summertime, M.U.L.E. Theme, M.U.L.E. v2 (MIDI), Gymnopedie No.1, plus a scratch slot for loading .song files.
+Dormitory Ambient, Suspense, Jazz Call & Response, House, Deep House, Dilla Hip-Hop, Atmosphere, Mr Lucky, Happy Birthday, Monk's Mood, Summertime, M.U.L.E. Theme, M.U.L.E. v2 (MIDI), Gymnopedie No.1.
 
 ```c
 int count = SoundSynthGetSongCount();        // Number of built-in songs
@@ -318,7 +335,7 @@ make jukebox-test             # Song player test harness
 **Features:**
 - Pattern grid editor with per-step velocity/probability
 - Piano roll with note editing
-- Instrument preset browser (148 presets)
+- Instrument preset browser (263 presets)
 - Knob-based synth parameter editing (200+ patch fields)
 - Per-bus mixer with effects (8 buses)
 - Dub loop and rewind controls
@@ -456,15 +473,15 @@ seqSoundLogDump("navkit_sound.log");
 soundsystem/
   soundsystem.h              # Main include (pulls in everything)
   engines/
-    synth.h                  # Synth engine (16 oscillator types, 32 voices)
-    synth_oscillators.h      # 16 oscillator implementations (extracted from synth.h)
+    synth.h                  # Synth engine (29 oscillator types, 32 voices)
+    synth_oscillators.h      # Advanced oscillator implementations (extracted from synth.h)
     synth_scale.h            # Scale lock system (extracted from synth.h)
     synth_patch.h            # SynthPatch struct (200+ p_ fields) + default initializer
-    instrument_presets.h     # 148 presets (melodic + drums)
+    instrument_presets.h     # 263 presets (melodic + drums)
     effects.h                # Effects chain + bus mixer (8 buses)
     dub_loop.h               # King Tubby tape delay (extracted from effects.h)
     rewind.h                 # Vinyl spinback effect (extracted from effects.h)
-    sequencer.h              # Step sequencer v2 (96 PPQ, 8 tracks)
+    sequencer.h              # Step sequencer v2 (96 PPQ, 12 tracks, 64 patterns)
     sequencer_plocks.h       # Parameter lock subsystem (extracted from sequencer.h)
     sampler.h                # Sample playback engine (32 slots, 8 voices)
     sample_chop.h            # Chop/flip: bounce, slice, load, freeze
@@ -499,10 +516,10 @@ Game integration layer:
 ```
 src/sound/
   sound_synth_bridge.h       # Public C API (SoundSynth struct + functions)
-  sound_synth_bridge.c       # Implementation (audio callback, jukebox, 15 songs)
+  sound_synth_bridge.c       # Implementation (audio callback, jukebox, 15 entries incl. scratch)
   sound_phrase.h             # Procedural phrase generation (bird, vowel, tone)
   sound_phrase.c             # Phrase logic + RNG + configurable palette
-  songs.h                    # 15 built-in song definitions (pattern data)
+  songs.h                    # 18 built-in song definitions (pattern data)
 ```
 
 ## Dependencies
