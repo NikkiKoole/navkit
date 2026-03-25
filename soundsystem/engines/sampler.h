@@ -304,6 +304,48 @@ static int samplerLoadWav(const char* filepath, int slotIndex) {
     return slotIndex;
 }
 
+// Export a float buffer as 16-bit mono WAV. Returns true on success.
+static bool samplerWriteWav(const char *filepath, const float *data, int numSamples, int sampleRate) {
+    FILE *f = fopen(filepath, "wb");
+    if (!f) return false;
+    int dataSize = numSamples * 2;  // 16-bit = 2 bytes per sample
+    int fileSize = 36 + dataSize;
+    // RIFF header
+    fwrite("RIFF", 1, 4, f);
+    fwrite(&fileSize, 4, 1, f);
+    fwrite("WAVE", 1, 4, f);
+    // fmt chunk
+    fwrite("fmt ", 1, 4, f);
+    int fmtSize = 16; fwrite(&fmtSize, 4, 1, f);
+    short audioFmt = 1; fwrite(&audioFmt, 2, 1, f);   // PCM
+    short channels = 1; fwrite(&channels, 2, 1, f);    // mono
+    fwrite(&sampleRate, 4, 1, f);
+    int byteRate = sampleRate * 2; fwrite(&byteRate, 4, 1, f);
+    short blockAlign = 2; fwrite(&blockAlign, 2, 1, f);
+    short bitsPerSample = 16; fwrite(&bitsPerSample, 2, 1, f);
+    // data chunk
+    fwrite("data", 1, 4, f);
+    fwrite(&dataSize, 4, 1, f);
+    for (int i = 0; i < numSamples; i++) {
+        float s = data[i];
+        if (s > 1.0f) s = 1.0f;
+        if (s < -1.0f) s = -1.0f;
+        short pcm = (short)(s * 32000.0f);
+        fwrite(&pcm, 2, 1, f);
+    }
+    fclose(f);
+    return true;
+}
+
+// Export a sampler slot as WAV. Returns true on success.
+static bool samplerExportSlotWav(int slotIndex, const char *filepath) {
+    _ensureSamplerCtx();
+    if (slotIndex < 0 || slotIndex >= SAMPLER_MAX_SAMPLES) return false;
+    Sample *s = &samplerCtx->samples[slotIndex];
+    if (!s->loaded || !s->data || s->length < 1) return false;
+    return samplerWriteWav(filepath, s->data, s->length, s->sampleRate);
+}
+
 // Free a sample slot
 static void samplerFreeSample(int slotIndex) {
     _ensureSamplerCtx();
