@@ -1,6 +1,6 @@
 # Arrange Tab Improvements
 
-> Status: PROPOSAL (not implemented)
+> Status: EARLY PROPOSAL — quick wins are clear (#1 collapsible launcher, #3 edit-in-context), bigger features (record-to-arrangement) need more real usage to validate. This doc is a starting point, not a finished design.
 > Research: `sample-slicing-and-arrangement-research.md` (Ableton, Bitwig, GarageBand iOS, FL Studio, Renoise)
 
 ## The Problem
@@ -117,6 +117,16 @@ Click an arrangement cell → jump to Sequencer tab with that pattern loaded and
 | 7 | Fork pattern from cell | Small | Safe local edits without breaking shared patterns |
 
 Start with **1 + 3** — collapsible panel and edit-in-context are small changes that immediately make the tab more usable. Then **2** (record to arrangement) is the big feature. **4-7** are polish.
+
+## Open Questions
+
+These need real usage to answer — not more design docs:
+
+- Is the clip launcher actually used when making music, or just for auditioning patterns? If barely used, maybe it should shrink further or become a different thing entirely (Renoise pattern matrix?).
+- Is "record launcher to arrangement" a real workflow, or would manual pattern placement always be preferred?
+- Does the launcher/arrangement split even make sense at our scale, or should one view serve both needs?
+
+Let frustrations from actual use drive the next iteration of this doc.
 
 ---
 
