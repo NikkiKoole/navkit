@@ -6351,6 +6351,62 @@ static void dawHandleMusicalTyping(void) {
     SynthPatch *patch = &daw.patches[daw.selectedPatch];
     int bus = dawPatchToBus(daw.selectedPatch);
 
+    // Sampler routing takes priority over synth (including arp)
+    {
+        bool samplerRouting = (daw.selectedPatch == SEQ_TRACK_SAMPLER) || daw.chromaticMode;
+        bool samplerReady = samplerRouting && samplerCtx &&
+            daw.chromaticSample >= 0 && daw.chromaticSample < SAMPLER_MAX_SAMPLES &&
+            samplerCtx->samples[daw.chromaticSample].loaded;
+
+        if (samplerReady) {
+            bool granularMode = workTab == WORK_SAMPLE &&
+                (chopState.previewMode == SAMPLER_GRANULAR || chopState.previewMode == SAMPLER_STRETCH);
+
+            for (size_t i = 0; i < NUM_DAW_PIANO_KEYS; i++) {
+                if (IsKeyPressed(dawPianoKeys[i].key)) {
+                    int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
+                    float pitch = powf(2.0f, (midiNote - 60) / 12.0f);
+                    if (granularMode) {
+                        // Find any active granular voice and re-pitch it + all its grains
+                        bool found = false;
+                        _ensureSamplerCtx();
+                        for (int vi = 0; vi < SAMPLER_MAX_VOICES; vi++) {
+                            SamplerVoice *v = &samplerCtx->voices[vi];
+                            if (v->active && v->granularMode &&
+                                v->sampleIndex >= SCRATCH_PREVIEW_BASE) {
+                                float oldPitch = v->granular.pitch;
+                                v->granular.pitch = pitch;
+                                if (oldPitch > 0.001f) {
+                                    float ratio = pitch / oldPitch;
+                                    for (int gi = 0; gi < GRANULAR_MAX_GRAINS; gi++) {
+                                        if (v->granular.grains[gi].active)
+                                            v->granular.grains[gi].positionInc *= ratio;
+                                    }
+                                }
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            samplerPlayEx(daw.chromaticSample, 0.8f, pitch, chopState.previewMode);
+                        }
+                    } else if (workTab == WORK_SAMPLE && chopState.previewMode != SAMPLER_ONESHOT) {
+                        dawPianoKeyVoices[i] = samplerPlayEx(daw.chromaticSample, 0.8f, pitch, chopState.previewMode);
+                    } else {
+                        dawPianoKeyVoices[i] = samplerPlay(daw.chromaticSample, 0.8f, pitch);
+                    }
+                }
+                if (IsKeyReleased(dawPianoKeys[i].key) && dawPianoKeyVoices[i] >= 0) {
+                    if (!granularMode) {
+                        samplerStopVoice(dawPianoKeyVoices[i]);
+                    }
+                    dawPianoKeyVoices[i] = -1;
+                }
+            }
+            return;
+        }
+    }
+
     if (patch->p_arpEnabled) {
         // Arp mode: one persistent voice, never retrigger mid-play
         // 1 key  → build chord from UI chord type via buildArpChord
@@ -6430,29 +6486,6 @@ static void dawHandleMusicalTyping(void) {
         // Clean up arp state if switching away from arp patch
         if (dawArpVoice >= 0) { releaseNote(dawArpVoice); dawArpVoice = -1; }
         for (size_t i = 0; i < NUM_DAW_PIANO_KEYS; i++) dawArpKeyHeld[i] = false;
-
-        // Route keyboard to sampler when sampler track is selected or chromatic mode is on
-        bool samplerRouting = (daw.selectedPatch == SEQ_TRACK_SAMPLER) || daw.chromaticMode;
-        bool samplerReady = samplerRouting && samplerCtx &&
-            daw.chromaticSample >= 0 && daw.chromaticSample < SAMPLER_MAX_SAMPLES &&
-            samplerCtx->samples[daw.chromaticSample].loaded;
-
-        if (samplerReady) {
-            for (size_t i = 0; i < NUM_DAW_PIANO_KEYS; i++) {
-                if (IsKeyPressed(dawPianoKeys[i].key)) {
-                    int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
-                    float pitch = powf(2.0f, (midiNote - 60) / 12.0f);
-                    // samplerPlay respects per-slot pitched flag
-                    dawPianoKeyVoices[i] = samplerPlay(daw.chromaticSample, 0.8f, pitch);
-                }
-                if (IsKeyReleased(dawPianoKeys[i].key) && dawPianoKeyVoices[i] >= 0) {
-                    // Stop voice on release (matters for looping/sustain slots)
-                    samplerStopVoice(dawPianoKeyVoices[i]);
-                    dawPianoKeyVoices[i] = -1;
-                }
-            }
-            return;
-        }
 
         for (size_t i = 0; i < NUM_DAW_PIANO_KEYS; i++) {
             if (IsKeyPressed(dawPianoKeys[i].key)) {

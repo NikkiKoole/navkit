@@ -510,13 +510,13 @@ static int samplerPlayEx(int sampleIndex, float volume, float pitch, SamplerPlay
             gs->amplitude = 0.9f;
             gs->position = 0.0f;
             if (mode == SAMPLER_STRETCH) {
-                // Time-stretch: tight grains, no randomization, position auto-advances
-                gs->grainSize = 15.0f;
-                gs->grainDensity = 80.0f;
-                gs->positionRandom = 0.005f;
+                // Time-stretch: overlapping grains, position auto-advances at original rate
+                gs->grainSize = 60.0f;          // 60ms grains (smooth overlap)
+                gs->grainDensity = 40.0f;        // 40 grains/sec (overlap ~2.4x)
+                gs->positionRandom = 0.008f;     // tiny jitter to avoid phasing
                 gs->pitchRandom = 0.0f;
                 gs->ampRandom = 0.0f;
-                gs->pitch = pitch;  // keyboard pitch applied to grains
+                gs->pitch = pitch;               // keyboard pitch applied to grains
                 gs->timeStretch = true;
                 gs->stretchPosInc = 1.0f / (float)sample->length;  // one full scan = original duration
             } else {
