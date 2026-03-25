@@ -866,6 +866,7 @@ static struct {
     bool captureDropdownOpen;   // capture dropdown visible
     int captureGrabSeconds;     // grab duration (10/30/60/120)
     int bankScrollOffset;       // bank strip scroll (0-based first visible slot)
+    SamplerPlayMode previewMode; // audition playback mode (oneshot/loop/pingpong/reverse)
 } chopState = {
     .sourceLoops = 1,
     .sliceCount = 8,
@@ -880,8 +881,10 @@ static struct {
 // Scratch space: contiguous buffer + markers (Phase 3 API)
 static ScratchSpace scratch = {0};
 
-// Preview slot for auditioning scratch slices without polluting the bank
-#define SCRATCH_PREVIEW_SLOT (SAMPLER_MAX_SAMPLES - 1)
+// Preview slots for auditioning scratch slices (rotating pool, polyphonic)
+#define SCRATCH_PREVIEW_SLOTS 8
+#define SCRATCH_PREVIEW_BASE (SAMPLER_MAX_SAMPLES - SCRATCH_PREVIEW_SLOTS)  // slots 24-31
+static int scratchPreviewNext = 0;
 
 // Free chop state buffers (slices only, keeps full song data)
 static void chopSlicesClear(void) {
@@ -1164,9 +1167,18 @@ static void scratchAuditionSlice(int sliceIdx) {
     int len = scratchSliceLength(&scratch, sliceIdx);
     if (len < 1) return;
 
+    // Rotate through preview slots so multiple slices can play simultaneously
+    int previewSlot = SCRATCH_PREVIEW_BASE + scratchPreviewNext;
+    scratchPreviewNext = (scratchPreviewNext + 1) % SCRATCH_PREVIEW_SLOTS;
+
     dawAudioGate();
     _ensureSamplerCtx();
-    Sample *slot = &samplerCtx->samples[SCRATCH_PREVIEW_SLOT];
+    // Stop any voice currently using this preview slot (it's being recycled)
+    for (int v = 0; v < SAMPLER_MAX_VOICES; v++) {
+        if (samplerCtx->voices[v].active && samplerCtx->voices[v].sampleIndex == previewSlot)
+            samplerCtx->voices[v].active = false;
+    }
+    Sample *slot = &samplerCtx->samples[previewSlot];
     if (slot->loaded && slot->data && !slot->embedded) free(slot->data);
     float *copy = (float *)malloc(len * sizeof(float));
     if (!copy) { dawAudioUngate(); return; }
@@ -1177,11 +1189,33 @@ static void scratchAuditionSlice(int sliceIdx) {
     slot->loaded = true;
     slot->embedded = false;
     slot->oneShot = true;
-    slot->pitched = false;
-    snprintf(slot->name, sizeof(slot->name), "preview");
+    slot->pitched = true;  // keyboard can play this pitched
+    snprintf(slot->name, sizeof(slot->name), "preview_%d", sliceIdx);
+
+    // Also load into a fixed "keyboard slot" so keyboard/MIDI always plays the last-clicked slice
+    int kbSlot = SCRATCH_PREVIEW_BASE;  // slot 24 = dedicated keyboard slot
+    if (previewSlot != kbSlot) {
+        Sample *kb = &samplerCtx->samples[kbSlot];
+        if (kb->loaded && kb->data && !kb->embedded) free(kb->data);
+        float *kbCopy = (float *)malloc(len * sizeof(float));
+        if (kbCopy) {
+            memcpy(kbCopy, scratch.data + start, len * sizeof(float));
+            kb->data = kbCopy;
+            kb->length = len;
+            kb->sampleRate = scratch.sampleRate;
+            kb->loaded = true;
+            kb->embedded = false;
+            kb->oneShot = (chopState.previewMode == SAMPLER_ONESHOT || chopState.previewMode == SAMPLER_REVERSE);
+            kb->pitched = true;
+            snprintf(kb->name, sizeof(kb->name), "kb_preview");
+        }
+    }
+    daw.chromaticSample = kbSlot;
+    daw.chromaticMode = true;  // auto-enable so keyboard plays this slice
+
     dawAudioUngate();
 
-    samplerQueuePlay(SCRATCH_PREVIEW_SLOT, 0.8f, 1.0f);
+    samplerQueuePlayEx(previewSlot, 0.8f, 1.0f, chopState.previewMode);
 }
 
 // ============================================================================
@@ -7123,12 +7157,29 @@ static int drawScratchWaveform(float bx, float by, float bw, float bh,
         DrawLine((int)(px + col), y0, (int)(px + col), y1, waveCol);
     }
 
-    // Draw marker lines
+    // Detect hovered marker (4px hit zone)
+    int hoveredMarker = -1;
+    if (CheckCollisionPointRec(mouse, (Rectangle){bx, by, bw, bh})) {
+        float mouseNorm = (mouse.x - bx - 2) / (bw - 4);
+        for (int m = 0; m < s->markerCount; m++) {
+            float markerNorm = (float)s->markers[m] / s->length;
+            float dist = fabsf(mouseNorm - markerNorm) * (bw - 4);
+            if (dist < 4.0f) { hoveredMarker = m; break; }
+        }
+    }
+
+    // Draw marker lines (highlighted when hovered)
     for (int m = 0; m < s->markerCount; m++) {
         float normPos = (float)s->markers[m] / s->length;
         float mx = bx + 2 + normPos * (bw - 4);
-        Color mc = (Color){180, 180, 200, 200};
+        bool mHov = (m == hoveredMarker);
+        Color mc = mHov ? (Color){255, 255, 100, 255} : (Color){180, 180, 200, 200};
         DrawLine((int)mx, (int)(by + 2), (int)mx, (int)(by + bh - 2), mc);
+        if (mHov) {
+            // Draw wider grip area
+            DrawLine((int)(mx - 1), (int)(by + 2), (int)(mx - 1), (int)(by + bh - 2), (Color){255, 255, 100, 80});
+            DrawLine((int)(mx + 1), (int)(by + 2), (int)(mx + 1), (int)(by + bh - 2), (Color){255, 255, 100, 80});
+        }
     }
 
     // Slice numbers centered in each region
@@ -7149,16 +7200,26 @@ static int drawScratchWaveform(float bx, float by, float bw, float bh,
     // Center line
     DrawLine((int)(bx + 2), (int)mid, (int)(bx + bw - 2), (int)mid, (Color){35, 35, 42, 128});
 
-    // Playhead: scan sampler voices for preview slot
+    // Playhead: scan sampler voices for any preview slot
     _ensureSamplerCtx();
     for (int vi = 0; vi < SAMPLER_MAX_VOICES; vi++) {
         SamplerVoice *v = &samplerCtx->voices[vi];
-        if (!v->active || v->sampleIndex != SCRATCH_PREVIEW_SLOT) continue;
-        // For preview slot, map position back to scratch space
-        // (preview slot contains a single slice, so we need the selected slice offset)
-        if (selectedSlice >= 0 && selectedSlice < sliceCount) {
-            int sliceStart = scratchSliceStart(s, selectedSlice);
-            float samplePos = sliceStart + v->position;
+        if (!v->active) continue;
+        int si = v->sampleIndex;
+        if (si < SCRATCH_PREVIEW_BASE || si >= SCRATCH_PREVIEW_BASE + SCRATCH_PREVIEW_SLOTS) continue;
+        // Map voice position back to scratch space using the slot's name
+        Sample *ps = &samplerCtx->samples[si];
+        int previewSliceIdx = -1;
+        if (ps->name[0] == 'p' && ps->name[7] == '_') {  // "preview_N"
+            const char *p = ps->name + 8;
+            previewSliceIdx = 0;
+            while (*p >= '0' && *p <= '9') { previewSliceIdx = previewSliceIdx * 10 + (*p - '0'); p++; }
+        } else if (ps->name[0] == 'k') {  // "kb_preview" — keyboard slot, use selected slice
+            previewSliceIdx = selectedSlice;
+        }
+        if (previewSliceIdx >= 0 && previewSliceIdx < sliceCount) {
+            int slStart = scratchSliceStart(s, previewSliceIdx);
+            float samplePos = slStart + v->position;
             float normPos = samplePos / (float)s->length;
             if (normPos >= 0 && normPos <= 1.0f) {
                 float phX = bx + 2 + normPos * (bw - 4);
@@ -7169,39 +7230,38 @@ static int drawScratchWaveform(float bx, float by, float bw, float bh,
 
     // Click/interaction detection
     if (CheckCollisionPointRec(mouse, (Rectangle){bx, by, bw, bh})) {
-        // Check marker proximity for drag (4px hit zone)
-        if (outMarkerHit) {
-            float mouseNorm = (mouse.x - bx - 2) / (bw - 4);
-            for (int m = 0; m < s->markerCount; m++) {
-                float markerNorm = (float)s->markers[m] / s->length;
-                float dist = fabsf(mouseNorm - markerNorm) * (bw - 4);
-                if (dist < 4.0f) { *outMarkerHit = m; break; }
-            }
-        }
+        // Use the already-computed hoveredMarker for outMarkerHit
+        if (outMarkerHit) *outMarkerHit = hoveredMarker;
 
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            int samplePos = (int)(((mouse.x - bx - 2) / (bw - 4)) * s->length);
-            clicked = sliceCount - 1;
-            for (int si = 0; si < s->markerCount; si++) {
-                if (samplePos < s->markers[si]) { clicked = si; break; }
+            if (IsKeyDown(KEY_LEFT_SHIFT)) {
+                // Shift+click = add marker
+                int samplePos = (int)(((mouse.x - bx - 2) / (bw - 4)) * s->length);
+                if (samplePos > 0 && samplePos < s->length) {
+                    clicked = -4;
+                }
+                ui_consume_click();
+            } else if (hoveredMarker >= 0) {
+                // Clicking on a marker = drag (don't trigger slice click)
+                clicked = -5;  // signal: marker drag initiated (caller handles)
+                ui_consume_click();
+            } else {
+                // Click between markers = select + audition slice
+                int samplePos = (int)(((mouse.x - bx - 2) / (bw - 4)) * s->length);
+                clicked = sliceCount - 1;
+                for (int si = 0; si < s->markerCount; si++) {
+                    if (samplePos < s->markers[si]) { clicked = si; break; }
+                }
+                ui_consume_click();
             }
-            ui_consume_click();
         }
         if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-            // Right-click on a marker = delete it
-            if (outMarkerHit && *outMarkerHit >= 0) {
+            if (hoveredMarker >= 0) {
                 clicked = -3;  // signal: delete marker
             } else {
                 clicked = -2;  // signal: stop playback
             }
             ui_consume_click();
-        }
-        // Shift+Left-click = add marker at click position
-        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && IsKeyDown(KEY_LEFT_SHIFT)) {
-            int samplePos = (int)(((mouse.x - bx - 2) / (bw - 4)) * s->length);
-            if (samplePos > 0 && samplePos < s->length) {
-                clicked = -4;  // signal: add marker (caller handles via scratchAddMarker)
-            }
         }
     }
 
@@ -7495,45 +7555,12 @@ static void drawWorkSample(float x, float y, float w, float h) {
     }
 
     // =====================================================================
-    // C. MAIN WAVEFORM (zoomable, with scratch markers or fullData)
+    // C. ZOOM VIEW (always visible — fullData with selection handles)
     // =====================================================================
     {
-        float zoomH = scratchHasData(&scratch) ? 100 : 80;
+        float zoomH = 60;
         Rectangle zoomR = {x, sy, w, zoomH};
-
-        if (scratchHasData(&scratch)) {
-            // Draw scratch space waveform with markers
-            int markerHit = -1;
-            int clicked = drawScratchWaveform(x, sy, w, zoomH, &scratch,
-                                              chopState.selectedSlice, &markerHit);
-
-            // Handle marker dragging
-            if (markerHit >= 0 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !IsKeyDown(KEY_LEFT_SHIFT)) {
-                chopState.draggingMarker = markerHit;
-            }
-            if (chopState.draggingMarker >= 0 && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                float mouseNorm = (mouse.x - x - 2) / (w - 4);
-                int newPos = (int)(mouseNorm * scratch.length);
-                scratchMoveMarker(&scratch, chopState.draggingMarker, newPos);
-            }
-            if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) chopState.draggingMarker = -1;
-
-            // Handle clicks
-            if (clicked == -2) {
-                samplerStopAll();
-            } else if (clicked == -3 && markerHit >= 0) {
-                // Right-click on marker = delete
-                scratchRemoveMarker(&scratch, markerHit);
-            } else if (clicked == -4) {
-                // Shift+click = add marker
-                int samplePos = (int)(((mouse.x - x - 2) / (w - 4)) * scratch.length);
-                scratchAddMarker(&scratch, samplePos);
-            } else if (clicked >= 0) {
-                chopState.selectedSlice = clicked;
-                scratchAuditionSlice(clicked);
-            }
-        } else {
-            // No scratch data: show fullData zoom view with selection
+        {
             DrawRectangle((int)x, (int)sy, (int)w, (int)zoomH, UI_BG_DEEPEST);
             DrawRectangleLinesEx(zoomR, 1, UI_BORDER_SUBTLE);
 
@@ -7570,19 +7597,38 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 }
                 DrawLine((int)(x + 2), (int)mid, (int)(x + w - 2), (int)mid, (Color){35, 35, 42, 128});
 
-                // Selection handles
+                // Detect which selection handle is hovered (6px hit zone)
+                // draggingSelHandle: 0=none, 1=start(green), 2=end(red)
+                static int draggingSelHandle = 0;
+                int hoveredHandle = 0;
                 if (chopState.hasSelection) {
                     float sMin = fminf(chopState.selStart, chopState.selEnd);
                     float sMax = fmaxf(chopState.selStart, chopState.selEnd);
+                    float startPx = x + 2 + ((sMin - vStart) / vLen) * (w - 4);
+                    float endPx = x + 2 + ((sMax - vStart) / vLen) * (w - 4);
+                    if (fabsf(mouse.x - startPx) < 6 && mouse.y >= sy && mouse.y <= sy + zoomH) hoveredHandle = 1;
+                    else if (fabsf(mouse.x - endPx) < 6 && mouse.y >= sy && mouse.y <= sy + zoomH) hoveredHandle = 2;
+
+                    // Draw handles (highlighted when hovered or dragged)
+                    bool startHov = (hoveredHandle == 1 || draggingSelHandle == 1);
+                    bool endHov = (hoveredHandle == 2 || draggingSelHandle == 2);
                     if (sMin >= vStart && sMin <= vEnd) {
-                        float hx = x + 2 + ((sMin - vStart) / vLen) * (w - 4);
-                        DrawLine((int)hx, (int)(sy + 1), (int)hx, (int)(sy + zoomH - 1), GREEN);
-                        DrawRectangle((int)(hx - 2), (int)sy, 5, 8, GREEN);
+                        Color sc = startHov ? (Color){100, 255, 100, 255} : GREEN;
+                        DrawLine((int)startPx, (int)(sy + 1), (int)startPx, (int)(sy + zoomH - 1), sc);
+                        DrawRectangle((int)(startPx - 3), (int)sy, 7, 10, sc);
+                        if (startHov) {
+                            DrawLine((int)(startPx - 1), (int)(sy + 1), (int)(startPx - 1), (int)(sy + zoomH - 1), (Color){100, 255, 100, 60});
+                            DrawLine((int)(startPx + 1), (int)(sy + 1), (int)(startPx + 1), (int)(sy + zoomH - 1), (Color){100, 255, 100, 60});
+                        }
                     }
                     if (sMax >= vStart && sMax <= vEnd) {
-                        float hx = x + 2 + ((sMax - vStart) / vLen) * (w - 4);
-                        DrawLine((int)hx, (int)(sy + 1), (int)hx, (int)(sy + zoomH - 1), RED);
-                        DrawRectangle((int)(hx - 2), (int)(sy + zoomH - 8), 5, 8, RED);
+                        Color ec = endHov ? (Color){255, 120, 120, 255} : RED;
+                        DrawLine((int)endPx, (int)(sy + 1), (int)endPx, (int)(sy + zoomH - 1), ec);
+                        DrawRectangle((int)(endPx - 3), (int)(sy + zoomH - 10), 7, 10, ec);
+                        if (endHov) {
+                            DrawLine((int)(endPx - 1), (int)(sy + 1), (int)(endPx - 1), (int)(sy + zoomH - 1), (Color){255, 120, 120, 60});
+                            DrawLine((int)(endPx + 1), (int)(sy + 1), (int)(endPx + 1), (int)(sy + zoomH - 1), (Color){255, 120, 120, 60});
+                        }
                     }
                 }
 
@@ -7610,13 +7656,36 @@ static void drawWorkSample(float x, float y, float w, float h) {
                         if (chopState.viewEnd > 1) { chopState.viewStart -= (chopState.viewEnd - 1); chopState.viewEnd = 1; }
                     }
                     if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !chopState.draggingView) {
-                        float clickNorm = vStart + ((mouse.x - x - 2) / (w - 4)) * vLen;
-                        if (clickNorm < 0) clickNorm = 0; if (clickNorm > 1) clickNorm = 1;
-                        chopState.selStart = clickNorm; chopState.selEnd = clickNorm;
-                        chopState.hasSelection = false; chopState.draggingSel = true;
+                        if (hoveredHandle > 0) {
+                            // Start dragging existing handle
+                            draggingSelHandle = hoveredHandle;
+                        } else {
+                            // Start new selection
+                            float clickNorm = vStart + ((mouse.x - x - 2) / (w - 4)) * vLen;
+                            if (clickNorm < 0) clickNorm = 0; if (clickNorm > 1) clickNorm = 1;
+                            chopState.selStart = clickNorm; chopState.selEnd = clickNorm;
+                            chopState.hasSelection = false; chopState.draggingSel = true;
+                        }
                         ui_consume_click();
                     }
                 }
+
+                // Drag selection handle
+                if (draggingSelHandle > 0 && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                    float dragNorm = vStart + ((mouse.x - x - 2) / (w - 4)) * vLen;
+                    if (dragNorm < 0) dragNorm = 0; if (dragNorm > 1) dragNorm = 1;
+                    if (draggingSelHandle == 1) chopState.selStart = dragNorm;
+                    else chopState.selEnd = dragNorm;
+                    chopState.hasSelection = (fabsf(chopState.selEnd - chopState.selStart) > 0.002f);
+                }
+                if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && draggingSelHandle > 0) {
+                    draggingSelHandle = 0;
+                    if (chopState.selStart > chopState.selEnd) {
+                        float tmp = chopState.selStart; chopState.selStart = chopState.selEnd; chopState.selEnd = tmp;
+                    }
+                }
+
+                // Drag to create new selection
                 if (chopState.draggingSel && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
                     float vLen2 = chopState.viewEnd - chopState.viewStart;
                     float dragNorm = chopState.viewStart + ((mouse.x - x - 2) / (w - 4)) * vLen2;
@@ -7641,7 +7710,73 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 DrawTextShadow("No audio — select a .song above", (int)(x + 8), (int)(sy + zoomH / 2 - 5), UI_FONT_SMALL, UI_BORDER_LIGHT);
             }
         }
-        sy += zoomH + 4;
+        sy += zoomH + 2;
+    }
+
+    // =====================================================================
+    // C2. SCRATCH WAVEFORM (visible after chop — markers, audition, drag)
+    // =====================================================================
+    if (scratchHasData(&scratch)) {
+        float scrH = 70;
+        int markerHit = -1;
+        int clicked = drawScratchWaveform(x, sy, w, scrH, &scratch,
+                                          chopState.selectedSlice, &markerHit);
+
+        // Initiate marker drag
+        if (clicked == -5 && markerHit >= 0) {
+            chopState.draggingMarker = markerHit;
+        }
+
+        // Continue marker drag
+        if (chopState.draggingMarker >= 0) {
+            if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                float mouseNorm = (mouse.x - x - 2) / (w - 4);
+                int newPos = (int)(mouseNorm * scratch.length);
+                scratchMoveMarker(&scratch, chopState.draggingMarker, newPos);
+            }
+            if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+                chopState.draggingMarker = -1;
+            }
+        }
+
+        // Handle other clicks (not marker drag)
+        if (chopState.draggingMarker < 0) {
+            if (clicked == -2) {
+                samplerStopAll();
+            } else if (clicked == -3 && markerHit >= 0) {
+                scratchRemoveMarker(&scratch, markerHit);
+            } else if (clicked == -4) {
+                int samplePos = (int)(((mouse.x - x - 2) / (w - 4)) * scratch.length);
+                scratchAddMarker(&scratch, samplePos);
+            } else if (clicked >= 0) {
+                chopState.selectedSlice = clicked;
+                scratchAuditionSlice(clicked);
+            }
+        }
+
+        // Playback mode buttons
+        {
+            float mx = x;
+            const char *modeLabels[] = {">", "Loop", "<>", "Rev"};
+            SamplerPlayMode modes[] = {SAMPLER_ONESHOT, SAMPLER_LOOP, SAMPLER_PINGPONG, SAMPLER_REVERSE};
+            for (int m = 0; m < 4; m++) {
+                int bw = MeasureTextUI(modeLabels[m], UI_FONT_SMALL) + 10;
+                Rectangle r = {mx, sy + scrH + 2, (float)bw, 14};
+                bool sel = (chopState.previewMode == modes[m]);
+                bool hov = CheckCollisionPointRec(mouse, r);
+                DrawRectangleRec(r, sel ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_PANEL));
+                DrawRectangleLinesEx(r, 1, sel ? GREEN : UI_BORDER);
+                DrawTextShadow(modeLabels[m], (int)(mx + 5), (int)(sy + scrH + 5), UI_FONT_SMALL,
+                              sel ? WHITE : UI_TEXT_DIM);
+                if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                    chopState.previewMode = modes[m];
+                    ui_consume_click();
+                }
+                mx += bw + 3;
+            }
+        }
+
+        sy += scrH + 20;
     }
 
     // =====================================================================
@@ -7692,7 +7827,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
 
         // Chop button
         {
-            bool canChop = scratchHasData(&scratch) || (chopState.structureLoaded && chopState.hasSelection);
+            bool canChop = scratchHasData(&scratch) || (chopState.structureLoaded && chopState.fullData);
             int bw = MeasureTextUI("Chop!", UI_FONT_SMALL) + cbPad*2;
             Rectangle r = {cx, sy, (float)bw, (float)cbH};
             bool hov = CheckCollisionPointRec(mouse, r) && canChop;
@@ -7771,6 +7906,34 @@ static void drawWorkSample(float x, float y, float w, float h) {
             }
             cx += bw + 6;
         }
+
+        // Add selected slice to next free bank slot
+        {
+            bool canAdd = scratchHasData(&scratch) && chopState.selectedSlice >= 0 &&
+                          chopState.selectedSlice < scratchSliceCount(&scratch);
+            int bw = MeasureTextUI("+1 Bank", UI_FONT_SMALL) + cbPad*2;
+            Rectangle r = {cx, sy, (float)bw, (float)cbH};
+            bool hov = CheckCollisionPointRec(mouse, r) && canAdd;
+            DrawRectangleRec(r, hov ? (Color){40, 60, 80, 255} : (canAdd ? UI_BG_PANEL : UI_BG_PANEL));
+            DrawRectangleLinesEx(r, 1, canAdd ? (Color){100, 200, 150, 255} : UI_BORDER);
+            DrawTextShadow("+1 Bank", (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL,
+                          canAdd ? (Color){100, 200, 150, 255} : UI_TEXT_DIM);
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                // Find next free slot (skip preview slots)
+                _ensureSamplerCtx();
+                int freeSlot = -1;
+                for (int s = 0; s < SCRATCH_PREVIEW_BASE; s++) {
+                    if (!samplerCtx->samples[s].loaded) { freeSlot = s; break; }
+                }
+                if (freeSlot >= 0) {
+                    dawAudioGate();
+                    scratchCommitSlice(&scratch, chopState.selectedSlice, freeSlot);
+                    dawAudioUngate();
+                }
+                ui_consume_click();
+            }
+            cx += bw + 6;
+        }
     }
     sy += 22;
 
@@ -7821,9 +7984,41 @@ static void drawWorkSample(float x, float y, float w, float h) {
             char num[4]; snprintf(num, sizeof(num), "%d", slot + 1);
             DrawTextShadow(num, (int)(sx + 2), (int)(sy + 2), 8, UI_BORDER_LIGHT);
 
-            if (s->loaded) {
-                // Filled indicator
-                DrawRectangle((int)(sx + 2), (int)(sy + slotH - 6), (int)(slotW - 6), 3, (Color){80, 140, 200, 200});
+            if (s->loaded && s->data && s->length > 0) {
+                // Mini waveform thumbnail
+                int wvX = (int)(sx + 1);
+                int wvY = (int)(sy + 11);
+                int wvW = (int)(slotW - 4);
+                int wvH = (int)(slotH - 14);
+                float wvMid = wvY + wvH * 0.5f;
+                float wvAmp = wvH * 0.45f;
+                Color wvCol = playing ? (Color){140, 220, 100, 220} : (Color){80, 140, 200, 180};
+                for (int col = 0; col < wvW; col++) {
+                    int s0 = (int)((float)col / wvW * s->length);
+                    int s1 = (int)((float)(col + 1) / wvW * s->length);
+                    if (s1 > s->length) s1 = s->length;
+                    float lo = 0, hi = 0;
+                    int step = (s1 - s0) > 8 ? (s1 - s0) / 8 : 1;
+                    for (int j = s0; j < s1; j += step) {
+                        if (s->data[j] < lo) lo = s->data[j];
+                        if (s->data[j] > hi) hi = s->data[j];
+                    }
+                    int y0 = (int)(wvMid - hi * wvAmp);
+                    int y1 = (int)(wvMid - lo * wvAmp);
+                    if (y1 <= y0) y1 = y0 + 1;
+                    DrawLine(wvX + col, y0, wvX + col, y1, wvCol);
+                }
+                // Playhead
+                if (playing) {
+                    for (int vi = 0; vi < SAMPLER_MAX_VOICES; vi++) {
+                        SamplerVoice *v = &samplerCtx->voices[vi];
+                        if (!v->active || v->sampleIndex != slot) continue;
+                        float normPos = v->position / (float)s->length;
+                        if (normPos < 0) normPos = 0; if (normPos > 1) normPos = 1;
+                        int phX = wvX + (int)(normPos * wvW);
+                        DrawLine(phX, wvY, phX, wvY + wvH, WHITE);
+                    }
+                }
                 // Flags
                 if (s->pitched)
                     DrawTextShadow("P", (int)(sx + slotW - 14), (int)(sy + 2), 8, (Color){100, 200, 255, 200});
@@ -7835,11 +8030,15 @@ static void drawWorkSample(float x, float y, float w, float h) {
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && s->loaded) {
                 samplerQueuePlay(slot, 0.8f, 1.0f);
                 daw.chromaticSample = slot;
+                daw.chromaticMode = true;
                 ui_consume_click();
             }
-            // Right-click to toggle pitched flag
+            // Right-click: stop. Shift+Right-click: delete from bank.
             if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && s->loaded) {
-                s->pitched = !s->pitched;
+                samplerStopSample(slot);
+                if (IsKeyDown(KEY_LEFT_SHIFT)) {
+                    samplerFreeSample(slot);
+                }
                 ui_consume_click();
             }
         }
@@ -7862,18 +8061,25 @@ static void drawWorkSample(float x, float y, float w, float h) {
         DrawTextShadow("TAP MODE: Press Space to drop markers during playback",
                        (int)x, (int)sy, UI_FONT_SMALL, RED);
         if (IsKeyPressed(KEY_SPACE)) {
-            // Use preview slot voice position to determine where we are
+            // Use any preview slot voice position to determine where we are
             _ensureSamplerCtx();
             for (int vi = 0; vi < SAMPLER_MAX_VOICES; vi++) {
                 SamplerVoice *v = &samplerCtx->voices[vi];
-                if (v->active && v->sampleIndex == SCRATCH_PREVIEW_SLOT) {
-                    int pos = (int)v->position;
-                    if (chopState.selectedSlice >= 0) {
-                        pos += scratchSliceStart(&scratch, chopState.selectedSlice);
-                    }
-                    scratchAddMarker(&scratch, pos);
-                    break;
+                if (!v->active) continue;
+                int si = v->sampleIndex;
+                if (si < SCRATCH_PREVIEW_BASE || si >= SCRATCH_PREVIEW_BASE + SCRATCH_PREVIEW_SLOTS) continue;
+                // Parse slice index from slot name
+                Sample *ps = &samplerCtx->samples[si];
+                int psIdx = -1;
+                if (ps->name[0] == 'p') {
+                    const char *p = ps->name + 8;
+                    psIdx = 0;
+                    while (*p >= '0' && *p <= '9') { psIdx = psIdx * 10 + (*p - '0'); p++; }
                 }
+                int pos = (int)v->position;
+                if (psIdx >= 0) pos += scratchSliceStart(&scratch, psIdx);
+                scratchAddMarker(&scratch, pos);
+                break;
             }
         }
         sy += 16;
@@ -9176,6 +9382,18 @@ int main(int argc, char *argv[]) {
         int workInt = (int)workTab;
         drawTabBar(CONTENT_X, WORK_TAB_Y, CONTENT_W, workTabNames, workTabKeys, WORK_COUNT, &workInt, "F");
         if ((WorkTab)workInt != WORK_VOICE) speechTextEditing = false;
+        // Auto-collapse bottom panel on Sample tab, restore on leave
+        {
+            static bool paramsStateBeforeSample = false;
+            WorkTab newTab = (WorkTab)workInt;
+            if (newTab == WORK_SAMPLE && workTab != WORK_SAMPLE) {
+                paramsStateBeforeSample = paramsCollapsed;
+                paramsCollapsed = true;
+            } else if (newTab != WORK_SAMPLE && workTab == WORK_SAMPLE) {
+                paramsCollapsed = paramsStateBeforeSample;
+                daw.chromaticMode = false;  // stop hijacking keyboard
+            }
+        }
         workTab = (WorkTab)workInt;
 
         // Dynamic split: when params collapsed, push split to bottom (just tab bar visible)

@@ -40,13 +40,22 @@ typedef struct {
     bool active;
     int sampleIndex;          // Which sample is playing
     float position;           // Playback position (fractional for pitch shift)
-    float speed;              // Playback speed (1.0 = normal, 2.0 = octave up)
+    float speed;              // Playback speed (1.0 = normal, 2.0 = octave up, negative = reverse)
     float volume;             // Voice volume (0-1)
     float pan;                // Pan (-1 left, 0 center, 1 right)
     bool loop;                // Loop the sample
+    bool pingPong;            // Reverse direction at loop boundaries
     int loopStart;            // Loop start point
     int loopEnd;              // Loop end point
 } SamplerVoice;
+
+// Playback modes for preview/audition
+typedef enum {
+    SAMPLER_ONESHOT = 0,    // Play once, stop at end
+    SAMPLER_LOOP,           // Loop continuously
+    SAMPLER_PINGPONG,       // Bounce between start and end
+    SAMPLER_REVERSE,        // Play backward once
+} SamplerPlayMode;
 
 // ============================================================================
 // COMMAND QUEUE (lock-free SPSC for thread-safe preview triggers)
@@ -58,6 +67,7 @@ typedef struct {
     int slot;
     float volume;
     float speed;
+    SamplerPlayMode mode;   // playback mode
 } SamplerCommand;
 
 // ============================================================================
@@ -441,6 +451,38 @@ static int samplerPlay(int sampleIndex, float volume, float pitch) {
     return voiceIdx;
 }
 
+// Trigger with explicit playback mode (for preview/audition)
+static int samplerPlayEx(int sampleIndex, float volume, float pitch, SamplerPlayMode mode) {
+    int voiceIdx = samplerPlay(sampleIndex, volume, (mode == SAMPLER_REVERSE) ? -pitch : pitch);
+    if (voiceIdx < 0) return -1;
+    SamplerVoice* v = &samplerCtx->voices[voiceIdx];
+    Sample* sample = &samplerCtx->samples[sampleIndex];
+    switch (mode) {
+        case SAMPLER_ONESHOT:
+            v->loop = false;
+            v->pingPong = false;
+            break;
+        case SAMPLER_LOOP:
+            v->loop = true;
+            v->pingPong = false;
+            v->loopStart = 0;
+            v->loopEnd = sample->length;
+            break;
+        case SAMPLER_PINGPONG:
+            v->loop = true;
+            v->pingPong = true;
+            v->loopStart = 0;
+            v->loopEnd = sample->length;
+            break;
+        case SAMPLER_REVERSE:
+            v->loop = false;
+            v->pingPong = false;
+            v->position = (float)(sample->length - 1);
+            break;
+    }
+    return voiceIdx;
+}
+
 // Trigger with pan
 static int samplerPlayPanned(int sampleIndex, float volume, float pitch, float pan) {
     int voiceIdx = samplerPlay(sampleIndex, volume, pitch);
@@ -499,20 +541,33 @@ static bool samplerQueuePlay(int sampleIndex, float volume, float speed) {
     _ensureSamplerCtx();
     int head = samplerCtx->cmdHead;
     int next = (head + 1) % SAMPLER_CMD_QUEUE_SIZE;
-    if (next == samplerCtx->cmdTail) return false;  // queue full
-    samplerCtx->cmdQueue[head] = (SamplerCommand){sampleIndex, volume, speed};
-    samplerCtx->cmdHead = next;  // publish (single writer, release semantics)
+    if (next == samplerCtx->cmdTail) return false;
+    samplerCtx->cmdQueue[head] = (SamplerCommand){sampleIndex, volume, speed, SAMPLER_ONESHOT};
+    samplerCtx->cmdHead = next;
+    return true;
+}
+
+// Queue with explicit playback mode
+static bool samplerQueuePlayEx(int sampleIndex, float volume, float speed, SamplerPlayMode mode) {
+    _ensureSamplerCtx();
+    int head = samplerCtx->cmdHead;
+    int next = (head + 1) % SAMPLER_CMD_QUEUE_SIZE;
+    if (next == samplerCtx->cmdTail) return false;
+    samplerCtx->cmdQueue[head] = (SamplerCommand){sampleIndex, volume, speed, mode};
+    samplerCtx->cmdHead = next;
     return true;
 }
 
 // Drain queued commands on the audio thread. Call at start of each audio buffer.
-// Calls samplerPlay() for each queued command (voice allocation on audio thread).
 static void samplerDrainQueue(void) {
     if (!samplerCtx) return;
     while (samplerCtx->cmdTail != samplerCtx->cmdHead) {
         SamplerCommand cmd = samplerCtx->cmdQueue[samplerCtx->cmdTail];
         samplerCtx->cmdTail = (samplerCtx->cmdTail + 1) % SAMPLER_CMD_QUEUE_SIZE;
-        samplerPlay(cmd.slot, cmd.volume, cmd.speed);
+        if (cmd.mode == SAMPLER_ONESHOT)
+            samplerPlay(cmd.slot, cmd.volume, cmd.speed);
+        else
+            samplerPlayEx(cmd.slot, cmd.volume, cmd.speed, cmd.mode);
     }
 }
 
@@ -555,15 +610,29 @@ static float processSampler(float dt) {
         
         // Advance position
         v->position += v->speed;
-        
-        // Handle loop or end
+
+        // Handle loop, ping-pong, or end
         if (v->loop) {
             int loopEnd = v->loopEnd > 0 ? v->loopEnd : sample->length;
-            if (v->position >= loopEnd) {
-                v->position = v->loopStart + (v->position - loopEnd);
+            if (v->pingPong) {
+                if (v->position >= loopEnd) {
+                    v->position = loopEnd - (v->position - loopEnd);
+                    v->speed = -fabsf(v->speed);
+                } else if (v->position < v->loopStart) {
+                    v->position = v->loopStart + (v->loopStart - v->position);
+                    v->speed = fabsf(v->speed);
+                }
+            } else {
+                if (v->speed >= 0 && v->position >= loopEnd) {
+                    v->position = v->loopStart + (v->position - loopEnd);
+                } else if (v->speed < 0 && v->position < v->loopStart) {
+                    v->position = loopEnd - (v->loopStart - v->position);
+                }
             }
         } else {
-            if (v->position >= sample->length) {
+            if (v->speed >= 0 && v->position >= sample->length) {
+                v->active = false;
+            } else if (v->speed < 0 && v->position < 0) {
                 v->active = false;
             }
         }
@@ -602,15 +671,29 @@ static void processSamplerStereo(float dt, float* left, float* right) {
         
         // Advance position
         v->position += v->speed;
-        
-        // Handle loop or end
+
+        // Handle loop, ping-pong, or end
         if (v->loop) {
             int loopEnd = v->loopEnd > 0 ? v->loopEnd : sample->length;
-            if (v->position >= loopEnd) {
-                v->position = v->loopStart + (v->position - loopEnd);
+            if (v->pingPong) {
+                if (v->position >= loopEnd) {
+                    v->position = loopEnd - (v->position - loopEnd);
+                    v->speed = -fabsf(v->speed);
+                } else if (v->position < v->loopStart) {
+                    v->position = v->loopStart + (v->loopStart - v->position);
+                    v->speed = fabsf(v->speed);
+                }
+            } else {
+                if (v->speed >= 0 && v->position >= loopEnd) {
+                    v->position = v->loopStart + (v->position - loopEnd);
+                } else if (v->speed < 0 && v->position < v->loopStart) {
+                    v->position = loopEnd - (v->loopStart - v->position);
+                }
             }
         } else {
-            if (v->position >= sample->length) {
+            if (v->speed >= 0 && v->position >= sample->length) {
+                v->active = false;
+            } else if (v->speed < 0 && v->position < 0) {
                 v->active = false;
             }
         }
