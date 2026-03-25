@@ -270,9 +270,11 @@ This also opens the door to sharing samples between projects, using external sam
 
 **Phase 1 (foundation):** 1 + 2 + 3 + 9 + 10 — scratch space, rolling buffer, capture dropdown, dynamic slots, WAV I/O. This is the infrastructure that everything else builds on.
 
+**Implementation note on Phase 1:** Steps 9 (dynamic slots), 2 (rolling buffer), and 10-partial (WAV export utility) are done. The ScratchSpace struct/API (step 1) should be added to sample_chop.h as engine code, but **don't rewire daw.c's chopState yet** — the UI redesign (Phase 3) will replace the current drawing/interaction code entirely. Migrating ~100 reference sites now just to redo them is double work. The new UI should use the scratch space API from the start.
+
 **Phase 2 (playability):** 4 + 5 + 11 — keyboard routing, convert-to-bank, per-slot flags. Makes the sampler feel like an instrument.
 
-**Phase 3 (polish):** 6 + 7 + 8 — tap-to-slice, overview+zoom, UI cleanup. Makes it look as good as it works.
+**Phase 3 (UI rebuild):** 6 + 7 + 8 — tap-to-slice, overview+zoom, new UI. This is when chopState gets replaced with ScratchSpace throughout daw.c. Build the new UI on the new API, retire the old code.
 
 **Sequencer tab (separate):** Spread to pattern + Randomize — mapping bank slots to sequencer steps. Not a sample tab concern.
 
