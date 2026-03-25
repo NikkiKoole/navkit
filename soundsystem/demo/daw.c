@@ -8156,7 +8156,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
         DrawRectangleRec(rr, bg);
         DrawRectangleLinesEx(rr, 1, _resampleActive ? RED : UI_BORDER);
         const char *label = _resampleActive
-            ? TextFormat("REC %ds", resampleWritePos / SAMPLE_RATE)
+            ? TextFormat("REC %ds", (rollingTotalWritten - resampleCaptureStart) / SAMPLE_RATE)
             : "Resample";
         DrawTextShadow(label, (int)(x + 4), (int)(sy + 3), 9, _resampleActive ? WHITE : (Color){255, 140, 80, 255});
         if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {

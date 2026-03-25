@@ -17,7 +17,7 @@
 
 #define SAMPLER_MAX_SAMPLES 32       // Maximum loaded samples
 #define SAMPLER_MAX_VOICES 8         // Polyphony for sample playback
-#define SAMPLER_MAX_SAMPLE_LENGTH 262144  // ~5.4 seconds at 48kHz
+// Note: sample length is now dynamic (no fixed cap). Slots use malloc'd buffers.
 
 // ============================================================================
 // TYPES
@@ -201,10 +201,6 @@ static int samplerLoadWav(const char* filepath, int slotIndex) {
     // Calculate number of samples
     int bytesPerSample = fmt.bitsPerSample / 8;
     int numSamples = dataSize / (bytesPerSample * fmt.numChannels);
-    
-    if (numSamples > SAMPLER_MAX_SAMPLE_LENGTH) {
-        numSamples = SAMPLER_MAX_SAMPLE_LENGTH;
-    }
     
     // Free existing sample if any
     Sample* sample = &samplerCtx->samples[slotIndex];

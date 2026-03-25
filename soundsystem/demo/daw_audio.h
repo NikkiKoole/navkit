@@ -46,11 +46,75 @@ static float dawSemitoneToFreq(int semitone, int octave) {
 // Track which bus each voice belongs to (-1 = keyboard/preview → CHORD bus)
 static int voiceBus[NUM_VOICES];
 
-// Resample capture: record master output to a buffer, then load into sampler slot
-#define RESAMPLE_MAX_LENGTH (SAMPLE_RATE * 16)  // 16 seconds max
-static float resampleBuffer[RESAMPLE_MAX_LENGTH];
-static volatile int resampleWritePos = 0;
+// Rolling capture buffer: always-on circular buffer recording master output (mono).
+// UI thread grabs from it via rollingBufferGrab(). Replaces the old manual resample system.
+#define ROLLING_BUFFER_SECONDS 120
+#define ROLLING_BUFFER_LENGTH (SAMPLE_RATE * ROLLING_BUFFER_SECONDS)  // ~10MB
+
+static float rollingBuffer[ROLLING_BUFFER_LENGTH];
+static volatile int rollingWritePos = 0;
+static volatile int rollingTotalWritten = 0;  // monotonically increasing, for "grab last N" math
+
+// Grab the last N seconds from the rolling buffer. Returns malloc'd buffer, caller frees.
+static float *rollingBufferGrab(float seconds, int *outLength) {
+    int samples = (int)(seconds * SAMPLE_RATE);
+    if (samples > ROLLING_BUFFER_LENGTH) samples = ROLLING_BUFFER_LENGTH;
+    int available = rollingTotalWritten < ROLLING_BUFFER_LENGTH
+                    ? rollingTotalWritten : ROLLING_BUFFER_LENGTH;
+    if (samples > available) samples = available;
+    if (samples < 1) { *outLength = 0; return NULL; }
+
+    float *buf = (float *)malloc(samples * sizeof(float));
+    if (!buf) { *outLength = 0; return NULL; }
+
+    int wp = rollingWritePos;  // snapshot — audio thread may advance, that's OK
+    int readPos = (wp - samples + ROLLING_BUFFER_LENGTH) % ROLLING_BUFFER_LENGTH;
+    for (int i = 0; i < samples; i++) {
+        buf[i] = rollingBuffer[(readPos + i) % ROLLING_BUFFER_LENGTH];
+    }
+    *outLength = samples;
+    return buf;
+}
+
+// Legacy resample API — kept for existing UI code, backed by rolling buffer now
 static volatile bool resampleCapturing = false;
+static volatile int resampleCaptureStart = 0;  // rollingTotalWritten at start
+
+static void resampleStart(void) {
+    resampleCaptureStart = rollingTotalWritten;
+    resampleCapturing = true;
+}
+
+static int resampleStop(void) {
+    resampleCapturing = false;
+    int capturedSamples = rollingTotalWritten - resampleCaptureStart;
+    if (capturedSamples < 64) return -1;  // too short
+    if (capturedSamples > ROLLING_BUFFER_LENGTH) capturedSamples = ROLLING_BUFFER_LENGTH;
+
+    float seconds = (float)capturedSamples / SAMPLE_RATE;
+    int length = 0;
+    float *data = rollingBufferGrab(seconds, &length);
+    if (!data || length < 64) { free(data); return -1; }
+
+    _ensureSamplerCtx();
+
+    // Find next free slot
+    int slot = -1;
+    for (int i = 0; i < SAMPLER_MAX_SAMPLES; i++) {
+        if (!samplerCtx->samples[i].loaded) { slot = i; break; }
+    }
+    if (slot < 0) { free(data); return -1; }
+
+    samplerFreeSample(slot);
+    samplerCtx->samples[slot].data = data;
+    samplerCtx->samples[slot].length = length;
+    samplerCtx->samples[slot].sampleRate = SAMPLE_RATE;
+    samplerCtx->samples[slot].loaded = true;
+    samplerCtx->samples[slot].embedded = false;
+    snprintf(samplerCtx->samples[slot].name, 64, "Resample %d", slot);
+
+    return slot;
+}
 
 // Double-buffer sync: main thread snapshots daw → shadow, audio thread applies
 static DawState dawSyncShadow;
@@ -178,10 +242,10 @@ static void DawAudioCallback(void *buffer, unsigned int frames) {
         d[i * 2 + 1] = (short)(sampleR * 32000.0f);
         dawRecSample(d[i * 2]);
 
-        // Resample capture: mono mix of final output
-        if (resampleCapturing && resampleWritePos < RESAMPLE_MAX_LENGTH) {
-            resampleBuffer[resampleWritePos++] = (sampleL + sampleR) * 0.5f;
-        }
+        // Rolling capture: always write mono mix to circular buffer
+        rollingBuffer[rollingWritePos] = (sampleL + sampleR) * 0.5f;
+        rollingWritePos = (rollingWritePos + 1) % ROLLING_BUFFER_LENGTH;
+        rollingTotalWritten++;
     }
 
     double elapsed = (GetTime() - startTime) * 1000000.0;
@@ -198,48 +262,7 @@ static void dawSyncEngineStateFrom(const DawState *d) {
 }
 
 // Resample: start capturing master output
-static void resampleStart(void) {
-    resampleWritePos = 0;
-    resampleCapturing = true;
-}
-
-// Resample: stop capturing and load into next free sampler slot
-// Returns slot index on success, -1 if no room
-static int resampleStop(void) {
-    resampleCapturing = false;
-    int length = resampleWritePos;
-    if (length < 64) return -1;  // too short
-
-    _ensureSamplerCtx();
-
-    // Find next free slot
-    int slot = -1;
-    for (int i = 0; i < SAMPLER_MAX_SAMPLES; i++) {
-        if (!samplerCtx->samples[i].loaded) { slot = i; break; }
-    }
-    if (slot < 0) return -1;  // all slots full
-
-    // Truncate to sampler max if needed
-    if (length > SAMPLER_MAX_SAMPLE_LENGTH) length = SAMPLER_MAX_SAMPLE_LENGTH;
-
-    // Allocate and copy
-    float *data = (float *)malloc(length * sizeof(float));
-    if (!data) return -1;
-    memcpy(data, resampleBuffer, length * sizeof(float));
-
-    // Free existing if any
-    samplerFreeSample(slot);
-
-    // Load into slot
-    samplerCtx->samples[slot].data = data;
-    samplerCtx->samples[slot].length = length;
-    samplerCtx->samples[slot].sampleRate = SAMPLE_RATE;
-    samplerCtx->samples[slot].loaded = true;
-    samplerCtx->samples[slot].embedded = false;
-    snprintf(samplerCtx->samples[slot].name, 64, "Resample %d", slot);
-
-    return slot;
-}
+// (resampleStart/resampleStop moved to rolling buffer section above)
 
 // Main-thread entry point: snapshot daw → shadow, set pending for audio thread
 static void dawSyncEngineState(void) {
