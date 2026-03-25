@@ -1287,7 +1287,7 @@ static void spawnGrain(GranularSettings *gs, float sampleRate) {
 
     // Setup grain
     g->active = true;
-    g->bufferPos = (int)(grainPos * (srcSize - 1));
+    g->bufferPos = (int)(grainPos * (srcSize - 4));  // leave headroom for cubic interpolation
     g->position = 0.0f;
     g->positionInc = pitch / (float)srcSize;  // Normalized increment
     g->envPhase = 0.0f;
@@ -1336,11 +1336,15 @@ static float processGranularFromSource(GranularSettings *gs, float sampleRate) {
         // Read from buffer with cubic Hermite interpolation
         float readPos = g->bufferPos + g->position * srcSize;
 
-        // Clamp to buffer (don't wrap for sampler sources — they're not cyclic)
+        // Clamp or wrap to buffer
         if (gs->sourceData) {
-            if (readPos < 0) readPos = 0;
-            if (readPos >= srcSize - 1) readPos = srcSize - 1.001f;
+            // Sampler source: not cyclic — kill grain if out of bounds
+            if (readPos < 0 || readPos >= srcSize - 3) {
+                g->active = false;
+                continue;
+            }
         } else {
+            // SCW source: cyclic
             while (readPos >= srcSize) readPos -= srcSize;
             while (readPos < 0) readPos += srcSize;
         }

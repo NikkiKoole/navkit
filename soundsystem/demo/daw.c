@@ -7757,8 +7757,17 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 int samplePos = (int)(((mouse.x - x - 2) / (w - 4)) * scratch.length);
                 scratchAddMarker(&scratch, samplePos);
             } else if (clicked >= 0) {
-                chopState.selectedSlice = clicked;
-                scratchAuditionSlice(clicked);
+                // If clicking same slice again in looping mode, stop it instead
+                if (clicked == chopState.selectedSlice &&
+                    (chopState.previewMode == SAMPLER_LOOP || chopState.previewMode == SAMPLER_PINGPONG ||
+                     chopState.previewMode == SAMPLER_GRANULAR || chopState.previewMode == SAMPLER_STRETCH)) {
+                    samplerStopAll();
+                    chopState.selectedSlice = -1;
+                } else {
+                    samplerStopAll();  // stop any previous looping preview
+                    chopState.selectedSlice = clicked;
+                    scratchAuditionSlice(clicked);
+                }
             }
         }
 
@@ -7778,6 +7787,11 @@ static void drawWorkSample(float x, float y, float w, float h) {
                               sel ? WHITE : UI_TEXT_DIM);
                 if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                     chopState.previewMode = modes[m];
+                    // Re-trigger selected slice with new mode
+                    if (chopState.selectedSlice >= 0) {
+                        samplerStopAll();
+                        scratchAuditionSlice(chopState.selectedSlice);
+                    }
                     ui_consume_click();
                 }
                 mx += bw + 3;
