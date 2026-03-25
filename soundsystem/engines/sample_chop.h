@@ -60,6 +60,10 @@ typedef struct {
     int stepsPerSlice;                  // sequencer steps each slice covers
 } ChoppedSample;
 
+// Pull in the scratch space API (marker-based workbench, Phase 1).
+// scratch_space.h only depends on sampler.h and can be included independently.
+#include "scratch_space.h"
+
 // ============================================================================
 // BOUNCE: INTERNAL CALLBACKS (static, used only by renderPatternToBuffer)
 // ============================================================================
@@ -775,6 +779,8 @@ static int chopLoadIntoSampler(ChoppedSample *chop, int startSlot) {
         slot->sampleRate = SAMPLE_CHOP_SAMPLE_RATE;
         slot->loaded = true;
         slot->embedded = false;  // sampler can free this
+        slot->oneShot = true;
+        slot->pitched = false;
         snprintf(slot->name, sizeof(slot->name), "slice_%02d", s);
 
         // Transfer ownership — null out the chop pointer so chopFree won't double-free
@@ -821,6 +827,8 @@ static int dubLoopFreezeToSampler(int slotIndex) {
     slot->sampleRate = SAMPLE_CHOP_SAMPLE_RATE;
     slot->loaded = true;
     slot->embedded = false;
+    slot->oneShot = true;
+    slot->pitched = false;
     snprintf(slot->name, sizeof(slot->name), "dub_freeze");
     return slotIndex;
 }
@@ -855,6 +863,8 @@ static int rewindFreezeToSampler(int slotIndex) {
     slot->sampleRate = SAMPLE_CHOP_SAMPLE_RATE;
     slot->loaded = true;
     slot->embedded = false;
+    slot->oneShot = true;
+    slot->pitched = false;
     snprintf(slot->name, sizeof(slot->name), "rewind_freeze");
     return slotIndex;
 }

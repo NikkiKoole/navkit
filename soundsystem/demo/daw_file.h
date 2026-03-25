@@ -664,6 +664,33 @@ static bool dawSave(const char *filepath) {
     }
 #endif
 
+    // Per-slot flags (pitched/oneShot) — only save non-default values
+    {
+        bool hasSlotFlags = false;
+        for (int s = 0; s < SAMPLER_MAX_SAMPLES; s++) {
+            if (samplerCtx->samples[s].loaded &&
+                (samplerCtx->samples[s].pitched || !samplerCtx->samples[s].oneShot)) {
+                hasSlotFlags = true;
+                break;
+            }
+        }
+        if (hasSlotFlags) {
+            fprintf(f, "\n[slotflags]\n");
+            for (int s = 0; s < SAMPLER_MAX_SAMPLES; s++) {
+                Sample *sl = &samplerCtx->samples[s];
+                if (!sl->loaded) continue;
+                if (sl->pitched) {
+                    char k[32]; snprintf(k, sizeof(k), "slot.%d.pitched", s);
+                    _db(f, k, true);
+                }
+                if (!sl->oneShot) {
+                    char k[32]; snprintf(k, sizeof(k), "slot.%d.loop", s);
+                    _db(f, k, true);
+                }
+            }
+        }
+    }
+
     // Patterns (only non-empty)
     for (int i = 0; i < SEQ_NUM_PATTERNS; i++) {
         const Pattern *p = &seq.patterns[i];
@@ -1191,6 +1218,7 @@ typedef enum {
     _DW_SEC_MASTERFX, _DW_SEC_TAPEFX, _DW_SEC_CROSSFADER,
     _DW_SEC_SPLIT, _DW_SEC_ARRANGEMENT, _DW_SEC_PATTERN,
     _DW_SEC_SAMPLE, _DW_SEC_PERTRACK, _DW_SEC_LAUNCHER,
+    _DW_SEC_SLOTFLAGS,
 } _DwSection;
 
 static bool dawLoad(const char *filepath) {
@@ -1265,6 +1293,9 @@ static bool dawLoad(const char *filepath) {
                         daw.launcher.tracks[_t].nextActionLoops[_s] = 0;
                     }
                 }
+            }
+            else if (strcmp(sec,"slotflags")==0) {
+                section = _DW_SEC_SLOTFLAGS;
             }
             else if (strcmp(sec,"sample")==0) {
                 section = _DW_SEC_SAMPLE;
@@ -1723,6 +1754,20 @@ static bool dawLoad(const char *filepath) {
             }
             break;
 #endif
+        case _DW_SEC_SLOTFLAGS:
+            // Parse "slot.N.pitched" or "slot.N.loop"
+            if (strncmp(key,"slot.",5)==0) {
+                int si = 0; const char *p = key + 5;
+                while (*p >= '0' && *p <= '9') { si = si*10 + (*p - '0'); p++; }
+                if (*p == '.' && si >= 0 && si < SAMPLER_MAX_SAMPLES) {
+                    p++;
+                    if (strcmp(p,"pitched")==0) samplerCtx->samples[si].pitched = _dpb(val);
+                    else if (strcmp(p,"loop")==0) {
+                        if (_dpb(val)) samplerCtx->samples[si].oneShot = false;
+                    }
+                }
+            }
+            break;
         default: break;
         }
     }

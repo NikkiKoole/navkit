@@ -19,6 +19,7 @@
 // Include the soundsystem headers (implementation mode)
 #define SOUNDSYSTEM_IMPLEMENTATION
 #include "../soundsystem/soundsystem.h"
+#include "../soundsystem/engines/scratch_space.h"
 
 // Undefine macros that collide with local variable names in tests
 #undef masterVolume
@@ -6674,6 +6675,7 @@ describe(sampler_command_queue) {
         samplerCtx->samples[5].sampleRate = 44100;
         samplerCtx->samples[5].loaded = true;
         samplerCtx->samples[5].embedded = true;
+        samplerCtx->samples[5].pitched = true;  // allow pitch to be applied
 
         samplerQueuePlay(5, 0.42f, 1.5f);
         samplerDrainQueue();
@@ -6684,6 +6686,438 @@ describe(sampler_command_queue) {
         // speed = pitch * rateRatio = 1.5 * (44100/44100) = 1.5
         float expectedSpeed = 1.5f * (44100.0f / 44100.0f);
         expect_float_near(samplerCtx->voices[0].speed, expectedSpeed, 0.01f);
+    }
+}
+
+// ============================================================================
+// PER-SLOT FLAGS TESTS (pitched / oneShot)
+// ============================================================================
+
+describe(sampler_slot_flags) {
+    it("should default to oneShot=true pitched=false after init") {
+        _ensureSamplerCtx();
+        initSamplerContext(samplerCtx);
+        // After memset(0), oneShot defaults to false — but samplerLoadWav/chop set it.
+        // Direct init: fields are zero-initialized (false).
+        expect(samplerCtx->samples[0].pitched == false);
+        expect(samplerCtx->samples[0].oneShot == false);  // raw memset
+    }
+
+    it("pitched=false should force pitch to 1.0") {
+        _ensureSamplerCtx();
+        initSamplerContext(samplerCtx);
+
+        float testData[] = {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f};
+        samplerCtx->samples[0].data = testData;
+        samplerCtx->samples[0].length = 8;
+        samplerCtx->samples[0].sampleRate = 44100;
+        samplerCtx->samples[0].loaded = true;
+        samplerCtx->samples[0].embedded = true;
+        samplerCtx->samples[0].pitched = false;
+        samplerCtx->samples[0].oneShot = true;
+
+        // Try to play at 2x pitch — should be forced to 1.0
+        int v = samplerPlay(0, 0.8f, 2.0f);
+        expect(v >= 0);
+        float expectedSpeed = 1.0f * (44100.0f / 44100.0f);
+        expect_float_near(samplerCtx->voices[v].speed, expectedSpeed, 0.001f);
+    }
+
+    it("pitched=true should apply requested pitch") {
+        _ensureSamplerCtx();
+        initSamplerContext(samplerCtx);
+
+        float testData[] = {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f};
+        samplerCtx->samples[0].data = testData;
+        samplerCtx->samples[0].length = 8;
+        samplerCtx->samples[0].sampleRate = 44100;
+        samplerCtx->samples[0].loaded = true;
+        samplerCtx->samples[0].embedded = true;
+        samplerCtx->samples[0].pitched = true;
+        samplerCtx->samples[0].oneShot = true;
+
+        int v = samplerPlay(0, 0.8f, 2.0f);
+        expect(v >= 0);
+        float expectedSpeed = 2.0f * (44100.0f / 44100.0f);
+        expect_float_near(samplerCtx->voices[v].speed, expectedSpeed, 0.001f);
+    }
+
+    it("oneShot=true should not loop") {
+        _ensureSamplerCtx();
+        initSamplerContext(samplerCtx);
+
+        float testData[] = {0.1f, 0.2f, 0.3f, 0.4f};
+        samplerCtx->samples[0].data = testData;
+        samplerCtx->samples[0].length = 4;
+        samplerCtx->samples[0].sampleRate = 44100;
+        samplerCtx->samples[0].loaded = true;
+        samplerCtx->samples[0].embedded = true;
+        samplerCtx->samples[0].oneShot = true;
+
+        int v = samplerPlay(0, 1.0f, 1.0f);
+        expect(v >= 0);
+        expect(!samplerCtx->voices[v].loop);
+    }
+
+    it("oneShot=false should loop full sample") {
+        _ensureSamplerCtx();
+        initSamplerContext(samplerCtx);
+
+        float testData[] = {0.1f, 0.2f, 0.3f, 0.4f};
+        samplerCtx->samples[0].data = testData;
+        samplerCtx->samples[0].length = 4;
+        samplerCtx->samples[0].sampleRate = 44100;
+        samplerCtx->samples[0].loaded = true;
+        samplerCtx->samples[0].embedded = true;
+        samplerCtx->samples[0].oneShot = false;
+
+        int v = samplerPlay(0, 1.0f, 1.0f);
+        expect(v >= 0);
+        expect(samplerCtx->voices[v].loop);
+        expect(samplerCtx->voices[v].loopStart == 0);
+        expect(samplerCtx->voices[v].loopEnd == 4);
+    }
+}
+
+// ============================================================================
+// SCRATCH SPACE TESTS
+// ============================================================================
+
+// Helper: create a simple test buffer with known values
+static float *makeTestBuffer(int length) {
+    float *buf = (float *)malloc(length * sizeof(float));
+    for (int i = 0; i < length; i++) {
+        buf[i] = sinf(i * 0.1f);  // simple wave
+    }
+    return buf;
+}
+
+describe(scratch_space_lifecycle) {
+    it("should initialize empty") {
+        ScratchSpace s;
+        scratchInit(&s);
+        expect(!scratchHasData(&s));
+        expect(scratchSliceCount(&s) == 0);
+        expect(s.sampleRate == 44100);
+        scratchFree(&s);
+    }
+
+    it("should load data and report one slice") {
+        ScratchSpace s;
+        scratchInit(&s);
+        float *buf = makeTestBuffer(1000);
+        scratchLoad(&s, buf, 1000, 44100, 120.0f);
+        expect(scratchHasData(&s));
+        expect(scratchSliceCount(&s) == 1);  // no markers = 1 slice
+        expect(s.length == 1000);
+        expect_float_eq(s.bpm, 120.0f);
+        // Single slice covers entire buffer
+        expect(scratchSliceStart(&s, 0) == 0);
+        expect(scratchSliceEnd(&s, 0) == 1000);
+        expect(scratchSliceLength(&s, 0) == 1000);
+        expect(scratchSliceData(&s, 0) == s.data);
+        scratchFree(&s);
+    }
+
+    it("should free and reset cleanly") {
+        ScratchSpace s;
+        scratchInit(&s);
+        scratchLoad(&s, makeTestBuffer(500), 500, 44100, 0.0f);
+        expect(scratchHasData(&s));
+        scratchFree(&s);
+        expect(!scratchHasData(&s));
+        expect(s.data == NULL);
+        expect(s.markerCount == 0);
+    }
+
+    it("should replace data on second load") {
+        ScratchSpace s;
+        scratchInit(&s);
+        scratchLoad(&s, makeTestBuffer(100), 100, 44100, 100.0f);
+        scratchAddMarker(&s, 50);
+        expect(s.markerCount == 1);
+        // Load new data — should clear markers and free old buffer
+        scratchLoad(&s, makeTestBuffer(200), 200, 44100, 140.0f);
+        expect(s.length == 200);
+        expect(s.markerCount == 0);
+        expect_float_eq(s.bpm, 140.0f);
+        scratchFree(&s);
+    }
+}
+
+describe(scratch_space_markers) {
+    it("should add markers in sorted order") {
+        ScratchSpace s;
+        scratchInit(&s);
+        scratchLoad(&s, makeTestBuffer(1000), 1000, 44100, 0.0f);
+
+        int idx1 = scratchAddMarker(&s, 500);  // [500] → inserted at 0
+        int idx2 = scratchAddMarker(&s, 250);  // [250, 500] → inserted at 0
+        int idx3 = scratchAddMarker(&s, 750);  // [250, 500, 750] → inserted at 2
+
+        expect(s.markerCount == 3);
+        expect(idx1 == 0);  // 500 was first marker, went to index 0
+        expect(idx2 == 0);  // 250 inserted before 500, at index 0
+        expect(idx3 == 2);  // 750 at end
+        // Verify sorted
+        expect(s.markers[0] == 250);
+        expect(s.markers[1] == 500);
+        expect(s.markers[2] == 750);
+        expect(scratchSliceCount(&s) == 4);  // 3 markers = 4 slices
+        scratchFree(&s);
+    }
+
+    it("should reject invalid markers") {
+        ScratchSpace s;
+        scratchInit(&s);
+        scratchLoad(&s, makeTestBuffer(1000), 1000, 44100, 0.0f);
+
+        expect(scratchAddMarker(&s, 0) == -1);     // at start = invalid
+        expect(scratchAddMarker(&s, 1000) == -1);   // at end = invalid
+        expect(scratchAddMarker(&s, -5) == -1);     // negative
+        expect(s.markerCount == 0);
+        scratchFree(&s);
+    }
+
+    it("should reject duplicate markers") {
+        ScratchSpace s;
+        scratchInit(&s);
+        scratchLoad(&s, makeTestBuffer(1000), 1000, 44100, 0.0f);
+
+        expect(scratchAddMarker(&s, 500) >= 0);
+        expect(scratchAddMarker(&s, 500) == -1);  // duplicate
+        expect(s.markerCount == 1);
+        scratchFree(&s);
+    }
+
+    it("should remove markers") {
+        ScratchSpace s;
+        scratchInit(&s);
+        scratchLoad(&s, makeTestBuffer(1000), 1000, 44100, 0.0f);
+
+        scratchAddMarker(&s, 250);
+        scratchAddMarker(&s, 500);
+        scratchAddMarker(&s, 750);
+
+        expect(scratchRemoveMarker(&s, 1));  // remove 500
+        expect(s.markerCount == 2);
+        expect(s.markers[0] == 250);
+        expect(s.markers[1] == 750);
+        scratchFree(&s);
+    }
+
+    it("should move markers within bounds") {
+        ScratchSpace s;
+        scratchInit(&s);
+        scratchLoad(&s, makeTestBuffer(1000), 1000, 44100, 0.0f);
+
+        scratchAddMarker(&s, 250);
+        scratchAddMarker(&s, 500);
+        scratchAddMarker(&s, 750);
+
+        // Move middle marker (500) to 400 — valid (between 250 and 750)
+        expect(scratchMoveMarker(&s, 1, 400));
+        expect(s.markers[1] == 400);
+
+        // Move to exactly neighbor position — invalid
+        expect(!scratchMoveMarker(&s, 1, 250));
+        expect(!scratchMoveMarker(&s, 1, 750));
+
+        // Move out of buffer — invalid
+        expect(!scratchMoveMarker(&s, 0, 0));
+        expect(!scratchMoveMarker(&s, 2, 1000));
+        scratchFree(&s);
+    }
+
+    it("should clear all markers") {
+        ScratchSpace s;
+        scratchInit(&s);
+        scratchLoad(&s, makeTestBuffer(1000), 1000, 44100, 0.0f);
+        scratchAddMarker(&s, 250);
+        scratchAddMarker(&s, 500);
+        scratchClearMarkers(&s);
+        expect(s.markerCount == 0);
+        expect(scratchSliceCount(&s) == 1);
+        scratchFree(&s);
+    }
+}
+
+describe(scratch_space_slices) {
+    it("should report correct slice boundaries") {
+        ScratchSpace s;
+        scratchInit(&s);
+        scratchLoad(&s, makeTestBuffer(1200), 1200, 44100, 0.0f);
+        scratchAddMarker(&s, 300);
+        scratchAddMarker(&s, 600);
+        scratchAddMarker(&s, 900);
+
+        // 4 slices: [0,300), [300,600), [600,900), [900,1200)
+        expect(scratchSliceCount(&s) == 4);
+
+        expect(scratchSliceStart(&s, 0) == 0);
+        expect(scratchSliceEnd(&s, 0) == 300);
+        expect(scratchSliceLength(&s, 0) == 300);
+
+        expect(scratchSliceStart(&s, 1) == 300);
+        expect(scratchSliceEnd(&s, 1) == 600);
+
+        expect(scratchSliceStart(&s, 2) == 600);
+        expect(scratchSliceEnd(&s, 2) == 900);
+
+        expect(scratchSliceStart(&s, 3) == 900);
+        expect(scratchSliceEnd(&s, 3) == 1200);
+        expect(scratchSliceLength(&s, 3) == 300);
+        scratchFree(&s);
+    }
+
+    it("should return pointers into contiguous buffer") {
+        ScratchSpace s;
+        scratchInit(&s);
+        float *buf = makeTestBuffer(1000);
+        scratchLoad(&s, buf, 1000, 44100, 0.0f);
+        scratchAddMarker(&s, 400);
+
+        const float *slice0 = scratchSliceData(&s, 0);
+        const float *slice1 = scratchSliceData(&s, 1);
+
+        expect(slice0 == s.data);          // slice 0 starts at beginning
+        expect(slice1 == s.data + 400);    // slice 1 starts at marker
+        scratchFree(&s);
+    }
+}
+
+describe(scratch_space_chop) {
+    it("should chop equal places correct markers") {
+        ScratchSpace s;
+        scratchInit(&s);
+        scratchLoad(&s, makeTestBuffer(4000), 4000, 44100, 120.0f);
+
+        scratchChopEqual(&s, 4);
+        expect(s.markerCount == 3);  // 4 slices = 3 markers
+        expect(s.markers[0] == 1000);
+        expect(s.markers[1] == 2000);
+        expect(s.markers[2] == 3000);
+        expect(scratchSliceCount(&s) == 4);
+        expect(scratchSliceLength(&s, 0) == 1000);
+        expect(scratchSliceLength(&s, 3) == 1000);
+        scratchFree(&s);
+    }
+
+    it("should chop equal with 1 slice clears markers") {
+        ScratchSpace s;
+        scratchInit(&s);
+        scratchLoad(&s, makeTestBuffer(1000), 1000, 44100, 0.0f);
+        scratchAddMarker(&s, 500);
+        scratchChopEqual(&s, 1);
+        expect(s.markerCount == 0);
+        expect(scratchSliceCount(&s) == 1);
+        scratchFree(&s);
+    }
+
+    it("should chop transients on silent buffer falls back to equal") {
+        ScratchSpace s;
+        scratchInit(&s);
+        // Silent buffer — no transients to detect
+        int len = 44100;
+        float *buf = (float *)calloc(len, sizeof(float));
+        scratchLoad(&s, buf, len, 44100, 120.0f);
+
+        scratchChopTransients(&s, 0.5f, 8);
+        // Should fallback to equal since no transients
+        expect(s.markerCount == 7);  // 8 slices = 7 markers
+        scratchFree(&s);
+    }
+
+    it("should chop transients detects sharp onsets") {
+        ScratchSpace s;
+        scratchInit(&s);
+        // Build buffer with two sharp transients
+        int len = 44100;  // 1 second
+        float *buf = (float *)calloc(len, sizeof(float));
+        // Transient at ~0.25s
+        for (int i = 11025; i < 11025 + 500; i++) buf[i] = 0.9f;
+        // Transient at ~0.6s
+        for (int i = 26460; i < 26460 + 500; i++) buf[i] = 0.8f;
+        scratchLoad(&s, buf, len, 44100, 120.0f);
+
+        scratchChopTransients(&s, 0.5f, 16);
+        // Should have found at least 2 markers (the two transients)
+        expect(s.markerCount >= 2);
+        // Markers should be roughly at 0.25s and 0.6s
+        expect(s.markers[0] > 10000 && s.markers[0] < 12000);
+        expect(s.markers[1] > 25000 && s.markers[1] < 28000);
+        scratchFree(&s);
+    }
+}
+
+describe(scratch_space_commit) {
+    it("should commit single slice to bank") {
+        _ensureSamplerCtx();
+        initSamplerContext(samplerCtx);
+
+        ScratchSpace s;
+        scratchInit(&s);
+        float *buf = makeTestBuffer(1000);
+        scratchLoad(&s, buf, 1000, 44100, 0.0f);
+        scratchAddMarker(&s, 400);
+
+        int result = scratchCommitSlice(&s, 0, 5);
+        expect(result == 5);
+        expect(samplerCtx->samples[5].loaded);
+        expect(samplerCtx->samples[5].length == 400);
+        expect(samplerCtx->samples[5].sampleRate == 44100);
+        // Data should be a copy, not the same pointer
+        expect(samplerCtx->samples[5].data != s.data);
+        // Verify data matches
+        expect_float_eq(samplerCtx->samples[5].data[0], s.data[0]);
+
+        // Scratch still has its data
+        expect(scratchHasData(&s));
+
+        // Cleanup
+        samplerFreeSample(5);
+        scratchFree(&s);
+    }
+
+    it("should commit all slices to bank") {
+        _ensureSamplerCtx();
+        initSamplerContext(samplerCtx);
+
+        ScratchSpace s;
+        scratchInit(&s);
+        scratchLoad(&s, makeTestBuffer(1200), 1200, 44100, 120.0f);
+        scratchAddMarker(&s, 400);
+        scratchAddMarker(&s, 800);
+        // 3 slices: [0,400), [400,800), [800,1200)
+
+        int committed = scratchCommitToBank(&s, 2);
+        expect(committed == 3);
+        expect(samplerCtx->samples[2].loaded);
+        expect(samplerCtx->samples[2].length == 400);
+        expect(samplerCtx->samples[3].loaded);
+        expect(samplerCtx->samples[3].length == 400);
+        expect(samplerCtx->samples[4].loaded);
+        expect(samplerCtx->samples[4].length == 400);
+
+        // Cleanup
+        for (int i = 2; i <= 4; i++) samplerFreeSample(i);
+        scratchFree(&s);
+    }
+
+    it("should reject commit that would overflow bank") {
+        _ensureSamplerCtx();
+        initSamplerContext(samplerCtx);
+
+        ScratchSpace s;
+        scratchInit(&s);
+        scratchLoad(&s, makeTestBuffer(1000), 1000, 44100, 0.0f);
+        scratchAddMarker(&s, 500);  // 2 slices
+
+        // Starting at slot 31 with 2 slices would need slots 31 and 32 (out of bounds)
+        int committed = scratchCommitToBank(&s, 31);
+        expect(committed == 0);
+
+        scratchFree(&s);
     }
 }
 
@@ -9139,6 +9573,16 @@ int main(int argc, char **argv) {
     test(mono_legato_window);
     test(mono_arp_isolation);
     test(mono_patch_save_load);
+
+    // Per-slot flags (pitched/oneShot)
+    test(sampler_slot_flags);
+
+    // Scratch space (marker-based sample workbench)
+    test(scratch_space_lifecycle);
+    test(scratch_space_markers);
+    test(scratch_space_slices);
+    test(scratch_space_chop);
+    test(scratch_space_commit);
 
     // Full mixer pipeline (catches master FX regressions)
     test(full_mixer_pipeline);

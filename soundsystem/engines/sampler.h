@@ -30,6 +30,8 @@ typedef struct {
     int sampleRate;           // Original sample rate
     bool loaded;              // Whether this slot has a sample
     bool embedded;            // True if data points to embedded const data (don't free)
+    bool pitched;             // Keyboard/sequencer controls pitch (vs always original speed)
+    bool oneShot;             // Play to end on trigger (vs sustain/loop while held)
     char name[64];            // Sample name (for display)
 } Sample;
 
@@ -284,6 +286,8 @@ static int samplerLoadWav(const char* filepath, int slotIndex) {
     sample->sampleRate = fmt.sampleRate;
     sample->loaded = true;
     sample->embedded = false;  // Loaded from file, can be freed
+    sample->oneShot = true;    // Default: play to end (drum hit)
+    sample->pitched = false;   // Default: original pitch
     
     // Extract filename for display name
     const char* filename = filepath;
@@ -380,17 +384,23 @@ static void samplerFreeAll(void) {
 
 // Trigger a sample on the next available voice
 // pitch: 1.0 = original pitch, 2.0 = octave up, 0.5 = octave down
+// Respects per-slot flags: if !pitched, pitch is forced to 1.0.
+// If !oneShot, voice loops the full sample (caller must stop via samplerStopSample).
 // Returns voice index or -1 if no voice available
 static int samplerPlay(int sampleIndex, float volume, float pitch) {
     _ensureSamplerCtx();
-    
+
     if (sampleIndex < 0 || sampleIndex >= SAMPLER_MAX_SAMPLES) {
         return -1;
     }
-    if (!samplerCtx->samples[sampleIndex].loaded) {
+    Sample* sample = &samplerCtx->samples[sampleIndex];
+    if (!sample->loaded) {
         return -1;
     }
-    
+
+    // Respect per-slot pitched flag
+    if (!sample->pitched) pitch = 1.0f;
+
     // Find free voice
     int voiceIdx = -1;
     for (int i = 0; i < SAMPLER_MAX_VOICES; i++) {
@@ -399,7 +409,7 @@ static int samplerPlay(int sampleIndex, float volume, float pitch) {
             break;
         }
     }
-    
+
     // Voice stealing: use oldest voice if none free
     if (voiceIdx < 0) {
         float maxPos = 0;
@@ -411,20 +421,23 @@ static int samplerPlay(int sampleIndex, float volume, float pitch) {
         }
         if (voiceIdx < 0) voiceIdx = 0;
     }
-    
+
     SamplerVoice* v = &samplerCtx->voices[voiceIdx];
     v->active = true;
     v->sampleIndex = sampleIndex;
     v->position = 0.0f;
     v->volume = volume;
     v->pan = 0.0f;
-    v->loop = false;
-    
+
+    // Loop when not one-shot (sustain/loop while held)
+    v->loop = !sample->oneShot;
+    v->loopStart = 0;
+    v->loopEnd = sample->length;
+
     // Calculate playback speed accounting for sample rate difference
-    Sample* sample = &samplerCtx->samples[sampleIndex];
     float rateRatio = (float)sample->sampleRate / (float)samplerCtx->sampleRate;
     v->speed = pitch * rateRatio;
-    
+
     return voiceIdx;
 }
 

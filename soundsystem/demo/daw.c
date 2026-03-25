@@ -6464,18 +6464,31 @@ static void dawHandleMusicalTyping(void) {
         if (dawArpVoice >= 0) { releaseNote(dawArpVoice); dawArpVoice = -1; }
         for (size_t i = 0; i < NUM_DAW_PIANO_KEYS; i++) dawArpKeyHeld[i] = false;
 
+        // Route keyboard to sampler when sampler track is selected or chromatic mode is on
+        bool samplerRouting = (daw.selectedPatch == SEQ_TRACK_SAMPLER) || daw.chromaticMode;
+        bool samplerReady = samplerRouting && samplerCtx &&
+            daw.chromaticSample >= 0 && daw.chromaticSample < SAMPLER_MAX_SAMPLES &&
+            samplerCtx->samples[daw.chromaticSample].loaded;
+
+        if (samplerReady) {
+            for (size_t i = 0; i < NUM_DAW_PIANO_KEYS; i++) {
+                if (IsKeyPressed(dawPianoKeys[i].key)) {
+                    int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
+                    float pitch = powf(2.0f, (midiNote - 60) / 12.0f);
+                    // samplerPlay respects per-slot pitched flag
+                    dawPianoKeyVoices[i] = samplerPlay(daw.chromaticSample, 0.8f, pitch);
+                }
+                if (IsKeyReleased(dawPianoKeys[i].key) && dawPianoKeyVoices[i] >= 0) {
+                    // Stop voice on release (matters for looping/sustain slots)
+                    samplerStopVoice(dawPianoKeyVoices[i]);
+                    dawPianoKeyVoices[i] = -1;
+                }
+            }
+            return;
+        }
+
         for (size_t i = 0; i < NUM_DAW_PIANO_KEYS; i++) {
             if (IsKeyPressed(dawPianoKeys[i].key)) {
-                // Chromatic sampler mode: play sample at pitched speed
-                if (daw.chromaticMode && samplerCtx &&
-                    daw.chromaticSample >= 0 && daw.chromaticSample < SAMPLER_MAX_SAMPLES &&
-                    samplerCtx->samples[daw.chromaticSample].loaded) {
-                    int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
-                    float semitones = (float)(midiNote - daw.chromaticRootNote);
-                    float speed = powf(2.0f, semitones / 12.0f);
-                    samplerPlay(daw.chromaticSample, 0.8f, speed);
-                    continue;
-                }
                 float freq = dawSemitoneToFreq(dawPianoKeys[i].semitone, dawCurrentOctave);
                 int v;
                 if (patch->p_waveType == WAVE_VOICE && daw.voiceRandomVowel) {
@@ -9196,9 +9209,18 @@ static float midiNoteToPlayFreq(int note, int octaveOffset) {
     return patchMidiToFreq(midiNote);
 }
 
+// Track MIDI→sampler voices for note-off (sustain/loop slots)
+static int midiSamplerVoices[NUM_MIDI_NOTES];
+
 static void dawHandleMidiInput(void) {
     MidiEvent midiEvents[64];
     int midiCount = midiInputPoll(midiEvents, 64);
+
+    // Route MIDI to sampler when sampler track is selected or chromatic mode is on
+    bool midiSamplerRouting = (daw.selectedPatch == SEQ_TRACK_SAMPLER) || daw.chromaticMode;
+    bool midiSamplerReady = midiSamplerRouting && samplerCtx &&
+        daw.chromaticSample >= 0 && daw.chromaticSample < SAMPLER_MAX_SAMPLES &&
+        samplerCtx->samples[daw.chromaticSample].loaded;
 
     for (int i = 0; i < midiCount; i++) {
         MidiEvent *ev = &midiEvents[i];
@@ -9208,13 +9230,11 @@ static void dawHandleMidiInput(void) {
                 float vel = ev->data2 / 127.0f;
                 if (note >= NUM_MIDI_NOTES) break;
 
-                // Chromatic sampler mode: play sample at pitched speed
-                if (daw.chromaticMode && samplerCtx &&
-                    daw.chromaticSample >= 0 && daw.chromaticSample < SAMPLER_MAX_SAMPLES &&
-                    samplerCtx->samples[daw.chromaticSample].loaded) {
-                    float semitones = (float)(note - daw.chromaticRootNote);
-                    float speed = powf(2.0f, semitones / 12.0f);
-                    samplerPlay(daw.chromaticSample, vel, speed);
+                // Sampler routing: sampler track selected or chromatic mode
+                if (midiSamplerReady) {
+                    float pitch = powf(2.0f, (note - 60) / 12.0f);
+                    // samplerPlay respects per-slot pitched flag
+                    midiSamplerVoices[note] = samplerPlay(daw.chromaticSample, vel, pitch);
                     break;
                 }
 
@@ -9277,11 +9297,17 @@ static void dawHandleMidiInput(void) {
                 int note = ev->data1;
                 if (note >= NUM_MIDI_NOTES) break;
 
+                // Sampler routing: stop voice on note-off
+                if (midiSamplerReady && midiSamplerVoices[note] >= 0) {
+                    samplerStopVoice(midiSamplerVoices[note]);
+                    midiSamplerVoices[note] = -1;
+                    break;
+                }
+
                 dawRecordNoteOff(note);
 
                 SynthPatch *patch; int *voices; int patchIdx, octaveOffset;
                 midiResolveSplit(note, &patch, &voices, &patchIdx, &octaveOffset);
-                int bus = dawPatchToBus(patchIdx);
 
                 midiNoteHeld[note] = false;
 
@@ -9495,6 +9521,7 @@ int main(int argc, char *argv[]) {
         midiNoteVoices[i] = -1;
         midiSplitLeftVoices[i] = -1;
         midiSplitRightVoices[i] = -1;
+        midiSamplerVoices[i] = -1;
     }
     midiInputInit();
     ui_set_midi_learn_hooks(midiLearnArm, midiLearnIsWaiting, midiLearnGetCC);

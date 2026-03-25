@@ -111,6 +111,8 @@ static int resampleStop(void) {
     samplerCtx->samples[slot].sampleRate = SAMPLE_RATE;
     samplerCtx->samples[slot].loaded = true;
     samplerCtx->samples[slot].embedded = false;
+    samplerCtx->samples[slot].oneShot = true;
+    samplerCtx->samples[slot].pitched = false;
     snprintf(samplerCtx->samples[slot].name, 64, "Resample %d", slot);
 
     return slot;
@@ -587,7 +589,17 @@ static void dawSamplerTrigger(int note, float vel, float gateTime, float pitchMo
     float speed = (totalPitch != 0.0f) ? powf(2.0f, totalPitch / 12.0f) : 1.0f;
     samplerPlay(sliceIdx, vel, speed);
 }
-static void dawSamplerRelease(void) { /* one-shot, no release needed */ }
+static void dawSamplerRelease(void) {
+    // For non-oneShot (sustain/loop) samples, stop all looping voices on release.
+    // One-shot samples play to completion regardless.
+    _ensureSamplerCtx();
+    for (int i = 0; i < SAMPLER_MAX_VOICES; i++) {
+        SamplerVoice *v = &samplerCtx->voices[i];
+        if (v->active && v->loop) {
+            v->active = false;
+        }
+    }
+}
 
 // Initialize the sequencer engine with DAW callbacks
 static void dawInitSequencer(void) {
