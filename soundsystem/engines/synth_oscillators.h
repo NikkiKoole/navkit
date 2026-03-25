@@ -1224,6 +1224,39 @@ static float grainEnvelope(float phase) {
     return 0.5f * (1.0f - cosf(phase * 2.0f * PI));
 }
 
+// Tukey window — flat top with smooth fade edges (better for time-stretch)
+// taper = fraction of window spent fading (0.0 = rectangular, 1.0 = Hanning)
+static float tuKeyEnvelope(float phase, float taper) {
+    if (taper <= 0.0f) return 1.0f;
+    if (taper >= 1.0f) return grainEnvelope(phase);
+    float halfTaper = taper * 0.5f;
+    if (phase < halfTaper)
+        return 0.5f * (1.0f - cosf(PI * phase / halfTaper));
+    if (phase > 1.0f - halfTaper)
+        return 0.5f * (1.0f - cosf(PI * (1.0f - phase) / halfTaper));
+    return 1.0f;
+}
+
+// Find nearest zero crossing in source buffer near the given position
+static int snapToZeroCrossing(const float *data, int size, int pos, int searchRange) {
+    if (!data || size < 2) return pos;
+    int best = pos;
+    float bestDist = fabsf(data[pos < size ? pos : size - 1]);
+    for (int d = 1; d <= searchRange; d++) {
+        int lo = pos - d, hi = pos + d;
+        if (lo >= 0 && lo < size - 1) {
+            // True zero crossing: sign change between adjacent samples
+            if (data[lo] * data[lo + 1] <= 0.0f) return lo;
+            if (fabsf(data[lo]) < bestDist) { bestDist = fabsf(data[lo]); best = lo; }
+        }
+        if (hi >= 0 && hi < size - 1) {
+            if (data[hi] * data[hi + 1] <= 0.0f) return hi;
+            if (fabsf(data[hi]) < bestDist) { bestDist = fabsf(data[hi]); best = hi; }
+        }
+    }
+    return best;
+}
+
 // Initialize granular settings
 static void initGranularSettings(GranularSettings *gs, int scwIndex) {
     gs->scwIndex = scwIndex;
@@ -1287,7 +1320,11 @@ static void spawnGrain(GranularSettings *gs, float sampleRate) {
 
     // Setup grain
     g->active = true;
-    g->bufferPos = (int)(grainPos * (srcSize - 4));  // leave headroom for cubic interpolation
+    int rawPos = (int)(grainPos * (srcSize - 4));  // leave headroom for cubic interpolation
+    // Snap to zero crossing for cleaner grain starts (time-stretch only)
+    if (gs->timeStretch && srcData)
+        rawPos = snapToZeroCrossing(srcData, srcSize - 3, rawPos, 64);
+    g->bufferPos = rawPos;
     g->position = 0.0f;
     g->positionInc = pitch / (float)srcSize;  // Normalized increment
     g->envPhase = 0.0f;
@@ -1310,20 +1347,39 @@ static float processGranularFromSource(GranularSettings *gs, float sampleRate) {
     if (!srcData || srcSize < 1) return 0.0f;
 
     // Time-stretch: advance scan position at fixed rate
-    if (gs->timeStretch) {
+    if (gs->timeStretch && !gs->stretchDone) {
         gs->position += gs->stretchPosInc;
-        if (gs->position >= 1.0f) gs->position -= 1.0f;
-        if (gs->position < 0.0f) gs->position = 0.0f;
+        if (gs->position >= 1.0f) {
+            if (gs->stretchPingPong) {
+                gs->position = 1.0f - (gs->position - 1.0f);
+                gs->stretchPosInc = -fabsf(gs->stretchPosInc);
+            } else if (gs->stretchLoop) {
+                gs->position -= 1.0f;
+            } else {
+                gs->position = 1.0f;
+                gs->stretchDone = true;
+            }
+        } else if (gs->position < 0.0f) {
+            if (gs->stretchPingPong) {
+                gs->position = -gs->position;
+                gs->stretchPosInc = fabsf(gs->stretchPosInc);
+            } else {
+                gs->position = 0.0f;
+                gs->stretchDone = true;
+            }
+        }
     }
 
     // Update spawn interval based on density
     gs->spawnInterval = 1.0f / gs->grainDensity;
 
-    // Spawn new grains
-    gs->spawnTimer += dt;
-    while (gs->spawnTimer >= gs->spawnInterval) {
-        gs->spawnTimer -= gs->spawnInterval;
-        spawnGrain(gs, sampleRate);
+    // Spawn new grains (stop spawning when stretch is done)
+    if (!gs->stretchDone) {
+        gs->spawnTimer += dt;
+        while (gs->spawnTimer >= gs->spawnInterval) {
+            gs->spawnTimer -= gs->spawnInterval;
+            spawnGrain(gs, sampleRate);
+        }
     }
 
     // Process all active grains
@@ -1351,8 +1407,8 @@ static float processGranularFromSource(GranularSettings *gs, float sampleRate) {
 
         float sample = cubicHermite(srcData, srcSize, readPos);
 
-        // Apply grain envelope
-        float env = grainEnvelope(g->envPhase);
+        // Apply grain envelope (Tukey for stretch = less amplitude modulation)
+        float env = gs->timeStretch ? tuKeyEnvelope(g->envPhase, 0.4f) : grainEnvelope(g->envPhase);
 
         // Accumulate
         out += sample * env * g->amplitude;

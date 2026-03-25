@@ -827,11 +827,15 @@ static struct {
     char sourcePath[256];       // .song file path
     int sourceLoops;            // how many loops for selection
     int sourceSongIdx;          // index into songBrowser (-1 = none)
+    int bounceStart;            // first chain entry to bounce (0-based)
+    int bounceEnd;              // last chain entry to bounce (inclusive)
     // Full song data (all patterns concatenated per chain order)
     float *fullData;            // entire song waveform (heap, zero-filled, patterns copied in lazily)
     int fullLength;             // total samples in fullData
     int songChain[64];          // pattern play order from .song
-    int songChainLen;           // number of chain entries
+    int songChainLen;           // number of chain entries (after range trim)
+    int fullChain[64];          // full chain before range trim
+    int fullChainLen;           // total entries in full chain
     int chainOffsets[65];       // sample offset where each chain entry starts (+1 for end)
     float chainBpm;             // song BPM
     bool fullBounced;           // true once ALL patterns are rendered
@@ -863,15 +867,19 @@ static struct {
     bool tapSliceMode;          // tap-to-slice active
     bool showDetail;            // per-slice detail panel visible
     int draggingMarker;         // marker being dragged (-1 = none)
+    double lastClickTime;       // for double-click detection
     bool captureDropdownOpen;   // capture dropdown visible
     int captureGrabSeconds;     // grab duration (10/30/60/120)
     int bankScrollOffset;       // bank strip scroll (0-based first visible slot)
-    SamplerPlayMode previewMode; // audition playback mode (oneshot/loop/pingpong/reverse)
+    SamplerPlayMode previewMode; // audition playback mode (oneshot/loop/pingpong/reverse/grain)
+    bool stretchOn;              // stretch toggle (orthogonal to mode)
 } chopState = {
     .sourceLoops = 1,
     .sliceCount = 8,
     .selectedSlice = -1,
     .sourceSongIdx = -1,
+    .bounceStart = 0,
+    .bounceEnd = 3,  // default: first 4 bars
     .sensitivity = 0.5f,
     .viewEnd = 1.0f,
     .draggingMarker = -1,
@@ -988,7 +996,7 @@ static void chopParseChain(const char *path) {
     }
 }
 
-// Bounce all unique patterns in the chain and assemble into fullData
+// Bounce selected range of the chain and assemble into fullData
 // Load song structure (chain + allocate buffer) — instant, no rendering
 static void chopBounceFullSong(void) {
     if (!chopState.sourcePath[0]) return;
@@ -996,10 +1004,25 @@ static void chopBounceFullSong(void) {
 
     chopParseChain(chopState.sourcePath);
 
+    // Save the full chain for range UI
+    memcpy(chopState.fullChain, chopState.songChain, chopState.songChainLen * sizeof(int));
+    chopState.fullChainLen = chopState.songChainLen;
+
+    // Clamp bounce range to actual chain length
+    if (chopState.bounceEnd >= chopState.fullChainLen)
+        chopState.bounceEnd = chopState.fullChainLen - 1;
+    if (chopState.bounceStart > chopState.bounceEnd)
+        chopState.bounceStart = chopState.bounceEnd;
+    int rangeStart = chopState.bounceStart;
+    int rangeLen = chopState.bounceEnd - rangeStart + 1;
+
+    // Trim the chain to just the selected range
+    for (int i = 0; i < rangeLen; i++)
+        chopState.songChain[i] = chopState.fullChain[rangeStart + i];
+    chopState.songChainLen = rangeLen;
+
     // We need to know each pattern's length to compute offsets.
-    // Estimate from BPM + step count: each pattern is (steps * 60/BPM / 4) seconds.
-    // But patterns can vary. We'll use a fixed estimate and correct when we bounce.
-    // For now: bounce pattern 0 to get a reference length, assume all same length.
+    // Bounce pattern 0 to get a reference length, assume all same length.
     dawAudioGate();
     int refPat = (chopState.songChainLen > 0) ? chopState.songChain[0] : 0;
     if (refPat < 0 || refPat >= SEQ_NUM_PATTERNS) refPat = 0;
@@ -1215,7 +1238,10 @@ static void scratchAuditionSlice(int sliceIdx) {
 
     dawAudioUngate();
 
-    samplerQueuePlayEx(previewSlot, 0.8f, 1.0f, chopState.previewMode);
+    if (chopState.stretchOn)
+        samplerQueuePlayStretched(previewSlot, 0.8f, 1.0f, chopState.previewMode);
+    else
+        samplerQueuePlayEx(previewSlot, 0.8f, 1.0f, chopState.previewMode);
 }
 
 // ============================================================================
@@ -6097,10 +6123,19 @@ static void scratchFromGrab(float seconds) {
     int length = 0;
     float *data = rollingBufferGrab(seconds, &length);
     if (!data || length < 100) { free(data); return; }
-    scratchFree(&scratch);
-    scratchLoad(&scratch, data, length, SAMPLE_CHOP_SAMPLE_RATE, 0.0f);
-    chopState.selectedSlice = -1;
-    chopState.draggingMarker = -1;
+    chopStateClear();  // clear old song data + scratch
+    // Load as fullData so it shows in overview/zoom (same as song bounce)
+    chopState.fullData = data;
+    chopState.fullLength = length;
+    chopState.structureLoaded = true;
+    chopState.fullBounced = true;
+    chopState.songChainLen = 1;
+    chopState.chainOffsets[0] = 0;
+    chopState.chainOffsets[1] = length;
+    chopState.viewStart = 0.0f;
+    chopState.viewEnd = 1.0f;
+    chopState.hasSelection = false;
+    chopState.sourceSongIdx = -1;
 }
 
 // Freeze dub loop buffer into scratch space
@@ -6115,11 +6150,20 @@ static void scratchFromDubFreeze(void) {
     for (int i = bufSize - 1; i > 0; i--) {
         if (fabsf(data[i]) > 0.001f) { trimLen = i + 1; break; }
     }
-    scratchFree(&scratch);
+    chopStateClear();
     float *trimmed = (float *)realloc(data, trimLen * sizeof(float));
-    scratchLoad(&scratch, trimmed ? trimmed : data, trimLen, SAMPLE_CHOP_SAMPLE_RATE, 0.0f);
-    chopState.selectedSlice = -1;
-    chopState.draggingMarker = -1;
+    float *buf = trimmed ? trimmed : data;
+    chopState.fullData = buf;
+    chopState.fullLength = trimLen;
+    chopState.structureLoaded = true;
+    chopState.fullBounced = true;
+    chopState.songChainLen = 1;
+    chopState.chainOffsets[0] = 0;
+    chopState.chainOffsets[1] = trimLen;
+    chopState.viewStart = 0.0f;
+    chopState.viewEnd = 1.0f;
+    chopState.hasSelection = false;
+    chopState.sourceSongIdx = -1;
 }
 
 // Freeze rewind buffer into scratch space
@@ -6134,11 +6178,20 @@ static void scratchFromRewindFreeze(void) {
     for (int i = bufSize - 1; i > 0; i--) {
         if (fabsf(data[i]) > 0.001f) { trimLen = i + 1; break; }
     }
-    scratchFree(&scratch);
+    chopStateClear();
     float *trimmed = (float *)realloc(data, trimLen * sizeof(float));
-    scratchLoad(&scratch, trimmed ? trimmed : data, trimLen, SAMPLE_CHOP_SAMPLE_RATE, 0.0f);
-    chopState.selectedSlice = -1;
-    chopState.draggingMarker = -1;
+    float *buf = trimmed ? trimmed : data;
+    chopState.fullData = buf;
+    chopState.fullLength = trimLen;
+    chopState.structureLoaded = true;
+    chopState.fullBounced = true;
+    chopState.songChainLen = 1;
+    chopState.chainOffsets[0] = 0;
+    chopState.chainOffsets[1] = trimLen;
+    chopState.viewStart = 0.0f;
+    chopState.viewEnd = 1.0f;
+    chopState.hasSelection = false;
+    chopState.sourceSongIdx = -1;
 }
 
 // ============================================================================
@@ -6359,51 +6412,24 @@ static void dawHandleMusicalTyping(void) {
             samplerCtx->samples[daw.chromaticSample].loaded;
 
         if (samplerReady) {
-            bool granularMode = workTab == WORK_SAMPLE &&
-                (chopState.previewMode == SAMPLER_GRANULAR || chopState.previewMode == SAMPLER_STRETCH);
+            bool useStretch = workTab == WORK_SAMPLE && chopState.stretchOn;
+            bool useGranular = workTab == WORK_SAMPLE && chopState.previewMode == SAMPLER_GRANULAR;
+            bool useMode = workTab == WORK_SAMPLE && chopState.previewMode != SAMPLER_ONESHOT;
 
             for (size_t i = 0; i < NUM_DAW_PIANO_KEYS; i++) {
                 if (IsKeyPressed(dawPianoKeys[i].key)) {
                     int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
                     float pitch = powf(2.0f, (midiNote - 60) / 12.0f);
-                    if (granularMode) {
-                        // Find any active granular voice and re-pitch it + all its grains
-                        bool found = false;
-                        _ensureSamplerCtx();
-                        for (int vi = 0; vi < SAMPLER_MAX_VOICES; vi++) {
-                            SamplerVoice *v = &samplerCtx->voices[vi];
-                            if (v->active && v->granularMode &&
-                                v->sampleIndex == daw.chromaticSample) {
-                                float oldPitch = v->granular.pitch;
-                                v->granular.pitch = pitch;
-                                if (oldPitch > 0.001f) {
-                                    float ratio = pitch / oldPitch;
-                                    for (int gi = 0; gi < GRANULAR_MAX_GRAINS; gi++) {
-                                        if (v->granular.grains[gi].active)
-                                            v->granular.grains[gi].positionInc *= ratio;
-                                    }
-                                }
-                                // Restart scan from beginning on new note
-                                if (v->granular.timeStretch) {
-                                    v->granular.position = 0.0f;
-                                }
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found) {
-                            samplerPlayEx(daw.chromaticSample, 0.8f, pitch, chopState.previewMode);
-                        }
-                    } else if (workTab == WORK_SAMPLE && chopState.previewMode != SAMPLER_ONESHOT) {
+                    if (useStretch) {
+                        dawPianoKeyVoices[i] = samplerPlayStretched(daw.chromaticSample, 0.8f, pitch, chopState.previewMode);
+                    } else if (useGranular || useMode) {
                         dawPianoKeyVoices[i] = samplerPlayEx(daw.chromaticSample, 0.8f, pitch, chopState.previewMode);
                     } else {
                         dawPianoKeyVoices[i] = samplerPlay(daw.chromaticSample, 0.8f, pitch);
                     }
                 }
                 if (IsKeyReleased(dawPianoKeys[i].key) && dawPianoKeyVoices[i] >= 0) {
-                    if (!granularMode) {
-                        samplerStopVoice(dawPianoKeyVoices[i]);
-                    }
+                    samplerStopVoice(dawPianoKeyVoices[i]);
                     dawPianoKeyVoices[i] = -1;
                 }
             }
@@ -7442,6 +7468,43 @@ static void drawWorkSample(float x, float y, float w, float h) {
         }
         sy += 20;
 
+        // Bounce range selector
+        {
+            // Clamp range to full chain length (or max 63 if no chain parsed yet)
+            int maxBar = chopState.fullChainLen > 0 ? chopState.fullChainLen - 1 : 63;
+            if (chopState.bounceEnd > maxBar) chopState.bounceEnd = maxBar;
+            if (chopState.bounceStart > chopState.bounceEnd) chopState.bounceStart = chopState.bounceEnd;
+
+            DrawTextShadow("Range:", (int)cx, (int)(sy + 2), 9, UI_TEXT_LABEL);
+            DraggableIntS(cx + 46, sy, "Start", &chopState.bounceStart, 1, 0, maxBar, 9);
+            DraggableIntS(cx + 150, sy, "End", &chopState.bounceEnd, 1, chopState.bounceStart, maxBar, 9);
+
+            // Bounce range button
+            float bbX = cx + 240;
+            int bbW = MeasureTextUI("Bounce", 9) + 12;
+            Rectangle bbR = {bbX, sy, (float)bbW, 16};
+            bool bbHov = CheckCollisionPointRec(mouse, bbR);
+            DrawRectangleRec(bbR, bbHov ? (Color){80, 60, 40, 255} : UI_BG_BROWN);
+            DrawRectangleLinesEx(bbR, 1, ORANGE);
+            DrawTextShadow("Bounce", (int)(bbX + 6), (int)(sy + 3), 9, WHITE);
+            if (bbHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && chopState.sourcePath[0]) {
+                chopBounceFullSong();
+                while (chopBounceNextPattern()) {}
+                // Auto-select all + chop
+                chopState.selStart = 0.0f; chopState.selEnd = 1.0f;
+                chopState.hasSelection = true;
+                scratchFromSelection();
+                ui_consume_click();
+            }
+
+            // Show bar count
+            int barCount = chopState.bounceEnd - chopState.bounceStart + 1;
+            char rangeInfo[32];
+            snprintf(rangeInfo, sizeof(rangeInfo), "(%d bars)", barCount);
+            DrawTextShadow(rangeInfo, (int)(bbX + bbW + 8), (int)(sy + 3), 9, UI_TEXT_SUBTLE);
+        }
+        sy += 20;
+
         // File browser dropdown
         if (chopState.browsingFiles && songBrowser.count > 0) {
             float listX = x, listW = w;
@@ -7767,7 +7830,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
         int clicked = drawScratchWaveform(x, sy, w, scrH, &scratch,
                                           chopState.selectedSlice, &markerHit);
 
-        // Initiate marker drag
+        // Initiate marker drag — don't change selected slice
         if (clicked == -5 && markerHit >= 0) {
             chopState.draggingMarker = markerHit;
         }
@@ -7778,8 +7841,42 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 float mouseNorm = (mouse.x - x - 2) / (w - 4);
                 int newPos = (int)(mouseNorm * scratch.length);
                 scratchMoveMarker(&scratch, chopState.draggingMarker, newPos);
+
+                // Live-update preview slot boundaries while dragging
+                if (chopState.selectedSlice >= 0) {
+                    int si = chopState.selectedSlice;
+                    int start = scratchSliceStart(&scratch, si);
+                    int len = scratchSliceLength(&scratch, si);
+                    if (len > 0) {
+                        _ensureSamplerCtx();
+                        // Update the keyboard preview slot to point at new slice region
+                        int kbSlot = SCRATCH_PREVIEW_BASE;
+                        Sample *kb = &samplerCtx->samples[kbSlot];
+                        if (kb->loaded && kb->data && !kb->embedded) free(kb->data);
+                        float *copy = (float *)malloc(len * sizeof(float));
+                        if (copy) {
+                            memcpy(copy, scratch.data + start, len * sizeof(float));
+                            kb->data = copy;
+                            kb->length = len;
+                            kb->embedded = false;
+                        }
+                        // Update any active voices playing this slot to reflect new length
+                        for (int vi = 0; vi < SAMPLER_MAX_VOICES; vi++) {
+                            SamplerVoice *v = &samplerCtx->voices[vi];
+                            if (v->active && v->sampleIndex == kbSlot) {
+                                v->loopEnd = len;
+                                if (v->position >= len) v->position = 0;
+                            }
+                        }
+                    }
+                }
             }
             if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+                // Final re-audition with correct data
+                if (chopState.selectedSlice >= 0) {
+                    samplerStopAll();
+                    scratchAuditionSlice(chopState.selectedSlice);
+                }
                 chopState.draggingMarker = -1;
             }
         }
@@ -7794,10 +7891,21 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 int samplePos = (int)(((mouse.x - x - 2) / (w - 4)) * scratch.length);
                 scratchAddMarker(&scratch, samplePos);
             } else if (clicked >= 0) {
+                // Double-click on slice = insert marker at click position
+                double now = GetTime();
+                bool dblClick = (now - chopState.lastClickTime < 0.35);
+                chopState.lastClickTime = now;
+                if (dblClick) {
+                    int samplePos = (int)(((mouse.x - x - 2) / (w - 4)) * scratch.length);
+                    if (samplePos > 0 && samplePos < scratch.length) {
+                        scratchAddMarker(&scratch, samplePos);
+                    }
+                    chopState.lastClickTime = 0;  // reset to avoid triple-click
+                } else
                 // If clicking same slice again in looping mode, stop it instead
                 if (clicked == chopState.selectedSlice &&
                     (chopState.previewMode == SAMPLER_LOOP || chopState.previewMode == SAMPLER_PINGPONG ||
-                     chopState.previewMode == SAMPLER_GRANULAR || chopState.previewMode == SAMPLER_STRETCH)) {
+                     chopState.previewMode == SAMPLER_GRANULAR || chopState.stretchOn)) {
                     samplerStopAll();
                     chopState.selectedSlice = -1;
                 } else {
@@ -7808,12 +7916,12 @@ static void drawWorkSample(float x, float y, float w, float h) {
             }
         }
 
-        // Playback mode buttons
+        // Playback mode buttons (5 modes + stretch toggle)
         {
             float mx = x;
-            const char *modeLabels[] = {">", "Loop", "<>", "Rev", "Grain", "Stretch"};
-            SamplerPlayMode modes[] = {SAMPLER_ONESHOT, SAMPLER_LOOP, SAMPLER_PINGPONG, SAMPLER_REVERSE, SAMPLER_GRANULAR, SAMPLER_STRETCH};
-            for (int m = 0; m < 6; m++) {
+            const char *modeLabels[] = {">", "Loop", "<>", "Rev", "Grain"};
+            SamplerPlayMode modes[] = {SAMPLER_ONESHOT, SAMPLER_LOOP, SAMPLER_PINGPONG, SAMPLER_REVERSE, SAMPLER_GRANULAR};
+            for (int m = 0; m < 5; m++) {
                 int bw = MeasureTextUI(modeLabels[m], UI_FONT_SMALL) + 10;
                 Rectangle r = {mx, sy + scrH + 2, (float)bw, 14};
                 bool sel = (chopState.previewMode == modes[m]);
@@ -7824,7 +7932,6 @@ static void drawWorkSample(float x, float y, float w, float h) {
                               sel ? WHITE : UI_TEXT_LABEL);
                 if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                     chopState.previewMode = modes[m];
-                    // Re-trigger selected slice with new mode
                     if (chopState.selectedSlice >= 0) {
                         samplerStopAll();
                         scratchAuditionSlice(chopState.selectedSlice);
@@ -7832,6 +7939,26 @@ static void drawWorkSample(float x, float y, float w, float h) {
                     ui_consume_click();
                 }
                 mx += bw + 3;
+            }
+            // Stretch toggle (orthogonal — combines with any mode)
+            mx += 6;
+            {
+                int bw = MeasureTextUI("Stretch", UI_FONT_SMALL) + 10;
+                Rectangle r = {mx, sy + scrH + 2, (float)bw, 14};
+                bool sel = chopState.stretchOn;
+                bool hov = CheckCollisionPointRec(mouse, r);
+                DrawRectangleRec(r, sel ? UI_TINT_BLUE : (hov ? UI_BG_HOVER : UI_BG_PANEL));
+                DrawRectangleLinesEx(r, 1, sel ? UI_ACCENT_BLUE : UI_BORDER);
+                DrawTextShadow("Stretch", (int)(mx + 5), (int)(sy + scrH + 5), UI_FONT_SMALL,
+                              sel ? WHITE : UI_TEXT_LABEL);
+                if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                    chopState.stretchOn = !chopState.stretchOn;
+                    if (chopState.selectedSlice >= 0) {
+                        samplerStopAll();
+                        scratchAuditionSlice(chopState.selectedSlice);
+                    }
+                    ui_consume_click();
+                }
             }
         }
 
@@ -8145,7 +8272,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
     }
 
     // Help text
-    DrawTextShadow("Click=audition  Shift+Click=add marker  R-click marker=delete  Drag marker=move",
+    DrawTextShadow("Click=audition  Double-click=add marker  R-click marker=delete  Drag=move",
                    (int)x, (int)sy, 8, UI_TEXT_SUBTLE);
 }
 
@@ -9057,35 +9184,8 @@ static void dawHandleMidiInput(void) {
                 // Sampler routing: sampler track selected or chromatic mode
                 if (midiSamplerReady) {
                     float pitch = powf(2.0f, (note - 60) / 12.0f);
-                    bool midiGranular = workTab == WORK_SAMPLE &&
-                        (chopState.previewMode == SAMPLER_GRANULAR || chopState.previewMode == SAMPLER_STRETCH);
-                    if (midiGranular) {
-                        // Re-pitch existing granular voice, or start one
-                        bool found = false;
-                        for (int vi = 0; vi < SAMPLER_MAX_VOICES; vi++) {
-                            SamplerVoice *v = &samplerCtx->voices[vi];
-                            if (v->active && v->granularMode &&
-                                v->sampleIndex == daw.chromaticSample) {
-                                float oldPitch = v->granular.pitch;
-                                v->granular.pitch = pitch;
-                                if (oldPitch > 0.001f) {
-                                    float ratio = pitch / oldPitch;
-                                    for (int gi = 0; gi < GRANULAR_MAX_GRAINS; gi++) {
-                                        if (v->granular.grains[gi].active)
-                                            v->granular.grains[gi].positionInc *= ratio;
-                                    }
-                                }
-                                // Restart scan from beginning on new note
-                                if (v->granular.timeStretch) {
-                                    v->granular.position = 0.0f;
-                                }
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found) {
-                            midiSamplerVoices[note] = samplerPlayEx(daw.chromaticSample, vel, pitch, chopState.previewMode);
-                        }
+                    if (workTab == WORK_SAMPLE && chopState.stretchOn) {
+                        midiSamplerVoices[note] = samplerPlayStretched(daw.chromaticSample, vel, pitch, chopState.previewMode);
                     } else if (workTab == WORK_SAMPLE && chopState.previewMode != SAMPLER_ONESHOT) {
                         midiSamplerVoices[note] = samplerPlayEx(daw.chromaticSample, vel, pitch, chopState.previewMode);
                     } else {
@@ -9153,11 +9253,9 @@ static void dawHandleMidiInput(void) {
                 int note = ev->data1;
                 if (note >= NUM_MIDI_NOTES) break;
 
-                // Sampler routing: stop voice on note-off (but not granular — it sustains)
+                // Sampler routing: stop voice on note-off
                 if (midiSamplerReady) {
-                    bool midiGranular = workTab == WORK_SAMPLE &&
-                        (chopState.previewMode == SAMPLER_GRANULAR || chopState.previewMode == SAMPLER_STRETCH);
-                    if (!midiGranular && midiSamplerVoices[note] >= 0) {
+                    if (midiSamplerVoices[note] >= 0) {
                         samplerStopVoice(midiSamplerVoices[note]);
                     }
                     midiSamplerVoices[note] = -1;

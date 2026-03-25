@@ -379,6 +379,9 @@ typedef struct {
     // Time-stretch mode
     bool timeStretch;         // When true, position advances at fixed rate (original duration)
     float stretchPosInc;      // Position increment per sample for time-stretch (set at trigger)
+    bool stretchDone;         // True when stretch scan completed one pass (stop spawning)
+    bool stretchLoop;         // Wrap position instead of stopping at end
+    bool stretchPingPong;     // Reverse direction at boundaries
 } GranularSettings;
 
 // FM algorithm routing

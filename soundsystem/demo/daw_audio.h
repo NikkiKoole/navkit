@@ -587,7 +587,13 @@ static void dawSamplerTrigger(int note, float vel, float gateTime, float pitchMo
     float totalPitch = daw.chopSlicePitch[sliceIdx];
     if (pitchMod != 1.0f) totalPitch += 12.0f * logf(pitchMod) / logf(2.0f);
     float speed = (totalPitch != 0.0f) ? powf(2.0f, totalPitch / 12.0f) : 1.0f;
-    samplerPlay(sliceIdx, vel, speed);
+    int voiceIdx = samplerPlay(sliceIdx, vel, speed);
+    // samplerPlay forces pitch=1.0 when !sample->pitched — override with sequencer pitch
+    if (voiceIdx >= 0 && speed != 1.0f) {
+        Sample *s = &samplerCtx->samples[sliceIdx];
+        float rateRatio = (float)s->sampleRate / (float)samplerCtx->sampleRate;
+        samplerCtx->voices[voiceIdx].speed = speed * rateRatio;
+    }
 }
 static void dawSamplerRelease(void) {
     // For non-oneShot (sustain/loop) samples, stop all looping voices on release.

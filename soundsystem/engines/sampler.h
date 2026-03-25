@@ -71,7 +71,9 @@ typedef struct {
     int slot;
     float volume;
     float speed;
-    SamplerPlayMode mode;   // playback mode
+    SamplerPlayMode mode;       // playback mode
+    bool stretch;               // time-stretch toggle (orthogonal to mode)
+    SamplerPlayMode stretchBase; // base mode for stretch (loop/pingpong/reverse/oneshot)
 } SamplerCommand;
 
 // ============================================================================
@@ -511,9 +513,9 @@ static int samplerPlayEx(int sampleIndex, float volume, float pitch, SamplerPlay
             gs->position = 0.0f;
             if (mode == SAMPLER_STRETCH) {
                 // Time-stretch: overlapping grains, position auto-advances at original rate
-                gs->grainSize = 60.0f;          // 60ms grains (smooth overlap)
-                gs->grainDensity = 40.0f;        // 40 grains/sec (overlap ~2.4x)
-                gs->positionRandom = 0.008f;     // tiny jitter to avoid phasing
+                gs->grainSize = 80.0f;          // 80ms grains (larger = smoother)
+                gs->grainDensity = 50.0f;        // 50 grains/sec (overlap ~4x with Tukey)
+                gs->positionRandom = 0.005f;     // tiny jitter to avoid phasing
                 gs->pitchRandom = 0.0f;
                 gs->ampRandom = 0.0f;
                 gs->pitch = pitch;               // keyboard pitch applied to grains
@@ -536,6 +538,29 @@ static int samplerPlayEx(int sampleIndex, float volume, float pitch, SamplerPlay
             gs->nextGrain = 0;
             break;
         }
+    }
+    return voiceIdx;
+}
+
+// Trigger with stretch + base mode (stretch is orthogonal to loop/pingpong/reverse)
+static int samplerPlayStretched(int sampleIndex, float volume, float pitch, SamplerPlayMode baseMode) {
+    int voiceIdx = samplerPlayEx(sampleIndex, volume, pitch, SAMPLER_STRETCH);
+    if (voiceIdx < 0) return -1;
+    SamplerVoice *v = &samplerCtx->voices[voiceIdx];
+    GranularSettings *gs = &v->granular;
+    switch (baseMode) {
+        case SAMPLER_LOOP:
+            gs->stretchLoop = true;
+            break;
+        case SAMPLER_PINGPONG:
+            gs->stretchPingPong = true;
+            break;
+        case SAMPLER_REVERSE:
+            gs->position = 1.0f;
+            gs->stretchPosInc = -gs->stretchPosInc;
+            break;
+        default: // ONESHOT — already correct (plays once, stops)
+            break;
     }
     return voiceIdx;
 }
@@ -599,7 +624,7 @@ static bool samplerQueuePlay(int sampleIndex, float volume, float speed) {
     int head = samplerCtx->cmdHead;
     int next = (head + 1) % SAMPLER_CMD_QUEUE_SIZE;
     if (next == samplerCtx->cmdTail) return false;
-    samplerCtx->cmdQueue[head] = (SamplerCommand){sampleIndex, volume, speed, SAMPLER_ONESHOT};
+    samplerCtx->cmdQueue[head] = (SamplerCommand){sampleIndex, volume, speed, SAMPLER_ONESHOT, false, SAMPLER_ONESHOT};
     samplerCtx->cmdHead = next;
     return true;
 }
@@ -610,7 +635,18 @@ static bool samplerQueuePlayEx(int sampleIndex, float volume, float speed, Sampl
     int head = samplerCtx->cmdHead;
     int next = (head + 1) % SAMPLER_CMD_QUEUE_SIZE;
     if (next == samplerCtx->cmdTail) return false;
-    samplerCtx->cmdQueue[head] = (SamplerCommand){sampleIndex, volume, speed, mode};
+    samplerCtx->cmdQueue[head] = (SamplerCommand){sampleIndex, volume, speed, mode, false, SAMPLER_ONESHOT};
+    samplerCtx->cmdHead = next;
+    return true;
+}
+
+// Queue with stretch + base mode
+static bool samplerQueuePlayStretched(int sampleIndex, float volume, float speed, SamplerPlayMode baseMode) {
+    _ensureSamplerCtx();
+    int head = samplerCtx->cmdHead;
+    int next = (head + 1) % SAMPLER_CMD_QUEUE_SIZE;
+    if (next == samplerCtx->cmdTail) return false;
+    samplerCtx->cmdQueue[head] = (SamplerCommand){sampleIndex, volume, speed, SAMPLER_STRETCH, true, baseMode};
     samplerCtx->cmdHead = next;
     return true;
 }
@@ -621,7 +657,9 @@ static void samplerDrainQueue(void) {
     while (samplerCtx->cmdTail != samplerCtx->cmdHead) {
         SamplerCommand cmd = samplerCtx->cmdQueue[samplerCtx->cmdTail];
         samplerCtx->cmdTail = (samplerCtx->cmdTail + 1) % SAMPLER_CMD_QUEUE_SIZE;
-        if (cmd.mode == SAMPLER_ONESHOT)
+        if (cmd.stretch)
+            samplerPlayStretched(cmd.slot, cmd.volume, cmd.speed, cmd.stretchBase);
+        else if (cmd.mode == SAMPLER_ONESHOT)
             samplerPlay(cmd.slot, cmd.volume, cmd.speed);
         else
             samplerPlayEx(cmd.slot, cmd.volume, cmd.speed, cmd.mode);
@@ -665,8 +703,16 @@ static float processSampler(float dt) {
         if (v->granularMode) {
             // Granular playback — grain engine reads from sample buffer
             value = processGranularFromSource(&v->granular, samplerCtx->sampleRate);
-            // In non-timestretch granular, track position for playhead display
+            // Track position for playhead display
             v->position = v->granular.position * sample->length;
+            // Deactivate voice when stretch is done and all grains finished
+            if (v->granular.stretchDone) {
+                bool anyActive = false;
+                for (int gi = 0; gi < GRANULAR_MAX_GRAINS; gi++) {
+                    if (v->granular.grains[gi].active) { anyActive = true; break; }
+                }
+                if (!anyActive) { v->active = false; continue; }
+            }
         } else {
             // Linear playback
             value = samplerInterpolate(sample->data, sample->length, v->position);
@@ -728,6 +774,13 @@ static void processSamplerStereo(float dt, float* left, float* right) {
         if (v->granularMode) {
             value = processGranularFromSource(&v->granular, samplerCtx->sampleRate);
             v->position = v->granular.position * sample->length;
+            if (v->granular.stretchDone) {
+                bool anyActive = false;
+                for (int gi = 0; gi < GRANULAR_MAX_GRAINS; gi++) {
+                    if (v->granular.grains[gi].active) { anyActive = true; break; }
+                }
+                if (!anyActive) { v->active = false; continue; }
+            }
         } else {
             value = samplerInterpolate(sample->data, sample->length, v->position);
 
