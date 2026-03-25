@@ -288,6 +288,43 @@ This also opens the door to sharing samples between projects, using external sam
 - Scratch space: separate linear buffer, holds one sample at a time for slicing/curation
 - WAV storage: folder next to .daw file
 
+## Code Removal Map (Phase 3 UI rebuild)
+
+When the new UI is built on the ScratchSpace API, the following old code gets removed:
+
+### chopState fields to remove (daw.c)
+| Old field | Replaced by |
+|---|---|
+| `float *renderData` + `renderLength` + `renderBpm` + `renderSteps` | `ScratchSpace.data` + `length` + `bpm` |
+| `float *slices[SAMPLER_MAX_SAMPLES]` | Markers into contiguous scratch buffer |
+| `int sliceLengths[SAMPLER_MAX_SAMPLES]` | Derived from marker positions |
+| `int sliceLength` | Gone (variable-length slices via markers) |
+| `bool bounced` | `scratch.data != NULL` |
+
+### chopState fields that stay
+| Field | Why |
+|---|---|
+| `fullData` + `fullLength` | Overview strip waveform (full song) |
+| `patternCache[]` + `patternBounced[]` | Lazy per-pattern bounce cache |
+| `songChain[]` + `chainOffsets[]` | Song structure for bounce range |
+| `viewStart` / `viewEnd` | Viewport state (new UI needs this too) |
+| `sliceParams[]` | Moves to per-bank-slot after commit (not per-scratch-slice) |
+
+### sample_chop.h functions to remove
+| Old function | Replaced by |
+|---|---|
+| `chopEqual()` | `scratchChopEqual()` |
+| `chopAtTransients()` | `scratchChopTransients()` |
+| `chopLoadIntoSampler()` | `scratchCommitToBank()` |
+| `chopFree()` | `scratchFree()` |
+| `ChoppedSample` struct | `ScratchSpace` struct (markers, not per-slice heap) |
+
+### daw_audio.h cleanup
+| Old code | Status |
+|---|---|
+| `resampleBuffer` / `resampleWritePos` / `resampleCapturing` | Already replaced by rolling buffer |
+| `resampleStart()` / `resampleStop()` shim | Remove when UI uses `rollingBufferGrab()` directly |
+
 ## References
 - `sample-slicing-and-arrangement-research.md` — research on 7 products
 - `done/sample-flip-system.md` — original chop/flip design
