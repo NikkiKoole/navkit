@@ -6373,7 +6373,7 @@ static void dawHandleMusicalTyping(void) {
                         for (int vi = 0; vi < SAMPLER_MAX_VOICES; vi++) {
                             SamplerVoice *v = &samplerCtx->voices[vi];
                             if (v->active && v->granularMode &&
-                                v->sampleIndex >= SCRATCH_PREVIEW_BASE) {
+                                v->sampleIndex == daw.chromaticSample) {
                                 float oldPitch = v->granular.pitch;
                                 v->granular.pitch = pitch;
                                 if (oldPitch > 0.001f) {
@@ -6382,6 +6382,10 @@ static void dawHandleMusicalTyping(void) {
                                         if (v->granular.grains[gi].active)
                                             v->granular.grains[gi].positionInc *= ratio;
                                     }
+                                }
+                                // Restart scan from beginning on new note
+                                if (v->granular.timeStretch) {
+                                    v->granular.position = 0.0f;
                                 }
                                 found = true;
                                 break;
@@ -7159,7 +7163,7 @@ static int drawScratchWaveform(float bx, float by, float bw, float bh,
 
     if (!scratchHasData(s)) {
         DrawTextShadow("No audio in scratch space", (int)(bx + 8), (int)(by + bh / 2 - 5),
-                       UI_FONT_SMALL, UI_BORDER_LIGHT);
+                       UI_FONT_SMALL, UI_TEXT_SUBTLE);
         return -1;
     }
 
@@ -7235,7 +7239,7 @@ static int drawScratchWaveform(float bx, float by, float bw, float bh,
         bool sel = (si == selectedSlice);
         if (sw > tw + 2)
             DrawTextShadow(num, (int)(sx + sw / 2 - tw / 2), (int)(by + bh - 12), 8,
-                           sel ? ORANGE : UI_BORDER_LIGHT);
+                           sel ? ORANGE : UI_TEXT_SUBTLE);
     }
 
     // Center line
@@ -7330,7 +7334,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
         DrawRectangleRec(capBtn, chopState.captureDropdownOpen ? UI_BG_HOVER : (hov ? UI_BG_HOVER : UI_BG_PANEL));
         DrawRectangleLinesEx(capBtn, 1, chopState.captureDropdownOpen ? ORANGE : UI_BG_HOVER);
         DrawTextShadow("Capture", (int)(cx + 4), (int)(sy + 3), 9, WHITE);
-        DrawTextShadow(chopState.captureDropdownOpen ? "^" : "v", (int)(cx + 106), (int)(sy + 3), 9, UI_BORDER_LIGHT);
+        DrawTextShadow(chopState.captureDropdownOpen ? "^" : "v", (int)(cx + 106), (int)(sy + 3), 9, UI_TEXT_LABEL);
         if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             chopState.captureDropdownOpen = !chopState.captureDropdownOpen;
             chopState.browsingFiles = false;
@@ -7404,7 +7408,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
                     bool dSel = (chopState.captureGrabSeconds == durations[d]);
                     bool dHov = CheckCollisionPointRec(mouse, dr);
                     DrawRectangleRec(dr, dSel ? UI_TINT_GREEN : (dHov ? UI_BG_HOVER : UI_BG_PANEL));
-                    DrawTextShadow(dl, (int)(gx + 4), (int)(gy + 2), 8, dSel ? WHITE : UI_TEXT_DIM);
+                    DrawTextShadow(dl, (int)(gx + 4), (int)(gy + 2), 8, dSel ? WHITE : UI_TEXT_LABEL);
                     if (dHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                         chopState.captureGrabSeconds = durations[d];
                         ui_consume_click();
@@ -7429,7 +7433,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
             DrawTextShadow("Song:", (int)cx, (int)(sy + 3), 9, UI_TEXT_LABEL);
             const char *display = chopState.sourceSongIdx >= 0 ? songBrowser.names[chopState.sourceSongIdx] : "Select song...";
             DrawTextShadow(display, (int)(btnX + 4), (int)(sy + 3), 9,
-                          chopState.sourceSongIdx >= 0 ? WHITE : UI_TEXT_MUTED);
+                          chopState.sourceSongIdx >= 0 ? WHITE : UI_TEXT_SUBTLE);
             if (bHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 chopState.browsingFiles = !chopState.browsingFiles;
                 chopState.captureDropdownOpen = false;
@@ -7590,7 +7594,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
             }
             if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) chopState.draggingView = false;
         } else {
-            DrawTextShadow("Select a song to browse waveform", (int)(x + 8), (int)(sy + ovH / 2 - 4), UI_FONT_SMALL, UI_TEXT_MUTED);
+            DrawTextShadow("Select a song to browse waveform", (int)(x + 8), (int)(sy + ovH / 2 - 4), UI_FONT_SMALL, UI_TEXT_SUBTLE);
         }
         sy += ovH + 2;
     }
@@ -7748,7 +7752,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
                     DrawTextShadow(info, (int)(x + w - MeasureTextUI(info, 8) - 4), (int)(sy + zoomH - 11), 8, UI_TEXT_GREEN);
                 }
             } else {
-                DrawTextShadow("No audio — select a .song above", (int)(x + 8), (int)(sy + zoomH / 2 - 5), UI_FONT_SMALL, UI_BORDER_LIGHT);
+                DrawTextShadow("No audio — select a .song above", (int)(x + 8), (int)(sy + zoomH / 2 - 5), UI_FONT_SMALL, UI_TEXT_SUBTLE);
             }
         }
         sy += zoomH + 2;
@@ -7817,7 +7821,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 DrawRectangleRec(r, sel ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_PANEL));
                 DrawRectangleLinesEx(r, 1, sel ? GREEN : UI_BORDER);
                 DrawTextShadow(modeLabels[m], (int)(mx + 5), (int)(sy + scrH + 5), UI_FONT_SMALL,
-                              sel ? WHITE : UI_TEXT_DIM);
+                              sel ? WHITE : UI_TEXT_LABEL);
                 if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                     chopState.previewMode = modes[m];
                     // Re-trigger selected slice with new mode
@@ -7849,7 +7853,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
             bool hov = CheckCollisionPointRec(mouse, r);
             DrawRectangleRec(r, sel ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_PANEL));
             DrawRectangleLinesEx(r, 1, sel ? GREEN : UI_BORDER);
-            DrawTextShadow(modes[m], (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_DIM);
+            DrawTextShadow(modes[m], (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_LABEL);
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { chopState.chopMode = m; ui_consume_click(); }
             cx += bw + 4;
         }
@@ -7867,7 +7871,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 bool hov = CheckCollisionPointRec(mouse, r);
                 DrawRectangleRec(r, sel ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_PANEL));
                 DrawRectangleLinesEx(r, 1, sel ? GREEN : UI_BORDER);
-                DrawTextShadow(num, (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_DIM);
+                DrawTextShadow(num, (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_LABEL);
                 if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { chopState.sliceCount = counts[i]; ui_consume_click(); }
                 cx += bw + 2;
             }
@@ -7888,7 +7892,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
             bool hov = CheckCollisionPointRec(mouse, r) && canChop;
             DrawRectangleRec(r, hov ? (Color){80, 60, 40, 255} : (canChop ? UI_BG_BROWN : UI_BG_PANEL));
             DrawRectangleLinesEx(r, 1, canChop ? ORANGE : UI_BORDER);
-            DrawTextShadow("Chop!", (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL, canChop ? WHITE : UI_TEXT_DIM);
+            DrawTextShadow("Chop!", (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL, canChop ? WHITE : UI_TEXT_LABEL);
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 if (scratchHasData(&scratch)) {
                     // Re-chop existing scratch data
@@ -7917,7 +7921,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
             bool hov = CheckCollisionPointRec(mouse, r);
             DrawRectangleRec(r, sel ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_PANEL));
             DrawRectangleLinesEx(r, 1, sel ? GREEN : UI_BORDER);
-            DrawTextShadow("Norm", (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_DIM);
+            DrawTextShadow("Norm", (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_LABEL);
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 chopState.normalize = !chopState.normalize;
                 if (scratchHasData(&scratch) && chopState.hasSelection) scratchFromSelection();
@@ -7934,7 +7938,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
             bool hov = CheckCollisionPointRec(mouse, r);
             DrawRectangleRec(r, sel ? (Color){60, 30, 30, 255} : (hov ? UI_BG_HOVER : UI_BG_PANEL));
             DrawRectangleLinesEx(r, 1, sel ? RED : UI_BORDER);
-            DrawTextShadow("Tap", (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? RED : UI_TEXT_DIM);
+            DrawTextShadow("Tap", (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? RED : UI_TEXT_LABEL);
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 chopState.tapSliceMode = !chopState.tapSliceMode;
                 ui_consume_click();
@@ -7951,7 +7955,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
             DrawRectangleRec(r, hov ? (Color){40, 60, 80, 255} : (canCommit ? UI_BG_PANEL : UI_BG_PANEL));
             DrawRectangleLinesEx(r, 1, canCommit ? (Color){100, 180, 255, 255} : UI_BORDER);
             DrawTextShadow("-> Bank", (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL,
-                          canCommit ? (Color){100, 180, 255, 255} : UI_TEXT_DIM);
+                          canCommit ? (Color){100, 180, 255, 255} : UI_TEXT_LABEL);
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 dawAudioGate();
                 int committed = scratchCommitToBank(&scratch, 0);
@@ -7972,7 +7976,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
             DrawRectangleRec(r, hov ? (Color){40, 60, 80, 255} : (canAdd ? UI_BG_PANEL : UI_BG_PANEL));
             DrawRectangleLinesEx(r, 1, canAdd ? (Color){100, 200, 150, 255} : UI_BORDER);
             DrawTextShadow("+1 Bank", (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL,
-                          canAdd ? (Color){100, 200, 150, 255} : UI_TEXT_DIM);
+                          canAdd ? (Color){100, 200, 150, 255} : UI_TEXT_LABEL);
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 // Find next free slot (skip preview slots)
                 _ensureSamplerCtx();
@@ -8037,7 +8041,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
 
             // Slot number
             char num[4]; snprintf(num, sizeof(num), "%d", slot + 1);
-            DrawTextShadow(num, (int)(sx + 2), (int)(sy + 2), 8, UI_BORDER_LIGHT);
+            DrawTextShadow(num, (int)(sx + 2), (int)(sy + 2), 8, UI_TEXT_SUBTLE);
 
             if (s->loaded && s->data && s->length > 0) {
                 // Mini waveform thumbnail
@@ -8142,7 +8146,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
 
     // Help text
     DrawTextShadow("Click=audition  Shift+Click=add marker  R-click marker=delete  Drag marker=move",
-                   (int)x, (int)sy, 8, UI_BORDER);
+                   (int)x, (int)sy, 8, UI_TEXT_SUBTLE);
 }
 
 static float babblePitch = 1.0f;
@@ -9053,8 +9057,40 @@ static void dawHandleMidiInput(void) {
                 // Sampler routing: sampler track selected or chromatic mode
                 if (midiSamplerReady) {
                     float pitch = powf(2.0f, (note - 60) / 12.0f);
-                    // samplerPlay respects per-slot pitched flag
-                    midiSamplerVoices[note] = samplerPlay(daw.chromaticSample, vel, pitch);
+                    bool midiGranular = workTab == WORK_SAMPLE &&
+                        (chopState.previewMode == SAMPLER_GRANULAR || chopState.previewMode == SAMPLER_STRETCH);
+                    if (midiGranular) {
+                        // Re-pitch existing granular voice, or start one
+                        bool found = false;
+                        for (int vi = 0; vi < SAMPLER_MAX_VOICES; vi++) {
+                            SamplerVoice *v = &samplerCtx->voices[vi];
+                            if (v->active && v->granularMode &&
+                                v->sampleIndex == daw.chromaticSample) {
+                                float oldPitch = v->granular.pitch;
+                                v->granular.pitch = pitch;
+                                if (oldPitch > 0.001f) {
+                                    float ratio = pitch / oldPitch;
+                                    for (int gi = 0; gi < GRANULAR_MAX_GRAINS; gi++) {
+                                        if (v->granular.grains[gi].active)
+                                            v->granular.grains[gi].positionInc *= ratio;
+                                    }
+                                }
+                                // Restart scan from beginning on new note
+                                if (v->granular.timeStretch) {
+                                    v->granular.position = 0.0f;
+                                }
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            midiSamplerVoices[note] = samplerPlayEx(daw.chromaticSample, vel, pitch, chopState.previewMode);
+                        }
+                    } else if (workTab == WORK_SAMPLE && chopState.previewMode != SAMPLER_ONESHOT) {
+                        midiSamplerVoices[note] = samplerPlayEx(daw.chromaticSample, vel, pitch, chopState.previewMode);
+                    } else {
+                        midiSamplerVoices[note] = samplerPlay(daw.chromaticSample, vel, pitch);
+                    }
                     break;
                 }
 
@@ -9117,9 +9153,13 @@ static void dawHandleMidiInput(void) {
                 int note = ev->data1;
                 if (note >= NUM_MIDI_NOTES) break;
 
-                // Sampler routing: stop voice on note-off
-                if (midiSamplerReady && midiSamplerVoices[note] >= 0) {
-                    samplerStopVoice(midiSamplerVoices[note]);
+                // Sampler routing: stop voice on note-off (but not granular — it sustains)
+                if (midiSamplerReady) {
+                    bool midiGranular = workTab == WORK_SAMPLE &&
+                        (chopState.previewMode == SAMPLER_GRANULAR || chopState.previewMode == SAMPLER_STRETCH);
+                    if (!midiGranular && midiSamplerVoices[note] >= 0) {
+                        samplerStopVoice(midiSamplerVoices[note]);
+                    }
                     midiSamplerVoices[note] = -1;
                     break;
                 }
