@@ -7552,229 +7552,178 @@ static void drawWorkSample(float x, float y, float w, float h) {
     (void)h;
     Vector2 mouse = GetMousePosition();
     float sy = y;
+    int cbH = UI_FONT_SMALL + 6;
+    int cbPad = 6;
 
     // Lazy-bounce: render one pattern per frame while on this tab
     chopBounceNextPattern();
 
-    DrawTextShadow("Sample / Chop", (int)x, (int)sy, UI_FONT_SMALL, WHITE);
-    sy += 20;
-
-    // --- Source row ---
-    chopScanSongs();
-    DrawTextShadow("Source:", (int)x, (int)(sy + 2), UI_FONT_SMALL, UI_TEXT_LABEL);
-    // Song selector button (click to open/close file list)
+    // =====================================================================
+    // A. CAPTURE DROPDOWN
+    // =====================================================================
     {
-        float btnX = x + 50;
-        float btnW = w - 60;  // wider now (no Pat buttons)
-        Rectangle btnR = {btnX, sy, btnW, 16};
-        bool hov = CheckCollisionPointRec(mouse, btnR);
-        DrawRectangleRec(btnR, chopState.browsingFiles ? UI_BG_HOVER : (hov ? UI_BG_HOVER : UI_BG_PANEL));
-        DrawRectangleLinesEx(btnR, 1, chopState.browsingFiles ? ORANGE : UI_BG_HOVER);
-
-        const char *display = chopState.sourceSongIdx >= 0 ? songBrowser.names[chopState.sourceSongIdx] : "Select song...";
-        DrawTextShadow(display, (int)(btnX + 4), (int)(sy + 3), 9,
-                      chopState.sourceSongIdx >= 0 ? WHITE : UI_TEXT_MUTED);
-        DrawTextShadow(chopState.browsingFiles ? "^" : "v", (int)(btnX + btnW - 12), (int)(sy + 3), UI_FONT_SMALL, UI_BORDER_LIGHT);
-
+        float cx = x;
+        // Capture dropdown button
+        Rectangle capBtn = {cx, sy, 120, 16};
+        bool hov = CheckCollisionPointRec(mouse, capBtn);
+        DrawRectangleRec(capBtn, chopState.captureDropdownOpen ? UI_BG_HOVER : (hov ? UI_BG_HOVER : UI_BG_PANEL));
+        DrawRectangleLinesEx(capBtn, 1, chopState.captureDropdownOpen ? ORANGE : UI_BG_HOVER);
+        DrawTextShadow("Capture", (int)(cx + 4), (int)(sy + 3), 9, WHITE);
+        DrawTextShadow(chopState.captureDropdownOpen ? "^" : "v", (int)(cx + 106), (int)(sy + 3), 9, UI_BORDER_LIGHT);
         if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            chopState.browsingFiles = !chopState.browsingFiles;
+            chopState.captureDropdownOpen = !chopState.captureDropdownOpen;
+            chopState.browsingFiles = false;
             ui_consume_click();
         }
-    }
-    sy += 22;
 
-    // --- Controls row ---
-    {
-        int cbH = UI_FONT_SMALL + 6;   // control button height
-        int cbPad = 6;                  // text padding
-        float cx2 = x;                 // running X cursor
-
-        // Mode toggle: Equal / Transient
-        {
-            const char *modes[] = {"Equal", "Transient"};
-            for (int m = 0; m < 2; m++) {
-                int bw = MeasureTextUI(modes[m], UI_FONT_SMALL) + cbPad*2;
-                Rectangle r = {cx2, sy, (float)bw, (float)cbH};
-                bool sel = (chopState.chopMode == m);
-                bool hov = CheckCollisionPointRec(mouse, r);
-                DrawRectangleRec(r, sel ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_PANEL));
-                DrawRectangleLinesEx(r, 1, sel ? GREEN : UI_BORDER);
-                DrawTextShadow(modes[m], (int)(cx2 + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_DIM);
-                if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                    chopState.chopMode = m;
-                    ui_consume_click();
-                }
-                cx2 += bw + 4;
-            }
-        }
-
-        // Slice count (equal mode) or max slices (transient mode)
-        {
-            const char *sliceLabel = chopState.chopMode == 0 ? "Slices" : "Max";
-            int lblW = MeasureTextUI(sliceLabel, UI_FONT_SMALL);
-            DrawTextShadow(sliceLabel, (int)cx2, (int)(sy + 3), UI_FONT_SMALL, UI_TEXT_LABEL);
-            cx2 += lblW + 4;
-            int sliceCounts[] = {4, 8, 16};
-            for (int i = 0; i < 3; i++) {
-                char num[4];
-                snprintf(num, sizeof(num), "%d", sliceCounts[i]);
-                int bw = MeasureTextUI(num, UI_FONT_SMALL) + cbPad*2;
-                Rectangle r = {cx2, sy, (float)bw, (float)cbH};
-                bool sel = (chopState.sliceCount == sliceCounts[i]);
-                bool hov = CheckCollisionPointRec(mouse, r);
-                DrawRectangleRec(r, sel ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_PANEL));
-                DrawRectangleLinesEx(r, 1, sel ? GREEN : UI_BORDER);
-                DrawTextShadow(num, (int)(cx2 + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_DIM);
-                if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                    chopState.sliceCount = sliceCounts[i];
-                    ui_consume_click();
-                }
-                cx2 += bw + 2;
-            }
-            cx2 += 6;
-        }
-
-        // Sensitivity (transient mode only)
-        if (chopState.chopMode == 1) {
-            DraggableFloatS(cx2, sy + 2, "Sens", &chopState.sensitivity, 0.02f, 0.0f, 1.0f, UI_FONT_SMALL);
-            cx2 += MeasureTextUI("Sens: 0.00", UI_FONT_SMALL) + 12;
-        }
-
-        // Loops selector
-        {
-            int lblW = MeasureTextUI("Loops:", UI_FONT_SMALL);
-            DrawTextShadow("Loops:", (int)cx2, (int)(sy + 3), UI_FONT_SMALL, UI_TEXT_LABEL);
-            cx2 += lblW + 4;
-            for (int l = 1; l <= 4; l++) {
-                char num[4];
-                snprintf(num, sizeof(num), "%d", l);
-                int bw = MeasureTextUI(num, UI_FONT_SMALL) + cbPad*2;
-                Rectangle r = {cx2, sy, (float)bw, (float)cbH};
-                bool sel = (chopState.sourceLoops == l);
-                bool hov = CheckCollisionPointRec(mouse, r);
-                DrawRectangleRec(r, sel ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_PANEL));
-                DrawRectangleLinesEx(r, 1, sel ? GREEN : UI_BORDER);
-                DrawTextShadow(num, (int)(cx2 + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_DIM);
-                if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                    chopState.sourceLoops = l;
-                    ui_consume_click();
-                }
-                cx2 += bw + 2;
-            }
-            cx2 += 6;
-        }
-
-        // Chop button
-        {
-            bool canChop = chopState.structureLoaded && chopState.fullData;
-            int bw = MeasureTextUI("Chop!", UI_FONT_SMALL) + cbPad*2;
-            Rectangle r = {cx2, sy, (float)bw, (float)cbH};
-            bool hov = CheckCollisionPointRec(mouse, r) && canChop;
-            DrawRectangleRec(r, hov ? (Color){80, 60, 40, 255} : (canChop ? UI_BG_BROWN : UI_BG_PANEL));
-            DrawRectangleLinesEx(r, 1, canChop ? ORANGE : UI_BORDER);
-            DrawTextShadow("Chop!", (int)(cx2 + cbPad), (int)(sy + 3), UI_FONT_SMALL,
-                          canChop ? WHITE : UI_TEXT_DIM);
-            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                // If no selection, auto-select the whole song
-                if (!chopState.hasSelection) {
-                    chopState.selStart = 0.0f;
-                    chopState.selEnd = 1.0f;
-                    chopState.hasSelection = true;
-                }
-                chopStateBounce();
-                ui_consume_click();
-            }
-            cx2 += bw + 6;
-        }
-
-        // BPM display
-        if (chopState.bounced) {
+        // BPM display when scratch has data
+        if (scratchHasData(&scratch) && scratch.bpm > 0) {
             char bpmStr[32];
-            snprintf(bpmStr, sizeof(bpmStr), "%.0f BPM", chopState.renderBpm);
-            DrawTextShadow(bpmStr, (int)cx2, (int)(sy + 3), UI_FONT_SMALL, UI_TEXT_GREEN);
-            cx2 += MeasureTextUI(bpmStr, UI_FONT_SMALL) + 8;
+            snprintf(bpmStr, sizeof(bpmStr), "%.0f BPM  %d slices  %.2fs",
+                     scratch.bpm, scratchSliceCount(&scratch),
+                     (float)scratch.length / scratch.sampleRate);
+            DrawTextShadow(bpmStr, (int)(cx + 130), (int)(sy + 3), 9, UI_TEXT_GREEN);
+        }
+        sy += 20;
+
+        // Dropdown panel
+        if (chopState.captureDropdownOpen) {
+            float ddX = cx, ddW = 320, ddH = 0;
+            const char *items[] = {
+                "Bounce selection",
+                TextFormat("Grab last %ds", chopState.captureGrabSeconds),
+                "Freeze dub loop",
+                "Freeze rewind",
+            };
+            int itemCount = 4;
+            ddH = itemCount * 16 + 4;
+
+            DrawRectangle((int)ddX, (int)sy, (int)ddW, (int)ddH, (Color){32, 32, 42, 245});
+            DrawRectangleLinesEx((Rectangle){ddX, sy, ddW, ddH}, 1, ORANGE);
+
+            for (int i = 0; i < itemCount; i++) {
+                float ry = sy + 2 + i * 16;
+                Rectangle rowR = {ddX + 2, ry, ddW - 4, 14};
+                bool rHov = CheckCollisionPointRec(mouse, rowR);
+                if (rHov) DrawRectangleRec(rowR, (Color){50, 55, 70, 255});
+                DrawTextShadow(items[i], (int)(ddX + 8), (int)(ry + 2), 9,
+                              rHov ? WHITE : UI_TEXT_BRIGHT);
+                if (rHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                    chopState.captureDropdownOpen = false;
+                    if (i == 0) {  // Bounce selection
+                        if (!chopState.hasSelection) {
+                            chopState.selStart = 0.0f; chopState.selEnd = 1.0f;
+                            chopState.hasSelection = true;
+                        }
+                        scratchFromSelection();
+                    } else if (i == 1) {  // Grab last Ns
+                        scratchFromGrab((float)chopState.captureGrabSeconds);
+                    } else if (i == 2) {  // Freeze dub loop
+                        dawAudioGate();
+                        scratchFromDubFreeze();
+                        dawAudioUngate();
+                    } else if (i == 3) {  // Freeze rewind
+                        dawAudioGate();
+                        scratchFromRewindFreeze();
+                        dawAudioUngate();
+                    }
+                    ui_consume_click();
+                }
+            }
+
+            // Grab duration sub-buttons (next to "Grab last" item)
+            {
+                float gy = sy + 2 + 1 * 16;
+                float gx = ddX + 180;
+                int durations[] = {10, 30, 60, 120};
+                for (int d = 0; d < 4; d++) {
+                    char dl[8]; snprintf(dl, sizeof(dl), "%ds", durations[d]);
+                    int bw = MeasureTextUI(dl, 8) + 8;
+                    Rectangle dr = {gx, gy, (float)bw, 14};
+                    bool dSel = (chopState.captureGrabSeconds == durations[d]);
+                    bool dHov = CheckCollisionPointRec(mouse, dr);
+                    DrawRectangleRec(dr, dSel ? UI_TINT_GREEN : (dHov ? UI_BG_HOVER : UI_BG_PANEL));
+                    DrawTextShadow(dl, (int)(gx + 4), (int)(gy + 2), 8, dSel ? WHITE : UI_TEXT_DIM);
+                    if (dHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                        chopState.captureGrabSeconds = durations[d];
+                        ui_consume_click();
+                    }
+                    gx += bw + 2;
+                }
+            }
+
+            if (IsKeyPressed(KEY_ESCAPE)) chopState.captureDropdownOpen = false;
+            sy += ddH + 2;
         }
 
-        // Normalize toggle
+        // Song selector (inline, for bounce source)
+        chopScanSongs();
         {
-            int bw = MeasureTextUI("Norm", UI_FONT_SMALL) + cbPad*2;
-            Rectangle r = {cx2, sy, (float)bw, (float)cbH};
-            bool sel = chopState.normalize;
-            bool hov = CheckCollisionPointRec(mouse, r);
-            DrawRectangleRec(r, sel ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_PANEL));
-            DrawRectangleLinesEx(r, 1, sel ? GREEN : UI_BORDER);
-            DrawTextShadow("Norm", (int)(cx2 + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_DIM);
-            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                chopState.normalize = !chopState.normalize;
-                if (chopState.bounced && chopState.hasSelection) chopStateBounce();  // re-chop with new norm
+            float btnX = cx + 130;
+            float btnW = w - 140;
+            Rectangle btnR = {btnX, sy, btnW, 16};
+            bool bHov = CheckCollisionPointRec(mouse, btnR);
+            DrawRectangleRec(btnR, chopState.browsingFiles ? UI_BG_HOVER : (bHov ? UI_BG_HOVER : UI_BG_PANEL));
+            DrawRectangleLinesEx(btnR, 1, chopState.browsingFiles ? ORANGE : UI_BG_HOVER);
+            DrawTextShadow("Song:", (int)cx, (int)(sy + 3), 9, UI_TEXT_LABEL);
+            const char *display = chopState.sourceSongIdx >= 0 ? songBrowser.names[chopState.sourceSongIdx] : "Select song...";
+            DrawTextShadow(display, (int)(btnX + 4), (int)(sy + 3), 9,
+                          chopState.sourceSongIdx >= 0 ? WHITE : UI_TEXT_MUTED);
+            if (bHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                chopState.browsingFiles = !chopState.browsingFiles;
+                chopState.captureDropdownOpen = false;
                 ui_consume_click();
             }
-            cx2 += bw + 6;
         }
+        sy += 20;
 
-        // Global fade control
-        {
-            if (DraggableFloatS(cx2, sy + 2, "Fade", &chopState.fadeMs, 0.05f, 0.0f, 5.0f, UI_FONT_SMALL)) {
-                if (chopState.bounced) chopApplySliceParams();
+        // File browser dropdown
+        if (chopState.browsingFiles && songBrowser.count > 0) {
+            float listX = x, listW = w;
+            int visibleRows = songBrowser.count < 12 ? songBrowser.count : 12;
+            float rowH = 14, listH = visibleRows * rowH + 4;
+            Rectangle listBg = {listX, sy, listW, listH};
+            DrawRectangleRec(listBg, (Color){32, 32, 42, 245});
+            DrawRectangleLinesEx(listBg, 1, ORANGE);
+            float wheel = GetMouseWheelMove();
+            if (CheckCollisionPointRec(mouse, listBg)) {
+                chopState.browseScroll -= (int)wheel;
+                int maxScroll = songBrowser.count - visibleRows;
+                if (maxScroll < 0) maxScroll = 0;
+                if (chopState.browseScroll < 0) chopState.browseScroll = 0;
+                if (chopState.browseScroll > maxScroll) chopState.browseScroll = maxScroll;
             }
+            for (int i = 0; i < visibleRows; i++) {
+                int idx = i + chopState.browseScroll;
+                if (idx >= songBrowser.count) break;
+                float ry = sy + 2 + i * rowH;
+                Rectangle rowR = {listX + 2, ry, listW - 4, rowH};
+                bool rSel = (idx == chopState.sourceSongIdx);
+                bool rHov = CheckCollisionPointRec(mouse, rowR);
+                if (rHov) DrawRectangleRec(rowR, (Color){50, 55, 70, 255});
+                DrawTextShadow(songBrowser.names[idx], (int)(listX + 6), (int)(ry + 2), 9,
+                              rSel ? ORANGE : (rHov ? WHITE : UI_TEXT_BRIGHT));
+                if (rHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                    chopState.sourceSongIdx = idx;
+                    strncpy(chopState.sourcePath, songBrowser.paths[idx], sizeof(chopState.sourcePath) - 1);
+                    chopState.browsingFiles = false;
+                    chopBounceFullSong();
+                    ui_consume_click();
+                }
+            }
+            if (songBrowser.count > visibleRows) {
+                float sbH = listH * ((float)visibleRows / songBrowser.count);
+                float sbY = sy + (listH - sbH) * ((float)chopState.browseScroll / (songBrowser.count - visibleRows));
+                DrawRectangle((int)(listX + listW - 6), (int)sbY, 4, (int)sbH, (Color){80, 80, 100, 180});
+            }
+            if (IsKeyPressed(KEY_ESCAPE)) chopState.browsingFiles = false;
+            sy += listH + 2;
         }
     }
-    sy += 22;
 
-    // --- File browser dropdown (overlaid) ---
-    if (chopState.browsingFiles && songBrowser.count > 0) {
-        float listX = x + 50;
-        float listW = w - 60;
-        int visibleRows = songBrowser.count < 12 ? songBrowser.count : 12;
-        float rowH = 14;
-        float listH = visibleRows * rowH + 4;
-        Rectangle listBg = {listX, sy, listW, listH};
-        DrawRectangleRec(listBg, (Color){32, 32, 42, 245});
-        DrawRectangleLinesEx(listBg, 1, ORANGE);
-
-        // Scroll with mouse wheel
-        float wheel = GetMouseWheelMove();
-        if (CheckCollisionPointRec(mouse, listBg)) {
-            chopState.browseScroll -= (int)wheel;
-            if (chopState.browseScroll < 0) chopState.browseScroll = 0;
-            int maxScroll = songBrowser.count - visibleRows;
-            if (maxScroll < 0) maxScroll = 0;
-            if (chopState.browseScroll > maxScroll) chopState.browseScroll = maxScroll;
-        }
-
-        for (int i = 0; i < visibleRows; i++) {
-            int idx = i + chopState.browseScroll;
-            if (idx >= songBrowser.count) break;
-            float ry = sy + 2 + i * rowH;
-            Rectangle rowR = {listX + 2, ry, listW - 4, rowH};
-            bool sel = (idx == chopState.sourceSongIdx);
-            bool hov = CheckCollisionPointRec(mouse, rowR);
-            if (hov) DrawRectangleRec(rowR, (Color){50, 55, 70, 255});
-            DrawTextShadow(songBrowser.names[idx], (int)(listX + 6), (int)(ry + 2), 9,
-                          sel ? ORANGE : (hov ? WHITE : UI_TEXT_BRIGHT));
-            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                chopState.sourceSongIdx = idx;
-                strncpy(chopState.sourcePath, songBrowser.paths[idx], sizeof(chopState.sourcePath) - 1);
-                chopState.browsingFiles = false;
-                chopBounceFullSong();  // render all patterns on song select
-                ui_consume_click();
-            }
-        }
-
-        // Scrollbar hint
-        if (songBrowser.count > visibleRows) {
-            float sbH = listH * ((float)visibleRows / songBrowser.count);
-            float sbY = sy + (listH - sbH) * ((float)chopState.browseScroll / (songBrowser.count - visibleRows));
-            DrawRectangle((int)(listX + listW - 6), (int)sbY, 4, (int)sbH, (Color){80, 80, 100, 180});
-        }
-
-        // Close on Escape
-        if (IsKeyPressed(KEY_ESCAPE)) chopState.browsingFiles = false;
-
-        sy += listH + 2;
-    }
-
-    // --- Overview bar (full song minimap) ---
+    // =====================================================================
+    // B. OVERVIEW STRIP (full song minimap)
+    // =====================================================================
     {
         float ovH = 22;
         Rectangle ovR = {x, sy, w, ovH};
@@ -7787,19 +7736,16 @@ static void drawWorkSample(float x, float y, float w, float h) {
             float mid = sy + ovH * 0.5f;
             float amp = ovH * 0.4f;
 
-            // Draw full-song waveform (heavily downsampled)
             for (int col = 0; col < pixels; col++) {
                 int s0 = (int)((float)col / pixels * chopState.fullLength);
                 int s1 = (int)((float)(col + 1) / pixels * chopState.fullLength);
                 if (s1 > chopState.fullLength) s1 = chopState.fullLength;
                 float lo = 0, hi = 0;
-                // Sample at most 64 points per column for speed
                 int step = (s1 - s0) > 64 ? (s1 - s0) / 64 : 1;
                 for (int s = s0; s < s1; s += step) {
                     if (chopState.fullData[s] < lo) lo = chopState.fullData[s];
                     if (chopState.fullData[s] > hi) hi = chopState.fullData[s];
                 }
-                // Color: selection region = orange, else blue
                 float norm = (float)col / pixels;
                 bool inSel = chopState.hasSelection &&
                     norm >= fminf(chopState.selStart, chopState.selEnd) &&
@@ -7811,42 +7757,38 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 DrawLine((int)(px0 + col), y0, (int)(px0 + col), y1, wc);
             }
 
-            // Draw chain entry boundaries + pattern numbers
-            for (int i = 0; i < chopState.songChainLen; i++) {
-                if (i > 0) {
-                    float norm = (float)chopState.chainOffsets[i] / chopState.fullLength;
-                    float bx = x + 2 + norm * (w - 4);
-                    DrawLine((int)bx, (int)(sy + 1), (int)bx, (int)(sy + ovH - 1), (Color){80, 80, 100, 120});
-                }
-                // Pattern number label in overview
-                int p = chopState.songChain[i];
-                float normL = (float)chopState.chainOffsets[i] / chopState.fullLength;
-                float normR = (float)chopState.chainOffsets[i + 1] / chopState.fullLength;
-                float cx = x + 2 + (normL + normR) * 0.5f * (w - 4);
-                char pn[4];
-                snprintf(pn, sizeof(pn), "%d", p + 1);
-                int tw = MeasureTextUI(pn, 8);
-                bool pb = (p >= 0 && p < SEQ_NUM_PATTERNS) ? chopState.patternBounced[p] : false;
-                DrawTextShadow(pn, (int)(cx - tw / 2), (int)(sy + ovH - 10), 8,
-                    pb ? (Color){80, 80, 100, 180} : (Color){60, 50, 40, 120});
+            // Chain entry boundaries
+            for (int i = 1; i < chopState.songChainLen; i++) {
+                float norm = (float)chopState.chainOffsets[i] / chopState.fullLength;
+                float bx = x + 2 + norm * (w - 4);
+                DrawLine((int)bx, (int)(sy + 1), (int)bx, (int)(sy + ovH - 1), (Color){80, 80, 100, 120});
             }
 
-            // Rendering progress indicator
+            // Scratch marker lines in overview
+            if (scratchHasData(&scratch) && chopState.hasSelection) {
+                float s0f = fminf(chopState.selStart, chopState.selEnd);
+                float sRange = fmaxf(chopState.selStart, chopState.selEnd) - s0f;
+                if (sRange > 0.001f) {
+                    for (int m = 0; m < scratch.markerCount; m++) {
+                        float markerNorm = s0f + (float)scratch.markers[m] / scratch.length * sRange;
+                        float mx = x + 2 + markerNorm * (w - 4);
+                        DrawLine((int)mx, (int)(sy + 1), (int)mx, (int)(sy + ovH - 1), (Color){200, 200, 220, 120});
+                    }
+                }
+            }
+
+            // Rendering progress
             if (!chopState.fullBounced) {
                 int done = 0, total = 0;
                 for (int i = 0; i < chopState.songChainLen; i++) {
                     int p = chopState.songChain[i];
-                    if (p >= 0 && p < SEQ_NUM_PATTERNS) {
-                        total++;
-                        if (chopState.patternBounced[p]) done++;
-                    }
+                    if (p >= 0 && p < SEQ_NUM_PATTERNS) { total++; if (chopState.patternBounced[p]) done++; }
                 }
-                char prog[32];
-                snprintf(prog, sizeof(prog), "Rendering %d/%d...", done, total);
+                char prog[32]; snprintf(prog, sizeof(prog), "Rendering %d/%d...", done, total);
                 DrawTextShadow(prog, (int)(x + w - MeasureTextUI(prog, 8) - 6), (int)(sy + 2), 8, (Color){200, 180, 100, 200});
             }
 
-            // Draw viewport thumb
+            // Viewport thumb
             float thumbL = x + 2 + chopState.viewStart * (w - 4);
             float thumbR = x + 2 + chopState.viewEnd * (w - 4);
             float thumbW = thumbR - thumbL;
@@ -7854,21 +7796,17 @@ static void drawWorkSample(float x, float y, float w, float h) {
             DrawRectangle((int)thumbL, (int)(sy + 1), (int)thumbW, (int)(ovH - 2), (Color){255, 255, 255, 30});
             DrawRectangleLinesEx((Rectangle){thumbL, sy + 1, thumbW, ovH - 2}, 1, (Color){200, 200, 220, 150});
 
-            // Overview interaction: click to center viewport, drag to scroll
+            // Overview interaction
             if (CheckCollisionPointRec(mouse, ovR)) {
                 if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                     float clickNorm = (mouse.x - x - 2) / (w - 4);
-                    if (clickNorm < 0) clickNorm = 0;
-                    if (clickNorm > 1) clickNorm = 1;
+                    if (clickNorm < 0) clickNorm = 0; if (clickNorm > 1) clickNorm = 1;
                     float viewW = chopState.viewEnd - chopState.viewStart;
-                    // Check if click is inside thumb (start dragging)
-                    float thumbNormL = chopState.viewStart;
-                    float thumbNormR = chopState.viewEnd;
+                    float thumbNormL = chopState.viewStart, thumbNormR = chopState.viewEnd;
                     if (clickNorm >= thumbNormL && clickNorm <= thumbNormR) {
                         chopState.draggingView = true;
                         chopState.dragViewOffset = clickNorm - (thumbNormL + thumbNormR) * 0.5f;
                     } else {
-                        // Jump viewport to click position
                         chopState.viewStart = clickNorm - viewW * 0.5f;
                         chopState.viewEnd = chopState.viewStart + viewW;
                         if (chopState.viewStart < 0) { chopState.viewStart = 0; chopState.viewEnd = viewW; }
@@ -7881,8 +7819,7 @@ static void drawWorkSample(float x, float y, float w, float h) {
             }
             if (chopState.draggingView && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
                 float clickNorm = (mouse.x - x - 2) / (w - 4);
-                if (clickNorm < 0) clickNorm = 0;
-                if (clickNorm > 1) clickNorm = 1;
+                if (clickNorm < 0) clickNorm = 0; if (clickNorm > 1) clickNorm = 1;
                 float viewW = chopState.viewEnd - chopState.viewStart;
                 float center = clickNorm - chopState.dragViewOffset;
                 chopState.viewStart = center - viewW * 0.5f;
@@ -7897,720 +7834,399 @@ static void drawWorkSample(float x, float y, float w, float h) {
         sy += ovH + 2;
     }
 
-    // --- Zoom view (scrollable/zoomable detail with selection) ---
+    // =====================================================================
+    // C. MAIN WAVEFORM (zoomable, with scratch markers or fullData)
+    // =====================================================================
     {
-        float zoomH = 80;
+        float zoomH = scratchHasData(&scratch) ? 100 : 80;
         Rectangle zoomR = {x, sy, w, zoomH};
-        DrawRectangle((int)x, (int)sy, (int)w, (int)zoomH, UI_BG_DEEPEST);
-        DrawRectangleLinesEx(zoomR, 1, UI_BORDER_SUBTLE);
 
-        if (chopState.structureLoaded && chopState.fullData && chopState.fullLength > 0) {
-            int pixels = (int)w - 4;
-            float px0 = x + 2;
-            float mid = sy + zoomH * 0.5f;
-            float zAmp = zoomH * 0.45f;
-            float vStart = chopState.viewStart;
-            float vEnd = chopState.viewEnd;
-            float vLen = vEnd - vStart;
-            if (vLen < 0.0001f) vLen = 0.0001f;
+        if (scratchHasData(&scratch)) {
+            // Draw scratch space waveform with markers
+            int markerHit = -1;
+            int clicked = drawScratchWaveform(x, sy, w, zoomH, &scratch,
+                                              chopState.selectedSlice, &markerHit);
 
-            // Draw zoomed waveform
-            for (int col = 0; col < pixels; col++) {
-                float normL = vStart + ((float)col / pixels) * vLen;
-                float normR = vStart + ((float)(col + 1) / pixels) * vLen;
-                int s0 = (int)(normL * chopState.fullLength);
-                int s1 = (int)(normR * chopState.fullLength);
-                if (s0 < 0) s0 = 0;
-                if (s1 > chopState.fullLength) s1 = chopState.fullLength;
-                float lo = 0, hi = 0;
-                int step = (s1 - s0) > 64 ? (s1 - s0) / 64 : 1;
-                for (int s = s0; s < s1; s += step) {
-                    if (chopState.fullData[s] < lo) lo = chopState.fullData[s];
-                    if (chopState.fullData[s] > hi) hi = chopState.fullData[s];
-                }
-                // Color: inside selection = orange, else blue
-                float normMid = (normL + normR) * 0.5f;
-                bool inSel = chopState.hasSelection &&
-                    normMid >= fminf(chopState.selStart, chopState.selEnd) &&
-                    normMid <= fmaxf(chopState.selStart, chopState.selEnd);
-                Color wc = inSel ? (Color){255, 180, 60, 255} : (Color){80, 140, 200, 255};
-                int y0 = (int)(mid - hi * zAmp);
-                int y1 = (int)(mid - lo * zAmp);
-                if (y1 <= y0) y1 = y0 + 1;
-                DrawLine((int)(px0 + col), y0, (int)(px0 + col), y1, wc);
+            // Handle marker dragging
+            if (markerHit >= 0 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !IsKeyDown(KEY_LEFT_SHIFT)) {
+                chopState.draggingMarker = markerHit;
             }
-
-            // Center line
-            DrawLine((int)(x + 2), (int)mid, (int)(x + w - 2), (int)mid, (Color){35, 35, 42, 128});
-
-            // Draw chain boundaries in zoom view
-            for (int i = 0; i < chopState.songChainLen; i++) {
-                float norm = (float)chopState.chainOffsets[i] / chopState.fullLength;
-                if (norm >= vStart && norm <= vEnd) {
-                    float bx = x + 2 + ((norm - vStart) / vLen) * (w - 4);
-                    DrawLine((int)bx, (int)(sy + 1), (int)bx, (int)(sy + zoomH - 1), (Color){80, 80, 100, 100});
-                    // Pattern number label
-                    char pn[4];
-                    snprintf(pn, sizeof(pn), "%d", chopState.songChain[i] + 1);
-                    DrawTextShadow(pn, (int)(bx + 2), (int)(sy + 2), 8, (Color){100, 100, 120, 200});
-                }
+            if (chopState.draggingMarker >= 0 && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                float mouseNorm = (mouse.x - x - 2) / (w - 4);
+                int newPos = (int)(mouseNorm * scratch.length);
+                scratchMoveMarker(&scratch, chopState.draggingMarker, newPos);
             }
+            if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) chopState.draggingMarker = -1;
 
-            // Draw selection handles
-            if (chopState.hasSelection) {
-                float sMin = fminf(chopState.selStart, chopState.selEnd);
-                float sMax = fmaxf(chopState.selStart, chopState.selEnd);
-                // Left handle (green)
-                if (sMin >= vStart && sMin <= vEnd) {
-                    float hx = x + 2 + ((sMin - vStart) / vLen) * (w - 4);
-                    DrawLine((int)hx, (int)(sy + 1), (int)hx, (int)(sy + zoomH - 1), GREEN);
-                    DrawRectangle((int)(hx - 2), (int)sy, 5, 8, GREEN);
-                }
-                // Right handle (red)
-                if (sMax >= vStart && sMax <= vEnd) {
-                    float hx = x + 2 + ((sMax - vStart) / vLen) * (w - 4);
-                    DrawLine((int)hx, (int)(sy + 1), (int)hx, (int)(sy + zoomH - 1), RED);
-                    DrawRectangle((int)(hx - 2), (int)(sy + zoomH - 8), 5, 8, RED);
-                }
-            }
-
-            // Zoom view interaction
-            bool hovZoom = CheckCollisionPointRec(mouse, zoomR);
-            if (hovZoom) {
-                // Mouse wheel: zoom in/out centered on cursor
-                float wheel = GetMouseWheelMove();
-                if (wheel != 0) {
-                    float cursorNorm = vStart + ((mouse.x - x - 2) / (w - 4)) * vLen;
-                    float zoomFactor = (wheel > 0) ? 0.8f : 1.25f;
-                    float newLen = vLen * zoomFactor;
-                    if (newLen < 0.005f) newLen = 0.005f;  // min zoom
-                    if (newLen > 1.0f) newLen = 1.0f;      // max zoom
-                    // Keep cursor position stable
-                    float ratio = (cursorNorm - vStart) / vLen;
-                    chopState.viewStart = cursorNorm - ratio * newLen;
-                    chopState.viewEnd = cursorNorm + (1 - ratio) * newLen;
-                    if (chopState.viewStart < 0) { chopState.viewStart = 0; chopState.viewEnd = newLen; }
-                    if (chopState.viewEnd > 1) { chopState.viewEnd = 1; chopState.viewStart = 1 - newLen; }
-                }
-
-                // Right-drag: pan viewport
-                if (IsMouseButtonDown(MOUSE_RIGHT_BUTTON)) {
-                    float dx = GetMouseDelta().x;
-                    float panAmt = -dx / (w - 4) * vLen;
-                    chopState.viewStart += panAmt;
-                    chopState.viewEnd += panAmt;
-                    if (chopState.viewStart < 0) { chopState.viewEnd -= chopState.viewStart; chopState.viewStart = 0; }
-                    if (chopState.viewEnd > 1) { chopState.viewStart -= (chopState.viewEnd - 1); chopState.viewEnd = 1; }
-                }
-
-                // Left-drag: create/adjust selection
-                if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !chopState.draggingView) {
-                    float clickNorm = vStart + ((mouse.x - x - 2) / (w - 4)) * vLen;
-                    if (clickNorm < 0) clickNorm = 0;
-                    if (clickNorm > 1) clickNorm = 1;
-                    chopState.selStart = clickNorm;
-                    chopState.selEnd = clickNorm;
-                    chopState.hasSelection = false;
-                    chopState.draggingSel = true;
-                    ui_consume_click();
-                }
-            }
-            if (chopState.draggingSel && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                float dragNorm = vStart + ((mouse.x - x - 2) / (w - 4)) * vLen;
-                if (dragNorm < 0) dragNorm = 0;
-                if (dragNorm > 1) dragNorm = 1;
-                chopState.selEnd = dragNorm;
-                float selSize = fabsf(chopState.selEnd - chopState.selStart);
-                chopState.hasSelection = (selSize > 0.002f);  // minimum selection size
-            }
-            if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && chopState.draggingSel) {
-                chopState.draggingSel = false;
-                // Normalize so selStart < selEnd
-                if (chopState.selStart > chopState.selEnd) {
-                    float tmp = chopState.selStart;
-                    chopState.selStart = chopState.selEnd;
-                    chopState.selEnd = tmp;
-                }
-            }
-
-            // Info text
-            if (chopState.hasSelection) {
-                float selSec = fabsf(chopState.selEnd - chopState.selStart) * chopState.fullLength / SAMPLE_CHOP_SAMPLE_RATE;
-                char info[64];
-                snprintf(info, sizeof(info), "Selection: %.2fs  %.0f BPM", selSec, chopState.chainBpm);
-                DrawTextShadow(info, (int)(x + w - MeasureTextUI(info, 8) - 4), (int)(sy + zoomH - 11), 8, UI_TEXT_GREEN);
+            // Handle clicks
+            if (clicked == -2) {
+                samplerStopAll();
+            } else if (clicked == -3 && markerHit >= 0) {
+                // Right-click on marker = delete
+                scratchRemoveMarker(&scratch, markerHit);
+            } else if (clicked == -4) {
+                // Shift+click = add marker
+                int samplePos = (int)(((mouse.x - x - 2) / (w - 4)) * scratch.length);
+                scratchAddMarker(&scratch, samplePos);
+            } else if (clicked >= 0) {
+                chopState.selectedSlice = clicked;
+                scratchAuditionSlice(clicked);
             }
         } else {
-            DrawTextShadow("No audio — select a .song above", (int)(x + 8), (int)(sy + zoomH / 2 - 5), UI_FONT_SMALL, UI_BORDER_LIGHT);
+            // No scratch data: show fullData zoom view with selection
+            DrawRectangle((int)x, (int)sy, (int)w, (int)zoomH, UI_BG_DEEPEST);
+            DrawRectangleLinesEx(zoomR, 1, UI_BORDER_SUBTLE);
+
+            if (chopState.structureLoaded && chopState.fullData && chopState.fullLength > 0) {
+                int pixels = (int)w - 4;
+                float px0 = x + 2;
+                float mid = sy + zoomH * 0.5f;
+                float zAmp = zoomH * 0.45f;
+                float vStart = chopState.viewStart, vEnd = chopState.viewEnd;
+                float vLen = vEnd - vStart;
+                if (vLen < 0.0001f) vLen = 0.0001f;
+
+                for (int col = 0; col < pixels; col++) {
+                    float normL = vStart + ((float)col / pixels) * vLen;
+                    float normR = vStart + ((float)(col + 1) / pixels) * vLen;
+                    int s0 = (int)(normL * chopState.fullLength);
+                    int s1 = (int)(normR * chopState.fullLength);
+                    if (s0 < 0) s0 = 0; if (s1 > chopState.fullLength) s1 = chopState.fullLength;
+                    float lo = 0, hi = 0;
+                    int step = (s1 - s0) > 64 ? (s1 - s0) / 64 : 1;
+                    for (int s = s0; s < s1; s += step) {
+                        if (chopState.fullData[s] < lo) lo = chopState.fullData[s];
+                        if (chopState.fullData[s] > hi) hi = chopState.fullData[s];
+                    }
+                    float normMid = (normL + normR) * 0.5f;
+                    bool inSel = chopState.hasSelection &&
+                        normMid >= fminf(chopState.selStart, chopState.selEnd) &&
+                        normMid <= fmaxf(chopState.selStart, chopState.selEnd);
+                    Color wc = inSel ? (Color){255, 180, 60, 255} : (Color){80, 140, 200, 255};
+                    int y0 = (int)(mid - hi * zAmp);
+                    int y1 = (int)(mid - lo * zAmp);
+                    if (y1 <= y0) y1 = y0 + 1;
+                    DrawLine((int)(px0 + col), y0, (int)(px0 + col), y1, wc);
+                }
+                DrawLine((int)(x + 2), (int)mid, (int)(x + w - 2), (int)mid, (Color){35, 35, 42, 128});
+
+                // Selection handles
+                if (chopState.hasSelection) {
+                    float sMin = fminf(chopState.selStart, chopState.selEnd);
+                    float sMax = fmaxf(chopState.selStart, chopState.selEnd);
+                    if (sMin >= vStart && sMin <= vEnd) {
+                        float hx = x + 2 + ((sMin - vStart) / vLen) * (w - 4);
+                        DrawLine((int)hx, (int)(sy + 1), (int)hx, (int)(sy + zoomH - 1), GREEN);
+                        DrawRectangle((int)(hx - 2), (int)sy, 5, 8, GREEN);
+                    }
+                    if (sMax >= vStart && sMax <= vEnd) {
+                        float hx = x + 2 + ((sMax - vStart) / vLen) * (w - 4);
+                        DrawLine((int)hx, (int)(sy + 1), (int)hx, (int)(sy + zoomH - 1), RED);
+                        DrawRectangle((int)(hx - 2), (int)(sy + zoomH - 8), 5, 8, RED);
+                    }
+                }
+
+                // Zoom interaction
+                bool hovZoom = CheckCollisionPointRec(mouse, zoomR);
+                if (hovZoom) {
+                    float wheel = GetMouseWheelMove();
+                    if (wheel != 0) {
+                        float cursorNorm = vStart + ((mouse.x - x - 2) / (w - 4)) * vLen;
+                        float zoomFactor = (wheel > 0) ? 0.8f : 1.25f;
+                        float newLen = vLen * zoomFactor;
+                        if (newLen < 0.005f) newLen = 0.005f;
+                        if (newLen > 1.0f) newLen = 1.0f;
+                        float ratio = (cursorNorm - vStart) / vLen;
+                        chopState.viewStart = cursorNorm - ratio * newLen;
+                        chopState.viewEnd = cursorNorm + (1 - ratio) * newLen;
+                        if (chopState.viewStart < 0) { chopState.viewStart = 0; chopState.viewEnd = newLen; }
+                        if (chopState.viewEnd > 1) { chopState.viewEnd = 1; chopState.viewStart = 1 - newLen; }
+                    }
+                    if (IsMouseButtonDown(MOUSE_RIGHT_BUTTON)) {
+                        float dx = GetMouseDelta().x;
+                        float panAmt = -dx / (w - 4) * vLen;
+                        chopState.viewStart += panAmt; chopState.viewEnd += panAmt;
+                        if (chopState.viewStart < 0) { chopState.viewEnd -= chopState.viewStart; chopState.viewStart = 0; }
+                        if (chopState.viewEnd > 1) { chopState.viewStart -= (chopState.viewEnd - 1); chopState.viewEnd = 1; }
+                    }
+                    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !chopState.draggingView) {
+                        float clickNorm = vStart + ((mouse.x - x - 2) / (w - 4)) * vLen;
+                        if (clickNorm < 0) clickNorm = 0; if (clickNorm > 1) clickNorm = 1;
+                        chopState.selStart = clickNorm; chopState.selEnd = clickNorm;
+                        chopState.hasSelection = false; chopState.draggingSel = true;
+                        ui_consume_click();
+                    }
+                }
+                if (chopState.draggingSel && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                    float vLen2 = chopState.viewEnd - chopState.viewStart;
+                    float dragNorm = chopState.viewStart + ((mouse.x - x - 2) / (w - 4)) * vLen2;
+                    if (dragNorm < 0) dragNorm = 0; if (dragNorm > 1) dragNorm = 1;
+                    chopState.selEnd = dragNorm;
+                    chopState.hasSelection = (fabsf(chopState.selEnd - chopState.selStart) > 0.002f);
+                }
+                if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && chopState.draggingSel) {
+                    chopState.draggingSel = false;
+                    if (chopState.selStart > chopState.selEnd) {
+                        float tmp = chopState.selStart; chopState.selStart = chopState.selEnd; chopState.selEnd = tmp;
+                    }
+                }
+
+                if (chopState.hasSelection) {
+                    float selSec = fabsf(chopState.selEnd - chopState.selStart) * chopState.fullLength / SAMPLE_CHOP_SAMPLE_RATE;
+                    char info[64];
+                    snprintf(info, sizeof(info), "Selection: %.2fs  %.0f BPM", selSec, chopState.chainBpm);
+                    DrawTextShadow(info, (int)(x + w - MeasureTextUI(info, 8) - 4), (int)(sy + zoomH - 11), 8, UI_TEXT_GREEN);
+                }
+            } else {
+                DrawTextShadow("No audio — select a .song above", (int)(x + 8), (int)(sy + zoomH / 2 - 5), UI_FONT_SMALL, UI_BORDER_LIGHT);
+            }
         }
         sy += zoomH + 4;
     }
 
-    // --- Slice waveform (after chop) ---
-    if (chopState.bounced) {
-        float waveH = 60;
-        int clicked = drawChopWaveform(x, sy, w, waveH,
-                                        chopState.renderData, chopState.renderLength,
-                                        chopState.sliceCount,
-                                        chopState.sliceLengths,
-                                        chopState.selectedSlice);
-        if (clicked == -2) {
-            samplerStopAll();
-        } else if (clicked >= 0) {
-            chopState.selectedSlice = clicked;
-            if (clicked < chopState.sliceCount) {
-                chopApplySliceParams();
-                float pitch = chopState.sliceParams[clicked].pitchSemitones;
-                float speed = (pitch != 0.0f) ? powf(2.0f, pitch / 12.0f) : 1.0f;
-                samplerQueuePlay(clicked, 0.8f, speed);
-            }
-        }
-        sy += waveH + 4;
-    }
+    // =====================================================================
+    // D. CONTROLS ROW
+    // =====================================================================
+    {
+        float cx = x;
 
-    // --- Pad mapping ---
-    if (chopState.bounced) {
-        DrawTextShadow("Pad Mapping:", (int)x, (int)sy, UI_FONT_SMALL, UI_TEXT_LABEL);
-        {
-            // Quick-map button: auto-assign slices 0-3 to pads
-            Rectangle autoR = {x + 88, sy - 1, 60, 14};
-            bool autoHov = CheckCollisionPointRec(mouse, autoR);
-            DrawRectangleRec(autoR, autoHov ? UI_BORDER : UI_BG_BUTTON);
-            DrawRectangleLinesEx(autoR, 1, UI_BORDER_LIGHT);
-            DrawTextShadow("Auto 0-3", (int)(autoR.x + 4), (int)(autoR.y + 2), 8, UI_TEXT_SUBTLE);
-            if (autoHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                for (int t = 0; t < 4 && t < chopState.sliceCount; t++)
-                    daw.chopSliceMap[t] = t;
-                ui_consume_click();
-            }
-            // Clear all button
-            Rectangle clearR = {x + 154, sy - 1, 50, 14};
-            bool clearHov = CheckCollisionPointRec(mouse, clearR);
-            DrawRectangleRec(clearR, clearHov ? UI_BORDER : UI_BG_BUTTON);
-            DrawRectangleLinesEx(clearR, 1, UI_BORDER_LIGHT);
-            DrawTextShadow("Clear", (int)(clearR.x + 8), (int)(clearR.y + 2), 8, UI_TEXT_SUBTLE);
-            if (clearHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                for (int t = 0; t < 4; t++) daw.chopSliceMap[t] = -1;
-                ui_consume_click();
-            }
-        }
-        sy += 16;
-
-        const char *padNames[] = {"Kick", "Snare", "HiHat", "Clap"};
-        for (int t = 0; t < 4; t++) {
-            float px = x + t * (w / 4);
-            float pw = w / 4 - 8;
-
-            int slot = daw.chopSliceMap[t];
-            char label[64];
-            if (slot >= 0)
-                snprintf(label, sizeof(label), "%s: Slice %d", padNames[t], slot);
-            else
-                snprintf(label, sizeof(label), "%s: synth", padNames[t]);
-
-            Rectangle r = {px, sy, pw, 20};
+        // Mode toggle: Equal / Transient
+        const char *modes[] = {"Equal", "Transient"};
+        for (int m = 0; m < 2; m++) {
+            int bw = MeasureTextUI(modes[m], UI_FONT_SMALL) + cbPad*2;
+            Rectangle r = {cx, sy, (float)bw, (float)cbH};
+            bool sel = (chopState.chopMode == m);
             bool hov = CheckCollisionPointRec(mouse, r);
-            DrawRectangleRec(r, hov ? UI_BG_HOVER : UI_BG_PANEL);
-            DrawRectangleLinesEx(r, 1, slot >= 0 ? ORANGE : UI_BORDER);
-            DrawTextShadow(label, (int)(px + 4), (int)(sy + 5), 9,
-                          slot >= 0 ? (Color){255, 200, 100, 255} : UI_TEXT_DIM);
+            DrawRectangleRec(r, sel ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_PANEL));
+            DrawRectangleLinesEx(r, 1, sel ? GREEN : UI_BORDER);
+            DrawTextShadow(modes[m], (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_DIM);
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { chopState.chopMode = m; ui_consume_click(); }
+            cx += bw + 4;
+        }
 
-            // Scroll wheel to change slice number
-            if (hov) {
-                float wheel = GetMouseWheelMove();
-                if (wheel != 0) {
-                    int newSlot = slot + (int)wheel;
-                    if (newSlot < -1) newSlot = -1;
-                    if (newSlot >= chopState.sliceCount) newSlot = chopState.sliceCount - 1;
-                    daw.chopSliceMap[t] = newSlot;
-                }
+        // Slice count
+        {
+            DrawTextShadow("Slices", (int)cx, (int)(sy + 3), UI_FONT_SMALL, UI_TEXT_LABEL);
+            cx += MeasureTextUI("Slices", UI_FONT_SMALL) + 4;
+            int counts[] = {4, 8, 16, 32};
+            for (int i = 0; i < 4; i++) {
+                char num[4]; snprintf(num, sizeof(num), "%d", counts[i]);
+                int bw = MeasureTextUI(num, UI_FONT_SMALL) + cbPad*2;
+                Rectangle r = {cx, sy, (float)bw, (float)cbH};
+                bool sel = (chopState.sliceCount == counts[i]);
+                bool hov = CheckCollisionPointRec(mouse, r);
+                DrawRectangleRec(r, sel ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_PANEL));
+                DrawRectangleLinesEx(r, 1, sel ? GREEN : UI_BORDER);
+                DrawTextShadow(num, (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_DIM);
+                if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { chopState.sliceCount = counts[i]; ui_consume_click(); }
+                cx += bw + 2;
             }
-            // Left-click: assign selected slice (if any), or cycle through
+            cx += 6;
+        }
+
+        // Sensitivity (transient mode)
+        if (chopState.chopMode == 1) {
+            DraggableFloatS(cx, sy + 2, "Sens", &chopState.sensitivity, 0.02f, 0.0f, 1.0f, UI_FONT_SMALL);
+            cx += MeasureTextUI("Sens: 0.00", UI_FONT_SMALL) + 12;
+        }
+
+        // Chop button
+        {
+            bool canChop = scratchHasData(&scratch) || (chopState.structureLoaded && chopState.hasSelection);
+            int bw = MeasureTextUI("Chop!", UI_FONT_SMALL) + cbPad*2;
+            Rectangle r = {cx, sy, (float)bw, (float)cbH};
+            bool hov = CheckCollisionPointRec(mouse, r) && canChop;
+            DrawRectangleRec(r, hov ? (Color){80, 60, 40, 255} : (canChop ? UI_BG_BROWN : UI_BG_PANEL));
+            DrawRectangleLinesEx(r, 1, canChop ? ORANGE : UI_BORDER);
+            DrawTextShadow("Chop!", (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL, canChop ? WHITE : UI_TEXT_DIM);
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                if (chopState.selectedSlice >= 0) {
-                    daw.chopSliceMap[t] = chopState.selectedSlice;
+                if (scratchHasData(&scratch)) {
+                    // Re-chop existing scratch data
+                    if (chopState.chopMode == 1)
+                        scratchChopTransients(&scratch, chopState.sensitivity, chopState.sliceCount);
+                    else
+                        scratchChopEqual(&scratch, chopState.sliceCount);
+                    chopState.selectedSlice = -1;
                 } else {
-                    // No slice selected — cycle: synth→0→1→...→max→synth
-                    daw.chopSliceMap[t] = (slot + 1 >= chopState.sliceCount) ? -1 : slot + 1;
+                    if (!chopState.hasSelection) {
+                        chopState.selStart = 0.0f; chopState.selEnd = 1.0f;
+                        chopState.hasSelection = true;
+                    }
+                    scratchFromSelection();
                 }
                 ui_consume_click();
             }
-            // Right-click: clear (revert to synth)
-            if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-                daw.chopSliceMap[t] = -1;
-                ui_consume_click();
-            }
+            cx += bw + 6;
         }
-        sy += 26;
 
-        // Per-pad pitch/volume
-        DrawTextShadow("Pad Pitch/Vol:", (int)x, (int)sy, UI_FONT_SMALL, UI_TEXT_LABEL);
-        sy += 14;
-        for (int t = 0; t < 4; t++) {
-            int slot = daw.chopSliceMap[t];
-            if (slot < 0) continue;
-            float px = x + t * (w / 4);
-            DraggableFloatS(px, sy, TextFormat("P%d Pitch", t), &daw.chopSlicePitch[slot], 0.5f, -24.0f, 24.0f, 9);
-            DraggableFloatS(px, sy + 13, TextFormat("P%d Vol", t), &daw.chopSliceVolume[slot], 0.05f, 0.0f, 2.0f, 9);
-        }
-        sy += 28;
-
-        // Sampler track hint
-        DrawTextShadow("Sampler Track:", (int)x, (int)(sy + 2), UI_FONT_SMALL, UI_TEXT_LABEL);
-        DrawTextShadow("Use the Sampler row in the Sequencer (F1). Set note = slice number.",
-                       (int)(x + 96), (int)(sy + 2), 9, (Color){80, 140, 200, 255});
-        sy += 16;
-
-        // Info line
-        char info[128];
-        snprintf(info, sizeof(info), "%d slices, %d samples each (%.3fs), %d steps",
-                 chopState.sliceCount, chopState.sliceLength,
-                 (float)chopState.sliceLength / SAMPLE_CHOP_SAMPLE_RATE,
-                 chopState.renderSteps);
-        DrawTextShadow(info, (int)x, (int)sy, UI_FONT_SMALL, UI_TEXT_MUTED);
-        sy += 14;
-
-        // Chromatic mode
-        DrawTextShadow("Chromatic:", (int)x, (int)(sy + 2), UI_FONT_SMALL, UI_TEXT_LABEL);
+        // Normalize toggle
         {
-            ToggleBoolS(x + 70, sy, "On", &daw.chromaticMode, 9);
-            if (daw.chromaticMode) {
-                DraggableIntS(x + 140, sy, "Slot", &daw.chromaticSample, 1, 0, SAMPLER_MAX_SAMPLES - 1, 9);
-                DraggableIntS(x + 260, sy, "Root", &daw.chromaticRootNote, 1, 24, 96, 9);
-            }
-        }
-        sy += 16;
-
-        // --- Per-slice params (when a slice is selected) ---
-        if (chopState.selectedSlice >= 0 && chopState.selectedSlice < chopState.sliceCount) {
-            int sel = chopState.selectedSlice;
-            sy += 4;
-            char sliceLabel[32];
-            snprintf(sliceLabel, sizeof(sliceLabel), "Slice %d:", sel);
-            DrawTextShadow(sliceLabel, (int)x, (int)(sy + 2), UI_FONT_SMALL, ORANGE);
-
-            float px = x + 60;
-            bool changed = false;
-
-            // Reverse toggle
-            {
-                Rectangle r = {px, sy, 44, 16};
-                bool hov = CheckCollisionPointRec(mouse, r);
-                bool rev = chopState.sliceParams[sel].reverse;
-                DrawRectangleRec(r, rev ? UI_BG_RED_MED : (hov ? UI_BG_HOVER : UI_BG_PANEL));
-                DrawRectangleLinesEx(r, 1, rev ? (Color){255, 100, 100, 255} : UI_BORDER);
-                DrawTextShadow("Rev", (int)(px + 10), (int)(sy + 3), UI_FONT_SMALL, rev ? (Color){255, 140, 140, 255} : UI_TEXT_DIM);
-                if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                    chopState.sliceParams[sel].reverse = !rev;
-                    changed = true;
-                    ui_consume_click();
-                }
-            }
-
-            // Pitch (drag left/right)
-            {
-                float ox = px + 52;
-                DrawTextShadow("Pitch:", (int)ox, (int)(sy + 2), UI_FONT_SMALL, UI_TEXT_DIM);
-                Rectangle r = {ox + 38, sy, 50, 16};
-                bool hov = CheckCollisionPointRec(mouse, r);
-                DrawRectangleRec(r, UI_BG_PANEL);
-                DrawRectangleLinesEx(r, 1, hov ? ORANGE : UI_BG_HOVER);
-                char pitchStr[16];
-                float p = chopState.sliceParams[sel].pitchSemitones;
-                snprintf(pitchStr, sizeof(pitchStr), "%+.0fst", p);
-                DrawTextShadow(pitchStr, (int)(r.x + 4), (int)(sy + 3), UI_FONT_SMALL, fabsf(p) > 0.1f ? WHITE : UI_BORDER_LIGHT);
-                if (hov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                    float delta = GetMouseDelta().x * 0.2f;
-                    chopState.sliceParams[sel].pitchSemitones += delta;
-                    if (chopState.sliceParams[sel].pitchSemitones > 24) chopState.sliceParams[sel].pitchSemitones = 24;
-                    if (chopState.sliceParams[sel].pitchSemitones < -24) chopState.sliceParams[sel].pitchSemitones = -24;
-                    changed = true;
-                }
-                // Right-click to reset
-                if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-                    chopState.sliceParams[sel].pitchSemitones = 0;
-                    changed = true;
-                    ui_consume_click();
-                }
-            }
-
-            // Gain (drag left/right)
-            {
-                float ox = px + 148;
-                DrawTextShadow("Gain:", (int)ox, (int)(sy + 2), UI_FONT_SMALL, UI_TEXT_DIM);
-                Rectangle r = {ox + 34, sy, 50, 16};
-                bool hov = CheckCollisionPointRec(mouse, r);
-                DrawRectangleRec(r, UI_BG_PANEL);
-                DrawRectangleLinesEx(r, 1, hov ? ORANGE : UI_BG_HOVER);
-                // Fill bar
-                float g = chopState.sliceParams[sel].gain;
-                float fill = (g / 2.0f) * 46;
-                DrawRectangle((int)(r.x + 2), (int)(r.y + 2), (int)fill, 12,
-                             g > 1.02f ? (Color){200, 100, 60, 200} : (Color){60, 130, 200, 200});
-                char gainStr[16];
-                snprintf(gainStr, sizeof(gainStr), "%.1fx", g);
-                DrawTextShadow(gainStr, (int)(r.x + 4), (int)(sy + 3), UI_FONT_SMALL, WHITE);
-                if (hov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                    float delta = GetMouseDelta().x * 0.01f;
-                    chopState.sliceParams[sel].gain += delta;
-                    if (chopState.sliceParams[sel].gain < 0) chopState.sliceParams[sel].gain = 0;
-                    if (chopState.sliceParams[sel].gain > 2.0f) chopState.sliceParams[sel].gain = 2.0f;
-                    changed = true;
-                }
-                if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-                    chopState.sliceParams[sel].gain = 1.0f;
-                    changed = true;
-                    ui_consume_click();
-                }
-            }
-
-            // Fade In override (drag left/right, right-click = reset to global)
-            {
-                float ox = px + 240;
-                float fiMs = chopState.sliceParams[sel].fadeInMs;
-                bool isOverride = (fiMs >= 0);
-                DrawTextShadow("FdIn:", (int)ox, (int)(sy + 2), 9,
-                              isOverride ? UI_TEXT_LABEL : UI_TEXT_MUTED);
-                Rectangle r = {ox + 32, sy, 44, 16};
-                bool hov = CheckCollisionPointRec(mouse, r);
-                DrawRectangleRec(r, UI_BG_PANEL);
-                DrawRectangleLinesEx(r, 1, hov ? ORANGE : UI_BG_HOVER);
-                char fdStr[16];
-                if (isOverride)
-                    snprintf(fdStr, sizeof(fdStr), "%.1fms", fiMs);
-                else
-                    snprintf(fdStr, sizeof(fdStr), "auto");
-                DrawTextShadow(fdStr, (int)(r.x + 3), (int)(sy + 3), 9,
-                              isOverride ? WHITE : UI_BORDER_LIGHT);
-                if (hov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                    float delta = GetMouseDelta().x * 0.05f;
-                    if (!isOverride) fiMs = chopState.fadeMs;  // start from global
-                    fiMs += delta;
-                    if (fiMs < 0) fiMs = 0;
-                    if (fiMs > 10.0f) fiMs = 10.0f;
-                    chopState.sliceParams[sel].fadeInMs = fiMs;
-                    changed = true;
-                }
-                if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-                    chopState.sliceParams[sel].fadeInMs = -1.0f;  // reset to global
-                    changed = true;
-                    ui_consume_click();
-                }
-            }
-
-            // Fade Out override
-            {
-                float ox = px + 324;
-                float foMs = chopState.sliceParams[sel].fadeOutMs;
-                bool isOverride = (foMs >= 0);
-                DrawTextShadow("FdOut:", (int)ox, (int)(sy + 2), 9,
-                              isOverride ? UI_TEXT_LABEL : UI_TEXT_MUTED);
-                Rectangle r = {ox + 36, sy, 44, 16};
-                bool hov = CheckCollisionPointRec(mouse, r);
-                DrawRectangleRec(r, UI_BG_PANEL);
-                DrawRectangleLinesEx(r, 1, hov ? ORANGE : UI_BG_HOVER);
-                char fdStr[16];
-                if (isOverride)
-                    snprintf(fdStr, sizeof(fdStr), "%.1fms", foMs);
-                else
-                    snprintf(fdStr, sizeof(fdStr), "auto");
-                DrawTextShadow(fdStr, (int)(r.x + 3), (int)(sy + 3), 9,
-                              isOverride ? WHITE : UI_BORDER_LIGHT);
-                if (hov && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                    float delta = GetMouseDelta().x * 0.05f;
-                    if (!isOverride) foMs = chopState.fadeMs;
-                    foMs += delta;
-                    if (foMs < 0) foMs = 0;
-                    if (foMs > 10.0f) foMs = 10.0f;
-                    chopState.sliceParams[sel].fadeOutMs = foMs;
-                    changed = true;
-                }
-                if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-                    chopState.sliceParams[sel].fadeOutMs = -1.0f;
-                    changed = true;
-                    ui_consume_click();
-                }
-            }
-
-            if (changed) chopApplySliceParams();
-            sy += 20;
-
-            // --- Slice waveform with trim handles ---
-            sy += 4;
-            {
-                int sLen = chopState.sliceLengths[sel] > 0 ? chopState.sliceLengths[sel] : chopState.sliceLength;
-                float *sData = chopState.slices[sel];
-                float swH = 40;
-                float swW = w - 60;
-                float swX = x + 60;
-
-                // Background
-                DrawRectangle((int)swX, (int)sy, (int)swW, (int)swH, UI_BG_DEEPEST);
-                DrawRectangleLinesEx((Rectangle){swX, sy, swW, swH}, 1, UI_BORDER_SUBTLE);
-
-                if (sData && sLen > 0) {
-                    float ts = chopState.sliceParams[sel].trimStart;
-                    float te = chopState.sliceParams[sel].trimEnd;
-                    int pixels = (int)swW - 4;
-                    float mid = sy + swH * 0.5f;
-                    float amp = swH * 0.42f;
-
-                    // Draw dimmed regions outside trim
-                    int trimStartPx = (int)(ts * pixels);
-                    int trimEndPx = (int)(te * pixels);
-                    if (trimStartPx > 0)
-                        DrawRectangle((int)(swX + 2), (int)sy + 1, trimStartPx, (int)swH - 2, (Color){0, 0, 0, 120});
-                    if (trimEndPx < pixels)
-                        DrawRectangle((int)(swX + 2 + trimEndPx), (int)sy + 1, pixels - trimEndPx, (int)swH - 2, (Color){0, 0, 0, 120});
-
-                    // Draw waveform
-                    for (int col = 0; col < pixels; col++) {
-                        int s0 = (int)((float)col / pixels * sLen);
-                        int s1 = (int)((float)(col + 1) / pixels * sLen);
-                        if (s1 > sLen) s1 = sLen;
-                        float lo = 0, hi = 0;
-                        for (int i = s0; i < s1; i++) {
-                            if (sData[i] < lo) lo = sData[i];
-                            if (sData[i] > hi) hi = sData[i];
-                        }
-                        bool inTrim = (col >= trimStartPx && col <= trimEndPx);
-                        Color wc = inTrim ? (Color){255, 180, 60, 255} : UI_BORDER_LIGHT;
-                        int y0 = (int)(mid - hi * amp);
-                        int y1 = (int)(mid - lo * amp);
-                        if (y1 <= y0) y1 = y0 + 1;
-                        DrawLine((int)(swX + 2 + col), y0, (int)(swX + 2 + col), y1, wc);
-                    }
-
-                    // Trim handles (vertical lines, draggable)
-                    float startHandleX = swX + 2 + ts * (swW - 4);
-                    float endHandleX = swX + 2 + te * (swW - 4);
-                    DrawLine((int)startHandleX, (int)sy, (int)startHandleX, (int)(sy + swH), GREEN);
-                    DrawLine((int)endHandleX, (int)sy, (int)endHandleX, (int)(sy + swH), (Color){255, 80, 80, 255});
-                    // Drag interaction: left-click sets start, right-click sets end
-                    // Works anywhere in the waveform area — no tiny grip targets
-                    Rectangle waveArea = {swX, sy, swW, swH};
-                    if (CheckCollisionPointRec(mouse, waveArea)) {
-                        float normX = (mouse.x - swX - 2) / (swW - 4);
-                        if (normX < 0) normX = 0;
-                        if (normX > 1) normX = 1;
-
-                        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                            float newTs = normX;
-                            if (newTs > te - 0.02f) newTs = te - 0.02f;
-                            chopState.sliceParams[sel].trimStart = newTs;
-                            changed = true;
-                        }
-                        if (IsMouseButtonDown(MOUSE_RIGHT_BUTTON)) {
-                            float newTe = normX;
-                            if (newTe < ts + 0.02f) newTe = ts + 0.02f;
-                            chopState.sliceParams[sel].trimEnd = newTe;
-                            changed = true;
-                        }
-                    }
-
-                    // Labels
-                    char trimLabel[32];
-                    snprintf(trimLabel, sizeof(trimLabel), "%.0f%%", ts * 100);
-                    DrawTextShadow(trimLabel, (int)(startHandleX + 2), (int)(sy + 2), 8, GREEN);
-                    snprintf(trimLabel, sizeof(trimLabel), "%.0f%%", te * 100);
-                    int tw = MeasureTextUI(trimLabel, 8);
-                    DrawTextShadow(trimLabel, (int)(endHandleX - tw - 2), (int)(sy + 2), 8, (Color){255, 80, 80, 255});
-
-                    // Playhead in slice waveform
-                    for (int vi = 0; vi < SAMPLER_MAX_VOICES; vi++) {
-                        SamplerVoice *v = &samplerCtx->voices[vi];
-                        if (!v->active || v->sampleIndex != sel) continue;
-                        // v->position is within the trimmed sample; map back to full slice
-                        int trimmedLen = (int)((te - ts) * sLen);
-                        if (trimmedLen < 1) trimmedLen = 1;
-                        float normInSlice = (ts + (v->position / trimmedLen) * (te - ts));
-                        if (normInSlice >= 0 && normInSlice <= 1.0f) {
-                            float phX = swX + 2 + normInSlice * (swW - 4);
-                            DrawLine((int)phX, (int)sy, (int)phX, (int)(sy + swH), WHITE);
-                        }
-                    }
-                }
-                sy += swH + 2;
-            }
-            DrawTextShadow("L-drag=set start, R-drag=set end. Drag params above. Right-click param to reset.",
-                           (int)(x + 60), (int)sy, 9, UI_BORDER);
-        } else {
-            DrawTextShadow("Click waveform to select+preview. Click pad to assign. Right-click to clear.",
-                           (int)x, (int)sy, 9, UI_BORDER);
-        }
-    }
-
-    // --- Freeze / Resample section (always visible, independent of bounce state) ---
-    sy += 18;
-    DrawTextShadow("Freeze / Resample:", (int)x, (int)sy, UI_FONT_SMALL, UI_TEXT_LABEL);
-    sy += 16;
-
-    // Resample (capture master output to new sampler slot)
-    {
-        static bool _resampleActive = false;
-        float btnW = _resampleActive ? 100 : 80;
-        Rectangle rr = {x, sy, btnW, 18};
-        bool hov = CheckCollisionPointRec(mouse, rr);
-        Color bg = _resampleActive ? (Color){140, 30, 30, 255} : (hov ? UI_BG_HOVER : UI_BG_BUTTON);
-        DrawRectangleRec(rr, bg);
-        DrawRectangleLinesEx(rr, 1, _resampleActive ? RED : UI_BORDER);
-        const char *label = _resampleActive
-            ? TextFormat("REC %ds", (rollingTotalWritten - resampleCaptureStart) / SAMPLE_RATE)
-            : "Resample";
-        DrawTextShadow(label, (int)(x + 4), (int)(sy + 3), 9, _resampleActive ? WHITE : (Color){255, 140, 80, 255});
-        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            if (_resampleActive) {
-                int slot = resampleStop();
-                _resampleActive = false;
-                if (slot >= 0) {
-                    daw.chromaticSample = slot;
-                    // Load into chop system so waveform/slice UI works
-                    chopStateClear();
-                    int len = samplerCtx->samples[slot].length;
-                    chopState.renderData = (float *)malloc(len * sizeof(float));
-                    if (chopState.renderData) {
-                        memcpy(chopState.renderData, samplerCtx->samples[slot].data, len * sizeof(float));
-                        chopState.renderLength = len;
-                        chopState.renderBpm = daw.transport.bpm;
-                        chopState.renderSteps = 16;
-                        // Auto-chop into current slice count
-                        RenderedPattern rp = {
-                            .data = chopState.renderData, .length = len,
-                            .sampleRate = SAMPLE_RATE, .bpm = daw.transport.bpm,
-                            .stepCount = 16
-                        };
-                        ChoppedSample chopped = chopEqual(&rp, chopState.sliceCount);
-                        if (chopped.sliceCount > 0) {
-                            chopState.sliceCount = chopped.sliceCount;
-                            chopState.sliceLength = chopped.sliceLength;
-                            for (int s = 0; s < chopped.sliceCount; s++) {
-                                int slen = chopped.sliceLengths[s] > 0 ? chopped.sliceLengths[s] : chopped.sliceLength;
-                                chopState.sliceLengths[s] = slen;
-                                chopState.slices[s] = (float *)malloc(slen * sizeof(float));
-                                if (chopState.slices[s])
-                                    memcpy(chopState.slices[s], chopped.slices[s], slen * sizeof(float));
-                            }
-                            // Load slices into sampler
-                            for (int s = 0; s < chopped.sliceCount; s++) {
-                                int slen = chopState.sliceLengths[s];
-                                Sample *ss = &samplerCtx->samples[s];
-                                if (ss->loaded && ss->data && !ss->embedded) free(ss->data);
-                                ss->data = (float *)malloc(slen * sizeof(float));
-                                if (ss->data) {
-                                    memcpy(ss->data, chopState.slices[s], slen * sizeof(float));
-                                    ss->length = slen;
-                                    ss->sampleRate = SAMPLE_RATE;
-                                    ss->loaded = true;
-                                    ss->embedded = false;
-                                    snprintf(ss->name, sizeof(ss->name), "rsmp_%02d", s);
-                                }
-                            }
-                            chopFree(&chopped);
-                        }
-                        chopState.bounced = true;
-                        snprintf(chopState.sourcePath, sizeof(chopState.sourcePath), "(resampled)");
-                    }
-                }
-            } else {
-                resampleStart();
-                _resampleActive = true;
-            }
-            ui_consume_click();
-        }
-        if (!_resampleActive) {
-            DrawTextShadow("Record master output to sampler slot", (int)(x + btnW + 8), (int)(sy + 3), 9, UI_TEXT_MUTED);
-        }
-    }
-    sy += 22;
-    {
-        // Find first free sampler slot (after any chop slices)
-        int freeSlot = chopState.bounced ? chopState.sliceCount : 0;
-        if (freeSlot >= SAMPLER_MAX_SAMPLES) freeSlot = SAMPLER_MAX_SAMPLES - 1;
-
-        // Dub Loop freeze button
-        {
-            Rectangle r = {x, sy, 100, 18};
+            int bw = MeasureTextUI("Norm", UI_FONT_SMALL) + cbPad*2;
+            Rectangle r = {cx, sy, (float)bw, (float)cbH};
+            bool sel = chopState.normalize;
             bool hov = CheckCollisionPointRec(mouse, r);
-            bool active = dubLoop.enabled;
-            DrawRectangleRec(r, hov && active ? (Color){60, 50, 70, 255} : UI_BG_PANEL);
-            DrawRectangleLinesEx(r, 1, active ? (Color){160, 100, 200, 255} : UI_BORDER);
-            DrawTextShadow("Freeze Dub", (int)(x + 8), (int)(sy + 3), 9,
-                          active ? (Color){200, 150, 255, 255} : UI_BORDER_LIGHT);
-            if (hov && active && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                dawAudioGate();
-                int slot = dubLoopFreezeToSampler(freeSlot);
-                dawAudioUngate();
-                if (slot >= 0) {
-                    chopState.selectedSlice = slot;
-                }
+            DrawRectangleRec(r, sel ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_PANEL));
+            DrawRectangleLinesEx(r, 1, sel ? GREEN : UI_BORDER);
+            DrawTextShadow("Norm", (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? WHITE : UI_TEXT_DIM);
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                chopState.normalize = !chopState.normalize;
+                if (scratchHasData(&scratch) && chopState.hasSelection) scratchFromSelection();
                 ui_consume_click();
             }
+            cx += bw + 6;
         }
 
-        // Rewind freeze button
+        // Tap Slice toggle
         {
-            Rectangle r = {x + 110, sy, 110, 18};
+            int bw = MeasureTextUI("Tap", UI_FONT_SMALL) + cbPad*2;
+            Rectangle r = {cx, sy, (float)bw, (float)cbH};
+            bool sel = chopState.tapSliceMode;
             bool hov = CheckCollisionPointRec(mouse, r);
-            DrawRectangleRec(r, hov ? (Color){50, 55, 70, 255} : UI_BG_PANEL);
-            DrawRectangleLinesEx(r, 1, (Color){100, 160, 200, 255});
-            DrawTextShadow("Freeze Rewind", (int)(x + 118), (int)(sy + 3), UI_FONT_SMALL, UI_TEXT_BLUE);
+            DrawRectangleRec(r, sel ? (Color){60, 30, 30, 255} : (hov ? UI_BG_HOVER : UI_BG_PANEL));
+            DrawRectangleLinesEx(r, 1, sel ? RED : UI_BORDER);
+            DrawTextShadow("Tap", (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL, sel ? RED : UI_TEXT_DIM);
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                chopState.tapSliceMode = !chopState.tapSliceMode;
+                ui_consume_click();
+            }
+            cx += bw + 6;
+        }
+
+        // Convert to Bank button
+        {
+            bool canCommit = scratchHasData(&scratch) && scratchSliceCount(&scratch) > 0;
+            int bw = MeasureTextUI("-> Bank", UI_FONT_SMALL) + cbPad*2;
+            Rectangle r = {cx, sy, (float)bw, (float)cbH};
+            bool hov = CheckCollisionPointRec(mouse, r) && canCommit;
+            DrawRectangleRec(r, hov ? (Color){40, 60, 80, 255} : (canCommit ? UI_BG_PANEL : UI_BG_PANEL));
+            DrawRectangleLinesEx(r, 1, canCommit ? (Color){100, 180, 255, 255} : UI_BORDER);
+            DrawTextShadow("-> Bank", (int)(cx + cbPad), (int)(sy + 3), UI_FONT_SMALL,
+                          canCommit ? (Color){100, 180, 255, 255} : UI_TEXT_DIM);
             if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 dawAudioGate();
-                int slot = rewindFreezeToSampler(freeSlot);
+                int committed = scratchCommitToBank(&scratch, 0);
                 dawAudioUngate();
-                if (slot >= 0) {
-                    chopState.selectedSlice = slot;
-                }
+                (void)committed;
                 ui_consume_click();
             }
+            cx += bw + 6;
         }
-
-        // Show slot info
-        char slotInfo[64];
-        snprintf(slotInfo, sizeof(slotInfo), "-> slot %d", freeSlot);
-        DrawTextShadow(slotInfo, (int)(x + 230), (int)(sy + 3), UI_FONT_SMALL, UI_BORDER_LIGHT);
     }
     sy += 22;
 
-    // --- Sampler slots list (always visible — shows resamples, freezes, loaded WAVs) ---
+    // =====================================================================
+    // E. BANK STRIP (32 sampler slots)
+    // =====================================================================
     {
         _ensureSamplerCtx();
-        int loadedCount = 0;
-        for (int i = 0; i < SAMPLER_MAX_SAMPLES; i++)
-            if (samplerCtx->samples[i].loaded) loadedCount++;
+        DrawTextShadow("Bank:", (int)x, (int)(sy + 2), UI_FONT_SMALL, UI_TEXT_LABEL);
+        float bankX = x + 40;
+        float bankW = w - 40;
+        int slotsVisible = 16;
+        float slotW = bankW / slotsVisible;
+        float slotH = 28;
 
-        if (loadedCount > 0) {
-            DrawTextShadow(TextFormat("Sampler Slots (%d):", loadedCount), (int)x, (int)sy, UI_FONT_SMALL, UI_TEXT_LABEL);
-            sy += 14;
-            for (int i = 0; i < SAMPLER_MAX_SAMPLES; i++) {
-                if (!samplerCtx->samples[i].loaded) continue;
-                float dur = (float)samplerCtx->samples[i].length / samplerCtx->samples[i].sampleRate;
-                char line[80];
-                snprintf(line, sizeof(line), "%2d: %-14s %.2fs", i, samplerCtx->samples[i].name, dur);
-                // Highlight if playing
-                Color col = UI_TEXT_DIM;
-                for (int v = 0; v < SAMPLER_MAX_VOICES; v++) {
-                    if (samplerCtx->voices[v].active && samplerCtx->voices[v].sampleIndex == i) {
-                        col = (Color){180, 220, 100, 255};
-                        break;
-                    }
-                }
-                // Click to preview
-                Rectangle lr = {x, sy, w, 13};
-                bool hov = CheckCollisionPointRec(mouse, lr);
-                if (hov) col = WHITE;
-                DrawTextShadow(line, (int)(x + 4), (int)(sy + 1), 9, col);
-                if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                    samplerQueuePlay(i, 0.8f, 1.0f);
-                    daw.chromaticSample = i;
-                    ui_consume_click();
-                }
-                sy += 13;
+        // Scroll with arrow keys or mouse wheel when hovering bank
+        Rectangle bankArea = {bankX, sy, bankW, slotH};
+        if (CheckCollisionPointRec(mouse, bankArea)) {
+            float wheel = GetMouseWheelMove();
+            if (wheel != 0) {
+                chopState.bankScrollOffset -= (int)wheel;
+                if (chopState.bankScrollOffset < 0) chopState.bankScrollOffset = 0;
+                if (chopState.bankScrollOffset > SAMPLER_MAX_SAMPLES - slotsVisible)
+                    chopState.bankScrollOffset = SAMPLER_MAX_SAMPLES - slotsVisible;
             }
         }
+
+        for (int i = 0; i < slotsVisible; i++) {
+            int slot = i + chopState.bankScrollOffset;
+            if (slot >= SAMPLER_MAX_SAMPLES) break;
+            float sx = bankX + i * slotW;
+            Sample *s = &samplerCtx->samples[slot];
+            Rectangle r = {sx, sy, slotW - 2, slotH};
+            bool hov = CheckCollisionPointRec(mouse, r);
+            bool playing = false;
+            for (int v = 0; v < SAMPLER_MAX_VOICES; v++) {
+                if (samplerCtx->voices[v].active && samplerCtx->voices[v].sampleIndex == slot) {
+                    playing = true; break;
+                }
+            }
+
+            Color bg = s->loaded ? (playing ? (Color){40, 60, 30, 255} : UI_BG_PANEL) : UI_BG_DEEPEST;
+            if (hov) bg = UI_BG_HOVER;
+            DrawRectangleRec(r, bg);
+            DrawRectangleLinesEx(r, 1, s->loaded ? (Color){100, 140, 180, 255} : UI_BORDER_SUBTLE);
+
+            // Slot number
+            char num[4]; snprintf(num, sizeof(num), "%d", slot + 1);
+            DrawTextShadow(num, (int)(sx + 2), (int)(sy + 2), 8, UI_BORDER_LIGHT);
+
+            if (s->loaded) {
+                // Filled indicator
+                DrawRectangle((int)(sx + 2), (int)(sy + slotH - 6), (int)(slotW - 6), 3, (Color){80, 140, 200, 200});
+                // Flags
+                if (s->pitched)
+                    DrawTextShadow("P", (int)(sx + slotW - 14), (int)(sy + 2), 8, (Color){100, 200, 255, 200});
+                if (!s->oneShot)
+                    DrawTextShadow("L", (int)(sx + slotW - 14), (int)(sy + 12), 8, (Color){200, 150, 100, 200});
+            }
+
+            // Click to preview, set as chromatic sample
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && s->loaded) {
+                samplerQueuePlay(slot, 0.8f, 1.0f);
+                daw.chromaticSample = slot;
+                ui_consume_click();
+            }
+            // Right-click to toggle pitched flag
+            if (hov && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && s->loaded) {
+                s->pitched = !s->pitched;
+                ui_consume_click();
+            }
+        }
+        sy += slotH + 4;
+
+        // Chromatic mode + hint
+        DrawTextShadow("Chromatic:", (int)x, (int)(sy + 2), UI_FONT_SMALL, UI_TEXT_LABEL);
+        ToggleBoolS(x + 70, sy, "On", &daw.chromaticMode, 9);
+        if (daw.chromaticMode) {
+            DraggableIntS(x + 140, sy, "Slot", &daw.chromaticSample, 1, 0, SAMPLER_MAX_SAMPLES - 1, 9);
+            DraggableIntS(x + 260, sy, "Root", &daw.chromaticRootNote, 1, 24, 96, 9);
+        }
+        sy += 16;
     }
+
+    // =====================================================================
+    // F. TAP-TO-SLICE (when active)
+    // =====================================================================
+    if (chopState.tapSliceMode && scratchHasData(&scratch)) {
+        DrawTextShadow("TAP MODE: Press Space to drop markers during playback",
+                       (int)x, (int)sy, UI_FONT_SMALL, RED);
+        if (IsKeyPressed(KEY_SPACE)) {
+            // Use preview slot voice position to determine where we are
+            _ensureSamplerCtx();
+            for (int vi = 0; vi < SAMPLER_MAX_VOICES; vi++) {
+                SamplerVoice *v = &samplerCtx->voices[vi];
+                if (v->active && v->sampleIndex == SCRATCH_PREVIEW_SLOT) {
+                    int pos = (int)v->position;
+                    if (chopState.selectedSlice >= 0) {
+                        pos += scratchSliceStart(&scratch, chopState.selectedSlice);
+                    }
+                    scratchAddMarker(&scratch, pos);
+                    break;
+                }
+            }
+        }
+        sy += 16;
+    }
+
+    // Help text
+    DrawTextShadow("Click=audition  Shift+Click=add marker  R-click marker=delete  Drag marker=move",
+                   (int)x, (int)sy, 8, UI_BORDER);
 }
 
+// NOTE: Old drawWorkSample code removed — replaced by Phase 3 UI above.
+// Old chopState.bounced sections, pad mapping, per-slice params, freeze/resample,
+// and sampler slots list were all here (880+ lines). Now uses ScratchSpace API.
 static float babblePitch = 1.0f;
 static float babbleMood = 0.5f;
 static float babbleDuration = 2.0f;
