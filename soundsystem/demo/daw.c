@@ -877,9 +877,16 @@ static struct {
     } sliceParams[SAMPLER_MAX_SAMPLES];
     // UI
     int selectedSlice;          // highlighted slice (-1 = none)
-    bool bounced;               // true if render+chop has been done
+    bool bounced;               // true if render+chop has been done (legacy, use scratchHasData)
     bool browsingFiles;         // true when file picker is open
     int browseScroll;           // scroll offset in file list
+    // Phase 3 UI state
+    bool tapSliceMode;          // tap-to-slice active
+    bool showDetail;            // per-slice detail panel visible
+    int draggingMarker;         // marker being dragged (-1 = none)
+    bool captureDropdownOpen;   // capture dropdown visible
+    int captureGrabSeconds;     // grab duration (10/30/60/120)
+    int bankScrollOffset;       // bank strip scroll (0-based first visible slot)
 } chopState = {
     .sourceLoops = 1,
     .sliceCount = 8,
@@ -889,7 +896,15 @@ static struct {
     .fadeMs = 1.0f,
     .viewEnd = 1.0f,
     .sliceParams = {{0}},
+    .draggingMarker = -1,
+    .captureGrabSeconds = 30,
 };
+
+// Scratch space: contiguous buffer + markers (Phase 3 API)
+static ScratchSpace scratch = {0};
+
+// Preview slot for auditioning scratch slices without polluting the bank
+#define SCRATCH_PREVIEW_SLOT (SAMPLER_MAX_SAMPLES - 1)
 
 // Free chop state buffers (slices only, keeps full song data)
 static void chopSlicesClear(void) {
@@ -897,10 +912,12 @@ static void chopSlicesClear(void) {
     for (int s = 0; s < SAMPLER_MAX_SAMPLES; s++) {
         if (chopState.slices[s]) { free(chopState.slices[s]); chopState.slices[s] = NULL; }
     }
+    scratchFree(&scratch);
     chopState.renderLength = 0;
     chopState.sliceLength = 0;
     chopState.bounced = false;
     chopState.selectedSlice = -1;
+    chopState.draggingMarker = -1;
     for (int t = 0; t < 4; t++) daw.chopSliceMap[t] = -1;
     for (int s = 0; s < SAMPLER_MAX_SAMPLES; s++) {
         chopState.sliceParams[s].reverse = false;
@@ -1312,6 +1329,86 @@ static void chopApplySliceParams(void) {
     }
     dawAudioUngate();
 }
+
+// ============================================================================
+// SCRATCH SPACE OPERATIONS (Phase 3)
+// ============================================================================
+
+// Extract the current selection from fullData into scratch space, then auto-chop.
+// This is the new replacement for chopStateBounce() — places markers, does NOT load into sampler.
+static void scratchFromSelection(void) {
+    scratchFree(&scratch);
+    if (!chopState.structureLoaded || !chopState.fullData || !chopState.hasSelection) return;
+
+    float s0 = fminf(chopState.selStart, chopState.selEnd);
+    float s1 = fmaxf(chopState.selStart, chopState.selEnd);
+    int startSample = (int)(s0 * chopState.fullLength);
+    int endSample = (int)(s1 * chopState.fullLength);
+    if (startSample < 0) startSample = 0;
+    if (endSample > chopState.fullLength) endSample = chopState.fullLength;
+    int selLen = endSample - startSample;
+    if (selLen < 100) return;
+
+    int totalLen = selLen * chopState.sourceLoops;
+    float *buf = (float *)malloc(totalLen * sizeof(float));
+    if (!buf) return;
+    for (int l = 0; l < chopState.sourceLoops; l++)
+        memcpy(buf + l * selLen, chopState.fullData + startSample, selLen * sizeof(float));
+
+    if (chopState.normalize && totalLen > 0) {
+        float peak = 0.0f;
+        for (int i = 0; i < totalLen; i++) {
+            float a = fabsf(buf[i]);
+            if (a > peak) peak = a;
+        }
+        if (peak > 0.001f) {
+            float gain = 0.9f / peak;
+            for (int i = 0; i < totalLen; i++) buf[i] *= gain;
+        }
+    }
+
+    scratchLoad(&scratch, buf, totalLen, SAMPLE_CHOP_SAMPLE_RATE, chopState.chainBpm);
+
+    if (chopState.chopMode == 1)
+        scratchChopTransients(&scratch, chopState.sensitivity, chopState.sliceCount);
+    else
+        scratchChopEqual(&scratch, chopState.sliceCount);
+
+    chopState.selectedSlice = -1;
+    chopState.draggingMarker = -1;
+}
+
+// Capture helpers (scratchFromGrab, scratchFromDubFreeze, scratchFromRewindFreeze)
+// are defined after daw_audio.h include since they need rollingBufferGrab/dubLoopBuffer.
+
+// Audition a scratch slice via the preview slot (no bank pollution)
+static void scratchAuditionSlice(int sliceIdx) {
+    if (!scratchHasData(&scratch) || sliceIdx < 0 || sliceIdx > scratch.markerCount) return;
+    int start = scratchSliceStart(&scratch, sliceIdx);
+    int len = scratchSliceLength(&scratch, sliceIdx);
+    if (len < 1) return;
+
+    dawAudioGate();
+    _ensureSamplerCtx();
+    Sample *slot = &samplerCtx->samples[SCRATCH_PREVIEW_SLOT];
+    if (slot->loaded && slot->data && !slot->embedded) free(slot->data);
+    float *copy = (float *)malloc(len * sizeof(float));
+    if (!copy) { dawAudioUngate(); return; }
+    memcpy(copy, scratch.data + start, len * sizeof(float));
+    slot->data = copy;
+    slot->length = len;
+    slot->sampleRate = scratch.sampleRate;
+    slot->loaded = true;
+    slot->embedded = false;
+    slot->oneShot = true;
+    slot->pitched = false;
+    snprintf(slot->name, sizeof(slot->name), "preview");
+    dawAudioUngate();
+
+    samplerQueuePlay(SCRATCH_PREVIEW_SLOT, 0.8f, 1.0f);
+}
+
+// ============================================================================
 
 // Debug: dump sampler slots AND raw chop slices to /tmp WAVs
 static void _dumpFloatsToWav(const char *path, const float *data, int len, int sr) {
@@ -6173,6 +6270,58 @@ static void drawParamTape(float x, float y, float w, float h) {
 
 #include "daw_audio.h"
 
+// ============================================================================
+// SCRATCH CAPTURE HELPERS (need daw_audio.h for rollingBufferGrab, dubLoop, rewind)
+// ============================================================================
+
+// Grab last N seconds from rolling buffer into scratch space
+static void scratchFromGrab(float seconds) {
+    int length = 0;
+    float *data = rollingBufferGrab(seconds, &length);
+    if (!data || length < 100) { free(data); return; }
+    scratchFree(&scratch);
+    scratchLoad(&scratch, data, length, SAMPLE_CHOP_SAMPLE_RATE, 0.0f);
+    chopState.selectedSlice = -1;
+    chopState.draggingMarker = -1;
+}
+
+// Freeze dub loop buffer into scratch space
+static void scratchFromDubFreeze(void) {
+    int bufSize = DUB_LOOP_BUFFER_SIZE;
+    float *data = (float *)malloc(bufSize * sizeof(float));
+    if (!data) return;
+    int writePos = (int)dubLoopWritePos % bufSize;
+    for (int i = 0; i < bufSize; i++)
+        data[i] = dubLoopBuffer[(writePos + i) % bufSize];
+    int trimLen = bufSize;
+    for (int i = bufSize - 1; i > 0; i--) {
+        if (fabsf(data[i]) > 0.001f) { trimLen = i + 1; break; }
+    }
+    scratchFree(&scratch);
+    float *trimmed = (float *)realloc(data, trimLen * sizeof(float));
+    scratchLoad(&scratch, trimmed ? trimmed : data, trimLen, SAMPLE_CHOP_SAMPLE_RATE, 0.0f);
+    chopState.selectedSlice = -1;
+    chopState.draggingMarker = -1;
+}
+
+// Freeze rewind buffer into scratch space
+static void scratchFromRewindFreeze(void) {
+    int bufSize = REWIND_BUFFER_SIZE;
+    float *data = (float *)malloc(bufSize * sizeof(float));
+    if (!data) return;
+    int writePos = rewindWritePos % bufSize;
+    for (int i = 0; i < bufSize; i++)
+        data[i] = rewindBuffer[(writePos + i) % bufSize];
+    int trimLen = bufSize;
+    for (int i = bufSize - 1; i > 0; i--) {
+        if (fabsf(data[i]) > 0.001f) { trimLen = i + 1; break; }
+    }
+    scratchFree(&scratch);
+    float *trimmed = (float *)realloc(data, trimLen * sizeof(float));
+    scratchLoad(&scratch, trimmed ? trimmed : data, trimLen, SAMPLE_CHOP_SAMPLE_RATE, 0.0f);
+    chopState.selectedSlice = -1;
+    chopState.draggingMarker = -1;
+}
 
 // ============================================================================
 // DEBUG PANEL (draw implementation — needs voiceBus, dawDrumVoice, etc.)
@@ -7256,6 +7405,143 @@ static int drawChopWaveform(float bx, float by, float bw, float bh,
         if (normPos >= 0 && normPos <= 1.0f) {
             float phX = bx + 2 + normPos * (bw - 4);
             DrawLine((int)phX, (int)(by + 1), (int)phX, (int)(by + bh - 1), WHITE);
+        }
+    }
+
+    return clicked;
+}
+
+// Draw scratch space waveform with markers. Returns clicked slice index,
+// -1 for no click, -2 for right-click (stop). Sets *outMarkerHit to marker
+// index if mouse is near a marker (for drag initiation), -1 otherwise.
+static int drawScratchWaveform(float bx, float by, float bw, float bh,
+                                const ScratchSpace *s, int selectedSlice,
+                                int *outMarkerHit) {
+    int clicked = -1;
+    if (outMarkerHit) *outMarkerHit = -1;
+    DrawRectangle((int)bx, (int)by, (int)bw, (int)bh, UI_BG_DEEPEST);
+    DrawRectangleLinesEx((Rectangle){bx, by, bw, bh}, 1, UI_BORDER_SUBTLE);
+
+    if (!scratchHasData(s)) {
+        DrawTextShadow("No audio in scratch space", (int)(bx + 8), (int)(by + bh / 2 - 5),
+                       UI_FONT_SMALL, UI_BORDER_LIGHT);
+        return -1;
+    }
+
+    float mid = by + bh * 0.5f;
+    float amp = bh * 0.45f;
+    int pixels = (int)bw - 4;
+    float px = bx + 2;
+    Vector2 mouse = GetMousePosition();
+    int sliceCount = scratchSliceCount(s);
+
+    // Draw waveform (min/max per pixel column) with slice coloring
+    for (int col = 0; col < pixels; col++) {
+        int startSamp = (int)((float)col / pixels * s->length);
+        int endSamp = (int)((float)(col + 1) / pixels * s->length);
+        if (endSamp > s->length) endSamp = s->length;
+
+        float lo = 0, hi = 0;
+        int step = (endSamp - startSamp) > 64 ? (endSamp - startSamp) / 64 : 1;
+        for (int i = startSamp; i < endSamp; i += step) {
+            if (s->data[i] < lo) lo = s->data[i];
+            if (s->data[i] > hi) hi = s->data[i];
+        }
+
+        // Determine which slice this column belongs to
+        int samplePos = startSamp;
+        int slice = sliceCount - 1;
+        for (int si = 0; si < s->markerCount; si++) {
+            if (samplePos < s->markers[si]) { slice = si; break; }
+        }
+        bool sel = (slice == selectedSlice);
+        Color waveCol = sel ? (Color){255, 180, 60, 255} : (Color){80, 140, 200, 255};
+
+        int y0 = (int)(mid - hi * amp);
+        int y1 = (int)(mid - lo * amp);
+        if (y1 <= y0) y1 = y0 + 1;
+        DrawLine((int)(px + col), y0, (int)(px + col), y1, waveCol);
+    }
+
+    // Draw marker lines
+    for (int m = 0; m < s->markerCount; m++) {
+        float normPos = (float)s->markers[m] / s->length;
+        float mx = bx + 2 + normPos * (bw - 4);
+        Color mc = (Color){180, 180, 200, 200};
+        DrawLine((int)mx, (int)(by + 2), (int)mx, (int)(by + bh - 2), mc);
+    }
+
+    // Slice numbers centered in each region
+    for (int si = 0; si < sliceCount; si++) {
+        int sliceStart = scratchSliceStart(s, si);
+        int sliceEnd = scratchSliceEnd(s, si);
+        float sx = bx + 2 + ((float)sliceStart / s->length) * (bw - 4);
+        float sw = ((float)(sliceEnd - sliceStart) / s->length) * (bw - 4);
+        char num[4];
+        snprintf(num, sizeof(num), "%d", si + 1);
+        int tw = MeasureTextUI(num, 8);
+        bool sel = (si == selectedSlice);
+        if (sw > tw + 2)
+            DrawTextShadow(num, (int)(sx + sw / 2 - tw / 2), (int)(by + bh - 12), 8,
+                           sel ? ORANGE : UI_BORDER_LIGHT);
+    }
+
+    // Center line
+    DrawLine((int)(bx + 2), (int)mid, (int)(bx + bw - 2), (int)mid, (Color){35, 35, 42, 128});
+
+    // Playhead: scan sampler voices for preview slot
+    _ensureSamplerCtx();
+    for (int vi = 0; vi < SAMPLER_MAX_VOICES; vi++) {
+        SamplerVoice *v = &samplerCtx->voices[vi];
+        if (!v->active || v->sampleIndex != SCRATCH_PREVIEW_SLOT) continue;
+        // For preview slot, map position back to scratch space
+        // (preview slot contains a single slice, so we need the selected slice offset)
+        if (selectedSlice >= 0 && selectedSlice < sliceCount) {
+            int sliceStart = scratchSliceStart(s, selectedSlice);
+            float samplePos = sliceStart + v->position;
+            float normPos = samplePos / (float)s->length;
+            if (normPos >= 0 && normPos <= 1.0f) {
+                float phX = bx + 2 + normPos * (bw - 4);
+                DrawLine((int)phX, (int)(by + 1), (int)phX, (int)(by + bh - 1), WHITE);
+            }
+        }
+    }
+
+    // Click/interaction detection
+    if (CheckCollisionPointRec(mouse, (Rectangle){bx, by, bw, bh})) {
+        // Check marker proximity for drag (4px hit zone)
+        if (outMarkerHit) {
+            float mouseNorm = (mouse.x - bx - 2) / (bw - 4);
+            for (int m = 0; m < s->markerCount; m++) {
+                float markerNorm = (float)s->markers[m] / s->length;
+                float dist = fabsf(mouseNorm - markerNorm) * (bw - 4);
+                if (dist < 4.0f) { *outMarkerHit = m; break; }
+            }
+        }
+
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            int samplePos = (int)(((mouse.x - bx - 2) / (bw - 4)) * s->length);
+            clicked = sliceCount - 1;
+            for (int si = 0; si < s->markerCount; si++) {
+                if (samplePos < s->markers[si]) { clicked = si; break; }
+            }
+            ui_consume_click();
+        }
+        if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+            // Right-click on a marker = delete it
+            if (outMarkerHit && *outMarkerHit >= 0) {
+                clicked = -3;  // signal: delete marker
+            } else {
+                clicked = -2;  // signal: stop playback
+            }
+            ui_consume_click();
+        }
+        // Shift+Left-click = add marker at click position
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && IsKeyDown(KEY_LEFT_SHIFT)) {
+            int samplePos = (int)(((mouse.x - bx - 2) / (bw - 4)) * s->length);
+            if (samplePos > 0 && samplePos < s->length) {
+                clicked = -4;  // signal: add marker (caller handles via scratchAddMarker)
+            }
         }
     }
 
