@@ -612,8 +612,8 @@ static bool dawSave(const char *filepath) {
     }
 
 #ifdef DAW_HAS_CHOP_STATE
-    // [sample] — chop/flip recipe (only if bounced)
-    if (chopState.bounced && chopState.sourcePath[0]) {
+    // [sample] — chop/flip recipe (if bounced or scratch has data)
+    if ((chopState.bounced || scratchHasData(&scratch)) && chopState.sourcePath[0]) {
         fprintf(f, "\n[sample]\n");
         _ds(f, "sourceFile", chopState.sourcePath);
         _di(f, "sourceLoops", chopState.sourceLoops);
@@ -660,6 +660,16 @@ static bool dawSave(const char *filepath) {
                 char k[32]; snprintf(k, sizeof(k), "slice.%d.fadeOut", s);
                 _dw(f, k, chopState.sliceParams[s].fadeOutMs);
             }
+        }
+        // Save scratch markers (Phase 3)
+        if (scratchHasData(&scratch) && scratch.markerCount > 0) {
+            _di(f, "markerCount", scratch.markerCount);
+            fprintf(f, "markers = ");
+            for (int m = 0; m < scratch.markerCount; m++) {
+                if (m > 0) fprintf(f, ",");
+                fprintf(f, "%d", scratch.markers[m]);
+            }
+            fprintf(f, "\n");
         }
     }
 #endif
@@ -1752,6 +1762,20 @@ static bool dawLoad(const char *filepath) {
                     else if (strcmp(p,"fadeOut")==0) chopState.sliceParams[si].fadeOutMs = _dpf(val);
                 }
             }
+            else if (strcmp(key,"markerCount")==0) { /* parsed for info only, markers key has the data */ }
+            else if (strcmp(key,"markers")==0) {
+                // Parse comma-separated marker positions into scratch space
+                // (scratch must be loaded first via re-bounce, so we store temporarily)
+                scratchClearMarkers(&scratch);
+                const char *p = val;
+                while (*p) {
+                    while (*p == ' ' || *p == ',') p++;
+                    if (!*p) break;
+                    int pos = 0;
+                    while (*p >= '0' && *p <= '9') { pos = pos * 10 + (*p - '0'); p++; }
+                    if (pos > 0) scratchAddMarker(&scratch, pos);
+                }
+            }
             break;
 #endif
         case _DW_SEC_SLOTFLAGS:
@@ -1848,6 +1872,26 @@ static bool dawLoad(const char *filepath) {
         chopState.selStart = savedSelStart;
         chopState.selEnd = savedSelEnd;
         chopState.hasSelection = savedHasSelection;
+
+        // Phase 3: use scratchFromSelection (places markers, no sampler loading)
+        // Save any markers that were parsed from the file before re-bounce
+        int savedMarkerCount = scratch.markerCount;
+        int savedMarkers[SCRATCH_MAX_MARKERS];
+        for (int m = 0; m < savedMarkerCount && m < SCRATCH_MAX_MARKERS; m++)
+            savedMarkers[m] = scratch.markers[m];
+
+        scratchFromSelection();
+
+        // Restore saved markers if file had them (overrides auto-chop markers)
+        if (savedMarkerCount > 0 && scratchHasData(&scratch)) {
+            scratch.markerCount = 0;
+            for (int m = 0; m < savedMarkerCount; m++) {
+                if (savedMarkers[m] > 0 && savedMarkers[m] < scratch.length)
+                    scratchAddMarker(&scratch, savedMarkers[m]);
+            }
+        }
+
+        // Also run legacy chopStateBounce for backward compat (loads into sampler slots)
         chopStateBounce();
 
         // Restore params

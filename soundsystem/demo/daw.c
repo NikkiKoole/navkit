@@ -7298,122 +7298,6 @@ static void chopScanSongs(void) {
     songBrowser.scanned = true;
 }
 
-// Draw waveform with slice markers, returns clicked slice or -1
-// sliceLengths: per-slice lengths (NULL = equal division)
-static int drawChopWaveform(float bx, float by, float bw, float bh,
-                             const float *data, int length, int sliceCount,
-                             const int *sliceLengths, int selectedSlice) {
-    int clicked = -1;
-    DrawRectangle((int)bx, (int)by, (int)bw, (int)bh, UI_BG_DEEPEST);
-    DrawRectangleLinesEx((Rectangle){bx, by, bw, bh}, 1, UI_BORDER_SUBTLE);
-
-    if (!data || length < 1) {
-        DrawTextShadow("No audio — load a .song and press Chop", (int)(bx + 8), (int)(by + bh / 2 - 5), UI_FONT_SMALL, UI_BORDER_LIGHT);
-        return -1;
-    }
-
-    float mid = by + bh * 0.5f;
-    float amp = bh * 0.45f;
-    int pixels = (int)bw - 4;
-    float px = bx + 2;
-    Vector2 mouse = GetMousePosition();
-
-    // Precompute cumulative slice positions (sample offsets)
-    int sliceStarts[SAMPLER_MAX_SAMPLES + 1];
-    sliceStarts[0] = 0;
-    for (int s = 0; s < sliceCount; s++) {
-        int len = (sliceLengths && sliceLengths[s] > 0) ? sliceLengths[s] : (length / sliceCount);
-        sliceStarts[s + 1] = sliceStarts[s] + len;
-    }
-
-    // Draw waveform (min/max per pixel column)
-    for (int col = 0; col < pixels; col++) {
-        int startSample = (int)((float)col / pixels * length);
-        int endSample = (int)((float)(col + 1) / pixels * length);
-        if (endSample > length) endSample = length;
-
-        float lo = 0, hi = 0;
-        for (int s = startSample; s < endSample; s++) {
-            if (data[s] < lo) lo = data[s];
-            if (data[s] > hi) hi = data[s];
-        }
-
-        // Which slice does this column belong to?
-        int samplePos = (int)((float)col / pixels * length);
-        int slice = sliceCount - 1;
-        for (int s = 0; s < sliceCount; s++) {
-            if (samplePos < sliceStarts[s + 1]) { slice = s; break; }
-        }
-        bool sel = (slice == selectedSlice);
-        Color waveCol = sel ? (Color){255, 180, 60, 255} : (Color){80, 140, 200, 255};
-
-        int y0 = (int)(mid - hi * amp);
-        int y1 = (int)(mid - lo * amp);
-        if (y1 <= y0) y1 = y0 + 1;
-        DrawLine((int)(px + col), y0, (int)(px + col), y1, waveCol);
-    }
-
-    // Draw slice markers at actual boundaries
-    for (int s = 1; s < sliceCount; s++) {
-        float sx = bx + 2 + ((float)sliceStarts[s] / length) * (bw - 4);
-        Color mc = (Color){100, 100, 120, 180};
-        DrawLine((int)sx, (int)(by + 2), (int)sx, (int)(by + bh - 2), mc);
-    }
-
-    // Slice numbers at bottom (centered in each slice's width)
-    for (int s = 0; s < sliceCount; s++) {
-        float sx = bx + 2 + ((float)sliceStarts[s] / length) * (bw - 4);
-        float sw = ((float)(sliceStarts[s + 1] - sliceStarts[s]) / length) * (bw - 4);
-        char num[4];
-        snprintf(num, sizeof(num), "%d", s);
-        int tw = MeasureTextUI(num, 8);
-        bool sel = (s == selectedSlice);
-        if (sw > tw + 2)  // only draw if slice is wide enough
-            DrawTextShadow(num, (int)(sx + sw / 2 - tw / 2), (int)(by + bh - 12), 8,
-                           sel ? ORANGE : UI_BORDER_LIGHT);
-    }
-
-    // Click detection
-    if (CheckCollisionPointRec(mouse, (Rectangle){bx, by, bw, bh})) {
-        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            int samplePos = (int)(((mouse.x - bx - 2) / (bw - 4)) * length);
-            clicked = sliceCount - 1;
-            for (int s = 0; s < sliceCount; s++) {
-                if (samplePos < sliceStarts[s + 1]) { clicked = s; break; }
-            }
-            ui_consume_click();
-        }
-        if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-            clicked = -2;  // signal: stop playback
-            ui_consume_click();
-        }
-    }
-
-    // Center line
-    DrawLine((int)(bx + 2), (int)mid, (int)(bx + bw - 2), (int)mid, (Color){35, 35, 42, 128});
-
-    // Playhead: scan sampler voices for any playing within this buffer
-    _ensureSamplerCtx();
-    for (int vi = 0; vi < SAMPLER_MAX_VOICES; vi++) {
-        SamplerVoice *v = &samplerCtx->voices[vi];
-        if (!v->active) continue;
-        int si = v->sampleIndex;
-        if (si < 0 || si >= sliceCount) continue;
-        // Map voice position back to the full waveform
-        float samplePos = sliceStarts[si] + v->position;
-        float normPos = samplePos / (float)length;
-        if (normPos >= 0 && normPos <= 1.0f) {
-            float phX = bx + 2 + normPos * (bw - 4);
-            DrawLine((int)phX, (int)(by + 1), (int)phX, (int)(by + bh - 1), WHITE);
-        }
-    }
-
-    return clicked;
-}
-
-// Draw scratch space waveform with markers. Returns clicked slice index,
-// -1 for no click, -2 for right-click (stop). Sets *outMarkerHit to marker
-// index if mouse is near a marker (for drag initiation), -1 otherwise.
 static int drawScratchWaveform(float bx, float by, float bw, float bh,
                                 const ScratchSpace *s, int selectedSlice,
                                 int *outMarkerHit) {
@@ -8224,9 +8108,6 @@ static void drawWorkSample(float x, float y, float w, float h) {
                    (int)x, (int)sy, 8, UI_BORDER);
 }
 
-// NOTE: Old drawWorkSample code removed — replaced by Phase 3 UI above.
-// Old chopState.bounced sections, pad mapping, per-slice params, freeze/resample,
-// and sampler slots list were all here (880+ lines). Now uses ScratchSpace API.
 static float babblePitch = 1.0f;
 static float babbleMood = 0.5f;
 static float babbleDuration = 2.0f;

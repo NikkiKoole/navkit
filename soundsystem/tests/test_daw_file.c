@@ -106,6 +106,13 @@ static void chopApplySliceParams(void) {
 // in the test. Declare it here so the re-bounce guard in daw_file.h can see it.
 static bool _chopBounceActive = false;
 
+// Phase 3: scratch space needed by daw_file.h save/load
+#include "../engines/scratch_space.h"
+static ScratchSpace scratch = {0};
+static void scratchFromSelection(void) {
+    // In test: no-op (would extract selection into scratch)
+}
+
 static void chopStateClearTest(void) {
     memset(&chopState, 0, sizeof(chopState));
     chopState.selectedSlice = -1;
