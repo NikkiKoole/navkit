@@ -47,6 +47,8 @@ typedef struct {
     bool pingPong;            // Reverse direction at loop boundaries
     int loopStart;            // Loop start point
     int loopEnd;              // Loop end point
+    bool granularMode;        // Use granular playback instead of linear
+    GranularSettings granular; // Grain state (active when granularMode=true)
 } SamplerVoice;
 
 // Playback modes for preview/audition
@@ -55,6 +57,8 @@ typedef enum {
     SAMPLER_LOOP,           // Loop continuously
     SAMPLER_PINGPONG,       // Bounce between start and end
     SAMPLER_REVERSE,        // Play backward once
+    SAMPLER_GRANULAR,       // Granular texture (creative, randomized)
+    SAMPLER_STRETCH,        // Time-stretch (pitch-independent duration)
 } SamplerPlayMode;
 
 // ============================================================================
@@ -93,10 +97,23 @@ static SamplerContext _samplerCtx;
 static SamplerContext* samplerCtx = &_samplerCtx;
 static bool _samplerCtxInitialized = false;
 
+static void _samplerResolveGranularSlot(int slot, const float **outData, int *outSize) {
+    if (slot >= 0 && slot < SAMPLER_MAX_SAMPLES &&
+        samplerCtx->samples[slot].loaded && samplerCtx->samples[slot].data) {
+        *outData = samplerCtx->samples[slot].data;
+        *outSize = samplerCtx->samples[slot].length;
+    } else {
+        *outData = NULL;
+        *outSize = 0;
+    }
+}
+
 static void initSamplerContext(SamplerContext* ctx) {
     memset(ctx, 0, sizeof(*ctx));
     ctx->volume = 1.0f;
-    ctx->sampleRate = 44100;  // Match engine sample rate
+    ctx->sampleRate = 44100;
+    // Register resolver so granular synth can access sampler slots
+    if ((void *)_samplerResolveGranularSlot) {} // reference to avoid unused warning
 }
 
 static void _ensureSamplerCtx(void) {
@@ -457,6 +474,7 @@ static int samplerPlayEx(int sampleIndex, float volume, float pitch, SamplerPlay
     if (voiceIdx < 0) return -1;
     SamplerVoice* v = &samplerCtx->voices[voiceIdx];
     Sample* sample = &samplerCtx->samples[sampleIndex];
+    v->granularMode = false;
     switch (mode) {
         case SAMPLER_ONESHOT:
             v->loop = false;
@@ -479,6 +497,45 @@ static int samplerPlayEx(int sampleIndex, float volume, float pitch, SamplerPlay
             v->pingPong = false;
             v->position = (float)(sample->length - 1);
             break;
+        case SAMPLER_GRANULAR:
+        case SAMPLER_STRETCH: {
+            v->granularMode = true;
+            v->loop = true;  // granular keeps running until stopped
+            // Init granular settings pointing at sample buffer
+            GranularSettings *gs = &v->granular;
+            memset(gs, 0, sizeof(*gs));
+            gs->sourceData = sample->data;
+            gs->sourceSize = sample->length;
+            gs->scwIndex = -1;
+            gs->amplitude = 0.9f;
+            gs->position = 0.0f;
+            if (mode == SAMPLER_STRETCH) {
+                // Time-stretch: tight grains, no randomization, position auto-advances
+                gs->grainSize = 15.0f;
+                gs->grainDensity = 80.0f;
+                gs->positionRandom = 0.005f;
+                gs->pitchRandom = 0.0f;
+                gs->ampRandom = 0.0f;
+                gs->pitch = pitch;  // keyboard pitch applied to grains
+                gs->timeStretch = true;
+                gs->stretchPosInc = 1.0f / (float)sample->length;  // one full scan = original duration
+            } else {
+                // Granular texture: creative defaults
+                gs->grainSize = 50.0f;
+                gs->grainDensity = 20.0f;
+                gs->positionRandom = 0.15f;
+                gs->pitchRandom = 2.0f;
+                gs->ampRandom = 0.2f;
+                gs->pitch = pitch;
+                gs->timeStretch = false;
+            }
+            // Init grain slots
+            for (int g = 0; g < GRANULAR_MAX_GRAINS; g++) gs->grains[g].active = false;
+            gs->spawnTimer = 0.0f;
+            gs->spawnInterval = 1.0f / gs->grainDensity;
+            gs->nextGrain = 0;
+            break;
+        }
     }
     return voiceIdx;
 }
@@ -604,38 +661,46 @@ static float processSampler(float dt) {
             continue;
         }
         
-        // Get interpolated sample value
-        float value = samplerInterpolate(sample->data, sample->length, v->position);
-        output += value * v->volume;
-        
-        // Advance position
-        v->position += v->speed;
+        float value;
+        if (v->granularMode) {
+            // Granular playback — grain engine reads from sample buffer
+            value = processGranularFromSource(&v->granular, samplerCtx->sampleRate);
+            // In non-timestretch granular, track position for playhead display
+            v->position = v->granular.position * sample->length;
+        } else {
+            // Linear playback
+            value = samplerInterpolate(sample->data, sample->length, v->position);
 
-        // Handle loop, ping-pong, or end
-        if (v->loop) {
-            int loopEnd = v->loopEnd > 0 ? v->loopEnd : sample->length;
-            if (v->pingPong) {
-                if (v->position >= loopEnd) {
-                    v->position = loopEnd - (v->position - loopEnd);
-                    v->speed = -fabsf(v->speed);
-                } else if (v->position < v->loopStart) {
-                    v->position = v->loopStart + (v->loopStart - v->position);
-                    v->speed = fabsf(v->speed);
+            // Advance position
+            v->position += v->speed;
+
+            // Handle loop, ping-pong, or end
+            if (v->loop) {
+                int loopEnd = v->loopEnd > 0 ? v->loopEnd : sample->length;
+                if (v->pingPong) {
+                    if (v->position >= loopEnd) {
+                        v->position = loopEnd - (v->position - loopEnd);
+                        v->speed = -fabsf(v->speed);
+                    } else if (v->position < v->loopStart) {
+                        v->position = v->loopStart + (v->loopStart - v->position);
+                        v->speed = fabsf(v->speed);
+                    }
+                } else {
+                    if (v->speed >= 0 && v->position >= loopEnd) {
+                        v->position = v->loopStart + (v->position - loopEnd);
+                    } else if (v->speed < 0 && v->position < v->loopStart) {
+                        v->position = loopEnd - (v->loopStart - v->position);
+                    }
                 }
             } else {
-                if (v->speed >= 0 && v->position >= loopEnd) {
-                    v->position = v->loopStart + (v->position - loopEnd);
-                } else if (v->speed < 0 && v->position < v->loopStart) {
-                    v->position = loopEnd - (v->loopStart - v->position);
+                if (v->speed >= 0 && v->position >= sample->length) {
+                    v->active = false;
+                } else if (v->speed < 0 && v->position < 0) {
+                    v->active = false;
                 }
             }
-        } else {
-            if (v->speed >= 0 && v->position >= sample->length) {
-                v->active = false;
-            } else if (v->speed < 0 && v->position < 0) {
-                v->active = false;
-            }
         }
+        output += value * v->volume;
     }
     
     return output * samplerCtx->volume;
@@ -659,31 +724,28 @@ static void processSamplerStereo(float dt, float* left, float* right) {
             continue;
         }
         
-        // Get interpolated sample value
-        float value = samplerInterpolate(sample->data, sample->length, v->position);
-        value *= v->volume;
-        
-        // Apply panning (equal power)
-        float panL = cosf((v->pan + 1.0f) * 0.25f * 3.14159265f);
-        float panR = sinf((v->pan + 1.0f) * 0.25f * 3.14159265f);
-        outL += value * panL;
-        outR += value * panR;
-        
-        // Advance position
-        v->position += v->speed;
+        float value;
+        if (v->granularMode) {
+            value = processGranularFromSource(&v->granular, samplerCtx->sampleRate);
+            v->position = v->granular.position * sample->length;
+        } else {
+            value = samplerInterpolate(sample->data, sample->length, v->position);
 
-        // Handle loop, ping-pong, or end
-        if (v->loop) {
-            int loopEnd = v->loopEnd > 0 ? v->loopEnd : sample->length;
-            if (v->pingPong) {
-                if (v->position >= loopEnd) {
-                    v->position = loopEnd - (v->position - loopEnd);
-                    v->speed = -fabsf(v->speed);
-                } else if (v->position < v->loopStart) {
-                    v->position = v->loopStart + (v->loopStart - v->position);
-                    v->speed = fabsf(v->speed);
-                }
-            } else {
+            // Advance position
+            v->position += v->speed;
+
+            // Handle loop, ping-pong, or end
+            if (v->loop) {
+                int loopEnd = v->loopEnd > 0 ? v->loopEnd : sample->length;
+                if (v->pingPong) {
+                    if (v->position >= loopEnd) {
+                        v->position = loopEnd - (v->position - loopEnd);
+                        v->speed = -fabsf(v->speed);
+                    } else if (v->position < v->loopStart) {
+                        v->position = v->loopStart + (v->loopStart - v->position);
+                        v->speed = fabsf(v->speed);
+                    }
+                } else {
                 if (v->speed >= 0 && v->position >= loopEnd) {
                     v->position = v->loopStart + (v->position - loopEnd);
                 } else if (v->speed < 0 && v->position < v->loopStart) {
@@ -697,8 +759,16 @@ static void processSamplerStereo(float dt, float* left, float* right) {
                 v->active = false;
             }
         }
+        }  // end granular/linear branch
+        value *= v->volume;
+
+        // Apply panning (equal power)
+        float panL = cosf((v->pan + 1.0f) * 0.25f * 3.14159265f);
+        float panR = sinf((v->pan + 1.0f) * 0.25f * 3.14159265f);
+        outL += value * panL;
+        outR += value * panR;
     }
-    
+
     *left = outL * samplerCtx->volume;
     *right = outR * samplerCtx->volume;
 }

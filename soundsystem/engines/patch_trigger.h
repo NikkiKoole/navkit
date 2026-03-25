@@ -99,6 +99,9 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     voicePitchEnvTime = p->p_voicePitchEnvTime;
     voicePitchEnvCurve = p->p_voicePitchEnvCurve;
     granularScwIndex = p->p_granularScwIndex;
+    granularSamplerSlot = p->p_granularSamplerSlot;
+    granularSampleData = NULL;  // caller resolves via samplerCtx if slot >= 0
+    granularSampleSize = 0;
     granularGrainSize = p->p_granularGrainSize;
     granularDensity = p->p_granularDensity;
     granularPosition = p->p_granularPosition;
@@ -297,6 +300,11 @@ static void applyPatchToGlobals(const SynthPatch *p) {
 // Play a note using a SynthPatch. Sets all globals from the patch,
 // then dispatches to the correct play function based on wave type.
 // Returns the voice index (for later release).
+// Hook for resolving granular sampler slot → data pointer.
+// Set by sampler.h init (samplerCtx must exist at that point).
+typedef void (*GranularSampleResolver)(int slot, const float **outData, int *outSize);
+static GranularSampleResolver _granularSampleResolver = NULL;
+
 static int playNoteWithPatch(float freq, const SynthPatch *p) {
     // Use fixed trigger frequency if patch specifies one (drums/percussion)
     if (p->p_useTriggerFreq && p->p_triggerFreq > 0.0f) {
@@ -305,6 +313,11 @@ static int playNoteWithPatch(float freq, const SynthPatch *p) {
 
     applyPatchToGlobals(p);
 
+    // Resolve granular sampler slot → data pointer
+    if (granularSamplerSlot >= 0 && _granularSampleResolver) {
+        _granularSampleResolver(granularSamplerSlot, &granularSampleData, &granularSampleSize);
+    }
+
     WaveType wave = (WaveType)p->p_waveType;
 
     switch (wave) {
@@ -312,7 +325,10 @@ static int playNoteWithPatch(float freq, const SynthPatch *p) {
         case WAVE_ADDITIVE: return playAdditive(freq, (AdditivePreset)p->p_additivePreset);
         case WAVE_MALLET:   return playMallet(freq, (MalletPreset)p->p_malletPreset);
         case WAVE_VOICE:    return playVowel(freq, (VowelType)p->p_voiceVowel);
-        case WAVE_GRANULAR: return playGranular(freq, p->p_granularScwIndex);
+        case WAVE_GRANULAR:
+            if (granularSampleData && granularSampleSize > 0)
+                return playGranularFromBuffer(freq, granularScwIndex, granularSampleData, granularSampleSize);
+            return playGranular(freq, p->p_granularScwIndex);
         case WAVE_FM:       return playFM(freq);
         case WAVE_PD:       return playPD(freq);
         case WAVE_MEMBRANE: return playMembrane(freq, (MembranePreset)p->p_membranePreset);

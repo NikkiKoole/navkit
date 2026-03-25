@@ -4770,7 +4770,15 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_float(&c, "TremSpd", &p->p_malletTremoloRate, 0.5f, 1.0f, 12.0f);
         } else if (p->p_waveType == WAVE_GRANULAR) {
             ui_col_sublabel(&c, "Granular:", UI_TEXT_SUBLABEL);
-            ui_col_int(&c, "Source", &p->p_granularScwIndex, 0.3f, 0, 20);
+            ui_col_int(&c, "SCW", &p->p_granularScwIndex, 0.3f, 0, 20);
+            ui_col_int(&c, "Sample", &p->p_granularSamplerSlot, 0.3f, -1, SCRATCH_PREVIEW_BASE - 1);
+            // Show sample name if a slot is selected
+            if (p->p_granularSamplerSlot >= 0 && p->p_granularSamplerSlot < SAMPLER_MAX_SAMPLES &&
+                samplerCtx->samples[p->p_granularSamplerSlot].loaded) {
+                ui_col_sublabel(&c, samplerCtx->samples[p->p_granularSamplerSlot].name, (Color){100, 200, 150, 255});
+            } else if (p->p_granularSamplerSlot >= 0) {
+                ui_col_sublabel(&c, "(empty slot)", UI_TEXT_MUTED);
+            }
             ui_col_float(&c, "Size", &p->p_granularGrainSize, 5.0f, 10.0f, 200.0f);
             ui_col_float(&c, "Density", &p->p_granularDensity, 2.0f, 1.0f, 100.0f);
             ui_col_float(&c, "Pos", &p->p_granularPosition, 0.05f, 0.0f, 1.0f);
@@ -7757,9 +7765,9 @@ static void drawWorkSample(float x, float y, float w, float h) {
         // Playback mode buttons
         {
             float mx = x;
-            const char *modeLabels[] = {">", "Loop", "<>", "Rev"};
-            SamplerPlayMode modes[] = {SAMPLER_ONESHOT, SAMPLER_LOOP, SAMPLER_PINGPONG, SAMPLER_REVERSE};
-            for (int m = 0; m < 4; m++) {
+            const char *modeLabels[] = {">", "Loop", "<>", "Rev", "Grain", "Stretch"};
+            SamplerPlayMode modes[] = {SAMPLER_ONESHOT, SAMPLER_LOOP, SAMPLER_PINGPONG, SAMPLER_REVERSE, SAMPLER_GRANULAR, SAMPLER_STRETCH};
+            for (int m = 0; m < 6; m++) {
                 int bw = MeasureTextUI(modeLabels[m], UI_FONT_SMALL) + 10;
                 Rectangle r = {mx, sy + scrH + 2, (float)bw, 14};
                 bool sel = (chopState.previewMode == modes[m]);

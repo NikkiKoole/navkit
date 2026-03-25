@@ -129,6 +129,7 @@ typedef struct {
 
     // Granular
     int p_granularScwIndex;
+    int p_granularSamplerSlot;  // -1 = use SCW table, 0+ = use sampler bank slot
     float p_granularGrainSize;
     float p_granularDensity;
     float p_granularPosition;
@@ -481,6 +482,7 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_voicePitchEnvTime = 0.15f,
         .p_voicePitchEnvCurve = 0.0f,
         .p_granularScwIndex = 0,
+        .p_granularSamplerSlot = -1,
         .p_granularGrainSize = 50.0f,
         .p_granularDensity = 20.0f,
         .p_granularPosition = 0.5f,

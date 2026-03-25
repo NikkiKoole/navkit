@@ -50,6 +50,8 @@ static void initSoundSystem(SoundSystem* ss) {
     initEffectsContext(&ss->effects);
     initSequencerContext(&ss->sequencer);
     initSamplerContext(&ss->sampler);
+    // Wire sampler slot resolver for granular synth
+    _granularSampleResolver = _samplerResolveGranularSlot;
 }
 
 // Point global contexts to a specific SoundSystem instance

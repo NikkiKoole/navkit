@@ -1248,106 +1248,133 @@ static void initGranularSettings(GranularSettings *gs, int scwIndex) {
     }
 }
 
+// Resolve the grain source buffer and size (SCW table or external data)
+static void _granularGetSource(const GranularSettings *gs, const float **outData, int *outSize) {
+    if (gs->sourceData && gs->sourceSize > 0) {
+        *outData = gs->sourceData;
+        *outSize = gs->sourceSize;
+    } else if (gs->scwIndex >= 0 && gs->scwIndex < scwCount && scwTables[gs->scwIndex].loaded) {
+        *outData = scwTables[gs->scwIndex].data;
+        *outSize = scwTables[gs->scwIndex].size;
+    } else {
+        *outData = NULL;
+        *outSize = 0;
+    }
+}
+
 // Spawn a new grain
 static void spawnGrain(GranularSettings *gs, float sampleRate) {
     // Find the next grain slot (round-robin)
     Grain *g = &gs->grains[gs->nextGrain];
     gs->nextGrain = (gs->nextGrain + 1) % GRANULAR_MAX_GRAINS;
-    
-    // Get source table
-    if (gs->scwIndex < 0 || gs->scwIndex >= scwCount || !scwTables[gs->scwIndex].loaded) {
-        return;
-    }
-    SCWTable *table = &scwTables[gs->scwIndex];
-    
+
+    // Get source
+    const float *srcData; int srcSize;
+    _granularGetSource(gs, &srcData, &srcSize);
+    if (!srcData || srcSize < 1) return;
+
     // Calculate grain parameters with randomization
     float posRand = (noise() * 0.5f + 0.5f) * gs->positionRandom;
     float grainPos = gs->position + posRand - gs->positionRandom * 0.5f;
     grainPos = clampf(grainPos, 0.0f, 1.0f);
-    
+
     // Pitch randomization in semitones
     float pitchRand = noise() * gs->pitchRandom;
     float pitch = gs->pitch * powf(2.0f, pitchRand / 12.0f);
-    
+
     // Amplitude randomization
     float ampRand = 1.0f + noise() * gs->ampRandom;
-    
+
     // Setup grain
     g->active = true;
-    g->bufferPos = (int)(grainPos * (table->size - 1));
+    g->bufferPos = (int)(grainPos * (srcSize - 1));
     g->position = 0.0f;
-    g->positionInc = pitch / (float)table->size;  // Normalized increment
+    g->positionInc = pitch / (float)srcSize;  // Normalized increment
     g->envPhase = 0.0f;
-    
+
     // Calculate envelope increment based on grain size
     float grainSamples = (gs->grainSize / 1000.0f) * sampleRate;
     g->envInc = 1.0f / grainSamples;
-    
+
     g->amplitude = gs->amplitude * ampRand;
     g->pan = noise() * gs->spread;  // Random pan within spread
 }
 
-// Process granular oscillator
-static float processGranularOscillator(Voice *v, float sampleRate) {
-    GranularSettings *gs = &v->granularSettings;
+// Process granular from any source (called by synth voice or sampler voice)
+static float processGranularFromSource(GranularSettings *gs, float sampleRate) {
     float dt = 1.0f / sampleRate;
-    
-    // Get source table
-    if (gs->scwIndex < 0 || gs->scwIndex >= scwCount || !scwTables[gs->scwIndex].loaded) {
-        return 0.0f;
+
+    // Get source
+    const float *srcData; int srcSize;
+    _granularGetSource(gs, &srcData, &srcSize);
+    if (!srcData || srcSize < 1) return 0.0f;
+
+    // Time-stretch: advance scan position at fixed rate
+    if (gs->timeStretch) {
+        gs->position += gs->stretchPosInc;
+        if (gs->position >= 1.0f) gs->position -= 1.0f;
+        if (gs->position < 0.0f) gs->position = 0.0f;
     }
-    SCWTable *table = &scwTables[gs->scwIndex];
-    
+
     // Update spawn interval based on density
     gs->spawnInterval = 1.0f / gs->grainDensity;
-    
+
     // Spawn new grains
     gs->spawnTimer += dt;
     while (gs->spawnTimer >= gs->spawnInterval) {
         gs->spawnTimer -= gs->spawnInterval;
         spawnGrain(gs, sampleRate);
     }
-    
+
     // Process all active grains
     float out = 0.0f;
-    
+
     for (int i = 0; i < GRANULAR_MAX_GRAINS; i++) {
         Grain *g = &gs->grains[i];
         if (!g->active) continue;
-        
+
         // Read from buffer with cubic Hermite interpolation
-        float readPos = g->bufferPos + g->position * table->size;
+        float readPos = g->bufferPos + g->position * srcSize;
 
-        // Wrap around buffer
-        while (readPos >= table->size) readPos -= table->size;
-        while (readPos < 0) readPos += table->size;
+        // Clamp to buffer (don't wrap for sampler sources — they're not cyclic)
+        if (gs->sourceData) {
+            if (readPos < 0) readPos = 0;
+            if (readPos >= srcSize - 1) readPos = srcSize - 1.001f;
+        } else {
+            while (readPos >= srcSize) readPos -= srcSize;
+            while (readPos < 0) readPos += srcSize;
+        }
 
-        float sample = cubicHermite(table->data, table->size, readPos);
-        
+        float sample = cubicHermite(srcData, srcSize, readPos);
+
         // Apply grain envelope
         float env = grainEnvelope(g->envPhase);
-        
+
         // Accumulate
         out += sample * env * g->amplitude;
-        
+
         // Advance grain position and envelope
         g->position += g->positionInc;
         g->envPhase += g->envInc;
-        
+
         // Deactivate grain when envelope completes
         if (g->envPhase >= 1.0f) {
             g->active = false;
         }
     }
-    
+
     // Normalize output based on expected overlap
-    // With density D and grain size S (in seconds), expected overlap is D*S
     float expectedOverlap = gs->grainDensity * (gs->grainSize / 1000.0f);
     if (expectedOverlap > 1.0f) {
-        out /= sqrtf(expectedOverlap);  // sqrt for more natural loudness scaling
+        out /= sqrtf(expectedOverlap);
     }
-    
-    return out * 0.7f;  // Overall level scaling
+
+    return out * 0.7f;
+}
+
+// Wrapper for synth voice granular (reads GranularSettings from voice)
+static float processGranularOscillator(Voice *v, float sampleRate) {
+    return processGranularFromSource(&v->granularSettings, sampleRate);
 }
 
 // FM synthesis oscillator (2 or 3 operator with algorithm routing)

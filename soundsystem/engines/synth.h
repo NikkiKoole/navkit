@@ -351,8 +351,12 @@ typedef struct {
 
 typedef struct {
     Grain grains[GRANULAR_MAX_GRAINS];
-    int scwIndex;             // Which SCW table to use as source
-    
+    int scwIndex;             // Which SCW table to use as source (-1 = use sourceData)
+
+    // External source (sampler slot or any float buffer)
+    const float *sourceData;  // External buffer (NULL = use scwTables[scwIndex])
+    int sourceSize;           // Length of external buffer in samples
+
     // Grain parameters
     float grainSize;          // Grain duration in ms (10-500)
     float grainDensity;       // Grains per second (1-100)
@@ -363,14 +367,18 @@ typedef struct {
     float amplitude;          // Overall amplitude (0-1)
     float ampRandom;          // Amplitude randomization (0-1)
     float spread;             // Stereo spread (0-1), for future use
-    
+
     // Internal state
     float spawnTimer;         // Time until next grain spawn
     float spawnInterval;      // Interval between grains (derived from density)
     int nextGrain;            // Index of next grain slot to use
-    
+
     // Freeze mode
     bool freeze;              // When true, position doesn't follow note pitch
+
+    // Time-stretch mode
+    bool timeStretch;         // When true, position advances at fixed rate (original duration)
+    float stretchPosInc;      // Position increment per sample for time-stretch (set at trigger)
 } GranularSettings;
 
 // FM algorithm routing
@@ -1574,6 +1582,9 @@ typedef struct SynthContext {
     
     // Granular tweakables
     int granularScwIndex;
+    int granularSamplerSlot;            // -1 = SCW, 0+ = sampler bank slot
+    const float *granularSampleData;    // resolved pointer (set by caller with samplerCtx access)
+    int granularSampleSize;             // resolved length
     float granularGrainSize;
     float granularDensity;
     float granularPosition;
@@ -2138,6 +2149,9 @@ static void _ensureSynthCtx(void) {
 #define malletTremoloRate (synthCtx->malletTremoloRate)
 #define malletDamp (synthCtx->malletDamp)
 #define granularScwIndex (synthCtx->granularScwIndex)
+#define granularSamplerSlot (synthCtx->granularSamplerSlot)
+#define granularSampleData (synthCtx->granularSampleData)
+#define granularSampleSize (synthCtx->granularSampleSize)
 #define granularGrainSize (synthCtx->granularGrainSize)
 #define granularDensity (synthCtx->granularDensity)
 #define granularPosition (synthCtx->granularPosition)
@@ -4534,7 +4548,7 @@ static int playGranular(float freq, int scwIndex) {
     int voiceIdx = initVoiceCommon(freq, WAVE_GRANULAR, &VOICE_INIT_SYNTH, NULL);
     Voice *v = &synthVoices[voiceIdx];
     v->scwIndex = scwIndex;
-    
+
     initGranularSettings(&v->granularSettings, scwIndex);
     v->granularSettings.grainSize = granularGrainSize;
     v->granularSettings.grainDensity = granularDensity;
@@ -4545,6 +4559,19 @@ static int playGranular(float freq, int scwIndex) {
     v->granularSettings.ampRandom = granularAmpRandom;
     v->granularSettings.spread = granularSpread;
     v->granularSettings.freeze = granularFreeze;
+    return voiceIdx;
+}
+
+// Play granular note using external float buffer as source
+static int playGranularFromBuffer(float freq, int scwIndex, const float *data, int dataLen) {
+    int voiceIdx = playGranular(freq, scwIndex);
+    if (voiceIdx < 0) return -1;
+    if (data && dataLen > 0) {
+        Voice *v = &synthVoices[voiceIdx];
+        v->granularSettings.sourceData = data;
+        v->granularSettings.sourceSize = dataLen;
+        v->granularSettings.scwIndex = -1;  // disable SCW lookup
+    }
     return voiceIdx;
 }
 

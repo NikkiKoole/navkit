@@ -87,7 +87,7 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _db(f, "voiceNasal", p->p_voiceNasal); _dw(f, "voiceNasalAmt", p->p_voiceNasalAmt);
     _dw(f, "voicePitchEnv", p->p_voicePitchEnv); _dw(f, "voicePitchEnvTime", p->p_voicePitchEnvTime);
     _dw(f, "voicePitchEnvCurve", p->p_voicePitchEnvCurve);
-    _di(f, "granularScwIndex", p->p_granularScwIndex); _dw(f, "granularGrainSize", p->p_granularGrainSize);
+    _di(f, "granularScwIndex", p->p_granularScwIndex); _di(f, "granularSamplerSlot", p->p_granularSamplerSlot); _dw(f, "granularGrainSize", p->p_granularGrainSize);
     _dw(f, "granularDensity", p->p_granularDensity); _dw(f, "granularPosition", p->p_granularPosition);
     _dw(f, "granularPosRandom", p->p_granularPosRandom); _dw(f, "granularPitch", p->p_granularPitch);
     _dw(f, "granularPitchRandom", p->p_granularPitchRandom); _dw(f, "granularAmpRandom", p->p_granularAmpRandom);
@@ -795,6 +795,7 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"voicePitchEnvTime")==0) p->p_voicePitchEnvTime = _dpf(val);
     else if (strcmp(key,"voicePitchEnvCurve")==0) p->p_voicePitchEnvCurve = _dpf(val);
     else if (strcmp(key,"granularScwIndex")==0) p->p_granularScwIndex = _dpi(val);
+    else if (strcmp(key,"granularSamplerSlot")==0) p->p_granularSamplerSlot = _dpi(val);
     else if (strcmp(key,"granularGrainSize")==0) p->p_granularGrainSize = _dpf(val);
     else if (strcmp(key,"granularDensity")==0) p->p_granularDensity = _dpf(val);
     else if (strcmp(key,"granularPosition")==0) p->p_granularPosition = _dpf(val);
