@@ -612,8 +612,8 @@ static bool dawSave(const char *filepath) {
     }
 
 #ifdef DAW_HAS_CHOP_STATE
-    // [sample] — chop/flip recipe (if bounced or scratch has data)
-    if ((chopState.bounced || scratchHasData(&scratch)) && chopState.sourcePath[0]) {
+    // [sample] — scratch space recipe
+    if (scratchHasData(&scratch) && chopState.sourcePath[0]) {
         fprintf(f, "\n[sample]\n");
         _ds(f, "sourceFile", chopState.sourcePath);
         _di(f, "sourceLoops", chopState.sourceLoops);
@@ -625,44 +625,12 @@ static bool dawSave(const char *filepath) {
         _di(f, "chopMode", chopState.chopMode);
         _db(f, "normalize", chopState.normalize);
         _dw(f, "sensitivity", chopState.sensitivity);
-        _dw(f, "fadeMs", chopState.fadeMs);
         for (int t = 0; t < 4; t++) {
             char k[16]; snprintf(k, sizeof(k), "padMap%d", t);
             _di(f, k, daw.chopSliceMap[t]);
         }
-        // Per-slice params (only non-default values)
-        for (int s = 0; s < chopState.sliceCount; s++) {
-            if (chopState.sliceParams[s].reverse) {
-                char k[32]; snprintf(k, sizeof(k), "slice.%d.reverse", s);
-                _db(f, k, true);
-            }
-            if (chopState.sliceParams[s].pitchSemitones != 0) {
-                char k[32]; snprintf(k, sizeof(k), "slice.%d.pitch", s);
-                _dw(f, k, chopState.sliceParams[s].pitchSemitones);
-            }
-            if (chopState.sliceParams[s].gain != 1.0f) {
-                char k[32]; snprintf(k, sizeof(k), "slice.%d.gain", s);
-                _dw(f, k, chopState.sliceParams[s].gain);
-            }
-            if (chopState.sliceParams[s].trimStart != 0.0f) {
-                char k[32]; snprintf(k, sizeof(k), "slice.%d.trimStart", s);
-                _dw(f, k, chopState.sliceParams[s].trimStart);
-            }
-            if (chopState.sliceParams[s].trimEnd != 1.0f) {
-                char k[32]; snprintf(k, sizeof(k), "slice.%d.trimEnd", s);
-                _dw(f, k, chopState.sliceParams[s].trimEnd);
-            }
-            if (chopState.sliceParams[s].fadeInMs >= 0) {
-                char k[32]; snprintf(k, sizeof(k), "slice.%d.fadeIn", s);
-                _dw(f, k, chopState.sliceParams[s].fadeInMs);
-            }
-            if (chopState.sliceParams[s].fadeOutMs >= 0) {
-                char k[32]; snprintf(k, sizeof(k), "slice.%d.fadeOut", s);
-                _dw(f, k, chopState.sliceParams[s].fadeOutMs);
-            }
-        }
-        // Save scratch markers (Phase 3)
-        if (scratchHasData(&scratch) && scratch.markerCount > 0) {
+        // Scratch markers
+        if (scratch.markerCount > 0) {
             _di(f, "markerCount", scratch.markerCount);
             fprintf(f, "markers = ");
             for (int m = 0; m < scratch.markerCount; m++) {
@@ -1235,6 +1203,10 @@ static bool dawLoad(const char *filepath) {
     FILE *f = fopen(filepath, "r");
     if (!f) return false;
 
+    // Temp storage for scratch markers parsed from [sample] section
+    int _loadedMarkers[SCRATCH_MAX_MARKERS];
+    int _loadedMarkerCount = 0;
+
     // Stop playback
     daw.transport.playing = false;
 
@@ -1309,19 +1281,6 @@ static bool dawLoad(const char *filepath) {
             }
             else if (strcmp(sec,"sample")==0) {
                 section = _DW_SEC_SAMPLE;
-#ifdef DAW_HAS_CHOP_STATE
-                // Initialize slice params to defaults before parsing
-                // (file only stores non-default values)
-                for (int _s = 0; _s < SAMPLER_MAX_SAMPLES; _s++) {
-                    chopState.sliceParams[_s].reverse = false;
-                    chopState.sliceParams[_s].pitchSemitones = 0;
-                    chopState.sliceParams[_s].gain = 1.0f;
-                    chopState.sliceParams[_s].trimStart = 0.0f;
-                    chopState.sliceParams[_s].trimEnd = 1.0f;
-                    chopState.sliceParams[_s].fadeInMs = -1.0f;
-                    chopState.sliceParams[_s].fadeOutMs = -1.0f;
-                }
-#endif
             }
             else if (strncmp(sec,"patch.",6)==0) {
                 section = _DW_SEC_PATCH;
@@ -1742,38 +1701,25 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"chopMode")==0) chopState.chopMode = _dpi(val);
             else if (strcmp(key,"normalize")==0) chopState.normalize = _dpb(val);
             else if (strcmp(key,"sensitivity")==0) chopState.sensitivity = _dpf(val);
-            else if (strcmp(key,"fadeMs")==0) chopState.fadeMs = _dpf(val);
+            else if (strcmp(key,"fadeMs")==0) { /* legacy, ignored */ }
             else if (strncmp(key,"padMap",6)==0) {
                 int idx = key[6] - '0';
                 if (idx >= 0 && idx < 4) daw.chopSliceMap[idx] = _dpi(val);
             }
-            else if (strncmp(key,"slice.",6)==0) {
-                // Parse "slice.N.field"
-                int si = 0; const char *p = key + 6;
-                while (*p >= '0' && *p <= '9') { si = si*10 + (*p - '0'); p++; }
-                if (*p == '.' && si >= 0 && si < SAMPLER_MAX_SAMPLES) {
-                    p++; // skip '.'
-                    if (strcmp(p,"reverse")==0) chopState.sliceParams[si].reverse = _dpb(val);
-                    else if (strcmp(p,"pitch")==0) chopState.sliceParams[si].pitchSemitones = _dpf(val);
-                    else if (strcmp(p,"gain")==0) chopState.sliceParams[si].gain = _dpf(val);
-                    else if (strcmp(p,"trimStart")==0) chopState.sliceParams[si].trimStart = _dpf(val);
-                    else if (strcmp(p,"trimEnd")==0) chopState.sliceParams[si].trimEnd = _dpf(val);
-                    else if (strcmp(p,"fadeIn")==0) chopState.sliceParams[si].fadeInMs = _dpf(val);
-                    else if (strcmp(p,"fadeOut")==0) chopState.sliceParams[si].fadeOutMs = _dpf(val);
-                }
-            }
-            else if (strcmp(key,"markerCount")==0) { /* parsed for info only, markers key has the data */ }
+            else if (strncmp(key,"slice.",6)==0) { /* legacy per-slice params, ignored */ }
+            else if (strcmp(key,"markerCount")==0) { /* info only, markers key has the data */ }
             else if (strcmp(key,"markers")==0) {
-                // Parse comma-separated marker positions into scratch space
-                // (scratch must be loaded first via re-bounce, so we store temporarily)
-                scratchClearMarkers(&scratch);
+                // Parse comma-separated marker positions into temp storage
+                // (scratch data doesn't exist yet — will be created by re-bounce)
+                _loadedMarkerCount = 0;
                 const char *p = val;
                 while (*p) {
                     while (*p == ' ' || *p == ',') p++;
                     if (!*p) break;
                     int pos = 0;
                     while (*p >= '0' && *p <= '9') { pos = pos * 10 + (*p - '0'); p++; }
-                    if (pos > 0) scratchAddMarker(&scratch, pos);
+                    if (pos > 0 && _loadedMarkerCount < SCRATCH_MAX_MARKERS)
+                        _loadedMarkers[_loadedMarkerCount++] = pos;
                 }
             }
             break;
@@ -1834,81 +1780,35 @@ static bool dawLoad(const char *filepath) {
 #ifdef DAW_HAS_CHOP_STATE
     // Re-bounce sample recipe if [sample] section was present.
     // Guard against infinite recursion: renderPatternToBuffer calls dawLoad which
-    // would call chopStateBounce which calls renderPatternToBuffer again.
+    // would call scratchFromSelection which calls renderPatternToBuffer again.
     // _chopBounceActive (from sample_chop.h) suppresses re-bounce during offline bounce.
     static bool _dawLoadRebouncing = false;
     if (chopState.sourcePath[0] && !_dawLoadRebouncing && !_chopBounceActive) {
         _dawLoadRebouncing = true;
-        // Save loaded params (chopStateBounce→chopStateClear resets them)
-        int savedPadMap[4];
-        for (int t = 0; t < 4; t++) savedPadMap[t] = daw.chopSliceMap[t];
-        int savedSliceCount = chopState.sliceCount;
-        int savedChopMode = chopState.chopMode;
-        bool savedNormalize = chopState.normalize;
-        float savedSensitivity = chopState.sensitivity;
-        float savedFadeMs = chopState.fadeMs;
-        float savedSelStart = chopState.selStart;
-        float savedSelEnd = chopState.selEnd;
-        bool savedHasSelection = chopState.hasSelection;
-        struct { bool reverse; float pitchSemitones, gain, trimStart, trimEnd, fadeInMs, fadeOutMs; }
-            savedParams[SAMPLER_MAX_SAMPLES];
-        for (int s = 0; s < SAMPLER_MAX_SAMPLES; s++) {
-            savedParams[s].reverse = chopState.sliceParams[s].reverse;
-            savedParams[s].pitchSemitones = chopState.sliceParams[s].pitchSemitones;
-            savedParams[s].gain = chopState.sliceParams[s].gain;
-            savedParams[s].trimStart = chopState.sliceParams[s].trimStart;
-            savedParams[s].trimEnd = chopState.sliceParams[s].trimEnd;
-            savedParams[s].fadeInMs = chopState.sliceParams[s].fadeInMs;
-            savedParams[s].fadeOutMs = chopState.sliceParams[s].fadeOutMs;
-        }
 
         // Bounce full song (blocking — renders all patterns needed for chop)
         chopBounceFullSong();
         while (chopBounceNextPattern()) {}
-        chopState.sliceCount = savedSliceCount;
-        chopState.chopMode = savedChopMode;
-        chopState.normalize = savedNormalize;
-        chopState.sensitivity = savedSensitivity;
-        chopState.selStart = savedSelStart;
-        chopState.selEnd = savedSelEnd;
-        chopState.hasSelection = savedHasSelection;
 
-        // Phase 3: use scratchFromSelection (places markers, no sampler loading)
-        // Save any markers that were parsed from the file before re-bounce
-        int savedMarkerCount = scratch.markerCount;
-        int savedMarkers[SCRATCH_MAX_MARKERS];
-        for (int m = 0; m < savedMarkerCount && m < SCRATCH_MAX_MARKERS; m++)
-            savedMarkers[m] = scratch.markers[m];
-
+        // Extract selection into scratch space + auto-chop
         scratchFromSelection();
 
-        // Restore saved markers if file had them (overrides auto-chop markers)
-        if (savedMarkerCount > 0 && scratchHasData(&scratch)) {
+        // Restore markers from file (overrides auto-chop markers)
+        if (_loadedMarkerCount > 0 && scratchHasData(&scratch)) {
             scratch.markerCount = 0;
-            for (int m = 0; m < savedMarkerCount; m++) {
-                if (savedMarkers[m] > 0 && savedMarkers[m] < scratch.length)
-                    scratchAddMarker(&scratch, savedMarkers[m]);
+            for (int m = 0; m < _loadedMarkerCount; m++) {
+                if (_loadedMarkers[m] > 0 && _loadedMarkers[m] < scratch.length)
+                    scratchAddMarker(&scratch, _loadedMarkers[m]);
             }
         }
 
-        // Also run legacy chopStateBounce for backward compat (loads into sampler slots)
-        chopStateBounce();
-
-        // Restore params
-        chopState.fadeMs = savedFadeMs;
-        for (int t = 0; t < 4; t++) daw.chopSliceMap[t] = savedPadMap[t];
-        for (int s = 0; s < chopState.sliceCount; s++) {
-            chopState.sliceParams[s].reverse = savedParams[s].reverse;
-            chopState.sliceParams[s].pitchSemitones = savedParams[s].pitchSemitones;
-            chopState.sliceParams[s].gain = savedParams[s].gain;
-            chopState.sliceParams[s].trimStart = savedParams[s].trimStart;
-            chopState.sliceParams[s].trimEnd = savedParams[s].trimEnd;
-            chopState.sliceParams[s].fadeInMs = savedParams[s].fadeInMs;
-            chopState.sliceParams[s].fadeOutMs = savedParams[s].fadeOutMs;
+        // Commit slices to sampler bank so they play immediately
+        if (scratchHasData(&scratch)) {
+            dawAudioGate();
+            scratchCommitToBank(&scratch, 0);
+            dawAudioUngate();
         }
 
-        // Apply per-slice params (trim, gain, fade, reverse → bake into sampler slots)
-        if (chopState.bounced) chopApplySliceParams();
         _dawLoadRebouncing = false;
     }
 #endif

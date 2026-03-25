@@ -49,6 +49,10 @@ static struct {
     int chainOffsets[65];
     float chainBpm;
     bool fullBounced;
+    bool structureLoaded;
+    bool patternBounced[64];
+    float *patternCache[64];
+    int patternCacheLen[64];
     float viewStart;
     float viewEnd;
     float selStart;
@@ -57,73 +61,49 @@ static struct {
     bool draggingSel;
     bool draggingView;
     float dragViewOffset;
-    float *renderData;
-    int renderLength;
-    float renderBpm;
-    int renderSteps;
     int sliceCount;
-    int sliceLength;
-    int sliceLengths[SAMPLER_MAX_SAMPLES];
-    float *slices[SAMPLER_MAX_SAMPLES];
     int chopMode;
-    bool normalize;
     float sensitivity;
-    float fadeMs;
-    struct {
-        bool reverse;
-        float pitchSemitones;
-        float gain;
-        float trimStart;
-        float trimEnd;
-        float fadeInMs;
-        float fadeOutMs;
-    } sliceParams[SAMPLER_MAX_SAMPLES];
+    bool normalize;
     int selectedSlice;
-    bool bounced;
     bool browsingFiles;
     int browseScroll;
+    bool tapSliceMode;
+    bool showDetail;
+    int draggingMarker;
+    bool captureDropdownOpen;
+    int captureGrabSeconds;
+    int bankScrollOffset;
 } chopState = {0};
 
 // Track whether re-bounce was triggered during dawLoad
 static int _testRebounceCallCount = 0;
 
 // Stubs — re-bounce not tested here, just INI parsing
-static void chopBounceFullSong(void) {
-    // In test: no-op (would bounce all patterns)
-}
-static bool chopBounceNextPattern(void) {
-    return false;  // nothing to bounce in test
-}
-static void chopStateBounce(void) {
-    // In test: count calls instead of actually bouncing
-    _testRebounceCallCount++;
-}
-static void chopApplySliceParams(void) {
-    // In test: no-op
-}
+static void chopBounceFullSong(void) {}
+static bool chopBounceNextPattern(void) { return false; }
+static void dawAudioGate(void) {}
+static void dawAudioUngate(void) {}
 
-// _chopBounceActive is defined in sample_chop.h, but we don't include that
-// in the test. Declare it here so the re-bounce guard in daw_file.h can see it.
 static bool _chopBounceActive = false;
 
-// Phase 3: scratch space needed by daw_file.h save/load
 #include "../engines/scratch_space.h"
 static ScratchSpace scratch = {0};
 static void scratchFromSelection(void) {
-    // In test: no-op (would extract selection into scratch)
+    _testRebounceCallCount++;
+    // In test: create dummy scratch data so markers can be restored
+    scratchFree(&scratch);
+    float *buf = (float *)malloc(10000 * sizeof(float));
+    if (buf) {
+        for (int i = 0; i < 10000; i++) buf[i] = 0.0f;
+        scratchLoad(&scratch, buf, 10000, 44100, 120.0f);
+    }
 }
 
 static void chopStateClearTest(void) {
     memset(&chopState, 0, sizeof(chopState));
     chopState.selectedSlice = -1;
     chopState.sourceSongIdx = -1;
-    chopState.fadeMs = 1.0f;
-    for (int s = 0; s < SAMPLER_MAX_SAMPLES; s++) {
-        chopState.sliceParams[s].gain = 1.0f;
-        chopState.sliceParams[s].trimEnd = 1.0f;
-        chopState.sliceParams[s].fadeInMs = -1.0f;
-        chopState.sliceParams[s].fadeOutMs = -1.0f;
-    }
     for (int t = 0; t < 4; t++) daw.chopSliceMap[t] = -1;
 }
 
@@ -1097,26 +1077,21 @@ static void verifySampleSectionRoundTrip(void) {
     chopState.sliceCount = 16;
     chopState.chopMode = 1;  // transient
     chopState.sensitivity = 0.75f;
-    chopState.fadeMs = 2.5f;
-    chopState.bounced = true;  // required for save to write [sample]
+
+    // Load scratch with test data + markers (required for save to write [sample])
+    scratchFree(&scratch);
+    float *testBuf = (float *)malloc(10000 * sizeof(float));
+    for (int i = 0; i < 10000; i++) testBuf[i] = 0.1f;
+    scratchLoad(&scratch, testBuf, 10000, 44100, 120.0f);
+    scratchAddMarker(&scratch, 2000);
+    scratchAddMarker(&scratch, 5000);
+    scratchAddMarker(&scratch, 8000);
 
     // Pad mappings
     daw.chopSliceMap[0] = 3;
     daw.chopSliceMap[1] = 7;
     daw.chopSliceMap[2] = -1;
     daw.chopSliceMap[3] = 12;
-
-    // Per-slice params — set non-default on a few slices
-    chopState.sliceParams[2].reverse = true;
-    chopState.sliceParams[5].pitchSemitones = -7.0f;
-    chopState.sliceParams[5].gain = 1.5f;
-    chopState.sliceParams[8].trimStart = 0.1f;
-    chopState.sliceParams[8].trimEnd = 0.85f;
-    chopState.sliceParams[10].fadeInMs = 3.0f;
-    chopState.sliceParams[10].fadeOutMs = 5.0f;
-    chopState.sliceParams[15].reverse = true;
-    chopState.sliceParams[15].pitchSemitones = 12.0f;
-    chopState.sliceParams[15].gain = 0.5f;
 
     // 2. Save
     memset(&daw.transport, 0, sizeof(Transport));
@@ -1134,23 +1109,13 @@ static void verifySampleSectionRoundTrip(void) {
     int savedSliceCount = chopState.sliceCount;
     int savedChopMode = chopState.chopMode;
     float savedSensitivity = chopState.sensitivity;
-    float savedFadeMs = chopState.fadeMs;
     int savedPadMap[4] = { daw.chopSliceMap[0], daw.chopSliceMap[1], daw.chopSliceMap[2], daw.chopSliceMap[3] };
-
-    // Save per-slice params we set
-    bool saved_s2_rev = chopState.sliceParams[2].reverse;
-    float saved_s5_pitch = chopState.sliceParams[5].pitchSemitones;
-    float saved_s5_gain = chopState.sliceParams[5].gain;
-    float saved_s8_trimStart = chopState.sliceParams[8].trimStart;
-    float saved_s8_trimEnd = chopState.sliceParams[8].trimEnd;
-    float saved_s10_fadeIn = chopState.sliceParams[10].fadeInMs;
-    float saved_s10_fadeOut = chopState.sliceParams[10].fadeOutMs;
-    bool saved_s15_rev = chopState.sliceParams[15].reverse;
-    float saved_s15_pitch = chopState.sliceParams[15].pitchSemitones;
-    float saved_s15_gain = chopState.sliceParams[15].gain;
+    int savedMarkerCount = scratch.markerCount;
+    int savedMarkers[3] = { scratch.markers[0], scratch.markers[1], scratch.markers[2] };
 
     // 4. Clear everything
     chopStateClearTest();
+    scratchFree(&scratch);
     memset(&daw, 0, sizeof(DawState));
     for (int i = 0; i < NUM_PATCHES; i++) daw.patches[i] = createDefaultPatch(WAVE_SAW);
     memset(&_seqCtx, 0, sizeof(SequencerContext));
@@ -1162,10 +1127,6 @@ static void verifySampleSectionRoundTrip(void) {
     tests_passed++;
 
     // 6. Verify parsed values
-    // Note: chopStateBounce (stub) was called during load, which zeroed chopState.
-    // The post-load code saves/restores params around the bounce call, so they
-    // should survive. But our stub chopStateBounce is a no-op (doesn't call
-    // chopStateClear), so the restore should work.
     ASSERT_EQ_STR(chopState.sourcePath, savedPath, "sample.sourceFile");
     ASSERT_EQ_INT(chopState.sourceLoops, savedLoops, "sample.sourceLoops");
     ASSERT_EQ_FLOAT(chopState.selStart, savedSelStart, "sample.selStart");
@@ -1173,7 +1134,6 @@ static void verifySampleSectionRoundTrip(void) {
     ASSERT_EQ_INT(chopState.sliceCount, savedSliceCount, "sample.sliceCount");
     ASSERT_EQ_INT(chopState.chopMode, savedChopMode, "sample.chopMode");
     ASSERT_EQ_FLOAT(chopState.sensitivity, savedSensitivity, "sample.sensitivity");
-    ASSERT_EQ_FLOAT(chopState.fadeMs, savedFadeMs, "sample.fadeMs");
 
     // Pad mappings
     ASSERT_EQ_INT(daw.chopSliceMap[0], savedPadMap[0], "sample.padMap0");
@@ -1181,37 +1141,22 @@ static void verifySampleSectionRoundTrip(void) {
     ASSERT_EQ_INT(daw.chopSliceMap[2], savedPadMap[2], "sample.padMap2");
     ASSERT_EQ_INT(daw.chopSliceMap[3], savedPadMap[3], "sample.padMap3");
 
-    // Per-slice params
-    ASSERT_EQ_BOOL(chopState.sliceParams[2].reverse, saved_s2_rev, "slice.2.reverse");
-    ASSERT_EQ_FLOAT(chopState.sliceParams[5].pitchSemitones, saved_s5_pitch, "slice.5.pitch");
-    ASSERT_EQ_FLOAT(chopState.sliceParams[5].gain, saved_s5_gain, "slice.5.gain");
-    ASSERT_EQ_FLOAT(chopState.sliceParams[8].trimStart, saved_s8_trimStart, "slice.8.trimStart");
-    ASSERT_EQ_FLOAT(chopState.sliceParams[8].trimEnd, saved_s8_trimEnd, "slice.8.trimEnd");
-    ASSERT_EQ_FLOAT(chopState.sliceParams[10].fadeInMs, saved_s10_fadeIn, "slice.10.fadeIn");
-    ASSERT_EQ_FLOAT(chopState.sliceParams[10].fadeOutMs, saved_s10_fadeOut, "slice.10.fadeOut");
-    ASSERT_EQ_BOOL(chopState.sliceParams[15].reverse, saved_s15_rev, "slice.15.reverse");
-    ASSERT_EQ_FLOAT(chopState.sliceParams[15].pitchSemitones, saved_s15_pitch, "slice.15.pitch");
-    ASSERT_EQ_FLOAT(chopState.sliceParams[15].gain, saved_s15_gain, "slice.15.gain");
-
-    // Verify slices with default params stayed default
-    ASSERT_EQ_BOOL(chopState.sliceParams[0].reverse, false, "slice.0.reverse (default)");
-    ASSERT_EQ_FLOAT(chopState.sliceParams[0].pitchSemitones, 0.0f, "slice.0.pitch (default)");
-    ASSERT_EQ_FLOAT(chopState.sliceParams[0].gain, 1.0f, "slice.0.gain (default)");
-    ASSERT_EQ_FLOAT(chopState.sliceParams[0].trimStart, 0.0f, "slice.0.trimStart (default)");
-    ASSERT_EQ_FLOAT(chopState.sliceParams[0].trimEnd, 1.0f, "slice.0.trimEnd (default)");
-    ASSERT_EQ_FLOAT(chopState.sliceParams[0].fadeInMs, -1.0f, "slice.0.fadeIn (default)");
-    ASSERT_EQ_FLOAT(chopState.sliceParams[0].fadeOutMs, -1.0f, "slice.0.fadeOut (default)");
+    // Scratch markers round-trip
+    ASSERT_EQ_INT(scratch.markerCount, savedMarkerCount, "scratch.markerCount");
+    ASSERT_EQ_INT(scratch.markers[0], savedMarkers[0], "scratch.markers[0]");
+    ASSERT_EQ_INT(scratch.markers[1], savedMarkers[1], "scratch.markers[1]");
+    ASSERT_EQ_INT(scratch.markers[2], savedMarkers[2], "scratch.markers[2]");
 
     remove(tmppath);
 }
 
 static void verifySampleSectionEmpty(void) {
-    printf("  [sample section empty — no [sample] when not bounced]\n");
+    printf("  [sample section empty — no [sample] when scratch empty]\n");
     const char *tmppath = "/tmp/test_daw_sample_empty.song";
 
-    // chopState not bounced → no [sample] section should be written
+    // No scratch data → no [sample] section should be written
     chopStateClearTest();
-    chopState.bounced = false;
+    scratchFree(&scratch);
 
     memset(&daw, 0, sizeof(DawState));
     daw.transport.bpm = 120.0f;
@@ -1254,7 +1199,11 @@ static void verifyBounceGuardPreventsRebounce(void) {
     strncpy(chopState.sourcePath, "songs/testbeat.song", 255);
     chopState.sourceLoops = 1;
     chopState.sliceCount = 8;
-    chopState.bounced = true;  // triggers [sample] section in save
+    // Load scratch data to trigger [sample] section in save
+    scratchFree(&scratch);
+    float *guardBuf = (float *)malloc(1000 * sizeof(float));
+    for (int i = 0; i < 1000; i++) guardBuf[i] = 0.1f;
+    scratchLoad(&scratch, guardBuf, 1000, 44100, 120.0f);
 
     memset(&daw, 0, sizeof(DawState));
     daw.transport.bpm = 120.0f;
@@ -1277,11 +1226,10 @@ static void verifyBounceGuardPreventsRebounce(void) {
 
     _chopBounceActive = false;
 
-    // 3. Verify: chopStateBounce should NOT have been called
+    // 3. Verify: scratchFromSelection should NOT have been called
     if (_testRebounceCallCount != 0) {
         printf("  FAIL: re-bounce triggered %d times despite _chopBounceActive=true!\n",
                _testRebounceCallCount);
-        printf("  This was the root cause of the bounce-fidelity bug (2026-03-16).\n");
         tests_failed++;
     } else {
         tests_passed++;
