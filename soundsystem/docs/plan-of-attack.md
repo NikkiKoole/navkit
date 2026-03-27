@@ -18,7 +18,7 @@ Instruments and effects are considered complete — 29 engines, 263 presets, com
 ### 1. Scenes + Crossfader System
 - **Spec:** `scene-crossfader-spec.md`
 - **Effort:** Medium (~750 LOC)
-- **Prerequisite:** Live params Phase 1-2 (#3) — crossfader writes to patch `p_` fields, voices must re-read them per-sample for smooth morphing on held notes
+- **Prerequisite:** ~~Live params Phase 1-2 (#3)~~ DONE — voices now read `p_` fields per-sample
 - **What:** Complete snapshot storage (8 slots) of all sound state (patches, effects, mixer, BPM) with smooth morphing via 0-1 crossfader
 - **State:** UI shell exists (Song tab scene buttons, Mix tab XFade controls) but no backing logic — scenes never save/load, crossfader never blends
 - **Why first:** Linchpin for adaptive game audio (calm→combat morphing). Blocks the C conductor and crossfader automation. Everything downstream depends on this
@@ -27,13 +27,10 @@ Instruments and effects are considered complete — 29 engines, 263 presets, com
 ### ~~2. Test Coverage (3 Critical Gaps)~~ — DONE
 All three gaps filled: patch trigger (8+ suites, 140+ fields), rhythm patterns (all 14 styles, 5 variations, prob maps, euclidean), synth oscillators (10 describe blocks covering all major wave types). See `done/test-gaps-audit-soundsystem.md`. Remaining minor gaps: sampler WAV loading (deferred until sampler improvements), effects edge cases (low risk).
 
-### 3. Live Parameters + Mod Matrix
-- **Spec:** `live-params-and-mod-matrix.md` (unified doc, supersedes old separate specs)
-- **Effort:** Medium-large (~1100-1250 LOC across 7 phases)
-- **What:** Phase 1-2: patch pointer on Voice + live param reads (knob tweaks affect held notes). Phase 3-7: mod matrix with flexible source→destination routing (velocity, note number, LFOs, envelope → any param)
-- **Pain point:** Filterbank, filter cutoff, wavefold — all frozen at note-on currently
-- **Bonus:** MIDI CC gets live params for free. Also prerequisite for crossfader (#1) to work on held notes
-- **Key insight:** Phase 1-2 (live params, ~250-350 LOC) unlocks both crossfader and mod matrix. Phase 2 is the most labor-intensive — touches 50-100 read sites across every oscillator engine
+### ~~3. Live Parameters~~ — PHASES 1-2 DONE
+Patch pointer on Voice + live param reads implemented. Knob tweaks and MIDI CC now affect held notes in real time. Filter cutoff/resonance, drive, click, wavefold, ring mod, hard sync, and all filterbank params read live from patch with per-note velocity/randomization offsets preserved. Crossfader (#1) is now unblocked.
+
+**Remaining (Phases 3-7):** Mod matrix (flexible source→destination routing). Independent of scenes/crossfader — can be done later. See `live-params-and-mod-matrix.md`.
 
 ## Priority 2 — Good Value, Can Wait
 

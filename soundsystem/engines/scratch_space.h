@@ -190,7 +190,7 @@ static void scratchChopTransients(ScratchSpace *s, float sensitivity, int maxSli
     int maxMarkers = maxSlices - 1;
     if (maxMarkers > SCRATCH_MAX_MARKERS) maxMarkers = SCRATCH_MAX_MARKERS;
 
-    // Transient detection parameters (same algorithm as chopAtTransients)
+    // Transient detection parameters
     int windowSize = 220;       // ~5ms at 44100
     int minDistSamples = 2205;  // ~50ms minimum between onsets
     float threshold = 3.0f - sensitivity * 2.0f;

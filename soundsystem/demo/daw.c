@@ -5072,6 +5072,8 @@ static void drawParamPatch(float x, float y, float w, float h) {
             if (ui_col_button(&c, "Oct-")) { *tp -= 12; if (*tp < -48) *tp = -48; }
             if (ui_col_button(&c, "Oct+")) { *tp += 12; if (*tp > 48) *tp = 48; }
         }
+        ui_col_float(&c, "Bend", &synthCtx->pitchBendSemitones, 0.1f, -synthCtx->pitchBendRange, synthCtx->pitchBendRange);
+        ui_col_float(&c, "Bend Range", &synthCtx->pitchBendRange, 1.0f, 1.0f, 24.0f);
         ui_col_space(&c, 3);
 
         {
@@ -9360,8 +9362,13 @@ static void dawHandleMidiInput(void) {
                 }
             } break;
 
-            case MIDI_PITCH_BEND:
-                break; // TODO: pitch bend
+            case MIDI_PITCH_BEND: {
+                // 14-bit value: LSB in data1, MSB in data2. Center = 8192.
+                int bendRaw = ev->data1 | (ev->data2 << 7);
+                float bendNorm = (bendRaw - 8192) / 8192.0f;  // -1.0 to +1.0
+                synthPitchBendSemitones = bendNorm * synthPitchBendRange;
+                break;
+            }
         }
     }
 

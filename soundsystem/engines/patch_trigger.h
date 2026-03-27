@@ -320,35 +320,44 @@ static int playNoteWithPatch(float freq, const SynthPatch *p) {
 
     WaveType wave = (WaveType)p->p_waveType;
 
+    int voiceIdx = -1;
     switch (wave) {
-        case WAVE_PLUCK:    return playPluck(freq, p->p_pluckBrightness, p->p_pluckDamping);
-        case WAVE_ADDITIVE: return playAdditive(freq, (AdditivePreset)p->p_additivePreset);
-        case WAVE_MALLET:   return playMallet(freq, (MalletPreset)p->p_malletPreset);
-        case WAVE_VOICE:    return playVowel(freq, (VowelType)p->p_voiceVowel);
+        case WAVE_PLUCK:    voiceIdx = playPluck(freq, p->p_pluckBrightness, p->p_pluckDamping); break;
+        case WAVE_ADDITIVE: voiceIdx = playAdditive(freq, (AdditivePreset)p->p_additivePreset); break;
+        case WAVE_MALLET:   voiceIdx = playMallet(freq, (MalletPreset)p->p_malletPreset); break;
+        case WAVE_VOICE:    voiceIdx = playVowel(freq, (VowelType)p->p_voiceVowel); break;
         case WAVE_GRANULAR:
             if (granularSampleData && granularSampleSize > 0)
-                return playGranularFromBuffer(freq, granularScwIndex, granularSampleData, granularSampleSize);
-            return playGranular(freq, p->p_granularScwIndex);
-        case WAVE_FM:       return playFM(freq);
-        case WAVE_PD:       return playPD(freq);
-        case WAVE_MEMBRANE: return playMembrane(freq, (MembranePreset)p->p_membranePreset);
-        case WAVE_METALLIC: return playMetallic(freq, (MetallicPreset)p->p_metallicPreset);
-        case WAVE_GUITAR:   return playGuitar(freq, (GuitarPreset)p->p_guitarPreset);
-        case WAVE_MANDOLIN: return playMandolin(freq, (MandolinPreset)p->p_mandolinPreset);
-        case WAVE_STIFKARP: return playStifKarp(freq, (StifKarpPreset)p->p_stifkarpPreset);
-        case WAVE_SHAKER:   return playShaker(freq, (ShakerPreset)p->p_shakerPreset);
-        case WAVE_BANDEDWG: return playBandedWG(freq, (BandedWGPreset)p->p_bandedwgPreset);
-        case WAVE_VOICFORM: return playVoicForm(freq, p->p_vfPhoneme);
-        case WAVE_WHISTLE:  return playWhistle(freq, (WhistlePreset)p->p_whistlePreset);
-        case WAVE_BIRD:     return playBird(freq, (BirdType)p->p_birdType);
-        case WAVE_BOWED:    return playBowed(freq);
-        case WAVE_PIPE:     return playPipe(freq);
-        case WAVE_REED:     return playReed(freq);
-        case WAVE_BRASS:    return playBrass(freq);
-        case WAVE_EPIANO:   return playEPiano(freq);
-        case WAVE_ORGAN:    return playOrgan(freq);
-        default:            return playNote(freq, wave);
+                voiceIdx = playGranularFromBuffer(freq, granularScwIndex, granularSampleData, granularSampleSize);
+            else
+                voiceIdx = playGranular(freq, p->p_granularScwIndex);
+            break;
+        case WAVE_FM:       voiceIdx = playFM(freq); break;
+        case WAVE_PD:       voiceIdx = playPD(freq); break;
+        case WAVE_MEMBRANE: voiceIdx = playMembrane(freq, (MembranePreset)p->p_membranePreset); break;
+        case WAVE_METALLIC: voiceIdx = playMetallic(freq, (MetallicPreset)p->p_metallicPreset); break;
+        case WAVE_GUITAR:   voiceIdx = playGuitar(freq, (GuitarPreset)p->p_guitarPreset); break;
+        case WAVE_MANDOLIN: voiceIdx = playMandolin(freq, (MandolinPreset)p->p_mandolinPreset); break;
+        case WAVE_STIFKARP: voiceIdx = playStifKarp(freq, (StifKarpPreset)p->p_stifkarpPreset); break;
+        case WAVE_SHAKER:   voiceIdx = playShaker(freq, (ShakerPreset)p->p_shakerPreset); break;
+        case WAVE_BANDEDWG: voiceIdx = playBandedWG(freq, (BandedWGPreset)p->p_bandedwgPreset); break;
+        case WAVE_VOICFORM: voiceIdx = playVoicForm(freq, p->p_vfPhoneme); break;
+        case WAVE_WHISTLE:  voiceIdx = playWhistle(freq, (WhistlePreset)p->p_whistlePreset); break;
+        case WAVE_BIRD:     voiceIdx = playBird(freq, (BirdType)p->p_birdType); break;
+        case WAVE_BOWED:    voiceIdx = playBowed(freq); break;
+        case WAVE_PIPE:     voiceIdx = playPipe(freq); break;
+        case WAVE_REED:     voiceIdx = playReed(freq); break;
+        case WAVE_BRASS:    voiceIdx = playBrass(freq); break;
+        case WAVE_EPIANO:   voiceIdx = playEPiano(freq); break;
+        case WAVE_ORGAN:    voiceIdx = playOrgan(freq); break;
+        default:            voiceIdx = playNote(freq, wave); break;
     }
+
+    // Set patch pointer so voice can read live params per-sample
+    if (voiceIdx >= 0) {
+        synthVoices[voiceIdx].patch = p;
+    }
+    return voiceIdx;
 }
 
 // Convert MIDI note number to frequency (A4 = 440 Hz)

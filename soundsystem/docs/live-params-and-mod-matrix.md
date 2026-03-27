@@ -1,6 +1,6 @@
 # Live Parameters + Modulation Matrix
 
-> Status: PROPOSAL (not implemented)
+> Status: PHASES 1-2 COMPLETE — live params working. Phases 3-7 (mod matrix) open.
 > Supersedes: `live-parameter-update.md`, `mod-matrix-design.md`
 > Part of: **Sound System Feature Chain** (see below)
 
@@ -58,7 +58,7 @@ Knob tweaks and MIDI CC both write to `p_` fields on the patch. The voice reads 
 
 ---
 
-## Phase 1: Patch Pointer on Voice (~50 lines)
+## Phase 1: Patch Pointer on Voice (~50 lines) — DONE
 
 **The prerequisite for everything else.**
 
@@ -80,7 +80,7 @@ The `daw.patches[]` array is fixed-size and never reallocated, so the pointer is
 
 ---
 
-## Phase 2: Live Parameter Reads (~100 lines)
+## Phase 2: Live Parameter Reads (~100 lines) — DONE
 
 **Immediate payoff — knob tweaks affect held notes.**
 

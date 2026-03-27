@@ -8,7 +8,7 @@
 
 #include <stdbool.h>
 
-typedef struct {
+typedef struct SynthPatch {
     // Wave type
     int p_waveType;
     int p_scwIndex;

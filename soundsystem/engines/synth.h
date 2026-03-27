@@ -952,7 +952,11 @@ typedef struct {
 } LadderState;
 
 // Voice structure (polyphonic synth voice)
+struct SynthPatch;  // forward declaration (defined in synth_patch.h)
+
 typedef struct {
+    const struct SynthPatch *patch;  // set at note-on, read per-sample for live params (NULL for SFX)
+
     float frequency;
     float baseFrequency;  // Original frequency (for vibrato)
     float targetFrequency; // Target frequency for glide/portamento
@@ -1260,6 +1264,18 @@ typedef struct {
     float fbLfoSH;                  // Filterbank LFO S&H value
     float fbNoiseMix;               // Noise into filterbank input
     float fbDcX, fbDcY;             // DC blocker state (1-pole HPF)
+
+    // Per-note offsets for live param reads (computed at note-on, added to patch base)
+    float filterCutoffOffset;   // velocity → filter
+    float driveOffset;          // velocity → drive
+    float clickLevelScale;      // velocity → click (multiplicative)
+    // Filterbank randomization deltas (per-note, added to patch base)
+    float fbBaseFreqScale;      // multiplicative random offset
+    float fbAlphaOffset;        // additive random offset
+    float fbBetaOffset;
+    float fbQScale;             // multiplicative
+    float fbSpacingScale;       // multiplicative
+    float fbMorphOscOffset;     // additive
 
     // Synthesis modes
     bool ringMod;            // Ring modulation
@@ -1839,6 +1855,10 @@ typedef struct SynthContext {
 
     // SFX randomization
     bool sfxRandomize;
+
+    // Performance pitch bend (applied to all active voices)
+    float pitchBendSemitones;   // current bend amount in semitones (0 = center)
+    float pitchBendRange;       // max range in semitones (default 2, GM standard)
 } SynthContext;
 
 // Initialize a synth context with default values
@@ -1848,6 +1868,7 @@ static void initSynthContext(SynthContext* ctx) {
     ctx->masterVolume = 0.5f;
     ctx->noiseState = 12345;
     ctx->scaleType = 1;  // SCALE_MAJOR
+    ctx->pitchBendRange = 2.0f;  // ±2 semitones (GM standard)
     
     // Default note parameters
     ctx->noteAttack = 0.01f;
@@ -2123,6 +2144,8 @@ static void _ensureSynthCtx(void) {
 #define noteUnisonMix (synthCtx->noteUnisonMix)
 #define synthBpm (synthCtx->bpm)
 #define synthBeatPosition (synthCtx->beatPosition)
+#define synthPitchBendSemitones (synthCtx->pitchBendSemitones)
+#define synthPitchBendRange (synthCtx->pitchBendRange)
 #define voiceFormantShift (synthCtx->voiceFormantShift)
 #define voiceBreathiness (synthCtx->voiceBreathiness)
 #define voiceBuzziness (synthCtx->voiceBuzziness)
@@ -2706,6 +2729,14 @@ static float processEnvelope(Voice *v, float dt) {
 // VOICE PROCESSING
 // ============================================================================
 
+// synth_patch.h included here (after all enums/structs it needs, before processVoice uses it)
+#include "synth_patch.h"
+
+// Read a parameter live from patch if available, otherwise use frozen voice value.
+// Usage: LIVE_PARAM(v, filterCutoff, p_filterCutoff) → v->patch->p_filterCutoff or v->filterCutoff
+#define LIVE_PARAM(v, voiceField, patchField) \
+    ((v)->patch ? (v)->patch->patchField : (v)->voiceField)
+
 static float processVoice(Voice *v, float sampleRate) {
     if (v->envStage == 0) return 0.0f;
 
@@ -2934,16 +2965,22 @@ static float processVoice(Voice *v, float sampleRate) {
 
     v->frequency = freq * pitchEnvMod;
 
+    // Performance pitch bend (global, from wheel/UI)
+    if (synthPitchBendSemitones != 0.0f) {
+        v->frequency *= powf(2.0f, synthPitchBendSemitones / 12.0f);
+    }
+
     // Advance phase (with hard sync: master at note freq, slave at ratio × freq)
     // Master sets the pitch (repetition rate), slave adds timbral complexity.
     float phaseInc = v->frequency / sampleRate;
-    if (v->hardSync && v->hardSyncRatio > 0.0f) {
+    float liveHardSyncRatio = LIVE_PARAM(v, hardSyncRatio, p_hardSyncRatio);
+    if (v->hardSync && liveHardSyncRatio > 0.0f) {
         v->hardSyncPhase += phaseInc;  // master at note frequency
         if (v->hardSyncPhase >= 1.0f) {
             v->hardSyncPhase -= 1.0f;
             v->phase = 0.0f;  // Master cycle reset -> slave phase reset
         }
-        v->phase += phaseInc * v->hardSyncRatio;  // slave at ratio × freq
+        v->phase += phaseInc * liveHardSyncRatio;  // slave at ratio × freq
     } else {
         v->phase += phaseInc;
     }
@@ -3006,7 +3043,9 @@ static float processVoice(Voice *v, float sampleRate) {
             break;
         case WAVE_TRIANGLE:
             // PolyBLEP anti-aliased triangle (integrated bandlimited square)
-            if (v->fbMorphOsc > 0.001f) {
+            {
+            float liveMorphOsc = clampf(LIVE_PARAM(v, fbMorphOsc, p_fbMorphOsc) + v->fbMorphOscOffset, 0.0f, 1.0f);
+            if (liveMorphOsc > 0.001f) {
                 // Trapezoid mode: morph triangle → square (Grenadier-style variable waveform)
                 if (v->unisonCount > 1) {
                     float triPhaseInc = v->frequency / sampleRate;
@@ -3015,11 +3054,11 @@ static float processVoice(Voice *v, float sampleRate) {
                         float udt = triPhaseInc * detune;
                         v->unisonPhases[u] += udt;
                         if (v->unisonPhases[u] >= 1.0f) v->unisonPhases[u] -= 1.0f;
-                        sample += trapezoidOsc(v->unisonPhases[u], v->fbMorphOsc);
+                        sample += trapezoidOsc(v->unisonPhases[u], liveMorphOsc);
                     }
                     sample /= (float)v->unisonCount;
                 } else {
-                    sample = trapezoidOsc(v->phase, v->fbMorphOsc);
+                    sample = trapezoidOsc(v->phase, liveMorphOsc);
                 }
             } else if (v->unisonCount > 1) {
                 float triPhaseInc = v->frequency / sampleRate;
@@ -3036,6 +3075,7 @@ static float processVoice(Voice *v, float sampleRate) {
             } else {
                 sample = polyblepTriangle(v->phase, phaseInc, &v->triIntegrator);
             }
+            } // liveMorphOsc scope
             break;
         case WAVE_NOISE:
             sample = noise();
@@ -3268,11 +3308,12 @@ static float processVoice(Voice *v, float sampleRate) {
     }
 
     // Click transient (one-shot linear-fade noise burst — kick click, key click)
-    if (v->clickLevel > 0.001f && v->clickTimer < v->clickTime) {
+    float liveClickLevel = LIVE_PARAM(v, clickLevel, p_clickLevel) * v->clickLevelScale;
+    if (liveClickLevel > 0.001f && v->clickTimer < v->clickTime) {
         v->clickTimer += dt;
         float clickAmp = 1.0f - v->clickTimer / v->clickTime;
         if (clickAmp < 0.0f) clickAmp = 0.0f;
-        sample += voiceNoise(v) * clickAmp * v->clickLevel;
+        sample += voiceNoise(v) * clickAmp * liveClickLevel;
     }
 
     // Noise mix layer (bandpass filtered noise — snares, hihats, percussion)
@@ -3318,21 +3359,23 @@ static float processVoice(Voice *v, float sampleRate) {
     }
 
     // Drive/saturation (multiple modes — kick warmth, snare crunch, industrial grit)
-    if (v->drive > 0.001f) {
-        float gain = 1.0f + v->drive * 3.0f;
+    float liveDrive = LIVE_PARAM(v, drive, p_drive) + v->driveOffset;
+    if (liveDrive > 0.001f) {
+        float gain = 1.0f + liveDrive * 3.0f;
         sample = applyDistortion(sample, gain, v->driveMode);
     }
 
     // Ring modulation (multiply signal by carrier sine at ratio of base freq)
     if (v->ringMod) {
-        v->ringModPhase += v->frequency * v->ringModFreq / sampleRate;
+        v->ringModPhase += v->frequency * LIVE_PARAM(v, ringModFreq, p_ringModFreq) / sampleRate;
         if (v->ringModPhase >= 1.0f) v->ringModPhase -= (int)v->ringModPhase;
         sample *= sinf(v->ringModPhase * 2.0f * PI);
     }
 
     // Wavefolding (West Coast synthesis — fold signal back when exceeding bounds)
-    if (v->wavefoldAmount > 0.001f) {
-        float wfGain = 1.0f + v->wavefoldAmount * 4.0f;
+    float liveWavefold = LIVE_PARAM(v, wavefoldAmount, p_wavefoldAmount);
+    if (liveWavefold > 0.001f) {
+        float wfGain = 1.0f + liveWavefold * 4.0f;
         float s = sample * wfGain;
         // Triangle-wave fold: maps any value back into [-1, 1]
         s = s - floorf(s * 0.25f + 0.25f) * 4.0f;
@@ -3426,7 +3469,8 @@ static float processVoice(Voice *v, float sampleRate) {
 
     // Calculate effective cutoff with envelope, LFO, accent sweep, gimmick, and key tracking
     float accentSweepMod = v->acidMode ? v->accentSweepLevel * v->accentSweepAmt : 0.0f;
-    float cutoff = v->filterCutoff + v->filterEnvAmt * v->filterEnvLevel
+    float cutoff = LIVE_PARAM(v, filterCutoff, p_filterCutoff) + v->filterCutoffOffset
+                 + v->filterEnvAmt * v->filterEnvLevel
                  + filterLfoMod + accentSweepMod + gimmickMod;
     if (v->filterKeyTrack > 0.001f) {
         float keyScale = v->frequency / 440.0f;
@@ -3435,7 +3479,7 @@ static float processVoice(Voice *v, float sampleRate) {
     cutoff = clampf(cutoff, 0.01f, 1.0f);
 
     // Calculate effective resonance with LFO (>1.0 allows self-oscillation)
-    float res = clampf(v->filterResonance + resoLfoMod, 0.0f, 1.02f);
+    float res = clampf(LIVE_PARAM(v, filterResonance, p_filterResonance) + resoLfoMod, 0.0f, 1.02f);
 
     // Bypass filter when fully open with no modulation (avoids SVF charge-up delay on drums)
     // Also skip for noiseMode==2 overlap: per-burst noise applies its own filter in burst section
@@ -3518,44 +3562,58 @@ static float processVoice(Voice *v, float sampleRate) {
         if (v->formantMode == 1) {
             // === FILTERBANK MODE (Grenadier RA-99 style) ===
 
+            // Live filterbank params (patch base + per-note random deltas)
+            float liveFbAlpha = clampf(LIVE_PARAM(v, fbAlpha, p_fbAlpha) + v->fbAlphaOffset, 0.0f, 1.0f);
+            float liveFbBeta = clampf(LIVE_PARAM(v, fbBeta, p_fbBeta) + v->fbBetaOffset, 0.0f, 1.0f);
+            float liveFbBaseFreq = LIVE_PARAM(v, fbBaseFreq, p_fbBaseFreq) * v->fbBaseFreqScale;
+            float liveFbSpacing = LIVE_PARAM(v, fbSpacing, p_fbSpacing) * v->fbSpacingScale;
+            float liveFbQ = LIVE_PARAM(v, fbQ, p_fbQ) * v->fbQScale;
+            float liveFbKeyTrack = LIVE_PARAM(v, fbKeyTrack, p_fbKeyTrack);
+            float liveFbLfoRate = LIVE_PARAM(v, fbLfoRate, p_fbLfoRate);
+            float liveFbLfoAlpha = LIVE_PARAM(v, fbLfoAlpha, p_fbLfoAlpha);
+            float liveFbEnvAlpha = LIVE_PARAM(v, fbEnvAlpha, p_fbEnvAlpha);
+            float liveFbNoiseMix = LIVE_PARAM(v, fbNoiseMix, p_fbNoiseMix);
+            int liveFbLfoSync = v->patch ? v->patch->p_fbLfoSync : v->fbLfoSync;
+            int liveFbLfoShape = v->patch ? v->patch->p_fbLfoShape : v->fbLfoShape;
+
             // Dedicated filterbank LFO (independent of filter LFO)
-            float fbLfoRate = v->fbLfoRate;
-            if (v->fbLfoSync != LFO_SYNC_OFF) {
-                fbLfoRate = getLfoRateFromSync(synthBpm, v->fbLfoSync);
+            float fbLfoRate = liveFbLfoRate;
+            if (liveFbLfoSync != LFO_SYNC_OFF) {
+                fbLfoRate = getLfoRateFromSync(synthBpm, liveFbLfoSync);
             }
             float fbLfo = processLfo(&v->fbLfoPhase, &v->fbLfoSH,
-                                      fbLfoRate, 1.0f, v->fbLfoShape, dt);
+                                      fbLfoRate, 1.0f, liveFbLfoShape, dt);
 
             // Modulate Alpha with filter envelope and filterbank LFO
-            float modAlpha = v->fbAlpha;
-            if (v->fbEnvAlpha != 0.0f) {
-                modAlpha += v->filterEnvLevel * v->fbEnvAlpha;
+            float modAlpha = liveFbAlpha;
+            if (liveFbEnvAlpha != 0.0f) {
+                modAlpha += v->filterEnvLevel * liveFbEnvAlpha;
             }
-            if (v->fbLfoAlpha != 0.0f) {
-                modAlpha += fbLfo * v->fbLfoAlpha;
+            if (liveFbLfoAlpha != 0.0f) {
+                modAlpha += fbLfo * liveFbLfoAlpha;
             }
             modAlpha = clampf(modAlpha, 0.0f, 1.0f);
 
             // Auto-derive Beta modulation: inverse of Alpha LFO at 30%
             // As Alpha sweeps up, spacing slightly narrows → linked 2D movement
-            float modBeta = v->fbBeta;
-            if (v->fbLfoAlpha != 0.0f) {
-                modBeta -= fbLfo * v->fbLfoAlpha * 0.3f;
+            float modBeta = liveFbBeta;
+            if (liveFbLfoAlpha != 0.0f) {
+                modBeta -= fbLfo * liveFbLfoAlpha * 0.3f;
             }
             modBeta = clampf(modBeta, 0.0f, 1.0f);
 
             // Alpha sweeps base frequency (exponential, 4-octave range)
             float alphaScale = powf(2.0f, (modAlpha - 0.5f) * 4.0f); // ±2 octaves
-            float baseF = v->fbBaseFreq * alphaScale;
+            float baseF = liveFbBaseFreq * alphaScale;
 
             // Key tracking: shift base frequency by note pitch
-            if (v->fbKeyTrack > 0.001f) {
+            if (liveFbKeyTrack > 0.001f) {
                 float noteRatio = v->frequency / 261.63f; // relative to C4
-                baseF *= 1.0f + (noteRatio - 1.0f) * v->fbKeyTrack;
+                baseF *= 1.0f + (noteRatio - 1.0f) * liveFbKeyTrack;
             }
 
             // Beta controls spacing: 0 = tight cluster, 1 = wide spread
-            float spacing = 1.0f + (v->fbSpacing - 1.0f) * (0.3f + modBeta * 0.7f);
+            float spacing = 1.0f + (liveFbSpacing - 1.0f) * (0.3f + modBeta * 0.7f);
             float f1 = baseF;
             float f2 = baseF * spacing;
             float f3 = baseF * spacing * spacing;
@@ -3566,9 +3624,9 @@ static float processVoice(Voice *v, float sampleRate) {
             f3 = clampf(f3, 20.0f, 18000.0f);
 
             // Derive per-filter Q from single knob: LP warm, BP2 neutral, BP3 bright
-            float q1 = v->fbQ * 0.7f;   // LP: less resonant, warmer
-            float q2 = v->fbQ;           // BP2: as set
-            float q3 = v->fbQ * 1.3f;   // BP3: more bite on top
+            float q1 = liveFbQ * 0.7f;   // LP: less resonant, warmer
+            float q2 = liveFbQ;           // BP2: as set
+            float q3 = liveFbQ * 1.3f;   // BP3: more bite on top
 
             // Set filter parameters (bw = freq/Q for SVF)
             v->formantBands[0].freq = f1;
@@ -3579,8 +3637,8 @@ static float processVoice(Voice *v, float sampleRate) {
             v->formantBands[2].bw = f3 / q3;
 
             // Drain SVF states when Q is low — prevents DC from stored energy
-            if (v->fbQ < 1.0f) {
-                float drain = 0.99f - (1.0f - v->fbQ) * 0.04f; // lower Q = faster drain
+            if (liveFbQ < 1.0f) {
+                float drain = 0.99f - (1.0f - liveFbQ) * 0.04f; // lower Q = faster drain
                 for (int i = 0; i < 3; i++) {
                     v->formantBands[i].low *= drain;
                     v->formantBands[i].band *= drain;
@@ -3590,8 +3648,8 @@ static float processVoice(Voice *v, float sampleRate) {
 
             // Mix noise into filterbank input
             float fbInput = sample;
-            if (v->fbNoiseMix > 0.001f) {
-                fbInput = sample * (1.0f - v->fbNoiseMix) + noise() * v->fbNoiseMix;
+            if (liveFbNoiseMix > 0.001f) {
+                fbInput = sample * (1.0f - liveFbNoiseMix) + noise() * liveFbNoiseMix;
             }
 
             // Always LP+2×BPF (RA-99 topology)
@@ -3615,7 +3673,8 @@ static float processVoice(Voice *v, float sampleRate) {
                 formantOut = tanhf(formantOut);
             }
 
-            sample = sample * (1.0f - v->formantMix) + formantOut * v->formantMix;
+            float liveFbMix = LIVE_PARAM(v, formantMix, p_formantMix);
+            sample = sample * (1.0f - liveFbMix) + formantOut * liveFbMix;
         } else {
             // === PHONEME MODE (existing behavior) ===
             // Advance morph phase
@@ -3639,8 +3698,8 @@ static float processVoice(Voice *v, float sampleRate) {
             // Process 4 parallel bandpass filters and sum
             float formantOut = 0.0f;
             for (int i = 0; i < FORMANT_EFFECT_BANDS; i++) {
-                float freq = (fromE->freq[i] * iblend + toE->freq[i] * blend) * v->formantShift;
-                float bw = (fromE->bw[i] * iblend + toE->bw[i] * blend) / v->formantQ;
+                float freq = (fromE->freq[i] * iblend + toE->freq[i] * blend) * LIVE_PARAM(v, formantShift, p_formantShift);
+                float bw = (fromE->bw[i] * iblend + toE->bw[i] * blend) / LIVE_PARAM(v, formantQ, p_formantQ);
                 float amp = fromE->amp[i] * iblend + toE->amp[i] * blend;
 
                 v->formantBands[i].freq = freq;
@@ -3649,7 +3708,8 @@ static float processVoice(Voice *v, float sampleRate) {
             }
 
             // Dry/wet mix
-            sample = sample * (1.0f - v->formantMix) + formantOut * v->formantMix;
+            float liveFormantMix = LIVE_PARAM(v, formantMix, p_formantMix);
+            sample = sample * (1.0f - liveFormantMix) + formantOut * liveFormantMix;
         }
     }
 
@@ -3695,7 +3755,7 @@ static float processVoice(Voice *v, float sampleRate) {
             // Apply filter to per-burst noise sum (drums.h: noise_sum → one-pole BP)
             // drums.h filterBP: LP state → HP state → return LP-HP
             // Use voice filter state (skipped noise mix + main filter for this mode)
-            float lpCut = v->filterCutoff;   // preset sets this to match drums.h LP cutoff
+            float lpCut = LIVE_PARAM(v, filterCutoff, p_filterCutoff) + v->filterCutoffOffset;
             float hpCut = v->noiseHP > 0.001f ? v->noiseHP : 0.08f; // HP cutoff (drums.h clap: 0.08)
             v->filterLp += lpCut * (noiseBurstSum - v->filterLp);
             v->filterBp += hpCut * (v->filterLp - v->filterBp);
@@ -3992,6 +4052,7 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->volume = noteVolume;
     v->wave = wave;
     v->pitchSlide = 0.0f;
+    v->patch = NULL;  // cleared here; playNoteWithPatch sets it after
 
     // General pitch envelope
     v->pitchEnvAmount = notePitchEnvAmount;
@@ -4059,19 +4120,22 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
 
     // Drive & exp decay
     v->drive = noteDrive;
-    if (noteVelToDrive > 0.001f)
-        v->drive += noteVelToDrive * noteVolume * noteVolume;
+    v->driveOffset = 0.0f;
+    if (noteVelToDrive > 0.001f) {
+        v->driveOffset = noteVelToDrive * noteVolume * noteVolume;
+        v->drive += v->driveOffset;
+    }
     v->driveMode = noteDriveMode;
     v->expDecay = noteExpDecay;
 
     // Click transient (velocity-scaled if velToClick > 0)
     {
-        float clickVelScale = 1.0f;
+        v->clickLevelScale = 1.0f;
         if (noteVelToClick > 0.001f) {
             float velSq = noteVolume * noteVolume;
-            clickVelScale = 1.0f - noteVelToClick + noteVelToClick * velSq;
+            v->clickLevelScale = 1.0f - noteVelToClick + noteVelToClick * velSq;
         }
-        v->clickLevel = noteClickLevel * clickVelScale;
+        v->clickLevel = noteClickLevel * v->clickLevelScale;
     }
     v->clickTime = noteClickTime > 0.001f ? noteClickTime : 0.005f;
     v->clickTimer = 0.0f;
@@ -4174,24 +4238,32 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->fbLfoSH = 0.0f;
     v->fbNoiseMix = noteFbNoiseMix;
 
-    // Per-note filterbank randomization — vary params each trigger for acid character
+    // Per-note filterbank randomization — store as deltas for live param reads
+    v->fbBaseFreqScale = 1.0f;
+    v->fbAlphaOffset = 0.0f;
+    v->fbBetaOffset = 0.0f;
+    v->fbQScale = 1.0f;
+    v->fbSpacingScale = 1.0f;
+    v->fbMorphOscOffset = 0.0f;
     if (v->formantMode == 1 && v->fbRandomize > 0.001f) {
         static unsigned int fbRandState = 77777;
         #define FB_RAND() (fbRandState = fbRandState * 1664525u + 1013904223u, \
                           (float)(fbRandState >> 16) / 32768.0f - 1.0f) // -1..+1
         float r = v->fbRandomize;
-        // Base freq: ±1 octave at full randomize
-        v->fbBaseFreq *= powf(2.0f, FB_RAND() * r * 0.5f);
-        // Alpha/Beta: random walk within 0..1
-        v->fbAlpha = clampf(v->fbAlpha + FB_RAND() * r * 0.3f, 0.0f, 1.0f);
-        v->fbBeta  = clampf(v->fbBeta  + FB_RAND() * r * 0.3f, 0.0f, 1.0f);
-        // Q: ±30% at full randomize
-        v->fbQ *= 1.0f + FB_RAND() * r * 0.3f;
-        // Spacing: slight variation
-        v->fbSpacing *= 1.0f + FB_RAND() * r * 0.15f;
-        // Morph: subtle osc shape variation
-        v->fbMorphOsc = clampf(v->fbMorphOsc + FB_RAND() * r * 0.2f, 0.0f, 1.0f);
+        v->fbBaseFreqScale = powf(2.0f, FB_RAND() * r * 0.5f);
+        v->fbAlphaOffset = FB_RAND() * r * 0.3f;
+        v->fbBetaOffset = FB_RAND() * r * 0.3f;
+        v->fbQScale = 1.0f + FB_RAND() * r * 0.3f;
+        v->fbSpacingScale = 1.0f + FB_RAND() * r * 0.15f;
+        v->fbMorphOscOffset = FB_RAND() * r * 0.2f;
         #undef FB_RAND
+        // Apply deltas to snapshot values (keeps behavior identical without live reads)
+        v->fbBaseFreq *= v->fbBaseFreqScale;
+        v->fbAlpha = clampf(v->fbAlpha + v->fbAlphaOffset, 0.0f, 1.0f);
+        v->fbBeta  = clampf(v->fbBeta  + v->fbBetaOffset, 0.0f, 1.0f);
+        v->fbQ *= v->fbQScale;
+        v->fbSpacing *= v->fbSpacingScale;
+        v->fbMorphOsc = clampf(v->fbMorphOsc + v->fbMorphOscOffset, 0.0f, 1.0f);
     }
     for (int i = 0; i < FORMANT_EFFECT_BANDS; i++) {
         v->formantBands[i] = (FormantFilter){0};
@@ -4257,11 +4329,14 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
         v->filterKeyTrack = 0.0f;
         v->filterType = 0;
         v->filterModel = FILTER_MODEL_SVF;
+        v->filterCutoffOffset = 0.0f;
     } else {
         v->filterCutoff = noteFilterCutoff;
-        // Velocity → filter cutoff offset
+        // Velocity → filter: store as per-note offset for live reads
+        v->filterCutoffOffset = 0.0f;
         if (noteVelToFilter > 0.001f) {
-            v->filterCutoff += noteVelToFilter * noteVolume * noteVolume;
+            v->filterCutoffOffset = noteVelToFilter * noteVolume * noteVolume;
+            v->filterCutoff += v->filterCutoffOffset;
             if (v->filterCutoff > 1.0f) v->filterCutoff = 1.0f;
         }
         v->filterResonance = noteFilterResonance;

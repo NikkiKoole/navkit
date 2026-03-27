@@ -76,47 +76,6 @@ static float *rollingBufferGrab(float seconds, int *outLength) {
     return buf;
 }
 
-// Legacy resample API — kept for existing UI code, backed by rolling buffer now
-static volatile bool resampleCapturing = false;
-static volatile int resampleCaptureStart = 0;  // rollingTotalWritten at start
-
-static void resampleStart(void) {
-    resampleCaptureStart = rollingTotalWritten;
-    resampleCapturing = true;
-}
-
-static int resampleStop(void) {
-    resampleCapturing = false;
-    int capturedSamples = rollingTotalWritten - resampleCaptureStart;
-    if (capturedSamples < 64) return -1;  // too short
-    if (capturedSamples > ROLLING_BUFFER_LENGTH) capturedSamples = ROLLING_BUFFER_LENGTH;
-
-    float seconds = (float)capturedSamples / SAMPLE_RATE;
-    int length = 0;
-    float *data = rollingBufferGrab(seconds, &length);
-    if (!data || length < 64) { free(data); return -1; }
-
-    _ensureSamplerCtx();
-
-    // Find next free slot
-    int slot = -1;
-    for (int i = 0; i < SAMPLER_MAX_SAMPLES; i++) {
-        if (!samplerCtx->samples[i].loaded) { slot = i; break; }
-    }
-    if (slot < 0) { free(data); return -1; }
-
-    samplerFreeSample(slot);
-    samplerCtx->samples[slot].data = data;
-    samplerCtx->samples[slot].length = length;
-    samplerCtx->samples[slot].sampleRate = SAMPLE_RATE;
-    samplerCtx->samples[slot].loaded = true;
-    samplerCtx->samples[slot].embedded = false;
-    samplerCtx->samples[slot].oneShot = true;
-    samplerCtx->samples[slot].pitched = false;
-    snprintf(samplerCtx->samples[slot].name, 64, "Resample %d", slot);
-
-    return slot;
-}
 
 // Double-buffer sync: main thread snapshots daw → shadow, audio thread applies
 static DawState dawSyncShadow;
@@ -264,7 +223,6 @@ static void dawSyncEngineStateFrom(const DawState *d) {
 }
 
 // Resample: start capturing master output
-// (resampleStart/resampleStop moved to rolling buffer section above)
 
 // Main-thread entry point: snapshot daw → shadow, set pending for audio thread
 static void dawSyncEngineState(void) {

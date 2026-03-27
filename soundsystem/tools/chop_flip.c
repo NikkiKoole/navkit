@@ -82,6 +82,7 @@ static DawState daw = {
 
 static int patchPresetIndex[NUM_PATCHES] = {-1,-1,-1,-1,-1,-1,-1,-1};
 
+#include "../engines/scratch_space.h"
 #include "../demo/daw_file.h"
 #include "../engines/sample_chop.h"
 
@@ -163,45 +164,51 @@ int main(int argc, char *argv[]) {
         printf("  Exported: %s\n", fullPath);
     }
 
-    // Step 2: Chop
+    // Step 2: Load into scratch space and chop
     printf("\nChopping into %d slices...\n", sliceCount);
-    ChoppedSample chopped;
+    ScratchSpace scratch;
+    scratchInit(&scratch);
+    scratchLoad(&scratch, rendered.data, rendered.length, rendered.sampleRate, rendered.bpm);
+    // scratchLoad takes ownership of rendered.data — don't free it separately
+
     if (useTransient) {
         printf("  Mode: transient (sensitivity=%.0f%%)\n", sensitivity * 100);
-        chopped = chopAtTransients(&rendered, sensitivity, sliceCount);
+        scratchChopTransients(&scratch, sensitivity, sliceCount);
     } else {
-        chopped = chopEqual(&rendered, sliceCount);
+        scratchChopEqual(&scratch, sliceCount);
     }
-    if (chopped.sliceCount != sliceCount) {
-        fprintf(stderr, "Error: chop failed\n");
-        free(rendered.data);
+
+    int actualSlices = scratchSliceCount(&scratch);
+    if (actualSlices != sliceCount) {
+        fprintf(stderr, "Error: chop failed (got %d slices, expected %d)\n", actualSlices, sliceCount);
+        scratchFree(&scratch);
         return 1;
     }
-    printf("  %d samples/slice (%.3fs), %d steps/slice\n",
-           chopped.sliceLength, (float)chopped.sliceLength / SAMPLE_RATE,
-           chopped.stepsPerSlice);
+
+    int firstLen = scratchSliceLength(&scratch, 0);
+    printf("  %d samples/slice (%.3fs)\n", firstLen, (float)firstLen / SAMPLE_RATE);
 
     // Step 3: Export slices
     printf("\nExporting slices to %s/\n", outDir);
     mkdir(outDir, 0755);  // create if needed, ignore error if exists
 
-    for (int s = 0; s < chopped.sliceCount; s++) {
-        int sLen = chopped.sliceLengths[s] > 0 ? chopped.sliceLengths[s] : chopped.sliceLength;
+    for (int s = 0; s < actualSlices; s++) {
+        int sLen = scratchSliceLength(&scratch, s);
+        const float *sData = scratchSliceData(&scratch, s);
         char slicePath[512];
         snprintf(slicePath, sizeof(slicePath), "%s/%s_p%d_s%02d.wav", outDir, songName, patternIdx, s);
-        waWriteWav(slicePath, chopped.slices[s], sLen, SAMPLE_RATE);
+        waWriteWav(slicePath, sData, sLen, SAMPLE_RATE);
 
         float sp = 0;
         for (int i = 0; i < sLen; i++) {
-            float a = fabsf(chopped.slices[s][i]);
+            float a = fabsf(sData[i]);
             if (a > sp) sp = a;
         }
         printf("  [%02d] %s (peak=%.4f)\n", s, slicePath, sp);
     }
 
-    printf("\nDone! %d slices exported.\n", chopped.sliceCount);
+    printf("\nDone! %d slices exported.\n", actualSlices);
 
-    chopFree(&chopped);
-    free(rendered.data);
+    scratchFree(&scratch);
     return 0;
 }
