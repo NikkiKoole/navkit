@@ -385,6 +385,7 @@ typedef struct SynthPatch {
     float p_fbLfoRate;            // Filterbank LFO rate in Hz (0..20)
     int p_fbLfoSync;              // Tempo sync (LfoSyncDiv, 0=off, overrides rate)
     float p_fbLfoAlpha;           // Filterbank LFO → Alpha depth (-1..+1)
+    float p_fbLfoBeta;            // Filterbank LFO → Beta depth (-1..+1, 0=no modulation)
     int p_fbLfoShape;             // Filterbank LFO shape (0=sin,1=tri,2=sq,3=saw,4=S&H)
     float p_fbNoiseMix;           // Noise mixed into filterbank input (0..1)
 

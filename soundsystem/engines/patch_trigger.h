@@ -293,6 +293,7 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     noteFbLfoRate = p->p_fbLfoRate;
     noteFbLfoSync = p->p_fbLfoSync;
     noteFbLfoAlpha = p->p_fbLfoAlpha;
+    noteFbLfoBeta = p->p_fbLfoBeta;
     noteFbLfoShape = p->p_fbLfoShape;
     noteFbNoiseMix = p->p_fbNoiseMix;
 }

@@ -1259,6 +1259,7 @@ typedef struct {
     float fbLfoRate;
     int fbLfoSync;
     float fbLfoAlpha;
+    float fbLfoBeta;
     int fbLfoShape;
     float fbLfoPhase;               // Filterbank LFO phase (runtime state)
     float fbLfoSH;                  // Filterbank LFO S&H value
@@ -1850,6 +1851,7 @@ typedef struct SynthContext {
     float noteFbLfoRate;
     int noteFbLfoSync;
     float noteFbLfoAlpha;
+    float noteFbLfoBeta;
     int noteFbLfoShape;
     float noteFbNoiseMix;
 
@@ -2364,6 +2366,7 @@ static void _ensureSynthCtx(void) {
 #define noteFbLfoRate (synthCtx->noteFbLfoRate)
 #define noteFbLfoSync (synthCtx->noteFbLfoSync)
 #define noteFbLfoAlpha (synthCtx->noteFbLfoAlpha)
+#define noteFbLfoBeta (synthCtx->noteFbLfoBeta)
 #define noteFbLfoShape (synthCtx->noteFbLfoShape)
 #define noteFbNoiseMix (synthCtx->noteFbNoiseMix)
 #define sfxRandomize (synthCtx->sfxRandomize)
@@ -3594,10 +3597,13 @@ static float processVoice(Voice *v, float sampleRate) {
             }
             modAlpha = clampf(modAlpha, 0.0f, 1.0f);
 
-            // Auto-derive Beta modulation: inverse of Alpha LFO at 30%
-            // As Alpha sweeps up, spacing slightly narrows → linked 2D movement
+            // Beta LFO modulation (independent control, or auto-derive from Alpha at 30%)
+            float liveFbLfoBeta = LIVE_PARAM(v, fbLfoBeta, p_fbLfoBeta);
             float modBeta = liveFbBeta;
-            if (liveFbLfoAlpha != 0.0f) {
+            if (liveFbLfoBeta != 0.0f) {
+                modBeta += fbLfo * liveFbLfoBeta;
+            } else if (liveFbLfoAlpha != 0.0f) {
+                // Fallback: auto-derive as inverse of Alpha at 30%
                 modBeta -= fbLfo * liveFbLfoAlpha * 0.3f;
             }
             modBeta = clampf(modBeta, 0.0f, 1.0f);
@@ -3636,13 +3642,13 @@ static float processVoice(Voice *v, float sampleRate) {
             v->formantBands[2].freq = f3;
             v->formantBands[2].bw = f3 / q3;
 
-            // Drain SVF states when Q is low — prevents DC from stored energy
+            // Gentle DC drain on low-pass integrator when Q is low.
+            // Only drains .low (DC-prone integrator), leaves .band/.high alone
+            // so the filter keeps passing signal during live Q sweeps.
             if (liveFbQ < 1.0f) {
-                float drain = 0.99f - (1.0f - liveFbQ) * 0.04f; // lower Q = faster drain
+                float drain = 0.9998f - (1.0f - liveFbQ) * 0.0008f;
                 for (int i = 0; i < 3; i++) {
                     v->formantBands[i].low *= drain;
-                    v->formantBands[i].band *= drain;
-                    v->formantBands[i].high *= drain;
                 }
             }
 
@@ -4233,6 +4239,7 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->fbLfoRate = noteFbLfoRate;
     v->fbLfoSync = noteFbLfoSync;
     v->fbLfoAlpha = noteFbLfoAlpha;
+    v->fbLfoBeta = noteFbLfoBeta;
     v->fbLfoShape = noteFbLfoShape;
     v->fbLfoPhase = 0.0f;
     v->fbLfoSH = 0.0f;

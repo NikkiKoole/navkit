@@ -540,6 +540,7 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeFloat(f, "fbLfoRate", p->p_fbLfoRate);
     _sf_writeInt(f, "fbLfoSync", p->p_fbLfoSync);
     _sf_writeFloat(f, "fbLfoAlpha", p->p_fbLfoAlpha);
+    _sf_writeFloat(f, "fbLfoBeta", p->p_fbLfoBeta);
     _sf_writeInt(f, "fbLfoShape", p->p_fbLfoShape);
     _sf_writeFloat(f, "fbNoiseMix", p->p_fbNoiseMix);
 }
@@ -1246,7 +1247,7 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "fbLfoRate") == 0) p->p_fbLfoRate = _sf_parseFloat(val);
     else if (strcmp(key, "fbLfoSync") == 0) p->p_fbLfoSync = _sf_parseInt(val);
     else if (strcmp(key, "fbLfoAlpha") == 0) p->p_fbLfoAlpha = _sf_parseFloat(val);
-    else if (strcmp(key, "fbLfoBeta") == 0) {} // legacy: auto-derived from LfoAlpha now
+    else if (strcmp(key, "fbLfoBeta") == 0) p->p_fbLfoBeta = _sf_parseFloat(val);
     else if (strcmp(key, "fbLfoShape") == 0) p->p_fbLfoShape = _sf_parseInt(val);
     else if (strcmp(key, "fbNoiseMix") == 0) p->p_fbNoiseMix = _sf_parseFloat(val);
     // Unknown keys silently skipped (future-proof)
