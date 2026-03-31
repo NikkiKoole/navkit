@@ -65,6 +65,7 @@ bool hungerEnabled = false;
 bool energyEnabled = false;
 bool bodyTempEnabled = false;
 bool thirstEnabled = false;
+bool bladderEnabled = false;
 
 // World systems
 #include "../src/world/cell_defs.c"

@@ -42,6 +42,8 @@ const MoodletDef moodletDefs[MOODLET_TYPE_COUNT] = {
     [MOODLET_NICE_ROOM]         = { "Nice room",           1.0f,  4.0f },
     [MOODLET_UGLY_ROOM]         = { "Ugly room",          -1.0f,  4.0f },
     [MOODLET_HOT_MEAL]          = { "Hot meal",            1.0f,  4.0f },
+    [MOODLET_NO_TOILET]         = { "Had to go in the open", -2.0f, 4.0f },
+    [MOODLET_NO_PRIVACY]        = { "No privacy",         -1.0f,  2.0f },
 };
 
 // --- Trait definitions ---

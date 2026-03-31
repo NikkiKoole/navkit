@@ -47,6 +47,10 @@ typedef enum {
     FREETIME_DRINKING,       // Consuming drinkable item
     FREETIME_SEEKING_NATURAL_WATER, // Walking to natural water cell
     FREETIME_DRINKING_NATURAL,      // Drinking from natural water (slower)
+    FREETIME_SEEKING_TOILET,        // Walking to toilet furniture
+    FREETIME_USING_TOILET,          // Using toilet (brief timer)
+    FREETIME_SEEKING_BUSH,          // Walking to outdoor tree/bush for relief
+    FREETIME_USING_BUSH,            // Relieving behind bush (brief timer)
 } FreetimeState;
 
 
@@ -113,6 +117,8 @@ typedef struct Mover {
     int transportExitStation;  // Exit station idx, -1 = none
     int transportTrainIdx;     // Train idx when riding, -1 = none
     Point transportFinalGoal;  // Original goal before redirect
+    // Bladder (v93+)
+    float bladder;              // 1.0=fine, 0.0=desperate
 } Mover;
 
 // Stuck detection thresholds

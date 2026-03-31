@@ -46,6 +46,10 @@ typedef enum {
     // Food temperature
     MOODLET_HOT_MEAL,        // +1  ate/drank something hot
 
+    // Bladder
+    MOODLET_NO_TOILET,       // -2  relieved in the open / indoors
+    MOODLET_NO_PRIVACY,      // -1  relieved outdoors behind bush
+
     MOODLET_TYPE_COUNT
 } MoodletType;
 

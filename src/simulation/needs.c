@@ -25,6 +25,8 @@
 #include "../world/cell_defs.h"
 #include "../simulation/water.h"
 #include "../simulation/rooms.h"
+#include "../simulation/weather.h"
+#include "../simulation/floordirt.h"
 #include "../core/time.h"
 #include <math.h>
 #include <limits.h>
@@ -182,6 +184,100 @@ static void StartWarmthSearch(Mover* m, int moverIdx) {
     m->needProgress = 0.0f;
     m->goal = (Point){goalX, goalY, ws->z};
     m->needsRepath = true;
+}
+
+// --- Bladder seeking ---
+
+// Find nearest toilet furniture (same pattern as rest seeking)
+static int FindNearestToilet(float x, float y, int z) {
+    int bestIdx = -1;
+    float bestDistSq = 1e12f;
+    for (int i = 0; i < MAX_FURNITURE; i++) {
+        if (!furniture[i].active) continue;
+        if (furniture[i].type != FURNITURE_TOILET) continue;
+        if (furniture[i].z != z) continue;
+        if (furniture[i].occupant != -1) continue;
+        float fx = furniture[i].x * CELL_SIZE + CELL_SIZE / 2.0f;
+        float fy = furniture[i].y * CELL_SIZE + CELL_SIZE / 2.0f;
+        float dx = fx - x, dy = fy - y;
+        float distSq = dx * dx + dy * dy;
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestIdx = i;
+        }
+    }
+    return bestIdx;
+}
+
+// Find a walkable outdoor cell near a tree or plant for privacy
+static bool FindNearbyBush(int cx, int cy, int z, int* outX, int* outY) {
+    int radius = 8;
+    float bestDistSq = 1e12f;
+    bool found = false;
+    for (int dy = -radius; dy <= radius; dy++) {
+        for (int dx = -radius; dx <= radius; dx++) {
+            int nx = cx + dx, ny = cy + dy;
+            if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+            if (!IsCellWalkableAt(nx, ny, z)) continue;
+            if (!IsExposedToSky(nx, ny, z)) continue;  // must be outdoors
+            // Check for nearby tree/plant for privacy
+            bool hasPrivacy = false;
+            for (int ay = -1; ay <= 1 && !hasPrivacy; ay++) {
+                for (int ax = -1; ax <= 1 && !hasPrivacy; ax++) {
+                    int px = nx + ax, py = ny + ay;
+                    if (px < 0 || px >= gridWidth || py < 0 || py >= gridHeight) continue;
+                    CellType ct = grid[z][py][px];
+                    if (ct == CELL_TREE_TRUNK || ct == CELL_TREE_BRANCH || ct == CELL_TREE_LEAVES) hasPrivacy = true;
+                    // Also check z+1 for tree canopy
+                    if (z + 1 < gridDepth) {
+                        ct = grid[z + 1][py][px];
+                        if (ct == CELL_TREE_TRUNK || ct == CELL_TREE_BRANCH || ct == CELL_TREE_LEAVES) hasPrivacy = true;
+                    }
+                }
+            }
+            if (!hasPrivacy) continue;
+            float distSq = (float)(dx * dx + dy * dy);
+            if (distSq < bestDistSq) {
+                bestDistSq = distSq;
+                *outX = nx;
+                *outY = ny;
+                found = true;
+            }
+        }
+    }
+    return found;
+}
+
+static void StartBladderSearch(Mover* m, int moverIdx) {
+    int cx = (int)(m->x / CELL_SIZE);
+    int cy = (int)(m->y / CELL_SIZE);
+    int cz = (int)m->z;
+
+    // Priority 1: toilet furniture
+    int toiletIdx = FindNearestToilet(m->x, m->y, cz);
+    if (toiletIdx >= 0) {
+        furniture[toiletIdx].occupant = moverIdx;
+        m->freetimeState = FREETIME_SEEKING_TOILET;
+        m->needTarget = toiletIdx;
+        m->needProgress = 0.0f;
+        m->goal = (Point){furniture[toiletIdx].x, furniture[toiletIdx].y, cz};
+        m->needsRepath = true;
+        return;
+    }
+
+    // Priority 2: outdoor bush/tree for privacy
+    int bushX, bushY;
+    if (FindNearbyBush(cx, cy, cz, &bushX, &bushY)) {
+        m->freetimeState = FREETIME_SEEKING_BUSH;
+        m->needTarget = bushX + bushY * gridWidth;  // encode position
+        m->needProgress = 0.0f;
+        m->goal = (Point){bushX, bushY, cz};
+        m->needsRepath = true;
+        return;
+    }
+
+    // Priority 3: no option — will relieve in place when desperate (handled in FREETIME_NONE when bladder hits 0)
+    m->needSearchCooldown = GameHoursToGameSeconds(balance.bladderSearchCooldownGH);
 }
 
 // Find best drinkable item (prefers tea > juice > water)
@@ -418,7 +514,8 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
 
     switch (m->freetimeState) {
         case FREETIME_NONE: {
-            // Priority: starving > exhausted > freezing > hungry > tired > chilly
+            // Priority: starving > dehydrating > desperate bladder > exhausted > freezing >
+            //           hungry > thirsty > bladder > tired > chilly
             if (hungerEnabled && m->hunger < balance.hungerCriticalThreshold) {
                 // STARVING — unassign job (preserves designation progress), seek food
                 // But don't interrupt food-producing jobs (harvest berry)
@@ -433,6 +530,10 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 // DEHYDRATING — unassign job, seek drink urgently
                 if (m->currentJobId >= 0) UnassignJob(m, moverIdx);
                 if (m->needSearchCooldown <= 0.0f) StartDrinkSearch(m, moverIdx);
+            } else if (bladderEnabled && m->bladder < balance.bladderCriticalThreshold) {
+                // DESPERATE — unassign job, seek toilet/bush urgently
+                if (m->currentJobId >= 0) UnassignJob(m, moverIdx);
+                if (m->needSearchCooldown <= 0.0f) StartBladderSearch(m, moverIdx);
             } else if (energyEnabled && m->energy < balance.energyExhaustedThreshold) {
                 // EXHAUSTED — unassign job (preserves designation progress), seek rest
                 if (m->currentJobId >= 0) UnassignJob(m, moverIdx);
@@ -447,6 +548,9 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             } else if (thirstEnabled && m->thirst < balance.thirstSeekThreshold && m->currentJobId < 0) {
                 // THIRSTY — seek drink (don't cancel jobs)
                 if (m->needSearchCooldown <= 0.0f) StartDrinkSearch(m, moverIdx);
+            } else if (bladderEnabled && m->bladder < balance.bladderSeekThreshold && m->currentJobId < 0) {
+                // NEED TO GO — seek toilet/bush (don't cancel jobs)
+                if (m->needSearchCooldown <= 0.0f) StartBladderSearch(m, moverIdx);
             } else if (energyEnabled && m->energy < balance.energyTiredThreshold && m->currentJobId < 0) {
                 // TIRED — seek rest (don't cancel jobs)
                 if (m->needSearchCooldown <= 0.0f) StartRestSearch(m, moverIdx);
@@ -822,6 +926,98 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 m->needProgress = 0.0f;
             }
             break;
+        }
+
+        // --- Bladder states ---
+
+        case FREETIME_SEEKING_TOILET: {
+            int fi = m->needTarget;
+            if (fi < 0 || fi >= MAX_FURNITURE || !furniture[fi].active ||
+                furniture[fi].type != FURNITURE_TOILET || furniture[fi].occupant != moverIdx) {
+                if (fi >= 0 && fi < MAX_FURNITURE && furniture[fi].occupant == moverIdx) {
+                    furniture[fi].occupant = -1;
+                }
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needSearchCooldown = GameHoursToGameSeconds(balance.bladderSearchCooldownGH);
+                break;
+            }
+            m->needProgress += gameDeltaTime;
+            if (m->needProgress > GameHoursToGameSeconds(1.0f)) {
+                furniture[fi].occupant = -1;
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needProgress = 0.0f;
+                m->needSearchCooldown = GameHoursToGameSeconds(balance.bladderSearchCooldownGH);
+                break;
+            }
+            int tx = furniture[fi].x, ty = furniture[fi].y;
+            int mx = (int)(m->x / CELL_SIZE), my = (int)(m->y / CELL_SIZE);
+            if (abs(mx - tx) <= 1 && abs(my - ty) <= 1) {
+                m->freetimeState = FREETIME_USING_TOILET;
+                m->needProgress = 0.0f;
+            }
+            break;
+        }
+
+        case FREETIME_USING_TOILET: {
+            m->timeWithoutProgress = 0.0f;
+            m->needProgress += gameDeltaTime;
+            if (m->needProgress >= GameHoursToGameSeconds(balance.toiletUseDurationGH)) {
+                m->bladder = 1.0f;
+                int fi = m->needTarget;
+                if (fi >= 0 && fi < MAX_FURNITURE) furniture[fi].occupant = -1;
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needProgress = 0.0f;
+            }
+            break;
+        }
+
+        case FREETIME_SEEKING_BUSH: {
+            int targetX = m->needTarget % gridWidth;
+            int targetY = m->needTarget / gridWidth;
+            m->needProgress += gameDeltaTime;
+            if (m->needProgress > GameHoursToGameSeconds(1.0f)) {
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needProgress = 0.0f;
+                m->needSearchCooldown = GameHoursToGameSeconds(balance.bladderSearchCooldownGH);
+                break;
+            }
+            int mx = (int)(m->x / CELL_SIZE), my = (int)(m->y / CELL_SIZE);
+            if (abs(mx - targetX) <= 1 && abs(my - targetY) <= 1) {
+                m->freetimeState = FREETIME_USING_BUSH;
+                m->needProgress = 0.0f;
+            }
+            break;
+        }
+
+        case FREETIME_USING_BUSH: {
+            m->timeWithoutProgress = 0.0f;
+            m->needProgress += gameDeltaTime;
+            if (m->needProgress >= GameHoursToGameSeconds(balance.bushUseDurationGH)) {
+                m->bladder = 1.0f;
+                AddMoodlet(m, MOODLET_NO_PRIVACY);
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needProgress = 0.0f;
+            }
+            break;
+        }
+    }
+
+    // Emergency relief: bladder hit 0 with no toilet/bush found
+    if (bladderEnabled && m->bladder <= 0.0f && m->freetimeState != FREETIME_SEEKING_TOILET &&
+        m->freetimeState != FREETIME_USING_TOILET && m->freetimeState != FREETIME_SEEKING_BUSH &&
+        m->freetimeState != FREETIME_USING_BUSH) {
+        m->bladder = 1.0f;
+        AddMoodlet(m, MOODLET_NO_TOILET);
+        int dx = (int)(m->x / CELL_SIZE);
+        int dy = (int)(m->y / CELL_SIZE);
+        int dz = (int)m->z;
+        if (dx >= 0 && dx < gridWidth && dy >= 0 && dy < gridHeight && dz >= 0 && dz < gridDepth) {
+            if (floorDirtGrid[dz][dy][dx] < 200) floorDirtGrid[dz][dy][dx] += 50;
         }
     }
 }

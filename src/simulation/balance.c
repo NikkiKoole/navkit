@@ -29,6 +29,12 @@ void InitBalance(void) {
     balance.naturalDrinkDurationGH = 0.6f;
     balance.naturalDrinkHydration  = 0.2f;
 
+    // Bladder
+    balance.hoursToBladderFull       =  6.0f;
+    balance.toiletUseDurationGH      =  0.1f;
+    balance.bushUseDurationGH        =  0.15f;
+    balance.bladderSearchCooldownGH  =  0.5f;
+
     // Thresholds (0-1 scale)
     balance.hungerSeekThreshold      = 0.3f;
     balance.hungerCriticalThreshold  = 0.1f;
@@ -37,6 +43,8 @@ void InitBalance(void) {
     balance.energyWakeThreshold      = 0.8f;
     balance.thirstSeekThreshold      = 0.4f;
     balance.thirstCriticalThreshold  = 0.15f;
+    balance.bladderSeekThreshold     = 0.3f;
+    balance.bladderCriticalThreshold = 0.1f;
 
     // Movement
     balance.baseMoverSpeed       = 200.0f;
@@ -78,6 +86,7 @@ void InitBalance(void) {
 void RecalcBalanceTable(void) {
     balance.hungerDrainPerGH     = 1.0f / balance.hoursToStarve;
     balance.thirstDrainPerGH     = 1.0f / balance.hoursToDehydrate;
+    balance.bladderDrainPerGH    = 1.0f / balance.hoursToBladderFull;
     balance.energyDrainWorkPerGH = 1.0f / balance.hoursToExhaustWorking;
     balance.energyDrainIdlePerGH = 1.0f / balance.hoursToExhaustIdle;
 

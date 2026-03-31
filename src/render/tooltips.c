@@ -360,6 +360,35 @@ static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
         }
     }
 
+    // Bladder
+    if (bladderEnabled) {
+        const char* bladderLabel;
+        Color bladderColor;
+        if (m->bladder > 0.5f) { bladderLabel = "Fine"; bladderColor = GREEN; }
+        else if (m->bladder > 0.3f) { bladderLabel = "Need to go"; bladderColor = YELLOW; }
+        else if (m->bladder > 0.1f) { bladderLabel = "Urgent"; bladderColor = ORANGE; }
+        else { bladderLabel = "Desperate"; bladderColor = RED; }
+        float hoursLeft = (balance.bladderDrainPerGH > 0)
+            ? m->bladder / balance.bladderDrainPerGH : 999.0f;
+        snprintf(lines[lineCount], sizeof(lines[0]), "Bladder: %.0f%% (%s) — %.1fh",
+                 m->bladder * 100.0f, bladderLabel, hoursLeft);
+        lineColors[lineCount++] = bladderColor;
+
+        if (m->freetimeState == FREETIME_SEEKING_TOILET) {
+            snprintf(lines[lineCount], sizeof(lines[0]), "  Seeking toilet...");
+            lineColors[lineCount++] = ORANGE;
+        } else if (m->freetimeState == FREETIME_USING_TOILET) {
+            snprintf(lines[lineCount], sizeof(lines[0]), "  Using toilet");
+            lineColors[lineCount++] = GREEN;
+        } else if (m->freetimeState == FREETIME_SEEKING_BUSH) {
+            snprintf(lines[lineCount], sizeof(lines[0]), "  Seeking bush...");
+            lineColors[lineCount++] = ORANGE;
+        } else if (m->freetimeState == FREETIME_USING_BUSH) {
+            snprintf(lines[lineCount], sizeof(lines[0]), "  Behind a bush...");
+            lineColors[lineCount++] = YELLOW;
+        }
+    }
+
     // Energy
     {
         const char* energyLabel;

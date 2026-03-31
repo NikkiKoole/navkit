@@ -702,6 +702,7 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->dehydrationTimer = 0.0f;
     m->bodyTemp = balance.bodyTempNormal;
     m->hypothermiaTimer = 0.0f;
+    m->bladder = 1.0f;
     // Job system
     m->currentJobId = -1;
     // Tool system
@@ -911,6 +912,14 @@ void NeedsTick(void) {
         } else {
             m->thirst = 1.0f;
             m->dehydrationTimer = 0.0f;
+        }
+
+        // Drain bladder
+        if (bladderEnabled) {
+            m->bladder -= RatePerGameSecond(balance.bladderDrainPerGH) * dt;
+            if (m->bladder < 0.0f) m->bladder = 0.0f;
+        } else {
+            m->bladder = 1.0f;
         }
 
         // Drain energy

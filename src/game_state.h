@@ -148,6 +148,7 @@ extern bool hungerEnabled;
 extern bool energyEnabled;
 extern bool bodyTempEnabled;
 extern bool thirstEnabled;
+extern bool bladderEnabled;
 
 // UI mode: dev (full panels) vs play (minimal HUD)
 extern bool devUI;

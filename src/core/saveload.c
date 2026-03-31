@@ -899,11 +899,18 @@ bool LoadWorld(const char* filename) {
     
     // Movers
     fread(&moverCount, sizeof(moverCount), 1, f);
-    if (version >= 90) {
-        // v90+: Mover struct with mood fields
+    if (version >= 93) {
+        // v93+: Mover struct with bladder field
         fread(movers, sizeof(Mover), moverCount, f);
         for (int i = 0; i < moverCount; i++) {
             fread(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+        }
+    } else if (version >= 90) {
+        // v90-v92: Mover without bladder (4 bytes smaller at end)
+        for (int i = 0; i < moverCount; i++) {
+            fread(&movers[i], sizeof(Mover) - sizeof(float), 1, f);
+            fread(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+            movers[i].bladder = 1.0f;
         }
     } else if (version >= 86) {
         // v86-v89: Mover without mood fields
@@ -1090,6 +1097,7 @@ bool LoadWorld(const char* filename) {
             memset(movers[i].moodlets, 0, sizeof(movers[i].moodlets));
             movers[i].traits[0] = TRAIT_NONE;
             movers[i].traits[1] = TRAIT_NONE;
+            movers[i].bladder = 1.0f;
         }
     }
 

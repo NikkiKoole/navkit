@@ -1450,11 +1450,18 @@ int InspectSaveFile(int argc, char** argv) {
     fread(&insp_moverCount, 4, 1, f);
     insp_movers = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Mover) : sizeof(Mover));
     insp_moverPaths = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Point) * MAX_MOVER_PATH : sizeof(Point) * MAX_MOVER_PATH);
-    if (version >= 90) {
-        // v90+: Mover struct with mood fields
+    if (version >= 93) {
+        // v93+: Mover struct with bladder
         if (insp_moverCount > 0) fread(insp_movers, sizeof(Mover), insp_moverCount, f);
         for (int i = 0; i < insp_moverCount; i++) {
             fread(insp_moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+        }
+    } else if (version >= 90) {
+        // v90-v92: Mover without bladder
+        for (int i = 0; i < insp_moverCount; i++) {
+            fread(&insp_movers[i], sizeof(Mover) - sizeof(float), 1, f);
+            fread(insp_moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+            insp_movers[i].bladder = 1.0f;
         }
     } else if (version >= 86) {
         // v86-v89: Mover without mood fields

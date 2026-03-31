@@ -35,6 +35,12 @@ typedef struct {
     float naturalDrinkDurationGH;   //  0.6
     float naturalDrinkHydration;    //  0.2
 
+    // === BLADDER ===
+    float hoursToBladderFull;       //  6.0  (game-hours from full to desperate)
+    float toiletUseDurationGH;      //  0.1  (game-hours to use toilet)
+    float bushUseDurationGH;        //  0.15 (game-hours to relieve outdoors)
+    float bladderSearchCooldownGH;  //  0.5
+
     // === THRESHOLDS (0-1 scale, not time-dependent) ===
     float hungerSeekThreshold;      // 0.3
     float hungerCriticalThreshold;  // 0.1
@@ -43,10 +49,13 @@ typedef struct {
     float energyWakeThreshold;      // 0.8
     float thirstSeekThreshold;      // 0.4
     float thirstCriticalThreshold;  // 0.15
+    float bladderSeekThreshold;     // 0.3
+    float bladderCriticalThreshold; // 0.1
 
     // === DERIVED RATES (per game-hour, set by RecalcBalanceTable) ===
     float hungerDrainPerGH;
     float thirstDrainPerGH;
+    float bladderDrainPerGH;
     float energyDrainWorkPerGH;
     float energyDrainIdlePerGH;
     float bedRecoveryPerGH;

@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 92
+#define CURRENT_SAVE_VERSION 93
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
