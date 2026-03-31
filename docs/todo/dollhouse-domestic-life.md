@@ -425,11 +425,26 @@ This system is **freetime only**. The boundary is strict:
 
 The existing `ProcessMoverFreetime()` in needs.c is exactly where advertisements plug in. It's already the "no job, what should I do?" code path. We're replacing the separate hardcoded search loops (scan furniture for rest, scan items for food, scan items for drink) with one unified scoring pass.
 
+### Open question: freetime reservations
+
+Advertisements drive freetime behavior — movers are "free" (no job) while acting on an advertisement. Multi-step freetime actions (cook meat, then assemble sandwich with bread) have a time gap where ingredients could get stolen.
+
+**Preferred approach: just use existing reservation mechanisms.** Two mechanisms already exist and track different things:
+
+- **`ReserveItem()`** = "I claim this item" (food, drink). Prevents two movers targeting the same bread. Already used by freetime food/drink seeking.
+- **`furniture.occupant`** = "I'm physically in this" (bed, chair). Tracks who's sitting/sleeping. Released when they stand up.
+
+Both are already used in freetime code — no new concept needed. The advertisement system just checks the right one when scoring: `reservedBy` for items, `occupant` for furniture. One-line branch, not a new system.
+
+Note: there's no "walking toward" reservation for furniture — two movers can both start walking to the same chair. The second one arrives, finds it occupied, and picks another. This is fine (realistic even) and not worth adding complexity for.
+
 ### Implementation path
+
+Currently needs.c has four separate search functions (`StartFoodSearch`, `StartDrinkSearch`, `StartRestSearch`, `StartWarmthSearch`) that all do the same thing: scan entities, score by quality/distance, pick best, reserve, walk there. The advertisement system consolidates them into one pass.
 
 1. **Define `Advertisement` struct** and add it to FurnitureDef (replaces `restRate` with a more general concept)
 2. **Add advertisements to ItemDef** — food items advertise hunger satisfaction, drinks advertise thirst
-3. **Unify freetime need-seeking** — replace hardcoded search loops in `ProcessMoverFreetime()` with one scan: collect all advertisements in range, score by `needUrgency * rate / distance`, pick top option with dithering
+3. **Unify freetime need-seeking** — replace the four `Start*Search()` functions with one unified scan: collect all advertisements in range, score by `needUrgency * rate / distance`, pick top option with dithering. The freetime states (SEEKING_FOOD, RESTING, etc.) stay as-is — the advertisement replaces *how* the target is chosen, not the state machine that executes it.
 4. **Extend to new needs** — bladder (toilet advertises), comfort (chair/bench), fun (future leisure objects)
 
 Each step is backward compatible — the advertisement just formalizes what the code already does for furniture rest-seeking.
