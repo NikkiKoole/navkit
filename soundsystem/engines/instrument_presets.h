@@ -13,7 +13,7 @@ typedef struct {
     SynthPatch patch;
 } InstrumentPreset;
 
-#define NUM_INSTRUMENT_PRESETS 263
+#define NUM_INSTRUMENT_PRESETS 264
 static InstrumentPreset instrumentPresets[NUM_INSTRUMENT_PRESETS];
 
 static void initInstrumentPresets(void) {
@@ -4815,6 +4815,23 @@ static void initInstrumentPresets(void) {
     instrumentPresets[262].patch.p_pitchEnvAmount = 12.0f;
     instrumentPresets[262].patch.p_pitchEnvDecay = 0.05f;
     instrumentPresets[262].patch.p_volume = 0.5f;
+
+    // CR78 Metal Formant — pitched drum with formant filter, mono/glide
+    instrumentPresets[263].name = "CR78 Metal Fmt";
+    instrumentPresets[263].patch.p_waveType = WAVE_SQUARE;
+    instrumentPresets[263].patch.p_osc2Ratio = 1.5f;
+    instrumentPresets[263].patch.p_osc2Level = 0.8f;
+    instrumentPresets[263].patch.p_osc3Ratio = 2.0f;
+    instrumentPresets[263].patch.p_osc3Level = 0.6f;
+    instrumentPresets[263].patch.p_attack = 0.0f;
+    instrumentPresets[263].patch.p_decay = 0.20f;
+    instrumentPresets[263].patch.p_sustain = 0.75f;
+    instrumentPresets[263].patch.p_release = 0.57f;
+    instrumentPresets[263].patch.p_expDecay = true;
+    instrumentPresets[263].patch.p_filterCutoff = 0.3f;
+    instrumentPresets[263].patch.p_monoMode = true;
+    instrumentPresets[263].patch.p_formantEnabled = true;
+    instrumentPresets[263].patch.p_formantRandom = true;
 }
 
 #endif // INSTRUMENT_PRESETS_H

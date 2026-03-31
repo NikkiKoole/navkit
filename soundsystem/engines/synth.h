@@ -2737,8 +2737,10 @@ static float processEnvelope(Voice *v, float dt) {
 
 // Read a parameter live from patch if available, otherwise use frozen voice value.
 // Usage: LIVE_PARAM(v, filterCutoff, p_filterCutoff) → v->patch->p_filterCutoff or v->filterCutoff
+// Cache the pointer to avoid TOCTOU race: audio thread could see patch go NULL
+// between the check and the dereference if main thread recycles the voice.
 #define LIVE_PARAM(v, voiceField, patchField) \
-    ((v)->patch ? (v)->patch->patchField : (v)->voiceField)
+    (__extension__({ const SynthPatch *_lp = (v)->patch; _lp ? _lp->patchField : (v)->voiceField; }))
 
 static float processVoice(Voice *v, float sampleRate) {
     if (v->envStage == 0) return 0.0f;
@@ -3576,8 +3578,8 @@ static float processVoice(Voice *v, float sampleRate) {
             float liveFbLfoAlpha = LIVE_PARAM(v, fbLfoAlpha, p_fbLfoAlpha);
             float liveFbEnvAlpha = LIVE_PARAM(v, fbEnvAlpha, p_fbEnvAlpha);
             float liveFbNoiseMix = LIVE_PARAM(v, fbNoiseMix, p_fbNoiseMix);
-            int liveFbLfoSync = v->patch ? v->patch->p_fbLfoSync : v->fbLfoSync;
-            int liveFbLfoShape = v->patch ? v->patch->p_fbLfoShape : v->fbLfoShape;
+            int liveFbLfoSync = LIVE_PARAM(v, fbLfoSync, p_fbLfoSync);
+            int liveFbLfoShape = LIVE_PARAM(v, fbLfoShape, p_fbLfoShape);
 
             // Dedicated filterbank LFO (independent of filter LFO)
             float fbLfoRate = liveFbLfoRate;
