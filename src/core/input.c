@@ -2413,13 +2413,8 @@ void HandleInput(void) {
     if (IsKeyPressed(KEY_PERIOD) && currentViewZ < gridDepth - 1) currentViewZ++;
     if (IsKeyPressed(KEY_COMMA) && currentViewZ > 0) currentViewZ--;
 
-    // Front view mode toggle
-    if (IsKeyPressed(KEY_V)) {
-        frontViewMode = !frontViewMode;
-        if (frontViewMode) {
-            frontViewY = gridHeight / 2;  // Start in the middle
-        }
-    }
+    // Front view mode toggle (no keybind — toggled via UI only)
+    // frontViewMode can still be set programmatically or via inspector
     // Front view depth scrolling (,/. scroll Y-slice instead of z-level)
     // [/] adjust number of visible depth layers
     if (frontViewMode) {
@@ -3043,6 +3038,12 @@ void HandleInput(void) {
             case ACTION_DRAW_WORKSHOP_MUD_MIXER:
                 if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_MUD_MIXER);
                 break;
+            case ACTION_DRAW_WORKSHOP_STOVE:
+                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_STOVE);
+                break;
+            case ACTION_DRAW_WORKSHOP_COUNTER:
+                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_COUNTER);
+                break;
             case ACTION_DRAW_SOIL_DIRT:
                 if (leftClick) {
                     if (shift) {
@@ -3177,6 +3178,14 @@ void HandleInput(void) {
                 break;
             case ACTION_WORK_WORKSHOP_MUD_MIXER:
                 if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_MUD_MIXER);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
+                break;
+            case ACTION_WORK_WORKSHOP_STOVE:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_STOVE);
+                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
+                break;
+            case ACTION_WORK_WORKSHOP_COUNTER:
+                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_COUNTER);
                 else ExecuteCancelWorkshopBlueprint(x1, y1, z);
                 break;
             case ACTION_WORK_WORKSHOP_DRYING_RACK:

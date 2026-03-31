@@ -1383,12 +1383,55 @@ int InspectSaveFile(int argc, char** argv) {
     fread(&insp_itemHWM, 4, 1, f);
     insp_items = malloc(insp_itemHWM > 0 ? insp_itemHWM * sizeof(Item) : sizeof(Item));
     if (insp_itemHWM > 0) {
-        fread(insp_items, sizeof(Item), insp_itemHWM, f);
+        if (version >= 92) {
+            fread(insp_items, sizeof(Item), insp_itemHWM, f);
+        } else {
+            for (int i = 0; i < insp_itemHWM; i++) {
+                ItemV91 old;
+                fread(&old, sizeof(ItemV91), 1, f);
+                insp_items[i].x = old.x; insp_items[i].y = old.y; insp_items[i].z = old.z;
+                insp_items[i].type = old.type; insp_items[i].state = old.state;
+                insp_items[i].material = old.material; insp_items[i].natural = old.natural;
+                insp_items[i].active = old.active; insp_items[i].reservedBy = old.reservedBy;
+                insp_items[i].unreachableCooldown = old.unreachableCooldown;
+                insp_items[i].stackCount = old.stackCount; insp_items[i].containedIn = old.containedIn;
+                insp_items[i].contentCount = old.contentCount; insp_items[i].contentTypeMask = old.contentTypeMask;
+                insp_items[i].spoilageTimer = old.spoilageTimer; insp_items[i].condition = old.condition;
+                insp_items[i].temperature = 0.0f;
+            }
+        }
     }
     
-    // Stockpiles - v82+ format, direct read
+    // Stockpiles
     insp_stockpiles = malloc(MAX_STOCKPILES * sizeof(Stockpile));
-    fread(insp_stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    if (version >= 91) {
+        fread(insp_stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    } else {
+        StockpileV90 oldSp[MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV90), MAX_STOCKPILES, f);
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            Stockpile* sp = &insp_stockpiles[i];
+            sp->x = oldSp[i].x; sp->y = oldSp[i].y; sp->z = oldSp[i].z;
+            sp->width = oldSp[i].width; sp->height = oldSp[i].height;
+            sp->active = oldSp[i].active;
+            memset(sp->allowedTypes, 0, sizeof(sp->allowedTypes));
+            memcpy(sp->allowedTypes, oldSp[i].allowedTypes, V90_ITEM_TYPE_COUNT * sizeof(bool));
+            memcpy(sp->allowedMaterials, oldSp[i].allowedMaterials, sizeof(sp->allowedMaterials));
+            memcpy(sp->cells, oldSp[i].cells, sizeof(sp->cells));
+            memcpy(sp->slots, oldSp[i].slots, sizeof(sp->slots));
+            memcpy(sp->reservedBy, oldSp[i].reservedBy, sizeof(sp->reservedBy));
+            memcpy(sp->slotCounts, oldSp[i].slotCounts, sizeof(sp->slotCounts));
+            memcpy(sp->slotTypes, oldSp[i].slotTypes, sizeof(sp->slotTypes));
+            memcpy(sp->slotMaterials, oldSp[i].slotMaterials, sizeof(sp->slotMaterials));
+            sp->maxStackSize = oldSp[i].maxStackSize;
+            sp->priority = oldSp[i].priority;
+            sp->maxContainers = oldSp[i].maxContainers;
+            memcpy(sp->slotIsContainer, oldSp[i].slotIsContainer, sizeof(sp->slotIsContainer));
+            memcpy(sp->groundItemIdx, oldSp[i].groundItemIdx, sizeof(sp->groundItemIdx));
+            sp->freeSlotCount = oldSp[i].freeSlotCount;
+            sp->rejectsRotten = oldSp[i].rejectsRotten;
+        }
+    }
 
     // Gather zones
     fread(&insp_gatherZoneCount, 4, 1, f);

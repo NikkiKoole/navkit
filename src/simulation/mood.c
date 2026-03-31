@@ -41,6 +41,7 @@ const MoodletDef moodletDefs[MOODLET_TYPE_COUNT] = {
     [MOODLET_BLEAK_SURROUNDINGS]= { "Bleak surroundings", -0.5f,  2.0f },
     [MOODLET_NICE_ROOM]         = { "Nice room",           1.0f,  4.0f },
     [MOODLET_UGLY_ROOM]         = { "Ugly room",          -1.0f,  4.0f },
+    [MOODLET_HOT_MEAL]          = { "Hot meal",            1.0f,  4.0f },
 };
 
 // --- Trait definitions ---

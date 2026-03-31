@@ -458,6 +458,32 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = true,
         .canErase = false
     },
+    {
+        .action = ACTION_DRAW_WORKSHOP_STOVE,
+        .name = "STOVE",
+        .barDisplayText = "Stove",
+        .barText = "L-click place  [ESC]Back",
+        .barKey = 'v',
+        .barUnderlinePos = 3,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_WORKSHOP,
+        .canDrag = true,
+        .canErase = false
+    },
+    {
+        .action = ACTION_DRAW_WORKSHOP_COUNTER,
+        .name = "COUNTER",
+        .barDisplayText = "coUnter",
+        .barText = "L-click place  [ESC]Back",
+        .barKey = 'u',
+        .barUnderlinePos = 2,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_WORKSHOP,
+        .canDrag = true,
+        .canErase = false
+    },
 
     // ========================================================================
     // MODE_DRAW > TRANSPORT children
@@ -924,6 +950,32 @@ const ActionDef ACTION_REGISTRY[] = {
         .barText = "L-click place  R-click cancel  [ESC]Back",
         .barKey = 'u',
         .barUnderlinePos = 1,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_WORK_WORKSHOP,
+        .canDrag = false,
+        .canErase = true
+    },
+    {
+        .action = ACTION_WORK_WORKSHOP_STOVE,
+        .name = "STOVE",
+        .barDisplayText = "stoVe",
+        .barText = "L-click place  R-click cancel  [ESC]Back",
+        .barKey = 'v',
+        .barUnderlinePos = 3,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_WORK_WORKSHOP,
+        .canDrag = false,
+        .canErase = true
+    },
+    {
+        .action = ACTION_WORK_WORKSHOP_COUNTER,
+        .name = "COUNTER",
+        .barDisplayText = "coUnter",
+        .barText = "L-click place  R-click cancel  [ESC]Back",
+        .barKey = 'u',
+        .barUnderlinePos = 2,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_BUILD,
         .parentAction = ACTION_WORK_WORKSHOP,

@@ -713,10 +713,14 @@ static void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int 
             snprintf(hydrationBuf, sizeof(hydrationBuf), " +%.0f%% hydration", hydration * 100.0f);
             hydrationStr = hydrationBuf;
         }
+        // Temperature label for hot food/drink
+        const char* tempStr = "";
+        if (item->temperature >= 60.0f) tempStr = " piping hot";
+        else if (item->temperature >= 40.0f) tempStr = " warm";
         if (item->stackCount > 1) {
-            snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s x%d (%s%s%s)", idx, typeName, item->stackCount, stateName, freshness, hydrationStr);
+            snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s x%d (%s%s%s%s)", idx, typeName, item->stackCount, stateName, freshness, hydrationStr, tempStr);
         } else {
-            snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s (%s%s%s)", idx, typeName, stateName, freshness, hydrationStr);
+            snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s (%s%s%s%s)", idx, typeName, stateName, freshness, hydrationStr, tempStr);
         }
         lineCount++;
     }

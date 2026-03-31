@@ -4,6 +4,7 @@
 #include "jobs.h"
 #include "item_defs.h"
 #include "containers.h"
+#include "furniture.h"
 #include "../simulation/balance.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -155,6 +156,22 @@ Recipe carpenterRecipes[] = {
     { "Craft Stone Pick",  ITEM_ROCK, 1, ITEM_STICKS, 1, ITEM_CORDAGE, 1, ITEM_STONE_PICK, 1, ITEM_NONE, 0, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, QUALITY_CUTTING, 1 },
 };
 int carpenterRecipeCount = sizeof(carpenterRecipes) / sizeof(carpenterRecipes[0]);
+
+// Stove recipes: 1x1 cooking station
+Recipe stoveRecipes[] = {
+    { "Cook Meat",   ITEM_RAW_MEAT, 1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_COOKED_MEAT, 1, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0, 0, 0 },
+    { "Bake Bread",  ITEM_FLOUR, 1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_BREAD, 1, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0, CAP_PREP_SURFACE, 0 },
+    { "Boil Water",  ITEM_WATER, 1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_BOILED_WATER, 1, ITEM_NONE, 0, 1.5f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0, 0, 0 },
+    { "Brew Tea",    ITEM_WATER, 1, ITEM_DRIED_GRASS, 2, ITEM_NONE, 0, ITEM_HERBAL_TEA, 1, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0, 0, 0 },
+    { "Cook Lentils",ITEM_LENTILS, 2, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_COOKED_LENTILS, 1, ITEM_NONE, 0, 1.5f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0, 0, 0 },
+};
+int stoveRecipeCount = sizeof(stoveRecipes) / sizeof(stoveRecipes[0]);
+
+// Counter recipes: 1x1 prep station (no heat, just assembly)
+Recipe counterRecipes[] = {
+    { "Make Sandwich", ITEM_BREAD, 1, ITEM_COOKED_MEAT, 1, ITEM_NONE, 0, ITEM_SANDWICH, 1, ITEM_NONE, 0, 1.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0, 0, 0 },
+};
+int counterRecipeCount = sizeof(counterRecipes) / sizeof(counterRecipes[0]);
 
 // Workshop definitions table (consolidates templates, recipes, and metadata)
 const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
@@ -353,6 +370,29 @@ const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
         .recipes = mudMixerRecipes,
         .recipeCount = sizeof(mudMixerRecipes) / sizeof(mudMixerRecipes[0]),
         .passive = false
+    },
+    [WORKSHOP_STOVE] = {
+        .type = WORKSHOP_STOVE,
+        .name = "STOVE",
+        .displayName = "Stove",
+        .width = 1,
+        .height = 1,
+        .template = "X",
+        .recipes = stoveRecipes,
+        .recipeCount = sizeof(stoveRecipes) / sizeof(stoveRecipes[0]),
+        .passive = false
+    },
+    [WORKSHOP_COUNTER] = {
+        .type = WORKSHOP_COUNTER,
+        .name = "COUNTER",
+        .displayName = "Counter",
+        .width = 1,
+        .height = 1,
+        .template = "X",
+        .recipes = counterRecipes,
+        .recipeCount = sizeof(counterRecipes) / sizeof(counterRecipes[0]),
+        .passive = false,
+        .capabilities = CAP_PREP_SURFACE
     },
 };
 
@@ -618,6 +658,11 @@ int CreateWorkshop(int x, int y, int z, WorkshopType type) {
                 }
             }
             
+            // Write workshop capabilities to capabilityGrid
+            if (workshopDefs[type].capabilities) {
+                SetCapability(ws->workTileX, ws->workTileY, z, workshopDefs[type].capabilities);
+            }
+
             workshopCount++;
             return i;
         }
@@ -650,6 +695,11 @@ void DeleteWorkshop(int index) {
         // Remove fire light if workshop was burning
         if (ws->fuelTileX >= 0) {
             RemoveLightSource(ws->fuelTileX, ws->fuelTileY, ws->z);
+        }
+
+        // Clear workshop capabilities from capabilityGrid
+        if (workshopDefs[ws->type].capabilities) {
+            ClearCapability(ws->workTileX, ws->workTileY, ws->z);
         }
 
         ws->active = false;
@@ -751,16 +801,25 @@ bool ShouldBillRun(Workshop* ws, Bill* bill) {
     const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
     if (bill->recipeIdx < 0 || bill->recipeIdx >= recipeCount) return false;
     const Recipe* recipe = &recipes[bill->recipeIdx];
-    
+
+    // Check proximity requirement — recipe needs nearby furniture capability
+    if (recipe->requiredNearbyCapability) {
+        int radius = recipe->proximityRadius > 0 ? recipe->proximityRadius : 8;
+        if (!HasNearbyCapability(ws->workTileX, ws->workTileY, ws->z,
+                                 recipe->requiredNearbyCapability, radius)) {
+            return false;
+        }
+    }
+
     switch (bill->mode) {
         case BILL_DO_X_TIMES:
             return bill->completedCount < bill->targetCount;
-            
+
         case BILL_DO_UNTIL_X: {
             int currentCount = CountItemsInStockpiles(recipe->outputType);
             return currentCount < bill->targetCount;
         }
-            
+
         case BILL_DO_FOREVER:
             return true;
     }
@@ -971,7 +1030,16 @@ void PassiveWorkshopsTick(float dt) {
                     outMat = DefaultMaterialForItemType(recipe->outputType);
                 }
                 int outIdx = SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType, outMat);
-                if (outIdx >= 0) items[outIdx].stackCount = recipe->outputCount;
+                if (outIdx >= 0) {
+                    items[outIdx].stackCount = recipe->outputCount;
+                    // Hot food from passive heat-source workshops (campfire, etc.)
+                    if (ws->fuelTileX >= 0 || ws->type == WORKSHOP_STOVE || ws->type == WORKSHOP_HEARTH ||
+                        ws->type == WORKSHOP_CAMPFIRE || ws->type == WORKSHOP_GROUND_FIRE) {
+                        if (ItemIsEdible(recipe->outputType) || ItemIsDrinkable(recipe->outputType)) {
+                            items[outIdx].temperature = 80.0f;
+                        }
+                    }
+                }
             }
             if (recipe->outputType2 != ITEM_NONE) {
                 uint8_t outMat2;

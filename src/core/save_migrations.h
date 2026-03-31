@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 90
+#define CURRENT_SAVE_VERSION 92
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -177,6 +177,50 @@ typedef struct {
     float waitingSince[MAX_STATION_WAITING];
     int waitingCount;
 } TrainStationV86;
+
+// V91 Item struct (before temperature field added in v92)
+typedef struct {
+    float x, y, z;
+    ItemType type;
+    ItemState state;
+    uint8_t material;
+    bool natural;
+    bool active;
+    int reservedBy;
+    float unreachableCooldown;
+    int stackCount;
+    int containedIn;
+    int contentCount;
+    uint32_t contentTypeMask;
+    float spoilageTimer;
+    uint8_t condition;
+    // No temperature field in V91
+} ItemV91;
+
+// V90 item type count (before ITEM_BOILED_WATER, ITEM_SANDWICH added in v91)
+#define V90_ITEM_TYPE_COUNT 68
+
+// V90 Stockpile struct (allowedTypes was V90_ITEM_TYPE_COUNT)
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V90_ITEM_TYPE_COUNT];
+    bool allowedMaterials[MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int maxContainers;
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+    bool rejectsRotten;
+} StockpileV90;
 
 // V87 Train struct (before multi-car trail fields added in v88)
 typedef struct {

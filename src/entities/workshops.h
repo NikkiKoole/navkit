@@ -38,6 +38,8 @@ typedef enum {
     WORKSHOP_TANNING_RACK,
     WORKSHOP_TAILOR,
     WORKSHOP_MUD_MIXER,
+    WORKSHOP_STOVE,
+    WORKSHOP_COUNTER,
     WORKSHOP_TYPE_COUNT,
 } WorkshopType;
 
@@ -85,6 +87,8 @@ typedef struct {
     ItemMatchType inputItemMatch; // how to match input (ITEM_MATCH_EXACT or ITEM_MATCH_ANY_FUEL)
     int requiredQuality;         // QualityType enum value, or QUALITY_COUNT (5) = no requirement
     int requiredQualityLevel;    // minimum quality level needed (0 = no requirement)
+    uint8_t requiredNearbyCapability; // CapabilityFlag bitmask — 0 = no requirement
+    uint8_t proximityRadius;         // how close capability must be (tiles) — 0 defaults to 2
 } Recipe;
 
 // Workshop definition (consolidates template, recipes, and metadata)
@@ -98,6 +102,7 @@ typedef struct {
     const Recipe* recipes;
     int recipeCount;
     bool passive;           // Auto-converts items without crafter (timer-based)
+    uint8_t capabilities;   // CapabilityFlag bitmask — written to capabilityGrid on create
 } WorkshopDef;
 
 // Bill modes
@@ -197,6 +202,10 @@ extern Recipe tailorRecipes[];
 extern int tailorRecipeCount;
 extern Recipe mudMixerRecipes[];
 extern int mudMixerRecipeCount;
+extern Recipe stoveRecipes[];
+extern int stoveRecipeCount;
+extern Recipe counterRecipes[];
+extern int counterRecipeCount;
 
 // Core functions
 void ClearWorkshops(void);

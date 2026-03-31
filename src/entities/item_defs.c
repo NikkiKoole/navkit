@@ -89,5 +89,7 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_GLASS]          = { "Glass",        SPRITE_door,           IF_STACKABLE | IF_BUILDING_MAT, 10, MAT_NONE, 5.0f, 0.0f, 0.0f },
     [ITEM_LYE]            = { "Lye",          SPRITE_clay,           IF_STACKABLE, 20, MAT_NONE, 1.0f, 0.0f, 0.0f },
     [ITEM_MORTAR]         = { "Mortar",       SPRITE_clay,           IF_STACKABLE | IF_BUILDING_MAT, 20, MAT_NONE, 2.0f, 0.0f, 0.0f },
+    [ITEM_BOILED_WATER]   = { "Boiled Water", SPRITE_division,       IF_STACKABLE | IF_DRINKABLE, 5, MAT_NONE, 0.5f, 0.0f, 0.0f },
+    [ITEM_SANDWICH]       = { "Sandwich",     SPRITE_division,       IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 5, MAT_NONE, 0.4f, 0.7f, 300.0f },
 };
 #undef MN

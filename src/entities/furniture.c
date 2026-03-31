@@ -7,13 +7,14 @@
 Furniture furniture[MAX_FURNITURE];
 int furnitureCount = 0;
 uint8_t furnitureMoveCostGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+uint8_t capabilityGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 static const FurnitureDef furnitureDefs[FURNITURE_TYPE_COUNT] = {
-    [FURNITURE_NONE]       = { "None",       0.0f,   false, 0  },
-    [FURNITURE_LEAF_PILE]  = { "Leaf Pile",  0.028f, false, 12 },
-    [FURNITURE_GRASS_PILE] = { "Grass Pile", 0.028f, false, 12 },
-    [FURNITURE_PLANK_BED]  = { "Plank Bed",  0.040f, false, 12 },
-    [FURNITURE_CHAIR]      = { "Chair",      0.015f, false, 11 },
+    [FURNITURE_NONE]       = { "None",       0.0f,   false, 0,  CAP_NONE },
+    [FURNITURE_LEAF_PILE]  = { "Leaf Pile",  0.028f, false, 12, CAP_NONE },
+    [FURNITURE_GRASS_PILE] = { "Grass Pile", 0.028f, false, 12, CAP_NONE },
+    [FURNITURE_PLANK_BED]  = { "Plank Bed",  0.040f, false, 12, CAP_NONE },
+    [FURNITURE_CHAIR]      = { "Chair",      0.015f, false, 11, CAP_NONE },
 };
 
 _Static_assert(sizeof(furnitureDefs) / sizeof(furnitureDefs[0]) == FURNITURE_TYPE_COUNT,
@@ -31,6 +32,7 @@ void ClearFurniture(void) {
     }
     furnitureCount = 0;
     memset(furnitureMoveCostGrid, 0, sizeof(furnitureMoveCostGrid));
+    memset(capabilityGrid, 0, sizeof(capabilityGrid));
 }
 
 int SpawnFurniture(int x, int y, int z, FurnitureType type, uint8_t material) {
@@ -72,6 +74,10 @@ int SpawnFurniture(int x, int y, int z, FurnitureType type, uint8_t material) {
         MarkChunkDirty(x, y, z);
     }
 
+    if (def->capabilities) {
+        capabilityGrid[z][y][x] |= def->capabilities;
+    }
+
     InvalidateRooms();
     return idx;
 }
@@ -90,6 +96,11 @@ void RemoveFurniture(int index) {
         furnitureMoveCostGrid[f->z][f->y][f->x] = 0;
         InvalidatePathsThroughCell(f->x, f->y, f->z);
         MarkChunkDirty(f->x, f->y, f->z);
+    }
+
+    // Clear furniture capability bits (one furniture per cell, so just clear)
+    if (def->capabilities) {
+        capabilityGrid[f->z][f->y][f->x] &= ~def->capabilities;
     }
 
     f->active = false;
@@ -132,4 +143,33 @@ void RebuildFurnitureMoveCostGrid(void) {
             furnitureMoveCostGrid[furniture[i].z][furniture[i].y][furniture[i].x] = (uint8_t)def->moveCost;
         }
     }
+}
+
+// --- Capability grid ---
+
+void SetCapability(int x, int y, int z, uint8_t capBits) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
+    capabilityGrid[z][y][x] |= capBits;
+}
+
+void ClearCapability(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
+    capabilityGrid[z][y][x] = 0;
+}
+
+bool HasNearbyCapability(int x, int y, int z, uint8_t capBits, int radius) {
+    if (!capBits) return true;  // no requirement = always satisfied
+    int x0 = x - radius, x1 = x + radius;
+    int y0 = y - radius, y1 = y + radius;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 >= gridWidth) x1 = gridWidth - 1;
+    if (y1 >= gridHeight) y1 = gridHeight - 1;
+    if (z < 0 || z >= gridDepth) return false;
+    for (int cy = y0; cy <= y1; cy++) {
+        for (int cx = x0; cx <= x1; cx++) {
+            if ((capabilityGrid[z][cy][cx] & capBits) == capBits) return true;
+        }
+    }
+    return false;
 }

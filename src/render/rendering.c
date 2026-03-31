@@ -13,6 +13,7 @@
 #include "../simulation/lighting.h"
 #include "../simulation/plants.h"
 #include "../simulation/farming.h"
+#include "../simulation/mood.h"
 #include "../core/sim_manager.h"
 #include "../entities/trains.h"
 #include <math.h>
@@ -1671,6 +1672,17 @@ static void DrawMovers(void) {
         }
 
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, moverColor);
+
+        // Mood indicator: small colored dot above mover head
+        if (moodEnabled) {
+            Color moodDot;
+            if (m->mood >= 0.3f)       moodDot = (Color){80, 220, 80, 180};   // green — happy
+            else if (m->mood >= -0.1f)  moodDot = (Color){220, 220, 80, 180};  // yellow — neutral
+            else if (m->mood >= -0.5f)  moodDot = (Color){220, 140, 40, 180};  // orange — unhappy
+            else                        moodDot = (Color){220, 50, 50, 180};   // red — miserable
+            float dotR = fmaxf(1.5f, moverSize * 0.15f);
+            DrawCircle((int)sx, (int)(sy - moverSize * 0.6f), dotR, moodDot);
+        }
 
         DrawCarriedItem(m, sx, sy, viewZ, skyColor);
     }

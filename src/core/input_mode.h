@@ -49,6 +49,8 @@ typedef enum {
     ACTION_DRAW_WORKSHOP_TANNING_RACK,
     ACTION_DRAW_WORKSHOP_TAILOR,
     ACTION_DRAW_WORKSHOP_MUD_MIXER,
+    ACTION_DRAW_WORKSHOP_STOVE,
+    ACTION_DRAW_WORKSHOP_COUNTER,
     ACTION_DRAW_SOIL,      // Soil category - sub-actions for each type
     ACTION_DRAW_SOIL_DIRT,
     ACTION_DRAW_SOIL_CLAY,
@@ -91,6 +93,8 @@ typedef enum {
     ACTION_WORK_WORKSHOP_TANNING_RACK,
     ACTION_WORK_WORKSHOP_TAILOR,
     ACTION_WORK_WORKSHOP_MUD_MIXER,
+    ACTION_WORK_WORKSHOP_STOVE,
+    ACTION_WORK_WORKSHOP_COUNTER,
     // Work > Harvest actions
     ACTION_WORK_CHOP,
     ACTION_WORK_CHOP_FELLED,
@@ -183,7 +187,7 @@ typedef struct {
     int backSteps;      // >0: clicking calls InputMode_Back() this many times (for headers)
 } BarItem;
 
-#define MAX_BAR_ITEMS 16
+#define MAX_BAR_ITEMS 24
 int InputMode_GetBarItems(BarItem* items);  // Returns count of items
 
 // Recipe selection (defined in input.c)

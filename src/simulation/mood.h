@@ -43,6 +43,9 @@ typedef enum {
     MOODLET_NICE_ROOM,       // +1  spent time in well-furnished room
     MOODLET_UGLY_ROOM,       // -1  spent time in cramped/dirty/dark room
 
+    // Food temperature
+    MOODLET_HOT_MEAL,        // +1  ate/drank something hot
+
     MOODLET_TYPE_COUNT
 } MoodletType;
 

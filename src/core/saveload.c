@@ -824,7 +824,24 @@ bool LoadWorld(const char* filename) {
     
     // Items
     fread(&itemHighWaterMark, sizeof(itemHighWaterMark), 1, f);
-    fread(items, sizeof(Item), itemHighWaterMark, f);
+    if (version >= 92) {
+        fread(items, sizeof(Item), itemHighWaterMark, f);
+    } else {
+        // v91 and below: Item struct without temperature field
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            ItemV91 old;
+            fread(&old, sizeof(ItemV91), 1, f);
+            items[i].x = old.x; items[i].y = old.y; items[i].z = old.z;
+            items[i].type = old.type; items[i].state = old.state;
+            items[i].material = old.material; items[i].natural = old.natural;
+            items[i].active = old.active; items[i].reservedBy = old.reservedBy;
+            items[i].unreachableCooldown = old.unreachableCooldown;
+            items[i].stackCount = old.stackCount; items[i].containedIn = old.containedIn;
+            items[i].contentCount = old.contentCount; items[i].contentTypeMask = old.contentTypeMask;
+            items[i].spoilageTimer = old.spoilageTimer; items[i].condition = old.condition;
+            items[i].temperature = 0.0f;
+        }
+    }
     // Ensure default materials for any missing entries
     for (int i = 0; i < itemHighWaterMark; i++) {
         if (!items[i].active) continue;
@@ -833,8 +850,36 @@ bool LoadWorld(const char* filename) {
         }
     }
     
-    // Stockpiles - v82+ format, direct read
-    fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    // Stockpiles
+    if (version >= 91) {
+        fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    } else {
+        // v90 and below: allowedTypes was V90_ITEM_TYPE_COUNT (68) bools
+        StockpileV90 oldSp[MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV90), MAX_STOCKPILES, f);
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            Stockpile* sp = &stockpiles[i];
+            sp->x = oldSp[i].x; sp->y = oldSp[i].y; sp->z = oldSp[i].z;
+            sp->width = oldSp[i].width; sp->height = oldSp[i].height;
+            sp->active = oldSp[i].active;
+            memset(sp->allowedTypes, 0, sizeof(sp->allowedTypes));
+            memcpy(sp->allowedTypes, oldSp[i].allowedTypes, V90_ITEM_TYPE_COUNT * sizeof(bool));
+            memcpy(sp->allowedMaterials, oldSp[i].allowedMaterials, sizeof(sp->allowedMaterials));
+            memcpy(sp->cells, oldSp[i].cells, sizeof(sp->cells));
+            memcpy(sp->slots, oldSp[i].slots, sizeof(sp->slots));
+            memcpy(sp->reservedBy, oldSp[i].reservedBy, sizeof(sp->reservedBy));
+            memcpy(sp->slotCounts, oldSp[i].slotCounts, sizeof(sp->slotCounts));
+            memcpy(sp->slotTypes, oldSp[i].slotTypes, sizeof(sp->slotTypes));
+            memcpy(sp->slotMaterials, oldSp[i].slotMaterials, sizeof(sp->slotMaterials));
+            sp->maxStackSize = oldSp[i].maxStackSize;
+            sp->priority = oldSp[i].priority;
+            sp->maxContainers = oldSp[i].maxContainers;
+            memcpy(sp->slotIsContainer, oldSp[i].slotIsContainer, sizeof(sp->slotIsContainer));
+            memcpy(sp->groundItemIdx, oldSp[i].groundItemIdx, sizeof(sp->groundItemIdx));
+            sp->freeSlotCount = oldSp[i].freeSlotCount;
+            sp->rejectsRotten = oldSp[i].rejectsRotten;
+        }
+    }
 
     // Clear transient reservation counts (not meaningful across save/load)
     for (int i = 0; i < MAX_STOCKPILES; i++) {

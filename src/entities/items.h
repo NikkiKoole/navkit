@@ -79,6 +79,8 @@ typedef enum {
     ITEM_GLASS,          // Glass pane (from sand at kiln)
     ITEM_LYE,            // Lye (from ash at hearth)
     ITEM_MORTAR,         // Mortar (from lye + sand at stonecutter)
+    ITEM_BOILED_WATER,   // Boiled water (safe drinking, from stove)
+    ITEM_SANDWICH,       // Sandwich (bread + cooked meat, from counter)
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 
@@ -113,6 +115,7 @@ typedef struct {
     uint32_t contentTypeMask; // bitmask of ItemTypes inside (bloom filter, never cleared on remove)
     float spoilageTimer;      // game-seconds elapsed since spawn (0 = fresh, only used if IF_SPOILS)
     uint8_t condition;        // ItemCondition (CONDITION_FRESH/STALE/ROTTEN)
+    float temperature;        // Celsius (0.0 = not tracked, >0 = hot food cooling down)
 } Item;
 
 #define MAX_ITEMS 25000

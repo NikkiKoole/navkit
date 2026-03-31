@@ -7,6 +7,7 @@
 #include "../world/cell_defs.h"  // for IsCellWalkableAt
 #include "stockpiles.h"  // for MarkStockpileGroundItem
 #include "containers.h"  // for ContainerDef, GetContainerDef, GetOutermostContainer
+#include "../simulation/temperature.h"  // for temperatureGrid
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -280,6 +281,26 @@ static void SpoilageTick(float dt) {
 }
 
 // Optimized - only iterates up to high water mark
+// Cool hot items toward ambient temperature (Newton's cooling)
+#define FOOD_COOLING_RATE 0.02f  // per second — ~35s to halve the difference
+static void TemperatureTick(float dt) {
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (!items[i].active) continue;
+        if (items[i].temperature <= 0.0f) continue;
+        int tx = (int)(items[i].x / CELL_SIZE);
+        int ty = (int)(items[i].y / CELL_SIZE);
+        int tz = (int)items[i].z;
+        float ambient = 20.0f;  // default room temp
+        if (tx >= 0 && tx < gridWidth && ty >= 0 && ty < gridHeight && tz >= 0 && tz < gridDepth) {
+            ambient = (float)temperatureGrid[tz][ty][tx].current;
+        }
+        items[i].temperature += (ambient - items[i].temperature) * FOOD_COOLING_RATE * dt;
+        if (fabsf(items[i].temperature - ambient) < 0.5f) {
+            items[i].temperature = 0.0f;  // close enough — stop tracking
+        }
+    }
+}
+
 void ItemsTick(float dt) {
     for (int i = 0; i < itemHighWaterMark; i++) {
         if (!items[i].active) continue;
@@ -291,6 +312,7 @@ void ItemsTick(float dt) {
         }
     }
     SpoilageTick(dt);
+    TemperatureTick(dt);
 }
 
 void SetItemUnreachableCooldown(int itemIndex, float cooldown) {

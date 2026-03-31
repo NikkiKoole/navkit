@@ -367,7 +367,8 @@ static void StartRestSearch(Mover* m, int moverIdx) {
 // Classify food for moodlets: cooked/prepared = good, raw/unprocessed = raw
 static bool IsGoodFood(ItemType type) {
     return type == ITEM_COOKED_MEAT || type == ITEM_BREAD ||
-           type == ITEM_COOKED_LENTILS || type == ITEM_ROASTED_ROOT;
+           type == ITEM_COOKED_LENTILS || type == ITEM_ROASTED_ROOT ||
+           type == ITEM_SANDWICH;
 }
 
 static bool IsRawFood(ItemType type) {
@@ -533,6 +534,11 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                     } else {
                         AddMoodlet(m, MOODLET_ATE_WITHOUT_TABLE);
                     }
+                }
+
+                // Mood: hot meal (check before DeleteItem)
+                if (items[ti].temperature >= 40.0f) {
+                    AddMoodlet(m, MOODLET_HOT_MEAL);
                 }
 
                 DeleteItem(ti);
@@ -754,6 +760,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 EventLog("Mover %d drank item %d (%s), thirst=%.0f%%", moverIdx, ti, ItemName(items[ti].type), m->thirst * 100.0f);
                 // Mood: drink quality moodlet
                 if (IsGoodDrink(items[ti].type)) AddMoodlet(m, MOODLET_DRANK_GOOD);
+                if (items[ti].temperature >= 40.0f) AddMoodlet(m, MOODLET_HOT_MEAL);
                 DeleteItem(ti);
 
                 m->freetimeState = FREETIME_NONE;

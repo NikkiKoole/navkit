@@ -2243,7 +2243,16 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
                             outMat = DefaultMaterialForItemType(recipe->outputType);
                         }
                         int outIdx = SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType, outMat);
-                        if (outIdx >= 0) items[outIdx].stackCount = recipe->outputCount;
+                        if (outIdx >= 0) {
+                            items[outIdx].stackCount = recipe->outputCount;
+                            // Hot food: set temperature if cooked at a heat-source workshop
+                            if (ws->fuelTileX >= 0 || ws->type == WORKSHOP_STOVE || ws->type == WORKSHOP_HEARTH ||
+                                ws->type == WORKSHOP_CAMPFIRE || ws->type == WORKSHOP_GROUND_FIRE) {
+                                if (ItemIsEdible(recipe->outputType) || ItemIsDrinkable(recipe->outputType)) {
+                                    items[outIdx].temperature = 80.0f;
+                                }
+                            }
+                        }
                     }
                     // Spawn second output if recipe has one (e.g., Strip Bark -> stripped log + bark)
                     if (recipe->outputType2 != ITEM_NONE) {
