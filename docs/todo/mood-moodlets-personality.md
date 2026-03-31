@@ -33,6 +33,7 @@
 ### Phase 2: Hook existing moodlet triggers into needs.c ✅
 
 - [x] **Eating completion**: good food (cooked meat/bread/lentils/roasted root) → ATE_GOOD_FOOD, raw food → ATE_RAW_FOOD
+- [x] **Eating location**: room with chair → ATE_AT_TABLE (+2, 6h), otherwise → ATE_WITHOUT_TABLE (-3, 6h)
 - [x] **Sleep completion**: ground → SLEPT_ON_GROUND, leaf/grass pile → SLEPT_POORLY, plank bed → SLEPT_WELL
 - [x] **Warmth completion**: warmed up at fire → WARM_AND_COZY
 - [x] **Drinking completion**: tea/juice → DRANK_GOOD, natural water → DRANK_DIRTY_WATER
@@ -52,6 +53,21 @@ Movers passively "notice" nearby natural beauty — trees, water, plants. Small 
 - [x] `sceneryEnabled` toggle, `InitSceneryState()`, `CountBeautySources()` API
 - [x] 13 new tests (6 beauty count + 7 moodlet behavior)
 - [ ] Future: flowers, decorated items, room decorations could count as beauty sources
+
+### Phase 3b: Room quality moodlets ✅
+
+Room detection system (`rooms.h`/`rooms.c`) with flood-fill per z-level, room typing, quality scoring. Feeds into mood via periodic check.
+
+- [x] Room detection: BFS flood-fill bounded by walls/doors/windows, per-cell roomGrid
+- [x] Room typing: Kitchen > Workshop > Barracks > Bedroom > Dining > Storage > Generic
+- [x] Quality scoring: light, furniture count/variety, constructed floors/walls, windows, dirt, size
+- [x] **Nice room** (+1, 4h) — quality > 0.3 threshold, checked every 0.5 game-hours
+- [x] **Ugly room** (-1, 4h) — quality < -0.3 threshold
+- [x] Room info in cell tooltip ("Room: Bedroom (q: +0.45)")
+- [x] InvalidateRooms() at all mutation points (construction, mining, furniture, workshops, stockpiles)
+- [x] 25 black-box tests (test_rooms.c)
+- [ ] Future: recheck on door transition (track lastRoomId per mover)
+- [ ] Future: bedroom privacy bonus (private > barracks > outdoors) on sleep completion
 
 ### Phase 4: Weather moodlets (new triggers, existing data)
 

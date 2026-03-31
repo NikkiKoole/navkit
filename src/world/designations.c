@@ -17,6 +17,7 @@
 #include "../entities/workshops.h"
 #include "../entities/stacking.h"
 #include "../core/event_log.h"
+#include "../simulation/rooms.h"
 #include "../game_state.h"
 #include <string.h>
 #include <math.h>
@@ -199,6 +200,7 @@ void CompleteMineDesignation(int x, int y, int z) {
     
     // Invalidate mine cache so newly-adjacent designations become reachable
     InvalidateDesignationCache(DESIGNATION_MINE);
+    InvalidateRooms();
 }
 
 int CountMineDesignations(void) {
@@ -512,6 +514,7 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
     ValidateAndCleanupRamps(x - 2, y - 2, lowerZ, x + 2, y + 2, z);
     
     InvalidateDesignationCache(DESIGNATION_CHANNEL);
+    InvalidateRooms();
 }
 
 int CountChannelDesignations(void) {
@@ -648,6 +651,7 @@ void CompleteDigRampDesignation(int x, int y, int z, int moverIdx) {
     activeDesignationCount--;
     InvalidateDesignationCache(DESIGNATION_DIG_RAMP);
     ValidateAndCleanupRamps(x - 2, y - 2, z - 1, x + 2, y + 2, z + 1);
+    InvalidateRooms();
 }
 
 int CountDigRampDesignations(void) {
@@ -748,6 +752,7 @@ void CompleteRemoveFloorDesignation(int x, int y, int z, int moverIdx) {
     
     // Note: mover will fall if there's nothing solid below - handled by mover update tick
     InvalidateDesignationCache(DESIGNATION_REMOVE_FLOOR);
+    InvalidateRooms();
     (void)moverIdx;  // Could be used for special handling later
 }
 
@@ -2841,6 +2846,7 @@ void CompleteBlueprint(int blueprintIdx) {
         bp->active = false;
         bp->assignedBuilder = -1;
         blueprintCount--;
+        InvalidateRooms();
         return;
     }
 
@@ -2855,12 +2861,14 @@ void CompleteBlueprint(int blueprintIdx) {
         bp->active = false;
         bp->assignedBuilder = -1;
         blueprintCount--;
+        InvalidateRooms();
         return;
     }
 
     bp->active = false;
     bp->assignedBuilder = -1;
     blueprintCount--;
+    InvalidateRooms();
 }
 
 int CountBlueprints(void) {

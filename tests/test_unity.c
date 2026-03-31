@@ -116,5 +116,6 @@ bool thirstEnabled = false;
 #include "../src/entities/workshops.c"
 #include "../src/entities/furniture.c"
 #include "../src/entities/jobs.c"
+#include "../src/simulation/rooms.c"
 #include "../src/core/state_audit.c"
 #include "../src/core/saveload.c"

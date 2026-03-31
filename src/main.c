@@ -879,6 +879,7 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
     InitTemperature();
     InitSteam();
     InitLighting();
+    InitRooms();
     InitPlants();
     InitFarming();
 
@@ -1229,6 +1230,7 @@ int main(int argc, char** argv) {
     InitTemperature();
     InitSteam();
     InitLighting();
+    InitRooms();
     InitPlants();
     InitFarming();
     BuildEntrances();

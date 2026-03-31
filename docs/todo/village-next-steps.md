@@ -22,15 +22,17 @@ The survival loop is complete through Tier 3 (09a loop closers). Movers can eat,
 | Construction | Walls, floors, doors, windows, ramps, ladders, furniture placement |
 | Weather | Seasons, rain, snow, wind, temperature, cloud shadows |
 
-What does NOT exist yet: mood, room quality, occupations, schedules, relationships, elevators, staircases, plumbing, heating networks, electricity.
+What does NOT exist yet: ~~mood, room quality,~~ occupations, schedules, relationships, elevators, staircases, plumbing, heating networks, electricity. (Mood and room quality shipped — see Steps 1-2.)
 
 ---
 
 ## Build Order
 
-### Step 1: Room Detection, Typing & Quality Scoring
+### Step 1: Room Detection, Typing & Quality Scoring ✅
 
 **Effort:** ~1-1.5 sessions | **Deps:** none | **Unlocks:** mood, housing tiers, furniture mattering
+
+Implemented in `src/simulation/rooms.h`/`rooms.c`. 25 tests in `tests/test_rooms.c`. Room moodlets (NICE_ROOM/UGLY_ROOM) and eating location moodlets (ATE_AT_TABLE/ATE_WITHOUT_TABLE) wired into mood system.
 
 Two parts: detect rooms (flood-fill), then classify and score them.
 
@@ -97,12 +99,15 @@ Output: `float roomQuality` (0.0 = cave, 1.0 = well-furnished apartment). Stored
 **Design questions:**
 - Multi-z rooms: a room with a staircase/ladder opening — does it span z-levels? Probably not for v1 (each z-level scored independently).
 - Outdoor spaces: parks/courtyards are "rooms" with no roof. Score differently? Or only score enclosed spaces for now.
+- **Door transition trigger**: Currently movers recheck room quality on a 0.5 game-hour timer. Once door open/close events exist, movers should also recheck immediately when passing through a door (entering a new room is the most natural moment to notice quality). Could track previous roomId per mover and trigger on change.
 
 ---
 
-### Step 2: Simple Mood
+### Step 2: Simple Mood ✅
 
 **Effort:** ~1 session | **Deps:** step 1 (room quality) | **Unlocks:** quality-of-life feedback loop, work speed variation
+
+Already implemented (mood.h/mood.c, save v90). Phases 1-3b complete: continuous needs inputs, food/sleep/drink/temperature/scenery/room moodlets, 5 personality traits, speed multiplier, tooltips. Remaining phases (weather, light, environment, activity moodlets) in `mood-moodlets-personality.md`.
 
 Mood has two layers: **continuous inputs** (needs satisfaction) and **discrete moodlets** (recent events). Both feed into a single `float mood` (0.0-1.0).
 

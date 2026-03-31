@@ -5,6 +5,7 @@
 #include "containers.h"
 #include "jobs.h"
 #include "../world/cell_defs.h"
+#include "../simulation/rooms.h"
 #include <string.h>
 
 Stockpile stockpiles[MAX_STOCKPILES];
@@ -380,6 +381,7 @@ int CreateStockpile(int x, int y, int z, int width, int height) {
             
             stockpileCount++;
             InvalidateStockpileSlotCacheAll();  // New stockpile added
+            InvalidateRooms();
             EventLog("Stockpile %d created at (%d,%d,z%d) %dx%d", i, x, y, z, sp->width, sp->height);
             return i;
         }
@@ -420,6 +422,7 @@ void DeleteStockpile(int index) {
         sp->active = false;
         stockpileCount--;
         InvalidateStockpileSlotCacheAll();  // Stockpile deleted
+        InvalidateRooms();
     }
 }
 

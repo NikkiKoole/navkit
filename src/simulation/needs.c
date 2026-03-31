@@ -24,6 +24,7 @@
 #include "../world/pathfinding.h"
 #include "../world/cell_defs.h"
 #include "../simulation/water.h"
+#include "../simulation/rooms.h"
 #include "../core/time.h"
 #include <math.h>
 #include <limits.h>
@@ -518,6 +519,22 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 ItemType foodType = items[ti].type;
                 if (IsGoodFood(foodType)) AddMoodlet(m, MOODLET_ATE_GOOD_FOOD);
                 else if (IsRawFood(foodType)) AddMoodlet(m, MOODLET_ATE_RAW_FOOD);
+
+                // Mood: ate at table vs without table
+                // Check if mover is in a room with a chair (future: require table furniture)
+                {
+                    int cx = (int)(m->x / CELL_SIZE);
+                    int cy = (int)(m->y / CELL_SIZE);
+                    int cz = (int)m->z;
+                    uint16_t rid = GetRoomAt(cx, cy, cz);
+                    DetectedRoom* room = GetRoom(rid);
+                    if (room && room->chairCount > 0) {
+                        AddMoodlet(m, MOODLET_ATE_AT_TABLE);
+                    } else {
+                        AddMoodlet(m, MOODLET_ATE_WITHOUT_TABLE);
+                    }
+                }
+
                 DeleteItem(ti);
 
                 m->freetimeState = FREETIME_NONE;

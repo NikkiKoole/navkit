@@ -9,6 +9,7 @@
 #include "../world/cell_defs.h"
 #include "../simulation/smoke.h"
 #include "../simulation/lighting.h"
+#include "../simulation/rooms.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -653,6 +654,7 @@ void DeleteWorkshop(int index) {
 
         ws->active = false;
         workshopCount--;
+        InvalidateRooms();
     }
 }
 

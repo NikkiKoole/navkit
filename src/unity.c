@@ -57,6 +57,7 @@
 #include "entities/mover.c"
 #include "entities/namegen.c"
 #include "entities/jobs.c"
+#include "simulation/rooms.c"
 #include "core/state_audit.c"
 
 // Core systems

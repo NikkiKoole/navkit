@@ -39,9 +39,9 @@ typedef enum {
     MOODLET_PLEASANT_VIEW,       // +0.5 nearby trees, water, plants
     MOODLET_BLEAK_SURROUNDINGS,  // -0.5 extended time with no beauty
 
-    // Environment (future: room quality)
-    // MOODLET_NICE_ROOM,
-    // MOODLET_UGLY_ROOM,
+    // Environment (room quality)
+    MOODLET_NICE_ROOM,       // +1  spent time in well-furnished room
+    MOODLET_UGLY_ROOM,       // -1  spent time in cramped/dirty/dark room
 
     MOODLET_TYPE_COUNT
 } MoodletType;

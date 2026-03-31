@@ -13,6 +13,7 @@
 #include "../entities/furniture.h"
 #include "../core/time.h"
 #include "../core/event_log.h"
+#include "rooms.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,6 +39,8 @@ const MoodletDef moodletDefs[MOODLET_TYPE_COUNT] = {
     [MOODLET_DRANK_DIRTY_WATER] = { "Drank dirty water",  -1.0f,  4.0f },
     [MOODLET_PLEASANT_VIEW]     = { "Pleasant view",       0.5f,  2.0f },
     [MOODLET_BLEAK_SURROUNDINGS]= { "Bleak surroundings", -0.5f,  2.0f },
+    [MOODLET_NICE_ROOM]         = { "Nice room",           1.0f,  4.0f },
+    [MOODLET_UGLY_ROOM]         = { "Ugly room",          -1.0f,  4.0f },
 };
 
 // --- Trait definitions ---
@@ -330,6 +333,7 @@ bool sceneryEnabled = true;
 
 static float sceneryCheckTimer[MAX_MOVERS];   // countdown to next beauty scan
 static float bleakAccumulator[MAX_MOVERS];    // game-seconds spent with zero beauty
+static float roomCheckTimer[MAX_MOVERS];      // countdown to next room quality check
 
 #define SCENERY_CHECK_INTERVAL_GH 0.5f  // check every ~0.5 game-hours
 #define SCENERY_RADIUS 6
@@ -339,6 +343,7 @@ static float bleakAccumulator[MAX_MOVERS];    // game-seconds spent with zero be
 void InitSceneryState(void) {
     memset(sceneryCheckTimer, 0, sizeof(sceneryCheckTimer));
     memset(bleakAccumulator, 0, sizeof(bleakAccumulator));
+    memset(roomCheckTimer, 0, sizeof(roomCheckTimer));
 }
 
 // Count beauty sources (trees, water, plants) within radius of a cell.
@@ -401,6 +406,37 @@ static void UpdateSceneryMoodlets(Mover* m, int moverIdx, float dt) {
     }
 }
 
+// --- Room quality moodlets ---
+
+#define ROOM_CHECK_INTERVAL_GH 0.5f
+#define ROOM_QUALITY_NICE_THRESHOLD   0.3f
+#define ROOM_QUALITY_UGLY_THRESHOLD  -0.3f
+
+static void UpdateRoomMoodlets(Mover* m, int moverIdx, float dt) {
+    if (!roomsEnabled) return;
+    roomCheckTimer[moverIdx] -= dt;
+    if (roomCheckTimer[moverIdx] > 0.0f) return;
+    roomCheckTimer[moverIdx] = GameHoursToGameSeconds(ROOM_CHECK_INTERVAL_GH);
+
+    int cx = (int)(m->x / CELL_SIZE);
+    int cy = (int)(m->y / CELL_SIZE);
+    int cz = (int)m->z;
+
+    uint16_t rid = GetRoomAt(cx, cy, cz);
+    DetectedRoom* room = GetRoom(rid);
+
+    if (room && room->quality >= ROOM_QUALITY_NICE_THRESHOLD) {
+        AddMoodlet(m, MOODLET_NICE_ROOM);
+        RemoveMoodlet(m, MOODLET_UGLY_ROOM);
+    } else if (room && room->quality <= ROOM_QUALITY_UGLY_THRESHOLD) {
+        AddMoodlet(m, MOODLET_UGLY_ROOM);
+        RemoveMoodlet(m, MOODLET_NICE_ROOM);
+    } else {
+        RemoveMoodlet(m, MOODLET_NICE_ROOM);
+        RemoveMoodlet(m, MOODLET_UGLY_ROOM);
+    }
+}
+
 // --- Continuous moodlet triggers ---
 // These fire every tick based on current state (not events).
 
@@ -413,6 +449,9 @@ static void UpdateContinuousMoodlets(Mover* m, int moverIdx, float dt) {
 
     // Scenery appreciation (periodic)
     UpdateSceneryMoodlets(m, moverIdx, dt);
+
+    // Room quality (periodic)
+    UpdateRoomMoodlets(m, moverIdx, dt);
 }
 
 // --- Trait assignment ---

@@ -13,6 +13,7 @@
 #include "../simulation/floordirt.h"
 #include "../simulation/balance.h"
 #include "../simulation/mood.h"
+#include "../simulation/rooms.h"
 #include "../entities/trains.h"
 
 static void FormatItemName(const Item* item, char* out, size_t outSize) {
@@ -853,6 +854,16 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
             snprintf(lines[lineCount++], sizeof(lines[0]), "Cleanliness: %s (%d, stone: 50%% rate)", dirtDesc, dirtLevel);
         } else {
             snprintf(lines[lineCount++], sizeof(lines[0]), "Cleanliness: %s (%d)", dirtDesc, dirtLevel);
+        }
+    }
+
+    // Room info
+    {
+        uint16_t rid = GetRoomAt(cellX, cellY, cellZ);
+        DetectedRoom* room = GetRoom(rid);
+        if (room) {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Room: %s (q: %+.2f)",
+                     RoomTypeName(room->type), room->quality);
         }
     }
 

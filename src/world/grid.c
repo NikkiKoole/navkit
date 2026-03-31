@@ -5,6 +5,7 @@
 #include "../simulation/water.h"
 #include "../simulation/fire.h"
 #include "../core/event_log.h"
+#include "../simulation/rooms.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -567,6 +568,7 @@ void PlaceCellFull(int x, int y, int z, CellPlacementSpec spec) {
     // Clear flags and mark dirty
     CLEAR_CELL_FLAG(x, y, z, CELL_FLAG_BURNED);
     MarkChunkDirty(x, y, z);
+    InvalidateRooms();
 }
 
 int InitGridFromAscii(const char* ascii) {

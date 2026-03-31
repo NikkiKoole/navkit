@@ -26,6 +26,7 @@
 #include "../simulation/plants.h"
 #include "../simulation/farming.h"
 #include "../simulation/balance.h"
+#include "../simulation/rooms.h"
 #include "../../shared/profiler.h"
 #include "../../shared/ui.h"
 #include "../../vendor/raylib.h"
@@ -1866,7 +1867,10 @@ void TickWithDt(float dt) {
     PROFILE_BEGIN(Lighting);
     UpdateLighting();
     PROFILE_END(Lighting);
-    
+
+    // Room detection (recompute if walls/furniture changed)
+    UpdateRooms();
+
     // Tree growth
     PROFILE_BEGIN(Trees);
     TreesTick(dt);

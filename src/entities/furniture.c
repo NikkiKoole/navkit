@@ -1,6 +1,7 @@
 #include "furniture.h"
 #include "mover.h"
 #include "../world/pathfinding.h"
+#include "../simulation/rooms.h"
 #include <string.h>
 
 Furniture furniture[MAX_FURNITURE];
@@ -71,6 +72,7 @@ int SpawnFurniture(int x, int y, int z, FurnitureType type, uint8_t material) {
         MarkChunkDirty(x, y, z);
     }
 
+    InvalidateRooms();
     return idx;
 }
 
@@ -93,6 +95,7 @@ void RemoveFurniture(int index) {
     f->active = false;
     f->occupant = -1;
     furnitureCount--;
+    InvalidateRooms();
 }
 
 int GetFurnitureAt(int x, int y, int z) {
