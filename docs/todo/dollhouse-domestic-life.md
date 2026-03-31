@@ -332,6 +332,34 @@ The player says "make lasagna" (the end product). The game walks the recipe DAG 
 
 A **production planner** that decomposes a goal into sub-tasks across stations. The recipes already form a DAG through inputs/outputs — the solver just walks it backward.
 
+### Recipes define WHAT, the environment defines HOW
+
+Recipes don't hardcode which station to use. A recipe says "I need ITEM_BOILED_WATER." The mover figures out *how* to get it at runtime by scanning what's nearby:
+
+```
+Goal: ITEM_PASTA
+  Need: ITEM_DOUGH        → exists nearby? yes → grab it
+  Need: ITEM_BOILED_WATER → exists nearby? no
+    → can I make it? scan nearby stations for recipe that outputs BOILED_WATER
+    → stove nearby + water available? yes → sub-plan: [pick up water, walk to stove, work]
+    → campfire nearby + water? also yes, but further → pick closer one
+    → nothing? can't make pasta right now, bail
+```
+
+The planner considers three things for each ingredient:
+1. **Already exists?** Grab it from stockpile or ground (cheapest)
+2. **Can be made nearby?** Find a station with a recipe that produces it, check if *its* inputs are available (recurse)
+3. **Can't be obtained?** Fail gracefully — try a different recipe or abandon the goal
+
+This means the **same pasta recipe** works in a modern kitchen (stove), a campsite (campfire), or a medieval hearth. The mover adapts to the environment. Different kitchens produce different action queues from the same recipe definition. No need to author "pasta at stove" and "pasta at campfire" as separate recipes.
+
+This naturally falls out of combining three systems:
+- **Recipe DAG** — walks backward from goal to find what's needed
+- **Station proximity** — scans nearby for capability matches (existing `HasNearbyCapability`)
+- **Action queue** — compiles the resolved plan into a step sequence the mover executes
+
+The recipe is *declarative* (what do I need?), the planner is *contextual* (what's available here?), and the queue is *imperative* (go do these steps).
+
 ### The Sims Action Queue
 
 In The Sims, "make dinner" decomposes into a visible queue of sub-actions on one Sim:
@@ -370,6 +398,26 @@ typedef struct {
 ```
 
 The executor is simple: each tick, look at the current action — ACT_WALK_TO sets goal and waits for arrival, ACT_PICK_UP grabs item, ACT_WORK_AT accumulates progress. When done, advance to next. Queue empty = mover is idle.
+
+### Queue is mutable — insertion, interrupts, and sub-tasks
+
+The queue is just an array — it can be spliced at runtime. This enables three powerful behaviors:
+
+**Late resolution:** Mover is on step 3, step 4 needs boiling water that doesn't exist yet. The planner inserts a "go boil water" sub-sequence before step 4, pushes the rest down. The recipe didn't need to know how to get boiling water — the planner resolved it just-in-time.
+
+**Need interrupts without job cancellation:** Currently, critical needs (starving, desperate bladder) call `UnassignJob()` which cancels the entire job. The mover loses progress and gets reassigned to something different. With a queue: push the current queue, execute the interrupt (walk to bush, relieve), pop back and resume where you left off.
+
+```
+Working: [mine rock (progress 60%)]
+   ↓ bladder critical
+Push queue, insert: [walk to bush, use bush]
+   ↓ done
+Pop: [mine rock (resume at 60%)]
+```
+
+The mover takes a leak and comes back to finish mining. No job cancellation, no lost progress. More realistic, more efficient.
+
+**Dynamic sub-tasks:** Mid-cooking, the planner discovers an ingredient is missing. Instead of failing the whole plan, it inserts steps to go fetch the ingredient and then continues the original sequence.
 
 ### Optional actions — graceful degradation
 
