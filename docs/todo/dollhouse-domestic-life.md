@@ -354,6 +354,96 @@ This is the natural evolution of our current item-chain approach (Option A) towa
 
 Step 2 is a job-system feature (bill auto-generation). Step 3 is a mover-system feature (action queue). They're independent — step 2 alone removes most of the manual bill management pain.
 
+### Action queue shape
+
+The existing craft state machine (13 CRAFT_STEP_* states) is already an action queue — just hardcoded. The generalized version makes it dynamic:
+
+```c
+typedef struct {
+    ActionType type;    // ACT_WALK_TO, ACT_PICK_UP, ACT_WORK_AT, ACT_SIT, ACT_EAT, ACT_DROP, ACT_WAIT
+    int targetIdx;      // item, furniture, or workshop index
+    float duration;     // for WORK_AT, WAIT
+    float progress;     // 0 → duration
+    bool optional;      // skip if can't be fulfilled (no chair nearby, etc.)
+    float searchRadius; // how far to look for optional targets
+} Action;
+```
+
+The executor is simple: each tick, look at the current action — ACT_WALK_TO sets goal and waits for arrival, ACT_PICK_UP grabs item, ACT_WORK_AT accumulates progress. When done, advance to next. Queue empty = mover is idle.
+
+### Optional actions — graceful degradation
+
+Not every step is required. Some are opportunities:
+
+```
+"Eat food" plan:
+  [0] ACT_PICK_UP    (food)         — required
+  [1] ACT_WALK_TO    (nearby chair) — optional, radius 6
+  [2] ACT_SIT        (chair)        — optional
+  [3] ACT_EAT        (food)         — required
+```
+
+Mover grabs sandwich, looks around — chair nearby? Sit, eat, get +ATE_AT_TABLE moodlet. No chair? Skip, eat standing. No failure, no replanning, just different mood outcome.
+
+The executor for optional steps: `if (action.optional && !CanFulfill(action)) { advance; continue; }`.
+
+This means the **plan compiler doesn't need to know** if a chair exists when building the queue. It always inserts "sit in chair" as optional. The runtime figures it out. Plans become reusable templates that produce different outcomes depending on what's available:
+
+- Furnished kitchen: pick up bread → sit in chair → eat → +HOT_MEAL, +ATE_AT_TABLE, +NICE_ROOM
+- Empty field: pick up bread → *(skip chair)* → eat → +HOT_MEAL only
+- Same plan, different environment, different mood. That's the Sims feel.
+
+Extends to everything:
+- **Cook at stove:** required steps + optional "wash hands at sink" (mood bonus)
+- **Go to sleep:** walk to bed (required) + optional "change clothes" (future cosmetic)
+- **Multi-station crafting:** required forge steps + optional "put on apron" or "check bellows"
+
+### Relationship to existing systems
+
+### Why not replace existing jobs with the queue immediately?
+
+The current craft/haul/mine/build state machines work, have 100+ tests, and handle edge cases (item gone mid-carry, workshop destroyed, mover died, cancellation cleanup). Rewriting them into queue format risks breaking all of that for zero gameplay benefit — they'd do the exact same thing, just structured differently.
+
+The queue is worth building for things the current system **can't do**:
+- Freetime "sit then eat" — can't today, hardcoded states
+- Multi-station crafting in one flow — can't today, one workshop per job
+- Optional opportunistic steps — can't today, every step is required
+
+So: build the queue for new behaviors first (freetime, multi-station plans), prove it works. If it turns out simpler and more robust than the old state machines, migrate them over one by one. The craft state machine's 13 hardcoded steps are exactly what a 7-entry queue would do — that refactor would simplify jobs.c significantly. But it's earned through confidence in the new system, not imposed upfront.
+
+The freetime state machine (SEEKING_FOOD → EATING → NONE) is the natural first migration target — it's simpler than craft, and it's where the queue unlocks new behavior (sit-then-eat) that players will immediately notice.
+
+### Refactoring scope analysis (code audit, 2026-03-31)
+
+The existing job system has 35 job types. Analyzed what a full migration to the action queue would look like:
+
+**Job patterns** — most jobs are simple, one is complex:
+- ~50% are walk + work (mine, chop, clean, gather, till) — 2 steps
+- ~20% are pick up + carry + drop (haul, deliver, clear) — 3 steps
+- ~10% are haul + work (plant, fertilize) — 4 steps
+- 1 outlier: Craft with 13 conditional steps (0-3 inputs + optional fuel)
+
+**8-10 primitive actions** cover all 35 job types: WALK_TO, PICK_UP, DROP, WORK_FOR, TOOL_FETCH, plus specials (hunt chase, explore beeline).
+
+**Full migration cost:** Remove ~2500 lines of RunJob_* functions, add ~500-800 lines for generic executor. Net -1700 lines. But risky — touches the most tested code (100+ tests), craft job has conditional branching that's hard to express as a linear queue, hunt has dynamic re-targeting, clear computes drop location after pickup. 2-3 sessions of work.
+
+**The key insight: we don't need to migrate jobs to get the queue for freetime.** The freetime state machine and the job system are separate code paths. Building the queue for freetime only:
+
+- ~200 lines: action queue executor (shared between freetime and future job migration)
+- ~300 lines: freetime migration (replace 11 hardcoded FREETIME_* states with queue-driven behavior)
+- Zero changes to any RunJob_* function
+- Zero risk to existing job tests
+
+**Strategy: freetime first, job migration later (if ever).**
+
+1. Build the action queue executor (~200 lines, generic)
+2. Migrate freetime onto it (~300 lines) — this unlocks sit-then-eat, optional steps, the Sims feel
+3. Multi-station crafting uses the queue for the mover's cross-station plan (new behavior, not refactoring)
+4. Optionally migrate simple jobs (mine, haul) one at a time if the queue proves itself — each batch independently testable
+5. Craft job migrates last (or never — it works fine as-is)
+
+The queue earns trust through new behavior, not through rewriting old behavior.
+
 ### Option A and B coexist
 
 Option B doesn't replace A — it's an acceleration layer on top. Both use the same stations, recipes, and bills.
