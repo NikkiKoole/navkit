@@ -185,6 +185,83 @@ This ties the UI redesign directly to the action queue system from the dollhouse
 
 ---
 
+## Pie Menu: Object Interaction (Sims 2 style)
+
+Right-click (or click with no tool active) on any world object opens a context-sensitive radial pie menu. `pie_menu.c` already exists with ring rendering and click region detection — just needs to be wired up.
+
+### What shows for each object type
+
+**Workshop (e.g. Stove):**
+```
+        [Bake Bread]
+           /
+   [Cook Meat]    [Boil Water]
+      |               |
+   ───●───  (STOVE)
+      |               |
+   [Brew Tea]    [Manage Bills]
+           \
+        [Deconstruct]
+```
+Click a recipe slice → adds a bill (Do Forever). "Manage Bills" opens the bill panel below. Replaces hover + keyboard combos.
+
+**Mover:**
+```
+      [Follow]
+        /
+  [Draft]    [Check Needs]
+     |            |
+   ──●──  (KIRA)
+     |            |
+  [Undraft]  [Inventory]
+        \
+      [Cancel Job]
+```
+"Follow" selects + zooms. "Check Needs" opens character panel. Context-dependent slices (Draft only shows if not drafted, etc.).
+
+**Furniture (e.g. Chair):**
+```
+   [Sit Here]    [Remove]
+      ──●──
+```
+"Sit Here" could direct a selected mover to sit (future: when movers can be given commands).
+
+**Ground/Cell:**
+```
+      [Build Wall]
+         /
+  [Place Floor]    [Mine]
+      ──●──
+  [Stockpile]    [Info]
+         \
+       [Channel]
+```
+Context-sensitive — shows build options appropriate for the cell. Underground cell shows Mine/Channel, surface shows Build/Plant.
+
+### Interaction flow
+
+1. **No tool active, click world object** → pie menu opens
+2. **Select slice** → action executes (add bill, follow mover, place blueprint)
+3. **Click away or ESC** → pie menu closes
+4. **Tool active** → normal click uses tool, no pie menu (tool overrides)
+
+### Shift-click for queuing (Sims 2 pattern)
+
+When a mover is selected and has an action queue:
+- **Click** object → replaces queue with new action
+- **Shift-click** object → appends to queue without canceling current action
+
+This is future (needs action queue), but the pie menu structure supports it from day one.
+
+### Why pie menu over list menu
+
+- **Faster with muscle memory** — "Cook Meat is always the left slice on a stove." Players learn positions.
+- **Context-sensitive** — only valid actions appear. No greyed-out options.
+- **Works for everything** — movers, workshops, furniture, ground. One interaction pattern for the whole game.
+- **Already partially built** — `pie_menu.c` has ring rendering, slice detection, action registry lookup.
+
+---
+
 ## Selection Model
 
 Currently no persistent selection. Adding:
