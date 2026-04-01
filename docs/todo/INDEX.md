@@ -1,12 +1,18 @@
 # Todo Index
 
-> One-line summaries of everything in `docs/todo/`, grouped by status. Updated 2026-03-06.
+> One-line summaries of everything in `docs/todo/`, grouped by status. Updated 2026-03-31.
 
 ---
 
-## Implemented (verify/close)
+## Implemented (moved to done/)
 
-- `12-biome-presets.md` — 8 named biome presets tuning worldgen/climate/vegetation (6 free, 2 need sprites)
+- ~~`12-biome-presets.md`~~ → `docs/done/`
+- ~~`feature-03-doors-shelter.md`~~ → `docs/done/` (superseded)
+- ~~`feature-04-tools-knapping.md`~~ → `docs/done/` (superseded)
+- ~~`primitives-missing.md`~~ → `docs/done/gameplay/`
+- ~~`water-dependent-crafting.md`~~ → `docs/done/gameplay/`
+- ~~`jobs-roadmap.md`~~ → `docs/done/jobs/`
+- ~~`platform-cell.md`~~ → `docs/done/pathfinding/`
 
 ## Partial (code exists, more to build)
 
@@ -27,7 +33,7 @@
 - `environmental/fire-improvements.md` — Ground fire spread + fire pit tool requirement (deferred from shelter)
 - `environmental/fire-ignition-materials.md` — Fix: wood walls won't ignite, floors don't burn, tree trunks only top segment
 - `gameplay/water-placement-tools.md` — Player actions to place/remove water sources, springs, pumps, drains
-- `gameplay/water-dependent-crafting.md` — Workshops requiring location-based resources (riverbed, shade, fire)
+- ~~`gameplay/water-dependent-crafting.md`~~ — moved to done/ (mud mixer implemented)
 - `gameplay/seasoning-curing.md` — Material states (green/seasoned/rotten wood) changing over time
 - `gameplay/more-tiles-design.md` — Next small tiles: hearth, clay pit, mud mixer
 - `world/elevators.md` — Moving platforms with state, capacity, queuing
@@ -47,7 +53,8 @@
 - `mover-control-and-work-radius.md` — Constrain mover movement (leash radius, distance weighting, draft mode)
 - `world/more-tiles.md` — Tier progression inventory (Survival → Farming → Industrial → Urban)
 - `items/future-ideas.md` — Containers, tool durability, scattered brainstorm
-- `jobs/jobs-roadmap.md` — Future farming/hunting job types
+- ~~`jobs/jobs-roadmap.md`~~ — moved to done/ (farming/hunting all implemented)
+- `gameplay/more-tiles-design.md` — Mostly done (hearth+mud mixer shipped), only clay pit remains
 - `pathfinding/future-ideas.md` — Flow fields, formations, territory costs
 - `gameplay/flow-simulation.md` — Vector fields to bias water/smoke/fire spread deterministically
 - `architecture/unified-roadmap.md` — Master architecture plan tying 7 docs into Era 2 build order
@@ -57,7 +64,7 @@
 - `00-priority-order.md` — Master priority list for survival mode feature roadmap
 - `gameplay/workshops-master.md` — Living doc tracking workshop additions, source-sink-feedback principles
 - `gameplay/balance-and-rate-tuning.md` — Guide for tuning interconnected rate-based systems
-- `gameplay/primitives-missing.md` — Status tracker: which primitive items/cells are done vs needed
+- ~~`gameplay/primitives-missing.md`~~ — moved to done/ (all primitive items implemented)
 - `ui/pie-menu.md` — Radial context menu research (Fitts's Law, mark-ahead)
 - `architecture/performance-dod-audit.md` — DOD struct analysis (A* nodes, item scanning bottlenecks)
 - `architecture/performance-dod-audit-jobs.md` — Jobs.c deep-dive: O(workshops×bills×items) and fixes
@@ -79,10 +86,10 @@
 - `discussions with ai/grand colony.md` — Scaling from 1 person to city: shadow labor, tech eras
 - `discussions with ai/notdfworkshops.md` — CDDA-style freeform construction, tools as entities
 
-## Superseded
+## Superseded (moved to done/)
 
-- `feature-03-doors-shelter.md` — Original F03 design, superseded by `docs/done/03-*`
-- `feature-04-tools-knapping.md` — Original F04 design, superseded by `02-tool-quality-*`
+- ~~`feature-03-doors-shelter.md`~~ → `docs/done/`
+- ~~`feature-04-tools-knapping.md`~~ → `docs/done/`
 
 ---
 

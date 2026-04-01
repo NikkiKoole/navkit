@@ -1,6 +1,6 @@
 # Design Doc: Next Tiles for Autarky-Scale Progression
 
-> Status: spec
+> Status: mostly done — hearth and mud mixer implemented. Only clay pit and flat stone remain.
 
 Date: 2026-02-07
 Scope: Propose the *next* placeable tiles/structures based on current code capabilities and the autarky philosophy. Avoid oversized “bakery”‑style buildings; favor smaller, composable tiles that form loops.

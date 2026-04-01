@@ -3,7 +3,7 @@
 > Status: research
 
 Date: 2026-02-09
-Updated: 2026-02-12
+Updated: 2026-03-31
 Status: Living document - update as implementation progresses
 
 ---
@@ -18,13 +18,15 @@ Every addition must have:
 Prefer small complete loops over long incomplete chains.
 
 ### Current Limitations (What We Don't Have Yet)
-- **Containers** - no inventory system, no "basket holds 10 berries"
-- **Tools** - no equipment slots, no "worker uses axe to chop faster"
 - **Durability** - items don't wear out or break
 - **Quality** - no good/poor/excellent variants
 - **Fuel over time** - workshops consume inputs per recipe, not continuous burn
-- **Farming** - no crops, fertilizer use, or plowing
-- **Animals** - no hunting, hides, or meat
+
+### Previously Missing, Now Implemented
+- ~~**Containers**~~ — `containers.c`, baskets, pots (save v50+)
+- ~~**Tools**~~ — `tool_quality.c`, 4 tool items, 5 quality types, speed scaling (save v65-66)
+- ~~**Farming**~~ — 3 crops, compost, quern, planting/harvesting jobs (save v76-77)
+- ~~**Animals**~~ — hunting, butchering, hides, meat, animal respawn (save v70-74)
 
 ### Future Markers
 When documenting future ideas, mark dependencies:
