@@ -175,13 +175,56 @@ The game has two levels of caring about movers:
 
 **Character view** (dollhouse, few movers): movers are individuals. You watch Kira specifically — her mood, her meals, her daily routine. The game is about *them*.
 
-The Beestje tab serves both:
-- **Colony play**: roster is a quick health check — who's starving? who's idle? Click to diagnose.
-- **Character play**: roster is your cast — click Kira to follow her day. The bottom panel becomes her personal dashboard.
+The Beestje tab adapts to population size:
 
-The roster also naturally shows the action queue (when built): "Cooking meat → assemble sandwich → eat at table." You see her plan unfold. That's the Sims plumbob/queue view.
+### 2-5 movers (dollhouse) — portraits
 
-This ties the UI redesign directly to the action queue system from the dollhouse doc — the queue isn't just internal state, it's *visible* to the player in the character panel.
+```
+[Kira ☺]  [Thrak 😐]  [Enna ☺]
+```
+Click portrait → select, follow, character panel. This is the Sims feel.
+
+### 10-30 movers (colony) — roster table
+
+```
+┌───────────────────────────────────────────────────────────┐
+│ Name        Role        Mood  Shift     Top skill         │
+│ Kira        Farmer      ☺     Day       ████░ farming     │
+│ Thrak       Builder     😐    Day       ███░░ construct   │
+│ Enna        Cook        ☺     Day       █████ cooking     │
+│ Varn        Guard       😟    Night     ██░░░ combat      │
+│ [Sort: Name | Role | Mood | Skill]  [Filter: ☺😐😟]      │
+└───────────────────────────────────────────────────────────┘
+```
+Click row → select mover, zoom in. Click Role column → reassign. One role per mover, not 30 labor toggles (the DF pain). Skills grow from practice, no micromanagement.
+
+### 50-200 movers (village) — dashboard
+
+```
+┌───────────────────────────────────────────────────────────┐
+│ Population: 127    Avg mood: 74%                          │
+│ ☺ 84  😐 28  😟 12  😡 3                                 │
+│                                                           │
+│ Activity: Working 84  Idle 12  Eating 18  Sleeping 13     │
+│ Roles:  [Farmers: 24] [Crafters: 18] [Builders: 12]      │
+│         [Haulers: 30] [Guards: 8]  [Unassigned: 5]       │
+│                                                           │
+│ Alerts: 3 movers starving, 2 homeless, 1 stuck            │
+└───────────────────────────────────────────────────────────┘
+```
+Click occupation group → filtered roster of those movers. Click alert → zoom to the problem. Individual selection still works (click in world), but the default view is management overview.
+
+### Role assignment vs DF labor toggles
+
+DF's approach: 30+ individual labor checkmarks per dwarf. Painful, doesn't scale, most players use external tools (Dwarf Therapist). RimWorld improved it with priority numbers (1-4 per labor) but it's still a spreadsheet.
+
+Our approach: **one role per mover** (Farmer, Crafter, Builder, Hauler, Guard, Cook, Unassigned). The role sets soft preferences in WorkGivers — a farmer *prefers* farm jobs but hauls when idle. No hard gates, no micromanagement. Reassign a role with one click in the roster.
+
+Schedule per role, not per mover: farmers work dawn-dusk, guards work night shift. Change a role's schedule → all movers with that role adjust. Individual schedule overrides possible but not required.
+
+### The character panel still works at any scale
+
+Even with 200 movers, clicking one in the world (or in the roster) opens the full character panel — needs, mood, moodlets, action queue. The dashboard is for management, the character panel is for investigation. "Kira is unhappy — why?" Click her → see moodlets → "No privacy (-1), Ate raw food (-1)". Fix the problem.
 
 ---
 
