@@ -3651,3 +3651,45 @@ Point GetRandomWalkableCellOnZ(int z) {
     }
     return (Point){-1, -1, z};
 }
+
+// BFS from a starting cell, collect reachable walkable cells, pick one randomly.
+// Respects walls, doors, room boundaries — mover in a sealed room only gets cells inside.
+#define REACHABLE_MAX 256
+Point GetRandomReachableCell(int startX, int startY, int startZ) {
+    static Point reachable[REACHABLE_MAX];
+    static bool visited[MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+    memset(visited, 0, sizeof(visited));
+
+    // BFS queue (reuse reachable array + separate head/tail)
+    static Point queue[REACHABLE_MAX];
+    int qHead = 0, qTail = 0;
+    int found = 0;
+
+    queue[qTail++] = (Point){startX, startY, startZ};
+    visited[startY][startX] = true;
+
+    while (qHead < qTail && found < REACHABLE_MAX) {
+        Point cur = queue[qHead++];
+        reachable[found++] = cur;
+
+        // 4-directional neighbors
+        static const int dx[] = {1, -1, 0, 0};
+        static const int dy[] = {0, 0, 1, -1};
+        for (int d = 0; d < 4; d++) {
+            int nx = cur.x + dx[d];
+            int ny = cur.y + dy[d];
+            if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+            if (visited[ny][nx]) continue;
+            if (!IsCellWalkableAt(cur.z, ny, nx)) continue;
+            visited[ny][nx] = true;
+            if (qTail < REACHABLE_MAX) {
+                queue[qTail++] = (Point){nx, ny, cur.z};
+            }
+        }
+    }
+
+    if (found <= 1) return (Point){startX, startY, startZ};
+    // Pick random, but not the start cell
+    int pick = GetRandomValue(1, found - 1);
+    return reachable[pick];
+}

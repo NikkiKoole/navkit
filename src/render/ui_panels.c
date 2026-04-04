@@ -283,22 +283,23 @@ static void StartNewGame(void) {
 static void StartDollhouseMode(void) {
     worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
 
-    // Small grid — apartment is ~12x12, leave margin
-    InitGridWithSizeAndChunkSize(32, 32, 8, 8);
+    // Small grid — apartment is ~12x12, tight margin
+    InitGridWithSizeAndChunkSize(16, 16, 8, 8);
     ClearAnimals();
     ClearFurniture();
     InitPlants();
     ClearFarming();
 
-    // Flat terrain: solid ground at z=0, air at z=1+
-    for (int y = 0; y < 32; y++) {
-        for (int x = 0; x < 32; x++) {
+    // Flat terrain: solid ground at z=0, air + grass at z=1+
+    for (int y = 0; y < 16; y++) {
+        for (int x = 0; x < 16; x++) {
             grid[0][y][x] = CELL_WALL;
             wallMaterial[0][y][x] = MAT_DIRT;
             SetWallNatural(x, y, 0);
             for (int z = 1; z < gridDepth; z++) {
                 grid[z][y][x] = CELL_AIR;
             }
+            SetVegetation(x, y, 0, VEG_GRASS_TALL);
         }
     }
 
@@ -308,7 +309,7 @@ static void StartDollhouseMode(void) {
     //   Room 1 (left): Kitchen/Dining — stove, counter, table area, chairs
     //   Room 2 (right-top): Bathroom — toilet
     //   Room 3 (right-bottom): Bedroom — beds
-    int ox = 10, oy = 10; // offset from grid edge
+    int ox = 3, oy = 3; // offset from grid edge
     int z = 1;
 
     // Floor for entire apartment (10x8)
@@ -327,6 +328,21 @@ static void StartDollhouseMode(void) {
     for (int dy = 1; dy < 7; dy++) {
         PlaceCellFull(ox, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
         PlaceCellFull(ox + 9, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
+    }
+
+    // Front door (bottom wall, kitchen side)
+    grid[z][oy + 7][ox + 3] = CELL_DOOR;
+
+    // Pond outside the door — dug into z=0, filled with water
+    for (int dy = 0; dy < 3; dy++) {
+        for (int dx = 0; dx < 3; dx++) {
+            int px = ox + 2 + dx, py = oy + 9 + dy;
+            if (px >= 0 && px < gridWidth && py >= 0 && py < gridHeight) {
+                grid[0][py][px] = CELL_AIR;  // dig out the ground
+                SetVegetation(px, py, 0, VEG_NONE);
+                SetWaterLevel(px, py, 0, 7); // fill with water at z=0
+            }
+        }
     }
 
     // Internal wall: kitchen (left 6 cols) | bathroom+bedroom (right 3 cols)
@@ -385,20 +401,22 @@ static void StartDollhouseMode(void) {
     // Spawn food supplies in stockpile area
     float sx = (ox + 1) * CELL_SIZE + CELL_SIZE * 0.5f;
     float sy = (oy + 5) * CELL_SIZE + CELL_SIZE * 0.5f;
-    for (int i = 0; i < 5; i++) {
-        int idx = SpawnItem(sx, sy, (float)z, ITEM_FLOUR);
+    {
+        int idx = SpawnItem(sx, sy, (float)z, ITEM_COOKED_MEAT);
         if (idx >= 0) items[idx].stackCount = 5;
     }
-    for (int i = 0; i < 3; i++) {
-        int idx = SpawnItem(sx + CELL_SIZE, sy, (float)z, ITEM_RAW_MEAT);
-        if (idx >= 0) items[idx].stackCount = 3;
+    {
+        int idx = SpawnItem(sx + CELL_SIZE, sy, (float)z, ITEM_BREAD);
+        if (idx >= 0) items[idx].stackCount = 5;
     }
-    // Water pot
-    int potIdx = SpawnItem(sx, sy + CELL_SIZE, (float)z, ITEM_CLAY_POT);
-    if (potIdx >= 0) {
-        for (int i = 0; i < 5; i++) {
-            int waterIdx = SpawnItem(sx, sy, (float)z, ITEM_WATER);
-            if (waterIdx >= 0) PutItemInContainer(waterIdx, potIdx);
+    // Water pots (two so both movers can drink)
+    for (int p = 0; p < 2; p++) {
+        int potIdx = SpawnItem(sx + p * CELL_SIZE, sy + CELL_SIZE, (float)z, ITEM_CLAY_POT);
+        if (potIdx >= 0) {
+            for (int i = 0; i < 5; i++) {
+                int waterIdx = SpawnItem(sx, sy, (float)z, ITEM_WATER);
+                if (waterIdx >= 0) PutItemInContainer(waterIdx, potIdx);
+            }
         }
     }
 

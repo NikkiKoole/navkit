@@ -186,11 +186,13 @@ static void print_mover(int idx) {
     printf("Hunger: %.1f%%\n", m->hunger * 100.0f);
     printf("Thirst: %.1f%%\n", m->thirst * 100.0f);
     printf("Energy: %.1f%%\n", m->energy * 100.0f);
+    printf("Bladder: %.1f%%\n", m->bladder * 100.0f);
     printf("Body Temp: %.1f°C\n", m->bodyTemp);
     {
         const char* ftNames[] = {"NONE", "SEEKING_FOOD", "EATING", "SEEKING_REST", "RESTING",
                                  "SEEKING_WARMTH", "WARMING", "SEEKING_DRINK", "DRINKING",
-                                 "SEEKING_NATURAL_WATER", "DRINKING_NATURAL"};
+                                 "SEEKING_NATURAL_WATER", "DRINKING_NATURAL",
+                                 "SEEKING_TOILET", "USING_TOILET", "SEEKING_BUSH", "USING_BUSH"};
         int fs = m->freetimeState;
         int ftCount = (int)(sizeof(ftNames)/sizeof(ftNames[0]));
         printf("Freetime state: %s (%d)\n", (fs >= 0 && fs < ftCount) ? ftNames[fs] : "?", fs);
@@ -1275,12 +1277,16 @@ int InspectSaveFile(int argc, char** argv) {
     bool insp_hungerEnabled = false, insp_energyEnabled = false, insp_bodyTempEnabled = false;
     bool insp_toolRequirementsEnabled = false;
     bool insp_thirstEnabled = false;
+    bool insp_bladderEnabled = false;
     fread(&insp_gameMode, sizeof(insp_gameMode), 1, f);
     fread(&insp_hungerEnabled, sizeof(bool), 1, f);
     fread(&insp_energyEnabled, sizeof(bool), 1, f);
     fread(&insp_bodyTempEnabled, sizeof(bool), 1, f);
     fread(&insp_toolRequirementsEnabled, sizeof(bool), 1, f);
     fread(&insp_thirstEnabled, sizeof(bool), 1, f);
+    if (version >= 93) {
+        fread(&insp_bladderEnabled, sizeof(bool), 1, f);
+    }
     if (version >= 84) {
         int insp_selectedBiome = 0;
         fread(&insp_selectedBiome, sizeof(int), 1, f);
@@ -1748,11 +1754,12 @@ int InspectSaveFile(int argc, char** argv) {
         printf("Grid: %dx%dx%d, Chunks: %dx%d\n", insp_gridW, insp_gridH, insp_gridD, insp_chunkW, insp_chunkH);
         printf("Game mode: %s\n", insp_gameMode == 1 ? "Survival" : "Sandbox");
         printf("Biome: %s\n", biomePresets[selectedBiome].name);
-        printf("Needs: hunger=%s, thirst=%s, energy=%s, temperature=%s, tools=%s\n",
+        printf("Needs: hunger=%s, thirst=%s, energy=%s, temperature=%s, bladder=%s, tools=%s\n",
                insp_hungerEnabled ? "on" : "off",
                insp_thirstEnabled ? "on" : "off",
                insp_energyEnabled ? "on" : "off",
                insp_bodyTempEnabled ? "on" : "off",
+               insp_bladderEnabled ? "on" : "off",
                insp_toolRequirementsEnabled ? "on" : "off");
         
         // Count stats

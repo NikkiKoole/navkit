@@ -512,6 +512,18 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
         m->freetimeState = FREETIME_NONE;
     }
 
+    // Release stale item reservations: if mover is in FREETIME_NONE with no job,
+    // they shouldn't have any items reserved. Scan and release any strays.
+    // This catches cases where needTarget was cleared but reservedBy wasn't.
+    if (m->freetimeState == FREETIME_NONE && m->currentJobId < 0) {
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (items[i].active && items[i].reservedBy == moverIdx) {
+                ReleaseItemReservation(i);
+            }
+        }
+        m->needTarget = -1;
+    }
+
     switch (m->freetimeState) {
         case FREETIME_NONE: {
             // Priority: starving > dehydrating > desperate bladder > exhausted > freezing >
@@ -524,15 +536,24 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                     JobType jt = jobs[m->currentJobId].type;
                     jobProducesFood = (jt == JOBTYPE_HARVEST_BERRY);
                 }
-                if (m->currentJobId >= 0 && !jobProducesFood) UnassignJob(m, moverIdx);
+                if (m->currentJobId >= 0 && !jobProducesFood) {
+                    UnassignJob(m, moverIdx);
+                    m->needSearchCooldown = 0.0f; // critical — search immediately
+                }
                 if (!jobProducesFood && m->needSearchCooldown <= 0.0f) StartFoodSearch(m, moverIdx);
             } else if (thirstEnabled && m->thirst < balance.thirstCriticalThreshold) {
                 // DEHYDRATING — unassign job, seek drink urgently
-                if (m->currentJobId >= 0) UnassignJob(m, moverIdx);
+                if (m->currentJobId >= 0) {
+                    UnassignJob(m, moverIdx);
+                    m->needSearchCooldown = 0.0f;
+                }
                 if (m->needSearchCooldown <= 0.0f) StartDrinkSearch(m, moverIdx);
             } else if (bladderEnabled && m->bladder < balance.bladderCriticalThreshold) {
                 // DESPERATE — unassign job, seek toilet/bush urgently
-                if (m->currentJobId >= 0) UnassignJob(m, moverIdx);
+                if (m->currentJobId >= 0) {
+                    UnassignJob(m, moverIdx);
+                    m->needSearchCooldown = 0.0f;
+                }
                 if (m->needSearchCooldown <= 0.0f) StartBladderSearch(m, moverIdx);
             } else if (energyEnabled && m->energy < balance.energyExhaustedThreshold) {
                 // EXHAUSTED — unassign job (preserves designation progress), seek rest
@@ -640,12 +661,17 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                     }
                 }
 
-                // Mood: hot meal (check before DeleteItem)
+                // Mood: hot meal (check before consuming)
                 if (items[ti].temperature >= 40.0f) {
                     AddMoodlet(m, MOODLET_HOT_MEAL);
                 }
 
-                DeleteItem(ti);
+                // Consume one from stack, or delete if last
+                if (items[ti].stackCount > 1) {
+                    items[ti].stackCount--;
+                } else {
+                    DeleteItem(ti);
+                }
 
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
@@ -865,7 +891,11 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 // Mood: drink quality moodlet
                 if (IsGoodDrink(items[ti].type)) AddMoodlet(m, MOODLET_DRANK_GOOD);
                 if (items[ti].temperature >= 40.0f) AddMoodlet(m, MOODLET_HOT_MEAL);
-                DeleteItem(ti);
+                if (items[ti].stackCount > 1) {
+                    items[ti].stackCount--;
+                } else {
+                    DeleteItem(ti);
+                }
 
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;

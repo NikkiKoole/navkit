@@ -1059,9 +1059,12 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
                     int my = (int)(mv->y / CELL_SIZE);
                     int mz = (int)mv->z;
                     bool walkable = IsCellWalkableAt(mz, my, mx);
-                    printf("Mover %d: cell (%d,%d,z%d) %s goal=(%d,%d,z%d) path=%d\n",
-                           m, mx, my, mz, walkable ? "OK" : "STUCK!",
+                    printf("Mover %d (%s): cell (%d,%d,z%d) %s goal=(%d,%d,z%d) path=%d\n",
+                           m, MoverDisplayName(m), mx, my, mz, walkable ? "OK" : "STUCK!",
                            mv->goal.x, mv->goal.y, mv->goal.z, mv->pathLength);
+                    printf("  H:%.0f%% T:%.0f%% E:%.0f%% B:%.0f%% Mood:%.0f%% Job:%d Freetime:%d\n",
+                           mv->hunger*100, mv->thirst*100, mv->energy*100, mv->bladder*100,
+                           (mv->mood+1)*50, mv->currentJobId, mv->freetimeState);
                 }
             } else {
                 int idx = atoi(arg);

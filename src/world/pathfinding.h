@@ -176,6 +176,7 @@ void SeedRandom(unsigned int seed);
 Point GetRandomWalkableCell(void);
 Point GetRandomWalkableCellDifferentZ(int excludeZ);
 Point GetRandomWalkableCellOnZ(int z);
+Point GetRandomReachableCell(int startX, int startY, int startZ);
 
 // Entrance getters (inline for zero overhead)
 static inline int GetEntranceX(int idx) { return entrances[idx].x; }

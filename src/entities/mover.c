@@ -1049,12 +1049,16 @@ void InvalidatePathsThroughCell(int x, int y, int z) {
 // Assign a new random goal to a mover and compute path
 static void AssignNewMoverGoal(Mover* m) {
     Point newGoal;
-    // Pick different z-level if there are ladders or ramps connecting levels
+    int cx = (int)(m->x / CELL_SIZE);
+    int cy = (int)(m->y / CELL_SIZE);
+    int cz = (int)m->z;
+
+    // TODO: GetRandomReachableCell(cx, cy, cz) respects walls/rooms but disabled for testing
     bool hasZConnections = (ladderLinkCount > 0 || rampCount > 0);
     if (preferDifferentZ && gridDepth > 1 && hasZConnections) {
-        newGoal = GetRandomWalkableCellDifferentZ((int)m->z);
+        newGoal = GetRandomWalkableCellDifferentZ(cz);
     } else {
-        newGoal = GetRandomWalkableCellOnZ((int)m->z);
+        newGoal = GetRandomWalkableCellOnZ(cz);
     }
     m->goal = newGoal;
 

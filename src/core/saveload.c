@@ -180,6 +180,7 @@ bool SaveWorld(const char* filename) {
         fwrite(&bodyTempEnabled, sizeof(bool), 1, f);
         fwrite(&toolRequirementsEnabled, sizeof(bool), 1, f);
         fwrite(&thirstEnabled, sizeof(bool), 1, f);
+        fwrite(&bladderEnabled, sizeof(bool), 1, f);
         fwrite(&selectedBiome, sizeof(int), 1, f);
     }
 
@@ -587,6 +588,9 @@ bool LoadWorld(const char* filename) {
         fread(&bodyTempEnabled, sizeof(bool), 1, f);
         fread(&toolRequirementsEnabled, sizeof(bool), 1, f);
         fread(&thirstEnabled, sizeof(bool), 1, f);
+        if (version >= 93) {
+            fread(&bladderEnabled, sizeof(bool), 1, f);
+        }
         if (version >= 84) {
             fread(&selectedBiome, sizeof(int), 1, f);
             if (selectedBiome < 0 || selectedBiome >= BIOME_COUNT) selectedBiome = 0;
