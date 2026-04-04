@@ -279,6 +279,159 @@ static void StartNewGame(void) {
     PlaySurvivalIntroCutscene();
 }
 
+// Start dollhouse mode: small apartment, 2 movers, kitchen, bathroom, food
+static void StartDollhouseMode(void) {
+    worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
+
+    // Small grid — apartment is ~12x12, leave margin
+    InitGridWithSizeAndChunkSize(32, 32, 8, 8);
+    ClearAnimals();
+    ClearFurniture();
+    InitPlants();
+    ClearFarming();
+
+    // Flat terrain: solid ground at z=0, air at z=1+
+    for (int y = 0; y < 32; y++) {
+        for (int x = 0; x < 32; x++) {
+            grid[0][y][x] = CELL_WALL;
+            wallMaterial[0][y][x] = MAT_DIRT;
+            SetWallNatural(x, y, 0);
+            for (int z = 1; z < gridDepth; z++) {
+                grid[z][y][x] = CELL_AIR;
+            }
+        }
+    }
+
+    // Build apartment at z=1 (on top of ground)
+    // Layout (10x8):
+    //   Walls around perimeter, internal walls for rooms
+    //   Room 1 (left): Kitchen/Dining — stove, counter, table area, chairs
+    //   Room 2 (right-top): Bathroom — toilet
+    //   Room 3 (right-bottom): Bedroom — beds
+    int ox = 10, oy = 10; // offset from grid edge
+    int z = 1;
+
+    // Floor for entire apartment (10x8)
+    for (int dy = 0; dy < 8; dy++) {
+        for (int dx = 0; dx < 10; dx++) {
+            SET_FLOOR(ox + dx, oy + dy, z);
+            floorMaterial[z][oy + dy][ox + dx] = MAT_OAK;
+        }
+    }
+
+    // Outer walls
+    for (int dx = 0; dx < 10; dx++) {
+        PlaceCellFull(ox + dx, oy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
+        PlaceCellFull(ox + dx, oy + 7, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
+    }
+    for (int dy = 1; dy < 7; dy++) {
+        PlaceCellFull(ox, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
+        PlaceCellFull(ox + 9, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
+    }
+
+    // Internal wall: kitchen (left 6 cols) | bathroom+bedroom (right 3 cols)
+    for (int dy = 1; dy < 7; dy++) {
+        if (dy == 3 || dy == 4) continue; // door gap
+        PlaceCellFull(ox + 6, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
+    }
+
+    // Internal wall: bathroom (top-right) | bedroom (bottom-right)
+    for (int dx = 7; dx < 9; dx++) {
+        PlaceCellFull(ox + dx, oy + 4, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
+    }
+    // Door gap in bathroom/bedroom divider at x+8
+    grid[z][oy + 4][ox + 8] = CELL_AIR;
+
+    // Init all systems
+    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+    InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
+    InitDesignations();
+    RebuildSimActivityCounts();
+    InitFire();
+    InitSmoke();
+    InitSteam();
+    InitTemperature();
+    InitGroundWear();
+    InitFloorDirt();
+    InitSnow();
+    InitLighting();
+    InitRooms();
+    BuildEntrances();
+    BuildGraph();
+
+    // Place furniture — Kitchen
+    SpawnFurniture(ox + 2, oy + 1, z, FURNITURE_CHAIR, MAT_OAK);   // chair at table
+    SpawnFurniture(ox + 3, oy + 1, z, FURNITURE_CHAIR, MAT_OAK);   // chair at table
+
+    // Place furniture — Bathroom
+    SpawnFurniture(ox + 8, oy + 1, z, FURNITURE_TOILET, MAT_GRANITE);
+
+    // Place furniture — Bedroom
+    SpawnFurniture(ox + 7, oy + 5, z, FURNITURE_PLANK_BED, MAT_OAK);
+    SpawnFurniture(ox + 8, oy + 5, z, FURNITURE_PLANK_BED, MAT_OAK);
+
+    // Place workshops — Kitchen
+    CreateWorkshop(ox + 1, oy + 3, z, WORKSHOP_STOVE);    // stove
+    CreateWorkshop(ox + 3, oy + 3, z, WORKSHOP_COUNTER);  // counter (provides CAP_PREP_SURFACE)
+
+    // Create stockpile (2x2 in kitchen for food)
+    CreateStockpile(ox + 1, oy + 5, z, 2, 2);
+
+    // Spawn 2 movers inside the apartment
+    ClearMovers();
+    SpawnMoverAt(ox + 3, oy + 2, z);
+    SpawnMoverAt(ox + 4, oy + 2, z);
+
+    // Spawn food supplies in stockpile area
+    float sx = (ox + 1) * CELL_SIZE + CELL_SIZE * 0.5f;
+    float sy = (oy + 5) * CELL_SIZE + CELL_SIZE * 0.5f;
+    for (int i = 0; i < 5; i++) {
+        int idx = SpawnItem(sx, sy, (float)z, ITEM_FLOUR);
+        if (idx >= 0) items[idx].stackCount = 5;
+    }
+    for (int i = 0; i < 3; i++) {
+        int idx = SpawnItem(sx + CELL_SIZE, sy, (float)z, ITEM_RAW_MEAT);
+        if (idx >= 0) items[idx].stackCount = 3;
+    }
+    // Water pot
+    int potIdx = SpawnItem(sx, sy + CELL_SIZE, (float)z, ITEM_CLAY_POT);
+    if (potIdx >= 0) {
+        for (int i = 0; i < 5; i++) {
+            int waterIdx = SpawnItem(sx, sy, (float)z, ITEM_WATER);
+            if (waterIdx >= 0) PutItemInContainer(waterIdx, potIdx);
+        }
+    }
+
+    // Camera: center on apartment, follow first mover
+    if (moverCount > 0) {
+        Mover* m = &movers[0];
+        currentViewZ = z;
+        offset.x = GetScreenWidth() / 2.0f - m->x * zoom;
+        offset.y = GetScreenHeight() / 2.0f - m->y * zoom;
+        followMoverIdx = 0;
+    }
+
+    // Settings
+    ResetTime();
+    dayLength = 120.0f;
+    balance.baseMoverSpeed = 300.0f;
+    for (int i = 0; i < moverCount; i++) {
+        if (movers[i].active) {
+            movers[i].speed = balance.baseMoverSpeed * (1.0f + balance.moverSpeedVariance * (GetRandomValue(-100, 100) / 100.0f));
+        }
+    }
+    gameMode = GAME_MODE_SANDBOX;
+    hungerEnabled = true;
+    energyEnabled = true;
+    thirstEnabled = true;
+    bladderEnabled = true;
+    moodEnabled = true;
+    bodyTempEnabled = false; // no weather in dollhouse for now
+    toolRequirementsEnabled = false;
+    devUI = true;
+    gameOverTriggered = false;
+}
+
 // Minimal player HUD — speed controls, mover count, new game
 static void DrawPlayerHUD(void) {
     ui_begin_frame();
@@ -491,6 +644,12 @@ static void DrawPlayerHUD(void) {
     // New Game button
     if (PushButton(10, y, "New Game")) {
         StartNewGame();
+    }
+    y += 22;
+
+    // Dollhouse button
+    if (PushButton(10, y, "Dollhouse")) {
+        StartDollhouseMode();
     }
     y += 22;
 

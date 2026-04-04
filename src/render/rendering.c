@@ -2369,16 +2369,18 @@ static void DrawFurniture(void) {
         float sx = offset.x + f->x * size;
         float sy = offset.y + f->y * size;
 
-        // Placeholder tint per furniture type
-        Color tint;
+        // Sprite per furniture type
+        int sprite;
         switch (f->type) {
-            case FURNITURE_LEAF_PILE:  tint = (Color){100, 160, 80, 255};  break;  // Green
-            case FURNITURE_GRASS_PILE: tint = (Color){160, 180, 80, 255};  break;  // Yellow-green
-            case FURNITURE_PLANK_BED:  tint = (Color){140, 100, 60, 255};  break;  // Brown
-            case FURNITURE_CHAIR:      tint = (Color){180, 160, 120, 255}; break;  // Tan
-            default:                   tint = WHITE; break;
+            case FURNITURE_LEAF_PILE:  sprite = SPRITE_grass_tall;  break;
+            case FURNITURE_GRASS_PILE: sprite = SPRITE_grass_tall;  break;
+            case FURNITURE_PLANK_BED:  sprite = SPRITE_bed;         break;
+            case FURNITURE_CHAIR:      sprite = SPRITE_chair;       break;
+            case FURNITURE_TOILET:     sprite = SPRITE_toilet;      break;
+            default:                   sprite = SPRITE_generic;     break;
         }
 
+        Color tint = WHITE;
         Color lightTint = GetLightColor(f->x, f->y, f->z, skyColor);
         tint = MultiplyColor(tint, lightTint);
 
@@ -2387,7 +2389,7 @@ static void DrawFurniture(void) {
             tint = FloorDarkenTint(tint);
         }
 
-        Rectangle src = SpriteGetRect(SPRITE_generic);
+        Rectangle src = SpriteGetRect(sprite);
         Rectangle dest = { sx, sy, size, size };
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
     }
@@ -2419,17 +2421,23 @@ static void DrawWorkshops(void) {
                 char tile = ws->template[dy * ws->width + dx];
                 Color tint = WHITE;
                 
+                // Choose sprite: station workshops get dedicated sprites, others use tinted generic
+                int wsSprite = SPRITE_generic;
                 switch (tile) {
-                    case WT_BLOCK:  // Machinery - dark brown tint
+                    case WT_BLOCK:
                         tint = (Color){140, 100, 60, 255};
                         break;
-                    case WT_WORK:   // Work tile - green tint
-                        tint = (Color){150, 220, 150, 255};
+                    case WT_WORK:
+                        // Stations get their own sprite
+                        if (ws->type == WORKSHOP_STOVE) wsSprite = SPRITE_stove;
+                        else if (ws->type == WORKSHOP_COUNTER) wsSprite = SPRITE_counter;
+                        if (wsSprite != SPRITE_generic) tint = WHITE;
+                        else tint = (Color){150, 220, 150, 255};
                         break;
-                    case WT_OUTPUT: // Output tile - blue tint
+                    case WT_OUTPUT:
                         tint = (Color){150, 180, 220, 255};
                         break;
-                    case WT_FLOOR:  // Floor - light brown tint
+                    case WT_FLOOR:
                     default:
                         tint = (Color){200, 180, 140, 255};
                         break;
@@ -2447,7 +2455,7 @@ static void DrawWorkshops(void) {
                     tint = FloorDarkenTint(tint);
                 }
 
-                Rectangle src = SpriteGetRect(SPRITE_generic);
+                Rectangle src = SpriteGetRect(wsSprite);
                 Rectangle dest = { sx, sy, size, size };
                 DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
             }
