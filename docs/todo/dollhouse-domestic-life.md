@@ -58,6 +58,30 @@ This is a **vertical slice** — a small scene that exercises multiple new syste
 
 ## Next: Buildable Phases
 
+### Phase 3b: Sustainable Dollhouse (~0.5 session)
+
+Movers currently die after ~2 game-days because food runs out. Fix this so the apartment is self-sustaining and you can actually observe domestic behavior long-term.
+
+**Approach:** Berry bushes near the apartment. Movers already know how to harvest berries (DESIGNATION_HARVEST_BERRY). Berries regrow. Food from the environment becomes baseline survival; cooking at the stove becomes a luxury (better food = better mood, not survival necessity).
+
+Implementation:
+1. Spawn 2-3 berry bushes in the dollhouse setup (near the door, outside)
+2. Pre-designate harvest on them, or let the player do it
+3. More starting food (10+ each) to bridge until first harvest
+4. Consider: auto-designate berry harvest when movers are hungry? (future)
+
+### Phase 3c: Freetime Action Queue — sit-then-eat (~1 session)
+
+The first Sims behavior: movers actively seek a chair before eating. Currently eating is "walk to food, eat standing wherever." With the queue: pick up food → walk to nearby chair (optional) → sit → eat. Graceful skip if no chair.
+
+This is the moment the dollhouse clicks — you see movers walk to the table, sit down, eat. The kitchen matters. The chairs matter. Without this, domestic life is just survival meters draining.
+
+Implementation: see Future Systems > Action Queue section below. ~500 lines (200 executor + 300 freetime migration), zero risk to jobs.
+
+### Phase 3d: Stale Reservation Root Cause (~0.5 session)
+
+Current band-aid: scan all items each tick for movers in FREETIME_NONE. Works but O(itemHighWaterMark) per mover per tick. The real fix: ensure every freetime state transition properly releases its reservation. More surgical, prevents future bugs.
+
 ### Phase 4: Daily Schedule (~1 session)
 
 Per-mover schedule data (defaulting to same global schedule). Designed for future per-mover customization (night shifts, occupations).
