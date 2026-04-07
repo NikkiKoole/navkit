@@ -1952,15 +1952,14 @@ void HandleInput(void) {
     hoveredWorkshop = FindWorkshopAt(gx, gy, gz);
     if (paused) {
         if (frontViewMode) {
-            // In frontview, movers/animals already found by FrontViewPickCell's Y range.
-            // Use the picked gz to find movers across visible layers.
+            // Screen-space hit testing — stable regardless of frontViewY changes.
             int depthLayers = frontViewDepth;
             if (depthLayers < 1) depthLayers = 1;
             int startY = frontViewY - depthLayers + 1;
             if (startY < 0) startY = 0;
-            float worldX = (GetMousePosition().x - offset.x) / zoom;
-            hoveredMover = GetMoverAtFrontView(worldX, gz, startY, frontViewY);
-            hoveredAnimal = GetAnimalAtFrontView(worldX, gz, startY, frontViewY);
+            Vector2 mp = GetMousePosition();
+            hoveredMover = GetMoverAtFrontView(mp.x, mp.y, startY, frontViewY);
+            hoveredAnimal = GetAnimalAtFrontView(mp.x, mp.y, startY, frontViewY);
         } else {
             Vector2 mouseWorld = ScreenToWorld(GetMousePosition());
             hoveredMover = GetMoverAtWorldPos(mouseWorld.x, mouseWorld.y, gz);

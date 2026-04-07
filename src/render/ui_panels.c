@@ -322,12 +322,12 @@ static void StartDollhouseMode(void) {
 
     // Outer walls
     for (int dx = 0; dx < 10; dx++) {
-        PlaceCellFull(ox + dx, oy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
-        PlaceCellFull(ox + dx, oy + 7, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
+        PlaceCellFull(ox + dx, oy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
+        PlaceCellFull(ox + dx, oy + 7, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
     }
     for (int dy = 1; dy < 7; dy++) {
-        PlaceCellFull(ox, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
-        PlaceCellFull(ox + 9, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
+        PlaceCellFull(ox, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
+        PlaceCellFull(ox + 9, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
     }
 
     // Front door (bottom wall, kitchen side)
@@ -348,12 +348,12 @@ static void StartDollhouseMode(void) {
     // Internal wall: kitchen (left 6 cols) | bathroom+bedroom (right 3 cols)
     for (int dy = 1; dy < 7; dy++) {
         if (dy == 3 || dy == 4) continue; // door gap
-        PlaceCellFull(ox + 6, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
+        PlaceCellFull(ox + 6, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
     }
 
     // Internal wall: bathroom (top-right) | bedroom (bottom-right)
     for (int dx = 7; dx < 9; dx++) {
-        PlaceCellFull(ox + dx, oy + 4, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
+        PlaceCellFull(ox + dx, oy + 4, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
     }
     // Door gap in bathroom/bedroom divider at x+8
     grid[z][oy + 4][ox + 8] = CELL_AIR;
