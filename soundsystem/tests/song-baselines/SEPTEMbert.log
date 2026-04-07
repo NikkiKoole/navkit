@@ -1,0 +1,38 @@
+[ +0.001s] SEQ_DRUM  bar=0 track=1 step=0 vel=0.66 pitch=1.00
+[ +0.025s] SEQ_DRUM  bar=0 track=1 step=8 vel=0.66 pitch=1.00
+[ +0.047s] PATTERN_END  pat=0 playCount=1
+[ +0.047s] SEQ_DRUM  bar=0 track=1 step=0 vel=0.66 pitch=1.00
+[ +0.071s] SEQ_DRUM  bar=0 track=1 step=8 vel=0.66 pitch=1.00
+[ +0.112s] PATTERN_END  pat=0 playCount=2
+[ +0.112s] SEQ_DRUM  bar=0 track=1 step=0 vel=0.66 pitch=1.00
+[ +0.199s] SEQ_DRUM  bar=0 track=1 step=8 vel=0.66 pitch=1.00
+[ +0.235s] PATTERN_END  pat=0 playCount=3
+[ +0.235s] SEQ_DRUM  bar=0 track=1 step=0 vel=0.66 pitch=1.00
+[ +0.268s] SEQ_DRUM  bar=0 track=1 step=8 vel=0.66 pitch=1.00
+[ +0.299s] PATTERN_END  pat=0 playCount=4
+[ +0.299s] SEQ_DRUM  bar=0 track=1 step=0 vel=0.66 pitch=1.00
+[ +0.337s] SEQ_DRUM  bar=0 track=1 step=8 vel=0.66 pitch=1.00
+[ +0.358s] PATTERN_END  pat=0 playCount=5
+[ +0.358s] SEQ_DRUM  bar=0 track=1 step=0 vel=0.66 pitch=1.00
+[ +0.378s] SEQ_DRUM  bar=0 track=1 step=8 vel=0.66 pitch=1.00
+[ +0.397s] PATTERN_END  pat=0 playCount=6
+[ +0.397s] SEQ_DRUM  bar=0 track=1 step=0 vel=0.66 pitch=1.00
+[ +0.417s] SEQ_DRUM  bar=0 track=1 step=8 vel=0.66 pitch=1.00
+[ +0.437s] PATTERN_END  pat=0 playCount=7
+[ +0.437s] SEQ_DRUM  bar=0 track=1 step=0 vel=0.66 pitch=1.00
+[ +0.457s] SEQ_DRUM  bar=0 track=1 step=8 vel=0.66 pitch=1.00
+[ +0.476s] PATTERN_END  pat=0 playCount=8
+[ +0.476s] SEQ_DRUM  bar=0 track=1 step=0 vel=0.66 pitch=1.00
+[ +0.496s] SEQ_DRUM  bar=0 track=1 step=8 vel=0.66 pitch=1.00
+[ +0.516s] PATTERN_END  pat=0 playCount=9
+[ +0.516s] SEQ_DRUM  bar=0 track=1 step=0 vel=0.66 pitch=1.00
+[ +0.535s] SEQ_DRUM  bar=0 track=1 step=8 vel=0.66 pitch=1.00
+[ +0.555s] PATTERN_END  pat=0 playCount=10
+[ +0.555s] SEQ_DRUM  bar=0 track=1 step=0 vel=0.66 pitch=1.00
+[ +0.575s] SEQ_DRUM  bar=0 track=1 step=8 vel=0.66 pitch=1.00
+[ +0.594s] PATTERN_END  pat=0 playCount=11
+[ +0.594s] SEQ_DRUM  bar=0 track=1 step=0 vel=0.66 pitch=1.00
+[ +0.614s] SEQ_DRUM  bar=0 track=1 step=8 vel=0.66 pitch=1.00
+[ +0.634s] PATTERN_END  pat=0 playCount=12
+[ +0.634s] SEQ_DRUM  bar=0 track=1 step=0 vel=0.66 pitch=1.00
+[ +0.654s] SEQ_DRUM  bar=0 track=1 step=8 vel=0.66 pitch=1.00

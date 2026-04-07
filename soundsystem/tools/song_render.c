@@ -30,6 +30,8 @@
 #undef scaleRoot
 #undef scaleType
 #undef monoMode
+#include "../engines/sampler.h"
+#include "../engines/scratch_space.h"
 #include "../engines/instrument_presets.h"
 
 // WAV writer
@@ -519,18 +521,20 @@ static float estimateSongDuration(void) {
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
-        fprintf(stderr, "Usage: song-render <file.song> [-d <seconds>] [-o <output.wav>] [--info]\n");
+        fprintf(stderr, "Usage: song-render <file.song> [-d <seconds>] [-o <output.wav>] [--info] [--triggers <file.log>]\n");
         fprintf(stderr, "\nOptions:\n");
-        fprintf(stderr, "  -d <seconds>   Render duration (default: auto for song mode, 30s for pattern mode)\n");
-        fprintf(stderr, "  -o <file.wav>  Output WAV path (default: <songname>.wav)\n");
-        fprintf(stderr, "  --info         Print song info and exit (no render)\n");
-        fprintf(stderr, "  --tail <sec>   Extra seconds after song ends for reverb tail (default: 2.0)\n");
+        fprintf(stderr, "  -d <seconds>        Render duration (default: auto for song mode, 30s for pattern mode)\n");
+        fprintf(stderr, "  -o <file.wav>       Output WAV path (default: <songname>.wav, use /dev/null to skip)\n");
+        fprintf(stderr, "  --info              Print song info and exit (no render)\n");
+        fprintf(stderr, "  --tail <sec>        Extra seconds after song ends for reverb tail (default: 2.0)\n");
+        fprintf(stderr, "  --triggers <file>   Dump note trigger log to file (for regression testing)\n");
         return 1;
     }
 
     // Parse args
     const char *songPath = NULL;
     const char *outputPath = NULL;
+    const char *triggerLogPath = NULL;
     float duration = -1;
     float tailSeconds = 2.0f;
     bool infoOnly = false;
@@ -540,6 +544,7 @@ int main(int argc, char *argv[]) {
         if (strcmp(argv[i], "-d") == 0 && i+1 < argc) { duration = atof(argv[++i]); }
         else if (strcmp(argv[i], "-o") == 0 && i+1 < argc) { outputPath = argv[++i]; }
         else if (strcmp(argv[i], "--tail") == 0 && i+1 < argc) { tailSeconds = atof(argv[++i]); }
+        else if (strcmp(argv[i], "--triggers") == 0 && i+1 < argc) { triggerLogPath = argv[++i]; }
         else if (strcmp(argv[i], "--info") == 0) { infoOnly = true; }
         else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) { verbose = true; }
         else if (argv[i][0] != '-' && !songPath) { songPath = argv[i]; }
@@ -615,6 +620,12 @@ int main(int argc, char *argv[]) {
         if (dot) *dot = '\0';
         strcat(defaultOutput, ".wav");
         outputPath = defaultOutput;
+    }
+
+    // Enable trigger logging if requested
+    if (triggerLogPath) {
+        seqSoundLogReset();
+        seqSoundLogEnabled = true;
     }
 
     // Sync state and start playback
@@ -757,8 +768,18 @@ int main(int argc, char *argv[]) {
 
     // Write WAV
     waWriteWav(outputPath, outBuf, totalSamples, SAMPLE_RATE);
-    printf("Written: %s (%.1fs, peak=%.3f%s)\n", outputPath, duration, peakLevel,
-           peakLevel > 0.99f ? " CLIPPING!" : "");
+    if (strcmp(outputPath, "/dev/null") != 0) {
+        printf("Written: %s (%.1fs, peak=%.3f%s)\n", outputPath, duration, peakLevel,
+               peakLevel > 0.99f ? " CLIPPING!" : "");
+    }
+
+    // Dump trigger log
+    if (triggerLogPath) {
+        seqSoundLogEnabled = false;
+        int triggerCount = seqSoundLogCount;
+        seqSoundLogDump(triggerLogPath);
+        printf("Triggers: %d events -> %s\n", triggerCount, triggerLogPath);
+    }
 
     free(outBuf);
     return 0;

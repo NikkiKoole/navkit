@@ -554,8 +554,17 @@ preset-audition: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/preset-audition soundsystem/tools/preset_audition.c -lm
 
 # Headless .song renderer (DAW song → WAV)
+# Large log buffer so --triggers captures entire songs without overflow
 song-render: $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/song-render soundsystem/tools/song_render.c -lm
+	$(CC) $(CFLAGS) -DSEQ_SOUND_LOG_MAX=16384 -o $(BINDIR)/song-render soundsystem/tools/song_render.c -lm
+
+# Dump trigger logs for all songs (baseline for regression testing)
+song-baselines: song-render
+	@soundsystem/tools/songs_baseline.sh
+
+# Compare all songs against saved baselines
+song-check: song-render
+	@soundsystem/tools/songs_check.sh
 
 # Chop-flip tool (bounce .song pattern → sliced WAVs)
 chop-flip: $(BINDIR)

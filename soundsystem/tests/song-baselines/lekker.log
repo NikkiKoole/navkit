@@ -1,0 +1,91 @@
+[ +0.001s] SEQ_NOTE  bar=0 track=4 step=0 note=D3 vel=0.80 gate=1
+[ +0.005s] SEQ_NOTE  bar=0 track=4 step=2 note=D3 vel=0.80 gate=10
+[ +0.007s] SEQ_NOTE  bar=0 track=4 step=3 note=F3 vel=0.80 gate=1
+[ +0.011s] SEQ_NOTE  bar=0 track=4 step=5 note=F3 vel=0.80 gate=7
+[ +0.013s] SEQ_NOTE  bar=0 track=4 step=6 note=B3 vel=0.80 gate=6
+[ +0.031s] PATTERN_END  pat=0 playCount=1
+[ +0.031s] SEQ_NOTE  bar=0 track=4 step=0 note=D3 vel=0.80 gate=1
+[ +0.035s] SEQ_NOTE  bar=0 track=4 step=2 note=D3 vel=0.80 gate=10
+[ +0.037s] SEQ_NOTE  bar=0 track=4 step=3 note=F3 vel=0.80 gate=1
+[ +0.041s] SEQ_NOTE  bar=0 track=4 step=5 note=F3 vel=0.80 gate=7
+[ +0.043s] SEQ_NOTE  bar=0 track=4 step=6 note=B3 vel=0.80 gate=6
+[ +0.061s] PATTERN_END  pat=0 playCount=2
+[ +0.061s] SEQ_NOTE  bar=0 track=4 step=0 note=D3 vel=0.80 gate=1
+[ +0.064s] SEQ_NOTE  bar=0 track=4 step=2 note=D3 vel=0.80 gate=10
+[ +0.067s] SEQ_NOTE  bar=0 track=4 step=3 note=F3 vel=0.80 gate=1
+[ +0.071s] SEQ_NOTE  bar=0 track=4 step=5 note=F3 vel=0.80 gate=7
+[ +0.073s] SEQ_NOTE  bar=0 track=4 step=6 note=B3 vel=0.80 gate=6
+[ +0.091s] PATTERN_END  pat=0 playCount=3
+[ +0.091s] SEQ_NOTE  bar=0 track=4 step=0 note=D3 vel=0.80 gate=1
+[ +0.095s] SEQ_NOTE  bar=0 track=4 step=2 note=D3 vel=0.80 gate=10
+[ +0.097s] SEQ_NOTE  bar=0 track=4 step=3 note=F3 vel=0.80 gate=1
+[ +0.101s] SEQ_NOTE  bar=0 track=4 step=5 note=F3 vel=0.80 gate=7
+[ +0.103s] SEQ_NOTE  bar=0 track=4 step=6 note=B3 vel=0.80 gate=6
+[ +0.120s] PATTERN_END  pat=0 playCount=4
+[ +0.120s] SEQ_NOTE  bar=0 track=4 step=0 note=D3 vel=0.80 gate=1
+[ +0.124s] SEQ_NOTE  bar=0 track=4 step=2 note=D3 vel=0.80 gate=10
+[ +0.126s] SEQ_NOTE  bar=0 track=4 step=3 note=F3 vel=0.80 gate=1
+[ +0.131s] SEQ_NOTE  bar=0 track=4 step=5 note=F3 vel=0.80 gate=7
+[ +0.133s] SEQ_NOTE  bar=0 track=4 step=6 note=B3 vel=0.80 gate=6
+[ +0.151s] PATTERN_END  pat=0 playCount=5
+[ +0.151s] SEQ_NOTE  bar=0 track=4 step=0 note=D3 vel=0.80 gate=1
+[ +0.154s] SEQ_NOTE  bar=0 track=4 step=2 note=D3 vel=0.80 gate=10
+[ +0.157s] SEQ_NOTE  bar=0 track=4 step=3 note=F3 vel=0.80 gate=1
+[ +0.161s] SEQ_NOTE  bar=0 track=4 step=5 note=F3 vel=0.80 gate=7
+[ +0.163s] SEQ_NOTE  bar=0 track=4 step=6 note=B3 vel=0.80 gate=6
+[ +0.181s] PATTERN_END  pat=0 playCount=6
+[ +0.181s] SEQ_NOTE  bar=0 track=4 step=0 note=D3 vel=0.80 gate=1
+[ +0.185s] SEQ_NOTE  bar=0 track=4 step=2 note=D3 vel=0.80 gate=10
+[ +0.187s] SEQ_NOTE  bar=0 track=4 step=3 note=F3 vel=0.80 gate=1
+[ +0.192s] SEQ_NOTE  bar=0 track=4 step=5 note=F3 vel=0.80 gate=7
+[ +0.194s] SEQ_NOTE  bar=0 track=4 step=6 note=B3 vel=0.80 gate=6
+[ +0.212s] PATTERN_END  pat=0 playCount=7
+[ +0.212s] SEQ_NOTE  bar=0 track=4 step=0 note=D3 vel=0.80 gate=1
+[ +0.216s] SEQ_NOTE  bar=0 track=4 step=2 note=D3 vel=0.80 gate=10
+[ +0.218s] SEQ_NOTE  bar=0 track=4 step=3 note=F3 vel=0.80 gate=1
+[ +0.222s] SEQ_NOTE  bar=0 track=4 step=5 note=F3 vel=0.80 gate=7
+[ +0.224s] SEQ_NOTE  bar=0 track=4 step=6 note=B3 vel=0.80 gate=6
+[ +0.242s] PATTERN_END  pat=0 playCount=8
+[ +0.242s] SEQ_NOTE  bar=0 track=4 step=0 note=D3 vel=0.80 gate=1
+[ +0.245s] SEQ_NOTE  bar=0 track=4 step=2 note=D3 vel=0.80 gate=10
+[ +0.248s] SEQ_NOTE  bar=0 track=4 step=3 note=F3 vel=0.80 gate=1
+[ +0.252s] SEQ_NOTE  bar=0 track=4 step=5 note=F3 vel=0.80 gate=7
+[ +0.254s] SEQ_NOTE  bar=0 track=4 step=6 note=B3 vel=0.80 gate=6
+[ +0.271s] PATTERN_END  pat=0 playCount=9
+[ +0.271s] SEQ_NOTE  bar=0 track=4 step=0 note=D3 vel=0.80 gate=1
+[ +0.275s] SEQ_NOTE  bar=0 track=4 step=2 note=D3 vel=0.80 gate=10
+[ +0.277s] SEQ_NOTE  bar=0 track=4 step=3 note=F3 vel=0.80 gate=1
+[ +0.282s] SEQ_NOTE  bar=0 track=4 step=5 note=F3 vel=0.80 gate=7
+[ +0.285s] SEQ_NOTE  bar=0 track=4 step=6 note=B3 vel=0.80 gate=6
+[ +0.304s] PATTERN_END  pat=0 playCount=10
+[ +0.304s] SEQ_NOTE  bar=0 track=4 step=0 note=D3 vel=0.80 gate=1
+[ +0.308s] SEQ_NOTE  bar=0 track=4 step=2 note=D3 vel=0.80 gate=10
+[ +0.310s] SEQ_NOTE  bar=0 track=4 step=3 note=F3 vel=0.80 gate=1
+[ +0.315s] SEQ_NOTE  bar=0 track=4 step=5 note=F3 vel=0.80 gate=7
+[ +0.317s] SEQ_NOTE  bar=0 track=4 step=6 note=B3 vel=0.80 gate=6
+[ +0.335s] PATTERN_END  pat=0 playCount=11
+[ +0.335s] SEQ_NOTE  bar=0 track=4 step=0 note=D3 vel=0.80 gate=1
+[ +0.339s] SEQ_NOTE  bar=0 track=4 step=2 note=D3 vel=0.80 gate=10
+[ +0.341s] SEQ_NOTE  bar=0 track=4 step=3 note=F3 vel=0.80 gate=1
+[ +0.346s] SEQ_NOTE  bar=0 track=4 step=5 note=F3 vel=0.80 gate=7
+[ +0.348s] SEQ_NOTE  bar=0 track=4 step=6 note=B3 vel=0.80 gate=6
+[ +0.366s] PATTERN_END  pat=0 playCount=12
+[ +0.366s] SEQ_NOTE  bar=0 track=4 step=0 note=D3 vel=0.80 gate=1
+[ +0.372s] SEQ_NOTE  bar=0 track=4 step=2 note=D3 vel=0.80 gate=10
+[ +0.374s] SEQ_NOTE  bar=0 track=4 step=3 note=F3 vel=0.80 gate=1
+[ +0.379s] SEQ_NOTE  bar=0 track=4 step=5 note=F3 vel=0.80 gate=7
+[ +0.381s] SEQ_NOTE  bar=0 track=4 step=6 note=B3 vel=0.80 gate=6
+[ +0.400s] PATTERN_END  pat=0 playCount=13
+[ +0.400s] SEQ_NOTE  bar=0 track=4 step=0 note=D3 vel=0.80 gate=1
+[ +0.403s] SEQ_NOTE  bar=0 track=4 step=2 note=D3 vel=0.80 gate=10
+[ +0.406s] SEQ_NOTE  bar=0 track=4 step=3 note=F3 vel=0.80 gate=1
+[ +0.411s] SEQ_NOTE  bar=0 track=4 step=5 note=F3 vel=0.80 gate=7
+[ +0.413s] SEQ_NOTE  bar=0 track=4 step=6 note=B3 vel=0.80 gate=6
+[ +0.431s] PATTERN_END  pat=0 playCount=14
+[ +0.431s] SEQ_NOTE  bar=0 track=4 step=0 note=D3 vel=0.80 gate=1
+[ +0.434s] SEQ_NOTE  bar=0 track=4 step=2 note=D3 vel=0.80 gate=10
+[ +0.437s] SEQ_NOTE  bar=0 track=4 step=3 note=F3 vel=0.80 gate=1
+[ +0.441s] SEQ_NOTE  bar=0 track=4 step=5 note=F3 vel=0.80 gate=7
+[ +0.443s] SEQ_NOTE  bar=0 track=4 step=6 note=B3 vel=0.80 gate=6
+[ +0.461s] PATTERN_END  pat=0 playCount=15
+[ +0.461s] SEQ_NOTE  bar=0 track=4 step=0 note=D3 vel=0.80 gate=1

@@ -47,7 +47,9 @@
 // Toggle: seqSoundLogEnabled = true, dump: seqSoundLogDump("file.log")
 // ============================================================================
 
+#ifndef SEQ_SOUND_LOG_MAX
 #define SEQ_SOUND_LOG_MAX 2048
+#endif
 #define SEQ_SOUND_LOG_LINE 128
 
 static bool seqSoundLogEnabled = false;
@@ -1256,8 +1258,8 @@ static void seqTriggerStep(Pattern *p, int track, int step, float stepDuration) 
         float pitchSemis = (float)(sn->note - 60); // MIDI 60 = no pitch shift
         float pitchMod = powf(2.0f, pitchSemis / 12.0f);
         if (seq.trackNoteOn[track]) {
-            seqSoundLog("SEQ_SAMPLER  track=%d step=%d slice=%d pitch=%+.0f vel=%.2f",
-                        track, step, sliceIdx, pitchSemis, velocity);
+            seqSoundLog("SEQ_SAMPLER  bar=%d track=%d step=%d slice=%d pitch=%+.0f vel=%.2f",
+                        seq.chainPos, track, step, sliceIdx, pitchSemis, velocity);
             seq.trackNoteOn[track](sliceIdx, velocity, 0, pitchMod, false, false);
         }
     } else if (p->trackType[track] == TRACK_DRUM) {
@@ -1275,8 +1277,8 @@ static void seqTriggerStep(Pattern *p, int track, int step, float stepDuration) 
             seq.flamVelocity[track] = velU8ToFloat(sn->velocity);
             seq.flamPitch[track] = pitchMod;
         } else if (seq.trackNoteOn[track]) {
-            seqSoundLog("SEQ_DRUM  track=%d step=%d vel=%.2f pitch=%.2f",
-                        track, step, velocity, pitchMod);
+            seqSoundLog("SEQ_DRUM  bar=%d track=%d step=%d vel=%.2f pitch=%.2f",
+                        seq.chainPos, track, step, velocity, pitchMod);
             seq.trackNoteOn[track](0, velocity, 0, pitchMod, false, false);
         }
     } else {
@@ -1362,6 +1364,9 @@ static void seqTriggerStep(Pattern *p, int track, int step, float stepDuration) 
             if (transposedNote < 0) transposedNote = 0;
             if (transposedNote > 127) transposedNote = 127;
             if (seq.trackNoteOn[track]) {
+                seqSoundLog("SEQ_NOTE  bar=%d track=%d step=%d note=%s vel=%.2f gate=%d%s",
+                            seq.chainPos, track, step, seqNoteName(transposedNote),
+                            vVel, vGateSteps, vn->slide ? " slide" : "");
                 seq.trackNoteOn[track](transposedNote, vVel, vGateTime, 1.0f, vn->slide, vn->accent);
             }
             seq.trackCurrentNote[track][v] = transposedNote;

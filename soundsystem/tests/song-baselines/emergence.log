@@ -1,0 +1,240 @@
+[ +0.008s] SEQ_NOTE  bar=0 track=5 step=4 note=E5 vel=0.30 gate=4
+[ +0.041s] PATTERN_END  pat=0 playCount=1
+[ +0.050s] SEQ_NOTE  bar=0 track=5 step=4 note=E5 vel=0.30 gate=4
+[ +0.083s] PATTERN_END  pat=0 playCount=2
+[ +0.083s] CHAIN_ADVANCE  pos=1 -> pat=1 (after 2 loops)
+[ +0.083s] SEQ_DRUM  bar=1 track=0 step=0 vel=0.28 pitch=1.00
+[ +0.083s] SEQ_NOTE  bar=1 track=5 step=0 note=E5 vel=0.28 gate=4
+[ +0.083s] SEQ_NOTE  bar=1 track=4 step=0 note=E2 vel=0.39 gate=4
+[ +0.149s] SEQ_NOTE  bar=1 track=4 step=8 note=E2 vel=0.32 gate=4
+[ +0.156s] SEQ_NOTE  bar=1 track=5 step=10 note=B4 vel=0.24 gate=4
+[ +0.174s] PATTERN_END  pat=1 playCount=3
+[ +0.174s] SEQ_DRUM  bar=1 track=0 step=0 vel=0.28 pitch=1.00
+[ +0.174s] SEQ_NOTE  bar=1 track=5 step=0 note=E5 vel=0.27 gate=4
+[ +0.174s] SEQ_NOTE  bar=1 track=4 step=0 note=E2 vel=0.39 gate=4
+[ +0.205s] SEQ_NOTE  bar=1 track=4 step=8 note=E2 vel=0.32 gate=4
+[ +0.211s] SEQ_NOTE  bar=1 track=5 step=10 note=B4 vel=0.25 gate=4
+[ +0.218s] SEQ_NOTE  bar=1 track=4 step=12 note=B2 vel=0.25 gate=2
+[ +0.231s] PATTERN_END  pat=1 playCount=4
+[ +0.231s] CHAIN_ADVANCE  pos=2 -> pat=2 (after 2 loops)
+[ +0.231s] SEQ_DRUM  bar=2 track=0 step=0 vel=0.27 pitch=1.00
+[ +0.231s] SEQ_NOTE  bar=2 track=5 step=0 note=E5 vel=0.36 gate=4
+[ +0.231s] SEQ_NOTE  bar=2 track=6 step=0 note=E3 vel=0.19 gate=16
+[ +0.231s] SEQ_NOTE  bar=2 track=6 step=0 note=G3 vel=0.18 gate=16
+[ +0.231s] SEQ_NOTE  bar=2 track=6 step=0 note=B3 vel=0.18 gate=16
+[ +0.231s] SEQ_NOTE  bar=2 track=6 step=0 note=D4 vel=0.19 gate=16
+[ +0.234s] SEQ_NOTE  bar=2 track=4 step=0 note=E2 vel=0.41 gate=4
+[ +0.440s] SEQ_NOTE  bar=2 track=5 step=6 note=D5 vel=0.31 gate=2
+[ +0.513s] SEQ_NOTE  bar=2 track=4 step=8 note=E2 vel=0.33 gate=4
+[ +0.581s] SEQ_NOTE  bar=2 track=5 step=10 note=B4 vel=0.35 gate=4
+[ +0.847s] PATTERN_END  pat=2 playCount=5
+[ +0.847s] SEQ_DRUM  bar=2 track=0 step=0 vel=0.28 pitch=1.00
+[ +0.847s] SEQ_NOTE  bar=2 track=4 step=0 note=E2 vel=0.40 gate=4
+[ +0.847s] SEQ_NOTE  bar=2 track=5 step=0 note=E5 vel=0.36 gate=4
+[ +0.847s] SEQ_NOTE  bar=2 track=6 step=0 note=E3 vel=0.19 gate=16
+[ +0.847s] SEQ_NOTE  bar=2 track=6 step=0 note=G3 vel=0.18 gate=16
+[ +0.847s] SEQ_NOTE  bar=2 track=6 step=0 note=B3 vel=0.18 gate=16
+[ +0.847s] SEQ_NOTE  bar=2 track=6 step=0 note=D4 vel=0.18 gate=16
+[ +1.247s] SEQ_NOTE  bar=2 track=5 step=6 note=D5 vel=0.30 gate=2
+[ +1.392s] SEQ_DRUM  bar=2 track=2 step=8 vel=0.08 pitch=1.00
+[ +1.398s] SEQ_NOTE  bar=2 track=4 step=8 note=E2 vel=0.32 gate=4
+[ +1.528s] SEQ_NOTE  bar=2 track=5 step=10 note=B4 vel=0.35 gate=4
+[ +1.658s] SEQ_NOTE  bar=2 track=4 step=12 note=B2 vel=0.25 gate=2
+[ +1.913s] PATTERN_END  pat=2 playCount=6
+[ +1.913s] CHAIN_ADVANCE  pos=3 -> pat=3 (after 2 loops)
+[ +1.913s] SEQ_DRUM  bar=3 track=0 step=0 vel=0.37 pitch=1.00
+[ +1.913s] SEQ_DRUM  bar=3 track=2 step=0 vel=0.15 pitch=1.00
+[ +1.913s] SEQ_NOTE  bar=3 track=4 step=0 note=C3 vel=0.40 gate=4
+[ +1.918s] SEQ_NOTE  bar=3 track=5 step=0 note=A4 vel=0.32 gate=2
+[ +1.918s] SEQ_NOTE  bar=3 track=6 step=0 note=C3 vel=0.18 gate=8
+[ +1.918s] SEQ_NOTE  bar=3 track=6 step=0 note=E3 vel=0.18 gate=8
+[ +1.918s] SEQ_NOTE  bar=3 track=6 step=0 note=G3 vel=0.18 gate=8
+[ +1.918s] SEQ_NOTE  bar=3 track=6 step=0 note=B3 vel=0.18 gate=8
+[ +2.192s] SEQ_NOTE  bar=3 track=5 step=3 note=B4 vel=0.36 gate=3
+[ +2.250s] SEQ_DRUM  bar=3 track=2 step=4 vel=0.10 pitch=1.00
+[ +2.512s] SEQ_NOTE  bar=3 track=5 step=8 note=D5 vel=0.38 gate=4
+[ +2.512s] SEQ_NOTE  bar=3 track=6 step=8 note=A3 vel=0.16 gate=8
+[ +2.512s] SEQ_NOTE  bar=3 track=6 step=8 note=C4 vel=0.16 gate=8
+[ +2.512s] SEQ_NOTE  bar=3 track=6 step=8 note=E4 vel=0.16 gate=8
+[ +2.512s] SEQ_NOTE  bar=3 track=6 step=8 note=G4 vel=0.16 gate=8
+[ +2.520s] SEQ_DRUM  bar=3 track=2 step=8 vel=0.12 pitch=1.00
+[ +2.520s] SEQ_NOTE  bar=3 track=4 step=8 note=A2 vel=0.41 gate=4
+[ +2.712s] SEQ_DRUM  bar=3 track=2 step=10 vel=0.06 pitch=1.00
+[ +2.899s] SEQ_DRUM  bar=3 track=2 step=12 vel=0.10 pitch=1.00
+[ +2.899s] SEQ_NOTE  bar=3 track=4 step=12 note=E2 vel=0.28 gate=2
+[ +3.285s] PATTERN_END  pat=3 playCount=7
+[ +3.285s] SEQ_DRUM  bar=3 track=0 step=0 vel=0.37 pitch=1.00
+[ +3.285s] SEQ_NOTE  bar=3 track=5 step=0 note=A4 vel=0.32 gate=2
+[ +3.293s] SEQ_DRUM  bar=3 track=2 step=0 vel=0.15 pitch=1.00
+[ +3.293s] SEQ_NOTE  bar=3 track=4 step=0 note=C3 vel=0.40 gate=4
+[ +3.293s] SEQ_NOTE  bar=3 track=6 step=0 note=C3 vel=0.18 gate=8
+[ +3.293s] SEQ_NOTE  bar=3 track=6 step=0 note=E3 vel=0.18 gate=8
+[ +3.293s] SEQ_NOTE  bar=3 track=6 step=0 note=G3 vel=0.18 gate=8
+[ +3.293s] SEQ_NOTE  bar=3 track=6 step=0 note=B3 vel=0.18 gate=8
+[ +3.539s] SEQ_DRUM  bar=3 track=2 step=2 vel=0.06 pitch=1.00
+[ +3.660s] SEQ_NOTE  bar=3 track=5 step=3 note=B4 vel=0.35 gate=3
+[ +3.754s] SEQ_DRUM  bar=3 track=1 step=4 vel=0.18 pitch=1.19
+[ +3.754s] SEQ_DRUM  bar=3 track=2 step=4 vel=0.10 pitch=1.00
+[ +3.949s] SEQ_DRUM  bar=3 track=2 step=6 vel=0.06 pitch=1.00
+[ +4.134s] SEQ_DRUM  bar=3 track=0 step=8 vel=0.25 pitch=1.00
+[ +4.134s] SEQ_DRUM  bar=3 track=2 step=8 vel=0.12 pitch=1.00
+[ +4.134s] SEQ_NOTE  bar=3 track=5 step=8 note=D5 vel=0.38 gate=4
+[ +4.134s] SEQ_NOTE  bar=3 track=6 step=8 note=A3 vel=0.16 gate=8
+[ +4.134s] SEQ_NOTE  bar=3 track=6 step=8 note=C4 vel=0.16 gate=8
+[ +4.134s] SEQ_NOTE  bar=3 track=6 step=8 note=E4 vel=0.16 gate=8
+[ +4.134s] SEQ_NOTE  bar=3 track=6 step=8 note=G4 vel=0.16 gate=8
+[ +4.146s] SEQ_NOTE  bar=3 track=4 step=8 note=A2 vel=0.40 gate=4
+[ +4.599s] SEQ_DRUM  bar=3 track=2 step=12 vel=0.10 pitch=1.00
+[ +4.599s] SEQ_NOTE  bar=3 track=4 step=12 note=E2 vel=0.28 gate=2
+[ +4.988s] PATTERN_END  pat=3 playCount=8
+[ +4.988s] CHAIN_ADVANCE  pos=4 -> pat=4 (after 2 loops)
+[ +4.988s] SEQ_DRUM  bar=4 track=0 step=0 vel=0.39 pitch=1.00
+[ +4.988s] SEQ_DRUM  bar=4 track=2 step=0 vel=0.14 pitch=1.00
+[ +4.988s] SEQ_NOTE  bar=4 track=5 step=0 note=G4 vel=0.35 gate=3
+[ +4.996s] SEQ_NOTE  bar=4 track=4 step=0 note=E2 vel=0.41 gate=4
+[ +4.996s] SEQ_NOTE  bar=4 track=6 step=0 note=E3 vel=0.18 gate=16
+[ +4.996s] SEQ_NOTE  bar=4 track=6 step=0 note=G3 vel=0.18 gate=16
+[ +4.996s] SEQ_NOTE  bar=4 track=6 step=0 note=B3 vel=0.18 gate=16
+[ +4.996s] SEQ_NOTE  bar=4 track=6 step=0 note=D4 vel=0.18 gate=16
+[ +5.457s] SEQ_DRUM  bar=4 track=2 step=4 vel=0.10 pitch=1.00
+[ +5.457s] SEQ_NOTE  bar=4 track=5 step=4 note=B4 vel=0.32 gate=3
+[ +5.763s] SEQ_DRUM  bar=4 track=3 step=7 vel=0.10 pitch=1.41
+[ +5.836s] SEQ_DRUM  bar=4 track=0 step=8 vel=0.26 pitch=1.00
+[ +5.836s] SEQ_NOTE  bar=4 track=4 step=8 note=E2 vel=0.33 gate=4
+[ +5.836s] SEQ_NOTE  bar=4 track=5 step=8 note=D5 vel=0.37 gate=4
+[ +5.844s] SEQ_DRUM  bar=4 track=2 step=8 vel=0.12 pitch=1.00
+[ +6.042s] SEQ_DRUM  bar=4 track=2 step=10 vel=0.06 pitch=1.00
+[ +6.179s] SEQ_DRUM  bar=4 track=2 step=12 vel=0.10 pitch=1.00
+[ +6.179s] SEQ_NOTE  bar=4 track=5 step=12 note=E5 vel=0.36 gate=4
+[ +6.314s] SEQ_DRUM  bar=4 track=1 step=14 vel=0.12 pitch=1.19
+[ +6.446s] PATTERN_END  pat=4 playCount=9
+[ +6.446s] SEQ_DRUM  bar=4 track=0 step=0 vel=0.37 pitch=1.00
+[ +6.446s] SEQ_DRUM  bar=4 track=2 step=0 vel=0.15 pitch=1.00
+[ +6.446s] SEQ_NOTE  bar=4 track=4 step=0 note=E2 vel=0.40 gate=4
+[ +6.446s] SEQ_NOTE  bar=4 track=5 step=0 note=E5 vel=0.35 gate=3
+[ +6.452s] SEQ_NOTE  bar=4 track=6 step=0 note=E3 vel=0.19 gate=16
+[ +6.452s] SEQ_NOTE  bar=4 track=6 step=0 note=G3 vel=0.18 gate=16
+[ +6.452s] SEQ_NOTE  bar=4 track=6 step=0 note=B3 vel=0.18 gate=16
+[ +6.452s] SEQ_NOTE  bar=4 track=6 step=0 note=D4 vel=0.18 gate=16
+[ +6.640s] SEQ_DRUM  bar=4 track=2 step=2 vel=0.06 pitch=1.00
+[ +6.790s] SEQ_DRUM  bar=4 track=2 step=4 vel=0.10 pitch=1.00
+[ +6.790s] SEQ_NOTE  bar=4 track=5 step=4 note=D5 vel=0.32 gate=3
+[ +6.923s] SEQ_DRUM  bar=4 track=2 step=6 vel=0.06 pitch=1.00
+[ +7.048s] SEQ_NOTE  bar=4 track=4 step=8 note=E2 vel=0.33 gate=4
+[ +7.054s] SEQ_DRUM  bar=4 track=2 step=8 vel=0.12 pitch=1.00
+[ +7.054s] SEQ_NOTE  bar=4 track=5 step=8 note=B4 vel=0.38 gate=4
+[ +7.181s] SEQ_DRUM  bar=4 track=1 step=10 vel=0.15 pitch=1.12
+[ +7.312s] SEQ_DRUM  bar=4 track=2 step=12 vel=0.10 pitch=1.00
+[ +7.312s] SEQ_NOTE  bar=4 track=5 step=12 note=E5 vel=0.35 gate=4
+[ +7.318s] SEQ_NOTE  bar=4 track=4 step=12 note=B2 vel=0.25 gate=2
+[ +7.578s] PATTERN_END  pat=4 playCount=10
+[ +7.578s] CHAIN_ADVANCE  pos=5 -> pat=5 (after 2 loops)
+[ +7.578s] SEQ_DRUM  bar=5 track=0 step=0 vel=0.38 pitch=1.00
+[ +7.578s] SEQ_DRUM  bar=5 track=2 step=0 vel=0.15 pitch=1.00
+[ +7.583s] SEQ_NOTE  bar=5 track=4 step=0 note=A2 vel=0.39 gate=4
+[ +7.583s] SEQ_NOTE  bar=5 track=5 step=0 note=E5 vel=0.38 gate=3
+[ +7.583s] SEQ_NOTE  bar=5 track=6 step=0 note=A3 vel=0.18 gate=8
+[ +7.584s] SEQ_NOTE  bar=5 track=6 step=0 note=C4 vel=0.18 gate=8
+[ +7.584s] SEQ_NOTE  bar=5 track=6 step=0 note=E4 vel=0.18 gate=8
+[ +7.584s] SEQ_NOTE  bar=5 track=6 step=0 note=G4 vel=0.18 gate=8
+[ +7.924s] SEQ_DRUM  bar=5 track=1 step=4 vel=0.18 pitch=1.19
+[ +7.924s] SEQ_DRUM  bar=5 track=2 step=4 vel=0.10 pitch=1.00
+[ +7.924s] SEQ_NOTE  bar=5 track=5 step=4 note=D5 vel=0.33 gate=1
+[ +8.054s] SEQ_NOTE  bar=5 track=5 step=6 note=A4 vel=0.30 gate=2
+[ +8.139s] SEQ_DRUM  bar=5 track=3 step=7 vel=0.10 pitch=1.41
+[ +8.188s] SEQ_DRUM  bar=5 track=2 step=8 vel=0.12 pitch=1.00
+[ +8.193s] SEQ_NOTE  bar=5 track=4 step=8 note=D2 vel=0.41 gate=4
+[ +8.193s] SEQ_NOTE  bar=5 track=5 step=8 note=B4 vel=0.39 gate=3
+[ +8.193s] SEQ_NOTE  bar=5 track=6 step=8 note=D3 vel=0.20 gate=8
+[ +8.193s] SEQ_NOTE  bar=5 track=6 step=8 note=F#3 vel=0.20 gate=8
+[ +8.193s] SEQ_NOTE  bar=5 track=6 step=8 note=A3 vel=0.20 gate=8
+[ +8.368s] SEQ_DRUM  bar=5 track=1 step=10 vel=0.15 pitch=1.12
+[ +8.368s] SEQ_DRUM  bar=5 track=2 step=10 vel=0.06 pitch=1.00
+[ +8.549s] SEQ_DRUM  bar=5 track=2 step=12 vel=0.10 pitch=1.00
+[ +8.549s] SEQ_NOTE  bar=5 track=5 step=12 note=A4 vel=0.29 gate=2
+[ +8.729s] SEQ_NOTE  bar=5 track=4 step=14 note=E2 vel=0.31 gate=2
+[ +8.907s] PATTERN_END  pat=5 playCount=11
+[ +8.907s] SEQ_DRUM  bar=5 track=0 step=0 vel=0.39 pitch=1.00
+[ +8.907s] SEQ_NOTE  bar=5 track=4 step=0 note=A2 vel=0.39 gate=4
+[ +8.907s] SEQ_NOTE  bar=5 track=6 step=0 note=A3 vel=0.18 gate=8
+[ +8.907s] SEQ_NOTE  bar=5 track=6 step=0 note=C4 vel=0.18 gate=8
+[ +8.907s] SEQ_NOTE  bar=5 track=6 step=0 note=E4 vel=0.18 gate=8
+[ +8.907s] SEQ_NOTE  bar=5 track=6 step=0 note=G4 vel=0.18 gate=8
+[ +8.916s] SEQ_DRUM  bar=5 track=2 step=0 vel=0.15 pitch=1.00
+[ +8.916s] SEQ_NOTE  bar=5 track=5 step=0 note=E5 vel=0.39 gate=3
+[ +9.147s] SEQ_DRUM  bar=5 track=2 step=2 vel=0.06 pitch=1.00
+[ +9.341s] SEQ_DRUM  bar=5 track=1 step=4 vel=0.18 pitch=1.19
+[ +9.341s] SEQ_DRUM  bar=5 track=2 step=4 vel=0.10 pitch=1.00
+[ +9.341s] SEQ_NOTE  bar=5 track=5 step=4 note=D5 vel=0.33 gate=1
+[ +9.524s] SEQ_DRUM  bar=5 track=2 step=6 vel=0.06 pitch=1.00
+[ +9.531s] SEQ_NOTE  bar=5 track=5 step=6 note=B4 vel=0.30 gate=2
+[ +9.704s] SEQ_DRUM  bar=5 track=2 step=8 vel=0.12 pitch=1.00
+[ +9.704s] SEQ_NOTE  bar=5 track=4 step=8 note=D2 vel=0.41 gate=4
+[ +9.704s] SEQ_NOTE  bar=5 track=5 step=8 note=B4 vel=0.40 gate=3
+[ +9.712s] SEQ_NOTE  bar=5 track=6 step=8 note=D3 vel=0.20 gate=8
+[ +9.712s] SEQ_NOTE  bar=5 track=6 step=8 note=F#3 vel=0.20 gate=8
+[ +9.712s] SEQ_NOTE  bar=5 track=6 step=8 note=A3 vel=0.20 gate=8
+[+10.105s] SEQ_DRUM  bar=5 track=2 step=12 vel=0.10 pitch=1.00
+[+10.200s] SEQ_NOTE  bar=5 track=5 step=13 note=G4 vel=0.25 gate=2
+[+10.275s] SEQ_NOTE  bar=5 track=4 step=14 note=E2 vel=0.30 gate=2
+[+10.430s] PATTERN_END  pat=5 playCount=12
+[+10.430s] CHAIN_ADVANCE  pos=6 -> pat=6 (after 2 loops)
+[+10.430s] SEQ_DRUM  bar=6 track=0 step=0 vel=0.39 pitch=1.00
+[+10.430s] SEQ_NOTE  bar=6 track=4 step=0 note=E2 vel=0.40 gate=4
+[+10.438s] SEQ_DRUM  bar=6 track=2 step=0 vel=0.15 pitch=1.00
+[+10.438s] SEQ_NOTE  bar=6 track=5 step=0 note=B4 vel=0.38 gate=2
+[+10.438s] SEQ_NOTE  bar=6 track=6 step=0 note=E3 vel=0.18 gate=16
+[+10.438s] SEQ_NOTE  bar=6 track=6 step=0 note=G3 vel=0.19 gate=16
+[+10.438s] SEQ_NOTE  bar=6 track=6 step=0 note=B3 vel=0.18 gate=16
+[+10.438s] SEQ_NOTE  bar=6 track=6 step=0 note=D4 vel=0.18 gate=16
+[+10.768s] SEQ_NOTE  bar=6 track=5 step=3 note=A4 vel=0.32 gate=2
+[+10.843s] SEQ_DRUM  bar=6 track=1 step=4 vel=0.18 pitch=1.19
+[+10.850s] SEQ_DRUM  bar=6 track=2 step=4 vel=0.10 pitch=1.00
+[+11.030s] SEQ_NOTE  bar=6 track=5 step=6 note=E5 vel=0.36 gate=2
+[+11.201s] SEQ_DRUM  bar=6 track=0 step=8 vel=0.26 pitch=1.00
+[+11.201s] SEQ_NOTE  bar=6 track=4 step=8 note=E2 vel=0.32 gate=4
+[+11.209s] SEQ_DRUM  bar=6 track=2 step=8 vel=0.12 pitch=1.00
+[+11.307s] SEQ_NOTE  bar=6 track=5 step=9 note=E5 vel=0.41 gate=4
+[+11.382s] SEQ_DRUM  bar=6 track=2 step=10 vel=0.06 pitch=1.00
+[+11.515s] SEQ_DRUM  bar=6 track=2 step=12 vel=0.10 pitch=1.00
+[+11.626s] SEQ_NOTE  bar=6 track=5 step=14 note=D5 vel=0.27 gate=2
+[+11.743s] PATTERN_END  pat=6 playCount=13
+[+11.743s] SEQ_DRUM  bar=6 track=0 step=0 vel=0.37 pitch=1.00
+[+11.743s] SEQ_DRUM  bar=6 track=2 step=0 vel=0.14 pitch=1.00
+[+11.743s] SEQ_NOTE  bar=6 track=4 step=0 note=E2 vel=0.39 gate=4
+[+11.743s] SEQ_NOTE  bar=6 track=6 step=0 note=E3 vel=0.18 gate=16
+[+11.743s] SEQ_NOTE  bar=6 track=6 step=0 note=G3 vel=0.18 gate=16
+[+11.743s] SEQ_NOTE  bar=6 track=6 step=0 note=B3 vel=0.18 gate=16
+[+11.743s] SEQ_NOTE  bar=6 track=6 step=0 note=D4 vel=0.18 gate=16
+[+11.750s] SEQ_NOTE  bar=6 track=5 step=0 note=D5 vel=0.39 gate=2
+[+11.922s] SEQ_DRUM  bar=6 track=2 step=2 vel=0.06 pitch=1.00
+[+12.011s] SEQ_NOTE  bar=6 track=5 step=3 note=D5 vel=0.31 gate=2
+[+12.066s] SEQ_DRUM  bar=6 track=1 step=4 vel=0.19 pitch=1.19
+[+12.072s] SEQ_DRUM  bar=6 track=2 step=4 vel=0.10 pitch=1.00
+[+12.199s] SEQ_DRUM  bar=6 track=2 step=6 vel=0.06 pitch=1.00
+[+12.199s] SEQ_NOTE  bar=6 track=5 step=6 note=G4 vel=0.35 gate=2
+[+12.332s] SEQ_DRUM  bar=6 track=2 step=8 vel=0.12 pitch=1.00
+[+12.337s] SEQ_NOTE  bar=6 track=4 step=8 note=E2 vel=0.32 gate=4
+[+12.406s] SEQ_NOTE  bar=6 track=5 step=9 note=E5 vel=0.41 gate=4
+[+12.594s] SEQ_NOTE  bar=6 track=4 step=12 note=B2 vel=0.25 gate=2
+[+12.599s] SEQ_DRUM  bar=6 track=2 step=12 vel=0.10 pitch=1.00
+[+12.855s] PATTERN_END  pat=6 playCount=14
+[+12.855s] CHAIN_ADVANCE  pos=7 -> pat=7 (after 2 loops)
+[+12.855s] SEQ_NOTE  bar=7 track=4 step=0 note=E2 vel=0.24 gate=8
+[+12.861s] SEQ_NOTE  bar=7 track=6 step=0 note=E3 vel=0.15 gate=16
+[+12.861s] SEQ_NOTE  bar=7 track=6 step=0 note=G3 vel=0.15 gate=16
+[+12.861s] SEQ_NOTE  bar=7 track=6 step=0 note=B3 vel=0.15 gate=16
+[+12.861s] SEQ_NOTE  bar=7 track=6 step=0 note=D4 vel=0.15 gate=16
+[+13.052s] SEQ_NOTE  bar=7 track=5 step=2 note=E5 vel=0.22 gate=6
+[+13.584s] SEQ_NOTE  bar=7 track=5 step=10 note=B4 vel=0.18 gate=6
+[+13.971s] PATTERN_END  pat=7 playCount=15
+[+13.971s] SEQ_NOTE  bar=7 track=4 step=0 note=E2 vel=0.25 gate=8
+[+13.976s] SEQ_NOTE  bar=7 track=6 step=0 note=E3 vel=0.15 gate=16
+[+13.976s] SEQ_NOTE  bar=7 track=6 step=0 note=G3 vel=0.15 gate=16
+[+13.976s] SEQ_NOTE  bar=7 track=6 step=0 note=B3 vel=0.15 gate=16
+[+13.976s] SEQ_NOTE  bar=7 track=6 step=0 note=D4 vel=0.15 gate=16
+[+14.161s] SEQ_NOTE  bar=7 track=5 step=2 note=E5 vel=0.22 gate=6
+[+14.695s] SEQ_NOTE  bar=7 track=5 step=10 note=B4 vel=0.18 gate=6
+[+15.089s] PATTERN_END  pat=7 playCount=16
+[+15.089s] CHAIN_ADVANCE  pos=0 -> pat=0 (after 2 loops)
+[+15.302s] SEQ_NOTE  bar=0 track=5 step=4 note=E5 vel=0.30 gate=4
