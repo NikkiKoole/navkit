@@ -628,7 +628,8 @@ static void dawSyncSequencer(void) {
     // Arrangement mode: per-track pattern grid (highest priority)
     if (daw.arr.arrMode && daw.arr.length > 0 && !patLocked) {
         seq.perTrackPatterns = true;
-        // Chain drives bar timing via track 0's pattern
+        seq.barLengthSteps = daw.arr.barLengthSteps;  // 0 = legacy track-0 wrap
+        // Chain drives bar timing (via track 0 wrap, or bar clock if barLengthSteps > 0)
         seq.chainLength = daw.arr.length;
         seq.chainDefaultLoops = 1;
         for (int i = 0; i < daw.arr.length; i++) {
@@ -831,6 +832,8 @@ static void dawStopSequencer(void) {
     // Reset chain playback to beginning
     seq.chainPos = 0;
     seq.chainLoopCount = 0;
+    seq._barStep = 0;
+    seq._barTick = 0;
     if (daw.arr.arrMode && daw.arr.length > 0) {
         // Rewind arrangement to first bar, set track 0's pattern
         int pat0 = daw.arr.cells[0][0];

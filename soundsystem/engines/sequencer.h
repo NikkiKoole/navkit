@@ -499,6 +499,13 @@ typedef struct {
     // Per-track pattern selection (arrangement mode)
     bool perTrackPatterns;                        // true = each track uses trackPatternIdx
     int trackPatternIdx[SEQ_V2_MAX_TRACKS];       // per-track pattern index, -1 = silent
+
+    // Explicit bar clock (arrangement mode, barLengthSteps > 0)
+    // Decouples bar advance from track 0's pattern length.
+    // Each track loops its own pattern independently; bars fire on a fixed step count.
+    int barLengthSteps;   // 0 = use track 0 wrap (legacy); >0 = fixed bar length
+    int _barStep;         // current step within bar (bar clock counter)
+    int _barTick;         // current tick within current bar step
 } Sequencer;
 
 // Apply a groove preset to sequencer state
@@ -1538,35 +1545,42 @@ static void updateSequencer(float dt) {
                 // Check if pattern completed (track 0 wraps as master)
                 // Must happen BEFORE step 0 trigger so the new pattern's step 0
                 // plays instead of the old pattern's step 0.
+                //
+                // When barLengthSteps > 0 in perTrackPatterns mode, the bar clock
+                // (below, outside the track loop) drives chain advance instead.
+                // Track 0 still fires PATTERN_END for logging but does not advance
+                // the chain — each track loops its own pattern freely.
                 if (track == 0 && seq.trackStep[0] == 0 && prevStep != 0) {
                     seq.playCount++;
                     seqSoundLog("PATTERN_END  pat=%d playCount=%d", seq.currentPattern, seq.playCount);
 
-                    if (seq.nextPattern >= 0 && seq.nextPattern < SEQ_NUM_PATTERNS) {
-                        seq.currentPattern = seq.nextPattern;
-                        seq.nextPattern = -1;
-                        memset(seq.trackStepPlayCount, 0, sizeof(seq.trackStepPlayCount));
-                    }
-                    else if (seq.chainLength > 0) {
-                        int targetLoops = seq.chainLoops[seq.chainPos];
-                        if (targetLoops <= 0) targetLoops = seq.chainDefaultLoops;
-                        if (targetLoops <= 0) targetLoops = 1;
-                        seq.chainLoopCount++;
-                        if (seq.chainLoopCount >= targetLoops) {
-                            seq.chainLoopCount = 0;
-                            seq.chainPos = (seq.chainPos + 1) % seq.chainLength;
-                            int nextPat = seq.chain[seq.chainPos];
-                            if (nextPat >= 0 && nextPat < SEQ_NUM_PATTERNS) {
-                                seqSoundLog("CHAIN_ADVANCE  pos=%d -> pat=%d (after %d loops)", seq.chainPos, nextPat, targetLoops);
-                                seq.currentPattern = nextPat;
-                                memset(seq.trackStepPlayCount, 0, sizeof(seq.trackStepPlayCount));
+                    if (!(seq.barLengthSteps > 0 && seq.perTrackPatterns)) {
+                        if (seq.nextPattern >= 0 && seq.nextPattern < SEQ_NUM_PATTERNS) {
+                            seq.currentPattern = seq.nextPattern;
+                            seq.nextPattern = -1;
+                            memset(seq.trackStepPlayCount, 0, sizeof(seq.trackStepPlayCount));
+                        }
+                        else if (seq.chainLength > 0) {
+                            int targetLoops = seq.chainLoops[seq.chainPos];
+                            if (targetLoops <= 0) targetLoops = seq.chainDefaultLoops;
+                            if (targetLoops <= 0) targetLoops = 1;
+                            seq.chainLoopCount++;
+                            if (seq.chainLoopCount >= targetLoops) {
+                                seq.chainLoopCount = 0;
+                                seq.chainPos = (seq.chainPos + 1) % seq.chainLength;
+                                int nextPat = seq.chain[seq.chainPos];
+                                if (nextPat >= 0 && nextPat < SEQ_NUM_PATTERNS) {
+                                    seqSoundLog("CHAIN_ADVANCE  pos=%d -> pat=%d (after %d loops)", seq.chainPos, nextPat, targetLoops);
+                                    seq.currentPattern = nextPat;
+                                    memset(seq.trackStepPlayCount, 0, sizeof(seq.trackStepPlayCount));
+                                }
                             }
                         }
+                        // Re-fetch pattern pointers after potential change
+                        // so remaining tracks (1-7) see the new pattern
+                        p_global = seqCurrentPattern();
+                        p = p_global;
                     }
-                    // Re-fetch pattern pointers after potential change
-                    // so remaining tracks (1-7) see the new pattern
-                    p_global = seqCurrentPattern();
-                    p = p_global;
                 }
 
                 // Check if new step should trigger immediately (nudge <= 0)
@@ -1581,6 +1595,33 @@ static void updateSequencer(float dt) {
                     StepV2 *newSv = trackSilent ? &_emptyStep : &p->steps[track][newStep];
                     if (newSv->noteCount > 0 && seq.trackTriggerTick[track] <= 0) {
                         seqTriggerStep(p, track, newStep, stepDuration);
+                    }
+                }
+            }
+        }
+
+        // Bar clock: when barLengthSteps > 0 in perTrackPatterns (arrangement) mode,
+        // advance a fixed-length bar counter independent of any track's pattern length.
+        // When the bar completes, advance chainPos so dawSyncSequencer() picks up the
+        // new bar on the next frame and updates trackPatternIdx[].
+        // Each track continues looping its own pattern through bar boundaries —
+        // no forced step-counter reset here.
+        if (seq.barLengthSteps > 0 && seq.perTrackPatterns && seq.chainLength > 0) {
+            seq._barTick++;
+            if (seq._barTick >= seq.ticksPerStep) {
+                seq._barTick = 0;
+                seq._barStep++;
+                if (seq._barStep >= seq.barLengthSteps) {
+                    seq._barStep = 0;
+                    seq.chainLoopCount++;
+                    int targetLoops = seq.chainLoops[seq.chainPos];
+                    if (targetLoops <= 0) targetLoops = seq.chainDefaultLoops;
+                    if (targetLoops <= 0) targetLoops = 1;
+                    if (seq.chainLoopCount >= targetLoops) {
+                        seq.chainLoopCount = 0;
+                        seq.chainPos = (seq.chainPos + 1) % seq.chainLength;
+                        seqSoundLog("BAR_ADVANCE  pos=%d barLen=%d", seq.chainPos, seq.barLengthSteps);
+                        memset(seq.trackStepPlayCount, 0, sizeof(seq.trackStepPlayCount));
                     }
                 }
             }

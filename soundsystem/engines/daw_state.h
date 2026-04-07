@@ -24,6 +24,7 @@ typedef struct {
     int cells[ARR_MAX_BARS][ARR_MAX_TRACKS];  // [bar][track] = pattern index or ARR_EMPTY
     int length;                                // number of bars (0 = inactive)
     bool arrMode;                              // true = arrangement drives playback
+    int barLengthSteps;                        // explicit bar length in steps (0 = use track 0 wrap)
 } Arrangement;
 
 // Clip Launcher (Bitwig-style, per-track clip triggering)
