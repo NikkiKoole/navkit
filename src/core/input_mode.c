@@ -20,6 +20,7 @@ bool brushStrokeActive = false;
 bool isDragging = false;
 int dragStartX = 0;
 int dragStartY = 0;
+int dragStartZ = 0;
 
 bool quickEditEnabled = true;  // Left/right click draws/erases walls in normal mode
 

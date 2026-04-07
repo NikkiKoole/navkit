@@ -456,7 +456,7 @@ static void DrawGroundLevel(float size, int z, int minX, int minY, int maxX, int
 static void DrawCellGrid(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
@@ -667,7 +667,7 @@ void DrawRampOverlay(void);
 void DrawRampOverlay(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
@@ -715,7 +715,7 @@ void DrawRampOverlay(void) {
 static void DrawGrassOverlay(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
@@ -790,7 +790,7 @@ static void DrawGrassOverlay(void) {
 static void DrawPlantOverlay(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
@@ -836,7 +836,7 @@ static void DrawPlantOverlay(void) {
 static void DrawMud(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
@@ -892,7 +892,7 @@ static unsigned char SnowAlpha(uint8_t level) {
 static void DrawSnow(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
@@ -970,7 +970,7 @@ static void DrawWater(void) {
     if (waterActiveCells == 0) return;
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
@@ -1531,7 +1531,7 @@ static void DrawCarriedItem(const Mover* m, float sx, float sy, int viewZ, Color
 static void DrawMovers(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
     
     // Frustum culling bounds with one cell margin for partially visible movers
     float margin = size;
@@ -1705,7 +1705,7 @@ static void DrawMovers(void) {
 static void DrawAnimals(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     // Frustum culling bounds
     float margin = size;
@@ -1802,7 +1802,7 @@ static void DrawAnimals(void) {
 static void DrawTrains(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     float margin = size;
     float minScreenX = -margin;
@@ -2075,7 +2075,7 @@ static void DrawJobLines(void) {
 static void DrawItems(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     for (int i = 0; i < itemHighWaterMark; i++) {
         Item* item = &items[i];
@@ -2198,7 +2198,7 @@ static void DrawGatherZones(void) {
 static void DrawStockpileTiles(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         Stockpile* sp = &stockpiles[i];
@@ -2252,7 +2252,7 @@ static void DrawStockpileTiles(void) {
 static void DrawStockpileItems(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         Stockpile* sp = &stockpiles[i];
@@ -2345,7 +2345,7 @@ static void DrawStockpileItems(void) {
 static void DrawFurniture(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     for (int i = 0; i < MAX_FURNITURE; i++) {
         Furniture* f = &furniture[i];
@@ -2387,7 +2387,7 @@ static void DrawFurniture(void) {
 static void DrawWorkshops(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     for (int i = 0; i < MAX_WORKSHOPS; i++) {
         Workshop* ws = &workshops[i];
@@ -3055,7 +3055,7 @@ static void DrawMist(void) {
 static void DrawFrontView(void) {
     PROFILE_BEGIN(FrontView);
     float size = CELL_SIZE * zoom;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     // Visible X range (reuse frustum culling logic)
     int screenW = GetScreenWidth();

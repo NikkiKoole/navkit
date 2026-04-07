@@ -363,23 +363,28 @@ bool FrontViewPickCell(Vector2 screen, int *outX, int *outY, int *outZ) {
     if (startY < 0) startY = 0;
 
     float size = CELL_SIZE * zoom;
+    float floorThickness = size * 0.25f;
+    if (floorThickness < 3.0f) floorThickness = 3.0f;
 
-    // Simple stable mapping: ignore per-layer visual offset (max 25% cell per layer, not worth the complexity).
-    // ceilf because cell z renders at screenY = offset.y+(gridDepth-1-z)*size and extends downward,
-    // so a cursor inside that cell gives float_z in (z-1, z], and ceilf correctly returns z.
     int gx = (int)((screen.x - offset.x) / size);
     if (gx < 0) gx = 0;
     if (gx >= gridWidth) gx = gridWidth - 1;
 
-    float float_gz = (float)(gridDepth - 1) - (screen.y - offset.y) / size;
-    int gz = (int)ceilf(float_gz);
-    if (gz < 0) gz = 0;
-    if (gz >= gridDepth) gz = gridDepth - 1;
-
-    // Raycast through Y layers front-to-back, find first with content at this (gx, gz)
+    // Each depth layer renders with its own vertical offset, so compute gz per-layer.
+    // Front layer (depthLayers-1) has offset=0; back layers shift upward by floorThickness each step.
+    // screenY = offset.y + (gridDepth-1-z)*size - layerOffsetY
+    // => gz = ceil( (gridDepth-1) - (screenY - offset.y + layerOffsetY) / size )
+    int fallbackGz = -1;
     for (int layer = depthLayers - 1; layer >= 0; layer--) {
         int worldY = startY + layer;
         if (worldY < 0 || worldY >= gridHeight) continue;
+
+        float layerOffsetY = (depthLayers - 1 - layer) * floorThickness;
+        float float_gz = (float)(gridDepth - 1) - (screen.y - offset.y + layerOffsetY) / size;
+        int gz = (int)ceilf(float_gz);
+        if (gz < 0 || gz >= gridDepth) continue;
+
+        if (fallbackGz < 0) fallbackGz = gz; // use front layer gz as fallback
 
         CellType cell = grid[gz][worldY][gx];
         bool hasContent = (cell != CELL_AIR)
@@ -413,7 +418,8 @@ bool FrontViewPickCell(Vector2 screen, int *outX, int *outY, int *outZ) {
         }
     }
 
-    *outX = gx; *outY = frontViewY; *outZ = gz;
+    if (fallbackGz < 0) fallbackGz = 0;
+    *outX = gx; *outY = frontViewY; *outZ = fallbackGz;
     return false;
 }
 
@@ -2080,9 +2086,10 @@ int main(int argc, char** argv) {
         // Compute tooltip grid coordinates (view-mode aware)
         {
         int ttX, ttY, ttZ;  // tooltip cell coords
+        bool frontPickHit = false;  // true = hit real content, false = fell back to frontViewY plane
         Vector2 ttGridVec;
         if (frontViewMode) {
-            FrontViewPickCell(GetMousePosition(), &ttX, &ttY, &ttZ);
+            frontPickHit = FrontViewPickCell(GetMousePosition(), &ttX, &ttY, &ttZ);
             ttGridVec = (Vector2){(float)ttX, (float)ttY};
         } else {
             ttGridVec = ScreenToGrid(GetMousePosition());
@@ -2098,13 +2105,36 @@ int main(int argc, char** argv) {
             // Highlight hovered cell
             float hsx, hsy;
             if (frontViewMode) {
+                // Recompute the layer offset for the picked cell's Y layer so the highlight
+                // sits exactly where the renderer drew it.
+                int _dl = frontViewDepth < 1 ? 1 : frontViewDepth;
+                int _startY = frontViewY - _dl + 1;
+                if (_startY < 0) _startY = 0;
+                int _layer = ttY - _startY;
+                if (_layer < 0) _layer = 0;
+                if (_layer >= _dl) _layer = _dl - 1;
+                float _ft = size * 0.25f;
+                if (_ft < 3.0f) _ft = 3.0f;
+                float _layerOffsetY = (_dl - 1 - _layer) * _ft;
                 hsx = offset.x + ttX * size;
-                hsy = offset.y + (gridDepth - 1 - ttZ) * size;
+                hsy = offset.y + (gridDepth - 1 - ttZ) * size - _layerOffsetY;
             } else {
                 hsx = offset.x + ttX * size;
                 hsy = offset.y + ttY * size;
             }
-            DrawRectangleLinesEx((Rectangle){hsx, hsy, size, size}, 2.0f, (Color){255, 255, 0, 200});
+            // In front view: green = hit real content, orange = default plane (frontViewY)
+            Color highlightColor = frontViewMode
+                ? (frontPickHit ? (Color){80, 255, 80, 220} : (Color){255, 160, 40, 200})
+                : (Color){255, 255, 0, 200};
+            DrawRectangleLinesEx((Rectangle){hsx, hsy, size, size}, 2.0f, highlightColor);
+            // Top face: small squished rect above the cell to suggest a 3D box
+            if (frontViewMode) {
+                float topH = size * 0.2f;
+                if (topH < 3.0f) topH = 3.0f;
+                Color topColor = {highlightColor.r, highlightColor.g, highlightColor.b, 120};
+                DrawRectangle((int)hsx, (int)(hsy - topH), (int)size, (int)topH, topColor);
+                DrawRectangleLinesEx((Rectangle){hsx, hsy - topH, size, topH}, 1.5f, highlightColor);
+            }
             // Coords next to the highlighted cell
             const char* cellText = TextFormat("%d,%d,%d", ttX, ttY, ttZ);
             DrawTextShadow(cellText, (int)(hsx + size + 2), (int)(hsy + 2), 12, YELLOW);
