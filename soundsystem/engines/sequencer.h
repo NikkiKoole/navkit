@@ -1151,6 +1151,8 @@ static void resetSequencer(void) {
         seq.trackTick[i] = 0;
         seq.trackTriggered[i] = false;
         seq.trackTriggerTick[i] = calcTrackTriggerTick(i);
+        seq.trackWrapped[i] = false;
+        seq.trackDeferredTrigger[i] = false;
         memset(seq.trackGateRemaining[i], 0, sizeof(seq.trackGateRemaining[i]));
         for (int v = 0; v < SEQ_V2_MAX_POLY; v++) seq.trackCurrentNote[i][v] = SEQ_NOTE_OFF;
         seq.trackActiveVoices[i] = 0;
@@ -1183,6 +1185,13 @@ static void initSequencer(TrackNoteOnFunc kickFn, TrackNoteOnFunc snareFn,
     seq.ticksPerStep = SEQ_TICKS_PER_STEP_16TH;
     seq.playCount = 0;
     seq.fillMode = false;
+
+    // Reset per-track pattern mode (must be re-enabled explicitly after init)
+    seq.perTrackPatterns = false;
+    seq.perTrackTableLen = 0;
+    for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) {
+        seq.trackPatternIdx[i] = -1;
+    }
 
     // Initialize per-track volumes
     for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) {
@@ -1709,7 +1718,13 @@ static void seqToggleDrumStep(int track, int step) {
 static void seqSetDrumStep(int track, int step, bool on, float velocity, float pitch) {
     if (track < 0 || track >= SEQ_V2_MAX_TRACKS) return;
     if (step < 0 || step >= SEQ_MAX_STEPS) return;
-    Pattern *p = seqCurrentPattern();
+    Pattern *p;
+    if (seq.perTrackPatterns) {
+        int pi = seq.trackPatternIdx[track];
+        p = (pi >= 0 && pi < SEQ_NUM_PATTERNS) ? &seq.patterns[pi] : seqCurrentPattern();
+    } else {
+        p = seqCurrentPattern();
+    }
     if (on) {
         patSetDrum(p, track, step, velocity, pitch);
     } else {
@@ -1721,7 +1736,13 @@ static void seqSetDrumStep(int track, int step, bool on, float velocity, float p
 static void seqSetMelodyStep(int track, int step, int note, float velocity, int gate) {
     if (track < 0 || track >= SEQ_V2_MAX_TRACKS) return;
     if (step < 0 || step >= SEQ_MAX_STEPS) return;
-    Pattern *p = seqCurrentPattern();
+    Pattern *p;
+    if (seq.perTrackPatterns) {
+        int pi = seq.trackPatternIdx[track];
+        p = (pi >= 0 && pi < SEQ_NUM_PATTERNS) ? &seq.patterns[pi] : seqCurrentPattern();
+    } else {
+        p = seqCurrentPattern();
+    }
     patSetNote(p, track, step, note, velocity, gate);
 }
 

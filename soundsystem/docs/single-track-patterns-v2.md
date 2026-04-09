@@ -258,3 +258,44 @@ Do not take:
 - The N×12 pattern index mapping
 - `SEQ_NUM_PATTERNS = 1024` (use 256)
 - `ArrCell.index` as `int16_t` (int8_t is fine at 256 patterns, use int16_t only if > 127)
+
+---
+
+## Status audit — `soundsystem/daw-simplification` (2026-04-09)
+
+Checked the branch against each step of the plan.
+
+### Step 0 — Bar timing: done structurally, legacy path not removed
+- `barLengthSteps` exists on `Sequencer` and `DawArr` and the fixed bar clock works when `> 0`
+- Legacy `barLengthSteps == 0` path (track-0 wrap) still in `updateSequencer`
+- `perTrackPatterns` flag still exists — plan says remove it (always true now)
+
+### Step 1 — Pattern struct: done structurally, API not cleaned up
+- `Pattern` is single-track: `steps[SEQ_MAX_STEPS]`, `int length`, `TrackType trackType` ✓
+- `trackPatternIdx[SEQ_V2_MAX_TRACKS]` on `Sequencer` ✓
+- `pat*` helpers still take `int track` but do `(void)track` — dead param, signatures not cleaned
+
+### Step 2 — File format break + conversion tool: partially done, differently from plan
+- `DAW_FILE_FORMAT = 2`, all 78 songs are at format 2 ✓
+- No `song_convert` tool was written — conversion happened differently
+- Migration code still lives in `daw_file.h` at load time (4+ sites tagged "Legacy multi-track
+  migration") — the plan said delete this after offline conversion
+
+### Step 3 — Composite step grid UI: not done
+- `daw.c` step grid still uses `seq.currentPattern` as a single pattern
+- No composite rendering from `arr.cells[currentBar][track]`
+- The "N rows from arrangement column" view was never built
+
+### Step 4 — Rhythm generator / piano roll: not audited in detail
+- Tests pass (395 passing, 0 failures) ✓
+- Step grid gap (Step 3) is the visible missing piece
+
+### Step 5 — Clean up: not done
+- Migration code not deleted from `daw_file.h`
+- `perTrackPatterns` flag not removed from `Sequencer`
+
+### Summary
+Steps 0 and 1 are structurally complete but carry dead code (`perTrackPatterns`, legacy bar
+path, `(void)track` params). Steps 2–5 are incomplete: songs are in the new format but
+migration code was kept instead of replaced with a tool, and the composite step grid UI
+was never built. The branch is not in a mergeable state.

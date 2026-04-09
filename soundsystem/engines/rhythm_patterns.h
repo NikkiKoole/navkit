@@ -442,6 +442,88 @@ static void generateRhythm(Pattern* p, RhythmGenerator* gen) {
     }
 }
 
+// Apply rhythm writing each drum track to its own dedicated single-track pattern.
+// trackPats[i] receives only track i's data. Use with perTrackPatterns mode.
+// nTracks capped at SEQ_DRUM_TRACKS (4).
+static void applyRhythmPerTrack(Pattern **trackPats, int nTracks, RhythmGenerator *gen) {
+    if (!trackPats || !gen) return;
+    if (nTracks < 1) return;
+    if (nTracks > SEQ_DRUM_TRACKS) nTracks = SEQ_DRUM_TRACKS;
+
+    const RhythmPatternData *src = &rhythmPatterns[gen->style];
+    const float *srcTracks[4] = { src->kick, src->snare, src->hihat, src->perc };
+
+    for (int t = 0; t < nTracks; t++) {
+        if (!trackPats[t]) continue;
+        for (int s = 0; s < SEQ_MAX_STEPS; s++) patClearDrum(trackPats[t], t, s);
+        patSetDrumLength(trackPats[t], t, src->length);
+    }
+
+    for (int step = 0; step < src->length; step++) {
+        for (int t = 0; t < nTracks; t++) {
+            if (!trackPats[t]) continue;
+            if (srcTracks[t][step] > 0.0f) {
+                float vel = srcTracks[t][step] * gen->intensity;
+                if (gen->humanize > 0.0f) {
+                    vel += (rhythmRandFloat(gen) - 0.5f) * gen->humanize * 0.3f;
+                }
+                if (vel > 0.1f) {
+                    patSetDrum(trackPats[t], t, step, vel < 1.0f ? vel : 1.0f, 0.0f);
+                }
+            }
+        }
+    }
+
+    switch (gen->variation) {
+        case RHYTHM_VAR_FILL:
+            if (nTracks > 1 && trackPats[1]) {
+                for (int step = src->length - 4; step < src->length; step++) {
+                    if (rhythmRandFloat(gen) < 0.5f && !patGetDrum(trackPats[1], 1, step)) {
+                        patSetDrum(trackPats[1], 1, step, 0.6f + rhythmRandFloat(gen) * 0.4f, 0.0f);
+                    }
+                }
+            }
+            break;
+        case RHYTHM_VAR_SPARSE:
+            for (int t = 0; t < nTracks; t++) {
+                if (!trackPats[t]) continue;
+                for (int step = 0; step < src->length; step++) {
+                    if (patGetDrum(trackPats[t], t, step) && patGetDrumVel(trackPats[t], t, step) < 0.7f) {
+                        if (rhythmRandFloat(gen) < 0.5f) patClearDrum(trackPats[t], t, step);
+                    }
+                }
+            }
+            break;
+        case RHYTHM_VAR_BUSY:
+            for (int t = 1; t < nTracks && t < 3; t++) {
+                if (!trackPats[t]) continue;
+                float addProb = (t == 1) ? 0.2f : 0.4f;
+                for (int step = 0; step < src->length; step++) {
+                    if (!patGetDrum(trackPats[t], t, step) && rhythmRandFloat(gen) < addProb) {
+                        patSetDrum(trackPats[t], t, step, 0.3f + rhythmRandFloat(gen) * 0.2f, 0.0f);
+                    }
+                }
+            }
+            break;
+        case RHYTHM_VAR_SYNCOPATED:
+            for (int t = 0; t < nTracks; t++) {
+                if (!trackPats[t]) continue;
+                for (int step = 0; step < src->length; step++) {
+                    if (patGetDrum(trackPats[t], t, step) && (step % 4 == 0) && step > 0 && !patGetDrum(trackPats[t], t, step-1)) {
+                        if (rhythmRandFloat(gen) < 0.3f) {
+                            float vel = patGetDrumVel(trackPats[t], t, step);
+                            patClearDrum(trackPats[t], t, step);
+                            patSetDrum(trackPats[t], t, step-1, vel * 0.85f, 0.0f);
+                        }
+                    }
+                }
+            }
+            break;
+        default:
+            break;
+    }
+}
+
 // ============================================================================
 // EUCLIDEAN RHYTHM GENERATOR (Bjorklund's algorithm)
 // ============================================================================
