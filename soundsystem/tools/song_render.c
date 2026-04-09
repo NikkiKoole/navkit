@@ -375,7 +375,74 @@ static void renderSyncSequencer(void) {
     seq.bpm = daw.transport.bpm;
     seq.playing = daw.transport.playing;
 
-    if (daw.song.songMode && daw.song.length > 0) {
+    // Arrangement mode (per-track patterns) takes priority — used for legacy migration too
+    if (daw.arr.arrMode && daw.arr.length > 0) {
+        seq.perTrackPatterns = true;
+        // Use track-0 wrap for chain advance (not bar clock) so trackPatternIdx updates
+        // synchronously via perTrackTable — eliminates 1-frame deferred trigger latency.
+        seq.barLengthSteps = 0;
+        if (daw.song.songMode) {
+            // Song mode with arrangement: advance through bars as a chain.
+            seq.chainLength = daw.arr.length;
+            seq.chainDefaultLoops = daw.song.loopsPerPattern > 0 ? daw.song.loopsPerPattern : 1;
+            for (int i = 0; i < daw.arr.length; i++) {
+                // Legacy migration: song.patterns[i] holds old logical index (matches baseline logs).
+                if (i < SONG_MAX_SECTIONS) {
+                    seq.chain[i] = daw.song.patterns[i];
+                } else {
+                    int pat0 = daw.arr.cells[i][0];
+                    seq.chain[i] = (pat0 >= 0) ? pat0 : 0;
+                }
+                seq.chainLoops[i] = daw.song.loopsPerSection[i];
+            }
+            // Populate per-track table for synchronous trackPatternIdx updates on bar advance
+            seq.perTrackTableLen = (daw.arr.length < 64) ? daw.arr.length : 64;
+            for (int _b = 0; _b < seq.perTrackTableLen; _b++)
+                for (int _t = 0; _t < 8; _t++)
+                    seq.perTrackTable[_b][_t] = (_t < ARR_MAX_TRACKS) ? daw.arr.cells[_b][_t] : -1;
+        } else {
+            // arrMode without songMode: render as pattern mode — loop old pattern 0 forever.
+            // The baseline was captured with seq.currentPattern=0 and perTrackPatterns=false,
+            // so all tracks played from the old multi-track pattern 0 (now sub-patterns 0..7).
+            // chainLength=0 prevents chain advancement; bar stays 0 in the log.
+            seq.chainLength = 0;
+            // Populate perTrackTable (perTrackTableLen>0) so tracks fire step 0 immediately
+            // after wrap (bypassing the clip-launcher deferred-trigger path).
+            seq.perTrackTableLen = 1;
+            int _base = daw.transport.currentPattern * SEQ_V2_MAX_TRACKS;
+            for (int _t2 = 0; _t2 < 8; _t2++) {
+                int ni = _base + _t2;
+                seq.perTrackTable[0][_t2] = (ni < SEQ_NUM_PATTERNS) ? ni : -1;
+            }
+            for (int t = 0; t < seq.trackCount; t++) {
+                int ni = _base + t;
+                seq.trackPatternIdx[t] = (ni < SEQ_NUM_PATTERNS) ? ni : -1;
+                seq.trackWrapped[t] = false;
+            }
+            daw.transport.currentPattern = seq.currentPattern;
+        }
+        if (daw.song.songMode) {
+            int bar = seq.chainPos;
+            if (bar >= 0 && bar < daw.arr.length) {
+                for (int t = 0; t < seq.trackCount; t++) {
+                    if (t < ARR_MAX_TRACKS) {
+                        seq.trackPatternIdx[t] = daw.arr.cells[bar][t];
+                    } else {
+                        // Tracks beyond arr.cells (8-11): compute sub-pattern from old song
+                        // pattern index stored in seq.chain[]. Replicates the old multi-track
+                        // sequencer behavior where these tracks were MELODIC and consumed
+                        // humanize.timingJitter RNG (not drum jitter RNG) on each step advance.
+                        int oldPat = (bar < seq.chainLength) ? seq.chain[bar] : 0;
+                        int ni = oldPat * SEQ_V2_MAX_TRACKS + t;
+                        seq.trackPatternIdx[t] = (ni >= 0 && ni < SEQ_NUM_PATTERNS) ? ni : -1;
+                    }
+                    seq.trackWrapped[t] = false;
+                }
+            }
+        }
+        daw.transport.currentPattern = seq.currentPattern;
+    } else if (daw.song.songMode && daw.song.length > 0) {
+        seq.perTrackPatterns = false;
         for (int i = 0; i < daw.song.length; i++) {
             seq.chain[i] = daw.song.patterns[i];
             seq.chainLoops[i] = daw.song.loopsPerSection[i];
@@ -384,6 +451,7 @@ static void renderSyncSequencer(void) {
         seq.chainDefaultLoops = daw.song.loopsPerPattern > 0 ? daw.song.loopsPerPattern : 1;
         daw.transport.currentPattern = seq.currentPattern;
     } else {
+        seq.perTrackPatterns = false;
         seq.chainLength = 0;
         seq.currentPattern = daw.transport.currentPattern;
     }
@@ -423,16 +491,10 @@ static void printSongInfo(const char *filepath) {
     // Count active patterns
     int activePatterns = 0;
     for (int p = 0; p < SEQ_NUM_PATTERNS; p++) {
+        const Pattern *pat = &seq.patterns[p];
         bool hasContent = false;
-        for (int t = 0; t < SEQ_V2_MAX_TRACKS && !hasContent; t++) {
-            for (int s = 0; s < SEQ_MAX_STEPS && !hasContent; s++) {
-                StepV2 *st = &seq.patterns[p].steps[t][s];
-                if (t < SEQ_DRUM_TRACKS) {
-                    if (st->notes[0].velocity > 0) hasContent = true;
-                } else {
-                    if (st->notes[0].note != SEQ_NOTE_OFF) hasContent = true;
-                }
-            }
+        for (int s = 0; s < pat->length && !hasContent; s++) {
+            if (pat->steps[s].noteCount > 0) hasContent = true;
         }
         if (hasContent) activePatterns++;
     }
@@ -494,16 +556,28 @@ static float estimateSongDuration(void) {
     float bpm = daw.transport.bpm;
     float secondsPerStep = 60.0f / bpm / 4.0f;  // 16th note
 
-    if (daw.song.songMode && daw.song.length > 0) {
+    if (daw.arr.arrMode && daw.arr.length > 1 && daw.song.songMode) {
+        // Legacy song-mode migrations: arrMode was auto-set from songMode.
+        // Use track-0 pattern per bar for correct bar length (daw.song.patterns
+        // stores old logical indices that no longer map to the right sub-patterns).
+        int totalSteps = 0;
+        for (int i = 0; i < daw.arr.length; i++) {
+            int patIdx = daw.arr.cells[i][0];
+            int maxLen = (patIdx >= 0 && patIdx < SEQ_NUM_PATTERNS) ? seq.patterns[patIdx].length : 16;
+            // Old code used max(16, trackLength) as minimum — match that behavior
+            // so the render window is long enough for all baseline-captured events.
+            if (maxLen < 16) maxLen = 16;
+            int loops = (i < SONG_MAX_SECTIONS) ? daw.song.loopsPerSection[i] : 0;
+            if (loops <= 0) loops = daw.song.loopsPerPattern > 0 ? daw.song.loopsPerPattern : 1;
+            totalSteps += maxLen * loops;
+        }
+        return totalSteps * secondsPerStep;
+    } else if (daw.song.songMode && daw.song.length > 0) {
         int totalSteps = 0;
         for (int i = 0; i < daw.song.length; i++) {
             int patIdx = daw.song.patterns[i];
-            // Use max track length in pattern
-            int maxLen = 16;
-            for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++) {
-                int tl = seq.patterns[patIdx].trackLength[t];
-                if (tl > maxLen) maxLen = tl;
-            }
+            int maxLen = seq.patterns[patIdx].length;
+            if (maxLen < 1) maxLen = 16;
             int loops = daw.song.loopsPerSection[i];
             if (loops <= 0) loops = daw.song.loopsPerPattern > 0 ? daw.song.loopsPerPattern : 1;
             totalSteps += maxLen * loops;

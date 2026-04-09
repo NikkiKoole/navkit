@@ -12,17 +12,15 @@
 // Add a p-lock to the step index (call after adding to plocks array)
 static void plockIndexAdd(Pattern *p, int plockIdx) {
     PLock *pl = &p->plocks[plockIdx];
-    pl->nextInStep = p->plockStepIndex[pl->track][pl->step];
-    p->plockStepIndex[pl->track][pl->step] = (int8_t)plockIdx;
+    pl->nextInStep = p->plockStepIndex[pl->step];
+    p->plockStepIndex[pl->step] = (int8_t)plockIdx;
 }
 
 // Update index after shifting p-locks down (for removal)
 static void plockIndexRebuild(Pattern *p) {
     // Clear all indices
-    for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++) {
-        for (int s = 0; s < SEQ_MAX_STEPS; s++) {
-            p->plockStepIndex[t][s] = PLOCK_INDEX_NONE;
-        }
+    for (int s = 0; s < SEQ_MAX_STEPS; s++) {
+        p->plockStepIndex[s] = PLOCK_INDEX_NONE;
     }
     // Rebuild from array (in reverse to maintain order)
     for (int i = p->plockCount - 1; i >= 0; i--) {
@@ -32,7 +30,8 @@ static void plockIndexRebuild(Pattern *p) {
 
 // Find a p-lock entry using index (returns index or -1 if not found)
 static int seqFindPLock(Pattern *p, int track, int step, PLockParam param) {
-    int idx = p->plockStepIndex[track][step];
+    (void)track;
+    int idx = p->plockStepIndex[step];
     while (idx >= 0) {
         if (p->plocks[idx].param == param) return idx;
         idx = p->plocks[idx].nextInStep;
@@ -73,7 +72,8 @@ static float seqGetPLock(Pattern *p, int track, int step, PLockParam param, floa
 
 // Check if a step has any p-locks
 static bool seqHasPLocks(Pattern *p, int track, int step) {
-    return p->plockStepIndex[track][step] != PLOCK_INDEX_NONE;
+    (void)track;
+    return p->plockStepIndex[step] != PLOCK_INDEX_NONE;
 }
 
 // Clear a specific p-lock
@@ -108,8 +108,9 @@ static void seqClearStepPLocks(Pattern *p, int track, int step) {
 
 // Get all p-locks for a step (returns count, fills output array) - uses index
 static int seqGetStepPLocks(Pattern *p, int track, int step, PLock *out, int maxOut) {
+    (void)track;
     int count = 0;
-    int idx = p->plockStepIndex[track][step];
+    int idx = p->plockStepIndex[step];
     while (idx >= 0 && count < maxOut) {
         out[count++] = p->plocks[idx];
         idx = p->plocks[idx].nextInStep;
@@ -119,14 +120,15 @@ static int seqGetStepPLocks(Pattern *p, int track, int step, PLock *out, int max
 
 // Populate currentPLocks state for a step (call before trigger callback) - uses index
 static void seqPreparePLocks(Pattern *p, int track, int step) {
+    (void)track;
     // Reset state
     currentPLocks.hasLocks = false;
     for (int i = 0; i < PLOCK_COUNT; i++) {
         currentPLocks.locked[i] = false;
     }
-    
+
     // Fill in locked values using index (O(k) instead of O(n))
-    int idx = p->plockStepIndex[track][step];
+    int idx = p->plockStepIndex[step];
     while (idx >= 0) {
         PLock *pl = &p->plocks[idx];
         if (pl->param < PLOCK_COUNT) {
