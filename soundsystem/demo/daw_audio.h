@@ -593,9 +593,6 @@ static void dawInitSequencer(void) {
     // Pattern 2: hihat (every other step)
     seq.patterns[2].trackType = TRACK_DRUM;
     for (int i = 0; i < 16; i += 2) patSetDrum(&seq.patterns[2], i, 0.8f, 0.0f);
-    // Wire arrangement bar 0: each track gets its own pattern
-    for (int t = 0; t < ARR_MAX_TRACKS; t++) daw.arr.cells[0][t] = t;
-    daw.arr.length = 1;
 
     // Dilla timing starts at zero (clean grid) — user enables via Groove panel
     seq.dilla.kickNudge = 0;
@@ -612,6 +609,9 @@ static void dawInitSequencer(void) {
     for (int b = 0; b < ARR_MAX_BARS; b++)
         for (int t = 0; t < ARR_MAX_TRACKS; t++)
             daw.arr.cells[b][t] = ARR_EMPTY;
+    // Wire arrangement bar 0: each track gets its own pattern
+    for (int t = 0; t < ARR_MAX_TRACKS; t++) daw.arr.cells[0][t] = t;
+    daw.arr.length = 1;
 
     // Initialize launcher slots to empty
     daw.launcher.active = false;
