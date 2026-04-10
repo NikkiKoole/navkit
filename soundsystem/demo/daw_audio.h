@@ -579,11 +579,23 @@ static void dawInitSequencer(void) {
     seq.trackNoteOff[SEQ_TRACK_SAMPLER] = dawSamplerRelease;
     seq.trackNames[SEQ_TRACK_SAMPLER] = "Sampler";
 
-    // Default demo beat on pattern 0
-    Pattern *pat = &seq.patterns[0];
-    patSetDrum(pat, 0, 0.8f, 0.0f); patSetDrum(pat, 4, 0.8f, 0.0f); patSetDrum(pat, 8, 0.8f, 0.0f); patSetDrum(pat, 12, 0.8f, 0.0f);
-    patSetDrum(pat, 4, 0.8f, 0.0f); patSetDrum(pat, 12, 0.8f, 0.0f);
-    for (int i = 0; i < 16; i += 2) patSetDrum(pat, i, 0.8f, 0.0f);
+    // Default demo beat: one pattern per drum voice
+    // Pattern 0: kick (beats 1, 2, 3, 4 of a 16-step bar)
+    seq.patterns[0].trackType = TRACK_DRUM;
+    patSetDrum(&seq.patterns[0], 0, 0.8f, 0.0f);
+    patSetDrum(&seq.patterns[0], 4, 0.8f, 0.0f);
+    patSetDrum(&seq.patterns[0], 8, 0.8f, 0.0f);
+    patSetDrum(&seq.patterns[0], 12, 0.8f, 0.0f);
+    // Pattern 1: snare (beats 2 and 4)
+    seq.patterns[1].trackType = TRACK_DRUM;
+    patSetDrum(&seq.patterns[1], 4, 0.8f, 0.0f);
+    patSetDrum(&seq.patterns[1], 12, 0.8f, 0.0f);
+    // Pattern 2: hihat (every other step)
+    seq.patterns[2].trackType = TRACK_DRUM;
+    for (int i = 0; i < 16; i += 2) patSetDrum(&seq.patterns[2], i, 0.8f, 0.0f);
+    // Wire arrangement bar 0: each track gets its own pattern
+    for (int t = 0; t < ARR_MAX_TRACKS; t++) daw.arr.cells[0][t] = t;
+    daw.arr.length = 1;
 
     // Dilla timing starts at zero (clean grid) — user enables via Groove panel
     seq.dilla.kickNudge = 0;

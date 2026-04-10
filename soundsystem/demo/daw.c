@@ -2257,13 +2257,19 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         DrawTextShadow(TextFormat("%d", i+1), sx + (steps==32 ? 1 : cellW/2-3), (int)y, steps==32 ? 8 : 9, numCol);
     }
 
+    // Which arrangement bar to show in the step grid
+    int editBar = (daw.arr.arrMode && daw.transport.playing && seq.chainPos >= 0 && seq.chainPos < daw.arr.length)
+        ? seq.chainPos : 0;
+
     for (int track = 0; track < SEQ_GRID_TRACKS; track++) {
         int ty = (int)y + 14 + track * (cellH + 2);
         bool isDrum = (track < 4);
         bool isSampler = (track == SEQ_TRACK_SAMPLER);
-        // Per-row pattern: in perTrackPatterns mode each row reads its own pattern
-        Pattern *rowPat = (seq.perTrackPatterns && seq.trackPatternIdx[track] >= 0)
-            ? &seq.patterns[seq.trackPatternIdx[track]]
+        // Per-row pattern: read from arrangement grid (falls back to currentPattern if no arr)
+        int _cellPat = (daw.arr.length > 0 && track < ARR_MAX_TRACKS)
+            ? daw.arr.cells[editBar][track] : ARR_EMPTY;
+        Pattern *rowPat = (_cellPat >= 0 && _cellPat < SEQ_NUM_PATTERNS)
+            ? &seq.patterns[_cellPat]
             : &seq.patterns[seq.currentPattern];
         if (track == 4) DrawLine((int)x, ty-2, (int)(x+w), ty-2, UI_BORDER);
         if (track == SEQ_TRACK_SAMPLER) DrawLine((int)x, ty-2, (int)(x+w), ty-2, UI_BORDER);
