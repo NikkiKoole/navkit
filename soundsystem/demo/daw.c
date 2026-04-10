@@ -589,7 +589,7 @@ static void dawRecordNoteOn(int midiNote, float velocity) {
     int track = recTargetTrack();
     if (track < 0) return;
 
-    Pattern *pat = dawPattern();
+    Pattern *pat = dawTrackPat(track);
     int trackLen = pat->length;
     if (trackLen <= 0) trackLen = 16;
 
@@ -620,7 +620,7 @@ static void dawRecordNoteOn(int midiNote, float velocity) {
             recHeld[i].step = qStep;
             recHeld[i].tick = tick;
             recHeld[i].track = track;
-            recHeld[i].patternIdx = seq.currentPattern;
+            recHeld[i].patternIdx = (int)(pat - seq.patterns);
             recHeld[i].active = true;
             break;
         }
@@ -635,7 +635,7 @@ static void dawRecordNoteOff(int midiNote) {
             int startStep = recHeld[i].step;
             int startTick = recHeld[i].tick;
             int startPat = recHeld[i].patternIdx;
-            int curPat = seq.currentPattern;
+            int curPat = (int)(dawTrackPat(track) - seq.patterns);
 
             // Get the pattern where the note started
             Pattern *startPatPtr = &seq.patterns[startPat];
