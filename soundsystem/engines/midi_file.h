@@ -427,9 +427,9 @@ static bool midiFileToDaw(const char *filepath) {
         if (e->channel == 9) {
             // Drum event — keep loudest hit per track+step
             int track = _mf_drumTrack(e->note);
-            StepV2 *sv = &pat->steps[track][step];
+            StepV2 *sv = &pat->steps[step];
             if (sv->noteCount == 0 || vel > velU8ToFloat(sv->notes[0].velocity)) {
-                patSetDrum(pat, track, step, vel, 0.0f);
+                patSetDrum(pat, step, vel, 0.0f);
             }
         } else {
             // Melody event
@@ -447,7 +447,7 @@ static bool midiFileToDaw(const char *filepath) {
             if (nudgeTicks < -12) nudgeTicks = -12;
             if (nudgeTicks > 12) nudgeTicks = 12;
 
-            StepV2 *sv = &pat->steps[absTrack][step];
+            StepV2 *sv = &pat->steps[step];
 
             // Check for duplicate note (same pitch on same step) — keep longest gate
             bool isDuplicate = false;
@@ -464,7 +464,7 @@ static bool midiFileToDaw(const char *filepath) {
 
             if (!isDuplicate) {
                 if (sv->noteCount == 0) {
-                    patSetNote(pat, absTrack, step, e->note, vel, durSteps);
+                    patSetNote(pat, step, e->note, vel, durSteps);
                 } else if (sv->noteCount < SEQ_V2_MAX_POLY) {
                     stepV2AddNote(sv, e->note, velFloatToU8(vel), (int8_t)durSteps);
                 }
@@ -483,7 +483,7 @@ static bool midiFileToDaw(const char *filepath) {
     // Set track lengths
     for (int p = 0; p < numPatterns; p++) {
         for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++) {
-            seq.patterns[p].trackLength[t] = stepsPerPattern;
+            seq.patterns[p].length = stepsPerPattern;
         }
     }
 
@@ -533,12 +533,12 @@ static bool midiFileToDaw(const char *filepath) {
                     bool same = true;
                     Pattern *pp = &seq.patterns[p];
                     Pattern *pq = &seq.patterns[q];
-                    if (pp->trackLength[t] != pq->trackLength[t]) { same = false; }
+                    if (pp->length != pq->length) { same = false; }
                     else {
-                        int len = pp->trackLength[t];
+                        int len = pp->length;
                         for (int s = 0; s < len && same; s++) {
-                            StepV2 *a = &pp->steps[t][s];
-                            StepV2 *b = &pq->steps[t][s];
+                            StepV2 *a = &pp->steps[s];
+                            StepV2 *b = &pq->steps[s];
                             if (a->noteCount != b->noteCount) { same = false; break; }
                             for (int v = 0; v < a->noteCount && same; v++) {
                                 if (a->notes[v].note != b->notes[v].note ||
@@ -561,9 +561,9 @@ static bool midiFileToDaw(const char *filepath) {
                     // Check if track actually has content in this pattern
                     bool hasContent = false;
                     Pattern *pp = &seq.patterns[p];
-                    int len = pp->trackLength[t];
+                    int len = pp->length;
                     for (int s = 0; s < len; s++) {
-                        if (pp->steps[t][s].noteCount > 0) { hasContent = true; break; }
+                        if (pp->steps[s].noteCount > 0) { hasContent = true; break; }
                     }
                     if (hasContent) {
                         uniquePats[t][uniqueCount[t]++] = p;
@@ -584,9 +584,9 @@ static bool midiFileToDaw(const char *filepath) {
                     // Check if track has any content in this canonical pattern
                     bool hasContent = false;
                     Pattern *pp = &seq.patterns[cp];
-                    int len = pp->trackLength[t];
+                    int len = pp->length;
                     for (int s = 0; s < len; s++) {
-                        if (pp->steps[t][s].noteCount > 0) { hasContent = true; break; }
+                        if (pp->steps[s].noteCount > 0) { hasContent = true; break; }
                     }
                     daw.arr.cells[b][t] = hasContent ? cp : ARR_EMPTY;
                 } else {

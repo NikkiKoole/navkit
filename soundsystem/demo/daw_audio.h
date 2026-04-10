@@ -581,9 +581,9 @@ static void dawInitSequencer(void) {
 
     // Default demo beat on pattern 0
     Pattern *pat = &seq.patterns[0];
-    patSetDrum(pat, 0, 0, 0.8f, 0.0f); patSetDrum(pat, 0, 4, 0.8f, 0.0f); patSetDrum(pat, 0, 8, 0.8f, 0.0f); patSetDrum(pat, 0, 12, 0.8f, 0.0f);
-    patSetDrum(pat, 1, 4, 0.8f, 0.0f); patSetDrum(pat, 1, 12, 0.8f, 0.0f);
-    for (int i = 0; i < 16; i += 2) patSetDrum(pat, 2, i, 0.8f, 0.0f);
+    patSetDrum(pat, 0, 0.8f, 0.0f); patSetDrum(pat, 4, 0.8f, 0.0f); patSetDrum(pat, 8, 0.8f, 0.0f); patSetDrum(pat, 12, 0.8f, 0.0f);
+    patSetDrum(pat, 4, 0.8f, 0.0f); patSetDrum(pat, 12, 0.8f, 0.0f);
+    for (int i = 0; i < 16; i += 2) patSetDrum(pat, i, 0.8f, 0.0f);
 
     // Dilla timing starts at zero (clean grid) — user enables via Groove panel
     seq.dilla.kickNudge = 0;

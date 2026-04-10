@@ -299,3 +299,32 @@ Steps 0 and 1 are structurally complete but carry dead code (`perTrackPatterns`,
 path, `(void)track` params). Steps 2–5 are incomplete: songs are in the new format but
 migration code was kept instead of replaced with a tool, and the composite step grid UI
 was never built. The branch is not in a mergeable state.
+
+---
+
+## Follow-up cleanup — `soundsystem/single-track-patterns-v2` (2026-04-10)
+
+### Step 1 — Dead `int track` params removed (done)
+- All 36 `pat*` helper signatures cleaned: `int track` param + `(void)track;` deleted
+- `seqEvalTrackConditionP` and `seqTriggerStep` keep their `int track` param (legitimately used)
+- Call sites updated across: `sequencer.h`, `song_file.h`, `daw_file.h`, `rhythm_patterns.h`,
+  `sample_chop.h`, `midi_file.h`, `daw.c`, `daw_audio.h`, `songs.h`, `sound_synth_bridge.c`,
+  `tests/test_soundsystem.c`
+- `perTrackPatterns` confirmed NOT dead — still used in jukebox/single-pattern mode
+- `barLengthSteps == 0` confirmed NOT dead — valid for non-arrangement playback
+
+### Step 3 — `daw.c` compiles (structural fix, not full implementation)
+- `p->trackLength[track]` → `p->length` across `daw.c`, `sample_chop.h`, `midi_file.h`
+- `p->steps[track][step]` → `p->steps[step]` (1D)
+- `p->trackType[track]` → `p->trackType`
+- `p->plockStepIndex[track][step]` → `p->plockStepIndex[step]`
+- The DAW now shows **one track at a time** in the step grid (the currently selected track's
+  pattern). The composite multi-track view (all rows from arrangement column) is still not built.
+- All three build targets now compile: `make path`, `make test_soundsystem`, `make soundsystem-daw`
+- 395 tests, 2638 assertions — all pass
+
+### Remaining work before merge
+1. Delete runtime migration code from `daw_file.h` (4+ "Legacy multi-track migration" sites)
+2. Build composite step grid: render `arr.cells[currentBar][0..N]` as rows (Step 3 plan)
+3. Remove `perTrackPatterns` flag once non-arrangement modes are updated (optional — it's still useful)
+4. Piano roll: verify `steps[step]` access is correct (quick audit needed)

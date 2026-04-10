@@ -459,7 +459,7 @@ static RenderedPattern renderPatternToBuffer(const char *songPath, int patternId
     // Calculate duration: steps × loops × time-per-step + tail
     int stepCount = 16;  // default
     for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++) {
-        int tl = seq.patterns[patternIdx].trackLength[t];
+        int tl = seq.patterns[patternIdx].length;
         if (tl > stepCount) stepCount = tl;
     }
     float bpm = tempDaw->transport.bpm;

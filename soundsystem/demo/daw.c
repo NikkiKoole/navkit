@@ -211,7 +211,7 @@ static Pattern* dawPattern(void) {
 
 // Helper: get track length from Pattern (drum tracks 0-3 vs melody tracks 4-6)
 static int dawTrackLength(Pattern *p, int track) {
-    return p->trackLength[track];
+    return p->length;
 }
 
 // Audio performance monitoring
@@ -572,14 +572,14 @@ static void dawRecordNoteOn(int midiNote, float velocity) {
     if (track < 0) return;
 
     Pattern *pat = dawPattern();
-    int trackLen = pat->trackLength[track];
+    int trackLen = pat->length;
     if (trackLen <= 0) trackLen = 16;
 
     int step = seq.trackStep[track];
     int tick = seq.trackTick[track];
     int8_t nudge = 0;
     int qStep = recQuantizeStep(step, tick, trackLen, &nudge);
-    StepV2 *sv = &pat->steps[track][qStep];
+    StepV2 *sv = &pat->steps[qStep];
 
     if (recWriteMode == REC_REPLACE) {
         bool otherHeld = false;
@@ -621,7 +621,7 @@ static void dawRecordNoteOff(int midiNote) {
 
             // Get the pattern where the note started
             Pattern *startPatPtr = &seq.patterns[startPat];
-            int startTrackLen = startPatPtr->trackLength[track];
+            int startTrackLen = startPatPtr->length;
             if (startTrackLen <= 0) startTrackLen = 16;
 
             int curStep = seq.trackStep[track];
@@ -642,7 +642,7 @@ static void dawRecordNoteOff(int midiNote) {
                 if (gateNudge < -23) gateNudge = -23;
                 if (gateNudge > 23) gateNudge = 23;
 
-                StepV2 *sv = &startPatPtr->steps[track][startStep];
+                StepV2 *sv = &startPatPtr->steps[startStep];
                 int ni = stepV2FindNote(sv, midiNote);
                 if (ni >= 0) {
                     sv->notes[ni].gate = (int8_t)gate;
@@ -652,7 +652,7 @@ static void dawRecordNoteOff(int midiNote) {
                 // Cross-pattern: sum ticks from start to current position
                 int deltaTicks = (startTrackLen - startStep) * seq.ticksPerStep - startTick;
                 for (int p = startPat + 1; p < curPat && p < SEQ_NUM_PATTERNS; p++) {
-                    int tl = seq.patterns[p].trackLength[track];
+                    int tl = seq.patterns[p].length;
                     if (tl <= 0) tl = 16;
                     deltaTicks += tl * seq.ticksPerStep;
                 }
@@ -665,7 +665,7 @@ static void dawRecordNoteOff(int midiNote) {
                 if (gateNudge < -23) gateNudge = -23;
                 if (gateNudge > 23) gateNudge = 23;
 
-                StepV2 *sv = &startPatPtr->steps[track][startStep];
+                StepV2 *sv = &startPatPtr->steps[startStep];
                 int ni = stepV2FindNote(sv, midiNote);
                 if (ni >= 0) {
                     sv->notes[ni].gate = (int8_t)gate;
@@ -742,14 +742,14 @@ static void dawRecordToggle(void) {
                 Pattern *dstPat = &seq.patterns[startPat + i];
                 for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++) {
                     if (t == recTrack) continue;  // skip the track we're recording onto
-                    dstPat->trackLength[t] = srcPat->trackLength[t];
-                    dstPat->trackType[t] = srcPat->trackType[t];
+                    dstPat->length = srcPat->length;
+                    dstPat->trackType = srcPat->trackType;
                     for (int s = 0; s < SEQ_MAX_STEPS; s++) {
-                        dstPat->steps[t][s] = srcPat->steps[t][s];
+                        dstPat->steps[s] = srcPat->steps[s];
                     }
                     // Copy p-lock index for this track
                     for (int s = 0; s < SEQ_MAX_STEPS; s++) {
-                        dstPat->plockStepIndex[t][s] = PLOCK_INDEX_NONE;
+                        dstPat->plockStepIndex[s] = PLOCK_INDEX_NONE;
                     }
                 }
                 // Copy p-locks for all non-recording tracks
@@ -761,8 +761,8 @@ static void dawRecordToggle(void) {
                     int di = dstPat->plockCount++;
                     dstPat->plocks[di] = *pl;
                     // Re-link into step index chain
-                    dstPat->plocks[di].nextInStep = dstPat->plockStepIndex[pl->track][pl->step];
-                    dstPat->plockStepIndex[pl->track][pl->step] = (int8_t)di;
+                    dstPat->plocks[di].nextInStep = dstPat->plockStepIndex[pl->step];
+                    dstPat->plockStepIndex[pl->step] = (int8_t)di;
                 }
                 // Copy pattern overrides
                 dstPat->overrides = srcPat->overrides;
@@ -774,8 +774,8 @@ static void dawRecordToggle(void) {
                 if (track >= 0) {
                     for (int i = 0; i < bars; i++) {
                         Pattern *p = &seq.patterns[startPat + i];
-                        for (int s = 0; s < p->trackLength[track]; s++) {
-                            stepV2Clear(&p->steps[track][s]);
+                        for (int s = 0; s < p->length; s++) {
+                            stepV2Clear(&p->steps[s]);
                         }
                     }
                 }
@@ -1893,11 +1893,11 @@ static const char* condNames[] = {"Always","1:2","2:2","1:4","2:4","3:4","4:4","
 // Uses scale lock if enabled, otherwise defaults to minor pentatonic.
 static void generate303Bassline(Pattern *p, int melodyTrack) {
     int absTrack = SEQ_DRUM_TRACKS + melodyTrack;
-    int len = p->trackLength[absTrack];
+    int len = p->length;
     if (len < 1) len = 16;
     if (len > SEQ_MAX_STEPS) len = SEQ_MAX_STEPS;
 
-    for (int s = 0; s < SEQ_MAX_STEPS; s++) stepV2Clear(&p->steps[absTrack][s]);
+    for (int s = 0; s < SEQ_MAX_STEPS; s++) stepV2Clear(&p->steps[s]);
 
     int baseNote = 36 + seqRandInt(0, 4);
     int pool[16];
@@ -1943,15 +1943,15 @@ static void generate303Bassline(Pattern *p, int melodyTrack) {
         int8_t gate = gr < 0.55f ? 1 : gr < 0.80f ? 2 : gr < 0.92f ? 3 : 4;
         uint8_t vel = velFloatToU8(0.7f + seqRandFloat() * 0.15f);
 
-        int vi = stepV2AddNote(&p->steps[absTrack][s], note, vel, gate);
+        int vi = stepV2AddNote(&p->steps[s], note, vel, gate);
         if (vi >= 0) {
-            p->steps[absTrack][s].notes[vi].slide = (seqRandFloat() < 0.20f);
+            p->steps[s].notes[vi].slide = (seqRandFloat() < 0.20f);
             if (seqRandFloat() < 0.25f) {
-                p->steps[absTrack][s].notes[vi].accent = true;
-                p->steps[absTrack][s].notes[vi].velocity = velFloatToU8(0.95f);
+                p->steps[s].notes[vi].accent = true;
+                p->steps[s].notes[vi].velocity = velFloatToU8(0.95f);
             }
             if (seqRandFloat() < 0.15f)
-                p->steps[absTrack][s].notes[vi].nudge = (int8_t)seqRandInt(-3, 3);
+                p->steps[s].notes[vi].nudge = (int8_t)seqRandInt(-3, 3);
         }
         prevNote = note;
     }
@@ -2002,13 +2002,13 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         if (h16 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             daw.stepCount = 16;
             Pattern *tp = dawPattern();
-            for (int t = 0; t < SEQ_DRUM_TRACKS + SEQ_MELODY_TRACKS; t++) tp->trackLength[t] = 16;
+            for (int t = 0; t < SEQ_DRUM_TRACKS + SEQ_MELODY_TRACKS; t++) tp->length = 16;
             ui_consume_click();
         }
         if (h32 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             daw.stepCount = 32;
             Pattern *tp = dawPattern();
-            for (int t = 0; t < SEQ_DRUM_TRACKS + SEQ_MELODY_TRACKS; t++) tp->trackLength[t] = 32;
+            for (int t = 0; t < SEQ_DRUM_TRACKS + SEQ_MELODY_TRACKS; t++) tp->length = 32;
             ui_consume_click();
         }
     }
@@ -2313,14 +2313,14 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                        nameCol.b = (unsigned char)(nameCol.b + 40 > 255 ? 255 : nameCol.b + 40); }
         DrawTextShadow(trackNames[track], lx + 72, lcy-5, UI_FONT_SMALL, nameCol);
         // Per-track length (right-click or scroll on name to change)
-        int tLen = dawPattern()->trackLength[track];
+        int tLen = dawPattern()->length;
         bool lenDiffers = (tLen != daw.stepCount);
         Color lenCol = lenDiffers ? UI_TEXT_GOLD : UI_TEXT_MUTED;
         DrawTextShadow(TextFormat("%d", tLen), lx + labelW - 16, lcy-4, 8, lenCol);
         if (nameHov) {
             float wh = GetMouseWheelMove();
-            if (wh > 0) { tLen++; if (tLen > 32) tLen = 32; dawPattern()->trackLength[track] = tLen; }
-            else if (wh < 0) { tLen--; if (tLen < 1) tLen = 1; dawPattern()->trackLength[track] = tLen; }
+            if (wh > 0) { tLen++; if (tLen > 32) tLen = 32; dawPattern()->length = tLen; }
+            else if (wh < 0) { tLen--; if (tLen < 1) tLen = 1; dawPattern()->length = tLen; }
             if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
                 // Right-click: cycle through common lengths
                 static const int commonLens[] = {4, 6, 8, 12, 16, 24, 32};
@@ -2329,7 +2329,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                     if (commonLens[ci] > tLen) { best = commonLens[ci]; break; }
                     if (ci == 6) best = commonLens[0];
                 }
-                dawPattern()->trackLength[track] = best;
+                dawPattern()->length = best;
                 ui_consume_click();
             }
         }
@@ -2360,10 +2360,10 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             bool hov = CheckCollisionPointRec(mouse, cell);
             Color bg = (step/4)%2==0 ? UI_BG_BUTTON : UI_BG_PANEL;
 
-            if (isDrum && step < SEQ_MAX_STEPS && patGetDrum(dawPattern(), track, step)) bg = (Color){50,125,65,255};
-            if (isSampler && patGetNote(dawPattern(), track, step) != SEQ_NOTE_OFF)
+            if (isDrum && step < SEQ_MAX_STEPS && patGetDrum(dawPattern(), step)) bg = (Color){50,125,65,255};
+            if (isSampler && patGetNote(dawPattern(), step) != SEQ_NOTE_OFF)
                 bg = UI_TINT_ORANGE;  // orange-brown for sampler
-            else if (!isDrum && !isSampler && track >= SEQ_DRUM_TRACKS && patGetNote(dawPattern(), track, step) != SEQ_NOTE_OFF)
+            else if (!isDrum && !isSampler && track >= SEQ_DRUM_TRACKS && patGetNote(dawPattern(), step) != SEQ_NOTE_OFF)
                 bg = (Color){50,80,140,255};
             // Playhead highlight (per-track for polyrhythm)
             if (daw.transport.playing && step == seq.trackStep[track])
@@ -2376,16 +2376,16 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             // Velocity indicator + p-lock dot
             {
                 Pattern *pat = dawPattern();
-                bool active = (isDrum && step < SEQ_MAX_STEPS && patGetDrum(pat, track, step)) ||
-                              (isSampler && patGetNote(pat, track, step) != SEQ_NOTE_OFF) ||
-                              (!isDrum && !isSampler && track >= SEQ_DRUM_TRACKS && patGetNote(pat, track, step) != SEQ_NOTE_OFF);
+                bool active = (isDrum && step < SEQ_MAX_STEPS && patGetDrum(pat, step)) ||
+                              (isSampler && patGetNote(pat, step) != SEQ_NOTE_OFF) ||
+                              (!isDrum && !isSampler && track >= SEQ_DRUM_TRACKS && patGetNote(pat, step) != SEQ_NOTE_OFF);
                 if (active) {
-                    float vel = isDrum ? patGetDrumVel(pat, track, step)
-                                       : patGetNoteVel(pat, track, step);
-                    float prob = isDrum ? patGetDrumProb(pat, track, step)
-                                        : patGetNoteProb(pat, track, step);
-                    int cond = isDrum ? patGetDrumCond(pat, track, step)
-                                      : patGetNoteCond(pat, track, step);
+                    float vel = isDrum ? patGetDrumVel(pat, step)
+                                       : patGetNoteVel(pat, step);
+                    float prob = isDrum ? patGetDrumProb(pat, step)
+                                        : patGetNoteProb(pat, step);
+                    int cond = isDrum ? patGetDrumCond(pat, step)
+                                      : patGetNoteCond(pat, step);
                     {
                         int barH = 2;
                         int barW = (int)((cellW-3) * vel);
@@ -2398,7 +2398,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             }
 
             // Draw pitch p-lock indicator for drum cells
-            if (isDrum && step < SEQ_MAX_STEPS && patGetDrum(dawPattern(), track, step)) {
+            if (isDrum && step < SEQ_MAX_STEPS && patGetDrum(dawPattern(), step)) {
                 float pitchPl = seqGetPLock(dawPattern(), track, step, PLOCK_PITCH_OFFSET, 0.0f);
                 if (fabsf(pitchPl) > 0.01f && cellW >= 10) {
                     DrawTextShadow(TextFormat("%+.0f", pitchPl), sx+2, ty+2, 7, (Color){180,140,255,220});
@@ -2406,7 +2406,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             }
             // Draw note name for melody cells, or slice number for sampler
             if (isSampler) {
-                StepV2 *sv = &dawPattern()->steps[track][step];
+                StepV2 *sv = &dawPattern()->steps[step];
                 if (sv->noteCount > 0 && sv->notes[0].note != SEQ_NOTE_OFF && cellW >= 10) {
                     DrawTextShadow(TextFormat("S%d", sv->notes[0].slice), sx+2, ty+2, 8, (Color){255,200,100,255});
                     // Show pitch offset when non-center (60 = no shift)
@@ -2417,7 +2417,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                     }
                 }
             } else if (!isDrum && track >= SEQ_DRUM_TRACKS) {
-                int note = patGetNote(dawPattern(), track, step);
+                int note = patGetNote(dawPattern(), step);
                 if (note != SEQ_NOTE_OFF && cellW >= 14) {
                     const char* nn[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
                     DrawTextShadow(TextFormat("%d%s", note/12-1, nn[note%12]), sx+2, ty+2, 8, WHITE);
@@ -2432,28 +2432,28 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                 bool placed = false;
 
                 if (isDrum && step < 32) {
-                    if (patGetDrum(dawPattern(), track, step))
-                        patClearDrum(dawPattern(), track, step);
-                    else { patSetDrum(dawPattern(), track, step, clickVel, 0.0f); placed = true; }
+                    if (patGetDrum(dawPattern(), step))
+                        patClearDrum(dawPattern(), step);
+                    else { patSetDrum(dawPattern(), step, clickVel, 0.0f); placed = true; }
                 } else if (isSampler) {
-                    StepV2 *sv = &dawPattern()->steps[track][step];
+                    StepV2 *sv = &dawPattern()->steps[step];
                     if (sv->noteCount > 0 && sv->notes[0].note != SEQ_NOTE_OFF) {
-                        patClearNote(dawPattern(), track, step);
+                        patClearNote(dawPattern(), step);
                     } else {
-                        patSetNote(dawPattern(), track, step, 60, clickVel, 1);
+                        patSetNote(dawPattern(), step, 60, clickVel, 1);
                         sv->notes[0].slice = 0;
                         placed = true;
                     }
                 } else if (!isDrum && track >= SEQ_DRUM_TRACKS) {
-                    if (patGetNote(dawPattern(), track, step) == SEQ_NOTE_OFF) {
+                    if (patGetNote(dawPattern(), step) == SEQ_NOTE_OFF) {
                         // Copy from nearest previous active step on same track (wrap around)
                         Pattern *pat = dawPattern();
                         int srcNote = 60; int8_t srcGate = 1;
                         bool srcSlide = false, srcAccent = false;
                         for (int d = 1; d < steps; d++) {
                             int prev = (step - d + steps) % steps;
-                            if (patGetNote(pat, track, prev) != SEQ_NOTE_OFF) {
-                                StepV2 *src = &pat->steps[track][prev];
+                            if (patGetNote(pat, prev) != SEQ_NOTE_OFF) {
+                                StepV2 *src = &pat->steps[prev];
                                 srcNote = src->notes[0].note;
                                 srcGate = src->notes[0].gate;
                                 srcSlide = src->notes[0].slide;
@@ -2461,15 +2461,15 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                                 break;
                             }
                         }
-                        patSetNote(pat, track, step, srcNote, clickVel, srcGate);
-                        StepV2 *sv = &pat->steps[track][step];
+                        patSetNote(pat, step, srcNote, clickVel, srcGate);
+                        StepV2 *sv = &pat->steps[step];
                         if (sv->noteCount > 0) {
                             sv->notes[0].slide = srcSlide;
                             sv->notes[0].accent = srcAccent;
                         }
                         placed = true;
                     } else
-                        patClearNote(dawPattern(), track, step);
+                        patClearNote(dawPattern(), step);
                 }
                 if (placed) {
                     velFlashTimer = 0.35f;
@@ -2491,7 +2491,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                 float wh = GetMouseWheelMove();
                 if (wh != 0.0f && isDrum && step < SEQ_MAX_STEPS && IsKeyDown(KEY_LEFT_CONTROL)) {
                     // Ctrl+scroll = pitch offset p-lock (drums)
-                    if (patGetDrum(dawPattern(), track, step)) {
+                    if (patGetDrum(dawPattern(), step)) {
                         int delta = scrollDelta(wh, 600 + track * 100 + step);
                         if (delta != 0) {
                             float cur = seqGetPLock(dawPattern(), track, step, PLOCK_PITCH_OFFSET, 0.0f);
@@ -2504,21 +2504,21 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                 } else if (wh != 0.0f && IsKeyDown(KEY_LEFT_SHIFT)) {
                     // Shift+scroll = adjust velocity
                     Pattern *pat = dawPattern();
-                    bool active = (isDrum && step < SEQ_MAX_STEPS && patGetDrum(pat, track, step)) ||
-                                  (isSampler && patGetNote(pat, track, step) != SEQ_NOTE_OFF) ||
-                                  (!isDrum && !isSampler && track >= SEQ_DRUM_TRACKS && patGetNote(pat, track, step) != SEQ_NOTE_OFF);
+                    bool active = (isDrum && step < SEQ_MAX_STEPS && patGetDrum(pat, step)) ||
+                                  (isSampler && patGetNote(pat, step) != SEQ_NOTE_OFF) ||
+                                  (!isDrum && !isSampler && track >= SEQ_DRUM_TRACKS && patGetNote(pat, step) != SEQ_NOTE_OFF);
                     if (active) {
-                        float vel = isDrum ? patGetDrumVel(pat, track, step) : patGetNoteVel(pat, track, step);
+                        float vel = isDrum ? patGetDrumVel(pat, step) : patGetNoteVel(pat, step);
                         vel += wh * 0.05f;
                         if (vel < 0.05f) vel = 0.05f; if (vel > 1.0f) vel = 1.0f;
-                        if (isDrum) patSetDrumVel(pat, track, step, vel);
-                        else patSetNoteVel(pat, track, step, vel);
+                        if (isDrum) patSetDrumVel(pat, step, vel);
+                        else patSetNoteVel(pat, step, vel);
                         SCROLL_POPUP("vel:%d%%", (int)(vel * 100));
                     }
                 } else if (wh != 0.0f && isSampler && IsKeyDown(KEY_LEFT_CONTROL)) {
                     // Ctrl+scroll = per-step pitch for sampler track
                     int delta = scrollDelta(wh, 200 + step);
-                    StepV2 *sv = &dawPattern()->steps[track][step];
+                    StepV2 *sv = &dawPattern()->steps[step];
                     if (delta != 0 && sv->noteCount > 0 && sv->notes[0].note != SEQ_NOTE_OFF) {
                         int newNote = sv->notes[0].note + delta;
                         if (newNote < 36) newNote = 36;
@@ -2530,7 +2530,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                 } else if (wh != 0.0f && isSampler) {
                     // Scroll = change slice number for sampler track
                     int delta = scrollDelta(wh, 300 + step);
-                    StepV2 *sv = &dawPattern()->steps[track][step];
+                    StepV2 *sv = &dawPattern()->steps[step];
                     if (delta != 0 && sv->noteCount > 0 && sv->notes[0].note != SEQ_NOTE_OFF) {
                         int newSlice = sv->notes[0].slice + delta;
                         if (newSlice < 0) newSlice = 0;
@@ -2541,8 +2541,8 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                 } else if (wh != 0.0f && !isDrum && track >= SEQ_DRUM_TRACKS && IsKeyDown(KEY_LEFT_CONTROL)) {
                     // Ctrl+scroll = fine pitch: ±1 semitone (chromatic) or ±1 scale degree (scale lock)
                     int delta = scrollDelta(wh, 500 + track * 100 + step);
-                    if (delta != 0 && patGetNote(dawPattern(), track, step) != SEQ_NOTE_OFF) {
-                        int n = patGetNote(dawPattern(), track, step);
+                    if (delta != 0 && patGetNote(dawPattern(), step) != SEQ_NOTE_OFF) {
+                        int n = patGetNote(dawPattern(), step);
                         if (daw.scaleLockEnabled && daw.scaleType != SCALE_CHROMATIC) {
                             // Step through scale degrees
                             int dir = (delta > 0) ? 1 : -1;
@@ -2558,15 +2558,15 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                             n += delta;
                         }
                         if (n < 0) n = 0; if (n > 127) n = 127;
-                        patSetNote(dawPattern(), track, step, n, patGetNoteVel(dawPattern(), track, step), patGetNoteGate(dawPattern(), track, step));
+                        patSetNote(dawPattern(), step, n, patGetNoteVel(dawPattern(), step), patGetNoteGate(dawPattern(), step));
                         const char* nn[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
                         SCROLL_POPUP("%s%d", nn[n%12], n/12-1);
                     }
                 } else if (wh != 0.0f && !isDrum && track >= SEQ_DRUM_TRACKS) {
                     // Plain scroll = octave jump ±12 (snapped to scale if locked)
                     int delta = scrollDelta(wh, 400 + track * 100 + step);
-                    if (delta != 0 && patGetNote(dawPattern(), track, step) != SEQ_NOTE_OFF) {
-                        int n = patGetNote(dawPattern(), track, step) + delta * 12;
+                    if (delta != 0 && patGetNote(dawPattern(), step) != SEQ_NOTE_OFF) {
+                        int n = patGetNote(dawPattern(), step) + delta * 12;
                         if (n < 0) n = 0; if (n > 127) n = 127;
                         if (daw.scaleLockEnabled && daw.scaleType != SCALE_CHROMATIC) {
                             // Snap to nearest scale note
@@ -2582,7 +2582,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                             }
                             if (n < 0) n = 0; if (n > 127) n = 127;
                         }
-                        patSetNote(dawPattern(), track, step, n, patGetNoteVel(dawPattern(), track, step), patGetNoteGate(dawPattern(), track, step));
+                        patSetNote(dawPattern(), step, n, patGetNoteVel(dawPattern(), step), patGetNoteGate(dawPattern(), step));
                         const char* nn[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
                         SCROLL_POPUP("%s%d", nn[n%12], n/12-1);
                     }
@@ -2657,13 +2657,13 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         float vel, prob;
         int cond;
         if (isDrumTrack) {
-            vel  = patGetDrumVel(pat, detailTrack, ds);
-            prob = patGetDrumProb(pat, detailTrack, ds);
-            cond = patGetDrumCond(pat, detailTrack, ds);
+            vel  = patGetDrumVel(pat, ds);
+            prob = patGetDrumProb(pat, ds);
+            cond = patGetDrumCond(pat, ds);
         } else {
-            vel  = patGetNoteVel(pat, detailTrack, ds);
-            prob = patGetNoteProb(pat, detailTrack, ds);
-            cond = patGetNoteCond(pat, detailTrack, ds);
+            vel  = patGetNoteVel(pat, ds);
+            prob = patGetNoteProb(pat, ds);
+            cond = patGetNoteCond(pat, ds);
         }
 
         // Params spread horizontally
@@ -2675,7 +2675,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         UIColumn c2 = ui_column(cx + 180, iy, 15);
         int gate = 0;
         if (!isDrumTrack) {
-            gate = patGetNoteGate(pat, detailTrack, ds);
+            gate = patGetNoteGate(pat, ds);
             ui_col_int(&c2, "Gate (steps)", &gate, 1, 0, 16);
         }
         ui_col_cycle(&c2, "Condition", condNames, COND_COUNT, &cond);
@@ -2683,7 +2683,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         UIColumn c3 = ui_column(cx + 360, iy, 15);
         bool slide = false;
         if (!isDrumTrack) {
-            slide = patGetNoteSlide(pat, detailTrack, ds);
+            slide = patGetNoteSlide(pat, ds);
             ui_col_toggle(&c3, "Slide", &slide);
         }
 
@@ -2691,24 +2691,24 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         bool accent = false;
         int noteVal = SEQ_NOTE_OFF;
         if (!isDrumTrack && detailTrack >= SEQ_DRUM_TRACKS) {
-            noteVal = patGetNote(pat, detailTrack, ds);
+            noteVal = patGetNote(pat, ds);
             if (noteVal != SEQ_NOTE_OFF) {
                 const char* nn[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
                 int oct = noteVal / 12 - 1;
                 ui_col_sublabel(&c4, TextFormat("Note: %s%d (MIDI %d)", nn[noteVal % 12], oct, noteVal), UI_TEXT_BLUE);
                 ui_col_int(&c4, "MIDI Note", &noteVal, 1, 0, 127);
             }
-            accent = patGetNoteAccent(pat, detailTrack, ds);
+            accent = patGetNoteAccent(pat, ds);
             ui_col_toggle(&c4, "Accent", &accent);
         }
 
         // Note pool pick mode (only for melodic steps with 2+ notes)
         int pick = PICK_ALL;
         if (!isDrumTrack) {
-            StepV2 *stepData = &pat->steps[detailTrack][ds];
+            StepV2 *stepData = &pat->steps[ds];
             if (stepData->noteCount > 1) {
                 UIColumn c5 = ui_column(cx + 680, iy, 15);
-                pick = patGetPickMode(pat, detailTrack, ds);
+                pick = patGetPickMode(pat, ds);
                 ui_col_cycle(&c5, "Pool Pick", pickModeNames, PICK_COUNT, &pick);
                 if (pick != PICK_ALL) {
                     ui_col_sublabel(&c5, TextFormat("%d notes in pool", stepData->noteCount),
@@ -2719,17 +2719,17 @@ static void drawWorkSeq(float x, float y, float w, float h) {
 
         // Writeback to v2 after UI widget edits
         if (isDrumTrack) {
-            patSetDrumVel(pat, detailTrack, ds, vel);
-            patSetDrumProb(pat, detailTrack, ds, prob);
-            patSetDrumCond(pat, detailTrack, ds, cond);
+            patSetDrumVel(pat, ds, vel);
+            patSetDrumProb(pat, ds, prob);
+            patSetDrumCond(pat, ds, cond);
         } else {
-            patSetNoteVel(pat, detailTrack, ds, vel);
-            patSetNoteProb(pat, detailTrack, ds, prob);
-            patSetNoteCond(pat, detailTrack, ds, cond);
-            patSetNoteGate(pat, detailTrack, ds, gate);
-            patSetNoteFlags(pat, detailTrack, ds, slide, accent);
-            patSetNotePitch(pat, detailTrack, ds, noteVal);
-            patSetPickMode(pat, detailTrack, ds, pick);
+            patSetNoteVel(pat, ds, vel);
+            patSetNoteProb(pat, ds, prob);
+            patSetNoteCond(pat, ds, cond);
+            patSetNoteGate(pat, ds, gate);
+            patSetNoteFlags(pat, ds, slide, accent);
+            patSetNotePitch(pat, ds, noteVal);
+            patSetPickMode(pat, ds, pick);
         }
 
         // === P-LOCK ROW ===
@@ -2797,7 +2797,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                 float px = cx + plStep * 2;
                 float vol = seqGetPLock(pat, absTrack, ds, PLOCK_VOLUME, -1.0f);
                 bool isLocked = (vol >= 0.0f);
-                if (!isLocked) vol = patGetDrumVel(pat, detailTrack, ds);
+                if (!isLocked) vol = patGetDrumVel(pat, ds);
                 DrawTextShadow("Vol:", (int)px, (int)plY, plFS, isLocked ? plActiveColor : DARKGRAY);
                 Rectangle rect = {px + plLblW, plY - 2, (float)plBoxW, (float)plBoxH};
                 bool hov = CheckCollisionPointRec(plMouse, rect);
@@ -2971,7 +2971,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                 float px = cx + plStep * 5;
                 float vol = seqGetPLock(pat, melAbsTrack, ds, PLOCK_VOLUME, -1.0f);
                 bool isLocked = (vol >= 0.0f);
-                if (!isLocked) vol = patGetNoteVel(pat, detailTrack, ds);
+                if (!isLocked) vol = patGetNoteVel(pat, ds);
                 DrawTextShadow("Vol:", (int)px, (int)plY, plFS, isLocked ? plActiveColor : DARKGRAY);
                 Rectangle rect = {px + plLblW, plY - 2, (float)plBoxW, (float)plBoxH};
                 bool hov = CheckCollisionPointRec(plMouse, rect);
@@ -3036,7 +3036,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
         chainTotalSteps = 0;
         for (int ci = 0; ci < recChainLength; ci++) {
             Pattern *cp = &seq.patterns[recChainStart + ci];
-            int tl = cp->trackLength[mt];
+            int tl = cp->length;
             if (tl <= 0) tl = 16;
             chainTotalSteps += tl;
         }
@@ -3079,7 +3079,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
                 int pi = recChainStart + ci;
                 if (pi == seq.currentPattern) { globalPlay += seq.trackStep[mt]; break; }
                 Pattern *cp = &seq.patterns[pi];
-                int tl = cp->trackLength[mt];
+                int tl = cp->length;
                 if (tl <= 0) tl = 16;
                 globalPlay += tl;
             }
@@ -3160,7 +3160,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
         int acc = 0;
         for (int ci = 0; ci < recChainLength; ci++) {
             Pattern *cp = &seq.patterns[recChainStart + ci];
-            int tl = cp->trackLength[mt]; if (tl <= 0) tl = 16;
+            int tl = cp->length; if (tl <= 0) tl = 16;
             float barX = gridX + (acc - prChainScroll) * stepW;
             float barEndX = gridX + (acc + tl - prChainScroll) * stepW;
             if (barEndX > gridX && barX < gridX + gridW) {
@@ -3183,7 +3183,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
             int seekAcc = 0;
             for (int ci = 0; ci < recChainLength; ci++) {
                 Pattern *cp = &seq.patterns[recChainStart + ci];
-                int tl = cp->trackLength[mt]; if (tl <= 0) tl = 16;
+                int tl = cp->length; if (tl <= 0) tl = 16;
                 if (clickGlobalStep < seekAcc + tl) {
                     // Seek to this pattern at this step
                     int localStep = clickGlobalStep - seekAcc;
@@ -3311,7 +3311,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
             int acc = 0;
             for (int ci = 0; ci < recChainLength; ci++) {
                 Pattern *cp = &seq.patterns[recChainStart + ci];
-                int tl = cp->trackLength[mt]; if (tl <= 0) tl = 16;
+                int tl = cp->length; if (tl <= 0) tl = 16;
                 acc += tl;
                 if (gs == acc) { patBoundary = true; break; }
             }
@@ -3335,12 +3335,12 @@ static void drawWorkPiano(float x, float y, float w, float h) {
     int globalOffset = 0; // accumulated steps before current pattern in chain
     for (int ci = 0; ci < chainPatCount; ci++) {
         Pattern *cp = &seq.patterns[chainPatStart + ci];
-        int trackLen = cp->trackLength[mt];
+        int trackLen = cp->length;
         if (trackLen <= 0) trackLen = 16;
 
         for (int s = 0; s < trackLen; s++) {
             int gs = globalOffset + s; // global step position
-            StepV2 *sv = &cp->steps[mt][s];
+            StepV2 *sv = &cp->steps[s];
             if (sv->noteCount == 0) continue;
 
             for (int v = 0; v < sv->noteCount; v++) {
@@ -3404,7 +3404,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
                 int pi = recChainStart + ci;
                 if (pi == seq.currentPattern) { globalPlayStep += curStep; break; }
                 Pattern *cp = &seq.patterns[pi];
-                int tl = cp->trackLength[mt]; if (tl <= 0) tl = 16;
+                int tl = cp->length; if (tl <= 0) tl = 16;
                 globalPlayStep += tl;
             }
         }
@@ -3430,11 +3430,11 @@ static void drawWorkPiano(float x, float y, float w, float h) {
         for (int ci = 0; ci < chainPatCount && hitStep < 0; ci++) {
             int pi = chainPatStart + ci;
             Pattern *cp = &seq.patterns[pi];
-            int trackLen = cp->trackLength[mt];
+            int trackLen = cp->length;
             if (trackLen <= 0) trackLen = 16;
 
             for (int s = 0; s < trackLen && hitStep < 0; s++) {
-                StepV2 *sv = &cp->steps[mt][s];
+                StepV2 *sv = &cp->steps[s];
                 int gs = hitGlobalOff + s;
                 for (int v = 0; v < sv->noteCount; v++) {
                     StepNote *sn = &sv->notes[v];
@@ -3480,14 +3480,14 @@ static void drawWorkPiano(float x, float y, float w, float h) {
     // Cursor hint based on zone
     if (prDragMode == PR_DRAG_NONE && hitStep >= 0 && hitVoice >= 0 && hitPatIdx >= 0) {
         Pattern *hitPat = &seq.patterns[hitPatIdx];
-        StepNote *hitSn = &hitPat->steps[mt][hitStep].notes[hitVoice];
+        StepNote *hitSn = &hitPat->steps[hitStep].notes[hitVoice];
         if (hitZone == 1 || hitZone == 3) {
             SetMouseCursor(MOUSE_CURSOR_RESIZE_EW);
             DrawTextShadow("<->", (int)mouse.x + 12, (int)mouse.y - 14, UI_FONT_SMALL, (Color){255,200,100,255});
         } else {
             SetMouseCursor(MOUSE_CURSOR_RESIZE_ALL);
             int nn = hitSn->note;
-            int voices = hitPat->steps[mt][hitStep].noteCount;
+            int voices = hitPat->steps[hitStep].noteCount;
             if (isSamplerPR) {
                 DrawTextShadow(TextFormat("S%d pitch%+d step%d%s", hitSn->slice, nn-60, hitStep+1,
                                voices > 1 ? TextFormat(" [%d/%d]", hitVoice+1, voices) : ""),
@@ -3538,9 +3538,9 @@ static void drawWorkPiano(float x, float y, float w, float h) {
         float dx = mouse.x - prDragStartX;
         float dy = mouse.y - prDragStartY;
         Pattern *dragPat = &seq.patterns[prDragPatIdx];
-        int dragTrackLen = dragPat->trackLength[mt];
+        int dragTrackLen = dragPat->length;
         if (dragTrackLen <= 0) dragTrackLen = 16;
-        StepV2 *dragSv = &dragPat->steps[mt][prDragStep];
+        StepV2 *dragSv = &dragPat->steps[prDragStep];
         // Safety: voice may have been removed externally
         if (prDragVoice >= 0 && prDragVoice < dragSv->noteCount) {
             StepNote *dragSn = &dragSv->notes[prDragVoice];
@@ -3591,7 +3591,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
 
                 if (newStartStep != prDragStep) {
                     // Move voice to new step (within same pattern)
-                    StepV2 *destSv = &dragPat->steps[mt][newStartStep];
+                    StepV2 *destSv = &dragPat->steps[newStartStep];
                     if (destSv->noteCount < SEQ_V2_MAX_POLY) {
                         StepNote noteCopy = *dragSn;
                         noteCopy.gate = (int8_t)newGate;
@@ -3634,7 +3634,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
                 if (newStep >= 0 && newStep < dragTrackLen) {
                     if (newStep != prDragStep) {
                         // Move voice to new step (within same pattern)
-                        StepV2 *destSv = &dragPat->steps[mt][newStep];
+                        StepV2 *destSv = &dragPat->steps[newStep];
                         if (destSv->noteCount < SEQ_V2_MAX_POLY) {
                             StepNote noteCopy = *dragSn;
                             noteCopy.note = (int8_t)newPitch;
@@ -3660,7 +3660,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
                     }
                     if (totalOffset < -12) totalOffset = -12;
                     if (totalOffset > 12) totalOffset = 12;
-                    StepNote *curSn = &dragPat->steps[mt][prDragStep].notes[prDragVoice];
+                    StepNote *curSn = &dragPat->steps[prDragStep].notes[prDragVoice];
                     curSn->nudge = (int8_t)totalOffset;
                 }
             }
@@ -3678,7 +3678,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
             if (hitStep >= 0 && hitVoice >= 0 && hitPatIdx >= 0) {
                 // Clicked on existing note — start drag based on zone
                 Pattern *clickPat = &seq.patterns[hitPatIdx];
-                StepNote *clickSn = &clickPat->steps[mt][hitStep].notes[hitVoice];
+                StepNote *clickSn = &clickPat->steps[hitStep].notes[hitVoice];
                 prDragStep = hitStep;
                 prDragVoice = hitVoice;
                 prDragPatIdx = hitPatIdx;
@@ -3706,7 +3706,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
                     int acc = 0;
                     for (int ci = 0; ci < chainPatCount; ci++) {
                         int pi = chainPatStart + ci;
-                        int tl = seq.patterns[pi].trackLength[mt];
+                        int tl = seq.patterns[pi].length;
                         if (tl <= 0) tl = 16;
                         if (globalStep < acc + tl) {
                             addPatIdx = pi;
@@ -3718,7 +3718,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
                 }
 
                 if (addPatIdx >= 0 && addLocalStep >= 0 && newPitch >= 0 && newPitch <= 127) {
-                    StepV2 *sv = &seq.patterns[addPatIdx].steps[mt][addLocalStep];
+                    StepV2 *sv = &seq.patterns[addPatIdx].steps[addLocalStep];
                     if (stepV2FindNote(sv, newPitch) < 0 && sv->noteCount < SEQ_V2_MAX_POLY) {
                         int vi = stepV2AddNote(sv, newPitch, velFloatToU8(0.8f), 1);
                         if (isSamplerPR && vi >= 0) sv->notes[vi].slice = 0;
@@ -3731,7 +3731,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
         // Right click: delete specific note under cursor
         if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
             if (hitStep >= 0 && hitVoice >= 0 && hitPatIdx >= 0) {
-                stepV2RemoveNote(&seq.patterns[hitPatIdx].steps[mt][hitStep], hitVoice);
+                stepV2RemoveNote(&seq.patterns[hitPatIdx].steps[hitStep], hitVoice);
             }
             ui_consume_click();
         }
@@ -3740,7 +3740,7 @@ static void drawWorkPiano(float x, float y, float w, float h) {
         if (isSamplerPR && hitStep >= 0 && hitVoice >= 0 && hitPatIdx >= 0 && prDragMode == PR_DRAG_NONE) {
             int delta = scrollDelta(GetMouseWheelMove(), 500 + hitStep * 10 + hitVoice);
             if (delta != 0) {
-                StepNote *sn = &seq.patterns[hitPatIdx].steps[mt][hitStep].notes[hitVoice];
+                StepNote *sn = &seq.patterns[hitPatIdx].steps[hitStep].notes[hitVoice];
                 int newSlice = (int)sn->slice + delta;
                 if (newSlice < 0) newSlice = 0;
                 if (newSlice >= SAMPLER_MAX_SAMPLES) newSlice = SAMPLER_MAX_SAMPLES - 1;
@@ -3911,7 +3911,7 @@ static void drawWorkSong(float x, float y, float w, float h) {
             int loops = songEffectiveLoops(i);
             float loopFrac = (float)seq.chainLoopCount / (float)loops;
             Pattern *p = &seq.patterns[seq.currentPattern];
-            int trackLen = p->trackLength[0] > 0 ? p->trackLength[0] : 16;
+            int trackLen = p->length > 0 ? p->length : 16;
             float stepFrac = (float)seq.trackStep[0] / (float)trackLen;
             float progress = (loopFrac + stepFrac / (float)loops);
             if (progress > 1.0f) progress = 1.0f;
@@ -8590,7 +8590,7 @@ static void drawWorkArrange(float x, float y, float w, float h) {
         // Playback progress line
         if (isPlaying && daw.transport.playing) {
             Pattern *pp = &seq.patterns[seq.currentPattern];
-            int trackLen = pp->trackLength[0] > 0 ? pp->trackLength[0] : 16;
+            int trackLen = pp->length > 0 ? pp->length : 16;
             float progress = (float)seq.trackStep[0] / (float)trackLen;
             int px = (int)(bx + progress * cellW);
             DrawLine(px, (int)(gridY - 2), px, (int)(gridY + gridH), (Color){80, 200, 80, 180});
@@ -8679,7 +8679,7 @@ static void drawWorkArrange(float x, float y, float w, float h) {
                 float pulse = 0.0f;
                 if (playing && daw.transport.playing) {
                     Pattern *pp = &seq.patterns[pat];
-                    int trackLen = pp->trackLength[t] > 0 ? pp->trackLength[t] : 16;
+                    int trackLen = pp->length > 0 ? pp->length : 16;
                     pulse = (float)seq.trackStep[t] / (float)trackLen;
                 }
 
@@ -8957,13 +8957,13 @@ static void drawWorkArrange(float x, float y, float w, float h) {
 
                 // Mini preview: show step activity as dots
                 Pattern *pp = &seq.patterns[pat];
-                int len = pp->trackLength[t];
+                int len = pp->length;
                 if (len > 0) {
                     int previewY = (int)cy + 18;
                     int maxDots = cellW - 6;
                     int dotSpacing = (len <= maxDots) ? 1 : 0;
                     for (int s = 0; s < len && s < maxDots; s++) {
-                        if (pp->steps[t][s].noteCount > 0) {
+                        if (pp->steps[s].noteCount > 0) {
                             int dx = (int)bx + 3 + s * (2 + dotSpacing);
                             DrawRectangle(dx, previewY, 1, 4, arrTrackColors[t]);
                         }
