@@ -240,8 +240,8 @@ Vector2 ScreenToWorld(Vector2 screen);
 Vector2 ScreenToGridFrontView(Vector2 screen);   // returns (gridX, gridZ) for front layer
 Vector2 ScreenToGridFrontViewLayer(Vector2 screen, int layer, int depthLayers);
 bool FrontViewPickCell(Vector2 screen, int *outX, int *outY, int *outZ);  // front-to-back pick
-int GetMoverAtFrontView(float worldX, int worldZ, int yStart, int yEnd);
-int GetAnimalAtFrontView(float worldX, int worldZ, int yStart, int yEnd);
+int GetMoverAtFrontView(float screenX, float screenY, int yStart, int yEnd);
+int GetAnimalAtFrontView(float screenX, float screenY, int yStart, int yEnd);
 
 // Get random color for agents/movers
 Color GetRandomColor(void);

@@ -14,6 +14,7 @@
 bool lightingEnabled = true;
 bool skyLightEnabled = true;
 bool blockLightEnabled = true;
+bool forceDaylight = false;
 int  lightAmbientR = 25;
 int  lightAmbientG = 25;
 int  lightAmbientB = 30;
