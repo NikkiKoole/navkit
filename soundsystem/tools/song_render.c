@@ -218,10 +218,13 @@ static void renderMelodyTrigger(int trackIdx, int note, float vel,
     if (vi >= 0) {
         voiceBus[vi] = dawPatchToBus(busTrack);
         if (p->p_monoMode) dawMonoVoiceIdx[trackIdx] = vi;
-        if (vc < SEQ_V2_MAX_POLY) {
-            dawMelodyVoice[trackIdx][vc] = vi;
-            dawMelodyVoiceCount[trackIdx] = vc + 1;
+        int trigSlot = seq.trackNoteOnSlot[busTrack];
+        if (trigSlot >= 0 && trigSlot < SEQ_V2_MAX_POLY) {
+            dawMelodyVoice[trackIdx][trigSlot] = vi;
         }
+        int _vc2 = 0;
+        for (int _si = 0; _si < SEQ_V2_MAX_POLY; _si++) if (dawMelodyVoice[trackIdx][_si] >= 0) _vc2 = _si + 1;
+        dawMelodyVoiceCount[trackIdx] = _vc2;
     }
 
     if (p->p_monoMode) monoVoiceIdx = savedMonoVoiceIdx;
@@ -238,13 +241,53 @@ static void renderMelodyTrigger1(int n, float v, float g, float pm, bool s, bool
 static void renderMelodyTrigger2(int n, float v, float g, float pm, bool s, bool a) { (void)pm; renderMelodyTrigger(2, n, v, g, s, a); }
 
 static void renderMelodyRelease(int t) {
-    for (int i = 0; i < dawMelodyVoiceCount[t]; i++) {
-        if (dawMelodyVoice[t][i] >= 0) {
-            releaseNote(dawMelodyVoice[t][i]);
-            dawMelodyVoice[t][i] = -1;
+    int busTrack = t + SEQ_DRUM_TRACKS;
+    int slot = seq.trackNoteOffSlot[busTrack];
+    int vi = (slot >= 0 && slot < SEQ_V2_MAX_POLY) ? dawMelodyVoice[t][slot] : -1;
+
+    int fallbackNote = seq.trackMonoFallbackNote[busTrack][0];
+    int fallbackGate = seq.trackMonoFallbackGate[busTrack][0];
+    if (vi >= 0 && fallbackNote != SEQ_NOTE_OFF && fallbackGate > 0) {
+        // Pop [0], shift [1] → [0]
+        seq.trackMonoFallbackNote[busTrack][0] = seq.trackMonoFallbackNote[busTrack][1];
+        seq.trackMonoFallbackGate[busTrack][0] = seq.trackMonoFallbackGate[busTrack][1];
+        seq.trackMonoFallbackNote[busTrack][1] = SEQ_NOTE_OFF;
+        seq.trackMonoFallbackGate[busTrack][1] = 0;
+        // Glide the still-active voice to the fallback pitch.
+        float fallbackFreq = patchMidiToFreq(fallbackNote);
+        SynthPatch *fp = &daw.patches[busTrack];
+        float glideT = fp->p_glideTime > 0.0f ? fp->p_glideTime : 0.03f;
+        Voice *rv = &synthCtx->voices[vi];
+        // Retrigger envelope only if the voice has fully decayed (plucky/percussive patches).
+        // Sustaining patches glide smoothly without retriggering. Matches synth arp logic.
+        if (rv->envStage == 0 || rv->envStage == 4 || rv->sustain < 0.001f || fp->p_monoHardRetrigger) {
+            if (rv->envLevel > 0.01f) { rv->antiClickSamples = 44; rv->antiClickSample = rv->prevOutput; }
+            rv->envPhase = 0.0f;
+            rv->envLevel = 0.0f;
+            rv->envStage = 1;
         }
+        rv->targetFrequency = fallbackFreq;
+        rv->glideRate = 1.0f / glideT;
+        seq.trackCurrentNote[busTrack][slot] = fallbackNote;
+        seq.trackGateRemaining[busTrack][slot] = fallbackGate;
+        seq.trackNoteOffVetoed[busTrack] = true;
+        int _vc2 = 0;
+        for (int _si = 0; _si < SEQ_V2_MAX_POLY; _si++) if (dawMelodyVoice[t][_si] >= 0) _vc2 = _si + 1;
+        dawMelodyVoiceCount[t] = _vc2;
+        return;
     }
-    dawMelodyVoiceCount[t] = 0;
+
+    seq.trackMonoFallbackNote[busTrack][0] = SEQ_NOTE_OFF;
+    seq.trackMonoFallbackGate[busTrack][0] = 0;
+    seq.trackMonoFallbackNote[busTrack][1] = SEQ_NOTE_OFF;
+    seq.trackMonoFallbackGate[busTrack][1] = 0;
+    if (vi >= 0) {
+        releaseNote(vi);
+        dawMelodyVoice[t][slot] = -1;
+    }
+    int _vc = 0;
+    for (int _si = 0; _si < SEQ_V2_MAX_POLY; _si++) if (dawMelodyVoice[t][_si] >= 0) _vc = _si + 1;
+    dawMelodyVoiceCount[t] = _vc;
 }
 static void renderMelodyRelease0(void) { renderMelodyRelease(0); }
 static void renderMelodyRelease1(void) { renderMelodyRelease(1); }
@@ -451,9 +494,19 @@ static void renderSyncSequencer(void) {
         seq.chainDefaultLoops = daw.song.loopsPerPattern > 0 ? daw.song.loopsPerPattern : 1;
         daw.transport.currentPattern = seq.currentPattern;
     } else {
-        seq.perTrackPatterns = false;
         seq.chainLength = 0;
         seq.currentPattern = daw.transport.currentPattern;
+        // With single-track patterns each track has its own pattern index even without
+        // full arrangement mode — match daw_audio.h behavior for arrMode=false + arr.length>0.
+        if (daw.arr.length > 0) {
+            seq.perTrackPatterns = true;
+            for (int _t = 0; _t < seq.trackCount; _t++) {
+                seq.trackPatternIdx[_t] = (_t < ARR_MAX_TRACKS) ? daw.arr.cells[0][_t] : -1;
+                seq.trackWrapped[_t] = false;
+            }
+        } else {
+            seq.perTrackPatterns = false;
+        }
     }
 
     // Per-pattern overrides
@@ -471,6 +524,12 @@ static void renderSyncSequencer(void) {
     if (ovr->flags & PAT_OVR_MUTE) {
         for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++)
             seq.trackVolume[t] = ovr->trackMute[t] ? 0.0f : daw.mixer.volume[t];
+    }
+
+    // Sync mono mode per melodic track from patch setting
+    for (int t = SEQ_DRUM_TRACKS; t < seq.trackCount; t++) {
+        int patchIdx = t < NUM_PATCHES ? t : 0;
+        seq.trackMono[t] = daw.patches[patchIdx].p_monoMode;
     }
 }
 

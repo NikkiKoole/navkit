@@ -618,7 +618,11 @@ static void dawRecordNoteOn(int midiNote, float velocity) {
         if (!recHeld[i].active) {
             recHeld[i].note = midiNote;
             recHeld[i].step = qStep;
-            recHeld[i].tick = tick;
+            // Store nudge as tick reference so totalTicksOn = qStep*TPS + nudge,
+            // which equals the actual note-sound time. Storing raw tick instead
+            // causes gate to wrap the full pattern length when note snapped forward
+            // (raw tick > halfTick) and user releases within the same original step.
+            recHeld[i].tick = (int)nudge;
             recHeld[i].track = track;
             recHeld[i].patternIdx = (int)(pat - seq.patterns);
             recHeld[i].active = true;
@@ -3052,9 +3056,10 @@ static void drawWorkPiano(float x, float y, float w, float h) {
     };
     int prTrackCount = SEQ_MELODY_TRACKS + 1; // 3 melodic + sampler
 
-    int steps = daw.stepCount;
     bool isSamplerPR = (prTrack == SEQ_MELODY_TRACKS); // sampler is the 4th tab
     int mt = isSamplerPR ? SEQ_TRACK_SAMPLER : (SEQ_DRUM_TRACKS + prTrack);
+    Pattern *prPat = dawTrackPat(mt);
+    int steps = (prPat && prPat->length > 0) ? prPat->length : daw.stepCount;
     Color trackCol = prTrackColors[prTrack];
 
     // Chain view: total steps across all patterns in the chain
@@ -6474,7 +6479,7 @@ static void dawHandleMusicalTyping(void) {
         // 1 key  → build chord from UI chord type via buildArpChord
         // 2+ keys → use held notes directly
         for (size_t i = 0; i < NUM_DAW_PIANO_KEYS; i++) {
-            int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
+            int midiNote = (dawCurrentOctave + 1) * 12 + dawPianoKeys[i].semitone;
             if (IsKeyPressed(dawPianoKeys[i].key)) {
                 dawArpKeyHeld[i] = true;
                 if (midiNote >= 0 && midiNote < NUM_MIDI_NOTES) midiNoteHeld[midiNote] = true;
@@ -6568,20 +6573,23 @@ static void dawHandleMusicalTyping(void) {
                     voiceAge[v] = 0.0f;
                     voiceLogPush("ALLOC key[%d] v%d bus=%d freq=%.0f", (int)i, v, bus, freq);
                 }
-                // Record note into pattern
-                int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
+                // Record note into pattern — add 12 so octave 4 = MIDI 60 (C4),
+                // matching standard MIDI convention used by sequencer playback.
+                // dawSemitoneToFreq uses C0-based semitones (octave*12) which is
+                // correct for audio but 12 lower than standard MIDI numbering.
+                int midiNote = (dawCurrentOctave + 1) * 12 + dawPianoKeys[i].semitone;
                 if (midiNote >= 0 && midiNote < NUM_MIDI_NOTES) midiNoteHeld[midiNote] = true;
                 dawRecordNoteOn(midiNote, 0.8f);
                 // Track in mono note stack
                 if (patch->p_monoMode) monoStackPush(midiNote, freq);
             }
             if (IsKeyReleased(dawPianoKeys[i].key)) {
-                int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
+                int midiNote = (dawCurrentOctave + 1) * 12 + dawPianoKeys[i].semitone;
                 if (midiNote >= 0 && midiNote < NUM_MIDI_NOTES) midiNoteHeld[midiNote] = false;
                 dawRecordNoteOff(midiNote);
             }
             if (IsKeyReleased(dawPianoKeys[i].key) && dawPianoKeyVoices[i] >= 0) {
-                int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
+                int midiNote = (dawCurrentOctave + 1) * 12 + dawPianoKeys[i].semitone;
                 if (patch->p_monoMode) {
                     // Mono: release via stack — glides to next held note if any
                     releaseMonoNote(dawPianoKeyVoices[i], midiNote);

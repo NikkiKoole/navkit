@@ -396,8 +396,11 @@ static void dawMelodyTriggerGeneric(int trackIdx, int note, float vel,
     float pDecay = plockValue(PLOCK_DECAY, p->p_decay);
 
     // Slide: glide the most recent voice instead of retriggering
-    int vc = dawMelodyVoiceCount[trackIdx];
-    int lastVoice = (vc > 0) ? dawMelodyVoice[trackIdx][vc - 1] : -1;
+    // Scan backwards for any active voice (slots may not be contiguous in poly mode)
+    int lastVoice = -1;
+    for (int _si = SEQ_V2_MAX_POLY - 1; _si >= 0; _si--) {
+        if (dawMelodyVoice[trackIdx][_si] >= 0) { lastVoice = dawMelodyVoice[trackIdx][_si]; break; }
+    }
     if (slide && lastVoice >= 0 &&
         voiceBus[lastVoice] == dawPatchToBus(busTrack) &&
         synthCtx->voices[lastVoice].envStage > 0) {
@@ -489,11 +492,15 @@ static void dawMelodyTriggerGeneric(int trackIdx, int note, float vel,
         }
         voiceLogPush("ALLOC mel[%d] v%d bus=%d freq=%.0f%s", trackIdx, vi, dawPatchToBus(busTrack), freq,
             forceNewVoice ? " (FORCED_NEW, no glide)" : "");
-        // Track this voice for later release
-        if (vc < SEQ_V2_MAX_POLY) {
-            dawMelodyVoice[trackIdx][vc] = vi;
-            dawMelodyVoiceCount[trackIdx] = vc + 1;
+        // Track this voice for later release — use the sequencer's poly slot so
+        // dawMelodyReleaseGeneric can release exactly the right voice when gate expires.
+        int trigSlot = seq.trackNoteOnSlot[busTrack];
+        if (trigSlot >= 0 && trigSlot < SEQ_V2_MAX_POLY) {
+            dawMelodyVoice[trackIdx][trigSlot] = vi;
         }
+        int _vc = 0;
+        for (int _si = 0; _si < SEQ_V2_MAX_POLY; _si++) if (dawMelodyVoice[trackIdx][_si] >= 0) _vc = _si + 1;
+        dawMelodyVoiceCount[trackIdx] = _vc;
         // Initialize 303 acid mode state on the voice
         Voice *nv = &synthCtx->voices[vi];
         nv->acidMode = p->p_acidMode;
@@ -522,14 +529,66 @@ static void dawMelodyTrigger1(int note, float vel, float gt, float pitchMod, boo
 static void dawMelodyTrigger2(int note, float vel, float gt, float pitchMod, bool sl, bool ac) { (void)pitchMod; dawMelodyTriggerGeneric(2, note, vel, gt, sl, ac); }
 
 static void dawMelodyReleaseGeneric(int t) {
-    for (int i = 0; i < dawMelodyVoiceCount[t]; i++) {
-        if (dawMelodyVoice[t][i] >= 0) {
-            voiceLogPush("REL mel[%d] v%d gate-end", t, dawMelodyVoice[t][i]);
-            releaseNote(dawMelodyVoice[t][i]);
-            dawMelodyVoice[t][i] = -1;
+    // Release only the specific poly slot whose gate just expired.
+    // The sequencer sets trackNoteOffSlot before calling this callback.
+    int busTrack = t + SEQ_DRUM_TRACKS;
+    int slot = seq.trackNoteOffSlot[busTrack];
+    int vi = (slot >= 0 && slot < SEQ_V2_MAX_POLY) ? dawMelodyVoice[t][slot] : -1;
+
+    // Check for mono fallback: pop [0] from the 2-slot stack and resume it.
+    // This replicates "return to previously held key" in live mono playing.
+    int fallbackNote = seq.trackMonoFallbackNote[busTrack][0];
+    int fallbackGate = seq.trackMonoFallbackGate[busTrack][0];
+    seqSoundLog("MONO_REL  t=%d slot=%d vi=%d fb[0]=%s(%d) fb[1]=%s(%d)",
+        t, slot, vi,
+        seqNoteName(fallbackNote), fallbackGate,
+        seqNoteName(seq.trackMonoFallbackNote[busTrack][1]), seq.trackMonoFallbackGate[busTrack][1]);
+    if (vi >= 0 && fallbackNote != SEQ_NOTE_OFF && fallbackGate > 0) {
+        // Pop [0], shift [1] → [0]
+        seq.trackMonoFallbackNote[busTrack][0] = seq.trackMonoFallbackNote[busTrack][1];
+        seq.trackMonoFallbackGate[busTrack][0] = seq.trackMonoFallbackGate[busTrack][1];
+        seq.trackMonoFallbackNote[busTrack][1] = SEQ_NOTE_OFF;
+        seq.trackMonoFallbackGate[busTrack][1] = 0;
+        // Glide the still-active voice to the fallback pitch.
+        float fallbackFreq = patchMidiToFreq(fallbackNote);
+        SynthPatch *fp = &daw.patches[busTrack];
+        float glideT = fp->p_glideTime > 0.0f ? fp->p_glideTime : 0.03f;
+        Voice *rv = &synthCtx->voices[vi];
+        // Retrigger envelope only if the voice has fully decayed (plucky/percussive patches).
+        // Sustaining patches glide smoothly without retriggering. Matches synth arp logic.
+        if (rv->envStage == 0 || rv->envStage == 4 || rv->sustain < 0.001f || fp->p_monoHardRetrigger) {
+            if (rv->envLevel > 0.01f) { rv->antiClickSamples = 44; rv->antiClickSample = rv->prevOutput; }
+            rv->envPhase = 0.0f;
+            rv->envLevel = 0.0f;
+            rv->envStage = 1;
         }
+        rv->targetFrequency = fallbackFreq;
+        rv->glideRate = 1.0f / glideT;
+        // Restore sequencer state so the fallback's gate counts down normally
+        seq.trackCurrentNote[busTrack][slot] = fallbackNote;
+        seq.trackGateRemaining[busTrack][slot] = fallbackGate;
+        seq.trackNoteOffVetoed[busTrack] = true;
+        seqSoundLog("MONO_RESUME t=%d -> %s gate=%d", t, seqNoteName(fallbackNote), fallbackGate);
+        voiceLogPush("RESUME mel[%d] v%d note=%s gate=%d", t, vi, seqNoteName(fallbackNote), fallbackGate);
+        int _vc2 = 0;
+        for (int _si = 0; _si < SEQ_V2_MAX_POLY; _si++) if (dawMelodyVoice[t][_si] >= 0) _vc2 = _si + 1;
+        dawMelodyVoiceCount[t] = _vc2;
+        return;
     }
-    dawMelodyVoiceCount[t] = 0;
+
+    // Normal release — clear entire fallback stack
+    seq.trackMonoFallbackNote[busTrack][0] = SEQ_NOTE_OFF;
+    seq.trackMonoFallbackGate[busTrack][0] = 0;
+    seq.trackMonoFallbackNote[busTrack][1] = SEQ_NOTE_OFF;
+    seq.trackMonoFallbackGate[busTrack][1] = 0;
+    if (vi >= 0) {
+        voiceLogPush("REL mel[%d] v%d slot=%d gate-end", t, vi, slot);
+        releaseNote(vi);
+        dawMelodyVoice[t][slot] = -1;
+    }
+    int _vc = 0;
+    for (int _si = 0; _si < SEQ_V2_MAX_POLY; _si++) if (dawMelodyVoice[t][_si] >= 0) _vc = _si + 1;
+    dawMelodyVoiceCount[t] = _vc;
 }
 static void dawMelodyRelease0(void) { dawMelodyReleaseGeneric(0); }
 static void dawMelodyRelease1(void) { dawMelodyReleaseGeneric(1); }
@@ -820,6 +879,12 @@ static void dawSyncSequencer(void) {
     if (ovr->flags & PAT_OVR_MUTE) {
         for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++)
             seq.trackVolume[t] = ovr->trackMute[t] ? 0.0f : daw.mixer.volume[t];
+    }
+
+    // Sync mono mode per melodic track from patch setting
+    for (int t = SEQ_DRUM_TRACKS; t < seq.trackCount; t++) {
+        int patchIdx = t < NUM_PATCHES ? t : 0;
+        seq.trackMono[t] = daw.patches[patchIdx].p_monoMode;
     }
 
     // Track the current step for playhead display

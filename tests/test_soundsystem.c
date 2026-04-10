@@ -4682,6 +4682,7 @@ describe(melody_sustain) {
         _ensureSeqCtx();
         initSequencer(NULL, NULL, NULL, NULL);
         setMelodyCallbacks(0, test_melody_trigger, test_melody_release);
+        seq.trackMono[SEQ_DRUM_TRACKS + 0] = true;  // mono: new note releases old sustained note
         seq.ticksPerStep = SEQ_TICKS_PER_STEP_16TH;
 
         // Pattern 0: note at step 0 with sustain, gate covers whole pattern
@@ -4718,13 +4719,15 @@ describe(melody_sustain) {
         // Switch to pattern 1 (simulating song player callback at pattern boundary)
         seqSwitchPattern(1);
 
-        // Run 12 more steps into pattern 1 (past step 11)
-        int samplesFor12Steps = (int)(stepDuration * 12.5f * SAMPLE_RATE);
-        for (int i = 0; i < samplesFor12Steps; i++) {
+        // Run 14+ steps into pattern 1 (past step 11 trigger + gate=2 expiry at step 13)
+        // With mono legato: no explicit release at step 11 (voice transitions to note 67).
+        // The release fires when note 67's gate expires at step 13.
+        int samplesFor14Steps = (int)(stepDuration * 14.0f * SAMPLE_RATE);
+        for (int i = 0; i < samplesFor14Steps; i++) {
             updateSequencer(dt);
         }
 
-        // The sustained note should have been released when step 11 triggered
+        // Note 67 has fired and its gate (2 steps) has expired → release
         expect(melody_trigger_count == 2);
         expect(melody_release_count >= 1);
         expect(melody_last_note == 67);
@@ -5528,6 +5531,7 @@ describe(golden_melody_gate) {
 
     it("new note on a later step releases the previous note") {
         golden_init_seq();
+        seq.trackMono[SEQ_DRUM_TRACKS + 0] = true;  // mono: new note cuts previous
         Pattern *p = seqCurrentPattern();
         clearPattern(p);
 
@@ -5539,7 +5543,10 @@ describe(golden_melody_gate) {
         run_sequencer_fraction(4.5f);  // past step 4
 
         expect(golden_mel_triggers[0] == 2);    // both triggered
-        expect(golden_mel_releases[0] >= 1);    // first note released by second
+        // With mono legato: no explicit release at step 4 — voice transitions directly.
+        // The first note (gate=8) is resumed after the second note (gate=1) ends,
+        // then releases normally when its remaining gate expires.
+        expect(golden_mel_releases[0] == 0);
         expect(golden_mel_last_note[0] == 64);  // last triggered is E4
 
         seq.playing = false;

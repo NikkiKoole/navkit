@@ -494,7 +494,14 @@ typedef struct {
     int trackGateRemaining[SEQ_V2_MAX_TRACKS][SEQ_V2_MAX_POLY];  // Per-voice gate countdown
     int trackCurrentNote[SEQ_V2_MAX_TRACKS][SEQ_V2_MAX_POLY];   // Per-voice currently playing note (-1 if none)
     int trackActiveVoices[SEQ_V2_MAX_TRACKS];                    // Number of active voices in current step
+    bool trackMono[SEQ_V2_MAX_TRACKS];                           // If true, new note cuts previous (mono mode)
     int trackSustainRemaining[SEQ_V2_MAX_TRACKS];               // Sustain countdown
+    int trackPolySlot[SEQ_V2_MAX_TRACKS];                       // Round-robin slot counter for poly note assignment
+    int trackNoteOnSlot[SEQ_V2_MAX_TRACKS];                     // Poly slot used for current trigger (callback sync)
+    int trackNoteOffSlot[SEQ_V2_MAX_TRACKS];                    // Poly slot whose gate expired (callback sync)
+    bool trackNoteOffVetoed[SEQ_V2_MAX_TRACKS];                 // Set by noteOff callback to resume fallback instead of clearing
+    int trackMonoFallbackNote[SEQ_V2_MAX_TRACKS][2];            // Mono: 2-slot stack of cut notes [0]=top (first to resume), [1]=below
+    int trackMonoFallbackGate[SEQ_V2_MAX_TRACKS][2];            // Mono: remaining gate for each fallback slot
     int trackStepPlayCount[SEQ_V2_MAX_TRACKS][SEQ_MAX_STEPS];   // Per-step play count for conditions
 
     // Per-track pattern selection (arrangement mode)
@@ -543,9 +550,12 @@ static void initSequencerContext(SequencerContext* ctx) {
     ctx->seq.trackCount = SEQ_V2_MAX_TRACKS;
     ctx->seq.nextPattern = -1;
     // Initialize current notes to SEQ_NOTE_OFF
-    for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++)
+    for (int i = 0; i < SEQ_V2_MAX_TRACKS; i++) {
         for (int v = 0; v < SEQ_V2_MAX_POLY; v++)
             ctx->seq.trackCurrentNote[i][v] = SEQ_NOTE_OFF;
+        ctx->seq.trackMonoFallbackNote[i][0] = SEQ_NOTE_OFF;
+        ctx->seq.trackMonoFallbackNote[i][1] = SEQ_NOTE_OFF;
+    }
     ctx->noiseState = 12345;
     memset(&ctx->currentPLocks, 0, sizeof(PLockState));
 }
@@ -1084,17 +1094,21 @@ static bool seqEvalTrackCondition(int track, int step) {
 // Release all currently playing notes (call their noteOff callbacks)
 static void releaseAllNotes(void) {
     for (int t = 0; t < seq.trackCount; t++) {
-        bool hadActiveVoice = false;
         for (int v = 0; v < SEQ_V2_MAX_POLY; v++) {
-            if (seq.trackCurrentNote[t][v] != SEQ_NOTE_OFF) hadActiveVoice = true;
-            seq.trackCurrentNote[t][v] = SEQ_NOTE_OFF;
+            if (seq.trackCurrentNote[t][v] != SEQ_NOTE_OFF) {
+                seq.trackNoteOffSlot[t] = v;
+                if (seq.trackNoteOff[t]) seq.trackNoteOff[t]();
+                seq.trackCurrentNote[t][v] = SEQ_NOTE_OFF;
+            }
             seq.trackGateRemaining[t][v] = 0;
         }
-        if (hadActiveVoice && seq.trackNoteOff[t]) {
-            seq.trackNoteOff[t]();
-        }
         seq.trackActiveVoices[t] = 0;
+        seq.trackPolySlot[t] = 0;
         seq.trackSustainRemaining[t] = 0;
+        seq.trackMonoFallbackNote[t][0] = SEQ_NOTE_OFF;
+        seq.trackMonoFallbackNote[t][1] = SEQ_NOTE_OFF;
+        seq.trackMonoFallbackGate[t][0] = 0;
+        seq.trackMonoFallbackGate[t][1] = 0;
     }
 }
 // Legacy alias
@@ -1121,6 +1135,11 @@ static void resetSequencer(void) {
         for (int v = 0; v < SEQ_V2_MAX_POLY; v++) seq.trackCurrentNote[i][v] = SEQ_NOTE_OFF;
         seq.trackActiveVoices[i] = 0;
         seq.trackSustainRemaining[i] = 0;
+        seq.trackMonoFallbackNote[i][0] = SEQ_NOTE_OFF;
+        seq.trackMonoFallbackNote[i][1] = SEQ_NOTE_OFF;
+        seq.trackMonoFallbackGate[i][0] = 0;
+        seq.trackMonoFallbackGate[i][1] = 0;
+        seq.trackNoteOffVetoed[i] = false;
     }
 }
 
@@ -1303,18 +1322,37 @@ static void seqTriggerStep(Pattern *p, int track, int step, float stepDuration) 
         }
     } else {
         // --- MELODIC TRIGGER ---
-        // Release all previous voices if still playing
-        // BUT skip release if the new step has slide — the trigger callback
-        // needs to see the active voice so it can glide instead of retrigger
+        // In mono mode: release all previous voices so the new note replaces them.
+        // In poly mode: let gate countdowns handle note-off naturally (allows overlap).
+        // Always skip release on slide steps — callback needs the active voice to glide.
         bool newStepSlide = (sv->noteCount > 0 && sv->notes[0].slide);
-        if (!newStepSlide) {
-            for (int v = 0; v < seq.trackActiveVoices[track]; v++) {
-                if (seq.trackCurrentNote[track][v] != SEQ_NOTE_OFF) {
-                    if (seq.trackNoteOff[track]) seq.trackNoteOff[track]();
-                    seq.trackCurrentNote[track][v] = SEQ_NOTE_OFF;
-                    seq.trackGateRemaining[track][v] = 0;
+        if (!newStepSlide && seq.trackMono[track]) {
+            // Clear gate/note tracking WITHOUT firing the noteOff callback.
+            // The trigger callback (dawMelodyTriggerGeneric) will retrigger or
+            // legato-glide the existing voice directly — matching live keyboard behavior
+            // where the old key is still held when the new key is pressed.
+            // Push the current active note onto the 2-slot fallback stack, then clear
+            // all active slots so the new note can take over cleanly.
+            // Stack: [0]=most recently cut (first to resume), [1]=the one before it.
+            int _fbNote = SEQ_NOTE_OFF, _fbGate = 0;
+            for (int v = 0; v < SEQ_V2_MAX_POLY; v++) {
+                if (seq.trackCurrentNote[track][v] != SEQ_NOTE_OFF && _fbNote == SEQ_NOTE_OFF) {
+                    _fbNote = seq.trackCurrentNote[track][v];
+                    _fbGate = seq.trackGateRemaining[track][v];
                 }
+                seq.trackCurrentNote[track][v] = SEQ_NOTE_OFF;
+                seq.trackGateRemaining[track][v] = 0;
             }
+            // Shift [0] → [1] (oldest note falls off if stack was full), push active to [0]
+            seq.trackMonoFallbackNote[track][1] = seq.trackMonoFallbackNote[track][0];
+            seq.trackMonoFallbackGate[track][1] = seq.trackMonoFallbackGate[track][0];
+            seq.trackMonoFallbackNote[track][0] = _fbNote;
+            seq.trackMonoFallbackGate[track][0] = _fbGate;
+            seqSoundLog("MONO_CUT  t=%d cut=%s(%d) fb[0]=%s(%d) fb[1]=%s(%d)",
+                track, seqNoteName(_fbNote), _fbGate,
+                seqNoteName(seq.trackMonoFallbackNote[track][0]), seq.trackMonoFallbackGate[track][0],
+                seqNoteName(seq.trackMonoFallbackNote[track][1]), seq.trackMonoFallbackGate[track][1]);
+            seq.trackPolySlot[track] = 0;
         }
 
         int sustainSteps = sv->sustain;
@@ -1366,9 +1404,36 @@ static void seqTriggerStep(Pattern *p, int track, int step, float stepDuration) 
 
         int voiceCount = pickEnd - pickStart;
         if (voiceCount > SEQ_V2_MAX_POLY) voiceCount = SEQ_V2_MAX_POLY;
-        seq.trackActiveVoices[track] = voiceCount;
+        if (seq.trackMono[track]) {
+            seq.trackActiveVoices[track] = voiceCount;
+            // The 2-slot fallback stack was already updated in the mono-cut block above.
+            // If B ended and resumed A (A now in slot 0), C firing will push A to [1]
+            // and store C's predecessor (currently A) at [0] — so both are preserved.
+        }
+        // Poly: don't reset trackActiveVoices here — updated per-slot below
 
         for (int v = 0; v < voiceCount; v++) {
+            // Determine which poly slot to use:
+            // Mono: fill from 0 (previous voices already released above)
+            // Poly: round-robin so overlapping notes don't overwrite each other's gate
+            int slot;
+            if (seq.trackMono[track]) {
+                slot = v;
+            } else {
+                slot = seq.trackPolySlot[track] % SEQ_V2_MAX_POLY;
+                // If this slot still has an active note (all slots full), evict it
+                if (seq.trackCurrentNote[track][slot] != SEQ_NOTE_OFF) {
+                    seq.trackNoteOffSlot[track] = slot;
+                    if (seq.trackNoteOff[track]) seq.trackNoteOff[track]();
+                    seq.trackCurrentNote[track][slot] = SEQ_NOTE_OFF;
+                    seq.trackGateRemaining[track][slot] = 0;
+                }
+                seq.trackPolySlot[track]++;
+                if (seq.trackPolySlot[track] >= SEQ_V2_MAX_POLY * 1024) seq.trackPolySlot[track] = 0; // prevent overflow
+                if (seq.trackActiveVoices[track] < slot + 1) seq.trackActiveVoices[track] = slot + 1;
+            }
+            seq.trackNoteOnSlot[track] = slot;
+
             StepNote *vn = &sv->notes[pickStart + v];
             float vVel = velU8ToFloat(vn->velocity) * seq.trackVolume[track];
             if (seq.humanize.velocityJitter > 0.0f) {
@@ -1389,7 +1454,7 @@ static void seqTriggerStep(Pattern *p, int track, int step, float stepDuration) 
                             vVel, vGateSteps, vn->slide ? " slide" : "");
                 seq.trackNoteOn[track](transposedNote, vVel, vGateTime, 1.0f, vn->slide, vn->accent);
             }
-            seq.trackCurrentNote[track][v] = transposedNote;
+            seq.trackCurrentNote[track][slot] = transposedNote;
 
             // Per-voice gate countdown
             int vGateTicks = vGateSteps * seq.ticksPerStep;
@@ -1400,7 +1465,7 @@ static void seqTriggerStep(Pattern *p, int track, int step, float stepDuration) 
             }
             vGateTicks += vGateNudge;
             if (vGateTicks < 1) vGateTicks = 1;
-            seq.trackGateRemaining[track][v] = vGateTicks;
+            seq.trackGateRemaining[track][slot] = vGateTicks;
         }
         seq.trackSustainRemaining[track] = sustainSteps * seq.ticksPerStep;
     }
@@ -1474,7 +1539,7 @@ static void updateSequencer(float dt) {
             if (p->trackType == TRACK_MELODIC) {
                 bool anyVoiceActive = false;
                 bool allGatesExpired = true;
-                for (int v = 0; v < seq.trackActiveVoices[track]; v++) {
+                for (int v = 0; v < SEQ_V2_MAX_POLY; v++) {
                     if (seq.trackGateRemaining[track][v] > 0) {
                         allGatesExpired = false;
                         seq.trackGateRemaining[track][v]--;
@@ -1490,8 +1555,13 @@ static void updateSequencer(float dt) {
                             } else if (seq.trackSustainRemaining[track] > 0) {
                                 // Sustain holds — don't release yet
                             } else {
+                                seq.trackNoteOffSlot[track] = v;
+                                seq.trackNoteOffVetoed[track] = false;
                                 if (seq.trackNoteOff[track]) seq.trackNoteOff[track]();
-                                seq.trackCurrentNote[track][v] = SEQ_NOTE_OFF;
+                                if (!seq.trackNoteOffVetoed[track]) {
+                                    seq.trackCurrentNote[track][v] = SEQ_NOTE_OFF;
+                                }
+                                seq.trackNoteOffVetoed[track] = false;
                             }
                         }
                     }
@@ -1503,8 +1573,9 @@ static void updateSequencer(float dt) {
                     seq.trackSustainRemaining[track]--;
                     if (seq.trackSustainRemaining[track] == 0 && anyVoiceActive) {
                         // Release all remaining voices
-                        for (int v = 0; v < seq.trackActiveVoices[track]; v++) {
+                        for (int v = 0; v < SEQ_V2_MAX_POLY; v++) {
                             if (seq.trackCurrentNote[track][v] != SEQ_NOTE_OFF) {
+                                seq.trackNoteOffSlot[track] = v;
                                 if (seq.trackNoteOff[track]) seq.trackNoteOff[track]();
                                 seq.trackCurrentNote[track][v] = SEQ_NOTE_OFF;
                             }
