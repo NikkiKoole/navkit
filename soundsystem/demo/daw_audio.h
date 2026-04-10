@@ -690,8 +690,10 @@ static void dawSyncSequencer(void) {
         // wire trackPatternIdx from bar 0 even without full arrangement mode.
         if (daw.arr.length > 0) {
             seq.perTrackPatterns = true;
-            for (int _t = 0; _t < seq.trackCount; _t++)
+            for (int _t = 0; _t < seq.trackCount; _t++) {
                 seq.trackPatternIdx[_t] = (_t < ARR_MAX_TRACKS) ? daw.arr.cells[0][_t] : -1;
+                seq.trackWrapped[_t] = false;  // unblock deferred trigger so step 0 fires
+            }
         } else {
             seq.perTrackPatterns = false;
         }
