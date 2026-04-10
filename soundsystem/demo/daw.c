@@ -2007,32 +2007,25 @@ static void drawWorkSeq(float x, float y, float w, float h) {
     // 16/32 toggle
     float togX = px + 8 * 28 + 12;
     {
-        Rectangle r16 = {togX, y, 26, 18};
-        Rectangle r32 = {togX + 28, y, 26, 18};
-        bool h16 = CheckCollisionPointRec(mouse, r16);
-        bool h32 = CheckCollisionPointRec(mouse, r32);
-        DrawRectangleRec(r16, steps==16 ? UI_TINT_GREEN : (h16 ? UI_BG_HOVER : UI_BG_BUTTON));
-        DrawRectangleRec(r32, steps==32 ? UI_TINT_GREEN : (h32 ? UI_BG_HOVER : UI_BG_BUTTON));
-        DrawRectangleLinesEx(r16, 1, steps==16 ? GREEN : UI_BORDER);
-        DrawRectangleLinesEx(r32, 1, steps==32 ? GREEN : UI_BORDER);
-        DrawTextShadow("16", (int)togX+6, (int)y+3, UI_FONT_SMALL, steps==16 ? WHITE : GRAY);
-        DrawTextShadow("32", (int)togX+34, (int)y+3, UI_FONT_SMALL, steps==32 ? WHITE : GRAY);
-        if (h16 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            daw.stepCount = 16;
-            Pattern *tp = dawPattern();
-            for (int t = 0; t < SEQ_DRUM_TRACKS + SEQ_MELODY_TRACKS; t++) tp->length = 16;
-            ui_consume_click();
-        }
-        if (h32 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            daw.stepCount = 32;
-            Pattern *tp = dawPattern();
-            for (int t = 0; t < SEQ_DRUM_TRACKS + SEQ_MELODY_TRACKS; t++) tp->length = 32;
-            ui_consume_click();
+        // Step grid view width (does not force-set track lengths)
+        static const int stepCounts[] = {16, 32, 64, 128};
+        static const char* stepLabels[] = {"16", "32", "64", "~12C"};
+        for (int si = 0; si < 4; si++) {
+            Rectangle r = {togX + si * 28, y, 26, 18};
+            bool hov = CheckCollisionPointRec(mouse, r);
+            bool act = (steps == stepCounts[si]);
+            DrawRectangleRec(r, act ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_BUTTON));
+            DrawRectangleLinesEx(r, 1, act ? GREEN : UI_BORDER);
+            DrawTextShadow(stepLabels[si], (int)(togX + si*28 + (si<2?6:2)), (int)y+3, UI_FONT_SMALL, act ? WHITE : GRAY);
+            if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                daw.stepCount = stepCounts[si];
+                ui_consume_click();
+            }
         }
     }
 
     // Fill mode toggle
-    float fillX = togX + 64;
+    float fillX = togX + 64 + 56;  // 4 step-count buttons × 28px
     {
         Rectangle rf = {fillX, y, 30, 18};
         bool fhov = CheckCollisionPointRec(mouse, rf);
@@ -2222,7 +2215,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             DrawRectangleRec(res, eshov ? UI_BG_HOVER : UI_BG_BUTTON);
             DrawRectangleLinesEx(res, 1, UI_BORDER);
             DrawTextShadow(TextFormat("%d", eucSteps), (int)cx+27, (int)y+3, UI_FONT_SMALL, eshov ? WHITE : (Color){140,180,200,255});
-            if (eshov) { int d = scrollDelta(GetMouseWheelMove(), 104); if (d > 0 && eucSteps < 32) eucSteps++; else if (d < 0 && eucSteps > 1) eucSteps--; if (eucHits > eucSteps) eucHits = eucSteps; }
+            if (eshov) { int d = scrollDelta(GetMouseWheelMove(), 104); if (d > 0 && eucSteps < SEQ_MAX_STEPS) eucSteps++; else if (d < 0 && eucSteps > 1) eucSteps--; if (eucHits > eucSteps) eucHits = eucSteps; }
             // Rotation
             Rectangle rer = {cx+48, y, 22, 18};
             bool erhov = CheckCollisionPointRec(mouse, rer);
@@ -2354,15 +2347,16 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         DrawTextShadow(TextFormat("%d", tLen), lx + labelW - 16, lcy-4, 8, lenCol);
         if (nameHov) {
             float wh = GetMouseWheelMove();
-            if (wh > 0) { tLen++; if (tLen > 32) tLen = 32; rowPat->length = tLen; }
+            if (wh > 0) { tLen++; if (tLen > SEQ_MAX_STEPS) tLen = SEQ_MAX_STEPS; rowPat->length = tLen; }
             else if (wh < 0) { tLen--; if (tLen < 1) tLen = 1; rowPat->length = tLen; }
             if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
                 // Right-click: cycle through common lengths
-                static const int commonLens[] = {4, 6, 8, 12, 16, 24, 32};
+                static const int commonLens[] = {4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128};
+                int nLens = 11;
                 int best = 16;
-                for (int ci = 0; ci < 7; ci++) {
+                for (int ci = 0; ci < nLens; ci++) {
                     if (commonLens[ci] > tLen) { best = commonLens[ci]; break; }
-                    if (ci == 6) best = commonLens[0];
+                    if (ci == nLens - 1) best = commonLens[0];
                 }
                 rowPat->length = best;
                 ui_consume_click();
@@ -2466,7 +2460,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                 float clickVel = 0.1f + clickVelRaw * 0.9f; // remap 0.0-1.0 → 0.1-1.0
                 bool placed = false;
 
-                if (isDrum && step < 32) {
+                if (isDrum && step < SEQ_MAX_STEPS) {
                     if (patGetDrum(rowPat, step))
                         patClearDrum(rowPat, step);
                     else { patSetDrum(rowPat, step, clickVel, 0.0f); placed = true; }

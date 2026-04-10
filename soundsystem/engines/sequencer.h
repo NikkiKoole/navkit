@@ -23,7 +23,7 @@
 #define SEQ_TICKS_PER_STEP_16TH 24  // 96 / 4 steps per beat (16th note resolution)
 #define SEQ_TICKS_PER_STEP_32ND 12  // 96 / 8 steps per beat (32nd note resolution)
 #define SEQ_TICKS_PER_STEP SEQ_TICKS_PER_STEP_16TH  // Default (backward compat for direct use)
-#define SEQ_MAX_STEPS 32
+#define SEQ_MAX_STEPS 128  // 8 bars at 16 steps/bar
 #define SEQ_DRUM_TRACKS 4      // Kick, Snare, HiHat, Clap
 #define SEQ_MELODY_TRACKS 3    // Bass, Lead, Chords
 #define SEQ_TOTAL_TRACKS (SEQ_DRUM_TRACKS + SEQ_MELODY_TRACKS)
