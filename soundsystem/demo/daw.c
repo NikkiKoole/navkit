@@ -517,6 +517,24 @@ static DawState daw = {
 };
 
 // ============================================================================
+// Per-track pattern helpers (need DawState + seq)
+// ============================================================================
+
+// Get the pattern for a specific track, reading from arrangement grid (bar 0)
+static Pattern* dawTrackPat(int track) {
+    if (daw.arr.length > 0 && track >= 0 && track < ARR_MAX_TRACKS) {
+        int pi = daw.arr.cells[0][track];
+        if (pi >= 0 && pi < SEQ_NUM_PATTERNS) return &seq.patterns[pi];
+    }
+    return &seq.patterns[seq.currentPattern];
+}
+
+// Pattern for the currently selected patch (for Clr, Cpy, etc.)
+static Pattern* dawSelectedPattern(void) {
+    return dawTrackPat(daw.selectedPatch);
+}
+
+// ============================================================================
 // NOTE RECORDING — implementations (need DawState)
 // ============================================================================
 
@@ -2045,7 +2063,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         DrawRectangleRec(rcl, clhov ? UI_BG_RED_DARK : UI_BG_BUTTON);
         DrawRectangleLinesEx(rcl, 1, UI_BORDER);
         DrawTextShadow("Clr", (int)copyX+37, (int)y+3, UI_FONT_SMALL, clhov ? (Color){255,120,120,255} : GRAY);
-        if (clhov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { clearPattern(dawPattern()); ui_consume_click(); }
+        if (clhov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { clearPattern(dawSelectedPattern()); ui_consume_click(); }
     }
 
     // Rhythm generator
@@ -3342,7 +3360,8 @@ static void drawWorkPiano(float x, float y, float w, float h) {
     // Helper: map global step → (pattern index, local step)
     // In single-pattern mode: globalStep = local step, pattern = current
     int chainPatCount = chainActive ? recChainLength : 1;
-    int chainPatStart = chainActive ? recChainStart : seq.currentPattern;
+    int prPatIdx = (int)(dawTrackPat(mt) - seq.patterns);  // pattern index for this track
+    int chainPatStart = chainActive ? recChainStart : prPatIdx;
 
     int globalOffset = 0; // accumulated steps before current pattern in chain
     for (int ci = 0; ci < chainPatCount; ci++) {
