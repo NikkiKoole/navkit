@@ -683,10 +683,18 @@ static void dawSyncSequencer(void) {
         // Sync UI pattern selector back from sequencer
         daw.transport.currentPattern = seq.currentPattern;
     } else {
-        seq.perTrackPatterns = false;
         // Pattern mode: no chain, DAW controls current pattern directly
         seq.chainLength = 0;
         seq.currentPattern = daw.transport.currentPattern;
+        // With single-track patterns each track always has its own pattern;
+        // wire trackPatternIdx from bar 0 even without full arrangement mode.
+        if (daw.arr.length > 0) {
+            seq.perTrackPatterns = true;
+            for (int _t = 0; _t < seq.trackCount; _t++)
+                seq.trackPatternIdx[_t] = (_t < ARR_MAX_TRACKS) ? daw.arr.cells[0][_t] : -1;
+        } else {
+            seq.perTrackPatterns = false;
+        }
     }
 
     // Helper: kill all active notes on a track
