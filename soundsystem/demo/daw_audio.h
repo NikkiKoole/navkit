@@ -12,24 +12,26 @@
 // Piano-style key mapping (white keys on ASDFGHJKL, black keys on WERTYUIOP)
 typedef struct { int key; int semitone; } DawPianoKey;
 static const DawPianoKey dawPianoKeys[] = {
-    // White keys (bottom row)
-    {KEY_A, 0},   // C
-    {KEY_S, 2},   // D
-    {KEY_D, 4},   // E
-    {KEY_F, 5},   // F
-    {KEY_G, 7},   // G
-    {KEY_H, 9},   // A
-    {KEY_J, 11},  // B
-    {KEY_K, 12},  // C+1
-    {KEY_L, 14},  // D+1
-    // Black keys (top row)
-    {KEY_W, 1},   // C#
-    {KEY_E, 3},   // D#
-    {KEY_R, 6},   // F#
-    {KEY_T, 8},   // G#
-    {KEY_Y, 10},  // A#
-    {KEY_U, 13},  // C#+1
-    {KEY_I, 15},  // D#+1
+    // White keys — GarageBand layout (A S D F G H J K L ; ')
+    {KEY_A,         0},   // C
+    {KEY_S,         2},   // D
+    {KEY_D,         4},   // E
+    {KEY_F,         5},   // F
+    {KEY_G,         7},   // G
+    {KEY_H,         9},   // A
+    {KEY_J,        11},   // B
+    {KEY_K,        12},   // C+1
+    {KEY_L,        14},   // D+1
+    {KEY_SEMICOLON,16},   // E+1
+    {KEY_APOSTROPHE,17},  // F+1
+    // Black keys — skipping R (E-F gap) and I (B-C gap)
+    {KEY_W,  1},   // C#
+    {KEY_E,  3},   // D#
+    {KEY_T,  6},   // F#
+    {KEY_Y,  8},   // G#
+    {KEY_U, 10},   // A#
+    {KEY_O, 13},   // C#+1
+    {KEY_P, 15},   // D#+1
 };
 #define NUM_DAW_PIANO_KEYS (sizeof(dawPianoKeys) / sizeof(dawPianoKeys[0]))
 static int dawPianoKeyVoices[NUM_DAW_PIANO_KEYS];
