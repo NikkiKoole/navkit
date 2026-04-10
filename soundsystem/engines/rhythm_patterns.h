@@ -277,9 +277,9 @@ static void applyRhythmPattern(Pattern* p, RhythmGenerator* gen) {
     // Clear existing drum steps
     for (int track = 0; track < SEQ_DRUM_TRACKS; track++) {
         for (int step = 0; step < SEQ_MAX_STEPS; step++) {
-            patClearDrum(p, track, step);
+            patClearDrum(p, step);
         }
-        patSetDrumLength(p, track, src->length);
+        patSetDrumLength(p, src->length);
     }
 
     // Apply base pattern
@@ -292,7 +292,7 @@ static void applyRhythmPattern(Pattern* p, RhythmGenerator* gen) {
                     vel += (rhythmRandFloat(gen) - 0.5f) * gen->humanize * 0.3f;
                 }
                 if (vel > 0.1f) {
-                    patSetDrum(p, track, step, vel < 1.0f ? vel : 1.0f, 0.0f);
+                    patSetDrum(p, step, vel < 1.0f ? vel : 1.0f, 0.0f);
                 }
             }
         }
@@ -303,8 +303,8 @@ static void applyRhythmPattern(Pattern* p, RhythmGenerator* gen) {
         case RHYTHM_VAR_FILL:
             // Add fills at end of pattern (last 4 steps)
             for (int step = src->length - 4; step < src->length; step++) {
-                if (rhythmRandFloat(gen) < 0.5f && !patGetDrum(p, 1, step)) {
-                    patSetDrum(p, 1, step, 0.6f + rhythmRandFloat(gen) * 0.4f, 0.0f);
+                if (rhythmRandFloat(gen) < 0.5f && !patGetDrum(p, step)) {
+                    patSetDrum(p, step, 0.6f + rhythmRandFloat(gen) * 0.4f, 0.0f);
                 }
             }
             break;
@@ -313,9 +313,9 @@ static void applyRhythmPattern(Pattern* p, RhythmGenerator* gen) {
             // Remove some hits (especially ghost notes and weak beats)
             for (int track = 0; track < SEQ_DRUM_TRACKS; track++) {
                 for (int step = 0; step < src->length; step++) {
-                    if (patGetDrum(p, track, step) && patGetDrumVel(p, track, step) < 0.7f) {
+                    if (patGetDrum(p, step) && patGetDrumVel(p, step) < 0.7f) {
                         if (rhythmRandFloat(gen) < 0.5f) {
-                            patClearDrum(p, track, step);
+                            patClearDrum(p, step);
                         }
                     }
                 }
@@ -326,12 +326,12 @@ static void applyRhythmPattern(Pattern* p, RhythmGenerator* gen) {
             // Add ghost notes
             for (int step = 0; step < src->length; step++) {
                 // Add ghost snares
-                if (!patGetDrum(p, 1, step) && rhythmRandFloat(gen) < 0.2f) {
-                    patSetDrum(p, 1, step, 0.3f + rhythmRandFloat(gen) * 0.2f, 0.0f);
+                if (!patGetDrum(p, step) && rhythmRandFloat(gen) < 0.2f) {
+                    patSetDrum(p, step, 0.3f + rhythmRandFloat(gen) * 0.2f, 0.0f);
                 }
                 // Add extra hihats
-                if (!patGetDrum(p, 2, step) && rhythmRandFloat(gen) < 0.4f) {
-                    patSetDrum(p, 2, step, 0.3f + rhythmRandFloat(gen) * 0.2f, 0.0f);
+                if (!patGetDrum(p, step) && rhythmRandFloat(gen) < 0.4f) {
+                    patSetDrum(p, step, 0.3f + rhythmRandFloat(gen) * 0.2f, 0.0f);
                 }
             }
             break;
@@ -340,11 +340,11 @@ static void applyRhythmPattern(Pattern* p, RhythmGenerator* gen) {
             // Move on-beat hits to preceding off-beat (anticipation) across all tracks
             for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
                 for (int step = 0; step < src->length; step++) {
-                    if (patGetDrum(p, t, step) && (step % 4 == 0) && step > 0 && !patGetDrum(p, t, step-1)) {
+                    if (patGetDrum(p, step) && (step % 4 == 0) && step > 0 && !patGetDrum(p, step-1)) {
                         if (rhythmRandFloat(gen) < 0.3f) {
-                            float vel = patGetDrumVel(p, t, step);
-                            patClearDrum(p, t, step);
-                            patSetDrum(p, t, step-1, vel * 0.85f, 0.0f);
+                            float vel = patGetDrumVel(p, step);
+                            patClearDrum(p, step);
+                            patSetDrum(p, step-1, vel * 0.85f, 0.0f);
                         }
                     }
                 }
@@ -373,8 +373,8 @@ static void applyRhythmProbMap(Pattern* p, RhythmGenerator* gen) {
 
     // Clear existing drum steps and set track lengths
     for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
-        for (int s = 0; s < SEQ_MAX_STEPS; s++) patClearDrum(p, t, s);
-        patSetDrumLength(p, t, map->length);
+        for (int s = 0; s < SEQ_MAX_STEPS; s++) patClearDrum(p, s);
+        patSetDrumLength(p, map->length);
     }
 
     const uint8_t *tracks[4] = { map->kick, map->snare, map->hihat, map->perc };
@@ -404,7 +404,7 @@ static void applyRhythmProbMap(Pattern* p, RhythmGenerator* gen) {
                 : 0.0f;
 
             float vel = fminf(1.0f, fmaxf(0.1f, (baseVel + accent + humanize) * gen->intensity));
-            patSetDrum(p, t, s, vel, 0.0f);
+            patSetDrum(p, s, vel, 0.0f);
         }
     }
 }
@@ -455,8 +455,8 @@ static void applyRhythmPerTrack(Pattern **trackPats, int nTracks, RhythmGenerato
 
     for (int t = 0; t < nTracks; t++) {
         if (!trackPats[t]) continue;
-        for (int s = 0; s < SEQ_MAX_STEPS; s++) patClearDrum(trackPats[t], t, s);
-        patSetDrumLength(trackPats[t], t, src->length);
+        for (int s = 0; s < SEQ_MAX_STEPS; s++) patClearDrum(trackPats[t], s);
+        patSetDrumLength(trackPats[t], src->length);
     }
 
     for (int step = 0; step < src->length; step++) {
@@ -468,7 +468,7 @@ static void applyRhythmPerTrack(Pattern **trackPats, int nTracks, RhythmGenerato
                     vel += (rhythmRandFloat(gen) - 0.5f) * gen->humanize * 0.3f;
                 }
                 if (vel > 0.1f) {
-                    patSetDrum(trackPats[t], t, step, vel < 1.0f ? vel : 1.0f, 0.0f);
+                    patSetDrum(trackPats[t], step, vel < 1.0f ? vel : 1.0f, 0.0f);
                 }
             }
         }
@@ -478,8 +478,8 @@ static void applyRhythmPerTrack(Pattern **trackPats, int nTracks, RhythmGenerato
         case RHYTHM_VAR_FILL:
             if (nTracks > 1 && trackPats[1]) {
                 for (int step = src->length - 4; step < src->length; step++) {
-                    if (rhythmRandFloat(gen) < 0.5f && !patGetDrum(trackPats[1], 1, step)) {
-                        patSetDrum(trackPats[1], 1, step, 0.6f + rhythmRandFloat(gen) * 0.4f, 0.0f);
+                    if (rhythmRandFloat(gen) < 0.5f && !patGetDrum(trackPats[1], step)) {
+                        patSetDrum(trackPats[1], step, 0.6f + rhythmRandFloat(gen) * 0.4f, 0.0f);
                     }
                 }
             }
@@ -488,8 +488,8 @@ static void applyRhythmPerTrack(Pattern **trackPats, int nTracks, RhythmGenerato
             for (int t = 0; t < nTracks; t++) {
                 if (!trackPats[t]) continue;
                 for (int step = 0; step < src->length; step++) {
-                    if (patGetDrum(trackPats[t], t, step) && patGetDrumVel(trackPats[t], t, step) < 0.7f) {
-                        if (rhythmRandFloat(gen) < 0.5f) patClearDrum(trackPats[t], t, step);
+                    if (patGetDrum(trackPats[t], step) && patGetDrumVel(trackPats[t], step) < 0.7f) {
+                        if (rhythmRandFloat(gen) < 0.5f) patClearDrum(trackPats[t], step);
                     }
                 }
             }
@@ -499,8 +499,8 @@ static void applyRhythmPerTrack(Pattern **trackPats, int nTracks, RhythmGenerato
                 if (!trackPats[t]) continue;
                 float addProb = (t == 1) ? 0.2f : 0.4f;
                 for (int step = 0; step < src->length; step++) {
-                    if (!patGetDrum(trackPats[t], t, step) && rhythmRandFloat(gen) < addProb) {
-                        patSetDrum(trackPats[t], t, step, 0.3f + rhythmRandFloat(gen) * 0.2f, 0.0f);
+                    if (!patGetDrum(trackPats[t], step) && rhythmRandFloat(gen) < addProb) {
+                        patSetDrum(trackPats[t], step, 0.3f + rhythmRandFloat(gen) * 0.2f, 0.0f);
                     }
                 }
             }
@@ -509,11 +509,11 @@ static void applyRhythmPerTrack(Pattern **trackPats, int nTracks, RhythmGenerato
             for (int t = 0; t < nTracks; t++) {
                 if (!trackPats[t]) continue;
                 for (int step = 0; step < src->length; step++) {
-                    if (patGetDrum(trackPats[t], t, step) && (step % 4 == 0) && step > 0 && !patGetDrum(trackPats[t], t, step-1)) {
+                    if (patGetDrum(trackPats[t], step) && (step % 4 == 0) && step > 0 && !patGetDrum(trackPats[t], step-1)) {
                         if (rhythmRandFloat(gen) < 0.3f) {
-                            float vel = patGetDrumVel(trackPats[t], t, step);
-                            patClearDrum(trackPats[t], t, step);
-                            patSetDrum(trackPats[t], t, step-1, vel * 0.85f, 0.0f);
+                            float vel = patGetDrumVel(trackPats[t], step);
+                            patClearDrum(trackPats[t], step);
+                            patSetDrum(trackPats[t], step-1, vel * 0.85f, 0.0f);
                         }
                     }
                 }
@@ -552,10 +552,10 @@ static void applyEuclideanToTrack(Pattern* p, int track, int hits, int steps, in
     if (steps > SEQ_MAX_STEPS) steps = SEQ_MAX_STEPS;
     bool pattern[SEQ_MAX_STEPS] = {false};
     euclidean(pattern, steps, hits, rotation);
-    for (int s = 0; s < SEQ_MAX_STEPS; s++) patClearDrum(p, track, s);
-    patSetDrumLength(p, track, steps);
+    for (int s = 0; s < SEQ_MAX_STEPS; s++) patClearDrum(p, s);
+    patSetDrumLength(p, steps);
     for (int s = 0; s < steps; s++) {
-        if (pattern[s]) patSetDrum(p, track, s, vel, 0.0f);
+        if (pattern[s]) patSetDrum(p, s, vel, 0.0f);
     }
 }
 

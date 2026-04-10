@@ -1278,10 +1278,10 @@ bool SoundSynthPlaySongFile(SoundSynth* synth, const char* filepath) {
         bool hasContent = false;
         for (int t = 0; t < SEQ_DRUM_TRACKS && !hasContent; t++)
             for (int s = 0; s < SEQ_MAX_STEPS && !hasContent; s++)
-                if (patGetDrum(&sf.patterns[i], t, s)) hasContent = true;
+                if (patGetDrum(&sf.patterns[i], s)) hasContent = true;
         for (int t = 0; t < SEQ_MELODY_TRACKS && !hasContent; t++)
             for (int s = 0; s < SEQ_MAX_STEPS && !hasContent; s++)
-                if (patGetNote(&sf.patterns[i], SEQ_DRUM_TRACKS + t, s) != SEQ_NOTE_OFF) hasContent = true;
+                if (patGetNote(&sf.patterns[i], s) != SEQ_NOTE_OFF) hasContent = true;
         if (hasContent) sp->patternCount = i + 1;
     }
     if (sp->patternCount == 0) sp->patternCount = 1;

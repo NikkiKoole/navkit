@@ -233,13 +233,13 @@ static void _dwWritePattern(FILE *f, int idx, const Pattern *p) {
 
     if (p->trackType == TRACK_DRUM) {
         for (int s = 0; s < p->length; s++) {
-            if (!patGetDrum(p, 0, s)) continue;
-            fprintf(f, "d step=%d vel=%.3g", s, (double)patGetDrumVel(p, 0, s));
-            float dp = patGetDrumPitch(p, 0, s);
+            if (!patGetDrum(p, s)) continue;
+            fprintf(f, "d step=%d vel=%.3g", s, (double)patGetDrumVel(p, s));
+            float dp = patGetDrumPitch(p, s);
             if (dp != 0.0f) fprintf(f, " pitch=%.3g", (double)dp);
-            float dProb = patGetDrumProb(p, 0, s);
+            float dProb = patGetDrumProb(p, s);
             if (dProb > 0.0f && dProb < 1.0f) fprintf(f, " prob=%.3g", (double)dProb);
-            int dCond = patGetDrumCond(p, 0, s);
+            int dCond = patGetDrumCond(p, s);
             if (dCond != COND_ALWAYS) fprintf(f, " cond=%s", _dwCondNames[dCond]);
             fprintf(f, "\n");
         }
@@ -1053,9 +1053,9 @@ static void _dwParseDrumEvent(const char *line, Pattern *p) {
         }
     }
     if (step>=0&&step<SEQ_MAX_STEPS) {
-        patSetDrum(p, 0, step, vel, pitch);
-        patSetDrumProb(p, 0, step, prob);
-        patSetDrumCond(p, 0, step, cond);
+        patSetDrum(p, step, vel, pitch);
+        patSetDrumProb(p, step, prob);
+        patSetDrumCond(p, step, cond);
     }
 }
 
@@ -1129,11 +1129,11 @@ static void _dwParseMelodyEvent(const char *line, Pattern *p) {
     }
     if (step>=0&&step<SEQ_MAX_STEPS) {
         if (hasChord && chordType==CHORD_CUSTOM && customNoteCount>0) {
-            patSetChordCustom(p, 0, step, vel, gate,
+            patSetChordCustom(p, step, vel, gate,
                 customNoteCount>0?customNotes[0]:-1, customNoteCount>1?customNotes[1]:-1,
                 customNoteCount>2?customNotes[2]:-1, customNoteCount>3?customNotes[3]:-1);
         } else if (hasChord) {
-            patSetChord(p, 0, step, _dwNameToMidi(noteName), (ChordType)chordType, vel, gate);
+            patSetChord(p, step, _dwNameToMidi(noteName), (ChordType)chordType, vel, gate);
         } else {
             // v2 polyphony: if step already has notes, add to it
             StepV2 *sv = &p->steps[step];
@@ -1147,7 +1147,7 @@ static void _dwParseMelodyEvent(const char *line, Pattern *p) {
                 }
                 return;
             }
-            patSetNote(p, 0, step, _dwNameToMidi(noteName), vel, gate);
+            patSetNote(p, step, _dwNameToMidi(noteName), vel, gate);
         }
         StepV2 *sv = &p->steps[step];
         if (sv->noteCount > 0) {
@@ -1156,10 +1156,10 @@ static void _dwParseMelodyEvent(const char *line, Pattern *p) {
             sv->notes[0].nudge = (int8_t)nudge;
             sv->notes[0].gateNudge = (int8_t)gateNudge;
         }
-        patSetNoteSustain(p, 0, step, sustain);
-        patSetNoteProb(p, 0, step, prob);
-        patSetNoteCond(p, 0, step, cond);
-        if (pickMode != PICK_ALL) patSetPickMode(p, 0, step, pickMode);
+        patSetNoteSustain(p, step, sustain);
+        patSetNoteProb(p, step, prob);
+        patSetNoteCond(p, step, cond);
+        if (pickMode != PICK_ALL) patSetPickMode(p, step, pickMode);
     }
 }
 
