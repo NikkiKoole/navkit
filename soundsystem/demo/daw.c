@@ -2045,30 +2045,19 @@ static void drawWorkSeq(float x, float y, float w, float h) {
     }
 
     // Pattern copy/clear
-    float copyX = fillX + 38;
+    float clrX = fillX + 38;
     {
-        // Copy button
-        Rectangle rc = {copyX, y, 30, 18};
-        bool chov = CheckCollisionPointRec(mouse, rc);
-        DrawRectangleRec(rc, chov ? UI_BG_HOVER : UI_BG_BUTTON);
-        DrawRectangleLinesEx(rc, 1, UI_BORDER);
-        DrawTextShadow("Cpy", (int)copyX+4, (int)y+3, UI_FONT_SMALL, chov ? WHITE : GRAY);
-        if (chov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            int dst = (daw.transport.currentPattern + 1) % SEQ_NUM_PATTERNS;
-            copyPattern(&seq.patterns[dst], dawPattern());
-            ui_consume_click();
-        }
         // Clear button
-        Rectangle rcl = {copyX + 33, y, 30, 18};
+        Rectangle rcl = {clrX, y, 30, 18};
         bool clhov = CheckCollisionPointRec(mouse, rcl);
         DrawRectangleRec(rcl, clhov ? UI_BG_RED_DARK : UI_BG_BUTTON);
         DrawRectangleLinesEx(rcl, 1, UI_BORDER);
-        DrawTextShadow("Clr", (int)copyX+37, (int)y+3, UI_FONT_SMALL, clhov ? (Color){255,120,120,255} : GRAY);
+        DrawTextShadow("Clr", (int)clrX+4, (int)y+3, UI_FONT_SMALL, clhov ? (Color){255,120,120,255} : GRAY);
         if (clhov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { clearPattern(dawSelectedPattern()); ui_consume_click(); }
     }
 
     // Rhythm generator
-    float rgenX = copyX + 72;
+    float rgenX = clrX + 38;
     {
         static RhythmGenerator rhythmGen = {0};
         static bool rhythmGenInit = false;
