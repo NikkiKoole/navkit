@@ -1030,13 +1030,6 @@ static int _dwLookupName(const char *name, const char **tbl, int cnt) {
     return -1;
 }
 
-// Extract track= value from event line (for legacy multi-track migration)
-static int _dwExtractTrack(const char *line) {
-    const char *p = strstr(line, "track=");
-    if (!p) return 0;
-    return atoi(p + 6);
-}
-
 static void _dwParseDrumEvent(const char *line, Pattern *p) {
     char lc[512]; strncpy(lc,line,511); lc[511]='\0';
     char *toks[32]; int n = _dwTokenize(lc+1, toks, 32);
@@ -1223,10 +1216,6 @@ static bool dawLoad(const char *filepath) {
     _DwSection section = _DW_SEC_NONE;
     int subIndex = -1;
     char line[512];
-    // Legacy multi-track migration: base pattern index for expanded per-track patterns
-    // -1 = new format; N*SEQ_V2_MAX_TRACKS = old pattern N is being expanded
-    int _legacyBase = -1;
-    bool _anyLegacy = false;
 
     while (fgets(line, 512, f)) {
         char *s = _dwStrip(line);
@@ -1288,10 +1277,7 @@ static bool dawLoad(const char *filepath) {
             else if (strncmp(sec,"pattern.",8)==0) {
                 section = _DW_SEC_PATTERN;
                 subIndex = atoi(sec + 8);
-                _legacyBase = -1;  // reset on each new pattern section
-                // In legacy mode, sub-patterns were already expanded into the flat pool;
-                // don't re-init them here (drumTrackLength inits the correct sub-patterns).
-                if (!_anyLegacy && subIndex >= 0 && subIndex < SEQ_NUM_PATTERNS)
+                if (subIndex >= 0 && subIndex < SEQ_NUM_PATTERNS)
                     initPattern(&seq.patterns[subIndex]);
             }
             else section = _DW_SEC_NONE;
@@ -1300,84 +1286,10 @@ static bool dawLoad(const char *filepath) {
 
         // Pattern events
         if (section == _DW_SEC_PATTERN && subIndex >= 0 && subIndex < SEQ_NUM_PATTERNS) {
-            if (_legacyBase >= 0) {
-                // Legacy multi-track format: route by track= field to per-track sub-patterns
-                if (s[0]=='d' && s[1]==' ') {
-                    int t = _dwExtractTrack(s);
-                    int ni = _legacyBase + t;
-                    if (t >= 0 && t < SEQ_DRUM_TRACKS && ni < SEQ_NUM_PATTERNS) {
-                        seq.patterns[ni].trackType = TRACK_DRUM;
-                        _dwParseDrumEvent(s, &seq.patterns[ni]);
-                    }
-                    continue;
-                }
-                if (s[0]=='m' && s[1]==' ') {
-                    int t = _dwExtractTrack(s);
-                    int ni = _legacyBase + SEQ_DRUM_TRACKS + t;
-                    if (t >= 0 && t < SEQ_MELODY_TRACKS && ni < SEQ_NUM_PATTERNS) {
-                        seq.patterns[ni].trackType = TRACK_MELODIC;
-                        _dwParseMelodyEvent(s, &seq.patterns[ni]);
-                    }
-                    continue;
-                }
-                if (s[0]=='s' && s[1]==' ') {
-                    int ni = _legacyBase + SEQ_TRACK_SAMPLER;
-                    if (ni < SEQ_NUM_PATTERNS) {
-                        seq.patterns[ni].trackType = TRACK_SAMPLER;
-                        _dwParseSamplerEvent(s, &seq.patterns[ni]);
-                    }
-                    continue;
-                }
-                if (s[0]=='p' && s[1]==' ') {
-                    int t = _dwExtractTrack(s);
-                    int ni = (t < SEQ_DRUM_TRACKS) ? _legacyBase + t
-                           : (t < SEQ_DRUM_TRACKS + SEQ_MELODY_TRACKS) ? _legacyBase + t
-                           : _legacyBase + SEQ_TRACK_SAMPLER;
-                    if (ni >= 0 && ni < SEQ_NUM_PATTERNS)
-                        _dwParsePlockEvent(s, &seq.patterns[ni]);
-                    continue;
-                }
-            } else {
-                // Check for old multi-track format: "d track=X step=Y" or "m track=X step=Y"
-                // (new single-track format uses "d step=Y" without track= field)
-                bool _hasTrackField = (strstr(s, "track=") != NULL);
-                if (_hasTrackField && (s[0]=='d'||s[0]=='m'||s[0]=='s'||s[0]=='p')) {
-                    // Route as legacy: expand into per-track sub-patterns
-                    _legacyBase = subIndex * SEQ_V2_MAX_TRACKS;
-                    _anyLegacy = true;
-                    int t = _dwExtractTrack(s);
-                    if (s[0]=='d') {
-                        int ni = _legacyBase + t;
-                        if (t >= 0 && t < SEQ_DRUM_TRACKS && ni < SEQ_NUM_PATTERNS) {
-                            seq.patterns[ni].trackType = TRACK_DRUM;
-                            _dwParseDrumEvent(s, &seq.patterns[ni]);
-                        }
-                    } else if (s[0]=='m') {
-                        int ni = _legacyBase + SEQ_DRUM_TRACKS + t;
-                        if (t >= 0 && t < SEQ_MELODY_TRACKS && ni < SEQ_NUM_PATTERNS) {
-                            seq.patterns[ni].trackType = TRACK_MELODIC;
-                            _dwParseMelodyEvent(s, &seq.patterns[ni]);
-                        }
-                    } else if (s[0]=='s') {
-                        int ni = _legacyBase + SEQ_TRACK_SAMPLER;
-                        if (ni < SEQ_NUM_PATTERNS) {
-                            seq.patterns[ni].trackType = TRACK_SAMPLER;
-                            _dwParseSamplerEvent(s, &seq.patterns[ni]);
-                        }
-                    } else if (s[0]=='p') {
-                        int ni = (t < SEQ_DRUM_TRACKS) ? _legacyBase + t
-                               : (t < SEQ_DRUM_TRACKS + SEQ_MELODY_TRACKS) ? _legacyBase + t
-                               : _legacyBase + SEQ_TRACK_SAMPLER;
-                        if (ni >= 0 && ni < SEQ_NUM_PATTERNS)
-                            _dwParsePlockEvent(s, &seq.patterns[ni]);
-                    }
-                    continue;
-                }
-                if (s[0]=='d' && s[1]==' ') { _dwParseDrumEvent(s, &seq.patterns[subIndex]); continue; }
-                if (s[0]=='m' && s[1]==' ') { _dwParseMelodyEvent(s, &seq.patterns[subIndex]); continue; }
-                if (s[0]=='s' && s[1]==' ') { _dwParseSamplerEvent(s, &seq.patterns[subIndex]); continue; }
-                if (s[0]=='p' && s[1]==' ') { _dwParsePlockEvent(s, &seq.patterns[subIndex]); continue; }
-            }
+            if (s[0]=='d' && s[1]==' ') { _dwParseDrumEvent(s, &seq.patterns[subIndex]); continue; }
+            if (s[0]=='m' && s[1]==' ') { _dwParseMelodyEvent(s, &seq.patterns[subIndex]); continue; }
+            if (s[0]=='s' && s[1]==' ') { _dwParseSamplerEvent(s, &seq.patterns[subIndex]); continue; }
+            if (s[0]=='p' && s[1]==' ') { _dwParsePlockEvent(s, &seq.patterns[subIndex]); continue; }
         }
 
         // Key = value
@@ -1756,46 +1668,6 @@ static bool dawLoad(const char *filepath) {
                     else if (strcmp(val,"sampler")==0) p->trackType = TRACK_SAMPLER;
                     else p->trackType = TRACK_MELODIC;
                 }
-                // Legacy keys: expand multi-track pattern into per-track sub-patterns
-                else if (strcmp(key,"drumTrackLength")==0) {
-                    _legacyBase = subIndex * SEQ_V2_MAX_TRACKS;
-                    _anyLegacy = true;
-                    int lens[SEQ_DRUM_TRACKS];
-                    _dwParseIntList(val, lens, SEQ_DRUM_TRACKS);
-                    for (int _t = 0; _t < SEQ_DRUM_TRACKS; _t++) {
-                        int ni = _legacyBase + _t;
-                        if (ni < SEQ_NUM_PATTERNS) {
-                            initPattern(&seq.patterns[ni]);
-                            seq.patterns[ni].length = (lens[_t] > 0) ? lens[_t] : 16;
-                            seq.patterns[ni].trackType = TRACK_DRUM;
-                        }
-                    }
-                }
-                else if (strcmp(key,"melodyTrackLength")==0) {
-                    if (_legacyBase >= 0) {
-                        int lens[SEQ_MELODY_TRACKS];
-                        _dwParseIntList(val, lens, SEQ_MELODY_TRACKS);
-                        for (int _t = 0; _t < SEQ_MELODY_TRACKS; _t++) {
-                            int ni = _legacyBase + SEQ_DRUM_TRACKS + _t;
-                            if (ni < SEQ_NUM_PATTERNS) {
-                                if (seq.patterns[ni].length == 16 || lens[_t] > 0) {
-                                    seq.patterns[ni].length = (lens[_t] > 0) ? lens[_t] : 16;
-                                }
-                                seq.patterns[ni].trackType = TRACK_MELODIC;
-                            }
-                        }
-                    }
-                }
-                else if (strcmp(key,"samplerTrackLength")==0) {
-                    if (_legacyBase >= 0) {
-                        int ni = _legacyBase + SEQ_TRACK_SAMPLER;
-                        if (ni < SEQ_NUM_PATTERNS) {
-                            int l = _dpi(val);
-                            if (l > 0) seq.patterns[ni].length = l;
-                            seq.patterns[ni].trackType = TRACK_SAMPLER;
-                        }
-                    }
-                }
             }
             break;
 #ifdef DAW_HAS_CHOP_STATE
@@ -1854,53 +1726,6 @@ static bool dawLoad(const char *filepath) {
     }
 
     fclose(f);
-
-    // Legacy migration (case 2): old multi-track events found in an already-arrMode song.
-    // The arr cells reference old multi-track pattern indices — remap to per-track sub-patterns.
-    if (_anyLegacy && daw.arr.arrMode && daw.arr.length > 0) {
-        for (int b = 0; b < daw.arr.length && b < ARR_MAX_BARS; b++) {
-            for (int t = 0; t < ARR_MAX_TRACKS; t++) {
-                int oldIdx = daw.arr.cells[b][t];
-                if (oldIdx >= 0) {
-                    int ni = oldIdx * SEQ_V2_MAX_TRACKS + t;
-                    daw.arr.cells[b][t] = (ni < SEQ_NUM_PATTERNS) ? ni : ARR_EMPTY;
-                }
-            }
-        }
-    }
-
-    // Legacy migration: if old multi-track format detected, build per-track arrangement
-    // so the sequencer can use perTrackPatterns=true to play each track independently.
-    if (_anyLegacy && !daw.arr.arrMode) {
-        daw.arr.arrMode = true;
-        if (daw.song.songMode && daw.song.length > 0) {
-            // Song mode: build per-bar arrangement from song pattern list
-            daw.arr.length = daw.song.length;
-            int firstOldPat = daw.song.patterns[0];
-            int track0PatIdx = firstOldPat * SEQ_V2_MAX_TRACKS + 0;
-            daw.arr.barLengthSteps = (track0PatIdx < SEQ_NUM_PATTERNS)
-                ? seq.patterns[track0PatIdx].length : 16;
-            for (int b = 0; b < daw.song.length && b < ARR_MAX_BARS; b++) {
-                int oldPat = daw.song.patterns[b];
-                for (int t = 0; t < ARR_MAX_TRACKS; t++) {
-                    int ni = oldPat * SEQ_V2_MAX_TRACKS + t;
-                    daw.arr.cells[b][t] = (ni < SEQ_NUM_PATTERNS) ? ni : ARR_EMPTY;
-                }
-            }
-        } else {
-            // Pattern mode: build single-bar arrangement from pattern 0
-            // (song-render starts from pattern 0; DAW uses currentPattern cycling)
-            daw.arr.length = 1;
-            int pat0 = 0;
-            int track0PatIdx = pat0 * SEQ_V2_MAX_TRACKS + 0;
-            daw.arr.barLengthSteps = (track0PatIdx < SEQ_NUM_PATTERNS && seq.patterns[track0PatIdx].length > 0)
-                ? seq.patterns[track0PatIdx].length : 16;
-            for (int t = 0; t < ARR_MAX_TRACKS; t++) {
-                int ni = pat0 * SEQ_V2_MAX_TRACKS + t;
-                daw.arr.cells[0][t] = (ni < SEQ_NUM_PATTERNS) ? ni : ARR_EMPTY;
-            }
-        }
-    }
 
     // Backward compat: old files without trackSwing keys — propagate global swing
     {
