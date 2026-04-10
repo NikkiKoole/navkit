@@ -2168,7 +2168,14 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         DrawRectangleLinesEx(rg, 1, ghov ? GREEN : UI_BG_GREEN_DARK);
         DrawTextShadow("Gen", (int)cx+4, (int)y+3, UI_FONT_SMALL, ghov ? WHITE : GREEN);
         if (ghov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            generateRhythm(dawPattern(), &rhythmGen);
+            // Build per-track pattern pointers for the 4 drum tracks
+            Pattern *drumPats[SEQ_DRUM_TRACKS];
+            for (int _t = 0; _t < SEQ_DRUM_TRACKS; _t++)
+                drumPats[_t] = dawTrackPat(_t);
+            if (rhythmGen.mode == RHYTHM_MODE_PROB_MAP)
+                applyRhythmProbMapPerTrack(drumPats, SEQ_DRUM_TRACKS, &rhythmGen);
+            else
+                applyRhythmPerTrack(drumPats, SEQ_DRUM_TRACKS, &rhythmGen);
             seq.dilla.swing = getRhythmSwing(&rhythmGen);
             for (int ti = 0; ti < SEQ_V2_MAX_TRACKS; ti++) seq.trackSwing[ti] = seq.dilla.swing;
             // Apply per-style instrument routing (prob map mode only)

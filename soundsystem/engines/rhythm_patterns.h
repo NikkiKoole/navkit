@@ -433,6 +433,42 @@ static int getRhythmRecommendedBpm(RhythmGenerator* gen) {
     return rhythmPatterns[gen->style].recommendedBpm;
 }
 
+// Prob map: write each drum voice to its own dedicated single-track pattern
+static void applyRhythmProbMapPerTrack(Pattern **trackPats, int nTracks, RhythmGenerator *gen) {
+    if (!trackPats || !gen) return;
+    if (nTracks > SEQ_DRUM_TRACKS) nTracks = SEQ_DRUM_TRACKS;
+    int style = gen->probStyle;
+    if (style < 0 || style >= PROB_MAP_COUNT) style = 0;
+    const RhythmProbMap *map = &probMaps[style];
+    int threshold = (int)((1.0f - gen->density) * 255.0f);
+    const uint8_t *tracks[4] = { map->kick, map->snare, map->hihat, map->perc };
+
+    for (int t = 0; t < nTracks; t++) {
+        if (!trackPats[t]) continue;
+        for (int s = 0; s < SEQ_MAX_STEPS; s++) patClearDrum(trackPats[t], s);
+        patSetDrumLength(trackPats[t], map->length);
+    }
+
+    for (int s = 0; s < map->length; s++) {
+        for (int t = 0; t < nTracks; t++) {
+            if (!trackPats[t]) continue;
+            int prob = tracks[t][s];
+            if (gen->randomize > 0.0f) {
+                prob += (int)((rhythmRandFloat(gen) - 0.5f) * 40.0f * gen->randomize);
+                if (prob < 0) prob = 0;
+                if (prob > 255) prob = 255;
+            }
+            if (prob <= threshold) continue;
+            float baseVel = 0.4f + 0.6f * ((float)(prob - threshold) / (float)(255 - threshold));
+            float accent = (map->accent[s] > threshold) ? 0.15f : 0.0f;
+            float humanize = (gen->humanize > 0.0f)
+                ? (rhythmRandFloat(gen) - 0.5f) * gen->humanize * 0.2f : 0.0f;
+            float vel = fminf(1.0f, fmaxf(0.1f, (baseVel + accent + humanize) * gen->intensity));
+            patSetDrum(trackPats[t], s, vel, 0.0f);
+        }
+    }
+}
+
 // Generate pattern using current mode
 static void generateRhythm(Pattern* p, RhythmGenerator* gen) {
     if (gen->mode == RHYTHM_MODE_PROB_MAP) {
