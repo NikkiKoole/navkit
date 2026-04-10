@@ -729,7 +729,15 @@ static void dawRecordToggle(void) {
         recMode = REC_ARMED;
         memset(recHeld, 0, sizeof(recHeld));
 
-        // Set up pattern chain for multi-bar recording
+        // In per-track pattern mode, record directly into each track's own pattern.
+        // No chain setup needed — SEQ_MAX_STEPS is large enough for multi-bar phrases.
+        if (daw.arr.length > 0) {
+            recChainLength = 0;
+            prChainView = false;
+            return;
+        }
+
+        // Legacy chain recording for non-arrangement mode
         int startPat = daw.transport.currentPattern;
         int barsAvail = SEQ_NUM_PATTERNS - startPat;
         int bars = recChainBars < barsAvail ? recChainBars : barsAvail;
