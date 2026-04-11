@@ -2345,7 +2345,13 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         int tLen = rowPat->length;
         bool lenDiffers = (tLen != daw.stepCount);
         Color lenCol = lenDiffers ? UI_TEXT_GOLD : UI_TEXT_MUTED;
-        DrawTextShadow(TextFormat("%d", tLen), lx + labelW - 16, lcy-4, 8, lenCol);
+        if (tLen > steps) {
+            int page = daw.transport.playing ? (seq.trackStep[track] / steps) + 1 : 1;
+            int totalPages = (tLen + steps - 1) / steps;
+            DrawTextShadow(TextFormat("%d/%d", page, totalPages), lx + labelW - 24, lcy-4, 8, lenCol);
+        } else {
+            DrawTextShadow(TextFormat("%d", tLen), lx + labelW - 16, lcy-4, 8, lenCol);
+        }
         if (nameHov) {
             float wh = GetMouseWheelMove();
             if (wh > 0) { tLen++; if (tLen > SEQ_MAX_STEPS) tLen = SEQ_MAX_STEPS; rowPat->length = tLen; }
@@ -2384,11 +2390,24 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             }
         }
 
-        for (int step = 0; step < steps; step++) {
-            int sx = (int)x + labelW + step * cellW;
+        // Per-track page offset: during playback, auto-page to where the playhead is
+        int pageOffset = 0;
+        if (daw.transport.playing && rowPat->length > steps) {
+            pageOffset = (seq.trackStep[track] / steps) * steps;
+        }
+
+        for (int col = 0; col < steps; col++) {
+            int step = pageOffset + col;
+            bool beyondLength = (step >= rowPat->length);
+            int sx = (int)x + labelW + col * cellW;
             Rectangle cell = {(float)sx, (float)ty, (float)(cellW-1), (float)cellH};
             bool hov = CheckCollisionPointRec(mouse, cell);
-            Color bg = (step/4)%2==0 ? UI_BG_BUTTON : UI_BG_PANEL;
+            if (beyondLength) {
+                DrawRectangleRec(cell, UI_BG_DEEPEST);
+                DrawRectangleLinesEx(cell, 1, (Color){30,30,30,255});
+                continue;
+            }
+            Color bg = (col/4)%2==0 ? UI_BG_BUTTON : UI_BG_PANEL;
 
             if (isDrum && step < SEQ_MAX_STEPS && patGetDrum(rowPat, step)) bg = (Color){50,125,65,255};
             if (isSampler && patGetNote(rowPat, step) != SEQ_NOTE_OFF)
