@@ -59,6 +59,7 @@ chromaticRoot = 60
 name = "808 Kick"
 waveType = fm
 scwIndex = 0
+envelopeEnabled = true
 attack = 0
 decay = 0.5
 sustain = 0
@@ -72,6 +73,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 1
 filterResonance = 0
 filterType = 0
@@ -143,6 +145,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -170,6 +173,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -246,6 +255,18 @@ epDecay = 3
 epBell = 0.5
 epBellTone = 0.5
 epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 19
 pitchEnvDecay = 0.04
 pitchEnvCurve = 0
@@ -308,11 +329,29 @@ formantMorphTime = 0.0609258
 formantShift = 1
 formantQ = 1
 formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.1]
 name = "808 Snare"
 waveType = fm
 scwIndex = 0
+envelopeEnabled = true
 attack = 0
 decay = 0.2
 sustain = 0
@@ -326,6 +365,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 1
 filterResonance = 0
 filterType = 0
@@ -397,6 +437,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -424,6 +465,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -500,6 +547,18 @@ epDecay = 3
 epBell = 0.5
 epBellTone = 0.5
 epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -562,11 +621,29 @@ formantMorphTime = 0.15
 formantShift = 1
 formantQ = 1
 formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.2]
 name = "808 CH"
 waveType = square
 scwIndex = 0
+envelopeEnabled = true
 attack = 0
 decay = 0.05
 sustain = 0
@@ -580,6 +657,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 0.58
 filterResonance = 0
 filterType = 4
@@ -651,6 +729,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -678,6 +757,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -754,6 +839,18 @@ epDecay = 3
 epBell = 0.5
 epBellTone = 0.5
 epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -816,11 +913,29 @@ formantMorphTime = 0.15
 formantShift = 1
 formantQ = 1
 formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.3]
 name = "808 Clap"
 waveType = noise
 scwIndex = 0
+envelopeEnabled = true
 attack = 0
 decay = 0.3
 sustain = 0
@@ -834,6 +949,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 0.38
 filterResonance = 0
 filterType = 2
@@ -905,6 +1021,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -932,6 +1049,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -1008,6 +1131,18 @@ epDecay = 3
 epBell = 0.5
 epBellTone = 0.5
 epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -1070,11 +1205,29 @@ formantMorphTime = 0.15
 formantShift = 1
 formantQ = 1
 formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.4]
 name = "Fat Bass"
 waveType = saw
 scwIndex = 0
+envelopeEnabled = true
 attack = 0.01
 decay = 0.15
 sustain = 0.6
@@ -1088,6 +1241,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 0.173228
 filterResonance = 0.2
 filterType = 0
@@ -1159,6 +1313,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -1186,6 +1341,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -1262,6 +1423,18 @@ epDecay = 3
 epBell = 0.5
 epBellTone = 0.5
 epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -1324,11 +1497,29 @@ formantMorphTime = 0.15
 formantShift = 1
 formantQ = 1
 formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.5]
 name = "Chip Lead"
 waveType = square
 scwIndex = 0
+envelopeEnabled = true
 attack = 0.005
 decay = 0.1
 sustain = 0.7
@@ -1342,6 +1533,7 @@ pwmRate = 2
 pwmDepth = 0.1
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 0.8
 filterResonance = 0
 filterType = 0
@@ -1413,6 +1605,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -1440,6 +1633,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -1516,6 +1715,18 @@ epDecay = 3
 epBell = 0.5
 epBellTone = 0.5
 epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -1578,11 +1789,29 @@ formantMorphTime = 0.15
 formantShift = 1
 formantQ = 1
 formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.6]
 name = "Strings"
 waveType = saw
 scwIndex = 0
+envelopeEnabled = true
 attack = 0.3
 decay = 0.2
 sustain = 0.7
@@ -1596,6 +1825,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0.02
+filterEnabled = true
 filterCutoff = 0.5
 filterResonance = 0
 filterType = 0
@@ -1667,6 +1897,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -1694,6 +1925,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -1770,6 +2007,18 @@ epDecay = 3
 epBell = 0.5
 epBellTone = 0.5
 epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -1832,10 +2081,28 @@ formantMorphTime = 0.15
 formantShift = 1
 formantQ = 1
 formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.7]
 waveType = saw
 scwIndex = 0
+envelopeEnabled = true
 attack = 0.01
 decay = 0.1
 sustain = 0.5
@@ -1849,6 +2116,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 1
 filterResonance = 0
 filterType = 0
@@ -1920,6 +2188,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -1947,6 +2216,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -2023,6 +2298,18 @@ epDecay = 3
 epBell = 0.5
 epBellTone = 0.5
 epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -2085,6 +2372,23 @@ formantMorphTime = 0.15
 formantShift = 1
 formantQ = 1
 formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [mixer]
 vol0 = 0.8
@@ -2853,209 +3157,291 @@ length = 0
 loopsPerPattern = 2
 songMode = false
 
+[pertrack]
+arrMode = true
+arrLength = 1
+arr0 = 0
+arr1 = 1
+arr2 = 2
+arr3 = 3
+arr4 = 4
+arr5 = 5
+arr6 = 6
+arr7 = 7
+
+[launcher]
+t0 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t1 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t2 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t3 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t4 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t5 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t6 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t7 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+
 [pattern.0]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.8
-d track=0 step=4 vel=0.8
-d track=0 step=8 vel=0.8
-d track=0 step=12 vel=0.8
-d track=1 step=4 vel=0.8
-d track=1 step=12 vel=0.8
-d track=2 step=0 vel=0.8
-d track=2 step=2 vel=0.8
-d track=2 step=4 vel=0.8
-d track=2 step=6 vel=0.8
-d track=2 step=8 vel=0.8
-d track=2 step=10 vel=0.8
-d track=2 step=12 vel=0.8
-d track=2 step=14 vel=0.8
-m track=0 step=0 note=F2 vel=0.494 gate=1
-m track=0 step=0 note=F2 vel=0.749 gate=1
-m track=0 step=2 note=G#2 vel=0.8 gate=1
-m track=0 step=4 note=A2 vel=0.8 gate=1
-m track=0 step=6 note=A#2 vel=0.8 gate=1
-m track=0 step=8 note=B2 vel=0.8 gate=2 nudge=-2 gateNudge=10
-m track=0 step=12 note=C3 vel=0.8 gate=2 nudge=5 gateNudge=13
-p track=0 step=4 param=pitch val=4
-p track=2 step=4 param=pitch val=4
-p track=1 step=4 param=pitch val=0
-p track=2 step=8 param=pitch val=-1
-p track=2 step=10 param=pitch val=-8
-p track=2 step=12 param=pitch val=-9
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=4 vel=0.8
+d step=8 vel=0.8
+d step=12 vel=0.8
+p step=4 param=pitch val=4
 
 [pattern.1]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.8
-d track=0 step=4 vel=0.8
-d track=0 step=8 vel=0.8
-d track=0 step=12 vel=0.8
-d track=1 step=4 vel=0.8
-d track=1 step=12 vel=0.8
-d track=2 step=0 vel=0.8
-d track=2 step=2 vel=0.8
-d track=2 step=4 vel=0.8
-d track=2 step=6 vel=0.8
-d track=2 step=8 vel=0.8
-d track=2 step=10 vel=0.8
-d track=2 step=12 vel=0.8
-d track=2 step=14 vel=0.8
-p track=0 step=4 param=pitch val=4
-p track=2 step=4 param=pitch val=4
-p track=1 step=4 param=pitch val=0
-p track=2 step=8 param=pitch val=-1
-p track=2 step=10 param=pitch val=-8
-p track=2 step=12 param=pitch val=-9
+trackType = drum
+length = 16
+d step=4 vel=0.8
+d step=12 vel=0.8
+p step=4 param=pitch val=0
 
 [pattern.2]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.8
-d track=0 step=4 vel=0.8
-d track=0 step=8 vel=0.8
-d track=0 step=12 vel=0.8
-d track=1 step=4 vel=0.8
-d track=1 step=12 vel=0.8
-d track=2 step=0 vel=0.8
-d track=2 step=2 vel=0.8
-d track=2 step=4 vel=0.8
-d track=2 step=6 vel=0.8
-d track=2 step=8 vel=0.8
-d track=2 step=10 vel=0.8
-d track=2 step=12 vel=0.8
-d track=2 step=14 vel=0.8
-p track=0 step=4 param=pitch val=4
-p track=2 step=4 param=pitch val=4
-p track=1 step=4 param=pitch val=0
-p track=2 step=8 param=pitch val=-1
-p track=2 step=10 param=pitch val=-8
-p track=2 step=12 param=pitch val=-9
-
-[pattern.3]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.8
-d track=0 step=4 vel=0.8
-d track=0 step=8 vel=0.8
-d track=0 step=12 vel=0.8
-d track=1 step=4 vel=0.8
-d track=1 step=12 vel=0.8
-d track=2 step=0 vel=0.8
-d track=2 step=2 vel=0.8
-d track=2 step=4 vel=0.8
-d track=2 step=6 vel=0.8
-d track=2 step=8 vel=0.8
-d track=2 step=10 vel=0.8
-d track=2 step=12 vel=0.8
-d track=2 step=14 vel=0.8
-p track=0 step=4 param=pitch val=4
-p track=2 step=4 param=pitch val=4
-p track=1 step=4 param=pitch val=0
-p track=2 step=8 param=pitch val=-1
-p track=2 step=10 param=pitch val=-8
-p track=2 step=12 param=pitch val=-9
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=2 vel=0.8
+d step=4 vel=0.8
+d step=6 vel=0.8
+d step=8 vel=0.8
+d step=10 vel=0.8
+d step=12 vel=0.8
+d step=14 vel=0.8
+p step=4 param=pitch val=4
+p step=8 param=pitch val=-1
+p step=10 param=pitch val=-8
+p step=12 param=pitch val=-9
 
 [pattern.4]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.8
-d track=0 step=4 vel=0.8
-d track=0 step=8 vel=0.8
-d track=0 step=12 vel=0.8
-d track=1 step=4 vel=0.8
-d track=1 step=12 vel=0.8
-d track=2 step=0 vel=0.8
-d track=2 step=2 vel=0.8
-d track=2 step=4 vel=0.8
-d track=2 step=6 vel=0.8
-d track=2 step=8 vel=0.8
-d track=2 step=10 vel=0.8
-d track=2 step=12 vel=0.8
-d track=2 step=14 vel=0.8
-p track=0 step=4 param=pitch val=4
-p track=2 step=4 param=pitch val=4
-p track=1 step=4 param=pitch val=0
-p track=2 step=8 param=pitch val=-1
-p track=2 step=10 param=pitch val=-8
-p track=2 step=12 param=pitch val=-9
+trackType = melodic
+length = 16
+m step=0 note=F2 vel=0.494 gate=1
+m step=0 note=F2 vel=0.749 gate=1
+m step=2 note=G#2 vel=0.8 gate=1
+m step=4 note=A2 vel=0.8 gate=1
+m step=6 note=A#2 vel=0.8 gate=1
+m step=8 note=B2 vel=0.8 gate=2 nudge=-2 gateNudge=10
+m step=12 note=C3 vel=0.8 gate=2 nudge=5 gateNudge=13
 
-[pattern.5]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.8
-d track=0 step=4 vel=0.8
-d track=0 step=8 vel=0.8
-d track=0 step=12 vel=0.8
-d track=1 step=4 vel=0.8
-d track=1 step=12 vel=0.8
-d track=2 step=0 vel=0.8
-d track=2 step=2 vel=0.8
-d track=2 step=4 vel=0.8
-d track=2 step=6 vel=0.8
-d track=2 step=8 vel=0.8
-d track=2 step=10 vel=0.8
-d track=2 step=12 vel=0.8
-d track=2 step=14 vel=0.8
-p track=0 step=4 param=pitch val=4
-p track=2 step=4 param=pitch val=4
-p track=1 step=4 param=pitch val=0
-p track=2 step=8 param=pitch val=-1
-p track=2 step=10 param=pitch val=-8
-p track=2 step=12 param=pitch val=-9
+[pattern.12]
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=4 vel=0.8
+d step=8 vel=0.8
+d step=12 vel=0.8
+p step=4 param=pitch val=4
 
-[pattern.6]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.8
-d track=0 step=4 vel=0.8
-d track=0 step=8 vel=0.8
-d track=0 step=12 vel=0.8
-d track=1 step=4 vel=0.8
-d track=1 step=12 vel=0.8
-d track=2 step=0 vel=0.8
-d track=2 step=2 vel=0.8
-d track=2 step=4 vel=0.8
-d track=2 step=6 vel=0.8
-d track=2 step=8 vel=0.8
-d track=2 step=10 vel=0.8
-d track=2 step=12 vel=0.8
-d track=2 step=14 vel=0.8
-p track=0 step=4 param=pitch val=4
-p track=2 step=4 param=pitch val=4
-p track=1 step=4 param=pitch val=0
-p track=2 step=8 param=pitch val=-1
-p track=2 step=10 param=pitch val=-8
-p track=2 step=12 param=pitch val=-9
+[pattern.13]
+trackType = drum
+length = 16
+d step=4 vel=0.8
+d step=12 vel=0.8
+p step=4 param=pitch val=0
 
-[pattern.7]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.8
-d track=0 step=4 vel=0.8
-d track=0 step=8 vel=0.8
-d track=0 step=12 vel=0.8
-d track=1 step=4 vel=0.8
-d track=1 step=12 vel=0.8
-d track=2 step=0 vel=0.8
-d track=2 step=2 vel=0.8
-d track=2 step=4 vel=0.8
-d track=2 step=6 vel=0.8
-d track=2 step=8 vel=0.8
-d track=2 step=10 vel=0.8
-d track=2 step=12 vel=0.8
-d track=2 step=14 vel=0.8
-p track=0 step=4 param=pitch val=4
-p track=2 step=4 param=pitch val=4
-p track=1 step=4 param=pitch val=0
-p track=2 step=8 param=pitch val=-1
-p track=2 step=10 param=pitch val=-8
-p track=2 step=12 param=pitch val=-9
+[pattern.14]
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=2 vel=0.8
+d step=4 vel=0.8
+d step=6 vel=0.8
+d step=8 vel=0.8
+d step=10 vel=0.8
+d step=12 vel=0.8
+d step=14 vel=0.8
+p step=4 param=pitch val=4
+p step=8 param=pitch val=-1
+p step=10 param=pitch val=-8
+p step=12 param=pitch val=-9
+
+[pattern.24]
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=4 vel=0.8
+d step=8 vel=0.8
+d step=12 vel=0.8
+p step=4 param=pitch val=4
+
+[pattern.25]
+trackType = drum
+length = 16
+d step=4 vel=0.8
+d step=12 vel=0.8
+p step=4 param=pitch val=0
+
+[pattern.26]
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=2 vel=0.8
+d step=4 vel=0.8
+d step=6 vel=0.8
+d step=8 vel=0.8
+d step=10 vel=0.8
+d step=12 vel=0.8
+d step=14 vel=0.8
+p step=4 param=pitch val=4
+p step=8 param=pitch val=-1
+p step=10 param=pitch val=-8
+p step=12 param=pitch val=-9
+
+[pattern.36]
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=4 vel=0.8
+d step=8 vel=0.8
+d step=12 vel=0.8
+p step=4 param=pitch val=4
+
+[pattern.37]
+trackType = drum
+length = 16
+d step=4 vel=0.8
+d step=12 vel=0.8
+p step=4 param=pitch val=0
+
+[pattern.38]
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=2 vel=0.8
+d step=4 vel=0.8
+d step=6 vel=0.8
+d step=8 vel=0.8
+d step=10 vel=0.8
+d step=12 vel=0.8
+d step=14 vel=0.8
+p step=4 param=pitch val=4
+p step=8 param=pitch val=-1
+p step=10 param=pitch val=-8
+p step=12 param=pitch val=-9
+
+[pattern.48]
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=4 vel=0.8
+d step=8 vel=0.8
+d step=12 vel=0.8
+p step=4 param=pitch val=4
+
+[pattern.49]
+trackType = drum
+length = 16
+d step=4 vel=0.8
+d step=12 vel=0.8
+p step=4 param=pitch val=0
+
+[pattern.50]
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=2 vel=0.8
+d step=4 vel=0.8
+d step=6 vel=0.8
+d step=8 vel=0.8
+d step=10 vel=0.8
+d step=12 vel=0.8
+d step=14 vel=0.8
+p step=4 param=pitch val=4
+p step=8 param=pitch val=-1
+p step=10 param=pitch val=-8
+p step=12 param=pitch val=-9
+
+[pattern.60]
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=4 vel=0.8
+d step=8 vel=0.8
+d step=12 vel=0.8
+p step=4 param=pitch val=4
+
+[pattern.61]
+trackType = drum
+length = 16
+d step=4 vel=0.8
+d step=12 vel=0.8
+p step=4 param=pitch val=0
+
+[pattern.62]
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=2 vel=0.8
+d step=4 vel=0.8
+d step=6 vel=0.8
+d step=8 vel=0.8
+d step=10 vel=0.8
+d step=12 vel=0.8
+d step=14 vel=0.8
+p step=4 param=pitch val=4
+p step=8 param=pitch val=-1
+p step=10 param=pitch val=-8
+p step=12 param=pitch val=-9
+
+[pattern.72]
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=4 vel=0.8
+d step=8 vel=0.8
+d step=12 vel=0.8
+p step=4 param=pitch val=4
+
+[pattern.73]
+trackType = drum
+length = 16
+d step=4 vel=0.8
+d step=12 vel=0.8
+p step=4 param=pitch val=0
+
+[pattern.74]
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=2 vel=0.8
+d step=4 vel=0.8
+d step=6 vel=0.8
+d step=8 vel=0.8
+d step=10 vel=0.8
+d step=12 vel=0.8
+d step=14 vel=0.8
+p step=4 param=pitch val=4
+p step=8 param=pitch val=-1
+p step=10 param=pitch val=-8
+p step=12 param=pitch val=-9
+
+[pattern.84]
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=4 vel=0.8
+d step=8 vel=0.8
+d step=12 vel=0.8
+p step=4 param=pitch val=4
+
+[pattern.85]
+trackType = drum
+length = 16
+d step=4 vel=0.8
+d step=12 vel=0.8
+p step=4 param=pitch val=0
+
+[pattern.86]
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=2 vel=0.8
+d step=4 vel=0.8
+d step=6 vel=0.8
+d step=8 vel=0.8
+d step=10 vel=0.8
+d step=12 vel=0.8
+d step=14 vel=0.8
+p step=4 param=pitch val=4
+p step=8 param=pitch val=-1
+p step=10 param=pitch val=-8
+p step=12 param=pitch val=-9

@@ -59,6 +59,7 @@ chromaticRoot = 60
 name = "808 Kick"
 waveType = fm
 scwIndex = 0
+envelopeEnabled = true
 attack = 0
 decay = 0.5
 sustain = 0
@@ -72,6 +73,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 1
 filterResonance = 0
 filterType = 0
@@ -109,6 +111,8 @@ unisonCount = 1
 unisonDetune = 10
 unisonMix = 0.5
 monoMode = false
+monoRetrigger = false
+monoHardRetrigger = false
 glideTime = 0.1
 legatoWindow = 0.015
 notePriority = 0
@@ -141,6 +145,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -168,6 +173,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -175,6 +186,60 @@ pipeBreath = 0.5
 pipeEmbouchure = 0.5
 pipeBore = 0.5
 pipeOverblow = 0
+reedStiffness = 0.5
+reedAperture = 0.6
+reedBlowPressure = 0.5
+reedBore = 0
+reedVibratoDepth = 0
+brassBlowPressure = 0.5
+brassLipTension = 0.5
+brassLipAperture = 0.5
+brassBore = 0
+brassMute = 0
+guitarPreset = 0
+guitarBodyMix = 0.6
+guitarBodyBrightness = 0.5
+guitarPickPosition = 0.3
+guitarBuzz = 0
+mandolinPreset = 0
+mandolinBodyMix = 0.55
+mandolinCourseDetune = 2
+mandolinPickPosition = 0.2
+whistlePreset = 0
+whistleBreath = 0.8
+whistleNoiseGain = 0.15
+whistleFippleFreqMod = 0.5
+stifkarpPreset = 0
+stifkarpHardness = 0.45
+stifkarpStiffness = 0.25
+stifkarpStrikePos = 0.12
+stifkarpBodyMix = 0.45
+stifkarpBodyBrightness = 0.5
+stifkarpDamper = 0.9
+stifkarpSympathetic = 0.15
+stifkarpDetune = 0
+shakerPreset = 0
+shakerParticles = 0.22
+shakerDecayRate = 0.5
+shakerResonance = 0.5
+shakerBrightness = 0.5
+shakerScrape = 0
+bandedwgPreset = 0
+bandedwgBowPressure = 0.5
+bandedwgBowSpeed = 0.5
+bandedwgStrikePos = 0.5
+bandedwgBrightness = 0.6
+bandedwgSustain = 0.7
+vfPhoneme = 0
+vfPhonemeTarget = -1
+vfMorphRate = 5
+vfAspiration = 0.1
+vfOpenQuotient = 0.5
+vfSpectralTilt = 0.3
+vfFormantShift = 1
+vfVibratoDepth = 0.15
+vfVibratoRate = 5.5
+vfConsonant = -1
 birdType = 0
 birdChirpRange = 1
 birdTrillRate = 0
@@ -182,6 +247,26 @@ birdTrillDepth = 0
 birdAmRate = 0
 birdAmDepth = 0
 birdHarmonics = 0.2
+epHardness = 0.4
+epToneBar = 0.5
+epPickupPos = 0.3
+epPickupDist = 0.4
+epDecay = 3
+epBell = 0.5
+epBellTone = 0.5
+epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 19
 pitchEnvDecay = 0.04
 pitchEnvCurve = 0
@@ -196,14 +281,23 @@ retriggerOverlap = false
 retriggerBurstDecay = 0.02
 osc2Ratio = 0
 osc2Level = 0
+osc2Decay = 0
 osc3Ratio = 0
 osc3Level = 0
+osc3Decay = 0
 osc4Ratio = 0
 osc4Level = 0
+osc4Decay = 0
 osc5Ratio = 0
 osc5Level = 0
+osc5Decay = 0
 osc6Ratio = 0
 osc6Level = 0
+osc6Decay = 0
+oscVelSens = 0
+velToFilter = 0
+velToClick = 0
+velToDrive = 0
 drive = 0.5
 driveMode = 0
 clickLevel = 0.3
@@ -228,11 +322,36 @@ hardSyncRatio = 1.5
 acidMode = false
 accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
+formantEnabled = false
+formantFrom = 0
+formantTo = 3
+formantMorphTime = 0.15
+formantShift = 1
+formantQ = 1
+formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.1]
 name = "808 Snare"
 waveType = fm
 scwIndex = 0
+envelopeEnabled = true
 attack = 0
 decay = 0.2
 sustain = 0
@@ -246,6 +365,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 1
 filterResonance = 0
 filterType = 0
@@ -283,6 +403,8 @@ unisonCount = 1
 unisonDetune = 10
 unisonMix = 0.5
 monoMode = false
+monoRetrigger = false
+monoHardRetrigger = false
 glideTime = 0.1
 legatoWindow = 0.015
 notePriority = 0
@@ -315,6 +437,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -342,6 +465,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -349,6 +478,60 @@ pipeBreath = 0.5
 pipeEmbouchure = 0.5
 pipeBore = 0.5
 pipeOverblow = 0
+reedStiffness = 0.5
+reedAperture = 0.6
+reedBlowPressure = 0.5
+reedBore = 0
+reedVibratoDepth = 0
+brassBlowPressure = 0.5
+brassLipTension = 0.5
+brassLipAperture = 0.5
+brassBore = 0
+brassMute = 0
+guitarPreset = 0
+guitarBodyMix = 0.6
+guitarBodyBrightness = 0.5
+guitarPickPosition = 0.3
+guitarBuzz = 0
+mandolinPreset = 0
+mandolinBodyMix = 0.55
+mandolinCourseDetune = 2
+mandolinPickPosition = 0.2
+whistlePreset = 0
+whistleBreath = 0.8
+whistleNoiseGain = 0.15
+whistleFippleFreqMod = 0.5
+stifkarpPreset = 0
+stifkarpHardness = 0.45
+stifkarpStiffness = 0.25
+stifkarpStrikePos = 0.12
+stifkarpBodyMix = 0.45
+stifkarpBodyBrightness = 0.5
+stifkarpDamper = 0.9
+stifkarpSympathetic = 0.15
+stifkarpDetune = 0
+shakerPreset = 0
+shakerParticles = 0.22
+shakerDecayRate = 0.5
+shakerResonance = 0.5
+shakerBrightness = 0.5
+shakerScrape = 0
+bandedwgPreset = 0
+bandedwgBowPressure = 0.5
+bandedwgBowSpeed = 0.5
+bandedwgStrikePos = 0.5
+bandedwgBrightness = 0.6
+bandedwgSustain = 0.7
+vfPhoneme = 0
+vfPhonemeTarget = -1
+vfMorphRate = 5
+vfAspiration = 0.1
+vfOpenQuotient = 0.5
+vfSpectralTilt = 0.3
+vfFormantShift = 1
+vfVibratoDepth = 0.15
+vfVibratoRate = 5.5
+vfConsonant = -1
 birdType = 0
 birdChirpRange = 1
 birdTrillRate = 0
@@ -356,6 +539,26 @@ birdTrillDepth = 0
 birdAmRate = 0
 birdAmDepth = 0
 birdHarmonics = 0.2
+epHardness = 0.4
+epToneBar = 0.5
+epPickupPos = 0.3
+epPickupDist = 0.4
+epDecay = 3
+epBell = 0.5
+epBellTone = 0.5
+epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -370,14 +573,23 @@ retriggerOverlap = false
 retriggerBurstDecay = 0.02
 osc2Ratio = 1.5
 osc2Level = 0.5
+osc2Decay = 0
 osc3Ratio = 0
 osc3Level = 0
+osc3Decay = 0
 osc4Ratio = 0
 osc4Level = 0
+osc4Decay = 0
 osc5Ratio = 0
 osc5Level = 0
+osc5Decay = 0
 osc6Ratio = 0
 osc6Level = 0
+osc6Decay = 0
+oscVelSens = 0
+velToFilter = 0
+velToClick = 0
+velToDrive = 0
 drive = 0
 driveMode = 0
 clickLevel = 0
@@ -402,11 +614,36 @@ hardSyncRatio = 1.5
 acidMode = false
 accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
+formantEnabled = false
+formantFrom = 0
+formantTo = 3
+formantMorphTime = 0.15
+formantShift = 1
+formantQ = 1
+formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.2]
 name = "808 CH"
 waveType = square
 scwIndex = 0
+envelopeEnabled = true
 attack = 0
 decay = 0.05
 sustain = 0
@@ -420,6 +657,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 0.58
 filterResonance = 0
 filterType = 4
@@ -457,6 +695,8 @@ unisonCount = 1
 unisonDetune = 10
 unisonMix = 0.5
 monoMode = false
+monoRetrigger = false
+monoHardRetrigger = false
 glideTime = 0.1
 legatoWindow = 0.015
 notePriority = 0
@@ -489,6 +729,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -516,6 +757,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -523,6 +770,60 @@ pipeBreath = 0.5
 pipeEmbouchure = 0.5
 pipeBore = 0.5
 pipeOverblow = 0
+reedStiffness = 0.5
+reedAperture = 0.6
+reedBlowPressure = 0.5
+reedBore = 0
+reedVibratoDepth = 0
+brassBlowPressure = 0.5
+brassLipTension = 0.5
+brassLipAperture = 0.5
+brassBore = 0
+brassMute = 0
+guitarPreset = 0
+guitarBodyMix = 0.6
+guitarBodyBrightness = 0.5
+guitarPickPosition = 0.3
+guitarBuzz = 0
+mandolinPreset = 0
+mandolinBodyMix = 0.55
+mandolinCourseDetune = 2
+mandolinPickPosition = 0.2
+whistlePreset = 0
+whistleBreath = 0.8
+whistleNoiseGain = 0.15
+whistleFippleFreqMod = 0.5
+stifkarpPreset = 0
+stifkarpHardness = 0.45
+stifkarpStiffness = 0.25
+stifkarpStrikePos = 0.12
+stifkarpBodyMix = 0.45
+stifkarpBodyBrightness = 0.5
+stifkarpDamper = 0.9
+stifkarpSympathetic = 0.15
+stifkarpDetune = 0
+shakerPreset = 0
+shakerParticles = 0.22
+shakerDecayRate = 0.5
+shakerResonance = 0.5
+shakerBrightness = 0.5
+shakerScrape = 0
+bandedwgPreset = 0
+bandedwgBowPressure = 0.5
+bandedwgBowSpeed = 0.5
+bandedwgStrikePos = 0.5
+bandedwgBrightness = 0.6
+bandedwgSustain = 0.7
+vfPhoneme = 0
+vfPhonemeTarget = -1
+vfMorphRate = 5
+vfAspiration = 0.1
+vfOpenQuotient = 0.5
+vfSpectralTilt = 0.3
+vfFormantShift = 1
+vfVibratoDepth = 0.15
+vfVibratoRate = 5.5
+vfConsonant = -1
 birdType = 0
 birdChirpRange = 1
 birdTrillRate = 0
@@ -530,6 +831,26 @@ birdTrillDepth = 0
 birdAmRate = 0
 birdAmDepth = 0
 birdHarmonics = 0.2
+epHardness = 0.4
+epToneBar = 0.5
+epPickupPos = 0.3
+epPickupDist = 0.4
+epDecay = 3
+epBell = 0.5
+epBellTone = 0.5
+epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -544,14 +865,23 @@ retriggerOverlap = false
 retriggerBurstDecay = 0.02
 osc2Ratio = 1.4471
 osc2Level = 1
+osc2Decay = 0
 osc3Ratio = 1.617
 osc3Level = 1
+osc3Decay = 0
 osc4Ratio = 1.9265
 osc4Level = 1
+osc4Decay = 0
 osc5Ratio = 2.5028
 osc5Level = 1
+osc5Decay = 0
 osc6Ratio = 2.6637
 osc6Level = 1
+osc6Decay = 0
+oscVelSens = 0
+velToFilter = 0
+velToClick = 0
+velToDrive = 0
 drive = 0
 driveMode = 0
 clickLevel = 0
@@ -576,11 +906,36 @@ hardSyncRatio = 1.5
 acidMode = false
 accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
+formantEnabled = false
+formantFrom = 0
+formantTo = 3
+formantMorphTime = 0.15
+formantShift = 1
+formantQ = 1
+formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.3]
 name = "808 Clap"
 waveType = noise
 scwIndex = 0
+envelopeEnabled = true
 attack = 0
 decay = 0.3
 sustain = 0
@@ -594,6 +949,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 0.38
 filterResonance = 0
 filterType = 2
@@ -631,6 +987,8 @@ unisonCount = 1
 unisonDetune = 10
 unisonMix = 0.5
 monoMode = false
+monoRetrigger = false
+monoHardRetrigger = false
 glideTime = 0.1
 legatoWindow = 0.015
 notePriority = 0
@@ -663,6 +1021,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -690,6 +1049,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -697,6 +1062,60 @@ pipeBreath = 0.5
 pipeEmbouchure = 0.5
 pipeBore = 0.5
 pipeOverblow = 0
+reedStiffness = 0.5
+reedAperture = 0.6
+reedBlowPressure = 0.5
+reedBore = 0
+reedVibratoDepth = 0
+brassBlowPressure = 0.5
+brassLipTension = 0.5
+brassLipAperture = 0.5
+brassBore = 0
+brassMute = 0
+guitarPreset = 0
+guitarBodyMix = 0.6
+guitarBodyBrightness = 0.5
+guitarPickPosition = 0.3
+guitarBuzz = 0
+mandolinPreset = 0
+mandolinBodyMix = 0.55
+mandolinCourseDetune = 2
+mandolinPickPosition = 0.2
+whistlePreset = 0
+whistleBreath = 0.8
+whistleNoiseGain = 0.15
+whistleFippleFreqMod = 0.5
+stifkarpPreset = 0
+stifkarpHardness = 0.45
+stifkarpStiffness = 0.25
+stifkarpStrikePos = 0.12
+stifkarpBodyMix = 0.45
+stifkarpBodyBrightness = 0.5
+stifkarpDamper = 0.9
+stifkarpSympathetic = 0.15
+stifkarpDetune = 0
+shakerPreset = 0
+shakerParticles = 0.22
+shakerDecayRate = 0.5
+shakerResonance = 0.5
+shakerBrightness = 0.5
+shakerScrape = 0
+bandedwgPreset = 0
+bandedwgBowPressure = 0.5
+bandedwgBowSpeed = 0.5
+bandedwgStrikePos = 0.5
+bandedwgBrightness = 0.6
+bandedwgSustain = 0.7
+vfPhoneme = 0
+vfPhonemeTarget = -1
+vfMorphRate = 5
+vfAspiration = 0.1
+vfOpenQuotient = 0.5
+vfSpectralTilt = 0.3
+vfFormantShift = 1
+vfVibratoDepth = 0.15
+vfVibratoRate = 5.5
+vfConsonant = -1
 birdType = 0
 birdChirpRange = 1
 birdTrillRate = 0
@@ -704,6 +1123,26 @@ birdTrillDepth = 0
 birdAmRate = 0
 birdAmDepth = 0
 birdHarmonics = 0.2
+epHardness = 0.4
+epToneBar = 0.5
+epPickupPos = 0.3
+epPickupDist = 0.4
+epDecay = 3
+epBell = 0.5
+epBellTone = 0.5
+epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -718,14 +1157,23 @@ retriggerOverlap = true
 retriggerBurstDecay = 0.02
 osc2Ratio = 0
 osc2Level = 0
+osc2Decay = 0
 osc3Ratio = 0
 osc3Level = 0
+osc3Decay = 0
 osc4Ratio = 0
 osc4Level = 0
+osc4Decay = 0
 osc5Ratio = 0
 osc5Level = 0
+osc5Decay = 0
 osc6Ratio = 0
 osc6Level = 0
+osc6Decay = 0
+oscVelSens = 0
+velToFilter = 0
+velToClick = 0
+velToDrive = 0
 drive = 0
 driveMode = 0
 clickLevel = 0
@@ -750,11 +1198,36 @@ hardSyncRatio = 1.5
 acidMode = false
 accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
+formantEnabled = false
+formantFrom = 0
+formantTo = 3
+formantMorphTime = 0.15
+formantShift = 1
+formantQ = 1
+formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.4]
 name = "Warm Pluck"
 waveType = pluck
 scwIndex = 0
+envelopeEnabled = true
 attack = 0.01
 decay = 0.1
 sustain = 0.5
@@ -768,6 +1241,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 0.3
 filterResonance = 0.1
 filterType = 0
@@ -805,6 +1279,8 @@ unisonCount = 1
 unisonDetune = 10
 unisonMix = 0.5
 monoMode = false
+monoRetrigger = false
+monoHardRetrigger = false
 glideTime = 0.1
 legatoWindow = 0.015
 notePriority = 0
@@ -837,6 +1313,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -864,6 +1341,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -871,6 +1354,60 @@ pipeBreath = 0.5
 pipeEmbouchure = 0.5
 pipeBore = 0.5
 pipeOverblow = 0
+reedStiffness = 0.5
+reedAperture = 0.6
+reedBlowPressure = 0.5
+reedBore = 0
+reedVibratoDepth = 0
+brassBlowPressure = 0.5
+brassLipTension = 0.5
+brassLipAperture = 0.5
+brassBore = 0
+brassMute = 0
+guitarPreset = 0
+guitarBodyMix = 0.6
+guitarBodyBrightness = 0.5
+guitarPickPosition = 0.3
+guitarBuzz = 0
+mandolinPreset = 0
+mandolinBodyMix = 0.55
+mandolinCourseDetune = 2
+mandolinPickPosition = 0.2
+whistlePreset = 0
+whistleBreath = 0.8
+whistleNoiseGain = 0.15
+whistleFippleFreqMod = 0.5
+stifkarpPreset = 0
+stifkarpHardness = 0.45
+stifkarpStiffness = 0.25
+stifkarpStrikePos = 0.12
+stifkarpBodyMix = 0.45
+stifkarpBodyBrightness = 0.5
+stifkarpDamper = 0.9
+stifkarpSympathetic = 0.15
+stifkarpDetune = 0
+shakerPreset = 0
+shakerParticles = 0.22
+shakerDecayRate = 0.5
+shakerResonance = 0.5
+shakerBrightness = 0.5
+shakerScrape = 0
+bandedwgPreset = 0
+bandedwgBowPressure = 0.5
+bandedwgBowSpeed = 0.5
+bandedwgStrikePos = 0.5
+bandedwgBrightness = 0.6
+bandedwgSustain = 0.7
+vfPhoneme = 0
+vfPhonemeTarget = -1
+vfMorphRate = 5
+vfAspiration = 0.1
+vfOpenQuotient = 0.5
+vfSpectralTilt = 0.3
+vfFormantShift = 1
+vfVibratoDepth = 0.15
+vfVibratoRate = 5.5
+vfConsonant = -1
 birdType = 0
 birdChirpRange = 1
 birdTrillRate = 0
@@ -878,6 +1415,26 @@ birdTrillDepth = 0
 birdAmRate = 0
 birdAmDepth = 0
 birdHarmonics = 0.2
+epHardness = 0.4
+epToneBar = 0.5
+epPickupPos = 0.3
+epPickupDist = 0.4
+epDecay = 3
+epBell = 0.5
+epBellTone = 0.5
+epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -892,14 +1449,23 @@ retriggerOverlap = false
 retriggerBurstDecay = 0.02
 osc2Ratio = 0
 osc2Level = 0
+osc2Decay = 0
 osc3Ratio = 0
 osc3Level = 0
+osc3Decay = 0
 osc4Ratio = 0
 osc4Level = 0
+osc4Decay = 0
 osc5Ratio = 0
 osc5Level = 0
+osc5Decay = 0
 osc6Ratio = 0
 osc6Level = 0
+osc6Decay = 0
+oscVelSens = 0
+velToFilter = 0
+velToClick = 0
+velToDrive = 0
 drive = 0
 driveMode = 0
 clickLevel = 0
@@ -924,11 +1490,36 @@ hardSyncRatio = 1.5
 acidMode = false
 accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
+formantEnabled = false
+formantFrom = 0
+formantTo = 3
+formantMorphTime = 0.15
+formantShift = 1
+formantQ = 1
+formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.5]
 name = "Mac Keys"
 waveType = fm
 scwIndex = 0
+envelopeEnabled = true
 attack = 0.005
 decay = 0.5
 sustain = 0.25
@@ -942,6 +1533,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 0
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 0.6
 filterResonance = 0
 filterType = 0
@@ -979,6 +1571,8 @@ unisonCount = 1
 unisonDetune = 10
 unisonMix = 0.5
 monoMode = false
+monoRetrigger = false
+monoHardRetrigger = false
 glideTime = 0.1
 legatoWindow = 0.015
 notePriority = 0
@@ -1011,6 +1605,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -1038,6 +1633,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -1045,6 +1646,60 @@ pipeBreath = 0.5
 pipeEmbouchure = 0.5
 pipeBore = 0.5
 pipeOverblow = 0
+reedStiffness = 0.5
+reedAperture = 0.6
+reedBlowPressure = 0.5
+reedBore = 0
+reedVibratoDepth = 0
+brassBlowPressure = 0.5
+brassLipTension = 0.5
+brassLipAperture = 0.5
+brassBore = 0
+brassMute = 0
+guitarPreset = 0
+guitarBodyMix = 0.6
+guitarBodyBrightness = 0.5
+guitarPickPosition = 0.3
+guitarBuzz = 0
+mandolinPreset = 0
+mandolinBodyMix = 0.55
+mandolinCourseDetune = 2
+mandolinPickPosition = 0.2
+whistlePreset = 0
+whistleBreath = 0.8
+whistleNoiseGain = 0.15
+whistleFippleFreqMod = 0.5
+stifkarpPreset = 0
+stifkarpHardness = 0.45
+stifkarpStiffness = 0.25
+stifkarpStrikePos = 0.12
+stifkarpBodyMix = 0.45
+stifkarpBodyBrightness = 0.5
+stifkarpDamper = 0.9
+stifkarpSympathetic = 0.15
+stifkarpDetune = 0
+shakerPreset = 0
+shakerParticles = 0.22
+shakerDecayRate = 0.5
+shakerResonance = 0.5
+shakerBrightness = 0.5
+shakerScrape = 0
+bandedwgPreset = 0
+bandedwgBowPressure = 0.5
+bandedwgBowSpeed = 0.5
+bandedwgStrikePos = 0.5
+bandedwgBrightness = 0.6
+bandedwgSustain = 0.7
+vfPhoneme = 0
+vfPhonemeTarget = -1
+vfMorphRate = 5
+vfAspiration = 0.1
+vfOpenQuotient = 0.5
+vfSpectralTilt = 0.3
+vfFormantShift = 1
+vfVibratoDepth = 0.15
+vfVibratoRate = 5.5
+vfConsonant = -1
 birdType = 0
 birdChirpRange = 1
 birdTrillRate = 0
@@ -1052,6 +1707,26 @@ birdTrillDepth = 0
 birdAmRate = 0
 birdAmDepth = 0
 birdHarmonics = 0.2
+epHardness = 0.4
+epToneBar = 0.5
+epPickupPos = 0.3
+epPickupDist = 0.4
+epDecay = 3
+epBell = 0.5
+epBellTone = 0.5
+epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -1066,14 +1741,23 @@ retriggerOverlap = false
 retriggerBurstDecay = 0.02
 osc2Ratio = 0
 osc2Level = 0
+osc2Decay = 0
 osc3Ratio = 0
 osc3Level = 0
+osc3Decay = 0
 osc4Ratio = 0
 osc4Level = 0
+osc4Decay = 0
 osc5Ratio = 0
 osc5Level = 0
+osc5Decay = 0
 osc6Ratio = 0
 osc6Level = 0
+osc6Decay = 0
+oscVelSens = 0
+velToFilter = 0
+velToClick = 0
+velToDrive = 0
 drive = 0
 driveMode = 0
 clickLevel = 0
@@ -1098,11 +1782,36 @@ hardSyncRatio = 1.5
 acidMode = false
 accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
+formantEnabled = false
+formantFrom = 0
+formantTo = 3
+formantMorphTime = 0.15
+formantShift = 1
+formantQ = 1
+formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.6]
 name = "Mac Keys"
 waveType = fm
 scwIndex = 0
+envelopeEnabled = true
 attack = 0.005
 decay = 0.5
 sustain = 0.25
@@ -1116,6 +1825,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 0
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 0.6
 filterResonance = 0
 filterType = 0
@@ -1153,6 +1863,8 @@ unisonCount = 1
 unisonDetune = 10
 unisonMix = 0.5
 monoMode = false
+monoRetrigger = false
+monoHardRetrigger = false
 glideTime = 0.1
 legatoWindow = 0.015
 notePriority = 0
@@ -1185,6 +1897,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -1212,6 +1925,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -1219,6 +1938,60 @@ pipeBreath = 0.5
 pipeEmbouchure = 0.5
 pipeBore = 0.5
 pipeOverblow = 0
+reedStiffness = 0.5
+reedAperture = 0.6
+reedBlowPressure = 0.5
+reedBore = 0
+reedVibratoDepth = 0
+brassBlowPressure = 0.5
+brassLipTension = 0.5
+brassLipAperture = 0.5
+brassBore = 0
+brassMute = 0
+guitarPreset = 0
+guitarBodyMix = 0.6
+guitarBodyBrightness = 0.5
+guitarPickPosition = 0.3
+guitarBuzz = 0
+mandolinPreset = 0
+mandolinBodyMix = 0.55
+mandolinCourseDetune = 2
+mandolinPickPosition = 0.2
+whistlePreset = 0
+whistleBreath = 0.8
+whistleNoiseGain = 0.15
+whistleFippleFreqMod = 0.5
+stifkarpPreset = 0
+stifkarpHardness = 0.45
+stifkarpStiffness = 0.25
+stifkarpStrikePos = 0.12
+stifkarpBodyMix = 0.45
+stifkarpBodyBrightness = 0.5
+stifkarpDamper = 0.9
+stifkarpSympathetic = 0.15
+stifkarpDetune = 0
+shakerPreset = 0
+shakerParticles = 0.22
+shakerDecayRate = 0.5
+shakerResonance = 0.5
+shakerBrightness = 0.5
+shakerScrape = 0
+bandedwgPreset = 0
+bandedwgBowPressure = 0.5
+bandedwgBowSpeed = 0.5
+bandedwgStrikePos = 0.5
+bandedwgBrightness = 0.6
+bandedwgSustain = 0.7
+vfPhoneme = 0
+vfPhonemeTarget = -1
+vfMorphRate = 5
+vfAspiration = 0.1
+vfOpenQuotient = 0.5
+vfSpectralTilt = 0.3
+vfFormantShift = 1
+vfVibratoDepth = 0.15
+vfVibratoRate = 5.5
+vfConsonant = -1
 birdType = 0
 birdChirpRange = 1
 birdTrillRate = 0
@@ -1226,6 +1999,26 @@ birdTrillDepth = 0
 birdAmRate = 0
 birdAmDepth = 0
 birdHarmonics = 0.2
+epHardness = 0.4
+epToneBar = 0.5
+epPickupPos = 0.3
+epPickupDist = 0.4
+epDecay = 3
+epBell = 0.5
+epBellTone = 0.5
+epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -1240,14 +2033,23 @@ retriggerOverlap = false
 retriggerBurstDecay = 0.02
 osc2Ratio = 0
 osc2Level = 0
+osc2Decay = 0
 osc3Ratio = 0
 osc3Level = 0
+osc3Decay = 0
 osc4Ratio = 0
 osc4Level = 0
+osc4Decay = 0
 osc5Ratio = 0
 osc5Level = 0
+osc5Decay = 0
 osc6Ratio = 0
 osc6Level = 0
+osc6Decay = 0
+oscVelSens = 0
+velToFilter = 0
+velToClick = 0
+velToDrive = 0
 drive = 0
 driveMode = 0
 clickLevel = 0
@@ -1272,10 +2074,35 @@ hardSyncRatio = 1.5
 acidMode = false
 accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
+formantEnabled = false
+formantFrom = 0
+formantTo = 3
+formantMorphTime = 0.15
+formantShift = 1
+formantQ = 1
+formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.7]
 waveType = square
 scwIndex = 0
+envelopeEnabled = true
 attack = 0
 decay = 0
 sustain = 0
@@ -1289,6 +2116,7 @@ pwmRate = 0
 pwmDepth = 0
 vibratoRate = 0
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 0
 filterResonance = 0
 filterType = 0
@@ -1326,6 +2154,8 @@ unisonCount = 0
 unisonDetune = 0
 unisonMix = 0
 monoMode = false
+monoRetrigger = false
+monoHardRetrigger = false
 glideTime = 0
 legatoWindow = 0.015
 notePriority = 0
@@ -1358,6 +2188,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 0
 granularDensity = 0
 granularPosition = 0
@@ -1385,6 +2216,12 @@ membraneDamping = 0
 membraneStrike = 0
 membraneBend = 0
 membraneBendDecay = 0
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0
 bowSpeed = 0
 bowPosition = 0
@@ -1392,6 +2229,60 @@ pipeBreath = 0
 pipeEmbouchure = 0
 pipeBore = 0
 pipeOverblow = 0
+reedStiffness = 0.5
+reedAperture = 0.6
+reedBlowPressure = 0.5
+reedBore = 0
+reedVibratoDepth = 0
+brassBlowPressure = 0.5
+brassLipTension = 0.5
+brassLipAperture = 0.5
+brassBore = 0
+brassMute = 0
+guitarPreset = 0
+guitarBodyMix = 0.6
+guitarBodyBrightness = 0.5
+guitarPickPosition = 0.3
+guitarBuzz = 0
+mandolinPreset = 0
+mandolinBodyMix = 0.55
+mandolinCourseDetune = 2
+mandolinPickPosition = 0.2
+whistlePreset = 0
+whistleBreath = 0.8
+whistleNoiseGain = 0.15
+whistleFippleFreqMod = 0.5
+stifkarpPreset = 0
+stifkarpHardness = 0.45
+stifkarpStiffness = 0.25
+stifkarpStrikePos = 0.12
+stifkarpBodyMix = 0.45
+stifkarpBodyBrightness = 0.5
+stifkarpDamper = 0.9
+stifkarpSympathetic = 0.15
+stifkarpDetune = 0
+shakerPreset = 0
+shakerParticles = 0.22
+shakerDecayRate = 0.5
+shakerResonance = 0.5
+shakerBrightness = 0.5
+shakerScrape = 0
+bandedwgPreset = 0
+bandedwgBowPressure = 0.5
+bandedwgBowSpeed = 0.5
+bandedwgStrikePos = 0.5
+bandedwgBrightness = 0.6
+bandedwgSustain = 0.7
+vfPhoneme = 0
+vfPhonemeTarget = -1
+vfMorphRate = 5
+vfAspiration = 0.1
+vfOpenQuotient = 0.5
+vfSpectralTilt = 0.3
+vfFormantShift = 1
+vfVibratoDepth = 0.15
+vfVibratoRate = 5.5
+vfConsonant = -1
 birdType = 0
 birdChirpRange = 0
 birdTrillRate = 0
@@ -1399,6 +2290,26 @@ birdTrillDepth = 0
 birdAmRate = 0
 birdAmDepth = 0
 birdHarmonics = 0
+epHardness = 0.4
+epToneBar = 0.5
+epPickupPos = 0.3
+epPickupDist = 0.4
+epDecay = 3
+epBell = 0.5
+epBellTone = 0.5
+epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0
 pitchEnvCurve = 0
@@ -1413,14 +2324,23 @@ retriggerOverlap = false
 retriggerBurstDecay = 0
 osc2Ratio = 0
 osc2Level = 0
+osc2Decay = 0
 osc3Ratio = 0
 osc3Level = 0
+osc3Decay = 0
 osc4Ratio = 0
 osc4Level = 0
+osc4Decay = 0
 osc5Ratio = 0
 osc5Level = 0
+osc5Decay = 0
 osc6Ratio = 0
 osc6Level = 0
+osc6Decay = 0
+oscVelSens = 0
+velToFilter = 0
+velToClick = 0
+velToDrive = 0
 drive = 0
 driveMode = 0
 clickLevel = 0
@@ -1445,6 +2365,30 @@ hardSyncRatio = 0
 acidMode = false
 accentSweepAmt = 0
 gimmickDipAmt = 0
+formantEnabled = false
+formantFrom = 0
+formantTo = 3
+formantMorphTime = 0.15
+formantShift = 1
+formantQ = 1
+formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [mixer]
 vol0 = 0.8
@@ -1490,6 +2434,31 @@ combFreq0 = 0
 combFB0 = 0
 combMix0 = 0
 combDamping0 = 0
+octaverOn0 = false
+octaverMix0 = 0
+octaverSub0 = 0
+octaverTone0 = 0
+tremoloOn0 = false
+tremoloRate0 = 0
+tremoloDepth0 = 0
+tremoloShape0 = 0
+leslieOn0 = false
+leslieSpeed0 = 0
+leslieDrive0 = 0
+leslieBal0 = 0
+leslieDopp0 = 0
+leslieMix0 = 0
+wahOn0 = false
+wahMode0 = 0
+wahRate0 = 0
+wahSens0 = 0
+wahFreqLow0 = 0
+wahFreqHigh0 = 0
+wahRes0 = 0
+wahMix0 = 0
+ringModOn0 = false
+ringModFreq0 = 0
+ringModMix0 = 0
 compOn0 = false
 compThresh0 = 0
 compRatio0 = 0
@@ -1539,6 +2508,31 @@ combFreq1 = 0
 combFB1 = 0
 combMix1 = 0
 combDamping1 = 0
+octaverOn1 = false
+octaverMix1 = 0
+octaverSub1 = 0
+octaverTone1 = 0
+tremoloOn1 = false
+tremoloRate1 = 0
+tremoloDepth1 = 0
+tremoloShape1 = 0
+leslieOn1 = false
+leslieSpeed1 = 0
+leslieDrive1 = 0
+leslieBal1 = 0
+leslieDopp1 = 0
+leslieMix1 = 0
+wahOn1 = false
+wahMode1 = 0
+wahRate1 = 0
+wahSens1 = 0
+wahFreqLow1 = 0
+wahFreqHigh1 = 0
+wahRes1 = 0
+wahMix1 = 0
+ringModOn1 = false
+ringModFreq1 = 0
+ringModMix1 = 0
 compOn1 = false
 compThresh1 = 0
 compRatio1 = 0
@@ -1588,6 +2582,31 @@ combFreq2 = 0
 combFB2 = 0
 combMix2 = 0
 combDamping2 = 0
+octaverOn2 = false
+octaverMix2 = 0
+octaverSub2 = 0
+octaverTone2 = 0
+tremoloOn2 = false
+tremoloRate2 = 0
+tremoloDepth2 = 0
+tremoloShape2 = 0
+leslieOn2 = false
+leslieSpeed2 = 0
+leslieDrive2 = 0
+leslieBal2 = 0
+leslieDopp2 = 0
+leslieMix2 = 0
+wahOn2 = false
+wahMode2 = 0
+wahRate2 = 0
+wahSens2 = 0
+wahFreqLow2 = 0
+wahFreqHigh2 = 0
+wahRes2 = 0
+wahMix2 = 0
+ringModOn2 = false
+ringModFreq2 = 0
+ringModMix2 = 0
 compOn2 = false
 compThresh2 = 0
 compRatio2 = 0
@@ -1637,6 +2656,31 @@ combFreq3 = 0
 combFB3 = 0
 combMix3 = 0
 combDamping3 = 0
+octaverOn3 = false
+octaverMix3 = 0
+octaverSub3 = 0
+octaverTone3 = 0
+tremoloOn3 = false
+tremoloRate3 = 0
+tremoloDepth3 = 0
+tremoloShape3 = 0
+leslieOn3 = false
+leslieSpeed3 = 0
+leslieDrive3 = 0
+leslieBal3 = 0
+leslieDopp3 = 0
+leslieMix3 = 0
+wahOn3 = false
+wahMode3 = 0
+wahRate3 = 0
+wahSens3 = 0
+wahFreqLow3 = 0
+wahFreqHigh3 = 0
+wahRes3 = 0
+wahMix3 = 0
+ringModOn3 = false
+ringModFreq3 = 0
+ringModMix3 = 0
 compOn3 = false
 compThresh3 = 0
 compRatio3 = 0
@@ -1686,6 +2730,31 @@ combFreq4 = 0
 combFB4 = 0
 combMix4 = 0
 combDamping4 = 0
+octaverOn4 = false
+octaverMix4 = 0
+octaverSub4 = 0
+octaverTone4 = 0
+tremoloOn4 = false
+tremoloRate4 = 0
+tremoloDepth4 = 0
+tremoloShape4 = 0
+leslieOn4 = false
+leslieSpeed4 = 0
+leslieDrive4 = 0
+leslieBal4 = 0
+leslieDopp4 = 0
+leslieMix4 = 0
+wahOn4 = false
+wahMode4 = 0
+wahRate4 = 0
+wahSens4 = 0
+wahFreqLow4 = 0
+wahFreqHigh4 = 0
+wahRes4 = 0
+wahMix4 = 0
+ringModOn4 = false
+ringModFreq4 = 0
+ringModMix4 = 0
 compOn4 = false
 compThresh4 = 0
 compRatio4 = 0
@@ -1735,6 +2804,31 @@ combFreq5 = 0
 combFB5 = 0
 combMix5 = 0
 combDamping5 = 0
+octaverOn5 = false
+octaverMix5 = 0
+octaverSub5 = 0
+octaverTone5 = 0
+tremoloOn5 = false
+tremoloRate5 = 0
+tremoloDepth5 = 0
+tremoloShape5 = 0
+leslieOn5 = false
+leslieSpeed5 = 0
+leslieDrive5 = 0
+leslieBal5 = 0
+leslieDopp5 = 0
+leslieMix5 = 0
+wahOn5 = false
+wahMode5 = 0
+wahRate5 = 0
+wahSens5 = 0
+wahFreqLow5 = 0
+wahFreqHigh5 = 0
+wahRes5 = 0
+wahMix5 = 0
+ringModOn5 = false
+ringModFreq5 = 0
+ringModMix5 = 0
 compOn5 = false
 compThresh5 = 0
 compRatio5 = 0
@@ -1784,6 +2878,31 @@ combFreq6 = 0
 combFB6 = 0
 combMix6 = 0
 combDamping6 = 0
+octaverOn6 = false
+octaverMix6 = 0
+octaverSub6 = 0
+octaverTone6 = 0
+tremoloOn6 = false
+tremoloRate6 = 0
+tremoloDepth6 = 0
+tremoloShape6 = 0
+leslieOn6 = false
+leslieSpeed6 = 0
+leslieDrive6 = 0
+leslieBal6 = 0
+leslieDopp6 = 0
+leslieMix6 = 0
+wahOn6 = false
+wahMode6 = 0
+wahRate6 = 0
+wahSens6 = 0
+wahFreqLow6 = 0
+wahFreqHigh6 = 0
+wahRes6 = 0
+wahMix6 = 0
+ringModOn6 = false
+ringModFreq6 = 0
+ringModMix6 = 0
 compOn6 = false
 compThresh6 = 0
 compRatio6 = 0
@@ -1833,6 +2952,31 @@ combFreq7 = 0
 combFB7 = 0
 combMix7 = 0
 combDamping7 = 0
+octaverOn7 = false
+octaverMix7 = 0
+octaverSub7 = 0
+octaverTone7 = 0
+tremoloOn7 = false
+tremoloRate7 = 0
+tremoloDepth7 = 0
+tremoloShape7 = 0
+leslieOn7 = false
+leslieSpeed7 = 0
+leslieDrive7 = 0
+leslieBal7 = 0
+leslieDopp7 = 0
+leslieMix7 = 0
+wahOn7 = false
+wahMode7 = 0
+wahRate7 = 0
+wahSens7 = 0
+wahFreqLow7 = 0
+wahFreqHigh7 = 0
+wahRes7 = 0
+wahMix7 = 0
+ringModOn7 = false
+ringModFreq7 = 0
+ringModMix7 = 0
 compOn7 = false
 compThresh7 = 0
 compRatio7 = 0
@@ -1859,6 +3003,28 @@ envCurve = 1
 envHPFreq = 0
 
 [masterfx]
+octaverOn = false
+octaverMix = 0
+octaverSubLevel = 0
+octaverTone = 0
+tremoloOn = false
+tremoloRate = 0
+tremoloDepth = 0
+tremoloShape = 0
+leslieOn = false
+leslieSpeed = 0
+leslieDrive = 0
+leslieBal = 0
+leslieDopp = 0
+leslieMix = 0
+wahOn = false
+wahMode = 0
+wahRate = 0
+wahSensitivity = 0
+wahFreqLow = 0
+wahFreqHigh = 0
+wahResonance = 0
+wahMix = 0
 distOn = false
 distDrive = 2
 distTone = 0.7
@@ -1889,6 +3055,9 @@ combFreq = 0
 combFeedback = 0
 combMix = 0
 combDamping = 0
+ringModOn = false
+ringModFreq = 0
+ringModMix = 0
 tapeOn = true
 tapeSaturation = 1
 tapeWow = 0
@@ -1987,128 +3156,194 @@ rightOctave = 0
 length = 8
 loopsPerPattern = 1
 songMode = true
-patterns = 0 1 2 3 4 5 6 7
+patterns = 0 12 24 36 48 60 72 84
 loops = 0 0 0 0 0 0 0 0
 
-[pattern.0]
-drumTrackLength = 12 12 12 12
-melodyTrackLength = 12 12 12
-samplerTrackLength = 16
-m track=0 step=0 note=G2 vel=0.322 gate=4
-m track=0 step=6 note=D2 vel=0.302 gate=4
-m track=2 step=2 note=B3 vel=0.22 gate=4 sustain=2
-m track=2 step=2 note=D4 vel=0.22 gate=4
-m track=2 step=2 note=F#4 vel=0.22 gate=4
-m track=2 step=8 note=A3 vel=0.22 gate=4 sustain=2
-m track=2 step=8 note=C#4 vel=0.22 gate=4
-m track=2 step=8 note=F#4 vel=0.22 gate=4
+[pertrack]
+arrMode = true
+arrLength = 8
+arr0 = 0 12 24 36 48 60 72 84
+arr1 = 1 13 25 37 49 61 73 85
+arr2 = 2 14 26 38 50 62 74 86
+arr3 = 3 15 27 39 51 63 75 87
+arr4 = 4 16 28 40 52 64 76 88
+arr5 = 5 17 29 41 53 65 77 89
+arr6 = 6 18 30 42 54 66 78 90
+arr7 = 7 19 31 43 55 67 79 91
 
-[pattern.1]
-drumTrackLength = 12 12 12 12
-melodyTrackLength = 12 12 12
-samplerTrackLength = 16
-m track=0 step=0 note=G2 vel=0.322 gate=4
-m track=0 step=6 note=D2 vel=0.302 gate=4
-m track=2 step=2 note=B3 vel=0.22 gate=4 sustain=2
-m track=2 step=2 note=D4 vel=0.22 gate=4
-m track=2 step=2 note=F#4 vel=0.22 gate=4
-m track=2 step=8 note=A3 vel=0.22 gate=4 sustain=2
-m track=2 step=8 note=C#4 vel=0.22 gate=4
-m track=2 step=8 note=F#4 vel=0.22 gate=4
-
-[pattern.2]
-drumTrackLength = 12 12 12 12
-melodyTrackLength = 12 12 12
-samplerTrackLength = 16
-m track=0 step=0 note=G2 vel=0.322 gate=4
-m track=0 step=6 note=D2 vel=0.302 gate=4
-m track=1 step=2 note=F#4 vel=0.38 gate=2
-m track=1 step=4 note=A4 vel=0.478 gate=2
-m track=1 step=6 note=G4 vel=0.439 gate=2
-m track=1 step=8 note=F#4 vel=0.42 gate=2
-m track=1 step=10 note=C#4 vel=0.369 gate=2
-m track=2 step=2 note=B3 vel=0.22 gate=4 sustain=2
-m track=2 step=2 note=D4 vel=0.22 gate=4
-m track=2 step=2 note=F#4 vel=0.22 gate=4
-m track=2 step=8 note=A3 vel=0.22 gate=4 sustain=2
-m track=2 step=8 note=C#4 vel=0.22 gate=4
-m track=2 step=8 note=F#4 vel=0.22 gate=4
-
-[pattern.3]
-drumTrackLength = 12 12 12 12
-melodyTrackLength = 12 12 12
-samplerTrackLength = 16
-m track=0 step=0 note=G2 vel=0.341 gate=4
-m track=0 step=6 note=D2 vel=0.322 gate=4
-m track=1 step=0 note=B3 vel=0.42 gate=2
-m track=1 step=2 note=C#4 vel=0.451 gate=2
-m track=1 step=4 note=D4 vel=0.478 gate=2
-m track=1 step=6 note=A3 vel=0.4 gate=6 sustain=6
-m track=2 step=2 note=B3 vel=0.22 gate=4 sustain=2
-m track=2 step=2 note=D4 vel=0.22 gate=4
-m track=2 step=2 note=F#4 vel=0.22 gate=4
-m track=2 step=8 note=A3 vel=0.22 gate=4 sustain=2
-m track=2 step=8 note=C#4 vel=0.22 gate=4
-m track=2 step=8 note=F#4 vel=0.22 gate=4
+[launcher]
+t0 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t1 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t2 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t3 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t4 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t5 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t6 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t7 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 
 [pattern.4]
-drumTrackLength = 12 12 12 12
-melodyTrackLength = 12 12 12
-samplerTrackLength = 16
-m track=0 step=0 note=G2 vel=0.322 gate=4
-m track=0 step=6 note=D2 vel=0.302 gate=4
-m track=1 step=0 note=F#3 vel=0.38 gate=6 sustain=6
-m track=2 step=2 note=B3 vel=0.22 gate=4 sustain=2
-m track=2 step=2 note=D4 vel=0.22 gate=4
-m track=2 step=2 note=F#4 vel=0.22 gate=4
-m track=2 step=8 note=A3 vel=0.22 gate=4 sustain=2
-m track=2 step=8 note=C#4 vel=0.22 gate=4
-m track=2 step=8 note=F#4 vel=0.22 gate=4
-
-[pattern.5]
-drumTrackLength = 12 12 12 12
-melodyTrackLength = 12 12 12
-samplerTrackLength = 16
-m track=0 step=0 note=G2 vel=0.341 gate=4
-m track=0 step=6 note=D2 vel=0.322 gate=4
-m track=2 step=2 note=B3 vel=0.22 gate=4 sustain=2
-m track=2 step=2 note=D4 vel=0.22 gate=4
-m track=2 step=2 note=F#4 vel=0.22 gate=4
-m track=2 step=8 note=A3 vel=0.22 gate=4 sustain=2
-m track=2 step=8 note=C#4 vel=0.22 gate=4
-m track=2 step=8 note=F#4 vel=0.22 gate=4
+trackType = melodic
+length = 12
+m step=0 note=G2 vel=0.322 gate=4
+m step=6 note=D2 vel=0.302 gate=4
 
 [pattern.6]
-drumTrackLength = 12 12 12 12
-melodyTrackLength = 12 12 12
-samplerTrackLength = 16
-m track=0 step=0 note=G2 vel=0.341 gate=4
-m track=0 step=6 note=D2 vel=0.322 gate=4
-m track=1 step=2 note=F#4 vel=0.38 gate=2
-m track=1 step=4 note=A4 vel=0.478 gate=2
-m track=1 step=6 note=G4 vel=0.431 gate=2
-m track=1 step=8 note=F#4 vel=0.42 gate=2
-m track=1 step=10 note=C#4 vel=0.361 gate=2
-m track=2 step=2 note=B3 vel=0.22 gate=4 sustain=2
-m track=2 step=2 note=D4 vel=0.22 gate=4
-m track=2 step=2 note=F#4 vel=0.22 gate=4
-m track=2 step=8 note=A3 vel=0.22 gate=4 sustain=2
-m track=2 step=8 note=C#4 vel=0.22 gate=4
-m track=2 step=8 note=F#4 vel=0.22 gate=4
+trackType = melodic
+length = 12
+m step=2 note=B3 vel=0.22 gate=4 sustain=2
+m step=2 note=D4 vel=0.22 gate=4
+m step=2 note=F#4 vel=0.22 gate=4
+m step=8 note=A3 vel=0.22 gate=4 sustain=2
+m step=8 note=C#4 vel=0.22 gate=4
+m step=8 note=F#4 vel=0.22 gate=4
 
-[pattern.7]
-drumTrackLength = 12 12 12 12
-melodyTrackLength = 12 12 12
-samplerTrackLength = 16
-m track=0 step=0 note=G2 vel=0.322 gate=4
-m track=0 step=6 note=D2 vel=0.302 gate=4
-m track=1 step=0 note=B3 vel=0.42 gate=2
-m track=1 step=2 note=C#4 vel=0.471 gate=2
-m track=1 step=4 note=D4 vel=0.459 gate=2
-m track=1 step=6 note=A3 vel=0.38 gate=6 sustain=6
-m track=2 step=2 note=B3 vel=0.22 gate=4 sustain=2
-m track=2 step=2 note=D4 vel=0.22 gate=4
-m track=2 step=2 note=F#4 vel=0.22 gate=4
-m track=2 step=8 note=A3 vel=0.22 gate=4 sustain=2
-m track=2 step=8 note=C#4 vel=0.22 gate=4
-m track=2 step=8 note=F#4 vel=0.22 gate=4
+[pattern.16]
+trackType = melodic
+length = 12
+m step=0 note=G2 vel=0.322 gate=4
+m step=6 note=D2 vel=0.302 gate=4
+
+[pattern.18]
+trackType = melodic
+length = 12
+m step=2 note=B3 vel=0.22 gate=4 sustain=2
+m step=2 note=D4 vel=0.22 gate=4
+m step=2 note=F#4 vel=0.22 gate=4
+m step=8 note=A3 vel=0.22 gate=4 sustain=2
+m step=8 note=C#4 vel=0.22 gate=4
+m step=8 note=F#4 vel=0.22 gate=4
+
+[pattern.28]
+trackType = melodic
+length = 12
+m step=0 note=G2 vel=0.322 gate=4
+m step=6 note=D2 vel=0.302 gate=4
+
+[pattern.29]
+trackType = melodic
+length = 12
+m step=2 note=F#4 vel=0.38 gate=2
+m step=4 note=A4 vel=0.478 gate=2
+m step=6 note=G4 vel=0.439 gate=2
+m step=8 note=F#4 vel=0.42 gate=2
+m step=10 note=C#4 vel=0.369 gate=2
+
+[pattern.30]
+trackType = melodic
+length = 12
+m step=2 note=B3 vel=0.22 gate=4 sustain=2
+m step=2 note=D4 vel=0.22 gate=4
+m step=2 note=F#4 vel=0.22 gate=4
+m step=8 note=A3 vel=0.22 gate=4 sustain=2
+m step=8 note=C#4 vel=0.22 gate=4
+m step=8 note=F#4 vel=0.22 gate=4
+
+[pattern.40]
+trackType = melodic
+length = 12
+m step=0 note=G2 vel=0.341 gate=4
+m step=6 note=D2 vel=0.322 gate=4
+
+[pattern.41]
+trackType = melodic
+length = 12
+m step=0 note=B3 vel=0.42 gate=2
+m step=2 note=C#4 vel=0.451 gate=2
+m step=4 note=D4 vel=0.478 gate=2
+m step=6 note=A3 vel=0.4 gate=6 sustain=6
+
+[pattern.42]
+trackType = melodic
+length = 12
+m step=2 note=B3 vel=0.22 gate=4 sustain=2
+m step=2 note=D4 vel=0.22 gate=4
+m step=2 note=F#4 vel=0.22 gate=4
+m step=8 note=A3 vel=0.22 gate=4 sustain=2
+m step=8 note=C#4 vel=0.22 gate=4
+m step=8 note=F#4 vel=0.22 gate=4
+
+[pattern.52]
+trackType = melodic
+length = 12
+m step=0 note=G2 vel=0.322 gate=4
+m step=6 note=D2 vel=0.302 gate=4
+
+[pattern.53]
+trackType = melodic
+length = 12
+m step=0 note=F#3 vel=0.38 gate=6 sustain=6
+
+[pattern.54]
+trackType = melodic
+length = 12
+m step=2 note=B3 vel=0.22 gate=4 sustain=2
+m step=2 note=D4 vel=0.22 gate=4
+m step=2 note=F#4 vel=0.22 gate=4
+m step=8 note=A3 vel=0.22 gate=4 sustain=2
+m step=8 note=C#4 vel=0.22 gate=4
+m step=8 note=F#4 vel=0.22 gate=4
+
+[pattern.64]
+trackType = melodic
+length = 12
+m step=0 note=G2 vel=0.341 gate=4
+m step=6 note=D2 vel=0.322 gate=4
+
+[pattern.66]
+trackType = melodic
+length = 12
+m step=2 note=B3 vel=0.22 gate=4 sustain=2
+m step=2 note=D4 vel=0.22 gate=4
+m step=2 note=F#4 vel=0.22 gate=4
+m step=8 note=A3 vel=0.22 gate=4 sustain=2
+m step=8 note=C#4 vel=0.22 gate=4
+m step=8 note=F#4 vel=0.22 gate=4
+
+[pattern.76]
+trackType = melodic
+length = 12
+m step=0 note=G2 vel=0.341 gate=4
+m step=6 note=D2 vel=0.322 gate=4
+
+[pattern.77]
+trackType = melodic
+length = 12
+m step=2 note=F#4 vel=0.38 gate=2
+m step=4 note=A4 vel=0.478 gate=2
+m step=6 note=G4 vel=0.431 gate=2
+m step=8 note=F#4 vel=0.42 gate=2
+m step=10 note=C#4 vel=0.361 gate=2
+
+[pattern.78]
+trackType = melodic
+length = 12
+m step=2 note=B3 vel=0.22 gate=4 sustain=2
+m step=2 note=D4 vel=0.22 gate=4
+m step=2 note=F#4 vel=0.22 gate=4
+m step=8 note=A3 vel=0.22 gate=4 sustain=2
+m step=8 note=C#4 vel=0.22 gate=4
+m step=8 note=F#4 vel=0.22 gate=4
+
+[pattern.88]
+trackType = melodic
+length = 12
+m step=0 note=G2 vel=0.322 gate=4
+m step=6 note=D2 vel=0.302 gate=4
+
+[pattern.89]
+trackType = melodic
+length = 12
+m step=0 note=B3 vel=0.42 gate=2
+m step=2 note=C#4 vel=0.471 gate=2
+m step=4 note=D4 vel=0.459 gate=2
+m step=6 note=A3 vel=0.38 gate=6 sustain=6
+
+[pattern.90]
+trackType = melodic
+length = 12
+m step=2 note=B3 vel=0.22 gate=4 sustain=2
+m step=2 note=D4 vel=0.22 gate=4
+m step=2 note=F#4 vel=0.22 gate=4
+m step=8 note=A3 vel=0.22 gate=4 sustain=2
+m step=8 note=C#4 vel=0.22 gate=4
+m step=8 note=F#4 vel=0.22 gate=4

@@ -1902,6 +1902,47 @@ static bool dawLoad(const char *filepath) {
         }
     }
 
+    // Fill empty arrangement cells: every track at every bar gets its own pattern.
+    // This ensures the step grid is always editable (no shared-pattern column bugs).
+    if (daw.arr.arrMode && daw.arr.length > 0) {
+        // Track types for allocation
+        static const TrackType _trackTypes[ARR_MAX_TRACKS] = {
+            TRACK_DRUM, TRACK_DRUM, TRACK_DRUM, TRACK_DRUM,
+            TRACK_MELODIC, TRACK_MELODIC, TRACK_MELODIC, TRACK_SAMPLER
+        };
+        for (int b = 0; b < daw.arr.length && b < ARR_MAX_BARS; b++) {
+            for (int t = 0; t < ARR_MAX_TRACKS; t++) {
+                if (daw.arr.cells[b][t] != ARR_EMPTY) continue;
+                // Find a free pattern slot
+                int freeIdx = -1;
+                for (int fi = 0; fi < SEQ_NUM_PATTERNS; fi++) {
+                    // Check if slot is unused: not referenced by any arrangement cell
+                    bool used = false;
+                    for (int cb = 0; cb < daw.arr.length && cb < ARR_MAX_BARS && !used; cb++)
+                        for (int ct = 0; ct < ARR_MAX_TRACKS && !used; ct++)
+                            if (daw.arr.cells[cb][ct] == fi) used = true;
+                    if (!used) { freeIdx = fi; break; }
+                }
+                if (freeIdx >= 0) {
+                    initPattern(&seq.patterns[freeIdx]);
+                    seq.patterns[freeIdx].trackType = _trackTypes[t];
+                    seq.patterns[freeIdx].length = daw.stepCount > 0 ? daw.stepCount : 16;
+                    daw.arr.cells[b][t] = freeIdx;
+                }
+            }
+        }
+    }
+
+    // When arrMode is active, the per-track arrangement is the source of truth.
+    // Update the song chain to use arrangement track-0 indices so renderers stay in sync.
+    if (daw.arr.arrMode && daw.arr.length > 0 && daw.song.songMode) {
+        daw.song.length = daw.arr.length;
+        for (int i = 0; i < daw.arr.length && i < SONG_MAX_SECTIONS; i++) {
+            int pat0 = daw.arr.cells[i][0];
+            daw.song.patterns[i] = (pat0 >= 0) ? pat0 : 0;
+        }
+    }
+
     // Backward compat: old files without trackSwing keys — propagate global swing
     {
         bool allZero = true;

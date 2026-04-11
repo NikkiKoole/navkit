@@ -526,7 +526,14 @@ static Pattern* dawTrackPat(int track) {
         int pi = daw.arr.cells[0][track];
         if (pi >= 0 && pi < SEQ_NUM_PATTERNS) return &seq.patterns[pi];
     }
-    return &seq.patterns[seq.currentPattern];
+    // Per-track pattern (when sequencer is in per-track mode)
+    if (seq.perTrackPatterns && track >= 0 && track < SEQ_V2_MAX_TRACKS &&
+        seq.trackPatternIdx[track] >= 0 && seq.trackPatternIdx[track] < SEQ_NUM_PATTERNS)
+        return &seq.patterns[seq.trackPatternIdx[track]];
+    // No arrangement: all tracks share currentPattern (legacy behavior for non-arr songs)
+    if (daw.arr.length == 0)
+        return &seq.patterns[seq.currentPattern];
+    return NULL;
 }
 
 // Pattern for the currently selected patch (for Clr, Cpy, etc.)
@@ -590,6 +597,7 @@ static void dawRecordNoteOn(int midiNote, float velocity) {
     if (track < 0) return;
 
     Pattern *pat = dawTrackPat(track);
+    if (!pat) return;
     int trackLen = pat->length;
     if (trackLen <= 0) trackLen = 16;
 
@@ -639,7 +647,8 @@ static void dawRecordNoteOff(int midiNote) {
             int startStep = recHeld[i].step;
             int startTick = recHeld[i].tick;
             int startPat = recHeld[i].patternIdx;
-            int curPat = (int)(dawTrackPat(track) - seq.patterns);
+            Pattern *_tp = dawTrackPat(track);
+            int curPat = _tp ? (int)(_tp - seq.patterns) : startPat;
 
             // Get the pattern where the note started
             Pattern *startPatPtr = &seq.patterns[startPat];
@@ -2057,7 +2066,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         DrawRectangleRec(rcl, clhov ? UI_BG_RED_DARK : UI_BG_BUTTON);
         DrawRectangleLinesEx(rcl, 1, UI_BORDER);
         DrawTextShadow("Clr", (int)clrX+4, (int)y+3, UI_FONT_SMALL, clhov ? (Color){255,120,120,255} : GRAY);
-        if (clhov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { clearPattern(dawSelectedPattern()); ui_consume_click(); }
+        if (clhov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { Pattern *_sp = dawSelectedPattern(); if (_sp) clearPattern(_sp); ui_consume_click(); }
     }
 
     // Rhythm generator
@@ -2164,9 +2173,13 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         if (ghov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             // Build per-track pattern pointers for the 4 drum tracks
             Pattern *drumPats[SEQ_DRUM_TRACKS];
-            for (int _t = 0; _t < SEQ_DRUM_TRACKS; _t++)
+            bool anyNull = false;
+            for (int _t = 0; _t < SEQ_DRUM_TRACKS; _t++) {
                 drumPats[_t] = dawTrackPat(_t);
-            if (rhythmGen.mode == RHYTHM_MODE_PROB_MAP)
+                if (!drumPats[_t]) anyNull = true;
+            }
+            if (anyNull) { ui_consume_click(); }
+            else if (rhythmGen.mode == RHYTHM_MODE_PROB_MAP)
                 applyRhythmProbMapPerTrack(drumPats, SEQ_DRUM_TRACKS, &rhythmGen);
             else
                 applyRhythmPerTrack(drumPats, SEQ_DRUM_TRACKS, &rhythmGen);
@@ -2284,12 +2297,19 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         int ty = (int)y + 14 + track * (cellH + 2);
         bool isDrum = (track < 4);
         bool isSampler = (track == SEQ_TRACK_SAMPLER);
-        // Per-row pattern: read from arrangement grid (falls back to currentPattern if no arr)
+        // Per-row pattern: read from arrangement grid
         int _cellPat = (daw.arr.length > 0 && track < ARR_MAX_TRACKS)
             ? daw.arr.cells[editBar][track] : ARR_EMPTY;
-        Pattern *rowPat = (_cellPat >= 0 && _cellPat < SEQ_NUM_PATTERNS)
-            ? &seq.patterns[_cellPat]
-            : &seq.patterns[seq.currentPattern];
+        // Fallback: when no arrangement, use trackPatternIdx (per-track) or currentPattern
+        if (_cellPat == ARR_EMPTY) {
+            if (seq.perTrackPatterns && seq.trackPatternIdx[track] >= 0)
+                _cellPat = seq.trackPatternIdx[track];
+            else if (daw.arr.length == 0)
+                _cellPat = seq.currentPattern;
+            // else: arrangement has data but this track is empty at this bar — leave ARR_EMPTY
+        }
+        bool rowEmpty = (_cellPat < 0 || _cellPat >= SEQ_NUM_PATTERNS);
+        Pattern *rowPat = rowEmpty ? NULL : &seq.patterns[_cellPat];
         if (track == 4) DrawLine((int)x, ty-2, (int)(x+w), ty-2, UI_BORDER);
         if (track == SEQ_TRACK_SAMPLER) DrawLine((int)x, ty-2, (int)(x+w), ty-2, UI_BORDER);
 
@@ -2341,6 +2361,45 @@ static void drawWorkSeq(float x, float y, float w, float h) {
                        nameCol.g = (unsigned char)(nameCol.g + 40 > 255 ? 255 : nameCol.g + 40);
                        nameCol.b = (unsigned char)(nameCol.b + 40 > 255 ? 255 : nameCol.b + 40); }
         DrawTextShadow(trackNames[track], lx + 72, lcy-5, UI_FONT_SMALL, nameCol);
+        if (rowEmpty) {
+            // Draw dimmed empty cells — but allow click to auto-allocate a pattern
+            for (int col = 0; col < steps; col++) {
+                int sx = (int)x + labelW + col * cellW;
+                Rectangle cell = {(float)sx, (float)ty, (float)(cellW-1), (float)cellH};
+                bool hov = CheckCollisionPointRec(mouse, cell);
+                DrawRectangleRec(cell, hov ? (Color){45,45,50,255} : UI_BG_DEEPEST);
+                if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && daw.arr.length > 0) {
+                    // Auto-allocate a pattern for this track at this bar
+                    int freeIdx = -1;
+                    for (int fi = 0; fi < SEQ_NUM_PATTERNS; fi++) {
+                        Pattern *fp = &seq.patterns[fi];
+                        bool empty = true;
+                        for (int fs = 0; fs < fp->length && empty; fs++)
+                            if (fp->steps[fs].noteCount > 0) empty = false;
+                        if (fp->plockCount > 0) empty = false;
+                        if (empty) { freeIdx = fi; break; }
+                    }
+                    if (freeIdx >= 0) {
+                        initPattern(&seq.patterns[freeIdx]);
+                        seq.patterns[freeIdx].length = daw.stepCount;
+                        seq.patterns[freeIdx].trackType = isDrum ? TRACK_DRUM :
+                            (isSampler ? TRACK_SAMPLER : TRACK_MELODIC);
+                        daw.arr.cells[editBar][track] = freeIdx;
+                        // Place the step the user clicked
+                        if (isDrum) patSetDrum(&seq.patterns[freeIdx], col, 0.8f, 0.0f);
+                        else if (isSampler) { patSetNote(&seq.patterns[freeIdx], col, 60, 0.8f, 1); seq.patterns[freeIdx].steps[col].notes[0].slice = 0; }
+                        else patSetNote(&seq.patterns[freeIdx], col, 60, 0.8f, 1);
+                    }
+                    ui_consume_click();
+                }
+            }
+            if (nameHov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                daw.selectedPatch = track;
+                paramTab = PARAM_PATCH;
+                ui_consume_click();
+            }
+            continue;
+        }
         // Per-track length (right-click or scroll on name to change)
         int tLen = rowPat->length;
         bool lenDiffers = (tLen != daw.stepCount);
@@ -2358,8 +2417,8 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             else if (wh < 0) { tLen--; if (tLen < 1) tLen = 1; rowPat->length = tLen; }
             if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
                 // Right-click: cycle through common lengths
-                static const int commonLens[] = {4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128};
-                int nLens = 11;
+                static const int commonLens[] = {16, 32, 64, 128};
+                int nLens = 4;
                 int best = 16;
                 for (int ci = 0; ci < nLens; ci++) {
                     if (commonLens[ci] > tLen) { best = commonLens[ci]; break; }
@@ -3382,7 +3441,8 @@ static void drawWorkPiano(float x, float y, float w, float h) {
     // Helper: map global step → (pattern index, local step)
     // In single-pattern mode: globalStep = local step, pattern = current
     int chainPatCount = chainActive ? recChainLength : 1;
-    int prPatIdx = (int)(dawTrackPat(mt) - seq.patterns);  // pattern index for this track
+    Pattern *_prtp = dawTrackPat(mt);
+    int prPatIdx = _prtp ? (int)(_prtp - seq.patterns) : 0;  // pattern index for this track
     int chainPatStart = chainActive ? recChainStart : prPatIdx;
 
     int globalOffset = 0; // accumulated steps before current pattern in chain

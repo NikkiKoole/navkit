@@ -661,6 +661,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "  --info              Print song info and exit (no render)\n");
         fprintf(stderr, "  --tail <sec>        Extra seconds after song ends for reverb tail (default: 2.0)\n");
         fprintf(stderr, "  --triggers <file>   Dump note trigger log to file (for regression testing)\n");
+        fprintf(stderr, "  --convert           Load and re-save in clean single-track format (in-place)\n");
         return 1;
     }
 
@@ -672,6 +673,7 @@ int main(int argc, char *argv[]) {
     float tailSeconds = 2.0f;
     bool infoOnly = false;
     bool verbose = false;
+    bool convertMode = false;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-d") == 0 && i+1 < argc) { duration = atof(argv[++i]); }
@@ -679,6 +681,7 @@ int main(int argc, char *argv[]) {
         else if (strcmp(argv[i], "--tail") == 0 && i+1 < argc) { tailSeconds = atof(argv[++i]); }
         else if (strcmp(argv[i], "--triggers") == 0 && i+1 < argc) { triggerLogPath = argv[++i]; }
         else if (strcmp(argv[i], "--info") == 0) { infoOnly = true; }
+        else if (strcmp(argv[i], "--convert") == 0) { convertMode = true; }
         else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) { verbose = true; }
         else if (argv[i][0] != '-' && !songPath) { songPath = argv[i]; }
     }
@@ -721,6 +724,17 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Loaded: %s\n", songPath);
+
+    if (convertMode) {
+        // Re-save in clean single-track format (migration + fill already ran during load)
+        if (dawSave(songPath)) {
+            printf("Converted: %s\n", songPath);
+            return 0;
+        } else {
+            fprintf(stderr, "Error: failed to save '%s'\n", songPath);
+            return 1;
+        }
+    }
 
     if (infoOnly) {
         printSongInfo(songPath);

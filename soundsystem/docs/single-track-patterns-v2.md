@@ -328,3 +328,85 @@ was never built. The branch is not in a mergeable state.
 2. Build composite step grid: render `arr.cells[currentBar][0..N]` as rows (Step 3 plan)
 3. Remove `perTrackPatterns` flag once non-arrangement modes are updated (optional — it's still useful)
 4. Piano roll: verify `steps[step]` access is correct (quick audit needed)
+
+---
+
+## Merge blocker: sparse arrangement / shared pattern bug (2026-04-11)
+
+### The bug
+
+Loading old songs produces arrangement grids with `-1` (ARR_EMPTY) cells. The step grid
+falls back to `seq.currentPattern` for these, so multiple tracks share one single-track
+pattern. Clicking a step on one row makes a whole column appear. Confirmed on SEPTEMbert.song.
+
+### Root cause: N×12 pattern expansion + sparse arrangements
+
+The on-load migration maps `oldPattern * 12 + track` → new pattern index. Old pattern 2
+becomes slots 24-35. This creates two problems:
+
+1. **Sparse pool**: 12 slots per old pattern, ~5 used → 7 wasted. 64 old patterns × 12 = 768
+   slots consumed. Forced `SEQ_NUM_PATTERNS` to 1024 (exactly what the design doc warned
+   against).
+
+2. **Sparse arrangement**: Bars where a track was silent keep `-1`. The step grid has no
+   pattern to edit for those cells.
+
+### Current workarounds (on the branch, partially implemented)
+
+- Post-load fill pass in `daw_file.h`: walks all `-1` cells, allocates empty patterns.
+  Works but is O(bars × tracks × pool) — slow for large songs.
+- `dawTrackPat()` can return NULL → NULL guards everywhere.
+- Step grid has `rowEmpty` code path + click-to-allocate for empty rows.
+
+### What the clean fix looks like
+
+**Principle: arrangements are always fully populated. Every bar/track has its own pattern.**
+
+This matches how a new song works (line 674 in `daw_audio.h`):
+```c
+for (int t = 0; t < ARR_MAX_TRACKS; t++) daw.arr.cells[0][t] = t;
+```
+
+#### Step A — Compact pattern allocation (replaces N×12)
+
+Instead of `oldPattern * 12 + track`, allocate sequentially:
+```
+nextFree = 0;
+for each old pattern:
+    for each track with content:
+        seq.patterns[nextFree] = migrated data
+        remap[oldPattern][track] = nextFree++
+    for each empty track:
+        initPattern(&seq.patterns[nextFree])
+        remap[oldPattern][track] = nextFree++
+```
+
+64 old patterns × 8 arrangement tracks = 512 patterns. Dense, no holes.
+`SEQ_NUM_PATTERNS` can drop back to 768 or stay at 1024 for headroom.
+
+#### Step B — Fill empty cells at load time
+
+After migration (or for new-format files with sparse arrangements), fill any remaining
+`-1` cells with fresh empty patterns. This is already implemented but can be simplified
+once allocation is compact (free slot = `nextFree++`, no search needed).
+
+#### Step C — Simplify the code
+
+With fully-populated arrangements:
+- `dawTrackPat(track)` becomes `&seq.patterns[daw.arr.cells[editBar][track]]` — one line,
+  never NULL
+- Remove all NULL guards from callers (recording, piano roll, rhythm gen, clear)
+- Remove `rowEmpty` / click-to-allocate code from step grid
+- Remove fallback chain (`trackPatternIdx` → `currentPattern`)
+
+#### Step D — Make `editBar` navigable
+
+The step grid is stuck at bar 0 when stopped. Add bar navigation (arrow buttons or keys)
+so you can browse and edit any bar without playing. This is independent of the allocation
+fix but needed for usability.
+
+### Priority
+
+This is a **merge blocker**. Without it, loading any old song in the DAW produces broken
+editing (column bug or non-editable rows). The workarounds add complexity that will compound
+as more features land on the step grid.
