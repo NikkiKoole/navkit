@@ -327,9 +327,10 @@ was never built. The branch is not in a mergeable state.
 1. ~~Delete runtime migration code from `daw_file.h`~~ — done (2026-04-11)
 2. ~~Build composite step grid~~ — done (2026-04-11)
 3. Remove `perTrackPatterns` flag once non-arrangement modes are updated (optional — still useful)
-4. Piano roll: verify `steps[step]` access is correct (quick audit needed)
+4. ~~Piano roll: verify `steps[step]` access is correct~~ — audited, no 2D accesses remain (2026-04-12)
 5. Make `editBar` navigable when stopped (arrow keys or bar selector in step grid)
-6. Simplify `dawTrackPat()` — with filled arrangements it should be a one-line lookup, never NULL
+6. ~~Simplify `dawTrackPat()`~~ — now a one-line arrangement lookup, never NULL. All NULL guards
+   and `rowEmpty`/click-to-allocate dead code removed (-73 lines). (2026-04-12)
 7. Consider dropping `SEQ_V2_MAX_TRACKS` from 12 to 8 (tracks 8-11 are unused by all songs)
 8. Consider compact re-allocation to allow `SEQ_NUM_PATTERNS` < 1024 (converted songs use
    sparse N×12 indices up to ~760; a re-conversion with sequential allocation would allow 256-512)
