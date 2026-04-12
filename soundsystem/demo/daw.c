@@ -1987,6 +1987,8 @@ static void generate303Bassline(Pattern *p, int melodyTrack) {
     }
 }
 
+static int seqEditPage[ARR_MAX_TRACKS]; // per-track page when stopped (arrow key navigation)
+
 static void drawWorkSeq(float x, float y, float w, float h) {
 
     Vector2 mouse = GetMousePosition();
@@ -2280,6 +2282,23 @@ static void drawWorkSeq(float x, float y, float w, float h) {
     int editBar = (daw.arr.arrMode && daw.transport.playing && seq.chainPos >= 0 && seq.chainPos < daw.arr.length)
         ? seq.chainPos : 0;
 
+    // Arrow keys: page through the selected track's pattern when stopped
+    if (!daw.transport.playing) {
+        int sel = daw.selectedPatch;
+        if (sel >= 0 && sel < ARR_MAX_TRACKS) {
+            Pattern *selPat = &seq.patterns[daw.arr.cells[editBar][sel]];
+            int totalPages = (selPat->length + steps - 1) / steps;
+            if (IsKeyPressed(KEY_RIGHT) && seqEditPage[sel] < totalPages - 1) seqEditPage[sel]++;
+            if (IsKeyPressed(KEY_LEFT) && seqEditPage[sel] > 0) seqEditPage[sel]--;
+            // Clamp if pattern length changed
+            if (seqEditPage[sel] >= totalPages) seqEditPage[sel] = totalPages - 1;
+            if (seqEditPage[sel] < 0) seqEditPage[sel] = 0;
+        }
+    } else {
+        // Reset edit pages when playing (playhead drives paging)
+        for (int t = 0; t < ARR_MAX_TRACKS; t++) seqEditPage[t] = 0;
+    }
+
     for (int track = 0; track < SEQ_GRID_TRACKS; track++) {
         int ty = (int)y + 14 + track * (cellH + 2);
         bool isDrum = (track < 4);
@@ -2387,10 +2406,13 @@ static void drawWorkSeq(float x, float y, float w, float h) {
             }
         }
 
-        // Per-track page offset: during playback, auto-page to where the playhead is
+        // Per-track page offset: follows playhead during playback, arrow keys when stopped
         int pageOffset = 0;
-        if (daw.transport.playing && rowPat->length > steps) {
-            pageOffset = (seq.trackStep[track] / steps) * steps;
+        if (rowPat->length > steps) {
+            if (daw.transport.playing)
+                pageOffset = (seq.trackStep[track] / steps) * steps;
+            else
+                pageOffset = seqEditPage[track] * steps;
         }
 
         for (int col = 0; col < steps; col++) {
