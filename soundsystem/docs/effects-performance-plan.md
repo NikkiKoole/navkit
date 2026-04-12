@@ -91,10 +91,16 @@ These don't need full libm precision — they're LFO sweeps, saturation, pan, et
 
 | Call | Location | Why keep |
 |---|---|---|
+| sinf for basic oscillator waveforms | synth.h processVoice | The sine IS the sound — error = harmonic distortion |
+| sinf for FM carrier/modulator | synth_oscillators.h processFMOscillator | Error creates wrong FM sidebands |
 | tanf in SVF filter coefficients | L1348, 2759 | Coefficient error cascades into filter response |
-| powf for pitch/semitone math | Various in synth.h | Audible tuning drift |
+| powf for pitch/semitone math | Various in synth.h | Audible tuning drift (confirmed: fast_powf broke unison detune tests) |
 | powf(10, dB/20) for EQ gains | L2150, 2805 | Could pre-compute at param-set instead |
 | expf in compressor envelope | L2183, 2822 | Exact ADSR timing |
+
+Previous attempt at blanket replacement (2026-03-17, see DOD audit): replaced all 133
+transcendental calls, broke 6 tests (unison_detune, bitcrusher). The selective approach
+(modulation/effects = fast, oscillators/pitch = libm) is the right strategy.
 
 ## Quick wins (no listening needed to validate)
 
@@ -166,3 +172,44 @@ Phase 3 (bigger refactors):
 - ~24-28 simultaneous voices
 
 Use this for before/after profiling when implementing optimizations.
+
+## Post-optimization profile (fast sine + brightness cache, before revert)
+
+After applying Phase 1 additive optimizations (fastSinUnit + brightness cache):
+
+Total audio thread: **3.66 Gc (57.3%)** (was 68.5%)
+
+| Component | Before | After | Change |
+|---|---|---|---|
+| processAdditiveOscillator | 912 Mc (27%) | 6 Mc (0.1%) | **-99.3%** |
+| processVoice total | 1.60 Gc (47%) | 1.20 Gc (18.8%) | **-25%** |
+| processBusesStereo | 1.37 Gc (40%) | 1.82 Gc (28.5%) | Same absolute, larger share |
+
+With additive fixed, `processBusesStereo` became the dominant cost. Breakdown inside:
+- `processBusEffects` inline: 831 Mc (13%)
+- `__exp10f` (dB→linear): 314 Mc (5%) — biggest single bus math op, cacheable
+- `sinf` (LFOs): 261 Mc (4%) — chorus/phaser/wah/Leslie per bus
+- `powf`: 87 Mc (1.2%)
+- `tanhf`: 48 Mc (0.7%)
+- `tanf`: 36 Mc (0.5%)
+
+## Paused CPU cost
+
+The stress test uses ~30% CPU even when paused (no voices playing). This is the effects
+chain processing silence through all 8 buses × 13 effects. Normal songs with fewer effects
+are much cheaper when paused. Fix: skip buses with no active voices / silent input.
+
+## iOS / Android considerations
+
+- **iOS**: NEON guaranteed, Accelerate.framework available, but CPU budget is 1/3 to 1/5 of
+  desktop Mac. Fast polynomial sine becomes mandatory, not optional. "No libm sinf in the
+  audio thread" is the standard iOS audio rule.
+- **Android**: NEON on arm64 (99%+ of devices), but huge CPU variance across chipsets.
+  Budget phones are 10× slower than flagship. No Accelerate — use NEON intrinsics or
+  polynomial approximations directly. Audio latency worse than iOS (AAudio/Oboe help).
+- **Both**: the same optimizations apply (fast sine, cached coefficients, skip silent buses).
+  The polynomial approach is portable and doesn't require platform-specific SIMD wrappers.
+  SIMD (NEON) is a further win if needed — 8 buses = 2 vector ops instead of 8 scalar.
+- **Core oscillator sinf must stay precise** on all platforms — fast sine only for
+  modulation/effects. Higher-precision polynomial (7th order) is an option for oscillators
+  if libm sinf is too expensive on mobile.
