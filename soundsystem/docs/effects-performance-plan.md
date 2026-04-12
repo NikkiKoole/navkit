@@ -1,9 +1,54 @@
-# Effects Chain Performance Optimization Plan
+# Audio Performance Optimization Plan
 
 > Profiled 2026-04-12 with `-O2 -g` on the audio thread.
-> `processMixerOutputStereo` + `processBusesStereo` = ~950 Mc — as much as all 32 voices combined.
 
-## Where the time goes
+## Stress test profile (stress-test.song)
+
+All 8 tracks active, every per-bus + master effect enabled, ~24-28 simultaneous voices
+(additive pad 4-note × 4 unison, FM chords 3-note × 3 unison, FM bass+drums).
+
+Total audio thread: **3.41 Gc (68.5% of CPU)**
+
+### Voice processing — 1.60 Gc (47%)
+
+| Component | Cost | Notes |
+|---|---|---|
+| **processAdditiveOscillator** | **912 Mc (27%)** | 16 harmonics × sinf per voice. 4-note chord × 4 unison = 16 voices = **256 sinf/sample**. #1 target for fast sine. |
+| processVoice (other) | 280 Mc | Inline overhead, routing |
+| processFMOscillator | 129 Mc | powf/expf per voice |
+| sinf (voice, non-additive) | 116 Mc | Basic oscillators + LFOs |
+| processEnvelope | 62 Mc | ADSR per voice |
+| tanf (voice filter) | 38 Mc | SVF coefficient per sample per voice |
+
+### Effects processing — 1.59 Gc (47%)
+
+| Component | Cost | Notes |
+|---|---|---|
+| **processBusesStereo** | **1.37 Gc (40%)** | 13 effects × 8 buses = 104 effect instances per sample |
+| _processMasterChain | 108 Mc (3%) | Master effects are cheap individually |
+| processChorus | 32 Mc | 2× sinf per bus × 8 |
+| processVinylSim | 18 Mc | |
+| processLeslie | 10 Mc | 3× trig per bus × 8 |
+| processPhaser | 7 Mc | sinf per bus × 8 |
+| processDistortion | 6.5 Mc | |
+| tapeWowFlutterLFO | 9.8 Mc | |
+| other effects | ~20 Mc | Wah, ring mod, tremolo, tape, EQ, compressor |
+
+### Key insight: additive oscillator is the #1 voice cost
+
+The initial analysis (from a typical song) showed effects dominating. With the stress test
+(additive + unison), `processAdditiveOscillator` alone is 27% of total CPU. The 16-harmonic
+sinf loop with unison creates the worst-case voice load. Fast sine here would save ~800 Mc.
+
+### Key insight: per-bus multiplication is the #1 effects cost
+
+The master chain is only 108 Mc. But 13 effects × 8 buses = 1.37 Gc. Even cheap effects
+become expensive when multiplied by 8. Two approaches: (a) fast math for per-bus trig,
+(b) skip processing for buses with no active voices.
+
+---
+
+## Estimated math ops per sample (theoretical)
 
 | Chain | Runs per sample | Estimated share |
 |---|---|---|
@@ -83,24 +128,38 @@ Replace ~6-8 tanhf calls with rational approximation.
 Power-of-2 combs change room size / diffusion.
 **Must A/B test**: reverb tail quality, metallic artifacts.
 
-## Implementation order
+## Implementation order (revised after stress test)
 
 ```
 Phase 0 (no risk, no listening needed):
   [ ] Sub-bass boost bypass check
   [ ] Cache dB→linear at param-set (EQ, compressor)
   [ ] Cache expf smoothing coefficients (dub loop)
+  [ ] Skip per-bus processing for buses with no active voices
 
-Phase 1 (needs A/B listening):
-  [ ] Fast sine polynomial for pan law (biggest easy win, 16 calls/sample)
-  [ ] Fast sine for LFO sweeps (chorus, phaser, wah, tremolo, ring mod)
+Phase 1 (biggest wins, needs A/B listening):
+  [ ] Fast sine for additive oscillator (912 Mc → ~100 Mc, 16 harmonics × sinf)
+  [ ] Fast sine for per-bus chorus/phaser/wah/LFO (8× multiplier makes this huge)
+  [ ] Fast sine polynomial for pan law (16 calls/sample, always runs)
   [ ] Fast tanhf for saturation (tape, dub loop, multiband)
 
 Phase 2 (needs careful tuning):
   [ ] Reverb comb power-of-2 + feedback retuning
   [ ] FDN delay line power-of-2
+  [ ] tanf caching in SVF filter (recalc only on param change, not per sample)
 
 Phase 3 (bigger refactors):
   [ ] Voice hot/cold split (biggest architectural win, see DOD audit)
-  [ ] SIMD voice processing
+  [ ] SIMD voice processing (4 voices in parallel)
 ```
+
+## Stress test song
+
+`soundsystem/demo/songs/stress-test.song` — worst-case CPU load:
+- All 8 tracks active (FM drums, FM bass, additive pad w/ 4× unison, FM chords w/ 3× unison)
+- Every per-bus effect enabled on all 8 buses
+- Every master effect enabled
+- Dub loop with 3 heads + drift
+- ~24-28 simultaneous voices
+
+Use this for before/after profiling when implementing optimizations.
