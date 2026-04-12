@@ -138,7 +138,10 @@ Phase 0 (no risk, no listening needed):
   [ ] Skip per-bus processing for buses with no active voices
 
 Phase 1 (biggest wins, needs A/B listening):
-  [ ] Fast sine for additive oscillator (912 Mc → ~100 Mc, 16 harmonics × sinf)
+  [ ] Fast sine for additive oscillator — TESTED, 912 Mc → 6 Mc (99.3% reduction)
+      Implementation: fastSinUnit() 5th-order polynomial in synth_oscillators.h
+      + brightness powf cache in AdditiveSettings (16 powf/sample → 0)
+      REVERTED pending listening test — rebuild + A/B before committing
   [ ] Fast sine for per-bus chorus/phaser/wah/LFO (8× multiplier makes this huge)
   [ ] Fast sine polynomial for pan law (16 calls/sample, always runs)
   [ ] Fast tanhf for saturation (tape, dub loop, multiband)
