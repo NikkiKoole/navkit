@@ -520,10 +520,50 @@ static DawState daw = {
 // Per-track pattern helpers (need DawState + seq)
 // ============================================================================
 
-// Get the pattern for a specific track, reading from arrangement grid (bar 0)
+// Which arrangement bar the pattern buttons / step grid are editing
+static int editBar = 0;
+
+// Track types for pattern allocation
+static const TrackType _dawTrackTypes[ARR_MAX_TRACKS] = {
+    TRACK_DRUM, TRACK_DRUM, TRACK_DRUM, TRACK_DRUM,
+    TRACK_MELODIC, TRACK_MELODIC, TRACK_MELODIC, TRACK_SAMPLER
+};
+
+// Ensure arrangement bar has patterns allocated for all tracks
+static void dawEnsureBar(int bar) {
+    if (bar < 0 || bar >= ARR_MAX_BARS) return;
+    // Extend arrangement length if needed
+    if (bar >= daw.arr.length) {
+        for (int b = daw.arr.length; b <= bar; b++)
+            for (int t = 0; t < ARR_MAX_TRACKS; t++)
+                daw.arr.cells[b][t] = ARR_EMPTY;
+        daw.arr.length = bar + 1;
+    }
+    // Allocate patterns for any empty cells in this bar
+    for (int t = 0; t < ARR_MAX_TRACKS; t++) {
+        if (daw.arr.cells[bar][t] != ARR_EMPTY) continue;
+        // Find a free pattern slot (not referenced by any arrangement cell)
+        int freeIdx = -1;
+        for (int fi = 0; fi < SEQ_NUM_PATTERNS; fi++) {
+            bool used = false;
+            for (int cb = 0; cb < daw.arr.length && cb < ARR_MAX_BARS && !used; cb++)
+                for (int ct = 0; ct < ARR_MAX_TRACKS && !used; ct++)
+                    if (daw.arr.cells[cb][ct] == fi) used = true;
+            if (!used) { freeIdx = fi; break; }
+        }
+        if (freeIdx >= 0) {
+            initPattern(&seq.patterns[freeIdx]);
+            seq.patterns[freeIdx].trackType = _dawTrackTypes[t];
+            seq.patterns[freeIdx].length = daw.stepCount > 0 ? daw.stepCount : 16;
+            daw.arr.cells[bar][t] = freeIdx;
+        }
+    }
+}
+
+// Get the pattern for a specific track at the current editBar
 static Pattern* dawTrackPat(int track) {
     if (track >= 0 && track < ARR_MAX_TRACKS) {
-        int pi = daw.arr.cells[0][track];
+        int pi = daw.arr.cells[editBar][track];
         if (pi >= 0 && pi < SEQ_NUM_PATTERNS) return &seq.patterns[pi];
     }
     return &seq.patterns[seq.currentPattern];
@@ -1659,8 +1699,8 @@ static void drawTransport(void) {
     }
     tx += 22;
 
-    // Pattern indicator
-    DrawTextShadow(TextFormat("Pat:%d", daw.transport.currentPattern+1), (int)tx, (int)ty+2, UI_FONT_SMALL, UI_TEXT_SUBTLE);
+    // Bar indicator
+    DrawTextShadow(TextFormat("Bar:%d", editBar+1), (int)tx, (int)ty+2, UI_FONT_SMALL, UI_TEXT_SUBTLE);
     tx += 60;
 
     // Record button (F7)
@@ -1994,26 +2034,25 @@ static void drawWorkSeq(float x, float y, float w, float h) {
     Vector2 mouse = GetMousePosition();
     int steps = daw.stepCount;
 
-    // Top row: Pattern selector + 16/32 toggle
-    DrawTextShadow("Pattern:", (int)x, (int)y+2, UI_FONT_SMALL, GRAY);
-    float px = x + 60;
+    // Top row: Bar selector + 16/32 toggle
+    DrawTextShadow("Bar:", (int)x, (int)y+2, UI_FONT_SMALL, GRAY);
+    float px = x + 35;
+    int playingBar = (daw.arr.arrMode && daw.transport.playing && seq.chainPos >= 0) ? seq.chainPos : -1;
     for (int i = 0; i < 8; i++) {
         Rectangle r = {px + i*28, y, 26, 18};
         bool hov = CheckCollisionPointRec(mouse, r);
-        bool act = (i == daw.transport.currentPattern);
-        Color bg = act ? UI_TINT_GREEN : (hov ? UI_BG_HOVER : UI_BG_BUTTON);
+        bool act = (i == editBar);
+        bool playing = (i == playingBar);
+        bool hasContent = (i < daw.arr.length);
+        Color bg = act ? UI_TINT_GREEN : (playing ? (Color){60,60,20,255} : (hov ? UI_BG_HOVER : UI_BG_BUTTON));
         DrawRectangleRec(r, bg);
-        DrawRectangleLinesEx(r, 1, act ? GREEN : UI_BORDER);
-        DrawTextShadow(TextFormat("%d", i+1), (int)px+i*28+9, (int)y+3, UI_FONT_SMALL, act ? WHITE : GRAY);
-        // Override indicator dot (orange if pattern has overrides)
-        if (seq.patterns[i].overrides.flags != 0) {
-            DrawCircle((int)(px+i*28+22), (int)y+3, 3, (Color){255,180,60,255});
-        }
+        Color border = act ? GREEN : (playing ? YELLOW : (hasContent ? UI_BORDER_LIGHT : UI_BORDER));
+        DrawRectangleLinesEx(r, 1, border);
+        DrawTextShadow(TextFormat("%d", i+1), (int)px+i*28+9, (int)y+3, UI_FONT_SMALL,
+                       act ? WHITE : (playing ? YELLOW : (hasContent ? LIGHTGRAY : GRAY)));
         if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            daw.transport.currentPattern = i;
-            // Break out of chain/arrangement mode so pattern selection isn't overridden
-            if (prChainView) { prChainView = false; recChainLength = 0; seq.chainLength = 0; }
-            if (daw.arr.arrMode) { daw.arr.arrMode = false; seq.perTrackPatterns = false; seq.chainLength = 0; }
+            editBar = i;
+            dawEnsureBar(i);
             ui_consume_click();
         }
     }
@@ -2278,15 +2317,16 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         DrawTextShadow(TextFormat("%d", i+1), sx + (steps==32 ? 1 : cellW/2-3), (int)y, steps==32 ? 8 : 9, numCol);
     }
 
-    // Which arrangement bar to show in the step grid
-    int editBar = (daw.arr.arrMode && daw.transport.playing && seq.chainPos >= 0 && seq.chainPos < daw.arr.length)
-        ? seq.chainPos : 0;
+    // Which arrangement bar to show in the step grid:
+    // During arrangement playback, follow the playhead; otherwise use the bar selector
+    int gridBar = (daw.arr.arrMode && daw.transport.playing && seq.chainPos >= 0 && seq.chainPos < daw.arr.length)
+        ? seq.chainPos : editBar;
 
     // Arrow keys: page through the selected track's pattern when stopped
     if (!daw.transport.playing) {
         int sel = daw.selectedPatch;
         if (sel >= 0 && sel < ARR_MAX_TRACKS) {
-            Pattern *selPat = &seq.patterns[daw.arr.cells[editBar][sel]];
+            Pattern *selPat = &seq.patterns[daw.arr.cells[gridBar][sel]];
             int totalPages = (selPat->length + steps - 1) / steps;
             if (IsKeyPressed(KEY_RIGHT) && seqEditPage[sel] < totalPages - 1) seqEditPage[sel]++;
             if (IsKeyPressed(KEY_LEFT) && seqEditPage[sel] > 0) seqEditPage[sel]--;
@@ -2304,7 +2344,7 @@ static void drawWorkSeq(float x, float y, float w, float h) {
         bool isDrum = (track < 4);
         bool isSampler = (track == SEQ_TRACK_SAMPLER);
         // Per-row pattern: read from arrangement grid (always populated after load)
-        int _cellPat = daw.arr.cells[editBar][track];
+        int _cellPat = daw.arr.cells[gridBar][track];
         Pattern *rowPat = &seq.patterns[_cellPat];
         if (track == 4) DrawLine((int)x, ty-2, (int)(x+w), ty-2, UI_BORDER);
         if (track == SEQ_TRACK_SAMPLER) DrawLine((int)x, ty-2, (int)(x+w), ty-2, UI_BORDER);
