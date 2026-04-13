@@ -38,7 +38,10 @@ Total audio thread: **3.41 Gc (68.5% of CPU)**
 
 The initial analysis (from a typical song) showed effects dominating. With the stress test
 (additive + unison), `processAdditiveOscillator` alone is 27% of total CPU. The 16-harmonic
-sinf loop with unison creates the worst-case voice load. Fast sine here would save ~800 Mc.
+sinf loop with unison creates the worst-case voice load. However, **A/B testing (2026-04-12)
+confirmed fast polynomial sine sounds noticeably worse here** — additive harmonics need full
+sinf precision. The brightness powf cache is still viable. For bigger wins, look at reducing
+voice count (unison limiting) or SIMD (4 sinf in parallel via Accelerate/NEON).
 
 ### Key insight: per-bus multiplication is the #1 effects cost
 
@@ -92,6 +95,7 @@ These don't need full libm precision — they're LFO sweeps, saturation, pan, et
 | Call | Location | Why keep |
 |---|---|---|
 | sinf for basic oscillator waveforms | synth.h processVoice | The sine IS the sound — error = harmonic distortion |
+| **sinf for additive harmonics** | synth_oscillators.h processAdditiveOscillator | **A/B tested 2026-04-12: sounds noticeably worse with fast polynomial** — harmonics ARE the sound, same as base oscillators |
 | sinf for FM carrier/modulator | synth_oscillators.h processFMOscillator | Error creates wrong FM sidebands |
 | tanf in SVF filter coefficients | L1348, 2759 | Coefficient error cascades into filter response |
 | powf for pitch/semitone math | Various in synth.h | Audible tuning drift (confirmed: fast_powf broke unison detune tests) |
@@ -144,10 +148,11 @@ Phase 0 (no risk, no listening needed):
   [ ] Skip per-bus processing for buses with no active voices
 
 Phase 1 (biggest wins, needs A/B listening):
-  [ ] Fast sine for additive oscillator — TESTED, 912 Mc → 6 Mc (99.3% reduction)
-      Implementation: fastSinUnit() 5th-order polynomial in synth_oscillators.h
-      + brightness powf cache in AdditiveSettings (16 powf/sample → 0)
-      REVERTED pending listening test — rebuild + A/B before committing
+  [x] Fast sine for additive oscillator — REJECTED after A/B listening (2026-04-12)
+      5th-order polynomial (fastSinUnit) reduced 912 Mc → 6 Mc but sounds noticeably
+      worse. Additive harmonics need full sinf precision — same reasoning as base
+      oscillators. The brightness powf cache (16 powf/sample → 0) is still valid
+      as a standalone optimization (no audible impact, pure math caching).
   [ ] Fast sine for per-bus chorus/phaser/wah/LFO (8× multiplier makes this huge)
   [ ] Fast sine polynomial for pan law (16 calls/sample, always runs)
   [ ] Fast tanhf for saturation (tape, dub loop, multiband)
