@@ -328,7 +328,10 @@ was never built. The branch is not in a mergeable state.
 2. ~~Build composite step grid~~ — done (2026-04-11)
 3. Remove `perTrackPatterns` flag once non-arrangement modes are updated (optional — still useful)
 4. ~~Piano roll: verify `steps[step]` access is correct~~ — audited, no 2D accesses remain (2026-04-12)
-5. Make `editBar` navigable when stopped (arrow keys or bar selector in step grid)
+5. ~~Make `editBar` navigable when stopped~~ — done (2026-04-13): the 8 pattern buttons are
+   now a bar selector. Each button selects an arrangement bar (auto-allocating patterns on
+   first use). Step grid and audio playback both follow the selector, so toggling between
+   bars during playback swaps all track patterns at once. See "Bar selector (2026-04-13)" below.
 6. ~~Simplify `dawTrackPat()`~~ — now a one-line arrangement lookup, never NULL. All NULL guards
    and `rowEmpty`/click-to-allocate dead code removed (-73 lines). (2026-04-12)
 7. Consider dropping `SEQ_V2_MAX_TRACKS` from 12 to 8 (tracks 8-11 are unused by all songs)
@@ -403,3 +406,29 @@ bars). Scroll wheel still allows fine-tuning to any value.
 
 If a track has no pattern at the current bar (shouldn't happen with the fill pass, but
 as a safety net), clicking a step auto-allocates a new pattern for that track/bar.
+
+---
+
+## Bar selector (2026-04-13)
+
+The 8 "Pattern" buttons above the step grid were repurposed as an **arrangement bar
+selector**. They used to set `daw.transport.currentPattern` (pattern index 0-7); now
+they set a static `editBar` (0-7), and the step grid + audio playback both read from
+`arr.cells[editBar][track]`.
+
+### Behavior
+- Click bar 1: shows bar 0's per-track patterns (the default, populated at startup)
+- Click bar 2+: `dawEnsureBar()` extends `arr.length` and allocates fresh empty patterns
+  for every track in that bar (same routine that fills sparse arrangements at load)
+- Audio follows: `dawSyncSequencer()` wires `seq.trackPatternIdx[t]` from the selected
+  bar every frame in pattern mode, so toggling between bars during playback swaps all
+  track patterns simultaneously
+- During arrangement-mode playback, the step grid follows the playhead (`seq.chainPos`)
+  instead of `editBar`; the button for the currently-playing bar gets a yellow highlight
+- Transport bar shows "Bar:N" instead of "Pat:N"
+
+### Relationship to Arrange tab
+Pattern buttons and the Arrange tab now edit the **same data** (`daw.arr.cells`). The
+Arrange tab still owns the timeline view, reordering, and length management; the bar
+buttons are the quick way to flip between the first 8 bars during step editing. This
+is how hardware grooveboxes (Elektron, Roland TR-8S) work — pattern buttons = scenes.
