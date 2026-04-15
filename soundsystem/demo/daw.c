@@ -581,6 +581,15 @@ static Pattern* dawSelectedPattern(void) {
 static int recTargetTrack(void) {
     int p = daw.selectedPatch;
     if (p >= SEQ_DRUM_TRACKS && p < SEQ_DRUM_TRACKS + SEQ_MELODY_TRACKS) return p;
+    // Sampler track: record when the sampler is selected OR chromatic mode is
+    // routing keyboard/MIDI to the sampler. The sampler track needs a loaded
+    // slot at daw.chromaticSample to have something to record to.
+    bool samplerRouting = (p == SEQ_TRACK_SAMPLER) || daw.chromaticMode;
+    if (samplerRouting && samplerCtx &&
+        daw.chromaticSample >= 0 && daw.chromaticSample < SAMPLER_MAX_SAMPLES &&
+        samplerCtx->samples[daw.chromaticSample].loaded) {
+        return SEQ_TRACK_SAMPLER;
+    }
     return -1;
 }
 
@@ -633,6 +642,13 @@ static void dawRecordNoteOn(int midiNote, float velocity) {
     int trackLen = pat->length;
     if (trackLen <= 0) trackLen = 16;
 
+    // Defensive: ensure the sampler track's pattern is tagged TRACK_SAMPLER,
+    // otherwise the sequencer will take the MELODIC branch on playback and
+    // feed dawSamplerTrigger a MIDI note as sliceIdx → out-of-range → silent.
+    if (track == SEQ_TRACK_SAMPLER && pat->trackType != TRACK_SAMPLER) {
+        pat->trackType = TRACK_SAMPLER;
+    }
+
     int step = seq.trackStep[track];
     int tick = seq.trackTick[track];
     int8_t nudge = 0;
@@ -652,6 +668,11 @@ static void dawRecordNoteOn(int midiNote, float velocity) {
     int ni = stepV2AddNote(sv, midiNote, velFloatToU8(velocity), 1);
     if (ni >= 0) {
         sv->notes[ni].nudge = nudge;
+        // Sampler track: the `note` field is still pitch (60 = unity), but the
+        // step also needs `slice` set so playback knows which sample slot.
+        if (track == SEQ_TRACK_SAMPLER) {
+            sv->notes[ni].slice = (uint8_t)daw.chromaticSample;
+        }
     }
 
     for (int i = 0; i < REC_MAX_HELD; i++) {
@@ -5269,12 +5290,12 @@ static void drawParamPatch(float x, float y, float w, float h) {
         float sliderW = lfoW - previewW - 8;
         (void)sliderW;
 
-        struct { const char* name; float *rate, *depth, *phaseOffset; int *shape; int *sync; } lfos[] = {
-            {"Filter LFO", &p->p_filterLfoRate, &p->p_filterLfoDepth, &p->p_filterLfoPhaseOffset, &p->p_filterLfoShape, &p->p_filterLfoSync},
-            {"Reso LFO",   &p->p_resoLfoRate,   &p->p_resoLfoDepth,   &p->p_resoLfoPhaseOffset,   &p->p_resoLfoShape,   &p->p_resoLfoSync},
-            {"Amp LFO",    &p->p_ampLfoRate,     &p->p_ampLfoDepth,    &p->p_ampLfoPhaseOffset,    &p->p_ampLfoShape,    &p->p_ampLfoSync},
-            {"Pitch LFO",  &p->p_pitchLfoRate,   &p->p_pitchLfoDepth,  &p->p_pitchLfoPhaseOffset,  &p->p_pitchLfoShape,  &p->p_pitchLfoSync},
-            {"FM LFO",     &p->p_fmLfoRate,      &p->p_fmLfoDepth,     &p->p_fmLfoPhaseOffset,     &p->p_fmLfoShape,     &p->p_fmLfoSync},
+        struct { const char* name; float *rate, *depth, *phaseOffset; int *shape; int *sync; bool *transportSync; } lfos[] = {
+            {"Filter LFO", &p->p_filterLfoRate, &p->p_filterLfoDepth, &p->p_filterLfoPhaseOffset, &p->p_filterLfoShape, &p->p_filterLfoSync, &p->p_filterLfoTransportSync},
+            {"Reso LFO",   &p->p_resoLfoRate,   &p->p_resoLfoDepth,   &p->p_resoLfoPhaseOffset,   &p->p_resoLfoShape,   &p->p_resoLfoSync,   &p->p_resoLfoTransportSync},
+            {"Amp LFO",    &p->p_ampLfoRate,     &p->p_ampLfoDepth,    &p->p_ampLfoPhaseOffset,    &p->p_ampLfoShape,    &p->p_ampLfoSync,    &p->p_ampLfoTransportSync},
+            {"Pitch LFO",  &p->p_pitchLfoRate,   &p->p_pitchLfoDepth,  &p->p_pitchLfoPhaseOffset,  &p->p_pitchLfoShape,  &p->p_pitchLfoSync,  &p->p_pitchLfoTransportSync},
+            {"FM LFO",     &p->p_fmLfoRate,      &p->p_fmLfoDepth,     &p->p_fmLfoPhaseOffset,     &p->p_fmLfoShape,     &p->p_fmLfoSync,     &p->p_fmLfoTransportSync},
         };
 
         float ly = y;
@@ -5289,6 +5310,12 @@ static void drawParamPatch(float x, float y, float w, float h) {
             if (lfos[i].sync) ui_col_cycle_float_pair(&c, "Sync", lfoSyncNames, 11, lfos[i].sync,
                                                           "Ph", lfos[i].phaseOffset, 0.05f, 0.0f, 1.0f);
             else ui_col_float(&c, "Phase", lfos[i].phaseOffset, 0.05f, 0.0f, 1.0f);
+            // Transport-sync: only meaningful when Sync != Off (tempo-locked).
+            // When on, this LFO's phase follows beatPosition instead of resetting
+            // on each note-on — lets multi-bar sweeps complete across patterns.
+            if (lfos[i].sync && *lfos[i].sync != 0) {
+                ui_col_toggle(&c, "Lock", lfos[i].transportSync);
+            }
 
             float preH = c.y - sliderY - 4;
             if (preH < 30) preH = 30;
@@ -6542,10 +6569,19 @@ static void dawHandleMusicalTyping(void) {
                     } else {
                         dawPianoKeyVoices[i] = samplerPlay(daw.chromaticSample, 0.8f, pitch);
                     }
+                    // Record into the sampler track pattern if armed/recording.
+                    // Record the same midiNote used for pitch calc so playback
+                    // matches (dawSamplerTrigger interprets step.note the same
+                    // way: 60 = unity pitch).
+                    dawRecordNoteOn(midiNote, 0.8f);
                 }
-                if (IsKeyReleased(dawPianoKeys[i].key) && dawPianoKeyVoices[i] >= 0) {
-                    samplerStopVoice(dawPianoKeyVoices[i]);
-                    dawPianoKeyVoices[i] = -1;
+                if (IsKeyReleased(dawPianoKeys[i].key)) {
+                    int midiNote = dawCurrentOctave * 12 + dawPianoKeys[i].semitone;
+                    dawRecordNoteOff(midiNote);
+                    if (dawPianoKeyVoices[i] >= 0) {
+                        samplerStopVoice(dawPianoKeyVoices[i]);
+                        dawPianoKeyVoices[i] = -1;
+                    }
                 }
             }
             return;
@@ -8328,6 +8364,12 @@ static void drawWorkSample(float x, float y, float w, float h) {
                     DrawTextShadow("P", (int)(sx + slotW - 14), (int)(sy + 2), 8, (Color){100, 200, 255, 200});
                 if (!s->oneShot)
                     DrawTextShadow("L", (int)(sx + slotW - 14), (int)(sy + 12), 8, (Color){200, 150, 100, 200});
+                if (s->sp1200) {
+                    // "12" badge, tinted hotter with more grit
+                    int intensity = (int)(120 + 130 * s->sp1200Amount);
+                    DrawTextShadow("12", (int)(sx + 2), (int)(sy + slotH - 10), 8,
+                                   (Color){220, (unsigned char)(200 - intensity/2), 80, 230});
+                }
             }
 
             // Click to preview, set as chromatic sample
@@ -8335,6 +8377,11 @@ static void drawWorkSample(float x, float y, float w, float h) {
                 samplerQueuePlay(slot, 0.8f, 1.0f);
                 daw.chromaticSample = slot;
                 daw.chromaticMode = true;
+                // Picking a slot for the keyboard implies wanting pitch — opt in
+                // here so fresh-loaded samples respond to notes. User can still
+                // turn it off via the "Pitch" toggle in the chromatic row below
+                // (useful for drum slots that should play at fixed pitch).
+                s->pitched = true;
                 ui_consume_click();
             }
             // Right-click: stop. Shift+Right-click: delete from bank.
@@ -8354,6 +8401,28 @@ static void drawWorkSample(float x, float y, float w, float h) {
         if (daw.chromaticMode) {
             DraggableIntS(x + 140, sy, "Slot", &daw.chromaticSample, 1, 0, SAMPLER_MAX_SAMPLES - 1, 9);
             DraggableIntS(x + 260, sy, "Root", &daw.chromaticRootNote, 1, 24, 96, 9);
+            // Per-slot pitched flag: when off, sample plays at original pitch
+            // regardless of note (use for drums/one-shots). The "P" badge on
+            // each slot reflects this state.
+            if (samplerCtx &&
+                daw.chromaticSample >= 0 && daw.chromaticSample < SAMPLER_MAX_SAMPLES &&
+                samplerCtx->samples[daw.chromaticSample].loaded) {
+                ToggleBoolS(x + 360, sy, "Pitch",
+                            &samplerCtx->samples[daw.chromaticSample].pitched, 9);
+                // Grit slider: 0 = clean, 0.5 ≈ SP-1200 territory, 1 = extreme.
+                // Drives pitch-dance + bit-depth + decimation together. On any
+                // change we unapply (restoring original) and re-apply at the
+                // new amount; values near 0 just unapply. Reprocessing cost is
+                // ~1ms for typical samples — fine to drag freely.
+                Sample *csam = &samplerCtx->samples[daw.chromaticSample];
+                float pending = csam->sp1200Amount;
+                DraggableFloatS(x + 430, sy, "Grit", &pending, 0.02f, 0.0f, 1.0f, 9);
+                if (fabsf(pending - csam->sp1200Amount) > 0.001f) {
+                    if (csam->sp1200) samplerUnapplySp1200(daw.chromaticSample);
+                    if (pending > 0.01f) samplerApplySp1200(daw.chromaticSample, pending);
+                    else csam->sp1200Amount = 0.0f;
+                }
+            }
         }
         sy += 16;
     }
@@ -9309,6 +9378,8 @@ static void dawHandleMidiInput(void) {
                     } else {
                         midiSamplerVoices[note] = samplerPlay(daw.chromaticSample, vel, pitch);
                     }
+                    // Record the MIDI note into the sampler track when armed.
+                    dawRecordNoteOn(note, vel);
                     break;
                 }
 
@@ -9377,6 +9448,8 @@ static void dawHandleMidiInput(void) {
                         samplerStopVoice(midiSamplerVoices[note]);
                     }
                     midiSamplerVoices[note] = -1;
+                    // Record note-off too so gate duration resolves correctly.
+                    dawRecordNoteOff(note);
                     break;
                 }
 

@@ -225,6 +225,12 @@ static void setupTestState(void) {
         daw.patches[i].p_pitchLfoRate = 4.0f + i;
         daw.patches[i].p_pitchLfoDepth = 0.05f * i;
         daw.patches[i].p_pitchLfoShape = (i + 3) % 5;
+        // Alternate per-patch to exercise every bool slot across the bank
+        daw.patches[i].p_filterLfoTransportSync = (i & 1) != 0;
+        daw.patches[i].p_resoLfoTransportSync   = (i & 2) != 0;
+        daw.patches[i].p_ampLfoTransportSync    = (i & 4) != 0;
+        daw.patches[i].p_pitchLfoTransportSync  = (i & 8) != 0;
+        daw.patches[i].p_fmLfoTransportSync     = (i % 3) == 0;
         daw.patches[i].p_pulseWidth = 0.3f + i * 0.05f;
         daw.patches[i].p_pwmRate = 2.0f + i;
         daw.patches[i].p_pwmDepth = 0.1f * i;
@@ -630,6 +636,8 @@ static void verifyPatch(int i) {
     PF(p_resoLfoRate); PF(p_resoLfoDepth); PINT(p_resoLfoShape);
     PF(p_ampLfoRate); PF(p_ampLfoDepth); PINT(p_ampLfoShape);
     PF(p_pitchLfoRate); PF(p_pitchLfoDepth); PINT(p_pitchLfoShape);
+    PB(p_filterLfoTransportSync); PB(p_resoLfoTransportSync);
+    PB(p_ampLfoTransportSync); PB(p_pitchLfoTransportSync); PB(p_fmLfoTransportSync);
     PB(p_arpEnabled); PINT(p_arpMode); PINT(p_arpRateDiv); PF(p_arpRate); PINT(p_arpChord);
     PINT(p_unisonCount); PF(p_unisonDetune); PF(p_unisonMix);
     PB(p_monoMode); PF(p_glideTime);
@@ -942,6 +950,11 @@ static void verifyPatchFieldCoverage(void) {
     orig.p_resoLfoRate = 4.56f; orig.p_resoLfoDepth = 0.234f; orig.p_resoLfoShape = 3;
     orig.p_ampLfoRate = 5.67f; orig.p_ampLfoDepth = 0.345f; orig.p_ampLfoShape = 4;
     orig.p_pitchLfoRate = 6.78f; orig.p_pitchLfoDepth = 0.456f; orig.p_pitchLfoShape = 1;
+    orig.p_filterLfoTransportSync = true;
+    orig.p_resoLfoTransportSync = false;  // mixed pattern to catch bit-slot bugs
+    orig.p_ampLfoTransportSync = true;
+    orig.p_pitchLfoTransportSync = false;
+    orig.p_fmLfoTransportSync = true;
     orig.p_monoMode = true; orig.p_glideTime = 0.123f;
     orig.p_pluckBrightness = 0.567f; orig.p_pluckDamping = 0.89f; orig.p_pluckDamp = 0.234f;
     orig.p_additivePreset = 3; orig.p_additiveBrightness = 0.678f;
@@ -1019,6 +1032,8 @@ static void verifyPatchFieldCoverage(void) {
     CK_F(p_resoLfoRate); CK_F(p_resoLfoDepth); CK_I(p_resoLfoShape);
     CK_F(p_ampLfoRate); CK_F(p_ampLfoDepth); CK_I(p_ampLfoShape);
     CK_F(p_pitchLfoRate); CK_F(p_pitchLfoDepth); CK_I(p_pitchLfoShape);
+    CK_B(p_filterLfoTransportSync); CK_B(p_resoLfoTransportSync);
+    CK_B(p_ampLfoTransportSync); CK_B(p_pitchLfoTransportSync); CK_B(p_fmLfoTransportSync);
     CK_B(p_monoMode); CK_F(p_glideTime);
     CK_F(p_pluckBrightness); CK_F(p_pluckDamping); CK_F(p_pluckDamp);
     CK_I(p_additivePreset); CK_F(p_additiveBrightness); CK_F(p_additiveShimmer); CK_F(p_additiveInharmonicity);

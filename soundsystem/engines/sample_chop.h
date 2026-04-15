@@ -598,6 +598,7 @@ static int dubLoopFreezeToSampler(int slotIndex) {
 
     Sample *slot = &samplerCtx->samples[slotIndex];
     if (slot->loaded && slot->data && !slot->embedded) free(slot->data);
+    _samplerClearSp1200Backup(slot);
     slot->data = data;
     slot->length = trimLen;
     slot->sampleRate = SAMPLE_CHOP_SAMPLE_RATE;
@@ -634,6 +635,7 @@ static int rewindFreezeToSampler(int slotIndex) {
 
     Sample *slot = &samplerCtx->samples[slotIndex];
     if (slot->loaded && slot->data && !slot->embedded) free(slot->data);
+    _samplerClearSp1200Backup(slot);
     slot->data = data;
     slot->length = trimLen;
     slot->sampleRate = SAMPLE_CHOP_SAMPLE_RATE;

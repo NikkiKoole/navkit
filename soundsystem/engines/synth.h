@@ -1026,7 +1026,9 @@ typedef struct {
     int filterLfoShape;   // 0=sine, 1=tri, 2=square, 3=saw, 4=S&H
     float filterLfoSH;    // Sample & Hold current value
     LfoSyncDiv filterLfoSync; // Tempo sync (LFO_SYNC_OFF = use filterLfoRate in Hz)
-    
+    float filterLfoPhaseOffset; // Per-voice offset for transport-sync mode
+    bool filterLfoTransportSync; // true = lock phase to beatPosition
+
     // Resonance LFO
     float resoLfoRate;
     float resoLfoDepth;
@@ -1034,6 +1036,8 @@ typedef struct {
     int resoLfoShape;
     float resoLfoSH;
     LfoSyncDiv resoLfoSync;
+    float resoLfoPhaseOffset;
+    bool resoLfoTransportSync;
 
     // Amplitude LFO (tremolo)
     float ampLfoRate;
@@ -1042,6 +1046,8 @@ typedef struct {
     int ampLfoShape;
     float ampLfoSH;
     LfoSyncDiv ampLfoSync;
+    float ampLfoPhaseOffset;
+    bool ampLfoTransportSync;
 
     // Pitch LFO
     float pitchLfoRate;
@@ -1050,6 +1056,8 @@ typedef struct {
     int pitchLfoShape;
     float pitchLfoSH;
     LfoSyncDiv pitchLfoSync;
+    float pitchLfoPhaseOffset;
+    bool pitchLfoTransportSync;
 
     // FM LFO (modulates fmModIndex)
     float fmLfoRate;
@@ -1058,6 +1066,8 @@ typedef struct {
     int fmLfoShape;
     float fmLfoSH;
     LfoSyncDiv fmLfoSync;
+    float fmLfoPhaseOffset;
+    bool fmLfoTransportSync;
 
     // Arpeggiator
     bool arpEnabled;
@@ -1546,6 +1556,12 @@ typedef struct SynthContext {
     int noteFmLfoShape;
     LfoSyncDiv noteFmLfoSync;
     float noteFmLfoPhaseOffset;
+    // Per-LFO transport-sync mode (false = retrigger on note-on, true = lock to beatPosition)
+    bool noteFilterLfoTransportSync;
+    bool noteResoLfoTransportSync;
+    bool noteAmpLfoTransportSync;
+    bool notePitchLfoTransportSync;
+    bool noteFmLfoTransportSync;
     int noteScwIndex;
     
     // Arpeggiator parameters
@@ -1563,7 +1579,8 @@ typedef struct SynthContext {
     // Global tempo (BPM) and beat position
     float bpm;
     double beatPosition;  // Monotonic beat counter (incremented by sequencer ticks)
-    
+
+
     // Voice synthesis parameters
     float voiceFormantShift;
     float voiceBreathiness;
@@ -2048,7 +2065,7 @@ static void initSynthContext(SynthContext* ctx) {
     
     // Filter LFO sync default
     ctx->noteFilterLfoSync = LFO_SYNC_OFF;
-    
+
     // SFX randomization
     ctx->sfxRandomize = true;
 }
@@ -2135,6 +2152,11 @@ static void _ensureSynthCtx(void) {
 #define noteFmLfoShape (synthCtx->noteFmLfoShape)
 #define noteFmLfoSync (synthCtx->noteFmLfoSync)
 #define noteFmLfoPhaseOffset (synthCtx->noteFmLfoPhaseOffset)
+#define noteFilterLfoTransportSync (synthCtx->noteFilterLfoTransportSync)
+#define noteResoLfoTransportSync (synthCtx->noteResoLfoTransportSync)
+#define noteAmpLfoTransportSync (synthCtx->noteAmpLfoTransportSync)
+#define notePitchLfoTransportSync (synthCtx->notePitchLfoTransportSync)
+#define noteFmLfoTransportSync (synthCtx->noteFmLfoTransportSync)
 #define noteScwIndex (synthCtx->noteScwIndex)
 #define noteArpEnabled (synthCtx->noteArpEnabled)
 #define noteArpMode (synthCtx->noteArpMode)
@@ -2501,6 +2523,37 @@ static float getLfoRateFromSync(float bpm, LfoSyncDiv sync) {
         case LFO_SYNC_32_1: return bps / 128.0f; // 32 bars = 128 beats
         default: return 0.0f;
     }
+}
+
+// Get LFO cycle length in beats (for transport-locked sync mode)
+// Assumes 4/4 time: 1 bar = 4 beats
+static float getLfoCycleBeats(LfoSyncDiv sync) {
+    switch (sync) {
+        case LFO_SYNC_4_1:  return 16.0f;   // 4 bars
+        case LFO_SYNC_2_1:  return 8.0f;    // 2 bars
+        case LFO_SYNC_1_1:  return 4.0f;    // 1 bar
+        case LFO_SYNC_1_2:  return 2.0f;    // half note
+        case LFO_SYNC_1_4:  return 1.0f;    // quarter
+        case LFO_SYNC_1_8:  return 0.5f;    // eighth
+        case LFO_SYNC_1_16: return 0.25f;   // sixteenth
+        case LFO_SYNC_8_1:  return 32.0f;   // 8 bars
+        case LFO_SYNC_16_1: return 64.0f;   // 16 bars
+        case LFO_SYNC_32_1: return 128.0f;  // 32 bars
+        default: return 0.0f;
+    }
+}
+
+// Compute transport-locked LFO phase from global beat position.
+// When lfoTransportSync is enabled and the LFO is synced (not free-rate), this
+// overrides the per-voice accumulated phase so all voices stay aligned to the
+// transport and multi-bar cycles actually complete. phaseOffset (0..1) is
+// applied on top so patches can still run inverted relative to each other.
+static float computeTransportLockedLfoPhase(LfoSyncDiv sync, double beatPosition, float phaseOffset) {
+    float beats = getLfoCycleBeats(sync);
+    if (beats <= 0.0f) return 0.0f;
+    double raw = beatPosition / (double)beats + (double)phaseOffset;
+    double wrapped = raw - floor(raw);
+    return (float)wrapped;
 }
 
 // Get arpeggiator interval in seconds from tempo sync division
@@ -2928,6 +2981,10 @@ static float processVoice(Voice *v, float sampleRate) {
     float pitchLfoActualRate = v->pitchLfoRate;
     if (v->pitchLfoSync != LFO_SYNC_OFF) {
         pitchLfoActualRate = getLfoRateFromSync(synthBpm, v->pitchLfoSync);
+        if (v->pitchLfoTransportSync) {
+            v->pitchLfoPhase = computeTransportLockedLfoPhase(
+                v->pitchLfoSync, synthBeatPosition, v->pitchLfoPhaseOffset);
+        }
     }
     float pitchLfoMod = processLfo(&v->pitchLfoPhase, &v->pitchLfoSH,
                                     pitchLfoActualRate, v->pitchLfoDepth, v->pitchLfoShape, dt);
@@ -3003,8 +3060,13 @@ static float processVoice(Voice *v, float sampleRate) {
     float fmLfoMod = 0.0f;
     if (v->fmLfoDepth > 0.001f) {
         float fmLfoActualRate = v->fmLfoRate;
-        if (v->fmLfoSync != LFO_SYNC_OFF)
+        if (v->fmLfoSync != LFO_SYNC_OFF) {
             fmLfoActualRate = getLfoRateFromSync(synthBpm, v->fmLfoSync);
+            if (v->fmLfoTransportSync) {
+                v->fmLfoPhase = computeTransportLockedLfoPhase(
+                    v->fmLfoSync, synthBeatPosition, v->fmLfoPhaseOffset);
+            }
+        }
         fmLfoMod = processLfo(&v->fmLfoPhase, &v->fmLfoSH,
                                fmLfoActualRate, v->fmLfoDepth, v->fmLfoShape, dt);
         v->fmSettings.modIndex += fmLfoMod;
@@ -3436,10 +3498,21 @@ static float processVoice(Voice *v, float sampleRate) {
     }
     
     // Process LFOs
+    // Per-LFO transport-sync: when a patch enables transportSync for an LFO
+    // AND that LFO is tempo-synced, override the voice's accumulated phase
+    // with a transport-locked value derived from beatPosition. This makes
+    // multi-bar LFO cycles actually complete across repeated note-ons.
+    // processLfo still runs normally — its per-sample increment is overwritten
+    // next sample, which is fine for all shapes including S&H.
+
     // Filter LFO: use synced rate if enabled, otherwise use free rate
     float filterLfoRate = v->filterLfoRate;
     if (v->filterLfoSync != LFO_SYNC_OFF) {
         filterLfoRate = getLfoRateFromSync(synthBpm, v->filterLfoSync);
+        if (v->filterLfoTransportSync) {
+            v->filterLfoPhase = computeTransportLockedLfoPhase(
+                v->filterLfoSync, synthBeatPosition, v->filterLfoPhaseOffset);
+        }
     }
     float filterLfoMod = processLfo(&v->filterLfoPhase, &v->filterLfoSH,
                                      filterLfoRate, v->filterLfoDepth, v->filterLfoShape, dt);
@@ -3447,6 +3520,10 @@ static float processVoice(Voice *v, float sampleRate) {
     float resoLfoActualRate = v->resoLfoRate;
     if (v->resoLfoSync != LFO_SYNC_OFF) {
         resoLfoActualRate = getLfoRateFromSync(synthBpm, v->resoLfoSync);
+        if (v->resoLfoTransportSync) {
+            v->resoLfoPhase = computeTransportLockedLfoPhase(
+                v->resoLfoSync, synthBeatPosition, v->resoLfoPhaseOffset);
+        }
     }
     float resoLfoMod = processLfo(&v->resoLfoPhase, &v->resoLfoSH,
                                    resoLfoActualRate, v->resoLfoDepth, v->resoLfoShape, dt);
@@ -3454,6 +3531,10 @@ static float processVoice(Voice *v, float sampleRate) {
     float ampLfoActualRate = v->ampLfoRate;
     if (v->ampLfoSync != LFO_SYNC_OFF) {
         ampLfoActualRate = getLfoRateFromSync(synthBpm, v->ampLfoSync);
+        if (v->ampLfoTransportSync) {
+            v->ampLfoPhase = computeTransportLockedLfoPhase(
+                v->ampLfoSync, synthBeatPosition, v->ampLfoPhaseOffset);
+        }
     }
     float ampLfoMod = processLfo(&v->ampLfoPhase, &v->ampLfoSH,
                                   ampLfoActualRate, v->ampLfoDepth, v->ampLfoShape, dt);
@@ -3945,12 +4026,20 @@ static void releaseMonoNote(int voiceIdx, int midiNote) {
 static void resetVoiceLfos(Voice *v) {
     v->filterLfoPhase = noteFilterLfoPhaseOffset;
     v->filterLfoSH = 0.0f;
+    v->filterLfoPhaseOffset = noteFilterLfoPhaseOffset;
+    v->filterLfoTransportSync = noteFilterLfoTransportSync;
     v->resoLfoPhase = noteResoLfoPhaseOffset;
     v->resoLfoSH = 0.0f;
+    v->resoLfoPhaseOffset = noteResoLfoPhaseOffset;
+    v->resoLfoTransportSync = noteResoLfoTransportSync;
     v->ampLfoPhase = noteAmpLfoPhaseOffset;
     v->ampLfoSH = 0.0f;
+    v->ampLfoPhaseOffset = noteAmpLfoPhaseOffset;
+    v->ampLfoTransportSync = noteAmpLfoTransportSync;
     v->pitchLfoPhase = notePitchLfoPhaseOffset;
     v->pitchLfoSH = 0.0f;
+    v->pitchLfoPhaseOffset = notePitchLfoPhaseOffset;
+    v->pitchLfoTransportSync = notePitchLfoTransportSync;
     v->filterLfoRate = noteFilterLfoRate;
     v->filterLfoDepth = noteFilterLfoDepth;
     v->filterLfoShape = noteFilterLfoShape;
@@ -3969,6 +4058,8 @@ static void resetVoiceLfos(Voice *v) {
     v->pitchLfoSync = notePitchLfoSync;
     v->fmLfoPhase = noteFmLfoPhaseOffset;
     v->fmLfoSH = 0.0f;
+    v->fmLfoPhaseOffset = noteFmLfoPhaseOffset;
+    v->fmLfoTransportSync = noteFmLfoTransportSync;
     v->fmLfoRate = noteFmLfoRate;
     v->fmLfoDepth = noteFmLfoDepth;
     v->fmLfoShape = noteFmLfoShape;

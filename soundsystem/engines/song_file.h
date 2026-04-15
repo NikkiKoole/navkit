@@ -350,6 +350,11 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeInt(f, "fmLfoShape", p->p_fmLfoShape);
     _sf_writeInt(f, "fmLfoSync", p->p_fmLfoSync);
     _sf_writeFloat(f, "fmLfoPhaseOffset", p->p_fmLfoPhaseOffset);
+    _sf_writeBool(f, "filterLfoTransportSync", p->p_filterLfoTransportSync);
+    _sf_writeBool(f, "resoLfoTransportSync", p->p_resoLfoTransportSync);
+    _sf_writeBool(f, "ampLfoTransportSync", p->p_ampLfoTransportSync);
+    _sf_writeBool(f, "pitchLfoTransportSync", p->p_pitchLfoTransportSync);
+    _sf_writeBool(f, "fmLfoTransportSync", p->p_fmLfoTransportSync);
     _sf_writeFloat(f, "fmModRatio", p->p_fmModRatio);
     _sf_writeFloat(f, "fmModIndex", p->p_fmModIndex);
     _sf_writeFloat(f, "fmFeedback", p->p_fmFeedback);
@@ -1047,6 +1052,11 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "fmLfoShape") == 0) p->p_fmLfoShape = _sf_parseInt(val);
     else if (strcmp(key, "fmLfoSync") == 0) p->p_fmLfoSync = _sf_parseInt(val);
     else if (strcmp(key, "fmLfoPhaseOffset") == 0) p->p_fmLfoPhaseOffset = _sf_parseFloat(val);
+    else if (strcmp(key, "filterLfoTransportSync") == 0) p->p_filterLfoTransportSync = _sf_parseBool(val);
+    else if (strcmp(key, "resoLfoTransportSync") == 0) p->p_resoLfoTransportSync = _sf_parseBool(val);
+    else if (strcmp(key, "ampLfoTransportSync") == 0) p->p_ampLfoTransportSync = _sf_parseBool(val);
+    else if (strcmp(key, "pitchLfoTransportSync") == 0) p->p_pitchLfoTransportSync = _sf_parseBool(val);
+    else if (strcmp(key, "fmLfoTransportSync") == 0) p->p_fmLfoTransportSync = _sf_parseBool(val);
     else if (strcmp(key, "fmModRatio") == 0) p->p_fmModRatio = _sf_parseFloat(val);
     else if (strcmp(key, "fmModIndex") == 0) p->p_fmModIndex = _sf_parseFloat(val);
     else if (strcmp(key, "fmFeedback") == 0) p->p_fmFeedback = _sf_parseFloat(val);

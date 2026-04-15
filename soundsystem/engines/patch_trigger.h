@@ -116,6 +116,11 @@ static void applyPatchToGlobals(const SynthPatch *p) {
     noteFmLfoShape = p->p_fmLfoShape;
     noteFmLfoSync = (LfoSyncDiv)p->p_fmLfoSync;
     noteFmLfoPhaseOffset = p->p_fmLfoPhaseOffset;
+    noteFilterLfoTransportSync = p->p_filterLfoTransportSync;
+    noteResoLfoTransportSync = p->p_resoLfoTransportSync;
+    noteAmpLfoTransportSync = p->p_ampLfoTransportSync;
+    notePitchLfoTransportSync = p->p_pitchLfoTransportSync;
+    noteFmLfoTransportSync = p->p_fmLfoTransportSync;
     fmModRatio = p->p_fmModRatio;
     fmModIndex = p->p_fmModIndex;
     fmFeedback = p->p_fmFeedback;

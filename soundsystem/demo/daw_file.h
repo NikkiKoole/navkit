@@ -95,6 +95,11 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _dw(f, "fmLfoRate", p->p_fmLfoRate); _dw(f, "fmLfoDepth", p->p_fmLfoDepth);
     _di(f, "fmLfoShape", p->p_fmLfoShape); _di(f, "fmLfoSync", p->p_fmLfoSync);
     _dw(f, "fmLfoPhaseOffset", p->p_fmLfoPhaseOffset);
+    _db(f, "filterLfoTransportSync", p->p_filterLfoTransportSync);
+    _db(f, "resoLfoTransportSync", p->p_resoLfoTransportSync);
+    _db(f, "ampLfoTransportSync", p->p_ampLfoTransportSync);
+    _db(f, "pitchLfoTransportSync", p->p_pitchLfoTransportSync);
+    _db(f, "fmLfoTransportSync", p->p_fmLfoTransportSync);
     _dw(f, "fmModRatio", p->p_fmModRatio); _dw(f, "fmModIndex", p->p_fmModIndex);
     _dw(f, "fmFeedback", p->p_fmFeedback);
     _dw(f, "fmMod2Ratio", p->p_fmMod2Ratio); _dw(f, "fmMod2Index", p->p_fmMod2Index);
@@ -797,6 +802,11 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"fmLfoShape")==0) p->p_fmLfoShape = _dpi(val);
     else if (strcmp(key,"fmLfoSync")==0) p->p_fmLfoSync = _dpi(val);
     else if (strcmp(key,"fmLfoPhaseOffset")==0) p->p_fmLfoPhaseOffset = _dpf(val);
+    else if (strcmp(key,"filterLfoTransportSync")==0) p->p_filterLfoTransportSync = _dpb(val);
+    else if (strcmp(key,"resoLfoTransportSync")==0) p->p_resoLfoTransportSync = _dpb(val);
+    else if (strcmp(key,"ampLfoTransportSync")==0) p->p_ampLfoTransportSync = _dpb(val);
+    else if (strcmp(key,"pitchLfoTransportSync")==0) p->p_pitchLfoTransportSync = _dpb(val);
+    else if (strcmp(key,"fmLfoTransportSync")==0) p->p_fmLfoTransportSync = _dpb(val);
     else if (strcmp(key,"fmModRatio")==0) p->p_fmModRatio = _dpf(val);
     else if (strcmp(key,"fmModIndex")==0) p->p_fmModIndex = _dpf(val);
     else if (strcmp(key,"fmFeedback")==0) p->p_fmFeedback = _dpf(val);

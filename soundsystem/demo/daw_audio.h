@@ -655,6 +655,13 @@ static void dawInitSequencer(void) {
     seq.patterns[2].trackType = TRACK_DRUM;
     for (int i = 0; i < 16; i += 2) patSetDrum(&seq.patterns[2], i, 0.8f, 0.0f);
 
+    // Pattern for sampler track: must be TRACK_SAMPLER so the sequencer takes
+    // the sampler branch (reads slice field, calls dawSamplerTrigger with the
+    // slot index). Without this, recorded notes go through the melodic branch
+    // and dawSamplerTrigger receives the MIDI note as sliceIdx → out-of-range
+    // → silent. Default arrangement wires track 7 to pattern 7.
+    seq.patterns[SEQ_TRACK_SAMPLER].trackType = TRACK_SAMPLER;
+
     // Dilla timing starts at zero (clean grid) — user enables via Groove panel
     seq.dilla.kickNudge = 0;
     seq.dilla.snareDelay = 0;
