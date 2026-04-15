@@ -432,3 +432,40 @@ Pattern buttons and the Arrange tab now edit the **same data** (`daw.arr.cells`)
 Arrange tab still owns the timeline view, reordering, and length management; the bar
 buttons are the quick way to flip between the first 8 bars during step editing. This
 is how hardware grooveboxes (Elektron, Roland TR-8S) work — pattern buttons = scenes.
+
+---
+
+## Long-patterns milestone also landed here (2026-04-15)
+
+The goals in `docs/long-patterns-and-recording.md` (now in `docs/done/`) were
+delivered on this branch as a side effect of the refactor, not as a separate
+workstream. Phases 0–2 of that doc are shipped; Phase 3 is superseded by the
+single-track arrangement model.
+
+- **Phase 0** — `SEQ_MAX_STEPS = 128` (8 bars; doc proposed 256, 128 is enough)
+- **Phase 1** — Per-track length cycling (right-click track name: 16/32/64/128),
+  auto-paging in the step grid with "N/M" indicator, playhead-follow in piano roll
+- **Phase 2** — Recording into long patterns: `recQuantizeStep` wraps at per-track
+  length; sampler-track recording added this cycle (commit `1f7b054`). Verified
+  end-to-end with a 64-step bass recorded against a 16-step drum loop.
+- **Phase 3** — Pattern-master-length replaced by arrangement-level `barLengthSteps`:
+  tracks loop within the bar independently instead of waiting for the longest track.
+
+---
+
+## Side-work that landed on this branch (2026-04-15)
+
+Not part of the charter but delivered alongside:
+
+- Per-LFO transport sync (5 bools on `SynthPatch`, `daw.c` Patch tab "Lock" toggles)
+  — fixes multi-bar synced LFOs silently losing their cycle to per-note phase resets
+- Sample `pitched` auto-enable on chromatic click + per-slot "Pitch" toggle
+- SP-1200 grit mode: destructive ±N-st pitch dance + quantize + decimation with
+  single "Grit" slider; original data stashed for reversible undo
+- Sampler track → sequencer recording: `recTargetTrack` extended, sampler branches
+  in kbd+MIDI handlers call `dawRecordNoteOn/Off`, pattern 7 initialized to
+  `TRACK_SAMPLER` so the sequencer takes the right branch on playback
+- `test_daw_file.c` updated to the single-track API (had bitrotted; now 53877
+  assertions round-trip green)
+
+See commits `1f7b054` and `d9d23e0` for the code.
