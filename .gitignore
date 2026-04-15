@@ -27,3 +27,7 @@ screenshot*.png
 daw_output.wav
 daw_sound.log
 daw_voice.log
+
+# Migration/refactor safety backups (deleted once a conversion is trusted)
+songs-backup/
+*-preconvert/
