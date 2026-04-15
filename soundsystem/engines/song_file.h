@@ -350,6 +350,11 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeInt(f, "fmLfoShape", p->p_fmLfoShape);
     _sf_writeInt(f, "fmLfoSync", p->p_fmLfoSync);
     _sf_writeFloat(f, "fmLfoPhaseOffset", p->p_fmLfoPhaseOffset);
+    _sf_writeBool(f, "filterLfoTransportSync", p->p_filterLfoTransportSync);
+    _sf_writeBool(f, "resoLfoTransportSync", p->p_resoLfoTransportSync);
+    _sf_writeBool(f, "ampLfoTransportSync", p->p_ampLfoTransportSync);
+    _sf_writeBool(f, "pitchLfoTransportSync", p->p_pitchLfoTransportSync);
+    _sf_writeBool(f, "fmLfoTransportSync", p->p_fmLfoTransportSync);
     _sf_writeFloat(f, "fmModRatio", p->p_fmModRatio);
     _sf_writeFloat(f, "fmModIndex", p->p_fmModIndex);
     _sf_writeFloat(f, "fmFeedback", p->p_fmFeedback);
@@ -548,37 +553,31 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
 static void _sf_writePattern(FILE *f, int idx, const Pattern *p) {
     fprintf(f, "\n[pattern.%d]\n", idx);
 
-    // Track lengths
-    fprintf(f, "drumTrackLength =");
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) fprintf(f, " %d", p->trackLength[t]);
-    fprintf(f, "\n");
-    fprintf(f, "melodyTrackLength =");
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) fprintf(f, " %d", p->trackLength[SEQ_DRUM_TRACKS + t]);
-    fprintf(f, "\n");
+    const char *ttName = (p->trackType == TRACK_DRUM) ? "drum" :
+                         (p->trackType == TRACK_SAMPLER) ? "sampler" : "melodic";
+    fprintf(f, "trackType = %s\n", ttName);
+    fprintf(f, "length = %d\n", p->length);
 
-    // Drum events — only write active steps
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) {
-        for (int s = 0; s < p->trackLength[t]; s++) {
-            if (!patGetDrum(p, t, s)) continue;
-            fprintf(f, "d track=%d step=%d vel=%.3g", t, s, (double)patGetDrumVel(p, t, s));
-            float dp = patGetDrumPitch(p, t, s);
+    if (p->trackType == TRACK_DRUM) {
+        // Drum events — only write active steps
+        for (int s = 0; s < p->length; s++) {
+            if (!patGetDrum(p, s)) continue;
+            fprintf(f, "d step=%d vel=%.3g", s, (double)patGetDrumVel(p, s));
+            float dp = patGetDrumPitch(p, s);
             if (dp != 0.0f)
                 fprintf(f, " pitch=%.3g", (double)dp);
-            float dProb = patGetDrumProb(p, t, s);
+            float dProb = patGetDrumProb(p, s);
             if (dProb > 0.0f && dProb < 1.0f)
                 fprintf(f, " prob=%.3g", (double)dProb);
-            int dCond = patGetDrumCond(p, t, s);
+            int dCond = patGetDrumCond(p, s);
             if (dCond != COND_ALWAYS)
                 fprintf(f, " cond=%s", _sf_conditionNames[dCond]);
             fprintf(f, "\n");
         }
-    }
-
-    // Melody events — write all voices per step
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) {
-        int absTrack = SEQ_DRUM_TRACKS + t;
-        for (int s = 0; s < p->trackLength[absTrack]; s++) {
-            const StepV2 *sv = &p->steps[absTrack][s];
+    } else {
+        // Melody/sampler events — write all voices per step
+        for (int s = 0; s < p->length; s++) {
+            const StepV2 *sv = &p->steps[s];
             if (sv->noteCount == 0) continue;
 
             for (int v = 0; v < sv->noteCount; v++) {
@@ -586,8 +585,8 @@ static void _sf_writePattern(FILE *f, int idx, const Pattern *p) {
                 if (sn->note == SEQ_NOTE_OFF) continue;
                 char noteName[8];
                 _sf_midiToName(sn->note, noteName, sizeof(noteName));
-                fprintf(f, "m track=%d step=%d note=%s vel=%.3g gate=%d",
-                        t, s, noteName, (double)velU8ToFloat(sn->velocity), (int)sn->gate);
+                fprintf(f, "m step=%d note=%s vel=%.3g gate=%d",
+                        s, noteName, (double)velU8ToFloat(sn->velocity), (int)sn->gate);
                 if (sn->slide) fprintf(f, " slide");
                 if (sn->accent) fprintf(f, " accent");
                 if (sn->nudge != 0) fprintf(f, " nudge=%d", (int)sn->nudge);
@@ -1053,6 +1052,11 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "fmLfoShape") == 0) p->p_fmLfoShape = _sf_parseInt(val);
     else if (strcmp(key, "fmLfoSync") == 0) p->p_fmLfoSync = _sf_parseInt(val);
     else if (strcmp(key, "fmLfoPhaseOffset") == 0) p->p_fmLfoPhaseOffset = _sf_parseFloat(val);
+    else if (strcmp(key, "filterLfoTransportSync") == 0) p->p_filterLfoTransportSync = _sf_parseBool(val);
+    else if (strcmp(key, "resoLfoTransportSync") == 0) p->p_resoLfoTransportSync = _sf_parseBool(val);
+    else if (strcmp(key, "ampLfoTransportSync") == 0) p->p_ampLfoTransportSync = _sf_parseBool(val);
+    else if (strcmp(key, "pitchLfoTransportSync") == 0) p->p_pitchLfoTransportSync = _sf_parseBool(val);
+    else if (strcmp(key, "fmLfoTransportSync") == 0) p->p_fmLfoTransportSync = _sf_parseBool(val);
     else if (strcmp(key, "fmModRatio") == 0) p->p_fmModRatio = _sf_parseFloat(val);
     else if (strcmp(key, "fmModIndex") == 0) p->p_fmModIndex = _sf_parseFloat(val);
     else if (strcmp(key, "fmFeedback") == 0) p->p_fmFeedback = _sf_parseFloat(val);
@@ -1280,9 +1284,9 @@ static void _sf_parseDrumEvent(const char *line, Pattern *p) {
     }
 
     if (track >= 0 && track < SEQ_DRUM_TRACKS && step >= 0 && step < SEQ_MAX_STEPS) {
-        patSetDrum(p, track, step, vel, pitch);
-        patSetDrumProb(p, track, step, prob);
-        patSetDrumCond(p, track, step, cond);
+        patSetDrum(p, step, vel, pitch);
+        patSetDrumProb(p, step, prob);
+        patSetDrumCond(p, step, cond);
     }
 }
 
@@ -1351,21 +1355,20 @@ static void _sf_parseMelodyEvent(const char *line, Pattern *p) {
         }
     }
 
-    if (track >= 0 && track < SEQ_MELODY_TRACKS && step >= 0 && step < SEQ_MAX_STEPS) {
-        int absTrack = SEQ_DRUM_TRACKS + track;
+    if (step >= 0 && step < SEQ_MAX_STEPS) {
         if (hasChord && chordType == CHORD_CUSTOM && customNoteCount > 0) {
             // Legacy custom chord → v2 multi-note step
-            patSetChordCustom(p, absTrack, step, vel, gate,
+            patSetChordCustom(p, step, vel, gate,
                 customNoteCount > 0 ? customNotes[0] : -1,
                 customNoteCount > 1 ? customNotes[1] : -1,
                 customNoteCount > 2 ? customNotes[2] : -1,
                 customNoteCount > 3 ? customNotes[3] : -1);
         } else if (hasChord) {
             // Legacy standard chord → v2 multi-note step
-            patSetChord(p, absTrack, step, _sf_nameToMidi(noteName), (ChordType)chordType, vel, gate);
+            patSetChord(p, step, _sf_nameToMidi(noteName), (ChordType)chordType, vel, gate);
         } else {
             // v2 polyphony: if step already has notes, add to it (chord from multiple m lines)
-            StepV2 *sv = &p->steps[absTrack][step];
+            StepV2 *sv = &p->steps[step];
             if (sv->noteCount > 0) {
                 int vi = stepV2AddNote(sv, _sf_nameToMidi(noteName), velFloatToU8(vel), (int8_t)gate);
                 if (vi >= 0) {
@@ -1377,20 +1380,20 @@ static void _sf_parseMelodyEvent(const char *line, Pattern *p) {
                 // Per-step fields: prob/cond/sustain from first voice, don't overwrite
                 return;
             }
-            patSetNote(p, absTrack, step, _sf_nameToMidi(noteName), vel, gate);
+            patSetNote(p, step, _sf_nameToMidi(noteName), vel, gate);
         }
         // Set per-voice fields on notes[0] (or legacy chord's first note)
-        StepV2 *sv = &p->steps[absTrack][step];
+        StepV2 *sv = &p->steps[step];
         if (sv->noteCount > 0) {
             sv->notes[0].slide = slide;
             sv->notes[0].accent = accent;
             sv->notes[0].nudge = (int8_t)nudge;
             sv->notes[0].gateNudge = (int8_t)gateNudge;
         }
-        patSetNoteSustain(p, absTrack, step, sustain);
-        patSetNoteProb(p, absTrack, step, prob);
-        patSetNoteCond(p, absTrack, step, cond);
-        if (pickMode != PICK_ALL) patSetPickMode(p, absTrack, step, pickMode);
+        patSetNoteSustain(p, step, sustain);
+        patSetNoteProb(p, step, prob);
+        patSetNoteCond(p, step, cond);
+        if (pickMode != PICK_ALL) patSetPickMode(p, step, pickMode);
     }
 }
 
@@ -1829,14 +1832,14 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
         case _SF_SEC_PATTERN:
             if (subIndex >= 0 && subIndex < SEQ_NUM_PATTERNS) {
                 Pattern *p = &d->patterns[subIndex];
-                if (strcmp(key, "drumTrackLength") == 0) {
-                    _sf_parseIntList(val, p->trackLength, SEQ_DRUM_TRACKS);
+                if (strcmp(key, "length") == 0) {
+                    int l = atoi(val);
+                    p->length = (l > 0 && l <= SEQ_MAX_STEPS) ? l : SEQ_MAX_STEPS;
                 }
-                else if (strcmp(key, "melodyTrackLength") == 0) {
-                    int melLengths[SEQ_MELODY_TRACKS];
-                    _sf_parseIntList(val, melLengths, SEQ_MELODY_TRACKS);
-                    for (int _t = 0; _t < SEQ_MELODY_TRACKS; _t++)
-                        p->trackLength[SEQ_DRUM_TRACKS + _t] = melLengths[_t];
+                else if (strcmp(key, "trackType") == 0) {
+                    if (strcmp(val, "drum") == 0) p->trackType = TRACK_DRUM;
+                    else if (strcmp(val, "sampler") == 0) p->trackType = TRACK_SAMPLER;
+                    else p->trackType = TRACK_MELODIC;
                 }
             }
             break;

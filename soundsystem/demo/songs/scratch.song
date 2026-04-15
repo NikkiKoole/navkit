@@ -342,6 +342,7 @@ fbEnvAlpha = 0
 fbLfoRate = 0
 fbLfoSync = 0
 fbLfoAlpha = 0
+fbLfoBeta = 0
 fbLfoShape = 0
 fbNoiseMix = 0
 
@@ -633,6 +634,7 @@ fbEnvAlpha = 0
 fbLfoRate = 0
 fbLfoSync = 0
 fbLfoAlpha = 0
+fbLfoBeta = 0
 fbLfoShape = 0
 fbNoiseMix = 0
 
@@ -924,6 +926,7 @@ fbEnvAlpha = 0
 fbLfoRate = 0
 fbLfoSync = 0
 fbLfoAlpha = 0
+fbLfoBeta = 0
 fbLfoShape = 0
 fbNoiseMix = 0
 
@@ -1215,6 +1218,7 @@ fbEnvAlpha = 0
 fbLfoRate = 0
 fbLfoSync = 0
 fbLfoAlpha = 0
+fbLfoBeta = 0
 fbLfoShape = 0
 fbNoiseMix = 0
 
@@ -1506,6 +1510,7 @@ fbEnvAlpha = -0.494609
 fbLfoRate = 0
 fbLfoSync = 8
 fbLfoAlpha = 0.760586
+fbLfoBeta = 0
 fbLfoShape = 2
 fbNoiseMix = 0
 
@@ -1797,6 +1802,7 @@ fbEnvAlpha = 0
 fbLfoRate = 0
 fbLfoSync = 0
 fbLfoAlpha = 0
+fbLfoBeta = 0
 fbLfoShape = 0
 fbNoiseMix = 0
 
@@ -2088,6 +2094,7 @@ fbEnvAlpha = 0
 fbLfoRate = 0
 fbLfoSync = 0
 fbLfoAlpha = 0
+fbLfoBeta = 0
 fbLfoShape = 0
 fbNoiseMix = 0
 
@@ -2378,6 +2385,7 @@ fbEnvAlpha = 0
 fbLfoRate = 0
 fbLfoSync = 0
 fbLfoAlpha = 0
+fbLfoBeta = 0
 fbLfoShape = 0
 fbNoiseMix = 0
 
@@ -3148,33 +3156,60 @@ length = 0
 loopsPerPattern = 2
 songMode = false
 
-[slotflags]
-slot.24.pitched = true
-slot.25.pitched = true
-slot.26.pitched = true
-slot.27.pitched = true
-slot.28.pitched = true
-slot.29.pitched = true
-slot.30.pitched = true
-slot.31.pitched = true
+[pertrack]
+arrMode = true
+arrLength = 1
+arr0 = 0
+arr1 = 1
+arr2 = 2
+arr3 = 3
+arr4 = 4
+arr5 = 5
+arr6 = 6
+arr7 = 7
+
+[launcher]
+t0 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t1 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t2 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t3 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t4 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t5 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t6 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t7 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 
 [pattern.0]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.8
-d track=0 step=4 vel=0.8
-d track=0 step=8 vel=0.8
-d track=0 step=12 vel=0.8
-d track=1 step=4 vel=0.8
-d track=1 step=12 vel=0.8
-d track=2 step=0 vel=0.8
-d track=2 step=2 vel=0.8
-d track=2 step=4 vel=0.8
-d track=2 step=6 vel=0.8
-d track=2 step=8 vel=0.8
-d track=2 step=10 vel=0.8
-d track=2 step=12 vel=0.8
-d track=2 step=14 vel=0.8
-m track=0 step=0 note=C4 vel=0.612 gate=1
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=4 vel=0.8
+d step=8 vel=0.8
+d step=12 vel=0.8
+
+[pattern.1]
+trackType = drum
+length = 16
+d step=4 vel=0.8
+d step=12 vel=0.8
+
+[pattern.2]
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=2 vel=0.8
+d step=4 vel=0.8
+d step=6 vel=0.8
+d step=8 vel=0.8
+d step=10 vel=0.8
+d step=12 vel=0.8
+d step=14 vel=0.8
+
+[pattern.4]
+trackType = melodic
+length = 16
+m step=0 note=C4 vel=0.612 gate=1
+
+[pattern.7]
+trackType = sampler
+length = 16
 s step=0 slice=0 note=60 vel=0.192

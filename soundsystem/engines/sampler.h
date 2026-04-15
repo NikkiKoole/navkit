@@ -33,6 +33,17 @@ typedef struct {
     bool pitched;             // Keyboard/sequencer controls pitch (vs always original speed)
     bool oneShot;             // Play to end on trigger (vs sustain/loop while held)
     char name[64];            // Sample name (for display)
+    // SP-1200 grit mode (destructive with undo).
+    // When sp1200 is true: data has been replaced with processed version.
+    // sp1200Amount (0..1) controls intensity: 0 = clean (no processing),
+    // ~0.5 = authentic SP-1200 territory (±6 st, ~15-bit, ~28 kHz),
+    // 1.0 = extreme (±12 st, 6-bit, 12 kHz).
+    // originalData/originalLength hold pre-process bytes for undo.
+    // Not persisted: a saved slot keeps whatever's in `data` at save time.
+    bool sp1200;
+    float sp1200Amount;
+    float* originalData;
+    int originalLength;
 } Sample;
 
 // Sample playback voice
@@ -157,6 +168,9 @@ typedef struct {
 } WavFmt;
 #pragma pack(pop)
 
+// Forward decl — defined further down alongside SP-1200 processing helpers
+static void _samplerClearSp1200Backup(Sample *s);
+
 // Load a WAV file into a sample slot
 // Returns sample index on success, -1 on failure
 static int samplerLoadWav(const char* filepath, int slotIndex) {
@@ -239,6 +253,7 @@ static int samplerLoadWav(const char* filepath, int slotIndex) {
         free(sample->data);
         sample->data = NULL;
     }
+    _samplerClearSp1200Backup(sample);
     
     // Allocate sample buffer
     sample->data = (float*)malloc(numSamples * sizeof(float));
@@ -379,19 +394,191 @@ static bool samplerExportSlotWav(int slotIndex, const char *filepath) {
     return samplerWriteWav(filepath, s->data, s->length, s->sampleRate);
 }
 
+// Forward decl — defined further down with voice management utilities
+static void samplerStopSample(int sampleIndex);
+
+// ============================================================================
+// SP-1200 GRIT MODE (destructive processing with undo)
+// ============================================================================
+//
+// Emulates the iconic SP-1200 / classic hip-hop sampler sound by processing
+// the slot's audio destructively with the +6/-6 semitone trick:
+//
+//   1. Pitch up 6 semitones (resample to 1.4142x speed) — moves upper
+//      harmonics up toward Nyquist
+//   2. Quantize amplitude to 12 bits — baked-in noise floor
+//   3. Decimate to ~26 kHz with no anti-alias filter — upper content folds
+//      back as aliasing (the "grit")
+//   4. Pitch back down 6 semitones — aliasing artifacts now sit in the
+//      audible mids/highs instead of up near Nyquist where you can't hear
+//      them
+//
+// The original data is saved to sample->originalData so samplerUnapplySp1200
+// can restore it. Not persisted: saving the bank keeps whatever is in
+// sample->data at save time.
+
+// Reset sp1200 backup state (used by sample-load paths to avoid leaking
+// originalData when a slot is reused).
+static void _samplerClearSp1200Backup(Sample *s) {
+    if (s->originalData) free(s->originalData);
+    s->originalData = NULL;
+    s->originalLength = 0;
+    s->sp1200 = false;
+}
+
+// Apply SP-1200 grit processing destructively. Saves original for undo.
+//
+// Apply grit processing at a given amount (0..1). All three knobs scale with
+// amount:
+//   - UP_RATIO = 2^amount (1.0 at a=0, 1.414 at a=0.5 = +6st, 2.0 at a=1 = +12st)
+//   - quantBits = 24 → 6 (linear). At a=0: 24-bit (transparent), a=1: 6-bit.
+//   - TARGET_RATE = 44100 → 12000 (linear). At a=0: no decimation, a=1: heavy.
+// At amount = 0 the pipeline is effectively identity (pitch 1.0, near-infinite
+// quant levels, decimation skipped because rate >= srcRate) — but we still
+// burn memory, so the UI layer short-circuits to "unapply" at a=0.
+static bool samplerApplySp1200(int slotIndex, float amount) {
+    _ensureSamplerCtx();
+    if (slotIndex < 0 || slotIndex >= SAMPLER_MAX_SAMPLES) return false;
+    Sample *s = &samplerCtx->samples[slotIndex];
+    if (!s->loaded || !s->data || s->length <= 0) return false;
+    if (s->sp1200) return true;  // Already applied — caller must unapply first
+
+    if (amount < 0.0f) amount = 0.0f;
+    if (amount > 1.0f) amount = 1.0f;
+
+    // Stop any active voices on this slot so the audio thread can't read the
+    // old buffer while we're swapping pointers.
+    samplerStopSample(slotIndex);
+
+    const float UP_RATIO = powf(2.0f, amount);      // 1.0 .. 2.0
+    const float TARGET_RATE = 44100.0f - 32100.0f * amount;  // 44.1k .. 12k
+
+    int srcLen = s->length;
+    int srcRate = s->sampleRate > 0 ? s->sampleRate : 44100;
+
+    // --- Step 1: Pitch up 6st (resample to fewer output samples) ---
+    int upLen = (int)(srcLen / UP_RATIO);
+    if (upLen < 2) return false;
+    float *up = (float*)malloc(upLen * sizeof(float));
+    if (!up) return false;
+    for (int i = 0; i < upLen; i++) {
+        float pos = i * UP_RATIO;
+        int pi = (int)pos;
+        float frac = pos - pi;
+        float a = s->data[pi];
+        float b = (pi + 1 < srcLen) ? s->data[pi + 1] : a;
+        up[i] = a * (1.0f - frac) + b * frac;
+    }
+
+    // --- Step 2: amplitude quantize (bit depth scales with amount) ---
+    // bits = 24 - 18*amount (24 → 6 bit depth over 0 → 1).
+    // divisor for signed quantize = 2^(bits-1).
+    float quantBits = 24.0f - 18.0f * amount;
+    float quantDiv = powf(2.0f, quantBits - 1.0f);
+    float invDiv = 1.0f / quantDiv;
+    for (int i = 0; i < upLen; i++) {
+        float x = up[i];
+        if (x > 1.0f) x = 1.0f;
+        else if (x < -1.0f) x = -1.0f;
+        float q = x * quantDiv;
+        q = (q >= 0.0f) ? (float)((int)(q + 0.5f)) : (float)((int)(q - 0.5f));
+        up[i] = q * invDiv;
+    }
+
+    // --- Step 3: Sample-and-hold decimation to ~26 kHz ---
+    // For each output index i, find which "26 kHz bin" it belongs to, then
+    // pick the up[] value at the bin boundary. All indices in the same bin
+    // get the same value → staircase → high harmonics fold back as aliasing.
+    // Writing into a SEPARATE buffer is critical: in-place writes corrupt
+    // later reads and produce compounding noise.
+    float rateStep = (float)srcRate / TARGET_RATE;  // ≈ 1.696 at 44.1k
+    float *mid;
+    if (rateStep > 1.0f) {
+        mid = (float*)malloc(upLen * sizeof(float));
+        if (!mid) { free(up); return false; }
+        for (int i = 0; i < upLen; i++) {
+            int binIdx = (int)(i / rateStep);
+            int srcIdx = (int)(binIdx * rateStep);
+            if (srcIdx >= upLen) srcIdx = upLen - 1;
+            mid[i] = up[srcIdx];
+        }
+        free(up);
+    } else {
+        // Source rate already at/below target; skip decimation
+        mid = up;
+    }
+
+    // --- Step 4: Pitch down 6st (resample back, net length ≈ srcLen) ---
+    int outLen = (int)(upLen * UP_RATIO);
+    float *out = (float*)malloc(outLen * sizeof(float));
+    if (!out) { free(mid); return false; }
+    for (int i = 0; i < outLen; i++) {
+        float pos = i / UP_RATIO;
+        int pi = (int)pos;
+        float frac = pos - pi;
+        float a = mid[pi];
+        float b = (pi + 1 < upLen) ? mid[pi + 1] : a;
+        out[i] = a * (1.0f - frac) + b * frac;
+    }
+    free(mid);
+
+    // --- Swap buffers; stash original for undo ---
+    if (s->embedded) {
+        // Embedded samples can't be freed — copy first, then treat as owned
+        float *copy = (float*)malloc(srcLen * sizeof(float));
+        if (!copy) { free(out); return false; }
+        for (int i = 0; i < srcLen; i++) copy[i] = s->data[i];
+        s->originalData = copy;
+        s->embedded = false;
+    } else {
+        s->originalData = s->data;  // Transfer ownership
+    }
+    s->originalLength = srcLen;
+    s->data = out;
+    s->length = outLen;
+    s->sp1200 = true;
+    s->sp1200Amount = amount;
+    printf("[sp1200] slot %d, amount=%.2f, bits=%.1f, rate=%.0fHz, pitch=%.3fx, %d -> %d samples\n",
+           slotIndex, amount, quantBits, TARGET_RATE, UP_RATIO, srcLen, outLen);
+    fflush(stdout);
+    return true;
+}
+
+// Restore original (pre-SP1200) sample data.
+static bool samplerUnapplySp1200(int slotIndex) {
+    _ensureSamplerCtx();
+    if (slotIndex < 0 || slotIndex >= SAMPLER_MAX_SAMPLES) return false;
+    Sample *s = &samplerCtx->samples[slotIndex];
+    if (!s->sp1200 || !s->originalData) return false;
+
+    // Stop active voices on this slot so the audio thread can't read the
+    // processed buffer while we free it.
+    samplerStopSample(slotIndex);
+
+    if (s->data) free(s->data);  // Free the processed buffer
+    s->data = s->originalData;
+    s->length = s->originalLength;
+    s->originalData = NULL;
+    s->originalLength = 0;
+    s->sp1200 = false;
+    s->sp1200Amount = 0.0f;
+    return true;
+}
+
 // Free a sample slot
 static void samplerFreeSample(int slotIndex) {
     _ensureSamplerCtx();
-    
+
     if (slotIndex < 0 || slotIndex >= SAMPLER_MAX_SAMPLES) {
         return;
     }
-    
+
     Sample* sample = &samplerCtx->samples[slotIndex];
     // Only free if not embedded (embedded data is const and shouldn't be freed)
     if (sample->data && !sample->embedded) {
         free(sample->data);
     }
+    _samplerClearSp1200Backup(sample);
     sample->data = NULL;
     sample->loaded = false;
     sample->embedded = false;

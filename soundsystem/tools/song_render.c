@@ -218,10 +218,13 @@ static void renderMelodyTrigger(int trackIdx, int note, float vel,
     if (vi >= 0) {
         voiceBus[vi] = dawPatchToBus(busTrack);
         if (p->p_monoMode) dawMonoVoiceIdx[trackIdx] = vi;
-        if (vc < SEQ_V2_MAX_POLY) {
-            dawMelodyVoice[trackIdx][vc] = vi;
-            dawMelodyVoiceCount[trackIdx] = vc + 1;
+        int trigSlot = seq.trackNoteOnSlot[busTrack];
+        if (trigSlot >= 0 && trigSlot < SEQ_V2_MAX_POLY) {
+            dawMelodyVoice[trackIdx][trigSlot] = vi;
         }
+        int _vc2 = 0;
+        for (int _si = 0; _si < SEQ_V2_MAX_POLY; _si++) if (dawMelodyVoice[trackIdx][_si] >= 0) _vc2 = _si + 1;
+        dawMelodyVoiceCount[trackIdx] = _vc2;
     }
 
     if (p->p_monoMode) monoVoiceIdx = savedMonoVoiceIdx;
@@ -238,13 +241,53 @@ static void renderMelodyTrigger1(int n, float v, float g, float pm, bool s, bool
 static void renderMelodyTrigger2(int n, float v, float g, float pm, bool s, bool a) { (void)pm; renderMelodyTrigger(2, n, v, g, s, a); }
 
 static void renderMelodyRelease(int t) {
-    for (int i = 0; i < dawMelodyVoiceCount[t]; i++) {
-        if (dawMelodyVoice[t][i] >= 0) {
-            releaseNote(dawMelodyVoice[t][i]);
-            dawMelodyVoice[t][i] = -1;
+    int busTrack = t + SEQ_DRUM_TRACKS;
+    int slot = seq.trackNoteOffSlot[busTrack];
+    int vi = (slot >= 0 && slot < SEQ_V2_MAX_POLY) ? dawMelodyVoice[t][slot] : -1;
+
+    int fallbackNote = seq.trackMonoFallbackNote[busTrack][0];
+    int fallbackGate = seq.trackMonoFallbackGate[busTrack][0];
+    if (vi >= 0 && fallbackNote != SEQ_NOTE_OFF && fallbackGate > 0) {
+        // Pop [0], shift [1] → [0]
+        seq.trackMonoFallbackNote[busTrack][0] = seq.trackMonoFallbackNote[busTrack][1];
+        seq.trackMonoFallbackGate[busTrack][0] = seq.trackMonoFallbackGate[busTrack][1];
+        seq.trackMonoFallbackNote[busTrack][1] = SEQ_NOTE_OFF;
+        seq.trackMonoFallbackGate[busTrack][1] = 0;
+        // Glide the still-active voice to the fallback pitch.
+        float fallbackFreq = patchMidiToFreq(fallbackNote);
+        SynthPatch *fp = &daw.patches[busTrack];
+        float glideT = fp->p_glideTime > 0.0f ? fp->p_glideTime : 0.03f;
+        Voice *rv = &synthCtx->voices[vi];
+        // Retrigger envelope only if the voice has fully decayed (plucky/percussive patches).
+        // Sustaining patches glide smoothly without retriggering. Matches synth arp logic.
+        if (rv->envStage == 0 || rv->envStage == 4 || rv->sustain < 0.001f || fp->p_monoHardRetrigger) {
+            if (rv->envLevel > 0.01f) { rv->antiClickSamples = 44; rv->antiClickSample = rv->prevOutput; }
+            rv->envPhase = 0.0f;
+            rv->envLevel = 0.0f;
+            rv->envStage = 1;
         }
+        rv->targetFrequency = fallbackFreq;
+        rv->glideRate = 1.0f / glideT;
+        seq.trackCurrentNote[busTrack][slot] = fallbackNote;
+        seq.trackGateRemaining[busTrack][slot] = fallbackGate;
+        seq.trackNoteOffVetoed[busTrack] = true;
+        int _vc2 = 0;
+        for (int _si = 0; _si < SEQ_V2_MAX_POLY; _si++) if (dawMelodyVoice[t][_si] >= 0) _vc2 = _si + 1;
+        dawMelodyVoiceCount[t] = _vc2;
+        return;
     }
-    dawMelodyVoiceCount[t] = 0;
+
+    seq.trackMonoFallbackNote[busTrack][0] = SEQ_NOTE_OFF;
+    seq.trackMonoFallbackGate[busTrack][0] = 0;
+    seq.trackMonoFallbackNote[busTrack][1] = SEQ_NOTE_OFF;
+    seq.trackMonoFallbackGate[busTrack][1] = 0;
+    if (vi >= 0) {
+        releaseNote(vi);
+        dawMelodyVoice[t][slot] = -1;
+    }
+    int _vc = 0;
+    for (int _si = 0; _si < SEQ_V2_MAX_POLY; _si++) if (dawMelodyVoice[t][_si] >= 0) _vc = _si + 1;
+    dawMelodyVoiceCount[t] = _vc;
 }
 static void renderMelodyRelease0(void) { renderMelodyRelease(0); }
 static void renderMelodyRelease1(void) { renderMelodyRelease(1); }
@@ -375,7 +418,49 @@ static void renderSyncSequencer(void) {
     seq.bpm = daw.transport.bpm;
     seq.playing = daw.transport.playing;
 
-    if (daw.song.songMode && daw.song.length > 0) {
+    // Arrangement mode (per-track patterns)
+    if (daw.arr.arrMode && daw.arr.length > 0) {
+        seq.perTrackPatterns = true;
+        // Use track-0 wrap for chain advance (not bar clock) so trackPatternIdx updates
+        // synchronously via perTrackTable — eliminates 1-frame deferred trigger latency.
+        seq.barLengthSteps = 0;
+        if (daw.song.songMode) {
+            // Song mode with arrangement: advance through bars as a chain.
+            seq.chainLength = daw.arr.length;
+            seq.chainDefaultLoops = daw.song.loopsPerPattern > 0 ? daw.song.loopsPerPattern : 1;
+            for (int i = 0; i < daw.arr.length; i++) {
+                int pat0 = daw.arr.cells[i][0];
+                seq.chain[i] = (pat0 >= 0) ? pat0 : 0;
+                seq.chainLoops[i] = (i < SONG_MAX_SECTIONS) ? daw.song.loopsPerSection[i] : 0;
+            }
+            // Populate per-track table for synchronous trackPatternIdx updates on bar advance
+            seq.perTrackTableLen = (daw.arr.length < 64) ? daw.arr.length : 64;
+            for (int _b = 0; _b < seq.perTrackTableLen; _b++)
+                for (int _t = 0; _t < 8; _t++)
+                    seq.perTrackTable[_b][_t] = (_t < ARR_MAX_TRACKS) ? daw.arr.cells[_b][_t] : -1;
+        } else {
+            // arrMode without songMode: loop bar 0 forever.
+            seq.chainLength = 0;
+            seq.perTrackTableLen = 1;
+            for (int _t2 = 0; _t2 < 8; _t2++)
+                seq.perTrackTable[0][_t2] = (_t2 < ARR_MAX_TRACKS) ? daw.arr.cells[0][_t2] : -1;
+            for (int t = 0; t < seq.trackCount; t++) {
+                seq.trackPatternIdx[t] = (t < ARR_MAX_TRACKS) ? daw.arr.cells[0][t] : -1;
+                seq.trackWrapped[t] = false;
+            }
+        }
+        if (daw.song.songMode) {
+            int bar = seq.chainPos;
+            if (bar >= 0 && bar < daw.arr.length) {
+                for (int t = 0; t < seq.trackCount; t++) {
+                    seq.trackPatternIdx[t] = (t < ARR_MAX_TRACKS) ? daw.arr.cells[bar][t] : -1;
+                    seq.trackWrapped[t] = false;
+                }
+            }
+        }
+        daw.transport.currentPattern = seq.currentPattern;
+    } else if (daw.song.songMode && daw.song.length > 0) {
+        seq.perTrackPatterns = false;
         for (int i = 0; i < daw.song.length; i++) {
             seq.chain[i] = daw.song.patterns[i];
             seq.chainLoops[i] = daw.song.loopsPerSection[i];
@@ -386,6 +471,17 @@ static void renderSyncSequencer(void) {
     } else {
         seq.chainLength = 0;
         seq.currentPattern = daw.transport.currentPattern;
+        // With single-track patterns each track has its own pattern index even without
+        // full arrangement mode — match daw_audio.h behavior for arrMode=false + arr.length>0.
+        if (daw.arr.length > 0) {
+            seq.perTrackPatterns = true;
+            for (int _t = 0; _t < seq.trackCount; _t++) {
+                seq.trackPatternIdx[_t] = (_t < ARR_MAX_TRACKS) ? daw.arr.cells[0][_t] : -1;
+                seq.trackWrapped[_t] = false;
+            }
+        } else {
+            seq.perTrackPatterns = false;
+        }
     }
 
     // Per-pattern overrides
@@ -403,6 +499,12 @@ static void renderSyncSequencer(void) {
     if (ovr->flags & PAT_OVR_MUTE) {
         for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++)
             seq.trackVolume[t] = ovr->trackMute[t] ? 0.0f : daw.mixer.volume[t];
+    }
+
+    // Sync mono mode per melodic track from patch setting
+    for (int t = SEQ_DRUM_TRACKS; t < seq.trackCount; t++) {
+        int patchIdx = t < NUM_PATCHES ? t : 0;
+        seq.trackMono[t] = daw.patches[patchIdx].p_monoMode;
     }
 }
 
@@ -423,16 +525,10 @@ static void printSongInfo(const char *filepath) {
     // Count active patterns
     int activePatterns = 0;
     for (int p = 0; p < SEQ_NUM_PATTERNS; p++) {
+        const Pattern *pat = &seq.patterns[p];
         bool hasContent = false;
-        for (int t = 0; t < SEQ_V2_MAX_TRACKS && !hasContent; t++) {
-            for (int s = 0; s < SEQ_MAX_STEPS && !hasContent; s++) {
-                StepV2 *st = &seq.patterns[p].steps[t][s];
-                if (t < SEQ_DRUM_TRACKS) {
-                    if (st->notes[0].velocity > 0) hasContent = true;
-                } else {
-                    if (st->notes[0].note != SEQ_NOTE_OFF) hasContent = true;
-                }
-            }
+        for (int s = 0; s < pat->length && !hasContent; s++) {
+            if (pat->steps[s].noteCount > 0) hasContent = true;
         }
         if (hasContent) activePatterns++;
     }
@@ -494,16 +590,28 @@ static float estimateSongDuration(void) {
     float bpm = daw.transport.bpm;
     float secondsPerStep = 60.0f / bpm / 4.0f;  // 16th note
 
-    if (daw.song.songMode && daw.song.length > 0) {
+    if (daw.arr.arrMode && daw.arr.length > 1 && daw.song.songMode) {
+        // Legacy song-mode migrations: arrMode was auto-set from songMode.
+        // Use track-0 pattern per bar for correct bar length (daw.song.patterns
+        // stores old logical indices that no longer map to the right sub-patterns).
+        int totalSteps = 0;
+        for (int i = 0; i < daw.arr.length; i++) {
+            int patIdx = daw.arr.cells[i][0];
+            int maxLen = (patIdx >= 0 && patIdx < SEQ_NUM_PATTERNS) ? seq.patterns[patIdx].length : 16;
+            // Old code used max(16, trackLength) as minimum — match that behavior
+            // so the render window is long enough for all baseline-captured events.
+            if (maxLen < 16) maxLen = 16;
+            int loops = (i < SONG_MAX_SECTIONS) ? daw.song.loopsPerSection[i] : 0;
+            if (loops <= 0) loops = daw.song.loopsPerPattern > 0 ? daw.song.loopsPerPattern : 1;
+            totalSteps += maxLen * loops;
+        }
+        return totalSteps * secondsPerStep;
+    } else if (daw.song.songMode && daw.song.length > 0) {
         int totalSteps = 0;
         for (int i = 0; i < daw.song.length; i++) {
             int patIdx = daw.song.patterns[i];
-            // Use max track length in pattern
-            int maxLen = 16;
-            for (int t = 0; t < SEQ_V2_MAX_TRACKS; t++) {
-                int tl = seq.patterns[patIdx].trackLength[t];
-                if (tl > maxLen) maxLen = tl;
-            }
+            int maxLen = seq.patterns[patIdx].length;
+            if (maxLen < 1) maxLen = 16;
             int loops = daw.song.loopsPerSection[i];
             if (loops <= 0) loops = daw.song.loopsPerPattern > 0 ? daw.song.loopsPerPattern : 1;
             totalSteps += maxLen * loops;
@@ -528,6 +636,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "  --info              Print song info and exit (no render)\n");
         fprintf(stderr, "  --tail <sec>        Extra seconds after song ends for reverb tail (default: 2.0)\n");
         fprintf(stderr, "  --triggers <file>   Dump note trigger log to file (for regression testing)\n");
+        fprintf(stderr, "  --convert           Load and re-save in clean single-track format (in-place)\n");
         return 1;
     }
 
@@ -539,6 +648,7 @@ int main(int argc, char *argv[]) {
     float tailSeconds = 2.0f;
     bool infoOnly = false;
     bool verbose = false;
+    bool convertMode = false;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-d") == 0 && i+1 < argc) { duration = atof(argv[++i]); }
@@ -546,6 +656,7 @@ int main(int argc, char *argv[]) {
         else if (strcmp(argv[i], "--tail") == 0 && i+1 < argc) { tailSeconds = atof(argv[++i]); }
         else if (strcmp(argv[i], "--triggers") == 0 && i+1 < argc) { triggerLogPath = argv[++i]; }
         else if (strcmp(argv[i], "--info") == 0) { infoOnly = true; }
+        else if (strcmp(argv[i], "--convert") == 0) { convertMode = true; }
         else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) { verbose = true; }
         else if (argv[i][0] != '-' && !songPath) { songPath = argv[i]; }
     }
@@ -588,6 +699,17 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Loaded: %s\n", songPath);
+
+    if (convertMode) {
+        // Re-save in clean single-track format (migration + fill already ran during load)
+        if (dawSave(songPath)) {
+            printf("Converted: %s\n", songPath);
+            return 0;
+        } else {
+            fprintf(stderr, "Error: failed to save '%s'\n", songPath);
+            return 1;
+        }
+    }
 
     if (infoOnly) {
         printSongInfo(songPath);

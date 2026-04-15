@@ -343,6 +343,7 @@ fbEnvAlpha = 0
 fbLfoRate = 0
 fbLfoSync = 0
 fbLfoAlpha = 0
+fbLfoBeta = 0
 fbLfoShape = 0
 fbNoiseMix = 0
 
@@ -634,6 +635,7 @@ fbEnvAlpha = 0
 fbLfoRate = 0
 fbLfoSync = 0
 fbLfoAlpha = 0
+fbLfoBeta = 0
 fbLfoShape = 0
 fbNoiseMix = 0
 
@@ -925,6 +927,7 @@ fbEnvAlpha = 0
 fbLfoRate = 0
 fbLfoSync = 0
 fbLfoAlpha = 0
+fbLfoBeta = 0
 fbLfoShape = 0
 fbNoiseMix = 0
 
@@ -1216,6 +1219,7 @@ fbEnvAlpha = 0
 fbLfoRate = 0
 fbLfoSync = 0
 fbLfoAlpha = 0
+fbLfoBeta = 0
 fbLfoShape = 0
 fbNoiseMix = 0
 
@@ -1507,6 +1511,7 @@ fbEnvAlpha = 0
 fbLfoRate = 0
 fbLfoSync = 0
 fbLfoAlpha = 0
+fbLfoBeta = 0
 fbLfoShape = 0
 fbNoiseMix = 0
 
@@ -1798,6 +1803,7 @@ fbEnvAlpha = 0
 fbLfoRate = 0
 fbLfoSync = 0
 fbLfoAlpha = 0
+fbLfoBeta = 0
 fbLfoShape = 0
 fbNoiseMix = 0
 
@@ -2089,6 +2095,7 @@ fbEnvAlpha = 0
 fbLfoRate = 0
 fbLfoSync = 0
 fbLfoAlpha = 0
+fbLfoBeta = 0
 fbLfoShape = 0
 fbNoiseMix = 0
 
@@ -2379,6 +2386,7 @@ fbEnvAlpha = 0
 fbLfoRate = 0
 fbLfoSync = 0
 fbLfoAlpha = 0
+fbLfoBeta = 0
 fbLfoShape = 0
 fbNoiseMix = 0
 
@@ -3149,76 +3157,88 @@ length = 0
 loopsPerPattern = 2
 songMode = false
 
-[sample]
-sourceFile = "soundsystem/demo/songs/MONTAGEM TOMADA - MXZIasasd.song"
-sourceLoops = 1
-selStart = 0.143803
-selEnd = 0.385206
-sliceCount = 8
-chopMode = 0
-normalize = false
-sensitivity = 0.5
-padMap0 = -1
-padMap1 = -1
-padMap2 = -1
-padMap3 = -1
-markerCount = 7
-markers = 2047,24290,36435,48580,60725,72870,85015
+[pertrack]
+arrMode = true
+arrLength = 1
+arr0 = 0
+arr1 = 1
+arr2 = 2
+arr3 = 3
+arr4 = 4
+arr5 = 5
+arr6 = 6
+arr7 = 7
 
-[slotflags]
-slot.24.pitched = true
-slot.25.pitched = true
-slot.26.pitched = true
-slot.27.pitched = true
-slot.28.pitched = true
-slot.29.pitched = true
-slot.30.pitched = true
+[launcher]
+t0 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t1 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t2 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t3 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t4 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t5 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t6 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+t7 = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 
 [pattern.0]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.8
-d track=0 step=4 vel=0.384
-d track=0 step=8 vel=0.8
-d track=0 step=12 vel=0.318
-d track=1 step=2 vel=0.239
-d track=1 step=6 vel=0.141
-d track=1 step=10 vel=0.533
-d track=1 step=14 vel=0.455
-d track=2 step=0 vel=0.533
-d track=2 step=1 vel=0.549
-d track=2 step=3 vel=0.659
-d track=2 step=4 vel=0.514
-d track=2 step=5 vel=0.714
-d track=2 step=7 vel=0.486
-d track=2 step=8 vel=0.427
-d track=2 step=9 vel=0.596
-d track=2 step=11 vel=0.627
-d track=2 step=12 vel=0.808
-d track=2 step=13 vel=0.565
-d track=2 step=15 vel=0.569
-m track=0 step=1 note=C-1 vel=0.176 gate=1 slide
-m track=0 step=2 note=C1 vel=0.894 gate=1 slide
-m track=0 step=3 note=C4 vel=0.435 gate=1 slide
-m track=0 step=7 note=C1 vel=0.537 gate=1 cond=1:4
-m track=0 step=10 note=C#2 vel=0.337 gate=1
-m track=0 step=11 note=B1 vel=0.392 gate=1
-m track=0 step=13 note=E2 vel=0.439 gate=1 slide accent cond=2:2
-m track=0 step=14 note=C-1 vel=0.486 gate=1 slide
-m track=1 step=0 note=C4 vel=0.478 gate=1
-m track=1 step=1 note=C4 vel=0.486 gate=1
-m track=1 step=2 note=C4 vel=0.345 gate=1
-m track=1 step=3 note=C4 vel=0.306 gate=1
-m track=1 step=4 note=C4 vel=0.816 gate=1
-m track=1 step=5 note=C4 vel=0.275 gate=1
-m track=1 step=6 note=C4 vel=0.302 gate=1
-m track=1 step=7 note=C4 vel=0.522 gate=1
-m track=1 step=8 note=C4 vel=0.431 gate=1
-m track=1 step=9 note=C4 vel=0.388 gate=1
-m track=1 step=10 note=C4 vel=0.455 gate=1
-m track=1 step=11 note=C4 vel=0.267 gate=1
-m track=1 step=12 note=C4 vel=0.843 gate=1
-m track=1 step=13 note=C4 vel=0.522 gate=1
-m track=1 step=14 note=C4 vel=0.149 gate=1
-m track=1 step=15 note=C4 vel=0.62 gate=1
+trackType = drum
+length = 16
+d step=0 vel=0.8
+d step=4 vel=0.384
+d step=8 vel=0.8
+d step=12 vel=0.318
+
+[pattern.1]
+trackType = drum
+length = 16
+d step=2 vel=0.239
+d step=6 vel=0.141
+d step=10 vel=0.533
+d step=14 vel=0.455
+
+[pattern.2]
+trackType = drum
+length = 16
+d step=0 vel=0.533
+d step=1 vel=0.549
+d step=3 vel=0.659
+d step=4 vel=0.514
+d step=5 vel=0.714
+d step=7 vel=0.486
+d step=8 vel=0.427
+d step=9 vel=0.596
+d step=11 vel=0.627
+d step=12 vel=0.808
+d step=13 vel=0.565
+d step=15 vel=0.569
+
+[pattern.4]
+trackType = melodic
+length = 16
+m step=1 note=C-1 vel=0.176 gate=1 slide
+m step=2 note=C1 vel=0.894 gate=1 slide
+m step=3 note=C4 vel=0.435 gate=1 slide
+m step=7 note=C1 vel=0.537 gate=1 cond=1:4
+m step=10 note=C#2 vel=0.337 gate=1
+m step=11 note=B1 vel=0.392 gate=1
+m step=13 note=E2 vel=0.439 gate=1 slide accent cond=2:2
+m step=14 note=C-1 vel=0.486 gate=1 slide
+
+[pattern.5]
+trackType = melodic
+length = 16
+m step=0 note=C4 vel=0.478 gate=1
+m step=1 note=C4 vel=0.486 gate=1
+m step=2 note=C4 vel=0.345 gate=1
+m step=3 note=C4 vel=0.306 gate=1
+m step=4 note=C4 vel=0.816 gate=1
+m step=5 note=C4 vel=0.275 gate=1
+m step=6 note=C4 vel=0.302 gate=1
+m step=7 note=C4 vel=0.522 gate=1
+m step=8 note=C4 vel=0.431 gate=1
+m step=9 note=C4 vel=0.388 gate=1
+m step=10 note=C4 vel=0.455 gate=1
+m step=11 note=C4 vel=0.267 gate=1
+m step=12 note=C4 vel=0.843 gate=1
+m step=13 note=C4 vel=0.522 gate=1
+m step=14 note=C4 vel=0.149 gate=1
+m step=15 note=C4 vel=0.62 gate=1

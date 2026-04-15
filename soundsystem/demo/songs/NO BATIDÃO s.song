@@ -59,6 +59,7 @@ chromaticRoot = 60
 name = "808 Kick"
 waveType = fm
 scwIndex = 0
+envelopeEnabled = true
 attack = 0
 decay = 0.5
 sustain = 0
@@ -72,6 +73,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 1
 filterResonance = 0
 filterType = 0
@@ -110,6 +112,7 @@ unisonDetune = 10
 unisonMix = 0.5
 monoMode = false
 monoRetrigger = false
+monoHardRetrigger = false
 glideTime = 0.1
 legatoWindow = 0.015
 notePriority = 0
@@ -142,6 +145,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -169,6 +173,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -176,6 +186,60 @@ pipeBreath = 0.5
 pipeEmbouchure = 0.5
 pipeBore = 0.5
 pipeOverblow = 0
+reedStiffness = 0.5
+reedAperture = 0.6
+reedBlowPressure = 0.5
+reedBore = 0
+reedVibratoDepth = 0
+brassBlowPressure = 0.5
+brassLipTension = 0.5
+brassLipAperture = 0.5
+brassBore = 0
+brassMute = 0
+guitarPreset = 0
+guitarBodyMix = 0.6
+guitarBodyBrightness = 0.5
+guitarPickPosition = 0.3
+guitarBuzz = 0
+mandolinPreset = 0
+mandolinBodyMix = 0.55
+mandolinCourseDetune = 2
+mandolinPickPosition = 0.2
+whistlePreset = 0
+whistleBreath = 0.8
+whistleNoiseGain = 0.15
+whistleFippleFreqMod = 0.5
+stifkarpPreset = 0
+stifkarpHardness = 0.45
+stifkarpStiffness = 0.25
+stifkarpStrikePos = 0.12
+stifkarpBodyMix = 0.45
+stifkarpBodyBrightness = 0.5
+stifkarpDamper = 0.9
+stifkarpSympathetic = 0.15
+stifkarpDetune = 0
+shakerPreset = 0
+shakerParticles = 0.22
+shakerDecayRate = 0.5
+shakerResonance = 0.5
+shakerBrightness = 0.5
+shakerScrape = 0
+bandedwgPreset = 0
+bandedwgBowPressure = 0.5
+bandedwgBowSpeed = 0.5
+bandedwgStrikePos = 0.5
+bandedwgBrightness = 0.6
+bandedwgSustain = 0.7
+vfPhoneme = 0
+vfPhonemeTarget = -1
+vfMorphRate = 5
+vfAspiration = 0.1
+vfOpenQuotient = 0.5
+vfSpectralTilt = 0.3
+vfFormantShift = 1
+vfVibratoDepth = 0.15
+vfVibratoRate = 5.5
+vfConsonant = -1
 birdType = 0
 birdChirpRange = 1
 birdTrillRate = 0
@@ -191,6 +255,18 @@ epDecay = 3
 epBell = 0.5
 epBellTone = 0.5
 epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 19
 pitchEnvDecay = 0.04
 pitchEnvCurve = 0
@@ -246,11 +322,36 @@ hardSyncRatio = 1.5
 acidMode = false
 accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
+formantEnabled = false
+formantFrom = 0
+formantTo = 3
+formantMorphTime = 0.15
+formantShift = 1
+formantQ = 1
+formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.1]
 name = "808 Snare"
 waveType = fm
 scwIndex = 0
+envelopeEnabled = true
 attack = 0
 decay = 0.2
 sustain = 0
@@ -264,6 +365,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 1
 filterResonance = 0
 filterType = 0
@@ -302,6 +404,7 @@ unisonDetune = 10
 unisonMix = 0.5
 monoMode = false
 monoRetrigger = false
+monoHardRetrigger = false
 glideTime = 0.1
 legatoWindow = 0.015
 notePriority = 0
@@ -334,6 +437,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -361,6 +465,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -368,6 +478,60 @@ pipeBreath = 0.5
 pipeEmbouchure = 0.5
 pipeBore = 0.5
 pipeOverblow = 0
+reedStiffness = 0.5
+reedAperture = 0.6
+reedBlowPressure = 0.5
+reedBore = 0
+reedVibratoDepth = 0
+brassBlowPressure = 0.5
+brassLipTension = 0.5
+brassLipAperture = 0.5
+brassBore = 0
+brassMute = 0
+guitarPreset = 0
+guitarBodyMix = 0.6
+guitarBodyBrightness = 0.5
+guitarPickPosition = 0.3
+guitarBuzz = 0
+mandolinPreset = 0
+mandolinBodyMix = 0.55
+mandolinCourseDetune = 2
+mandolinPickPosition = 0.2
+whistlePreset = 0
+whistleBreath = 0.8
+whistleNoiseGain = 0.15
+whistleFippleFreqMod = 0.5
+stifkarpPreset = 0
+stifkarpHardness = 0.45
+stifkarpStiffness = 0.25
+stifkarpStrikePos = 0.12
+stifkarpBodyMix = 0.45
+stifkarpBodyBrightness = 0.5
+stifkarpDamper = 0.9
+stifkarpSympathetic = 0.15
+stifkarpDetune = 0
+shakerPreset = 0
+shakerParticles = 0.22
+shakerDecayRate = 0.5
+shakerResonance = 0.5
+shakerBrightness = 0.5
+shakerScrape = 0
+bandedwgPreset = 0
+bandedwgBowPressure = 0.5
+bandedwgBowSpeed = 0.5
+bandedwgStrikePos = 0.5
+bandedwgBrightness = 0.6
+bandedwgSustain = 0.7
+vfPhoneme = 0
+vfPhonemeTarget = -1
+vfMorphRate = 5
+vfAspiration = 0.1
+vfOpenQuotient = 0.5
+vfSpectralTilt = 0.3
+vfFormantShift = 1
+vfVibratoDepth = 0.15
+vfVibratoRate = 5.5
+vfConsonant = -1
 birdType = 0
 birdChirpRange = 1
 birdTrillRate = 0
@@ -383,6 +547,18 @@ epDecay = 3
 epBell = 0.5
 epBellTone = 0.5
 epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -438,11 +614,36 @@ hardSyncRatio = 1.5
 acidMode = false
 accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
+formantEnabled = false
+formantFrom = 0
+formantTo = 3
+formantMorphTime = 0.15
+formantShift = 1
+formantQ = 1
+formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.2]
 name = "808 CH"
 waveType = square
 scwIndex = 0
+envelopeEnabled = true
 attack = 0
 decay = 0.05
 sustain = 0
@@ -456,6 +657,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 0.58
 filterResonance = 0
 filterType = 4
@@ -494,6 +696,7 @@ unisonDetune = 10
 unisonMix = 0.5
 monoMode = false
 monoRetrigger = false
+monoHardRetrigger = false
 glideTime = 0.1
 legatoWindow = 0.015
 notePriority = 0
@@ -526,6 +729,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -553,6 +757,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -560,6 +770,60 @@ pipeBreath = 0.5
 pipeEmbouchure = 0.5
 pipeBore = 0.5
 pipeOverblow = 0
+reedStiffness = 0.5
+reedAperture = 0.6
+reedBlowPressure = 0.5
+reedBore = 0
+reedVibratoDepth = 0
+brassBlowPressure = 0.5
+brassLipTension = 0.5
+brassLipAperture = 0.5
+brassBore = 0
+brassMute = 0
+guitarPreset = 0
+guitarBodyMix = 0.6
+guitarBodyBrightness = 0.5
+guitarPickPosition = 0.3
+guitarBuzz = 0
+mandolinPreset = 0
+mandolinBodyMix = 0.55
+mandolinCourseDetune = 2
+mandolinPickPosition = 0.2
+whistlePreset = 0
+whistleBreath = 0.8
+whistleNoiseGain = 0.15
+whistleFippleFreqMod = 0.5
+stifkarpPreset = 0
+stifkarpHardness = 0.45
+stifkarpStiffness = 0.25
+stifkarpStrikePos = 0.12
+stifkarpBodyMix = 0.45
+stifkarpBodyBrightness = 0.5
+stifkarpDamper = 0.9
+stifkarpSympathetic = 0.15
+stifkarpDetune = 0
+shakerPreset = 0
+shakerParticles = 0.22
+shakerDecayRate = 0.5
+shakerResonance = 0.5
+shakerBrightness = 0.5
+shakerScrape = 0
+bandedwgPreset = 0
+bandedwgBowPressure = 0.5
+bandedwgBowSpeed = 0.5
+bandedwgStrikePos = 0.5
+bandedwgBrightness = 0.6
+bandedwgSustain = 0.7
+vfPhoneme = 0
+vfPhonemeTarget = -1
+vfMorphRate = 5
+vfAspiration = 0.1
+vfOpenQuotient = 0.5
+vfSpectralTilt = 0.3
+vfFormantShift = 1
+vfVibratoDepth = 0.15
+vfVibratoRate = 5.5
+vfConsonant = -1
 birdType = 0
 birdChirpRange = 1
 birdTrillRate = 0
@@ -575,6 +839,18 @@ epDecay = 3
 epBell = 0.5
 epBellTone = 0.5
 epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -630,11 +906,36 @@ hardSyncRatio = 1.5
 acidMode = false
 accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
+formantEnabled = false
+formantFrom = 0
+formantTo = 3
+formantMorphTime = 0.15
+formantShift = 1
+formantQ = 1
+formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.3]
 name = "808 Clap"
 waveType = noise
 scwIndex = 0
+envelopeEnabled = true
 attack = 0
 decay = 0.3
 sustain = 0
@@ -648,6 +949,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 0.38
 filterResonance = 0
 filterType = 2
@@ -686,6 +988,7 @@ unisonDetune = 10
 unisonMix = 0.5
 monoMode = false
 monoRetrigger = false
+monoHardRetrigger = false
 glideTime = 0.1
 legatoWindow = 0.015
 notePriority = 0
@@ -718,6 +1021,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -745,6 +1049,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -752,6 +1062,60 @@ pipeBreath = 0.5
 pipeEmbouchure = 0.5
 pipeBore = 0.5
 pipeOverblow = 0
+reedStiffness = 0.5
+reedAperture = 0.6
+reedBlowPressure = 0.5
+reedBore = 0
+reedVibratoDepth = 0
+brassBlowPressure = 0.5
+brassLipTension = 0.5
+brassLipAperture = 0.5
+brassBore = 0
+brassMute = 0
+guitarPreset = 0
+guitarBodyMix = 0.6
+guitarBodyBrightness = 0.5
+guitarPickPosition = 0.3
+guitarBuzz = 0
+mandolinPreset = 0
+mandolinBodyMix = 0.55
+mandolinCourseDetune = 2
+mandolinPickPosition = 0.2
+whistlePreset = 0
+whistleBreath = 0.8
+whistleNoiseGain = 0.15
+whistleFippleFreqMod = 0.5
+stifkarpPreset = 0
+stifkarpHardness = 0.45
+stifkarpStiffness = 0.25
+stifkarpStrikePos = 0.12
+stifkarpBodyMix = 0.45
+stifkarpBodyBrightness = 0.5
+stifkarpDamper = 0.9
+stifkarpSympathetic = 0.15
+stifkarpDetune = 0
+shakerPreset = 0
+shakerParticles = 0.22
+shakerDecayRate = 0.5
+shakerResonance = 0.5
+shakerBrightness = 0.5
+shakerScrape = 0
+bandedwgPreset = 0
+bandedwgBowPressure = 0.5
+bandedwgBowSpeed = 0.5
+bandedwgStrikePos = 0.5
+bandedwgBrightness = 0.6
+bandedwgSustain = 0.7
+vfPhoneme = 0
+vfPhonemeTarget = -1
+vfMorphRate = 5
+vfAspiration = 0.1
+vfOpenQuotient = 0.5
+vfSpectralTilt = 0.3
+vfFormantShift = 1
+vfVibratoDepth = 0.15
+vfVibratoRate = 5.5
+vfConsonant = -1
 birdType = 0
 birdChirpRange = 1
 birdTrillRate = 0
@@ -767,6 +1131,18 @@ epDecay = 3
 epBell = 0.5
 epBellTone = 0.5
 epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -822,11 +1198,36 @@ hardSyncRatio = 1.5
 acidMode = false
 accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
+formantEnabled = false
+formantFrom = 0
+formantTo = 3
+formantMorphTime = 0.15
+formantShift = 1
+formantQ = 1
+formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.4]
 name = "MT70 Organ"
 waveType = sine
 scwIndex = 0
+envelopeEnabled = true
 attack = 0.01
 decay = 0.1
 sustain = 0.8
@@ -840,6 +1241,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 0.7
 filterResonance = 0
 filterType = 0
@@ -878,6 +1280,7 @@ unisonDetune = 10
 unisonMix = 0.5
 monoMode = false
 monoRetrigger = false
+monoHardRetrigger = false
 glideTime = 0.1
 legatoWindow = 0.015
 notePriority = 0
@@ -910,6 +1313,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -937,6 +1341,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -944,6 +1354,60 @@ pipeBreath = 0.5
 pipeEmbouchure = 0.5
 pipeBore = 0.5
 pipeOverblow = 0
+reedStiffness = 0.5
+reedAperture = 0.6
+reedBlowPressure = 0.5
+reedBore = 0
+reedVibratoDepth = 0
+brassBlowPressure = 0.5
+brassLipTension = 0.5
+brassLipAperture = 0.5
+brassBore = 0
+brassMute = 0
+guitarPreset = 0
+guitarBodyMix = 0.6
+guitarBodyBrightness = 0.5
+guitarPickPosition = 0.3
+guitarBuzz = 0
+mandolinPreset = 0
+mandolinBodyMix = 0.55
+mandolinCourseDetune = 2
+mandolinPickPosition = 0.2
+whistlePreset = 0
+whistleBreath = 0.8
+whistleNoiseGain = 0.15
+whistleFippleFreqMod = 0.5
+stifkarpPreset = 0
+stifkarpHardness = 0.45
+stifkarpStiffness = 0.25
+stifkarpStrikePos = 0.12
+stifkarpBodyMix = 0.45
+stifkarpBodyBrightness = 0.5
+stifkarpDamper = 0.9
+stifkarpSympathetic = 0.15
+stifkarpDetune = 0
+shakerPreset = 0
+shakerParticles = 0.22
+shakerDecayRate = 0.5
+shakerResonance = 0.5
+shakerBrightness = 0.5
+shakerScrape = 0
+bandedwgPreset = 0
+bandedwgBowPressure = 0.5
+bandedwgBowSpeed = 0.5
+bandedwgStrikePos = 0.5
+bandedwgBrightness = 0.6
+bandedwgSustain = 0.7
+vfPhoneme = 0
+vfPhonemeTarget = -1
+vfMorphRate = 5
+vfAspiration = 0.1
+vfOpenQuotient = 0.5
+vfSpectralTilt = 0.3
+vfFormantShift = 1
+vfVibratoDepth = 0.15
+vfVibratoRate = 5.5
+vfConsonant = -1
 birdType = 0
 birdChirpRange = 1
 birdTrillRate = 0
@@ -959,6 +1423,18 @@ epDecay = 3
 epBell = 0.5
 epBellTone = 0.5
 epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -1014,11 +1490,36 @@ hardSyncRatio = 1.5
 acidMode = false
 accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
+formantEnabled = false
+formantFrom = 0
+formantTo = 3
+formantMorphTime = 0.15
+formantShift = 1
+formantQ = 1
+formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.5]
 name = "MT70 Flute"
 waveType = sine
 scwIndex = 0
+envelopeEnabled = true
 attack = 0.05
 decay = 0.1
 sustain = 0.7
@@ -1032,6 +1533,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 0.65
 filterResonance = 0
 filterType = 0
@@ -1070,6 +1572,7 @@ unisonDetune = 10
 unisonMix = 0.5
 monoMode = false
 monoRetrigger = false
+monoHardRetrigger = false
 glideTime = 0.1
 legatoWindow = 0.015
 notePriority = 0
@@ -1102,6 +1605,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -1129,6 +1633,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -1136,6 +1646,60 @@ pipeBreath = 0.5
 pipeEmbouchure = 0.5
 pipeBore = 0.5
 pipeOverblow = 0
+reedStiffness = 0.5
+reedAperture = 0.6
+reedBlowPressure = 0.5
+reedBore = 0
+reedVibratoDepth = 0
+brassBlowPressure = 0.5
+brassLipTension = 0.5
+brassLipAperture = 0.5
+brassBore = 0
+brassMute = 0
+guitarPreset = 0
+guitarBodyMix = 0.6
+guitarBodyBrightness = 0.5
+guitarPickPosition = 0.3
+guitarBuzz = 0
+mandolinPreset = 0
+mandolinBodyMix = 0.55
+mandolinCourseDetune = 2
+mandolinPickPosition = 0.2
+whistlePreset = 0
+whistleBreath = 0.8
+whistleNoiseGain = 0.15
+whistleFippleFreqMod = 0.5
+stifkarpPreset = 0
+stifkarpHardness = 0.45
+stifkarpStiffness = 0.25
+stifkarpStrikePos = 0.12
+stifkarpBodyMix = 0.45
+stifkarpBodyBrightness = 0.5
+stifkarpDamper = 0.9
+stifkarpSympathetic = 0.15
+stifkarpDetune = 0
+shakerPreset = 0
+shakerParticles = 0.22
+shakerDecayRate = 0.5
+shakerResonance = 0.5
+shakerBrightness = 0.5
+shakerScrape = 0
+bandedwgPreset = 0
+bandedwgBowPressure = 0.5
+bandedwgBowSpeed = 0.5
+bandedwgStrikePos = 0.5
+bandedwgBrightness = 0.6
+bandedwgSustain = 0.7
+vfPhoneme = 0
+vfPhonemeTarget = -1
+vfMorphRate = 5
+vfAspiration = 0.1
+vfOpenQuotient = 0.5
+vfSpectralTilt = 0.3
+vfFormantShift = 1
+vfVibratoDepth = 0.15
+vfVibratoRate = 5.5
+vfConsonant = -1
 birdType = 0
 birdChirpRange = 1
 birdTrillRate = 0
@@ -1151,6 +1715,18 @@ epDecay = 3
 epBell = 0.5
 epBellTone = 0.5
 epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -1206,11 +1782,36 @@ hardSyncRatio = 1.5
 acidMode = false
 accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
+formantEnabled = false
+formantFrom = 0
+formantTo = 3
+formantMorphTime = 0.15
+formantShift = 1
+formantQ = 1
+formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.6]
 name = "MT70 Bells"
 waveType = sine
 scwIndex = 0
+envelopeEnabled = true
 attack = 0.001
 decay = 1
 sustain = 0
@@ -1224,6 +1825,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 0.9
 filterResonance = 0
 filterType = 0
@@ -1262,6 +1864,7 @@ unisonDetune = 10
 unisonMix = 0.5
 monoMode = false
 monoRetrigger = false
+monoHardRetrigger = false
 glideTime = 0.1
 legatoWindow = 0.015
 notePriority = 0
@@ -1294,6 +1897,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -1321,6 +1925,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -1328,6 +1938,60 @@ pipeBreath = 0.5
 pipeEmbouchure = 0.5
 pipeBore = 0.5
 pipeOverblow = 0
+reedStiffness = 0.5
+reedAperture = 0.6
+reedBlowPressure = 0.5
+reedBore = 0
+reedVibratoDepth = 0
+brassBlowPressure = 0.5
+brassLipTension = 0.5
+brassLipAperture = 0.5
+brassBore = 0
+brassMute = 0
+guitarPreset = 0
+guitarBodyMix = 0.6
+guitarBodyBrightness = 0.5
+guitarPickPosition = 0.3
+guitarBuzz = 0
+mandolinPreset = 0
+mandolinBodyMix = 0.55
+mandolinCourseDetune = 2
+mandolinPickPosition = 0.2
+whistlePreset = 0
+whistleBreath = 0.8
+whistleNoiseGain = 0.15
+whistleFippleFreqMod = 0.5
+stifkarpPreset = 0
+stifkarpHardness = 0.45
+stifkarpStiffness = 0.25
+stifkarpStrikePos = 0.12
+stifkarpBodyMix = 0.45
+stifkarpBodyBrightness = 0.5
+stifkarpDamper = 0.9
+stifkarpSympathetic = 0.15
+stifkarpDetune = 0
+shakerPreset = 0
+shakerParticles = 0.22
+shakerDecayRate = 0.5
+shakerResonance = 0.5
+shakerBrightness = 0.5
+shakerScrape = 0
+bandedwgPreset = 0
+bandedwgBowPressure = 0.5
+bandedwgBowSpeed = 0.5
+bandedwgStrikePos = 0.5
+bandedwgBrightness = 0.6
+bandedwgSustain = 0.7
+vfPhoneme = 0
+vfPhonemeTarget = -1
+vfMorphRate = 5
+vfAspiration = 0.1
+vfOpenQuotient = 0.5
+vfSpectralTilt = 0.3
+vfFormantShift = 1
+vfVibratoDepth = 0.15
+vfVibratoRate = 5.5
+vfConsonant = -1
 birdType = 0
 birdChirpRange = 1
 birdTrillRate = 0
@@ -1343,6 +2007,18 @@ epDecay = 3
 epBell = 0.5
 epBellTone = 0.5
 epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -1398,11 +2074,36 @@ hardSyncRatio = 1.5
 acidMode = false
 accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
+formantEnabled = false
+formantFrom = 0
+formantTo = 3
+formantMorphTime = 0.15
+formantShift = 1
+formantQ = 1
+formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [patch.7]
 name = "Fat Bass"
 waveType = saw
 scwIndex = 0
+envelopeEnabled = true
 attack = 0.01
 decay = 0.15
 sustain = 0.6
@@ -1416,6 +2117,7 @@ pwmRate = 3
 pwmDepth = 0
 vibratoRate = 5
 vibratoDepth = 0
+filterEnabled = true
 filterCutoff = 0.4
 filterResonance = 0.2
 filterType = 0
@@ -1454,6 +2156,7 @@ unisonDetune = 15
 unisonMix = 0.6
 monoMode = false
 monoRetrigger = false
+monoHardRetrigger = false
 glideTime = 0.1
 legatoWindow = 0.015
 notePriority = 0
@@ -1486,6 +2189,7 @@ voicePitchEnv = 0
 voicePitchEnvTime = 0.15
 voicePitchEnvCurve = 0
 granularScwIndex = 0
+granularSamplerSlot = -1
 granularGrainSize = 50
 granularDensity = 20
 granularPosition = 0.5
@@ -1513,6 +2217,12 @@ membraneDamping = 0.3
 membraneStrike = 0.3
 membraneBend = 0.15
 membraneBendDecay = 0.08
+metallicPreset = 0
+metallicRingMix = 0.85
+metallicNoiseLevel = 0.15
+metallicBrightness = 1
+metallicPitchEnv = 0
+metallicPitchEnvDecay = 0.01
 bowPressure = 0.5
 bowSpeed = 0.5
 bowPosition = 0.13
@@ -1520,6 +2230,60 @@ pipeBreath = 0.5
 pipeEmbouchure = 0.5
 pipeBore = 0.5
 pipeOverblow = 0
+reedStiffness = 0.5
+reedAperture = 0.6
+reedBlowPressure = 0.5
+reedBore = 0
+reedVibratoDepth = 0
+brassBlowPressure = 0.5
+brassLipTension = 0.5
+brassLipAperture = 0.5
+brassBore = 0
+brassMute = 0
+guitarPreset = 0
+guitarBodyMix = 0.6
+guitarBodyBrightness = 0.5
+guitarPickPosition = 0.3
+guitarBuzz = 0
+mandolinPreset = 0
+mandolinBodyMix = 0.55
+mandolinCourseDetune = 2
+mandolinPickPosition = 0.2
+whistlePreset = 0
+whistleBreath = 0.8
+whistleNoiseGain = 0.15
+whistleFippleFreqMod = 0.5
+stifkarpPreset = 0
+stifkarpHardness = 0.45
+stifkarpStiffness = 0.25
+stifkarpStrikePos = 0.12
+stifkarpBodyMix = 0.45
+stifkarpBodyBrightness = 0.5
+stifkarpDamper = 0.9
+stifkarpSympathetic = 0.15
+stifkarpDetune = 0
+shakerPreset = 0
+shakerParticles = 0.22
+shakerDecayRate = 0.5
+shakerResonance = 0.5
+shakerBrightness = 0.5
+shakerScrape = 0
+bandedwgPreset = 0
+bandedwgBowPressure = 0.5
+bandedwgBowSpeed = 0.5
+bandedwgStrikePos = 0.5
+bandedwgBrightness = 0.6
+bandedwgSustain = 0.7
+vfPhoneme = 0
+vfPhonemeTarget = -1
+vfMorphRate = 5
+vfAspiration = 0.1
+vfOpenQuotient = 0.5
+vfSpectralTilt = 0.3
+vfFormantShift = 1
+vfVibratoDepth = 0.15
+vfVibratoRate = 5.5
+vfConsonant = -1
 birdType = 0
 birdChirpRange = 1
 birdTrillRate = 0
@@ -1535,6 +2299,18 @@ epDecay = 3
 epBell = 0.5
 epBellTone = 0.5
 epPickupType = 0
+epRatioSet = 0
+orgDrawbar0 = 0
+orgDrawbar1 = 0
+orgDrawbar2 = 1
+orgDrawbar3 = 0
+orgDrawbar4 = 0
+orgDrawbar5 = 0
+orgDrawbar6 = 0
+orgDrawbar7 = 0
+orgDrawbar8 = 0
+orgClick = 0.3
+orgCrosstalk = 0
 pitchEnvAmount = 0
 pitchEnvDecay = 0.05
 pitchEnvCurve = 0
@@ -1590,6 +2366,30 @@ hardSyncRatio = 1.5
 acidMode = false
 accentSweepAmt = 0.5
 gimmickDipAmt = 0.3
+formantEnabled = false
+formantFrom = 0
+formantTo = 3
+formantMorphTime = 0.15
+formantShift = 1
+formantQ = 1
+formantMix = 0.8
+formantRandom = false
+formantMode = 0
+fbBaseFreq = 400
+fbSpacing = 2.5
+fbAlpha = 0.5
+fbBeta = 0.5
+fbQ = 4
+fbKeyTrack = 0
+fbMorphOsc = 0
+fbRandomize = 0
+fbEnvAlpha = 0
+fbLfoRate = 0
+fbLfoSync = 0
+fbLfoAlpha = 0
+fbLfoBeta = 0
+fbLfoShape = 0
+fbNoiseMix = 0
 
 [mixer]
 vol0 = 0.8
@@ -1643,6 +2443,12 @@ tremoloOn0 = false
 tremoloRate0 = 4
 tremoloDepth0 = 0.5
 tremoloShape0 = 0
+leslieOn0 = false
+leslieSpeed0 = 0
+leslieDrive0 = 0
+leslieBal0 = 0
+leslieDopp0 = 0
+leslieMix0 = 0
 wahOn0 = false
 wahMode0 = 0
 wahRate0 = 2
@@ -1711,6 +2517,12 @@ tremoloOn1 = false
 tremoloRate1 = 4
 tremoloDepth1 = 0.5
 tremoloShape1 = 0
+leslieOn1 = false
+leslieSpeed1 = 0
+leslieDrive1 = 0
+leslieBal1 = 0
+leslieDopp1 = 0
+leslieMix1 = 0
 wahOn1 = false
 wahMode1 = 0
 wahRate1 = 2
@@ -1779,6 +2591,12 @@ tremoloOn2 = false
 tremoloRate2 = 4
 tremoloDepth2 = 0.5
 tremoloShape2 = 0
+leslieOn2 = false
+leslieSpeed2 = 0
+leslieDrive2 = 0
+leslieBal2 = 0
+leslieDopp2 = 0
+leslieMix2 = 0
 wahOn2 = true
 wahMode2 = 0
 wahRate2 = 0.661563
@@ -1847,6 +2665,12 @@ tremoloOn3 = false
 tremoloRate3 = 4
 tremoloDepth3 = 0.5
 tremoloShape3 = 0
+leslieOn3 = false
+leslieSpeed3 = 0
+leslieDrive3 = 0
+leslieBal3 = 0
+leslieDopp3 = 0
+leslieMix3 = 0
 wahOn3 = false
 wahMode3 = 0
 wahRate3 = 2
@@ -1915,6 +2739,12 @@ tremoloOn4 = false
 tremoloRate4 = 9.02578
 tremoloDepth4 = 0.5
 tremoloShape4 = 0
+leslieOn4 = false
+leslieSpeed4 = 0
+leslieDrive4 = 0
+leslieBal4 = 0
+leslieDopp4 = 0
+leslieMix4 = 0
 wahOn4 = true
 wahMode4 = 0
 wahRate4 = 0.899883
@@ -1983,6 +2813,12 @@ tremoloOn5 = false
 tremoloRate5 = 4
 tremoloDepth5 = 0.5
 tremoloShape5 = 0
+leslieOn5 = false
+leslieSpeed5 = 0
+leslieDrive5 = 0
+leslieBal5 = 0
+leslieDopp5 = 0
+leslieMix5 = 0
 wahOn5 = true
 wahMode5 = 0
 wahRate5 = 4.59828
@@ -2051,6 +2887,12 @@ tremoloOn6 = false
 tremoloRate6 = 4
 tremoloDepth6 = 0.5
 tremoloShape6 = 0
+leslieOn6 = false
+leslieSpeed6 = 0
+leslieDrive6 = 0
+leslieBal6 = 0
+leslieDopp6 = 0
+leslieMix6 = 0
 wahOn6 = false
 wahMode6 = 0
 wahRate6 = 6.07144
@@ -2119,6 +2961,12 @@ tremoloOn7 = false
 tremoloRate7 = 4
 tremoloDepth7 = 0.5
 tremoloShape7 = 0
+leslieOn7 = false
+leslieSpeed7 = 0
+leslieDrive7 = 0
+leslieBal7 = 0
+leslieDopp7 = 0
+leslieMix7 = 0
 wahOn7 = false
 wahMode7 = 0
 wahRate7 = 2
@@ -2164,6 +3012,12 @@ tremoloOn = false
 tremoloRate = 4
 tremoloDepth = 0.5
 tremoloShape = 0
+leslieOn = false
+leslieSpeed = 0
+leslieDrive = 0
+leslieBal = 0
+leslieDopp = 0
+leslieMix = 0
 wahOn = false
 wahMode = 0
 wahRate = 4.80078
@@ -2309,14 +3163,14 @@ loops = 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 [pertrack]
 arrMode = true
 arrLength = 33
-arr0 = -1 -1 -1 -1 4 5 5 7 4 5 5 5 5 5 5 7 -1 -1 -1 -1 4 5 5 7 4 5 5 5 5 5 5 5 32
-arr1 = -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
-arr2 = -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
-arr3 = -1 -1 -1 -1 -1 -1 -1 -1 8 9 9 9 12 9 9 15 16 -1 -1 -1 -1 -1 -1 -1 8 9 9 9 12 9 9 9 32
-arr4 = 0 1 2 3 4 1 2 3 8 1 2 3 8 1 2 3 8 1 2 3 4 1 2 3 8 1 2 3 8 1 2 3 32
-arr5 = -1 -1 -1 -1 4 5 5 5 4 5 5 5 12 5 5 5 16 -1 -1 -1 4 5 5 5 4 5 5 5 12 5 5 5 16
-arr6 = 0 1 2 3 4 5 6 7 8 9 10 11 12 9 10 11 16 17 18 19 20 21 22 23 24 25 26 27 28 25 26 27 32
-arr7 = -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+arr0 = 0 8 14 22 48 60 60 84 48 60 60 60 60 60 60 84 80 85 92 98 48 60 60 84 48 60 60 60 60 60 60 60 384
+arr1 = 1 9 15 23 29 34 38 44 49 55 58 62 67 70 73 76 81 86 93 101 107 112 117 121 125 129 132 135 139 142 145 151 154
+arr2 = 2 10 17 24 31 35 39 45 50 56 59 63 68 71 74 77 82 87 94 103 108 113 118 122 127 130 133 136 140 143 146 152 155
+arr3 = 3 11 19 25 32 36 41 46 99 111 111 111 147 111 111 183 195 88 95 104 109 115 119 123 99 111 111 111 147 111 111 111 387
+arr4 = 4 16 28 40 52 16 28 40 100 16 28 40 100 16 28 40 100 16 28 40 52 16 28 40 100 16 28 40 100 16 28 40 388
+arr5 = 5 12 20 26 53 65 65 65 53 65 65 65 149 65 65 65 197 89 96 105 53 65 65 65 53 65 65 65 149 65 65 65 197
+arr6 = 6 18 30 42 54 66 78 90 102 114 126 138 150 114 126 138 198 210 222 234 246 258 270 282 294 306 318 330 342 306 318 330 390
+arr7 = 7 13 21 27 33 37 43 47 51 57 61 64 69 72 75 79 83 91 97 106 110 116 120 124 128 131 134 137 141 144 148 153 156
 
 [launcher]
 t0 = 4 5 7 32
@@ -2325,1223 +3179,1414 @@ t4 = 0 1 2 3 4 8 32
 t5 = 4 5 12 16
 t6 = 0 1 2 3 4 5 6 7 8 9 10 11 12 16 17 18
 
-[pattern.0]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-m track=0 step=8 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=F1 vel=0.788 gate=2 nudge=-6
-m track=2 step=0 note=F3 vel=0.678 gate=2
-m track=2 step=4 note=F3 vel=0.678 gate=2
-m track=2 step=6 note=C4 vel=0.678 gate=2
-m track=2 step=8 note=A#3 vel=0.678 gate=2
-m track=2 step=8 note=F3 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.624 gate=1
-m track=2 step=12 note=G#3 vel=0.678 gate=2
-m track=2 step=12 note=F3 vel=0.624 gate=1
-m track=2 step=12 note=F4 vel=0.624 gate=1
-m track=2 step=14 note=C4 vel=0.678 gate=2
-
-[pattern.1]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-m track=0 step=2 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=2 step=0 note=A#3 vel=0.678 gate=2
-m track=2 step=0 note=F3 vel=0.624 gate=1
-m track=2 step=0 note=F4 vel=0.624 gate=1
-m track=2 step=4 note=G#3 vel=0.678 gate=2
-m track=2 step=4 note=F3 vel=0.624 gate=1
-m track=2 step=4 note=F4 vel=0.624 gate=1
-m track=2 step=8 note=G#3 vel=0.678 gate=2
-m track=2 step=8 note=C#4 vel=0.624 gate=1
-m track=2 step=8 note=C#5 vel=0.624 gate=1
-m track=2 step=10 note=A#3 vel=0.678 gate=2
-m track=2 step=12 note=G#3 vel=0.678 gate=2
-m track=2 step=12 note=C#4 vel=0.624 gate=1
-m track=2 step=12 note=C#5 vel=0.624 gate=1
-m track=2 step=14 note=G3 vel=0.678 gate=2
-
-[pattern.2]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-m track=0 step=2 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=2 step=0 note=F3 vel=0.678 gate=2
-m track=2 step=0 note=C#4 vel=0.624 gate=1
-m track=2 step=0 note=C#5 vel=0.624 gate=1
-m track=2 step=4 note=F3 vel=0.678 gate=2
-m track=2 step=4 note=C#4 vel=0.624 gate=1
-m track=2 step=4 note=C#5 vel=0.624 gate=1
-m track=2 step=6 note=C4 vel=0.678 gate=2
-m track=2 step=8 note=A#3 vel=0.678 gate=2
-m track=2 step=8 note=A#4 vel=0.624 gate=1
-m track=2 step=12 note=G#3 vel=0.678 gate=2
-m track=2 step=12 note=A#3 vel=0.624 gate=1
-m track=2 step=12 note=A#4 vel=0.624 gate=1
-m track=2 step=14 note=C4 vel=0.678 gate=2
-
-[pattern.3]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-m track=0 step=2 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=C2 vel=0.788 gate=2 nudge=-6
-m track=2 step=0 note=A#3 vel=0.678 gate=2
-m track=2 step=0 note=A#4 vel=0.624 gate=1
-m track=2 step=4 note=G#3 vel=0.678 gate=2
-m track=2 step=4 note=A#3 vel=0.624 gate=1
-m track=2 step=4 note=A#4 vel=0.624 gate=1
-m track=2 step=6 note=G#3 vel=0.678 gate=2
-m track=2 step=8 note=G#3 vel=0.678 gate=1
-m track=2 step=8 note=C4 vel=0.624 gate=1
-m track=2 step=8 note=C5 vel=0.624 gate=1
-m track=2 step=9 note=A#3 vel=0.678 gate=2
-m track=2 step=11 note=A#3 vel=0.678 gate=2 nudge=-12
-m track=2 step=12 note=G#3 vel=0.678 gate=2
-m track=2 step=12 note=C4 vel=0.624 gate=1
-m track=2 step=12 note=C5 vel=0.624 gate=1
-m track=2 step=14 note=G3 vel=0.678 gate=2
-
 [pattern.4]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-m track=0 step=2 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=F1 vel=0.788 gate=2 nudge=-6
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=F3 vel=0.678 gate=2
-m track=2 step=0 note=C4 vel=0.624 gate=1
-m track=2 step=0 note=C5 vel=0.624 gate=1
-m track=2 step=4 note=F3 vel=0.678 gate=2
-m track=2 step=4 note=C4 vel=0.624 gate=1
-m track=2 step=4 note=C5 vel=0.624 gate=1
-m track=2 step=6 note=C4 vel=0.678 gate=2
-m track=2 step=8 note=A#3 vel=0.678 gate=2
-m track=2 step=8 note=F3 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=11 note=A#3 vel=0.678 gate=1
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=G#3 vel=0.678 gate=2
-m track=2 step=12 note=F3 vel=0.624 gate=1
-m track=2 step=12 note=F4 vel=0.624 gate=1
-m track=2 step=14 note=C4 vel=0.678 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-
-[pattern.5]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-m track=0 step=2 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=A#3 vel=0.678 gate=2
-m track=2 step=0 note=F3 vel=0.624 gate=1
-m track=2 step=0 note=F4 vel=0.624 gate=1
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=4 note=G#3 vel=0.678 gate=2
-m track=2 step=4 note=F3 vel=0.624 gate=1
-m track=2 step=4 note=F4 vel=0.624 gate=1
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=6 note=G#3 vel=0.678 gate=2
-m track=2 step=8 note=G#3 vel=0.678 gate=1
-m track=2 step=8 note=C#4 vel=0.624 gate=1
-m track=2 step=8 note=C#5 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=9 note=A#3 vel=0.678 gate=2
-m track=2 step=11 note=A#3 vel=0.678 gate=2 nudge=-12
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=G#3 vel=0.678 gate=2
-m track=2 step=12 note=C#4 vel=0.624 gate=1
-m track=2 step=12 note=C#5 vel=0.624 gate=1
-m track=2 step=14 note=G3 vel=0.678 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
+trackType = melodic
+length = 16
+m step=8 note=F1 vel=0.788 gate=2 nudge=-6
+m step=11 note=F1 vel=0.788 gate=2 nudge=-6
+m step=14 note=F1 vel=0.788 gate=2 nudge=-6
 
 [pattern.6]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-m track=0 step=2 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=F3 vel=0.678 gate=2
-m track=2 step=0 note=C#4 vel=0.624 gate=1
-m track=2 step=0 note=C#5 vel=0.624 gate=1
-m track=2 step=2 note=F3 vel=0.678 gate=2
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=4 note=F3 vel=0.678 gate=2
-m track=2 step=4 note=C#4 vel=0.624 gate=1
-m track=2 step=4 note=C#5 vel=0.624 gate=1
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=6 note=F3 vel=0.678 gate=2
-m track=2 step=8 note=C4 vel=0.678 gate=2
-m track=2 step=8 note=A#3 vel=0.624 gate=1
-m track=2 step=8 note=A#4 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=10 note=F3 vel=0.678 gate=2
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=F3 vel=0.678 gate=2
-m track=2 step=12 note=A#3 vel=0.624 gate=1
-m track=2 step=12 note=A#4 vel=0.624 gate=1
-m track=2 step=14 note=F3 vel=0.678 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-
-[pattern.7]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=11 vel=0.545
-d track=0 step=14 vel=0.545
-m track=0 step=2 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=C2 vel=0.788 gate=2 nudge=-6
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=C4 vel=0.678 gate=2
-m track=2 step=0 note=A#3 vel=0.624 gate=1
-m track=2 step=0 note=A#4 vel=0.624 gate=1
-m track=2 step=2 note=F3 vel=0.678 gate=2
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=4 note=F3 vel=0.678 gate=2
-m track=2 step=4 note=A#3 vel=0.624 gate=1
-m track=2 step=4 note=A#4 vel=0.624 gate=1
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=8 note=F4 vel=0.678 gate=2
-m track=2 step=8 note=C4 vel=0.624 gate=1
-m track=2 step=8 note=C5 vel=0.624 gate=1
-m track=2 step=10 note=F4 vel=0.678 gate=2
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=F4 vel=0.678 gate=2
-m track=2 step=12 note=C4 vel=0.624 gate=1
-m track=2 step=12 note=C5 vel=0.624 gate=1
-m track=2 step=14 note=C5 vel=0.243 gate=2
-
-[pattern.8]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-d track=3 step=3 vel=0.592
-d track=3 step=4 vel=0.592
-d track=3 step=6 vel=0.592
-d track=3 step=8 vel=0.592
-d track=3 step=12 vel=0.592
-m track=0 step=2 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=F1 vel=0.788 gate=2 nudge=-6
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=F4 vel=0.788 gate=8
-m track=2 step=0 note=C4 vel=0.624 gate=1
-m track=2 step=0 note=C5 vel=0.624 gate=1
-m track=2 step=8 note=F3 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=8 note=F1 vel=0.678 gate=16
-m track=2 step=8 note=F2 vel=0.678 gate=16
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=F3 vel=0.624 gate=1
-m track=2 step=12 note=F4 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-m track=2 step=14 note=F4 vel=0.788 gate=2
-
-[pattern.9]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-d track=3 step=0 vel=0.592
-d track=3 step=4 vel=0.592
-d track=3 step=8 vel=0.592
-d track=3 step=12 vel=0.592
-m track=0 step=2 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=F3 vel=0.624 gate=1
-m track=2 step=0 note=F4 vel=0.788 gate=2
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=2 note=F4 vel=0.788 gate=2
-m track=2 step=4 note=F3 vel=0.624 gate=1
-m track=2 step=4 note=F4 vel=0.788 gate=2
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=6 note=A#4 vel=0.788 gate=2
-m track=2 step=8 note=C#4 vel=0.624 gate=1
-m track=2 step=8 note=C#5 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=8 note=C#2 vel=0.678 gate=16
-m track=2 step=8 note=C#3 vel=0.678 gate=16
-m track=2 step=8 note=G#4 vel=0.788 gate=2
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=C#4 vel=0.624 gate=1
-m track=2 step=12 note=C#5 vel=0.624 gate=1
-m track=2 step=12 note=F4 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-m track=2 step=14 note=F4 vel=0.788 gate=2
-
-[pattern.10]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-d track=3 step=0 vel=0.592
-d track=3 step=4 vel=0.592
-d track=3 step=8 vel=0.592
-d track=3 step=12 vel=0.592
-m track=0 step=2 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=C#4 vel=0.624 gate=1
-m track=2 step=0 note=C#5 vel=0.624 gate=1
-m track=2 step=0 note=F4 vel=0.788 gate=2
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=4 note=C#4 vel=0.624 gate=1
-m track=2 step=4 note=C#5 vel=0.624 gate=1
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=4 note=F4 vel=0.788 gate=2
-m track=2 step=6 note=C5 vel=0.788 gate=2
-m track=2 step=8 note=A#3 vel=0.624 gate=1
-m track=2 step=8 note=A#4 vel=0.788 gate=2
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=8 note=A#1 vel=0.678 gate=16
-m track=2 step=8 note=A#2 vel=0.678 gate=16
-m track=2 step=10 note=G#4 vel=0.788 gate=2
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=A#3 vel=0.624 gate=1
-m track=2 step=12 note=A#4 vel=0.624 gate=1
-m track=2 step=12 note=G#4 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-
-[pattern.11]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-d track=3 step=0 vel=0.592
-d track=3 step=4 vel=0.592
-d track=3 step=8 vel=0.592
-d track=3 step=12 vel=0.592
-m track=0 step=2 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=C2 vel=0.788 gate=2 nudge=-6
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=A#3 vel=0.624 gate=1
-m track=2 step=0 note=A#4 vel=0.788 gate=2
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=2 note=G#4 vel=0.788 gate=2
-m track=2 step=4 note=A#3 vel=0.624 gate=1
-m track=2 step=4 note=A#4 vel=0.624 gate=1
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=6 note=G#4 vel=0.788 gate=2
-m track=2 step=8 note=C4 vel=0.624 gate=1
-m track=2 step=8 note=C5 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=8 note=C2 vel=0.678 gate=16
-m track=2 step=8 note=C3 vel=0.678 gate=16
-m track=2 step=8 note=G#4 vel=0.788 gate=2
-m track=2 step=10 note=A#4 vel=0.788 gate=1
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=11 note=A#4 vel=0.788 gate=1
-m track=2 step=12 note=C4 vel=0.624 gate=1
-m track=2 step=12 note=C5 vel=0.624 gate=1
-m track=2 step=12 note=G#4 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-m track=2 step=14 note=G4 vel=0.788 gate=2
-
-[pattern.12]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-d track=3 step=0 vel=0.592
-d track=3 step=4 vel=0.592
-d track=3 step=7 vel=0.592
-d track=3 step=8 vel=0.592
-d track=3 step=12 vel=0.592
-m track=0 step=2 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=F1 vel=0.788 gate=2 nudge=-6
-m track=1 step=0 note=G#6 vel=0.235 gate=2
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=C4 vel=0.624 gate=1
-m track=2 step=0 note=C5 vel=0.624 gate=1
-m track=2 step=0 note=G#5 vel=0.243 gate=2
-m track=2 step=0 note=F4 vel=0.788 gate=4
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=8 note=F3 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=8 note=F1 vel=0.678 gate=16
-m track=2 step=8 note=F2 vel=0.678 gate=16
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=F3 vel=0.624 gate=1
-m track=2 step=12 note=F4 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-m track=2 step=14 note=F4 vel=0.788 gate=2
-
-[pattern.13]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-d track=3 step=0 vel=0.592
-d track=3 step=4 vel=0.592
-d track=3 step=8 vel=0.592
-d track=3 step=12 vel=0.592
-m track=0 step=2 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=F3 vel=0.624 gate=1
-m track=2 step=0 note=F4 vel=0.788 gate=2
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=2 note=F4 vel=0.788 gate=2
-m track=2 step=4 note=F3 vel=0.624 gate=1
-m track=2 step=4 note=F4 vel=0.788 gate=2
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=6 note=A#4 vel=0.788 gate=2
-m track=2 step=8 note=C#4 vel=0.624 gate=1
-m track=2 step=8 note=C#5 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=8 note=C#2 vel=0.678 gate=16
-m track=2 step=8 note=C#3 vel=0.678 gate=16
-m track=2 step=8 note=G#4 vel=0.788 gate=2
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=C#4 vel=0.624 gate=1
-m track=2 step=12 note=C#5 vel=0.624 gate=1
-m track=2 step=12 note=F4 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-m track=2 step=14 note=F4 vel=0.788 gate=2
-
-[pattern.14]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-d track=3 step=0 vel=0.592
-d track=3 step=4 vel=0.592
-d track=3 step=8 vel=0.592
-d track=3 step=12 vel=0.592
-m track=0 step=2 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=C#4 vel=0.624 gate=1
-m track=2 step=0 note=C#5 vel=0.624 gate=1
-m track=2 step=0 note=F4 vel=0.788 gate=2
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=4 note=C#4 vel=0.624 gate=1
-m track=2 step=4 note=C#5 vel=0.624 gate=1
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=4 note=F4 vel=0.788 gate=2
-m track=2 step=6 note=C5 vel=0.788 gate=2
-m track=2 step=8 note=A#3 vel=0.624 gate=1
-m track=2 step=8 note=A#4 vel=0.788 gate=2
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=8 note=A#1 vel=0.678 gate=16
-m track=2 step=8 note=A#2 vel=0.678 gate=16
-m track=2 step=10 note=G#4 vel=0.788 gate=2
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=A#3 vel=0.624 gate=1
-m track=2 step=12 note=A#4 vel=0.624 gate=1
-m track=2 step=12 note=G#4 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-
-[pattern.15]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=11 vel=0.545
-d track=0 step=14 vel=0.545
-d track=3 step=0 vel=0.592
-d track=3 step=4 vel=0.592
-d track=3 step=8 vel=0.592
-d track=3 step=11 vel=0.592
-d track=3 step=14 vel=0.592
-m track=0 step=2 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=C2 vel=0.788 gate=2 nudge=-6
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=A#3 vel=0.624 gate=1
-m track=2 step=0 note=A#4 vel=0.788 gate=2
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=2 note=G#4 vel=0.788 gate=2
-m track=2 step=4 note=A#3 vel=0.624 gate=1
-m track=2 step=4 note=A#4 vel=0.624 gate=1
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=6 note=G#4 vel=0.788 gate=2
-m track=2 step=8 note=C4 vel=0.624 gate=1
-m track=2 step=8 note=C5 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=8 note=C2 vel=0.678 gate=16
-m track=2 step=8 note=C3 vel=0.678 gate=16
-m track=2 step=8 note=G#4 vel=0.788 gate=2
-m track=2 step=10 note=A#4 vel=0.788 gate=1
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=11 note=A#4 vel=0.788 gate=1
-m track=2 step=12 note=C4 vel=0.624 gate=1
-m track=2 step=12 note=C5 vel=0.624 gate=1
-m track=2 step=12 note=G#4 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-m track=2 step=14 note=G4 vel=0.788 gate=2
+trackType = melodic
+length = 16
+m step=0 note=F3 vel=0.678 gate=2
+m step=4 note=F3 vel=0.678 gate=2
+m step=6 note=C4 vel=0.678 gate=2
+m step=8 note=A#3 vel=0.678 gate=2
+m step=8 note=F3 vel=0.624 gate=1
+m step=8 note=F4 vel=0.624 gate=1
+m step=12 note=G#3 vel=0.678 gate=2
+m step=12 note=F3 vel=0.624 gate=1
+m step=12 note=F4 vel=0.624 gate=1
+m step=14 note=C4 vel=0.678 gate=2
 
 [pattern.16]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=3 step=3 vel=0.592
-d track=3 step=4 vel=0.592
-d track=3 step=6 vel=0.592
-m track=0 step=2 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=F1 vel=0.788 gate=2 nudge=-6
-m track=1 step=0 note=G#6 vel=0.235 gate=2
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G6 vel=0.235 gate=2
-m track=1 step=6 note=G#5 vel=0.235 gate=2
-m track=2 step=0 note=C4 vel=0.624 gate=1
-m track=2 step=0 note=C5 vel=0.624 gate=1
-m track=2 step=0 note=G#5 vel=0.243 gate=2
-m track=2 step=0 note=F4 vel=0.788 gate=4
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=4 note=G5 vel=0.243 gate=2
-m track=2 step=6 note=G#4 vel=0.243 gate=2
-m track=2 step=8 note=F3 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.788 gate=2
-m track=2 step=12 note=F3 vel=0.624 gate=1
-m track=2 step=12 note=F4 vel=0.788 gate=2
-m track=2 step=14 note=F4 vel=0.788 gate=2
-
-[pattern.17]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-m track=0 step=2 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=2 step=0 note=F3 vel=0.624 gate=1
-m track=2 step=0 note=F4 vel=0.788 gate=2
-m track=2 step=2 note=F4 vel=0.788 gate=2
-m track=2 step=4 note=F3 vel=0.624 gate=1
-m track=2 step=4 note=F4 vel=0.788 gate=2
-m track=2 step=6 note=A#4 vel=0.788 gate=2
-m track=2 step=8 note=C#4 vel=0.624 gate=1
-m track=2 step=8 note=C#5 vel=0.624 gate=1
-m track=2 step=8 note=G#4 vel=0.788 gate=2
-m track=2 step=12 note=C#4 vel=0.624 gate=1
-m track=2 step=12 note=C#5 vel=0.624 gate=1
-m track=2 step=12 note=F4 vel=0.788 gate=2
-m track=2 step=14 note=F4 vel=0.788 gate=2
+trackType = melodic
+length = 16
+m step=2 note=F1 vel=0.788 gate=2 nudge=-6
+m step=4 note=F1 vel=0.788 gate=2 nudge=-6
+m step=8 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=11 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=14 note=C#2 vel=0.788 gate=2 nudge=-6
 
 [pattern.18]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-m track=0 step=2 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=2 step=0 note=C#4 vel=0.624 gate=1
-m track=2 step=0 note=C#5 vel=0.624 gate=1
-m track=2 step=0 note=F4 vel=0.788 gate=2
-m track=2 step=4 note=C#4 vel=0.624 gate=1
-m track=2 step=4 note=C#5 vel=0.624 gate=1
-m track=2 step=4 note=F4 vel=0.788 gate=2
-m track=2 step=6 note=C5 vel=0.788 gate=2
-m track=2 step=8 note=A#3 vel=0.624 gate=1
-m track=2 step=8 note=A#4 vel=0.788 gate=2
-m track=2 step=10 note=G#4 vel=0.788 gate=2
-m track=2 step=12 note=A#3 vel=0.624 gate=1
-m track=2 step=12 note=A#4 vel=0.624 gate=1
-m track=2 step=12 note=G#4 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.788 gate=2
-
-[pattern.19]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-m track=0 step=2 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=C2 vel=0.788 gate=2 nudge=-6
-m track=2 step=0 note=A#3 vel=0.624 gate=1
-m track=2 step=0 note=A#4 vel=0.788 gate=2
-m track=2 step=2 note=G#4 vel=0.788 gate=2
-m track=2 step=4 note=A#3 vel=0.624 gate=1
-m track=2 step=4 note=A#4 vel=0.624 gate=1
-m track=2 step=4 note=G#4 vel=0.788 gate=2
-m track=2 step=6 note=G#4 vel=0.788 gate=2
-m track=2 step=8 note=C4 vel=0.624 gate=1
-m track=2 step=8 note=C5 vel=0.624 gate=1
-m track=2 step=8 note=G#4 vel=0.788 gate=2
-m track=2 step=10 note=A#4 vel=0.788 gate=1
-m track=2 step=11 note=A#4 vel=0.788 gate=1
-m track=2 step=12 note=C4 vel=0.624 gate=1
-m track=2 step=12 note=C5 vel=0.624 gate=1
-m track=2 step=12 note=G#4 vel=0.788 gate=2
-m track=2 step=14 note=G4 vel=0.788 gate=2
-
-[pattern.20]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-m track=0 step=2 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=F1 vel=0.788 gate=2 nudge=-6
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=C4 vel=0.624 gate=1
-m track=2 step=0 note=C5 vel=0.624 gate=1
-m track=2 step=0 note=F4 vel=0.788 gate=4
-m track=2 step=4 note=C4 vel=0.624 gate=1
-m track=2 step=4 note=C5 vel=0.624 gate=1
-m track=2 step=8 note=F3 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=F3 vel=0.624 gate=1
-m track=2 step=12 note=F4 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-m track=2 step=14 note=F4 vel=0.788 gate=2
-
-[pattern.21]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-m track=0 step=2 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=F3 vel=0.624 gate=1
-m track=2 step=0 note=F4 vel=0.788 gate=2
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=2 note=F4 vel=0.788 gate=2
-m track=2 step=4 note=F3 vel=0.624 gate=1
-m track=2 step=4 note=F4 vel=0.788 gate=2
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=6 note=A#4 vel=0.788 gate=2
-m track=2 step=8 note=C#4 vel=0.624 gate=1
-m track=2 step=8 note=C#5 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=8 note=G#4 vel=0.788 gate=2
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=C#4 vel=0.624 gate=1
-m track=2 step=12 note=C#5 vel=0.624 gate=1
-m track=2 step=12 note=F4 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-m track=2 step=14 note=F4 vel=0.788 gate=2
-
-[pattern.22]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-m track=0 step=2 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=C#4 vel=0.624 gate=1
-m track=2 step=0 note=C#5 vel=0.624 gate=1
-m track=2 step=0 note=F4 vel=0.788 gate=2
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=4 note=C#4 vel=0.624 gate=1
-m track=2 step=4 note=C#5 vel=0.624 gate=1
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=4 note=F4 vel=0.788 gate=2
-m track=2 step=6 note=C5 vel=0.788 gate=2
-m track=2 step=8 note=A#3 vel=0.624 gate=1
-m track=2 step=8 note=A#4 vel=0.788 gate=2
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=10 note=G#4 vel=0.788 gate=2
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=A#3 vel=0.624 gate=1
-m track=2 step=12 note=A#4 vel=0.624 gate=1
-m track=2 step=12 note=G#4 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-
-[pattern.23]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=11 vel=0.545
-d track=0 step=14 vel=0.545
-m track=0 step=2 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=C2 vel=0.788 gate=2 nudge=-6
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=A#3 vel=0.624 gate=1
-m track=2 step=0 note=A#4 vel=0.788 gate=2
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=2 note=G#4 vel=0.788 gate=2
-m track=2 step=4 note=A#3 vel=0.624 gate=1
-m track=2 step=4 note=A#4 vel=0.624 gate=1
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=6 note=G#4 vel=0.788 gate=2
-m track=2 step=8 note=C4 vel=0.624 gate=1
-m track=2 step=8 note=C5 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=8 note=G#4 vel=0.788 gate=2
-m track=2 step=10 note=A#4 vel=0.788 gate=1
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=11 note=A#4 vel=0.788 gate=1
-m track=2 step=12 note=C4 vel=0.624 gate=1
-m track=2 step=12 note=C5 vel=0.624 gate=1
-m track=2 step=12 note=G#4 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-m track=2 step=14 note=G4 vel=0.788 gate=2
-
-[pattern.24]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-d track=3 step=3 vel=0.592
-d track=3 step=4 vel=0.592
-d track=3 step=6 vel=0.592
-d track=3 step=8 vel=0.592
-d track=3 step=12 vel=0.592
-m track=0 step=2 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=F1 vel=0.788 gate=2 nudge=-6
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=C4 vel=0.624 gate=1
-m track=2 step=0 note=C5 vel=0.624 gate=1
-m track=2 step=0 note=F4 vel=0.788 gate=2
-m track=2 step=0 note=F5 vel=0.788 gate=8
-m track=2 step=8 note=F3 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=8 note=F1 vel=0.678 gate=16
-m track=2 step=8 note=F2 vel=0.678 gate=16
-m track=2 step=8 note=F5 vel=0.788 gate=2
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=F3 vel=0.624 gate=1
-m track=2 step=12 note=F4 vel=0.788 gate=2
-m track=2 step=12 note=F5 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-m track=2 step=14 note=F4 vel=0.788 gate=2
-m track=2 step=14 note=F5 vel=0.788 gate=2
-
-[pattern.25]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-d track=3 step=0 vel=0.592
-d track=3 step=4 vel=0.592
-d track=3 step=8 vel=0.592
-d track=3 step=12 vel=0.592
-m track=0 step=2 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=F3 vel=0.624 gate=1
-m track=2 step=0 note=F4 vel=0.788 gate=2
-m track=2 step=0 note=F5 vel=0.788 gate=2
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=2 note=F4 vel=0.788 gate=2
-m track=2 step=2 note=F5 vel=0.788 gate=2
-m track=2 step=4 note=F3 vel=0.624 gate=1
-m track=2 step=4 note=F4 vel=0.788 gate=2
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=4 note=F5 vel=0.788 gate=2
-m track=2 step=6 note=A#4 vel=0.788 gate=2
-m track=2 step=6 note=A#5 vel=0.788 gate=2
-m track=2 step=8 note=C#4 vel=0.624 gate=1
-m track=2 step=8 note=C#5 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=8 note=C#2 vel=0.678 gate=16
-m track=2 step=8 note=C#3 vel=0.678 gate=16
-m track=2 step=8 note=G#4 vel=0.788 gate=2
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=C#4 vel=0.624 gate=1
-m track=2 step=12 note=C#5 vel=0.624 gate=1
-m track=2 step=12 note=F4 vel=0.788 gate=2
-m track=2 step=12 note=F5 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-m track=2 step=14 note=F4 vel=0.788 gate=2
-m track=2 step=14 note=F5 vel=0.788 gate=2
-
-[pattern.26]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-d track=3 step=0 vel=0.592
-d track=3 step=4 vel=0.592
-d track=3 step=8 vel=0.592
-d track=3 step=12 vel=0.592
-m track=0 step=2 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=C#4 vel=0.624 gate=1
-m track=2 step=0 note=C#5 vel=0.624 gate=1
-m track=2 step=0 note=F4 vel=0.788 gate=2
-m track=2 step=0 note=F5 vel=0.788 gate=2
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=4 note=C#4 vel=0.624 gate=1
-m track=2 step=4 note=C#5 vel=0.624 gate=1
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=4 note=F4 vel=0.788 gate=2
-m track=2 step=4 note=F5 vel=0.788 gate=2
-m track=2 step=6 note=C5 vel=0.788 gate=2
-m track=2 step=6 note=C6 vel=0.788 gate=2
-m track=2 step=8 note=A#3 vel=0.624 gate=1
-m track=2 step=8 note=A#4 vel=0.788 gate=2
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=8 note=A#1 vel=0.678 gate=16
-m track=2 step=8 note=A#2 vel=0.678 gate=16
-m track=2 step=8 note=A#5 vel=0.788 gate=2
-m track=2 step=10 note=G#4 vel=0.788 gate=2
-m track=2 step=10 note=G#5 vel=0.788 gate=2
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=A#3 vel=0.624 gate=1
-m track=2 step=12 note=A#4 vel=0.624 gate=1
-m track=2 step=12 note=G#4 vel=0.788 gate=2
-m track=2 step=12 note=G#5 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-m track=2 step=14 note=C6 vel=0.788 gate=2
-
-[pattern.27]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-d track=3 step=0 vel=0.592
-d track=3 step=4 vel=0.592
-d track=3 step=8 vel=0.592
-d track=3 step=12 vel=0.592
-m track=0 step=2 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=C2 vel=0.788 gate=2 nudge=-6
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=A#3 vel=0.624 gate=1
-m track=2 step=0 note=A#4 vel=0.788 gate=2
-m track=2 step=0 note=A#5 vel=0.788 gate=2
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=2 note=G#4 vel=0.788 gate=2
-m track=2 step=2 note=G#5 vel=0.788 gate=2
-m track=2 step=4 note=A#3 vel=0.624 gate=1
-m track=2 step=4 note=A#4 vel=0.624 gate=1
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=4 note=G#5 vel=0.788 gate=2
-m track=2 step=6 note=G#4 vel=0.788 gate=2
-m track=2 step=6 note=G#5 vel=0.788 gate=2
-m track=2 step=8 note=C4 vel=0.624 gate=1
-m track=2 step=8 note=C5 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=8 note=C2 vel=0.678 gate=16
-m track=2 step=8 note=C3 vel=0.678 gate=16
-m track=2 step=8 note=G#4 vel=0.788 gate=2
-m track=2 step=10 note=A#4 vel=0.788 gate=1
-m track=2 step=10 note=A#5 vel=0.788 gate=1
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=11 note=A#4 vel=0.788 gate=1
-m track=2 step=11 note=A#5 vel=0.788 gate=1
-m track=2 step=12 note=C4 vel=0.624 gate=1
-m track=2 step=12 note=C5 vel=0.624 gate=1
-m track=2 step=12 note=G#4 vel=0.788 gate=2
-m track=2 step=12 note=G#5 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-m track=2 step=14 note=G4 vel=0.788 gate=2
-m track=2 step=14 note=G5 vel=0.788 gate=2
+trackType = melodic
+length = 16
+m step=0 note=A#3 vel=0.678 gate=2
+m step=0 note=F3 vel=0.624 gate=1
+m step=0 note=F4 vel=0.624 gate=1
+m step=4 note=G#3 vel=0.678 gate=2
+m step=4 note=F3 vel=0.624 gate=1
+m step=4 note=F4 vel=0.624 gate=1
+m step=8 note=G#3 vel=0.678 gate=2
+m step=8 note=C#4 vel=0.624 gate=1
+m step=8 note=C#5 vel=0.624 gate=1
+m step=10 note=A#3 vel=0.678 gate=2
+m step=12 note=G#3 vel=0.678 gate=2
+m step=12 note=C#4 vel=0.624 gate=1
+m step=12 note=C#5 vel=0.624 gate=1
+m step=14 note=G3 vel=0.678 gate=2
 
 [pattern.28]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-d track=3 step=0 vel=0.592
-d track=3 step=4 vel=0.592
-d track=3 step=7 vel=0.592
-d track=3 step=8 vel=0.592
-d track=3 step=12 vel=0.592
-m track=0 step=2 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=F1 vel=0.788 gate=2 nudge=-6
-m track=1 step=0 note=G#6 vel=0.235 gate=2
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=C4 vel=0.624 gate=1
-m track=2 step=0 note=C5 vel=0.624 gate=1
-m track=2 step=0 note=G#5 vel=0.243 gate=2
-m track=2 step=0 note=F4 vel=0.788 gate=4
-m track=2 step=0 note=F5 vel=0.788 gate=4
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=8 note=F3 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=8 note=F1 vel=0.678 gate=16
-m track=2 step=8 note=F2 vel=0.678 gate=16
-m track=2 step=8 note=F5 vel=0.788 gate=2
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=F3 vel=0.624 gate=1
-m track=2 step=12 note=F4 vel=0.788 gate=2
-m track=2 step=12 note=F5 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-m track=2 step=14 note=F4 vel=0.788 gate=2
-m track=2 step=14 note=F5 vel=0.788 gate=2
-
-[pattern.29]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-d track=3 step=0 vel=0.592
-d track=3 step=4 vel=0.592
-d track=3 step=8 vel=0.592
-d track=3 step=12 vel=0.592
-m track=0 step=2 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=F1 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=F3 vel=0.624 gate=1
-m track=2 step=0 note=F4 vel=0.788 gate=2
-m track=2 step=0 note=F5 vel=0.788 gate=2
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=2 note=F4 vel=0.788 gate=2
-m track=2 step=2 note=F5 vel=0.788 gate=2
-m track=2 step=4 note=F3 vel=0.624 gate=1
-m track=2 step=4 note=F4 vel=0.788 gate=2
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=4 note=F5 vel=0.788 gate=2
-m track=2 step=6 note=A#4 vel=0.788 gate=2
-m track=2 step=6 note=A#5 vel=0.788 gate=2
-m track=2 step=8 note=C#4 vel=0.624 gate=1
-m track=2 step=8 note=C#5 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=8 note=C#2 vel=0.678 gate=16
-m track=2 step=8 note=C#3 vel=0.678 gate=16
-m track=2 step=8 note=G#4 vel=0.788 gate=2
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=C#4 vel=0.624 gate=1
-m track=2 step=12 note=C#5 vel=0.624 gate=1
-m track=2 step=12 note=F4 vel=0.788 gate=2
-m track=2 step=12 note=F5 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-m track=2 step=14 note=F4 vel=0.788 gate=2
-m track=2 step=14 note=F5 vel=0.788 gate=2
+trackType = melodic
+length = 16
+m step=2 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=4 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=8 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=11 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=14 note=A#1 vel=0.788 gate=2 nudge=-6
 
 [pattern.30]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-d track=3 step=0 vel=0.592
-d track=3 step=4 vel=0.592
-d track=3 step=8 vel=0.592
-d track=3 step=12 vel=0.592
-m track=0 step=2 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=C#2 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=C#4 vel=0.624 gate=1
-m track=2 step=0 note=C#5 vel=0.624 gate=1
-m track=2 step=0 note=F4 vel=0.788 gate=2
-m track=2 step=0 note=F5 vel=0.788 gate=2
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=4 note=C#4 vel=0.624 gate=1
-m track=2 step=4 note=C#5 vel=0.624 gate=1
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=4 note=F4 vel=0.788 gate=2
-m track=2 step=4 note=F5 vel=0.788 gate=2
-m track=2 step=6 note=C5 vel=0.788 gate=2
-m track=2 step=6 note=C6 vel=0.788 gate=2
-m track=2 step=8 note=A#3 vel=0.624 gate=1
-m track=2 step=8 note=A#4 vel=0.788 gate=2
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=8 note=A#1 vel=0.678 gate=16
-m track=2 step=8 note=A#2 vel=0.678 gate=16
-m track=2 step=8 note=A#5 vel=0.788 gate=2
-m track=2 step=10 note=G#4 vel=0.788 gate=2
-m track=2 step=10 note=G#5 vel=0.788 gate=2
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=12 note=A#3 vel=0.624 gate=1
-m track=2 step=12 note=A#4 vel=0.624 gate=1
-m track=2 step=12 note=G#4 vel=0.788 gate=2
-m track=2 step=12 note=G#5 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-m track=2 step=14 note=C6 vel=0.788 gate=2
+trackType = melodic
+length = 16
+m step=0 note=F3 vel=0.678 gate=2
+m step=0 note=C#4 vel=0.624 gate=1
+m step=0 note=C#5 vel=0.624 gate=1
+m step=4 note=F3 vel=0.678 gate=2
+m step=4 note=C#4 vel=0.624 gate=1
+m step=4 note=C#5 vel=0.624 gate=1
+m step=6 note=C4 vel=0.678 gate=2
+m step=8 note=A#3 vel=0.678 gate=2
+m step=8 note=A#4 vel=0.624 gate=1
+m step=12 note=G#3 vel=0.678 gate=2
+m step=12 note=A#3 vel=0.624 gate=1
+m step=12 note=A#4 vel=0.624 gate=1
+m step=14 note=C4 vel=0.678 gate=2
 
-[pattern.31]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=0 step=4 vel=0.545
-d track=0 step=8 vel=0.545
-d track=0 step=12 vel=0.545
-d track=3 step=0 vel=0.592
-d track=3 step=4 vel=0.592
-d track=3 step=8 vel=0.592
-d track=3 step=12 vel=0.592
-m track=0 step=2 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=4 note=A#1 vel=0.788 gate=2 nudge=-6
-m track=0 step=8 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=11 note=C2 vel=0.788 gate=2 nudge=-6
-m track=0 step=14 note=C2 vel=0.788 gate=2 nudge=-6
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G#5 vel=0.235 gate=2
-m track=1 step=8 note=F5 vel=0.235 gate=2
-m track=1 step=11 note=F6 vel=0.235 gate=2
-m track=1 step=14 note=C6 vel=0.235 gate=2
-m track=2 step=0 note=A#3 vel=0.624 gate=1
-m track=2 step=0 note=A#4 vel=0.788 gate=2
-m track=2 step=0 note=A#5 vel=0.788 gate=2
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=2 note=G#4 vel=0.788 gate=2
-m track=2 step=2 note=G#5 vel=0.788 gate=2
-m track=2 step=4 note=A#3 vel=0.624 gate=1
-m track=2 step=4 note=A#4 vel=0.624 gate=1
-m track=2 step=4 note=G#4 vel=0.243 gate=2
-m track=2 step=4 note=G#5 vel=0.788 gate=2
-m track=2 step=6 note=G#4 vel=0.788 gate=2
-m track=2 step=6 note=G#5 vel=0.788 gate=2
-m track=2 step=8 note=C4 vel=0.624 gate=1
-m track=2 step=8 note=C5 vel=0.624 gate=1
-m track=2 step=8 note=F4 vel=0.243 gate=2
-m track=2 step=8 note=C2 vel=0.678 gate=16
-m track=2 step=8 note=C3 vel=0.678 gate=16
-m track=2 step=8 note=G#4 vel=0.788 gate=2
-m track=2 step=10 note=A#4 vel=0.788 gate=1
-m track=2 step=10 note=A#5 vel=0.788 gate=1
-m track=2 step=11 note=F5 vel=0.243 gate=2
-m track=2 step=11 note=A#4 vel=0.788 gate=1
-m track=2 step=11 note=A#5 vel=0.788 gate=1
-m track=2 step=12 note=C4 vel=0.624 gate=1
-m track=2 step=12 note=C5 vel=0.624 gate=1
-m track=2 step=12 note=G#4 vel=0.788 gate=2
-m track=2 step=12 note=G#5 vel=0.788 gate=2
-m track=2 step=14 note=C5 vel=0.243 gate=2
-m track=2 step=14 note=G4 vel=0.788 gate=2
-m track=2 step=14 note=G5 vel=0.788 gate=2
+[pattern.40]
+trackType = melodic
+length = 16
+m step=2 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=4 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=8 note=C2 vel=0.788 gate=2 nudge=-6
+m step=11 note=C2 vel=0.788 gate=2 nudge=-6
+m step=14 note=C2 vel=0.788 gate=2 nudge=-6
 
-[pattern.32]
-drumTrackLength = 16 16 16 16
-melodyTrackLength = 16 16 16
-samplerTrackLength = 16
-d track=0 step=0 vel=0.545
-d track=3 step=0 vel=0.592
-d track=3 step=3 vel=0.592
-d track=3 step=4 vel=0.592
-d track=3 step=6 vel=0.592
-m track=0 step=2 note=C2 vel=0.788 gate=2 nudge=-6
-m track=1 step=0 note=G#6 vel=0.235 gate=2
-m track=1 step=2 note=A#5 vel=0.235 gate=2
-m track=1 step=4 note=G6 vel=0.235 gate=2
-m track=1 step=6 note=G#5 vel=0.235 gate=2
-m track=2 step=0 note=C4 vel=0.624 gate=1
-m track=2 step=0 note=C5 vel=0.624 gate=1
-m track=2 step=0 note=G#5 vel=0.243 gate=2
-m track=2 step=0 note=F4 vel=0.788 gate=4
-m track=2 step=0 note=F5 vel=0.788 gate=4
-m track=2 step=2 note=A#4 vel=0.243 gate=2
-m track=2 step=4 note=G5 vel=0.243 gate=2
-m track=2 step=6 note=G#4 vel=0.243 gate=2
+[pattern.42]
+trackType = melodic
+length = 16
+m step=0 note=A#3 vel=0.678 gate=2
+m step=0 note=A#4 vel=0.624 gate=1
+m step=4 note=G#3 vel=0.678 gate=2
+m step=4 note=A#3 vel=0.624 gate=1
+m step=4 note=A#4 vel=0.624 gate=1
+m step=6 note=G#3 vel=0.678 gate=2
+m step=8 note=G#3 vel=0.678 gate=1
+m step=8 note=C4 vel=0.624 gate=1
+m step=8 note=C5 vel=0.624 gate=1
+m step=9 note=A#3 vel=0.678 gate=2
+m step=11 note=A#3 vel=0.678 gate=2 nudge=-12
+m step=12 note=G#3 vel=0.678 gate=2
+m step=12 note=C4 vel=0.624 gate=1
+m step=12 note=C5 vel=0.624 gate=1
+m step=14 note=G3 vel=0.678 gate=2
+
+[pattern.48]
+trackType = drum
+length = 16
+d step=8 vel=0.545
+d step=12 vel=0.545
+
+[pattern.52]
+trackType = melodic
+length = 16
+m step=2 note=C2 vel=0.788 gate=2 nudge=-6
+m step=4 note=C2 vel=0.788 gate=2 nudge=-6
+m step=8 note=F1 vel=0.788 gate=2 nudge=-6
+m step=11 note=F1 vel=0.788 gate=2 nudge=-6
+m step=14 note=F1 vel=0.788 gate=2 nudge=-6
+
+[pattern.53]
+trackType = melodic
+length = 16
+m step=8 note=F5 vel=0.235 gate=2
+m step=11 note=F6 vel=0.235 gate=2
+m step=14 note=C6 vel=0.235 gate=2
+
+[pattern.54]
+trackType = melodic
+length = 16
+m step=0 note=F3 vel=0.678 gate=2
+m step=0 note=C4 vel=0.624 gate=1
+m step=0 note=C5 vel=0.624 gate=1
+m step=4 note=F3 vel=0.678 gate=2
+m step=4 note=C4 vel=0.624 gate=1
+m step=4 note=C5 vel=0.624 gate=1
+m step=6 note=C4 vel=0.678 gate=2
+m step=8 note=A#3 vel=0.678 gate=2
+m step=8 note=F3 vel=0.624 gate=1
+m step=8 note=F4 vel=0.243 gate=2
+m step=11 note=A#3 vel=0.678 gate=1
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=G#3 vel=0.678 gate=2
+m step=12 note=F3 vel=0.624 gate=1
+m step=12 note=F4 vel=0.624 gate=1
+m step=14 note=C4 vel=0.678 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+
+[pattern.60]
+trackType = drum
+length = 16
+d step=0 vel=0.545
+d step=4 vel=0.545
+d step=8 vel=0.545
+d step=12 vel=0.545
+
+[pattern.65]
+trackType = melodic
+length = 16
+m step=2 note=A#5 vel=0.235 gate=2
+m step=4 note=G#5 vel=0.235 gate=2
+m step=8 note=F5 vel=0.235 gate=2
+m step=11 note=F6 vel=0.235 gate=2
+m step=14 note=C6 vel=0.235 gate=2
+
+[pattern.66]
+trackType = melodic
+length = 16
+m step=0 note=A#3 vel=0.678 gate=2
+m step=0 note=F3 vel=0.624 gate=1
+m step=0 note=F4 vel=0.624 gate=1
+m step=2 note=A#4 vel=0.243 gate=2
+m step=4 note=G#3 vel=0.678 gate=2
+m step=4 note=F3 vel=0.624 gate=1
+m step=4 note=F4 vel=0.624 gate=1
+m step=4 note=G#4 vel=0.243 gate=2
+m step=6 note=G#3 vel=0.678 gate=2
+m step=8 note=G#3 vel=0.678 gate=1
+m step=8 note=C#4 vel=0.624 gate=1
+m step=8 note=C#5 vel=0.624 gate=1
+m step=8 note=F4 vel=0.243 gate=2
+m step=9 note=A#3 vel=0.678 gate=2
+m step=11 note=A#3 vel=0.678 gate=2 nudge=-12
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=G#3 vel=0.678 gate=2
+m step=12 note=C#4 vel=0.624 gate=1
+m step=12 note=C#5 vel=0.624 gate=1
+m step=14 note=G3 vel=0.678 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+
+[pattern.78]
+trackType = melodic
+length = 16
+m step=0 note=F3 vel=0.678 gate=2
+m step=0 note=C#4 vel=0.624 gate=1
+m step=0 note=C#5 vel=0.624 gate=1
+m step=2 note=F3 vel=0.678 gate=2
+m step=2 note=A#4 vel=0.243 gate=2
+m step=4 note=F3 vel=0.678 gate=2
+m step=4 note=C#4 vel=0.624 gate=1
+m step=4 note=C#5 vel=0.624 gate=1
+m step=4 note=G#4 vel=0.243 gate=2
+m step=6 note=F3 vel=0.678 gate=2
+m step=8 note=C4 vel=0.678 gate=2
+m step=8 note=A#3 vel=0.624 gate=1
+m step=8 note=A#4 vel=0.624 gate=1
+m step=8 note=F4 vel=0.243 gate=2
+m step=10 note=F3 vel=0.678 gate=2
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=F3 vel=0.678 gate=2
+m step=12 note=A#3 vel=0.624 gate=1
+m step=12 note=A#4 vel=0.624 gate=1
+m step=14 note=F3 vel=0.678 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+
+[pattern.84]
+trackType = drum
+length = 16
+d step=0 vel=0.545
+d step=4 vel=0.545
+d step=8 vel=0.545
+d step=11 vel=0.545
+d step=14 vel=0.545
+
+[pattern.90]
+trackType = melodic
+length = 16
+m step=0 note=C4 vel=0.678 gate=2
+m step=0 note=A#3 vel=0.624 gate=1
+m step=0 note=A#4 vel=0.624 gate=1
+m step=2 note=F3 vel=0.678 gate=2
+m step=2 note=A#4 vel=0.243 gate=2
+m step=4 note=F3 vel=0.678 gate=2
+m step=4 note=A#3 vel=0.624 gate=1
+m step=4 note=A#4 vel=0.624 gate=1
+m step=4 note=G#4 vel=0.243 gate=2
+m step=8 note=F4 vel=0.678 gate=2
+m step=8 note=C4 vel=0.624 gate=1
+m step=8 note=C5 vel=0.624 gate=1
+m step=10 note=F4 vel=0.678 gate=2
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=F4 vel=0.678 gate=2
+m step=12 note=C4 vel=0.624 gate=1
+m step=12 note=C5 vel=0.624 gate=1
+m step=14 note=C5 vel=0.243 gate=2
+
+[pattern.99]
+trackType = drum
+length = 16
+d step=3 vel=0.592
+d step=4 vel=0.592
+d step=6 vel=0.592
+d step=8 vel=0.592
+d step=12 vel=0.592
+
+[pattern.100]
+trackType = melodic
+length = 16
+m step=2 note=C2 vel=0.788 gate=2 nudge=-6
+m step=8 note=F1 vel=0.788 gate=2 nudge=-6
+m step=11 note=F1 vel=0.788 gate=2 nudge=-6
+m step=14 note=F1 vel=0.788 gate=2 nudge=-6
+
+[pattern.102]
+trackType = melodic
+length = 16
+m step=0 note=F4 vel=0.788 gate=8
+m step=0 note=C4 vel=0.624 gate=1
+m step=0 note=C5 vel=0.624 gate=1
+m step=8 note=F3 vel=0.624 gate=1
+m step=8 note=F4 vel=0.243 gate=2
+m step=8 note=F1 vel=0.678 gate=16
+m step=8 note=F2 vel=0.678 gate=16
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=F3 vel=0.624 gate=1
+m step=12 note=F4 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+m step=14 note=F4 vel=0.788 gate=2
+
+[pattern.111]
+trackType = drum
+length = 16
+d step=0 vel=0.592
+d step=4 vel=0.592
+d step=8 vel=0.592
+d step=12 vel=0.592
+
+[pattern.114]
+trackType = melodic
+length = 16
+m step=0 note=F3 vel=0.624 gate=1
+m step=0 note=F4 vel=0.788 gate=2
+m step=2 note=A#4 vel=0.243 gate=2
+m step=2 note=F4 vel=0.788 gate=2
+m step=4 note=F3 vel=0.624 gate=1
+m step=4 note=F4 vel=0.788 gate=2
+m step=4 note=G#4 vel=0.243 gate=2
+m step=6 note=A#4 vel=0.788 gate=2
+m step=8 note=C#4 vel=0.624 gate=1
+m step=8 note=C#5 vel=0.624 gate=1
+m step=8 note=F4 vel=0.243 gate=2
+m step=8 note=C#2 vel=0.678 gate=16
+m step=8 note=C#3 vel=0.678 gate=16
+m step=8 note=G#4 vel=0.788 gate=2
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=C#4 vel=0.624 gate=1
+m step=12 note=C#5 vel=0.624 gate=1
+m step=12 note=F4 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+m step=14 note=F4 vel=0.788 gate=2
+
+[pattern.126]
+trackType = melodic
+length = 16
+m step=0 note=C#4 vel=0.624 gate=1
+m step=0 note=C#5 vel=0.624 gate=1
+m step=0 note=F4 vel=0.788 gate=2
+m step=2 note=A#4 vel=0.243 gate=2
+m step=4 note=C#4 vel=0.624 gate=1
+m step=4 note=C#5 vel=0.624 gate=1
+m step=4 note=G#4 vel=0.243 gate=2
+m step=4 note=F4 vel=0.788 gate=2
+m step=6 note=C5 vel=0.788 gate=2
+m step=8 note=A#3 vel=0.624 gate=1
+m step=8 note=A#4 vel=0.788 gate=2
+m step=8 note=F4 vel=0.243 gate=2
+m step=8 note=A#1 vel=0.678 gate=16
+m step=8 note=A#2 vel=0.678 gate=16
+m step=10 note=G#4 vel=0.788 gate=2
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=A#3 vel=0.624 gate=1
+m step=12 note=A#4 vel=0.624 gate=1
+m step=12 note=G#4 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+
+[pattern.138]
+trackType = melodic
+length = 16
+m step=0 note=A#3 vel=0.624 gate=1
+m step=0 note=A#4 vel=0.788 gate=2
+m step=2 note=A#4 vel=0.243 gate=2
+m step=2 note=G#4 vel=0.788 gate=2
+m step=4 note=A#3 vel=0.624 gate=1
+m step=4 note=A#4 vel=0.624 gate=1
+m step=4 note=G#4 vel=0.243 gate=2
+m step=6 note=G#4 vel=0.788 gate=2
+m step=8 note=C4 vel=0.624 gate=1
+m step=8 note=C5 vel=0.624 gate=1
+m step=8 note=F4 vel=0.243 gate=2
+m step=8 note=C2 vel=0.678 gate=16
+m step=8 note=C3 vel=0.678 gate=16
+m step=8 note=G#4 vel=0.788 gate=2
+m step=10 note=A#4 vel=0.788 gate=1
+m step=11 note=F5 vel=0.243 gate=2
+m step=11 note=A#4 vel=0.788 gate=1
+m step=12 note=C4 vel=0.624 gate=1
+m step=12 note=C5 vel=0.624 gate=1
+m step=12 note=G#4 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+m step=14 note=G4 vel=0.788 gate=2
+
+[pattern.147]
+trackType = drum
+length = 16
+d step=0 vel=0.592
+d step=4 vel=0.592
+d step=7 vel=0.592
+d step=8 vel=0.592
+d step=12 vel=0.592
+
+[pattern.149]
+trackType = melodic
+length = 16
+m step=0 note=G#6 vel=0.235 gate=2
+m step=2 note=A#5 vel=0.235 gate=2
+m step=4 note=G#5 vel=0.235 gate=2
+m step=8 note=F5 vel=0.235 gate=2
+m step=11 note=F6 vel=0.235 gate=2
+m step=14 note=C6 vel=0.235 gate=2
+
+[pattern.150]
+trackType = melodic
+length = 16
+m step=0 note=C4 vel=0.624 gate=1
+m step=0 note=C5 vel=0.624 gate=1
+m step=0 note=G#5 vel=0.243 gate=2
+m step=0 note=F4 vel=0.788 gate=4
+m step=2 note=A#4 vel=0.243 gate=2
+m step=4 note=G#4 vel=0.243 gate=2
+m step=8 note=F3 vel=0.624 gate=1
+m step=8 note=F4 vel=0.243 gate=2
+m step=8 note=F1 vel=0.678 gate=16
+m step=8 note=F2 vel=0.678 gate=16
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=F3 vel=0.624 gate=1
+m step=12 note=F4 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+m step=14 note=F4 vel=0.788 gate=2
+
+[pattern.159]
+trackType = drum
+length = 16
+d step=0 vel=0.592
+d step=4 vel=0.592
+d step=8 vel=0.592
+d step=12 vel=0.592
+
+[pattern.160]
+trackType = melodic
+length = 16
+m step=2 note=F1 vel=0.788 gate=2 nudge=-6
+m step=4 note=F1 vel=0.788 gate=2 nudge=-6
+m step=8 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=11 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=14 note=C#2 vel=0.788 gate=2 nudge=-6
+
+[pattern.161]
+trackType = melodic
+length = 16
+m step=2 note=A#5 vel=0.235 gate=2
+m step=4 note=G#5 vel=0.235 gate=2
+m step=8 note=F5 vel=0.235 gate=2
+m step=11 note=F6 vel=0.235 gate=2
+m step=14 note=C6 vel=0.235 gate=2
+
+[pattern.162]
+trackType = melodic
+length = 16
+m step=0 note=F3 vel=0.624 gate=1
+m step=0 note=F4 vel=0.788 gate=2
+m step=2 note=A#4 vel=0.243 gate=2
+m step=2 note=F4 vel=0.788 gate=2
+m step=4 note=F3 vel=0.624 gate=1
+m step=4 note=F4 vel=0.788 gate=2
+m step=4 note=G#4 vel=0.243 gate=2
+m step=6 note=A#4 vel=0.788 gate=2
+m step=8 note=C#4 vel=0.624 gate=1
+m step=8 note=C#5 vel=0.624 gate=1
+m step=8 note=F4 vel=0.243 gate=2
+m step=8 note=C#2 vel=0.678 gate=16
+m step=8 note=C#3 vel=0.678 gate=16
+m step=8 note=G#4 vel=0.788 gate=2
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=C#4 vel=0.624 gate=1
+m step=12 note=C#5 vel=0.624 gate=1
+m step=12 note=F4 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+m step=14 note=F4 vel=0.788 gate=2
+
+[pattern.168]
+trackType = drum
+length = 16
+d step=0 vel=0.545
+d step=4 vel=0.545
+d step=8 vel=0.545
+d step=12 vel=0.545
+
+[pattern.171]
+trackType = drum
+length = 16
+d step=0 vel=0.592
+d step=4 vel=0.592
+d step=8 vel=0.592
+d step=12 vel=0.592
+
+[pattern.172]
+trackType = melodic
+length = 16
+m step=2 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=4 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=8 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=11 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=14 note=A#1 vel=0.788 gate=2 nudge=-6
+
+[pattern.173]
+trackType = melodic
+length = 16
+m step=2 note=A#5 vel=0.235 gate=2
+m step=4 note=G#5 vel=0.235 gate=2
+m step=8 note=F5 vel=0.235 gate=2
+m step=11 note=F6 vel=0.235 gate=2
+m step=14 note=C6 vel=0.235 gate=2
+
+[pattern.174]
+trackType = melodic
+length = 16
+m step=0 note=C#4 vel=0.624 gate=1
+m step=0 note=C#5 vel=0.624 gate=1
+m step=0 note=F4 vel=0.788 gate=2
+m step=2 note=A#4 vel=0.243 gate=2
+m step=4 note=C#4 vel=0.624 gate=1
+m step=4 note=C#5 vel=0.624 gate=1
+m step=4 note=G#4 vel=0.243 gate=2
+m step=4 note=F4 vel=0.788 gate=2
+m step=6 note=C5 vel=0.788 gate=2
+m step=8 note=A#3 vel=0.624 gate=1
+m step=8 note=A#4 vel=0.788 gate=2
+m step=8 note=F4 vel=0.243 gate=2
+m step=8 note=A#1 vel=0.678 gate=16
+m step=8 note=A#2 vel=0.678 gate=16
+m step=10 note=G#4 vel=0.788 gate=2
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=A#3 vel=0.624 gate=1
+m step=12 note=A#4 vel=0.624 gate=1
+m step=12 note=G#4 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+
+[pattern.180]
+trackType = drum
+length = 16
+d step=0 vel=0.545
+d step=4 vel=0.545
+d step=8 vel=0.545
+d step=11 vel=0.545
+d step=14 vel=0.545
+
+[pattern.183]
+trackType = drum
+length = 16
+d step=0 vel=0.592
+d step=4 vel=0.592
+d step=8 vel=0.592
+d step=11 vel=0.592
+d step=14 vel=0.592
+
+[pattern.184]
+trackType = melodic
+length = 16
+m step=2 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=4 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=8 note=C2 vel=0.788 gate=2 nudge=-6
+m step=11 note=C2 vel=0.788 gate=2 nudge=-6
+m step=14 note=C2 vel=0.788 gate=2 nudge=-6
+
+[pattern.185]
+trackType = melodic
+length = 16
+m step=2 note=A#5 vel=0.235 gate=2
+m step=4 note=G#5 vel=0.235 gate=2
+m step=8 note=F5 vel=0.235 gate=2
+m step=11 note=F6 vel=0.235 gate=2
+m step=14 note=C6 vel=0.235 gate=2
+
+[pattern.186]
+trackType = melodic
+length = 16
+m step=0 note=A#3 vel=0.624 gate=1
+m step=0 note=A#4 vel=0.788 gate=2
+m step=2 note=A#4 vel=0.243 gate=2
+m step=2 note=G#4 vel=0.788 gate=2
+m step=4 note=A#3 vel=0.624 gate=1
+m step=4 note=A#4 vel=0.624 gate=1
+m step=4 note=G#4 vel=0.243 gate=2
+m step=6 note=G#4 vel=0.788 gate=2
+m step=8 note=C4 vel=0.624 gate=1
+m step=8 note=C5 vel=0.624 gate=1
+m step=8 note=F4 vel=0.243 gate=2
+m step=8 note=C2 vel=0.678 gate=16
+m step=8 note=C3 vel=0.678 gate=16
+m step=8 note=G#4 vel=0.788 gate=2
+m step=10 note=A#4 vel=0.788 gate=1
+m step=11 note=F5 vel=0.243 gate=2
+m step=11 note=A#4 vel=0.788 gate=1
+m step=12 note=C4 vel=0.624 gate=1
+m step=12 note=C5 vel=0.624 gate=1
+m step=12 note=G#4 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+m step=14 note=G4 vel=0.788 gate=2
+
+[pattern.195]
+trackType = drum
+length = 16
+d step=3 vel=0.592
+d step=4 vel=0.592
+d step=6 vel=0.592
+
+[pattern.196]
+trackType = melodic
+length = 16
+m step=2 note=C2 vel=0.788 gate=2 nudge=-6
+m step=8 note=F1 vel=0.788 gate=2 nudge=-6
+m step=11 note=F1 vel=0.788 gate=2 nudge=-6
+m step=14 note=F1 vel=0.788 gate=2 nudge=-6
+
+[pattern.197]
+trackType = melodic
+length = 16
+m step=0 note=G#6 vel=0.235 gate=2
+m step=2 note=A#5 vel=0.235 gate=2
+m step=4 note=G6 vel=0.235 gate=2
+m step=6 note=G#5 vel=0.235 gate=2
+
+[pattern.198]
+trackType = melodic
+length = 16
+m step=0 note=C4 vel=0.624 gate=1
+m step=0 note=C5 vel=0.624 gate=1
+m step=0 note=G#5 vel=0.243 gate=2
+m step=0 note=F4 vel=0.788 gate=4
+m step=2 note=A#4 vel=0.243 gate=2
+m step=4 note=G5 vel=0.243 gate=2
+m step=6 note=G#4 vel=0.243 gate=2
+m step=8 note=F3 vel=0.624 gate=1
+m step=8 note=F4 vel=0.788 gate=2
+m step=12 note=F3 vel=0.624 gate=1
+m step=12 note=F4 vel=0.788 gate=2
+m step=14 note=F4 vel=0.788 gate=2
+
+[pattern.208]
+trackType = melodic
+length = 16
+m step=2 note=F1 vel=0.788 gate=2 nudge=-6
+m step=4 note=F1 vel=0.788 gate=2 nudge=-6
+m step=8 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=11 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=14 note=C#2 vel=0.788 gate=2 nudge=-6
+
+[pattern.210]
+trackType = melodic
+length = 16
+m step=0 note=F3 vel=0.624 gate=1
+m step=0 note=F4 vel=0.788 gate=2
+m step=2 note=F4 vel=0.788 gate=2
+m step=4 note=F3 vel=0.624 gate=1
+m step=4 note=F4 vel=0.788 gate=2
+m step=6 note=A#4 vel=0.788 gate=2
+m step=8 note=C#4 vel=0.624 gate=1
+m step=8 note=C#5 vel=0.624 gate=1
+m step=8 note=G#4 vel=0.788 gate=2
+m step=12 note=C#4 vel=0.624 gate=1
+m step=12 note=C#5 vel=0.624 gate=1
+m step=12 note=F4 vel=0.788 gate=2
+m step=14 note=F4 vel=0.788 gate=2
+
+[pattern.220]
+trackType = melodic
+length = 16
+m step=2 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=4 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=8 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=11 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=14 note=A#1 vel=0.788 gate=2 nudge=-6
+
+[pattern.222]
+trackType = melodic
+length = 16
+m step=0 note=C#4 vel=0.624 gate=1
+m step=0 note=C#5 vel=0.624 gate=1
+m step=0 note=F4 vel=0.788 gate=2
+m step=4 note=C#4 vel=0.624 gate=1
+m step=4 note=C#5 vel=0.624 gate=1
+m step=4 note=F4 vel=0.788 gate=2
+m step=6 note=C5 vel=0.788 gate=2
+m step=8 note=A#3 vel=0.624 gate=1
+m step=8 note=A#4 vel=0.788 gate=2
+m step=10 note=G#4 vel=0.788 gate=2
+m step=12 note=A#3 vel=0.624 gate=1
+m step=12 note=A#4 vel=0.624 gate=1
+m step=12 note=G#4 vel=0.788 gate=2
+m step=14 note=C5 vel=0.788 gate=2
+
+[pattern.232]
+trackType = melodic
+length = 16
+m step=2 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=4 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=8 note=C2 vel=0.788 gate=2 nudge=-6
+m step=11 note=C2 vel=0.788 gate=2 nudge=-6
+m step=14 note=C2 vel=0.788 gate=2 nudge=-6
+
+[pattern.234]
+trackType = melodic
+length = 16
+m step=0 note=A#3 vel=0.624 gate=1
+m step=0 note=A#4 vel=0.788 gate=2
+m step=2 note=G#4 vel=0.788 gate=2
+m step=4 note=A#3 vel=0.624 gate=1
+m step=4 note=A#4 vel=0.624 gate=1
+m step=4 note=G#4 vel=0.788 gate=2
+m step=6 note=G#4 vel=0.788 gate=2
+m step=8 note=C4 vel=0.624 gate=1
+m step=8 note=C5 vel=0.624 gate=1
+m step=8 note=G#4 vel=0.788 gate=2
+m step=10 note=A#4 vel=0.788 gate=1
+m step=11 note=A#4 vel=0.788 gate=1
+m step=12 note=C4 vel=0.624 gate=1
+m step=12 note=C5 vel=0.624 gate=1
+m step=12 note=G#4 vel=0.788 gate=2
+m step=14 note=G4 vel=0.788 gate=2
+
+[pattern.240]
+trackType = drum
+length = 16
+d step=8 vel=0.545
+d step=12 vel=0.545
+
+[pattern.244]
+trackType = melodic
+length = 16
+m step=2 note=C2 vel=0.788 gate=2 nudge=-6
+m step=4 note=C2 vel=0.788 gate=2 nudge=-6
+m step=8 note=F1 vel=0.788 gate=2 nudge=-6
+m step=11 note=F1 vel=0.788 gate=2 nudge=-6
+m step=14 note=F1 vel=0.788 gate=2 nudge=-6
+
+[pattern.245]
+trackType = melodic
+length = 16
+m step=8 note=F5 vel=0.235 gate=2
+m step=11 note=F6 vel=0.235 gate=2
+m step=14 note=C6 vel=0.235 gate=2
+
+[pattern.246]
+trackType = melodic
+length = 16
+m step=0 note=C4 vel=0.624 gate=1
+m step=0 note=C5 vel=0.624 gate=1
+m step=0 note=F4 vel=0.788 gate=4
+m step=4 note=C4 vel=0.624 gate=1
+m step=4 note=C5 vel=0.624 gate=1
+m step=8 note=F3 vel=0.624 gate=1
+m step=8 note=F4 vel=0.243 gate=2
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=F3 vel=0.624 gate=1
+m step=12 note=F4 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+m step=14 note=F4 vel=0.788 gate=2
+
+[pattern.252]
+trackType = drum
+length = 16
+d step=0 vel=0.545
+d step=4 vel=0.545
+d step=8 vel=0.545
+d step=12 vel=0.545
+
+[pattern.256]
+trackType = melodic
+length = 16
+m step=2 note=F1 vel=0.788 gate=2 nudge=-6
+m step=4 note=F1 vel=0.788 gate=2 nudge=-6
+m step=8 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=11 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=14 note=C#2 vel=0.788 gate=2 nudge=-6
+
+[pattern.257]
+trackType = melodic
+length = 16
+m step=2 note=A#5 vel=0.235 gate=2
+m step=4 note=G#5 vel=0.235 gate=2
+m step=8 note=F5 vel=0.235 gate=2
+m step=11 note=F6 vel=0.235 gate=2
+m step=14 note=C6 vel=0.235 gate=2
+
+[pattern.258]
+trackType = melodic
+length = 16
+m step=0 note=F3 vel=0.624 gate=1
+m step=0 note=F4 vel=0.788 gate=2
+m step=2 note=A#4 vel=0.243 gate=2
+m step=2 note=F4 vel=0.788 gate=2
+m step=4 note=F3 vel=0.624 gate=1
+m step=4 note=F4 vel=0.788 gate=2
+m step=4 note=G#4 vel=0.243 gate=2
+m step=6 note=A#4 vel=0.788 gate=2
+m step=8 note=C#4 vel=0.624 gate=1
+m step=8 note=C#5 vel=0.624 gate=1
+m step=8 note=F4 vel=0.243 gate=2
+m step=8 note=G#4 vel=0.788 gate=2
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=C#4 vel=0.624 gate=1
+m step=12 note=C#5 vel=0.624 gate=1
+m step=12 note=F4 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+m step=14 note=F4 vel=0.788 gate=2
+
+[pattern.264]
+trackType = drum
+length = 16
+d step=0 vel=0.545
+d step=4 vel=0.545
+d step=8 vel=0.545
+d step=12 vel=0.545
+
+[pattern.268]
+trackType = melodic
+length = 16
+m step=2 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=4 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=8 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=11 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=14 note=A#1 vel=0.788 gate=2 nudge=-6
+
+[pattern.269]
+trackType = melodic
+length = 16
+m step=2 note=A#5 vel=0.235 gate=2
+m step=4 note=G#5 vel=0.235 gate=2
+m step=8 note=F5 vel=0.235 gate=2
+m step=11 note=F6 vel=0.235 gate=2
+m step=14 note=C6 vel=0.235 gate=2
+
+[pattern.270]
+trackType = melodic
+length = 16
+m step=0 note=C#4 vel=0.624 gate=1
+m step=0 note=C#5 vel=0.624 gate=1
+m step=0 note=F4 vel=0.788 gate=2
+m step=2 note=A#4 vel=0.243 gate=2
+m step=4 note=C#4 vel=0.624 gate=1
+m step=4 note=C#5 vel=0.624 gate=1
+m step=4 note=G#4 vel=0.243 gate=2
+m step=4 note=F4 vel=0.788 gate=2
+m step=6 note=C5 vel=0.788 gate=2
+m step=8 note=A#3 vel=0.624 gate=1
+m step=8 note=A#4 vel=0.788 gate=2
+m step=8 note=F4 vel=0.243 gate=2
+m step=10 note=G#4 vel=0.788 gate=2
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=A#3 vel=0.624 gate=1
+m step=12 note=A#4 vel=0.624 gate=1
+m step=12 note=G#4 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+
+[pattern.276]
+trackType = drum
+length = 16
+d step=0 vel=0.545
+d step=4 vel=0.545
+d step=8 vel=0.545
+d step=11 vel=0.545
+d step=14 vel=0.545
+
+[pattern.280]
+trackType = melodic
+length = 16
+m step=2 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=4 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=8 note=C2 vel=0.788 gate=2 nudge=-6
+m step=11 note=C2 vel=0.788 gate=2 nudge=-6
+m step=14 note=C2 vel=0.788 gate=2 nudge=-6
+
+[pattern.281]
+trackType = melodic
+length = 16
+m step=2 note=A#5 vel=0.235 gate=2
+m step=4 note=G#5 vel=0.235 gate=2
+m step=8 note=F5 vel=0.235 gate=2
+m step=11 note=F6 vel=0.235 gate=2
+m step=14 note=C6 vel=0.235 gate=2
+
+[pattern.282]
+trackType = melodic
+length = 16
+m step=0 note=A#3 vel=0.624 gate=1
+m step=0 note=A#4 vel=0.788 gate=2
+m step=2 note=A#4 vel=0.243 gate=2
+m step=2 note=G#4 vel=0.788 gate=2
+m step=4 note=A#3 vel=0.624 gate=1
+m step=4 note=A#4 vel=0.624 gate=1
+m step=4 note=G#4 vel=0.243 gate=2
+m step=6 note=G#4 vel=0.788 gate=2
+m step=8 note=C4 vel=0.624 gate=1
+m step=8 note=C5 vel=0.624 gate=1
+m step=8 note=F4 vel=0.243 gate=2
+m step=8 note=G#4 vel=0.788 gate=2
+m step=10 note=A#4 vel=0.788 gate=1
+m step=11 note=F5 vel=0.243 gate=2
+m step=11 note=A#4 vel=0.788 gate=1
+m step=12 note=C4 vel=0.624 gate=1
+m step=12 note=C5 vel=0.624 gate=1
+m step=12 note=G#4 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+m step=14 note=G4 vel=0.788 gate=2
+
+[pattern.288]
+trackType = drum
+length = 16
+d step=8 vel=0.545
+d step=12 vel=0.545
+
+[pattern.291]
+trackType = drum
+length = 16
+d step=3 vel=0.592
+d step=4 vel=0.592
+d step=6 vel=0.592
+d step=8 vel=0.592
+d step=12 vel=0.592
+
+[pattern.292]
+trackType = melodic
+length = 16
+m step=2 note=C2 vel=0.788 gate=2 nudge=-6
+m step=8 note=F1 vel=0.788 gate=2 nudge=-6
+m step=11 note=F1 vel=0.788 gate=2 nudge=-6
+m step=14 note=F1 vel=0.788 gate=2 nudge=-6
+
+[pattern.293]
+trackType = melodic
+length = 16
+m step=8 note=F5 vel=0.235 gate=2
+m step=11 note=F6 vel=0.235 gate=2
+m step=14 note=C6 vel=0.235 gate=2
+
+[pattern.294]
+trackType = melodic
+length = 16
+m step=0 note=C4 vel=0.624 gate=1
+m step=0 note=C5 vel=0.624 gate=1
+m step=0 note=F4 vel=0.788 gate=2
+m step=0 note=F5 vel=0.788 gate=8
+m step=8 note=F3 vel=0.624 gate=1
+m step=8 note=F4 vel=0.243 gate=2
+m step=8 note=F1 vel=0.678 gate=16
+m step=8 note=F2 vel=0.678 gate=16
+m step=8 note=F5 vel=0.788 gate=2
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=F3 vel=0.624 gate=1
+m step=12 note=F4 vel=0.788 gate=2
+m step=12 note=F5 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+m step=14 note=F4 vel=0.788 gate=2
+m step=14 note=F5 vel=0.788 gate=2
+
+[pattern.300]
+trackType = drum
+length = 16
+d step=0 vel=0.545
+d step=4 vel=0.545
+d step=8 vel=0.545
+d step=12 vel=0.545
+
+[pattern.303]
+trackType = drum
+length = 16
+d step=0 vel=0.592
+d step=4 vel=0.592
+d step=8 vel=0.592
+d step=12 vel=0.592
+
+[pattern.304]
+trackType = melodic
+length = 16
+m step=2 note=F1 vel=0.788 gate=2 nudge=-6
+m step=4 note=F1 vel=0.788 gate=2 nudge=-6
+m step=8 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=11 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=14 note=C#2 vel=0.788 gate=2 nudge=-6
+
+[pattern.305]
+trackType = melodic
+length = 16
+m step=2 note=A#5 vel=0.235 gate=2
+m step=4 note=G#5 vel=0.235 gate=2
+m step=8 note=F5 vel=0.235 gate=2
+m step=11 note=F6 vel=0.235 gate=2
+m step=14 note=C6 vel=0.235 gate=2
+
+[pattern.306]
+trackType = melodic
+length = 16
+m step=0 note=F3 vel=0.624 gate=1
+m step=0 note=F4 vel=0.788 gate=2
+m step=0 note=F5 vel=0.788 gate=2
+m step=2 note=A#4 vel=0.243 gate=2
+m step=2 note=F4 vel=0.788 gate=2
+m step=2 note=F5 vel=0.788 gate=2
+m step=4 note=F3 vel=0.624 gate=1
+m step=4 note=F4 vel=0.788 gate=2
+m step=4 note=G#4 vel=0.243 gate=2
+m step=4 note=F5 vel=0.788 gate=2
+m step=6 note=A#4 vel=0.788 gate=2
+m step=6 note=A#5 vel=0.788 gate=2
+m step=8 note=C#4 vel=0.624 gate=1
+m step=8 note=C#5 vel=0.624 gate=1
+m step=8 note=F4 vel=0.243 gate=2
+m step=8 note=C#2 vel=0.678 gate=16
+m step=8 note=C#3 vel=0.678 gate=16
+m step=8 note=G#4 vel=0.788 gate=2
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=C#4 vel=0.624 gate=1
+m step=12 note=C#5 vel=0.624 gate=1
+m step=12 note=F4 vel=0.788 gate=2
+m step=12 note=F5 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+m step=14 note=F4 vel=0.788 gate=2
+m step=14 note=F5 vel=0.788 gate=2
+
+[pattern.312]
+trackType = drum
+length = 16
+d step=0 vel=0.545
+d step=4 vel=0.545
+d step=8 vel=0.545
+d step=12 vel=0.545
+
+[pattern.315]
+trackType = drum
+length = 16
+d step=0 vel=0.592
+d step=4 vel=0.592
+d step=8 vel=0.592
+d step=12 vel=0.592
+
+[pattern.316]
+trackType = melodic
+length = 16
+m step=2 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=4 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=8 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=11 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=14 note=A#1 vel=0.788 gate=2 nudge=-6
+
+[pattern.317]
+trackType = melodic
+length = 16
+m step=2 note=A#5 vel=0.235 gate=2
+m step=4 note=G#5 vel=0.235 gate=2
+m step=8 note=F5 vel=0.235 gate=2
+m step=11 note=F6 vel=0.235 gate=2
+m step=14 note=C6 vel=0.235 gate=2
+
+[pattern.318]
+trackType = melodic
+length = 16
+m step=0 note=C#4 vel=0.624 gate=1
+m step=0 note=C#5 vel=0.624 gate=1
+m step=0 note=F4 vel=0.788 gate=2
+m step=0 note=F5 vel=0.788 gate=2
+m step=2 note=A#4 vel=0.243 gate=2
+m step=4 note=C#4 vel=0.624 gate=1
+m step=4 note=C#5 vel=0.624 gate=1
+m step=4 note=G#4 vel=0.243 gate=2
+m step=4 note=F4 vel=0.788 gate=2
+m step=4 note=F5 vel=0.788 gate=2
+m step=6 note=C5 vel=0.788 gate=2
+m step=6 note=C6 vel=0.788 gate=2
+m step=8 note=A#3 vel=0.624 gate=1
+m step=8 note=A#4 vel=0.788 gate=2
+m step=8 note=F4 vel=0.243 gate=2
+m step=8 note=A#1 vel=0.678 gate=16
+m step=8 note=A#2 vel=0.678 gate=16
+m step=8 note=A#5 vel=0.788 gate=2
+m step=10 note=G#4 vel=0.788 gate=2
+m step=10 note=G#5 vel=0.788 gate=2
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=A#3 vel=0.624 gate=1
+m step=12 note=A#4 vel=0.624 gate=1
+m step=12 note=G#4 vel=0.788 gate=2
+m step=12 note=G#5 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+m step=14 note=C6 vel=0.788 gate=2
+
+[pattern.324]
+trackType = drum
+length = 16
+d step=0 vel=0.545
+d step=4 vel=0.545
+d step=8 vel=0.545
+d step=12 vel=0.545
+
+[pattern.327]
+trackType = drum
+length = 16
+d step=0 vel=0.592
+d step=4 vel=0.592
+d step=8 vel=0.592
+d step=12 vel=0.592
+
+[pattern.328]
+trackType = melodic
+length = 16
+m step=2 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=4 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=8 note=C2 vel=0.788 gate=2 nudge=-6
+m step=11 note=C2 vel=0.788 gate=2 nudge=-6
+m step=14 note=C2 vel=0.788 gate=2 nudge=-6
+
+[pattern.329]
+trackType = melodic
+length = 16
+m step=2 note=A#5 vel=0.235 gate=2
+m step=4 note=G#5 vel=0.235 gate=2
+m step=8 note=F5 vel=0.235 gate=2
+m step=11 note=F6 vel=0.235 gate=2
+m step=14 note=C6 vel=0.235 gate=2
+
+[pattern.330]
+trackType = melodic
+length = 16
+m step=0 note=A#3 vel=0.624 gate=1
+m step=0 note=A#4 vel=0.788 gate=2
+m step=0 note=A#5 vel=0.788 gate=2
+m step=2 note=A#4 vel=0.243 gate=2
+m step=2 note=G#4 vel=0.788 gate=2
+m step=2 note=G#5 vel=0.788 gate=2
+m step=4 note=A#3 vel=0.624 gate=1
+m step=4 note=A#4 vel=0.624 gate=1
+m step=4 note=G#4 vel=0.243 gate=2
+m step=4 note=G#5 vel=0.788 gate=2
+m step=6 note=G#4 vel=0.788 gate=2
+m step=6 note=G#5 vel=0.788 gate=2
+m step=8 note=C4 vel=0.624 gate=1
+m step=8 note=C5 vel=0.624 gate=1
+m step=8 note=F4 vel=0.243 gate=2
+m step=8 note=C2 vel=0.678 gate=16
+m step=8 note=C3 vel=0.678 gate=16
+m step=8 note=G#4 vel=0.788 gate=2
+m step=10 note=A#4 vel=0.788 gate=1
+m step=10 note=A#5 vel=0.788 gate=1
+m step=11 note=F5 vel=0.243 gate=2
+m step=11 note=A#4 vel=0.788 gate=1
+m step=11 note=A#5 vel=0.788 gate=1
+m step=12 note=C4 vel=0.624 gate=1
+m step=12 note=C5 vel=0.624 gate=1
+m step=12 note=G#4 vel=0.788 gate=2
+m step=12 note=G#5 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+m step=14 note=G4 vel=0.788 gate=2
+m step=14 note=G5 vel=0.788 gate=2
+
+[pattern.336]
+trackType = drum
+length = 16
+d step=0 vel=0.545
+d step=4 vel=0.545
+d step=8 vel=0.545
+d step=12 vel=0.545
+
+[pattern.339]
+trackType = drum
+length = 16
+d step=0 vel=0.592
+d step=4 vel=0.592
+d step=7 vel=0.592
+d step=8 vel=0.592
+d step=12 vel=0.592
+
+[pattern.340]
+trackType = melodic
+length = 16
+m step=2 note=C2 vel=0.788 gate=2 nudge=-6
+m step=8 note=F1 vel=0.788 gate=2 nudge=-6
+m step=11 note=F1 vel=0.788 gate=2 nudge=-6
+m step=14 note=F1 vel=0.788 gate=2 nudge=-6
+
+[pattern.341]
+trackType = melodic
+length = 16
+m step=0 note=G#6 vel=0.235 gate=2
+m step=2 note=A#5 vel=0.235 gate=2
+m step=4 note=G#5 vel=0.235 gate=2
+m step=8 note=F5 vel=0.235 gate=2
+m step=11 note=F6 vel=0.235 gate=2
+m step=14 note=C6 vel=0.235 gate=2
+
+[pattern.342]
+trackType = melodic
+length = 16
+m step=0 note=C4 vel=0.624 gate=1
+m step=0 note=C5 vel=0.624 gate=1
+m step=0 note=G#5 vel=0.243 gate=2
+m step=0 note=F4 vel=0.788 gate=4
+m step=0 note=F5 vel=0.788 gate=4
+m step=2 note=A#4 vel=0.243 gate=2
+m step=4 note=G#4 vel=0.243 gate=2
+m step=8 note=F3 vel=0.624 gate=1
+m step=8 note=F4 vel=0.243 gate=2
+m step=8 note=F1 vel=0.678 gate=16
+m step=8 note=F2 vel=0.678 gate=16
+m step=8 note=F5 vel=0.788 gate=2
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=F3 vel=0.624 gate=1
+m step=12 note=F4 vel=0.788 gate=2
+m step=12 note=F5 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+m step=14 note=F4 vel=0.788 gate=2
+m step=14 note=F5 vel=0.788 gate=2
+
+[pattern.348]
+trackType = drum
+length = 16
+d step=0 vel=0.545
+d step=4 vel=0.545
+d step=8 vel=0.545
+d step=12 vel=0.545
+
+[pattern.351]
+trackType = drum
+length = 16
+d step=0 vel=0.592
+d step=4 vel=0.592
+d step=8 vel=0.592
+d step=12 vel=0.592
+
+[pattern.352]
+trackType = melodic
+length = 16
+m step=2 note=F1 vel=0.788 gate=2 nudge=-6
+m step=4 note=F1 vel=0.788 gate=2 nudge=-6
+m step=8 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=11 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=14 note=C#2 vel=0.788 gate=2 nudge=-6
+
+[pattern.353]
+trackType = melodic
+length = 16
+m step=2 note=A#5 vel=0.235 gate=2
+m step=4 note=G#5 vel=0.235 gate=2
+m step=8 note=F5 vel=0.235 gate=2
+m step=11 note=F6 vel=0.235 gate=2
+m step=14 note=C6 vel=0.235 gate=2
+
+[pattern.354]
+trackType = melodic
+length = 16
+m step=0 note=F3 vel=0.624 gate=1
+m step=0 note=F4 vel=0.788 gate=2
+m step=0 note=F5 vel=0.788 gate=2
+m step=2 note=A#4 vel=0.243 gate=2
+m step=2 note=F4 vel=0.788 gate=2
+m step=2 note=F5 vel=0.788 gate=2
+m step=4 note=F3 vel=0.624 gate=1
+m step=4 note=F4 vel=0.788 gate=2
+m step=4 note=G#4 vel=0.243 gate=2
+m step=4 note=F5 vel=0.788 gate=2
+m step=6 note=A#4 vel=0.788 gate=2
+m step=6 note=A#5 vel=0.788 gate=2
+m step=8 note=C#4 vel=0.624 gate=1
+m step=8 note=C#5 vel=0.624 gate=1
+m step=8 note=F4 vel=0.243 gate=2
+m step=8 note=C#2 vel=0.678 gate=16
+m step=8 note=C#3 vel=0.678 gate=16
+m step=8 note=G#4 vel=0.788 gate=2
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=C#4 vel=0.624 gate=1
+m step=12 note=C#5 vel=0.624 gate=1
+m step=12 note=F4 vel=0.788 gate=2
+m step=12 note=F5 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+m step=14 note=F4 vel=0.788 gate=2
+m step=14 note=F5 vel=0.788 gate=2
+
+[pattern.360]
+trackType = drum
+length = 16
+d step=0 vel=0.545
+d step=4 vel=0.545
+d step=8 vel=0.545
+d step=12 vel=0.545
+
+[pattern.363]
+trackType = drum
+length = 16
+d step=0 vel=0.592
+d step=4 vel=0.592
+d step=8 vel=0.592
+d step=12 vel=0.592
+
+[pattern.364]
+trackType = melodic
+length = 16
+m step=2 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=4 note=C#2 vel=0.788 gate=2 nudge=-6
+m step=8 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=11 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=14 note=A#1 vel=0.788 gate=2 nudge=-6
+
+[pattern.365]
+trackType = melodic
+length = 16
+m step=2 note=A#5 vel=0.235 gate=2
+m step=4 note=G#5 vel=0.235 gate=2
+m step=8 note=F5 vel=0.235 gate=2
+m step=11 note=F6 vel=0.235 gate=2
+m step=14 note=C6 vel=0.235 gate=2
+
+[pattern.366]
+trackType = melodic
+length = 16
+m step=0 note=C#4 vel=0.624 gate=1
+m step=0 note=C#5 vel=0.624 gate=1
+m step=0 note=F4 vel=0.788 gate=2
+m step=0 note=F5 vel=0.788 gate=2
+m step=2 note=A#4 vel=0.243 gate=2
+m step=4 note=C#4 vel=0.624 gate=1
+m step=4 note=C#5 vel=0.624 gate=1
+m step=4 note=G#4 vel=0.243 gate=2
+m step=4 note=F4 vel=0.788 gate=2
+m step=4 note=F5 vel=0.788 gate=2
+m step=6 note=C5 vel=0.788 gate=2
+m step=6 note=C6 vel=0.788 gate=2
+m step=8 note=A#3 vel=0.624 gate=1
+m step=8 note=A#4 vel=0.788 gate=2
+m step=8 note=F4 vel=0.243 gate=2
+m step=8 note=A#1 vel=0.678 gate=16
+m step=8 note=A#2 vel=0.678 gate=16
+m step=8 note=A#5 vel=0.788 gate=2
+m step=10 note=G#4 vel=0.788 gate=2
+m step=10 note=G#5 vel=0.788 gate=2
+m step=11 note=F5 vel=0.243 gate=2
+m step=12 note=A#3 vel=0.624 gate=1
+m step=12 note=A#4 vel=0.624 gate=1
+m step=12 note=G#4 vel=0.788 gate=2
+m step=12 note=G#5 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+m step=14 note=C6 vel=0.788 gate=2
+
+[pattern.372]
+trackType = drum
+length = 16
+d step=0 vel=0.545
+d step=4 vel=0.545
+d step=8 vel=0.545
+d step=12 vel=0.545
+
+[pattern.375]
+trackType = drum
+length = 16
+d step=0 vel=0.592
+d step=4 vel=0.592
+d step=8 vel=0.592
+d step=12 vel=0.592
+
+[pattern.376]
+trackType = melodic
+length = 16
+m step=2 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=4 note=A#1 vel=0.788 gate=2 nudge=-6
+m step=8 note=C2 vel=0.788 gate=2 nudge=-6
+m step=11 note=C2 vel=0.788 gate=2 nudge=-6
+m step=14 note=C2 vel=0.788 gate=2 nudge=-6
+
+[pattern.377]
+trackType = melodic
+length = 16
+m step=2 note=A#5 vel=0.235 gate=2
+m step=4 note=G#5 vel=0.235 gate=2
+m step=8 note=F5 vel=0.235 gate=2
+m step=11 note=F6 vel=0.235 gate=2
+m step=14 note=C6 vel=0.235 gate=2
+
+[pattern.378]
+trackType = melodic
+length = 16
+m step=0 note=A#3 vel=0.624 gate=1
+m step=0 note=A#4 vel=0.788 gate=2
+m step=0 note=A#5 vel=0.788 gate=2
+m step=2 note=A#4 vel=0.243 gate=2
+m step=2 note=G#4 vel=0.788 gate=2
+m step=2 note=G#5 vel=0.788 gate=2
+m step=4 note=A#3 vel=0.624 gate=1
+m step=4 note=A#4 vel=0.624 gate=1
+m step=4 note=G#4 vel=0.243 gate=2
+m step=4 note=G#5 vel=0.788 gate=2
+m step=6 note=G#4 vel=0.788 gate=2
+m step=6 note=G#5 vel=0.788 gate=2
+m step=8 note=C4 vel=0.624 gate=1
+m step=8 note=C5 vel=0.624 gate=1
+m step=8 note=F4 vel=0.243 gate=2
+m step=8 note=C2 vel=0.678 gate=16
+m step=8 note=C3 vel=0.678 gate=16
+m step=8 note=G#4 vel=0.788 gate=2
+m step=10 note=A#4 vel=0.788 gate=1
+m step=10 note=A#5 vel=0.788 gate=1
+m step=11 note=F5 vel=0.243 gate=2
+m step=11 note=A#4 vel=0.788 gate=1
+m step=11 note=A#5 vel=0.788 gate=1
+m step=12 note=C4 vel=0.624 gate=1
+m step=12 note=C5 vel=0.624 gate=1
+m step=12 note=G#4 vel=0.788 gate=2
+m step=12 note=G#5 vel=0.788 gate=2
+m step=14 note=C5 vel=0.243 gate=2
+m step=14 note=G4 vel=0.788 gate=2
+m step=14 note=G5 vel=0.788 gate=2
+
+[pattern.384]
+trackType = drum
+length = 16
+d step=0 vel=0.545
+
+[pattern.387]
+trackType = drum
+length = 16
+d step=0 vel=0.592
+d step=3 vel=0.592
+d step=4 vel=0.592
+d step=6 vel=0.592
+
+[pattern.388]
+trackType = melodic
+length = 16
+m step=2 note=C2 vel=0.788 gate=2 nudge=-6
+
+[pattern.389]
+trackType = melodic
+length = 16
+m step=0 note=G#6 vel=0.235 gate=2
+m step=2 note=A#5 vel=0.235 gate=2
+m step=4 note=G6 vel=0.235 gate=2
+m step=6 note=G#5 vel=0.235 gate=2
+
+[pattern.390]
+trackType = melodic
+length = 16
+m step=0 note=C4 vel=0.624 gate=1
+m step=0 note=C5 vel=0.624 gate=1
+m step=0 note=G#5 vel=0.243 gate=2
+m step=0 note=F4 vel=0.788 gate=4
+m step=0 note=F5 vel=0.788 gate=4
+m step=2 note=A#4 vel=0.243 gate=2
+m step=4 note=G5 vel=0.243 gate=2
+m step=6 note=G#4 vel=0.243 gate=2

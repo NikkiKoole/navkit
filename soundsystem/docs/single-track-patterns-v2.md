@@ -258,3 +258,214 @@ Do not take:
 - The N×12 pattern index mapping
 - `SEQ_NUM_PATTERNS = 1024` (use 256)
 - `ArrCell.index` as `int16_t` (int8_t is fine at 256 patterns, use int16_t only if > 127)
+
+---
+
+## Status audit — `soundsystem/daw-simplification` (2026-04-09)
+
+Checked the branch against each step of the plan.
+
+### Step 0 — Bar timing: done structurally, legacy path not removed
+- `barLengthSteps` exists on `Sequencer` and `DawArr` and the fixed bar clock works when `> 0`
+- Legacy `barLengthSteps == 0` path (track-0 wrap) still in `updateSequencer`
+- `perTrackPatterns` flag still exists — plan says remove it (always true now)
+
+### Step 1 — Pattern struct: done structurally, API not cleaned up
+- `Pattern` is single-track: `steps[SEQ_MAX_STEPS]`, `int length`, `TrackType trackType` ✓
+- `trackPatternIdx[SEQ_V2_MAX_TRACKS]` on `Sequencer` ✓
+- `pat*` helpers still take `int track` but do `(void)track` — dead param, signatures not cleaned
+
+### Step 2 — File format break + conversion tool: partially done, differently from plan
+- `DAW_FILE_FORMAT = 2`, all 78 songs are at format 2 ✓
+- No `song_convert` tool was written — conversion happened differently
+- Migration code still lives in `daw_file.h` at load time (4+ sites tagged "Legacy multi-track
+  migration") — the plan said delete this after offline conversion
+
+### Step 3 — Composite step grid UI: not done
+- `daw.c` step grid still uses `seq.currentPattern` as a single pattern
+- No composite rendering from `arr.cells[currentBar][track]`
+- The "N rows from arrangement column" view was never built
+
+### Step 4 — Rhythm generator / piano roll: not audited in detail
+- Tests pass (395 passing, 0 failures) ✓
+- Step grid gap (Step 3) is the visible missing piece
+
+### Step 5 — Clean up: not done
+- Migration code not deleted from `daw_file.h`
+- `perTrackPatterns` flag not removed from `Sequencer`
+
+### Summary
+Steps 0 and 1 are structurally complete but carry dead code (`perTrackPatterns`, legacy bar
+path, `(void)track` params). Steps 2–5 are incomplete: songs are in the new format but
+migration code was kept instead of replaced with a tool, and the composite step grid UI
+was never built. The branch is not in a mergeable state.
+
+---
+
+## Follow-up cleanup — `soundsystem/single-track-patterns-v2` (2026-04-10)
+
+### Step 1 — Dead `int track` params removed (done)
+- All 36 `pat*` helper signatures cleaned: `int track` param + `(void)track;` deleted
+- `seqEvalTrackConditionP` and `seqTriggerStep` keep their `int track` param (legitimately used)
+- Call sites updated across: `sequencer.h`, `song_file.h`, `daw_file.h`, `rhythm_patterns.h`,
+  `sample_chop.h`, `midi_file.h`, `daw.c`, `daw_audio.h`, `songs.h`, `sound_synth_bridge.c`,
+  `tests/test_soundsystem.c`
+- `perTrackPatterns` confirmed NOT dead — still used in jukebox/single-pattern mode
+- `barLengthSteps == 0` confirmed NOT dead — valid for non-arrangement playback
+
+### Step 3 — `daw.c` compiles (structural fix, not full implementation)
+- `p->trackLength[track]` → `p->length` across `daw.c`, `sample_chop.h`, `midi_file.h`
+- `p->steps[track][step]` → `p->steps[step]` (1D)
+- `p->trackType[track]` → `p->trackType`
+- `p->plockStepIndex[track][step]` → `p->plockStepIndex[step]`
+- The DAW now shows **one track at a time** in the step grid (the currently selected track's
+  pattern). The composite multi-track view (all rows from arrangement column) is still not built.
+- All three build targets now compile: `make path`, `make test_soundsystem`, `make soundsystem-daw`
+- 395 tests, 2638 assertions — all pass
+
+### Remaining work before merge
+1. ~~Delete runtime migration code from `daw_file.h`~~ — done (2026-04-11)
+2. ~~Build composite step grid~~ — done (2026-04-11)
+3. Remove `perTrackPatterns` flag once non-arrangement modes are updated (optional — still useful)
+4. ~~Piano roll: verify `steps[step]` access is correct~~ — audited, no 2D accesses remain (2026-04-12)
+5. ~~Make `editBar` navigable when stopped~~ — done (2026-04-13): the 8 pattern buttons are
+   now a bar selector. Each button selects an arrangement bar (auto-allocating patterns on
+   first use). Step grid and audio playback both follow the selector, so toggling between
+   bars during playback swaps all track patterns at once. See "Bar selector (2026-04-13)" below.
+6. ~~Simplify `dawTrackPat()`~~ — now a one-line arrangement lookup, never NULL. All NULL guards
+   and `rowEmpty`/click-to-allocate dead code removed (-73 lines). (2026-04-12)
+7. Consider dropping `SEQ_V2_MAX_TRACKS` from 12 to 8 (tracks 8-11 are unused by all songs)
+8. Consider compact re-allocation to allow `SEQ_NUM_PATTERNS` < 1024 (converted songs use
+   sparse N×12 indices up to ~760; a re-conversion with sequential allocation would allow 256-512)
+
+---
+
+## Sparse arrangement / shared pattern bug — RESOLVED (2026-04-11)
+
+### The bug
+
+Loading old songs produced arrangement grids with `-1` (ARR_EMPTY) cells. The step grid
+fell back to `seq.currentPattern` for these, so multiple tracks shared one single-track
+pattern. Clicking a step on one row made a whole column appear. Confirmed on SEPTEMbert.song.
+
+### Root cause
+
+The on-load migration mapped `oldPattern * 12 + track` → new pattern index. This created
+sparse arrangements (many `-1` cells) and wasted pattern slots. The step grid had no
+pattern for empty cells, so all fell back to a shared `currentPattern`.
+
+### Resolution (3 commits)
+
+**1. Fill empty arrangement cells at load time** (`daw_file.h`)
+
+After loading, a pass fills every `-1` cell with a fresh empty pattern (correct track type,
+default length). Arrangements are now always fully populated — matches how new songs work.
+Also syncs `daw.song.patterns[]` to arrangement track-0 indices so renderers stay consistent.
+
+**2. Offline conversion of all 88 songs** (`song_render --convert`)
+
+Added `--convert` flag to `song-render`. Ran load→save on all 88 songs, converting from
+old multi-track format (with `track=` fields, N×12 indices) to clean single-track format
+(fully populated arrangements, no legacy keys). Verified: 0 real content diffs against
+pre-convert baselines (33 bar-renumber only in logs, 14 with ≤5 events of velocity
+rounding from text format `%.3g` precision).
+
+**3. Deleted all legacy migration code** (`daw_file.h`, `song_render.c`, -214 lines)
+
+Removed: `_dwExtractTrack()`, `_legacyBase`/`_anyLegacy` variables, legacy track-field
+routing, `drumTrackLength`/`melodyTrackLength`/`samplerTrackLength` parsing, both post-load
+migration blocks (arrMode remapping + pattern-mode arrangement building), and N×12 math
+from the renderer. Pattern event parsing is now 4 lines.
+
+### What's still in place
+
+- **Arrangement fill pass** stays in `daw_file.h` — protects against any future sparse
+  arrangements (e.g. user deleting patterns, or new songs not filling all cells).
+- **`dawTrackPat()` NULL guards** stay — defensive but could be simplified once we're
+  confident arrangements are always full.
+- **`SEQ_NUM_PATTERNS = 1024`** — still needed because converted songs use N×12 indices
+  (up to ~760). A future re-conversion with compact sequential allocation would allow
+  dropping to 256-512.
+
+---
+
+## Step grid improvements (2026-04-11)
+
+### Per-track auto-paging for longer patterns
+
+Each row in the step grid auto-pages to where its playhead is during playback. A 16-step
+kick stays on page 1 while a 64-step bass at step 40 shows page 3. Page indicator ("3/4")
+shows next to the track name. Cells beyond a pattern's length draw as dark/empty.
+
+### Track length control
+
+Right-click on track name cycles bar-aligned lengths: 16 → 32 → 64 → 128 (1, 2, 4, 8
+bars). Scroll wheel still allows fine-tuning to any value.
+
+### Click-to-allocate for empty rows
+
+If a track has no pattern at the current bar (shouldn't happen with the fill pass, but
+as a safety net), clicking a step auto-allocates a new pattern for that track/bar.
+
+---
+
+## Bar selector (2026-04-13)
+
+The 8 "Pattern" buttons above the step grid were repurposed as an **arrangement bar
+selector**. They used to set `daw.transport.currentPattern` (pattern index 0-7); now
+they set a static `editBar` (0-7), and the step grid + audio playback both read from
+`arr.cells[editBar][track]`.
+
+### Behavior
+- Click bar 1: shows bar 0's per-track patterns (the default, populated at startup)
+- Click bar 2+: `dawEnsureBar()` extends `arr.length` and allocates fresh empty patterns
+  for every track in that bar (same routine that fills sparse arrangements at load)
+- Audio follows: `dawSyncSequencer()` wires `seq.trackPatternIdx[t]` from the selected
+  bar every frame in pattern mode, so toggling between bars during playback swaps all
+  track patterns simultaneously
+- During arrangement-mode playback, the step grid follows the playhead (`seq.chainPos`)
+  instead of `editBar`; the button for the currently-playing bar gets a yellow highlight
+- Transport bar shows "Bar:N" instead of "Pat:N"
+
+### Relationship to Arrange tab
+Pattern buttons and the Arrange tab now edit the **same data** (`daw.arr.cells`). The
+Arrange tab still owns the timeline view, reordering, and length management; the bar
+buttons are the quick way to flip between the first 8 bars during step editing. This
+is how hardware grooveboxes (Elektron, Roland TR-8S) work — pattern buttons = scenes.
+
+---
+
+## Long-patterns milestone also landed here (2026-04-15)
+
+The goals in `docs/long-patterns-and-recording.md` (now in `docs/done/`) were
+delivered on this branch as a side effect of the refactor, not as a separate
+workstream. Phases 0–2 of that doc are shipped; Phase 3 is superseded by the
+single-track arrangement model.
+
+- **Phase 0** — `SEQ_MAX_STEPS = 128` (8 bars; doc proposed 256, 128 is enough)
+- **Phase 1** — Per-track length cycling (right-click track name: 16/32/64/128),
+  auto-paging in the step grid with "N/M" indicator, playhead-follow in piano roll
+- **Phase 2** — Recording into long patterns: `recQuantizeStep` wraps at per-track
+  length; sampler-track recording added this cycle (commit `1f7b054`). Verified
+  end-to-end with a 64-step bass recorded against a 16-step drum loop.
+- **Phase 3** — Pattern-master-length replaced by arrangement-level `barLengthSteps`:
+  tracks loop within the bar independently instead of waiting for the longest track.
+
+---
+
+## Side-work that landed on this branch (2026-04-15)
+
+Not part of the charter but delivered alongside:
+
+- Per-LFO transport sync (5 bools on `SynthPatch`, `daw.c` Patch tab "Lock" toggles)
+  — fixes multi-bar synced LFOs silently losing their cycle to per-note phase resets
+- Sample `pitched` auto-enable on chromatic click + per-slot "Pitch" toggle
+- SP-1200 grit mode: destructive ±N-st pitch dance + quantize + decimation with
+  single "Grit" slider; original data stashed for reversible undo
+- Sampler track → sequencer recording: `recTargetTrack` extended, sampler branches
+  in kbd+MIDI handlers call `dawRecordNoteOn/Off`, pattern 7 initialized to
+  `TRACK_SAMPLER` so the sequencer takes the right branch on playback
+- `test_daw_file.c` updated to the single-track API (had bitrotted; now 53877
+  assertions round-trip green)
+
+See commits `1f7b054` and `d9d23e0` for the code.

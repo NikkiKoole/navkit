@@ -94,52 +94,52 @@
 
 // Set a melody note: note + velocity + gate in one call
 static inline void note(Pattern* p, int track, int step, int n, float vel, int gate) {
-    patSetNote(p, SEQ_DRUM_TRACKS + track, step, n, vel, gate);
+    patSetNote(p, step, n, vel, gate);
 }
 
 // Set a melody note with timing nudge (p-lock)
 static inline void noteN(Pattern* p, int track, int step, int n, float vel, int gate, float nudge) {
-    patSetNote(p, SEQ_DRUM_TRACKS + track, step, n, vel, gate);
+    patSetNote(p, step, n, vel, gate);
     seqSetPLock(p, SEQ_DRUM_TRACKS + track, step, PLOCK_TIME_NUDGE, nudge);
 }
 
 // Set a melody note with sustain (extra hold steps after gate)
 static inline void noteS(Pattern* p, int track, int step, int n, float vel, int gate, int sus) {
-    patSetNote(p, SEQ_DRUM_TRACKS + track, step, n, vel, gate);
-    patSetNoteSustain(p, SEQ_DRUM_TRACKS + track, step, sus);
+    patSetNote(p, step, n, vel, gate);
+    patSetNoteSustain(p, step, sus);
 }
 
 // Set a melody note with nudge + sustain
 static inline void noteNS(Pattern* p, int track, int step, int n, float vel, int gate, float nudge, int sus) {
-    patSetNote(p, SEQ_DRUM_TRACKS + track, step, n, vel, gate);
+    patSetNote(p, step, n, vel, gate);
     seqSetPLock(p, SEQ_DRUM_TRACKS + track, step, PLOCK_TIME_NUDGE, nudge);
-    patSetNoteSustain(p, SEQ_DRUM_TRACKS + track, step, sus);
+    patSetNoteSustain(p, step, sus);
 }
 
 // Set a chord step: root note + chord type → multi-note v2 step
 static inline void chord(Pattern* p, int track, int step, int root, ChordType type, float vel, int gate) {
-    patSetChord(p, SEQ_DRUM_TRACKS + track, step, root, type, vel, gate);
+    patSetChord(p, step, root, type, vel, gate);
 }
 
 // Set a custom chord step with explicit notes (up to 4, -1 = unused)
 static inline void chordCustom(Pattern* p, int track, int step, float vel, int gate, int n0, int n1, int n2, int n3) {
-    patSetChordCustom(p, SEQ_DRUM_TRACKS + track, step, vel, gate, n0, n1, n2, n3);
+    patSetChordCustom(p, step, vel, gate, n0, n1, n2, n3);
 }
 
 // Set a drum hit: step + velocity in one call
 static inline void drum(Pattern* p, int track, int step, float vel) {
-    patSetDrum(p, track, step, vel, 0.0f);
+    patSetDrum(p, step, vel, 0.0f);
 }
 
 // Set a drum hit with timing nudge
 static inline void drumN(Pattern* p, int track, int step, float vel, float nudge) {
-    patSetDrum(p, track, step, vel, 0.0f);
+    patSetDrum(p, step, vel, 0.0f);
     seqSetPLock(p, track, step, PLOCK_TIME_NUDGE, nudge);
 }
 
 // Set a drum hit with pitch offset
 static inline void drumP(Pattern* p, int track, int step, float vel, float pitch) {
-    patSetDrum(p, track, step, vel, pitch);
+    patSetDrum(p, step, vel, pitch);
 }
 
 // ============================================================================
@@ -201,7 +201,7 @@ static void Song_DormitoryAmbient_PatternA(Pattern* p) {
     drum(p, 2,10, .15);  drum(p, 2,14, .10);
     // Perc: single rimshot on step 12, very faint — a creak
     drumP(p, 3, 12, 0.08, 0.3);
-    patSetDrumProb(p, 3, 12, 0.4f);
+    patSetDrumProb(p, 12, 0.4f);
 
     // Bass: slow D pedal, then A
     note(p, 0, 0, D2, .35, 8);
@@ -231,7 +231,7 @@ static void Song_DormitoryAmbient_PatternB(Pattern* p) {
     // Lead: call and response
     note(p, 1, 4,  A4, 0.20, 4);
     note(p, 1, 12, D4, 0.18, 4);
-    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 1, 12, true);
+    patSetNoteSlide(p, 12, true);
 
     // Chords: Dm the whole bar
     chord(p, 2, 0, D3, CHORD_TRIAD, 0.15, 16);
@@ -319,13 +319,13 @@ static void Song_Suspense_PatternA(Pattern* p) {
 
     // HiHat: distant metallic tick, irregular
     drum(p, 2, 3, 0.08);
-    drum(p, 2, 7, 0.06);   patSetDrumProb(p, 2, 7, 0.5f);
+    drum(p, 2, 7, 0.06);   patSetDrumProb(p, 7, 0.5f);
     drum(p, 2,11, 0.10);
-    drum(p, 2,15, 0.05);   patSetDrumProb(p, 2, 15, 0.3f);
+    drum(p, 2,15, 0.05);   patSetDrumProb(p, 15, 0.3f);
 
     // Perc: distant rimshot, very rare
     drumP(p, 3, 6, 0.06, -0.3);
-    patSetDrumProb(p, 3, 6, 0.25f);
+    patSetDrumProb(p, 6, 0.25f);
 
     // Bass: chromatic descent C2→B1→Bb2→A2
     note(p, 0, 0, Cn2, .40, 4);  note(p, 0, 4, B1,  .38, 4);
@@ -335,7 +335,7 @@ static void Song_Suspense_PatternA(Pattern* p) {
     note(p, 1, 4, Eb4, .22, 5);
     note(p, 1,11, G4,  .18, 4);
     note(p, 1,14, Ab4, .20, 3);
-    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 1, 14, true);
+    patSetNoteSlide(p, 14, true);
 
     // Chords: Cm then Ab
     chord(p, 2, 0, Cn3, CHORD_TRIAD, 0.18, 8);
@@ -426,7 +426,7 @@ static void Song_JazzCallResponse_PatternA(Pattern* p) {
     drum(p, 0, 0, .35);  drum(p, 0, 8, .28);
     // Snare: brush on 2 and 4 + ghost
     drum(p, 1, 4, .15);  drum(p, 1,12, .18);
-    drum(p, 1,10, .06);  patSetDrumProb(p, 1, 10, 0.5f);
+    drum(p, 1,10, .06);  patSetDrumProb(p, 10, 0.5f);
     // HiHat: ride pattern (8ths) + swing offbeats
     drum(p, 2, 0, .30);  drum(p, 2, 2, .18);  drum(p, 2, 3, .10);
     drum(p, 2, 4, .30);  drum(p, 2, 6, .18);  drum(p, 2, 7, .08);
@@ -442,12 +442,12 @@ static void Song_JazzCallResponse_PatternA(Pattern* p) {
     // Lead/CALL (vibes): rising phrase first half
     note(p, 1, 1, G4, .35, 2);  note(p, 1, 3, A4, .38, 2);
     note(p, 1, 4, B4, .42, 3);  note(p, 1, 6, D5, .45, 4);
-    patSetNoteAccent(p, SEQ_DRUM_TRACKS + 1, 6, true);
+    patSetNoteAccent(p, 6, true);
 
     // Chord/RESPONSE (FM): descending answer second half
     note(p, 2, 9, Cn5, .38, 2);  note(p, 2,11, B4, .35, 2);
     note(p, 2,12, A4,  .40, 3);  note(p, 2,14, G4, .42, 4);
-    patSetNoteAccent(p, SEQ_DRUM_TRACKS + 2, 14, true);
+    patSetNoteAccent(p, 14, true);
 }
 
 // --- Pattern B: FM calls, vibes respond (roles swapped) ---
@@ -476,7 +476,7 @@ static void Song_JazzCallResponse_PatternB(Pattern* p) {
     // Vibes RESPOND second half (track 1)
     note(p, 1, 9, E5, .35, 2);  note(p, 1,11, D5, .38, 2);
     note(p, 1,12, B4, .40, 3);  note(p, 1,14, G4, .45, 4);
-    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 1, 14, true);
+    patSetNoteSlide(p, 14, true);
 }
 
 // --- Pattern C: trading twos — fast back and forth ---
@@ -570,7 +570,7 @@ static void Song_House_PatternA(Pattern* p) {
     // Perc: shaker on 16ths with probability
     for (int s = 1; s < 16; s += 2) {
         drumP(p, 3, s, 0.08, 0.5);
-        patSetDrumProb(p, 3, s, 0.4f);
+        patSetDrumProb(p, s, 0.4f);
     }
 
     // Acid bass: syncopated C2 line
@@ -579,8 +579,8 @@ static void Song_House_PatternA(Pattern* p) {
     note(p, 0, 7, Eb2, .52, 2);  note(p, 0, 9, Cn2, .48, 2);
     note(p, 0,11, Cn2, .40, 1);  note(p, 0,12, Cn2, .55, 2);
     note(p, 0,15, G2,  .45, 2);
-    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 0, 5, true);   patSetNoteSlide(p, SEQ_DRUM_TRACKS + 0, 15, true);
-    patSetNoteAccent(p, SEQ_DRUM_TRACKS + 0, 0, true);   patSetNoteAccent(p, SEQ_DRUM_TRACKS + 0, 12, true);
+    patSetNoteSlide(p, 5, true);   patSetNoteSlide(p, 15, true);
+    patSetNoteAccent(p, 0, true);   patSetNoteAccent(p, 12, true);
 
     // Chord stabs (track 1): offbeat Cm
     chord(p, 1, 2, Cn4, CHORD_TRIAD, 0.35, 1);
@@ -606,7 +606,7 @@ static void Song_House_PatternB(Pattern* p) {
     // Bass: root held long
     note(p, 0, 0, Cn2, .45, 8);
     note(p, 0, 8, Eb2, .40, 8);
-    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 0, 8, true);
+    patSetNoteSlide(p, 8, true);
 
     // Pad only, quieter
     chord(p, 2, 0, Cn3, CHORD_TRIAD, 0.12, 16);
@@ -674,8 +674,8 @@ static void Song_DeepHouse_PatternA(Pattern* p) {
     drum(p, 2, 8, .18);  drum(p, 2,10, .10);
     drum(p, 2,12, .10);  drum(p, 2,14, .10);
     // Perc: rim click, sparse
-    drum(p, 3, 3, .12);  patSetDrumProb(p, 3, 3, 0.6f);
-    drum(p, 3,11, .10);  patSetDrumProb(p, 3, 11, 0.4f);
+    drum(p, 3, 3, .12);  patSetDrumProb(p, 3, 0.6f);
+    drum(p, 3,11, .10);  patSetDrumProb(p, 11, 0.4f);
 
     // Sub bass: F1 and C2
     note(p, 0, 0, F1,  .50, 8);
@@ -684,7 +684,7 @@ static void Song_DeepHouse_PatternA(Pattern* p) {
     // Stab (track 1): sparse FM color
     note(p, 1, 6, Cn4, .25, 2);
     note(p, 1,14, Ab3, .20, 2);
-    patSetDrumProb(p, 1, 14, 0.5f);
+    patSetDrumProb(p, 14, 0.5f);
 
     // Pad: Fm7 held whole bar
     chord(p, 2, 0, Fn3, CHORD_SEVENTH, 0.20, 16);
@@ -772,20 +772,20 @@ static void Song_Dilla_PatternA(Pattern* p) {
     // Kick: syncopated, never on 1
     drum(p, 0, 1, .60);  drum(p, 0, 7, .50);
     drum(p, 0,10, .55);  drum(p, 0,14, .35);
-    patSetDrumProb(p, 0, 14, 0.6f);
+    patSetDrumProb(p, 14, 0.6f);
     // Snare: lazy beats 2+4 + ghost notes
     drum(p, 1, 2, .08);  drum(p, 1, 4, .40);
-    drum(p, 1, 6, .06);  patSetDrumProb(p, 1, 6, 0.4f);
-    drum(p, 1, 9, .07);  patSetDrumProb(p, 1, 9, 0.5f);
+    drum(p, 1, 6, .06);  patSetDrumProb(p, 6, 0.4f);
+    drum(p, 1, 9, .07);  patSetDrumProb(p, 9, 0.5f);
     drum(p, 1,12, .42);
-    drum(p, 1,15, .05);  patSetDrumProb(p, 1, 15, 0.3f);
+    drum(p, 1,15, .05);  patSetDrumProb(p, 15, 0.3f);
     // HiHat: 16ths with velocity variation
     drum(p, 2, 0, .20);  drum(p, 2, 1, .08);  drum(p, 2, 2, .25);  drum(p, 2, 3, .06);
     drum(p, 2, 4, .18);  drum(p, 2, 5, .04);  drum(p, 2, 6, .22);  drum(p, 2, 7, .10);
     drum(p, 2, 8, .20);  drum(p, 2, 9, .06);  drum(p, 2,10, .25);  drum(p, 2,11, .04);
     drum(p, 2,12, .15);  drum(p, 2,13, .08);  drum(p, 2,14, .20);  drum(p, 2,15, .05);
-    patSetDrumProb(p, 2, 3, 0.5f);  patSetDrumProb(p, 2, 7, 0.6f);
-    patSetDrumProb(p, 2, 11, 0.5f);  patSetDrumProb(p, 2, 15, 0.4f);
+    patSetDrumProb(p, 3, 0.5f);  patSetDrumProb(p, 7, 0.6f);
+    patSetDrumProb(p, 11, 0.5f);  patSetDrumProb(p, 15, 0.4f);
     // Perc: shaker on 8ths
     for (int s = 0; s < 16; s += 2) drumP(p, 3, s, 0.06, 0.4);
 
@@ -799,7 +799,7 @@ static void Song_Dilla_PatternA(Pattern* p) {
     chord(p, 1, 2, Eb4, CHORD_SEVENTH, 0.32, 2);
 
     note(p, 1, 6, Eb4, 0.28, 1);
-    patSetNoteAccent(p, SEQ_DRUM_TRACKS + 1, 6, true);
+    patSetNoteAccent(p, 6, true);
 
     chord(p, 1, 11, Ab3, CHORD_TRIAD, 0.30, 2);
 
@@ -834,7 +834,7 @@ static void Song_Dilla_PatternC(Pattern* p) {
     initPattern(p);
 
     // Full drums with extra kick ghost
-    drum(p, 0, 1, .60);  drum(p, 0, 5, .30);  patSetDrumProb(p, 0, 5, 0.5f);
+    drum(p, 0, 1, .60);  drum(p, 0, 5, .30);  patSetDrumProb(p, 5, 0.5f);
     drum(p, 0, 7, .50);  drum(p, 0,10, .55);   drum(p, 0,13, .35);
     drum(p, 1, 2, .07);  drum(p, 1, 4, .42);   drum(p, 1, 6, .06);
     drum(p, 1,10, .08);  drum(p, 1,12, .45);   drum(p, 1,14, .05);
@@ -843,7 +843,7 @@ static void Song_Dilla_PatternC(Pattern* p) {
     drum(p, 2, 4, .20);  drum(p, 2, 5, .06);  drum(p, 2, 6, .25);  drum(p, 2, 7, .12);
     drum(p, 2, 8, .22);  drum(p, 2, 9, .08);  drum(p, 2,10, .28);  drum(p, 2,11, .05);
     drum(p, 2,12, .18);  drum(p, 2,13, .10);  drum(p, 2,14, .22);  drum(p, 2,15, .06);
-    patSetDrumProb(p, 2, 3, 0.6f);  patSetDrumProb(p, 2, 11, 0.5f);
+    patSetDrumProb(p, 3, 0.6f);  patSetDrumProb(p, 11, 0.5f);
 
     // Bass: chromatic run with blue note E natural
     note(p, 0, 0, Eb2, .52, 2);  note(p, 0, 2, E2,  .38, 1);
@@ -856,7 +856,7 @@ static void Song_Dilla_PatternC(Pattern* p) {
     chord(p, 1, 2, Eb4, CHORD_SEVENTH, 0.35, 1);
 
     note(p, 1, 5, Bb3, 0.28, 2);
-    patSetNoteAccent(p, SEQ_DRUM_TRACKS + 1, 5, true);
+    patSetNoteAccent(p, 5, true);
 
     chord(p, 1, 9, Ab3, CHORD_TRIAD, 0.32, 2);
 
@@ -931,7 +931,7 @@ static void Song_Atmosphere_PatternA(Pattern* p) {
     drum(p, 2, 8, .08);  drum(p, 2,10, .08);  drum(p, 2,12, .08);  drum(p, 2,14, .08);
     // Perc: distant chime
     drumP(p, 3, 12, 0.06, 0.6);
-    patSetDrumProb(p, 3, 12, 0.5f);
+    patSetDrumProb(p, 12, 0.5f);
 
     // Bass: simple D pedal
     note(p, 0, 0, D2, .40, 8);
@@ -957,7 +957,7 @@ static void Song_Atmosphere_PatternB(Pattern* p) {
     drum(p, 2, 4, .15);  drum(p, 2, 6, .10);
     drum(p, 2, 8, .15);  drum(p, 2,10, .10);  drum(p, 2,11, .05);
     drum(p, 2,12, .15);  drum(p, 2,14, .10);
-    patSetDrumProb(p, 2, 3, 0.4f);  patSetDrumProb(p, 2, 11, 0.3f);
+    patSetDrumProb(p, 3, 0.4f);  patSetDrumProb(p, 11, 0.3f);
     // Perc: chimes
     drumP(p, 3, 4, 0.05, 0.7);  drumP(p, 3, 12, 0.06, 0.5);
 
@@ -990,7 +990,7 @@ static void Song_Atmosphere_PatternC(Pattern* p) {
     // Lead: question and answer
     note(p, 1, 4, B4, .18, 6);
     note(p, 1,12, D5, .20, 4);
-    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 1, 12, true);
+    patSetNoteSlide(p, 12, true);
 
     // Pad: Dmaj7 held whole bar
     chord(p, 2, 0, D3, CHORD_SEVENTH, 0.25, 16);
@@ -1122,7 +1122,7 @@ static void Song_MrLucky_PatternC(Pattern* p) {
     // Vibes: descending A4→G4→F4→E4
     note(p, 1, 0, A4, .28, 3);  note(p, 1, 4, G4, .25, 3);
     note(p, 1, 9, F4, .27, 3);  note(p, 1,13, E4, .30, 3);
-    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 1, 13, true);
+    patSetNoteSlide(p, 13, true);
 
     // Pad: Fmaj7 → E7
     chord(p, 2, 0, F3, CHORD_SEVENTH, 0.20, 8);
@@ -1191,8 +1191,8 @@ static void Song_HappyBirthday_ConfigureVoices(void) {
 // Chords: Fmaj (bar 1) | C7 (bar 2)
 static void Song_HappyBirthday_PatternA(Pattern* p) {
     initPattern(p);
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, t, 12);
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, SEQ_DRUM_TRACKS + t, 12);
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, 12);
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, 12);
 
     // Drums: jazz waltz brushes
     drum(p, 0, 0, .45);  drum(p, 0, 6, .40);
@@ -1220,15 +1220,15 @@ static void Song_HappyBirthday_PatternA(Pattern* p) {
 // Chords: C7 (bar 1) | F (bar 2)
 static void Song_HappyBirthday_PatternB(Pattern* p) {
     initPattern(p);
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, t, 12);
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, SEQ_DRUM_TRACKS + t, 12);
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, 12);
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, 12);
 
     // Drums: waltz + rimshot fill
     drum(p, 0, 0, .45);  drum(p, 0, 6, .40);
     drum(p, 1, 4, .15);  drum(p, 1,10, .15);
     drum(p, 2, 0, .30);  drum(p, 2, 2, .18);  drum(p, 2, 4, .18);
     drum(p, 2, 6, .30);  drum(p, 2, 8, .18);  drum(p, 2,10, .18);
-    drum(p, 3, 9, .10);  patSetDrumProb(p, 3, 9, 0.5f);
+    drum(p, 3, 9, .10);  patSetDrumProb(p, 9, 0.5f);
 
     // Bass: G2→C2 | F2
     note(p, 0, 0, G2,  .48, 4);  note(p, 0, 4, Cn2, .45, 2);
@@ -1251,8 +1251,8 @@ static void Song_HappyBirthday_PatternB(Pattern* p) {
 // Chords: F7 (bar 1) | Bb (bar 2)
 static void Song_HappyBirthday_PatternC(Pattern* p) {
     initPattern(p);
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, t, 12);
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, SEQ_DRUM_TRACKS + t, 12);
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, 12);
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, 12);
 
     // Drums: more energy for climax + offbeat hats
     drum(p, 0, 0, .50);  drum(p, 0, 6, .45);
@@ -1283,8 +1283,8 @@ static void Song_HappyBirthday_PatternC(Pattern* p) {
 // Chords: C7 (bar 1) | F (bar 2, home)
 static void Song_HappyBirthday_PatternD(Pattern* p) {
     initPattern(p);
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, t, 12);
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, SEQ_DRUM_TRACKS + t, 12);
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, 12);
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, 12);
 
     // Drums: gentle, resolving
     drum(p, 0, 0, .45);  drum(p, 0, 6, .35);
@@ -1299,7 +1299,7 @@ static void Song_HappyBirthday_PatternD(Pattern* p) {
     // Melody: A4 F4 G4 | F4 (resolution)
     note(p, 1, 0, A4, .48, 2);  note(p, 1, 2, F4, .45, 2);
     note(p, 1, 4, G4, .46, 2);  note(p, 1, 6, F4, .50, 6);
-    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 1, 6, true);
+    patSetNoteSlide(p, 6, true);
 
     // Chords: C7 → F (V-I home)
     chord(p, 2, 0, Cn3, CHORD_SEVENTH, .26, 6);
@@ -1338,7 +1338,7 @@ static void setCustomChord(Pattern* p, int step, int root, float vel, int gate,
                            int sustain, int n0, int n1, int n2, int n3) {
     (void)root;
     chordCustom(p, 2, step, vel, gate, n0, n1, n2, n3);
-    patSetNoteSustain(p, SEQ_DRUM_TRACKS + 2, step, sustain);
+    patSetNoteSustain(p, step, sustain);
 }
 
 // Standard jazz drum pattern: ride on beats + upbeats, kick on offbeats
@@ -1674,7 +1674,7 @@ static void Song_Summertime_Pattern4(Pattern* p) {
 
     // Melody: blue note grace → E5, then C5
     noteN(p, 1, 10, Eb5, .79, 1, 12);
-    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 1, 10, true);
+    patSetNoteSlide(p, 10, true);
     noteN(p, 1, 11, E5,  .91, 2, 2);
     noteN(p, 1, 14, Cn5, .73, 2, -9);
 
@@ -1786,20 +1786,20 @@ static void Song_Summertime_Load(Pattern patterns[8]) {
 
 // Helper: set track lengths to 32 for 32nd note resolution
 static void muleSetTrackLengths(Pattern* p) {
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, t, 32);
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, SEQ_DRUM_TRACKS + t, 32);
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, 32);
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, 32);
 }
 
 // Drums at 32nd resolution: hihat every 2 steps (=16th), snare/kick alternate
 static void muleDrums(Pattern* p) {
     for (int s = 0; s < 32; s += 2) {
         // Hihat on every 16th note (every 2 steps at 32nd resolution)
-        patSetDrum(p, 2, s, 0.4f, 0.0f);
+        patSetDrum(p, s, 0.4f, 0.0f);
         // Snare on even 16ths, kick on odd 16ths
         if ((s / 2) % 2 == 0) {
-            patSetDrum(p, 1, s, 0.4f, 0.0f);
+            patSetDrum(p, s, 0.4f, 0.0f);
         } else {
-            patSetDrum(p, 0, s, 0.4f, 0.0f);
+            patSetDrum(p, s, 0.4f, 0.0f);
         }
     }
 }
@@ -1812,13 +1812,13 @@ static void muleBass(Pattern* p) {
     };
     for (int i = 0; i < 16; i++) {
         int s = i * 2;  // Every other step
-        patSetNote(p, SEQ_DRUM_TRACKS + 0, s, bassNotes[i], 0.4f, 1);
+        patSetNote(p, s, bassNotes[i], 0.4f, 1);
     }
 }
 
 // Helper: set a melody note on track 1
 static void muleNote(Pattern* p, int step, int n, int gate) {
-    patSetNote(p, SEQ_DRUM_TRACKS + 1, step, n, 0.4f, gate);
+    patSetNote(p, step, n, 0.4f, gate);
 }
 
 // Melody phrase A (bars 4 and 6): full 32nd note resolution
@@ -1995,15 +1995,15 @@ static void Song_Gymnopedie_ConfigureVoices(void) {
 
 // Helper: set up Gymnopédie waltz track lengths (12 = 2 bars of 3/4)
 static void satieTrackLengths(Pattern* p) {
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, t, 12);
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, SEQ_DRUM_TRACKS + t, 12);
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, 12);
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, 12);
 }
 
 // Helper: custom chord on track 2 (3-note voicing, Satie uses triads)
 static void satieChord(Pattern* p, int step, int root, int n0, int n1, int n2) {
     (void)root;
     chordCustom(p, 2, step, 0.22f, 4, n0, n1, n2, -1);
-    patSetNoteSustain(p, SEQ_DRUM_TRACKS + 2, step, 2);
+    patSetNoteSustain(p, step, 2);
 }
 
 // Pattern 0 (bars 0-1): Intro — chords only, no melody
@@ -2174,20 +2174,20 @@ static void Song_Gymnopedie_Load(Pattern patterns[8]) {
 // ============================================================================
 
 static void mule2SetTrackLengths(Pattern* p) {
-    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, t, 32);
-    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, SEQ_DRUM_TRACKS + t, 32);
+    for (int t = 0; t < SEQ_DRUM_TRACKS; t++) patSetDrumLength(p, 32);
+    for (int t = 0; t < SEQ_MELODY_TRACKS; t++) patSetMelodyLength(p, 32);
 }
 
 // Drums: snare+HH on even steps (0,4,8..), kick+HH on odd steps (2,6,10..)
 static void mule2Drums(Pattern* p) {
     for (int s = 0; s < 32; s += 2) {
         // Hihat on every 16th note
-        patSetDrum(p, 2, s, 0.4f, 0.0f);
+        patSetDrum(p, s, 0.4f, 0.0f);
         // Snare on downbeats (even 16ths), kick on upbeats (odd 16ths)
         if ((s / 2) % 2 == 0) {
-            patSetDrum(p, 1, s, 0.4f, 0.0f);
+            patSetDrum(p, s, 0.4f, 0.0f);
         } else {
-            patSetDrum(p, 0, s, 0.4f, 0.0f);
+            patSetDrum(p, s, 0.4f, 0.0f);
         }
     }
 }
@@ -2201,13 +2201,13 @@ static void mule2Bass(Pattern* p) {
     };
     for (int i = 0; i < 16; i++) {
         int s = i * 2;
-        patSetNote(p, SEQ_DRUM_TRACKS + 0, s, bassNotes[i], 0.4f, 1);
+        patSetNote(p, s, bassNotes[i], 0.4f, 1);
     }
 }
 
 // Helper: set melody note on track 1 with nudge for sub-step timing
 static void mule2Note(Pattern* p, int step, int n, int gate) {
-    patSetNote(p, SEQ_DRUM_TRACKS + 1, step, n, 0.4f, gate);
+    patSetNote(p, step, n, 0.4f, gate);
 }
 
 // Helper: set melody note with half-step nudge (for sub-32nd timing in runs)
@@ -2361,7 +2361,7 @@ static void oscarDrums(Pattern* p) {
     drum(p, 2, 11, 0.08);
     // Rimshot: occasional, probabilistic
     drumP(p, 3, 10, 0.12, 0.3);
-    patSetDrumProb(p, 3, 10, 0.3f);
+    patSetDrumProb(p, 10, 0.3f);
 }
 
 // Busier drums for peak sections
@@ -2369,12 +2369,12 @@ static void oscarDrumsBusy(Pattern* p) {
     oscarDrums(p);
     // Extra kick ghost
     drum(p, 0, 5, 0.20);
-    patSetDrumProb(p, 0, 5, 0.5f);
+    patSetDrumProb(p, 5, 0.5f);
     // Open hat on beat 4 and-of
     drumP(p, 2, 13, 0.25, 0.2);
     // Rimshot on beat 3
     drumP(p, 3, 8, 0.15, 0.2);
-    patSetDrumProb(p, 3, 8, 0.4f);
+    patSetDrumProb(p, 8, 0.4f);
 }
 
 // --- Walking bass patterns in Ab ---
@@ -2438,7 +2438,7 @@ static void oscarChordsA(Pattern* p) {
     chordCustom(p, 2, 8, 0.22, 4, F3, Ab3, Cn4, Eb4);
     // Ghost stab
     chordCustom(p, 2, 6, 0.10, 1, Ab3, Cn4, -1, -1);
-    patSetDrumProb(p, SEQ_DRUM_TRACKS + 2, 6, 0.4f);
+    patSetDrumProb(p, 6, 0.4f);
 }
 
 // Bbm7 → Eb7 comping
@@ -2459,7 +2459,7 @@ static void oscarChordsC(Pattern* p) {
     chordCustom(p, 2, 8, 0.22, 4, Db3, F3, Ab3, Cn4);
     // Rhythmic stab
     chordCustom(p, 2, 5, 0.10, 1, Cn4, Eb4, -1, -1);
-    patSetDrumProb(p, SEQ_DRUM_TRACKS + 2, 5, 0.5f);
+    patSetDrumProb(p, 5, 0.5f);
 }
 
 // --- Lead melody: Peterson synth runs ---
@@ -2511,7 +2511,7 @@ static void oscarMelodyC(Pattern* p) {
     note(p, 1, 7,  G4,  .45, 1);
     // Peak: high Ab with slide down
     note(p, 1, 8,  Ab4, .50, 2);
-    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 1, 10, true);
+    patSetNoteSlide(p, 10, true);
     note(p, 1, 10, F4,  .38, 1);
     note(p, 1, 11, Eb4, .40, 1);
     note(p, 1, 12, Db4, .35, 1);
@@ -2633,7 +2633,7 @@ static void dreamerDrums(Pattern* p) {
     // Kick: just beat 1 and a ghost on the and-of-3
     drum(p, 0, 0, 0.40);
     drum(p, 0, 7, 0.18);
-    patSetDrumProb(p, 0, 7, 0.6f);
+    patSetDrumProb(p, 7, 0.6f);
     // Snare: ghostly rimshot on 2 and 4
     drumP(p, 1, 4, 0.25, 0.2);
     drumP(p, 1, 12, 0.22, 0.2);
@@ -2705,7 +2705,7 @@ static void dreamerAnswer(Pattern* p) {
     // Chromatic slide to resolution
     note(p, 1, 13, Gs4, .28, 1);
     noteS(p, 1, 14, A4,  .35, 2, 2);
-    patSetNoteSlide(p, SEQ_DRUM_TRACKS + 1, 14, true);
+    patSetNoteSlide(p, 14, true);
 }
 
 // Pat 0: Intro — pad drone, barely any drums
@@ -2830,7 +2830,7 @@ static void saladDrums(Pattern* p) {
     }
     // Open hat feel on beat 4-and
     drumP(p, 2, 13, 0.18, 0.2);
-    patSetDrumProb(p, 2, 13, 0.5f);
+    patSetDrumProb(p, 13, 0.5f);
 }
 
 static void saladDrumsSparse(Pattern* p) {
@@ -2868,7 +2868,7 @@ static void saladChordsGEm(Pattern* p) {
     chordCustom(p, 2, 8, 0.20, 6, E3, G3, B3, -1);
     // Little rhythmic stab
     chordCustom(p, 2, 14, 0.10, 1, G3, B3, -1, -1);
-    patSetDrumProb(p, SEQ_DRUM_TRACKS + 2, 14, 0.4f);
+    patSetDrumProb(p, 14, 0.4f);
 }
 
 // Chords: C → D
@@ -3031,15 +3031,15 @@ static void emergDrums(Pattern* p) {
     // Kick: just beat 1, sometimes beat 3
     drum(p, 0, 0, 0.38);
     drum(p, 0, 8, 0.25);
-    patSetDrumProb(p, 0, 8, 0.4f);
+    patSetDrumProb(p, 8, 0.4f);
 
     // Snare: ghost rimshots, probabilistic — like raindrops
     drumP(p, 1, 4,  0.18, 0.3);
-    patSetDrumProb(p, 1, 4, 0.6f);
+    patSetDrumProb(p, 4, 0.6f);
     drumP(p, 1, 10, 0.15, 0.2);
-    patSetDrumProb(p, 1, 10, 0.4f);
+    patSetDrumProb(p, 10, 0.4f);
     drumP(p, 1, 14, 0.12, 0.3);
-    patSetDrumProb(p, 1, 14, 0.3f);
+    patSetDrumProb(p, 14, 0.3f);
 
     // Hihat: quiet 8ths, some conditional — busier on later loops
     drum(p, 2, 0,  0.15);
@@ -3048,22 +3048,22 @@ static void emergDrums(Pattern* p) {
     drum(p, 2, 12, 0.10);
     // Extra hats only appear after first loop
     drum(p, 2, 2,  0.06);
-    patSetDrumCond(p, 2, 2, COND_NOT_FIRST);
+    patSetDrumCond(p, 2, COND_NOT_FIRST);
     drum(p, 2, 6,  0.06);
-    patSetDrumCond(p, 2, 6, COND_NOT_FIRST);
+    patSetDrumCond(p, 6, COND_NOT_FIRST);
     drum(p, 2, 10, 0.06);
-    patSetDrumCond(p, 2, 10, COND_1_2);  // every other loop
+    patSetDrumCond(p, 10, COND_1_2);  // every other loop
 
     // Perc: rare bell-like tick
     drumP(p, 3, 7, 0.10, 0.5);
-    patSetDrumProb(p, 3, 7, 0.2f);
+    patSetDrumProb(p, 7, 0.2f);
 }
 
 // Even sparser — intro/outro
 static void emergDrumsBreath(Pattern* p) {
     drum(p, 0, 0, 0.28);
     drum(p, 2, 8, 0.08);
-    patSetDrumProb(p, 2, 8, 0.5f);
+    patSetDrumProb(p, 8, 0.5f);
 }
 
 // --- Bass: root pulses ---
@@ -3074,17 +3074,17 @@ static void emergBassEm(Pattern* p) {
     note(p, 0, 8,  E2,  .32, 4);
     // Fifth on loop 2+
     note(p, 0, 12, B2,  .25, 2);
-    patSetNoteCond(p, SEQ_DRUM_TRACKS + 0, 12, COND_NOT_FIRST);
+    patSetNoteCond(p, 12, COND_NOT_FIRST);
 }
 
 // Cmaj7 → Am7
 static void emergBassCA(Pattern* p) {
     note(p, 0, 0,  Cn3, .40, 4);
     note(p, 0, 4,  G2,  .28, 2);
-    patSetNoteProb(p, SEQ_DRUM_TRACKS + 0, 4, 0.6f);
+    patSetNoteProb(p, 4, 0.6f);
     note(p, 0, 8,  A2,  .40, 4);
     note(p, 0, 12, E2,  .28, 2);
-    patSetNoteProb(p, SEQ_DRUM_TRACKS + 0, 12, 0.5f);
+    patSetNoteProb(p, 12, 0.5f);
 }
 
 // Am7 → D (turnaround)
@@ -3131,22 +3131,22 @@ static void emergMelodyAnswer(Pattern* p) {
     noteS(p, 1, 8,  D5,  .38, 4, 2);
     // Echo — conditional, only sometimes
     note(p, 1, 14, E5,  .22, 2);
-    patSetNoteProb(p, SEQ_DRUM_TRACKS + 1, 14, 0.4f);
+    patSetNoteProb(p, 14, 0.4f);
 }
 
 // Generative: note pool on key steps — random walk through E G A B D
 static void emergMelodyPool(Pattern* p) {
     // Step 0: pool of E5, G4, B4, D5 — wanders
-    patSetChordCustom(p, SEQ_DRUM_TRACKS + 1, 0, 0.35, 3, E5, G4, B4, D5);
-    patSetPickMode(p, SEQ_DRUM_TRACKS + 1, 0, PICK_RANDOM_WALK);
+    patSetChordCustom(p, 0, 0.35, 3, E5, G4, B4, D5);
+    patSetPickMode(p, 0, PICK_RANDOM_WALK);
 
     // Step 4: pool of A4, B4, D5, E5
-    patSetChordCustom(p, SEQ_DRUM_TRACKS + 1, 4, 0.32, 3, A4, B4, D5, E5);
-    patSetPickMode(p, SEQ_DRUM_TRACKS + 1, 4, PICK_RANDOM_WALK);
+    patSetChordCustom(p, 4, 0.32, 3, A4, B4, D5, E5);
+    patSetPickMode(p, 4, PICK_RANDOM_WALK);
 
     // Step 8: pool of B4, D5, E5, G5
-    patSetChordCustom(p, SEQ_DRUM_TRACKS + 1, 8, 0.38, 4, B4, D5, E5, G5);
-    patSetPickMode(p, SEQ_DRUM_TRACKS + 1, 8, PICK_RANDOM_WALK);
+    patSetChordCustom(p, 8, 0.38, 4, B4, D5, E5, G5);
+    patSetPickMode(p, 8, PICK_RANDOM_WALK);
 
     // Step 12: single held note — moment of clarity
     noteS(p, 1, 12, E5,  .35, 4, 2);
@@ -3159,17 +3159,17 @@ static void emergMelodyFull(Pattern* p) {
     note(p, 1, 4,  D5,  .32, 1);
 
     // Pool on steps 5-6: wandering fill
-    patSetChordCustom(p, SEQ_DRUM_TRACKS + 1, 6, 0.30, 2, A4, B4, G4, D5);
-    patSetPickMode(p, SEQ_DRUM_TRACKS + 1, 6, PICK_RANDOM);
+    patSetChordCustom(p, 6, 0.30, 2, A4, B4, G4, D5);
+    patSetPickMode(p, 6, PICK_RANDOM);
 
     // Resolution
     noteS(p, 1, 8,  B4,  .40, 3, 2);
 
     // Tail — conditional, different each time
     note(p, 1, 12, A4,  .28, 2);
-    patSetNoteCond(p, SEQ_DRUM_TRACKS + 1, 12, COND_1_2);
+    patSetNoteCond(p, 12, COND_1_2);
     note(p, 1, 13, G4,  .25, 2);
-    patSetNoteCond(p, SEQ_DRUM_TRACKS + 1, 13, COND_2_2);
+    patSetNoteCond(p, 13, COND_2_2);
 }
 
 // --- Patterns ---
@@ -3235,19 +3235,19 @@ static void Song_Emergence_Pattern6(Pattern* p) {
     emergChordEm(p);
 
     // Dense generative melody — every beat has a pool
-    patSetChordCustom(p, SEQ_DRUM_TRACKS + 1, 0, 0.38, 2, E5, B4, D5, G4);
-    patSetPickMode(p, SEQ_DRUM_TRACKS + 1, 0, PICK_RANDOM_WALK);
+    patSetChordCustom(p, 0, 0.38, 2, E5, B4, D5, G4);
+    patSetPickMode(p, 0, PICK_RANDOM_WALK);
 
-    patSetChordCustom(p, SEQ_DRUM_TRACKS + 1, 3, 0.32, 2, A4, D5, E5, B4);
-    patSetPickMode(p, SEQ_DRUM_TRACKS + 1, 3, PICK_PINGPONG);
+    patSetChordCustom(p, 3, 0.32, 2, A4, D5, E5, B4);
+    patSetPickMode(p, 3, PICK_PINGPONG);
 
-    patSetChordCustom(p, SEQ_DRUM_TRACKS + 1, 6, 0.35, 2, G4, B4, D5, E5);
-    patSetPickMode(p, SEQ_DRUM_TRACKS + 1, 6, PICK_RANDOM);
+    patSetChordCustom(p, 6, 0.35, 2, G4, B4, D5, E5);
+    patSetPickMode(p, 6, PICK_RANDOM);
 
     noteS(p, 1, 9, E5, .42, 4, 3);    // peak — held high E
 
     note(p, 1, 14, D5, .28, 2);
-    patSetNoteCond(p, SEQ_DRUM_TRACKS + 1, 14, COND_1_2);
+    patSetNoteCond(p, 14, COND_1_2);
 }
 
 // Pat 7: Dissolve. Just pad and one last note.
