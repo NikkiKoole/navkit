@@ -89,13 +89,25 @@ static void ClampToGrid(int* x1, int* y1, int* x2, int* y2) {
 static void GetDragRect(int* x1, int* y1, int* x2, int* y2) {
     Vector2 gp = ScreenToGrid(GetMousePosition());
     int x = (int)gp.x, y = (int)gp.y;
-    
+
     *x1 = dragStartX < x ? dragStartX : x;
     *y1 = dragStartY < y ? dragStartY : y;
     *x2 = dragStartX > x ? dragStartX : x;
     *y2 = dragStartY > y ? dragStartY : y;
-    
+
     ClampToGrid(x1, y1, x2, y2);
+}
+
+// Front view drag: X range from drag, Y fixed at dragStartY, Z range from drag start/current pick
+static void GetDragRectFrontView(int* x1, int* y1, int* x2, int* y2, int* z1, int* z2, int curGx, int curGy, int curGz) {
+    *x1 = dragStartX < curGx ? dragStartX : curGx;
+    *x2 = dragStartX > curGx ? dragStartX : curGx;
+    *y1 = dragStartY;   // depth (Y) fixed at drag-start layer
+    *y2 = dragStartY;
+    *z1 = dragStartZ < curGz ? dragStartZ : curGz;
+    *z2 = dragStartZ > curGz ? dragStartZ : curGz;
+    if (*x1 < 0) *x1 = 0; if (*x2 >= gridWidth)  *x2 = gridWidth  - 1;
+    if (*z1 < 0) *z1 = 0; if (*z2 >= gridDepth)   *z2 = gridDepth  - 1;
 }
 
 // ============================================================================
@@ -1943,7 +1955,7 @@ void HandleInput(void) {
     }
     // Keep these available for downstream code (quickEdit, trains, etc.)
     Vector2 mouseGrid = ScreenToGrid(GetMousePosition());
-    int z = currentViewZ;
+    int z = frontViewMode ? gz : currentViewZ;
 
     // Update hover states
     int prevHoveredStockpile = hoveredStockpile;
@@ -1952,15 +1964,14 @@ void HandleInput(void) {
     hoveredWorkshop = FindWorkshopAt(gx, gy, gz);
     if (paused) {
         if (frontViewMode) {
-            // In frontview, movers/animals already found by FrontViewPickCell's Y range.
-            // Use the picked gz to find movers across visible layers.
+            // Screen-space hit testing — stable regardless of frontViewY changes.
             int depthLayers = frontViewDepth;
             if (depthLayers < 1) depthLayers = 1;
             int startY = frontViewY - depthLayers + 1;
             if (startY < 0) startY = 0;
-            float worldX = (GetMousePosition().x - offset.x) / zoom;
-            hoveredMover = GetMoverAtFrontView(worldX, gz, startY, frontViewY);
-            hoveredAnimal = GetAnimalAtFrontView(worldX, gz, startY, frontViewY);
+            Vector2 mp = GetMousePosition();
+            hoveredMover = GetMoverAtFrontView(mp.x, mp.y, startY, frontViewY);
+            hoveredAnimal = GetAnimalAtFrontView(mp.x, mp.y, startY, frontViewY);
         } else {
             Vector2 mouseWorld = ScreenToWorld(GetMousePosition());
             hoveredMover = GetMoverAtWorldPos(mouseWorld.x, mouseWorld.y, gz);
@@ -2418,8 +2429,8 @@ void HandleInput(void) {
     // Front view depth scrolling (,/. scroll Y-slice instead of z-level)
     // [/] adjust number of visible depth layers
     if (frontViewMode) {
-        if (IsKeyPressed(KEY_PERIOD) && frontViewY < gridHeight - 1) frontViewY++;
-        if (IsKeyPressed(KEY_COMMA) && frontViewY > 0) frontViewY--;
+        if (IsKeyPressed(KEY_UP) && frontViewY > 0) frontViewY--;
+        if (IsKeyPressed(KEY_DOWN) && frontViewY < gridHeight - 1) frontViewY++;
         if (IsKeyPressed(KEY_RIGHT_BRACKET) && frontViewDepth < gridHeight) frontViewDepth++;
         if (IsKeyPressed(KEY_LEFT_BRACKET) && frontViewDepth > 1) frontViewDepth--;
     }
@@ -2550,8 +2561,7 @@ void HandleInput(void) {
         
         // Quick edit: left-click = wall, right-click = erase (when enabled, dev UI only)
         if (quickEditEnabled && devUI) {
-            Vector2 gp = ScreenToGrid(GetMousePosition());
-            int x = (int)gp.x, y = (int)gp.y;
+            int x = gx, y = gy;
             if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
                 if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
                     // Don't allow walls on workshop tiles
@@ -2867,9 +2877,16 @@ void HandleInput(void) {
     
     // Start drag
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
-        Vector2 gp = ScreenToGrid(GetMousePosition());
-        dragStartX = (int)gp.x;
-        dragStartY = (int)gp.y;
+        if (frontViewMode) {
+            dragStartX = gx;
+            dragStartY = gy;
+            dragStartZ = gz;
+        } else {
+            Vector2 gp = ScreenToGrid(GetMousePosition());
+            dragStartX = (int)gp.x;
+            dragStartY = (int)gp.y;
+            dragStartZ = currentViewZ;
+        }
         isDragging = true;
 
         // Terrain sculpting: start stroke on mouse down
@@ -2957,10 +2974,42 @@ void HandleInput(void) {
     if (isDragging && (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT))) {
         isDragging = false;
         bool leftClick = IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
-        
+
+        // In front view: drag covers X range + Z range at fixed world Y
+        if (frontViewMode) {
+            int fx1, fy1, fx2, fy2, fz1, fz2;
+            GetDragRectFrontView(&fx1, &fy1, &fx2, &fy2, &fz1, &fz2, gx, gy, gz);
+            for (int fz = fz1; fz <= fz2; fz++) {
+                switch (inputAction) {
+                    case ACTION_DRAW_WALL:
+                        if (leftClick) ExecuteBuildWall(fx1, fy1, fx2, fy2, fz);
+                        else ExecuteErase(fx1, fy1, fx2, fy2, fz);
+                        break;
+                    case ACTION_DRAW_FLOOR:
+                        if (leftClick) ExecuteBuildFloor(fx1, fy1, fx2, fy2, fz);
+                        else ExecuteErase(fx1, fy1, fx2, fy2, fz);
+                        break;
+                    case ACTION_DRAW_LADDER:
+                        if (leftClick) ExecuteBuildLadder(fx1, fy1, fx2, fy2, fz);
+                        else ExecuteErase(fx1, fy1, fx2, fy2, fz);
+                        break;
+                    case ACTION_DRAW_SOIL_DIRT:
+                        if (leftClick) ExecuteBuildSoil(fx1, fy1, fx2, fy2, fz, CELL_WALL, MAT_DIRT, "dirt");
+                        else ExecuteErase(fx1, fy1, fx2, fy2, fz);
+                        break;
+                    case ACTION_DRAW_SOIL_ROCK:
+                        if (leftClick) ExecuteBuildRock(fx1, fy1, fx2, fy2, fz);
+                        else ExecuteErase(fx1, fy1, fx2, fy2, fz);
+                        break;
+                    default: break;
+                }
+            }
+            goto done_execute;
+        }
+
         int x1, y1, x2, y2;
         GetDragRect(&x1, &y1, &x2, &y2);
-        
+
         switch (inputAction) {
             // Draw actions
             case ACTION_DRAW_WALL:
@@ -3380,5 +3429,6 @@ void HandleInput(void) {
             default:
                 break;
         }
+        done_execute:;
     }
 }

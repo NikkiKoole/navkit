@@ -1,5 +1,33 @@
 # Long Patterns & Multi-Bar Recording
 
+> **Status: DONE** (2026-04-15). Delivered as a natural consequence of the
+> single-track pattern refactor on `soundsystem/single-track-patterns-v2`,
+> rather than as a separate workstream. Each phase landed organically:
+>
+> - **Phase 0** — `SEQ_MAX_STEPS` raised to 128 (8 bars) rather than the 256
+>   originally proposed. Half the memory, covers every musical phrase we've
+>   tried. Can raise again if needed.
+> - **Phase 1** — Per-track length UI: right-click the track name in the
+>   step grid to cycle 16/32/64/128, wheel scroll for fine tuning. Piano
+>   roll has `prChainScroll` with auto-follow playhead. Per-track auto-paging
+>   in the step grid with "N/M" page indicator.
+> - **Phase 2** — Recording into long patterns: `recQuantizeStep` wraps at
+>   the track's own length, so drums can loop at 16 while bass records across
+>   64 steps. Sampler track recording was the last gap — fixed in commit
+>   `1f7b054` (three bugs in `recTargetTrack`, the sampler-branch early
+>   returns, and pattern `trackType` initialization). Verified end-to-end
+>   2026-04-15: set bass to length 64, record 4 bars while drums loop at 16,
+>   both tracks loop correctly on playback.
+> - **Phase 3** — Pattern master length: superseded by the single-track
+>   refactor's arrangement-level `barLengthSteps`. Tracks loop within the bar
+>   independently, which is the cleaner semantic — no "whose length wins"
+>   question to answer.
+>
+> This doc is kept as a reference for the original reasoning. The
+> implementation lives across the single-track branch commits.
+
+---
+
 ## Problem
 
 You want to: loop a 1-bar drum beat, record 8 bars of piano over it, then edit and arrange the result.

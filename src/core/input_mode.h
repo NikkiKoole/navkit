@@ -152,6 +152,7 @@ extern bool brushStrokeActive;     // True during continuous drag
 extern bool isDragging;
 extern int dragStartX;
 extern int dragStartY;
+extern int dragStartZ;
 
 // Quick edit mode - left/right click draws/erases walls in normal mode
 extern bool quickEditEnabled;

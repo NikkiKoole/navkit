@@ -456,7 +456,7 @@ static void DrawGroundLevel(float size, int z, int minX, int minY, int maxX, int
 static void DrawCellGrid(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
@@ -667,7 +667,7 @@ void DrawRampOverlay(void);
 void DrawRampOverlay(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
@@ -715,7 +715,7 @@ void DrawRampOverlay(void) {
 static void DrawGrassOverlay(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
@@ -790,7 +790,7 @@ static void DrawGrassOverlay(void) {
 static void DrawPlantOverlay(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
@@ -836,7 +836,7 @@ static void DrawPlantOverlay(void) {
 static void DrawMud(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
@@ -892,7 +892,7 @@ static unsigned char SnowAlpha(uint8_t level) {
 static void DrawSnow(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
@@ -970,7 +970,7 @@ static void DrawWater(void) {
     if (waterActiveCells == 0) return;
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
@@ -1531,7 +1531,7 @@ static void DrawCarriedItem(const Mover* m, float sx, float sy, int viewZ, Color
 static void DrawMovers(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
     
     // Frustum culling bounds with one cell margin for partially visible movers
     float margin = size;
@@ -1705,7 +1705,7 @@ static void DrawMovers(void) {
 static void DrawAnimals(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     // Frustum culling bounds
     float margin = size;
@@ -1802,7 +1802,7 @@ static void DrawAnimals(void) {
 static void DrawTrains(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     float margin = size;
     float minScreenX = -margin;
@@ -2075,7 +2075,7 @@ static void DrawJobLines(void) {
 static void DrawItems(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     for (int i = 0; i < itemHighWaterMark; i++) {
         Item* item = &items[i];
@@ -2198,7 +2198,7 @@ static void DrawGatherZones(void) {
 static void DrawStockpileTiles(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         Stockpile* sp = &stockpiles[i];
@@ -2252,7 +2252,7 @@ static void DrawStockpileTiles(void) {
 static void DrawStockpileItems(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         Stockpile* sp = &stockpiles[i];
@@ -2345,7 +2345,7 @@ static void DrawStockpileItems(void) {
 static void DrawFurniture(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     for (int i = 0; i < MAX_FURNITURE; i++) {
         Furniture* f = &furniture[i];
@@ -2387,7 +2387,7 @@ static void DrawFurniture(void) {
 static void DrawWorkshops(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     for (int i = 0; i < MAX_WORKSHOPS; i++) {
         Workshop* ws = &workshops[i];
@@ -3055,7 +3055,7 @@ static void DrawMist(void) {
 static void DrawFrontView(void) {
     PROFILE_BEGIN(FrontView);
     float size = CELL_SIZE * zoom;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
     // Visible X range (reuse frustum culling logic)
     int screenW = GetScreenWidth();
@@ -3110,6 +3110,9 @@ static void DrawFrontView(void) {
                 float screenX = offset.x + x * size;
                 Rectangle dest = {screenX, screenY, size, size};
 
+                Color lightTint = GetLightColor(x, worldY, z, skyColor);
+                Color baseTint = MultiplyColor(layerTint, lightTint);
+
                 if (cell == CELL_AIR) {
                     // Floor surfaces: squished sprite on all layers, edge details on front only
                     float floorThickness = size * 0.25f;
@@ -3126,7 +3129,7 @@ static void DrawFrontView(void) {
                     }
 
                     if (floorSprite >= 0) {
-                        Color matTint = MultiplyColor(MaterialTint(floorMat), layerTint);
+                        Color matTint = MultiplyColor(MaterialTint(floorMat), baseTint);
                         float floorTop = screenY + size - floorThickness;
 
                         // Top surface: squished sprite (all layers)
@@ -3140,14 +3143,14 @@ static void DrawFrontView(void) {
                     if (cell == CELL_RAMP_E)      sprite = SPRITE_triangle_e;
                     else if (cell == CELL_RAMP_W)  sprite = SPRITE_triangle_w;
                     else                           sprite = SPRITE_full_block; // N/S ramps seen head-on
-                    Color tint = layerTint;
+                    Color tint = baseTint;
                     MaterialType rampMat = GetWallMaterial(x, worldY, z);
                     if (rampMat != MAT_NONE) tint = MultiplyColor(tint, MaterialTint(rampMat));
                     DrawTexturePro(atlas, SpriteGetRect(sprite), dest, (Vector2){0,0}, 0, tint);
                 } else {
                     // Solid cell (wall, dirt, tree, etc)
                     int sprite = GetWallSpriteAt(x, worldY, z, cell);
-                    Color tint = layerTint;
+                    Color tint = baseTint;
                     if ((cell == CELL_WALL && !IsWallNatural(x, worldY, z)) || cell == CELL_DOOR || cell == CELL_WINDOW) {
                         tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, worldY, z)));
                     }
@@ -3184,7 +3187,8 @@ static void DrawFrontView(void) {
 
                 float screenX = offset.x + x * size;
                 Rectangle grassDest = {screenX, screenY, size, size};
-                Color grassTint = layerTint;
+                Color grassLight = GetLightColor(x, worldY, zBelow, skyColor);
+                Color grassTint = MultiplyColor(layerTint, grassLight);
                 if (isReeds) grassTint = MultiplyColor(grassTint, (Color){120, 200, 180, 255});
                 else grassTint = MultiplyColor(grassTint, biomePresets[selectedBiome].grassTint);
                 DrawTexturePro(atlas, SpriteGetRect(grassSprite), grassDest, (Vector2){0,0}, 0, grassTint);
@@ -3228,6 +3232,85 @@ static void DrawFrontView(void) {
                 }
                 default: break;
             }
+        }
+
+        // Draw stockpile tiles for this layer
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            Stockpile* sp = &stockpiles[i];
+            if (!sp->active) continue;
+            if (sp->z < minZ || sp->z >= maxZ) continue;
+            float spScreenY = offset.y + (gridDepth - 1 - sp->z) * size - layerOffsetY;
+            for (int dy = 0; dy < sp->height; dy++) {
+                if (sp->y + dy != worldY) continue;
+                for (int dx = 0; dx < sp->width; dx++) {
+                    int slotIdx = dy * sp->width + dx;
+                    if (!sp->cells[slotIdx]) continue;
+                    int gx = sp->x + dx;
+                    if (gx < minX || gx >= maxX) continue;
+                    float spScreenX = offset.x + gx * size;
+                    Rectangle dest = {spScreenX, spScreenY, size, size};
+                    DrawTexturePro(atlas, SpriteGetRect(SPRITE_stockpile), dest, (Vector2){0,0}, 0, layerTint);
+                }
+            }
+        }
+
+        // Draw workshops for this layer
+        for (int i = 0; i < MAX_WORKSHOPS; i++) {
+            Workshop* ws = &workshops[i];
+            if (!ws->active) continue;
+            if (ws->z < minZ || ws->z >= maxZ) continue;
+            float wsScreenY = offset.y + (gridDepth - 1 - ws->z) * size - layerOffsetY;
+            for (int dy = 0; dy < ws->height; dy++) {
+                if (ws->y + dy != worldY) continue;
+                for (int dx = 0; dx < ws->width; dx++) {
+                    int gx = ws->x + dx;
+                    if (gx < minX || gx >= maxX) continue;
+                    float wsScreenX = offset.x + gx * size;
+                    Rectangle dest = {wsScreenX, wsScreenY, size, size};
+                    char tile = ws->template[dy * ws->width + dx];
+                    int wsSprite = SPRITE_generic;
+                    Color wsTint = layerTint;
+                    switch (tile) {
+                        case WT_BLOCK:
+                            wsTint = MultiplyColor(layerTint, (Color){140, 100, 60, 255});
+                            break;
+                        case WT_WORK:
+                            if (ws->type == WORKSHOP_STOVE) wsSprite = SPRITE_stove;
+                            else if (ws->type == WORKSHOP_COUNTER) wsSprite = SPRITE_counter;
+                            if (wsSprite == SPRITE_generic) wsTint = MultiplyColor(layerTint, (Color){150, 220, 150, 255});
+                            break;
+                        case WT_OUTPUT:
+                            wsTint = MultiplyColor(layerTint, (Color){150, 180, 220, 255});
+                            break;
+                        default:
+                            wsTint = MultiplyColor(layerTint, (Color){200, 180, 140, 255});
+                            break;
+                    }
+                    DrawTexturePro(atlas, SpriteGetRect(wsSprite), dest, (Vector2){0,0}, 0, wsTint);
+                }
+            }
+        }
+
+        // Draw furniture for this layer
+        for (int i = 0; i < MAX_FURNITURE; i++) {
+            Furniture* f = &furniture[i];
+            if (!f->active) continue;
+            if (f->y != worldY) continue;
+            if (f->z < minZ || f->z >= maxZ) continue;
+            if (f->x < minX || f->x >= maxX) continue;
+            float fScreenX = offset.x + f->x * size;
+            float fScreenY = offset.y + (gridDepth - 1 - f->z) * size - layerOffsetY;
+            int fSprite;
+            switch (f->type) {
+                case FURNITURE_LEAF_PILE:  fSprite = SPRITE_grass_tall;  break;
+                case FURNITURE_GRASS_PILE: fSprite = SPRITE_grass_tall;  break;
+                case FURNITURE_PLANK_BED:  fSprite = SPRITE_bed;         break;
+                case FURNITURE_CHAIR:      fSprite = SPRITE_chair;       break;
+                case FURNITURE_TOILET:     fSprite = SPRITE_toilet;      break;
+                default:                   fSprite = SPRITE_generic;     break;
+            }
+            Rectangle dest = {fScreenX, fScreenY, size, size};
+            DrawTexturePro(atlas, SpriteGetRect(fSprite), dest, (Vector2){0,0}, 0, layerTint);
         }
 
         // Draw fire for this layer
@@ -3300,6 +3383,65 @@ static void DrawFrontView(void) {
                 Rectangle waterDest = {screenX, screenY + (size - waterHeight), size, waterHeight};
                 unsigned char alpha = (unsigned char)(brightness * 180);
                 DrawRectangleRec(waterDest, (Color){30, 100, 200, alpha});
+            }
+        }
+
+        // Draw stockpile items for this layer
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            Stockpile* sp = &stockpiles[i];
+            if (!sp->active) continue;
+            if (sp->z < minZ || sp->z >= maxZ) continue;
+            float spScreenY = offset.y + (gridDepth - 1 - sp->z) * size - layerOffsetY;
+            for (int dy = 0; dy < sp->height; dy++) {
+                if (sp->y + dy != worldY) continue;
+                for (int dx = 0; dx < sp->width; dx++) {
+                    int slotIdx = dy * sp->width + dx;
+                    if (!sp->cells[slotIdx]) continue;
+                    int gx = sp->x + dx;
+                    if (gx < minX || gx >= maxX) continue;
+                    float spScreenX = offset.x + gx * size;
+
+                    int slotItemIdx = sp->slots[slotIdx];
+                    bool isContainer = slotItemIdx >= 0 && slotItemIdx < MAX_ITEMS
+                        && items[slotItemIdx].active && ItemIsContainer(items[slotItemIdx].type);
+
+                    if (isContainer) {
+                        ItemType ctype = items[slotItemIdx].type;
+                        int sprite = ItemSpriteForTypeMaterial(ctype, items[slotItemIdx].material);
+                        float itemSz = size * ITEM_SIZE_STOCKPILE * 1.2f;
+                        Color tint = MultiplyColor(layerTint, MaterialTint((MaterialType)items[slotItemIdx].material));
+                        tint = MultiplyColor(tint, ItemTypeTint(ctype));
+                        float ix = spScreenX + size * 0.5f - itemSz * 0.5f;
+                        float iy = spScreenY + size * 0.5f - itemSz * 0.5f;
+                        Rectangle dest = {ix, iy, itemSz, itemSz};
+                        if (ItemUsesBorder(ctype)) {
+                            Color borderTint = MultiplyColor(layerTint, ItemBorderTint(ctype));
+                            DrawItemWithBorder(sprite, dest, tint, borderTint);
+                        } else {
+                            DrawTexturePro(atlas, SpriteGetRect(sprite), dest, (Vector2){0,0}, 0, tint);
+                        }
+                    } else {
+                        if (sp->slotCounts[slotIdx] <= 0) continue;
+                        ItemType type = sp->slotTypes[slotIdx];
+                        int sprite = ItemSpriteForTypeMaterial(type, sp->slotMaterials[slotIdx]);
+                        int visibleCount = sp->slotCounts[slotIdx] > 5 ? 5 : sp->slotCounts[slotIdx];
+                        float itemSz = size * ITEM_SIZE_STOCKPILE;
+                        float stackOffset = size * 0.08f;
+                        Color tint = MultiplyColor(layerTint, MaterialTint((MaterialType)sp->slotMaterials[slotIdx]));
+                        tint = MultiplyColor(tint, ItemTypeTint(type));
+                        for (int s = 0; s < visibleCount; s++) {
+                            float ix = spScreenX + size * 0.5f - itemSz * 0.5f - s * stackOffset;
+                            float iy = spScreenY + size * 0.5f - itemSz * 0.5f - s * stackOffset;
+                            Rectangle dest = {ix, iy, itemSz, itemSz};
+                            if (ItemUsesBorder(type)) {
+                                Color borderTint = MultiplyColor(layerTint, ItemBorderTint(type));
+                                DrawItemWithBorder(sprite, dest, tint, borderTint);
+                            } else {
+                                DrawTexturePro(atlas, SpriteGetRect(sprite), dest, (Vector2){0,0}, 0, tint);
+                            }
+                        }
+                    }
+                }
             }
         }
 

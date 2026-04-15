@@ -147,6 +147,16 @@ typedef struct SynthPatch {
     int p_fmLfoSync;
     float p_fmLfoPhaseOffset;
 
+    // Per-LFO transport-sync mode: when true AND this LFO is tempo-synced,
+    // phase is derived from beatPosition (survives note-on resets, so multi-bar
+    // cycles actually complete). When false (default), LFO retriggers per note.
+    // Also forced on globally via synthCtx->lfoTransportSync ("master override").
+    bool p_filterLfoTransportSync;
+    bool p_resoLfoTransportSync;
+    bool p_ampLfoTransportSync;
+    bool p_pitchLfoTransportSync;
+    bool p_fmLfoTransportSync;
+
     // FM
     float p_fmModRatio;
     float p_fmModIndex;

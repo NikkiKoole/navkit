@@ -1,0 +1,772 @@
+# PixelSynth DAW song (format 2)
+# CPU stress test: all 8 tracks active, every effect enabled, 32 voices
+
+[song]
+format = 2
+songName = "stress-test"
+bpm = 120
+stepCount = 16
+grooveSwing = 0
+grooveJitter = 0
+
+[scale]
+enabled = false
+root = 0
+type = 0
+
+[groove]
+kickNudge = 0
+snareDelay = 0
+hatNudge = 0
+clapDelay = 0
+swing = 0
+jitter = 0
+trackSwing0 = 0
+trackTranspose0 = 0
+trackSwing1 = 0
+trackTranspose1 = 0
+trackSwing2 = 0
+trackTranspose2 = 0
+trackSwing3 = 0
+trackTranspose3 = 0
+trackSwing4 = 0
+trackTranspose4 = 0
+trackSwing5 = 0
+trackTranspose5 = 0
+trackSwing6 = 0
+trackTranspose6 = 0
+trackSwing7 = 0
+trackTranspose7 = 0
+trackSwing8 = 0
+trackTranspose8 = 0
+trackSwing9 = 0
+trackTranspose9 = 0
+trackSwing10 = 0
+trackTranspose10 = 0
+trackSwing11 = 0
+trackTranspose11 = 0
+melodyTimingJitter = 0
+melodyVelocityJitter = 0
+
+[settings]
+masterVol = 0.3
+voiceRandomVowel = false
+masterSpeed = 1
+chromaticMode = false
+chromaticSample = 0
+chromaticRoot = 60
+
+[patch.0]
+name = "FM Kick"
+waveType = fm
+envelopeEnabled = true
+attack = 0
+decay = 0.4
+sustain = 0
+release = 0.05
+volume = 0.7
+filterEnabled = true
+filterCutoff = 0.8
+filterResonance = 0.2
+fmRatio = 2
+fmDepth = 0.6
+fmDecay = 0.15
+
+[patch.1]
+name = "FM Snare"
+waveType = fm
+envelopeEnabled = true
+attack = 0
+decay = 0.25
+sustain = 0
+release = 0.05
+volume = 0.6
+filterEnabled = true
+filterCutoff = 0.9
+filterResonance = 0.1
+fmRatio = 7
+fmDepth = 0.8
+fmDecay = 0.1
+
+[patch.2]
+name = "FM Hat"
+waveType = fm
+envelopeEnabled = true
+attack = 0
+decay = 0.1
+sustain = 0
+release = 0.02
+volume = 0.4
+filterEnabled = true
+filterCutoff = 1
+filterResonance = 0.3
+fmRatio = 14
+fmDepth = 1
+fmDecay = 0.05
+
+[patch.3]
+name = "FM Clap"
+waveType = fm
+envelopeEnabled = true
+attack = 0
+decay = 0.3
+sustain = 0
+release = 0.05
+volume = 0.5
+filterEnabled = true
+filterCutoff = 0.7
+filterResonance = 0.4
+fmRatio = 5
+fmDepth = 0.7
+fmDecay = 0.2
+
+[patch.4]
+name = "FM Bass"
+waveType = fm
+envelopeEnabled = true
+attack = 0.01
+decay = 0.6
+sustain = 0.4
+release = 0.1
+volume = 0.5
+filterEnabled = true
+filterCutoff = 0.5
+filterResonance = 0.4
+fmRatio = 1
+fmDepth = 0.4
+fmDecay = 0.3
+monoMode = true
+
+[patch.5]
+name = "Additive Pad"
+waveType = additive
+envelopeEnabled = true
+attack = 0.3
+decay = 0.5
+sustain = 0.7
+release = 0.5
+volume = 0.3
+filterEnabled = true
+filterCutoff = 0.6
+filterResonance = 0.3
+unisonVoices = 4
+unisonDetune = 0.15
+
+[patch.6]
+name = "FM Chords"
+waveType = fm
+envelopeEnabled = true
+attack = 0.05
+decay = 0.4
+sustain = 0.5
+release = 0.3
+volume = 0.3
+filterEnabled = true
+filterCutoff = 0.7
+filterResonance = 0.2
+fmRatio = 3
+fmDepth = 0.5
+fmDecay = 0.4
+unisonVoices = 3
+unisonDetune = 0.1
+
+[patch.7]
+name = "Sampler"
+waveType = saw
+
+[mixer]
+vol0 = 0.8
+pan0 = 0
+reverbSend0 = 0.3
+delaySend0 = 0.2
+mute0 = false
+solo0 = false
+filterOn0 = true
+filterCut0 = 0.8
+filterRes0 = 0.2
+filterType0 = 0
+distOn0 = true
+distDrive0 = 2.5
+distMix0 = 0.3
+distMode0 = 0
+delayOn0 = true
+delaySync0 = false
+delaySyncDiv0 = 0
+delayTime0 = 0.3
+delayFB0 = 0.4
+delayMix0 = 0.25
+eqOn0 = true
+eqLowGain0 = 3
+eqHighGain0 = -2
+eqLowFreq0 = 0.3
+eqHighFreq0 = 0.7
+chorusOn0 = true
+chorusBBD0 = false
+chorusRate0 = 0.4
+chorusDepth0 = 0.5
+chorusMix0 = 0.3
+chorusDelay0 = 0.5
+phaserOn0 = true
+phaserRate0 = 0.3
+phaserDepth0 = 0.6
+phaserMix0 = 0.3
+phaserFB0 = 0.5
+phaserStages0 = 4
+combOn0 = true
+combFreq0 = 0.4
+combFB0 = 0.5
+combMix0 = 0.2
+combDamping0 = 0.3
+octaverOn0 = false
+octaverMix0 = 0
+ringModOn0 = true
+ringModFreq0 = 0.3
+ringModMix0 = 0.15
+leslieOn0 = true
+leslieSpeed0 = 0.5
+leslieDrive0 = 0.3
+leslieBal0 = 0.5
+leslieDopp0 = 0.3
+leslieMix0 = 0.25
+wahOn0 = true
+wahMode0 = 0
+wahRate0 = 0.4
+wahSens0 = 0.5
+wahFreqLow0 = 0.2
+wahFreqHigh0 = 0.8
+wahReso0 = 0.4
+wahMix0 = 0.25
+tremoloOn0 = true
+tremoloRate0 = 0.3
+tremoloDepth0 = 0.4
+tremoloShape0 = 0
+compOn0 = true
+compThresh0 = 0.5
+compRatio0 = 4
+compAttack0 = 0.01
+compRelease0 = 0.1
+compGain0 = 2
+vol1 = 0.7
+pan1 = 0
+reverbSend1 = 0.3
+delaySend1 = 0.2
+mute1 = false
+solo1 = false
+filterOn1 = true
+filterCut1 = 0.7
+filterRes1 = 0.3
+filterType1 = 0
+distOn1 = true
+distDrive1 = 2
+distMix1 = 0.3
+distMode1 = 0
+delayOn1 = true
+delayTime1 = 0.25
+delayFB1 = 0.35
+delayMix1 = 0.2
+eqOn1 = true
+eqLowGain1 = 2
+eqHighGain1 = -1
+eqLowFreq1 = 0.3
+eqHighFreq1 = 0.7
+chorusOn1 = true
+chorusRate1 = 0.5
+chorusDepth1 = 0.4
+chorusMix1 = 0.25
+phaserOn1 = true
+phaserRate1 = 0.4
+phaserDepth1 = 0.5
+phaserMix1 = 0.25
+phaserFB1 = 0.4
+combOn1 = true
+combFreq1 = 0.5
+combFB1 = 0.4
+combMix1 = 0.2
+ringModOn1 = true
+ringModFreq1 = 0.4
+ringModMix1 = 0.15
+leslieOn1 = true
+leslieSpeed1 = 0.4
+leslieDrive1 = 0.2
+leslieMix1 = 0.2
+wahOn1 = true
+wahRate1 = 0.5
+wahSens1 = 0.4
+wahMix1 = 0.2
+tremoloOn1 = true
+tremoloRate1 = 0.4
+tremoloDepth1 = 0.3
+compOn1 = true
+compThresh1 = 0.5
+compRatio1 = 3
+compAttack1 = 0.01
+compRelease1 = 0.1
+vol2 = 0.5
+pan2 = 0
+reverbSend2 = 0.2
+delaySend2 = 0.1
+mute2 = false
+solo2 = false
+filterOn2 = true
+filterCut2 = 1
+filterRes2 = 0.1
+distOn2 = true
+distDrive2 = 1.5
+distMix2 = 0.2
+delayOn2 = true
+delayTime2 = 0.15
+delayFB2 = 0.3
+delayMix2 = 0.2
+eqOn2 = true
+eqLowGain2 = -3
+eqHighGain2 = 2
+chorusOn2 = true
+chorusRate2 = 0.6
+chorusDepth2 = 0.3
+chorusMix2 = 0.2
+phaserOn2 = true
+phaserRate2 = 0.5
+phaserDepth2 = 0.4
+phaserMix2 = 0.2
+combOn2 = true
+combFreq2 = 0.6
+combFB2 = 0.3
+combMix2 = 0.15
+ringModOn2 = true
+ringModFreq2 = 0.5
+ringModMix2 = 0.1
+leslieOn2 = true
+leslieSpeed2 = 0.6
+leslieMix2 = 0.2
+wahOn2 = true
+wahRate2 = 0.6
+wahMix2 = 0.2
+tremoloOn2 = true
+tremoloRate2 = 0.5
+tremoloDepth2 = 0.3
+compOn2 = true
+compThresh2 = 0.4
+compRatio2 = 3
+vol3 = 0.5
+pan3 = 0
+reverbSend3 = 0.2
+mute3 = false
+solo3 = false
+filterOn3 = true
+filterCut3 = 0.6
+filterRes3 = 0.3
+distOn3 = true
+distDrive3 = 2
+distMix3 = 0.3
+delayOn3 = true
+delayTime3 = 0.2
+delayFB3 = 0.3
+delayMix3 = 0.2
+eqOn3 = true
+chorusOn3 = true
+chorusRate3 = 0.3
+chorusMix3 = 0.2
+phaserOn3 = true
+phaserRate3 = 0.3
+phaserMix3 = 0.2
+combOn3 = true
+combFreq3 = 0.3
+combMix3 = 0.15
+ringModOn3 = true
+ringModFreq3 = 0.3
+ringModMix3 = 0.1
+leslieOn3 = true
+leslieSpeed3 = 0.3
+leslieMix3 = 0.2
+wahOn3 = true
+wahRate3 = 0.3
+wahMix3 = 0.2
+tremoloOn3 = true
+tremoloRate3 = 0.3
+tremoloDepth3 = 0.3
+compOn3 = true
+compThresh3 = 0.5
+compRatio3 = 3
+vol4 = 0.5
+pan4 = -0.3
+reverbSend4 = 0.4
+delaySend4 = 0.3
+mute4 = false
+solo4 = false
+filterOn4 = true
+filterCut4 = 0.5
+filterRes4 = 0.4
+distOn4 = true
+distDrive4 = 1.8
+distMix4 = 0.2
+delayOn4 = true
+delayTime4 = 0.35
+delayFB4 = 0.4
+delayMix4 = 0.25
+eqOn4 = true
+eqLowGain4 = 4
+eqHighGain4 = -3
+chorusOn4 = true
+chorusRate4 = 0.3
+chorusDepth4 = 0.4
+chorusMix4 = 0.3
+phaserOn4 = true
+phaserRate4 = 0.25
+phaserDepth4 = 0.5
+phaserMix4 = 0.3
+combOn4 = true
+combFreq4 = 0.4
+combMix4 = 0.2
+ringModOn4 = true
+ringModFreq4 = 0.2
+ringModMix4 = 0.1
+leslieOn4 = true
+leslieSpeed4 = 0.4
+leslieMix4 = 0.25
+wahOn4 = true
+wahRate4 = 0.4
+wahMix4 = 0.25
+tremoloOn4 = true
+tremoloRate4 = 0.35
+tremoloDepth4 = 0.4
+compOn4 = true
+compThresh4 = 0.4
+compRatio4 = 4
+vol5 = 0.4
+pan5 = 0.3
+reverbSend5 = 0.5
+delaySend5 = 0.3
+mute5 = false
+solo5 = false
+filterOn5 = true
+filterCut5 = 0.6
+filterRes5 = 0.3
+distOn5 = true
+distDrive5 = 1.5
+distMix5 = 0.2
+delayOn5 = true
+delayTime5 = 0.4
+delayFB5 = 0.35
+delayMix5 = 0.2
+eqOn5 = true
+eqLowGain5 = 2
+eqHighGain5 = 1
+chorusOn5 = true
+chorusRate5 = 0.4
+chorusDepth5 = 0.5
+chorusMix5 = 0.35
+phaserOn5 = true
+phaserRate5 = 0.35
+phaserDepth5 = 0.6
+phaserMix5 = 0.3
+combOn5 = true
+combFreq5 = 0.5
+combMix5 = 0.2
+ringModOn5 = true
+ringModFreq5 = 0.25
+ringModMix5 = 0.1
+leslieOn5 = true
+leslieSpeed5 = 0.5
+leslieMix5 = 0.25
+wahOn5 = true
+wahRate5 = 0.5
+wahMix5 = 0.25
+tremoloOn5 = true
+tremoloRate5 = 0.4
+tremoloDepth5 = 0.4
+compOn5 = true
+compThresh5 = 0.45
+compRatio5 = 3
+vol6 = 0.35
+pan6 = -0.5
+reverbSend6 = 0.4
+delaySend6 = 0.2
+mute6 = false
+solo6 = false
+filterOn6 = true
+filterCut6 = 0.7
+filterRes6 = 0.2
+distOn6 = true
+distDrive6 = 2
+distMix6 = 0.25
+delayOn6 = true
+delayTime6 = 0.3
+delayFB6 = 0.3
+delayMix6 = 0.2
+eqOn6 = true
+chorusOn6 = true
+chorusRate6 = 0.5
+chorusMix6 = 0.3
+phaserOn6 = true
+phaserRate6 = 0.4
+phaserMix6 = 0.25
+combOn6 = true
+combFreq6 = 0.45
+combMix6 = 0.2
+ringModOn6 = true
+ringModFreq6 = 0.35
+ringModMix6 = 0.1
+leslieOn6 = true
+leslieSpeed6 = 0.45
+leslieMix6 = 0.2
+wahOn6 = true
+wahRate6 = 0.45
+wahMix6 = 0.2
+tremoloOn6 = true
+tremoloRate6 = 0.45
+tremoloDepth6 = 0.35
+compOn6 = true
+compThresh6 = 0.5
+compRatio6 = 3
+vol7 = 0.3
+pan7 = 0.5
+reverbSend7 = 0.3
+mute7 = false
+solo7 = false
+filterOn7 = true
+filterCut7 = 0.8
+filterRes7 = 0.2
+distOn7 = true
+distDrive7 = 1.5
+distMix7 = 0.2
+delayOn7 = true
+delayTime7 = 0.25
+delayFB7 = 0.3
+delayMix7 = 0.2
+eqOn7 = true
+chorusOn7 = true
+chorusRate7 = 0.4
+chorusMix7 = 0.25
+phaserOn7 = true
+phaserRate7 = 0.3
+phaserMix7 = 0.2
+combOn7 = true
+combFreq7 = 0.35
+combMix7 = 0.15
+ringModOn7 = true
+ringModFreq7 = 0.3
+ringModMix7 = 0.1
+leslieOn7 = true
+leslieSpeed7 = 0.35
+leslieMix7 = 0.2
+wahOn7 = true
+wahRate7 = 0.35
+wahMix7 = 0.2
+tremoloOn7 = true
+tremoloRate7 = 0.35
+tremoloDepth7 = 0.3
+compOn7 = true
+compThresh7 = 0.5
+compRatio7 = 3
+
+[masterfx]
+octaverOn = true
+octaverMix = 0.2
+octaverSubLevel = 0.5
+octaverTone = 0.5
+tremoloOn = true
+tremoloRate = 0.3
+tremoloDepth = 0.3
+tremoloShape = 0
+leslieOn = true
+leslieSpeed = 0.5
+leslieDrive = 0.3
+leslieBal = 0.5
+leslieDopp = 0.3
+leslieMix = 0.2
+wahOn = true
+wahMode = 0
+wahRate = 0.4
+wahSensitivity = 0.5
+wahFreqLow = 0.2
+wahFreqHigh = 0.8
+wahResonance = 0.4
+wahMix = 0.2
+distOn = true
+distDrive = 2
+distTone = 0.7
+distMix = 0.3
+distMode = 0
+crushOn = true
+crushBits = 12
+crushRate = 2
+chorusOn = true
+chorusRate = 0.4
+chorusDepth = 0.5
+chorusMix = 0.3
+flangerOn = true
+flangerRate = 0.3
+flangerDepth = 0.4
+flangerFB = 0.5
+flangerMix = 0.25
+phaserOn = true
+phaserRate = 0.3
+phaserDepth = 0.5
+phaserFB = 0.5
+phaserStages = 6
+phaserMix = 0.25
+combOn = true
+combFreq = 0.4
+combFB = 0.5
+combMix = 0.2
+combDamping = 0.3
+ringModOn = true
+ringModFreq = 0.3
+ringModMix = 0.15
+tapeOn = true
+tapeSat = 0.5
+tapeTone = 0.6
+tapeWow = 0.3
+tapeFlutter = 0.3
+tapeNoise = 0.1
+tapeSpeed = 30
+vinylOn = true
+vinylCrackle = 0.2
+vinylDust = 0.1
+vinylWarp = 0.1
+delayOn = true
+delayTime = 0.35
+delayFB = 0.4
+delayMix = 0.3
+delayFilter = 0.5
+delayStereo = 0.3
+reverbOn = true
+reverbMix = 0.4
+reverbDecay = 0.7
+reverbDamping = 0.5
+reverbPreDelay = 0.02
+reverbSize = 0.8
+reverbFDN = false
+sidechainOn = true
+sidechainThresh = 0.3
+sidechainRatio = 4
+sidechainAttack = 0.01
+sidechainRelease = 0.15
+sidechainMix = 0.3
+mbOn = true
+mbLowCross = 200
+mbHighCross = 3000
+mbLowGain = 1.2
+mbMidGain = 1.0
+mbHighGain = 0.9
+mbDrive = 1.5
+eqOn = true
+eqLowGain = 3
+eqHighGain = -2
+subBassOn = true
+subBassFreq = 60
+subBassGain = 0.3
+compOn = true
+compThresh = 0.4
+compRatio = 4
+compAttack = 0.01
+compRelease = 0.1
+compGain = 3
+
+[sidechain]
+mode = 0
+
+[tapefx]
+dubLoopEnabled = true
+dubDelay = 0.5
+dubFeedback = 0.6
+dubDrift = 0.3
+dubAge = 0.4
+dubTone = 0.5
+dubSaturation = 0.4
+dubHeads = 3
+dubSpeed = 1
+
+[arrangement]
+length = 1
+loopsPerPattern = 1
+songMode = false
+patterns = 0
+
+[pertrack]
+arrMode = true
+arrLength = 1
+arr0 = 0
+arr1 = 1
+arr2 = 2
+arr3 = 3
+arr4 = 4
+arr5 = 5
+arr6 = 6
+arr7 = 7
+
+[pattern.0]
+trackType = drum
+length = 16
+d step=0 vel=0.9
+d step=4 vel=0.9
+d step=8 vel=0.9
+d step=12 vel=0.9
+
+[pattern.1]
+trackType = drum
+length = 16
+d step=4 vel=0.8
+d step=12 vel=0.8
+d step=14 vel=0.5
+
+[pattern.2]
+trackType = drum
+length = 16
+d step=0 vel=0.6
+d step=2 vel=0.5
+d step=4 vel=0.6
+d step=6 vel=0.5
+d step=8 vel=0.6
+d step=10 vel=0.5
+d step=12 vel=0.6
+d step=14 vel=0.5
+
+[pattern.3]
+trackType = drum
+length = 16
+d step=2 vel=0.7
+d step=6 vel=0.5
+d step=10 vel=0.7
+d step=14 vel=0.5
+
+[pattern.4]
+trackType = melodic
+length = 16
+m step=0 note=C2 vel=0.8 gate=4
+m step=4 note=C2 vel=0.7 gate=2
+m step=6 note=Eb2 vel=0.6 gate=2
+m step=8 note=F2 vel=0.8 gate=4
+m step=12 note=Eb2 vel=0.7 gate=4
+
+[pattern.5]
+trackType = melodic
+length = 16
+m step=0 note=C4 vel=0.5 gate=16
+m step=0 note=Eb4 vel=0.5 gate=16
+m step=0 note=G4 vel=0.5 gate=16
+m step=0 note=Bb4 vel=0.4 gate=16
+m step=8 note=F4 vel=0.5 gate=8
+m step=8 note=Ab4 vel=0.5 gate=8
+m step=8 note=C5 vel=0.5 gate=8
+m step=8 note=Eb5 vel=0.4 gate=8
+
+[pattern.6]
+trackType = melodic
+length = 16
+m step=0 note=C3 vel=0.5 gate=8
+m step=0 note=Eb3 vel=0.5 gate=8
+m step=0 note=G3 vel=0.5 gate=8
+m step=4 note=F3 vel=0.5 gate=4
+m step=4 note=Ab3 vel=0.5 gate=4
+m step=4 note=C4 vel=0.5 gate=4
+m step=8 note=Eb3 vel=0.5 gate=8
+m step=8 note=G3 vel=0.5 gate=8
+m step=8 note=Bb3 vel=0.5 gate=8
+m step=12 note=Ab3 vel=0.5 gate=4
+m step=12 note=C4 vel=0.5 gate=4
+m step=12 note=Eb4 vel=0.5 gate=4
+
+[pattern.7]
+trackType = sampler
+length = 16

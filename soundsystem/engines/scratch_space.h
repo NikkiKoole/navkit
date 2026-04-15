@@ -301,6 +301,7 @@ static int scratchCommitSlice(const ScratchSpace *s, int sliceIndex, int bankSlo
 
     Sample *slot = &samplerCtx->samples[bankSlot];
     if (slot->loaded && slot->data && !slot->embedded) free(slot->data);
+    _samplerClearSp1200Backup(slot);
 
     slot->data = copy;
     slot->length = len;

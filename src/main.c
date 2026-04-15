@@ -353,31 +353,45 @@ Vector2 ScreenToGridFrontView(Vector2 screen) {
 
 // Front-view: find the best (x, y, z) under the cursor by iterating layers front-to-back.
 // Returns true if a valid cell was found, fills outX/outY/outZ.
-// "Valid" = in bounds and not empty air (has a solid cell, floor, item, mover, etc.)
+// Z is always computed with layerOffset=0 (frontmost layer formula) so it is stable
+// and consistent — changing frontViewY only changes which worldY layers are checked,
+// not the Z value returned for a given screen position.
 bool FrontViewPickCell(Vector2 screen, int *outX, int *outY, int *outZ) {
     int depthLayers = frontViewDepth;
     if (depthLayers < 1) depthLayers = 1;
     int startY = frontViewY - depthLayers + 1;
     if (startY < 0) startY = 0;
 
-    // Iterate front to back (frontmost layer = highest priority)
+    float size = CELL_SIZE * zoom;
+    float floorThickness = size * 0.25f;
+    if (floorThickness < 3.0f) floorThickness = 3.0f;
+
+    int gx = (int)((screen.x - offset.x) / size);
+    if (gx < 0) gx = 0;
+    if (gx >= gridWidth) gx = gridWidth - 1;
+
+    // Each depth layer renders with its own vertical offset, so compute gz per-layer.
+    // Front layer (depthLayers-1) has offset=0; back layers shift upward by floorThickness each step.
+    // screenY = offset.y + (gridDepth-1-z)*size - layerOffsetY
+    // => gz = ceil( (gridDepth-1) - (screenY - offset.y + layerOffsetY) / size )
+    int fallbackGz = -1;
     for (int layer = depthLayers - 1; layer >= 0; layer--) {
         int worldY = startY + layer;
         if (worldY < 0 || worldY >= gridHeight) continue;
 
-        Vector2 gv = ScreenToGridFrontViewLayer(screen, layer, depthLayers);
-        int gx = (int)gv.x;
-        int gz = (int)gv.y;
-        if (gx < 0 || gx >= gridWidth || gz < 0 || gz >= gridDepth) continue;
+        float layerOffsetY = (depthLayers - 1 - layer) * floorThickness;
+        float float_gz = (float)(gridDepth - 1) - (screen.y - offset.y + layerOffsetY) / size;
+        int gz = (int)ceilf(float_gz);
+        if (gz < 0 || gz >= gridDepth) continue;
 
-        // Check if there's anything interesting at this cell
+        if (fallbackGz < 0) fallbackGz = gz; // use front layer gz as fallback
+
         CellType cell = grid[gz][worldY][gx];
         bool hasContent = (cell != CELL_AIR)
             || HAS_FLOOR(gx, worldY, gz)
-            || (gz > 0 && CellIsSolid(grid[gz - 1][worldY][gx]))  // standing surface
+            || (gz > 0 && CellIsSolid(grid[gz - 1][worldY][gx]))
             || waterGrid[gz][worldY][gx].level > 0;
 
-        // Also check for entities at this position
         if (!hasContent) {
             for (int i = 0; i < itemHighWaterMark; i++) {
                 Item* it = &items[i];
@@ -385,10 +399,7 @@ bool FrontViewPickCell(Vector2 screen, int *outX, int *outY, int *outZ) {
                 if (it->state == ITEM_CARRIED || it->state == ITEM_IN_STOCKPILE) continue;
                 if ((int)(it->y / CELL_SIZE) == worldY &&
                     (int)(it->x / CELL_SIZE) == gx &&
-                    (int)it->z == gz) {
-                    hasContent = true;
-                    break;
-                }
+                    (int)it->z == gz) { hasContent = true; break; }
             }
         }
         if (!hasContent) {
@@ -397,26 +408,18 @@ bool FrontViewPickCell(Vector2 screen, int *outX, int *outY, int *outZ) {
                 if (!m->active) continue;
                 if ((int)(m->y / CELL_SIZE) == worldY &&
                     (int)(m->x / CELL_SIZE) == gx &&
-                    (int)m->z == gz) {
-                    hasContent = true;
-                    break;
-                }
+                    (int)m->z == gz) { hasContent = true; break; }
             }
         }
 
         if (hasContent) {
-            *outX = gx;
-            *outY = worldY;
-            *outZ = gz;
+            *outX = gx; *outY = worldY; *outZ = gz;
             return true;
         }
     }
 
-    // Fallback: front layer even if empty
-    Vector2 gv = ScreenToGridFrontViewLayer(screen, depthLayers - 1, depthLayers);
-    *outX = (int)gv.x;
-    *outY = frontViewY;
-    *outZ = (int)gv.y;
+    if (fallbackGz < 0) fallbackGz = 0;
+    *outX = gx; *outY = frontViewY; *outZ = fallbackGz;
     return false;
 }
 
@@ -486,43 +489,70 @@ int GetAnimalAtWorldPos(float wx, float wy, int wz) {
 }
 
 // Front-view mover finder: match by worldX and worldZ, filter by Y-slice range
-int GetMoverAtFrontView(float worldX, int worldZ, int yStart, int yEnd) {
+// Front-view mover finder: uses screen-space hit testing so hover is stable
+// regardless of frontViewY changes. Each mover's screen position is computed
+// from its actual layer index and layerOffset, then checked against mouse screen pos.
+int GetMoverAtFrontView(float screenX, float screenY, int yStart, int yEnd) {
+    float size = CELL_SIZE * zoom;
+    int depthLayers = frontViewDepth < 1 ? 1 : frontViewDepth;
+    float floorThickness = size * 0.25f;
+    if (floorThickness < 3.0f) floorThickness = 3.0f;
+    float hitRadius = size * MOVER_SIZE * 0.5f;
     float bestDist = 999999.0f;
     int bestIdx = -1;
-    float radius = CELL_SIZE * 0.6f;
 
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         if (!m->active) continue;
-        if ((int)m->z != worldZ) continue;
         int moverCellY = (int)(m->y / CELL_SIZE);
         if (moverCellY < yStart || moverCellY > yEnd) continue;
 
-        float dx = m->x - worldX;
-        if (fabsf(dx) < radius && fabsf(dx) < bestDist) {
-            bestDist = fabsf(dx);
+        int layer = moverCellY - yStart;
+        if (layer < 0 || layer >= depthLayers) continue;
+        float layerOff = (depthLayers - 1 - layer) * floorThickness;
+
+        float msx = offset.x + (m->x / CELL_SIZE) * size + size * 0.5f;
+        float msy = offset.y + (gridDepth - 1 - (int)m->z) * size - layerOff + size * 0.5f;
+
+        float dx = screenX - msx;
+        float dy = screenY - msy;
+        float dist = sqrtf(dx*dx + dy*dy);
+        if (dist < hitRadius && dist < bestDist) {
+            bestDist = dist;
             bestIdx = i;
         }
     }
     return bestIdx;
 }
 
-// Front-view animal finder: match by worldX and worldZ, filter by Y-slice range
-int GetAnimalAtFrontView(float worldX, int worldZ, int yStart, int yEnd) {
+// Front-view animal finder: screen-space hit testing, same approach as movers
+int GetAnimalAtFrontView(float screenX, float screenY, int yStart, int yEnd) {
+    float size = CELL_SIZE * zoom;
+    int depthLayers = frontViewDepth < 1 ? 1 : frontViewDepth;
+    float floorThickness = size * 0.25f;
+    if (floorThickness < 3.0f) floorThickness = 3.0f;
+    float hitRadius = size * 0.5f;
     float bestDist = 999999.0f;
     int bestIdx = -1;
-    float radius = CELL_SIZE * 0.6f;
 
     for (int i = 0; i < animalCount; i++) {
         Animal* a = &animals[i];
         if (!a->active) continue;
-        if ((int)a->z != worldZ) continue;
         int animalCellY = (int)(a->y / CELL_SIZE);
         if (animalCellY < yStart || animalCellY > yEnd) continue;
 
-        float dx = a->x - worldX;
-        if (fabsf(dx) < radius && fabsf(dx) < bestDist) {
-            bestDist = fabsf(dx);
+        int layer = animalCellY - yStart;
+        if (layer < 0 || layer >= depthLayers) continue;
+        float layerOff = (depthLayers - 1 - layer) * floorThickness;
+
+        float asx = offset.x + (a->x / CELL_SIZE) * size + size * 0.5f;
+        float asy = offset.y + (gridDepth - 1 - (int)a->z) * size - layerOff + size * 0.5f;
+
+        float dx = screenX - asx;
+        float dy = screenY - asy;
+        float dist = sqrtf(dx*dx + dy*dy);
+        if (dist < hitRadius && dist < bestDist) {
+            bestDist = dist;
             bestIdx = i;
         }
     }
@@ -2056,9 +2086,10 @@ int main(int argc, char** argv) {
         // Compute tooltip grid coordinates (view-mode aware)
         {
         int ttX, ttY, ttZ;  // tooltip cell coords
+        bool frontPickHit = false;  // true = hit real content, false = fell back to frontViewY plane
         Vector2 ttGridVec;
         if (frontViewMode) {
-            FrontViewPickCell(GetMousePosition(), &ttX, &ttY, &ttZ);
+            frontPickHit = FrontViewPickCell(GetMousePosition(), &ttX, &ttY, &ttZ);
             ttGridVec = (Vector2){(float)ttX, (float)ttY};
         } else {
             ttGridVec = ScreenToGrid(GetMousePosition());
@@ -2067,9 +2098,49 @@ int main(int argc, char** argv) {
             ttZ = currentViewZ;
         }
 
-        // Debug: show computed grid coords near mouse cursor
+        // Debug: show computed grid coords + hovered cell highlight + cursor dot
         {
             Vector2 mp = GetMousePosition();
+            float size = CELL_SIZE * zoom;
+            // Highlight hovered cell
+            float hsx, hsy;
+            if (frontViewMode) {
+                // Recompute the layer offset for the picked cell's Y layer so the highlight
+                // sits exactly where the renderer drew it.
+                int _dl = frontViewDepth < 1 ? 1 : frontViewDepth;
+                int _startY = frontViewY - _dl + 1;
+                if (_startY < 0) _startY = 0;
+                int _layer = ttY - _startY;
+                if (_layer < 0) _layer = 0;
+                if (_layer >= _dl) _layer = _dl - 1;
+                float _ft = size * 0.25f;
+                if (_ft < 3.0f) _ft = 3.0f;
+                float _layerOffsetY = (_dl - 1 - _layer) * _ft;
+                hsx = offset.x + ttX * size;
+                hsy = offset.y + (gridDepth - 1 - ttZ) * size - _layerOffsetY;
+            } else {
+                hsx = offset.x + ttX * size;
+                hsy = offset.y + ttY * size;
+            }
+            // In front view: green = hit real content, orange = default plane (frontViewY)
+            Color highlightColor = frontViewMode
+                ? (frontPickHit ? (Color){80, 255, 80, 220} : (Color){255, 160, 40, 200})
+                : (Color){255, 255, 0, 200};
+            DrawRectangleLinesEx((Rectangle){hsx, hsy, size, size}, 2.0f, highlightColor);
+            // Top face: small squished rect above the cell to suggest a 3D box
+            if (frontViewMode) {
+                float topH = size * 0.2f;
+                if (topH < 3.0f) topH = 3.0f;
+                Color topColor = {highlightColor.r, highlightColor.g, highlightColor.b, 120};
+                DrawRectangle((int)hsx, (int)(hsy - topH), (int)size, (int)topH, topColor);
+                DrawRectangleLinesEx((Rectangle){hsx, hsy - topH, size, topH}, 1.5f, highlightColor);
+            }
+            // Coords next to the highlighted cell
+            const char* cellText = TextFormat("%d,%d,%d", ttX, ttY, ttZ);
+            DrawTextShadow(cellText, (int)(hsx + size + 2), (int)(hsy + 2), 12, YELLOW);
+            // Red dot at actual mouse position
+            DrawCircle((int)mp.x, (int)mp.y, 4.0f, RED);
+            // Coords label
             const char* coordText = TextFormat("x:%d y:%d z:%d", ttX, ttY, ttZ);
             DrawTextShadow(coordText, (int)mp.x + 16, (int)mp.y - 16, 14, YELLOW);
         }

@@ -210,6 +210,7 @@ Waves 0-2 complete. Near-term TODO (per `docs/plan-of-attack.md`):
 - Test gaps: sampler WAV loading, patch trigger, rhythm patterns
 
 ### Recent additions
+- 2-slot mono fallback stack: when overlapping notes play on a mono track (C4→D4→E4), releasing E4 resumes D4 with its remaining gate, then releasing D4 resumes C4. `trackMonoFallbackNote/Gate[track][2]` in `SequencerContext`; mono-cut pushes the active note to [0] (shifting [0]→[1]); release callback pops and glides, retriggering envelope for plucky patches (sustain≈0). Works within a single pattern cycle — notes with gates extending past the loop boundary resume via the next bar's note-on.
 - Slow LFO sync divisions (8/16/32 bar — up to ~62s at 120 BPM)
 - Per-LFO phase offset (0.0-1.0) — patches can run inverted relative to each other
 - FM mod index LFO (5th LFO, shown for FM patches only)

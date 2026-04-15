@@ -12,24 +12,26 @@
 // Piano-style key mapping (white keys on ASDFGHJKL, black keys on WERTYUIOP)
 typedef struct { int key; int semitone; } DawPianoKey;
 static const DawPianoKey dawPianoKeys[] = {
-    // White keys (bottom row)
-    {KEY_A, 0},   // C
-    {KEY_S, 2},   // D
-    {KEY_D, 4},   // E
-    {KEY_F, 5},   // F
-    {KEY_G, 7},   // G
-    {KEY_H, 9},   // A
-    {KEY_J, 11},  // B
-    {KEY_K, 12},  // C+1
-    {KEY_L, 14},  // D+1
-    // Black keys (top row)
-    {KEY_W, 1},   // C#
-    {KEY_E, 3},   // D#
-    {KEY_R, 6},   // F#
-    {KEY_T, 8},   // G#
-    {KEY_Y, 10},  // A#
-    {KEY_U, 13},  // C#+1
-    {KEY_I, 15},  // D#+1
+    // White keys — GarageBand layout (A S D F G H J K L ; ')
+    {KEY_A,         0},   // C
+    {KEY_S,         2},   // D
+    {KEY_D,         4},   // E
+    {KEY_F,         5},   // F
+    {KEY_G,         7},   // G
+    {KEY_H,         9},   // A
+    {KEY_J,        11},   // B
+    {KEY_K,        12},   // C+1
+    {KEY_L,        14},   // D+1
+    {KEY_SEMICOLON,16},   // E+1
+    {KEY_APOSTROPHE,17},  // F+1
+    // Black keys — skipping R (E-F gap) and I (B-C gap)
+    {KEY_W,  1},   // C#
+    {KEY_E,  3},   // D#
+    {KEY_T,  6},   // F#
+    {KEY_Y,  8},   // G#
+    {KEY_U, 10},   // A#
+    {KEY_O, 13},   // C#+1
+    {KEY_P, 15},   // D#+1
 };
 #define NUM_DAW_PIANO_KEYS (sizeof(dawPianoKeys) / sizeof(dawPianoKeys[0]))
 static int dawPianoKeyVoices[NUM_DAW_PIANO_KEYS];
@@ -394,8 +396,11 @@ static void dawMelodyTriggerGeneric(int trackIdx, int note, float vel,
     float pDecay = plockValue(PLOCK_DECAY, p->p_decay);
 
     // Slide: glide the most recent voice instead of retriggering
-    int vc = dawMelodyVoiceCount[trackIdx];
-    int lastVoice = (vc > 0) ? dawMelodyVoice[trackIdx][vc - 1] : -1;
+    // Scan backwards for any active voice (slots may not be contiguous in poly mode)
+    int lastVoice = -1;
+    for (int _si = SEQ_V2_MAX_POLY - 1; _si >= 0; _si--) {
+        if (dawMelodyVoice[trackIdx][_si] >= 0) { lastVoice = dawMelodyVoice[trackIdx][_si]; break; }
+    }
     if (slide && lastVoice >= 0 &&
         voiceBus[lastVoice] == dawPatchToBus(busTrack) &&
         synthCtx->voices[lastVoice].envStage > 0) {
@@ -487,11 +492,15 @@ static void dawMelodyTriggerGeneric(int trackIdx, int note, float vel,
         }
         voiceLogPush("ALLOC mel[%d] v%d bus=%d freq=%.0f%s", trackIdx, vi, dawPatchToBus(busTrack), freq,
             forceNewVoice ? " (FORCED_NEW, no glide)" : "");
-        // Track this voice for later release
-        if (vc < SEQ_V2_MAX_POLY) {
-            dawMelodyVoice[trackIdx][vc] = vi;
-            dawMelodyVoiceCount[trackIdx] = vc + 1;
+        // Track this voice for later release — use the sequencer's poly slot so
+        // dawMelodyReleaseGeneric can release exactly the right voice when gate expires.
+        int trigSlot = seq.trackNoteOnSlot[busTrack];
+        if (trigSlot >= 0 && trigSlot < SEQ_V2_MAX_POLY) {
+            dawMelodyVoice[trackIdx][trigSlot] = vi;
         }
+        int _vc = 0;
+        for (int _si = 0; _si < SEQ_V2_MAX_POLY; _si++) if (dawMelodyVoice[trackIdx][_si] >= 0) _vc = _si + 1;
+        dawMelodyVoiceCount[trackIdx] = _vc;
         // Initialize 303 acid mode state on the voice
         Voice *nv = &synthCtx->voices[vi];
         nv->acidMode = p->p_acidMode;
@@ -520,14 +529,66 @@ static void dawMelodyTrigger1(int note, float vel, float gt, float pitchMod, boo
 static void dawMelodyTrigger2(int note, float vel, float gt, float pitchMod, bool sl, bool ac) { (void)pitchMod; dawMelodyTriggerGeneric(2, note, vel, gt, sl, ac); }
 
 static void dawMelodyReleaseGeneric(int t) {
-    for (int i = 0; i < dawMelodyVoiceCount[t]; i++) {
-        if (dawMelodyVoice[t][i] >= 0) {
-            voiceLogPush("REL mel[%d] v%d gate-end", t, dawMelodyVoice[t][i]);
-            releaseNote(dawMelodyVoice[t][i]);
-            dawMelodyVoice[t][i] = -1;
+    // Release only the specific poly slot whose gate just expired.
+    // The sequencer sets trackNoteOffSlot before calling this callback.
+    int busTrack = t + SEQ_DRUM_TRACKS;
+    int slot = seq.trackNoteOffSlot[busTrack];
+    int vi = (slot >= 0 && slot < SEQ_V2_MAX_POLY) ? dawMelodyVoice[t][slot] : -1;
+
+    // Check for mono fallback: pop [0] from the 2-slot stack and resume it.
+    // This replicates "return to previously held key" in live mono playing.
+    int fallbackNote = seq.trackMonoFallbackNote[busTrack][0];
+    int fallbackGate = seq.trackMonoFallbackGate[busTrack][0];
+    seqSoundLog("MONO_REL  t=%d slot=%d vi=%d fb[0]=%s(%d) fb[1]=%s(%d)",
+        t, slot, vi,
+        seqNoteName(fallbackNote), fallbackGate,
+        seqNoteName(seq.trackMonoFallbackNote[busTrack][1]), seq.trackMonoFallbackGate[busTrack][1]);
+    if (vi >= 0 && fallbackNote != SEQ_NOTE_OFF && fallbackGate > 0) {
+        // Pop [0], shift [1] → [0]
+        seq.trackMonoFallbackNote[busTrack][0] = seq.trackMonoFallbackNote[busTrack][1];
+        seq.trackMonoFallbackGate[busTrack][0] = seq.trackMonoFallbackGate[busTrack][1];
+        seq.trackMonoFallbackNote[busTrack][1] = SEQ_NOTE_OFF;
+        seq.trackMonoFallbackGate[busTrack][1] = 0;
+        // Glide the still-active voice to the fallback pitch.
+        float fallbackFreq = patchMidiToFreq(fallbackNote);
+        SynthPatch *fp = &daw.patches[busTrack];
+        float glideT = fp->p_glideTime > 0.0f ? fp->p_glideTime : 0.03f;
+        Voice *rv = &synthCtx->voices[vi];
+        // Retrigger envelope only if the voice has fully decayed (plucky/percussive patches).
+        // Sustaining patches glide smoothly without retriggering. Matches synth arp logic.
+        if (rv->envStage == 0 || rv->envStage == 4 || rv->sustain < 0.001f || fp->p_monoHardRetrigger) {
+            if (rv->envLevel > 0.01f) { rv->antiClickSamples = 44; rv->antiClickSample = rv->prevOutput; }
+            rv->envPhase = 0.0f;
+            rv->envLevel = 0.0f;
+            rv->envStage = 1;
         }
+        rv->targetFrequency = fallbackFreq;
+        rv->glideRate = 1.0f / glideT;
+        // Restore sequencer state so the fallback's gate counts down normally
+        seq.trackCurrentNote[busTrack][slot] = fallbackNote;
+        seq.trackGateRemaining[busTrack][slot] = fallbackGate;
+        seq.trackNoteOffVetoed[busTrack] = true;
+        seqSoundLog("MONO_RESUME t=%d -> %s gate=%d", t, seqNoteName(fallbackNote), fallbackGate);
+        voiceLogPush("RESUME mel[%d] v%d note=%s gate=%d", t, vi, seqNoteName(fallbackNote), fallbackGate);
+        int _vc2 = 0;
+        for (int _si = 0; _si < SEQ_V2_MAX_POLY; _si++) if (dawMelodyVoice[t][_si] >= 0) _vc2 = _si + 1;
+        dawMelodyVoiceCount[t] = _vc2;
+        return;
     }
-    dawMelodyVoiceCount[t] = 0;
+
+    // Normal release — clear entire fallback stack
+    seq.trackMonoFallbackNote[busTrack][0] = SEQ_NOTE_OFF;
+    seq.trackMonoFallbackGate[busTrack][0] = 0;
+    seq.trackMonoFallbackNote[busTrack][1] = SEQ_NOTE_OFF;
+    seq.trackMonoFallbackGate[busTrack][1] = 0;
+    if (vi >= 0) {
+        voiceLogPush("REL mel[%d] v%d slot=%d gate-end", t, vi, slot);
+        releaseNote(vi);
+        dawMelodyVoice[t][slot] = -1;
+    }
+    int _vc = 0;
+    for (int _si = 0; _si < SEQ_V2_MAX_POLY; _si++) if (dawMelodyVoice[t][_si] >= 0) _vc = _si + 1;
+    dawMelodyVoiceCount[t] = _vc;
 }
 static void dawMelodyRelease0(void) { dawMelodyReleaseGeneric(0); }
 static void dawMelodyRelease1(void) { dawMelodyReleaseGeneric(1); }
@@ -579,11 +640,27 @@ static void dawInitSequencer(void) {
     seq.trackNoteOff[SEQ_TRACK_SAMPLER] = dawSamplerRelease;
     seq.trackNames[SEQ_TRACK_SAMPLER] = "Sampler";
 
-    // Default demo beat on pattern 0
-    Pattern *pat = &seq.patterns[0];
-    patSetDrum(pat, 0, 0, 0.8f, 0.0f); patSetDrum(pat, 0, 4, 0.8f, 0.0f); patSetDrum(pat, 0, 8, 0.8f, 0.0f); patSetDrum(pat, 0, 12, 0.8f, 0.0f);
-    patSetDrum(pat, 1, 4, 0.8f, 0.0f); patSetDrum(pat, 1, 12, 0.8f, 0.0f);
-    for (int i = 0; i < 16; i += 2) patSetDrum(pat, 2, i, 0.8f, 0.0f);
+    // Default demo beat: one pattern per drum voice
+    // Pattern 0: kick (beats 1, 2, 3, 4 of a 16-step bar)
+    seq.patterns[0].trackType = TRACK_DRUM;
+    patSetDrum(&seq.patterns[0], 0, 0.8f, 0.0f);
+    patSetDrum(&seq.patterns[0], 4, 0.8f, 0.0f);
+    patSetDrum(&seq.patterns[0], 8, 0.8f, 0.0f);
+    patSetDrum(&seq.patterns[0], 12, 0.8f, 0.0f);
+    // Pattern 1: snare (beats 2 and 4)
+    seq.patterns[1].trackType = TRACK_DRUM;
+    patSetDrum(&seq.patterns[1], 4, 0.8f, 0.0f);
+    patSetDrum(&seq.patterns[1], 12, 0.8f, 0.0f);
+    // Pattern 2: hihat (every other step)
+    seq.patterns[2].trackType = TRACK_DRUM;
+    for (int i = 0; i < 16; i += 2) patSetDrum(&seq.patterns[2], i, 0.8f, 0.0f);
+
+    // Pattern for sampler track: must be TRACK_SAMPLER so the sequencer takes
+    // the sampler branch (reads slice field, calls dawSamplerTrigger with the
+    // slot index). Without this, recorded notes go through the melodic branch
+    // and dawSamplerTrigger receives the MIDI note as sliceIdx → out-of-range
+    // → silent. Default arrangement wires track 7 to pattern 7.
+    seq.patterns[SEQ_TRACK_SAMPLER].trackType = TRACK_SAMPLER;
 
     // Dilla timing starts at zero (clean grid) — user enables via Groove panel
     seq.dilla.kickNudge = 0;
@@ -600,6 +677,9 @@ static void dawInitSequencer(void) {
     for (int b = 0; b < ARR_MAX_BARS; b++)
         for (int t = 0; t < ARR_MAX_TRACKS; t++)
             daw.arr.cells[b][t] = ARR_EMPTY;
+    // Wire arrangement bar 0: each track gets its own pattern
+    for (int t = 0; t < ARR_MAX_TRACKS; t++) daw.arr.cells[0][t] = t;
+    daw.arr.length = 1;
 
     // Initialize launcher slots to empty
     daw.launcher.active = false;
@@ -628,7 +708,8 @@ static void dawSyncSequencer(void) {
     // Arrangement mode: per-track pattern grid (highest priority)
     if (daw.arr.arrMode && daw.arr.length > 0 && !patLocked) {
         seq.perTrackPatterns = true;
-        // Chain drives bar timing via track 0's pattern
+        seq.barLengthSteps = daw.arr.barLengthSteps;  // 0 = legacy track-0 wrap
+        // Chain drives bar timing (via track 0 wrap, or bar clock if barLengthSteps > 0)
         seq.chainLength = daw.arr.length;
         seq.chainDefaultLoops = 1;
         for (int i = 0; i < daw.arr.length; i++) {
@@ -670,10 +751,21 @@ static void dawSyncSequencer(void) {
         // Sync UI pattern selector back from sequencer
         daw.transport.currentPattern = seq.currentPattern;
     } else {
-        seq.perTrackPatterns = false;
         // Pattern mode: no chain, DAW controls current pattern directly
         seq.chainLength = 0;
         seq.currentPattern = daw.transport.currentPattern;
+        // With single-track patterns each track always has its own pattern;
+        // wire trackPatternIdx from the currently selected bar (pattern buttons).
+        if (daw.arr.length > 0) {
+            int bar = (editBar >= 0 && editBar < daw.arr.length) ? editBar : 0;
+            seq.perTrackPatterns = true;
+            for (int _t = 0; _t < seq.trackCount; _t++) {
+                seq.trackPatternIdx[_t] = (_t < ARR_MAX_TRACKS) ? daw.arr.cells[bar][_t] : -1;
+                seq.trackWrapped[_t] = false;  // unblock deferred trigger so step 0 fires
+            }
+        } else {
+            seq.perTrackPatterns = false;
+        }
     }
 
     // Helper: kill all active notes on a track
@@ -797,6 +889,12 @@ static void dawSyncSequencer(void) {
             seq.trackVolume[t] = ovr->trackMute[t] ? 0.0f : daw.mixer.volume[t];
     }
 
+    // Sync mono mode per melodic track from patch setting
+    for (int t = SEQ_DRUM_TRACKS; t < seq.trackCount; t++) {
+        int patchIdx = t < NUM_PATCHES ? t : 0;
+        seq.trackMono[t] = daw.patches[patchIdx].p_monoMode;
+    }
+
     // Track the current step for playhead display
     // Use drum track 0 as master step reference
     daw.transport.currentStep = seq.trackStep[0];
@@ -831,6 +929,8 @@ static void dawStopSequencer(void) {
     // Reset chain playback to beginning
     seq.chainPos = 0;
     seq.chainLoopCount = 0;
+    seq._barStep = 0;
+    seq._barTick = 0;
     if (daw.arr.arrMode && daw.arr.length > 0) {
         // Rewind arrangement to first bar, set track 0's pattern
         int pat0 = daw.arr.cells[0][0];

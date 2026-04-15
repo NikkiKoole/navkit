@@ -135,10 +135,11 @@ void DrawTimeOfDayWidget(float x, float y) {
     if (line3Width > maxTextWidth) maxTextWidth = line3Width;
     if (maxTextWidth + 16 > boxWidth) boxWidth = maxTextWidth + 16;
 
-    // Draw sky-colored background rectangle
-    Color skyColor = GetSkyColorForTime(timeOfDay);
+    // Draw sky-colored background rectangle (white when force daylight is on)
+    Color skyColor = forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay);
     DrawRectangle((int)x, (int)y, boxWidth, boxHeight, skyColor);
-    DrawRectangleLines((int)x, (int)y, boxWidth, boxHeight, (Color){100, 100, 100, 255});
+    Color borderColor = forceDaylight ? (Color){255, 220, 50, 255} : (Color){100, 100, 100, 255};
+    DrawRectangleLines((int)x, (int)y, boxWidth, boxHeight, borderColor);
 
     // Draw line 1 (season + day) centered
     int text1X = (int)x + (boxWidth - line1Width) / 2;
@@ -155,11 +156,14 @@ void DrawTimeOfDayWidget(float x, float y) {
     int text3Y = text2Y + fontSize + lineSpacing;
     DrawTextShadow(line3, text3X, text3Y, fontSize, (Color){180, 200, 180, 255});
 
-    // Block mouse clicks on widget area
+    // Click to toggle force daylight
     Vector2 mouse = GetMousePosition();
     Rectangle bounds = {x, y, (float)boxWidth, (float)boxHeight};
     if (CheckCollisionPointRec(mouse, bounds)) {
         ui_set_hovered();
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            forceDaylight = !forceDaylight;
+        }
     }
 }
 
@@ -322,12 +326,12 @@ static void StartDollhouseMode(void) {
 
     // Outer walls
     for (int dx = 0; dx < 10; dx++) {
-        PlaceCellFull(ox + dx, oy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
-        PlaceCellFull(ox + dx, oy + 7, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
+        PlaceCellFull(ox + dx, oy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
+        PlaceCellFull(ox + dx, oy + 7, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
     }
     for (int dy = 1; dy < 7; dy++) {
-        PlaceCellFull(ox, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
-        PlaceCellFull(ox + 9, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
+        PlaceCellFull(ox, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
+        PlaceCellFull(ox + 9, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
     }
 
     // Front door (bottom wall, kitchen side)
@@ -348,12 +352,12 @@ static void StartDollhouseMode(void) {
     // Internal wall: kitchen (left 6 cols) | bathroom+bedroom (right 3 cols)
     for (int dy = 1; dy < 7; dy++) {
         if (dy == 3 || dy == 4) continue; // door gap
-        PlaceCellFull(ox + 6, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
+        PlaceCellFull(ox + 6, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
     }
 
     // Internal wall: bathroom (top-right) | bedroom (bottom-right)
     for (int dx = 7; dx < 9; dx++) {
-        PlaceCellFull(ox + dx, oy + 4, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, false, false));
+        PlaceCellFull(ox + dx, oy + 4, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
     }
     // Door gap in bathroom/bedroom divider at x+8
     grid[z][oy + 4][ox + 8] = CELL_AIR;
@@ -1964,6 +1968,11 @@ void DrawUI(void) {
                 ToggleBoolT(ix, y, "Enabled", &lightingEnabled,
                     "Master toggle for lighting system. When off, all tiles render at full brightness (no light/dark cycle).");
                 if (wasEnabled != lightingEnabled) InvalidateLighting();
+            }
+            y += 22;
+            {
+                ToggleBoolT(ix, y, "Force Daylight", &forceDaylight,
+                    "Override sky color to full white (255,255,255). Useful for building at night without waiting for day.");
             }
             y += 22;
             {
