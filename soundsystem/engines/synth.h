@@ -420,8 +420,8 @@ typedef enum {
 } PDWaveType;
 
 typedef struct {
-    PDWaveType waveType; // Which CZ waveform
-    float distortion;    // Phase distortion amount (0-1)
+    PDWaveType waveType;   // Which CZ waveform
+    float distortion;      // Phase distortion amount (0-1), set from LIVE_PARAM each frame
 } PDSettings;
 
 // Membrane synthesis settings (tabla/conga)
@@ -3240,6 +3240,7 @@ static float processVoice(Voice *v, float sampleRate) {
             }
             break;
         case WAVE_PD:
+            v->pdSettings.distortion = LIVE_PARAM(v, pdSettings.distortion, p_pdDistortion);
             if (v->unisonCount > 1) {
                 float pdPhaseInc = v->frequency / sampleRate;
                 for (int u = 0; u < v->unisonCount; u++) {
@@ -3325,6 +3326,7 @@ static float processVoice(Voice *v, float sampleRate) {
     if (fmLfoMod != 0.0f) {
         v->fmSettings.modIndex -= fmLfoMod;
     }
+
 
     // Extra oscillators (metallic hihats, cowbell, fifth stacking — up to 6 total)
     if (v->osc2Level > 0.001f && v->osc2Ratio > 0.001f) {

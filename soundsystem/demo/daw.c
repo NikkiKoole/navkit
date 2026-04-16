@@ -179,7 +179,7 @@ static const char* vowelNames[] = {"A", "E", "I", "O", "U"};
 static const char* additivePresetNames[] = {"Organ", "Bell", "Choir", "Brass", "Strings"};
 static const char* malletPresetNames[] = {"Marimba", "Vibes", "Xylo", "Glock", "Tubular"};
 static const char* fmAlgNames[] = {"Stack", "Parallel", "Branch", "Pair"};
-static const char* pdWaveNames[] = {"Saw", "Square", "Pulse", "SyncSaw", "SyncSq"};
+static const char* pdWaveNames[] = {"Saw", "Square", "Pulse", "DblPulse", "SawPulse", "Reso1", "Reso2", "Reso3"};
 static const char* membranePresetNames[] = {"Tabla", "Conga", "Bongo", "Djembe", "Tom"};
 static const char* metallicPresetNames[] = {"808 CH", "808 OH", "909 CH", "909 OH", "Ride", "Crash", "Cowbell", "Bell", "Gong", "Agogo", "Triangle"};
 static const char* guitarPresetNames[] = {"Acoustic", "Classical", "Banjo", "Sitar", "Oud", "Koto", "Harp", "Ukulele", "SingleCoil", "Humbucker", "JazzBox"};
@@ -4956,7 +4956,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_cycle(&c, "Algorithm", fmAlgNames, FM_ALG_COUNT, &p->p_fmAlgorithm);
         } else if (p->p_waveType == WAVE_PD) {
             ui_col_sublabel(&c, "Phase Dist:", UI_TEXT_SUBLABEL);
-            ui_col_cycle(&c, "Wave", pdWaveNames, 5, &p->p_pdWaveType);
+            ui_col_cycle(&c, "Wave", pdWaveNames, PD_WAVE_COUNT, &p->p_pdWaveType);
             ui_col_float(&c, "Distort", &p->p_pdDistortion, 0.05f, 0.0f, 1.0f);
         } else if (p->p_waveType == WAVE_MEMBRANE) {
             ui_col_sublabel(&c, "Membrane:", UI_TEXT_SUBLABEL);
@@ -5299,6 +5299,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
         };
 
         float ly = y;
+        // 4 LFOs always shown; FM LFO shown as 5th slot for FM patches
         int lfoCount = (p->p_waveType == WAVE_FM) ? 5 : 4;
         for (int i = 0; i < lfoCount; i++) {
             UIColumn c = PCOL(col4X, ly);
