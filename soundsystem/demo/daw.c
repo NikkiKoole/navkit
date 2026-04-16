@@ -6602,10 +6602,12 @@ static void dawHandleMusicalTyping(void) {
             if (IsKeyPressed(dawPianoKeys[i].key)) {
                 dawArpKeyHeld[i] = true;
                 if (midiNote >= 0 && midiNote < NUM_MIDI_NOTES) midiNoteHeld[midiNote] = true;
+                dawRecordNoteOn(midiNote, 0.8f);
             }
             if (IsKeyReleased(dawPianoKeys[i].key)) {
                 dawArpKeyHeld[i] = false;
                 if (midiNote >= 0 && midiNote < NUM_MIDI_NOTES) midiNoteHeld[midiNote] = false;
+                dawRecordNoteOff(midiNote);
             }
         }
 
