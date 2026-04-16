@@ -6602,7 +6602,19 @@ static void dawHandleMusicalTyping(void) {
             if (IsKeyPressed(dawPianoKeys[i].key)) {
                 dawArpKeyHeld[i] = true;
                 if (midiNote >= 0 && midiNote < NUM_MIDI_NOTES) midiNoteHeld[midiNote] = true;
-                dawRecordNoteOn(midiNote, 0.8f);
+                if (recMode == REC_ARMED && !daw.transport.playing) {
+                    // Start transport first without writing to pattern — if we write
+                    // and start transport in the same call the sequencer can fire the
+                    // freshly-written note on the next audio callback, cutting the arp
+                    // voice in mono mode before it starts.
+                    daw.transport.playing = true;
+                    recMode = REC_RECORDING;
+                    memset(recHeld, 0, sizeof(recHeld));
+                } else {
+                    // Transport already running: safe to record held key.
+                    // On playback the sequencer fires it through the arp again.
+                    dawRecordNoteOn(midiNote, 0.8f);
+                }
             }
             if (IsKeyReleased(dawPianoKeys[i].key)) {
                 dawArpKeyHeld[i] = false;
