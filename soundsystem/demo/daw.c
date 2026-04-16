@@ -899,6 +899,7 @@ static struct {
     float ampMod;          // last ampLfoMod
     float pitchMod;        // last pitchLfoMod
     float fmMod;           // last fmLfoMod
+    float pdMod;           // last pdLfoMod
     float velocity;        // voice volume (velocity) for vel mod viz
 } lfoModViz;
 
@@ -4958,6 +4959,7 @@ static void drawParamPatch(float x, float y, float w, float h) {
             ui_col_sublabel(&c, "Phase Dist:", UI_TEXT_SUBLABEL);
             ui_col_cycle(&c, "Wave", pdWaveNames, PD_WAVE_COUNT, &p->p_pdWaveType);
             ui_col_float(&c, "Distort", &p->p_pdDistortion, 0.05f, 0.0f, 1.0f);
+            drawLfoModIndicator(col1X + 100, c.y - c.spacing, p->p_pdDistortion, lfoModViz.pdMod, 0.0f, 1.0f);
         } else if (p->p_waveType == WAVE_MEMBRANE) {
             ui_col_sublabel(&c, "Membrane:", UI_TEXT_SUBLABEL);
             ui_col_cycle(&c, "Preset", membranePresetNames, 5, &p->p_membranePreset);
@@ -5296,32 +5298,34 @@ static void drawParamPatch(float x, float y, float w, float h) {
             {"Amp LFO",    &p->p_ampLfoRate,     &p->p_ampLfoDepth,    &p->p_ampLfoPhaseOffset,    &p->p_ampLfoShape,    &p->p_ampLfoSync,    &p->p_ampLfoTransportSync},
             {"Pitch LFO",  &p->p_pitchLfoRate,   &p->p_pitchLfoDepth,  &p->p_pitchLfoPhaseOffset,  &p->p_pitchLfoShape,  &p->p_pitchLfoSync,  &p->p_pitchLfoTransportSync},
             {"FM LFO",     &p->p_fmLfoRate,      &p->p_fmLfoDepth,     &p->p_fmLfoPhaseOffset,     &p->p_fmLfoShape,     &p->p_fmLfoSync,     &p->p_fmLfoTransportSync},
+            {"PD LFO",     &p->p_pdLfoRate,      &p->p_pdLfoDepth,     &p->p_pdLfoPhaseOffset,     &p->p_pdLfoShape,     &p->p_pdLfoSync,     &p->p_pdLfoTransportSync},
         };
 
         float ly = y;
-        // 4 LFOs always shown; FM LFO shown as 5th slot for FM patches
-        int lfoCount = (p->p_waveType == WAVE_FM) ? 5 : 4;
+        // 4 LFOs always shown; 5th slot shows FM LFO for FM patches or PD LFO for PD patches
+        int lfoCount = 4;
+        if (p->p_waveType == WAVE_FM) lfoCount = 5;       // lfos[4] = FM LFO
+        else if (p->p_waveType == WAVE_PD) lfoCount = 5;  // lfos[5] = PD LFO — swap in via index
+        int lfoIndices[5] = {0, 1, 2, 3, (p->p_waveType == WAVE_PD) ? 5 : 4};
         for (int i = 0; i < lfoCount; i++) {
+            int li = lfoIndices[i];
             UIColumn c = PCOL(col4X, ly);
-            ui_col_sublabel(&c, lfos[i].name, UI_TEXT_SUBLABEL);
+            ui_col_sublabel(&c, lfos[li].name, UI_TEXT_SUBLABEL);
             float sliderY = c.y;
-            ui_col_float_pair(&c, "R", lfos[i].rate, 0.5f, 0.0f, 20.0f,
-                                  "D", lfos[i].depth, 0.05f, 0.0f, 2.0f);
-            ui_col_cycle(&c, "Shape", lfoShapeNames, 5, lfos[i].shape);
-            if (lfos[i].sync) ui_col_cycle_float_pair(&c, "Sync", lfoSyncNames, 11, lfos[i].sync,
-                                                          "Ph", lfos[i].phaseOffset, 0.05f, 0.0f, 1.0f);
-            else ui_col_float(&c, "Phase", lfos[i].phaseOffset, 0.05f, 0.0f, 1.0f);
-            // Transport-sync: only meaningful when Sync != Off (tempo-locked).
-            // When on, this LFO's phase follows beatPosition instead of resetting
-            // on each note-on — lets multi-bar sweeps complete across patterns.
-            if (lfos[i].sync && *lfos[i].sync != 0) {
-                ui_col_toggle(&c, "Lock", lfos[i].transportSync);
+            ui_col_float_pair(&c, "R", lfos[li].rate, 0.5f, 0.0f, 20.0f,
+                                  "D", lfos[li].depth, 0.05f, 0.0f, 2.0f);
+            ui_col_cycle(&c, "Shape", lfoShapeNames, 5, lfos[li].shape);
+            if (lfos[li].sync) ui_col_cycle_float_pair(&c, "Sync", lfoSyncNames, 11, lfos[li].sync,
+                                                           "Ph", lfos[li].phaseOffset, 0.05f, 0.0f, 1.0f);
+            else ui_col_float(&c, "Phase", lfos[li].phaseOffset, 0.05f, 0.0f, 1.0f);
+            if (lfos[li].sync && *lfos[li].sync != 0) {
+                ui_col_toggle(&c, "Lock", lfos[li].transportSync);
             }
 
             float preH = c.y - sliderY - 4;
             if (preH < 30) preH = 30;
             drawLFOPreview(col4X + lfoW - previewW, sliderY, previewW, preH,
-                           *lfos[i].shape, *lfos[i].rate, *lfos[i].depth);
+                           *lfos[li].shape, *lfos[li].rate, *lfos[li].depth);
 
             ly = c.y + 4;
         }
@@ -9837,6 +9841,7 @@ int main(int argc, char *argv[]) {
                     lfoModViz.ampMod = v->lastAmpLfoMod;
                     lfoModViz.pitchMod = v->lastPitchLfoMod;
                     lfoModViz.fmMod = v->lastFmLfoMod;
+                    lfoModViz.pdMod = v->lastPdLfoMod;
                     lfoModViz.velocity = v->volume;
                     break;
                 }

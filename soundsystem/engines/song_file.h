@@ -350,6 +350,12 @@ static void _sf_writePatch(FILE *f, const char *section, const SynthPatch *p) {
     _sf_writeInt(f, "fmLfoShape", p->p_fmLfoShape);
     _sf_writeInt(f, "fmLfoSync", p->p_fmLfoSync);
     _sf_writeFloat(f, "fmLfoPhaseOffset", p->p_fmLfoPhaseOffset);
+    _sf_writeFloat(f, "pdLfoRate", p->p_pdLfoRate);
+    _sf_writeFloat(f, "pdLfoDepth", p->p_pdLfoDepth);
+    _sf_writeInt(f, "pdLfoShape", p->p_pdLfoShape);
+    _sf_writeInt(f, "pdLfoSync", p->p_pdLfoSync);
+    _sf_writeFloat(f, "pdLfoPhaseOffset", p->p_pdLfoPhaseOffset);
+    _sf_writeBool(f, "pdLfoTransportSync", p->p_pdLfoTransportSync);
     _sf_writeBool(f, "filterLfoTransportSync", p->p_filterLfoTransportSync);
     _sf_writeBool(f, "resoLfoTransportSync", p->p_resoLfoTransportSync);
     _sf_writeBool(f, "ampLfoTransportSync", p->p_ampLfoTransportSync);
@@ -1052,6 +1058,12 @@ static void _sf_applyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key, "fmLfoShape") == 0) p->p_fmLfoShape = _sf_parseInt(val);
     else if (strcmp(key, "fmLfoSync") == 0) p->p_fmLfoSync = _sf_parseInt(val);
     else if (strcmp(key, "fmLfoPhaseOffset") == 0) p->p_fmLfoPhaseOffset = _sf_parseFloat(val);
+    else if (strcmp(key, "pdLfoRate") == 0) p->p_pdLfoRate = _sf_parseFloat(val);
+    else if (strcmp(key, "pdLfoDepth") == 0) p->p_pdLfoDepth = _sf_parseFloat(val);
+    else if (strcmp(key, "pdLfoShape") == 0) p->p_pdLfoShape = _sf_parseInt(val);
+    else if (strcmp(key, "pdLfoSync") == 0) p->p_pdLfoSync = _sf_parseInt(val);
+    else if (strcmp(key, "pdLfoPhaseOffset") == 0) p->p_pdLfoPhaseOffset = _sf_parseFloat(val);
+    else if (strcmp(key, "pdLfoTransportSync") == 0) p->p_pdLfoTransportSync = _sf_parseBool(val);
     else if (strcmp(key, "filterLfoTransportSync") == 0) p->p_filterLfoTransportSync = _sf_parseBool(val);
     else if (strcmp(key, "resoLfoTransportSync") == 0) p->p_resoLfoTransportSync = _sf_parseBool(val);
     else if (strcmp(key, "ampLfoTransportSync") == 0) p->p_ampLfoTransportSync = _sf_parseBool(val);

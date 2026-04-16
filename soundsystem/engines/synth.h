@@ -1069,6 +1069,16 @@ typedef struct {
     float fmLfoPhaseOffset;
     bool fmLfoTransportSync;
 
+    // PD LFO (modulates pdSettings.distortion)
+    float pdLfoRate;
+    float pdLfoDepth;
+    float pdLfoPhase;
+    int pdLfoShape;
+    float pdLfoSH;
+    LfoSyncDiv pdLfoSync;
+    float pdLfoPhaseOffset;
+    bool pdLfoTransportSync;
+
     // Arpeggiator
     bool arpEnabled;
     float arpNotes[8];        // Expanded from 4
@@ -1238,6 +1248,7 @@ typedef struct {
     float lastAmpLfoMod;
     float lastPitchLfoMod;
     float lastFmLfoMod;
+    float lastPdLfoMod;
 
     // Analog warmth
     bool analogRolloff;      // 1-pole LP rolloff
@@ -1556,12 +1567,18 @@ typedef struct SynthContext {
     int noteFmLfoShape;
     LfoSyncDiv noteFmLfoSync;
     float noteFmLfoPhaseOffset;
+    float notePdLfoRate;
+    float notePdLfoDepth;
+    int notePdLfoShape;
+    LfoSyncDiv notePdLfoSync;
+    float notePdLfoPhaseOffset;
     // Per-LFO transport-sync mode (false = retrigger on note-on, true = lock to beatPosition)
     bool noteFilterLfoTransportSync;
     bool noteResoLfoTransportSync;
     bool noteAmpLfoTransportSync;
     bool notePitchLfoTransportSync;
     bool noteFmLfoTransportSync;
+    bool notePdLfoTransportSync;
     int noteScwIndex;
     
     // Arpeggiator parameters
@@ -2157,6 +2174,12 @@ static void _ensureSynthCtx(void) {
 #define noteAmpLfoTransportSync (synthCtx->noteAmpLfoTransportSync)
 #define notePitchLfoTransportSync (synthCtx->notePitchLfoTransportSync)
 #define noteFmLfoTransportSync (synthCtx->noteFmLfoTransportSync)
+#define notePdLfoRate (synthCtx->notePdLfoRate)
+#define notePdLfoDepth (synthCtx->notePdLfoDepth)
+#define notePdLfoShape (synthCtx->notePdLfoShape)
+#define notePdLfoSync (synthCtx->notePdLfoSync)
+#define notePdLfoPhaseOffset (synthCtx->notePdLfoPhaseOffset)
+#define notePdLfoTransportSync (synthCtx->notePdLfoTransportSync)
 #define noteScwIndex (synthCtx->noteScwIndex)
 #define noteArpEnabled (synthCtx->noteArpEnabled)
 #define noteArpMode (synthCtx->noteArpMode)
@@ -3056,6 +3079,22 @@ static float processVoice(Voice *v, float sampleRate) {
         pw = clampf(pw + sinf(v->pwmPhase * 2.0f * PI) * v->pwmDepth, 0.1f, 0.9f);
     }
     
+    // PD LFO: compute mod amount (applied in WAVE_PD case below)
+    float pdLfoMod = 0.0f;
+    if (v->pdLfoDepth > 0.001f) {
+        float pdLfoActualRate = v->pdLfoRate;
+        if (v->pdLfoSync != LFO_SYNC_OFF) {
+            pdLfoActualRate = getLfoRateFromSync(synthBpm, v->pdLfoSync);
+            if (v->pdLfoTransportSync) {
+                v->pdLfoPhase = computeTransportLockedLfoPhase(
+                    v->pdLfoSync, synthBeatPosition, v->pdLfoPhaseOffset);
+            }
+        }
+        pdLfoMod = processLfo(&v->pdLfoPhase, &v->pdLfoSH,
+                               pdLfoActualRate, v->pdLfoDepth, v->pdLfoShape, dt);
+    }
+    v->lastPdLfoMod = pdLfoMod;
+
     // FM LFO: modulate fmSettings.modIndex before oscillator processing
     float fmLfoMod = 0.0f;
     if (v->fmLfoDepth > 0.001f) {
@@ -3240,7 +3279,8 @@ static float processVoice(Voice *v, float sampleRate) {
             }
             break;
         case WAVE_PD:
-            v->pdSettings.distortion = LIVE_PARAM(v, pdSettings.distortion, p_pdDistortion);
+            v->pdSettings.distortion = clampf(
+                LIVE_PARAM(v, pdSettings.distortion, p_pdDistortion) + pdLfoMod, 0.0f, 1.0f);
             if (v->unisonCount > 1) {
                 float pdPhaseInc = v->frequency / sampleRate;
                 for (int u = 0; u < v->unisonCount; u++) {
@@ -4066,6 +4106,14 @@ static void resetVoiceLfos(Voice *v) {
     v->fmLfoDepth = noteFmLfoDepth;
     v->fmLfoShape = noteFmLfoShape;
     v->fmLfoSync = noteFmLfoSync;
+    v->pdLfoPhase = notePdLfoPhaseOffset;
+    v->pdLfoSH = 0.0f;
+    v->pdLfoPhaseOffset = notePdLfoPhaseOffset;
+    v->pdLfoTransportSync = notePdLfoTransportSync;
+    v->pdLfoRate = notePdLfoRate;
+    v->pdLfoDepth = notePdLfoDepth;
+    v->pdLfoShape = notePdLfoShape;
+    v->pdLfoSync = notePdLfoSync;
 }
 
 // Helper to reset filter envelope state (always reads from globals)
@@ -4571,6 +4619,12 @@ static void resetNoteGlobals(void) {
     noteFmLfoShape = 0;
     noteFmLfoSync = LFO_SYNC_OFF;
     noteFmLfoPhaseOffset = 0.0f;
+    notePdLfoRate = 0.0f;
+    notePdLfoDepth = 0.0f;
+    notePdLfoShape = 0;
+    notePdLfoSync = LFO_SYNC_OFF;
+    notePdLfoPhaseOffset = 0.0f;
+    notePdLfoTransportSync = false;
     noteVibratoRate = 0.0f;
     noteVibratoDepth = 0.0f;
     notePulseWidth = 0.5f;

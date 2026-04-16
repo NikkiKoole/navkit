@@ -156,6 +156,14 @@ typedef struct SynthPatch {
     bool p_ampLfoTransportSync;
     bool p_pitchLfoTransportSync;
     bool p_fmLfoTransportSync;
+    bool p_pdLfoTransportSync;
+
+    // PD LFO (modulates pdSettings.distortion)
+    float p_pdLfoRate;
+    float p_pdLfoDepth;
+    int p_pdLfoShape;
+    int p_pdLfoSync;
+    float p_pdLfoPhaseOffset;
 
     // FM
     float p_fmModRatio;
