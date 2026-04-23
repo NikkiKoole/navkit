@@ -2321,6 +2321,169 @@ describe(mover_ramp_transitions) {
     }
 }
 
+// ============================================================================
+// Z climb timing — TDD tests for fractional Z during ladder/ramp traversal.
+// These tests currently FAIL (Z snaps instantly). They define the target
+// behaviour: Z interpolates over time, climb duration ~ CELL_SIZE / speed.
+// ============================================================================
+describe(z_climb_timing) {
+    // Shared setup: 5x5x3 grid, solid floor at z=0, walkable at z=1 (above dirt)
+    // and z=2 (above constructed floor), CELL_LADDER_BOTH at (2,1) on z=1 and z=2.
+    // Mover speed 100, dayLength 60 => effectiveSpeed 100 px/s.
+    // Expected climb duration for 1 Z level: CELL_SIZE / 100 = 0.32 s (~19 ticks).
+#define CLIMB_SPEED       100.0f
+#define CLIMB_EXPECTED_S  ((float)CELL_SIZE / CLIMB_SPEED)  // 0.32 s
+#define CLIMB_GRID_SETUP() \
+    do { \
+        InitGridWithSize(5, 5); \
+        gridDepth = 3; \
+        for (int _y = 0; _y < gridHeight; _y++) { \
+            for (int _x = 0; _x < gridWidth; _x++) { \
+                grid[0][_y][_x] = CELL_WALL; \
+                SetWallMaterial(_x, _y, 0, MAT_DIRT); \
+                grid[1][_y][_x] = CELL_AIR; \
+                grid[2][_y][_x] = CELL_AIR; \
+                SET_FLOOR(_x, _y, 2); \
+            } \
+        } \
+        grid[1][1][2] = CELL_LADDER_BOTH; \
+        grid[2][1][2] = CELL_LADDER_BOTH; \
+    } while(0)
+
+    it("z should be fractional while climbing a ladder (not an instant snap)") {
+        CLIMB_GRID_SETUP();
+        ClearMovers();
+        Mover* m = &movers[0];
+        int startZ = 1, goalZ = 2;
+        Point path[] = {{4,1,goalZ},{2,1,goalZ},{2,1,startZ},{0,1,startZ}};
+        InitMoverWithPath(m,
+            0*CELL_SIZE + CELL_SIZE*0.5f,
+            1*CELL_SIZE + CELL_SIZE*0.5f,
+            (float)startZ, (Point){4,1,goalZ}, CLIMB_SPEED, path, 4);
+        moverCount = 1;
+
+        bool sawFractional = false;
+        for (int tick = 0; tick < 600 && m->active; tick++) {
+            Tick();
+            float frac = m->z - (float)(int)m->z;
+            if (frac > 0.05f && frac < 0.95f) { sawFractional = true; break; }
+        }
+        expect(sawFractional == true);
+    }
+
+    it("climbing one z level via ladder should take ~CELL_SIZE/speed seconds") {
+        CLIMB_GRID_SETUP();
+        ClearMovers();
+        Mover* m = &movers[0];
+        int startZ = 1, goalZ = 2;
+        Point path[] = {{4,1,goalZ},{2,1,goalZ},{2,1,startZ},{0,1,startZ}};
+        InitMoverWithPath(m,
+            0*CELL_SIZE + CELL_SIZE*0.5f,
+            1*CELL_SIZE + CELL_SIZE*0.5f,
+            (float)startZ, (Point){4,1,goalZ}, CLIMB_SPEED, path, 4);
+        moverCount = 1;
+
+        double climbStartTime = -1.0, climbEndTime = -1.0;
+        for (int tick = 0; tick < 600 && m->active; tick++) {
+            Tick();
+            if (climbStartTime < 0.0 && m->z > (float)startZ + 0.05f)
+                climbStartTime = gameTime;
+            if (climbStartTime >= 0.0 && m->z >= (float)goalZ - 0.05f && climbEndTime < 0.0)
+                climbEndTime = gameTime;
+        }
+        expect(climbStartTime >= 0.0);
+        expect(climbEndTime >= 0.0);
+        float elapsed = (float)(climbEndTime - climbStartTime);
+        if (test_verbose) printf("  climb elapsed=%.3fs, expected>=%.3fs\n", elapsed, CLIMB_EXPECTED_S * 0.8f);
+        expect(elapsed >= CLIMB_EXPECTED_S * 0.8f);
+    }
+
+    it("z should be exactly goalZ (integer) after completing ladder climb") {
+        CLIMB_GRID_SETUP();
+        ClearMovers();
+        Mover* m = &movers[0];
+        int startZ = 1, goalZ = 2;
+        Point path[] = {{4,1,goalZ},{2,1,goalZ},{2,1,startZ},{0,1,startZ}};
+        InitMoverWithPath(m,
+            0*CELL_SIZE + CELL_SIZE*0.5f,
+            1*CELL_SIZE + CELL_SIZE*0.5f,
+            (float)startZ, (Point){4,1,goalZ}, CLIMB_SPEED, path, 4);
+        moverCount = 1;
+
+        for (int tick = 0; tick < 600 && m->active; tick++) Tick();
+        expect(m->z == (float)goalZ);
+        expect(m->active == false);
+    }
+
+    it("z should be fractional while traversing a ramp upward") {
+        const char* map =
+            "floor:0\n"
+            ".....\n"
+            "..N..\n"
+            ".....\n"
+            "floor:1\n"
+            ".....\n"
+            ".....\n"
+            ".....\n";
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        ClearMovers();
+        Mover* m = &movers[0];
+        Point path[] = {{2,0,1},{2,1,0},{2,2,0}};
+        InitMoverWithPath(m,
+            2*CELL_SIZE + CELL_SIZE*0.5f,
+            2*CELL_SIZE + CELL_SIZE*0.5f,
+            0.0f, (Point){2,0,1}, CLIMB_SPEED, path, 3);
+        moverCount = 1;
+
+        bool sawFractional = false;
+        for (int tick = 0; tick < 500 && m->active; tick++) {
+            Tick();
+            float frac = m->z - (float)(int)m->z;
+            if (frac > 0.05f && frac < 0.95f) { sawFractional = true; break; }
+        }
+        expect(sawFractional == true);
+    }
+
+    it("ramp z traversal should take ~CELL_SIZE/speed seconds") {
+        const char* map =
+            "floor:0\n"
+            ".....\n"
+            "..N..\n"
+            ".....\n"
+            "floor:1\n"
+            ".....\n"
+            ".....\n"
+            ".....\n";
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        ClearMovers();
+        Mover* m = &movers[0];
+        Point path[] = {{2,0,1},{2,1,0},{2,2,0}};
+        InitMoverWithPath(m,
+            2*CELL_SIZE + CELL_SIZE*0.5f,
+            2*CELL_SIZE + CELL_SIZE*0.5f,
+            0.0f, (Point){2,0,1}, CLIMB_SPEED, path, 3);
+        moverCount = 1;
+
+        double climbStartTime = -1.0, climbEndTime = -1.0;
+        for (int tick = 0; tick < 500 && m->active; tick++) {
+            Tick();
+            if (climbStartTime < 0.0 && m->z > 0.05f)
+                climbStartTime = gameTime;
+            if (climbStartTime >= 0.0 && m->z >= 1.0f - 0.05f && climbEndTime < 0.0)
+                climbEndTime = gameTime;
+        }
+        expect(climbStartTime >= 0.0);
+        expect(climbEndTime >= 0.0);
+        float elapsed = (float)(climbEndTime - climbStartTime);
+        if (test_verbose) printf("  ramp elapsed=%.3fs, expected>=%.3fs\n", elapsed, CLIMB_EXPECTED_S * 0.8f);
+        expect(elapsed >= CLIMB_EXPECTED_S * 0.8f);
+    }
+
+#undef CLIMB_SPEED
+#undef CLIMB_EXPECTED_S
+#undef CLIMB_GRID_SETUP
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -2341,6 +2504,7 @@ int main(int argc, char* argv[]) {
     test(mover_z_level_collision);
     test(mover_ladder_transitions);
     test(mover_ramp_transitions);
+    test(z_climb_timing);
     test(sparse_level_pathfinding);
     test(staggered_updates);
     test(workshop_mover_collision);

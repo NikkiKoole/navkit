@@ -56,6 +56,7 @@ bool showStuckDetection = false;
 bool cullDrawing = true;
 bool showItems = true;
 bool showSimSources = false;
+bool showCursorDebug = false;
 bool showHelpPanel = false;
 bool paused = false;
 int followMoverIdx = -1;
@@ -1669,151 +1670,284 @@ int main(int argc, char** argv) {
         // Draw drag preview when dragging (but not for sculpt brush)
         if (isDragging && inputAction != ACTION_NONE &&
             inputAction != ACTION_SANDBOX_SCULPT) {
-            Vector2 gp = ScreenToGrid(GetMousePosition());
-            int x = (int)gp.x, y = (int)gp.y;
-            int x1 = dragStartX < x ? dragStartX : x;
-            int y1 = dragStartY < y ? dragStartY : y;
-            int x2 = dragStartX > x ? dragStartX : x;
-            int y2 = dragStartY > y ? dragStartY : y;
             float size = CELL_SIZE * zoom;
-            float px = offset.x + x1 * size;
-            float py = offset.y + y1 * size;
-            float pw = (x2 - x1 + 1) * size;
-            float ph = (y2 - y1 + 1) * size;
 
-            bool isRightDrag = IsMouseButtonDown(MOUSE_BUTTON_RIGHT);
-            bool useGhostPreview = !isRightDrag && (
-                inputAction == ACTION_DRAW_WALL ||
-                inputAction == ACTION_DRAW_FLOOR ||
-                inputAction == ACTION_DRAW_LADDER ||
-                inputAction == ACTION_DRAW_RAMP);
+            if (frontViewMode) {
+                // Front view drag: X and Z (height) span the selection, Y (depth) fixed at dragStartY
+                int fvGx, fvGy, fvGz;
+                FrontViewPickCell(GetMousePosition(), &fvGx, &fvGy, &fvGz);
+                (void)fvGy;
 
-            if (useGhostPreview) {
-                // Ghost preview: draw actual sprites semi-transparent
-                // Determine sprite based on action + selected material
-                MaterialType mat = MAT_GRANITE;
-                ItemType source = ITEM_BLOCKS;
-                // Replicate GetDrawMaterial logic (it's static in input.c)
-                switch (selectedMaterial) {
-                    case 2: mat = MAT_OAK;    source = ITEM_PLANKS; break;
-                    case 3: mat = MAT_DIRT;    source = ITEM_DIRT;   break;
-                    case 4: mat = MAT_OAK;    source = ITEM_PLANKS; break;
-                    case 5: mat = MAT_PINE;   source = ITEM_PLANKS; break;
-                    case 6: mat = MAT_BIRCH;  source = ITEM_PLANKS; break;
-                    case 7: mat = MAT_WILLOW; source = ITEM_PLANKS; break;
-                    case 8: mat = MAT_SANDSTONE; source = ITEM_BLOCKS; break;
-                    case 9: mat = MAT_SLATE;     source = ITEM_BLOCKS; break;
-                    default: mat = MAT_GRANITE;  source = ITEM_BLOCKS; break;
-                }
-                // Material case 2 is log, not planks
-                if (selectedMaterial == 2) source = ITEM_LOG;
+                int x1 = dragStartX < fvGx ? dragStartX : fvGx;
+                int x2 = dragStartX > fvGx ? dragStartX : fvGx;
+                int z1 = dragStartZ < fvGz ? dragStartZ : fvGz;
+                int z2 = dragStartZ > fvGz ? dragStartZ : fvGz;
+                if (x1 < 0) x1 = 0; if (x2 >= gridWidth)  x2 = gridWidth  - 1;
+                if (z1 < 0) z1 = 0; if (z2 >= gridDepth)   z2 = gridDepth  - 1;
 
-                for (int dy = y1; dy <= y2; dy++) {
-                    for (int dx = x1; dx <= x2; dx++) {
-                        if (dx < 0 || dx >= gridWidth || dy < 0 || dy >= gridHeight) continue;
-                        Rectangle dest = {offset.x + dx * size, offset.y + dy * size, size, size};
-                        int sprite = -1;
+                // Layer offset for the fixed Y depth layer (same formula as hover highlight)
+                int _dl = frontViewDepth < 1 ? 1 : frontViewDepth;
+                int _startY = frontViewY - _dl + 1;
+                if (_startY < 0) _startY = 0;
+                int _layer = dragStartY - _startY;
+                if (_layer < 0) _layer = 0;
+                if (_layer >= _dl) _layer = _dl - 1;
+                float _ft = size * 0.25f;
+                if (_ft < 3.0f) _ft = 3.0f;
+                float layerOffsetY = (_dl - 1 - _layer) * _ft;
 
-                        if (inputAction == ACTION_DRAW_WALL) {
-                            // Skip cells that already have this wall
-                            if (grid[currentViewZ][dy][dx] == CELL_WALL &&
-                                GetWallMaterial(dx, dy, currentViewZ) == mat) continue;
-                            if (source == ITEM_PLANKS) {
-                                // Plank wall sprite per wood species
-                                switch (mat) {
-                                    case MAT_PINE:   sprite = SPRITE_tree_planks_pine; break;
-                                    case MAT_BIRCH:  sprite = SPRITE_tree_planks_birch; break;
-                                    case MAT_WILLOW: sprite = SPRITE_tree_planks_willow; break;
-                                    default:         sprite = SPRITE_tree_planks_oak; break;
+                // Screen rect: top-left is (x1, z2-top), spans right and downward
+                float px = offset.x + x1 * size;
+                float py = offset.y + (gridDepth - 1 - z2) * size - layerOffsetY;
+                float pw = (x2 - x1 + 1) * size;
+                float ph = (z2 - z1 + 1) * size;
+
+                bool isRightDrag = IsMouseButtonDown(MOUSE_BUTTON_RIGHT);
+                bool useGhostPreview = !isRightDrag && (
+                    inputAction == ACTION_DRAW_WALL ||
+                    inputAction == ACTION_DRAW_FLOOR ||
+                    inputAction == ACTION_DRAW_LADDER ||
+                    inputAction == ACTION_DRAW_RAMP);
+
+                if (useGhostPreview) {
+                    MaterialType mat = MAT_GRANITE;
+                    ItemType source = ITEM_BLOCKS;
+                    switch (selectedMaterial) {
+                        case 2: mat = MAT_OAK;       source = ITEM_PLANKS; break;
+                        case 3: mat = MAT_DIRT;      source = ITEM_DIRT;   break;
+                        case 4: mat = MAT_OAK;       source = ITEM_PLANKS; break;
+                        case 5: mat = MAT_PINE;      source = ITEM_PLANKS; break;
+                        case 6: mat = MAT_BIRCH;     source = ITEM_PLANKS; break;
+                        case 7: mat = MAT_WILLOW;    source = ITEM_PLANKS; break;
+                        case 8: mat = MAT_SANDSTONE; source = ITEM_BLOCKS; break;
+                        case 9: mat = MAT_SLATE;     source = ITEM_BLOCKS; break;
+                        default: mat = MAT_GRANITE;  source = ITEM_BLOCKS; break;
+                    }
+                    if (selectedMaterial == 2) source = ITEM_LOG;
+
+                    for (int dz = z1; dz <= z2; dz++) {
+                        for (int dx = x1; dx <= x2; dx++) {
+                            if (dx < 0 || dx >= gridWidth || dz < 0 || dz >= gridDepth) continue;
+                            float cellScreenY = offset.y + (gridDepth - 1 - dz) * size - layerOffsetY;
+                            Rectangle dest = {offset.x + dx * size, cellScreenY, size, size};
+                            int sprite = -1;
+
+                            if (inputAction == ACTION_DRAW_WALL) {
+                                if (grid[dz][dragStartY][dx] == CELL_WALL &&
+                                    GetWallMaterial(dx, dragStartY, dz) == mat) continue;
+                                if (source == ITEM_PLANKS) {
+                                    switch (mat) {
+                                        case MAT_PINE:   sprite = SPRITE_tree_planks_pine; break;
+                                        case MAT_BIRCH:  sprite = SPRITE_tree_planks_birch; break;
+                                        case MAT_WILLOW: sprite = SPRITE_tree_planks_willow; break;
+                                        default:         sprite = SPRITE_tree_planks_oak; break;
+                                    }
+                                } else {
+                                    sprite = GetSpriteForCellMat(CELL_WALL, mat);
                                 }
-                            } else {
-                                sprite = GetSpriteForCellMat(CELL_WALL, mat);
-                            }
-                        } else if (inputAction == ACTION_DRAW_FLOOR) {
-                            // Skip solid cells
-                            if (CellBlocksMovement(grid[currentViewZ][dy][dx])) continue;
-                            if (source == ITEM_PLANKS) {
-                                switch (mat) {
-                                    case MAT_PINE:   sprite = SPRITE_tree_planks_pine; break;
-                                    case MAT_BIRCH:  sprite = SPRITE_tree_planks_birch; break;
-                                    case MAT_WILLOW: sprite = SPRITE_tree_planks_willow; break;
-                                    default:         sprite = SPRITE_tree_planks_oak; break;
+                            } else if (inputAction == ACTION_DRAW_FLOOR) {
+                                if (CellBlocksMovement(grid[dz][dragStartY][dx])) continue;
+                                if (source == ITEM_PLANKS) {
+                                    switch (mat) {
+                                        case MAT_PINE:   sprite = SPRITE_tree_planks_pine; break;
+                                        case MAT_BIRCH:  sprite = SPRITE_tree_planks_birch; break;
+                                        case MAT_WILLOW: sprite = SPRITE_tree_planks_willow; break;
+                                        default:         sprite = SPRITE_tree_planks_oak; break;
+                                    }
+                                } else if (IsWoodMaterial(mat)) {
+                                    sprite = SPRITE_floor_wood;
+                                } else {
+                                    int ms = MaterialSprite(mat);
+                                    sprite = ms ? ms : SPRITE_floor;
                                 }
-                            } else if (IsWoodMaterial(mat)) {
-                                sprite = SPRITE_floor_wood;
-                            } else {
-                                int ms = MaterialSprite(mat);
-                                sprite = ms ? ms : SPRITE_floor;
+                            } else if (inputAction == ACTION_DRAW_LADDER) {
+                                sprite = CellSprite(CELL_LADDER_UP);
+                            } else if (inputAction == ACTION_DRAW_RAMP) {
+                                CellType rampDir = selectedRampDirection;
+                                if (rampDir == CELL_AIR) {
+                                    rampDir = AutoDetectRampDirection(dx, dragStartY, dz);
+                                }
+                                if (rampDir == CELL_AIR) rampDir = CELL_RAMP_N;
+                                sprite = CellSprite(rampDir);
                             }
-                        } else if (inputAction == ACTION_DRAW_LADDER) {
-                            sprite = CellSprite(CELL_LADDER_UP);
-                        } else if (inputAction == ACTION_DRAW_RAMP) {
-                            CellType rampDir = selectedRampDirection;
-                            if (rampDir == CELL_AIR) {
-                                rampDir = AutoDetectRampDirection(dx, dy, currentViewZ);
-                            }
-                            if (rampDir == CELL_AIR) rampDir = CELL_RAMP_N;
-                            sprite = CellSprite(rampDir);
-                        }
 
-                        if (sprite >= 0) {
-                            Rectangle src = SpriteGetRect(sprite);
-                            Color ghostTint = {140, 220, 140, 120};
-                            DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, ghostTint);
+                            if (sprite >= 0) {
+                                Rectangle src = SpriteGetRect(sprite);
+                                Color ghostTint = {140, 220, 140, 120};
+                                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, ghostTint);
+                            }
                         }
                     }
-                }
-                // Draw border around entire drag area
-                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, GREEN);
-            } else {
-                // Non-ghost: colored rectangle overlay
-                Color fillColor = {100, 200, 100, 80};
-                Color lineColor = GREEN;
-
-                if (isRightDrag) {
-                    fillColor = (Color){200, 0, 0, 80};
-                    lineColor = RED;
+                    DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, GREEN);
                 } else {
-                    switch (inputAction) {
-                        case ACTION_DRAW_STOCKPILE:
-                            fillColor = (Color){0, 200, 0, 80};
-                            lineColor = GREEN;
-                            break;
-                        case ACTION_DRAW_REFUSE_PILE:
-                            fillColor = (Color){139, 90, 43, 80};
-                            lineColor = BROWN;
-                            break;
-                        case ACTION_WORK_MINE:
-                            fillColor = (Color){255, 150, 0, 80};
-                            lineColor = ORANGE;
-                            break;
-                        case ACTION_WORK_CONSTRUCT:
-                            fillColor = (Color){0, 200, 200, 80};
-                            lineColor = (Color){0, 255, 255, 255};
-                            break;
-                        case ACTION_WORK_GATHER:
-                            fillColor = (Color){255, 180, 50, 80};
-                            lineColor = ORANGE;
-                            break;
-                        case ACTION_SANDBOX_WATER:
-                            fillColor = (Color){0, 100, 200, 80};
-                            lineColor = SKYBLUE;
-                            break;
-                        case ACTION_SANDBOX_FIRE:
-                            fillColor = (Color){200, 50, 0, 80};
-                            lineColor = RED;
-                            break;
-                        case ACTION_SANDBOX_HEAT:
-                            fillColor = (Color){200, 100, 0, 80};
-                            lineColor = ORANGE;
-                            break;
-                        default:
-                            break;
+                    Color fillColor = {100, 200, 100, 80};
+                    Color lineColor = GREEN;
+                    if (isRightDrag) {
+                        fillColor = (Color){200, 0, 0, 80};
+                        lineColor = RED;
+                    } else {
+                        switch (inputAction) {
+                            case ACTION_DRAW_STOCKPILE:   fillColor = (Color){0, 200, 0, 80};    lineColor = GREEN;                     break;
+                            case ACTION_DRAW_REFUSE_PILE: fillColor = (Color){139, 90, 43, 80};  lineColor = BROWN;                     break;
+                            case ACTION_WORK_MINE:        fillColor = (Color){255, 150, 0, 80};  lineColor = ORANGE;                    break;
+                            case ACTION_WORK_CONSTRUCT:   fillColor = (Color){0, 200, 200, 80};  lineColor = (Color){0, 255, 255, 255}; break;
+                            case ACTION_WORK_GATHER:      fillColor = (Color){255, 180, 50, 80}; lineColor = ORANGE;                    break;
+                            case ACTION_SANDBOX_WATER:    fillColor = (Color){0, 100, 200, 80};  lineColor = SKYBLUE;                   break;
+                            case ACTION_SANDBOX_FIRE:     fillColor = (Color){200, 50, 0, 80};   lineColor = RED;                       break;
+                            case ACTION_SANDBOX_HEAT:     fillColor = (Color){200, 100, 0, 80};  lineColor = ORANGE;                    break;
+                            default: break;
+                        }
                     }
+                    DrawRectangle((int)px, (int)py, (int)pw, (int)ph, fillColor);
+                    DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, lineColor);
                 }
+            } else {
+                // Top-down drag preview
+                Vector2 gp = ScreenToGrid(GetMousePosition());
+                int x = (int)gp.x, y = (int)gp.y;
+                int x1 = dragStartX < x ? dragStartX : x;
+                int y1 = dragStartY < y ? dragStartY : y;
+                int x2 = dragStartX > x ? dragStartX : x;
+                int y2 = dragStartY > y ? dragStartY : y;
+                float px = offset.x + x1 * size;
+                float py = offset.y + y1 * size;
+                float pw = (x2 - x1 + 1) * size;
+                float ph = (y2 - y1 + 1) * size;
 
-                DrawRectangle((int)px, (int)py, (int)pw, (int)ph, fillColor);
-                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, lineColor);
+                bool isRightDrag = IsMouseButtonDown(MOUSE_BUTTON_RIGHT);
+                bool useGhostPreview = !isRightDrag && (
+                    inputAction == ACTION_DRAW_WALL ||
+                    inputAction == ACTION_DRAW_FLOOR ||
+                    inputAction == ACTION_DRAW_LADDER ||
+                    inputAction == ACTION_DRAW_RAMP);
+
+                if (useGhostPreview) {
+                    // Ghost preview: draw actual sprites semi-transparent
+                    // Determine sprite based on action + selected material
+                    MaterialType mat = MAT_GRANITE;
+                    ItemType source = ITEM_BLOCKS;
+                    // Replicate GetDrawMaterial logic (it's static in input.c)
+                    switch (selectedMaterial) {
+                        case 2: mat = MAT_OAK;    source = ITEM_PLANKS; break;
+                        case 3: mat = MAT_DIRT;    source = ITEM_DIRT;   break;
+                        case 4: mat = MAT_OAK;    source = ITEM_PLANKS; break;
+                        case 5: mat = MAT_PINE;   source = ITEM_PLANKS; break;
+                        case 6: mat = MAT_BIRCH;  source = ITEM_PLANKS; break;
+                        case 7: mat = MAT_WILLOW; source = ITEM_PLANKS; break;
+                        case 8: mat = MAT_SANDSTONE; source = ITEM_BLOCKS; break;
+                        case 9: mat = MAT_SLATE;     source = ITEM_BLOCKS; break;
+                        default: mat = MAT_GRANITE;  source = ITEM_BLOCKS; break;
+                    }
+                    // Material case 2 is log, not planks
+                    if (selectedMaterial == 2) source = ITEM_LOG;
+
+                    for (int dy = y1; dy <= y2; dy++) {
+                        for (int dx = x1; dx <= x2; dx++) {
+                            if (dx < 0 || dx >= gridWidth || dy < 0 || dy >= gridHeight) continue;
+                            Rectangle dest = {offset.x + dx * size, offset.y + dy * size, size, size};
+                            int sprite = -1;
+
+                            if (inputAction == ACTION_DRAW_WALL) {
+                                // Skip cells that already have this wall
+                                if (grid[currentViewZ][dy][dx] == CELL_WALL &&
+                                    GetWallMaterial(dx, dy, currentViewZ) == mat) continue;
+                                if (source == ITEM_PLANKS) {
+                                    // Plank wall sprite per wood species
+                                    switch (mat) {
+                                        case MAT_PINE:   sprite = SPRITE_tree_planks_pine; break;
+                                        case MAT_BIRCH:  sprite = SPRITE_tree_planks_birch; break;
+                                        case MAT_WILLOW: sprite = SPRITE_tree_planks_willow; break;
+                                        default:         sprite = SPRITE_tree_planks_oak; break;
+                                    }
+                                } else {
+                                    sprite = GetSpriteForCellMat(CELL_WALL, mat);
+                                }
+                            } else if (inputAction == ACTION_DRAW_FLOOR) {
+                                // Skip solid cells
+                                if (CellBlocksMovement(grid[currentViewZ][dy][dx])) continue;
+                                if (source == ITEM_PLANKS) {
+                                    switch (mat) {
+                                        case MAT_PINE:   sprite = SPRITE_tree_planks_pine; break;
+                                        case MAT_BIRCH:  sprite = SPRITE_tree_planks_birch; break;
+                                        case MAT_WILLOW: sprite = SPRITE_tree_planks_willow; break;
+                                        default:         sprite = SPRITE_tree_planks_oak; break;
+                                    }
+                                } else if (IsWoodMaterial(mat)) {
+                                    sprite = SPRITE_floor_wood;
+                                } else {
+                                    int ms = MaterialSprite(mat);
+                                    sprite = ms ? ms : SPRITE_floor;
+                                }
+                            } else if (inputAction == ACTION_DRAW_LADDER) {
+                                sprite = CellSprite(CELL_LADDER_UP);
+                            } else if (inputAction == ACTION_DRAW_RAMP) {
+                                CellType rampDir = selectedRampDirection;
+                                if (rampDir == CELL_AIR) {
+                                    rampDir = AutoDetectRampDirection(dx, dy, currentViewZ);
+                                }
+                                if (rampDir == CELL_AIR) rampDir = CELL_RAMP_N;
+                                sprite = CellSprite(rampDir);
+                            }
+
+                            if (sprite >= 0) {
+                                Rectangle src = SpriteGetRect(sprite);
+                                Color ghostTint = {140, 220, 140, 120};
+                                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, ghostTint);
+                            }
+                        }
+                    }
+                    // Draw border around entire drag area
+                    DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, GREEN);
+                } else {
+                    // Non-ghost: colored rectangle overlay
+                    Color fillColor = {100, 200, 100, 80};
+                    Color lineColor = GREEN;
+
+                    if (isRightDrag) {
+                        fillColor = (Color){200, 0, 0, 80};
+                        lineColor = RED;
+                    } else {
+                        switch (inputAction) {
+                            case ACTION_DRAW_STOCKPILE:
+                                fillColor = (Color){0, 200, 0, 80};
+                                lineColor = GREEN;
+                                break;
+                            case ACTION_DRAW_REFUSE_PILE:
+                                fillColor = (Color){139, 90, 43, 80};
+                                lineColor = BROWN;
+                                break;
+                            case ACTION_WORK_MINE:
+                                fillColor = (Color){255, 150, 0, 80};
+                                lineColor = ORANGE;
+                                break;
+                            case ACTION_WORK_CONSTRUCT:
+                                fillColor = (Color){0, 200, 200, 80};
+                                lineColor = (Color){0, 255, 255, 255};
+                                break;
+                            case ACTION_WORK_GATHER:
+                                fillColor = (Color){255, 180, 50, 80};
+                                lineColor = ORANGE;
+                                break;
+                            case ACTION_SANDBOX_WATER:
+                                fillColor = (Color){0, 100, 200, 80};
+                                lineColor = SKYBLUE;
+                                break;
+                            case ACTION_SANDBOX_FIRE:
+                                fillColor = (Color){200, 50, 0, 80};
+                                lineColor = RED;
+                                break;
+                            case ACTION_SANDBOX_HEAT:
+                                fillColor = (Color){200, 100, 0, 80};
+                                lineColor = ORANGE;
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+
+                    DrawRectangle((int)px, (int)py, (int)pw, (int)ph, fillColor);
+                    DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, lineColor);
+                }
             }
         }
 
@@ -2099,7 +2233,7 @@ int main(int argc, char** argv) {
         }
 
         // Debug: show computed grid coords + hovered cell highlight + cursor dot
-        {
+        if (showCursorDebug) {
             Vector2 mp = GetMousePosition();
             float size = CELL_SIZE * zoom;
             // Highlight hovered cell

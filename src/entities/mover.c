@@ -1423,71 +1423,12 @@ void UpdateMovers(void) {
         float distSq = dxf*dxf + dyf*dyf;
         float dist = distSq * fastInvSqrt(distSq);
 
-        // Waypoint arrival check
-        // Original: snap to waypoint when very close (m->speed * dt, ~1.67px)
-        // Knot fix: advance to next waypoint at larger radius without snapping position
-        float arrivalRadius = m->speed * dayLengthSpeedScale * dt;
-        bool shouldSnap = true;
-        
-        if (useKnotFix && dist < KNOT_FIX_ARRIVAL_RADIUS) {
-            // Knot fix: advance waypoint at larger radius, no position snap
-            arrivalRadius = KNOT_FIX_ARRIVAL_RADIUS;
-            shouldSnap = false;
-        }
-        
-        if (dist < arrivalRadius) {
-            if (shouldSnap) {
-                m->x = tx;
-                m->y = ty;
-            }
-            // Only update z-level when target waypoint is a ladder or ramp transition
-            if (target.z != (int)m->z) {
-                int cellZ = (int)m->z;
-                bool isLadderTransition = IsLadderCell(grid[cellZ][target.y][target.x]) && 
-                                          IsLadderCell(grid[target.z][target.y][target.x]);
-                
-                // Ramp transition check
-                bool isRampTransition = false;
-                int rampX, rampY;
-                if (target.z > cellZ) {
-                    // Going up: mover must be on ramp or at exit cell with adjacent ramp
-                    if (FindRampPointingTo(target.x, target.y, cellZ, &rampX, &rampY)) {
-                        // Valid if mover is on the ramp or at the exit cell
-                        if ((currentX == rampX && currentY == rampY) ||
-                            (currentX == target.x && currentY == target.y)) {
-                            isRampTransition = true;
-                        }
-                    }
-                } else {
-                    // Going down: target cell should be a ramp we can descend onto
-                    if (CellIsDirectionalRamp(grid[target.z][target.y][target.x])) {
-                        isRampTransition = true;
-                    }
-                }
-                
-                if (isLadderTransition || isRampTransition) {
-                    m->z = (float)target.z;
-                    m->x = target.x * CELL_SIZE + CELL_SIZE * 0.5f;
-                    m->y = target.y * CELL_SIZE + CELL_SIZE * 0.5f;
-                }
-            }
-            m->pathIndex--;
-            m->timeNearWaypoint = 0.0f;  // Reset on waypoint arrival
-        } else {
-            // Track time near waypoint (for knot detection)
-            if (dist < KNOT_NEAR_RADIUS) {
-                m->timeNearWaypoint += dt;
-            } else {
-                m->timeNearWaypoint = 0.0f;  // Reset when far from waypoint
-            }
-            float invDist = 1.0f / dist;
-            
-            // Terrain speed derived from GetCellMoveCost (single source of truth)
-            // cost 10 = 1.0x, cost 8 = 1.25x (floor), cost 17 = 0.59x (mud/deep snow)
+        // Effective speed — hoisted so both the climb interpolation and XY movement use it
+        float effectiveSpeed;
+        {
             int terrainCost = GetCellMoveCost(currentX, currentY, currentZ);
             float terrainSpeedMult = 10.0f / (float)terrainCost;
-            
-            // Weight slowdown when carrying items
+
             if (m->currentJobId >= 0) {
                 Job* job = GetJob(m->currentJobId);
                 if (job && job->carryingItem >= 0 && job->carryingItem < MAX_ITEMS) {
@@ -1500,36 +1441,98 @@ void UpdateMovers(void) {
                     }
                 }
             }
-            
-            // Hunger speed penalty (linear 1.0→min as hunger goes threshold→0.0)
             if (m->hunger < balance.hungerPenaltyThreshold) {
-                float t = m->hunger / balance.hungerPenaltyThreshold;  // 0..1
+                float t = m->hunger / balance.hungerPenaltyThreshold;
                 float hungerMult = balance.hungerSpeedPenaltyMin + t * (1.0f - balance.hungerSpeedPenaltyMin);
                 terrainSpeedMult *= hungerMult;
             }
-
-            // Cold speed penalty (linear 1.0→min as bodyTemp goes mild→moderate)
             if (m->bodyTemp < balance.mildColdThreshold) {
                 float range = balance.mildColdThreshold - balance.moderateColdThreshold;
-                float t = (m->bodyTemp - balance.moderateColdThreshold) / range;  // 1..0
+                float t = (m->bodyTemp - balance.moderateColdThreshold) / range;
                 if (t < 0.0f) t = 0.0f;
                 if (t > 1.0f) t = 1.0f;
                 float coldMult = balance.coldSpeedPenaltyMin + t * (1.0f - balance.coldSpeedPenaltyMin);
                 terrainSpeedMult *= coldMult;
             }
-
-            // Heat speed penalty (linear 1.0→min as bodyTemp goes heat→42)
             if (m->bodyTemp > balance.heatThreshold) {
                 float range = 42.0f - balance.heatThreshold;
-                float t = (42.0f - m->bodyTemp) / range;  // 1..0
+                float t = (42.0f - m->bodyTemp) / range;
                 if (t < 0.0f) t = 0.0f;
                 if (t > 1.0f) t = 1.0f;
                 float heatMult = balance.heatSpeedPenaltyMin + t * (1.0f - balance.heatSpeedPenaltyMin);
                 terrainSpeedMult *= heatMult;
             }
+            effectiveSpeed = m->speed * dayLengthSpeedScale * terrainSpeedMult;
+        }
 
-            // Base velocity toward waypoint
-            float effectiveSpeed = m->speed * dayLengthSpeedScale * terrainSpeedMult;
+        // Waypoint arrival check
+        // Original: snap to waypoint when very close (m->speed * dt, ~1.67px)
+        // Knot fix: advance to next waypoint at larger radius without snapping position
+        float arrivalRadius = m->speed * dayLengthSpeedScale * dt;
+        bool shouldSnap = true;
+
+        if (useKnotFix && dist < KNOT_FIX_ARRIVAL_RADIUS) {
+            arrivalRadius = KNOT_FIX_ARRIVAL_RADIUS;
+            shouldSnap = false;
+        }
+
+        if (dist < arrivalRadius) {
+            bool didClimb = false;
+            if (target.z != (int)m->z) {
+                int cellZ = (int)m->z;
+                bool isLadderTransition = IsLadderCell(grid[cellZ][target.y][target.x]) &&
+                                          IsLadderCell(grid[target.z][target.y][target.x]);
+
+                bool isRampTransition = false;
+                int rampX, rampY;
+                if (target.z > cellZ) {
+                    if (FindRampPointingTo(target.x, target.y, cellZ, &rampX, &rampY)) {
+                        if ((currentX == rampX && currentY == rampY) ||
+                            (currentX == target.x && currentY == target.y)) {
+                            isRampTransition = true;
+                        }
+                    }
+                } else {
+                    if (CellIsDirectionalRamp(grid[target.z][target.y][target.x])) {
+                        isRampTransition = true;
+                    }
+                }
+
+                if (isLadderTransition || isRampTransition) {
+                    // Lock XY at waypoint and interpolate Z over time
+                    m->x = target.x * CELL_SIZE + CELL_SIZE * 0.5f;
+                    m->y = target.y * CELL_SIZE + CELL_SIZE * 0.5f;
+                    float zDir = (target.z > cellZ) ? 1.0f : -1.0f;
+                    float zRate = effectiveSpeed / (float)CELL_SIZE;
+                    m->z += zDir * zRate * dt;
+                    bool zArrived = (zDir > 0.0f) ? (m->z >= (float)target.z)
+                                                   : (m->z <= (float)target.z);
+                    if (zArrived) {
+                        m->z = (float)target.z;
+                        m->pathIndex--;
+                        m->timeNearWaypoint = 0.0f;
+                    }
+                    didClimb = true;
+                }
+            }
+            if (!didClimb) {
+                if (shouldSnap) {
+                    m->x = tx;
+                    m->y = ty;
+                }
+                m->pathIndex--;
+                m->timeNearWaypoint = 0.0f;
+            }
+        } else {
+            // Track time near waypoint (for knot detection)
+            if (dist < KNOT_NEAR_RADIUS) {
+                m->timeNearWaypoint += dt;
+            } else {
+                m->timeNearWaypoint = 0.0f;  // Reset when far from waypoint
+            }
+            float invDist = 1.0f / dist;
+
+            // Base velocity toward waypoint (effectiveSpeed computed above)
             float vx = dxf * invDist * effectiveSpeed;
             float vy = dyf * invDist * effectiveSpeed;
             

@@ -2046,6 +2046,8 @@ void DrawUI(void) {
                 ToggleBool(ix + 10, y, "Show Items", &showItems);
                 y += 22;
                 ToggleBool(ix + 10, y, "Cull Drawing", &cullDrawing);
+                y += 22;
+                ToggleBool(ix + 10, y, "Cursor Debug", &showCursorDebug);
             }
             y += 22;
 

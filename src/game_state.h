@@ -103,6 +103,7 @@ extern bool showStuckDetection;
 extern bool cullDrawing;
 extern bool showItems;
 extern bool showSimSources;
+extern bool showCursorDebug;
 extern bool showHelpPanel;
 extern bool paused;
 extern int followMoverIdx;
