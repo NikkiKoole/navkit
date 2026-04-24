@@ -97,6 +97,14 @@ static const int kFdnDelayLengths[FDN_NUM_LINES] = {
 #define COMB_MIN_FREQ 20.0f           // Lowest pitch (longest delay)
 #define COMB_MAX_FREQ 2000.0f         // Highest pitch (shortest delay)
 
+// Wingie resonator constants
+#define WINGIE_NUM_PARTIALS 9
+typedef enum { WINGIE_MODE_STRING=0, WINGIE_MODE_BAR=1, WINGIE_MODE_CAVE=2, WINGIE_MODE_POLY=3 } WingieMode;
+
+// Pitch shifter constants (granular overlap-add, 2-grain)
+#define PS_BUF_SIZE   4096   // Input buffer (~93ms at 44100 Hz, power-of-2 for bitwise mask)
+#define PS_GRAIN_SIZE  512   // Grain size (~11.6ms), controls latency vs. artifact trade-off
+
 // Dub Loop constants
 #define DUB_LOOP_MAX_TIME 4.0f        // Max loop time in seconds
 #define DUB_LOOP_BUFFER_SIZE (SAMPLE_RATE * 4)  // 4 seconds at 44.1kHz
@@ -292,6 +300,21 @@ typedef struct {
     float compAttack;       // seconds (0.001-0.1)
     float compRelease;      // seconds (0.01-1.0)
     float compMakeup;       // dB (0-24)
+
+    // Wingie resonator
+    bool resonatorEnabled;
+    int resonatorMode;                          // WingieMode
+    float resonatorPitch;                       // Root Hz (20-2000)
+    float resonatorPitch2;                      // 2nd root for poly mode
+    float resonatorPitch3;                      // 3rd root for poly mode
+    float resonatorDecay;                       // 0-1 → 0.15-10s
+    float resonatorMix;                         // 0-1
+    bool resonatorCaveOn[WINGIE_NUM_PARTIALS];  // per-partial enable (cave mode)
+
+    // Pitch shifter (granular OLA)
+    bool pitchEnabled;
+    float pitchSemitones;  // -24 to +24
+    float pitchMix;        // 0-1
 } BusEffects;
 
 // Per-bus processing state
@@ -354,6 +377,16 @@ typedef struct {
 
     // Compressor state
     float compEnvelope;
+
+    // Wingie resonator state
+    float resY1[WINGIE_NUM_PARTIALS];
+    float resY2[WINGIE_NUM_PARTIALS];
+
+    // Pitch shifter state (granular OLA)
+    float psBuf[PS_BUF_SIZE];
+    int   psWritePos;
+    float psReadPos[2];
+    float psGrainPhase[2];
 } BusState;
 
 // Mixer context (all buses + shared state)
@@ -2533,14 +2566,31 @@ static void initBusDefaults(BusEffects* bus) {
     bus->compAttack = 0.01f;
     bus->compRelease = 0.1f;
     bus->compMakeup = 0.0f;
+
+    bus->resonatorEnabled = false;
+    bus->resonatorMode = WINGIE_MODE_STRING;
+    bus->resonatorPitch = 220.0f;
+    bus->resonatorPitch2 = 330.0f;
+    bus->resonatorPitch3 = 440.0f;
+    bus->resonatorDecay = 0.5f;
+    bus->resonatorMix = 0.5f;
+    for (int _wi = 0; _wi < WINGIE_NUM_PARTIALS; _wi++) bus->resonatorCaveOn[_wi] = true;
+
+    bus->pitchEnabled   = false;
+    bus->pitchSemitones = 12.0f;
+    bus->pitchMix       = 0.5f;
 }
 
 // Initialize mixer context
 static void initMixerContext(MixerContext* ctx) {
     memset(ctx, 0, sizeof(*ctx));
-    
+
     for (int i = 0; i < NUM_BUSES; i++) {
         initBusDefaults(&ctx->bus[i]);
+        // Grain 2 starts half a grain ahead so both Hann windows always sum to 1
+        ctx->busState[i].psGrainPhase[1] = 0.5f;
+        ctx->busState[i].psReadPos[0] = (float)PS_BUF_SIZE - (float)PS_GRAIN_SIZE * 0.5f;
+        ctx->busState[i].psReadPos[1] = (float)(PS_BUF_SIZE - PS_GRAIN_SIZE);
     }
     
     ctx->anySoloed = false;
@@ -2962,6 +3012,60 @@ static float processBusEffects(float input, int busIndex, float dt) {
         sample = combDry * (1.0f - bus->combMix) + combDelayed * bus->combMix;
     }
 
+    // === WINGIE RESONATOR ===
+    if (bus->resonatorEnabled) {
+        static const float caveFreqs[WINGIE_NUM_PARTIALS] = {
+            62.0f, 125.0f, 250.0f, 500.0f, 1000.0f, 2000.0f, 4000.0f, 8000.0f, 11000.0f
+        };
+        float dry = sample;
+        float decayTime = 0.15f * powf(10.0f / 0.15f, bus->resonatorDecay);
+        float R = expf(-6.9078f / (decayTime * (float)SAMPLE_RATE));
+        float wet = 0.0f;
+        int activeCount = 0;
+
+        for (int _k = 0; _k < WINGIE_NUM_PARTIALS; _k++) {
+            float f;
+            bool partialActive = true;
+            switch (bus->resonatorMode) {
+                case WINGIE_MODE_STRING:
+                    f = bus->resonatorPitch * (float)(_k + 1);
+                    break;
+                case WINGIE_MODE_BAR:
+                    f = bus->resonatorPitch * 0.44444f * (_k + 1.5f) * (_k + 1.5f);
+                    break;
+                case WINGIE_MODE_CAVE:
+                    f = caveFreqs[_k];
+                    partialActive = bus->resonatorCaveOn[_k];
+                    break;
+                case WINGIE_MODE_POLY: {
+                    float roots[3] = { bus->resonatorPitch, bus->resonatorPitch2, bus->resonatorPitch3 };
+                    f = roots[_k / 3] * (float)(_k % 3 + 1);
+                    break;
+                }
+                default:
+                    f = bus->resonatorPitch * (float)(_k + 1);
+                    break;
+            }
+            if (!partialActive || f < 20.0f || f > (float)SAMPLE_RATE * 0.45f) {
+                state->resY1[_k] *= R;
+                state->resY2[_k] *= R;
+                continue;
+            }
+            float cosw = cosf(2.0f * PI * f / (float)SAMPLE_RATE);
+            float a1 = 2.0f * R * cosw;
+            float a2 = -(R * R);
+            float y = (1.0f - R) * sample + a1 * state->resY1[_k] + a2 * state->resY2[_k];
+            if (y > 4.0f) y = 4.0f;
+            if (y < -4.0f) y = -4.0f;
+            state->resY2[_k] = state->resY1[_k];
+            state->resY1[_k] = y;
+            wet += y;
+            activeCount++;
+        }
+        if (activeCount > 0) wet /= (float)activeCount;
+        sample = dry * (1.0f - bus->resonatorMix) + wet * bus->resonatorMix;
+    }
+
     // === RING MODULATOR ===
     if (bus->ringModEnabled) {
         float carrier = sinf(state->busRingModPhase * 2.0f * PI);
@@ -2969,6 +3073,39 @@ static float processBusEffects(float input, int busIndex, float dt) {
         if (state->busRingModPhase >= 1.0f) state->busRingModPhase -= (int)state->busRingModPhase;
         float wet = sample * carrier;
         sample = sample * (1.0f - bus->ringModMix) + wet * bus->ringModMix;
+    }
+
+    // === PITCH SHIFTER (granular OLA, 2 overlapping Hann-windowed grains) ===
+    if (bus->pitchEnabled) {
+        float dry = sample;
+        float pitchRatio = powf(2.0f, bus->pitchSemitones / 12.0f);
+
+        state->psBuf[state->psWritePos & (PS_BUF_SIZE - 1)] = sample;
+        int _wp = state->psWritePos;
+        state->psWritePos++;
+
+        float wet = 0.0f;
+        for (int _g = 0; _g < 2; _g++) {
+            int ri  = (int)state->psReadPos[_g] & (PS_BUF_SIZE - 1);
+            int ri2 = (ri + 1) & (PS_BUF_SIZE - 1);
+            float frac = state->psReadPos[_g] - floorf(state->psReadPos[_g]);
+            float s = state->psBuf[ri] * (1.0f - frac) + state->psBuf[ri2] * frac;
+
+            // Hann window: w(p)+w(p+0.5) = 1 everywhere, so no gain correction needed
+            float w = 0.5f * (1.0f - cosf(2.0f * PI * state->psGrainPhase[_g]));
+            wet += s * w;
+
+            state->psReadPos[_g] += pitchRatio;
+            if (state->psReadPos[_g] >= (float)PS_BUF_SIZE)
+                state->psReadPos[_g] -= (float)PS_BUF_SIZE;
+
+            state->psGrainPhase[_g] += 1.0f / (float)PS_GRAIN_SIZE;
+            if (state->psGrainPhase[_g] >= 1.0f) {
+                state->psGrainPhase[_g] -= 1.0f;
+                state->psReadPos[_g] = (float)((_wp - PS_GRAIN_SIZE / 2 + PS_BUF_SIZE) % PS_BUF_SIZE);
+            }
+        }
+        sample = dry * (1.0f - bus->pitchMix) + wet * bus->pitchMix;
     }
 
     // === DELAY ===
@@ -3329,6 +3466,37 @@ static void setBusComb(int bus, bool enabled, float freq, float feedback, float 
         mixerCtx->bus[bus].combFeedback = feedback;
         mixerCtx->bus[bus].combMix = mix;
         mixerCtx->bus[bus].combDamping = damping;
+    }
+}
+
+__attribute__((unused))
+static void setBusWingie(int bus, bool enabled, int mode, float pitch, float pitch2, float pitch3, float decay, float mix) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].resonatorEnabled = enabled;
+        mixerCtx->bus[bus].resonatorMode = mode;
+        mixerCtx->bus[bus].resonatorPitch = pitch;
+        mixerCtx->bus[bus].resonatorPitch2 = pitch2;
+        mixerCtx->bus[bus].resonatorPitch3 = pitch3;
+        mixerCtx->bus[bus].resonatorDecay = decay;
+        mixerCtx->bus[bus].resonatorMix = mix;
+    }
+}
+
+__attribute__((unused))
+static void setBusWingiePartial(int bus, int k, bool on) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES && k >= 0 && k < WINGIE_NUM_PARTIALS)
+        mixerCtx->bus[bus].resonatorCaveOn[k] = on;
+}
+
+__attribute__((unused))
+static void setBusPitchShift(int bus, bool enabled, float semitones, float mix) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].pitchEnabled   = enabled;
+        mixerCtx->bus[bus].pitchSemitones = semitones;
+        mixerCtx->bus[bus].pitchMix       = mix;
     }
 }
 

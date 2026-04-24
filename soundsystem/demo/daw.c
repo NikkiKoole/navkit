@@ -219,6 +219,10 @@ static double dawAudioTimeUs = 0.0;
 static int dawAudioFrameCount = 0;
 static float dawPeakLevel = 0.0f;    // peak output level (updated in audio callback)
 static float dawPeakHold = 0.0f;     // slow-decay peak for meter display
+
+#define DAW_SCOPE_SIZE 1024
+static float dawScopeBuffer[DAW_SCOPE_SIZE];
+static volatile int dawScopeWritePos = 0;
 static volatile bool dawBouncingActive = false;  // true during bounce — audio callback outputs silence
 static volatile bool dawAudioIdle = false;       // set by audio callback when it sees dawBouncingActive
 
@@ -477,6 +481,15 @@ static DawState daw = {
         .delayTime = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
         .delayFB = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
         .delayMix = {0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f,0.3f},
+        .wingiePitch  = {220,220,220,220,220,220,220,220},
+        .wingiePitch2 = {330,330,330,330,330,330,330,330},
+        .wingiePitch3 = {440,440,440,440,440,440,440,440},
+        .wingieDecay = {0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f},
+        .wingieMix   = {0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f},
+        .wingieCaveOn = {{1,1,1,1,1,1,1,1,1},{1,1,1,1,1,1,1,1,1},{1,1,1,1,1,1,1,1,1},{1,1,1,1,1,1,1,1,1},
+                         {1,1,1,1,1,1,1,1,1},{1,1,1,1,1,1,1,1,1},{1,1,1,1,1,1,1,1,1},{1,1,1,1,1,1,1,1,1}},
+        .pitchSemitones = {12,12,12,12,12,12,12,12},
+        .pitchMix       = {0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f,0.5f},
     },
     .sidechain = { .depth = 0.8f, .attack = 0.005f, .release = 0.15f,
                     .envDepth = 0.8f, .envAttack = 0.005f, .envHold = 0.02f,
@@ -1669,6 +1682,41 @@ static void drawSidebar(void) {
         if (daw.masterVol > 1) daw.masterVol = 1;
     }
     DrawTextShadow(TextFormat("%.0f%%", daw.masterVol*100), (int)x, (int)(y+barH+2), UI_FONT_SMALL, UI_TEXT_DIM);
+    y += barH + 14;
+
+    // Waveform scope
+    {
+        float sw = SIDEBAR_W - 4;
+        float sh = sw;
+        float sx = 2.0f;
+        DrawRectangle((int)sx, (int)y, (int)sw, (int)sh, UI_BG_DEEPEST);
+        DrawRectangleLinesEx((Rectangle){sx, y, sw, sh}, 1, UI_BORDER_SUBTLE);
+
+        int wp = dawScopeWritePos;
+        float midY = y + sh * 0.5f;
+        int pixW = (int)sw - 1;
+
+        // Auto-gain: find peak in buffer, normalize so signal fills ~90% of height
+        float peak = 0.001f;
+        for (int i = 0; i < DAW_SCOPE_SIZE; i++) {
+            float a = dawScopeBuffer[i]; if (a < 0) a = -a;
+            if (a > peak) peak = a;
+        }
+        float scaleY = (sh * 0.45f) / peak;
+
+        for (int px = 0; px < pixW; px++) {
+            int i0 = (wp + px       * DAW_SCOPE_SIZE / pixW) % DAW_SCOPE_SIZE;
+            int i1 = (wp + (px + 1) * DAW_SCOPE_SIZE / pixW) % DAW_SCOPE_SIZE;
+            float s0 = dawScopeBuffer[i0];
+            float s1 = dawScopeBuffer[i1];
+            int ly0 = (int)(midY - s0 * scaleY);
+            int ly1 = (int)(midY - s1 * scaleY);
+            if (ly0 < (int)y) ly0 = (int)y; if (ly0 > (int)(y+sh)) ly0 = (int)(y+sh);
+            if (ly1 < (int)y) ly1 = (int)y; if (ly1 > (int)(y+sh)) ly1 = (int)(y+sh);
+            DrawLine((int)(sx + px), ly0, (int)(sx + px + 1), ly1, (Color){50, 200, 100, 200});
+        }
+        DrawLine((int)sx, (int)midY, (int)(sx + sw), (int)midY, (Color){30, 70, 30, 120});
+    }
 }
 
 // ============================================================================
@@ -5763,6 +5811,35 @@ static void drawParamBus(float x, float y, float w, float h) {
         }
         ry += 2;
 
+        // Wingie resonator
+        ToggleBoolS(rightX, ry, "Wingie", &daw.mixer.wingieOn[b], fs); ry += row;
+        if (daw.mixer.wingieOn[b]) {
+            { static const char* wingModeNames[] = {"String", "Bar", "Cave", "Poly"};
+              CycleOptionS(rightX, ry, "Mode", wingModeNames, 4, &daw.mixer.wingieMode[b], fs); ry += row; }
+            DraggableFloatS(rightX, ry, "Pitch", &daw.mixer.wingiePitch[b], 2.0f, 20.0f, 2000.0f, fs); ry += row;
+            if (daw.mixer.wingieMode[b] == WINGIE_MODE_POLY) {
+                DraggableFloatS(rightX, ry, "Pitch2", &daw.mixer.wingiePitch2[b], 2.0f, 20.0f, 2000.0f, fs); ry += row;
+                DraggableFloatS(rightX, ry, "Pitch3", &daw.mixer.wingiePitch3[b], 2.0f, 20.0f, 2000.0f, fs); ry += row;
+            }
+            DraggableFloatS(rightX, ry, "Decay", &daw.mixer.wingieDecay[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Mix", &daw.mixer.wingieMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
+            if (daw.mixer.wingieMode[b] == WINGIE_MODE_CAVE) {
+                static const char* caveLabels[] = {"62","125","250","500","1k","2k","4k","8k","11k"};
+                for (int _ck = 0; _ck < WINGIE_NUM_PARTIALS; _ck++) {
+                    ToggleBoolS(rightX, ry, caveLabels[_ck], &daw.mixer.wingieCaveOn[b][_ck], fs); ry += row;
+                }
+            }
+        }
+        ry += 2;
+
+        // Pitch Shifter
+        ToggleBoolS(rightX, ry, "Pitch", &daw.mixer.pitchOn[b], fs); ry += row;
+        if (daw.mixer.pitchOn[b]) {
+            DraggableFloatS(rightX, ry, "Semi", &daw.mixer.pitchSemitones[b], 1.0f, -24.0f, 24.0f, fs); ry += row;
+            DraggableFloatS(rightX, ry, "Mix", &daw.mixer.pitchMix[b], 0.02f, 0.0f, 1.0f, fs); ry += row;
+        }
+        ry += 2;
+
         // Ring Mod
         ToggleBoolS(rightX, ry, "Ring", &daw.mixer.ringModOn[b], fs); ry += row;
         if (daw.mixer.ringModOn[b]) {
@@ -6643,6 +6720,7 @@ static void dawHandleMusicalTyping(void) {
                 if (v >= 0) {
                     voiceBus[v] = bus;
                     voiceAge[v] = 0.0f;
+                    synthCtx->voices[v].volume *= seq.trackVolume[bus];
                     voiceLogPush("ALLOC arp v%d bus=%d freq=%.0f", v, bus, heldFreqs[0]);
                 }
             }
@@ -6704,6 +6782,7 @@ static void dawHandleMusicalTyping(void) {
                 if (v >= 0) {
                     voiceBus[v] = bus;
                     voiceAge[v] = 0.0f;
+                    synthCtx->voices[v].volume *= seq.trackVolume[bus];
                     voiceLogPush("ALLOC key[%d] v%d bus=%d freq=%.0f", (int)i, v, bus, freq);
                 }
                 // Record note into pattern — add 12 so octave 4 = MIDI 60 (C4),
@@ -9423,6 +9502,7 @@ static void dawHandleMidiInput(void) {
                     if (v >= 0) {
                         voiceBus[v] = bus;
                         voiceAge[v] = 0.0f;
+                        synthCtx->voices[v].volume *= seq.trackVolume[bus];
                         voiceLogPush("MIDI ON n%d v%d bus=%d mono", note, v, bus);
                     }
                 } else {
@@ -9450,6 +9530,7 @@ static void dawHandleMidiInput(void) {
                     if (v >= 0) {
                         voiceBus[v] = bus;
                         voiceAge[v] = 0.0f;
+                        synthCtx->voices[v].volume *= seq.trackVolume[bus];
                         voiceLogPush("MIDI ON n%d v%d bus=%d vel=%.0f%%", note, v, bus, vel*100);
                     }
                 }
@@ -9603,6 +9684,7 @@ static void dawHandleMidiInput(void) {
                 if (v >= 0) {
                     voiceBus[v] = arpBus;
                     voiceAge[v] = 0.0f;
+                    synthCtx->voices[v].volume *= seq.trackVolume[arpBus];
                     voiceLogPush("MIDI ALLOC arp v%d bus=%d", v, arpBus);
                 }
             }

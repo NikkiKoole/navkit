@@ -159,6 +159,11 @@ typedef struct {
     float phaserMix[NUM_BUSES]; float phaserFB[NUM_BUSES]; int phaserStages[NUM_BUSES];
     bool combOn[NUM_BUSES];    float combFreq[NUM_BUSES]; float combFB[NUM_BUSES];
     float combMix[NUM_BUSES];  float combDamping[NUM_BUSES];
+    bool wingieOn[NUM_BUSES];  int wingieMode[NUM_BUSES]; float wingiePitch[NUM_BUSES];
+    float wingiePitch2[NUM_BUSES]; float wingiePitch3[NUM_BUSES];
+    float wingieDecay[NUM_BUSES]; float wingieMix[NUM_BUSES];
+    bool wingieCaveOn[NUM_BUSES][WINGIE_NUM_PARTIALS];
+    bool pitchOn[NUM_BUSES];   float pitchSemitones[NUM_BUSES]; float pitchMix[NUM_BUSES];
     bool ringModOn[NUM_BUSES]; float ringModFreq[NUM_BUSES]; float ringModMix[NUM_BUSES];
     bool delayOn[NUM_BUSES];   bool delaySync[NUM_BUSES];  int delaySyncDiv[NUM_BUSES];
     float delayTime[NUM_BUSES]; float delayFB[NUM_BUSES];  float delayMix[NUM_BUSES];

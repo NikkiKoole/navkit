@@ -209,6 +209,10 @@ static void DawAudioCallback(void *buffer, unsigned int frames) {
         rollingBuffer[rollingWritePos] = (sampleL + sampleR) * 0.5f;
         rollingWritePos = (rollingWritePos + 1) % ROLLING_BUFFER_LENGTH;
         rollingTotalWritten++;
+
+        // Scope buffer: small ring for sidebar waveform display
+        dawScopeBuffer[dawScopeWritePos] = (sampleL + sampleR) * 0.5f;
+        dawScopeWritePos = (dawScopeWritePos + 1) % DAW_SCOPE_SIZE;
     }
 
     double elapsed = (GetTime() - startTime) * 1000000.0;

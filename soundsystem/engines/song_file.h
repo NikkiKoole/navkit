@@ -858,6 +858,18 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
         _sf_writeFloat(f, "combFeedback", bus->combFeedback);
         _sf_writeFloat(f, "combMix", bus->combMix);
         _sf_writeFloat(f, "combDamping", bus->combDamping);
+        _sf_writeBool(f, "wingieEnabled", bus->resonatorEnabled);
+        _sf_writeInt(f, "wingieMode", bus->resonatorMode);
+        _sf_writeFloat(f, "wingiePitch", bus->resonatorPitch);
+        _sf_writeFloat(f, "wingiePitch2", bus->resonatorPitch2);
+        _sf_writeFloat(f, "wingiePitch3", bus->resonatorPitch3);
+        _sf_writeFloat(f, "wingieDecay", bus->resonatorDecay);
+        _sf_writeFloat(f, "wingieMix", bus->resonatorMix);
+        { int _wm = 0; for (int _wk = 0; _wk < WINGIE_NUM_PARTIALS; _wk++) if (bus->resonatorCaveOn[_wk]) _wm |= (1<<_wk);
+          _sf_writeInt(f, "wingieCave", _wm); }
+        _sf_writeBool(f, "pitchEnabled", bus->pitchEnabled);
+        _sf_writeFloat(f, "pitchSemitones", bus->pitchSemitones);
+        _sf_writeFloat(f, "pitchMix", bus->pitchMix);
         _sf_writeBool(f, "octaverEnabled", bus->octaverEnabled);
         _sf_writeFloat(f, "octaverMix", bus->octaverMix);
         _sf_writeFloat(f, "octaverSubLevel", bus->octaverSubLevel);
@@ -1784,6 +1796,17 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
                 else if (strcmp(key, "combFeedback") == 0) bus->combFeedback = _sf_parseFloat(val);
                 else if (strcmp(key, "combMix") == 0) bus->combMix = _sf_parseFloat(val);
                 else if (strcmp(key, "combDamping") == 0) bus->combDamping = _sf_parseFloat(val);
+                else if (strcmp(key, "wingieEnabled") == 0) bus->resonatorEnabled = _sf_parseBool(val);
+                else if (strcmp(key, "wingieMode") == 0) bus->resonatorMode = _sf_parseInt(val);
+                else if (strcmp(key, "wingiePitch") == 0) bus->resonatorPitch = _sf_parseFloat(val);
+                else if (strcmp(key, "wingiePitch2") == 0) bus->resonatorPitch2 = _sf_parseFloat(val);
+                else if (strcmp(key, "wingiePitch3") == 0) bus->resonatorPitch3 = _sf_parseFloat(val);
+                else if (strcmp(key, "wingieDecay") == 0) bus->resonatorDecay = _sf_parseFloat(val);
+                else if (strcmp(key, "wingieMix") == 0) bus->resonatorMix = _sf_parseFloat(val);
+                else if (strcmp(key, "wingieCave") == 0) { int _wm = _sf_parseInt(val); for (int _wk = 0; _wk < WINGIE_NUM_PARTIALS; _wk++) bus->resonatorCaveOn[_wk] = (_wm >> _wk) & 1; }
+                else if (strcmp(key, "pitchEnabled") == 0) bus->pitchEnabled = _sf_parseBool(val);
+                else if (strcmp(key, "pitchSemitones") == 0) bus->pitchSemitones = _sf_parseFloat(val);
+                else if (strcmp(key, "pitchMix") == 0) bus->pitchMix = _sf_parseFloat(val);
                 else if (strcmp(key, "octaverEnabled") == 0) bus->octaverEnabled = _sf_parseBool(val);
                 else if (strcmp(key, "octaverMix") == 0) bus->octaverMix = _sf_parseFloat(val);
                 else if (strcmp(key, "octaverSubLevel") == 0) bus->octaverSubLevel = _sf_parseFloat(val);

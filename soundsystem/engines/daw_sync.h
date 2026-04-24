@@ -191,6 +191,12 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
                      d->mixer.phaserFB[b], d->mixer.phaserStages[b]);
         setBusComb(b, d->mixer.combOn[b], d->mixer.combFreq[b],
                    d->mixer.combFB[b], d->mixer.combMix[b], d->mixer.combDamping[b]);
+        setBusWingie(b, d->mixer.wingieOn[b], d->mixer.wingieMode[b],
+                     d->mixer.wingiePitch[b], d->mixer.wingiePitch2[b], d->mixer.wingiePitch3[b],
+                     d->mixer.wingieDecay[b], d->mixer.wingieMix[b]);
+        for (int _wk = 0; _wk < WINGIE_NUM_PARTIALS; _wk++)
+            setBusWingiePartial(b, _wk, d->mixer.wingieCaveOn[b][_wk]);
+        setBusPitchShift(b, d->mixer.pitchOn[b], d->mixer.pitchSemitones[b], d->mixer.pitchMix[b]);
         setBusRingMod(b, d->mixer.ringModOn[b], d->mixer.ringModFreq[b],
                       d->mixer.ringModMix[b]);
         setBusDelay(b, d->mixer.delayOn[b], d->mixer.delayTime[b],

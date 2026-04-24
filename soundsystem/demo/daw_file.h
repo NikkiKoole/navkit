@@ -415,6 +415,18 @@ static bool dawSave(const char *filepath) {
         snprintf(k, sizeof(k), "combFB%d", b); _dw(f, k, daw.mixer.combFB[b]);
         snprintf(k, sizeof(k), "combMix%d", b); _dw(f, k, daw.mixer.combMix[b]);
         snprintf(k, sizeof(k), "combDamping%d", b); _dw(f, k, daw.mixer.combDamping[b]);
+        snprintf(k, sizeof(k), "wingieOn%d", b); _db(f, k, daw.mixer.wingieOn[b]);
+        snprintf(k, sizeof(k), "wingieMode%d", b); _di(f, k, daw.mixer.wingieMode[b]);
+        snprintf(k, sizeof(k), "wingiePitch%d", b); _dw(f, k, daw.mixer.wingiePitch[b]);
+        snprintf(k, sizeof(k), "wingiePitch2%d", b); _dw(f, k, daw.mixer.wingiePitch2[b]);
+        snprintf(k, sizeof(k), "wingiePitch3%d", b); _dw(f, k, daw.mixer.wingiePitch3[b]);
+        snprintf(k, sizeof(k), "wingieDecay%d", b); _dw(f, k, daw.mixer.wingieDecay[b]);
+        snprintf(k, sizeof(k), "wingieMix%d", b); _dw(f, k, daw.mixer.wingieMix[b]);
+        { int _wm = 0; for (int _wk = 0; _wk < WINGIE_NUM_PARTIALS; _wk++) if (daw.mixer.wingieCaveOn[b][_wk]) _wm |= (1<<_wk);
+          snprintf(k, sizeof(k), "wingieCave%d", b); _di(f, k, _wm); }
+        snprintf(k, sizeof(k), "pitchOn%d", b); _db(f, k, daw.mixer.pitchOn[b]);
+        snprintf(k, sizeof(k), "pitchSemitones%d", b); _dw(f, k, daw.mixer.pitchSemitones[b]);
+        snprintf(k, sizeof(k), "pitchMix%d", b); _dw(f, k, daw.mixer.pitchMix[b]);
         snprintf(k, sizeof(k), "octaverOn%d", b); _db(f, k, daw.mixer.octaverOn[b]);
         snprintf(k, sizeof(k), "octaverMix%d", b); _dw(f, k, daw.mixer.octaverMix[b]);
         snprintf(k, sizeof(k), "octaverSub%d", b); _dw(f, k, daw.mixer.octaverSubLevel[b]);
@@ -1402,6 +1414,17 @@ static bool dawLoad(const char *filepath) {
                     else if (strcmp(base,"combFB")==0) daw.mixer.combFB[b]=_dpf(val);
                     else if (strcmp(base,"combMix")==0) daw.mixer.combMix[b]=_dpf(val);
                     else if (strcmp(base,"combDamping")==0) daw.mixer.combDamping[b]=_dpf(val);
+                    else if (strcmp(base,"wingieOn")==0) daw.mixer.wingieOn[b]=_dpb(val);
+                    else if (strcmp(base,"wingieMode")==0) daw.mixer.wingieMode[b]=_dpi(val);
+                    else if (strcmp(base,"wingiePitch")==0) daw.mixer.wingiePitch[b]=_dpf(val);
+                    else if (strcmp(base,"wingiePitch2")==0) daw.mixer.wingiePitch2[b]=_dpf(val);
+                    else if (strcmp(base,"wingiePitch3")==0) daw.mixer.wingiePitch3[b]=_dpf(val);
+                    else if (strcmp(base,"wingieDecay")==0) daw.mixer.wingieDecay[b]=_dpf(val);
+                    else if (strcmp(base,"wingieMix")==0) daw.mixer.wingieMix[b]=_dpf(val);
+                    else if (strcmp(base,"wingieCave")==0) { int _wm=_dpi(val); for (int _wk=0; _wk<WINGIE_NUM_PARTIALS; _wk++) daw.mixer.wingieCaveOn[b][_wk]=(_wm>>_wk)&1; }
+                    else if (strcmp(base,"pitchOn")==0) daw.mixer.pitchOn[b]=_dpb(val);
+                    else if (strcmp(base,"pitchSemitones")==0) daw.mixer.pitchSemitones[b]=_dpf(val);
+                    else if (strcmp(base,"pitchMix")==0) daw.mixer.pitchMix[b]=_dpf(val);
                     else if (strcmp(base,"octaverOn")==0) daw.mixer.octaverOn[b]=_dpb(val);
                     else if (strcmp(base,"octaverMix")==0) daw.mixer.octaverMix[b]=_dpf(val);
                     else if (strcmp(base,"octaverSub")==0) daw.mixer.octaverSubLevel[b]=_dpf(val);

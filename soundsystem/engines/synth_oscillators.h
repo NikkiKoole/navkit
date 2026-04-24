@@ -2560,6 +2560,7 @@ static void initMandolinPreset(MandolinSettings *ms, MandolinPreset preset,
 static float processMandolinOscillator(Voice *v, float sampleRate) {
     if (v->ksLength <= 0) return 0.0f;
     MandolinSettings *ms = &v->mandolinSettings;
+    if (ms->ks2Length <= 0) return 0.0f;
 
     // --- String 1 (primary, uses Voice's ksBuffer) ---
     float gRatio = (v->ksInitFreq > 20.0f) ? (v->frequency / v->ksInitFreq) : 1.0f;
