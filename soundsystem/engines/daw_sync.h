@@ -249,6 +249,9 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
     // DJFX looper
     fx.djfxLoopDiv       = d->tapeFx.djfxLoopDiv;
 
+    // Granular delay
+    granDelay            = d->tapeFx.granDelayFx;
+
     // Master speed (state in EffectsContext, accessed via macro)
     halfSpeedActive      = d->masterSpeed;
 

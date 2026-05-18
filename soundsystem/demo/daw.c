@@ -521,6 +521,8 @@ static DawState daw = {
         .rewindTime = 1.5f, .rewindMinSpeed = 0.2f, .rewindVinyl = 0.1f, .rewindWobble = 0.2f, .rewindFilter = 0.5f,
         .tapeStopTime = 1.0f, .tapeStopCurve = 1, .tapeStopSpinBack = true, .tapeStopSpinTime = 0.3f,
         .beatRepeatDiv = 2, .beatRepeatDecay = 0.1f, .beatRepeatMix = 1.0f, .beatRepeatGate = 1.0f,
+        .granDelayFx = { .mix = 0.5f, .feedback = 0.2f, .grainSize = 120.0f,
+                         .density = 12.0f, .position = 0.8f, .scatter = 0.3f },
     },
     .chopSliceMap = {-1, -1, -1, -1},
     .chromaticRootNote = 60,
@@ -6093,7 +6095,7 @@ static void drawParamMasterFx(float x, float y, float w, float h) {
     // 8: Tape
     MFX_BEGIN("Tape", &daw.masterFx.tapeOn)
     if (daw.masterFx.tapeOn) {
-        DraggableFloatS(rx, ry, "Sat", &daw.masterFx.tapeSaturation, 0.05f, 0.0f, 1.0f, fs); ry += row;
+        DraggableFloatS(rx, ry, "Sat", &daw.masterFx.tapeSaturation, 0.05f, 0.0f, 2.0f, fs); ry += row;
         DraggableFloatS(rx, ry, "Wow", &daw.masterFx.tapeWow, 0.05f, 0.0f, 1.0f, fs); ry += row;
         DraggableFloatS(rx, ry, "Flut", &daw.masterFx.tapeFlutter, 0.05f, 0.0f, 1.0f, fs); ry += row;
         DraggableFloatS(rx, ry, "Hiss", &daw.masterFx.tapeHiss, 0.05f, 0.0f, 1.0f, fs); ry += row;
@@ -6251,6 +6253,22 @@ static void drawParamTape(float x, float y, float w, float h) {
         if (ui_col_button(&c3, "Cut Tape")) {
             dubLoopReset();
         }
+    }
+
+    // COL 4: Granular Delay
+    {
+        UIColumn c4 = ui_column(x+440, y, 16);
+        ui_col_sublabel(&c4, "Gran Delay:", ORANGE);
+        ui_col_toggle(&c4, "On", &daw.tapeFx.granDelayFx.enabled);
+        ui_col_float(&c4, "Mix",     &daw.tapeFx.granDelayFx.mix,       0.05f, 0.0f,   1.0f);
+        ui_col_float(&c4, "Size ms", &daw.tapeFx.granDelayFx.grainSize, 10.0f, 20.0f, 500.0f);
+        ui_col_float(&c4, "Density", &daw.tapeFx.granDelayFx.density,    1.0f,  1.0f,  40.0f);
+        ui_col_float(&c4, "Pos",     &daw.tapeFx.granDelayFx.position,  0.05f, 0.0f,   1.0f);
+        ui_col_float(&c4, "Scatter", &daw.tapeFx.granDelayFx.scatter,   0.05f, 0.0f,   1.0f);
+        ui_col_float(&c4, "Fdbk",    &daw.tapeFx.granDelayFx.feedback,  0.05f, 0.0f,   0.9f);
+        ui_col_toggle(&c4, "Freeze", &daw.tapeFx.granDelayFx.freeze);
+        ui_col_space(&c4, 2);
+        if (ui_col_button(&c4, "Clear")) granDelayReset();
     }
 
     // Divider

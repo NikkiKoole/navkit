@@ -133,6 +133,8 @@ typedef struct {
     // DJFX looper
     int djfxLoopDiv;
     bool isDjfxLooping;
+    // Granular delay
+    GranDelayParams granDelayFx;
 } TapeFX;
 
 typedef struct {

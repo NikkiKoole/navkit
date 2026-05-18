@@ -71,6 +71,9 @@ typedef struct {
     // Dub loop
     DubLoopParams sfDubLoop;
 
+    // Granular delay
+    GranDelayParams sfGranDelay;
+
     // Patterns
     int patternCount;
     Pattern patterns[SEQ_NUM_PATTERNS];
@@ -813,6 +816,17 @@ static bool songFileSave(const char *filepath, const SongFileData *d) {
         _sf_writeFloat(f, key, d->sfDubLoop.headLevel[i]);
     }
 
+    // Granular delay
+    fprintf(f, "\n[grandelay]\n");
+    _sf_writeBool(f,  "enabled",   d->sfGranDelay.enabled);
+    _sf_writeFloat(f, "mix",       d->sfGranDelay.mix);
+    _sf_writeFloat(f, "feedback",  d->sfGranDelay.feedback);
+    _sf_writeFloat(f, "grainSize", d->sfGranDelay.grainSize);
+    _sf_writeFloat(f, "density",   d->sfGranDelay.density);
+    _sf_writeFloat(f, "position",  d->sfGranDelay.position);
+    _sf_writeFloat(f, "scatter",   d->sfGranDelay.scatter);
+    _sf_writeBool(f,  "freeze",    d->sfGranDelay.freeze);
+
     // Per-bus effects
     static const char* busNames[] = {"drum0", "drum1", "drum2", "drum3", "bass", "lead", "chord", "sampler"};
     for (int b = 0; b < NUM_BUSES; b++) {
@@ -955,6 +969,7 @@ typedef enum {
     _SF_SEC_MIX,
     _SF_SEC_EFFECTS,
     _SF_SEC_DUB,
+    _SF_SEC_GRANDELAY,
     _SF_SEC_BUS,          // .drum0, .drum1, ..., .chord
     _SF_SEC_METADATA,
     _SF_SEC_TRANSITIONS,
@@ -1510,6 +1525,7 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
             else if (strcmp(secName, "mix") == 0) { section = _SF_SEC_MIX; }
             else if (strcmp(secName, "effects") == 0) { section = _SF_SEC_EFFECTS; }
             else if (strcmp(secName, "dub") == 0) { section = _SF_SEC_DUB; }
+            else if (strcmp(secName, "grandelay") == 0) { section = _SF_SEC_GRANDELAY; }
             else if (strcmp(secName, "metadata") == 0) { section = _SF_SEC_METADATA; }
             else if (strcmp(secName, "transitions") == 0) { section = _SF_SEC_TRANSITIONS; }
             else if (strcmp(secName, "chain") == 0) { section = _SF_SEC_CHAIN; }
@@ -1751,6 +1767,17 @@ static bool songFileLoad(const char *filepath, SongFileData *d) {
                 int h = key[9] - '0';
                 if (h >= 0 && h < DUB_LOOP_MAX_HEADS) d->sfDubLoop.headLevel[h] = _sf_parseFloat(val);
             }
+            break;
+
+        case _SF_SEC_GRANDELAY:
+            if (strcmp(key, "enabled") == 0) d->sfGranDelay.enabled = _sf_parseBool(val);
+            else if (strcmp(key, "mix") == 0) d->sfGranDelay.mix = _sf_parseFloat(val);
+            else if (strcmp(key, "feedback") == 0) d->sfGranDelay.feedback = _sf_parseFloat(val);
+            else if (strcmp(key, "grainSize") == 0) d->sfGranDelay.grainSize = _sf_parseFloat(val);
+            else if (strcmp(key, "density") == 0) d->sfGranDelay.density = _sf_parseFloat(val);
+            else if (strcmp(key, "position") == 0) d->sfGranDelay.position = _sf_parseFloat(val);
+            else if (strcmp(key, "scatter") == 0) d->sfGranDelay.scatter = _sf_parseFloat(val);
+            else if (strcmp(key, "freeze") == 0) d->sfGranDelay.freeze = _sf_parseBool(val);
             break;
 
         case _SF_SEC_BUS:

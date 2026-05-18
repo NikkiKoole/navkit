@@ -151,6 +151,10 @@ typedef enum { WINGIE_MODE_STRING=0, WINGIE_MODE_BAR=1, WINGIE_MODE_CAVE=2, WING
 // Half-speed buffer (4 seconds)
 #define HALF_SPEED_BUFFER_SIZE (SAMPLE_RATE * 4)
 
+// Granular delay constants (Cosmos-style: scatter through memory buffer)
+#define GRAN_DELAY_BUF_SIZE (SAMPLE_RATE * 5)   // 5 seconds capture at 44100Hz
+#define GRAN_DELAY_MAX_GRAINS 24                 // Max simultaneous grains
+
 // ============================================================================
 // BUS/MIXER SYSTEM
 // ============================================================================
@@ -731,6 +735,30 @@ typedef struct {
 } RewindParams;
 
 // ============================================================================
+// GRANULAR DELAY
+// ============================================================================
+
+typedef struct {
+    float readPos;    // Current read position in the capture buffer
+    float posInc;     // Samples to advance per output sample (1.0 = normal speed)
+    float envPhase;   // 0-1 through Hanning window envelope
+    float envInc;     // Per-sample envelope advance (1/grainSamples)
+    float amp;        // Grain amplitude
+    bool  active;
+} GranDelayGrain;
+
+typedef struct {
+    bool  enabled;
+    float mix;        // 0-1 dry/wet
+    float feedback;   // 0-0.9 (output fed back into capture buffer)
+    float grainSize;  // ms (20-500)
+    float density;    // Grains per second (1-40)
+    float position;   // 0-1: 1=near live edge, 0=deep into past
+    float scatter;    // 0-1: random spread around position
+    bool  freeze;     // Stop writing — loop what's captured
+} GranDelayParams;
+
+// ============================================================================
 // EFFECTS CONTEXT (all effects state in one struct)
 // ============================================================================
 
@@ -896,6 +924,15 @@ typedef struct EffectsContext {
     float halfSpeedReadPos;           // fractional for interpolation
     float halfSpeedActive;            // target speed (1.0 = normal/bypass, <1 = slow, >1 = fast)
     float halfSpeedCrossfade;         // for smooth toggle transitions
+
+    // Granular delay state
+    GranDelayParams granDelay;
+    float granDelayBuf[GRAN_DELAY_BUF_SIZE];
+    int granDelayWritePos;
+    float granDelaySpawnTimer;
+    float granDelayLastOutput;
+    GranDelayGrain granDelayGrains[GRAN_DELAY_MAX_GRAINS];
+    unsigned int granDelayNoiseSeed;
 } EffectsContext;
 
 // Initialize an effects context with default values
@@ -1131,6 +1168,17 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->rewindState = REWIND_IDLE;
     ctx->rewindNoiseState = 67890;
 
+    // Granular delay - off by default
+    ctx->granDelay.enabled   = false;
+    ctx->granDelay.mix       = 0.5f;
+    ctx->granDelay.feedback  = 0.2f;
+    ctx->granDelay.grainSize = 120.0f;   // 120ms
+    ctx->granDelay.density   = 12.0f;    // 12 grains/sec
+    ctx->granDelay.position  = 0.8f;     // Near live edge
+    ctx->granDelay.scatter   = 0.3f;
+    ctx->granDelay.freeze    = false;
+    ctx->granDelayNoiseSeed  = 55555;
+
     // Vinyl sim - off by default
     ctx->params.vinylEnabled = false;
     ctx->params.vinylCrackle = 0.3f;
@@ -1252,6 +1300,15 @@ static float fxNoise(void) {
 #define rewindCrossfadePos (fxCtx->rewindCrossfadePos)
 #define rewindLpState (fxCtx->rewindLpState)
 #define rewindNoiseState (fxCtx->rewindNoiseState)
+
+// Granular delay macros
+#define granDelay (fxCtx->granDelay)
+#define granDelayBuf (fxCtx->granDelayBuf)
+#define granDelayWritePos (fxCtx->granDelayWritePos)
+#define granDelaySpawnTimer (fxCtx->granDelaySpawnTimer)
+#define granDelayLastOutput (fxCtx->granDelayLastOutput)
+#define granDelayGrains (fxCtx->granDelayGrains)
+#define granDelayNoiseSeed (fxCtx->granDelayNoiseSeed)
 
 // Vinyl sim macros
 #define vinylRngState (fxCtx->params.vinylRngState)
@@ -2258,6 +2315,8 @@ static float processMasterCompressor(float sample, float dt) {
 
 #include "half_speed.h"
 
+#include "granular_delay.h"
+
 // ============================================================================
 // SIDECHAIN COMPRESSION
 // ============================================================================
@@ -2426,6 +2485,7 @@ static float processEffects(float sample, float dt) {
         sample = processTapeStop(sample, dt);
         sample = processBeatRepeat(sample, fx.bpm, dt);
         sample = processDjfxLoop(sample, fx.bpm, dt);
+        sample = processGranularDelay(sample, dt);
         // Skip reverb again at end
     } else {
         // Normal mode: delay -> reverb (echo in a room)
@@ -2434,6 +2494,7 @@ static float processEffects(float sample, float dt) {
         sample = processTapeStop(sample, dt);
         sample = processBeatRepeat(sample, fx.bpm, dt);
         sample = processDjfxLoop(sample, fx.bpm, dt);
+        sample = processGranularDelay(sample, dt);
         sample = processReverb(sample);
     }
     sample = processHalfSpeed(sample);
@@ -2482,6 +2543,7 @@ static float processEffectsWithBuses(float drumBus, float synthBus, float dt) {
         sample = processTapeStop(sample, dt);
         sample = processBeatRepeat(sample, fx.bpm, dt);
         sample = processDjfxLoop(sample, fx.bpm, dt);
+        sample = processGranularDelay(sample, dt);
 
         // Only apply reverb if not in preReverb mode (already applied)
         if (!dubLoop.preReverb) {
@@ -2492,6 +2554,7 @@ static float processEffectsWithBuses(float drumBus, float synthBus, float dt) {
         sample = processTapeStop(sample, dt);
         sample = processBeatRepeat(sample, fx.bpm, dt);
         sample = processDjfxLoop(sample, fx.bpm, dt);
+        sample = processGranularDelay(sample, dt);
         sample = processReverb(sample);
     }
 
@@ -3271,6 +3334,7 @@ static float _processMasterChain(float sample, float reverbSend, float delaySend
     sample = processTapeStop(sample, dt);
     sample = processBeatRepeat(sample, mixerCtx->tempo, dt);
     sample = processDjfxLoop(sample, mixerCtx->tempo, dt);
+    sample = processGranularDelay(sample, dt);
 
     // Normal mode: apply reverb send/return AFTER dub loop (echoes in a room)
     if (doReverbSend) {

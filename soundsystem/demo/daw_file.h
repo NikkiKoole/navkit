@@ -546,6 +546,14 @@ static bool dawSave(const char *filepath) {
     _dw(f, "beatRepeatPitch", daw.tapeFx.beatRepeatPitch); _dw(f, "beatRepeatMix", daw.tapeFx.beatRepeatMix);
     _dw(f, "beatRepeatGate", daw.tapeFx.beatRepeatGate);
     _di(f, "djfxLoopDiv", daw.tapeFx.djfxLoopDiv);
+    _db(f, "granEnabled",  daw.tapeFx.granDelayFx.enabled);
+    _dw(f, "granMix",      daw.tapeFx.granDelayFx.mix);
+    _dw(f, "granFeedback", daw.tapeFx.granDelayFx.feedback);
+    _dw(f, "granSize",     daw.tapeFx.granDelayFx.grainSize);
+    _dw(f, "granDensity",  daw.tapeFx.granDelayFx.density);
+    _dw(f, "granPosition", daw.tapeFx.granDelayFx.position);
+    _dw(f, "granScatter",  daw.tapeFx.granDelayFx.scatter);
+    _db(f, "granFreeze",   daw.tapeFx.granDelayFx.freeze);
 
     // [crossfader]
     fprintf(f, "\n[crossfader]\n");
@@ -1612,6 +1620,14 @@ static bool dawLoad(const char *filepath) {
             else if (strcmp(key,"beatRepeatMix")==0) daw.tapeFx.beatRepeatMix=_dpf(val);
             else if (strcmp(key,"beatRepeatGate")==0) daw.tapeFx.beatRepeatGate=_dpf(val);
             else if (strcmp(key,"djfxLoopDiv")==0) daw.tapeFx.djfxLoopDiv=_dpi(val);
+            else if (strcmp(key,"granEnabled")==0) daw.tapeFx.granDelayFx.enabled=_dpb(val);
+            else if (strcmp(key,"granMix")==0) daw.tapeFx.granDelayFx.mix=_dpf(val);
+            else if (strcmp(key,"granFeedback")==0) daw.tapeFx.granDelayFx.feedback=_dpf(val);
+            else if (strcmp(key,"granSize")==0) daw.tapeFx.granDelayFx.grainSize=_dpf(val);
+            else if (strcmp(key,"granDensity")==0) daw.tapeFx.granDelayFx.density=_dpf(val);
+            else if (strcmp(key,"granPosition")==0) daw.tapeFx.granDelayFx.position=_dpf(val);
+            else if (strcmp(key,"granScatter")==0) daw.tapeFx.granDelayFx.scatter=_dpf(val);
+            else if (strcmp(key,"granFreeze")==0) daw.tapeFx.granDelayFx.freeze=_dpb(val);
             break;
         case _DW_SEC_CROSSFADER:
             if (strcmp(key,"enabled")==0) daw.crossfader.enabled=_dpb(val);
