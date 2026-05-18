@@ -209,6 +209,11 @@ static void dawSyncEngineStateFromEx(const DawState *d, const Pattern *pat) {
         mixerCtx->bus[b].compAttack = d->mixer.compAttack[b];
         mixerCtx->bus[b].compRelease = d->mixer.compRelease[b];
         mixerCtx->bus[b].compMakeup = d->mixer.compMakeup[b];
+        mixerCtx->bus[b].tapeEnabled  = d->mixer.tapeOn[b];
+        mixerCtx->bus[b].tapeSat      = d->mixer.tapeSat[b];
+        mixerCtx->bus[b].tapeWow      = d->mixer.tapeWow[b];
+        mixerCtx->bus[b].tapeFlutter  = d->mixer.tapeFlut[b];
+        mixerCtx->bus[b].tapeHiss     = d->mixer.tapeHiss[b];
     }
 
     // Tape/dub loop

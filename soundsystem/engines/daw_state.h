@@ -171,6 +171,8 @@ typedef struct {
     float delayTime[NUM_BUSES]; float delayFB[NUM_BUSES];  float delayMix[NUM_BUSES];
     bool compOn[NUM_BUSES];    float compThreshold[NUM_BUSES]; float compRatio[NUM_BUSES];
     float compAttack[NUM_BUSES]; float compRelease[NUM_BUSES]; float compMakeup[NUM_BUSES];
+    bool tapeOn[NUM_BUSES];    float tapeSat[NUM_BUSES]; float tapeWow[NUM_BUSES];
+    float tapeFlut[NUM_BUSES]; float tapeHiss[NUM_BUSES];
 } Mixer;
 
 typedef struct {

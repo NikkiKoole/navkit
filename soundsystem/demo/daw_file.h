@@ -458,6 +458,11 @@ static bool dawSave(const char *filepath) {
         snprintf(k, sizeof(k), "compAtk%d", b); _dw(f, k, daw.mixer.compAttack[b]);
         snprintf(k, sizeof(k), "compRel%d", b); _dw(f, k, daw.mixer.compRelease[b]);
         snprintf(k, sizeof(k), "compMakeup%d", b); _dw(f, k, daw.mixer.compMakeup[b]);
+        snprintf(k, sizeof(k), "busTapeOn%d", b); _db(f, k, daw.mixer.tapeOn[b]);
+        snprintf(k, sizeof(k), "busTapeSat%d", b); _dw(f, k, daw.mixer.tapeSat[b]);
+        snprintf(k, sizeof(k), "busTapeWow%d", b); _dw(f, k, daw.mixer.tapeWow[b]);
+        snprintf(k, sizeof(k), "busTapeFlut%d", b); _dw(f, k, daw.mixer.tapeFlut[b]);
+        snprintf(k, sizeof(k), "busTapeHiss%d", b); _dw(f, k, daw.mixer.tapeHiss[b]);
     }
 
     // [sidechain]
@@ -1464,6 +1469,11 @@ static bool dawLoad(const char *filepath) {
                     else if (strcmp(base,"compAtk")==0) daw.mixer.compAttack[b]=_dpf(val);
                     else if (strcmp(base,"compRel")==0) daw.mixer.compRelease[b]=_dpf(val);
                     else if (strcmp(base,"compMakeup")==0) daw.mixer.compMakeup[b]=_dpf(val);
+                    else if (strcmp(base,"busTapeOn")==0) daw.mixer.tapeOn[b]=_dpb(val);
+                    else if (strcmp(base,"busTapeSat")==0) daw.mixer.tapeSat[b]=_dpf(val);
+                    else if (strcmp(base,"busTapeWow")==0) daw.mixer.tapeWow[b]=_dpf(val);
+                    else if (strcmp(base,"busTapeFlut")==0) daw.mixer.tapeFlut[b]=_dpf(val);
+                    else if (strcmp(base,"busTapeHiss")==0) daw.mixer.tapeHiss[b]=_dpf(val);
                 }
             }
             break;

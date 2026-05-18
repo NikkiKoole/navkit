@@ -319,6 +319,13 @@ typedef struct {
     bool pitchEnabled;
     float pitchSemitones;  // -24 to +24
     float pitchMix;        // 0-1
+
+    // Tape (saturation, wow, flutter, hiss)
+    bool tapeEnabled;
+    float tapeSat;
+    float tapeWow;
+    float tapeFlutter;
+    float tapeHiss;
 } BusEffects;
 
 // Per-bus processing state
@@ -391,6 +398,17 @@ typedef struct {
     int   psWritePos;
     float psReadPos[2];
     float psGrainPhase[2];
+
+    // Tape state
+    float busTapeBuf[TAPE_BUFFER_SIZE];
+    int   busTapeWritePos;
+    float busTapeWowPhase;
+    float busTapeFlutterPhase;
+    float busTapeWowNoise;
+    float busTapeFlutterNoise;
+    unsigned int busTapeWowNoiseSeed;
+    unsigned int busTapeFlutterNoiseSeed;
+    float busTapeHissFilterLp;
 } BusState;
 
 // Mixer context (all buses + shared state)
@@ -3188,11 +3206,45 @@ static float processBusEffects(float input, int busIndex, float dt) {
         sample = sample * (1.0f - bus->delayMix) + delayed * bus->delayMix;
     }
     
+    // === TAPE (saturation, wow, flutter, hiss) ===
+    if (bus->tapeEnabled) {
+        if (bus->tapeSat > 0.0f) {
+            float sat = bus->tapeSat * 2.0f;
+            sample = tanhf(sample * (1.0f + sat)) / tanhf(1.0f + sat);
+        }
+        state->busTapeBuf[state->busTapeWritePos] = sample;
+        state->busTapeWritePos = (state->busTapeWritePos + 1) % TAPE_BUFFER_SIZE;
+        float modOffset = 0.0f;
+        if (bus->tapeWow > 0.0f) {
+            float wow = tapeWowFlutterLFO(&state->busTapeWowPhase, &state->busTapeWowNoise,
+                                          &state->busTapeWowNoiseSeed,
+                                          TAPE_WOW_RATE, dt, TAPE_WOW_RATE * 3.0f * dt, 0.35f);
+            modOffset += wow * bus->tapeWow * TAPE_WOW_DEPTH;
+        }
+        if (bus->tapeFlutter > 0.0f) {
+            float flutter = tapeWowFlutterLFO(&state->busTapeFlutterPhase, &state->busTapeFlutterNoise,
+                                               &state->busTapeFlutterNoiseSeed,
+                                               6.0f, dt, 6.0f * 4.0f * dt, 0.4f);
+            modOffset += flutter * bus->tapeFlutter * TAPE_FLUTTER_DEPTH;
+        }
+        if (modOffset != 0.0f) {
+            float readPos = (float)state->busTapeWritePos - TAPE_BUFFER_SIZE / 2.0f + modOffset;
+            if (readPos < 0) readPos += TAPE_BUFFER_SIZE;
+            if (readPos >= TAPE_BUFFER_SIZE) readPos -= TAPE_BUFFER_SIZE;
+            sample = hermiteInterp(state->busTapeBuf, TAPE_BUFFER_SIZE, readPos);
+        }
+        if (bus->tapeHiss > 0.0f) {
+            float hiss = FX_NOISE_FUNC() * bus->tapeHiss * TAPE_HISS_SCALE;
+            state->busTapeHissFilterLp += TAPE_HISS_FILTER_COEFF * (hiss - state->busTapeHissFilterLp);
+            sample += hiss - state->busTapeHissFilterLp;
+        }
+    }
+
     // === VOLUME ===
     sample *= bus->volume;
-    
+
     // Note: Pan is handled at the stereo mix stage (not implemented here for mono)
-    
+
     return sample;
 }
 
