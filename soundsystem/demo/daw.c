@@ -5222,20 +5222,16 @@ static void drawParamPatch(float x, float y, float w, float h) {
     // Vertical divider
     DrawLine((int)col3X-4, (int)y, (int)col3X-4, (int)(y+h), UI_BORDER_SUBTLE);
 
-    // COL 3: Voice params (vibrato, volume, mono, unison, arp, scale)
+    // COL 3: Voice params (volume, mono, unison, arp, scale)
     {
         float col3W = 130;
         UIColumn c = PCOL(col3X, y);
+        float secY;
 
-        bool vibActive = DF(p_vibratoRate) || DF(p_vibratoDepth);
-        float secY = c.y;
-        ui_col_sublabel(&c, "Vibrato:", ORANGE);
-        ui_col_float(&c, "Rate", &p->p_vibratoRate, 0.5f, 0.5f, 15.0f);
-        ui_col_float(&c, "Depth", &p->p_vibratoDepth, 0.2f, 0.0f, 2.0f);
         if (lfoModViz.active && fabsf(lfoModViz.pitchMod) > 0.001f) {
-            DrawTextShadow(TextFormat("%+.1fst", lfoModViz.pitchMod), (int)(col3X + 80), (int)(c.y - c.spacing + 1), UI_FONT_SMALL, (Color){255, 160, 60, 200});
+            DrawTextShadow(TextFormat("pitch %+.1fst", lfoModViz.pitchMod), (int)(col3X), (int)(c.y + 1), UI_FONT_SMALL, (Color){255, 160, 60, 200});
+            c.y += c.spacing;
         }
-        sectionHighlight(col3X - 2, secY, col3W, c.y - secY, vibActive);
         ui_col_space(&c, 3);
 
         ui_col_sublabel(&c, "Volume:", ORANGE);
@@ -9634,8 +9630,7 @@ static void dawHandleMidiInput(void) {
                                 synthCtx->voices[vi].filterEnvAmt    = p->p_filterEnvAmt;
                                 synthCtx->voices[vi].filterLfoRate   = p->p_filterLfoRate;
                                 synthCtx->voices[vi].filterLfoDepth  = p->p_filterLfoDepth;
-                                synthCtx->voices[vi].vibratoRate     = p->p_vibratoRate;
-                                synthCtx->voices[vi].vibratoDepth    = p->p_vibratoDepth;
+
                                 synthCtx->voices[vi].pulseWidth      = p->p_pulseWidth;
                                 synthCtx->voices[vi].pwmRate         = p->p_pwmRate;
                                 synthCtx->voices[vi].pwmDepth        = p->p_pwmDepth;
