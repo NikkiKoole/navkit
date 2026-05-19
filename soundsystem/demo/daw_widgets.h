@@ -122,7 +122,7 @@ static void drawWaveThumb(float x, float y, float w, float h, int waveType, bool
 
 static float drawWaveSelector(float x, float y, float w, int* wave) {
     int basicWaves[] = {WAVE_SQUARE, WAVE_SAW, WAVE_TRIANGLE, WAVE_SINE, WAVE_NOISE, WAVE_SCW};
-    int waveCount = 6, engineCount1 = 5, engineCount2 = 8;
+    int waveCount = 6, engineCount1 = 5, engineCount2 = 8, engineCount3 = 6, engineCount4 = 5;
     float thumbH = 20;
     Vector2 mouse = GetMousePosition();
     float totalH = 0;
@@ -153,6 +153,26 @@ static float drawWaveSelector(float x, float y, float w, int* wave) {
     eW = (w - (engineCount2 - 1) * 2) / engineCount2;
     for (int i = 0; i < engineCount2; i++) {
         int wi = 10 + i;
+        float tx = x + i * (eW + 2), ty = y + totalH;
+        bool sel = (wi == *wave), hov = CheckCollisionPointRec(mouse, (Rectangle){tx, ty, eW, thumbH});
+        drawWaveThumb(tx, ty, eW, thumbH, wi, sel, hov);
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { *wave = wi; ui_consume_click(); }
+    }
+    totalH += thumbH + 2;
+
+    eW = (w - (engineCount3 - 1) * 2) / engineCount3;
+    for (int i = 0; i < engineCount3; i++) {
+        int wi = 18 + i;
+        float tx = x + i * (eW + 2), ty = y + totalH;
+        bool sel = (wi == *wave), hov = CheckCollisionPointRec(mouse, (Rectangle){tx, ty, eW, thumbH});
+        drawWaveThumb(tx, ty, eW, thumbH, wi, sel, hov);
+        if (hov && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) { *wave = wi; ui_consume_click(); }
+    }
+    totalH += thumbH + 2;
+
+    eW = (w - (engineCount4 - 1) * 2) / engineCount4;
+    for (int i = 0; i < engineCount4; i++) {
+        int wi = 24 + i;
         float tx = x + i * (eW + 2), ty = y + totalH;
         bool sel = (wi == *wave), hov = CheckCollisionPointRec(mouse, (Rectangle){tx, ty, eW, thumbH});
         drawWaveThumb(tx, ty, eW, thumbH, wi, sel, hov);
