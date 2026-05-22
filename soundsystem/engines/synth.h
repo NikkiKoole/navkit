@@ -710,7 +710,7 @@ typedef enum {
     BANDEDWG_COUNT
 } BandedWGPreset;
 
-#define BANDEDWG_NUM_MODES 4
+#define BANDEDWG_NUM_MODES 8
 
 typedef struct {
     // Per-mode delay line state (partitioned within Voice.ksBuffer[2048])
@@ -732,9 +732,12 @@ typedef struct {
     // Excitation
     bool bwgBowExcitation;    // true = bow (continuous), false = strike (one-shot)
     float bwgBowVelocity;     // Current bow speed
-    float bwgBowPressure;     // Current bow pressure
-    float bwgStrikePos;       // 0-1: which modes get excited
+    float bwgBowPressure;     // Current bow pressure (friction force multiplier)
+    float bwgStrikePos;       // 0-1: excitation position
     float strikeEnergy;       // Decaying impulse energy for struck mode
+    float excitationWeight[BANDEDWG_NUM_MODES]; // Per-mode excitation weight (Strike pos)
+    float outputGain[BANDEDWG_NUM_MODES];       // Per-mode output mix (Bright + Strike shape)
+    float bwgBowSlope;        // Bow-table slope (BwPres), 2..8 — controls stick-slip sharpness
 
     int numModes;             // Active modes (usually 4)
     float soundLevel;         // Output gain
@@ -5135,40 +5138,96 @@ static int playBandedWG(float freq, BandedWGPreset preset) {
     Voice *v = &synthVoices[voiceIdx];
     initBandedWGPreset(&v->bandedwgSettings, v->ksBuffer, freq, 44100.0f, preset);
 
-    // Apply tweakable overrides
-    // Bow velocity mapped from 0-1 knob to STK range (~0.0-0.15)
-    v->bandedwgSettings.bwgBowVelocity = bandedwgBowSpeed * 0.15f;
-    v->bandedwgSettings.bwgBowPressure = bandedwgBowPressure;
-    v->bandedwgSettings.bwgStrikePos = bandedwgStrikePos;
+    // --- Phase 1: real param mappings ---
+    // Strategy: knobs that need to be audible in steady-state under bowing must shape
+    // outputGain[m] (post-bandpass mix), NOT feedbackGain[m] (would destabilize the
+    // self-sustaining loop) or input weighting (washed out by the feedback term).
+    BandedWGSettings *bw = &v->bandedwgSettings;
+    int N = bw->numModes;
 
-    // Brightness scales feedback gains (STK baseGain_: 0.9 to 1.0 range)
-    float baseGainMult = 0.9f + bandedwgBrightness * 0.1f;
-    for (int i = 0; i < v->bandedwgSettings.numModes; i++) {
-        v->bandedwgSettings.feedbackGain[i] *= baseGainMult;
+    // BwSpd → bow target velocity. Bow table is bell-shaped with peak at v≈0, so going
+    // too wide pushes into the slip regime and just gets quieter. 0.05..0.22 is the
+    // sweet spot — slightly wider than old 0..0.15 but still safely in the stick zone.
+    bw->bwgBowVelocity = 0.05f + bandedwgBowSpeed * 0.17f;
+
+    // BwPres → friction amplitude (kept) AND bow-table slope (new — adds harmonics).
+    // Slope 2..8: smooth pure-tone friction → sharp stick-slip with harmonic richness.
+    bw->bwgBowPressure = bandedwgBowPressure;
+    bw->bwgBowSlope = 2.0f + bandedwgBowPressure * 6.0f;
+
+    // Strike → per-mode |sin(π·(m+1)·s)| shape with floor 0.4 (raw weights).
+    // Applied to BOTH the input (transient color) AND the output mix (steady-state).
+    float sp = bandedwgStrikePos;
+    if (sp < 0.001f) sp = 0.001f;
+    if (sp > 0.999f) sp = 0.999f;
+    bw->bwgStrikePos = sp;
+    float strikeShape[BANDEDWG_NUM_MODES];
+    for (int m = 0; m < N; m++) {
+        strikeShape[m] = 0.4f + 0.6f * fabsf(sinf(PI * (float)(m + 1) * sp));
+    }
+    // Input weights normalized so total injected energy ≈ flat case
+    float wsum = 0.0f;
+    for (int m = 0; m < N; m++) wsum += strikeShape[m];
+    if (wsum > 0.0001f) {
+        float norm = (float)N / wsum;
+        for (int m = 0; m < N; m++) bw->excitationWeight[m] = strikeShape[m] * norm;
+    } else {
+        for (int m = 0; m < N; m++) bw->excitationWeight[m] = 1.0f;
     }
 
-    // Sustain scales feedback gains further
-    float sustainMult = 0.9f + bandedwgSustain * 0.1f;
-    for (int i = 0; i < v->bandedwgSettings.numModes; i++) {
-        v->bandedwgSettings.feedbackGain[i] *= sustainMult;
+    // Bright → per-mode output-gain TILT (was: flat 10% on feedback — inaudible).
+    // brightness=0.5 = flat, >0.5 boosts top modes, <0.5 boosts bottom modes.
+    // ±60% swing safely (output gain, doesn't affect resonator stability).
+    float tilt = (bandedwgBrightness - 0.5f) * 1.2f;
+    for (int m = 0; m < N; m++) {
+        float pos = (N > 1) ? ((float)m / (float)(N - 1)) : 0.5f;
+        float brightGain = 1.0f + tilt * (pos - 0.5f) * 2.0f;
+        if (brightGain < 0.05f) brightGain = 0.05f;
+        // Combine Bright tilt with Strike-position shape on output
+        bw->outputGain[m] = brightGain * strikeShape[m];
+    }
+    // RMS-normalize outputGain so knob moves change TIMBRE, not loudness.
+    // Target sum(g²) = 4 (the original 4-mode baseline) regardless of N — adding more
+    // modes contributes more partials without inflating overall RMS into clipping.
+    float opower = 0.0f;
+    for (int m = 0; m < N; m++) opower += bw->outputGain[m] * bw->outputGain[m];
+    if (opower > 0.0001f) {
+        float onorm = sqrtf(4.0f / opower);
+        for (int m = 0; m < N; m++) bw->outputGain[m] *= onorm;
     }
 
-    // For struck presets, pre-load delay lines with energy (STK pluck pattern)
-    if (!v->bandedwgSettings.bwgBowExcitation) {
-        int minLen = v->bandedwgSettings.modeLen[v->bandedwgSettings.numModes - 1];
+    // Sustn → bandpass radius R via quadratic curve. Wider range than v1: 0.97..0.9999.
+    // sustain=0 → R=0.97 (very short ring), sustain=0.7 → R≈0.997 (preserves old default).
+    float s1 = 1.0f - bandedwgSustain;
+    float R = 1.0f - 0.03f * s1 * s1;
+    if (R > 0.9999f) R = 0.9999f;
+    if (R < 0.95f) R = 0.95f;
+    float sampleRate = 44100.0f;
+    for (int m = 0; m < N; m++) {
+        float modeFreq = bw->initFreq * bw->modeRatios[m];
+        float theta = 2.0f * PI * modeFreq / sampleRate;
+        bw->bqA1[m] = -2.0f * R * cosf(theta);
+        bw->bqA2[m] = R * R;
+        bw->bqB0[m] = 1.0f - R * R;
+    }
+
+    // For struck presets, pre-load delay lines with weighted noise (STK pluck pattern).
+    // excitationWeight[m] shapes which modes get more initial energy.
+    if (!bw->bwgBowExcitation) {
+        int minLen = bw->modeLen[N - 1];
         if (minLen < 1) minLen = 1;
-        for (int m = 0; m < v->bandedwgSettings.numModes; m++) {
-            int len = v->bandedwgSettings.modeLen[m];
-            int off = v->bandedwgSettings.modeOffset[m];
-            // Pre-fill proportional to delay length (STK pattern)
+        for (int m = 0; m < N; m++) {
+            int len = bw->modeLen[m];
+            int off = bw->modeOffset[m];
             int fills = len / minLen;
             if (fills < 1) fills = 1;
+            float w = bw->excitationWeight[m];
             for (int j = 0; j < fills && j < len; j++) {
-                v->ksBuffer[off + j] = noise() * bandedwgBowPressure * 0.3f
-                                      / (float)v->bandedwgSettings.numModes;
+                v->ksBuffer[off + j] = noise() * bandedwgBowPressure * 0.3f * w
+                                      / (float)N;
             }
         }
-        v->bandedwgSettings.strikeEnergy = bandedwgBowPressure;
+        bw->strikeEnergy = bandedwgBowPressure;
     }
 
     return voiceIdx;

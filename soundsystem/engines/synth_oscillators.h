@@ -4343,20 +4343,20 @@ static float processShakerOscillator(Voice *v, float sampleRate) {
 // not KS lowpass. This is what makes glass sound glassy.
 // ============================================================================
 
-// Mode frequency ratios per preset (from STK source)
+// Mode frequency ratios per preset (extended to 8 modes — STK provides up to 12)
 static const float bandedwgModeRatios[BANDEDWG_COUNT][BANDEDWG_NUM_MODES] = {
-    // GLASS HARMONICA: cylindrical glass flexural modes (STK preset 3)
-    { 1.0f, 2.32f, 4.25f, 6.63f },
-    // SINGING BOWL: Tibetan bowl — near-degenerate pairs for beating (STK preset 4, first 4 of 12)
-    { 1.0f, 1.002f, 2.98f, 2.99f },
-    // VIBRAPHONE: free-free bar modes (STK preset 0 "uniform bar")
-    { 1.0f, 2.756f, 5.404f, 8.933f },
-    // WINE GLASS: same physics as glass harmonica but played higher
-    { 1.0f, 2.32f, 4.25f, 6.63f },
-    // PRAYER BOWL: like singing bowl but struck — wider mode spacing
-    { 1.0f, 2.71f, 5.13f, 8.27f },
-    // TUBULAR: tuned bar modes (STK preset 1 — wide spacing for bell-like tone)
-    { 1.0f, 4.0198f, 10.7184f, 18.0697f },
+    // GLASS HARMONICA: cylindrical glass flexural modes (STK preset 3, extended)
+    { 1.0f, 2.32f, 4.25f, 6.63f, 9.38f, 12.42f, 15.69f, 19.16f },
+    // SINGING BOWL: paired modes for beating (STK preset 4 — 12-mode bowl, first 8)
+    { 1.0f, 1.002f, 2.98f, 2.99f, 5.88f, 5.89f, 9.62f, 9.63f },
+    // VIBRAPHONE: free-free bar modes (STK preset 0 uniform bar, extended)
+    { 1.0f, 2.756f, 5.404f, 8.933f, 13.345f, 18.638f, 24.813f, 31.870f },
+    // WINE GLASS: same physics as glass harmonica
+    { 1.0f, 2.32f, 4.25f, 6.63f, 9.38f, 12.42f, 15.69f, 19.16f },
+    // PRAYER BOWL: bowl modes, wider spacing than singing bowl (struck)
+    { 1.0f, 2.71f, 5.13f, 8.27f, 11.85f, 15.95f, 20.50f, 25.60f },
+    // TUBULAR: tuned bar modes (STK preset 1, extended — wide spacing, bell-like)
+    { 1.0f, 4.0198f, 10.7184f, 18.0697f, 26.16f, 35.07f, 44.74f, 55.00f },
 };
 
 // Preset parameter table
@@ -4368,18 +4368,24 @@ typedef struct {
 } BandedWGPresetParams;
 
 static const BandedWGPresetParams bandedwgPresetData[BANDEDWG_COUNT] = {
-    // GLASS HARMONICA: long sustain, nearly equal gains
-    { {0.95f, 0.94f, 0.93f, 0.92f}, {1.0f, 1.0f, 1.0f, 1.0f}, true, 0.40f },
-    // SINGING BOWL: paired modes for beating
-    { {0.96f, 0.96f, 0.94f, 0.94f}, {1.0f, 1.0f, 1.0f, 1.0f}, true, 0.35f },
-    // VIBRAPHONE: aggressive higher-mode decay
-    { {0.90f, 0.81f, 0.729f, 0.656f}, {1.0f, 1.0f, 1.0f, 1.0f}, false, 0.45f },
-    // WINE GLASS: long sustain, pure
-    { {0.96f, 0.95f, 0.94f, 0.93f}, {1.0f, 1.0f, 1.0f, 1.0f}, true, 0.50f },
-    // PRAYER BOWL: struck, long decay
-    { {0.95f, 0.94f, 0.93f, 0.92f}, {1.0f, 1.0f, 1.0f, 1.0f}, false, 0.35f },
-    // TUBULAR: struck, rapid higher-mode decay for clarity
-    { {0.90f, 0.85f, 0.80f, 0.75f}, {1.0f, 1.0f, 1.0f, 1.0f}, false, 0.45f },
+    // GLASS HARMONICA: long sustain, slow falloff — modes ring almost equally
+    { {0.95f, 0.94f, 0.93f, 0.92f, 0.91f, 0.90f, 0.89f, 0.88f},
+      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f}, true, 0.40f },
+    // SINGING BOWL: paired modes (1≈2, 3≈4, 5≈6, 7≈8) — characteristic beating wash
+    { {0.96f, 0.96f, 0.94f, 0.94f, 0.92f, 0.92f, 0.90f, 0.90f},
+      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f}, true, 0.35f },
+    // VIBRAPHONE: aggressive higher-mode decay (~×0.9 per mode) — partials die fast
+    { {0.90f, 0.81f, 0.729f, 0.656f, 0.590f, 0.531f, 0.478f, 0.430f},
+      {1.0f,  1.0f,  1.0f,   1.0f,   1.0f,   1.0f,   1.0f,   1.0f}, false, 0.45f },
+    // WINE GLASS: long sustain, gentle falloff — pure ringing
+    { {0.96f, 0.95f, 0.94f, 0.93f, 0.92f, 0.91f, 0.90f, 0.89f},
+      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f}, true, 0.50f },
+    // PRAYER BOWL: struck, medium falloff — distinguishable from Glass (used to be identical)
+    { {0.95f, 0.93f, 0.91f, 0.89f, 0.87f, 0.85f, 0.83f, 0.81f},
+      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f}, false, 0.35f },
+    // TUBULAR: struck, rapid higher-mode decay — clarity over richness
+    { {0.90f, 0.85f, 0.80f, 0.75f, 0.70f, 0.65f, 0.60f, 0.55f},
+      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f}, false, 0.45f },
 };
 
 // Initialize banded waveguide preset — partitions ksBuffer, sets up BiQuad bandpass per mode
@@ -4400,6 +4406,12 @@ static void initBandedWGPreset(BandedWGSettings *bw, float *ksBuffer,
     bw->dcState = 0.0f;
     bw->dcPrev = 0.0f;
     bw->initFreq = freq;
+    // Default to flat weights — playBandedWG overrides with per-mode strikePos shaping
+    for (int i = 0; i < BANDEDWG_NUM_MODES; i++) {
+        bw->excitationWeight[i] = 1.0f;
+        bw->outputGain[i] = 1.0f;
+    }
+    bw->bwgBowSlope = 3.0f; // STK default
 
     // BiQuad bandpass radius (from STK: 1.0 - PI * 32 / sampleRate)
     float radius = 1.0f - PI * 32.0f / sampleRate;
@@ -4414,6 +4426,9 @@ static void initBandedWGPreset(BandedWGSettings *bw, float *ksBuffer,
 
         // Delay length for this mode
         float modeFreq = freq * ratios[m];
+        // Skip modes above Nyquist — tubular/vibraphone ratios reach 30+ and would
+        // alias at higher pitches. Drops the count cleanly, leaving lower modes alone.
+        if (modeFreq >= sampleRate * 0.45f) { bw->numModes = m; break; }
         int len = (int)(sampleRate / modeFreq);
         if (len < 2) len = 2;
         if (offset + len > 2048) len = 2048 - offset;
@@ -4464,9 +4479,9 @@ static inline float bwgBiQuadTick(float input, int m, BandedWGSettings *bw) {
 }
 
 // STK bow table: f(x) = pow(abs(x*slope + offset) + 0.75, -4), clamped [0.01, 0.98]
-static inline float bwgBowTable(float input) {
-    // slope=3.0, offset=0.001 (STK defaults)
-    float sample = fabsf(input * 3.0f + 0.001f) + 0.75f;
+// Slope is exposed (driven by BwPres) — sharper slope = harder stick-slip = more harmonics
+static inline float bwgBowTable(float input, float slope) {
+    float sample = fabsf(input * slope + 0.001f) + 0.75f;
     sample = 1.0f / (sample * sample * sample * sample);  // pow(-4)
     if (sample > 0.98f) sample = 0.98f;
     if (sample < 0.01f) sample = 0.01f;
@@ -4492,7 +4507,10 @@ static float processBandedWGOscillator(Voice *v, float sampleRate) {
                 velocitySum += bw->feedbackGain[m] * v->ksBuffer[off + idx];
             }
             float deltaV = bw->bwgBowVelocity - velocitySum;
-            input = deltaV * bwgBowTable(deltaV);
+            // BwPres → friction amplitude AND bow-table slope (harmonic content)
+            // Amplitude 0.2..2.0× (light → heavy), slope 2..8 (smooth → sharp stick-slip)
+            float pressure = 0.2f + bw->bwgBowPressure * 1.8f;
+            input = deltaV * bwgBowTable(deltaV, bw->bwgBowSlope) * pressure;
             input /= (float)bw->numModes;
         }
     } else {
@@ -4528,8 +4546,8 @@ static float processBandedWGOscillator(Voice *v, float sampleRate) {
         float bwFrac = bwReadPos - floorf(bwReadPos);
         float delayOut = v->ksBuffer[off + bwIdx0] + bwFrac * (v->ksBuffer[off + bwIdx1] - v->ksBuffer[off + bwIdx0]);
 
-        // Bandpass filter: input + feedback * delay_out (STK topology)
-        float bpInput = input + bw->feedbackGain[m] * delayOut;
+        // Bandpass filter: input (per-mode weighted by Strike pos) + feedback * delay_out
+        float bpInput = input * bw->excitationWeight[m] + bw->feedbackGain[m] * delayOut;
         float bpOut = bwgBiQuadTick(bpInput, m, bw);
 
         // Safety clamp — prevent runaway (should not trigger with correct gains)
@@ -4542,8 +4560,8 @@ static float processBandedWGOscillator(Voice *v, float sampleRate) {
         // Advance delay index
         bw->modeIdx[m] = (idx + 1) % len;
 
-        // Accumulate output from bandpass (STK sums bandpass outputs)
-        out += bpOut;
+        // Accumulate output, per-mode gain shaping (Bright tilt + Strike pos)
+        out += bpOut * bw->outputGain[m];
     }
 
     // Decay strike energy
