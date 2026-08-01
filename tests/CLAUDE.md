@@ -8,7 +8,8 @@ Unit tests and benchmarks using c89spec framework.
 make test              # all tests
 make test_jobs         # single test
 make test-quick        # skip slow mover stress tests
-make bench             # benchmarks (jobs + items)
+make bench             # benchmarks (jobs + items + pathfinding)
+make bench_astar_heap  # A* linear-scan vs heap A/B (slow, excluded from `bench`)
 ```
 
 ## Test Unity Build

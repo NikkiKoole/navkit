@@ -481,6 +481,7 @@ bench_jobs_SRC := tests/bench_jobs.c
 bench_items_SRC := tests/bench_items.c
 bench_rehaul_mini_SRC := tests/bench_rehaul_mini.c
 bench_pathfinding_SRC := tests/bench_pathfinding.c
+bench_astar_heap_SRC := tests/bench_astar_heap.c
 
 # Job system benchmark
 bench_jobs: $(TEST_UNITY_OBJ)
@@ -501,6 +502,12 @@ bench_rehaul_mini: $(TEST_UNITY_OBJ)
 bench_pathfinding: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(bench_pathfinding_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/bench_pathfinding
+
+# A* linear-scan vs binary-heap A/B (docs/todo/pathfinding/astar-priority-queue-and-extraction.md)
+# Not in `bench` — the current RunAStar is slow enough (~4s per 128x128 path) to dominate the run.
+bench_astar_heap: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(bench_astar_heap_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	./$(BINDIR)/bench_astar_heap
 
 # Run all benchmarks
 bench: bench_jobs bench_items bench_pathfinding
@@ -684,4 +691,4 @@ cscope:
 nav: tags cscope
 	@echo "Updated tags + cscope.out"
 
-.PHONY: all clean clean-raylib clean-atlas nav test test-tap test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood test_rooms path steer crowd mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed chop-flip path8 path16 path-sound bench bench_jobs bench_items windows
+.PHONY: all clean clean-raylib clean-atlas nav test test-tap test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood test_rooms path steer crowd mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed chop-flip path8 path16 path-sound bench bench_jobs bench_items bench_pathfinding bench_astar_heap windows

@@ -37,6 +37,7 @@
 - `gameplay/seasoning-curing.md` — Material states (green/seasoned/rotten wood) changing over time
 - `gameplay/more-tiles-design.md` — Next small tiles: hearth, clay pit, mud mixer
 - `world/elevators.md` — Moving platforms with state, capacity, queuing
+- `pathfinding/astar-priority-queue-and-extraction.md` — `RunAStar()` linear-scans instead of using the existing heap (~32s/path at 256×256, measured); plus what it'd take to lift the pathfinder into another project
 - `pathfinding/transport-layer.md` — Unified abstraction for vehicles, queues & multi-leg pathfinding (CapacityNode pattern)
 - `pathfinding/social-navigation.md` — Queuing and crowd behavior (prerequisite for elevators/trains)
 - `pathfinding/unified-spatial-queries.md` — Consolidate duplicated "find nearest" patterns
