@@ -70,7 +70,7 @@ static void UpdateSurfaceFromWear(int x, int y, int z, bool recovering) {
     } else if (wear >= wearNormalToTrampled) {
         SET_CELL_SURFACE(x, y, z, SURFACE_TRAMPLED);
     } else {
-        SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
+        cellFlags[z][y][x] &= ~CELL_SURFACE_MASK;
     }
 
     // Vegetation: when trampling, only decrease; when recovering, grow one step at a time.
