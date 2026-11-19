@@ -188,6 +188,12 @@ typedef struct NavFlowField {
     // the 8-direction zig-zag/lanes. -1 at goals / unreachable cells.
     bool anyAngle;                 // default true
     int* steer;
+
+    // Optional per-cell extra cost [z][y][x] added when entering a cell, on top
+    // of NavMoveCost (crowd density, danger, wall clearance, ...). Changes which
+    // route is cheapest; does NOT restrict any-angle line-of-sight steering.
+    // Owned by the caller; NULL = none.
+    const int* extraCost;
     int* steerLimit;               // private: max cell cost along c -> steer[c]
 
     // private build heap (lazy deletion: entries may be stale)
@@ -225,6 +231,12 @@ static inline bool NavFlowNext(const NavFlowField* f, NavPoint p, NavPoint* out)
     *out = NavFlowCellPoint(f, n);
     return true;
 }
+
+// Distance (in cells, 8-connected, capped at 255) from every walkable cell to
+// the nearest non-walkable cell or map edge on the same level; 0 for
+// non-walkable cells. `out` must hold width*height*depth bytes. Useful as input
+// for an extraCost wall-clearance penalty.
+void NavComputeClearance(NavWorld* w, uint8_t* out);
 
 // Straight-line steering target from p (see `steer`). False at a goal, if
 // unreachable, out of bounds, or the field was built without anyAngle.

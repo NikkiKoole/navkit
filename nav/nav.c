@@ -1524,6 +1524,43 @@ static inline void nav_FlowRelax(NavFlowField* f, int p, int c, int newCost, int
     nav_FlowPush(f, newCost, p);
 }
 
+void NavComputeClearance(NavWorld* w, uint8_t* out) {
+    int W = w->width, Hh = w->height;
+    size_t layer = (size_t)W * Hh;
+    int* queue = malloc(layer * sizeof(int));
+    if (!queue) return;
+    for (int z = 0; z < w->depth; z++) {
+        uint8_t* o = out + layer * z;
+        int qh = 0, qt = 0;
+        for (int y = 0; y < Hh; y++)
+            for (int x = 0; x < W; x++) {
+                int i = y * W + x;
+                if (!NavIsWalkable(NAV_HOSTP, x, y, z)) { o[i] = 0; continue; }
+                o[i] = 255;
+                // Seed: walkable cells touching a blocked cell or the map edge get 1
+                for (int dy = -1; dy <= 1 && o[i] == 255; dy++)
+                    for (int dx = -1; dx <= 1; dx++) {
+                        if (!dx && !dy) continue;
+                        if (!NavIsWalkable(NAV_HOSTP, x + dx, y + dy, z)) { o[i] = 1; queue[qt++] = i; break; }
+                    }
+            }
+        while (qh < qt) {
+            int i = queue[qh++];
+            int x = i % W, y = i / W;
+            int nd = o[i] + 1;
+            if (nd > 255) continue;
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++) {
+                    int nx = x + dx, ny = y + dy;
+                    if ((!dx && !dy) || nx < 0 || ny < 0 || nx >= W || ny >= Hh) continue;
+                    int j = ny * W + nx;
+                    if (o[j] > nd) { o[j] = (uint8_t)nd; queue[qt++] = j; }
+                }
+        }
+    }
+    free(queue);
+}
+
 int NavFlowBuild(NavWorld* w, NavFlowField* f, const NavPoint* goals, int goalCount, int maxCost) {
     if (f->width != w->width || f->height != w->height || f->depth != w->depth) return 0;
     double startTime = NavHostTime();
@@ -1554,7 +1591,8 @@ int NavFlowBuild(NavWorld* w, NavFlowField* f, const NavPoint* goals, int goalCo
         NavPoint C = NavFlowCellPoint(f, c);
         int x = C.x, y = C.y, z = C.z;
         int cellCost = NavMoveCost(NAV_HOSTP, x, y, z);
-        nav_FlowSetSteer(w, f, c, C, cellCost);
+        nav_FlowSetSteer(w, f, c, C, cellCost);       // steering uses terrain cost only
+        if (f->extraCost) cellCost += f->extraCost[c];  // routing uses terrain + extra
 
         // Same level: P = C - dir steps onto C (mirror of A*'s neighbour step)
         for (int i = 0; i < numDirs; i++) {

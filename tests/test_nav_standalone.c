@@ -224,8 +224,49 @@ static void test_flow_steering(void) {
     }
 }
 
+static void test_flow_extra_cost_and_clearance(void) {
+    // Wall at x=10 with doors at y=3 and y=16; goal straight right of door A
+    static StubMap m = {.w = 21, .h = 20, .d = 1};
+    for (int y = 0; y < 20; y++) m.wall[0][y][10] = 1;
+    m.wall[0][3][10] = 0;
+    m.wall[0][16][10] = 0;
+    NavWorld* w = NavCreate(21, 20, 1, 8, 8, &m);
+    NavFlowField* f = NavFlowCreate(w);
+    NavPoint goal = {18, 3, 0}, start = {2, 6, 0};
+
+    NavFlowBuild(w, f, &goal, 1, 0);
+    CHECK(OnRoute(f, start, (NavPoint){10, 3, 0}));          // takes door A
+    int plain = NavFlowCostAt(f, start);
+
+    // Make door A expensive -> route switches to door B, costs include the extra
+    static int extra[20 * 21];
+    extra[NavFlowCellId(f, 10, 3, 0)] = 1000;
+    f->extraCost = extra;
+    NavFlowBuild(w, f, &goal, 1, 0);
+    CHECK(OnRoute(f, start, (NavPoint){10, 16, 0}));         // takes door B
+    CHECK(NavFlowCostAt(f, start) > plain);
+    // Extra is paid on ENTERING a cell: standing in front of door A, it's now
+    // cheaper to walk round through door B than to step into A
+    CHECK(NavFlowCostAt(f, (NavPoint){9, 3, 0}) < 1000);
+    CHECK(OnRoute(f, (NavPoint){9, 3, 0}, (NavPoint){10, 16, 0}));
+    f->extraCost = NULL;
+
+    // Clearance: distance to nearest blocked cell / map edge, 0 on walls
+    static uint8_t clr[20 * 21];
+    NavComputeClearance(w, clr);
+    CHECK(clr[NavFlowCellId(f, 10, 5, 0)] == 0);             // wall
+    CHECK(clr[NavFlowCellId(f, 9, 8, 0)] == 1);              // next to the wall
+    CHECK(clr[NavFlowCellId(f, 0, 8, 0)] == 1);              // map edge
+    CHECK(clr[NavFlowCellId(f, 5, 8, 0)] == 5);              // middle of the left room (cols 0..9)
+    CHECK(clr[NavFlowCellId(f, 10, 3, 0)] == 1);             // inside a doorway
+
+    NavFlowDestroy(f);
+    NavDestroy(w);
+}
+
 int main(void) {
     printf("Running nav standalone tests...\n");
+    test_flow_extra_cost_and_clearance();
     test_flow_steering();
     test_open_diagonal();
     test_variable_cost_detour();
