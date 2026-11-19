@@ -161,8 +161,6 @@ static inline bool IsCellAirAt(int z, int y, int x) {
 
 // Note: IsLadderCell, IsWallCell, IsCellWalkableAt are defined in cell_defs.h
 // Include cell_defs.h after grid.h to use them
-extern bool needsRebuild;      // Generic flag (legacy)
-extern bool hpaNeedsRebuild;   // HPA* specific rebuild flag
 
 // Initialize grid with specific dimensions and default chunk size (16x16)
 void InitGridWithSize(int width, int height);

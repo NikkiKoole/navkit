@@ -16,6 +16,9 @@
 #include "world/grid.c"
 #include "world/biome.c"
 #include "world/terrain.c"
+// nav library (algorithms) + game host contract, then the game-side layer
+#define NAV_HOST_HEADER "../src/world/nav_host.h"
+#include "../nav/nav.c"
 #include "world/pathfinding.c"
 #include "world/designations.c"
 #include "world/construction.c"

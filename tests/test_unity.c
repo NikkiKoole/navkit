@@ -73,6 +73,8 @@ bool bladderEnabled = false;
 #include "../src/world/grid.c"
 #include "../src/world/biome.c"
 #include "../src/world/terrain.c"
+#define NAV_HOST_HEADER "../src/world/nav_host.h"
+#include "../nav/nav.c"
 #include "../src/world/pathfinding.c"
 #include "../src/world/designations.c"
 #include "../src/world/construction.c"

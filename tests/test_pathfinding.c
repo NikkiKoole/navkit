@@ -39,7 +39,7 @@ describe(grid_initialization) {
         // Clear dirty flags
         for (int cy = 0; cy < chunksY; cy++)
             for (int cx = 0; cx < chunksX; cx++)
-                chunkDirty[0][cy][cx] = false;
+                SetChunkDirty(cx, cy, 0, false);
         needsRebuild = false;
 
         // Place a wall and mark dirty
@@ -48,7 +48,7 @@ describe(grid_initialization) {
 
         int cx = 10 / chunkWidth;
         int cy = 10 / chunkHeight;
-        expect(chunkDirty[0][cy][cx] == true && needsRebuild == true);
+        expect(IsChunkDirty(cx, cy, 0) == true && needsRebuild == true);
     }
 }
 

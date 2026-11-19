@@ -120,7 +120,7 @@ test_rooms_SRC       := tests/test_rooms.c
 # Both unity.c and test_unity.c #include all .c/.h files, but make doesn't
 # know about those includes. Without this, changing a header (e.g. adding an
 # enum value) won't trigger a rebuild, causing stale-object bugs.
-GAME_SOURCES := $(wildcard src/*.h src/*.c src/**/*.h src/**/*.c tests/test_unity.c)
+GAME_SOURCES := $(wildcard src/*.h src/*.c src/**/*.h src/**/*.c nav/*.h nav/*.c tests/test_unity.c)
 
 # Precompile test_unity.o once (the expensive part)
 $(TEST_UNITY_OBJ): $(GAME_SOURCES) $(RAYLIB_LIB) | $(BINDIR)
@@ -174,6 +174,11 @@ test_mover: $(TEST_UNITY_OBJ)
 	-@./$(BINDIR)/test_mover -q
 
 # Steering test (doesn't use test_unity)
+# nav library on its own: stub host only, no raylib, no game code (guards the extraction)
+test_nav_standalone: $(BINDIR)
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ tests/test_nav_standalone.c
+	-@./$(BINDIR)/test_nav_standalone
+
 test_steering: $(BINDIR)
 	@echo "Running steering tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_steering_SRC) $(LDFLAGS)
@@ -458,7 +463,7 @@ test_mechanisms: $(BINDIR)
 
 # Run all tests (mover uses 5 stress iterations by default)
 .IGNORE: test
-test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_seasons test_weather test_wind test_snow test_thunderstorm test_lighting test_workshop_linking test_hunger test_stacking test_containers test_sleep test_furniture test_balance test_soundsystem test_daw_file test_cross_z test_workshop_deconstruction test_tool_quality test_doors test_butchering test_hunting test_spoilage test_fog test_farming test_clothing test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood test_rooms
+test: test_nav_standalone test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_seasons test_weather test_wind test_snow test_thunderstorm test_lighting test_workshop_linking test_hunger test_stacking test_containers test_sleep test_furniture test_balance test_soundsystem test_daw_file test_cross_z test_workshop_deconstruction test_tool_quality test_doors test_butchering test_hunting test_spoilage test_fog test_farming test_clothing test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood test_rooms
 
 # Full stress tests - mover tests use 20 iterations
 test-full: $(TEST_UNITY_OBJ)
@@ -674,7 +679,9 @@ compile_commands.json: $(GAME_SOURCES)
 	files = [f for f in sorted(glob.glob('src/**/*.c', recursive=True)) if 'unity.c' not in f]; \
 	files += sorted(glob.glob('tests/test_*.c')); \
 	files += sorted(glob.glob('soundsystem/**/*.c', recursive=True)); \
-	json.dump([{'directory': d, 'command': f'clang {flags} -c -o /dev/null {f}', 'file': os.path.join(d, f)} for f in files], open('compile_commands.json','w'), indent=2); \
+	files += sorted(glob.glob('nav/*.c')); \
+	navflag = ' -Isrc/world'; \
+	json.dump([{'directory': d, 'command': f'clang {flags}' + (navflag if f.startswith('nav/') else '') + f' -c -o /dev/null {f}', 'file': os.path.join(d, f)} for f in files], open('compile_commands.json','w'), indent=2); \
 	print(f'compile_commands.json: {len(files)} entries')"
 
 # ---------------------------------------------------------------------------
@@ -691,4 +698,4 @@ cscope:
 nav: tags cscope
 	@echo "Updated tags + cscope.out"
 
-.PHONY: all clean clean-raylib clean-atlas nav test test-tap test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood test_rooms path steer crowd mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed chop-flip path8 path16 path-sound bench bench_jobs bench_items bench_pathfinding bench_astar_heap windows
+.PHONY: all clean clean-raylib clean-atlas nav test test_nav_standalone test-tap test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood test_rooms path steer crowd mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed chop-flip path8 path16 path-sound bench bench_jobs bench_items bench_pathfinding bench_astar_heap windows

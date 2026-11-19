@@ -1,6 +1,6 @@
 # A* Priority Queue + Pathfinder Extraction Readiness
 
-> Status: Part 1 done, Part 2 seam done (2026-11-19) — context struct next
+> Status: done (2026-11-19) — pathfinder extracted to `nav/` as a context-based library
 
 Two related findings from a code review session on 2026-08-01. Both are about making
 `src/world/pathfinding.c` library-grade. They're filed together because the A* fix is a
@@ -30,6 +30,18 @@ furniture or lighting. `InvalidateLighting()` moved behind `NavOnChunkDirty`. Un
 `nav_host.h` (flat world) under `-Wall -Wextra` and running A*/HPA* standalone. Remaining
 external surface: raylib `GetTime/TraceLog/GetRandomValue/SetRandomSeed`, libc, grid-shape
 globals, `needsRebuild/hpaNeedsRebuild`, `rampCount` — all targets for the context struct.
+
+**Context struct done (2026-11-19).** The algorithms now live in `nav/nav.h` + `nav/nav.c`: all
+state in a heap-allocated `NavWorld` sized to the map (`NavCreate(w, h, d, chunkW, chunkH, host)`),
+every function takes the world, several worlds can coexist. The host contract gained a `void* host`
+parameter plus `NavHostTime()` / `NAV_LOG_INFO/WARN`, so the library needs no raylib. Chunk-local
+searches use a single W×H layer (the old 100 MB `nodeData[16][512][512]` is gone); full-grid A*
+buffers are allocated lazily. `src/world/pathfinding.c/h` is now the game-side layer: one game
+world via `NavGame()` (auto-resized to the grid), macros keeping the old global names working,
+and the old function API as wrappers. `tests/test_nav_standalone.c` builds `nav.c` against a stub
+host with no game code and runs first in `make test`. Static memory 699 → 570 MB; HPA*/A* bench
+~5% faster. Not yet: per-query scratch is per world, so one world isn't thread-safe for
+concurrent queries (split a `NavQuery` scratch from the shared graph when parallel crowds need it).
 
 ---
 

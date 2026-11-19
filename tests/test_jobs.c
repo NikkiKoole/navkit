@@ -9082,11 +9082,11 @@ describe(designation_lifecycle) {
         // Clear chunk dirty flags
         int cx = 2 / chunkWidth;
         int cy = 2 / chunkHeight;
-        chunkDirty[0][cy][cx] = false;
+        SetChunkDirty(cx, cy, 0, false);
 
         CompleteDigRampDesignation(2, 2, 0, -1);
 
-        expect(chunkDirty[0][cy][cx] == true);
+        expect(IsChunkDirty(cx, cy, 0) == true);
     }
 
     // Finding 3 (HIGH): CompleteRemoveFloorDesignation spawns drop item at wrong z

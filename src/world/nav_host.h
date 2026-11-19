@@ -2,55 +2,50 @@
 #define NAV_HOST_H
 
 // =============================================================================
-// NAV HOST INTERFACE — the only world knowledge the pathfinder is allowed to use
+// NavKit colony sim — host implementation of the nav library contract
 // =============================================================================
 //
-// pathfinding.c asks the world questions exclusively through the Nav* functions
-// below. It does not read grid[], cell types, water, snow, fog, furniture, etc.
+// nav/nav.c asks the world questions exclusively through these functions
+// (contract documented in nav/nav.h). This header answers them from the
+// game's grid via cell_defs.h. The game has a single world, so `host` is
+// unused here; another host (e.g. a crowd demo with several maps) would pass
+// its own map pointer to NavCreate and read it back from `host`.
 //
-// This file is the *host* side of the seam: NavKit's colony sim implements the
-// contract on top of cell_defs.h. A different host (a crowd demo, another game)
-// supplies its own nav_host.h with the same function names and semantics.
-//
-// Everything is static inline so the seam costs nothing in the hot search loops.
-// All coordinates are (x, y, z). Callers may pass out-of-bounds coordinates;
-// implementations must return false / a safe default for those.
-//
-// Contract:
-//   NavIsWalkable(x,y,z)          can an agent stand in this cell?
-//   NavMoveCost(x,y,z)            cost to enter the cell, fixed-point (10 = 1.0x).
-//                                 Must be >= NAV_MIN_CELL_COST (heuristic admissibility).
-//   NavCanClimbUp(x,y,z)          vertical link (x,y,z) -> (x,y,z+1)  (ladder-like)
-//   NavCanClimbDown(x,y,z)        vertical link (x,y,z) -> (x,y,z-1)
-//   NavRampHighSide(x,y,z,&dx,&dy) is (x,y,z) a ramp? if so, its high side direction
-//   NavRampUp(x,y,z,&ex,&ey)      ramp at (x,y,z) leads up to (ex,ey,z+1), exit walkable
-//   NavCanEnterFrom(x,y,z,fx,fy)  same-z step (fx,fy)->(x,y) allowed? (ramp side-entry)
-//   NavAffectedZ(z,outZ)          a change at z also changes walkability at these z's
-//   NavIsValidDestination(x,y,z)  walkable AND sensible as a random goal (demo/test utils)
-//   NavOnChunkDirty(x,y,z)        notification: pathfinder saw a cell change
+// All static inline so the seam costs nothing in the hot search loops.
 // =============================================================================
 
 #include "cell_defs.h"
+#include "../../vendor/raylib.h"
 
 #define NAV_MIN_CELL_COST MIN_CELL_COST
 
-static inline bool NavIsWalkable(int x, int y, int z) {
+#define NAV_LOG_INFO(...) TraceLog(LOG_INFO, __VA_ARGS__)
+#define NAV_LOG_WARN(...) TraceLog(LOG_WARNING, __VA_ARGS__)
+
+static inline double NavHostTime(void) { return GetTime(); }
+
+static inline bool NavIsWalkable(void* host, int x, int y, int z) {
+    (void)host;
     return IsCellWalkableAt(z, y, x);
 }
 
-static inline int NavMoveCost(int x, int y, int z) {
+static inline int NavMoveCost(void* host, int x, int y, int z) {
+    (void)host;
     return GetCellMoveCost(x, y, z);
 }
 
-static inline bool NavCanClimbUp(int x, int y, int z) {
+static inline bool NavCanClimbUp(void* host, int x, int y, int z) {
+    (void)host;
     return CanClimbUpAt(x, y, z);
 }
 
-static inline bool NavCanClimbDown(int x, int y, int z) {
+static inline bool NavCanClimbDown(void* host, int x, int y, int z) {
+    (void)host;
     return CanClimbDownAt(x, y, z);
 }
 
-static inline bool NavRampHighSide(int x, int y, int z, int* dx, int* dy) {
+static inline bool NavRampHighSide(void* host, int x, int y, int z, int* dx, int* dy) {
+    (void)host;
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
     CellType cell = grid[z][y][x];
     if (!CellIsDirectionalRamp(cell)) return false;
@@ -58,32 +53,35 @@ static inline bool NavRampHighSide(int x, int y, int z, int* dx, int* dy) {
     return true;
 }
 
-static inline bool NavRampUp(int x, int y, int z, int* exitX, int* exitY) {
+static inline bool NavRampUp(void* host, int x, int y, int z, int* exitX, int* exitY) {
     int dx, dy;
-    if (!NavRampHighSide(x, y, z, &dx, &dy)) return false;
+    if (!NavRampHighSide(host, x, y, z, &dx, &dy)) return false;
     if (!CanWalkUpRampAt(x, y, z)) return false;
     *exitX = x + dx;
     *exitY = y + dy;
     return true;
 }
 
-static inline bool NavCanEnterFrom(int x, int y, int z, int fromX, int fromY) {
+static inline bool NavCanEnterFrom(void* host, int x, int y, int z, int fromX, int fromY) {
+    (void)host;
     return CanEnterRampFromSide(x, y, z, fromX, fromY);
 }
 
-static inline int NavAffectedZ(int z, int* outZ) {
+static inline int NavAffectedZ(void* host, int z, int* outZ) {
+    (void)host;
     return GetAdditionalAffectedZLevels(z, outZ);
-}
-
-static inline bool NavIsValidDestination(int x, int y, int z) {
-    return IsValidDestination(z, y, x);
 }
 
 // Lighting caches walkability-adjacent data; the pathfinder shouldn't know that.
 void InvalidateLighting(void);
-static inline void NavOnChunkDirty(int x, int y, int z) {
-    (void)x; (void)y; (void)z;
+static inline void NavOnChunkDirty(void* host, int x, int y, int z) {
+    (void)host; (void)x; (void)y; (void)z;
     InvalidateLighting();
+}
+
+// Not part of the library contract: used by the game-side random-cell helpers
+static inline bool NavIsValidDestination(int x, int y, int z) {
+    return IsValidDestination(z, y, x);
 }
 
 #endif // NAV_HOST_H

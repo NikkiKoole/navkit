@@ -1,135 +1,111 @@
 #ifndef PATHFINDING_H
 #define PATHFINDING_H
 
-#include "grid.h"
+// =============================================================================
+// Game-side pathfinding layer over the nav library (nav/nav.h)
+// =============================================================================
+//
+// The colony sim has exactly one NavWorld, returned by NavGame(). It is created
+// on first use and kept in sync with the game grid's shape (gridWidth/Height/
+// Depth, chunkWidth/Height): if the grid is re-initialised with other
+// dimensions, the world is resized and the HPA* graph must be rebuilt.
+//
+// The macros below keep the pre-library global names working (entrances,
+// entranceCount, use8Dir, needsRebuild, ...) by forwarding to NavGame()'s
+// fields. nav/nav.c deliberately uses different field names so these macros
+// can never collide with library code in the unity build.
+//
+// New code should prefer the Nav* API directly: NavFindPath(NavGame(), ...).
+// =============================================================================
 
-// Pathfinding algorithm selection
+#include "grid.h"
+#include "../../nav/nav.h"
+
+// ---- types & limits (aliases for the library's) ----
+typedef NavPoint      Point;
+typedef NavEntrance   Entrance;
+typedef NavGraphEdge  GraphEdge;
+typedef NavLadderLink LadderLink;
+typedef NavRampLink   RampLink;
+
 typedef enum {
-    PATH_ALGO_ASTAR = 0,
-    PATH_ALGO_HPA = 1,
+    PATH_ALGO_ASTAR = NAV_ALGO_ASTAR,
+    PATH_ALGO_HPA = NAV_ALGO_HPA,
 } PathAlgorithm;
 
-#define MAX_ENTRANCE_WIDTH 6
-#define MAX_ENTRANCES (4096*4)
-#define MAX_PATH 65536
-#define MAX_EDGES 65536*4
-#define MAX_EDGES_PER_NODE 64  // Max edges per entrance for adjacency list
+#define MAX_ENTRANCE_WIDTH  NAV_MAX_ENTRANCE_WIDTH
+#define MAX_ENTRANCES       NAV_MAX_ENTRANCES
+#define MAX_EDGES           NAV_MAX_EDGES
+#define MAX_EDGES_PER_NODE  NAV_MAX_EDGES_PER_NODE
+#define MAX_LADDERS         NAV_MAX_LADDERS
+#define MAX_RAMP_LINKS      NAV_MAX_RAMP_LINKS
+#define MAX_PATH 65536      // game path buffer size (debug path, temp buffers)
 
-typedef struct { int x, y, z; } Point;
+// ---- the game's world ----
+NavWorld* NavGame(void);
 
-typedef struct {
-    int x, y, z;
-    int chunk1, chunk2;
-} Entrance;
+// ---- legacy global names -> NavGame() fields ----
+#define entrances         (NavGame()->entranceList)
+#define entranceCount     (NavGame()->entranceNum)
+#define graphEdges        (NavGame()->edgeList)
+#define graphEdgeCount    (NavGame()->edgeNum)
+#define ladderLinks       (NavGame()->ladderList)
+#define ladderLinkCount   (NavGame()->ladderNum)
+#define rampLinks         (NavGame()->rampList)
+#define rampLinkCount     (NavGame()->rampNum)
+#define use8Dir           (NavGame()->eightDir)
+#define needsRebuild      (NavGame()->dirty)
+#define hpaNeedsRebuild   (NavGame()->hpaDirty)
+#define nodesExplored     (NavGame()->explored)
+#define lastPathTime      (NavGame()->lastMs)
+#define lastPathCost      (NavGame()->lastCost)
+#define hpaAbstractTime   (NavGame()->hpaAbstractMs)
+#define hpaRefinementTime (NavGame()->hpaRefineMs)
 
-typedef struct {
-    int g, f;
-    int parentX, parentY, parentZ;
-    bool open, closed;
-} AStarNode;
-
-typedef struct {
-    int from, to;
-    int cost;
-} GraphEdge;
-
-// Ladder links connect entrances on different z-levels
-#define MAX_LADDERS 1024
-typedef struct {
-    int x, y;           // Position (same on both levels)
-    int zLow, zHigh;    // The two z-levels connected
-    int entranceLow;    // Entrance index on lower z
-    int entranceHigh;   // Entrance index on upper z  
-    int cost;           // Cost to climb (default 10)
-} LadderLink;
-
-extern LadderLink ladderLinks[MAX_LADDERS];
-extern int ladderLinkCount;
-
-// Ramp links connect entrances on different z-levels (similar to ladders but directional)
-#define MAX_RAMP_LINKS 8192
-typedef struct {
-    int rampX, rampY, rampZ;  // Ramp cell position (on lower z)
-    int exitX, exitY;          // Exit position at z+1 (high side of ramp)
-    int entranceRamp;          // Entrance index for ramp cell
-    int entranceExit;          // Entrance index for exit cell at z+1
-    int cost;                  // Movement cost (14 for diagonal-equivalent)
-} RampLink;
-
-extern RampLink rampLinks[MAX_RAMP_LINKS];
-extern int rampLinkCount;
-
-// External state (defined in pathfinding.c)
-extern Entrance entrances[MAX_ENTRANCES];
-extern int entranceCount;
-extern GraphEdge graphEdges[MAX_EDGES];
-extern int graphEdgeCount;
+// ---- debug/demo path (the "Find Path" button, agent demo) ----
 extern Point path[MAX_PATH];
 extern int pathLength;
-extern int nodesExplored;
-extern double lastPathTime;
-extern int lastPathCost;       // g-cost at goal from last RunAStar(), -1 if unreachable
-extern double hpaAbstractTime;    // Time for abstract graph search
-extern double hpaRefinementTime;  // Time for path refinement (local A*)
-
-// Path stats (updated every 5 seconds)
-extern int pathStatsCount;        // Paths computed in last 5 second period
-extern double pathStatsTotalMs;   // Total ms spent on paths in last period
-extern double pathStatsAvgMs;     // Average ms per path
-extern bool pathStatsUpdated;     // True when stats were just updated (reset after reading)
-void UpdatePathStats(void);       // Call every frame
-void ResetPathStats(void);        // Call when switching algorithms
 extern Point startPos;
 extern Point goalPos;
-extern AStarNode nodeData[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-extern bool chunkDirty[MAX_GRID_DEPTH][MAX_CHUNKS_Y][MAX_CHUNKS_X];
 
-// Abstract graph node for HPA* search
-typedef struct {
-    int g, f;
-    int parent;
-    bool open, closed;
-} AbstractNode;
+// ---- path stats (updated every 5 seconds) ----
+extern int pathStatsCount;
+extern double pathStatsTotalMs;
+extern double pathStatsAvgMs;
+extern bool pathStatsUpdated;
+void UpdatePathStats(void);       // call every frame
+void ResetPathStats(void);        // call when switching algorithms
 
-#define MAX_ABSTRACT_NODES (MAX_ENTRANCES + 2)  // +2 for temp start/goal
-extern AbstractNode abstractNodes[MAX_ABSTRACT_NODES];
-extern int abstractPath[MAX_ENTRANCES + 2];  // path through entrance indices
-extern int abstractPathLength;
-
-// Movement direction mode
-extern bool use8Dir;  // false = 4-directional, true = 8-directional
-
-// Functions
-int Heuristic(int x1, int y1, int x2, int y2);
+// ---- graph maintenance ----
 void MarkChunkDirty(int cellX, int cellY, int cellZ);
+bool IsChunkDirty(int cx, int cy, int z);
+void SetChunkDirty(int cx, int cy, int z, bool dirty);
 void BuildEntrances(void);
 void BuildGraph(void);
-void RunAStar(void);
-void RunHPAStar(void);
+void UpdateDirtyChunks(void);
+
+// ---- queries ----
+void RunAStar(void);              // startPos -> goalPos into path/pathLength
+void RunHPAStar(void);            // startPos -> goalPos into path/pathLength
 int FindPathHPA(Point start, Point goal, Point* outPath, int maxLen);
 int FindPath(PathAlgorithm algo, Point start, Point goal, Point* outPath, int maxLen);
 int AStarChunk(int sx, int sy, int sz, int gx, int gy, int minX, int minY, int maxX, int maxY);
 int AStarChunkMultiTarget(int sx, int sy, int sz, int* targetX, int* targetY, int* outCosts, int numTargets,
                           int minX, int minY, int maxX, int maxY);
 
-// Incremental update functions
-void UpdateDirtyChunks(void);
-
-// Random utilities
+// ---- random cell utilities (demo spawning, tests) ----
 void SeedRandom(unsigned int seed);
 Point GetRandomWalkableCell(void);
 Point GetRandomWalkableCellDifferentZ(int excludeZ);
 Point GetRandomWalkableCellOnZ(int z);
 Point GetRandomReachableCell(int startX, int startY, int startZ);
 
-// Entrance getters (inline for zero overhead)
+// ---- entrance / edge getters ----
 static inline int GetEntranceX(int idx) { return entrances[idx].x; }
 static inline int GetEntranceY(int idx) { return entrances[idx].y; }
 static inline int GetEntranceZ(int idx) { return entrances[idx].z; }
 static inline int GetEntranceChunk1(int idx) { return entrances[idx].chunk1; }
 static inline int GetEntranceChunk2(int idx) { return entrances[idx].chunk2; }
-
-// Graph edge getters (inline for zero overhead)
 static inline int GetGraphEdgeFrom(int idx) { return graphEdges[idx].from; }
 static inline int GetGraphEdgeTo(int idx) { return graphEdges[idx].to; }
 static inline int GetGraphEdgeCost(int idx) { return graphEdges[idx].cost; }

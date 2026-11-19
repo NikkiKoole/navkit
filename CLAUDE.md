@@ -92,6 +92,11 @@ src/
 └── render/             # Drawing, UI, tooltips
 ```
 
+`nav/` (repo root) is the pathfinding **library** (A*, HPA*): no game code, all state in a
+`NavWorld`. The game talks to it through `src/world/pathfinding.h` (one world via `NavGame()`,
+legacy names like `entrances`/`use8Dir` are macros onto it) and answers its world queries in
+`src/world/nav_host.h`. Never include game headers from `nav/` — `make test_nav_standalone` guards that.
+
 ~69,000 lines of C in src/, ~60,000 in tests/ (~129K total). Per-folder CLAUDE.md files in `src/entities/`, `src/world/`, `src/core/`, and `tests/` have detailed patterns and gotchas.
 
 ## Key Systems
