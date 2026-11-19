@@ -68,6 +68,7 @@ typedef struct {
 typedef struct {
     int from, to;
     int cost;
+    int chunk;            // chunk the cost was computed in; -1 for ladder/ramp links
 } NavGraphEdge;
 
 typedef struct {
@@ -291,6 +292,7 @@ typedef struct NavHFlow {
     int entNum;                    // entrance count the per-entrance arrays were built for
     int* dist;                     // [entrance] cost to goal (NAV_FLOW_UNREACHABLE if none)
     int* nextEnt;                  // [entrance] next entrance toward goal; -1 = the goal itself
+    int* viaChunk;                 // [entrance] chunk of the edge to nextEnt (-1 = ladder/ramp link)
     int chunkCount;
     struct NavChunkFlow** chunks;  // [chunk id] lazily built local fields (NULL = not built yet)
     int chunksBuilt;               // stats

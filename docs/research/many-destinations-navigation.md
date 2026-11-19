@@ -62,4 +62,30 @@ Caching each agent's target per cell cut steady nav time from 0.64 to 0.17 ms (f
 - One seed per run. The spikes are start-up artefacts; a real game staggers requests.
 - The town spreads destinations uniformly. Real colonies concentrate traffic on a few hot
   destinations (stockpiles, kitchen), which favours any caching approach.
-- `hier` costs are HPA*-quality (+8% vs optimal on average, see `tests/test_nav_standalone.c`).
+- `hier` costs were measured before the terrain fixes below; they are now within about 1%
+  of optimal (better than HPA* paths).
+
+## Every terrain generator (`make bench_nav_terrains`, added later)
+
+All 19 game generators at 128×128×16, checked against A*. Before the fixes, `NavHFlow` agents
+looped forever or got stuck on concentric (14% reached the goal), spiral3d, towers, castle and
+hillswater, and council paths were +10% too long. Three causes, all fixed:
+
+1. **Exit values came from the symmetric abstract graph.** An exit valued lower than what
+   walking on actually costs makes a trap that agents step into and back out of. Exits are now
+   valued from the field that continues the route (or the ladder/ramp step plus the far side).
+   Chunks can depend on each other in a cycle, so the fields involved are rebuilt until their
+   values stop changing (values only go down, so this converges). An unknown exit is left out,
+   never guessed: overestimates are harmless, underestimates trap agents.
+2. **Ambiguous "is the route inside this chunk?".** Two entrances on the same chunk border
+   belong to both chunks, but the abstract edge between them was computed in only one.
+   `NavGraphEdge.chunk` now records which, and fields use it.
+3. **Several entrances on one cell** (a ladder foot on a chunk border): handing over from one
+   field to the next could land on another exit. The handover now follows the chain.
+
+Result: 100% reached on every terrain, +0–1.4% cost vs optimal (HPA* paths: +0.6–1.9%).
+Regions, flow fields and nearest-by-walking were already exact everywhere.
+
+The older 2D generators (sparse, concentric, dungeon, drunkard, tunneler, mixmax) carve their
+layout into level 1 but leave level 0 empty, so in the game they play as an open plain. The
+bench fills level 0 for them; the generators themselves are unchanged.
