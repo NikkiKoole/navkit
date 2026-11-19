@@ -51,10 +51,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define CELL_PX      6
+// Screen pixels per cell: 6 for the default map, scaled down to fit bigger maps
+#define CELL_PX      fminf(6.0f, fminf(1200.0f / MAP_W, 800.0f / MAP_H))
 #define HUD_H        84
 #define MAX_AGENTS   40000
-#define MAX_GOALS    256
+#define MAX_GOALS    1024
 #define MAX_CHANNELS 4
 
 static float agentSpeed = 7.0f;  // cells / second on normal ground (--speed)
@@ -119,6 +120,8 @@ typedef struct {
     int dest;             // town: destination index
     NavPoint* path;       // town/hpa: goal-first waypoints (owned)
     int pathLen, pathIdx; // pathLen < 0 = needs (re)planning
+    int cacheX, cacheY;   // town/full+hier: cell the cached target was computed for (-1 = none)
+    float cacheTx, cacheTy;
 } Agent;
 
 static FlowMap map;
@@ -461,7 +464,7 @@ static void LibrarySteer(int i, float dirX, float dirY, float speed, float dt) {
 enum { NAVM_FULL, NAVM_HIER, NAVM_HPA, NAVM_COUNT };
 static const char* kNavModeName[NAVM_COUNT] = {"full", "hier", "hpa"};
 static int navMode = NAVM_HIER;
-#define MAX_DEST 128
+#define MAX_DEST 1024
 static NavPoint dests[MAX_DEST];
 static int destCount = 0, destLimit = MAX_DEST;
 static NavFlowField* destFull[MAX_DEST];
@@ -472,6 +475,7 @@ static long townArrivals = 0;
 static double townTravel = 0;
 
 static void TownFreeNav(void) {
+    for (int i = 0; i < agentCount; i++) agents[i].cacheX = -1;
     for (int d = 0; d < MAX_DEST; d++) {
         if (destFull[d]) { NavFlowDestroy(destFull[d]); destFull[d] = NULL; }
         if (destHier[d]) { NavHFlowDestroy(destHier[d]); destHier[d] = NULL; }
@@ -508,6 +512,7 @@ static void TownAssign(Agent* a) {
     a->dest = GetRandomValue(0, destCount - 1);
     a->spawnTime = (float)simTime;
     a->pathLen = -1;                      // hpa: plan lazily
+    a->cacheX = -1;                       // full/hier: recompute the cached target
     float hue = 360.0f * a->dest / (float)(destCount ? destCount : 1);
     a->color = ColorFromHSV(hue, 0.45f, 1.0f);
 }
@@ -516,7 +521,9 @@ static void TownAssign(Agent* a) {
 static bool TownDirection(Agent* a, float* dx, float* dy) {
     NavPoint here = {(int)a->x, (int)a->y, 0}, n1, n2;
     float tx, ty;
-    if (navMode == NAVM_FULL || navMode == NAVM_HIER) {
+    if ((navMode == NAVM_FULL || navMode == NAVM_HIER) && a->cacheX == here.x && a->cacheY == here.y) {
+        tx = a->cacheTx; ty = a->cacheTy;          // same cell as last time: reuse the target
+    } else if (navMode == NAVM_FULL || navMode == NAVM_HIER) {
         bool ok1, ok2;
         if (navMode == NAVM_FULL) {
             NavFlowField* f = DestFull(a->dest);
@@ -530,6 +537,7 @@ static bool TownDirection(Agent* a, float* dx, float* dy) {
         if (!ok1) return false;
         tx = n1.x + 0.5f; ty = n1.y + 0.5f;
         if (ok2) { tx = (tx + n2.x + 0.5f) * 0.5f; ty = (ty + n2.y + 0.5f) * 0.5f; }
+        a->cacheX = here.x; a->cacheY = here.y; a->cacheTx = tx; a->cacheTy = ty;
     } else {
         if (a->pathLen < 0) {             // plan (or re-plan after a map edit)
             static NavPoint buf[8192];
@@ -736,11 +744,15 @@ static void LoadScenario(int s, int startAgents) {
         sharedGoals = true;
         streamMode = false;
     } else if (s == SCEN_TOWN) {
-        // 11 x 8 buildings (14x11, one 2-wide door each) on a street grid; each is a destination
+        // Buildings (14x11, one 2-wide door each) on a street grid, as many as fit;
+        // destinations are a random subset of buildings (--goals, default all)
         TownFreeNav();
         destCount = 0;
-        for (int by = 0; by < 8; by++)
-            for (int bx = 0; bx < 11; bx++) {
+        static NavPoint allBuildings[4096];
+        int buildingCount = 0;
+        int nbx = (MAP_W - 6) / 18, nby = (MAP_H - 6) / 15;
+        for (int by = 0; by < nby; by++)
+            for (int bx = 0; bx < nbx; bx++) {
                 int x0 = 3 + bx * 18, y0 = 3 + by * 15, bw = 14, bh = 11;
                 for (int x = x0; x < x0 + bw; x++) map.wall[y0][x] = map.wall[y0 + bh - 1][x] = 1;
                 for (int y = y0; y < y0 + bh; y++) map.wall[y][x0] = map.wall[y][x0 + bw - 1] = 1;
@@ -749,8 +761,13 @@ static void LoadScenario(int s, int startAgents) {
                 else if (side == 1) { map.wall[y0 + bh - 1][x0 + 6] = map.wall[y0 + bh - 1][x0 + 7] = 0; }
                 else if (side == 2) { map.wall[y0 + 5][x0] = map.wall[y0 + 6][x0] = 0; }
                 else { map.wall[y0 + 5][x0 + bw - 1] = map.wall[y0 + 6][x0 + bw - 1] = 0; }
-                if (destCount < destLimit) dests[destCount++] = (NavPoint){x0 + bw / 2, y0 + bh / 2, 0};
+                if (buildingCount < 4096) allBuildings[buildingCount++] = (NavPoint){x0 + bw / 2, y0 + bh / 2, 0};
             }
+        for (int i = buildingCount - 1; i > 0; i--) {          // shuffle, then take the first destLimit
+            int j = GetRandomValue(0, i);
+            NavPoint t = allBuildings[i]; allBuildings[i] = allBuildings[j]; allBuildings[j] = t;
+        }
+        for (int i = 0; i < buildingCount && destCount < destLimit; i++) dests[destCount++] = allBuildings[i];
         Channel* t = AddChannel("nearest building", (Color){200, 200, 200, 255}, false, 0, -1);
         for (int d = 0; d < destCount && t->goalCount < MAX_GOALS; d++) t->goals[t->goalCount++] = dests[d];
         sharedGoals = true;
@@ -858,8 +875,16 @@ static void Draw(double simMs) {
     Vector2 mouse = GetMousePosition();
     int mx = (int)(mouse.x / CELL_PX), my = (int)(mouse.y / CELL_PX);
 
-    BeginDrawing();
-    ClearBackground((Color){18, 18, 22, 255});
+    // Map: one texel per cell, uploaded each frame and drawn scaled (fast for big maps)
+    static Color pixels[MAP_W * MAP_H];
+    static Texture2D mapTex;
+    static bool texReady = false;
+    if (!texReady) {
+        Image img = GenImageColor(MAP_W, MAP_H, BLACK);
+        mapTex = LoadTextureFromImage(img);
+        UnloadImage(img);
+        texReady = true;
+    }
     for (int y = 0; y < MAP_H; y++)
         for (int x = 0; x < MAP_W; x++) {
             Color c;
@@ -868,9 +893,14 @@ static void Draw(double simMs) {
             else c = (Color){28, 30, 36, 255};
             if (!map.wall[y][x] && map.mud[y][x])
                 c = (Color){(unsigned char)(c.r / 2 + 60), (unsigned char)(c.g / 2 + 40), (unsigned char)(c.b / 2 + 10), 255};
-            DrawRectangle(x * CELL_PX, y * CELL_PX, CELL_PX, CELL_PX, c);
+            pixels[y * MAP_W + x] = c;
         }
-    if (showArrows) {
+    UpdateTexture(mapTex, pixels);
+
+    BeginDrawing();
+    ClearBackground((Color){18, 18, 22, 255});
+    DrawTextureEx(mapTex, (Vector2){0, 0}, 0.0f, CELL_PX, WHITE);
+    if (showArrows && CELL_PX >= 4) {
         for (int y = 0; y < MAP_H; y++)
             for (int x = 0; x < MAP_W; x++) {
                 NavPoint n;
@@ -883,11 +913,11 @@ static void Draw(double simMs) {
                           (Color){255, 255, 255, 90});
             }
     }
-    for (int ch = 0; ch < channelCount; ch++)
+    for (int ch = 0; ch < channelCount && CELL_PX >= 4; ch++)
         for (int i = 0; i < channels[ch].goalCount; i++)
             DrawRectangleLines(channels[ch].goals[i].x * CELL_PX - 1, channels[ch].goals[i].y * CELL_PX - 1,
                                CELL_PX + 2, CELL_PX + 2, ch == viewChannel ? GREEN : DARKGREEN);
-    float r = AGENT_RADIUS * CELL_PX * 1.6f;
+    float r = fmaxf(0.5f, AGENT_RADIUS * CELL_PX * 1.6f);
     int active = 0;
     for (int i = 0; i < agentCount; i++) {
         if (!agents[i].active) continue;
@@ -926,7 +956,7 @@ static void Draw(double simMs) {
 // ---------------------------------------------------------------- main
 
 int main(int argc, char** argv) {
-    int startAgents = 3000, autoFrames = 0, startScenario = SCEN_MUD;
+    int startAgents = 3000, autoFrames = 0, startScenario = MAP_W > 200 ? SCEN_TOWN : SCEN_MUD;
     float warmupSecs = 20.0f;
     const char* shotPath = NULL;
     for (int i = 1; i < argc; i++) {
@@ -978,7 +1008,7 @@ int main(int argc, char** argv) {
 
         float dt = autoFrames > 0 ? 1.0f / 60.0f : fminf(GetFrameTime(), 1.0f / 30.0f);
         densityTimer += dt;
-        if (useDensity && densityTimer >= DENSITY_REBUILD_S) { densityTimer = 0; fieldDirty = true; }
+        if (useDensity && scenario != SCEN_TOWN && densityTimer >= DENSITY_REBUILD_S) { densityTimer = 0; fieldDirty = true; }
         if (fieldDirty) RebuildFields();
 
         if (streamMode) StreamSpawn(dt);

@@ -8,8 +8,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define MAP_W 200
+#ifndef MAP_W
+#define MAP_W 200   // override with -DMAP_W=... (make flow-big: 512x512)
+#endif
+#ifndef MAP_H
 #define MAP_H 125
+#endif
 
 #define COST_NORMAL 10
 #define COST_MUD    40
