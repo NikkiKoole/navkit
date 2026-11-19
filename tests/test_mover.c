@@ -2322,6 +2322,53 @@ describe(mover_ramp_transitions) {
 // These tests currently FAIL (Z snaps instantly). They define the target
 // behaviour: Z interpolates over time, climb duration ~ CELL_SIZE / speed.
 // ============================================================================
+describe(repath_budget) {
+    it("cooldowns tick for waiting movers even after the frame's repath budget is spent") {
+        InitGridWithSizeAndChunkSize(32, 32, 8, 8);
+        BuildEntrances();   // movers path with HPA* by default
+        BuildGraph();
+        ClearMovers();
+        // 15 movers that need a repath right now (more than MAX_REPATHS_PER_FRAME = 10)
+        for (int i = 0; i < 15; i++) {
+            Mover* m = &movers[moverCount];
+            InitMover(m, (2 + i) * CELL_SIZE + 4, 2 * CELL_SIZE + 4, 0, (Point){(2 + i), 20, 0}, 100.0f);
+            m->needsRepath = true;
+            m->repathCooldown = 0;
+            moverCount++;
+        }
+        // ...and one at the end that's cooling down
+        Mover* last = &movers[moverCount];
+        InitMover(last, 20 * CELL_SIZE + 4, 4 * CELL_SIZE + 4, 0, (Point){20, 20, 0}, 100.0f);
+        last->needsRepath = true;
+        last->repathCooldown = 1;
+        moverCount++;
+
+        ProcessMoverRepaths();
+        expect(last->repathCooldown == 0);   // old loop stopped at the budget and never reached it
+        int served = 0;
+        for (int i = 0; i < 15; i++) served += !movers[i].needsRepath;
+        expect(served == MAX_REPATHS_PER_FRAME);
+    }
+
+    it("round-robin: every waiting mover is served within ceil(n / budget) frames") {
+        InitGridWithSizeAndChunkSize(32, 32, 8, 8);
+        BuildEntrances();   // movers path with HPA* by default
+        BuildGraph();
+        ClearMovers();
+        for (int i = 0; i < 25; i++) {
+            Mover* m = &movers[moverCount];
+            InitMover(m, (2 + i) * CELL_SIZE + 4, 3 * CELL_SIZE + 4, 0, (Point){(2 + i), 25, 0}, 100.0f);
+            m->needsRepath = true;
+            m->repathCooldown = 0;
+            moverCount++;
+        }
+        for (int frame = 0; frame < 3; frame++) ProcessMoverRepaths();
+        int waiting = 0;
+        for (int i = 0; i < 25; i++) waiting += movers[i].needsRepath;
+        expect(waiting == 0);
+    }
+}
+
 describe(z_climb_timing) {
     // Shared setup: 5x5x3 grid, solid floor at z=0, walkable at z=1 (above dirt)
     // and z=2 (above constructed floor), CELL_LADDER_BOTH at (2,1) on z=1 and z=2.
@@ -2504,5 +2551,6 @@ int main(int argc, char* argv[]) {
     test(sparse_level_pathfinding);
     test(staggered_updates);
     test(workshop_mover_collision);
+    test(repath_budget);
     return summary();
 }

@@ -51,6 +51,10 @@ Mover movers[MAX_MOVERS];
 Point moverPaths[MAX_MOVERS][MAX_MOVER_PATH];
 int moverCount = 0;
 int repathFallbackCount = 0;
+// Round-robin cursor for ProcessMoverRepaths: each frame resumes after the last
+// mover that got a repath, so with more than MAX_REPATHS_PER_FRAME movers waiting
+// nobody starves (the old loop always started at mover 0). Reset by ClearMovers.
+static int repathCursor = 0;
 int repathHpaSuccessCount = 0;
 unsigned long currentTick = 0;
 bool useStringPulling = true;
@@ -750,6 +754,7 @@ void InitMoverWithPath(Mover* m, float x, float y, float z, Point goal, float sp
 }
 
 void ClearMovers(void) {
+    repathCursor = 0;
     // Drop carried items on the ground at mover's position
     for (int i = 0; i < moverCount; i++) {
         if (!movers[i].active) continue;
@@ -1703,15 +1708,22 @@ void UpdateMovers(void) {
 
 void ProcessMoverRepaths(void) {
     int repathsThisFrame = 0;
+    if (moverCount <= 0) return;
+    if (repathCursor >= moverCount) repathCursor = 0;
+    int lastServed = -1;
 
-    for (int i = 0; i < moverCount && repathsThisFrame < MAX_REPATHS_PER_FRAME; i++) {
+    for (int n = 0; n < moverCount; n++) {
+        int i = (repathCursor + n) % moverCount;
         Mover* m = &movers[i];
         if (!m->active || !m->needsRepath) continue;
 
+        // Cooldowns tick for every waiting mover, also once this frame's budget is spent
         if (m->repathCooldown > 0) {
             m->repathCooldown--;
             continue;
         }
+        if (repathsThisFrame >= MAX_REPATHS_PER_FRAME) continue;   // served in a later frame
+        lastServed = i;
 
         int currentX = (int)(m->x / CELL_SIZE);
         int currentY = (int)(m->y / CELL_SIZE);
@@ -1827,6 +1839,7 @@ void ProcessMoverRepaths(void) {
 
         repathsThisFrame++;
     }
+    if (lastServed >= 0) repathCursor = lastServed + 1;
 }
 
 void TickWithDt(float dt) {
