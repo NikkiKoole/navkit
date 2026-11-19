@@ -16,6 +16,15 @@ Ladders, doors, and narrow passages already create natural bottlenecks. Rather t
 
 No queue structs needed — existing avoidance + pathfinder cost feedback handles it. See `transport-layer.md` for the full rationale (research into real-world queuing shows spatial queues are emergent, not explicit).
 
+### Measured so far (2026-11-19)
+
+- Congestion-aware path cost is prototyped in `experiments/flow` as a crowd-density
+  `extraCost` on `nav/` flow fields (rebuilt 5x/s), together with a wall-clearance cost.
+- Local avoidance comparison: plain separation plus hard bodies beat predictive (time to
+  collision), social force, the old steering library's predictive avoidance, its lane recipe
+  and clearpath in a saturated two-way corridor. See
+  [crowd-avoidance-comparison.md](../../research/crowd-avoidance-comparison.md).
+
 ## Phase 2 - Full Social Navigation (future)
 
 - [ ] **Yielding**: Agents give way to each other

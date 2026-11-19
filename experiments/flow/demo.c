@@ -16,6 +16,13 @@
 //   separation   push apart when overlapping (reactive)
 //   predictive   time-to-collision forces (Karamouzas et al. 2014 power law):
 //                steer away from collisions that WILL happen, not ones that did
+// ...and the earlier experiments/steering library, called as-is in a scaled
+// pixel frame (LIB_PX_PER_CELL) with its own parameters and steering_apply rules:
+//   sfm          steering_social_force (Helbing & Molnar), sfm_default_params
+//   lib-predict  steering_predictive_avoid + seek, blended 2:1 (its pedestrian scenario)
+//   lanes        the "SFM: Corridor (Lanes)" recipe: predictive avoid of oncoming,
+//                align/cohere/separate with same-direction, keep-right bias
+//   clearpath    steering_clearpath velocity sampling (never used by the old demo)
 //
 // Controls
 //   LMB paint (brush: 1 wall, 2 mud, 3 erase)   RMB erase   [ / ] brush size
@@ -32,6 +39,7 @@
 
 #define NAV_HOST_HEADER "../experiments/flow/flow_host.h"
 #include "../../nav/nav.c"
+#include "../steering/steering.c"
 
 #include "../../vendor/raylib.h"
 #include <math.h>
@@ -45,7 +53,8 @@
 #define MAX_GOALS    256
 #define MAX_CHANNELS 4
 
-#define AGENT_SPEED    7.0f     // cells / second on normal ground
+static float agentSpeed = 7.0f;  // cells / second on normal ground (--speed)
+#define AGENT_SPEED    agentSpeed
 #define AGENT_RADIUS   0.22f    // cells
 #define SEP_RADIUS     0.55f    // cells
 #define SEP_STRENGTH   9.0f
@@ -70,8 +79,16 @@ static const int kClearancePenalty[4] = {0, 25, 10, 4};   // by distance to wall
 
 enum { SCEN_MUD, SCEN_COUNTERFLOW, SCEN_COUNT };
 static const char* kScenarioName[SCEN_COUNT] = {"mud", "counterflow"};
-enum { AVOID_SEPARATION, AVOID_PREDICTIVE, AVOID_COUNT };
-static const char* kAvoidName[AVOID_COUNT] = {"separation", "predictive"};
+enum { AVOID_SEPARATION, AVOID_PREDICTIVE, AVOID_SFM, AVOID_LIB_PREDICT, AVOID_LANES, AVOID_CLEARPATH, AVOID_COUNT };
+static const char* kAvoidName[AVOID_COUNT] = {"separation", "predictive", "sfm", "lib-predict", "lanes", "clearpath"};
+static inline bool IsLibraryMode(int m) { return m >= AVOID_SFM; }
+
+// Steering-library frame: the old demos were tuned in pixels (~20 px agents,
+// ~80 px/s walking). 45 px per cell makes our 0.44-cell agent ~20 px across.
+#define LIB_PX_PER_CELL 45.0f
+#define LIB_MAX_FORCE   500.0f   // px/s^2, as in the old corridor/evacuation scenarios
+#define LIB_RANGE_CELLS 3        // neighbour gathering radius (old demos: ~120 px)
+#define LIB_MAX_NEIGH   64
 
 typedef struct {
     const char* name;
@@ -110,6 +127,7 @@ static int carefulShare = 50;
 static bool streamMode = false;      // counterflow: rate-based entry, leave on arrival
 static float streamRate = 40.0f;     // agents / second / direction
 static int corridorWidth = 12;       // counterflow corridor width in cells (--corridor)
+static int corridorLength = 138;     // counterflow corridor length in cells (--length)
 static double simTime = 0;
 
 static Agent agents[MAX_AGENTS];
@@ -338,6 +356,84 @@ static void AvoidanceForce(int i, float* sepX, float* sepY, float* accX, float* 
     *sepX = sx; *sepY = sy; *accX = ax; *accY = ay;
 }
 
+// One step of an experiments/steering behaviour for agent i, in the library's
+// pixel frame. dirX/dirY = flow-field direction (0,0 if none). Updates velocity.
+static void LibrarySteer(int i, float dirX, float dirY, float speed, float dt) {
+    Agent* a = &agents[i];
+    const float S = LIB_PX_PER_CELL;
+    Boid b = {{a->x * S, a->y * S}, {a->vx * S, a->vy * S}, speed * S, LIB_MAX_FORCE};
+    Vector2 goal = {b.pos.x + dirX * 1000.0f, b.pos.y + dirY * 1000.0f};   // "far ahead along the flow"
+    if (dirX == 0 && dirY == 0) goal = b.pos;
+
+    // Gather neighbours (all / same channel / other channel)
+    Vector2 pos[LIB_MAX_NEIGH], vel[LIB_MAX_NEIGH], sPos[LIB_MAX_NEIGH], sVel[LIB_MAX_NEIGH], oPos[LIB_MAX_NEIGH], oVel[LIB_MAX_NEIGH];
+    float radii[LIB_MAX_NEIGH];
+    int n = 0, ns = 0, no = 0;
+    int cx = (int)a->x, cy = (int)a->y;
+    for (int gy = cy - LIB_RANGE_CELLS; gy <= cy + LIB_RANGE_CELLS && n < LIB_MAX_NEIGH; gy++) {
+        if (gy < 0 || gy >= MAP_H) continue;
+        for (int gx = cx - LIB_RANGE_CELLS; gx <= cx + LIB_RANGE_CELLS && n < LIB_MAX_NEIGH; gx++) {
+            if (gx < 0 || gx >= MAP_W) continue;
+            int c = gy * MAP_W + gx;
+            for (int k = gridStart[c]; k < gridStart[c + 1] && n < LIB_MAX_NEIGH; k++) {
+                int j = gridItems[k];
+                if (j == i) continue;
+                const Agent* o = &agents[j];
+                float dx = o->x - a->x, dy = o->y - a->y;
+                if (dx * dx + dy * dy > (float)(LIB_RANGE_CELLS * LIB_RANGE_CELLS)) continue;
+                Vector2 p = {o->x * S, o->y * S}, v = {o->vx * S, o->vy * S};
+                pos[n] = p; vel[n] = v; radii[n] = AGENT_RADIUS * S; n++;
+                if (o->channel == a->channel) { sPos[ns] = p; sVel[ns] = v; ns++; }
+                else { oPos[no] = p; oVel[no] = v; no++; }
+            }
+        }
+    }
+
+    SteeringOutput out = steering_zero();
+    if (avoidMode == AVOID_SFM) {
+        SocialForceParams prm = sfm_default_params();
+        prm.bodyRadius = AGENT_RADIUS * S;
+        out = steering_social_force(&b, goal, pos, vel, n, NULL, 0, NULL, 0, prm);
+    } else if (avoidMode == AVOID_LIB_PREDICT) {
+        SteeringOutput o2[2] = {steering_predictive_avoid(&b, pos, vel, n, 2.0f, 25.0f), steering_seek(&b, goal)};
+        float w[2] = {2.0f, 1.0f};
+        out = steering_blend(o2, w, 2);
+    } else if (avoidMode == AVOID_LANES) {
+        SteeringOutput seek = steering_seek(&b, goal);
+        SteeringOutput align = ns ? steering_alignment(&b, sVel, ns) : steering_zero();
+        SteeringOutput coh = ns ? steering_cohesion(&b, sPos, ns) : steering_zero();
+        SteeringOutput sep = ns ? steering_separation(&b, sPos, ns, 25.0f) : steering_zero();
+        SteeringOutput avoidOpp = steering_zero();
+        if (no) {
+            avoidOpp = steering_predictive_avoid(&b, oPos, oVel, no, 0.8f, 30.0f);
+            for (int k = 0; k < no; k++)
+                if (steering_vec_distance(b.pos, oPos[k]) < 80.0f) {
+                    // keep right of your own travel direction (old demo: +/-y for a horizontal corridor)
+                    avoidOpp.linear.x += -dirY * 60.0f;
+                    avoidOpp.linear.y += dirX * 60.0f;
+                    break;
+                }
+        }
+        // Wall avoidance had weight 2.0 in the old blend; walls are handled by the shared
+        // wall collision here, so it contributes zero force but keeps the same normalisation.
+        SteeringOutput o6[6] = {seek, align, coh, sep, avoidOpp, steering_zero()};
+        float w[6] = {1.2f, 1.0f, 0.3f, 0.5f, 0.8f, 2.0f};
+        out = steering_blend(o6, w, 6);
+    } else if (avoidMode == AVOID_CLEARPATH) {
+        Vector2 desired = {dirX * b.maxSpeed, dirY * b.maxSpeed};
+        out = steering_clearpath(&b, desired, pos, vel, radii, n, AGENT_RADIUS * S, 2.0f);
+    }
+    // steering_apply's velocity rule (position is integrated by the shared wall-aware mover)
+    Vector2 acc = out.linear;
+    float al = sqrtf(acc.x * acc.x + acc.y * acc.y);
+    if (al > b.maxForce) { acc.x *= b.maxForce / al; acc.y *= b.maxForce / al; }
+    b.vel.x += acc.x * dt; b.vel.y += acc.y * dt;
+    float vl = sqrtf(b.vel.x * b.vel.x + b.vel.y * b.vel.y);
+    if (vl > b.maxSpeed) { b.vel.x *= b.maxSpeed / vl; b.vel.y *= b.maxSpeed / vl; }
+    a->vx = b.vel.x / S;
+    a->vy = b.vel.y / S;
+}
+
 static void UpdateAgents(float dt) {
     BuildSpatialGrid();
     int overlaps = 0;
@@ -368,15 +464,25 @@ static void UpdateAgents(float dt) {
         if (cost != NAV_FLOW_UNREACHABLE && FlowDirection(C->field, a->x, a->y, &dirX, &dirY)) {
             wantX = dirX * speed; wantY = dirY * speed;
         }
-        float sepX, sepY, accX, accY;
-        AvoidanceForce(i, &sepX, &sepY, &accX, &accY, &overlaps);
-        wantX += sepX; wantY += sepY;
+        if (IsLibraryMode(avoidMode)) {
+            float sepX, sepY, accX, accY;
+            int saveMode = avoidMode;            // count contacts the same way as the other modes
+            avoidMode = AVOID_SEPARATION;
+            AvoidanceForce(i, &sepX, &sepY, &accX, &accY, &overlaps);
+            avoidMode = saveMode;
+            float ddx = speed > 0 ? wantX / speed : 0, ddy = speed > 0 ? wantY / speed : 0;
+            LibrarySteer(i, ddx, ddy, speed, dt);
+        } else {
+            float sepX, sepY, accX, accY;
+            AvoidanceForce(i, &sepX, &sepY, &accX, &accY, &overlaps);
+            wantX += sepX; wantY += sepY;
 
-        float k = 1.0f - expf(-STEER_RATE * dt);
-        a->vx += (wantX - a->vx) * k + accX * dt;
-        a->vy += (wantY - a->vy) * k + accY * dt;
-        float v2 = a->vx * a->vx + a->vy * a->vy, vmax = speed * MAX_SPEED_MULT;
-        if (v2 > vmax * vmax) { float s = vmax / sqrtf(v2); a->vx *= s; a->vy *= s; }
+            float k = 1.0f - expf(-STEER_RATE * dt);
+            a->vx += (wantX - a->vx) * k + accX * dt;
+            a->vy += (wantY - a->vy) * k + accY * dt;
+            float v2 = a->vx * a->vx + a->vy * a->vy, vmax = speed * MAX_SPEED_MULT;
+            if (v2 > vmax * vmax) { float s = vmax / sqrtf(v2); a->vx *= s; a->vy *= s; }
+        }
 
         // Move with per-axis wall collision (keep the body radius out of walls)
         float nx = a->x + a->vx * dt;
@@ -484,19 +590,24 @@ static void LoadScenario(int s, int startAgents) {
         streamMode = false;
     } else {
         // Two rooms joined by one corridor (corridorWidth cells); crowds swap rooms
+        // Corridor [xL, xR) centred on the map, 30-wide rooms on either side
+        int len = corridorLength < 10 ? 10 : (corridorLength > MAP_W - 62 ? MAP_W - 62 : corridorLength);
+        int xL = MAP_W / 2 - len / 2, xR = xL + len;
+        int top = 62 - corridorWidth / 2;
         for (int y = 1; y < MAP_H - 1; y++)
             for (int x = 1; x < MAP_W - 1; x++) {
-                bool leftRoom = x <= 30 && y >= 25 && y < 100;
-                bool rightRoom = x >= 169 && y >= 25 && y < 100;
-                int top = 62 - corridorWidth / 2;
-                bool corridor = y >= top && y < top + corridorWidth;
+                bool leftRoom = x >= xL - 30 && x < xL && y >= 25 && y < 100;
+                bool rightRoom = x >= xR && x < xR + 30 && y >= 25 && y < 100;
+                bool corridor = x >= xL && x < xR && y >= top && y < top + corridorWidth;
                 map.wall[y][x] = !(leftRoom || rightRoom || corridor);
             }
-        Channel* e = AddChannel("eastbound", (Color){255, 165, 80, 255}, false, 2, 26);
-        Channel* w = AddChannel("westbound", (Color){110, 200, 255, 255}, false, 173, 197);
+        // Spawn near the corridor mouth, goal just inside the far room: the trip is
+        // dominated by the corridor, which is what this scenario measures
+        Channel* e = AddChannel("eastbound", (Color){255, 165, 80, 255}, false, xL - 14, xL - 3);
+        Channel* w = AddChannel("westbound", (Color){110, 200, 255, 255}, false, xR + 2, xR + 13);
         for (int y = 25; y < 100; y++) {
-            e->goals[e->goalCount++] = (NavPoint){196, y, 0};
-            w->goals[w->goalCount++] = (NavPoint){3, y, 0};
+            e->goals[e->goalCount++] = (NavPoint){xR + 5, y, 0};
+            w->goals[w->goalCount++] = (NavPoint){xL - 6, y, 0};
         }
         e->spawnRate = w->spawnRate = streamRate;
         sharedGoals = false;
@@ -646,6 +757,8 @@ int main(int argc, char** argv) {
         else if (hasArg && strcmp(argv[i], "--careful") == 0) carefulShare = atoi(argv[++i]);
         else if (hasArg && strcmp(argv[i], "--rate") == 0) streamRate = (float)atof(argv[++i]);
         else if (hasArg && strcmp(argv[i], "--corridor") == 0) corridorWidth = atoi(argv[++i]);
+        else if (hasArg && strcmp(argv[i], "--length") == 0) corridorLength = atoi(argv[++i]);
+        else if (hasArg && strcmp(argv[i], "--speed") == 0) agentSpeed = (float)atof(argv[++i]);
         else if (hasArg && strcmp(argv[i], "--warmup") == 0) warmupSecs = (float)atof(argv[++i]);
         else if (hasArg && strcmp(argv[i], "--scenario") == 0) {
             const char* s = argv[++i];
