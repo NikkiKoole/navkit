@@ -2786,6 +2786,71 @@ static int HFlowFailures(Point goal, int samples, int* outCompared) {
     return failures;
 }
 
+describe(reachability_regions) {
+    it("regions agree with A* on hills (ramps), with no false 'unreachable'") {
+        InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+        SeedRandom(4242);
+        GenerateHills();
+        BuildEntrances();   // GetRandomWalkableCell consults the (otherwise stale) ladder/ramp links
+        BuildGraph();
+        NavWorld* w = NavGame();
+        SeedRandom(55);
+        int falseNeg = 0, falsePos = 0, pairs = 0;
+        for (int i = 0; i < 400; i++) {
+            Point a = GetRandomWalkableCell(), b = GetRandomWalkableCell();
+            if (a.x < 0 || b.x < 0) continue;
+            bool truth = NavFindPathAStar(w, a, b, path, MAX_PATH) > 0;
+            bool reg = NavReachable(w, a, b);
+            if (truth && !reg) falseNeg++;
+            if (!truth && reg) falsePos++;
+            pairs++;
+        }
+        if (test_verbose) printf("regions: %d pairs, %d regions, false neg %d, false pos %d\n",
+                                 pairs, NavRegionCount(w), falseNeg, falsePos);
+        expect(pairs > 300);
+        expect(falseNeg == 0);
+        expect(falsePos * 100 <= pairs);   // rare one-way ramp exits at most
+    }
+
+    it("regions update after digging through a wall (incremental)") {
+        InitGridWithSize(32, 32);
+        FillGroundLevel();
+        for (int y = 0; y < 32; y++) { grid[1][y][16] = CELL_WALL; MarkChunkDirty(16, y, 1); }
+        NavWorld* w = NavGame();
+        Point a = {4, 10, 1}, b = {28, 10, 1};
+        expect(!NavReachable(w, a, b));
+        grid[1][12][16] = CELL_AIR;
+        MarkChunkDirty(16, 12, 1);
+        expect(NavReachable(w, a, b));
+    }
+
+    it("region build and update are cheap on a 256x256x16 world") {
+        InitGridWithSizeAndChunkSize(256, 256, 16, 16);
+        SeedRandom(9);
+        GenerateHills();
+        BuildEntrances();
+        BuildGraph();
+        NavWorld* w = NavGame();
+        // raylib's GetTime() is 0 without a window: use the system clock
+        struct timespec ts0, ts1;
+        clock_gettime(CLOCK_MONOTONIC, &ts0);
+        int regions = NavRegionCount(w);
+        clock_gettime(CLOCK_MONOTONIC, &ts1);
+        double buildMs = (ts1.tv_sec - ts0.tv_sec) * 1000.0 + (ts1.tv_nsec - ts0.tv_nsec) / 1e6;
+        Point p = GetRandomWalkableCell();
+        expect(p.x >= 0);
+        MarkChunkDirty(p.x, p.y, p.z);
+        clock_gettime(CLOCK_MONOTONIC, &ts0);
+        NavRegionCount(w);
+        clock_gettime(CLOCK_MONOTONIC, &ts1);
+        double updateMs = (ts1.tv_sec - ts0.tv_sec) * 1000.0 + (ts1.tv_nsec - ts0.tv_nsec) / 1e6;
+        if (test_verbose) printf("regions 256x256x16: %d regions, full build %.1f ms, update after one edit %.2f ms\n",
+                                 regions, buildMs, updateMs);
+        expect(regions > 0);
+        expect(updateMs < buildMs);
+    }
+}
+
 describe(hierarchical_flow) {
     it("hierarchical flow reaches the goal wherever A* does (hills, ramps)") {
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
@@ -4703,6 +4768,7 @@ static void run_all_tests(void) {
     test(hpa_vs_astar_consistency);
     test(flow_field);
     test(hierarchical_flow);
+    test(reachability_regions);
     test(ladder_placement);
     test(ladder_erase);
     test(df_walkability);

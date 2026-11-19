@@ -138,6 +138,17 @@ typedef struct NavWorld {
 
     NavPoint* tempPath; int tempPathCap;
 
+    // reachability regions (built lazily on first query)
+    uint16_t* regLocal;            // [cell] component id within its chunk, 0 = not walkable
+    int* regCompBase;              // [chunk] first global component index
+    int* regCompCount;             // [chunk] components in the chunk
+    int* regRoot;                  // [global component] region id (flattened union-find)
+    int regNodeCap, regCount;
+    struct NavRegLinks* regLinks;  // [chunk] cross-level links (ladders/ramps) starting in it
+    bool* regChunkDirty;
+    int regDirtyCount;
+    bool regBuilt;
+
     int* aG; int* aF; int* aParent;
     uint8_t* aState; uint32_t* aGen;
     int* aHeap; int* aHeapIdx; int aHeapCount;
@@ -248,6 +259,22 @@ static inline bool NavFlowSteerTarget(const NavFlowField* f, NavPoint p, NavPoin
     *out = NavFlowCellPoint(f, t);
     return true;
 }
+
+// ---- reachability regions ----
+// Every walkable cell gets a region id; two cells are mutually reachable iff
+// they share a region (O(1)). Uses the same movement rules as A* (8-dir with
+// no corner cutting, ladders, ramps); a connection counts if it works in at
+// least one direction, so a one-way ramp side-exit can make "reachable" a rare
+// false positive, while "unreachable" is always correct. Built on first query;
+// NavMarkCellChanged makes the next query relabel only the nearby chunks.
+int  NavRegionId(NavWorld* w, NavPoint p);          // -1 = not walkable / out of bounds
+bool NavReachable(NavWorld* w, NavPoint a, NavPoint b);
+int  NavRegionCount(NavWorld* w);                   // number of distinct regions
+// The world changed in ways not reported through NavMarkCellChanged: relabel
+// everything on the next query.
+void NavRegionsInvalidate(NavWorld* w);
+// Hosts may #define NAV_REGION_WALKABLE(host,x,y,z) as a superset of
+// NavIsWalkable (e.g. ignoring dynamic blockers they don't notify about).
 
 // ---- hierarchical flow fields ----
 // For many different destinations: one flow field per goal over the whole

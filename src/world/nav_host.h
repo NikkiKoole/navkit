@@ -29,6 +29,14 @@ static inline bool NavIsWalkable(void* host, int x, int y, int z) {
     return IsCellWalkableAt(z, y, x);
 }
 
+// Reachability regions ignore deep water: water is never notified to the
+// pathfinder, so regions must stay a superset of what's walkable right now.
+static inline bool NavRegionWalkableGame(void* host, int x, int y, int z) {
+    (void)host;
+    return IsCellWalkableAtEx(z, y, x, true);
+}
+#define NAV_REGION_WALKABLE NavRegionWalkableGame
+
 static inline int NavMoveCost(void* host, int x, int y, int z) {
     (void)host;
     return GetCellMoveCost(x, y, z);

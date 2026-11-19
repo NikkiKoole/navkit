@@ -74,6 +74,7 @@ void InitGridWithDimensions(int width, int height, int depth, int chunkW, int ch
     }
 
     needsRebuild = true;
+    NavRegionsInvalidate(NavGame());   // same-size re-init keeps the nav world: drop stale regions
 }
 
 void InitGridWithSize(int width, int height) {

@@ -399,8 +399,68 @@ static void test_hierarchical_flow_extra_cost(void) {
     NavDestroy(w);
 }
 
+// NavReachable must agree with A* (ground truth) for random pairs
+static int RegionMismatches(NavWorld* w, const StubMap* m, unsigned int* seed, int pairs) {
+    int bad = 0;
+    for (int i = 0; i < pairs; i++) {
+        NavPoint a, b;
+        do { *seed = *seed * 1103515245u + 12345u; a = (NavPoint){(int)((*seed >> 8) % m->w), (int)((*seed >> 16) % m->h), (int)((*seed >> 4) % m->d)}; }
+        while (m->wall[a.z][a.y][a.x]);
+        do { *seed = *seed * 1103515245u + 12345u; b = (NavPoint){(int)((*seed >> 8) % m->w), (int)((*seed >> 16) % m->h), (int)((*seed >> 4) % m->d)}; }
+        while (m->wall[b.z][b.y][b.x]);
+        bool truth = NavFindPathAStar(w, a, b, buf, 4096) > 0 || (a.x == b.x && a.y == b.y && a.z == b.z);
+        if (NavReachable(w, a, b) != truth) bad++;
+    }
+    return bad;
+}
+
+static void test_regions(void) {
+    static StubMap m;
+    memset(&m, 0, sizeof(m));
+    m.w = 48; m.h = 40; m.d = 3;
+    unsigned int seed = 4242;
+    #define RND() (seed = seed * 1103515245u + 12345u, (seed >> 16) & 0x7fff)
+    for (int z = 0; z < 3; z++)
+        for (int y = 0; y < 40; y++)
+            for (int x = 0; x < 48; x++) m.wall[z][y][x] = (RND() % 100) < 38;   // many pockets
+    for (int i = 0; i < 10; i++) {
+        int x = RND() % 48, y = RND() % 40, z = RND() % 2;
+        m.wall[z][y][x] = m.wall[z + 1][y][x] = 0;
+        m.ladder[z][y][x] = m.ladder[z + 1][y][x] = 1;
+    }
+    NavWorld* w = NavCreate(48, 40, 3, 8, 8, &m);
+    unsigned int s2 = 99;
+    CHECK(NavRegionCount(w) > 10);
+    CHECK(RegionMismatches(w, &m, &s2, 3000) == 0);
+    CHECK(NavRegionId(w, (NavPoint){-1, 0, 0}) == -1);
+
+    // Big open room, then cut it in two with a wall (incremental relabel), then reopen it
+    memset(&m, 0, sizeof(m));
+    m.w = 48; m.h = 40; m.d = 3;
+    NavDestroy(w);
+    w = NavCreate(48, 40, 3, 8, 8, &m);
+    NavPoint left = {5, 20, 0}, right = {40, 20, 0};
+    CHECK(NavReachable(w, left, right));
+    for (int y = 0; y < 40; y++) { m.wall[0][y][24] = 1; NavMarkCellChanged(w, 24, y, 0); }
+    CHECK(!NavReachable(w, left, right));
+    CHECK(RegionMismatches(w, &m, &s2, 1000) == 0);
+    m.wall[0][7][24] = 0;
+    NavMarkCellChanged(w, 24, 7, 0);
+    CHECK(NavReachable(w, left, right));
+    // A ladder pair joins two otherwise separate levels
+    NavPoint up = {10, 10, 1};
+    CHECK(!NavReachable(w, left, up));
+    m.ladder[0][10][10] = m.ladder[1][10][10] = 1;
+    NavMarkCellChanged(w, 10, 10, 0);
+    CHECK(NavReachable(w, left, up));
+    CHECK(RegionMismatches(w, &m, &s2, 1000) == 0);
+    NavDestroy(w);
+    #undef RND
+}
+
 int main(void) {
     printf("Running nav standalone tests...\n");
+    test_regions();
     test_hierarchical_flow_extra_cost();
     test_hierarchical_flow();
     test_flow_extra_cost_and_clearance();

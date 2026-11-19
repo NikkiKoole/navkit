@@ -22,6 +22,17 @@
 
 #define NAV_HOSTP (w->host)
 
+// Walkability used for reachability regions. A host may define it as a
+// superset of NavIsWalkable (e.g. ignoring dynamic blockers it doesn't report
+// through NavMarkCellChanged), which keeps "unreachable" answers correct.
+#ifndef NAV_REGION_WALKABLE
+#define NAV_REGION_WALKABLE NavIsWalkable
+#endif
+
+// Forward declarations (reachability regions, defined further down)
+static void nav_RegMarkDirty(NavWorld* w, int x, int y, int z);
+static void nav_RegFree(NavWorld* w);
+
 static const int nav_kDx4[4] = {0, 1, 0, -1};
 static const int nav_kDy4[4] = {-1, 0, 1, 0};
 static const int nav_kDx8[8] = {0, 1, 1, 1, 0, -1, -1, -1};
@@ -32,6 +43,7 @@ static const int nav_kDy8[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
 // =============================================================================
 
 static void nav_NavFreeInternals(NavWorld* w) {
+    nav_RegFree(w);
     free(w->entranceList); free(w->edgeList); free(w->ladderList); free(w->rampList);
     free(w->chunkDirtyFlags);
     free(w->adjList); free(w->adjListCount);
@@ -572,6 +584,7 @@ void NavMarkCellChanged(NavWorld* w, int x, int y, int z) {
     }
     w->dirty = true;
     w->hpaDirty = true;
+    nav_RegMarkDirty(w, x, y, z);
     NavOnChunkDirty(NAV_HOSTP, x, y, z);
 }
 
@@ -1651,6 +1664,233 @@ int NavFindPath(NavWorld* w, NavAlgorithm algo, NavPoint start, NavPoint goal, N
         case NAV_ALGO_HPA:   return NavFindPathHPA(w, start, goal, out, maxLen);
     }
     return 0;
+}
+
+// =============================================================================
+// Reachability regions: per-chunk components + union-find across chunk borders
+// and ladder/ramp links. Relabelling a few chunks after an edit is cheap; the
+// global join only touches chunk-border cells and links.
+// =============================================================================
+
+typedef struct NavRegLinks { int* a; int* b; int n, cap; } NavRegLinks;   // cell-id pairs
+
+static inline int nav_Cell3(const NavWorld* w, int x, int y, int z) { return (z * w->height + y) * w->width + x; }
+static inline int nav_ChunkOfCell(const NavWorld* w, int x, int y, int z) {
+    return z * (w->chunksX * w->chunksY) + (y / w->chunkH) * w->chunksX + (x / w->chunkW);
+}
+
+static void nav_RegFree(NavWorld* w) {
+    if (w->regLinks) {
+        int chunks = w->depth * w->chunksX * w->chunksY;
+        for (int c = 0; c < chunks; c++) { free(w->regLinks[c].a); free(w->regLinks[c].b); }
+    }
+    free(w->regLinks); free(w->regLocal); free(w->regCompBase); free(w->regCompCount);
+    free(w->regRoot); free(w->regChunkDirty);
+    w->regLinks = NULL; w->regLocal = NULL; w->regCompBase = w->regCompCount = w->regRoot = NULL;
+    w->regChunkDirty = NULL; w->regBuilt = false; w->regNodeCap = w->regCount = w->regDirtyCount = 0;
+}
+
+// Can an agent step between same-level neighbours a and b in at least one direction?
+static bool nav_RegStep(NavWorld* w, int ax, int ay, int bx, int by, int z) {
+    if (!NAV_REGION_WALKABLE(NAV_HOSTP, ax, ay, z) || !NAV_REGION_WALKABLE(NAV_HOSTP, bx, by, z)) return false;
+    if (ax != bx && ay != by) {
+        if (!w->eightDir) return false;
+        if (!NAV_REGION_WALKABLE(NAV_HOSTP, bx, ay, z) || !NAV_REGION_WALKABLE(NAV_HOSTP, ax, by, z)) return false;
+    }
+    return NavCanEnterFrom(NAV_HOSTP, bx, by, z, ax, ay) || NavCanEnterFrom(NAV_HOSTP, ax, ay, z, bx, by);
+}
+
+static void nav_RegAddLink(NavRegLinks* L, int a, int b) {
+    if (L->n == L->cap) {
+        int cap = L->cap ? L->cap * 2 : 8;
+        int* na = realloc(L->a, (size_t)cap * sizeof(int));
+        if (!na) return;
+        L->a = na;
+        int* nb = realloc(L->b, (size_t)cap * sizeof(int));
+        if (!nb) return;
+        L->b = nb;
+        L->cap = cap;
+    }
+    L->a[L->n] = a; L->b[L->n] = b; L->n++;
+}
+
+static void nav_RegLabelChunk(NavWorld* w, int chunk, int* queue) {
+    int perLevel = w->chunksX * w->chunksY;
+    int z = chunk / perLevel, xy = chunk % perLevel;
+    int x0 = (xy % w->chunksX) * w->chunkW, y0 = (xy / w->chunksX) * w->chunkH;
+    int x1 = x0 + w->chunkW, y1 = y0 + w->chunkH;
+    if (x1 > w->width) x1 = w->width;
+    if (y1 > w->height) y1 = w->height;
+    const int* dx = nav_kDx8;
+    const int* dy = nav_kDy8;
+
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++) w->regLocal[nav_Cell3(w, x, y, z)] = 0;
+
+    int comp = 0;
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++) {
+            int c = nav_Cell3(w, x, y, z);
+            if (w->regLocal[c] || !NAV_REGION_WALKABLE(NAV_HOSTP, x, y, z)) continue;
+            if (comp == 65535) break;
+            comp++;
+            int qh = 0, qt = 0;
+            w->regLocal[c] = (uint16_t)comp;
+            queue[qt++] = (y - y0) * w->chunkW + (x - x0);
+            while (qh < qt) {
+                int q = queue[qh++];
+                int qx = x0 + q % w->chunkW, qy = y0 + q / w->chunkW;
+                for (int k = 0; k < 8; k++) {
+                    int nx = qx + dx[k], ny = qy + dy[k];
+                    if (nx < x0 || ny < y0 || nx >= x1 || ny >= y1) continue;
+                    int nc = nav_Cell3(w, nx, ny, z);
+                    if (w->regLocal[nc] || !nav_RegStep(w, qx, qy, nx, ny, z)) continue;
+                    w->regLocal[nc] = (uint16_t)comp;
+                    queue[qt++] = (ny - y0) * w->chunkW + (nx - x0);
+                }
+            }
+        }
+    w->regCompCount[chunk] = comp;
+
+    // Cross-level links starting in this chunk
+    NavRegLinks* L = &w->regLinks[chunk];
+    L->n = 0;
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++) {
+            int c = nav_Cell3(w, x, y, z), ex, ey;
+            if (z + 1 < w->depth && NavCanClimbUp(NAV_HOSTP, x, y, z)) nav_RegAddLink(L, c, nav_Cell3(w, x, y, z + 1));
+            if (z + 1 < w->depth && NavRampUp(NAV_HOSTP, x, y, z, &ex, &ey) &&
+                ex >= 0 && ey >= 0 && ex < w->width && ey < w->height)
+                nav_RegAddLink(L, c, nav_Cell3(w, ex, ey, z + 1));
+        }
+}
+
+static int nav_RegNode(const NavWorld* w, int cell) {
+    int layer = w->width * w->height;
+    int z = cell / layer, rem = cell % layer;
+    int local = w->regLocal[cell];
+    if (!local) return -1;
+    return w->regCompBase[nav_ChunkOfCell(w, rem % w->width, rem / w->width, z)] + local - 1;
+}
+
+static int nav_UFFind(int* p, int i) {
+    while (p[i] != i) { p[i] = p[p[i]]; i = p[i]; }
+    return i;
+}
+
+static void nav_UFUnion(int* p, int a, int b) {
+    if (a < 0 || b < 0) return;
+    a = nav_UFFind(p, a); b = nav_UFFind(p, b);
+    if (a != b) p[a < b ? b : a] = a < b ? a : b;
+}
+
+static void nav_RegJoin(NavWorld* w) {
+    int chunks = w->depth * w->chunksX * w->chunksY, nodes = 0;
+    for (int c = 0; c < chunks; c++) { w->regCompBase[c] = nodes; nodes += w->regCompCount[c]; }
+    if (nodes > w->regNodeCap) {
+        int* r = realloc(w->regRoot, (size_t)(nodes > 0 ? nodes : 1) * sizeof(int));
+        if (!r) return;
+        w->regRoot = r;
+        w->regNodeCap = nodes;
+    }
+    int* p = w->regRoot;
+    for (int i = 0; i < nodes; i++) p[i] = i;
+
+    for (int z = 0; z < w->depth; z++) {
+        // Vertical chunk borders: (bx-1, y) | (bx, y) and the two diagonals across
+        for (int bx = w->chunkW; bx < w->width; bx += w->chunkW)
+            for (int y = 0; y < w->height; y++) {
+                if (nav_RegStep(w, bx - 1, y, bx, y, z))
+                    nav_UFUnion(p, nav_RegNode(w, nav_Cell3(w, bx - 1, y, z)), nav_RegNode(w, nav_Cell3(w, bx, y, z)));
+                if (y + 1 < w->height) {
+                    if (nav_RegStep(w, bx - 1, y, bx, y + 1, z))
+                        nav_UFUnion(p, nav_RegNode(w, nav_Cell3(w, bx - 1, y, z)), nav_RegNode(w, nav_Cell3(w, bx, y + 1, z)));
+                    if (nav_RegStep(w, bx - 1, y + 1, bx, y, z))
+                        nav_UFUnion(p, nav_RegNode(w, nav_Cell3(w, bx - 1, y + 1, z)), nav_RegNode(w, nav_Cell3(w, bx, y, z)));
+                }
+            }
+        // Horizontal chunk borders
+        for (int by = w->chunkH; by < w->height; by += w->chunkH)
+            for (int x = 0; x < w->width; x++) {
+                if (nav_RegStep(w, x, by - 1, x, by, z))
+                    nav_UFUnion(p, nav_RegNode(w, nav_Cell3(w, x, by - 1, z)), nav_RegNode(w, nav_Cell3(w, x, by, z)));
+                if (x + 1 < w->width) {
+                    if (nav_RegStep(w, x, by - 1, x + 1, by, z))
+                        nav_UFUnion(p, nav_RegNode(w, nav_Cell3(w, x, by - 1, z)), nav_RegNode(w, nav_Cell3(w, x + 1, by, z)));
+                    if (nav_RegStep(w, x + 1, by - 1, x, by, z))
+                        nav_UFUnion(p, nav_RegNode(w, nav_Cell3(w, x + 1, by - 1, z)), nav_RegNode(w, nav_Cell3(w, x, by, z)));
+                }
+            }
+    }
+    for (int c = 0; c < chunks; c++)
+        for (int k = 0; k < w->regLinks[c].n; k++)
+            nav_UFUnion(p, nav_RegNode(w, w->regLinks[c].a[k]), nav_RegNode(w, w->regLinks[c].b[k]));
+
+    w->regCount = 0;
+    for (int i = 0; i < nodes; i++) { p[i] = nav_UFFind(p, i); if (p[i] == i) w->regCount++; }
+}
+
+static bool nav_RegEnsure(NavWorld* w) {
+    int chunks = w->depth * w->chunksX * w->chunksY;
+    if (!w->regBuilt) {
+        nav_RegFree(w);
+        w->regLocal = calloc((size_t)w->width * w->height * w->depth, sizeof(uint16_t));
+        w->regCompBase = calloc((size_t)chunks, sizeof(int));
+        w->regCompCount = calloc((size_t)chunks, sizeof(int));
+        w->regChunkDirty = calloc((size_t)chunks, sizeof(bool));
+        w->regLinks = calloc((size_t)chunks, sizeof(NavRegLinks));
+        if (!w->regLocal || !w->regCompBase || !w->regCompCount || !w->regChunkDirty || !w->regLinks) {
+            nav_RegFree(w);
+            return false;
+        }
+        for (int c = 0; c < chunks; c++) w->regChunkDirty[c] = true;
+        w->regDirtyCount = chunks;
+        w->regBuilt = true;
+    }
+    if (w->regDirtyCount > 0) {
+        int* queue = malloc((size_t)w->chunkW * w->chunkH * sizeof(int));
+        if (!queue) return false;
+        for (int c = 0; c < chunks; c++)
+            if (w->regChunkDirty[c]) { nav_RegLabelChunk(w, c, queue); w->regChunkDirty[c] = false; }
+        free(queue);
+        w->regDirtyCount = 0;
+        nav_RegJoin(w);
+    }
+    return true;
+}
+
+// Called from NavMarkCellChanged: relabel the 3x3x3 chunk neighbourhood (links
+// such as ramps and ladders reach into neighbouring chunks and levels).
+static void nav_RegMarkDirty(NavWorld* w, int x, int y, int z) {
+    if (!w->regBuilt) return;
+    int cx = x / w->chunkW, cy = y / w->chunkH;
+    for (int dz = -1; dz <= 1; dz++)
+        for (int dcy = -1; dcy <= 1; dcy++)
+            for (int dcx = -1; dcx <= 1; dcx++) {
+                int nz = z + dz, ncx = cx + dcx, ncy = cy + dcy;
+                if (nz < 0 || nz >= w->depth || ncx < 0 || ncy < 0 || ncx >= w->chunksX || ncy >= w->chunksY) continue;
+                int c = nz * (w->chunksX * w->chunksY) + ncy * w->chunksX + ncx;
+                if (!w->regChunkDirty[c]) { w->regChunkDirty[c] = true; w->regDirtyCount++; }
+            }
+}
+
+int NavRegionId(NavWorld* w, NavPoint p) {
+    if (!nav_InBounds(w, p) || !nav_RegEnsure(w)) return -1;
+    int node = nav_RegNode(w, nav_Cell3(w, p.x, p.y, p.z));
+    return node < 0 ? -1 : w->regRoot[node];
+}
+
+bool NavReachable(NavWorld* w, NavPoint a, NavPoint b) {
+    int ra = NavRegionId(w, a);
+    return ra >= 0 && ra == NavRegionId(w, b);
+}
+
+void NavRegionsInvalidate(NavWorld* w) {
+    if (w) w->regBuilt = false;
+}
+
+int NavRegionCount(NavWorld* w) {
+    return nav_RegEnsure(w) ? w->regCount : 0;
 }
 
 // =============================================================================

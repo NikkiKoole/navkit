@@ -85,8 +85,10 @@ static inline bool IsWallCell(CellType cell) {
 
 
 // DF-style walkability: walkable if current cell is traversable AND
-// (cell below is solid OR this cell has a constructed floor)
-static inline bool IsCellWalkableAt(int z, int y, int x) {
+// (cell below is solid OR this cell has a constructed floor).
+// ignoreWater: treat deep water as passable (used for reachability regions,
+// which must never say "unreachable" when a drained passage is open again).
+static inline bool IsCellWalkableAtEx(int z, int y, int x, bool ignoreWater) {
     // Bounds check
     if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
 
@@ -103,7 +105,7 @@ static inline bool IsCellWalkableAt(int z, int y, int x) {
     
     // Can't walk through deep water (level 4+ blocks movement)
     // Movers can wade through shallow water (1-3) but not swim through deep water
-    if (waterGrid[z][y][x].level >= WATER_BLOCKS_MOVEMENT) return false;
+    if (!ignoreWater && waterGrid[z][y][x].level >= WATER_BLOCKS_MOVEMENT) return false;
     
     // Ladders are always walkable (special case - they provide their own support)
     if (CellIsLadder(cellHere)) return true;
@@ -128,6 +130,10 @@ static inline bool IsCellWalkableAt(int z, int y, int x) {
     
     CellType cellBelow = grid[z-1][y][x];
     return CellIsSolid(cellBelow);
+}
+
+static inline bool IsCellWalkableAt(int z, int y, int x) {
+    return IsCellWalkableAtEx(z, y, x, false);
 }
 
 // =============================================================================

@@ -89,6 +89,7 @@ void RunAStar(void);              // startPos -> goalPos into path/pathLength
 void RunHPAStar(void);            // startPos -> goalPos into path/pathLength
 int FindPathHPA(Point start, Point goal, Point* outPath, int maxLen);
 int FindPath(PathAlgorithm algo, Point start, Point goal, Point* outPath, int maxLen);
+bool IsReachable(Point a, Point b);   // O(1) via reachability regions ("false" is always right)
 int AStarChunk(int sx, int sy, int sz, int gx, int gy, int minX, int minY, int maxX, int maxY);
 int AStarChunkMultiTarget(int sx, int sy, int sz, int* targetX, int* targetY, int* outCosts, int numTargets,
                           int minX, int minY, int maxX, int maxY);

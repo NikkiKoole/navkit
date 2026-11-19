@@ -93,6 +93,7 @@ void SetChunkDirty(int cx, int cy, int z, bool dirty) {
 
 void BuildEntrances(void) {
     NavWorld* w = NavGame();
+    NavRegionsInvalidate(w);      // full rebuild = the world may have changed without notifications
     NavBuildEntrances(w);
     rampCount = w->rampCellNum;   // game's ramp counter is re-synced on full rebuilds
 }
@@ -123,9 +124,20 @@ int FindPathHPA(Point start, Point goal, Point* outPath, int maxLen) {
     return NavFindPathHPA(NavGame(), start, goal, outPath, maxLen);
 }
 
+bool IsReachable(Point a, Point b) {
+    return NavReachable(NavGame(), a, b);
+}
+
 int FindPath(PathAlgorithm algo, Point start, Point goal, Point* outPath, int maxLen) {
     if (start.x < 0 || goal.x < 0) return 0;
     NavWorld* w = NavGame();
+    // Different reachability regions: no path exists, answer without searching
+    // (a failed search is the most expensive kind)
+    int rs = NavRegionId(w, start), rg = NavRegionId(w, goal);
+    if (rs >= 0 && rg >= 0 && rs != rg) {
+        statsPathCount++;
+        return 0;
+    }
     int len = NavFindPath(w, (NavAlgorithm)algo, start, goal, outPath, maxLen);
 
     if (len > 0 && len >= maxLen * 9 / 10) {
