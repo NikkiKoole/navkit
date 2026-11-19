@@ -142,8 +142,91 @@ static void test_flow_matches_astar(void) {
     #undef RND
 }
 
+static bool OnRoute(const NavFlowField* f, NavPoint from, NavPoint target) {
+    NavPoint cur = from, nxt;
+    int steps = 0;
+    while (NavFlowNext(f, cur, &nxt) && steps++ < 100000) {
+        cur = nxt;
+        if (cur.x == target.x && cur.y == target.y && cur.z == target.z) return true;
+    }
+    return false;
+}
+
+static void test_flow_steering(void) {
+    // 1. Open map: every cell sees the goal directly
+    {
+        static StubMap m = {.w = 41, .h = 41, .d = 1};
+        NavWorld* w = NavCreate(41, 41, 1, 8, 8, &m);
+        NavFlowField* f = NavFlowCreate(w);
+        NavPoint goal = {20, 20, 0};
+        NavFlowBuild(w, f, &goal, 1, 0);
+        int notGoal = 0;
+        for (int y = 0; y < 41; y++)
+            for (int x = 0; x < 41; x++) {
+                if (x == 20 && y == 20) continue;
+                NavPoint t;
+                if (!NavFlowSteerTarget(f, (NavPoint){x, y, 0}, &t) || t.x != 20 || t.y != 20) notGoal++;
+            }
+        CHECK(notGoal == 0);
+        NavPoint t;
+        CHECK(!NavFlowSteerTarget(f, goal, &t));   // no target at the goal itself
+        NavFlowDestroy(f);
+        NavDestroy(w);
+    }
+    // 2. Walls: targets are strictly closer, on the cell's own route, and in view
+    {
+        static StubMap m = {.w = 48, .h = 40, .d = 1};
+        for (int y = 0; y < 34; y++) m.wall[0][y][16] = 1;
+        for (int y = 6; y < 40; y++) m.wall[0][y][32] = 1;
+        for (int x = 20; x < 28; x++) m.wall[0][20][x] = 1;
+        NavWorld* w = NavCreate(48, 40, 1, 8, 8, &m);
+        NavFlowField* f = NavFlowCreate(w);
+        NavPoint goal = {45, 38, 0};
+        NavFlowBuild(w, f, &goal, 1, 0);
+        int bad = 0, longShots = 0;
+        for (int y = 0; y < 40; y++)
+            for (int x = 0; x < 48; x++) {
+                NavPoint c = {x, y, 0}, t;
+                if (m.wall[0][y][x] || !NavFlowSteerTarget(f, c, &t)) continue;
+                if (NavFlowCostAt(f, t) >= NavFlowCostAt(f, c)) bad++;
+                if (!OnRoute(f, c, t)) bad++;
+                if (!nav_FlowLineClear(w, x, y, t.x, t.y, 0, 1000)) bad++;
+                if (abs(t.x - x) + abs(t.y - y) > 10) longShots++;
+            }
+        CHECK(bad == 0);
+        CHECK(longShots > 100);   // most cells aim far ahead, not at a neighbour
+        NavFlowDestroy(f);
+        NavDestroy(w);
+    }
+    // 3. Cost-aware: cells on a road through mud never aim across the mud
+    {
+        static StubMap m = {.w = 60, .h = 30, .d = 1};
+        for (int y = 0; y < 30; y++)
+            for (int x = 0; x < 60; x++) m.cost[0][y][x] = (y == 15) ? 0 : 60;
+        NavWorld* w = NavCreate(60, 30, 1, 8, 8, &m);
+        NavFlowField* f = NavFlowCreate(w);
+        NavPoint goal = {59, 15, 0};
+        NavFlowBuild(w, f, &goal, 1, 0);
+        int crossesMud = 0;
+        for (int x = 0; x < 59; x++) {
+            NavPoint t;
+            CHECK(NavFlowSteerTarget(f, (NavPoint){x, 15, 0}, &t));
+            if (!nav_FlowLineClear(w, x, 15, t.x, t.y, 0, 10)) crossesMud++;
+        }
+        CHECK(crossesMud == 0);
+        // and with anyAngle off there are no targets at all
+        f->anyAngle = false;
+        NavFlowBuild(w, f, &goal, 1, 0);
+        NavPoint t;
+        CHECK(!NavFlowSteerTarget(f, (NavPoint){0, 15, 0}, &t));
+        NavFlowDestroy(f);
+        NavDestroy(w);
+    }
+}
+
 int main(void) {
     printf("Running nav standalone tests...\n");
+    test_flow_steering();
     test_open_diagonal();
     test_variable_cost_detour();
     test_ladder_and_two_worlds();

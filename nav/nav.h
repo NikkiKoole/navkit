@@ -181,6 +181,15 @@ typedef struct NavFlowField {
     int reached;                   // cells reached by the last build
     double buildMs;                // duration of the last build
 
+    // Any-angle steering (Theta*-style, computed during the build when anyAngle):
+    // steer[c] is the farthest cell along c's route that c can walk to in a
+    // straight line on the same level, without crossing walls or terrain more
+    // expensive than the route itself. Steering at it instead of `next` removes
+    // the 8-direction zig-zag/lanes. -1 at goals / unreachable cells.
+    bool anyAngle;                 // default true
+    int* steer;
+    int* steerLimit;               // private: max cell cost along c -> steer[c]
+
     // private build heap (lazy deletion: entries may be stale)
     int* heapCost; int* heapCell; int heapSize; int heapCap;
 } NavFlowField;
@@ -214,6 +223,16 @@ static inline bool NavFlowNext(const NavFlowField* f, NavPoint p, NavPoint* out)
     int n = f->next[NavFlowCellId(f, p.x, p.y, p.z)];
     if (n < 0) return false;
     *out = NavFlowCellPoint(f, n);
+    return true;
+}
+
+// Straight-line steering target from p (see `steer`). False at a goal, if
+// unreachable, out of bounds, or the field was built without anyAngle.
+static inline bool NavFlowSteerTarget(const NavFlowField* f, NavPoint p, NavPoint* out) {
+    if (!NavFlowInBounds(f, p) || !f->anyAngle) return false;
+    int t = f->steer[NavFlowCellId(f, p.x, p.y, p.z)];
+    if (t < 0) return false;
+    *out = NavFlowCellPoint(f, t);
     return true;
 }
 

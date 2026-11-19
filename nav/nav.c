@@ -1383,17 +1383,24 @@ NavFlowField* NavFlowCreate(const NavWorld* w) {
     f->width = w->width; f->height = w->height; f->depth = w->depth;
     f->cost = malloc(cells * sizeof(int));
     f->next = malloc(cells * sizeof(int));
+    f->steer = malloc(cells * sizeof(int));
+    f->steerLimit = malloc(cells * sizeof(int));
+    f->anyAngle = true;
     f->heapCap = 1024;
     f->heapCost = malloc((size_t)f->heapCap * sizeof(int));
     f->heapCell = malloc((size_t)f->heapCap * sizeof(int));
-    if (!f->cost || !f->next || !f->heapCost || !f->heapCell) { NavFlowDestroy(f); return NULL; }
-    for (size_t i = 0; i < cells; i++) { f->cost[i] = NAV_FLOW_UNREACHABLE; f->next[i] = -1; }
+    if (!f->cost || !f->next || !f->steer || !f->steerLimit || !f->heapCost || !f->heapCell) {
+        NavFlowDestroy(f);
+        return NULL;
+    }
+    for (size_t i = 0; i < cells; i++) { f->cost[i] = NAV_FLOW_UNREACHABLE; f->next[i] = -1; f->steer[i] = -1; }
     return f;
 }
 
 void NavFlowDestroy(NavFlowField* f) {
     if (!f) return;
-    free(f->cost); free(f->next); free(f->heapCost); free(f->heapCell);
+    free(f->cost); free(f->next); free(f->steer); free(f->steerLimit);
+    free(f->heapCost); free(f->heapCell);
     free(f);
 }
 
@@ -1440,6 +1447,74 @@ static void nav_FlowPop(NavFlowField* f, int* cost, int* cell) {
     f->heapCell[i] = lastCell;
 }
 
+// Straight walk on level z from (x0,y0) to (x1,y1) through cell centres: every
+// cell the segment touches (supercover; both sides when it passes exactly
+// through a corner) must be walkable with move cost <= limit.
+static bool nav_FlowLineClear(NavWorld* w, int x0, int y0, int x1, int y1, int z, int limit) {
+    #define NAV_LOS_CELL(cx, cy) do { \
+        if (!NavIsWalkable(NAV_HOSTP, (cx), (cy), z) || NavMoveCost(NAV_HOSTP, (cx), (cy), z) > limit) return false; \
+    } while (0)
+    int dx = x1 - x0, dy = y1 - y0;
+    int sx = dx < 0 ? -1 : 1, sy = dy < 0 ? -1 : 1;
+    dx = abs(dx); dy = abs(dy);
+    int ddx = 2 * dx, ddy = 2 * dy;
+    int x = x0, y = y0;
+    if (ddx >= ddy) {
+        int err = dx, prev = dx;
+        for (int i = 0; i < dx; i++) {
+            x += sx;
+            err += ddy;
+            if (err > ddx) {
+                y += sy;
+                err -= ddx;
+                if (err + prev < ddx) NAV_LOS_CELL(x, y - sy);
+                else if (err + prev > ddx) NAV_LOS_CELL(x - sx, y);
+                else { NAV_LOS_CELL(x, y - sy); NAV_LOS_CELL(x - sx, y); }
+            }
+            NAV_LOS_CELL(x, y);
+            prev = err;
+        }
+    } else {
+        int err = dy, prev = dy;
+        for (int i = 0; i < dy; i++) {
+            y += sy;
+            err += ddx;
+            if (err > ddy) {
+                x += sx;
+                err -= ddy;
+                if (err + prev < ddy) NAV_LOS_CELL(x - sx, y);
+                else if (err + prev > ddy) NAV_LOS_CELL(x, y - sy);
+                else { NAV_LOS_CELL(x - sx, y); NAV_LOS_CELL(x, y - sy); }
+            }
+            NAV_LOS_CELL(x, y);
+            prev = err;
+        }
+    }
+    #undef NAV_LOS_CELL
+    return true;
+}
+
+// Called when cell c is finalised (popped). Its `next` was finalised earlier,
+// so steer[next] is known: inherit it if c can see it, else aim at next.
+static void nav_FlowSetSteer(NavWorld* w, NavFlowField* f, int c, NavPoint C, int cellCost) {
+    int n = f->next[c];
+    if (n < 0) { f->steer[c] = -1; f->steerLimit[c] = cellCost; return; }
+    NavPoint N = NavFlowCellPoint(f, n);
+    int nCost = NavMoveCost(NAV_HOSTP, N.x, N.y, N.z);
+    f->steer[c] = n;
+    f->steerLimit[c] = cellCost > nCost ? cellCost : nCost;
+    if (!f->anyAngle || N.z != C.z) return;
+    int t = f->steer[n];
+    if (t < 0) return;
+    NavPoint T = NavFlowCellPoint(f, t);
+    if (T.z != C.z) return;
+    int limit = cellCost > f->steerLimit[n] ? cellCost : f->steerLimit[n];
+    if (nav_FlowLineClear(w, C.x, C.y, T.x, T.y, C.z, limit)) {
+        f->steer[c] = t;
+        f->steerLimit[c] = limit;
+    }
+}
+
 // Predecessor p can step to cell c (= p's `next`) for `step`; record if better.
 static inline void nav_FlowRelax(NavFlowField* f, int p, int c, int newCost, int maxCost) {
     if (maxCost > 0 && newCost > maxCost) return;
@@ -1453,7 +1528,7 @@ int NavFlowBuild(NavWorld* w, NavFlowField* f, const NavPoint* goals, int goalCo
     if (f->width != w->width || f->height != w->height || f->depth != w->depth) return 0;
     double startTime = NavHostTime();
     size_t cells = (size_t)f->width * f->height * f->depth;
-    for (size_t i = 0; i < cells; i++) { f->cost[i] = NAV_FLOW_UNREACHABLE; f->next[i] = -1; }
+    for (size_t i = 0; i < cells; i++) { f->cost[i] = NAV_FLOW_UNREACHABLE; f->next[i] = -1; f->steer[i] = -1; }
     f->heapSize = 0;
     f->reached = 0;
 
@@ -1479,6 +1554,7 @@ int NavFlowBuild(NavWorld* w, NavFlowField* f, const NavPoint* goals, int goalCo
         NavPoint C = NavFlowCellPoint(f, c);
         int x = C.x, y = C.y, z = C.z;
         int cellCost = NavMoveCost(NAV_HOSTP, x, y, z);
+        nav_FlowSetSteer(w, f, c, C, cellCost);
 
         // Same level: P = C - dir steps onto C (mirror of A*'s neighbour step)
         for (int i = 0; i < numDirs; i++) {

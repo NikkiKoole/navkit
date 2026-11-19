@@ -8,6 +8,7 @@
 //   LMB paint (brush: 1 wall, 2 mud, 3 erase)     RMB erase
 //   G set goal at mouse   Shift+G add goal        Space +1000 agents
 //   C clear agents   H heatmap   F flow arrows   S separation   R respawn-on-arrival
+//   A any-angle steering on/off (off = classic 8-direction flow)
 //   [ / ] brush size
 //
 // Headless-ish check: ./build/bin/flow --agents 20000 --frames 300 --shot out.png
@@ -106,12 +107,18 @@ static void BuildSpatialGrid(void) {
     }
 }
 
-// Desired direction from the flow field: aim between the next two cells' centres.
+// Desired direction from the flow field. Any-angle: aim straight at the cell's
+// line-of-sight target. Otherwise: aim between the next two cells' centres.
 static bool FlowDirection(float x, float y, float* dx, float* dy) {
     NavPoint here = {(int)x, (int)y, 0}, n1, n2;
-    if (!NavFlowNext(field, here, &n1)) return false;
-    float tx = n1.x + 0.5f, ty = n1.y + 0.5f;
-    if (NavFlowNext(field, n1, &n2)) { tx = (tx + n2.x + 0.5f) * 0.5f; ty = (ty + n2.y + 0.5f) * 0.5f; }
+    float tx, ty;
+    if (NavFlowSteerTarget(field, here, &n1)) {
+        tx = n1.x + 0.5f; ty = n1.y + 0.5f;
+    } else {
+        if (!NavFlowNext(field, here, &n1)) return false;
+        tx = n1.x + 0.5f; ty = n1.y + 0.5f;
+        if (NavFlowNext(field, n1, &n2)) { tx = (tx + n2.x + 0.5f) * 0.5f; ty = (ty + n2.y + 0.5f) * 0.5f; }
+    }
     float ex = tx - x, ey = ty - y;
     float len = sqrtf(ex * ex + ey * ey);
     if (len < 1e-4f) return false;
@@ -220,12 +227,14 @@ static Color HeatColor(int cost) {
 
 int main(int argc, char** argv) {
     int startAgents = 3000, autoFrames = 0;
+    bool noAnyAngle = false;
     const char* shotPath = NULL;
     for (int i = 1; i + 1 < argc; i++) {
         if (strcmp(argv[i], "--agents") == 0) startAgents = atoi(argv[++i]);
         else if (strcmp(argv[i], "--frames") == 0) autoFrames = atoi(argv[++i]);
         else if (strcmp(argv[i], "--shot") == 0) shotPath = argv[++i];
     }
+    for (int i = 1; i < argc; i++) if (strcmp(argv[i], "--no-any-angle") == 0) noAnyAngle = true;
 
     InitWindow(MAP_W * CELL_PX, MAP_H * CELL_PX + HUD_H, "nav flow field crowd");
     SetTargetFPS(60);
@@ -253,6 +262,8 @@ int main(int argc, char** argv) {
         if (IsKeyPressed(KEY_F)) showArrows = !showArrows;
         if (IsKeyPressed(KEY_S)) useSeparation = !useSeparation;
         if (IsKeyPressed(KEY_R)) respawn = !respawn;
+        if (IsKeyPressed(KEY_A)) { field->anyAngle = !field->anyAngle; fieldDirty = true; }
+        if (autoFrames > 0 && noAnyAngle) field->anyAngle = false;
         if (IsKeyPressed(KEY_C)) agentCount = 0;
         if (IsKeyPressed(KEY_SPACE)) SpawnAgents(1000);
         if (inMap && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) PaintAt(mx, my, brush);
@@ -289,9 +300,12 @@ int main(int argc, char** argv) {
             for (int y = 0; y < MAP_H; y++)
                 for (int x = 0; x < MAP_W; x++) {
                     NavPoint n;
-                    if (!NavFlowNext(field, (NavPoint){x, y, 0}, &n)) continue;
+                    if (!NavFlowSteerTarget(field, (NavPoint){x, y, 0}, &n) &&
+                        !NavFlowNext(field, (NavPoint){x, y, 0}, &n)) continue;
+                    float ddx = (float)(n.x - x), ddy = (float)(n.y - y);
+                    float len = sqrtf(ddx * ddx + ddy * ddy);
                     float cx = (x + 0.5f) * CELL_PX, cy = (y + 0.5f) * CELL_PX;
-                    DrawLineV((Vector2){cx, cy}, (Vector2){cx + (n.x - x) * CELL_PX * 0.45f, cy + (n.y - y) * CELL_PX * 0.45f},
+                    DrawLineV((Vector2){cx, cy}, (Vector2){cx + ddx / len * CELL_PX * 0.45f, cy + ddy / len * CELL_PX * 0.45f},
                               (Color){255, 255, 255, 90});
                 }
         }
@@ -311,9 +325,9 @@ int main(int argc, char** argv) {
                             agentCount, field->buildMs, field->reached, simMs, GetFPS()), 8, hy, 18, RAYWHITE);
         DrawText(TextFormat("brush: %s x%d  |  LMB paint  RMB erase  1 wall 2 mud 3 erase  [ ] size  |  G goal  Shift+G add goal",
                             brush == 1 ? "wall" : brush == 2 ? "mud" : "erase", brushSize), 8, hy + 22, 16, GRAY);
-        DrawText(TextFormat("Space +1000   C clear   H heat %s   F arrows %s   S separation %s   R respawn %s",
+        DrawText(TextFormat("Space +1000   C clear   H heat %s   F arrows %s   S separation %s   R respawn %s   A any-angle %s",
                             showHeat ? "on" : "off", showArrows ? "on" : "off", useSeparation ? "on" : "off",
-                            respawn ? "on" : "off"), 8, hy + 42, 16, GRAY);
+                            respawn ? "on" : "off", field->anyAngle ? "on" : "off"), 8, hy + 42, 16, GRAY);
         EndDrawing();
 
         if (autoFrames > 0 && ++frame >= autoFrames) {
