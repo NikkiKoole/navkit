@@ -24,6 +24,10 @@ No queue structs needed — existing avoidance + pathfinder cost feedback handle
   collision), social force, the old steering library's predictive avoidance, its lane recipe
   and clearpath in a saturated two-way corridor. See
   [crowd-avoidance-comparison.md](../../research/crowd-avoidance-comparison.md).
+- Ladder bottlenecks in 3D (`experiments/flow/demo3d.c`): one climber per ladder segment
+  produces real queues. Pricing the expected wait (queue × climb time) into the ladder's path
+  cost cut a 1500-agent evacuation from 245 s (density cost only) to 52.7 s. See
+  [3d-crowd-bottlenecks.md](../../research/3d-crowd-bottlenecks.md).
 
 ## Phase 2 - Full Social Navigation (future)
 

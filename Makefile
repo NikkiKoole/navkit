@@ -524,6 +524,10 @@ steer: $(BINDIR) $(BINDIR)/steer
 crowd: $(BINDIR) $(BINDIR)/crowd
 flow: $(BINDIR) $(BINDIR)/flow
 $(BINDIR)/flow: experiments/flow/demo.c experiments/flow/flow_host.h nav/nav.c nav/nav.h
+# 3D crowd spike: evacuating a 3-floor building (ladders + ramps)
+flow3d: $(RAYLIB_LIB) | $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/flow3d experiments/flow/demo3d.c $(LDFLAGS)
+
 # Same demo on a 512x512 map (town scenario by default) for large-world experiments
 flow-big: $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) $(CFLAGS) -DMAP_W=512 -DMAP_H=512 -o $(BINDIR)/flow_big experiments/flow/demo.c $(LDFLAGS)
@@ -704,4 +708,4 @@ cscope:
 nav: tags cscope
 	@echo "Updated tags + cscope.out"
 
-.PHONY: all clean clean-raylib clean-atlas nav test test_nav_standalone test-tap test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood test_rooms path steer crowd flow flow-big mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed chop-flip path8 path16 path-sound bench bench_jobs bench_items bench_pathfinding bench_astar_heap windows
+.PHONY: all clean clean-raylib clean-atlas nav test test_nav_standalone test-tap test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_biome_presets test_trains test_mood test_rooms path steer crowd flow flow-big flow3d mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed chop-flip path8 path16 path-sound bench bench_jobs bench_items bench_pathfinding bench_astar_heap windows
