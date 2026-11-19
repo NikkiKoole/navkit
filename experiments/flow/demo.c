@@ -7,6 +7,10 @@
 // Scenarios (N cycles):
 //   mud          one goal; "rugged" (orange) agents take plain terrain costs,
 //                "careful" (blue) ones avoid mud and cells touching mud
+//   town         many destinations: a grid of buildings, every agent walks to a
+//                random building, then picks another. Compares navigation modes
+//                (M): full flow field per destination, hierarchical flow field
+//                per destination (nav NavHFlow), or a per-agent HPA* path
 //   counterflow  two crowds swap rooms through one corridor, in opposite
 //                directions: the classic test for local avoidance. Agents
 //                enter at a steady rate per direction (--rate) and leave on
@@ -77,8 +81,8 @@ static const int kClearancePenalty[4] = {0, 25, 10, 4};   // by distance to wall
 #define CAREFUL_MUD_PENALTY  300  // careful channel: per mud cell (mud total ~34x normal)
 #define CAREFUL_EDGE_PENALTY 60   // ...and per cell touching mud (crowds shove you off narrow roads)
 
-enum { SCEN_MUD, SCEN_COUNTERFLOW, SCEN_COUNT };
-static const char* kScenarioName[SCEN_COUNT] = {"mud", "counterflow"};
+enum { SCEN_MUD, SCEN_COUNTERFLOW, SCEN_TOWN, SCEN_COUNT };
+static const char* kScenarioName[SCEN_COUNT] = {"mud", "counterflow", "town"};
 enum { AVOID_SEPARATION, AVOID_PREDICTIVE, AVOID_SFM, AVOID_LIB_PREDICT, AVOID_LANES, AVOID_CLEARPATH, AVOID_COUNT };
 static const char* kAvoidName[AVOID_COUNT] = {"separation", "predictive", "sfm", "lib-predict", "lanes", "clearpath"};
 static inline bool IsLibraryMode(int m) { return m >= AVOID_SFM; }
@@ -112,6 +116,9 @@ typedef struct {
     bool bornInMud;
     bool active;          // stream mode: inactive agents wait in the pool
     float spawnTime;
+    int dest;             // town: destination index
+    NavPoint* path;       // town/hpa: goal-first waypoints (owned)
+    int pathLen, pathIdx; // pathLen < 0 = needs (re)planning
 } Agent;
 
 static FlowMap map;
@@ -192,8 +199,17 @@ static void ComputeExtraCosts(void) {
         }
 }
 
+static void TownFreeNav(void);
+static void TownAssign(Agent* a);
+
 static void RebuildFields(void) {
-    if (mapDirty) { NavComputeClearance(world, clearance); mapDirty = false; }
+    if (mapDirty) {
+        NavComputeClearance(world, clearance);
+        NavBuildEntrances(world);            // HPA* graph: used by hierarchical fields and HPA* paths
+        NavBuildGraph(world);
+        if (scenario == SCEN_TOWN) TownFreeNav();   // cached per-destination navigation is stale
+        mapDirty = false;
+    }
     ComputeExtraCosts();
     for (int ch = 0; ch < channelCount; ch++) {
         Channel* C = &channels[ch];
@@ -225,7 +241,9 @@ static bool RandomSpawnCell(const Channel* C, int* outX, int* outY) {
 
 static void PlaceAgent(Agent* a) {
     int x, y;
-    if (!RandomSpawnCell(&channels[a->channel], &x, &y)) { x = MAP_W / 2; y = MAP_H / 2; }
+    if (scenario == SCEN_TOWN) {
+        do { x = GetRandomValue(1, MAP_W - 2); y = GetRandomValue(1, MAP_H - 2); } while (!Walkable(x, y));
+    } else if (!RandomSpawnCell(&channels[a->channel], &x, &y)) { x = MAP_W / 2; y = MAP_H / 2; }
     a->x = x + 0.2f + 0.6f * GetRandomValue(0, 1000) / 1000.0f;
     a->y = y + 0.2f + 0.6f * GetRandomValue(0, 1000) / 1000.0f;
     a->vx = a->vy = 0;
@@ -244,6 +262,7 @@ static void SetAgentChannel(Agent* a, int ch) {
 
 static int PickChannel(int i) {
     if (scenario == SCEN_MUD) return GetRandomValue(0, 99) < carefulShare ? 1 : 0;
+    if (scenario == SCEN_TOWN) return 0;
     return i % channelCount;
 }
 
@@ -252,8 +271,11 @@ static void SpawnAgents(int n) {
         Agent* a = &agents[agentCount];
         SetAgentChannel(a, PickChannel(agentCount));
         agentCount++;
+        a->path = NULL;
+        a->pathLen = -1;
         if (streamMode) a->active = false;   // waits in the pool until its channel spawns it
         else PlaceAgent(a);
+        if (scenario == SCEN_TOWN) TownAssign(a);
     }
 }
 
@@ -434,6 +456,110 @@ static void LibrarySteer(int i, float dirX, float dirY, float speed, float dt) {
     a->vy = b.vel.y / S;
 }
 
+// ---------------------------------------------------------------- town: many destinations
+
+enum { NAVM_FULL, NAVM_HIER, NAVM_HPA, NAVM_COUNT };
+static const char* kNavModeName[NAVM_COUNT] = {"full", "hier", "hpa"};
+static int navMode = NAVM_HIER;
+#define MAX_DEST 128
+static NavPoint dests[MAX_DEST];
+static int destCount = 0, destLimit = MAX_DEST;
+static NavFlowField* destFull[MAX_DEST];
+static NavHFlow* destHier[MAX_DEST];
+static double navMsTotal = 0, navMsPeak = 0;   // time spent in navigation (lookups + lazy builds)
+static double navMsAll = 0, navMsPeakAll = 0;   // same, including warm-up (never reset)
+static long townArrivals = 0;
+static double townTravel = 0;
+
+static void TownFreeNav(void) {
+    for (int d = 0; d < MAX_DEST; d++) {
+        if (destFull[d]) { NavFlowDestroy(destFull[d]); destFull[d] = NULL; }
+        if (destHier[d]) { NavHFlowDestroy(destHier[d]); destHier[d] = NULL; }
+    }
+    for (int i = 0; i < agentCount; i++) { free(agents[i].path); agents[i].path = NULL; agents[i].pathLen = -1; }
+}
+
+static size_t TownNavMemory(int* builtFields, int* builtChunks) {
+    size_t bytes = 0;
+    *builtFields = 0; *builtChunks = 0;
+    for (int d = 0; d < destCount; d++) {
+        if (destFull[d]) { bytes += (size_t)MAP_W * MAP_H * 4 * sizeof(int); (*builtFields)++; }
+        if (destHier[d]) { bytes += NavHFlowMemoryUsage(destHier[d]); (*builtFields)++; *builtChunks += destHier[d]->chunksBuilt; }
+    }
+    for (int i = 0; i < agentCount; i++) if (agents[i].path) bytes += (size_t)agents[i].pathLen * sizeof(NavPoint);
+    return bytes;
+}
+
+static NavFlowField* DestFull(int d) {
+    if (!destFull[d]) {
+        destFull[d] = NavFlowCreate(world);
+        destFull[d]->anyAngle = false;   // same next-cell steering as the other modes
+        NavFlowBuild(world, destFull[d], &dests[d], 1, 0);
+    }
+    return destFull[d];
+}
+
+static NavHFlow* DestHier(int d) {
+    if (!destHier[d]) destHier[d] = NavHFlowCreate(world, dests[d]);
+    return destHier[d];
+}
+
+static void TownAssign(Agent* a) {
+    a->dest = GetRandomValue(0, destCount - 1);
+    a->spawnTime = (float)simTime;
+    a->pathLen = -1;                      // hpa: plan lazily
+    float hue = 360.0f * a->dest / (float)(destCount ? destCount : 1);
+    a->color = ColorFromHSV(hue, 0.45f, 1.0f);
+}
+
+// Desired direction toward the agent's destination in the current nav mode.
+static bool TownDirection(Agent* a, float* dx, float* dy) {
+    NavPoint here = {(int)a->x, (int)a->y, 0}, n1, n2;
+    float tx, ty;
+    if (navMode == NAVM_FULL || navMode == NAVM_HIER) {
+        bool ok1, ok2;
+        if (navMode == NAVM_FULL) {
+            NavFlowField* f = DestFull(a->dest);
+            ok1 = NavFlowNext(f, here, &n1);
+            ok2 = ok1 && NavFlowNext(f, n1, &n2);
+        } else {
+            NavHFlow* h = DestHier(a->dest);
+            ok1 = NavHFlowNext(world, h, here, &n1);
+            ok2 = ok1 && NavHFlowNext(world, h, n1, &n2);
+        }
+        if (!ok1) return false;
+        tx = n1.x + 0.5f; ty = n1.y + 0.5f;
+        if (ok2) { tx = (tx + n2.x + 0.5f) * 0.5f; ty = (ty + n2.y + 0.5f) * 0.5f; }
+    } else {
+        if (a->pathLen < 0) {             // plan (or re-plan after a map edit)
+            static NavPoint buf[8192];
+            int len = NavFindPathHPA(world, here, dests[a->dest], buf, 8192);
+            free(a->path);
+            a->path = len > 0 ? malloc((size_t)len * sizeof(NavPoint)) : NULL;
+            if (a->path) memcpy(a->path, buf, (size_t)len * sizeof(NavPoint));
+            a->pathLen = a->path ? len : 0;
+            a->pathIdx = a->pathLen - 1;
+        }
+        if (a->pathLen == 0) return false;
+        // Advance past waypoints we're close to (path is goal-first)
+        while (a->pathIdx > 0) {
+            float wx = a->path[a->pathIdx].x + 0.5f - a->x, wy = a->path[a->pathIdx].y + 0.5f - a->y;
+            if (wx * wx + wy * wy > 0.75f * 0.75f) break;
+            a->pathIdx--;
+        }
+        tx = a->path[a->pathIdx].x + 0.5f; ty = a->path[a->pathIdx].y + 0.5f;
+        if (a->pathIdx > 0) {
+            tx = (tx + a->path[a->pathIdx - 1].x + 0.5f) * 0.5f;
+            ty = (ty + a->path[a->pathIdx - 1].y + 0.5f) * 0.5f;
+        }
+    }
+    float ex = tx - a->x, ey = ty - a->y;
+    float len = sqrtf(ex * ex + ey * ey);
+    if (len < 1e-4f) return false;
+    *dx = ex / len; *dy = ey / len;
+    return true;
+}
+
 static void UpdateAgents(float dt) {
     BuildSpatialGrid();
     int overlaps = 0;
@@ -446,6 +572,22 @@ static void UpdateAgents(float dt) {
         Channel* C = &channels[a->channel];
         int cx = (int)a->x, cy = (int)a->y;
         int cost = C->field->cost[NavFlowCellId(C->field, cx, cy, 0)];
+        bool townDir = false;
+        float townDx = 0, townDy = 0;
+        if (scenario == SCEN_TOWN) {
+            double tn = GetTime();
+            float gx = dests[a->dest].x + 0.5f - a->x, gy = dests[a->dest].y + 0.5f - a->y;
+            if (gx * gx + gy * gy < 0.8f * 0.8f) {          // arrived: pick the next destination
+                townArrivals++;
+                townTravel += simTime - a->spawnTime;
+                TownAssign(a);
+            }
+            townDir = TownDirection(a, &townDx, &townDy);
+            if (!townDir && a->pathLen != -1) TownAssign(a);  // unreachable: give up, pick another
+            double ms = (GetTime() - tn) * 1000.0;
+            navMsTotal += ms;
+            cost = 1;                                          // never "arrived" via the channel field
+        }
         if (!a->bornInMud) {
             C->aliveFrames++;
             if (map.mud[cy][cx]) C->mudFrames++;
@@ -461,7 +603,9 @@ static void UpdateAgents(float dt) {
 
         float speed = AGENT_SPEED * (float)COST_NORMAL / (float)NavMoveCost(&map, cx, cy, 0);
         float wantX = 0, wantY = 0, dirX, dirY;
-        if (cost != NAV_FLOW_UNREACHABLE && FlowDirection(C->field, a->x, a->y, &dirX, &dirY)) {
+        if (scenario == SCEN_TOWN) {
+            if (townDir) { wantX = townDx * speed; wantY = townDy * speed; }
+        } else if (cost != NAV_FLOW_UNREACHABLE && FlowDirection(C->field, a->x, a->y, &dirX, &dirY)) {
             wantX = dirX * speed; wantY = dirY * speed;
         }
         if (IsLibraryMode(avoidMode)) {
@@ -547,6 +691,9 @@ static void ResetStats(void) {
         channels[ch].travelSum = 0;
     }
     overlapSum = speedSum = activeSum = 0;
+    townArrivals = 0;
+    townTravel = 0;
+    navMsTotal = navMsPeak = 0;
     statFrames = 0;
 }
 
@@ -588,6 +735,29 @@ static void LoadScenario(int s, int startAgents) {
         c->goals[c->goalCount++] = (NavPoint){185, 62, 0};
         sharedGoals = true;
         streamMode = false;
+    } else if (s == SCEN_TOWN) {
+        // 11 x 8 buildings (14x11, one 2-wide door each) on a street grid; each is a destination
+        TownFreeNav();
+        destCount = 0;
+        for (int by = 0; by < 8; by++)
+            for (int bx = 0; bx < 11; bx++) {
+                int x0 = 3 + bx * 18, y0 = 3 + by * 15, bw = 14, bh = 11;
+                for (int x = x0; x < x0 + bw; x++) map.wall[y0][x] = map.wall[y0 + bh - 1][x] = 1;
+                for (int y = y0; y < y0 + bh; y++) map.wall[y][x0] = map.wall[y][x0 + bw - 1] = 1;
+                int side = GetRandomValue(0, 3);
+                if (side == 0) { map.wall[y0][x0 + 6] = map.wall[y0][x0 + 7] = 0; }
+                else if (side == 1) { map.wall[y0 + bh - 1][x0 + 6] = map.wall[y0 + bh - 1][x0 + 7] = 0; }
+                else if (side == 2) { map.wall[y0 + 5][x0] = map.wall[y0 + 6][x0] = 0; }
+                else { map.wall[y0 + 5][x0 + bw - 1] = map.wall[y0 + 6][x0 + bw - 1] = 0; }
+                if (destCount < destLimit) dests[destCount++] = (NavPoint){x0 + bw / 2, y0 + bh / 2, 0};
+            }
+        Channel* t = AddChannel("nearest building", (Color){200, 200, 200, 255}, false, 0, -1);
+        for (int d = 0; d < destCount && t->goalCount < MAX_GOALS; d++) t->goals[t->goalCount++] = dests[d];
+        sharedGoals = true;
+        streamMode = false;
+        townArrivals = 0;
+        townTravel = 0;
+        navMsTotal = navMsPeak = 0;
     } else {
         // Two rooms joined by one corridor (corridorWidth cells); crowds swap rooms
         // Corridor [xL, xR) centred on the map, 30-wide rooms on either side
@@ -614,8 +784,9 @@ static void LoadScenario(int s, int startAgents) {
         streamMode = true;
     }
     mapDirty = fieldDirty = true;
-    RebuildFields();
+    for (int i = 0; i < agentCount; i++) { free(agents[i].path); agents[i].path = NULL; }
     agentCount = 0;
+    RebuildFields();
     SpawnAgents(startAgents);
     ResetStats();
 }
@@ -653,6 +824,7 @@ static void HandleInput(void) {
     if (IsKeyPressed(KEY_D)) { useDensity = !useDensity; fieldDirty = true; }
     if (IsKeyPressed(KEY_V)) viewChannel = (viewChannel + 1) % channelCount;
     if (IsKeyPressed(KEY_O)) { avoidMode = (avoidMode + 1) % AVOID_COUNT; ResetStats(); }
+    if (IsKeyPressed(KEY_M) && scenario == SCEN_TOWN) { navMode = (navMode + 1) % NAVM_COUNT; TownFreeNav(); ResetStats(); }
     if (IsKeyPressed(KEY_N)) LoadScenario((scenario + 1) % SCEN_COUNT, agentCount > 0 ? agentCount : 3000);
     if (IsKeyPressed(KEY_K) && scenario == SCEN_MUD) {
         carefulShare = carefulShare == 0 ? 50 : carefulShare == 50 ? 100 : 0;
@@ -737,9 +909,17 @@ static void Draw(double simMs) {
     DrawText(TextFormat("Space +1000  C clear  H heat %s  F arrows %s  R respawn %s  A any-angle %s  W clearance %s  D density %s",
                         showHeat ? "on" : "off", showArrows ? "on" : "off", respawn ? "on" : "off", anyAngle ? "on" : "off",
                         useClearance ? "on" : "off", useDensity ? "on" : "off"), 8, hy + 42, 16, GRAY);
-    DrawText(TextFormat("V view: %s field%s", V->name,
-                        scenario == SCEN_MUD ? TextFormat("   K careful (blue) %d%%, rugged (orange) %d%%", carefulShare, 100 - carefulShare) : ""),
-             8, hy + 60, 16, GRAY);
+    if (scenario == SCEN_TOWN) {
+        int fieldsBuilt, chunksBuilt;
+        size_t mem = TownNavMemory(&fieldsBuilt, &chunksBuilt);
+        DrawText(TextFormat("M nav: %s   destinations %d   built %d (+%d chunk fields)   nav memory %.1f MB   arrivals %ld",
+                            kNavModeName[navMode], destCount, fieldsBuilt, chunksBuilt, mem / (1024.0 * 1024.0), townArrivals),
+                 8, hy + 60, 16, GRAY);
+    } else {
+        DrawText(TextFormat("V view: %s field%s", V->name,
+                            scenario == SCEN_MUD ? TextFormat("   K careful (blue) %d%%, rugged (orange) %d%%", carefulShare, 100 - carefulShare) : ""),
+                 8, hy + 60, 16, GRAY);
+    }
     EndDrawing();
 }
 
@@ -760,6 +940,15 @@ int main(int argc, char** argv) {
         else if (hasArg && strcmp(argv[i], "--length") == 0) corridorLength = atoi(argv[++i]);
         else if (hasArg && strcmp(argv[i], "--speed") == 0) agentSpeed = (float)atof(argv[++i]);
         else if (hasArg && strcmp(argv[i], "--warmup") == 0) warmupSecs = (float)atof(argv[++i]);
+        else if (hasArg && strcmp(argv[i], "--goals") == 0) {
+            destLimit = atoi(argv[++i]);
+            if (destLimit < 1) destLimit = 1;
+            if (destLimit > MAX_DEST) destLimit = MAX_DEST;
+        }
+        else if (hasArg && strcmp(argv[i], "--nav") == 0) {
+            const char* s = argv[++i];
+            for (int k = 0; k < NAVM_COUNT; k++) if (strcmp(s, kNavModeName[k]) == 0) navMode = k;
+        }
         else if (hasArg && strcmp(argv[i], "--scenario") == 0) {
             const char* s = argv[++i];
             for (int k = 0; k < SCEN_COUNT; k++) if (strcmp(s, kScenarioName[k]) == 0) startScenario = k;
@@ -794,7 +983,12 @@ int main(int argc, char** argv) {
 
         if (streamMode) StreamSpawn(dt);
         double t0 = GetTime();
+        double navBefore = navMsTotal;
         UpdateAgents(dt);
+        double navFrame = navMsTotal - navBefore;
+        if (navFrame > navMsPeak) navMsPeak = navFrame;
+        if (navFrame > navMsPeakAll) navMsPeakAll = navFrame;
+        navMsAll += navFrame;
         ResolveCollisions();
         simTime += dt;
         UpdateDensity();
@@ -818,7 +1012,17 @@ int main(int argc, char** argv) {
             printf("  mean speed %.2f cells/s   overlaps %.3f per agent   avg in transit %.0f   in transit at end %d\n",
                    statFrames ? speedSum / statFrames : 0.0, statFrames ? overlapSum / statFrames : 0.0,
                    statFrames ? activeSum / statFrames : 0.0, activeNow);
-            for (int ch = 0; ch < channelCount; ch++) {
+            if (scenario == SCEN_TOWN) {
+                int fieldsBuilt, chunksBuilt;
+                size_t mem = TownNavMemory(&fieldsBuilt, &chunksBuilt);
+                printf("  nav=%s destinations=%d  nav time avg %.3f ms/frame (peak %.1f ms)  memory %.2f MB  built %d fields, %d chunk fields\n",
+                       kNavModeName[navMode], destCount, statFrames ? navMsTotal / statFrames : 0.0, navMsPeak,
+                       mem / (1024.0 * 1024.0), fieldsBuilt, chunksBuilt);
+                printf("  including warm-up: nav time total %.0f ms, worst frame %.1f ms\n", navMsAll, navMsPeakAll);
+                printf("  arrivals %ld (%.1f/s)   mean travel %.1fs\n", townArrivals, townArrivals / secs,
+                       townArrivals ? townTravel / townArrivals : 0.0);
+            }
+            for (int ch = 0; ch < channelCount && scenario != SCEN_TOWN; ch++) {
                 const Channel* C = &channels[ch];
                 printf("  %-10s arrivals %6ld (%5.1f/s)   mean travel %5.1fs   time in mud %5.1f%%\n", C->name,
                        C->arrivals, C->arrivals / secs, C->arrivals ? C->travelSum / C->arrivals : 0.0,

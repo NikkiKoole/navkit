@@ -264,8 +264,98 @@ static void test_flow_extra_cost_and_clearance(void) {
     NavDestroy(w);
 }
 
+// Walk NavHFlowNext from p; returns summed step cost (same rules as A*) or -1 if
+// it doesn't reach the goal.
+static int WalkHFlow(NavWorld* w, NavHFlow* h, const StubMap* m, NavPoint p, NavPoint goal) {
+    NavPoint cur = p, nxt;
+    int cost = 0, steps = 0;
+    while (NavHFlowNext(w, h, cur, &nxt)) {
+        if (++steps > 20000) return -1;
+        int c = NavMoveCost((void*)(uintptr_t)m, nxt.x, nxt.y, nxt.z);
+        if (nxt.z != cur.z) cost += c;                                    // ladder
+        else cost += ((nxt.x != cur.x && nxt.y != cur.y) ? 14 : 10) * c / 10;
+        cur = nxt;
+    }
+    return (cur.x == goal.x && cur.y == goal.y && cur.z == goal.z) ? cost : -1;
+}
+
+static void test_hierarchical_flow(void) {
+    static StubMap m = {.w = 48, .h = 40, .d = 3};
+    memset(&m, 0, sizeof(m));
+    m.w = 48; m.h = 40; m.d = 3;
+    unsigned int seed = 777;
+    #define RND() (seed = seed * 1103515245u + 12345u, (seed >> 16) & 0x7fff)
+    for (int z = 0; z < 3; z++)
+        for (int y = 0; y < 40; y++)
+            for (int x = 0; x < 48; x++) {
+                m.wall[z][y][x] = (RND() % 100) < 18;
+                int r = RND() % 100;
+                m.cost[z][y][x] = r < 12 ? 25 : (r < 22 ? 17 : 0);
+            }
+    for (int i = 0; i < 14; i++) {
+        int x = RND() % 48, y = RND() % 40, z = RND() % 2;
+        m.wall[z][y][x] = m.wall[z + 1][y][x] = 0;
+        m.ladder[z][y][x] = m.ladder[z + 1][y][x] = 1;
+    }
+    NavPoint goal = {30, 25, 2};
+    m.wall[2][25][30] = 0;
+
+    NavWorld* w = NavCreate(48, 40, 3, 8, 8, &m);
+    NavBuildEntrances(w);
+    NavBuildGraph(w);
+    NavHFlow* h = NavHFlowCreate(w, goal);
+    CHECK(h && h->valid);
+    CHECK(h->chunksBuilt == 0);                 // nothing built until asked
+
+    int reachable = 0, reached = 0, falsePaths = 0, worstPct = 0;
+    long sumHier = 0, sumOpt = 0;
+    for (int z = 0; z < 3; z++)
+        for (int y = 0; y < 40; y++)
+            for (int x = 0; x < 48; x++) {
+                if (m.wall[z][y][x]) continue;
+                NavPoint p = {x, y, z};
+                int len = NavFindPathAStar(w, p, goal, buf, 4096);
+                int walked = WalkHFlow(w, h, &m, p, goal);
+                if (len == 0) { if (walked >= 0 && !(x == goal.x && y == goal.y && z == goal.z)) falsePaths++; continue; }
+                reachable++;
+                if (walked < 0) continue;
+                reached++;
+                sumHier += walked; sumOpt += w->lastCost;
+                if (w->lastCost > 0) {
+                    int pct = (walked - w->lastCost) * 100 / w->lastCost;
+                    if (pct > worstPct) worstPct = pct;
+                }
+            }
+    printf("  hflow: reached %d/%d reachable cells, cost +%.1f%% vs A* on average (worst +%d%%), %d chunk fields built\n",
+           reached, reachable, 100.0 * (sumHier - sumOpt) / (sumOpt ? sumOpt : 1), worstPct, h->chunksBuilt);
+    CHECK(reachable > 500);
+    CHECK(reached == reachable);                // every reachable cell gets home
+    CHECK(falsePaths == 0);                     // no route where A* finds none
+    CHECK(sumHier >= sumOpt);                   // can't beat optimal
+    CHECK(sumHier * 100 <= sumOpt * 115);       // within 15% on average
+
+    // A second goal is independent; a map edit refreshes the cached field automatically
+    NavHFlow* h2 = NavHFlowCreate(w, (NavPoint){2, 2, 0});
+    m.wall[0][2][2] = 0;
+    NavPoint probe = {40, 30, 0};
+    m.wall[0][30][40] = 0;
+    int before = NavHFlowCostAt(w, h, probe);
+    for (int x = 0; x < 48; x++) { m.wall[0][29][x] = 1; NavMarkCellChanged(w, x, 29, 0); }
+    NavUpdateDirty(w);
+    int after = NavHFlowCostAt(w, h, probe);     // stale graphVersion -> rebuilt on demand
+    CHECK(after != before || before == NAV_FLOW_UNREACHABLE);
+    CHECK(WalkHFlow(w, h, &m, probe, goal) >= 0 || NavFindPathAStar(w, probe, goal, buf, 4096) == 0);
+    CHECK(NavHFlowMemoryUsage(h) > 0);
+
+    NavHFlowDestroy(h2);
+    NavHFlowDestroy(h);
+    NavDestroy(w);
+    #undef RND
+}
+
 int main(void) {
     printf("Running nav standalone tests...\n");
+    test_hierarchical_flow();
     test_flow_extra_cost_and_clearance();
     test_flow_steering();
     test_open_diagonal();

@@ -2735,6 +2735,85 @@ static int FlowVsAStarMismatches(Point goal, int samples, int* outCompared, int*
     return mismatches;
 }
 
+// Hierarchical flow: from sampled cells, NavHFlowNext must reach the goal
+// whenever A* can (ramps on hills, ladders in the labyrinth).
+static int HFlowFailures(Point goal, int samples, int* outCompared) {
+    NavWorld* w = NavGame();
+    NavHFlow* h = NavHFlowCreate(w, goal);
+    int failures = 0, compared = 0;
+    for (int i = 0; i < samples; i++) {
+        Point p = GetRandomWalkableCell();
+        if (p.x < 0) continue;
+        bool reachable = NavFindPathAStar(w, p, goal, path, MAX_PATH) > 0;
+        Point cur = p, nxt;
+        int steps = 0;
+        while (NavHFlowNext(w, h, cur, &nxt) && steps++ < 100000) cur = nxt;
+        bool arrived = cur.x == goal.x && cur.y == goal.y && cur.z == goal.z;
+        if (reachable) compared++;
+        if (reachable != arrived) {
+            failures++;
+            if (test_verbose) printf("hflow mismatch from (%d,%d,%d): A* %s, hflow stopped at (%d,%d,%d)\n",
+                                     p.x, p.y, p.z, reachable ? "reaches" : "can't reach", cur.x, cur.y, cur.z);
+            if (test_verbose && failures == 1) {
+                printf("  stuck cell cost=%d  cell=%d below=%d\n", NavHFlowCostAt(w, h, cur), grid[cur.z][cur.y][cur.x],
+                       cur.z > 0 ? grid[cur.z - 1][cur.y][cur.x] : -1);
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        Point q = {cur.x + dx, cur.y + dy, cur.z};
+                        int c = NavHFlowCostAt(w, h, q);
+                        printf("  (%d,%d) walk=%d cost=%d grid=%d below=%d |", q.x, q.y, IsCellWalkableAt(q.z, q.y, q.x),
+                               c == NAV_FLOW_UNREACHABLE ? -1 : c, grid[q.z][q.y][q.x], grid[q.z - 1][q.y][q.x]);
+                    }
+                    printf("\n");
+                }
+                for (int e = 0; e < w->entranceNum; e++) {
+                    const NavEntrance* E = &w->entranceList[e];
+                    if (abs(E->x - cur.x) <= 2 && abs(E->y - cur.y) <= 2 && abs(E->z - cur.z) <= 1)
+                        printf("  entrance %d at (%d,%d,%d) chunks %d/%d dist=%d next=%d\n", e, E->x, E->y, E->z,
+                               E->chunk1, E->chunk2, h->dist[e], h->nextEnt[e]);
+                }
+                for (int r = 0; r < w->rampNum; r++) {
+                    const NavRampLink* R = &w->rampList[r];
+                    if (abs(R->rampX - cur.x) <= 3 && abs(R->rampY - cur.y) <= 3)
+                        printf("  ramp link %d: ramp (%d,%d,%d) exit (%d,%d,%d) ents %d->%d\n", r, R->rampX, R->rampY, R->rampZ,
+                               R->exitX, R->exitY, R->rampZ + 1, R->entranceRamp, R->entranceExit);
+                }
+            }
+        }
+    }
+    NavHFlowDestroy(h);
+    *outCompared = compared;
+    return failures;
+}
+
+describe(hierarchical_flow) {
+    it("hierarchical flow reaches the goal wherever A* does (hills, ramps)") {
+        InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+        SeedRandom(4242);
+        GenerateHills();
+        BuildEntrances();
+        BuildGraph();
+        SeedRandom(777);
+        Point goal = GetRandomWalkableCell();
+        int compared = 0;
+        expect(HFlowFailures(goal, 150, &compared) == 0);
+        expect(compared > 50);
+    }
+
+    it("hierarchical flow reaches the goal wherever A* does (3D labyrinth, ladders)") {
+        InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+        gridDepth = 5;
+        GenerateLabyrinth3D();
+        BuildEntrances();
+        BuildGraph();
+        SeedRandom(31337);
+        Point goal = GetRandomWalkableCell();
+        int compared = 0;
+        expect(HFlowFailures(goal, 150, &compared) == 0);
+        expect(compared > 50);
+    }
+}
+
 describe(flow_field) {
     it("flow field costs match A* on hills terrain (ramps)") {
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
@@ -4623,6 +4702,7 @@ static void run_all_tests(void) {
     test(hpa_ramp_pathfinding);
     test(hpa_vs_astar_consistency);
     test(flow_field);
+    test(hierarchical_flow);
     test(ladder_placement);
     test(ladder_erase);
     test(df_walkability);

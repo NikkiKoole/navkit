@@ -108,6 +108,7 @@ typedef struct NavWorld {
     bool*          chunkDirtyFlags;// [depth][chunksY][chunksX]
     bool           dirty;          // some chunk changed since last build/update
     bool           hpaDirty;       // HPA* graph is stale
+    unsigned       graphVersion;   // bumped whenever the HPA* graph changes (cache invalidation)
 
     // ---- stats from the most recent query ----
     int    explored;
@@ -247,6 +248,36 @@ static inline bool NavFlowSteerTarget(const NavFlowField* f, NavPoint p, NavPoin
     *out = NavFlowCellPoint(f, t);
     return true;
 }
+
+// ---- hierarchical flow fields ----
+// For many different destinations: one flow field per goal over the whole
+// world is too expensive, so a NavHFlow does a cheap Dijkstra over the HPA*
+// entrance graph (cost-to-goal per entrance), then builds small per-chunk
+// flow fields lazily, only for chunks agents actually ask about, and caches
+// them. Requires NavBuildEntrances + NavBuildGraph. Rebuilds itself when the
+// graph changes (graphVersion). Costs are HPA*-quality (near-optimal).
+typedef struct NavHFlow {
+    NavPoint goal;
+    int goalChunk;
+    unsigned graphVersion;
+    bool valid;                    // goal walkable and connected to the graph
+    int entNum;                    // entrance count the per-entrance arrays were built for
+    int* dist;                     // [entrance] cost to goal (NAV_FLOW_UNREACHABLE if none)
+    int* nextEnt;                  // [entrance] next entrance toward goal; -1 = the goal itself
+    int chunkCount;
+    struct NavChunkFlow** chunks;  // [chunk id] lazily built local fields (NULL = not built yet)
+    int chunksBuilt;               // stats
+    double abstractMs;
+} NavHFlow;
+
+NavHFlow* NavHFlowCreate(NavWorld* w, NavPoint goal);
+void NavHFlowDestroy(NavHFlow* h);
+// Next cell to step to from p (may be on another level via ladder/ramp).
+// False at the goal, if unreachable, or out of bounds. Builds chunk fields on demand.
+bool NavHFlowNext(NavWorld* w, NavHFlow* h, NavPoint p, NavPoint* out);
+// Cost from p to the goal along the hierarchical route, or NAV_FLOW_UNREACHABLE.
+int  NavHFlowCostAt(NavWorld* w, NavHFlow* h, NavPoint p);
+size_t NavHFlowMemoryUsage(const NavHFlow* h);
 
 // Bounded single-level searches (used internally; exposed for tests/tools).
 // Bounds are [min, max). Return cost, or -1 if unreachable.

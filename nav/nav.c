@@ -125,9 +125,11 @@ bool NavResize(NavWorld* w, int width, int height, int depth, int chunkW, int ch
     nav_NavFreeInternals(w);
     void* host = w->host;
     bool eightDir = w->eightDir;
+    unsigned version = w->graphVersion;
     memset(w, 0, sizeof(*w));
     w->host = host;
     w->eightDir = eightDir;
+    w->graphVersion = version + 1;   // cached hierarchical fields must notice
     w->lastCost = -1;
     return nav_NavAllocInternals(w, width, height, depth, chunkW, chunkH);
 }
@@ -400,6 +402,9 @@ static void nav_ChunkExpand(NavWorld* w, int bestX, int bestY, int sz, int gx, i
         if (w->eightDir && dx[i] != 0 && dy[i] != 0) {
             if (!NavIsWalkable(NAV_HOSTP, nx, bestY, sz) || !NavIsWalkable(NAV_HOSTP, bestX, ny, sz)) continue;
         }
+        // Same movement rules as full A* (was missing: HPA* edges/refinement could
+        // enter ramps from the side, which A* and the flow fields forbid)
+        if (!NavCanEnterFrom(NAV_HOSTP, nx, ny, sz, bestX, bestY)) continue;
 
         int baseCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
         int ng = best->g + (baseCost * NavMoveCost(NAV_HOSTP, nx, ny, sz)) / 10;
@@ -798,6 +803,7 @@ void NavBuildGraph(NavWorld* w) {
     }
 
     nav_AddVerticalLinkEdges(w, false);
+    w->graphVersion++;
 
     NAV_LOG_INFO("Built graph: %d edges (%d ladder links, %d ramp links) in %.2fms",
                  w->edgeNum, w->ladderNum, w->rampNum, (NavHostTime() - startTime) * 1000.0);
@@ -1010,6 +1016,7 @@ static void nav_RebuildAffectedEdges(NavWorld* w) {
             }
 
     nav_AddVerticalLinkEdges(w, true);
+    w->graphVersion++;
 }
 
 void NavUpdateDirty(NavWorld* w) {
@@ -1644,6 +1651,379 @@ int NavFindPath(NavWorld* w, NavAlgorithm algo, NavPoint start, NavPoint goal, N
         case NAV_ALGO_HPA:   return NavFindPathHPA(w, start, goal, out, maxLen);
     }
     return 0;
+}
+
+// =============================================================================
+// Hierarchical flow fields (abstract Dijkstra over HPA* entrances + lazy
+// per-chunk local fields)
+// =============================================================================
+//
+// Seeding rule for the local field of chunk C: entrance e of C is a SEED (an
+// exit, with its abstract cost-to-goal) unless its next hop lies inside C too
+// (then e is just a cell on the way). Following the abstract chain from any
+// entrance of C eventually leaves C or reaches the goal, so every chunk with
+// a route has at least one seed. Standing on a seed, the next step comes from
+// the chunk shared with the next entrance (where e is NOT a seed), or from
+// the ladder/ramp link.
+
+typedef struct NavChunkFlow {
+    int minX, minY, w, h, z;       // region: chunk expanded by 1 cell (clipped)
+    int* cost;                     // cost to goal via this chunk's exits
+    int* next;                     // region index of next cell; -1 at seeds / unreachable
+    int* seed;                     // entrance index at seed cells, -2 = goal, -1 = not a seed
+} NavChunkFlow;
+
+typedef struct { int* cost; int* item; int size, cap; } nav_LazyHeap;
+
+static bool nav_LHPush(nav_LazyHeap* q, int cost, int item) {
+    if (q->size == q->cap) {
+        int cap = q->cap ? q->cap * 2 : 256;
+        int* c = realloc(q->cost, (size_t)cap * sizeof(int));
+        if (!c) return false;
+        q->cost = c;
+        int* it = realloc(q->item, (size_t)cap * sizeof(int));
+        if (!it) return false;
+        q->item = it;
+        q->cap = cap;
+    }
+    int i = q->size++;
+    while (i > 0) {
+        int p = (i - 1) / 2;
+        if (q->cost[p] <= cost) break;
+        q->cost[i] = q->cost[p]; q->item[i] = q->item[p];
+        i = p;
+    }
+    q->cost[i] = cost; q->item[i] = item;
+    return true;
+}
+
+static void nav_LHPop(nav_LazyHeap* q, int* cost, int* item) {
+    *cost = q->cost[0]; *item = q->item[0];
+    int lc = q->cost[--q->size], li = q->item[q->size];
+    int i = 0;
+    for (;;) {
+        int l = 2 * i + 1, r = l + 1, s = l;
+        if (l >= q->size) break;
+        if (r < q->size && q->cost[r] < q->cost[l]) s = r;
+        if (q->cost[s] >= lc) break;
+        q->cost[i] = q->cost[s]; q->item[i] = q->item[s];
+        i = s;
+    }
+    q->cost[i] = lc; q->item[i] = li;
+}
+
+static void nav_LHFree(nav_LazyHeap* q) { free(q->cost); free(q->item); q->cost = q->item = NULL; q->size = q->cap = 0; }
+
+static inline bool nav_EntInChunk(const NavWorld* w, int e, int chunk) {
+    return w->entranceList[e].chunk1 == chunk || w->entranceList[e].chunk2 == chunk;
+}
+
+static void nav_FreeChunkFlow(NavChunkFlow* cf) {
+    if (!cf) return;
+    free(cf->cost); free(cf->next); free(cf->seed); free(cf);
+}
+
+static void nav_HFlowClearChunks(NavHFlow* h) {
+    for (int i = 0; i < h->chunkCount; i++) { nav_FreeChunkFlow(h->chunks[i]); h->chunks[i] = NULL; }
+    h->chunksBuilt = 0;
+}
+
+static void nav_HFlowRebuild(NavWorld* w, NavHFlow* h) {
+    double t0 = NavHostTime();
+    nav_HFlowClearChunks(h);
+    int perLevel = w->chunksX * w->chunksY;
+    if (h->chunkCount != w->depth * perLevel) {
+        free(h->chunks);
+        h->chunkCount = w->depth * perLevel;
+        h->chunks = calloc((size_t)h->chunkCount, sizeof(NavChunkFlow*));
+    }
+    h->graphVersion = w->graphVersion;
+    h->valid = false;
+    int n = w->entranceNum > 0 ? w->entranceNum : 1;
+    if (n > h->entNum || !h->dist) {
+        free(h->dist); free(h->nextEnt);
+        h->dist = malloc((size_t)n * sizeof(int));
+        h->nextEnt = malloc((size_t)n * sizeof(int));
+    }
+    h->entNum = w->entranceNum;
+    if (!h->chunks || !h->dist || !h->nextEnt) return;
+    for (int e = 0; e < w->entranceNum; e++) { h->dist[e] = NAV_FLOW_UNREACHABLE; h->nextEnt[e] = -2; }
+
+    NavPoint g = h->goal;
+    if (!nav_InBounds(w, g) || !NavIsWalkable(NAV_HOSTP, g.x, g.y, g.z)) return;
+    h->goalChunk = nav_GetChunk(w, g.x, g.y, g.z);
+
+    // Goal -> entrances of its chunk (same symmetric-edge approximation as HPA*)
+    nav_LazyHeap q = {0};
+    if (w->entranceNum > 0) {
+        int targets[NAV_CONNECT_MAX], costs[NAV_CONNECT_MAX];
+        int k = nav_ConnectToChunk(w, g, h->goalChunk, targets, costs);
+        for (int i = 0; i < k; i++) {
+            int e = targets[i];
+            if (costs[i] < h->dist[e]) { h->dist[e] = costs[i]; h->nextEnt[e] = -1; nav_LHPush(&q, costs[i], e); }
+        }
+    }
+    // Dijkstra over the entrance graph (edges are stored in both directions, same cost)
+    while (q.size > 0) {
+        int d, e;
+        nav_LHPop(&q, &d, &e);
+        if (d > h->dist[e]) continue;
+        for (int k = 0; k < w->adjListCount[e]; k++) {
+            const NavGraphEdge* ed = &w->edgeList[w->adjList[e][k]];
+            int f = ed->to, nd = d + ed->cost;
+            if (nd < h->dist[f]) { h->dist[f] = nd; h->nextEnt[f] = e; nav_LHPush(&q, nd, f); }
+        }
+    }
+    nav_LHFree(&q);
+    h->valid = true;
+    h->abstractMs = (NavHostTime() - t0) * 1000.0;
+}
+
+NavHFlow* NavHFlowCreate(NavWorld* w, NavPoint goal) {
+    NavHFlow* h = calloc(1, sizeof(NavHFlow));
+    if (!h) return NULL;
+    h->goal = goal;
+    h->graphVersion = w->graphVersion - 1;   // force a build
+    nav_HFlowRebuild(w, h);
+    return h;
+}
+
+void NavHFlowDestroy(NavHFlow* h) {
+    if (!h) return;
+    nav_HFlowClearChunks(h);
+    free(h->chunks); free(h->dist); free(h->nextEnt);
+    free(h);
+}
+
+static NavChunkFlow* nav_BuildChunkFlow(NavWorld* w, NavHFlow* h, int chunk) {
+    int perLevel = w->chunksX * w->chunksY;
+    int z = chunk / perLevel, xy = chunk % perLevel;
+    int ccx = xy % w->chunksX, ccy = xy / w->chunksX;
+    int minX = ccx * w->chunkW - 1, minY = ccy * w->chunkH - 1;
+    int maxX = (ccx + 1) * w->chunkW + 1, maxY = (ccy + 1) * w->chunkH + 1;
+    if (minX < 0) minX = 0;
+    if (minY < 0) minY = 0;
+    if (maxX > w->width) maxX = w->width;
+    if (maxY > w->height) maxY = w->height;
+
+    NavChunkFlow* cf = calloc(1, sizeof(NavChunkFlow));
+    if (!cf) return NULL;
+    cf->minX = minX; cf->minY = minY; cf->w = maxX - minX; cf->h = maxY - minY; cf->z = z;
+    int cells = cf->w * cf->h;
+    cf->cost = malloc((size_t)cells * sizeof(int));
+    cf->next = malloc((size_t)cells * sizeof(int));
+    cf->seed = malloc((size_t)cells * sizeof(int));
+    if (!cf->cost || !cf->next || !cf->seed) { nav_FreeChunkFlow(cf); return NULL; }
+    for (int i = 0; i < cells; i++) { cf->cost[i] = NAV_FLOW_UNREACHABLE; cf->next[i] = -1; cf->seed[i] = -1; }
+
+    nav_LazyHeap q = {0};
+    // Seeds: exits of this chunk (see rule above)
+    for (int e = 0; e < w->entranceNum; e++) {
+        if (!nav_EntInChunk(w, e, chunk) || h->dist[e] == NAV_FLOW_UNREACHABLE) continue;
+        const NavEntrance* E = &w->entranceList[e];
+        if (E->z != z) continue;
+        int f = h->nextEnt[e];
+        bool intra = (f == -1) ? (chunk == h->goalChunk)
+                               : (nav_EntInChunk(w, f, chunk) && w->entranceList[f].z == z);
+        if (intra) continue;
+        int lx = E->x - minX, ly = E->y - minY;
+        if (lx < 0 || ly < 0 || lx >= cf->w || ly >= cf->h) continue;
+        int i = ly * cf->w + lx;
+        if (h->dist[e] < cf->cost[i]) { cf->cost[i] = h->dist[e]; cf->seed[i] = e; nav_LHPush(&q, h->dist[e], i); }
+    }
+    if (chunk == h->goalChunk) {
+        int i = (h->goal.y - minY) * cf->w + (h->goal.x - minX);
+        cf->cost[i] = 0; cf->seed[i] = -2; nav_LHPush(&q, 0, i);
+    }
+
+    // The 1-cell ring around the chunk belongs to neighbouring chunks. A path may
+    // END there (exits) and entrance cells there need a next step (hand-over from
+    // the neighbour), but routes must not run ALONG the ring: an agent standing in
+    // the ring follows the neighbour's field, and two fields disagreeing about the
+    // same cells makes agents oscillate across the border.
+    int ownMinX = ccx * w->chunkW, ownMinY = ccy * w->chunkH;
+    int ownMaxX = ownMinX + w->chunkW, ownMaxY = ownMinY + w->chunkH;
+    static bool* ringEntrance = NULL;       // scratch: region cells that are entrances of this chunk
+    static int ringEntranceCap = 0;
+    if (ringEntranceCap < cells) {
+        free(ringEntrance);
+        ringEntrance = calloc((size_t)cells, sizeof(bool));
+        ringEntranceCap = ringEntrance ? cells : 0;
+    } else {
+        memset(ringEntrance, 0, (size_t)cells * sizeof(bool));
+    }
+    if (ringEntrance)
+        for (int e = 0; e < w->entranceNum; e++) {
+            if (!nav_EntInChunk(w, e, chunk) || w->entranceList[e].z != z) continue;
+            int lx = w->entranceList[e].x - minX, ly = w->entranceList[e].y - minY;
+            if (lx >= 0 && ly >= 0 && lx < cf->w && ly < cf->h) ringEntrance[ly * cf->w + lx] = true;
+        }
+
+    // Reverse Dijkstra inside the region, same-level edges only (cross-level is abstract)
+    const int* dx = w->eightDir ? nav_kDx8 : nav_kDx4;
+    const int* dy = w->eightDir ? nav_kDy8 : nav_kDy4;
+    int numDirs = w->eightDir ? 8 : 4;
+    while (q.size > 0) {
+        int d, i;
+        nav_LHPop(&q, &d, &i);
+        if (d > cf->cost[i]) continue;
+        int x = minX + i % cf->w, y = minY + i / cf->w;
+        int cellCost = NavMoveCost(NAV_HOSTP, x, y, z);
+        for (int k = 0; k < numDirs; k++) {
+            int px = x - dx[k], py = y - dy[k];
+            if (px < minX || py < minY || px >= maxX || py >= maxY) continue;
+            int pi = (py - minY) * cf->w + (px - minX);
+            bool inRing = px < ownMinX || py < ownMinY || px >= ownMaxX || py >= ownMaxY;
+            if (inRing && !(ringEntrance && ringEntrance[pi])) continue;   // no routes along the ring
+            if (!NavIsWalkable(NAV_HOSTP, px, py, z)) continue;
+            if (w->eightDir && dx[k] != 0 && dy[k] != 0) {
+                if (!NavIsWalkable(NAV_HOSTP, x, py, z) || !NavIsWalkable(NAV_HOSTP, px, y, z)) continue;
+            }
+            if (!NavCanEnterFrom(NAV_HOSTP, x, y, z, px, py)) continue;
+            int base = (dx[k] != 0 && dy[k] != 0) ? 14 : 10;
+            int nd = d + (base * cellCost) / 10;
+            if (nd < cf->cost[pi]) { cf->cost[pi] = nd; cf->next[pi] = i; cf->seed[pi] = -1; nav_LHPush(&q, nd, pi); }
+        }
+    }
+    nav_LHFree(&q);
+    h->chunksBuilt++;
+    return cf;
+}
+
+static NavChunkFlow* nav_GetChunkFlow(NavWorld* w, NavHFlow* h, int chunk) {
+    if (chunk < 0 || chunk >= h->chunkCount) return NULL;
+    if (!h->chunks[chunk]) h->chunks[chunk] = nav_BuildChunkFlow(w, h, chunk);
+    return h->chunks[chunk];
+}
+
+static inline int nav_ChunkFlowIndex(const NavChunkFlow* cf, NavPoint p) {
+    int lx = p.x - cf->minX, ly = p.y - cf->minY;
+    if (p.z != cf->z || lx < 0 || ly < 0 || lx >= cf->w || ly >= cf->h) return -1;
+    return ly * cf->w + lx;
+}
+
+static bool nav_HFlowPrepare(NavWorld* w, NavHFlow* h, NavPoint p) {
+    if (h->graphVersion != w->graphVersion) nav_HFlowRebuild(w, h);
+    return h->valid && nav_InBounds(w, p);
+}
+
+// Next step from p using only the local fields (no rescue). Sets *usable if p's
+// own field has a finite cost and a real next step (used by the rescue search).
+static bool nav_HFlowFieldStep(NavWorld* w, NavHFlow* h, NavPoint p, NavPoint* out) {
+    NavChunkFlow* cf = nav_GetChunkFlow(w, h, nav_GetChunk(w, p.x, p.y, p.z));
+    if (!cf) return false;
+    int i = nav_ChunkFlowIndex(cf, p);
+    if (i < 0 || cf->cost[i] == NAV_FLOW_UNREACHABLE) return false;
+    if (cf->next[i] >= 0) {
+        *out = (NavPoint){cf->minX + cf->next[i] % cf->w, cf->minY + cf->next[i] / cf->w, cf->z};
+        return true;
+    }
+    // On an exit (seed): continue via the chunk shared with the next entrance, or the link
+    int e = cf->seed[i];
+    if (e < 0) return false;                       // goal
+    int f = h->nextEnt[e];
+    int shared;
+    if (f == -1) {
+        shared = h->goalChunk;
+    } else {
+        const NavEntrance* F = &w->entranceList[f];
+        if (F->z != w->entranceList[e].z) { *out = (NavPoint){F->x, F->y, F->z}; return true; }
+        shared = nav_EntInChunk(w, e, F->chunk1) ? F->chunk1 : F->chunk2;
+    }
+    NavChunkFlow* cf2 = nav_GetChunkFlow(w, h, shared);
+    if (!cf2) return false;
+    int j = nav_ChunkFlowIndex(cf2, p);
+    if (j < 0 || cf2->next[j] < 0) return false;
+    *out = (NavPoint){cf2->minX + cf2->next[j] % cf2->w, cf2->minY + cf2->next[j] / cf2->w, cf2->z};
+    return true;
+}
+
+// Rare fallback when p's local fields have no answer (a pocket that only reaches
+// its chunk's exits through the neighbour's ring, or a failed hand-over): forward
+// Dijkstra within the surrounding 3x3 chunks to the cell q minimising
+// travel(p,q) + cost(q) among cells whose own field works; step toward it.
+static bool nav_HFlowRescue(NavWorld* w, NavHFlow* h, NavPoint p, NavPoint* out) {
+    int minX = (p.x / w->chunkW - 1) * w->chunkW, minY = (p.y / w->chunkH - 1) * w->chunkH;
+    int maxX = minX + 3 * w->chunkW, maxY = minY + 3 * w->chunkH;
+    if (minX < 0) minX = 0;
+    if (minY < 0) minY = 0;
+    if (maxX > w->width) maxX = w->width;
+    if (maxY > w->height) maxY = w->height;
+    int W = maxX - minX, Hh = maxY - minY, cells = W * Hh;
+    int* g = malloc((size_t)cells * sizeof(int));
+    int* parent = malloc((size_t)cells * sizeof(int));
+    if (!g || !parent) { free(g); free(parent); return false; }
+    for (int i = 0; i < cells; i++) { g[i] = NAV_FLOW_UNREACHABLE; parent[i] = -1; }
+    const int* dx = w->eightDir ? nav_kDx8 : nav_kDx4;
+    const int* dy = w->eightDir ? nav_kDy8 : nav_kDy4;
+    int numDirs = w->eightDir ? 8 : 4;
+
+    nav_LazyHeap q = {0};
+    int s = (p.y - minY) * W + (p.x - minX);
+    g[s] = 0;
+    nav_LHPush(&q, 0, s);
+    int best = -1, bestTotal = NAV_FLOW_UNREACHABLE;
+    while (q.size > 0) {
+        int d, i;
+        nav_LHPop(&q, &d, &i);
+        if (d > g[i] || d >= bestTotal) continue;
+        NavPoint c = {minX + i % W, minY + i / W, p.z};
+        if (i != s) {
+            NavPoint tmp;
+            int cc = NavHFlowCostAt(w, h, c);
+            bool isGoal = c.x == h->goal.x && c.y == h->goal.y && c.z == h->goal.z;
+            if (cc != NAV_FLOW_UNREACHABLE && (isGoal || nav_HFlowFieldStep(w, h, c, &tmp))) {
+                if (d + cc < bestTotal) { bestTotal = d + cc; best = i; }
+                continue;
+            }
+        }
+        for (int k = 0; k < numDirs; k++) {
+            int nx = c.x + dx[k], ny = c.y + dy[k];
+            if (nx < minX || ny < minY || nx >= maxX || ny >= maxY) continue;
+            if (!NavIsWalkable(NAV_HOSTP, nx, ny, p.z)) continue;
+            if (w->eightDir && dx[k] != 0 && dy[k] != 0) {
+                if (!NavIsWalkable(NAV_HOSTP, nx, c.y, p.z) || !NavIsWalkable(NAV_HOSTP, c.x, ny, p.z)) continue;
+            }
+            if (!NavCanEnterFrom(NAV_HOSTP, nx, ny, p.z, c.x, c.y)) continue;
+            int base = (dx[k] != 0 && dy[k] != 0) ? 14 : 10;
+            int ni = (ny - minY) * W + (nx - minX);
+            int nd = d + (base * NavMoveCost(NAV_HOSTP, nx, ny, p.z)) / 10;
+            if (nd < g[ni]) { g[ni] = nd; parent[ni] = i; nav_LHPush(&q, nd, ni); }
+        }
+    }
+    nav_LHFree(&q);
+    bool ok = false;
+    if (best >= 0) {
+        int i = best;
+        while (parent[i] != s && parent[i] >= 0) i = parent[i];   // first step from p
+        *out = (NavPoint){minX + i % W, minY + i / W, p.z};
+        ok = true;
+    }
+    free(g); free(parent);
+    return ok;
+}
+
+bool NavHFlowNext(NavWorld* w, NavHFlow* h, NavPoint p, NavPoint* out) {
+    if (!nav_HFlowPrepare(w, h, p)) return false;
+    if (p.x == h->goal.x && p.y == h->goal.y && p.z == h->goal.z) return false;
+    if (nav_HFlowFieldStep(w, h, p, out)) return true;
+    return nav_HFlowRescue(w, h, p, out);
+}
+
+int NavHFlowCostAt(NavWorld* w, NavHFlow* h, NavPoint p) {
+    if (!nav_HFlowPrepare(w, h, p)) return NAV_FLOW_UNREACHABLE;
+    NavChunkFlow* cf = nav_GetChunkFlow(w, h, nav_GetChunk(w, p.x, p.y, p.z));
+    if (!cf) return NAV_FLOW_UNREACHABLE;
+    int i = nav_ChunkFlowIndex(cf, p);
+    return i < 0 ? NAV_FLOW_UNREACHABLE : cf->cost[i];
+}
+
+size_t NavHFlowMemoryUsage(const NavHFlow* h) {
+    size_t bytes = sizeof(NavHFlow) + (size_t)h->chunkCount * sizeof(NavChunkFlow*)
+                 + (size_t)(h->entNum > 0 ? h->entNum : 1) * 2 * sizeof(int);
+    for (int i = 0; i < h->chunkCount; i++)
+        if (h->chunks[i]) bytes += sizeof(NavChunkFlow) + (size_t)h->chunks[i]->w * h->chunks[i]->h * 3 * sizeof(int);
+    return bytes;
 }
 
 #undef NAV_HOSTP
