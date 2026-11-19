@@ -1,6 +1,7 @@
 // tool_quality.c - Tool quality lookups and speed multiplier
 
 #include "tool_quality.h"
+#include "../world/pathfinding.h"
 #include "items.h"
 #include "item_defs.h"
 
@@ -128,13 +129,26 @@ bool CanMoverDoJob(int jobType, MaterialType targetMaterial, int equippedToolIte
 #include "mover.h"
 #include "../core/event_log.h"
 
+// Nearest suitable tool by WALKING distance (any level, through ladders/ramps),
+// not straight-line distance on the searcher's level: candidates are gathered
+// first, then one search from the searcher stops at the first candidate cell.
+// searchRadius is a walking budget in diagonal steps.
+#define TOOL_SEARCH_MAX_CANDIDATES 256
+typedef struct { int n; int idx[TOOL_SEARCH_MAX_CANDIDATES]; Point cell[TOOL_SEARCH_MAX_CANDIDATES]; } ToolCandidates;
+
+static bool ToolCandidateAt(void* user, int x, int y, int z) {
+    const ToolCandidates* c = user;
+    for (int i = 0; i < c->n; i++)
+        if (c->cell[i].x == x && c->cell[i].y == y && c->cell[i].z == z) return true;
+    return false;
+}
+
 int FindNearestToolForQuality(QualityType quality, int minLevel,
                               int tileX, int tileY, int z,
                               int searchRadius, int excludeItemIdx) {
-    int bestIdx = -1;
-    int bestDistSq = searchRadius * searchRadius;
-
-    for (int i = 0; i < itemHighWaterMark; i++) {
+    static ToolCandidates cand;
+    cand.n = 0;
+    for (int i = 0; i < itemHighWaterMark && cand.n < TOOL_SEARCH_MAX_CANDIDATES; i++) {
         Item* item = &items[i];
         if (!item->active) continue;
         if (i == excludeItemIdx) continue;
@@ -142,21 +156,23 @@ int FindNearestToolForQuality(QualityType quality, int minLevel,
         if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
         if (!(itemDefs[item->type].flags & IF_TOOL)) continue;
         if (GetItemQualityLevel(item->type, quality) < minLevel) continue;
-
-        int itemTileX = (int)(item->x / CELL_SIZE);
-        int itemTileY = (int)(item->y / CELL_SIZE);
-        int itemZ = (int)item->z;
-        if (itemZ != z) continue;  // same z-level only
-
-        int dx = itemTileX - tileX;
-        int dy = itemTileY - tileY;
-        int distSq = dx * dx + dy * dy;
-        if (distSq < bestDistSq) {
-            bestDistSq = distSq;
-            bestIdx = i;
-        }
+        cand.idx[cand.n] = i;
+        cand.cell[cand.n] = (Point){(int)(item->x / CELL_SIZE), (int)(item->y / CELL_SIZE), (int)item->z};
+        cand.n++;
     }
-    return bestIdx;
+    if (cand.n == 0) return -1;
+
+    Point from = {tileX, tileY, z};
+    // Standing on a candidate: that's the nearest
+    for (int i = 0; i < cand.n; i++)
+        if (cand.cell[i].x == from.x && cand.cell[i].y == from.y && cand.cell[i].z == from.z) return cand.idx[i];
+
+    Point found;
+    if (NavFindNearest(NavGame(), from, ToolCandidateAt, &cand, searchRadius * 14, &found, NULL, 0, NULL) < 0)
+        return -1;
+    for (int i = 0; i < cand.n; i++)
+        if (cand.cell[i].x == found.x && cand.cell[i].y == found.y && cand.cell[i].z == found.z) return cand.idx[i];
+    return -1;
 }
 
 void DropEquippedTool(int moverIdx) {

@@ -458,8 +458,53 @@ static void test_regions(void) {
     #undef RND
 }
 
+typedef struct { NavPoint cells[8]; int n; } TargetSet;
+static bool IsTargetCell(void* user, int x, int y, int z) {
+    const TargetSet* t = user;
+    for (int i = 0; i < t->n; i++)
+        if (t->cells[i].x == x && t->cells[i].y == y && t->cells[i].z == z) return true;
+    return false;
+}
+
+static void test_find_nearest(void) {
+    static StubMap m;
+    memset(&m, 0, sizeof(m));
+    m.w = 32; m.h = 24; m.d = 2;
+    // Wall at x=10 from y=0..20 (open only at the bottom): (12,5) is 7 cells away in a
+    // straight line but ~38 cells of walking; (3,20) is 15 cells away and straight there
+    for (int y = 0; y <= 20; y++) m.wall[0][y][10] = 1;
+    NavWorld* w = NavCreate(32, 24, 2, 8, 8, &m);
+    NavPoint start = {5, 5, 0}, found;
+    TargetSet t = {{{12, 5, 0}, {3, 20, 0}}, 2};
+    int cost = NavFindNearest(w, start, IsTargetCell, &t, 0, &found, NULL, 0, NULL);
+    CHECK(found.x == 3 && found.y == 20);                        // nearest by walking, not straight line
+    CHECK(cost == (NavFindPathAStar(w, start, (NavPoint){3, 20, 0}, buf, 4096), w->lastCost));
+
+    // Path output: goal-first, ends at start
+    int len = 0;
+    NavFindNearest(w, start, IsTargetCell, &t, 0, &found, buf, 4096, &len);
+    CHECK(len > 0 && buf[0].x == 3 && buf[0].y == 20 && buf[len - 1].x == 5 && buf[len - 1].y == 5);
+
+    // maxCost bounds the search
+    CHECK(NavFindNearest(w, start, IsTargetCell, &t, 60, &found, NULL, 0, NULL) == -1);
+
+    // Upstairs via a ladder beats a far target on the same floor
+    m.ladder[0][6][6] = m.ladder[1][6][6] = 1;
+    TargetSet t2 = {{{8, 6, 1}, {28, 22, 0}}, 2};
+    cost = NavFindNearest(w, start, IsTargetCell, &t2, 0, &found, NULL, 0, NULL);
+    CHECK(found.z == 1 && found.x == 8 && found.y == 6);
+    CHECK(cost > 0);
+
+    // No targets reachable -> -1
+    TargetSet none = {{{0, 0, 1}}, 1};
+    m.ladder[0][6][6] = m.ladder[1][6][6] = 0;
+    CHECK(NavFindNearest(w, start, IsTargetCell, &none, 0, &found, NULL, 0, NULL) == -1);
+    NavDestroy(w);
+}
+
 int main(void) {
     printf("Running nav standalone tests...\n");
+    test_find_nearest();
     test_regions();
     test_hierarchical_flow_extra_cost();
     test_hierarchical_flow();

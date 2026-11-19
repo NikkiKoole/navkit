@@ -1105,14 +1105,14 @@ static int nav_APop(NavWorld* w) {
     return top;
 }
 
-static inline void nav_ARelax(NavWorld* w, int cur, int nx, int ny, int nz, int stepCost, NavPoint goal) {
+static inline void nav_ARelax(NavWorld* w, int cur, int nx, int ny, int nz, int stepCost, NavPoint goal, bool useH) {
     int nid = nav_CellId3(w, nx, ny, nz);
     nav_ATouch(w, nid);
     if (w->aState[nid] == 2) return;
     int ng = w->aG[cur] + stepCost;
     if (ng >= w->aG[nid]) return;
     w->aG[nid] = ng;
-    w->aF[nid] = ng + nav_Heuristic3D(w, nx, ny, nz, goal.x, goal.y, goal.z);
+    w->aF[nid] = useH ? ng + nav_Heuristic3D(w, nx, ny, nz, goal.x, goal.y, goal.z) : ng;
     w->aParent[nid] = cur;
     if (w->aHeapIdx[nid] >= 0) {
         nav_AUp(w, w->aHeapIdx[nid]);
@@ -1148,12 +1148,16 @@ static bool nav_InBounds(const NavWorld* w, NavPoint p) {
     return p.x >= 0 && p.x < w->width && p.y >= 0 && p.y < w->height && p.z >= 0 && p.z < w->depth;
 }
 
-int NavFindPathAStar(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, int maxLen) {
+// Shared forward search (A* when useH, Dijkstra otherwise). Stops at `goal`
+// (useH) or at the first cell isTarget accepts, or when the cheapest open cell
+// costs more than maxCost (> 0). Returns the reached cell id or -1; parents
+// and costs stay in the A* buffers for path reconstruction.
+static int nav_ForwardSearch(NavWorld* w, NavPoint start, NavPoint goal, bool useH,
+                             NavTargetFn isTarget, void* user, int maxCost) {
     w->explored = 0;
-    w->lastCost = -1;
-    if (!nav_InBounds(w, start) || !nav_InBounds(w, goal)) return 0;
-    if (!nav_EnsureAStarBuffers(w)) return 0;
-    double startTime = NavHostTime();
+    if (!nav_InBounds(w, start)) return -1;
+    if (useH && !nav_InBounds(w, goal)) return -1;
+    if (!nav_EnsureAStarBuffers(w)) return -1;
 
     if (++w->aCurGen == 0) {   // wrapped after 2^32 searches
         memset(w->aGen, 0, (size_t)w->width * w->height * w->depth * sizeof(uint32_t));
@@ -1163,7 +1167,7 @@ int NavFindPathAStar(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, 
     int sid = nav_CellId3(w, start.x, start.y, start.z);
     nav_ATouch(w, sid);
     w->aG[sid] = 0;
-    w->aF[sid] = nav_Heuristic3D(w, start.x, start.y, start.z, goal.x, goal.y, goal.z);
+    w->aF[sid] = useH ? nav_Heuristic3D(w, start.x, start.y, start.z, goal.x, goal.y, goal.z) : 0;
     w->aState[sid] = 1;
     w->aHeap[0] = sid;
     w->aHeapIdx[sid] = 0;
@@ -1173,29 +1177,22 @@ int NavFindPathAStar(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, 
     const int* dy = w->eightDir ? nav_kDy8 : nav_kDy4;
     int numDirs = w->eightDir ? 8 : 4;
     int layer = w->width * w->height;
-    int goalId = nav_CellId3(w, goal.x, goal.y, goal.z);
-    int len = 0;
+    int goalId = useH ? nav_CellId3(w, goal.x, goal.y, goal.z) : -1;
 
     while (w->aHeapCount > 0) {
         int cur = nav_APop(w);
         if (w->aState[cur] == 2) continue;
-
-        if (cur == goalId) {
-            w->lastCost = w->aG[cur];
-            for (int id = cur; id >= 0 && len < maxLen; id = w->aParent[id]) {
-                int rem = id % layer;
-                out[len++] = (NavPoint){rem % w->width, rem / w->width, id / layer};
-            }
-            break;
-        }
-
-        w->aState[cur] = 2;
-        w->explored++;
+        if (maxCost > 0 && w->aG[cur] > maxCost) return -1;
 
         int bz = cur / layer;
         int rem = cur % layer;
         int by = rem / w->width;
         int bx = rem % w->width;
+
+        if (cur == goalId || (isTarget && isTarget(user, bx, by, bz))) return cur;
+
+        w->aState[cur] = 2;
+        w->explored++;
 
         for (int i = 0; i < numDirs; i++) {
             int nx = bx + dx[i], ny = by + dy[i];
@@ -1205,18 +1202,18 @@ int NavFindPathAStar(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, 
             }
             if (!NavCanEnterFrom(NAV_HOSTP, nx, ny, bz, bx, by)) continue;
             int baseCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
-            nav_ARelax(w, cur, nx, ny, bz, (baseCost * NavMoveCost(NAV_HOSTP, nx, ny, bz)) / 10, goal);
+            nav_ARelax(w, cur, nx, ny, bz, (baseCost * NavMoveCost(NAV_HOSTP, nx, ny, bz)) / 10, goal, useH);
         }
 
         if (bz + 1 < w->depth && NavCanClimbUp(NAV_HOSTP, bx, by, bz))
-            nav_ARelax(w, cur, bx, by, bz + 1, NavMoveCost(NAV_HOSTP, bx, by, bz + 1), goal);
+            nav_ARelax(w, cur, bx, by, bz + 1, NavMoveCost(NAV_HOSTP, bx, by, bz + 1), goal, useH);
         if (bz > 0 && NavCanClimbDown(NAV_HOSTP, bx, by, bz))
-            nav_ARelax(w, cur, bx, by, bz - 1, NavMoveCost(NAV_HOSTP, bx, by, bz - 1), goal);
+            nav_ARelax(w, cur, bx, by, bz - 1, NavMoveCost(NAV_HOSTP, bx, by, bz - 1), goal, useH);
 
         int ex, ey;
         if (bz + 1 < w->depth && NavRampUp(NAV_HOSTP, bx, by, bz, &ex, &ey)) {
             if (ex >= 0 && ex < w->width && ey >= 0 && ey < w->height)
-                nav_ARelax(w, cur, ex, ey, bz + 1, (14 * NavMoveCost(NAV_HOSTP, ex, ey, bz + 1)) / 10, goal);
+                nav_ARelax(w, cur, ex, ey, bz + 1, (14 * NavMoveCost(NAV_HOSTP, ex, ey, bz + 1)) / 10, goal, useH);
         }
 
         // Down a ramp whose high side points at us
@@ -1228,12 +1225,50 @@ int NavFindPathAStar(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, 
                 if (!NavRampHighSide(NAV_HOSTP, rx, ry, rz, &hdx, &hdy)) continue;
                 if (rx + hdx != bx || ry + hdy != by) continue;
                 if (!NavIsWalkable(NAV_HOSTP, rx, ry, rz)) continue;
-                nav_ARelax(w, cur, rx, ry, rz, (14 * NavMoveCost(NAV_HOSTP, rx, ry, rz)) / 10, goal);
+                nav_ARelax(w, cur, rx, ry, rz, (14 * NavMoveCost(NAV_HOSTP, rx, ry, rz)) / 10, goal, useH);
             }
         }
     }
+    return -1;
+}
+
+static int nav_ReconstructFromSearch(NavWorld* w, int id, NavPoint* out, int maxLen) {
+    int layer = w->width * w->height, len = 0;
+    for (; id >= 0 && len < maxLen; id = w->aParent[id]) {
+        int rem = id % layer;
+        out[len++] = (NavPoint){rem % w->width, rem / w->width, id / layer};
+    }
+    return len;
+}
+
+int NavFindPathAStar(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, int maxLen) {
+    w->lastCost = -1;
+    double startTime = NavHostTime();
+    int reached = nav_ForwardSearch(w, start, goal, true, NULL, NULL, 0);
+    int len = 0;
+    if (reached >= 0) {
+        w->lastCost = w->aG[reached];
+        len = nav_ReconstructFromSearch(w, reached, out, maxLen);
+    }
     w->lastMs = (NavHostTime() - startTime) * 1000.0;
     return len;
+}
+
+int NavFindNearest(NavWorld* w, NavPoint start, NavTargetFn isTarget, void* user, int maxCost,
+                   NavPoint* found, NavPoint* outPath, int maxLen, int* pathLen) {
+    w->lastCost = -1;
+    if (pathLen) *pathLen = 0;
+    double startTime = NavHostTime();
+    int reached = nav_ForwardSearch(w, start, start, false, isTarget, user, maxCost);
+    int cost = -1;
+    if (reached >= 0) {
+        cost = w->lastCost = w->aG[reached];
+        int layer = w->width * w->height, rem = reached % layer;
+        if (found) *found = (NavPoint){rem % w->width, rem / w->width, reached / layer};
+        if (outPath && pathLen) *pathLen = nav_ReconstructFromSearch(w, reached, outPath, maxLen);
+    }
+    w->lastMs = (NavHostTime() - startTime) * 1000.0;
+    return cost;
 }
 
 // =============================================================================

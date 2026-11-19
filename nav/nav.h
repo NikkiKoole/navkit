@@ -316,6 +316,16 @@ bool NavHFlowNext(NavWorld* w, NavHFlow* h, NavPoint p, NavPoint* out);
 int  NavHFlowCostAt(NavWorld* w, NavHFlow* h, NavPoint p);
 size_t NavHFlowMemoryUsage(const NavHFlow* h);
 
+// ---- nearest target by walking distance ----
+// Search outward from start (same rules and costs as A*) and stop at the
+// cheapest cell isTarget accepts: the truly nearest target by walking, on any
+// level, in one search. maxCost > 0 bounds the search (e.g. 10 * cells).
+// Returns the cost to the target, or -1 if none was reached. *found receives
+// the target cell; if outPath is given, the path (goal-first) and *pathLen.
+typedef bool (*NavTargetFn)(void* user, int x, int y, int z);
+int NavFindNearest(NavWorld* w, NavPoint start, NavTargetFn isTarget, void* user, int maxCost,
+                   NavPoint* found, NavPoint* outPath, int maxLen, int* pathLen);
+
 // Bounded single-level searches (used internally; exposed for tests/tools).
 // Bounds are [min, max). Return cost, or -1 if unreachable.
 int NavChunkCost(NavWorld* w, int sx, int sy, int sz, int gx, int gy,

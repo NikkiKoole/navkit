@@ -1034,6 +1034,52 @@ describe(find_nearest_tool) {
         expect(found == -1);
     }
 
+    it("should find a tool upstairs by walking (ladder), not just on the searcher's level") {
+        // Multi-floor map: ladder at (1,1) joins floor 0 and floor 1
+        const char* map =
+            "floor:0\n"
+            "........\n"
+            ".L......\n"
+            "........\n"
+            "........\n"
+            "floor:1\n"
+            "........\n"
+            ".L......\n"
+            "........\n"
+            "........\n";
+        InitMultiFloorGridFromAscii(map, 8, 8);
+        ClearItems();
+        int upIdx = SpawnItem(2 * CELL_SIZE, 1 * CELL_SIZE, 1, ITEM_SHARP_STONE);
+        items[upIdx].state = ITEM_ON_GROUND;
+        items[upIdx].reservedBy = -1;
+        int found = FindNearestToolForQuality(QUALITY_CUTTING, 1, 0, 0, 0, 50, -1);
+        expect(found == upIdx);
+    }
+
+    it("should pick the tool nearest by walking, not by straight line") {
+        // Wall at x=4 (rows 0..6): the tool at (6,1) is 5 tiles away in a straight
+        // line but a long walk around; the tool at (1,7) is 6 tiles away and direct
+        const char* map =
+            "....#...\n"
+            "....#...\n"
+            "....#...\n"
+            "....#...\n"
+            "....#...\n"
+            "....#...\n"
+            "....#...\n"
+            "........\n";
+        InitTestGridFromAscii(map);
+        ClearItems();
+        int behindWall = SpawnItem(6 * CELL_SIZE, 1 * CELL_SIZE, 0, ITEM_SHARP_STONE);
+        items[behindWall].state = ITEM_ON_GROUND;
+        items[behindWall].reservedBy = -1;
+        int direct = SpawnItem(1 * CELL_SIZE, 7 * CELL_SIZE, 0, ITEM_SHARP_STONE);
+        items[direct].state = ITEM_ON_GROUND;
+        items[direct].reservedBy = -1;
+        int found = FindNearestToolForQuality(QUALITY_CUTTING, 1, 1, 1, 0, 50, -1);
+        expect(found == direct);
+    }
+
     it("should find tool in stockpile") {
         InitTestGrid(16, 16);
         ClearItems();
