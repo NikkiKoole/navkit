@@ -6,9 +6,9 @@
 // walked across, level changes on the way). Agents only separate from and
 // collide with agents on their own floor.
 //
-// Navigation (M): full flow field from the exit (with crowd density as extra
-// cost, so a jammed ladder pushes people to a ramp), or a hierarchical flow
-// field (nav NavHFlow) toward the exit.
+// Navigation (M): full flow field from the exit, or a hierarchical flow field
+// (nav NavHFlow) toward the exit. Both take the crowd costs (D density, Q ladder
+// queue = expected wait), so a jammed ladder pushes people to a ramp.
 //
 // Controls: M nav mode   D density cost   R restart   Space +500 agents
 // Unattended: ./build/bin/flow3d --nav full|hier --agents 1500 --frames 7200 [--no-density]
@@ -169,10 +169,13 @@ static void ComputeExtraCost(void) {
 }
 
 static void RebuildNav(void) {
+    ComputeExtraCost();
     if (navMode == NAV_FULL) {
-        ComputeExtraCost();
         field->extraCost = extraCost;
         NavFlowBuild(world, field, exitGoals, exitGoalCount, 0);
+    } else {
+        hflow->extraCost = (useDensity || useQueueCost) ? extraCost : NULL;
+        NavHFlowInvalidate(hflow);          // rebuilt lazily with the new costs
     }
 }
 
@@ -487,7 +490,7 @@ int main(int argc, char** argv) {
         }
         float dt = autoFrames > 0 ? 1.0f / 60.0f : fminf(GetFrameTime(), 1.0f / 30.0f);
         densityTimer += dt;
-        if ((useDensity || useQueueCost) && navMode == NAV_FULL && densityTimer >= DENSITY_REBUILD_S) { densityTimer = 0; RebuildNav(); }
+        if ((useDensity || useQueueCost) && densityTimer >= DENSITY_REBUILD_S) { densityTimer = 0; RebuildNav(); }
 
         double t0 = GetTime();
         UpdateAgents(dt);

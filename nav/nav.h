@@ -268,10 +268,20 @@ typedef struct NavHFlow {
     struct NavChunkFlow** chunks;  // [chunk id] lazily built local fields (NULL = not built yet)
     int chunksBuilt;               // stats
     double abstractMs;
+
+    // Optional per-cell extra cost [z][y][x] (same meaning as NavFlowField.extraCost),
+    // caller-owned. Local chunk fields add it to every cell entered; the entrance graph
+    // adds the extra cost of each entrance cell an edge leads into (so connector costs
+    // such as ladder queues steer the route choice). Call NavHFlowInvalidate after
+    // changing the values.
+    const int* extraCost;
+    bool stale;                    // rebuild on next query (set by NavHFlowInvalidate)
 } NavHFlow;
 
 NavHFlow* NavHFlowCreate(NavWorld* w, NavPoint goal);
 void NavHFlowDestroy(NavHFlow* h);
+// Costs changed (extraCost values): drop cached results; rebuilt lazily on next query.
+void NavHFlowInvalidate(NavHFlow* h);
 // Next cell to step to from p (may be on another level via ladder/ramp).
 // False at the goal, if unreachable, or out of bounds. Builds chunk fields on demand.
 bool NavHFlowNext(NavWorld* w, NavHFlow* h, NavPoint p, NavPoint* out);

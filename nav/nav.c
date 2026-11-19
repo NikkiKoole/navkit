@@ -1728,8 +1728,13 @@ static void nav_HFlowClearChunks(NavHFlow* h) {
     h->chunksBuilt = 0;
 }
 
+static inline int nav_HFlowExtra(const NavWorld* w, const NavHFlow* h, int x, int y, int z) {
+    return h->extraCost ? h->extraCost[(z * w->height + y) * w->width + x] : 0;
+}
+
 static void nav_HFlowRebuild(NavWorld* w, NavHFlow* h) {
     double t0 = NavHostTime();
+    h->stale = false;
     nav_HFlowClearChunks(h);
     int perLevel = w->chunksX * w->chunksY;
     if (h->chunkCount != w->depth * perLevel) {
@@ -1768,9 +1773,12 @@ static void nav_HFlowRebuild(NavWorld* w, NavHFlow* h) {
         int d, e;
         nav_LHPop(&q, &d, &e);
         if (d > h->dist[e]) continue;
+        // Relax predecessors f: walking f -> e costs the edge plus entering e's cell
+        const NavEntrance* E = &w->entranceList[e];
+        int enterE = nav_HFlowExtra(w, h, E->x, E->y, E->z);
         for (int k = 0; k < w->adjListCount[e]; k++) {
             const NavGraphEdge* ed = &w->edgeList[w->adjList[e][k]];
-            int f = ed->to, nd = d + ed->cost;
+            int f = ed->to, nd = d + ed->cost + enterE;
             if (nd < h->dist[f]) { h->dist[f] = nd; h->nextEnt[f] = e; nav_LHPush(&q, nd, f); }
         }
     }
@@ -1868,7 +1876,7 @@ static NavChunkFlow* nav_BuildChunkFlow(NavWorld* w, NavHFlow* h, int chunk) {
         nav_LHPop(&q, &d, &i);
         if (d > cf->cost[i]) continue;
         int x = minX + i % cf->w, y = minY + i / cf->w;
-        int cellCost = NavMoveCost(NAV_HOSTP, x, y, z);
+        int cellCost = NavMoveCost(NAV_HOSTP, x, y, z) + nav_HFlowExtra(w, h, x, y, z);
         for (int k = 0; k < numDirs; k++) {
             int px = x - dx[k], py = y - dy[k];
             if (px < minX || py < minY || px >= maxX || py >= maxY) continue;
@@ -1902,8 +1910,12 @@ static inline int nav_ChunkFlowIndex(const NavChunkFlow* cf, NavPoint p) {
     return ly * cf->w + lx;
 }
 
+void NavHFlowInvalidate(NavHFlow* h) {
+    if (h) h->stale = true;
+}
+
 static bool nav_HFlowPrepare(NavWorld* w, NavHFlow* h, NavPoint p) {
-    if (h->graphVersion != w->graphVersion) nav_HFlowRebuild(w, h);
+    if (h->stale || h->graphVersion != w->graphVersion) nav_HFlowRebuild(w, h);
     return h->valid && nav_InBounds(w, p);
 }
 
@@ -1987,7 +1999,7 @@ static bool nav_HFlowRescue(NavWorld* w, NavHFlow* h, NavPoint p, NavPoint* out)
             if (!NavCanEnterFrom(NAV_HOSTP, nx, ny, p.z, c.x, c.y)) continue;
             int base = (dx[k] != 0 && dy[k] != 0) ? 14 : 10;
             int ni = (ny - minY) * W + (nx - minX);
-            int nd = d + (base * NavMoveCost(NAV_HOSTP, nx, ny, p.z)) / 10;
+            int nd = d + (base * (NavMoveCost(NAV_HOSTP, nx, ny, p.z) + nav_HFlowExtra(w, h, nx, ny, p.z))) / 10;
             if (nd < g[ni]) { g[ni] = nd; parent[ni] = i; nav_LHPush(&q, nd, ni); }
         }
     }

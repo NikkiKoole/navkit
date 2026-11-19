@@ -26,7 +26,10 @@
 | density only | 245 s | 142 | 1190 |
 | queue cost only | 89.8 s | 25 | 1438 |
 | **density + queue cost** | **52.7 s** | 36 | 1413 |
-| hierarchical flow (no crowd costs) | 226 s | 125 | 1231 |
+| hierarchical flow, no crowd costs | 226 s | 125 | 1231 |
+| hierarchical flow, density only | 349 s | 128 | n/a |
+| hierarchical flow, queue cost only | **44.6 s** | 23 | n/a |
+| hierarchical flow, density + queue | 52.7 s | 29 | n/a |
 
 Simulation cost was about 0.2 ms per frame for 1500 agents, and total navigation time under
 0.25 s per run.
@@ -40,8 +43,14 @@ Simulation cost was about 0.2 ms per frame for 1500 agents, and total navigation
 - **Pricing the expected wait into the ladder cell fixes the routing decision.** Agents spread
   to the ramps and ladder queues stay short: a 4.6× faster evacuation than density alone.
   Combining both costs is best.
-- **The hierarchical flow field (`NavHFlow`) cannot take extra costs yet,** so on big maps it
-  routes like the "none"/"density only" rows. Adding that support is the next step.
+- **The hierarchical flow field (`NavHFlow`) takes extra costs too** (added after the first
+  runs). Local chunk fields add them per cell; the entrance graph adds the extra cost of the
+  entrance cell each edge leads into, which is exactly where the ladder queue cost sits. With
+  queue cost it evacuates as well as or better than the full field (44.6 s).
+- **Density alone can hurt the hierarchical field:** 349 s, worse than no costs at all. At the
+  graph level it mostly sees crowding at entrance cells. A busy ramp entrance looks expensive,
+  so people get pushed onto the ladders, whose real cost (one person at a time) density
+  doesn't capture. The queue cost is the term that matters for connectors.
 
 ## Relation to plans
 

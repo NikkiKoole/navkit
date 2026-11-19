@@ -353,8 +353,55 @@ static void test_hierarchical_flow(void) {
     #undef RND
 }
 
+// Does walking NavHFlowNext from p pass through (x,y,z)?
+static bool HFlowPassesThrough(NavWorld* w, NavHFlow* h, NavPoint p, NavPoint via) {
+    NavPoint cur = p, nxt;
+    int steps = 0;
+    while (NavHFlowNext(w, h, cur, &nxt) && steps++ < 20000) {
+        cur = nxt;
+        if (cur.x == via.x && cur.y == via.y && cur.z == via.z) return true;
+    }
+    return false;
+}
+
+static void test_hierarchical_flow_extra_cost(void) {
+    // Two floors, two ladders: A near the start, B far away. Goal upstairs.
+    static StubMap m;
+    memset(&m, 0, sizeof(m));
+    m.w = 40; m.h = 24; m.d = 2;
+    m.ladder[0][4][6] = m.ladder[1][4][6] = 1;      // ladder A
+    m.ladder[0][20][34] = m.ladder[1][20][34] = 1;  // ladder B
+    NavWorld* w = NavCreate(40, 24, 2, 8, 8, &m);
+    NavBuildEntrances(w);
+    NavBuildGraph(w);
+    NavPoint start = {4, 6, 0}, goal = {20, 12, 1};
+    NavHFlow* h = NavHFlowCreate(w, goal);
+    CHECK(HFlowPassesThrough(w, h, start, (NavPoint){6, 4, 1}));     // nearest ladder: A
+    int plain = NavHFlowCostAt(w, h, start);
+
+    // A long queue at ladder A's base: priced into the cell you enter to climb
+    static int extra[2 * 24 * 40];
+    extra[(0 * 24 + 4) * 40 + 6] = 5000;
+    h->extraCost = extra;
+    NavHFlowInvalidate(h);
+    CHECK(HFlowPassesThrough(w, h, start, (NavPoint){34, 20, 1}));   // now via ladder B
+    CHECK(!HFlowPassesThrough(w, h, start, (NavPoint){6, 4, 1}));
+    int withQueue = NavHFlowCostAt(w, h, start);
+    CHECK(withQueue > plain && withQueue < plain + 5000);             // detour beats the queue
+
+    // Queue gone again: back to ladder A after invalidation
+    extra[(0 * 24 + 4) * 40 + 6] = 0;
+    NavHFlowInvalidate(h);
+    CHECK(HFlowPassesThrough(w, h, start, (NavPoint){6, 4, 1}));
+    CHECK(NavHFlowCostAt(w, h, start) == plain);
+
+    NavHFlowDestroy(h);
+    NavDestroy(w);
+}
+
 int main(void) {
     printf("Running nav standalone tests...\n");
+    test_hierarchical_flow_extra_cost();
     test_hierarchical_flow();
     test_flow_extra_cost_and_clearance();
     test_flow_steering();
