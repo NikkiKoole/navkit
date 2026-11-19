@@ -570,8 +570,8 @@ static void setup_pathfinding_globals(void) {
 }
 
 static void print_path(int x1, int y1, int z1, int x2, int y2, int z2, int algo) {
-    const char* algoNames[] = {"A*", "HPA*", "JPS", "JPS+"};
-    printf("\n=== PATH TEST (%s) ===\n", algo < 4 ? algoNames[algo] : "?");
+    const char* algoNames[] = {"A*", "HPA*"};
+    printf("\n=== PATH TEST (%s) ===\n", algo < 2 ? algoNames[algo] : "?");
     printf("From: (%d, %d, z%d)\n", x1, y1, z1);
     printf("To:   (%d, %d, z%d)\n", x2, y2, z2);
     
@@ -1188,8 +1188,6 @@ int InspectSaveFile(int argc, char** argv) {
             i++;
             if (strcmp(argv[i], "astar") == 0 || strcmp(argv[i], "a*") == 0) opt_path_algo = PATH_ALGO_ASTAR;
             else if (strcmp(argv[i], "hpa") == 0 || strcmp(argv[i], "hpa*") == 0) opt_path_algo = PATH_ALGO_HPA;
-            else if (strcmp(argv[i], "jps") == 0) opt_path_algo = PATH_ALGO_JPS;
-            else if (strcmp(argv[i], "jps+") == 0) opt_path_algo = PATH_ALGO_JPS_PLUS;
             else printf("Warning: unknown algorithm '%s', using A*\n", argv[i]);
         }
         else if (strcmp(argv[i], "--map") == 0 && i+1 < argc) {
@@ -1825,7 +1823,7 @@ int InspectSaveFile(int argc, char** argv) {
         printf("  Other: %d cells (%.1f%%)\n", tempOther, 100.0f * tempOther / totalCells);
         
         printf("\nOptions: --mover N, --item N, --job N, --stockpile N, --workshop N, --blueprint N\n");
-        printf("         --cell X,Y,Z, --path X1,Y1,Z1 X2,Y2,Z2 [--algo astar|hpa|jps|jps+]\n");
+        printf("         --cell X,Y,Z, --path X1,Y1,Z1 X2,Y2,Z2 [--algo astar|hpa]\n");
         printf("         --map X,Y,Z [R], --designations, --stuck, --reserved, --jobs-active\n");
         printf("         --entrances [Z], --items [TYPE], --temp [Z], --orphaned, --transport, --audit\n");
     }

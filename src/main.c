@@ -74,7 +74,7 @@ static float soundDebugResponseTimer = 0.0f;
 static SoundPhrase soundDebugResponse;
 
 int pathAlgorithm = 1;
-const char* algorithmNames[] = {"A*", "HPA*", "JPS", "JPS+"};
+const char* algorithmNames[] = {"A*", "HPA*"};
 int currentDirection = 1;
 const char* directionNames[] = {"4-dir", "8-dir"};
 
@@ -623,8 +623,6 @@ void SpawnAgents(int count) {
         switch (pathAlgorithm) {
             case 0: RunAStar(); break;
             case 1: RunHPAStar(); break;
-            case 2: RunJPS(); break;
-            case 3: RunJpsPlus(); break;
         }
 
         a->pathLength = pathLength;
@@ -655,8 +653,6 @@ void RepathAgents(void) {
         switch (pathAlgorithm) {
             case 0: RunAStar(); break;
             case 1: RunHPAStar(); break;
-            case 2: RunJPS(); break;
-            case 3: RunJpsPlus(); break;
         }
 
         a->pathLength = pathLength;
@@ -698,8 +694,6 @@ void AddMoversDemo(int count) {
         switch (pathAlgorithm) {
             case 0: RunAStar(); break;
             case 1: RunHPAStar(); break;
-            case 2: RunJPS(); break;
-            case 3: RunJpsPlus(); break;
         }
 
         if (pathLength > 0) {
@@ -749,8 +743,6 @@ void SpawnMoversDemo(int count) {
         switch (pathAlgorithm) {
             case 0: RunAStar(); break;
             case 1: RunHPAStar(); break;
-            case 2: RunJPS(); break;
-            case 3: RunJpsPlus(); break;
         }
 
         if (pathLength > 0) {

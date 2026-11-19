@@ -1,13 +1,35 @@
 # A* Priority Queue + Pathfinder Extraction Readiness
 
-> Status: spec
+> Status: Part 1 done, Part 2 seam done (2026-11-19) — context struct next
 
 Two related findings from a code review session on 2026-08-01. Both are about making
 `src/world/pathfinding.c` library-grade. They're filed together because the A* fix is a
 prerequisite for extraction, and both were measured in the same sitting.
 
-**Nothing here is implemented.** This doc exists so a fresh session has the full picture
-without re-deriving it.
+**Update 2026-11-19:** Part 1 steps 1+2 are implemented. `RunAStar()` now uses an indexed
+binary heap + generation stamps on heap-allocated arrays sized to W×H×D (it no longer touches
+`nodeData`), and exposes `lastPathCost`. `bench_astar_heap` now checks the production RunAStar
+against the reference implementations — all costs match; 128×128 open went 2017 ms → ~1.9 ms,
+512×512 serpentine runs in ~45 ms.
+
+Step 3 (`gridDepth` forced to 16): resolved as *not a pathfinder problem*. Terrain generators
+derive heightmaps from `gridDepth` and `InitGrid()` re-inits through the 16-deep default, so
+generated worlds depend on 16 levels — changing it is a game-design change. Added
+`InitGridWithDimensions(w, h, depth, cw, ch)` for callers that want a real depth; the extracted
+library will take depth as a context parameter.
+
+JPS/JPS+ removed 2026-11-19 (tag `jps-archive`), −112 MB static. The JPS+ consistency tests
+were converted to HPA*-vs-A* reachability tests (`hpa_vs_astar_consistency`).
+
+**Callback seam done (2026-11-19).** `src/world/nav_host.h` is the host contract: `NavIsWalkable`,
+`NavMoveCost`, `NavCanClimbUp/Down`, `NavRampHighSide`, `NavRampUp`, `NavCanEnterFrom`,
+`NavAffectedZ`, `NavIsValidDestination`, `NavOnChunkDirty` (+ `NAV_MIN_CELL_COST`). All static
+inline, zero overhead. `pathfinding.c` no longer touches `grid[]`, cell types, water, snow, fog,
+furniture or lighting. `InvalidateLighting()` moved behind `NavOnChunkDirty`. Unused
+`RampLink.rampType` removed. Verified by compiling `pathfinding.c` against a stub `grid.h` +
+`nav_host.h` (flat world) under `-Wall -Wextra` and running A*/HPA* standalone. Remaining
+external surface: raylib `GetTime/TraceLog/GetRandomValue/SetRandomSeed`, libc, grid-shape
+globals, `needsRebuild/hpaNeedsRebuild`, `rampCount` — all targets for the context struct.
 
 ---
 

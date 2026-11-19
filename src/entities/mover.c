@@ -1067,7 +1067,7 @@ static void AssignNewMoverGoal(Mover* m) {
     int currentZ = (int)m->z;
     Point start = {currentX, currentY, currentZ};
 
-    // HPA* and JPS+ now have native ramp support via RampLink edges
+    // HPA* has native ramp support via RampLink edges
     PathAlgorithm algo = moverPathAlgorithm;
 
     Point tempPath[MAX_PATH];

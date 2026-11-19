@@ -1,6 +1,6 @@
 # NavKit
 
-3D grid-based colony simulation framework in C with raylib. Pathfinding (A*, HPA*, JPS, JPS+), jobs, movers, items, stockpiles, workshops, and cellular automata (water, fire, smoke).
+3D grid-based colony simulation framework in C with raylib. Pathfinding (A*, HPA*), jobs, movers, items, stockpiles, workshops, and cellular automata (water, fire, smoke).
 
 ## Build & Run
 
@@ -96,7 +96,7 @@ src/
 
 ## Key Systems
 
-Pathfinding (4 algos), movers (agents with avoidance), jobs (designations → work), stockpiles (filtered storage), workshops (crafting), simulations (water/fire/smoke).
+Pathfinding (A*, HPA*), movers (agents with avoidance), jobs (designations → work), stockpiles (filtered storage), workshops (crafting), simulations (water/fire/smoke).
 
 ## Walkability Model (DF-style)
 

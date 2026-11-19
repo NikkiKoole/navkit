@@ -19,7 +19,7 @@ src/
 ├── world/            # World/map systems
 │   ├── grid.c/h      # Grid storage, cell types, chunks, ladder logic
 │   ├── terrain.c/h   # Terrain generators (caves, dungeons, mazes, etc.)
-│   ├── pathfinding.c/h  # A*, JPS, JPS+, HPA* pathfinding
+│   ├── pathfinding.c/h  # A* and HPA* pathfinding
 │   ├── designations.c/h # Mining/building designations
 │
 ├── entities/         # Game entities

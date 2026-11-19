@@ -1233,14 +1233,13 @@ describe(mover_ladder_transitions) {
         expect(m->active == false);
     }
 
-    it("should handle JPS+ 3D path through Labyrinth3D") {
+    it("should handle HPA* 3D path through Labyrinth3D") {
         // Use actual Labyrinth3D terrain (works in both walkability modes)
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         gridDepth = 4;
         GenerateLabyrinth3D();
         BuildEntrances();
         BuildGraph();
-        PrecomputeJpsPlus();
 
         // In standard mode, baseZ=1 so walkable floors are z=1,z=2; in legacy baseZ=0
         int baseZ = 1;
@@ -1273,10 +1272,10 @@ describe(mover_ladder_transitions) {
         expect(start.x >= 0);
         expect(goal.x >= 0);
 
-        // Get JPS+ 3D path
+        // Get HPA* 3D path
         Point pathBuf[MAX_PATH];
-        moverPathAlgorithm = PATH_ALGO_JPS_PLUS;
-        int pathLen = FindPath(PATH_ALGO_JPS_PLUS, start, goal, pathBuf, MAX_PATH);
+        moverPathAlgorithm = PATH_ALGO_HPA;
+        int pathLen = FindPath(PATH_ALGO_HPA, start, goal, pathBuf, MAX_PATH);
 
         if (pathLen > 0) {
             // Validate path: each step should be walkable
@@ -1330,14 +1329,13 @@ describe(mover_ladder_transitions) {
         }
     }
 
-    it("JPS+ 3D path should match JPS 3D path structure") {
-        // Compare paths from both algorithms to ensure JPS+ produces valid paths
+    it("A* and HPA* 3D paths should both use the ladder") {
+        // Compare paths from both algorithms to ensure both produce valid ladder transitions
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         gridDepth = 4;
         GenerateLabyrinth3D();
         BuildEntrances();
         BuildGraph();
-        PrecomputeJpsPlus();
 
         // In standard mode, baseZ=1 so ladders are at z=1,z=2; in legacy baseZ=0
         int baseZ = 1;
@@ -1387,53 +1385,52 @@ describe(mover_ladder_transitions) {
         expect(start.x >= 0);
         expect(goal.x >= 0);
 
-        // Get JPS path
+        // Get A* path
         startPos = start;
         goalPos = goal;
         use8Dir = true;
-        RunJPS();
-        int jpsLen = pathLength;
+        RunAStar();
+        int astarLen = pathLength;
 
-        // Check JPS path has ladder transition
-        bool jpsHasLadder = false;
-        for (int i = 1; i < jpsLen; i++) {
+        // Check A* path has ladder transition
+        bool astarHasLadder = false;
+        for (int i = 1; i < astarLen; i++) {
             if (path[i].x == path[i-1].x && path[i].y == path[i-1].y && path[i].z != path[i-1].z) {
-                jpsHasLadder = true;
+                astarHasLadder = true;
             }
         }
-        expect(jpsHasLadder == true);
+        expect(astarHasLadder == true);
 
-        // Get JPS+ path
-        Point jpsPlusPath[MAX_PATH];
-        int jpsPlusLen = FindPath(PATH_ALGO_JPS_PLUS, start, goal, jpsPlusPath, MAX_PATH);
+        // Get HPA* path
+        Point hpaPath[MAX_PATH];
+        int hpaLen = FindPath(PATH_ALGO_HPA, start, goal, hpaPath, MAX_PATH);
 
-        // Check JPS+ path has ladder transition
-        bool jpsPlusHasLadder = false;
-        for (int i = 1; i < jpsPlusLen; i++) {
-            if (jpsPlusPath[i].x == jpsPlusPath[i-1].x && 
-                jpsPlusPath[i].y == jpsPlusPath[i-1].y && 
-                jpsPlusPath[i].z != jpsPlusPath[i-1].z) {
-                jpsPlusHasLadder = true;
+        // Check HPA* path has ladder transition
+        bool hpaHasLadder = false;
+        for (int i = 1; i < hpaLen; i++) {
+            if (hpaPath[i].x == hpaPath[i-1].x && 
+                hpaPath[i].y == hpaPath[i-1].y && 
+                hpaPath[i].z != hpaPath[i-1].z) {
+                hpaHasLadder = true;
             }
         }
-        expect(jpsPlusHasLadder == true);
+        expect(hpaHasLadder == true);
 
         // Both should find paths
-        expect(jpsLen > 0);
-        expect(jpsPlusLen > 0);
+        expect(astarLen > 0);
+        expect(hpaLen > 0);
     }
 
-    it("should handle multiple random cross-z paths with JPS+") {
+    it("should handle multiple random cross-z paths with HPA*") {
         // Test many random paths to catch intermittent issues
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         gridDepth = 4;
         GenerateLabyrinth3D();
         BuildEntrances();
         BuildGraph();
-        PrecomputeJpsPlus();
 
         SeedRandom(99999);
-        moverPathAlgorithm = PATH_ALGO_JPS_PLUS;
+        moverPathAlgorithm = PATH_ALGO_HPA;
 
         int totalTests = STRESS_TEST_ITERATIONS;
         int pathsFound = 0;
@@ -1446,7 +1443,7 @@ describe(mover_ladder_transitions) {
             if (start.x < 0 || goal.x < 0) continue;
 
             Point pathBuf[MAX_PATH];
-            int pathLen = FindPath(PATH_ALGO_JPS_PLUS, start, goal, pathBuf, MAX_PATH);
+            int pathLen = FindPath(PATH_ALGO_HPA, start, goal, pathBuf, MAX_PATH);
 
             if (pathLen > 0) {
                 pathsFound++;
@@ -1488,7 +1485,7 @@ describe(mover_ladder_transitions) {
 }
 
 describe(sparse_level_pathfinding) {
-    it("should handle random paths with JPS on sparse level") {
+    it("should handle random paths with A* on sparse level") {
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         SetRandomSeed(12345);  // raylib's seed
         SeedRandom(12345);
@@ -1496,7 +1493,7 @@ describe(sparse_level_pathfinding) {
         BuildEntrances();
         BuildGraph();
 
-        moverPathAlgorithm = PATH_ALGO_JPS;
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
 
         int totalTests = STRESS_TEST_ITERATIONS;
         int pathsFound = 0;
@@ -1511,7 +1508,7 @@ describe(sparse_level_pathfinding) {
             if (start.x < 0 || goal.x < 0) continue;
 
             Point pathBuf[MAX_PATH];
-            int pathLen = FindPath(PATH_ALGO_JPS, start, goal, pathBuf, MAX_PATH);
+            int pathLen = FindPath(PATH_ALGO_ASTAR, start, goal, pathBuf, MAX_PATH);
 
             if (pathLen > 0) {
                 pathsFound++;
@@ -1533,27 +1530,26 @@ describe(sparse_level_pathfinding) {
                 } else {
                     int stuckX = (int)(m->x / CELL_SIZE);
                     int stuckY = (int)(m->y / CELL_SIZE);
-                    printf("JPS STUCK: test %d, start=(%d,%d) goal=(%d,%d) stuck at cell=(%d,%d) pathIndex=%d/%d\n",
+                    printf("A* STUCK: test %d, start=(%d,%d) goal=(%d,%d) stuck at cell=(%d,%d) pathIndex=%d/%d\n",
                            test, start.x, start.y, goal.x, goal.y,
                            stuckX, stuckY, GetMoverPathIndex(0), GetMoverPathLength(0));
                 }
             }
         }
 
-        if (test_verbose) printf("JPS sparse: pathsFound=%d, moversReachedGoal=%d\n", pathsFound, moversReachedGoal);
+        if (test_verbose) printf("A* sparse: pathsFound=%d, moversReachedGoal=%d\n", pathsFound, moversReachedGoal);
         expect(pathsFound > 0);  // At least some paths should be found
         expect(moversReachedGoal == pathsFound);
     }
 
-    it("should handle random paths with JPS+ on sparse level") {
+    it("should handle random paths with HPA* on sparse level") {
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         SeedRandom(12345);
         GenerateSparse(0.10f);
         BuildEntrances();
         BuildGraph();
-        PrecomputeJpsPlus();
 
-        moverPathAlgorithm = PATH_ALGO_JPS_PLUS;
+        moverPathAlgorithm = PATH_ALGO_HPA;
 
         int totalTests = STRESS_TEST_ITERATIONS;
         int pathsFound = 0;
@@ -1568,7 +1564,7 @@ describe(sparse_level_pathfinding) {
             if (start.x < 0 || goal.x < 0) continue;
 
             Point pathBuf[MAX_PATH];
-            int pathLen = FindPath(PATH_ALGO_JPS_PLUS, start, goal, pathBuf, MAX_PATH);
+            int pathLen = FindPath(PATH_ALGO_HPA, start, goal, pathBuf, MAX_PATH);
 
             if (pathLen > 0) {
                 pathsFound++;
@@ -1590,14 +1586,14 @@ describe(sparse_level_pathfinding) {
                 } else {
                     int stuckX = (int)(m->x / CELL_SIZE);
                     int stuckY = (int)(m->y / CELL_SIZE);
-                    printf("JPS+ STUCK: test %d, start=(%d,%d) goal=(%d,%d) stuck at cell=(%d,%d) pathIndex=%d/%d\n",
+                    printf("HPA* STUCK: test %d, start=(%d,%d) goal=(%d,%d) stuck at cell=(%d,%d) pathIndex=%d/%d\n",
                            test, start.x, start.y, goal.x, goal.y,
                            stuckX, stuckY, GetMoverPathIndex(0), GetMoverPathLength(0));
                 }
             }
         }
 
-        if (test_verbose) printf("JPS+ sparse: pathsFound=%d, moversReachedGoal=%d\n", pathsFound, moversReachedGoal);
+        if (test_verbose) printf("HPA* sparse: pathsFound=%d, moversReachedGoal=%d\n", pathsFound, moversReachedGoal);
         expect(pathsFound > 0);  // At least some paths should be found
         expect(moversReachedGoal == pathsFound);
     }

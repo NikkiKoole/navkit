@@ -16,7 +16,6 @@ uint8_t trackConnections[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 uint8_t exploredGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool needsRebuild = false;
 bool hpaNeedsRebuild = false;
-bool jpsNeedsRebuild = false;
 
 
 // Runtime dimensions - default to max
@@ -30,7 +29,17 @@ int rampCount = 0;
 int chunksY = MAX_GRID_HEIGHT / DEFAULT_CHUNK_SIZE;
 
 void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH) {
+    // Default depth is MAX_GRID_DEPTH on purpose: terrain generators size their
+    // heightmaps from gridDepth (e.g. hills: maxHeight = gridDepth - 2 - rand(0..3)),
+    // and InitGrid() re-inits through here, so generated worlds rely on 16 levels.
+    // Use InitGridWithDimensions() when you want a specific depth.
+    InitGridWithDimensions(width, height, MAX_GRID_DEPTH, chunkW, chunkH);
+}
+
+void InitGridWithDimensions(int width, int height, int depth, int chunkW, int chunkH) {
     // Clamp to max dimensions
+    if (depth > MAX_GRID_DEPTH) depth = MAX_GRID_DEPTH;
+    if (depth < 1) depth = 1;
     if (width > MAX_GRID_WIDTH) width = MAX_GRID_WIDTH;
     if (height > MAX_GRID_HEIGHT) height = MAX_GRID_HEIGHT;
     if (width < 1) width = 1;
@@ -44,7 +53,7 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
 
     gridWidth = width;
     gridHeight = height;
-    gridDepth = MAX_GRID_DEPTH;  // Always use max depth for now
+    gridDepth = depth;
     chunkWidth = chunkW;
     chunkHeight = chunkH;
     chunksX = (gridWidth + chunkWidth - 1) / chunkWidth;   // ceiling division
@@ -67,7 +76,6 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
     }
 
     needsRebuild = true;
-    jpsNeedsRebuild = true;
 }
 
 void InitGridWithSize(int width, int height) {
@@ -308,7 +316,7 @@ void EraseLadder(int x, int y, int z) {
 // uses omnidirectional ramps where a single ramp tile can connect to multiple
 // z+1 exits simultaneously (any adjacent wall with walkable space above).
 // 
-// We chose directional ramps for simpler HPA*/JPS+ graph handling:
+// We chose directional ramps for simpler HPA* graph handling:
 // - 1 ramp = 1 RampLink = 2 entrances (predictable)
 // - DF model would need N RampLinks per ramp (up to 4)
 // - DF model requires rebuilding ramp links when any neighbor wall changes

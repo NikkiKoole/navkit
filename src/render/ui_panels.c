@@ -735,7 +735,7 @@ void DrawUI(void) {
     if (SectionHeader(x, y, "Pathfinding", &sectionPathfinding)) {
         y += 18;
         int prevAlgo = pathAlgorithm;
-        CycleOption(x, y, "Algo", algorithmNames, 4, &pathAlgorithm);
+        CycleOption(x, y, "Algo", algorithmNames, 2, &pathAlgorithm);
         if (pathAlgorithm != prevAlgo) ResetPathStats();
         y += 22;
         CycleOption(x, y, "Dir", directionNames, 2, &currentDirection);
@@ -758,8 +758,6 @@ void DrawUI(void) {
             switch (pathAlgorithm) {
                 case 0: RunAStar(); break;
                 case 1: RunHPAStar(); break;
-                case 2: RunJPS(); break;
-                case 3: RunJpsPlus(); break;
             }
         }
     }

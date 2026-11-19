@@ -163,13 +163,14 @@ static inline bool IsCellAirAt(int z, int y, int x) {
 // Include cell_defs.h after grid.h to use them
 extern bool needsRebuild;      // Generic flag (legacy)
 extern bool hpaNeedsRebuild;   // HPA* specific rebuild flag
-extern bool jpsNeedsRebuild;   // JPS+ specific rebuild flag
 
 // Initialize grid with specific dimensions and default chunk size (16x16)
 void InitGridWithSize(int width, int height);
 
 // Initialize grid with specific dimensions and chunk size
 void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH);
+// Explicit depth (1..MAX_GRID_DEPTH). The variants above always use MAX_GRID_DEPTH.
+void InitGridWithDimensions(int width, int height, int depth, int chunkW, int chunkH);
 
 // Fill z=0 with dirt and grass surface (call after InitGridWithSize for DF-style terrain)
 void FillGroundLevel(void);

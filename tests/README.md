@@ -45,7 +45,7 @@ make bench_jobs        # Run job system benchmarks only
 ```
 tests/
 ├── test_unity.c       # Shared game logic for all tests (includes src/*.c)
-├── test_pathfinding.c # A*, JPS, HPA* pathfinding tests
+├── test_pathfinding.c # A*, HPA* pathfinding tests
 ├── test_mover.c       # Mover movement and pathfinding tests
 ├── test_jobs.c        # Job system and hauling tests
 ├── test_water.c       # Water simulation tests

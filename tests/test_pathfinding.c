@@ -2700,230 +2700,17 @@ describe(hpa_ramp_pathfinding) {
     }
 }
 
-// ============== JPS+ 3D LADDER TESTS ==============
+// ============== HPA* VS A* CONSISTENCY TESTS ==============
+// (Converted from the former JPS+ consistency suite: both must agree on reachability.)
 
-describe(jps_plus_3d_pathfinding) {
-    // JPS+ 3D tests use legacy walkability - they test JPS+ mechanics
-    it("should find path on same z-level using JPS+") {
-        const char* map =
-            "floor:0\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n";
-
-        InitMultiFloorGridFromAscii(map, 8, 8);
-        PrecomputeJpsPlus();
-
-        startPos = (Point){0, 0, 0};
-        goalPos = (Point){15, 15, 0};
-
-        // Run JPS+ 3D
-        RunJpsPlus();
-        int jpsPlusLen = pathLength;
-
-        // Run A* for comparison
-        RunAStar();
-        int astarLen = pathLength;
-
-        expect(jpsPlusLen > 0);
-        expect(astarLen > 0);
-        // JPS+ may have fewer waypoints, but both should find a valid path
-    }
-
-    it("should find path across z-levels using ladder graph") {
-        const char* map =
-            "floor:0\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            ".......L........\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "floor:1\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            ".......L........\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n";
-
-        InitMultiFloorGridFromAscii(map, 8, 8);
-        PrecomputeJpsPlus();
-
-        startPos = (Point){0, 0, 0};   // Start floor 0
-        goalPos = (Point){15, 15, 1};  // Goal floor 1
-
-        // Run JPS+ 3D
-        RunJpsPlus();
-        int jpsPlusLen = pathLength;
-
-        // JPS+ should find a path across z-levels
-        expect(jpsPlusLen > 0);
-
-        // Count z-transitions
-        int zTransitions = 0;
-        for (int i = 0; i < pathLength - 1; i++) {
-            if (path[i].z != path[i+1].z) zTransitions++;
-        }
-        expect(zTransitions >= 1);  // Must use ladder at least once
-    }
-
-    it("JPS+ 3D should find same route as A* 3D") {
-        const char* map =
-            "floor:0\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            ".......L........\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "floor:1\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            ".......L........\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n";
-
-        InitMultiFloorGridFromAscii(map, 8, 8);
-        PrecomputeJpsPlus();
-
-        startPos = (Point){0, 0, 0};
-        goalPos = (Point){15, 15, 1};
-
-        // Run A* 3D first
-        RunAStar();
-        int astarLen = pathLength;
-        Point astarStart = path[pathLength - 1];  // Path is reversed
-        Point astarEnd = path[0];
-
-        // Run JPS+ 3D
-        RunJpsPlus();
-        int jpsPlusLen = pathLength;
-        Point jpsPlusStart = path[pathLength - 1];
-        Point jpsPlusEnd = path[0];
-
-        // Both should find a path
-        expect(astarLen > 0);
-        expect(jpsPlusLen > 0);
-
-        // Both should have correct start and end
-        expect(astarStart.x == 0 && astarStart.y == 0 && astarStart.z == 0);
-        expect(astarEnd.x == 15 && astarEnd.y == 15 && astarEnd.z == 1);
-        expect(jpsPlusStart.x == 0 && jpsPlusStart.y == 0 && jpsPlusStart.z == 0);
-        expect(jpsPlusEnd.x == 15 && jpsPlusEnd.y == 15 && jpsPlusEnd.z == 1);
-    }
-
-    it("should not find path when no ladder connects levels") {
-        const char* map =
-            "floor:0\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "floor:1\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n"
-            "................\n";
-
-        InitMultiFloorGridFromAscii(map, 8, 8);
-        PrecomputeJpsPlus();
-
-        startPos = (Point){0, 0, 0};
-        goalPos = (Point){15, 15, 1};
-
-        RunJpsPlus();
-        expect(pathLength == 0);  // No path without ladder
-    }
-}
-
-// ============== JPS+ VS A* CONSISTENCY TESTS ==============
-
-describe(jps_plus_vs_astar_consistency) {
-    it("JPS+ should match A* on Labyrinth3D lowest level") {
+describe(hpa_vs_astar_consistency) {
+    it("HPA* should match A* on Labyrinth3D lowest level") {
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         // Standard mode needs extra z for ground level
         gridDepth = 5;
         GenerateLabyrinth3D();
-        PrecomputeJpsPlus();
+        BuildEntrances();
+        BuildGraph();
         
         // Test 20 random paths on lowest labyrinth level (z=1, z=0 is ground)
         int targetZ = 1;
@@ -2942,11 +2729,11 @@ describe(jps_plus_vs_astar_consistency) {
             RunAStar();
             int astarLen = pathLength;
             
-            RunJpsPlus();
-            int jpsPlusLen = pathLength;
+            RunHPAStar();
+            int hpaLen = pathLength;
             
             // Both should find path or both should fail
-            if ((astarLen > 0 && jpsPlusLen == 0) || (astarLen == 0 && jpsPlusLen > 0)) {
+            if ((astarLen > 0 && hpaLen == 0) || (astarLen == 0 && hpaLen > 0)) {
                 failures++;
             }
         }
@@ -2954,12 +2741,13 @@ describe(jps_plus_vs_astar_consistency) {
         expect(failures == 0);
     }
 
-    it("JPS+ should match A* on Labyrinth3D highest level") {
+    it("HPA* should match A* on Labyrinth3D highest level") {
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         // Standard mode needs extra z for ground level
         gridDepth = 5;
         GenerateLabyrinth3D();
-        PrecomputeJpsPlus();
+        BuildEntrances();
+        BuildGraph();
         
         // Test 20 random paths on highest labyrinth level (z=4, z=0 is ground)
         int targetZ = 4;
@@ -2978,11 +2766,11 @@ describe(jps_plus_vs_astar_consistency) {
             RunAStar();
             int astarLen = pathLength;
             
-            RunJpsPlus();
-            int jpsPlusLen = pathLength;
+            RunHPAStar();
+            int hpaLen = pathLength;
             
             // Both should find path or both should fail
-            if ((astarLen > 0 && jpsPlusLen == 0) || (astarLen == 0 && jpsPlusLen > 0)) {
+            if ((astarLen > 0 && hpaLen == 0) || (astarLen == 0 && hpaLen > 0)) {
                 failures++;
             }
         }
@@ -2990,11 +2778,12 @@ describe(jps_plus_vs_astar_consistency) {
         expect(failures == 0);
     }
 
-    it("JPS+ 3D should match A* 3D on cross-level paths") {
+    it("HPA* should match A* 3D on cross-level paths") {
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         gridDepth = 5;
         GenerateLabyrinth3D();
-        PrecomputeJpsPlus();
+        BuildEntrances();
+        BuildGraph();
         
         // Test 20 random cross-level paths
         SeedRandom(99999);
@@ -3012,11 +2801,11 @@ describe(jps_plus_vs_astar_consistency) {
             RunAStar();
             int astarLen = pathLength;
             
-            RunJpsPlus();
-            int jpsPlusLen = pathLength;
+            RunHPAStar();
+            int hpaLen = pathLength;
             
             // Both should find path or both should fail
-            if ((astarLen > 0 && jpsPlusLen == 0) || (astarLen == 0 && jpsPlusLen > 0)) {
+            if ((astarLen > 0 && hpaLen == 0) || (astarLen == 0 && hpaLen > 0)) {
                 failures++;
             }
         }
@@ -3024,11 +2813,12 @@ describe(jps_plus_vs_astar_consistency) {
         expect(failures == 0);
     }
 
-    it("JPS+ should match A* on Spiral3D terrain") {
+    it("HPA* should match A* on Spiral3D terrain") {
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         gridDepth = 5;
         GenerateSpiral3D();
-        PrecomputeJpsPlus();
+        BuildEntrances();
+        BuildGraph();
         
         SeedRandom(11111);
         int failures = 0;
@@ -3045,10 +2835,10 @@ describe(jps_plus_vs_astar_consistency) {
             RunAStar();
             int astarLen = pathLength;
             
-            RunJpsPlus();
-            int jpsPlusLen = pathLength;
+            RunHPAStar();
+            int hpaLen = pathLength;
             
-            if ((astarLen > 0 && jpsPlusLen == 0) || (astarLen == 0 && jpsPlusLen > 0)) {
+            if ((astarLen > 0 && hpaLen == 0) || (astarLen == 0 && hpaLen > 0)) {
                 failures++;
             }
         }
@@ -3056,11 +2846,12 @@ describe(jps_plus_vs_astar_consistency) {
         expect(failures == 0);
     }
 
-    it("JPS+ should match A* on Castle terrain") {
+    it("HPA* should match A* on Castle terrain") {
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         gridDepth = 5;
         GenerateCastle();
-        PrecomputeJpsPlus();
+        BuildEntrances();
+        BuildGraph();
         
         SeedRandom(22222);
         int failures = 0;
@@ -3077,10 +2868,10 @@ describe(jps_plus_vs_astar_consistency) {
             RunAStar();
             int astarLen = pathLength;
             
-            RunJpsPlus();
-            int jpsPlusLen = pathLength;
+            RunHPAStar();
+            int hpaLen = pathLength;
             
-            if ((astarLen > 0 && jpsPlusLen == 0) || (astarLen == 0 && jpsPlusLen > 0)) {
+            if ((astarLen > 0 && hpaLen == 0) || (astarLen == 0 && hpaLen > 0)) {
                 failures++;
             }
         }
@@ -3089,11 +2880,12 @@ describe(jps_plus_vs_astar_consistency) {
     }
 
 
-    it("JPS+ should match A* on Mixed terrain") {
+    it("HPA* should match A* on Mixed terrain") {
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         gridDepth = 5;
         GenerateMixed();
-        PrecomputeJpsPlus();
+        BuildEntrances();
+        BuildGraph();
         
         SeedRandom(44444);
         int failures = 0;
@@ -3110,10 +2902,10 @@ describe(jps_plus_vs_astar_consistency) {
             RunAStar();
             int astarLen = pathLength;
             
-            RunJpsPlus();
-            int jpsPlusLen = pathLength;
+            RunHPAStar();
+            int hpaLen = pathLength;
             
-            if ((astarLen > 0 && jpsPlusLen == 0) || (astarLen == 0 && jpsPlusLen > 0)) {
+            if ((astarLen > 0 && hpaLen == 0) || (astarLen == 0 && hpaLen > 0)) {
                 failures++;
             }
         }
@@ -3750,9 +3542,9 @@ describe(pathfinding_multi_z_correctness) {
     // ---- Finding 1: chunkHeapZ not set for multi-z A* chunk searches ----
     //
     // The chunk-level heap reads f-values from nodeData[chunkHeapZ][y][x].
-    // Only JpsPlusChunk2D sets chunkHeapZ. AStarChunk and AStarChunkMultiTarget
-    // write to nodeData[sz] but the heap still reads from nodeData[0] (the default).
-    // On z>0 the heap ordering becomes random, producing wrong edge costs.
+    // (Fixed) AStarChunk and AStarChunkMultiTarget used to leave chunkHeapZ at 0
+    // while writing to nodeData[sz], so on z>0 the heap ordering was random,
+    // producing wrong edge costs. Regression guard.
     //
     // Test strategy: Create a map where z=0 has walls making a long detour,
     // but z=1 is fully open. Build the graph. The edge cost between two
@@ -4763,8 +4555,7 @@ static void run_all_tests(void) {
     test(hpa_ladder_pathfinding);
     test(hpa_fallback);
     test(hpa_ramp_pathfinding);
-    test(jps_plus_3d_pathfinding);
-    test(jps_plus_vs_astar_consistency);
+    test(hpa_vs_astar_consistency);
     test(ladder_placement);
     test(ladder_erase);
     test(df_walkability);
