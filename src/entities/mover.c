@@ -1728,7 +1728,9 @@ void ProcessMoverRepaths(void) {
         double pathTime = (GetTime() - pathStart) * 1000.0;
 
         // A* fallback disabled: HPA* handles ramps correctly now.
-        // The fallback was burning 6-14s on large grids confirming unreachable paths.
+        // It used to burn 6-14s on large grids confirming unreachable paths (RunAStar had no
+        // priority queue). That's fixed — an unreachable 512x512 search is now ~30-50ms —
+        // but that's still too costly per failed repath, so it stays off.
         // Re-enable if HPA* misses valid ramp paths (check test_pathfinding.c hpa_fallback).
         // if (len == 0 && algo == PATH_ALGO_HPA && rampCount > 0) {
         //     repathFallbackCount++;

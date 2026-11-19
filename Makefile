@@ -504,13 +504,13 @@ bench_pathfinding: $(TEST_UNITY_OBJ)
 	./$(BINDIR)/bench_pathfinding
 
 # A* linear-scan vs binary-heap A/B (docs/todo/pathfinding/astar-priority-queue-and-extraction.md)
-# Not in `bench` — the current RunAStar is slow enough (~4s per 128x128 path) to dominate the run.
+# Regression guard: production RunAStar must match the reference heap A* costs.
 bench_astar_heap: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(bench_astar_heap_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/bench_astar_heap
 
 # Run all benchmarks
-bench: bench_jobs bench_items bench_pathfinding
+bench: bench_jobs bench_items bench_pathfinding bench_astar_heap
 
 # Aliases for convenience (make path, make steer, make crowd, make soundsystem-prototype)
 path: $(BINDIR) $(BINDIR)/path

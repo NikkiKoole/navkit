@@ -71,6 +71,7 @@ extern Point path[MAX_PATH];
 extern int pathLength;
 extern int nodesExplored;
 extern double lastPathTime;
+extern int lastPathCost;       // g-cost at goal from last RunAStar(), -1 if unreachable
 extern double hpaAbstractTime;    // Time for abstract graph search
 extern double hpaRefinementTime;  // Time for path refinement (local A*)
 

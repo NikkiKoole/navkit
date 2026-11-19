@@ -7,9 +7,14 @@
 // pop (pathfinding.c:1648) and clears the full array on entry (:1623), even though a
 // working binary heap already sits unused in the same file (:227).
 //
-// V0 = current RunAStar()            : O(W*H*D) scan per pop + full nodeData clear
-// V1 = heap + full clear             : isolates the priority-queue win
-// V2 = heap + generation stamps      : also removes the O(W*H*D) init clear
+// HISTORY: this bench drove the fix. RunAStar() used to linear-scan nodeData on every
+// pop (2s per 128x128 path). It now uses heap + generation stamps (the V2 design).
+// The bench is kept as a regression guard: V0 (the real RunAStar) must match the
+// reference implementations' costs and stay in the same ballpark as V2.
+//
+// V0 = RunAStar() in pathfinding.c   : heap + generation stamps (production)
+// V1 = heap + full clear             : reference
+// V2 = heap + generation stamps      : reference
 //
 // V1/V2 are throwaway reference implementations living only in this file — they exist
 // to size the win, not to be linked by the game. All three MUST report identical goal
@@ -256,8 +261,7 @@ static void MakeSerpentine(int w, int h) {
 }
 
 static int RunAStarGoalCost(void) {
-    // RunAStar leaves g at goal in nodeData
-    return nodeData[goalPos.z][goalPos.y][goalPos.x].g;
+    return lastPathCost;
 }
 
 static void Scenario2(const char *name, int w, int h, int iters, bool runV0) {
@@ -292,9 +296,9 @@ static void Scenario2(const char *name, int w, int h, int iters, bool runV0) {
         printf("%-22s %4dx%-4d  pops=%-7d  cost=%d/%d/%d %s\n",
                name, w, h, explored0, cost0, cost1, cost2,
                (cost0 == cost1 && cost1 == cost2) ? "OK" : "*** MISMATCH ***");
-        printf("    V0 scan+clear : %9.3f ms\n", e0);
-        printf("    V1 heap+clear : %9.3f ms   (%.0fx faster)\n", e1, e0 / e1);
-        printf("    V2 heap+gen   : %9.3f ms   (%.0fx faster)\n\n", e2, e0 / e2);
+        printf("    V0 RunAStar   : %9.3f ms\n", e0);
+        printf("    V1 heap+clear : %9.3f ms   (%.2fx of V0)\n", e1, e1 / e0);
+        printf("    V2 heap+gen   : %9.3f ms   (%.2fx of V0)\n\n", e2, e2 / e0);
     } else {
         // Extrapolate V0 rather than run it: at these sizes a single path takes
         // minutes to hours. V0's work is pops * (W*H*D) cells scanned; the constant
@@ -326,10 +330,10 @@ int main(void) {
     MakeSerpentine(64, 64);   Scenario("serpentine", 64, 64, 3);
     MakeSerpentine(128, 128); Scenario("serpentine", 128, 128, 1);
 
-    printf("--- realistic game grid sizes (V0 extrapolated, too slow to run) ---\n\n");
-    MakeOpen(256, 256);       Scenario2("open", 256, 256, 20, false);
-    MakeOpen(512, 512);       Scenario2("open", 512, 512, 10, false);
-    MakeSerpentine(512, 512); Scenario2("serpentine", 512, 512, 5, false);
+    printf("--- realistic game grid sizes ---\n\n");
+    MakeOpen(256, 256);       Scenario("open", 256, 256, 20);
+    MakeOpen(512, 512);       Scenario("open", 512, 512, 10);
+    MakeSerpentine(512, 512); Scenario("serpentine", 512, 512, 5);
 
     return 0;
 }

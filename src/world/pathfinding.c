@@ -51,6 +51,7 @@
 #include "pathfinding.h"
 #include "../../vendor/raylib.h"
 #include <stdlib.h>
+#include <string.h>
 
 #define COST_INF 999999
 
@@ -1613,22 +1614,135 @@ static int Heuristic3D(int x0, int y0, int z0, int x1, int y1, int z1) {
     }
 }
 
+// ============================================================================
+// Full-grid A* state (heap + generation stamps)
+// ============================================================================
+// Sized to the actual grid (W*H*D) on demand, not the compile-time maxima.
+// Generation stamps make per-call init O(1): a node whose gen != astarCurGen
+// is treated as fresh the first time it is touched in a search.
+static int*      astarG = NULL;
+static int*      astarF = NULL;
+static int*      astarParent = NULL;
+static uint8_t*  astarState = NULL;   // 0=unseen 1=open 2=closed
+static uint32_t* astarGen = NULL;
+static int*      astarHeap = NULL;
+static int*      astarHeapIdx = NULL;
+static int       astarHeapCount = 0;
+static int       astarCap = 0;
+static uint32_t  astarCurGen = 0;
+int lastPathCost = -1;
+
+static void AStarEnsureCapacity(int n) {
+    if (n <= astarCap) return;
+    free(astarG); free(astarF); free(astarParent); free(astarState);
+    free(astarGen); free(astarHeap); free(astarHeapIdx);
+    astarG       = malloc((size_t)n * sizeof(int));
+    astarF       = malloc((size_t)n * sizeof(int));
+    astarParent  = malloc((size_t)n * sizeof(int));
+    astarState   = malloc((size_t)n);
+    astarGen     = calloc((size_t)n, sizeof(uint32_t));
+    astarHeap    = malloc((size_t)n * sizeof(int));
+    astarHeapIdx = malloc((size_t)n * sizeof(int));
+    astarCap = n;
+    astarCurGen = 0;
+}
+
+static inline int AStarNodeId(int x, int y, int z) {
+    return (z * gridHeight + y) * gridWidth + x;
+}
+
+static inline void AStarTouch(int id) {
+    if (astarGen[id] != astarCurGen) {
+        astarGen[id] = astarCurGen;
+        astarG[id] = COST_INF;
+        astarF[id] = COST_INF;
+        astarParent[id] = -1;
+        astarState[id] = 0;
+        astarHeapIdx[id] = -1;
+    }
+}
+
+static void AStarBubbleUp(int i) {
+    while (i > 0) {
+        int p = (i - 1) / 2;
+        if (astarF[astarHeap[p]] <= astarF[astarHeap[i]]) break;
+        int t = astarHeap[p]; astarHeap[p] = astarHeap[i]; astarHeap[i] = t;
+        astarHeapIdx[astarHeap[p]] = p;
+        astarHeapIdx[astarHeap[i]] = i;
+        i = p;
+    }
+}
+
+static void AStarBubbleDown(int i) {
+    for (;;) {
+        int l = 2 * i + 1, r = l + 1, s = i;
+        if (l < astarHeapCount && astarF[astarHeap[l]] < astarF[astarHeap[s]]) s = l;
+        if (r < astarHeapCount && astarF[astarHeap[r]] < astarF[astarHeap[s]]) s = r;
+        if (s == i) break;
+        int t = astarHeap[s]; astarHeap[s] = astarHeap[i]; astarHeap[i] = t;
+        astarHeapIdx[astarHeap[s]] = s;
+        astarHeapIdx[astarHeap[i]] = i;
+        i = s;
+    }
+}
+
+static int AStarPop(void) {
+    int top = astarHeap[0];
+    astarHeapCount--;
+    if (astarHeapCount > 0) {
+        astarHeap[0] = astarHeap[astarHeapCount];
+        astarHeapIdx[astarHeap[0]] = 0;
+        AStarBubbleDown(0);
+    }
+    astarHeapIdx[top] = -1;
+    return top;
+}
+
+// Relax edge cur -> (nx,ny,nz) with the given step cost. Caller has already
+// checked walkability / transition legality and bounds.
+static inline void AStarRelax(int cur, int nx, int ny, int nz, int stepCost) {
+    int nid = AStarNodeId(nx, ny, nz);
+    AStarTouch(nid);
+    if (astarState[nid] == 2) return;
+    int ng = astarG[cur] + stepCost;
+    if (ng >= astarG[nid]) return;
+    astarG[nid] = ng;
+    astarF[nid] = ng + Heuristic3D(nx, ny, nz, goalPos.x, goalPos.y, goalPos.z);
+    astarParent[nid] = cur;
+    if (astarHeapIdx[nid] >= 0) {
+        AStarBubbleUp(astarHeapIdx[nid]);
+    } else {
+        astarState[nid] = 1;
+        astarHeap[astarHeapCount] = nid;
+        astarHeapIdx[nid] = astarHeapCount;
+        astarHeapCount++;
+        AStarBubbleUp(astarHeapCount - 1);
+    }
+}
+
 void RunAStar(void) {
     if (startPos.x < 0 || goalPos.x < 0) return;
     pathLength = 0;
     nodesExplored = 0;
+    lastPathCost = -1;
     double startTime = GetTime();
 
-    // Initialize nodeData for all z-levels
-    for (int z = 0; z < gridDepth; z++)
-        for (int y = 0; y < gridHeight; y++)
-            for (int x = 0; x < gridWidth; x++)
-                nodeData[z][y][x] = (AStarNode){COST_INF, COST_INF, -1, -1, -1, false, false};
+    AStarEnsureCapacity(gridWidth * gridHeight * gridDepth);
+    if (++astarCurGen == 0) {
+        // Wrapped after 2^32 searches: reset stamps so stale nodes can't alias.
+        memset(astarGen, 0, (size_t)astarCap * sizeof(uint32_t));
+        astarCurGen = 1;
+    }
+    astarHeapCount = 0;
 
-    int startZ = startPos.z;
-    nodeData[startZ][startPos.y][startPos.x].g = 0;
-    nodeData[startZ][startPos.y][startPos.x].f = Heuristic3D(startPos.x, startPos.y, startZ, goalPos.x, goalPos.y, goalPos.z);
-    nodeData[startZ][startPos.y][startPos.x].open = true;
+    int sid = AStarNodeId(startPos.x, startPos.y, startPos.z);
+    AStarTouch(sid);
+    astarG[sid] = 0;
+    astarF[sid] = Heuristic3D(startPos.x, startPos.y, startPos.z, goalPos.x, goalPos.y, goalPos.z);
+    astarState[sid] = 1;
+    astarHeap[0] = sid;
+    astarHeapIdx[sid] = 0;
+    astarHeapCount = 1;
 
     // Direction arrays for XY movement
     int dx4[] = {0, 1, 0, -1};
@@ -1640,159 +1754,87 @@ void RunAStar(void) {
     int* dy = use8Dir ? dy8 : dy4;
     int numDirs = use8Dir ? 8 : 4;
 
-    int maxIterations = gridWidth * gridHeight * gridDepth;
-    int iterations = 0;
-    while (1) {
-        // Find best open node across all z-levels
-        int bestX = -1, bestY = -1, bestZ = -1, bestF = COST_INF;
-        for (int z = 0; z < gridDepth; z++)
-            for (int y = 0; y < gridHeight; y++)
-                for (int x = 0; x < gridWidth; x++)
-                    if (nodeData[z][y][x].open && nodeData[z][y][x].f < bestF) {
-                        bestF = nodeData[z][y][x].f;
-                        bestX = x;
-                        bestY = y;
-                        bestZ = z;
-                    }
-        if (bestX < 0) break;
-        if (++iterations > maxIterations) break;
-        
-        // Check if we reached the goal (must match z too!)
-        if (bestX == goalPos.x && bestY == goalPos.y && bestZ == goalPos.z) {
-            int cx = goalPos.x, cy = goalPos.y, cz = goalPos.z;
-            while (cx >= 0 && cy >= 0 && cz >= 0 && pathLength < MAX_PATH) {
-                path[pathLength++] = (Point){cx, cy, cz};
-                int px = nodeData[cz][cy][cx].parentX;
-                int py = nodeData[cz][cy][cx].parentY;
-                int pz = nodeData[cz][cy][cx].parentZ;
-                cx = px; cy = py; cz = pz;
+    int layer = gridWidth * gridHeight;
+    int goalId = AStarNodeId(goalPos.x, goalPos.y, goalPos.z);
+
+    while (astarHeapCount > 0) {
+        int cur = AStarPop();
+        if (astarState[cur] == 2) continue;
+
+        // Reached the goal (must match z too!)
+        if (cur == goalId) {
+            lastPathCost = astarG[cur];
+            int id = cur;
+            while (id >= 0 && pathLength < MAX_PATH) {
+                int z = id / layer;
+                int rem = id % layer;
+                path[pathLength++] = (Point){rem % gridWidth, rem / gridWidth, z};
+                id = astarParent[id];
             }
             break;
         }
-        
-        nodeData[bestZ][bestY][bestX].open = false;
-        nodeData[bestZ][bestY][bestX].closed = true;
+
+        astarState[cur] = 2;
         nodesExplored++;
-        
+
+        int bestZ = cur / layer;
+        int rem = cur % layer;
+        int bestY = rem / gridWidth;
+        int bestX = rem % gridWidth;
+
         // Expand XY neighbors on same z-level
         for (int i = 0; i < numDirs; i++) {
             int nx = bestX + dx[i], ny = bestY + dy[i], nz = bestZ;
             if (!IsCellWalkableAt(nz, ny, nx)) continue;
-            if (nodeData[nz][ny][nx].closed) continue;
 
-            // For diagonal movement, check that we can actually move diagonally
-            // (not cutting corners through walls)
+            // For diagonal movement, don't cut corners through walls
             if (use8Dir && dx[i] != 0 && dy[i] != 0) {
-                if (!IsCellWalkableAt(bestZ, bestY, bestX + dx[i]) || 
+                if (!IsCellWalkableAt(bestZ, bestY, bestX + dx[i]) ||
                     !IsCellWalkableAt(bestZ, bestY + dy[i], bestX))
                     continue;
             }
-            
+
             // Block side entry to ramps (can only enter from low or high side)
             if (!CanEnterRampFromSide(nx, ny, nz, bestX, bestY)) continue;
 
             // Cost: base 10/14 scaled by terrain cost
             int baseCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
-            int moveCost = (baseCost * GetCellMoveCost(nx, ny, nz)) / 10;
-            int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
+            AStarRelax(cur, nx, ny, nz, (baseCost * GetCellMoveCost(nx, ny, nz)) / 10);
+        }
 
-            if (ng < nodeData[nz][ny][nx].g) {
-                nodeData[nz][ny][nx].g = ng;
-                nodeData[nz][ny][nx].f = ng + Heuristic3D(nx, ny, nz, goalPos.x, goalPos.y, goalPos.z);
-                nodeData[nz][ny][nx].parentX = bestX;
-                nodeData[nz][ny][nx].parentY = bestY;
-                nodeData[nz][ny][nx].parentZ = bestZ;
-                nodeData[nz][ny][nx].open = true;
-            }
-        }
-        
-        // Expand Z neighbors (ladder connections)
-        // Try going up (z+1)
+        // Ladder connections (cost of destination cell)
         if (CanClimbUp(bestX, bestY, bestZ)) {
-            int nz = bestZ + 1;
-            if (!nodeData[nz][bestY][bestX].closed) {
-                int moveCost = GetCellMoveCost(bestX, bestY, nz);  // Cost of destination cell
-                int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
-                if (ng < nodeData[nz][bestY][bestX].g) {
-                    nodeData[nz][bestY][bestX].g = ng;
-                    nodeData[nz][bestY][bestX].f = ng + Heuristic3D(bestX, bestY, nz, goalPos.x, goalPos.y, goalPos.z);
-                    nodeData[nz][bestY][bestX].parentX = bestX;
-                    nodeData[nz][bestY][bestX].parentY = bestY;
-                    nodeData[nz][bestY][bestX].parentZ = bestZ;
-                    nodeData[nz][bestY][bestX].open = true;
-                }
-            }
+            AStarRelax(cur, bestX, bestY, bestZ + 1, GetCellMoveCost(bestX, bestY, bestZ + 1));
         }
-        // Try going down (z-1)
         if (CanClimbDown(bestX, bestY, bestZ)) {
-            int nz = bestZ - 1;
-            if (!nodeData[nz][bestY][bestX].closed) {
-                int moveCost = GetCellMoveCost(bestX, bestY, nz);  // Cost of destination cell
-                int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
-                if (ng < nodeData[nz][bestY][bestX].g) {
-                    nodeData[nz][bestY][bestX].g = ng;
-                    nodeData[nz][bestY][bestX].f = ng + Heuristic3D(bestX, bestY, nz, goalPos.x, goalPos.y, goalPos.z);
-                    nodeData[nz][bestY][bestX].parentX = bestX;
-                    nodeData[nz][bestY][bestX].parentY = bestY;
-                    nodeData[nz][bestY][bestX].parentZ = bestZ;
-                    nodeData[nz][bestY][bestX].open = true;
-                }
-            }
+            AStarRelax(cur, bestX, bestY, bestZ - 1, GetCellMoveCost(bestX, bestY, bestZ - 1));
         }
-        
+
         // === RAMP Z-TRANSITIONS ===
-        // Try going UP via ramp (current cell is ramp, move to exit tile at z+1)
+        // Going UP via ramp (current cell is ramp, move to exit tile at z+1)
         if (CanWalkUpRampAt(bestX, bestY, bestZ)) {
             int highDx, highDy;
             GetRampHighSideOffset(grid[bestZ][bestY][bestX], &highDx, &highDy);
             int exitX = bestX + highDx;
             int exitY = bestY + highDy;
             int exitZ = bestZ + 1;
-            
-            if (!nodeData[exitZ][exitY][exitX].closed) {
-                int moveCost = (14 * GetCellMoveCost(exitX, exitY, exitZ)) / 10;  // Diagonal + terrain
-                int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
-                if (ng < nodeData[exitZ][exitY][exitX].g) {
-                    nodeData[exitZ][exitY][exitX].g = ng;
-                    nodeData[exitZ][exitY][exitX].f = ng + Heuristic3D(exitX, exitY, exitZ, goalPos.x, goalPos.y, goalPos.z);
-                    nodeData[exitZ][exitY][exitX].parentX = bestX;
-                    nodeData[exitZ][exitY][exitX].parentY = bestY;
-                    nodeData[exitZ][exitY][exitX].parentZ = bestZ;
-                    nodeData[exitZ][exitY][exitX].open = true;
-                }
+            if (exitX >= 0 && exitX < gridWidth && exitY >= 0 && exitY < gridHeight && exitZ < gridDepth) {
+                AStarRelax(cur, exitX, exitY, exitZ, (14 * GetCellMoveCost(exitX, exitY, exitZ)) / 10);
             }
         }
-        
-        // Try going DOWN via ramp (check if there's a ramp below whose high side we're on)
+
+        // Going DOWN via ramp (a ramp below whose high side we're on)
         if (bestZ > 0) {
-            // Check the 4 potential ramp positions that could connect to us
             int checkOffsets[4][2] = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};  // N, E, S, W
             CellType matchingRamps[4] = {CELL_RAMP_S, CELL_RAMP_W, CELL_RAMP_N, CELL_RAMP_E};
-            
             for (int i = 0; i < 4; i++) {
                 int rampX = bestX + checkOffsets[i][0];
                 int rampY = bestY + checkOffsets[i][1];
                 int rampZ = bestZ - 1;
-                
                 if (rampX < 0 || rampX >= gridWidth || rampY < 0 || rampY >= gridHeight) continue;
-                
-                CellType below = grid[rampZ][rampY][rampX];
-                
-                // Check if this ramp's high side points to our current position
-                if (below == matchingRamps[i]) {
-                    if (!nodeData[rampZ][rampY][rampX].closed && IsCellWalkableAt(rampZ, rampY, rampX)) {
-                        int moveCost = (14 * GetCellMoveCost(rampX, rampY, rampZ)) / 10;  // Diagonal + terrain
-                        int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
-                        if (ng < nodeData[rampZ][rampY][rampX].g) {
-                            nodeData[rampZ][rampY][rampX].g = ng;
-                            nodeData[rampZ][rampY][rampX].f = ng + Heuristic3D(rampX, rampY, rampZ, goalPos.x, goalPos.y, goalPos.z);
-                            nodeData[rampZ][rampY][rampX].parentX = bestX;
-                            nodeData[rampZ][rampY][rampX].parentY = bestY;
-                            nodeData[rampZ][rampY][rampX].parentZ = bestZ;
-                            nodeData[rampZ][rampY][rampX].open = true;
-                        }
-                    }
-                }
+                if (grid[rampZ][rampY][rampX] != matchingRamps[i]) continue;
+                if (!IsCellWalkableAt(rampZ, rampY, rampX)) continue;
+                AStarRelax(cur, rampX, rampY, rampZ, (14 * GetCellMoveCost(rampX, rampY, rampZ)) / 10);
             }
         }
     }
