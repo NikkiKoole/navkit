@@ -219,6 +219,7 @@ Vec2 FilterAvoidanceByWalls(float x, float y, int z, Vec2 avoidance);
 extern float avoidStrengthOpen;    // Avoidance strength in open areas
 extern float avoidStrengthClosed;  // Avoidance strength near walls
 extern bool useDirectionalAvoidance;  // Filter avoidance by wall clearance
+extern bool useTunnelYielding;       // Wait at 1-wide passages for oncoming movers
 
 // Test/debug toggles for deterministic behavior
 extern bool useRandomizedCooldowns;   // When true, repath cooldowns are randomized (avoids sync spikes)

@@ -2341,6 +2341,77 @@ describe(avoidance_levels) {
     }
 }
 
+// Rooms A (x 1..6) and B (x 23..28), rows 2..8, joined by a corridor at x 7..22
+// that is `width` cells tall. Movers start in opposite rooms.
+static void SetupTwoRooms(int width) {
+    InitGridWithSizeAndChunkSize(32, 12, 8, 8);
+    for (int y = 0; y < 12; y++)
+        for (int x = 0; x < 32; x++) {
+            bool roomA = x >= 1 && x <= 6 && y >= 2 && y <= 8, roomB = x >= 23 && x <= 28 && y >= 2 && y <= 8;
+            bool corridor = y >= 5 && y < 5 + width && x >= 7 && x <= 22;
+            grid[0][y][x] = (roomA || roomB || corridor) ? CELL_AIR : CELL_WALL;
+        }
+    BuildEntrances();
+    BuildGraph();
+    InitMoverSpatialGrid(32 * CELL_SIZE, 12 * CELL_SIZE);
+    ClearMovers();
+    endlessMoverMode = false;
+    static Point p[MAX_PATH];
+    Point starts[2] = {{3, 5, 0}, {26, 5, 0}}, goals[2] = {{26, 5, 0}, {3, 5, 0}};
+    for (int k = 0; k < 2; k++) {
+        int len = FindPath(PATH_ALGO_HPA, starts[k], goals[k], p, MAX_PATH);
+        InitMoverWithPath(&movers[k], starts[k].x * CELL_SIZE + CELL_SIZE / 2, starts[k].y * CELL_SIZE + CELL_SIZE / 2,
+                          0, goals[k], 100.0f, p, len);
+    }
+    moverCount = 2;
+}
+
+// Runs until both arrive; returns ticks (or -1), and the closest approach inside the corridor
+static int RunTwoRooms(float* closestInCorridor) {
+    *closestInCorridor = 1e9f;
+    for (int t = 0; t < 4000; t++) {
+        Tick();
+        int ax = (int)(movers[0].x / CELL_SIZE), bx = (int)(movers[1].x / CELL_SIZE);
+        if ((ax >= 7 && ax <= 22) || (bx >= 7 && bx <= 22)) {
+            float dx = movers[0].x - movers[1].x, dy = movers[0].y - movers[1].y;
+            float d = sqrtf(dx * dx + dy * dy);
+            if (d < *closestInCorridor) *closestInCorridor = d;
+        }
+        if (movers[0].pathIndex < 0 && movers[1].pathIndex < 0) return t;
+    }
+    return -1;
+}
+
+describe(tunnel_yielding) {
+    it("movers don't walk through each other in a 1-wide tunnel: one waits at the entrance") {
+        bool saved = useTunnelYielding;
+        useTunnelYielding = true;
+        SetupTwoRooms(1);
+        float closest;
+        int ticks = RunTwoRooms(&closest);
+        expect(ticks > 0);                       // both arrive
+        expect(closest > CELL_SIZE * 0.8f);      // never overlapping (was ~1 px without yielding)
+        useTunnelYielding = false;
+        SetupTwoRooms(1);
+        RunTwoRooms(&closest);
+        expect(closest < CELL_SIZE * 0.5f);      // documents the old ghosting behaviour
+        useTunnelYielding = saved;
+    }
+
+    it("no waiting in a 2-wide corridor (not a single-lane passage)") {
+        bool saved = useTunnelYielding;
+        float closest;
+        useTunnelYielding = true;
+        SetupTwoRooms(2);
+        int withYield = RunTwoRooms(&closest);
+        useTunnelYielding = false;
+        SetupTwoRooms(2);
+        int without = RunTwoRooms(&closest);
+        expect(withYield > 0 && withYield == without);
+        useTunnelYielding = saved;
+    }
+}
+
 describe(repath_budget) {
     it("cooldowns tick for waiting movers even after the frame's repath budget is spent") {
         InitGridWithSizeAndChunkSize(32, 32, 8, 8);
@@ -2571,6 +2642,7 @@ int main(int argc, char* argv[]) {
     test(staggered_updates);
     test(workshop_mover_collision);
     test(repath_budget);
+    test(tunnel_yielding);
     test(avoidance_levels);
     return summary();
 }

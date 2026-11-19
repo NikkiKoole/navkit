@@ -55,6 +55,8 @@ int repathFallbackCount = 0;
 // mover that got a repath, so with more than MAX_REPATHS_PER_FRAME movers waiting
 // nobody starves (the old loop always started at mover 0). Reset by ClearMovers.
 static int repathCursor = 0;
+// Seconds each mover has been waiting at a narrow passage (not saved; reset by ClearMovers)
+static float moverYieldTime[MAX_MOVERS];
 int repathHpaSuccessCount = 0;
 unsigned long currentTick = 0;
 bool useStringPulling = true;
@@ -69,6 +71,7 @@ bool useWallSliding = true;
 float avoidStrengthOpen = 0.5f;
 float avoidStrengthClosed = 0.0f;
 bool useDirectionalAvoidance = true;
+bool useTunnelYielding = true;       // single-lane rule for 1-wide passages (see MoverShouldYield)
 PathAlgorithm moverPathAlgorithm = PATH_ALGO_HPA;  // Default to HPA*
 bool useRandomizedCooldowns = true;   // Default on for demo perf, tests can disable
 bool useStaggeredUpdates = true;      // Default on for demo perf, tests can disable
@@ -321,6 +324,96 @@ Vec2 ComputeMoverAvoidance(int moverIndex) {
     }
 
     return avoidance;
+}
+
+// =============================================================================
+// Single-lane passages (yielding)
+// =============================================================================
+// A narrow cell has walls on both sides (left+right or above+below). A mover
+// about to enter a stretch of narrow cells waits at the entrance while someone
+// inside is coming the other way, or while someone with priority is about to
+// enter from the far end. Whoever is already inside always goes first, so
+// nobody has to back out, and exactly one of two simultaneous arrivals waits.
+// Movers have no hard bodies: if two still meet, they pass through as before.
+
+#define YIELD_LOOKAHEAD_CELLS 24
+#define YIELD_TIMEOUT 6.0f      // give up waiting (e.g. someone stands still inside)
+
+static bool IsNarrowCell(int x, int y, int z) {
+    if (!IsCellWalkableAt(z, y, x)) return false;
+    bool eastWest = !IsCellWalkableAt(z, y, x - 1) && !IsCellWalkableAt(z, y, x + 1);
+    bool northSouth = !IsCellWalkableAt(z, y - 1, x) && !IsCellWalkableAt(z, y + 1, x);
+    return eastWest || northSouth;
+}
+
+// Cells the mover will walk through next on its current level, following its
+// (string-pulled) waypoints cell by cell. Returns the count.
+static int UpcomingRouteCells(int i, Point* out, int maxCells) {
+    const Mover* m = &movers[i];
+    int cx = (int)(m->x / CELL_SIZE), cy = (int)(m->y / CELL_SIZE), z = (int)m->z;
+    int n = 0;
+    for (int k = m->pathIndex; k >= 0 && n < maxCells; k--) {
+        Point wp = moverPaths[i][k];
+        if (wp.z != z) break;                       // ladder/ramp: stop at the level change
+        int x0 = cx, y0 = cy, dx = abs(wp.x - x0), dy = -abs(wp.y - y0);
+        int sx = x0 < wp.x ? 1 : -1, sy = y0 < wp.y ? 1 : -1, err = dx + dy;
+        while (n < maxCells && (x0 != wp.x || y0 != wp.y)) {
+            int e2 = 2 * err;
+            if (e2 >= dy) { err += dy; x0 += sx; }
+            if (e2 <= dx) { err += dx; y0 += sy; }
+            out[n++] = (Point){x0, y0, z};
+        }
+        cx = wp.x; cy = wp.y;
+    }
+    return n;
+}
+
+static inline bool PointsEqual(Point a, Point b) { return a.x == b.x && a.y == b.y && a.z == b.z; }
+
+// Does mover a have priority over mover b? Busy (job) beats idle; then lower index.
+static bool MoverHasPriority(int a, int b) {
+    bool aBusy = movers[a].currentJobId >= 0, bBusy = movers[b].currentJobId >= 0;
+    if (aBusy != bBusy) return aBusy;
+    return a < b;
+}
+
+static bool MoverShouldYield(int i) {
+    Mover* m = &movers[i];
+    int cx = (int)(m->x / CELL_SIZE), cy = (int)(m->y / CELL_SIZE), z = (int)m->z;
+    if (m->pathIndex < 0 || IsNarrowCell(cx, cy, z)) return false;   // already inside: keep going
+
+    Point route[YIELD_LOOKAHEAD_CELLS + 2];
+    // Cheap check first: at an entrance, the narrow stretch starts within the next 2 cells
+    int n = UpcomingRouteCells(i, route, 2);
+    int start = -1;
+    for (int k = 0; k < n; k++) if (IsNarrowCell(route[k].x, route[k].y, z)) { start = k; break; }
+    if (start < 0) return false;
+    n = UpcomingRouteCells(i, route, YIELD_LOOKAHEAD_CELLS + 2);
+    int end = start;
+    while (end + 1 < n && IsNarrowCell(route[end + 1].x, route[end + 1].y, z)) end++;
+    int beyond = end + 1 < n ? end + 1 : -1;                          // cell just past the far end
+
+    float myDx = moverPaths[i][m->pathIndex].x * CELL_SIZE + CELL_SIZE * 0.5f - m->x;
+    float myDy = moverPaths[i][m->pathIndex].y * CELL_SIZE + CELL_SIZE * 0.5f - m->y;
+
+    for (int j = 0; j < moverCount; j++) {
+        if (j == i) continue;
+        const Mover* o = &movers[j];
+        if (!o->active || o->pathIndex < 0 || (int)o->z != z) continue;
+        int ox = (int)(o->x / CELL_SIZE), oy = (int)(o->y / CELL_SIZE);
+        if (abs(ox - cx) > YIELD_LOOKAHEAD_CELLS + 2 || abs(oy - cy) > YIELD_LOOKAHEAD_CELLS + 2) continue;
+        Point oc = {ox, oy, z};
+        // Coming the other way?
+        float oDx = moverPaths[j][o->pathIndex].x * CELL_SIZE + CELL_SIZE * 0.5f - o->x;
+        float oDy = moverPaths[j][o->pathIndex].y * CELL_SIZE + CELL_SIZE * 0.5f - o->y;
+        if (myDx * oDx + myDy * oDy >= 0.0f) continue;
+
+        for (int k = start; k <= end; k++)
+            if (PointsEqual(route[k], oc)) return true;               // oncoming mover inside the stretch
+        if (beyond >= 0 && PointsEqual(route[beyond], oc) && MoverHasPriority(j, i))
+            return true;                                              // about to enter from the far end, has priority
+    }
+    return false;
 }
 
 bool IsMoverInOpenArea(float x, float y, int z) {
@@ -757,6 +850,7 @@ void InitMoverWithPath(Mover* m, float x, float y, float z, Point goal, float sp
 
 void ClearMovers(void) {
     repathCursor = 0;
+    memset(moverYieldTime, 0, sizeof(moverYieldTime));
     // Drop carried items on the ground at mover's position
     for (int i = 0; i < moverCount; i++) {
         if (!movers[i].active) continue;
@@ -1537,6 +1631,18 @@ void UpdateMovers(void) {
             } else {
                 m->timeNearWaypoint = 0.0f;  // Reset when far from waypoint
             }
+            // Single-lane passage ahead with oncoming traffic: wait at the entrance
+            if (useTunnelYielding) {
+                if (moverYieldTime[i] < YIELD_TIMEOUT && MoverShouldYield(i)) {
+                    moverYieldTime[i] += dt;
+                    m->timeWithoutProgress = 0.0f;     // waiting in line is not being stuck
+                    m->lastX = m->x;
+                    m->lastY = m->y;
+                    continue;
+                }
+                if (moverYieldTime[i] > 0.0f && !MoverShouldYield(i)) moverYieldTime[i] = 0.0f;
+            }
+
             float invDist = 1.0f / dist;
 
             // Base velocity toward waypoint (effectiveSpeed computed above)
