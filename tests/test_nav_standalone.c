@@ -77,11 +77,77 @@ static void test_ladder_and_two_worlds(void) {
     NavDestroy(wb);
 }
 
+// Flow field cost at every cell must equal A*'s cost from that cell to the goal,
+// and walking `next` must add up to exactly that cost.
+static void test_flow_matches_astar(void) {
+    static StubMap m = {.w = 48, .h = 40, .d = 3};
+    unsigned int seed = 12345;
+    #define RND() (seed = seed * 1103515245u + 12345u, (seed >> 16) & 0x7fff)
+    for (int z = 0; z < 3; z++)
+        for (int y = 0; y < 40; y++)
+            for (int x = 0; x < 48; x++) {
+                m.wall[z][y][x] = (RND() % 100) < 22;
+                int r = RND() % 100;
+                m.cost[z][y][x] = r < 15 ? 25 : (r < 25 ? 17 : (r < 35 ? 8 : 0));
+            }
+    for (int i = 0; i < 12; i++) {           // ladders between levels
+        int x = RND() % 48, y = RND() % 40, z = RND() % 2;
+        m.wall[z][y][x] = m.wall[z + 1][y][x] = 0;
+        m.ladder[z][y][x] = m.ladder[z + 1][y][x] = 1;
+    }
+    NavPoint goal = {24, 20, 1};
+    m.wall[1][20][24] = 0;
+
+    NavWorld* w = NavCreate(48, 40, 3, 8, 8, &m);
+    NavFlowField* f = NavFlowCreate(w);
+    int reached = NavFlowBuild(w, f, &goal, 1, 0);
+    CHECK(reached > 100);
+    CHECK(NavFlowCostAt(f, goal) == 0);
+
+    int compared = 0, mismatches = 0, badChains = 0, unreachableAgree = 0;
+    for (int z = 0; z < 3; z++)
+        for (int y = 0; y < 40; y++)
+            for (int x = 0; x < 48; x++) {
+                if (m.wall[z][y][x]) continue;
+                NavPoint p = {x, y, z};
+                int fc = NavFlowCostAt(f, p);
+                int len = NavFindPathAStar(w, p, goal, buf, 4096);
+                if (len == 0) { CHECK(fc == NAV_FLOW_UNREACHABLE); unreachableAgree++; continue; }
+                compared++;
+                if (fc != w->lastCost) {
+                    if (mismatches++ < 5) printf("  (%d,%d,%d): flow=%d astar=%d\n", x, y, z, fc, w->lastCost);
+                }
+                // Follow next: each step's cost drop must be a legal edge, ending at the goal
+                NavPoint cur = p, nxt;
+                int steps = 0;
+                while (NavFlowNext(f, cur, &nxt) && steps < 10000) { cur = nxt; steps++; }
+                if (cur.x != goal.x || cur.y != goal.y || cur.z != goal.z) badChains++;
+            }
+    CHECK(compared > 500);
+    CHECK(unreachableAgree > 0);
+    CHECK(mismatches == 0);
+    CHECK(badChains == 0);
+
+    // maxCost limits expansion
+    int local = NavFlowBuild(w, f, &goal, 1, 60);
+    CHECK(local > 1 && local < reached);
+    // Multiple goals: every cell's cost is the min over goals
+    NavPoint goals[2] = {{2, 2, 0}, {45, 37, 2}};
+    m.wall[0][2][2] = m.wall[2][37][45] = 0;
+    NavFlowBuild(w, f, goals, 2, 0);
+    CHECK(NavFlowCostAt(f, goals[0]) == 0 && NavFlowCostAt(f, goals[1]) == 0);
+
+    NavFlowDestroy(f);
+    NavDestroy(w);
+    #undef RND
+}
+
 int main(void) {
     printf("Running nav standalone tests...\n");
     test_open_diagonal();
     test_variable_cost_detour();
     test_ladder_and_two_worlds();
+    test_flow_matches_astar();
     printf("\tFailed: %d\n", failures);
     return failures ? 1 : 0;
 }

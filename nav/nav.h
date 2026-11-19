@@ -166,6 +166,57 @@ int NavFindPath(NavWorld* w, NavAlgorithm algo, NavPoint start, NavPoint goal, N
 int NavFindPathAStar(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, int maxLen);
 int NavFindPathHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, int maxLen);
 
+// ---- flow fields ----
+// One reverse Dijkstra from the goal(s) over the whole world, using exactly the
+// same movement rules and costs as A* (variable cost, ladders, ramps). Afterwards
+// every cell knows its cost to the nearest goal and the next cell to step to, so
+// any number of agents sharing those goals navigate with an O(1) lookup each.
+// Memory: 8 bytes per cell (+ a build heap). Rebuild after the world changes.
+#define NAV_FLOW_UNREACHABLE 0x7fffffff
+
+typedef struct NavFlowField {
+    int width, height, depth;      // shape of the world it was created for
+    int* cost;                     // [z][y][x] cost to nearest goal, or NAV_FLOW_UNREACHABLE
+    int* next;                     // [z][y][x] cell id of next step; -1 at goals / unreachable
+    int reached;                   // cells reached by the last build
+    double buildMs;                // duration of the last build
+
+    // private build heap (lazy deletion: entries may be stale)
+    int* heapCost; int* heapCell; int heapSize; int heapCap;
+} NavFlowField;
+
+NavFlowField* NavFlowCreate(const NavWorld* w);
+void NavFlowDestroy(NavFlowField* f);
+// Rebuild for these goals (unwalkable / out-of-bounds goals are ignored).
+// Returns the number of reachable cells. maxCost > 0 stops expanding beyond that
+// cost (cheap local fields); pass 0 for no limit.
+int  NavFlowBuild(NavWorld* w, NavFlowField* f, const NavPoint* goals, int goalCount, int maxCost);
+
+static inline int NavFlowCellId(const NavFlowField* f, int x, int y, int z) {
+    return (z * f->height + y) * f->width + x;
+}
+static inline NavPoint NavFlowCellPoint(const NavFlowField* f, int id) {
+    int layer = f->width * f->height;
+    int rem = id % layer;
+    NavPoint p = {rem % f->width, rem / f->width, id / layer};
+    return p;
+}
+static inline bool NavFlowInBounds(const NavFlowField* f, NavPoint p) {
+    return p.x >= 0 && p.y >= 0 && p.z >= 0 && p.x < f->width && p.y < f->height && p.z < f->depth;
+}
+// Cost from p to the nearest goal (NAV_FLOW_UNREACHABLE if none / out of bounds)
+static inline int NavFlowCostAt(const NavFlowField* f, NavPoint p) {
+    return NavFlowInBounds(f, p) ? f->cost[NavFlowCellId(f, p.x, p.y, p.z)] : NAV_FLOW_UNREACHABLE;
+}
+// Next cell to step to from p. False at a goal, if unreachable, or out of bounds.
+static inline bool NavFlowNext(const NavFlowField* f, NavPoint p, NavPoint* out) {
+    if (!NavFlowInBounds(f, p)) return false;
+    int n = f->next[NavFlowCellId(f, p.x, p.y, p.z)];
+    if (n < 0) return false;
+    *out = NavFlowCellPoint(f, n);
+    return true;
+}
+
 // Bounded single-level searches (used internally; exposed for tests/tools).
 // Bounds are [min, max). Return cost, or -1 if unreachable.
 int NavChunkCost(NavWorld* w, int sx, int sy, int sz, int gx, int gy,

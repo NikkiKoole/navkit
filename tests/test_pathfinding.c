@@ -2700,6 +2700,72 @@ describe(hpa_ramp_pathfinding) {
     }
 }
 
+// ============== FLOW FIELD (nav library) VS A* ==============
+// Flow field cost from every cell must equal A*'s cost to the same goal, on the
+// game host (ramps from hills, ladders from the 3D labyrinth, variable cost).
+
+static int FlowVsAStarMismatches(Point goal, int samples, int* outCompared, int* outRamps) {
+    NavWorld* w = NavGame();
+    NavFlowField* f = NavFlowCreate(w);
+    NavFlowBuild(w, f, &goal, 1, 0);
+    int mismatches = 0, compared = 0, rampSteps = 0;
+    for (int i = 0; i < samples; i++) {
+        Point p = GetRandomWalkableCell();
+        if (p.x < 0) continue;
+        int fc = NavFlowCostAt(f, p);
+        int len = NavFindPathAStar(w, p, goal, path, MAX_PATH);
+        if (len == 0) { if (fc != NAV_FLOW_UNREACHABLE) mismatches++; continue; }
+        compared++;
+        if (fc != w->lastCost) {
+            mismatches++;
+            if (test_verbose) printf("flow/A* mismatch at (%d,%d,%d): %d vs %d\n", p.x, p.y, p.z, fc, w->lastCost);
+        }
+        // Count z-changes with x/y movement along the flow chain (= ramp steps)
+        Point cur = p, nxt;
+        int steps = 0;
+        while (NavFlowNext(f, cur, &nxt) && steps++ < 100000) {
+            if (nxt.z != cur.z && (nxt.x != cur.x || nxt.y != cur.y)) rampSteps++;
+            cur = nxt;
+        }
+        if (cur.x != goal.x || cur.y != goal.y || cur.z != goal.z) mismatches++;
+    }
+    NavFlowDestroy(f);
+    *outCompared = compared;
+    if (outRamps) *outRamps = rampSteps;
+    return mismatches;
+}
+
+describe(flow_field) {
+    it("flow field costs match A* on hills terrain (ramps)") {
+        InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+        SeedRandom(4242);
+        GenerateHills();
+        SeedRandom(777);
+        Point goal = GetRandomWalkableCell();
+        expect(goal.x >= 0);
+        int compared = 0, ramps = 0;
+        int mismatches = FlowVsAStarMismatches(goal, 150, &compared, &ramps);
+        if (test_verbose) printf("hills: compared=%d rampSteps=%d mismatches=%d\n", compared, ramps, mismatches);
+        expect(compared > 50);
+        expect(ramps > 0);
+        expect(mismatches == 0);
+    }
+
+    it("flow field costs match A* on 3D labyrinth (ladders)") {
+        InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+        gridDepth = 5;
+        GenerateLabyrinth3D();
+        BuildEntrances();   // ladder links let GetRandomWalkableCell pick connected levels
+        SeedRandom(31337);
+        Point goal = GetRandomWalkableCell();
+        expect(goal.x >= 0);
+        int compared = 0;
+        int mismatches = FlowVsAStarMismatches(goal, 150, &compared, NULL);
+        expect(compared > 50);
+        expect(mismatches == 0);
+    }
+}
+
 // ============== HPA* VS A* CONSISTENCY TESTS ==============
 // (Converted from the former JPS+ consistency suite: both must agree on reachability.)
 
@@ -4556,6 +4622,7 @@ static void run_all_tests(void) {
     test(hpa_fallback);
     test(hpa_ramp_pathfinding);
     test(hpa_vs_astar_consistency);
+    test(flow_field);
     test(ladder_placement);
     test(ladder_erase);
     test(df_walkability);

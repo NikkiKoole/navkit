@@ -1372,6 +1372,158 @@ int NavFindPathHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, in
     return len;
 }
 
+// =============================================================================
+// Flow fields (reverse Dijkstra over the same edges as NavFindPathAStar)
+// =============================================================================
+
+NavFlowField* NavFlowCreate(const NavWorld* w) {
+    NavFlowField* f = calloc(1, sizeof(NavFlowField));
+    if (!f) return NULL;
+    size_t cells = (size_t)w->width * w->height * w->depth;
+    f->width = w->width; f->height = w->height; f->depth = w->depth;
+    f->cost = malloc(cells * sizeof(int));
+    f->next = malloc(cells * sizeof(int));
+    f->heapCap = 1024;
+    f->heapCost = malloc((size_t)f->heapCap * sizeof(int));
+    f->heapCell = malloc((size_t)f->heapCap * sizeof(int));
+    if (!f->cost || !f->next || !f->heapCost || !f->heapCell) { NavFlowDestroy(f); return NULL; }
+    for (size_t i = 0; i < cells; i++) { f->cost[i] = NAV_FLOW_UNREACHABLE; f->next[i] = -1; }
+    return f;
+}
+
+void NavFlowDestroy(NavFlowField* f) {
+    if (!f) return;
+    free(f->cost); free(f->next); free(f->heapCost); free(f->heapCell);
+    free(f);
+}
+
+static bool nav_FlowPush(NavFlowField* f, int cost, int cell) {
+    if (f->heapSize == f->heapCap) {
+        int cap = f->heapCap * 2;
+        int* hc = realloc(f->heapCost, (size_t)cap * sizeof(int));
+        if (!hc) return false;
+        f->heapCost = hc;
+        int* hl = realloc(f->heapCell, (size_t)cap * sizeof(int));
+        if (!hl) return false;
+        f->heapCell = hl;
+        f->heapCap = cap;
+    }
+    int i = f->heapSize++;
+    while (i > 0) {
+        int p = (i - 1) / 2;
+        if (f->heapCost[p] <= cost) break;
+        f->heapCost[i] = f->heapCost[p];
+        f->heapCell[i] = f->heapCell[p];
+        i = p;
+    }
+    f->heapCost[i] = cost;
+    f->heapCell[i] = cell;
+    return true;
+}
+
+static void nav_FlowPop(NavFlowField* f, int* cost, int* cell) {
+    *cost = f->heapCost[0];
+    *cell = f->heapCell[0];
+    int lastCost = f->heapCost[--f->heapSize];
+    int lastCell = f->heapCell[f->heapSize];
+    int i = 0;
+    for (;;) {
+        int l = 2 * i + 1, r = l + 1, s = l;
+        if (l >= f->heapSize) break;
+        if (r < f->heapSize && f->heapCost[r] < f->heapCost[l]) s = r;
+        if (f->heapCost[s] >= lastCost) break;
+        f->heapCost[i] = f->heapCost[s];
+        f->heapCell[i] = f->heapCell[s];
+        i = s;
+    }
+    f->heapCost[i] = lastCost;
+    f->heapCell[i] = lastCell;
+}
+
+// Predecessor p can step to cell c (= p's `next`) for `step`; record if better.
+static inline void nav_FlowRelax(NavFlowField* f, int p, int c, int newCost, int maxCost) {
+    if (maxCost > 0 && newCost > maxCost) return;
+    if (newCost >= f->cost[p]) return;
+    f->cost[p] = newCost;
+    f->next[p] = c;
+    nav_FlowPush(f, newCost, p);
+}
+
+int NavFlowBuild(NavWorld* w, NavFlowField* f, const NavPoint* goals, int goalCount, int maxCost) {
+    if (f->width != w->width || f->height != w->height || f->depth != w->depth) return 0;
+    double startTime = NavHostTime();
+    size_t cells = (size_t)f->width * f->height * f->depth;
+    for (size_t i = 0; i < cells; i++) { f->cost[i] = NAV_FLOW_UNREACHABLE; f->next[i] = -1; }
+    f->heapSize = 0;
+    f->reached = 0;
+
+    for (int i = 0; i < goalCount; i++) {
+        NavPoint g = goals[i];
+        if (!NavFlowInBounds(f, g) || !NavIsWalkable(NAV_HOSTP, g.x, g.y, g.z)) continue;
+        int id = NavFlowCellId(f, g.x, g.y, g.z);
+        if (f->cost[id] == 0) continue;
+        f->cost[id] = 0;
+        nav_FlowPush(f, 0, id);
+    }
+
+    const int* dx = w->eightDir ? nav_kDx8 : nav_kDx4;
+    const int* dy = w->eightDir ? nav_kDy8 : nav_kDy4;
+    int numDirs = w->eightDir ? 8 : 4;
+    static const int off4[4][2] = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};
+
+    while (f->heapSize > 0) {
+        int d, c;
+        nav_FlowPop(f, &d, &c);
+        if (d > f->cost[c]) continue;   // stale entry
+        f->reached++;
+        NavPoint C = NavFlowCellPoint(f, c);
+        int x = C.x, y = C.y, z = C.z;
+        int cellCost = NavMoveCost(NAV_HOSTP, x, y, z);
+
+        // Same level: P = C - dir steps onto C (mirror of A*'s neighbour step)
+        for (int i = 0; i < numDirs; i++) {
+            int px = x - dx[i], py = y - dy[i];
+            if (!NavIsWalkable(NAV_HOSTP, px, py, z)) continue;
+            if (w->eightDir && dx[i] != 0 && dy[i] != 0) {
+                if (!NavIsWalkable(NAV_HOSTP, x, py, z) || !NavIsWalkable(NAV_HOSTP, px, y, z)) continue;
+            }
+            if (!NavCanEnterFrom(NAV_HOSTP, x, y, z, px, py)) continue;
+            int base = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
+            nav_FlowRelax(f, NavFlowCellId(f, px, py, z), c, d + (base * cellCost) / 10, maxCost);
+        }
+
+        // Ladders: climb up from below / down from above onto C
+        if (z > 0 && NavCanClimbUp(NAV_HOSTP, x, y, z - 1))
+            nav_FlowRelax(f, NavFlowCellId(f, x, y, z - 1), c, d + cellCost, maxCost);
+        if (z + 1 < f->depth && NavCanClimbDown(NAV_HOSTP, x, y, z + 1))
+            nav_FlowRelax(f, NavFlowCellId(f, x, y, z + 1), c, d + cellCost, maxCost);
+
+        // Ramp up onto C: a ramp one level down whose exit is C
+        if (z > 0) {
+            for (int i = 0; i < 4; i++) {
+                int rx = x + off4[i][0], ry = y + off4[i][1];
+                int ex, ey;
+                if (!NavRampUp(NAV_HOSTP, rx, ry, z - 1, &ex, &ey)) continue;
+                if (ex != x || ey != y) continue;
+                nav_FlowRelax(f, NavFlowCellId(f, rx, ry, z - 1), c, d + (14 * cellCost) / 10, maxCost);
+            }
+        }
+
+        // Ramp down onto C: C is a ramp; its high-side cell one level up walks down onto it
+        int hdx, hdy;
+        if (z + 1 < f->depth && NavRampHighSide(NAV_HOSTP, x, y, z, &hdx, &hdy)) {
+            int px = x + hdx, py = y + hdy;
+            if (px >= 0 && px < f->width && py >= 0 && py < f->height
+                && NavIsWalkable(NAV_HOSTP, px, py, z + 1)) {
+                nav_FlowRelax(f, NavFlowCellId(f, px, py, z + 1), c, d + (14 * cellCost) / 10, maxCost);
+            }
+        }
+    }
+
+    f->buildMs = (NavHostTime() - startTime) * 1000.0;
+    return f->reached;
+}
+
 int NavFindPath(NavWorld* w, NavAlgorithm algo, NavPoint start, NavPoint goal, NavPoint* out, int maxLen) {
     switch (algo) {
         case NAV_ALGO_ASTAR: return NavFindPathAStar(w, start, goal, out, maxLen);
