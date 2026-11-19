@@ -2322,6 +2322,25 @@ describe(mover_ramp_transitions) {
 // These tests currently FAIL (Z snaps instantly). They define the target
 // behaviour: Z interpolates over time, climb duration ~ CELL_SIZE / speed.
 // ============================================================================
+describe(avoidance_levels) {
+    it("movers only push movers on their own level") {
+        InitGridWithSizeAndChunkSize(16, 16, 8, 8);
+        InitMoverSpatialGrid(16 * CELL_SIZE, 16 * CELL_SIZE);
+        ClearMovers();
+        Point g = {10, 10, 0};
+        InitMover(&movers[0], 5 * CELL_SIZE + 16, 5 * CELL_SIZE + 16, 0, g, 100.0f);
+        InitMover(&movers[1], 5 * CELL_SIZE + 22, 5 * CELL_SIZE + 16, 1, g, 100.0f);   // right above-ish, other level
+        moverCount = 2;
+        BuildMoverSpatialGrid();
+        Vec2 a = ComputeMoverAvoidance(0);
+        expect(fabsf(a.x) < 1e-6f && fabsf(a.y) < 1e-6f);
+        movers[1].z = 0;                                                               // same level: pushed
+        BuildMoverSpatialGrid();
+        a = ComputeMoverAvoidance(0);
+        expect(a.x < 0.0f);
+    }
+}
+
 describe(repath_budget) {
     it("cooldowns tick for waiting movers even after the frame's repath budget is spent") {
         InitGridWithSizeAndChunkSize(32, 32, 8, 8);
@@ -2552,5 +2571,6 @@ int main(int argc, char* argv[]) {
     test(staggered_updates);
     test(workshop_mover_collision);
     test(repath_budget);
+    test(avoidance_levels);
     return summary();
 }

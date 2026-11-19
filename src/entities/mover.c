@@ -230,6 +230,8 @@ Vec2 ComputeMoverAvoidance(int moverIndex) {
             for (int t = start; t < end; t++) {
                 int j = moverGrid.moverIndices[t];
                 if (j == moverIndex) continue;
+                // Only movers on the same level push each other (as for animals and trains)
+                if ((int)movers[j].z != (int)m->z) continue;
                 
                 scanned++;
                 if (scanned >= AVOID_MAX_SCAN) {
