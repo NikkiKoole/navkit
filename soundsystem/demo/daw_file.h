@@ -105,6 +105,9 @@ static void _dwWritePatch(FILE *f, const char *sec, const SynthPatch *p) {
     _dw(f, "fmMod2Ratio", p->p_fmMod2Ratio); _dw(f, "fmMod2Index", p->p_fmMod2Index);
     _di(f, "fmAlgorithm", p->p_fmAlgorithm);
     _di(f, "pdWaveType", p->p_pdWaveType); _dw(f, "pdDistortion", p->p_pdDistortion);
+    _dw(f, "pdLfoRate", p->p_pdLfoRate); _dw(f, "pdLfoDepth", p->p_pdLfoDepth);
+    _di(f, "pdLfoShape", p->p_pdLfoShape); _di(f, "pdLfoSync", p->p_pdLfoSync);
+    _dw(f, "pdLfoPhaseOffset", p->p_pdLfoPhaseOffset); _db(f, "pdLfoTransportSync", p->p_pdLfoTransportSync);
     _di(f, "membranePreset", p->p_membranePreset); _dw(f, "membraneDamping", p->p_membraneDamping);
     _dw(f, "membraneStrike", p->p_membraneStrike); _dw(f, "membraneBend", p->p_membraneBend);
     _dw(f, "membraneBendDecay", p->p_membraneBendDecay);
@@ -840,6 +843,12 @@ static void _dwApplyPatchKV(SynthPatch *p, const char *key, const char *val) {
     else if (strcmp(key,"fmAlgorithm")==0) p->p_fmAlgorithm = _dpi(val);
     else if (strcmp(key,"pdWaveType")==0) p->p_pdWaveType = _dpi(val);
     else if (strcmp(key,"pdDistortion")==0) p->p_pdDistortion = _dpf(val);
+    else if (strcmp(key,"pdLfoRate")==0) p->p_pdLfoRate = _dpf(val);
+    else if (strcmp(key,"pdLfoDepth")==0) p->p_pdLfoDepth = _dpf(val);
+    else if (strcmp(key,"pdLfoShape")==0) p->p_pdLfoShape = _dpi(val);
+    else if (strcmp(key,"pdLfoSync")==0) p->p_pdLfoSync = _dpi(val);
+    else if (strcmp(key,"pdLfoPhaseOffset")==0) p->p_pdLfoPhaseOffset = _dpf(val);
+    else if (strcmp(key,"pdLfoTransportSync")==0) p->p_pdLfoTransportSync = _dpb(val);
     else if (strcmp(key,"membranePreset")==0) p->p_membranePreset = _dpi(val);
     else if (strcmp(key,"membraneDamping")==0) p->p_membraneDamping = _dpf(val);
     else if (strcmp(key,"membraneStrike")==0) p->p_membraneStrike = _dpf(val);

@@ -289,6 +289,12 @@ static void setupTestState(void) {
         daw.patches[i].p_fmFeedback = 0.1f * i;
         daw.patches[i].p_pdWaveType = i % 5;
         daw.patches[i].p_pdDistortion = 0.3f + i * 0.05f;
+        daw.patches[i].p_pdLfoRate = 1.5f + i * 0.25f;
+        daw.patches[i].p_pdLfoDepth = 0.2f + i * 0.05f;
+        daw.patches[i].p_pdLfoShape = i % 4;
+        daw.patches[i].p_pdLfoSync = i % 3;
+        daw.patches[i].p_pdLfoPhaseOffset = 0.1f * i;
+        daw.patches[i].p_pdLfoTransportSync = (i % 2) == 0;
         daw.patches[i].p_membranePreset = i % 5;
         daw.patches[i].p_membraneDamping = 0.2f + i * 0.05f;
         daw.patches[i].p_membraneStrike = 0.2f + i * 0.05f;
@@ -679,6 +685,8 @@ static void verifyPatch(int i) {
     PB(p_granularFreeze);
     PF(p_fmModRatio); PF(p_fmModIndex); PF(p_fmFeedback);
     PINT(p_pdWaveType); PF(p_pdDistortion);
+    PF(p_pdLfoRate); PF(p_pdLfoDepth); PINT(p_pdLfoShape); PINT(p_pdLfoSync);
+    PF(p_pdLfoPhaseOffset); PB(p_pdLfoTransportSync);
     PINT(p_membranePreset); PF(p_membraneDamping); PF(p_membraneStrike); PF(p_membraneBend); PF(p_membraneBendDecay);
     PINT(p_birdType); PF(p_birdChirpRange); PF(p_birdTrillRate); PF(p_birdTrillDepth);
     PF(p_birdAmRate); PF(p_birdAmDepth); PF(p_birdHarmonics);
@@ -877,13 +885,16 @@ static void verifyPatterns(void) {
 // 1. Compile-time: sizeof checks. If you add a field to any of these structs,
 //    the static assert fires → update save/load in daw_file.h, THEN update
 //    the expected size here.
-_Static_assert(sizeof(SynthPatch) == 1184,
+// SynthPatch +20 (2026-11): PD LFO fields, saved as pdLfo* keys
+_Static_assert(sizeof(SynthPatch) == 1204,
     "SynthPatch size changed! Update _dwWritePatch/_dwApplyPatchKV in daw_file.h, then update this assert.");
-_Static_assert(sizeof(Mixer) == 1960,
+// Mixer +480 (2026-11): per-bus pitch shifter + tape, saved as pitch*/tape* keys
+_Static_assert(sizeof(Mixer) == 2440,
     "Mixer size changed! Update dawSave/dawLoad mixer section, then update this assert.");
 _Static_assert(sizeof(MasterFX) == 388,
     "MasterFX size changed! Update dawSave/dawLoad masterfx section, then update this assert.");
-_Static_assert(sizeof(TapeFX) == 140,
+// TapeFX +32 (2026-11): GranDelayParams granDelayFx, saved as gran* keys
+_Static_assert(sizeof(TapeFX) == 172,
     "TapeFX size changed! Update dawSave/dawLoad tapefx section, then update this assert.");
 _Static_assert(sizeof(Sidechain) == 64,
     "Sidechain size changed! Update dawSave/dawLoad sidechain section, then update this assert.");
@@ -947,6 +958,8 @@ static void verifyPatchFieldCoverage(void) {
     orig.p_granularSpread = 0.567f; orig.p_granularFreeze = true;
     orig.p_fmModRatio = 2.34f; orig.p_fmModIndex = 1.23f; orig.p_fmFeedback = 0.456f;
     orig.p_pdWaveType = 3; orig.p_pdDistortion = 0.678f;
+    orig.p_pdLfoRate = 3.21f; orig.p_pdLfoDepth = 0.432f; orig.p_pdLfoShape = 2;
+    orig.p_pdLfoSync = 1; orig.p_pdLfoPhaseOffset = 0.25f; orig.p_pdLfoTransportSync = true;
     orig.p_membranePreset = 2; orig.p_membraneDamping = 0.345f;
     orig.p_membraneStrike = 0.456f; orig.p_membraneBend = 0.234f; orig.p_membraneBendDecay = 0.089f;
     orig.p_birdType = 3; orig.p_birdChirpRange = 0.789f;
@@ -1020,6 +1033,8 @@ static void verifyPatchFieldCoverage(void) {
     CK_B(p_granularFreeze);
     CK_F(p_fmModRatio); CK_F(p_fmModIndex); CK_F(p_fmFeedback);
     CK_I(p_pdWaveType); CK_F(p_pdDistortion);
+    CK_F(p_pdLfoRate); CK_F(p_pdLfoDepth); CK_I(p_pdLfoShape); CK_I(p_pdLfoSync);
+    CK_F(p_pdLfoPhaseOffset); CK_B(p_pdLfoTransportSync);
     CK_I(p_membranePreset); CK_F(p_membraneDamping); CK_F(p_membraneStrike);
     CK_F(p_membraneBend); CK_F(p_membraneBendDecay);
     CK_I(p_birdType); CK_F(p_birdChirpRange); CK_F(p_birdTrillRate); CK_F(p_birdTrillDepth);
