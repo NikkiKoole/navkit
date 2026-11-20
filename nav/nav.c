@@ -1055,6 +1055,12 @@ void NavBuildGraph(NavWorld* w) {
     nav_AddVerticalLinkEdges(w);
     nav_FinalizeEdges(w, 0);
     w->graphVersion++;
+    {   // index for the hierarchical fields (keeps the full build's own overflow flag)
+        bool overflow = w->chunkEntsOverflow;
+        nav_BuildChunkEntranceIndex(w);
+        w->chunkEntsVersion = w->chunkEntsOverflow ? w->graphVersion - 1 : w->graphVersion;
+        w->chunkEntsOverflow = overflow;
+    }
 
     NAV_LOG_INFO("Built graph: %d edges (%d ladder links, %d ramp links) in %.2fms",
                  w->edgeNum, w->ladderNum, w->rampNum, (NavHostTime() - startTime) * 1000.0);
@@ -1311,6 +1317,8 @@ static void nav_RebuildAffectedEdges(NavWorld* w) {
     nav_AddVerticalLinkEdges(w);
     nav_FinalizeEdges(w, keptSorted);
     w->graphVersion++;
+    // index built above from the final entrance list
+    w->chunkEntsVersion = w->chunkEntsOverflow ? w->graphVersion - 1 : w->graphVersion;
 }
 
 void NavUpdateDirty(NavWorld* w) {
@@ -2433,7 +2441,36 @@ static NavChunkFlow* nav_BuildChunkFlow(NavWorld* w, NavHFlow* h, int chunk) {
     // Seeds: exits of this chunk (see rule above)
     // (any entrance inside the region: neighbours' ladder/ramp/border cells on the
     // ring can be where the route leaves, see nav_EdgeChunksOfCell)
-    for (int e = 0; e < w->entranceNum; e++) {
+    // Candidates: the entrances of the 3x3 chunks around this one (the region is the
+    // chunk + a 1-cell ring), from the per-chunk index, in ascending index order so
+    // ties pick the same seed as a full scan. A full scan per chunk field costs
+    // O(all entrances); a walk can build tens of thousands of fields on a big map.
+    // (heap, not stack: building a field can recurse into neighbour fields deeply)
+    int* cand = NULL;
+    int candNum = -1;                              // -1: index stale, scan everything
+    if (w->chunkEntsVersion == w->graphVersion
+        && (cand = malloc(9 * NAV_MAX_ENTRANCES_PER_CHUNK * sizeof(int))) != NULL) {
+        candNum = 0;
+        for (int dcy = -1; dcy <= 1; dcy++)
+            for (int dcx = -1; dcx <= 1; dcx++) {
+                int ncx = ccx + dcx, ncy = ccy + dcy;
+                if (ncx < 0 || ncy < 0 || ncx >= w->chunksX || ncy >= w->chunksY) continue;
+                int nc = z * perLevel + ncy * w->chunksX + ncx;
+                for (int k = 0; k < w->chunkEntCount[nc]; k++) {
+                    int e = w->chunkEnts[nc][k];
+                    const NavEntrance* E = &w->entranceList[e];
+                    // listed under every chunk whose edge region holds it: take it once,
+                    // from its own chunk
+                    if (E->x / w->chunkW != ncx || E->y / w->chunkH != ncy) continue;
+                    int j = candNum++;
+                    while (j > 0 && cand[j - 1] > e) { cand[j] = cand[j - 1]; j--; }
+                    cand[j] = e;
+                }
+            }
+    }
+    int scanNum = candNum >= 0 ? candNum : w->entranceNum;
+    for (int ci = 0; ci < scanNum; ci++) {
+        int e = candNum >= 0 ? cand[ci] : ci;
         if (h->dist[e] == NAV_FLOW_UNREACHABLE) continue;
         const NavEntrance* E = &w->entranceList[e];
         if (E->z != z) continue;
@@ -2451,6 +2488,7 @@ static NavChunkFlow* nav_BuildChunkFlow(NavWorld* w, NavHFlow* h, int chunk) {
         int v = nav_HFlowSeedValue(w, h, e, cf);
         if (v != NAV_FLOW_UNREACHABLE && v < cf->cost[i]) { cf->cost[i] = v; cf->seed[i] = e; nav_LHPush(&q, v, i); }
     }
+    free(cand);
     if (chunk == h->goalChunk) {
         int i = (h->goal.y - minY) * cf->w + (h->goal.x - minX);
         cf->cost[i] = 0; cf->seed[i] = -2; nav_LHPush(&q, 0, i);

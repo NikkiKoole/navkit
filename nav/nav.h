@@ -150,6 +150,7 @@ typedef struct NavWorld {
     int (*chunkEnts)[NAV_MAX_ENTRANCES_PER_CHUNK];
     bool chunkEntsOverflow;        // a chunk region had more entrances than fit (warned)
     int* chunkEntCount;
+    unsigned chunkEntsVersion;     // graphVersion the chunkEnts index is complete for (else stale)
     bool* affected;                // [depth][chunksY][chunksX]
 
     NavPoint* tempPath; int tempPathCap;

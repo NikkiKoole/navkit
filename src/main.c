@@ -1325,6 +1325,20 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // Check for --seed option (for reproducible terrain generation). Parsed before
+    // headless, which returns early; headless without --seed keeps seed 0 (deterministic).
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--seed") == 0) {
+            if (i + 1 < argc) {
+                worldSeed = (uint64_t)strtoull(argv[i + 1], NULL, 10);
+            } else {
+                printf("Warning: --seed requires a number\n");
+                printf("Usage: %s --seed <number>\n", argv[0]);
+            }
+            break;
+        }
+    }
+
     // Check for --headless mode
     const char* headlessFile = NULL;
     int headlessTicks = 100;
@@ -1356,19 +1370,6 @@ int main(int argc, char** argv) {
             } else {
                 printf("Warning: --load requires a filename\n");
                 printf("Usage: %s --load <savefile>\n", argv[0]);
-            }
-            break;
-        }
-    }
-
-    // Check for --seed option (for reproducible terrain generation)
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--seed") == 0) {
-            if (i + 1 < argc) {
-                worldSeed = (uint64_t)strtoull(argv[i + 1], NULL, 10);
-            } else {
-                printf("Warning: --seed requires a number\n");
-                printf("Usage: %s --seed <number>\n", argv[0]);
             }
             break;
         }
