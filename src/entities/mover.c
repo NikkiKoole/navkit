@@ -2114,7 +2114,9 @@ void TickWithDt(float dt) {
     // Temperature simulation
     PROFILE_BEGIN(Temperature);
     UpdateTemperature();
+    PROFILE_BEGIN(Freezing);
     UpdateWaterFreezing();
+    PROFILE_END(Freezing);
     PROFILE_END(Temperature);
     
     // Ground wear (emergent paths)

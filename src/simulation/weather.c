@@ -451,10 +451,20 @@ static float snowAccum = 0.0f;
 // Per-cell accumulators for deterministic snow changes
 static float snowAccumGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
+// UpdateSnow only has work while it snows, or while snow or snowfall progress lies
+// somewhere. Without these flags it searched every column for the ground several
+// times a second (~2.6 ms per tick at 1024x1024) even with weather off. Conservative:
+// set whenever snow may have appeared (SetSnowLevel, init, load), cleared only by a
+// full pass that found none.
+static bool snowMayExist = true, snowAccumMayExist = true;
+
+void SnowGridChanged(void) { snowMayExist = snowAccumMayExist = true; }
+
 void InitSnow(void) {
     memset(snowGrid, 0, sizeof(snowGrid));
     memset(snowAccumGrid, 0, sizeof(snowAccumGrid));
     snowAccum = 0.0f;
+    SnowGridChanged();
 }
 
 uint8_t GetSnowLevel(int x, int y, int z) {
@@ -470,6 +480,7 @@ void SetSnowLevel(int x, int y, int z, uint8_t level) {
     }
     if (level > 3) level = 3;  // Clamp to max level
     snowGrid[z][y][x] = level;
+    if (level > 0) snowMayExist = true;
 }
 
 void UpdateSnow(void) {
@@ -485,6 +496,8 @@ void UpdateSnow(void) {
     bool isSnowing = (w == WEATHER_SNOW);
     int ambientTemp = GetAmbientTemperature(0);  // Surface temperature
     bool isFreezing = (ambientTemp <= 0);
+    if (!isSnowing && !snowMayExist && !snowAccumMayExist) return;   // nothing to grow, melt or reset
+    bool anySnow = false, anyAccum = false;
     
     // Iterate surface cells
     for (int y = 0; y < gridHeight; y++) {
@@ -527,11 +540,16 @@ void UpdateSnow(void) {
                 if ((!isSnowing || !exposed || !isFreezing) && isFreezing) {
                     snowAccumGrid[z][y][x] = 0.0f;
                 }
+                if (snowGrid[z][y][x] > 0) anySnow = true;
+                if (snowAccumGrid[z][y][x] != 0.0f) anyAccum = true;
                 
                 break;  // Only process topmost solid cell
             }
         }
     }
+    // (only topmost cells are ever processed here, so snow elsewhere doesn't count)
+    snowMayExist = anySnow;
+    snowAccumMayExist = anyAccum;
 }
 
 float GetSnowSpeedMultiplier(int x, int y, int z) {

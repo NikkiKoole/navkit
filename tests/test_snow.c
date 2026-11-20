@@ -188,6 +188,21 @@ describe(snow_accumulation) {
 
 // ========== Snow Melting ==========
 describe(snow_melting) {
+    it("melts snow that appears after a pass found none (SetSnowLevel or a load)") {
+        InitTestGrid(10, 10);
+        InitSnow();
+        InitWeather();
+        grid[0][5][5] = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
+        grid[0][2][2] = CELL_WALL; SetWallMaterial(2, 2, 0, MAT_DIRT);
+        SetTestTemperature(5);
+        for (int i = 0; i < 50; i++) { gameDeltaTime = 0.1f; UpdateSnow(); }   // no snow: passes go idle
+        SetSnowLevel(5, 5, 0, 2);
+        snowGrid[0][2][2] = 2; SnowGridChanged();    // what loading a save does
+        for (int i = 0; i < 250; i++) { gameDeltaTime = 0.1f; UpdateSnow(); }
+        expect(GetSnowLevel(5, 5, 0) < 2);
+        expect(GetSnowLevel(2, 2, 0) < 2);
+    }
+
     it("melts above freezing and increases wetness") {
         InitTestGrid(10, 10);
         InitSnow();

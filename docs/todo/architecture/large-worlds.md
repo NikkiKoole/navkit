@@ -192,8 +192,12 @@ What grows with area now:
 
 ## Next steps
 
-0. **Next (2026-11-20):** water freezing and snow sweeps (cheap wins, see the 1024 table),
-   then sizing layers to the map (memory), then long paths at 1024.
+0. Water freezing and snow sweeps: **done (2026-11-20).** Freezing checks one band of rows
+   per tick (256K cells; maps up to 64x64x16 stay one band), boiling scaled to match.
+   Snow skips its pass while it isn't snowing and no snow or snowfall progress lies
+   anywhere (conservative flag, set on SetSnowLevel/init/load). Per tick: 512 5.3 -> 3.1 ms,
+   **1024 14.3 -> 6.0 ms** (freezing 5.8 -> 0.1, snow 2.6 -> 0.02).
+   **Next:** sizing layers to the map (memory), then long paths at 1024.
 1. Shared-goal field cascade (above). **Done (2026-11-20):** a walk may build at most 1000
    chunk fields (`NavHFlow.buildBudget`); over it the request uses HPA* (seed 16: 5 ms instead
    of seconds), the field is dropped and the goal isn't promoted for 60 game-seconds.

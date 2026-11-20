@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "../core/time.h"
+#include "../world/grid.h"   // MAX_GRID_* for snowGrid
 
 // =============================================================================
 // SEASONS
@@ -107,8 +108,10 @@ void SetWeatherWindAccum(float v);
 
 // Snow levels: 0=none, 1=light, 2=moderate, 3=heavy
 // Stored in separate snowGrid (uint8_t 3D array, like vegetationGrid)
+extern uint8_t snowGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 void InitSnow(void);                    // Initialize snow grid to zero
+void SnowGridChanged(void);             // snowGrid written directly (load): UpdateSnow rechecks it
 uint8_t GetSnowLevel(int x, int y, int z);
 void SetSnowLevel(int x, int y, int z, uint8_t level);
 void UpdateSnow(void);                  // Accumulation + melting logic

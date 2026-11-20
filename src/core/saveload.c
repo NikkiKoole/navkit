@@ -734,6 +734,7 @@ bool LoadWorld(const char* filename) {
             fread(snowGrid[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
+    SnowGridChanged();
     
     // Temperature grid
     for (int z = 0; z < gridDepth; z++) {

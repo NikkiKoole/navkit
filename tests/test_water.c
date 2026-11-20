@@ -1189,6 +1189,25 @@ describe(water_edge_cases) {
 // =============================================================================
 
 describe(water_freezing) {
+    it("should freeze water in every band of a big map within one sweep") {
+        // 256x256x16 = 1M cells: UpdateWaterFreezing checks one band of rows per tick
+        InitGridWithSizeAndChunkSize(256, 256, 16, 16);
+        gridDepth = 16;
+        InitWater();
+        InitTemperature();
+        int rows[] = {2, 80, 160, 250};
+        for (int i = 0; i < 4; i++) {
+            SetWaterLevel(10, rows[i], 1, WATER_MAX_LEVEL);
+            SetTemperature(10, rows[i], 1, -10);
+        }
+        UpdateWaterFreezing();
+        int frozen = 0;
+        for (int i = 0; i < 4; i++) frozen += IsWaterFrozen(10, rows[i], 1);
+        expect(frozen < 4);                          // one tick covers only part of the map
+        for (int t = 0; t < 4; t++) UpdateWaterFreezing();
+        for (int i = 0; i < 4; i++) { expect(IsWaterFrozen(10, rows[i], 1)); }
+    }
+
     it("should freeze full water at freezing temperature") {
         InitTestGridFromAscii(
             "....\n"

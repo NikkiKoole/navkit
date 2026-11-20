@@ -752,6 +752,13 @@ void ThawWater(int x, int y, int z) {
 
 // Update water freezing and boiling based on temperature
 // Call this after UpdateTemperature() in the game loop
+// Big maps: checking every cell every tick cost ~6 ms at 1024x1024x16, so each tick
+// checks one band of rows (all z levels); a cell freezes or thaws at most a sweep
+// later. Maps up to FREEZE_CELLS_PER_TICK cells are one band: every cell, every tick.
+#define FREEZE_CELLS_PER_TICK (256 * 1024)
+#define FREEZE_MAX_BANDS 64
+static int freezeBandNext = 0;
+
 void UpdateWaterFreezing(void) {
     if (!waterEnabled) return;
     if (!temperatureEnabled) return;
@@ -759,8 +766,18 @@ void UpdateWaterFreezing(void) {
     // Early exit: no water means nothing to freeze/thaw
     if (waterActiveCells == 0) return;
     
+    long cells = (long)gridWidth * gridHeight * gridDepth;
+    int bands = (int)((cells + FREEZE_CELLS_PER_TICK - 1) / FREEZE_CELLS_PER_TICK);
+    if (bands < 1) bands = 1;
+    if (bands > FREEZE_MAX_BANDS) bands = FREEZE_MAX_BANDS;
+    if (bands > gridHeight) bands = gridHeight;
+    int band = freezeBandNext % bands;
+    freezeBandNext = (band + 1) % bands;
+    int yStart = (int)((long)gridHeight * band / bands);
+    int yEnd = (int)((long)gridHeight * (band + 1) / bands);
+    
     for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
+        for (int y = yStart; y < yEnd; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 WaterCell* cell = &waterGrid[z][y][x];
                 
@@ -783,9 +800,10 @@ void UpdateWaterFreezing(void) {
                     else if (temp >= TEMP_BOILING && cell->level > 0) {
                         // Boil faster at higher temperatures
                         // At 100C: 1 level, at 200C: 2 levels, at 300C: 3 levels, etc.
-                        int boilRate = 1 + (temp - TEMP_BOILING) / 100;
+                        // (visited once per sweep: boil a sweep's worth)
+                        int boilRate = (1 + (temp - TEMP_BOILING) / 100) * bands;
+                        if (boilRate > 3 * bands) boilRate = 3 * bands;  // Cap at 3 per tick
                         if (boilRate > cell->level) boilRate = cell->level;
-                        if (boilRate > 3) boilRate = 3;  // Cap at 3 per tick
                         
                         int newLevel = cell->level - boilRate;
                         SetWaterLevel(x, y, z, newLevel);
