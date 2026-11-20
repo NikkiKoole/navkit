@@ -60,6 +60,7 @@
 - `gameplay/more-tiles-design.md` — Mostly done (hearth+mud mixer shipped), only clay pit remains
 - `pathfinding/future-ideas.md` — Flow fields, formations, territory costs
 - `gameplay/flow-simulation.md` — Vector fields to bias water/smoke/fire spread deterministically
+- `architecture/large-worlds.md` — What bigger maps cost (memory, graph updates, sims), improvements in order, estimates for 1024 and 2048
 - `architecture/unified-roadmap.md` — Master architecture plan tying 7 docs into Era 2 build order
 
 ## Research & Reference
