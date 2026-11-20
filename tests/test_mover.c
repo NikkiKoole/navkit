@@ -1779,8 +1779,8 @@ describe(sparse_level_pathfinding) {
         for (int test = 0; test < totalTests; test++) {
             Point start = GetRandomWalkableCell();
             Point goal = GetRandomWalkableCell();
-            start.z = 0;  // Force z=0 for 2D sparse level
-            goal.z = 0;
+            start.z = 1;  // the sparse layout is on level 1 (level 0 is its solid ground)
+            goal.z = 1;
 
             if (start.x < 0 || goal.x < 0) continue;
 
@@ -1835,8 +1835,8 @@ describe(sparse_level_pathfinding) {
         for (int test = 0; test < totalTests; test++) {
             Point start = GetRandomWalkableCell();
             Point goal = GetRandomWalkableCell();
-            start.z = 0;  // Force z=0 for 2D sparse level
-            goal.z = 0;
+            start.z = 1;  // the sparse layout is on level 1 (level 0 is its solid ground)
+            goal.z = 1;
 
             if (start.x < 0 || goal.x < 0) continue;
 

@@ -40,13 +40,16 @@ static const Gen kGens[] = {
     {"hillswater", GenerateHillsSoilsWater},
 };
 
-// Cost of walking a goal-first path with the same step rules as A*
+// Cost of walking a goal-first path with the same step rules as A*, including
+// the game's extra cost for level changes (slow ladders, ladder queues: the
+// NAV_CLIMB_EXTRA hook, entities/mover.c)
+int LadderQueueExtraCost(int x, int y, int z, int dz);
 static int PathCost(const Point* p, int len) {
     int c = 0;
     for (int k = len - 1; k > 0; k--) {
         Point a = p[k], b = p[k - 1];
         int mc = GetCellMoveCost(b.x, b.y, b.z);
-        if (a.z != b.z) c += (a.x == b.x && a.y == b.y) ? mc : (14 * mc) / 10;
+        if (a.z != b.z) c += ((a.x == b.x && a.y == b.y) ? mc : (14 * mc) / 10) + LadderQueueExtraCost(a.x, a.y, a.z, b.z - a.z);
         else c += ((a.x != b.x && a.y != b.y) ? 14 : 10) * mc / 10;
     }
     return c;
@@ -71,22 +74,6 @@ static Point RandomWalkable(void) {
     return (Point){-1, -1, 0};
 }
 
-// Older 2D-style generators carve their layout into rock on level 1 but leave
-// level 0 empty, so under the stand-on-solid-ground rule the real map is an
-// open plain on level 0. Fill level 0 with dirt so the carved layout is walkable.
-static bool FixLegacyLayout(void) {
-    int open0 = 0, walls1 = 0;
-    for (int y = 0; y < gridHeight; y++)
-        for (int x = 0; x < gridWidth; x++) {
-            open0 += IsCellWalkableAt(0, y, x);
-            walls1 += CellBlocksMovement(grid[1][y][x]);
-        }
-    if (open0 < gridWidth * gridHeight || walls1 == 0) return false;
-    for (int y = 0; y < gridHeight; y++)
-        for (int x = 0; x < gridWidth; x++) grid[0][y][x] = CELL_WALL;
-    return true;
-}
-
 int main(void) {
     SetTraceLogLevel(LOG_NONE);
     int hardFailures = 0;
@@ -97,7 +84,6 @@ int main(void) {
         InitGridWithSizeAndChunkSize(128, 128, 16, 16);
         SeedRandom(1234 + (unsigned)g);
         kGens[g].gen();
-        bool legacy = FixLegacyLayout();
         BuildEntrances();
         BuildGraph();
         NavWorld* w = NavGame();
@@ -191,7 +177,7 @@ int main(void) {
         }
 
         printf("%-11s%c %7d | %7d %6.1f %4d %4d | %5d %6.1f | %5.0f%% %5.1f%% | %5.0f%% %5.1f%% | %4d | %6.2f %6.3f\n",
-               kGens[g].name, legacy ? '*' : ' ', walk, regions, regMs, fn, fp, flowMismatch, flowMs,
+               kGens[g].name, ' ', walk, regions, regMs, fn, fp, flowMismatch, flowMs,
                hierReach ? 100.0 * hierOk / hierReach : 100.0, hierOpt ? 100.0 * (hierCost - hierOpt) / hierOpt : 0.0,
                reachable ? 100.0 * hpaOk / reachable : 100.0, optCost ? 100.0 * (hpaCost - optCost) / optCost : 0.0,
                nearestMismatch, pairs ? astarMs / pairs : 0.0, pairs ? hpaMs / pairs : 0.0);
@@ -200,7 +186,7 @@ int main(void) {
         NavFlowDestroy(f);
         (void)pairs;
     }
-    printf("\n* = legacy 2D layout: level 0 filled with dirt so the carved level-1 layout is walkable\n");
+    printf("\n");
     printf("must-hold failures (region FN + flow mismatches + hier misses + nearest mismatches): %d\n", hardFailures);
     return hardFailures ? 1 : 0;
 }

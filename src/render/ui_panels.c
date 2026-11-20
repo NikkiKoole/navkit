@@ -833,10 +833,10 @@ void DrawUI(void) {
             if (PushButton(ix, y, "Generate Terrain")) {
                 InitPlants();
                 ClearFarming();
+                InitDesignations();   // before generating: some generators place designations (CraftTest)
                 GenerateCurrentTerrain();
                 InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
                 InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
-                InitDesignations();
                 RebuildSimActivityCounts();
                 InitFire();
                 InitSmoke();

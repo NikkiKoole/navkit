@@ -799,9 +799,6 @@ static void Cmd_Season(int argc, const char** argv) {
 }
 
 static void Cmd_Terrain(int argc, const char** argv) {
-    // Count terrains
-    int terrainCount = 21;
-
     if (argc < 2 || strcmp(argv[1], "list") == 0) {
         Console_Print("Available terrains:", WHITE);
         for (int i = 0; i < terrainCount; i++) {
@@ -825,9 +822,9 @@ static void Cmd_Terrain(int argc, const char** argv) {
     }
 
     currentTerrain = found;
+    InitDesignations();   // before generating: some generators place designations (CraftTest)
     GenerateCurrentTerrain();
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
-    InitDesignations();
     RebuildSimActivityCounts();
     InitFire();
     InitSmoke();

@@ -111,8 +111,13 @@ void InitGrid(void) {
     ClearWater();
 }
 
+// The older 2D-style generators below lay out their map on level 1 (walls carved
+// into rock or scattered). Under the stand-on-solid-ground rule that layout only
+// works with solid ground below, so they call FillGroundLevel (grid.c) first; left
+// empty, level 0 was one big open plain and the layout above it unreachable.
 void GenerateSparse(float density) {
     InitGrid();
+    FillGroundLevel();   // the layout is on level 1: give it ground
     SeedTerrain();
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++)
@@ -1173,6 +1178,7 @@ static bool RoomOverlaps(int x, int y, int w, int h, int margin) {
 
 void GenerateDungeonRooms(void) {
     InitGrid();  // Clear cells and flags
+    FillGroundLevel();   // the layout is on level 1: give it ground
     SeedTerrain();
     
     // Fill z=1 with rock (to carve rooms)
@@ -1321,6 +1327,7 @@ void GenerateCaves(void) {
 
 void GenerateDrunkard(void) {
     InitGrid();  // Clear cells and flags
+    FillGroundLevel();   // the layout is on level 1: give it ground
     SeedTerrain();
     
     // Fill z=1 with rock (to carve)
@@ -1407,6 +1414,7 @@ static void CarveVerticalTunnel(int y1, int y2, int x) {
 
 void GenerateTunneler(void) {
     InitGrid();  // Clear cells and flags
+    FillGroundLevel();   // the layout is on level 1: give it ground
     SeedTerrain();
     
     // Fill z=1 with rock (to carve)
@@ -1509,6 +1517,7 @@ void GenerateMixMax(void) {
 
 void GenerateConcentricMaze(void) {
     InitGrid();
+    FillGroundLevel();   // the layout is on level 1: give it ground
     
     // Create concentric rectangular rings with gaps
     // Each ring has a gap on alternating sides to force spiraling
