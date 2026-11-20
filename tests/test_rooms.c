@@ -28,10 +28,10 @@ static void SetupFlatGround(int w, int h) {
     InitTestGrid(w, h);
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
             SetWallNatural(x, y, 0);
-            grid[1][y][x] = CELL_AIR;
+            GRID(x, y, 1) = CELL_AIR;
         }
     }
     ClearMovers();
@@ -55,7 +55,7 @@ static void BuildWalledRoom(int x1, int y1, int x2, int y2) {
         for (int x = x1; x <= x2; x++) {
             bool edge = (x == x1 || x == x2 || y == y1 || y == y2);
             if (edge) {
-                grid[1][y][x] = CELL_WALL;
+                GRID(x, y, 1) = CELL_WALL;
                 SetWallMaterial(x, y, 1, MAT_GRANITE);
                 ClearWallNatural(x, y, 1);
             }
@@ -65,14 +65,14 @@ static void BuildWalledRoom(int x1, int y1, int x2, int y2) {
 
 // Place a door at position
 static void PlaceDoor(int x, int y) {
-    grid[1][y][x] = CELL_DOOR;
+    GRID(x, y, 1) = CELL_DOOR;
     SetWallMaterial(x, y, 1, MAT_GRANITE);
     ClearWallNatural(x, y, 1);
 }
 
 // Place a window at position
 static void PlaceWindow(int x, int y) {
-    grid[1][y][x] = CELL_WINDOW;
+    GRID(x, y, 1) = CELL_WINDOW;
     ClearWallNatural(x, y, 1);
 }
 
@@ -380,7 +380,7 @@ describe(test_rooms) {
         int originalSize = r->cellCount;
 
         // Place wall inside room, splitting it or shrinking it
-        grid[1][5][5] = CELL_WALL;
+        GRID(5, 5, 1) = CELL_WALL;
         SetWallMaterial(5, 5, 1, MAT_GRANITE);
         InvalidateRooms();
         UpdateRooms();
@@ -406,7 +406,7 @@ describe(test_rooms) {
         expect(ridA != ridB);
 
         // Remove shared wall at (6,4) - punch a hole
-        grid[1][4][6] = CELL_AIR;
+        GRID(6, 4, 1) = CELL_AIR;
         InvalidateRooms();
         UpdateRooms();
 
@@ -447,16 +447,16 @@ describe(test_rooms) {
             for (int x = 3; x <= 7; x++) {
                 bool edge = (x == 3 || x == 7 || y == 3 || y == 7);
                 if (edge) {
-                    grid[2][y][x] = CELL_WALL;
+                    GRID(x, y, 2) = CELL_WALL;
                     SetWallMaterial(x, y, 2, MAT_GRANITE);
                 } else {
-                    grid[2][y][x] = CELL_AIR;
+                    GRID(x, y, 2) = CELL_AIR;
                     // z=1 interior is air, so z=2 needs constructed floor
                     SET_FLOOR(x, y, 2);
                 }
             }
         }
-        grid[2][7][5] = CELL_DOOR;
+        GRID(5, 7, 2) = CELL_DOOR;
 
         UpdateRooms();
 

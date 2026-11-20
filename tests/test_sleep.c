@@ -27,9 +27,9 @@ static void SetupFlatGrid(void) {
     InitTestGrid(10, 10);
     for (int y = 0; y < 10; y++) {
         for (int x = 0; x < 10; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
-            grid[1][y][x] = CELL_AIR;
+            GRID(x, y, 1) = CELL_AIR;
             SET_FLOOR(x, y, 1);
         }
     }
@@ -658,7 +658,7 @@ describe(body_temperature) {
         movers[mi_sheltered].hunger = 0.0f;
         movers[mi_sheltered].energy = 1.0f;
         movers[mi_sheltered].bodyTemp = 30.0f;
-        grid[2][3][3] = CELL_WALL; // roof blocks wind
+        GRID(3, 3, 2) = CELL_WALL; // roof blocks wind
 
         mi_exposed = SetupMover(7, 7);
         movers[mi_exposed].hunger = 0.0f;

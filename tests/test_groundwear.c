@@ -42,9 +42,9 @@ describe(groundwear_initialization) {
         InitGroundWear();
         
         // Manually set some wear at different z-levels
-        wearGrid[0][0][2] = 100;
-        wearGrid[0][1][4] = 200;
-        wearGrid[1][0][3] = 150;
+        WEAR(2, 0, 0) = 100;
+        WEAR(4, 1, 0) = 200;
+        WEAR(3, 0, 1) = 150;
         
         expect(GetGroundWear(2, 0, 0) == 100);
         expect(GetGroundWear(4, 1, 0) == 200);
@@ -71,7 +71,7 @@ describe(groundwear_trampling) {
         // Set up dirt tiles
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
+                GRID(x, y, 0) = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
             }
         }
         
@@ -90,7 +90,7 @@ describe(groundwear_trampling) {
             "dddd\n");
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
+            GRID(x, 0, 0) = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
         }
         
         InitGroundWear();
@@ -109,7 +109,7 @@ describe(groundwear_trampling) {
             "dddd\n");
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
+            GRID(x, 0, 0) = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
         }
         
         InitGroundWear();
@@ -122,7 +122,7 @@ describe(groundwear_trampling) {
         wearMax = 1000;
         
         // Set wear close to max
-        wearGrid[0][0][2] = 900;
+        WEAR(2, 0, 0) = 900;
         
         // Trample - should cap at wearMax (900 + 200 would be 1100, but caps at 1000)
         TrampleGround(2, 0, 0);
@@ -138,10 +138,10 @@ describe(groundwear_trampling) {
         InitTestGridFromAscii(
             "d#dd\n");
         
-        grid[0][0][0] = CELL_WALL; SetWallMaterial(0, 0, 0, MAT_DIRT); SetWallNatural(0, 0, 0);
-        grid[0][0][1] = CELL_WALL;
-        grid[0][0][2] = CELL_WALL; SetWallMaterial(2, 0, 0, MAT_DIRT); SetWallNatural(2, 0, 0);
-        grid[0][0][3] = CELL_WALL; SetWallMaterial(3, 0, 0, MAT_DIRT); SetWallNatural(3, 0, 0);
+        GRID(0, 0, 0) = CELL_WALL; SetWallMaterial(0, 0, 0, MAT_DIRT); SetWallNatural(0, 0, 0);
+        GRID(1, 0, 0) = CELL_WALL;
+        GRID(2, 0, 0) = CELL_WALL; SetWallMaterial(2, 0, 0, MAT_DIRT); SetWallNatural(2, 0, 0);
+        GRID(3, 0, 0) = CELL_WALL; SetWallMaterial(3, 0, 0, MAT_DIRT); SetWallNatural(3, 0, 0);
         
         InitGroundWear();
         groundWearEnabled = true;
@@ -156,7 +156,7 @@ describe(groundwear_trampling) {
             "dddd\n");
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
+            GRID(x, 0, 0) = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
         }
         
         InitGroundWear();
@@ -175,8 +175,8 @@ describe(groundwear_trampling) {
         
         // Set up dirt at z=0 and z=1
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
-            grid[1][0][x] = CELL_WALL; SetWallMaterial(x, 0, 1, MAT_DIRT); SetWallNatural(x, 0, 1);
+            GRID(x, 0, 0) = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
+            GRID(x, 0, 1) = CELL_WALL; SetWallMaterial(x, 0, 1, MAT_DIRT); SetWallNatural(x, 0, 1);
         }
         
         InitGroundWear();
@@ -203,7 +203,7 @@ describe(surface_overlay_updates) {
             "dddd\n");
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
+            GRID(x, 0, 0) = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
             SetVegetation(x, 0, 0, VEG_GRASS_TALL);
         }
         
@@ -255,7 +255,7 @@ describe(surface_overlay_updates) {
         diurnalAmplitude = 0;
 
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
+            GRID(x, 0, 0) = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
             SetVegetation(x, 0, 0, VEG_GRASS_TALLER);
         }
 
@@ -310,14 +310,14 @@ describe(wear_decay) {
             "dddd\n");
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
+            GRID(x, 0, 0) = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
         }
         
         InitGroundWear();
         groundWearEnabled = true;
         
         // Set initial wear (manually, so also set active cell counter)
-        wearGrid[0][0][2] = 100;
+        WEAR(2, 0, 0) = 100;
         wearActiveCells = 1;
 
         // Set decay interval to fast for testing
@@ -339,7 +339,7 @@ describe(wear_decay) {
             "dddd\n");
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
+            GRID(x, 0, 0) = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
         }
         
         InitGroundWear();
@@ -350,7 +350,7 @@ describe(wear_decay) {
         wearDecayRate = 10;
         
         // Set initial wear (manually, so also set active cell counter)
-        wearGrid[0][0][2] = 100;
+        WEAR(2, 0, 0) = 100;
         wearActiveCells = 1;
 
         // First few ticks: no decay (accumulator < interval)
@@ -375,7 +375,7 @@ describe(wear_decay) {
             "dddd\n");
 
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
+            GRID(x, 0, 0) = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
             SetVegetation(x, 0, 0, VEG_GRASS_TALLER);  // fully grown so recovery completes
         }
 
@@ -386,7 +386,7 @@ describe(wear_decay) {
         wearRecoveryInterval = 0.004f;
 
         // Set wear lower than decay rate (manually, so also set active cell counter)
-        wearGrid[0][0][2] = 5;
+        WEAR(2, 0, 0) = 5;
         wearActiveCells = 1;
 
         UpdateGroundWear();
@@ -405,18 +405,18 @@ describe(wear_decay) {
         
         // Set up dirt at multiple z-levels
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
-            grid[1][0][x] = CELL_WALL; SetWallMaterial(x, 0, 1, MAT_DIRT); SetWallNatural(x, 0, 1);
-            grid[2][0][x] = CELL_WALL; SetWallMaterial(x, 0, 2, MAT_DIRT); SetWallNatural(x, 0, 2);
+            GRID(x, 0, 0) = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
+            GRID(x, 0, 1) = CELL_WALL; SetWallMaterial(x, 0, 1, MAT_DIRT); SetWallNatural(x, 0, 1);
+            GRID(x, 0, 2) = CELL_WALL; SetWallMaterial(x, 0, 2, MAT_DIRT); SetWallNatural(x, 0, 2);
         }
         
         InitGroundWear();
         groundWearEnabled = true;
         
         // Set wear at different z-levels (manually, so also set active cell counter)
-        wearGrid[0][0][2] = 100;
-        wearGrid[1][0][2] = 100;
-        wearGrid[2][0][2] = 100;
+        WEAR(2, 0, 0) = 100;
+        WEAR(2, 0, 1) = 100;
+        WEAR(2, 0, 2) = 100;
         wearActiveCells = 3;
 
         wearDecayRate = 10;
@@ -446,7 +446,7 @@ describe(groundwear_full_cycle) {
         diurnalAmplitude = 0;
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
+            GRID(x, 0, 0) = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
             SetVegetation(x, 0, 0, VEG_GRASS_TALL);
         }
         
@@ -501,7 +501,7 @@ describe(groundwear_full_cycle) {
             "dddddddddd\n");
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
+            GRID(x, 0, 0) = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
             SetVegetation(x, 0, 0, VEG_GRASS_TALL);
         }
         
@@ -553,7 +553,7 @@ describe(groundwear_vegetation_init) {
 
         for (int y = 0; y < 4; y++) {
             for (int x = 0; x < 8; x++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 SetWallNatural(x, y, 0);
                 SetVegetation(x, y, 0, VEG_NONE);  // intentionally bare
@@ -585,7 +585,7 @@ describe(groundwear_vegetation_init) {
 
         VegetationType stages[] = {VEG_NONE, VEG_GRASS_SHORT, VEG_GRASS_TALL, VEG_GRASS_TALLER};
         for (int x = 0; x < 4; x++) {
-            grid[0][0][x] = CELL_WALL;
+            GRID(x, 0, 0) = CELL_WALL;
             SetWallMaterial(x, 0, 0, MAT_DIRT);
             SetWallNatural(x, 0, 0);
             SetVegetation(x, 0, 0, stages[x]);
@@ -613,7 +613,7 @@ describe(groundwear_vegetation_init) {
         seasonalAmplitude = 0;
         diurnalAmplitude = 0;
 
-        grid[0][0][1] = CELL_WALL;
+        GRID(1, 0, 0) = CELL_WALL;
         SetWallMaterial(1, 0, 0, MAT_DIRT);
         SetWallNatural(1, 0, 0);
         SetVegetation(1, 0, 0, VEG_GRASS_TALLER);
@@ -661,7 +661,7 @@ describe(groundwear_vegetation_init) {
 
         for (int y = 0; y < 4; y++) {
             for (int x = 0; x < 8; x++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 SetWallNatural(x, y, 0);
                 SetVegetation(x, y, 0, VEG_NONE);  // intentionally bare
@@ -687,7 +687,7 @@ describe(groundwear_vegetation_init) {
         seasonalAmplitude = 0;
         diurnalAmplitude = 0;
 
-        grid[0][0][1] = CELL_WALL;
+        GRID(1, 0, 0) = CELL_WALL;
         SetWallMaterial(1, 0, 0, MAT_DIRT);
         SetWallNatural(1, 0, 0);
         SetVegetation(1, 0, 0, VEG_NONE);  // intentionally bare
@@ -724,7 +724,7 @@ describe(groundwear_vegetation_init) {
         seasonalAmplitude = 0;
         diurnalAmplitude = 0;
 
-        grid[0][0][1] = CELL_WALL;
+        GRID(1, 0, 0) = CELL_WALL;
         SetWallMaterial(1, 0, 0, MAT_DIRT);
         SetWallNatural(1, 0, 0);
         SetVegetation(1, 0, 0, VEG_GRASS_TALLER);
@@ -759,7 +759,7 @@ describe(groundwear_vegetation_init) {
         seasonalAmplitude = 0;
         diurnalAmplitude = 0;
 
-        grid[0][0][1] = CELL_WALL;
+        GRID(1, 0, 0) = CELL_WALL;
         SetWallMaterial(1, 0, 0, MAT_GRANITE);
         SetWallNatural(1, 0, 0);
 
@@ -816,11 +816,11 @@ describe(groundwear_edge_cases) {
         InitTestGridFromAscii(
             "dfgw\n");
         
-        grid[0][0][0] = CELL_WALL; SetWallMaterial(0, 0, 0, MAT_DIRT); SetWallNatural(0, 0, 0);
-        grid[0][0][1] = CELL_AIR;
+        GRID(0, 0, 0) = CELL_WALL; SetWallMaterial(0, 0, 0, MAT_DIRT); SetWallNatural(0, 0, 0);
+        GRID(1, 0, 0) = CELL_AIR;
         SET_FLOOR(1, 0, 0);  // Floor uses flag system
-        grid[0][0][2] = CELL_AIR;  // Air cell - not trampled
-        grid[0][0][3] = CELL_WALL;
+        GRID(2, 0, 0) = CELL_AIR;  // Air cell - not trampled
+        GRID(3, 0, 0) = CELL_WALL;
         
         InitGroundWear();
         groundWearEnabled = true;
@@ -844,9 +844,9 @@ describe(groundwear_edge_cases) {
         // Set up z=0 as dirt ground with tall grass
         for (int y = 0; y < 4; y++) {
             for (int x = 0; x < 8; x++) {
-                grid[0][y][x] = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
+                GRID(x, y, 0) = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
                 SetVegetation(x, y, 0, VEG_GRASS_TALL);
-                grid[1][y][x] = CELL_AIR;  // Walking level is air above dirt
+                GRID(x, y, 1) = CELL_AIR;  // Walking level is air above dirt
             }
         }
         
@@ -870,8 +870,8 @@ describe(groundwear_edge_cases) {
         InitTestGrid(8, 4);
         
         // z=0 is stone/wall, z=1 is floor - no dirt to trample
-        grid[0][1][2] = CELL_WALL;
-        grid[1][1][2] = CELL_AIR;
+        GRID(2, 1, 0) = CELL_WALL;
+        GRID(2, 1, 1) = CELL_AIR;
         SET_FLOOR(2, 1, 1);  // Floor uses flag system
         
         InitGroundWear();

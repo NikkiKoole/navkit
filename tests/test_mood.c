@@ -30,9 +30,9 @@ static void SetupClean(void) {
     InitTestGrid(10, 10);
     for (int y = 0; y < 10; y++) {
         for (int x = 0; x < 10; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
-            grid[1][y][x] = CELL_AIR;
+            GRID(x, y, 1) = CELL_AIR;
             SET_FLOOR(x, y, 1);
         }
     }
@@ -975,9 +975,9 @@ static void SetupSceneryGrid(void) {
     InitWater();
     for (int y = 0; y < 30; y++) {
         for (int x = 0; x < 30; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
-            grid[1][y][x] = CELL_AIR;
+            GRID(x, y, 1) = CELL_AIR;
             SET_FLOOR(x, y, 1);
         }
     }
@@ -1017,11 +1017,11 @@ describe(scenery_beauty_count) {
     it("trees count as beauty sources") {
         SetupSceneryGrid();
         // Place a few tree trunks near center
-        grid[1][15][14] = CELL_TREE_TRUNK;
+        GRID(14, 15, 1) = CELL_TREE_TRUNK;
         SetWallMaterial(14, 15, 1, MAT_OAK);
-        grid[1][15][16] = CELL_TREE_TRUNK;
+        GRID(16, 15, 1) = CELL_TREE_TRUNK;
         SetWallMaterial(16, 15, 1, MAT_BIRCH);
-        grid[1][14][15] = CELL_TREE_TRUNK;
+        GRID(15, 14, 1) = CELL_TREE_TRUNK;
         SetWallMaterial(15, 14, 1, MAT_PINE);
 
         int count = CountBeautySources(15, 15, 1, 6);
@@ -1051,7 +1051,7 @@ describe(scenery_beauty_count) {
     it("sources outside radius are not counted") {
         SetupSceneryGrid();
         // Place tree far from center (radius 6, so >6 cells away)
-        grid[1][5][5] = CELL_TREE_TRUNK;
+        GRID(5, 5, 1) = CELL_TREE_TRUNK;
         SetWallMaterial(5, 5, 1, MAT_OAK);
 
         int count = CountBeautySources(15, 15, 1, 6);
@@ -1061,7 +1061,7 @@ describe(scenery_beauty_count) {
     it("tree at z-1 still counts (below walking level)") {
         SetupSceneryGrid();
         // Tree trunk at z=0 should still count for mover at z=1
-        grid[0][15][14] = CELL_TREE_TRUNK;
+        GRID(14, 15, 0) = CELL_TREE_TRUNK;
         SetWallMaterial(14, 15, 0, MAT_OAK);
 
         int count = CountBeautySources(15, 15, 1, 6);
@@ -1071,9 +1071,9 @@ describe(scenery_beauty_count) {
     it("mixed sources all count") {
         SetupSceneryGrid();
         // 2 trees + 1 water + 1 plant = 4 beauty
-        grid[1][15][14] = CELL_TREE_TRUNK;
+        GRID(14, 15, 1) = CELL_TREE_TRUNK;
         SetWallMaterial(14, 15, 1, MAT_OAK);
-        grid[1][15][16] = CELL_TREE_TRUNK;
+        GRID(16, 15, 1) = CELL_TREE_TRUNK;
         SetWallMaterial(16, 15, 1, MAT_BIRCH);
         SetWaterLevel(14, 14, 1, 5);
         waterActiveCells++;
@@ -1098,7 +1098,7 @@ describe(scenery_moodlets) {
 
         // Place 5 trees (above threshold of 3)
         for (int i = 0; i < 5; i++) {
-            grid[1][14][13 + i] = CELL_TREE_TRUNK;
+            GRID(13 + i, 14, 1) = CELL_TREE_TRUNK;
             SetWallMaterial(13 + i, 14, 1, MAT_OAK);
         }
 
@@ -1176,7 +1176,7 @@ describe(scenery_moodlets) {
 
         // Now add trees (beauty)
         for (int i = 0; i < 5; i++) {
-            grid[1][14][13 + i] = CELL_TREE_TRUNK;
+            GRID(13 + i, 14, 1) = CELL_TREE_TRUNK;
             SetWallMaterial(13 + i, 14, 1, MAT_OAK);
         }
 
@@ -1187,7 +1187,7 @@ describe(scenery_moodlets) {
 
         // Remove trees again, bleak should take full threshold again (accumulator was reset)
         for (int i = 0; i < 5; i++) {
-            grid[1][14][13 + i] = CELL_AIR;
+            GRID(13 + i, 14, 1) = CELL_AIR;
         }
         // 2 more checks — not enough for bleak yet (accumulator was reset to 0)
         for (int c = 0; c < 2; c++) {
@@ -1209,7 +1209,7 @@ describe(scenery_moodlets) {
 
         // Place trees
         for (int i = 0; i < 5; i++) {
-            grid[1][14][13 + i] = CELL_TREE_TRUNK;
+            GRID(13 + i, 14, 1) = CELL_TREE_TRUNK;
             SetWallMaterial(13 + i, 14, 1, MAT_OAK);
         }
 
@@ -1244,7 +1244,7 @@ describe(scenery_moodlets) {
 
         // Add beauty
         for (int i = 0; i < 5; i++) {
-            grid[1][14][13 + i] = CELL_TREE_TRUNK;
+            GRID(13 + i, 14, 1) = CELL_TREE_TRUNK;
             SetWallMaterial(13 + i, 14, 1, MAT_OAK);
         }
         TickMood(3000);

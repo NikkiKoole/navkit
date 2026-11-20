@@ -175,22 +175,22 @@ describe(window_light) {
         // Set up: solid ground at z=0, air at z=1..3
         for (int y = 0; y < 8; y++) {
             for (int x = 0; x < 8; x++) {
-                grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_AIR;
-                grid[2][y][x] = CELL_AIR;
-                grid[3][y][x] = CELL_AIR;
+                GRID(x, y, 0) = CELL_WALL;
+                GRID(x, y, 1) = CELL_AIR;
+                GRID(x, y, 2) = CELL_AIR;
+                GRID(x, y, 3) = CELL_AIR;
             }
         }
 
         // Place a solid roof at z=3 across the whole area
         for (int y = 0; y < 8; y++) {
             for (int x = 0; x < 8; x++) {
-                grid[3][y][x] = CELL_WALL;
+                GRID(x, y, 3) = CELL_WALL;
             }
         }
 
         // Put a window at (4,4,3) and keep a wall at (2,2,3)
-        grid[3][4][4] = CELL_WINDOW;
+        GRID(4, 4, 3) = CELL_WINDOW;
 
         // Recompute lighting
         lightingEnabled = true;

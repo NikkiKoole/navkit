@@ -44,7 +44,7 @@ static void ForceWeather(WeatherType type) {
 
 // Helper: place a solid wall cell as a roof at z=2 above (x,y)
 static void PlaceRoof(int x, int y) {
-    grid[2][y][x] = CELL_WALL;
+    GRID(x, y, 2) = CELL_WALL;
     SetWallMaterial(x, y, 2, MAT_GRANITE);
 }
 

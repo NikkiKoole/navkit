@@ -282,7 +282,7 @@ describe(temperature_insulation_comparison) {
         expect(GetInsulationTier(0, 0, 0) == INSULATION_TIER_AIR);
         
         // Create a wall
-        grid[0][0][1] = CELL_WALL;
+        GRID(1, 0, 0) = CELL_WALL;
         
         // Wall should be tier 2 (stone)
         expect(GetInsulationTier(1, 0, 0) == INSULATION_TIER_STONE);
@@ -327,7 +327,7 @@ describe(temperature_underground_ambient) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_AIR;
+                    GRID(x, y, z) = CELL_AIR;
                 }
             }
         }
@@ -354,7 +354,7 @@ describe(temperature_underground_ambient) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_AIR;
+                    GRID(x, y, z) = CELL_AIR;
                 }
             }
         }
@@ -386,19 +386,19 @@ describe(temperature_heated_room) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_AIR;
+                    GRID(x, y, z) = CELL_AIR;
                 }
             }
         }
         
         // Add walls for room at z=0
         for (int y = 1; y <= 5; y++) {
-            grid[0][y][1] = CELL_WALL;
-            grid[0][y][5] = CELL_WALL;
+            GRID(1, y, 0) = CELL_WALL;
+            GRID(5, y, 0) = CELL_WALL;
         }
         for (int x = 1; x <= 5; x++) {
-            grid[0][1][x] = CELL_WALL;
-            grid[0][5][x] = CELL_WALL;
+            GRID(x, 1, 0) = CELL_WALL;
+            GRID(x, 5, 0) = CELL_WALL;
         }
         
         InitTemperature();
@@ -575,7 +575,7 @@ describe(temperature_depth_gradient) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_AIR;
+                    GRID(x, y, z) = CELL_AIR;
                 }
             }
         }
@@ -828,7 +828,7 @@ describe(temperature_stability) {
         // Mark all as stable manually
         for (int y = 0; y < 3; y++) {
             for (int x = 0; x < 5; x++) {
-                temperatureGrid[0][y][x].stable = true;
+                TEMPERATURE(x, y, 0).stable = true;
             }
         }
         

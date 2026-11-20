@@ -370,7 +370,7 @@ describe(water_falling) {
         SetWaterLevel(2, 1, 1, 7);
 
         // Make z=0 able to receive water (not a wall)
-        expect(!CellBlocksMovement(grid[0][1][2]));
+        expect(!CellBlocksMovement(GRID(2, 1, 0)));
         
         // Run simulation
         RunWaterTicks(10);
@@ -482,7 +482,7 @@ describe(water_pool_filling) {
         
         // Remove the north wall - water should spread
         // This simulates what the erase tool does: change cell and destabilize
-        grid[0][1][2] = CELL_AIR;
+        GRID(2, 1, 0) = CELL_AIR;
         DestabilizeWater(2, 1, 0);  // Destabilize the changed cell (like erase tool does)
         
         // Run simulation
@@ -577,16 +577,16 @@ describe(water_pressure) {
         for (int z = 0; z < 3; z++) {
             for (int y = 0; y < 4; y++) {
                 for (int x = 0; x < 8; x++) {
-                    grid[z][y][x] = CELL_AIR;
+                    GRID(x, y, z) = CELL_AIR;
                 }
             }
         }
         
         // z=1: walls on left and right, channel in middle
-        grid[1][1][0] = CELL_WALL;
-        grid[1][1][1] = CELL_WALL;
-        grid[1][1][6] = CELL_WALL;
-        grid[1][1][7] = CELL_WALL;
+        GRID(0, 1, 1) = CELL_WALL;
+        GRID(1, 1, 1) = CELL_WALL;
+        GRID(6, 1, 1) = CELL_WALL;
+        GRID(7, 1, 1) = CELL_WALL;
         
         InitWater();
         
@@ -627,21 +627,21 @@ describe(water_pressure) {
         for (int z = 0; z < 4; z++) {
             for (int y = 0; y < 4; y++) {
                 for (int x = 0; x < 8; x++) {
-                    grid[z][y][x] = CELL_AIR;
+                    GRID(x, y, z) = CELL_AIR;
                 }
             }
         }
         
         // Build the U-bend walls:
         // Left side: wall at z=1 and z=2 (water falls from z=3 source down to z=0)
-        grid[1][1][0] = CELL_WALL;
-        grid[1][1][1] = CELL_WALL;
-        grid[2][1][0] = CELL_WALL;
-        grid[2][1][1] = CELL_WALL;
+        GRID(0, 1, 1) = CELL_WALL;
+        GRID(1, 1, 1) = CELL_WALL;
+        GRID(0, 1, 2) = CELL_WALL;
+        GRID(1, 1, 2) = CELL_WALL;
         
         // Right side: wall at z=1 only (water can rise to z=2 but path blocked at z=1)
-        grid[1][1][6] = CELL_WALL;
-        grid[1][1][7] = CELL_WALL;
+        GRID(6, 1, 1) = CELL_WALL;
+        GRID(7, 1, 1) = CELL_WALL;
         
         InitWater();
         waterEvaporationEnabled = false;
@@ -677,7 +677,7 @@ describe(water_pressure) {
         for (int z = 0; z < 2; z++) {
             for (int y = 0; y < 4; y++) {
                 for (int x = 0; x < 4; x++) {
-                    grid[z][y][x] = CELL_AIR;
+                    GRID(x, y, z) = CELL_AIR;
                 }
             }
         }
@@ -827,7 +827,7 @@ describe(water_evaporation) {
         
         // Place source at level 1 (unusual but should not evaporate)
         SetWaterSource(2, 0, 0, true);
-        waterGrid[0][0][2].level = 1;  // Force to level 1
+        WATER(2, 0, 0).level = 1;  // Force to level 1
         
         // Run simulation
         RunWaterTicks(1000);
@@ -964,7 +964,7 @@ describe(water_stability) {
         // Mark all as stable
         for (int y = 0; y < 3; y++) {
             for (int x = 0; x < 5; x++) {
-                waterGrid[0][y][x].stable = true;
+                WATER(x, y, 0).stable = true;
             }
         }
         
@@ -1057,7 +1057,7 @@ describe(water_floor_interaction) {
         waterEvaporationEnabled = false;
 
         // Add a constructed floor at z=1 (air cell with floor flag)
-        grid[1][1][2] = CELL_AIR;
+        GRID(2, 1, 1) = CELL_AIR;
         SET_FLOOR(2, 1, 1);
 
         // Place water above the floor (at z=1, which has the floor)
@@ -1099,7 +1099,7 @@ describe(water_floor_interaction) {
         // Build a floor/ceiling at z=2 above the room interior
         for (int y = 1; y <= 1; y++) {
             for (int x = 1; x <= 3; x++) {
-                grid[2][y][x] = CELL_AIR;
+                GRID(x, y, 2) = CELL_AIR;
                 SET_FLOOR(x, y, 2);
             }
         }

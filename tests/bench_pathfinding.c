@@ -64,7 +64,7 @@ static void BenchAStarVariableCost(void) {
     // Scatter terrain variety
     for (int y = 8; y < 24; y++)
         for (int x = 8; x < 24; x++)
-            grid[0][y][x] = CELL_BUSH;
+            GRID(x, y, 0) = CELL_BUSH;
     for (int x = 0; x < 32; x++) {
         SetSnowLevel(x, 4, 0, 2);
         SetSnowLevel(x, 5, 0, 2);
@@ -80,7 +80,7 @@ static void BenchAStarVariableCost(void) {
     // Reset to uniform terrain
     for (int y = 8; y < 24; y++)
         for (int x = 8; x < 24; x++)
-            grid[0][y][x] = CELL_AIR;
+            GRID(x, y, 0) = CELL_AIR;
     for (int x = 0; x < 32; x++) {
         SetSnowLevel(x, 4, 0, 0);
         SetSnowLevel(x, 5, 0, 0);
@@ -146,7 +146,7 @@ static void BenchHPAStarVariableCost(void) {
     // Mixed terrain: bushes in center, snow band, floor corridor
     for (int y = 12; y < 20; y++)
         for (int x = 12; x < 20; x++)
-            grid[0][y][x] = CELL_BUSH;
+            GRID(x, y, 0) = CELL_BUSH;
     for (int x = 0; x < 64; x++) {
         SetSnowLevel(x, 6, 0, 3);
         SetSnowLevel(x, 7, 0, 3);
@@ -170,7 +170,7 @@ static void BenchHPAStarVariableCost(void) {
     // Clear terrain for uniform comparison
     for (int y = 12; y < 20; y++)
         for (int x = 12; x < 20; x++)
-            grid[0][y][x] = CELL_AIR;
+            GRID(x, y, 0) = CELL_AIR;
     for (int x = 0; x < 64; x++) {
         SetSnowLevel(x, 6, 0, 0);
         SetSnowLevel(x, 7, 0, 0);

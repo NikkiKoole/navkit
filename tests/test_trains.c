@@ -25,9 +25,9 @@ static void SetupFlatGrid40(void) {
     InitTestGrid(40, 40);
     for (int y = 0; y < 40; y++) {
         for (int x = 0; x < 40; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
-            grid[1][y][x] = CELL_AIR;
+            GRID(x, y, 1) = CELL_AIR;
             SET_FLOOR(x, y, 1);
         }
     }
@@ -57,17 +57,17 @@ static void SetupClean(void) {
 // Helper: create a straight horizontal track from (x1,y) to (x2,y) at z
 static void PlaceTrackLine(int x1, int x2, int y, int z) {
     for (int x = x1; x <= x2; x++) {
-        grid[z][y][x] = CELL_TRACK;
-        trackConnections[z][y][x] = TRACK_E | TRACK_W;
+        GRID(x, y, z) = CELL_TRACK;
+        TRACK_CONN(x, y, z) = TRACK_E | TRACK_W;
     }
     // End caps: remove outward connections
-    trackConnections[z][y][x1] &= ~TRACK_W;
-    trackConnections[z][y][x2] &= ~TRACK_E;
+    TRACK_CONN(x1, y, z) &= ~TRACK_W;
+    TRACK_CONN(x2, y, z) &= ~TRACK_E;
 }
 
 // Helper: place platform at (x,y,z)
 static void PlacePlatform(int x, int y, int z) {
-    grid[z][y][x] = CELL_PLATFORM;
+    GRID(x, y, z) = CELL_PLATFORM;
 }
 
 // ============================================================================
@@ -77,8 +77,8 @@ static void PlacePlatform(int x, int y, int z) {
 describe(station_detection) {
     it("detects station when platform adjacent to track") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
         expect(stationCount == 1);
         expect(stations[0].trackX == 10);
@@ -91,35 +91,35 @@ describe(station_detection) {
 
     it("no station when platform not adjacent to track") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][12] = CELL_PLATFORM;  // 2 cells away
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(12, 5, 1) = CELL_PLATFORM;  // 2 cells away
         RebuildStations();
         expect(stationCount == 0);
     }
 
     it("detects multiple stations") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
-        grid[1][15][20] = CELL_TRACK;
-        grid[1][14][20] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
+        GRID(20, 15, 1) = CELL_TRACK;
+        GRID(20, 14, 1) = CELL_PLATFORM;
         RebuildStations();
         expect(stationCount == 2);
     }
 
     it("one station per track cell") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][4][10] = CELL_PLATFORM;  // North
-        grid[1][5][11] = CELL_PLATFORM;  // East
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(10, 4, 1) = CELL_PLATFORM;  // North
+        GRID(11, 5, 1) = CELL_PLATFORM;  // East
         RebuildStations();
         expect(stationCount == 1);
     }
 
     it("GetStationAt finds station by track coords") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
         int idx = GetStationAt(10, 5, 1);
         expect(idx == 0);
@@ -129,10 +129,10 @@ describe(station_detection) {
 
     it("FindNearestStation returns closest") {
         SetupClean();
-        grid[1][5][5] = CELL_TRACK;
-        grid[1][5][6] = CELL_PLATFORM;
-        grid[1][5][30] = CELL_TRACK;
-        grid[1][5][31] = CELL_PLATFORM;
+        GRID(5, 5, 1) = CELL_TRACK;
+        GRID(6, 5, 1) = CELL_PLATFORM;
+        GRID(30, 5, 1) = CELL_TRACK;
+        GRID(31, 5, 1) = CELL_PLATFORM;
         RebuildStations();
         int near = FindNearestStation(7, 5, 1, 20);
         expect(near >= 0);
@@ -144,8 +144,8 @@ describe(station_detection) {
 
     it("rebuild preserves waiters at existing stations") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
         StationAddWaiter(0, 42);
         expect(stations[0].waitingCount == 1);
@@ -162,8 +162,8 @@ describe(station_detection) {
 describe(waiting_set) {
     it("add and remove waiter") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
 
         StationAddWaiter(0, 3);
@@ -176,8 +176,8 @@ describe(waiting_set) {
 
     it("FIFO ordering via GetNextBoarder") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
 
         gameTime = 1.0;
@@ -193,8 +193,8 @@ describe(waiting_set) {
 
     it("no duplicate waiters") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
 
         StationAddWaiter(0, 3);
@@ -204,8 +204,8 @@ describe(waiting_set) {
 
     it("remove nonexistent waiter is no-op") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
 
         StationAddWaiter(0, 3);
@@ -300,8 +300,8 @@ describe(should_use_train) {
 
     it("returns false when goal too close") {
         SetupClean();
-        grid[1][5][5] = CELL_TRACK; grid[1][5][6] = CELL_PLATFORM;
-        grid[1][5][15] = CELL_TRACK; grid[1][5][16] = CELL_PLATFORM;
+        GRID(5, 5, 1) = CELL_TRACK; GRID(6, 5, 1) = CELL_PLATFORM;
+        GRID(15, 5, 1) = CELL_TRACK; GRID(16, 5, 1) = CELL_PLATFORM;
         RebuildStations();
 
         moverCount = 1;
@@ -313,9 +313,9 @@ describe(should_use_train) {
     it("returns true when goal is far with stations near both ends") {
         SetupClean();
         // Station A near mover start at (5,5), platform at (6,5)
-        grid[1][5][5] = CELL_TRACK; grid[1][5][6] = CELL_PLATFORM;
+        GRID(5, 5, 1) = CELL_TRACK; GRID(6, 5, 1) = CELL_PLATFORM;
         // Station B near goal at (35,5), platform at (36,5)
-        grid[1][5][35] = CELL_TRACK; grid[1][5][36] = CELL_PLATFORM;
+        GRID(35, 5, 1) = CELL_TRACK; GRID(36, 5, 1) = CELL_PLATFORM;
         RebuildStations();
         expect(stationCount == 2);
 
@@ -341,8 +341,8 @@ describe(should_use_train) {
 
     it("returns false for cross-z goals") {
         SetupClean();
-        grid[1][5][5] = CELL_TRACK; grid[1][5][6] = CELL_PLATFORM;
-        grid[1][5][35] = CELL_TRACK; grid[1][5][36] = CELL_PLATFORM;
+        GRID(5, 5, 1) = CELL_TRACK; GRID(6, 5, 1) = CELL_PLATFORM;
+        GRID(35, 5, 1) = CELL_TRACK; GRID(36, 5, 1) = CELL_PLATFORM;
         RebuildStations();
 
         moverCount = 1;
@@ -359,8 +359,8 @@ describe(should_use_train) {
 describe(boarding_exiting) {
     it("BoardMoverOnTrain removes from waiting, adds to riding") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
 
         moverCount = 1;
@@ -383,8 +383,8 @@ describe(boarding_exiting) {
 
     it("ExitMoverFromTrain places mover at platform, restores goal") {
         SetupClean();
-        grid[1][15][20] = CELL_TRACK;
-        grid[1][15][21] = CELL_PLATFORM;
+        GRID(20, 15, 1) = CELL_TRACK;
+        GRID(21, 15, 1) = CELL_PLATFORM;
         RebuildStations();
         int exitSt = GetStationAt(20, 15, 1);
         expect(exitSt >= 0);
@@ -416,8 +416,8 @@ describe(boarding_exiting) {
 
     it("DismountAllRiders removes all riders") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
 
         moverCount = 3;
@@ -510,8 +510,8 @@ describe(boarding_exiting) {
 
     it("capacity: excess waiters remain") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
 
         int trainIdx = SpawnTrain(10, 5, 1);
@@ -545,8 +545,8 @@ describe(boarding_exiting) {
 describe(mover_transport_state) {
     it("waiting mover with active job not assigned new jobs") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
 
         moverCount = 1;
@@ -561,8 +561,8 @@ describe(mover_transport_state) {
 
     it("jobless mover with stale transport state gets cleared and becomes idle") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
 
         moverCount = 1;
@@ -578,8 +578,8 @@ describe(mover_transport_state) {
 
     it("riding mover resets stuck timer") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
 
         moverCount = 1;
@@ -593,8 +593,8 @@ describe(mover_transport_state) {
 
     it("walking-to-station mover transitions to waiting on arrival") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
 
         moverCount = 1;
@@ -624,9 +624,9 @@ static void SetupWideGrid(void) {
     InitTestGrid(80, 20);
     for (int y = 0; y < 20; y++)
         for (int x = 0; x < 80; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
-            grid[1][y][x] = CELL_AIR;
+            GRID(x, y, 1) = CELL_AIR;
             SET_FLOOR(x, y, 1);
         }
     ClearMovers();
@@ -666,10 +666,10 @@ describe(transport_haul_integration) {
         // then need to carry it all the way back RIGHT — defeating the purpose.
         SetupWideGrid();
 
-        grid[1][10][5] = CELL_TRACK;
-        grid[1][10][6] = CELL_PLATFORM;  // Station A platform
-        grid[1][10][75] = CELL_TRACK;
-        grid[1][10][76] = CELL_PLATFORM; // Station B platform
+        GRID(5, 10, 1) = CELL_TRACK;
+        GRID(6, 10, 1) = CELL_PLATFORM;  // Station A platform
+        GRID(75, 10, 1) = CELL_TRACK;
+        GRID(76, 10, 1) = CELL_PLATFORM; // Station B platform
         RebuildStations();
         expect(stationCount == 2);
 
@@ -705,10 +705,10 @@ describe(transport_haul_integration) {
         // This IS the delivery leg — train should be used.
         SetupWideGrid();
 
-        grid[1][10][5] = CELL_TRACK;
-        grid[1][10][6] = CELL_PLATFORM;
-        grid[1][10][75] = CELL_TRACK;
-        grid[1][10][76] = CELL_PLATFORM;
+        GRID(5, 10, 1) = CELL_TRACK;
+        GRID(6, 10, 1) = CELL_PLATFORM;
+        GRID(75, 10, 1) = CELL_TRACK;
+        GRID(76, 10, 1) = CELL_PLATFORM;
         RebuildStations();
         expect(stationCount == 2);
 
@@ -744,10 +744,10 @@ describe(transport_haul_integration) {
         // This is a carrying step, not a pickup walk.
         SetupWideGrid();
 
-        grid[1][10][5] = CELL_TRACK;
-        grid[1][10][6] = CELL_PLATFORM;
-        grid[1][10][75] = CELL_TRACK;
-        grid[1][10][76] = CELL_PLATFORM;
+        GRID(5, 10, 1) = CELL_TRACK;
+        GRID(6, 10, 1) = CELL_PLATFORM;
+        GRID(75, 10, 1) = CELL_TRACK;
+        GRID(76, 10, 1) = CELL_PLATFORM;
         RebuildStations();
 
         // Mover near station A at (6,10), goal = workshop near station B at (75,10)
@@ -772,10 +772,10 @@ describe(transport_haul_integration) {
         // can re-evaluate with the correct delivery destination.
         SetupWideGrid();
 
-        grid[1][10][5] = CELL_TRACK;
-        grid[1][10][6] = CELL_PLATFORM;   // Station A (left)
-        grid[1][10][75] = CELL_TRACK;
-        grid[1][10][76] = CELL_PLATFORM;  // Station B (right)
+        GRID(5, 10, 1) = CELL_TRACK;
+        GRID(6, 10, 1) = CELL_PLATFORM;   // Station A (left)
+        GRID(75, 10, 1) = CELL_TRACK;
+        GRID(76, 10, 1) = CELL_PLATFORM;  // Station B (right)
         RebuildStations();
         expect(stationCount == 2);
 
@@ -837,8 +837,8 @@ describe(transport_haul_integration) {
 describe(cancel_job_transport) {
     it("cleans up waiting state on cancel") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
 
         moverCount = 1;
@@ -859,8 +859,8 @@ describe(cancel_job_transport) {
 
     it("cleans up riding state on cancel") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
 
         moverCount = 1;
@@ -890,8 +890,8 @@ describe(cancel_job_transport) {
 describe(platform_destroyed) {
     it("station removed when platform destroyed, waiters ejected") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
         expect(stationCount == 1);
 
@@ -904,7 +904,7 @@ describe(platform_destroyed) {
         movers[0].transportFinalGoal = (Point){30, 30, 1};
         StationAddWaiter(0, 0);
 
-        grid[1][5][11] = CELL_AIR;
+        GRID(11, 5, 1) = CELL_AIR;
         RebuildStations();
 
         expect(stationCount == 0);
@@ -936,7 +936,7 @@ describe(track_destroyed) {
         trains[trainIdx].ridingMovers[1] = 1;
         trains[trainIdx].ridingCount = 2;
 
-        grid[1][10][10] = CELL_AIR;
+        GRID(10, 10, 1) = CELL_AIR;
         TrainsTick(TICK_DT);
 
         expect(trains[trainIdx].active == false);
@@ -953,11 +953,11 @@ describe(multi_cell_platform) {
     it("detects 3 platform cells parallel to horizontal track") {
         SetupClean();
         // Horizontal track at y=5
-        for (int x = 8; x <= 14; x++) grid[1][5][x] = CELL_TRACK;
+        for (int x = 8; x <= 14; x++) GRID(x, 5, 1) = CELL_TRACK;
         // Platform row at y=6 (south of track), parallel: x=10,11,12
-        grid[1][6][10] = CELL_PLATFORM;
-        grid[1][6][11] = CELL_PLATFORM;
-        grid[1][6][12] = CELL_PLATFORM;
+        GRID(10, 6, 1) = CELL_PLATFORM;
+        GRID(11, 6, 1) = CELL_PLATFORM;
+        GRID(12, 6, 1) = CELL_PLATFORM;
         RebuildStations();
         expect(stationCount == 1);
         expect(stations[0].platformCellCount == 3);
@@ -970,9 +970,9 @@ describe(multi_cell_platform) {
 
     it("queue direction along horizontal track") {
         SetupClean();
-        for (int x = 8; x <= 14; x++) grid[1][5][x] = CELL_TRACK;
-        grid[1][6][10] = CELL_PLATFORM;
-        grid[1][6][11] = CELL_PLATFORM;
+        for (int x = 8; x <= 14; x++) GRID(x, 5, 1) = CELL_TRACK;
+        GRID(10, 6, 1) = CELL_PLATFORM;
+        GRID(11, 6, 1) = CELL_PLATFORM;
         RebuildStations();
         expect(stationCount == 1);
         // Platform is south of track → away=(0,1), trackDir=(−1,0) or (1,0)
@@ -984,8 +984,8 @@ describe(multi_cell_platform) {
 
     it("single platform backward compat") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
         expect(stationCount == 1);
         expect(stations[0].platformCellCount == 1);
@@ -995,9 +995,9 @@ describe(multi_cell_platform) {
 
     it("stops at non-platform cell in parallel direction") {
         SetupClean();
-        for (int x = 8; x <= 14; x++) grid[1][5][x] = CELL_TRACK;
-        grid[1][6][10] = CELL_PLATFORM;
-        grid[1][6][11] = CELL_AIR;  // gap stops parallel walk
+        for (int x = 8; x <= 14; x++) GRID(x, 5, 1) = CELL_TRACK;
+        GRID(10, 6, 1) = CELL_PLATFORM;
+        GRID(11, 6, 1) = CELL_AIR;  // gap stops parallel walk
         RebuildStations();
         expect(stationCount == 1);
         // Should only find 1 platform (gap breaks the line)
@@ -1012,8 +1012,8 @@ describe(multi_cell_platform) {
 describe(fifo_shift_down) {
     it("remove middle waiter preserves order") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
 
         gameTime = 1.0;
@@ -1032,8 +1032,8 @@ describe(fifo_shift_down) {
 
     it("remove front waiter shifts all down") {
         SetupClean();
-        grid[1][5][10] = CELL_TRACK;
-        grid[1][5][11] = CELL_PLATFORM;
+        GRID(10, 5, 1) = CELL_TRACK;
+        GRID(11, 5, 1) = CELL_PLATFORM;
         RebuildStations();
 
         gameTime = 1.0;
@@ -1059,8 +1059,8 @@ describe(fifo_shift_down) {
 describe(station_patience) {
     it("gives up waiting by patience, then walks without coming straight back") {
         SetupClean();
-        grid[1][5][5] = CELL_TRACK; grid[1][5][6] = CELL_PLATFORM;
-        grid[1][5][35] = CELL_TRACK; grid[1][5][36] = CELL_PLATFORM;
+        GRID(5, 5, 1) = CELL_TRACK; GRID(6, 5, 1) = CELL_PLATFORM;
+        GRID(35, 5, 1) = CELL_TRACK; GRID(36, 5, 1) = CELL_PLATFORM;
         RebuildStations();
         expect(stationCount == 2);
 
@@ -1103,19 +1103,19 @@ describe(station_patience) {
 static void SetupDoubleTrack(int* n8, int* s8, int* n30, int* s30) {
     SetupClean();
     for (int x = 2; x <= 37; x++) {
-        grid[1][10][x] = CELL_TRACK; trackConnections[1][10][x] = TRACK_E | TRACK_W;
-        grid[1][13][x] = CELL_TRACK; trackConnections[1][13][x] = TRACK_E | TRACK_W;
+        GRID(x, 10, 1) = CELL_TRACK; TRACK_CONN(x, 10, 1) = TRACK_E | TRACK_W;
+        GRID(x, 13, 1) = CELL_TRACK; TRACK_CONN(x, 13, 1) = TRACK_E | TRACK_W;
     }
     for (int y = 10; y <= 13; y++) {
-        grid[1][y][2] = CELL_TRACK; trackConnections[1][y][2] = TRACK_N | TRACK_S;
-        grid[1][y][37] = CELL_TRACK; trackConnections[1][y][37] = TRACK_N | TRACK_S;
+        GRID(2, y, 1) = CELL_TRACK; TRACK_CONN(2, y, 1) = TRACK_N | TRACK_S;
+        GRID(37, y, 1) = CELL_TRACK; TRACK_CONN(37, y, 1) = TRACK_N | TRACK_S;
     }
-    trackConnections[1][10][2] = TRACK_E | TRACK_S;
-    trackConnections[1][10][37] = TRACK_W | TRACK_S;
-    trackConnections[1][13][2] = TRACK_E | TRACK_N;
-    trackConnections[1][13][37] = TRACK_W | TRACK_N;
-    for (int x = 7; x <= 9; x++) { grid[1][9][x] = CELL_PLATFORM; grid[1][14][x] = CELL_PLATFORM; }
-    for (int x = 29; x <= 31; x++) { grid[1][9][x] = CELL_PLATFORM; grid[1][14][x] = CELL_PLATFORM; }
+    TRACK_CONN(2, 10, 1) = TRACK_E | TRACK_S;
+    TRACK_CONN(37, 10, 1) = TRACK_W | TRACK_S;
+    TRACK_CONN(2, 13, 1) = TRACK_E | TRACK_N;
+    TRACK_CONN(37, 13, 1) = TRACK_W | TRACK_N;
+    for (int x = 7; x <= 9; x++) { GRID(x, 9, 1) = CELL_PLATFORM; GRID(x, 14, 1) = CELL_PLATFORM; }
+    for (int x = 29; x <= 31; x++) { GRID(x, 9, 1) = CELL_PLATFORM; GRID(x, 14, 1) = CELL_PLATFORM; }
     RebuildStations();
     *n8 = GetStationAt(8, 10, 1);
     *s8 = GetStationAt(8, 13, 1);
@@ -1177,10 +1177,10 @@ describe(train_direction_choice) {
 describe(station_lines) {
     it("waiters line up behind each other, front at the boarding spot, never on the track") {
         SetupClean();
-        for (int x = 2; x <= 24; x++) grid[1][5][x] = CELL_TRACK;
-        grid[1][6][10] = CELL_PLATFORM;
-        grid[1][6][11] = CELL_PLATFORM;
-        grid[1][6][12] = CELL_PLATFORM;
+        for (int x = 2; x <= 24; x++) GRID(x, 5, 1) = CELL_TRACK;
+        GRID(10, 6, 1) = CELL_PLATFORM;
+        GRID(11, 6, 1) = CELL_PLATFORM;
+        GRID(12, 6, 1) = CELL_PLATFORM;
         RebuildStations();
         expect(stationCount == 1);
         trainQueueEnabled = true;
@@ -1202,7 +1202,7 @@ describe(station_lines) {
         for (int t = 0; t < 900; t++) {
             Tick();
             for (int i = 0; i < n; i++)
-                if (grid[1][(int)(movers[i].y / CELL_SIZE)][(int)(movers[i].x / CELL_SIZE)] == CELL_TRACK) onTrack = true;
+                if (GRID((int)(movers[i].x / CELL_SIZE), (int)(movers[i].y / CELL_SIZE), 1) == CELL_TRACK) onTrack = true;
         }
         expect(!onTrack);
         expect(stations[0].waitingCount == n);
@@ -1238,10 +1238,10 @@ describe(queue_positions) {
     it("slot 1 further along platform than slot 0") {
         SetupClean();
         // Horizontal track, platform south of it (parallel)
-        for (int x = 8; x <= 14; x++) grid[1][5][x] = CELL_TRACK;
-        grid[1][6][10] = CELL_PLATFORM;
-        grid[1][6][11] = CELL_PLATFORM;
-        grid[1][6][12] = CELL_PLATFORM;
+        for (int x = 8; x <= 14; x++) GRID(x, 5, 1) = CELL_TRACK;
+        GRID(10, 6, 1) = CELL_PLATFORM;
+        GRID(11, 6, 1) = CELL_PLATFORM;
+        GRID(12, 6, 1) = CELL_PLATFORM;
         RebuildStations();
         expect(stationCount == 1);
         // Queue extends along x-axis (parallel to track)
@@ -1261,14 +1261,14 @@ describe(queue_positions) {
         SetupClean();
         // Vertical track, platform east of it (parallel)
         for (int y = 5; y <= 15; y++) {
-            grid[1][y][10] = CELL_TRACK;
-            trackConnections[1][y][10] = TRACK_N | TRACK_S;
+            GRID(10, y, 1) = CELL_TRACK;
+            TRACK_CONN(10, y, 1) = TRACK_N | TRACK_S;
         }
-        trackConnections[1][5][10] &= ~TRACK_N;
-        trackConnections[1][15][10] &= ~TRACK_S;
-        grid[1][8][11] = CELL_PLATFORM;
-        grid[1][9][11] = CELL_PLATFORM;
-        grid[1][10][11] = CELL_PLATFORM;
+        TRACK_CONN(10, 5, 1) &= ~TRACK_N;
+        TRACK_CONN(10, 15, 1) &= ~TRACK_S;
+        GRID(11, 8, 1) = CELL_PLATFORM;
+        GRID(11, 9, 1) = CELL_PLATFORM;
+        GRID(11, 10, 1) = CELL_PLATFORM;
         RebuildStations();
         expect(stationCount == 1);
         // Queue extends along y-axis (parallel to vertical track)
@@ -1290,11 +1290,11 @@ describe(queue_positions) {
 // Helper: place vertical track line with proper NS connections
 static void PlaceTrackLineVertical(int y1, int y2, int x, int z) {
     for (int y = y1; y <= y2; y++) {
-        grid[z][y][x] = CELL_TRACK;
-        trackConnections[z][y][x] = TRACK_N | TRACK_S;
+        GRID(x, y, z) = CELL_TRACK;
+        TRACK_CONN(x, y, z) = TRACK_N | TRACK_S;
     }
-    trackConnections[z][y1][x] &= ~TRACK_N;
-    trackConnections[z][y2][x] &= ~TRACK_S;
+    TRACK_CONN(x, y1, z) &= ~TRACK_N;
+    TRACK_CONN(x, y2, z) &= ~TRACK_S;
 }
 
 describe(track_connections) {
@@ -1302,21 +1302,21 @@ describe(track_connections) {
         SetupClean();
         PlaceTrackLine(5, 10, 5, 1);
         // Middle cells should be EW
-        expect(trackConnections[1][5][7] == (TRACK_E | TRACK_W));
+        expect(TRACK_CONN(7, 5, 1) == (TRACK_E | TRACK_W));
         // End caps: left has E only, right has W only
-        expect(trackConnections[1][5][5] == TRACK_E);
-        expect(trackConnections[1][5][10] == TRACK_W);
+        expect(TRACK_CONN(5, 5, 1) == TRACK_E);
+        expect(TRACK_CONN(10, 5, 1) == TRACK_W);
         // Should NOT have N or S
-        expect((trackConnections[1][5][7] & (TRACK_N | TRACK_S)) == 0);
+        expect((TRACK_CONN(7, 5, 1) & (TRACK_N | TRACK_S)) == 0);
     }
 
     it("vertical track has NS connections only") {
         SetupClean();
         PlaceTrackLineVertical(5, 10, 5, 1);
-        expect(trackConnections[1][7][5] == (TRACK_N | TRACK_S));
-        expect(trackConnections[1][5][5] == TRACK_S);
-        expect(trackConnections[1][10][5] == TRACK_N);
-        expect((trackConnections[1][7][5] & (TRACK_E | TRACK_W)) == 0);
+        expect(TRACK_CONN(5, 7, 1) == (TRACK_N | TRACK_S));
+        expect(TRACK_CONN(5, 5, 1) == TRACK_S);
+        expect(TRACK_CONN(5, 10, 1) == TRACK_N);
+        expect((TRACK_CONN(5, 7, 1) & (TRACK_E | TRACK_W)) == 0);
     }
 
     it("parallel horizontal tracks do not cross-connect") {
@@ -1325,11 +1325,11 @@ describe(track_connections) {
         PlaceTrackLine(5, 15, 6, 1);   // bottom line at y=6 (adjacent)
         // Top line should have NO south connections
         for (int x = 5; x <= 15; x++) {
-            expect((trackConnections[1][5][x] & TRACK_S) == 0);
+            expect((TRACK_CONN(x, 5, 1) & TRACK_S) == 0);
         }
         // Bottom line should have NO north connections
         for (int x = 5; x <= 15; x++) {
-            expect((trackConnections[1][6][x] & TRACK_N) == 0);
+            expect((TRACK_CONN(x, 6, 1) & TRACK_N) == 0);
         }
     }
 
@@ -1338,8 +1338,8 @@ describe(track_connections) {
         PlaceTrackLineVertical(5, 15, 10, 1);  // left line at x=10
         PlaceTrackLineVertical(5, 15, 11, 1);  // right line at x=11
         for (int y = 5; y <= 15; y++) {
-            expect((trackConnections[1][y][10] & TRACK_E) == 0);
-            expect((trackConnections[1][y][11] & TRACK_W) == 0);
+            expect((TRACK_CONN(10, y, 1) & TRACK_E) == 0);
+            expect((TRACK_CONN(11, y, 1) & TRACK_W) == 0);
         }
     }
 
@@ -1357,19 +1357,19 @@ describe(track_connections) {
     it("track removal disconnects from neighbors") {
         SetupClean();
         PlaceTrackLine(5, 10, 5, 1);
-        expect(trackConnections[1][5][7] == (TRACK_E | TRACK_W));
+        expect(TRACK_CONN(7, 5, 1) == (TRACK_E | TRACK_W));
         // Simulate DisconnectTrackFromNeighbors for cell (7,5)
-        uint8_t conn = trackConnections[1][5][7];
-        if (conn & TRACK_W) trackConnections[1][5][6] &= ~TRACK_E;
-        if (conn & TRACK_E) trackConnections[1][5][8] &= ~TRACK_W;
-        trackConnections[1][5][7] = 0;
-        grid[1][5][7] = CELL_AIR;
+        uint8_t conn = TRACK_CONN(7, 5, 1);
+        if (conn & TRACK_W) TRACK_CONN(6, 5, 1) &= ~TRACK_E;
+        if (conn & TRACK_E) TRACK_CONN(8, 5, 1) &= ~TRACK_W;
+        TRACK_CONN(7, 5, 1) = 0;
+        GRID(7, 5, 1) = CELL_AIR;
         // Neighbors lost their inward connection
-        expect((trackConnections[1][5][6] & TRACK_E) == 0);
-        expect((trackConnections[1][5][8] & TRACK_W) == 0);
+        expect((TRACK_CONN(6, 5, 1) & TRACK_E) == 0);
+        expect((TRACK_CONN(8, 5, 1) & TRACK_W) == 0);
         // But keep their other connections
-        expect((trackConnections[1][5][6] & TRACK_W) != 0);
-        expect((trackConnections[1][5][8] & TRACK_E) != 0);
+        expect((TRACK_CONN(6, 5, 1) & TRACK_W) != 0);
+        expect((TRACK_CONN(8, 5, 1) & TRACK_E) != 0);
     }
 
     it("rectangle outline creates proper corners") {
@@ -1377,44 +1377,44 @@ describe(track_connections) {
         // Build a track rectangle like terrain generators do
         // Top edge EW
         for (int x = 5; x <= 10; x++) {
-            grid[1][5][x] = CELL_TRACK;
-            trackConnections[1][5][x] = TRACK_E | TRACK_W;
+            GRID(x, 5, 1) = CELL_TRACK;
+            TRACK_CONN(x, 5, 1) = TRACK_E | TRACK_W;
         }
         // Bottom edge EW
         for (int x = 5; x <= 10; x++) {
-            grid[1][8][x] = CELL_TRACK;
-            trackConnections[1][8][x] = TRACK_E | TRACK_W;
+            GRID(x, 8, 1) = CELL_TRACK;
+            TRACK_CONN(x, 8, 1) = TRACK_E | TRACK_W;
         }
         // Left edge NS
         for (int y = 5; y <= 8; y++) {
-            grid[1][y][5] = CELL_TRACK;
-            trackConnections[1][y][5] = TRACK_N | TRACK_S;
+            GRID(5, y, 1) = CELL_TRACK;
+            TRACK_CONN(5, y, 1) = TRACK_N | TRACK_S;
         }
         // Right edge NS
         for (int y = 5; y <= 8; y++) {
-            grid[1][y][10] = CELL_TRACK;
-            trackConnections[1][y][10] = TRACK_N | TRACK_S;
+            GRID(10, y, 1) = CELL_TRACK;
+            TRACK_CONN(10, y, 1) = TRACK_N | TRACK_S;
         }
         // Fix corners
-        trackConnections[1][5][5]  = TRACK_E | TRACK_S;
-        trackConnections[1][5][10] = TRACK_W | TRACK_S;
-        trackConnections[1][8][5]  = TRACK_E | TRACK_N;
-        trackConnections[1][8][10] = TRACK_W | TRACK_N;
+        TRACK_CONN(5, 5, 1)  = TRACK_E | TRACK_S;
+        TRACK_CONN(10, 5, 1) = TRACK_W | TRACK_S;
+        TRACK_CONN(5, 8, 1)  = TRACK_E | TRACK_N;
+        TRACK_CONN(10, 8, 1) = TRACK_W | TRACK_N;
 
         // Verify corners
-        expect(trackConnections[1][5][5] == (TRACK_E | TRACK_S));
-        expect(trackConnections[1][5][10] == (TRACK_W | TRACK_S));
-        expect(trackConnections[1][8][5] == (TRACK_E | TRACK_N));
-        expect(trackConnections[1][8][10] == (TRACK_W | TRACK_N));
+        expect(TRACK_CONN(5, 5, 1) == (TRACK_E | TRACK_S));
+        expect(TRACK_CONN(10, 5, 1) == (TRACK_W | TRACK_S));
+        expect(TRACK_CONN(5, 8, 1) == (TRACK_E | TRACK_N));
+        expect(TRACK_CONN(10, 8, 1) == (TRACK_W | TRACK_N));
         // Verify mid-edges
-        expect(trackConnections[1][5][7] == (TRACK_E | TRACK_W));
-        expect(trackConnections[1][7][5] == (TRACK_N | TRACK_S));
+        expect(TRACK_CONN(7, 5, 1) == (TRACK_E | TRACK_W));
+        expect(TRACK_CONN(5, 7, 1) == (TRACK_N | TRACK_S));
     }
 
     it("isolated single track cell has no connections") {
         SetupClean();
-        grid[1][10][10] = CELL_TRACK;
-        trackConnections[1][10][10] = 0;
+        GRID(10, 10, 1) = CELL_TRACK;
+        TRACK_CONN(10, 10, 1) = 0;
         expect(GetTrackSpriteAt(10, 10, 1) == SPRITE_track_isolated);
     }
 }

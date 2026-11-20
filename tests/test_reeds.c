@@ -161,12 +161,12 @@ describe(reeds_gather) {
         InitTestGrid(32, 32);
         InitDesignations();
         // Set up walkable cell: solid dirt at z=0, air at z=1
-        grid[0][5][5] = CELL_WALL;
+        GRID(5, 5, 0) = CELL_WALL;
         SetWallMaterial(5, 5, 0, MAT_DIRT);
-        grid[1][5][5] = CELL_AIR;
+        GRID(5, 5, 1) = CELL_AIR;
         SetVegetation(5, 5, 0, VEG_REEDS);
         // Mark as explored
-        exploredGrid[1][5][5] = 1;
+        EXPLORED(5, 5, 1) = 1;
 
         bool result = DesignateGatherReeds(5, 5, 1);
         expect(result);
@@ -176,11 +176,11 @@ describe(reeds_gather) {
     it("should not designate gather reeds without VEG_REEDS") {
         InitTestGrid(32, 32);
         InitDesignations();
-        grid[0][5][5] = CELL_WALL;
+        GRID(5, 5, 0) = CELL_WALL;
         SetWallMaterial(5, 5, 0, MAT_DIRT);
-        grid[1][5][5] = CELL_AIR;
+        GRID(5, 5, 1) = CELL_AIR;
         SetVegetation(5, 5, 0, VEG_GRASS_TALLER);
-        exploredGrid[1][5][5] = 1;
+        EXPLORED(5, 5, 1) = 1;
 
         bool result = DesignateGatherReeds(5, 5, 1);
         expect(!result);
@@ -190,11 +190,11 @@ describe(reeds_gather) {
         InitTestGrid(32, 32);
         InitDesignations();
         ClearItems();
-        grid[0][5][5] = CELL_WALL;
+        GRID(5, 5, 0) = CELL_WALL;
         SetWallMaterial(5, 5, 0, MAT_DIRT);
-        grid[1][5][5] = CELL_AIR;
+        GRID(5, 5, 1) = CELL_AIR;
         SetVegetation(5, 5, 0, VEG_REEDS);
-        exploredGrid[1][5][5] = 1;
+        EXPLORED(5, 5, 1) = 1;
 
         DesignateGatherReeds(5, 5, 1);
         CompleteGatherReedsDesignation(5, 5, 1, 0);

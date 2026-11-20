@@ -87,7 +87,7 @@ describe(snow_accumulation) {
         diurnalAmplitude = 0;
         
         // Set up exposed dirt cell (CELL_WALL with dirt material)
-        grid[0][5][5] = CELL_WALL;
+        GRID(5, 5, 0) = CELL_WALL;
         SetWallMaterial(5, 5, 0, MAT_DIRT);
         
         // Force snowy weather and cold temperature
@@ -113,9 +113,9 @@ describe(snow_accumulation) {
         InitWeather();
         
         // Set up dirt with roof above
-        grid[0][5][5] = CELL_WALL;
+        GRID(5, 5, 0) = CELL_WALL;
         SetWallMaterial(5, 5, 0, MAT_DIRT);
-        grid[1][5][5] = CELL_WALL;  // Roof
+        GRID(5, 5, 1) = CELL_WALL;  // Roof
         
         weatherState.current = WEATHER_SNOW;
         weatherState.intensity = 1.0f;
@@ -135,8 +135,8 @@ describe(snow_accumulation) {
         InitWeather();
         
         // Two exposed cells
-        grid[0][5][3] = CELL_WALL; SetWallMaterial(3, 5, 0, MAT_DIRT);
-        grid[0][5][7] = CELL_WALL; SetWallMaterial(7, 5, 0, MAT_DIRT);
+        GRID(3, 5, 0) = CELL_WALL; SetWallMaterial(3, 5, 0, MAT_DIRT);
+        GRID(7, 5, 0) = CELL_WALL; SetWallMaterial(7, 5, 0, MAT_DIRT);
         
         SetTestTemperature(-5);
         
@@ -170,7 +170,7 @@ describe(snow_accumulation) {
         InitSnow();
         InitWeather();
         
-        grid[0][5][5] = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
+        GRID(5, 5, 0) = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
         
         weatherState.current = WEATHER_SNOW;
         weatherState.intensity = 1.0f;
@@ -192,12 +192,12 @@ describe(snow_melting) {
         InitTestGrid(10, 10);
         InitSnow();
         InitWeather();
-        grid[0][5][5] = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
-        grid[0][2][2] = CELL_WALL; SetWallMaterial(2, 2, 0, MAT_DIRT);
+        GRID(5, 5, 0) = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
+        GRID(2, 2, 0) = CELL_WALL; SetWallMaterial(2, 2, 0, MAT_DIRT);
         SetTestTemperature(5);
         for (int i = 0; i < 50; i++) { gameDeltaTime = 0.1f; UpdateSnow(); }   // no snow: passes go idle
         SetSnowLevel(5, 5, 0, 2);
-        snowGrid[0][2][2] = 2; SnowGridChanged();    // what loading a save does
+        SNOW(2, 2, 0) = 2; SnowGridChanged();    // what loading a save does
         for (int i = 0; i < 250; i++) { gameDeltaTime = 0.1f; UpdateSnow(); }
         expect(GetSnowLevel(5, 5, 0) < 2);
         expect(GetSnowLevel(2, 2, 0) < 2);
@@ -209,7 +209,7 @@ describe(snow_melting) {
         InitWeather();
         
         // Set up dirt with snow
-        grid[0][5][5] = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
+        GRID(5, 5, 0) = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
         SetSnowLevel(5, 5, 0, 2);
         
         // Warm temperature
@@ -237,9 +237,9 @@ describe(snow_melting) {
         InitGroundWear();  // Need this for IsMuddy to work
         
         // Dirt cell with heavy snow
-        grid[0][5][5] = CELL_WALL; 
+        GRID(5, 5, 0) = CELL_WALL; 
         SetWallMaterial(5, 5, 0, MAT_DIRT);
-        wallNatural[0][5][5] = 1;  // Mark as natural soil
+        WALL_NATURAL(5, 5, 0) = 1;  // Mark as natural soil
         SetSnowLevel(5, 5, 0, 3);
         
         expect(!IsMuddy(5, 5, 0));  // Not muddy initially
@@ -261,7 +261,7 @@ describe(snow_melting) {
         InitSnow();
         InitWeather();
         
-        grid[0][5][5] = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
+        GRID(5, 5, 0) = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
         SetSnowLevel(5, 5, 0, 2);
         
         // Cold temperature
@@ -282,7 +282,7 @@ describe(snow_movement) {
         InitTestGrid(10, 10);
         InitSnow();
         
-        grid[0][5][5] = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
+        GRID(5, 5, 0) = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
         SetSnowLevel(5, 5, 0, 1);  // Light snow
         
         float mult = GetSnowSpeedMultiplier(5, 5, 0);
@@ -293,7 +293,7 @@ describe(snow_movement) {
         InitTestGrid(10, 10);
         InitSnow();
         
-        grid[0][5][5] = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
+        GRID(5, 5, 0) = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
         SetSnowLevel(5, 5, 0, 3);  // Heavy snow
         
         float mult = GetSnowSpeedMultiplier(5, 5, 0);
@@ -304,7 +304,7 @@ describe(snow_movement) {
         InitTestGrid(10, 10);
         InitSnow();
         
-        grid[0][5][5] = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
+        GRID(5, 5, 0) = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
         SetSnowLevel(5, 5, 0, 0);  // No snow
         
         float mult = GetSnowSpeedMultiplier(5, 5, 0);
@@ -320,9 +320,9 @@ describe(snow_fire_interaction) {
         InitFire();
         
         // Flammable cell with fire
-        grid[0][5][5] = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
+        GRID(5, 5, 0) = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
         SetFireLevel(5, 5, 0, 5);
-        fireGrid[0][5][5].fuel = 100;  // Give it fuel so it doesn't die on its own
+        FIRE(5, 5, 0).fuel = 100;  // Give it fuel so it doesn't die on its own
         
         // Add moderate snow
         SetSnowLevel(5, 5, 0, 2);
@@ -339,9 +339,9 @@ describe(snow_fire_interaction) {
         InitSnow();
         InitFire();
         
-        grid[0][5][5] = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
+        GRID(5, 5, 0) = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
         SetFireLevel(5, 5, 0, 5);
-        fireGrid[0][5][5].fuel = 100;  // Give it fuel
+        FIRE(5, 5, 0).fuel = 100;  // Give it fuel
         SetSnowLevel(5, 5, 0, 1);  // Light snow (< 2, shouldn't extinguish)
         
         // Run fire update

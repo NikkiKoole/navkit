@@ -21,10 +21,10 @@ describe(lighting_initialization) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    expect(lightGrid[z][y][x].skyLevel == 0);
-                    expect(lightGrid[z][y][x].blockR == 0);
-                    expect(lightGrid[z][y][x].blockG == 0);
-                    expect(lightGrid[z][y][x].blockB == 0);
+                    expect(LIGHT(x, y, z).skyLevel == 0);
+                    expect(LIGHT(x, y, z).blockR == 0);
+                    expect(LIGHT(x, y, z).blockG == 0);
+                    expect(LIGHT(x, y, z).blockB == 0);
                 }
             }
         }
@@ -188,12 +188,12 @@ describe(lighting_sky_columns) {
         RecomputeLighting();
 
         // Top layer should have full sky light
-        expect(lightGrid[gridDepth - 1][0][0].skyLevel == SKY_LIGHT_MAX);
-        expect(lightGrid[gridDepth - 1][4][4].skyLevel == SKY_LIGHT_MAX);
+        expect(LIGHT(0, 0, gridDepth - 1).skyLevel == SKY_LIGHT_MAX);
+        expect(LIGHT(4, 4, gridDepth - 1).skyLevel == SKY_LIGHT_MAX);
 
         // All layers should have full sky light (nothing blocking)
-        expect(lightGrid[0][0][0].skyLevel == SKY_LIGHT_MAX);
-        expect(lightGrid[1][3][3].skyLevel == SKY_LIGHT_MAX);
+        expect(LIGHT(0, 0, 0).skyLevel == SKY_LIGHT_MAX);
+        expect(LIGHT(3, 3, 1).skyLevel == SKY_LIGHT_MAX);
     }
 
     it("should block sky light below solid ceiling") {
@@ -205,19 +205,19 @@ describe(lighting_sky_columns) {
         // Full ceiling at z=2 to prevent horizontal BFS spread
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[2][y][x] = CELL_WALL;
+                GRID(x, y, 2) = CELL_WALL;
             }
         }
 
         RecomputeLighting();
 
         // Above the ceiling: full sky
-        expect(lightGrid[3][3][3].skyLevel == SKY_LIGHT_MAX);
+        expect(LIGHT(3, 3, 3).skyLevel == SKY_LIGHT_MAX);
         // Ceiling cells get sky light (assigned before blocking)
-        expect(lightGrid[2][3][3].skyLevel == SKY_LIGHT_MAX);
+        expect(LIGHT(3, 3, 2).skyLevel == SKY_LIGHT_MAX);
         // Below full ceiling: no sky light at all (no spread sources)
-        expect(lightGrid[1][3][3].skyLevel == 0);
-        expect(lightGrid[0][3][3].skyLevel == 0);
+        expect(LIGHT(3, 3, 1).skyLevel == 0);
+        expect(LIGHT(3, 3, 0).skyLevel == 0);
     }
 
     it("should block sky light below full floor") {
@@ -236,9 +236,9 @@ describe(lighting_sky_columns) {
         RecomputeLighting();
 
         // Floor cells get sky light (assigned before blocking)
-        expect(lightGrid[2][3][3].skyLevel == SKY_LIGHT_MAX);
+        expect(LIGHT(3, 3, 2).skyLevel == SKY_LIGHT_MAX);
         // Below full floor: no sky light
-        expect(lightGrid[1][3][3].skyLevel == 0);
+        expect(LIGHT(3, 3, 1).skyLevel == 0);
     }
 
     it("should not compute sky light when skyLightEnabled is false") {
@@ -252,7 +252,7 @@ describe(lighting_sky_columns) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    expect(lightGrid[z][y][x].skyLevel == 0);
+                    expect(LIGHT(x, y, z).skyLevel == 0);
                 }
             }
         }
@@ -275,25 +275,25 @@ describe(lighting_sky_spread) {
         // Create a ceiling at z=2 with a 1-cell opening at (8,8)
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[2][y][x] = CELL_WALL;
+                GRID(x, y, 2) = CELL_WALL;
             }
         }
         // Opening: remove the wall at (8,8,2)
-        grid[2][8][8] = CELL_AIR;
+        GRID(8, 8, 2) = CELL_AIR;
 
         RecomputeLighting();
 
         // Below the opening at z=1: full sky light (column scan)
-        expect(lightGrid[1][8][8].skyLevel == SKY_LIGHT_MAX);
+        expect(LIGHT(8, 8, 1).skyLevel == SKY_LIGHT_MAX);
 
         // Adjacent cells at z=1 should get spread light (SKY_LIGHT_MAX - 1)
-        expect(lightGrid[1][8][9].skyLevel == SKY_LIGHT_MAX - 1);
-        expect(lightGrid[1][8][7].skyLevel == SKY_LIGHT_MAX - 1);
-        expect(lightGrid[1][9][8].skyLevel == SKY_LIGHT_MAX - 1);
-        expect(lightGrid[1][7][8].skyLevel == SKY_LIGHT_MAX - 1);
+        expect(LIGHT(9, 8, 1).skyLevel == SKY_LIGHT_MAX - 1);
+        expect(LIGHT(7, 8, 1).skyLevel == SKY_LIGHT_MAX - 1);
+        expect(LIGHT(8, 9, 1).skyLevel == SKY_LIGHT_MAX - 1);
+        expect(LIGHT(8, 7, 1).skyLevel == SKY_LIGHT_MAX - 1);
 
         // Two cells away: SKY_LIGHT_MAX - 2
-        expect(lightGrid[1][8][10].skyLevel == SKY_LIGHT_MAX - 2);
+        expect(LIGHT(10, 8, 1).skyLevel == SKY_LIGHT_MAX - 2);
     }
 
     it("should not spread sky light through solid cells") {
@@ -305,22 +305,22 @@ describe(lighting_sky_spread) {
         // Ceiling at z=2 with opening at (8,8)
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[2][y][x] = CELL_WALL;
+                GRID(x, y, 2) = CELL_WALL;
             }
         }
-        grid[2][8][8] = CELL_AIR;
+        GRID(8, 8, 2) = CELL_AIR;
 
         // Wall blocking spread at z=1
-        grid[1][8][9] = CELL_WALL;
+        GRID(9, 8, 1) = CELL_WALL;
 
         RecomputeLighting();
 
         // The solid cell should not spread light further
         // Cell beyond the wall should get light from other directions (2 steps away)
         // but not from the blocked direction
-        expect(lightGrid[1][8][8].skyLevel == SKY_LIGHT_MAX);
+        expect(LIGHT(8, 8, 1).skyLevel == SKY_LIGHT_MAX);
         // Wall cell doesn't receive spread light (solid)
-        expect(lightGrid[1][8][9].skyLevel == 0);
+        expect(LIGHT(9, 8, 1).skyLevel == 0);
     }
 }
 
@@ -338,7 +338,7 @@ describe(lighting_block_light) {
         AddLightSource(8, 8, 1, 255, 180, 100, 10);
         RecomputeLighting();
 
-        LightCell* lc = &lightGrid[1][8][8];
+        LightCell* lc = &LIGHT(8, 8, 1);
         expect(lc->blockR == 255);
         expect(lc->blockG == 180);
         expect(lc->blockB == 100);
@@ -354,11 +354,11 @@ describe(lighting_block_light) {
         RecomputeLighting();
 
         // Adjacent cell should be dimmer than source
-        expect(lightGrid[1][8][9].blockR < 255);
-        expect(lightGrid[1][8][9].blockR > 0);
+        expect(LIGHT(9, 8, 1).blockR < 255);
+        expect(LIGHT(9, 8, 1).blockR > 0);
 
         // Further cell should be dimmer still
-        expect(lightGrid[1][8][11].blockR < lightGrid[1][8][9].blockR);
+        expect(LIGHT(11, 8, 1).blockR < LIGHT(9, 8, 1).blockR);
     }
 
     it("should produce circular light shape (Euclidean falloff)") {
@@ -372,9 +372,9 @@ describe(lighting_block_light) {
 
         // Cells at same Manhattan distance but different Euclidean distance
         // Cardinal neighbor (dist=1.0): should be brighter
-        int cardinal = lightGrid[1][8][9].blockR;
+        int cardinal = LIGHT(9, 8, 1).blockR;
         // Diagonal neighbor (dist=1.414): should be dimmer
-        int diagonal = lightGrid[1][9][9].blockR;
+        int diagonal = LIGHT(9, 9, 1).blockR;
 
         expect(cardinal > diagonal);
     }
@@ -387,17 +387,17 @@ describe(lighting_block_light) {
 
         // Place a torch at (8,8,1), wall at (9,8,1)
         AddLightSource(8, 8, 1, 255, 180, 100, 10);
-        grid[1][8][9] = CELL_WALL;
+        GRID(9, 8, 1) = CELL_WALL;
 
         RecomputeLighting();
 
         // Wall surface gets light (written to)
-        expect(lightGrid[1][8][9].blockR > 0);
+        expect(LIGHT(9, 8, 1).blockR > 0);
 
         // Cell behind the wall should get no light from this direction
         // It might get light from other BFS paths going around,
         // but a cell directly behind a wall that's also walled should be dark
-        grid[1][8][10] = CELL_WALL;
+        GRID(10, 8, 1) = CELL_WALL;
         RecomputeLighting();
         // Cell behind two walls should be very dark or zero
         // (light can still arrive from paths going around if they exist)
@@ -411,14 +411,14 @@ describe(lighting_block_light) {
 
         // Torch next to a wall
         AddLightSource(8, 8, 1, 255, 180, 100, 10);
-        grid[1][8][9] = CELL_WALL;
+        GRID(9, 8, 1) = CELL_WALL;
 
         RecomputeLighting();
 
         // The wall cell should have block light (surface illumination)
-        expect(lightGrid[1][8][9].blockR > 0);
-        expect(lightGrid[1][8][9].blockG > 0);
-        expect(lightGrid[1][8][9].blockB > 0);
+        expect(LIGHT(9, 8, 1).blockR > 0);
+        expect(LIGHT(9, 8, 1).blockG > 0);
+        expect(LIGHT(9, 8, 1).blockB > 0);
     }
 
     it("should stay on same z-level (no vertical propagation)") {
@@ -431,8 +431,8 @@ describe(lighting_block_light) {
         RecomputeLighting();
 
         // Block light should NOT propagate to z=0 or z=2
-        expect(lightGrid[0][8][8].blockR == 0);
-        expect(lightGrid[2][8][8].blockR == 0);
+        expect(LIGHT(8, 8, 0).blockR == 0);
+        expect(LIGHT(8, 8, 2).blockR == 0);
     }
 
     it("should not compute block light when blockLightEnabled is false") {
@@ -444,9 +444,9 @@ describe(lighting_block_light) {
         AddLightSource(8, 8, 1, 255, 180, 100, 10);
         RecomputeLighting();
 
-        expect(lightGrid[1][8][8].blockR == 0);
-        expect(lightGrid[1][8][8].blockG == 0);
-        expect(lightGrid[1][8][8].blockB == 0);
+        expect(LIGHT(8, 8, 1).blockR == 0);
+        expect(LIGHT(8, 8, 1).blockG == 0);
+        expect(LIGHT(8, 8, 1).blockB == 0);
 
         blockLightEnabled = true;  // Restore
     }
@@ -461,19 +461,19 @@ describe(lighting_block_light) {
         // Room: walls at x=4..6, y=4..6 border, air at (5,5,1)
         for (int y = 4; y <= 6; y++) {
             for (int x = 4; x <= 6; x++) {
-                grid[1][y][x] = CELL_WALL;
+                GRID(x, y, 1) = CELL_WALL;
             }
         }
-        grid[1][5][5] = CELL_AIR;  // Interior
+        GRID(5, 5, 1) = CELL_AIR;  // Interior
 
         // Torch outside the room
         AddLightSource(8, 8, 1, 255, 180, 100, 10);
         RecomputeLighting();
 
         // Interior should have no block light
-        expect(lightGrid[1][5][5].blockR == 0);
-        expect(lightGrid[1][5][5].blockG == 0);
-        expect(lightGrid[1][5][5].blockB == 0);
+        expect(LIGHT(5, 5, 1).blockR == 0);
+        expect(LIGHT(5, 5, 1).blockG == 0);
+        expect(LIGHT(5, 5, 1).blockB == 0);
     }
 
     it("should combine light from multiple sources") {
@@ -488,13 +488,13 @@ describe(lighting_block_light) {
         RecomputeLighting();
 
         // Middle cell (8,8) should be brighter than if lit by just one source
-        int middleR = lightGrid[1][8][8].blockR;
+        int middleR = LIGHT(8, 8, 1).blockR;
 
         // Compare with single-source brightness at same distance
         ClearLightSources();
         AddLightSource(6, 8, 1, 200, 0, 0, 10);
         RecomputeLighting();
-        int singleR = lightGrid[1][8][8].blockR;
+        int singleR = LIGHT(8, 8, 1).blockR;
 
         // With max blending, the middle should be at least as bright
         // (second source provides same or more via max)
@@ -511,9 +511,9 @@ describe(lighting_block_light) {
         RecomputeLighting();
 
         // Way beyond radius=5, should be zero
-        expect(lightGrid[1][16][26].blockR == 0);
-        expect(lightGrid[1][16][26].blockG == 0);
-        expect(lightGrid[1][16][26].blockB == 0);
+        expect(LIGHT(26, 16, 1).blockR == 0);
+        expect(LIGHT(26, 16, 1).blockG == 0);
+        expect(LIGHT(26, 16, 1).blockB == 0);
     }
 }
 
@@ -593,7 +593,7 @@ describe(lighting_get_light_color) {
         // Create a completely dark cell (under solid ceiling, no block light)
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[2][y][x] = CELL_WALL;
+                GRID(x, y, 2) = CELL_WALL;
             }
         }
         RecomputeLighting();
@@ -663,7 +663,7 @@ describe(lighting_get_light_color) {
         RecomputeLighting();
 
         // z=2 has no block light (no vertical propagation)
-        expect(lightGrid[2][8][8].blockR == 0);
+        expect(LIGHT(8, 8, 2).blockR == 0);
 
         // But GetLightColor at z=2 should add z-1 bleed
         Color c = GetLightColor(8, 8, 2, (Color){0, 0, 0, 255});
@@ -690,7 +690,7 @@ describe(lighting_get_light_color) {
 
         // Torch at z=1, solid wall at z=2
         AddLightSource(8, 8, 1, 200, 0, 0, 10);
-        grid[2][8][8] = CELL_WALL;
+        GRID(8, 8, 2) = CELL_WALL;
         RecomputeLighting();
 
         // Solid cell at z=2 should NOT get z-1 bleed
@@ -723,11 +723,11 @@ describe(lighting_update) {
         expect(lightingDirty == false);
 
         // Manually zero out a cell
-        lightGrid[gridDepth - 1][0][0].skyLevel = 0;
+        LIGHT(0, 0, gridDepth - 1).skyLevel = 0;
 
         // UpdateLighting should NOT recompute (not dirty)
         UpdateLighting();
-        expect(lightGrid[gridDepth - 1][0][0].skyLevel == 0);
+        expect(LIGHT(0, 0, gridDepth - 1).skyLevel == 0);
     }
 
     it("should recompute when dirty") {
@@ -740,13 +740,13 @@ describe(lighting_update) {
         RecomputeLighting();
 
         // Manually zero and mark dirty
-        lightGrid[gridDepth - 1][0][0].skyLevel = 0;
+        LIGHT(0, 0, gridDepth - 1).skyLevel = 0;
         InvalidateLighting();
         expect(lightingDirty == true);
 
         UpdateLighting();
         // Should have recomputed — open air cell gets full sky light
-        expect(lightGrid[gridDepth - 1][0][0].skyLevel == SKY_LIGHT_MAX);
+        expect(LIGHT(0, 0, gridDepth - 1).skyLevel == SKY_LIGHT_MAX);
         expect(lightingDirty == false);
     }
 }
@@ -794,7 +794,7 @@ describe(lighting_edge_cases) {
         RecomputeLighting();
 
         // Should not crash, source cell should have light
-        expect(lightGrid[1][0][0].blockR == 255);
+        expect(LIGHT(0, 0, 1).blockR == 255);
     }
 
     it("should handle torch at grid edge") {
@@ -806,9 +806,9 @@ describe(lighting_edge_cases) {
         AddLightSource(7, 7, 1, 255, 255, 255, 10);
         RecomputeLighting();
 
-        expect(lightGrid[1][7][7].blockR == 255);
+        expect(LIGHT(7, 7, 1).blockR == 255);
         // Adjacent inward cell should have some light
-        expect(lightGrid[1][7][6].blockR > 0);
+        expect(LIGHT(6, 7, 1).blockR > 0);
     }
 
     it("should handle removing nonexistent source gracefully") {
@@ -831,9 +831,9 @@ describe(lighting_edge_cases) {
         RecomputeLighting();
 
         // Source cell lit
-        expect(lightGrid[1][8][8].blockR == 255);
+        expect(LIGHT(8, 8, 1).blockR == 255);
         // Adjacent cells should be dark (radius=1, Euclidean dist=1.0 >= 1.0)
-        expect(lightGrid[1][8][9].blockR == 0);
+        expect(LIGHT(9, 8, 1).blockR == 0);
     }
 }
 
@@ -855,7 +855,7 @@ describe(lighting_z1_visibility) {
         // Ground: solid walls at z=0 (grass on top)
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++)
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
         // z=1 is air (where movers walk, torches placed)
         // z=2 is air (one level up)
 
@@ -865,19 +865,19 @@ describe(lighting_z1_visibility) {
 
         // Air cell at z=1 where torch is: should have full light
         if (test_verbose) {
-            printf("  lightGrid[1][8][8].blockR = %d\n", lightGrid[1][8][8].blockR);
-            printf("  lightGrid[1][8][8].blockG = %d\n", lightGrid[1][8][8].blockG);
-            printf("  lightGrid[1][8][8].blockB = %d\n", lightGrid[1][8][8].blockB);
+            printf("  lightGrid[1][8][8].blockR = %d\n", LIGHT(8, 8, 1).blockR);
+            printf("  lightGrid[1][8][8].blockG = %d\n", LIGHT(8, 8, 1).blockG);
+            printf("  lightGrid[1][8][8].blockB = %d\n", LIGHT(8, 8, 1).blockB);
         }
-        expect(lightGrid[1][8][8].blockR == 200);
-        expect(lightGrid[1][8][8].blockG == 140);
-        expect(lightGrid[1][8][8].blockB == 80);
+        expect(LIGHT(8, 8, 1).blockR == 200);
+        expect(LIGHT(8, 8, 1).blockG == 140);
+        expect(LIGHT(8, 8, 1).blockB == 80);
 
         // Nearby air cell at z=1: should have attenuated light
-        expect(lightGrid[1][8][10].blockR > 0);
+        expect(LIGHT(10, 8, 1).blockR > 0);
 
         // z=2 should have NO block light (no vertical propagation)
-        expect(lightGrid[2][8][8].blockR == 0);
+        expect(LIGHT(8, 8, 2).blockR == 0);
 
         // Restore
         skyLightEnabled = true;
@@ -899,7 +899,7 @@ describe(lighting_z1_visibility) {
         // Ground: solid walls at z=0
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++)
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
 
         // Torch at (8,8,1) in air
         AddLightSource(8, 8, 1, 200, 140, 80, 10);
@@ -910,8 +910,8 @@ describe(lighting_z1_visibility) {
 
         if (test_verbose) {
             printf("  GetLightColor(8,8,2) = (%d, %d, %d)\n", c.r, c.g, c.b);
-            printf("  grid[2][8][8] solid? %d\n", CellIsSolid(grid[2][8][8]));
-            printf("  lightGrid[1][8][8].blockR = %d\n", lightGrid[1][8][8].blockR);
+            printf("  grid[2][8][8] solid? %d\n", CellIsSolid(GRID(8, 8, 2)));
+            printf("  lightGrid[1][8][8].blockR = %d\n", LIGHT(8, 8, 1).blockR);
         }
 
         // z-1 bleed: blockR/2 = 200/2 = 100
@@ -939,14 +939,14 @@ describe(lighting_z1_visibility) {
         // Ground at z=0
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++)
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
 
         AddLightSource(8, 8, 1, 200, 140, 80, 10);
         RecomputeLighting();
 
         // Cell 3 steps away at z=2 should also get bleed from z=1
         Color c = GetLightColor(8, 11, 2, (Color){0, 0, 0, 255});
-        int belowBlockR = lightGrid[1][11][8].blockR;
+        int belowBlockR = LIGHT(8, 11, 1).blockR;
 
         if (test_verbose) {
             printf("  lightGrid[1][11][8].blockR = %d (3 cells from torch)\n", belowBlockR);
@@ -986,10 +986,10 @@ describe(lighting_z1_visibility) {
         // Ground at z=0
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++)
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
 
         // Wall at z=1, position (9,8) - adjacent to torch
-        grid[1][8][9] = CELL_WALL;
+        GRID(9, 8, 1) = CELL_WALL;
 
         // Torch in air at (8,8,1)
         AddLightSource(8, 8, 1, 200, 140, 80, 10);
@@ -998,13 +998,13 @@ describe(lighting_z1_visibility) {
         // The wall surface at z=1 should have block light (BFS writes to solids)
         if (test_verbose) {
             printf("  Wall at z=1 (9,8): blockR=%d blockG=%d blockB=%d\n",
-                lightGrid[1][8][9].blockR, lightGrid[1][8][9].blockG, lightGrid[1][8][9].blockB);
-            printf("  Air at z=2 (9,8): blockR=%d\n", lightGrid[2][8][9].blockR);
-            printf("  grid[2][8][9] solid? %d\n", CellIsSolid(grid[2][8][9]));
+                LIGHT(9, 8, 1).blockR, LIGHT(9, 8, 1).blockG, LIGHT(9, 8, 1).blockB);
+            printf("  Air at z=2 (9,8): blockR=%d\n", LIGHT(9, 8, 2).blockR);
+            printf("  grid[2][8][9] solid? %d\n", CellIsSolid(GRID(9, 8, 2)));
         }
 
         // Wall at z=1 should have block light written to its surface
-        expect(lightGrid[1][8][9].blockR > 0);
+        expect(LIGHT(9, 8, 1).blockR > 0);
 
         // Now the key question: GetLightColor(9, 8, 2) for the wall top
         // z=2 is air, so z-1 bleed triggers, reads lightGrid[1][8][9]
@@ -1050,7 +1050,7 @@ describe(lighting_z1_visibility) {
         // Ground at z=0
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++)
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
 
         // z=1 all air, z=2 all air
         AddLightSource(8, 8, 1, 200, 140, 80, 10);

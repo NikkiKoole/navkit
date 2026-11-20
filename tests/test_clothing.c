@@ -47,7 +47,7 @@ static void SetupClothingGrid(void) {
     // Fill z=0 with solid dirt
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
             SetWallNatural(x, y, 0);
         }
@@ -55,9 +55,9 @@ static void SetupClothingGrid(void) {
     // z=1 is walkable air above solid ground
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            grid[1][y][x] = CELL_AIR;
-            exploredGrid[1][y][x] = 1;
-            exploredGrid[0][y][x] = 1;
+            GRID(x, y, 1) = CELL_AIR;
+            EXPLORED(x, y, 1) = 1;
+            EXPLORED(x, y, 0) = 1;
         }
     }
 }

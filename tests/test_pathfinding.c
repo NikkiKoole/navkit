@@ -27,7 +27,7 @@ describe(grid_initialization) {
         for (int y = 0; y < gridHeight && allCorrect; y++) {
             for (int x = 0; x < gridWidth && allCorrect; x++) {
                 for (int z = 0; z < gridDepth && allCorrect; z++) {
-                    if (grid[z][y][x] != CELL_AIR) allCorrect = 0;
+                    if (GRID(x, y, z) != CELL_AIR) allCorrect = 0;
                 }
             }
         }
@@ -43,7 +43,7 @@ describe(grid_initialization) {
         needsRebuild = false;
 
         // Place a wall and mark dirty
-        grid[0][10][10] = CELL_WALL;
+        GRID(10, 10, 0) = CELL_WALL;
         MarkChunkDirty(10, 10, 0);
 
         int cx = 10 / chunkWidth;
@@ -82,7 +82,7 @@ describe(entrance_building) {
         // Block the entire first horizontal border
         int borderY = chunkHeight;
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][borderY - 1][x] = CELL_WALL;
+            GRID(x, borderY - 1, 0) = CELL_WALL;
         }
         BuildEntrances();
         // Check no entrances at y=borderY on z=0
@@ -118,15 +118,15 @@ describe(entrance_building) {
         CellType walkable = CELL_AIR;
         int borderY = chunkHeight;
         for (int x = 0; x < chunkWidth; x++) {
-            grid[0][borderY - 1][x] = CELL_WALL;
-            grid[0][borderY][x] = CELL_WALL;
+            GRID(x, borderY - 1, 0) = CELL_WALL;
+            GRID(x, borderY, 0) = CELL_WALL;
         }
         // Open a narrow gap (3 cells wide, less than MAX_ENTRANCE_WIDTH)
         int gapStart = 10;
         int gapWidth = 3;
         for (int x = gapStart; x < gapStart + gapWidth; x++) {
-            grid[0][borderY - 1][x] = walkable;
-            grid[0][borderY][x] = walkable;
+            GRID(x, borderY - 1, 0) = walkable;
+            GRID(x, borderY, 0) = walkable;
         }
 
         BuildEntrances();
@@ -150,15 +150,15 @@ describe(entrance_building) {
         CellType walkable = CELL_AIR;
         int borderY = chunkHeight;
         for (int x = 0; x < chunkWidth; x++) {
-            grid[0][borderY - 1][x] = CELL_WALL;
-            grid[0][borderY][x] = CELL_WALL;
+            GRID(x, borderY - 1, 0) = CELL_WALL;
+            GRID(x, borderY, 0) = CELL_WALL;
         }
         // Open a wide gap (15 cells, more than 2x MAX_ENTRANCE_WIDTH)
         int gapStart = 5;
         int gapWidth = 15;
         for (int x = gapStart; x < gapStart + gapWidth; x++) {
-            grid[0][borderY - 1][x] = walkable;
-            grid[0][borderY][x] = walkable;
+            GRID(x, borderY - 1, 0) = walkable;
+            GRID(x, borderY, 0) = walkable;
         }
 
         BuildEntrances();
@@ -293,7 +293,7 @@ describe(graph_building) {
         // Put a wall that divides chunk 0 into two unreachable halves
         // Vertical wall from top to bottom of chunk 0
         for (int y = 0; y < chunkHeight; y++) {
-            grid[0][y][chunkWidth / 2] = CELL_WALL;
+            GRID(chunkWidth / 2, y, 0) = CELL_WALL;
         }
 
         BuildEntrances();
@@ -449,9 +449,9 @@ describe(incremental_graph_updates) {
         BuildGraph();
 
         // Add some walls
-        grid[0][10][10] = CELL_WALL;
-        grid[0][10][11] = CELL_WALL;
-        grid[0][11][10] = CELL_WALL;
+        GRID(10, 10, 0) = CELL_WALL;
+        GRID(11, 10, 0) = CELL_WALL;
+        GRID(10, 11, 0) = CELL_WALL;
         MarkChunkDirty(10, 10, 0);
         MarkChunkDirty(10, 11, 0);
         MarkChunkDirty(11, 10, 0);
@@ -488,7 +488,7 @@ describe(incremental_graph_updates) {
         int pathBeforeWall = pathLength;
 
         // Add wall and update incrementally
-        grid[0][chunkHeight / 2][chunkWidth / 2] = CELL_WALL;
+        GRID(chunkWidth / 2, chunkHeight / 2, 0) = CELL_WALL;
         MarkChunkDirty(chunkWidth / 2, chunkHeight / 2, 0);
         UpdateDirtyChunks();
 
@@ -507,8 +507,8 @@ describe(incremental_graph_updates) {
         // Block an entire border to remove entrances
         int borderY = chunkHeight;
         for (int x = 0; x < chunkWidth; x++) {
-            grid[0][borderY - 1][x] = CELL_WALL;
-            grid[0][borderY][x] = CELL_WALL;
+            GRID(x, borderY - 1, 0) = CELL_WALL;
+            GRID(x, borderY, 0) = CELL_WALL;
         }
         MarkChunkDirty(0, borderY, 0);
         UpdateDirtyChunks();
@@ -537,7 +537,7 @@ describe(incremental_graph_updates) {
 
         // Add walls in top-left corner (chunk 0)
         for (int i = 0; i < 10; i++) {
-            grid[0][i][i] = CELL_WALL;
+            GRID(i, i, 0) = CELL_WALL;
             MarkChunkDirty(i, i, 0);
         }
         UpdateDirtyChunks();
@@ -564,12 +564,12 @@ describe(astar_pathfinding) {
         // Create a box around the goal
         int gx = 50, gy = 50;
         for (int x = gx - 2; x <= gx + 2; x++) {
-            grid[0][gy - 2][x] = CELL_WALL;
-            grid[0][gy + 2][x] = CELL_WALL;
+            GRID(x, gy - 2, 0) = CELL_WALL;
+            GRID(x, gy + 2, 0) = CELL_WALL;
         }
         for (int y = gy - 2; y <= gy + 2; y++) {
-            grid[0][y][gx - 2] = CELL_WALL;
-            grid[0][y][gx + 2] = CELL_WALL;
+            GRID(gx - 2, y, 0) = CELL_WALL;
+            GRID(gx + 2, y, 0) = CELL_WALL;
         }
         startPos = (Point){5, 5, 0};
         goalPos = (Point){gx, gy, 0};
@@ -751,7 +751,7 @@ describe(incremental_updates) {
         (void)originalEdgeCount;  // Suppress unused warning
 
         // Add a wall and update
-        grid[0][chunkHeight + 5][chunkWidth + 5] = CELL_WALL;
+        GRID(chunkWidth + 5, chunkHeight + 5, 0) = CELL_WALL;
         MarkChunkDirty(chunkWidth + 5, chunkHeight + 5, 0);
         UpdateDirtyChunks();
 
@@ -766,7 +766,7 @@ describe(incremental_updates) {
 
         // Add some walls
         for (int i = 0; i < 5; i++) {
-            grid[0][chunkHeight + 10][chunkWidth + i] = CELL_WALL;
+            GRID(chunkWidth + i, chunkHeight + 10, 0) = CELL_WALL;
             MarkChunkDirty(chunkWidth + i, chunkHeight + 10, 0);
         }
         UpdateDirtyChunks();
@@ -1203,7 +1203,7 @@ describe(diagonal_corner_cutting) {
         CellType walkable = CELL_AIR;
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
-                grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : walkable;
+                GRID(x, y, 0) = (map[y][x] == '#') ? CELL_WALL : walkable;
         
         startPos = (Point){1, 1, 0};
         goalPos = (Point){6, 3, 0};
@@ -1236,7 +1236,7 @@ describe(diagonal_corner_cutting) {
         CellType walkable = CELL_AIR;
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
-                grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : walkable;
+                GRID(x, y, 0) = (map[y][x] == '#') ? CELL_WALL : walkable;
         
         startPos = (Point){1, 1, 0};
         goalPos = (Point){6, 3, 0};
@@ -1278,7 +1278,7 @@ describe(diagonal_corner_cutting) {
         CellType walkable = CELL_AIR;
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
-                grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : walkable;
+                GRID(x, y, 0) = (map[y][x] == '#') ? CELL_WALL : walkable;
         
         startPos = (Point){2, 3, 0};
         goalPos = (Point){6, 6, 0};
@@ -1324,7 +1324,7 @@ describe(diagonal_corner_cutting) {
         CellType walkable = CELL_AIR;
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
-                grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : walkable;
+                GRID(x, y, 0) = (map[y][x] == '#') ? CELL_WALL : walkable;
         
         startPos = (Point){2, 3, 0};
         goalPos = (Point){6, 6, 0};
@@ -1347,7 +1347,7 @@ static bool TestHasLineOfSight(int x0, int y0, int x1, int y1) {
     
     int x = x0, y = y0;
     while (1) {
-        if (grid[0][y][x] == CELL_WALL) return false;
+        if (GRID(x, y, 0) == CELL_WALL) return false;
         if (x == x1 && y == y1) return true;
         
         int e2 = 2 * err;
@@ -1355,7 +1355,7 @@ static bool TestHasLineOfSight(int x0, int y0, int x1, int y1) {
         if (e2 > -dy && e2 < dx) {
             int nx = x + sx;
             int ny = y + sy;
-            if (grid[0][y][nx] == CELL_WALL || grid[0][ny][x] == CELL_WALL) {
+            if (GRID(nx, y, 0) == CELL_WALL || GRID(x, ny, 0) == CELL_WALL) {
                 return false;
             }
         }
@@ -1432,11 +1432,11 @@ describe(string_pulling) {
         // 5 .........G
         InitTestGrid(10, 6);
         
-        grid[0][1][1] = CELL_WALL;
-        grid[0][1][2] = CELL_WALL;
-        grid[0][1][3] = CELL_WALL;
-        grid[0][2][3] = CELL_WALL;
-        grid[0][3][3] = CELL_WALL;
+        GRID(1, 1, 0) = CELL_WALL;
+        GRID(2, 1, 0) = CELL_WALL;
+        GRID(3, 1, 0) = CELL_WALL;
+        GRID(3, 2, 0) = CELL_WALL;
+        GRID(3, 3, 0) = CELL_WALL;
         
         startPos = (Point){0, 0, 0};
         goalPos = (Point){9, 5, 0};
@@ -1461,8 +1461,8 @@ describe(string_pulling) {
         // 3 ...G
         InitTestGrid(4, 4);
         
-        grid[0][1][1] = CELL_WALL;
-        grid[0][2][2] = CELL_WALL;
+        GRID(1, 1, 0) = CELL_WALL;
+        GRID(2, 2, 0) = CELL_WALL;
         
         startPos = (Point){0, 0, 0};
         goalPos = (Point){3, 3, 0};
@@ -1500,8 +1500,8 @@ describe(ladder_pathfinding) {
         expect(gridDepth == 2);
         
         // Check ladder is placed correctly on both floors
-        expect(grid[0][1][1] == CELL_LADDER_BOTH);
-        expect(grid[1][1][1] == CELL_LADDER_BOTH);
+        expect(GRID(1, 1, 0) == CELL_LADDER_BOTH);
+        expect(GRID(1, 1, 1) == CELL_LADDER_BOTH);
         
         // Check walkability - both floors should be walkable
         // z=0 walkable via implicit bedrock, z=1 via HAS_FLOOR
@@ -1938,8 +1938,8 @@ describe(hpa_ladder_pathfinding) {
         expect(pathLength == 0);
 
         // Now add a ladder at (7, 6) on both floors
-        grid[0][6][7] = CELL_LADDER_BOTH;
-        grid[1][6][7] = CELL_LADDER_BOTH;
+        GRID(7, 6, 0) = CELL_LADDER_BOTH;
+        GRID(7, 6, 1) = CELL_LADDER_BOTH;
         MarkChunkDirty(7, 6, 0);
         MarkChunkDirty(7, 6, 1);
 
@@ -2015,7 +2015,7 @@ describe(hpa_ladder_pathfinding) {
         expect(pathLength > 0);
 
         // Remove the ladder from floor 0 (break the connection)
-        grid[0][6][7] = CELL_WALL;
+        GRID(7, 6, 0) = CELL_WALL;
         SetWallMaterial(7, 6, 0, MAT_DIRT);
         MarkChunkDirty(7, 6, 0);
 
@@ -2039,7 +2039,7 @@ describe(hpa_ladder_pathfinding) {
         // z=0 is walkable (from init), z=1 is air
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++)
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;
         
         BuildEntrances();
         BuildGraph();
@@ -2055,7 +2055,7 @@ describe(hpa_ladder_pathfinding) {
         expect(pathLength == 0);
         
         // Add ladder on z=0 first
-        grid[0][10][10] = CELL_LADDER_BOTH;
+        GRID(10, 10, 0) = CELL_LADDER_BOTH;
         MarkChunkDirty(10, 10, 0);
         UpdateDirtyChunks();
         
@@ -2067,21 +2067,21 @@ describe(hpa_ladder_pathfinding) {
         expect(pathLength == 0);
         
         // Now add ladder on z=1
-        grid[1][10][10] = CELL_LADDER_BOTH;
+        GRID(10, 10, 1) = CELL_LADDER_BOTH;
         MarkChunkDirty(10, 10, 1);
         
         // Add floor on z=1 around the ladder (using CELL_AIR + HAS_FLOOR)
         for (int fx = 6; fx <= 12; fx++) {
             if (fx == 10) continue;  // Don't overwrite ladder
-            grid[1][10][fx] = CELL_AIR;
+            GRID(fx, 10, 1) = CELL_AIR;
             SET_FLOOR(fx, 10, 1);
             MarkChunkDirty(fx, 10, 1);
         }
-        grid[1][11][10] = CELL_AIR;
+        GRID(10, 11, 1) = CELL_AIR;
         SET_FLOOR(10, 11, 1);
-        grid[1][11][11] = CELL_AIR;
+        GRID(11, 11, 1) = CELL_AIR;
         SET_FLOOR(11, 11, 1);  // This is the goal cell
-        grid[1][9][10] = CELL_AIR;
+        GRID(10, 9, 1) = CELL_AIR;
         SET_FLOOR(10, 9, 1);
         MarkChunkDirty(10, 11, 1);
         MarkChunkDirty(11, 11, 1);
@@ -2154,8 +2154,8 @@ describe(hpa_ladder_pathfinding) {
         BuildGraph();
 
         // Add ladder on both floors
-        grid[0][6][7] = CELL_LADDER_BOTH;
-        grid[1][6][7] = CELL_LADDER_BOTH;
+        GRID(7, 6, 0) = CELL_LADDER_BOTH;
+        GRID(7, 6, 1) = CELL_LADDER_BOTH;
         MarkChunkDirty(7, 6, 0);
         MarkChunkDirty(7, 6, 1);
 
@@ -2228,10 +2228,10 @@ describe(hpa_ladder_pathfinding) {
         InitMultiFloorGridFromAscii(map, 8, 8);
         
         // Add some ladders
-        grid[0][4][4] = CELL_LADDER_BOTH;
-        grid[1][4][4] = CELL_LADDER_BOTH;
-        grid[0][12][12] = CELL_LADDER_BOTH;
-        grid[1][12][12] = CELL_LADDER_BOTH;
+        GRID(4, 4, 0) = CELL_LADDER_BOTH;
+        GRID(4, 4, 1) = CELL_LADDER_BOTH;
+        GRID(12, 12, 0) = CELL_LADDER_BOTH;
+        GRID(12, 12, 1) = CELL_LADDER_BOTH;
         
         BuildEntrances();
         BuildGraph();
@@ -2242,12 +2242,12 @@ describe(hpa_ladder_pathfinding) {
         // Repeatedly add and remove walls (simulating user drawing)
         for (int i = 0; i < 10; i++) {
             // Add a wall
-            grid[0][8][8] = CELL_WALL;
+            GRID(8, 8, 0) = CELL_WALL;
             MarkChunkDirty(8, 8, 0);
             UpdateDirtyChunks();
             
             // Remove the wall
-            grid[0][8][8] = CELL_WALL;
+            GRID(8, 8, 0) = CELL_WALL;
             SetWallMaterial(8, 8, 0, MAT_DIRT);
             MarkChunkDirty(8, 8, 0);
             UpdateDirtyChunks();
@@ -2299,8 +2299,8 @@ describe(hpa_ladder_pathfinding) {
         InitMultiFloorGridFromAscii(map, 8, 8);
         
         // Add ladder in same chunk where we'll draw walls
-        grid[0][4][4] = CELL_LADDER_BOTH;
-        grid[1][4][4] = CELL_LADDER_BOTH;
+        GRID(4, 4, 0) = CELL_LADDER_BOTH;
+        GRID(4, 4, 1) = CELL_LADDER_BOTH;
         
         BuildEntrances();
         BuildGraph();
@@ -2310,11 +2310,11 @@ describe(hpa_ladder_pathfinding) {
         
         // Repeatedly add walls in the same chunk as the ladder
         for (int i = 0; i < 10; i++) {
-            grid[0][5][5] = CELL_WALL;
+            GRID(5, 5, 0) = CELL_WALL;
             MarkChunkDirty(5, 5, 0);
             UpdateDirtyChunks();
             
-            grid[0][5][5] = CELL_WALL;
+            GRID(5, 5, 0) = CELL_WALL;
             SetWallMaterial(5, 5, 0, MAT_DIRT);
             MarkChunkDirty(5, 5, 0);
             UpdateDirtyChunks();
@@ -2340,20 +2340,20 @@ describe(hpa_ladder_pathfinding) {
         // Channel out air at z0 spanning entire grid height
         for (int y = 0; y < 32; y++) {
             for (int x = 10; x <= 13; x++) {
-                grid[0][y][x] = CELL_AIR;
+                GRID(x, y, 0) = CELL_AIR;
             }
         }
         
         // West ramp: at (10,17,z0) pointing west -> exit at (9,17,z1)
-        grid[0][17][10] = CELL_RAMP_W;
+        GRID(10, 17, 0) = CELL_RAMP_W;
         
         // East ramp: at (13,17,z0) pointing east -> exit at (14,17,z1)  
-        grid[0][17][13] = CELL_RAMP_E;
+        GRID(13, 17, 0) = CELL_RAMP_E;
         
         // Floor in pit for z0 walkable path between the ramps
-        grid[0][17][11] = CELL_AIR;
+        GRID(11, 17, 0) = CELL_AIR;
         SET_FLOOR(11, 17, 0);
-        grid[0][17][12] = CELL_AIR;
+        GRID(12, 17, 0) = CELL_AIR;
         SET_FLOOR(12, 17, 0);
         
         BuildEntrances();
@@ -2383,21 +2383,21 @@ describe(hpa_ladder_pathfinding) {
         
         // Wall at z0 spanning entire grid height
         for (int y = 0; y < 32; y++) {
-            grid[0][y][12] = CELL_WALL;
+            GRID(12, y, 0) = CELL_WALL;
         }
         
         // Solid dirt at z0 makes z1 walkable for bypass
         for (int x = 10; x <= 14; x++) {
-            grid[0][17][x] = CELL_WALL;
+            GRID(x, 17, 0) = CELL_WALL;
             SetWallMaterial(x, 17, 0, MAT_DIRT);
         }
-        grid[0][17][12] = CELL_WALL;  // Keep wall
+        GRID(12, 17, 0) = CELL_WALL;  // Keep wall
         
         // Ladders on each side of the wall
-        grid[0][17][10] = CELL_LADDER_BOTH;
-        grid[1][17][10] = CELL_LADDER_BOTH;
-        grid[0][17][14] = CELL_LADDER_BOTH;
-        grid[1][17][14] = CELL_LADDER_BOTH;
+        GRID(10, 17, 0) = CELL_LADDER_BOTH;
+        GRID(10, 17, 1) = CELL_LADDER_BOTH;
+        GRID(14, 17, 0) = CELL_LADDER_BOTH;
+        GRID(14, 17, 1) = CELL_LADDER_BOTH;
         
         BuildEntrances();
         BuildGraph();
@@ -2431,32 +2431,32 @@ describe(hpa_ladder_pathfinding) {
 
         // Add wall at z1 blocking direct path (make z1 above it unwalkable by removing z0 dirt)
         for (int y = 0; y < 32; y++) {
-            grid[0][y][6] = CELL_AIR;  // Remove dirt at x=6, making z1 above it unwalkable
+            GRID(6, y, 0) = CELL_AIR;  // Remove dirt at x=6, making z1 above it unwalkable
         }
 
         // Add ramps to allow going down to z0 and back up
         // West ramp at x=7 to go down from z1 to z0
-        grid[0][12][7] = CELL_RAMP_W;  // Exit at (6, 12, z1) - but that's air, need floor
+        GRID(7, 12, 0) = CELL_RAMP_W;  // Exit at (6, 12, z1) - but that's air, need floor
         
         // Actually let's do it simpler: make a pit at z0 with ramps on both sides
         // Carve out z0 in the middle, add ramps on edges
         for (int y = 0; y < 32; y++) {
             for (int x = 5; x <= 8; x++) {
-                grid[0][y][x] = CELL_AIR;  // Pit
+                GRID(x, y, 0) = CELL_AIR;  // Pit
             }
         }
         // West ramp at x=5 going west (exit at x=4, z1)
-        grid[0][12][5] = CELL_RAMP_W;
+        GRID(5, 12, 0) = CELL_RAMP_W;
         // East ramp at x=8 going east (exit at x=9, z1)  
-        grid[0][12][8] = CELL_RAMP_E;
+        GRID(8, 12, 0) = CELL_RAMP_E;
         // Floor in pit for walking at z0
         for (int x = 5; x <= 8; x++) {
             if (x == 5) {
-                grid[0][12][x] = CELL_RAMP_W;
+                GRID(x, 12, 0) = CELL_RAMP_W;
             } else if (x == 8) {
-                grid[0][12][x] = CELL_RAMP_E;
+                GRID(x, 12, 0) = CELL_RAMP_E;
             } else {
-                grid[0][12][x] = CELL_AIR;
+                GRID(x, 12, 0) = CELL_AIR;
                 SET_FLOOR(x, 12, 0);
             }
         }
@@ -2496,13 +2496,13 @@ describe(hpa_ladder_pathfinding) {
         // Add constructed floor corridor at z0 from start to ramp
         // Need AIR with floor flag to be walkable at z0
         for (int x = 10; x <= 13; x++) {
-            grid[0][17][x] = CELL_AIR;
+            GRID(x, 17, 0) = CELL_AIR;
             SET_FLOOR(x, 17, 0);
         }
         
         // Add a ramp to connect z0 to z1 
         // Ramp at (10, 17, z0) going west, exit at (9, 17, z1)
-        grid[0][17][10] = CELL_RAMP_W;
+        GRID(10, 17, 0) = CELL_RAMP_W;
 
         BuildEntrances();
         BuildGraph();
@@ -2548,10 +2548,10 @@ describe(hpa_fallback) {
 
         // Add ramps far away from start/goal to make rampCount > 0
         // Ramp at (2,2,z0) going east, exit at (3,2,z1)
-        grid[0][2][2] = CELL_RAMP_E;
+        GRID(2, 2, 0) = CELL_RAMP_E;
 
         // Carve a pit at z0 where our mover will be (constructed floor)
-        grid[0][20][20] = CELL_AIR;
+        GRID(20, 20, 0) = CELL_AIR;
         SET_FLOOR(20, 20, 0);
 
         BuildEntrances();
@@ -2586,13 +2586,13 @@ describe(hpa_fallback) {
         FillGroundLevel();
 
         // Ramps at corner — far from where the mover is
-        grid[0][5][5] = CELL_RAMP_N;
-        grid[0][5][10] = CELL_RAMP_S;
+        GRID(5, 5, 0) = CELL_RAMP_N;
+        GRID(10, 5, 0) = CELL_RAMP_S;
 
         // Constructed floor area in the middle of the map (mover workspace)
         for (int y = 28; y <= 35; y++) {
             for (int x = 28; x <= 35; x++) {
-                grid[0][y][x] = CELL_AIR;
+                GRID(x, y, 0) = CELL_AIR;
                 SET_FLOOR(x, y, 0);
             }
         }
@@ -2624,11 +2624,11 @@ describe(hpa_fallback) {
 
         // Carve pit and add ramp connecting z0 to z1
         for (int x = 14; x <= 17; x++) {
-            grid[0][16][x] = CELL_AIR;
+            GRID(x, 16, 0) = CELL_AIR;
             SET_FLOOR(x, 16, 0);
         }
         // East ramp at (17,16,z0) -> exit at (18,16,z1)
-        grid[0][16][17] = CELL_RAMP_E;
+        GRID(17, 16, 0) = CELL_RAMP_E;
 
         BuildEntrances();
         BuildGraph();
@@ -2755,14 +2755,14 @@ static int HFlowFailures(Point goal, int samples, int* outCompared) {
             if (test_verbose) printf("hflow mismatch from (%d,%d,%d): A* %s, hflow stopped at (%d,%d,%d)\n",
                                      p.x, p.y, p.z, reachable ? "reaches" : "can't reach", cur.x, cur.y, cur.z);
             if (test_verbose && failures == 1) {
-                printf("  stuck cell cost=%d  cell=%d below=%d\n", NavHFlowCostAt(w, h, cur), grid[cur.z][cur.y][cur.x],
-                       cur.z > 0 ? grid[cur.z - 1][cur.y][cur.x] : -1);
+                printf("  stuck cell cost=%d  cell=%d below=%d\n", NavHFlowCostAt(w, h, cur), GRID(cur.x, cur.y, cur.z),
+                       cur.z > 0 ? GRID(cur.x, cur.y, cur.z - 1) : -1);
                 for (int dy = -1; dy <= 1; dy++) {
                     for (int dx = -1; dx <= 1; dx++) {
                         Point q = {cur.x + dx, cur.y + dy, cur.z};
                         int c = NavHFlowCostAt(w, h, q);
                         printf("  (%d,%d) walk=%d cost=%d grid=%d below=%d |", q.x, q.y, IsCellWalkableAt(q.z, q.y, q.x),
-                               c == NAV_FLOW_UNREACHABLE ? -1 : c, grid[q.z][q.y][q.x], grid[q.z - 1][q.y][q.x]);
+                               c == NAV_FLOW_UNREACHABLE ? -1 : c, GRID(q.x, q.y, q.z), GRID(q.x, q.y, q.z - 1));
                     }
                     printf("\n");
                 }
@@ -2815,11 +2815,11 @@ describe(reachability_regions) {
     it("regions update after digging through a wall (incremental)") {
         InitGridWithSize(32, 32);
         FillGroundLevel();
-        for (int y = 0; y < 32; y++) { grid[1][y][16] = CELL_WALL; MarkChunkDirty(16, y, 1); }
+        for (int y = 0; y < 32; y++) { GRID(16, y, 1) = CELL_WALL; MarkChunkDirty(16, y, 1); }
         NavWorld* w = NavGame();
         Point a = {4, 10, 1}, b = {28, 10, 1};
         expect(!NavReachable(w, a, b));
-        grid[1][12][16] = CELL_AIR;
+        GRID(16, 12, 1) = CELL_AIR;
         MarkChunkDirty(16, 12, 1);
         expect(NavReachable(w, a, b));
     }
@@ -3136,13 +3136,13 @@ describe(ladder_placement) {
         for (int z = 1; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
                 for (int x = 0; x < gridWidth; x++)
-                    grid[z][y][x] = CELL_AIR;
+                    GRID(x, y, z) = CELL_AIR;
         
         // Place ladder at (2, 2, 0)
         PlaceLadder(2, 2, 0);
         
-        expect(grid[0][2][2] == CELL_LADDER_UP);
-        expect(grid[1][2][2] == CELL_LADDER_DOWN);
+        expect(GRID(2, 2, 0) == CELL_LADDER_UP);
+        expect(GRID(2, 2, 1) == CELL_LADDER_DOWN);
     }
     
     it("place_extend_up - Click on DOWN to extend shaft upward") {
@@ -3154,12 +3154,12 @@ describe(ladder_placement) {
         for (int z = 1; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
                 for (int x = 0; x < gridWidth; x++)
-                    grid[z][y][x] = CELL_AIR;
+                    GRID(x, y, z) = CELL_AIR;
         
         // First create basic ladder (z=0 UP, z=1 DOWN)
         PlaceLadder(2, 2, 0);
-        expect(grid[0][2][2] == CELL_LADDER_UP);
-        expect(grid[1][2][2] == CELL_LADDER_DOWN);
+        expect(GRID(2, 2, 0) == CELL_LADDER_UP);
+        expect(GRID(2, 2, 1) == CELL_LADDER_DOWN);
         
         // Click on z=1 (the DOWN piece) to extend upward
         PlaceLadder(2, 2, 1);
@@ -3167,10 +3167,10 @@ describe(ladder_placement) {
         // z=0 should still be UP (bottom of shaft)
         // z=1 should now be BOTH (middle, connected above and below)
         // z=2 should be DOWN (new top)
-        expect(grid[0][2][2] == CELL_LADDER_UP);
-        expect(grid[1][2][2] == CELL_LADDER_BOTH);
-        expect(grid[2][2][2] == CELL_LADDER_DOWN);
-        expect(grid[3][2][2] == CELL_AIR);
+        expect(GRID(2, 2, 0) == CELL_LADDER_UP);
+        expect(GRID(2, 2, 1) == CELL_LADDER_BOTH);
+        expect(GRID(2, 2, 2) == CELL_LADDER_DOWN);
+        expect(GRID(2, 2, 3) == CELL_AIR);
     }
     
     it("place_wall_above - Wall blocks auto-placement (orphan UP)") {
@@ -3178,12 +3178,12 @@ describe(ladder_placement) {
         // z=0:  .  <- place  U
         InitTestGrid(8, 8);
         gridDepth = 2;
-        grid[1][2][2] = CELL_WALL;  // Wall above
+        GRID(2, 2, 1) = CELL_WALL;  // Wall above
         
         PlaceLadder(2, 2, 0);
         
-        expect(grid[0][2][2] == CELL_LADDER_UP);  // Orphan UP
-        expect(grid[1][2][2] == CELL_WALL);       // Wall unchanged
+        expect(GRID(2, 2, 0) == CELL_LADDER_UP);  // Orphan UP
+        expect(GRID(2, 2, 1) == CELL_WALL);       // Wall unchanged
     }
     
     it("place_connect_two_shafts - Placing connects to existing shaft above") {
@@ -3195,18 +3195,18 @@ describe(ladder_placement) {
             for (int y = 0; y < gridHeight; y++)
                 for (int x = 0; x < gridWidth; x++) {
                     if (z == 0) {
-                        grid[z][y][x] = CELL_WALL;
+                        GRID(x, y, z) = CELL_WALL;
                         SetWallMaterial(x, y, z, MAT_DIRT);
                         SetWallNatural(x, y, z);
                     } else {
-                        grid[z][y][x] = CELL_AIR;
+                        GRID(x, y, z) = CELL_AIR;
                     }
                 }
         
         // Place ladder at z=0 (creates UP at z=0, DOWN at z=1)
         PlaceLadder(2, 2, 0);
-        expect(grid[0][2][2] == CELL_LADDER_UP);
-        expect(grid[1][2][2] == CELL_LADDER_DOWN);
+        expect(GRID(2, 2, 0) == CELL_LADDER_UP);
+        expect(GRID(2, 2, 1) == CELL_LADDER_DOWN);
         
         // Place ladder at z=2 - but z=1 already has DOWN (which points down)
         // z=2 doesn't see a connectable ladder above (z=3 is empty)
@@ -3215,10 +3215,10 @@ describe(ladder_placement) {
         PlaceLadder(2, 2, 2);
         
         // Two separate shafts that don't connect
-        expect(grid[0][2][2] == CELL_LADDER_UP);    // Bottom of shaft 1
-        expect(grid[1][2][2] == CELL_LADDER_DOWN);  // Top of shaft 1
-        expect(grid[2][2][2] == CELL_LADDER_UP);    // Bottom of shaft 2
-        expect(grid[3][2][2] == CELL_LADDER_DOWN);  // Top of shaft 2
+        expect(GRID(2, 2, 0) == CELL_LADDER_UP);    // Bottom of shaft 1
+        expect(GRID(2, 2, 1) == CELL_LADDER_DOWN);  // Top of shaft 1
+        expect(GRID(2, 2, 2) == CELL_LADDER_UP);    // Bottom of shaft 2
+        expect(GRID(2, 2, 3) == CELL_LADDER_DOWN);  // Top of shaft 2
     }
     
     it("place_extend_down - Place below existing ladder extends downward") {
@@ -3240,18 +3240,18 @@ describe(ladder_placement) {
             for (int y = 0; y < gridHeight; y++)
                 for (int x = 0; x < gridWidth; x++) {
                     if (z == 0) {
-                        grid[z][y][x] = CELL_WALL;
+                        GRID(x, y, z) = CELL_WALL;
                         SetWallMaterial(x, y, z, MAT_DIRT);
                         SetWallNatural(x, y, z);
                     } else {
-                        grid[z][y][x] = CELL_AIR;
+                        GRID(x, y, z) = CELL_AIR;
                     }
                 }
         
         // Place ladder at z=1 (creates UP at z=1, DOWN at z=2)
         PlaceLadder(2, 2, 1);
-        expect(grid[1][2][2] == CELL_LADDER_UP);
-        expect(grid[2][2][2] == CELL_LADDER_DOWN);
+        expect(GRID(2, 2, 1) == CELL_LADDER_UP);
+        expect(GRID(2, 2, 2) == CELL_LADDER_DOWN);
         
         // Now place at z=0 to extend downward
         PlaceLadder(2, 2, 0);
@@ -3259,9 +3259,9 @@ describe(ladder_placement) {
         // z=0 becomes UP (new bottom)
         // z=1 becomes BOTH (middle, connected below and above)
         // z=2 stays DOWN (top)
-        expect(grid[0][2][2] == CELL_LADDER_UP);
-        expect(grid[1][2][2] == CELL_LADDER_BOTH);
-        expect(grid[2][2][2] == CELL_LADDER_DOWN);
+        expect(GRID(2, 2, 0) == CELL_LADDER_UP);
+        expect(GRID(2, 2, 1) == CELL_LADDER_BOTH);
+        expect(GRID(2, 2, 2) == CELL_LADDER_DOWN);
     }
 }
 
@@ -3278,28 +3278,28 @@ describe(ladder_erase) {
             for (int y = 0; y < gridHeight; y++)
                 for (int x = 0; x < gridWidth; x++) {
                     if (z == 0) {
-                        grid[z][y][x] = CELL_WALL;
+                        GRID(x, y, z) = CELL_WALL;
                         SetWallMaterial(x, y, z, MAT_DIRT);
                     } else {
-                        grid[z][y][x] = CELL_AIR;
+                        GRID(x, y, z) = CELL_AIR;
                     }
                 }
         
         // Build a 5-level ladder shaft
-        grid[0][2][2] = CELL_LADDER_UP;
-        grid[1][2][2] = CELL_LADDER_BOTH;
-        grid[2][2][2] = CELL_LADDER_BOTH;
-        grid[3][2][2] = CELL_LADDER_BOTH;
-        grid[4][2][2] = CELL_LADDER_DOWN;
+        GRID(2, 2, 0) = CELL_LADDER_UP;
+        GRID(2, 2, 1) = CELL_LADDER_BOTH;
+        GRID(2, 2, 2) = CELL_LADDER_BOTH;
+        GRID(2, 2, 3) = CELL_LADDER_BOTH;
+        GRID(2, 2, 4) = CELL_LADDER_DOWN;
         
         // Erase z=2
         EraseLadder(2, 2, 2);
         
-        expect(grid[0][2][2] == CELL_LADDER_UP);    // Unchanged
-        expect(grid[1][2][2] == CELL_LADDER_BOTH);  // Unchanged (still connected to z=0 and z=2)
-        expect(grid[2][2][2] == CELL_LADDER_DOWN);  // Was BOTH, now DOWN (broke upward)
-        expect(grid[3][2][2] == CELL_LADDER_UP);    // Was BOTH, cascade: lost connection below -> UP
-        expect(grid[4][2][2] == CELL_LADDER_DOWN);  // Unchanged
+        expect(GRID(2, 2, 0) == CELL_LADDER_UP);    // Unchanged
+        expect(GRID(2, 2, 1) == CELL_LADDER_BOTH);  // Unchanged (still connected to z=0 and z=2)
+        expect(GRID(2, 2, 2) == CELL_LADDER_DOWN);  // Was BOTH, now DOWN (broke upward)
+        expect(GRID(2, 2, 3) == CELL_LADDER_UP);    // Was BOTH, cascade: lost connection below -> UP
+        expect(GRID(2, 2, 4) == CELL_LADDER_DOWN);  // Unchanged
     }
     
     it("erase_up - Erase UP cascades up, removes orphan DOWN") {
@@ -3307,20 +3307,20 @@ describe(ladder_erase) {
         // z=0:  U  <- erase  .
         InitTestGrid(8, 8);
         gridDepth = 2;
-        grid[1][2][2] = CELL_AIR;  // Make sure z=1 starts as air
+        GRID(2, 2, 1) = CELL_AIR;  // Make sure z=1 starts as air
         
         // Create simple 2-level ladder
         PlaceLadder(2, 2, 0);
-        expect(grid[0][2][2] == CELL_LADDER_UP);
-        expect(grid[1][2][2] == CELL_LADDER_DOWN);
+        expect(GRID(2, 2, 0) == CELL_LADDER_UP);
+        expect(GRID(2, 2, 1) == CELL_LADDER_DOWN);
         
         // Erase the UP at z=0
         EraseLadder(2, 2, 0);
         
         // Removed - z=0 becomes walkable (CELL_AIR with solid ground below)
         expect(IsCellWalkableAt(0, 2, 2));
-        expect(!IsLadderCell(grid[0][2][2]));
-        expect(grid[1][2][2] == CELL_AIR);       // Cascade: DOWN with no connection below -> removed
+        expect(!IsLadderCell(GRID(2, 2, 0)));
+        expect(GRID(2, 2, 1) == CELL_AIR);       // Cascade: DOWN with no connection below -> removed
     }
     
     it("erase_down - Erase DOWN cascades down, removes orphan UP") {
@@ -3328,20 +3328,20 @@ describe(ladder_erase) {
         // z=0:  U            .
         InitTestGrid(8, 8);
         gridDepth = 2;
-        grid[1][2][2] = CELL_AIR;
+        GRID(2, 2, 1) = CELL_AIR;
         
         // Create simple 2-level ladder
         PlaceLadder(2, 2, 0);
-        expect(grid[0][2][2] == CELL_LADDER_UP);
-        expect(grid[1][2][2] == CELL_LADDER_DOWN);
+        expect(GRID(2, 2, 0) == CELL_LADDER_UP);
+        expect(GRID(2, 2, 1) == CELL_LADDER_DOWN);
         
         // Erase the DOWN at z=1
         EraseLadder(2, 2, 1);
         
-        expect(grid[1][2][2] == CELL_AIR);       // Removed
+        expect(GRID(2, 2, 1) == CELL_AIR);       // Removed
         // Cascade: UP with no connection above -> removed, z=0 becomes walkable
         expect(IsCellWalkableAt(0, 2, 2));
-        expect(!IsLadderCell(grid[0][2][2]));
+        expect(!IsLadderCell(GRID(2, 2, 0)));
     }
     
     it("erase_both_top - Erase BOTH at top of shaft") {
@@ -3353,19 +3353,19 @@ describe(ladder_erase) {
         for (int z = 1; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
                 for (int x = 0; x < gridWidth; x++)
-                    grid[z][y][x] = CELL_AIR;
+                    GRID(x, y, z) = CELL_AIR;
         
         // Build 3-level shaft
-        grid[0][2][2] = CELL_LADDER_UP;
-        grid[1][2][2] = CELL_LADDER_BOTH;
-        grid[2][2][2] = CELL_LADDER_DOWN;
+        GRID(2, 2, 0) = CELL_LADDER_UP;
+        GRID(2, 2, 1) = CELL_LADDER_BOTH;
+        GRID(2, 2, 2) = CELL_LADDER_DOWN;
         
         // Erase z=1 (BOTH)
         EraseLadder(2, 2, 1);
         
-        expect(grid[0][2][2] == CELL_LADDER_UP);    // Unchanged (still bottom)
-        expect(grid[1][2][2] == CELL_LADDER_DOWN);  // Was BOTH, broke upward -> DOWN
-        expect(grid[2][2][2] == CELL_AIR);          // Was DOWN, cascade: orphan removed
+        expect(GRID(2, 2, 0) == CELL_LADDER_UP);    // Unchanged (still bottom)
+        expect(GRID(2, 2, 1) == CELL_LADDER_DOWN);  // Was BOTH, broke upward -> DOWN
+        expect(GRID(2, 2, 2) == CELL_AIR);          // Was DOWN, cascade: orphan removed
     }
     
     it("erase_both_bottom - Erase BOTH at bottom of shaft") {
@@ -3377,26 +3377,26 @@ describe(ladder_erase) {
         for (int z = 1; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
                 for (int x = 0; x < gridWidth; x++)
-                    grid[z][y][x] = CELL_AIR;
+                    GRID(x, y, z) = CELL_AIR;
         
         // Build 3-level shaft where z=0 is also BOTH (4 levels actually)
         // Let me reconsider - if z=0 is BOTH, there must be something below...
         // For this test, let's use a 4-level shaft:
         gridDepth = 4;
-        grid[0][2][2] = CELL_LADDER_UP;
-        grid[1][2][2] = CELL_LADDER_BOTH;
-        grid[2][2][2] = CELL_LADDER_BOTH;
-        grid[3][2][2] = CELL_LADDER_DOWN;
+        GRID(2, 2, 0) = CELL_LADDER_UP;
+        GRID(2, 2, 1) = CELL_LADDER_BOTH;
+        GRID(2, 2, 2) = CELL_LADDER_BOTH;
+        GRID(2, 2, 3) = CELL_LADDER_DOWN;
         
         // Erase z=1 (BOTH near bottom)
         EraseLadder(2, 2, 1);
         
         // z=1 becomes DOWN (broke upward connection)
         // z=2 cascade: was BOTH, lost connection below -> UP
-        expect(grid[0][2][2] == CELL_LADDER_UP);    // Unchanged
-        expect(grid[1][2][2] == CELL_LADDER_DOWN);  // Was BOTH -> DOWN
-        expect(grid[2][2][2] == CELL_LADDER_UP);    // Was BOTH, cascade -> UP
-        expect(grid[3][2][2] == CELL_LADDER_DOWN);  // Unchanged
+        expect(GRID(2, 2, 0) == CELL_LADDER_UP);    // Unchanged
+        expect(GRID(2, 2, 1) == CELL_LADDER_DOWN);  // Was BOTH -> DOWN
+        expect(GRID(2, 2, 2) == CELL_LADDER_UP);    // Was BOTH, cascade -> UP
+        expect(GRID(2, 2, 3) == CELL_LADDER_DOWN);  // Unchanged
     }
     
     it("whiteboard_sequence - Full add/delete sequence from whiteboard") {
@@ -3414,53 +3414,53 @@ describe(ladder_erase) {
         for (int z = 1; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
                 for (int x = 0; x < gridWidth; x++)
-                    grid[z][y][x] = CELL_AIR;
+                    GRID(x, y, z) = CELL_AIR;
         
         // Step 1: Add at z=1 (column 2 in diagram)
         // Expected: z=1=U, z=2=D
         PlaceLadder(2, 2, 1);
         expect(IsCellWalkableAt(0, 2, 2));  // z=0 unchanged, still walkable
-        expect(grid[1][2][2] == CELL_LADDER_UP);
-        expect(grid[2][2][2] == CELL_LADDER_DOWN);
-        expect(grid[3][2][2] == CELL_AIR);
-        expect(grid[4][2][2] == CELL_AIR);
+        expect(GRID(2, 2, 1) == CELL_LADDER_UP);
+        expect(GRID(2, 2, 2) == CELL_LADDER_DOWN);
+        expect(GRID(2, 2, 3) == CELL_AIR);
+        expect(GRID(2, 2, 4) == CELL_AIR);
         
         // Step 2: Add at z=0 (column 3 in diagram)
         // Expected: z=0=U, z=1=B, z=2=D
         PlaceLadder(2, 2, 0);
-        expect(grid[0][2][2] == CELL_LADDER_UP);
-        expect(grid[1][2][2] == CELL_LADDER_BOTH);
-        expect(grid[2][2][2] == CELL_LADDER_DOWN);
-        expect(grid[3][2][2] == CELL_AIR);
-        expect(grid[4][2][2] == CELL_AIR);
+        expect(GRID(2, 2, 0) == CELL_LADDER_UP);
+        expect(GRID(2, 2, 1) == CELL_LADDER_BOTH);
+        expect(GRID(2, 2, 2) == CELL_LADDER_DOWN);
+        expect(GRID(2, 2, 3) == CELL_AIR);
+        expect(GRID(2, 2, 4) == CELL_AIR);
         
         // Step 3: Add at z=2 (top/DOWN) - extends upward (column 4 in diagram)
         // Must click on DOWN piece to extend
         // Expected: z=0=U, z=1=B, z=2=B, z=3=D
         PlaceLadder(2, 2, 2);
-        expect(grid[0][2][2] == CELL_LADDER_UP);
-        expect(grid[1][2][2] == CELL_LADDER_BOTH);
-        expect(grid[2][2][2] == CELL_LADDER_BOTH);
-        expect(grid[3][2][2] == CELL_LADDER_DOWN);
-        expect(grid[4][2][2] == CELL_AIR);
+        expect(GRID(2, 2, 0) == CELL_LADDER_UP);
+        expect(GRID(2, 2, 1) == CELL_LADDER_BOTH);
+        expect(GRID(2, 2, 2) == CELL_LADDER_BOTH);
+        expect(GRID(2, 2, 3) == CELL_LADDER_DOWN);
+        expect(GRID(2, 2, 4) == CELL_AIR);
         
         // Step 4: Add at z=3 (top/DOWN) - extends upward (column 5 in diagram)
         // Expected: z=0=U, z=1=B, z=2=B, z=3=B, z=4=D
         PlaceLadder(2, 2, 3);
-        expect(grid[0][2][2] == CELL_LADDER_UP);
-        expect(grid[1][2][2] == CELL_LADDER_BOTH);
-        expect(grid[2][2][2] == CELL_LADDER_BOTH);
-        expect(grid[3][2][2] == CELL_LADDER_BOTH);
-        expect(grid[4][2][2] == CELL_LADDER_DOWN);
+        expect(GRID(2, 2, 0) == CELL_LADDER_UP);
+        expect(GRID(2, 2, 1) == CELL_LADDER_BOTH);
+        expect(GRID(2, 2, 2) == CELL_LADDER_BOTH);
+        expect(GRID(2, 2, 3) == CELL_LADDER_BOTH);
+        expect(GRID(2, 2, 4) == CELL_LADDER_DOWN);
         
         // Step 5: Delete at z=2 (column 6 in diagram)
         // Expected: z=0=U, z=1=B, z=2=D, z=3=U, z=4=D
         EraseLadder(2, 2, 2);
-        expect(grid[0][2][2] == CELL_LADDER_UP);
-        expect(grid[1][2][2] == CELL_LADDER_BOTH);
-        expect(grid[2][2][2] == CELL_LADDER_DOWN);
-        expect(grid[3][2][2] == CELL_LADDER_UP);
-        expect(grid[4][2][2] == CELL_LADDER_DOWN);
+        expect(GRID(2, 2, 0) == CELL_LADDER_UP);
+        expect(GRID(2, 2, 1) == CELL_LADDER_BOTH);
+        expect(GRID(2, 2, 2) == CELL_LADDER_DOWN);
+        expect(GRID(2, 2, 3) == CELL_LADDER_UP);
+        expect(GRID(2, 2, 4) == CELL_LADDER_DOWN);
         
         // Step 6: Delete at z=2 again (column 7 in diagram)
         // z=2 was D, gets removed, cascades down: z=1 BOTH loses connection above → DOWN
@@ -3469,22 +3469,22 @@ describe(ladder_erase) {
         // Wait, diagram shows z=3=U, z=4=D still there. Let me match diagram:
         // Expected: z=0=U, z=1=D, z=2=□, z=3=U, z=4=D
         EraseLadder(2, 2, 2);
-        expect(grid[0][2][2] == CELL_LADDER_UP);
-        expect(grid[1][2][2] == CELL_LADDER_DOWN);  // Was BOTH, lost connection above
-        expect(grid[2][2][2] == CELL_AIR);          // Removed
-        expect(grid[3][2][2] == CELL_LADDER_UP);    // Unchanged (still connected to z=4)
-        expect(grid[4][2][2] == CELL_LADDER_DOWN);  // Unchanged
+        expect(GRID(2, 2, 0) == CELL_LADDER_UP);
+        expect(GRID(2, 2, 1) == CELL_LADDER_DOWN);  // Was BOTH, lost connection above
+        expect(GRID(2, 2, 2) == CELL_AIR);          // Removed
+        expect(GRID(2, 2, 3) == CELL_LADDER_UP);    // Unchanged (still connected to z=4)
+        expect(GRID(2, 2, 4) == CELL_LADDER_DOWN);  // Unchanged
         
         // Step 7: Add at z=2 (column 8 in diagram)
         // z=1 is DOWN (points down), z=3 is UP (points up)
         // Placing at z=2 extends down into z=3's shaft - z=2 becomes UP, z=3 becomes BOTH
         // The lower shaft (z=0-1) remains separate since z=1 is DOWN (can't connect up)
         PlaceLadder(2, 2, 2);
-        expect(grid[0][2][2] == CELL_LADDER_UP);    // Unchanged
-        expect(grid[1][2][2] == CELL_LADDER_DOWN);  // Unchanged - can't connect up
-        expect(grid[2][2][2] == CELL_LADDER_UP);    // New bottom of upper shaft
-        expect(grid[3][2][2] == CELL_LADDER_BOTH);  // Was UP, now connected below too
-        expect(grid[4][2][2] == CELL_LADDER_DOWN);  // Unchanged
+        expect(GRID(2, 2, 0) == CELL_LADDER_UP);    // Unchanged
+        expect(GRID(2, 2, 1) == CELL_LADDER_DOWN);  // Unchanged - can't connect up
+        expect(GRID(2, 2, 2) == CELL_LADDER_UP);    // New bottom of upper shaft
+        expect(GRID(2, 2, 3) == CELL_LADDER_BOTH);  // Was UP, now connected below too
+        expect(GRID(2, 2, 4) == CELL_LADDER_DOWN);  // Unchanged
     }
 }
 
@@ -3500,10 +3500,10 @@ describe(df_walkability) {
         // Set up terrain: solid at z=0, air at z=1
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 SET_CELL_FLAG(x, y, 0, CF_SOLID);
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;
             }
         }
         
@@ -3511,11 +3511,11 @@ describe(df_walkability) {
         expect(IsCellWalkableAt(1, 5, 5) == true);
         
         // z=0 with air IS walkable (implicit bedrock below)
-        grid[0][5][5] = CELL_AIR;
+        GRID(5, 5, 0) = CELL_AIR;
         expect(IsCellWalkableAt(0, 5, 5) == true);
         
         // z=0 with solid (dirt) is NOT walkable (can't walk inside solid blocks)
-        grid[0][5][5] = CELL_WALL;
+        GRID(5, 5, 0) = CELL_WALL;
         SetWallMaterial(5, 5, 0, MAT_DIRT);
         expect(IsCellWalkableAt(0, 5, 5) == false);
     }
@@ -3525,11 +3525,11 @@ describe(df_walkability) {
         // Air at z=1 and z=2, no solid below z=2
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 SET_CELL_FLAG(x, y, 0, CF_SOLID);
-                grid[1][y][x] = CELL_AIR;
-                grid[2][y][x] = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;
+                GRID(x, y, 2) = CELL_AIR;
             }
         }
         
@@ -3542,11 +3542,11 @@ describe(df_walkability) {
     it("should make ladder cells walkable regardless of below") {
         InitGridWithSize(TEST_GRID_SIZE, TEST_GRID_SIZE);
         // Solid at z=0, ladder at z=1 and z=2
-        grid[0][5][5] = CELL_WALL;
+        GRID(5, 5, 0) = CELL_WALL;
         SetWallMaterial(5, 5, 0, MAT_DIRT);
         SET_CELL_FLAG(5, 5, 0, CF_SOLID);
-        grid[1][5][5] = CELL_LADDER_BOTH;
-        grid[2][5][5] = CELL_LADDER_BOTH;
+        GRID(5, 5, 1) = CELL_LADDER_BOTH;
+        GRID(5, 5, 2) = CELL_LADDER_BOTH;
         
         // z=1 ladder is walkable (has solid below anyway)
         expect(IsCellWalkableAt(1, 5, 5) == true);
@@ -3567,19 +3567,19 @@ describe(df_ladder_pathfinding) {
         // z=3: air, walkable at (5,6) because z=2 platform is solid
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
-                grid[1][y][x] = CELL_AIR;
-                grid[2][y][x] = CELL_AIR;
-                grid[3][y][x] = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;
+                GRID(x, y, 2) = CELL_AIR;
+                GRID(x, y, 3) = CELL_AIR;
             }
         }
         // Ladder shaft at (5,5) from z=1 to z=3 (need to reach z=3 to step off)
-        grid[1][5][5] = CELL_LADDER_BOTH;
-        grid[2][5][5] = CELL_LADDER_BOTH;
-        grid[3][5][5] = CELL_LADDER_BOTH;
+        GRID(5, 5, 1) = CELL_LADDER_BOTH;
+        GRID(5, 5, 2) = CELL_LADDER_BOTH;
+        GRID(5, 5, 3) = CELL_LADDER_BOTH;
         // Solid platform at z=2 adjacent to ladder, for walking at z=3
-        grid[2][6][5] = CELL_WALL;
+        GRID(5, 6, 2) = CELL_WALL;
         SetWallMaterial(5, 6, 2, MAT_DIRT);
         
 
@@ -3621,15 +3621,15 @@ describe(df_ladder_pathfinding) {
         // Same terrain structure but no ladder - should not be able to reach z=3
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
-                grid[1][y][x] = CELL_AIR;
-                grid[2][y][x] = CELL_AIR;
-                grid[3][y][x] = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;
+                GRID(x, y, 2) = CELL_AIR;
+                GRID(x, y, 3) = CELL_AIR;
             }
         }
         // Platform at z=2 but NO ladder to reach it
-        grid[2][6][5] = CELL_WALL;
+        GRID(5, 6, 2) = CELL_WALL;
         SetWallMaterial(5, 6, 2, MAT_DIRT);
         
 
@@ -3677,7 +3677,7 @@ describe(df_basics) {
         expect(IsCellWalkableAt(1, 5, 5) == true);
         
         // Mine out z=0
-        grid[0][5][5] = CELL_AIR;
+        GRID(5, 5, 0) = CELL_AIR;
         
         // Now z=1 is NOT walkable (no solid below)
         expect(IsCellWalkableAt(1, 5, 5) == false);
@@ -3714,7 +3714,7 @@ describe(df_basics) {
         
         // Place a wall across the path at z=1
         for (int y = 0; y < 32; y++) {
-            grid[1][y][15] = CELL_WALL;
+            GRID(15, y, 1) = CELL_WALL;
         }
         
         startPos = (Point){5, 10, 1};
@@ -3732,9 +3732,9 @@ describe(df_basics) {
         
         // Place a wall with a gap at z=1
         for (int y = 0; y < 32; y++) {
-            grid[1][y][15] = CELL_WALL;
+            GRID(15, y, 1) = CELL_WALL;
         }
-        grid[1][10][15] = CELL_AIR;  // Gap
+        GRID(15, 10, 1) = CELL_AIR;  // Gap
         
         startPos = (Point){5, 10, 1};
         goalPos = (Point){25, 10, 1};
@@ -4263,7 +4263,7 @@ describe(pathfinding_multi_z_correctness) {
         // The incremental update will rebuild chunk(cx=2, cy=2) but the ladder
         // takes the "unaffected" code path -- using the linear scan (Finding 6)
         // and the global hash remap (Finding 3).
-        grid[0][10][10] = CELL_WALL;
+        GRID(10, 10, 0) = CELL_WALL;
         MarkChunkDirty(10, 10, 0);
         UpdateDirtyChunks();
 
@@ -4332,7 +4332,7 @@ describe(pathfinding_multi_z_correctness) {
         BuildGraph();
 
         // Add a wall far from the ladder so ladder's chunk is unaffected
-        grid[0][10][10] = CELL_WALL;
+        GRID(10, 10, 0) = CELL_WALL;
         MarkChunkDirty(10, 10, 0);
 
         // Incremental update
@@ -4396,7 +4396,7 @@ describe(variable_terrain_cost) {
     it("bush cost is 20") {
         InitGridFromAsciiWithChunkSize("....\n....\n....\n....\n", 4, 4);
         InitWater(); InitSnow();
-        grid[0][1][1] = CELL_BUSH;
+        GRID(1, 1, 0) = CELL_BUSH;
         expect(GetCellMoveCost(1, 1, 0) == 20);
     }
 
@@ -4523,7 +4523,7 @@ describe(variable_terrain_cost) {
         // Movers walk on z=1. GetCellMoveCost checks ground at z-1.
         for (int x = 0; x < 16; x++) {
             for (int y = 2; y <= 5; y++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 SetWallNatural(x, y, 0);
                 SET_CELL_WETNESS(x, y, 0, 3);
@@ -4546,7 +4546,7 @@ describe(variable_terrain_cost) {
         InitWater(); InitSnow();
 
         // Bush corridor on row 1
-        for (int x = 2; x < 14; x++) grid[0][1][x] = CELL_BUSH;
+        for (int x = 2; x < 14; x++) GRID(x, 1, 0) = CELL_BUSH;
 
         int costClear = AStarChunk(0, 0, 0, 15, 0, 0, 0, 16, 4);
         int costBush = AStarChunk(0, 1, 0, 15, 1, 0, 0, 16, 4);
@@ -4627,13 +4627,13 @@ describe(variable_terrain_cost) {
 
         int bushCount = 0;
         for (int i = 0; i < len; i++)
-            if (grid[0][path[i].y][path[i].x] == CELL_BUSH) bushCount++;
+            if (GRID(path[i].x, path[i].y, 0) == CELL_BUSH) bushCount++;
 
         if (test_verbose) {
             printf("  path length: %d, bush cells: %d\n", len, bushCount);
             for (int i = 0; i < len; i++)
                 printf("    [%d] (%d,%d) %s\n", i, path[i].x, path[i].y,
-                       grid[0][path[i].y][path[i].x] == CELL_BUSH ? "BUSH" : "air");
+                       GRID(path[i].x, path[i].y, 0) == CELL_BUSH ? "BUSH" : "air");
         }
         // Detour south around bush wall is cheaper than cutting through
         expect(bushCount == 0);
@@ -4662,13 +4662,13 @@ describe(variable_terrain_cost) {
 
         int bushCount = 0;
         for (int i = 0; i < len; i++)
-            if (grid[0][path[i].y][path[i].x] == CELL_BUSH) bushCount++;
+            if (GRID(path[i].x, path[i].y, 0) == CELL_BUSH) bushCount++;
 
         if (test_verbose) {
             printf("  path length: %d, bush cells: %d\n", len, bushCount);
             for (int i = 0; i < len; i++)
                 printf("    [%d] (%d,%d) %s\n", i, path[i].x, path[i].y,
-                       grid[0][path[i].y][path[i].x] == CELL_BUSH ? "BUSH" : "air");
+                       GRID(path[i].x, path[i].y, 0) == CELL_BUSH ? "BUSH" : "air");
         }
         // Should take the clear south corridor
         expect(bushCount == 0);
@@ -4693,13 +4693,13 @@ describe(variable_terrain_cost) {
 
         int bushCount = 0;
         for (int i = 0; i < len; i++)
-            if (grid[0][path[i].y][path[i].x] == CELL_BUSH) bushCount++;
+            if (GRID(path[i].x, path[i].y, 0) == CELL_BUSH) bushCount++;
 
         if (test_verbose) {
             printf("  path length: %d, bush cells: %d\n", len, bushCount);
             for (int i = 0; i < len; i++)
                 printf("    [%d] (%d,%d) %s\n", i, path[i].x, path[i].y,
-                       grid[0][path[i].y][path[i].x] == CELL_BUSH ? "BUSH" : "air");
+                       GRID(path[i].x, path[i].y, 0) == CELL_BUSH ? "BUSH" : "air");
         }
         // No choice — must go through the bushes
         expect(bushCount == 2);
@@ -4735,13 +4735,13 @@ describe(variable_terrain_cost) {
 
         int bushCount = 0;
         for (int i = 0; i < len; i++)
-            if (grid[0][path[i].y][path[i].x] == CELL_BUSH) bushCount++;
+            if (GRID(path[i].x, path[i].y, 0) == CELL_BUSH) bushCount++;
 
         if (test_verbose) {
             printf("  path length: %d, bush cells: %d\n", len, bushCount);
             for (int i = 0; i < len; i++)
                 printf("    [%d] (%d,%d) %s\n", i, path[i].x, path[i].y,
-                       grid[0][path[i].y][path[i].x] == CELL_BUSH ? "BUSH" : "air");
+                       GRID(path[i].x, path[i].y, 0) == CELL_BUSH ? "BUSH" : "air");
         }
         // Should go south through the open corridor, not through the garden
         expect(bushCount == 0);

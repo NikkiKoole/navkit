@@ -36,25 +36,25 @@ static void SetupHillsideGrid(void) {
 
     for (int y = 0; y < 5; y++) {
         for (int x = 0; x < 10; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_GRANITE);
 
             if (x < 5) {
-                grid[1][y][x] = CELL_WALL;
+                GRID(x, y, 1) = CELL_WALL;
                 SetWallMaterial(x, y, 1, MAT_DIRT);
-                grid[2][y][x] = CELL_AIR;
-                grid[3][y][x] = CELL_AIR;
+                GRID(x, y, 2) = CELL_AIR;
+                GRID(x, y, 3) = CELL_AIR;
             } else if (x == 5) {
-                grid[1][y][x] = CELL_WALL;
+                GRID(x, y, 1) = CELL_WALL;
                 SetWallMaterial(x, y, 1, MAT_DIRT);
-                grid[2][y][x] = CELL_RAMP_E;
-                grid[3][y][x] = CELL_AIR;
+                GRID(x, y, 2) = CELL_RAMP_E;
+                GRID(x, y, 3) = CELL_AIR;
             } else {
-                grid[1][y][x] = CELL_WALL;
+                GRID(x, y, 1) = CELL_WALL;
                 SetWallMaterial(x, y, 1, MAT_DIRT);
-                grid[2][y][x] = CELL_WALL;
+                GRID(x, y, 2) = CELL_WALL;
                 SetWallMaterial(x, y, 2, MAT_DIRT);
-                grid[3][y][x] = CELL_AIR;
+                GRID(x, y, 3) = CELL_AIR;
             }
         }
     }

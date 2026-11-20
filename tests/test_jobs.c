@@ -1258,7 +1258,7 @@ describe(dynamic_obstacles) {
         
         // Block the path with a wall (vertical wall in middle)
         for (int y = 0; y < 10; y++) {
-            grid[0][y][5] = CELL_WALL;
+            GRID(5, y, 0) = CELL_WALL;
         }
         MarkChunkDirty(5, 0, 0);
         MarkChunkDirty(5, 5, 0);
@@ -1321,7 +1321,7 @@ describe(dynamic_obstacles) {
         expect(MoverGetTargetItem(m) == itemIdx);
         
         // Place wall ON the item's cell
-        grid[0][2][8] = CELL_WALL;
+        GRID(8, 2, 0) = CELL_WALL;
         
         // Run just ONE tick - job should cancel immediately
         JobsTick();
@@ -1354,7 +1354,7 @@ describe(dynamic_obstacles) {
         moverCount = 1;
         
         // Item on a cell that IS a wall
-        grid[0][2][8] = CELL_WALL;
+        GRID(8, 2, 0) = CELL_WALL;
         int itemIdx = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
         
         // Stockpile
@@ -1656,7 +1656,7 @@ describe(unreachable_item_cooldown) {
         
         // Now open a path by removing a wall
         // CELL_AIR at z=0 is walkable (implicit bedrock below)
-        grid[0][3][2] = CELL_AIR;
+        GRID(2, 3, 0) = CELL_AIR;
         MarkChunkDirty(2, 3, 0);
         
         // Set cooldown to 0 to allow retry
@@ -2454,7 +2454,7 @@ describe(stockpile_max_stack_size) {
         expect(MoverIsCarrying(m));
         
         // Draw a wall blocking the path (temporarily)
-        grid[0][1][4] = CELL_WALL;
+        GRID(4, 1, 0) = CELL_WALL;
         MarkChunkDirty(4, 1, 0);
         
         // Run a bit with wall
@@ -2466,7 +2466,7 @@ describe(stockpile_max_stack_size) {
         }
         
         // Remove the wall
-        grid[0][1][4] = CELL_AIR;
+        GRID(4, 1, 0) = CELL_AIR;
         SET_FLOOR(4, 1, 0);
         MarkChunkDirty(4, 1, 0);
         
@@ -3756,7 +3756,7 @@ describe(mining_job_assignment) {
         InitDesignations();
         
         // Make one floor cell for mover to stand on
-        grid[0][0][0] = CELL_AIR;
+        GRID(0, 0, 0) = CELL_AIR;
         SET_FLOOR(0, 0, 0);
         
         // Mover at (0,0)
@@ -3799,7 +3799,7 @@ describe(mining_job_execution) {
         moverCount = 1;
         
         // Wall at (1,1)
-        expect(grid[0][1][1] == CELL_WALL);
+        expect(GRID(1, 1, 0) == CELL_WALL);
         
         // Designate wall for digging
         DesignateMine(1, 1, 0);
@@ -3812,7 +3812,7 @@ describe(mining_job_execution) {
             JobsTick();
             
             // Check if mine completed (wall removed)
-            if (grid[0][1][1] != CELL_WALL) {
+            if (GRID(1, 1, 0) != CELL_WALL) {
                 completed = true;
                 break;
             }
@@ -3820,7 +3820,7 @@ describe(mining_job_execution) {
         
         expect(completed == true);
         // Mined wall becomes walkable
-        expect(grid[0][1][1] != CELL_WALL);
+        expect(GRID(1, 1, 0) != CELL_WALL);
         expect(IsCellWalkableAt(0, 1, 1) == true);
         expect(HasMineDesignation(1, 1, 0) == false);
         expect(MoverIsIdle(m));
@@ -3848,7 +3848,7 @@ describe(mining_job_execution) {
         moverCount = 1;
         
         // Wall at (1,1)
-        expect(grid[0][1][1] == CELL_WALL);
+        expect(GRID(1, 1, 0) == CELL_WALL);
         
         // Designate wall for mining
         DesignateMine(1, 1, 0);
@@ -3860,7 +3860,7 @@ describe(mining_job_execution) {
             AssignJobs();
             JobsTick();
             
-            if (grid[0][1][1] != CELL_WALL) {
+            if (GRID(1, 1, 0) != CELL_WALL) {
                 completed = true;
                 break;
             }
@@ -3953,7 +3953,7 @@ describe(mining_job_execution) {
         expect(MoverHasMineJob(m));
         
         // Player removes wall manually (simulating editor action)
-        grid[0][1][1] = CELL_AIR;
+        GRID(1, 1, 0) = CELL_AIR;
         SET_FLOOR(1, 1, 0);
         
         // Run one tick to detect wall removal
@@ -4034,8 +4034,8 @@ describe(channel_designation) {
         // Add a second level - walls at z=0
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;  // z=0: walls
-                grid[1][y][x] = CELL_AIR;   // z=1: floor
+                GRID(x, y, 0) = CELL_WALL;  // z=0: walls
+                GRID(x, y, 1) = CELL_AIR;   // z=1: floor
                 SET_FLOOR(x, y, 1);
             }
         }
@@ -4076,7 +4076,7 @@ describe(channel_designation) {
         // Add second level
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[1][y][x] = grid[0][y][x];  // Copy pattern to z=1
+                GRID(x, y, 1) = GRID(x, y, 0);  // Copy pattern to z=1
             }
         }
         
@@ -4100,14 +4100,14 @@ describe(channel_designation) {
         // This means there's no floor to channel at (2,2,1)
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 0) = CELL_WALL;
+                GRID(x, y, 1) = CELL_AIR;
                 SET_FLOOR(x, y, 1);
             }
         }
         // At (2,2): remove the solid below and the floor flag
-        grid[0][2][2] = CELL_AIR;   // z=0 is air, not solid
-        grid[1][2][2] = CELL_AIR;   // z=1 is air too
+        GRID(2, 2, 0) = CELL_AIR;   // z=0 is air, not solid
+        GRID(2, 2, 1) = CELL_AIR;   // z=1 is air too
         CLEAR_FLOOR(2, 2, 1);       // No explicit floor flag
         
         InitDesignations();
@@ -4127,8 +4127,8 @@ describe(channel_designation) {
         
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 0) = CELL_WALL;
+                GRID(x, y, 1) = CELL_AIR;
                 SET_FLOOR(x, y, 1);
             }
         }
@@ -4157,14 +4157,14 @@ describe(channel_ramp_detection) {
         // z=1 is all floor
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_AIR;
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 0) = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;
                 SET_FLOOR(x, y, 0);
                 SET_FLOOR(x, y, 1);
             }
         }
         // Wall to the north at z=0
-        grid[0][1][2] = CELL_WALL;  // (2,1) at z=0 is wall
+        GRID(2, 1, 0) = CELL_WALL;  // (2,1) at z=0 is wall
         
         InitDesignations();
         
@@ -4186,17 +4186,17 @@ describe(channel_ramp_detection) {
         // z=0: solid ground, z=1: floor above + walls blocking exits
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;  // Solid ground
+                GRID(x, y, 0) = CELL_WALL;  // Solid ground
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 SET_FLOOR(x, y, 1);         // Floor at z=1 makes it walkable
-                grid[1][y][x] = CELL_WALL;  // Walls at z=1 block exits
+                GRID(x, y, 1) = CELL_WALL;  // Walls at z=1 block exits
             }
         }
         
         // Need z=2 walls to block walkability above z=1
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[2][y][x] = CELL_WALL;
+                GRID(x, y, 2) = CELL_WALL;
             }
         }
         
@@ -4230,9 +4230,9 @@ describe(channel_job_execution) {
         
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_AIR;
-                grid[2][y][x] = CELL_AIR;
+                GRID(x, y, 0) = CELL_WALL;
+                GRID(x, y, 1) = CELL_AIR;
+                GRID(x, y, 2) = CELL_AIR;
                 SET_FLOOR(x, y, 2);  // Floor at z=2 makes it walkable
             }
         }
@@ -4293,9 +4293,9 @@ describe(channel_job_execution) {
         
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_WALL;  // Solid at z=1 to mine
-                grid[2][y][x] = CELL_AIR;
+                GRID(x, y, 0) = CELL_WALL;
+                GRID(x, y, 1) = CELL_WALL;  // Solid at z=1 to mine
+                GRID(x, y, 2) = CELL_AIR;
                 SET_FLOOR(x, y, 2);
             }
         }
@@ -4314,8 +4314,8 @@ describe(channel_job_execution) {
         moverCount = 1;
         
         // Verify initial state
-        expect(grid[belowZ][2][2] == CELL_WALL);
-        expect(grid[channelZ][2][2] == CELL_AIR);
+        expect(GRID(2, 2, belowZ) == CELL_WALL);
+        expect(GRID(2, 2, channelZ) == CELL_AIR);
         
         // Designate for channeling
         bool designated = DesignateChannel(2, 2, channelZ);
@@ -4330,8 +4330,8 @@ describe(channel_job_execution) {
         }
         
         // After running, floor should be removed and wall below mined
-        expect(grid[channelZ][2][2] == CELL_AIR);     // Floor removed
-        expect(grid[belowZ][2][2] != CELL_WALL);      // Wall mined
+        expect(GRID(2, 2, channelZ) == CELL_AIR);     // Floor removed
+        expect(GRID(2, 2, belowZ) != CELL_WALL);      // Wall mined
     }
     
     it("should create ramp when wall adjacent at z-1") {
@@ -4349,9 +4349,9 @@ describe(channel_job_execution) {
         
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_WALL;  // Solid walls provide ramp high-side
-                grid[2][y][x] = CELL_AIR;
+                GRID(x, y, 0) = CELL_WALL;
+                GRID(x, y, 1) = CELL_WALL;  // Solid walls provide ramp high-side
+                GRID(x, y, 2) = CELL_AIR;
                 SET_FLOOR(x, y, 2);
             }
         }
@@ -4388,7 +4388,7 @@ describe(channel_job_execution) {
         
         // Should create ramp - walls surround provide high side
         // Note: CellIsRamp returns flag value (8), not boolean (1), so use != 0
-        expect(CellIsRamp(grid[rampZ][2][2]) != 0);
+        expect(CellIsRamp(GRID(2, 2, rampZ)) != 0);
     }
     
     it("should channel into open air - floor removed") {
@@ -4407,10 +4407,10 @@ describe(channel_job_execution) {
         
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;  // Solid ground
+                GRID(x, y, 0) = CELL_WALL;  // Solid ground
                 SetWallMaterial(x, y, 0, MAT_DIRT);
-                grid[1][y][x] = CELL_AIR;   // Open air (walkable above dirt)
-                grid[2][y][x] = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;   // Open air (walkable above dirt)
+                GRID(x, y, 2) = CELL_AIR;
                 SET_FLOOR(x, y, 2);         // Floor at z=2 to channel
             }
         }
@@ -4438,9 +4438,9 @@ describe(channel_job_execution) {
         }
         
         // Channeled floor becomes CELL_AIR
-        expect(grid[channelZ][2][2] == CELL_AIR);
+        expect(GRID(2, 2, channelZ) == CELL_AIR);
         // Below should remain as it was (open air)
-        expect(grid[belowZ][2][2] == CELL_AIR);
+        expect(GRID(2, 2, belowZ) == CELL_AIR);
     }
     
     it("should move channeler down to z-1 after completion") {
@@ -4459,9 +4459,9 @@ describe(channel_job_execution) {
         
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_WALL;  // Solid to mine
-                grid[2][y][x] = CELL_AIR;
+                GRID(x, y, 0) = CELL_WALL;
+                GRID(x, y, 1) = CELL_WALL;  // Solid to mine
+                GRID(x, y, 2) = CELL_AIR;
                 SET_FLOOR(x, y, 2);
             }
         }
@@ -4509,8 +4509,8 @@ describe(channel_workgiver) {
         
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 0) = CELL_WALL;
+                GRID(x, y, 1) = CELL_AIR;
                 SET_FLOOR(x, y, 1);
             }
         }
@@ -4558,9 +4558,9 @@ describe(channel_hpa_ramp_links) {
         
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_WALL;
-                grid[2][y][x] = CELL_AIR;
+                GRID(x, y, 0) = CELL_WALL;
+                GRID(x, y, 1) = CELL_WALL;
+                GRID(x, y, 2) = CELL_AIR;
                 SET_FLOOR(x, y, 2);
             }
         }
@@ -4599,7 +4599,7 @@ describe(channel_hpa_ramp_links) {
         }
         
         // Should create ramp - walls surround provide high side
-        expect(CellIsRamp(grid[rampZ][2][2]) != 0);
+        expect(CellIsRamp(GRID(2, 2, rampZ)) != 0);
         
         // HPA graph incremental update only runs with HPA* algorithm
         // Force update by calling UpdateDirtyChunks (which is called in Tick when HPA* is active)
@@ -4632,9 +4632,9 @@ describe(channel_rectangle_ramps) {
         // Set up z0 as solid dirt, z1 as walkable air
         for (int x = 0; x < 10; x++) {
             for (int y = 0; y < 10; y++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;
                 SET_FLOOR(x, y, 1);  // Floor flag makes z1 walkable
             }
         }
@@ -4664,7 +4664,7 @@ describe(channel_rectangle_ramps) {
         int floorCountInArea = 0;
         for (int y = minY; y <= maxY; y++) {
             for (int x = minX; x <= maxX; x++) {
-                CellType cell = grid[0][y][x];
+                CellType cell = GRID(x, y, 0);
                 if (CellIsRamp(cell)) {
                     rampCountInArea++;
                 } else if (cell == CELL_AIR && HAS_FLOOR(x, y, 0)) {
@@ -4688,27 +4688,27 @@ describe(channel_rectangle_ramps) {
         // Right column (x=6): should have ramps facing east
         
         // Top-left corner (3,3) - should be a ramp (either N or W)
-        CellType topLeft = grid[0][3][3];
+        CellType topLeft = GRID(3, 3, 0);
         expect(CellIsRamp(topLeft) != 0);
         
         // Top-right corner (6,3) - should be a ramp (either N or E)
-        CellType topRight = grid[0][3][6];
+        CellType topRight = GRID(6, 3, 0);
         expect(CellIsRamp(topRight) != 0);
         
         // Bottom-left corner (3,6) - should be a ramp (either S or W)
-        CellType bottomLeft = grid[0][6][3];
+        CellType bottomLeft = GRID(3, 6, 0);
         expect(CellIsRamp(bottomLeft) != 0);
         
         // Bottom-right corner (6,6) - should be a ramp (either S or E)
-        CellType bottomRight = grid[0][6][6];
+        CellType bottomRight = GRID(6, 6, 0);
         expect(CellIsRamp(bottomRight) != 0);
         
         // Check a middle border cell on west edge (3,4)
-        CellType westEdge = grid[0][4][3];
+        CellType westEdge = GRID(3, 4, 0);
         expect(CellIsRamp(westEdge) != 0);
         
         // Check a middle border cell on east edge (6,4)
-        CellType eastEdge = grid[0][4][6];
+        CellType eastEdge = GRID(6, 4, 0);
         expect(CellIsRamp(eastEdge) != 0);
     }
 }
@@ -4999,11 +4999,11 @@ describe(building_job_execution) {
             JobsTick();
             
             // Check if wall was built
-            if (grid[0][3][3] == CELL_WALL) break;
+            if (GRID(3, 3, 0) == CELL_WALL) break;
         }
         
         // Blueprint should be complete - wall should exist
-        expect(grid[0][3][3] == CELL_WALL);
+        expect(GRID(3, 3, 0) == CELL_WALL);
         expect(HasBlueprint(3, 3, 0) == false);
         expect(CountBlueprints() == 0);
         
@@ -5136,11 +5136,11 @@ describe(building_two_movers) {
                 builderFound = true;
             }
             
-            if (grid[0][5][5] == CELL_WALL) break;
+            if (GRID(5, 5, 0) == CELL_WALL) break;
         }
         
         // Wall should be built
-        expect(grid[0][5][5] == CELL_WALL);
+        expect(GRID(5, 5, 0) == CELL_WALL);
         expect(haulerFound == true);
         expect(builderFound == true);
         
@@ -5453,12 +5453,12 @@ describe(job_drivers) {
         // Need solid ground at z=0, walkable at z=1
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 4; y++) {
-                grid[0][y][x] = CELL_WALL;  // Solid ground
+                GRID(x, y, 0) = CELL_WALL;  // Solid ground
                 SetWallMaterial(x, y, 0, MAT_DIRT);
-                grid[1][y][x] = CELL_AIR;   // Air above (walkable)
+                GRID(x, y, 1) = CELL_AIR;   // Air above (walkable)
             }
         }
-        grid[1][1][3] = CELL_WALL;  // Wall to mine at z=1
+        GRID(3, 1, 1) = CELL_WALL;  // Wall to mine at z=1
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -5554,11 +5554,11 @@ describe(job_drivers) {
         for (int i = 0; i < 600; i++) {
             Tick();
             JobsTick();
-            if (grid[0][1][4] == CELL_WALL) break;
+            if (GRID(4, 1, 0) == CELL_WALL) break;
         }
         
         // Verify build completed - floor is now wall
-        expect(grid[0][1][4] == CELL_WALL);
+        expect(GRID(4, 1, 0) == CELL_WALL);
         expect(m->currentJobId == -1);
         expect(GetJob(jobId)->active == false);
     }
@@ -5702,12 +5702,12 @@ describe(job_game_speed) {
         // Solid ground at z=0, walkable at z=1
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 4; y++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;
             }
         }
-        grid[1][1][3] = CELL_WALL;  // Wall to mine at z=1
+        GRID(3, 1, 1) = CELL_WALL;  // Wall to mine at z=1
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -5753,7 +5753,7 @@ describe(job_game_speed) {
         expect(IsCellWalkableAt(mineZ, 1, 3) == true);
         
         // Reset for 2x speed test
-        grid[mineZ][1][3] = CELL_WALL;
+        GRID(3, 1, mineZ) = CELL_WALL;
         DesignateMine(3, 1, mineZ);
         d = GetDesignation(3, 1, mineZ);
         d->assignedMover = 0;
@@ -5808,9 +5808,9 @@ describe(job_game_speed) {
         // Solid ground at z=0, walkable at z=1
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 4; y++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;
             }
         }
         
@@ -5850,12 +5850,12 @@ describe(job_game_speed) {
         for (int i = 0; i < 600; i++) {
             JobsTick();
             ticksAt1x++;
-            if (grid[buildZ][1][4] == CELL_WALL) break;
+            if (GRID(4, 1, buildZ) == CELL_WALL) break;
         }
-        expect(grid[buildZ][1][4] == CELL_WALL);
+        expect(GRID(4, 1, buildZ) == CELL_WALL);
         
         // Reset for 2x speed test
-        grid[buildZ][1][4] = CELL_AIR;
+        GRID(4, 1, buildZ) = CELL_AIR;
         int bpIdx2 = CreateRecipeBlueprint(4, 1, buildZ, CONSTRUCTION_DRY_STONE_WALL);
         FillBlueprintStage(bpIdx2, MAT_GRANITE);
         blueprints[bpIdx2].state = BLUEPRINT_BUILDING;
@@ -5878,9 +5878,9 @@ describe(job_game_speed) {
         for (int i = 0; i < 600; i++) {
             JobsTick();
             ticksAt2x++;
-            if (grid[buildZ][1][4] == CELL_WALL) break;
+            if (GRID(4, 1, buildZ) == CELL_WALL) break;
         }
-        expect(grid[buildZ][1][4] == CELL_WALL);
+        expect(GRID(4, 1, buildZ) == CELL_WALL);
         
         // At 2x speed, should complete in roughly half the ticks
         if (test_verbose) printf("Build: ticksAt1x=%d, ticksAt2x=%d, ratio=%.2f\n", 
@@ -6665,7 +6665,7 @@ describe(final_approach) {
         moverCount = 1;
         
         // Wall at (1,1)
-        expect(grid[0][1][1] == CELL_WALL);
+        expect(GRID(1, 1, 0) == CELL_WALL);
         
         // Designate wall for digging
         DesignateMine(1, 1, 0);
@@ -6677,7 +6677,7 @@ describe(final_approach) {
             AssignJobs();
             JobsTick();
             
-            if (grid[0][1][1] != CELL_WALL) {
+            if (GRID(1, 1, 0) != CELL_WALL) {
                 completed = true;
                 break;
             }
@@ -7777,9 +7777,9 @@ describe(item_lifecycle) {
         // Set up z0 as solid, z1 as walkable floor
         for (int x = 0; x < 10; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;
                 SET_FLOOR(x, y, 1);
             }
         }
@@ -7807,9 +7807,9 @@ describe(item_lifecycle) {
 
         // Remove the floor (simulating channeling) - item should fall
         // First make z0 walkable at that position
-        grid[0][2][3] = CELL_AIR;
+        GRID(3, 2, 0) = CELL_AIR;
         SET_FLOOR(3, 2, 0);  // not solid below, so item falls to z0... actually need solid below z0
-        grid[0][2][3] = CELL_AIR;
+        GRID(3, 2, 0) = CELL_AIR;
         // For drop to work, targetZ cell must not be solid
         // z=0 is CELL_AIR now, and z-1 doesn't exist, so item lands at z0
 
@@ -8059,11 +8059,11 @@ describe(mover_lifecycle) {
         RemoveMoverFromIdleList(0);
 
         // Wall in the mover completely (cell + all neighbors)
-        grid[0][2][5] = CELL_WALL;  // mover's cell
-        grid[0][1][5] = CELL_WALL;  // north
-        grid[0][3][5] = CELL_WALL;  // south
-        grid[0][2][4] = CELL_WALL;  // west
-        grid[0][2][6] = CELL_WALL;  // east
+        GRID(5, 2, 0) = CELL_WALL;  // mover's cell
+        GRID(5, 1, 0) = CELL_WALL;  // north
+        GRID(5, 3, 0) = CELL_WALL;  // south
+        GRID(4, 2, 0) = CELL_WALL;  // west
+        GRID(6, 2, 0) = CELL_WALL;  // east
 
         // Run a tick — mover should be deactivated, job cancelled, item dropped
         Tick();
@@ -8253,7 +8253,7 @@ describe(job_lifecycle) {
         m->currentJobId = jobId;
 
         // Now wall off the mover's cell — simulate being trapped
-        grid[0][3][5] = CELL_WALL;
+        GRID(5, 3, 0) = CELL_WALL;
 
         // Run a tick to trigger stuck detection → cancel
         Tick();
@@ -9035,10 +9035,10 @@ describe(designation_lifecycle) {
         // Make z=0 solid walls, z=1 walkable
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_GRANITE);
                 SetWallNatural(x, y, 0);
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;
                 SET_FLOOR(x, y, 1);
             }
         }
@@ -9051,7 +9051,7 @@ describe(designation_lifecycle) {
         // Directly complete a dig-ramp at (2,2,0) - wall becomes ramp
         CompleteDigRampDesignation(2, 2, 0, -1);
 
-        expect(CellIsRamp(grid[0][2][2]));
+        expect(CellIsRamp(GRID(2, 2, 0)));
         expect(rampCount == before + 1);
     }
 
@@ -9068,10 +9068,10 @@ describe(designation_lifecycle) {
 
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_GRANITE);
                 SetWallNatural(x, y, 0);
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;
                 SET_FLOOR(x, y, 1);
             }
         }
@@ -9103,12 +9103,12 @@ describe(designation_lifecycle) {
         // z=0: solid ground, z=1: air+floor (walkable), z=2: air+constructed floor
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 0) = CELL_WALL;
+                GRID(x, y, 1) = CELL_AIR;
                 SET_FLOOR(x, y, 1);
                 SetFloorMaterial(x, y, 1, MAT_GRANITE);
                 ClearFloorNatural(x, y, 1);  // Constructed floor at z=1
-                grid[2][y][x] = CELL_AIR;
+                GRID(x, y, 2) = CELL_AIR;
                 SET_FLOOR(x, y, 2);
                 SetFloorMaterial(x, y, 2, MAT_GRANITE);
                 ClearFloorNatural(x, y, 2);  // Constructed floor at z=2
@@ -9191,14 +9191,14 @@ describe(designation_lifecycle) {
         // z=0: walls (for ramp direction), z=1: walkable
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 0) = CELL_WALL;
+                GRID(x, y, 1) = CELL_AIR;
                 SET_FLOOR(x, y, 1);
             }
         }
         // Make (2,2,1) air with floor - this is where the ramp will go
         // Wall at (2,1,1) for ramp direction detection
-        grid[1][1][2] = CELL_WALL;
+        GRID(2, 1, 1) = CELL_WALL;
 
         InitDesignations();
         ClearItems();
@@ -9211,7 +9211,7 @@ describe(designation_lifecycle) {
 
         CompleteBlueprint(bpIdx);
 
-        expect(CellIsRamp(grid[1][2][2]));
+        expect(CellIsRamp(GRID(2, 2, 1)));
         expect(rampCount == before + 1);
     }
 
@@ -9287,13 +9287,13 @@ describe(designation_lifecycle) {
 
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 0) = CELL_WALL;
+                GRID(x, y, 1) = CELL_AIR;
                 SET_FLOOR(x, y, 1);
             }
         }
         // Wall at (2,1,1) for ramp direction
-        grid[1][1][2] = CELL_WALL;
+        GRID(2, 1, 1) = CELL_WALL;
 
         InitDesignations();
         ClearItems();
@@ -9332,10 +9332,10 @@ describe(designation_lifecycle) {
 
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_GRANITE);
                 SetWallNatural(x, y, 0);
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;
                 SET_FLOOR(x, y, 1);
             }
         }
@@ -9382,13 +9382,13 @@ describe(unreachable_cooldown_poisoning) {
         // Make z=1 walkable: z=0 is walls, z=1 is air with floor
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 8; y++) {
-                grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 0) = CELL_WALL;
+                GRID(x, y, 1) = CELL_AIR;
                 SET_FLOOR(x, y, 1);
                 // z=2: not walkable (no floor, no walls below)
-                grid[2][y][x] = CELL_AIR;
+                GRID(x, y, 2) = CELL_AIR;
                 // z=3: walkable but disconnected (floor but no ramps connecting to z=1)
-                grid[3][y][x] = CELL_AIR;
+                GRID(x, y, 3) = CELL_AIR;
                 SET_FLOOR(x, y, 3);
             }
         }
@@ -9500,11 +9500,11 @@ describe(unreachable_cooldown_poisoning) {
 
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 8; y++) {
-                grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 0) = CELL_WALL;
+                GRID(x, y, 1) = CELL_AIR;
                 SET_FLOOR(x, y, 1);
-                grid[2][y][x] = CELL_AIR;
-                grid[3][y][x] = CELL_AIR;
+                GRID(x, y, 2) = CELL_AIR;
+                GRID(x, y, 3) = CELL_AIR;
                 SET_FLOOR(x, y, 3);
             }
         }
@@ -9999,7 +9999,7 @@ describe(grid_audit_blueprint_integration) {
         }
         
         // Place a ramp at (5,2) pointing north
-        grid[0][2][5] = CELL_RAMP_N;
+        GRID(5, 2, 0) = CELL_RAMP_N;
         rampCount++;
         int rampCountBefore = rampCount;
         
@@ -10013,11 +10013,11 @@ describe(grid_audit_blueprint_integration) {
             AssignJobs();
             JobsTick();
             
-            if (grid[0][2][5] == CELL_WALL) break;
+            if (GRID(5, 2, 0) == CELL_WALL) break;
         }
         
         // Player expectation: wall should exist, ramp should be gone
-        expect(grid[0][2][5] == CELL_WALL);
+        expect(GRID(5, 2, 0) == CELL_WALL);
         
         // Player expectation: rampCount should have decremented (no phantom ramps)
         expect(rampCount == rampCountBefore - 1);
@@ -10043,7 +10043,7 @@ describe(grid_audit_blueprint_integration) {
         
         // Place a ladder at (5,2,0)
         PlaceLadder(5, 2, 0);
-        expect(IsLadderCell(grid[0][2][5]));
+        expect(IsLadderCell(GRID(5, 2, 0)));
         
         // Create floor blueprint on the ladder cell
         int bpIdx = CreateRecipeBlueprint(5, 2, 0, CONSTRUCTION_PLANK_FLOOR);
@@ -10057,7 +10057,7 @@ describe(grid_audit_blueprint_integration) {
         CompleteBlueprint(bpIdx);
         
         // After completion, cell should be AIR (not ladder)
-        expect(grid[0][2][5] == CELL_AIR);
+        expect(GRID(5, 2, 0) == CELL_AIR);
         
         // Blueprint should be consumed
         expect(blueprints[bpIdx].active == false);
@@ -10067,7 +10067,7 @@ describe(grid_audit_blueprint_integration) {
         expect(HAS_FLOOR(5, 2, 0));
         
         // Player expectation: ladder should be gone (not a ladder cell anymore)
-        expect(!IsLadderCell(grid[0][2][5]));
+        expect(!IsLadderCell(GRID(5, 2, 0)));
     }
     
     it("player builds wall blueprint on ramp with rampCount check (Finding 3 extended)") {
@@ -10105,7 +10105,7 @@ describe(grid_audit_blueprint_integration) {
         }
         
         // Place a ramp at (5,2,0) pointing north
-        grid[0][2][5] = CELL_RAMP_N;
+        GRID(5, 2, 0) = CELL_RAMP_N;
         rampCount++;
         int rampCountBefore = rampCount;
         
@@ -10119,11 +10119,11 @@ describe(grid_audit_blueprint_integration) {
             AssignJobs();
             JobsTick();
             
-            if (grid[0][2][5] == CELL_WALL) break;
+            if (GRID(5, 2, 0) == CELL_WALL) break;
         }
         
         // Player expectation: wall exists
-        expect(grid[0][2][5] == CELL_WALL);
+        expect(GRID(5, 2, 0) == CELL_WALL);
         
         // Player expectation: rampCount decremented
         expect(rampCount == rampCountBefore - 1);
@@ -10154,12 +10154,12 @@ describe(grid_audit_tree_chopping_integration) {
         rampCount = 0;
         
         // Place tree trunk at (5,1,0) - this provides solid support for ramp exit
-        grid[0][1][5] = CELL_TREE_TRUNK;
+        GRID(5, 1, 0) = CELL_TREE_TRUNK;
         SetWallMaterial(5, 1, 0, MAT_OAK);
         
         // Place a ramp at (5,2,0) pointing north - exit at (5,1,1)
         // The exit's solid support is the trunk at (5,1,0)
-        grid[0][2][5] = CELL_RAMP_N;
+        GRID(5, 2, 0) = CELL_RAMP_N;
         rampCount++;
         int rampCountBefore = rampCount;
         
@@ -10171,12 +10171,12 @@ describe(grid_audit_tree_chopping_integration) {
         CompleteChopDesignation(5, 1, 0, -1);
         
         // Trunk should be gone (felled or air)
-        bool trunkGone = (grid[0][1][5] != CELL_TREE_TRUNK) ||
-                         (grid[0][1][5] == CELL_TREE_FELLED);
+        bool trunkGone = (GRID(5, 1, 0) != CELL_TREE_TRUNK) ||
+                         (GRID(5, 1, 0) == CELL_TREE_FELLED);
         expect(trunkGone == true);
         
         // Player expectation: ramp should be removed (no solid support for exit)
-        expect(grid[0][2][5] != CELL_RAMP_N);
+        expect(GRID(5, 2, 0) != CELL_RAMP_N);
         
         // Player expectation: rampCount decremented
         expect(rampCount == rampCountBefore - 1);
@@ -10202,14 +10202,14 @@ describe(grid_audit_tree_chopping_integration) {
         rampCount = 0;
         
         // Place tree trunk at (8,1,0) - far from ramp
-        grid[0][1][8] = CELL_TREE_TRUNK;
+        GRID(8, 1, 0) = CELL_TREE_TRUNK;
         SetWallMaterial(8, 1, 0, MAT_OAK);
         
         // Place solid support for ramp at (5,1,0) - wall provides support
-        grid[0][1][5] = CELL_WALL;
+        GRID(5, 1, 0) = CELL_WALL;
         
         // Place a ramp at (5,2,0) pointing north - exit at (5,1,1)
-        grid[0][2][5] = CELL_RAMP_N;
+        GRID(5, 2, 0) = CELL_RAMP_N;
         rampCount++;
         int rampCountBefore = rampCount;
         
@@ -10220,7 +10220,7 @@ describe(grid_audit_tree_chopping_integration) {
         CompleteChopDesignation(8, 1, 0, -1);
         
         // Player expectation: ramp should STILL exist (unaffected by distant chop)
-        expect(grid[0][2][5] == CELL_RAMP_N);
+        expect(GRID(5, 2, 0) == CELL_RAMP_N);
         
         // Player expectation: rampCount unchanged
         expect(rampCount == rampCountBefore);
@@ -10271,7 +10271,7 @@ describe(input_audit_material_consistency) {
         // Simulate what ExecutePileSoil does with the FIXED material
         PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_WALL, MAT_CLAY, SURFACE_BARE, true, false));
         
-        expect(grid[0][3][5] == CELL_WALL);
+        expect(GRID(5, 3, 0) == CELL_WALL);
         expect(GetWallMaterial(5, 3, 0) == MAT_CLAY);
     }
     
@@ -10290,7 +10290,7 @@ describe(input_audit_material_consistency) {
         
         PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_WALL, MAT_GRAVEL, SURFACE_BARE, true, false));
         
-        expect(grid[0][3][5] == CELL_WALL);
+        expect(GRID(5, 3, 0) == CELL_WALL);
         expect(GetWallMaterial(5, 3, 0) == MAT_GRAVEL);
     }
     
@@ -10309,7 +10309,7 @@ describe(input_audit_material_consistency) {
         
         PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_WALL, MAT_SAND, SURFACE_BARE, true, false));
         
-        expect(grid[0][3][5] == CELL_WALL);
+        expect(GRID(5, 3, 0) == CELL_WALL);
         expect(GetWallMaterial(5, 3, 0) == MAT_SAND);
     }
     
@@ -10328,7 +10328,7 @@ describe(input_audit_material_consistency) {
         
         PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_WALL, MAT_PEAT, SURFACE_BARE, true, false));
         
-        expect(grid[0][3][5] == CELL_WALL);
+        expect(GRID(5, 3, 0) == CELL_WALL);
         expect(GetWallMaterial(5, 3, 0) == MAT_PEAT);
     }
 }
@@ -10354,7 +10354,7 @@ describe(input_audit_erase_ramp) {
         rampCount = 0;
         
         // Place a ramp
-        grid[0][3][5] = CELL_RAMP_N;
+        GRID(5, 3, 0) = CELL_RAMP_N;
         rampCount++;
         int rampCountBefore = rampCount;
         
@@ -10362,7 +10362,7 @@ describe(input_audit_erase_ramp) {
         EraseRamp(5, 3, 0);
         
         // Player expectation: rampCount should have decremented
-        expect(grid[0][3][5] == CELL_AIR);
+        expect(GRID(5, 3, 0) == CELL_AIR);
         expect(rampCount == rampCountBefore - 1);
     }
 }
@@ -10431,14 +10431,14 @@ describe(input_audit_grass_placement) {
         ClearStockpiles();
         
         // Verify cell is air
-        expect(grid[0][3][5] == CELL_AIR);
+        expect(GRID(5, 3, 0) == CELL_AIR);
         
         // Simulate what the FIXED ExecutePlaceGrass does: PlaceCellFull + surface
         PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_WALL, MAT_DIRT, SURFACE_BARE, true, false));
         SetVegetation(5, 3, 0, VEG_GRASS_TALL);
         
         // Player expectation: dirt cell should have MAT_DIRT material
-        expect(grid[0][3][5] == CELL_WALL);
+        expect(GRID(5, 3, 0) == CELL_WALL);
         expect(GetWallMaterial(5, 3, 0) == MAT_DIRT);
     }
     
@@ -10504,21 +10504,21 @@ describe(input_audit_erase_designations) {
         InitDesignations();
         
         // Place a wall and designate it for mining
-        grid[0][3][5] = CELL_WALL;
+        GRID(5, 3, 0) = CELL_WALL;
         SetWallMaterial(5, 3, 0, MAT_GRANITE);
         bool designated = DesignateMine(5, 3, 0);
         expect(designated == true);
-        expect(designations[0][3][5].type == DESIGNATION_MINE);
+        expect(DESIGNATION(5, 3, 0).type == DESIGNATION_MINE);
         
         // Simulate what the FIXED ExecuteErase does: cancel designation + erase
         CancelDesignation(5, 3, 0);
-        grid[0][3][5] = CELL_AIR;
+        GRID(5, 3, 0) = CELL_AIR;
         SetWallMaterial(5, 3, 0, MAT_NONE);
         ClearWallNatural(5, 3, 0);
         MarkChunkDirty(5, 3, 0);
         
         // Player expectation: designation should be gone
-        expect(designations[0][3][5].type == DESIGNATION_NONE);
+        expect(DESIGNATION(5, 3, 0).type == DESIGNATION_NONE);
     }
     
     it("erasing cells under a stockpile should remove stockpile cells (Finding 6)") {
@@ -10546,7 +10546,7 @@ describe(input_audit_erase_designations) {
         
         // Simulate what the FIXED ExecuteErase does: remove stockpile cells + erase
         RemoveStockpileCells(spIdx, 4, 4, 4, 4);
-        grid[0][4][4] = CELL_AIR;
+        GRID(4, 4, 0) = CELL_AIR;
         MarkChunkDirty(4, 4, 0);
         
         // Player expectation: stockpile should have lost the erased cell
@@ -10572,22 +10572,22 @@ describe(input_audit_erase_designations) {
         InitTrees();
         
         // Place a tree trunk
-        grid[0][3][5] = CELL_TREE_TRUNK;
+        GRID(5, 3, 0) = CELL_TREE_TRUNK;
         SetWallMaterial(5, 3, 0, MAT_OAK);
         
         // Designate it for chopping
         bool designated = DesignateChop(5, 3, 0);
         expect(designated == true);
-        expect(designations[0][3][5].type == DESIGNATION_CHOP);
+        expect(DESIGNATION(5, 3, 0).type == DESIGNATION_CHOP);
         
         // Simulate what the FIXED ExecuteRemoveTree does: cancel designation + clear
         CancelDesignation(5, 3, 0);
-        grid[0][3][5] = CELL_AIR;
+        GRID(5, 3, 0) = CELL_AIR;
         SetWallMaterial(5, 3, 0, MAT_NONE);
         MarkChunkDirty(5, 3, 0);
         
         // Player expectation: designation should be gone
-        expect(designations[0][3][5].type == DESIGNATION_NONE);
+        expect(DESIGNATION(5, 3, 0).type == DESIGNATION_NONE);
     }
 }
 
@@ -10611,13 +10611,13 @@ describe(input_audit_quick_erase_metadata) {
         ClearStockpiles();
         
         // Set up a dirt cell with grass and material
-        grid[0][3][5] = CELL_WALL;
+        GRID(5, 3, 0) = CELL_WALL;
         SetWallMaterial(5, 3, 0, MAT_DIRT);
         SetWallNatural(5, 3, 0);
         SetVegetation(5, 3, 0, VEG_GRASS_TALL);
         
         // Simulate what the FIXED quick-edit erase does: full metadata cleanup
-        grid[0][3][5] = CELL_AIR;
+        GRID(5, 3, 0) = CELL_AIR;
         SetWallMaterial(5, 3, 0, MAT_NONE);
         ClearWallNatural(5, 3, 0);
         SetWallFinish(5, 3, 0, FINISH_ROUGH);
@@ -10625,7 +10625,7 @@ describe(input_audit_quick_erase_metadata) {
         MarkChunkDirty(5, 3, 0);
         
         // Player expectation: all metadata should be cleared
-        expect(grid[0][3][5] == CELL_AIR);
+        expect(GRID(5, 3, 0) == CELL_AIR);
         expect(GetWallMaterial(5, 3, 0) == MAT_NONE);
         expect(IsWallNatural(5, 3, 0) == false);
         expect(GET_CELL_SURFACE(5, 3, 0) == SURFACE_BARE);
@@ -10649,7 +10649,7 @@ describe(input_audit_quick_erase_metadata) {
         rampCount = 0;
         
         // Place a ramp
-        grid[0][3][5] = CELL_RAMP_S;
+        GRID(5, 3, 0) = CELL_RAMP_S;
         rampCount++;
         int rampCountBefore = rampCount;
         
@@ -11891,7 +11891,7 @@ describe(chop_felled_transition) {
         // Make solid ground at z=0
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 SetWallNatural(x, y, 0);
             }
@@ -11899,7 +11899,7 @@ describe(chop_felled_transition) {
 
         // Step 1: Simulate a completed CHOP job at (5,3,z1)
         // Place trunk, designate, assign to mover 0, build the chop cache
-        grid[1][3][5] = CELL_TREE_TRUNK;
+        GRID(5, 3, 1) = CELL_TREE_TRUNK;
         SetWallMaterial(5, 3, 1, MAT_OAK);
         DesignateChop(5, 3, 1);
 
@@ -11920,13 +11920,13 @@ describe(chop_felled_transition) {
         // Step 2: Simulate what happens when the chop completes:
         // FellTree clears the trunk and CHOP designation, places CELL_TREE_FELLED
         // at the SAME cell. Crucially, FellTree does NOT invalidate the chop cache.
-        grid[1][3][5] = CELL_AIR;  // Trunk removed
-        designations[1][3][5].type = DESIGNATION_NONE;  // CHOP designation cleared
-        designations[1][3][5].assignedMover = -1;
+        GRID(5, 3, 1) = CELL_AIR;  // Trunk removed
+        DESIGNATION(5, 3, 1).type = DESIGNATION_NONE;  // CHOP designation cleared
+        DESIGNATION(5, 3, 1).assignedMover = -1;
         activeDesignationCount--;
 
         // Felled trunk lands at same cell (this is what FellTree does)
-        grid[1][3][5] = CELL_TREE_FELLED;
+        GRID(5, 3, 1) = CELL_TREE_FELLED;
         SetWallMaterial(5, 3, 1, MAT_OAK);
 
         // Release mover's job (simulating JOBRUN_DONE)
@@ -11937,8 +11937,8 @@ describe(chop_felled_transition) {
         // Step 3: Player designates CHOP_FELLED on the felled trunk
         bool designated = DesignateChopFelled(5, 3, 1);
         expect(designated == true);
-        expect(designations[1][3][5].type == DESIGNATION_CHOP_FELLED);
-        expect(designations[1][3][5].assignedMover == -1);
+        expect(DESIGNATION(5, 3, 1).type == DESIGNATION_CHOP_FELLED);
+        expect(DESIGNATION(5, 3, 1).assignedMover == -1);
 
         // Step 4: Run AssignJobs — mover should get a CHOP_FELLED job, not
         // have the CHOP_FELLED designation stolen by WorkGiver_Chop
@@ -11947,7 +11947,7 @@ describe(chop_felled_transition) {
         AssignJobs();
 
         // The designation should be assigned to mover 0
-        expect(designations[1][3][5].assignedMover == 0);
+        expect(DESIGNATION(5, 3, 1).assignedMover == 0);
 
         // Mover 0 should have a CHOP_FELLED job, NOT a CHOP job
         expect(m->currentJobId >= 0);
@@ -12256,14 +12256,14 @@ describe(construction_recipe_build) {
             AssignJobs();
             JobsTick();
 
-            if (grid[0][5][5] == CELL_WALL) {
+            if (GRID(5, 5, 0) == CELL_WALL) {
                 wallBuilt = true;
                 break;
             }
         }
 
         expect(wallBuilt == true);
-        expect(grid[0][5][5] == CELL_WALL);
+        expect(GRID(5, 5, 0) == CELL_WALL);
         expect(GetWallMaterial(5, 5, 0) == MAT_GRANITE);
         expect(HasBlueprint(5, 5, 0) == false);
         expect(CountBlueprints() == 0);
@@ -12830,7 +12830,7 @@ describe(construction_multi_stage) {
         CompleteBlueprint(bpIdx);
 
         expect(bp->active == false);
-        expect(grid[0][4][4] == CELL_WALL);
+        expect(GRID(4, 4, 0) == CELL_WALL);
         expect(GetWallMaterial(4, 4, 0) == MAT_DIRT);
         expect(HasBlueprint(4, 4, 0) == false);
     }
@@ -13284,14 +13284,14 @@ describe(construction_plank_wall) {
             AssignJobs();
             JobsTick();
 
-            if (grid[0][5][5] == CELL_WALL) {
+            if (GRID(5, 5, 0) == CELL_WALL) {
                 wallBuilt = true;
                 break;
             }
         }
 
         expect(wallBuilt == true);
-        expect(grid[0][5][5] == CELL_WALL);
+        expect(GRID(5, 5, 0) == CELL_WALL);
         // Material from planks (stage 1, slot 0) — MAT_OAK
         expect(GetWallMaterial(5, 5, 0) == MAT_OAK);
         expect(HasBlueprint(5, 5, 0) == false);
@@ -13350,14 +13350,14 @@ describe(construction_plank_wall) {
             AssignJobs();
             JobsTick();
 
-            if (grid[0][5][5] == CELL_WALL) {
+            if (GRID(5, 5, 0) == CELL_WALL) {
                 wallBuilt = true;
                 break;
             }
         }
 
         expect(wallBuilt == true);
-        expect(grid[0][5][5] == CELL_WALL);
+        expect(GRID(5, 5, 0) == CELL_WALL);
         // Material from fill stage (stage 1) — MAT_DIRT
         expect(GetWallMaterial(5, 5, 0) == MAT_DIRT);
         expect(HasBlueprint(5, 5, 0) == false);
@@ -13558,7 +13558,7 @@ describe(construction_site_clearing) {
             Tick();
             AssignJobs();
             JobsTick();
-            if (grid[0][5][5] == CELL_WALL) { wallBuilt = true; break; }
+            if (GRID(5, 5, 0) == CELL_WALL) { wallBuilt = true; break; }
         }
 
         expect(wallBuilt == true);
@@ -13734,7 +13734,7 @@ describe(construction_or_materials) {
             Tick();
             AssignJobs();
             JobsTick();
-            if (grid[0][5][5] == CELL_WALL) { wallBuilt = true; break; }
+            if (GRID(5, 5, 0) == CELL_WALL) { wallBuilt = true; break; }
         }
 
         expect(wallBuilt == true);
@@ -13781,7 +13781,7 @@ describe(construction_or_materials) {
             Tick();
             AssignJobs();
             JobsTick();
-            if (grid[0][5][5] == CELL_WALL) { wallBuilt = true; break; }
+            if (GRID(5, 5, 0) == CELL_WALL) { wallBuilt = true; break; }
         }
 
         expect(wallBuilt == true);
@@ -14143,7 +14143,7 @@ describe(construction_new_recipes) {
         expect(blueprints[bpIdx].state == BLUEPRINT_READY_TO_BUILD);
         CompleteBlueprint(bpIdx);
 
-        CellType ct = grid[0][1][2];
+        CellType ct = GRID(2, 1, 0);
         expect(ct == CELL_LADDER_UP || ct == CELL_LADDER_DOWN || ct == CELL_LADDER_BOTH);
         expect(GetWallMaterial(2, 1, 0) == MAT_OAK);
     }
@@ -14197,7 +14197,7 @@ describe(construction_new_recipes) {
         }
         CompleteBlueprint(bpIdx);
 
-        expect(grid[0][0][2] == CELL_WALL);
+        expect(GRID(2, 0, 0) == CELL_WALL);
         expect(GetWallMaterial(2, 0, 0) == MAT_OAK);
         expect(GetWallSourceItem(2, 0, 0) == ITEM_LOG);
     }
@@ -14217,7 +14217,7 @@ describe(construction_new_recipes) {
         }
         CompleteBlueprint(bpIdx);
 
-        expect(grid[0][0][2] == CELL_WALL);
+        expect(GRID(2, 0, 0) == CELL_WALL);
         expect(GetWallMaterial(2, 0, 0) == MAT_PINE);
     }
 
@@ -14236,7 +14236,7 @@ describe(construction_new_recipes) {
         }
         CompleteBlueprint(bpIdx);
 
-        expect(grid[0][0][2] == CELL_WALL);
+        expect(GRID(2, 0, 0) == CELL_WALL);
         expect(GetWallMaterial(2, 0, 0) == MAT_BRICK);
     }
 
@@ -14274,7 +14274,7 @@ describe(construction_new_recipes) {
         DeliverMaterialToBlueprint(bpIdx, idx);
         CompleteBlueprint(bpIdx);
 
-        CellType ct = grid[0][1][2];
+        CellType ct = GRID(2, 1, 0);
         expect(ct == CELL_LADDER_UP || ct == CELL_LADDER_DOWN || ct == CELL_LADDER_BOTH);
         expect(GetWallMaterial(2, 1, 0) == MAT_BIRCH);
     }

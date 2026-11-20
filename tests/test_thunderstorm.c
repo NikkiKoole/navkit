@@ -53,7 +53,7 @@ static void SetupThunderstormGrid(void) {
     // Place wooden floors on top of ground
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            if (grid[1][y][x] == CELL_AIR) {
+            if (GRID(x, y, 1) == CELL_AIR) {
                 SET_CELL_FLAG(x, y, 1, CELL_FLAG_HAS_FLOOR);
                 SetFloorMaterial(x, y, 1, MAT_OAK);
             }

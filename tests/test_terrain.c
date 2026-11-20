@@ -27,12 +27,12 @@ describe(caves_border_zlevel) {
         // Border cells should be rock terrain (CELL_WALL with MAT_GRANITE) at z=0
         bool allBorderRock = true;
         for (int x = 0; x < gridWidth; x++) {
-            if (grid[0][0][x] != CELL_WALL || GetWallMaterial(x, 0, 0) != MAT_GRANITE) allBorderRock = false;
-            if (grid[0][gridHeight - 1][x] != CELL_WALL || GetWallMaterial(x, gridHeight - 1, 0) != MAT_GRANITE) allBorderRock = false;
+            if (GRID(x, 0, 0) != CELL_WALL || GetWallMaterial(x, 0, 0) != MAT_GRANITE) allBorderRock = false;
+            if (GRID(x, gridHeight - 1, 0) != CELL_WALL || GetWallMaterial(x, gridHeight - 1, 0) != MAT_GRANITE) allBorderRock = false;
         }
         for (int y = 1; y < gridHeight - 1; y++) {
-            if (grid[0][y][0] != CELL_WALL || GetWallMaterial(0, y, 0) != MAT_GRANITE) allBorderRock = false;
-            if (grid[0][y][gridWidth - 1] != CELL_WALL || GetWallMaterial(gridWidth - 1, y, 0) != MAT_GRANITE) allBorderRock = false;
+            if (GRID(0, y, 0) != CELL_WALL || GetWallMaterial(0, y, 0) != MAT_GRANITE) allBorderRock = false;
+            if (GRID(gridWidth - 1, y, 0) != CELL_WALL || GetWallMaterial(gridWidth - 1, y, 0) != MAT_GRANITE) allBorderRock = false;
         }
 
         expect(allBorderRock);
@@ -44,12 +44,12 @@ describe(caves_border_zlevel) {
         // Count how many border cells at z=1 are rock terrain
         int z1BorderRock = 0;
         for (int x = 0; x < gridWidth; x++) {
-            if (grid[1][0][x] == CELL_WALL && GetWallMaterial(x, 0, 1) == MAT_GRANITE) z1BorderRock++;
-            if (grid[1][gridHeight - 1][x] == CELL_WALL && GetWallMaterial(x, gridHeight - 1, 1) == MAT_GRANITE) z1BorderRock++;
+            if (GRID(x, 0, 1) == CELL_WALL && GetWallMaterial(x, 0, 1) == MAT_GRANITE) z1BorderRock++;
+            if (GRID(x, gridHeight - 1, 1) == CELL_WALL && GetWallMaterial(x, gridHeight - 1, 1) == MAT_GRANITE) z1BorderRock++;
         }
         for (int y = 1; y < gridHeight - 1; y++) {
-            if (grid[1][y][0] == CELL_WALL && GetWallMaterial(0, y, 1) == MAT_GRANITE) z1BorderRock++;
-            if (grid[1][y][gridWidth - 1] == CELL_WALL && GetWallMaterial(gridWidth - 1, y, 1) == MAT_GRANITE) z1BorderRock++;
+            if (GRID(0, y, 1) == CELL_WALL && GetWallMaterial(0, y, 1) == MAT_GRANITE) z1BorderRock++;
+            if (GRID(gridWidth - 1, y, 1) == CELL_WALL && GetWallMaterial(gridWidth - 1, y, 1) == MAT_GRANITE) z1BorderRock++;
         }
 
         // The full border perimeter should NOT be rock at z=1
@@ -63,7 +63,7 @@ describe(caves_border_zlevel) {
         int dirtCount = 0;
         for (int y = 1; y < gridHeight - 1; y++)
             for (int x = 1; x < gridWidth - 1; x++)
-                if (grid[0][y][x] == CELL_WALL && GetWallMaterial(x, y, 0) == MAT_DIRT) dirtCount++;
+                if (GRID(x, y, 0) == CELL_WALL && GetWallMaterial(x, y, 0) == MAT_DIRT) dirtCount++;
 
         // Cellular automata creates ~50% open, expect at least 25%
         int interiorCells = (gridWidth - 2) * (gridHeight - 2);
@@ -84,7 +84,7 @@ describe(terrain_regen_clears_entities) {
             "..........\n", 10, 10);
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
             }
 
@@ -112,7 +112,7 @@ describe(terrain_regen_clears_entities) {
             "..........\n", 10, 10);
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
             }
 
@@ -135,7 +135,7 @@ describe(terrain_regen_clears_entities) {
             "..........\n", 10, 10);
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
             }
 
@@ -157,7 +157,7 @@ describe(terrain_regen_clears_entities) {
             "..........\n", 10, 10);
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
             }
 
@@ -267,13 +267,13 @@ describe(ramp_north_duplicate_prevention) {
             for (int z = 1; z < gridDepth; z++) {
                 for (int y = 1; y < gridHeight; y++) {
                     for (int x = 1; x < gridWidth; x++) {
-                        if (grid[z][y][x] != CELL_RAMP_N) continue;
+                        if (GRID(x, y, z) != CELL_RAMP_N) continue;
 
                         // Check if west neighbor (x-1,y) is 1 level lower
                         // (solid at z-1, not solid at z)
-                        if (CellIsSolid(grid[z-1][y][x-1]) &&
-                            !CellIsSolid(grid[z][y][x-1]) &&
-                            !CellIsRamp(grid[z][y][x-1])) {
+                        if (CellIsSolid(GRID(x-1, y, z-1)) &&
+                            !CellIsSolid(GRID(x-1, y, z)) &&
+                            !CellIsRamp(GRID(x-1, y, z))) {
                             // East direction from (x-1,y) would have qualified
                             // for a ramp at (x,y,z) — processed before North
                             totalOverwrites++;
@@ -384,7 +384,7 @@ describe(caves_keep_surface_support) {
             for (int z = 1; z < gridDepth; z++)
                 for (int y = 0; y < gridHeight; y++)
                     for (int x = 0; x < gridWidth; x++) {
-                        CellType c = grid[z][y][x], below = grid[z - 1][y][x];
+                        CellType c = GRID(x, y, z), below = GRID(x, y, z - 1);
                         bool base = (c == CELL_TREE_TRUNK && below != CELL_TREE_TRUNK) ||
                                     c == CELL_BUSH || c == CELL_SAPLING;
                         if (!base) continue;

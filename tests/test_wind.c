@@ -224,15 +224,15 @@ describe(wind_fire_spread) {
             // Make surrounding cells burnable (wood walls)
             for (int dx = -2; dx <= 2; dx++) {
                 for (int dy = -2; dy <= 2; dy++) {
-                    grid[0][cy + dy][cx + dx] = CELL_WALL;
+                    GRID(cx + dx, cy + dy, 0) = CELL_WALL;
                     SetWallMaterial(cx + dx, cy + dy, 0, MAT_OAK);
-                    wallNatural[0][cy + dy][cx + dx] = 1;
+                    WALL_NATURAL(cx + dx, cy + dy, 0) = 1;
                 }
             }
 
             // Ignite center at LOW level so spread is marginal
             SetFireLevel(cx, cy, 0, 2);  // Low fire level = low spread chance
-            fireGrid[0][cy][cx].fuel = 100;
+            FIRE(cx, cy, 0).fuel = 100;
 
             // Run fire spread for fewer ticks
             fireSpreadInterval = TICK_DT * 0.4f;  // Spread every tick
@@ -242,8 +242,8 @@ describe(wind_fire_spread) {
             }
 
             // Check east vs west ignitions
-            if (fireGrid[0][cy][cx + 1].level > 0) downwindIgnitions++;
-            if (fireGrid[0][cy][cx - 1].level > 0) upwindIgnitions++;
+            if (FIRE(cx + 1, cy, 0).level > 0) downwindIgnitions++;
+            if (FIRE(cx - 1, cy, 0).level > 0) upwindIgnitions++;
         }
 
         // Downwind should have more ignitions
@@ -267,14 +267,14 @@ describe(wind_fire_spread) {
             int cx = 8, cy = 8;
             for (int dx = -2; dx <= 2; dx++) {
                 for (int dy = -2; dy <= 2; dy++) {
-                    grid[0][cy + dy][cx + dx] = CELL_WALL;
+                    GRID(cx + dx, cy + dy, 0) = CELL_WALL;
                     SetWallMaterial(cx + dx, cy + dy, 0, MAT_OAK);
-                    wallNatural[0][cy + dy][cx + dx] = 1;
+                    WALL_NATURAL(cx + dx, cy + dy, 0) = 1;
                 }
             }
 
             SetFireLevel(cx, cy, 0, 5);
-            fireGrid[0][cy][cx].fuel = 100;
+            FIRE(cx, cy, 0).fuel = 100;
 
             fireSpreadInterval = TICK_DT * 0.4f;
             for (int i = 0; i < 30; i++) {
@@ -282,8 +282,8 @@ describe(wind_fire_spread) {
                 UpdateFire();
             }
 
-            if (fireGrid[0][cy][cx + 1].level > 0) eastIgnitions++;
-            if (fireGrid[0][cy][cx - 1].level > 0) westIgnitions++;
+            if (FIRE(cx + 1, cy, 0).level > 0) eastIgnitions++;
+            if (FIRE(cx - 1, cy, 0).level > 0) westIgnitions++;
         }
 
         // Should be roughly equal (within 40%)
@@ -353,7 +353,7 @@ describe(wind_drying) {
         wearRecoveryInterval = TICK_DT * 0.4f;
 
         // Place roof over cell (3,3)
-        grid[2][3][3] = CELL_WALL;
+        GRID(3, 3, 2) = CELL_WALL;
         SetWallMaterial(3, 3, 2, MAT_GRANITE);
 
         SET_CELL_WETNESS(3, 3, 0, 3);  // Sheltered

@@ -44,8 +44,8 @@ static void SetupCorridorGrid(void) {
     // Fill z=0 with dirt (ground)
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT);
-            grid[1][y][x] = CELL_AIR;
+            GRID(x, y, 0) = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT);
+            GRID(x, y, 1) = CELL_AIR;
         }
     }
     
@@ -58,16 +58,16 @@ static void SetupCorridorGrid(void) {
     // W..............W
     // WWWWWWWWWWWWWWWW
     for (int x = 0; x < 16; x++) {
-        grid[1][0][x] = CELL_WALL;  // Top row
-        grid[1][6][x] = CELL_WALL;  // Bottom row
+        GRID(x, 0, 1) = CELL_WALL;  // Top row
+        GRID(x, 6, 1) = CELL_WALL;  // Bottom row
     }
     for (int y = 0; y < 7; y++) {
-        grid[1][y][0] = CELL_WALL;   // Left column
-        grid[1][y][15] = CELL_WALL;  // Right column
+        GRID(0, y, 1) = CELL_WALL;   // Left column
+        GRID(15, y, 1) = CELL_WALL;  // Right column
     }
     // Middle wall with gap
-    for (int x = 0; x < 6; x++) grid[1][3][x] = CELL_WALL;
-    for (int x = 8; x < 16; x++) grid[1][3][x] = CELL_WALL;
+    for (int x = 0; x < 6; x++) GRID(x, 3, 1) = CELL_WALL;
+    for (int x = 8; x < 16; x++) GRID(x, 3, 1) = CELL_WALL;
     
     InitWater();
     InitFire();
@@ -94,7 +94,7 @@ static void SetupOpenGrid(void) {
     // All floor (use flag system)
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_AIR;
+            GRID(x, y, 0) = CELL_AIR;
             SET_FLOOR(x, y, 0);
         }
     }
@@ -117,8 +117,8 @@ static void SetupWalledGrid(void) {
     // Fill z=0 with dirt, z=1 with air
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT);
-            grid[1][y][x] = CELL_AIR;
+            GRID(x, y, 0) = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT);
+            GRID(x, y, 1) = CELL_AIR;
         }
     }
     
@@ -132,18 +132,18 @@ static void SetupWalledGrid(void) {
     // #......##......#
     // ################
     for (int x = 0; x < 16; x++) {
-        grid[1][0][x] = CELL_WALL;  // Top row
-        grid[1][7][x] = CELL_WALL;  // Bottom row
+        GRID(x, 0, 1) = CELL_WALL;  // Top row
+        GRID(x, 7, 1) = CELL_WALL;  // Bottom row
     }
     for (int y = 0; y < 8; y++) {
-        grid[1][y][0] = CELL_WALL;   // Left column
-        grid[1][y][15] = CELL_WALL;  // Right column
+        GRID(0, y, 1) = CELL_WALL;   // Left column
+        GRID(15, y, 1) = CELL_WALL;  // Right column
     }
     // Middle wall columns (with gap at y=4)
     for (int y = 1; y < 8; y++) {
         if (y != 4) {
-            grid[1][y][7] = CELL_WALL;
-            grid[1][y][8] = CELL_WALL;
+            GRID(7, y, 1) = CELL_WALL;
+            GRID(8, y, 1) = CELL_WALL;
         }
     }
     
@@ -298,7 +298,7 @@ describe(high_speed_simulation_stability) {
         // Set all cells to dirt with grass surface (flammable)
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT);
+                GRID(x, y, 0) = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT);
                 SetVegetation(x, y, 0, VEG_GRASS);
             }
         }

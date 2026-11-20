@@ -105,7 +105,7 @@ describe(muddy_detection) {
         SetupDirtGrid();
         SetWallNatural(2, 2, 0);
         // Make it non-natural
-        wallNatural[0][2][2] = 0;
+        WALL_NATURAL(2, 2, 0) = 0;
         SET_CELL_WETNESS(2, 2, 0, 3);
         expect(!IsMuddy(2, 2, 0));
     }
@@ -270,9 +270,9 @@ describe(mud_dirt_tracking) {
 
         // Set up a constructed wood floor at z=1 position (4,2)
         // (Use wood, not stone — stone's 50% reduction can mask the mud multiplier)
-        grid[0][2][4] = CELL_WALL;
+        GRID(4, 2, 0) = CELL_WALL;
         SetWallMaterial(4, 2, 0, MAT_OAK);
-        wallNatural[0][2][4] = 0;  // constructed
+        WALL_NATURAL(4, 2, 0) = 0;  // constructed
 
         // Source cell (3,2) is muddy dirt
         SET_CELL_WETNESS(3, 2, 0, 2);

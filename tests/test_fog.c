@@ -173,14 +173,14 @@ describe(fog_mine) {
         memset(exploredGrid, 0, sizeof(exploredGrid));
 
         // Place a wall at (7,5,0)
-        grid[0][5][7] = CELL_WALL;
-        cellFlags[0][5][7] |= (CF_WALL | CF_SOLID);
+        GRID(7, 5, 0) = CELL_WALL;
+        CELL_FLAGS(7, 5, 0) |= (CF_WALL | CF_SOLID);
         SetWallMaterial(7, 5, 0, MAT_GRANITE);
 
         // Create mine designation
-        designations[0][5][7].type = DESIGNATION_MINE;
-        designations[0][5][7].assignedMover = -1;
-        designations[0][5][7].unreachableCooldown = 0.0f;
+        DESIGNATION(7, 5, 0).type = DESIGNATION_MINE;
+        DESIGNATION(7, 5, 0).assignedMover = -1;
+        DESIGNATION(7, 5, 0).unreachableCooldown = 0.0f;
         activeDesignationCount = 1;
 
         SetupMoverAt(2, 2, 0);
@@ -208,14 +208,14 @@ describe(fog_mine) {
                 SetExplored(x, y, 0);
 
         // Place a wall at (7,5,0)
-        grid[0][5][7] = CELL_WALL;
-        cellFlags[0][5][7] |= (CF_WALL | CF_SOLID);
+        GRID(7, 5, 0) = CELL_WALL;
+        CELL_FLAGS(7, 5, 0) |= (CF_WALL | CF_SOLID);
         SetWallMaterial(7, 5, 0, MAT_GRANITE);
 
         // Create mine designation
-        designations[0][5][7].type = DESIGNATION_MINE;
-        designations[0][5][7].assignedMover = -1;
-        designations[0][5][7].unreachableCooldown = 0.0f;
+        DESIGNATION(7, 5, 0).type = DESIGNATION_MINE;
+        DESIGNATION(7, 5, 0).assignedMover = -1;
+        DESIGNATION(7, 5, 0).unreachableCooldown = 0.0f;
         activeDesignationCount = 1;
 
         SetupMoverAt(2, 2, 0);
@@ -246,9 +246,9 @@ describe(fog_explore_exception) {
         SetExplored(2, 2, 0);
 
         // Create explore designation at unexplored (5,5,0)
-        designations[0][5][5].type = DESIGNATION_EXPLORE;
-        designations[0][5][5].assignedMover = -1;
-        designations[0][5][5].unreachableCooldown = 0.0f;
+        DESIGNATION(5, 5, 0).type = DESIGNATION_EXPLORE;
+        DESIGNATION(5, 5, 0).assignedMover = -1;
+        DESIGNATION(5, 5, 0).unreachableCooldown = 0.0f;
         activeDesignationCount = 1;
 
         SetupMoverAt(2, 2, 0);

@@ -145,7 +145,7 @@ int main(int argc, char** argv) {
         for (int k = 0; k < walls; k++) {
             Point p = RandomWalkable();
             if (p.x < 0) continue;
-            grid[p.z][p.y][p.x] = CELL_WALL;
+            GRID(p.x, p.y, p.z) = CELL_WALL;
             SetWallMaterial(p.x, p.y, p.z, MAT_DIRT);
             MarkChunkDirty(p.x, p.y, p.z);
         }

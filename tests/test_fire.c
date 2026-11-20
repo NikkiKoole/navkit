@@ -316,7 +316,7 @@ describe(smoke_rising) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_AIR;
+                    GRID(x, y, z) = CELL_AIR;
                 }
             }
         }
@@ -343,7 +343,7 @@ describe(smoke_rising) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_AIR;
+                    GRID(x, y, z) = CELL_AIR;
                 }
             }
         }
@@ -410,7 +410,7 @@ describe(fire_water_extinguishing) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_AIR;
+                    GRID(x, y, z) = CELL_AIR;
                 }
             }
         }
@@ -525,7 +525,7 @@ describe(fire_non_flammable) {
         expect(GetBaseFuelForCellType(CELL_WALL) == 0);
         
         // But terrain with grass surface should have fuel
-        grid[0][0][0] = CELL_WALL;
+        GRID(0, 0, 0) = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_DIRT);
         SetVegetation(0, 0, 0, VEG_GRASS_TALL);
         expect(GetFuelAt(0, 0, 0) > 0);
@@ -544,8 +544,8 @@ describe(fire_non_flammable) {
         // Fill with flammable grass (but preserve walls)
         for (int y = 0; y < 3; y++) {
             for (int x = 0; x < 7; x++) {
-                if (grid[0][y][x] != CELL_WALL) {
-                    grid[0][y][x] = CELL_WALL;
+                if (GRID(x, y, 0) != CELL_WALL) {
+                    GRID(x, y, 0) = CELL_WALL;
                     SetWallMaterial(x, y, 0, MAT_DIRT);
                     SetVegetation(x, y, 0, VEG_GRASS_TALL);
                 }
@@ -592,7 +592,7 @@ describe(fire_non_flammable) {
         // z=0: all dirt with grass surface
         for (int y = 0; y < 3; y++) {
             for (int x = 0; x < 7; x++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 SetVegetation(x, y, 0, VEG_GRASS_TALL);
             }
@@ -602,9 +602,9 @@ describe(fire_non_flammable) {
         for (int y = 0; y < 3; y++) {
             for (int x = 0; x < 7; x++) {
                 if (x == 3) {
-                    grid[1][y][x] = CELL_WALL;
+                    GRID(x, y, 1) = CELL_WALL;
                 } else {
-                    grid[1][y][x] = CELL_AIR;
+                    GRID(x, y, 1) = CELL_AIR;
                 }
             }
         }
@@ -753,7 +753,7 @@ describe(fire_permanent_source) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_AIR;
+                    GRID(x, y, z) = CELL_AIR;
                 }
             }
         }
@@ -810,7 +810,7 @@ describe(smoke_multi_z_rising) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_AIR;
+                    GRID(x, y, z) = CELL_AIR;
                 }
             }
         }
@@ -916,9 +916,9 @@ describe(smoke_closed_room_filling) {
                 for (int x = 0; x < gridWidth; x++) {
                     // Walls on edges
                     if (x == 0 || x == 7 || y == 0 || y == 7) {
-                        grid[z][y][x] = CELL_WALL;
+                        GRID(x, y, z) = CELL_WALL;
                     } else {
-                        grid[z][y][x] = CELL_AIR;
+                        GRID(x, y, z) = CELL_AIR;
                     }
                 }
             }
@@ -927,7 +927,7 @@ describe(smoke_closed_room_filling) {
         // Ceiling at z=3 (all walls)
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[3][y][x] = CELL_WALL;
+                GRID(x, y, 3) = CELL_WALL;
             }
         }
         
@@ -976,9 +976,9 @@ describe(smoke_chimney_ventilation) {
                 for (int x = 0; x < gridWidth; x++) {
                     // Walls on edges
                     if (x == 0 || x == 7 || y == 0 || y == 7) {
-                        grid[z][y][x] = CELL_WALL;
+                        GRID(x, y, z) = CELL_WALL;
                     } else {
-                        grid[z][y][x] = CELL_AIR;
+                        GRID(x, y, z) = CELL_AIR;
                     }
                 }
             }
@@ -988,9 +988,9 @@ describe(smoke_chimney_ventilation) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 if (x == 4 && y == 4) {
-                    grid[3][y][x] = CELL_AIR;  // Chimney hole
+                    GRID(x, y, 3) = CELL_AIR;  // Chimney hole
                 } else if (x > 0 && x < 7 && y > 0 && y < 7) {
-                    grid[3][y][x] = CELL_WALL;  // Ceiling
+                    GRID(x, y, 3) = CELL_WALL;  // Ceiling
                 }
             }
         }

@@ -105,17 +105,17 @@ describe(material_grid_initialization) {
         InitTestGridFromAscii(
             "....\n");
 
-        grid[0][0][0] = CELL_WALL;
+        GRID(0, 0, 0) = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_GRANITE);
         SetWallNatural(0, 0, 0);
         expect(!IsConstructedWall(0, 0, 0));  // natural wall
 
-        grid[0][0][1] = CELL_WALL;
+        GRID(1, 0, 0) = CELL_WALL;
         SetWallMaterial(1, 0, 0, MAT_OAK);
         ClearWallNatural(1, 0, 0);
         expect(IsConstructedWall(1, 0, 0));   // constructed wood
 
-        grid[0][0][2] = CELL_WALL;
+        GRID(2, 0, 0) = CELL_WALL;
         SetWallMaterial(2, 0, 0, MAT_GRANITE);
         ClearWallNatural(2, 0, 0);
         expect(IsConstructedWall(2, 0, 0));   // constructed stone
@@ -272,7 +272,7 @@ describe(blueprint_material_tracking) {
         CompleteBlueprint(bpIdx);
         
         // Cell should be CELL_WALL with MAT_PINE (constructed)
-        expect(grid[0][0][1] == CELL_WALL);
+        expect(GRID(1, 0, 0) == CELL_WALL);
         expect(GetWallMaterial(1, 0, 0) == MAT_PINE);
         expect(!IsWallNatural(1, 0, 0));
     }
@@ -296,7 +296,7 @@ describe(blueprint_material_tracking) {
         CompleteBlueprint(bpIdx);
         
         // Cell should be CELL_WALL with MAT_GRANITE (constructed)
-        expect(grid[0][0][1] == CELL_WALL);
+        expect(GRID(1, 0, 0) == CELL_WALL);
         expect(GetWallMaterial(1, 0, 0) == MAT_GRANITE);
         expect(!IsWallNatural(1, 0, 0));
     }
@@ -318,7 +318,7 @@ describe(mining_material_drops) {
         SetWallNatural(0, 0, 0);
         expect(GetWallMaterial(0, 0, 0) == MAT_GRANITE);
         expect(IsWallNatural(0, 0, 0));
-        expect(grid[0][0][0] == CELL_WALL);
+        expect(GRID(0, 0, 0) == CELL_WALL);
         
         CompleteMineDesignation(0, 0, 0);
         
@@ -421,19 +421,19 @@ describe(mining_material_drops) {
         InitTestGridFromAscii(
             "....\n");
         
-        grid[0][0][0] = CELL_WALL;
+        GRID(0, 0, 0) = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_CLAY);
         expect(GetWallDropItem(0, 0, 0) == ITEM_CLAY);
         
-        grid[0][0][1] = CELL_WALL;
+        GRID(1, 0, 0) = CELL_WALL;
         SetWallMaterial(1, 0, 0, MAT_PEAT);
         expect(GetWallDropItem(1, 0, 0) == ITEM_PEAT);
         
-        grid[0][0][2] = CELL_WALL;
+        GRID(2, 0, 0) = CELL_WALL;
         SetWallMaterial(2, 0, 0, MAT_SAND);
         expect(GetWallDropItem(2, 0, 0) == ITEM_SAND);
         
-        grid[0][0][3] = CELL_WALL;
+        GRID(3, 0, 0) = CELL_WALL;
         SetWallMaterial(3, 0, 0, MAT_DIRT);
         expect(GetWallDropItem(3, 0, 0) == ITEM_DIRT);
     }
@@ -486,7 +486,7 @@ describe(material_flammability) {
         InitFire();
         
         // Set the wall to wood material
-        grid[0][1][1] = CELL_WALL;
+        GRID(1, 1, 0) = CELL_WALL;
         SetWallMaterial(1, 1, 0, MAT_OAK);
         ClearWallNatural(1, 1, 0);
         
@@ -505,7 +505,7 @@ describe(material_flammability) {
         InitFire();
         
         // Set the wall to stone material
-        grid[0][1][1] = CELL_WALL;
+        GRID(1, 1, 0) = CELL_WALL;
         SetWallMaterial(1, 1, 0, MAT_GRANITE);
         ClearWallNatural(1, 1, 0);
         
@@ -524,7 +524,7 @@ describe(material_flammability) {
         InitFire();
         
         // Natural granite wall
-        grid[0][1][1] = CELL_WALL;
+        GRID(1, 1, 0) = CELL_WALL;
         SetWallMaterial(1, 1, 0, MAT_GRANITE);
         SetWallNatural(1, 1, 0);
         expect(GetWallMaterial(1, 1, 0) == MAT_GRANITE);
@@ -544,7 +544,7 @@ describe(material_flammability) {
         InitFire();
         
         // Place wall with wood material
-        grid[0][1][1] = CELL_WALL;
+        GRID(1, 1, 0) = CELL_WALL;
         SetWallMaterial(1, 1, 0, MAT_OAK);
         ClearWallNatural(1, 1, 0);
         
@@ -586,7 +586,7 @@ describe(build_mine_cycle) {
         CompleteBlueprint(bpIdx);
         
         // Verify: wall exists with wood material
-        expect(grid[0][0][1] == CELL_WALL);
+        expect(GRID(1, 0, 0) == CELL_WALL);
         expect(GetWallMaterial(1, 0, 0) == MAT_OAK);
         
         // Step 3: Mine the wall
@@ -594,7 +594,7 @@ describe(build_mine_cycle) {
         CompleteMineDesignation(1, 0, 0);
         
         // Verify: wall gone, material reset, wood dropped
-        expect(grid[0][0][1] == CELL_AIR);
+        expect(GRID(1, 0, 0) == CELL_AIR);
         expect(GetWallMaterial(1, 0, 0) == MAT_NONE);
         expect(CountItemsOfTypeWithMaterial(ITEM_LOG, MAT_OAK) == 1);
         expect(CountItemsOfType(ITEM_ROCK) == 0);
@@ -615,7 +615,7 @@ describe(build_mine_cycle) {
         }
         CompleteBlueprint(bpIdx);
         
-        expect(grid[0][0][1] == CELL_WALL);
+        expect(GRID(1, 0, 0) == CELL_WALL);
         expect(GetWallMaterial(1, 0, 0) == MAT_GRANITE);
         
         // Mine it
@@ -761,15 +761,15 @@ describe(get_cell_sprite_at) {
         InitTestGridFromAscii(
             "....\n");
 
-        grid[0][0][0] = CELL_WALL;
+        GRID(0, 0, 0) = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_DIRT);
         expect(GetCellSpriteAt(0, 0, 0) == SPRITE_dirt);
 
-        grid[0][0][1] = CELL_WALL;
+        GRID(1, 0, 0) = CELL_WALL;
         SetWallMaterial(1, 0, 0, MAT_GRANITE);
         expect(GetCellSpriteAt(1, 0, 0) == SPRITE_granite);
 
-        grid[0][0][2] = CELL_WALL;
+        GRID(2, 0, 0) = CELL_WALL;
         SetWallMaterial(2, 0, 0, MAT_PEAT);
         expect(GetCellSpriteAt(2, 0, 0) == SPRITE_peat);
     }
@@ -786,15 +786,15 @@ describe(get_cell_sprite_at) {
         InitTestGridFromAscii(
             "....\n");
 
-        grid[0][0][0] = CELL_TREE_TRUNK;
+        GRID(0, 0, 0) = CELL_TREE_TRUNK;
         SetWallMaterial(0, 0, 0, MAT_PINE);
         expect(GetCellSpriteAt(0, 0, 0) == SPRITE_tree_trunk_pine);
 
-        grid[0][0][1] = CELL_TREE_LEAVES;
+        GRID(1, 0, 0) = CELL_TREE_LEAVES;
         SetWallMaterial(1, 0, 0, MAT_BIRCH);
         expect(GetCellSpriteAt(1, 0, 0) == SPRITE_tree_leaves_birch);
 
-        grid[0][0][2] = CELL_SAPLING;
+        GRID(2, 0, 0) = CELL_SAPLING;
         SetWallMaterial(2, 0, 0, MAT_WILLOW);
         expect(GetCellSpriteAt(2, 0, 0) == SPRITE_tree_sapling_willow);
     }
@@ -803,7 +803,7 @@ describe(get_cell_sprite_at) {
         InitTestGridFromAscii(
             "....\n");
 
-        grid[0][0][0] = CELL_TREE_TRUNK;
+        GRID(0, 0, 0) = CELL_TREE_TRUNK;
         SetWallMaterial(0, 0, 0, MAT_OAK);
         expect(GetCellSpriteAt(0, 0, 0) == SPRITE_tree_trunk_oak);
     }
@@ -814,7 +814,7 @@ describe(get_insulation_at) {
         InitTestGridFromAscii(
             "....\n");
 
-        grid[0][0][0] = CELL_WALL;
+        GRID(0, 0, 0) = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_OAK);
         expect(GetInsulationAt(0, 0, 0) == INSULATION_TIER_WOOD);
 
@@ -855,11 +855,11 @@ describe(get_cell_name_at) {
         InitTestGridFromAscii(
             "....\n");
 
-        grid[0][0][0] = CELL_TREE_TRUNK;
+        GRID(0, 0, 0) = CELL_TREE_TRUNK;
         SetWallMaterial(0, 0, 0, MAT_OAK);
         expect(strcmp(GetCellNameAt(0, 0, 0), "Oak tree trunk") == 0);
 
-        grid[0][0][1] = CELL_TREE_LEAVES;
+        GRID(1, 0, 0) = CELL_TREE_LEAVES;
         SetWallMaterial(1, 0, 0, MAT_PINE);
         expect(strcmp(GetCellNameAt(1, 0, 0), "Pine tree leaves") == 0);
     }
@@ -868,7 +868,7 @@ describe(get_cell_name_at) {
         InitTestGridFromAscii(
             "....\n");
 
-        grid[0][0][0] = CELL_WALL;
+        GRID(0, 0, 0) = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_DIRT);
         expect(strcmp(GetCellNameAt(0, 0, 0), "Dirt") == 0);
 
@@ -942,15 +942,15 @@ describe(cell_terrain_with_materials) {
         InitTestGridFromAscii(
             "....\n");
 
-        grid[0][0][0] = CELL_WALL;
+        GRID(0, 0, 0) = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_DIRT);
         expect(GetCellSpriteAt(0, 0, 0) == SPRITE_dirt);
 
-        grid[0][0][1] = CELL_WALL;
+        GRID(1, 0, 0) = CELL_WALL;
         SetWallMaterial(1, 0, 0, MAT_GRANITE);
         expect(GetCellSpriteAt(1, 0, 0) == SPRITE_granite);
 
-        grid[0][0][2] = CELL_WALL;
+        GRID(2, 0, 0) = CELL_WALL;
         SetWallMaterial(2, 0, 0, MAT_PEAT);
         expect(GetCellSpriteAt(2, 0, 0) == SPRITE_peat);
     }
@@ -959,7 +959,7 @@ describe(cell_terrain_with_materials) {
         InitTestGridFromAscii(
             "....\n");
 
-        grid[0][0][0] = CELL_WALL;
+        GRID(0, 0, 0) = CELL_WALL;
         // No SetWallMaterial — MAT_NONE
         expect(GetCellSpriteAt(0, 0, 0) == SPRITE_wall);  // cellDef default
     }
@@ -968,11 +968,11 @@ describe(cell_terrain_with_materials) {
         InitTestGridFromAscii(
             "....\n");
 
-        grid[0][0][0] = CELL_WALL;
+        GRID(0, 0, 0) = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_DIRT);
         expect(strcmp(GetCellNameAt(0, 0, 0), "Dirt") == 0);
 
-        grid[0][0][1] = CELL_WALL;
+        GRID(1, 0, 0) = CELL_WALL;
         SetWallMaterial(1, 0, 0, MAT_GRANITE);
         expect(strcmp(GetCellNameAt(1, 0, 0), "Granite") == 0);
     }
@@ -981,7 +981,7 @@ describe(cell_terrain_with_materials) {
         InitTestGridFromAscii(
             "....\n");
 
-        grid[0][0][0] = CELL_WALL;
+        GRID(0, 0, 0) = CELL_WALL;
         expect(strcmp(GetCellNameAt(0, 0, 0), "wall") == 0);
     }
 
@@ -989,11 +989,11 @@ describe(cell_terrain_with_materials) {
         InitTestGridFromAscii(
             "....\n");
 
-        grid[0][0][0] = CELL_WALL;
+        GRID(0, 0, 0) = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_GRANITE);
         expect(GetInsulationAt(0, 0, 0) == INSULATION_TIER_STONE);
 
-        grid[0][0][1] = CELL_WALL;
+        GRID(1, 0, 0) = CELL_WALL;
         SetWallMaterial(1, 0, 0, MAT_DIRT);
         expect(GetInsulationAt(1, 0, 0) == INSULATION_TIER_AIR);
     }
@@ -1002,7 +1002,7 @@ describe(cell_terrain_with_materials) {
         InitTestGridFromAscii(
             "....\n");
 
-        grid[0][0][0] = CELL_WALL;
+        GRID(0, 0, 0) = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_BEDROCK);
         expect(MaterialIsUnmineable(GetWallMaterial(0, 0, 0)));
         expect(GetCellSpriteAt(0, 0, 0) == SPRITE_bedrock);

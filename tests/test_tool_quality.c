@@ -465,7 +465,7 @@ static void SetupMiningTest(int wallX, int wallY, MaterialType wallMat, int move
         "..........\n");
 
     // Place a wall at the target position
-    grid[0][wallY][wallX] = CELL_WALL;
+    GRID(wallX, wallY, 0) = CELL_WALL;
     SetWallMaterial(wallX, wallY, 0, wallMat);
     SetWallNatural(wallX, wallY, 0);
 
@@ -498,7 +498,7 @@ static int RunSimUntil(bool (*condition)(void), int maxTicks) {
 
 static int g_wallCheckX, g_wallCheckY;
 static bool WallIsGone(void) {
-    return grid[0][g_wallCheckY][g_wallCheckX] != CELL_WALL;
+    return GRID(g_wallCheckX, g_wallCheckY, 0) != CELL_WALL;
 }
 
 describe(story1_bare_hands_soil_mining) {
@@ -507,7 +507,7 @@ describe(story1_bare_hands_soil_mining) {
         SetupMiningTest(5, 3, MAT_DIRT, 4, 3);  // dirt wall at (5,3), mover at (4,3) adjacent
 
         // Confirm wall is there
-        expect(grid[0][3][5] == CELL_WALL);
+        expect(GRID(5, 3, 0) == CELL_WALL);
         expect(GetWallMaterial(5, 3, 0) == MAT_DIRT);
 
         // Mover has no tool
@@ -520,14 +520,14 @@ describe(story1_bare_hands_soil_mining) {
         // Run sim until wall is gone
         g_wallCheckX = 5; g_wallCheckY = 3;
         int ticksBareHands = RunSimUntil(WallIsGone, 2000);
-        expect(grid[0][3][5] != CELL_WALL);  // Wall should be mined
+        expect(GRID(5, 3, 0) != CELL_WALL);  // Wall should be mined
 
         // Now do the same test with toolRequirementsEnabled=false (baseline speed)
         SetupMiningTest(5, 3, MAT_DIRT, 4, 3);
         toolRequirementsEnabled = false;
         DesignateMine(5, 3, 0);
         int ticksBaseline = RunSimUntil(WallIsGone, 2000);
-        expect(grid[0][3][5] != CELL_WALL);
+        expect(GRID(5, 3, 0) != CELL_WALL);
 
         // Bare hands should take roughly 2x baseline ticks
         // Allow some tolerance for walking time (mover starts adjacent)
@@ -557,7 +557,7 @@ describe(story3_cannot_mine_rock_without_hammer) {
         RunSimUntil(WallIsGone, 500);
 
         // Wall still there
-        expect(grid[0][3][5] == CELL_WALL);
+        expect(GRID(5, 3, 0) == CELL_WALL);
 
         // Mover should be idle (skipped the job)
         expect(movers[0].currentJobId < 0);
@@ -588,7 +588,7 @@ describe(story5_cannot_chop_without_cutting) {
             "..........\n");
 
         // Place a tree trunk at (5,3)
-        grid[0][3][5] = CELL_TREE_TRUNK;
+        GRID(5, 3, 0) = CELL_TREE_TRUNK;
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -614,7 +614,7 @@ describe(story5_cannot_chop_without_cutting) {
             JobsTick();
         }
 
-        expect(grid[0][3][5] == CELL_TREE_TRUNK);
+        expect(GRID(5, 3, 0) == CELL_TREE_TRUNK);
         expect(movers[0].currentJobId < 0);
         expect(HasChopDesignation(5, 3, 0) == true);
     }
@@ -633,7 +633,7 @@ describe(story9_toggle_disables_everything) {
         g_wallCheckX = 5; g_wallCheckY = 3;
         int ticks = RunSimUntil(WallIsGone, 2000);
 
-        expect(grid[0][3][5] != CELL_WALL);  // Stone wall should be mined
+        expect(GRID(5, 3, 0) != CELL_WALL);  // Stone wall should be mined
         expect(ticks < 2000);  // Should complete
 
         // Test 2: Chop tree without tools
@@ -648,7 +648,7 @@ describe(story9_toggle_disables_everything) {
             "..........\n"
             "..........\n"
             "..........\n");
-        grid[0][3][5] = CELL_TREE_TRUNK;
+        GRID(5, 3, 0) = CELL_TREE_TRUNK;
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -671,7 +671,7 @@ describe(story9_toggle_disables_everything) {
             Tick();
             AssignJobs();
             JobsTick();
-            if (grid[0][3][5] != CELL_TREE_TRUNK) {
+            if (GRID(5, 3, 0) != CELL_TREE_TRUNK) {
                 chopDone = true;
                 break;
             }
@@ -1197,7 +1197,7 @@ describe(story2_digging_stick_soil_mining) {
         DesignateMine(5, 3, 0);
         g_wallCheckX = 5; g_wallCheckY = 3;
         int ticksBareHands = RunSimUntil(WallIsGone, 2000);
-        expect(grid[0][3][5] != CELL_WALL);
+        expect(GRID(5, 3, 0) != CELL_WALL);
 
         // Second: measure with digging stick equipped (dig:1 → 1.0x)
         SetupMiningTest(5, 3, MAT_DIRT, 4, 3);
@@ -1207,7 +1207,7 @@ describe(story2_digging_stick_soil_mining) {
         movers[0].equippedTool = stickIdx;
         DesignateMine(5, 3, 0);
         int ticksWithStick = RunSimUntil(WallIsGone, 2000);
-        expect(grid[0][3][5] != CELL_WALL);
+        expect(GRID(5, 3, 0) != CELL_WALL);
 
         // Digging stick should be ~2x faster than bare hands
         if (test_verbose) {
@@ -1239,7 +1239,7 @@ describe(story4_stone_hammer_mines_rock) {
         DesignateMine(5, 3, 0);
         g_wallCheckX = 5; g_wallCheckY = 3;
         int ticksHammer = RunSimUntil(WallIsGone, 2000);
-        expect(grid[0][3][5] != CELL_WALL);
+        expect(GRID(5, 3, 0) != CELL_WALL);
 
         // Mover still holds the hammer (check before second setup clears items)
         expect(movers[0].equippedTool == hammerIdx);
@@ -1250,7 +1250,7 @@ describe(story4_stone_hammer_mines_rock) {
         toolRequirementsEnabled = false;
         DesignateMine(5, 3, 0);
         int ticksBaseline = RunSimUntil(WallIsGone, 2000);
-        expect(grid[0][3][5] != CELL_WALL);
+        expect(GRID(5, 3, 0) != CELL_WALL);
 
         toolRequirementsEnabled = true;
 
@@ -1296,7 +1296,7 @@ describe(story11_rock_hammer1_building_not_mining) {
         }
 
         // Wall still there — rock's hammer:1 is not enough for stone mining
-        expect(grid[0][3][5] == CELL_WALL);
+        expect(GRID(5, 3, 0) == CELL_WALL);
         expect(HasMineDesignation(5, 3, 0) == true);
     }
 }
@@ -1321,7 +1321,7 @@ describe(story6_seek_tool_for_chop) {
             "..........\n");
 
         // Place a tree trunk at (7,3)
-        grid[0][3][7] = CELL_TREE_TRUNK;
+        GRID(7, 3, 0) = CELL_TREE_TRUNK;
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -1362,7 +1362,7 @@ describe(story6_seek_tool_for_chop) {
                 if (test_verbose) printf("  Tool picked up at tick %d\n", i);
             }
 
-            if (grid[0][3][7] != CELL_TREE_TRUNK) {
+            if (GRID(7, 3, 0) != CELL_TREE_TRUNK) {
                 chopDone = true;
                 if (test_verbose) printf("  Tree chopped at tick %d\n", i);
                 break;
@@ -1396,8 +1396,8 @@ describe(story7_keep_tool_across_jobs) {
             "..........\n");
 
         // Two trees
-        grid[0][3][5] = CELL_TREE_TRUNK;
-        grid[0][3][8] = CELL_TREE_TRUNK;
+        GRID(5, 3, 0) = CELL_TREE_TRUNK;
+        GRID(8, 3, 0) = CELL_TREE_TRUNK;
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -1429,7 +1429,7 @@ describe(story7_keep_tool_across_jobs) {
             AssignJobs();
             JobsTick();
 
-            if (grid[0][3][5] != CELL_TREE_TRUNK && grid[0][3][8] != CELL_TREE_TRUNK) {
+            if (GRID(5, 3, 0) != CELL_TREE_TRUNK && GRID(8, 3, 0) != CELL_TREE_TRUNK) {
                 treesChopped = 2;
                 break;
             }
@@ -1463,7 +1463,7 @@ describe(story8_tool_swap) {
             "..........\n");
 
         // Stone wall at (7,3)
-        grid[0][3][7] = CELL_WALL;
+        GRID(7, 3, 0) = CELL_WALL;
         SetWallMaterial(7, 3, 0, MAT_GRANITE);
         SetWallNatural(7, 3, 0);
 
@@ -1499,7 +1499,7 @@ describe(story8_tool_swap) {
         g_wallCheckX = 7; g_wallCheckY = 3;
         RunSimUntil(WallIsGone, 5000);
 
-        expect(grid[0][3][7] != CELL_WALL);  // Wall mined
+        expect(GRID(7, 3, 0) != CELL_WALL);  // Wall mined
         expect(movers[0].equippedTool == hammerIdx);  // Now holds hammer
         expect(items[hammerIdx].state == ITEM_CARRIED);
         // Sharp stone was dropped
@@ -1577,7 +1577,7 @@ describe(cancel_mid_fetch) {
             "..........\n"
             "..........\n");
 
-        grid[0][3][7] = CELL_TREE_TRUNK;
+        GRID(7, 3, 0) = CELL_TREE_TRUNK;
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -1646,7 +1646,7 @@ describe(story5_regression_no_tool) {
             "..........\n"
             "..........\n");
 
-        grid[0][3][5] = CELL_TREE_TRUNK;
+        GRID(5, 3, 0) = CELL_TREE_TRUNK;
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -1672,7 +1672,7 @@ describe(story5_regression_no_tool) {
         }
 
         // Tree should still be standing
-        expect(grid[0][3][5] == CELL_TREE_TRUNK);
+        expect(GRID(5, 3, 0) == CELL_TREE_TRUNK);
         expect(movers[0].currentJobId < 0);
         expect(HasChopDesignation(5, 3, 0) == true);
     }
@@ -1742,12 +1742,12 @@ describe(story10_full_bootstrap) {
         InitDesignations();
 
         // Stone wall at (3,5) for knapping
-        grid[0][5][3] = CELL_WALL;
+        GRID(3, 5, 0) = CELL_WALL;
         SetWallMaterial(3, 5, 0, MAT_GRANITE);
         SetWallNatural(3, 5, 0);
 
         // Dirt wall at (12,5) to dig later
-        grid[0][5][12] = CELL_WALL;
+        GRID(12, 5, 0) = CELL_WALL;
         SetWallMaterial(12, 5, 0, MAT_DIRT);
         SetWallNatural(12, 5, 0);
 
@@ -1796,7 +1796,7 @@ describe(story10_full_bootstrap) {
         }
 
         // Stone wall should still exist (knapping doesn't consume it)
-        expect(grid[0][5][3] == CELL_WALL);
+        expect(GRID(3, 5, 0) == CELL_WALL);
 
         // ---- PHASE 2: Craft digging stick ----
         // The carpenter bill is already queued. AssignJobs will pick it up.
@@ -1823,7 +1823,7 @@ describe(story10_full_bootstrap) {
         // If mover seeks digging stick, it gets 1.0x.
         g_wallCheckX = 12; g_wallCheckY = 5;
         int mineTicks = RunSimUntil(WallIsGone, 8000);
-        expect(grid[0][5][12] != CELL_WALL);
+        expect(GRID(12, 5, 0) != CELL_WALL);
         if (test_verbose) {
             printf("  Phase 3 (mine): dirt wall removed at tick %d\n", mineTicks);
         }
@@ -1831,7 +1831,7 @@ describe(story10_full_bootstrap) {
         // Verify the full chain completed
         expect(g_sharpStoneFound == true);
         expect(g_diggingStickFound == true);
-        expect(grid[0][5][12] != CELL_WALL);
+        expect(GRID(12, 5, 0) != CELL_WALL);
     }
 }
 
@@ -1863,7 +1863,7 @@ describe(edge_soft_job_no_tool_available) {
         // Run sim — mover 0 should still mine dirt bare-handed (soft job, 0.5x)
         g_wallCheckX = 5; g_wallCheckY = 3;
         int ticks = RunSimUntil(WallIsGone, 3000);
-        expect(grid[0][3][5] != CELL_WALL);
+        expect(GRID(5, 3, 0) != CELL_WALL);
 
         // Mover 0 did the work without a tool
         expect(movers[0].equippedTool == -1);
@@ -1894,8 +1894,8 @@ describe(edge_tool_contention) {
             "..........\n");
 
         // Two trees
-        grid[0][3][5] = CELL_TREE_TRUNK;
-        grid[0][3][8] = CELL_TREE_TRUNK;
+        GRID(5, 3, 0) = CELL_TREE_TRUNK;
+        GRID(8, 3, 0) = CELL_TREE_TRUNK;
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -1946,8 +1946,8 @@ describe(edge_tool_contention) {
 
         // Both trees should eventually be chopped (one mover does all the work)
         int treesChopped = 0;
-        if (grid[0][3][5] != CELL_TREE_TRUNK) treesChopped++;
-        if (grid[0][3][8] != CELL_TREE_TRUNK) treesChopped++;
+        if (GRID(5, 3, 0) != CELL_TREE_TRUNK) treesChopped++;
+        if (GRID(8, 3, 0) != CELL_TREE_TRUNK) treesChopped++;
         expect(treesChopped == 2);
 
         // Exactly one mover should hold the tool

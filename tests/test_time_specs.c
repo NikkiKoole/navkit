@@ -46,7 +46,7 @@ static void SetupTestGrid(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[z][y][x] = CELL_AIR;
+                GRID(x, y, z) = CELL_AIR;
                 if (z == 0) SET_FLOOR(x, y, 0);
             }
         }
@@ -85,7 +85,7 @@ describe(spec_fire_spread) {
         // Set all cells to dirt with grass surface (flammable)
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
+                GRID(x, y, 0) = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
                 SetVegetation(x, y, 0, VEG_GRASS);
             }
         }
@@ -113,7 +113,7 @@ describe(spec_fire_spread) {
         // Set all cells to dirt with grass surface (flammable)
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
+                GRID(x, y, 0) = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
                 SetVegetation(x, y, 0, VEG_GRASS);
             }
         }
@@ -140,7 +140,7 @@ describe(spec_fire_spread) {
         SetupTestGrid();
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
+                GRID(x, y, 0) = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
                 SetVegetation(x, y, 0, VEG_GRASS);
             }
         }
@@ -159,7 +159,7 @@ describe(spec_fire_spread) {
         SetupTestGrid();
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
+                GRID(x, y, 0) = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
                 SetVegetation(x, y, 0, VEG_GRASS);
             }
         }
@@ -440,7 +440,7 @@ describe(spec_ground_wear) {
         ResetTestState(12345);
         
         // Set up dirt with tall grass overlay (new system)
-        grid[0][4][8] = CELL_WALL; SetWallMaterial(8, 4, 0, MAT_DIRT); SetWallNatural(8, 4, 0);
+        GRID(8, 4, 0) = CELL_WALL; SetWallMaterial(8, 4, 0, MAT_DIRT); SetWallNatural(8, 4, 0);
         SetVegetation(8, 4, 0, VEG_GRASS_TALL);
         wearTallToNormal = 20;
         wearNormalToTrampled = 60;
@@ -463,10 +463,10 @@ describe(spec_ground_wear) {
         
         // Set up bare worn dirt that had grass before it was trampled (since the
         // gradual-recovery change, dirt that never had grass stays bare by design)
-        grid[0][4][8] = CELL_WALL; SetWallMaterial(8, 4, 0, MAT_DIRT); SetWallNatural(8, 4, 0);
+        GRID(8, 4, 0) = CELL_WALL; SetWallMaterial(8, 4, 0, MAT_DIRT); SetWallNatural(8, 4, 0);
         SET_CELL_SURFACE(8, 4, 0, SURFACE_BARE);
         SET_CELL_FLAG(8, 4, 0, CELL_FLAG_HAD_VEGETATION);
-        wearGrid[0][4][8] = 150;  // Above threshold (3D array now)
+        WEAR(8, 4, 0) = 150;  // Above threshold (3D array now)
         
         wearTallToNormal = 20;
         wearNormalToTrampled = 60;
@@ -519,7 +519,7 @@ describe(spec_game_speed) {
         SetupTestGrid();
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
+                GRID(x, y, 0) = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
                 SetVegetation(x, y, 0, VEG_GRASS);
             }
         }

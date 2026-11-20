@@ -1098,9 +1098,9 @@ describe(e2e_craft_chest_from_stack) {
         // Actually we need z=1 walkable with z=0 solid
         for (int y = 0; y < 12; y++)
             for (int x = 0; x < 12; x++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;
             }
         z = 1;
 
@@ -1192,9 +1192,9 @@ static void SetupE2E(void) {
 
     for (int y = 0; y < 12; y++)
         for (int x = 0; x < 12; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
-            grid[1][y][x] = CELL_AIR;
+            GRID(x, y, 1) = CELL_AIR;
         }
 }
 

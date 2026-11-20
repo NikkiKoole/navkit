@@ -25,9 +25,9 @@ static void SetupFlatGrid(void) {
     InitTestGrid(10, 10);
     for (int y = 0; y < 10; y++) {
         for (int x = 0; x < 10; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
-            grid[1][y][x] = CELL_AIR;
+            GRID(x, y, 1) = CELL_AIR;
             SET_FLOOR(x, y, 1);
         }
     }
@@ -413,7 +413,7 @@ describe(natural_water_fallback) {
         movers[mi].currentJobId = -1;
 
         // Place water on the grid at (5, 5, 1)
-        waterGrid[1][5][5].level = 5;
+        WATER(5, 5, 1).level = 5;
 
         ProcessFreetimeNeeds();
 
@@ -468,7 +468,7 @@ describe(fill_water_pot) {
         items[potIdx].state = ITEM_ON_GROUND;
 
         // Place water on grid
-        waterGrid[1][7][7].level = 5;
+        WATER(7, 7, 1).level = 5;
 
         int jobId = WorkGiver_FillWaterPot(mi);
         expect(jobId >= 0);
@@ -483,7 +483,7 @@ describe(fill_water_pot) {
         InitJobSystem(MAX_MOVERS);
         RebuildIdleMoverList();
 
-        waterGrid[1][7][7].level = 5;
+        WATER(7, 7, 1).level = 5;
 
         int jobId = WorkGiver_FillWaterPot(mi);
         expect(jobId < 0);
@@ -513,7 +513,7 @@ describe(fill_water_pot) {
 
         int potIdx = SpawnItem(3 * CELL_SIZE + 4, 3 * CELL_SIZE + 4, 1.0f, ITEM_CLAY_POT);
         items[potIdx].state = ITEM_ON_GROUND;
-        waterGrid[1][7][7].level = 5;
+        WATER(7, 7, 1).level = 5;
 
         int jobId = WorkGiver_FillWaterPot(mi);
         expect(jobId < 0);
@@ -532,7 +532,7 @@ describe(fill_water_pot) {
         int w = SpawnItem(3 * CELL_SIZE + 4, 3 * CELL_SIZE + 4, 1.0f, ITEM_WATER);
         PutItemInContainer(w, potIdx);
 
-        waterGrid[1][7][7].level = 5;
+        WATER(7, 7, 1).level = 5;
 
         int jobId = WorkGiver_FillWaterPot(mi);
         expect(jobId < 0);

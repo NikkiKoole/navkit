@@ -179,7 +179,7 @@ describe(wall_collision) {
         moverCount = 1;
 
         // Place wall on mover's current cell
-        grid[0][1][1] = CELL_WALL;
+        GRID(1, 1, 0) = CELL_WALL;
         MarkChunkDirty(1, 1, 0);
 
         // Run tick - mover should be pushed to adjacent walkable cell
@@ -210,7 +210,7 @@ describe(wall_collision) {
         moverCount = 1;
 
         // Place wall on mover's cell - now fully surrounded
-        grid[0][1][1] = CELL_WALL;
+        GRID(1, 1, 0) = CELL_WALL;
 
         Tick();
 
@@ -243,7 +243,7 @@ describe(line_of_sight_repath) {
         moverCount = 1;
 
         // Place wall between start and goal
-        grid[0][0][3] = CELL_WALL;
+        GRID(3, 0, 0) = CELL_WALL;
         MarkChunkDirty(3, 0, 0);
 
         Tick();
@@ -462,7 +462,7 @@ describe(blocked_mover_handling) {
         moverCount = 1;
 
         // Place wall ON the goal cell - goal is now unwalkable
-        grid[0][0][6] = CELL_WALL;
+        GRID(6, 0, 0) = CELL_WALL;
         MarkChunkDirty(6, 0, 0);
 
         // Trigger repath
@@ -504,7 +504,7 @@ describe(blocked_mover_handling) {
         moverCount = 1;
 
         // Place wall blocking the PATH (not the goal)
-        grid[0][0][3] = CELL_WALL;
+        GRID(3, 0, 0) = CELL_WALL;
         MarkChunkDirty(3, 0, 0);
 
         // Trigger repath
@@ -701,7 +701,7 @@ describe(refinement_after_wall_changes) {
             int wx = wallPositions[i][0];
             int wy = wallPositions[i][1];
             if (wx < gridWidth && wy < gridHeight) {
-                grid[0][wy][wx] = CELL_WALL;
+                GRID(wx, wy, 0) = CELL_WALL;
                 MarkChunkDirty(wx, wy, 0);
             }
             // Run a few ticks between each wall (simulates drawing at ~60fps)
@@ -944,8 +944,8 @@ describe(mover_falling) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 // z=0 is solid dirt, z=1 air above air is not walkable
-                grid[0][y][x] = CELL_AIR;       // Air at z=0 (walkable due to bedrock)
-                grid[1][y][x] = CELL_AIR;       // Air at z=1 (NOT walkable - no solid below)
+                GRID(x, y, 0) = CELL_AIR;       // Air at z=0 (walkable due to bedrock)
+                GRID(x, y, 1) = CELL_AIR;       // Air at z=1 (NOT walkable - no solid below)
             }
         }
         
@@ -981,9 +981,9 @@ describe(mover_falling) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 // z=0 solid, z=1 air above solid is walkable
-                grid[0][y][x] = CELL_WALL;   // Solid ground
+                GRID(x, y, 0) = CELL_WALL;   // Solid ground
                 SetWallMaterial(x, y, 0, MAT_DIRT);
-                grid[1][y][x] = CELL_AIR;       // Walkable (solid below)
+                GRID(x, y, 1) = CELL_AIR;       // Walkable (solid below)
             }
         }
         
@@ -1018,15 +1018,15 @@ describe(mover_falling) {
         
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_AIR;
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 0) = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;
             }
         }
         // Wall at z=0 (2,1) - air above wall is walkable
-        grid[0][1][2] = CELL_WALL;
+        GRID(2, 1, 0) = CELL_WALL;
         
         // Starting platform at z=1 (1,1)
-        grid[0][1][1] = CELL_WALL;  // Solid below makes z=1 walkable
+        GRID(1, 1, 0) = CELL_WALL;  // Solid below makes z=1 walkable
         SetWallMaterial(1, 1, 0, MAT_DIRT);
         
         ClearMovers();
@@ -1139,14 +1139,14 @@ static void SetupLadderFloors(void) {
     gridDepth = 3;
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
-            grid[1][y][x] = CELL_AIR;
-            grid[2][y][x] = CELL_AIR;
+            GRID(x, y, 1) = CELL_AIR;
+            GRID(x, y, 2) = CELL_AIR;
             SET_FLOOR(x, y, 2);
         }
-    grid[1][2][3] = CELL_LADDER_BOTH;
-    grid[2][2][3] = CELL_LADDER_BOTH;
+    GRID(3, 2, 1) = CELL_LADDER_BOTH;
+    GRID(3, 2, 2) = CELL_LADDER_BOTH;
     BuildEntrances();   // waiting movers re-plan (queue cost): they need the graph
     BuildGraph();
     ClearMovers();
@@ -1185,14 +1185,14 @@ static void SetupTwoLadderFloors(void) {
     gridDepth = 3;
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
-            grid[1][y][x] = CELL_AIR;
-            grid[2][y][x] = CELL_AIR;
+            GRID(x, y, 1) = CELL_AIR;
+            GRID(x, y, 2) = CELL_AIR;
             SET_FLOOR(x, y, 2);
         }
-    grid[1][2][3] = grid[2][2][3] = CELL_LADDER_BOTH;
-    grid[1][2][9] = grid[2][2][9] = CELL_LADDER_BOTH;
+    GRID(3, 2, 1) = GRID(3, 2, 2) = CELL_LADDER_BOTH;
+    GRID(9, 2, 1) = GRID(9, 2, 2) = CELL_LADDER_BOTH;
     BuildEntrances();
     BuildGraph();
     ClearMovers();
@@ -1416,15 +1416,15 @@ describe(mover_ladder_transitions) {
         int goalZ = 2;   // Walk on air above constructed floor
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_WALL;   // Solid ground
+                GRID(x, y, 0) = CELL_WALL;   // Solid ground
                 SetWallMaterial(x, y, 0, MAT_DIRT);
-                grid[1][y][x] = CELL_AIR;    // Walkable (above dirt)
-                grid[2][y][x] = CELL_AIR;    // Not walkable yet
+                GRID(x, y, 1) = CELL_AIR;    // Walkable (above dirt)
+                GRID(x, y, 2) = CELL_AIR;    // Not walkable yet
                 SET_FLOOR(x, y, 2);          // Now walkable (constructed floor)
             }
         }
-        grid[1][1][2] = CELL_LADDER_BOTH;
-        grid[2][1][2] = CELL_LADDER_BOTH;
+        GRID(2, 1, 1) = CELL_LADDER_BOTH;
+        GRID(2, 1, 2) = CELL_LADDER_BOTH;
 
         // Verify walkability
         expect(IsCellWalkableAt(startZ, 1, 0) == true);
@@ -1470,15 +1470,15 @@ describe(mover_ladder_transitions) {
         int goalZ = 2;
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
-                grid[1][y][x] = CELL_AIR;
-                grid[2][y][x] = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;
+                GRID(x, y, 2) = CELL_AIR;
                 SET_FLOOR(x, y, 2);
             }
         }
-        grid[1][1][2] = CELL_LADDER_BOTH;
-        grid[2][1][2] = CELL_LADDER_BOTH;
+        GRID(2, 1, 1) = CELL_LADDER_BOTH;
+        GRID(2, 1, 2) = CELL_LADDER_BOTH;
 
         ClearMovers();
         Mover* m = &movers[0];
@@ -1623,7 +1623,7 @@ describe(mover_ladder_transitions) {
         int ladderX = -1, ladderY = -1;
         for (int y = 0; y < gridHeight && ladderX < 0; y++) {
             for (int x = 0; x < gridWidth && ladderX < 0; x++) {
-                if (grid[lowerZ][y][x] == CELL_LADDER_BOTH && grid[upperZ][y][x] == CELL_LADDER_BOTH) {
+                if (GRID(x, y, lowerZ) == CELL_LADDER_BOTH && GRID(x, y, upperZ) == CELL_LADDER_BOTH) {
                     ladderX = x;
                     ladderY = y;
                 }
@@ -1638,7 +1638,7 @@ describe(mover_ladder_transitions) {
                 int x = ladderX + dx;
                 int y = ladderY + dy;
                 if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
-                    if (IsCellWalkableAt(lowerZ, y, x) && grid[lowerZ][y][x] != CELL_LADDER_BOTH) {
+                    if (IsCellWalkableAt(lowerZ, y, x) && GRID(x, y, lowerZ) != CELL_LADDER_BOTH) {
                         start = (Point){x, y, lowerZ};
                     }
                 }
@@ -1652,7 +1652,7 @@ describe(mover_ladder_transitions) {
                 int x = ladderX + dx;
                 int y = ladderY + dy;
                 if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
-                    if (IsCellWalkableAt(upperZ, y, x) && grid[upperZ][y][x] != CELL_LADDER_BOTH) {
+                    if (IsCellWalkableAt(upperZ, y, x) && GRID(x, y, upperZ) != CELL_LADDER_BOTH) {
                         goal = (Point){x, y, upperZ};
                     }
                 }
@@ -1996,7 +1996,7 @@ describe(staggered_updates) {
                 int cy = (int)(m->y / CELL_SIZE);
                 int cz = (int)m->z;
                 if (cx >= 0 && cx < gridWidth && cy >= 0 && cy < gridHeight) {
-                    expect(grid[cz][cy][cx] != CELL_WALL);
+                    expect(GRID(cx, cy, cz) != CELL_WALL);
                 }
             }
         }
@@ -2435,8 +2435,8 @@ describe(mover_ramp_transitions) {
         InitMultiFloorGridFromAscii(map, 5, 5);
 
         // Verify ramp setup
-        expect(grid[0][1][2] == CELL_RAMP_N);
-        expect(CellIsDirectionalRamp(grid[0][1][2]));
+        expect(GRID(2, 1, 0) == CELL_RAMP_N);
+        expect(CellIsDirectionalRamp(GRID(2, 1, 0)));
 
         ClearMovers();
         Mover* m = &movers[0];
@@ -2626,7 +2626,7 @@ describe(mover_ramp_transitions) {
             InitMultiFloorGridFromAscii(map, 5, 5);
 
             // Verify ramp type
-            expect(grid[0][1][2] == rampTypes[r]);
+            expect(GRID(2, 1, 0) == rampTypes[r]);
 
             // Verify high side offset
             int dx, dy;
@@ -2678,7 +2678,7 @@ static void SetupTwoRooms(int width) {
         for (int x = 0; x < 32; x++) {
             bool roomA = x >= 1 && x <= 6 && y >= 2 && y <= 8, roomB = x >= 23 && x <= 28 && y >= 2 && y <= 8;
             bool corridor = y >= 5 && y < 5 + width && x >= 7 && x <= 22;
-            grid[0][y][x] = (roomA || roomB || corridor) ? CELL_AIR : CELL_WALL;
+            GRID(x, y, 0) = (roomA || roomB || corridor) ? CELL_AIR : CELL_WALL;
         }
     BuildEntrances();
     BuildGraph();
@@ -2801,15 +2801,15 @@ describe(z_climb_timing) {
         gridDepth = 3; \
         for (int _y = 0; _y < gridHeight; _y++) { \
             for (int _x = 0; _x < gridWidth; _x++) { \
-                grid[0][_y][_x] = CELL_WALL; \
+                GRID(_x, _y, 0) = CELL_WALL; \
                 SetWallMaterial(_x, _y, 0, MAT_DIRT); \
-                grid[1][_y][_x] = CELL_AIR; \
-                grid[2][_y][_x] = CELL_AIR; \
+                GRID(_x, _y, 1) = CELL_AIR; \
+                GRID(_x, _y, 2) = CELL_AIR; \
                 SET_FLOOR(_x, _y, 2); \
             } \
         } \
-        grid[1][1][2] = CELL_LADDER_BOTH; \
-        grid[2][1][2] = CELL_LADDER_BOTH; \
+        GRID(2, 1, 1) = CELL_LADDER_BOTH; \
+        GRID(2, 1, 2) = CELL_LADDER_BOTH; \
     } while(0)
 
     it("z should be fractional while climbing a ladder (not an instant snap)") {
@@ -2917,7 +2917,7 @@ describe(z_climb_timing) {
             ".....\n"
             ".....\n";
         InitMultiFloorGridFromAscii(map, 5, 5);
-        grid[0][0][2] = CELL_WALL;   // the cell below the exit is solid (as on real hills)
+        GRID(2, 0, 0) = CELL_WALL;   // the cell below the exit is solid (as on real hills)
         ClearMovers();
         Mover* m = &movers[0];
         Point path[] = {{2,0,1},{2,1,0},{2,2,0}};

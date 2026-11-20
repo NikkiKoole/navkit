@@ -46,25 +46,25 @@ describe(cell_door_properties) {
 describe(cell_door_walkability) {
     it("should be walkable with solid cell below") {
         InitTestGrid(8, 8);
-        grid[0][3][3] = CELL_WALL;
+        GRID(3, 3, 0) = CELL_WALL;
         SetWallMaterial(3, 3, 0, MAT_GRANITE);
-        grid[1][3][3] = CELL_DOOR;
+        GRID(3, 3, 1) = CELL_DOOR;
         expect(IsCellWalkableAt(1, 3, 3) == true);
     }
 
     it("should support walkability of cell above") {
         InitTestGrid(8, 8);
-        grid[0][3][3] = CELL_WALL;
-        grid[1][3][3] = CELL_DOOR;
-        grid[2][3][3] = CELL_AIR;
+        GRID(3, 3, 0) = CELL_WALL;
+        GRID(3, 3, 1) = CELL_DOOR;
+        GRID(3, 3, 2) = CELL_AIR;
         expect(IsCellWalkableAt(2, 3, 3) == true);
     }
 
     it("should not be walkable without support below") {
         InitTestGrid(8, 8);
         // z=0 has implicit bedrock, so use z=2
-        grid[1][3][3] = CELL_AIR;
-        grid[2][3][3] = CELL_DOOR;
+        GRID(3, 3, 1) = CELL_AIR;
+        GRID(3, 3, 2) = CELL_DOOR;
         // Door at z=2 with air at z=1 — door itself is walkable (it's always walkable)
         // Actually doors return true immediately regardless of support below
         expect(IsCellWalkableAt(2, 3, 3) == true);
@@ -79,17 +79,17 @@ describe(cell_door_sky_exposure) {
     it("should block sky exposure when above a cell") {
         InitTestGrid(8, 8);
         // Place door at z=2, check sky exposure at z=1
-        grid[0][3][3] = CELL_WALL;
-        grid[1][3][3] = CELL_AIR;
-        grid[2][3][3] = CELL_DOOR;
+        GRID(3, 3, 0) = CELL_WALL;
+        GRID(3, 3, 1) = CELL_AIR;
+        GRID(3, 3, 2) = CELL_DOOR;
         // z=1 should not be exposed (door at z=2 blocks)
         expect(IsExposedToSky(3, 3, 1) == false);
     }
 
     it("should not block sky when not present") {
         InitTestGrid(8, 8);
-        grid[0][3][3] = CELL_WALL;
-        grid[1][3][3] = CELL_AIR;
+        GRID(3, 3, 0) = CELL_WALL;
+        GRID(3, 3, 1) = CELL_AIR;
         // No door or floor above — exposed
         expect(IsExposedToSky(3, 3, 1) == true);
     }
@@ -230,7 +230,7 @@ describe(door_blueprint_placement) {
         InitDesignations();
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
-                grid[0][y][x] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
         int result = CreateRecipeBlueprint(3, 3, 1, CONSTRUCTION_LEAF_DOOR);
         expect(result == -1);
     }
@@ -240,8 +240,8 @@ describe(door_blueprint_placement) {
         InitDesignations();
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
-                grid[0][y][x] = CELL_WALL;
-        grid[1][2][3] = CELL_WALL;
+                GRID(x, y, 0) = CELL_WALL;
+        GRID(3, 2, 1) = CELL_WALL;
         SetWallMaterial(3, 2, 1, MAT_GRANITE);
         int result = CreateRecipeBlueprint(3, 3, 1, CONSTRUCTION_LEAF_DOOR);
         expect(result >= 0);
@@ -252,8 +252,8 @@ describe(door_blueprint_placement) {
         InitDesignations();
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
-                grid[0][y][x] = CELL_WALL;
-        grid[1][2][3] = CELL_DOOR;
+                GRID(x, y, 0) = CELL_WALL;
+        GRID(3, 2, 1) = CELL_DOOR;
         int result = CreateRecipeBlueprint(3, 3, 1, CONSTRUCTION_LEAF_DOOR);
         expect(result >= 0);
     }

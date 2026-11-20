@@ -26,9 +26,9 @@ static void SetupFlatGrid(void) {
     // z=0 is solid ground, z=1 is walkable air
     for (int y = 0; y < 10; y++) {
         for (int x = 0; x < 10; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
-            grid[1][y][x] = CELL_AIR;
+            GRID(x, y, 1) = CELL_AIR;
             SET_FLOOR(x, y, 1);
         }
     }
@@ -790,7 +790,7 @@ describe(eating_starving_unassigns_job) {
         movers[mi].hunger = 0.05f;
 
         // Set up a mine designation at (3,3,1) with 75% progress
-        grid[1][3][3] = CELL_WALL;
+        GRID(3, 3, 1) = CELL_WALL;
         SetWallMaterial(3, 3, 1, MAT_GRANITE);
         DesignateMine(3, 3, 1);
         Designation* d = GetDesignation(3, 3, 1);
@@ -836,7 +836,7 @@ describe(eating_starving_unassigns_job) {
         int mi = SetupMover(1, 1);
 
         // Set up a mine designation at (3,3,1) with 75% progress
-        grid[1][3][3] = CELL_WALL;
+        GRID(3, 3, 1) = CELL_WALL;
         SetWallMaterial(3, 3, 1, MAT_GRANITE);
         DesignateMine(3, 3, 1);
         Designation* d = GetDesignation(3, 3, 1);
@@ -915,7 +915,7 @@ describe(unassign_job_pickup) {
         int m2 = SetupMover(2, 1);
 
         // Place a wall to mine at (4,1,1)
-        grid[1][1][4] = CELL_WALL;
+        GRID(4, 1, 1) = CELL_WALL;
         SetWallMaterial(4, 1, 1, MAT_GRANITE);
 
         // Designate it for mining, assign to mover 1 with 75% progress

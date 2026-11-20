@@ -140,7 +140,7 @@ describe(steam_rising) {
         for (int z = 1; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_AIR;
+                    GRID(x, y, z) = CELL_AIR;
                 }
             }
         }
@@ -188,7 +188,7 @@ describe(steam_rising) {
         // Make z=1 all walls (ceiling)
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[1][y][x] = CELL_WALL;
+                GRID(x, y, 1) = CELL_WALL;
             }
         }
         
@@ -219,7 +219,7 @@ describe(steam_from_boiling) {
         gridDepth = 2;
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;
             }
         }
         
@@ -264,7 +264,7 @@ describe(steam_condensation) {
         gridDepth = 2;
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[1][y][x] = CELL_AIR;
+                GRID(x, y, 1) = CELL_AIR;
             }
         }
         
@@ -323,9 +323,9 @@ describe(water_cycle) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
                     if (x == 0 || x == gridWidth-1 || y == 0 || y == gridHeight-1) {
-                        grid[z][y][x] = CELL_WALL;
+                        GRID(x, y, z) = CELL_WALL;
                     } else {
-                        grid[z][y][x] = CELL_AIR;
+                        GRID(x, y, z) = CELL_AIR;
                         if (z == 0) SET_FLOOR(x, y, 0);
                     }
                 }
@@ -395,7 +395,7 @@ describe(steam_spreading) {
         // Ceiling at z=1
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[1][y][x] = CELL_WALL;
+                GRID(x, y, 1) = CELL_WALL;
             }
         }
         
@@ -450,7 +450,7 @@ describe(heaters_evaporate_water) {
         // Make z=1 all walls (ceiling)
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[1][y][x] = CELL_WALL;
+                GRID(x, y, 1) = CELL_WALL;
             }
         }
         

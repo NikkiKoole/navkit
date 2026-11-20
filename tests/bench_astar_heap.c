@@ -203,7 +203,7 @@ static int HeapAStar(Point s, Point g, bool useGen) {
         // ramp up
         if (CanWalkUpRampAt(cx, cy, cz)) {
             int hdx, hdy;
-            GetRampHighSideOffset(grid[cz][cy][cx], &hdx, &hdy);
+            GetRampHighSideOffset(GRID(cx, cy, cz), &hdx, &hdy);
             int ex = cx + hdx, ey = cy + hdy, ez = cz + 1;
             if (ex >= 0 && ex < gridWidth && ey >= 0 && ey < gridHeight && ez < gridDepth) {
                 int nid = NodeId(ex, ey, ez);
@@ -224,7 +224,7 @@ static int HeapAStar(Point s, Point g, bool useGen) {
             for (int i = 0; i < 4; i++) {
                 int rx = cx + off[i][0], ry = cy + off[i][1], rz = cz - 1;
                 if (rx < 0 || rx >= gridWidth || ry < 0 || ry >= gridHeight) continue;
-                if (grid[rz][ry][rx] != match[i]) continue;
+                if (GRID(rx, ry, rz) != match[i]) continue;
                 if (!IsCellWalkableAt(rz, ry, rx)) continue;
                 int nid = NodeId(rx, ry, rz);
                 Touch(nid, useGen);
@@ -255,7 +255,7 @@ static void MakeSerpentine(int w, int h) {
         int gapX = ((y / 8) % 2 == 0) ? w - 2 : 1;
         for (int x = 0; x < w; x++) {
             if (x == gapX) continue;
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
         }
     }
 }

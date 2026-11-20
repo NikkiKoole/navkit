@@ -38,9 +38,9 @@ describe(floordirt_initialization) {
             "........\n");
         InitFloorDirt();
 
-        floorDirtGrid[0][0][2] = 100;
-        floorDirtGrid[0][1][4] = 200;
-        floorDirtGrid[1][0][3] = 150;
+        FLOOR_DIRT(2, 0, 0) = 100;
+        FLOOR_DIRT(4, 1, 0) = 200;
+        FLOOR_DIRT(3, 0, 1) = 150;
 
         expect(GetFloorDirt(2, 0, 0) == 100);
         expect(GetFloorDirt(4, 1, 0) == 200);
@@ -63,7 +63,7 @@ describe(floordirt_dirt_source) {
         InitTestGrid(8, 4);
         InitFloorDirt();
 
-        grid[0][1][2] = CELL_WALL;
+        GRID(2, 1, 0) = CELL_WALL;
         SetWallMaterial(2, 1, 0, MAT_DIRT);
         SetWallNatural(2, 1, 0);
 
@@ -74,10 +74,10 @@ describe(floordirt_dirt_source) {
         InitTestGrid(8, 4);
         InitFloorDirt();
 
-        grid[0][0][0] = CELL_WALL; SetWallMaterial(0, 0, 0, MAT_CLAY); SetWallNatural(0, 0, 0);
-        grid[0][0][1] = CELL_WALL; SetWallMaterial(1, 0, 0, MAT_SAND); SetWallNatural(1, 0, 0);
-        grid[0][0][2] = CELL_WALL; SetWallMaterial(2, 0, 0, MAT_GRAVEL); SetWallNatural(2, 0, 0);
-        grid[0][0][3] = CELL_WALL; SetWallMaterial(3, 0, 0, MAT_PEAT); SetWallNatural(3, 0, 0);
+        GRID(0, 0, 0) = CELL_WALL; SetWallMaterial(0, 0, 0, MAT_CLAY); SetWallNatural(0, 0, 0);
+        GRID(1, 0, 0) = CELL_WALL; SetWallMaterial(1, 0, 0, MAT_SAND); SetWallNatural(1, 0, 0);
+        GRID(2, 0, 0) = CELL_WALL; SetWallMaterial(2, 0, 0, MAT_GRAVEL); SetWallNatural(2, 0, 0);
+        GRID(3, 0, 0) = CELL_WALL; SetWallMaterial(3, 0, 0, MAT_PEAT); SetWallNatural(3, 0, 0);
 
         expect(IsDirtSource(0, 0, 0) == true);
         expect(IsDirtSource(1, 0, 0) == true);
@@ -90,10 +90,10 @@ describe(floordirt_dirt_source) {
         InitFloorDirt();
 
         // Dirt at z=0, air at z=1 (movers walk at z=1)
-        grid[0][1][2] = CELL_WALL;
+        GRID(2, 1, 0) = CELL_WALL;
         SetWallMaterial(2, 1, 0, MAT_DIRT);
         SetWallNatural(2, 1, 0);
-        grid[1][1][2] = CELL_AIR;
+        GRID(2, 1, 1) = CELL_AIR;
 
         expect(IsDirtSource(2, 1, 1) == true);
     }
@@ -102,7 +102,7 @@ describe(floordirt_dirt_source) {
         InitTestGrid(8, 4);
         InitFloorDirt();
 
-        grid[0][1][2] = CELL_WALL;
+        GRID(2, 1, 0) = CELL_WALL;
         SetWallMaterial(2, 1, 0, MAT_GRANITE);
         SetWallNatural(2, 1, 0);
 
@@ -113,7 +113,7 @@ describe(floordirt_dirt_source) {
         InitTestGrid(8, 4);
         InitFloorDirt();
 
-        grid[0][1][2] = CELL_WALL;
+        GRID(2, 1, 0) = CELL_WALL;
         SetWallMaterial(2, 1, 0, MAT_DIRT);
         // NOT calling SetWallNatural - this is constructed
 
@@ -124,7 +124,7 @@ describe(floordirt_dirt_source) {
         InitTestGrid(8, 4);
         InitFloorDirt();
 
-        grid[0][1][2] = CELL_AIR;
+        GRID(2, 1, 0) = CELL_AIR;
 
         expect(IsDirtSource(2, 1, 0) == false);
     }
@@ -139,7 +139,7 @@ describe(floordirt_dirt_target) {
         InitTestGrid(8, 4);
         InitFloorDirt();
 
-        grid[1][1][2] = CELL_AIR;
+        GRID(2, 1, 1) = CELL_AIR;
         SET_FLOOR(2, 1, 1);
 
         expect(IsDirtTarget(2, 1, 1) == true);
@@ -150,10 +150,10 @@ describe(floordirt_dirt_target) {
         InitFloorDirt();
 
         // Constructed (non-natural) wall at z=0, air at z=1
-        grid[0][1][2] = CELL_WALL;
+        GRID(2, 1, 0) = CELL_WALL;
         SetWallMaterial(2, 1, 0, MAT_OAK);
         // NOT calling SetWallNatural - this is constructed
-        grid[1][1][2] = CELL_AIR;
+        GRID(2, 1, 1) = CELL_AIR;
 
         expect(IsDirtTarget(2, 1, 1) == true);
     }
@@ -163,10 +163,10 @@ describe(floordirt_dirt_target) {
         InitFloorDirt();
 
         // Natural wall at z=0
-        grid[0][1][2] = CELL_WALL;
+        GRID(2, 1, 0) = CELL_WALL;
         SetWallMaterial(2, 1, 0, MAT_GRANITE);
         SetWallNatural(2, 1, 0);
-        grid[1][1][2] = CELL_AIR;
+        GRID(2, 1, 1) = CELL_AIR;
 
         expect(IsDirtTarget(2, 1, 1) == false);
     }
@@ -175,7 +175,7 @@ describe(floordirt_dirt_target) {
         InitTestGrid(8, 4);
         InitFloorDirt();
 
-        grid[1][1][2] = CELL_AIR;
+        GRID(2, 1, 1) = CELL_AIR;
 
         expect(IsDirtTarget(2, 1, 1) == false);
     }
@@ -194,10 +194,10 @@ describe(floordirt_tracking) {
         dirtActiveCells = 0;
 
         // Dirt at (2,1) z=0, floor at (3,1) z=1
-        grid[0][1][2] = CELL_WALL; SetWallMaterial(2, 1, 0, MAT_DIRT); SetWallNatural(2, 1, 0);
-        grid[0][1][3] = CELL_WALL; SetWallMaterial(3, 1, 0, MAT_OAK); // constructed
-        grid[1][1][2] = CELL_AIR;
-        grid[1][1][3] = CELL_AIR;
+        GRID(2, 1, 0) = CELL_WALL; SetWallMaterial(2, 1, 0, MAT_DIRT); SetWallNatural(2, 1, 0);
+        GRID(3, 1, 0) = CELL_WALL; SetWallMaterial(3, 1, 0, MAT_OAK); // constructed
+        GRID(2, 1, 1) = CELL_AIR;
+        GRID(3, 1, 1) = CELL_AIR;
 
         expect(GetFloorDirt(3, 1, 1) == 0);
 
@@ -216,10 +216,10 @@ describe(floordirt_tracking) {
         dirtActiveCells = 0;
 
         // Two constructed walls at z=0
-        grid[0][1][2] = CELL_WALL; SetWallMaterial(2, 1, 0, MAT_OAK); // constructed
-        grid[0][1][3] = CELL_WALL; SetWallMaterial(3, 1, 0, MAT_OAK); // constructed
-        grid[1][1][2] = CELL_AIR;
-        grid[1][1][3] = CELL_AIR;
+        GRID(2, 1, 0) = CELL_WALL; SetWallMaterial(2, 1, 0, MAT_OAK); // constructed
+        GRID(3, 1, 0) = CELL_WALL; SetWallMaterial(3, 1, 0, MAT_OAK); // constructed
+        GRID(2, 1, 1) = CELL_AIR;
+        GRID(3, 1, 1) = CELL_AIR;
 
         MoverTrackDirt(0, 2, 1, 1);
         MoverTrackDirt(0, 3, 1, 1);
@@ -234,9 +234,9 @@ describe(floordirt_tracking) {
         floorDirtEnabled = true;
         dirtActiveCells = 0;
 
-        grid[0][1][3] = CELL_WALL; SetWallMaterial(3, 1, 0, MAT_OAK); // constructed
-        grid[1][1][2] = CELL_AIR;
-        grid[1][1][3] = CELL_AIR;
+        GRID(3, 1, 0) = CELL_WALL; SetWallMaterial(3, 1, 0, MAT_OAK); // constructed
+        GRID(2, 1, 1) = CELL_AIR;
+        GRID(3, 1, 1) = CELL_AIR;
 
         MoverTrackDirt(0, 2, 1, 1);  // air
         MoverTrackDirt(0, 3, 1, 1);  // floor
@@ -250,10 +250,10 @@ describe(floordirt_tracking) {
         floorDirtEnabled = true;
         dirtActiveCells = 0;
 
-        grid[0][1][2] = CELL_WALL; SetWallMaterial(2, 1, 0, MAT_DIRT); SetWallNatural(2, 1, 0);
-        grid[0][1][3] = CELL_WALL; SetWallMaterial(3, 1, 0, MAT_OAK); // constructed
-        grid[1][1][2] = CELL_AIR;
-        grid[1][1][3] = CELL_AIR;
+        GRID(2, 1, 0) = CELL_WALL; SetWallMaterial(2, 1, 0, MAT_DIRT); SetWallNatural(2, 1, 0);
+        GRID(3, 1, 0) = CELL_WALL; SetWallMaterial(3, 1, 0, MAT_OAK); // constructed
+        GRID(2, 1, 1) = CELL_AIR;
+        GRID(3, 1, 1) = CELL_AIR;
 
         // Walk back and forth 3 times
         MoverTrackDirt(0, 2, 1, 1);
@@ -272,13 +272,13 @@ describe(floordirt_tracking) {
         floorDirtEnabled = true;
         dirtActiveCells = 0;
 
-        grid[0][1][2] = CELL_WALL; SetWallMaterial(2, 1, 0, MAT_DIRT); SetWallNatural(2, 1, 0);
-        grid[0][1][3] = CELL_WALL; SetWallMaterial(3, 1, 0, MAT_OAK); // constructed
-        grid[1][1][2] = CELL_AIR;
-        grid[1][1][3] = CELL_AIR;
+        GRID(2, 1, 0) = CELL_WALL; SetWallMaterial(2, 1, 0, MAT_DIRT); SetWallNatural(2, 1, 0);
+        GRID(3, 1, 0) = CELL_WALL; SetWallMaterial(3, 1, 0, MAT_OAK); // constructed
+        GRID(2, 1, 1) = CELL_AIR;
+        GRID(3, 1, 1) = CELL_AIR;
 
         // Set dirt close to max
-        floorDirtGrid[1][1][3] = 254;
+        FLOOR_DIRT(3, 1, 1) = 254;
 
         MoverTrackDirt(0, 2, 1, 1);
         MoverTrackDirt(0, 3, 1, 1);
@@ -292,10 +292,10 @@ describe(floordirt_tracking) {
         floorDirtEnabled = false;
         dirtActiveCells = 0;
 
-        grid[0][1][2] = CELL_WALL; SetWallMaterial(2, 1, 0, MAT_DIRT); SetWallNatural(2, 1, 0);
-        grid[0][1][3] = CELL_WALL; SetWallMaterial(3, 1, 0, MAT_OAK);
-        grid[1][1][2] = CELL_AIR;
-        grid[1][1][3] = CELL_AIR;
+        GRID(2, 1, 0) = CELL_WALL; SetWallMaterial(2, 1, 0, MAT_DIRT); SetWallNatural(2, 1, 0);
+        GRID(3, 1, 0) = CELL_WALL; SetWallMaterial(3, 1, 0, MAT_OAK);
+        GRID(2, 1, 1) = CELL_AIR;
+        GRID(3, 1, 1) = CELL_AIR;
 
         MoverTrackDirt(0, 2, 1, 1);
         MoverTrackDirt(0, 3, 1, 1);
@@ -312,9 +312,9 @@ describe(floordirt_tracking) {
         dirtActiveCells = 0;
 
         // Dirt at z=0, floor flag at z=1
-        grid[0][1][2] = CELL_WALL; SetWallMaterial(2, 1, 0, MAT_DIRT); SetWallNatural(2, 1, 0);
-        grid[1][1][2] = CELL_AIR;
-        grid[1][1][3] = CELL_AIR;
+        GRID(2, 1, 0) = CELL_WALL; SetWallMaterial(2, 1, 0, MAT_DIRT); SetWallNatural(2, 1, 0);
+        GRID(2, 1, 1) = CELL_AIR;
+        GRID(3, 1, 1) = CELL_AIR;
         SET_FLOOR(3, 1, 1);
         SetFloorMaterial(3, 1, 1, MAT_OAK);
 
@@ -331,9 +331,9 @@ describe(floordirt_tracking) {
         dirtActiveCells = 0;
 
         // Dirt at z=0, stone floor at z=1
-        grid[0][1][2] = CELL_WALL; SetWallMaterial(2, 1, 0, MAT_DIRT); SetWallNatural(2, 1, 0);
-        grid[1][1][2] = CELL_AIR;
-        grid[1][1][3] = CELL_AIR;
+        GRID(2, 1, 0) = CELL_WALL; SetWallMaterial(2, 1, 0, MAT_DIRT); SetWallNatural(2, 1, 0);
+        GRID(2, 1, 1) = CELL_AIR;
+        GRID(3, 1, 1) = CELL_AIR;
         SET_FLOOR(3, 1, 1);
         SetFloorMaterial(3, 1, 1, MAT_GRANITE);
 
@@ -509,14 +509,14 @@ describe(floordirt_per_mover) {
         dirtActiveCells = 0;
 
         // Dirt at z=0, floor at z=1
-        grid[0][1][2] = CELL_WALL; SetWallMaterial(2, 1, 0, MAT_DIRT); SetWallNatural(2, 1, 0);
-        grid[0][1][4] = CELL_WALL; SetWallMaterial(4, 1, 0, MAT_DIRT); SetWallNatural(4, 1, 0);
-        grid[0][1][3] = CELL_WALL; SetWallMaterial(3, 1, 0, MAT_OAK); // constructed
-        grid[0][1][5] = CELL_WALL; SetWallMaterial(5, 1, 0, MAT_OAK); // constructed
-        grid[1][1][2] = CELL_AIR;
-        grid[1][1][3] = CELL_AIR;
-        grid[1][1][4] = CELL_AIR;
-        grid[1][1][5] = CELL_AIR;
+        GRID(2, 1, 0) = CELL_WALL; SetWallMaterial(2, 1, 0, MAT_DIRT); SetWallNatural(2, 1, 0);
+        GRID(4, 1, 0) = CELL_WALL; SetWallMaterial(4, 1, 0, MAT_DIRT); SetWallNatural(4, 1, 0);
+        GRID(3, 1, 0) = CELL_WALL; SetWallMaterial(3, 1, 0, MAT_OAK); // constructed
+        GRID(5, 1, 0) = CELL_WALL; SetWallMaterial(5, 1, 0, MAT_OAK); // constructed
+        GRID(2, 1, 1) = CELL_AIR;
+        GRID(3, 1, 1) = CELL_AIR;
+        GRID(4, 1, 1) = CELL_AIR;
+        GRID(5, 1, 1) = CELL_AIR;
 
         // Mover 0 walks dirt->floor at (3,1)
         MoverTrackDirt(0, 2, 1, 1);
@@ -536,8 +536,8 @@ describe(floordirt_per_mover) {
         floorDirtEnabled = true;
         dirtActiveCells = 0;
 
-        grid[0][1][3] = CELL_WALL; SetWallMaterial(3, 1, 0, MAT_OAK);
-        grid[1][1][3] = CELL_AIR;
+        GRID(3, 1, 0) = CELL_WALL; SetWallMaterial(3, 1, 0, MAT_OAK);
+        GRID(3, 1, 1) = CELL_AIR;
 
         // First call for mover 0 - should not track (no prev cell)
         MoverTrackDirt(0, 3, 1, 1);
@@ -551,10 +551,10 @@ describe(floordirt_per_mover) {
         floorDirtEnabled = true;
         dirtActiveCells = 0;
 
-        grid[0][1][2] = CELL_WALL; SetWallMaterial(2, 1, 0, MAT_DIRT); SetWallNatural(2, 1, 0);
-        grid[0][1][3] = CELL_WALL; SetWallMaterial(3, 1, 0, MAT_OAK);
-        grid[1][1][2] = CELL_AIR;
-        grid[1][1][3] = CELL_AIR;
+        GRID(2, 1, 0) = CELL_WALL; SetWallMaterial(2, 1, 0, MAT_DIRT); SetWallNatural(2, 1, 0);
+        GRID(3, 1, 0) = CELL_WALL; SetWallMaterial(3, 1, 0, MAT_OAK);
+        GRID(2, 1, 1) = CELL_AIR;
+        GRID(3, 1, 1) = CELL_AIR;
 
         MoverTrackDirt(0, 2, 1, 1);
         // Staying in same cell

@@ -184,8 +184,8 @@ static float RunMoverForGameHours(float gameHours, float testDayLength) {
     InitGridWithSizeAndChunkSize(64, 4, 64, 4);
     for (int x = 0; x < 64; x++) {
         for (int y = 0; y < 4; y++) {
-            grid[0][y][x] = CELL_WALL;
-            grid[1][y][x] = CELL_AIR;
+            GRID(x, y, 0) = CELL_WALL;
+            GRID(x, y, 1) = CELL_AIR;
         }
     }
     ClearMovers();

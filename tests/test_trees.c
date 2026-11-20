@@ -40,7 +40,7 @@ static void SetupBasicGrid(void) {
     // Set z=0 as dirt floor
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
             SetWallNatural(x, y, 0);
         }
@@ -56,7 +56,7 @@ static int CountCellType(CellType type) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (grid[z][y][x] == type) count++;
+                if (GRID(x, y, z) == type) count++;
             }
         }
     }
@@ -76,7 +76,7 @@ static int CountStandingTrunks(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (grid[z][y][x] == CELL_TREE_TRUNK) {
+                if (GRID(x, y, z) == CELL_TREE_TRUNK) {
                     count++;
                 }
             }
@@ -98,7 +98,7 @@ static int CountFelledTrunks(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (grid[z][y][x] == CELL_TREE_FELLED) {
+                if (GRID(x, y, z) == CELL_TREE_FELLED) {
                     count++;
                 }
             }
@@ -111,7 +111,7 @@ static bool ChopFirstFelledTrunk(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (grid[z][y][x] == CELL_TREE_FELLED) {
+                if (GRID(x, y, z) == CELL_TREE_FELLED) {
                     CompleteChopFelledDesignation(x, y, z, -1);
                     return true;
                 }
@@ -133,7 +133,7 @@ describe(tree_basic_growth) {
 
         // Place sapling at z=1 (above dirt)
         PlaceSapling(5, 5, 1, MAT_OAK);
-        expect(grid[1][5][5] == CELL_SAPLING);
+        expect(GRID(5, 5, 1) == CELL_SAPLING);
 
         // Run growth ticks until sapling becomes young tree (CELL_TREE_BRANCH)
         float originalGH = saplingGrowGH;
@@ -144,7 +144,7 @@ describe(tree_basic_growth) {
         }
 
         // Sapling should have become young tree (branch cell)
-        expect(grid[1][5][5] == CELL_TREE_BRANCH);
+        expect(GRID(5, 5, 1) == CELL_TREE_BRANCH);
 
         saplingGrowGH = originalGH;
     }
@@ -169,7 +169,7 @@ describe(tree_basic_growth) {
         }
 
         // Should have matured into trunk
-        expect(grid[1][5][5] == CELL_TREE_TRUNK);
+        expect(GRID(5, 5, 1) == CELL_TREE_TRUNK);
 
         saplingGrowGH = originalSapGH;
         trunkGrowGH = originalTrunkGH;
@@ -184,12 +184,12 @@ describe(tree_basic_growth) {
         TreeGrowFull(5, 5, 1, MAT_OAK);
         
         // Should have trunk
-        expect(grid[1][5][5] == CELL_TREE_TRUNK);
+        expect(GRID(5, 5, 1) == CELL_TREE_TRUNK);
         
         // Should have some trunk height (count trunk + tapered branch cells)
         int trunkHeight = 0;
         for (int z = 1; z < gridDepth; z++) {
-            CellType c = grid[z][5][5];
+            CellType c = GRID(5, 5, z);
             if (c == CELL_TREE_TRUNK || c == CELL_TREE_BRANCH) trunkHeight++;
             else break;
         }
@@ -207,7 +207,7 @@ describe(tree_basic_growth) {
         TreeGrowYoung(5, 5, 1, MAT_OAK);
 
         // Should have branch (young trunk)
-        expect(grid[1][5][5] == CELL_TREE_BRANCH);
+        expect(GRID(5, 5, 1) == CELL_TREE_BRANCH);
         expect(IsYoungTreeBase(5, 5, 1) == true);
 
         // Should have some leaves
@@ -243,8 +243,8 @@ describe(tree_sapling_drops) {
         
         // Tree should be gone (base is air or felled trunk)
         bool baseClearOrFelled =
-            (grid[1][5][5] == CELL_AIR) ||
-            (grid[1][5][5] == CELL_TREE_FELLED);
+            (GRID(5, 5, 1) == CELL_AIR) ||
+            (GRID(5, 5, 1) == CELL_TREE_FELLED);
         expect(baseClearOrFelled);
         
         // Should have dropped sapling items
@@ -294,7 +294,7 @@ describe(sapling_gather_job) {
         
         // Place a sapling
         PlaceSapling(5, 5, 1, MAT_OAK);
-        expect(grid[1][5][5] == CELL_SAPLING);
+        expect(GRID(5, 5, 1) == CELL_SAPLING);
         
         // Designate sapling for gathering
         DesignateGatherSapling(5, 5, 1);
@@ -304,7 +304,7 @@ describe(sapling_gather_job) {
         CompleteGatherSaplingDesignation(5, 5, 1, -1);
         
         // Sapling cell should be gone
-        expect(grid[1][5][5] == CELL_AIR);
+        expect(GRID(5, 5, 1) == CELL_AIR);
         
         // Sapling item should exist
         int saplingCount = CountSaplingItems();
@@ -321,9 +321,9 @@ describe(sapling_gather_job) {
         
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 4; y++) {
-                grid[0][y][x] = CELL_WALL;  // Solid ground
+                GRID(x, y, 0) = CELL_WALL;  // Solid ground
                 SetWallMaterial(x, y, 0, MAT_DIRT);
-                grid[1][y][x] = CELL_AIR;   // Air above (walkable)
+                GRID(x, y, 1) = CELL_AIR;   // Air above (walkable)
             }
         }
         
@@ -350,7 +350,7 @@ describe(sapling_gather_job) {
         // Place a sapling at (5,1)
         int saplingX = 5, saplingY = 1, saplingZ = workZ;
         PlaceSapling(saplingX, saplingY, saplingZ, MAT_OAK);
-        expect(grid[saplingZ][saplingY][saplingX] == CELL_SAPLING);
+        expect(GRID(saplingX, saplingY, saplingZ) == CELL_SAPLING);
         
         // Disable tree growth for this test (prevent sapling from growing into trunk)
         float originalGrowGH = saplingGrowGH;
@@ -370,7 +370,7 @@ describe(sapling_gather_job) {
             AssignJobs();
             JobsTick();
             
-            if (grid[saplingZ][saplingY][saplingX] == CELL_AIR && CountSaplingItems() > 0) {
+            if (GRID(saplingX, saplingY, saplingZ) == CELL_AIR && CountSaplingItems() > 0) {
                 saplingGathered = true;
                 break;
             }
@@ -378,7 +378,7 @@ describe(sapling_gather_job) {
         
         // Verify sapling was gathered
         expect(saplingGathered == true);
-        expect(grid[saplingZ][saplingY][saplingX] == CELL_AIR);
+        expect(GRID(saplingX, saplingY, saplingZ) == CELL_AIR);
         
         // Verify sapling item was spawned
         expect(CountSaplingItems() > 0);
@@ -406,7 +406,7 @@ describe(sapling_plant_job) {
         
         // Target location for planting
         int plantX = 6, plantY = 6, plantZ = 1;
-        expect(grid[plantZ][plantY][plantX] == CELL_AIR);
+        expect(GRID(plantX, plantY, plantZ) == CELL_AIR);
         
         // Designate location for planting
         DesignatePlantSapling(plantX, plantY, plantZ);
@@ -419,7 +419,7 @@ describe(sapling_plant_job) {
         CompletePlantSaplingDesignation(plantX, plantY, plantZ, MAT_OAK, -1);
         
         // Sapling should be planted
-        expect(grid[plantZ][plantY][plantX] == CELL_SAPLING);
+        expect(GRID(plantX, plantY, plantZ) == CELL_SAPLING);
         
         // Item should be consumed
         expect(CountSaplingItems() == 0);
@@ -435,9 +435,9 @@ describe(sapling_plant_job) {
         
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 4; y++) {
-                grid[0][y][x] = CELL_WALL;  // Solid ground
+                GRID(x, y, 0) = CELL_WALL;  // Solid ground
                 SetWallMaterial(x, y, 0, MAT_DIRT);
-                grid[1][y][x] = CELL_AIR;   // Air above (walkable)
+                GRID(x, y, 1) = CELL_AIR;   // Air above (walkable)
             }
         }
         
@@ -468,7 +468,7 @@ describe(sapling_plant_job) {
         
         // Designate plant location at (6,1) - AIR cell
         int plantX = 6, plantY = 1, plantZ = workZ;
-        expect(grid[plantZ][plantY][plantX] == CELL_AIR);
+        expect(GRID(plantX, plantY, plantZ) == CELL_AIR);
         DesignatePlantSapling(plantX, plantY, plantZ);
         expect(HasPlantSaplingDesignation(plantX, plantY, plantZ) == true);
         
@@ -479,7 +479,7 @@ describe(sapling_plant_job) {
             AssignJobs();
             JobsTick();
             
-            if (grid[plantZ][plantY][plantX] == CELL_SAPLING) {
+            if (GRID(plantX, plantY, plantZ) == CELL_SAPLING) {
                 saplingPlanted = true;
                 break;
             }
@@ -487,7 +487,7 @@ describe(sapling_plant_job) {
         
         // Verify sapling was planted
         expect(saplingPlanted == true);
-        expect(grid[plantZ][plantY][plantX] == CELL_SAPLING);
+        expect(GRID(plantX, plantY, plantZ) == CELL_SAPLING);
         
         // Verify item was consumed
         expect(CountSaplingItems() == 0);
@@ -519,7 +519,7 @@ describe(tree_organic_shapes) {
             // Measure trunk height (includes tapered branch cells at top)
             int h = 0;
             for (int z = 1; z < gridDepth; z++) {
-                CellType c = grid[z][4][x];
+                CellType c = GRID(x, 4, z);
                 if (c == CELL_TREE_TRUNK || c == CELL_TREE_BRANCH) h++;
                 else break;
             }
@@ -545,7 +545,7 @@ describe(tree_organic_shapes) {
         // Find trunk top (includes tapered branch cells at top)
         int topZ = 1;
         for (int z = 1; z < gridDepth; z++) {
-            if (grid[z][5][5] == CELL_TREE_TRUNK || grid[z][5][5] == CELL_TREE_BRANCH) topZ = z;
+            if (GRID(5, 5, z) == CELL_TREE_TRUNK || GRID(5, 5, z) == CELL_TREE_BRANCH) topZ = z;
             else break;
         }
         
@@ -560,7 +560,7 @@ describe(tree_organic_shapes) {
                     int nx = 5 + dx;
                     int ny = 5 + dy;
                     if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
-                    if (grid[checkZ][ny][nx] == CELL_TREE_LEAVES) leavesAroundTop++;
+                    if (GRID(nx, ny, checkZ) == CELL_TREE_LEAVES) leavesAroundTop++;
                 }
             }
         }
@@ -667,7 +667,7 @@ describe(sapling_growth_blocking) {
 
         // Place sapling
         PlaceSapling(5, 5, 1, MAT_OAK);
-        expect(grid[1][5][5] == CELL_SAPLING);
+        expect(GRID(5, 5, 1) == CELL_SAPLING);
 
         // Place item on same tile and rebuild spatial grid
         SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_RED);
@@ -683,7 +683,7 @@ describe(sapling_growth_blocking) {
         }
 
         // Sapling should NOT have become trunk (item blocks it)
-        expect(grid[1][5][5] == CELL_SAPLING);
+        expect(GRID(5, 5, 1) == CELL_SAPLING);
 
         saplingGrowGH = originalGH;
     }
@@ -706,7 +706,7 @@ describe(sapling_growth_blocking) {
         for (int i = 0; i < 20; i++) {
             TreesTick(1.0f);
         }
-        expect(grid[1][5][5] == CELL_SAPLING);
+        expect(GRID(5, 5, 1) == CELL_SAPLING);
 
         // Remove item and rebuild grid
         DeleteItem(itemIdx);
@@ -716,7 +716,7 @@ describe(sapling_growth_blocking) {
         for (int i = 0; i < 20; i++) {
             TreesTick(1.0f);
         }
-        expect(grid[1][5][5] == CELL_TREE_BRANCH);
+        expect(GRID(5, 5, 1) == CELL_TREE_BRANCH);
 
         saplingGrowGH = originalGH;
     }
@@ -775,7 +775,7 @@ describe(sapling_trampling) {
         
         // Place sapling
         PlaceSapling(5, 5, 1, MAT_OAK);
-        expect(grid[1][5][5] == CELL_SAPLING);
+        expect(GRID(5, 5, 1) == CELL_SAPLING);
         
         // Trample it - saplings require wearMax/2 tramples to be destroyed
         // (heavy traffic, not just one pass)
@@ -784,7 +784,7 @@ describe(sapling_trampling) {
         }
         
         // Sapling should be destroyed
-        expect(grid[1][5][5] == CELL_AIR);
+        expect(GRID(5, 5, 1) == CELL_AIR);
     }
     
     it("should not destroy trunk when trampled") {
@@ -796,13 +796,13 @@ describe(sapling_trampling) {
         
         // Grow a tree
         TreeGrowFull(5, 5, 1, MAT_OAK);
-        expect(grid[1][5][5] == CELL_TREE_TRUNK);
+        expect(GRID(5, 5, 1) == CELL_TREE_TRUNK);
         
         // Trample trunk
         TrampleGround(5, 5, 1);
         
         // Trunk should still exist (only saplings are trampled)
-        expect(grid[1][5][5] == CELL_TREE_TRUNK);
+        expect(GRID(5, 5, 1) == CELL_TREE_TRUNK);
     }
 }
 
@@ -885,7 +885,7 @@ describe(tree_banded_sweep) {
         for (int z = 0; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = z == 0 ? CELL_WALL : CELL_AIR;
+                    GRID(x, y, z) = z == 0 ? CELL_WALL : CELL_AIR;
                     if (z == 0) { SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0); }
                 }
         InitTrees();
@@ -897,21 +897,21 @@ describe(tree_banded_sweep) {
         float start[4];
         for (int i = 0; i < 4; i++) {
             PlaceSapling(10, rows[i], 1, MAT_OAK);
-            start[i] = growthTimer[1][rows[i]][10];      // saplings start at a random offset
+            start[i] = GROWTH_TIMER(10, rows[i], 1);      // saplings start at a random offset
         }
         float rate = GetVegetationGrowthRate();
         for (int t = 0; t < 8; t++) TreesTick(0.5f);     // two full sweeps
         // band b was last visited on tick b+4 and got everything up to then (b+5 ticks);
         // the rest is waiting for its next turn
         for (int i = 0; i < 4; i++) {
-            float got = growthTimer[1][rows[i]][10] - start[i];
+            float got = GROWTH_TIMER(10, rows[i], 1) - start[i];
             float want = (i + 5) * 0.5f * rate;
             expect(got > want - 0.01f && got < want + 0.01f);
         }
 
         saplingGrowGH = 0.01f;                           // now they all grow
         for (int t = 0; t < 8; t++) TreesTick(1.0f);
-        for (int i = 0; i < 4; i++) { expect(grid[1][rows[i]][10] == CELL_TREE_BRANCH); }
+        for (int i = 0; i < 4; i++) { expect(GRID(10, rows[i], 1) == CELL_TREE_BRANCH); }
         saplingGrowGH = originalGH;
     }
 }
@@ -943,7 +943,7 @@ describe(tree_activity_counter) {
             if (treeActiveCells != CountGrowingTreeCells()) match = false;
         }
         expect(match);
-        expect(grid[1][0][0] == CELL_SAPLING);       // still there...
+        expect(GRID(0, 0, 1) == CELL_SAPLING);       // still there...
         expect(treeActiveCells == 1);                // ...and still counted: it will grow
         saplingGrowGH = a; trunkGrowGH = b; youngToMatureGH = c;
     }
@@ -984,7 +984,7 @@ describe(tree_full_lifecycle) {
         // 1. Plant a sapling directly (simulating completed plant job)
         DesignatePlantSapling(5, 5, 1);
         CompletePlantSaplingDesignation(5, 5, 1, MAT_OAK, -1);
-        expect(grid[1][5][5] == CELL_SAPLING);
+        expect(GRID(5, 5, 1) == CELL_SAPLING);
         
         // 2. Fast-forward tree growth (through young tree stage to mature)
         float originalGH = saplingGrowGH;
@@ -1003,7 +1003,7 @@ describe(tree_full_lifecycle) {
         youngToMatureGH = originalYoungGH;
         
         // Tree should have grown into mature trunk
-        expect(grid[1][5][5] == CELL_TREE_TRUNK);
+        expect(GRID(5, 5, 1) == CELL_TREE_TRUNK);
         int leafCount = CountCellType(CELL_TREE_LEAVES);
         expect(leafCount > 0);
         
@@ -1013,8 +1013,8 @@ describe(tree_full_lifecycle) {
         
         // Tree should be felled (base is air or felled trunk)
         bool baseClearOrFelled =
-            (grid[1][5][5] == CELL_AIR) ||
-            (grid[1][5][5] == CELL_TREE_FELLED);
+            (GRID(5, 5, 1) == CELL_AIR) ||
+            (GRID(5, 5, 1) == CELL_TREE_FELLED);
         expect(baseClearOrFelled);
         expect(CountStandingTrunks() == 0);
         
