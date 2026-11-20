@@ -1,6 +1,7 @@
 # Per-chunk edge storage (incremental graph updates on big maps)
 
-> Status: step 1 done (2026-11-20): per-entrance edge lists. Step 2 (stable entrance ids) next.
+> Status: DONE (2026-11-20). Incremental updates no longer scale with the graph: 1 wall
+> at 512: 19.4 -> 5.1 ms (128: 4.0, 256: 4.7). See Progress.
 
 ## Progress
 
@@ -19,10 +20,25 @@ index; ladder/ramp link edges are kept unless an end is in an affected chunk.
 `NavEdgesFlat` gives the old flat sorted list on demand (debug view, tests).
 1 wall: 19.4 -> 13.8 ms; 3 walls: 27.9 -> 21.7 ms. Deep fuzz (2000 worlds) clean.
 
-Left (grows with the map): remapping every kept edge's target (~4.8 ms, the old->new
-entrance index shift), rebuilding the entrance hash + chunk index (~1.8 ms), copying and
-compacting all entrances (~1.9 ms). Stable entrance ids remove the remap and allow
-updating hash/index for touched chunks only.
+**Step 2 (done): entrance ids stay put.** Removed entrances' slots are filled from the
+end of the list (swap-remove), so only those few entrances change id; references to them
+are fixed locally (edges into an entrance come only from entrances in the same chunk
+regions, found through the chunk index, or from its ladder/ramp partner, which links back).
+The chunk index is kept up to date instead of rebuilt; the position hash and the copy of
+all old entrances are gone (a link end in an unaffected chunk finds a leftover entrance
+through the chunk index). If the index is incomplete (a chunk region over
+NAV_MAX_ENTRANCES_PER_CHUNK, which already warns), the update does a full rebuild.
+
+| 1 wall per update | before | step 1 | step 2 |
+|---|---|---|---|
+| 128x128x16 (60K edges) | | | 4.0 ms |
+| 256x256x16 (280K edges) | | | 4.7 ms |
+| 512x512x16 (1.2M edges) | 19.4 ms | 13.8 ms | 5.1 ms |
+
+3 walls at 512: 27.9 -> 21.7 -> 14.3 ms. Deep fuzz (3000 worlds) clean. What's left is
+mostly the local searches in affected chunks (one change touches ~14 chunks: the dirty
+chunk at z and z+1, their 4 neighbours, up-left, and z-1/z+2); narrowing that set is the
+next lever if needed.
 
 Full build: `NavBuildGraph` scanned all entrances for every chunk (16K chunks x 53K
 entrances at 512). It now builds the chunk entrance index first and reads from it:

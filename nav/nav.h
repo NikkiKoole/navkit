@@ -101,7 +101,6 @@ typedef struct {
 // Private scratch types (layout may change)
 typedef struct { int g, f; int parentX, parentY; bool open, closed; } NavChunkNode;
 typedef struct { int g, f; int parent; bool open, closed; } NavAbstractNode;
-typedef struct { int x, y, z; int index; int chunk1, chunk2; bool used; } NavHashEntry;
 
 typedef struct NavWorld {
     // ---- shape (read-only; change with NavResize) ----
@@ -132,9 +131,8 @@ typedef struct NavWorld {
     double hpaRefineMs;
 
     // ---- private scratch ----
-    int entranceCap, ladderCap, rampCap, entHashSize;   // current capacities (grow as needed)
+    int entranceCap, ladderCap, rampCap;   // current capacities (grow as needed)
     NavGraphEdge* flatEdges; int flatCap; unsigned flatVersion;   // NavEdgesFlat cache
-    NavEdgeVec* adjScratch;        // [entranceCap] incremental update: adj by new index (then swapped)
     bool growFailed;               // out of memory growing a list (warned)
     bool edgeOverflow;             // couldn't grow an edge list (warned)
 
@@ -146,14 +144,15 @@ typedef struct NavWorld {
     int* chunkHeapPos;             // [height][width]
     int* chunkHeap; int chunkHeapSize; int chunkHeapCap;
 
-    NavHashEntry* entHash;
-    int* oldToNew;
-    NavEntrance* oldEntrances; int oldEntranceNum;
-    int (*chunkEnts)[NAV_MAX_ENTRANCES_PER_CHUNK];
+    // incremental update scratch, [entranceCap]: removed list, moved ids, claim stamps
+    int* entScratch; int* entMoved; unsigned* entStamp; unsigned stampNow;
+    int updNewNum;                 // entrances below this survived the update; the rest are new
+    int (*chunkEnts)[NAV_MAX_ENTRANCES_PER_CHUNK];   // kept up to date by incremental updates
     bool chunkEntsOverflow;        // a chunk region had more entrances than fit (warned)
     int* chunkEntCount;
     unsigned chunkEntsVersion;     // graphVersion the chunkEnts index is complete for (else stale)
     bool* affected;                // [depth][chunksY][chunksX]
+    bool* rebuiltChunks;           // [chunks] incremental update: chunks whose entrances were rebuilt
 
     NavPoint* tempPath; int tempPathCap;
 
