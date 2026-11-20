@@ -406,7 +406,7 @@ static inline int GetCellMoveCost(int x, int y, int z) {
     
     // Furniture movement penalty (non-blocking furniture)
     {
-        extern uint8_t furnitureMoveCostGrid[][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+        extern uint8_t furnitureMoveCostGrid[];
         int furnCost = FURNITURE_MOVE_COST(x, y, z);
         if (furnCost > cost) cost = furnCost;
     }

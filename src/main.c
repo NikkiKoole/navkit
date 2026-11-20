@@ -1178,9 +1178,9 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     printf("\n");
     
     // Active cell counts
-    extern WaterCell waterGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-    extern FireCell fireGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-    extern SteamCell steamGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+    extern WaterCell waterGrid[MAX_GRID_CELLS];
+    extern FireCell fireGrid[MAX_GRID_CELLS];
+    extern SteamCell steamGrid[MAX_GRID_CELLS];
     int waterCells = 0, fireCells = 0, steamCells = 0, smokeCells = 0;
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
@@ -1196,7 +1196,7 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
            waterCells, fireCells, steamCells, smokeCells);
     
     // Smoke per z-level with cell locations
-    extern SmokeCell smokeGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+    extern SmokeCell smokeGrid[MAX_GRID_CELLS];
     int smokeTotalLevel = 0;
     int smokeMaxZ = -1;
     int highestSmokeX = -1, highestSmokeY = -1;

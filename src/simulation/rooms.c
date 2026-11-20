@@ -13,7 +13,7 @@
 #include "lighting.h"
 #include "floordirt.h"
 
-uint16_t roomGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+uint16_t roomGrid[MAX_GRID_CELLS];
 DetectedRoom rooms[MAX_DETECTED_ROOMS];
 int roomCount = 0;
 bool roomsDirty = true;

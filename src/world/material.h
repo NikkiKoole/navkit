@@ -64,25 +64,25 @@ typedef struct {
 extern MaterialDef materialDefs[];
 
 // Separate grids for wall and floor materials (like Dwarf Fortress)
-extern uint8_t wallMaterial[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern uint8_t wallMaterial[MAX_GRID_CELLS];
 #define WALL_MAT(x, y, z) (wallMaterial CELL_AT((x), (y), (z)))
-extern uint8_t floorMaterial[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern uint8_t floorMaterial[MAX_GRID_CELLS];
 #define FLOOR_MAT(x, y, z) (floorMaterial CELL_AT((x), (y), (z)))
 // Natural flags for wall and floor materials
-extern uint8_t wallNatural[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern uint8_t wallNatural[MAX_GRID_CELLS];
 #define WALL_NATURAL(x, y, z) (wallNatural CELL_AT((x), (y), (z)))
-extern uint8_t floorNatural[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern uint8_t floorNatural[MAX_GRID_CELLS];
 #define FLOOR_NATURAL(x, y, z) (floorNatural CELL_AT((x), (y), (z)))
 // Finish grids for wall and floor surfaces
-extern uint8_t wallFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern uint8_t wallFinish[MAX_GRID_CELLS];
 #define WALL_FINISH(x, y, z) (wallFinish CELL_AT((x), (y), (z)))
-extern uint8_t floorFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern uint8_t floorFinish[MAX_GRID_CELLS];
 #define FLOOR_FINISH(x, y, z) (floorFinish CELL_AT((x), (y), (z)))
 // Source item grids: what item type was used to construct this wall/floor
 // 0xFF (ITEM_NONE as uint8_t) = natural terrain or unknown
-extern uint8_t wallSourceItem[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern uint8_t wallSourceItem[MAX_GRID_CELLS];
 #define WALL_SOURCE_ITEM(x, y, z) (wallSourceItem CELL_AT((x), (y), (z)))
-extern uint8_t floorSourceItem[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern uint8_t floorSourceItem[MAX_GRID_CELLS];
 #define FLOOR_SOURCE_ITEM(x, y, z) (floorSourceItem CELL_AT((x), (y), (z)))
 
 // Wall material accessors

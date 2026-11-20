@@ -6,8 +6,8 @@
 
 Furniture furniture[MAX_FURNITURE];
 int furnitureCount = 0;
-uint8_t furnitureMoveCostGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-uint8_t capabilityGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+uint8_t furnitureMoveCostGrid[MAX_GRID_CELLS];
+uint8_t capabilityGrid[MAX_GRID_CELLS];
 
 static const FurnitureDef furnitureDefs[FURNITURE_TYPE_COUNT] = {
     [FURNITURE_NONE]       = { "None",       0.0f,   false, 0,  CAP_NONE },

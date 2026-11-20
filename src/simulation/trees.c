@@ -24,13 +24,13 @@ float youngToMatureGH = 400.0f;  // Game-hours young tree waits at full height b
 #define LEAF_TRUNK_CHECK_DIST 4   // Max distance to check for trunk connection
 
 // Simple timer grid for growth (could be optimized with a list later)
-float growthTimer[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+float growthTimer[MAX_GRID_CELLS];
 
 // Target height per tree (set when sapling becomes trunk, based on position)
-uint8_t targetHeight[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+uint8_t targetHeight[MAX_GRID_CELLS];
 
 // Harvest state per cell (only meaningful on trunk base cells)
-uint8_t treeHarvestState[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+uint8_t treeHarvestState[MAX_GRID_CELLS];
 
 // Simple hash for position-based randomness (deterministic)
 static unsigned int PositionHash(int x, int y, int z) {
@@ -605,8 +605,13 @@ void TreesTick(float tickDt) {
 
     for (int z = 0; z < gridDepth; z++) {
         for (int y = yStart; y < yEnd; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                CellType cell = GRID(x, y, z);
+            FOR_X_IN_ROW(x, ci, y, z) {
+                CellType cell = LAYER_AT(grid, ci);
+                // Only sapling/branch/trunk/leaves do anything below (growth here, counting at
+                // `counted:`); every other cell type falls through both. Skip them in one test.
+                _Static_assert(CELL_TREE_BRANCH == CELL_SAPLING + 2 && CELL_TREE_TRUNK == CELL_SAPLING + 1 &&
+                               CELL_TREE_LEAVES == CELL_SAPLING + 5, "tree cell types must stay contiguous");
+                if ((unsigned)(cell - CELL_SAPLING) > (unsigned)(CELL_TREE_LEAVES - CELL_SAPLING)) continue;
 
                 if (cell == CELL_SAPLING) {
                     if (!hasGrowing) goto counted;
@@ -670,7 +675,7 @@ void TreesTick(float tickDt) {
                 }
             counted:
                 // count what is left to do here (after this tick's growth)
-                cell = GRID(x, y, z);
+                cell = LAYER_AT(grid, ci);
                 if (cell == CELL_SAPLING || cell == CELL_TREE_BRANCH || cell == CELL_TREE_TRUNK) {
                     if (IsGrowingTreeCell(x, y, z)) treeSweepActive++;
                     if (IsRegrowingTreeCell(x, y, z)) treeSweepRegen++;

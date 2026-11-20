@@ -42,7 +42,7 @@ typedef struct {
 } WaterCell;
 
 // Water grid (same dimensions as main grid)
-extern WaterCell waterGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern WaterCell waterGrid[MAX_GRID_CELLS];
 #define WATER(x, y, z) (waterGrid CELL_AT((x), (y), (z)))
 
 // Global state

@@ -17,7 +17,7 @@ fi
 
 # Any 'layer[' that is not a declaration, a comment or inside a string literal.
 hits=$(grep -rnE "(^|[^.>A-Za-z0-9_])($layers)[[:space:]]*\[" src tests --include='*.c' --include='*.h' \
-    | grep -vE '\[MAX_GRID_DEPTH\]|\[\]\[MAX_GRID_HEIGHT\]' \
+    | grep -vE '\[MAX_GRID_CELLS\]|^[^:]+:[0-9]+:[[:space:]]*extern [A-Za-z_0-9 ]+\[\];' \
     | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)' \
     | grep -vE "//.*($layers)[[:space:]]*\[" \
     | grep -vE "\"[^\"]*($layers)[[:space:]]*\[")

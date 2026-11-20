@@ -9,7 +9,7 @@
 #include <stdlib.h>
 
 // Smoke grid storage
-SmokeCell smokeGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+SmokeCell smokeGrid[MAX_GRID_CELLS];
 
 // Global state
 bool smokeEnabled = true;
@@ -33,12 +33,12 @@ static SmokePos smokePressureQueue[SMOKE_PRESSURE_SEARCH_LIMIT];
 
 // Generation counter for visited tracking (avoids expensive memset)
 static uint16_t smokePressureGeneration = 0;
-static uint16_t smokePressureVisited[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+static uint16_t smokePressureVisited[MAX_GRID_CELLS];
 #define SMOKE_PRESSURE_VISITED(x, y, z) (smokePressureVisited CELL_AT((x), (y), (z)))
 
 // Track cells that have already risen this tick (prevents cascading through multiple z-levels)
 static uint16_t smokeRiseGeneration = 0;
-static uint16_t smokeHasRisen[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+static uint16_t smokeHasRisen[MAX_GRID_CELLS];
 #define SMOKE_HAS_RISEN(x, y, z) (smokeHasRisen CELL_AT((x), (y), (z)))
 
 // Initialize smoke system

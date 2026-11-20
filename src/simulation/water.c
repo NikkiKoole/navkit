@@ -10,7 +10,7 @@
 #include <stdlib.h>
 
 // Water grid storage - single buffer (falling sand style)
-WaterCell waterGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+WaterCell waterGrid[MAX_GRID_CELLS];
 
 // Global state
 bool waterEnabled = true;
@@ -41,7 +41,7 @@ typedef struct {
 static WaterPos pressureQueue[WATER_PRESSURE_SEARCH_LIMIT];
 
 // Generation-based visited tracking (avoids expensive memset each call)
-static uint16_t pressureVisitedGen[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+static uint16_t pressureVisitedGen[MAX_GRID_CELLS];
 #define WATER_PRESSURE_VISITED(x, y, z) (pressureVisitedGen CELL_AT((x), (y), (z)))
 static uint16_t currentPressureGen = 0;
 
@@ -646,8 +646,19 @@ void UpdateWater(void) {
     // Process from bottom to top (simple iteration, keeps early exit optimization)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                WaterCell* cell = &WATER(x, y, z);
+            FOR_X_IN_ROW(x, i, y, z) {
+                // At the start of each 16-cell run, skip the whole run if no cell in it would get
+                // past the three skips below (frozen, or stable and neither source nor drain).
+                if ((x & STORE_MASK) == 0) {
+                    int runLen = gridWidth - x < STORE_CHUNK ? gridWidth - x : STORE_CHUNK;
+                    unsigned anyWork = 0;
+                    for (int k = 0; k < runLen; k++) {
+                        WaterCell c = LAYER_AT(waterGrid, i + k);
+                        anyWork |= !c.isFrozen & (!c.stable | c.isSource | c.isDrain);
+                    }
+                    if (!anyWork) { x += runLen - 1; i += runLen - 1; continue; }
+                }
+                WaterCell* cell = &LAYER_AT(waterGrid, i);
                 
                 // Skip frozen water - it doesn't flow
                 if (cell->isFrozen) {
@@ -682,8 +693,8 @@ void UpdateWater(void) {
         wetnessSyncAccum -= wetnessIntervalGS;
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
-                for (int x = 0; x < gridWidth; x++) {
-                    int level = WATER(x, y, z).level;
+                FOR_X_IN_ROW(x, i, y, z) {
+                    int level = LAYER_AT(waterGrid, i).level;
                     if (level <= 0) continue;
                     
                     // Set wetness on the soil cell below the water
@@ -776,8 +787,16 @@ void UpdateWaterFreezing(void) {
     
     for (int z = 0; z < gridDepth; z++) {
         for (int y = yStart; y < yEnd; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                WaterCell* cell = &WATER(x, y, z);
+            FOR_X_IN_ROW(x, i, y, z) {
+                // Most of the map is dry: at the start of each 16-cell run, skip the whole run
+                // if none of it holds water (same result as testing each cell below).
+                if ((x & STORE_MASK) == 0) {
+                    int runLen = gridWidth - x < STORE_CHUNK ? gridWidth - x : STORE_CHUNK;
+                    unsigned anyLevel = 0;
+                    for (int k = 0; k < runLen; k++) anyLevel |= LAYER_AT(waterGrid, i + k).level;
+                    if (anyLevel == 0) { x += runLen - 1; i += runLen - 1; continue; }
+                }
+                WaterCell* cell = &LAYER_AT(waterGrid, i);
                 
                 // Skip empty cells
                 if (cell->level == 0) continue;

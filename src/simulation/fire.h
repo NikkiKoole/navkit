@@ -21,7 +21,7 @@ typedef struct {
 } FireCell;
 
 // Fire grid (same dimensions as main grid)
-extern FireCell fireGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern FireCell fireGrid[MAX_GRID_CELLS];
 #define FIRE(x, y, z) (fireGrid CELL_AT((x), (y), (z)))
 
 // Global state

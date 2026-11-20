@@ -8,7 +8,7 @@
 #include <string.h>
 
 // Temperature grid
-TempCell temperatureGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+TempCell temperatureGrid[MAX_GRID_CELLS];
 
 // Global state
 bool temperatureEnabled = true;

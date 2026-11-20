@@ -49,7 +49,7 @@ void SetTorchPreset(TorchPreset preset) {
 }
 
 // Light grid (per-cell computed light)
-LightCell lightGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+LightCell lightGrid[MAX_GRID_CELLS];
 
 // Light sources (sparse list)
 LightSource lightSources[MAX_LIGHT_SOURCES];

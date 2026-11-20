@@ -60,7 +60,7 @@ typedef struct {
 } TempCell;
 
 // Temperature grid (same dimensions as main grid)
-extern TempCell temperatureGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern TempCell temperatureGrid[MAX_GRID_CELLS];
 #define TEMPERATURE(x, y, z) (temperatureGrid CELL_AT((x), (y), (z)))
 
 // Global state

@@ -36,7 +36,7 @@ extern int saplingRegrowthChance;     // Chance per 10000 per interval (default 
 extern int saplingMinTreeDistance;    // Min distance from existing trees/saplings
 
 // Wear grid (parallel to main grid, all z-levels)
-extern uint16_t wearGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern uint16_t wearGrid[MAX_GRID_CELLS];
 #define WEAR(x, y, z) (wearGrid CELL_AT((x), (y), (z)))
 
 // Largest value written to wearGrid: wearMax, clamped to what uint16_t holds.

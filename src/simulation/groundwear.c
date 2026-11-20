@@ -13,7 +13,7 @@
 #include <stdlib.h>
 
 // Wear grid storage (3D)
-uint16_t wearGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+uint16_t wearGrid[MAX_GRID_CELLS];
 
 // Global state
 bool groundWearEnabled = true;
@@ -219,11 +219,11 @@ void UpdateGroundWear(void) {
     // Process all cells at all z-levels
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                CellType cell = GRID(x, y, z);
+            FOR_X_IN_ROW(x, ci, y, z) {
+                CellType cell = LAYER_AT(grid, ci);
                 
                 // Only process natural dirt tiles
-                if (!CellIsSolid(cell) || !IsWallNatural(x, y, z)) continue;
+                if (!CellIsSolid(cell) || !LAYER_AT(wallNatural, ci)) continue;
                 bool isDirt = (GetWallMaterial(x, y, z) == MAT_DIRT);
                 
                 // Skip if on fire - don't regrow grass while burning

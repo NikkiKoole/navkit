@@ -228,6 +228,44 @@ writes byte-identical saves, also after load + 200 ticks and for a v93 migration
 Gotcha: ast-grep can't see inside macro bodies (helper macros in `grid.h`/`material.h`, a
 `#define` in `mover.c`, one in `test_mover.c`): those were done by hand/regex.
 
+### Phase B: done (2026-11-21), as built
+
+Differs from the sketch above where measurements said so:
+
+- **Fixed chunk-row stride.** `STORE_CHUNKS_X` is a compile-time constant (largest map), not
+  derived from `gridWidth`: a runtime stride cost ~20-30% on whole-map sweeps. Chunks a small
+  map doesn't use are never touched (no RAM). Step 2 can keep this by reserving the layers in
+  virtual memory at the largest size, or rebuild the tables below for a runtime size.
+- **Lookup tables.** `CellIndex(x, y, z) = cellIndexTabX[x] + cellIndexTabY[y] + (z << 8)`
+  (`InitCellIndexTables`, called from `InitGridWithDimensions`). Faster than the shift/mask
+  formula (3.64 vs 3.93 ms/tick at 512).
+- **Padded chunks.** Chunks are `STORE_CHUNK_STRIDE` = 4096 + 64 elements apart: a power-of-two
+  stride put the same row of every chunk in the same L1 sets (3.80 -> 3.64 ms).
+- **Margin.** The map spans `(gridWidth + 16) / 16` chunks, so reads at x == gridWidth /
+  y == gridHeight land in cleared margin cells like the old padding did.
+- **Sweeps.** `FOR_X_IN_ROW(x, i, y, z)` walks a row with an incrementing index (same order as a
+  plain x loop) and `LAYER_AT(layer, i)` reads it. Water and freezing sweeps skip whole 16-cell
+  runs with nothing to do; TreesTick skips non-tree cells with one range test. All exact: same
+  result as before.
+- Tried and rejected (measured): row-major with runtime stride (4.05 ms), z-plane chunks
+  (z, cy, cx, ly, lx) (3.72-3.82), visiting chunks in storage order (no gain, changes order).
+
+Results (world scenario, old static build vs new, interleaved runs):
+
+| | old | new |
+|---|---|---|
+| 512 map, ms/tick (3 runs avg) | 3.44 | **3.17** (Water 1.75 -> 1.50) |
+| 1024 map, ms/tick | 9.45 | 9.51 (Water 1.76 -> 1.0, Trees 0.90 -> 0.97) |
+| 128 map peak RSS, cap 512 / cap 1024 | 109 / 171 MB | **50 / 50 MB** |
+
+Verification: old and new builds write byte-identical saves after 1200 ticks (world 512 and
+100, ladders, crafting, hubs) and for the dollhouse game. Survival can't be compared: it picks a
+random seed every run, even with `--seed` (being fixed in `games.c` by the UI agent; it is also
+the likely cause of a rare `scenarios-check` failure). A `-DNAVKIT_CELL_CHECK` build reports
+every out-of-range cell access: over all test suites, every scenario (incl. map sizes 100 and
+200), all games and all terrain generators it found one (a workshop footprint past the map
+edge), now guarded.
+
 ### Order and rules
 
 1. Wait until `ui-gamedef` (another agent's branch) is merged; then nobody else edits

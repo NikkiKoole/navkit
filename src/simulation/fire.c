@@ -15,7 +15,7 @@
 #include <stdlib.h>
 
 // Fire grid storage
-FireCell fireGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+FireCell fireGrid[MAX_GRID_CELLS];
 
 // Global state
 bool fireEnabled = true;

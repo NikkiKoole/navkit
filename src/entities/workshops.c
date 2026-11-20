@@ -640,7 +640,8 @@ int CreateWorkshop(int x, int y, int z, WorkshopType type) {
                     }
                     
                     // Set blocking flag for machinery tiles
-                    if (c == WT_BLOCK) {
+                    // (a footprint may stick out past the map edge; those tiles don't exist)
+                    if (c == WT_BLOCK && x + tx < gridWidth && y + ty < gridHeight) {
                         SET_CELL_FLAG(x + tx, y + ty, z, CELL_FLAG_WORKSHOP_BLOCK);
                     }
                 }

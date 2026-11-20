@@ -7,7 +7,7 @@
 #include <string.h>
 
 // Grid storage
-uint8_t floorDirtGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+uint8_t floorDirtGrid[MAX_GRID_CELLS];
 
 // Global state
 bool floorDirtEnabled = true;

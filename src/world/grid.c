@@ -9,11 +9,11 @@
 #include <string.h>
 #include <stdio.h>
 
-uint8_t grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-uint8_t vegetationGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-uint8_t trackConnections[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-uint8_t exploredGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+uint8_t grid[MAX_GRID_CELLS];
+uint8_t cellFlags[MAX_GRID_CELLS];
+uint8_t vegetationGrid[MAX_GRID_CELLS];
+uint8_t trackConnections[MAX_GRID_CELLS];
+uint8_t exploredGrid[MAX_GRID_CELLS];
 
 
 // Runtime dimensions - default to max
@@ -34,19 +34,56 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
     InitGridWithDimensions(width, height, MAX_GRID_DEPTH, chunkW, chunkH);
 }
 
-// High-water mark of the region any map has used (in cells, including a one-cell margin).
-// Everything outside it has never been written since startup.
-static int clearW, clearH, clearD;
+// High-water marks of what any map has used. Everything beyond has never been written.
+static int clearW, clearH;          // planes: columns/rows incl. a one-cell margin
+static int clearCX, clearCY;        // layers: storage chunks per row / chunk rows
 
 static void GrowClearRegion(void) {
-    int w = gridWidth + 1, h = gridHeight + 1, d = gridDepth + 1;
+    int w = gridWidth + 1, h = gridHeight + 1;
     if (w > MAX_GRID_WIDTH) w = MAX_GRID_WIDTH;
     if (h > MAX_GRID_HEIGHT) h = MAX_GRID_HEIGHT;
-    if (d > MAX_GRID_DEPTH) d = MAX_GRID_DEPTH;
     if (w > clearW) clearW = w;
     if (h > clearH) clearH = h;
-    if (d > clearD) clearD = d;
+    int cx = STORE_CHUNKS_FOR(gridWidth), cy = STORE_CHUNKS_FOR(gridHeight);
+    if (cx > STORE_CHUNKS_X) cx = STORE_CHUNKS_X;
+    if (cy > STORE_CHUNKS_Y) cy = STORE_CHUNKS_Y;
+    if (cx > clearCX) clearCX = cx;
+    if (cy > clearCY) clearCY = cy;
 }
+
+int cellIndexTabX[MAX_GRID_WIDTH + 1];
+int cellIndexTabY[MAX_GRID_HEIGHT + 1];
+
+void InitCellIndexTables(void) {
+    for (int x = 0; x <= MAX_GRID_WIDTH; x++) cellIndexTabX[x] = CellIndexX(x);
+    for (int y = 0; y <= MAX_GRID_HEIGHT; y++) cellIndexTabY[y] = CellIndexY(y);
+}
+
+#ifdef NAVKIT_CELL_CHECK
+// One report per call site; counts total hits. See CELL_AT in grid.h.
+int CellIndexChecked(int x, int y, int z, const char* file, int line) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        static const char* seenFile[512];
+        static int seenLine[512];
+        static int seenCount;
+        int known = 0;
+        for (int i = 0; i < seenCount; i++) {
+            if (seenLine[i] == line && seenFile[i] == file) { known = 1; break; }
+        }
+        if (!known && seenCount < 512) {
+            seenFile[seenCount] = file; seenLine[seenCount] = line; seenCount++;
+            fprintf(stderr, "CELLCHECK %s:%d out of range (%d,%d,%d) grid %dx%dx%d\n",
+                    file, line, x, y, z, gridWidth, gridHeight, gridDepth);
+        }
+        // Keep the old behaviour where it was harmless (margin), but never index outside the array.
+        if (x < 0 || y < 0 || z < 0 || z >= MAX_GRID_DEPTH ||
+            x >= STORE_CHUNKS_X * STORE_CHUNK || y >= STORE_CHUNKS_Y * STORE_CHUNK) {
+            return (int)(MAX_GRID_CELLS - 1);
+        }
+    }
+    return CellIndex(x, y, z);
+}
+#endif
 
 void ClearGridPlane(void* plane, size_t elemSize, int fillByte) {
     GrowClearRegion();
@@ -57,29 +94,28 @@ void ClearGridPlane(void* plane, size_t elemSize, int fillByte) {
     }
 }
 
+// Each chunk row's used chunks are contiguous: clear them in one go per row.
 void ClearGridLayer(void* layer, size_t elemSize, int fillByte) {
     GrowClearRegion();
     unsigned char* base = (unsigned char*)layer;
-    size_t planeBytes = (size_t)MAX_GRID_HEIGHT * MAX_GRID_WIDTH * elemSize;
-    for (int z = 0; z < clearD; z++) {
-        ClearGridPlane(base + (size_t)z * planeBytes, elemSize, fillByte);
+    size_t chunkBytes = (size_t)STORE_CHUNK_STRIDE * elemSize;
+    for (int cy = 0; cy < clearCY; cy++) {
+        memset(base + (size_t)cy * STORE_CHUNKS_X * chunkBytes, fillByte, (size_t)clearCX * chunkBytes);
     }
 }
 
 void FillGridLayer(void* layer, size_t elemSize, const void* pattern) {
     GrowClearRegion();
     unsigned char* base = (unsigned char*)layer;
-    size_t rowBytes = (size_t)MAX_GRID_WIDTH * elemSize;
-    size_t planeBytes = (size_t)MAX_GRID_HEIGHT * rowBytes;
-    for (int z = 0; z < clearD; z++) {
-        for (int y = 0; y < clearH; y++) {
-            unsigned char* row = base + (size_t)z * planeBytes + (size_t)y * rowBytes;
-            for (int x = 0; x < clearW; x++) memcpy(row + (size_t)x * elemSize, pattern, elemSize);
-        }
+    size_t rowCells = (size_t)clearCX * STORE_CHUNK_STRIDE;
+    for (int cy = 0; cy < clearCY; cy++) {
+        unsigned char* row = base + (size_t)cy * STORE_CHUNKS_X * STORE_CHUNK_STRIDE * elemSize;
+        for (size_t i = 0; i < rowCells; i++) memcpy(row + i * elemSize, pattern, elemSize);
     }
 }
 
 void InitGridWithDimensions(int width, int height, int depth, int chunkW, int chunkH) {
+    InitCellIndexTables();   // cheap, idempotent; must run before any layer access
     // Clamp to max dimensions
     if (depth > MAX_GRID_DEPTH) depth = MAX_GRID_DEPTH;
     if (depth < 1) depth = 1;

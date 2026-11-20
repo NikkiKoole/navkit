@@ -22,7 +22,7 @@
 #include <string.h>
 #include <math.h>
 
-Designation designations[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+Designation designations[MAX_GRID_CELLS];
 
 // Active designation count for early-exit optimizations
 int activeDesignationCount = 0;
@@ -44,19 +44,11 @@ static unsigned int PositionHashLocal(int x, int y, int z) {
 }
 
 void InitDesignations(void) {
-    CLEAR_GRID_LAYER(designations, 0);
-    // Set all assignedMover to -1
-    // Only the used region (plus the edge margin) was cleared; the rest is never read.
-    int maxZ = gridDepth + 1 < MAX_GRID_DEPTH ? gridDepth + 1 : MAX_GRID_DEPTH;
-    int maxY = gridHeight + 1 < MAX_GRID_HEIGHT ? gridHeight + 1 : MAX_GRID_HEIGHT;
-    int maxX = gridWidth + 1 < MAX_GRID_WIDTH ? gridWidth + 1 : MAX_GRID_WIDTH;
-    for (int z = 0; z < maxZ; z++) {
-        for (int y = 0; y < maxY; y++) {
-            for (int x = 0; x < maxX; x++) {
-                DESIGNATION(x, y, z).assignedMover = -1;
-            }
-        }
-    }
+    // Empty designation, unassigned (assignedMover = -1), in every used cell incl. the margin
+    Designation empty;
+    memset(&empty, 0, sizeof(empty));
+    empty.assignedMover = -1;
+    FILL_GRID_LAYER(designations, &empty);
     activeDesignationCount = 0;
     
     // Clear blueprints

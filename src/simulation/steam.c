@@ -11,7 +11,7 @@
 #include <stdlib.h>
 
 // Steam grid storage
-SteamCell steamGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+SteamCell steamGrid[MAX_GRID_CELLS];
 
 // Global state
 bool steamEnabled = true;
@@ -29,7 +29,7 @@ static float steamRiseAccum = 0.0f;
 
 // Track which cells have received risen steam this tick (prevents cascading through z-levels)
 static uint16_t steamRiseGeneration = 0;
-static uint16_t steamHasRisen[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+static uint16_t steamHasRisen[MAX_GRID_CELLS];
 #define STEAM_HAS_RISEN(x, y, z) (steamHasRisen CELL_AT((x), (y), (z)))
 
 // Initialize steam system

@@ -13,14 +13,14 @@
 static int spriteOverrides[CELL_TYPE_COUNT][MAT_COUNT];
 
 // Separate grids for wall and floor materials
-uint8_t wallMaterial[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-uint8_t floorMaterial[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-uint8_t wallNatural[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-uint8_t floorNatural[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-uint8_t wallFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-uint8_t floorFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-uint8_t wallSourceItem[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-uint8_t floorSourceItem[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+uint8_t wallMaterial[MAX_GRID_CELLS];
+uint8_t floorMaterial[MAX_GRID_CELLS];
+uint8_t wallNatural[MAX_GRID_CELLS];
+uint8_t floorNatural[MAX_GRID_CELLS];
+uint8_t wallFinish[MAX_GRID_CELLS];
+uint8_t floorFinish[MAX_GRID_CELLS];
+uint8_t wallSourceItem[MAX_GRID_CELLS];
+uint8_t floorSourceItem[MAX_GRID_CELLS];
 
 MaterialDef materialDefs[MAT_COUNT] = {
     //                 name       sprite                    flags         fuel  ignRes  dropsItem     insul                  burnsInto

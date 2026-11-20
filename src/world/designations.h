@@ -85,7 +85,7 @@ typedef struct {
 #define HUNT_ATTACK_WORK_TIME 0.8f    // Attack duration (~4s bare-handed, ~2s with cutting tool)
 
 // Storage: one designation per cell (sparse would be better for huge maps, but this is simple)
-extern Designation designations[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern Designation designations[MAX_GRID_CELLS];
 #define DESIGNATION(x, y, z) (designations CELL_AT((x), (y), (z)))
 
 // =============================================================================
