@@ -7,9 +7,14 @@
 // Note: CellPlacementSpec uses MaterialType and SurfaceFinish from material.h
 // Users of PlaceCellFull() should include "material.h" for full type definitions
 
-// Maximum grid dimensions (for static array allocation)
+// Maximum grid dimensions (for static array allocation). Overridable for test builds:
+// `make path1024` builds build/bin/path1024 with 1024 (docs/todo/architecture/large-worlds.md)
+#ifndef MAX_GRID_WIDTH
 #define MAX_GRID_WIDTH  512
+#endif
+#ifndef MAX_GRID_HEIGHT
 #define MAX_GRID_HEIGHT 512
+#endif
 #define MAX_GRID_DEPTH  16          // Z-levels
 #define DEFAULT_CHUNK_SIZE  16
 

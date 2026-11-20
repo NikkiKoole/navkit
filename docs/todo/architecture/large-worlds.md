@@ -158,8 +158,42 @@ this, so every headless run was the same world; now fixed.)
 - The ~1.2 s Move max in every 512 run is just the first tick: all 100 movers get a goal at
   once (100 x ~8 ms FindPath, counted under Move because `AssignNewMoverGoal` runs there).
 
+## Measured: 1024x1024x16 test build (2026-11-20)
+
+`make path1024` builds `build/bin/path1024` with the map cap raised to 1024 (static
+layers 4x: 1.7 GB reserved). Same `world` scenario, seed 16, 1200 ticks:
+
+| | 512 | 1024 |
+|---|---|---|
+| ms per tick (avg) | 5.3 | **14.3** (frame budget 16.7) |
+| Temperature (+ water freezing) | 1.6 | **5.8** |
+| Snow | 0.7 | **2.6** |
+| Water | 1.6 | 2.2 |
+| Trees | 0.7 | 1.0 |
+| Needs | 0.15 | 0.6 |
+| peak memory (RSS) | 427 MB | **1.13 GB** |
+| scenario setup (world gen + graph) | 0.85 s | 3.7 s (graph build 2.8 s) |
+| graph update, 1 wall (`bench_nav_update`) | 5.1 ms | **6.3 ms** (naive estimate was ~270) |
+| HPA* query, random pairs | ~4 ms | **~20 ms** avg, worst 226 ms (cross-map, ~1000 steps) |
+
+Graph: 215K entrances, 5.0M edges. Found on the way: `roomGrid`'s extern was hard-coded
+`[16][512][512]` (fixed: uses the MAX_GRID_* constants).
+
+What grows with area now:
+- Water freezing (`UpdateWaterFreezing`) sweeps the whole map every tick whenever any water
+  exists (rivers: always). Probably most of "Temperature".
+- Snow sweeps every surface column every 0.04 game-hours, even when it isn't snowing and
+  there's no snow.
+- Long paths: random cross-map HPA* requests take ~20 ms at 1024 (a third pathfinding level
+  is improvement 5); mover paths are capped at 1024 steps (MAX_MOVER_PATH), about one
+  crossing of a 1024 map.
+- Memory: 1.13 GB resident at 1024; the normal build reserves ~570 MB for any map size
+  (improvement 2: size layers to the map).
+
 ## Next steps
 
+0. **Next (2026-11-20):** water freezing and snow sweeps (cheap wins, see the 1024 table),
+   then sizing layers to the map (memory), then long paths at 1024.
 1. Shared-goal field cascade (above). **Done (2026-11-20):** a walk may build at most 1000
    chunk fields (`NavHFlow.buildBudget`); over it the request uses HPA* (seed 16: 5 ms instead
    of seconds), the field is dropped and the goal isn't promoted for 60 game-seconds.

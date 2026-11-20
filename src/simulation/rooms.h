@@ -15,6 +15,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "../world/grid.h"   // MAX_GRID_* for roomGrid
 
 #define MAX_DETECTED_ROOMS 1024
 #define ROOM_NONE 0   // 0 = no room (outdoors, wall, unenclosed)
@@ -55,7 +56,7 @@ typedef struct {
 } DetectedRoom;
 
 // Room grid: per-cell room ID (0 = no room)
-extern uint16_t roomGrid[16][512][512]; // [MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH]
+extern uint16_t roomGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Room metadata
 extern DetectedRoom rooms[MAX_DETECTED_ROOMS];
