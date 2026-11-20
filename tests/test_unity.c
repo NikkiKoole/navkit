@@ -114,6 +114,7 @@ bool bladderEnabled = false;
 #include "../src/entities/stockpiles.c"
 #include "../src/entities/animals.c"
 #include "../src/entities/trains.c"
+#include "../src/entities/service.c"
 #include "../src/entities/mover.c"
 #include "../src/entities/namegen.c"
 #include "../src/entities/workshops.c"

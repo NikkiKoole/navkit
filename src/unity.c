@@ -57,6 +57,7 @@
 #include "entities/furniture.c"
 #include "entities/animals.c"
 #include "entities/trains.c"
+#include "entities/service.c"
 #include "entities/mover.c"
 #include "entities/namegen.c"
 #include "entities/jobs.c"

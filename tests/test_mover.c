@@ -1250,6 +1250,34 @@ describe(single_file_ladders) {
         expect(arrived);
     }
 
+    it("waiting movers line up behind each other instead of piling onto the ladder") {
+        SetupLadderFloors();
+        static const int sp[6][2] = {{2, 2}, {1, 2}, {0, 2}, {2, 1}, {2, 3}, {1, 1}};
+        for (int i = 0; i < 6; i++) AddLadderMover(i, sp[i][0], sp[i][1], 1, 6, 2, 2);
+        moverCount = 6;
+        int mostOnFootSpot = 0, mostClimbing = 0;
+        bool allArrived = false;
+        for (int t = 0; t < 1500 && !allArrived; t++) {
+            Tick();
+            int onSpot = 0, climbing = 0, active = 0;
+            for (int i = 0; i < 6; i++) {
+                const Mover* m = &movers[i];
+                if (!m->active) continue;
+                active++;
+                float dx = m->x - (3 * CELL_SIZE + CELL_SIZE * 0.5f), dy = m->y - (2 * CELL_SIZE + CELL_SIZE * 0.5f);
+                bool between = m->z - floorf(m->z) > 0.0001f;
+                if (between) climbing++;
+                else if (m->z == 1.0f && dx * dx + dy * dy < (CELL_SIZE * 0.25f) * (CELL_SIZE * 0.25f)) onSpot++;
+            }
+            if (onSpot > mostOnFootSpot) mostOnFootSpot = onSpot;
+            if (climbing > mostClimbing) mostClimbing = climbing;
+            allArrived = active == 0;
+        }
+        expect(allArrived);
+        expect(mostClimbing == 1);
+        expect(mostOnFootSpot <= 1);     // only the front stands on the foot
+    }
+
     it("handles movers going up and down at the same time") {
         SetupLadderFloors();
         AddLadderMover(0, 2, 2, 1, 6, 2, 2);   // up

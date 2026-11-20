@@ -1,5 +1,6 @@
 // scenarios.c - Built-in demo/test scenarios (see scenarios.h)
 #include "scenarios.h"
+#include "../entities/service.h"
 #include "../game_state.h"
 #include "../world/cell_defs.h"
 #include "../world/material.h"
@@ -166,10 +167,10 @@ static void SetupLadders(void) {
 // ladder-choice: the same deck with TWO ladders, one next to where the movers
 // start (18,16) and a second 6 cells north (18,10). Compare the ladder queue cost
 // on/off ("Ladder Queue Cost" / console var ladderQueueCost); scenarioMovers sets
-// the crowd size. Measured with 16 movers (6000
-// ticks): ~4% more arrivals with it on. Climbing is as fast as walking in this
-// game, so queues stay short and a detour rarely pays; with a far second ladder
-// (18,2) the difference was nil.
+// the crowd size. Arrivals per mover, 6000 ticks, queue cost on vs off:
+// 16 movers 18.6 vs 17.6 (queues stay short), 48 movers 14.5 vs 12.6 (+15%),
+// 96 movers 7.3 vs 6.9 (both ladders saturated). With the second ladder far away
+// (18,2) a detour never paid.
 static void SetupLadderChoice(void) {
     ResetLadderStats();
     BuildLadderDeck();
@@ -254,6 +255,7 @@ static void LadderTickStats(void) {
         if (next.x != x || next.y != y || next.z == z) continue;
         waitingNow++;
         BumpCount(queues, &queueCount, x, y, z, &n);
+        }
         if (n > ladderLongestQueue) {
             ladderLongestQueue = n;
             ladderLongestX = x; ladderLongestY = y; ladderLongestZ = z;

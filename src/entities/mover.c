@@ -1,5 +1,6 @@
 #include "mover.h"
 #include "trains.h"
+#include "service.h"
 #include "namegen.h"
 #include "animals.h"
 #include "../core/time.h"
@@ -57,12 +58,18 @@ int repathFallbackCount = 0;
 static int repathCursor = 0;
 // Seconds each mover has been waiting at a narrow passage (not saved; reset by ClearMovers)
 static float moverYieldTime[MAX_MOVERS];
-// Seconds each mover has been waiting for a busy ladder segment (not saved; reset by ClearMovers)
+// Seconds each mover has been in a ladder line (not saved; reset by ClearMovers)
 static float moverLadderWait[MAX_MOVERS];
-#define LADDER_WAIT_TIMEOUT 10.0f   // then climb anyway (a stalled climber must not block forever)
+// gameTime a climb started, for the measured service time (-1 = not climbing)
+static double moverClimbStart[MAX_MOVERS];
+#define LADDER_STALL_TIMEOUT 10.0f  // a climb taking longer than this no longer blocks the segment
 #define LADDER_REPLAN_AT_1 3.0f     // a waiting mover re-plans at these wait times: with the
 #define LADDER_REPLAN_AT_2 7.0f     // queue cost, another ladder or a ramp may now be quicker
 #define LADDER_QUEUE_COST_PER_MOVER 10   // ~ one climb = walking one cell
+#define LADDER_JOIN_RADIUS (CELL_SIZE * 3.0f)     // join a ladder's line this close to its foot
+#define LADDER_FOLLOW_RANGE (CELL_SIZE * 2.0f)    // line up behind the one ahead within this
+#define LADDER_LINE_SPACING (CELL_SIZE * 0.7f)    // gap kept to the one ahead
+#define LADDER_LOOKAHEAD 8                        // waypoints scanned for an upcoming climb
 int repathHpaSuccessCount = 0;
 unsigned long currentTick = 0;
 bool useStringPulling = true;
@@ -428,38 +435,91 @@ static bool MoverShouldYield(int i) {
 // A ladder segment (one ladder cell, between level zLow and zLow + 1) holds one
 // climber at a time. Climbers are found from mover state each tick (on a ladder
 // cell, partway between two levels), so nothing extra is saved.
-typedef struct { int x, y, zLow; } LadderSegment;
+typedef struct { int x, y, zLow; int mover; } LadderSegment;
 static LadderSegment ladderClimbers[MAX_MOVERS];
 static int ladderClimberCount;
-typedef struct { int x, y, z; } LadderWaiter;           // waiting at this ladder cell
-static LadderWaiter ladderWaiters[MAX_MOVERS];
-static int ladderWaiterCount;
-
 static bool MoverClimbingLadder(const Mover* m, LadderSegment* seg) {
     float zf = floorf(m->z);
     if (m->z - zf < 0.0001f) return false;          // standing on a level
     int x = (int)(m->x / CELL_SIZE), y = (int)(m->y / CELL_SIZE), z = (int)zf;
     if (z + 1 >= gridDepth || !IsLadderCell(grid[z][y][x]) || !IsLadderCell(grid[z + 1][y][x])) return false;
-    *seg = (LadderSegment){x, y, z};
+    *seg = (LadderSegment){x, y, z, (int)(m - movers)};
     return true;
 }
 
-static void CollectLadderClimbers(void) {
+// Next level change on the mover's route, if it is a ladder on the mover's level
+// within the next few waypoints: the foot cell (where it waits) and the target level
+static bool UpcomingLadderClimb(int i, Point* foot, int* toZ) {
+    const Mover* m = &movers[i];
+    int mz = (int)m->z;
+    if (m->z != (float)mz || m->pathIndex < 0) return false;
+    // At the foot already: the current waypoint is the ladder's other end
+    Point t = moverPaths[i][m->pathIndex];
+    if (t.z != mz) {
+        if (abs(t.z - mz) != 1 || t.z < 0 || t.z >= gridDepth || !IsLadderCell(grid[mz][t.y][t.x]) ||
+            !IsLadderCell(grid[t.z][t.y][t.x])) return false;
+        *foot = (Point){t.x, t.y, mz};
+        *toZ = t.z;
+        return true;
+    }
+    for (int k = m->pathIndex; k >= 1 && k > m->pathIndex - LADDER_LOOKAHEAD; k--) {
+        Point a = moverPaths[i][k], b = moverPaths[i][k - 1];
+        if (a.z != mz) return false;
+        if (b.z == a.z) continue;
+        if (a.x != b.x || a.y != b.y || !IsLadderCell(grid[a.z][a.y][a.x]) || !IsLadderCell(grid[b.z][b.y][b.x])) return false;
+        *foot = a;
+        *toZ = b.z;
+        return true;
+    }
+    return false;
+}
+
+// Once per tick: who is on a ladder segment, and who waits in which ladder's line
+// (service points, service.h). A mover joins a ladder's line when its route
+// climbs that ladder within a few waypoints and it is within LADDER_JOIN_RADIUS
+// of the foot; it leaves when it starts climbing, re-plans away or deactivates.
+static void UpdateLadderLines(float dt) {
     ladderClimberCount = 0;
-    ladderWaiterCount = 0;
     for (int i = 0; i < moverCount; i++) {
         const Mover* m = &movers[i];
         LadderSegment seg;
-        if (!m->active) continue;
-        if (MoverClimbingLadder(m, &seg)) ladderClimbers[ladderClimberCount++] = seg;
-        else if (moverLadderWait[i] > 0.0f)
-            ladderWaiters[ladderWaiterCount++] = (LadderWaiter){(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
+        if (m->active && MoverClimbingLadder(m, &seg)) ladderClimbers[ladderClimberCount++] = seg;
+    }
+    for (int i = 0; i < moverCount; i++) {
+        const Mover* m = &movers[i];
+        int sp = ServiceOf(i);
+        Point foot;
+        int toZ;
+        bool climbing = m->z - floorf(m->z) > 0.0001f;
+        bool wants = m->active && !climbing && UpcomingLadderClimb(i, &foot, &toZ);
+        if (sp >= 0 && servicePoints[sp].kind == SERVICE_LADDER) {
+            const ServicePoint* p = &servicePoints[sp];
+            const ServiceEntry* e = ServiceEntryOf(sp, i);
+            int segLow = wants ? (toZ < foot.z ? toZ : foot.z) : -1;
+            bool same = wants && e && p->x == foot.x && p->y == foot.y && p->z == segLow && e->end == foot.z;
+            if (!same) { ServiceLeave(sp, i); moverLadderWait[i] = 0.0f; }
+            else {
+                float before = moverLadderWait[i];
+                moverLadderWait[i] += dt;
+                if (useLadderQueueCost &&
+                    ((before < LADDER_REPLAN_AT_1 && moverLadderWait[i] >= LADDER_REPLAN_AT_1) ||
+                     (before < LADDER_REPLAN_AT_2 && moverLadderWait[i] >= LADDER_REPLAN_AT_2)))
+                    movers[i].needsRepath = true;   // with the queue cost, maybe another way is quicker
+                continue;
+            }
+        }
+        if (!wants) continue;
+        float fx = foot.x * CELL_SIZE + CELL_SIZE * 0.5f - m->x, fy = foot.y * CELL_SIZE + CELL_SIZE * 0.5f - m->y;
+        if (fx * fx + fy * fy > LADDER_JOIN_RADIUS * LADDER_JOIN_RADIUS) continue;
+        int segLow = toZ < foot.z ? toZ : foot.z;
+        int np = ServiceGet(SERVICE_LADDER, foot.x, foot.y, segLow, 1);
+        if (np >= 0 && ServiceJoin(np, i, foot.z, gameTime)) moverLadderWait[i] = 0.0f;
     }
 }
 
 // NAV_CLIMB_EXTRA for the game (see nav_host.h): changing level by dz on the ladder
-// at (x,y,z) costs the expected wait there: movers queued at this end plus one
-// on the segment, each about one climb. Uses the lists from the latest tick.
+// at (x,y,z) costs the expected wait there: the line at this end plus anyone on
+// the segment, each about one climb. Uses the state from the latest tick.
 int LadderQueueExtraCost(int x, int y, int z, int dz) {
     if (!useLadderQueueCost || !useSingleFileLadders) return 0;
     int zt = z + dz;
@@ -467,14 +527,42 @@ int LadderQueueExtraCost(int x, int y, int z, int dz) {
     int segLow = dz > 0 ? z : zt, n = 0;
     for (int k = 0; k < ladderClimberCount; k++)
         if (ladderClimbers[k].x == x && ladderClimbers[k].y == y && ladderClimbers[k].zLow == segLow) n++;
-    for (int k = 0; k < ladderWaiterCount; k++)
-        if (ladderWaiters[k].x == x && ladderWaiters[k].y == y && ladderWaiters[k].z == z) n++;
+    n += ServiceLineLength(ServiceFind(SERVICE_LADDER, x, y, segLow), z);
     return n * LADDER_QUEUE_COST_PER_MOVER;
 }
 
+// The front of a ladder line may start climbing when no other end's front that is
+// standing ready at its foot arrived earlier (strict arrival order, but nobody
+// waits for someone still walking up)
+static bool LadderMyTurn(int sp, int i) {
+    if (sp < 0) return true;
+    if (ServiceAhead(sp, i) >= 0) return false;
+    const ServicePoint* p = &servicePoints[sp];
+    const ServiceEntry* me = ServiceEntryOf(sp, i);
+    if (!me) return true;
+    // The line is in arrival order (ties by join order), so only entries before
+    // ours can have priority; comparing join times would deadlock on equal ones
+    for (int k = 0; k < p->lineCount && p->line[k].mover != i; k++) {
+        const ServiceEntry* e = &p->line[k];
+        if (e->end == me->end) continue;
+        if (ServiceAhead(sp, e->mover) >= 0) continue;              // not a front
+        const Mover* o = &movers[e->mover];
+        float dx = p->x * CELL_SIZE + CELL_SIZE * 0.5f - o->x, dy = p->y * CELL_SIZE + CELL_SIZE * 0.5f - o->y;
+        if ((int)o->z == e->end && dx * dx + dy * dy < (CELL_SIZE * 0.5f) * (CELL_SIZE * 0.5f)) return false;
+    }
+    return true;
+}
+
+// Someone is climbing this segment (a climb stalled past LADDER_STALL_TIMEOUT,
+// e.g. a mover stuck mid-ladder, no longer blocks it)
 static bool LadderSegmentBusy(int x, int y, int zLow) {
-    for (int k = 0; k < ladderClimberCount; k++)
-        if (ladderClimbers[k].x == x && ladderClimbers[k].y == y && ladderClimbers[k].zLow == zLow) return true;
+    for (int k = 0; k < ladderClimberCount; k++) {
+        const LadderSegment* c = &ladderClimbers[k];
+        if (c->x != x || c->y != y || c->zLow != zLow) continue;
+        double start = moverClimbStart[c->mover];
+        if (start >= 0.0 && gameTime - start > LADDER_STALL_TIMEOUT) continue;
+        return true;
+    }
     return false;
 }
 
@@ -914,6 +1002,8 @@ void ClearMovers(void) {
     repathCursor = 0;
     memset(moverYieldTime, 0, sizeof(moverYieldTime));
     memset(moverLadderWait, 0, sizeof(moverLadderWait));
+    for (int i = 0; i < MAX_MOVERS; i++) moverClimbStart[i] = -1.0;
+    ClearServicePoints();
     // Drop carried items on the ground at mover's position
     for (int i = 0; i < moverCount; i++) {
         if (!movers[i].active) continue;
@@ -1336,7 +1426,7 @@ void UpdateMovers(void) {
     
     // Phase 3: Movement (all the rest)
     PROFILE_BEGIN(Move);
-    if (useSingleFileLadders) CollectLadderClimbers();
+    if (useSingleFileLadders) UpdateLadderLines(dt);
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         if (!m->active) continue;
@@ -1670,24 +1760,32 @@ void UpdateMovers(void) {
                 // (wait at the foot/top; a started climb reserves it for this tick)
                 int segLow = target.z > cellZ ? cellZ : target.z;
                 bool startingClimb = isLadderTransition && m->z == (float)cellZ;
-                if (startingClimb && useSingleFileLadders && moverLadderWait[i] < LADDER_WAIT_TIMEOUT &&
-                    LadderSegmentBusy(target.x, target.y, segLow)) {
-                    float before = moverLadderWait[i];
-                    moverLadderWait[i] += dt;
-                    if (useLadderQueueCost &&
-                        ((before < LADDER_REPLAN_AT_1 && moverLadderWait[i] >= LADDER_REPLAN_AT_1) ||
-                         (before < LADDER_REPLAN_AT_2 && moverLadderWait[i] >= LADDER_REPLAN_AT_2)))
-                        m->needsRepath = true;           // maybe another way is quicker now
-                    m->x = target.x * CELL_SIZE + CELL_SIZE * 0.5f;
-                    m->y = target.y * CELL_SIZE + CELL_SIZE * 0.5f;
-                    m->timeWithoutProgress = 0.0f;      // waiting in line is not being stuck
-                    m->lastX = m->x;
-                    m->lastY = m->y;
-                    continue;
+                if (startingClimb && useSingleFileLadders) {
+                    int sp = ServiceFind(SERVICE_LADDER, target.x, target.y, segLow);
+                    if (ServiceOf(i) != sp) sp = -1;          // not in this ladder's line
+                    // Within the (generous) arrival radius but someone is ahead in
+                    // line: stay put; only the front stands on the foot
+                    bool front = sp < 0 || ServiceAhead(sp, i) < 0;
+                    bool blocked = !front || LadderSegmentBusy(target.x, target.y, segLow) || !LadderMyTurn(sp, i);
+                    if (front && dist > 2.0f) {
+                        // walk the last bit onto the foot (no jump)
+                        float step = fminf(dist, effectiveSpeed * dt);
+                        m->x += dxf / dist * step;
+                        m->y += dyf / dist * step;
+                        blocked = true;
+                    }
+                    if (blocked) {
+                        m->timeWithoutProgress = 0.0f;  // waiting in line is not being stuck
+                        m->lastX = m->x;
+                        m->lastY = m->y;
+                        continue;
+                    }
+                    if (sp >= 0) ServiceLeave(sp, i);
+                    moverLadderWait[i] = 0.0f;
+                    moverClimbStart[i] = gameTime;
+                    if (ladderClimberCount < MAX_MOVERS)
+                        ladderClimbers[ladderClimberCount++] = (LadderSegment){target.x, target.y, segLow, i};
                 }
-                if (startingClimb) moverLadderWait[i] = 0.0f;
-                if (startingClimb && useSingleFileLadders && ladderClimberCount < MAX_MOVERS)
-                    ladderClimbers[ladderClimberCount++] = (LadderSegment){target.x, target.y, segLow};
                 if (isLadderTransition || isRampTransition) {
                     // Lock XY at waypoint and interpolate Z over time
                     m->x = target.x * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -1701,6 +1799,11 @@ void UpdateMovers(void) {
                         m->z = (float)target.z;
                         m->pathIndex--;
                         m->timeNearWaypoint = 0.0f;
+                        if (isLadderTransition && moverClimbStart[i] >= 0.0) {
+                            ServiceRecordDuration(ServiceFind(SERVICE_LADDER, target.x, target.y, segLow),
+                                                  (float)(gameTime - moverClimbStart[i]));
+                            moverClimbStart[i] = -1.0;
+                        }
                     }
                     didClimb = true;
                 }
@@ -1720,8 +1823,43 @@ void UpdateMovers(void) {
             } else {
                 m->timeNearWaypoint = 0.0f;  // Reset when far from waypoint
             }
+            // In a ladder line behind someone: line up behind the one directly
+            // ahead (keep a gap, otherwise only avoidance moves us), so the queue
+            // takes its own shape instead of piling onto the ladder cell
+            bool lineFollow = false;
+            float followVx = 0.0f, followVy = 0.0f;
+            if (useSingleFileLadders) {
+                int sp = ServiceOf(i);
+                int ahead = (sp >= 0 && servicePoints[sp].kind == SERVICE_LADDER) ? ServiceAhead(sp, i) : -1;
+                if (ahead >= 0 && movers[ahead].active) {
+                    float ax = movers[ahead].x - m->x, ay = movers[ahead].y - m->y;
+                    float d = sqrtf(ax * ax + ay * ay);
+                    const ServicePoint* lp = &servicePoints[sp];
+                    float fx = lp->x * CELL_SIZE + CELL_SIZE * 0.5f - m->x, fy = lp->y * CELL_SIZE + CELL_SIZE * 0.5f - m->y;
+                    if (d >= LADDER_FOLLOW_RANGE && fx * fx + fy * fy < CELL_SIZE * CELL_SIZE) {
+                        // The one ahead is still on its way: don't take the foot, wait a cell short
+                        lineFollow = true;
+                        m->timeWithoutProgress = 0.0f;
+                        m->timeNearWaypoint = 0.0f;
+                        m->lastX = m->x;
+                        m->lastY = m->y;
+                    } else if (d < LADDER_FOLLOW_RANGE) {
+                        lineFollow = true;
+                        if (d > LADDER_LINE_SPACING * 1.1f) {
+                            float sp2 = effectiveSpeed * fminf(1.0f, (d - LADDER_LINE_SPACING) / (CELL_SIZE * 0.5f));
+                            followVx = ax / d * sp2;
+                            followVy = ay / d * sp2;
+                        }
+                        m->timeWithoutProgress = 0.0f;   // waiting in line is not being stuck
+                        m->timeNearWaypoint = 0.0f;
+                        m->lastX = m->x;
+                        m->lastY = m->y;
+                    }
+                }
+            }
+
             // Single-lane passage ahead with oncoming traffic: wait at the entrance
-            if (useTunnelYielding) {
+            if (useTunnelYielding && !lineFollow) {
                 if (moverYieldTime[i] < YIELD_TIMEOUT && MoverShouldYield(i)) {
                     moverYieldTime[i] += dt;
                     m->timeWithoutProgress = 0.0f;     // waiting in line is not being stuck
@@ -1735,8 +1873,8 @@ void UpdateMovers(void) {
             float invDist = 1.0f / dist;
 
             // Base velocity toward waypoint (effectiveSpeed computed above)
-            float vx = dxf * invDist * effectiveSpeed;
-            float vy = dyf * invDist * effectiveSpeed;
+            float vx = lineFollow ? followVx : dxf * invDist * effectiveSpeed;
+            float vy = lineFollow ? followVy : dyf * invDist * effectiveSpeed;
             
             // Apply precomputed avoidance from phase 2
             if (useMoverAvoidance || useWallRepulsion) {
