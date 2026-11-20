@@ -214,7 +214,8 @@ What it says:
   is the fix for long hill trips; coarse mover paths would not help search time.
 - **Every search scans all entrances twice** to connect start and goal to the graph
   (`nav_ConnectToChunk`): ~0.45 ms of the 0.57 ms for short trips on 1024 hillswater.
-  The chunk entrance index makes that local (cheap fix).
+  **Fixed (2026-11-20):** candidates come from the chunk entrance index (3x3 chunks,
+  same order): short trips on 1024 hillswater 0.57 -> 0.25 ms, same paths.
 - **The 1024-step mover path cap bites on maze terrains**: labyrinth3d paths between
   cells < 64 apart average 1438 steps at 1024.
 - Full graph build at 1024: up to 4.2 s (spiral3d, hills).
