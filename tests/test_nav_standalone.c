@@ -399,6 +399,42 @@ static void test_hierarchical_flow_extra_cost(void) {
     NavDestroy(w);
 }
 
+// buildBudget: a walk that would build too many chunk fields gives up cleanly and
+// drops what it built; with the budget lifted the field works as if never limited
+static void test_hierarchical_flow_budget(void) {
+    static StubMap m;
+    memset(&m, 0, sizeof(m));
+    m.w = 48; m.h = 40; m.d = 1;
+    NavWorld* w = NavCreate(48, 40, 1, 8, 8, &m);
+    NavBuildEntrances(w);
+    NavBuildGraph(w);
+    NavPoint start = {1, 1, 0}, goal = {46, 38, 0};
+
+    NavHFlow* ref = NavHFlowCreate(w, goal);          // never limited
+    int refCost = WalkHFlow(w, ref, &m, start, goal);
+    CHECK(refCost > 0);
+    CHECK(ref->chunksBuilt > 3);                      // the walk needs more than the budget below
+
+    NavHFlow* h = NavHFlowCreate(w, goal);
+    CHECK(h->buildBudget == -1);                      // no limit by default
+    h->buildBudget = 3;
+    NavPoint nxt;
+    CHECK(!NavHFlowNext(w, h, start, &nxt));          // ran out: no step
+    CHECK(h->overLimit);
+    CHECK(h->stale);                                  // half-built fields get dropped
+    CHECK(NavHFlowCostAt(w, h, start) == NAV_FLOW_UNREACHABLE);   // still out of budget
+
+    h->buildBudget = -1;
+    CHECK(NavHFlowNext(w, h, start, &nxt));
+    CHECK(!h->overLimit);
+    CHECK(WalkHFlow(w, h, &m, start, goal) == refCost);
+    CHECK(NavHFlowCostAt(w, h, start) == NavHFlowCostAt(w, ref, start));
+
+    NavHFlowDestroy(h);
+    NavHFlowDestroy(ref);
+    NavDestroy(w);
+}
+
 // NavReachable must agree with A* (ground truth) for random pairs
 static int RegionMismatches(NavWorld* w, const StubMap* m, unsigned int* seed, int pairs) {
     int bad = 0;
@@ -508,6 +544,7 @@ int main(void) {
     test_regions();
     test_hierarchical_flow_extra_cost();
     test_hierarchical_flow();
+    test_hierarchical_flow_budget();
     test_flow_extra_cost_and_clearance();
     test_flow_steering();
     test_open_diagonal();

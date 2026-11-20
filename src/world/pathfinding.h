@@ -92,7 +92,7 @@ int FindPathUntimed(PathAlgorithm algo, Point start, Point goal, Point* outPath,
 // Shared-goal fields (see pathfinding.c): goals many movers request get a cached
 // hierarchical flow field; HPA* requests for them walk it instead of searching
 extern bool useSharedGoalFields;
-extern int sharedGoalHits, sharedGoalBuilds, sharedGoalFallbacks;
+extern int sharedGoalHits, sharedGoalBuilds, sharedGoalFallbacks, sharedGoalTooBig;
 extern double findPathTotalMs;     // wall-clock ms spent in FindPath (works headless)
 extern int findPathCalls;
 void ClearSharedGoalFields(void);  // call when the world is replaced

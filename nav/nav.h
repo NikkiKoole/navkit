@@ -322,6 +322,15 @@ typedef struct NavHFlow {
     const int* extraCost;
     bool stale;                    // rebuild on next query (set by NavHFlowInvalidate)
 
+    // Optional cap: how many more chunk fields may be built (-1 = no limit, the
+    // default). Building one field can pull in the fields downstream of it, on a big
+    // map nearly all of them. Set it before a request (e.g. a whole path walk); a call
+    // that runs out gives up (false / NAV_FLOW_UNREACHABLE), sets overLimit and drops
+    // the cached fields (stale). The caller should search instead (and probably stop
+    // using this field for a while).
+    int buildBudget;
+    bool overLimit;                // the last call ran out of buildBudget
+
     // private: lazy-build bookkeeping (fields built during one outer request)
     int buildDepth;
     int* fresh; int freshNum, freshCap;

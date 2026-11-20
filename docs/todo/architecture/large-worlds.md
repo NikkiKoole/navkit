@@ -134,7 +134,7 @@ this, so every headless run was the same world; now fixed.)
   which builds that chunk's field, and so on: the whole downstream map.
 - And each chunk build scanned **all 73K entrances** for its seeds. Fixed: candidates come from
   the per-chunk entrance index (3x3 neighbours), same order, so identical fields:
-  4150 ms -> ~700 ms. The remaining ~700 ms is the cascade itself (open, see next steps).
+  4150 ms -> ~700 ms. The cascade itself is now capped (see next steps).
 - Intermittent because promotion uses **wall-clock** time (`SHARED_GOAL_WINDOW`): under load
   (parallel runs) the 3 requests fall outside the window and no field is built.
 - The ~1.2 s Move max in every 512 run is just the first tick: all 100 movers get a goal at
@@ -142,10 +142,13 @@ this, so every headless run was the same world; now fixed.)
 
 ## Next steps
 
-1. Stop the shared-goal field cascade (above): one walk shouldn't build the whole map's
-   chunk fields. Options: build only chunks along the abstract route (nextEnt chain) and seed
-   other exits from abstract dist + a safety margin, or cap fields per request and fall
-   back to HPA*. Also make promotion use game time/request counts, not wall clock.
+1. Shared-goal field cascade (above). **Done (2026-11-20):** a walk may build at most 1000
+   chunk fields (`NavHFlow.buildBudget`); over it the request uses HPA* (seed 16: 5 ms instead
+   of seconds), the field is dropped and the goal isn't promoted for 60 game-seconds.
+   Promotion/refresh use game time, so runs are reproducible. Hubs-style goals are unaffected
+   (hubs: 970 field hits, 0 too big). **Later:** build fields only along the abstract route
+   (nextEnt chain), seeding other exits from abstract dist + a safety margin, so far goals on
+   big maps can use shared fields too (right now they are simply too big).
 2. Cheap wins: tree tick and item spatial grid not sweeping the whole map.
 3. Then per-chunk edges + layers sized to the map (improvements 1 and 2), and re-measure
    with a test build at 1024.

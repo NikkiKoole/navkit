@@ -2394,6 +2394,7 @@ NavHFlow* NavHFlowCreate(NavWorld* w, NavPoint goal) {
     NavHFlow* h = calloc(1, sizeof(NavHFlow));
     if (!h) return NULL;
     h->goal = goal;
+    h->buildBudget = -1;
     h->graphVersion = w->graphVersion - 1;   // force a build
     nav_HFlowRebuild(w, h);
     return h;
@@ -2588,6 +2589,7 @@ static void nav_HFlowSettle(NavWorld* w, NavHFlow* h) {
             continue;
         }
         if (qHead == qTail) continue;
+        if (h->overLimit) break;                   // out of budget: the fields get dropped anyway
         int c = queue[qHead % qCap]; qHead++;
         inQ[c] = false;
         NavChunkFlow* old = h->chunks[c];
@@ -2642,6 +2644,8 @@ static NavChunkFlow* nav_GetChunkFlow(NavWorld* w, NavHFlow* h, int chunk) {
     if (chunk < 0 || chunk >= h->chunkCount) return NULL;
     if (h->chunks[chunk] == &nav_ChunkFlowBuilding) return NULL;
     if (h->chunks[chunk]) return h->chunks[chunk];
+    if (h->buildBudget == 0) { h->overLimit = true; return NULL; }
+    if (h->buildBudget > 0) h->buildBudget--;
     h->buildDepth++;
     h->chunks[chunk] = &nav_ChunkFlowBuilding;
     h->chunks[chunk] = nav_BuildChunkFlow(w, h, chunk);
@@ -2777,6 +2781,18 @@ static bool nav_HFlowFieldStep(NavWorld* w, NavHFlow* h, NavPoint p, NavPoint* o
     return false;
 }
 
+// NavHFlowCostAt without the per-call buildBudget bookkeeping (used inside a call)
+static int nav_HFlowCostAt(NavWorld* w, NavHFlow* h, NavPoint p) {
+    if (!nav_HFlowPrepare(w, h, p)) return NAV_FLOW_UNREACHABLE;
+    NavChunkFlow* cov[9];
+    int n = nav_HFlowCovering(w, h, p, cov), best = NAV_FLOW_UNREACHABLE;
+    for (int k = 0; k < n; k++) {
+        int i = nav_ChunkFlowIndex(cov[k], p);
+        if (i >= 0 && cov[k]->cost[i] < best) best = cov[k]->cost[i];
+    }
+    return best;
+}
+
 // Rare fallback when p's local fields have no answer (a pocket that only reaches
 // its chunk's exits through the neighbour's ring, or a failed hand-over): forward
 // Dijkstra within the surrounding 3x3 chunks to the cell q minimising
@@ -2809,7 +2825,7 @@ static bool nav_HFlowRescue(NavWorld* w, NavHFlow* h, NavPoint p, NavPoint* out)
         NavPoint c = {minX + i % W, minY + i / W, p.z};
         if (i != s) {
             NavPoint tmp;
-            int cc = NavHFlowCostAt(w, h, c);
+            int cc = nav_HFlowCostAt(w, h, c);
             bool isGoal = c.x == h->goal.x && c.y == h->goal.y && c.z == h->goal.z;
             if (cc != NAV_FLOW_UNREACHABLE && (isGoal || nav_HFlowFieldStep(w, h, c, &tmp))) {
                 if (d + cc < bestTotal) { bestTotal = d + cc; best = i; }
@@ -2842,21 +2858,31 @@ static bool nav_HFlowRescue(NavWorld* w, NavHFlow* h, NavPoint p, NavPoint* out)
     return ok;
 }
 
+// buildBudget bookkeeping around one public call. Out of budget, fields built during
+// the call may have missed seeds (unbuilt neighbours read as unreachable): drop them all.
+static void nav_HFlowCallBegin(NavHFlow* h) { h->overLimit = false; }
+static bool nav_HFlowCallOver(NavHFlow* h) {
+    if (!h->overLimit) return false;
+    h->stale = true;
+    return true;
+}
+
 bool NavHFlowNext(NavWorld* w, NavHFlow* h, NavPoint p, NavPoint* out) {
+    nav_HFlowCallBegin(h);
     if (!nav_HFlowPrepare(w, h, p)) return false;
     if (p.x == h->goal.x && p.y == h->goal.y && p.z == h->goal.z) return false;
-    if (nav_HFlowFieldStep(w, h, p, out)) return true;
-    return nav_HFlowRescue(w, h, p, out);
+    bool ok = nav_HFlowFieldStep(w, h, p, out);
+    if (nav_HFlowCallOver(h)) return false;
+    if (ok) return true;
+    ok = nav_HFlowRescue(w, h, p, out);
+    if (nav_HFlowCallOver(h)) return false;
+    return ok;
 }
 
 int NavHFlowCostAt(NavWorld* w, NavHFlow* h, NavPoint p) {
-    if (!nav_HFlowPrepare(w, h, p)) return NAV_FLOW_UNREACHABLE;
-    NavChunkFlow* cov[9];
-    int n = nav_HFlowCovering(w, h, p, cov), best = NAV_FLOW_UNREACHABLE;
-    for (int k = 0; k < n; k++) {
-        int i = nav_ChunkFlowIndex(cov[k], p);
-        if (i >= 0 && cov[k]->cost[i] < best) best = cov[k]->cost[i];
-    }
+    nav_HFlowCallBegin(h);
+    int best = nav_HFlowCostAt(w, h, p);
+    if (nav_HFlowCallOver(h)) return NAV_FLOW_UNREACHABLE;
     return best;
 }
 
