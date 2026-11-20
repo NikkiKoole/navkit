@@ -122,6 +122,9 @@ A cell is walkable if:
 
 See `IsCellWalkableAt_Standard()` in `src/world/cell_defs.h`.
 
+**Per-cell layers are accessed through macros**: `GRID(x, y, z)`, `WATER(x, y, z)`, `CELL_FLAGS(x, y, z)`, ...
+(x, y, z order), never `grid[z][y][x]`. `make test` enforces it. Details in `src/world/CLAUDE.md`.
+
 ## Save/Load, Inspector & Debugging
 
 ```bash

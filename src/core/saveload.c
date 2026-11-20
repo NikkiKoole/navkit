@@ -30,6 +30,23 @@ void RebuildPostLoadState(void);
 
 // Section markers (readable in hex dump)
 #define MARKER_GRIDS    0x47524944  // "GRID"
+
+// Row I/O for per-cell layers. Rows are written in [z][y][x] order (the save format), but
+// go through the layer macro element by element, so the in-memory layout (CELL_AT) can
+// differ from the file layout. MACRO is a layer accessor like WATER or GRID.
+static _Alignas(16) unsigned char saveRowBuf[MAX_GRID_WIDTH * 32];
+#define ROW_ELEM_SIZE(MACRO) sizeof(MACRO(0, 0, 0))
+#define ROW_TO_BUF(MACRO, y, z) do { \
+        _Static_assert(sizeof(MACRO(0, 0, 0)) <= 32, "saveRowBuf element too small"); \
+        for (int x_ = 0; x_ < gridWidth; x_++) \
+            memcpy(saveRowBuf + (size_t)x_ * ROW_ELEM_SIZE(MACRO), &MACRO(x_, (y), (z)), ROW_ELEM_SIZE(MACRO)); \
+    } while (0)
+#define ROW_FROM_BUF(MACRO, y, z) do { \
+        for (int x_ = 0; x_ < gridWidth; x_++) \
+            memcpy(&MACRO(x_, (y), (z)), saveRowBuf + (size_t)x_ * ROW_ELEM_SIZE(MACRO), ROW_ELEM_SIZE(MACRO)); \
+    } while (0)
+#define SAVE_ROW(f, MACRO, y, z) do { ROW_TO_BUF(MACRO, y, z); fwrite(saveRowBuf, ROW_ELEM_SIZE(MACRO), gridWidth, (f)); } while (0)
+#define LOAD_ROW(f, MACRO, y, z) do { fread(saveRowBuf, ROW_ELEM_SIZE(MACRO), gridWidth, (f)); ROW_FROM_BUF(MACRO, y, z); } while (0)
 #define MARKER_ENTITIES 0x454E5449  // "ENTI"
 #define MARKER_VIEW     0x56494557  // "VIEW"
 #define MARKER_SETTINGS 0x53455454  // "SETT"
@@ -191,175 +208,175 @@ bool SaveWorld(const char* filename) {
     // Grid cells
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(grid[z][y], sizeof(uint8_t), gridWidth, f);
+            SAVE_ROW(f, GRID, y, z);
         }
     }
     
     // Water grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(waterGrid[z][y], sizeof(WaterCell), gridWidth, f);
+            SAVE_ROW(f, WATER, y, z);
         }
     }
     
     // Fire grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(fireGrid[z][y], sizeof(FireCell), gridWidth, f);
+            SAVE_ROW(f, FIRE, y, z);
         }
     }
     
     // Smoke grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(smokeGrid[z][y], sizeof(SmokeCell), gridWidth, f);
+            SAVE_ROW(f, SMOKE, y, z);
         }
     }
     
     // Steam grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(steamGrid[z][y], sizeof(SteamCell), gridWidth, f);
+            SAVE_ROW(f, STEAM, y, z);
         }
     }
     
     // Cell flags
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(cellFlags[z][y], sizeof(uint8_t), gridWidth, f);
+            SAVE_ROW(f, CELL_FLAGS, y, z);
         }
     }
     
     // Wall material grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(wallMaterial[z][y], sizeof(uint8_t), gridWidth, f);
+            SAVE_ROW(f, WALL_MAT, y, z);
         }
     }
     
     // Floor material grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(floorMaterial[z][y], sizeof(uint8_t), gridWidth, f);
+            SAVE_ROW(f, FLOOR_MAT, y, z);
         }
     }
 
     // Wall natural grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(wallNatural[z][y], sizeof(uint8_t), gridWidth, f);
+            SAVE_ROW(f, WALL_NATURAL, y, z);
         }
     }
 
     // Floor natural grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(floorNatural[z][y], sizeof(uint8_t), gridWidth, f);
+            SAVE_ROW(f, FLOOR_NATURAL, y, z);
         }
     }
 
     // Wall finish grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(wallFinish[z][y], sizeof(uint8_t), gridWidth, f);
+            SAVE_ROW(f, WALL_FINISH, y, z);
         }
     }
 
     // Floor finish grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(floorFinish[z][y], sizeof(uint8_t), gridWidth, f);
+            SAVE_ROW(f, FLOOR_FINISH, y, z);
         }
     }
 
     // Wall source item grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(wallSourceItem[z][y], sizeof(uint8_t), gridWidth, f);
+            SAVE_ROW(f, WALL_SOURCE_ITEM, y, z);
         }
     }
 
     // Floor source item grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(floorSourceItem[z][y], sizeof(uint8_t), gridWidth, f);
+            SAVE_ROW(f, FLOOR_SOURCE_ITEM, y, z);
         }
     }
 
     // Vegetation grid (V29)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(vegetationGrid[z][y], sizeof(uint8_t), gridWidth, f);
+            SAVE_ROW(f, VEGETATION, y, z);
         }
     }
     
     // Snow grid (V45)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(snowGrid[z][y], sizeof(uint8_t), gridWidth, f);
+            SAVE_ROW(f, SNOW, y, z);
         }
     }
     
     // Temperature grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(temperatureGrid[z][y], sizeof(TempCell), gridWidth, f);
+            SAVE_ROW(f, TEMPERATURE, y, z);
         }
     }
     
     // Designations
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(designations[z][y], sizeof(Designation), gridWidth, f);
+            SAVE_ROW(f, DESIGNATION, y, z);
         }
     }
     
     // Wear grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(wearGrid[z][y], sizeof(uint16_t), gridWidth, f);
+            SAVE_ROW(f, WEAR, y, z);
         }
     }
 
     // Tree growth timer grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(growthTimer[z][y], sizeof(float), gridWidth, f);
+            SAVE_ROW(f, GROWTH_TIMER, y, z);
         }
     }
 
     // Tree target height grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(targetHeight[z][y], sizeof(uint8_t), gridWidth, f);
+            SAVE_ROW(f, TARGET_HEIGHT, y, z);
         }
     }
 
     // Tree harvest state grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(treeHarvestState[z][y], sizeof(uint8_t), gridWidth, f);
+            SAVE_ROW(f, TREE_HARVEST, y, z);
         }
     }
 
     // Floor dirt grid (v36+)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(floorDirtGrid[z][y], sizeof(uint8_t), gridWidth, f);
+            SAVE_ROW(f, FLOOR_DIRT, y, z);
         }
     }
 
     // Explored grid (fog of war, v75+)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(exploredGrid[z][y], sizeof(uint8_t), gridWidth, f);
+            SAVE_ROW(f, EXPLORED, y, z);
         }
     }
 
     // Farm grid (v76+)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(farmGrid[z][y], sizeof(FarmCell), gridWidth, f);
+            SAVE_ROW(f, FARM, y, z);
         }
     }
     fwrite(&farmActiveCells, sizeof(farmActiveCells), 1, f);
@@ -367,7 +384,7 @@ bool SaveWorld(const char* filename) {
     // Track connections grid (v89+)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(trackConnections[z][y], sizeof(uint8_t), gridWidth, f);
+            SAVE_ROW(f, TRACK_CONN, y, z);
         }
     }
 
@@ -625,22 +642,22 @@ bool LoadWorld(const char* filename) {
     // Grid cells
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            if (version >= V94_NARROW_GRID_LAYERS) fread(grid[z][y], sizeof(uint8_t), gridWidth, f);
-            else FreadLegacyIntsAsU8(grid[z][y], gridWidth, f);
+            if (version >= V94_NARROW_GRID_LAYERS) LOAD_ROW(f, GRID, y, z);
+            else { FreadLegacyIntsAsU8((uint8_t*)saveRowBuf, gridWidth, f); ROW_FROM_BUF(GRID, y, z); }
         }
     }
     
     // Water grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(waterGrid[z][y], sizeof(WaterCell), gridWidth, f);
+            LOAD_ROW(f, WATER, y, z);
         }
     }
     
     // Fire grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(fireGrid[z][y], sizeof(FireCell), gridWidth, f);
+            LOAD_ROW(f, FIRE, y, z);
         }
     }
     SyncFireLighting();
@@ -648,91 +665,91 @@ bool LoadWorld(const char* filename) {
     // Smoke grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(smokeGrid[z][y], sizeof(SmokeCell), gridWidth, f);
+            LOAD_ROW(f, SMOKE, y, z);
         }
     }
     
     // Steam grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(steamGrid[z][y], sizeof(SteamCell), gridWidth, f);
+            LOAD_ROW(f, STEAM, y, z);
         }
     }
     
     // Cell flags
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(cellFlags[z][y], sizeof(uint8_t), gridWidth, f);
+            LOAD_ROW(f, CELL_FLAGS, y, z);
         }
     }
     
     // Wall material grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(wallMaterial[z][y], sizeof(uint8_t), gridWidth, f);
+            LOAD_ROW(f, WALL_MAT, y, z);
         }
     }
     
     // Floor material grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(floorMaterial[z][y], sizeof(uint8_t), gridWidth, f);
+            LOAD_ROW(f, FLOOR_MAT, y, z);
         }
     }
 
     // Wall natural grid (V22 only)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(wallNatural[z][y], sizeof(uint8_t), gridWidth, f);
+            LOAD_ROW(f, WALL_NATURAL, y, z);
         }
     }
 
     // Floor natural grid (V22 only)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(floorNatural[z][y], sizeof(uint8_t), gridWidth, f);
+            LOAD_ROW(f, FLOOR_NATURAL, y, z);
         }
     }
 
     // Wall finish grid (V22 only)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(wallFinish[z][y], sizeof(uint8_t), gridWidth, f);
+            LOAD_ROW(f, WALL_FINISH, y, z);
         }
     }
 
     // Floor finish grid (V22 only)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(floorFinish[z][y], sizeof(uint8_t), gridWidth, f);
+            LOAD_ROW(f, FLOOR_FINISH, y, z);
         }
     }
 
     // Wall source item grid (V28)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(wallSourceItem[z][y], sizeof(uint8_t), gridWidth, f);
+            LOAD_ROW(f, WALL_SOURCE_ITEM, y, z);
         }
     }
 
     // Floor source item grid (V28)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(floorSourceItem[z][y], sizeof(uint8_t), gridWidth, f);
+            LOAD_ROW(f, FLOOR_SOURCE_ITEM, y, z);
         }
     }
 
     // Vegetation grid (V29)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(vegetationGrid[z][y], sizeof(uint8_t), gridWidth, f);
+            LOAD_ROW(f, VEGETATION, y, z);
         }
     }
     
     // Snow grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(snowGrid[z][y], sizeof(uint8_t), gridWidth, f);
+            LOAD_ROW(f, SNOW, y, z);
         }
     }
     SnowGridChanged();
@@ -740,7 +757,7 @@ bool LoadWorld(const char* filename) {
     // Temperature grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(temperatureGrid[z][y], sizeof(TempCell), gridWidth, f);
+            LOAD_ROW(f, TEMPERATURE, y, z);
         }
     }
     
@@ -748,7 +765,7 @@ bool LoadWorld(const char* filename) {
     activeDesignationCount = 0;
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(designations[z][y], sizeof(Designation), gridWidth, f);
+            LOAD_ROW(f, DESIGNATION, y, z);
             // Count active designations for early-exit optimizations
             for (int x = 0; x < gridWidth; x++) {
                 if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
@@ -761,51 +778,51 @@ bool LoadWorld(const char* filename) {
     // Wear grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            if (version >= V94_NARROW_GRID_LAYERS) fread(wearGrid[z][y], sizeof(uint16_t), gridWidth, f);
-            else FreadLegacyIntsAsU16(wearGrid[z][y], gridWidth, f);
+            if (version >= V94_NARROW_GRID_LAYERS) LOAD_ROW(f, WEAR, y, z);
+            else { FreadLegacyIntsAsU16((uint16_t*)saveRowBuf, gridWidth, f); ROW_FROM_BUF(WEAR, y, z); }
         }
     }
 
     // Tree growth timer grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(growthTimer[z][y], sizeof(float), gridWidth, f);
+            LOAD_ROW(f, GROWTH_TIMER, y, z);
         }
     }
 
     // Tree target height grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            if (version >= V94_NARROW_GRID_LAYERS) fread(targetHeight[z][y], sizeof(uint8_t), gridWidth, f);
-            else FreadLegacyIntsAsU8(targetHeight[z][y], gridWidth, f);
+            if (version >= V94_NARROW_GRID_LAYERS) LOAD_ROW(f, TARGET_HEIGHT, y, z);
+            else { FreadLegacyIntsAsU8((uint8_t*)saveRowBuf, gridWidth, f); ROW_FROM_BUF(TARGET_HEIGHT, y, z); }
         }
     }
 
     // Tree harvest state grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(treeHarvestState[z][y], sizeof(uint8_t), gridWidth, f);
+            LOAD_ROW(f, TREE_HARVEST, y, z);
         }
     }
 
     // Floor dirt grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(floorDirtGrid[z][y], sizeof(uint8_t), gridWidth, f);
+            LOAD_ROW(f, FLOOR_DIRT, y, z);
         }
     }
 
     // Explored grid (fog of war)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(exploredGrid[z][y], sizeof(uint8_t), gridWidth, f);
+            LOAD_ROW(f, EXPLORED, y, z);
         }
     }
 
     // Farm grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(farmGrid[z][y], sizeof(FarmCell), gridWidth, f);
+            LOAD_ROW(f, FARM, y, z);
         }
     }
     fread(&farmActiveCells, sizeof(farmActiveCells), 1, f);
@@ -814,7 +831,7 @@ bool LoadWorld(const char* filename) {
     if (version >= 89) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
-                fread(trackConnections[z][y], sizeof(uint8_t), gridWidth, f);
+                LOAD_ROW(f, TRACK_CONN, y, z);
             }
         }
     } else {

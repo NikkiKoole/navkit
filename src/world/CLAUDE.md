@@ -5,15 +5,22 @@ Grid, cells, materials, pathfinding, terrain generation, designations, construct
 ## Three-Axis Material System
 
 Every cell has three independent axes:
-1. **Shape** — `CellType` in `grid[z][y][x]` (CELL_WALL, CELL_RAMP, CELL_TREE_TRUNK, etc.)
-2. **Substance** — `MaterialType` in `wallMaterial[z][y][x]` / `floorMaterial[z][y][x]`
-3. **Form** — natural vs constructed (`wallNatural[z][y][x]`), source item (`wallSourceItem[z][y][x]`)
+1. **Shape** — `CellType` in `GRID(x, y, z)` (CELL_WALL, CELL_RAMP, CELL_TREE_TRUNK, etc.)
+2. **Substance** — `MaterialType` in `wallMaterial` / `floorMaterial` (`GetWallMaterial(x,y,z)`)
+3. **Form** — natural vs constructed (`wallNatural`), source item (`wallSourceItem`)
 
 Accessors: `GetWallMaterial(x,y,z)`, `SetWallMaterial(x,y,z,m)`, `IsWallNatural(x,y,z)`, etc.
 
 ## Parallel Grids
 
-All grids are `[z][y][x]` indexed. The full set:
+**Access every per-cell layer through its macro, `LAYER(x, y, z)`** (note the x, y, z order):
+`GRID`, `CELL_FLAGS`, `WATER`, `FIRE`, `SMOKE`, `STEAM`, `TEMPERATURE`, `DESIGNATION`, `WEAR`, `LIGHT`,
+`FARM`, ... (each `#define`d next to its `extern`), or the existing Get/Set helpers. Never write
+`layer[z][y][x]`: `CELL_AT` in `grid.h` is the only place that knows the storage layout (it is
+moving to chunk-major, runtime-sized storage). `make test` fails on raw indexing
+(`tools/check_layer_access.sh`). Clear whole layers with `CLEAR_GRID_LAYER` / `FILL_GRID_LAYER`.
+
+The full set:
 `grid`, `cellFlags`, `wallMaterial`, `floorMaterial`, `wallNatural`, `floorNatural`, `wallFinish`, `floorFinish`, `wallSourceItem`, `floorSourceItem`, `vegetationGrid`, `snowGrid`, `waterGrid`, `fireGrid`, `smokeGrid`, `steamGrid`, `temperatureGrid`, `designations`, `wearGrid`, `growthTimer`, `targetHeight`, `treeHarvestState`, `floorDirtGrid`
 
 ## DF-Style Walkability
@@ -27,7 +34,7 @@ z=0: [DIRT] <- solid
 
 `IsCellWalkableAt_Standard()` in `cell_defs.h` checks: not blocked, not solid, has support below (solid, HAS_FLOOR, ladder, ramp, or z=0).
 
-## Cell Flags (bitfield in `cellFlags[z][y][x]`)
+## Cell Flags (bitfield in `CELL_FLAGS(x, y, z)`)
 
 - `CF_WALL`, `CF_SOLID` — most systems check these flags, not specific CellTypes
 - 2-bit wetness: `GET_CELL_WETNESS` / `SET_CELL_WETNESS` (0-3: dry/damp/wet/soaked)
