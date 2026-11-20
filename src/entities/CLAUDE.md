@@ -49,6 +49,17 @@ Movers, items, jobs, stockpiles, workshops, animals, trains, containers, stackin
 - Semi-passive: crafter does short active work (`JOBTYPE_IGNITE_WORKSHOP`), then passive timer runs
 - `CELL_FLAG_WORKSHOP_BLOCK` set on `'#'` tiles, cleared on workshop delete
 
+## Queues: Service Points & Ladders
+
+- `service.c` — service points: places that serve one (or a few) movers at a time keep
+  who waits, in arrival order (per end). Queue *shape* is not stored: movers line up
+  behind the one ahead. Design: `docs/todo/pathfinding/service-points-and-queues.md`
+- `ladders.c` — single-file ladders on top of that: one climber per segment, lines at
+  both ends, the queue's route cost (`LadderQueueExtraCost`, the `NAV_CLIMB_EXTRA` hook),
+  climbing speed. `mover.c` calls `LaddersUpdate`, `LadderHoldAtFoot`, `LadderClimbDone`,
+  `LadderFollowLine`. Train stations keep their own (saved) waiting list in `trains.c`.
+- Not saved: lines rebuild themselves after a load.
+
 ## Mover Needs & Death
 
 - **Starvation**: `mover.starvationTimer` tracks game-seconds at hunger==0, resets when hunger > 0

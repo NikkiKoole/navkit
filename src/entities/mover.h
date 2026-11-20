@@ -220,12 +220,10 @@ extern float avoidStrengthOpen;    // Avoidance strength in open areas
 extern float avoidStrengthClosed;  // Avoidance strength near walls
 extern bool useDirectionalAvoidance;  // Filter avoidance by wall clearance
 extern bool useTunnelYielding;       // Wait at 1-wide passages for oncoming movers
-extern bool useSingleFileLadders;    // One climber per ladder segment at a time
-extern bool useLadderQueueCost;      // Routes see ladder queues as extra cost
 extern bool (*moverGoalPicker)(int moverIdx, Point* goal);   // endless-mode goal chooser (scenarios), NULL = random
-extern float ladderClimbSpeed;
-float MoverPatience(const struct Mover* m);   // wait tolerance in lines: Patient 2x, Impatient 0.4x       // Climbing speed vs walking (0.5 = twice as slow)
-int LadderQueueExtraCost(int x, int y, int z, int dz);   // NAV_CLIMB_EXTRA hook (nav_host.h)
+float MoverPatience(const struct Mover* m);   // wait tolerance in lines: Patient 2x, Impatient 0.4x
+void MoverPickNewGoal(struct Mover* m);       // endless mode: pick a new goal and path (ladders.c)
+#include "ladders.h"                          // single-file ladders: settings + hooks
 
 // Test/debug toggles for deterministic behavior
 extern bool useRandomizedCooldowns;   // When true, repath cooldowns are randomized (avoids sync spikes)
