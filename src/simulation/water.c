@@ -10,7 +10,7 @@
 #include <stdlib.h>
 
 // Water grid storage - single buffer (falling sand style)
-WaterCell waterGrid[MAX_GRID_CELLS];
+WaterCell* waterGrid = NULL;   // allocated in grid_layers.c
 
 // Global state
 bool waterEnabled = true;
@@ -41,7 +41,7 @@ typedef struct {
 static WaterPos pressureQueue[WATER_PRESSURE_SEARCH_LIMIT];
 
 // Generation-based visited tracking (avoids expensive memset each call)
-static uint16_t pressureVisitedGen[MAX_GRID_CELLS];
+uint16_t* pressureVisitedGen = NULL;   // per-cell scratch layer (allocated in grid_layers.c)
 #define WATER_PRESSURE_VISITED(x, y, z) (pressureVisitedGen CELL_AT((x), (y), (z)))
 static uint16_t currentPressureGen = 0;
 

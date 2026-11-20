@@ -82,7 +82,7 @@ describe(fog_explored) {
     it("sandbox mode always returns explored") {
         SetupFogTestGrid();
         gameMode = GAME_MODE_SANDBOX;
-        memset(exploredGrid, 0, sizeof(exploredGrid));
+        CLEAR_GRID_LAYER(exploredGrid, 0);
 
         expect(IsExplored(5, 5, 0));
 
@@ -92,7 +92,7 @@ describe(fog_explored) {
     it("survival mode respects exploredGrid") {
         SetupFogTestGrid();
         gameMode = GAME_MODE_SURVIVAL;
-        memset(exploredGrid, 0, sizeof(exploredGrid));
+        CLEAR_GRID_LAYER(exploredGrid, 0);
 
         expect(!IsExplored(5, 5, 0));
 
@@ -121,7 +121,7 @@ describe(fog_hunt) {
     it("hunt skips animals in unexplored cells") {
         SetupFogTestGrid();
         gameMode = GAME_MODE_SURVIVAL;
-        memset(exploredGrid, 0, sizeof(exploredGrid));
+        CLEAR_GRID_LAYER(exploredGrid, 0);
 
         // Explore mover area but NOT animal area
         SetExplored(2, 2, 0);
@@ -142,7 +142,7 @@ describe(fog_hunt) {
     it("hunt finds animals in explored cells") {
         SetupFogTestGrid();
         gameMode = GAME_MODE_SURVIVAL;
-        memset(exploredGrid, 0, sizeof(exploredGrid));
+        CLEAR_GRID_LAYER(exploredGrid, 0);
 
         // Explore everything
         for (int x = 0; x < 10; x++)
@@ -170,7 +170,7 @@ describe(fog_mine) {
     it("mine designation in unexplored area not in cache") {
         SetupFogTestGrid();
         gameMode = GAME_MODE_SURVIVAL;
-        memset(exploredGrid, 0, sizeof(exploredGrid));
+        CLEAR_GRID_LAYER(exploredGrid, 0);
 
         // Place a wall at (7,5,0)
         GRID(7, 5, 0) = CELL_WALL;
@@ -200,7 +200,7 @@ describe(fog_mine) {
     it("mine designation in explored area gets assigned") {
         SetupFogTestGrid();
         gameMode = GAME_MODE_SURVIVAL;
-        memset(exploredGrid, 0, sizeof(exploredGrid));
+        CLEAR_GRID_LAYER(exploredGrid, 0);
 
         // Explore relevant areas
         for (int x = 0; x < 10; x++)
@@ -240,7 +240,7 @@ describe(fog_explore_exception) {
     it("explore designation works in survival mode on unexplored cells") {
         SetupFogTestGrid();
         gameMode = GAME_MODE_SURVIVAL;
-        memset(exploredGrid, 0, sizeof(exploredGrid));
+        CLEAR_GRID_LAYER(exploredGrid, 0);
 
         // Explore mover area
         SetExplored(2, 2, 0);

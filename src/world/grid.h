@@ -69,20 +69,20 @@ static inline const char* CellTypeName(int type) {
     return (type >= 0 && type < CELL_TYPE_COUNT) ? names[type] : "?";
 }
 
-// Per-cell layer access: every layer (a flat [MAX_GRID_CELLS] array) has a macro LAYER(x, y, z)
+// Per-cell layer access: every layer (a pointer into the world arena, see grid_layers.c, sized to
+// the current map) has a macro LAYER(x, y, z)
 // (GRID, WATER, CELL_FLAGS, ...) declared next to it, usable as an lvalue. Use the macros, never
 // index a layer directly: CellIndex is the only place that knows the storage layout.
 // See docs/todo/architecture/chunked-world-plan.md, "Step 1".
 //
 // Layout: chunk-major. The map is cut into 16x16 storage chunks (fixed, unrelated to the HPA*
 // chunkWidth/chunkHeight); a chunk stores its full column, all MAX_GRID_DEPTH levels:
-//   index = chunk * STORE_CHUNK_STRIDE + (z * 16 + ly) * 16 + lx,   chunk = cy * STORE_CHUNKS_X + cx
-// STORE_CHUNKS_X (chunks per chunk row) is a compile-time constant sized for the largest map,
-// so CellIndex is pure shifts/masks and one constant multiply: a runtime stride costs ~20% on
-// whole-map sweeps (measured 2026-11-20). Chunks a small map doesn't use are never touched, so
-// they cost address space, not RAM. The map's chunk range is (gridWidth + 16) / 16, i.e. one
-// spare cell column (and row) of margin, so a read at x == gridWidth or y == gridHeight lands in
-// cleared margin cells, as it did with the old [z][y][x] padding.
+//   index = chunk * STORE_CHUNK_STRIDE + (z * 16 + ly) * 16 + lx,   chunk = cy * storeChunksX + cx
+// The map spans storeChunksX x storeChunksY = (gridWidth + 16) / 16 x (gridHeight + 16) / 16
+// chunks: one spare cell column (and row) of margin, so a read at x == gridWidth or
+// y == gridHeight lands in cleared margin cells, as it did with the old [z][y][x] padding.
+// The per-x / per-y parts of the index come from tables rebuilt when the map size changes, so a
+// runtime-sized layout costs no more per access than a fixed one.
 #define STORE_CHUNK_SHIFT 4
 #define STORE_CHUNK       (1 << STORE_CHUNK_SHIFT)            // 16
 #define STORE_MASK        (STORE_CHUNK - 1)
@@ -94,24 +94,23 @@ static inline const char* CellTypeName(int type) {
 #define STORE_CHUNK_STRIDE (STORE_CHUNK_CELLS + STORE_CHUNK_PAD)
 _Static_assert(MAX_GRID_DEPTH == 16, "CellIndex packs z into 4 bits");
 #define STORE_CHUNKS_FOR(n) (((n) + STORE_CHUNK) >> STORE_CHUNK_SHIFT)   // ceil((n + 1) / 16)
-#define STORE_CHUNKS_X    STORE_CHUNKS_FOR(MAX_GRID_WIDTH)
-#define STORE_CHUNKS_Y    STORE_CHUNKS_FOR(MAX_GRID_HEIGHT)
-#define MAX_GRID_CELLS ((size_t)STORE_CHUNKS_X * STORE_CHUNKS_Y * STORE_CHUNK_STRIDE)
 
-// Written as a sum of independent x, y and z parts (not one OR'd expression) so the compiler
-// can share the y/z parts between neighbour lookups like GRID(x - 1, y, z) and GRID(x + 1, y, z).
-// Same value as chunk * STORE_CHUNK_STRIDE + (z * 16 + ly) * 16 + lx.
-static inline int CellIndexX(int x) { return (x >> STORE_CHUNK_SHIFT) * STORE_CHUNK_STRIDE + (x & STORE_MASK); }
-static inline int CellIndexY(int y) {
-    return (y >> STORE_CHUNK_SHIFT) * (STORE_CHUNKS_X * STORE_CHUNK_STRIDE) + ((y & STORE_MASK) << STORE_CHUNK_SHIFT);
-}
+// Current layout (set by AllocGridLayers): chunks per row / chunk rows, elements per layer.
+extern int storeChunksX, storeChunksY;
+extern size_t gridLayerCells;
+
+// Lookup tables of the x and y parts of the index (rebuilt by AllocGridLayers when the map size
+// changes): a cell lookup is two loads and two adds, close to the old [z][y][x] multiply-add.
+// One spare entry for the x == gridWidth / y == gridHeight margin read.
 static inline int CellIndexZ(int z) { return z << 8; }
-// Lookup tables of CellIndexX / CellIndexY (filled once by InitCellIndexTables, the stride is a
-// compile-time constant so they never change): a cell lookup is two loads and two adds, close
-// to the old [z][y][x] multiply-add. One spare entry for the x == gridWidth margin read.
 extern int cellIndexTabX[MAX_GRID_WIDTH + 1];
 extern int cellIndexTabY[MAX_GRID_HEIGHT + 1];
-void InitCellIndexTables(void);
+
+// Allocate every per-cell layer for the current gridWidth/gridHeight (no-op when the size is
+// unchanged), rebuild the index tables, and fill fresh layers with their empty value.
+// InitGridWithDimensions calls it; anything else that sets gridWidth/gridHeight must too.
+void AllocGridLayers(void);
+size_t GridLayersBytes(void);   // world arena size (all layers)
 static inline int CellIndex(int x, int y, int z) {
     return cellIndexTabX[x] + cellIndexTabY[y] + CellIndexZ(z);
 }
@@ -142,11 +141,11 @@ int CellIndexChecked(int x, int y, int z, const char* file, int line);
 
 // Stored as one byte per cell (CellType values); read/write CellType as usual.
 _Static_assert(CELL_TYPE_COUNT <= 256, "CellType must fit the uint8_t grid");
-extern uint8_t grid[MAX_GRID_CELLS];
+extern uint8_t* grid;
 #define GRID(x, y, z) (grid CELL_AT((x), (y), (z)))
 
 // Cell flags - per-cell terrain properties (burned, wetness, etc.)
-extern uint8_t cellFlags[MAX_GRID_CELLS];
+extern uint8_t* cellFlags;
 #define CELL_FLAGS(x, y, z) (cellFlags CELL_AT((x), (y), (z)))
 
 // Cell flag bits
@@ -180,7 +179,7 @@ typedef enum {
     VEG_REEDS,          // Reeds (waterside, harvestable)
 } VegetationType;
 
-extern uint8_t vegetationGrid[MAX_GRID_CELLS];
+extern uint8_t* vegetationGrid;
 #define VEGETATION(x, y, z) (vegetationGrid CELL_AT((x), (y), (z)))
 
 #define GetVegetation(x,y,z)      ((VegetationType)VEGETATION(x, y, z))
@@ -188,7 +187,7 @@ extern uint8_t vegetationGrid[MAX_GRID_CELLS];
 
 // Track connections grid — 4-bit bitmask per cell: N=1, E=2, S=4, W=8
 // Stores which directions a track cell is connected to (intent-aware, not just adjacency)
-extern uint8_t trackConnections[MAX_GRID_CELLS];
+extern uint8_t* trackConnections;
 #define TRACK_CONN(x, y, z) (trackConnections CELL_AT((x), (y), (z)))
 
 #define TRACK_N 1
@@ -197,7 +196,7 @@ extern uint8_t trackConnections[MAX_GRID_CELLS];
 #define TRACK_W 8
 
 // Exploration grid — fog of war (0=unexplored, 1=explored)
-extern uint8_t exploredGrid[MAX_GRID_CELLS];
+extern uint8_t* exploredGrid;
 #define EXPLORED(x, y, z) (exploredGrid CELL_AT((x), (y), (z)))
 
 #define DEFAULT_MOVER_VISION_RADIUS  10
@@ -254,8 +253,7 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
 // Explicit depth (1..MAX_GRID_DEPTH). The variants above always use MAX_GRID_DEPTH.
 void InitGridWithDimensions(int width, int height, int depth, int chunkW, int chunkH);
 
-// Clear a layer (flat [MAX_GRID_CELLS]) to fillByte, but only the chunks any map so far has used
-// (largest chunk range seen in x and y). The rest of the static array was never written, so it is
+// Clear a whole layer (gridLayerCells elements) to fillByte. The rest of the static array was never written, so it is
 // still zero and its pages are never touched: a small map in a big-cap build does not pay for it.
 // ClearGridPlane does the same for a [MAX_GRID_HEIGHT][MAX_GRID_WIDTH] scratch plane (used rows
 // and columns plus a one-cell margin).

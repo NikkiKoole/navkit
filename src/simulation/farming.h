@@ -37,7 +37,7 @@ typedef struct {
 } FarmCell;
 
 // Farm grid (parallel to main grid, zero-initialized = no farm data)
-extern FarmCell farmGrid[MAX_GRID_CELLS];
+extern FarmCell* farmGrid;
 #define FARM(x, y, z) (farmGrid CELL_AT((x), (y), (z)))
 extern int farmActiveCells;  // count of tilled cells (for sim tick skipping)
 

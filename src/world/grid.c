@@ -9,11 +9,11 @@
 #include <string.h>
 #include <stdio.h>
 
-uint8_t grid[MAX_GRID_CELLS];
-uint8_t cellFlags[MAX_GRID_CELLS];
-uint8_t vegetationGrid[MAX_GRID_CELLS];
-uint8_t trackConnections[MAX_GRID_CELLS];
-uint8_t exploredGrid[MAX_GRID_CELLS];
+uint8_t* grid = NULL;   // allocated in grid_layers.c
+uint8_t* cellFlags = NULL;   // allocated in grid_layers.c
+uint8_t* vegetationGrid = NULL;   // allocated in grid_layers.c
+uint8_t* trackConnections = NULL;   // allocated in grid_layers.c
+uint8_t* exploredGrid = NULL;   // allocated in grid_layers.c
 
 
 // Runtime dimensions - default to max
@@ -34,9 +34,9 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
     InitGridWithDimensions(width, height, MAX_GRID_DEPTH, chunkW, chunkH);
 }
 
-// High-water marks of what any map has used. Everything beyond has never been written.
-static int clearW, clearH;          // planes: columns/rows incl. a one-cell margin
-static int clearCX, clearCY;        // layers: storage chunks per row / chunk rows
+// High-water marks for the [MAX_GRID_HEIGHT][MAX_GRID_WIDTH] scratch planes (static arrays):
+// columns/rows any map has used, incl. a one-cell margin. Beyond them nothing was written.
+static int clearW, clearH;
 
 static void GrowClearRegion(void) {
     int w = gridWidth + 1, h = gridHeight + 1;
@@ -44,19 +44,6 @@ static void GrowClearRegion(void) {
     if (h > MAX_GRID_HEIGHT) h = MAX_GRID_HEIGHT;
     if (w > clearW) clearW = w;
     if (h > clearH) clearH = h;
-    int cx = STORE_CHUNKS_FOR(gridWidth), cy = STORE_CHUNKS_FOR(gridHeight);
-    if (cx > STORE_CHUNKS_X) cx = STORE_CHUNKS_X;
-    if (cy > STORE_CHUNKS_Y) cy = STORE_CHUNKS_Y;
-    if (cx > clearCX) clearCX = cx;
-    if (cy > clearCY) clearCY = cy;
-}
-
-int cellIndexTabX[MAX_GRID_WIDTH + 1];
-int cellIndexTabY[MAX_GRID_HEIGHT + 1];
-
-void InitCellIndexTables(void) {
-    for (int x = 0; x <= MAX_GRID_WIDTH; x++) cellIndexTabX[x] = CellIndexX(x);
-    for (int y = 0; y <= MAX_GRID_HEIGHT; y++) cellIndexTabY[y] = CellIndexY(y);
 }
 
 #ifdef NAVKIT_CELL_CHECK
@@ -77,8 +64,8 @@ int CellIndexChecked(int x, int y, int z, const char* file, int line) {
         }
         // Keep the old behaviour where it was harmless (margin), but never index outside the array.
         if (x < 0 || y < 0 || z < 0 || z >= MAX_GRID_DEPTH ||
-            x >= STORE_CHUNKS_X * STORE_CHUNK || y >= STORE_CHUNKS_Y * STORE_CHUNK) {
-            return (int)(MAX_GRID_CELLS - 1);
+            x >= storeChunksX * STORE_CHUNK || y >= storeChunksY * STORE_CHUNK) {
+            return (int)(gridLayerCells - 1);
         }
     }
     return CellIndex(x, y, z);
@@ -94,28 +81,16 @@ void ClearGridPlane(void* plane, size_t elemSize, int fillByte) {
     }
 }
 
-// Each chunk row's used chunks are contiguous: clear them in one go per row.
 void ClearGridLayer(void* layer, size_t elemSize, int fillByte) {
-    GrowClearRegion();
-    unsigned char* base = (unsigned char*)layer;
-    size_t chunkBytes = (size_t)STORE_CHUNK_STRIDE * elemSize;
-    for (int cy = 0; cy < clearCY; cy++) {
-        memset(base + (size_t)cy * STORE_CHUNKS_X * chunkBytes, fillByte, (size_t)clearCX * chunkBytes);
-    }
+    memset(layer, fillByte, gridLayerCells * elemSize);
 }
 
 void FillGridLayer(void* layer, size_t elemSize, const void* pattern) {
-    GrowClearRegion();
     unsigned char* base = (unsigned char*)layer;
-    size_t rowCells = (size_t)clearCX * STORE_CHUNK_STRIDE;
-    for (int cy = 0; cy < clearCY; cy++) {
-        unsigned char* row = base + (size_t)cy * STORE_CHUNKS_X * STORE_CHUNK_STRIDE * elemSize;
-        for (size_t i = 0; i < rowCells; i++) memcpy(row + i * elemSize, pattern, elemSize);
-    }
+    for (size_t i = 0; i < gridLayerCells; i++) memcpy(base + i * elemSize, pattern, elemSize);
 }
 
 void InitGridWithDimensions(int width, int height, int depth, int chunkW, int chunkH) {
-    InitCellIndexTables();   // cheap, idempotent; must run before any layer access
     // Clamp to max dimensions
     if (depth > MAX_GRID_DEPTH) depth = MAX_GRID_DEPTH;
     if (depth < 1) depth = 1;
@@ -138,6 +113,7 @@ void InitGridWithDimensions(int width, int height, int depth, int chunkW, int ch
     chunksX = (gridWidth + chunkWidth - 1) / chunkWidth;   // ceiling division
     chunksY = (gridHeight + chunkHeight - 1) / chunkHeight;
     rampCount = 0;
+    AllocGridLayers();   // layers sized to this map (no-op when the size is unchanged)
 
     // Clear the grid (all z-levels), cell flags, vegetation, and materials
     CLEAR_GRID_LAYER(cellFlags, 0);

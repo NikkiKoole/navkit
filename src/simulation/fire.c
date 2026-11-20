@@ -15,7 +15,7 @@
 #include <stdlib.h>
 
 // Fire grid storage
-FireCell fireGrid[MAX_GRID_CELLS];
+FireCell* fireGrid = NULL;   // allocated in grid_layers.c
 
 // Global state
 bool fireEnabled = true;

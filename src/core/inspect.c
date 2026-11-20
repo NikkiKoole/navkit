@@ -557,6 +557,7 @@ static void setup_pathfinding_globals(void) {
     chunkHeight = insp_chunkH;
     chunksX = gridWidth / chunkWidth;
     chunksY = gridHeight / chunkHeight;
+    AllocGridLayers();   // layers sized to the save's map
     
     for (int z = 0; z < insp_gridD; z++) {
         for (int y = 0; y < insp_gridH; y++) {

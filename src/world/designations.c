@@ -22,7 +22,7 @@
 #include <string.h>
 #include <math.h>
 
-Designation designations[MAX_GRID_CELLS];
+Designation* designations = NULL;   // allocated in grid_layers.c
 
 // Active designation count for early-exit optimizations
 int activeDesignationCount = 0;

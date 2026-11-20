@@ -22,6 +22,16 @@ hits=$(grep -rnE "(^|[^.>A-Za-z0-9_])($layers)[[:space:]]*\[" src tests --includ
     | grep -vE "//.*($layers)[[:space:]]*\[" \
     | grep -vE "\"[^\"]*($layers)[[:space:]]*\[")
 
+# Layers are pointers sized at runtime: sizeof(layer) is a pointer size, and raw mem* calls on a
+# layer need its element count. Use CLEAR_GRID_LAYER / FILL_GRID_LAYER (or gridLayerCells).
+memhits=$(grep -rnE "sizeof[[:space:]]*\([[:space:]]*($layers)[[:space:]]*\)|(memset|memcpy|memcmp|memmove)[[:space:]]*\([[:space:]]*&?($layers)[[:space:]]*," \
+    src tests --include='*.c' --include='*.h' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*)')
+if [ -n "$memhits" ]; then
+    echo "check_layer_access: sizeof/mem* on a layer (layers are runtime-sized pointers); use CLEAR_GRID_LAYER / FILL_GRID_LAYER:"
+    echo "$memhits"
+    exit 1
+fi
+
 if [ -n "$hits" ]; then
     echo "check_layer_access: direct layer indexing found; use the layer macro, e.g. GRID(x, y, z) not grid[z][y][x]:"
     echo "$hits"

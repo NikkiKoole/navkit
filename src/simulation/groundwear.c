@@ -13,7 +13,7 @@
 #include <stdlib.h>
 
 // Wear grid storage (3D)
-uint16_t wearGrid[MAX_GRID_CELLS];
+uint16_t* wearGrid = NULL;   // allocated in grid_layers.c
 
 // Global state
 bool groundWearEnabled = true;

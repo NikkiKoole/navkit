@@ -439,7 +439,7 @@ void SetWeatherWindAccum(float v) { weatherWindAccum = v; }
 
 // Snow grid: 0=none, 1=light, 2=moderate, 3=heavy
 // Same layout as vegetationGrid
-uint8_t snowGrid[MAX_GRID_CELLS];
+uint8_t* snowGrid = NULL;   // allocated in grid_layers.c
 
 // Snow tunables (game-hours): 1/rate = game-hours per snow level change
 float snowAccumulationRate = 0.25f;   // 1/0.25 = 4 GH per level (was 0.1, 1/0.1 = 10 game-seconds)
@@ -449,7 +449,7 @@ float snowMeltingRate = 0.125f;       // 1/0.125 = 8 GH per level (was 0.05, 1/0
 static float snowAccum = 0.0f;
 
 // Per-cell accumulators for deterministic snow changes
-static float snowAccumGrid[MAX_GRID_CELLS];
+float* snowAccumGrid = NULL;   // per-cell scratch layer (allocated in grid_layers.c)
 #define SNOW_ACCUM(x, y, z) (snowAccumGrid CELL_AT((x), (y), (z)))
 
 // UpdateSnow only has work while it snows, or while snow or snowfall progress lies

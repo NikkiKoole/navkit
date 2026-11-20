@@ -1353,15 +1353,15 @@ void DrawProfilerPanel(float rightEdge, float y) {
         if (sectionMemory) {
             // Calculate sizes of major static arrays
             // Grid & terrain
-            size_t gridSize = sizeof(grid);
-            size_t designationsSize = sizeof(Designation) * MAX_GRID_CELLS;
-            size_t waterSize = sizeof(WaterCell) * MAX_GRID_CELLS;
-            size_t fireSize = sizeof(FireCell) * MAX_GRID_CELLS;
-            size_t smokeSize = sizeof(SmokeCell) * MAX_GRID_CELLS;
-            size_t steamSize = sizeof(SteamCell) * MAX_GRID_CELLS;
-            size_t temperatureSize = sizeof(TempCell) * MAX_GRID_CELLS;
-            size_t cellFlagsSize = sizeof(uint8_t) * MAX_GRID_CELLS;
-            size_t groundWearSize = sizeof(wearGrid);
+            size_t gridSize = sizeof(*grid) * gridLayerCells;
+            size_t designationsSize = sizeof(Designation) * gridLayerCells;
+            size_t waterSize = sizeof(WaterCell) * gridLayerCells;
+            size_t fireSize = sizeof(FireCell) * gridLayerCells;
+            size_t smokeSize = sizeof(SmokeCell) * gridLayerCells;
+            size_t steamSize = sizeof(SteamCell) * gridLayerCells;
+            size_t temperatureSize = sizeof(TempCell) * gridLayerCells;
+            size_t cellFlagsSize = sizeof(uint8_t) * gridLayerCells;
+            size_t groundWearSize = sizeof(*wearGrid) * gridLayerCells;
 
             // Pathfinding (NavWorld is heap-allocated, sized to the current map)
             size_t navWorldSize = NavMemoryUsage(NavGame());

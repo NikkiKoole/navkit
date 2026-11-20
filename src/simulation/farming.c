@@ -10,7 +10,7 @@
 #include <string.h>
 
 // Grid storage
-FarmCell farmGrid[MAX_GRID_CELLS];
+FarmCell* farmGrid = NULL;   // allocated in grid_layers.c
 int farmActiveCells = 0;
 
 // Tick accumulator

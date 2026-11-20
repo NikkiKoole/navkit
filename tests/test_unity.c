@@ -124,3 +124,4 @@ bool bladderEnabled = false;
 #include "../src/simulation/rooms.c"
 #include "../src/core/state_audit.c"
 #include "../src/core/saveload.c"
+#include "../src/world/grid_layers.c"

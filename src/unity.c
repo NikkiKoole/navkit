@@ -73,6 +73,9 @@
 #include "core/pie_menu.c"
 #include "core/input.c"
 #include "core/saveload.c"
+// Per-cell layer allocation (needs every layer header; before anything runs)
+#include "world/grid_layers.c"
+
 #include "core/scenarios.c"
 #include "core/games.c"
 #include "core/settings.c"

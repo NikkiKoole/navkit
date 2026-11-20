@@ -42,9 +42,9 @@ typedef struct {
 
 extern Furniture furniture[MAX_FURNITURE];
 extern int furnitureCount;
-extern uint8_t furnitureMoveCostGrid[MAX_GRID_CELLS];
+extern uint8_t* furnitureMoveCostGrid;
 // FURNITURE_MOVE_COST(x, y, z) lives in grid.h (cell_defs.h needs it before this header)
-extern uint8_t capabilityGrid[MAX_GRID_CELLS];
+extern uint8_t* capabilityGrid;
 #define CAPABILITY(x, y, z) (capabilityGrid CELL_AT((x), (y), (z)))
 
 const FurnitureDef* GetFurnitureDef(FurnitureType type);

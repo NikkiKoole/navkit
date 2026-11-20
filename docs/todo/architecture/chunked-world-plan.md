@@ -281,6 +281,34 @@ With the accessor in place, allocate layers at world creation/load (`InitGridWit
 longer needed; the limit becomes RAM). A 128 map's layers drop to a few tens of MB;
 a 1024 map still costs what it costs (~75 bytes per cell dense, ~1.2 GB).
 
+### Step 2: done (2026-11-21), as built
+
+- Layers are pointers (`T* name`) into one **world arena** (`src/world/grid_layers.c`): a
+  single `calloc` sized for the current map (`gridLayerCells` elements per layer). A registry
+  table lists every layer with its element size and empty value; adding a layer = one row.
+- `AllocGridLayers()` (called by `InitGridWithDimensions`, and by `inspect.c`) reallocates only
+  when the map size changes, rebuilds the `CellIndex` tables for the real chunk count
+  (`storeChunksX/Y`), and fills fresh layers with their empty value (water stable bit,
+  designation `assignedMover = -1`, source items 0xFF, explored 1).
+- A first arena is allocated before `main()` (constructor) for the default size and left all
+  zero, like the static arrays were: some code (tests, `ClearMovers`) touches layers before any
+  `InitGrid`.
+- `ClearGridLayer` / `FillGridLayer` clear the whole (exact-size) layer; the high-water logic
+  is gone. `sizeof(layer)` is now a pointer size: `tools/check_layer_access.sh` rejects it and
+  raw `mem*` calls on layers (caught one in `test_fog.c`).
+- **The compile-time cap no longer limits layers**: a `-DMAX_GRID_WIDTH=2048` build links
+  (static data 548 MB, mostly untouched scratch: `bfsQueue` 256 MB, `moverPaths` 117 MB).
+  `MAX_GRID_WIDTH/HEIGHT` still size those scratch buffers and the index tables.
+- Cost vs step 1: ~3% per tick at 512 (3.22 -> 3.32 ms; still below the original 3.44),
+  setup +7%: every access loads the layer pointer.
+- Verified: byte-identical saves vs step 1 for world 512/100, ladders, crafting, hubs, train,
+  survival (fixed headless seed and `--seed 7`), dollhouse, sandbox; v93 save loads identically.
+- 1024 world: 8.6 ms/tick, setup 5.0 s (graph 3.9 s), peak RSS 1.03 GB, footprint 1.81 GB.
+
+Note (pre-existing, found 2026-11-21): `test_workshop_deconstruction` segfaults (a workshop type
+without a construction recipe; `GetConstructionRecipe` returns NULL), and `make test` hides it:
+every suite runs with `-@`, so crashes and failures don't fail the target.
+
 ## Step 3: sparse layers
 
 Water, fire, smoke, steam, snow, farming, designations are empty almost everywhere.

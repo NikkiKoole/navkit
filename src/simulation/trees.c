@@ -24,13 +24,13 @@ float youngToMatureGH = 400.0f;  // Game-hours young tree waits at full height b
 #define LEAF_TRUNK_CHECK_DIST 4   // Max distance to check for trunk connection
 
 // Simple timer grid for growth (could be optimized with a list later)
-float growthTimer[MAX_GRID_CELLS];
+float* growthTimer = NULL;   // allocated in grid_layers.c
 
 // Target height per tree (set when sapling becomes trunk, based on position)
-uint8_t targetHeight[MAX_GRID_CELLS];
+uint8_t* targetHeight = NULL;   // allocated in grid_layers.c
 
 // Harvest state per cell (only meaningful on trunk base cells)
-uint8_t treeHarvestState[MAX_GRID_CELLS];
+uint8_t* treeHarvestState = NULL;   // allocated in grid_layers.c
 
 // Simple hash for position-based randomness (deterministic)
 static unsigned int PositionHash(int x, int y, int z) {
