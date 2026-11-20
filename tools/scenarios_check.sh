@@ -47,7 +47,7 @@ done <<'EOF'
 750 | 0 | --set sharedGoalFields 0 --scenario hubs
 94  | 0 | --scenario train-double
 87  | 0 | --set trainSpeed 9 --scenario train-double
-28  | 0 | --game dollhouse
+24  | 0 | --game dollhouse
 2   | 0 | --game survival
 EOF
 
