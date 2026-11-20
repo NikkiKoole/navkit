@@ -163,7 +163,7 @@ Ring buffer (4096 entries), game-time timestamped. Records job lifecycle, item d
 
 ## Scenarios
 
-Built-in demo/test setups live in one table in `src/core/scenarios.c` (`ladders`, `mood`, `crafting`, `train`, `train-long`).
+Built-in demo/test setups live in one table in `src/core/scenarios.c` (`list` shows them all).
 
 ```bash
 ./build/bin/path --scenario list                          # names + descriptions
@@ -174,6 +174,8 @@ Built-in demo/test setups live in one table in `src/core/scenarios.c` (`ladders`
 
 In-game: dev UI (TAB) → terrain section → **Scenarios** buttons (hover for description), or console `scenario <name>` / `scenario list`.
 `--set <var> <value>` sets any console variable at startup (GUI or headless).
+Load test per map size: `--headless --scenario world --set scenarioSize 512 --ticks 1200 --profile`
+(`--profile` prints CPU ms per tick per profiler section; see `docs/todo/architecture/large-worlds.md`).
 
 **Adding one:** write `static void SetupFoo(void)` in `scenarios.c` and add a row
 `{"foo", "one-line description", "TerrainName" or NULL, SetupFoo, tickStats, printStats}`.
