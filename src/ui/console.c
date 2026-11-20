@@ -1311,9 +1311,6 @@ void Console_RegisterGameVars(void) {
     // Time (from time.c)
     Console_RegisterVar("time", &timeOfDay, CVAR_FLOAT);
 
-    // Simulation toggles
-    Console_RegisterVar("wear", &groundWearEnabled, CVAR_BOOL);
-
     // Tunable settings table (src/core/settings.c): range + help per variable
     Settings_RegisterConsoleVars();
 }

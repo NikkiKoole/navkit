@@ -17,6 +17,9 @@
 #include "../entities/ladders.h"
 #include "../entities/tool_quality.h"
 #include "../world/pathfinding.h"
+#include "../world/biome.h"
+#include "../simulation/trees.h"
+#include "../simulation/groundwear.h"
 #include "../ui/console.h"
 #include <strings.h>
 
@@ -153,6 +156,42 @@ static const char* DescAnimalSpawn(void) {
 static const char* DescTorchIntensity(void) {
     return TextFormat("Propagation radius for new torches. At %d, light reaches %d tiles away.",
                       lightDefaultIntensity, lightDefaultIntensity);
+}
+
+// Picking a biome loads its river/lake counts (still editable after)
+static void ApplyBiomePreset(float oldValue) {
+    (void)oldValue;
+    hillsWaterRiverCount = biomePresets[selectedBiome].riverCount;
+    hillsWaterLakeCount = biomePresets[selectedBiome].lakeCount;
+}
+
+static const char* DescSaplingGrow(void) {
+    return TextFormat("Sapling to young tree: %.0f game-hours (%.1f days)", saplingGrowGH, saplingGrowGH / 24.0f);
+}
+static const char* DescTrunkGrow(void) {
+    return TextFormat("Per growth stage: %.0f game-hours (%.1f days)", trunkGrowGH, trunkGrowGH / 24.0f);
+}
+static const char* DescYoungToMature(void) {
+    return TextFormat("Young tree maturation wait: %.0f game-hours (%.1f days)", youngToMatureGH, youngToMatureGH / 24.0f);
+}
+static const char* DescRegrowthChance(void) {
+    return TextFormat("Chance per 10000 per interval for a sapling to spawn on tall grass. At %d, roughly %.2f%% chance.",
+                      saplingRegrowthChance, saplingRegrowthChance / 100.0f);
+}
+static const char* DescMinTreeDistance(void) {
+    return TextFormat("Minimum tiles from existing trees/saplings for a new sapling. At %d, trees spread more slowly.",
+                      saplingMinTreeDistance);
+}
+static const char* DescTrample(void) {
+    int stepsToPath = wearTrampleAmount > 0 ? wearGrassToDirt / wearTrampleAmount : 9999;
+    return TextFormat("%d wear per step. %d steps to form a path.", wearTrampleAmount, stepsToPath);
+}
+static const char* DescGrassToDirt(void) {
+    return TextFormat("Grass becomes dirt at %d wear.", wearGrassToDirt);
+}
+static const char* DescDirtToGrass(void) {
+    return TextFormat("Dirt regrows grass below %d wear. Gap of %d creates path persistence.",
+                      wearDirtToGrass, wearGrassToDirt - wearDirtToGrass);
 }
 
 // Rescale every mover's speed proportionally (each keeps its own variance)
@@ -382,6 +421,60 @@ static const Setting settings[] = {
       "Energy drain multiplier when moderately cold."),
     SET_BALANCE("hypothermiaDeath", "Hypothermia Death", "Mover Balance/Body Temperature", hypothermiaDeathGH, 0.5f, 1.0f, 12.0f,
       "Game-hours at severe cold before death."),
+
+    // --- World: terrain generator parameters (sidebar shows them per terrain) ---
+    SET_FLOAT("rampDensity", "Ramp Density", "World/Terrain/Hills", rampDensity, 0.02f, 0.0f, 1.0f,
+      "Hills ramp placement density (0=none, 1=all). Lower reduces HPA* graph size.", NULL),
+    SET_FLOAT("rampNoiseScale", "Ramp Noise Scale", "World/Terrain/Hills", rampNoiseScale, 0.005f, 0.005f, 0.2f,
+      "Controls ramp cluster size for hills generators (higher = larger clusters).", NULL),
+    SET_INT("riverCount", "River Count", "World/Terrain/HillsWater", hillsWaterRiverCount, 1.0f, 0, 6,
+      "HillsSoilsWater: number of rivers (0 disables rivers).", NULL),
+    SET_INT("riverWidth", "River Width", "World/Terrain/HillsWater", hillsWaterRiverWidth, 1.0f, 1, 4,
+      "HillsSoilsWater: river width radius (1-4).", NULL),
+    SET_INT("lakeCount", "Lake Count", "World/Terrain/HillsWater", hillsWaterLakeCount, 1.0f, 0, 6,
+      "HillsSoilsWater: number of lakes (0 disables lakes).", NULL),
+    SET_INT("lakeRadius", "Lake Radius", "World/Terrain/HillsWater", hillsWaterLakeRadius, 1.0f, 3, 12,
+      "HillsSoilsWater: lake radius (3-12).", NULL),
+    SET_FLOAT("wetnessBias", "Wetness Bias", "World/Terrain/HillsWater", hillsWaterWetnessBias, 0.05f, 0.0f, 1.0f,
+      "HillsSoilsWater: wetness boost near water (peat/clay bias).", NULL),
+    SET_BOOL("connReport", "Conn Report", "World/Terrain/HillsWater", hillsWaterConnectivityReport,
+      "Logs walkability connectivity stats after generation."),
+    SET_BOOL("fixTinyPockets", "Fix Tiny Pockets", "World/Terrain/HillsWater", hillsWaterConnectivityFixSmall,
+      "Fills tiny disconnected walkable pockets after generation."),
+    SET_INT("tinyPocketSize", "Tiny Size", "World/Terrain/HillsWater", hillsWaterConnectivitySmallThreshold, 1.0f, 5, 200,
+      "Size threshold for tiny pocket fill (cells).", NULL),
+    SET_BOOL("skipBuildings", "Skip Buildings", "World/Terrain/HillsWater", hillsSkipBuildings,
+      "Skip placing ruined buildings during terrain generation."),
+    SET_CHOICE("biome", "Biome", "World/Terrain/Biome", selectedBiome, biomeNames, BIOME_COUNT,
+      "Biome preset for HillsSoilsWater; picking one loads its river and lake counts.", ApplyBiomePreset),
+
+    // --- World: trees ---
+    SET_FLOAT("saplingGrow", "Sapling Grow", "World/Trees", saplingGrowGH, 5.0f, 0.01f, 1000.0f,
+      "Game-hours before a sapling becomes a young tree.", DescSaplingGrow),
+    SET_FLOAT("trunkGrow", "Trunk Grow", "World/Trees", trunkGrowGH, 5.0f, 0.01f, 1000.0f,
+      "Game-hours between growth stages.", DescTrunkGrow),
+    SET_FLOAT("youngToMature", "Young→Mature", "World/Trees", youngToMatureGH, 10.0f, 0.01f, 2000.0f,
+      "Game-hours a young tree waits at full height before maturing.", DescYoungToMature),
+    SET_BOOL("saplingRegrowth", "Sapling Regrowth", "World/Trees", saplingRegrowthEnabled,
+      "Enable natural sapling spawning on untrampled grass. Saplings appear over time in wilderness areas."),
+    SET_INT("regrowthChance", "Regrowth Chance", "World/Trees", saplingRegrowthChance, 1.0f, 0, 100,
+      "Chance per 10000 per interval for a sapling to spawn on tall grass.", DescRegrowthChance),
+    SET_INT("minTreeDistance", "Min Tree Distance", "World/Trees", saplingMinTreeDistance, 1.0f, 1, 10,
+      "Minimum tiles from existing trees/saplings for a new sapling.", DescMinTreeDistance),
+
+    // --- World: entropy (ground wear) ---
+    SET_BOOL("wear", "Enabled", "World/Entropy", groundWearEnabled,
+      "Creates emergent paths: grass becomes dirt when trampled, dirt recovers to grass when left alone."),
+    SET_INT("wearTrample", "Trample Amount", "World/Entropy/Advanced", wearTrampleAmount, 1.0f, 1, 100,
+      "Wear added per mover step.", DescTrample),
+    SET_INT("wearGrassToDirt", "Grass->Dirt Threshold", "World/Entropy/Advanced", wearGrassToDirt, 50.0f, 100, 10000,
+      "Wear at which grass becomes dirt.", DescGrassToDirt),
+    SET_INT("wearDirtToGrass", "Dirt->Grass Threshold", "World/Entropy/Advanced", wearDirtToGrass, 50.0f, 0, 5000,
+      "Wear below which dirt regrows grass.", DescDirtToGrass),
+    SET_INT("wearDecayRate", "Decay Rate", "World/Entropy/Advanced", wearDecayRate, 1.0f, 1, 100,
+      "Wear recovered per decay step.", NULL),
+    SET_FLOAT("wearRecoveryInterval", "Recovery Interval (s)", "World/Entropy/Advanced", wearRecoveryInterval, 0.5f, 0.1f, 60.0f,
+      "Game-seconds between wear decay steps.", NULL),
 
     // --- Pathfinding ---
     SET_CHOICE("pathAlgo", "Algo", "Pathfinding", pathAlgorithm, algorithmNames, 2,

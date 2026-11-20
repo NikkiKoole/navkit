@@ -524,51 +524,18 @@ void DrawUI(void) {
             y += 22;
             bool isHillsTerrain = (currentTerrain == 17 || currentTerrain == 18 || currentTerrain == 19);
             bool isHillsWater = (currentTerrain == 19);
+            // Generator parameters (src/core/settings.c), only for the terrains that use them
             if (isHillsTerrain) {
-                DraggableFloatT(ix, y, "Ramp Density", &rampDensity, 0.02f, 0.0f, 1.0f,
-                    "Hills ramp placement density (0=none, 1=all). Lower reduces HPA* graph size.");
-                y += 22;
-                DraggableFloatT(ix, y, "Ramp Noise Scale", &rampNoiseScale, 0.005f, 0.005f, 0.2f,
-                    "Controls ramp cluster size for hills generators (higher = larger clusters).");
+                DrawSettingsGroup("World/Terrain/Hills", ix, &y);
                 y += 22;
             }
             if (isHillsWater) {
-                DraggableIntT(ix, y, "River Count", &hillsWaterRiverCount, 1.0f, 0, 6,
-                    "HillsSoilsWater: number of rivers (0 disables rivers).");
+                DrawSettingsGroup("World/Terrain/HillsWater", ix, &y);
                 y += 22;
-                DraggableIntT(ix, y, "River Width", &hillsWaterRiverWidth, 1.0f, 1, 4,
-                    "HillsSoilsWater: river width radius (1-4).");
-                y += 22;
-                DraggableIntT(ix, y, "Lake Count", &hillsWaterLakeCount, 1.0f, 0, 6,
-                    "HillsSoilsWater: number of lakes (0 disables lakes).");
-                y += 22;
-                DraggableIntT(ix, y, "Lake Radius", &hillsWaterLakeRadius, 1.0f, 3, 12,
-                    "HillsSoilsWater: lake radius (3-12).");
-                y += 22;
-                DraggableFloatT(ix, y, "Wetness Bias", &hillsWaterWetnessBias, 0.05f, 0.0f, 1.0f,
-                    "HillsSoilsWater: wetness boost near water (peat/clay bias).");
-                y += 22;
-                ToggleBoolT(ix, y, "Conn Report", &hillsWaterConnectivityReport,
-                    "Logs walkability connectivity stats after generation.");
-                y += 22;
-                ToggleBoolT(ix, y, "Fix Tiny Pockets", &hillsWaterConnectivityFixSmall,
-                    "Fills tiny disconnected walkable pockets after generation.");
-                y += 22;
-                DraggableIntT(ix, y, "Tiny Size", &hillsWaterConnectivitySmallThreshold, 1.0f, 5, 200,
-                    "Size threshold for tiny pocket fill (cells).");
-                y += 22;
-                ToggleBoolT(ix, y, "Skip Buildings", &hillsSkipBuildings,
-                    "Skip placing ruined buildings during terrain generation.");
-                y += 22;
-                int prevBiome = selectedBiome;
-                CycleOption(ix, y, "Biome", biomeNames, BIOME_COUNT, &selectedBiome);
+                DrawSettingsGroup("World/Terrain/Biome", ix, &y);   // loads river/lake counts
                 y += 22;
                 DrawTextShadow(biomePresets[selectedBiome].description, ix, y, 11, GRAY);
                 y += 16;
-                if (selectedBiome != prevBiome) {
-                    hillsWaterRiverCount = biomePresets[selectedBiome].riverCount;
-                    hillsWaterLakeCount = biomePresets[selectedBiome].lakeCount;
-                }
             }
             if (PushButton(ix, y, "Randomize Seed")) {
                 worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
@@ -791,24 +758,7 @@ void DrawUI(void) {
         // --- Trees ---
         if (SectionHeader(ix, y, "Trees", &sectionTrees)) {
             y += 18;
-            DraggableFloatT(ix, y, "Sapling Grow", &saplingGrowGH, 5.0f, 0.01f, 1000.0f,
-                TextFormat("Sapling to young tree: %.0f game-hours (%.1f days)", saplingGrowGH, saplingGrowGH / 24.0f));
-            y += 22;
-            DraggableFloatT(ix, y, "Trunk Grow", &trunkGrowGH, 5.0f, 0.01f, 1000.0f,
-                TextFormat("Per growth stage: %.0f game-hours (%.1f days)", trunkGrowGH, trunkGrowGH / 24.0f));
-            y += 22;
-            DraggableFloatT(ix, y, "Young→Mature", &youngToMatureGH, 10.0f, 0.01f, 2000.0f,
-                TextFormat("Young tree maturation wait: %.0f game-hours (%.1f days)", youngToMatureGH, youngToMatureGH / 24.0f));
-            y += 22;
-            ToggleBoolT(ix, y, "Sapling Regrowth", &saplingRegrowthEnabled,
-                "Enable natural sapling spawning on untrampled grass. Saplings appear over time in wilderness areas.");
-            y += 22;
-            DraggableIntT(ix, y, "Regrowth Chance", &saplingRegrowthChance, 1.0f, 0, 100,
-                TextFormat("Chance per 10000 per interval for sapling to spawn on tall grass. At %d, roughly %.2f%% chance.",
-                           saplingRegrowthChance, saplingRegrowthChance / 100.0f));
-            y += 22;
-            DraggableIntT(ix, y, "Min Tree Distance", &saplingMinTreeDistance, 1.0f, 1, 10,
-                TextFormat("Minimum tiles from existing trees/saplings for new sapling to spawn. At %d, trees spread more slowly.", saplingMinTreeDistance));
+            DrawSettingsGroup("World/Trees", ix, &y);   // src/core/settings.c
             y += 22;
             DrawTextShadow(TextFormat("Sandbox Tree Type: %s", TreeTypeName(currentTreeType)), ix, y, 14, GRAY);
         }
@@ -817,8 +767,7 @@ void DrawUI(void) {
         // --- Entropy (Ground Wear) ---
         if (SectionHeader(ix, y, "Entropy", &sectionEntropy)) {
             y += 18;
-            ToggleBoolT(ix, y, "Enabled", &groundWearEnabled,
-                "Creates emergent paths: grass becomes dirt when trampled, dirt recovers to grass when left alone.");
+            DrawSettingsGroup("World/Entropy", ix, &y);   // src/core/settings.c
             y += 22;
             if (PushButton(ix, y, "Clear Wear")) {
                 ClearGroundWear();
@@ -828,24 +777,7 @@ void DrawUI(void) {
             // Advanced sub-section
             if (SectionHeader(ix + 10, y, "Advanced", &sectionEntropyAdvanced)) {
                 y += 18;
-                {
-                    int stepsToPath = wearTrampleAmount > 0 ? wearGrassToDirt / wearTrampleAmount : 9999;
-                    DraggableIntT(ix + 10, y, "Trample Amount", &wearTrampleAmount, 1.0f, 1, 100,
-                        TextFormat("%d wear per step. %d steps to form a path.", wearTrampleAmount, stepsToPath));
-                }
-                y += 22;
-                DraggableIntT(ix + 10, y, "Grass->Dirt Threshold", &wearGrassToDirt, 50.0f, 100, 10000,
-                    TextFormat("Grass becomes dirt at %d wear.", wearGrassToDirt));
-                y += 22;
-                DraggableIntT(ix + 10, y, "Dirt->Grass Threshold", &wearDirtToGrass, 50.0f, 0, 5000,
-                    TextFormat("Dirt regrows grass below %d wear. Gap of %d creates path persistence.",
-                               wearDirtToGrass, wearGrassToDirt - wearDirtToGrass));
-                y += 22;
-                DraggableIntT(ix + 10, y, "Decay Rate", &wearDecayRate, 1.0f, 1, 100,
-                    TextFormat("%d wear recovered per tick.", wearDecayRate));
-                y += 22;
-                DraggableFloatT(ix + 10, y, "Recovery Interval (s)", &wearRecoveryInterval, 0.5f, 0.1f, 60.0f,
-                    TextFormat("Wear decays every %.1f game-seconds.", wearRecoveryInterval));
+                DrawSettingsGroup("World/Entropy/Advanced", ix + 10, &y);
                 y += 22;
                 int decaySteps = (wearMax - wearDirtToGrass) / wearDecayRate;
                 float gameSecondsToRegrow = decaySteps * wearRecoveryInterval;
