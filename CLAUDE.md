@@ -188,6 +188,15 @@ draws its tunables from the table; spawn counts, editor tool/terrain pickers, bu
 readouts stay hand-written. Saved settings are still a separate list
 (`SETTINGS_TABLE` in `saveload.c`).
 
+## Descriptions (what the game says about an entity)
+
+`src/core/describe.c` builds an entity's text as lines with a semantic tone (good / warn /
+bad / info / muted ...), no drawing: `DescribeMover(idx, DESC_PLAYER or DESC_DEBUG, &lines)`.
+The hover tooltip maps tones to colors; `--headless ... --describe-mover N|all` prints the
+same lines (after the run; `--ticks 0` = as loaded from `--load`). Need labels ("Peckish",
+"Parched", ...) live there too (`HungerLabel` etc.). **New screens that show an entity should
+call its describe function** rather than formatting fields again. Done so far: movers.
+
 ## Scenarios
 
 Built-in demo/test setups live in one table in `src/core/scenarios.c` (`list` shows them all).

@@ -125,3 +125,4 @@ bool bladderEnabled = false;
 #include "../src/core/state_audit.c"
 #include "../src/core/saveload.c"
 #include "../src/world/grid_layers.c"
+#include "../src/core/describe.c"

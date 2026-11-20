@@ -79,6 +79,7 @@
 #include "core/scenarios.c"
 #include "core/games.c"
 #include "core/settings.c"
+#include "core/describe.c"
 
 // Rendering
 #include "render/rendering.c"

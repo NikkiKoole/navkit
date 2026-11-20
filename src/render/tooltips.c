@@ -15,24 +15,8 @@
 #include "../simulation/mood.h"
 #include "../simulation/rooms.h"
 #include "../entities/trains.h"
+#include "../core/describe.h"
 
-static void FormatItemName(const Item* item, char* out, size_t outSize) {
-    const char* base = (item->type < ITEM_TYPE_COUNT) ? ItemName(item->type) : "?";
-    MaterialType mat = (MaterialType)item->material;
-    if (mat == MAT_NONE) {
-        mat = (MaterialType)DefaultMaterialForItemType(item->type);
-    }
-    if (mat != MAT_NONE && ItemTypeUsesMaterialName(item->type)) {
-        char matName[32];
-        snprintf(matName, sizeof(matName), "%s", MaterialName(mat));
-        if (matName[0] >= 'a' && matName[0] <= 'z') {
-            matName[0] = (char)(matName[0] - 'a' + 'A');
-        }
-        snprintf(out, outSize, "%s %s", matName, base);
-        return;
-    }
-    snprintf(out, outSize, "%s", base);
-}
 
 static void BuildFillMeter(char* out, size_t outSize, float ratio, int width) {
     if (ratio < 0.0f) ratio = 0.0f;
@@ -268,356 +252,38 @@ static void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     DrawTextShadow(helpText, tx + padding, y, 12, GRAY);
 }
 
-// Draw mover debug tooltip (only shown when paused)
-static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
-    if (moverIdx < 0 || moverIdx >= moverCount) return;
-    Mover* m = &movers[moverIdx];
-    if (!m->active) return;
-
-    Job* job = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
-
-    const char* jobTypeName = job ? JobTypeName(job->type) : "IDLE";
-
-    int carryingItem = job ? job->carryingItem : -1;
-    int targetStockpile = job ? job->targetStockpile : -1;
-    int targetSlotX = job ? job->targetSlotX : -1;
-    int targetSlotY = job ? job->targetSlotY : -1;
-    int targetItem = job ? job->targetItem : -1;
-    int jobStep = job ? job->step : 0;
-
-    // Build lines dynamically
-    char lines[28][80];
-    Color lineColors[28];
-    int lineCount = 0;
-
-    // Header: index + name or "Mover #N" fallback
-    {
-        const char* draftStr = m->isDrafted ? " [DRAFTED]" : "";
-        if (m->name[0]) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "#%d %s%s", moverIdx, m->name, draftStr);
-        } else {
-            snprintf(lines[lineCount], sizeof(lines[0]), "Mover #%d%s", moverIdx, draftStr);
-        }
+// Description tones (src/core/describe.h) as tooltip colors
+static Color DescToneColor(DescTone tone) {
+    switch (tone) {
+        case DESC_NORMAL:        return WHITE;
+        case DESC_MUTED:         return GRAY;
+        case DESC_GOOD:          return GREEN;
+        case DESC_GREAT:         return (Color){100, 255, 100, 255};
+        case DESC_MILD:          return YELLOW;
+        case DESC_WARN:          return ORANGE;
+        case DESC_BAD:           return RED;
+        case DESC_INFO:          return SKYBLUE;
+        case DESC_COLD:          return BLUE;
+        case DESC_WATER:         return (Color){80, 140, 220, 255};
+        case DESC_HEADER_FEMALE: return (Color){255, 150, 180, 255};
+        case DESC_HEADER_MALE:   return (Color){130, 180, 255, 255};
     }
-    lineColors[lineCount++] = (m->gender == GENDER_FEMALE)
-        ? (Color){255, 150, 180, 255} : (Color){130, 180, 255, 255};
+    return WHITE;
+}
 
-    // Position
-    int cellX = (int)(m->x / CELL_SIZE);
-    int cellY = (int)(m->y / CELL_SIZE);
-    snprintf(lines[lineCount], sizeof(lines[0]), "Pos: (%.1f, %.1f, z%.0f) cell (%d,%d)", m->x, m->y, m->z, cellX, cellY);
-    lineColors[lineCount++] = WHITE;
-
-    // Hunger
-    {
-        const char* hungerLabel;
-        Color hungerColor;
-        if (m->hunger > 0.5f) { hungerLabel = "Full"; hungerColor = GREEN; }
-        else if (m->hunger > 0.3f) { hungerLabel = "Peckish"; hungerColor = YELLOW; }
-        else if (m->hunger > 0.1f) { hungerLabel = "Hungry"; hungerColor = ORANGE; }
-        else { hungerLabel = "Starving"; hungerColor = RED; }
-        float hoursToStarve = (balance.hungerDrainPerGH > 0)
-            ? m->hunger / balance.hungerDrainPerGH : 999.0f;
-        snprintf(lines[lineCount], sizeof(lines[0]), "Hunger: %.0f%% (%s) — starving in %.1fh",
-                 m->hunger * 100.0f, hungerLabel, hoursToStarve);
-        lineColors[lineCount++] = hungerColor;
-
-        if (m->freetimeState == FREETIME_SEEKING_FOOD) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "  Seeking food...");
-            lineColors[lineCount++] = ORANGE;
-        } else if (m->freetimeState == FREETIME_EATING) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "  Eating (%.0f%%)", (m->needProgress / 2.0f) * 100.0f);
-            lineColors[lineCount++] = GREEN;
-        }
-    }
-
-    // Thirst
-    {
-        const char* thirstLabel;
-        Color thirstColor;
-        if (m->thirst > 0.5f) { thirstLabel = "Hydrated"; thirstColor = GREEN; }
-        else if (m->thirst > 0.3f) { thirstLabel = "Parched"; thirstColor = YELLOW; }
-        else if (m->thirst > 0.1f) { thirstLabel = "Thirsty"; thirstColor = ORANGE; }
-        else { thirstLabel = "Dehydrating"; thirstColor = RED; }
-        float hoursToDehydrate = (balance.thirstDrainPerGH > 0)
-            ? m->thirst / balance.thirstDrainPerGH : 999.0f;
-        snprintf(lines[lineCount], sizeof(lines[0]), "Thirst: %.0f%% (%s) — dehydrating in %.1fh",
-                 m->thirst * 100.0f, thirstLabel, hoursToDehydrate);
-        lineColors[lineCount++] = thirstColor;
-
-        if (m->freetimeState == FREETIME_SEEKING_DRINK) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "  Seeking drink...");
-            lineColors[lineCount++] = ORANGE;
-        } else if (m->freetimeState == FREETIME_DRINKING) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "  Drinking (%.0f%%)", (m->needProgress / GameHoursToGameSeconds(balance.drinkingDurationGH)) * 100.0f);
-            lineColors[lineCount++] = (Color){80, 140, 220, 255};
-        } else if (m->freetimeState == FREETIME_SEEKING_NATURAL_WATER) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "  Seeking natural water...");
-            lineColors[lineCount++] = ORANGE;
-        } else if (m->freetimeState == FREETIME_DRINKING_NATURAL) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "  Drinking from water (%.0f%%)", (m->needProgress / GameHoursToGameSeconds(balance.naturalDrinkDurationGH)) * 100.0f);
-            lineColors[lineCount++] = (Color){80, 140, 220, 255};
-        }
-    }
-
-    // Bladder
-    if (bladderEnabled) {
-        const char* bladderLabel;
-        Color bladderColor;
-        if (m->bladder > 0.5f) { bladderLabel = "Fine"; bladderColor = GREEN; }
-        else if (m->bladder > 0.3f) { bladderLabel = "Need to go"; bladderColor = YELLOW; }
-        else if (m->bladder > 0.1f) { bladderLabel = "Urgent"; bladderColor = ORANGE; }
-        else { bladderLabel = "Desperate"; bladderColor = RED; }
-        float hoursLeft = (balance.bladderDrainPerGH > 0)
-            ? m->bladder / balance.bladderDrainPerGH : 999.0f;
-        snprintf(lines[lineCount], sizeof(lines[0]), "Bladder: %.0f%% (%s) — %.1fh",
-                 m->bladder * 100.0f, bladderLabel, hoursLeft);
-        lineColors[lineCount++] = bladderColor;
-
-        if (m->freetimeState == FREETIME_SEEKING_TOILET) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "  Seeking toilet...");
-            lineColors[lineCount++] = ORANGE;
-        } else if (m->freetimeState == FREETIME_USING_TOILET) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "  Using toilet");
-            lineColors[lineCount++] = GREEN;
-        } else if (m->freetimeState == FREETIME_SEEKING_BUSH) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "  Seeking bush...");
-            lineColors[lineCount++] = ORANGE;
-        } else if (m->freetimeState == FREETIME_USING_BUSH) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "  Behind a bush...");
-            lineColors[lineCount++] = YELLOW;
-        }
-    }
-
-    // Energy
-    {
-        const char* energyLabel;
-        Color energyColor;
-        if (m->energy > 0.5f) { energyLabel = "Rested"; energyColor = GREEN; }
-        else if (m->energy > 0.3f) { energyLabel = "Drowsy"; energyColor = YELLOW; }
-        else if (m->energy > 0.1f) { energyLabel = "Tired"; energyColor = ORANGE; }
-        else { energyLabel = "Exhausted"; energyColor = RED; }
-        // Energy projection
-        char energyProj[32] = "";
-        if (m->freetimeState == FREETIME_RESTING) {
-            float recoveryPerGH = balance.groundRecoveryPerGH;
-            const char* restOn = "ground";
-            if (m->needTarget >= 0 && m->needTarget < MAX_FURNITURE && furniture[m->needTarget].active) {
-                recoveryPerGH = balance.bedRecoveryPerGH;
-                restOn = "bed";
-            }
-            if (recoveryPerGH > 0) {
-                float hoursToRested = (balance.energyWakeThreshold - m->energy) / recoveryPerGH;
-                if (hoursToRested > 0) snprintf(energyProj, sizeof(energyProj), " — rested in %.1fh (%s)", hoursToRested, restOn);
-            }
-        } else {
-            float drainPerGH = job ? balance.energyDrainWorkPerGH : balance.energyDrainIdlePerGH;
-            if (drainPerGH > 0) {
-                float hoursToTired = (m->energy - balance.energyTiredThreshold) / drainPerGH;
-                if (hoursToTired > 0) snprintf(energyProj, sizeof(energyProj), " — tired in %.1fh", hoursToTired);
-            }
-        }
-        snprintf(lines[lineCount], sizeof(lines[0]), "Energy: %.0f%% (%s)%s", m->energy * 100.0f, energyLabel, energyProj);
-        lineColors[lineCount++] = energyColor;
-
-        if (m->freetimeState == FREETIME_SEEKING_REST) {
-            if (m->needTarget >= 0 && m->needTarget < MAX_FURNITURE && furniture[m->needTarget].active) {
-                snprintf(lines[lineCount], sizeof(lines[0]), "  Seeking %s...",
-                         GetFurnitureDef(furniture[m->needTarget].type)->name);
-            } else {
-                snprintf(lines[lineCount], sizeof(lines[0]), "  Seeking rest...");
-            }
-            lineColors[lineCount++] = ORANGE;
-        } else if (m->freetimeState == FREETIME_RESTING) {
-            if (m->needTarget >= 0 && m->needTarget < MAX_FURNITURE && furniture[m->needTarget].active) {
-                snprintf(lines[lineCount], sizeof(lines[0]), "  Resting (%s)",
-                         GetFurnitureDef(furniture[m->needTarget].type)->name);
-            } else {
-                snprintf(lines[lineCount], sizeof(lines[0]), "  Resting (ground)");
-            }
-            lineColors[lineCount++] = GREEN;
-        } else if (m->freetimeState == FREETIME_SEEKING_WARMTH) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "  Seeking warmth...");
-            lineColors[lineCount++] = ORANGE;
-        } else if (m->freetimeState == FREETIME_WARMING) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "  Warming up by fire");
-            lineColors[lineCount++] = YELLOW;
-        }
-    }
-
-    // Body temperature
-    {
-        const char* tempLabel;
-        Color tempColor;
-        if (m->bodyTemp < balance.severeColdThreshold) { tempLabel = "Hypothermic"; tempColor = BLUE; }
-        else if (m->bodyTemp < balance.moderateColdThreshold) { tempLabel = "Freezing"; tempColor = BLUE; }
-        else if (m->bodyTemp < balance.mildColdThreshold) { tempLabel = "Cold"; tempColor = SKYBLUE; }
-        else if (m->bodyTemp > balance.heatThreshold) { tempLabel = "Overheating"; tempColor = RED; }
-        else { tempLabel = "Normal"; tempColor = GREEN; }
-        snprintf(lines[lineCount], sizeof(lines[0]), "Body Temp: %.1fC (%s)", m->bodyTemp, tempLabel);
-        lineColors[lineCount++] = tempColor;
-    }
-
-    // Mood
-    if (moodEnabled) {
-        Color moodColor;
-        if (m->mood < -0.5f) moodColor = RED;
-        else if (m->mood < -0.2f) moodColor = ORANGE;
-        else if (m->mood < 0.2f) moodColor = YELLOW;
-        else if (m->mood < 0.5f) moodColor = GREEN;
-        else moodColor = (Color){100, 255, 100, 255};
-        snprintf(lines[lineCount], sizeof(lines[0]), "Mood: %.0f%% (%s)",
-                 (m->mood + 1.0f) * 50.0f, MoodLevelName(m->mood));
-        lineColors[lineCount++] = moodColor;
-
-        // Active moodlets
-        for (int mi = 0; mi < m->moodletCount && lineCount < 26; mi++) {
-            if (m->moodlets[mi].remainingTime <= 0.0f) continue;
-            float hoursLeft = m->moodlets[mi].remainingTime / GameHoursToGameSeconds(1.0f);
-            snprintf(lines[lineCount], sizeof(lines[0]), "  %s %+.0f (%.1fh)",
-                     moodletDefs[m->moodlets[mi].type].name,
-                     m->moodlets[mi].value, hoursLeft);
-            lineColors[lineCount++] = (m->moodlets[mi].value >= 0) ? GREEN : ORANGE;
-        }
-
-        // Traits
-        if (m->traits[0] != TRAIT_NONE || m->traits[1] != TRAIT_NONE) {
-            char traitBuf[64] = "Traits: ";
-            if (m->traits[0] != TRAIT_NONE) {
-                strncat(traitBuf, traitDefs[m->traits[0]].name, sizeof(traitBuf) - strlen(traitBuf) - 1);
-            }
-            if (m->traits[1] != TRAIT_NONE) {
-                strncat(traitBuf, ", ", sizeof(traitBuf) - strlen(traitBuf) - 1);
-                strncat(traitBuf, traitDefs[m->traits[1]].name, sizeof(traitBuf) - strlen(traitBuf) - 1);
-            }
-            snprintf(lines[lineCount], sizeof(lines[0]), "%s", traitBuf);
-            lineColors[lineCount++] = SKYBLUE;
-        }
-    }
-
-    // Job info
-    snprintf(lines[lineCount], sizeof(lines[0]), "Job: %s (step %d)", jobTypeName, jobStep);
-    lineColors[lineCount++] = job ? GREEN : GRAY;
-
-    // Carrying item with name
-    if (carryingItem >= 0 && items[carryingItem].active) {
-        char itemName[64];
-        FormatItemName(&items[carryingItem], itemName, sizeof(itemName));
-        snprintf(lines[lineCount], sizeof(lines[0]), "Carrying: #%d (%s)", carryingItem, itemName);
-        lineColors[lineCount++] = ORANGE;
-    } else {
-        snprintf(lines[lineCount], sizeof(lines[0]), "Carrying: none");
-        lineColors[lineCount++] = GRAY;
-    }
-
-    // Equipped tool
-    if (m->equippedTool >= 0 && m->equippedTool < MAX_ITEMS && items[m->equippedTool].active) {
-        char toolName[64];
-        FormatItemName(&items[m->equippedTool], toolName, sizeof(toolName));
-        snprintf(lines[lineCount], sizeof(lines[0]), "Equipped: %s", toolName);
-        lineColors[lineCount++] = SKYBLUE;
-    } else {
-        snprintf(lines[lineCount], sizeof(lines[0]), "Equipped: none");
-        lineColors[lineCount++] = GRAY;
-    }
-
-    // Equipped clothing
-    if (m->equippedClothing >= 0 && m->equippedClothing < MAX_ITEMS && items[m->equippedClothing].active) {
-        char clothName[64];
-        FormatItemName(&items[m->equippedClothing], clothName, sizeof(clothName));
-        float reduction = GetClothingCoolingReduction(items[m->equippedClothing].type);
-        snprintf(lines[lineCount], sizeof(lines[0]), "Clothing: %s (%.0f%% insulation)", clothName, reduction * 100.0f);
-        lineColors[lineCount++] = SKYBLUE;
-    } else {
-        snprintf(lines[lineCount], sizeof(lines[0]), "Clothing: none");
-        lineColors[lineCount++] = GRAY;
-    }
-
-    // Path info
-    snprintf(lines[lineCount], sizeof(lines[0]), "Path: %d/%d, Goal: (%d,%d,z%d)",
-        m->pathIndex >= 0 ? m->pathIndex + 1 : 0, m->pathLength, m->goal.x, m->goal.y, m->goal.z);
-    lineColors[lineCount++] = m->pathLength > 0 ? WHITE : RED;
-
-    // Repath status
-    if (m->needsRepath) {
-        snprintf(lines[lineCount], sizeof(lines[0]), "NEEDS REPATH (cooldown: %d)", m->repathCooldown);
-        lineColors[lineCount++] = RED;
-    } else if (m->repathCooldown > 0) {
-        snprintf(lines[lineCount], sizeof(lines[0]), "Repath cooldown: %d", m->repathCooldown);
-        lineColors[lineCount++] = GRAY;
-    }
-
-    // Stuck detection
-    if (m->timeWithoutProgress > 0.5f) {
-        snprintf(lines[lineCount], sizeof(lines[0]), "No progress: %.1fs%s", m->timeWithoutProgress,
-            m->timeWithoutProgress > 2.0f ? " STUCK!" : "");
-        lineColors[lineCount++] = m->timeWithoutProgress > 2.0f ? RED : ORANGE;
-    }
-
-    // Target stockpile (only if relevant)
-    if (targetStockpile >= 0) {
-        snprintf(lines[lineCount], sizeof(lines[0]), "Target SP: %d, Slot: (%d,%d)",
-            targetStockpile, targetSlotX, targetSlotY);
-        lineColors[lineCount++] = WHITE;
-    }
-
-    // Target item pickup info
-    float pickupRadius = CELL_SIZE * 0.75f;
-    if (job && targetItem >= 0 && items[targetItem].active) {
-        Item* item = &items[targetItem];
-        char itemName[64];
-        FormatItemName(item, itemName, sizeof(itemName));
-        float dx = m->x - item->x;
-        float dy = m->y - item->y;
-        float dist = sqrtf(dx*dx + dy*dy);
-        snprintf(lines[lineCount], sizeof(lines[0]), "Target: #%d %s at (%.0f,%.0f)", 
-            targetItem, itemName, item->x, item->y);
-        lineColors[lineCount++] = SKYBLUE;
-        
-        snprintf(lines[lineCount], sizeof(lines[0]), "  dist=%.1f %s", 
-            dist, dist < pickupRadius ? "IN RANGE" : "OUT OF RANGE");
-        lineColors[lineCount++] = dist < pickupRadius ? GREEN : RED;
-    }
-
-    // Mining target
-    if (job && (job->type == JOBTYPE_MINE || job->type == JOBTYPE_CHANNEL || job->type == JOBTYPE_REMOVE_FLOOR)) {
-        snprintf(lines[lineCount], sizeof(lines[0]), "Mining: (%d,%d,z%d) %.0f%%",
-            job->targetMineX, job->targetMineY, job->targetMineZ, job->progress * 100);
-        lineColors[lineCount++] = ORANGE;
-    }
-
-    // Blueprint target
-    if (job && job->targetBlueprint >= 0) {
-        Blueprint* bp = &blueprints[job->targetBlueprint];
-        snprintf(lines[lineCount], sizeof(lines[0]), "Blueprint: #%d at (%d,%d,z%d)",
-            job->targetBlueprint, bp->x, bp->y, bp->z);
-        lineColors[lineCount++] = SKYBLUE;
-    }
-
-    // Transport state (only show when non-NONE)
-    if (m->transportState != TRANSPORT_NONE) {
-        const char* tsNames[] = {"NONE", "WALK_TO_STN", "WAITING", "RIDING"};
-        int ts = m->transportState;
-        snprintf(lines[lineCount], sizeof(lines[0]), "Transport: %s (stn=%d, exit=%d)",
-                 (ts >= 0 && ts < 4) ? tsNames[ts] : "?",
-                 m->transportStation, m->transportExitStation);
-        lineColors[lineCount++] = YELLOW;
-        snprintf(lines[lineCount], sizeof(lines[0]), "  FinalGoal: (%d,%d,z%d)",
-                 m->transportFinalGoal.x, m->transportFinalGoal.y, m->transportFinalGoal.z);
-        lineColors[lineCount++] = YELLOW;
-    }
-
-    // Calculate box dimensions
+// Tooltip box next to the mouse for a description, one line per row
+static void DrawDescTooltip(const DescLines* d, Vector2 mouse) {
+    if (d->count == 0) return;
     int maxW = 0;
-    for (int i = 0; i < lineCount; i++) {
-        int w = MeasureText(lines[i], 14);
+    for (int i = 0; i < d->count; i++) {
+        int w = MeasureText(d->lines[i].text, 14);
         if (w > maxW) maxW = w;
     }
 
     int padding = 6;
     int lineH = 16;
     int boxW = maxW + padding * 2;
-    int boxH = lineH * lineCount + padding * 2;
+    int boxH = lineH * d->count + padding * 2;
 
     int tx = (int)mouse.x + 15;
     int ty = (int)mouse.y + 15;
@@ -628,10 +294,17 @@ static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     DrawRectangleLines(tx, ty, boxW, boxH, (Color){100, 100, 150, 255});
 
     int y = ty + padding;
-    for (int i = 0; i < lineCount; i++) {
-        DrawTextShadow(lines[i], tx + padding, y, 14, lineColors[i]);
+    for (int i = 0; i < d->count; i++) {
+        DrawTextShadow(d->lines[i].text, tx + padding, y, 14, DescToneColor(d->lines[i].tone));
         y += lineH;
     }
+}
+
+// Mover tooltip: the full (debug-level) description from DescribeMover
+static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
+    DescLines d;
+    DescribeMover(moverIdx, DESC_DEBUG, &d);
+    DrawDescTooltip(&d, mouse);
 }
 
 // Draw animal tooltip (only shown when paused)
@@ -725,7 +398,7 @@ static void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int 
         int idx = itemIndices[i];
         Item* item = &items[idx];
         char typeName[64];
-        FormatItemName(item, typeName, sizeof(typeName));
+        DescItemName(item, typeName, sizeof(typeName));
         const char* stateName = (item->state >= 0 && item->state < 3) ? stateNames[item->state] : "?";
         // Freshness label for spoilable items
         const char* freshness = "";

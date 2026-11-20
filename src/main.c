@@ -19,6 +19,7 @@
 #include "ui/console.h"
 #include "core/scenarios.h"
 #include "core/games.h"
+#include "core/describe.h"
 
 #ifdef USE_SOUNDSYSTEM
 #include "soundsystem/soundsystem.h"
@@ -1086,8 +1087,25 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
         }
     }
     
+    // --describe-mover N|all: the mover as the game describes it (same lines as
+    // the hover tooltip, src/core/describe.c), after the run. --ticks 0 = as loaded.
+    for (int i = 1; i + 1 < argc; i++) {
+        if (strcmp(argv[i], "--describe-mover") != 0) continue;
+        bool all = strcmp(argv[i + 1], "all") == 0;
+        int only = all ? -1 : atoi(argv[i + 1]);
+        for (int mi = 0; mi < moverCount; mi++) {
+            if ((!all && mi != only) || !movers[mi].active) continue;
+            DescLines d;
+            DescribeMover(mi, DESC_DEBUG, &d);
+            printf("\n");
+            for (int l = 0; l < d.count; l++) printf("%s\n", d.lines[l].text);
+        }
+        if (!all && (only < 0 || only >= moverCount || !movers[only].active))
+            printf("\nNo active mover %s (%d movers)\n", argv[i + 1], moverCount);
+    }
+
     printf("\n=== HEADLESS RESULTS ===\n");
-    printf("Ticks: %d (%.2f ms, %.2f ms/tick)\n", ticks, elapsed * 1000.0, (elapsed * 1000.0) / ticks);
+    printf("Ticks: %d (%.2f ms, %.2f ms/tick)\n", ticks, elapsed * 1000.0, ticks > 0 ? (elapsed * 1000.0) / ticks : 0.0);
     printf("Movers: %d (%d active)\n", moverCount, activeMovers);
     printf("Stuck in non-walkable: %d before -> %d after\n", stuckBefore, moversInNonWalkable);
     printf("Stuck (no progress > 2s): %d\n", stuckAfter);
