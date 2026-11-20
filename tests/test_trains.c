@@ -45,6 +45,7 @@ static void SetupClean(void) {
     InitLighting();
     gameDeltaTime = TICK_DT;
     gameSpeed = 1.0f;
+    useTrainTimeChoice = false;   // most tests here check the classic rule; time-based has its own
     dayLength = 60.0f;
     gameTime = 0.0;
     useStringPulling = false;
@@ -1093,6 +1094,83 @@ describe(station_patience) {
 }
 
 // ============================================================================
+// Direction-aware trip choice (double track: one line per direction)
+// ============================================================================
+
+// Narrow clockwise loop: north line (y=10) runs east, south line (y=13) west.
+// Stops at x=8 and x=30 with a platform on both outer sides. Returns station ids
+// via the out params (north/south at each stop).
+static void SetupDoubleTrack(int* n8, int* s8, int* n30, int* s30) {
+    SetupClean();
+    for (int x = 2; x <= 37; x++) {
+        grid[1][10][x] = CELL_TRACK; trackConnections[1][10][x] = TRACK_E | TRACK_W;
+        grid[1][13][x] = CELL_TRACK; trackConnections[1][13][x] = TRACK_E | TRACK_W;
+    }
+    for (int y = 10; y <= 13; y++) {
+        grid[1][y][2] = CELL_TRACK; trackConnections[1][y][2] = TRACK_N | TRACK_S;
+        grid[1][y][37] = CELL_TRACK; trackConnections[1][y][37] = TRACK_N | TRACK_S;
+    }
+    trackConnections[1][10][2] = TRACK_E | TRACK_S;
+    trackConnections[1][10][37] = TRACK_W | TRACK_S;
+    trackConnections[1][13][2] = TRACK_E | TRACK_N;
+    trackConnections[1][13][37] = TRACK_W | TRACK_N;
+    for (int x = 7; x <= 9; x++) { grid[1][9][x] = CELL_PLATFORM; grid[1][14][x] = CELL_PLATFORM; }
+    for (int x = 29; x <= 31; x++) { grid[1][9][x] = CELL_PLATFORM; grid[1][14][x] = CELL_PLATFORM; }
+    RebuildStations();
+    *n8 = GetStationAt(8, 10, 1);
+    *s8 = GetStationAt(8, 13, 1);
+    *n30 = GetStationAt(30, 10, 1);
+    *s30 = GetStationAt(30, 13, 1);
+}
+
+describe(train_direction_choice) {
+    it("going west, the westbound side is the quicker trip (the eastbound one goes round)") {
+        int n8, s8, n30, s30;
+        SetupDoubleTrack(&n8, &s8, &n30, &s30);
+        expect(n8 >= 0 && s8 >= 0 && n30 >= 0 && s30 >= 0);
+        expect(n8 != s8 && n30 != s30);
+        SpawnTrainHeading(36, 13, 1, 1, -1, 0);   // on the south line, heading west
+        moverCount = 1;
+        InitMover(&movers[0], 30 * CELL_SIZE + 16, 6 * CELL_SIZE + 16, 1.0f, (Point){8, 6, 1}, MOVER_SPEED);
+        Point goal = {8, 6, 1};
+        float westbound = TrainTripSeconds(0, s30, s8, goal);
+        float eastboundRound = TrainTripSeconds(0, n30, n8, goal);
+        expect(westbound < 1e8f);
+        expect(eastboundRound < 1e8f);
+        expect(westbound < eastboundRound);
+    }
+
+    it("doesn't take a slow train for a trip that is quicker on foot") {
+        int n8, s8, n30, s30;
+        SetupDoubleTrack(&n8, &s8, &n30, &s30);
+        SpawnTrainHeading(36, 13, 1, 1, -1, 0);
+        useTrainTimeChoice = true;
+        moverCount = 1;
+        InitMover(&movers[0], 30 * CELL_SIZE + 16, 6 * CELL_SIZE + 16, 1.0f, (Point){8, 6, 1}, MOVER_SPEED);
+        movers[0].pathLength = 0;
+        movers[0].pathIndex = -1;
+        expect(ShouldUseTrain(0) == false);      // ~22 cells: walking wins against doors + wait
+        useTrainTimeChoice = false;
+    }
+
+    it("a train trip a mover started for its own goal survives the idle cleanup") {
+        int n8, s8, n30, s30;
+        SetupDoubleTrack(&n8, &s8, &n30, &s30);
+        moverCount = 1;
+        InitMover(&movers[0], 30 * CELL_SIZE + 16, 6 * CELL_SIZE + 16, 1.0f, (Point){8, 6, 1}, MOVER_SPEED);
+        movers[0].transportState = TRANSPORT_WALKING_TO_STATION;
+        movers[0].transportStation = s30;
+        movers[0].transportExitStation = s8;
+        TrainsMarkPersonalTrip(0, true);
+        RebuildIdleMoverList();
+        expect(movers[0].transportState == TRANSPORT_WALKING_TO_STATION);
+        TrainsMarkPersonalTrip(0, false);          // a stale one (e.g. left over from a job) is cleared
+        RebuildIdleMoverList();
+        expect(movers[0].transportState == TRANSPORT_NONE);
+    }
+}
+
+// ============================================================================
 // Station lines (follow the one ahead)
 // ============================================================================
 
@@ -1357,6 +1435,7 @@ int main(int argc, char* argv[]) {
     test(track_destroyed);
     test(multi_cell_platform);
     test(fifo_shift_down);
+    test(train_direction_choice);
     test(station_patience);
     test(station_lines);
     test(queue_positions);

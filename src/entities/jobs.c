@@ -3449,8 +3449,10 @@ void RebuildIdleMoverList(void) {
 
     for (int i = 0; i < moverCount; i++) {
         if (movers[i].active && movers[i].currentJobId < 0 && movers[i].freetimeState == FREETIME_NONE && !movers[i].isDrafted) {
-            // Clear stale transport state on jobless movers
-            if (movers[i].transportState != TRANSPORT_NONE && movers[i].currentJobId < 0) {
+            // Clear stale transport state on jobless movers (not a trip a mover
+            // started for its own goal)
+            if (movers[i].transportState != TRANSPORT_NONE && movers[i].currentJobId < 0 &&
+                !TrainsIsPersonalTrip(i)) {
                 if (movers[i].transportState == TRANSPORT_WAITING && movers[i].transportStation >= 0) {
                     StationRemoveWaiter(movers[i].transportStation, i);
                 }

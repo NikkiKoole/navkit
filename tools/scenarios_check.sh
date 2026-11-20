@@ -42,6 +42,8 @@ done <<'EOF'
 60  | 0 | --set scenarioMovers 16 --scenario train-long
 750 | 0 | --scenario hubs
 750 | 0 | --set sharedGoalFields 0 --scenario hubs
+87  | 0 | --scenario train-double
+94  | 0 | --set trainSpeed 30 --scenario train-double
 EOF
 
 echo

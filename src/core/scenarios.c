@@ -57,8 +57,11 @@ static void SnapshotOrRestoreSettings(void) {
 }
 
 // The startup map: 32x32x16, z=0 natural dirt with tall grass, air above (walk on z=1).
+static int flatWorldW = 32, flatWorldH = 32;   // set by RunScenario (scenario size, else 32x32)
+
 static void GenerateFlatDefaultWorld(void) {
-    InitGridWithSizeAndChunkSize(32, 32, 8, 8);
+    if (flatWorldW == 32 && flatWorldH == 32) InitGridWithSizeAndChunkSize(32, 32, 8, 8);
+    else InitGridWithSizeAndChunkSize(flatWorldW, flatWorldH, 16, 16);
     gridDepth = 16;
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++) {
@@ -395,6 +398,81 @@ static void SetupHubs(void) {
     AddMessage(TextFormat("Hubs: %d movers between %d hubs on %dx%d hills", n, hubCount, gridWidth, gridHeight), GREEN);
 }
 
+// ---------------------------------------------------------------------------
+// train-double: two tracks (one per direction), platforms on both sides
+// ---------------------------------------------------------------------------
+
+// A narrow loop reads as a double track: the north line runs east, the south
+// line west (all trains run the same way round). Three stops, each with a
+// platform on both outer sides, so a mover can queue on the side whose trains
+// go its way. Towns north and south of each stop; movers travel between them.
+// Compare the trip choice with --set useTrainTimeChoice 0 (old 40-cell rule),
+// and train speed with --set trainSpeed N.
+#define TD_TOWNS 6
+static Point tdTowns[TD_TOWNS];
+
+static bool TrainDoubleGoalPicker(int moverIdx, Point* goal) {
+    const Mover* m = &movers[moverIdx];
+    int cx = (int)(m->x / CELL_SIZE);
+    for (int tries = 0; tries < 8; tries++) {
+        Point t = tdTowns[GetRandomValue(0, TD_TOWNS - 1)];
+        if (abs(t.x - cx) < 20) continue;                 // another town, not this stop
+        *goal = (Point){t.x + GetRandomValue(-3, 3), t.y + GetRandomValue(-2, 2), 1};
+        return true;
+    }
+    return false;
+}
+
+static void SetupTrainDouble(void) {
+    const int x0 = 4, x1 = gridWidth - 5, yN = 10, yS = 13;
+    for (int x = x0; x <= x1; x++) {
+        grid[1][yN][x] = CELL_TRACK; trackConnections[1][yN][x] = TRACK_E | TRACK_W;
+        grid[1][yS][x] = CELL_TRACK; trackConnections[1][yS][x] = TRACK_E | TRACK_W;
+    }
+    for (int y = yN; y <= yS; y++) {
+        grid[1][y][x0] = CELL_TRACK; trackConnections[1][y][x0] = TRACK_N | TRACK_S;
+        grid[1][y][x1] = CELL_TRACK; trackConnections[1][y][x1] = TRACK_N | TRACK_S;
+    }
+    trackConnections[1][yN][x0] = TRACK_E | TRACK_S;
+    trackConnections[1][yN][x1] = TRACK_W | TRACK_S;
+    trackConnections[1][yS][x0] = TRACK_E | TRACK_N;
+    trackConnections[1][yS][x1] = TRACK_W | TRACK_N;
+    const int stops[3] = {gridWidth / 6, gridWidth / 2, gridWidth * 5 / 6};
+    for (int k = 0; k < 3; k++)
+        for (int x = stops[k] - 3; x <= stops[k] + 2; x++) {
+            grid[1][yN - 1][x] = CELL_PLATFORM;   // north side: eastbound trains
+            grid[1][yS + 1][x] = CELL_PLATFORM;   // south side: westbound trains
+        }
+    RebuildStations();
+    // Clockwise: east along the north line, west along the south line
+    SpawnTrainHeading(stops[0] - 10, yN, 1, 4, 1, 0);
+    SpawnTrainHeading(stops[2] + 10, yS, 1, 4, -1, 0);
+    BuildEntrances();
+    BuildGraph();
+    for (int k = 0; k < 3; k++) {
+        tdTowns[2 * k] = (Point){stops[k], 4, 1};                   // town north of the tracks
+        tdTowns[2 * k + 1] = (Point){stops[k], gridHeight - 5, 1};  // town south
+    }
+    moverGoalPicker = TrainDoubleGoalPicker;
+    endlessMoverMode = true;
+    preferDifferentZ = false;
+    int n = scenarioMovers > 0 ? scenarioMovers : 32;
+    for (int i = 0; i < n; i++) {
+        Point t = tdTowns[i % TD_TOWNS];
+        SpawnMoverAt(t.x + GetRandomValue(-4, 4), t.y + GetRandomValue(-2, 2), 1);
+    }
+    currentViewZ = 1;
+    AddMessage(TextFormat("Double track: %d movers, 3 stops with a platform per direction", n), GREEN);
+}
+
+static void TrainDoublePrintStats(void) {
+    printf("Stations (platform side, boardings):\n");
+    for (int i = 0; i < stationCount; i++)
+        printf("  station %d at x=%d %s: %d boarded\n", i, stations[i].platX,
+               stations[i].platY < stations[i].trackY ? "north (eastbound)" : "south (westbound)",
+               StationBoardings(i));
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -410,6 +488,8 @@ static const Scenario scenarios[] = {
                    "TrainLong", SetupTrainLong, NULL, NULL, NULL, 0, 0},
     {"hubs",       "128x128 hills, 200 movers shuttling between 6 hubs: pathfinding load",
                    "Hills",     SetupHubs,     NULL, NULL, NULL, 128, 128},
+    {"train-double", "Double track (one per direction), platforms on both sides, 3 stops, 32 movers",
+                   NULL,        SetupTrainDouble, NULL, TrainDoublePrintStats, NULL, 240, 24},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 
@@ -448,6 +528,8 @@ bool RunScenario(const char* name) {
     }
     if (s->gridW > 0 && s->gridH > 0 && (gridWidth != s->gridW || gridHeight != s->gridH))
         InitGridWithSizeAndChunkSize(s->gridW, s->gridH, 16, 16);
+    flatWorldW = s->gridW > 0 ? s->gridW : 32;
+    flatWorldH = s->gridH > 0 ? s->gridH : 32;
     ScenarioResetWorld(s->terrain);
     s->setup();
     currentScenario = s;

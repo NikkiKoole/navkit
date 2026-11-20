@@ -430,6 +430,27 @@ float MoverPatience(const Mover* m) {
 }
 
 static void AssignNewMoverGoal(Mover* m);
+static void MaybeTakeTrain(int i);
+// Seconds this mover needs to walk one cell on plain ground right now: its speed
+// at the current day length, slowed by what it carries (same factor as movement)
+float MoverWalkSecondsPerCell(int i) {
+    const Mover* m = &movers[i];
+    float mult = 1.0f;
+    if (m->currentJobId >= 0) {
+        Job* job = GetJob(m->currentJobId);
+        if (job && job->carryingItem >= 0 && job->carryingItem < MAX_ITEMS) {
+            Item* item = &items[job->carryingItem];
+            if (item->active && item->state == ITEM_CARRIED) {
+                float w = (item->contentCount > 0) ? GetContainerTotalWeight(job->carryingItem)
+                                                   : ItemWeight(item->type) * item->stackCount;
+                mult *= 1.0f / (1.0f + w * 0.02f);
+            }
+        }
+    }
+    float pxPerSec = m->speed * (60.0f / dayLength) * mult;
+    return pxPerSec > 0.0f ? (float)CELL_SIZE / pxPerSec : 1.0f;
+}
+
 // For ladders.c: an idle mover that gave up on a line picks a new goal
 void MoverPickNewGoal(Mover* m) { AssignNewMoverGoal(m); }
 
@@ -1209,6 +1230,7 @@ static void AssignNewMoverGoal(Mover* m) {
 
     m->pathIndex = m->pathLength - 1;
     m->needsRepath = false;
+    if (m->pathLength > 0) MaybeTakeTrain(moverIdx);   // a far goal may be quicker by train
 }
 
 void UpdateMovers(void) {
@@ -1903,6 +1925,33 @@ void UpdateMovers(void) {
     PROFILE_END(Move);
 }
 
+// After a mover got a walking path: take the train instead if ShouldUseTrain
+// says so (it picks the entry/exit stations): remember the real goal and walk to
+// the entry platform first.
+static void MaybeTakeTrain(int i) {
+    Mover* m = &movers[i];
+    if (m->transportState != TRANSPORT_NONE || !ShouldUseTrain(i)) return;
+    int entryStation, exitStation;
+    TrainChosenStations(&entryStation, &exitStation);
+    if (entryStation < 0 || exitStation < 0 || entryStation == exitStation) return;
+    TrainNoteDecision(i, entryStation, exitStation);   // stats: train vs walking time
+    TrainsMarkPersonalTrip(i, m->currentJobId < 0);
+    int mx = (int)(m->x / CELL_SIZE), my = (int)(m->y / CELL_SIZE);
+    m->transportFinalGoal = m->goal;
+    m->transportState = TRANSPORT_WALKING_TO_STATION;
+    m->transportStation = entryStation;
+    m->transportExitStation = exitStation;
+    m->transportTrainIdx = -1;
+    EventLog("Mover %d (%s) using train: entry=%d exit=%d, goal=(%d,%d,z%d)",
+             i, m->name, entryStation, exitStation,
+             m->transportFinalGoal.x, m->transportFinalGoal.y, m->transportFinalGoal.z);
+    int nearPlatX, nearPlatY;
+    GetNearestPlatformCell(entryStation, mx, my, &nearPlatX, &nearPlatY);
+    m->goal = (Point){nearPlatX, nearPlatY, stations[entryStation].z};
+    m->needsRepath = true;
+    m->repathCooldown = 0;
+}
+
 void ProcessMoverRepaths(void) {
     int repathsThisFrame = 0;
     if (moverCount <= 0) return;
@@ -2008,31 +2057,7 @@ void ProcessMoverRepaths(void) {
         m->repathCooldown = REPATH_COOLDOWN_FRAMES;
 
         // Transport check: after successful pathfind, consider using train
-        if (m->transportState == TRANSPORT_NONE && ShouldUseTrain(i)) {
-            int mx = (int)(m->x / CELL_SIZE);
-            int my = (int)(m->y / CELL_SIZE);
-            int mz = (int)m->z;
-            int entryStation = FindNearestStation(mx, my, mz, TRANSPORT_STATION_RADIUS);
-            int exitStation = FindNearestStation(m->goal.x, m->goal.y, mz, TRANSPORT_STATION_RADIUS);
-            if (entryStation >= 0 && exitStation >= 0 && entryStation != exitStation) {
-                // Save original goal, redirect to platform
-                m->transportFinalGoal = m->goal;
-                m->transportState = TRANSPORT_WALKING_TO_STATION;
-                m->transportStation = entryStation;
-                m->transportExitStation = exitStation;
-                m->transportTrainIdx = -1;
-                EventLog("Mover %d (%s) using train: entry=%d exit=%d, goal=(%d,%d,z%d)",
-                         i, m->name, entryStation, exitStation,
-                         m->transportFinalGoal.x, m->transportFinalGoal.y, m->transportFinalGoal.z);
-                // Redirect goal to nearest platform cell
-                int nearPlatX, nearPlatY;
-                GetNearestPlatformCell(entryStation, mx, my, &nearPlatX, &nearPlatY);
-                m->goal = (Point){nearPlatX, nearPlatY, stations[entryStation].z};
-                // Repath to new goal
-                m->needsRepath = true;
-                m->repathCooldown = 0;
-            }
-        }
+        MaybeTakeTrain(i);
 
         repathsThisFrame++;
     }

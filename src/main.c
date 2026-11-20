@@ -1042,6 +1042,13 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, int ticks
     printf("Pathfinding: %d FindPath calls, %.1f ms total (%.3f ms each); shared-goal fields %s: %d hits, %d built, %d fallbacks\n",
            findPathCalls, findPathTotalMs, findPathCalls ? findPathTotalMs / findPathCalls : 0.0,
            useSharedGoalFields ? "on" : "off", sharedGoalHits, sharedGoalBuilds, sharedGoalFallbacks);
+    if (trainChoicesConsidered > 0 || trainDecisions > 0)
+        printf("Train choice: %d trips considered (%s), %d by train\n", trainChoicesConsidered,
+               useTrainTimeChoice ? "by trip time" : "40-cell rule", trainDecisions);
+    if (trainDecisions > 0)
+        printf("Train trips: %d chosen; train faster than walking in %d (%.0f%%); avg %.1f s by train vs %.1f s walking\n",
+               trainDecisions, trainDecisionsFaster, 100.0 * trainDecisionsFaster / trainDecisions,
+               trainDecisionTrainSec / trainDecisions, trainDecisionWalkSec / trainDecisions);
     extern int repathFallbackCount, repathHpaSuccessCount;
     printf("Repath stats: HPA success=%d, A* fallback=%d (%.1f%% fallback)\n", 
            repathHpaSuccessCount, repathFallbackCount,

@@ -222,7 +222,8 @@ extern bool useDirectionalAvoidance;  // Filter avoidance by wall clearance
 extern bool useTunnelYielding;       // Wait at 1-wide passages for oncoming movers
 extern bool (*moverGoalPicker)(int moverIdx, Point* goal);   // endless-mode goal chooser (scenarios), NULL = random
 float MoverPatience(const struct Mover* m);   // wait tolerance in lines: Patient 2x, Impatient 0.4x
-void MoverPickNewGoal(struct Mover* m);       // endless mode: pick a new goal and path (ladders.c)
+void MoverPickNewGoal(struct Mover* m);
+float MoverWalkSecondsPerCell(int moverIdx);  // walking pace now (load included)       // endless mode: pick a new goal and path (ladders.c)
 #include "ladders.h"                          // single-file ladders: settings + hooks
 
 // Test/debug toggles for deterministic behavior

@@ -84,6 +84,20 @@ most movers standing on one cell (no piles).
    (it is saved, unlike ladder lines), not a `ServicePoint`; worth moving when a
    station's expected wait feeds route choice, so that work needs a save change
    or a rebuild-from-movers on load.
+   *Route choice done (2026-11-20):* `ShouldUseTrain` compares trip times instead
+   of the "goal 40+ cells away" rule (`useTrainTimeChoice`; old rule kept for
+   tests). For each entry/exit station pair near mover and goal it follows each
+   train's route the way it really runs (deterministic copy of the track rules):
+   first train reaching the entry after the mover does (skipping trains that fill
+   up), doors, ride in that direction, doors, walk on. Train if quicker than the
+   walking path by 10%. On a double track (a narrow loop: one line per direction,
+   platform on each side) movers board the side going their way. Measured
+   (`--scenario train-double`, 12000 ticks): at today's speed (9 cells/s, ~1.4x
+   walking) trains never pay off and everyone walks; at 20 or 30 cells/s they do
+   (71 / 164 trips, all quicker). The old rule boarded both sides alike and rode
+   the long way round: 171 arrivals against 389 walking. Also fixed: the job
+   system cleared every jobless mover's transport state as stale, so only movers
+   with jobs could ever ride; trips for a mover's own goal are now kept.
 4. **Patience trait:** wait, give up and re-plan, or leave and come back.
    *Done:* traits Patient (2x) and Impatient (0.4x) scale how long a mover puts up
    with lines (`MoverPatience`). Ladders: the re-plan moments (3 s, 7 s) and a new

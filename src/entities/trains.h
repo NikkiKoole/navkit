@@ -69,6 +69,7 @@ extern int trainCount;
 extern TrainStation stations[MAX_STATIONS];
 extern int stationCount;
 
+extern float trainSpeed;        // cells/s (TRAIN_DEFAULT_SPEED), tunable
 extern bool trainQueueEnabled;  // Toggle: queue line vs spread-out avoidance
 
 void InitTrains(void);
@@ -76,6 +77,7 @@ void ClearTrains(void);
 void TrainsTick(float dt);
 int  SpawnTrain(int x, int y, int z);
 int  SpawnTrainWithCars(int x, int y, int z, int carCount);
+int  SpawnTrainHeading(int x, int y, int z, int carCount, int dx, int dy);   // runs toward (dx, dy) first
 
 // Station management
 void RebuildStations(void);
@@ -93,7 +95,25 @@ void StationGetQueuePosition(int stationIdx, int slotIndex, float* outX, float* 
 
 // Transport heuristic
 bool ShouldUseTrain(int moverIdx);
-void TrainsNoteGaveUp(int moverIdx);   // gave up waiting: walk, no train for a while
+void TrainsNoteGaveUp(int moverIdx);
+// Trip time estimates (seconds): by train (walk, measured wait, ride, doors, walk)
+// and walking the mover's current path. TrainNoteDecision records both for a trip
+// the current rule sends by train (headless stats).
+float TrainTripSeconds(int moverIdx, int entry, int exit, Point goal);
+float WalkTripSeconds(int moverIdx);
+void TrainNoteDecision(int moverIdx, int entry, int exit);
+// ShouldUseTrain picks the (entry, exit) stations too; read them after it returned true.
+// useTrainTimeChoice: by trip time in the direction trains run (else: the old
+// "goal 40+ cells away, a station near both ends" rule).
+void TrainChosenStations(int* entry, int* exit);
+int StationBoardings(int stationIdx);
+// A train trip for the mover's own goal (no job): not stale transport state
+void TrainsMarkPersonalTrip(int moverIdx, bool personal);
+bool TrainsIsPersonalTrip(int moverIdx);   // movers boarded here since stations were (re)built
+extern bool useTrainTimeChoice;
+extern int trainChoicesConsidered;
+extern int trainDecisions, trainDecisionsFaster;
+extern double trainDecisionTrainSec, trainDecisionWalkSec;   // gave up waiting: walk, no train for a while
 
 // Board/exit
 void BoardMoverOnTrain(int trainIdx, int moverIdx, int stationIdx);
