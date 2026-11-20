@@ -61,6 +61,7 @@
 - `pathfinding/future-ideas.md` — Flow fields, formations, territory costs
 - `gameplay/flow-simulation.md` — Vector fields to bias water/smoke/fire spread deterministically
 - `architecture/large-worlds.md` — What bigger maps cost (memory, graph updates, sims), improvements in order, estimates for 1024 and 2048
+- `architecture/chunked-world-plan.md` — Decision doc: one accessor for all per-cell layers, then map-sized and sparse layers, then steps to an endless (streamed) world
 - `architecture/unified-roadmap.md` — Master architecture plan tying 7 docs into Era 2 build order
 
 ## Research & Reference
