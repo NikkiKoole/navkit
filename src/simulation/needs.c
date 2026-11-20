@@ -1051,7 +1051,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
         int dy = (int)(m->y / CELL_SIZE);
         int dz = (int)m->z;
         if (dx >= 0 && dx < gridWidth && dy >= 0 && dy < gridHeight && dz >= 0 && dz < gridDepth) {
-            if (floorDirtGrid[dz][dy][dx] < 200) floorDirtGrid[dz][dy][dx] += 50;
+            if (FLOOR_DIRT(dx, dy, dz) < 200) FLOOR_DIRT(dx, dy, dz) += 50;
         }
     }
 }

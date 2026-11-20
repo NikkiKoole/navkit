@@ -396,7 +396,7 @@ static float CellsBetween(int x0, int y0, int x1, int y1) {   // octile distance
 static bool FollowTrack(int z, int x, int y, int px, int py, int* nx, int* ny) {
     static const int dx[] = { 0, 1, 0, -1 }, dy[] = { -1, 0, 1, 0 };
     static const uint8_t dirBit[] = { TRACK_N, TRACK_E, TRACK_S, TRACK_W };
-    uint8_t conn = trackConnections[z][y][x];
+    uint8_t conn = TRACK_CONN(x, y, z);
     int sx = x + (x - px), sy = y + (y - py);
     int firstX = -1, firstY = -1;
     for (int d = 0; d < 4; d++) {
@@ -727,7 +727,7 @@ static bool FindNextTrackCell(Train* t, int* outX, int* outY) {
     static const int dy[] = { -1, 0, 1, 0 };
     static const uint8_t dirBit[] = { TRACK_N, TRACK_E, TRACK_S, TRACK_W };
 
-    uint8_t conn = trackConnections[t->z][t->cellY][t->cellX];
+    uint8_t conn = TRACK_CONN(t->cellX, t->cellY, t->z);
     int options[4][2];
     int optionCount = 0;
 

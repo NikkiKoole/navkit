@@ -64,7 +64,7 @@ void ResetSmokeAccumulators(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                smokeGrid[z][y][x].stable = false;
+                SMOKE(x, y, z).stable = false;
             }
         }
     }
@@ -87,18 +87,18 @@ static inline bool CanHoldSmoke(int x, int y, int z) {
 // Mark cell and neighbors as unstable
 void DestabilizeSmoke(int x, int y, int z) {
     if (InBounds(x, y, z)) {
-        smokeGrid[z][y][x].stable = false;
+        SMOKE(x, y, z).stable = false;
     }
 
     // 4 horizontal neighbors
-    if (InBounds(x-1, y, z)) smokeGrid[z][y][x-1].stable = false;
-    if (InBounds(x+1, y, z)) smokeGrid[z][y][x+1].stable = false;
-    if (InBounds(x, y-1, z)) smokeGrid[z][y-1][x].stable = false;
-    if (InBounds(x, y+1, z)) smokeGrid[z][y+1][x].stable = false;
+    if (InBounds(x-1, y, z)) SMOKE(x-1, y, z).stable = false;
+    if (InBounds(x+1, y, z)) SMOKE(x+1, y, z).stable = false;
+    if (InBounds(x, y-1, z)) SMOKE(x, y-1, z).stable = false;
+    if (InBounds(x, y+1, z)) SMOKE(x, y+1, z).stable = false;
 
     // Above and below
-    if (InBounds(x, y, z-1)) smokeGrid[z-1][y][x].stable = false;
-    if (InBounds(x, y, z+1)) smokeGrid[z+1][y][x].stable = false;
+    if (InBounds(x, y, z-1)) SMOKE(x, y, z-1).stable = false;
+    if (InBounds(x, y, z+1)) SMOKE(x, y, z+1).stable = false;
 }
 
 // Set smoke level at a cell
@@ -107,8 +107,8 @@ void SetSmokeLevel(int x, int y, int z, int level) {
     if (level < 0) level = 0;
     if (level > SMOKE_MAX_LEVEL) level = SMOKE_MAX_LEVEL;
 
-    int oldLevel = smokeGrid[z][y][x].level;
-    smokeGrid[z][y][x].level = (uint8_t)level;
+    int oldLevel = SMOKE(x, y, z).level;
+    SMOKE(x, y, z).level = (uint8_t)level;
 
     // Update presence tracking
     if (oldLevel == 0 && level > 0) {
@@ -125,14 +125,14 @@ void SetSmokeLevel(int x, int y, int z, int level) {
 // Add smoke to a cell
 void AddSmoke(int x, int y, int z, int amount) {
     if (!InBounds(x, y, z)) return;
-    int newLevel = smokeGrid[z][y][x].level + amount;
+    int newLevel = SMOKE(x, y, z).level + amount;
     SetSmokeLevel(x, y, z, newLevel);
 }
 
 // Query functions
 int GetSmokeLevel(int x, int y, int z) {
     if (!InBounds(x, y, z)) return 0;
-    return smokeGrid[z][y][x].level;
+    return SMOKE(x, y, z).level;
 }
 
 bool HasSmoke(int x, int y, int z) {
@@ -161,7 +161,7 @@ void GenerateSmokeFromFire(int x, int y, int z, int fireLevel) {
     // Smoke rises - add more to cell above if possible
     if (CanHoldSmoke(x, y, z + 1)) {
         AddSmoke(x, y, z + 1, smokeAmount);
-        smokeGrid[z + 1][y][x].pressureSourceZ = z;  // Track origin
+        SMOKE(x, y, z + 1).pressureSourceZ = z;  // Track origin
     }
 }
 
@@ -174,14 +174,14 @@ static int TryRise(int x, int y, int z) {
         return 0;  // Blocked above
     }
 
-    SmokeCell* src = &smokeGrid[z][y][x];
-    SmokeCell* dst = &smokeGrid[z+1][y][x];
+    SmokeCell* src = &SMOKE(x, y, z);
+    SmokeCell* dst = &SMOKE(x, y, z+1);
 
     if (src->level == 0) return 0;
 
     // Don't rise if this cell's smoke already rose into it this tick
     // This prevents smoke from cascading through multiple z-levels in one tick
-    if (smokeHasRisen[z][y][x] == smokeRiseGeneration) {
+    if (SMOKE_HAS_RISEN(x, y, z) == smokeRiseGeneration) {
         return 0;
     }
 
@@ -214,7 +214,7 @@ static int TryRise(int x, int y, int z) {
 
     // Mark destination as having received risen smoke this tick
     // This prevents the smoke from immediately rising again when z+1 is processed
-    smokeHasRisen[z+1][y][x] = smokeRiseGeneration;
+    SMOKE_HAS_RISEN(x, y, z+1) = smokeRiseGeneration;
 
     // Track pressure source
     if (dst->pressureSourceZ == 0 || dst->pressureSourceZ > z) {
@@ -234,7 +234,7 @@ static int TryRise(int x, int y, int z) {
 
 // Phase 2: SPREADING - Equalize smoke levels with horizontal neighbors
 static bool SmokeTrySpread(int x, int y, int z) {
-    SmokeCell* cell = &smokeGrid[z][y][x];
+    SmokeCell* cell = &SMOKE(x, y, z);
     if (cell->level == 0) return false;
 
     // Orthogonal neighbors - randomize order
@@ -274,7 +274,7 @@ static bool SmokeTrySpread(int x, int y, int z) {
 
         if (!CanHoldSmoke(nx, ny, z)) continue;
 
-        SmokeCell* neighbor = &smokeGrid[z][ny][nx];
+        SmokeCell* neighbor = &SMOKE(nx, ny, z);
         int diff = cell->level - neighbor->level;
 
         // Spread to lower neighbors
@@ -315,7 +315,7 @@ static bool SmokeTrySpread(int x, int y, int z) {
 
 // Phase 3: FILL DOWN - When trapped, smoke fills downward (inverse pressure)
 static bool TryFillDown(int x, int y, int z) {
-    SmokeCell* cell = &smokeGrid[z][y][x];
+    SmokeCell* cell = &SMOKE(x, y, z);
 
     // Need full smoke with pressure to fill down
     if (cell->level < SMOKE_MAX_LEVEL) return false;
@@ -340,7 +340,7 @@ static bool TryFillDown(int x, int y, int z) {
     int dy[] = {0, 0, -1, 1, 0};
     int dz[] = {0, 0, 0, 0, -1};  // Include down direction
 
-    smokePressureVisited[z][y][x] = smokePressureGeneration;
+    SMOKE_PRESSURE_VISITED(x, y, z) = smokePressureGeneration;
 
     // Add initial neighbors to queue (prioritize going down)
     for (int i = 4; i >= 0; i--) {  // Start with down
@@ -350,9 +350,9 @@ static bool TryFillDown(int x, int y, int z) {
 
         if (nz < minZ) continue;
         if (!CanHoldSmoke(nx, ny, nz)) continue;
-        if (smokePressureVisited[nz][ny][nx] == smokePressureGeneration) continue;
+        if (SMOKE_PRESSURE_VISITED(nx, ny, nz) == smokePressureGeneration) continue;
 
-        smokePressureVisited[nz][ny][nx] = smokePressureGeneration;
+        SMOKE_PRESSURE_VISITED(nx, ny, nz) = smokePressureGeneration;
         smokePressureQueue[queueTail++] = (SmokePos){nx, ny, nz};
 
         if (queueTail >= SMOKE_PRESSURE_SEARCH_LIMIT) break;
@@ -361,7 +361,7 @@ static bool TryFillDown(int x, int y, int z) {
     // BFS through full cells looking for non-full cell
     while (queueHead < queueTail) {
         SmokePos pos = smokePressureQueue[queueHead++];
-        SmokeCell* current = &smokeGrid[pos.z][pos.y][pos.x];
+        SmokeCell* current = &SMOKE(pos.x, pos.y, pos.z);
 
         // Found a non-full cell - push smoke here
         if (current->level < SMOKE_MAX_LEVEL) {
@@ -401,9 +401,9 @@ static bool TryFillDown(int x, int y, int z) {
 
                 if (nz < minZ) continue;
                 if (!CanHoldSmoke(nx, ny, nz)) continue;
-                if (smokePressureVisited[nz][ny][nx] == smokePressureGeneration) continue;
+                if (SMOKE_PRESSURE_VISITED(nx, ny, nz) == smokePressureGeneration) continue;
 
-                smokePressureVisited[nz][ny][nx] = smokePressureGeneration;
+                SMOKE_PRESSURE_VISITED(nx, ny, nz) = smokePressureGeneration;
 
                 if (queueTail < SMOKE_PRESSURE_SEARCH_LIMIT) {
                     smokePressureQueue[queueTail++] = (SmokePos){nx, ny, nz};
@@ -419,7 +419,7 @@ static bool TryFillDown(int x, int y, int z) {
 // doRise: interval has elapsed for rising
 // doDissipate: interval has elapsed for dissipation
 static bool ProcessSmokeCell(int x, int y, int z, bool doRise, bool doDissipate) {
-    SmokeCell* cell = &smokeGrid[z][y][x];
+    SmokeCell* cell = &SMOKE(x, y, z);
     bool moved = false;
 
     // No smoke to process
@@ -450,7 +450,7 @@ static bool ProcessSmokeCell(int x, int y, int z, bool doRise, bool doDissipate)
     // Dissipation: smoke gradually fades
     // Skip dissipation for cells that just received risen smoke this tick
     // This prevents smoke from dissipating immediately after rising, which caused z-level gaps
-    bool justRose = (smokeHasRisen[z][y][x] == smokeRiseGeneration);
+    bool justRose = (SMOKE_HAS_RISEN(x, y, z) == smokeRiseGeneration);
     if (doDissipate && cell->level > 0 && !justRose) {
         // Smoke at lower z-levels (in open air) dissipates faster
         // Smoke at higher z-levels or trapped dissipates slower
@@ -546,7 +546,7 @@ void UpdateSmoke(void) {
             for (int xi = 0; xi < gridWidth; xi++) {
                 int x = reverseX ? (gridWidth - 1 - xi) : xi;
                 
-                SmokeCell* cell = &smokeGrid[z][y][x];
+                SmokeCell* cell = &SMOKE(x, y, z);
 
                 // Skip stable empty cells
                 if (cell->stable && cell->level == 0) {

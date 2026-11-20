@@ -472,7 +472,7 @@ uint8_t GetSnowLevel(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return 0;
     }
-    return snowGrid[z][y][x];
+    return SNOW(x, y, z);
 }
 
 void SetSnowLevel(int x, int y, int z, uint8_t level) {
@@ -480,7 +480,7 @@ void SetSnowLevel(int x, int y, int z, uint8_t level) {
         return;
     }
     if (level > 3) level = 3;  // Clamp to max level
-    snowGrid[z][y][x] = level;
+    SNOW(x, y, z) = level;
     if (level > 0) snowMayExist = true;
 }
 
@@ -514,20 +514,20 @@ void UpdateSnow(void) {
                 
                 // Snow accumulation
                 if (isSnowing && exposed && isFreezing && currentSnow < 3) {
-                    snowAccumGrid[z][y][x] += elapsedTime * weatherState.intensity;
+                    SNOW_ACCUM(x, y, z) += elapsedTime * weatherState.intensity;
                     float threshold = GameHoursToGameSeconds(1.0f / snowAccumulationRate);
-                    if (snowAccumGrid[z][y][x] >= threshold) {
-                        snowAccumGrid[z][y][x] = 0.0f;
+                    if (SNOW_ACCUM(x, y, z) >= threshold) {
+                        SNOW_ACCUM(x, y, z) = 0.0f;
                         SetSnowLevel(x, y, z, currentSnow + 1);
                     }
                 }
                 
                 // Snow melting
                 if (!isFreezing && currentSnow > 0) {
-                    snowAccumGrid[z][y][x] += elapsedTime;
+                    SNOW_ACCUM(x, y, z) += elapsedTime;
                     float threshold = GameHoursToGameSeconds(1.0f / snowMeltingRate);
-                    if (snowAccumGrid[z][y][x] >= threshold) {
-                        snowAccumGrid[z][y][x] = 0.0f;
+                    if (SNOW_ACCUM(x, y, z) >= threshold) {
+                        SNOW_ACCUM(x, y, z) = 0.0f;
                         SetSnowLevel(x, y, z, currentSnow - 1);
                         // Add wetness from melted snow
                         int wetness = GET_CELL_WETNESS(x, y, z);
@@ -539,10 +539,10 @@ void UpdateSnow(void) {
                 
                 // Reset accumulator if conditions don't match
                 if ((!isSnowing || !exposed || !isFreezing) && isFreezing) {
-                    snowAccumGrid[z][y][x] = 0.0f;
+                    SNOW_ACCUM(x, y, z) = 0.0f;
                 }
-                if (snowGrid[z][y][x] > 0) anySnow = true;
-                if (snowAccumGrid[z][y][x] != 0.0f) anyAccum = true;
+                if (SNOW(x, y, z) > 0) anySnow = true;
+                if (SNOW_ACCUM(x, y, z) != 0.0f) anyAccum = true;
                 
                 break;  // Only process topmost solid cell
             }

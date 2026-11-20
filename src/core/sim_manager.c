@@ -56,7 +56,7 @@ void RebuildSimActivityCounts(void) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 // Water: level > 0 or has source/drain
-                WaterCell *wc = &waterGrid[z][y][x];
+                WaterCell *wc = &WATER(x, y, z);
                 if (wc->level > 0 || wc->isSource || wc->isDrain) {
                     waterActiveCells++;
                 }
@@ -65,7 +65,7 @@ void RebuildSimActivityCounts(void) {
                     steamActiveCells++;
                 }
                 // Fire: level > 0 or is source
-                FireCell *fc = &fireGrid[z][y][x];
+                FireCell *fc = &FIRE(x, y, z);
                 if (fc->level > 0 || fc->isSource) {
                     fireActiveCells++;
                 }
@@ -78,7 +78,7 @@ void RebuildSimActivityCounts(void) {
                     tempSourceCount++;
                 }
                 // Temperature: unstable or differs from ambient
-                TempCell *tc = &temperatureGrid[z][y][x];
+                TempCell *tc = &TEMPERATURE(x, y, z);
                 if (!tc->stable || tc->current != ambient) {
                     tempUnstableCells++;
                 }
@@ -96,11 +96,11 @@ void RebuildSimActivityCounts(void) {
                     wearActiveCells++;
                 }
                 // Floor dirt: constructed floor tiles with tracked-in dirt
-                if (floorDirtGrid[z][y][x] > 0) {
+                if (FLOOR_DIRT(x, y, z) > 0) {
                     dirtActiveCells++;
                 }
                 // Farm: tilled cells
-                if (farmGrid[z][y][x].tilled) {
+                if (FARM(x, y, z).tilled) {
                     farmActiveCells++;
                 }
             }
@@ -119,21 +119,21 @@ bool ValidateSimActivityCounts(void) {
         int ambient = GetAmbientTemperature(z);
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                WaterCell *wc = &waterGrid[z][y][x];
+                WaterCell *wc = &WATER(x, y, z);
                 if (wc->level > 0 || wc->isSource || wc->isDrain) actualWater++;
                 if (GetSteamLevel(x, y, z) > 0) actualSteam++;
-                FireCell *fc = &fireGrid[z][y][x];
+                FireCell *fc = &FIRE(x, y, z);
                 if (fc->level > 0 || fc->isSource) actualFire++;
                 if (GetSmokeLevel(x, y, z) > 0) actualSmoke++;
                 if (IsHeatSource(x, y, z) || IsColdSource(x, y, z)) actualTempSource++;
-                TempCell *tc = &temperatureGrid[z][y][x];
+                TempCell *tc = &TEMPERATURE(x, y, z);
                 if (!tc->stable || tc->current != ambient) actualTempUnstable++;
                 CellType cell = GRID(x, y, z);
                 if (IsGrowingTreeCell(x, y, z)) actualTree++;
                 if (IsRegrowingTreeCell(x, y, z)) actualTreeRegen++;
                 if (cell == CELL_WALL && IsWallNatural(x, y, z) && GetWallMaterial(x, y, z) == MAT_DIRT && GetGroundWear(x, y, z) > 0) actualWear++;
-                if (floorDirtGrid[z][y][x] > 0) actualDirt++;
-                if (farmGrid[z][y][x].tilled) actualFarm++;
+                if (FLOOR_DIRT(x, y, z) > 0) actualDirt++;
+                if (FARM(x, y, z).tilled) actualFarm++;
             }
         }
     }

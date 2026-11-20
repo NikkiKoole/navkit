@@ -163,7 +163,7 @@ static void StartDollhouse(void) {
     for (int y = 0; y < 16; y++) {
         for (int x = 0; x < 16; x++) {
             GRID(x, y, 0) = CELL_WALL;
-            wallMaterial[0][y][x] = MAT_DIRT;
+            WALL_MAT(x, y, 0) = MAT_DIRT;
             SetWallNatural(x, y, 0);
             for (int z = 1; z < gridDepth; z++) {
                 GRID(x, y, z) = CELL_AIR;
@@ -185,7 +185,7 @@ static void StartDollhouse(void) {
     for (int dy = 0; dy < 8; dy++) {
         for (int dx = 0; dx < 10; dx++) {
             SET_FLOOR(ox + dx, oy + dy, z);
-            floorMaterial[z][oy + dy][ox + dx] = MAT_OAK;
+            FLOOR_MAT(ox + dx, oy + dy, z) = MAT_OAK;
         }
     }
 

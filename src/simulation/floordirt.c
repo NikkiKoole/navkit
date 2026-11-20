@@ -94,10 +94,10 @@ static void TrackFloorDirt(int srcX, int srcY, int srcZ,
         if (amount < 1) amount = 1;
     }
 
-    uint8_t old = floorDirtGrid[dstZ][dstY][dstX];
+    uint8_t old = FLOOR_DIRT(dstX, dstY, dstZ);
     int newVal = old + amount;
     if (newVal > DIRT_MAX) newVal = DIRT_MAX;
-    floorDirtGrid[dstZ][dstY][dstX] = (uint8_t)newVal;
+    FLOOR_DIRT(dstX, dstY, dstZ) = (uint8_t)newVal;
 
     if (old == 0 && newVal > 0) dirtActiveCells++;
 }
@@ -123,15 +123,15 @@ void MoverTrackDirt(int moverIdx, int cellX, int cellY, int cellZ) {
 int GetFloorDirt(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight
         || z < 0 || z >= gridDepth) return 0;
-    return floorDirtGrid[z][y][x];
+    return FLOOR_DIRT(x, y, z);
 }
 
 void SetFloorDirt(int x, int y, int z, int value) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight
         || z < 0 || z >= gridDepth) return;
-    uint8_t old = floorDirtGrid[z][y][x];
+    uint8_t old = FLOOR_DIRT(x, y, z);
     uint8_t nv = (uint8_t)(value > DIRT_MAX ? DIRT_MAX : (value < 0 ? 0 : value));
-    floorDirtGrid[z][y][x] = nv;
+    FLOOR_DIRT(x, y, z) = nv;
     if (old == 0 && nv > 0) dirtActiveCells++;
     if (old > 0 && nv == 0) dirtActiveCells--;
 }
@@ -139,10 +139,10 @@ void SetFloorDirt(int x, int y, int z, int value) {
 int CleanFloorDirt(int x, int y, int z, int amount) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight
         || z < 0 || z >= gridDepth) return 0;
-    uint8_t old = floorDirtGrid[z][y][x];
+    uint8_t old = FLOOR_DIRT(x, y, z);
     int nv = (int)old - amount;
     if (nv < 0) nv = 0;
-    floorDirtGrid[z][y][x] = (uint8_t)nv;
+    FLOOR_DIRT(x, y, z) = (uint8_t)nv;
     if (old > 0 && nv == 0) dirtActiveCells--;
     return nv;
 }

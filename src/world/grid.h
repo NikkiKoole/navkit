@@ -75,6 +75,8 @@ static inline const char* CellTypeName(int type) {
 // so it can change (chunk-major, runtime-sized) without touching call sites again.
 // See docs/todo/architecture/chunked-world-plan.md, "Step 1".
 #define CELL_AT(x, y, z) [(z)][(y)][(x)]
+// Defined here, not in furniture.h: cell_defs.h uses it before furniture.h is included.
+#define FURNITURE_MOVE_COST(x, y, z) (furnitureMoveCostGrid CELL_AT((x), (y), (z)))
 
 // Stored as one byte per cell (CellType values); read/write CellType as usual.
 _Static_assert(CELL_TYPE_COUNT <= 256, "CellType must fit the uint8_t grid");
@@ -119,8 +121,8 @@ typedef enum {
 extern uint8_t vegetationGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 #define VEGETATION(x, y, z) (vegetationGrid CELL_AT((x), (y), (z)))
 
-#define GetVegetation(x,y,z)      ((VegetationType)vegetationGrid[z][y][x])
-#define SetVegetation(x,y,z,v)    (vegetationGrid[z][y][x] = (uint8_t)(v))
+#define GetVegetation(x,y,z)      ((VegetationType)VEGETATION(x, y, z))
+#define SetVegetation(x,y,z,v)    (VEGETATION(x, y, z) = (uint8_t)(v))
 
 // Track connections grid — 4-bit bitmask per cell: N=1, E=2, S=4, W=8
 // Stores which directions a track cell is connected to (intent-aware, not just adjacency)
@@ -149,29 +151,29 @@ extern GameMode gameMode;
 static inline bool IsExplored(int x, int y, int z) {
     if (gameMode == GAME_MODE_SANDBOX) return true;
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return true;
-    return exploredGrid[z][y][x] != 0;
+    return EXPLORED(x, y, z) != 0;
 }
 
 static inline void SetExplored(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
-    exploredGrid[z][y][x] = 1;
+    EXPLORED(x, y, z) = 1;
 }
 
 // Reveal all cells within radius of a point, extending vertically through air
 void RevealAroundPoint(int cx, int cy, int cz, int radius);
 
 // Cell flag helpers
-#define HAS_CELL_FLAG(x,y,z,f)     (!!(cellFlags[z][y][x] & (f)))
-#define SET_CELL_FLAG(x,y,z,f)     (cellFlags[z][y][x] |= (f))
-#define CLEAR_CELL_FLAG(x,y,z,f)   (cellFlags[z][y][x] &= ~(f))
-#define GET_CELL_WETNESS(x,y,z)    ((cellFlags[z][y][x] & CELL_WETNESS_MASK) >> CELL_WETNESS_SHIFT)
-#define SET_CELL_WETNESS(x,y,z,w)  (cellFlags[z][y][x] = (cellFlags[z][y][x] & ~CELL_WETNESS_MASK) | ((w) << CELL_WETNESS_SHIFT))
-#define GET_CELL_SURFACE(x,y,z)    ((cellFlags[z][y][x] & CELL_SURFACE_MASK) >> CELL_SURFACE_SHIFT)
-#define SET_CELL_SURFACE(x,y,z,s)  (cellFlags[z][y][x] = (cellFlags[z][y][x] & ~CELL_SURFACE_MASK) | ((s) << CELL_SURFACE_SHIFT))
+#define HAS_CELL_FLAG(x,y,z,f)     (!!(CELL_FLAGS(x, y, z) & (f)))
+#define SET_CELL_FLAG(x,y,z,f)     (CELL_FLAGS(x, y, z) |= (f))
+#define CLEAR_CELL_FLAG(x,y,z,f)   (CELL_FLAGS(x, y, z) &= ~(f))
+#define GET_CELL_WETNESS(x,y,z)    ((CELL_FLAGS(x, y, z) & CELL_WETNESS_MASK) >> CELL_WETNESS_SHIFT)
+#define SET_CELL_WETNESS(x,y,z,w)  (CELL_FLAGS(x, y, z) = (CELL_FLAGS(x, y, z) & ~CELL_WETNESS_MASK) | ((w) << CELL_WETNESS_SHIFT))
+#define GET_CELL_SURFACE(x,y,z)    ((CELL_FLAGS(x, y, z) & CELL_SURFACE_MASK) >> CELL_SURFACE_SHIFT)
+#define SET_CELL_SURFACE(x,y,z,s)  (CELL_FLAGS(x, y, z) = (CELL_FLAGS(x, y, z) & ~CELL_SURFACE_MASK) | ((s) << CELL_SURFACE_SHIFT))
 // Floor flag helpers (for constructed floors over empty space)
-#define HAS_FLOOR(x,y,z)           (!!(cellFlags[z][y][x] & CELL_FLAG_HAS_FLOOR))
-#define SET_FLOOR(x,y,z)           (cellFlags[z][y][x] |= CELL_FLAG_HAS_FLOOR)
-#define CLEAR_FLOOR(x,y,z)         (cellFlags[z][y][x] &= ~CELL_FLAG_HAS_FLOOR)
+#define HAS_FLOOR(x,y,z)           (!!(CELL_FLAGS(x, y, z) & CELL_FLAG_HAS_FLOOR))
+#define SET_FLOOR(x,y,z)           (CELL_FLAGS(x, y, z) |= CELL_FLAG_HAS_FLOOR)
+#define CLEAR_FLOOR(x,y,z)         (CELL_FLAGS(x, y, z) &= ~CELL_FLAG_HAS_FLOOR)
 
 // Helper to check if a cell is air (empty space that can be fallen through)
 static inline bool IsCellAirAt(int z, int y, int x) {

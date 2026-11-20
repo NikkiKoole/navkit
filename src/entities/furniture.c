@@ -70,13 +70,13 @@ int SpawnFurniture(int x, int y, int z, FurnitureType type, uint8_t material) {
         InvalidatePathsThroughCell(x, y, z);
         MarkChunkDirty(x, y, z);
     } else if (def->moveCost > 0) {
-        furnitureMoveCostGrid[z][y][x] = (uint8_t)def->moveCost;
+        FURNITURE_MOVE_COST(x, y, z) = (uint8_t)def->moveCost;
         InvalidatePathsThroughCell(x, y, z);
         MarkChunkDirty(x, y, z);
     }
 
     if (def->capabilities) {
-        capabilityGrid[z][y][x] |= def->capabilities;
+        CAPABILITY(x, y, z) |= def->capabilities;
     }
 
     InvalidateRooms();
@@ -94,14 +94,14 @@ void RemoveFurniture(int index) {
         InvalidatePathsThroughCell(f->x, f->y, f->z);
         MarkChunkDirty(f->x, f->y, f->z);
     } else if (def->moveCost > 0) {
-        furnitureMoveCostGrid[f->z][f->y][f->x] = 0;
+        FURNITURE_MOVE_COST(f->x, f->y, f->z) = 0;
         InvalidatePathsThroughCell(f->x, f->y, f->z);
         MarkChunkDirty(f->x, f->y, f->z);
     }
 
     // Clear furniture capability bits (one furniture per cell, so just clear)
     if (def->capabilities) {
-        capabilityGrid[f->z][f->y][f->x] &= ~def->capabilities;
+        CAPABILITY(f->x, f->y, f->z) &= ~def->capabilities;
     }
 
     f->active = false;
@@ -141,7 +141,7 @@ void RebuildFurnitureMoveCostGrid(void) {
         if (!furniture[i].active) continue;
         const FurnitureDef* def = &furnitureDefs[furniture[i].type];
         if (!def->blocking && def->moveCost > 0) {
-            furnitureMoveCostGrid[furniture[i].z][furniture[i].y][furniture[i].x] = (uint8_t)def->moveCost;
+            FURNITURE_MOVE_COST(furniture[i].x, furniture[i].y, furniture[i].z) = (uint8_t)def->moveCost;
         }
     }
 }
@@ -150,12 +150,12 @@ void RebuildFurnitureMoveCostGrid(void) {
 
 void SetCapability(int x, int y, int z, uint8_t capBits) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
-    capabilityGrid[z][y][x] |= capBits;
+    CAPABILITY(x, y, z) |= capBits;
 }
 
 void ClearCapability(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
-    capabilityGrid[z][y][x] = 0;
+    CAPABILITY(x, y, z) = 0;
 }
 
 bool HasNearbyCapability(int x, int y, int z, uint8_t capBits, int radius) {
@@ -169,7 +169,7 @@ bool HasNearbyCapability(int x, int y, int z, uint8_t capBits, int radius) {
     if (z < 0 || z >= gridDepth) return false;
     for (int cy = y0; cy <= y1; cy++) {
         for (int cx = x0; cx <= x1; cx++) {
-            if ((capabilityGrid[z][cy][cx] & capBits) == capBits) return true;
+            if ((CAPABILITY(cx, cy, z) & capBits) == capBits) return true;
         }
     }
     return false;

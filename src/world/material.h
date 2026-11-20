@@ -86,34 +86,34 @@ extern uint8_t floorSourceItem[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 #define FLOOR_SOURCE_ITEM(x, y, z) (floorSourceItem CELL_AT((x), (y), (z)))
 
 // Wall material accessors
-#define GetWallMaterial(x,y,z)      (wallMaterial[z][y][x])
-#define SetWallMaterial(x,y,z,m)    (wallMaterial[z][y][x] = (uint8_t)(m))
-#define HasWallMaterial(x,y,z)      (wallMaterial[z][y][x] != MAT_NONE)
+#define GetWallMaterial(x,y,z)      (WALL_MAT(x, y, z))
+#define SetWallMaterial(x,y,z,m)    (WALL_MAT(x, y, z) = (uint8_t)(m))
+#define HasWallMaterial(x,y,z)      (WALL_MAT(x, y, z) != MAT_NONE)
 // Wall natural accessors
-#define IsWallNatural(x,y,z)        (wallNatural[z][y][x] != 0)
-#define SetWallNatural(x,y,z)       (wallNatural[z][y][x] = 1)
-#define ClearWallNatural(x,y,z)     (wallNatural[z][y][x] = 0)
+#define IsWallNatural(x,y,z)        (WALL_NATURAL(x, y, z) != 0)
+#define SetWallNatural(x,y,z)       (WALL_NATURAL(x, y, z) = 1)
+#define ClearWallNatural(x,y,z)     (WALL_NATURAL(x, y, z) = 0)
 // Wall finish accessors
-#define GetWallFinish(x,y,z)        (wallFinish[z][y][x])
-#define SetWallFinish(x,y,z,f)      (wallFinish[z][y][x] = (uint8_t)(f))
+#define GetWallFinish(x,y,z)        (WALL_FINISH(x, y, z))
+#define SetWallFinish(x,y,z,f)      (WALL_FINISH(x, y, z) = (uint8_t)(f))
 
 // Floor material accessors
-#define GetFloorMaterial(x,y,z)     (floorMaterial[z][y][x])
-#define SetFloorMaterial(x,y,z,m)   (floorMaterial[z][y][x] = (uint8_t)(m))
-#define HasFloorMaterial(x,y,z)     (floorMaterial[z][y][x] != MAT_NONE)
+#define GetFloorMaterial(x,y,z)     (FLOOR_MAT(x, y, z))
+#define SetFloorMaterial(x,y,z,m)   (FLOOR_MAT(x, y, z) = (uint8_t)(m))
+#define HasFloorMaterial(x,y,z)     (FLOOR_MAT(x, y, z) != MAT_NONE)
 // Floor natural accessors
-#define IsFloorNatural(x,y,z)       (floorNatural[z][y][x] != 0)
-#define SetFloorNatural(x,y,z)      (floorNatural[z][y][x] = 1)
-#define ClearFloorNatural(x,y,z)    (floorNatural[z][y][x] = 0)
+#define IsFloorNatural(x,y,z)       (FLOOR_NATURAL(x, y, z) != 0)
+#define SetFloorNatural(x,y,z)      (FLOOR_NATURAL(x, y, z) = 1)
+#define ClearFloorNatural(x,y,z)    (FLOOR_NATURAL(x, y, z) = 0)
 // Floor finish accessors
-#define GetFloorFinish(x,y,z)       (floorFinish[z][y][x])
-#define SetFloorFinish(x,y,z,f)     (floorFinish[z][y][x] = (uint8_t)(f))
+#define GetFloorFinish(x,y,z)       (FLOOR_FINISH(x, y, z))
+#define SetFloorFinish(x,y,z,f)     (FLOOR_FINISH(x, y, z) = (uint8_t)(f))
 // Wall source item accessors
-#define GetWallSourceItem(x,y,z)    ((ItemType)(int8_t)wallSourceItem[z][y][x])
-#define SetWallSourceItem(x,y,z,v)  (wallSourceItem[z][y][x] = (uint8_t)(v))
+#define GetWallSourceItem(x,y,z)    ((ItemType)(int8_t)WALL_SOURCE_ITEM(x, y, z))
+#define SetWallSourceItem(x,y,z,v)  (WALL_SOURCE_ITEM(x, y, z) = (uint8_t)(v))
 // Floor source item accessors
-#define GetFloorSourceItem(x,y,z)   ((ItemType)(int8_t)floorSourceItem[z][y][x])
-#define SetFloorSourceItem(x,y,z,v) (floorSourceItem[z][y][x] = (uint8_t)(v))
+#define GetFloorSourceItem(x,y,z)   ((ItemType)(int8_t)FLOOR_SOURCE_ITEM(x, y, z))
+#define SetFloorSourceItem(x,y,z,v) (FLOOR_SOURCE_ITEM(x, y, z) = (uint8_t)(v))
 
 // Material property accessors
 #define MaterialName(m)         (materialDefs[m].name)

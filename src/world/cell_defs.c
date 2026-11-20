@@ -39,7 +39,7 @@ CellDef cellDefs[] = {
 
 // 4-bit cardinal bitmask: N=1, E=2, S=4, W=8
 int GetTrackSpriteAt(int x, int y, int z) {
-    int mask = trackConnections[z][y][x] & 0x0F;
+    int mask = TRACK_CONN(x, y, z) & 0x0F;
 
     static const int trackSprites[16] = {
         [0]  = SPRITE_track_isolated,  // none

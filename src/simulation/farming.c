@@ -67,7 +67,7 @@ float GetSeasonalWeedRate(void) {
 FarmCell* GetFarmCell(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight
         || z < 0 || z >= gridDepth) return NULL;
-    return &farmGrid[z][y][x];
+    return &FARM(x, y, z);
 }
 
 // =============================================================================
@@ -170,7 +170,7 @@ void FarmTick(float dt) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                FarmCell* fc = &farmGrid[z][y][x];
+                FarmCell* fc = &FARM(x, y, z);
                 if (!fc->tilled) continue;
 
                 // === Weed growth ===

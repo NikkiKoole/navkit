@@ -53,7 +53,7 @@ void InitDesignations(void) {
     for (int z = 0; z < maxZ; z++) {
         for (int y = 0; y < maxY; y++) {
             for (int x = 0; x < maxX; x++) {
-                designations[z][y][x].assignedMover = -1;
+                DESIGNATION(x, y, z).assignedMover = -1;
             }
         }
     }
@@ -81,13 +81,13 @@ bool DesignateMine(int x, int y, int z) {
     }
     
     // Already designated?
-    if (designations[z][y][x].type == DESIGNATION_MINE) {
+    if (DESIGNATION(x, y, z).type == DESIGNATION_MINE) {
         return false;
     }
     
-    designations[z][y][x].type = DESIGNATION_MINE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_MINE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_MINE);
     
@@ -99,31 +99,31 @@ void CancelDesignation(int x, int y, int z) {
         return;
     }
     
-    DesignationType oldType = designations[z][y][x].type;
+    DesignationType oldType = DESIGNATION(x, y, z).type;
     if (oldType != DESIGNATION_NONE) {
         activeDesignationCount--;
         InvalidateDesignationCache(oldType);  // Mark cache dirty
     }
-    designations[z][y][x].type = DESIGNATION_NONE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
 }
 
 bool HasMineDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_MINE;
+    return DESIGNATION(x, y, z).type == DESIGNATION_MINE;
 }
 
 Designation* GetDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return NULL;
     }
-    if (designations[z][y][x].type == DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type == DESIGNATION_NONE) {
         return NULL;
     }
-    return &designations[z][y][x];
+    return &DESIGNATION(x, y, z);
 }
 
 bool FindUnassignedMineDesignation(int* outX, int* outY, int* outZ) {
@@ -131,7 +131,7 @@ bool FindUnassignedMineDesignation(int* outX, int* outY, int* outZ) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                Designation* d = &designations[z][y][x];
+                Designation* d = &DESIGNATION(x, y, z);
                 if (d->type == DESIGNATION_MINE && d->assignedMover == -1) {
                     *outX = x;
                     *outY = y;
@@ -192,12 +192,12 @@ void CompleteMineDesignation(int x, int y, int z) {
     }
     
     // Clear designation
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         activeDesignationCount--;
     }
-    designations[z][y][x].type = DESIGNATION_NONE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     
     // Validate nearby ramps - mining may have removed solid support
     ValidateAndCleanupRamps(x - 2, y - 2, z - 1, x + 2, y + 2, z + 1);
@@ -212,7 +212,7 @@ int CountMineDesignations(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_MINE) {
+                if (DESIGNATION(x, y, z).type == DESIGNATION_MINE) {
                     count++;
                 }
             }
@@ -229,7 +229,7 @@ void DesignationsTick(float dt) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                Designation* d = &designations[z][y][x];
+                Designation* d = &DESIGNATION(x, y, z);
                 if (d->type == DESIGNATION_NONE) continue;
                 if (d->unreachableCooldown > 0.0f) {
                     d->unreachableCooldown = fmaxf(0.0f, d->unreachableCooldown - dt);
@@ -268,7 +268,7 @@ bool DesignateChannel(int x, int y, int z) {
     }
     
     // Already designated?
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         return false;
     }
     
@@ -287,9 +287,9 @@ bool DesignateChannel(int x, int y, int z) {
         }
     }
     
-    designations[z][y][x].type = DESIGNATION_CHANNEL;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_CHANNEL;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_CHANNEL);
     
@@ -300,7 +300,7 @@ bool HasChannelDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_CHANNEL;
+    return DESIGNATION(x, y, z).type == DESIGNATION_CHANNEL;
 }
 
 // Direction offsets for cardinal neighbors (N, E, S, W)
@@ -505,12 +505,12 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
     }
     
     // === STEP 4: Clear designation ===
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         activeDesignationCount--;
     }
-    designations[z][y][x].type = DESIGNATION_NONE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     
     // === STEP 5: Validate nearby ramps ===
     // Channeling may have removed the solid support for adjacent ramps
@@ -526,7 +526,7 @@ int CountChannelDesignations(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_CHANNEL) {
+                if (DESIGNATION(x, y, z).type == DESIGNATION_CHANNEL) {
                     count++;
                 }
             }
@@ -577,7 +577,7 @@ bool DesignateDigRamp(int x, int y, int z) {
     }
     
     // Already designated?
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         return false;
     }
     
@@ -587,9 +587,9 @@ bool DesignateDigRamp(int x, int y, int z) {
         return false;  // No adjacent walkable floor
     }
     
-    designations[z][y][x].type = DESIGNATION_DIG_RAMP;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_DIG_RAMP;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_DIG_RAMP);
     
@@ -600,7 +600,7 @@ bool HasDigRampDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_DIG_RAMP;
+    return DESIGNATION(x, y, z).type == DESIGNATION_DIG_RAMP;
 }
 
 void CompleteDigRampDesignation(int x, int y, int z, int moverIdx) {
@@ -649,9 +649,9 @@ void CompleteDigRampDesignation(int x, int y, int z, int moverIdx) {
     }
     
     // Clear designation
-    designations[z][y][x].type = DESIGNATION_NONE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount--;
     InvalidateDesignationCache(DESIGNATION_DIG_RAMP);
     ValidateAndCleanupRamps(x - 2, y - 2, z - 1, x + 2, y + 2, z + 1);
@@ -663,7 +663,7 @@ int CountDigRampDesignations(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_DIG_RAMP) {
+                if (DESIGNATION(x, y, z).type == DESIGNATION_DIG_RAMP) {
                     count++;
                 }
             }
@@ -684,7 +684,7 @@ bool DesignateRemoveFloor(int x, int y, int z) {
     if (!IsExplored(x, y, z)) return false;
 
     // Already designated?
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         return false;
     }
     
@@ -699,9 +699,9 @@ bool DesignateRemoveFloor(int x, int y, int z) {
         return false;  // No constructed floor to remove
     }
     
-    designations[z][y][x].type = DESIGNATION_REMOVE_FLOOR;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_REMOVE_FLOOR;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_REMOVE_FLOOR);
     
@@ -712,7 +712,7 @@ bool HasRemoveFloorDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_REMOVE_FLOOR;
+    return DESIGNATION(x, y, z).type == DESIGNATION_REMOVE_FLOOR;
 }
 
 void CompleteRemoveFloorDesignation(int x, int y, int z, int moverIdx) {
@@ -747,12 +747,12 @@ void CompleteRemoveFloorDesignation(int x, int y, int z, int moverIdx) {
     }
     
     // Clear designation
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         activeDesignationCount--;
     }
-    designations[z][y][x].type = DESIGNATION_NONE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     
     // Note: mover will fall if there's nothing solid below - handled by mover update tick
     InvalidateDesignationCache(DESIGNATION_REMOVE_FLOOR);
@@ -765,7 +765,7 @@ int CountRemoveFloorDesignations(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_REMOVE_FLOOR) {
+                if (DESIGNATION(x, y, z).type == DESIGNATION_REMOVE_FLOOR) {
                     count++;
                 }
             }
@@ -786,7 +786,7 @@ bool DesignateRemoveRamp(int x, int y, int z) {
     if (!IsExplored(x, y, z)) return false;
 
     // Already designated?
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         return false;
     }
     
@@ -796,9 +796,9 @@ bool DesignateRemoveRamp(int x, int y, int z) {
         return false;
     }
     
-    designations[z][y][x].type = DESIGNATION_REMOVE_RAMP;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_REMOVE_RAMP;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_REMOVE_RAMP);
     
@@ -809,7 +809,7 @@ bool HasRemoveRampDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_REMOVE_RAMP;
+    return DESIGNATION(x, y, z).type == DESIGNATION_REMOVE_RAMP;
 }
 
 void CompleteRemoveRampDesignation(int x, int y, int z, int moverIdx) {
@@ -858,12 +858,12 @@ void CompleteRemoveRampDesignation(int x, int y, int z, int moverIdx) {
     }
     
     // Clear designation
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         activeDesignationCount--;
     }
-    designations[z][y][x].type = DESIGNATION_NONE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     
     InvalidateDesignationCache(DESIGNATION_REMOVE_RAMP);
     (void)moverIdx;  // Could be used for special handling later
@@ -874,7 +874,7 @@ int CountRemoveRampDesignations(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_REMOVE_RAMP) {
+                if (DESIGNATION(x, y, z).type == DESIGNATION_REMOVE_RAMP) {
                     count++;
                 }
             }
@@ -929,13 +929,13 @@ bool DesignateChop(int x, int y, int z) {
     }
     
     // Already designated?
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         return false;
     }
     
-    designations[z][y][x].type = DESIGNATION_CHOP;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_CHOP;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_CHOP);
     
@@ -946,7 +946,7 @@ bool HasChopDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_CHOP;
+    return DESIGNATION(x, y, z).type == DESIGNATION_CHOP;
 }
 
 bool DesignateChopFelled(int x, int y, int z) {
@@ -955,7 +955,7 @@ bool DesignateChopFelled(int x, int y, int z) {
     }
     if (!IsExplored(x, y, z)) return false;
 
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         return false;
     }
 
@@ -963,9 +963,9 @@ bool DesignateChopFelled(int x, int y, int z) {
         return false;
     }
 
-    designations[z][y][x].type = DESIGNATION_CHOP_FELLED;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_CHOP_FELLED;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_CHOP_FELLED);
 
@@ -976,7 +976,7 @@ bool HasChopFelledDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_CHOP_FELLED;
+    return DESIGNATION(x, y, z).type == DESIGNATION_CHOP_FELLED;
 }
 
 // Helper: Check if a leaf cell is connected to a trunk of same type within distance
@@ -1099,12 +1099,12 @@ static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
         SetWallMaterial(cx, cy, cz, MAT_NONE);
         MarkChunkDirty(cx, cy, cz);
 
-        if (designations[cz][cy][cx].type != DESIGNATION_NONE) {
-            InvalidateDesignationCache(designations[cz][cy][cx].type);
+        if (DESIGNATION(cx, cy, cz).type != DESIGNATION_NONE) {
+            InvalidateDesignationCache(DESIGNATION(cx, cy, cz).type);
             activeDesignationCount--;
-            designations[cz][cy][cx].type = DESIGNATION_NONE;
-            designations[cz][cy][cx].assignedMover = -1;
-            designations[cz][cy][cx].progress = 0.0f;
+            DESIGNATION(cx, cy, cz).type = DESIGNATION_NONE;
+            DESIGNATION(cx, cy, cz).assignedMover = -1;
+            DESIGNATION(cx, cy, cz).progress = 0.0f;
         }
 
         if (cx < minX) minX = cx;
@@ -1364,7 +1364,7 @@ int CountChopDesignations(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_CHOP) {
+                if (DESIGNATION(x, y, z).type == DESIGNATION_CHOP) {
                     count++;
                 }
             }
@@ -1378,7 +1378,7 @@ int CountChopFelledDesignations(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_CHOP_FELLED) {
+                if (DESIGNATION(x, y, z).type == DESIGNATION_CHOP_FELLED) {
                     count++;
                 }
             }
@@ -1399,7 +1399,7 @@ bool DesignateGatherSapling(int x, int y, int z) {
     if (!IsExplored(x, y, z)) return false;
 
     // Already designated?
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         return false;
     }
     
@@ -1408,9 +1408,9 @@ bool DesignateGatherSapling(int x, int y, int z) {
         return false;
     }
     
-    designations[z][y][x].type = DESIGNATION_GATHER_SAPLING;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_GATHER_SAPLING;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_GATHER_SAPLING);
     
@@ -1421,7 +1421,7 @@ bool HasGatherSaplingDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_GATHER_SAPLING;
+    return DESIGNATION(x, y, z).type == DESIGNATION_GATHER_SAPLING;
 }
 
 void CompleteGatherSaplingDesignation(int x, int y, int z, int moverIdx) {
@@ -1442,9 +1442,9 @@ void CompleteGatherSaplingDesignation(int x, int y, int z, int moverIdx) {
                           (uint8_t)saplingMat);
     
     // Clear designation
-    designations[z][y][x].type = DESIGNATION_NONE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount--;
     InvalidateDesignationCache(DESIGNATION_GATHER_SAPLING);
 }
@@ -1454,7 +1454,7 @@ int CountGatherSaplingDesignations(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_GATHER_SAPLING) {
+                if (DESIGNATION(x, y, z).type == DESIGNATION_GATHER_SAPLING) {
                     count++;
                 }
             }
@@ -1475,7 +1475,7 @@ bool DesignatePlantSapling(int x, int y, int z) {
     if (!IsExplored(x, y, z)) return false;
 
     // Already designated?
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         return false;
     }
     
@@ -1498,9 +1498,9 @@ bool DesignatePlantSapling(int x, int y, int z) {
         }
     }
     
-    designations[z][y][x].type = DESIGNATION_PLANT_SAPLING;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_PLANT_SAPLING;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_PLANT_SAPLING);
     
@@ -1511,7 +1511,7 @@ bool HasPlantSaplingDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_PLANT_SAPLING;
+    return DESIGNATION(x, y, z).type == DESIGNATION_PLANT_SAPLING;
 }
 
 void CompletePlantSaplingDesignation(int x, int y, int z, MaterialType treeMat, int moverIdx) {
@@ -1520,9 +1520,9 @@ void CompletePlantSaplingDesignation(int x, int y, int z, MaterialType treeMat, 
     PlaceSapling(x, y, z, treeMat);
     
     // Clear designation
-    designations[z][y][x].type = DESIGNATION_NONE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount--;
     InvalidateDesignationCache(DESIGNATION_PLANT_SAPLING);
 }
@@ -1532,7 +1532,7 @@ int CountPlantSaplingDesignations(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_PLANT_SAPLING) {
+                if (DESIGNATION(x, y, z).type == DESIGNATION_PLANT_SAPLING) {
                     count++;
                 }
             }
@@ -1559,7 +1559,7 @@ bool DesignateGatherGrass(int x, int y, int z) {
     }
     if (!IsExplored(x, y, z)) return false;
 
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         return false;
     }
     
@@ -1573,9 +1573,9 @@ bool DesignateGatherGrass(int x, int y, int z) {
         return false;
     }
     
-    designations[z][y][x].type = DESIGNATION_GATHER_GRASS;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_GATHER_GRASS;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_GATHER_GRASS);
     EventLog("Designated GATHER_GRASS at (%d,%d,z%d) walkable=%d", x, y, z, IsCellWalkableAt(z, y, x));
@@ -1587,7 +1587,7 @@ bool HasGatherGrassDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_GATHER_GRASS;
+    return DESIGNATION(x, y, z).type == DESIGNATION_GATHER_GRASS;
 }
 
 void CompleteGatherGrassDesignation(int x, int y, int z, int moverIdx) {
@@ -1598,7 +1598,7 @@ void CompleteGatherGrassDesignation(int x, int y, int z, int moverIdx) {
     if (vegZ >= 0) {
         SetVegetation(x, y, vegZ, VEG_NONE);
         SET_CELL_SURFACE(x, y, vegZ, SURFACE_TRAMPLED);
-        wearGrid[vegZ][y][x] = wearNormalToTrampled;
+        WEAR(x, y, vegZ) = wearNormalToTrampled;
     }
     
     // Spawn grass item at the walking position
@@ -1607,9 +1607,9 @@ void CompleteGatherGrassDesignation(int x, int y, int z, int moverIdx) {
     SpawnItem(spawnX, spawnY, (float)z, ITEM_GRASS);
     
     // Clear designation
-    designations[z][y][x].type = DESIGNATION_NONE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount--;
     InvalidateDesignationCache(DESIGNATION_GATHER_GRASS);
 }
@@ -1619,7 +1619,7 @@ int CountGatherGrassDesignations(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_GATHER_GRASS) {
+                if (DESIGNATION(x, y, z).type == DESIGNATION_GATHER_GRASS) {
                     count++;
                 }
             }
@@ -1645,7 +1645,7 @@ bool DesignateGatherReeds(int x, int y, int z) {
     }
     if (!IsExplored(x, y, z)) return false;
 
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         return false;
     }
 
@@ -1659,9 +1659,9 @@ bool DesignateGatherReeds(int x, int y, int z) {
         return false;
     }
 
-    designations[z][y][x].type = DESIGNATION_GATHER_REEDS;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_GATHER_REEDS;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_GATHER_REEDS);
     EventLog("Designated GATHER_REEDS at (%d,%d,z%d)", x, y, z);
@@ -1673,7 +1673,7 @@ bool HasGatherReedsDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_GATHER_REEDS;
+    return DESIGNATION(x, y, z).type == DESIGNATION_GATHER_REEDS;
 }
 
 void CompleteGatherReedsDesignation(int x, int y, int z, int moverIdx) {
@@ -1684,7 +1684,7 @@ void CompleteGatherReedsDesignation(int x, int y, int z, int moverIdx) {
     if (vegZ >= 0) {
         SetVegetation(x, y, vegZ, VEG_NONE);
         SET_CELL_SURFACE(x, y, vegZ, SURFACE_TRAMPLED);
-        wearGrid[vegZ][y][x] = wearNormalToTrampled;
+        WEAR(x, y, vegZ) = wearNormalToTrampled;
     }
 
     // Spawn reeds item at the walking position
@@ -1693,9 +1693,9 @@ void CompleteGatherReedsDesignation(int x, int y, int z, int moverIdx) {
     SpawnItem(spawnX, spawnY, (float)z, ITEM_REEDS);
 
     // Clear designation
-    designations[z][y][x].type = DESIGNATION_NONE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount--;
     InvalidateDesignationCache(DESIGNATION_GATHER_REEDS);
 }
@@ -1705,7 +1705,7 @@ int CountGatherReedsDesignations(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_GATHER_REEDS) {
+                if (DESIGNATION(x, y, z).type == DESIGNATION_GATHER_REEDS) {
                     count++;
                 }
             }
@@ -1724,7 +1724,7 @@ bool DesignateGatherTree(int x, int y, int z) {
     }
     if (!IsExplored(x, y, z)) return false;
 
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         return false;
     }
 
@@ -1735,13 +1735,13 @@ bool DesignateGatherTree(int x, int y, int z) {
 
     // Check harvest state at trunk base
     int baseZ = FindTrunkBaseZAt(x, y, z);
-    if (treeHarvestState[baseZ][y][x] <= 0) {
+    if (TREE_HARVEST(x, y, baseZ) <= 0) {
         return false;
     }
 
-    designations[z][y][x].type = DESIGNATION_GATHER_TREE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_GATHER_TREE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_GATHER_TREE);
 
@@ -1752,7 +1752,7 @@ bool HasGatherTreeDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_GATHER_TREE;
+    return DESIGNATION(x, y, z).type == DESIGNATION_GATHER_TREE;
 }
 
 void CompleteGatherTreeDesignation(int x, int y, int z, int moverIdx) {
@@ -1760,11 +1760,11 @@ void CompleteGatherTreeDesignation(int x, int y, int z, int moverIdx) {
     MaterialType treeMat = GetWallMaterial(x, y, baseZ);
 
     // Decrement harvest state
-    if (treeHarvestState[baseZ][y][x] > 0) {
-        bool wasMax = (treeHarvestState[baseZ][y][x] >= TREE_HARVEST_MAX);
-        treeHarvestState[baseZ][y][x]--;
-        growthTimer[baseZ][y][x] = 0;  // Reset regen timer
-        if (wasMax && treeHarvestState[baseZ][y][x] < TREE_HARVEST_MAX) {
+    if (TREE_HARVEST(x, y, baseZ) > 0) {
+        bool wasMax = (TREE_HARVEST(x, y, baseZ) >= TREE_HARVEST_MAX);
+        TREE_HARVEST(x, y, baseZ)--;
+        GROWTH_TIMER(x, y, baseZ) = 0;  // Reset regen timer
+        if (wasMax && TREE_HARVEST(x, y, baseZ) < TREE_HARVEST_MAX) {
             treeRegenCells++;
         }
     }
@@ -1780,9 +1780,9 @@ void CompleteGatherTreeDesignation(int x, int y, int z, int moverIdx) {
     SpawnItemWithMaterial(spawnX, spawnY, (float)z, ITEM_LEAVES, (uint8_t)treeMat);
 
     // Clear designation
-    designations[z][y][x].type = DESIGNATION_NONE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount--;
     InvalidateDesignationCache(DESIGNATION_GATHER_TREE);
 }
@@ -1792,7 +1792,7 @@ int CountGatherTreeDesignations(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_GATHER_TREE) {
+                if (DESIGNATION(x, y, z).type == DESIGNATION_GATHER_TREE) {
                     count++;
                 }
             }
@@ -1811,7 +1811,7 @@ bool DesignateClean(int x, int y, int z) {
     }
     if (!IsExplored(x, y, z)) return false;
 
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         return false;
     }
 
@@ -1825,9 +1825,9 @@ bool DesignateClean(int x, int y, int z) {
         return false;
     }
 
-    designations[z][y][x].type = DESIGNATION_CLEAN;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_CLEAN;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_CLEAN);
 
@@ -1838,7 +1838,7 @@ bool HasCleanDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_CLEAN;
+    return DESIGNATION(x, y, z).type == DESIGNATION_CLEAN;
 }
 
 void CompleteCleanDesignation(int x, int y, int z) {
@@ -1849,12 +1849,12 @@ void CompleteCleanDesignation(int x, int y, int z) {
     // Fully clean the tile (set to 0)
     SetFloorDirt(x, y, z, 0);
 
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         activeDesignationCount--;
     }
-    designations[z][y][x].type = DESIGNATION_NONE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     InvalidateDesignationCache(DESIGNATION_CLEAN);
 }
 
@@ -1863,7 +1863,7 @@ int CountCleanDesignations(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_CLEAN) {
+                if (DESIGNATION(x, y, z).type == DESIGNATION_CLEAN) {
                     count++;
                 }
             }
@@ -1887,7 +1887,7 @@ bool DesignateHarvestBerry(int x, int y, int z) {
         z = z - 1;
     }
 
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         return false;
     }
 
@@ -1901,9 +1901,9 @@ bool DesignateHarvestBerry(int x, int y, int z) {
         return false;
     }
 
-    designations[z][y][x].type = DESIGNATION_HARVEST_BERRY;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_HARVEST_BERRY;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_HARVEST_BERRY);
 
@@ -1914,7 +1914,7 @@ bool HasHarvestBerryDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_HARVEST_BERRY;
+    return DESIGNATION(x, y, z).type == DESIGNATION_HARVEST_BERRY;
 }
 
 void CompleteHarvestBerryDesignation(int x, int y, int z) {
@@ -1925,12 +1925,12 @@ void CompleteHarvestBerryDesignation(int x, int y, int z) {
     // Harvest the plant (resets to bare, spawns ITEM_BERRIES)
     HarvestPlant(x, y, z);
 
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         activeDesignationCount--;
     }
-    designations[z][y][x].type = DESIGNATION_NONE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     InvalidateDesignationCache(DESIGNATION_HARVEST_BERRY);
 }
 
@@ -1939,7 +1939,7 @@ int CountHarvestBerryDesignations(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_HARVEST_BERRY) {
+                if (DESIGNATION(x, y, z).type == DESIGNATION_HARVEST_BERRY) {
                     count++;
                 }
             }
@@ -1963,7 +1963,7 @@ bool DesignateKnap(int x, int y, int z) {
         z = z - 1;
     }
 
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         return false;
     }
 
@@ -1977,9 +1977,9 @@ bool DesignateKnap(int x, int y, int z) {
         return false;
     }
 
-    designations[z][y][x].type = DESIGNATION_KNAP;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_KNAP;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_KNAP);
 
@@ -1990,18 +1990,18 @@ bool HasKnapDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    if (designations[z][y][x].type == DESIGNATION_KNAP) return true;
+    if (DESIGNATION(x, y, z).type == DESIGNATION_KNAP) return true;
     // Check cell below (designation targets the wall, not the air above)
-    if (z > 0 && designations[z-1][y][x].type == DESIGNATION_KNAP) return true;
+    if (z > 0 && DESIGNATION(x, y, z-1).type == DESIGNATION_KNAP) return true;
     return false;
 }
 
 void CompleteKnapDesignation(int x, int y, int z, int moverIdx) {
     (void)moverIdx;
     // Wall is NOT consumed — just clear the designation
-    designations[z][y][x].type = DESIGNATION_NONE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount--;
     InvalidateDesignationCache(DESIGNATION_KNAP);
 }
@@ -2011,7 +2011,7 @@ int CountKnapDesignations(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_KNAP) {
+                if (DESIGNATION(x, y, z).type == DESIGNATION_KNAP) {
                     count++;
                 }
             }
@@ -2030,7 +2030,7 @@ bool DesignateDigRoots(int x, int y, int z) {
     }
     if (!IsExplored(x, y, z)) return false;
 
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         return false;
     }
 
@@ -2048,9 +2048,9 @@ bool DesignateDigRoots(int x, int y, int z) {
         return false;
     }
 
-    designations[z][y][x].type = DESIGNATION_DIG_ROOTS;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_DIG_ROOTS;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_DIG_ROOTS);
     EventLog("Designated DIG_ROOTS at (%d,%d,z%d) mat=%s", x, y, z, MaterialName(belowMat));
@@ -2062,7 +2062,7 @@ bool HasDigRootsDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_DIG_ROOTS;
+    return DESIGNATION(x, y, z).type == DESIGNATION_DIG_ROOTS;
 }
 
 void CompleteDigRootsDesignation(int x, int y, int z, int moverIdx) {
@@ -2083,9 +2083,9 @@ void CompleteDigRootsDesignation(int x, int y, int z, int moverIdx) {
     }
 
     // Clear designation
-    designations[z][y][x].type = DESIGNATION_NONE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount--;
     InvalidateDesignationCache(DESIGNATION_DIG_ROOTS);
 }
@@ -2095,7 +2095,7 @@ int CountDigRootsDesignations(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_DIG_ROOTS) {
+                if (DESIGNATION(x, y, z).type == DESIGNATION_DIG_ROOTS) {
                     count++;
                 }
             }
@@ -2113,14 +2113,14 @@ bool DesignateExplore(int x, int y, int z) {
         return false;
     }
 
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         return false;
     }
 
     // Target cell CAN be unwalkable (wall you're scouting toward) — minimal validation
-    designations[z][y][x].type = DESIGNATION_EXPLORE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_EXPLORE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_EXPLORE);
 
@@ -2131,7 +2131,7 @@ bool HasExploreDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_EXPLORE;
+    return DESIGNATION(x, y, z).type == DESIGNATION_EXPLORE;
 }
 
 void CompleteExploreDesignation(int x, int y, int z) {
@@ -2139,12 +2139,12 @@ void CompleteExploreDesignation(int x, int y, int z) {
         return;
     }
 
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         activeDesignationCount--;
     }
-    designations[z][y][x].type = DESIGNATION_NONE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     InvalidateDesignationCache(DESIGNATION_EXPLORE);
 }
 
@@ -2153,7 +2153,7 @@ int CountExploreDesignations(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_EXPLORE) {
+                if (DESIGNATION(x, y, z).type == DESIGNATION_EXPLORE) {
                     count++;
                 }
             }
@@ -2172,14 +2172,14 @@ bool DesignateFarm(int x, int y, int z) {
     }
     if (!IsExplored(x, y, z)) return false;
     if (!IsFarmableSoil(x, y, z)) return false;
-    if (designations[z][y][x].type != DESIGNATION_NONE) return false;
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) return false;
     // Don't designate already-tilled cells
-    if (farmGrid[z][y][x].tilled) return false;
+    if (FARM(x, y, z).tilled) return false;
 
-    designations[z][y][x].type = DESIGNATION_FARM;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
-    designations[z][y][x].unreachableCooldown = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_FARM;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION(x, y, z).unreachableCooldown = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_FARM);
     return true;
@@ -2189,7 +2189,7 @@ bool HasFarmDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_FARM;
+    return DESIGNATION(x, y, z).type == DESIGNATION_FARM;
 }
 
 void CompleteFarmDesignation(int x, int y, int z, int moverIdx) {
@@ -2200,11 +2200,11 @@ void CompleteFarmDesignation(int x, int y, int z, int moverIdx) {
 
     // Set farm cell state (preserve desiredCropType set during designation)
     MaterialType mat = (z > 0) ? GetWallMaterial(x, y, z - 1) : MAT_DIRT;
-    uint8_t savedCrop = farmGrid[z][y][x].desiredCropType;
-    farmGrid[z][y][x].tilled = 1;
-    farmGrid[z][y][x].fertility = InitialFertilityForSoil(mat);
-    farmGrid[z][y][x].weedLevel = 0;
-    farmGrid[z][y][x].desiredCropType = savedCrop;
+    uint8_t savedCrop = FARM(x, y, z).desiredCropType;
+    FARM(x, y, z).tilled = 1;
+    FARM(x, y, z).fertility = InitialFertilityForSoil(mat);
+    FARM(x, y, z).weedLevel = 0;
+    FARM(x, y, z).desiredCropType = savedCrop;
     farmActiveCells++;
 
     // Clear grass/vegetation — drop grass item if there was grass
@@ -2218,12 +2218,12 @@ void CompleteFarmDesignation(int x, int y, int z, int moverIdx) {
     if (z > 0) SetVegetation(x, y, z - 1, VEG_NONE);
 
     // Clear designation
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         activeDesignationCount--;
     }
-    designations[z][y][x].type = DESIGNATION_NONE;
-    designations[z][y][x].assignedMover = -1;
-    designations[z][y][x].progress = 0.0f;
+    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION(x, y, z).assignedMover = -1;
+    DESIGNATION(x, y, z).progress = 0.0f;
     InvalidateDesignationCache(DESIGNATION_FARM);
 }
 
@@ -2232,7 +2232,7 @@ int CountFarmDesignations(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_FARM) {
+                if (DESIGNATION(x, y, z).type == DESIGNATION_FARM) {
                     count++;
                 }
             }

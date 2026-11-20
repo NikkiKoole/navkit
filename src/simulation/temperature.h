@@ -127,7 +127,7 @@ void SetAmbientSurfaceTemp(int temp);
 void ApplyFireHeat(int x, int y, int z, int fireLevel);
 
 // Temperature cell state getters (inline for zero overhead)
-static inline bool IsTemperatureStable(int x, int y, int z) { return temperatureGrid[z][y][x].stable; }
+static inline bool IsTemperatureStable(int x, int y, int z) { return TEMPERATURE(x, y, z).stable; }
 
 // Accumulator getters/setters (for save/load)
 float GetHeatTransferAccum(void);

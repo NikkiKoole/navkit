@@ -569,7 +569,7 @@ int AuditFarmConsistency(bool verbose) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (farmGrid[z][y][x].tilled) {
+                if (FARM(x, y, z).tilled) {
                     actualTilled++;
                 }
             }

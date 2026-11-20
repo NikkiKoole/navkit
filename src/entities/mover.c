@@ -533,7 +533,7 @@ Vec2 ComputeWallRepulsion(float x, float y, int z) {
             
             // Only repel from blocked cells (walls, workshops), not traversable air
             CellType cell = GRID(cx, cy, z);
-            bool isBlocked = CellBlocksMovement(cell) || (cellFlags[z][cy][cx] & CELL_FLAG_WORKSHOP_BLOCK);
+            bool isBlocked = CellBlocksMovement(cell) || (CELL_FLAGS(cx, cy, z) & CELL_FLAG_WORKSHOP_BLOCK);
             if (!isBlocked) continue;
             
             // Wall cell center
@@ -1034,9 +1034,9 @@ void ClearMovers(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type != DESIGNATION_NONE) {
-                    designations[z][y][x].assignedMover = -1;
-                    designations[z][y][x].progress = 0.0f;
+                if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
+                    DESIGNATION(x, y, z).assignedMover = -1;
+                    DESIGNATION(x, y, z).progress = 0.0f;
                 }
             }
         }
@@ -1443,7 +1443,7 @@ void UpdateMovers(void) {
         // Check if mover is in a non-walkable cell
         if (!IsCellWalkableAt(currentZ, currentY, currentX)) {
             CellType currentCell = GRID(currentX, currentY, currentZ);
-            bool isWorkshopBlock = cellFlags[currentZ][currentY][currentX] & CELL_FLAG_WORKSHOP_BLOCK;
+            bool isWorkshopBlock = CELL_FLAGS(currentX, currentY, currentZ) & CELL_FLAG_WORKSHOP_BLOCK;
             
             // If it's a non-blocking cell (like air) without workshop flag, try to fall
             if (!CellBlocksMovement(currentCell) && !isWorkshopBlock) {

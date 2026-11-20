@@ -844,7 +844,7 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
         if (ct == CELL_TREE_TRUNK) {
             int baseZ = cellZ;
             while (baseZ > 0 && GRID(cellX, cellY, baseZ - 1) == CELL_TREE_TRUNK) baseZ--;
-            uint8_t hs = treeHarvestState[baseZ][cellY][cellX];
+            uint8_t hs = TREE_HARVEST(cellX, cellY, baseZ);
             if (hs > 0) {
                 snprintf(lines[lineCount++], sizeof(lines[0]), "Harvest: %d/%d", hs, TREE_HARVEST_MAX);
             } else {
@@ -902,7 +902,7 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
 
     // Farm plot info
     {
-        FarmCell* fc = &farmGrid[cellZ][cellY][cellX];
+        FarmCell* fc = &FARM(cellX, cellY, cellZ);
         if (fc->tilled) {
             MaterialType soilMat = GetWallMaterial(cellX, cellY, cellZ - 1);
             snprintf(lines[lineCount++], sizeof(lines[0]), "Farm Plot (%s)", MaterialName(soilMat));
@@ -953,7 +953,7 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     snprintf(lines[lineCount++], sizeof(lines[0]), "Ambient: %d C [%+d]", ambient, diff);
 
     // Temperature sources
-    TempCell* tempCell = &temperatureGrid[cellZ][cellY][cellX];
+    TempCell* tempCell = &TEMPERATURE(cellX, cellY, cellZ);
     if (tempCell->isHeatSource) {
         snprintf(lines[lineCount++], sizeof(lines[0]), "HEAT SOURCE (%d C)", heatSourceTemp);
     }
@@ -967,7 +967,7 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     snprintf(lines[lineCount++], sizeof(lines[0]), "Insulation: %s", tierName);
 
     // Water info
-    WaterCell* water = &waterGrid[cellZ][cellY][cellX];
+    WaterCell* water = &WATER(cellX, cellY, cellZ);
     if (water->level > 0 || water->isSource || water->isDrain) {
         snprintf(lines[lineCount++], sizeof(lines[0]), "Water: %d/7%s", 
             water->level, water->isFrozen ? " [FROZEN]" : "");
@@ -983,7 +983,7 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     }
 
     // Fire info
-    FireCell* fire = &fireGrid[cellZ][cellY][cellX];
+    FireCell* fire = &FIRE(cellX, cellY, cellZ);
     if (fire->level > 0 || fire->isSource) {
         snprintf(lines[lineCount++], sizeof(lines[0]), "Fire: %d/7", fire->level);
         if (fire->isSource) {
@@ -995,13 +995,13 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     }
 
     // Steam info
-    SteamCell* steam = &steamGrid[cellZ][cellY][cellX];
+    SteamCell* steam = &STEAM(cellX, cellY, cellZ);
     if (steam->level > 0) {
         snprintf(lines[lineCount++], sizeof(lines[0]), "Steam: %d/7", steam->level);
     }
 
     // Smoke info
-    SmokeCell* smoke = &smokeGrid[cellZ][cellY][cellX];
+    SmokeCell* smoke = &SMOKE(cellX, cellY, cellZ);
     if (smoke->level > 0) {
         snprintf(lines[lineCount++], sizeof(lines[0]), "Smoke: %d/7", smoke->level);
     }
@@ -1056,7 +1056,7 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
 // Draw water tooltip when hovering over water
 static void DrawWaterTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     if (!IsExplored(cellX, cellY, cellZ)) return;
-    WaterCell* cell = &waterGrid[cellZ][cellY][cellX];
+    WaterCell* cell = &WATER(cellX, cellY, cellZ);
     if (cell->level == 0 && !cell->isSource && !cell->isDrain) return;
 
     char lines[8][64];

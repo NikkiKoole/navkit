@@ -563,7 +563,7 @@ static void setup_pathfinding_globals(void) {
             for (int x = 0; x < insp_gridW; x++) {
                 int idx = z * insp_gridH * insp_gridW + y * insp_gridW + x;
                 GRID(x, y, z) = insp_gridCells[idx];
-                cellFlags[z][y][x] = insp_cellFlags[idx];
+                CELL_FLAGS(x, y, z) = insp_cellFlags[idx];
             }
         }
     }

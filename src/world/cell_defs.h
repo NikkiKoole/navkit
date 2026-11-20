@@ -101,11 +101,11 @@ static inline bool IsCellWalkableAtEx(int z, int y, int x, bool ignoreWater) {
     if (CellBlocksMovement(cellHere)) return false;
     
     // Can't walk through blocked structures (workshops, furniture, etc.)
-    if (cellFlags[z][y][x] & CELL_FLAG_WORKSHOP_BLOCK) return false;
+    if (CELL_FLAGS(x, y, z) & CELL_FLAG_WORKSHOP_BLOCK) return false;
     
     // Can't walk through deep water (level 4+ blocks movement)
     // Movers can wade through shallow water (1-3) but not swim through deep water
-    if (!ignoreWater && waterGrid[z][y][x].level >= WATER_BLOCKS_MOVEMENT) return false;
+    if (!ignoreWater && WATER(x, y, z).level >= WATER_BLOCKS_MOVEMENT) return false;
     
     // Ladders are always walkable (special case - they provide their own support)
     if (CellIsLadder(cellHere)) return true;
@@ -407,7 +407,7 @@ static inline int GetCellMoveCost(int x, int y, int z) {
     // Furniture movement penalty (non-blocking furniture)
     {
         extern uint8_t furnitureMoveCostGrid[][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-        int furnCost = furnitureMoveCostGrid[z][y][x];
+        int furnCost = FURNITURE_MOVE_COST(x, y, z);
         if (furnCost > cost) cost = furnCost;
     }
     

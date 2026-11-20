@@ -52,10 +52,10 @@ void InitTemperature(void) {
         int ambient = GetAmbientTemperature(z);
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                temperatureGrid[z][y][x].current = (int16_t)ambient;
-                temperatureGrid[z][y][x].stable = true;
-                temperatureGrid[z][y][x].isHeatSource = false;
-                temperatureGrid[z][y][x].isColdSource = false;
+                TEMPERATURE(x, y, z).current = (int16_t)ambient;
+                TEMPERATURE(x, y, z).stable = true;
+                TEMPERATURE(x, y, z).isHeatSource = false;
+                TEMPERATURE(x, y, z).isColdSource = false;
             }
         }
     }
@@ -104,7 +104,7 @@ void SetAmbientSurfaceTemp(int temp) {
         int ambient = GetAmbientTemperature(z);
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                TempCell *cell = &temperatureGrid[z][y][x];
+                TempCell *cell = &TEMPERATURE(x, y, z);
                 // A cell needs processing if unstable OR differs from ambient
                 if (!cell->stable || cell->current != ambient) {
                     tempUnstableCells++;
@@ -147,7 +147,7 @@ int GetTemperature(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return GetAmbientTemperature(z);
     }
-    return temperatureGrid[z][y][x].current;
+    return TEMPERATURE(x, y, z).current;
 }
 
 void SetTemperature(int x, int y, int z, int celsius) {
@@ -158,7 +158,7 @@ void SetTemperature(int x, int y, int z, int celsius) {
     if (celsius < TEMP_MIN) celsius = TEMP_MIN;
     if (celsius > TEMP_MAX) celsius = TEMP_MAX;
     
-    temperatureGrid[z][y][x].current = (int16_t)celsius;
+    TEMPERATURE(x, y, z).current = (int16_t)celsius;
     DestabilizeTemperature(x, y, z);
 }
 
@@ -166,14 +166,14 @@ bool IsHeatSource(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return temperatureGrid[z][y][x].isHeatSource;
+    return TEMPERATURE(x, y, z).isHeatSource;
 }
 
 bool IsColdSource(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return temperatureGrid[z][y][x].isColdSource;
+    return TEMPERATURE(x, y, z).isColdSource;
 }
 
 // Threshold checks - now using Celsius directly!
@@ -203,7 +203,7 @@ void SetHeatSource(int x, int y, int z, bool isSource) {
         return;
     }
     
-    TempCell *cell = &temperatureGrid[z][y][x];
+    TempCell *cell = &TEMPERATURE(x, y, z);
     bool wasSource = cell->isHeatSource || cell->isColdSource;
     
     cell->isHeatSource = isSource;
@@ -235,7 +235,7 @@ void SetColdSource(int x, int y, int z, bool isSource) {
         return;
     }
     
-    TempCell *cell = &temperatureGrid[z][y][x];
+    TempCell *cell = &TEMPERATURE(x, y, z);
     bool wasSource = cell->isHeatSource || cell->isColdSource;
     
     cell->isColdSource = isSource;
@@ -267,7 +267,7 @@ void RemoveTemperatureSource(int x, int y, int z) {
         return;
     }
     
-    TempCell *cell = &temperatureGrid[z][y][x];
+    TempCell *cell = &TEMPERATURE(x, y, z);
     cell->isHeatSource = false;
     cell->isColdSource = false;
     
@@ -283,7 +283,7 @@ static void MarkCellUnstable(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return;
     }
-    TempCell *cell = &temperatureGrid[z][y][x];
+    TempCell *cell = &TEMPERATURE(x, y, z);
     if (cell->stable) {
         cell->stable = false;
         int ambient = GetAmbientTemperature(z);
@@ -337,7 +337,7 @@ void ApplyFireHeat(int x, int y, int z, int fireLevel) {
     int fireTemp = TEMP_BOILING + (fireLevel * 20);
     if (fireTemp > TEMP_MAX) fireTemp = TEMP_MAX;
     
-    TempCell *cell = &temperatureGrid[z][y][x];
+    TempCell *cell = &TEMPERATURE(x, y, z);
     if (fireTemp > cell->current) {
         cell->current = (int16_t)fireTemp;
         DestabilizeTemperature(x, y, z);
@@ -385,7 +385,7 @@ void UpdateTemperature(void) {
         
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                TempCell *cell = &temperatureGrid[z][y][x];
+                TempCell *cell = &TEMPERATURE(x, y, z);
                 
                 // Skip stable cells (but not if temperature differs from ambient)
                 if (cell->stable && cell->current == ambient) {
@@ -427,7 +427,7 @@ void UpdateTemperature(void) {
                             continue;
                         }
                         
-                        int neighborTemp = temperatureGrid[z][ny][nx].current;
+                        int neighborTemp = TEMPERATURE(nx, ny, z).current;
                         int neighborInsulation = GetInsulationTier(nx, ny, z);
                         
                         // Use the higher insulation of the two cells
@@ -451,7 +451,7 @@ void UpdateTemperature(void) {
                             continue;
                         }
                         
-                        int neighborTemp = temperatureGrid[z][ny][nx].current;
+                        int neighborTemp = TEMPERATURE(nx, ny, z).current;
                         int neighborInsulation = GetInsulationTier(nx, ny, z);
                         
                         int effectiveInsulation = (myInsulation > neighborInsulation) ? myInsulation : neighborInsulation;
@@ -470,7 +470,7 @@ void UpdateTemperature(void) {
                         int nz = z + dz;
                         if (nz < 0 || nz >= gridDepth) continue;
                         
-                        int neighborTemp = temperatureGrid[nz][y][x].current;
+                        int neighborTemp = TEMPERATURE(x, y, nz).current;
                         int neighborInsulation = GetInsulationTier(x, y, nz);
                         
                         int effectiveInsulation = (myInsulation > neighborInsulation) ? myInsulation : neighborInsulation;

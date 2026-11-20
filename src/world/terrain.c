@@ -2853,7 +2853,7 @@ void GenerateHillsSoilsWater(void) {
                 float chance = 0.0f;
 
                 if ((soilMat == MAT_DIRT || soilMat == MAT_CLAY) &&
-                    vegetationGrid[walkZ][y][x] > 0) {
+                    VEGETATION(x, y, walkZ) > 0) {
                     wildType = PLANT_WILD_WHEAT;
                     chance = 0.02f;
                 } else if (soilMat == MAT_CLAY || soilMat == MAT_GRAVEL) {
@@ -3130,7 +3130,7 @@ void GenerateHillsSoilsWater(void) {
                 if (!CellIsSolid(GRID(x, y, z))) continue;
                 if (!IsWallNatural(x, y, z)) continue;
                 if (GetWallMaterial(x, y, z) != MAT_DIRT) continue;
-                if (wearGrid[z][y][x] == 0) {
+                if (WEAR(x, y, z) == 0) {
                     SetVegetation(x, y, z, VEG_GRASS_TALLER);
                 }
             }
@@ -4728,22 +4728,22 @@ void GenerateTrainTest(void) {
     // Horizontal runs: y=8 and y=12, from x=10 to x=70
     for (int x = 10; x <= 70; x++) {
         GRID(x, 8, 1) = CELL_TRACK;
-        trackConnections[1][8][x] = TRACK_E | TRACK_W;
+        TRACK_CONN(x, 8, 1) = TRACK_E | TRACK_W;
         GRID(x, 12, 1) = CELL_TRACK;
-        trackConnections[1][12][x] = TRACK_E | TRACK_W;
+        TRACK_CONN(x, 12, 1) = TRACK_E | TRACK_W;
     }
     // Vertical connections at both ends
     for (int y = 8; y <= 12; y++) {
         GRID(10, y, 1) = CELL_TRACK;
-        trackConnections[1][y][10] = TRACK_N | TRACK_S;
+        TRACK_CONN(10, y, 1) = TRACK_N | TRACK_S;
         GRID(70, y, 1) = CELL_TRACK;
-        trackConnections[1][y][70] = TRACK_N | TRACK_S;
+        TRACK_CONN(70, y, 1) = TRACK_N | TRACK_S;
     }
     // Fix corners
-    trackConnections[1][8][10]  = TRACK_E | TRACK_S;  // top-left
-    trackConnections[1][8][70]  = TRACK_W | TRACK_S;  // top-right
-    trackConnections[1][12][10] = TRACK_E | TRACK_N;  // bottom-left
-    trackConnections[1][12][70] = TRACK_W | TRACK_N;  // bottom-right
+    TRACK_CONN(10, 8, 1)  = TRACK_E | TRACK_S;  // top-left
+    TRACK_CONN(70, 8, 1)  = TRACK_W | TRACK_S;  // top-right
+    TRACK_CONN(10, 12, 1) = TRACK_E | TRACK_N;  // bottom-left
+    TRACK_CONN(70, 12, 1) = TRACK_W | TRACK_N;  // bottom-right
 
     // ── Station A (left end): platform parallel to track at y=7, x=8..12 ──
     for (int px = 8; px <= 12; px++) GRID(px, 7, 1) = CELL_PLATFORM;
@@ -4804,22 +4804,22 @@ void GenerateTrainTestLong(void) {
     // Horizontal runs: y=10 and y=20, from x=5 to x=90
     for (int x = 5; x <= 90; x++) {
         GRID(x, 10, 1) = CELL_TRACK;
-        trackConnections[1][10][x] = TRACK_E | TRACK_W;
+        TRACK_CONN(x, 10, 1) = TRACK_E | TRACK_W;
         GRID(x, 20, 1) = CELL_TRACK;
-        trackConnections[1][20][x] = TRACK_E | TRACK_W;
+        TRACK_CONN(x, 20, 1) = TRACK_E | TRACK_W;
     }
     // Vertical connections at both ends
     for (int y = 10; y <= 20; y++) {
         GRID(5, y, 1) = CELL_TRACK;
-        trackConnections[1][y][5] = TRACK_N | TRACK_S;
+        TRACK_CONN(5, y, 1) = TRACK_N | TRACK_S;
         GRID(90, y, 1) = CELL_TRACK;
-        trackConnections[1][y][90] = TRACK_N | TRACK_S;
+        TRACK_CONN(90, y, 1) = TRACK_N | TRACK_S;
     }
     // Fix corners
-    trackConnections[1][10][5]  = TRACK_E | TRACK_S;  // top-left
-    trackConnections[1][10][90] = TRACK_W | TRACK_S;  // top-right
-    trackConnections[1][20][5]  = TRACK_E | TRACK_N;  // bottom-left
-    trackConnections[1][20][90] = TRACK_W | TRACK_N;  // bottom-right
+    TRACK_CONN(5, 10, 1)  = TRACK_E | TRACK_S;  // top-left
+    TRACK_CONN(90, 10, 1) = TRACK_W | TRACK_S;  // top-right
+    TRACK_CONN(5, 20, 1)  = TRACK_E | TRACK_N;  // bottom-left
+    TRACK_CONN(90, 20, 1) = TRACK_W | TRACK_N;  // bottom-right
 
     // ── Station A (left): 6 platform cells parallel to top track at y=9, x=12..17 ──
     for (int px = 12; px <= 17; px++) GRID(px, 9, 1) = CELL_PLATFORM;

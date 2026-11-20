@@ -100,7 +100,7 @@ static bool IsGrowingTrunkTop(int x, int y, int z) {
 bool IsRegrowingTreeCell(int x, int y, int z) {
     return GRID(x, y, z) == CELL_TREE_TRUNK &&
            (z == 0 || GRID(x, y, z - 1) != CELL_TREE_TRUNK) &&
-           treeHarvestState[z][y][x] < TREE_HARVEST_MAX;
+           TREE_HARVEST(x, y, z) < TREE_HARVEST_MAX;
 }
 
 bool IsGrowingTreeCell(int x, int y, int z) {
@@ -196,9 +196,9 @@ void InitTrees(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                growthTimer[z][y][x] = 0.0f;
-                targetHeight[z][y][x] = 0;
-                treeHarvestState[z][y][x] = 0;
+                GROWTH_TIMER(x, y, z) = 0.0f;
+                TARGET_HEIGHT(x, y, z) = 0;
+                TREE_HARVEST(x, y, z) = 0;
             }
         }
     }
@@ -465,11 +465,11 @@ static void GrowCell(int x, int y, int z) {
         MarkChunkDirty(x, y, z);
 
         // Set target height to young tree height (1-3 per species)
-        targetHeight[z][y][x] = GetYoungTreeHeight(treeMat);
+        TARGET_HEIGHT(x, y, z) = GetYoungTreeHeight(treeMat);
 
         // Stagger growth timer
         unsigned int hash = PositionHash(x, y, z);
-        growthTimer[z][y][x] = fmodf((float)(hash % 10000) / 10000.0f * GameHoursToGameSeconds(trunkGrowGH), GameHoursToGameSeconds(trunkGrowGH));
+        GROWTH_TIMER(x, y, z) = fmodf((float)(hash % 10000) / 10000.0f * GameHoursToGameSeconds(trunkGrowGH), GameHoursToGameSeconds(trunkGrowGH));
 
         // Place small leaf cluster on top
         PlaceYoungTreeLeaves(x, y, z, treeMat);
@@ -479,7 +479,7 @@ static void GrowCell(int x, int y, int z) {
         if (baseZ < 0) return;
         MaterialType treeMat = GetWallMaterial(x, y, baseZ);
         treeMat = NormalizeTreeType(treeMat);
-        int youngMaxH = targetHeight[baseZ][y][x];
+        int youngMaxH = TARGET_HEIGHT(x, y, baseZ);
         if (youngMaxH <= 0) youngMaxH = GetYoungTreeHeight(treeMat);
         int height = GetYoungTreeHeightFromBase(x, y, baseZ);
         int topZ = baseZ + height - 1;
@@ -493,7 +493,7 @@ static void GrowCell(int x, int y, int z) {
                 SetWallMaterial(x, y, topZ + 1, treeMat);
                 MarkChunkDirty(x, y, topZ + 1);
                 PlaceYoungTreeLeaves(x, y, topZ + 1, treeMat);
-                growthTimer[z][y][x] = 0.0f;
+                GROWTH_TIMER(x, y, z) = 0.0f;
             }
         } else {
             // Young tree at full height — mature into trunk tree
@@ -513,11 +513,11 @@ static void GrowCell(int x, int y, int z) {
             int minH, maxH;
             GetTreeHeightRange(treeMat, &minH, &maxH);
             int heightRange = maxH - minH + 1;
-            targetHeight[baseZ][y][x] = minH + (hash % heightRange);
-            growthTimer[topZ][y][x] = 0.0f;
+            TARGET_HEIGHT(x, y, baseZ) = minH + (hash % heightRange);
+            GROWTH_TIMER(x, y, topZ) = 0.0f;
 
             // Tree starts fully harvestable
-            treeHarvestState[baseZ][y][x] = TREE_HARVEST_MAX;
+            TREE_HARVEST(x, y, baseZ) = TREE_HARVEST_MAX;
 
             // Roots on maturation
             PlaceRootsForTree(x, y, baseZ, treeMat);
@@ -529,7 +529,7 @@ static void GrowCell(int x, int y, int z) {
         int baseZ = FindTrunkBaseZ(x, y, z);
         MaterialType treeMat = (GetWallMaterial(x, y, baseZ));
         treeMat = NormalizeTreeType(treeMat);
-        int maxHeight = targetHeight[baseZ][y][x];
+        int maxHeight = TARGET_HEIGHT(x, y, baseZ);
         if (maxHeight == 0) {
             int minH, maxH;
             GetTreeHeightRange(treeMat, &minH, &maxH);
@@ -544,7 +544,7 @@ static void GrowCell(int x, int y, int z) {
                 GRID(x, y, z + 1) = CELL_TREE_TRUNK;
                 SetWallMaterial(x, y, z + 1, treeMat);
                 MarkChunkDirty(x, y, z + 1);
-                growthTimer[z + 1][y][x] = 0.0f;
+                GROWTH_TIMER(x, y, z + 1) = 0.0f;
             }
         } else {
             // Reached target height or blocked - taper top, spawn branches and leaves
@@ -610,8 +610,8 @@ void TreesTick(float tickDt) {
 
                 if (cell == CELL_SAPLING) {
                     if (!hasGrowing) goto counted;
-                    growthTimer[z][y][x] += seasonalDt;
-                    if (growthTimer[z][y][x] >= saplingThreshold) {
+                    GROWTH_TIMER(x, y, z) += seasonalDt;
+                    if (GROWTH_TIMER(x, y, z) >= saplingThreshold) {
                         GrowCell(x, y, z);
                     }
                 } else if (cell == CELL_TREE_BRANCH && IsYoungTreeBase(x, y, z)) {
@@ -620,7 +620,7 @@ void TreesTick(float tickDt) {
                     int baseZ = FindYoungTreeBaseZ(x, y, z);
                     if (baseZ < 0) goto counted;
                     int height = GetYoungTreeHeightFromBase(x, y, baseZ);
-                    int youngMaxH = targetHeight[baseZ][y][x];
+                    int youngMaxH = TARGET_HEIGHT(x, y, baseZ);
                     if (youngMaxH <= 0) {
                         MaterialType treeMat = NormalizeTreeType(GetWallMaterial(x, y, baseZ));
                         youngMaxH = GetYoungTreeHeight(treeMat);
@@ -628,14 +628,14 @@ void TreesTick(float tickDt) {
 
                     if (height < youngMaxH) {
                         // Still growing upward — use trunkGrowGH timer on base
-                        growthTimer[z][y][x] += seasonalDt;
-                        if (growthTimer[z][y][x] >= trunkThreshold) {
+                        GROWTH_TIMER(x, y, z) += seasonalDt;
+                        if (GROWTH_TIMER(x, y, z) >= trunkThreshold) {
                             GrowCell(x, y, z);
                         }
                     } else {
                         // At full young height — wait youngToMatureGH then mature
-                        growthTimer[z][y][x] += seasonalDt;
-                        if (growthTimer[z][y][x] >= youngMatureThreshold) {
+                        GROWTH_TIMER(x, y, z) += seasonalDt;
+                        if (GROWTH_TIMER(x, y, z) >= youngMatureThreshold) {
                             GrowCell(x, y, z);
                         }
                     }
@@ -643,29 +643,29 @@ void TreesTick(float tickDt) {
                     // Growth: only the top of a still-growing trunk (finished trees have
                     // their taper branch above), only when trees are growing
                     if (hasGrowing && IsGrowingTrunkTop(x, y, z)) {
-                        growthTimer[z][y][x] += seasonalDt;
-                        if (growthTimer[z][y][x] >= trunkThreshold) {
+                        GROWTH_TIMER(x, y, z) += seasonalDt;
+                        if (GROWTH_TIMER(x, y, z) >= trunkThreshold) {
                             GrowCell(x, y, z);
-                            growthTimer[z][y][x] = 0.0f;
+                            GROWTH_TIMER(x, y, z) = 0.0f;
                         }
                     }
 
                     // Harvest regen on trunk base cells only (not seasonal)
                     if (hasRegen && (z == 0 || GRID(x, y, z - 1) != CELL_TREE_TRUNK)) {
-                        if (treeHarvestState[z][y][x] < TREE_HARVEST_MAX) {
-                            growthTimer[z][y][x] += dt;
-                            if (growthTimer[z][y][x] >= regenThreshold) {
-                                treeHarvestState[z][y][x]++;
-                                growthTimer[z][y][x] = 0.0f;
+                        if (TREE_HARVEST(x, y, z) < TREE_HARVEST_MAX) {
+                            GROWTH_TIMER(x, y, z) += dt;
+                            if (GROWTH_TIMER(x, y, z) >= regenThreshold) {
+                                TREE_HARVEST(x, y, z)++;
+                                GROWTH_TIMER(x, y, z) = 0.0f;
                             }
                         }
                     }
                 } else if (cell == CELL_TREE_LEAVES) {
                     if (!hasGrowing) goto counted;
-                    growthTimer[z][y][x] += dt;  // Leaf decay not seasonal
-                    if (growthTimer[z][y][x] >= leafThreshold) {
+                    GROWTH_TIMER(x, y, z) += dt;  // Leaf decay not seasonal
+                    if (GROWTH_TIMER(x, y, z) >= leafThreshold) {
                         GrowCell(x, y, z);
-                        growthTimer[z][y][x] = 0.0f;
+                        GROWTH_TIMER(x, y, z) = 0.0f;
                     }
                 }
             counted:
@@ -708,10 +708,10 @@ void TreeGrowFull(int x, int y, int z, MaterialType treeMat) {
     GetTreeHeightRange(treeMat, &minH, &maxH);
     int heightRange = maxH - minH + 1;
     int treeTargetHeight = minH + (hash % heightRange);
-    targetHeight[z][y][x] = treeTargetHeight;
+    TARGET_HEIGHT(x, y, z) = treeTargetHeight;
 
     // Tree starts fully harvestable
-    treeHarvestState[z][y][x] = TREE_HARVEST_MAX;
+    TREE_HARVEST(x, y, z) = TREE_HARVEST_MAX;
 
     // Place roots
     PlaceRootsForTree(x, y, z, treeMat);
@@ -763,7 +763,7 @@ void TreeGrowYoung(int x, int y, int z, MaterialType treeMat) {
     }
 
     // Store young target height for future growth
-    targetHeight[z][y][x] = youngMaxH;
+    TARGET_HEIGHT(x, y, z) = youngMaxH;
 
     // Place leaves on top
     int topZ = z + height - 1;
@@ -785,7 +785,7 @@ void PlaceSapling(int x, int y, int z, MaterialType treeMat) {
     SetWallMaterial(x, y, z, treeMat);
 
     unsigned int hash = PositionHash(x, y, z);
-    growthTimer[z][y][x] = fmodf((float)(hash % 10000) / 10000.0f * GameHoursToGameSeconds(saplingGrowGH), GameHoursToGameSeconds(saplingGrowGH));
+    GROWTH_TIMER(x, y, z) = fmodf((float)(hash % 10000) / 10000.0f * GameHoursToGameSeconds(saplingGrowGH), GameHoursToGameSeconds(saplingGrowGH));
     treeActiveCells++;
     MarkChunkDirty(x, y, z);
 }

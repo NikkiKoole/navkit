@@ -60,7 +60,7 @@ static VegetationType NextWearVegLevel(VegetationType current) {
 // recovering=true: wear is decaying, vegetation can increase back.
 // recovering=false: trampling, vegetation can only decrease (never upgrade bare dirt to grass).
 static void UpdateSurfaceFromWear(int x, int y, int z, bool recovering) {
-    int wear = wearGrid[z][y][x];
+    int wear = WEAR(x, y, z);
     VegetationType target = VegLevelForWear(wear);
     VegetationType current = GetVegetation(x, y, z);
 
@@ -153,15 +153,15 @@ void TrampleGround(int x, int y, int z) {
     if (cell == CELL_SAPLING) {
         // Saplings need heavy traffic to be trampled, not just one pass
         // Use the wear grid to track trampling damage to the sapling
-        int wear = wearGrid[z][y][x];
-        wearGrid[z][y][x] = (wear < WearCap()) ? wear + 1 : WearCap();
+        int wear = WEAR(x, y, z);
+        WEAR(x, y, z) = (wear < WearCap()) ? wear + 1 : WearCap();
         
         // Only destroy sapling after significant wear (half of max)
-        if (wearGrid[z][y][x] >= wearMax / 2) {
+        if (WEAR(x, y, z) >= wearMax / 2) {
             GRID(x, y, z) = CELL_AIR;
             SetWallMaterial(x, y, z, MAT_NONE);
             MarkChunkDirty(x, y, z);
-            wearGrid[z][y][x] = 0;  // Reset wear
+            WEAR(x, y, z) = 0;  // Reset wear
         }
         return;  // Don't also trample ground below sapling
     }
@@ -183,10 +183,10 @@ void TrampleGround(int x, int y, int z) {
     }
     
     // Increase wear (cap at wearMax)
-    int oldWear = wearGrid[targetZ][y][x];
+    int oldWear = WEAR(x, y, targetZ);
     int newWear = oldWear + wearTrampleAmount;
     if (newWear > WearCap()) newWear = WearCap();
-    wearGrid[targetZ][y][x] = newWear;
+    WEAR(x, y, targetZ) = newWear;
     
     // Track active worn cells
     if (oldWear == 0 && newWear > 0) {
@@ -232,20 +232,20 @@ void UpdateGroundWear(void) {
                 if (isDirt) {
                     // Decay wear (modulated by seasonal vegetation growth)
                     int effectiveDecay = (int)(wearDecayRate * vegRate);
-                    int oldWear = wearGrid[z][y][x];
+                    int oldWear = WEAR(x, y, z);
                     if (effectiveDecay > 0 && oldWear > effectiveDecay) {
-                        wearGrid[z][y][x] = oldWear - effectiveDecay;
+                        WEAR(x, y, z) = oldWear - effectiveDecay;
                         // Recovery — vegetation grows one step per tick
                         UpdateSurfaceFromWear(x, y, z, true);
                     } else if (effectiveDecay > 0 && oldWear > 0) {
                         // Wear would decay to 0. If vegetation hasn't fully
                         // regrown, hold wear at 1 to keep recovery ticking.
                         VegetationType veg = GetVegetation(x, y, z);
-                        wearGrid[z][y][x] = 0;
+                        WEAR(x, y, z) = 0;
                         UpdateSurfaceFromWear(x, y, z, true);
                         veg = GetVegetation(x, y, z);
                         if (veg > VEG_NONE && veg < VEG_GRASS_TALLER) {
-                            wearGrid[z][y][x] = 1;  // keep ticking
+                            WEAR(x, y, z) = 1;  // keep ticking
                         } else {
                             wearActiveCells--;
                         }
@@ -253,7 +253,7 @@ void UpdateGroundWear(void) {
                 }
 
                 // Reed regrowth: bare soil adjacent to water regrows reeds
-                if (isDirt && GetVegetation(x, y, z) == VEG_NONE && wearGrid[z][y][x] == 0) {
+                if (isDirt && GetVegetation(x, y, z) == VEG_NONE && WEAR(x, y, z) == 0) {
                     bool hasAdjacentWater = false;
                     if (z + 1 < gridDepth) {
                         if (x > 0 && GetWaterLevel(x - 1, y, z + 1) > 0) hasAdjacentWater = true;
@@ -267,7 +267,7 @@ void UpdateGroundWear(void) {
                 }
 
                 // Sapling regrowth: spawn sapling on tall grass with some chance
-                if (saplingRegrowthEnabled && wearGrid[z][y][x] == 0) {
+                if (saplingRegrowthEnabled && WEAR(x, y, z) == 0) {
                     // For dirt, require fully recovered grass; for other soils, just require no wear
                     if (!isDirt || GetVegetation(x, y, z) >= VEG_GRASS_TALL) {
                         if (z + 1 < gridDepth && GRID(x, y, z + 1) == CELL_AIR) {
@@ -313,7 +313,7 @@ void UpdateGroundWear(void) {
 int GetGroundWear(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return 0;
     if (z < 0 || z >= gridDepth) return 0;
-    return wearGrid[z][y][x];
+    return WEAR(x, y, z);
 }
 
 float GetWearRecoveryAccum(void) { return wearRecoveryAccum; }

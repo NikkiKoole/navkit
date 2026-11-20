@@ -768,14 +768,14 @@ typedef struct {
 } RevealDiscoveries;
 
 static void CheckDiscoveriesAtCell(int x, int y, int z, RevealDiscoveries *d) {
-    if (waterGrid[z][y][x].isSource) {
+    if (WATER(x, y, z).isSource) {
         if (d->waterSources == 0) { d->firstWaterX = x; d->firstWaterY = y; d->firstWaterZ = z; }
         d->waterSources++;
     }
     if (GRID(x, y, z) == CELL_BUSH) {
         d->bushes++;
     }
-    if (fireGrid[z][y][x].fuel > 0) {
+    if (FIRE(x, y, z).fuel > 0) {
         if (d->fires == 0) { d->firstFireX = x; d->firstFireY = y; d->firstFireZ = z; }
         d->fires++;
     }
@@ -810,7 +810,7 @@ void RevealAroundPoint(int cx, int cy, int cz, int radius) {
             int sx = cx + offsets[i][0];
             int sy = cy + offsets[i][1];
             if (sx >= 0 && sx < gridWidth && sy >= 0 && sy < gridHeight) {
-                if (!exploredGrid[cz][sy][sx]) { allExplored = false; break; }
+                if (!EXPLORED(sx, sy, cz)) { allExplored = false; break; }
             }
         }
         if (allExplored) return;
@@ -831,16 +831,16 @@ void RevealAroundPoint(int cx, int cy, int cz, int radius) {
             if (dx * dx + dy * dy > r2) continue;
 
             // Reveal at mover's z-level
-            if (!exploredGrid[cz][y][x]) {
-                exploredGrid[cz][y][x] = 1;
+            if (!EXPLORED(x, y, cz)) {
+                EXPLORED(x, y, cz) = 1;
                 MarkChunkDirty(x, y, cz);
                 CheckDiscoveriesAtCell(x, y, cz, &disc);
             }
 
             // Reveal upward through air until solid or top
             for (int z = cz + 1; z < gridDepth; z++) {
-                if (!exploredGrid[z][y][x]) {
-                    exploredGrid[z][y][x] = 1;
+                if (!EXPLORED(x, y, z)) {
+                    EXPLORED(x, y, z) = 1;
                     MarkChunkDirty(x, y, z);
                     CheckDiscoveriesAtCell(x, y, z, &disc);
                 }
@@ -849,8 +849,8 @@ void RevealAroundPoint(int cx, int cy, int cz, int radius) {
 
             // Reveal downward through air until solid or bottom
             for (int z = cz - 1; z >= 0; z--) {
-                if (!exploredGrid[z][y][x]) {
-                    exploredGrid[z][y][x] = 1;
+                if (!EXPLORED(x, y, z)) {
+                    EXPLORED(x, y, z) = 1;
                     MarkChunkDirty(x, y, z);
                     CheckDiscoveriesAtCell(x, y, z, &disc);
                 }

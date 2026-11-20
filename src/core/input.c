@@ -929,10 +929,10 @@ static void ExecuteCancelKnap(int x1, int y1, int x2, int y2, int z) {
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
             // Check both z and z-1 (designation lives on the wall, not the air above)
-            if (z >= 0 && z < gridDepth && designations[z][dy][dx].type == DESIGNATION_KNAP) {
+            if (z >= 0 && z < gridDepth && DESIGNATION(dx, dy, z).type == DESIGNATION_KNAP) {
                 CancelDesignation(dx, dy, z);
                 count++;
-            } else if (z > 0 && designations[z-1][dy][dx].type == DESIGNATION_KNAP) {
+            } else if (z > 0 && DESIGNATION(dx, dy, z-1).type == DESIGNATION_KNAP) {
                 CancelDesignation(dx, dy, z - 1);
                 count++;
             }
@@ -1382,7 +1382,7 @@ static void ExecuteRemoveWater(int x1, int y1, int x2, int y2, int z, bool shift
         int removedSources = 0, removedDrains = 0, removedWater = 0;
         for (int dy = y1; dy <= y2; dy++) {
             for (int dx = x1; dx <= x2; dx++) {
-                WaterCell* cell = &waterGrid[z][dy][dx];
+                WaterCell* cell = &WATER(dx, dy, z);
                 if (cell->isSource) { SetWaterSource(dx, dy, z, false); removedSources++; }
                 else if (cell->isDrain) { SetWaterDrain(dx, dy, z, false); removedDrains++; }
                 else if (cell->level > 0) { SetWaterLevel(dx, dy, z, 0); removedWater++; }
@@ -1433,7 +1433,7 @@ static void ExecuteRemoveFire(int x1, int y1, int x2, int y2, int z, bool shift)
                 fireZ = z - 1;
             }
             
-            FireCell* cell = &fireGrid[fireZ][dy][dx];
+            FireCell* cell = &FIRE(dx, dy, fireZ);
             if (cell->isSource) { SetFireSource(dx, dy, fireZ, false); removedSources++; }
             if (!shift && cell->level > 0) { ExtinguishCell(dx, dy, fireZ); extinguished++; }
         }
@@ -1459,7 +1459,7 @@ static void ExecuteRemoveHeat(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            TempCell* cell = &temperatureGrid[z][dy][dx];
+            TempCell* cell = &TEMPERATURE(dx, dy, z);
             if (cell->isHeatSource) {
                 SetHeatSource(dx, dy, z, false);
                 count++;
@@ -1488,7 +1488,7 @@ static void ExecuteRemoveCold(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            TempCell* cell = &temperatureGrid[z][dy][dx];
+            TempCell* cell = &TEMPERATURE(dx, dy, z);
             if (cell->isColdSource) {
                 SetColdSource(dx, dy, z, false);
                 count++;
@@ -1571,7 +1571,7 @@ static void ExecutePlaceGrass(int x1, int y1, int x2, int y2, int z) {
             if (GRID(dx, dy, z) == CELL_WALL && GetWallMaterial(dx, dy, z) == MAT_DIRT) {
                 // Set tall grass overlay and reset wear
                 SetVegetation(dx, dy, z, VEG_GRASS_TALL);
-                wearGrid[z][dy][dx] = 0;
+                WEAR(dx, dy, z) = 0;
                 CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
                 count++;
             }
@@ -1591,7 +1591,7 @@ static void ExecuteRemoveGrass(int x1, int y1, int x2, int y2, int z) {
                 int surface = GET_CELL_SURFACE(dx, dy, z);
                 if (surface != SURFACE_BARE) {
                     SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);
-                    wearGrid[z][dy][dx] = WearCap();  // Set max wear so grass doesn't regrow immediately
+                    WEAR(dx, dy, z) = WearCap();  // Set max wear so grass doesn't regrow immediately
                     count++;
                 }
             }
@@ -1647,7 +1647,7 @@ static void ExecuteRemoveBush(int x1, int y1, int x2, int y2, int z) {
 static bool TryPlaceTrackAt(int x, int y, int z) {
     if (IsCellWalkableAt(z, y, x) && GRID(x, y, z) == CELL_AIR) {
         GRID(x, y, z) = CELL_TRACK;
-        trackConnections[z][y][x] = 0;
+        TRACK_CONN(x, y, z) = 0;
         InvalidatePathsThroughCell(x, y, z);
         return true;
     }
@@ -1663,10 +1663,10 @@ static void ConnectTrack(int x1, int y1, int x2, int y2, int z) {
     if (GRID(x1, y1, z) != CELL_TRACK || GRID(x2, y2, z) != CELL_TRACK) return;
 
     // From (x1,y1) toward (x2,y2)
-    if (ddy == -1) { trackConnections[z][y1][x1] |= TRACK_N; trackConnections[z][y2][x2] |= TRACK_S; }
-    if (ddx ==  1) { trackConnections[z][y1][x1] |= TRACK_E; trackConnections[z][y2][x2] |= TRACK_W; }
-    if (ddy ==  1) { trackConnections[z][y1][x1] |= TRACK_S; trackConnections[z][y2][x2] |= TRACK_N; }
-    if (ddx == -1) { trackConnections[z][y1][x1] |= TRACK_W; trackConnections[z][y2][x2] |= TRACK_E; }
+    if (ddy == -1) { TRACK_CONN(x1, y1, z) |= TRACK_N; TRACK_CONN(x2, y2, z) |= TRACK_S; }
+    if (ddx ==  1) { TRACK_CONN(x1, y1, z) |= TRACK_E; TRACK_CONN(x2, y2, z) |= TRACK_W; }
+    if (ddy ==  1) { TRACK_CONN(x1, y1, z) |= TRACK_S; TRACK_CONN(x2, y2, z) |= TRACK_N; }
+    if (ddx == -1) { TRACK_CONN(x1, y1, z) |= TRACK_W; TRACK_CONN(x2, y2, z) |= TRACK_E; }
 }
 
 static void ExecutePlaceTrack(int x1, int y1, int x2, int y2, int z) {
@@ -1744,12 +1744,12 @@ static void ExecuteRemovePlatform(int x1, int y1, int x2, int y2, int z) {
 
 static void DisconnectTrackFromNeighbors(int x, int y, int z) {
     // Remove this cell's connections from its neighbors
-    uint8_t conn = trackConnections[z][y][x];
-    if ((conn & TRACK_N) && y > 0)              trackConnections[z][y-1][x] &= ~TRACK_S;
-    if ((conn & TRACK_E) && x < gridWidth - 1)  trackConnections[z][y][x+1] &= ~TRACK_W;
-    if ((conn & TRACK_S) && y < gridHeight - 1) trackConnections[z][y+1][x] &= ~TRACK_N;
-    if ((conn & TRACK_W) && x > 0)              trackConnections[z][y][x-1] &= ~TRACK_E;
-    trackConnections[z][y][x] = 0;
+    uint8_t conn = TRACK_CONN(x, y, z);
+    if ((conn & TRACK_N) && y > 0)              TRACK_CONN(x, y-1, z) &= ~TRACK_S;
+    if ((conn & TRACK_E) && x < gridWidth - 1)  TRACK_CONN(x+1, y, z) &= ~TRACK_W;
+    if ((conn & TRACK_S) && y < gridHeight - 1) TRACK_CONN(x, y+1, z) &= ~TRACK_N;
+    if ((conn & TRACK_W) && x > 0)              TRACK_CONN(x-1, y, z) &= ~TRACK_E;
+    TRACK_CONN(x, y, z) = 0;
 }
 
 static void ExecuteRemoveTrack(int x1, int y1, int x2, int y2, int z) {

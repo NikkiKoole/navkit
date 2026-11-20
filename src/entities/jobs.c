@@ -5155,7 +5155,7 @@ void RebuildFarmWorkCache(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                FarmCell* fc = &farmGrid[z][y][x];
+                FarmCell* fc = &FARM(x, y, z);
                 if (!fc->tilled) continue;
                 if (!IsExplored(x, y, z)) continue;
 
@@ -5408,7 +5408,7 @@ int WorkGiver_PlantCrop(int moverIdx) {
 
     for (int i = 0; i < farmCacheNeedsPlantCount; i++) {
         int x = farmCacheNeedsPlant[i].x, y = farmCacheNeedsPlant[i].y, z = farmCacheNeedsPlant[i].z;
-        FarmCell* fc = &farmGrid[z][y][x];
+        FarmCell* fc = &FARM(x, y, z);
         float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
         float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
         float dx = tileX - m->x;

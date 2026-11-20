@@ -395,7 +395,7 @@ bool FrontViewPickCell(Vector2 screen, int *outX, int *outY, int *outZ) {
         bool hasContent = (cell != CELL_AIR)
             || HAS_FLOOR(gx, worldY, gz)
             || (gz > 0 && CellIsSolid(GRID(gx, worldY, gz - 1)))
-            || waterGrid[gz][worldY][gx].level > 0;
+            || WATER(gx, worldY, gz).level > 0;
 
         if (!hasContent) {
             for (int i = 0; i < itemHighWaterMark; i++) {
@@ -1185,10 +1185,10 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (waterGrid[z][y][x].level > 0) waterCells++;
-                if (fireGrid[z][y][x].level > 0) fireCells++;
-                if (steamGrid[z][y][x].level > 0) steamCells++;
-                if (smokeGrid[z][y][x].level > 0) smokeCells++;
+                if (WATER(x, y, z).level > 0) waterCells++;
+                if (FIRE(x, y, z).level > 0) fireCells++;
+                if (STEAM(x, y, z).level > 0) steamCells++;
+                if (SMOKE(x, y, z).level > 0) smokeCells++;
             }
         }
     }
@@ -1206,8 +1206,8 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
         int cellCount = 0;
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (smokeGrid[z][y][x].level > 0) {
-                    levelSum += smokeGrid[z][y][x].level;
+                if (SMOKE(x, y, z).level > 0) {
+                    levelSum += SMOKE(x, y, z).level;
                     cellCount++;
                     if (z > smokeMaxZ) {
                         highestSmokeX = x;
@@ -2507,8 +2507,8 @@ int main(int argc, char** argv) {
                     // When paused, show comprehensive cell info
                     DrawCellTooltip(ttX, ttY, ttZ, GetMousePosition());
                 } else if (HasWater(ttX, ttY, ttZ) ||
-                    waterGrid[ttZ][ttY][ttX].isSource ||
-                    waterGrid[ttZ][ttY][ttX].isDrain) {
+                    WATER(ttX, ttY, ttZ).isSource ||
+                    WATER(ttX, ttY, ttZ).isDrain) {
                     // When running, only show water tooltip if there's water
                     DrawWaterTooltip(ttX, ttY, ttZ, GetMousePosition());
                 }

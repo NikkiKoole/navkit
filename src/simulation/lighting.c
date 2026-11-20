@@ -89,7 +89,7 @@ static void ComputeSkyColumns(void) {
         for (int x = 0; x < gridWidth; x++) {
             uint8_t level = SKY_LIGHT_MAX;
             for (int z = gridDepth - 1; z >= 0; z--) {
-                lightGrid[z][y][x].skyLevel = level;
+                LIGHT(x, y, z).skyLevel = level;
 
                 // If this cell blocks light or has a floor, block sky light below
                 if (CellBlocksLight(GRID(x, y, z)) || HAS_FLOOR(x, y, z)) {
@@ -113,7 +113,7 @@ static void SpreadSkyLight(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                uint8_t level = lightGrid[z][y][x].skyLevel;
+                uint8_t level = LIGHT(x, y, z).skyLevel;
                 if (level <= 1) continue;  // No light to spread
                 if (CellBlocksLight(GRID(x, y, z))) continue;  // Can't spread from inside solid
 
@@ -125,7 +125,7 @@ static void SpreadSkyLight(void) {
                     int ny = y + dy[d];
                     if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
                     if (CellBlocksLight(GRID(nx, ny, z))) continue;
-                    if (lightGrid[z][ny][nx].skyLevel < level - 1) {
+                    if (LIGHT(nx, ny, z).skyLevel < level - 1) {
                         if (tail < LIGHT_BFS_MAX) {
                             bfsQueue[tail++] = (LightBfsNode){ x, y, z, level };
                         }
@@ -150,8 +150,8 @@ static void SpreadSkyLight(void) {
             if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
             if (CellBlocksLight(GRID(nx, ny, node.z))) continue;
 
-            if (lightGrid[node.z][ny][nx].skyLevel < newLevel) {
-                lightGrid[node.z][ny][nx].skyLevel = newLevel;
+            if (LIGHT(nx, ny, node.z).skyLevel < newLevel) {
+                LIGHT(nx, ny, node.z).skyLevel = newLevel;
                 if (tail < LIGHT_BFS_MAX) {
                     bfsQueue[tail++] = (LightBfsNode){ nx, ny, node.z, newLevel };
                 }
@@ -168,9 +168,9 @@ static void ClearBlockLight(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                lightGrid[z][y][x].blockR = 0;
-                lightGrid[z][y][x].blockG = 0;
-                lightGrid[z][y][x].blockB = 0;
+                LIGHT(x, y, z).blockR = 0;
+                LIGHT(x, y, z).blockG = 0;
+                LIGHT(x, y, z).blockB = 0;
             }
         }
     }
@@ -201,7 +201,7 @@ static void PropagateBlockLight(LightSource* src) {
 
     // Set source cell to full brightness
     {
-        LightCell* lc = &lightGrid[nz][src->y][src->x];
+        LightCell* lc = &LIGHT(src->x, src->y, nz);
         int r = lc->blockR + src->r;
         int g = lc->blockG + src->g;
         int b = lc->blockB + src->b;
@@ -241,7 +241,7 @@ static void PropagateBlockLight(LightSource* src) {
 
             // Additive blending — lights accumulate, creating color mixing
             // Red torch + blue crystal = purple where they overlap
-            LightCell* lc = &lightGrid[nz][ny][nx];
+            LightCell* lc = &LIGHT(nx, ny, nz);
             int r = lc->blockR + scaledR;
             int g = lc->blockG + scaledG;
             int b = lc->blockB + scaledB;
@@ -278,7 +278,7 @@ void RecomputeLighting(void) {
         for (int z = 0; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
                 for (int x = 0; x < gridWidth; x++)
-                    lightGrid[z][y][x].skyLevel = 0;
+                    LIGHT(x, y, z).skyLevel = 0;
     }
     if (blockLightEnabled) {
         ComputeBlockLight();
@@ -356,7 +356,7 @@ Color GetLightColor(int x, int y, int z, Color skyColor) {
         return WHITE;
     }
 
-    LightCell* lc = &lightGrid[z][y][x];
+    LightCell* lc = &LIGHT(x, y, z);
 
     // Sky contribution: skyLevel/15 * skyColor
     int sr = (skyColor.r * lc->skyLevel) / SKY_LIGHT_MAX;
@@ -381,7 +381,7 @@ Color GetLightColor(int x, int y, int z, Color skyColor) {
 
     // Add block light from one level below (additive, so torches glow through)
     if (z > 0 && !CellIsSolid(GRID(x, y, z))) {
-        LightCell* below = &lightGrid[z - 1][y][x];
+        LightCell* below = &LIGHT(x, y, z - 1);
         r += below->blockR / 2;
         g += below->blockG / 2;
         b += below->blockB / 2;
@@ -402,5 +402,5 @@ int GetSkyLight(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return SKY_LIGHT_MAX;
     }
-    return lightGrid[z][y][x].skyLevel;
+    return LIGHT(x, y, z).skyLevel;
 }

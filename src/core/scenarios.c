@@ -450,17 +450,17 @@ static bool TrainDoubleGoalPicker(int moverIdx, Point* goal) {
 static void SetupTrainDouble(void) {
     const int x0 = 4, x1 = gridWidth - 5, yN = 10, yS = 13;
     for (int x = x0; x <= x1; x++) {
-        GRID(x, yN, 1) = CELL_TRACK; trackConnections[1][yN][x] = TRACK_E | TRACK_W;
-        GRID(x, yS, 1) = CELL_TRACK; trackConnections[1][yS][x] = TRACK_E | TRACK_W;
+        GRID(x, yN, 1) = CELL_TRACK; TRACK_CONN(x, yN, 1) = TRACK_E | TRACK_W;
+        GRID(x, yS, 1) = CELL_TRACK; TRACK_CONN(x, yS, 1) = TRACK_E | TRACK_W;
     }
     for (int y = yN; y <= yS; y++) {
-        GRID(x0, y, 1) = CELL_TRACK; trackConnections[1][y][x0] = TRACK_N | TRACK_S;
-        GRID(x1, y, 1) = CELL_TRACK; trackConnections[1][y][x1] = TRACK_N | TRACK_S;
+        GRID(x0, y, 1) = CELL_TRACK; TRACK_CONN(x0, y, 1) = TRACK_N | TRACK_S;
+        GRID(x1, y, 1) = CELL_TRACK; TRACK_CONN(x1, y, 1) = TRACK_N | TRACK_S;
     }
-    trackConnections[1][yN][x0] = TRACK_E | TRACK_S;
-    trackConnections[1][yN][x1] = TRACK_W | TRACK_S;
-    trackConnections[1][yS][x0] = TRACK_E | TRACK_N;
-    trackConnections[1][yS][x1] = TRACK_W | TRACK_N;
+    TRACK_CONN(x0, yN, 1) = TRACK_E | TRACK_S;
+    TRACK_CONN(x1, yN, 1) = TRACK_W | TRACK_S;
+    TRACK_CONN(x0, yS, 1) = TRACK_E | TRACK_N;
+    TRACK_CONN(x1, yS, 1) = TRACK_W | TRACK_N;
     const int stops[3] = {gridWidth / 6, gridWidth / 2, gridWidth * 5 / 6};
     for (int k = 0; k < 3; k++)
         for (int x = stops[k] - 3; x <= stops[k] + 2; x++) {

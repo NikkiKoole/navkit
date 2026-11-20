@@ -43,7 +43,7 @@ typedef struct {
 extern Furniture furniture[MAX_FURNITURE];
 extern int furnitureCount;
 extern uint8_t furnitureMoveCostGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-#define FURNITURE_MOVE_COST(x, y, z) (furnitureMoveCostGrid CELL_AT((x), (y), (z)))
+// FURNITURE_MOVE_COST(x, y, z) lives in grid.h (cell_defs.h needs it before this header)
 extern uint8_t capabilityGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 #define CAPABILITY(x, y, z) (capabilityGrid CELL_AT((x), (y), (z)))
 

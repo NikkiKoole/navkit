@@ -531,7 +531,7 @@ void RebuildPostLoadState(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                WaterCell* c = &waterGrid[z][y][x];
+                WaterCell* c = &WATER(x, y, z);
                 if (c->level > 0 || c->isSource || c->isDrain) {
                     waterActiveCells++;
                 }
@@ -751,7 +751,7 @@ bool LoadWorld(const char* filename) {
             fread(designations[z][y], sizeof(Designation), gridWidth, f);
             // Count active designations for early-exit optimizations
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type != DESIGNATION_NONE) {
+                if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
                     activeDesignationCount++;
                 }
             }

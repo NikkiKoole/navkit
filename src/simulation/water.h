@@ -106,8 +106,8 @@ void DisplaceWater(int x, int y, int z);
 float GetWaterSpeedMultiplier(int x, int y, int z);
 
 // Water cell state getters (inline for zero overhead)
-static inline bool IsWaterStable(int x, int y, int z) { return waterGrid[z][y][x].stable; }
-static inline bool HasWaterPressure(int x, int y, int z) { return waterGrid[z][y][x].hasPressure; }
+static inline bool IsWaterStable(int x, int y, int z) { return WATER(x, y, z).stable; }
+static inline bool HasWaterPressure(int x, int y, int z) { return WATER(x, y, z).hasPressure; }
 
 // Sky water (rain simulation)
 // Starts continuous rain for ~30 game-seconds, spawning water in waves

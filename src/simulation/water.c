@@ -78,7 +78,7 @@ static inline bool CanHoldWater(int x, int y, int z) {
     if (!CellAllowsFluids(cell)) return false;
     
     // Frozen water acts as a solid block for water flow
-    if (waterGrid[z][y][x].isFrozen) return false;
+    if (WATER(x, y, z).isFrozen) return false;
     
     return true;
 }
@@ -86,25 +86,25 @@ static inline bool CanHoldWater(int x, int y, int z) {
 // Mark cell and neighbors as unstable
 void DestabilizeWater(int x, int y, int z) {
     if (WaterInBounds(x, y, z)) {
-        waterGrid[z][y][x].stable = false;
+        WATER(x, y, z).stable = false;
     }
     
     // 4 horizontal neighbors (orthogonal only, like DF pressure)
-    if (WaterInBounds(x-1, y, z)) waterGrid[z][y][x-1].stable = false;
-    if (WaterInBounds(x+1, y, z)) waterGrid[z][y][x+1].stable = false;
-    if (WaterInBounds(x, y-1, z)) waterGrid[z][y-1][x].stable = false;
-    if (WaterInBounds(x, y+1, z)) waterGrid[z][y+1][x].stable = false;
+    if (WaterInBounds(x-1, y, z)) WATER(x-1, y, z).stable = false;
+    if (WaterInBounds(x+1, y, z)) WATER(x+1, y, z).stable = false;
+    if (WaterInBounds(x, y-1, z)) WATER(x, y-1, z).stable = false;
+    if (WaterInBounds(x, y+1, z)) WATER(x, y+1, z).stable = false;
     
     // Above and below
-    if (WaterInBounds(x, y, z-1)) waterGrid[z-1][y][x].stable = false;
-    if (WaterInBounds(x, y, z+1)) waterGrid[z+1][y][x].stable = false;
+    if (WaterInBounds(x, y, z-1)) WATER(x, y, z-1).stable = false;
+    if (WaterInBounds(x, y, z+1)) WATER(x, y, z+1).stable = false;
 }
 
 // Displace water from a cell before placing a wall
 void DisplaceWater(int x, int y, int z) {
     if (!WaterInBounds(x, y, z)) return;
     
-    int level = waterGrid[z][y][x].level;
+    int level = WATER(x, y, z).level;
     if (level == 0) return;
     
     // Push water to horizontal neighbors first, then up
@@ -120,7 +120,7 @@ void DisplaceWater(int x, int y, int z) {
         if (!WaterInBounds(nx, ny, nz)) continue;
         if (CellBlocksFluids(GRID(nx, ny, nz))) continue;
         
-        int space = WATER_MAX_LEVEL - waterGrid[nz][ny][nx].level;
+        int space = WATER_MAX_LEVEL - WATER(nx, ny, nz).level;
         if (space > 0) {
             int transfer = (level < space) ? level : space;
             AddWater(nx, ny, nz, transfer);
@@ -137,7 +137,7 @@ void DisplaceWater(int x, int y, int z) {
 
 // Helper to check if a water cell is "active" (needs processing)
 static inline bool WaterCellIsActive(int x, int y, int z) {
-    WaterCell *wc = &waterGrid[z][y][x];
+    WaterCell *wc = &WATER(x, y, z);
     return wc->level > 0 || wc->isSource || wc->isDrain;
 }
 
@@ -147,12 +147,12 @@ void SetWaterLevel(int x, int y, int z, int level) {
     if (level < 0) level = 0;
     if (level > WATER_MAX_LEVEL) level = WATER_MAX_LEVEL;
     
-    int oldLevel = waterGrid[z][y][x].level;
-    waterGrid[z][y][x].level = (uint8_t)level;
+    int oldLevel = WATER(x, y, z).level;
+    WATER(x, y, z).level = (uint8_t)level;
     
     // Update presence grid: track transition from inactive to active or vice versa
-    bool wasActive = oldLevel > 0 || waterGrid[z][y][x].isSource || waterGrid[z][y][x].isDrain;
-    bool isActive = level > 0 || waterGrid[z][y][x].isSource || waterGrid[z][y][x].isDrain;
+    bool wasActive = oldLevel > 0 || WATER(x, y, z).isSource || WATER(x, y, z).isDrain;
+    bool isActive = level > 0 || WATER(x, y, z).isSource || WATER(x, y, z).isDrain;
     
     if (!wasActive && isActive) {
         waterActiveCells++;
@@ -161,7 +161,7 @@ void SetWaterLevel(int x, int y, int z, int level) {
     }
     
     if (oldLevel != level) {
-        waterGrid[z][y][x].pressureDirty = 1;
+        WATER(x, y, z).pressureDirty = 1;
         DestabilizeWater(x, y, z);
     }
 }
@@ -169,14 +169,14 @@ void SetWaterLevel(int x, int y, int z, int level) {
 // Add water to a cell
 void AddWater(int x, int y, int z, int amount) {
     if (!WaterInBounds(x, y, z)) return;
-    int newLevel = waterGrid[z][y][x].level + amount;
+    int newLevel = WATER(x, y, z).level + amount;
     SetWaterLevel(x, y, z, newLevel);
 }
 
 // Remove water from a cell
 void RemoveWater(int x, int y, int z, int amount) {
     if (!WaterInBounds(x, y, z)) return;
-    int newLevel = waterGrid[z][y][x].level - amount;
+    int newLevel = WATER(x, y, z).level - amount;
     SetWaterLevel(x, y, z, newLevel);
 }
 
@@ -185,7 +185,7 @@ void SetWaterSource(int x, int y, int z, bool isSource) {
     if (!WaterInBounds(x, y, z)) return;
     
     bool wasActive = WaterCellIsActive(x, y, z);
-    waterGrid[z][y][x].isSource = isSource;
+    WATER(x, y, z).isSource = isSource;
     bool isActive = WaterCellIsActive(x, y, z);
     
     if (!wasActive && isActive) {
@@ -195,7 +195,7 @@ void SetWaterSource(int x, int y, int z, bool isSource) {
     }
     
     if (isSource) {
-        waterGrid[z][y][x].pressureDirty = 1;
+        WATER(x, y, z).pressureDirty = 1;
         DestabilizeWater(x, y, z);
     }
 }
@@ -205,7 +205,7 @@ void SetWaterDrain(int x, int y, int z, bool isDrain) {
     if (!WaterInBounds(x, y, z)) return;
     
     bool wasActive = WaterCellIsActive(x, y, z);
-    waterGrid[z][y][x].isDrain = isDrain;
+    WATER(x, y, z).isDrain = isDrain;
     bool isActive = WaterCellIsActive(x, y, z);
     
     if (!wasActive && isActive) {
@@ -215,7 +215,7 @@ void SetWaterDrain(int x, int y, int z, bool isDrain) {
     }
     
     if (isDrain) {
-        waterGrid[z][y][x].pressureDirty = 1;
+        WATER(x, y, z).pressureDirty = 1;
         DestabilizeWater(x, y, z);
     }
 }
@@ -223,7 +223,7 @@ void SetWaterDrain(int x, int y, int z, bool isDrain) {
 // Get water level
 int GetWaterLevel(int x, int y, int z) {
     if (!WaterInBounds(x, y, z)) return 0;
-    return waterGrid[z][y][x].level;
+    return WATER(x, y, z).level;
 }
 
 // Check if cell has water
@@ -243,12 +243,12 @@ bool IsUnderwater(int x, int y, int z, int minDepth) {
 
 bool IsWaterSourceAt(int x, int y, int z) {
     if (!WaterInBounds(x, y, z)) return false;
-    return waterGrid[z][y][x].isSource;
+    return WATER(x, y, z).isSource;
 }
 
 bool IsWaterDrainAt(int x, int y, int z) {
     if (!WaterInBounds(x, y, z)) return false;
-    return waterGrid[z][y][x].isDrain;
+    return WATER(x, y, z).isDrain;
 }
 
 // Get speed multiplier for water (DF-style 1-7 scale)
@@ -277,8 +277,8 @@ static int TryFall(int x, int y, int z) {
     if (HAS_FLOOR(x, y, z)) return 0;  // Constructed floor blocks falling
     if (!CanHoldWater(x, y, z - 1)) return 0;  // Wall below
     
-    WaterCell* src = &waterGrid[z][y][x];
-    WaterCell* dst = &waterGrid[z-1][y][x];
+    WaterCell* src = &WATER(x, y, z);
+    WaterCell* dst = &WATER(x, y, z-1);
     
     if (src->level == 0) return 0;
     
@@ -330,7 +330,7 @@ static int TryFall(int x, int y, int z) {
 // Falling sand style: randomize direction order to prevent directional bias
 // Returns true if water moved
 static bool WaterTrySpread(int x, int y, int z) {
-    WaterCell* cell = &waterGrid[z][y][x];
+    WaterCell* cell = &WATER(x, y, z);
     if (cell->level == 0) return false;
     
     // Orthogonal neighbors - randomize order each call
@@ -355,7 +355,7 @@ static bool WaterTrySpread(int x, int y, int z) {
         
         if (!CanHoldWater(nx, ny, z)) continue;
         
-        WaterCell* neighbor = &waterGrid[z][ny][nx];
+        WaterCell* neighbor = &WATER(nx, ny, z);
         
         // Don't spread water into drains
         if (neighbor->isDrain) continue;
@@ -412,7 +412,7 @@ static bool WaterTrySpread(int x, int y, int z) {
 // full cells to find an outlet (BFS). Water can rise up to pressureSourceZ - 1.
 // Returns true if water moved via pressure
 static bool TryPressure(int x, int y, int z) {
-    WaterCell* cell = &waterGrid[z][y][x];
+    WaterCell* cell = &WATER(x, y, z);
     
     // Need full water with pressure to propagate
     if (cell->level < WATER_MAX_LEVEL) return false;
@@ -437,7 +437,7 @@ static bool TryPressure(int x, int y, int z) {
     int dy[] = {0, 0, -1, 1, 0, 0};
     int dz[] = {0, 0, 0, 0, -1, 1};
     
-    pressureVisitedGen[z][y][x] = currentPressureGen;
+    WATER_PRESSURE_VISITED(x, y, z) = currentPressureGen;
     
     // Add initial neighbors to queue
     for (int i = 0; i < 6; i++) {
@@ -447,9 +447,9 @@ static bool TryPressure(int x, int y, int z) {
         
         if (nz > maxZ) continue;
         if (!CanHoldWater(nx, ny, nz)) continue;
-        if (pressureVisitedGen[nz][ny][nx] == currentPressureGen) continue;
+        if (WATER_PRESSURE_VISITED(nx, ny, nz) == currentPressureGen) continue;
         
-        pressureVisitedGen[nz][ny][nx] = currentPressureGen;
+        WATER_PRESSURE_VISITED(nx, ny, nz) = currentPressureGen;
         pressureQueue[queueTail++] = (WaterPos){nx, ny, nz};
         
         if (queueTail >= WATER_PRESSURE_SEARCH_LIMIT) break;
@@ -458,7 +458,7 @@ static bool TryPressure(int x, int y, int z) {
     // BFS through full cells looking for non-full cell
     while (queueHead < queueTail) {
         WaterPos pos = pressureQueue[queueHead++];
-        WaterCell* current = &waterGrid[pos.z][pos.y][pos.x];
+        WaterCell* current = &WATER(pos.x, pos.y, pos.z);
         
         // Found a non-full cell - push water here!
         if (current->level < WATER_MAX_LEVEL) {
@@ -507,9 +507,9 @@ static bool TryPressure(int x, int y, int z) {
                 
                 if (nz > maxZ) continue;
                 if (!CanHoldWater(nx, ny, nz)) continue;
-                if (pressureVisitedGen[nz][ny][nx] == currentPressureGen) continue;
+                if (WATER_PRESSURE_VISITED(nx, ny, nz) == currentPressureGen) continue;
                 
-                pressureVisitedGen[nz][ny][nx] = currentPressureGen;
+                WATER_PRESSURE_VISITED(nx, ny, nz) = currentPressureGen;
                 
                 if (queueTail < WATER_PRESSURE_SEARCH_LIMIT) {
                     pressureQueue[queueTail++] = (WaterPos){nx, ny, nz};
@@ -524,7 +524,7 @@ static bool TryPressure(int x, int y, int z) {
 // Process a single water cell with DF-style rules
 // doEvap: interval has elapsed for evaporation
 static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
-    WaterCell* cell = &waterGrid[z][y][x];
+    WaterCell* cell = &WATER(x, y, z);
     bool moved = false;
     
     // Handle sources - refill to max and add pressure
@@ -603,7 +603,7 @@ static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
             int nx = x + dx[i];
             int ny = y + dy[i];
             if (WaterInBounds(nx, ny, z) && CanHoldWater(nx, ny, z)) {
-                int neighborLevel = waterGrid[z][ny][nx].level;
+                int neighborLevel = WATER(nx, ny, z).level;
                 int diff = neighborLevel - cell->level;
                 // Unbalanced if neighbor could give us water (diff >= 1 and they have > 1)
                 if (diff >= 1 && neighborLevel > 1) {
@@ -647,7 +647,7 @@ void UpdateWater(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                WaterCell* cell = &waterGrid[z][y][x];
+                WaterCell* cell = &WATER(x, y, z);
                 
                 // Skip frozen water - it doesn't flow
                 if (cell->isFrozen) {
@@ -683,7 +683,7 @@ void UpdateWater(void) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    int level = waterGrid[z][y][x].level;
+                    int level = WATER(x, y, z).level;
                     if (level <= 0) continue;
                     
                     // Set wetness on the soil cell below the water
@@ -713,14 +713,14 @@ void UpdateWater(void) {
 // Check if water is frozen at a cell
 bool IsWaterFrozen(int x, int y, int z) {
     if (!WaterInBounds(x, y, z)) return false;
-    return waterGrid[z][y][x].isFrozen;
+    return WATER(x, y, z).isFrozen;
 }
 
 // Freeze water at a cell (any water level can freeze)
 void FreezeWater(int x, int y, int z) {
     if (!WaterInBounds(x, y, z)) return;
     
-    WaterCell* cell = &waterGrid[z][y][x];
+    WaterCell* cell = &WATER(x, y, z);
     
     // No water to freeze
     if (cell->level == 0) return;
@@ -738,7 +738,7 @@ void FreezeWater(int x, int y, int z) {
 void ThawWater(int x, int y, int z) {
     if (!WaterInBounds(x, y, z)) return;
     
-    WaterCell* cell = &waterGrid[z][y][x];
+    WaterCell* cell = &WATER(x, y, z);
     
     if (!cell->isFrozen) return;
     
@@ -777,7 +777,7 @@ void UpdateWaterFreezing(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = yStart; y < yEnd; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                WaterCell* cell = &waterGrid[z][y][x];
+                WaterCell* cell = &WATER(x, y, z);
                 
                 // Skip empty cells
                 if (cell->level == 0) continue;

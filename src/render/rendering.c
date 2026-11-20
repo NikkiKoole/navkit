@@ -479,7 +479,7 @@ static void DrawCellGrid(void) {
 
                 // Floor dirt overlay (tracked-in dirt from natural terrain)
                 {
-                    uint8_t dirt = floorDirtGrid[z][y][x];
+                    uint8_t dirt = FLOOR_DIRT(x, y, z);
                     if (dirt >= DIRT_VISIBLE_THRESHOLD) {
                         Rectangle dirtSrc = SpriteGetRect(SPRITE_finish_messy);
                         float t = (float)(dirt - DIRT_VISIBLE_THRESHOLD)
@@ -498,7 +498,7 @@ static void DrawCellGrid(void) {
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
             if (z == 0) continue;  // No farming at z=0
-            FarmCell* fc = &farmGrid[z][y][x];
+            FarmCell* fc = &FARM(x, y, z);
             if (fc->tilled) {
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 // Tilled soil overlay — tinted by soil material
@@ -651,10 +651,10 @@ void DrawFogOfWar(void) {
                 // Frontier cell (adjacent to explored) gets semi-transparent fog
                 // Use raw grid check — IsExplored returns true for OOB, which
                 // would make map edges always appear as frontier
-                bool frontier = (x > 0 && exploredGrid[z][y][x-1]) ||
-                                (x < gridWidth-1 && exploredGrid[z][y][x+1]) ||
-                                (y > 0 && exploredGrid[z][y-1][x]) ||
-                                (y < gridHeight-1 && exploredGrid[z][y+1][x]);
+                bool frontier = (x > 0 && EXPLORED(x-1, y, z)) ||
+                                (x < gridWidth-1 && EXPLORED(x+1, y, z)) ||
+                                (y > 0 && EXPLORED(x, y-1, z)) ||
+                                (y < gridHeight-1 && EXPLORED(x, y+1, z));
                 DrawRectangleRec(dest, frontier ? (Color){0, 0, 0, 180} : BLACK);
             }
         }
@@ -764,7 +764,7 @@ static void DrawGrassOverlay(void) {
                 // Allow grass under air only, skip walls/ladders/ramps/etc.
                 if (cellHere != CELL_AIR) continue;
                 if (HAS_FLOOR(x, y, z)) continue;    // Don't draw grass under constructed floors
-                if (farmGrid[z][y][x].tilled) continue;  // No grass on tilled farm plots
+                if (FARM(x, y, z).tilled) continue;  // No grass on tilled farm plots
                 
                 VegetationType veg = GetVegetation(x, y, zBelow);
                 int surface = GET_CELL_SURFACE(x, y, zBelow);
@@ -995,11 +995,11 @@ static void DrawWater(void) {
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 DrawRectangleRec(dest, waterColor);
                 
-                if (waterGrid[zDepth][y][x].isSource) {
+                if (WATER(x, y, zDepth).isSource) {
                     DrawSourceMarker(dest, size, (Color){75, 135, 191, 200});
                 }
 
-                if (waterGrid[zDepth][y][x].isDrain) {
+                if (WATER(x, y, zDepth).isDrain) {
                     DrawSourceMarker(dest, size, (Color){15, 30, 60, 200});
                 }
             }
@@ -1024,12 +1024,12 @@ static void DrawWater(void) {
             DrawRectangleRec(dest, waterColor);
             
             // Mark sources with a brighter center
-            if (waterGrid[z][y][x].isSource) {
+            if (WATER(x, y, z).isSource) {
                 DrawSourceMarker(dest, size, (Color){100, 180, 255, 200});
             }
 
             // Mark drains with a dark center
-            if (waterGrid[z][y][x].isDrain) {
+            if (WATER(x, y, z).isDrain) {
                 DrawSourceMarker(dest, size, (Color){20, 40, 80, 200});
             }
         }
@@ -1052,7 +1052,7 @@ static void DrawFire(void) {
             for (int x = minX; x < maxX; x++) {
                 if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z)) continue;
                 
-                FireCell* cell = &fireGrid[zDepth][y][x];
+                FireCell* cell = &FIRE(x, y, zDepth);
                 int level = cell->level;
                 
                 if (level == 0 && HAS_CELL_FLAG(x, y, zDepth, CELL_FLAG_BURNED)) {
@@ -1083,7 +1083,7 @@ static void DrawFire(void) {
                 fireZ = z - 1;
             }
             
-            FireCell* cell = &fireGrid[fireZ][y][x];
+            FireCell* cell = &FIRE(x, y, fireZ);
             int level = cell->level;
             
             if (level == 0 && HAS_CELL_FLAG(x, y, fireZ, CELL_FLAG_BURNED)) {
@@ -3318,7 +3318,7 @@ static void DrawFrontView(void) {
             for (int z = minZ; z < maxZ; z++) {
                 float screenY = offset.y + (gridDepth - 1 - z) * size - layerOffsetY;
                 for (int x = minX; x < maxX; x++) {
-                    FireCell* fc = &fireGrid[z][worldY][x];
+                    FireCell* fc = &FIRE(x, worldY, z);
                     int level = fc->level;
 
                     if (level == 0 && HAS_CELL_FLAG(x, worldY, z, CELL_FLAG_BURNED)) {
@@ -3376,7 +3376,7 @@ static void DrawFrontView(void) {
         for (int z = minZ; z < maxZ; z++) {
             float screenY = offset.y + (gridDepth - 1 - z) * size - layerOffsetY;
             for (int x = minX; x < maxX; x++) {
-                uint16_t water = waterGrid[z][worldY][x].level;
+                uint16_t water = WATER(x, worldY, z).level;
                 if (water == 0) continue;
                 float screenX = offset.x + x * size;
                 float waterHeight = size * ((float)water / 7.0f);

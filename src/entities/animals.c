@@ -333,7 +333,7 @@ static int SampleNearbyWalls(Animal* a, Wall* outWalls, int maxWalls) {
             if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
 
             CellType cell = GRID(nx, ny, cz);
-            bool blocked = CellBlocksMovement(cell) || (cellFlags[cz][ny][nx] & CELL_FLAG_WORKSHOP_BLOCK);
+            bool blocked = CellBlocksMovement(cell) || (CELL_FLAGS(nx, ny, cz) & CELL_FLAG_WORKSHOP_BLOCK);
             bool hasWater = GetWaterLevel(nx, ny, cz) > 0;
             if (!blocked && !hasWater) continue;
             {
@@ -556,7 +556,7 @@ static void BehaviorSteeringGrazer(Animal* a, float dt) {
         int newCy = (int)(a->y / CELL_SIZE);
         if (newCx >= 0 && newCx < gridWidth && newCy >= 0 && newCy < gridHeight) {
             CellType cell = GRID(newCx, newCy, cz);
-            if (CellBlocksMovement(cell) || (cellFlags[cz][newCy][newCx] & CELL_FLAG_WORKSHOP_BLOCK) || GetWaterLevel(newCx, newCy, cz) > 0) {
+            if (CellBlocksMovement(cell) || (CELL_FLAGS(newCx, newCy, cz) & CELL_FLAG_WORKSHOP_BLOCK) || GetWaterLevel(newCx, newCy, cz) > 0) {
                 // Revert to previous cell center
                 a->x = (cx + 0.5f) * CELL_SIZE;
                 a->y = (cy + 0.5f) * CELL_SIZE;
@@ -728,7 +728,7 @@ static void BehaviorPredator(Animal* a, float dt) {
         int newCy = (int)(a->y / CELL_SIZE);
         if (newCx >= 0 && newCx < gridWidth && newCy >= 0 && newCy < gridHeight) {
             CellType cell = GRID(newCx, newCy, cz);
-            if (CellBlocksMovement(cell) || (cellFlags[cz][newCy][newCx] & CELL_FLAG_WORKSHOP_BLOCK) || GetWaterLevel(newCx, newCy, cz) > 0) {
+            if (CellBlocksMovement(cell) || (CELL_FLAGS(newCx, newCy, cz) & CELL_FLAG_WORKSHOP_BLOCK) || GetWaterLevel(newCx, newCy, cz) > 0) {
                 a->x = (cx + 0.5f) * CELL_SIZE;
                 a->y = (cy + 0.5f) * CELL_SIZE;
                 a->velX = 0.0f;

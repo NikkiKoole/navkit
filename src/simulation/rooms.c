@@ -59,10 +59,10 @@ static bool IsBedFurniture(FurnitureType type) {
 
 static float ComputeLightLevel(int x, int y, int z) {
     // Combine sky light and block light into a 0-15 scale
-    float sky = (float)lightGrid[z][y][x].skyLevel;
-    float blockMax = lightGrid[z][y][x].blockR;
-    if (lightGrid[z][y][x].blockG > blockMax) blockMax = lightGrid[z][y][x].blockG;
-    if (lightGrid[z][y][x].blockB > blockMax) blockMax = lightGrid[z][y][x].blockB;
+    float sky = (float)LIGHT(x, y, z).skyLevel;
+    float blockMax = LIGHT(x, y, z).blockR;
+    if (LIGHT(x, y, z).blockG > blockMax) blockMax = LIGHT(x, y, z).blockG;
+    if (LIGHT(x, y, z).blockB > blockMax) blockMax = LIGHT(x, y, z).blockB;
     float block = blockMax / 255.0f * 15.0f;
     return sky > block ? sky : block;
 }
@@ -224,7 +224,7 @@ static void ScanRoomCells(uint16_t roomId, int z, RoomBfsNode *cells, int cellCo
         totalLight += ComputeLightLevel(cx, cy, z);
 
         // Floor dirt
-        totalDirt += (float)floorDirtGrid[z][cy][cx];
+        totalDirt += (float)FLOOR_DIRT(cx, cy, z);
 
         // Constructed floor check
         if (HAS_FLOOR(cx, cy, z) && !IsFloorNatural(cx, cy, z)) {
@@ -299,7 +299,7 @@ static void ScanRoomCells(uint16_t roomId, int z, RoomBfsNode *cells, int cellCo
         for (int ty = wy; ty < wy + wh && !inRoom; ty++) {
             for (int tx = wx; tx < wx + ww && !inRoom; tx++) {
                 if (tx >= 0 && tx < gridWidth && ty >= 0 && ty < gridHeight) {
-                    if (roomGrid[z][ty][tx] == roomId) {
+                    if (ROOM(tx, ty, z) == roomId) {
                         inRoom = true;
                     }
                 }
@@ -361,7 +361,7 @@ static void RecomputeRooms(void) {
 
                 // Write room ID to grid
                 for (int i = 0; i < count; i++) {
-                    roomGrid[z][roomCellBuffer[i].y][roomCellBuffer[i].x] = roomId;
+                    ROOM(roomCellBuffer[i].x, roomCellBuffer[i].y, z) = roomId;
                 }
 
                 // Scan and classify
@@ -373,7 +373,7 @@ static void RecomputeRooms(void) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 if (GRID(x, y, z) != CELL_DOOR) continue;
-                if (roomGrid[z][y][x] != ROOM_NONE) continue;
+                if (ROOM(x, y, z) != ROOM_NONE) continue;
 
                 // Find first adjacent room
                 static const int dx[] = {1, -1, 0, 0};
@@ -382,9 +382,9 @@ static void RecomputeRooms(void) {
                     int nx = x + dx[d];
                     int ny = y + dy[d];
                     if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
-                    uint16_t adj = roomGrid[z][ny][nx];
+                    uint16_t adj = ROOM(nx, ny, z);
                     if (adj != ROOM_NONE) {
-                        roomGrid[z][y][x] = adj;
+                        ROOM(x, y, z) = adj;
                         rooms[adj].cellCount++;
                         break;
                     }
@@ -417,7 +417,7 @@ uint16_t GetRoomAt(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return ROOM_NONE;
     }
-    return roomGrid[z][y][x];
+    return ROOM(x, y, z);
 }
 
 DetectedRoom* GetRoom(uint16_t roomId) {
