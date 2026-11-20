@@ -16,8 +16,6 @@
 #include <string.h>
 
 #define NAV_COST_INF 999999
-#define NAV_ENTRANCE_HASH_SIZE 32768   // power of 2, > 2x NAV_MAX_ENTRANCES
-#define NAV_ABS_CAP (NAV_MAX_ENTRANCES + 2)
 #define NAV_CONNECT_MAX NAV_MAX_ENTRANCES_PER_CHUNK   // entrances considered per chunk region
 
 #define NAV_HOSTP (w->host)
@@ -52,7 +50,7 @@ static const int nav_kDy8[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
 
 static void nav_NavFreeInternals(NavWorld* w) {
     nav_RegFree(w);
-    free(w->entranceList); free(w->edgeList); free(w->ladderList); free(w->rampList);
+    free(w->entranceList); free(w->edgeList); free(w->edgeScratch); free(w->ladderList); free(w->rampList);
     free(w->chunkDirtyFlags);
     free(w->adjStart);
     free(w->absNodes); free(w->absPath); free(w->absHeap); free(w->absHeapPos);
@@ -79,24 +77,31 @@ static bool nav_NavAllocInternals(NavWorld* w, int width, int height, int depth,
     size_t layer = (size_t)width * height;
     size_t chunks = (size_t)depth * w->chunksX * w->chunksY;
 
-    w->entranceList   = calloc(NAV_MAX_ENTRANCES, sizeof(NavEntrance));
-    w->edgeList       = calloc(NAV_MAX_EDGES, sizeof(NavGraphEdge));
-    w->ladderList     = calloc(NAV_MAX_LADDERS, sizeof(NavLadderLink));
-    w->rampList       = calloc(NAV_MAX_RAMP_LINKS, sizeof(NavRampLink));
+    w->edgeScratch    = NULL;     // merge buffer, allocated on first incremental update
+    w->edgeScratchCap = 0;
+    w->growFailed     = false;
+    w->entranceCap    = NAV_INITIAL_ENTRANCES;
+    w->ladderCap      = NAV_INITIAL_LADDERS;
+    w->rampCap        = NAV_INITIAL_RAMP_LINKS;
+    w->entHashSize    = 4 * NAV_INITIAL_ENTRANCES;   // power of 2, >= 2x entrances (see nav_BuildEntranceHash)
+    w->edgeCap        = 4 * NAV_INITIAL_ENTRANCES;
+    w->entranceList   = calloc((size_t)w->entranceCap, sizeof(NavEntrance));
+    w->edgeList       = calloc((size_t)w->edgeCap, sizeof(NavGraphEdge));
+    w->ladderList     = calloc((size_t)w->ladderCap, sizeof(NavLadderLink));
+    w->rampList       = calloc((size_t)w->rampCap, sizeof(NavRampLink));
     w->chunkDirtyFlags= calloc(chunks, sizeof(bool));
-    w->edgeCap        = NAV_MAX_EDGES;
-    w->adjStart       = calloc(NAV_MAX_ENTRANCES + 1, sizeof(int));
-    w->absNodes       = calloc(NAV_ABS_CAP, sizeof(NavAbstractNode));
-    w->absPath        = calloc(NAV_ABS_CAP, sizeof(int));
-    w->absHeap        = calloc(NAV_ABS_CAP, sizeof(int));
-    w->absHeapPos     = calloc(NAV_ABS_CAP, sizeof(int));
+    w->adjStart       = calloc((size_t)w->entranceCap + 1, sizeof(int));
+    w->absNodes       = calloc((size_t)w->entranceCap + 2, sizeof(NavAbstractNode));
+    w->absPath        = calloc((size_t)w->entranceCap + 2, sizeof(int));
+    w->absHeap        = calloc((size_t)w->entranceCap + 2, sizeof(int));
+    w->absHeapPos     = calloc((size_t)w->entranceCap + 2, sizeof(int));
     w->chunkNodes     = calloc(layer, sizeof(NavChunkNode));
     w->chunkHeapPos   = calloc(layer, sizeof(int));
     w->chunkHeap      = calloc(layer, sizeof(int));
     w->chunkHeapCap   = (int)layer;
-    w->entHash        = calloc(NAV_ENTRANCE_HASH_SIZE, sizeof(NavHashEntry));
-    w->oldToNew       = calloc(NAV_MAX_ENTRANCES, sizeof(int));
-    w->oldEntrances   = calloc(NAV_MAX_ENTRANCES, sizeof(NavEntrance));
+    w->entHash        = calloc((size_t)w->entHashSize, sizeof(NavHashEntry));
+    w->oldToNew       = calloc((size_t)w->entranceCap, sizeof(int));
+    w->oldEntrances   = calloc((size_t)w->entranceCap, sizeof(NavEntrance));
     w->chunkEnts      = calloc(chunks, sizeof(*w->chunkEnts));
     w->chunkEntCount  = calloc(chunks, sizeof(int));
     w->affected       = calloc(chunks, sizeof(bool));
@@ -159,12 +164,12 @@ size_t NavMemoryUsage(const NavWorld* w) {
     size_t cells = layer * w->depth;
     size_t chunks = (size_t)w->depth * w->chunksX * w->chunksY;
     return sizeof(NavWorld)
-        + NAV_MAX_ENTRANCES * (sizeof(NavEntrance) * 2 + sizeof(int) * 3)
+        + (size_t)w->entranceCap * (sizeof(NavEntrance) * 2 + sizeof(int) * 3)
         + (size_t)w->edgeCap * sizeof(NavGraphEdge)
-        + NAV_MAX_LADDERS * sizeof(NavLadderLink)
-        + NAV_MAX_RAMP_LINKS * sizeof(NavRampLink)
-        + NAV_ABS_CAP * (sizeof(NavAbstractNode) + sizeof(int) * 3)
-        + NAV_ENTRANCE_HASH_SIZE * sizeof(NavHashEntry)
+        + (size_t)w->ladderCap * sizeof(NavLadderLink)
+        + (size_t)w->rampCap * sizeof(NavRampLink)
+        + ((size_t)w->entranceCap + 2) * (sizeof(NavAbstractNode) + sizeof(int) * 3)
+        + (size_t)w->entHashSize * sizeof(NavHashEntry)
         + chunks * (sizeof(bool) * 2 + sizeof(*w->chunkEnts) + sizeof(int))
         + layer * (sizeof(NavChunkNode) + sizeof(int) * 2 + sizeof(NavPoint))
         + (w->aG ? cells * (sizeof(int) * 5 + 1 + sizeof(uint32_t)) : 0);
@@ -234,17 +239,25 @@ static int nav_Heuristic3D(const NavWorld* w, int x0, int y0, int z0, int x1, in
 // Entrance hash (position -> entrance index) for incremental updates
 // =============================================================================
 
-static inline int nav_HashPosition(int x, int y, int z) {
+static inline int nav_HashPosition(const NavWorld* w, int x, int y, int z) {
     unsigned int h = (unsigned int)(x * 73856093) ^ (unsigned int)(y * 19349663) ^ (unsigned int)(z * 83492791);
-    return (int)(h & (NAV_ENTRANCE_HASH_SIZE - 1));
+    return (int)(h & (unsigned)(w->entHashSize - 1));
 }
 
 static void nav_BuildEntranceHash(NavWorld* w) {
-    for (int i = 0; i < NAV_ENTRANCE_HASH_SIZE; i++) w->entHash[i].index = -1;
+    // keep the table at least 2x the entrances (open addressing), power of 2
+    int want = w->entHashSize;
+    while (want < 2 * w->entranceNum + 2) want *= 2;
+    if (want != w->entHashSize) {
+        NavHashEntry* nh = realloc(w->entHash, (size_t)want * sizeof(NavHashEntry));
+        if (nh) { w->entHash = nh; w->entHashSize = want; }
+        else w->growFailed = true;
+    }
+    for (int i = 0; i < w->entHashSize; i++) w->entHash[i].index = -1;
     for (int i = 0; i < w->entranceNum; i++) {
         const NavEntrance* e = &w->entranceList[i];
-        int h = nav_HashPosition(e->x, e->y, e->z);
-        while (w->entHash[h].index >= 0) h = (h + 1) & (NAV_ENTRANCE_HASH_SIZE - 1);
+        int h = nav_HashPosition(w, e->x, e->y, e->z);
+        while (w->entHash[h].index >= 0) h = (h + 1) & (w->entHashSize - 1);
         w->entHash[h] = (NavHashEntry){e->x, e->y, e->z, i, e->chunk1, e->chunk2, false};
     }
 }
@@ -254,7 +267,7 @@ static void nav_BuildEntranceHash(NavWorld* w) {
 // new entrance is handed out once, in index order, so the k-th old duplicate maps
 // to the k-th new one (kept entrances keep their relative order).
 static int nav_HashTakeEntrance(NavWorld* w, const NavEntrance* o) {
-    int h = nav_HashPosition(o->x, o->y, o->z);
+    int h = nav_HashPosition(w, o->x, o->y, o->z);
     int start = h, best = -1, bestSlot = -1;
     while (w->entHash[h].index >= 0) {
         const NavHashEntry* e = &w->entHash[h];
@@ -263,7 +276,7 @@ static int nav_HashTakeEntrance(NavWorld* w, const NavEntrance* o) {
             best = e->index;
             bestSlot = h;
         }
-        h = (h + 1) & (NAV_ENTRANCE_HASH_SIZE - 1);
+        h = (h + 1) & (w->entHashSize - 1);
         if (h == start) break;
     }
     if (bestSlot >= 0) w->entHash[bestSlot].used = true;
@@ -342,7 +355,7 @@ static void nav_AbsHeapDown(NavWorld* w, int idx) {
 }
 
 static void nav_AbsHeapPush(NavWorld* w, int node) {
-    if (w->absHeapSize >= NAV_ABS_CAP) return;
+    if (w->absHeapSize >= w->entranceCap + 2) return;
     int idx = w->absHeapSize++;
     w->absHeap[idx] = node;
     w->absHeapPos[node] = idx;
@@ -647,8 +660,45 @@ void NavMarkCellChanged(NavWorld* w, int x, int y, int z) {
 // HPA*: entrances
 // =============================================================================
 
+// Grow every per-entrance array together (entrances, the incremental-update
+// copies, adjacency starts, abstract-search scratch). false = out of memory.
+#define NAV_GROW(ptr, n) do { void* np_ = realloc((ptr), (size_t)(n) * sizeof(*(ptr))); \
+                              if (!np_) { w->growFailed = true; return false; } (ptr) = np_; } while (0)
+static bool nav_EnsureEntranceCap(NavWorld* w, int need) {
+    if (need <= w->entranceCap) return true;
+    int cap = w->entranceCap * 2;
+    while (cap < need) cap *= 2;
+    NAV_GROW(w->entranceList, cap);
+    NAV_GROW(w->oldEntrances, cap);
+    NAV_GROW(w->oldToNew, cap);
+    NAV_GROW(w->adjStart, cap + 1);
+    NAV_GROW(w->absNodes, cap + 2);
+    NAV_GROW(w->absPath, cap + 2);
+    NAV_GROW(w->absHeap, cap + 2);
+    NAV_GROW(w->absHeapPos, cap + 2);
+    w->entranceCap = cap;
+    return true;
+}
+static bool nav_EnsureLadderCap(NavWorld* w, int need) {
+    if (need <= w->ladderCap) return true;
+    int cap = w->ladderCap * 2;
+    while (cap < need) cap *= 2;
+    NAV_GROW(w->ladderList, cap);
+    w->ladderCap = cap;
+    return true;
+}
+static bool nav_EnsureRampCap(NavWorld* w, int need) {
+    if (need <= w->rampCap) return true;
+    int cap = w->rampCap * 2;
+    while (cap < need) cap *= 2;
+    NAV_GROW(w->rampList, cap);
+    w->rampCap = cap;
+    return true;
+}
+#undef NAV_GROW
+
 static void nav_AddEntrance(NavWorld* w, int x, int y, int z, int chunk1, int chunk2) {
-    if (w->entranceNum < NAV_MAX_ENTRANCES)
+    if (nav_EnsureEntranceCap(w, w->entranceNum + 1))
         w->entranceList[w->entranceNum++] = (NavEntrance){x, y, z, chunk1, chunk2};
 }
 
@@ -669,7 +719,7 @@ static void nav_AddEntrancesForRun(NavWorld* w, int startX, int startY, int z, i
 
 // Entrance owned by one chunk (ladder/ramp endpoints). Returns index or -1.
 static int nav_AddPointEntrance(NavWorld* w, int x, int y, int z) {
-    if (w->entranceNum >= NAV_MAX_ENTRANCES) return -1;
+    if (!nav_EnsureEntranceCap(w, w->entranceNum + 1)) return -1;
     int chunk = z * (w->chunksX * w->chunksY) + (y / w->chunkH) * w->chunksX + (x / w->chunkW);
     w->entranceList[w->entranceNum] = (NavEntrance){x, y, z, chunk, chunk};
     return w->entranceNum++;
@@ -751,7 +801,7 @@ void NavBuildEntrances(NavWorld* w) {
     for (int z = 0; z < w->depth - 1; z++) {
         for (int y = 0; y < w->height; y++) {
             for (int x = 0; x < w->width; x++) {
-                if (NavCanClimbUp(NAV_HOSTP, x, y, z) && w->ladderNum < NAV_MAX_LADDERS) {
+                if (NavCanClimbUp(NAV_HOSTP, x, y, z) && nav_EnsureLadderCap(w, w->ladderNum + 1)) {
                     int entLow = nav_AddPointEntrance(w, x, y, z);
                     int entHigh = nav_AddPointEntrance(w, x, y, z + 1);
                     if (entLow >= 0 && entHigh >= 0) {
@@ -767,7 +817,7 @@ void NavBuildEntrances(NavWorld* w) {
                 if (NavRampHighSide(NAV_HOSTP, x, y, z, &rdx, &rdy)) {
                     w->rampCellNum++;
                     int exitX, exitY;
-                    if (w->rampNum < NAV_MAX_RAMP_LINKS && NavRampUp(NAV_HOSTP, x, y, z, &exitX, &exitY)) {
+                    if (NavRampUp(NAV_HOSTP, x, y, z, &exitX, &exitY) && nav_EnsureRampCap(w, w->rampNum + 1)) {
                         int entRamp = nav_AddPointEntrance(w, x, y, z);
                         int entExit = nav_AddPointEntrance(w, exitX, exitY, z + 1);
                         if (entRamp >= 0 && entExit >= 0) {
@@ -832,15 +882,22 @@ static void nav_FinalizeEdges(NavWorld* w, int sortedPrefix) {
     int n = w->edgeNum;
     qsort(w->edgeList + sortedPrefix, (size_t)(n - sortedPrefix), sizeof(NavGraphEdge), nav_EdgeCmp);
     if (sortedPrefix > 0 && sortedPrefix < n) {
-        NavGraphEdge* tmp = malloc((size_t)n * sizeof(NavGraphEdge));
+        // Merge into a kept scratch buffer and swap it with edgeList (no
+        // per-update allocation or copy-back of ~2M edges on big maps)
+        if (w->edgeScratchCap < w->edgeCap) {
+            NavGraphEdge* ns = realloc(w->edgeScratch, (size_t)w->edgeCap * sizeof(NavGraphEdge));
+            if (ns) { w->edgeScratch = ns; w->edgeScratchCap = w->edgeCap; }
+        }
+        NavGraphEdge* tmp = w->edgeScratchCap >= n ? w->edgeScratch : NULL;
         if (tmp) {
             int i = 0, j = sortedPrefix, k = 0;
             while (i < sortedPrefix && j < n)
                 tmp[k++] = nav_EdgeCmp(&w->edgeList[i], &w->edgeList[j]) <= 0 ? w->edgeList[i++] : w->edgeList[j++];
             while (i < sortedPrefix) tmp[k++] = w->edgeList[i++];
             while (j < n) tmp[k++] = w->edgeList[j++];
-            memcpy(w->edgeList, tmp, (size_t)n * sizeof(NavGraphEdge));
-            free(tmp);
+            w->edgeScratch = w->edgeList;
+            w->edgeList = tmp;
+            int c = w->edgeScratchCap; w->edgeScratchCap = w->edgeCap; w->edgeCap = c;
         } else {
             qsort(w->edgeList, (size_t)n, sizeof(NavGraphEdge), nav_EdgeCmp);
         }
@@ -884,16 +941,12 @@ static void nav_AddVerticalLinkEdges(NavWorld* w) {
 }
 
 static void nav_WarnLimits(const NavWorld* w) {
-    if (w->entranceNum >= NAV_MAX_ENTRANCES)
-        NAV_LOG_WARN("HPA* LIMIT HIT: entrances=%d >= %d - pathfinding will fail!", w->entranceNum, NAV_MAX_ENTRANCES);
+    if (w->growFailed)
+        NAV_LOG_WARN("HPA* LIMIT HIT: out of memory growing entrance/link lists - pathfinding will fail!");
     if (w->edgeOverflow)
         NAV_LOG_WARN("HPA* LIMIT HIT: out of memory for edges (%d) - pathfinding will fail!", w->edgeNum);
-    if (w->ladderNum >= NAV_MAX_LADDERS)
-        NAV_LOG_WARN("HPA* LIMIT HIT: ladders=%d >= %d - pathfinding will fail!", w->ladderNum, NAV_MAX_LADDERS);
     if (w->chunkEntsOverflow)
         NAV_LOG_WARN("HPA* LIMIT HIT: a chunk region has more than %d entrances - some edges are missing!", NAV_MAX_ENTRANCES_PER_CHUNK);
-    if (w->rampNum >= NAV_MAX_RAMP_LINKS)
-        NAV_LOG_WARN("HPA* LIMIT HIT: ramps=%d >= %d - pathfinding will fail!", w->rampNum, NAV_MAX_RAMP_LINKS);
 }
 
 // Fixed order of entrances by position/chunks (not by index, so incremental and
@@ -1033,13 +1086,14 @@ static void nav_ComputeAffectedChunks(NavWorld* w) {
             }
 }
 
-static bool nav_ChunkIdAffected(const NavWorld* w, int chunk) {
-    int perLevel = w->chunksX * w->chunksY;
-    int z = chunk / perLevel, xy = chunk % perLevel;
-    return w->affected[nav_ChunkFlagIndex(w, xy % w->chunksX, xy / w->chunksX, z)];
+// Chunk ids and the affected/dirty flag index are the same layout
+// ((z * chunksY + cy) * chunksX + cx), so this is a plain lookup. It runs a few
+// times per edge on every incremental update (millions on big maps).
+static inline bool nav_ChunkIdAffected(const NavWorld* w, int chunk) {
+    return w->affected[chunk];
 }
 
-static bool nav_EntranceTouchesAffected(const NavWorld* w, int idx) {
+static inline bool nav_EntranceTouchesAffected(const NavWorld* w, int idx) {
     return nav_ChunkIdAffected(w, w->entranceList[idx].chunk1) || nav_ChunkIdAffected(w, w->entranceList[idx].chunk2);
 }
 
@@ -1100,46 +1154,97 @@ static void nav_RebuildAffectedEntrances(NavWorld* w) {
     // New border entrances for affected chunks
     for (int z = 0; z < w->depth; z++) nav_BuildBorderEntrances(w, z, true);
 
-    // Ladder links: new entrances for affected ladders, re-find kept ones
+    // Ladder and ramp links. Links with both ends in chunks whose entrances were
+    // kept stay as they were (their entrances found again by position + chunk);
+    // only the rebuilt chunks are scanned for links. Each link is found once: from
+    // its low end, or from its high end when the low end's chunk wasn't rebuilt.
+    // (Scanning the whole world here cost ~100 ms per update on 512x512x16 hills.)
+    int perLevel = w->chunksX * w->chunksY;
+    int oldLadderNum = w->ladderNum, oldRampNum = w->rampNum;
+    NavLadderLink* oldLadders = oldLadderNum ? malloc((size_t)oldLadderNum * sizeof(NavLadderLink)) : NULL;
+    NavRampLink* oldRamps = oldRampNum ? malloc((size_t)oldRampNum * sizeof(NavRampLink)) : NULL;
+    if ((oldLadderNum && !oldLadders) || (oldRampNum && !oldRamps)) { w->growFailed = true; free(oldLadders); free(oldRamps); free(rebuilt); return; }
+    if (oldLadders) memcpy(oldLadders, w->ladderList, (size_t)oldLadderNum * sizeof(NavLadderLink));
+    if (oldRamps) memcpy(oldRamps, w->rampList, (size_t)oldRampNum * sizeof(NavRampLink));
     w->ladderNum = 0;
-    for (int z = 0; z < w->depth - 1; z++)
-        for (int y = 0; y < w->height; y++)
-            for (int x = 0; x < w->width; x++) {
-                if (!NavCanClimbUp(NAV_HOSTP, x, y, z)) continue;
-                int a = nav_ChunkFlagIndex(w, x / w->chunkW, y / w->chunkH, z);
-                int b = nav_ChunkFlagIndex(w, x / w->chunkW, y / w->chunkH, z + 1);
-                if (w->ladderNum >= NAV_MAX_LADDERS) continue;
-                int entLow = nav_LinkEnd(w, rebuilt, a, x, y, z);
-                int entHigh = nav_LinkEnd(w, rebuilt, b, x, y, z + 1);
-                if (entLow >= 0 && entHigh >= 0 && w->ladderNum < NAV_MAX_LADDERS) {
-                    w->ladderList[w->ladderNum++] = (NavLadderLink){
-                        .x = x, .y = y, .zLow = z, .zHigh = z + 1,
-                        .entranceLow = entLow, .entranceHigh = entHigh,
-                        .cost = NavMoveCost(NAV_HOSTP, x, y, z + 1)
-                    };
-                }
-            }
-
-    // Ramp links: same idea
     w->rampNum = 0;
-    for (int z = 0; z < w->depth - 1; z++)
-        for (int y = 0; y < w->height; y++)
-            for (int x = 0; x < w->width; x++) {
-                int ex, ey;
-                if (!NavRampUp(NAV_HOSTP, x, y, z, &ex, &ey)) continue;
-                int a = nav_ChunkFlagIndex(w, x / w->chunkW, y / w->chunkH, z);
-                int b = nav_ChunkFlagIndex(w, ex / w->chunkW, ey / w->chunkH, z + 1);
-                if (w->rampNum >= NAV_MAX_RAMP_LINKS) continue;
-                int entRamp = nav_LinkEnd(w, rebuilt, a, x, y, z);
-                int entExit = nav_LinkEnd(w, rebuilt, b, ex, ey, z + 1);
-                if (entRamp >= 0 && entExit >= 0 && w->rampNum < NAV_MAX_RAMP_LINKS) {
-                    w->rampList[w->rampNum++] = (NavRampLink){
-                        .rampX = x, .rampY = y, .rampZ = z, .exitX = ex, .exitY = ey,
-                        .entranceRamp = entRamp, .entranceExit = entExit,
-                        .cost = (14 * NavMoveCost(NAV_HOSTP, ex, ey, z + 1)) / 10
-                    };
+    #define NAV_REBUILT(x, y, z) (!rebuilt || rebuilt[nav_ChunkFlagIndex(w, (x) / w->chunkW, (y) / w->chunkH, (z))])
+
+    for (int k = 0; k < oldLadderNum; k++) {
+        const NavLadderLink* l = &oldLadders[k];
+        if (NAV_REBUILT(l->x, l->y, l->zLow) || NAV_REBUILT(l->x, l->y, l->zHigh)) continue;
+        if (!nav_EnsureLadderCap(w, w->ladderNum + 1)) break;
+        int c0 = nav_GetChunk(w, l->x, l->y, l->zLow), c1 = nav_GetChunk(w, l->x, l->y, l->zHigh);
+        NavEntrance lo = {l->x, l->y, l->zLow, c0, c0}, hi = {l->x, l->y, l->zHigh, c1, c1};
+        int entLow = nav_HashTakeEntrance(w, &lo), entHigh = nav_HashTakeEntrance(w, &hi);
+        if (entLow < 0 || entHigh < 0) continue;
+        NavLadderLink kept = *l;
+        kept.entranceLow = entLow;
+        kept.entranceHigh = entHigh;
+        w->ladderList[w->ladderNum++] = kept;
+    }
+    for (int k = 0; k < oldRampNum; k++) {
+        const NavRampLink* r = &oldRamps[k];
+        if (NAV_REBUILT(r->rampX, r->rampY, r->rampZ) || NAV_REBUILT(r->exitX, r->exitY, r->rampZ + 1)) continue;
+        if (!nav_EnsureRampCap(w, w->rampNum + 1)) break;
+        int c0 = nav_GetChunk(w, r->rampX, r->rampY, r->rampZ), c1 = nav_GetChunk(w, r->exitX, r->exitY, r->rampZ + 1);
+        NavEntrance rp = {r->rampX, r->rampY, r->rampZ, c0, c0}, xp = {r->exitX, r->exitY, r->rampZ + 1, c1, c1};
+        int entRamp = nav_HashTakeEntrance(w, &rp), entExit = nav_HashTakeEntrance(w, &xp);
+        if (entRamp < 0 || entExit < 0) continue;
+        NavRampLink kept = *r;
+        kept.entranceRamp = entRamp;
+        kept.entranceExit = entExit;
+        w->rampList[w->rampNum++] = kept;
+    }
+
+    for (int chunk = 0; chunk < w->depth * perLevel; chunk++) {
+        int z = chunk / perLevel, xy = chunk % perLevel;
+        int cx = xy % w->chunksX, cy = xy / w->chunksX;
+        if (rebuilt && !rebuilt[nav_ChunkFlagIndex(w, cx, cy, z)]) continue;
+        int x0 = cx * w->chunkW, y0 = cy * w->chunkH;
+        int x1 = x0 + w->chunkW < w->width ? x0 + w->chunkW : w->width;
+        int y1 = y0 + w->chunkH < w->height ? y0 + w->chunkH : w->height;
+        for (int y = y0; y < y1; y++)
+            for (int x = x0; x < x1; x++) {
+                // ladder from here up / onto here from below (low end not rebuilt)
+                for (int zl = z - 1; zl <= z; zl++) {
+                    if (zl < 0 || zl + 1 >= w->depth) continue;
+                    if (zl == z - 1 && NAV_REBUILT(x, y, zl)) continue;   // found from its low end
+                    if (!NavCanClimbUp(NAV_HOSTP, x, y, zl)) continue;
+                    if (!nav_EnsureLadderCap(w, w->ladderNum + 1)) continue;
+                    int entLow = nav_LinkEnd(w, rebuilt, nav_ChunkFlagIndex(w, x / w->chunkW, y / w->chunkH, zl), x, y, zl);
+                    int entHigh = nav_LinkEnd(w, rebuilt, nav_ChunkFlagIndex(w, x / w->chunkW, y / w->chunkH, zl + 1), x, y, zl + 1);
+                    if (entLow >= 0 && entHigh >= 0)
+                        w->ladderList[w->ladderNum++] = (NavLadderLink){
+                            .x = x, .y = y, .zLow = zl, .zHigh = zl + 1,
+                            .entranceLow = entLow, .entranceHigh = entHigh,
+                            .cost = NavMoveCost(NAV_HOSTP, x, y, zl + 1)
+                        };
+                }
+                // ramp here (low end), or a ramp below whose exit is here (ramp chunk not rebuilt)
+                static const int ox[5] = {0, 0, 1, 0, -1}, oy[5] = {0, -1, 0, 1, 0};
+                for (int d = 0; d < 5; d++) {
+                    int rx = x - ox[d], ry = y - oy[d], rz = d == 0 ? z : z - 1;
+                    if (rz < 0 || rz + 1 >= w->depth || rx < 0 || ry < 0 || rx >= w->width || ry >= w->height) continue;
+                    if (d > 0 && NAV_REBUILT(rx, ry, rz)) continue;           // found from its low end
+                    int ex, ey;
+                    if (!NavRampUp(NAV_HOSTP, rx, ry, rz, &ex, &ey)) continue;
+                    if (d > 0 && (ex != x || ey != y)) continue;
+                    if (!nav_EnsureRampCap(w, w->rampNum + 1)) continue;
+                    int entRamp = nav_LinkEnd(w, rebuilt, nav_ChunkFlagIndex(w, rx / w->chunkW, ry / w->chunkH, rz), rx, ry, rz);
+                    int entExit = nav_LinkEnd(w, rebuilt, nav_ChunkFlagIndex(w, ex / w->chunkW, ey / w->chunkH, rz + 1), ex, ey, rz + 1);
+                    if (entRamp >= 0 && entExit >= 0)
+                        w->rampList[w->rampNum++] = (NavRampLink){
+                            .rampX = rx, .rampY = ry, .rampZ = rz, .exitX = ex, .exitY = ey,
+                            .entranceRamp = entRamp, .entranceExit = entExit,
+                            .cost = (14 * NavMoveCost(NAV_HOSTP, ex, ey, rz + 1)) / 10
+                        };
                 }
             }
+    }
+    #undef NAV_REBUILT
+    free(oldLadders);
+    free(oldRamps);
     free(rebuilt);
 }
 
@@ -1149,7 +1254,10 @@ static void nav_RebuildAffectedEdges(NavWorld* w) {
 
     for (int i = 0; i < w->oldEntranceNum; i++) {
         const NavEntrance* o = &w->oldEntrances[i];
-        w->oldToNew[i] = nav_HashTakeEntrance(w, o);
+        int n = nav_HashTakeEntrance(w, o);
+        // Edges touching affected chunks are all recomputed: mark those ends now,
+        // once per entrance, instead of checking both ends of every edge below
+        w->oldToNew[i] = (n >= 0 && !nav_EntranceTouchesAffected(w, n)) ? n : -1;
     }
 
     // 1. Keep edges whose (remapped) endpoints are both outside affected chunks
@@ -1157,8 +1265,7 @@ static void nav_RebuildAffectedEdges(NavWorld* w) {
     for (int i = 0; i < w->edgeNum; i++) {
         int n1 = w->oldToNew[w->edgeList[i].from];
         int n2 = w->oldToNew[w->edgeList[i].to];
-        if (n1 < 0 || n2 < 0) continue;
-        if (nav_EntranceTouchesAffected(w, n1) || nav_EntranceTouchesAffected(w, n2)) continue;
+        if (n1 < 0 || n2 < 0) continue;     // gone, or touches an affected chunk
         // ladder/ramp link edges (chunk -1) are always re-added from the rescanned links
         if (w->edgeList[i].chunk < 0 || nav_ChunkIdAffected(w, w->edgeList[i].chunk)) continue;
         w->edgeList[kept++] = (NavGraphEdge){n1, n2, w->edgeList[i].cost, w->edgeList[i].chunk};
@@ -1540,14 +1647,16 @@ int NavFindPathHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, in
     double absStart = NavHostTime();
     nav_AbsHeapInit(w, totalNodes);
     w->absNodes[startNode].g = 0;
-    w->absNodes[startNode].f = nav_Heuristic2D(start.x, start.y, goal.x, goal.y);
+    // Same admissible estimate as A* (scaled by the cheapest cell cost). The old
+    // unscaled |dx|+|dy| was ~10x too weak: near-Dijkstra over every entrance.
+    w->absNodes[startNode].f = nav_Heuristic3D(w, start.x, start.y, start.z, goal.x, goal.y, goal.z);
     w->absNodes[startNode].open = true;
     nav_AbsHeapPush(w, startNode);
 
     while (w->absHeapSize > 0) {
         int best = nav_AbsHeapPop(w);
         if (best == goalNode) {
-            for (int c = goalNode; c >= 0 && w->absPathLen < NAV_ABS_CAP; c = w->absNodes[c].parent)
+            for (int c = goalNode; c >= 0 && w->absPathLen < w->entranceCap + 2; c = w->absNodes[c].parent)
                 w->absPath[w->absPathLen++] = c;
             break;
         }
@@ -1559,13 +1668,15 @@ int NavFindPathHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, in
             for (int i = 0; i < startEdges; i++) {
                 int nb = startTargets[i];
                 nav_AbsRelax(w, best, nb, startCosts[i],
-                         nav_Heuristic2D(w->entranceList[nb].x, w->entranceList[nb].y, goal.x, goal.y));
+                         nav_Heuristic3D(w, w->entranceList[nb].x, w->entranceList[nb].y, w->entranceList[nb].z,
+                                         goal.x, goal.y, goal.z));
             }
         } else if (best < w->entranceNum) {
             for (int i = w->adjStart[best]; i < w->adjStart[best + 1]; i++) {
                 const NavGraphEdge* e = &w->edgeList[i];
                 nav_AbsRelax(w, best, e->to, e->cost + nav_LinkExtra(w, e),
-                         nav_Heuristic2D(w->entranceList[e->to].x, w->entranceList[e->to].y, goal.x, goal.y));
+                         nav_Heuristic3D(w, w->entranceList[e->to].x, w->entranceList[e->to].y, w->entranceList[e->to].z,
+                                         goal.x, goal.y, goal.z));
             }
             for (int i = 0; i < goalEdges; i++)
                 if (goalTargets[i] == best) nav_AbsRelax(w, best, goalNode, goalCosts[i], 0);

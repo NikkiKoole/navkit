@@ -72,9 +72,41 @@ ramps give entrances many edges.
 
 A* explores 1–4% more cells with the corrected (weaker but admissible) heuristic.
 
+## Scaling to 512×512 (2026-11-20)
+
+512×512×16 is the game's largest map. Both hills and spiral3d hit the fixed 16,384-entrance
+limit there: on 512 hills only 3,618 of 25,067 ramps were in the graph. Changes:
+
+- **Growable lists:** entrances, ladder/ramp links, abstract-search scratch and the entrance
+  hash grow on demand (start small: 1024 entrances). 512 hills now has its full graph: 59k
+  entrances, 1.86M edges, 25,052 ramp links.
+- **HPA\* heuristic:** the abstract search used an unscaled |dx|+|dy| (~10x too weak), almost
+  a full Dijkstra. It now uses A*'s scaled 3D estimate.
+- **Incremental updates:**
+  - Links with both ends in untouched chunks are kept; only rebuilt chunks are scanned for
+    ladders and ramps (was: the whole world, every update).
+  - The chunk-affected lookup is a plain index (was: two divisions, millions of times).
+  - "Touches an affected chunk" is decided once per entrance, not twice per edge.
+  - Edge merging swaps buffers instead of copying back.
+
+Measured (`make path` -O2, 20 updates of 3 random wall placements, 100 random HPA* queries):
+
+| map | HPA* query | incremental update | full graph build | memory |
+|-----|-----------|--------------------|------------------|--------|
+| 256 hills | 2.63 → 1.19 ms | 60 → 42 ms | 0.5 s | 16 MB |
+| 256 spiral3d | 0.66 → 0.46 ms | 38 → 30 ms | 0.4 s | 16 MB |
+| 512 hills | (broken graph) → 5.2 ms | 145 → 67 ms | 2.5 s | 62 MB |
+| 512 spiral3d | (broken graph) → 1.1 ms | 83 → 43 ms | 2.0 s | 62 MB |
+
+"Before" for the 512 rows is the first run with the full graph (with the old capped graph,
+queries and updates looked cheaper because most of the map was missing).
+
 ## Not addressed
 
-- 256×256×16 hills has ~14.5k entrances, close to `NAV_MAX_ENTRANCES` (16384). Bigger
-  ramp-heavy maps will hit it (a warning is logged).
-- The full and incremental builds still scan the whole world for ladders and ramps (~13 ms on
-  256×256×16). That's most of an incremental update on small changes.
+- **Incremental updates are still linear in the whole graph:** edges live in one flat sorted
+  list, so every update merges and filters all of them (1.86M on 512 hills: ~67 ms). Storing
+  edges per chunk would make small edits cost only their neighbourhood.
+- **Full graph builds** take 2–2.5 s on 512 maps (once, on generate/load); they could run per
+  chunk in parallel.
+- **HPA\* queries on dense-ramp maps** (5 ms on 512 hills): busy destinations are already
+  served by shared-goal fields (`docs/research/many-destinations-navigation.md`).

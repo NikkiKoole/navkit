@@ -52,10 +52,15 @@
 
 // Graph capacity limits (per world)
 #define NAV_MAX_ENTRANCE_WIDTH      6
+// Initial capacities: entrances, edges, ladder and ramp links all grow as needed
+// (512x512x16 hills needs ~60k entrances; tiny worlds stay small)
 #define NAV_MAX_ENTRANCES           (4096 * 4)
-#define NAV_MAX_EDGES               (65536 * 4)   // initial edge capacity (grows as needed)
+#define NAV_MAX_EDGES               (65536 * 4)
 #define NAV_MAX_LADDERS             1024
 #define NAV_MAX_RAMP_LINKS          8192
+#define NAV_INITIAL_ENTRANCES       1024
+#define NAV_INITIAL_LADDERS         64
+#define NAV_INITIAL_RAMP_LINKS      256
 #define NAV_MAX_ENTRANCES_PER_CHUNK 128   // per chunk edge region (full and incremental builds alike)
 
 typedef enum {
@@ -126,6 +131,9 @@ typedef struct NavWorld {
     // ---- private scratch ----
     int* adjStart;                 // [entrance + 1]: out-edges of e are edgeList[adjStart[e] .. adjStart[e+1])
     int edgeCap;
+    int entranceCap, ladderCap, rampCap, entHashSize;   // current capacities (grow as needed)
+    NavGraphEdge* edgeScratch; int edgeScratchCap;      // merge buffer (swapped with edgeList)
+    bool growFailed;               // out of memory growing a list (warned)
     bool edgeOverflow;             // couldn't grow edgeList (warned)
 
     NavAbstractNode* absNodes;
