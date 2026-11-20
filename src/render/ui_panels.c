@@ -188,6 +188,7 @@ static void DrawSettingsGroup(const char* group, float x, float* y) {
         if (!first) *y += 22;
         first = false;
         const char* tip = SettingTooltip(s);
+        float before = SettingValue(s);
         switch (s->type) {
             case SETTING_BOOL:
                 ToggleBoolT(x, *y, s->label, (bool*)s->ptr, tip);
@@ -199,6 +200,7 @@ static void DrawSettingsGroup(const char* group, float x, float* y) {
                 DraggableFloatT(x, *y, s->label, (float*)s->ptr, s->speed, s->min, s->max, tip);
                 break;
         }
+        if (s->onChange && SettingValue(s) != before) s->onChange(before);
     }
 }
 
@@ -1253,31 +1255,8 @@ void DrawUI(void) {
             }
             y += 22;
 
-            // Settings
-            ToggleBool(ix, y, "Weather Enabled", &weatherEnabled);
-            y += 22;
-            DraggableFloatT(ix, y, "Min Duration", &weatherMinDuration, 1.0f, 5.0f, 300.0f,
-                TextFormat("Shortest weather spell: %.0f game-hours.", weatherMinDuration));
-            y += 22;
-            DraggableFloatT(ix, y, "Max Duration", &weatherMaxDuration, 1.0f, 10.0f, 600.0f,
-                TextFormat("Longest weather spell: %.0f game-hours.", weatherMaxDuration));
-            y += 22;
-            DraggableFloatT(ix, y, "Rain Wetness Interval", &rainWetnessInterval, 0.5f, 0.5f, 30.0f,
-                TextFormat("Ground gets wetter every %.1f game-hours during rain.", rainWetnessInterval));
-            y += 22;
-            DraggableFloatT(ix, y, "Heavy Rain Interval", &heavyRainWetnessInterval, 0.5f, 0.5f, 15.0f,
-                TextFormat("Ground gets wetter every %.1f game-hours during heavy rain.", heavyRainWetnessInterval));
-            y += 22;
-            DraggableFloatT(ix, y, "Lightning Interval", &lightningInterval, 1.0f, 0.5f, 30.0f,
-                TextFormat("Lightning strikes every %.1f game-hours in thunderstorms.", lightningInterval));
-            y += 22;
-            DraggableFloatT(ix, y, "Snow Accumulation", &snowAccumulationRate, 0.01f, 0.01f, 1.0f,
-                TextFormat("Snow builds at %.2f levels/gh. Full cover (7) in ~%.0f game-hours.",
-                           snowAccumulationRate, snowAccumulationRate > 0 ? 7.0f / snowAccumulationRate : 999.0f));
-            y += 22;
-            DraggableFloatT(ix, y, "Snow Melting", &snowMeltingRate, 0.01f, 0.01f, 0.5f,
-                TextFormat("Snow melts at %.2f levels/gh. Full melt in ~%.0f game-hours.",
-                           snowMeltingRate, snowMeltingRate > 0 ? 7.0f / snowMeltingRate : 999.0f));
+            // Settings (src/core/settings.c)
+            DrawSettingsGroup("Weather & Time/Weather", ix, &y);
         }
         y += 22;
 
@@ -1289,10 +1268,8 @@ void DrawUI(void) {
             DrawTextShadow(TextFormat("Game time: %.1fs  |  Temp: %dC", (float)gameTime, GetSeasonalSurfaceTemp()), ix, y, 14, GRAY);
             y += 22;
 
-            // Game speed control
-            DraggableFloatT(ix, y, "Game Speed", &gameSpeed, 0.1f, 0.0f, 100.0f,
-                TextFormat("Simulation speed multiplier. At %.1fx, 1 real-second = %.1f game-seconds.%s",
-                           gameSpeed, gameSpeed, gameSpeed == 0.0f ? " (PAUSED)" : ""));
+            // Game speed, day length, fixed timestep (src/core/settings.c)
+            DrawSettingsGroup("Weather & Time/Time", ix, &y);
             y += 22;
 
             // Speed presets — compact: Pause + speeds on 2 rows
@@ -1319,14 +1296,6 @@ void DrawUI(void) {
             }
             y += 22;
 
-            // Day length
-            float realDuration = gameSpeed > 0 ? dayLength / gameSpeed : 0;
-            DraggableFloatT(ix, y, "Day Length", &dayLength, 10.0f, 10.0f, 3600.0f,
-                TextFormat("Game-seconds per full day.\nAt 1x speed: %.1f real-%s per day.\nAt current %.1fx: %.1f real-%s per day.",
-                           dayLength < 60 ? dayLength : dayLength / 60.0f, dayLength < 60 ? "seconds" : "minutes",
-                           gameSpeed, realDuration < 60 ? realDuration : realDuration / 60.0f, realDuration < 60 ? "seconds" : "minutes"));
-            y += 22;
-
             // Day length presets — inline
             DrawTextShadow("Day presets:", ix, y, 14, GRAY);
             {
@@ -1338,9 +1307,6 @@ void DrawUI(void) {
                 clicked = false;
                 PushButtonInline(bx, y, "Slow", &clicked); if (clicked) dayLength = 720.0f;
             }
-            y += 22;
-
-            ToggleBool(ix, y, "Fixed Timestep", &useFixedTimestep);
             y += 22;
 
             // Seasons
@@ -1363,161 +1329,40 @@ void DrawUI(void) {
             }
             y += 22;
 
-            DraggableIntT(ix, y, "Days per Season", &daysPerSeason, 1.0f, 1, 30,
-                TextFormat("Days per season. Year = %d days (4 seasons). Current: %s (day %d of season).",
-                           daysPerSeason * SEASON_COUNT, GetSeasonName(GetCurrentSeason()), (GetYearDay() % daysPerSeason) + 1));
-            y += 22;
-            DraggableIntT(ix, y, "Base Temp (C)", &baseSurfaceTemp, 1.0f, -20, 40,
-                TextFormat("Base surface temperature before seasonal modulation. Current seasonal temp: %dC.", GetSeasonalSurfaceTemp()));
-            y += 22;
-            DraggableIntT(ix, y, "Seasonal Amplitude", &seasonalAmplitude, 1.0f, 0, 40,
-                TextFormat("Temperature swing above/below base. 0=flat. Range: %dC to %dC.",
-                           baseSurfaceTemp - seasonalAmplitude, baseSurfaceTemp + seasonalAmplitude));
-            y += 22;
-            DraggableIntT(ix, y, "Diurnal Amplitude", &diurnalAmplitude, 1.0f, 0, 15,
-                TextFormat("Day/night temperature swing. Peak at 14:00, trough at 02:00. 0=flat."));
+            DrawSettingsGroup("Weather & Time/Seasons", ix, &y);
         }
         y += 22;
 
         // --- Balance ---
+        // Rows from src/core/settings.c; changing one recalculates the derived rates
+        // (RecalcBalanceTable) and Base Speed rescales existing movers.
         if (SectionHeader(ix, y, "Mover Balance", &sectionBalance)) {
             y += 18;
-            bool changed = false;
-
-            // Movement speed
-            float tilesPerGameSec = balance.baseMoverSpeed / (float)CELL_SIZE;
-            float oldBaseSpeed = balance.baseMoverSpeed;
-            DraggableFloatT(ix, y, "Base Speed (px/s)", &balance.baseMoverSpeed, 10.0f, 50.0f, 800.0f,
-                TextFormat("Base mover speed in pixels/sec. = %.1f tiles/game-sec.", tilesPerGameSec));
-            y += 22;
-            // Rescale all existing movers proportionally when base speed changes
-            if (balance.baseMoverSpeed != oldBaseSpeed && oldBaseSpeed > 0) {
-                float scale = balance.baseMoverSpeed / oldBaseSpeed;
-                for (int i = 0; i < moverCount; i++) {
-                    if (movers[i].active) movers[i].speed *= scale;
-                }
-            }
-            DraggableFloatT(ix, y, "Speed Variance", &balance.moverSpeedVariance, 0.05f, 0.0f, 0.5f,
-                TextFormat("Random speed spread per mover: +/-%.0f%%. Range: %.1f - %.1f tiles/game-sec.",
-                           balance.moverSpeedVariance * 100.0f,
-                           tilesPerGameSec * (1.0f - balance.moverSpeedVariance),
-                           tilesPerGameSec * (1.0f + balance.moverSpeedVariance)));
+            DrawSettingsGroup("Mover Balance", ix, &y);
             y += 22;
 
-            // Day budget (game-hours)
             DrawTextShadow("Day Budget (game-hours):", ix, y, 14, GRAY);
             y += 18;
-            changed |= DraggableFloatT(ix, y, "Work Hours/Day", &balance.workHoursPerDay, 0.5f, 1.0f, 24.0f,
-                "Design target: how many hours per day a mover should work.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Sleep (Plank Bed)", &balance.sleepHoursInBed, 0.5f, 1.0f, 24.0f,
-                "Game-hours to recover from exhausted to rested in a plank bed.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Sleep (Ground)", &balance.sleepOnGround, 0.5f, 1.0f, 48.0f,
-                "Game-hours to recover from exhausted to rested on bare ground.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Hours to Starve", &balance.hoursToStarve, 0.5f, 1.0f, 48.0f,
-                "Game-hours from full hunger to starvation.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Exhaust (Working)", &balance.hoursToExhaustWorking, 0.5f, 1.0f, 48.0f,
-                "Game-hours of continuous work before exhaustion.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Exhaust (Idle)", &balance.hoursToExhaustIdle, 0.5f, 1.0f, 48.0f,
-                "Game-hours of idling before exhaustion.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Eating Duration", &balance.eatingDurationGH, 0.05f, 0.05f, 4.0f,
-                "Game-hours spent eating a meal.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Hours to Dehydrate", &balance.hoursToDehydrate, 0.5f, 1.0f, 48.0f,
-                "Game-hours from full thirst to dehydration.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Drinking Duration", &balance.drinkingDurationGH, 0.05f, 0.05f, 4.0f,
-                "Game-hours spent drinking from a pot.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Natural Drink Duration", &balance.naturalDrinkDurationGH, 0.05f, 0.05f, 4.0f,
-                "Game-hours spent drinking from natural water.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Natural Drink Hydration", &balance.naturalDrinkHydration, 0.05f, 0.05f, 1.0f,
-                "Hydration restored by drinking natural water.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Dehydration Death", &balance.dehydrationDeathGH, 0.5f, 1.0f, 24.0f,
-                "Game-hours at zero thirst before death.");
+            DrawSettingsGroup("Mover Balance/Day Budget", ix, &y);
             y += 22;
 
-            // Thresholds
             y += 4;
             DrawTextShadow("Thresholds (0-1):", ix, y, 14, GRAY);
             y += 18;
-            changed |= DraggableFloatT(ix, y, "Hunger Seek", &balance.hungerSeekThreshold, 0.05f, 0.05f, 0.9f,
-                "Seek food when hunger drops below this (idle).");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Hunger Critical", &balance.hungerCriticalThreshold, 0.01f, 0.01f, 0.5f,
-                "Cancel current job to find food.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Energy Tired", &balance.energyTiredThreshold, 0.05f, 0.05f, 0.9f,
-                "Seek rest when energy drops below this (idle).");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Energy Exhausted", &balance.energyExhaustedThreshold, 0.01f, 0.01f, 0.5f,
-                "Cancel current job to find rest.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Thirst Seek", &balance.thirstSeekThreshold, 0.05f, 0.05f, 0.9f,
-                "Seek drink when thirst drops below this (idle).");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Thirst Critical", &balance.thirstCriticalThreshold, 0.01f, 0.01f, 0.5f,
-                "Cancel current job to find drink.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Energy Wake", &balance.energyWakeThreshold, 0.05f, 0.3f, 1.0f,
-                "Stop sleeping when energy reaches this.");
+            DrawSettingsGroup("Mover Balance/Thresholds", ix, &y);
             y += 22;
 
-            // Multipliers
             y += 4;
             DrawTextShadow("Multipliers:", ix, y, 14, GRAY);
             y += 18;
-            changed |= DraggableFloatT(ix, y, "Night Energy", &balance.nightEnergyMult, 0.05f, 0.5f, 3.0f,
-                "Energy drain multiplier at night.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Carrying Energy", &balance.carryingEnergyMult, 0.05f, 0.5f, 3.0f,
-                "Energy drain multiplier when hauling.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Hunger Speed Min", &balance.hungerSpeedPenaltyMin, 0.05f, 0.1f, 1.0f,
-                "Minimum speed multiplier when starving.");
+            DrawSettingsGroup("Mover Balance/Multipliers", ix, &y);
             y += 22;
 
-            // Body Temperature
             y += 4;
             DrawTextShadow("Body Temperature:", ix, y, 14, GRAY);
             y += 18;
-            changed |= DraggableFloatT(ix, y, "Cooling Rate", &balance.bodyTempCoolingRatePerGH, 0.5f, 0.5f, 20.0f,
-                "Degrees C per game-hour when losing heat.");
+            DrawSettingsGroup("Mover Balance/Body Temperature", ix, &y);
             y += 22;
-            changed |= DraggableFloatT(ix, y, "Warming Rate", &balance.bodyTempWarmingRatePerGH, 0.5f, 0.5f, 20.0f,
-                "Degrees C per game-hour when gaining heat.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Metabolic Heat", &balance.metabolicHeatBonus, 1.0f, 0.0f, 40.0f,
-                "Degrees C added to ambient from metabolism. Scaled by hunger.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Mild Cold", &balance.mildColdThreshold, 0.5f, 30.0f, 37.0f,
-                "Body temp below this = speed penalty.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Moderate Cold", &balance.moderateColdThreshold, 0.5f, 28.0f, 36.0f,
-                "Body temp below this = 2x energy drain.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Severe Cold", &balance.severeColdThreshold, 0.5f, 25.0f, 34.0f,
-                "Body temp below this = hypothermia death timer.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Cold Speed Min", &balance.coldSpeedPenaltyMin, 0.05f, 0.1f, 1.0f,
-                "Minimum speed multiplier when cold.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Cold Energy Mult", &balance.coldEnergyDrainMult, 0.1f, 1.0f, 5.0f,
-                "Energy drain multiplier when moderately cold.");
-            y += 22;
-            changed |= DraggableFloatT(ix, y, "Hypothermia Death", &balance.hypothermiaDeathGH, 0.5f, 1.0f, 12.0f,
-                "Game-hours at severe cold before death.");
-            y += 22;
-
-            // Recalc derived rates if anything changed
-            if (changed) RecalcBalanceTable();
 
             // Derived rates (read-only)
             y += 4;

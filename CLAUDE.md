@@ -181,8 +181,10 @@ range, help, optional live-tooltip function). One row gives you: a console varia
 (`get`/`set`, `--set`, clamped to the range, `get` shows the help) and a row in the dev sidebar
 (`DrawSettingsGroup("Simulation/Fire", x, &y)` in `ui_panels.c` draws a whole group).
 **Add new tunables as a row there**, not as a hand-placed widget plus a separate
-`Console_RegisterVar`. Converted so far: the Simulation section (water, fire, smoke, steam,
-temperature). Saved settings are still a separate list (`SETTINGS_TABLE` in `saveload.c`).
+`Console_RegisterVar`. A row can have an `onChange(oldValue)` hook, run on both sidebar and
+console changes (mover balance rows recalc derived rates; base speed rescales movers).
+Converted so far: Simulation, Weather & Time, Mover Balance. Saved settings are still a
+separate list (`SETTINGS_TABLE` in `saveload.c`).
 
 ## Scenarios
 

@@ -32,8 +32,10 @@ void Console_RegisterCmd(const char* name, ConsoleCmdFn fn, const char* help);
 // Variable registry (Phase 3)
 typedef enum { CVAR_BOOL, CVAR_INT, CVAR_FLOAT } CVarType;
 void Console_RegisterVar(const char* name, void* ptr, CVarType type);
-// With a range (set clamps to [min, max]; ignored for bools or when min >= max) and help text.
-void Console_RegisterVarEx(const char* name, void* ptr, CVarType type, float min, float max, const char* help);
+// With a range (set clamps to [min, max]; ignored for bools or when min >= max), help text,
+// and an optional hook run after set changes the value (gets the old value; bools 0/1).
+void Console_RegisterVarEx(const char* name, void* ptr, CVarType type, float min, float max,
+                           const char* help, void (*onChange)(float oldValue));
 void Console_RegisterGameVars(void);  // Register common game variables
 bool Console_SetVar(const char* name, const char* value);  // false if unknown or bad bool
 const char* Console_GetVarString(const char* name);        // current value as text, NULL if unknown

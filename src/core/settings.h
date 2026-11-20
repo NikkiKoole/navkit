@@ -25,7 +25,11 @@ typedef struct {
     float min, max;        // range; console clamps to it (ignored for bools)
     const char* help;      // one or two sentences: sidebar tooltip, console 'get'
     const char* (*describe)(void);   // optional: tooltip with live values (replaces help in the sidebar)
+    void (*onChange)(float oldValue); // optional: run after the value changes (sidebar or console)
 } Setting;
+
+// Value of a setting as float (bools 0/1), for onChange and comparisons.
+float SettingValue(const Setting* s);
 
 int SettingCount(void);
 const Setting* SettingAt(int index);

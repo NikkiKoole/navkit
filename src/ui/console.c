@@ -103,6 +103,7 @@ typedef struct {
     CVarType type;
     float min, max;      // set clamps when min < max
     const char* help;    // optional, shown by get
+    void (*onChange)(float oldValue);   // optional, run after set changes the value
 } CVar;
 
 static CVar cvars[CON_MAX_VARS];
@@ -147,7 +148,8 @@ void Console_RegisterCmd(const char* name, ConsoleCmdFn fn, const char* help) {
     commandCount++;
 }
 
-void Console_RegisterVarEx(const char* name, void* ptr, CVarType type, float min, float max, const char* help) {
+void Console_RegisterVarEx(const char* name, void* ptr, CVarType type, float min, float max,
+                           const char* help, void (*onChange)(float oldValue)) {
     if (cvarCount >= CON_MAX_VARS) {
         Console_Printf(RED, "ERROR: Variable registry full (max %d)", CON_MAX_VARS);
         return;
@@ -158,12 +160,21 @@ void Console_RegisterVarEx(const char* name, void* ptr, CVarType type, float min
             return;
         }
     }
-    cvars[cvarCount] = (CVar){name, ptr, type, min, max, help};
+    cvars[cvarCount] = (CVar){name, ptr, type, min, max, help, onChange};
     cvarCount++;
 }
 
 void Console_RegisterVar(const char* name, void* ptr, CVarType type) {
-    Console_RegisterVarEx(name, ptr, type, 0, 0, NULL);
+    Console_RegisterVarEx(name, ptr, type, 0, 0, NULL, NULL);
+}
+
+static float CVarValue(const CVar* v) {
+    switch (v->type) {
+        case CVAR_BOOL:  return *(bool*)v->ptr ? 1.0f : 0.0f;
+        case CVAR_INT:   return (float)*(int*)v->ptr;
+        case CVAR_FLOAT: return *(float*)v->ptr;
+    }
+    return 0.0f;
 }
 
 void Console_Toggle(void) {
@@ -522,6 +533,7 @@ const char* Console_GetVarString(const char* name) {
 bool Console_SetVar(const char* name, const char* valueStr) {
     CVar* v = FindCVar(name);
     if (!v) return false;
+    float oldValue = CVarValue(v);
     switch (v->type) {
         case CVAR_BOOL:
             if (strcmp(valueStr, "true") == 0 || strcmp(valueStr, "1") == 0) *(bool*)v->ptr = true;
@@ -547,6 +559,7 @@ bool Console_SetVar(const char* name, const char* valueStr) {
             break;
         }
     }
+    if (v->onChange && CVarValue(v) != oldValue) v->onChange(oldValue);
     return true;
 }
 
@@ -1326,22 +1339,13 @@ void Console_RegisterGameVars(void) {
     Console_RegisterVar("wallRepStr", &wallRepulsionStrength, CVAR_FLOAT);
 
     // Time (from time.c)
-    Console_RegisterVar("fixedTime", &useFixedTimestep, CVAR_BOOL);
     Console_RegisterVar("time", &timeOfDay, CVAR_FLOAT);
-    Console_RegisterVar("speed", &gameSpeed, CVAR_FLOAT);
-    Console_RegisterVar("dayLen", &dayLength, CVAR_FLOAT);
 
     // Simulation toggles
     Console_RegisterVar("wear", &groundWearEnabled, CVAR_BOOL);
-    Console_RegisterVar("weather", &weatherEnabled, CVAR_BOOL);
     Console_RegisterVar("lighting", &lightingEnabled, CVAR_BOOL);
     Console_RegisterVar("skyLight", &skyLightEnabled, CVAR_BOOL);
     Console_RegisterVar("blockLight", &blockLightEnabled, CVAR_BOOL);
-
-    // Simulation params
-    Console_RegisterVar("daysPerSzn", &daysPerSeason, CVAR_INT);
-    Console_RegisterVar("sznAmp", &seasonalAmplitude, CVAR_INT);
-    Console_RegisterVar("baseTemp", &baseSurfaceTemp, CVAR_INT);
 
     // Overlays
     Console_RegisterVar("tempOverlay", &showTemperatureOverlay, CVAR_BOOL);
