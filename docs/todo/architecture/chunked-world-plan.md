@@ -120,9 +120,9 @@ functions (`GetWallMaterial(x, y, z)`), usable as an lvalue:
 
 ```c
 // grid.h
-#define GRID(x, y, z)        grid[CELL_AT(x, y, z)]
-#define CELL_FLAGS(x, y, z)  cellFlags[CELL_AT(x, y, z)]
-#define WATER(x, y, z)       waterGrid[CELL_AT(x, y, z)]
+#define GRID(x, y, z)        (grid CELL_AT(x, y, z))       // CELL_AT supplies the brackets
+#define CELL_FLAGS(x, y, z)  (cellFlags CELL_AT(x, y, z))
+#define WATER(x, y, z)       (waterGrid CELL_AT(x, y, z))
 ...                          // one per layer, next to its extern
 ```
 
@@ -135,7 +135,7 @@ macros inside.
 `[z][y][x]` arrays, the macros map straight onto them:
 
 ```c
-#define CELL_AT(x, y, z)  [z][y][x]          // phase A: GRID(x,y,z) -> grid[z][y][x]
+#define CELL_AT(x, y, z)  [(z)][(y)][(x)]    // phase A: GRID(x,y,z) -> (grid[z][y][x])
 ```
 
 so every rewrite commit compiles to the same code. Rewrite with ast-grep, one layer (or
