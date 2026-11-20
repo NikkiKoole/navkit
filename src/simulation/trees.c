@@ -144,7 +144,17 @@ static void GetTreeHeightRange(MaterialType treeMat, int* outMin, int* outMax) {
     }
 }
 
+// Big maps: a full scan every tick costs ~8 ms at 512x512x16, so each tick visits one
+// band of rows (all z levels) and hands it the time that built up since its last turn
+// (growth thresholds are game-hours, far longer than a sweep). Maps up to
+// TREE_CELLS_PER_TICK cells are one band: every cell, every tick, as before.
+#define TREE_CELLS_PER_TICK (256 * 1024)
+#define TREE_MAX_BANDS 64
+static float treeBandDt[TREE_MAX_BANDS], treeBandSeasonalDt[TREE_MAX_BANDS];
+static int treeBandCount = 0, treeBandNext = 0;
+
 void InitTrees(void) {
+    treeBandCount = 0;   // new world: restart the sweep
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
@@ -518,16 +528,32 @@ static void GrowCell(int x, int y, int z) {
 }
 
 // Run one tick of tree growth simulation
-void TreesTick(float dt) {
+void TreesTick(float tickDt) {
     bool hasGrowing = (treeActiveCells > 0);
     bool hasRegen = (treeRegenCells > 0);
 
     // Early exit: nothing to grow and nothing to regenerate
-    if (!hasGrowing && !hasRegen) return;
+    if (!hasGrowing && !hasRegen) { treeBandCount = 0; return; }
 
     // Seasonal modulation: trees grow in spurts (fast spring, dormant winter)
     float seasonMod = GetVegetationGrowthRate();
-    float seasonalDt = dt * seasonMod;
+
+    long cells = (long)gridWidth * gridHeight * gridDepth;
+    int bands = (int)((cells + TREE_CELLS_PER_TICK - 1) / TREE_CELLS_PER_TICK);
+    if (bands < 1) bands = 1;
+    if (bands > TREE_MAX_BANDS) bands = TREE_MAX_BANDS;
+    if (bands > gridHeight) bands = gridHeight;
+    if (bands != treeBandCount) {          // first tick, map size changed, or was idle
+        treeBandCount = bands; treeBandNext = 0;
+        for (int b = 0; b < TREE_MAX_BANDS; b++) treeBandDt[b] = treeBandSeasonalDt[b] = 0.0f;
+    }
+    for (int b = 0; b < bands; b++) { treeBandDt[b] += tickDt; treeBandSeasonalDt[b] += tickDt * seasonMod; }
+    int band = treeBandNext;
+    treeBandNext = (treeBandNext + 1) % bands;
+    float dt = treeBandDt[band], seasonalDt = treeBandSeasonalDt[band];
+    treeBandDt[band] = treeBandSeasonalDt[band] = 0.0f;
+    int yStart = (int)((long)gridHeight * band / bands);
+    int yEnd = (int)((long)gridHeight * (band + 1) / bands);
 
     float saplingThreshold = GameHoursToGameSeconds(saplingGrowGH);
     float trunkThreshold = GameHoursToGameSeconds(trunkGrowGH);
@@ -536,7 +562,7 @@ void TreesTick(float dt) {
     float leafThreshold = GameHoursToGameSeconds(LEAF_DECAY_GH);
 
     for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
+        for (int y = yStart; y < yEnd; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 CellType cell = grid[z][y][x];
 

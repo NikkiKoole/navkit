@@ -7,6 +7,7 @@
 #include "../src/world/pathfinding.h"
 #include "../src/world/designations.h"
 #include "../src/simulation/trees.h"
+#include "../src/core/sim_manager.h"
 #include "../src/simulation/groundwear.h"
 #include "../src/entities/items.h"
 #include "../src/entities/stockpiles.h"
@@ -875,6 +876,46 @@ describe(stockpile_sapling_filter) {
 // End-to-End: Full Tree Lifecycle
 // =============================================================================
 
+describe(tree_banded_sweep) {
+    // Big maps visit one band of rows per tick (TreesTick); each band gets the time
+    // that built up since its last turn, so growth time adds up exactly as before
+    it("should give every sapling the full elapsed time on a multi-band map") {
+        InitGridWithSizeAndChunkSize(256, 256, 8, 8);   // 256*256*16 cells: 4 bands
+        gridDepth = 16;
+        for (int z = 0; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++) {
+                    grid[z][y][x] = z == 0 ? CELL_WALL : CELL_AIR;
+                    if (z == 0) { SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0); }
+                }
+        InitTrees();
+        InitSimActivity();                               // earlier tests leave counters behind
+        ClearItems();
+        float originalGH = saplingGrowGH;
+        saplingGrowGH = 1000.0f;                         // don't grow: just accumulate
+        int rows[] = {3, 70, 140, 250};                  // one sapling per band
+        float start[4];
+        for (int i = 0; i < 4; i++) {
+            PlaceSapling(10, rows[i], 1, MAT_OAK);
+            start[i] = growthTimer[1][rows[i]][10];      // saplings start at a random offset
+        }
+        float rate = GetVegetationGrowthRate();
+        for (int t = 0; t < 8; t++) TreesTick(0.5f);     // two full sweeps
+        // band b was last visited on tick b+4 and got everything up to then (b+5 ticks);
+        // the rest is waiting for its next turn
+        for (int i = 0; i < 4; i++) {
+            float got = growthTimer[1][rows[i]][10] - start[i];
+            float want = (i + 5) * 0.5f * rate;
+            expect(got > want - 0.01f && got < want + 0.01f);
+        }
+
+        saplingGrowGH = 0.01f;                           // now they all grow
+        for (int t = 0; t < 8; t++) TreesTick(1.0f);
+        for (int i = 0; i < 4; i++) { expect(grid[1][rows[i]][10] == CELL_TREE_BRANCH); }
+        saplingGrowGH = originalGH;
+    }
+}
+
 describe(tree_full_lifecycle) {
     it("should support full plant->grow->chop cycle using direct calls") {
         SetupBasicGrid();
@@ -947,6 +988,7 @@ int main(int argc, char* argv[]) {
     test(sapling_trampling);
     test(stockpile_sapling_filter);
     test(tree_full_lifecycle);
+    test(tree_banded_sweep);
     
     return summary();
 }

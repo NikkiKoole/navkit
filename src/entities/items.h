@@ -161,10 +161,12 @@ void PushItemsOutOfCell(int x, int y, int z);
 void DropItemsInCell(int x, int y, int z);
 
 // Spatial grid for O(1) item lookups (tile-based, includes z-level)
+// Rebuilt every tick at a cost that depends on the number of ground items, not the map
+// size: a cell's items are a run in itemIndices starting at cellFirst[cell].
 typedef struct {
-    int* cellCounts;    // Number of ground items per cell
-    int* cellStarts;    // Prefix sum: start index for each cell in itemIndices
-    int* itemIndices;   // Item indices sorted by cell (only ON_GROUND items)
+    int* cellFirst;     // [cell] first entry in itemIndices for this cell, -1 = none
+    int* itemIndices;   // Item indices sorted by cell, then index (only ON_GROUND items)
+    int* itemCells;     // [entry] cell of itemIndices[entry]
     int gridW, gridH;   // Grid dimensions in tiles
     int gridD;          // Grid depth (z-levels)
     int cellCount;      // Total cells (gridW * gridH * gridD)
@@ -176,8 +178,15 @@ extern ItemSpatialGrid itemGrid;
 // Spatial grid functions
 void InitItemSpatialGrid(int tileWidth, int tileHeight, int depth);
 void FreeItemSpatialGrid(void);
-void BuildItemSpatialGrid(void);           // Optimized - iterates to itemHighWaterMark
-void BuildItemSpatialGridNaive(void);      // O(MAX_ITEMS) brute force
+void BuildItemSpatialGrid(void);           // iterates to itemHighWaterMark
+
+// Entries [*start, *end) of itemIndices for one cell (empty: start == end)
+static inline void ItemGridCellRange(int cellIdx, int* start, int* end) {
+    int s = itemGrid.cellFirst[cellIdx], e = s;
+    if (s >= 0) { while (e < itemGrid.groundItemCount && itemGrid.itemCells[e] == cellIdx) e++; }
+    else { s = e = 0; }
+    *start = s; *end = e;
+}
 
 // Query: returns item index at tile, or -1 if none
 int QueryItemAtTile(int tileX, int tileY, int z);

@@ -4136,8 +4136,8 @@ static void AssignJobs_P2c_Ignition(void) {
 
 __attribute__((noinline))
 static void AssignJobs_P3_ItemHaul(bool typeMatHasStockpile[][MAT_COUNT]) {
-    if (itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
-        int totalIndexed = itemGrid.cellStarts[itemGrid.cellCount];
+    if (itemGrid.cellFirst && itemGrid.groundItemCount > 0) {
+        int totalIndexed = itemGrid.groundItemCount;
         PROFILE_COUNT(items_scanned, totalIndexed);
 
         for (int t = 0; t < totalIndexed && idleMoverCount > 0; t++) {
@@ -4636,7 +4636,7 @@ int WorkGiver_Haul(int moverIdx) {
     int bestItemIdx = -1;
 
     // Use spatial grid with expanding radius if available
-    if (itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
+    if (itemGrid.cellFirst && itemGrid.groundItemCount > 0) {
         HaulFilterContext ctx = { .typeMatHasStockpile = typeMatHasStockpile };
 
         // Expanding radius search - find closest items first
@@ -7843,7 +7843,7 @@ static int FindNearestRecipeItem(int moverTileX, int moverTileY, int moverZ, flo
     float bestDistSq = 1e30f;
 
     // Try spatial grid first
-    if (itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
+    if (itemGrid.cellFirst && itemGrid.groundItemCount > 0) {
         int radii[] = {10, 25, 50, 100};
         int numRadii = sizeof(radii) / sizeof(radii[0]);
         for (int r = 0; r < numRadii && bestItemIdx < 0; r++) {

@@ -121,6 +121,24 @@ What it says:
   - `BuildItemSpatialGrid` (second in the sample, plus `bzero`): rebuilds/clears a whole-map
     grid every tick with almost no items. Clear only touched cells, or rebuild on change.
   Fixing those two should bring 512 to roughly 12-14 ms per tick (estimate).
+  **Done (2026-11-20), better than estimated:** 512 is now **5.1 ms per tick** (was 27.8).
+  - Trees: a rotating sweep, one band of rows per tick with the time built up since its
+    last turn; bands = cells / 256K (maps up to 64x64x16 stay one band, as before).
+    7.9 -> 0.4 ms. Growth lags by at most one sweep (16 ticks at 512).
+  - Item grid: kept the sorted item list (same order for the haul scan) but replaced the
+    full-map count/prefix-sum arrays with a per-cell first-entry index; a rebuild clears
+    only the cells it filled last time and radix-sorts the ground items. 6.1 -> 0.05 ms.
+
+  | ms per tick (avg), after | 128 | 256 | 512 |
+  |---|---|---|---|
+  | **whole tick** | **2.7** | **2.9** | **5.1** |
+  | Trees | 0.4 | 0.4 | 0.4 |
+  | Grid | 0.01 | 0.01 | 0.05 |
+  | Water | 2.0 | 1.5 | 1.7 |
+  | Temperature | 0.1 | 0.5 | 1.6 |
+  | Snow | 0.05 | 0.2 | 0.6 |
+
+  Now the biggest area-scaled costs are temperature and snow (active-chunk candidates).
 - Water stays ~2.5-3 ms at every size: it already works on active cells only.
   Temperature/freezing and snow grow with area: candidates for active-chunk simulation.
 
@@ -149,6 +167,6 @@ this, so every headless run was the same world; now fixed.)
    (hubs: 970 field hits, 0 too big). **Later:** build fields only along the abstract route
    (nextEnt chain), seeding other exits from abstract dist + a safety margin, so far goals on
    big maps can use shared fields too (right now they are simply too big).
-2. Cheap wins: tree tick and item spatial grid not sweeping the whole map.
+2. Cheap wins: tree tick and item spatial grid. **Done (2026-11-20)**, see above.
 3. Then per-chunk edges + layers sized to the map (improvements 1 and 2), and re-measure
    with a test build at 1024.

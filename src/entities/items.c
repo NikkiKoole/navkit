@@ -191,7 +191,7 @@ static bool NearestUnreservedIterator(int itemIdx, float distSq, void* userData)
 // Optimized implementation using spatial grid with expanding radius
 int FindNearestUnreservedItem(float x, float y, float z) {
     // Fall back to naive if spatial grid not built
-    if (!itemGrid.cellCounts || itemGrid.groundItemCount == 0) {
+    if (!itemGrid.cellFirst || itemGrid.groundItemCount == 0) {
         return FindNearestUnreservedItemNaive(x, y, z);
     }
     
@@ -354,7 +354,7 @@ static inline int clampi_item(int v, int lo, int hi) {
 int FindGroundItemAtTile(int tileX, int tileY, int z) {
     // Use spatial grid for O(1) lookup if grid has been built with items
     // (groundItemCount > 0 means BuildItemSpatialGrid was called after items existed)
-    if (itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
+    if (itemGrid.cellFirst && itemGrid.groundItemCount > 0) {
         return QueryItemAtTile(tileX, tileY, z);
     }
     
@@ -488,7 +488,7 @@ void DropItemsInCell(int x, int y, int z) {
 // (ItemRadiusIterator typedef is forward-declared above)
 static int IterateItemsInRadius(int tileX, int tileY, int z, int radiusTiles,
                                 ItemRadiusIterator iterator, void* userData) {
-    if (!itemGrid.cellCounts) return 0;
+    if (!itemGrid.cellFirst) return 0;
     if (z < 0 || z >= itemGrid.gridD) return 0;
     
     int visited = 0;
@@ -507,8 +507,8 @@ static int IterateItemsInRadius(int tileX, int tileY, int z, int radiusTiles,
         for (int ty = minTy; ty <= maxTy; ty++) {
             for (int tx = minTx; tx <= maxTx; tx++) {
                 int cellIdx = sz * (itemGrid.gridW * itemGrid.gridH) + ty * itemGrid.gridW + tx;
-                int start = itemGrid.cellStarts[cellIdx];
-                int end = itemGrid.cellStarts[cellIdx + 1];
+                int start, end;
+                ItemGridCellRange(cellIdx, &start, &end);
                 
                 for (int t = start; t < end; t++) {
                     int itemIdx = itemGrid.itemIndices[t];
@@ -586,8 +586,6 @@ int FindFirstItemInRadius(int tileX, int tileY, int z, int radiusTiles,
 
 ItemSpatialGrid itemGrid = {0};
 
-// Defined earlier, before QueryItemsInRadius
-
 void InitItemSpatialGrid(int tileWidth, int tileHeight, int depth) {
     FreeItemSpatialGrid();
     
@@ -599,86 +597,33 @@ void InitItemSpatialGrid(int tileWidth, int tileHeight, int depth) {
     
     if (itemGrid.cellCount <= 0) return;
     
-    itemGrid.cellCounts = (int*)calloc(itemGrid.cellCount, sizeof(int));
-    itemGrid.cellStarts = (int*)calloc(itemGrid.cellCount + 1, sizeof(int));
+    itemGrid.cellFirst = (int*)malloc(itemGrid.cellCount * sizeof(int));
     itemGrid.itemIndices = (int*)malloc(MAX_ITEMS * sizeof(int));
+    itemGrid.itemCells = (int*)malloc(MAX_ITEMS * sizeof(int));
+    if (!itemGrid.cellFirst || !itemGrid.itemIndices || !itemGrid.itemCells) { FreeItemSpatialGrid(); return; }
+    memset(itemGrid.cellFirst, 0xff, itemGrid.cellCount * sizeof(int));   // all -1
 }
 
 void FreeItemSpatialGrid(void) {
-    free(itemGrid.cellCounts);
-    free(itemGrid.cellStarts);
+    free(itemGrid.cellFirst);
     free(itemGrid.itemIndices);
-    itemGrid.cellCounts = NULL;
-    itemGrid.cellStarts = NULL;
+    free(itemGrid.itemCells);
+    itemGrid.cellFirst = NULL;
     itemGrid.itemIndices = NULL;
+    itemGrid.itemCells = NULL;
     itemGrid.cellCount = 0;
     itemGrid.groundItemCount = 0;
 }
 
-// Naive O(MAX_ITEMS) implementation - iterates entire array twice
-void BuildItemSpatialGridNaive(void) {
-    if (!itemGrid.cellCounts) return;
-    
-    // Phase 1: Clear counts
-    memset(itemGrid.cellCounts, 0, itemGrid.cellCount * sizeof(int));
-    itemGrid.groundItemCount = 0;
-    
-    // Phase 2: Count ground items per cell
-    for (int i = 0; i < MAX_ITEMS; i++) {
-        if (!items[i].active) continue;
-        if (items[i].state != ITEM_ON_GROUND) continue;
-        
-        int tx = (int)(items[i].x / CELL_SIZE);
-        int ty = (int)(items[i].y / CELL_SIZE);
-        int tz = (int)items[i].z;
-        
-        tx = clampi_item(tx, 0, itemGrid.gridW - 1);
-        ty = clampi_item(ty, 0, itemGrid.gridH - 1);
-        tz = clampi_item(tz, 0, itemGrid.gridD - 1);
-        
-        int cellIdx = tz * (itemGrid.gridW * itemGrid.gridH) + ty * itemGrid.gridW + tx;
-        itemGrid.cellCounts[cellIdx]++;
-        itemGrid.groundItemCount++;
-    }
-    
-    // Phase 3: Build prefix sum
-    itemGrid.cellStarts[0] = 0;
-    for (int c = 0; c < itemGrid.cellCount; c++) {
-        itemGrid.cellStarts[c + 1] = itemGrid.cellStarts[c] + itemGrid.cellCounts[c];
-    }
-    
-    // Phase 4: Reset counts to use as write cursors
-    for (int c = 0; c < itemGrid.cellCount; c++) {
-        itemGrid.cellCounts[c] = itemGrid.cellStarts[c];
-    }
-    
-    // Phase 5: Scatter item indices into cells
-    for (int i = 0; i < MAX_ITEMS; i++) {
-        if (!items[i].active) continue;
-        if (items[i].state != ITEM_ON_GROUND) continue;
-        
-        int tx = (int)(items[i].x / CELL_SIZE);
-        int ty = (int)(items[i].y / CELL_SIZE);
-        int tz = (int)items[i].z;
-        
-        tx = clampi_item(tx, 0, itemGrid.gridW - 1);
-        ty = clampi_item(ty, 0, itemGrid.gridH - 1);
-        tz = clampi_item(tz, 0, itemGrid.gridD - 1);
-        
-        int cellIdx = tz * (itemGrid.gridW * itemGrid.gridH) + ty * itemGrid.gridW + tx;
-        itemGrid.itemIndices[itemGrid.cellCounts[cellIdx]++] = i;
-    }
-}
-
-// Optimized - only iterates up to itemHighWaterMark
 void BuildItemSpatialGrid(void) {
-    if (!itemGrid.cellCounts) return;
+    if (!itemGrid.cellFirst) return;
+    static int tmpIdx[MAX_ITEMS], tmpCell[MAX_ITEMS];
     
-    // Phase 1: Clear counts
-    memset(itemGrid.cellCounts, 0, itemGrid.cellCount * sizeof(int));
-    itemGrid.groundItemCount = 0;
+    // Phase 1: clear only the cells the last build filled
+    for (int t = 0; t < itemGrid.groundItemCount; t++) itemGrid.cellFirst[itemGrid.itemCells[t]] = -1;
     
-    // Phase 2: Count ground items per cell (optimized range)
+    // Phase 2: collect ground items (in index order)
+    int n = 0;
     for (int i = 0; i < itemHighWaterMark; i++) {
         if (!items[i].active) continue;
         if (items[i].state != ITEM_ON_GROUND) continue;
@@ -691,49 +636,45 @@ void BuildItemSpatialGrid(void) {
         ty = clampi_item(ty, 0, itemGrid.gridH - 1);
         tz = clampi_item(tz, 0, itemGrid.gridD - 1);
         
-        int cellIdx = tz * (itemGrid.gridW * itemGrid.gridH) + ty * itemGrid.gridW + tx;
-        itemGrid.cellCounts[cellIdx]++;
-        itemGrid.groundItemCount++;
+        itemGrid.itemIndices[n] = i;
+        itemGrid.itemCells[n] = tz * (itemGrid.gridW * itemGrid.gridH) + ty * itemGrid.gridW + tx;
+        n++;
+    }
+    itemGrid.groundItemCount = n;
+    
+    // Phase 3: stable LSD radix sort by cell, 11 bits per pass (index order kept
+    // within a cell: same order as a full-map counting sort)
+    int* srcI = itemGrid.itemIndices; int* srcC = itemGrid.itemCells;
+    int* dstI = tmpIdx; int* dstC = tmpCell;
+    for (int shift = 0; (itemGrid.cellCount - 1) >> shift; shift += 11) {
+        int count[2048 + 1] = {0};
+        for (int t = 0; t < n; t++) count[((srcC[t] >> shift) & 2047) + 1]++;
+        for (int b = 0; b < 2048; b++) count[b + 1] += count[b];
+        for (int t = 0; t < n; t++) {
+            int d = count[(srcC[t] >> shift) & 2047]++;
+            dstI[d] = srcI[t]; dstC[d] = srcC[t];
+        }
+        int* ti = srcI; srcI = dstI; dstI = ti;
+        int* tc = srcC; srcC = dstC; dstC = tc;
+    }
+    if (srcI != itemGrid.itemIndices) {
+        memcpy(itemGrid.itemIndices, srcI, n * sizeof(int));
+        memcpy(itemGrid.itemCells, srcC, n * sizeof(int));
     }
     
-    // Phase 3: Build prefix sum
-    itemGrid.cellStarts[0] = 0;
-    for (int c = 0; c < itemGrid.cellCount; c++) {
-        itemGrid.cellStarts[c + 1] = itemGrid.cellStarts[c] + itemGrid.cellCounts[c];
-    }
-    
-    // Phase 4: Reset counts to use as write cursors
-    for (int c = 0; c < itemGrid.cellCount; c++) {
-        itemGrid.cellCounts[c] = itemGrid.cellStarts[c];
-    }
-    
-    // Phase 5: Scatter item indices into cells (optimized range)
-    for (int i = 0; i < itemHighWaterMark; i++) {
-        if (!items[i].active) continue;
-        if (items[i].state != ITEM_ON_GROUND) continue;
-        
-        int tx = (int)(items[i].x / CELL_SIZE);
-        int ty = (int)(items[i].y / CELL_SIZE);
-        int tz = (int)items[i].z;
-        
-        tx = clampi_item(tx, 0, itemGrid.gridW - 1);
-        ty = clampi_item(ty, 0, itemGrid.gridH - 1);
-        tz = clampi_item(tz, 0, itemGrid.gridD - 1);
-        
-        int cellIdx = tz * (itemGrid.gridW * itemGrid.gridH) + ty * itemGrid.gridW + tx;
-        itemGrid.itemIndices[itemGrid.cellCounts[cellIdx]++] = i;
-    }
+    // Phase 4: first entry of each cell
+    for (int t = n - 1; t >= 0; t--) itemGrid.cellFirst[itemGrid.itemCells[t]] = t;
 }
 
 int QueryItemAtTile(int tileX, int tileY, int z) {
-    if (!itemGrid.cellCounts) return -1;
+    if (!itemGrid.cellFirst) return -1;
     if (tileX < 0 || tileX >= itemGrid.gridW) return -1;
     if (tileY < 0 || tileY >= itemGrid.gridH) return -1;
     if (z < 0 || z >= itemGrid.gridD) return -1;
     
     int cellIdx = z * (itemGrid.gridW * itemGrid.gridH) + tileY * itemGrid.gridW + tileX;
-    int start = itemGrid.cellStarts[cellIdx];
-    int end = itemGrid.cellStarts[cellIdx + 1];
+    int start, end;
+    ItemGridCellRange(cellIdx, &start, &end);
     
     // Return first valid item found at this tile
     for (int t = start; t < end; t++) {
