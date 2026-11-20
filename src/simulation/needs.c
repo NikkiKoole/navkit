@@ -515,7 +515,11 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
     // Release stale item reservations: if mover is in FREETIME_NONE with no job,
     // they shouldn't have any items reserved. Scan and release any strays.
     // This catches cases where needTarget was cleared but reservedBy wasn't.
-    if (m->freetimeState == FREETIME_NONE && m->currentJobId < 0) {
+    // The scan covers every item, so it runs once a second per mover (staggered),
+    // not every tick: per tick it cost idle movers x items, which grows with map area
+    // (0.6 ms at 1024x1024 with 100 movers).
+    if (m->freetimeState == FREETIME_NONE && m->currentJobId < 0 &&
+        (currentTick + (unsigned long)moverIdx) % TICK_RATE == 0) {
         for (int i = 0; i < itemHighWaterMark; i++) {
             if (items[i].active && items[i].reservedBy == moverIdx) {
                 ReleaseItemReservation(i);

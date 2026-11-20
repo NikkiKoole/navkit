@@ -197,6 +197,8 @@ What grows with area now:
    Snow skips its pass while it isn't snowing and no snow or snowfall progress lies
    anywhere (conservative flag, set on SetSnowLevel/init/load). Per tick: 512 5.3 -> 3.1 ms,
    **1024 14.3 -> 6.0 ms** (freezing 5.8 -> 0.1, snow 2.6 -> 0.02).
+   Needs (0.6 ms at 1024): every idle mover scanned all items each tick for stray
+   reservations; now once a second per mover (staggered): 0.6 -> 0.02 ms. 1024: 5.9 ms/tick.
    **Next:** sizing layers to the map (memory), then long paths at 1024.
 1. Shared-goal field cascade (above). **Done (2026-11-20):** a walk may build at most 1000
    chunk fields (`NavHFlow.buildBudget`); over it the request uses HPA* (seed 16: 5 ms instead

@@ -1029,9 +1029,9 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, int ticks
         DesignationsTick(TICK_DT);
         PROFILE_END(Designations);
         PROFILE_BEGIN(Needs);
-        NeedsTick();
-        ProcessFreetimeNeeds();
-        MoodTick(TICK_DT);
+        PROFILE_BEGIN(NeedsTick); NeedsTick(); PROFILE_END(NeedsTick);
+        PROFILE_BEGIN(Freetime); ProcessFreetimeNeeds(); PROFILE_END(Freetime);
+        PROFILE_BEGIN(Mood); MoodTick(TICK_DT); PROFILE_END(Mood);
         PROFILE_END(Needs);
         PROFILE_BEGIN(Jobs);
         AssignJobs();
