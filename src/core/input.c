@@ -1922,6 +1922,265 @@ static void InterpolateBrushStroke(int x0, int y0, int x1, int y1, int z, int ra
         if (e2 < dx)  { err += dx; y += sy; }
     }
 }
+// ============================================================================
+// Tool handlers: what each action does on mouse release
+// ============================================================================
+//
+// One row per action: apply (left release), erase (right release), a param the
+// handler gets (workshop type, soil kind), and shiftDrag (runs at the mouse cell
+// while shift+left dragging, e.g. piling soil). Actions without a row do nothing
+// on release (categories, terrain sculpting which is a continuous brush).
+// Adding a tool: write a ToolFn (or wrap an Execute* with RECT_TOOL) and add a row.
+
+typedef struct {
+    int x1, y1, x2, y2, z;   // dragged rectangle (normalized, inclusive)
+    int startX, startY;      // drag start cell (single-cell tools)
+    int mouseX, mouseY;      // cell under the mouse on release
+    bool shift;
+    int param;               // ToolHandler.param
+} ToolArgs;
+
+typedef void (*ToolFn)(const ToolArgs* a);
+
+typedef struct {
+    ToolFn apply;            // left release
+    ToolFn erase;            // right release (NULL = nothing)
+    int param;
+    ToolFn shiftDrag;        // while shift+left dragging, at the mouse cell
+} ToolHandler;
+
+// Rectangle tools: Execute*(x1, y1, x2, y2, z [, shift])
+#define RECT_TOOL(fn) static void Tool_##fn(const ToolArgs* a) { fn(a->x1, a->y1, a->x2, a->y2, a->z); }
+#define RECT_TOOL_SHIFT(fn) static void Tool_##fn(const ToolArgs* a) { fn(a->x1, a->y1, a->x2, a->y2, a->z, a->shift); }
+
+RECT_TOOL(ExecuteBuildWall)          RECT_TOOL(ExecuteErase)
+RECT_TOOL(ExecuteBuildFloor)         RECT_TOOL(ExecuteBuildLadder)
+RECT_TOOL(ExecuteBuildRamp)          RECT_TOOL(ExecuteEraseRamp)
+RECT_TOOL(ExecuteCreateStockpile)    RECT_TOOL(ExecuteEraseStockpile)
+RECT_TOOL(ExecuteCreateRefusePile)
+RECT_TOOL(ExecuteDesignateMine)      RECT_TOOL(ExecuteCancelMine)
+RECT_TOOL(ExecuteDesignateChannel)   RECT_TOOL(ExecuteCancelChannel)
+RECT_TOOL(ExecuteDesignateDigRamp)   RECT_TOOL(ExecuteCancelDigRamp)
+RECT_TOOL(ExecuteDesignateRemoveFloor) RECT_TOOL(ExecuteCancelRemoveFloor)
+RECT_TOOL(ExecuteDesignateRemoveRamp)  RECT_TOOL(ExecuteCancelRemoveRamp)
+RECT_TOOL(ExecuteDesignateBuild)     RECT_TOOL(ExecuteCancelBuild)
+RECT_TOOL(ExecuteDesignateLadder)    RECT_TOOL(ExecuteDesignateFloor)
+RECT_TOOL(ExecuteDesignateRamp)      RECT_TOOL(ExecuteDesignateFurniture)
+RECT_TOOL(ExecuteDesignateDoor)
+RECT_TOOL(ExecuteCreateGatherZone)   RECT_TOOL(ExecuteEraseGatherZone)
+RECT_TOOL(ExecuteDesignateChop)      RECT_TOOL(ExecuteCancelChop)
+RECT_TOOL(ExecuteDesignateChopFelled) RECT_TOOL(ExecuteCancelChopFelled)
+RECT_TOOL(ExecuteDesignateGatherSapling) RECT_TOOL(ExecuteCancelGatherSapling)
+RECT_TOOL(ExecuteDesignateGatherGrass) RECT_TOOL(ExecuteCancelGatherGrass)
+RECT_TOOL(ExecuteDesignateGatherReeds) RECT_TOOL(ExecuteCancelGatherReeds)
+RECT_TOOL(ExecuteDesignateGatherTree) RECT_TOOL(ExecuteCancelGatherTree)
+RECT_TOOL(ExecuteDesignatePlantSapling) RECT_TOOL(ExecuteCancelPlantSapling)
+RECT_TOOL(ExecuteDesignateClean)     RECT_TOOL(ExecuteCancelClean)
+RECT_TOOL(ExecuteDesignateHarvestBerry) RECT_TOOL(ExecuteCancelHarvestBerry)
+RECT_TOOL(ExecuteDesignateKnap)      RECT_TOOL(ExecuteCancelKnap)
+RECT_TOOL(ExecuteDesignateDigRoots)  RECT_TOOL(ExecuteCancelDigRoots)
+RECT_TOOL(ExecuteCancelExplore)
+RECT_TOOL(ExecuteMarkHunt)           RECT_TOOL(ExecuteUnmarkHunt)
+RECT_TOOL(ExecuteDesignateFarm)      RECT_TOOL(ExecuteCancelFarm)
+RECT_TOOL(ExecutePlaceHeat)          RECT_TOOL(ExecuteRemoveHeat)
+RECT_TOOL(ExecutePlaceCold)          RECT_TOOL(ExecuteRemoveCold)
+RECT_TOOL(ExecutePlaceSmoke)         RECT_TOOL(ExecuteRemoveSmoke)
+RECT_TOOL(ExecutePlaceSteam)         RECT_TOOL(ExecuteRemoveSteam)
+RECT_TOOL(ExecutePlaceGrass)         RECT_TOOL(ExecuteRemoveGrass)
+RECT_TOOL(ExecutePlaceBush)          RECT_TOOL(ExecuteRemoveBush)
+RECT_TOOL(ExecuteRemoveTree)
+RECT_TOOL_SHIFT(ExecutePlaceWater)   RECT_TOOL_SHIFT(ExecuteRemoveWater)
+RECT_TOOL_SHIFT(ExecutePlaceFire)    RECT_TOOL_SHIFT(ExecuteRemoveFire)
+#undef RECT_TOOL
+#undef RECT_TOOL_SHIFT
+
+// Single-cell tools
+static void Tool_DesignateExplore(const ToolArgs* a) { ExecuteDesignateExplore(a->x1, a->y1, a->z); }
+static void Tool_PlaceTree(const ToolArgs* a) { ExecutePlaceTree(a->x1, a->y1, a->z); }
+static void Tool_SpawnMover(const ToolArgs* a) { SpawnMoverAt(a->x1, a->y1, a->z); }
+
+static void Tool_PlaceLight(const ToolArgs* a) {
+    AddLightSource(a->x1, a->y1, a->z,
+                   (uint8_t)lightDefaultR, (uint8_t)lightDefaultG, (uint8_t)lightDefaultB,
+                   (uint8_t)lightDefaultIntensity);
+}
+static void Tool_RemoveLight(const ToolArgs* a) { RemoveLightSource(a->x1, a->y1, a->z); }
+
+// Workshops: param = WorkshopType. Draw mode places at the drag start; work mode
+// places a blueprint at the rectangle corner (same cell for a click).
+static void Tool_PlaceWorkshop(const ToolArgs* a) { ExecutePlaceWorkshop(a->startX, a->startY, a->z, (WorkshopType)a->param); }
+static void Tool_PlaceWorkshopBlueprint(const ToolArgs* a) { ExecutePlaceWorkshopBlueprint(a->x1, a->y1, a->z, (WorkshopType)a->param); }
+static void Tool_CancelWorkshopBlueprint(const ToolArgs* a) { ExecuteCancelWorkshopBlueprint(a->x1, a->y1, a->z); }
+
+// Soils: param = index into soilTools. Left drag fills the rectangle; shift+left
+// piles one block (gravity + spreading) at the drag start, and keeps piling at the
+// mouse while dragging.
+typedef enum { SOIL_TOOL_DIRT, SOIL_TOOL_CLAY, SOIL_TOOL_GRAVEL, SOIL_TOOL_SAND, SOIL_TOOL_PEAT, SOIL_TOOL_ROCK } SoilTool;
+static const struct { MaterialType mat; const char* name; } soilTools[] = {
+    [SOIL_TOOL_DIRT]   = {MAT_DIRT,    "dirt"},
+    [SOIL_TOOL_CLAY]   = {MAT_CLAY,    "clay"},
+    [SOIL_TOOL_GRAVEL] = {MAT_GRAVEL,  "gravel"},
+    [SOIL_TOOL_SAND]   = {MAT_SAND,    "sand"},
+    [SOIL_TOOL_PEAT]   = {MAT_PEAT,    "peat"},
+    [SOIL_TOOL_ROCK]   = {MAT_GRANITE, "rock"},
+};
+static void Tool_Soil(const ToolArgs* a) {
+    if (a->shift) {
+        ExecutePileSoil(a->startX, a->startY, a->z, CELL_WALL, soilTools[a->param].mat, soilTools[a->param].name);
+    } else if (a->param == SOIL_TOOL_ROCK) {
+        ExecuteBuildRock(a->x1, a->y1, a->x2, a->y2, a->z);
+    } else {
+        ExecuteBuildSoil(a->x1, a->y1, a->x2, a->y2, a->z, CELL_WALL, soilTools[a->param].mat, soilTools[a->param].name);
+    }
+}
+static void Tool_PileSoilAtMouse(const ToolArgs* a) {
+    ExecutePileSoil(a->mouseX, a->mouseY, a->z, CELL_WALL, soilTools[a->param].mat, soilTools[a->param].name);
+}
+
+// Track and platforms: stations are rebuilt after any change
+static void Tool_PlaceTrack(const ToolArgs* a) { ExecutePlaceTrack(a->x1, a->y1, a->x2, a->y2, a->z); RebuildStations(); }
+static void Tool_RemoveTrack(const ToolArgs* a) { ExecuteRemoveTrack(a->x1, a->y1, a->x2, a->y2, a->z); RebuildStations(); }
+static void Tool_PlacePlatform(const ToolArgs* a) { ExecutePlacePlatform(a->x1, a->y1, a->x2, a->y2, a->z); RebuildStations(); }
+static void Tool_RemovePlatform(const ToolArgs* a) { ExecuteRemovePlatform(a->x1, a->y1, a->x2, a->y2, a->z); RebuildStations(); }
+
+// Trains: spawn on the track cell under the mouse; right-click removes the train there
+static void Tool_SpawnTrain(const ToolArgs* a) {
+    if (GRID(a->mouseX, a->mouseY, a->z) != CELL_TRACK) {
+        AddMessage("Must place train on track", RED);
+        return;
+    }
+    int idx = SpawnTrain(a->mouseX, a->mouseY, a->z);
+    if (idx >= 0) AddMessage(TextFormat("Spawned train #%d", idx), GREEN);
+    else AddMessage("Max trains reached!", RED);
+}
+static void Tool_RemoveTrain(const ToolArgs* a) {
+    for (int i = 0; i < MAX_TRAINS; i++) {
+        if (!trains[i].active) continue;
+        if (trains[i].cellX != a->mouseX || trains[i].cellY != a->mouseY || trains[i].z != a->z) continue;
+        if (trains[i].lightCellX >= 0) {
+            RemoveLightSource(trains[i].lightCellX, trains[i].lightCellY, trains[i].z);
+        }
+        trains[i].active = false;
+        trainCount--;
+        AddMessage(TextFormat("Removed train #%d", i), ORANGE);
+        return;
+    }
+}
+
+#define WS_DRAW(w)  {Tool_PlaceWorkshop, NULL, w, NULL}
+#define WS_WORK(w)  {Tool_PlaceWorkshopBlueprint, Tool_CancelWorkshopBlueprint, w, NULL}
+#define SOIL(s)     {Tool_Soil, NULL, s, Tool_PileSoilAtMouse}
+#define PAIR(a, b)  {Tool_##a, Tool_##b, 0, NULL}
+
+static const ToolHandler toolHandlers[] = {
+    // Draw: direct level editing
+    [ACTION_DRAW_WALL]          = PAIR(ExecuteBuildWall, ExecuteErase),
+    [ACTION_DRAW_FLOOR]         = PAIR(ExecuteBuildFloor, ExecuteErase),
+    [ACTION_DRAW_LADDER]        = PAIR(ExecuteBuildLadder, ExecuteErase),
+    [ACTION_DRAW_RAMP]          = PAIR(ExecuteBuildRamp, ExecuteEraseRamp),
+    [ACTION_DRAW_STOCKPILE]     = PAIR(ExecuteCreateStockpile, ExecuteEraseStockpile),
+    [ACTION_DRAW_REFUSE_PILE]   = PAIR(ExecuteCreateRefusePile, ExecuteEraseStockpile),
+    [ACTION_DRAW_WORKSHOP_STONECUTTER]  = WS_DRAW(WORKSHOP_STONECUTTER),
+    [ACTION_DRAW_WORKSHOP_SAWMILL]      = WS_DRAW(WORKSHOP_SAWMILL),
+    [ACTION_DRAW_WORKSHOP_KILN]         = WS_DRAW(WORKSHOP_KILN),
+    [ACTION_DRAW_WORKSHOP_CHARCOAL_PIT] = WS_DRAW(WORKSHOP_CHARCOAL_PIT),
+    [ACTION_DRAW_WORKSHOP_HEARTH]       = WS_DRAW(WORKSHOP_HEARTH),
+    [ACTION_DRAW_WORKSHOP_DRYING_RACK]  = WS_DRAW(WORKSHOP_DRYING_RACK),
+    [ACTION_DRAW_WORKSHOP_ROPE_MAKER]   = WS_DRAW(WORKSHOP_ROPE_MAKER),
+    [ACTION_DRAW_WORKSHOP_CARPENTER]    = WS_DRAW(WORKSHOP_CARPENTER),
+    [ACTION_DRAW_WORKSHOP_CAMPFIRE]     = WS_DRAW(WORKSHOP_CAMPFIRE),
+    [ACTION_DRAW_WORKSHOP_GROUND_FIRE]  = WS_DRAW(WORKSHOP_GROUND_FIRE),
+    [ACTION_DRAW_WORKSHOP_BUTCHER]      = WS_DRAW(WORKSHOP_BUTCHER),
+    [ACTION_DRAW_WORKSHOP_COMPOST_PILE] = WS_DRAW(WORKSHOP_COMPOST_PILE),
+    [ACTION_DRAW_WORKSHOP_QUERN]        = WS_DRAW(WORKSHOP_QUERN),
+    [ACTION_DRAW_WORKSHOP_LOOM]         = WS_DRAW(WORKSHOP_LOOM),
+    [ACTION_DRAW_WORKSHOP_TANNING_RACK] = WS_DRAW(WORKSHOP_TANNING_RACK),
+    [ACTION_DRAW_WORKSHOP_TAILOR]       = WS_DRAW(WORKSHOP_TAILOR),
+    [ACTION_DRAW_WORKSHOP_MUD_MIXER]    = WS_DRAW(WORKSHOP_MUD_MIXER),
+    [ACTION_DRAW_WORKSHOP_STOVE]        = WS_DRAW(WORKSHOP_STOVE),
+    [ACTION_DRAW_WORKSHOP_COUNTER]      = WS_DRAW(WORKSHOP_COUNTER),
+    [ACTION_DRAW_SOIL_DIRT]     = SOIL(SOIL_TOOL_DIRT),
+    [ACTION_DRAW_SOIL_CLAY]     = SOIL(SOIL_TOOL_CLAY),
+    [ACTION_DRAW_SOIL_GRAVEL]   = SOIL(SOIL_TOOL_GRAVEL),
+    [ACTION_DRAW_SOIL_SAND]     = SOIL(SOIL_TOOL_SAND),
+    [ACTION_DRAW_SOIL_PEAT]     = SOIL(SOIL_TOOL_PEAT),
+    [ACTION_DRAW_SOIL_ROCK]     = SOIL(SOIL_TOOL_ROCK),
+    [ACTION_DRAW_TRACK]         = PAIR(PlaceTrack, RemoveTrack),
+    [ACTION_DRAW_PLATFORM]      = PAIR(PlacePlatform, RemovePlatform),
+    [ACTION_DRAW_TRAIN]         = PAIR(SpawnTrain, RemoveTrain),
+
+    // Work: designations and blueprints the movers carry out
+    [ACTION_WORK_MINE]          = PAIR(ExecuteDesignateMine, ExecuteCancelMine),
+    [ACTION_WORK_CHANNEL]       = PAIR(ExecuteDesignateChannel, ExecuteCancelChannel),
+    [ACTION_WORK_DIG_RAMP]      = PAIR(ExecuteDesignateDigRamp, ExecuteCancelDigRamp),
+    [ACTION_WORK_REMOVE_FLOOR]  = PAIR(ExecuteDesignateRemoveFloor, ExecuteCancelRemoveFloor),
+    [ACTION_WORK_REMOVE_RAMP]   = PAIR(ExecuteDesignateRemoveRamp, ExecuteCancelRemoveRamp),
+    [ACTION_WORK_CONSTRUCT]     = PAIR(ExecuteDesignateBuild, ExecuteCancelBuild),
+    [ACTION_WORK_LADDER]        = PAIR(ExecuteDesignateLadder, ExecuteCancelBuild),
+    [ACTION_WORK_FLOOR]         = PAIR(ExecuteDesignateFloor, ExecuteCancelBuild),
+    [ACTION_WORK_RAMP]          = PAIR(ExecuteDesignateRamp, ExecuteCancelBuild),
+    [ACTION_WORK_FURNITURE]     = PAIR(ExecuteDesignateFurniture, ExecuteCancelBuild),
+    [ACTION_WORK_DOOR]          = PAIR(ExecuteDesignateDoor, ExecuteCancelBuild),
+    [ACTION_WORK_WORKSHOP_CAMPFIRE]     = WS_WORK(WORKSHOP_CAMPFIRE),
+    [ACTION_WORK_WORKSHOP_GROUND_FIRE]  = WS_WORK(WORKSHOP_GROUND_FIRE),
+    [ACTION_WORK_WORKSHOP_BUTCHER]      = WS_WORK(WORKSHOP_BUTCHER),
+    [ACTION_WORK_WORKSHOP_COMPOST_PILE] = WS_WORK(WORKSHOP_COMPOST_PILE),
+    [ACTION_WORK_WORKSHOP_QUERN]        = WS_WORK(WORKSHOP_QUERN),
+    [ACTION_WORK_WORKSHOP_LOOM]         = WS_WORK(WORKSHOP_LOOM),
+    [ACTION_WORK_WORKSHOP_TANNING_RACK] = WS_WORK(WORKSHOP_TANNING_RACK),
+    [ACTION_WORK_WORKSHOP_TAILOR]       = WS_WORK(WORKSHOP_TAILOR),
+    [ACTION_WORK_WORKSHOP_MUD_MIXER]    = WS_WORK(WORKSHOP_MUD_MIXER),
+    [ACTION_WORK_WORKSHOP_STOVE]        = WS_WORK(WORKSHOP_STOVE),
+    [ACTION_WORK_WORKSHOP_COUNTER]      = WS_WORK(WORKSHOP_COUNTER),
+    [ACTION_WORK_WORKSHOP_DRYING_RACK]  = WS_WORK(WORKSHOP_DRYING_RACK),
+    [ACTION_WORK_WORKSHOP_ROPE_MAKER]   = WS_WORK(WORKSHOP_ROPE_MAKER),
+    [ACTION_WORK_WORKSHOP_CHARCOAL_PIT] = WS_WORK(WORKSHOP_CHARCOAL_PIT),
+    [ACTION_WORK_WORKSHOP_HEARTH]       = WS_WORK(WORKSHOP_HEARTH),
+    [ACTION_WORK_WORKSHOP_STONECUTTER]  = WS_WORK(WORKSHOP_STONECUTTER),
+    [ACTION_WORK_WORKSHOP_SAWMILL]      = WS_WORK(WORKSHOP_SAWMILL),
+    [ACTION_WORK_WORKSHOP_KILN]         = WS_WORK(WORKSHOP_KILN),
+    [ACTION_WORK_WORKSHOP_CARPENTER]    = WS_WORK(WORKSHOP_CARPENTER),
+    [ACTION_WORK_GATHER]        = PAIR(ExecuteCreateGatherZone, ExecuteEraseGatherZone),
+    [ACTION_WORK_CHOP]          = PAIR(ExecuteDesignateChop, ExecuteCancelChop),
+    [ACTION_WORK_CHOP_FELLED]   = PAIR(ExecuteDesignateChopFelled, ExecuteCancelChopFelled),
+    [ACTION_WORK_GATHER_SAPLING] = PAIR(ExecuteDesignateGatherSapling, ExecuteCancelGatherSapling),
+    [ACTION_WORK_GATHER_GRASS]  = PAIR(ExecuteDesignateGatherGrass, ExecuteCancelGatherGrass),
+    [ACTION_WORK_GATHER_REEDS]  = PAIR(ExecuteDesignateGatherReeds, ExecuteCancelGatherReeds),
+    [ACTION_WORK_GATHER_TREE]   = PAIR(ExecuteDesignateGatherTree, ExecuteCancelGatherTree),
+    [ACTION_WORK_PLANT_SAPLING] = PAIR(ExecuteDesignatePlantSapling, ExecuteCancelPlantSapling),
+    [ACTION_WORK_CLEAN]         = PAIR(ExecuteDesignateClean, ExecuteCancelClean),
+    [ACTION_WORK_HARVEST_BERRY] = PAIR(ExecuteDesignateHarvestBerry, ExecuteCancelHarvestBerry),
+    [ACTION_WORK_KNAP]          = PAIR(ExecuteDesignateKnap, ExecuteCancelKnap),
+    [ACTION_WORK_DIG_ROOTS]     = PAIR(ExecuteDesignateDigRoots, ExecuteCancelDigRoots),
+    [ACTION_WORK_EXPLORE]       = PAIR(DesignateExplore, ExecuteCancelExplore),
+    [ACTION_WORK_HUNT]          = PAIR(ExecuteMarkHunt, ExecuteUnmarkHunt),
+    [ACTION_WORK_FARM]          = PAIR(ExecuteDesignateFarm, ExecuteCancelFarm),
+
+    // Sandbox: simulation brushes and spawners
+    [ACTION_SANDBOX_WATER]      = PAIR(ExecutePlaceWater, ExecuteRemoveWater),
+    [ACTION_SANDBOX_FIRE]       = PAIR(ExecutePlaceFire, ExecuteRemoveFire),
+    [ACTION_SANDBOX_HEAT]       = PAIR(ExecutePlaceHeat, ExecuteRemoveHeat),
+    [ACTION_SANDBOX_COLD]       = PAIR(ExecutePlaceCold, ExecuteRemoveCold),
+    [ACTION_SANDBOX_SMOKE]      = PAIR(ExecutePlaceSmoke, ExecuteRemoveSmoke),
+    [ACTION_SANDBOX_STEAM]      = PAIR(ExecutePlaceSteam, ExecuteRemoveSteam),
+    [ACTION_SANDBOX_GRASS]      = PAIR(ExecutePlaceGrass, ExecuteRemoveGrass),
+    [ACTION_SANDBOX_TREE]       = PAIR(PlaceTree, ExecuteRemoveTree),
+    [ACTION_SANDBOX_LIGHT]      = PAIR(PlaceLight, RemoveLight),
+    [ACTION_SANDBOX_BUSH]       = PAIR(ExecutePlaceBush, ExecuteRemoveBush),
+    [ACTION_SANDBOX_MOVER]      = {Tool_SpawnMover, NULL, 0, NULL},
+    // ACTION_SANDBOX_SCULPT/LOWER/RAISE: continuous brush stroke, handled while dragging
+};
+#undef WS_DRAW
+#undef WS_WORK
+#undef SOIL
+#undef PAIR
+
+static const ToolHandler* GetToolHandler(InputAction action) {
+    if (action <= ACTION_NONE || (int)action >= (int)(sizeof(toolHandlers) / sizeof(toolHandlers[0]))) return NULL;
+    const ToolHandler* h = &toolHandlers[action];
+    return (h->apply || h->erase || h->shiftDrag) ? h : NULL;
+}
+
 
 // ============================================================================
 // Main Input Handler
@@ -2930,34 +3189,16 @@ void HandleInput(void) {
         lastBrushY = -1;
     }
 
-    // Pile mode: continuous placement while dragging with shift
+    // Shift+left drag: continuous placement at the mouse (soil piles)
     if (isDragging && shift && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-        Vector2 gp = ScreenToGrid(GetMousePosition());
-        int mouseX = (int)gp.x;
-        int mouseY = (int)gp.y;
-        
-        // Execute pile placement at current mouse position
-        switch (inputAction) {
-            case ACTION_DRAW_SOIL_DIRT:
-                ExecutePileSoil(mouseX, mouseY, z, CELL_WALL, MAT_DIRT, "dirt");
-                break;
-            case ACTION_DRAW_SOIL_CLAY:
-                ExecutePileSoil(mouseX, mouseY, z, CELL_WALL, MAT_CLAY, "clay");
-                break;
-            case ACTION_DRAW_SOIL_GRAVEL:
-                ExecutePileSoil(mouseX, mouseY, z, CELL_WALL, MAT_GRAVEL, "gravel");
-                break;
-            case ACTION_DRAW_SOIL_SAND:
-                ExecutePileSoil(mouseX, mouseY, z, CELL_WALL, MAT_SAND, "sand");
-                break;
-            case ACTION_DRAW_SOIL_PEAT:
-                ExecutePileSoil(mouseX, mouseY, z, CELL_WALL, MAT_PEAT, "peat");
-                break;
-            case ACTION_DRAW_SOIL_ROCK:
-                ExecutePileSoil(mouseX, mouseY, z, CELL_WALL, MAT_GRANITE, "rock");
-                break;
-            default:
-                break;
+        const ToolHandler* tool = GetToolHandler(inputAction);
+        if (tool && tool->shiftDrag) {
+            Vector2 gp = ScreenToGrid(GetMousePosition());
+            int mouseX = (int)gp.x;
+            int mouseY = (int)gp.y;
+            ToolArgs args = {mouseX, mouseY, mouseX, mouseY, z, dragStartX, dragStartY,
+                             mouseX, mouseY, shift, tool->param};
+            tool->shiftDrag(&args);
         }
     }
 
@@ -3001,424 +3242,13 @@ void HandleInput(void) {
         int x1, y1, x2, y2;
         GetDragRect(&x1, &y1, &x2, &y2);
 
-        switch (inputAction) {
-            // Draw actions
-            case ACTION_DRAW_WALL:
-                if (leftClick) ExecuteBuildWall(x1, y1, x2, y2, z);
-                else ExecuteErase(x1, y1, x2, y2, z);
-                break;
-            case ACTION_DRAW_FLOOR:
-                if (leftClick) ExecuteBuildFloor(x1, y1, x2, y2, z);
-                else ExecuteErase(x1, y1, x2, y2, z);
-                break;
-            case ACTION_DRAW_LADDER:
-                if (leftClick) ExecuteBuildLadder(x1, y1, x2, y2, z);
-                else ExecuteErase(x1, y1, x2, y2, z);
-                break;
-            case ACTION_DRAW_RAMP:
-                if (leftClick) ExecuteBuildRamp(x1, y1, x2, y2, z);
-                else ExecuteEraseRamp(x1, y1, x2, y2, z);
-                break;
-            case ACTION_DRAW_STOCKPILE:
-                if (leftClick) ExecuteCreateStockpile(x1, y1, x2, y2, z);
-                else ExecuteEraseStockpile(x1, y1, x2, y2, z);
-                break;
-            case ACTION_DRAW_REFUSE_PILE:
-                if (leftClick) ExecuteCreateRefusePile(x1, y1, x2, y2, z);
-                else ExecuteEraseStockpile(x1, y1, x2, y2, z);
-                break;
-            case ACTION_DRAW_WORKSHOP_STONECUTTER:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_STONECUTTER);
-                break;
-            case ACTION_DRAW_WORKSHOP_SAWMILL:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_SAWMILL);
-                break;
-            case ACTION_DRAW_WORKSHOP_KILN:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_KILN);
-                break;
-            case ACTION_DRAW_WORKSHOP_CHARCOAL_PIT:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_CHARCOAL_PIT);
-                break;
-            case ACTION_DRAW_WORKSHOP_HEARTH:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_HEARTH);
-                break;
-            case ACTION_DRAW_WORKSHOP_DRYING_RACK:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_DRYING_RACK);
-                break;
-            case ACTION_DRAW_WORKSHOP_ROPE_MAKER:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_ROPE_MAKER);
-                break;
-            case ACTION_DRAW_WORKSHOP_CARPENTER:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_CARPENTER);
-                break;
-            case ACTION_DRAW_WORKSHOP_CAMPFIRE:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_CAMPFIRE);
-                break;
-            case ACTION_DRAW_WORKSHOP_GROUND_FIRE:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_GROUND_FIRE);
-                break;
-            case ACTION_DRAW_WORKSHOP_BUTCHER:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_BUTCHER);
-                break;
-            case ACTION_DRAW_WORKSHOP_COMPOST_PILE:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_COMPOST_PILE);
-                break;
-            case ACTION_DRAW_WORKSHOP_QUERN:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_QUERN);
-                break;
-            case ACTION_DRAW_WORKSHOP_LOOM:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_LOOM);
-                break;
-            case ACTION_DRAW_WORKSHOP_TANNING_RACK:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_TANNING_RACK);
-                break;
-            case ACTION_DRAW_WORKSHOP_TAILOR:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_TAILOR);
-                break;
-            case ACTION_DRAW_WORKSHOP_MUD_MIXER:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_MUD_MIXER);
-                break;
-            case ACTION_DRAW_WORKSHOP_STOVE:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_STOVE);
-                break;
-            case ACTION_DRAW_WORKSHOP_COUNTER:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_COUNTER);
-                break;
-            case ACTION_DRAW_SOIL_DIRT:
-                if (leftClick) {
-                    if (shift) {
-                        // Pile mode - place single block at drag start with gravity/spreading
-                        ExecutePileSoil(dragStartX, dragStartY, z, CELL_WALL, MAT_DIRT, "dirt");
-                    } else {
-                        ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_WALL, MAT_DIRT, "dirt");
-                    }
-                }
-                break;
-            case ACTION_DRAW_SOIL_CLAY:
-                if (leftClick) {
-                if (shift) {
-                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_WALL, MAT_CLAY, "clay");
-                } else {
-                    ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_WALL, MAT_CLAY, "clay");
-                }
-                }
-                break;
-            case ACTION_DRAW_SOIL_GRAVEL:
-                if (leftClick) {
-                if (shift) {
-                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_WALL, MAT_GRAVEL, "gravel");
-                } else {
-                    ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_WALL, MAT_GRAVEL, "gravel");
-                }
-                }
-                break;
-            case ACTION_DRAW_SOIL_SAND:
-                if (leftClick) {
-                if (shift) {
-                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_WALL, MAT_SAND, "sand");
-                } else {
-                    ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_WALL, MAT_SAND, "sand");
-                }
-                }
-                break;
-            case ACTION_DRAW_SOIL_PEAT:
-                if (leftClick) {
-                if (shift) {
-                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_WALL, MAT_PEAT, "peat");
-                } else {
-                    ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_WALL, MAT_PEAT, "peat");
-                }
-                }
-                break;
-            case ACTION_DRAW_SOIL_ROCK:
-                if (leftClick) {
-                if (shift) {
-                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_WALL, MAT_GRANITE, "rock");
-                } else {
-                    ExecuteBuildRock(x1, y1, x2, y2, z);
-                }
-                }
-                break;
-            // Work actions
-            case ACTION_WORK_MINE:
-                if (leftClick) ExecuteDesignateMine(x1, y1, x2, y2, z);
-                else ExecuteCancelMine(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_CHANNEL:
-                if (leftClick) ExecuteDesignateChannel(x1, y1, x2, y2, z);
-                else ExecuteCancelChannel(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_DIG_RAMP:
-                if (leftClick) ExecuteDesignateDigRamp(x1, y1, x2, y2, z);
-                else ExecuteCancelDigRamp(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_REMOVE_FLOOR:
-                if (leftClick) ExecuteDesignateRemoveFloor(x1, y1, x2, y2, z);
-                else ExecuteCancelRemoveFloor(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_REMOVE_RAMP:
-                if (leftClick) ExecuteDesignateRemoveRamp(x1, y1, x2, y2, z);
-                else ExecuteCancelRemoveRamp(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_CONSTRUCT:
-                if (leftClick) ExecuteDesignateBuild(x1, y1, x2, y2, z);
-                else ExecuteCancelBuild(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_LADDER:
-                if (leftClick) ExecuteDesignateLadder(x1, y1, x2, y2, z);
-                else ExecuteCancelBuild(x1, y1, x2, y2, z);  // Reuse cancel logic
-                break;
-            case ACTION_WORK_FLOOR:
-                if (leftClick) ExecuteDesignateFloor(x1, y1, x2, y2, z);
-                else ExecuteCancelBuild(x1, y1, x2, y2, z);  // Reuse cancel logic
-                break;
-            case ACTION_WORK_RAMP:
-                if (leftClick) ExecuteDesignateRamp(x1, y1, x2, y2, z);
-                else ExecuteCancelBuild(x1, y1, x2, y2, z);  // Reuse cancel logic
-                break;
-            case ACTION_WORK_FURNITURE:
-                if (leftClick) ExecuteDesignateFurniture(x1, y1, x2, y2, z);
-                else ExecuteCancelBuild(x1, y1, x2, y2, z);  // Reuse cancel logic
-                break;
-            case ACTION_WORK_DOOR:
-                if (leftClick) ExecuteDesignateDoor(x1, y1, x2, y2, z);
-                else ExecuteCancelBuild(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_WORKSHOP_CAMPFIRE:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_CAMPFIRE);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_WORKSHOP_GROUND_FIRE:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_GROUND_FIRE);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_WORKSHOP_BUTCHER:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_BUTCHER);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_WORKSHOP_COMPOST_PILE:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_COMPOST_PILE);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_WORKSHOP_QUERN:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_QUERN);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_WORKSHOP_LOOM:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_LOOM);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_WORKSHOP_TANNING_RACK:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_TANNING_RACK);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_WORKSHOP_TAILOR:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_TAILOR);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_WORKSHOP_MUD_MIXER:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_MUD_MIXER);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_WORKSHOP_STOVE:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_STOVE);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_WORKSHOP_COUNTER:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_COUNTER);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_WORKSHOP_DRYING_RACK:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_DRYING_RACK);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_WORKSHOP_ROPE_MAKER:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_ROPE_MAKER);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_WORKSHOP_CHARCOAL_PIT:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_CHARCOAL_PIT);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_WORKSHOP_HEARTH:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_HEARTH);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_WORKSHOP_STONECUTTER:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_STONECUTTER);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_WORKSHOP_SAWMILL:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_SAWMILL);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_WORKSHOP_KILN:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_KILN);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_WORKSHOP_CARPENTER:
-                if (leftClick) ExecutePlaceWorkshopBlueprint(x1, y1, z, WORKSHOP_CARPENTER);
-                else ExecuteCancelWorkshopBlueprint(x1, y1, z);
-                break;
-            case ACTION_WORK_GATHER:
-                if (leftClick) ExecuteCreateGatherZone(x1, y1, x2, y2, z);
-                else ExecuteEraseGatherZone(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_CHOP:
-                if (leftClick) ExecuteDesignateChop(x1, y1, x2, y2, z);
-                else ExecuteCancelChop(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_CHOP_FELLED:
-                if (leftClick) ExecuteDesignateChopFelled(x1, y1, x2, y2, z);
-                else ExecuteCancelChopFelled(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_GATHER_SAPLING:
-                if (leftClick) ExecuteDesignateGatherSapling(x1, y1, x2, y2, z);
-                else ExecuteCancelGatherSapling(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_GATHER_GRASS:
-                if (leftClick) ExecuteDesignateGatherGrass(x1, y1, x2, y2, z);
-                else ExecuteCancelGatherGrass(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_GATHER_REEDS:
-                if (leftClick) ExecuteDesignateGatherReeds(x1, y1, x2, y2, z);
-                else ExecuteCancelGatherReeds(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_GATHER_TREE:
-                if (leftClick) ExecuteDesignateGatherTree(x1, y1, x2, y2, z);
-                else ExecuteCancelGatherTree(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_PLANT_SAPLING:
-                if (leftClick) ExecuteDesignatePlantSapling(x1, y1, x2, y2, z);
-                else ExecuteCancelPlantSapling(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_CLEAN:
-                if (leftClick) ExecuteDesignateClean(x1, y1, x2, y2, z);
-                else ExecuteCancelClean(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_HARVEST_BERRY:
-                if (leftClick) ExecuteDesignateHarvestBerry(x1, y1, x2, y2, z);
-                else ExecuteCancelHarvestBerry(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_KNAP:
-                if (leftClick) ExecuteDesignateKnap(x1, y1, x2, y2, z);
-                else ExecuteCancelKnap(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_DIG_ROOTS:
-                if (leftClick) ExecuteDesignateDigRoots(x1, y1, x2, y2, z);
-                else ExecuteCancelDigRoots(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_EXPLORE:
-                if (leftClick) ExecuteDesignateExplore(x1, y1, z);
-                else ExecuteCancelExplore(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_HUNT:
-                if (leftClick) ExecuteMarkHunt(x1, y1, x2, y2, z);
-                else ExecuteUnmarkHunt(x1, y1, x2, y2, z);
-                break;
-            case ACTION_WORK_FARM:
-                if (leftClick) ExecuteDesignateFarm(x1, y1, x2, y2, z);
-                else ExecuteCancelFarm(x1, y1, x2, y2, z);
-                break;
-            // Sandbox actions
-            case ACTION_SANDBOX_WATER:
-                if (leftClick) ExecutePlaceWater(x1, y1, x2, y2, z, shift);
-                else ExecuteRemoveWater(x1, y1, x2, y2, z, shift);
-                break;
-            case ACTION_SANDBOX_FIRE:
-                if (leftClick) ExecutePlaceFire(x1, y1, x2, y2, z, shift);
-                else ExecuteRemoveFire(x1, y1, x2, y2, z, shift);
-                break;
-            case ACTION_SANDBOX_HEAT:
-                if (leftClick) ExecutePlaceHeat(x1, y1, x2, y2, z);
-                else ExecuteRemoveHeat(x1, y1, x2, y2, z);
-                break;
-            case ACTION_SANDBOX_COLD:
-                if (leftClick) ExecutePlaceCold(x1, y1, x2, y2, z);
-                else ExecuteRemoveCold(x1, y1, x2, y2, z);
-                break;
-            case ACTION_SANDBOX_SMOKE:
-                if (leftClick) ExecutePlaceSmoke(x1, y1, x2, y2, z);
-                else ExecuteRemoveSmoke(x1, y1, x2, y2, z);
-                break;
-            case ACTION_SANDBOX_STEAM:
-                if (leftClick) ExecutePlaceSteam(x1, y1, x2, y2, z);
-                else ExecuteRemoveSteam(x1, y1, x2, y2, z);
-                break;
-            case ACTION_SANDBOX_GRASS:
-                if (leftClick) ExecutePlaceGrass(x1, y1, x2, y2, z);
-                else ExecuteRemoveGrass(x1, y1, x2, y2, z);
-                break;
-            case ACTION_SANDBOX_TREE:
-                if (leftClick) ExecutePlaceTree(x1, y1, z);  // Single click for tree placement
-                else ExecuteRemoveTree(x1, y1, x2, y2, z);
-                break;
-            case ACTION_SANDBOX_SCULPT:
-            case ACTION_SANDBOX_LOWER:
-            case ACTION_SANDBOX_RAISE:
-                // Brush sculpting handled in continuous stroke mode above
-                break;
-            case ACTION_SANDBOX_LIGHT:
-                if (leftClick) {
-                    AddLightSource(x1, y1, z,
-                        (uint8_t)lightDefaultR, (uint8_t)lightDefaultG, (uint8_t)lightDefaultB,
-                        (uint8_t)lightDefaultIntensity);
-                } else {
-                    RemoveLightSource(x1, y1, z);
-                }
-                break;
-            case ACTION_SANDBOX_BUSH:
-                if (leftClick) ExecutePlaceBush(x1, y1, x2, y2, z);
-                else ExecuteRemoveBush(x1, y1, x2, y2, z);
-                break;
-            case ACTION_SANDBOX_MOVER:
-                if (leftClick) SpawnMoverAt(x1, y1, z);
-                break;
-            case ACTION_DRAW_TRACK:
-                if (leftClick) ExecutePlaceTrack(x1, y1, x2, y2, z);
-                else ExecuteRemoveTrack(x1, y1, x2, y2, z);
-                RebuildStations();
-                break;
-            case ACTION_DRAW_PLATFORM:
-                if (leftClick) ExecutePlacePlatform(x1, y1, x2, y2, z);
-                else ExecuteRemovePlatform(x1, y1, x2, y2, z);
-                RebuildStations();
-                break;
-            case ACTION_DRAW_TRAIN:
-                if (leftClick) {
-                    // Spawn train on track cell
-                    if (GRID((int)mouseGrid.x, (int)mouseGrid.y, z) == CELL_TRACK) {
-                        int idx = SpawnTrain((int)mouseGrid.x, (int)mouseGrid.y, z);
-                        if (idx >= 0) {
-                            AddMessage(TextFormat("Spawned train #%d", idx), GREEN);
-                        } else {
-                            AddMessage("Max trains reached!", RED);
-                        }
-                    } else {
-                        AddMessage("Must place train on track", RED);
-                    }
-                } else {
-                    // Remove nearest train at clicked cell
-                    int removeIdx = -1;
-                    for (int i = 0; i < MAX_TRAINS; i++) {
-                        if (!trains[i].active) continue;
-                        if (trains[i].cellX == (int)mouseGrid.x && trains[i].cellY == (int)mouseGrid.y && trains[i].z == z) {
-                            removeIdx = i;
-                            break;
-                        }
-                    }
-                    if (removeIdx >= 0) {
-                        if (trains[removeIdx].lightCellX >= 0) {
-                            RemoveLightSource(trains[removeIdx].lightCellX, trains[removeIdx].lightCellY, trains[removeIdx].z);
-                        }
-                        trains[removeIdx].active = false;
-                        trainCount--;
-                        AddMessage(TextFormat("Removed train #%d", removeIdx), ORANGE);
-                    }
-                }
-                break;
-            default:
-                break;
+        // Run the tool for this action (toolHandlers table above HandleInput)
+        const ToolHandler* tool = GetToolHandler(inputAction);
+        if (tool) {
+            ToolArgs args = {x1, y1, x2, y2, z, dragStartX, dragStartY,
+                             (int)mouseGrid.x, (int)mouseGrid.y, shift, tool->param};
+            ToolFn fn = leftClick ? tool->apply : tool->erase;
+            if (fn) fn(&args);
         }
         done_execute:;
     }
