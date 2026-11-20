@@ -218,6 +218,16 @@ chunk border it reads a cell in another chunk: a silent change in logic, not a c
   with everything else.
 - Save format unchanged throughout (rows are still written in `[z][y][x]` order).
 
+### Phase A: done (2026-11-20)
+
+Commits `2b5fecf`..`44e5a6b`. 35 layers have macros; ~2,700 sites rewritten (src + tests),
+`saveload.c` rows go through `SAVE_ROW`/`LOAD_ROW`, `make test` runs
+`tools/check_layer_access.sh`. Verified: src and every test file compile to byte-identical
+machine code (`otool -t` on unity.c and each test .o, before vs after); the saveload change
+writes byte-identical saves, also after load + 200 ticks and for a v93 migration.
+Gotcha: ast-grep can't see inside macro bodies (helper macros in `grid.h`/`material.h`, a
+`#define` in `mover.c`, one in `test_mover.c`): those were done by hand/regex.
+
 ### Order and rules
 
 1. Wait until `ui-gamedef` (another agent's branch) is merged; then nobody else edits
