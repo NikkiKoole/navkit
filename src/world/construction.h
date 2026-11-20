@@ -104,6 +104,8 @@ typedef enum {
     CONSTRUCTION_REED_ROOF,              // 2 stages: 2 poles + 4 reeds (BUILD_FLOOR)
     CONSTRUCTION_GLASS_WINDOW,           // 1 stage: 2 glass + 2 sticks
     CONSTRUCTION_MORTAR_WALL,            // 1 stage: 3 mortar + 2 rocks
+    CONSTRUCTION_WORKSHOP_STOVE,         // 1 stage: 4 bricks + 2 clay
+    CONSTRUCTION_WORKSHOP_COUNTER,       // 1 stage: 3 planks
     CONSTRUCTION_RECIPE_COUNT,
 } ConstructionRecipeIndex;
 

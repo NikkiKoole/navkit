@@ -1039,6 +1039,53 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = 0,
         .materialFromSlot = 1,  // Rock material determines wall appearance
     },
+    // Kitchen stations (dollhouse): built in Work mode like any workshop
+    [CONSTRUCTION_WORKSHOP_STOVE] = {
+        .name = "Stove",
+        .buildCategory = BUILD_WORKSHOP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_BRICKS }},
+                    .altCount = 1,
+                    .count = 4,
+                    .anyBuildingMat = false,
+                },
+                {
+                    .alternatives = {{ .itemType = ITEM_CLAY }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 5.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
+    [CONSTRUCTION_WORKSHOP_COUNTER] = {
+        .name = "Counter",
+        .buildCategory = BUILD_WORKSHOP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_PLANKS }},
+                    .altCount = 1,
+                    .count = 3,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 1,
+            .buildTime = 3.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = -1,
+        .materialFromSlot = -1,
+    },
 };
 
 const ConstructionRecipe* GetConstructionRecipe(int recipeIndex) {
@@ -1085,6 +1132,8 @@ int GetConstructionRecipeForWorkshopType(int workshopType) {
         case WORKSHOP_TANNING_RACK: return CONSTRUCTION_WORKSHOP_TANNING_RACK;
         case WORKSHOP_TAILOR:       return CONSTRUCTION_WORKSHOP_TAILOR;
         case WORKSHOP_MUD_MIXER:   return CONSTRUCTION_WORKSHOP_MUD_MIXER;
+        case WORKSHOP_STOVE:       return CONSTRUCTION_WORKSHOP_STOVE;
+        case WORKSHOP_COUNTER:     return CONSTRUCTION_WORKSHOP_COUNTER;
         default: return -1;
     }
 }

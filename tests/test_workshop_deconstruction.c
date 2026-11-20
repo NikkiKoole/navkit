@@ -138,8 +138,23 @@ describe(recipe_mapping) {
             expect(ri >= 0);
             const ConstructionRecipe* r = GetConstructionRecipe(ri);
             expect(r != NULL);
+            if (!r) continue;   // expect() doesn't stop the test; don't dereference NULL
             expect(r->buildCategory == BUILD_WORKSHOP);
             expect(r->stageCount >= 1);
+        }
+    }
+
+    // Work-mode placement goes recipe -> workshop type; every type must round-trip
+    // (Mud Mixer, Stove and Counter once failed here and could not be placed).
+    it("should place a blueprint for every workshop type") {
+        for (int t = 0; t < WORKSHOP_TYPE_COUNT; t++) {
+            SetupDeconstructTest();
+            InitDesignations();
+            int ri = GetConstructionRecipeForWorkshopType(t);
+            int bp = CreateWorkshopBlueprint(2, 2, 0, ri);
+            if (bp < 0) printf("  no blueprint for %s\n", workshopDefs[t].displayName);
+            expect(bp >= 0);
+            if (bp >= 0) expect(blueprints[bp].workshopType == t);
         }
     }
 }
@@ -622,5 +637,5 @@ int main(int argc, char* argv[]) {
     test(multiple_workshops);
     test(delete_workshop_cleanup);
 
-    return 0;
+    return summary();
 }

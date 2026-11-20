@@ -2367,27 +2367,13 @@ int CreateWorkshopBlueprint(int originX, int originY, int z, int recipeIndex) {
     const ConstructionRecipe* recipe = GetConstructionRecipe(recipeIndex);
     if (!recipe || recipe->buildCategory != BUILD_WORKSHOP) return -1;
 
-    // Map recipe to workshop type
+    // Map recipe to workshop type: the inverse of GetConstructionRecipeForWorkshopType,
+    // so the two can't drift apart (this list once missed Mud Mixer, Stove and Counter).
     int workshopType = -1;
-    switch (recipeIndex) {
-        case CONSTRUCTION_WORKSHOP_CAMPFIRE:     workshopType = WORKSHOP_CAMPFIRE; break;
-        case CONSTRUCTION_WORKSHOP_DRYING_RACK:  workshopType = WORKSHOP_DRYING_RACK; break;
-        case CONSTRUCTION_WORKSHOP_ROPE_MAKER:   workshopType = WORKSHOP_ROPE_MAKER; break;
-        case CONSTRUCTION_WORKSHOP_CHARCOAL_PIT: workshopType = WORKSHOP_CHARCOAL_PIT; break;
-        case CONSTRUCTION_WORKSHOP_HEARTH:       workshopType = WORKSHOP_HEARTH; break;
-        case CONSTRUCTION_WORKSHOP_STONECUTTER:  workshopType = WORKSHOP_STONECUTTER; break;
-        case CONSTRUCTION_WORKSHOP_SAWMILL:      workshopType = WORKSHOP_SAWMILL; break;
-        case CONSTRUCTION_WORKSHOP_KILN:         workshopType = WORKSHOP_KILN; break;
-        case CONSTRUCTION_WORKSHOP_CARPENTER:    workshopType = WORKSHOP_CARPENTER; break;
-        case CONSTRUCTION_WORKSHOP_GROUND_FIRE:  workshopType = WORKSHOP_GROUND_FIRE; break;
-        case CONSTRUCTION_WORKSHOP_BUTCHER:      workshopType = WORKSHOP_BUTCHER; break;
-        case CONSTRUCTION_WORKSHOP_COMPOST_PILE: workshopType = WORKSHOP_COMPOST_PILE; break;
-        case CONSTRUCTION_WORKSHOP_QUERN:        workshopType = WORKSHOP_QUERN; break;
-        case CONSTRUCTION_WORKSHOP_LOOM:         workshopType = WORKSHOP_LOOM; break;
-        case CONSTRUCTION_WORKSHOP_TANNING_RACK: workshopType = WORKSHOP_TANNING_RACK; break;
-        case CONSTRUCTION_WORKSHOP_TAILOR:       workshopType = WORKSHOP_TAILOR; break;
-        default: return -1;
+    for (int t = 0; t < WORKSHOP_TYPE_COUNT; t++) {
+        if (GetConstructionRecipeForWorkshopType(t) == recipeIndex) { workshopType = t; break; }
     }
+    if (workshopType < 0) return -1;
 
     const WorkshopDef* def = &workshopDefs[workshopType];
 
