@@ -81,18 +81,19 @@ static int StepCost(NavWorld* w, NavPoint a, NavPoint b) {
         if (!NavCanEnterFrom(host, b.x, b.y, b.z, a.x, a.y)) return -1;
         return ((diag ? 14 : 10) * CellCost(host, b.x, b.y, b.z)) / 10;
     }
+    int climbExtra = fz_ClimbExtra(a.x, a.y, a.z, b.z > a.z ? 1 : -1);   // NAV_CLIMB_EXTRA
     if (dx == 0 && dy == 0) {
-        if (b.z == a.z + 1 && NavCanClimbUp(host, a.x, a.y, a.z)) best = CellCost(host, b.x, b.y, b.z);
-        if (b.z == a.z - 1 && NavCanClimbDown(host, a.x, a.y, a.z)) best = CellCost(host, b.x, b.y, b.z);
+        if (b.z == a.z + 1 && NavCanClimbUp(host, a.x, a.y, a.z)) best = CellCost(host, b.x, b.y, b.z) + climbExtra;
+        if (b.z == a.z - 1 && NavCanClimbDown(host, a.x, a.y, a.z)) best = CellCost(host, b.x, b.y, b.z) + climbExtra;
     }
     int ex, ey, hdx, hdy;
     if (b.z == a.z + 1 && NavRampUp(host, a.x, a.y, a.z, &ex, &ey) && ex == b.x && ey == b.y) {
-        int c = (14 * CellCost(host, b.x, b.y, b.z)) / 10;
+        int c = (14 * CellCost(host, b.x, b.y, b.z)) / 10 + climbExtra;
         if (best < 0 || c < best) best = c;
     }
     if (b.z == a.z - 1 && abs(dx) + abs(dy) == 1 && NavRampHighSide(host, b.x, b.y, b.z, &hdx, &hdy)
         && b.x + hdx == a.x && b.y + hdy == a.y && NavIsWalkable(host, b.x, b.y, b.z)) {
-        int c = (14 * CellCost(host, b.x, b.y, b.z)) / 10;
+        int c = (14 * CellCost(host, b.x, b.y, b.z)) / 10 + climbExtra;
         if (best < 0 || c < best) best = c;
     }
     return best;
@@ -717,8 +718,9 @@ int main(int argc, char** argv) {
         int gen;
         GenerateWorld(&gen);
         bool eight = Chance(75);
-        snprintf(worldDesc, sizeof(worldDesc), "seed %llu %s %dx%dx%d chunk %dx%d %s", seed, kGenNames[gen],
-                 map.w, map.h, map.d, chunkW, chunkH, eight ? "8dir" : "4dir");
+        fz_climbExtraOn = map.d > 1 && Chance(40);   // level changes cost extra (ladder queues)
+        snprintf(worldDesc, sizeof(worldDesc), "seed %llu %s %dx%dx%d chunk %dx%d %s%s", seed, kGenNames[gen],
+                 map.w, map.h, map.d, chunkW, chunkH, eight ? "8dir" : "4dir", fz_climbExtraOn ? " climb-extra" : "");
         worldFailures = 0;
         if (CountWalkable() < 2) continue;
 

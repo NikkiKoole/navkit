@@ -80,6 +80,17 @@ static inline int NavAffectedZ(void* host, int z, int* outZ) {
     if (z + 1 < m->d) outZ[n++] = z + 1;
     return n;
 }
+// Extra cost of a level change (stand-in for ladder queues): a fixed pseudo-random
+// value per (cell, direction) when fz_climbExtraOn, so every algorithm must agree
+static bool fz_climbExtraOn;
+static inline int fz_ClimbExtra(int x, int y, int z, int dz) {
+    if (!fz_climbExtraOn) return 0;
+    unsigned h = (unsigned)(x * 73856093) ^ (unsigned)(y * 19349663) ^ (unsigned)(z * 83492791) ^ (unsigned)(dz > 0 ? 0x5bd1e995 : 0x27d4eb2d);
+    h ^= h >> 13;
+    return (int)(h % 4u == 0 ? 0 : h % 120u);
+}
+#define NAV_CLIMB_EXTRA(host, x, y, z, dz) fz_ClimbExtra((x), (y), (z), (dz))
+
 static inline void NavOnChunkDirty(void* host, int x, int y, int z) {
     (void)host; (void)x; (void)y; (void)z;
 }

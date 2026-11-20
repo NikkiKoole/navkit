@@ -29,6 +29,14 @@
 #define NAV_REGION_WALKABLE NavIsWalkable
 #endif
 
+// Optional extra cost of changing level from (x,y,z) by dz (+1 up, -1 down) via a
+// ladder or ramp there, e.g. the expected wait in a ladder queue. Added to that
+// step by every search (A*, nearest, flow fields, HPA* link edges at query time,
+// hierarchical flow), so they stay consistent. Must be >= 0.
+#ifndef NAV_CLIMB_EXTRA
+#define NAV_CLIMB_EXTRA(host, x, y, z, dz) 0
+#endif
+
 // Forward declarations (reachability regions, defined further down)
 static void nav_RegMarkDirty(NavWorld* w, int x, int y, int z);
 static void nav_RegFree(NavWorld* w);
@@ -849,6 +857,15 @@ static void nav_FinalizeEdges(NavWorld* w, int sortedPrefix) {
     for (int e = 0; e < w->entranceNum; e++) w->adjStart[e + 1] += w->adjStart[e];
 }
 
+// Extra cost of a ladder/ramp link edge right now (NAV_CLIMB_EXTRA at its start)
+static inline int nav_LinkExtra(NavWorld* w, const NavGraphEdge* e) {
+    if (e->chunk >= 0) return 0;
+    const NavEntrance* F = &w->entranceList[e->from];
+    const NavEntrance* T = &w->entranceList[e->to];
+    (void)F; (void)T;
+    return NAV_CLIMB_EXTRA(NAV_HOSTP, F->x, F->y, F->z, T->z > F->z ? 1 : -1);
+}
+
 // Ladder and ramp links, both directions, each paying for the cell it enters
 // (same step rules as A*)
 static void nav_AddVerticalLinkEdges(NavWorld* w) {
@@ -1363,14 +1380,17 @@ static int nav_ForwardSearch(NavWorld* w, NavPoint start, NavPoint goal, bool us
         }
 
         if (bz + 1 < w->depth && NavCanClimbUp(NAV_HOSTP, bx, by, bz))
-            nav_ARelax(w, cur, bx, by, bz + 1, NavMoveCost(NAV_HOSTP, bx, by, bz + 1), goal, useH);
+            nav_ARelax(w, cur, bx, by, bz + 1, NavMoveCost(NAV_HOSTP, bx, by, bz + 1)
+                       + NAV_CLIMB_EXTRA(NAV_HOSTP, bx, by, bz, 1), goal, useH);
         if (bz > 0 && NavCanClimbDown(NAV_HOSTP, bx, by, bz))
-            nav_ARelax(w, cur, bx, by, bz - 1, NavMoveCost(NAV_HOSTP, bx, by, bz - 1), goal, useH);
+            nav_ARelax(w, cur, bx, by, bz - 1, NavMoveCost(NAV_HOSTP, bx, by, bz - 1)
+                       + NAV_CLIMB_EXTRA(NAV_HOSTP, bx, by, bz, -1), goal, useH);
 
         int ex, ey;
         if (bz + 1 < w->depth && NavRampUp(NAV_HOSTP, bx, by, bz, &ex, &ey)) {
             if (ex >= 0 && ex < w->width && ey >= 0 && ey < w->height)
-                nav_ARelax(w, cur, ex, ey, bz + 1, (14 * NavMoveCost(NAV_HOSTP, ex, ey, bz + 1)) / 10, goal, useH);
+                nav_ARelax(w, cur, ex, ey, bz + 1, (14 * NavMoveCost(NAV_HOSTP, ex, ey, bz + 1)) / 10
+                           + NAV_CLIMB_EXTRA(NAV_HOSTP, bx, by, bz, 1), goal, useH);
         }
 
         // Down a ramp whose high side points at us
@@ -1382,7 +1402,8 @@ static int nav_ForwardSearch(NavWorld* w, NavPoint start, NavPoint goal, bool us
                 if (!NavRampHighSide(NAV_HOSTP, rx, ry, rz, &hdx, &hdy)) continue;
                 if (rx + hdx != bx || ry + hdy != by) continue;
                 if (!NavIsWalkable(NAV_HOSTP, rx, ry, rz)) continue;
-                nav_ARelax(w, cur, rx, ry, rz, (14 * NavMoveCost(NAV_HOSTP, rx, ry, rz)) / 10, goal, useH);
+                nav_ARelax(w, cur, rx, ry, rz, (14 * NavMoveCost(NAV_HOSTP, rx, ry, rz)) / 10
+                           + NAV_CLIMB_EXTRA(NAV_HOSTP, bx, by, bz, -1), goal, useH);
             }
         }
     }
@@ -1543,7 +1564,7 @@ int NavFindPathHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, in
         } else if (best < w->entranceNum) {
             for (int i = w->adjStart[best]; i < w->adjStart[best + 1]; i++) {
                 const NavGraphEdge* e = &w->edgeList[i];
-                nav_AbsRelax(w, best, e->to, e->cost,
+                nav_AbsRelax(w, best, e->to, e->cost + nav_LinkExtra(w, e),
                          nav_Heuristic2D(w->entranceList[e->to].x, w->entranceList[e->to].y, goal.x, goal.y));
             }
             for (int i = 0; i < goalEdges; i++)
@@ -1824,9 +1845,9 @@ int NavFlowBuild(NavWorld* w, NavFlowField* f, const NavPoint* goals, int goalCo
 
         // Ladders: climb up from below / down from above onto C
         if (z > 0 && NavCanClimbUp(NAV_HOSTP, x, y, z - 1))
-            nav_FlowRelax(f, NavFlowCellId(f, x, y, z - 1), c, d + cellCost, maxCost);
+            nav_FlowRelax(f, NavFlowCellId(f, x, y, z - 1), c, d + cellCost + NAV_CLIMB_EXTRA(NAV_HOSTP, x, y, z - 1, 1), maxCost);
         if (z + 1 < f->depth && NavCanClimbDown(NAV_HOSTP, x, y, z + 1))
-            nav_FlowRelax(f, NavFlowCellId(f, x, y, z + 1), c, d + cellCost, maxCost);
+            nav_FlowRelax(f, NavFlowCellId(f, x, y, z + 1), c, d + cellCost + NAV_CLIMB_EXTRA(NAV_HOSTP, x, y, z + 1, -1), maxCost);
 
         // Ramp up onto C: a ramp one level down whose exit is C
         if (z > 0) {
@@ -1835,7 +1856,8 @@ int NavFlowBuild(NavWorld* w, NavFlowField* f, const NavPoint* goals, int goalCo
                 int ex, ey;
                 if (!NavRampUp(NAV_HOSTP, rx, ry, z - 1, &ex, &ey)) continue;
                 if (ex != x || ey != y) continue;
-                nav_FlowRelax(f, NavFlowCellId(f, rx, ry, z - 1), c, d + (14 * cellCost) / 10, maxCost);
+                nav_FlowRelax(f, NavFlowCellId(f, rx, ry, z - 1), c,
+                              d + (14 * cellCost) / 10 + NAV_CLIMB_EXTRA(NAV_HOSTP, rx, ry, z - 1, 1), maxCost);
             }
         }
 
@@ -1845,7 +1867,8 @@ int NavFlowBuild(NavWorld* w, NavFlowField* f, const NavPoint* goals, int goalCo
             int px = x + hdx, py = y + hdy;
             if (px >= 0 && px < f->width && py >= 0 && py < f->height
                 && NavIsWalkable(NAV_HOSTP, px, py, z + 1)) {
-                nav_FlowRelax(f, NavFlowCellId(f, px, py, z + 1), c, d + (14 * cellCost) / 10, maxCost);
+                nav_FlowRelax(f, NavFlowCellId(f, px, py, z + 1), c,
+                              d + (14 * cellCost) / 10 + NAV_CLIMB_EXTRA(NAV_HOSTP, px, py, z + 1, -1), maxCost);
             }
         }
     }
@@ -2238,7 +2261,7 @@ static void nav_HFlowRebuild(NavWorld* w, NavHFlow* h) {
         int enterE = nav_HFlowExtra(w, h, E->x, E->y, E->z);
         for (int k = inStart[e]; k < inStart[e + 1]; k++) {
             const NavGraphEdge* ed = &w->edgeList[inEdge[k]];
-            int f = ed->from, nd = d + ed->cost + enterE;
+            int f = ed->from, nd = d + ed->cost + enterE + nav_LinkExtra(w, ed);
             if (nd < h->dist[f]) { h->dist[f] = nd; h->nextEnt[f] = e; h->viaChunk[f] = ed->chunk; nav_LHPush(&q, nd, f); }
         }
     }
@@ -2507,7 +2530,8 @@ static int nav_HFlowSeedValue(NavWorld* w, NavHFlow* h, int e, NavChunkFlow* bui
         if (F->z != E->z) {
             // Ladder/ramp: the step onto F (A* step rules) + F's value on its own level
             int c = NavMoveCost(NAV_HOSTP, F->x, F->y, F->z) + nav_HFlowExtra(w, h, F->x, F->y, F->z);
-            step = (F->x == E->x && F->y == E->y) ? c : (14 * c) / 10;
+            step = ((F->x == E->x && F->y == E->y) ? c : (14 * c) / 10)
+                 + NAV_CLIMB_EXTRA(NAV_HOSTP, E->x, E->y, E->z, F->z > E->z ? 1 : -1);
             target = nav_GetChunk(w, F->x, F->y, F->z);
             at = (NavPoint){F->x, F->y, F->z};
         } else {

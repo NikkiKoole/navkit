@@ -80,6 +80,10 @@ static inline int NavAffectedZ(void* host, int z, int* outZ) {
     return GetAdditionalAffectedZLevels(z, outZ);
 }
 
+// Ladder queues make climbing cost more (entities/mover.c keeps the queues)
+int LadderQueueExtraCost(int x, int y, int z, int dz);
+#define NAV_CLIMB_EXTRA(host, x, y, z, dz) LadderQueueExtraCost((x), (y), (z), (dz))
+
 // Lighting caches walkability-adjacent data; the pathfinder shouldn't know that.
 void InvalidateLighting(void);
 static inline void NavOnChunkDirty(void* host, int x, int y, int z) {

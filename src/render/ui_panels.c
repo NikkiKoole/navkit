@@ -1207,6 +1207,8 @@ void DrawUI(void) {
                 ToggleBool(ix + 10, y, "Tunnel Yielding", &useTunnelYielding);
                 y += 22;
                 ToggleBool(ix + 10, y, "Single-file Ladders", &useSingleFileLadders);
+                y += 22;
+                ToggleBool(ix + 10, y, "Ladder Queue Cost", &useLadderQueueCost);
             }
         }
         y += 22;

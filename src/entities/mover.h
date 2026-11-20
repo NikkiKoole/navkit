@@ -221,6 +221,8 @@ extern float avoidStrengthClosed;  // Avoidance strength near walls
 extern bool useDirectionalAvoidance;  // Filter avoidance by wall clearance
 extern bool useTunnelYielding;       // Wait at 1-wide passages for oncoming movers
 extern bool useSingleFileLadders;    // One climber per ladder segment at a time
+extern bool useLadderQueueCost;      // Routes see ladder queues as extra cost
+int LadderQueueExtraCost(int x, int y, int z, int dz);   // NAV_CLIMB_EXTRA hook (nav_host.h)
 
 // Test/debug toggles for deterministic behavior
 extern bool useRandomizedCooldowns;   // When true, repath cooldowns are randomized (avoids sync spikes)

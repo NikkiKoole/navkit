@@ -1174,6 +1174,69 @@ static int RunLadderMovers(int count, int maxTicks, bool* allArrived) {
     return most;
 }
 
+// Ladder A at (3,2), ladder B at (9,2), same two floors as SetupLadderFloors
+static void SetupTwoLadderFloors(void) {
+    InitGridWithSize(14, 5);
+    gridDepth = 3;
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][y][x] = CELL_WALL;
+            SetWallMaterial(x, y, 0, MAT_DIRT);
+            grid[1][y][x] = CELL_AIR;
+            grid[2][y][x] = CELL_AIR;
+            SET_FLOOR(x, y, 2);
+        }
+    grid[1][2][3] = grid[2][2][3] = CELL_LADDER_BOTH;
+    grid[1][2][9] = grid[2][2][9] = CELL_LADDER_BOTH;
+    BuildEntrances();
+    BuildGraph();
+    ClearMovers();
+}
+
+static bool PathUsesCell(const Point* p, int len, int x, int y) {
+    for (int k = 0; k < len; k++) if (p[k].x == x && p[k].y == y) return true;
+    return false;
+}
+
+describe(ladder_queue_cost) {
+    it("routes around a ladder with a queue when another way is quicker") {
+        SetupTwoLadderFloors();
+        // Eight movers around ladder A, all climbing it
+        static const int sp[8][2] = {{2, 1}, {2, 2}, {2, 3}, {3, 1}, {3, 3}, {4, 1}, {4, 3}, {1, 2}};
+        for (int i = 0; i < 8; i++) {
+            Point p[] = {{1, 0, 2}, {3, 2, 2}, {3, 2, 1}, {sp[i][0], sp[i][1], 1}};
+            InitMoverWithPath(&movers[i], sp[i][0] * CELL_SIZE + CELL_SIZE * 0.5f, sp[i][1] * CELL_SIZE + CELL_SIZE * 0.5f,
+                              1.0f, p[0], 100.0f, p, 4);
+        }
+        moverCount = 8;
+        // Run until a real queue has formed at A's foot
+        int queue = 0;
+        for (int t = 0; t < 300 && queue < 50; t++) {
+            Tick();
+            queue = LadderQueueExtraCost(3, 2, 1, 1);
+        }
+        expect(queue >= 50);
+        expect(LadderQueueExtraCost(9, 2, 1, 1) == 0);
+
+        // From next to A to just above it: A is 2 cells away, B 4; with the queue, B wins
+        static Point buf[MAX_PATH];
+        int len = FindPath(PATH_ALGO_ASTAR, (Point){5, 2, 1}, (Point){5, 2, 2}, buf, MAX_PATH);
+        expect(len > 0);
+        expect(PathUsesCell(buf, len, 9, 2));
+        expect(!PathUsesCell(buf, len, 3, 2));
+        len = FindPath(PATH_ALGO_HPA, (Point){5, 2, 1}, (Point){5, 2, 2}, buf, MAX_PATH);
+        expect(len > 0);
+        expect(PathUsesCell(buf, len, 9, 2));
+
+        // Without the queue cost the short way (A) is chosen
+        useLadderQueueCost = false;
+        len = FindPath(PATH_ALGO_ASTAR, (Point){5, 2, 1}, (Point){5, 2, 2}, buf, MAX_PATH);
+        useLadderQueueCost = true;
+        expect(len > 0);
+        expect(PathUsesCell(buf, len, 3, 2));
+    }
+}
+
 describe(single_file_ladders) {
     it("lets one mover climb a ladder segment at a time; the others wait and then go") {
         SetupLadderFloors();
@@ -2730,6 +2793,7 @@ int main(int argc, char* argv[]) {
     test(repath_budget);
     test(tunnel_yielding);
     test(single_file_ladders);
+    test(ladder_queue_cost);
     test(avoidance_levels);
     return summary();
 }

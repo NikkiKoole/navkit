@@ -60,6 +60,9 @@ static float moverYieldTime[MAX_MOVERS];
 // Seconds each mover has been waiting for a busy ladder segment (not saved; reset by ClearMovers)
 static float moverLadderWait[MAX_MOVERS];
 #define LADDER_WAIT_TIMEOUT 10.0f   // then climb anyway (a stalled climber must not block forever)
+#define LADDER_REPLAN_AT_1 3.0f     // a waiting mover re-plans at these wait times: with the
+#define LADDER_REPLAN_AT_2 7.0f     // queue cost, another ladder or a ramp may now be quicker
+#define LADDER_QUEUE_COST_PER_MOVER 10   // ~ one climb = walking one cell
 int repathHpaSuccessCount = 0;
 unsigned long currentTick = 0;
 bool useStringPulling = true;
@@ -76,6 +79,7 @@ float avoidStrengthClosed = 0.0f;
 bool useDirectionalAvoidance = true;
 bool useTunnelYielding = true;       // single-lane rule for 1-wide passages (see MoverShouldYield)
 bool useSingleFileLadders = true;    // one climber per ladder segment; others wait at the foot/top
+bool useLadderQueueCost = true;      // routes see a ladder's queue as extra cost (pathfinding.h hook)
 PathAlgorithm moverPathAlgorithm = PATH_ALGO_HPA;  // Default to HPA*
 bool useRandomizedCooldowns = true;   // Default on for demo perf, tests can disable
 bool useStaggeredUpdates = true;      // Default on for demo perf, tests can disable
@@ -427,6 +431,9 @@ static bool MoverShouldYield(int i) {
 typedef struct { int x, y, zLow; } LadderSegment;
 static LadderSegment ladderClimbers[MAX_MOVERS];
 static int ladderClimberCount;
+typedef struct { int x, y, z; } LadderWaiter;           // waiting at this ladder cell
+static LadderWaiter ladderWaiters[MAX_MOVERS];
+static int ladderWaiterCount;
 
 static bool MoverClimbingLadder(const Mover* m, LadderSegment* seg) {
     float zf = floorf(m->z);
@@ -439,10 +446,30 @@ static bool MoverClimbingLadder(const Mover* m, LadderSegment* seg) {
 
 static void CollectLadderClimbers(void) {
     ladderClimberCount = 0;
+    ladderWaiterCount = 0;
     for (int i = 0; i < moverCount; i++) {
+        const Mover* m = &movers[i];
         LadderSegment seg;
-        if (movers[i].active && MoverClimbingLadder(&movers[i], &seg)) ladderClimbers[ladderClimberCount++] = seg;
+        if (!m->active) continue;
+        if (MoverClimbingLadder(m, &seg)) ladderClimbers[ladderClimberCount++] = seg;
+        else if (moverLadderWait[i] > 0.0f)
+            ladderWaiters[ladderWaiterCount++] = (LadderWaiter){(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
     }
+}
+
+// NAV_CLIMB_EXTRA for the game (see nav_host.h): changing level by dz on the ladder
+// at (x,y,z) costs the expected wait there: movers queued at this end plus one
+// on the segment, each about one climb. Uses the lists from the latest tick.
+int LadderQueueExtraCost(int x, int y, int z, int dz) {
+    if (!useLadderQueueCost || !useSingleFileLadders) return 0;
+    int zt = z + dz;
+    if (zt < 0 || zt >= gridDepth || !IsLadderCell(grid[z][y][x]) || !IsLadderCell(grid[zt][y][x])) return 0;
+    int segLow = dz > 0 ? z : zt, n = 0;
+    for (int k = 0; k < ladderClimberCount; k++)
+        if (ladderClimbers[k].x == x && ladderClimbers[k].y == y && ladderClimbers[k].zLow == segLow) n++;
+    for (int k = 0; k < ladderWaiterCount; k++)
+        if (ladderWaiters[k].x == x && ladderWaiters[k].y == y && ladderWaiters[k].z == z) n++;
+    return n * LADDER_QUEUE_COST_PER_MOVER;
 }
 
 static bool LadderSegmentBusy(int x, int y, int zLow) {
@@ -1642,7 +1669,12 @@ void UpdateMovers(void) {
                 bool startingClimb = isLadderTransition && m->z == (float)cellZ;
                 if (startingClimb && useSingleFileLadders && moverLadderWait[i] < LADDER_WAIT_TIMEOUT &&
                     LadderSegmentBusy(target.x, target.y, segLow)) {
+                    float before = moverLadderWait[i];
                     moverLadderWait[i] += dt;
+                    if (useLadderQueueCost &&
+                        ((before < LADDER_REPLAN_AT_1 && moverLadderWait[i] >= LADDER_REPLAN_AT_1) ||
+                         (before < LADDER_REPLAN_AT_2 && moverLadderWait[i] >= LADDER_REPLAN_AT_2)))
+                        m->needsRepath = true;           // maybe another way is quicker now
                     m->x = target.x * CELL_SIZE + CELL_SIZE * 0.5f;
                     m->y = target.y * CELL_SIZE + CELL_SIZE * 0.5f;
                     m->timeWithoutProgress = 0.0f;      // waiting in line is not being stuck

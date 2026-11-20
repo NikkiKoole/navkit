@@ -37,6 +37,12 @@
 //   void NavOnChunkDirty(void* host, x, y, z)      notification hook
 //   double NavHostTime(void)                       seconds, for timing stats
 //   NAV_LOG_INFO(...), NAV_LOG_WARN(...)           printf-style logging
+// Optional (macros; default off):
+//   NAV_REGION_WALKABLE(host, x, y, z)   superset of walkable used for reachability regions
+//   NAV_CLIMB_EXTRA(host, x, y, z, dz)   extra cost (>= 0) of changing level from (x,y,z)
+//        by dz via a ladder/ramp there, e.g. a queue's expected wait. Read at query
+//        time by all searches; cached NavHFlow results need NavHFlowInvalidate when
+//        it changes.
 // Out-of-bounds coordinates may be passed; return false / a safe default.
 // =============================================================================
 
