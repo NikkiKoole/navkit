@@ -11,7 +11,7 @@ typedef struct Color Color;
 #define CON_MAX_LINE       256
 #define CON_MAX_HISTORY    32
 #define CON_MAX_COMMANDS   64
-#define CON_MAX_VARS       128
+#define CON_MAX_VARS       256
 
 void Console_Init(void);
 void Console_Toggle(void);
@@ -32,7 +32,10 @@ void Console_RegisterCmd(const char* name, ConsoleCmdFn fn, const char* help);
 // Variable registry (Phase 3)
 typedef enum { CVAR_BOOL, CVAR_INT, CVAR_FLOAT } CVarType;
 void Console_RegisterVar(const char* name, void* ptr, CVarType type);
+// With a range (set clamps to [min, max]; ignored for bools or when min >= max) and help text.
+void Console_RegisterVarEx(const char* name, void* ptr, CVarType type, float min, float max, const char* help);
 void Console_RegisterGameVars(void);  // Register common game variables
 bool Console_SetVar(const char* name, const char* value);  // false if unknown or bad bool
+const char* Console_GetVarString(const char* name);        // current value as text, NULL if unknown
 
 #endif

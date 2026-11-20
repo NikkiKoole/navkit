@@ -174,6 +174,16 @@ label, description, `start()`, whether the dev overlay opens). Today: **survival
   or its rules. Use it to inspect/cheat inside survival without leaving survival.
 - Scenarios (below) are dev/test setups; games are player-facing.
 
+## Settings (tunables)
+
+Tunable values live in one table in `src/core/settings.c` (name, label, sidebar group, type,
+range, help, optional live-tooltip function). One row gives you: a console variable
+(`get`/`set`, `--set`, clamped to the range, `get` shows the help) and a row in the dev sidebar
+(`DrawSettingsGroup("Simulation/Fire", x, &y)` in `ui_panels.c` draws a whole group).
+**Add new tunables as a row there**, not as a hand-placed widget plus a separate
+`Console_RegisterVar`. Converted so far: the Simulation section (water, fire, smoke, steam,
+temperature). Saved settings are still a separate list (`SETTINGS_TABLE` in `saveload.c`).
+
 ## Scenarios
 
 Built-in demo/test setups live in one table in `src/core/scenarios.c` (`list` shows them all).

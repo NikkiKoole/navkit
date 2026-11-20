@@ -20,6 +20,7 @@
 #include "../ui/cutscene.h"
 #include "../core/scenarios.h"
 #include "../core/games.h"
+#include "../core/settings.h"
 #include <time.h>
 
 // Forward declarations
@@ -175,6 +176,31 @@ void RepathAgents(void);
 void AddMoversDemo(int count);
 void SpawnMoversDemo(int count);
 void SpawnStockpileWithFilters(bool allowRed, bool allowGreen, bool allowBlue);
+
+// Draw every setting in one group (src/core/settings.c), in table order, one row
+// each, 22px apart. Like the hand-written rows: *y ends ON the last row, so the
+// caller adds the gap before what comes next.
+static void DrawSettingsGroup(const char* group, float x, float* y) {
+    bool first = true;
+    for (int i = 0; i < SettingCount(); i++) {
+        const Setting* s = SettingAt(i);
+        if (strcmp(s->group, group) != 0) continue;
+        if (!first) *y += 22;
+        first = false;
+        const char* tip = SettingTooltip(s);
+        switch (s->type) {
+            case SETTING_BOOL:
+                ToggleBoolT(x, *y, s->label, (bool*)s->ptr, tip);
+                break;
+            case SETTING_INT:
+                DraggableIntT(x, *y, s->label, (int*)s->ptr, s->speed, (int)s->min, (int)s->max, tip);
+                break;
+            case SETTING_FLOAT:
+                DraggableFloatT(x, *y, s->label, (float*)s->ptr, s->speed, s->min, s->max, tip);
+                break;
+        }
+    }
+}
 
 // Minimal player HUD — speed controls, mover count, new game
 static void DrawPlayerHUD(void) {
@@ -1058,21 +1084,13 @@ void DrawUI(void) {
         }
         y += 22;
 
+        // Rows come from the settings table (src/core/settings.c); buttons and
+        // notes around them are drawn here.
+
         // --- Water ---
         if (SectionHeader(ix, y, "Water", &sectionWater)) {
             y += 18;
-            ToggleBoolT(ix, y, "Enabled", &waterEnabled,
-                "Master toggle for water simulation. Water flows down, spreads horizontally, and uses pressure to rise through U-bends.");
-            y += 22;
-            ToggleBoolT(ix, y, "Evaporation", &waterEvaporationEnabled,
-                "When enabled, shallow water (level 1) has a chance to evaporate each tick. Disable for testing water mechanics.");
-            y += 22;
-            {
-                float evapGH = waterEvapInterval / (dayLength / 24.0f);
-                DraggableFloatT(ix, y, "Evap Interval (s)", &waterEvapInterval, 1.0f, 1.0f, 120.0f,
-                    TextFormat("Puddles evaporate every %.1f game-seconds (%.2f game-hours).",
-                               waterEvapInterval, evapGH));
-            }
+            DrawSettingsGroup("Simulation/Water", ix, &y);
             y += 22;
             if (PushButton(ix, y, "Clear Water")) {
                 ClearWater();
@@ -1099,32 +1117,10 @@ void DrawUI(void) {
             }
             y += 22;
 
-            // Advanced: speed multipliers
+            // Advanced: mover speed in water, soil wetness
             if (SectionHeader(ix + 10, y, "Advanced", &sectionWaterAdvanced)) {
                 y += 18;
-                DrawTextShadow("Mover Speed in Water:", ix + 10, y, 14, GRAY);
-                y += 18;
-                {
-                    float baseTPS = balance.baseMoverSpeed / (float)CELL_SIZE;
-                    DraggableFloatT(ix + 10, y, "Shallow (1-2)", &waterSpeedShallow, 0.05f, 0.1f, 1.0f,
-                        TextFormat("%.0f%% speed in shallow water (%.1f tiles/gs).",
-                                   waterSpeedShallow * 100.0f, baseTPS * waterSpeedShallow));
-                    y += 22;
-                    DraggableFloatT(ix + 10, y, "Medium (3-4)", &waterSpeedMedium, 0.05f, 0.1f, 1.0f,
-                        TextFormat("%.0f%% speed in medium water (%.1f tiles/gs).",
-                                   waterSpeedMedium * 100.0f, baseTPS * waterSpeedMedium));
-                    y += 22;
-                    DraggableFloatT(ix + 10, y, "Deep (5-7)", &waterSpeedDeep, 0.05f, 0.1f, 1.0f,
-                        TextFormat("%.0f%% speed in deep water (%.1f tiles/gs).",
-                                   waterSpeedDeep * 100.0f, baseTPS * waterSpeedDeep));
-                    y += 22;
-                    DraggableFloatT(ix + 10, y, "Mud Speed", &mudSpeedMultiplier, 0.05f, 0.1f, 1.0f,
-                        TextFormat("%.0f%% speed on mud (%.1f tiles/gs).",
-                                   mudSpeedMultiplier * 100.0f, baseTPS * mudSpeedMultiplier));
-                }
-                y += 22;
-                DraggableFloatT(ix + 10, y, "Wetness Sync", &wetnessSyncInterval, 0.5f, 0.5f, 30.0f,
-                    TextFormat("Soil absorbs water every %.1fs. Lower = ground gets wet faster.", wetnessSyncInterval));
+                DrawSettingsGroup("Simulation/Water/Advanced", ix + 10, &y);
             }
         }
         y += 22;
@@ -1132,25 +1128,7 @@ void DrawUI(void) {
         // --- Fire ---
         if (SectionHeader(ix, y, "Fire", &sectionFire)) {
             y += 18;
-            ToggleBoolT(ix, y, "Enabled", &fireEnabled,
-                "Master toggle for fire simulation. Fire consumes fuel, spreads to neighbors, and generates smoke.");
-            y += 22;
-            DraggableFloatT(ix, y, "Spread Interval (s)", &fireSpreadInterval, 0.1f, 0.1f, 10.0f,
-                TextFormat("Fire tries to spread every %.1f game-seconds (%.1f attempts/gs).",
-                           fireSpreadInterval, 1.0f / fireSpreadInterval));
-            y += 22;
-            {
-                // Wood fuel ~10, so burn time = fuel * fuelInterval
-                float woodBurnGS = 10.0f * fireFuelInterval;
-                float woodBurnGH = woodBurnGS / (dayLength / 24.0f);
-                DraggableFloatT(ix, y, "Fuel Interval (s)", &fireFuelInterval, 0.1f, 0.1f, 10.0f,
-                    TextFormat("Fuel consumed every %.1f game-seconds.\nWood wall burns for ~%.0fs (~%.1f game-hours).",
-                               fireFuelInterval, woodBurnGS, woodBurnGH));
-            }
-            y += 22;
-            DraggableIntT(ix, y, "Water Reduction %", &fireWaterReduction, 1.0f, 1, 100,
-                TextFormat("Fire spreads %.1fx slower near water (%d%% chance reduction).",
-                           100.0f / (float)fireWaterReduction, fireWaterReduction));
+            DrawSettingsGroup("Simulation/Fire", ix, &y);
             y += 22;
             if (PushButton(ix, y, "Clear Fire")) {
                 ClearFire();
@@ -1166,11 +1144,7 @@ void DrawUI(void) {
                 y += 18;
                 DrawTextShadow("Spread Chance Formula:", ix + 10, y, 14, GRAY);
                 y += 18;
-                DraggableIntT(ix + 10, y, "Base Chance %", &fireSpreadBase, 1.0f, 0, 50,
-                    "Base spread chance before fire level bonus. Formula: base + (level * perLevel).");
-                y += 22;
-                DraggableIntT(ix + 10, y, "Per Level %", &fireSpreadPerLevel, 1.0f, 0, 30,
-                    "Additional spread chance per fire level.");
+                DrawSettingsGroup("Simulation/Fire/Advanced", ix + 10, &y);
                 y += 22;
                 int minSpread = fireSpreadBase + (FIRE_MIN_SPREAD_LEVEL * fireSpreadPerLevel);
                 int maxSpread = fireSpreadBase + (FIRE_MAX_LEVEL * fireSpreadPerLevel);
@@ -1182,22 +1156,7 @@ void DrawUI(void) {
         // --- Smoke ---
         if (SectionHeader(ix, y, "Smoke", &sectionSmoke)) {
             y += 18;
-            ToggleBoolT(ix, y, "Enabled", &smokeEnabled,
-                "Master toggle for smoke simulation. Smoke rises, spreads horizontally, fills enclosed spaces, and gradually dissipates.");
-            y += 22;
-            {
-                float dissipGH = smokeDissipationTime / (dayLength / 24.0f);
-                DraggableFloatT(ix, y, "Rise Interval (s)", &smokeRiseInterval, 0.01f, 0.01f, 2.0f,
-                    TextFormat("Smoke rises one Z-level every %.2f game-seconds.", smokeRiseInterval));
-                y += 22;
-                DraggableFloatT(ix, y, "Dissipation Time", &smokeDissipationTime, 0.1f, 0.5f, 30.0f,
-                    TextFormat("Smoke fully clears in %.1f game-seconds (%.2f game-hours).",
-                               smokeDissipationTime, dissipGH));
-                y += 22;
-                DraggableIntT(ix, y, "Generation Rate", &smokeGenerationRate, 1.0f, 1, 10,
-                    TextFormat("Smoke per tick = fire level / %d. A level-6 fire produces %d smoke.",
-                               smokeGenerationRate, 6 / smokeGenerationRate));
-            }
+            DrawSettingsGroup("Simulation/Smoke", ix, &y);
             y += 22;
             if (PushButton(ix, y, "Clear Smoke")) {
                 ClearSmoke();
@@ -1210,11 +1169,7 @@ void DrawUI(void) {
         // --- Steam ---
         if (SectionHeader(ix, y, "Steam", &sectionSteam)) {
             y += 18;
-            ToggleBoolT(ix, y, "Enabled", &steamEnabled,
-                "Master toggle for steam simulation. Steam rises from boiling water, spreads, and condenses back to water when cooled.");
-            y += 22;
-            DraggableFloatT(ix, y, "Rise Interval (s)", &steamRiseInterval, 0.01f, 0.01f, 2.0f,
-                TextFormat("Steam rises one Z-level every %.2f game-seconds.", steamRiseInterval));
+            DrawSettingsGroup("Simulation/Steam", ix, &y);
             y += 22;
             if (PushButton(ix, y, "Clear Steam")) {
                 ClearSteam();
@@ -1224,42 +1179,15 @@ void DrawUI(void) {
             // Advanced: condensation/generation parameters
             if (SectionHeader(ix + 10, y, "Advanced", &sectionSteamAdvanced)) {
                 y += 18;
-                DraggableIntT(ix + 10, y, "Condensation Temp", &steamCondensationTemp, 5.0f, 0, 100,
-                    TextFormat("Steam condenses to water below %dC.", steamCondensationTemp));
-                y += 22;
-                DraggableIntT(ix + 10, y, "Generation Temp", &steamGenerationTemp, 5.0f, 80, 150,
-                    TextFormat("Water boils to steam above %dC.", steamGenerationTemp));
-                y += 22;
-                DraggableIntT(ix + 10, y, "Condensation Chance", &steamCondensationChance, 1.0f, 1, 600,
-                    TextFormat("1-in-%d chance per tick. Higher = steam lingers longer.", steamCondensationChance));
-                y += 22;
-                DraggableIntT(ix + 10, y, "Rise Flow", &steamRiseFlow, 1.0f, 1, STEAM_MAX_LEVEL,
-                    TextFormat("%d units rise per tick. Higher = faster vertical movement.", steamRiseFlow));
+                DrawSettingsGroup("Simulation/Steam/Advanced", ix + 10, &y);
             }
         }
         y += 22;
 
         // --- Temperature ---
-        // NOTE: When adding tweakable values here, also update save/load logic in saveload.c
         if (SectionHeader(ix, y, "Temperature", &sectionTemperature)) {
             y += 18;
-            ToggleBoolT(ix, y, "Enabled", &temperatureEnabled,
-                "Master toggle for temperature simulation. Heat transfers between cells, affected by insulation.");
-            y += 22;
-            DraggableIntT(ix, y, "Surface Ambient", &ambientSurfaceTemp, 1.0f, -50, 200,
-                TextFormat("%dC. (0=freeze, 20=room temp, 100=boiling).", ambientSurfaceTemp));
-            y += 22;
-            DraggableIntT(ix, y, "Depth Decay", &ambientDepthDecay, 1.0f, 0, 20,
-                TextFormat("%dC per Z-level underground. z=-10 = %dC.",
-                           ambientDepthDecay, ambientSurfaceTemp - ambientDepthDecay * 10));
-            y += 22;
-            DraggableFloatT(ix, y, "Transfer Interval (s)", &heatTransferInterval, 0.1f, 0.1f, 60.0f,
-                TextFormat("Heat spreads between cells every %.1f game-seconds. Lower = faster heat flow.",
-                           heatTransferInterval));
-            y += 22;
-            DraggableFloatT(ix, y, "Decay Interval (s)", &tempDecayInterval, 0.1f, 0.1f, 60.0f,
-                TextFormat("Temperature decays toward ambient every %.1f game-seconds. Lower = faster cooling.",
-                           tempDecayInterval));
+            DrawSettingsGroup("Simulation/Temperature", ix, &y);
             y += 22;
             if (PushButton(ix, y, "Reset to Ambient")) {
                 ClearTemperature();
@@ -1269,31 +1197,7 @@ void DrawUI(void) {
             // Advanced: insulation, heat sources, physics
             if (SectionHeader(ix + 10, y, "Advanced", &sectionTemperatureAdvanced)) {
                 y += 18;
-                DraggableIntT(ix + 10, y, "Wood Insulation %", &insulationTier1Rate, 1.0f, 1, 100,
-                    TextFormat("Wood passes %d%% of heat (blocks %d%%).", insulationTier1Rate, 100 - insulationTier1Rate));
-                y += 22;
-                DraggableIntT(ix + 10, y, "Stone Insulation %", &insulationTier2Rate, 1.0f, 1, 100,
-                    TextFormat("Stone passes %d%% of heat (blocks %d%%).", insulationTier2Rate, 100 - insulationTier2Rate));
-                y += 22;
-                DraggableIntT(ix + 10, y, "Heat Source Temp", &heatSourceTemp, 5.0f, 100, 1000,
-                    TextFormat("Fire/furnace temperature: %dC.", heatSourceTemp));
-                y += 22;
-                DraggableIntT(ix + 10, y, "Cold Source Temp", &coldSourceTemp, 5.0f, -100, 0,
-                    TextFormat("Ice/freezer temperature: %dC.", coldSourceTemp));
-                y += 22;
-                DrawTextShadow("Heat Physics:", ix + 10, y, 14, GRAY);
-                y += 18;
-                DraggableIntT(ix + 10, y, "Heat Rise Boost %", &heatRiseBoost, 5.0f, 50, 300,
-                    TextFormat("%d%% upward transfer bonus (hot air rises).", heatRiseBoost));
-                y += 22;
-                DraggableIntT(ix + 10, y, "Heat Sink Reduction %", &heatSinkReduction, 5.0f, 10, 100,
-                    TextFormat("%d%% downward transfer rate. Lower = heat stays up longer.", heatSinkReduction));
-                y += 22;
-                DraggableIntT(ix + 10, y, "Decay Rate %", &heatDecayPercent, 1.0f, 1, 50,
-                    TextFormat("%d%% of excess heat lost per interval. Higher = faster cooling.", heatDecayPercent));
-                y += 22;
-                DraggableIntT(ix + 10, y, "Diagonal Transfer %", &diagonalTransferPercent, 5.0f, 30, 100,
-                    TextFormat("%d%% of orthogonal transfer rate diagonally (~1.4x distance).", diagonalTransferPercent));
+                DrawSettingsGroup("Simulation/Temperature/Advanced", ix + 10, &y);
             }
         }
     }

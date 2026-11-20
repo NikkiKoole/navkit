@@ -892,7 +892,7 @@ static void ApplySetArgs(int argc, char** argv) {
     for (int i = 1; i + 2 < argc; i++) {
         if (strcmp(argv[i], "--set") != 0) continue;
         if (Console_SetVar(argv[i + 1], argv[i + 2]))
-            printf("set %s = %s\n", argv[i + 1], argv[i + 2]);
+            printf("set %s = %s\n", argv[i + 1], Console_GetVarString(argv[i + 1]));  // after range clamp
         else
             printf("--set: unknown variable '%s' or bad value '%s'\n", argv[i + 1], argv[i + 2]);
         i += 2;

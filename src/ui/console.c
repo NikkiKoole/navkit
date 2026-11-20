@@ -20,6 +20,7 @@
 #include "../world/designations.h"     // InitDesignations
 #include "../core/scenarios.h"          // scenario command
 #include "../core/games.h"              // game command
+#include "../core/settings.h"           // tunable settings table
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>                // atoi, atof
@@ -100,6 +101,8 @@ typedef struct {
     const char* name;
     void* ptr;
     CVarType type;
+    float min, max;      // set clamps when min < max
+    const char* help;    // optional, shown by get
 } CVar;
 
 static CVar cvars[CON_MAX_VARS];
@@ -144,15 +147,23 @@ void Console_RegisterCmd(const char* name, ConsoleCmdFn fn, const char* help) {
     commandCount++;
 }
 
-void Console_RegisterVar(const char* name, void* ptr, CVarType type) {
+void Console_RegisterVarEx(const char* name, void* ptr, CVarType type, float min, float max, const char* help) {
     if (cvarCount >= CON_MAX_VARS) {
         Console_Printf(RED, "ERROR: Variable registry full (max %d)", CON_MAX_VARS);
         return;
     }
-    cvars[cvarCount].name = name;
-    cvars[cvarCount].ptr = ptr;
-    cvars[cvarCount].type = type;
+    for (int i = 0; i < cvarCount; i++) {
+        if (strcasecmp(cvars[i].name, name) == 0) {
+            TraceLog(LOG_WARNING, "Console variable '%s' registered twice", name);
+            return;
+        }
+    }
+    cvars[cvarCount] = (CVar){name, ptr, type, min, max, help};
     cvarCount++;
+}
+
+void Console_RegisterVar(const char* name, void* ptr, CVarType type) {
+    Console_RegisterVarEx(name, ptr, type, 0, 0, NULL);
 }
 
 void Console_Toggle(void) {
@@ -480,6 +491,9 @@ static void Cmd_Get(int argc, const char** argv) {
                     Console_Printf(GREEN, "%s = %.3f", cvars[i].name, *(float*)ptr);
                     break;
             }
+            if (cvars[i].type != CVAR_BOOL && cvars[i].min < cvars[i].max)
+                Console_Printf(GRAY, "  range %g .. %g", cvars[i].min, cvars[i].max);
+            if (cvars[i].help) Console_Printf(GRAY, "  %s", cvars[i].help);
             return;
         }
     }
@@ -494,6 +508,17 @@ static CVar* FindCVar(const char* name) {
     return NULL;
 }
 
+const char* Console_GetVarString(const char* name) {
+    CVar* v = FindCVar(name);
+    if (!v) return NULL;
+    switch (v->type) {
+        case CVAR_BOOL:  return *(bool*)v->ptr ? "true" : "false";
+        case CVAR_INT:   return TextFormat("%d", *(int*)v->ptr);
+        case CVAR_FLOAT: return TextFormat("%g", *(float*)v->ptr);
+    }
+    return NULL;
+}
+
 bool Console_SetVar(const char* name, const char* valueStr) {
     CVar* v = FindCVar(name);
     if (!v) return false;
@@ -503,8 +528,24 @@ bool Console_SetVar(const char* name, const char* valueStr) {
             else if (strcmp(valueStr, "false") == 0 || strcmp(valueStr, "0") == 0) *(bool*)v->ptr = false;
             else return false;
             break;
-        case CVAR_INT:   *(int*)v->ptr = atoi(valueStr); break;
-        case CVAR_FLOAT: *(float*)v->ptr = (float)atof(valueStr); break;
+        case CVAR_INT: {
+            int n = atoi(valueStr);
+            if (v->min < v->max) {
+                if (n < (int)v->min) n = (int)v->min;
+                if (n > (int)v->max) n = (int)v->max;
+            }
+            *(int*)v->ptr = n;
+            break;
+        }
+        case CVAR_FLOAT: {
+            float f = (float)atof(valueStr);
+            if (v->min < v->max) {
+                if (f < v->min) f = v->min;
+                if (f > v->max) f = v->max;
+            }
+            *(float*)v->ptr = f;
+            break;
+        }
     }
     return true;
 }
@@ -1291,11 +1332,6 @@ void Console_RegisterGameVars(void) {
     Console_RegisterVar("dayLen", &dayLength, CVAR_FLOAT);
 
     // Simulation toggles
-    Console_RegisterVar("water", &waterEnabled, CVAR_BOOL);
-    Console_RegisterVar("fire", &fireEnabled, CVAR_BOOL);
-    Console_RegisterVar("smoke", &smokeEnabled, CVAR_BOOL);
-    Console_RegisterVar("steam", &steamEnabled, CVAR_BOOL);
-    Console_RegisterVar("temp", &temperatureEnabled, CVAR_BOOL);
     Console_RegisterVar("wear", &groundWearEnabled, CVAR_BOOL);
     Console_RegisterVar("weather", &weatherEnabled, CVAR_BOOL);
     Console_RegisterVar("lighting", &lightingEnabled, CVAR_BOOL);
@@ -1303,15 +1339,15 @@ void Console_RegisterGameVars(void) {
     Console_RegisterVar("blockLight", &blockLightEnabled, CVAR_BOOL);
 
     // Simulation params
-    Console_RegisterVar("fireSpread", &fireSpreadInterval, CVAR_FLOAT);
-    Console_RegisterVar("fireFuel", &fireFuelInterval, CVAR_FLOAT);
-    Console_RegisterVar("surfTemp", &ambientSurfaceTemp, CVAR_INT);
     Console_RegisterVar("daysPerSzn", &daysPerSeason, CVAR_INT);
     Console_RegisterVar("sznAmp", &seasonalAmplitude, CVAR_INT);
     Console_RegisterVar("baseTemp", &baseSurfaceTemp, CVAR_INT);
 
     // Overlays
     Console_RegisterVar("tempOverlay", &showTemperatureOverlay, CVAR_BOOL);
+
+    // Tunable settings table (src/core/settings.c): range + help per variable
+    Settings_RegisterConsoleVars();
 }
 
 // ---------------------------------------------------------------------------
