@@ -787,6 +787,30 @@ void SpawnMoverAt(int cx, int cy, int cz) {
     moverCount++;
 }
 
+// Demo: single-file ladders. Ground at z=1, a plank deck at z=2 over the east
+// half, ONE ladder between them, 16 movers wandering (endless mode, preferring
+// goals on the other level), so a queue forms at the ladder. Start with
+// --scenario ladders; toggle the rule with the "Single-file Ladders" switch or
+// the console var singleFileLadders.
+static void SetupLadderScenario(void) {
+    const int deckX = 18, ladderX = 18, ladderY = 16;
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = deckX; x < gridWidth; x++) {
+            SET_FLOOR(x, y, 2);
+            SetFloorMaterial(x, y, 2, MAT_OAK);
+        }
+    grid[1][ladderY][ladderX] = CELL_LADDER_BOTH;
+    grid[2][ladderY][ladderX] = CELL_LADDER_BOTH;
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    preferDifferentZ = true;
+    for (int i = 0; i < 16; i++) SpawnMoverAt(4 + (i % 8) * 2, 10 + (i / 8) * 10, 1);
+    currentViewZ = 1;
+    AddMessage("Ladder scenario: 16 movers, one ladder (single-file on)", GREEN);
+}
+
 void SpawnStockpileWithFilters(bool allowRed, bool allowGreen, bool allowBlue) {
     int attempts = 100;
     while (attempts-- > 0) {
@@ -1296,6 +1320,13 @@ int main(int argc, char** argv) {
             fflush(stdout);
         }
     }
+
+    // Built-in demo scenarios: --scenario ladders
+    for (int i = 1; i + 1 < argc; i++)
+        if (strcmp(argv[i], "--scenario") == 0) {
+            if (strcmp(argv[i + 1], "ladders") == 0) SetupLadderScenario();
+            else printf("Unknown scenario '%s' (known: ladders)\n", argv[i + 1]);
+        }
 
     float accumulator = 0.0f;
 
