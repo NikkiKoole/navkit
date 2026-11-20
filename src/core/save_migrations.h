@@ -2,11 +2,13 @@
 #define SAVE_MIGRATIONS_H
 
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 #include "../world/material.h"
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 93
+#define CURRENT_SAVE_VERSION 94
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -24,6 +26,34 @@
 //
 // This ensures saveload.c and inspect.c can't drift - they share the same legacy definitions.
 // ============================================================================
+
+// v94: grid (CellType) stored as uint8_t, targetHeight as uint8_t, wearGrid as uint16_t.
+// Before v94 each was saved as 4-byte int per cell. These read n legacy ints into the
+// narrow array (values are in range: CellType < 256, tree heights < depth, wear <= wearMax).
+#define V94_NARROW_GRID_LAYERS 94
+static inline void FreadLegacyIntsAsU8(uint8_t* dst, size_t n, FILE* f) {
+    int32_t buf[256];
+    while (n > 0) {
+        size_t k = n < 256 ? n : 256;
+        size_t got = fread(buf, sizeof(int32_t), k, f);
+        for (size_t i = 0; i < got; i++) dst[i] = (uint8_t)buf[i];
+        if (got < k) return;
+        dst += k; n -= k;
+    }
+}
+static inline void FreadLegacyIntsAsU16(uint16_t* dst, size_t n, FILE* f) {
+    int32_t buf[256];
+    while (n > 0) {
+        size_t k = n < 256 ? n : 256;
+        size_t got = fread(buf, sizeof(int32_t), k, f);
+        for (size_t i = 0; i < got; i++) {
+            int32_t v = buf[i];
+            dst[i] = (uint16_t)(v < 0 ? 0 : (v > 65535 ? 65535 : v));
+        }
+        if (got < k) return;
+        dst += k; n -= k;
+    }
+}
 
 // V82 Mover struct (before name/gender/age/appearanceSeed/isDrafted fields added in v83)
 typedef struct {

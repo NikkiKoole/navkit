@@ -1591,7 +1591,7 @@ static void ExecuteRemoveGrass(int x1, int y1, int x2, int y2, int z) {
                 int surface = GET_CELL_SURFACE(dx, dy, z);
                 if (surface != SURFACE_BARE) {
                     SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);
-                    wearGrid[z][dy][dx] = wearMax;  // Set max wear so grass doesn't regrow immediately
+                    wearGrid[z][dy][dx] = WearCap();  // Set max wear so grass doesn't regrow immediately
                     count++;
                 }
             }

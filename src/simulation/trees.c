@@ -27,7 +27,7 @@ float youngToMatureGH = 400.0f;  // Game-hours young tree waits at full height b
 float growthTimer[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Target height per tree (set when sapling becomes trunk, based on position)
-int targetHeight[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+uint8_t targetHeight[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Harvest state per cell (only meaningful on trunk base cells)
 uint8_t treeHarvestState[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];

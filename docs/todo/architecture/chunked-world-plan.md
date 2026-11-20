@@ -39,6 +39,11 @@ for sparse), `farmGrid` 8 B (sparse), 4 B each for `temperatureGrid`, `wearGrid`
 `waterGrid`, `roomGrid`, `fireGrid`; 1 B for the ~20 others. Narrowing `grid` (to uint8),
 `targetHeight`, `wearGrid` and making designations/farm/tree layers sparse removes ~35 of the 87 B.
 
+**Done (2026-11-20, save v94):** `grid` and `targetHeight` are `uint8_t`, `wearGrid` is `uint16_t`
+(wear writes capped by `WearCap()`): -8 B per cell. v93 saves migrate on load (checked: old and
+new build give identical inspect/audit/mover output after 300 ticks from the same v93 save).
+1024 world: peak RSS 1.13 -> 1.05 GB, footprint 1.70 -> 1.60 GB, tick time unchanged (6.8 ms).
+
 **1024 baseline after cheap win 1** (`path1024 --headless --scenario world --set scenarioSize 1024
 --ticks 1200 --profile`): 6.7 ms/tick average (Move 2.9, Water 2.1, Trees 0.9, Jobs 0.4);
 peak RSS 1.13 GB, peak footprint 1.70 GB; HPA* full graph build 3.0 s (298K entrances,

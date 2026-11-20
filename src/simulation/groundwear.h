@@ -36,7 +36,10 @@ extern int saplingRegrowthChance;     // Chance per 10000 per interval (default 
 extern int saplingMinTreeDistance;    // Min distance from existing trees/saplings
 
 // Wear grid (parallel to main grid, all z-levels)
-extern int wearGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern uint16_t wearGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
+// Largest value written to wearGrid: wearMax, clamped to what uint16_t holds.
+static inline int WearCap(void) { return wearMax < 65535 ? wearMax : 65535; }
 
 // Global state
 extern bool groundWearEnabled;

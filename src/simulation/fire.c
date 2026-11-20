@@ -443,7 +443,7 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
                     grid[z][y][x] = burnResult;
                     // Set high wear on burned dirt so it takes time to regrow
                     if (burnResult == CELL_WALL && IsWallNatural(x, y, z) && GetWallMaterial(x, y, z) == MAT_DIRT) {
-                        wearGrid[z][y][x] = wearMax;
+                        wearGrid[z][y][x] = WearCap();
                         SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
                         SetVegetation(x, y, z, VEG_NONE);
                     }
@@ -457,7 +457,7 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
                     }
                 } else if (currentCell == CELL_WALL && IsWallNatural(x, y, z) && GetWallMaterial(x, y, z) == MAT_DIRT) {
                     // Dirt with grass surface burns away the grass
-                    wearGrid[z][y][x] = wearMax;
+                    wearGrid[z][y][x] = WearCap();
                     SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
                     SetVegetation(x, y, z, VEG_NONE);
                 }

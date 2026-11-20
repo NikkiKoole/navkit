@@ -69,7 +69,9 @@ static inline const char* CellTypeName(int type) {
     return (type >= 0 && type < CELL_TYPE_COUNT) ? names[type] : "?";
 }
 
-extern CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+// Stored as one byte per cell (CellType values); read/write CellType as usual.
+_Static_assert(CELL_TYPE_COUNT <= 256, "CellType must fit the uint8_t grid");
+extern uint8_t grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Cell flags - per-cell terrain properties (burned, wetness, etc.)
 extern uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];

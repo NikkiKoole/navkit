@@ -13,7 +13,7 @@
 #include <stdlib.h>
 
 // Wear grid storage (3D)
-int wearGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+uint16_t wearGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Global state
 bool groundWearEnabled = true;
@@ -154,7 +154,7 @@ void TrampleGround(int x, int y, int z) {
         // Saplings need heavy traffic to be trampled, not just one pass
         // Use the wear grid to track trampling damage to the sapling
         int wear = wearGrid[z][y][x];
-        wearGrid[z][y][x] = (wear < wearMax) ? wear + 1 : wearMax;
+        wearGrid[z][y][x] = (wear < WearCap()) ? wear + 1 : WearCap();
         
         // Only destroy sapling after significant wear (half of max)
         if (wearGrid[z][y][x] >= wearMax / 2) {
@@ -185,7 +185,7 @@ void TrampleGround(int x, int y, int z) {
     // Increase wear (cap at wearMax)
     int oldWear = wearGrid[targetZ][y][x];
     int newWear = oldWear + wearTrampleAmount;
-    if (newWear > wearMax) newWear = wearMax;
+    if (newWear > WearCap()) newWear = WearCap();
     wearGrid[targetZ][y][x] = newWear;
     
     // Track active worn cells

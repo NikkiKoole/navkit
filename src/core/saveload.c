@@ -191,7 +191,7 @@ bool SaveWorld(const char* filename) {
     // Grid cells
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(grid[z][y], sizeof(CellType), gridWidth, f);
+            fwrite(grid[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
     
@@ -317,7 +317,7 @@ bool SaveWorld(const char* filename) {
     // Wear grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(wearGrid[z][y], sizeof(int), gridWidth, f);
+            fwrite(wearGrid[z][y], sizeof(uint16_t), gridWidth, f);
         }
     }
 
@@ -331,7 +331,7 @@ bool SaveWorld(const char* filename) {
     // Tree target height grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(targetHeight[z][y], sizeof(int), gridWidth, f);
+            fwrite(targetHeight[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
 
@@ -625,7 +625,8 @@ bool LoadWorld(const char* filename) {
     // Grid cells
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(grid[z][y], sizeof(CellType), gridWidth, f);
+            if (version >= V94_NARROW_GRID_LAYERS) fread(grid[z][y], sizeof(uint8_t), gridWidth, f);
+            else FreadLegacyIntsAsU8(grid[z][y], gridWidth, f);
         }
     }
     
@@ -760,7 +761,8 @@ bool LoadWorld(const char* filename) {
     // Wear grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(wearGrid[z][y], sizeof(int), gridWidth, f);
+            if (version >= V94_NARROW_GRID_LAYERS) fread(wearGrid[z][y], sizeof(uint16_t), gridWidth, f);
+            else FreadLegacyIntsAsU16(wearGrid[z][y], gridWidth, f);
         }
     }
 
@@ -774,7 +776,8 @@ bool LoadWorld(const char* filename) {
     // Tree target height grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(targetHeight[z][y], sizeof(int), gridWidth, f);
+            if (version >= V94_NARROW_GRID_LAYERS) fread(targetHeight[z][y], sizeof(uint8_t), gridWidth, f);
+            else FreadLegacyIntsAsU8(targetHeight[z][y], gridWidth, f);
         }
     }
 

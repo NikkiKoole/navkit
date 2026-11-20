@@ -18,7 +18,7 @@ ItemType LeafItemFromTreeType(MaterialType mat);
 
 // Growth grids (exposed for save/load)
 extern float growthTimer[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-extern int targetHeight[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern uint8_t targetHeight[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Harvest state (stored on trunk base cell only)
 // 0 = depleted, TREE_HARVEST_MAX = fully harvestable

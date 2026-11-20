@@ -67,7 +67,7 @@ static const char* finishNames[] = {"ROUGH", "SMOOTH", "POLISHED", "ENGRAVED"};
 // Loaded data (separate from game globals so we don't corrupt game state)
 static uint64_t insp_worldSeed = 0;
 static int insp_gridW, insp_gridH, insp_gridD, insp_chunkW, insp_chunkH;
-static CellType* insp_gridCells = NULL;
+static uint8_t* insp_gridCells = NULL;  // CellType values
 static WaterCell* insp_waterCells = NULL;
 static FireCell* insp_fireCells = NULL;
 static SmokeCell* insp_smokeCells = NULL;
@@ -1304,7 +1304,7 @@ int InspectSaveFile(int argc, char** argv) {
     }
     
     // Allocate and read grid data
-    insp_gridCells = malloc(totalCells * sizeof(CellType));
+    insp_gridCells = malloc(totalCells * sizeof(uint8_t));
     insp_waterCells = malloc(totalCells * sizeof(WaterCell));
     insp_fireCells = malloc(totalCells * sizeof(FireCell));
     insp_smokeCells = malloc(totalCells * sizeof(SmokeCell));
@@ -1319,7 +1319,8 @@ int InspectSaveFile(int argc, char** argv) {
     insp_tempCells = malloc(totalCells * sizeof(TempCell));
     insp_designations = malloc(totalCells * sizeof(Designation));
     
-    fread(insp_gridCells, sizeof(CellType), totalCells, f);
+    if (version >= V94_NARROW_GRID_LAYERS) fread(insp_gridCells, sizeof(uint8_t), totalCells, f);
+    else FreadLegacyIntsAsU8(insp_gridCells, totalCells, f);
     fread(insp_waterCells, sizeof(WaterCell), totalCells, f);
     fread(insp_fireCells, sizeof(FireCell), totalCells, f);
     fread(insp_smokeCells, sizeof(SmokeCell), totalCells, f);
@@ -1348,14 +1349,14 @@ int InspectSaveFile(int argc, char** argv) {
     fread(insp_tempCells, sizeof(TempCell), totalCells, f);
     fread(insp_designations, sizeof(Designation), totalCells, f);
     
-    // Wear grid (skip - not inspected)
-    fseek(f, totalCells * sizeof(int), SEEK_CUR);
+    // Wear grid (skip - not inspected; uint16 since v94, int before)
+    fseek(f, totalCells * (version >= V94_NARROW_GRID_LAYERS ? sizeof(uint16_t) : sizeof(int)), SEEK_CUR);
     
-    // Tree growth timer grid (skip - not inspected)
-    fseek(f, totalCells * sizeof(int), SEEK_CUR);
+    // Tree growth timer grid (skip - not inspected; float)
+    fseek(f, totalCells * sizeof(float), SEEK_CUR);
     
-    // Tree target height grid (skip - not inspected)
-    fseek(f, totalCells * sizeof(int), SEEK_CUR);
+    // Tree target height grid (skip - not inspected; uint8 since v94, int before)
+    fseek(f, totalCells * (version >= V94_NARROW_GRID_LAYERS ? sizeof(uint8_t) : sizeof(int)), SEEK_CUR);
     
     // Tree harvest state grid (skip - not inspected)
     fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);  // treeHarvestState
