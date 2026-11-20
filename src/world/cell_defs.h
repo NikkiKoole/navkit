@@ -95,7 +95,7 @@ static inline bool IsCellWalkableAtEx(int z, int y, int x, bool ignoreWater) {
     // Unexplored cells are impassable (fog of war)
     if (!IsExplored(x, y, z)) return false;
 
-    CellType cellHere = grid[z][y][x];
+    CellType cellHere = GRID(x, y, z);
     
     // Can't walk through solid blocks (walls)
     if (CellBlocksMovement(cellHere)) return false;
@@ -128,7 +128,7 @@ static inline bool IsCellWalkableAtEx(int z, int y, int x, bool ignoreWater) {
         return true;  // Implicit bedrock below z=0
     }
     
-    CellType cellBelow = grid[z-1][y][x];
+    CellType cellBelow = GRID(x, y, z-1);
     return CellIsSolid(cellBelow);
 }
 
@@ -147,7 +147,7 @@ static inline bool IsValidDestination(int z, int y, int x) {
     if (!IsCellWalkableAt(z, y, x)) return false;
     
     if (z > 0) {
-        CellType below = grid[z-1][y][x];
+        CellType below = GRID(x, y, z-1);
         
         // Reject cells on top of trees — walkable but isolated (no ladders/ramps on trees)
         if (below == CELL_TREE_TRUNK || below == CELL_TREE_BRANCH || below == CELL_TREE_ROOT) {
@@ -158,7 +158,7 @@ static inline bool IsValidDestination(int z, int y, int x) {
             // Without ramps, skip "wall tops" (air above constructed wall) as destinations
             // Natural terrain below is fine (that's normal DF-style ground)
             // When ramps exist, these could be valid platforms reachable via ramps
-            if (grid[z][y][x] == CELL_AIR && below == CELL_WALL && !IsWallNatural(x, y, z-1)) {
+            if (GRID(x, y, z) == CELL_AIR && below == CELL_WALL && !IsWallNatural(x, y, z-1)) {
                 return false;
             }
         }
@@ -181,8 +181,8 @@ static inline int GetAdditionalAffectedZLevels(int z, int* outZ) {
 // Abstracted ladder connection logic for pathfinder extraction
 static inline bool CanClimbUpAt(int x, int y, int z) {
     if (z + 1 >= gridDepth) return false;
-    CellType low = grid[z][y][x];
-    CellType high = grid[z+1][y][x];
+    CellType low = GRID(x, y, z);
+    CellType high = GRID(x, y, z+1);
     
     // Need ladder at both levels AND upper level must be walkable
     bool hasLadderHere = CellIsLadder(low);
@@ -194,8 +194,8 @@ static inline bool CanClimbUpAt(int x, int y, int z) {
 // Abstracted ladder connection logic for pathfinder extraction
 static inline bool CanClimbDownAt(int x, int y, int z) {
     if (z - 1 < 0) return false;
-    CellType high = grid[z][y][x];
-    CellType low = grid[z-1][y][x];
+    CellType high = GRID(x, y, z);
+    CellType low = GRID(x, y, z-1);
     
     // Need ladder at both levels AND lower level must be walkable
     bool hasLadderHere = CellIsLadder(high);
@@ -229,7 +229,7 @@ static inline void GetRampHighSideOffset(CellType cell, int* dx, int* dy) {
 static inline bool CanWalkUpRampAt(int x, int y, int z) {
     if (z + 1 >= gridDepth) return false;
     
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     if (!CellIsDirectionalRamp(cell)) return false;
     
     int highDx, highDy;
@@ -252,7 +252,7 @@ static inline bool CanWalkUpRampAt(int x, int y, int z) {
 static inline bool CanWalkDownRampAt(int x, int y, int z) {
     if (z < 0) return false;
     
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     if (!CellIsDirectionalRamp(cell)) return false;
     
     int highDx, highDy;
@@ -273,7 +273,7 @@ static inline bool CanWalkDownRampAt(int x, int y, int z) {
 // Check if moving from (fromX, fromY) to ramp at (rampX, rampY) at same z is allowed
 // Blocks side entry (perpendicular to ramp direction)
 static inline bool CanEnterRampFromSide(int rampX, int rampY, int z, int fromX, int fromY) {
-    CellType cell = grid[z][rampY][rampX];
+    CellType cell = GRID(rampX, rampY, z);
     if (!CellIsDirectionalRamp(cell)) return true;  // Not a ramp, allow normal movement
     
     int highDx, highDy;
@@ -314,7 +314,7 @@ static inline bool FindRampPointingTo(int x, int y, int z, int* outRampX, int* o
         int rx = x + rampOffsets[r][0];
         int ry = y + rampOffsets[r][1];
         if (rx < 0 || rx >= gridWidth || ry < 0 || ry >= gridHeight) continue;
-        if (grid[z][ry][rx] == (CellType)rampOffsets[r][2]) {
+        if (GRID(rx, ry, z) == (CellType)rampOffsets[r][2]) {
             if (outRampX) *outRampX = rx;
             if (outRampY) *outRampY = ry;
             return true;
@@ -334,7 +334,7 @@ static inline bool CanRampTransitionUp(int x, int y, int z) {
     if (z + 1 >= gridDepth) return false;
     
     // Case 1: Standing on a ramp that goes up
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     if (CellIsDirectionalRamp(cell)) {
         return CanWalkUpRampAt(x, y, z);
     }
@@ -352,7 +352,7 @@ static inline bool CanRampTransitionUp(int x, int y, int z) {
 static inline bool IsMuddy(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
     if (GET_CELL_WETNESS(x, y, z) < 2) return false;
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     if (!CellIsSolid(cell) || !IsWallNatural(x, y, z)) return false;
     return IsSoilMaterial(GetWallMaterial(x, y, z));
 }
@@ -384,7 +384,7 @@ static inline int GetCellMoveCost(int x, int y, int z) {
     // Mud (check ground cell — mover stands on top of solid)
     {
         int groundZ = z;
-        if (groundZ > 0 && !CellIsSolid(grid[groundZ][y][x]))
+        if (groundZ > 0 && !CellIsSolid(GRID(x, y, groundZ)))
             groundZ--;
         if (IsMuddy(x, y, groundZ)) {
             int mudCost = 17;  // 0.6x speed
@@ -412,7 +412,7 @@ static inline int GetCellMoveCost(int x, int y, int z) {
     }
     
     // Bush — walkable vegetation, slows movement
-    if (grid[z][y][x] == CELL_BUSH) {
+    if (GRID(x, y, z) == CELL_BUSH) {
         int bushCost = 20;  // 0.5x speed
         if (bushCost > cost) cost = bushCost;
     }

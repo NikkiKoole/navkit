@@ -32,8 +32,8 @@ bool IsFarmableSoil(int x, int y, int z) {
     if (z == 0) return false;  // can't farm on bedrock layer
 
     // Must be walkable surface (air cell with solid below)
-    if (CellIsSolid(grid[z][y][x])) return false;
-    if (!CellIsSolid(grid[z - 1][y][x])) return false;
+    if (CellIsSolid(GRID(x, y, z))) return false;
+    if (!CellIsSolid(GRID(x, y, z - 1))) return false;
 
     // Solid cell below must be natural soil material
     if (!IsWallNatural(x, y, z - 1)) return false;

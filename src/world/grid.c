@@ -113,7 +113,7 @@ void InitGridWithDimensions(int width, int height, int depth, int chunkW, int ch
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 // All air (z=0 walkable via implicit bedrock)
-                grid[z][y][x] = CELL_AIR;
+                GRID(x, y, z) = CELL_AIR;
             }
         }
     }
@@ -129,7 +129,7 @@ void InitGridWithSize(int width, int height) {
 void FillGroundLevel(void) {
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
             SetWallNatural(x, y, 0);
             SetVegetation(x, y, 0, VEG_GRASS_TALLER);
@@ -176,11 +176,11 @@ int InitGridFromAsciiWithChunkSize(const char* ascii, int chunkW, int chunkH) {
         } else {
             if (x < gridWidth && y < gridHeight) {
                 if (*p == '#') {
-                    grid[0][y][x] = CELL_WALL;
+                    GRID(x, y, 0) = CELL_WALL;
                 } else if (*p == 'B') {
-                    grid[0][y][x] = CELL_BUSH;
+                    GRID(x, y, 0) = CELL_BUSH;
                 } else {
-                    grid[0][y][x] = CELL_AIR;
+                    GRID(x, y, 0) = CELL_AIR;
                 }
             }
             x++;
@@ -211,16 +211,16 @@ static bool IsEmptyCell(CellType c) {
 
 void RecalculateLadderColumn(int x, int y) {
     for (int z = 0; z < gridDepth; z++) {
-        if (!IsLadderCell(grid[z][y][x])) continue;
+        if (!IsLadderCell(GRID(x, y, z))) continue;
         
-        bool up = (z + 1 < gridDepth) && CanReceiveFromBelow(grid[z+1][y][x]);
-        bool down = (z > 0) && CanReceiveFromAbove(grid[z-1][y][x]);
+        bool up = (z + 1 < gridDepth) && CanReceiveFromBelow(GRID(x, y, z+1));
+        bool down = (z > 0) && CanReceiveFromAbove(GRID(x, y, z-1));
         
         CellType newType = up ? (down ? CELL_LADDER_BOTH : CELL_LADDER_UP) 
                               : (down ? CELL_LADDER_DOWN : CELL_LADDER_UP);
         
-        if (grid[z][y][x] != newType) {
-            grid[z][y][x] = newType;
+        if (GRID(x, y, z) != newType) {
+            GRID(x, y, z) = newType;
             MarkChunkDirty(x, y, z);
         }
     }
@@ -229,49 +229,49 @@ void RecalculateLadderColumn(int x, int y) {
 void PlaceLadder(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
     
-    CellType current = grid[z][y][x];
+    CellType current = GRID(x, y, z);
     if (IsWallCell(current) && !IsWallNatural(x, y, z)) return;
     
     // If there's a ramp here, erase it first
     if (CellIsDirectionalRamp(current)) {
         EraseRamp(x, y, z);
-        current = grid[z][y][x];  // Update after erase
+        current = GRID(x, y, z);  // Update after erase
     }
     
     // If already a ladder, only extend if clicking on the TOP piece (DOWN)
     if (IsLadderCell(current)) {
-        if (current == CELL_LADDER_DOWN && z + 1 < gridDepth && IsEmptyCell(grid[z+1][y][x])) {
-            grid[z + 1][y][x] = CELL_LADDER_DOWN;
+        if (current == CELL_LADDER_DOWN && z + 1 < gridDepth && IsEmptyCell(GRID(x, y, z+1))) {
+            GRID(x, y, z + 1) = CELL_LADDER_DOWN;
             MarkChunkDirty(x, y, z + 1);
             RecalculateLadderColumn(x, y);
         }
         return;
     }
     
-    CellType above = (z + 1 < gridDepth) ? grid[z+1][y][x] : CELL_WALL;
-    CellType below = (z > 0) ? grid[z-1][y][x] : CELL_WALL;
+    CellType above = (z + 1 < gridDepth) ? GRID(x, y, z+1) : CELL_WALL;
+    CellType below = (z > 0) ? GRID(x, y, z-1) : CELL_WALL;
     
     bool connectAbove = CanReceiveFromBelow(above);
     bool connectBelow = CanReceiveFromAbove(below);
     bool extendDown = (above == CELL_LADDER_UP);
     
     if (connectAbove && connectBelow) {
-        grid[z][y][x] = CELL_LADDER_BOTH;
+        GRID(x, y, z) = CELL_LADDER_BOTH;
     } else if (connectAbove) {
-        grid[z][y][x] = CELL_LADDER_DOWN;
+        GRID(x, y, z) = CELL_LADDER_DOWN;
     } else if (extendDown) {
-        grid[z][y][x] = CELL_LADDER_UP;
+        GRID(x, y, z) = CELL_LADDER_UP;
     } else if (connectBelow) {
-        grid[z][y][x] = CELL_LADDER_UP;
+        GRID(x, y, z) = CELL_LADDER_UP;
         if (z + 1 < gridDepth && IsEmptyCell(above)) {
-            grid[z+1][y][x] = CELL_LADDER_DOWN;
+            GRID(x, y, z+1) = CELL_LADDER_DOWN;
             MarkChunkDirty(x, y, z+1);
         }
     } else {
         // New shaft - UP here, DOWN above if room
-        grid[z][y][x] = CELL_LADDER_UP;
+        GRID(x, y, z) = CELL_LADDER_UP;
         if (z + 1 < gridDepth && IsEmptyCell(above)) {
-            grid[z+1][y][x] = CELL_LADDER_DOWN;
+            GRID(x, y, z+1) = CELL_LADDER_DOWN;
             MarkChunkDirty(x, y, z+1);
         }
         MarkChunkDirty(x, y, z);
@@ -284,18 +284,18 @@ void PlaceLadder(int x, int y, int z) {
 // Called when the cell below lost its upward connection - iterates upward
 static void CascadeBreakDown(int x, int y, int z) {
     while (z >= 0 && z < gridDepth) {
-        CellType cell = grid[z][y][x];
+        CellType cell = GRID(x, y, z);
         if (!IsLadderCell(cell)) return;
         
         MarkChunkDirty(x, y, z);
         
         if (cell == CELL_LADDER_BOTH) {
             // Lost connection below: BOTH → UP
-            grid[z][y][x] = CELL_LADDER_UP;
+            GRID(x, y, z) = CELL_LADDER_UP;
             return;  // BOTH→UP doesn't cascade further
         } else if (cell == CELL_LADDER_DOWN) {
             // DOWN with no connection below: remove and continue up
-            grid[z][y][x] = CELL_AIR;
+            GRID(x, y, z) = CELL_AIR;
             z++;  // Continue upward
         } else {
             // UP stays UP (still has its upward connection)
@@ -307,18 +307,18 @@ static void CascadeBreakDown(int x, int y, int z) {
 // Called when the cell above lost its downward connection - iterates downward
 static void CascadeBreakUp(int x, int y, int z) {
     while (z >= 0 && z < gridDepth) {
-        CellType cell = grid[z][y][x];
+        CellType cell = GRID(x, y, z);
         if (!IsLadderCell(cell)) return;
         
         MarkChunkDirty(x, y, z);
         
         if (cell == CELL_LADDER_BOTH) {
             // Lost connection above: BOTH → DOWN
-            grid[z][y][x] = CELL_LADDER_DOWN;
+            GRID(x, y, z) = CELL_LADDER_DOWN;
             return;  // BOTH→DOWN doesn't cascade further
         } else if (cell == CELL_LADDER_UP) {
             // UP with no connection above: remove and continue down
-            grid[z][y][x] = CELL_AIR;
+            GRID(x, y, z) = CELL_AIR;
             z--;  // Continue downward
         } else {
             // DOWN stays DOWN (still has its downward connection)
@@ -331,25 +331,25 @@ void EraseLadder(int x, int y, int z) {
     // Bounds check
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
     
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     if (!IsLadderCell(cell)) return;
     
     MarkChunkDirty(x, y, z);
     
     if (cell == CELL_LADDER_BOTH) {
         // Break upward connection: BOTH → DOWN
-        grid[z][y][x] = CELL_LADDER_DOWN;
+        GRID(x, y, z) = CELL_LADDER_DOWN;
         // Cascade upward: break the cell above's downward connection
         CascadeBreakDown(x, y, z + 1);
         
     } else if (cell == CELL_LADDER_UP) {
         // Remove completely, cascade upward
-        grid[z][y][x] = CELL_AIR;
+        GRID(x, y, z) = CELL_AIR;
         CascadeBreakDown(x, y, z + 1);
         
     } else if (cell == CELL_LADDER_DOWN) {
         // Remove completely, cascade downward
-        grid[z][y][x] = CELL_AIR;
+        GRID(x, y, z) = CELL_AIR;
         CascadeBreakUp(x, y, z - 1);
     }
 }
@@ -380,7 +380,7 @@ bool CanPlaceRamp(int x, int y, int z, CellType rampType) {
     if (!IsCellWalkableAt(z, y, x)) return false;
     
     // Current cell must not already be a ramp or ladder
-    CellType current = grid[z][y][x];
+    CellType current = GRID(x, y, z);
     if (CellIsDirectionalRamp(current) || CellIsLadder(current)) return false;
     
     // Get high side offset
@@ -409,7 +409,7 @@ bool CanPlaceRamp(int x, int y, int z, CellType rampType) {
         // A ramp at z-1 with same direction would exit at this ramp's low side at z
         bool rampBelowProvideAccess = false;
         if (z > 0) {
-            CellType cellBelow = grid[z-1][lowY][lowX];
+            CellType cellBelow = GRID(lowX, lowY, z-1);
             if (CellIsRamp(cellBelow)) {
                 // Check if the ramp below exits toward this cell
                 int belowHighDx, belowHighDy;
@@ -447,7 +447,7 @@ void PlaceRamp(int x, int y, int z, CellType rampType) {
     PushItemsOutOfCell(x, y, z);
     
     // Place the ramp
-    grid[z][y][x] = rampType;
+    GRID(x, y, z) = rampType;
     rampCount++;
     MarkChunkDirty(x, y, z);
 }
@@ -456,10 +456,10 @@ void EraseRamp(int x, int y, int z) {
     // Bounds check
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
     
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     if (!CellIsDirectionalRamp(cell)) return;
     
-    grid[z][y][x] = CELL_AIR;
+    GRID(x, y, z) = CELL_AIR;
     
     rampCount--;
     MarkChunkDirty(x, y, z);
@@ -470,7 +470,7 @@ void EraseRamp(int x, int y, int z) {
 bool IsRampStillValid(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
     
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     if (!CellIsDirectionalRamp(cell)) return false;
     
     // Get the exit position (high side at z+1)
@@ -487,7 +487,7 @@ bool IsRampStillValid(int x, int y, int z) {
     
     // The exit cell must have solid support below it (at z, the same level as the ramp)
     // This means the cell adjacent to the ramp in the high direction must be solid OR a ramp
-    CellType exitBase = grid[z][exitY][exitX];
+    CellType exitBase = GRID(exitX, exitY, z);
     
     // Valid if the exit has solid ground at the same z-level as the ramp
     // (wall, dirt, etc. - something you can stand on top of)
@@ -502,11 +502,11 @@ bool IsRampStillValid(int x, int y, int z) {
 
 // Remove a ramp and convert to floor, spawning debris
 static void RemoveInvalidRamp(int x, int y, int z) {
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     if (!CellIsDirectionalRamp(cell)) return;
     
     // Convert to floor
-    grid[z][y][x] = CELL_AIR;
+    GRID(x, y, z) = CELL_AIR;
     SET_FLOOR(x, y, z);
     
     rampCount--;
@@ -534,7 +534,7 @@ int ValidateAndCleanupRamps(int minX, int minY, int minZ, int maxX, int maxY, in
         for (int z = minZ; z <= maxZ; z++) {
             for (int y = minY; y <= maxY; y++) {
                 for (int x = minX; x <= maxX; x++) {
-                    CellType cell = grid[z][y][x];
+                    CellType cell = GRID(x, y, z);
                     if (CellIsDirectionalRamp(cell) && !IsRampStillValid(x, y, z)) {
                         RemoveInvalidRamp(x, y, z);
                         removedCount++;
@@ -562,7 +562,7 @@ int ValidateAllRamps(void) {
 void ClearCellCleanup(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
     
-    CellType current = grid[z][y][x];
+    CellType current = GRID(x, y, z);
     
     // Check for ramps
     if (CellIsDirectionalRamp(current)) {
@@ -584,7 +584,7 @@ void PlaceCellFull(int x, int y, int z, CellPlacementSpec spec) {
     ClearCellCleanup(x, y, z);
     
     // Set cell type
-    grid[z][y][x] = spec.cellType;
+    GRID(x, y, z) = spec.cellType;
     
     // Set wall properties
     SetWallMaterial(x, y, z, spec.wallMat);
@@ -718,32 +718,32 @@ int InitMultiFloorGridFromAscii(const char* ascii, int chunkW, int chunkH) {
         } else if (currentFloor >= 0) {
             if (x < gridWidth && y < gridHeight && currentFloor < gridDepth) {
                 if (*p == '#') {
-                    grid[currentFloor][y][x] = CELL_WALL;
+                    GRID(x, y, currentFloor) = CELL_WALL;
                 } else if (*p == 'L') {
-                    grid[currentFloor][y][x] = CELL_LADDER_BOTH;  // Legacy
+                    GRID(x, y, currentFloor) = CELL_LADDER_BOTH;  // Legacy
                 } else if (*p == '<') {
-                    grid[currentFloor][y][x] = CELL_LADDER_UP;
+                    GRID(x, y, currentFloor) = CELL_LADDER_UP;
                 } else if (*p == '>') {
-                    grid[currentFloor][y][x] = CELL_LADDER_DOWN;
+                    GRID(x, y, currentFloor) = CELL_LADDER_DOWN;
                 } else if (*p == 'X') {
-                    grid[currentFloor][y][x] = CELL_LADDER_BOTH;
+                    GRID(x, y, currentFloor) = CELL_LADDER_BOTH;
                 } else if (*p == 'N') {
-                    grid[currentFloor][y][x] = CELL_RAMP_N;
+                    GRID(x, y, currentFloor) = CELL_RAMP_N;
                     rampCount++;
                 } else if (*p == 'E') {
-                    grid[currentFloor][y][x] = CELL_RAMP_E;
+                    GRID(x, y, currentFloor) = CELL_RAMP_E;
                     rampCount++;
                 } else if (*p == 'S') {
-                    grid[currentFloor][y][x] = CELL_RAMP_S;
+                    GRID(x, y, currentFloor) = CELL_RAMP_S;
                     rampCount++;
                 } else if (*p == 'W') {
-                    grid[currentFloor][y][x] = CELL_RAMP_W;
+                    GRID(x, y, currentFloor) = CELL_RAMP_W;
                     rampCount++;
                 } else {
                     // All floors are CELL_AIR
                     //   - floor 0 is walkable via implicit bedrock at z=-1
                     //   - floor 1+ gets HAS_FLOOR flag for walkability
-                    grid[currentFloor][y][x] = CELL_AIR;
+                    GRID(x, y, currentFloor) = CELL_AIR;
                     if (currentFloor > 0) {
                         SET_FLOOR(x, y, currentFloor);  // Constructed floor for walkability
                     }
@@ -772,7 +772,7 @@ static void CheckDiscoveriesAtCell(int x, int y, int z, RevealDiscoveries *d) {
         if (d->waterSources == 0) { d->firstWaterX = x; d->firstWaterY = y; d->firstWaterZ = z; }
         d->waterSources++;
     }
-    if (grid[z][y][x] == CELL_BUSH) {
+    if (GRID(x, y, z) == CELL_BUSH) {
         d->bushes++;
     }
     if (fireGrid[z][y][x].fuel > 0) {
@@ -844,7 +844,7 @@ void RevealAroundPoint(int cx, int cy, int cz, int radius) {
                     MarkChunkDirty(x, y, z);
                     CheckDiscoveriesAtCell(x, y, z, &disc);
                 }
-                if (CellIsSolid(grid[z][y][x])) break;
+                if (CellIsSolid(GRID(x, y, z))) break;
             }
 
             // Reveal downward through air until solid or bottom
@@ -854,7 +854,7 @@ void RevealAroundPoint(int cx, int cy, int cz, int radius) {
                     MarkChunkDirty(x, y, z);
                     CheckDiscoveriesAtCell(x, y, z, &disc);
                 }
-                if (CellIsSolid(grid[z][y][x])) break;
+                if (CellIsSolid(GRID(x, y, z))) break;
             }
         }
     }

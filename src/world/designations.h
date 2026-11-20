@@ -86,6 +86,7 @@ typedef struct {
 
 // Storage: one designation per cell (sparse would be better for huge maps, but this is simple)
 extern Designation designations[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define DESIGNATION(x, y, z) (designations CELL_AT((x), (y), (z)))
 
 // =============================================================================
 // Blueprints (for construction)

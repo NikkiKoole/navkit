@@ -34,10 +34,12 @@ static SmokePos smokePressureQueue[SMOKE_PRESSURE_SEARCH_LIMIT];
 // Generation counter for visited tracking (avoids expensive memset)
 static uint16_t smokePressureGeneration = 0;
 static uint16_t smokePressureVisited[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define SMOKE_PRESSURE_VISITED(x, y, z) (smokePressureVisited CELL_AT((x), (y), (z)))
 
 // Track cells that have already risen this tick (prevents cascading through multiple z-levels)
 static uint16_t smokeRiseGeneration = 0;
 static uint16_t smokeHasRisen[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define SMOKE_HAS_RISEN(x, y, z) (smokeHasRisen CELL_AT((x), (y), (z)))
 
 // Initialize smoke system
 void InitSmoke(void) {
@@ -78,7 +80,7 @@ static inline bool InBounds(int x, int y, int z) {
 // Check if smoke can exist in a cell (not blocked by walls)
 static inline bool CanHoldSmoke(int x, int y, int z) {
     if (!InBounds(x, y, z)) return false;
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     return CellAllowsFluids(cell);
 }
 

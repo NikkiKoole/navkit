@@ -39,7 +39,7 @@ bool IsDirtSource(int x, int y, int z) {
         || z < 0 || z >= gridDepth) return false;
 
     for (int cz = z; cz >= z - 1 && cz >= 0; cz--) {
-        CellType cell = grid[cz][y][x];
+        CellType cell = GRID(x, y, cz);
         if (!CellIsSolid(cell) || !IsWallNatural(x, y, cz)) continue;
         MaterialType mat = GetWallMaterial(x, y, cz);
         if (mat == MAT_DIRT || mat == MAT_CLAY || mat == MAT_SAND
@@ -59,7 +59,7 @@ bool IsDirtTarget(int x, int y, int z) {
 
     // Walking on top of constructed (non-natural) solid block
     if (z > 0) {
-        CellType below = grid[z - 1][y][x];
+        CellType below = GRID(x, y, z - 1);
         if (CellIsSolid(below) && !IsWallNatural(x, y, z - 1)) return true;
     }
     return false;
@@ -76,7 +76,7 @@ static void TrackFloorDirt(int srcX, int srcY, int srcZ,
     // Muddy source tracks 3x more dirt
     {
         int groundZ = srcZ;
-        if (groundZ > 0 && !CellIsSolid(grid[groundZ][srcY][srcX]))
+        if (groundZ > 0 && !CellIsSolid(GRID(srcX, srcY, groundZ)))
             groundZ--;
         if (IsMuddy(srcX, srcY, groundZ))
             amount *= 3;

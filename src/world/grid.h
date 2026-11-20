@@ -69,12 +69,21 @@ static inline const char* CellTypeName(int type) {
     return (type >= 0 && type < CELL_TYPE_COUNT) ? names[type] : "?";
 }
 
+// Per-cell layer access: every [MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH] layer has a
+// macro LAYER(x, y, z) (GRID, WATER, CELL_FLAGS, ...) declared next to it, usable as an lvalue.
+// Use the macros, never layer[z][y][x]: CELL_AT is the only place that knows the storage layout,
+// so it can change (chunk-major, runtime-sized) without touching call sites again.
+// See docs/todo/architecture/chunked-world-plan.md, "Step 1".
+#define CELL_AT(x, y, z) [(z)][(y)][(x)]
+
 // Stored as one byte per cell (CellType values); read/write CellType as usual.
 _Static_assert(CELL_TYPE_COUNT <= 256, "CellType must fit the uint8_t grid");
 extern uint8_t grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define GRID(x, y, z) (grid CELL_AT((x), (y), (z)))
 
 // Cell flags - per-cell terrain properties (burned, wetness, etc.)
 extern uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define CELL_FLAGS(x, y, z) (cellFlags CELL_AT((x), (y), (z)))
 
 // Cell flag bits
 #define CELL_FLAG_BURNED    (1 << 0)  // Bit 0: cell has been burned
@@ -108,6 +117,7 @@ typedef enum {
 } VegetationType;
 
 extern uint8_t vegetationGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define VEGETATION(x, y, z) (vegetationGrid CELL_AT((x), (y), (z)))
 
 #define GetVegetation(x,y,z)      ((VegetationType)vegetationGrid[z][y][x])
 #define SetVegetation(x,y,z,v)    (vegetationGrid[z][y][x] = (uint8_t)(v))
@@ -115,6 +125,7 @@ extern uint8_t vegetationGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 // Track connections grid — 4-bit bitmask per cell: N=1, E=2, S=4, W=8
 // Stores which directions a track cell is connected to (intent-aware, not just adjacency)
 extern uint8_t trackConnections[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define TRACK_CONN(x, y, z) (trackConnections CELL_AT((x), (y), (z)))
 
 #define TRACK_N 1
 #define TRACK_E 2
@@ -123,6 +134,7 @@ extern uint8_t trackConnections[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH]
 
 // Exploration grid — fog of war (0=unexplored, 1=explored)
 extern uint8_t exploredGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define EXPLORED(x, y, z) (exploredGrid CELL_AT((x), (y), (z)))
 
 #define DEFAULT_MOVER_VISION_RADIUS  10
 #define DEFAULT_SPAWN_VISION_RADIUS  12
@@ -164,7 +176,7 @@ void RevealAroundPoint(int cx, int cy, int cz, int radius);
 // Helper to check if a cell is air (empty space that can be fallen through)
 static inline bool IsCellAirAt(int z, int y, int x) {
     if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
-    return grid[z][y][x] == CELL_AIR;
+    return GRID(x, y, z) == CELL_AIR;
 }
 
 // Note: IsLadderCell, IsWallCell, IsCellWalkableAt are defined in cell_defs.h

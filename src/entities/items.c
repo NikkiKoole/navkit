@@ -457,12 +457,12 @@ void DropItemsInCell(int x, int y, int z) {
     
     // Find the lowest z-level the item can fall to
     int targetZ = z - 1;
-    while (targetZ > 0 && !CellIsSolid(grid[targetZ - 1][y][x])) {
+    while (targetZ > 0 && !CellIsSolid(GRID(x, y, targetZ - 1))) {
         targetZ--;
     }
     
     // Check if there's actually somewhere to fall
-    if (CellIsSolid(grid[targetZ][y][x])) return;  // No open space below
+    if (CellIsSolid(GRID(x, y, targetZ))) return;  // No open space below
     
     // Move all items at this cell down to the target z-level
     for (int i = 0; i < itemHighWaterMark; i++) {

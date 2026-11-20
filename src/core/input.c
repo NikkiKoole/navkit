@@ -144,7 +144,7 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
             
             if (isDirt) {
                 // Dirt creates natural terrain
-                if (grid[z][dy][dx] != CELL_WALL || GetWallMaterial(dx, dy, z) != MAT_DIRT) {
+                if (GRID(dx, dy, z) != CELL_WALL || GetWallMaterial(dx, dy, z) != MAT_DIRT) {
                     PlaceCellFull(dx, dy, z, NaturalTerrainSpec(CELL_WALL, MAT_DIRT, SURFACE_BARE, true, true));
                     SetWallSourceItem(dx, dy, z, ITEM_DIRT);
                     InvalidatePathsThroughCell(dx, dy, z);
@@ -152,7 +152,7 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
                 }
             } else {
                 // Normal wall with material
-                if (grid[z][dy][dx] != CELL_WALL || GetWallMaterial(dx, dy, z) != mat) {
+                if (GRID(dx, dy, z) != CELL_WALL || GetWallMaterial(dx, dy, z) != mat) {
                     CellPlacementSpec spec = {
                         .cellType = CELL_WALL,
                         .wallMat = mat,
@@ -185,13 +185,13 @@ static void ExecuteBuildFloor(int x1, int y1, int x2, int y2, int z) {
     int replaced = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (CellBlocksMovement(grid[z][dy][dx])) {
+            if (CellBlocksMovement(GRID(dx, dy, z))) {
                 continue;
             }
             bool hadFloor = HAS_FLOOR(dx, dy, z);
             // Set floor flag on AIR cell (for balconies/bridges)
             if (!hadFloor) {
-                grid[z][dy][dx] = CELL_AIR;
+                GRID(dx, dy, z) = CELL_AIR;
                 SET_FLOOR(dx, dy, z);
                 count++;
             } else {
@@ -259,7 +259,7 @@ static void ExecuteEraseRamp(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (CellIsDirectionalRamp(grid[z][dy][dx])) {
+            if (CellIsDirectionalRamp(GRID(dx, dy, z))) {
                 EraseRamp(dx, dy, z);
                 count++;
             }
@@ -281,7 +281,7 @@ static void ExecuteBuildRock(int x1, int y1, int x2, int y2, int z) {
                 continue;
             }
 
-            if (grid[z][dy][dx] != CELL_WALL || GetWallMaterial(dx, dy, z) != MAT_GRANITE || !IsWallNatural(dx, dy, z)) {
+            if (GRID(dx, dy, z) != CELL_WALL || GetWallMaterial(dx, dy, z) != MAT_GRANITE || !IsWallNatural(dx, dy, z)) {
                 PlaceCellFull(dx, dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, SURFACE_BARE, true, true));
                 InvalidatePathsThroughCell(dx, dy, z);
                 count++;
@@ -302,7 +302,7 @@ static void ExecuteBuildSoil(int x1, int y1, int x2, int y2, int z, CellType soi
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            CellType cell = grid[z][dy][dx];
+            CellType cell = GRID(dx, dy, z);
             // Can place soil on air or overwrite existing terrain
             if (cell == CELL_AIR || (cell == CELL_WALL && GetWallMaterial(dx, dy, z) != material)) {
                 PlaceCellFull(dx, dy, z, NaturalTerrainSpec(CELL_WALL, material, SURFACE_BARE, true, false));
@@ -329,7 +329,7 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
     
     // Step 1: Apply gravity - drop down until we find support
     while (placeZ > 0) {
-        CellType below = grid[placeZ - 1][y][x];
+        CellType below = GRID(x, y, placeZ - 1);
         // If there's solid support below, we can place here
         if (CellIsSolid(below)) {
             break;
@@ -339,7 +339,7 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
     }
     
     // Step 2: Try to place at the landing position
-    CellType landingCell = grid[placeZ][y][x];
+    CellType landingCell = GRID(x, y, placeZ);
     if (landingCell == CELL_AIR || CellIsDirectionalRamp(landingCell)) {
         // Air or ramp at landing spot - place/fill with soil here
         if (CellIsDirectionalRamp(landingCell)) {
@@ -358,7 +358,7 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
             
             if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight) continue;
             
-            if (grid[placeZ][adjY][adjX] == CELL_AIR) {
+            if (GRID(adjX, adjY, placeZ) == CELL_AIR) {
                 CellType rampDir = AutoDetectRampDirection(adjX, adjY, placeZ);
                 if (rampDir != CELL_AIR) {
                     PlaceRamp(adjX, adjY, placeZ, rampDir);
@@ -392,12 +392,12 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
                     if (nz < 0 || nz >= gridDepth) continue;
                     
                     // Check if this spot is valid (air or ramp can be filled)
-                    CellType targetCell = grid[nz][ny][nx];
+                    CellType targetCell = GRID(nx, ny, nz);
                     if (targetCell != CELL_AIR && !CellIsDirectionalRamp(targetCell)) continue;
                     
                     // Check if there's support (for horizontal/down placement)
                     if (nz > 0 && i > 0) {  // Not placing up
-                        CellType below = grid[nz - 1][ny][nx];
+                        CellType below = GRID(nx, ny, nz - 1);
                         if (!CellIsSolid(below)) continue;  // No support
                     }
                     
@@ -421,7 +421,7 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
                         if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight) continue;
                         
                         // If adjacent cell at same level is air, try to place a ramp
-                        if (grid[nz][adjY][adjX] == CELL_AIR) {
+                        if (GRID(adjX, adjY, nz) == CELL_AIR) {
                             CellType rampDir = AutoDetectRampDirection(adjX, adjY, nz);
                             if (rampDir != CELL_AIR) {
                                 PlaceRamp(adjX, adjY, nz, rampDir);
@@ -452,10 +452,10 @@ static void ExecuteErase(int x1, int y1, int x2, int y2, int z) {
                 }
             }
             
-            if (IsLadderCell(grid[z][dy][dx])) {
+            if (IsLadderCell(GRID(dx, dy, z))) {
                 EraseLadder(dx, dy, z);
                 count++;
-            } else if (CellIsDirectionalRamp(grid[z][dy][dx])) {
+            } else if (CellIsDirectionalRamp(GRID(dx, dy, z))) {
                 EraseRamp(dx, dy, z);
                 count++;
             } else {
@@ -466,8 +466,8 @@ static void ExecuteErase(int x1, int y1, int x2, int y2, int z) {
                     eraseMat = MAT_BEDROCK;
                 }
                 bool changed = false;
-                if (grid[z][dy][dx] != eraseType || (eraseType == CELL_WALL && GetWallMaterial(dx, dy, z) != eraseMat)) {
-                    grid[z][dy][dx] = eraseType;
+                if (GRID(dx, dy, z) != eraseType || (eraseType == CELL_WALL && GetWallMaterial(dx, dy, z) != eraseMat)) {
+                    GRID(dx, dy, z) = eraseType;
                     changed = true;
                 }
                 if (changed) {
@@ -1402,7 +1402,7 @@ static void ExecutePlaceFire(int x1, int y1, int x2, int y2, int z, bool shift) 
             // Otherwise fall to z-1 for air above solid (surface fire).
             int fireZ = z;
             if (GetFuelAt(dx, dy, z) == 0 && z > 0 
-                && grid[z][dy][dx] == CELL_AIR && CellIsSolid(grid[z-1][dy][dx])) {
+                && GRID(dx, dy, z) == CELL_AIR && CellIsSolid(GRID(dx, dy, z-1))) {
                 fireZ = z - 1;
             }
             
@@ -1429,7 +1429,7 @@ static void ExecuteRemoveFire(int x1, int y1, int x2, int y2, int z, bool shift)
         for (int dx = x1; dx <= x2; dx++) {
             // Fire burns on the floor (z-1), not in the air (z)
             int fireZ = z;
-            if (z > 0 && grid[z][dy][dx] == CELL_AIR && CellIsSolid(grid[z-1][dy][dx])) {
+            if (z > 0 && GRID(dx, dy, z) == CELL_AIR && CellIsSolid(GRID(dx, dy, z-1))) {
                 fireZ = z - 1;
             }
             
@@ -1561,14 +1561,14 @@ static void ExecutePlaceGrass(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            CellType cell = grid[z][dy][dx];
+            CellType cell = GRID(dx, dy, z);
             // Can grow grass on dirt terrain or air
             if (cell == CELL_AIR) {
                 // Convert to dirt terrain with proper material setup
                 PlaceCellFull(dx, dy, z, NaturalTerrainSpec(CELL_WALL, MAT_DIRT, SURFACE_BARE, true, false));
                 InvalidatePathsThroughCell(dx, dy, z);
             }
-            if (grid[z][dy][dx] == CELL_WALL && GetWallMaterial(dx, dy, z) == MAT_DIRT) {
+            if (GRID(dx, dy, z) == CELL_WALL && GetWallMaterial(dx, dy, z) == MAT_DIRT) {
                 // Set tall grass overlay and reset wear
                 SetVegetation(dx, dy, z, VEG_GRASS_TALL);
                 wearGrid[z][dy][dx] = 0;
@@ -1587,7 +1587,7 @@ static void ExecuteRemoveGrass(int x1, int y1, int x2, int y2, int z) {
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
             // Remove grass overlay from dirt terrain tiles
-            if (grid[z][dy][dx] == CELL_WALL && GetWallMaterial(dx, dy, z) == MAT_DIRT) {
+            if (GRID(dx, dy, z) == CELL_WALL && GetWallMaterial(dx, dy, z) == MAT_DIRT) {
                 int surface = GET_CELL_SURFACE(dx, dy, z);
                 if (surface != SURFACE_BARE) {
                     SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);
@@ -1607,8 +1607,8 @@ static void ExecutePlaceBush(int x1, int y1, int x2, int y2, int z) {
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
             // Place bush on walkable ground (air above solid, or has floor)
-            if (IsCellWalkableAt(z, dy, dx) && grid[z][dy][dx] == CELL_AIR) {
-                grid[z][dy][dx] = CELL_BUSH;
+            if (IsCellWalkableAt(z, dy, dx) && GRID(dx, dy, z) == CELL_AIR) {
+                GRID(dx, dy, z) = CELL_BUSH;
                 int pi = SpawnPlant(dx, dy, z, PLANT_BERRY_BUSH);
                 if (pi >= 0) {
                     plants[pi].stage = PLANT_STAGE_RIPE;
@@ -1627,8 +1627,8 @@ static void ExecuteRemoveBush(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (grid[z][dy][dx] == CELL_BUSH) {
-                grid[z][dy][dx] = CELL_AIR;
+            if (GRID(dx, dy, z) == CELL_BUSH) {
+                GRID(dx, dy, z) = CELL_AIR;
                 Plant* p = GetPlantAt(dx, dy, z);
                 if (p) {
                     int pidx = (int)(p - plants);
@@ -1645,8 +1645,8 @@ static void ExecuteRemoveBush(int x1, int y1, int x2, int y2, int z) {
 }
 
 static bool TryPlaceTrackAt(int x, int y, int z) {
-    if (IsCellWalkableAt(z, y, x) && grid[z][y][x] == CELL_AIR) {
-        grid[z][y][x] = CELL_TRACK;
+    if (IsCellWalkableAt(z, y, x) && GRID(x, y, z) == CELL_AIR) {
+        GRID(x, y, z) = CELL_TRACK;
         trackConnections[z][y][x] = 0;
         InvalidatePathsThroughCell(x, y, z);
         return true;
@@ -1660,7 +1660,7 @@ static void ConnectTrack(int x1, int y1, int x2, int y2, int z) {
     int ddy = y2 - y1;
     // Must be cardinal neighbors
     if (ddx * ddx + ddy * ddy != 1) return;
-    if (grid[z][y1][x1] != CELL_TRACK || grid[z][y2][x2] != CELL_TRACK) return;
+    if (GRID(x1, y1, z) != CELL_TRACK || GRID(x2, y2, z) != CELL_TRACK) return;
 
     // From (x1,y1) toward (x2,y2)
     if (ddy == -1) { trackConnections[z][y1][x1] |= TRACK_N; trackConnections[z][y2][x2] |= TRACK_S; }
@@ -1705,8 +1705,8 @@ static void ExecutePlaceTrack(int x1, int y1, int x2, int y2, int z) {
 }
 
 static bool TryPlacePlatformAt(int x, int y, int z) {
-    if (IsCellWalkableAt(z, y, x) && grid[z][y][x] == CELL_AIR) {
-        grid[z][y][x] = CELL_PLATFORM;
+    if (IsCellWalkableAt(z, y, x) && GRID(x, y, z) == CELL_AIR) {
+        GRID(x, y, z) = CELL_PLATFORM;
         InvalidatePathsThroughCell(x, y, z);
         return true;
     }
@@ -1730,8 +1730,8 @@ static void ExecuteRemovePlatform(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (grid[z][dy][dx] == CELL_PLATFORM) {
-                grid[z][dy][dx] = CELL_AIR;
+            if (GRID(dx, dy, z) == CELL_PLATFORM) {
+                GRID(dx, dy, z) = CELL_AIR;
                 InvalidatePathsThroughCell(dx, dy, z);
                 count++;
             }
@@ -1756,9 +1756,9 @@ static void ExecuteRemoveTrack(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (grid[z][dy][dx] == CELL_TRACK) {
+            if (GRID(dx, dy, z) == CELL_TRACK) {
                 DisconnectTrackFromNeighbors(dx, dy, z);
-                grid[z][dy][dx] = CELL_AIR;
+                GRID(dx, dy, z) = CELL_AIR;
                 InvalidatePathsThroughCell(dx, dy, z);
                 count++;
             }
@@ -1771,7 +1771,7 @@ static void ExecuteRemoveTrack(int x1, int y1, int x2, int y2, int z) {
 
 static void ExecutePlaceTree(int x, int y, int z) {
     // Check if we can place a tree here (need solid ground below or at z=0)
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_LEAVES || cell == CELL_TREE_BRANCH ||
         cell == CELL_TREE_ROOT || cell == CELL_SAPLING) {
         AddMessage("Tree already here", RED);
@@ -1783,7 +1783,7 @@ static void ExecutePlaceTree(int x, int y, int z) {
     }
     
     // Need solid ground below (or z=0)
-    if (z > 0 && !CellIsSolid(grid[z - 1][y][x])) {
+    if (z > 0 && !CellIsSolid(GRID(x, y, z - 1))) {
         AddMessage("Trees need solid ground below", RED);
         return;
     }
@@ -1807,11 +1807,11 @@ static void ExecuteRemoveTree(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            CellType cell = grid[z][dy][dx];
+            CellType cell = GRID(dx, dy, z);
             if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_BRANCH || cell == CELL_TREE_ROOT ||
                 cell == CELL_TREE_FELLED || cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
                 CancelDesignation(dx, dy, z);
-                grid[z][dy][dx] = CELL_AIR;
+                GRID(dx, dy, z) = CELL_AIR;
                 SetWallMaterial(dx, dy, z, MAT_NONE);
                 MarkChunkDirty(dx, dy, z);
                 count++;
@@ -1830,19 +1830,19 @@ static void ExecuteRemoveTree(int x1, int y1, int x2, int y2, int z) {
 // Lower terrain: remove cell at z, place at z-1 if possible
 static void LowerTerrainCell(int x, int y, int z) {
     // Only lower solid natural terrain
-    if (grid[z][y][x] != CELL_WALL) return;
+    if (GRID(x, y, z) != CELL_WALL) return;
     if (!IsWallNatural(x, y, z)) return;
 
     MaterialType mat = GetWallMaterial(x, y, z);
 
     // Remove at current z
-    grid[z][y][x] = CELL_AIR;
+    GRID(x, y, z) = CELL_AIR;
     SetWallMaterial(x, y, z, MAT_NONE);
     ClearWallNatural(x, y, z);
 
     // Place at z-1 if empty
-    if (z > 0 && grid[z-1][y][x] == CELL_AIR) {
-        grid[z-1][y][x] = CELL_WALL;
+    if (z > 0 && GRID(x, y, z-1) == CELL_AIR) {
+        GRID(x, y, z-1) = CELL_WALL;
         SetWallMaterial(x, y, z-1, mat);
         SetWallNatural(x, y, z-1);
     }
@@ -1854,15 +1854,15 @@ static void LowerTerrainCell(int x, int y, int z) {
 
 // Raise terrain: add cell at z if air and has support
 static void RaiseTerrainCell(int x, int y, int z) {
-    if (grid[z][y][x] != CELL_AIR) return;
+    if (GRID(x, y, z) != CELL_AIR) return;
     if (z == 0) return;  // Can't raise at bedrock
-    if (!CellIsSolid(grid[z-1][y][x])) return;  // Need support
+    if (!CellIsSolid(GRID(x, y, z-1))) return;  // Need support
 
     // Inherit material from below
     MaterialType mat = GetWallMaterial(x, y, z-1);
     if (mat == MAT_NONE || mat == MAT_BEDROCK) mat = MAT_DIRT;
 
-    grid[z][y][x] = CELL_WALL;
+    GRID(x, y, z) = CELL_WALL;
     SetWallMaterial(x, y, z, mat);
     SetWallNatural(x, y, z);
 
@@ -2560,9 +2560,9 @@ void HandleInput(void) {
                         // Skip silently in quick-edit mode
                     } else {
                         MaterialType mat = IsKeyDown(KEY_TWO) ? MAT_OAK : MAT_GRANITE;
-                        if (grid[z][y][x] != CELL_WALL || GetWallMaterial(x, y, z) != mat) {
+                        if (GRID(x, y, z) != CELL_WALL || GetWallMaterial(x, y, z) != mat) {
                             DisplaceWater(x, y, z);
-                            grid[z][y][x] = CELL_WALL;
+                            GRID(x, y, z) = CELL_WALL;
                             SetWallMaterial(x, y, z, mat);
                             ClearWallNatural(x, y, z);
                             SetWallFinish(x, y, z, FINISH_SMOOTH);
@@ -2581,13 +2581,13 @@ void HandleInput(void) {
                     }
                 }
                 if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) && (GetTime() - rightClickTime) > RIGHT_TAP_MAX_TIME) {
-                    if (IsLadderCell(grid[z][y][x])) {
+                    if (IsLadderCell(GRID(x, y, z))) {
                         EraseLadder(x, y, z);
-                    } else if (CellIsDirectionalRamp(grid[z][y][x])) {
+                    } else if (CellIsDirectionalRamp(GRID(x, y, z))) {
                         EraseRamp(x, y, z);
                     } else {
-                        if (grid[z][y][x] != CELL_AIR) {
-                            grid[z][y][x] = CELL_AIR;
+                        if (GRID(x, y, z) != CELL_AIR) {
+                            GRID(x, y, z) = CELL_AIR;
                             SetWallMaterial(x, y, z, MAT_NONE);
                             ClearWallNatural(x, y, z);
                             SetWallFinish(x, y, z, FINISH_ROUGH);
@@ -3387,7 +3387,7 @@ void HandleInput(void) {
             case ACTION_DRAW_TRAIN:
                 if (leftClick) {
                     // Spawn train on track cell
-                    if (grid[z][(int)mouseGrid.y][(int)mouseGrid.x] == CELL_TRACK) {
+                    if (GRID((int)mouseGrid.x, (int)mouseGrid.y, z) == CELL_TRACK) {
                         int idx = SpawnTrain((int)mouseGrid.x, (int)mouseGrid.y, z);
                         if (idx >= 0) {
                             AddMessage(TextFormat("Spawned train #%d", idx), GREEN);

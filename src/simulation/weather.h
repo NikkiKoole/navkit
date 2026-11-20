@@ -109,6 +109,7 @@ void SetWeatherWindAccum(float v);
 // Snow levels: 0=none, 1=light, 2=moderate, 3=heavy
 // Stored in separate snowGrid (uint8_t 3D array, like vegetationGrid)
 extern uint8_t snowGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define SNOW(x, y, z) (snowGrid CELL_AT((x), (y), (z)))
 
 void InitSnow(void);                    // Initialize snow grid to zero
 void SnowGridChanged(void);             // snowGrid written directly (load): UpdateSnow rechecks it

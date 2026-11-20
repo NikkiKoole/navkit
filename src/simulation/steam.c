@@ -30,6 +30,7 @@ static float steamRiseAccum = 0.0f;
 // Track which cells have received risen steam this tick (prevents cascading through z-levels)
 static uint16_t steamRiseGeneration = 0;
 static uint16_t steamHasRisen[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define STEAM_HAS_RISEN(x, y, z) (steamHasRisen CELL_AT((x), (y), (z)))
 
 // Initialize steam system
 void InitSteam(void) {
@@ -68,7 +69,7 @@ static inline bool SteamInBounds(int x, int y, int z) {
 // Check if steam can exist in a cell (not blocked by walls)
 static inline bool CanHoldSteam(int x, int y, int z) {
     if (!SteamInBounds(x, y, z)) return false;
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     return CellAllowsFluids(cell);
 }
 

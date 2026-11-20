@@ -22,6 +22,7 @@ typedef struct {
 
 // Smoke grid (same dimensions as main grid)
 extern SmokeCell smokeGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define SMOKE(x, y, z) (smokeGrid CELL_AT((x), (y), (z)))
 
 // Global state
 extern bool smokeEnabled;           // Master toggle for smoke simulation

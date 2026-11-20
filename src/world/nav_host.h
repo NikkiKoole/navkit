@@ -61,7 +61,7 @@ static inline bool NavCanClimbDown(void* host, int x, int y, int z) {
 static inline bool NavRampHighSide(void* host, int x, int y, int z, int* dx, int* dy) {
     (void)host;
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     if (!CellIsDirectionalRamp(cell)) return false;
     GetRampHighSideOffset(cell, dx, dy);
     return true;

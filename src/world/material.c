@@ -108,7 +108,7 @@ void SyncMaterialsToTerrain(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                CellType cell = grid[z][y][x];
+                CellType cell = GRID(x, y, z);
                 if (!CellIsSolid(cell)) continue;
                 
                 // All solid cells from terrain generation are natural
@@ -127,13 +127,13 @@ void SyncMaterialsToTerrain(void) {
 // Check if a wall is constructed (not natural terrain)
 bool IsConstructedWall(int x, int y, int z) {
     MaterialType mat = GetWallMaterial(x, y, z);
-    return CellBlocksMovement(grid[z][y][x]) && mat != MAT_NONE && !IsWallNatural(x, y, z);
+    return CellBlocksMovement(GRID(x, y, z)) && mat != MAT_NONE && !IsWallNatural(x, y, z);
 }
 
 // Get what item a wall drops based on its source item or material
 ItemType GetWallDropItem(int x, int y, int z) {
     MaterialType mat = GetWallMaterial(x, y, z);
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     
     if (mat == MAT_NONE || !CellIsSolid(cell)) {
         return ITEM_NONE;
@@ -169,7 +169,7 @@ ItemType GetFloorDropItem(int x, int y, int z) {
 // =============================================================================
 
 int GetCellSpriteAt(int x, int y, int z) {
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     MaterialType mat = GetWallMaterial(x, y, z);
     return GetSpriteForCellMat(cell, mat);
 }
@@ -185,12 +185,12 @@ int GetInsulationAt(int x, int y, int z) {
     }
 
     // Fall back to cell-based insulation
-    return CellInsulationTier(grid[z][y][x]);
+    return CellInsulationTier(GRID(x, y, z));
 }
 
 const char* GetCellNameAt(int x, int y, int z) {
     static char nameBuf[64];
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     MaterialType mat = GetWallMaterial(x, y, z);
 
     // Walls: material name

@@ -103,7 +103,7 @@ static int FloodFill(int sx, int sy, int z, bool *touchedEdge) {
             }
             if (visited[ny][nx]) continue;
 
-            CellType cell = grid[z][ny][nx];
+            CellType cell = GRID(nx, ny, z);
 
             // Walls/windows stop the flood entirely (not added to room)
             if (CellBlocksMovement(cell) && cell != CELL_DOOR) continue;
@@ -229,7 +229,7 @@ static void ScanRoomCells(uint16_t roomId, int z, RoomBfsNode *cells, int cellCo
         // Constructed floor check
         if (HAS_FLOOR(cx, cy, z) && !IsFloorNatural(cx, cy, z)) {
             constructedFloors++;
-        } else if (z > 0 && CellIsSolid(grid[z - 1][cy][cx]) && !IsWallNatural(cx, cy, z - 1)) {
+        } else if (z > 0 && CellIsSolid(GRID(cx, cy, z - 1)) && !IsWallNatural(cx, cy, z - 1)) {
             // Standing on top of a constructed wall below = constructed floor
             constructedFloors++;
         }
@@ -265,7 +265,7 @@ static void ScanRoomCells(uint16_t roomId, int z, RoomBfsNode *cells, int cellCo
             int ny = cy + dy[d];
             if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
 
-            CellType ncell = grid[z][ny][nx];
+            CellType ncell = GRID(nx, ny, z);
             if (ncell == CELL_WINDOW) {
                 windowPositions++;
             }
@@ -329,7 +329,7 @@ static void RecomputeRooms(void) {
             for (int x = 0; x < gridWidth; x++) {
                 if (visited[y][x]) continue;
 
-                CellType cell = grid[z][y][x];
+                CellType cell = GRID(x, y, z);
 
                 // Skip walls/windows/doors — walls and windows aren't rooms,
                 // doors are assigned in a post-pass
@@ -372,7 +372,7 @@ static void RecomputeRooms(void) {
         // Post-pass: assign door cells to an adjacent room
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (grid[z][y][x] != CELL_DOOR) continue;
+                if (GRID(x, y, z) != CELL_DOOR) continue;
                 if (roomGrid[z][y][x] != ROOM_NONE) continue;
 
                 // Find first adjacent room

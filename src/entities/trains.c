@@ -65,7 +65,7 @@ void ClearTrains(void) {
 int SpawnTrain(int x, int y, int z) {
     if (trainCount >= MAX_TRAINS) return -1;
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return -1;
-    if (grid[z][y][x] != CELL_TRACK) return -1;
+    if (GRID(x, y, z) != CELL_TRACK) return -1;
 
     int idx = -1;
     for (int i = 0; i < MAX_TRAINS; i++) {
@@ -151,13 +151,13 @@ void RebuildStations(void) {
     for (int z = 0; z < gridDepth && stationCount < MAX_STATIONS; z++) {
         for (int y = 0; y < gridHeight && stationCount < MAX_STATIONS; y++) {
             for (int x = 0; x < gridWidth && stationCount < MAX_STATIONS; x++) {
-                if (grid[z][y][x] != CELL_TRACK) continue;
+                if (GRID(x, y, z) != CELL_TRACK) continue;
                 // Check 4 cardinal neighbors for platform
                 for (int d = 0; d < 4; d++) {
                     int px = x + dx[d];
                     int py = y + dy[d];
                     if (px < 0 || px >= gridWidth || py < 0 || py >= gridHeight) continue;
-                    if (grid[z][py][px] != CELL_PLATFORM) continue;
+                    if (GRID(px, py, z) != CELL_PLATFORM) continue;
                     // Check if this platform cell is already claimed by another station
                     bool alreadyClaimed = false;
                     for (int si = 0; si < stationCount && !alreadyClaimed; si++) {
@@ -200,7 +200,7 @@ void RebuildStations(void) {
                     int cx = px + trackDirX, cy = py + trackDirY;
                     while (s->platformCellCount < MAX_PLATFORM_CELLS) {
                         if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) break;
-                        if (grid[z][cy][cx] != CELL_PLATFORM) break;
+                        if (GRID(cx, cy, z) != CELL_PLATFORM) break;
                         s->platformCells[s->platformCellCount][0] = cx;
                         s->platformCells[s->platformCellCount][1] = cy;
                         s->platformCellCount++;
@@ -212,7 +212,7 @@ void RebuildStations(void) {
                     cy = py - trackDirY;
                     while (s->platformCellCount < MAX_PLATFORM_CELLS) {
                         if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) break;
-                        if (grid[z][cy][cx] != CELL_PLATFORM) break;
+                        if (GRID(cx, cy, z) != CELL_PLATFORM) break;
                         s->platformCells[s->platformCellCount][0] = cx;
                         s->platformCells[s->platformCellCount][1] = cy;
                         s->platformCellCount++;
@@ -402,7 +402,7 @@ static bool FollowTrack(int z, int x, int y, int px, int py, int* nx, int* ny) {
     for (int d = 0; d < 4; d++) {
         if (!(conn & dirBit[d])) continue;
         int cx = x + dx[d], cy = y + dy[d];
-        if (cx < 0 || cy < 0 || cx >= gridWidth || cy >= gridHeight || grid[z][cy][cx] != CELL_TRACK) continue;
+        if (cx < 0 || cy < 0 || cx >= gridWidth || cy >= gridHeight || GRID(cx, cy, z) != CELL_TRACK) continue;
         if (cx == px && cy == py) continue;
         if (cx == sx && cy == sy) { *nx = cx; *ny = cy; return true; }
         if (firstX < 0) { firstX = cx; firstY = cy; }
@@ -736,7 +736,7 @@ static bool FindNextTrackCell(Train* t, int* outX, int* outY) {
         int nx = t->cellX + dx[d];
         int ny = t->cellY + dy[d];
         if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
-        if (grid[t->z][ny][nx] != CELL_TRACK) continue;
+        if (GRID(nx, ny, t->z) != CELL_TRACK) continue;
         // Don't reverse into previous cell (unless it's the only option)
         if (nx == t->prevCellX && ny == t->prevCellY) continue;
         options[optionCount][0] = nx;
@@ -801,7 +801,7 @@ void TrainsTick(float dt) {
         if (!t->active) continue;
 
         // Check track still exists under us
-        if (grid[t->z][t->cellY][t->cellX] != CELL_TRACK) {
+        if (GRID(t->cellX, t->cellY, t->z) != CELL_TRACK) {
             if (t->lightCellX >= 0) RemoveLightSource(t->lightCellX, t->lightCellY, t->z);
             DismountAllRiders(i);
             t->active = false;

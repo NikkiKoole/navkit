@@ -67,7 +67,7 @@ static void GenerateFlatDefaultWorld(void) {
     gridDepth = 16;
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
             SetWallNatural(x, y, 0);
             SetVegetation(x, y, 0, VEG_GRASS_TALLER);
@@ -75,7 +75,7 @@ static void GenerateFlatDefaultWorld(void) {
     for (int z = 1; z < gridDepth; z++)
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++)
-                grid[z][y][x] = CELL_AIR;
+                GRID(x, y, z) = CELL_AIR;
 }
 
 static int FindTerrainIndex(const char* name) {
@@ -156,8 +156,8 @@ static void BuildLadderDeck(void) {
 }
 
 static void AddLadderAt(int x, int y) {
-    grid[1][y][x] = CELL_LADDER_BOTH;
-    grid[2][y][x] = CELL_LADDER_BOTH;
+    GRID(x, y, 1) = CELL_LADDER_BOTH;
+    GRID(x, y, 2) = CELL_LADDER_BOTH;
 }
 
 static void SetupLadders(void) {
@@ -246,7 +246,7 @@ static void LadderTickStats(void) {
         int x = (int)(m->x / CELL_SIZE), y = (int)(m->y / CELL_SIZE);
         int z = (int)floorf(m->z);
         if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight || z < 0 || z >= gridDepth) continue;
-        if (!IsLadderCell(grid[z][y][x])) continue;
+        if (!IsLadderCell(GRID(x, y, z))) continue;
         int n;
         if (m->z - (float)z > 0.0001f) {
             moverWasClimbing[i] = true;
@@ -450,12 +450,12 @@ static bool TrainDoubleGoalPicker(int moverIdx, Point* goal) {
 static void SetupTrainDouble(void) {
     const int x0 = 4, x1 = gridWidth - 5, yN = 10, yS = 13;
     for (int x = x0; x <= x1; x++) {
-        grid[1][yN][x] = CELL_TRACK; trackConnections[1][yN][x] = TRACK_E | TRACK_W;
-        grid[1][yS][x] = CELL_TRACK; trackConnections[1][yS][x] = TRACK_E | TRACK_W;
+        GRID(x, yN, 1) = CELL_TRACK; trackConnections[1][yN][x] = TRACK_E | TRACK_W;
+        GRID(x, yS, 1) = CELL_TRACK; trackConnections[1][yS][x] = TRACK_E | TRACK_W;
     }
     for (int y = yN; y <= yS; y++) {
-        grid[1][y][x0] = CELL_TRACK; trackConnections[1][y][x0] = TRACK_N | TRACK_S;
-        grid[1][y][x1] = CELL_TRACK; trackConnections[1][y][x1] = TRACK_N | TRACK_S;
+        GRID(x0, y, 1) = CELL_TRACK; trackConnections[1][y][x0] = TRACK_N | TRACK_S;
+        GRID(x1, y, 1) = CELL_TRACK; trackConnections[1][y][x1] = TRACK_N | TRACK_S;
     }
     trackConnections[1][yN][x0] = TRACK_E | TRACK_S;
     trackConnections[1][yN][x1] = TRACK_W | TRACK_S;
@@ -464,8 +464,8 @@ static void SetupTrainDouble(void) {
     const int stops[3] = {gridWidth / 6, gridWidth / 2, gridWidth * 5 / 6};
     for (int k = 0; k < 3; k++)
         for (int x = stops[k] - 3; x <= stops[k] + 2; x++) {
-            grid[1][yN - 1][x] = CELL_PLATFORM;   // north side: eastbound trains
-            grid[1][yS + 1][x] = CELL_PLATFORM;   // south side: westbound trains
+            GRID(x, yN - 1, 1) = CELL_PLATFORM;   // north side: eastbound trains
+            GRID(x, yS + 1, 1) = CELL_PLATFORM;   // south side: westbound trains
         }
     RebuildStations();
     // Clockwise: east along the north line, west along the south line

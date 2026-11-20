@@ -57,6 +57,7 @@ typedef struct {
 
 // Room grid: per-cell room ID (0 = no room)
 extern uint16_t roomGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define ROOM(x, y, z) (roomGrid CELL_AT((x), (y), (z)))
 
 // Room metadata
 extern DetectedRoom rooms[MAX_DETECTED_ROOMS];

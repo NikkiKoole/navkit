@@ -113,7 +113,7 @@ static bool HasNearbyTree(int x, int y, int z, int dist) {
                 int ny = y + dy;
                 if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
                 
-                CellType c = grid[checkZ][ny][nx];
+                CellType c = GRID(nx, ny, checkZ);
                 if (c == CELL_SAPLING || c == CELL_TREE_TRUNK || c == CELL_TREE_LEAVES) {
                     return true;
                 }
@@ -149,7 +149,7 @@ void TrampleGround(int x, int y, int z) {
     if (z < 0 || z >= gridDepth) return;
     
     // Trample saplings - only destroy after significant wear accumulates
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     if (cell == CELL_SAPLING) {
         // Saplings need heavy traffic to be trampled, not just one pass
         // Use the wear grid to track trampling damage to the sapling
@@ -158,7 +158,7 @@ void TrampleGround(int x, int y, int z) {
         
         // Only destroy sapling after significant wear (half of max)
         if (wearGrid[z][y][x] >= wearMax / 2) {
-            grid[z][y][x] = CELL_AIR;
+            GRID(x, y, z) = CELL_AIR;
             SetWallMaterial(x, y, z, MAT_NONE);
             MarkChunkDirty(x, y, z);
             wearGrid[z][y][x] = 0;  // Reset wear
@@ -172,7 +172,7 @@ void TrampleGround(int x, int y, int z) {
     // In DF mode, movers walk at z=1 on floors above z=0 dirt terrain
     // If current cell isn't dirt terrain, check if we're standing on dirt below
     if (!(CellIsSolid(cell) && IsWallNatural(x, y, z) && GetWallMaterial(x, y, z) == MAT_DIRT) && z > 0) {
-        CellType cellBelow = grid[z - 1][y][x];
+        CellType cellBelow = GRID(x, y, z - 1);
         if (CellIsSolid(cellBelow) && IsWallNatural(x, y, z - 1) && GetWallMaterial(x, y, z - 1) == MAT_DIRT) {
             targetZ = z - 1;
         } else {
@@ -220,7 +220,7 @@ void UpdateGroundWear(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                CellType cell = grid[z][y][x];
+                CellType cell = GRID(x, y, z);
                 
                 // Only process natural dirt tiles
                 if (!CellIsSolid(cell) || !IsWallNatural(x, y, z)) continue;
@@ -270,7 +270,7 @@ void UpdateGroundWear(void) {
                 if (saplingRegrowthEnabled && wearGrid[z][y][x] == 0) {
                     // For dirt, require fully recovered grass; for other soils, just require no wear
                     if (!isDirt || GetVegetation(x, y, z) >= VEG_GRASS_TALL) {
-                        if (z + 1 < gridDepth && grid[z + 1][y][x] == CELL_AIR) {
+                        if (z + 1 < gridDepth && GRID(x, y, z + 1) == CELL_AIR) {
                             if (QueryItemAtTile(x, y, z + 1) >= 0) continue;
                             if ((rand() % 10000) < saplingRegrowthChance) {
                                 if (!HasNearbyTree(x, y, z, saplingMinTreeDistance)) {

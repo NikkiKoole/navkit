@@ -83,7 +83,7 @@ void RebuildSimActivityCounts(void) {
                     tempUnstableCells++;
                 }
                 // Trees: saplings, young trees and still-growing trunks
-                CellType cell = grid[z][y][x];
+                CellType cell = GRID(x, y, z);
                 if (IsGrowingTreeCell(x, y, z)) {
                     treeActiveCells++;
                 }
@@ -128,7 +128,7 @@ bool ValidateSimActivityCounts(void) {
                 if (IsHeatSource(x, y, z) || IsColdSource(x, y, z)) actualTempSource++;
                 TempCell *tc = &temperatureGrid[z][y][x];
                 if (!tc->stable || tc->current != ambient) actualTempUnstable++;
-                CellType cell = grid[z][y][x];
+                CellType cell = GRID(x, y, z);
                 if (IsGrowingTreeCell(x, y, z)) actualTree++;
                 if (IsRegrowingTreeCell(x, y, z)) actualTreeRegen++;
                 if (cell == CELL_WALL && IsWallNatural(x, y, z) && GetWallMaterial(x, y, z) == MAT_DIRT && GetGroundWear(x, y, z) > 0) actualWear++;

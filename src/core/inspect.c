@@ -562,7 +562,7 @@ static void setup_pathfinding_globals(void) {
         for (int y = 0; y < insp_gridH; y++) {
             for (int x = 0; x < insp_gridW; x++) {
                 int idx = z * insp_gridH * insp_gridW + y * insp_gridW + x;
-                grid[z][y][x] = insp_gridCells[idx];
+                GRID(x, y, z) = insp_gridCells[idx];
                 cellFlags[z][y][x] = insp_cellFlags[idx];
             }
         }
@@ -629,7 +629,7 @@ static void print_path(int x1, int y1, int z1, int x2, int y2, int z2, int algo)
             totalCost += mc;
             const char* ct = "?";
             if (px >= 0 && px < gridWidth && py >= 0 && py < gridHeight && pz >= 0 && pz < gridDepth) {
-                CellType t = grid[pz][py][px];
+                CellType t = GRID(px, py, pz);
                 if (t == CELL_AIR) ct = "AIR";
                 else if (t == CELL_WALL) ct = "WALL";
                 else if (t == CELL_BUSH) ct = "BUSH";

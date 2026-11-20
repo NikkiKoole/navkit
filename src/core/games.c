@@ -162,11 +162,11 @@ static void StartDollhouse(void) {
     // Flat terrain: solid ground at z=0, air + grass at z=1+
     for (int y = 0; y < 16; y++) {
         for (int x = 0; x < 16; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             wallMaterial[0][y][x] = MAT_DIRT;
             SetWallNatural(x, y, 0);
             for (int z = 1; z < gridDepth; z++) {
-                grid[z][y][x] = CELL_AIR;
+                GRID(x, y, z) = CELL_AIR;
             }
             SetVegetation(x, y, 0, VEG_GRASS_TALL);
         }
@@ -200,14 +200,14 @@ static void StartDollhouse(void) {
     }
 
     // Front door (bottom wall, kitchen side)
-    grid[z][oy + 7][ox + 3] = CELL_DOOR;
+    GRID(ox + 3, oy + 7, z) = CELL_DOOR;
 
     // Pond outside the door — dug into z=0, filled with water
     for (int dy = 0; dy < 3; dy++) {
         for (int dx = 0; dx < 3; dx++) {
             int px = ox + 2 + dx, py = oy + 9 + dy;
             if (px >= 0 && px < gridWidth && py >= 0 && py < gridHeight) {
-                grid[0][py][px] = CELL_AIR;  // dig out the ground
+                GRID(px, py, 0) = CELL_AIR;  // dig out the ground
                 SetVegetation(px, py, 0, VEG_NONE);
                 SetWaterLevel(px, py, 0, 7); // fill with water at z=0
             }
@@ -225,7 +225,7 @@ static void StartDollhouse(void) {
         PlaceCellFull(ox + dx, oy + 4, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
     }
     // Door gap in bathroom/bedroom divider at x+8
-    grid[z][oy + 4][ox + 8] = CELL_AIR;
+    GRID(ox + 8, oy + 4, z) = CELL_AIR;
 
     // Init all systems
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);

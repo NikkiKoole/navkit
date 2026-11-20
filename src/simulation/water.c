@@ -42,6 +42,7 @@ static WaterPos pressureQueue[WATER_PRESSURE_SEARCH_LIMIT];
 
 // Generation-based visited tracking (avoids expensive memset each call)
 static uint16_t pressureVisitedGen[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define WATER_PRESSURE_VISITED(x, y, z) (pressureVisitedGen CELL_AT((x), (y), (z)))
 static uint16_t currentPressureGen = 0;
 
 // Initialize water system
@@ -73,7 +74,7 @@ static inline bool WaterInBounds(int x, int y, int z) {
 // Check if water can exist in a cell (and flow into it)
 static inline bool CanHoldWater(int x, int y, int z) {
     if (!WaterInBounds(x, y, z)) return false;
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     if (!CellAllowsFluids(cell)) return false;
     
     // Frozen water acts as a solid block for water flow
@@ -117,7 +118,7 @@ void DisplaceWater(int x, int y, int z) {
         int nz = z + dz[i];
         
         if (!WaterInBounds(nx, ny, nz)) continue;
-        if (CellBlocksFluids(grid[nz][ny][nx])) continue;
+        if (CellBlocksFluids(GRID(nx, ny, nz))) continue;
         
         int space = WATER_MAX_LEVEL - waterGrid[nz][ny][nx].level;
         if (space > 0) {
@@ -689,7 +690,7 @@ void UpdateWater(void) {
                     // Water sits in the air cell; soil is at z-1
                     int soilZ = z - 1;
                     if (soilZ < 0) continue;
-                    if (!CellIsSolid(grid[soilZ][y][x])) continue;
+                    if (!CellIsSolid(GRID(x, y, soilZ))) continue;
                     if (!IsWallNatural(x, y, soilZ)) continue;
                     if (!IsSoilMaterial(GetWallMaterial(x, y, soilZ))) continue;
                     
@@ -834,7 +835,7 @@ static void SpawnRainWave(int count) {
         int gy = GetRandomValue(0, gridHeight - 1);
         
         for (int z = skyZ; z >= skyZ - 1 && z >= 1; z--) {
-            if (grid[z][gy][gx] == CELL_AIR) {
+            if (GRID(gx, gy, z) == CELL_AIR) {
                 int level = GetRandomValue(4, 7);
                 AddWater(gx, gy, z, level);
                 break;

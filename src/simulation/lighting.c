@@ -92,7 +92,7 @@ static void ComputeSkyColumns(void) {
                 lightGrid[z][y][x].skyLevel = level;
 
                 // If this cell blocks light or has a floor, block sky light below
-                if (CellBlocksLight(grid[z][y][x]) || HAS_FLOOR(x, y, z)) {
+                if (CellBlocksLight(GRID(x, y, z)) || HAS_FLOOR(x, y, z)) {
                     level = 0;
                 }
             }
@@ -115,7 +115,7 @@ static void SpreadSkyLight(void) {
             for (int x = 0; x < gridWidth; x++) {
                 uint8_t level = lightGrid[z][y][x].skyLevel;
                 if (level <= 1) continue;  // No light to spread
-                if (CellBlocksLight(grid[z][y][x])) continue;  // Can't spread from inside solid
+                if (CellBlocksLight(GRID(x, y, z))) continue;  // Can't spread from inside solid
 
                 // Check if any neighbor is darker — if so, this cell is a seed
                 static const int dx[] = {1, -1, 0, 0};
@@ -124,7 +124,7 @@ static void SpreadSkyLight(void) {
                     int nx = x + dx[d];
                     int ny = y + dy[d];
                     if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
-                    if (CellBlocksLight(grid[z][ny][nx])) continue;
+                    if (CellBlocksLight(GRID(nx, ny, z))) continue;
                     if (lightGrid[z][ny][nx].skyLevel < level - 1) {
                         if (tail < LIGHT_BFS_MAX) {
                             bfsQueue[tail++] = (LightBfsNode){ x, y, z, level };
@@ -148,7 +148,7 @@ static void SpreadSkyLight(void) {
             int nx = node.x + dx[d];
             int ny = node.y + dy[d];
             if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
-            if (CellBlocksLight(grid[node.z][ny][nx])) continue;
+            if (CellBlocksLight(GRID(nx, ny, node.z))) continue;
 
             if (lightGrid[node.z][ny][nx].skyLevel < newLevel) {
                 lightGrid[node.z][ny][nx].skyLevel = newLevel;
@@ -223,7 +223,7 @@ static void PropagateBlockLight(LightSource* src) {
             if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
             if (blockVisited[ny][nx]) continue;
 
-            bool solid = CellIsSolid(grid[nz][ny][nx]);
+            bool solid = CellIsSolid(GRID(nx, ny, nz));
 
             // Euclidean distance from source for circular falloff
             float ddx = (float)(nx - src->x);
@@ -380,7 +380,7 @@ Color GetLightColor(int x, int y, int z, Color skyColor) {
     }
 
     // Add block light from one level below (additive, so torches glow through)
-    if (z > 0 && !CellIsSolid(grid[z][y][x])) {
+    if (z > 0 && !CellIsSolid(GRID(x, y, z))) {
         LightCell* below = &lightGrid[z - 1][y][x];
         r += below->blockR / 2;
         g += below->blockG / 2;

@@ -16,6 +16,7 @@
 
 // Grid storage (parallel to main grid)
 extern uint8_t floorDirtGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define FLOOR_DIRT(x, y, z) (floorDirtGrid CELL_AT((x), (y), (z)))
 
 // Global state
 extern bool floorDirtEnabled;

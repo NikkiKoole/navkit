@@ -272,7 +272,7 @@ bool IsExposedToSky(int x, int y, int z) {
     }
     // Trace upward from z+1 to gridDepth-1 looking for any solid cell or floor
     for (int zz = z + 1; zz < gridDepth; zz++) {
-        CellType cell = grid[zz][y][x];
+        CellType cell = GRID(x, y, zz);
         if (cell != CELL_AIR) return false;  // Solid cell blocks sky
         if (HAS_FLOOR(x, y, zz)) return false;  // Constructed floor blocks sky
     }
@@ -300,7 +300,7 @@ static void ApplyRainWetness(void) {
         for (int x = 0; x < gridWidth; x++) {
             // Find the ground z (topmost solid cell)
             for (int z = gridDepth - 1; z >= 0; z--) {
-                CellType cell = grid[z][y][x];
+                CellType cell = GRID(x, y, z);
                 if (cell == CELL_AIR) continue;
                 // Found ground at z
                 if (!IsSoilMaterial(GetWallMaterial(x, y, z))) break;
@@ -450,6 +450,7 @@ static float snowAccum = 0.0f;
 
 // Per-cell accumulators for deterministic snow changes
 static float snowAccumGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define SNOW_ACCUM(x, y, z) (snowAccumGrid CELL_AT((x), (y), (z)))
 
 // UpdateSnow only has work while it snows, or while snow or snowfall progress lies
 // somewhere. Without these flags it searched every column for the ground several
@@ -504,7 +505,7 @@ void UpdateSnow(void) {
         for (int x = 0; x < gridWidth; x++) {
             // Find topmost solid cell
             for (int z = gridDepth - 1; z >= 0; z--) {
-                CellType cell = grid[z][y][x];
+                CellType cell = GRID(x, y, z);
                 if (cell == CELL_AIR) continue;
                 
                 // Found ground at z
@@ -691,7 +692,7 @@ static void TryLightningStrike(void) {
         for (int x = 0; x < gridWidth && candidateCount < 1024; x++) {
             // Scan from top down to find the highest flammable surface
             for (int z = gridDepth - 1; z >= 0; z--) {
-                CellType cell = grid[z][y][x];
+                CellType cell = GRID(x, y, z);
                 
                 // Check if exposed to sky
                 if (!IsExposedToSky(x, y, z)) {

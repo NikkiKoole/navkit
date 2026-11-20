@@ -75,7 +75,7 @@ bool DesignateMine(int x, int y, int z) {
     if (!IsExplored(x, y, z)) return false;
 
     // Can mine walls and terrain (DF-style: any solid)
-    CellType ct = grid[z][y][x];
+    CellType ct = GRID(x, y, z);
     if (!CellIsSolid(ct)) {
         return false;
     }
@@ -149,7 +149,7 @@ void CompleteMineDesignation(int x, int y, int z) {
         return;
     }
     
-    CellType ct = grid[z][y][x];
+    CellType ct = GRID(x, y, z);
     
     // Convert solid cell to air with floor
     if (CellIsSolid(ct)) {
@@ -158,7 +158,7 @@ void CompleteMineDesignation(int x, int y, int z) {
         MaterialType wallMat = GetWallMaterial(x, y, z);
         bool wasNatural = IsWallNatural(x, y, z);
         
-        grid[z][y][x] = CELL_AIR;
+        GRID(x, y, z) = CELL_AIR;
         SET_FLOOR(x, y, z);
         
         // Mining creates floor from wall material
@@ -280,7 +280,7 @@ bool DesignateChannel(int x, int y, int z) {
     // Verify there's a floor to remove
     if (!HAS_FLOOR(x, y, z)) {
         // Check if standing on solid cell below (implicit floor)
-        if (z > 0 && !CellIsSolid(grid[z-1][y][x])) {
+        if (z > 0 && !CellIsSolid(GRID(x, y, z-1))) {
             // No solid below - channeling here creates a hole with no ramp (DF behavior)
             // This is dangerous: mover will fall! But DF allows it, so we do too.
             // return false;  // No floor to channel
@@ -336,7 +336,7 @@ CellType AutoDetectChannelRampDirection(int x, int y, int lowerZ) {
         if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight) continue;
         
         // Adjacent cell at lowerZ should be solid (wall) - this is the "high side base"
-        CellType adjBelow = grid[lowerZ][adjY][adjX];
+        CellType adjBelow = GRID(adjX, adjY, lowerZ);
         bool adjIsSolid = CellIsSolid(adjBelow);
         if (!adjIsSolid) continue;
         
@@ -413,7 +413,7 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
     MaterialType floorMat = GetFloorMaterial(x, y, z);
     // Wall material at z-1 (if solid) - get before mining
     ItemType minedDropItem = GetWallDropItem(x, y, lowerZ);
-    CellType cellBelow = grid[lowerZ][y][x];
+    CellType cellBelow = GRID(x, y, lowerZ);
     bool wasSolid = CellIsSolid(cellBelow);
     int minedDropCount = wasSolid ? CellDropCount(cellBelow) : 0;
     MaterialType minedWallMat = GetWallMaterial(x, y, lowerZ);
@@ -421,7 +421,7 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
     
     // === STEP 2: Remove the floor at z ===
     CLEAR_FLOOR(x, y, z);
-    grid[z][y][x] = CELL_AIR;
+    GRID(x, y, z) = CELL_AIR;
     SetFloorMaterial(x, y, z, MAT_NONE);  // Floor removed
     ClearFloorNatural(x, y, z);
     SetFloorFinish(x, y, z, FINISH_ROUGH);
@@ -435,14 +435,14 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
         if (rampDir != CELL_AIR) {
             // Create ramp facing the adjacent wall
             // Mover can climb UP this ramp to exit at z (the hole level)
-            grid[lowerZ][y][x] = rampDir;
+            GRID(x, y, lowerZ) = rampDir;
             SET_FLOOR(x, y, lowerZ);  // Ramps need floor flag
             rampCount++;
         } else {
             // No valid ramp direction (no adjacent wall with walkable floor above)
             // This happens if channeling in the middle of a large open area
             // Create floor instead - mover is stuck but at least standing
-            grid[lowerZ][y][x] = CELL_AIR;
+            GRID(x, y, lowerZ) = CELL_AIR;
             SET_FLOOR(x, y, lowerZ);
         }
         // Mining creates floor from wall material
@@ -571,7 +571,7 @@ bool DesignateDigRamp(int x, int y, int z) {
     if (!IsExplored(x, y, z)) return false;
 
     // Can only dig ramps from solid cells
-    CellType ct = grid[z][y][x];
+    CellType ct = GRID(x, y, z);
     if (!CellIsSolid(ct)) {
         return false;
     }
@@ -610,7 +610,7 @@ void CompleteDigRampDesignation(int x, int y, int z, int moverIdx) {
         return;
     }
     
-    CellType ct = grid[z][y][x];
+    CellType ct = GRID(x, y, z);
     
     // Get material to drop
     MaterialType mat = GetWallMaterial(x, y, z);
@@ -624,7 +624,7 @@ void CompleteDigRampDesignation(int x, int y, int z, int moverIdx) {
     }
     
     // Convert to ramp
-    grid[z][y][x] = rampType;
+    GRID(x, y, z) = rampType;
     SetWallMaterial(x, y, z, mat);  // Preserve material for the ramp
     if (isWallNatural) {
         SetWallNatural(x, y, z);
@@ -791,7 +791,7 @@ bool DesignateRemoveRamp(int x, int y, int z) {
     }
     
     // Must be a ramp cell
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     if (!CellIsRamp(cell)) {
         return false;
     }
@@ -819,14 +819,14 @@ void CompleteRemoveRampDesignation(int x, int y, int z, int moverIdx) {
     
     // Get drop item based on wall material (ramps are walls)
     ItemType dropItem = GetWallDropItem(x, y, z);
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     int dropCount = CellIsRamp(cell) ? CellDropCount(cell) : 0;
     MaterialType rampMat = GetWallMaterial(x, y, z);
     bool rampNatural = IsWallNatural(x, y, z);
     
     // Remove the ramp, replace with floor
     if (CellIsRamp(cell)) {
-        grid[z][y][x] = CELL_AIR;
+        GRID(x, y, z) = CELL_AIR;
         SET_FLOOR(x, y, z);
         // Ramp removal creates floor from ramp material
         if (rampMat != MAT_NONE) {
@@ -895,7 +895,7 @@ bool DesignateChop(int x, int y, int z) {
     if (!IsExplored(x, y, z)) return false;
 
     // Accept trunk, branch, or leaves — trace to find tree base
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     if (cell == CELL_TREE_BRANCH || cell == CELL_TREE_LEAVES) {
         // Check if this is a young tree (branch column on ground)
         if (cell == CELL_TREE_BRANCH && IsYoungTreeBase(x, y, z)) {
@@ -908,7 +908,7 @@ bool DesignateChop(int x, int y, int z) {
             for (int d = 0; d < 4; d++) {
                 int nx = x + dx[d], ny = y + dy[d];
                 if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
-                if (grid[z][ny][nx] == CELL_TREE_TRUNK) { trunkX = nx; trunkY = ny; break; }
+                if (GRID(nx, ny, z) == CELL_TREE_TRUNK) { trunkX = nx; trunkY = ny; break; }
             }
             if (trunkX < 0) return false;
             x = trunkX;
@@ -917,9 +917,9 @@ bool DesignateChop(int x, int y, int z) {
     }
     
     // Must be a tree trunk or young tree branch base (not felled)
-    if (grid[z][y][x] == CELL_TREE_TRUNK) {
+    if (GRID(x, y, z) == CELL_TREE_TRUNK) {
         // Trace down to trunk base (lowest trunk cell)
-        while (z > 0 && grid[z - 1][y][x] == CELL_TREE_TRUNK) {
+        while (z > 0 && GRID(x, y, z - 1) == CELL_TREE_TRUNK) {
             z--;
         }
     } else if (IsYoungTreeBase(x, y, z)) {
@@ -959,7 +959,7 @@ bool DesignateChopFelled(int x, int y, int z) {
         return false;
     }
 
-    if (grid[z][y][x] != CELL_TREE_FELLED) {
+    if (GRID(x, y, z) != CELL_TREE_FELLED) {
         return false;
     }
 
@@ -983,7 +983,7 @@ bool HasChopFelledDesignation(int x, int y, int z) {
 static bool LeafConnectedToTrunk(int x, int y, int z, int maxDist, MaterialType treeMat) {
     MaterialType mat = treeMat;
     for (int checkZ = z; checkZ >= 0 && checkZ >= z - maxDist; checkZ--) {
-        if (grid[checkZ][y][x] == CELL_TREE_TRUNK &&
+        if (GRID(x, y, checkZ) == CELL_TREE_TRUNK &&
             GetWallMaterial(x, y, checkZ) == mat) {
             return true;
         }
@@ -993,7 +993,7 @@ static bool LeafConnectedToTrunk(int x, int y, int z, int maxDist, MaterialType 
                 int nx = x + dx;
                 int ny = y + dy;
                 if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
-                if (grid[checkZ][ny][nx] == CELL_TREE_TRUNK &&
+                if (GRID(nx, ny, checkZ) == CELL_TREE_TRUNK &&
                     GetWallMaterial(nx, ny, checkZ) == mat) {
                     return true;
                 }
@@ -1006,7 +1006,7 @@ static bool LeafConnectedToTrunk(int x, int y, int z, int maxDist, MaterialType 
 static int FindSurfaceZAtLocal(int x, int y) {
     for (int z = gridDepth - 1; z >= 0; z--) {
         if (HAS_FLOOR(x, y, z)) return z;
-        if (CellIsSolid(grid[z][y][x])) return z;
+        if (CellIsSolid(GRID(x, y, z))) return z;
     }
     return -1;
 }
@@ -1014,7 +1014,7 @@ static int FindSurfaceZAtLocal(int x, int y) {
 static int FindItemSpawnZAtLocal(int x, int y, int fallbackZ) {
     int surfaceZ = FindSurfaceZAtLocal(x, y);
     if (surfaceZ < 0) return fallbackZ;
-    if (CellIsSolid(grid[surfaceZ][y][x])) {
+    if (CellIsSolid(GRID(x, y, surfaceZ))) {
         if (surfaceZ + 1 < gridDepth) return surfaceZ + 1;
         return surfaceZ;
     }
@@ -1024,7 +1024,7 @@ static int FindItemSpawnZAtLocal(int x, int y, int fallbackZ) {
 static int FindTrunkBaseZAt(int x, int y, int z) {
     int baseZ = z;
     while (baseZ > 0 &&
-           grid[baseZ - 1][y][x] == CELL_TREE_TRUNK) {
+           GRID(x, y, baseZ - 1) == CELL_TREE_TRUNK) {
         baseZ--;
     }
     return baseZ;
@@ -1033,7 +1033,7 @@ static int FindTrunkBaseZAt(int x, int y, int z) {
 static int GetTrunkHeightAt(int x, int y, int baseZ) {
     int height = 0;
     for (int tz = baseZ; tz < gridDepth; tz++) {
-        if (grid[tz][y][x] == CELL_TREE_TRUNK) {
+        if (GRID(x, y, tz) == CELL_TREE_TRUNK) {
             height++;
         } else {
             break;
@@ -1056,7 +1056,7 @@ static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
     if (isYoungTree) {
         baseZ = z;
         trunkHeight = 0;
-        for (int cz = z; cz < gridDepth && grid[cz][y][x] == CELL_TREE_BRANCH; cz++)
+        for (int cz = z; cz < gridDepth && GRID(x, y, cz) == CELL_TREE_BRANCH; cz++)
             trunkHeight++;
     } else {
         baseZ = FindTrunkBaseZAt(x, y, z);
@@ -1085,7 +1085,7 @@ static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
         int cz = stackZ[stackCount];
 
         if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight || cz < 0 || cz >= gridDepth) continue;
-        CellType cellType = grid[cz][cy][cx];
+        CellType cellType = GRID(cx, cy, cz);
         if (cellType != CELL_TREE_TRUNK && cellType != CELL_TREE_BRANCH && cellType != CELL_TREE_ROOT) continue;
         if (GetWallMaterial(cx, cy, cz) != treeMat) continue;
 
@@ -1095,7 +1095,7 @@ static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
 
         // (treeRegenCells: the tree sweep recounts, see TreesTick)
 
-        grid[cz][cy][cx] = CELL_AIR;
+        GRID(cx, cy, cz) = CELL_AIR;
         SetWallMaterial(cx, cy, cz, MAT_NONE);
         MarkChunkDirty(cx, cy, cz);
 
@@ -1141,10 +1141,10 @@ static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
     for (int sz = minLZ; sz <= maxLZ; sz++) {
         for (int sy = minLY; sy <= maxLY; sy++) {
             for (int sx = minLX; sx <= maxLX; sx++) {
-                if (grid[sz][sy][sx] == CELL_TREE_LEAVES &&
+                if (GRID(sx, sy, sz) == CELL_TREE_LEAVES &&
                     GetWallMaterial(sx, sy, sz) == treeMat) {
                     if (!LeafConnectedToTrunk(sx, sy, sz, 4, type)) {
-                        grid[sz][sy][sx] = CELL_AIR;
+                        GRID(sx, sy, sz) = CELL_AIR;
                         SetWallMaterial(sx, sy, sz, MAT_NONE);
                         MarkChunkDirty(sx, sy, sz);
                         leafCount++;
@@ -1225,9 +1225,9 @@ static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
             if (surfaceZ < 0) break;
             int placeZ = surfaceZ + 1;
             if (placeZ < 0 || placeZ >= gridDepth) break;
-            if (grid[placeZ][ty][tx] != CELL_AIR) break;
+            if (GRID(tx, ty, placeZ) != CELL_AIR) break;
 
-            grid[placeZ][ty][tx] = CELL_TREE_FELLED;
+            GRID(tx, ty, placeZ) = CELL_TREE_FELLED;
             SetWallMaterial(tx, ty, placeZ, treeMat);
             MarkChunkDirty(tx, ty, placeZ);
             placedSegments++;
@@ -1247,7 +1247,7 @@ static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
         for (int sz = minZ; sz <= maxZ; sz++) {
             for (int sy = minY; sy <= maxY; sy++) {
                 for (int sx = minX; sx <= maxX; sx++) {
-                    CellType ct = grid[sz][sy][sx];
+                    CellType ct = GRID(sx, sy, sz);
                     if ((ct == CELL_TREE_TRUNK || ct == CELL_TREE_BRANCH || ct == CELL_TREE_ROOT) &&
                         GetWallMaterial(sx, sy, sz) == treeMat) {
                         remainingTrunks++;
@@ -1338,14 +1338,14 @@ void CompleteChopDesignation(int x, int y, int z, int moverIdx) {
 void CompleteChopFelledDesignation(int x, int y, int z, int moverIdx) {
     (void)moverIdx;
 
-    if (grid[z][y][x] != CELL_TREE_FELLED) {
+    if (GRID(x, y, z) != CELL_TREE_FELLED) {
         CancelDesignation(x, y, z);
         return;
     }
 
     MaterialType treeMat = GetWallMaterial(x, y, z);
 
-    grid[z][y][x] = CELL_AIR;
+    GRID(x, y, z) = CELL_AIR;
     SetWallMaterial(x, y, z, MAT_NONE);
     MarkChunkDirty(x, y, z);
 
@@ -1404,7 +1404,7 @@ bool DesignateGatherSapling(int x, int y, int z) {
     }
     
     // Must be a sapling cell
-    if (grid[z][y][x] != CELL_SAPLING) {
+    if (GRID(x, y, z) != CELL_SAPLING) {
         return false;
     }
     
@@ -1430,7 +1430,7 @@ void CompleteGatherSaplingDesignation(int x, int y, int z, int moverIdx) {
     // Remove the sapling cell
     MaterialType saplingMat = GetWallMaterial(x, y, z);
     MaterialType treeMat = NormalizeTreeTypeLocal(saplingMat);
-    grid[z][y][x] = CELL_AIR;
+    GRID(x, y, z) = CELL_AIR;
     SetWallMaterial(x, y, z, MAT_NONE);
     MarkChunkDirty(x, y, z);
     
@@ -1485,14 +1485,14 @@ bool DesignatePlantSapling(int x, int y, int z) {
     }
     
     // Must be air or grass surface (can't plant on ladders, etc.)
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     if (cell != CELL_AIR) {
         return false;
     }
     
     // Check if ground below is solid (soil/rock)
     if (z > 0) {
-        CellType below = grid[z-1][y][x];
+        CellType below = GRID(x, y, z-1);
         if (!CellIsSolid(below)) {
             return false;
         }
@@ -1729,7 +1729,7 @@ bool DesignateGatherTree(int x, int y, int z) {
     }
 
     // Must be a tree trunk cell
-    if (grid[z][y][x] != CELL_TREE_TRUNK) {
+    if (GRID(x, y, z) != CELL_TREE_TRUNK) {
         return false;
     }
 
@@ -1959,7 +1959,7 @@ bool DesignateKnap(int x, int y, int z) {
     if (!IsExplored(x, y, z)) return false;
 
     // If viewing walkable layer (air above boulder), target the cell below
-    if (!CellIsSolid(grid[z][y][x]) && z > 0 && CellIsSolid(grid[z-1][y][x])) {
+    if (!CellIsSolid(GRID(x, y, z)) && z > 0 && CellIsSolid(GRID(x, y, z-1))) {
         z = z - 1;
     }
 
@@ -1968,7 +1968,7 @@ bool DesignateKnap(int x, int y, int z) {
     }
 
     // Must be a solid wall made of stone
-    if (!CellIsSolid(grid[z][y][x])) {
+    if (!CellIsSolid(GRID(x, y, z))) {
         return false;
     }
 
@@ -2041,7 +2041,7 @@ bool DesignateDigRoots(int x, int y, int z) {
 
     // Check z-1 for natural soil (dirt/clay/peat — NOT sand/gravel, too dry/rocky)
     if (z <= 0) return false;
-    if (!CellIsSolid(grid[z - 1][y][x])) return false;
+    if (!CellIsSolid(GRID(x, y, z - 1))) return false;
     if (!IsWallNatural(x, y, z - 1)) return false;
     MaterialType belowMat = GetWallMaterial(x, y, z - 1);
     if (belowMat != MAT_DIRT && belowMat != MAT_CLAY && belowMat != MAT_PEAT) {
@@ -2278,14 +2278,14 @@ int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex) {
     if (recipe->buildCategory == BUILD_WALL || recipe->buildCategory == BUILD_LADDER) {
         if (!IsCellWalkableAt(z, y, x)) return -1;
     } else if (recipe->buildCategory == BUILD_FLOOR) {
-        if (IsWallCell(grid[z][y][x])) return -1;
-        CellType ct = grid[z][y][x];
+        if (IsWallCell(GRID(x, y, z))) return -1;
+        CellType ct = GRID(x, y, z);
         if (HAS_FLOOR(x, y, z) || CellIsSolid(ct)) return -1;
     } else if (recipe->buildCategory == BUILD_RAMP) {
         // Must be walkable (matches sandbox ramp validation)
         if (!IsCellWalkableAt(z, y, x)) return -1;
         // Can't replace existing ramps or ladders
-        CellType ct = grid[z][y][x];
+        CellType ct = GRID(x, y, z);
         if (CellIsDirectionalRamp(ct) || CellIsLadder(ct)) return -1;
     } else if (recipe->buildCategory == BUILD_FURNITURE) {
         if (!IsCellWalkableAt(z, y, x)) return -1;
@@ -2299,7 +2299,7 @@ int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex) {
         for (int d = 0; d < 4; d++) {
             int nx = x + dx4[d], ny = y + dy4[d];
             if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight) {
-                CellType nc = grid[z][ny][nx];
+                CellType nc = GRID(nx, ny, z);
                 if (CellBlocksMovement(nc) || nc == CELL_DOOR) {
                     hasWallNeighbor = true;
                     break;
@@ -2748,13 +2748,13 @@ void CompleteBlueprint(int blueprintIdx) {
             ClearCellCleanup(x, y, z);
             DisplaceWater(x, y, z);
             if (bp->recipeIndex == CONSTRUCTION_GLASS_WINDOW) {
-                grid[z][y][x] = CELL_WINDOW;
+                GRID(x, y, z) = CELL_WINDOW;
                 SetWallMaterial(x, y, z, MAT_NONE);
                 SetWallSourceItem(x, y, z, ITEM_GLASS);
                 ClearWallNatural(x, y, z);
                 SetWallFinish(x, y, z, FINISH_SMOOTH);
             } else if (finalMat == MAT_DIRT) {
-                grid[z][y][x] = CELL_WALL;
+                GRID(x, y, z) = CELL_WALL;
                 SetWallMaterial(x, y, z, MAT_DIRT);
                 SetWallSourceItem(x, y, z, ITEM_DIRT);
                 SetWallNatural(x, y, z);
@@ -2765,7 +2765,7 @@ void CompleteBlueprint(int blueprintIdx) {
                 SetFloorFinish(x, y, z, FINISH_ROUGH);
                 SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
             } else {
-                grid[z][y][x] = CELL_WALL;
+                GRID(x, y, z) = CELL_WALL;
                 SetWallMaterial(x, y, z, finalMat);
                 SetWallSourceItem(x, y, z, finalSource);
                 ClearWallNatural(x, y, z);
@@ -2778,7 +2778,7 @@ void CompleteBlueprint(int blueprintIdx) {
     if (recipe->buildCategory == BUILD_FLOOR) {
         ClearCellCleanup(x, y, z);
         DisplaceWater(x, y, z);
-        grid[z][y][x] = CELL_AIR;
+        GRID(x, y, z) = CELL_AIR;
         SET_FLOOR(x, y, z);
         SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
         SetFloorMaterial(x, y, z, finalMat);
@@ -2806,7 +2806,7 @@ void CompleteBlueprint(int blueprintIdx) {
             rampType = CELL_RAMP_N;  // Fallback if no valid direction
         }
 
-        grid[z][y][x] = rampType;
+        GRID(x, y, z) = rampType;
         rampCount++;
         CLEAR_FLOOR(x, y, z);
         SetWallMaterial(x, y, z, finalMat);
@@ -2822,7 +2822,7 @@ void CompleteBlueprint(int blueprintIdx) {
         PushItemsOutOfCell(x, y, z);
         ClearCellCleanup(x, y, z);
         DisplaceWater(x, y, z);
-        grid[z][y][x] = CELL_DOOR;
+        GRID(x, y, z) = CELL_DOOR;
         SetWallMaterial(x, y, z, finalMat);
         SetWallSourceItem(x, y, z, finalSource);
         ClearWallNatural(x, y, z);

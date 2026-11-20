@@ -602,7 +602,7 @@ void DrawUI(void) {
                     for (int z = 1; z < gridDepth; z++)
                         for (int gy = 0; gy < gridHeight; gy++)
                             for (int gx = 0; gx < gridWidth; gx++)
-                                grid[z][gy][gx] = CELL_AIR;
+                                GRID(gx, gy, z) = CELL_AIR;
                     FillGroundLevel();
                     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
                     InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
@@ -630,7 +630,7 @@ void DrawUI(void) {
                     for (int z = 1; z < gridDepth; z++)
                         for (int gy = 0; gy < gridHeight; gy++)
                             for (int gx = 0; gx < gridWidth; gx++)
-                                grid[z][gy][gx] = CELL_AIR;
+                                GRID(gx, gy, z) = CELL_AIR;
                     FillGroundLevel();
                     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
                     InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
@@ -658,7 +658,7 @@ void DrawUI(void) {
                     for (int z = 1; z < gridDepth; z++)
                         for (int gy = 0; gy < gridHeight; gy++)
                             for (int gx = 0; gx < gridWidth; gx++)
-                                grid[z][gy][gx] = CELL_AIR;
+                                GRID(gx, gy, z) = CELL_AIR;
                     FillGroundLevel();
                     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
                     InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
@@ -686,7 +686,7 @@ void DrawUI(void) {
                     for (int z = 1; z < gridDepth; z++)
                         for (int gy = 0; gy < gridHeight; gy++)
                             for (int gx = 0; gx < gridWidth; gx++)
-                                grid[z][gy][gx] = CELL_AIR;
+                                GRID(gx, gy, z) = CELL_AIR;
                     FillGroundLevel();
                     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
                     InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
@@ -711,7 +711,7 @@ void DrawUI(void) {
             if (PushButton(ix, y, "Fill with Walls")) {
                 for (int gy = 0; gy < gridHeight; gy++) {
                     for (int gx = 0; gx < gridWidth; gx++) {
-                        grid[currentViewZ][gy][gx] = CELL_WALL;
+                        GRID(gx, gy, currentViewZ) = CELL_WALL;
                         SetWaterLevel(gx, gy, currentViewZ, 0);
                         SetWaterSource(gx, gy, currentViewZ, false);
                         SetWaterDrain(gx, gy, currentViewZ, false);
@@ -741,7 +741,7 @@ void DrawUI(void) {
                         for (int row = 0; row < gridHeight; row++) {
                             for (int col = 0; col < gridWidth; col++) {
                                 char c;
-                                switch (grid[z][row][col]) {
+                                switch (GRID(col, row, z)) {
                                     case CELL_WALL:        c = '#'; break;
                                     case CELL_LADDER_UP:   c = '<'; break;
                                     case CELL_LADDER_DOWN: c = '>'; break;

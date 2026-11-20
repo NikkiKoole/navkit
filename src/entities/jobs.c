@@ -1050,7 +1050,7 @@ JobRunResult RunJob_Mine(Job* job, void* moverPtr, float dt) {
     if (job->step == STEP_FETCHING_TOOL) return RunToolFetchStep(job, mover, moverIdx, STEP_MOVING_TO_WORK);
     Designation* d = GetDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
     if (!d || d->type != DESIGNATION_MINE) return JOBRUN_FAIL;
-    if (!CellIsSolid(grid[job->targetMineZ][job->targetMineY][job->targetMineX])) {
+    if (!CellIsSolid(GRID(job->targetMineX, job->targetMineY, job->targetMineZ))) {
         CancelDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
         return JOBRUN_FAIL;
     }
@@ -1073,7 +1073,7 @@ JobRunResult RunJob_Channel(Job* job, void* moverPtr, float dt) {
     int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
     if (!d || d->type != DESIGNATION_CHANNEL) return JOBRUN_FAIL;
-    bool hasFloor = HAS_FLOOR(tx, ty, tz) || (tz > 0 && CellIsSolid(grid[tz-1][ty][tx]));
+    bool hasFloor = HAS_FLOOR(tx, ty, tz) || (tz > 0 && CellIsSolid(GRID(tx, ty, tz-1)));
     if (!hasFloor) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToTileStep(job, mover);
     if (job->step == STEP_WORKING) {
@@ -1095,7 +1095,7 @@ JobRunResult RunJob_DigRamp(Job* job, void* moverPtr, float dt) {
     int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
     if (!d || d->type != DESIGNATION_DIG_RAMP) return JOBRUN_FAIL;
-    if (!CellIsSolid(grid[tz][ty][tx])) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
+    if (!CellIsSolid(GRID(tx, ty, tz))) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
     if (job->step == STEP_WORKING) {
         MaterialType mat = GetWallMaterial(tx, ty, tz);
@@ -1129,7 +1129,7 @@ JobRunResult RunJob_RemoveRamp(Job* job, void* moverPtr, float dt) {
     int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
     if (!d || d->type != DESIGNATION_REMOVE_RAMP) return JOBRUN_FAIL;
-    if (!CellIsRamp(grid[tz][ty][tx])) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
+    if (!CellIsRamp(GRID(tx, ty, tz))) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
     if (job->step == STEP_WORKING) {
         JobRunResult r = RunWorkProgress(job, d, mover, dt, REMOVE_RAMP_WORK_TIME, false, 1.0f);
@@ -1147,7 +1147,7 @@ JobRunResult RunJob_Chop(Job* job, void* moverPtr, float dt) {
     int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
     if (!d || d->type != DESIGNATION_CHOP) return JOBRUN_FAIL;
-    if (grid[tz][ty][tx] != CELL_TREE_TRUNK && !IsYoungTreeBase(tx, ty, tz)) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
+    if (GRID(tx, ty, tz) != CELL_TREE_TRUNK && !IsYoungTreeBase(tx, ty, tz)) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
     if (job->step == STEP_WORKING) {
         float workTime = IsYoungTreeBase(tx, ty, tz) ? CHOP_YOUNG_WORK_TIME : CHOP_WORK_TIME;
@@ -1167,7 +1167,7 @@ JobRunResult RunJob_ChopFelled(Job* job, void* moverPtr, float dt) {
     int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
     if (!d || d->type != DESIGNATION_CHOP_FELLED) return JOBRUN_FAIL;
-    if (grid[tz][ty][tx] != CELL_TREE_FELLED) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
+    if (GRID(tx, ty, tz) != CELL_TREE_FELLED) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
     if (job->step == STEP_WORKING) {
         float speed = GetJobToolSpeedMultiplier(JOBTYPE_CHOP_FELLED, MAT_NONE, mover->equippedTool);
@@ -1220,7 +1220,7 @@ JobRunResult RunJob_GatherSapling(Job* job, void* moverPtr, float dt) {
     int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
     if (!d || d->type != DESIGNATION_GATHER_SAPLING) return JOBRUN_FAIL;
-    if (grid[tz][ty][tx] != CELL_SAPLING) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
+    if (GRID(tx, ty, tz) != CELL_SAPLING) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
     if (job->step == STEP_WORKING) {
         JobRunResult r = RunWorkProgress(job, d, mover, dt, GATHER_SAPLING_WORK_TIME, false, 1.0f);
@@ -1451,7 +1451,7 @@ JobRunResult RunJob_GatherTree(Job* job, void* moverPtr, float dt) {
     int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
     if (!d || d->type != DESIGNATION_GATHER_TREE) return JOBRUN_FAIL;
-    if (grid[tz][ty][tx] != CELL_TREE_TRUNK) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
+    if (GRID(tx, ty, tz) != CELL_TREE_TRUNK) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }
     if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
     if (job->step == STEP_WORKING) {
         JobRunResult r = RunWorkProgress(job, d, mover, dt, GATHER_TREE_WORK_TIME, true, 1.0f);
@@ -4731,7 +4731,7 @@ JobRunResult RunJob_Knap(Job* job, void* moverPtr, float dt) {
     int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
     Designation* d = GetDesignation(tx, ty, tz);
     if (!d || d->type != DESIGNATION_KNAP) return JOBRUN_FAIL;
-    if (!CellIsSolid(grid[tz][ty][tx]) || !IsStoneMaterial(GetWallMaterial(tx, ty, tz))) {
+    if (!CellIsSolid(GRID(tx, ty, tz)) || !IsStoneMaterial(GetWallMaterial(tx, ty, tz))) {
         CancelDesignation(tx, ty, tz);
         return JOBRUN_FAIL;
     }
@@ -5862,7 +5862,7 @@ int WorkGiver_GatherSapling(int moverIdx) {
         if (d->unreachableCooldown > 0.0f) continue;
 
         // Check if sapling cell still exists
-        if (grid[entry->z][entry->y][entry->x] != CELL_SAPLING) continue;
+        if (GRID(entry->x, entry->y, entry->z) != CELL_SAPLING) continue;
 
         // Distance to adjacent tile (already cached)
         float adjPosX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -7545,7 +7545,7 @@ int WorkGiver_ChopFelled(int moverIdx) {
         if (d->unreachableCooldown > 0.0f) continue;
 
         // Verify felled trunk still exists
-        if (grid[entry->z][entry->y][entry->x] != CELL_TREE_FELLED) continue;
+        if (GRID(entry->x, entry->y, entry->z) != CELL_TREE_FELLED) continue;
 
         // Distance to adjacent tile (already cached)
         float adjPosX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;

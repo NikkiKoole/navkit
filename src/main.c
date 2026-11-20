@@ -391,10 +391,10 @@ bool FrontViewPickCell(Vector2 screen, int *outX, int *outY, int *outZ) {
 
         if (fallbackGz < 0) fallbackGz = gz; // use front layer gz as fallback
 
-        CellType cell = grid[gz][worldY][gx];
+        CellType cell = GRID(gx, worldY, gz);
         bool hasContent = (cell != CELL_AIR)
             || HAS_FLOOR(gx, worldY, gz)
-            || (gz > 0 && CellIsSolid(grid[gz - 1][worldY][gx]))
+            || (gz > 0 && CellIsSolid(GRID(gx, worldY, gz - 1)))
             || waterGrid[gz][worldY][gx].level > 0;
 
         if (!hasContent) {
@@ -931,13 +931,13 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     gridDepth = 16;
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
         }
     for (int z = 1; z < gridDepth; z++)
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++)
-                grid[z][y][x] = CELL_AIR;
+                GRID(x, y, z) = CELL_AIR;
     InitBalance();
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
     InitDesignations();
@@ -1431,7 +1431,7 @@ int main(int argc, char** argv) {
     // z=0: dirt (solid ground) with grass overlay, z=1+: air (DF-style)
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_WALL;
+            GRID(x, y, 0) = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
             SetWallNatural(x, y, 0);
             SetVegetation(x, y, 0, VEG_GRASS_TALLER);
@@ -1439,7 +1439,7 @@ int main(int argc, char** argv) {
     for (int z = 1; z < gridDepth; z++)
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++)
-                grid[z][y][x] = CELL_AIR;
+                GRID(x, y, z) = CELL_AIR;
     InitBalance();
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
     InitDesignations();
@@ -1921,7 +1921,7 @@ int main(int argc, char** argv) {
                             int sprite = -1;
 
                             if (inputAction == ACTION_DRAW_WALL) {
-                                if (grid[dz][dragStartY][dx] == CELL_WALL &&
+                                if (GRID(dx, dragStartY, dz) == CELL_WALL &&
                                     GetWallMaterial(dx, dragStartY, dz) == mat) continue;
                                 if (source == ITEM_PLANKS) {
                                     switch (mat) {
@@ -1934,7 +1934,7 @@ int main(int argc, char** argv) {
                                     sprite = GetSpriteForCellMat(CELL_WALL, mat);
                                 }
                             } else if (inputAction == ACTION_DRAW_FLOOR) {
-                                if (CellBlocksMovement(grid[dz][dragStartY][dx])) continue;
+                                if (CellBlocksMovement(GRID(dx, dragStartY, dz))) continue;
                                 if (source == ITEM_PLANKS) {
                                     switch (mat) {
                                         case MAT_PINE:   sprite = SPRITE_tree_planks_pine; break;
@@ -2037,7 +2037,7 @@ int main(int argc, char** argv) {
 
                             if (inputAction == ACTION_DRAW_WALL) {
                                 // Skip cells that already have this wall
-                                if (grid[currentViewZ][dy][dx] == CELL_WALL &&
+                                if (GRID(dx, dy, currentViewZ) == CELL_WALL &&
                                     GetWallMaterial(dx, dy, currentViewZ) == mat) continue;
                                 if (source == ITEM_PLANKS) {
                                     // Plank wall sprite per wood species
@@ -2052,7 +2052,7 @@ int main(int argc, char** argv) {
                                 }
                             } else if (inputAction == ACTION_DRAW_FLOOR) {
                                 // Skip solid cells
-                                if (CellBlocksMovement(grid[currentViewZ][dy][dx])) continue;
+                                if (CellBlocksMovement(GRID(dx, dy, currentViewZ))) continue;
                                 if (source == ITEM_PLANKS) {
                                     switch (mat) {
                                         case MAT_PINE:   sprite = SPRITE_tree_planks_pine; break;

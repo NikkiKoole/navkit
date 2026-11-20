@@ -18,7 +18,9 @@ ItemType LeafItemFromTreeType(MaterialType mat);
 
 // Growth grids (exposed for save/load)
 extern float growthTimer[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define GROWTH_TIMER(x, y, z) (growthTimer CELL_AT((x), (y), (z)))
 extern uint8_t targetHeight[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define TARGET_HEIGHT(x, y, z) (targetHeight CELL_AT((x), (y), (z)))
 
 // Harvest state (stored on trunk base cell only)
 // 0 = depleted, TREE_HARVEST_MAX = fully harvestable
@@ -26,6 +28,7 @@ extern uint8_t targetHeight[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 #define TREE_HARVEST_MAX 2
 #define TREE_HARVEST_REGEN_GH 24.0f  // Game-hours to regen one harvest level
 extern uint8_t treeHarvestState[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define TREE_HARVEST(x, y, z) (treeHarvestState CELL_AT((x), (y), (z)))
 
 // Initialize tree growth system
 void InitTrees(void);

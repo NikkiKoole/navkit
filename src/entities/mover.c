@@ -105,7 +105,7 @@ static bool TryFallToGround(Mover* m, int cellX, int cellY) {
             m->pathIndex = -1;
             return true;
         }
-        if (IsWallCell(grid[checkZ][cellY][cellX])) {
+        if (IsWallCell(GRID(cellX, cellY, checkZ))) {
             break;  // Can't fall through walls
         }
     }
@@ -532,7 +532,7 @@ Vec2 ComputeWallRepulsion(float x, float y, int z) {
             if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) continue;
             
             // Only repel from blocked cells (walls, workshops), not traversable air
-            CellType cell = grid[z][cy][cx];
+            CellType cell = GRID(cx, cy, z);
             bool isBlocked = CellBlocksMovement(cell) || (cellFlags[z][cy][cx] & CELL_FLAG_WORKSHOP_BLOCK);
             if (!isBlocked) continue;
             
@@ -1442,14 +1442,14 @@ void UpdateMovers(void) {
 
         // Check if mover is in a non-walkable cell
         if (!IsCellWalkableAt(currentZ, currentY, currentX)) {
-            CellType currentCell = grid[currentZ][currentY][currentX];
+            CellType currentCell = GRID(currentX, currentY, currentZ);
             bool isWorkshopBlock = cellFlags[currentZ][currentY][currentX] & CELL_FLAG_WORKSHOP_BLOCK;
             
             // If it's a non-blocking cell (like air) without workshop flag, try to fall
             if (!CellBlocksMovement(currentCell) && !isWorkshopBlock) {
                 // Check if there's a ramp below we can descend to
                 bool isRampExit = (currentZ > 0) && HasRampPointingTo(currentX, currentY, currentZ - 1);
-                bool isAboveRamp = (currentZ > 0) && CellIsDirectionalRamp(grid[currentZ - 1][currentY][currentX]);
+                bool isAboveRamp = (currentZ > 0) && CellIsDirectionalRamp(GRID(currentX, currentY, currentZ - 1));
                 
                 if (isAboveRamp) {
                     // Descend onto the ramp - NOT a fall, just z-transition
@@ -1604,7 +1604,7 @@ void UpdateMovers(void) {
                         float nx = m->x + mvx * dt, ny = m->y + mvy * dt;
                         int mz = (int)m->z;
                         #define STATION_LINE_OK(px, py) (IsCellWalkableAt(mz, (int)((py) / CELL_SIZE), (int)((px) / CELL_SIZE)) && \
-                            grid[mz][(int)((py) / CELL_SIZE)][(int)((px) / CELL_SIZE)] != CELL_TRACK)
+                            GRID((int)((px) / CELL_SIZE), (int)((py) / CELL_SIZE), mz) != CELL_TRACK)
                         if (STATION_LINE_OK(nx, ny)) { m->x = nx; m->y = ny; }
                         else if (STATION_LINE_OK(nx, m->y)) m->x = nx;
                         else if (STATION_LINE_OK(m->x, ny)) m->y = ny;
@@ -1777,8 +1777,8 @@ void UpdateMovers(void) {
                 // already equals the target when going DOWN (1.87 -> 1), which used to
                 // end descents after one step and leave movers at z = 1.87
                 int cellZ = (float)target.z > m->z ? (int)floorf(m->z) : (int)ceilf(m->z - 0.0001f);
-                bool isLadderTransition = IsLadderCell(grid[cellZ][target.y][target.x]) &&
-                                          IsLadderCell(grid[target.z][target.y][target.x]);
+                bool isLadderTransition = IsLadderCell(GRID(target.x, target.y, cellZ)) &&
+                                          IsLadderCell(GRID(target.x, target.y, target.z));
 
                 bool isRampTransition = false;
                 int rampX, rampY;
@@ -1790,7 +1790,7 @@ void UpdateMovers(void) {
                         }
                     }
                 } else {
-                    if (CellIsDirectionalRamp(grid[target.z][target.y][target.x])) {
+                    if (CellIsDirectionalRamp(GRID(target.x, target.y, target.z))) {
                         isRampTransition = true;
                     }
                 }
@@ -1891,13 +1891,13 @@ void UpdateMovers(void) {
                     // Moving toward a z-transition cell - check if movement should be allowed
                     
                     // Allow if it's a ladder on target z-level
-                    if (IsLadderCell(grid[target.z][newCellY][newCellX])) {
+                    if (IsLadderCell(GRID(newCellX, newCellY, target.z))) {
                         canMove = true;
                     }
                     // Going UP via ramp
                     else if (target.z > mz) {
                         // Check 1: Current cell is a ramp pointing to newCell
-                        CellType rampCell = grid[mz][currentY][currentX];
+                        CellType rampCell = GRID(currentX, currentY, mz);
                         if (CellIsDirectionalRamp(rampCell)) {
                             int highDx, highDy;
                             GetRampHighSideOffset(rampCell, &highDx, &highDy);
@@ -1922,8 +1922,8 @@ void UpdateMovers(void) {
                     }
                     // Going DOWN onto a ramp
                     else if (target.z < mz) {
-                        bool rampAtTarget = CellIsDirectionalRamp(grid[target.z][newCellY][newCellX]);
-                        bool rampBelow = (mz > 0) && CellIsDirectionalRamp(grid[mz-1][newCellY][newCellX]);
+                        bool rampAtTarget = CellIsDirectionalRamp(GRID(newCellX, newCellY, target.z));
+                        bool rampBelow = (mz > 0) && CellIsDirectionalRamp(GRID(newCellX, newCellY, mz-1));
                         if (rampAtTarget || rampBelow) {
                             canMove = true;
                         }
@@ -1941,9 +1941,9 @@ void UpdateMovers(void) {
                     if (targetIsZTransition && target.z == mz + 1) {
                         if (newCellX == target.x && newCellY == target.y && HasRampPointingTo(target.x, target.y, mz)) {
                             m->z = (float)target.z;
-                        } else if (CellIsDirectionalRamp(grid[mz][newCellY][newCellX])) {
+                        } else if (CellIsDirectionalRamp(GRID(newCellX, newCellY, mz))) {
                             int hdx, hdy;
-                            GetRampHighSideOffset(grid[mz][newCellY][newCellX], &hdx, &hdy);
+                            GetRampHighSideOffset(GRID(newCellX, newCellY, mz), &hdx, &hdy);
                             if (newCellX + hdx == target.x && newCellY + hdy == target.y) {
                                 float cx = newCellX * CELL_SIZE + CELL_SIZE * 0.5f, cy = newCellY * CELL_SIZE + CELL_SIZE * 0.5f;
                                 float prog = 0.5f + ((newX - cx) * hdx + (newY - cy) * hdy) / CELL_SIZE;
@@ -1955,16 +1955,16 @@ void UpdateMovers(void) {
                     }
                     // If we're descending onto a ramp, also transition z
                     if (targetIsZTransition && target.z < mz) {
-                        bool rampBelow = (mz > 0) && CellIsDirectionalRamp(grid[mz-1][newCellY][newCellX]);
+                        bool rampBelow = (mz > 0) && CellIsDirectionalRamp(GRID(newCellX, newCellY, mz-1));
                         if (rampBelow) {
                             m->z = (float)(mz - 1);
                         }
                     }
-                } else if (!CellBlocksMovement(grid[mz][newCellY][newCellX]) && 
+                } else if (!CellBlocksMovement(GRID(newCellX, newCellY, mz)) && 
                            !IsCellWalkableAt(mz, newCellY, newCellX)) {
                     // Moving into non-blocking, non-walkable cell (e.g., air without solid below)
                     // Check if there's a ramp below - if so, this is a ramp descent, not a fall
-                    bool hasRampBelow = (mz > 0) && CellIsDirectionalRamp(grid[mz-1][newCellY][newCellX]);
+                    bool hasRampBelow = (mz > 0) && CellIsDirectionalRamp(GRID(newCellX, newCellY, mz-1));
                     m->x = newX;
                     m->y = newY;
                     if (hasRampBelow) {

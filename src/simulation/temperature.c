@@ -123,7 +123,7 @@ int GetInsulationTier(int x, int y, int z) {
         return INSULATION_TIER_STONE;  // Out of bounds = solid stone
     }
     
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     return CellInsulationTier(cell);
 }
 

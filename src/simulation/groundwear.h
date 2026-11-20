@@ -37,6 +37,7 @@ extern int saplingMinTreeDistance;    // Min distance from existing trees/saplin
 
 // Wear grid (parallel to main grid, all z-levels)
 extern uint16_t wearGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define WEAR(x, y, z) (wearGrid CELL_AT((x), (y), (z)))
 
 // Largest value written to wearGrid: wearMax, clamped to what uint16_t holds.
 static inline int WearCap(void) { return wearMax < 65535 ? wearMax : 65535; }

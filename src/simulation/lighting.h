@@ -61,6 +61,7 @@ typedef struct {
 
 // Light grid
 extern LightCell lightGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define LIGHT(x, y, z) (lightGrid CELL_AT((x), (y), (z)))
 
 // Light sources (sparse list)
 extern LightSource lightSources[MAX_LIGHT_SOURCES];

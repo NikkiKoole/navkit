@@ -322,7 +322,7 @@ static bool IsCellVisibleFromAbove(int x, int y, int cellZ, int viewZ) {
     if (cellZ < 0) cellZ = 0;
     if (viewZ > gridDepth) viewZ = gridDepth;
     for (int zCheck = cellZ; zCheck < viewZ; zCheck++) {
-        if (CellIsSolid(grid[zCheck][y][x]) || HAS_FLOOR(x, y, zCheck)) {
+        if (CellIsSolid(GRID(x, y, zCheck)) || HAS_FLOOR(x, y, zCheck)) {
             return false;
         }
     }
@@ -339,7 +339,7 @@ static void DrawDeeperLevelCells(float size, int z, int minX, int minY, int maxX
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
 
                 // Wall tops
-                CellType cellAtDepth = grid[zDepth][y][x];
+                CellType cellAtDepth = GRID(x, y, zDepth);
                 if (cellAtDepth != CELL_AIR) {
                     if (IsCellVisibleFromAbove(x, y, zDepth + 1, z)) {
                         int sprite = GetWallSpriteAt(x, y, zDepth, cellAtDepth);
@@ -389,8 +389,8 @@ static void DrawGroundLevel(float size, int z, int minX, int minY, int maxX, int
         int zBelow = z - 1;
         for (int y = minY; y < maxY; y++) {
             for (int x = minX; x < maxX; x++) {
-                CellType cellBelow = grid[zBelow][y][x];
-                CellType cellHere = grid[z][y][x];
+                CellType cellBelow = GRID(x, y, zBelow);
+                CellType cellHere = GRID(x, y, z);
 
                 // Draw floor from below if the cell below is solid and current is air/walkable
                 if (CellIsSolid(cellBelow) && !CellBlocksMovement(cellHere)) {
@@ -441,7 +441,7 @@ static void DrawGroundLevel(float size, int z, int minX, int minY, int maxX, int
         // z=0: draw bedrock for air cells (implicit bedrock at z=-1)
         for (int y = minY; y < maxY; y++) {
             for (int x = minX; x < maxX; x++) {
-                CellType cellHere = grid[z][y][x];
+                CellType cellHere = GRID(x, y, z);
                 if (cellHere == CELL_AIR) {
                     Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                     Rectangle src = SpriteGetRect(SPRITE_bedrock);
@@ -553,7 +553,7 @@ static void DrawCellGrid(void) {
     // Ramps are drawn with 50% opacity so grass shows through
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
-            CellType cell = grid[z][y][x];
+            CellType cell = GRID(x, y, z);
             // Skip air - floor was already drawn from z-1 or HAS_FLOOR
             if (cell == CELL_AIR) continue;
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
@@ -595,17 +595,17 @@ static void DrawCellGrid(void) {
 
         for (int y = minY; y < maxY; y++) {
             for (int x = minX; x < maxX; x++) {
-                CellType cell = grid[z][y][x];
+                CellType cell = GRID(x, y, z);
                 if (!CellBlocksMovement(cell)) continue;  // Only walls
 
                 float px = offset.x + x * size;
                 float py = offset.y + y * size;
 
                 // Check which sides border non-walls (those show the wall edge)
-                bool wallNorth = (y > 0) && CellBlocksMovement(grid[z][y-1][x]);
-                bool wallSouth = (y < gridHeight-1) && CellBlocksMovement(grid[z][y+1][x]);
-                bool wallWest = (x > 0) && CellBlocksMovement(grid[z][y][x-1]);
-                bool wallEast = (x < gridWidth-1) && CellBlocksMovement(grid[z][y][x+1]);
+                bool wallNorth = (y > 0) && CellBlocksMovement(GRID(x, y-1, z));
+                bool wallSouth = (y < gridHeight-1) && CellBlocksMovement(GRID(x, y+1, z));
+                bool wallWest = (x > 0) && CellBlocksMovement(GRID(x-1, y, z));
+                bool wallEast = (x < gridWidth-1) && CellBlocksMovement(GRID(x+1, y, z));
 
                 // Calculate inset for dark fill - leave edge visible where no adjacent wall
                 float insetN = wallNorth ? 0 : edgeWidth;
@@ -679,7 +679,7 @@ void DrawRampOverlay(void) {
     for (int zd = zStart; zd <= z; zd++) {
         for (int y = minY; y < maxY; y++) {
             for (int x = minX; x < maxX; x++) {
-                CellType cell = grid[zd][y][x];
+                CellType cell = GRID(x, y, zd);
                 if (!CellIsRamp(cell)) continue;
                 if (!IsCellVisibleFromAbove(x, y, zd + 1, z)) continue;
 
@@ -760,7 +760,7 @@ static void DrawGrassOverlay(void) {
             for (int x = minX; x < maxX; x++) {
                 // Only draw overlay where floor is dirt and current cell is empty (air) or ramp
                 if (!IsWallNatural(x, y, zBelow) || GetWallMaterial(x, y, zBelow) != MAT_DIRT) continue;
-                CellType cellHere = grid[z][y][x];
+                CellType cellHere = GRID(x, y, z);
                 // Allow grass under air only, skip walls/ladders/ramps/etc.
                 if (cellHere != CELL_AIR) continue;
                 if (HAS_FLOOR(x, y, z)) continue;    // Don't draw grass under constructed floors
@@ -868,7 +868,7 @@ static void DrawMud(void) {
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
             if (!IsMuddy(x, y, zBelow)) continue;
-            CellType cellHere = grid[z][y][x];
+            CellType cellHere = GRID(x, y, z);
             if (cellHere != CELL_AIR && !CellIsRamp(cellHere)) continue;
             if (HAS_FLOOR(x, y, z)) continue;
 
@@ -925,7 +925,7 @@ static void DrawSnow(void) {
         for (int x = minX; x < maxX; x++) {
             uint8_t snowLevel = GetSnowLevel(x, y, zBelow);
             if (snowLevel == 0) continue;
-            CellType cellHere = grid[z][y][x];
+            CellType cellHere = GRID(x, y, z);
             if (cellHere != CELL_AIR && !CellIsRamp(cellHere)) continue;
             if (HAS_FLOOR(x, y, z)) continue;
 
@@ -1079,7 +1079,7 @@ static void DrawFire(void) {
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
             int fireZ = z;
-            if (z > 0 && grid[z][y][x] == CELL_AIR && CellIsSolid(grid[z-1][y][x])) {
+            if (z > 0 && GRID(x, y, z) == CELL_AIR && CellIsSolid(GRID(x, y, z-1))) {
                 fireZ = z - 1;
             }
             
@@ -2905,10 +2905,10 @@ static void DrawTerrainBrushPreview(void) {
             int z = currentViewZ;
             bool valid = false;
             if (isLowerMode) {
-                valid = (grid[z][y][x] == CELL_WALL && IsWallNatural(x, y, z));
+                valid = (GRID(x, y, z) == CELL_WALL && IsWallNatural(x, y, z));
             } else {
-                valid = (grid[z][y][x] == CELL_AIR && z > 0 &&
-                        CellIsSolid(grid[z-1][y][x]));
+                valid = (GRID(x, y, z) == CELL_AIR && z > 0 &&
+                        CellIsSolid(GRID(x, y, z-1)));
             }
 
             Color cellColor = valid ? fillColor : (Color){100, 100, 100, 40};
@@ -3106,7 +3106,7 @@ static void DrawFrontView(void) {
             float screenY = offset.y + (gridDepth - 1 - z) * size - layerOffsetY;
 
             for (int x = minX; x < maxX; x++) {
-                CellType cell = grid[z][worldY][x];
+                CellType cell = GRID(x, worldY, z);
                 float screenX = offset.x + x * size;
                 Rectangle dest = {screenX, screenY, size, size};
 
@@ -3123,7 +3123,7 @@ static void DrawFrontView(void) {
                     if (HAS_FLOOR(x, worldY, z)) {
                         floorSprite = GetFloorSpriteAt(x, worldY, z);
                         floorMat = GetFloorMaterial(x, worldY, z);
-                    } else if (z > 0 && CellIsSolid(grid[z-1][worldY][x])) {
+                    } else if (z > 0 && CellIsSolid(GRID(x, worldY, z-1))) {
                         floorMat = GetWallMaterial(x, worldY, z-1);
                         floorSprite = MaterialFloorSprite(floorMat);
                     }
@@ -3170,7 +3170,7 @@ static void DrawFrontView(void) {
 
             for (int x = minX; x < maxX; x++) {
                 if (!IsWallNatural(x, worldY, zBelow) || GetWallMaterial(x, worldY, zBelow) != MAT_DIRT) continue;
-                CellType cellHere = grid[z][worldY][x];
+                CellType cellHere = GRID(x, worldY, z);
                 if (cellHere != CELL_AIR) continue;
                 if (HAS_FLOOR(x, worldY, z)) continue;
 

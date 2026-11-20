@@ -68,7 +68,7 @@ int GetBaseFuelForCellType(CellType cell) {
 
 // Get fuel at a specific position, considering material and grass surface overlay
 int GetFuelAt(int x, int y, int z) {
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     int baseFuel = CellFuel(cell);
     
     // Check wall material for constructed walls - material fuel overrides cell fuel
@@ -125,9 +125,9 @@ static inline bool CanBurn(int x, int y, int z) {
     
     // Check if there's a wall above that blocks fire spread
     // Exception: tree trunks should burn even with trunk segments above
-    CellType cell = grid[z][y][x];
+    CellType cell = GRID(x, y, z);
     if (cell != CELL_TREE_TRUNK && z + 1 < gridDepth) {
-        CellType cellAbove = grid[z + 1][y][x];
+        CellType cellAbove = GRID(x, y, z + 1);
         if (CellBlocksFluids(cellAbove)) return false;
     }
     
@@ -434,13 +434,13 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
                 SetFireLevel(x, y, z, 0);
                 
                 // Transform cell based on burnsInto property
-                CellType currentCell = grid[z][y][x];
+                CellType currentCell = GRID(x, y, z);
                 CellType burnResult = CellBurnsInto(currentCell);
                 if (burnResult != currentCell) {
                     // Check if this was a solid cell before burning
                     bool wasSolid = CellIsSolid(currentCell);
                     
-                    grid[z][y][x] = burnResult;
+                    GRID(x, y, z) = burnResult;
                     // Set high wear on burned dirt so it takes time to regrow
                     if (burnResult == CELL_WALL && IsWallNatural(x, y, z) && GetWallMaterial(x, y, z) == MAT_DIRT) {
                         wearGrid[z][y][x] = WearCap();

@@ -20,6 +20,7 @@ typedef struct {
 
 // Steam grid (same dimensions as main grid)
 extern SteamCell steamGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+#define STEAM(x, y, z) (steamGrid CELL_AT((x), (y), (z)))
 
 // Global state
 extern bool steamEnabled;

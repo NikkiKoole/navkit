@@ -226,11 +226,11 @@ static bool FindNearbyBush(int cx, int cy, int z, int* outX, int* outY) {
                 for (int ax = -1; ax <= 1 && !hasPrivacy; ax++) {
                     int px = nx + ax, py = ny + ay;
                     if (px < 0 || px >= gridWidth || py < 0 || py >= gridHeight) continue;
-                    CellType ct = grid[z][py][px];
+                    CellType ct = GRID(px, py, z);
                     if (ct == CELL_TREE_TRUNK || ct == CELL_TREE_BRANCH || ct == CELL_TREE_LEAVES) hasPrivacy = true;
                     // Also check z+1 for tree canopy
                     if (z + 1 < gridDepth) {
-                        ct = grid[z + 1][py][px];
+                        ct = GRID(px, py, z + 1);
                         if (ct == CELL_TREE_TRUNK || ct == CELL_TREE_BRANCH || ct == CELL_TREE_LEAVES) hasPrivacy = true;
                     }
                 }

@@ -895,7 +895,7 @@ static void Cmd_Grid(int argc, const char** argv) {
     for (int z = 1; z < gridDepth; z++)
         for (int gy = 0; gy < gridHeight; gy++)
             for (int gx = 0; gx < gridWidth; gx++)
-                grid[z][gy][gx] = CELL_AIR;
+                GRID(gx, gy, z) = CELL_AIR;
     FillGroundLevel();
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
     InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);

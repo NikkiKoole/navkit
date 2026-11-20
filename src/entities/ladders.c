@@ -47,7 +47,7 @@ static bool MoverClimbingLadder(const Mover* m, LadderSegment* seg) {
     float zf = floorf(m->z);
     if (m->z - zf < 0.0001f) return false;          // standing on a level
     int x = (int)(m->x / CELL_SIZE), y = (int)(m->y / CELL_SIZE), z = (int)zf;
-    if (z + 1 >= gridDepth || !IsLadderCell(grid[z][y][x]) || !IsLadderCell(grid[z + 1][y][x])) return false;
+    if (z + 1 >= gridDepth || !IsLadderCell(GRID(x, y, z)) || !IsLadderCell(GRID(x, y, z + 1))) return false;
     *seg = (LadderSegment){x, y, z, (int)(m - movers)};
     return true;
 }
@@ -61,8 +61,8 @@ static bool UpcomingLadderClimb(int i, Point* foot, int* toZ) {
     // At the foot already: the current waypoint is the ladder's other end
     Point t = moverPaths[i][m->pathIndex];
     if (t.z != mz) {
-        if (abs(t.z - mz) != 1 || t.z < 0 || t.z >= gridDepth || !IsLadderCell(grid[mz][t.y][t.x]) ||
-            !IsLadderCell(grid[t.z][t.y][t.x])) return false;
+        if (abs(t.z - mz) != 1 || t.z < 0 || t.z >= gridDepth || !IsLadderCell(GRID(t.x, t.y, mz)) ||
+            !IsLadderCell(GRID(t.x, t.y, t.z))) return false;
         *foot = (Point){t.x, t.y, mz};
         *toZ = t.z;
         return true;
@@ -71,7 +71,7 @@ static bool UpcomingLadderClimb(int i, Point* foot, int* toZ) {
         Point a = moverPaths[i][k], b = moverPaths[i][k - 1];
         if (a.z != mz) return false;
         if (b.z == a.z) continue;
-        if (a.x != b.x || a.y != b.y || !IsLadderCell(grid[a.z][a.y][a.x]) || !IsLadderCell(grid[b.z][b.y][b.x])) return false;
+        if (a.x != b.x || a.y != b.y || !IsLadderCell(GRID(a.x, a.y, a.z)) || !IsLadderCell(GRID(b.x, b.y, b.z))) return false;
         *foot = a;
         *toZ = b.z;
         return true;
@@ -155,7 +155,7 @@ float LadderClimbSpeedFactor(void) {
 // Uses the state from the latest tick. Ramps: no extra.
 int LadderQueueExtraCost(int x, int y, int z, int dz) {
     int zt = z + dz;
-    if (zt < 0 || zt >= gridDepth || !IsLadderCell(grid[z][y][x]) || !IsLadderCell(grid[zt][y][x])) return 0;
+    if (zt < 0 || zt >= gridDepth || !IsLadderCell(GRID(x, y, z)) || !IsLadderCell(GRID(x, y, zt))) return 0;
     float slow = 1.0f / LadderClimbSpeedFactor();
     int extra = (int)(GetCellMoveCost(x, y, zt) * (slow - 1.0f) + 0.5f);
     if (extra < 0) extra = 0;

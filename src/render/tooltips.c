@@ -820,7 +820,7 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     snprintf(lines[lineCount++], sizeof(lines[0]), "Cell (%d, %d, z%d)", cellX, cellY, cellZ);
 
     // Cell type
-    CellType ct = grid[cellZ][cellY][cellX];
+    CellType ct = GRID(cellX, cellY, cellZ);
     const char* cellTypeName = CellName(ct);
     MaterialType treeMat = MAT_NONE;
     
@@ -843,7 +843,7 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
         // Show harvest state for trunk cells
         if (ct == CELL_TREE_TRUNK) {
             int baseZ = cellZ;
-            while (baseZ > 0 && grid[baseZ - 1][cellY][cellX] == CELL_TREE_TRUNK) baseZ--;
+            while (baseZ > 0 && GRID(cellX, cellY, baseZ - 1) == CELL_TREE_TRUNK) baseZ--;
             uint8_t hs = treeHarvestState[baseZ][cellY][cellX];
             if (hs > 0) {
                 snprintf(lines[lineCount++], sizeof(lines[0]), "Harvest: %d/%d", hs, TREE_HARVEST_MAX);
@@ -1711,7 +1711,7 @@ static void DrawDesignationTooltip(int cellX, int cellY, int cellZ, Vector2 mous
     snprintf(lines[lineCount++], sizeof(lines[0]), "%s (%d,%d,%d)", desName, cellX, cellY, cellZ);
 
     // Cell type at location
-    CellType ct = grid[cellZ][cellY][cellX];
+    CellType ct = GRID(cellX, cellY, cellZ);
     const char* cellName = CellName(ct);
     snprintf(lines[lineCount++], sizeof(lines[0]), "Target: %s", cellName);
 

@@ -367,7 +367,7 @@ int CountBeautySources(int cx, int cy, int cz, int radius) {
             for (int dz = -1; dz <= 1; dz++) {
                 int nz = cz + dz;
                 if (nz < 0 || nz >= gridDepth) continue;
-                CellType cell = grid[nz][ny][nx];
+                CellType cell = GRID(nx, ny, nz);
                 if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_BRANCH ||
                     cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
                     count++;
