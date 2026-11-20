@@ -30,6 +30,7 @@
 
 // World seed for reproducible terrain generation
 uint64_t worldSeed = 0;
+bool worldSeedFixed = false;
 
 
 float zoom = 1.0f;
@@ -926,6 +927,7 @@ static void HeadlessProfilePrint(int ticks) {
 
 static int RunHeadless(const char* loadFile, const char* scenarioName, const char* gameName, int ticks, int argc, char** argv) {
     // Initialize minimal state (no window)
+    worldSeedFixed = true;   // headless runs are repeatable (seed 0 unless --seed)
     use8Dir = true;
     InitGridWithSizeAndChunkSize(32, 32, 8, 8);
     gridDepth = 16;
@@ -1361,6 +1363,7 @@ int main(int argc, char** argv) {
         if (strcmp(argv[i], "--seed") == 0) {
             if (i + 1 < argc) {
                 worldSeed = (uint64_t)strtoull(argv[i + 1], NULL, 10);
+                worldSeedFixed = true;
             } else {
                 printf("Warning: --seed requires a number\n");
                 printf("Usage: %s --seed <number>\n", argv[0]);

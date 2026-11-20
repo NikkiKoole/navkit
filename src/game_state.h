@@ -73,6 +73,10 @@ typedef struct {
 // World seed for reproducible terrain generation
 // Set via --seed <number> or auto-generated from time
 extern uint64_t worldSeed;
+// True when the seed must not change: --seed was given, or a headless run (seed 0
+// unless --seed). Games then build their world from worldSeed instead of a new
+// random seed, so runs are repeatable.
+extern bool worldSeedFixed;
 
 // View/Camera
 extern float zoom;

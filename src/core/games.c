@@ -23,6 +23,8 @@
 #include "../entities/furniture.h"
 #include "../entities/containers.h"
 #include "../entities/tool_quality.h"
+#include "../entities/items.h"
+#include "../world/construction.h"
 #include "../core/sim_manager.h"
 #include "../core/input_mode.h"
 #include "../ui/cutscene.h"
@@ -38,7 +40,7 @@ void SpawnMoversDemo(int count);   // main.c
 // Randomize seed, generate 128x128 HillsSoilsWater, spawn 1 mover with supplies
 static void StartSurvival(void) {
     // Randomize seed
-    worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
+    if (!worldSeedFixed) worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
 
     // Set grid to 128x128 before generating (InitGrid inside generator preserves these)
     InitGridWithSizeAndChunkSize(128, 128, 8, 8);
@@ -150,7 +152,7 @@ static void StartSurvival(void) {
 
 // Small apartment, 2 movers, kitchen, bathroom, food
 static void StartDollhouse(void) {
-    worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
+    if (!worldSeedFixed) worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
 
     // Small grid — apartment is ~12x12, tight margin
     InitGridWithSizeAndChunkSize(16, 16, 8, 8);
@@ -342,17 +344,60 @@ static void StartSandbox(void) {
 }
 
 // ---------------------------------------------------------------------------
+// Play HUD toolsets (dev UI off). A tool with an `available` rule only shows
+// once the world has what it needs (progressive unlocks).
+// ---------------------------------------------------------------------------
+
+GameToolContext GameToolContextNow(void) {
+    GameToolContext c = {itemCount > 0, false, false, false};
+    for (int i = 0; i < itemHighWaterMark && (!c.hasGrass || !c.hasLeaves || !c.hasRocks); i++) {
+        if (!items[i].active) continue;
+        if (items[i].type == ITEM_GRASS) c.hasGrass = true;
+        if (items[i].type == ITEM_LEAVES) c.hasLeaves = true;
+        if (items[i].type == ITEM_ROCK) c.hasRocks = true;
+    }
+    return c;
+}
+
+static bool HasItems(const GameToolContext* c)  { return c->hasItems; }
+static bool HasRocks(const GameToolContext* c)  { return c->hasRocks; }
+static bool HasLeaves(const GameToolContext* c) { return c->hasLeaves; }
+static bool HasGrass(const GameToolContext* c)  { return c->hasGrass; }
+
+// The early-game designations every game offers in its play HUD
+#define BASIC_TOOLS \
+    {"Harvest Berries",  ACTION_WORK_HARVEST_BERRY,     -1, NULL}, \
+    {"Gather Tree",      ACTION_WORK_GATHER_TREE,       -1, NULL}, \
+    {"Knap Stone",       ACTION_WORK_KNAP,              -1, HasRocks}, \
+    {"Place Stockpile",  ACTION_DRAW_STOCKPILE,         -1, HasItems}, \
+    {"Gather Zone",      ACTION_WORK_GATHER,            -1, HasItems}, \
+    {"Build Campfire",   ACTION_DRAW_WORKSHOP_CAMPFIRE, -1, HasItems}, \
+    {"Gather Grass",     ACTION_WORK_GATHER_GRASS,      -1, NULL}, \
+    {"Build Leaf Pile",  ACTION_WORK_FURNITURE, CONSTRUCTION_LEAF_PILE,  HasLeaves}, \
+    {"Build Grass Pile", ACTION_WORK_FURNITURE, CONSTRUCTION_GRASS_PILE, HasGrass}
+
+static const GameTool survivalTools[] = {
+    {"Explore", ACTION_WORK_EXPLORE, -1, NULL},   // fog of war
+    BASIC_TOOLS,
+};
+static const GameTool dollhouseTools[] = { BASIC_TOOLS };
+static const GameTool sandboxTools[]   = { BASIC_TOOLS };
+#undef BASIC_TOOLS
+#define TOOLS(list) list, (int)(sizeof(list) / sizeof(list[0]))
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
 static const GameDef games[] = {
     {"survival",  "Survival",  "One settler, 128x128 wilderness, fog of war: starve, dehydrate or freeze",
-                  StartSurvival,  false},
+                  StartSurvival,  false, TOOLS(survivalTools)},
     {"dollhouse", "Dollhouse", "Two people in a small apartment: needs and mood, nobody dies",
-                  StartDollhouse, true},
+                  StartDollhouse, true,  TOOLS(dollhouseTools)},
     {"sandbox",   "Sandbox",   "Flat empty map, no needs, every tool: draw, build and test freely",
-                  StartSandbox,   true},
+                  StartSandbox,   true,  TOOLS(sandboxTools)},
 };
+#undef TOOLS
 #define GAME_COUNT ((int)(sizeof(games) / sizeof(games[0])))
 
 static const GameDef* currentGame = NULL;
@@ -376,6 +421,11 @@ const char** GameNames(void) {
 }
 
 const GameDef* GameCurrent(void) { return currentGame; }
+
+const GameDef* GameActive(void) {
+    if (currentGame) return currentGame;
+    return GameFind(gameMode == GAME_MODE_SURVIVAL ? "survival" : "sandbox");
+}
 
 void GamePrintList(void) {
     printf("Games:\n");

@@ -63,6 +63,13 @@ void InputMode_ExitToNormal(void) {
     linkingWorkshopIdx = -1;  // Reset linking state
 }
 
+void InputMode_SelectAction(InputAction action) {
+    const ActionDef* def = GetActionDef(action);
+    inputMode = def->requiredMode;
+    workSubMode = def->requiredSubMode;
+    inputAction = action;
+}
+
 const char* InputMode_GetModeName(void) {
     switch (inputMode) {
         case MODE_NORMAL:  return "NORMAL";

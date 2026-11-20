@@ -267,152 +267,27 @@ static void DrawPlayerHUD(void) {
         y += 2;
     }
 
-    // Count items for progressive UI (show buttons only when relevant)
-    bool hasAnyItems = (itemCount > 0);
-    bool hasGrass = false, hasLeaves = false, hasRocks = false;
-    for (int i = 0; i < itemHighWaterMark && (!hasGrass || !hasLeaves || !hasRocks); i++) {
-        if (!items[i].active) continue;
-        if (items[i].type == ITEM_GRASS) hasGrass = true;
-        if (items[i].type == ITEM_LEAVES) hasLeaves = true;
-        if (items[i].type == ITEM_ROCK) hasRocks = true;
-    }
-
-    // Designation buttons
+    // Tool buttons: the active game's toolset (src/core/games.c). Tools with an
+    // unlock rule show once the world has what they need.
     y += 4;
-
-    // Explore button (survival fog of war — always available)
-    if (gameMode == GAME_MODE_SURVIVAL) {
-        bool exploreActive = (inputAction == ACTION_WORK_EXPLORE);
-        if (PushButton(10, y, exploreActive ? "* Explore *" : "Explore")) {
-            if (exploreActive) {
-                InputMode_ExitToNormal();
-            } else {
-                inputMode = MODE_WORK;
-                workSubMode = SUBMODE_NONE;
-                inputAction = ACTION_WORK_EXPLORE;
+    {
+        const GameDef* game = GameActive();
+        GameToolContext ctx = GameToolContextNow();
+        for (int t = 0; game && t < game->toolCount; t++) {
+            const GameTool* tool = &game->tools[t];
+            if (tool->available && !tool->available(&ctx)) continue;
+            bool active = (inputAction == (InputAction)tool->action) &&
+                          (tool->furnitureRecipe < 0 || GetSelectedFurnitureRecipe() == tool->furnitureRecipe);
+            if (PushButton(10, y, active ? TextFormat("* %s *", tool->label) : tool->label)) {
+                if (active) {
+                    InputMode_ExitToNormal();
+                } else {
+                    if (tool->furnitureRecipe >= 0) SetSelectedFurnitureRecipe(tool->furnitureRecipe);
+                    InputMode_SelectAction((InputAction)tool->action);
+                }
             }
+            y += 22;
         }
-        y += 22;
-    }
-
-    clicked = false;
-    bool harvestActive = (inputAction == ACTION_WORK_HARVEST_BERRY);
-    if (PushButton(10, y, harvestActive ? "* Harvest Berries *" : "Harvest Berries")) {
-        if (harvestActive) {
-            InputMode_ExitToNormal();
-        } else {
-            inputMode = MODE_WORK;
-            workSubMode = SUBMODE_HARVEST;
-            inputAction = ACTION_WORK_HARVEST_BERRY;
-        }
-    }
-    y += 22;
-
-    bool gatherTreeActive = (inputAction == ACTION_WORK_GATHER_TREE);
-    if (PushButton(10, y, gatherTreeActive ? "* Gather Tree *" : "Gather Tree")) {
-        if (gatherTreeActive) {
-            InputMode_ExitToNormal();
-        } else {
-            inputMode = MODE_WORK;
-            workSubMode = SUBMODE_HARVEST;
-            inputAction = ACTION_WORK_GATHER_TREE;
-        }
-    }
-    y += 22;
-
-    if (hasRocks) {
-        bool knapActive = (inputAction == ACTION_WORK_KNAP);
-        if (PushButton(10, y, knapActive ? "* Knap Stone *" : "Knap Stone")) {
-            if (knapActive) {
-                InputMode_ExitToNormal();
-            } else {
-                inputMode = MODE_WORK;
-                workSubMode = SUBMODE_HARVEST;
-                inputAction = ACTION_WORK_KNAP;
-            }
-        }
-        y += 22;
-    }
-
-    if (hasAnyItems) {
-        bool stockpileActive = (inputAction == ACTION_DRAW_STOCKPILE);
-        if (PushButton(10, y, stockpileActive ? "* Place Stockpile *" : "Place Stockpile")) {
-            if (stockpileActive) {
-                InputMode_ExitToNormal();
-            } else {
-                inputMode = MODE_DRAW;
-                inputAction = ACTION_DRAW_STOCKPILE;
-            }
-        }
-        y += 22;
-
-        bool gatherZoneActive = (inputAction == ACTION_WORK_GATHER);
-        if (PushButton(10, y, gatherZoneActive ? "* Gather Zone *" : "Gather Zone")) {
-            if (gatherZoneActive) {
-                InputMode_ExitToNormal();
-            } else {
-                inputMode = MODE_WORK;
-                inputAction = ACTION_WORK_GATHER;
-            }
-        }
-        y += 22;
-    }
-
-    // Campfire (available when sticks or logs exist)
-    if (hasAnyItems) {
-        bool campfireActive = (inputAction == ACTION_DRAW_WORKSHOP_CAMPFIRE);
-        if (PushButton(10, y, campfireActive ? "* Build Campfire *" : "Build Campfire")) {
-            if (campfireActive) {
-                InputMode_ExitToNormal();
-            } else {
-                inputMode = MODE_DRAW;
-                inputAction = ACTION_DRAW_WORKSHOP_CAMPFIRE;
-            }
-        }
-        y += 22;
-    }
-
-    bool gatherGrassActive = (inputAction == ACTION_WORK_GATHER_GRASS);
-    if (PushButton(10, y, gatherGrassActive ? "* Gather Grass *" : "Gather Grass")) {
-        if (gatherGrassActive) {
-            InputMode_ExitToNormal();
-        } else {
-            inputMode = MODE_WORK;
-            workSubMode = SUBMODE_HARVEST;
-            inputAction = ACTION_WORK_GATHER_GRASS;
-        }
-    }
-    y += 22;
-
-    // Furniture placement buttons (progressive: only show when materials exist)
-    if (hasLeaves) {
-        bool leafPileActive = (inputAction == ACTION_WORK_FURNITURE && GetSelectedFurnitureRecipe() == CONSTRUCTION_LEAF_PILE);
-        if (PushButton(10, y, leafPileActive ? "* Build Leaf Pile *" : "Build Leaf Pile")) {
-            if (leafPileActive) {
-                InputMode_ExitToNormal();
-            } else {
-                SetSelectedFurnitureRecipe(CONSTRUCTION_LEAF_PILE);
-                inputMode = MODE_WORK;
-                workSubMode = SUBMODE_BUILD;
-                inputAction = ACTION_WORK_FURNITURE;
-            }
-        }
-        y += 22;
-    }
-
-    if (hasGrass) {
-        bool grassPileActive = (inputAction == ACTION_WORK_FURNITURE && GetSelectedFurnitureRecipe() == CONSTRUCTION_GRASS_PILE);
-        if (PushButton(10, y, grassPileActive ? "* Build Grass Pile *" : "Build Grass Pile")) {
-            if (grassPileActive) {
-                InputMode_ExitToNormal();
-            } else {
-                SetSelectedFurnitureRecipe(CONSTRUCTION_GRASS_PILE);
-                inputMode = MODE_WORK;
-                workSubMode = SUBMODE_BUILD;
-                inputAction = ACTION_WORK_FURNITURE;
-            }
-        }
-        y += 22;
     }
     y += 4;
 
