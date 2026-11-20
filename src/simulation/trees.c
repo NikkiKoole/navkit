@@ -76,9 +76,39 @@ int GetYoungTreeHeight(MaterialType treeMat) {
 bool IsYoungTreeBase(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
     if (grid[z][y][x] != CELL_TREE_BRANCH) return false;
-    // Young tree base: no trunk/branch below (sitting on ground)
-    if (z > 0 && (grid[z - 1][y][x] == CELL_TREE_TRUNK || grid[z - 1][y][x] == CELL_TREE_BRANCH)) return false;
-    return true;
+    if (z == 0) return true;
+    // Young tree base: sitting on ground, like the sapling it grew from. Not on its own
+    // trunk/branch column, and not on air or leaves: a mature tree's side branches are
+    // CELL_TREE_BRANCH too, and must not "grow" into floating trees.
+    CellType below = grid[z - 1][y][x];
+    if (below == CELL_TREE_TRUNK || below == CELL_TREE_BRANCH) return false;
+    return CellIsSolid(below);
+}
+
+// Top trunk cell of a mature tree that is still growing upward. Finishing tapers the
+// top trunk cells into branches, so a finished tree has a branch right above it.
+static bool IsGrowingTrunkTop(int x, int y, int z) {
+    if (grid[z][y][x] != CELL_TREE_TRUNK) return false;
+    if (z + 1 >= gridDepth) return true;       // finishes on its next growth step
+    CellType above = grid[z + 1][y][x];
+    return above != CELL_TREE_TRUNK && above != CELL_TREE_BRANCH;
+}
+
+// Cells that keep the tree sim busy (treeActiveCells): saplings, young tree bases and
+// growing trunk tops. Must match the live ++/-- bookkeeping (place, mature, finish, chop).
+// Trunk base still regrowing what was harvested (treeRegenCells)
+bool IsRegrowingTreeCell(int x, int y, int z) {
+    return grid[z][y][x] == CELL_TREE_TRUNK &&
+           (z == 0 || grid[z - 1][y][x] != CELL_TREE_TRUNK) &&
+           treeHarvestState[z][y][x] < TREE_HARVEST_MAX;
+}
+
+bool IsGrowingTreeCell(int x, int y, int z) {
+    CellType cell = grid[z][y][x];
+    if (cell == CELL_SAPLING) return true;
+    if (cell == CELL_TREE_BRANCH) return IsYoungTreeBase(x, y, z);
+    if (cell == CELL_TREE_TRUNK) return IsGrowingTrunkTop(x, y, z);
+    return false;
 }
 
 // Find base of a young tree branch column
@@ -152,6 +182,14 @@ static void GetTreeHeightRange(MaterialType treeMat, int* outMin, int* outMax) {
 #define TREE_MAX_BANDS 64
 static float treeBandDt[TREE_MAX_BANDS], treeBandSeasonalDt[TREE_MAX_BANDS];
 static int treeBandCount = 0, treeBandNext = 0;
+// The sweep keeps treeActiveCells / treeRegenCells: it counts growing and regrowing
+// cells as it passes them and sets the totals at the end of each full sweep, plus what
+// was added meanwhile (PlaceSapling, TreeGrowYoung, harvesting still ++ to wake the
+// sweep up). Nothing else decrements them: trees change in too many ways (chopping,
+// neighbours growing into each other, removal tools) to keep an exact count by hand,
+// and a count that drops to 0 too early stops all growth for good. Errors are only
+// ever too high, and the next sweep end corrects them.
+static int treeSweepActive, treeSweepRegen, treeSweepStartActive, treeSweepStartRegen;
 
 void InitTrees(void) {
     treeBandCount = 0;   // new world: restart the sweep
@@ -514,7 +552,7 @@ static void GrowCell(int x, int y, int z) {
             int topZ = baseZ + height - 1;
             SpawnBranchesForType(treeMat, x, y, baseZ, topZ);
             SpawnLeavesForType(treeMat, x, y, topZ);
-            treeActiveCells--;
+            // (treeActiveCells: the sweep recounts, see TreesTick)
         }
     } else if (cell == CELL_TREE_LEAVES) {
         MaterialType treeMat = (GetWallMaterial(x, y, z));
@@ -554,6 +592,10 @@ void TreesTick(float tickDt) {
     treeBandDt[band] = treeBandSeasonalDt[band] = 0.0f;
     int yStart = (int)((long)gridHeight * band / bands);
     int yEnd = (int)((long)gridHeight * (band + 1) / bands);
+    if (band == 0) {
+        treeSweepActive = treeSweepRegen = 0;
+        treeSweepStartActive = treeActiveCells; treeSweepStartRegen = treeRegenCells;
+    }
 
     float saplingThreshold = GameHoursToGameSeconds(saplingGrowGH);
     float trunkThreshold = GameHoursToGameSeconds(trunkGrowGH);
@@ -567,16 +609,16 @@ void TreesTick(float tickDt) {
                 CellType cell = grid[z][y][x];
 
                 if (cell == CELL_SAPLING) {
-                    if (!hasGrowing) continue;
+                    if (!hasGrowing) goto counted;
                     growthTimer[z][y][x] += seasonalDt;
                     if (growthTimer[z][y][x] >= saplingThreshold) {
                         GrowCell(x, y, z);
                     }
                 } else if (cell == CELL_TREE_BRANCH && IsYoungTreeBase(x, y, z)) {
                     // Young tree: grow upward or mature
-                    if (!hasGrowing) continue;
+                    if (!hasGrowing) goto counted;
                     int baseZ = FindYoungTreeBaseZ(x, y, z);
-                    if (baseZ < 0) continue;
+                    if (baseZ < 0) goto counted;
                     int height = GetYoungTreeHeightFromBase(x, y, baseZ);
                     int youngMaxH = targetHeight[baseZ][y][x];
                     if (youngMaxH <= 0) {
@@ -598,9 +640,9 @@ void TreesTick(float tickDt) {
                         }
                     }
                 } else if (cell == CELL_TREE_TRUNK) {
-                    // Growth: only topmost trunk, only when trees are growing
-                    if (hasGrowing &&
-                        (z + 1 >= gridDepth || grid[z + 1][y][x] != CELL_TREE_TRUNK)) {
+                    // Growth: only the top of a still-growing trunk (finished trees have
+                    // their taper branch above), only when trees are growing
+                    if (hasGrowing && IsGrowingTrunkTop(x, y, z)) {
                         growthTimer[z][y][x] += seasonalDt;
                         if (growthTimer[z][y][x] >= trunkThreshold) {
                             GrowCell(x, y, z);
@@ -615,22 +657,32 @@ void TreesTick(float tickDt) {
                             if (growthTimer[z][y][x] >= regenThreshold) {
                                 treeHarvestState[z][y][x]++;
                                 growthTimer[z][y][x] = 0.0f;
-                                if (treeHarvestState[z][y][x] >= TREE_HARVEST_MAX) {
-                                    treeRegenCells--;
-                                }
                             }
                         }
                     }
                 } else if (cell == CELL_TREE_LEAVES) {
-                    if (!hasGrowing) continue;
+                    if (!hasGrowing) goto counted;
                     growthTimer[z][y][x] += dt;  // Leaf decay not seasonal
                     if (growthTimer[z][y][x] >= leafThreshold) {
                         GrowCell(x, y, z);
                         growthTimer[z][y][x] = 0.0f;
                     }
                 }
+            counted:
+                // count what is left to do here (after this tick's growth)
+                cell = grid[z][y][x];
+                if (cell == CELL_SAPLING || cell == CELL_TREE_BRANCH || cell == CELL_TREE_TRUNK) {
+                    if (IsGrowingTreeCell(x, y, z)) treeSweepActive++;
+                    if (IsRegrowingTreeCell(x, y, z)) treeSweepRegen++;
+                }
             }
         }
+    }
+    if (band == bands - 1) {   // full sweep done: the counts, plus what was added meanwhile
+        int addedActive = treeActiveCells - treeSweepStartActive;
+        int addedRegen = treeRegenCells - treeSweepStartRegen;
+        treeActiveCells = treeSweepActive + (addedActive > 0 ? addedActive : 0);
+        treeRegenCells = treeSweepRegen + (addedRegen > 0 ? addedRegen : 0);
     }
 }
 

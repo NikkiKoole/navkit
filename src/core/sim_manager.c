@@ -82,15 +82,13 @@ void RebuildSimActivityCounts(void) {
                 if (!tc->stable || tc->current != ambient) {
                     tempUnstableCells++;
                 }
-                // Trees: saplings are always active
+                // Trees: saplings, young trees and still-growing trunks
                 CellType cell = grid[z][y][x];
-                if (cell == CELL_SAPLING) {
+                if (IsGrowingTreeCell(x, y, z)) {
                     treeActiveCells++;
                 }
                 // Tree regen: trunk bases with depleted harvest
-                if (cell == CELL_TREE_TRUNK &&
-                    (z == 0 || grid[z - 1][y][x] != CELL_TREE_TRUNK) &&
-                    treeHarvestState[z][y][x] < TREE_HARVEST_MAX) {
+                if (IsRegrowingTreeCell(x, y, z)) {
                     treeRegenCells++;
                 }
                 // Groundwear: worn dirt terrain tiles
@@ -131,10 +129,8 @@ bool ValidateSimActivityCounts(void) {
                 TempCell *tc = &temperatureGrid[z][y][x];
                 if (!tc->stable || tc->current != ambient) actualTempUnstable++;
                 CellType cell = grid[z][y][x];
-                if (cell == CELL_SAPLING) actualTree++;
-                if (cell == CELL_TREE_TRUNK &&
-                    (z == 0 || grid[z - 1][y][x] != CELL_TREE_TRUNK) &&
-                    treeHarvestState[z][y][x] < TREE_HARVEST_MAX) actualTreeRegen++;
+                if (IsGrowingTreeCell(x, y, z)) actualTree++;
+                if (IsRegrowingTreeCell(x, y, z)) actualTreeRegen++;
                 if (cell == CELL_WALL && IsWallNatural(x, y, z) && GetWallMaterial(x, y, z) == MAT_DIRT && GetGroundWear(x, y, z) > 0) actualWear++;
                 if (floorDirtGrid[z][y][x] > 0) actualDirt++;
                 if (farmGrid[z][y][x].tilled) actualFarm++;

@@ -1089,12 +1089,7 @@ static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
         // and removing them would leave a hole to bedrock
         if (cellType == CELL_TREE_ROOT && cz == 0) continue;
 
-        // If removing a trunk base with depleted harvest, decrement regen counter
-        if (cellType == CELL_TREE_TRUNK &&
-            (cz == 0 || grid[cz - 1][cy][cx] != CELL_TREE_TRUNK) &&
-            treeHarvestState[cz][cy][cx] < TREE_HARVEST_MAX) {
-            treeRegenCells--;
-        }
+        // (treeRegenCells: the tree sweep recounts, see TreesTick)
 
         grid[cz][cy][cx] = CELL_AIR;
         SetWallMaterial(cx, cy, cz, MAT_NONE);
@@ -1174,8 +1169,7 @@ static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
             SpawnItemWithMaterial(spawnX, spawnY, (float)itemZ, ITEM_STICKS, (uint8_t)treeMat);
         }
 
-        // Decrement active cells (young tree was tracked)
-        treeActiveCells--;
+        // (treeActiveCells: the tree sweep recounts, see TreesTick)
     } else {
         // Mature tree: fall direction, felled trunk segments, leaf/sapling drops
 

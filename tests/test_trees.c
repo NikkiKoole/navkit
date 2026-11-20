@@ -916,6 +916,65 @@ describe(tree_banded_sweep) {
     }
 }
 
+static int CountGrowingTreeCells(void) {
+    int n = 0;
+    for (int z = 0; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++)
+                if (IsGrowingTreeCell(x, y, z)) n++;
+    return n;
+}
+
+describe(tree_activity_counter) {
+    // treeActiveCells gates all tree growth: it must match what a recount (load, drift
+    // check) finds, or growth freezes (count <= 0) or never stops
+    it("should keep the live count equal to a recount through a whole life cycle") {
+        SetupBasicGrid();
+        InitTrees();
+        InitSimActivity();
+        float a = saplingGrowGH, b = trunkGrowGH, c = youngToMatureGH;
+        saplingGrowGH = 0.01f; trunkGrowGH = 0.01f; youngToMatureGH = 0.01f;
+        PlaceSapling(5, 5, 1, MAT_OAK);
+        bool match = true;
+        for (int t = 0; t < 300; t++) {
+            // a second, slow tree keeps the sim busy after the first one has finished
+            if (t == 20) { saplingGrowGH = 100000.0f; PlaceSapling(0, 0, 1, MAT_PINE); }
+            TreesTick(1.0f);
+            if (treeActiveCells != CountGrowingTreeCells()) match = false;
+        }
+        expect(match);
+        expect(grid[1][0][0] == CELL_SAPLING);       // still there...
+        expect(treeActiveCells == 1);                // ...and still counted: it will grow
+        saplingGrowGH = a; trunkGrowGH = b; youngToMatureGH = c;
+    }
+
+    it("should not grow a finished tree's side branches into new trees") {
+        SetupBasicGrid();
+        InitTrees();
+        InitSimActivity();
+        TreeGrowFull(5, 4, 1, MAT_OAK);
+        int trunks = CountCellType(CELL_TREE_TRUNK);
+        expect(CountGrowingTreeCells() == 0);        // finished: nothing to grow
+        float a = saplingGrowGH, b = trunkGrowGH, c = youngToMatureGH;
+        saplingGrowGH = 100000.0f; trunkGrowGH = 0.01f; youngToMatureGH = 0.01f;
+        PlaceSapling(0, 0, 1, MAT_PINE);             // keeps the sim running
+        for (int t = 0; t < 100; t++) TreesTick(1.0f);
+        expect(CountCellType(CELL_TREE_TRUNK) == trunks);   // no trunks sprouting from branches
+        expect(treeActiveCells == 1);
+        saplingGrowGH = a; trunkGrowGH = b; youngToMatureGH = c;
+    }
+
+    it("should count young and growing trees after a recount (save/load)") {
+        SetupBasicGrid();
+        InitTrees();
+        InitSimActivity();
+        TreeGrowYoung(2, 2, 1, MAT_OAK);
+        expect(treeActiveCells == 1);
+        RebuildSimActivityCounts();
+        expect(treeActiveCells == 1);                // was 0: young trees froze after a load
+    }
+}
+
 describe(tree_full_lifecycle) {
     it("should support full plant->grow->chop cycle using direct calls") {
         SetupBasicGrid();
@@ -989,6 +1048,7 @@ int main(int argc, char* argv[]) {
     test(stockpile_sapling_filter);
     test(tree_full_lifecycle);
     test(tree_banded_sweep);
+    test(tree_activity_counter);
     
     return summary();
 }

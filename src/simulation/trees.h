@@ -44,6 +44,8 @@ void PlaceSapling(int x, int y, int z, MaterialType treeMat);
 
 // Check if a cell is the base of a young tree (CELL_TREE_BRANCH column, no trunk below)
 bool IsYoungTreeBase(int x, int y, int z);
+bool IsGrowingTreeCell(int x, int y, int z);   // counts toward treeActiveCells
+bool IsRegrowingTreeCell(int x, int y, int z); // counts toward treeRegenCells
 
 // Get the young tree height for a species
 int GetYoungTreeHeight(MaterialType treeMat);
