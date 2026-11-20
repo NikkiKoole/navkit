@@ -365,6 +365,41 @@ describe(connectivity_fix_preserves_largest) {
 }
 
 // =============================================================================
+// Caves are carved after trees/bushes: they must not remove the ground under them
+// =============================================================================
+
+describe(caves_keep_surface_support) {
+    it("should leave no tree or bush floating over a cave") {
+        uint64_t origSeed = worldSeed;
+        bool origReport = hillsWaterConnectivityReport;
+        hillsWaterConnectivityReport = false;
+        InitGridWithSizeAndChunkSize(128, 128, 16, 16);
+        gridDepth = 16;
+        int floating = 0, trees = 0;
+        // seeds 2 and 6 had floating trees and bushes before caves kept a roof
+        uint64_t seeds[] = {2, 6, 7, 8};
+        for (int k = 0; k < 4; k++) {
+            worldSeed = seeds[k];
+            GenerateHillsSoilsWater();
+            for (int z = 1; z < gridDepth; z++)
+                for (int y = 0; y < gridHeight; y++)
+                    for (int x = 0; x < gridWidth; x++) {
+                        CellType c = grid[z][y][x], below = grid[z - 1][y][x];
+                        bool base = (c == CELL_TREE_TRUNK && below != CELL_TREE_TRUNK) ||
+                                    c == CELL_BUSH || c == CELL_SAPLING;
+                        if (!base) continue;
+                        if (c == CELL_TREE_TRUNK) trees++;
+                        if (!CellIsSolid(below)) floating++;
+                    }
+        }
+        expect(trees > 100);                         // the check saw real forests
+        expect(floating == 0);
+        worldSeed = origSeed;
+        hillsWaterConnectivityReport = origReport;
+    }
+}
+
+// =============================================================================
 // Main
 // =============================================================================
 
@@ -377,6 +412,7 @@ int main(int argc, char* argv[]) {
     test(terrain_regen_clears_water);
     test(ramp_north_duplicate_prevention);
     test(connectivity_fix_preserves_largest);
+    test(caves_keep_surface_support);
 
     return summary();
 }

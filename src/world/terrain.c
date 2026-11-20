@@ -2058,6 +2058,15 @@ static MaterialType PickTreeTypeForBiome(const BiomePreset* bp, MaterialType soi
 // Adds rivers and shallow lakes, and biases clay/peat toward wetter areas
 // ============================================================================
 
+// Caves are carved after trees, bushes, plants and loose items are placed, so a cave
+// cell must keep a roof: wall below (floor) and wall above. Carving the top layer of
+// the ground would leave whatever stands on it floating.
+static bool CaveCanCarve(int x, int y, int z) {
+    if (grid[z][y][x] != CELL_WALL) return false;
+    if (z > 0 && grid[z - 1][y][x] != CELL_WALL) return false;
+    return z + 1 < gridDepth && grid[z + 1][y][x] == CELL_WALL;
+}
+
 void GenerateHillsSoilsWater(void) {
     InitGrid();
     SeedTerrain();
@@ -3028,9 +3037,8 @@ void GenerateHillsSoilsWater(void) {
                 int h = heightmap[idx];
                 // Try z-levels from mid-height down to minCaveZ
                 for (int z = h - 1; z >= minCaveZ; z--) {
-                    if (grid[z][y][x] != CELL_WALL) continue;
-                    // Need solid ground below for walkability
-                    if (z > 0 && grid[z - 1][y][x] != CELL_WALL) continue;
+                    // Solid ground below for walkability, a roof above (CaveCanCarve)
+                    if (!CaveCanCarve(x, y, z)) continue;
 
                     // Check for air neighbor horizontally (hillside face)
                     int dx4[] = {1, -1, 0, 0};
@@ -3099,9 +3107,7 @@ void GenerateHillsSoilsWater(void) {
                         int cy = wy + ry;
                         if (cx < 2 || cx >= gridWidth - 2 || cy < 2 || cy >= gridHeight - 2) continue;
                         if (waterMask[cy * gridWidth + cx]) continue;
-                        if (grid[wz][cy][cx] == CELL_WALL) {
-                            // Ensure solid floor below
-                            if (wz > 0 && grid[wz - 1][cy][cx] != CELL_WALL) continue;
+                        if (CaveCanCarve(cx, cy, wz)) {
                             grid[wz][cy][cx] = CELL_AIR;
                             carved++;
                         }
