@@ -92,43 +92,139 @@ are already read through helpers (`GetWaterLevel`, `GetWallMaterial`, ...).
 **Outdated in the infinite-world doc:** its memory table (the 80 MB `nodeData` and the
 64 MB designations figure no longer match; use the table above), and "no --seed plumbing".
 
-## Step 1: one accessor for every per-cell layer (the shared first step)
+## Step 1: one accessor for every per-cell layer (design, 2026-11-20)
 
 C can't keep `grid[z][y][x]` for an array whose size is chosen at runtime, so every
-access changes once. Make it an accessor that hides the layout:
+access changes once, to a macro that hides the layout.
+
+### Access sites (counted 2026-11-20, `name[..][..][..]`)
+
+| layer | src | tests | files |
+|---|---|---|---|
+| `grid` | 664 | 1,072 | 77 |
+| `designations` | 188 | 18 | 7 |
+| `trackConnections` | 44 | 53 | 8 |
+| `lightGrid` | 22 | 78 | 4 |
+| `farmGrid` | 18 | 74 | 9 |
+| `waterGrid`, `fireGrid`, `smokeGrid`, `steamGrid`, `temperatureGrid` | 177 | 22 | |
+| 29 other layers (materials, trees, wear, flags, sim scratch, ...) | ~200 | ~40 | |
+
+Row pointers (`waterGrid[z][y]` passed to `fwrite`/`fread`) only appear in `saveload.c`
+(48). The 2D planes (`blockVisited`, `visited`) are scratch and move to the scratch arena
+in step 2, not to the accessor.
+
+### The macros
+
+One macro per layer, coordinates in **(x, y, z)** order like the existing accessor
+functions (`GetWallMaterial(x, y, z)`), usable as an lvalue:
 
 ```c
-// grid.h (sketch)
-static inline int CellIndex(int x, int y, int z);      // layout decided here only
-#define GRID(z, y, x)        grid[CellIndex((x), (y), (z))]
-#define WATER(z, y, x)       waterGrid[CellIndex((x), (y), (z))]
-...
+// grid.h
+#define GRID(x, y, z)        grid[CELL_AT(x, y, z)]
+#define CELL_FLAGS(x, y, z)  cellFlags[CELL_AT(x, y, z)]
+#define WATER(x, y, z)       waterGrid[CELL_AT(x, y, z)]
+...                          // one per layer, next to its extern
 ```
 
-- **Layout A, row-major** `((z * H) + y) * W + x`: simplest, one array per layer sized
-  to the map. Enough for "any map size" (step 2).
-- **Layout B, chunk-major** (chunk id, then the cell inside the chunk): neighbouring cells
-  of a chunk are contiguous, and a chunk's slice of every layer can later live in its
-  own block. This is the layout streaming needs. Same accessor, different `CellIndex`.
-- Do the rewrite with A, keep `CellIndex` the only place that knows; switching to B is
-  then a contained change.
+Existing helpers (`GetWaterLevel`, `GetWallMaterial`, ...) keep their names and use the
+macros inside.
 
-**How:** ast-grep rewrites (`grid[$Z][$Y][$X]` -> `GRID($Z, $Y, $X)`), layer by layer,
-tests after each. Row pointers (`&grid[z][y][0]` in save/load and inspect) become loops
-or `CellIndex(0, y, z)`; the save format stays the same.
+### Two phases: rewrite with no change in behaviour, then flip the storage
 
-**Risk: reads one past the edge.** Today `grid[z][y][x + 1]` at the last column reads
-padding (harmless zero). With exact-size arrays it reads the next row (layout A) or
-another chunk (B): silent logic changes. Catch them with an assert in `CellIndex` in
-debug builds plus `make asan` over the test suites and `make scenarios-check`.
+**Phase A, rewrite (no behaviour change).** While the layers are still static
+`[z][y][x]` arrays, the macros map straight onto them:
 
-**Cost:** one multiply-add per access instead of compile-time strides (512 is a power of
-two today). Estimate: a few percent on cell-heavy loops at most; measure with
-`--profile` before/after.
+```c
+#define CELL_AT(x, y, z)  [z][y][x]          // phase A: GRID(x,y,z) -> grid[z][y][x]
+```
 
-**Size:** the largest single change in the plan: mechanical but touches almost every
-system, so do it in a session where nobody else is editing (not in parallel with
-another agent). Estimate: a long session for the rewrite, plus debugging the edge reads.
+so every rewrite commit compiles to the same code. Rewrite with ast-grep, one layer (or
+a batch of small layers) per commit, `make test` + `scenarios-check` after each:
+
+```bash
+sg run -p 'grid[$Z][$Y][$X]' -r 'GRID($X, $Y, $Z)' -l c src/ tests/ --update-all
+```
+
+(note the order swap: the pattern binds z, y, x and the macro takes x, y, z). Save/load
+row loops become a helper that writes/reads one row element by element
+(`WriteLayerRow(f, layer, elemSize, y, z)`), so the save format stays the same. A guard
+test greps that no `name[..][..][..]` access is left for a finished layer.
+
+Batches: `grid` src (664), `grid` tests (1,072), `designations`, the fluid/heat sims
+(water, fire, smoke, steam, temperature), materials + flags + vegetation, trees + wear +
+farm + light + snow + rooms + tracks + furniture, then saveload/inspect. Each batch is
+reviewable and reversible on its own.
+
+**Phase B, flip (one small commit).** Declarations become flat arrays and `CELL_AT`
+becomes an index:
+
+```c
+#define CELL_AT(x, y, z)  [CellIndex((x), (y), (z))]
+```
+
+Still statically sized at the cap in this commit (allocation is step 2), so the only
+change is the layout; with the debug assert below, any surprise shows up here.
+
+### Layout: chunk-major with a fixed 16x16 storage chunk
+
+```c
+#define STORE_CHUNK_SHIFT 4                    // 16x16 cells per storage chunk
+#define STORE_CHUNK       (1 << STORE_CHUNK_SHIFT)
+#define STORE_MASK        (STORE_CHUNK - 1)
+extern int storeChunksX;                       // ceil(gridWidth / 16)
+extern int storeDepth;                         // gridDepth
+
+static inline int CellIndex(int x, int y, int z) {
+    int chunk = (y >> STORE_CHUNK_SHIFT) * storeChunksX + (x >> STORE_CHUNK_SHIFT);
+    int local = ((z * STORE_CHUNK) + (y & STORE_MASK)) * STORE_CHUNK + (x & STORE_MASK);
+    return chunk * (STORE_CHUNK * STORE_CHUNK * storeDepth) + local;
+}
+```
+
+- **The storage chunk is fixed at 16x16, separate from `chunkWidth`/`chunkHeight`** (the
+  HPA* chunk, chosen at runtime; scenarios use 8 and 16). A fixed power of two keeps
+  `CellIndex` to shifts, masks and one multiply. The two don't need to line up.
+- **A chunk holds the full column (all z)**: 16x16x16 = 4,096 cells per chunk. That is
+  the unit the sparse layers allocate (step 3, one pool block per chunk per layer) and
+  the unit a streamed world would load. Columns also keep the common `z +- 1` lookups
+  (support below, fluids rising) in the same block.
+- Storage dimensions round up to whole chunks, so a 100-wide map stores 112 columns;
+  cells in that margin are valid memory (like today's padding) but never "on the map".
+- Cost: one multiply-add and a few shifts per access instead of compile-time strides.
+  Measure `--profile` before and after the flip; expected a few percent on cell-heavy
+  loops at most. If a hot loop suffers, iterate it per chunk (`FOR_EACH_STORE_CHUNK`)
+  rather than per row.
+
+### Edge reads (the main risk)
+
+Today `grid[z][y][x + 1]` at the last column reads padding (zero). After the flip, at a
+chunk border it reads a cell in another chunk: a silent change in logic, not a crash.
+
+- `CellIndex` gets a **debug-build assert**: `0 <= x < storeWidth`, same for y, z
+  (`make debug`, tests and `asan`). Every hit is a missing bounds check: fix it at the
+  call site with an explicit check, not by widening the assert.
+- Run the asserting build over `make test`, `make scenarios-check` and a few minutes of
+  each scenario headless, before the flip lands.
+- After step 2 the arrays are exactly sized, so an unchecked read past the edge becomes an
+  out-of-bounds access that asan reports: a second net.
+
+### What else changes
+
+- `sizeof(layer)` users (memory panel in `ui_panels.c`) and the duplicate `extern`
+  declarations (e.g. `main.c` re-declares `waterGrid`) move to the shared headers.
+- `ClearGridLayer` / `FillGridLayer` become "clear `storeCells` elements" after the flip:
+  the high-water logic goes away once layers are sized to the map (step 2).
+- `nav/` doesn't see the layers: it asks through `src/world/nav_host.h`, which changes
+  with everything else.
+- Save format unchanged throughout (rows are still written in `[z][y][x]` order).
+
+### Order and rules
+
+1. Wait until `ui-gamedef` (another agent's branch) is merged; then nobody else edits
+   `src/` or `tests/` until phase A is done.
+2. Phase A batches as above, each its own commit, pushed.
+3. Phase B flip with the asserting build green; profile before/after.
+4. Then step 2 (runtime sizing, world arena).
 
 ## Step 2: layers sized to the map
 
