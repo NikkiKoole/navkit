@@ -49,6 +49,11 @@ static inline float fastInvSqrt(float x) {
 // Globals
 Mover movers[MAX_MOVERS];
 Point moverPaths[MAX_MOVERS][MAX_MOVER_PATH];
+Point moverRoutes[MAX_MOVERS][MAX_MOVER_ROUTE];
+int moverRouteLen[MAX_MOVERS], moverRouteNext[MAX_MOVERS];
+static Point moverRouteGoal[MAX_MOVERS];    // goal the route was planned for
+static Point moverWindowEnd[MAX_MOVERS];    // last cell of the window refined from the route
+int coarseRoutesPlanned = 0, coarseWindowRefills = 0, coarseLegFails = 0;   // stats
 int moverCount = 0;
 int repathFallbackCount = 0;
 // Round-robin cursor for ProcessMoverRepaths: each frame resumes after the last
@@ -884,9 +889,110 @@ void InitMoverWithPath(Mover* m, float x, float y, float z, Point goal, float sp
         moverPaths[moverIdx][i] = pathArr[srcOffset + i];
     }
     m->pathIndex = m->pathLength - 1;
+    moverRouteLen[moverIdx] = moverRouteNext[moverIdx] = 0;
+}
+
+// ---- Coarse paths ----
+
+static bool SameCell(Point a, Point b) { return a.x == b.x && a.y == b.y && a.z == b.z; }
+
+// Window from `from` along the route: as many legs as fit in MOVER_WINDOW_CELLS (a leg
+// longer than that is cut; the next window goes on toward the same waypoint). Sets the
+// mover's path (goal-first, like a full path). 0 = the first leg has no way.
+static int FillRouteWindow(int i, Point from) {
+    static Point buf[MOVER_WINDOW_CELLS];
+    int n = 0;
+    buf[n++] = from;
+    Point at = from;
+    while (moverRouteNext[i] < moverRouteLen[i] && n < MOVER_WINDOW_CELLS) {
+        Point to = moverRoutes[i][moverRouteNext[i]];
+        int got = RefineLeg(at, to, buf + n, MOVER_WINDOW_CELLS - n);
+        if (got < 0) {                      // no way (terrain changed): walk what we have
+            if (n == 1) return 0;
+            break;
+        }
+        if (got > 0 && !SameCell(buf[n + got - 1], to)) {   // didn't fit
+            if (n > 1) break;               // start it in the next window
+            n += got;                       // a long first leg: its first part
+            break;
+        }
+        n += got;
+        at = to;
+        moverRouteNext[i]++;
+    }
+    Mover* m = &movers[i];
+    for (int k = 0; k < n; k++) moverPaths[i][k] = buf[n - 1 - k];
+    m->pathLength = n;
+    moverWindowEnd[i] = buf[n - 1];
+    if (useStringPulling && m->pathLength > 2) StringPullPath(moverPaths[i], &m->pathLength);
+    m->pathIndex = m->pathLength - 1;
+    return n;
+}
+
+int MoverPlanPath(int i, Point start, Point goal) {
+    static Point cells[MAX_PATH];
+    static Point route[MAX_MOVER_ROUTE];
+    Mover* m = &movers[i];
+    int routeLen = 0;
+    int len = FindPathOrRoute(moverPathAlgorithm, start, goal, cells, MAX_PATH, route, MAX_MOVER_ROUTE, &routeLen);
+    moverRouteLen[i] = moverRouteNext[i] = 0;
+    if (routeLen >= 2) {
+        memcpy(moverRoutes[i], route, (size_t)routeLen * sizeof(Point));
+        moverRouteLen[i] = routeLen;
+        moverRouteNext[i] = 1;              // route[0] is the start
+        moverRouteGoal[i] = goal;
+        coarseRoutesPlanned++;
+        if (FillRouteWindow(i, start) > 0) return m->pathLength;
+        moverRouteLen[i] = 0;
+        len = 0;
+    }
+    // Full path (other algorithms, shared-goal fields): goal-first; if too long keep
+    // the START end (high indices), the mover plans again when it gets there
+    m->pathLength = (len > MAX_MOVER_PATH) ? MAX_MOVER_PATH : len;
+    int srcOffset = len - m->pathLength;
+    for (int j = 0; j < m->pathLength; j++) moverPaths[i][j] = cells[srcOffset + j];
+    if (useStringPulling && m->pathLength > 2) StringPullPath(moverPaths[i], &m->pathLength);
+    m->pathIndex = m->pathLength - 1;
+    return m->pathLength;
+}
+
+// The window is used up (pathIndex < 0, path not cleared): refine the next legs if
+// it came from the route still being followed
+static void MoverContinueRoute(int i) {
+    Mover* m = &movers[i];
+    if (moverRouteNext[i] >= moverRouteLen[i]) return;
+    if (!SameCell(moverRouteGoal[i], m->goal) || !SameCell(moverPaths[i][0], moverWindowEnd[i])) {
+        moverRouteLen[i] = 0;               // the path was replaced since: not ours
+        return;
+    }
+    coarseWindowRefills++;
+    if (FillRouteWindow(i, moverWindowEnd[i]) == 0) {   // the next leg is blocked now
+        coarseLegFails++;
+        moverRouteLen[i] = 0;
+        m->pathLength = 0;
+        m->pathIndex = -1;
+        m->needsRepath = true;
+    }
+}
+
+float MoverRouteCellsLeft(int i) {
+    const Mover* m = &movers[i];
+    if (moverRouteNext[i] >= moverRouteLen[i] || !SameCell(moverRouteGoal[i], m->goal)) return 0.0f;
+    float cells = 0.0f;
+    Point a = moverWindowEnd[i];
+    for (int k = moverRouteNext[i]; k < moverRouteLen[i]; k++) {
+        Point b = moverRoutes[i][k];
+        int dx = abs(b.x - a.x), dy = abs(b.y - a.y);
+        int mn = dx < dy ? dx : dy, mx = dx > dy ? dx : dy;
+        cells += (float)(mx - mn) + 1.414f * (float)mn;
+        a = b;
+    }
+    return cells;
 }
 
 void ClearMovers(void) {
+    memset(moverRouteLen, 0, sizeof(moverRouteLen));
+    memset(moverRouteNext, 0, sizeof(moverRouteNext));
     repathCursor = 0;
     LaddersClear();
     memset(moverYieldTime, 0, sizeof(moverYieldTime));
@@ -1170,18 +1276,37 @@ void PushMoversOutOfCell(int x, int y, int z) {
     }
 }
 
+// Does walking straight from cell a to cell b (same level) cross cell (x, y)? Movers
+// walk string-pulled paths as straight lines between the stored points, so a cell
+// between two points is on the way without being a point itself. Exact test for a
+// line through a unit square, within the segment's box.
+static bool SegmentCrossesCell(Point a, Point b, int x, int y) {
+    if (x < (a.x < b.x ? a.x : b.x) || x > (a.x > b.x ? a.x : b.x)) return false;
+    if (y < (a.y < b.y ? a.y : b.y) || y > (a.y > b.y ? a.y : b.y)) return false;
+    long dx = b.x - a.x, dy = b.y - a.y;
+    long cross = (long)(x - a.x) * dy - (long)(y - a.y) * dx;
+    if (cross < 0) cross = -cross;
+    return 2 * cross <= labs(dx) + labs(dy);
+}
+
 void InvalidatePathsThroughCell(int x, int y, int z) {
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         if (!m->active) continue;
-        if (m->pathLength == 0) continue;
+        if (m->pathLength == 0 || m->pathIndex < 0) continue;
         
-        // Check if any waypoint in the path goes through this cell
-        for (int j = 0; j <= m->pathIndex; j++) {
-            if (moverPaths[i][j].x == x && moverPaths[i][j].y == y && moverPaths[i][j].z == z) {
+        // Any remaining point of the path, or the straight walk between two of them
+        // (from where the mover is now to its next point, then point to point)
+        Point prev = {(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
+        for (int j = m->pathIndex; j >= 0; j--) {
+            Point p = moverPaths[i][j];
+            bool hit = (p.x == x && p.y == y && p.z == z) ||
+                       (p.z == z && prev.z == z && SegmentCrossesCell(prev, p, x, y));
+            if (hit) {
                 m->needsRepath = true;
                 break;
             }
+            prev = p;
         }
     }
 }
@@ -1212,23 +1337,9 @@ static void AssignNewMoverGoal(Mover* m) {
     // HPA* has native ramp support via RampLink edges
     PathAlgorithm algo = moverPathAlgorithm;
 
-    Point tempPath[MAX_PATH];
-    int len = FindPath(algo, start, newGoal, tempPath, MAX_PATH);
-
+    (void)algo;
     int moverIdx = (int)(m - movers);
-    m->pathLength = (len > MAX_MOVER_PATH) ? MAX_MOVER_PATH : len;
-    // Path is stored goal-to-start: path[0]=goal, path[pathLen-1]=start
-    // If truncating, keep the START end (high indices), not the goal end
-    int srcOffset = len - m->pathLength;
-    for (int j = 0; j < m->pathLength; j++) {
-        moverPaths[moverIdx][j] = tempPath[srcOffset + j];
-    }
-
-    if (useStringPulling && m->pathLength > 2) {
-        StringPullPath(moverPaths[moverIdx], &m->pathLength);
-    }
-
-    m->pathIndex = m->pathLength - 1;
+    MoverPlanPath(moverIdx, start, newGoal);
     m->needsRepath = false;
     if (m->pathLength > 0) MaybeTakeTrain(moverIdx);   // a far goal may be quicker by train
 }
@@ -1525,6 +1636,12 @@ void UpdateMovers(void) {
         }
 
         // Handle movers that need a new goal (reached destination or have no path)
+        // Coarse path: the window is used up but the route goes on: refine the next legs
+        if (m->pathIndex < 0 && m->pathLength > 0) {
+            MoverContinueRoute(i);
+            if (m->needsRepath) continue;
+        }
+
         if (m->pathIndex < 0 || m->pathLength == 0) {
             // Transport: WALKING_TO_STATION mover arrived at platform → transition to WAITING
             if (m->transportState == TRANSPORT_WALKING_TO_STATION) {
@@ -1980,9 +2097,9 @@ void ProcessMoverRepaths(void) {
         // HPA* now supports ramp links for cross-z paths, no need to force A*
         PathAlgorithm algo = moverPathAlgorithm;
         
-        Point tempPath[MAX_PATH];
+        (void)algo;
         double pathStart = GetTime();
-        int len = FindPath(algo, start, m->goal, tempPath, MAX_PATH);
+        int len = MoverPlanPath(i, start, m->goal);
         double pathTime = (GetTime() - pathStart) * 1000.0;
 
         // A* fallback disabled: HPA* handles ramps correctly now.
@@ -2007,14 +2124,6 @@ void ProcessMoverRepaths(void) {
         if (pathTime > 50.0) {
             TraceLog(LOG_WARNING, "SLOW HPA: mover %d, %.1fms, start(%d,%d,z%d)->goal(%d,%d,z%d), len=%d",
                 i, pathTime, start.x, start.y, start.z, m->goal.x, m->goal.y, m->goal.z, len);
-        }
-
-        m->pathLength = (len > MAX_MOVER_PATH) ? MAX_MOVER_PATH : len;
-        // Path is stored goal-to-start: path[0]=goal, path[pathLen-1]=start
-        // If truncating, keep the START end (high indices), not the goal end
-        int srcOffset = len - m->pathLength;
-        for (int j = 0; j < m->pathLength; j++) {
-            moverPaths[i][j] = tempPath[srcOffset + j];
         }
 
         if (m->pathLength == 0) {
@@ -2048,11 +2157,6 @@ void ProcessMoverRepaths(void) {
             continue;
         }
 
-        if (useStringPulling && m->pathLength > 2) {
-            StringPullPath(moverPaths[i], &m->pathLength);
-        }
-
-        m->pathIndex = m->pathLength - 1;
         m->needsRepath = false;
         m->repathCooldown = REPATH_COOLDOWN_FRAMES;
 

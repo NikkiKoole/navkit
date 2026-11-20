@@ -1714,28 +1714,12 @@ static void nav_AbsRelax(NavWorld* w, int from, int to, int stepCost, int h) {
     else nav_AbsHeapPush(w, to);
 }
 
-int NavFindPathHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, int maxLen) {
-    w->explored = 0;
-    w->absPathLen = 0;
-    w->hpaAbstractMs = 0.0;
-    w->hpaRefineMs = 0.0;
-    if (!nav_InBounds(w, start) || !nav_InBounds(w, goal)) return 0;
-    double startTime = NavHostTime();
-
+// A* over the abstract graph from start to goal: fills absPath (goal-first; node
+// entranceNum = start, entranceNum + 1 = goal). false = no route.
+static bool nav_HPAAbstract(NavWorld* w, NavPoint start, NavPoint goal) {
+    if (w->entranceNum == 0) return false;   // no entrances (or graph not built)
     int startChunk = nav_GetChunk(w, start.x, start.y, start.z);
     int goalChunk = nav_GetChunk(w, goal.x, goal.y, goal.z);
-
-    // Same chunk: try a local search first (also when there are no entrances at
-    // all, e.g. one chunk or chunks walled off from each other)
-    if (startChunk == goalChunk) {
-        int len = nav_LocalPath(w, start.x, start.y, start.z, goal.x, goal.y, goal.z, out, maxLen);
-        if (len > 0) {
-            w->lastMs = (NavHostTime() - startTime) * 1000.0;
-            return len;
-        }
-        // fall through: may need to route through neighbouring chunks
-    }
-    if (w->entranceNum == 0) return 0;   // no entrances (or graph not built)
 
     int startNode = w->entranceNum;
     int goalNode = w->entranceNum + 1;
@@ -1790,18 +1774,43 @@ int NavFindPathHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, in
         }
     }
     w->hpaAbstractMs = (NavHostTime() - absStart) * 1000.0;
+    return w->absPathLen > 0;
+}
+
+// Position of abstract path node `node` (start/goal are the virtual end nodes)
+static NavPoint nav_AbsNodePoint(const NavWorld* w, int node, NavPoint start, NavPoint goal) {
+    if (node == w->entranceNum) return start;
+    if (node == w->entranceNum + 1) return goal;
+    return (NavPoint){w->entranceList[node].x, w->entranceList[node].y, w->entranceList[node].z};
+}
+
+int NavFindPathHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, int maxLen) {
+    w->explored = 0;
+    w->absPathLen = 0;
+    w->hpaAbstractMs = 0.0;
+    w->hpaRefineMs = 0.0;
+    if (!nav_InBounds(w, start) || !nav_InBounds(w, goal)) return 0;
+    double startTime = NavHostTime();
+
+    // Same chunk: try a local search first (also when there are no entrances at
+    // all, e.g. one chunk or chunks walled off from each other)
+    if (nav_GetChunk(w, start.x, start.y, start.z) == nav_GetChunk(w, goal.x, goal.y, goal.z)) {
+        int len = nav_LocalPath(w, start.x, start.y, start.z, goal.x, goal.y, goal.z, out, maxLen);
+        if (len > 0) {
+            w->lastMs = (NavHostTime() - startTime) * 1000.0;
+            return len;
+        }
+        // fall through: may need to route through neighbouring chunks
+    }
+    nav_HPAAbstract(w, start, goal);
 
     // Refine abstract path (stored goal-first) into cells, start-first, then reverse
     double refineStart = NavHostTime();
     int len = 0;
     if (w->absPathLen > 0) {
         for (int i = w->absPathLen - 1; i > 0; i--) {
-            int fromNode = w->absPath[i];
-            int toNode = w->absPath[i - 1];
-            NavPoint f = (fromNode == startNode) ? start
-                       : (NavPoint){w->entranceList[fromNode].x, w->entranceList[fromNode].y, w->entranceList[fromNode].z};
-            NavPoint t = (toNode == goalNode) ? goal
-                       : (NavPoint){w->entranceList[toNode].x, w->entranceList[toNode].y, w->entranceList[toNode].z};
+            NavPoint f = nav_AbsNodePoint(w, w->absPath[i], start, goal);
+            NavPoint t = nav_AbsNodePoint(w, w->absPath[i - 1], start, goal);
 
             if (f.z != t.z) {   // ladder/ramp hop: the mover handles the transition
                 if (len < maxLen) out[len++] = t;
@@ -1825,6 +1834,43 @@ int NavFindPathHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, in
     w->hpaRefineMs = (NavHostTime() - refineStart) * 1000.0;
     w->lastMs = (NavHostTime() - startTime) * 1000.0;
     return len;
+}
+
+int NavFindRouteHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* route, int maxRoute) {
+    w->explored = 0;
+    w->absPathLen = 0;
+    w->hpaAbstractMs = 0.0;
+    w->hpaRefineMs = 0.0;
+    if (maxRoute < 2 || !nav_InBounds(w, start) || !nav_InBounds(w, goal)) return 0;
+    double startTime = NavHostTime();
+    int n = 0;
+    // Same chunk with a local route: one leg (as NavFindPathHPA)
+    if (nav_GetChunk(w, start.x, start.y, start.z) == nav_GetChunk(w, goal.x, goal.y, goal.z)
+        && nav_LocalPath(w, start.x, start.y, start.z, goal.x, goal.y, goal.z, w->tempPath, w->tempPathCap) > 0) {
+        route[n++] = start;
+        route[n++] = goal;
+    } else if (nav_HPAAbstract(w, start, goal)) {
+        for (int i = w->absPathLen - 1; i >= 0 && n < maxRoute; i--)
+            route[n++] = nav_AbsNodePoint(w, w->absPath[i], start, goal);
+    }
+    w->lastMs = (NavHostTime() - startTime) * 1000.0;
+    return n;
+}
+
+int NavRefineLeg(NavWorld* w, NavPoint from, NavPoint to, NavPoint* out, int maxLen) {
+    if (!nav_InBounds(w, from) || !nav_InBounds(w, to)) return -1;
+    if (from.z != to.z) {                    // ladder/ramp hop: the mover handles the transition
+        if (maxLen < 1) return 0;
+        out[0] = to;
+        return 1;
+    }
+    if (from.x == to.x && from.y == to.y) return 0;
+    int localLen = nav_LocalPath(w, from.x, from.y, from.z, to.x, to.y, to.z, w->tempPath, w->tempPathCap);
+    if (localLen == 0) return -1;
+    // tempPath is goal-first and includes `from` (last): copy start-first without it
+    int n = 0;
+    for (int j = localLen - 2; j >= 0 && n < maxLen; j--) out[n++] = w->tempPath[j];
+    return n;
 }
 
 // =============================================================================

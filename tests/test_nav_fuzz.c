@@ -571,6 +571,27 @@ static void CheckWorld(NavWorld* w, NavHFlow** hs, NavPoint* goals, int goalCoun
                 NavFlowDestroy(ff);
             }
         }
+        // Coarse route refined leg by leg must give exactly HPA*'s cells
+        {
+            static NavPoint route[4096], cells[FZ_W * FZ_H * FZ_D];
+            int nr = NavFindRouteHPA(w, a, b, route, 4096);
+            if ((nr > 0) != (lh > 0)) FAIL("route: %s but HPA* %s (%d,%d,%d) -> (%d,%d,%d)", nr > 0 ? "found" : "none",
+                                          lh > 0 ? "found" : "none", a.x, a.y, a.z, b.x, b.y, b.z);
+            else if (nr > 0) {
+                int nc = 0;
+                cells[nc++] = a;
+                bool ok = true;
+                for (int k = 1; k < nr && ok; k++) {
+                    int got = NavRefineLeg(w, route[k - 1], route[k], cells + nc, (int)(sizeof(cells) / sizeof(cells[0])) - nc);
+                    if (got < 0) ok = false; else nc += got;
+                }
+                bool same = ok && nc == lh;
+                for (int k = 0; same && k < nc; k++)   // pbuf is goal-first
+                    same = cells[k].x == pbuf[lh - 1 - k].x && cells[k].y == pbuf[lh - 1 - k].y && cells[k].z == pbuf[lh - 1 - k].z;
+                if (!same) FAIL("route: legs give %d cells (%s), HPA* %d, (%d,%d,%d) -> (%d,%d,%d)", nc, ok ? "ok" : "a leg failed",
+                                lh, a.x, a.y, a.z, b.x, b.y, b.z);
+            }
+        }
     }
 
     for (int i = 0; i < 8; i++) {

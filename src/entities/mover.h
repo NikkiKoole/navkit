@@ -145,6 +145,18 @@ extern bool useWallSliding;             // Toggle for wall sliding
 // Globals
 extern Mover movers[MAX_MOVERS];
 extern Point moverPaths[MAX_MOVERS][MAX_MOVER_PATH];
+
+// Coarse paths (useCoarsePaths in pathfinding.h): for HPA* paths, moverPaths holds only
+// the next cells (a window of a few legs); the rest of the route is waypoints (chunk-
+// border, ladder and ramp entrances), refined leg by leg as the mover walks. No length
+// cap, and a dig ahead only changes legs not refined yet. Not saved: after a load the
+// mover walks its window, then plans again.
+#define MAX_MOVER_ROUTE 256          // waypoints; a longer route is cut short (plans again there)
+#define MOVER_WINDOW_CELLS 256       // cells refined ahead at a time (<= MAX_MOVER_PATH)
+extern Point moverRoutes[MAX_MOVERS][MAX_MOVER_ROUTE];   // start-first
+extern int moverRouteLen[MAX_MOVERS], moverRouteNext[MAX_MOVERS];   // next = next waypoint to refine
+int MoverPlanPath(int moverIdx, Point start, Point goal);   // sets the mover's path; its length, 0 = none
+float MoverRouteCellsLeft(int moverIdx);   // octile cells of the route beyond the window (trip estimates)
 extern int moverCount;
 extern unsigned long currentTick;
 extern bool useStringPulling;

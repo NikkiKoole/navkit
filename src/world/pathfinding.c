@@ -250,9 +250,21 @@ static int WalkSharedGoalField(NavWorld* w, NavHFlow* h, Point start, Point goal
     return n;
 }
 
+// Movers can take HPA* paths as a coarse route (waypoints) and refine it leg by leg
+// as they walk (mover.c): no length cap, little memory. Off = full cell paths.
+bool useCoarsePaths = true;
+
+static int FindPathImpl(PathAlgorithm algo, Point start, Point goal, Point* outPath, int maxLen,
+                        Point* outRoute, int maxRoute, int* routeLen);
+
 int FindPath(PathAlgorithm algo, Point start, Point goal, Point* outPath, int maxLen) {
+    return FindPathOrRoute(algo, start, goal, outPath, maxLen, NULL, 0, NULL);
+}
+
+int FindPathOrRoute(PathAlgorithm algo, Point start, Point goal, Point* outPath, int maxLen,
+                    Point* outRoute, int maxRoute, int* routeLen) {
     double t0 = PathClockNow();
-    int len = FindPathUntimed(algo, start, goal, outPath, maxLen);
+    int len = FindPathImpl(algo, start, goal, outPath, maxLen, outRoute, maxRoute, routeLen);
     double ms = (PathClockNow() - t0) * 1000.0;
     findPathTotalMs += ms;
     // Slow request: say where, so an accidental repro can be replayed with
@@ -265,6 +277,16 @@ int FindPath(PathAlgorithm algo, Point start, Point goal, Point* outPath, int ma
 }
 
 int FindPathUntimed(PathAlgorithm algo, Point start, Point goal, Point* outPath, int maxLen) {
+    return FindPathImpl(algo, start, goal, outPath, maxLen, NULL, 0, NULL);
+}
+
+int RefineLeg(Point from, Point to, Point* out, int maxLen) {
+    return NavRefineLeg(NavGame(), from, to, out, maxLen);
+}
+
+static int FindPathImpl(PathAlgorithm algo, Point start, Point goal, Point* outPath, int maxLen,
+                        Point* outRoute, int maxRoute, int* routeLen) {
+    if (routeLen) *routeLen = 0;
     if (start.x < 0 || goal.x < 0) return 0;
     NavWorld* w = NavGame();
     // Different reachability regions: no path exists, answer without searching
@@ -285,6 +307,12 @@ int FindPathUntimed(PathAlgorithm algo, Point start, Point goal, Point* outPath,
             sharedGoalFallbacks++;
             if (h->overLimit) DropSharedGoalField(goal, now);
         }
+    }
+    if (outRoute && routeLen && useCoarsePaths && algo == PATH_ALGO_HPA) {
+        *routeLen = NavFindRouteHPA(w, start, goal, outRoute, maxRoute);
+        statsPathCount++;
+        statsTotalTime += w->lastMs;
+        return 0;
     }
     int len = NavFindPath(w, (NavAlgorithm)algo, start, goal, outPath, maxLen);
 

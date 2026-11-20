@@ -2366,6 +2366,58 @@ describe(workshop_mover_collision) {
     }
 }
 
+// Coarse paths: a route longer than a mover's path buffer (MAX_MOVER_PATH) is walked to
+// the end, refined leg by leg. 64x64 serpentine: ~2000 steps from top-left to bottom-left.
+static bool WalkSerpentine(bool coarse) {
+    static char ascii[64 * 65 + 1];
+    int k = 0;
+    for (int y = 0; y < 64; y++) {
+        for (int x = 0; x < 64; x++) {
+            bool wall = (y % 2 == 1) && !((y % 4 == 1) ? x == 63 : x == 0);
+            ascii[k++] = wall ? '#' : '.';
+        }
+        ascii[k++] = '\n';
+    }
+    ascii[k] = 0;
+    InitGridFromAsciiWithChunkSize(ascii, 16, 16);
+    BuildEntrances();
+    BuildGraph();
+    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+    ClearMovers();
+    bool oldCoarse = useCoarsePaths, oldEndless = endlessMoverMode;
+    PathAlgorithm oldAlgo = moverPathAlgorithm;
+    useCoarsePaths = coarse;
+    endlessMoverMode = false;
+    moverPathAlgorithm = PATH_ALGO_HPA;
+    Point goal = {0, 62, 0};
+    Mover* m = &movers[0];
+    InitMover(m, CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, 0.0f, goal, 1500.0f);
+    m->needsRepath = true;
+    moverCount = 1;
+    bool arrived = false;
+    for (int t = 0; t < 400 && !arrived && m->active; t++) {
+        RunTicks(60);
+        arrived = (int)(m->x / CELL_SIZE) == goal.x && (int)(m->y / CELL_SIZE) == goal.y;
+    }
+    useCoarsePaths = oldCoarse;
+    endlessMoverMode = oldEndless;
+    moverPathAlgorithm = oldAlgo;
+    return arrived;
+}
+
+describe(mover_coarse_paths) {
+    it("should walk a route longer than the path buffer to the end") {
+        extern int coarseWindowRefills;
+        int refills = coarseWindowRefills;
+        expect(WalkSerpentine(true));
+        expect(coarseWindowRefills > refills);   // the route was refined as it walked
+    }
+
+    it("should not get there with full paths cut at the buffer size") {
+        expect(!WalkSerpentine(false));          // the case coarse paths fix
+    }
+}
+
 describe(mover_ramp_transitions) {
     it("should transition z-level UP when walking onto ramp high side") {
         // Ramp at z=0 with high side pointing north
@@ -2942,6 +2994,7 @@ int main(int argc, char* argv[]) {
     test(mover_falling);
     test(mover_z_level_collision);
     test(mover_ladder_transitions);
+    test(mover_coarse_paths);
     test(mover_ramp_transitions);
     test(z_climb_timing);
     test(sparse_level_pathfinding);

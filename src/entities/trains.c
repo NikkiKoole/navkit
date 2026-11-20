@@ -493,6 +493,7 @@ float WalkTripSeconds(int moverIdx) {
         px = w.x; py = w.y;
     }
     if (m->pathIndex < 0) cells = CellsBetween(px, py, m->goal.x, m->goal.y);
+    else cells += MoverRouteCellsLeft(moverIdx);   // coarse path: the route beyond the window
     return cells * MoverWalkSecondsPerCell(moverIdx);
 }
 

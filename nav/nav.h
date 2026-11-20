@@ -202,6 +202,13 @@ const NavGraphEdge* NavEdgesFlat(NavWorld* w, int* n);
 int NavFindPath(NavWorld* w, NavAlgorithm algo, NavPoint start, NavPoint goal, NavPoint* out, int maxLen);
 int NavFindPathAStar(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, int maxLen);
 int NavFindPathHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, int maxLen);
+// Coarse HPA*: the route as waypoints, start-first: start, the chunk-border/ladder/ramp
+// entrances crossed, goal (at most maxRoute; a longer route is cut short). 0 = none.
+// Refining each consecutive pair with NavRefineLeg gives exactly NavFindPathHPA's cells.
+int NavFindRouteHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* route, int maxRoute);
+// Cells from `from` to the next waypoint `to`, start-first, without `from` (a ladder/
+// ramp hop is just `to`). Returns the count (at most maxLen), -1 if there's no way.
+int NavRefineLeg(NavWorld* w, NavPoint from, NavPoint to, NavPoint* out, int maxLen);
 
 // ---- flow fields ----
 // One reverse Dijkstra from the goal(s) over the whole world, using exactly the

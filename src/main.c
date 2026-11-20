@@ -1095,6 +1095,9 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, int ticks
                trainDecisions, trainDecisionsFaster, 100.0 * trainDecisionsFaster / trainDecisions,
                trainDecisionTrainSec / trainDecisions, trainDecisionWalkSec / trainDecisions);
     extern int repathFallbackCount, repathHpaSuccessCount;
+    extern int coarseRoutesPlanned, coarseWindowRefills, coarseLegFails;
+    printf("Coarse paths %s: %d routes planned, %d window refills, %d legs blocked (replanned)\n",
+           useCoarsePaths ? "on" : "off", coarseRoutesPlanned, coarseWindowRefills, coarseLegFails);
     printf("Repath stats: HPA success=%d, A* fallback=%d (%.1f%% fallback)\n", 
            repathHpaSuccessCount, repathFallbackCount,
            (repathFallbackCount + repathHpaSuccessCount) > 0 

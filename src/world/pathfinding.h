@@ -90,6 +90,14 @@ void RunHPAStar(void);            // startPos -> goalPos into path/pathLength
 int FindPathHPA(Point start, Point goal, Point* outPath, int maxLen);
 int FindPath(PathAlgorithm algo, Point start, Point goal, Point* outPath, int maxLen);
 int FindPathUntimed(PathAlgorithm algo, Point start, Point goal, Point* outPath, int maxLen);
+// FindPath for movers: with useCoarsePaths, a plain HPA* search returns its route as
+// waypoints in outRoute (start-first, *routeLen of them) and 0 cells; otherwise
+// (other algorithms, shared-goal fields, unreachable) as FindPath with *routeLen = 0.
+int FindPathOrRoute(PathAlgorithm algo, Point start, Point goal, Point* outPath, int maxLen,
+                    Point* outRoute, int maxRoute, int* routeLen);
+// Cells of one route leg, start-first, without `from`; -1 = no way (NavRefineLeg)
+int RefineLeg(Point from, Point to, Point* out, int maxLen);
+extern bool useCoarsePaths;
 // Shared-goal fields (see pathfinding.c): goals many movers request get a cached
 // hierarchical flow field; HPA* requests for them walk it instead of searching
 extern bool useSharedGoalFields;

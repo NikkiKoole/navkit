@@ -60,6 +60,19 @@ Movers, items, jobs, stockpiles, workshops, animals, trains, containers, stackin
   `LadderFollowLine`. Train stations keep their own (saved) waiting list in `trains.c`.
 - Not saved: lines rebuild themselves after a load.
 
+## Mover Paths (coarse routes)
+
+- `MoverPlanPath(i, start, goal)` is how movers get a path. HPA* paths come back as a
+  route of waypoints (`moverRoutes`, chunk-border/ladder/ramp entrances) and only the
+  next legs are refined into `moverPaths` (a window, same goal-first format as a full
+  path); movement refills the window when it runs out (`MoverContinueRoute`). Other
+  algorithms and shared-goal field paths stay full paths. Toggle: `useCoarsePaths`
+  (console `coarsePaths`).
+- Code that writes `moverPaths` directly must set `moverRouteLen[i] = 0` (a refill also
+  checks the window still came from the route, but don't rely on it).
+- `InvalidatePathsThroughCell` checks the straight segments between path points too:
+  string-pulled paths skip the cells in between.
+
 ## Mover Needs & Death
 
 - **Starvation**: `mover.starvationTimer` tracks game-seconds at hunger==0, resets when hunger > 0

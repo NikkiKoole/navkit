@@ -506,6 +506,8 @@ static const Scenario scenarios[] = {
                    "Hills",     SetupHubs,     NULL, NULL, NULL, 128, 128},
     {"world",      "Hills with soils and water, 100 wandering movers; scenarioSize sets the map (for --profile)",
                    "HillsSoilsWater", SetupWorld, NULL, NULL, NULL, 256, 256},
+    {"maze",       "3D labyrinth, 100 wandering movers: long paths (coarse paths, step cap); scenarioSize sets the map",
+                   "Labyrinth3D", SetupWorld, NULL, NULL, NULL, 256, 256},
     {"train-double", "Double track (one per direction), platforms on both sides, 3 stops, 32 movers",
                    NULL,        SetupTrainDouble, NULL, TrainDoublePrintStats, NULL, 240, 24},
 };

@@ -1407,6 +1407,7 @@ JobRunResult RunJob_Explore(Job* job, void* moverPtr, float dt) {
         Point start = { cx, cy, cz };
         int pathLen = FindPath(moverPathAlgorithm, start, fogEdge, moverPaths[moverIdx], MAX_MOVER_PATH);
         if (pathLen > 0) {
+            moverRouteLen[moverIdx] = 0;   // a full path, not a coarse route
             mover->pathLength = pathLen;
             mover->pathIndex = 0;
             if (mover->pathLength > 2) {
@@ -1430,6 +1431,7 @@ JobRunResult RunJob_Explore(Job* job, void* moverPtr, float dt) {
     }
 
     // Copy into mover path
+    moverRouteLen[moverIdx] = 0;   // a full path, not a coarse route
     for (int i = 0; i < traceLen; i++) {
         moverPaths[moverIdx][i] = tracePath[i];
     }
