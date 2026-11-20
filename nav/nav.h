@@ -81,6 +81,9 @@ typedef struct {
     int chunk;            // chunk the cost was computed in; -1 for ladder/ramp links
 } NavGraphEdge;
 
+// Out-edges of one entrance, sorted by `to` (one copy per target: the cheapest)
+typedef struct { NavGraphEdge* e; int num, cap; } NavEdgeVec;
+
 typedef struct {
     int x, y;             // same on both levels
     int zLow, zHigh;
@@ -112,7 +115,7 @@ typedef struct NavWorld {
 
     // ---- HPA* graph (read-only for users) ----
     NavEntrance*   entranceList;   int entranceNum;
-    NavGraphEdge*  edgeList;       int edgeNum;   // sorted by (from, to); see adjStart
+    NavEdgeVec*    adj;            int edgeNum;   // [entrance] out-edges (NavOutEdges); edgeNum = total
     NavLadderLink* ladderList;     int ladderNum;
     NavRampLink*   rampList;       int rampNum;
     int            rampCellNum;    // ramp cells seen by the last NavBuildEntrances
@@ -129,12 +132,11 @@ typedef struct NavWorld {
     double hpaRefineMs;
 
     // ---- private scratch ----
-    int* adjStart;                 // [entrance + 1]: out-edges of e are edgeList[adjStart[e] .. adjStart[e+1])
-    int edgeCap;
     int entranceCap, ladderCap, rampCap, entHashSize;   // current capacities (grow as needed)
-    NavGraphEdge* edgeScratch; int edgeScratchCap;      // merge buffer (swapped with edgeList)
+    NavGraphEdge* flatEdges; int flatCap; unsigned flatVersion;   // NavEdgesFlat cache
+    NavEdgeVec* adjScratch;        // [entranceCap] incremental update: adj by new index (then swapped)
     bool growFailed;               // out of memory growing a list (warned)
-    bool edgeOverflow;             // couldn't grow edgeList (warned)
+    bool edgeOverflow;             // couldn't grow an edge list (warned)
 
     NavAbstractNode* absNodes;
     int* absPath; int absPathLen;
@@ -189,6 +191,13 @@ void NavSetChunkDirty(NavWorld* w, int cx, int cy, int z, bool dirty);
 void NavBuildEntrances(NavWorld* w);   // full rebuild, step 1
 void NavBuildGraph(NavWorld* w);       // full rebuild, step 2
 void NavUpdateDirty(NavWorld* w);      // incremental rebuild of dirty chunks
+
+// ---- graph access (read-only) ----
+// Out-edges of entrance e, sorted by target entrance: *n edges at the returned pointer.
+const NavGraphEdge* NavOutEdges(const NavWorld* w, int e, int* n);
+// Every edge in one array sorted by (from, to), for debug views and tests. Built
+// on demand, cached until the graph changes; *n = edge count.
+const NavGraphEdge* NavEdgesFlat(NavWorld* w, int* n);
 
 // ---- queries ---- (return path length, 0 = no path; path is goal-first)
 int NavFindPath(NavWorld* w, NavAlgorithm algo, NavPoint start, NavPoint goal, NavPoint* out, int maxLen);

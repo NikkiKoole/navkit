@@ -46,7 +46,7 @@ NavWorld* NavGame(void);
 // ---- legacy global names -> NavGame() fields ----
 #define entrances         (NavGame()->entranceList)
 #define entranceCount     (NavGame()->entranceNum)
-#define graphEdges        (NavGame()->edgeList)
+#define graphEdges        (GraphEdgesFlat())   // all edges, sorted by (from, to); debug/tests
 #define graphEdgeCount    (NavGame()->edgeNum)
 #define ladderLinks       (NavGame()->ladderList)
 #define ladderLinkCount   (NavGame()->ladderNum)
@@ -54,6 +54,7 @@ NavWorld* NavGame(void);
 #define rampLinkCount     (NavGame()->rampNum)
 #define use8Dir           (NavGame()->eightDir)
 #define needsRebuild      (NavGame()->dirty)
+static inline const NavGraphEdge* GraphEdgesFlat(void) { int n; return NavEdgesFlat(NavGame(), &n); }
 #define hpaNeedsRebuild   (NavGame()->hpaDirty)
 #define nodesExplored     (NavGame()->explored)
 #define lastPathTime      (NavGame()->lastMs)

@@ -418,7 +418,7 @@ static void CheckHFlow(NavWorld* w, NavHFlow* h, const NavFlowField* truth, NavP
                                     NavEntrance* E = &w->entranceList[e];
                                     if (E->z != p.z || abs(E->x - w->entranceList[e0].x) > 8 || abs(E->y - w->entranceList[e0].y) > 8) continue;
                                     printf("     ent %d (%d,%d,%d) ch %d/%d out:", e, E->x, E->y, E->z, E->chunk1, E->chunk2);
-                                    for (int k = w->adjStart[e]; k < w->adjStart[e + 1]; k++) { NavGraphEdge* g = &w->edgeList[k]; printf(" ->%d(c%d,ch%d)", g->to, g->cost, g->chunk); }
+                                    { int on; const NavGraphEdge* oe = NavOutEdges(w, e, &on); for (int k = 0; k < on; k++) { const NavGraphEdge* g = &oe[k]; printf(" ->%d(c%d,ch%d)", g->to, g->cost, g->chunk); } }
                                     printf("\n");
                                 }
                             }
@@ -548,7 +548,7 @@ static void CheckWorld(NavWorld* w, NavHFlow** hs, NavPoint* goals, int goalCoun
             static int seen[NAV_MAX_ENTRANCES]; memset(seen, 0, sizeof(seen));
             static int qq[NAV_MAX_ENTRANCES]; int qh = 0, qt = 0;
             for (int i = 0; i < ns; i++) if (!seen[st[i]]) { seen[st[i]] = 1; qq[qt++] = st[i]; }
-            while (qh < qt) { int e = qq[qh++]; for (int k = w->adjStart[e]; k < w->adjStart[e + 1]; k++) { int t = w->edgeList[k].to; if (!seen[t]) { seen[t] = 1; qq[qt++] = t; } } }
+            while (qh < qt) { int e = qq[qh++]; int on; const NavGraphEdge* oe = NavOutEdges(w, e, &on); for (int k = 0; k < on; k++) { int t = oe[k].to; if (!seen[t]) { seen[t] = 1; qq[qt++] = t; } } }
             int hit = 0; for (int i = 0; i < ng; i++) hit += seen[gt[i]];
             printf("    graph reaches %d of the goal entrances (%d entrances reached); A* path:\n", hit, qt);
             NavFindPathAStar(w, a, b, pbuf, (int)(sizeof(pbuf) / sizeof(pbuf[0])));
@@ -610,6 +610,10 @@ static void CheckIncrementalMatchesFull(NavWorld* w) {
     f->eightDir = w->eightDir;
     NavBuildEntrances(f);
     NavBuildGraph(f);
+    int wEdgeNum, fEdgeNum;
+    const NavGraphEdge* wEdges = NavEdgesFlat(w, &wEdgeNum);
+    const NavGraphEdge* fEdges = NavEdgesFlat(f, &fEdgeNum);
+    (void)wEdgeNum; (void)fEdgeNum;
     if (f->entranceNum != w->entranceNum) FAIL("incremental: %d entrances, full build has %d", w->entranceNum, f->entranceNum);
     if (f->edgeNum != w->edgeNum) FAIL("incremental: %d edges, full build has %d", w->edgeNum, f->edgeNum);
     if (f->entranceNum == w->entranceNum) {
@@ -629,8 +633,8 @@ static void CheckIncrementalMatchesFull(NavWorld* w) {
     if (verbose) {
         EdgeKey* ea = malloc(sizeof(EdgeKey) * (size_t)(w->edgeNum + 1));
         EdgeKey* eb = malloc(sizeof(EdgeKey) * (size_t)(f->edgeNum + 1));
-        for (int i = 0; i < w->edgeNum; i++) ea[i] = (EdgeKey){KeyOf(&w->entranceList[w->edgeList[i].from]), KeyOf(&w->entranceList[w->edgeList[i].to]), w->edgeList[i].cost};
-        for (int i = 0; i < f->edgeNum; i++) eb[i] = (EdgeKey){KeyOf(&f->entranceList[f->edgeList[i].from]), KeyOf(&f->entranceList[f->edgeList[i].to]), f->edgeList[i].cost};
+        for (int i = 0; i < w->edgeNum; i++) ea[i] = (EdgeKey){KeyOf(&w->entranceList[wEdges[i].from]), KeyOf(&w->entranceList[wEdges[i].to]), wEdges[i].cost};
+        for (int i = 0; i < f->edgeNum; i++) eb[i] = (EdgeKey){KeyOf(&f->entranceList[fEdges[i].from]), KeyOf(&f->entranceList[fEdges[i].to]), fEdges[i].cost};
         qsort(ea, (size_t)w->edgeNum, sizeof(EdgeKey), CmpEdge);
         qsort(eb, (size_t)f->edgeNum, sizeof(EdgeKey), CmpEdge);
         int i = 0, j = 0, shown = 0;
@@ -648,8 +652,8 @@ static void CheckIncrementalMatchesFull(NavWorld* w) {
         EdgeKey* ea = malloc(sizeof(EdgeKey) * (size_t)(w->edgeNum + 1));
         EdgeKey* eb = malloc(sizeof(EdgeKey) * (size_t)(f->edgeNum + 1));
         for (int i = 0; i < w->edgeNum; i++) {
-            ea[i] = (EdgeKey){KeyOf(&w->entranceList[w->edgeList[i].from]), KeyOf(&w->entranceList[w->edgeList[i].to]), w->edgeList[i].cost};
-            eb[i] = (EdgeKey){KeyOf(&f->entranceList[f->edgeList[i].from]), KeyOf(&f->entranceList[f->edgeList[i].to]), f->edgeList[i].cost};
+            ea[i] = (EdgeKey){KeyOf(&w->entranceList[wEdges[i].from]), KeyOf(&w->entranceList[wEdges[i].to]), wEdges[i].cost};
+            eb[i] = (EdgeKey){KeyOf(&f->entranceList[fEdges[i].from]), KeyOf(&f->entranceList[fEdges[i].to]), fEdges[i].cost};
         }
         qsort(ea, (size_t)w->edgeNum, sizeof(EdgeKey), CmpEdge);
         qsort(eb, (size_t)f->edgeNum, sizeof(EdgeKey), CmpEdge);
