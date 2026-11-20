@@ -220,6 +220,7 @@ extern float avoidStrengthOpen;    // Avoidance strength in open areas
 extern float avoidStrengthClosed;  // Avoidance strength near walls
 extern bool useDirectionalAvoidance;  // Filter avoidance by wall clearance
 extern bool useTunnelYielding;       // Wait at 1-wide passages for oncoming movers
+extern bool useSingleFileLadders;    // One climber per ladder segment at a time
 
 // Test/debug toggles for deterministic behavior
 extern bool useRandomizedCooldowns;   // When true, repath cooldowns are randomized (avoids sync spikes)

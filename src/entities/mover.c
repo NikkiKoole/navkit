@@ -57,6 +57,9 @@ int repathFallbackCount = 0;
 static int repathCursor = 0;
 // Seconds each mover has been waiting at a narrow passage (not saved; reset by ClearMovers)
 static float moverYieldTime[MAX_MOVERS];
+// Seconds each mover has been waiting for a busy ladder segment (not saved; reset by ClearMovers)
+static float moverLadderWait[MAX_MOVERS];
+#define LADDER_WAIT_TIMEOUT 10.0f   // then climb anyway (a stalled climber must not block forever)
 int repathHpaSuccessCount = 0;
 unsigned long currentTick = 0;
 bool useStringPulling = true;
@@ -72,6 +75,7 @@ float avoidStrengthOpen = 0.5f;
 float avoidStrengthClosed = 0.0f;
 bool useDirectionalAvoidance = true;
 bool useTunnelYielding = true;       // single-lane rule for 1-wide passages (see MoverShouldYield)
+bool useSingleFileLadders = true;    // one climber per ladder segment; others wait at the foot/top
 PathAlgorithm moverPathAlgorithm = PATH_ALGO_HPA;  // Default to HPA*
 bool useRandomizedCooldowns = true;   // Default on for demo perf, tests can disable
 bool useStaggeredUpdates = true;      // Default on for demo perf, tests can disable
@@ -413,6 +417,37 @@ static bool MoverShouldYield(int i) {
         if (beyond >= 0 && PointsEqual(route[beyond], oc) && MoverHasPriority(j, i))
             return true;                                              // about to enter from the far end, has priority
     }
+    return false;
+}
+
+// ---- Single-file ladders ----
+// A ladder segment (one ladder cell, between level zLow and zLow + 1) holds one
+// climber at a time. Climbers are found from mover state each tick (on a ladder
+// cell, partway between two levels), so nothing extra is saved.
+typedef struct { int x, y, zLow; } LadderSegment;
+static LadderSegment ladderClimbers[MAX_MOVERS];
+static int ladderClimberCount;
+
+static bool MoverClimbingLadder(const Mover* m, LadderSegment* seg) {
+    float zf = floorf(m->z);
+    if (m->z - zf < 0.0001f) return false;          // standing on a level
+    int x = (int)(m->x / CELL_SIZE), y = (int)(m->y / CELL_SIZE), z = (int)zf;
+    if (z + 1 >= gridDepth || !IsLadderCell(grid[z][y][x]) || !IsLadderCell(grid[z + 1][y][x])) return false;
+    *seg = (LadderSegment){x, y, z};
+    return true;
+}
+
+static void CollectLadderClimbers(void) {
+    ladderClimberCount = 0;
+    for (int i = 0; i < moverCount; i++) {
+        LadderSegment seg;
+        if (movers[i].active && MoverClimbingLadder(&movers[i], &seg)) ladderClimbers[ladderClimberCount++] = seg;
+    }
+}
+
+static bool LadderSegmentBusy(int x, int y, int zLow) {
+    for (int k = 0; k < ladderClimberCount; k++)
+        if (ladderClimbers[k].x == x && ladderClimbers[k].y == y && ladderClimbers[k].zLow == zLow) return true;
     return false;
 }
 
@@ -851,6 +886,7 @@ void InitMoverWithPath(Mover* m, float x, float y, float z, Point goal, float sp
 void ClearMovers(void) {
     repathCursor = 0;
     memset(moverYieldTime, 0, sizeof(moverYieldTime));
+    memset(moverLadderWait, 0, sizeof(moverLadderWait));
     // Drop carried items on the ground at mover's position
     for (int i = 0; i < moverCount; i++) {
         if (!movers[i].active) continue;
@@ -1273,6 +1309,7 @@ void UpdateMovers(void) {
     
     // Phase 3: Movement (all the rest)
     PROFILE_BEGIN(Move);
+    if (useSingleFileLadders) CollectLadderClimbers();
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         if (!m->active) continue;
@@ -1599,6 +1636,23 @@ void UpdateMovers(void) {
                     }
                 }
 
+                // Single file: don't start up/down a ladder segment someone is on
+                // (wait at the foot/top; a started climb reserves it for this tick)
+                int segLow = target.z > cellZ ? cellZ : target.z;
+                bool startingClimb = isLadderTransition && m->z == (float)cellZ;
+                if (startingClimb && useSingleFileLadders && moverLadderWait[i] < LADDER_WAIT_TIMEOUT &&
+                    LadderSegmentBusy(target.x, target.y, segLow)) {
+                    moverLadderWait[i] += dt;
+                    m->x = target.x * CELL_SIZE + CELL_SIZE * 0.5f;
+                    m->y = target.y * CELL_SIZE + CELL_SIZE * 0.5f;
+                    m->timeWithoutProgress = 0.0f;      // waiting in line is not being stuck
+                    m->lastX = m->x;
+                    m->lastY = m->y;
+                    continue;
+                }
+                if (startingClimb) moverLadderWait[i] = 0.0f;
+                if (startingClimb && useSingleFileLadders && ladderClimberCount < MAX_MOVERS)
+                    ladderClimbers[ladderClimberCount++] = (LadderSegment){target.x, target.y, segLow};
                 if (isLadderTransition || isRampTransition) {
                     // Lock XY at waypoint and interpolate Z over time
                     m->x = target.x * CELL_SIZE + CELL_SIZE * 0.5f;

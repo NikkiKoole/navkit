@@ -1130,6 +1130,89 @@ describe(mover_z_level_collision) {
     }
 }
 
+// Two floors (z=1 on dirt, z=2 on a constructed floor) joined by one ladder at (3,2)
+static void SetupLadderFloors(void) {
+    InitGridWithSize(8, 5);
+    gridDepth = 3;
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][y][x] = CELL_WALL;
+            SetWallMaterial(x, y, 0, MAT_DIRT);
+            grid[1][y][x] = CELL_AIR;
+            grid[2][y][x] = CELL_AIR;
+            SET_FLOOR(x, y, 2);
+        }
+    grid[1][2][3] = CELL_LADDER_BOTH;
+    grid[2][2][3] = CELL_LADDER_BOTH;
+    ClearMovers();
+}
+
+// Mover i walks from (sx,sy,sz) over the ladder to (gx,gy,gz)
+static void AddLadderMover(int i, int sx, int sy, int sz, int gx, int gy, int gz) {
+    Point p[] = {{gx, gy, gz}, {3, 2, gz}, {3, 2, sz}, {sx, sy, sz}};
+    InitMoverWithPath(&movers[i], sx * CELL_SIZE + CELL_SIZE * 0.5f, sy * CELL_SIZE + CELL_SIZE * 0.5f,
+                      (float)sz, p[0], 100.0f, p, 4);
+}
+
+// Runs until all movers arrive; returns the most movers seen on the ladder at once
+static int RunLadderMovers(int count, int maxTicks, bool* allArrived) {
+    int most = 0;
+    *allArrived = false;
+    for (int t = 0; t < maxTicks; t++) {
+        Tick();
+        int onLadder = 0, active = 0;
+        for (int i = 0; i < count; i++) {
+            const Mover* m = &movers[i];
+            if (!m->active) continue;
+            active++;
+            bool between = m->z - floorf(m->z) > 0.0001f;
+            if (between && (int)(m->x / CELL_SIZE) == 3 && (int)(m->y / CELL_SIZE) == 2) onLadder++;
+        }
+        if (onLadder > most) most = onLadder;
+        if (active == 0) { *allArrived = true; break; }
+    }
+    return most;
+}
+
+describe(single_file_ladders) {
+    it("lets one mover climb a ladder segment at a time; the others wait and then go") {
+        SetupLadderFloors();
+        AddLadderMover(0, 2, 2, 1, 6, 2, 2);
+        AddLadderMover(1, 4, 2, 1, 6, 1, 2);
+        AddLadderMover(2, 3, 1, 1, 6, 3, 2);
+        moverCount = 3;
+        bool arrived;
+        int most = RunLadderMovers(3, 1200, &arrived);
+        expect(most == 1);
+        expect(arrived);
+    }
+
+    it("handles movers going up and down at the same time") {
+        SetupLadderFloors();
+        AddLadderMover(0, 2, 2, 1, 6, 2, 2);   // up
+        AddLadderMover(1, 4, 2, 2, 0, 2, 1);   // down
+        moverCount = 2;
+        bool arrived;
+        int most = RunLadderMovers(2, 1200, &arrived);
+        expect(most == 1);
+        expect(arrived);
+    }
+
+    it("without the rule they climb together (the test can tell)") {
+        SetupLadderFloors();
+        useSingleFileLadders = false;
+        AddLadderMover(0, 2, 2, 1, 6, 2, 2);
+        AddLadderMover(1, 4, 2, 1, 6, 1, 2);
+        AddLadderMover(2, 3, 1, 1, 6, 3, 2);
+        moverCount = 3;
+        bool arrived;
+        int most = RunLadderMovers(3, 1200, &arrived);
+        useSingleFileLadders = true;
+        expect(most >= 2);
+        expect(arrived);
+    }
+}
+
 describe(mover_ladder_transitions) {
     it("should transition z-level when reaching ladder waypoint") {
         // Setup: two walkable floors with ladder connecting them
@@ -2646,6 +2729,7 @@ int main(int argc, char* argv[]) {
     test(workshop_mover_collision);
     test(repath_budget);
     test(tunnel_yielding);
+    test(single_file_ladders);
     test(avoidance_levels);
     return summary();
 }

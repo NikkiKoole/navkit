@@ -1235,6 +1235,8 @@ void Console_RegisterGameVars(void) {
     Console_RegisterVar("preferDiffZ", &preferDifferentZ, CVAR_BOOL);
     Console_RegisterVar("allowFall", &allowFallingFromAvoidance, CVAR_BOOL);
     Console_RegisterVar("knotFix", &useKnotFix, CVAR_BOOL);
+    Console_RegisterVar("tunnelYield", &useTunnelYielding, CVAR_BOOL);
+    Console_RegisterVar("singleFileLadders", &useSingleFileLadders, CVAR_BOOL);
     Console_RegisterVar("wallRepulsion", &useWallRepulsion, CVAR_BOOL);
     Console_RegisterVar("wallSlide", &useWallSliding, CVAR_BOOL);
     Console_RegisterVar("dirAvoid", &useDirectionalAvoidance, CVAR_BOOL);
