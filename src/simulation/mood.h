@@ -62,6 +62,8 @@ typedef enum {
     TRAIT_OUTDOORSY,    // Doesn't mind cold/rain/ground sleep. Penalty: dislikes indoors (future).
     TRAIT_GLUTTON,      // Extra bonus from good food, extra penalty from hunger.
     TRAIT_STOIC,        // All moodlets reduced by 50%. Steady but hard to make happy.
+    TRAIT_PATIENT,      // Waits in lines (ladders, stations) about twice as long before giving up.
+    TRAIT_IMPATIENT,    // Gives up on lines early: re-plans sooner, leaves, walks instead of waiting for a train.
     TRAIT_COUNT
 } TraitType;
 

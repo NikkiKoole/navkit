@@ -1,6 +1,6 @@
 # Service points and queues
 
-> Status: partial (steps 1-2 done; step 3 line shape done)
+> Status: partial (steps 1, 2, 4 done; step 3 line shape done)
 
 One general way for movers to wait their turn at things that serve one (or a few)
 at a time: ladder segments now; train doors, wells, workshops, doors, elevators
@@ -85,6 +85,11 @@ most movers standing on one cell (no piles).
    station's expected wait feeds route choice, so that work needs a save change
    or a rebuild-from-movers on load.
 4. **Patience trait:** wait, give up and re-plan, or leave and come back.
+   *Done:* traits Patient (2x) and Impatient (0.4x) scale how long a mover puts up
+   with lines (`MoverPatience`). Ladders: the re-plan moments (3 s, 7 s) and a new
+   give-up (20 s): a mover with no job leaves the line and picks something else.
+   Stations: the existing 60 s timeout; a mover that gives up walks and won't take a
+   train for 2 minutes (before, re-planning could send it straight back).
 5. **More service points** as the game needs them (well, workshop, doors,
    elevators).
 

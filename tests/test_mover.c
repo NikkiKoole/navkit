@@ -7,6 +7,7 @@
 #include "../src/world/pathfinding.h"
 #include "../src/entities/mover.h"
 #include "../src/entities/service.h"
+#include "../src/simulation/mood.h"
 #include "../src/simulation/balance.h"
 #include "../src/entities/workshops.h"
 #include "../src/world/terrain.h"
@@ -1324,6 +1325,40 @@ describe(single_file_ladders) {
         ladderClimbSpeed = saved;
         expect(ticks[0] > 0);
         expect(ticks[1] >= ticks[0] * 18 / 10 && ticks[1] <= ticks[0] * 22 / 10);   // ~2x as long
+    }
+
+    it("an impatient mover with nothing to do gives up on a slow line, others keep waiting") {
+        float savedSpeed = ladderClimbSpeed;
+        bool savedEndless = endlessMoverMode, savedPrefer = preferDifferentZ;
+        ladderClimbSpeed = 0.1f;        // ~3 s per climb: a slow line
+        endlessMoverMode = true;
+        preferDifferentZ = false;
+        SetupLadderFloors();
+        static const int sp[6][2] = {{2, 2}, {1, 2}, {0, 2}, {2, 1}, {2, 3}, {1, 1}};
+        for (int i = 0; i < 6; i++) {
+            AddLadderMover(i, sp[i][0], sp[i][1], 1, 6, 2, 2);
+            movers[i].traits[0] = TRAIT_NONE;
+            movers[i].traits[1] = TRAIT_NONE;
+        }
+        movers[5].traits[0] = TRAIT_IMPATIENT;   // last in line: gives up at ~8 s
+        moverCount = 6;
+        bool joined[6] = {0}, gaveUp[6] = {0}, climbed[6] = {0};
+        double start = gameTime;
+        while (gameTime - start < 12.0) {
+            Tick();
+            for (int i = 0; i < 6; i++) {
+                if (movers[i].z - floorf(movers[i].z) > 0.0001f || movers[i].z >= 2.0f) climbed[i] = true;
+                if (ServiceOf(i) >= 0) joined[i] = true;
+                else if (joined[i] && !climbed[i]) gaveUp[i] = true;
+            }
+        }
+        ladderClimbSpeed = savedSpeed;
+        endlessMoverMode = savedEndless;
+        preferDifferentZ = savedPrefer;
+        expect(joined[5]);
+        expect(gaveUp[5]);            // the impatient one left before its turn
+        expect(!climbed[5]);
+        expect(!gaveUp[4]);           // a normal one (needs 20 s) is still waiting
     }
 
     it("handles movers going up and down at the same time") {

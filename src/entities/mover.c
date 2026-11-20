@@ -68,6 +68,8 @@ static bool moverWaitedAtFoot[MAX_MOVERS];
 #define LADDER_STALL_TIMEOUT 10.0f  // a climb taking longer than this no longer blocks the segment
 #define LADDER_REPLAN_AT_1 3.0f     // a waiting mover re-plans at these wait times: with the
 #define LADDER_REPLAN_AT_2 7.0f     // queue cost, another ladder or a ramp may now be quicker
+#define LADDER_GIVE_UP 20.0f        // an idle (no job) mover leaves the line and does something else
+                                    // (all three scaled by MoverPatience)
 #define LADDER_JOIN_RADIUS (CELL_SIZE * 3.0f)     // join a ladder's line this close to its foot
 #define LADDER_FOLLOW_RANGE (CELL_SIZE * 2.0f)    // line up behind the one ahead within this
 #define LADDER_LINE_SPACING (CELL_SIZE * 0.7f)    // gap kept to the one ahead
@@ -436,6 +438,19 @@ static bool MoverShouldYield(int i) {
     return false;
 }
 
+// How long a mover puts up with waiting in lines (ladders, train stations),
+// relative to normal: Patient 2x, Impatient 0.4x
+float MoverPatience(const Mover* m) {
+    float p = 1.0f;
+    for (int t = 0; t < MAX_TRAITS; t++) {
+        if (m->traits[t] == TRAIT_PATIENT) p *= 2.0f;
+        if (m->traits[t] == TRAIT_IMPATIENT) p *= 0.4f;
+    }
+    return p;
+}
+
+static void AssignNewMoverGoal(Mover* m);
+
 // ---- Single-file ladders ----
 // A ladder segment (one ladder cell, between level zLow and zLow + 1) holds one
 // climber at a time. Climbers are found from mover state each tick (on a ladder
@@ -506,10 +521,22 @@ static void UpdateLadderLines(float dt) {
             else {
                 float before = moverLadderWait[i];
                 moverLadderWait[i] += dt;
+                float pat = MoverPatience(m);
+                float r1 = LADDER_REPLAN_AT_1 * pat, r2 = LADDER_REPLAN_AT_2 * pat, quit = LADDER_GIVE_UP * pat;
+                Mover* mw = &movers[i];
+                if (before < quit && moverLadderWait[i] >= quit && endlessMoverMode && mw->currentJobId < 0 &&
+                    mw->freetimeState == FREETIME_NONE && ServiceAhead(sp, i) >= 0) {
+                    // Fed up (and nothing it has to do): leave the line, go elsewhere
+                    EventLog("Mover %d (%s) gave up waiting at the ladder (%d,%d) after %.0fs", i, mw->name,
+                             p->x, p->y, moverLadderWait[i]);
+                    ServiceLeave(sp, i);
+                    moverLadderWait[i] = 0.0f;
+                    AssignNewMoverGoal(mw);
+                    continue;
+                }
                 if (useLadderQueueCost &&
-                    ((before < LADDER_REPLAN_AT_1 && moverLadderWait[i] >= LADDER_REPLAN_AT_1) ||
-                     (before < LADDER_REPLAN_AT_2 && moverLadderWait[i] >= LADDER_REPLAN_AT_2)))
-                    movers[i].needsRepath = true;   // with the queue cost, maybe another way is quicker
+                    ((before < r1 && moverLadderWait[i] >= r1) || (before < r2 && moverLadderWait[i] >= r2)))
+                    mw->needsRepath = true;   // with the queue cost, maybe another way is quicker
                 continue;
             }
         }
@@ -1574,10 +1601,11 @@ void UpdateMovers(void) {
                 for (int w = 0; w < s->waitingCount; w++) {
                     if (s->waitingMovers[w] == i) {
                         float waited = (float)gameTime - s->waitingSince[w];
-                        if (waited > TRANSPORT_WAIT_TIMEOUT) {
+                        if (waited > TRANSPORT_WAIT_TIMEOUT * MoverPatience(m)) {
                             // Timeout — abandon transport, walk directly
                             EventLog("Mover %d (%s) transport TIMEOUT at station %d (waited %.1fs)", i, m->name, m->transportStation, waited);
                             StationRemoveWaiter(m->transportStation, i);
+                            TrainsNoteGaveUp(i);   // walk; don't come straight back for a train
                             m->goal = m->transportFinalGoal;
                             m->transportState = TRANSPORT_NONE;
                             m->transportStation = -1;

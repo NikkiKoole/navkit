@@ -223,7 +223,8 @@ extern bool useTunnelYielding;       // Wait at 1-wide passages for oncoming mov
 extern bool useSingleFileLadders;    // One climber per ladder segment at a time
 extern bool useLadderQueueCost;      // Routes see ladder queues as extra cost
 extern bool (*moverGoalPicker)(int moverIdx, Point* goal);   // endless-mode goal chooser (scenarios), NULL = random
-extern float ladderClimbSpeed;       // Climbing speed vs walking (0.5 = twice as slow)
+extern float ladderClimbSpeed;
+float MoverPatience(const struct Mover* m);   // wait tolerance in lines: Patient 2x, Impatient 0.4x       // Climbing speed vs walking (0.5 = twice as slow)
 int LadderQueueExtraCost(int x, int y, int z, int dz);   // NAV_CLIMB_EXTRA hook (nav_host.h)
 
 // Test/debug toggles for deterministic behavior

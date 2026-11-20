@@ -16,11 +16,19 @@ int stationCount = 0;
 
 bool trainQueueEnabled = true;
 
+// gameTime a mover last gave up waiting for a train (not saved: a fresh load just
+// lets it try again); for TRAIN_GIVE_UP_COOLDOWN it walks instead
+#define TRAIN_GIVE_UP_COOLDOWN 120.0
+static double moverGaveUpOnTrain[MAX_MOVERS];
+static bool moverGaveUpInit = false;
+
+
 void InitTrains(void) {
     ClearTrains();
 }
 
 void ClearTrains(void) {
+    moverGaveUpInit = false;   // forget who gave up (cooldowns)
     for (int i = 0; i < MAX_TRAINS; i++) {
         trains[i].active = false;
         trains[i].cartState = CART_MOVING;
@@ -337,10 +345,16 @@ void StationGetQueuePosition(int stationIdx, int slotIndex, float* outX, float* 
 // Transport Heuristic
 // ============================================================================
 
+void TrainsNoteGaveUp(int moverIdx) {
+    if (!moverGaveUpInit) { for (int i = 0; i < MAX_MOVERS; i++) moverGaveUpOnTrain[i] = -1e9; moverGaveUpInit = true; }
+    if (moverIdx >= 0 && moverIdx < MAX_MOVERS) moverGaveUpOnTrain[moverIdx] = gameTime;
+}
+
 bool ShouldUseTrain(int moverIdx) {
     if (stationCount < 2) return false;
     Mover* m = &movers[moverIdx];
     if (m->transportState != TRANSPORT_NONE) return false;
+    if (moverGaveUpInit && gameTime - moverGaveUpOnTrain[moverIdx] < TRAIN_GIVE_UP_COOLDOWN) return false;
 
     // Don't use train for pickup walks — only for carrying/delivery legs.
     // During pickup (step 0), the goal is the item location. After picking up,

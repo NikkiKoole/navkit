@@ -98,6 +98,10 @@ const TraitDef traitDefs[TRAIT_COUNT] = {
         "Stoic", "Even-tempered, hard to please or upset",
         {0}  // All moodlets reduced — handled specially in GetTraitAdjustedValue
     },
+
+    // Patience: no moodlet effect; read by MoverPatience() (mover.c) for queues
+    [TRAIT_PATIENT] = { "Patient", "Waits calmly in lines", {0} },
+    [TRAIT_IMPATIENT] = { "Impatient", "Hates waiting in lines", {0} },
 };
 
 // --- Trait adjustment ---

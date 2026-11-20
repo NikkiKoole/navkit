@@ -93,6 +93,7 @@ void StationGetQueuePosition(int stationIdx, int slotIndex, float* outX, float* 
 
 // Transport heuristic
 bool ShouldUseTrain(int moverIdx);
+void TrainsNoteGaveUp(int moverIdx);   // gave up waiting: walk, no train for a while
 
 // Board/exit
 void BoardMoverOnTrain(int trainIdx, int moverIdx, int stationIdx);

@@ -6,6 +6,7 @@
 #include "../assets/atlas.h"
 #include "../src/entities/mover.h"
 #include "../src/entities/trains.h"
+#include "../src/simulation/mood.h"
 #include "../src/entities/items.h"
 #include "../src/entities/jobs.h"
 #include "../src/entities/stockpiles.h"
@@ -1051,6 +1052,47 @@ describe(fifo_shift_down) {
 }
 
 // ============================================================================
+// Patience: impatient waiters give up on the train sooner, patient ones later
+// ============================================================================
+
+describe(station_patience) {
+    it("gives up waiting by patience, then walks without coming straight back") {
+        SetupClean();
+        grid[1][5][5] = CELL_TRACK; grid[1][5][6] = CELL_PLATFORM;
+        grid[1][5][35] = CELL_TRACK; grid[1][5][36] = CELL_PLATFORM;
+        RebuildStations();
+        expect(stationCount == 2);
+
+        const uint8_t traits[3] = {TRAIT_IMPATIENT, TRAIT_NONE, TRAIT_PATIENT};
+        moverCount = 3;
+        for (int i = 0; i < 3; i++) {
+            InitMover(&movers[i], (7 + i) * CELL_SIZE + 16, 6 * CELL_SIZE + 16, 1.0f, (Point){38, 15, 1}, MOVER_SPEED);
+            movers[i].traits[0] = traits[i];
+            movers[i].traits[1] = TRAIT_NONE;
+            movers[i].transportState = TRANSPORT_WAITING;
+            movers[i].transportStation = 0;
+            movers[i].transportFinalGoal = (Point){38, 15, 1};
+            movers[i].pathLength = 0;
+            movers[i].pathIndex = -1;
+            StationAddWaiter(0, i);
+        }
+        // No train comes. Timeout 60 s x patience: impatient 24 s, normal 60, patient 120
+        double start = gameTime;
+        while (gameTime - start < 30.0) Tick();
+        expect(movers[0].transportState != TRANSPORT_WAITING);   // impatient left
+        expect(movers[1].transportState == TRANSPORT_WAITING);
+        expect(movers[2].transportState == TRANSPORT_WAITING);
+        // ...and doesn't head straight back to a station
+        movers[0].goal = (Point){38, 15, 1};
+        expect(ShouldUseTrain(0) == false);
+
+        while (gameTime - start < 65.0) Tick();
+        expect(movers[1].transportState != TRANSPORT_WAITING);   // normal left
+        expect(movers[2].transportState == TRANSPORT_WAITING);   // patient still waits
+    }
+}
+
+// ============================================================================
 // Station lines (follow the one ahead)
 // ============================================================================
 
@@ -1315,6 +1357,7 @@ int main(int argc, char* argv[]) {
     test(track_destroyed);
     test(multi_cell_platform);
     test(fifo_shift_down);
+    test(station_patience);
     test(station_lines);
     test(queue_positions);
     test(track_connections);
