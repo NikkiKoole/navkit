@@ -199,6 +199,9 @@ static void DrawSettingsGroup(const char* group, float x, float* y) {
             case SETTING_FLOAT:
                 DraggableFloatT(x, *y, s->label, (float*)s->ptr, s->speed, s->min, s->max, tip);
                 break;
+            case SETTING_CHOICE:
+                CycleOption(x, *y, s->label, s->options, s->optionCount, (int*)s->ptr);
+                break;
         }
         if (s->onChange && SettingValue(s) != before) s->onChange(before);
     }
@@ -481,12 +484,7 @@ void DrawUI(void) {
     // ========================================================================
     if (SectionHeader(x, y, "Pathfinding", &sectionPathfinding)) {
         y += 18;
-        int prevAlgo = pathAlgorithm;
-        CycleOption(x, y, "Algo", algorithmNames, 2, &pathAlgorithm);
-        if (pathAlgorithm != prevAlgo) ResetPathStats();
-        y += 22;
-        CycleOption(x, y, "Dir", directionNames, 2, &currentDirection);
-        use8Dir = (currentDirection == 1);
+        DrawSettingsGroup("Pathfinding", x, &y);   // Algo, Dir (src/core/settings.c)
         y += 22;
         if (PushButton(x, y, "Build HPA Graph")) {
             BuildEntrances();
@@ -884,61 +882,28 @@ void DrawUI(void) {
                 ClearMovers();
             }
             y += 22;
-            ToggleBool(ix, y, "String Pulling", &useStringPulling);
-            y += 22;
-            ToggleBool(ix, y, "Endless Mode", &endlessMoverMode);
-            y += 22;
-            ToggleBool(ix, y, "Prefer Diff Z", &preferDifferentZ);
-            y += 22;
-            ToggleBool(ix, y, "Allow Falling", &allowFallingFromAvoidance);
+            // Rows from src/core/settings.c
+            DrawSettingsGroup("Entities/Movers", ix, &y);
 
-            // Needs subsection
+            // Needs subsection (rule toggles; games set these when they start)
             y += 22;
             if (SectionHeader(ix + 10, y, "Needs", &sectionMoverNeeds)) {
                 y += 18;
-                ToggleBool(ix + 10, y, "Hunger", &hungerEnabled);
-                y += 22;
-                ToggleBool(ix + 10, y, "Energy", &energyEnabled);
-                y += 22;
-                ToggleBool(ix + 10, y, "Body Temp", &bodyTempEnabled);
-                y += 22;
-                ToggleBool(ix + 10, y, "Thirst", &thirstEnabled);
-                y += 22;
-                ToggleBool(ix + 10, y, "Tool Reqs", &toolRequirementsEnabled);
+                DrawSettingsGroup("Entities/Movers/Needs", ix + 10, &y);
             }
 
             // Avoidance subsection
             y += 22;
             if (SectionHeader(ix + 10, y, "Avoidance", &sectionMoverAvoidance)) {
                 y += 18;
-                ToggleBool(ix + 10, y, "Enabled", &useMoverAvoidance);
-                y += 22;
-                ToggleBool(ix + 10, y, "Directional", &useDirectionalAvoidance);
-                y += 22;
-                DraggableFloat(ix + 10, y, "Open Strength", &avoidStrengthOpen, 0.01f, 0.0f, 2.0f);
-                y += 22;
-                DraggableFloat(ix + 10, y, "Closed Strength", &avoidStrengthClosed, 0.01f, 0.0f, 2.0f);
+                DrawSettingsGroup("Entities/Movers/Avoidance", ix + 10, &y);
             }
 
             // Walls subsection
             y += 22;
             if (SectionHeader(ix + 10, y, "Walls", &sectionMoverWalls)) {
                 y += 18;
-                ToggleBool(ix + 10, y, "Repulsion", &useWallRepulsion);
-                y += 22;
-                DraggableFloat(ix + 10, y, "Repel Strength", &wallRepulsionStrength, 0.01f, 0.0f, 2.0f);
-                y += 22;
-                ToggleBool(ix + 10, y, "Sliding", &useWallSliding);
-                y += 22;
-                ToggleBool(ix + 10, y, "Knot Fix", &useKnotFix);
-                y += 22;
-                ToggleBool(ix + 10, y, "Tunnel Yielding", &useTunnelYielding);
-                y += 22;
-                ToggleBool(ix + 10, y, "Single-file Ladders", &useSingleFileLadders);
-                y += 22;
-                ToggleBool(ix + 10, y, "Ladder Queue Cost", &useLadderQueueCost);
-                y += 22;
-                DraggableFloat(ix + 10, y, "Ladder Climb Speed", &ladderClimbSpeed, 0.01f, 0.1f, 1.0f);
+                DrawSettingsGroup("Entities/Movers/Walls", ix + 10, &y);
             }
         }
         y += 22;
@@ -961,13 +926,7 @@ void DrawUI(void) {
             if (clicked) ClearAnimals();
         }
         y += 22;
-        ToggleBoolT(ix + 10, y, "Respawn", &animalRespawnEnabled, "Animals respawn from map edges");
-        y += 22;
-        DraggableIntT(ix + 10, y, "Target Pop", &animalTargetPopulation, 1.0f, 1, 50,
-            TextFormat("Target: %d  Current: %d", animalTargetPopulation, CountActiveAnimals()));
-        y += 22;
-        DraggableFloatT(ix + 10, y, "Spawn Interval", &animalSpawnInterval, 1.0f, 10.0f, 600.0f,
-            TextFormat("%.0fs between spawn attempts", animalSpawnInterval));
+        DrawSettingsGroup("Entities/Animals", ix + 10, &y);
         y += 22;
 
         // --- Agents (inline — no own accordion) ---
@@ -995,8 +954,7 @@ void DrawUI(void) {
         // --- Trains ---
         DrawTextShadow("Trains:", ix, y, 14, GRAY);
         y += 18;
-        ToggleBoolT(ix + 10, y, "Queue Line", &trainQueueEnabled,
-            "Movers form a visible queue line at stations instead of spreading out");
+        DrawSettingsGroup("Entities/Trains", ix + 10, &y);
         y += 22;
 
         // --- Jobs ---
@@ -1418,57 +1376,20 @@ void DrawUI(void) {
         // --- Lighting ---
         if (SectionHeader(ix, y, TextFormat("Lighting (%d src)", lightSourceCount), &sectionLighting)) {
             y += 18;
-            {
-                bool wasEnabled = lightingEnabled;
-                ToggleBoolT(ix, y, "Enabled", &lightingEnabled,
-                    "Master toggle for lighting system. When off, all tiles render at full brightness (no light/dark cycle).");
-                if (wasEnabled != lightingEnabled) InvalidateLighting();
-            }
-            y += 22;
-            {
-                ToggleBoolT(ix, y, "Force Daylight", &forceDaylight,
-                    "Override sky color to full white (255,255,255). Useful for building at night without waiting for day.");
-            }
-            y += 22;
-            {
-                bool was = skyLightEnabled;
-                ToggleBoolT(ix, y, "Sky Light", &skyLightEnabled,
-                    "Compute sky light from open columns. Sky light intensity follows time-of-day sky color.");
-                if (was != skyLightEnabled) InvalidateLighting();
-            }
-            y += 22;
-            {
-                bool was = blockLightEnabled;
-                ToggleBoolT(ix, y, "Block Light", &blockLightEnabled,
-                    "Compute light from placed sources (torches). Colored BFS flood fill through open cells.");
-                if (was != blockLightEnabled) InvalidateLighting();
-            }
+            // Rows from src/core/settings.c (the toggles re-light the map when changed)
+            DrawSettingsGroup("Rendering & Debug/Lighting", ix, &y);
             y += 22;
 
             // Ambient minimum
             DrawTextShadow("Ambient Minimum:", ix, y, 14, GRAY);
             y += 18;
-            DraggableIntT(ix, y, "Red", &lightAmbientR, 1.0f, 0, 255,
-                "Minimum red component. Prevents completely black tiles.");
-            y += 22;
-            DraggableIntT(ix, y, "Green", &lightAmbientG, 1.0f, 0, 255,
-                "Minimum green component. Prevents completely black tiles.");
-            y += 22;
-            DraggableIntT(ix, y, "Blue", &lightAmbientB, 1.0f, 0, 255,
-                "Minimum blue component. Slightly higher default gives a cool moonlight feel in darkness.");
+            DrawSettingsGroup("Rendering & Debug/Lighting/Ambient", ix, &y);
             y += 22;
 
             // Torch defaults
             DrawTextShadow("Torch Defaults:", ix, y, 14, GRAY);
             y += 18;
-            DraggableIntT(ix, y, "Intensity", &lightDefaultIntensity, 1.0f, 1, 15,
-                TextFormat("Propagation radius for new torches. At %d, light reaches %d tiles away.", lightDefaultIntensity, lightDefaultIntensity));
-            y += 22;
-            DraggableIntT(ix, y, "R", &lightDefaultR, 1.0f, 0, 255, "Red component of new torches.");
-            y += 22;
-            DraggableIntT(ix, y, "G", &lightDefaultG, 1.0f, 0, 255, "Green component of new torches.");
-            y += 22;
-            DraggableIntT(ix, y, "B", &lightDefaultB, 1.0f, 0, 255, "Blue component of new torches.");
+            DrawSettingsGroup("Rendering & Debug/Lighting/Torch", ix, &y);
             y += 22;
 
             // Color preview
@@ -1494,52 +1415,28 @@ void DrawUI(void) {
             // Rendering
             if (SectionHeader(ix + 10, y, "Rendering", &sectionDebugRendering)) {
                 y += 18;
-                ToggleBool(ix + 10, y, "Show Movers", &showMovers);
-                y += 22;
-                ToggleBool(ix + 10, y, "Pixel Perfect", &usePixelPerfectMovers);
-                y += 22;
-                ToggleBool(ix + 10, y, "Show Items", &showItems);
-                y += 22;
-                ToggleBool(ix + 10, y, "Cull Drawing", &cullDrawing);
-                y += 22;
-                ToggleBool(ix + 10, y, "Cursor Debug", &showCursorDebug);
+                DrawSettingsGroup("Rendering & Debug/Debug/Rendering", ix + 10, &y);
             }
             y += 22;
 
             // Pathfinding
             if (SectionHeader(ix + 10, y, "Pathfinding", &sectionDebugPathfinding)) {
                 y += 18;
-                ToggleBool(ix + 10, y, "Show Graph", &showGraph);
-                y += 22;
-                ToggleBool(ix + 10, y, "Show Entrances", &showEntrances);
-                y += 22;
-                ToggleBool(ix + 10, y, "Show Chunks", &showChunkBoundaries);
-                y += 22;
-                ToggleBool(ix + 10, y, "Show Paths", &showMoverPaths);
-                y += 22;
-                ToggleBool(ix + 10, y, "Show Job Lines", &showJobLines);
+                DrawSettingsGroup("Rendering & Debug/Debug/Pathfinding", ix + 10, &y);
             }
             y += 22;
 
             // Mover Diagnostics
             if (SectionHeader(ix + 10, y, "Mover Diagnostics", &sectionDebugMovers)) {
                 y += 18;
-                ToggleBool(ix + 10, y, "Show Neighbors", &showNeighborCounts);
-                y += 22;
-                ToggleBool(ix + 10, y, "Show Open Area", &showOpenArea);
-                y += 22;
-                ToggleBool(ix + 10, y, "Show Knots", &showKnotDetection);
-                y += 22;
-                ToggleBool(ix + 10, y, "Show Stuck", &showStuckDetection);
+                DrawSettingsGroup("Rendering & Debug/Debug/Mover Diagnostics", ix + 10, &y);
             }
             y += 22;
 
             // Overlays
             if (SectionHeader(ix + 10, y, "Overlays", &sectionDebugOverlays)) {
                 y += 18;
-                ToggleBool(ix + 10, y, "Sim Sources", &showSimSources);
-                y += 22;
-                ToggleBool(ix + 10, y, "Temperature", &showTemperatureOverlay);
+                DrawSettingsGroup("Rendering & Debug/Debug/Overlays", ix + 10, &y);
             }
         }
     }

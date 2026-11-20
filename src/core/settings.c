@@ -9,7 +9,14 @@
 #include "../simulation/temperature.h"
 #include "../simulation/balance.h"
 #include "../simulation/weather.h"
+#include "../simulation/lighting.h"
+#include "../simulation/mood.h"
 #include "../entities/mover.h"
+#include "../entities/animals.h"
+#include "../entities/trains.h"
+#include "../entities/ladders.h"
+#include "../entities/tool_quality.h"
+#include "../world/pathfinding.h"
 #include "../ui/console.h"
 #include <strings.h>
 
@@ -128,6 +135,26 @@ static const char* DescSpeedVariance(void) {
 // Balance inputs feed derived per-game-hour rates
 static void RecalcBalance(float oldValue) { (void)oldValue; RecalcBalanceTable(); }
 
+// Lighting toggles: recompute the light grid
+static void RelightAll(float oldValue) { (void)oldValue; InvalidateLighting(); }
+
+// Path stats are per algorithm
+static void PathAlgoChanged(float oldValue) { (void)oldValue; ResetPathStats(); }
+
+// Direction choice drives the pathfinder's 8-direction flag
+static void PathDirChanged(float oldValue) { (void)oldValue; use8Dir = (currentDirection == 1); }
+
+static const char* DescAnimalPop(void) {
+    return TextFormat("Target: %d  Current: %d", animalTargetPopulation, CountActiveAnimals());
+}
+static const char* DescAnimalSpawn(void) {
+    return TextFormat("%.0fs between spawn attempts", animalSpawnInterval);
+}
+static const char* DescTorchIntensity(void) {
+    return TextFormat("Propagation radius for new torches. At %d, light reaches %d tiles away.",
+                      lightDefaultIntensity, lightDefaultIntensity);
+}
+
 // Rescale every mover's speed proportionally (each keeps its own variance)
 static void RescaleMoverSpeeds(float oldBaseSpeed) {
     if (oldBaseSpeed <= 0) return;
@@ -144,13 +171,17 @@ static void RescaleMoverSpeeds(float oldBaseSpeed) {
 // ---------------------------------------------------------------------------
 
 #define SET_BOOL(name, label, group, var, help) \
-    {name, label, group, SETTING_BOOL, &(var), 0, 0, 0, help, NULL, NULL}
+    {name, label, group, SETTING_BOOL, &(var), 0, 0, 0, help, NULL, NULL, NULL, 0}
+#define SET_BOOL_HOOK(name, label, group, var, help, hook) \
+    {name, label, group, SETTING_BOOL, &(var), 0, 0, 0, help, NULL, hook, NULL, 0}
 #define SET_INT(name, label, group, var, speed, lo, hi, help, desc) \
-    {name, label, group, SETTING_INT, &(var), speed, lo, hi, help, desc, NULL}
+    {name, label, group, SETTING_INT, &(var), speed, lo, hi, help, desc, NULL, NULL, 0}
 #define SET_FLOAT(name, label, group, var, speed, lo, hi, help, desc) \
-    {name, label, group, SETTING_FLOAT, &(var), speed, lo, hi, help, desc, NULL}
+    {name, label, group, SETTING_FLOAT, &(var), speed, lo, hi, help, desc, NULL, NULL, 0}
 #define SET_FLOAT_HOOK(name, label, group, var, speed, lo, hi, help, desc, hook) \
-    {name, label, group, SETTING_FLOAT, &(var), speed, lo, hi, help, desc, hook}
+    {name, label, group, SETTING_FLOAT, &(var), speed, lo, hi, help, desc, hook, NULL, 0}
+#define SET_CHOICE(name, label, group, var, names, count, help, hook) \
+    {name, label, group, SETTING_CHOICE, &(var), 0, 0, (count) - 1, help, NULL, hook, names, count}
 // Mover balance input: changing it recalculates the derived rates
 #define SET_BALANCE(name, label, group, field, speed, lo, hi, help) \
     SET_FLOAT_HOOK(name, label, group, balance.field, speed, lo, hi, help, NULL, RecalcBalance)
@@ -351,8 +382,127 @@ static const Setting settings[] = {
       "Energy drain multiplier when moderately cold."),
     SET_BALANCE("hypothermiaDeath", "Hypothermia Death", "Mover Balance/Body Temperature", hypothermiaDeathGH, 0.5f, 1.0f, 12.0f,
       "Game-hours at severe cold before death."),
+
+    // --- Pathfinding ---
+    SET_CHOICE("pathAlgo", "Algo", "Pathfinding", pathAlgorithm, algorithmNames, 2,
+      "Path search for the Find Path button and agents: 0 = A*, 1 = HPA*.", PathAlgoChanged),
+    SET_CHOICE("pathDir", "Dir", "Pathfinding", currentDirection, directionNames, 2,
+      "Movement directions: 0 = 4-dir, 1 = 8-dir.", PathDirChanged),
+
+    // --- Movers ---
+    SET_BOOL("stringPull", "String Pulling", "Entities/Movers", useStringPulling,
+      "Straighten paths by skipping waypoints with line of sight."),
+    SET_BOOL("endlessMode", "Endless Mode", "Entities/Movers", endlessMoverMode,
+      "Movers pick a new random goal when they arrive."),
+    SET_BOOL("preferDiffZ", "Prefer Diff Z", "Entities/Movers", preferDifferentZ,
+      "Endless movers prefer goals on a different z-level."),
+    SET_BOOL("allowFall", "Allow Falling", "Entities/Movers", allowFallingFromAvoidance,
+      "Avoidance may push movers into air (they fall)."),
+
+    // --- Movers: needs (rule toggles; games set these on start) ---
+    SET_BOOL("hunger", "Hunger", "Entities/Movers/Needs", hungerEnabled, "Movers get hungry and seek food."),
+    SET_BOOL("energy", "Energy", "Entities/Movers/Needs", energyEnabled, "Movers get tired and seek rest."),
+    SET_BOOL("bodyTemp", "Body Temp", "Entities/Movers/Needs", bodyTempEnabled, "Movers feel cold and heat."),
+    SET_BOOL("thirst", "Thirst", "Entities/Movers/Needs", thirstEnabled, "Movers get thirsty and seek water."),
+    SET_BOOL("bladder", "Bladder", "Entities/Movers/Needs", bladderEnabled, "Movers need a toilet."),
+    SET_BOOL("mood", "Mood", "Entities/Movers/Needs", moodEnabled, "Movers have moods from needs and surroundings."),
+    SET_BOOL("toolReqs", "Tool Reqs", "Entities/Movers/Needs", toolRequirementsEnabled,
+      "Jobs need the right tool (e.g. an axe to chop)."),
+
+    // --- Movers: avoidance ---
+    SET_BOOL("avoidance", "Enabled", "Entities/Movers/Avoidance", useMoverAvoidance,
+      "Movers steer around each other."),
+    SET_BOOL("dirAvoid", "Directional", "Entities/Movers/Avoidance", useDirectionalAvoidance,
+      "Filter avoidance by wall clearance."),
+    SET_FLOAT("avoidOpen", "Open Strength", "Entities/Movers/Avoidance", avoidStrengthOpen, 0.01f, 0.0f, 2.0f,
+      "Avoidance strength in open areas.", NULL),
+    SET_FLOAT("avoidClosed", "Closed Strength", "Entities/Movers/Avoidance", avoidStrengthClosed, 0.01f, 0.0f, 2.0f,
+      "Avoidance strength near walls.", NULL),
+
+    // --- Movers: walls, passages, ladders ---
+    SET_BOOL("wallRepulsion", "Repulsion", "Entities/Movers/Walls", useWallRepulsion,
+      "Walls push movers away."),
+    SET_FLOAT("wallRepStr", "Repel Strength", "Entities/Movers/Walls", wallRepulsionStrength, 0.01f, 0.0f, 2.0f,
+      "Strength of the wall push.", NULL),
+    SET_BOOL("wallSlide", "Sliding", "Entities/Movers/Walls", useWallSliding,
+      "Movers slide along walls instead of stopping."),
+    SET_BOOL("knotFix", "Knot Fix", "Entities/Movers/Walls", useKnotFix,
+      "Movers count as arrived a bit farther from their goal, so crowds don't knot up there."),
+    SET_BOOL("tunnelYield", "Tunnel Yielding", "Entities/Movers/Walls", useTunnelYielding,
+      "Wait at 1-wide passages for oncoming movers."),
+    SET_BOOL("singleFileLadders", "Single-file Ladders", "Entities/Movers/Walls", useSingleFileLadders,
+      "One climber per ladder segment at a time."),
+    SET_BOOL("ladderQueueCost", "Ladder Queue Cost", "Entities/Movers/Walls", useLadderQueueCost,
+      "Routes see ladder queues as extra cost."),
+    SET_FLOAT("ladderClimbSpeed", "Ladder Climb Speed", "Entities/Movers/Walls", ladderClimbSpeed, 0.01f, 0.1f, 1.0f,
+      "Climbing speed vs walking (0.5 = twice as slow).", NULL),
+
+    // --- Animals ---
+    SET_BOOL("animalRespawn", "Respawn", "Entities/Animals", animalRespawnEnabled,
+      "Animals respawn from map edges."),
+    SET_INT("animalTargetPop", "Target Pop", "Entities/Animals", animalTargetPopulation, 1.0f, 1, 50,
+      "Respawn keeps the animal count near this.", DescAnimalPop),
+    SET_FLOAT("animalSpawnInterval", "Spawn Interval", "Entities/Animals", animalSpawnInterval, 1.0f, 10.0f, 600.0f,
+      "Seconds between spawn attempts.", DescAnimalSpawn),
+
+    // --- Trains ---
+    SET_BOOL("trainQueue", "Queue Line", "Entities/Trains", trainQueueEnabled,
+      "Movers form a visible queue line at stations instead of spreading out."),
+
+    // --- Lighting ---
+    SET_BOOL_HOOK("lighting", "Enabled", "Rendering & Debug/Lighting", lightingEnabled,
+      "Master toggle for lighting. When off, all tiles render at full brightness (no light/dark cycle).", RelightAll),
+    SET_BOOL("forceDaylight", "Force Daylight", "Rendering & Debug/Lighting", forceDaylight,
+      "Override sky color to full white. Useful for building at night without waiting for day."),
+    SET_BOOL_HOOK("skyLight", "Sky Light", "Rendering & Debug/Lighting", skyLightEnabled,
+      "Compute sky light from open columns. Sky light follows time-of-day sky color.", RelightAll),
+    SET_BOOL_HOOK("blockLight", "Block Light", "Rendering & Debug/Lighting", blockLightEnabled,
+      "Compute light from placed sources (torches). Colored flood fill through open cells.", RelightAll),
+    SET_INT("lightAmbientR", "Red", "Rendering & Debug/Lighting/Ambient", lightAmbientR, 1.0f, 0, 255,
+      "Minimum red component. Prevents completely black tiles.", NULL),
+    SET_INT("lightAmbientG", "Green", "Rendering & Debug/Lighting/Ambient", lightAmbientG, 1.0f, 0, 255,
+      "Minimum green component. Prevents completely black tiles.", NULL),
+    SET_INT("lightAmbientB", "Blue", "Rendering & Debug/Lighting/Ambient", lightAmbientB, 1.0f, 0, 255,
+      "Minimum blue component. Slightly higher default gives a cool moonlight feel in darkness.", NULL),
+    SET_INT("torchIntensity", "Intensity", "Rendering & Debug/Lighting/Torch", lightDefaultIntensity, 1.0f, 1, 15,
+      "Propagation radius for new torches.", DescTorchIntensity),
+    SET_INT("torchR", "R", "Rendering & Debug/Lighting/Torch", lightDefaultR, 1.0f, 0, 255, "Red component of new torches.", NULL),
+    SET_INT("torchG", "G", "Rendering & Debug/Lighting/Torch", lightDefaultG, 1.0f, 0, 255, "Green component of new torches.", NULL),
+    SET_INT("torchB", "B", "Rendering & Debug/Lighting/Torch", lightDefaultB, 1.0f, 0, 255, "Blue component of new torches.", NULL),
+
+    // --- Debug view toggles ---
+    SET_BOOL("movers", "Show Movers", "Rendering & Debug/Debug/Rendering", showMovers, "Draw movers."),
+    SET_BOOL("pixelPerfect", "Pixel Perfect", "Rendering & Debug/Debug/Rendering", usePixelPerfectMovers,
+      "Snap mover sprites to whole pixels."),
+    SET_BOOL("items", "Show Items", "Rendering & Debug/Debug/Rendering", showItems, "Draw items."),
+    SET_BOOL("cullDrawing", "Cull Drawing", "Rendering & Debug/Debug/Rendering", cullDrawing,
+      "Only draw what is on screen."),
+    SET_BOOL("cursorDebug", "Cursor Debug", "Rendering & Debug/Debug/Rendering", showCursorDebug,
+      "Highlight the cell under the cursor."),
+    SET_BOOL("graph", "Show Graph", "Rendering & Debug/Debug/Pathfinding", showGraph, "Draw the HPA* graph."),
+    SET_BOOL("entrances", "Show Entrances", "Rendering & Debug/Debug/Pathfinding", showEntrances,
+      "Draw HPA* chunk entrances."),
+    SET_BOOL("chunks", "Show Chunks", "Rendering & Debug/Debug/Pathfinding", showChunkBoundaries,
+      "Draw chunk boundaries."),
+    SET_BOOL("paths", "Show Paths", "Rendering & Debug/Debug/Pathfinding", showMoverPaths, "Draw mover paths."),
+    SET_BOOL("jobs", "Show Job Lines", "Rendering & Debug/Debug/Pathfinding", showJobLines,
+      "Draw lines from movers to their job targets."),
+    SET_BOOL("neighbors", "Show Neighbors", "Rendering & Debug/Debug/Mover Diagnostics", showNeighborCounts,
+      "Debug overlay: each mover's neighbor count."),
+    SET_BOOL("openArea", "Show Open Area", "Rendering & Debug/Debug/Mover Diagnostics", showOpenArea,
+      "Debug overlay for open-area detection."),
+    SET_BOOL("knots", "Show Knots", "Rendering & Debug/Debug/Mover Diagnostics", showKnotDetection,
+      "Debug overlay for knot detection."),
+    SET_BOOL("stuck", "Show Stuck", "Rendering & Debug/Debug/Mover Diagnostics", showStuckDetection,
+      "Debug overlay for stuck detection."),
+    SET_BOOL("simSources", "Sim Sources", "Rendering & Debug/Debug/Overlays", showSimSources,
+      "Mark simulation source cells on the current z-level."),
+    SET_BOOL("tempOverlay", "Temperature", "Rendering & Debug/Debug/Overlays", showTemperatureOverlay,
+      "Color cells by temperature."),
 };
 #undef SET_BOOL
+#undef SET_BOOL_HOOK
+#undef SET_CHOICE
 #undef SET_INT
 #undef SET_FLOAT
 #undef SET_FLOAT_HOOK
@@ -378,7 +528,8 @@ const char* SettingTooltip(const Setting* s) {
 float SettingValue(const Setting* s) {
     switch (s->type) {
         case SETTING_BOOL:  return *(bool*)s->ptr ? 1.0f : 0.0f;
-        case SETTING_INT:   return (float)*(int*)s->ptr;
+        case SETTING_INT:
+        case SETTING_CHOICE: return (float)*(int*)s->ptr;
         case SETTING_FLOAT: return *(float*)s->ptr;
     }
     return 0.0f;
@@ -387,7 +538,8 @@ float SettingValue(const Setting* s) {
 void Settings_RegisterConsoleVars(void) {
     for (int i = 0; i < SETTING_COUNT; i++) {
         const Setting* s = &settings[i];
-        CVarType t = s->type == SETTING_BOOL ? CVAR_BOOL : s->type == SETTING_INT ? CVAR_INT : CVAR_FLOAT;
+        // A choice is an int index for the console (range 0..optionCount-1)
+        CVarType t = s->type == SETTING_BOOL ? CVAR_BOOL : s->type == SETTING_FLOAT ? CVAR_FLOAT : CVAR_INT;
         Console_RegisterVarEx(s->name, s->ptr, t, s->min, s->max, s->help, s->onChange);
     }
 }

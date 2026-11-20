@@ -13,7 +13,8 @@
 
 #include <stdbool.h>
 
-typedef enum { SETTING_BOOL, SETTING_INT, SETTING_FLOAT } SettingType;
+// SETTING_CHOICE: an int index into options[] (sidebar cycles through the names).
+typedef enum { SETTING_BOOL, SETTING_INT, SETTING_FLOAT, SETTING_CHOICE } SettingType;
 
 typedef struct {
     const char* name;      // console/--set name, e.g. "fireSpread"
@@ -26,6 +27,8 @@ typedef struct {
     const char* help;      // one or two sentences: sidebar tooltip, console 'get'
     const char* (*describe)(void);   // optional: tooltip with live values (replaces help in the sidebar)
     void (*onChange)(float oldValue); // optional: run after the value changes (sidebar or console)
+    const char** options;             // SETTING_CHOICE: option names
+    int optionCount;
 } Setting;
 
 // Value of a setting as float (bools 0/1), for onChange and comparisons.

@@ -1299,56 +1299,20 @@ void Console_RegisterGameVars(void) {
     // Rendering & Display (from main.c)
     Console_RegisterVar("zoom", &zoom, CVAR_FLOAT);
     Console_RegisterVar("viewZ", &currentViewZ, CVAR_INT);
-    Console_RegisterVar("graph", &showGraph, CVAR_BOOL);
-    Console_RegisterVar("entrances", &showEntrances, CVAR_BOOL);
-    Console_RegisterVar("chunks", &showChunkBoundaries, CVAR_BOOL);
-    Console_RegisterVar("movers", &showMovers, CVAR_BOOL);
-    Console_RegisterVar("paths", &showMoverPaths, CVAR_BOOL);
-    Console_RegisterVar("jobs", &showJobLines, CVAR_BOOL);
-    Console_RegisterVar("neighbors", &showNeighborCounts, CVAR_BOOL);
-    Console_RegisterVar("openArea", &showOpenArea, CVAR_BOOL);
-    Console_RegisterVar("knots", &showKnotDetection, CVAR_BOOL);
-    Console_RegisterVar("stuck", &showStuckDetection, CVAR_BOOL);
-    Console_RegisterVar("items", &showItems, CVAR_BOOL);
-    Console_RegisterVar("simSources", &showSimSources, CVAR_BOOL);
-    Console_RegisterVar("cullDrawing", &cullDrawing, CVAR_BOOL);
-    Console_RegisterVar("pixelPerfect", &usePixelPerfectMovers, CVAR_BOOL);
 
     // Pathfinding & Movement (from mover.c)
-    Console_RegisterVar("stringPull", &useStringPulling, CVAR_BOOL);
-    Console_RegisterVar("endlessMode", &endlessMoverMode, CVAR_BOOL);
-    Console_RegisterVar("avoidance", &useMoverAvoidance, CVAR_BOOL);
-    Console_RegisterVar("preferDiffZ", &preferDifferentZ, CVAR_BOOL);
-    Console_RegisterVar("allowFall", &allowFallingFromAvoidance, CVAR_BOOL);
-    Console_RegisterVar("knotFix", &useKnotFix, CVAR_BOOL);
-    Console_RegisterVar("tunnelYield", &useTunnelYielding, CVAR_BOOL);
-    Console_RegisterVar("singleFileLadders", &useSingleFileLadders, CVAR_BOOL);
     Console_RegisterVar("scenarioMovers", &scenarioMovers, CVAR_INT);
     Console_RegisterVar("scenarioSize", &scenarioSize, CVAR_INT);
     Console_RegisterVar("sharedGoalFields", &useSharedGoalFields, CVAR_BOOL);
     Console_RegisterVar("coarsePaths", &useCoarsePaths, CVAR_BOOL);
     Console_RegisterVar("trainSpeed", &trainSpeed, CVAR_FLOAT);
     Console_RegisterVar("useTrainTimeChoice", &useTrainTimeChoice, CVAR_BOOL);
-    Console_RegisterVar("ladderQueueCost", &useLadderQueueCost, CVAR_BOOL);
-    Console_RegisterVar("ladderClimbSpeed", &ladderClimbSpeed, CVAR_FLOAT);
-    Console_RegisterVar("wallRepulsion", &useWallRepulsion, CVAR_BOOL);
-    Console_RegisterVar("wallSlide", &useWallSliding, CVAR_BOOL);
-    Console_RegisterVar("dirAvoid", &useDirectionalAvoidance, CVAR_BOOL);
-    Console_RegisterVar("avoidOpen", &avoidStrengthOpen, CVAR_FLOAT);
-    Console_RegisterVar("avoidClosed", &avoidStrengthClosed, CVAR_FLOAT);
-    Console_RegisterVar("wallRepStr", &wallRepulsionStrength, CVAR_FLOAT);
 
     // Time (from time.c)
     Console_RegisterVar("time", &timeOfDay, CVAR_FLOAT);
 
     // Simulation toggles
     Console_RegisterVar("wear", &groundWearEnabled, CVAR_BOOL);
-    Console_RegisterVar("lighting", &lightingEnabled, CVAR_BOOL);
-    Console_RegisterVar("skyLight", &skyLightEnabled, CVAR_BOOL);
-    Console_RegisterVar("blockLight", &blockLightEnabled, CVAR_BOOL);
-
-    // Overlays
-    Console_RegisterVar("tempOverlay", &showTemperatureOverlay, CVAR_BOOL);
 
     // Tunable settings table (src/core/settings.c): range + help per variable
     Settings_RegisterConsoleVars();

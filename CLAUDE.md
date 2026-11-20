@@ -183,8 +183,10 @@ range, help, optional live-tooltip function). One row gives you: a console varia
 **Add new tunables as a row there**, not as a hand-placed widget plus a separate
 `Console_RegisterVar`. A row can have an `onChange(oldValue)` hook, run on both sidebar and
 console changes (mover balance rows recalc derived rates; base speed rescales movers).
-Converted so far: Simulation, Weather & Time, Mover Balance. Saved settings are still a
-separate list (`SETTINGS_TABLE` in `saveload.c`).
+Types: bool, int, float, choice (int index into option names). Converted so far: Pathfinding,
+Entities, Simulation, Weather & Time, Mover Balance, Rendering & Debug (World is next).
+Spawn counts and buttons stay hand-written. Saved settings are still a separate list
+(`SETTINGS_TABLE` in `saveload.c`).
 
 ## Scenarios
 
