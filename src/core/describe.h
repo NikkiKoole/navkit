@@ -28,6 +28,13 @@ typedef enum {
     DESC_WATER,         // drinking
     DESC_HEADER_FEMALE, // title line, female
     DESC_HEADER_MALE,   // title line, male
+    DESC_TITLE,         // title line (animals, cells, buildings)
+    DESC_SOFT_BAD,      // bad but not alarming: rotten food, a hunter on its way
+    DESC_SOFT_WARN,     // stale food
+    DESC_BLUE,          // blue things (test crates)
+    DESC_ICE,           // frozen water
+    DESC_STEAM,         // steam
+    DESC_BURNT,         // burned cells
 } DescTone;
 
 typedef enum {
@@ -64,5 +71,18 @@ DescTone MoodTone(float mood);
 
 // Mover `idx` from the live game state (movers[], jobs, items[], furniture[]).
 void DescribeMover(int idx, DescDetail detail, DescLines* out);
+
+// Animal `idx`: type, behavior, state, grazing/walking/hunting detail, hunt marks.
+void DescribeAnimal(int idx, DescLines* out);
+
+// A map cell: type (tree kind, harvest), wall/floor material, dirt, room, farm plot,
+// wetness, temperature and sources, insulation, water, fire, steam, smoke.
+// An unexplored cell (fog of war) is just "Unexplored".
+void DescribeCell(int x, int y, int z, DescLines* out);
+
+// One item as a line: "#12: Oak Planks x3 (Stockpile Fresh +10% hydration warm)".
+void DescribeItemLine(int idx, DescLines* out);
+// The items on one cell: a "Cell (x,y): N units" title, then one line per item.
+void DescribeItemsAt(const int* itemIndices, int itemCount, int cellX, int cellY, DescLines* out);
 
 #endif

@@ -7,6 +7,18 @@
 #include "../entities/item_defs.h"
 #include "../entities/furniture.h"
 #include "../entities/namegen.h"
+#include "../entities/animals.h"
+#include "../world/grid.h"
+#include "../world/cell_defs.h"
+#include "../simulation/trees.h"
+#include "../simulation/floordirt.h"
+#include "../simulation/rooms.h"
+#include "../simulation/farming.h"
+#include "../simulation/temperature.h"
+#include "../simulation/water.h"
+#include "../simulation/fire.h"
+#include "../simulation/steam.h"
+#include "../simulation/smoke.h"
 #include "../world/designations.h"
 #include "../world/material.h"
 #include "../simulation/balance.h"
@@ -306,4 +318,226 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
     DescribeMoverGear(m, job, out);
 
     if (detail == DESC_DEBUG) DescribeMoverDebug(m, job, out);
+}
+
+// ---------------------------------------------------------------------------
+// Animal
+// ---------------------------------------------------------------------------
+
+void DescribeAnimal(int idx, DescLines* out) {
+    out->count = 0;
+    if (idx < 0 || idx >= animalCount || !animals[idx].active) return;
+    const Animal* a = &animals[idx];
+    static const char* stateNames[] = {"Idle", "Walking", "Grazing", "Hunting", "Being Hunted"};
+    static const char* typeNames[] = {"Grazer", "Predator"};
+    static const char* behaviorNames[] = {"Simple", "Steering", "Predator"};
+
+    DescAdd(out, DESC_TITLE, "Animal #%d (%s, %s)", idx, typeNames[a->type], behaviorNames[a->behavior]);
+    int cellX = (int)(a->x / CELL_SIZE), cellY = (int)(a->y / CELL_SIZE);
+    DescAdd(out, DESC_NORMAL, "Pos: cell (%d,%d) z%.0f", cellX, cellY, a->z);
+    DescAdd(out, a->state == ANIMAL_GRAZING ? DESC_GOOD : (a->state == ANIMAL_WALKING ? DESC_INFO : DESC_MUTED),
+            "State: %s", stateNames[a->state]);
+
+    if (a->state == ANIMAL_GRAZING) {
+        DescAdd(out, DESC_GOOD, "Grazing: veg=%d, timer=%.1f/%.1f",
+                (int)GetVegetation(cellX, cellY, (int)a->z), a->grazeTimer, ANIMAL_GRAZE_TIME);
+    } else if (a->state == ANIMAL_WALKING) {
+        DescAdd(out, DESC_INFO, "Target: (%d,%d)", a->targetCellX, a->targetCellY);
+    } else if (a->state == ANIMAL_HUNTING) {
+        if (a->targetAnimalIdx >= 0) DescAdd(out, DESC_BAD, "Prey: #%d", a->targetAnimalIdx);
+        else DescAdd(out, DESC_BAD, "Prey: none");
+    }
+
+    if (a->markedForHunt) DescAdd(out, DESC_BAD, "Marked for Hunt");
+    if (a->reservedByHunter >= 0) DescAdd(out, DESC_SOFT_BAD, "Hunter: Mover #%d", a->reservedByHunter);
+}
+
+// ---------------------------------------------------------------------------
+// Cell
+// ---------------------------------------------------------------------------
+
+static void DescribeCellFarm(int x, int y, int z, DescLines* out) {
+    const FarmCell* fc = &FARM(x, y, z);
+    if (!fc->tilled) return;
+    static const char* cropNames[] = {"None", "Wheat", "Lentils", "Flax"};
+    static const char* stageNames[] = {"Bare", "Sprouted", "Growing", "Mature", "Ripe"};
+    DescAdd(out, DESC_NORMAL, "Farm Plot (%s)", MaterialName(GetWallMaterial(x, y, z - 1)));
+    DescAdd(out, DESC_NORMAL, "Fertility: %d/255", fc->fertility);
+    if (fc->cropType != CROP_NONE) {
+        const char* cname = (fc->cropType < CROP_TYPE_COUNT) ? cropNames[fc->cropType] : "?";
+        const char* sname = (fc->growthStage <= CROP_STAGE_RIPE) ? stageNames[fc->growthStage] : "?";
+        DescAdd(out, DESC_NORMAL, "Crop: %s (%s)", cname, sname);
+        if (fc->frostDamaged) DescAdd(out, DESC_NORMAL, "Frost damaged!");
+    } else if (fc->desiredCropType != CROP_NONE) {
+        DescAdd(out, DESC_NORMAL, "Queued: %s",
+                (fc->desiredCropType < CROP_TYPE_COUNT) ? cropNames[fc->desiredCropType] : "?");
+    }
+    if (fc->weedLevel > WEED_THRESHOLD) DescAdd(out, DESC_NORMAL, "Weeds: heavy (%d)", fc->weedLevel);
+    else if (fc->weedLevel > 0) DescAdd(out, DESC_NORMAL, "Weeds: light (%d)", fc->weedLevel);
+}
+
+static void DescribeCellFluids(int x, int y, int z, DescLines* out) {
+    const WaterCell* water = &WATER(x, y, z);
+    if (water->level > 0 || water->isSource || water->isDrain) {
+        DescAdd(out, water->isFrozen ? DESC_ICE : DESC_WATER, "Water: %d/7%s",
+                water->level, water->isFrozen ? " [FROZEN]" : "");
+        if (water->isSource) DescAdd(out, DESC_WATER, "  WATER SOURCE");
+        if (water->isDrain) DescAdd(out, DESC_MUTED, "  WATER DRAIN");
+        if (water->hasPressure) DescAdd(out, DESC_NORMAL, "  Pressure (z=%d)", water->pressureSourceZ);
+    }
+
+    const FireCell* fire = &FIRE(x, y, z);
+    if (fire->level > 0 || fire->isSource) {
+        DescAdd(out, DESC_WARN, "Fire: %d/7", fire->level);
+        if (fire->isSource) DescAdd(out, DESC_WARN, "  FIRE SOURCE");
+        if (fire->fuel > 0) DescAdd(out, DESC_NORMAL, "  Fuel: %d", fire->fuel);
+    }
+
+    const SteamCell* steam = &STEAM(x, y, z);
+    if (steam->level > 0) DescAdd(out, DESC_STEAM, "Steam: %d/7", steam->level);
+
+    const SmokeCell* smoke = &SMOKE(x, y, z);
+    if (smoke->level > 0) DescAdd(out, DESC_MUTED, "Smoke: %d/7", smoke->level);
+}
+
+void DescribeCell(int x, int y, int z, DescLines* out) {
+    out->count = 0;
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
+    if (!IsExplored(x, y, z)) {
+        DescAdd(out, DESC_MUTED, "Unexplored");
+        return;
+    }
+
+    DescAdd(out, DESC_TITLE, "Cell (%d, %d, z%d)", x, y, z);
+
+    // Type; trees name their wood, burned cells say so
+    CellType ct = GRID(x, y, z);
+    bool burned = HAS_CELL_FLAG(x, y, z, CELL_FLAG_BURNED);
+    MaterialType treeMat = MAT_NONE;
+    if (ct == CELL_TREE_TRUNK || ct == CELL_TREE_BRANCH || ct == CELL_TREE_ROOT ||
+        ct == CELL_TREE_FELLED || ct == CELL_TREE_LEAVES || ct == CELL_SAPLING) {
+        treeMat = GetWallMaterial(x, y, z);
+    }
+    DescTone typeTone = burned ? DESC_BURNT : DESC_NORMAL;
+    const char* burnedTag = burned ? " [BURNED]" : "";
+    if (IsWoodMaterial(treeMat)) {
+        DescAdd(out, typeTone, "Type: %s (%s)%s", CellName(ct), TreeTypeName(treeMat), burnedTag);
+        if (ct == CELL_TREE_TRUNK) {
+            int baseZ = z;
+            while (baseZ > 0 && GRID(x, y, baseZ - 1) == CELL_TREE_TRUNK) baseZ--;
+            uint8_t hs = TREE_HARVEST(x, y, baseZ);
+            if (hs > 0) DescAdd(out, DESC_NORMAL, "Harvest: %d/%d", hs, TREE_HARVEST_MAX);
+            else DescAdd(out, DESC_NORMAL, "Harvest: depleted");
+        }
+    } else {
+        DescAdd(out, typeTone, "Type: %s%s", CellName(ct), burnedTag);
+    }
+
+    // Wall and floor material
+    MaterialType wallMat = GetWallMaterial(x, y, z);
+    if (wallMat != MAT_NONE && CellBlocksMovement(ct)) {
+        DescAdd(out, DESC_NORMAL, "Wall: %s%s", MaterialName(wallMat), IsWallNatural(x, y, z) ? " (natural)" : "");
+    }
+    MaterialType floorMat = GetFloorMaterial(x, y, z);
+    if (floorMat != MAT_NONE) {
+        DescAdd(out, DESC_NORMAL, "Floor: %s%s", MaterialName(floorMat), IsFloorNatural(x, y, z) ? " (natural)" : "");
+    }
+
+    // Dirt on the floor
+    int dirt = GetFloorDirt(x, y, z);
+    if (dirt > 0) {
+        const char* desc = dirt >= DIRT_CLEAN_THRESHOLD ? "Dirty" :
+                           dirt >= DIRT_VISIBLE_THRESHOLD ? "Slightly dirty" : "Trace dirt";
+        DescAdd(out, DESC_NORMAL, "Cleanliness: %s (%d%s)", desc, dirt,
+                IsStoneMaterial(floorMat) ? ", stone: 50% rate" : "");
+    }
+
+    // Room
+    const DetectedRoom* room = GetRoom(GetRoomAt(x, y, z));
+    if (room) DescAdd(out, DESC_NORMAL, "Room: %s (q: %+.2f)", RoomTypeName(room->type), room->quality);
+
+    DescribeCellFarm(x, y, z, out);
+
+    // Wetness / mud (this cell, else the ground below)
+    {
+        int wetZ = z;
+        int wetness = GET_CELL_WETNESS(x, y, wetZ);
+        if (wetness == 0 && wetZ > 0) {
+            wetZ = z - 1;
+            wetness = GET_CELL_WETNESS(x, y, wetZ);
+        }
+        if (wetness > 0) {
+            bool muddy = IsMuddy(x, y, wetZ);
+            const char* wet = wetness >= 3 ? (muddy ? "Soaked (muddy)" : "Soaked") :
+                              wetness >= 2 ? (muddy ? "Wet (muddy)" : "Wet") : "Damp";
+            DescAdd(out, DESC_NORMAL, "Wetness: %s", wet);
+        }
+    }
+
+    // Temperature and sources
+    int temp = GetTemperature(x, y, z);
+    int ambient = GetAmbientTemperature(z);
+    DescAdd(out, DESC_NORMAL, "Temp: %d C", temp);
+    DescAdd(out, DESC_NORMAL, "Ambient: %d C [%+d]", ambient, temp - ambient);
+    const TempCell* tc = &TEMPERATURE(x, y, z);
+    if (tc->isHeatSource) DescAdd(out, DESC_BAD, "HEAT SOURCE (%d C)", heatSourceTemp);
+    if (tc->isColdSource) DescAdd(out, DESC_INFO, "COLD SOURCE (%d C)", coldSourceTemp);
+
+    int tier = GetInsulationTier(x, y, z);
+    DescAdd(out, DESC_NORMAL, "Insulation: %s", tier == 2 ? "Stone (5%)" : tier == 1 ? "Wood (20%)" : "Air (100%)");
+
+    DescribeCellFluids(x, y, z, out);
+}
+
+// ---------------------------------------------------------------------------
+// Items
+// ---------------------------------------------------------------------------
+
+void DescribeItemLine(int idx, DescLines* out) {
+    if (idx < 0 || idx >= MAX_ITEMS) return;
+    const Item* item = &items[idx];
+    static const char* stateNames[] = {"Ground", "Carried", "Stockpile"};
+    char name[64];
+    DescItemName(item, name, sizeof(name));
+    const char* state = (item->state >= 0 && item->state < 3) ? stateNames[item->state] : "?";
+
+    // Freshness for spoilable items
+    const char* freshness = "";
+    bool spoils = ItemSpoils(item->type);
+    if (spoils) {
+        if (item->condition == CONDITION_ROTTEN) freshness = " Rotten";
+        else if (item->condition == CONDITION_STALE) freshness = " Stale";
+        else freshness = " Fresh";
+    }
+    // Hydration for drinkable items
+    char hydration[32] = "";
+    float h = GetItemHydration(item->type);
+    if (h > 0.0f) snprintf(hydration, sizeof(hydration), " +%.0f%% hydration", h * 100.0f);
+    // Temperature for hot food/drink
+    const char* temp = item->temperature >= 60.0f ? " piping hot" : (item->temperature >= 40.0f ? " warm" : "");
+
+    // Color: test crates by their color, spoiling food tinted
+    DescTone tone = DESC_NORMAL;
+    if (item->type == ITEM_RED) tone = DESC_BAD;
+    else if (item->type == ITEM_GREEN) tone = DESC_GOOD;
+    else if (item->type == ITEM_BLUE) tone = DESC_BLUE;
+    if (spoils) {
+        if (item->condition == CONDITION_ROTTEN) tone = DESC_SOFT_BAD;
+        else if (item->condition == CONDITION_STALE) tone = DESC_SOFT_WARN;
+    }
+
+    if (item->stackCount > 1)
+        DescAdd(out, tone, "#%d: %s x%d (%s%s%s%s)", idx, name, item->stackCount, state, freshness, hydration, temp);
+    else
+        DescAdd(out, tone, "#%d: %s (%s%s%s%s)", idx, name, state, freshness, hydration, temp);
+}
+
+void DescribeItemsAt(const int* itemIndices, int itemCount, int cellX, int cellY, DescLines* out) {
+    out->count = 0;
+    if (itemCount <= 0) return;
+    int totalUnits = 0;
+    for (int i = 0; i < itemCount; i++) totalUnits += items[itemIndices[i]].stackCount;
+    DescAdd(out, DESC_MILD, "Cell (%d,%d): %d unit%s", cellX, cellY, totalUnits, totalUnits == 1 ? "" : "s");
+    // At most 16 item lines, as before
+    for (int i = 0; i < itemCount && i < 16; i++) DescribeItemLine(itemIndices[i], out);
 }

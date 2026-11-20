@@ -195,7 +195,7 @@ bad / info / muted ...), no drawing: `DescribeMover(idx, DESC_PLAYER or DESC_DEB
 The hover tooltip maps tones to colors; `--headless ... --describe-mover N|all` prints the
 same lines (after the run; `--ticks 0` = as loaded from `--load`). Need labels ("Peckish",
 "Parched", ...) live there too (`HungerLabel` etc.). **New screens that show an entity should
-call its describe function** rather than formatting fields again. Done so far: movers.
+call its describe function** rather than formatting fields again. Done so far: movers, animals, items, cells (stockpile and workshop tooltips are interactive editors; they move with the selection panel).
 
 ## Scenarios
 

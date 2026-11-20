@@ -267,12 +267,31 @@ static Color DescToneColor(DescTone tone) {
         case DESC_WATER:         return (Color){80, 140, 220, 255};
         case DESC_HEADER_FEMALE: return (Color){255, 150, 180, 255};
         case DESC_HEADER_MALE:   return (Color){130, 180, 255, 255};
+        case DESC_TITLE:         return YELLOW;
+        case DESC_SOFT_BAD:      return (Color){255, 100, 100, 255};
+        case DESC_SOFT_WARN:     return (Color){255, 200, 100, 255};
+        case DESC_BLUE:          return (Color){100, 150, 255, 255};
+        case DESC_ICE:           return (Color){200, 220, 255, 255};
+        case DESC_STEAM:         return (Color){200, 200, 255, 255};
+        case DESC_BURNT:         return (Color){80, 60, 40, 255};
     }
     return WHITE;
 }
 
+// Tooltip box styles: background + border
+typedef struct { Color bg, border; } DescBoxStyle;
+static const DescBoxStyle DESC_BOX_DEFAULT = {{20, 20, 40, 220}, {100, 100, 150, 255}};
+static const DescBoxStyle DESC_BOX_ITEMS   = {{40, 30, 20, 220}, {150, 100, 50, 255}};
+static const DescBoxStyle DESC_BOX_CELL    = {{30, 30, 30, 230}, {80, 80, 80, 255}};
+
+static void DrawDescTooltipStyled(const DescLines* d, Vector2 mouse, DescBoxStyle style);
+
 // Tooltip box next to the mouse for a description, one line per row
 static void DrawDescTooltip(const DescLines* d, Vector2 mouse) {
+    DrawDescTooltipStyled(d, mouse, DESC_BOX_DEFAULT);
+}
+
+static void DrawDescTooltipStyled(const DescLines* d, Vector2 mouse, DescBoxStyle style) {
     if (d->count == 0) return;
     int maxW = 0;
     for (int i = 0; i < d->count; i++) {
@@ -290,8 +309,8 @@ static void DrawDescTooltip(const DescLines* d, Vector2 mouse) {
     if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
     if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
 
-    DrawRectangle(tx, ty, boxW, boxH, (Color){20, 20, 40, 220});
-    DrawRectangleLines(tx, ty, boxW, boxH, (Color){100, 100, 150, 255});
+    DrawRectangle(tx, ty, boxW, boxH, style.bg);
+    DrawRectangleLines(tx, ty, boxW, boxH, style.border);
 
     int y = ty + padding;
     for (int i = 0; i < d->count; i++) {
@@ -307,423 +326,25 @@ static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     DrawDescTooltip(&d, mouse);
 }
 
-// Draw animal tooltip (only shown when paused)
+// Animal tooltip (only shown when paused): DescribeAnimal
 static void DrawAnimalTooltip(int animalIdx, Vector2 mouse) {
-    if (animalIdx < 0 || animalIdx >= animalCount) return;
-    Animal* a = &animals[animalIdx];
-    if (!a->active) return;
-
-    const char* stateNames[] = { "Idle", "Walking", "Grazing", "Hunting", "Being Hunted" };
-    const char* typeNames[] = { "Grazer", "Predator" };
-    const char* behaviorNames[] = { "Simple", "Steering", "Predator" };
-
-    char lines[10][80];
-    Color lineColors[10];
-    int lineCount = 0;
-
-    snprintf(lines[lineCount], sizeof(lines[0]), "Animal #%d (%s, %s)", animalIdx, typeNames[a->type], behaviorNames[a->behavior]);
-    lineColors[lineCount++] = YELLOW;
-
-    int cellX = (int)(a->x / CELL_SIZE);
-    int cellY = (int)(a->y / CELL_SIZE);
-    snprintf(lines[lineCount], sizeof(lines[0]), "Pos: cell (%d,%d) z%.0f", cellX, cellY, a->z);
-    lineColors[lineCount++] = WHITE;
-
-    snprintf(lines[lineCount], sizeof(lines[0]), "State: %s", stateNames[a->state]);
-    lineColors[lineCount++] = a->state == ANIMAL_GRAZING ? GREEN : (a->state == ANIMAL_WALKING ? SKYBLUE : GRAY);
-
-    if (a->state == ANIMAL_GRAZING) {
-        VegetationType veg = GetVegetation(cellX, cellY, (int)a->z);
-        snprintf(lines[lineCount], sizeof(lines[0]), "Grazing: veg=%d, timer=%.1f/%.1f", veg, a->grazeTimer, ANIMAL_GRAZE_TIME);
-        lineColors[lineCount++] = GREEN;
-    } else if (a->state == ANIMAL_WALKING) {
-        snprintf(lines[lineCount], sizeof(lines[0]), "Target: (%d,%d)", a->targetCellX, a->targetCellY);
-        lineColors[lineCount++] = SKYBLUE;
-    } else if (a->state == ANIMAL_HUNTING) {
-        snprintf(lines[lineCount], sizeof(lines[0]), "Prey: %s", a->targetAnimalIdx >= 0 ? TextFormat("#%d", a->targetAnimalIdx) : "none");
-        lineColors[lineCount++] = RED;
-    }
-
-    if (a->markedForHunt) {
-        snprintf(lines[lineCount], sizeof(lines[0]), "Marked for Hunt");
-        lineColors[lineCount++] = RED;
-    }
-    if (a->reservedByHunter >= 0) {
-        snprintf(lines[lineCount], sizeof(lines[0]), "Hunter: Mover #%d", a->reservedByHunter);
-        lineColors[lineCount++] = (Color){255, 100, 100, 255};
-    }
-
-    int maxW = 0;
-    for (int i = 0; i < lineCount; i++) {
-        int w = MeasureText(lines[i], 14);
-        if (w > maxW) maxW = w;
-    }
-
-    int padding = 6;
-    int lineH = 16;
-    int boxW = maxW + padding * 2;
-    int boxH = lineH * lineCount + padding * 2;
-
-    int tx = (int)mouse.x + 15;
-    int ty = (int)mouse.y + 15;
-    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
-    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
-
-    DrawRectangle(tx, ty, boxW, boxH, (Color){20, 20, 40, 220});
-    DrawRectangleLines(tx, ty, boxW, boxH, (Color){100, 100, 150, 255});
-
-    int y = ty + padding;
-    for (int i = 0; i < lineCount; i++) {
-        DrawTextShadow(lines[i], tx + padding, y, 14, lineColors[i]);
-        y += lineH;
-    }
+    DescLines d;
+    DescribeAnimal(animalIdx, &d);
+    DrawDescTooltip(&d, mouse);
 }
 
-// Draw item tooltip (only shown when paused)
+// Item tooltip (only shown when paused): the items on the hovered cell
 static void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, int cellY) {
-    if (itemCount <= 0) return;
-
-    const char* stateNames[] = {"Ground", "Carried", "Stockpile"};
-
-    int totalUnits = 0;
-    for (int i = 0; i < itemCount; i++) {
-        totalUnits += items[itemIndices[i]].stackCount;
-    }
-
-    char lines[17][64];
-    snprintf(lines[0], sizeof(lines[0]), "Cell (%d,%d): %d unit%s", cellX, cellY, totalUnits, totalUnits == 1 ? "" : "s");
-
-    int lineCount = 1;
-    for (int i = 0; i < itemCount && lineCount < 17; i++) {
-        int idx = itemIndices[i];
-        Item* item = &items[idx];
-        char typeName[64];
-        DescItemName(item, typeName, sizeof(typeName));
-        const char* stateName = (item->state >= 0 && item->state < 3) ? stateNames[item->state] : "?";
-        // Freshness label for spoilable items
-        const char* freshness = "";
-        if (ItemSpoils(item->type)) {
-            if (item->condition == CONDITION_ROTTEN) freshness = " Rotten";
-            else if (item->condition == CONDITION_STALE) freshness = " Stale";
-            else freshness = " Fresh";
-        }
-        // Hydration label for drinkable items
-        const char* hydrationStr = "";
-        char hydrationBuf[32] = "";
-        float hydration = GetItemHydration(item->type);
-        if (hydration > 0.0f) {
-            snprintf(hydrationBuf, sizeof(hydrationBuf), " +%.0f%% hydration", hydration * 100.0f);
-            hydrationStr = hydrationBuf;
-        }
-        // Temperature label for hot food/drink
-        const char* tempStr = "";
-        if (item->temperature >= 60.0f) tempStr = " piping hot";
-        else if (item->temperature >= 40.0f) tempStr = " warm";
-        if (item->stackCount > 1) {
-            snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s x%d (%s%s%s%s)", idx, typeName, item->stackCount, stateName, freshness, hydrationStr, tempStr);
-        } else {
-            snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s (%s%s%s%s)", idx, typeName, stateName, freshness, hydrationStr, tempStr);
-        }
-        lineCount++;
-    }
-
-    int maxW = 0;
-    for (int i = 0; i < lineCount; i++) {
-        int w = MeasureText(lines[i], 14);
-        if (w > maxW) maxW = w;
-    }
-
-    int padding = 6;
-    int lineH = 16;
-    int boxW = maxW + padding * 2;
-    int boxH = lineH * lineCount + padding * 2;
-
-    int tx = (int)mouse.x + 15;
-    int ty = (int)mouse.y + 15;
-    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
-    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
-
-    DrawRectangle(tx, ty, boxW, boxH, (Color){40, 30, 20, 220});
-    DrawRectangleLines(tx, ty, boxW, boxH, (Color){150, 100, 50, 255});
-
-    int y = ty + padding;
-    DrawTextShadow(lines[0], tx + padding, y, 14, YELLOW);
-    y += lineH;
-
-    for (int i = 1; i < lineCount; i++) {
-        int idx = itemIndices[i - 1];
-        Color col = WHITE;
-        if (items[idx].type == ITEM_RED) col = RED;
-        else if (items[idx].type == ITEM_GREEN) col = GREEN;
-        else if (items[idx].type == ITEM_BLUE) col = (Color){100, 150, 255, 255};
-        // Tint spoiling items
-        if (ItemSpoils(items[idx].type)) {
-            if (items[idx].condition == CONDITION_ROTTEN) col = (Color){255, 100, 100, 255};       // red — rotten
-            else if (items[idx].condition == CONDITION_STALE) col = (Color){255, 200, 100, 255};  // orange — stale
-        }
-        DrawTextShadow(lines[i], tx + padding, y, 14, col);
-        y += lineH;
-    }
+    DescLines d;
+    DescribeItemsAt(itemIndices, itemCount, cellX, cellY, &d);
+    DrawDescTooltipStyled(&d, mouse, DESC_BOX_ITEMS);
 }
 
-// Draw comprehensive cell tooltip (shown when paused)
+// Cell tooltip (shown when paused): DescribeCell
 static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
-    if (cellX < 0 || cellX >= gridWidth || cellY < 0 || cellY >= gridHeight) return;
-    if (cellZ < 0 || cellZ >= gridDepth) return;
-
-    if (!IsExplored(cellX, cellY, cellZ)) {
-        int padding = 6;
-        int lineH = 16;
-        int boxW = MeasureText("Unexplored", 14) + padding * 2;
-        int boxH = lineH + padding * 2;
-        int tx = (int)mouse.x + 15;
-        int ty = (int)mouse.y + 15;
-        if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
-        if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
-        DrawRectangle(tx, ty, boxW, boxH, (Color){30, 30, 40, 230});
-        DrawRectangleLines(tx, ty, boxW, boxH, (Color){80, 80, 100, 255});
-        DrawTextShadow("Unexplored", tx + padding, ty + padding, 14, GRAY);
-        return;
-    }
-
-    char lines[20][64];
-    int lineCount = 0;
-
-    // Header with coordinates
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Cell (%d, %d, z%d)", cellX, cellY, cellZ);
-
-    // Cell type
-    CellType ct = GRID(cellX, cellY, cellZ);
-    const char* cellTypeName = CellName(ct);
-    MaterialType treeMat = MAT_NONE;
-    
-    // Check if this is a tree cell - get type from wall material
-    if (ct == CELL_TREE_TRUNK || ct == CELL_TREE_BRANCH || ct == CELL_TREE_ROOT || 
-        ct == CELL_TREE_FELLED || ct == CELL_TREE_LEAVES || ct == CELL_SAPLING) {
-        treeMat = GetWallMaterial(cellX, cellY, cellZ);
-    }
-    
-    bool isBurned = HAS_CELL_FLAG(cellX, cellY, cellZ, CELL_FLAG_BURNED);
-    if (IsWoodMaterial(treeMat)) {
-        // Cell type name already includes part info (trunk, branch, root, felled)
-        if (isBurned) {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s (%s) [BURNED]",
-                cellTypeName, TreeTypeName(treeMat));
-        } else {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s (%s)",
-                cellTypeName, TreeTypeName(treeMat));
-        }
-        // Show harvest state for trunk cells
-        if (ct == CELL_TREE_TRUNK) {
-            int baseZ = cellZ;
-            while (baseZ > 0 && GRID(cellX, cellY, baseZ - 1) == CELL_TREE_TRUNK) baseZ--;
-            uint8_t hs = TREE_HARVEST(cellX, cellY, baseZ);
-            if (hs > 0) {
-                snprintf(lines[lineCount++], sizeof(lines[0]), "Harvest: %d/%d", hs, TREE_HARVEST_MAX);
-            } else {
-                snprintf(lines[lineCount++], sizeof(lines[0]), "Harvest: depleted");
-            }
-        }
-    } else {
-        if (isBurned) {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s [BURNED]", cellTypeName);
-        } else {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s", cellTypeName);
-        }
-    }
-
-    // Wall material (for constructed walls)
-    MaterialType wallMat = GetWallMaterial(cellX, cellY, cellZ);
-    if (wallMat != MAT_NONE && CellBlocksMovement(ct)) {
-        if (IsWallNatural(cellX, cellY, cellZ)) {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Wall: %s (natural)", MaterialName(wallMat));
-        } else {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Wall: %s", MaterialName(wallMat));
-        }
-    }
-    // Floor material
-    MaterialType floorMat = GetFloorMaterial(cellX, cellY, cellZ);
-    if (floorMat != MAT_NONE) {
-        if (IsFloorNatural(cellX, cellY, cellZ)) {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Floor: %s (natural)", MaterialName(floorMat));
-        } else {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Floor: %s", MaterialName(floorMat));
-        }
-    }
-
-    // Floor dirt level
-    int dirtLevel = GetFloorDirt(cellX, cellY, cellZ);
-    if (dirtLevel > 0) {
-        const char* dirtDesc = dirtLevel >= DIRT_CLEAN_THRESHOLD ? "Dirty" :
-                               dirtLevel >= DIRT_VISIBLE_THRESHOLD ? "Slightly dirty" : "Trace dirt";
-        if (IsStoneMaterial(floorMat)) {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Cleanliness: %s (%d, stone: 50%% rate)", dirtDesc, dirtLevel);
-        } else {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Cleanliness: %s (%d)", dirtDesc, dirtLevel);
-        }
-    }
-
-    // Room info
-    {
-        uint16_t rid = GetRoomAt(cellX, cellY, cellZ);
-        DetectedRoom* room = GetRoom(rid);
-        if (room) {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Room: %s (q: %+.2f)",
-                     RoomTypeName(room->type), room->quality);
-        }
-    }
-
-    // Farm plot info
-    {
-        const FarmCell* fc = &FARM(cellX, cellY, cellZ);
-        if (fc->tilled) {
-            MaterialType soilMat = GetWallMaterial(cellX, cellY, cellZ - 1);
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Farm Plot (%s)", MaterialName(soilMat));
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Fertility: %d/255", fc->fertility);
-            if (fc->cropType != CROP_NONE) {
-                static const char* cropNames[] = { "None", "Wheat", "Lentils", "Flax" };
-                static const char* stageNames[] = { "Bare", "Sprouted", "Growing", "Mature", "Ripe" };
-                const char* cname = (fc->cropType < CROP_TYPE_COUNT) ? cropNames[fc->cropType] : "?";
-                const char* sname = (fc->growthStage <= CROP_STAGE_RIPE) ? stageNames[fc->growthStage] : "?";
-                snprintf(lines[lineCount++], sizeof(lines[0]), "Crop: %s (%s)", cname, sname);
-                if (fc->frostDamaged) {
-                    snprintf(lines[lineCount++], sizeof(lines[0]), "Frost damaged!");
-                }
-            } else if (fc->desiredCropType != CROP_NONE) {
-                static const char* cropNames2[] = { "None", "Wheat", "Lentils", "Flax" };
-                const char* cname2 = (fc->desiredCropType < CROP_TYPE_COUNT) ? cropNames2[fc->desiredCropType] : "?";
-                snprintf(lines[lineCount++], sizeof(lines[0]), "Queued: %s", cname2);
-            }
-            if (fc->weedLevel > WEED_THRESHOLD) {
-                snprintf(lines[lineCount++], sizeof(lines[0]), "Weeds: heavy (%d)", fc->weedLevel);
-            } else if (fc->weedLevel > 0) {
-                snprintf(lines[lineCount++], sizeof(lines[0]), "Weeds: light (%d)", fc->weedLevel);
-            }
-        }
-    }
-
-    // Cell wetness / mud (check hovered cell and cell below)
-    {
-        int wetZ = cellZ;
-        int wetness = GET_CELL_WETNESS(cellX, cellY, wetZ);
-        if (wetness == 0 && wetZ > 0) {
-            wetZ = cellZ - 1;
-            wetness = GET_CELL_WETNESS(cellX, cellY, wetZ);
-        }
-        if (wetness > 0) {
-            bool muddy = IsMuddy(cellX, cellY, wetZ);
-            const char* wetDesc = wetness >= 3 ? (muddy ? "Soaked (muddy)" : "Soaked") :
-                                  wetness >= 2 ? (muddy ? "Wet (muddy)" : "Wet") : "Damp";
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Wetness: %s", wetDesc);
-        }
-    }
-
-    // Temperature info (all values are now Celsius directly)
-    int temp = GetTemperature(cellX, cellY, cellZ);
-    int ambient = GetAmbientTemperature(cellZ);
-    int diff = temp - ambient;
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Temp: %d C", temp);
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Ambient: %d C [%+d]", ambient, diff);
-
-    // Temperature sources
-    TempCell* tempCell = &TEMPERATURE(cellX, cellY, cellZ);
-    if (tempCell->isHeatSource) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "HEAT SOURCE (%d C)", heatSourceTemp);
-    }
-    if (tempCell->isColdSource) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "COLD SOURCE (%d C)", coldSourceTemp);
-    }
-
-    // Insulation tier
-    int tier = GetInsulationTier(cellX, cellY, cellZ);
-    const char* tierName = tier == 2 ? "Stone (5%)" : tier == 1 ? "Wood (20%)" : "Air (100%)";
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Insulation: %s", tierName);
-
-    // Water info
-    const WaterCell* water = &WATER(cellX, cellY, cellZ);
-    if (water->level > 0 || water->isSource || water->isDrain) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Water: %d/7%s", 
-            water->level, water->isFrozen ? " [FROZEN]" : "");
-        if (water->isSource) {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "  WATER SOURCE");
-        }
-        if (water->isDrain) {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "  WATER DRAIN");
-        }
-        if (water->hasPressure) {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "  Pressure (z=%d)", water->pressureSourceZ);
-        }
-    }
-
-    // Fire info
-    const FireCell* fire = &FIRE(cellX, cellY, cellZ);
-    if (fire->level > 0 || fire->isSource) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Fire: %d/7", fire->level);
-        if (fire->isSource) {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "  FIRE SOURCE");
-        }
-        if (fire->fuel > 0) {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "  Fuel: %d", fire->fuel);
-        }
-    }
-
-    // Steam info
-    const SteamCell* steam = &STEAM(cellX, cellY, cellZ);
-    if (steam->level > 0) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Steam: %d/7", steam->level);
-    }
-
-    // Smoke info
-    const SmokeCell* smoke = &SMOKE(cellX, cellY, cellZ);
-    if (smoke->level > 0) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Smoke: %d/7", smoke->level);
-    }
-
-    // Calculate box dimensions
-    int maxW = 0;
-    for (int i = 0; i < lineCount; i++) {
-        int w = MeasureText(lines[i], 14);
-        if (w > maxW) maxW = w;
-    }
-
-    int padding = 6;
-    int lineH = 16;
-    int boxW = maxW + padding * 2;
-    int boxH = lineH * lineCount + padding * 2;
-
-    // Position tooltip
-    int tx = (int)mouse.x + 15;
-    int ty = (int)mouse.y + 15;
-    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
-    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
-
-    // Draw background
-    DrawRectangle(tx, ty, boxW, boxH, (Color){30, 30, 30, 230});
-    DrawRectangleLines(tx, ty, boxW, boxH, (Color){80, 80, 80, 255});
-
-    // Draw lines with color coding
-    int y = ty + padding;
-    for (int i = 0; i < lineCount; i++) {
-        Color col = WHITE;
-        if (i == 0) col = YELLOW;  // Header
-        else if (strstr(lines[i], "[BURNED]")) col = (Color){80, 60, 40, 255};
-        else if (strstr(lines[i], "HEAT SOURCE")) col = RED;
-        else if (strstr(lines[i], "COLD SOURCE")) col = SKYBLUE;
-        else if (strstr(lines[i], "FIRE SOURCE")) col = ORANGE;
-        else if (strstr(lines[i], "WATER SOURCE")) col = (Color){100, 180, 255, 255};
-        else if (strstr(lines[i], "WATER DRAIN")) col = (Color){80, 80, 120, 255};
-        else if (strstr(lines[i], "FROZEN")) col = (Color){200, 220, 255, 255};
-        else if (strstr(lines[i], "Fire:")) col = ORANGE;
-        else if (strstr(lines[i], "Water:")) col = (Color){100, 180, 255, 255};
-        else if (strstr(lines[i], "Steam:")) col = (Color){200, 200, 255, 255};
-        else if (strstr(lines[i], "Smoke:")) col = GRAY;
-        else if (strstr(lines[i], "freezing")) col = (Color){150, 200, 255, 255};
-        else if (strstr(lines[i], "cold")) col = (Color){180, 210, 255, 255};
-        else if (strstr(lines[i], "hot!")) col = (Color){255, 100, 100, 255};
-        else if (strstr(lines[i], "warm")) col = (Color){255, 180, 100, 255};
-        DrawTextShadow(lines[i], tx + padding, y, 14, col);
-        y += lineH;
-    }
+    DescLines d;
+    DescribeCell(cellX, cellY, cellZ, &d);
+    DrawDescTooltipStyled(&d, mouse, DESC_BOX_CELL);
 }
 
 // Draw water tooltip when hovering over water

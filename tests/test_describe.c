@@ -8,6 +8,8 @@
 #include "../src/entities/jobs.h"
 #include "../src/simulation/balance.h"
 #include "../src/simulation/mood.h"
+#include "../src/simulation/temperature.h"
+#include "../src/entities/animals.h"
 #include "../src/core/describe.h"
 #include "test_helpers.h"
 #include <string.h>
@@ -121,10 +123,102 @@ describe(describe_mover) {
     }
 }
 
+describe(describe_cell) {
+    it("titles the cell and reports its temperature") {
+        SetupFlat();
+        gameMode = GAME_MODE_SANDBOX;   // everything explored
+        InitTemperature();
+        DescLines d;
+        DescribeCell(4, 4, 1, &d);
+        Dump(&d);
+        expect(d.count > 0);
+        if (d.count > 0) {
+            expect(strcmp(d.lines[0].text, "Cell (4, 4, z1)") == 0);
+            expect(d.lines[0].tone == DESC_TITLE);
+        }
+        expect(FindLine(&d, "Temp:") != NULL);
+        expect(FindLine(&d, "Insulation:") != NULL);
+    }
+
+    it("marks a heat source in red tone") {
+        SetupFlat();
+        gameMode = GAME_MODE_SANDBOX;
+        InitTemperature();
+        SetHeatSource(4, 4, 1, true);
+        DescLines d;
+        DescribeCell(4, 4, 1, &d);
+        const DescLine* h = FindLine(&d, "HEAT SOURCE");
+        expect(h != NULL);
+        if (h) expect(h->tone == DESC_BAD);
+    }
+
+    it("says only Unexplored under fog of war") {
+        SetupFlat();
+        gameMode = GAME_MODE_SURVIVAL;
+        CLEAR_GRID_LAYER(exploredGrid, 0);
+        DescLines d;
+        DescribeCell(4, 4, 1, &d);
+        expect(d.count == 1);
+        if (d.count == 1) expect(strcmp(d.lines[0].text, "Unexplored") == 0);
+        gameMode = GAME_MODE_SANDBOX;
+    }
+
+    it("returns nothing outside the map") {
+        SetupFlat();
+        DescLines d;
+        DescribeCell(-1, 0, 0, &d);
+        expect(d.count == 0);
+        DescribeCell(0, 0, 99, &d);
+        expect(d.count == 0);
+    }
+}
+
+describe(describe_items_and_animals) {
+    it("counts units on a cell and lists each item") {
+        SetupFlat();
+        float px = 4 * CELL_SIZE + CELL_SIZE * 0.5f, py = 4 * CELL_SIZE + CELL_SIZE * 0.5f;
+        int a = SpawnItem(px, py, 1.0f, ITEM_ROCK);
+        int b = SpawnItem(px, py, 1.0f, ITEM_STICKS);
+        expect(a >= 0 && b >= 0);
+        if (a < 0 || b < 0) return;
+        items[b].stackCount = 3;
+        int idx[2] = {a, b};
+        DescLines d;
+        DescribeItemsAt(idx, 2, 4, 4, &d);
+        Dump(&d);
+        expect(d.count == 3);
+        expect(FindLine(&d, "Cell (4,4): 4 units") != NULL);
+    }
+
+    it("tints rotten food") {
+        SetupFlat();
+        int f = SpawnItem(CELL_SIZE * 2.5f, CELL_SIZE * 2.5f, 1.0f, ITEM_BERRIES);
+        expect(f >= 0);
+        if (f < 0) return;
+        items[f].condition = CONDITION_ROTTEN;
+        DescLines d = {0};
+        DescribeItemLine(f, &d);
+        expect(d.count == 1);
+        if (d.count == 1) {
+            expect(strstr(d.lines[0].text, "Rotten") != NULL);
+            expect(d.lines[0].tone == DESC_SOFT_BAD);
+        }
+    }
+
+    it("returns nothing for an inactive animal") {
+        SetupFlat();
+        DescLines d;
+        DescribeAnimal(0, &d);
+        expect(d.count == 0);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
     test(need_labels);
     test(describe_mover);
+    test(describe_cell);
+    test(describe_items_and_animals);
     return summary();
 }
