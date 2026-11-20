@@ -32,8 +32,8 @@ void ClearFurniture(void) {
         furniture[i].occupant = -1;
     }
     furnitureCount = 0;
-    memset(furnitureMoveCostGrid, 0, sizeof(furnitureMoveCostGrid));
-    memset(capabilityGrid, 0, sizeof(capabilityGrid));
+    CLEAR_GRID_LAYER(furnitureMoveCostGrid, 0);
+    CLEAR_GRID_LAYER(capabilityGrid, 0);
 }
 
 int SpawnFurniture(int x, int y, int z, FurnitureType type, uint8_t material) {
@@ -136,7 +136,7 @@ void ReleaseFurnitureForMover(int moverIdx) {
 }
 
 void RebuildFurnitureMoveCostGrid(void) {
-    memset(furnitureMoveCostGrid, 0, sizeof(furnitureMoveCostGrid));
+    CLEAR_GRID_LAYER(furnitureMoveCostGrid, 0);
     for (int i = 0; i < MAX_FURNITURE; i++) {
         if (!furniture[i].active) continue;
         const FurnitureDef* def = &furnitureDefs[furniture[i].type];

@@ -34,6 +34,38 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
     InitGridWithDimensions(width, height, MAX_GRID_DEPTH, chunkW, chunkH);
 }
 
+// High-water mark of the region any map has used (in cells, including a one-cell margin).
+// Everything outside it has never been written since startup.
+static int clearW, clearH, clearD;
+
+static void GrowClearRegion(void) {
+    int w = gridWidth + 1, h = gridHeight + 1, d = gridDepth + 1;
+    if (w > MAX_GRID_WIDTH) w = MAX_GRID_WIDTH;
+    if (h > MAX_GRID_HEIGHT) h = MAX_GRID_HEIGHT;
+    if (d > MAX_GRID_DEPTH) d = MAX_GRID_DEPTH;
+    if (w > clearW) clearW = w;
+    if (h > clearH) clearH = h;
+    if (d > clearD) clearD = d;
+}
+
+void ClearGridPlane(void* plane, size_t elemSize, int fillByte) {
+    GrowClearRegion();
+    unsigned char* base = (unsigned char*)plane;
+    size_t rowBytes = (size_t)MAX_GRID_WIDTH * elemSize;
+    for (int y = 0; y < clearH; y++) {
+        memset(base + (size_t)y * rowBytes, fillByte, (size_t)clearW * elemSize);
+    }
+}
+
+void ClearGridLayer(void* layer, size_t elemSize, int fillByte) {
+    GrowClearRegion();
+    unsigned char* base = (unsigned char*)layer;
+    size_t planeBytes = (size_t)MAX_GRID_HEIGHT * MAX_GRID_WIDTH * elemSize;
+    for (int z = 0; z < clearD; z++) {
+        ClearGridPlane(base + (size_t)z * planeBytes, elemSize, fillByte);
+    }
+}
+
 void InitGridWithDimensions(int width, int height, int depth, int chunkW, int chunkH) {
     // Clamp to max dimensions
     if (depth > MAX_GRID_DEPTH) depth = MAX_GRID_DEPTH;
@@ -59,9 +91,9 @@ void InitGridWithDimensions(int width, int height, int depth, int chunkW, int ch
     rampCount = 0;
 
     // Clear the grid (all z-levels), cell flags, vegetation, and materials
-    memset(cellFlags, 0, sizeof(cellFlags));
-    memset(vegetationGrid, 0, sizeof(vegetationGrid));
-    memset(exploredGrid, 1, sizeof(exploredGrid));  // Default: all explored (sandbox)
+    CLEAR_GRID_LAYER(cellFlags, 0);
+    CLEAR_GRID_LAYER(vegetationGrid, 0);
+    CLEAR_GRID_LAYER(exploredGrid, 1);  // Default: all explored (sandbox)
     InitMaterials();
     
     for (int z = 0; z < gridDepth; z++) {

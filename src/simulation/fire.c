@@ -47,7 +47,7 @@ static inline bool FireCellIsActive(int x, int y, int z) {
 
 // Clear all fire
 void ClearFire(void) {
-    memset(fireGrid, 0, sizeof(fireGrid));
+    CLEAR_GRID_LAYER(fireGrid, 0);
     fireUpdateCount = 0;
     fireSpreadAccum = 0.0f;
     fireFuelAccum = 0.0f;

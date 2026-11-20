@@ -216,7 +216,7 @@ static void StartNewGame(void) {
     SpawnMoversDemo(1);
 
     // Fog of war: start with everything unexplored, then reveal around spawn
-    memset(exploredGrid, 0, sizeof(exploredGrid));
+    CLEAR_GRID_LAYER(exploredGrid, 0);
     if (moverCount > 0) {
         Mover* m = &movers[0];
         int spawnX = (int)(m->x / CELL_SIZE);

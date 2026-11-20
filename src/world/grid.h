@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 // Note: CellPlacementSpec uses MaterialType and SurfaceFinish from material.h
 // Users of PlaceCellFull() should include "material.h" for full type definitions
@@ -174,6 +175,16 @@ void InitGridWithSize(int width, int height);
 void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH);
 // Explicit depth (1..MAX_GRID_DEPTH). The variants above always use MAX_GRID_DEPTH.
 void InitGridWithDimensions(int width, int height, int depth, int chunkW, int chunkH);
+
+// Clear a [MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH] layer (or a [MAX_GRID_HEIGHT][MAX_GRID_WIDTH]
+// plane) to fillByte, but only the part any map so far has used (plus a one-cell margin for edge
+// reads). The rest of the static array was never written, so it is still zero and its pages are
+// never touched: a small map in a big-cap build does not pay for the whole array.
+// Cells outside the cleared region hold 0, not fillByte: code must not read past gridWidth+1.
+void ClearGridLayer(void* layer, size_t elemSize, int fillByte);
+void ClearGridPlane(void* plane, size_t elemSize, int fillByte);
+#define CLEAR_GRID_LAYER(arr, fillByte) ClearGridLayer((arr), sizeof((arr)[0][0][0]), (fillByte))
+#define CLEAR_GRID_PLANE(arr, fillByte) ClearGridPlane((arr), sizeof((arr)[0][0]), (fillByte))
 
 // Fill z=0 with dirt and grass surface (call after InitGridWithSize for DF-style terrain)
 void FillGroundLevel(void);

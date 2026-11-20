@@ -21,7 +21,7 @@ void InitFarming(void) {
 }
 
 void ClearFarming(void) {
-    memset(farmGrid, 0, sizeof(farmGrid));
+    CLEAR_GRID_LAYER(farmGrid, 0);
     farmActiveCells = 0;
     farmTickAccumulator = 0;
 }

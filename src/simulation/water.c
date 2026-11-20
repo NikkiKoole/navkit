@@ -428,7 +428,7 @@ static bool TryPressure(int x, int y, int z) {
     currentPressureGen++;
     if (currentPressureGen == 0) {
         // Handle wrap-around (rare) - clear the array once
-        memset(pressureVisitedGen, 0, sizeof(pressureVisitedGen));
+        CLEAR_GRID_LAYER(pressureVisitedGen, 0);
         currentPressureGen = 1;
     }
     

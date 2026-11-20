@@ -20,7 +20,7 @@ void InitFloorDirt(void) {
 }
 
 void ClearFloorDirt(void) {
-    memset(floorDirtGrid, 0, sizeof(floorDirtGrid));
+    CLEAR_GRID_LAYER(floorDirtGrid, 0);
     ResetMoverDirtTracking();
 }
 

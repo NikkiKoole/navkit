@@ -139,7 +139,7 @@ void InitGroundWear(void) {
 }
 
 void ClearGroundWear(void) {
-    memset(wearGrid, 0, sizeof(wearGrid));
+    CLEAR_GRID_LAYER(wearGrid, 0);
     wearRecoveryAccum = 0.0f;
 }
 

@@ -815,7 +815,7 @@ bool LoadWorld(const char* filename) {
             }
         }
     } else {
-        memset(trackConnections, 0, sizeof(trackConnections));
+        CLEAR_GRID_LAYER(trackConnections, 0);
     }
 
     // === ENTITIES SECTION ===

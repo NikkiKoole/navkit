@@ -64,7 +64,7 @@ typedef struct { int x, y, z; uint8_t level; } LightBfsNode;
 static LightBfsNode bfsQueue[LIGHT_BFS_MAX];
 
 void InitLighting(void) {
-    memset(lightGrid, 0, sizeof(lightGrid));
+    CLEAR_GRID_LAYER(lightGrid, 0);
     memset(lightSources, 0, sizeof(lightSources));
     lightSourceCount = 0;
     lightingDirty = true;

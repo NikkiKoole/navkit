@@ -38,7 +38,7 @@ void InitSteam(void) {
 
 // Clear all steam
 void ClearSteam(void) {
-    memset(steamGrid, 0, sizeof(steamGrid));
+    CLEAR_GRID_LAYER(steamGrid, 0);
     steamUpdateCount = 0;
     steamRiseAccum = 0.0f;
     steamActiveCells = 0;
@@ -413,7 +413,7 @@ void UpdateSteam(void) {
         steamRiseGeneration++;
         if (steamRiseGeneration == 0) {
             // Handle overflow by clearing the tracking array
-            memset(steamHasRisen, 0, sizeof(steamHasRisen));
+            CLEAR_GRID_LAYER(steamHasRisen, 0);
             steamRiseGeneration = 1;
         }
     }

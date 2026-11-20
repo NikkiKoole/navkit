@@ -461,8 +461,8 @@ static bool snowMayExist = true, snowAccumMayExist = true;
 void SnowGridChanged(void) { snowMayExist = snowAccumMayExist = true; }
 
 void InitSnow(void) {
-    memset(snowGrid, 0, sizeof(snowGrid));
-    memset(snowAccumGrid, 0, sizeof(snowAccumGrid));
+    CLEAR_GRID_LAYER(snowGrid, 0);
+    CLEAR_GRID_LAYER(snowAccumGrid, 0);
     snowAccum = 0.0f;
     SnowGridChanged();
 }

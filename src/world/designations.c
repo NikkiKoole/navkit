@@ -44,11 +44,15 @@ static unsigned int PositionHashLocal(int x, int y, int z) {
 }
 
 void InitDesignations(void) {
-    memset(designations, 0, sizeof(designations));
+    CLEAR_GRID_LAYER(designations, 0);
     // Set all assignedMover to -1
-    for (int z = 0; z < MAX_GRID_DEPTH; z++) {
-        for (int y = 0; y < MAX_GRID_HEIGHT; y++) {
-            for (int x = 0; x < MAX_GRID_WIDTH; x++) {
+    // Only the used region (plus the edge margin) was cleared; the rest is never read.
+    int maxZ = gridDepth + 1 < MAX_GRID_DEPTH ? gridDepth + 1 : MAX_GRID_DEPTH;
+    int maxY = gridHeight + 1 < MAX_GRID_HEIGHT ? gridHeight + 1 : MAX_GRID_HEIGHT;
+    int maxX = gridWidth + 1 < MAX_GRID_WIDTH ? gridWidth + 1 : MAX_GRID_WIDTH;
+    for (int z = 0; z < maxZ; z++) {
+        for (int y = 0; y < maxY; y++) {
+            for (int x = 0; x < maxX; x++) {
                 designations[z][y][x].assignedMover = -1;
             }
         }

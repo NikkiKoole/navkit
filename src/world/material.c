@@ -91,14 +91,14 @@ int GetSpriteForCellMat(CellType cell, MaterialType mat) {
 void InitMaterials(void) {
     // All cells start with no material — SyncMaterialsToTerrain sets correct
     // materials after terrain generation. This avoids air cells having MAT_GRANITE.
-    memset(wallMaterial, MAT_NONE, sizeof(wallMaterial));
-    memset(floorMaterial, MAT_NONE, sizeof(floorMaterial));
-    memset(wallNatural, 0, sizeof(wallNatural));
-    memset(floorNatural, 0, sizeof(floorNatural));
-    memset(wallFinish, FINISH_ROUGH, sizeof(wallFinish));
-    memset(floorFinish, FINISH_ROUGH, sizeof(floorFinish));
-    memset(wallSourceItem, 0xFF, sizeof(wallSourceItem));
-    memset(floorSourceItem, 0xFF, sizeof(floorSourceItem));
+    CLEAR_GRID_LAYER(wallMaterial, MAT_NONE);
+    CLEAR_GRID_LAYER(floorMaterial, MAT_NONE);
+    CLEAR_GRID_LAYER(wallNatural, 0);
+    CLEAR_GRID_LAYER(floorNatural, 0);
+    CLEAR_GRID_LAYER(wallFinish, FINISH_ROUGH);
+    CLEAR_GRID_LAYER(floorFinish, FINISH_ROUGH);
+    CLEAR_GRID_LAYER(wallSourceItem, 0xFF);
+    CLEAR_GRID_LAYER(floorSourceItem, 0xFF);
     InitSpriteOverrides();
 }
 

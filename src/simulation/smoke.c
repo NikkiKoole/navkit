@@ -46,7 +46,7 @@ void InitSmoke(void) {
 
 // Clear all smoke
 void ClearSmoke(void) {
-    memset(smokeGrid, 0, sizeof(smokeGrid));
+    CLEAR_GRID_LAYER(smokeGrid, 0);
     smokeUpdateCount = 0;
     smokeRiseAccum = 0.0f;
     smokeDissipationAccum = 0.0f;
@@ -327,7 +327,7 @@ static bool TryFillDown(int x, int y, int z) {
     smokePressureGeneration++;
     if (smokePressureGeneration == 0) {
         // Handle wraparound (rare) - clear array once
-        memset(smokePressureVisited, 0, sizeof(smokePressureVisited));
+        CLEAR_GRID_LAYER(smokePressureVisited, 0);
         smokePressureGeneration = 1;
     }
 
@@ -527,7 +527,7 @@ void UpdateSmoke(void) {
         smokeRiseGeneration++;
         if (smokeRiseGeneration == 0) {
             // Handle wraparound - clear the array
-            memset(smokeHasRisen, 0, sizeof(smokeHasRisen));
+            CLEAR_GRID_LAYER(smokeHasRisen, 0);
             smokeRiseGeneration = 1;
         }
     }

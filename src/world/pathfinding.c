@@ -399,7 +399,7 @@ Point GetRandomWalkableCellOnZ(int z) {
 Point GetRandomReachableCell(int startX, int startY, int startZ) {
     static Point reachable[REACHABLE_MAX];
     static bool visited[MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-    memset(visited, 0, sizeof(visited));
+    CLEAR_GRID_PLANE(visited, 0);
 
     static Point queue[REACHABLE_MAX];
     int qHead = 0, qTail = 0;

@@ -318,12 +318,12 @@ static void ScanRoomCells(uint16_t roomId, int z, RoomBfsNode *cells, int cellCo
 // --- Main recompute ---
 
 static void RecomputeRooms(void) {
-    memset(roomGrid, 0, sizeof(roomGrid));
+    CLEAR_GRID_LAYER(roomGrid, 0);
     memset(rooms, 0, sizeof(rooms));
     roomCount = 0;
 
     for (int z = 0; z < gridDepth; z++) {
-        memset(visited, 0, sizeof(visited));
+        CLEAR_GRID_PLANE(visited, 0);
 
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
@@ -397,7 +397,7 @@ static void RecomputeRooms(void) {
 // --- Public API ---
 
 void InitRooms(void) {
-    memset(roomGrid, 0, sizeof(roomGrid));
+    CLEAR_GRID_LAYER(roomGrid, 0);
     memset(rooms, 0, sizeof(rooms));
     roomCount = 0;
     roomsDirty = true;
