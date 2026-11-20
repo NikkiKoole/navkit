@@ -37,7 +37,8 @@
 - `gameplay/seasoning-curing.md` — Material states (green/seasoned/rotten wood) changing over time
 - `gameplay/more-tiles-design.md` — Next small tiles: hearth, clay pit, mud mixer
 - `world/elevators.md` — Moving platforms with state, capacity, queuing
-- `pathfinding/service-points-and-queues.md` — General wait-your-turn system (ladders, train doors, elevators, ...): explicit first-come-first-served lines, emergent follow-the-one-ahead queue shape, measured expected wait as route cost
+- `pathfinding/per-chunk-edge-storage.md` — Incremental HPA* updates touch all edges (67 ms per mining update on 512x512 hills); store edges per chunk
+- `pathfinding/service-points-and-queues.md` — (steps 1, 2, 4 done; left: station waiting lists as service points, saved state) General wait-your-turn system (ladders, train doors, elevators, ...): explicit first-come-first-served lines, emergent follow-the-one-ahead queue shape, measured expected wait as route cost
 - `pathfinding/astar-priority-queue-and-extraction.md` — `RunAStar()` linear-scans instead of using the existing heap (~32s/path at 256×256, measured); plus what it'd take to lift the pathfinder into another project
 - `pathfinding/transport-layer.md` — Unified abstraction for vehicles, queues & multi-leg pathfinding (CapacityNode pattern)
 - `pathfinding/social-navigation.md` — Queuing and crowd behavior (prerequisite for elevators/trains)

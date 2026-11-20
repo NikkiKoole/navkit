@@ -8,7 +8,7 @@
 # check (ladders: never two climbers on one segment). Exit code 1 if any run fails.
 #
 # Known: mood allows 1 mover in a non-walkable cell - a mover stands on a ramp that
-# deep water floods (water/mover interaction, not fixed yet).
+# deep water floods (docs/bugs/mover-on-flooded-ramp.md).
 
 BIN=${BIN:-./build/bin/path}
 TICKS=${TICKS:-3000}
