@@ -1643,8 +1643,11 @@ void UpdateMovers(void) {
 
         if (dist < arrivalRadius) {
             bool didClimb = false;
-            if (target.z != (int)m->z) {
-                int cellZ = (int)m->z;
+            if (fabsf(m->z - (float)target.z) > 0.0001f) {
+                // Level the move starts from: mid-climb, z is fractional, and (int)z
+                // already equals the target when going DOWN (1.87 -> 1), which used to
+                // end descents after one step and leave movers at z = 1.87
+                int cellZ = (float)target.z > m->z ? (int)floorf(m->z) : (int)ceilf(m->z - 0.0001f);
                 bool isLadderTransition = IsLadderCell(grid[cellZ][target.y][target.x]) &&
                                           IsLadderCell(grid[target.z][target.y][target.x]);
 

@@ -1261,6 +1261,23 @@ describe(single_file_ladders) {
         expect(arrived);
     }
 
+    it("climbs all the way down: never left between levels after a descent") {
+        SetupLadderFloors();
+        AddLadderMover(0, 4, 2, 2, 0, 2, 1);   // down
+        moverCount = 1;
+        bool leftBetween = false;
+        for (int t = 0; t < 600 && movers[0].active; t++) {
+            Tick();
+            const Mover* m = &movers[0];
+            bool between = m->z - floorf(m->z) > 0.0001f;
+            bool onLadder = (int)(m->x / CELL_SIZE) == 3 && (int)(m->y / CELL_SIZE) == 2;
+            if (between && !onLadder) leftBetween = true;
+        }
+        expect(!movers[0].active);            // arrived
+        expect(!leftBetween);
+        expect(movers[0].z == 1.0f);
+    }
+
     it("without the rule they climb together (the test can tell)") {
         SetupLadderFloors();
         useSingleFileLadders = false;
