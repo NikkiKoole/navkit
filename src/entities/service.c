@@ -36,7 +36,8 @@ int ServiceGet(ServiceKind kind, int x, int y, int z, int capacity) {
     if (sp >= 0) return sp;
     for (int i = 0; i < MAX_SERVICE_POINTS; i++) {
         if (servicePoints[i].active) continue;
-        servicePoints[i] = (ServicePoint){.active = true, .kind = kind, .x = x, .y = y, .z = z, .capacity = capacity};
+        servicePoints[i] = (ServicePoint){.active = true, .kind = kind, .x = x, .y = y, .z = z, .capacity = capacity,
+                                          .lastStartAt = -1.0};
         if (i >= servicePointCount) servicePointCount = i + 1;
         return i;
     }
@@ -115,9 +116,19 @@ int ServiceLineLength(int sp, int end) {
     return n;
 }
 
-void ServiceRecordDuration(int sp, float seconds) {
+void ServiceRecordStart(int sp, double now, bool waitedForPrevious) {
     if (sp < 0 || sp >= servicePointCount) return;
     ServicePoint* p = &servicePoints[sp];
-    p->avgServiceTime = p->served == 0 ? seconds : p->avgServiceTime * 0.8f + seconds * 0.2f;
+    if (waitedForPrevious && p->lastStartAt >= 0.0) {
+        float interval = (float)(now - p->lastStartAt);
+        p->avgServiceTime = p->samples == 0 ? interval : p->avgServiceTime * 0.8f + interval * 0.2f;
+        p->samples++;
+    }
+    p->lastStartAt = now;
     p->served++;
+}
+
+float ServiceIntervalOr(int sp, float fallback) {
+    if (sp < 0 || sp >= servicePointCount || servicePoints[sp].samples == 0) return fallback;
+    return servicePoints[sp].avgServiceTime;
 }

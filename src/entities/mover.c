@@ -60,12 +60,14 @@ static int repathCursor = 0;
 static float moverYieldTime[MAX_MOVERS];
 // Seconds each mover has been in a ladder line (not saved; reset by ClearMovers)
 static float moverLadderWait[MAX_MOVERS];
-// gameTime a climb started, for the measured service time (-1 = not climbing)
+// gameTime a climb started (stall detection; -1 = not climbing)
 static double moverClimbStart[MAX_MOVERS];
+// The front of a ladder line was held back for the previous climber (so its start
+// measures the ladder's service interval)
+static bool moverWaitedAtFoot[MAX_MOVERS];
 #define LADDER_STALL_TIMEOUT 10.0f  // a climb taking longer than this no longer blocks the segment
 #define LADDER_REPLAN_AT_1 3.0f     // a waiting mover re-plans at these wait times: with the
 #define LADDER_REPLAN_AT_2 7.0f     // queue cost, another ladder or a ramp may now be quicker
-#define LADDER_QUEUE_COST_PER_MOVER 10   // ~ one climb = walking one cell
 #define LADDER_JOIN_RADIUS (CELL_SIZE * 3.0f)     // join a ladder's line this close to its foot
 #define LADDER_FOLLOW_RANGE (CELL_SIZE * 2.0f)    // line up behind the one ahead within this
 #define LADDER_LINE_SPACING (CELL_SIZE * 0.7f)    // gap kept to the one ahead
@@ -517,9 +519,18 @@ static void UpdateLadderLines(float dt) {
     }
 }
 
+// Seconds to walk one cell at the base mover speed; path cost 10 = one cell
+static float SecondsPerCell(void) {
+    float base = balance.baseMoverSpeed > 0.0f ? balance.baseMoverSpeed : 200.0f;   // 200 = InitBalance default
+    float pxPerSec = base * (dayLength > 0.0f ? 60.0f / dayLength : 1.0f);
+    return (float)CELL_SIZE / pxPerSec;
+}
+
 // NAV_CLIMB_EXTRA for the game (see nav_host.h): changing level by dz on the ladder
-// at (x,y,z) costs the expected wait there: the line at this end plus anyone on
-// the segment, each about one climb. Uses the state from the latest tick.
+// at (x,y,z) costs the expected wait there, converted to path cost at walking
+// pace: (line at this end + anyone on the segment) x the ladder's measured
+// interval between climbs (until measured: one climb ~ walking one cell).
+// Uses the state from the latest tick.
 int LadderQueueExtraCost(int x, int y, int z, int dz) {
     if (!useLadderQueueCost || !useSingleFileLadders) return 0;
     int zt = z + dz;
@@ -527,8 +538,12 @@ int LadderQueueExtraCost(int x, int y, int z, int dz) {
     int segLow = dz > 0 ? z : zt, n = 0;
     for (int k = 0; k < ladderClimberCount; k++)
         if (ladderClimbers[k].x == x && ladderClimbers[k].y == y && ladderClimbers[k].zLow == segLow) n++;
-    n += ServiceLineLength(ServiceFind(SERVICE_LADDER, x, y, segLow), z);
-    return n * LADDER_QUEUE_COST_PER_MOVER;
+    int sp = ServiceFind(SERVICE_LADDER, x, y, segLow);
+    n += ServiceLineLength(sp, z);
+    if (n == 0) return 0;
+    float perCell = SecondsPerCell();
+    float waitSeconds = n * ServiceIntervalOr(sp, perCell);
+    return (int)(waitSeconds / perCell * 10.0f + 0.5f);
 }
 
 // The front of a ladder line may start climbing when no other end's front that is
@@ -1003,6 +1018,7 @@ void ClearMovers(void) {
     memset(moverYieldTime, 0, sizeof(moverYieldTime));
     memset(moverLadderWait, 0, sizeof(moverLadderWait));
     for (int i = 0; i < MAX_MOVERS; i++) moverClimbStart[i] = -1.0;
+    memset(moverWaitedAtFoot, 0, sizeof(moverWaitedAtFoot));
     ClearServicePoints();
     // Drop carried items on the ground at mover's position
     for (int i = 0; i < moverCount; i++) {
@@ -1774,6 +1790,7 @@ void UpdateMovers(void) {
                         m->y += dyf / dist * step;
                         blocked = true;
                     }
+                    if (blocked && front && dist <= 2.0f) moverWaitedAtFoot[i] = true;   // held for the previous climber
                     if (blocked) {
                         m->timeWithoutProgress = 0.0f;  // waiting in line is not being stuck
                         m->lastX = m->x;
@@ -1781,6 +1798,9 @@ void UpdateMovers(void) {
                         continue;
                     }
                     if (sp >= 0) ServiceLeave(sp, i);
+                    ServiceRecordStart(ServiceGet(SERVICE_LADDER, target.x, target.y, segLow, 1), gameTime,
+                                       moverWaitedAtFoot[i]);
+                    moverWaitedAtFoot[i] = false;
                     moverLadderWait[i] = 0.0f;
                     moverClimbStart[i] = gameTime;
                     if (ladderClimberCount < MAX_MOVERS)
@@ -1799,11 +1819,7 @@ void UpdateMovers(void) {
                         m->z = (float)target.z;
                         m->pathIndex--;
                         m->timeNearWaypoint = 0.0f;
-                        if (isLadderTransition && moverClimbStart[i] >= 0.0) {
-                            ServiceRecordDuration(ServiceFind(SERVICE_LADDER, target.x, target.y, segLow),
-                                                  (float)(gameTime - moverClimbStart[i]));
-                            moverClimbStart[i] = -1.0;
-                        }
+                        if (isLadderTransition) moverClimbStart[i] = -1.0;
                     }
                     didClimb = true;
                 }

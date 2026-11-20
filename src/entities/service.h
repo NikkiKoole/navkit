@@ -32,8 +32,10 @@ typedef struct {
     int capacity;                 // served at once
     ServiceEntry line[MAX_SERVICE_LINE];   // arrival order
     int lineCount;
-    float avgServiceTime;         // seconds per mover, measured (0 = none yet)
+    float avgServiceTime;         // seconds per mover while busy, measured (valid if samples > 0)
+    int samples;                  // measurements in avgServiceTime
     int served;                   // total served (stats)
+    double lastStartAt;           // gameTime the last service started (-1 = never)
 } ServicePoint;
 
 extern ServicePoint servicePoints[MAX_SERVICE_POINTS];
@@ -56,7 +58,12 @@ int  ServiceAhead(int sp, int mover);
 bool ServiceIsNext(int sp, int mover);
 int  ServiceLineLength(int sp, int end);
 
-// Measured service time (moving average) for expected-wait estimates
-void ServiceRecordDuration(int sp, float seconds);
+// A service starts now. If this mover had been waiting for the previous one
+// (the point was busy back to back), the time since the previous start is one
+// measurement of the service interval (moving average): what a waiting mover
+// really waits per person ahead, hand-off included.
+void ServiceRecordStart(int sp, double now, bool waitedForPrevious);
+// Expected seconds per person ahead; fallback when nothing is measured yet
+float ServiceIntervalOr(int sp, float fallback);
 
 #endif

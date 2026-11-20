@@ -6,6 +6,8 @@
 #include "../src/world/material.h"
 #include "../src/world/pathfinding.h"
 #include "../src/entities/mover.h"
+#include "../src/entities/service.h"
+#include "../src/simulation/balance.h"
 #include "../src/entities/workshops.h"
 #include "../src/world/terrain.h"
 #include <stdlib.h>
@@ -1209,11 +1211,14 @@ describe(ladder_queue_cost) {
                               1.0f, p[0], 100.0f, p, 4);
         }
         moverCount = 8;
-        // Run until a real queue has formed at A's foot
+        // Run until a real queue has formed at A's foot and the ladder's
+        // interval between climbs has been measured
         int queue = 0;
-        for (int t = 0; t < 300 && queue < 50; t++) {
+        for (int t = 0; t < 600; t++) {
             Tick();
             queue = LadderQueueExtraCost(3, 2, 1, 1);
+            int p0 = ServiceFind(SERVICE_LADDER, 3, 2, 1);
+            if (queue >= 50 && p0 >= 0 && servicePoints[p0].samples > 0) break;
         }
         expect(queue >= 50);
         expect(LadderQueueExtraCost(9, 2, 1, 1) == 0);
@@ -1227,6 +1232,24 @@ describe(ladder_queue_cost) {
         len = FindPath(PATH_ALGO_HPA, (Point){5, 2, 1}, (Point){5, 2, 2}, buf, MAX_PATH);
         expect(len > 0);
         expect(PathUsesCell(buf, len, 9, 2));
+
+        // The cost is the measured wait: people waiting x the ladder's interval
+        // between climbs, at walking pace (10 per cell walked)
+        int lsp = ServiceFind(SERVICE_LADDER, 3, 2, 1);
+        expect(lsp >= 0);
+        expect(servicePoints[lsp].samples > 0);
+        float interval = servicePoints[lsp].avgServiceTime;
+        expect(interval > 0.0f && interval < 5.0f);
+        float base = balance.baseMoverSpeed > 0.0f ? balance.baseMoverSpeed : 200.0f;   // tests skip InitBalance
+        float perCell = CELL_SIZE / (base * (60.0f / dayLength));
+        int now = LadderQueueExtraCost(3, 2, 1, 1);
+        int people = ServiceLineLength(lsp, 1);
+        for (int k = 0; k < moverCount; k++) {
+            const Mover* m = &movers[k];
+            if (m->active && m->z - floorf(m->z) > 0.0001f && (int)(m->x / CELL_SIZE) == 3 && (int)(m->y / CELL_SIZE) == 2) people++;
+        }
+        int expected = (int)(people * interval / perCell * 10.0f + 0.5f);
+        expect(abs(now - expected) <= 1);
 
         // Without the queue cost the short way (A) is chosen
         useLadderQueueCost = false;

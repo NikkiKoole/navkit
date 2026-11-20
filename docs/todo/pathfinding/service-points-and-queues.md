@@ -1,6 +1,6 @@
 # Service points and queues
 
-> Status: partial (step 1 done: ladders)
+> Status: partial (steps 1-2 done: ladders)
 
 One general way for movers to wait their turn at things that serve one (or a few)
 at a time: ladder segments now; train doors, wells, workshops, doors, elevators
@@ -67,6 +67,13 @@ most movers standing on one cell (no piles).
    6000 ticks): no shared segments at 16/48/96 movers; waiting movers no longer
    stack on the foot (only crowd pressure pushes one in at 96 movers).
 2. **Measured expected wait as route cost** (replaces "10 per mover").
+   *Done:* a service point measures the interval between service starts while
+   someone was already waiting (the climb plus the next mover's hand-off), as a
+   moving average; the ladder cost is (line + climbers) x that interval,
+   converted to path cost at the base walking pace, and one climb ~ one cell
+   until measured. In this game a climb takes about as long as walking a cell, so
+   the measured value matches the old guess (ladder-choice results unchanged);
+   it matters where service is slower than walking (heavy loads, train doors).
 3. **Train stations on the same system:** the slot queue becomes follow-the-one-
    ahead; boarding uses the line order; a station's expected wait can feed route
    choice (and later replace the "goal 40+ cells away" rule in `ShouldUseTrain`).
