@@ -185,6 +185,9 @@ void InitGridWithDimensions(int width, int height, int depth, int chunkW, int ch
 // Cells outside the cleared region hold 0, not fillByte: code must not read past gridWidth+1.
 void ClearGridLayer(void* layer, size_t elemSize, int fillByte);
 void ClearGridPlane(void* plane, size_t elemSize, int fillByte);
+// Same region, but every element set to *pattern (elemSize bytes), for non-byte fills.
+void FillGridLayer(void* layer, size_t elemSize, const void* pattern);
+#define FILL_GRID_LAYER(arr, patternPtr) FillGridLayer((arr), sizeof((arr)[0][0][0]), (patternPtr))
 #define CLEAR_GRID_LAYER(arr, fillByte) ClearGridLayer((arr), sizeof((arr)[0][0][0]), (fillByte))
 #define CLEAR_GRID_PLANE(arr, fillByte) ClearGridPlane((arr), sizeof((arr)[0][0]), (fillByte))
 

@@ -55,11 +55,8 @@ void ClearWater(void) {
     // WaterCell is a uint16_t bitfield: stable is bit 3, so value 0x0008.
     WaterCell emptyStable = {0};
     emptyStable.stable = 1;
-    uint16_t pattern;
-    memcpy(&pattern, &emptyStable, sizeof(pattern));
-    uint16_t* grid16 = (uint16_t*)waterGrid;
-    size_t count = sizeof(waterGrid) / sizeof(uint16_t);
-    for (size_t i = 0; i < count; i++) grid16[i] = pattern;
+    // Only the used region: cells beyond it are never read (see ClearGridLayer).
+    FILL_GRID_LAYER(waterGrid, &emptyStable);
     waterUpdateCount = 0;
     waterEvapAccum = 0.0f;
     wetnessSyncAccum = 0.0f;

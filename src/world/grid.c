@@ -66,6 +66,19 @@ void ClearGridLayer(void* layer, size_t elemSize, int fillByte) {
     }
 }
 
+void FillGridLayer(void* layer, size_t elemSize, const void* pattern) {
+    GrowClearRegion();
+    unsigned char* base = (unsigned char*)layer;
+    size_t rowBytes = (size_t)MAX_GRID_WIDTH * elemSize;
+    size_t planeBytes = (size_t)MAX_GRID_HEIGHT * rowBytes;
+    for (int z = 0; z < clearD; z++) {
+        for (int y = 0; y < clearH; y++) {
+            unsigned char* row = base + (size_t)z * planeBytes + (size_t)y * rowBytes;
+            for (int x = 0; x < clearW; x++) memcpy(row + (size_t)x * elemSize, pattern, elemSize);
+        }
+    }
+}
+
 void InitGridWithDimensions(int width, int height, int depth, int chunkW, int chunkH) {
     // Clamp to max dimensions
     if (depth > MAX_GRID_DEPTH) depth = MAX_GRID_DEPTH;

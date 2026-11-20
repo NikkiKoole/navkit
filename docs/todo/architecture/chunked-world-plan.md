@@ -44,6 +44,17 @@ for sparse), `farmGrid` 8 B (sparse), 4 B each for `temperatureGrid`, `wearGrid`
 new build give identical inspect/audit/mover output after 300 ticks from the same v93 save).
 1024 world: peak RSS 1.13 -> 1.05 GB, footprint 1.70 -> 1.60 GB, tick time unchanged (6.8 ms).
 
+**What is actually resident (2026-11-20, measured with `mincore` per static array, 128 map in
+the 1024 build, 600 ticks):** the big temporaries (`bfsQueue`, `roomBfsQueue`, `roomCellBuffer`,
+`visited` planes) are under 0.5 MB each: untouched static pages cost no RAM, so making them
+map-sized saves nothing now. They only matter for the static-data size (link limit), so they
+move to runtime allocation together with the layers (step 2, scratch arena) instead of a
+separate step. `waterGrid` was fully resident (32 MB): `ClearWater` filled the whole array with
+its "stable" pattern; now `FILL_GRID_LAYER` fills only the used region (peak 207 -> 171 MB).
+What remains is row spacing: every layer pays ~8x its dense size on a 128 map because each row
+is 1024 cells apart (e.g. `designations` 32 MB resident, ~4 MB of real data). Only runtime
+sizing (step 2) fixes that.
+
 **1024 baseline after cheap win 1** (`path1024 --headless --scenario world --set scenarioSize 1024
 --ticks 1200 --profile`): 6.7 ms/tick average (Move 2.9, Water 2.1, Trees 0.9, Jobs 0.4);
 peak RSS 1.13 GB, peak footprint 1.70 GB; HPA* full graph build 3.0 s (298K entrances,
