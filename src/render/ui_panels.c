@@ -1180,6 +1180,8 @@ void DrawUI(void) {
                 ToggleBool(ix + 10, y, "Single-file Ladders", &useSingleFileLadders);
                 y += 22;
                 ToggleBool(ix + 10, y, "Ladder Queue Cost", &useLadderQueueCost);
+                y += 22;
+                DraggableFloat(ix + 10, y, "Ladder Climb Speed", &ladderClimbSpeed, 0.01f, 0.1f, 1.0f);
             }
         }
         y += 22;

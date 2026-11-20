@@ -89,6 +89,7 @@ bool useDirectionalAvoidance = true;
 bool useTunnelYielding = true;       // single-lane rule for 1-wide passages (see MoverShouldYield)
 bool useSingleFileLadders = true;    // one climber per ladder segment; others wait at the foot/top
 bool useLadderQueueCost = true;      // routes see a ladder's queue as extra cost (pathfinding.h hook)
+float ladderClimbSpeed = 0.5f;       // climbing speed vs walking (0.5 = a level takes as long as 2 cells)
 PathAlgorithm moverPathAlgorithm = PATH_ALGO_HPA;  // Default to HPA*
 bool useRandomizedCooldowns = true;   // Default on for demo perf, tests can disable
 bool useStaggeredUpdates = true;      // Default on for demo perf, tests can disable
@@ -526,24 +527,34 @@ static float SecondsPerCell(void) {
     return (float)CELL_SIZE / pxPerSec;
 }
 
-// NAV_CLIMB_EXTRA for the game (see nav_host.h): changing level by dz on the ladder
-// at (x,y,z) costs the expected wait there, converted to path cost at walking
-// pace: (line at this end + anyone on the segment) x the ladder's measured
-// interval between climbs (until measured: one climb ~ walking one cell).
-// Uses the state from the latest tick.
+static float ClimbSpeedFactor(void) {
+    return ladderClimbSpeed > 0.05f ? ladderClimbSpeed : 0.05f;
+}
+
+// NAV_CLIMB_EXTRA for the game (see nav_host.h): extra path cost of changing
+// level by dz on the ladder at (x,y,z), on top of the pathfinder's own step cost
+// (the cell's move cost, i.e. one cell of walking):
+//  - slow climbing: a level takes 1/ladderClimbSpeed cells of walking
+//  - the queue (useLadderQueueCost): (line at this end + anyone on the segment)
+//    x the ladder's measured interval between climbs (until measured: one climb),
+//    converted to path cost at the base walking pace
+// Uses the state from the latest tick. Ramps: no extra.
 int LadderQueueExtraCost(int x, int y, int z, int dz) {
-    if (!useLadderQueueCost || !useSingleFileLadders) return 0;
     int zt = z + dz;
     if (zt < 0 || zt >= gridDepth || !IsLadderCell(grid[z][y][x]) || !IsLadderCell(grid[zt][y][x])) return 0;
+    float slow = 1.0f / ClimbSpeedFactor();
+    int extra = (int)(GetCellMoveCost(x, y, zt) * (slow - 1.0f) + 0.5f);
+    if (extra < 0) extra = 0;
+    if (!useLadderQueueCost || !useSingleFileLadders) return extra;
     int segLow = dz > 0 ? z : zt, n = 0;
     for (int k = 0; k < ladderClimberCount; k++)
         if (ladderClimbers[k].x == x && ladderClimbers[k].y == y && ladderClimbers[k].zLow == segLow) n++;
     int sp = ServiceFind(SERVICE_LADDER, x, y, segLow);
     n += ServiceLineLength(sp, z);
-    if (n == 0) return 0;
+    if (n == 0) return extra;
     float perCell = SecondsPerCell();
-    float waitSeconds = n * ServiceIntervalOr(sp, perCell);
-    return (int)(waitSeconds / perCell * 10.0f + 0.5f);
+    float waitSeconds = n * ServiceIntervalOr(sp, perCell * slow);
+    return extra + (int)(waitSeconds / perCell * 10.0f + 0.5f);
 }
 
 // The front of a ladder line may start climbing when no other end's front that is
@@ -1812,6 +1823,7 @@ void UpdateMovers(void) {
                     m->y = target.y * CELL_SIZE + CELL_SIZE * 0.5f;
                     float zDir = (target.z > cellZ) ? 1.0f : -1.0f;
                     float zRate = effectiveSpeed / (float)CELL_SIZE;
+                    if (isLadderTransition) zRate *= ClimbSpeedFactor();   // climbing is slower than walking
                     m->z += zDir * zRate * dt;
                     bool zArrived = (zDir > 0.0f) ? (m->z >= (float)target.z)
                                                    : (m->z <= (float)target.z);

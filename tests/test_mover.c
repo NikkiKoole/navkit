@@ -1146,6 +1146,8 @@ static void SetupLadderFloors(void) {
         }
     grid[1][2][3] = CELL_LADDER_BOTH;
     grid[2][2][3] = CELL_LADDER_BOTH;
+    BuildEntrances();   // waiting movers re-plan (queue cost): they need the graph
+    BuildGraph();
     ClearMovers();
 }
 
@@ -1221,7 +1223,9 @@ describe(ladder_queue_cost) {
             if (queue >= 50 && p0 >= 0 && servicePoints[p0].samples > 0) break;
         }
         expect(queue >= 50);
-        expect(LadderQueueExtraCost(9, 2, 1, 1) == 0);
+        // Ladder B has no queue: only the slow-climb extra (default speed 0.5:
+        // a level costs twice the step onto the cell above, i.e. one step more)
+        expect(LadderQueueExtraCost(9, 2, 1, 1) == GetCellMoveCost(9, 2, 2));
 
         // From next to A to just above it: A is 2 cells away, B 4; with the queue, B wins
         static Point buf[MAX_PATH];
@@ -1248,7 +1252,7 @@ describe(ladder_queue_cost) {
             const Mover* m = &movers[k];
             if (m->active && m->z - floorf(m->z) > 0.0001f && (int)(m->x / CELL_SIZE) == 3 && (int)(m->y / CELL_SIZE) == 2) people++;
         }
-        int expected = (int)(people * interval / perCell * 10.0f + 0.5f);
+        int expected = GetCellMoveCost(3, 2, 2) + (int)(people * interval / perCell * 10.0f + 0.5f);   // slow climb + queue
         expect(abs(now - expected) <= 1);
 
         // Without the queue cost the short way (A) is chosen
@@ -1280,7 +1284,7 @@ describe(single_file_ladders) {
         moverCount = 6;
         int mostOnFootSpot = 0, mostClimbing = 0;
         bool allArrived = false;
-        for (int t = 0; t < 1500 && !allArrived; t++) {
+        for (int t = 0; t < 3000 && !allArrived; t++) {
             Tick();
             int onSpot = 0, climbing = 0, active = 0;
             for (int i = 0; i < 6; i++) {
@@ -1299,6 +1303,27 @@ describe(single_file_ladders) {
         expect(allArrived);
         expect(mostClimbing == 1);
         expect(mostOnFootSpot <= 1);     // only the front stands on the foot
+    }
+
+    it("climbing is slower than walking by ladderClimbSpeed") {
+        int ticks[2];
+        float speeds[2] = {1.0f, 0.5f};
+        float saved = ladderClimbSpeed;
+        for (int run = 0; run < 2; run++) {
+            ladderClimbSpeed = speeds[run];
+            SetupLadderFloors();
+            AddLadderMover(0, 2, 2, 1, 6, 2, 2);
+            moverCount = 1;
+            int climbing = 0;
+            for (int t = 0; t < 600 && movers[0].active; t++) {
+                Tick();
+                if (movers[0].z - floorf(movers[0].z) > 0.0001f) climbing++;
+            }
+            ticks[run] = climbing;
+        }
+        ladderClimbSpeed = saved;
+        expect(ticks[0] > 0);
+        expect(ticks[1] >= ticks[0] * 18 / 10 && ticks[1] <= ticks[0] * 22 / 10);   // ~2x as long
     }
 
     it("handles movers going up and down at the same time") {

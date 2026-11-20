@@ -1249,6 +1249,7 @@ void Console_RegisterGameVars(void) {
     Console_RegisterVar("singleFileLadders", &useSingleFileLadders, CVAR_BOOL);
     Console_RegisterVar("scenarioMovers", &scenarioMovers, CVAR_INT);
     Console_RegisterVar("ladderQueueCost", &useLadderQueueCost, CVAR_BOOL);
+    Console_RegisterVar("ladderClimbSpeed", &ladderClimbSpeed, CVAR_FLOAT);
     Console_RegisterVar("wallRepulsion", &useWallRepulsion, CVAR_BOOL);
     Console_RegisterVar("wallSlide", &useWallSliding, CVAR_BOOL);
     Console_RegisterVar("dirAvoid", &useDirectionalAvoidance, CVAR_BOOL);
