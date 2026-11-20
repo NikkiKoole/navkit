@@ -1,6 +1,5 @@
 // scenarios.c - Built-in demo/test scenarios (see scenarios.h)
 #include "scenarios.h"
-#include "../entities/service.h"
 #include "../game_state.h"
 #include "../world/cell_defs.h"
 #include "../world/material.h"
@@ -255,7 +254,6 @@ static void LadderTickStats(void) {
         if (next.x != x || next.y != y || next.z == z) continue;
         waitingNow++;
         BumpCount(queues, &queueCount, x, y, z, &n);
-        }
         if (n > ladderLongestQueue) {
             ladderLongestQueue = n;
             ladderLongestX = x; ladderLongestY = y; ladderLongestZ = z;
