@@ -255,6 +255,38 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
 // Explicit depth (1..MAX_GRID_DEPTH). The variants above always use MAX_GRID_DEPTH.
 void InitGridWithDimensions(int width, int height, int depth, int chunkW, int chunkH);
 
+// Sparse per-cell layers (step 3): one block per 16x16 chunk column (all z, 4096 cells), only
+// for chunks that hold something. A missing block reads as the layer's empty value. Read with
+// SparseLayerRead (const; never allocates), write with SparseLayerWrite (allocates the block,
+// filled with the empty value). Blocks are freed by SparseLayerClear and when the map size changes.
+typedef struct {
+    void** blocks;          // [storeChunksX * storeChunksY], NULL = all empty
+    int blockCount;
+    size_t elemSize;
+    const void* empty;      // the empty value (elemSize bytes)
+    int allocatedBlocks;    // for reports
+    const char* name;
+} SparseLayer;
+
+static inline int SparseChunkOf(int x, int y) {
+    return (y >> STORE_CHUNK_SHIFT) * storeChunksX + (x >> STORE_CHUNK_SHIFT);
+}
+static inline int SparseCellOf(int x, int y, int z) {
+    return (z << 8) | ((y & STORE_MASK) << STORE_CHUNK_SHIFT) | (x & STORE_MASK);
+}
+static inline const void* SparseLayerRead(const SparseLayer* L, int x, int y, int z) {
+    const unsigned char* b = (const unsigned char*)L->blocks[SparseChunkOf(x, y)];
+    return b ? b + (size_t)SparseCellOf(x, y, z) * L->elemSize : L->empty;
+}
+void* SparseLayerAllocBlock(SparseLayer* L, int chunk);
+static inline void* SparseLayerWrite(SparseLayer* L, int x, int y, int z) {
+    int c = SparseChunkOf(x, y);
+    unsigned char* b = (unsigned char*)L->blocks[c];
+    if (!b) b = (unsigned char*)SparseLayerAllocBlock(L, c);
+    return b + (size_t)SparseCellOf(x, y, z) * L->elemSize;
+}
+void SparseLayerClear(SparseLayer* L);   // free every block: all cells empty
+
 // Clear a whole layer (gridLayerCells elements) to fillByte. The rest of the static array was never written, so it is
 // still zero and its pages are never touched: a small map in a big-cap build does not pay for it.
 // ClearGridPlane does the same for a [MAX_GRID_HEIGHT][MAX_GRID_WIDTH] scratch plane (used rows

@@ -46,6 +46,16 @@ static _Alignas(16) unsigned char saveRowBuf[MAX_GRID_WIDTH * 32];
             memcpy(&MACRO(x_, (y), (z)), saveRowBuf + (size_t)x_ * ROW_ELEM_SIZE(MACRO), ROW_ELEM_SIZE(MACRO)); \
     } while (0)
 #define SAVE_ROW(f, MACRO, y, z) do { ROW_TO_BUF(MACRO, y, z); fwrite(saveRowBuf, ROW_ELEM_SIZE(MACRO), gridWidth, (f)); } while (0)
+// Sparse layer (grid.h SparseLayer): write only cells that differ from the empty value, so
+// loading a mostly-empty layer doesn't allocate a block for every chunk.
+#define LOAD_ROW_SPARSE(f, LAYER, MUTMACRO, y, z) do { \
+        size_t es_ = (LAYER).elemSize; \
+        fread(saveRowBuf, es_, gridWidth, (f)); \
+        for (int x_ = 0; x_ < gridWidth; x_++) { \
+            if (memcmp(saveRowBuf + (size_t)x_ * es_, (LAYER).empty, es_) != 0) \
+                memcpy(&MUTMACRO(x_, (y), (z)), saveRowBuf + (size_t)x_ * es_, es_); \
+        } \
+    } while (0)
 #define LOAD_ROW(f, MACRO, y, z) do { fread(saveRowBuf, ROW_ELEM_SIZE(MACRO), gridWidth, (f)); ROW_FROM_BUF(MACRO, y, z); } while (0)
 #define MARKER_ENTITIES 0x454E5449  // "ENTI"
 #define MARKER_VIEW     0x56494557  // "VIEW"
@@ -761,11 +771,12 @@ bool LoadWorld(const char* filename) {
         }
     }
     
-    // Designations
+    // Designations (sparse: start empty, then write the saved non-empty cells)
     activeDesignationCount = 0;
+    SparseLayerClear(&designationLayer);
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            LOAD_ROW(f, DESIGNATION, y, z);
+            LOAD_ROW_SPARSE(f, designationLayer, DESIGNATION_MUT, y, z);
             // Count active designations for early-exit optimizations
             for (int x = 0; x < gridWidth; x++) {
                 if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {

@@ -84,9 +84,13 @@ typedef struct {
 #define DIG_ROOTS_WORK_TIME 0.6f      // Digging roots from soil
 #define HUNT_ATTACK_WORK_TIME 0.8f    // Attack duration (~4s bare-handed, ~2s with cutting tool)
 
-// Storage: one designation per cell (sparse would be better for huge maps, but this is simple)
-extern Designation* designations;
-#define DESIGNATION(x, y, z) (designations CELL_AT((x), (y), (z)))
+// Storage: sparse (grid.h SparseLayer): only 16x16 chunk columns that hold a designation have
+// memory. DESIGNATION(x, y, z) is read-only (an empty cell reads as type NONE, assignedMover -1);
+// write through DESIGNATION_MUT(x, y, z), which allocates the chunk's block. GetDesignation()
+// returns NULL for empty cells, so its result is always safe to modify.
+extern SparseLayer designationLayer;
+#define DESIGNATION(x, y, z) (*(const Designation*)SparseLayerRead(&designationLayer, (x), (y), (z)))
+#define DESIGNATION_MUT(x, y, z) (*(Designation*)SparseLayerWrite(&designationLayer, (x), (y), (z)))
 
 // =============================================================================
 // Blueprints (for construction)

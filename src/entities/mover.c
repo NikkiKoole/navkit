@@ -1035,8 +1035,8 @@ void ClearMovers(void) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
-                    DESIGNATION(x, y, z).assignedMover = -1;
-                    DESIGNATION(x, y, z).progress = 0.0f;
+                    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+                    DESIGNATION_MUT(x, y, z).progress = 0.0f;
                 }
             }
         }

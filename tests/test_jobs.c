@@ -11921,8 +11921,8 @@ describe(chop_felled_transition) {
         // FellTree clears the trunk and CHOP designation, places CELL_TREE_FELLED
         // at the SAME cell. Crucially, FellTree does NOT invalidate the chop cache.
         GRID(5, 3, 1) = CELL_AIR;  // Trunk removed
-        DESIGNATION(5, 3, 1).type = DESIGNATION_NONE;  // CHOP designation cleared
-        DESIGNATION(5, 3, 1).assignedMover = -1;
+        DESIGNATION_MUT(5, 3, 1).type = DESIGNATION_NONE;  // CHOP designation cleared
+        DESIGNATION_MUT(5, 3, 1).assignedMover = -1;
         activeDesignationCount--;
 
         // Felled trunk lands at same cell (this is what FellTree does)

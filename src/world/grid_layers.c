@@ -69,11 +69,39 @@ static void FillEmptyWater(void) {
     FILL_GRID_LAYER(waterGrid, &emptyStable);
 }
 
-static void FillEmptyDesignations(void) {
-    Designation empty;
-    memset(&empty, 0, sizeof(empty));
-    empty.assignedMover = -1;
-    FILL_GRID_LAYER(designations, &empty);
+// ---- Sparse layers ----
+static const Designation emptyDesignation = { .type = DESIGNATION_NONE, .assignedMover = -1 };
+SparseLayer designationLayer = { NULL, 0, sizeof(Designation), &emptyDesignation, 0, "designations" };
+
+static SparseLayer* const sparseLayers[] = { &designationLayer };
+#define SPARSE_LAYER_COUNT ((int)(sizeof(sparseLayers) / sizeof(sparseLayers[0])))
+
+void* SparseLayerAllocBlock(SparseLayer* L, int chunk) {
+    size_t bytes = (size_t)STORE_CHUNK_CELLS * L->elemSize;
+    unsigned char* b = (unsigned char*)malloc(bytes);
+    if (!b) { fprintf(stderr, "SparseLayerAllocBlock: out of memory (%s)\n", L->name); abort(); }
+    for (int i = 0; i < STORE_CHUNK_CELLS; i++) memcpy(b + (size_t)i * L->elemSize, L->empty, L->elemSize);
+    L->blocks[chunk] = b;
+    L->allocatedBlocks++;
+    return b;
+}
+
+void SparseLayerClear(SparseLayer* L) {
+    for (int i = 0; i < L->blockCount; i++) { free(L->blocks[i]); L->blocks[i] = NULL; }
+    L->allocatedBlocks = 0;
+}
+
+// New map size: drop every block and size the block table to the new chunk count.
+static void ResizeSparseLayers(void) {
+    int count = storeChunksX * storeChunksY;
+    for (int s = 0; s < SPARSE_LAYER_COUNT; s++) {
+        SparseLayer* L = sparseLayers[s];
+        SparseLayerClear(L);
+        free(L->blocks);
+        L->blocks = (void**)calloc((size_t)count, sizeof(void*));
+        if (!L->blocks) { fprintf(stderr, "ResizeSparseLayers: out of memory\n"); abort(); }
+        L->blockCount = count;
+    }
 }
 
 #define LAYER_DEF(name, fill) { (void**)&(name), sizeof(*(name)), (fill), NULL, #name }
@@ -105,7 +133,6 @@ static const GridLayerDef gridLayerDefs[] = {
     LAYER_DEF(temperatureGrid, 0),
     LAYER_DEF(snowGrid, 0),
     LAYER_DEF(snowAccumGrid, 0),
-    LAYER_DEF_FN(designations, FillEmptyDesignations),
     LAYER_DEF(wearGrid, 0),
     LAYER_DEF(growthTimer, 0),
     LAYER_DEF(targetHeight, 0),
@@ -182,6 +209,7 @@ void AllocGridLayers(void) {
     storeChunksY = STORE_CHUNKS_FOR(gridHeight);
     gridLayerCells = (size_t)storeChunksX * storeChunksY * STORE_CHUNK_STRIDE;
     BuildCellIndexTables();
+    ResizeSparseLayers();
 
     // Every layer starts on a page boundary, so a whole layer can be remapped to zero pages.
     size_t page = ArenaPageSize();
@@ -247,6 +275,11 @@ void GridLayersReport(void) {
             if (residentMB[order[b]] > residentMB[order[a]]) { int t = order[a]; order[a] = order[b]; order[b] = t; }
     printf("Grid layers: %.0f MB resident of %.0f MB arena (%zu cells/layer)\n",
            totalRes, (double)worldArenaBytes / (1024.0 * 1024.0), gridLayerCells);
+    for (int s = 0; s < SPARSE_LAYER_COUNT; s++) {
+        const SparseLayer* L = sparseLayers[s];
+        printf("  sparse %-15s %6d of %6d blocks, %.1f MB\n", L->name, L->allocatedBlocks, L->blockCount,
+               (double)L->allocatedBlocks * STORE_CHUNK_CELLS * L->elemSize / (1024.0 * 1024.0));
+    }
     for (int k = 0; k < GRID_LAYER_COUNT; k++) {
         int i = order[k];
         if (residentMB[i] < 0.5) break;

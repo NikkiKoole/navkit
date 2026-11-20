@@ -360,6 +360,36 @@ something lives there. Estimate (`large-worlds.md`): ~15 bytes per cell dense, s
 2048x2048x16 at ~1-1.5 GB instead of 5 GB. Pairs with active-chunk simulation (sims
 iterate chunks that have something, not the whole map).
 
+### Step 3 progress
+
+**Reading untouched memory is not free on macOS** (measured 2026-11-21): reading every page of a
+fresh 2 GB anonymous mapping gave 650 MB resident / 1.95 GB footprint, almost as much as writing
+it. So a dense layer is only cheap if nothing *reads* it everywhere either; sweeps that read a
+whole layer (e.g. `ClearMovers` over all designations) need real sparse storage.
+
+**Sparse layer** (`SparseLayer` in `grid.h`, `grid_layers.c`): one block per 16x16 chunk column
+(4096 cells, all z), `NULL` = every cell empty. `SparseLayerRead` returns the shared empty value
+for a missing block and never allocates; `SparseLayerWrite` allocates the block (filled with
+the empty value). Blocks are freed by `SparseLayerClear` and on map-size change.
+
+**Designations (done, 2026-11-21):** `DESIGNATION(x, y, z)` is now read-only (`const`), writes
+go through `DESIGNATION_MUT(x, y, z)`. Making the read macro `const` let the compiler find every
+write site (115 in src, 11 in tests). `GetDesignation()` returns NULL for empty cells, so its
+callers only touch existing blocks. Save/load: `LOAD_ROW_SPARSE` writes only non-empty cells
+into a cleared layer; the file format is unchanged.
+Verified: byte-identical saves vs step 1 (world 512/100, ladders, crafting, hubs, mood, survival,
+dollhouse, sandbox; a crafting save with active mining designations loaded and run 600 ticks;
+the v93 save). 512 tick time unchanged within noise.
+
+| peak footprint | before | after |
+|---|---|---|
+| 1024 map | 1.40 GB | 1.11 GB |
+| 2048 map | 5.9 GB | 4.65 GB (world scenario: 0 of 16,641 blocks allocated) |
+
+Next candidates (2048): the other non-zero empty fills (water stable bit 2 B, source items 0xFF
+2 x 1 B, explored 1 B: ~350 MB), sparse farm/fire/smoke/steam, tree data (growth timer 4 B +
+height + harvest, written in every chunk with a tree), then the HPA* graph (~1.7 GB of malloc).
+
 ## Allocation model (for steps 2-3)
 
 Group memory by lifetime instead of one allocation per layer. Three small pieces, no

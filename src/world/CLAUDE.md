@@ -19,6 +19,10 @@ Accessors: `GetWallMaterial(x,y,z)`, `SetWallMaterial(x,y,z,m)`, `IsWallNatural(
 `layer[z][y][x]`: `CELL_AT` in `grid.h` is the only place that knows the storage layout (it is
 moving to chunk-major, runtime-sized storage). `make test` fails on raw indexing
 (`tools/check_layer_access.sh`). Clear whole layers with `CLEAR_GRID_LAYER` / `FILL_GRID_LAYER`.
+**Designations are sparse**: `DESIGNATION(x, y, z)` is read-only; write with
+`DESIGNATION_MUT(x, y, z)` (allocates the chunk's block). `GetDesignation()` returns NULL for empty
+cells. Sparse layers (`SparseLayer`, `grid.h`) have no memory where a chunk is empty.
+
 Storage is chunk-major (16x16 chunks holding all z, see `CellIndex` in `grid.h`). For whole-map
 sweeps use `FOR_X_IN_ROW(x, i, y, z)` + `LAYER_AT(layer, i)` (index computed once per 16-cell
 run; no `break` inside), not `LAYER(x, y, z)` per cell. Bounds-check build: `-DNAVKIT_CELL_CHECK`

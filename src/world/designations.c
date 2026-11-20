@@ -22,7 +22,6 @@
 #include <string.h>
 #include <math.h>
 
-Designation* designations = NULL;   // allocated in grid_layers.c
 
 // Active designation count for early-exit optimizations
 int activeDesignationCount = 0;
@@ -44,11 +43,7 @@ static unsigned int PositionHashLocal(int x, int y, int z) {
 }
 
 void InitDesignations(void) {
-    // Empty designation, unassigned (assignedMover = -1), in every used cell incl. the margin
-    Designation empty;
-    memset(&empty, 0, sizeof(empty));
-    empty.assignedMover = -1;
-    FILL_GRID_LAYER(designations, &empty);
+    SparseLayerClear(&designationLayer);   // every cell empty (type NONE, assignedMover -1)
     activeDesignationCount = 0;
     
     // Clear blueprints
@@ -77,9 +72,9 @@ bool DesignateMine(int x, int y, int z) {
         return false;
     }
     
-    DESIGNATION(x, y, z).type = DESIGNATION_MINE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_MINE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_MINE);
     
@@ -96,9 +91,9 @@ void CancelDesignation(int x, int y, int z) {
         activeDesignationCount--;
         InvalidateDesignationCache(oldType);  // Mark cache dirty
     }
-    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
 }
 
 bool HasMineDesignation(int x, int y, int z) {
@@ -115,7 +110,7 @@ Designation* GetDesignation(int x, int y, int z) {
     if (DESIGNATION(x, y, z).type == DESIGNATION_NONE) {
         return NULL;
     }
-    return &DESIGNATION(x, y, z);
+    return &DESIGNATION_MUT(x, y, z);
 }
 
 bool FindUnassignedMineDesignation(int* outX, int* outY, int* outZ) {
@@ -123,7 +118,7 @@ bool FindUnassignedMineDesignation(int* outX, int* outY, int* outZ) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                Designation* d = &DESIGNATION(x, y, z);
+                Designation* d = &DESIGNATION_MUT(x, y, z);
                 if (d->type == DESIGNATION_MINE && d->assignedMover == -1) {
                     *outX = x;
                     *outY = y;
@@ -187,9 +182,9 @@ void CompleteMineDesignation(int x, int y, int z) {
     if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         activeDesignationCount--;
     }
-    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     
     // Validate nearby ramps - mining may have removed solid support
     ValidateAndCleanupRamps(x - 2, y - 2, z - 1, x + 2, y + 2, z + 1);
@@ -221,7 +216,7 @@ void DesignationsTick(float dt) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                Designation* d = &DESIGNATION(x, y, z);
+                Designation* d = &DESIGNATION_MUT(x, y, z);
                 if (d->type == DESIGNATION_NONE) continue;
                 if (d->unreachableCooldown > 0.0f) {
                     d->unreachableCooldown = fmaxf(0.0f, d->unreachableCooldown - dt);
@@ -279,9 +274,9 @@ bool DesignateChannel(int x, int y, int z) {
         }
     }
     
-    DESIGNATION(x, y, z).type = DESIGNATION_CHANNEL;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_CHANNEL;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_CHANNEL);
     
@@ -500,9 +495,9 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
     if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         activeDesignationCount--;
     }
-    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     
     // === STEP 5: Validate nearby ramps ===
     // Channeling may have removed the solid support for adjacent ramps
@@ -579,9 +574,9 @@ bool DesignateDigRamp(int x, int y, int z) {
         return false;  // No adjacent walkable floor
     }
     
-    DESIGNATION(x, y, z).type = DESIGNATION_DIG_RAMP;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_DIG_RAMP;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_DIG_RAMP);
     
@@ -641,9 +636,9 @@ void CompleteDigRampDesignation(int x, int y, int z, int moverIdx) {
     }
     
     // Clear designation
-    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount--;
     InvalidateDesignationCache(DESIGNATION_DIG_RAMP);
     ValidateAndCleanupRamps(x - 2, y - 2, z - 1, x + 2, y + 2, z + 1);
@@ -691,9 +686,9 @@ bool DesignateRemoveFloor(int x, int y, int z) {
         return false;  // No constructed floor to remove
     }
     
-    DESIGNATION(x, y, z).type = DESIGNATION_REMOVE_FLOOR;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_REMOVE_FLOOR;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_REMOVE_FLOOR);
     
@@ -742,9 +737,9 @@ void CompleteRemoveFloorDesignation(int x, int y, int z, int moverIdx) {
     if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         activeDesignationCount--;
     }
-    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     
     // Note: mover will fall if there's nothing solid below - handled by mover update tick
     InvalidateDesignationCache(DESIGNATION_REMOVE_FLOOR);
@@ -788,9 +783,9 @@ bool DesignateRemoveRamp(int x, int y, int z) {
         return false;
     }
     
-    DESIGNATION(x, y, z).type = DESIGNATION_REMOVE_RAMP;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_REMOVE_RAMP;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_REMOVE_RAMP);
     
@@ -853,9 +848,9 @@ void CompleteRemoveRampDesignation(int x, int y, int z, int moverIdx) {
     if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         activeDesignationCount--;
     }
-    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     
     InvalidateDesignationCache(DESIGNATION_REMOVE_RAMP);
     (void)moverIdx;  // Could be used for special handling later
@@ -925,9 +920,9 @@ bool DesignateChop(int x, int y, int z) {
         return false;
     }
     
-    DESIGNATION(x, y, z).type = DESIGNATION_CHOP;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_CHOP;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_CHOP);
     
@@ -955,9 +950,9 @@ bool DesignateChopFelled(int x, int y, int z) {
         return false;
     }
 
-    DESIGNATION(x, y, z).type = DESIGNATION_CHOP_FELLED;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_CHOP_FELLED;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_CHOP_FELLED);
 
@@ -1094,9 +1089,9 @@ static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
         if (DESIGNATION(cx, cy, cz).type != DESIGNATION_NONE) {
             InvalidateDesignationCache(DESIGNATION(cx, cy, cz).type);
             activeDesignationCount--;
-            DESIGNATION(cx, cy, cz).type = DESIGNATION_NONE;
-            DESIGNATION(cx, cy, cz).assignedMover = -1;
-            DESIGNATION(cx, cy, cz).progress = 0.0f;
+            DESIGNATION_MUT(cx, cy, cz).type = DESIGNATION_NONE;
+            DESIGNATION_MUT(cx, cy, cz).assignedMover = -1;
+            DESIGNATION_MUT(cx, cy, cz).progress = 0.0f;
         }
 
         if (cx < minX) minX = cx;
@@ -1400,9 +1395,9 @@ bool DesignateGatherSapling(int x, int y, int z) {
         return false;
     }
     
-    DESIGNATION(x, y, z).type = DESIGNATION_GATHER_SAPLING;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_GATHER_SAPLING;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_GATHER_SAPLING);
     
@@ -1434,9 +1429,9 @@ void CompleteGatherSaplingDesignation(int x, int y, int z, int moverIdx) {
                           (uint8_t)saplingMat);
     
     // Clear designation
-    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount--;
     InvalidateDesignationCache(DESIGNATION_GATHER_SAPLING);
 }
@@ -1490,9 +1485,9 @@ bool DesignatePlantSapling(int x, int y, int z) {
         }
     }
     
-    DESIGNATION(x, y, z).type = DESIGNATION_PLANT_SAPLING;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_PLANT_SAPLING;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_PLANT_SAPLING);
     
@@ -1512,9 +1507,9 @@ void CompletePlantSaplingDesignation(int x, int y, int z, MaterialType treeMat, 
     PlaceSapling(x, y, z, treeMat);
     
     // Clear designation
-    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount--;
     InvalidateDesignationCache(DESIGNATION_PLANT_SAPLING);
 }
@@ -1565,9 +1560,9 @@ bool DesignateGatherGrass(int x, int y, int z) {
         return false;
     }
     
-    DESIGNATION(x, y, z).type = DESIGNATION_GATHER_GRASS;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_GATHER_GRASS;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_GATHER_GRASS);
     EventLog("Designated GATHER_GRASS at (%d,%d,z%d) walkable=%d", x, y, z, IsCellWalkableAt(z, y, x));
@@ -1599,9 +1594,9 @@ void CompleteGatherGrassDesignation(int x, int y, int z, int moverIdx) {
     SpawnItem(spawnX, spawnY, (float)z, ITEM_GRASS);
     
     // Clear designation
-    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount--;
     InvalidateDesignationCache(DESIGNATION_GATHER_GRASS);
 }
@@ -1651,9 +1646,9 @@ bool DesignateGatherReeds(int x, int y, int z) {
         return false;
     }
 
-    DESIGNATION(x, y, z).type = DESIGNATION_GATHER_REEDS;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_GATHER_REEDS;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_GATHER_REEDS);
     EventLog("Designated GATHER_REEDS at (%d,%d,z%d)", x, y, z);
@@ -1685,9 +1680,9 @@ void CompleteGatherReedsDesignation(int x, int y, int z, int moverIdx) {
     SpawnItem(spawnX, spawnY, (float)z, ITEM_REEDS);
 
     // Clear designation
-    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount--;
     InvalidateDesignationCache(DESIGNATION_GATHER_REEDS);
 }
@@ -1731,9 +1726,9 @@ bool DesignateGatherTree(int x, int y, int z) {
         return false;
     }
 
-    DESIGNATION(x, y, z).type = DESIGNATION_GATHER_TREE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_GATHER_TREE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_GATHER_TREE);
 
@@ -1772,9 +1767,9 @@ void CompleteGatherTreeDesignation(int x, int y, int z, int moverIdx) {
     SpawnItemWithMaterial(spawnX, spawnY, (float)z, ITEM_LEAVES, (uint8_t)treeMat);
 
     // Clear designation
-    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount--;
     InvalidateDesignationCache(DESIGNATION_GATHER_TREE);
 }
@@ -1817,9 +1812,9 @@ bool DesignateClean(int x, int y, int z) {
         return false;
     }
 
-    DESIGNATION(x, y, z).type = DESIGNATION_CLEAN;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_CLEAN;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_CLEAN);
 
@@ -1844,9 +1839,9 @@ void CompleteCleanDesignation(int x, int y, int z) {
     if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         activeDesignationCount--;
     }
-    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     InvalidateDesignationCache(DESIGNATION_CLEAN);
 }
 
@@ -1893,9 +1888,9 @@ bool DesignateHarvestBerry(int x, int y, int z) {
         return false;
     }
 
-    DESIGNATION(x, y, z).type = DESIGNATION_HARVEST_BERRY;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_HARVEST_BERRY;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_HARVEST_BERRY);
 
@@ -1920,9 +1915,9 @@ void CompleteHarvestBerryDesignation(int x, int y, int z) {
     if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         activeDesignationCount--;
     }
-    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     InvalidateDesignationCache(DESIGNATION_HARVEST_BERRY);
 }
 
@@ -1969,9 +1964,9 @@ bool DesignateKnap(int x, int y, int z) {
         return false;
     }
 
-    DESIGNATION(x, y, z).type = DESIGNATION_KNAP;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_KNAP;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_KNAP);
 
@@ -1991,9 +1986,9 @@ bool HasKnapDesignation(int x, int y, int z) {
 void CompleteKnapDesignation(int x, int y, int z, int moverIdx) {
     (void)moverIdx;
     // Wall is NOT consumed — just clear the designation
-    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount--;
     InvalidateDesignationCache(DESIGNATION_KNAP);
 }
@@ -2040,9 +2035,9 @@ bool DesignateDigRoots(int x, int y, int z) {
         return false;
     }
 
-    DESIGNATION(x, y, z).type = DESIGNATION_DIG_ROOTS;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_DIG_ROOTS;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_DIG_ROOTS);
     EventLog("Designated DIG_ROOTS at (%d,%d,z%d) mat=%s", x, y, z, MaterialName(belowMat));
@@ -2075,9 +2070,9 @@ void CompleteDigRootsDesignation(int x, int y, int z, int moverIdx) {
     }
 
     // Clear designation
-    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount--;
     InvalidateDesignationCache(DESIGNATION_DIG_ROOTS);
 }
@@ -2110,9 +2105,9 @@ bool DesignateExplore(int x, int y, int z) {
     }
 
     // Target cell CAN be unwalkable (wall you're scouting toward) — minimal validation
-    DESIGNATION(x, y, z).type = DESIGNATION_EXPLORE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_EXPLORE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_EXPLORE);
 
@@ -2134,9 +2129,9 @@ void CompleteExploreDesignation(int x, int y, int z) {
     if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         activeDesignationCount--;
     }
-    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     InvalidateDesignationCache(DESIGNATION_EXPLORE);
 }
 
@@ -2168,10 +2163,10 @@ bool DesignateFarm(int x, int y, int z) {
     // Don't designate already-tilled cells
     if (FARM(x, y, z).tilled) return false;
 
-    DESIGNATION(x, y, z).type = DESIGNATION_FARM;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
-    DESIGNATION(x, y, z).unreachableCooldown = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_FARM;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).unreachableCooldown = 0.0f;
     activeDesignationCount++;
     InvalidateDesignationCache(DESIGNATION_FARM);
     return true;
@@ -2213,9 +2208,9 @@ void CompleteFarmDesignation(int x, int y, int z, int moverIdx) {
     if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
         activeDesignationCount--;
     }
-    DESIGNATION(x, y, z).type = DESIGNATION_NONE;
-    DESIGNATION(x, y, z).assignedMover = -1;
-    DESIGNATION(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
     InvalidateDesignationCache(DESIGNATION_FARM);
 }
 

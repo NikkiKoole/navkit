@@ -178,9 +178,9 @@ describe(fog_mine) {
         SetWallMaterial(7, 5, 0, MAT_GRANITE);
 
         // Create mine designation
-        DESIGNATION(7, 5, 0).type = DESIGNATION_MINE;
-        DESIGNATION(7, 5, 0).assignedMover = -1;
-        DESIGNATION(7, 5, 0).unreachableCooldown = 0.0f;
+        DESIGNATION_MUT(7, 5, 0).type = DESIGNATION_MINE;
+        DESIGNATION_MUT(7, 5, 0).assignedMover = -1;
+        DESIGNATION_MUT(7, 5, 0).unreachableCooldown = 0.0f;
         activeDesignationCount = 1;
 
         SetupMoverAt(2, 2, 0);
@@ -213,9 +213,9 @@ describe(fog_mine) {
         SetWallMaterial(7, 5, 0, MAT_GRANITE);
 
         // Create mine designation
-        DESIGNATION(7, 5, 0).type = DESIGNATION_MINE;
-        DESIGNATION(7, 5, 0).assignedMover = -1;
-        DESIGNATION(7, 5, 0).unreachableCooldown = 0.0f;
+        DESIGNATION_MUT(7, 5, 0).type = DESIGNATION_MINE;
+        DESIGNATION_MUT(7, 5, 0).assignedMover = -1;
+        DESIGNATION_MUT(7, 5, 0).unreachableCooldown = 0.0f;
         activeDesignationCount = 1;
 
         SetupMoverAt(2, 2, 0);
@@ -246,9 +246,9 @@ describe(fog_explore_exception) {
         SetExplored(2, 2, 0);
 
         // Create explore designation at unexplored (5,5,0)
-        DESIGNATION(5, 5, 0).type = DESIGNATION_EXPLORE;
-        DESIGNATION(5, 5, 0).assignedMover = -1;
-        DESIGNATION(5, 5, 0).unreachableCooldown = 0.0f;
+        DESIGNATION_MUT(5, 5, 0).type = DESIGNATION_EXPLORE;
+        DESIGNATION_MUT(5, 5, 0).assignedMover = -1;
+        DESIGNATION_MUT(5, 5, 0).unreachableCooldown = 0.0f;
         activeDesignationCount = 1;
 
         SetupMoverAt(2, 2, 0);
