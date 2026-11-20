@@ -413,7 +413,7 @@ describe(natural_water_fallback) {
         movers[mi].currentJobId = -1;
 
         // Place water on the grid at (5, 5, 1)
-        WATER(5, 5, 1).level = 5;
+        WATER_MUT(5, 5, 1).level = 5;
 
         ProcessFreetimeNeeds();
 
@@ -468,7 +468,7 @@ describe(fill_water_pot) {
         items[potIdx].state = ITEM_ON_GROUND;
 
         // Place water on grid
-        WATER(7, 7, 1).level = 5;
+        WATER_MUT(7, 7, 1).level = 5;
 
         int jobId = WorkGiver_FillWaterPot(mi);
         expect(jobId >= 0);
@@ -483,7 +483,7 @@ describe(fill_water_pot) {
         InitJobSystem(MAX_MOVERS);
         RebuildIdleMoverList();
 
-        WATER(7, 7, 1).level = 5;
+        WATER_MUT(7, 7, 1).level = 5;
 
         int jobId = WorkGiver_FillWaterPot(mi);
         expect(jobId < 0);
@@ -513,7 +513,7 @@ describe(fill_water_pot) {
 
         int potIdx = SpawnItem(3 * CELL_SIZE + 4, 3 * CELL_SIZE + 4, 1.0f, ITEM_CLAY_POT);
         items[potIdx].state = ITEM_ON_GROUND;
-        WATER(7, 7, 1).level = 5;
+        WATER_MUT(7, 7, 1).level = 5;
 
         int jobId = WorkGiver_FillWaterPot(mi);
         expect(jobId < 0);
@@ -532,7 +532,7 @@ describe(fill_water_pot) {
         int w = SpawnItem(3 * CELL_SIZE + 4, 3 * CELL_SIZE + 4, 1.0f, ITEM_WATER);
         PutItemInContainer(w, potIdx);
 
-        WATER(7, 7, 1).level = 5;
+        WATER_MUT(7, 7, 1).level = 5;
 
         int jobId = WorkGiver_FillWaterPot(mi);
         expect(jobId < 0);

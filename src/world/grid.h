@@ -287,6 +287,17 @@ static inline void* SparseLayerWrite(SparseLayer* L, int x, int y, int z) {
 }
 void SparseLayerClear(SparseLayer* L);   // free every block: all cells empty
 
+// Row sweep over a sparse layer in plain x order: FOR_X_IN_SPARSE_ROW(layer, T, x, p, y, z) { ... }
+// visits only x whose chunk has a block, with T* p pointing at the cell (writable). Runs in
+// empty chunks are skipped entirely, so use it only where the loop body does nothing for an
+// empty cell. `continue` and `return` work; `break` doesn't (leaves only the current cell).
+#define FOR_X_IN_SPARSE_ROW(L, T, x, p, y, z) \
+    for (int x##RunStart_ = 0; x##RunStart_ < gridWidth; x##RunStart_ += STORE_CHUNK) \
+        for (T* x##Block_ = (T*)(L).blocks[SparseChunkOf(x##RunStart_, (y))]; x##Block_; x##Block_ = NULL) \
+            for (int x = x##RunStart_, x##RunEnd_ = (x##RunStart_ + STORE_CHUNK < gridWidth ? \
+                     x##RunStart_ + STORE_CHUNK : gridWidth); x < x##RunEnd_; x++) \
+                for (T* p = x##Block_ + SparseCellOf(x, (y), (z)); p; p = NULL)
+
 // Clear a whole layer (gridLayerCells elements) to fillByte. The rest of the static array was never written, so it is
 // still zero and its pages are never touched: a small map in a big-cap build does not pay for it.
 // ClearGridPlane does the same for a [MAX_GRID_HEIGHT][MAX_GRID_WIDTH] scratch plane (used rows

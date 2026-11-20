@@ -62,18 +62,15 @@ typedef struct {
     const char* name;
 } GridLayerDef;
 
-static void FillEmptyWater(void) {
-    WaterCell emptyStable;
-    memset(&emptyStable, 0, sizeof(emptyStable));
-    emptyStable.stable = 1;
-    FILL_GRID_LAYER(waterGrid, &emptyStable);
-}
 
 // ---- Sparse layers ----
 static const Designation emptyDesignation = { .type = DESIGNATION_NONE, .assignedMover = -1 };
 SparseLayer designationLayer = { NULL, 0, sizeof(Designation), &emptyDesignation, 0, "designations" };
 
-static SparseLayer* const sparseLayers[] = { &designationLayer };
+static const WaterCell emptyWater = { .stable = 1 };   // dry and stable: UpdateWater skips it
+SparseLayer waterLayer = { NULL, 0, sizeof(WaterCell), &emptyWater, 0, "water" };
+
+static SparseLayer* const sparseLayers[] = { &designationLayer, &waterLayer };
 #define SPARSE_LAYER_COUNT ((int)(sizeof(sparseLayers) / sizeof(sparseLayers[0])))
 
 void* SparseLayerAllocBlock(SparseLayer* L, int chunk) {
@@ -122,7 +119,6 @@ static const GridLayerDef gridLayerDefs[] = {
     LAYER_DEF(floorFinish, FINISH_ROUGH),
     LAYER_DEF(wallSourceItem, 0xFF),
     LAYER_DEF(floorSourceItem, 0xFF),
-    LAYER_DEF_FN(waterGrid, FillEmptyWater),
     LAYER_DEF(pressureVisitedGen, 0),
     LAYER_DEF(fireGrid, 0),
     LAYER_DEF(smokeGrid, 0),

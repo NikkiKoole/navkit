@@ -558,7 +558,7 @@ void RebuildPostLoadState(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                WaterCell* c = &WATER(x, y, z);
+                const WaterCell* c = &WATER(x, y, z);
                 if (c->level > 0 || c->isSource || c->isDrain) {
                     waterActiveCells++;
                 }
@@ -658,9 +658,10 @@ bool LoadWorld(const char* filename) {
     }
     
     // Water grid
+    SparseLayerClear(&waterLayer);   // sparse: load writes only non-empty cells
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            LOAD_ROW(f, WATER, y, z);
+            LOAD_ROW_SPARSE(f, waterLayer, WATER_MUT, y, z);
         }
     }
     

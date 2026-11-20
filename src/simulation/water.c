@@ -10,7 +10,6 @@
 #include <stdlib.h>
 
 // Water grid storage - single buffer (falling sand style)
-WaterCell* waterGrid = NULL;   // allocated in grid_layers.c
 
 // Global state
 bool waterEnabled = true;
@@ -54,10 +53,8 @@ void InitWater(void) {
 void ClearWater(void) {
     // Initialize with stable=1 so empty cells are skipped in UpdateWater.
     // WaterCell is a uint16_t bitfield: stable is bit 3, so value 0x0008.
-    WaterCell emptyStable = {0};
-    emptyStable.stable = 1;
-    // Only the used region: cells beyond it are never read (see ClearGridLayer).
-    FILL_GRID_LAYER(waterGrid, &emptyStable);
+    // Every cell empty and stable (the layer's empty value): drop all blocks
+    SparseLayerClear(&waterLayer);
     waterUpdateCount = 0;
     waterEvapAccum = 0.0f;
     wetnessSyncAccum = 0.0f;
@@ -86,18 +83,18 @@ static inline bool CanHoldWater(int x, int y, int z) {
 // Mark cell and neighbors as unstable
 void DestabilizeWater(int x, int y, int z) {
     if (WaterInBounds(x, y, z)) {
-        WATER(x, y, z).stable = false;
+        WATER_MUT(x, y, z).stable = false;
     }
     
     // 4 horizontal neighbors (orthogonal only, like DF pressure)
-    if (WaterInBounds(x-1, y, z)) WATER(x-1, y, z).stable = false;
-    if (WaterInBounds(x+1, y, z)) WATER(x+1, y, z).stable = false;
-    if (WaterInBounds(x, y-1, z)) WATER(x, y-1, z).stable = false;
-    if (WaterInBounds(x, y+1, z)) WATER(x, y+1, z).stable = false;
+    if (WaterInBounds(x-1, y, z)) WATER_MUT(x-1, y, z).stable = false;
+    if (WaterInBounds(x+1, y, z)) WATER_MUT(x+1, y, z).stable = false;
+    if (WaterInBounds(x, y-1, z)) WATER_MUT(x, y-1, z).stable = false;
+    if (WaterInBounds(x, y+1, z)) WATER_MUT(x, y+1, z).stable = false;
     
     // Above and below
-    if (WaterInBounds(x, y, z-1)) WATER(x, y, z-1).stable = false;
-    if (WaterInBounds(x, y, z+1)) WATER(x, y, z+1).stable = false;
+    if (WaterInBounds(x, y, z-1)) WATER_MUT(x, y, z-1).stable = false;
+    if (WaterInBounds(x, y, z+1)) WATER_MUT(x, y, z+1).stable = false;
 }
 
 // Displace water from a cell before placing a wall
@@ -137,7 +134,7 @@ void DisplaceWater(int x, int y, int z) {
 
 // Helper to check if a water cell is "active" (needs processing)
 static inline bool WaterCellIsActive(int x, int y, int z) {
-    WaterCell *wc = &WATER(x, y, z);
+    const WaterCell *wc = &WATER(x, y, z);
     return wc->level > 0 || wc->isSource || wc->isDrain;
 }
 
@@ -148,7 +145,7 @@ void SetWaterLevel(int x, int y, int z, int level) {
     if (level > WATER_MAX_LEVEL) level = WATER_MAX_LEVEL;
     
     int oldLevel = WATER(x, y, z).level;
-    WATER(x, y, z).level = (uint8_t)level;
+    WATER_MUT(x, y, z).level = (uint8_t)level;
     
     // Update presence grid: track transition from inactive to active or vice versa
     bool wasActive = oldLevel > 0 || WATER(x, y, z).isSource || WATER(x, y, z).isDrain;
@@ -161,7 +158,7 @@ void SetWaterLevel(int x, int y, int z, int level) {
     }
     
     if (oldLevel != level) {
-        WATER(x, y, z).pressureDirty = 1;
+        WATER_MUT(x, y, z).pressureDirty = 1;
         DestabilizeWater(x, y, z);
     }
 }
@@ -185,7 +182,7 @@ void SetWaterSource(int x, int y, int z, bool isSource) {
     if (!WaterInBounds(x, y, z)) return;
     
     bool wasActive = WaterCellIsActive(x, y, z);
-    WATER(x, y, z).isSource = isSource;
+    WATER_MUT(x, y, z).isSource = isSource;
     bool isActive = WaterCellIsActive(x, y, z);
     
     if (!wasActive && isActive) {
@@ -195,7 +192,7 @@ void SetWaterSource(int x, int y, int z, bool isSource) {
     }
     
     if (isSource) {
-        WATER(x, y, z).pressureDirty = 1;
+        WATER_MUT(x, y, z).pressureDirty = 1;
         DestabilizeWater(x, y, z);
     }
 }
@@ -205,7 +202,7 @@ void SetWaterDrain(int x, int y, int z, bool isDrain) {
     if (!WaterInBounds(x, y, z)) return;
     
     bool wasActive = WaterCellIsActive(x, y, z);
-    WATER(x, y, z).isDrain = isDrain;
+    WATER_MUT(x, y, z).isDrain = isDrain;
     bool isActive = WaterCellIsActive(x, y, z);
     
     if (!wasActive && isActive) {
@@ -215,7 +212,7 @@ void SetWaterDrain(int x, int y, int z, bool isDrain) {
     }
     
     if (isDrain) {
-        WATER(x, y, z).pressureDirty = 1;
+        WATER_MUT(x, y, z).pressureDirty = 1;
         DestabilizeWater(x, y, z);
     }
 }
@@ -277,8 +274,8 @@ static int TryFall(int x, int y, int z) {
     if (HAS_FLOOR(x, y, z)) return 0;  // Constructed floor blocks falling
     if (!CanHoldWater(x, y, z - 1)) return 0;  // Wall below
     
-    WaterCell* src = &WATER(x, y, z);
-    WaterCell* dst = &WATER(x, y, z-1);
+    WaterCell* src = &WATER_MUT(x, y, z);
+    WaterCell* dst = &WATER_MUT(x, y, z-1);
     
     if (src->level == 0) return 0;
     
@@ -330,7 +327,7 @@ static int TryFall(int x, int y, int z) {
 // Falling sand style: randomize direction order to prevent directional bias
 // Returns true if water moved
 static bool WaterTrySpread(int x, int y, int z) {
-    WaterCell* cell = &WATER(x, y, z);
+    WaterCell* cell = &WATER_MUT(x, y, z);
     if (cell->level == 0) return false;
     
     // Orthogonal neighbors - randomize order each call
@@ -355,7 +352,7 @@ static bool WaterTrySpread(int x, int y, int z) {
         
         if (!CanHoldWater(nx, ny, z)) continue;
         
-        WaterCell* neighbor = &WATER(nx, ny, z);
+        WaterCell* neighbor = &WATER_MUT(nx, ny, z);
         
         // Don't spread water into drains
         if (neighbor->isDrain) continue;
@@ -412,7 +409,7 @@ static bool WaterTrySpread(int x, int y, int z) {
 // full cells to find an outlet (BFS). Water can rise up to pressureSourceZ - 1.
 // Returns true if water moved via pressure
 static bool TryPressure(int x, int y, int z) {
-    WaterCell* cell = &WATER(x, y, z);
+    WaterCell* cell = &WATER_MUT(x, y, z);
     
     // Need full water with pressure to propagate
     if (cell->level < WATER_MAX_LEVEL) return false;
@@ -458,7 +455,7 @@ static bool TryPressure(int x, int y, int z) {
     // BFS through full cells looking for non-full cell
     while (queueHead < queueTail) {
         WaterPos pos = pressureQueue[queueHead++];
-        WaterCell* current = &WATER(pos.x, pos.y, pos.z);
+        WaterCell* current = &WATER_MUT(pos.x, pos.y, pos.z);
         
         // Found a non-full cell - push water here!
         if (current->level < WATER_MAX_LEVEL) {
@@ -524,7 +521,7 @@ static bool TryPressure(int x, int y, int z) {
 // Process a single water cell with DF-style rules
 // doEvap: interval has elapsed for evaporation
 static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
-    WaterCell* cell = &WATER(x, y, z);
+    WaterCell* cell = &WATER_MUT(x, y, z);
     bool moved = false;
     
     // Handle sources - refill to max and add pressure
@@ -646,19 +643,20 @@ void UpdateWater(void) {
     // Process from bottom to top (simple iteration, keeps early exit optimization)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            FOR_X_IN_ROW(x, i, y, z) {
+            // Chunks without a water block are all empty and stable: skipped by the iterator.
+            FOR_X_IN_SPARSE_ROW(waterLayer, WaterCell, x, wp, y, z) {
                 // At the start of each 16-cell run, skip the whole run if no cell in it would get
                 // past the three skips below (frozen, or stable and neither source nor drain).
                 if ((x & STORE_MASK) == 0) {
                     int runLen = gridWidth - x < STORE_CHUNK ? gridWidth - x : STORE_CHUNK;
                     unsigned anyWork = 0;
                     for (int k = 0; k < runLen; k++) {
-                        WaterCell c = LAYER_AT(waterGrid, i + k);
+                        WaterCell c = wp[k];
                         anyWork |= !c.isFrozen & (!c.stable | c.isSource | c.isDrain);
                     }
-                    if (!anyWork) { x += runLen - 1; i += runLen - 1; continue; }
+                    if (!anyWork) { x += runLen - 1; continue; }
                 }
-                WaterCell* cell = &LAYER_AT(waterGrid, i);
+                WaterCell* cell = wp;
                 
                 // Skip frozen water - it doesn't flow
                 if (cell->isFrozen) {
@@ -693,8 +691,8 @@ void UpdateWater(void) {
         wetnessSyncAccum -= wetnessIntervalGS;
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
-                FOR_X_IN_ROW(x, i, y, z) {
-                    int level = LAYER_AT(waterGrid, i).level;
+                FOR_X_IN_SPARSE_ROW(waterLayer, WaterCell, x, wp, y, z) {
+                    int level = wp->level;
                     if (level <= 0) continue;
                     
                     // Set wetness on the soil cell below the water
@@ -731,7 +729,7 @@ bool IsWaterFrozen(int x, int y, int z) {
 void FreezeWater(int x, int y, int z) {
     if (!WaterInBounds(x, y, z)) return;
     
-    WaterCell* cell = &WATER(x, y, z);
+    WaterCell* cell = &WATER_MUT(x, y, z);
     
     // No water to freeze
     if (cell->level == 0) return;
@@ -749,7 +747,7 @@ void FreezeWater(int x, int y, int z) {
 void ThawWater(int x, int y, int z) {
     if (!WaterInBounds(x, y, z)) return;
     
-    WaterCell* cell = &WATER(x, y, z);
+    WaterCell* cell = &WATER_MUT(x, y, z);
     
     if (!cell->isFrozen) return;
     
@@ -787,16 +785,16 @@ void UpdateWaterFreezing(void) {
     
     for (int z = 0; z < gridDepth; z++) {
         for (int y = yStart; y < yEnd; y++) {
-            FOR_X_IN_ROW(x, i, y, z) {
+            FOR_X_IN_SPARSE_ROW(waterLayer, WaterCell, x, wp, y, z) {
                 // Most of the map is dry: at the start of each 16-cell run, skip the whole run
                 // if none of it holds water (same result as testing each cell below).
                 if ((x & STORE_MASK) == 0) {
                     int runLen = gridWidth - x < STORE_CHUNK ? gridWidth - x : STORE_CHUNK;
                     unsigned anyLevel = 0;
-                    for (int k = 0; k < runLen; k++) anyLevel |= LAYER_AT(waterGrid, i + k).level;
-                    if (anyLevel == 0) { x += runLen - 1; i += runLen - 1; continue; }
+                    for (int k = 0; k < runLen; k++) anyLevel |= wp[k].level;
+                    if (anyLevel == 0) { x += runLen - 1; continue; }
                 }
-                WaterCell* cell = &LAYER_AT(waterGrid, i);
+                WaterCell* cell = wp;
                 
                 // Skip empty cells
                 if (cell->level == 0) continue;

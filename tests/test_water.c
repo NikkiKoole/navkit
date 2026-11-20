@@ -827,7 +827,7 @@ describe(water_evaporation) {
         
         // Place source at level 1 (unusual but should not evaporate)
         SetWaterSource(2, 0, 0, true);
-        WATER(2, 0, 0).level = 1;  // Force to level 1
+        WATER_MUT(2, 0, 0).level = 1;  // Force to level 1
         
         // Run simulation
         RunWaterTicks(1000);
@@ -964,7 +964,7 @@ describe(water_stability) {
         // Mark all as stable
         for (int y = 0; y < 3; y++) {
             for (int x = 0; x < 5; x++) {
-                WATER(x, y, 0).stable = true;
+                WATER_MUT(x, y, 0).stable = true;
             }
         }
         

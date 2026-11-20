@@ -1199,7 +1199,6 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     printf("\n");
     
     // Active cell counts
-    extern WaterCell* waterGrid;
     extern FireCell* fireGrid;
     extern SteamCell* steamGrid;
     int waterCells = 0, fireCells = 0, steamCells = 0, smokeCells = 0;

@@ -56,7 +56,7 @@ void RebuildSimActivityCounts(void) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 // Water: level > 0 or has source/drain
-                WaterCell *wc = &WATER(x, y, z);
+                const WaterCell *wc = &WATER(x, y, z);
                 if (wc->level > 0 || wc->isSource || wc->isDrain) {
                     waterActiveCells++;
                 }
@@ -119,7 +119,7 @@ bool ValidateSimActivityCounts(void) {
         int ambient = GetAmbientTemperature(z);
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                WaterCell *wc = &WATER(x, y, z);
+                const WaterCell *wc = &WATER(x, y, z);
                 if (wc->level > 0 || wc->isSource || wc->isDrain) actualWater++;
                 if (GetSteamLevel(x, y, z) > 0) actualSteam++;
                 FireCell *fc = &FIRE(x, y, z);

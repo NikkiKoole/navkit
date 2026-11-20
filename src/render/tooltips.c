@@ -640,7 +640,7 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     snprintf(lines[lineCount++], sizeof(lines[0]), "Insulation: %s", tierName);
 
     // Water info
-    WaterCell* water = &WATER(cellX, cellY, cellZ);
+    const WaterCell* water = &WATER(cellX, cellY, cellZ);
     if (water->level > 0 || water->isSource || water->isDrain) {
         snprintf(lines[lineCount++], sizeof(lines[0]), "Water: %d/7%s", 
             water->level, water->isFrozen ? " [FROZEN]" : "");
@@ -729,7 +729,7 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
 // Draw water tooltip when hovering over water
 static void DrawWaterTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     if (!IsExplored(cellX, cellY, cellZ)) return;
-    WaterCell* cell = &WATER(cellX, cellY, cellZ);
+    const WaterCell* cell = &WATER(cellX, cellY, cellZ);
     if (cell->level == 0 && !cell->isSource && !cell->isDrain) return;
 
     char lines[8][64];

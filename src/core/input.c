@@ -1382,7 +1382,7 @@ static void ExecuteRemoveWater(int x1, int y1, int x2, int y2, int z, bool shift
         int removedSources = 0, removedDrains = 0, removedWater = 0;
         for (int dy = y1; dy <= y2; dy++) {
             for (int dx = x1; dx <= x2; dx++) {
-                WaterCell* cell = &WATER(dx, dy, z);
+                const WaterCell* cell = &WATER(dx, dy, z);
                 if (cell->isSource) { SetWaterSource(dx, dy, z, false); removedSources++; }
                 else if (cell->isDrain) { SetWaterDrain(dx, dy, z, false); removedDrains++; }
                 else if (cell->level > 0) { SetWaterLevel(dx, dy, z, 0); removedWater++; }

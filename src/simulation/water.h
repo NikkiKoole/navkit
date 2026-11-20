@@ -42,8 +42,11 @@ typedef struct {
 } WaterCell;
 
 // Water grid (same dimensions as main grid)
-extern WaterCell* waterGrid;
-#define WATER(x, y, z) (waterGrid CELL_AT((x), (y), (z)))
+// Sparse (grid.h SparseLayer): memory only in chunks that hold water or a non-empty water state.
+// WATER(x, y, z) is read-only (an empty cell reads as level 0, stable); write with WATER_MUT.
+extern SparseLayer waterLayer;
+#define WATER(x, y, z) (*(const WaterCell*)SparseLayerRead(&waterLayer, (x), (y), (z)))
+#define WATER_MUT(x, y, z) (*(WaterCell*)SparseLayerWrite(&waterLayer, (x), (y), (z)))
 
 // Global state
 extern bool waterEnabled;           // Master toggle for water simulation
