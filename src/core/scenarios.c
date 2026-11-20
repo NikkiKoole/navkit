@@ -81,7 +81,7 @@ static int FindTerrainIndex(const char* name) {
 
 void ScenarioResetWorld(const char* terrain) {
     SnapshotOrRestoreSettings();
-
+    moverGoalPicker = NULL;
     // Entities first (ClearMovers also drops jobs and reservations)
     ClearMovers();
     ClearAnimals();
@@ -337,19 +337,79 @@ static void SetupTrainLong(void) {
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// hubs: many movers sharing a few destinations (pathfinding load test)
+// ---------------------------------------------------------------------------
+
+// 128x128 hills (levels, ramps), movers shuttle between 6 hubs spread over the
+// map: the colony pattern (stockpiles, kitchen, beds) where many movers go to
+// the same few places. Default 200 movers (scenarioMovers overrides). Compare
+// useSharedGoalFields on/off for pathfinding cost.
+#define HUB_COUNT 6
+static Point hubs[HUB_COUNT];
+static int hubCount;
+
+static bool HubGoalPicker(int moverIdx, Point* goal) {
+    if (hubCount == 0) return false;
+    const Mover* m = &movers[moverIdx];
+    int cx = (int)(m->x / CELL_SIZE), cy = (int)(m->y / CELL_SIZE), cz = (int)m->z;
+    for (int tries = 0; tries < 8; tries++) {
+        Point h = hubs[GetRandomValue(0, hubCount - 1)];
+        if (abs(h.x - cx) + abs(h.y - cy) < 4 && h.z == cz) continue;   // not the hub it is at
+        *goal = h;   // the shared destination: the hub cell itself
+        return true;
+    }
+    return false;
+}
+
+static void SetupHubs(void) {
+    // Hubs: walkable cells in the biggest reachability region, spread out (a
+    // jittered grid over the map, each snapped to the nearest good cell)
+    hubCount = 0;
+    Point anchor = GetRandomWalkableCell();
+    for (int k = 0; k < HUB_COUNT && anchor.x >= 0; k++) {
+        int tx = (k % 3) * gridWidth / 3 + gridWidth / 6, ty = (k / 3) * gridHeight / 2 + gridHeight / 4;
+        Point best = {-1, -1, -1};
+        int bestD = 1 << 30;
+        for (int z = 0; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y += 2)
+                for (int x = 0; x < gridWidth; x += 2) {
+                    if (!IsCellWalkableAt(z, y, x)) continue;
+                    int d = abs(x - tx) + abs(y - ty);
+                    if (d >= bestD || !IsReachable(anchor, (Point){x, y, z})) continue;
+                    bestD = d;
+                    best = (Point){x, y, z};
+                }
+        if (best.x >= 0) hubs[hubCount++] = best;
+    }
+    moverGoalPicker = HubGoalPicker;
+    endlessMoverMode = true;
+    int n = scenarioMovers > 0 ? scenarioMovers : 200;
+    for (int i = 0; i < n; i++) {
+        Point p = hubs[i % (hubCount > 0 ? hubCount : 1)];
+        Point s = {p.x + GetRandomValue(-3, 3), p.y + GetRandomValue(-3, 3), p.z};
+        if (s.x < 0 || s.y < 0 || s.x >= gridWidth || s.y >= gridHeight || !IsCellWalkableAt(s.z, s.y, s.x)) s = p;
+        SpawnMoverAt(s.x, s.y, s.z);
+    }
+    currentViewZ = hubCount > 0 ? hubs[0].z : 1;
+    AddMessage(TextFormat("Hubs: %d movers between %d hubs on %dx%d hills", n, hubCount, gridWidth, gridHeight), GREEN);
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
-                   NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck},
+                   NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
     {"ladder-choice", "Deck with two ladders 6 cells apart, 16 movers: compare ladderQueueCost on/off",
-                   NULL,        SetupLadderChoice, LadderTickStats, LadderPrintStats, LadderCheck},
+                   NULL,        SetupLadderChoice, LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
     {"mood",       "Comfort camp vs rough camp, 10 movers, needs on, slow days",
-                   "MoodTest",  SetupMood,     NULL, NULL, NULL},
+                   "MoodTest",  SetupMood,     NULL, NULL, NULL, 0, 0},
     {"crafting",   "Mine walls -> stonecutter -> stockpiles -> wall blueprint, 4 movers",
-                   "CraftTest", SetupCrafting, NULL, NULL, NULL},
+                   "CraftTest", SetupCrafting, NULL, NULL, NULL, 0, 0},
     {"train",      "Track loop, two stations, rocks to haul by train, 4 movers",
-                   "TrainTest", SetupTrain,    NULL, NULL, NULL},
+                   "TrainTest", SetupTrain,    NULL, NULL, NULL, 0, 0},
     {"train-long", "Long platforms, three stations, 4-car train, 4 movers",
-                   "TrainLong", SetupTrainLong, NULL, NULL, NULL},
+                   "TrainLong", SetupTrainLong, NULL, NULL, NULL, 0, 0},
+    {"hubs",       "128x128 hills, 200 movers shuttling between 6 hubs: pathfinding load",
+                   "Hills",     SetupHubs,     NULL, NULL, NULL, 128, 128},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 
@@ -386,6 +446,8 @@ bool RunScenario(const char* name) {
         ScenarioPrintList();
         return false;
     }
+    if (s->gridW > 0 && s->gridH > 0 && (gridWidth != s->gridW || gridHeight != s->gridH))
+        InitGridWithSizeAndChunkSize(s->gridW, s->gridH, 16, 16);
     ScenarioResetWorld(s->terrain);
     s->setup();
     currentScenario = s;

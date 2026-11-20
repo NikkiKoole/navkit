@@ -19,6 +19,7 @@ typedef struct {
     void (*tickStats)(void);   // optional: sampled after every headless tick
     void (*printStats)(void);  // optional: printed at the end of a headless run
     bool (*check)(char* why, int whyLen);   // optional: headless --check, false = fail (fill why)
+    int gridW, gridH;          // optional map size (0 = keep the current size)
 } Scenario;
 
 int ScenarioCount(void);

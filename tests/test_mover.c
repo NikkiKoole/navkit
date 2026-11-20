@@ -2819,6 +2819,35 @@ describe(z_climb_timing) {
         expect(sawFractional == true);
     }
 
+    it("never stands inside the solid cell below a ramp's exit while climbing") {
+        const char* map =
+            "floor:0\n"
+            ".....\n"
+            "..N..\n"
+            ".....\n"
+            "floor:1\n"
+            ".....\n"
+            ".....\n"
+            ".....\n";
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        grid[0][0][2] = CELL_WALL;   // the cell below the exit is solid (as on real hills)
+        ClearMovers();
+        Mover* m = &movers[0];
+        Point path[] = {{2,0,1},{2,1,0},{2,2,0}};
+        InitMoverWithPath(m, 2*CELL_SIZE + CELL_SIZE*0.5f, 2*CELL_SIZE + CELL_SIZE*0.5f,
+                          0.0f, (Point){2,0,1}, CLIMB_SPEED, path, 3);
+        moverCount = 1;
+        bool inSolid = false;
+        for (int tick = 0; tick < 500 && m->active; tick++) {
+            Tick();
+            if (m->z - floorf(m->z) > 0.0001f) continue;        // between levels: fine
+            int cx = (int)(m->x / CELL_SIZE), cy = (int)(m->y / CELL_SIZE);
+            if (!IsCellWalkableAt((int)m->z, cy, cx)) inSolid = true;
+        }
+        expect(!inSolid);
+        expect(m->z == 1.0f);
+    }
+
     it("ramp z traversal should take ~CELL_SIZE/speed seconds") {
         const char* map =
             "floor:0\n"

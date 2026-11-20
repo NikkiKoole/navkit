@@ -1021,7 +1021,9 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, int ticks
             int mx = (int)(movers[i].x / CELL_SIZE);
             int my = (int)(movers[i].y / CELL_SIZE);
             int mz = (int)movers[i].z;
-            if (!IsCellWalkableAt(mz, my, mx)) {
+            // (a mover between levels - mid ladder or ramp - is fine)
+            bool betweenLevels = movers[i].z - floorf(movers[i].z) > 0.0001f;
+            if (!betweenLevels && !IsCellWalkableAt(mz, my, mx)) {
                 moversInNonWalkable++;
             }
             if (movers[i].timeWithoutProgress > 2.0f) {
@@ -1037,6 +1039,9 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, int ticks
     printf("Stuck (no progress > 2s): %d\n", stuckAfter);
     printf("Arrivals (reached goal): %d (%.1f per mover per game-minute)\n", arrivals,
            activeMovers > 0 && ticks > 0 ? arrivals / (double)activeMovers / (ticks * TICK_DT / 60.0) : 0.0);
+    printf("Pathfinding: %d FindPath calls, %.1f ms total (%.3f ms each); shared-goal fields %s: %d hits, %d built, %d fallbacks\n",
+           findPathCalls, findPathTotalMs, findPathCalls ? findPathTotalMs / findPathCalls : 0.0,
+           useSharedGoalFields ? "on" : "off", sharedGoalHits, sharedGoalBuilds, sharedGoalFallbacks);
     extern int repathFallbackCount, repathHpaSuccessCount;
     printf("Repath stats: HPA success=%d, A* fallback=%d (%.1f%% fallback)\n", 
            repathHpaSuccessCount, repathFallbackCount,

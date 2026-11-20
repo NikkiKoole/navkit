@@ -89,3 +89,25 @@ Regions, flow fields and nearest-by-walking were already exact everywhere.
 The older 2D generators (sparse, concentric, dungeon, drunkard, tunneler, mixmax) carve their
 layout into level 1 but leave level 0 empty, so in the game they play as an open plain. The
 bench fills level 0 for them; the generators themselves are unchanged.
+
+## In the game: shared-goal fields (2026-11-20)
+
+`FindPath` (`src/world/pathfinding.c`) now promotes a goal requested 3+ times within 10 s
+to a cached `NavHFlow` (32 slots, least recently used evicted, refreshed every 2 s so
+ladder queue costs stay current, rebuilt when the graph changes). HPA* requests for
+it walk the field instead of searching; one-off goals keep using HPA*. Toggle:
+`useSharedGoalFields` / console `sharedGoalFields`.
+
+`--scenario hubs` (128x128 hills, 200 movers shuttling between 6 hubs), 3000 ticks:
+
+| | FindPath total | per call | tick | arrivals |
+|---|---|---|---|---|
+| shared-goal fields off (HPA*) | 1239 ms | 1.23 ms | 0.90 ms | 936 |
+| on | 357 ms | 0.36 ms | 0.59 ms | 938 |
+
+978 of 990 requests were answered by 6 fields, with no fallbacks. Not measured
+yet: memory on 512x512 maps (each field builds chunk fields along the routes walked).
+
+Found on the way: a mover going up a ramp stood inside the solid cell below the
+exit for half a cell (its level only rose at the exit's centre). It now rises
+while crossing the ramp cell and reaches the new level at the exit's edge.

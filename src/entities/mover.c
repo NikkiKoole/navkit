@@ -89,7 +89,9 @@ bool useDirectionalAvoidance = true;
 bool useTunnelYielding = true;       // single-lane rule for 1-wide passages (see MoverShouldYield)
 bool useSingleFileLadders = true;    // one climber per ladder segment; others wait at the foot/top
 bool useLadderQueueCost = true;      // routes see a ladder's queue as extra cost (pathfinding.h hook)
-float ladderClimbSpeed = 0.5f;       // climbing speed vs walking (0.5 = a level takes as long as 2 cells)
+float ladderClimbSpeed = 0.5f;
+// Optional goal chooser for endless-mode movers (scenarios; NULL = random cell)
+bool (*moverGoalPicker)(int moverIdx, Point* goal) = NULL;       // climbing speed vs walking (0.5 = a level takes as long as 2 cells)
 PathAlgorithm moverPathAlgorithm = PATH_ALGO_HPA;  // Default to HPA*
 bool useRandomizedCooldowns = true;   // Default on for demo perf, tests can disable
 bool useStaggeredUpdates = true;      // Default on for demo perf, tests can disable
@@ -1336,7 +1338,9 @@ static void AssignNewMoverGoal(Mover* m) {
 
     // TODO: GetRandomReachableCell(cx, cy, cz) respects walls/rooms but disabled for testing
     bool hasZConnections = (ladderLinkCount > 0 || rampCount > 0);
-    if (preferDifferentZ && gridDepth > 1 && hasZConnections) {
+    if (moverGoalPicker && moverGoalPicker((int)(m - movers), &newGoal)) {
+        // scenario-chosen goal
+    } else if (preferDifferentZ && gridDepth > 1 && hasZConnections) {
         newGoal = GetRandomWalkableCellDifferentZ(cz);
     } else {
         newGoal = GetRandomWalkableCellOnZ(cz);
@@ -2012,6 +2016,25 @@ void UpdateMovers(void) {
                     // Normal movement
                     m->x = newX;
                     m->y = newY;
+                    // Going up a ramp: rise while crossing the ramp cell (level =
+                    // progress toward the high side) and reach the new level as we
+                    // cross into the exit cell. The cell below the exit is solid;
+                    // rising only at the exit's centre put movers inside it.
+                    if (targetIsZTransition && target.z == mz + 1) {
+                        if (newCellX == target.x && newCellY == target.y && HasRampPointingTo(target.x, target.y, mz)) {
+                            m->z = (float)target.z;
+                        } else if (CellIsDirectionalRamp(grid[mz][newCellY][newCellX])) {
+                            int hdx, hdy;
+                            GetRampHighSideOffset(grid[mz][newCellY][newCellX], &hdx, &hdy);
+                            if (newCellX + hdx == target.x && newCellY + hdy == target.y) {
+                                float cx = newCellX * CELL_SIZE + CELL_SIZE * 0.5f, cy = newCellY * CELL_SIZE + CELL_SIZE * 0.5f;
+                                float prog = 0.5f + ((newX - cx) * hdx + (newY - cy) * hdy) / CELL_SIZE;
+                                if (prog < 0.0f) prog = 0.0f;
+                                if (prog > 0.999f) prog = 0.999f;
+                                m->z = (float)mz + prog;
+                            }
+                        }
+                    }
                     // If we're descending onto a ramp, also transition z
                     if (targetIsZTransition && target.z < mz) {
                         bool rampBelow = (mz > 0) && CellIsDirectionalRamp(grid[mz-1][newCellY][newCellX]);

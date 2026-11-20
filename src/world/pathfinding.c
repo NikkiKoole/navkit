@@ -11,6 +11,7 @@
 #include "../../vendor/raylib.h"
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 // =============================================================================
 // The game's world
@@ -91,9 +92,12 @@ void SetChunkDirty(int cx, int cy, int z, bool dirty) {
     NavSetChunkDirty(NavGame(), cx, cy, z, dirty);
 }
 
+void ClearSharedGoalFields(void);
+
 void BuildEntrances(void) {
     NavWorld* w = NavGame();
     NavRegionsInvalidate(w);      // full rebuild = the world may have changed without notifications
+    ClearSharedGoalFields();      // ... and the shared-goal fields belong to the old one
     NavBuildEntrances(w);
     rampCount = w->rampCellNum;   // game's ramp counter is re-synced on full rebuilds
 }
@@ -128,7 +132,107 @@ bool IsReachable(Point a, Point b) {
     return NavReachable(NavGame(), a, b);
 }
 
+// =============================================================================
+// Shared-goal fields: many movers going to the same few places
+// =============================================================================
+//
+// A goal requested SHARED_GOAL_PROMOTE times within SHARED_GOAL_WINDOW seconds
+// gets a cached hierarchical flow field (NavHFlow); later HPA* requests for it
+// walk the field instead of searching (paths within ~1% of optimal, see
+// tests/test_nav_fuzz.c). Fields rebuild themselves when the graph changes and
+// are refreshed every SHARED_GOAL_REFRESH seconds (ladder queue costs change).
+// One-off goals keep using HPA* (a full field costs more than one search).
+
+bool useSharedGoalFields = true;
+int sharedGoalHits = 0, sharedGoalBuilds = 0, sharedGoalFallbacks = 0;
+double findPathTotalMs = 0.0;
+int findPathCalls = 0;
+
+#define SHARED_GOAL_SLOTS   32
+#define SHARED_GOAL_SEEN    128
+#define SHARED_GOAL_PROMOTE 3
+#define SHARED_GOAL_WINDOW  10.0
+#define SHARED_GOAL_REFRESH 2.0
+
+typedef struct { Point goal; NavHFlow* h; double lastUse, builtAt; } SharedGoal;
+typedef struct { Point goal; int count; double firstAt; } SeenGoal;
+static SharedGoal sharedGoals[SHARED_GOAL_SLOTS];
+static SeenGoal seenGoals[SHARED_GOAL_SEEN];
+static NavWorld* sharedGoalWorld = NULL;
+
+static double PathClockNow(void) {   // works headless (raylib's GetTime needs a window)
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec + t.tv_nsec * 1e-9;
+}
+
+void ClearSharedGoalFields(void) {
+    for (int i = 0; i < SHARED_GOAL_SLOTS; i++) {
+        if (sharedGoals[i].h) NavHFlowDestroy(sharedGoals[i].h);
+        sharedGoals[i] = (SharedGoal){{-1, -1, -1}, NULL, 0, 0};
+    }
+    for (int i = 0; i < SHARED_GOAL_SEEN; i++) seenGoals[i] = (SeenGoal){{-1, -1, -1}, 0, 0};
+    sharedGoalWorld = NULL;
+}
+
+static bool SamePoint(Point a, Point b) { return a.x == b.x && a.y == b.y && a.z == b.z; }
+
+// Cached field for this goal: existing, or newly promoted after repeated requests
+static NavHFlow* SharedGoalField(NavWorld* w, Point goal, double now) {
+    if (sharedGoalWorld != w) { ClearSharedGoalFields(); sharedGoalWorld = w; }
+    for (int i = 0; i < SHARED_GOAL_SLOTS; i++) {
+        SharedGoal* g = &sharedGoals[i];
+        if (!g->h || !SamePoint(g->goal, goal)) continue;
+        if (now - g->builtAt > SHARED_GOAL_REFRESH) { NavHFlowInvalidate(g->h); g->builtAt = now; }
+        g->lastUse = now;
+        return g->h;
+    }
+    // Count requests (small table, oldest entry recycled)
+    int slot = -1, oldest = 0;
+    for (int i = 0; i < SHARED_GOAL_SEEN; i++) {
+        if (SamePoint(seenGoals[i].goal, goal)) { slot = i; break; }
+        if (seenGoals[i].firstAt < seenGoals[oldest].firstAt) oldest = i;
+    }
+    if (slot < 0) { slot = oldest; seenGoals[slot] = (SeenGoal){goal, 0, now}; }
+    SeenGoal* sgl = &seenGoals[slot];
+    if (now - sgl->firstAt > SHARED_GOAL_WINDOW) { sgl->count = 0; sgl->firstAt = now; }
+    if (++sgl->count < SHARED_GOAL_PROMOTE) return NULL;
+    // Promote: take a free slot or the least recently used
+    int lru = 0;
+    for (int i = 0; i < SHARED_GOAL_SLOTS; i++) {
+        if (!sharedGoals[i].h) { lru = i; break; }
+        if (sharedGoals[i].lastUse < sharedGoals[lru].lastUse) lru = i;
+    }
+    if (sharedGoals[lru].h) NavHFlowDestroy(sharedGoals[lru].h);
+    sharedGoals[lru] = (SharedGoal){goal, NavHFlowCreate(w, goal), now, now};
+    sharedGoalBuilds++;
+    return sharedGoals[lru].h;
+}
+
+// Walk the field from start to goal into outPath (goal-first, like the
+// pathfinders). 0 if the walk doesn't reach the goal.
+static int WalkSharedGoalField(NavWorld* w, NavHFlow* h, Point start, Point goal, Point* outPath, int maxLen) {
+    int n = 0;
+    Point cur = start, nxt;
+    outPath[n++] = cur;
+    while (!SamePoint(cur, goal)) {
+        if (n >= maxLen || !NavHFlowNext(w, h, cur, &nxt)) return 0;
+        cur = nxt;
+        outPath[n++] = cur;
+    }
+    for (int i = 0; i < n / 2; i++) { Point t = outPath[i]; outPath[i] = outPath[n - 1 - i]; outPath[n - 1 - i] = t; }
+    return n;
+}
+
 int FindPath(PathAlgorithm algo, Point start, Point goal, Point* outPath, int maxLen) {
+    double t0 = PathClockNow();
+    int len = FindPathUntimed(algo, start, goal, outPath, maxLen);
+    findPathTotalMs += (PathClockNow() - t0) * 1000.0;
+    findPathCalls++;
+    return len;
+}
+
+int FindPathUntimed(PathAlgorithm algo, Point start, Point goal, Point* outPath, int maxLen) {
     if (start.x < 0 || goal.x < 0) return 0;
     NavWorld* w = NavGame();
     // Different reachability regions: no path exists, answer without searching
@@ -137,6 +241,14 @@ int FindPath(PathAlgorithm algo, Point start, Point goal, Point* outPath, int ma
     if (rs >= 0 && rg >= 0 && rs != rg) {
         statsPathCount++;
         return 0;
+    }
+    if (useSharedGoalFields && algo == PATH_ALGO_HPA && !SamePoint(start, goal)) {
+        NavHFlow* h = SharedGoalField(w, goal, PathClockNow());
+        if (h) {
+            int n = WalkSharedGoalField(w, h, start, goal, outPath, maxLen);
+            if (n > 0) { sharedGoalHits++; statsPathCount++; return n; }
+            sharedGoalFallbacks++;
+        }
     }
     int len = NavFindPath(w, (NavAlgorithm)algo, start, goal, outPath, maxLen);
 
