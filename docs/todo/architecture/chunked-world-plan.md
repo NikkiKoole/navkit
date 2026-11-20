@@ -305,6 +305,23 @@ a 1024 map still costs what it costs (~75 bytes per cell dense, ~1.2 GB).
   survival (fixed headless seed and `--seed 7`), dollhouse, sandbox; v93 save loads identically.
 - 1024 world: 8.6 ms/tick, setup 5.0 s (graph 3.9 s), peak RSS 1.03 GB, footprint 1.81 GB.
 
+**First 2048x2048 run (2026-11-21)**, `-DMAX_GRID_WIDTH=2048 -DMAX_GRID_HEIGHT=2048` build,
+`--headless --scenario world --set scenarioSize 2048 --ticks 1500 --profile`:
+
+| | |
+|---|---|
+| setup | 21.4 s (HPA* graph 15-16 s: 1.2M entrances, 27M edges) |
+| tick | 23.1 ms avg; ~14 ms without the one 13.5 s first-tick spike (Move: first path refinement) |
+| largest steady sections | Trees 4.4, Water 2.8, Grid 1.6, Lighting 1.5 ms |
+| peak RSS | 1.68 GB |
+| peak memory footprint | **6.8 GB** |
+
+The footprint is the problem on an 8 GB machine: world reset clears every layer with memset(0),
+which dirties all ~5 GB of fresh zero pages (compressed by macOS, still counted). Next fixes,
+in order of payoff: (1) clear zero layers by replacing their pages (fresh zero pages, no
+footprint) instead of memset; (2) sparse layers (step 3), designations first (16 B/cell, and
+its non-zero empty value forces a full write); (3) graph build time and the first-tick spike.
+
 Note (pre-existing, found 2026-11-21): `test_workshop_deconstruction` segfaults (a workshop type
 without a construction recipe; `GetConstructionRecipe` returns NULL), and `make test` hides it:
 every suite runs with `-@`, so crashes and failures don't fail the target.
