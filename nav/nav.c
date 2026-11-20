@@ -1635,6 +1635,34 @@ int NavFindNearest(NavWorld* w, NavPoint start, NavTargetFn isTarget, void* user
 
 // Collect entrances of `chunk` and their costs from (p) via one Dijkstra.
 // toP: costs from each entrance TO p instead (for goals: routes can be one-way).
+// Entrances whose own chunk is one of the 3x3 around `chunk` (same level), ascending by
+// index: a superset of the entrances in the chunk's region plus a 1-cell ring, read from
+// the chunk index. -1 if the index is stale (callers then scan every entrance).
+// out: room for 9 * NAV_MAX_ENTRANCES_PER_CHUNK.
+static int nav_EntrancesAround(const NavWorld* w, int chunk, int* out) {
+    if (w->chunkEntsVersion != w->graphVersion) return -1;
+    int perLevel = w->chunksX * w->chunksY;
+    int z = chunk / perLevel, xy = chunk % perLevel;
+    int ccx = xy % w->chunksX, ccy = xy / w->chunksX, n = 0;
+    for (int dcy = -1; dcy <= 1; dcy++)
+        for (int dcx = -1; dcx <= 1; dcx++) {
+            int ncx = ccx + dcx, ncy = ccy + dcy;
+            if (ncx < 0 || ncy < 0 || ncx >= w->chunksX || ncy >= w->chunksY) continue;
+            int nc = z * perLevel + ncy * w->chunksX + ncx;
+            for (int k = 0; k < w->chunkEntCount[nc]; k++) {
+                int e = w->chunkEnts[nc][k];
+                const NavEntrance* E = &w->entranceList[e];
+                // listed under every chunk whose edge region holds it: take it once,
+                // from its own chunk
+                if (E->x / w->chunkW != ncx || E->y / w->chunkH != ncy) continue;
+                int j = n++;
+                while (j > 0 && out[j - 1] > e) { out[j] = out[j - 1]; j--; }
+                out[j] = e;
+            }
+        }
+    return n;
+}
+
 static int nav_ConnectToChunk(NavWorld* w, NavPoint p, int chunk, int* outTargets, int* outCosts, bool toP) {
     int tx[NAV_CONNECT_MAX], ty[NAV_CONNECT_MAX], tIdx[NAV_CONNECT_MAX], costs[NAV_CONNECT_MAX];
     int minX, minY, maxX, maxY;
@@ -1644,9 +1672,14 @@ static int nav_ConnectToChunk(NavWorld* w, NavPoint p, int chunk, int* outTarget
     if (minX > 0) minX--;
     if (minY > 0) minY--;
     // Every entrance of this level inside the search area (the chunk's own, and
-    // neighbours' ladder/ramp/border cells on the ring)
+    // neighbours' ladder/ramp/border cells on the ring). Candidates from the chunk
+    // index (same order as scanning all entrances, which every search used to do)
+    int cand[9 * NAV_MAX_ENTRANCES_PER_CHUNK];
+    int candNum = nav_EntrancesAround(w, chunk, cand);
+    int scanNum = candNum >= 0 ? candNum : w->entranceNum;
     int n = 0;
-    for (int i = 0; i < w->entranceNum && n < NAV_CONNECT_MAX; i++) {
+    for (int ci = 0; ci < scanNum && n < NAV_CONNECT_MAX; ci++) {
+        int i = candNum >= 0 ? cand[ci] : ci;
         const NavEntrance* e = &w->entranceList[i];
         if (e->z != p.z || e->x < minX || e->x >= maxX || e->y < minY || e->y >= maxY) continue;
         tx[n] = e->x;
@@ -2515,28 +2548,8 @@ static NavChunkFlow* nav_BuildChunkFlow(NavWorld* w, NavHFlow* h, int chunk) {
     // ties pick the same seed as a full scan. A full scan per chunk field costs
     // O(all entrances); a walk can build tens of thousands of fields on a big map.
     // (heap, not stack: building a field can recurse into neighbour fields deeply)
-    int* cand = NULL;
-    int candNum = -1;                              // -1: index stale, scan everything
-    if (w->chunkEntsVersion == w->graphVersion
-        && (cand = malloc(9 * NAV_MAX_ENTRANCES_PER_CHUNK * sizeof(int))) != NULL) {
-        candNum = 0;
-        for (int dcy = -1; dcy <= 1; dcy++)
-            for (int dcx = -1; dcx <= 1; dcx++) {
-                int ncx = ccx + dcx, ncy = ccy + dcy;
-                if (ncx < 0 || ncy < 0 || ncx >= w->chunksX || ncy >= w->chunksY) continue;
-                int nc = z * perLevel + ncy * w->chunksX + ncx;
-                for (int k = 0; k < w->chunkEntCount[nc]; k++) {
-                    int e = w->chunkEnts[nc][k];
-                    const NavEntrance* E = &w->entranceList[e];
-                    // listed under every chunk whose edge region holds it: take it once,
-                    // from its own chunk
-                    if (E->x / w->chunkW != ncx || E->y / w->chunkH != ncy) continue;
-                    int j = candNum++;
-                    while (j > 0 && cand[j - 1] > e) { cand[j] = cand[j - 1]; j--; }
-                    cand[j] = e;
-                }
-            }
-    }
+    int* cand = malloc(9 * NAV_MAX_ENTRANCES_PER_CHUNK * sizeof(int));
+    int candNum = cand ? nav_EntrancesAround(w, chunk, cand) : -1;
     int scanNum = candNum >= 0 ? candNum : w->entranceNum;
     for (int ci = 0; ci < scanNum; ci++) {
         int e = candNum >= 0 ? cand[ci] : ci;
