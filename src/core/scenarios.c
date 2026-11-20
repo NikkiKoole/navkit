@@ -128,6 +128,14 @@ void ScenarioResetWorld(const char* terrain) {
     BuildGraph();
 }
 
+void ScenarioResetWorldSized(const char* terrain, int w, int h) {
+    if (w > 0 && h > 0 && (gridWidth != w || gridHeight != h))
+        InitGridWithSizeAndChunkSize(w, h, 16, 16);
+    flatWorldW = w > 0 ? w : 32;
+    flatWorldH = h > 0 ? h : 32;
+    ScenarioResetWorld(terrain);
+}
+
 // ---------------------------------------------------------------------------
 // ladders: single-file ladder demo
 // ---------------------------------------------------------------------------
@@ -550,11 +558,7 @@ bool RunScenario(const char* name) {
     if (w > 0 && h > 0 && scenarioSize > 0) {
         w = h = scenarioSize < MAX_GRID_WIDTH ? scenarioSize : MAX_GRID_WIDTH;
     }
-    if (w > 0 && h > 0 && (gridWidth != w || gridHeight != h))
-        InitGridWithSizeAndChunkSize(w, h, 16, 16);
-    flatWorldW = w > 0 ? w : 32;
-    flatWorldH = h > 0 ? h : 32;
-    ScenarioResetWorld(s->terrain);
+    ScenarioResetWorldSized(s->terrain, w, h);
     s->setup();
     currentScenario = s;
     // Centre the camera on the new map (no-op without a window)

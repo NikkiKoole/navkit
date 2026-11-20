@@ -19,6 +19,7 @@
 #include "../world/designations.h"
 #include "../ui/cutscene.h"
 #include "../core/scenarios.h"
+#include "../core/games.h"
 #include <time.h>
 
 // Forward declarations
@@ -174,285 +175,6 @@ void RepathAgents(void);
 void AddMoversDemo(int count);
 void SpawnMoversDemo(int count);
 void SpawnStockpileWithFilters(bool allowRed, bool allowGreen, bool allowBlue);
-
-
-// Start a new game: randomize seed, generate 128x128 HillsSoilsWater, spawn 1 mover
-static void StartNewGame(void) {
-    // Randomize seed
-    worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
-
-    // Set grid to 128x128 before generating (InitGrid inside generator preserves these)
-    InitGridWithSizeAndChunkSize(128, 128, 8, 8);
-
-    // Clear entities not covered by InitGrid()
-    ClearAnimals();
-    ClearFurniture();
-    InitPlants();
-    ClearFarming();
-
-    // Generate HillsSoilsWater terrain (calls InitGrid internally, which clears movers/items/etc)
-    currentTerrain = 19;
-    hillsSkipBuildings = true;
-    GenerateCurrentTerrain();
-    hillsSkipBuildings = false;
-
-    // Init all systems — water/sim counters rebuilt AFTER generation to preserve placed water
-    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
-    InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
-    InitDesignations();
-    RebuildSimActivityCounts();
-    InitFire();
-    InitSmoke();
-    InitSteam();
-    InitTemperature();
-    InitGroundWear();
-    InitFloorDirt();
-    InitSnow();
-    InitLighting();
-    BuildEntrances();
-    BuildGraph();
-
-    // Spawn 1 mover at a walkable cell
-    SpawnMoversDemo(1);
-
-    // Fog of war: start with everything unexplored, then reveal around spawn
-    CLEAR_GRID_LAYER(exploredGrid, 0);
-    if (moverCount > 0) {
-        Mover* m = &movers[0];
-        int spawnX = (int)(m->x / CELL_SIZE);
-        int spawnY = (int)(m->y / CELL_SIZE);
-        int spawnZ = (int)m->z;
-        RevealAroundPoint(spawnX, spawnY, spawnZ, balance.spawnVisionRadius);
-    }
-
-    // Spawn starting supplies near the mover
-    if (moverCount > 0) {
-        Mover* m = &movers[0];
-        float sx = m->x, sy = m->y, sz = m->z;
-
-        // 5 berries (immediate food)
-        for (int i = 0; i < 5; i++) {
-            SpawnItem(sx + CELL_SIZE * (i % 3), sy + CELL_SIZE, sz, ITEM_BERRIES);
-        }
-
-        // 5 sticks (basic crafting material)
-        for (int i = 0; i < 5; i++) {
-            SpawnItem(sx + CELL_SIZE * (i % 3), sy + CELL_SIZE * 2, sz, ITEM_STICKS);
-        }
-
-        // 1 clay pot filled with water
-        int potIdx = SpawnItem(sx + CELL_SIZE * 3, sy + CELL_SIZE, sz, ITEM_CLAY_POT);
-        if (potIdx >= 0) {
-            int fillCount = 5; // clay pot maxContents
-            for (int i = 0; i < fillCount; i++) {
-                int waterIdx = SpawnItem(sx, sy, sz, ITEM_WATER);
-                if (waterIdx >= 0) {
-                    PutItemInContainer(waterIdx, potIdx);
-                }
-            }
-        }
-    }
-
-    // Center camera on the mover and follow it
-    if (moverCount > 0) {
-        Mover* m = &movers[0];
-        currentViewZ = (int)m->z;
-        offset.x = GetScreenWidth() / 2.0f - m->x * zoom;
-        offset.y = GetScreenHeight() / 2.0f - m->y * zoom;
-        followMoverIdx = 0;
-    }
-
-    ResetTime();
-    dayLength = 120.0f;  // Slower day cycle for survival
-    balance.baseMoverSpeed = 400.0f;  // Faster movement for survival
-    // Update already-spawned movers to new speed
-    for (int i = 0; i < moverCount; i++) {
-        if (movers[i].active) {
-            movers[i].speed = balance.baseMoverSpeed * (1.0f + balance.moverSpeedVariance * (GetRandomValue(-100, 100) / 100.0f));
-        }
-    }
-    gameMode = GAME_MODE_SURVIVAL;
-    hungerEnabled = true;
-    energyEnabled = true;
-    bodyTempEnabled = true;
-    thirstEnabled = true;
-    toolRequirementsEnabled = true;
-    gameOverTriggered = false;
-    survivalStartTime = 0.0;
-    survivalDuration = 0.0;
-    PlaySurvivalIntroCutscene();
-}
-
-// Start dollhouse mode: small apartment, 2 movers, kitchen, bathroom, food
-static void StartDollhouseMode(void) {
-    worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
-
-    // Small grid — apartment is ~12x12, tight margin
-    InitGridWithSizeAndChunkSize(16, 16, 8, 8);
-    ClearAnimals();
-    ClearFurniture();
-    InitPlants();
-    ClearFarming();
-
-    // Flat terrain: solid ground at z=0, air + grass at z=1+
-    for (int y = 0; y < 16; y++) {
-        for (int x = 0; x < 16; x++) {
-            grid[0][y][x] = CELL_WALL;
-            wallMaterial[0][y][x] = MAT_DIRT;
-            SetWallNatural(x, y, 0);
-            for (int z = 1; z < gridDepth; z++) {
-                grid[z][y][x] = CELL_AIR;
-            }
-            SetVegetation(x, y, 0, VEG_GRASS_TALL);
-        }
-    }
-
-    // Build apartment at z=1 (on top of ground)
-    // Layout (10x8):
-    //   Walls around perimeter, internal walls for rooms
-    //   Room 1 (left): Kitchen/Dining — stove, counter, table area, chairs
-    //   Room 2 (right-top): Bathroom — toilet
-    //   Room 3 (right-bottom): Bedroom — beds
-    int ox = 3, oy = 3; // offset from grid edge
-    int z = 1;
-
-    // Floor for entire apartment (10x8)
-    for (int dy = 0; dy < 8; dy++) {
-        for (int dx = 0; dx < 10; dx++) {
-            SET_FLOOR(ox + dx, oy + dy, z);
-            floorMaterial[z][oy + dy][ox + dx] = MAT_OAK;
-        }
-    }
-
-    // Outer walls
-    for (int dx = 0; dx < 10; dx++) {
-        PlaceCellFull(ox + dx, oy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
-        PlaceCellFull(ox + dx, oy + 7, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
-    }
-    for (int dy = 1; dy < 7; dy++) {
-        PlaceCellFull(ox, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
-        PlaceCellFull(ox + 9, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
-    }
-
-    // Front door (bottom wall, kitchen side)
-    grid[z][oy + 7][ox + 3] = CELL_DOOR;
-
-    // Pond outside the door — dug into z=0, filled with water
-    for (int dy = 0; dy < 3; dy++) {
-        for (int dx = 0; dx < 3; dx++) {
-            int px = ox + 2 + dx, py = oy + 9 + dy;
-            if (px >= 0 && px < gridWidth && py >= 0 && py < gridHeight) {
-                grid[0][py][px] = CELL_AIR;  // dig out the ground
-                SetVegetation(px, py, 0, VEG_NONE);
-                SetWaterLevel(px, py, 0, 7); // fill with water at z=0
-            }
-        }
-    }
-
-    // Internal wall: kitchen (left 6 cols) | bathroom+bedroom (right 3 cols)
-    for (int dy = 1; dy < 7; dy++) {
-        if (dy == 3 || dy == 4) continue; // door gap
-        PlaceCellFull(ox + 6, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
-    }
-
-    // Internal wall: bathroom (top-right) | bedroom (bottom-right)
-    for (int dx = 7; dx < 9; dx++) {
-        PlaceCellFull(ox + dx, oy + 4, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
-    }
-    // Door gap in bathroom/bedroom divider at x+8
-    grid[z][oy + 4][ox + 8] = CELL_AIR;
-
-    // Init all systems
-    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
-    InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
-    InitDesignations();
-    RebuildSimActivityCounts();
-    InitFire();
-    InitSmoke();
-    InitSteam();
-    InitTemperature();
-    InitGroundWear();
-    InitFloorDirt();
-    InitSnow();
-    InitLighting();
-    InitRooms();
-    BuildEntrances();
-    BuildGraph();
-
-    // Place furniture — Kitchen
-    SpawnFurniture(ox + 2, oy + 1, z, FURNITURE_CHAIR, MAT_OAK);   // chair at table
-    SpawnFurniture(ox + 3, oy + 1, z, FURNITURE_CHAIR, MAT_OAK);   // chair at table
-
-    // Place furniture — Bathroom
-    SpawnFurniture(ox + 8, oy + 1, z, FURNITURE_TOILET, MAT_GRANITE);
-
-    // Place furniture — Bedroom
-    SpawnFurniture(ox + 7, oy + 5, z, FURNITURE_PLANK_BED, MAT_OAK);
-    SpawnFurniture(ox + 8, oy + 5, z, FURNITURE_PLANK_BED, MAT_OAK);
-
-    // Place workshops — Kitchen
-    CreateWorkshop(ox + 1, oy + 3, z, WORKSHOP_STOVE);    // stove
-    CreateWorkshop(ox + 3, oy + 3, z, WORKSHOP_COUNTER);  // counter (provides CAP_PREP_SURFACE)
-
-    // Create stockpile (2x2 in kitchen for food)
-    CreateStockpile(ox + 1, oy + 5, z, 2, 2);
-
-    // Spawn 2 movers inside the apartment
-    ClearMovers();
-    SpawnMoverAt(ox + 3, oy + 2, z);
-    SpawnMoverAt(ox + 4, oy + 2, z);
-
-    // Spawn food supplies in stockpile area
-    float sx = (ox + 1) * CELL_SIZE + CELL_SIZE * 0.5f;
-    float sy = (oy + 5) * CELL_SIZE + CELL_SIZE * 0.5f;
-    {
-        int idx = SpawnItem(sx, sy, (float)z, ITEM_COOKED_MEAT);
-        if (idx >= 0) items[idx].stackCount = 5;
-    }
-    {
-        int idx = SpawnItem(sx + CELL_SIZE, sy, (float)z, ITEM_BREAD);
-        if (idx >= 0) items[idx].stackCount = 5;
-    }
-    // Water pots (two so both movers can drink)
-    for (int p = 0; p < 2; p++) {
-        int potIdx = SpawnItem(sx + p * CELL_SIZE, sy + CELL_SIZE, (float)z, ITEM_CLAY_POT);
-        if (potIdx >= 0) {
-            for (int i = 0; i < 5; i++) {
-                int waterIdx = SpawnItem(sx, sy, (float)z, ITEM_WATER);
-                if (waterIdx >= 0) PutItemInContainer(waterIdx, potIdx);
-            }
-        }
-    }
-
-    // Camera: center on apartment, follow first mover
-    if (moverCount > 0) {
-        Mover* m = &movers[0];
-        currentViewZ = z;
-        offset.x = GetScreenWidth() / 2.0f - m->x * zoom;
-        offset.y = GetScreenHeight() / 2.0f - m->y * zoom;
-        followMoverIdx = 0;
-    }
-
-    // Settings
-    ResetTime();
-    dayLength = 120.0f;
-    balance.baseMoverSpeed = 300.0f;
-    for (int i = 0; i < moverCount; i++) {
-        if (movers[i].active) {
-            movers[i].speed = balance.baseMoverSpeed * (1.0f + balance.moverSpeedVariance * (GetRandomValue(-100, 100) / 100.0f));
-        }
-    }
-    gameMode = GAME_MODE_SANDBOX;
-    hungerEnabled = true;
-    energyEnabled = true;
-    thirstEnabled = true;
-    bladderEnabled = true;
-    moodEnabled = true;
-    bodyTempEnabled = false; // no weather in dollhouse for now
-    toolRequirementsEnabled = false;
-    devUI = true;
-    gameOverTriggered = false;
-}
 
 // Minimal player HUD — speed controls, mover count, new game
 static void DrawPlayerHUD(void) {
@@ -663,17 +385,14 @@ static void DrawPlayerHUD(void) {
     }
     y += 4;
 
-    // New Game button
-    if (PushButton(10, y, "New Game")) {
-        StartNewGame();
+    // New game: one button per game (src/core/games.c)
+    for (int gi = 0; gi < GameCount(); gi++) {
+        const GameDef* g = GameAt(gi);
+        Rectangle r = {10, y, (float)MeasureTextUI(TextFormat("[%s]", g->label), UI_FONT_MEDIUM) + 10, (float)(UI_FONT_MEDIUM + 2)};
+        if (CheckCollisionPointRec(GetMousePosition(), r)) ui_set_tooltip(g->description);
+        if (PushButton(10, y, g->label)) StartGame(g->name);
+        y += 22;
     }
-    y += 22;
-
-    // Dollhouse button
-    if (PushButton(10, y, "Dollhouse")) {
-        StartDollhouseMode();
-    }
-    y += 22;
 
     // Game Over overlay
     if (gameOverTriggered && !IsCutsceneActive()) {
@@ -703,7 +422,7 @@ static void DrawPlayerHUD(void) {
         Vector2 scorePos = { (screenW - scoreMeasure.x) / 2, screenH / 3.0f + 70 };
         DrawTextEx(font, scoreText, scorePos, scoreSize, 2.0f, (Color){242, 229, 215, 255});
 
-        const char* hint = "Press New Game to try again";
+        const char* hint = "Press Survival to try again";
         float hintSize = 20.0f;
         Vector2 hintMeasure = MeasureTextEx(font, hint, hintSize, 2.0f);
         Vector2 hintPos = { (screenW - hintMeasure.x) / 2, screenH / 3.0f + 110 };
@@ -851,6 +570,16 @@ void DrawUI(void) {
                 AddMessage(TextFormat("Generated terrain: %s", terrainNames[currentTerrain]), GREEN);
             }
             y += 22;
+            // Games (src/core/games.c): start one, description on hover
+            DrawTextShadow("Games:", ix, y, 14, GRAY);
+            y += 18;
+            for (int gi = 0; gi < GameCount(); gi++) {
+                const GameDef* g = GameAt(gi);
+                Rectangle r = {(float)ix, (float)y, (float)MeasureTextUI(TextFormat("[%s]", g->name), UI_FONT_MEDIUM) + 10, (float)(UI_FONT_MEDIUM + 2)};
+                if (CheckCollisionPointRec(GetMousePosition(), r)) ui_set_tooltip(g->description);
+                if (PushButton(ix, y, g->name)) StartGame(g->name);
+                y += 22;
+            }
             // Scenarios (src/core/scenarios.c): one button each, description on hover
             DrawTextShadow("Scenarios:", ix, y, 14, GRAY);
             y += 18;

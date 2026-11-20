@@ -38,6 +38,8 @@ void ScenarioPrintList(void);                     // names + descriptions to std
 // HPA* graph). Settings that scenarios change are restored to their values from
 // before the first scenario ran.
 void ScenarioResetWorld(const char* terrain);
+// Same, at a map size (0,0 = keep the current size; the flat map then is 32x32).
+void ScenarioResetWorldSized(const char* terrain, int w, int h);
 
 extern int scenarioSize;     // square map size override for sized scenarios (0 = default)
 extern int scenarioMovers;   // mover count override for crowd scenarios (0 = default)

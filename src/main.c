@@ -18,6 +18,7 @@
 #include "ui/cutscene.h"
 #include "ui/console.h"
 #include "core/scenarios.h"
+#include "core/games.h"
 
 #ifdef USE_SOUNDSYSTEM
 #include "soundsystem/soundsystem.h"
@@ -923,7 +924,7 @@ static void HeadlessProfilePrint(int ticks) {
     }
 }
 
-static int RunHeadless(const char* loadFile, const char* scenarioName, int ticks, int argc, char** argv) {
+static int RunHeadless(const char* loadFile, const char* scenarioName, const char* gameName, int ticks, int argc, char** argv) {
     // Initialize minimal state (no window)
     use8Dir = true;
     InitGridWithSizeAndChunkSize(32, 32, 8, 8);
@@ -989,6 +990,13 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, int ticks
         if (!RunScenario(scenarioName)) return 1;
         setupMs = WallMs() - setupStart;
         printf("Scenario: %s (%d movers, %dx%dx%d)\n", scenarioName, moverCount, gridWidth, gridHeight, gridDepth);
+        printf("Running %d ticks headless...\n", ticks);
+    }
+    if (gameName) {
+        double setupStart = WallMs();
+        if (!StartGame(gameName)) return 1;
+        setupMs = WallMs() - setupStart;
+        printf("Game: %s (%d movers, %dx%dx%d)\n", gameName, moverCount, gridWidth, gridHeight, gridDepth);
         printf("Running %d ticks headless...\n", ticks);
     }
     const Scenario* scenario = scenarioName ? ScenarioCurrent() : NULL;
@@ -1329,6 +1337,24 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // --game <name> (src/core/games.c); "--game list" prints them and exits
+    const char* gameName = NULL;
+    for (int i = 1; i + 1 < argc; i++)
+        if (strcmp(argv[i], "--game") == 0) gameName = argv[i + 1];
+    if (gameName && strcmp(gameName, "list") == 0) {
+        GamePrintList();
+        return 0;
+    }
+    if (gameName && !GameFind(gameName)) {
+        printf("Unknown game '%s'\n", gameName);
+        GamePrintList();
+        return 1;
+    }
+    if (gameName && scenarioName) {
+        printf("Use --game or --scenario, not both\n");
+        return 1;
+    }
+
     // Check for --seed option (for reproducible terrain generation). Parsed before
     // headless, which returns early; headless without --seed keeps seed 0 (deterministic).
     for (int i = 1; i < argc; i++) {
@@ -1357,11 +1383,11 @@ int main(int argc, char** argv) {
                     headlessTicks = atoi(argv[j + 1]);
                 }
             }
-            if (!headlessFile && !scenarioName) {
-                printf("Usage: %s --headless (--load <savefile> | --scenario <name>) [--ticks N] [--set <var> <value>] [--save <outfile>] [--mover N] ...\n", argv[0]);
+            if (!headlessFile && !scenarioName && !gameName) {
+                printf("Usage: %s --headless (--load <savefile> | --scenario <name> | --game <name>) [--ticks N] [--set <var> <value>] [--save <outfile>] [--mover N] ...\n", argv[0]);
                 return 1;
             }
-            return RunHeadless(headlessFile, scenarioName, headlessTicks, argc, argv);
+            return RunHeadless(headlessFile, scenarioName, gameName, headlessTicks, argc, argv);
         }
     }
 
@@ -1462,8 +1488,10 @@ int main(int argc, char** argv) {
     }
 
     // Built-in demo scenarios (src/core/scenarios.c): --scenario <name>
+    // Games (src/core/games.c): --game <name>
     ApplySetArgs(argc, argv);
     if (scenarioName) RunScenario(scenarioName);
+    if (gameName) StartGame(gameName);
 
     float accumulator = 0.0f;
 

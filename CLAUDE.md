@@ -156,10 +156,20 @@ Ring buffer (4096 entries), game-time timestamped. Records job lifecycle, item d
 
 6 invariant checks: item↔stockpile consistency, item reservations↔jobs, mover↔job bidirectional, blueprint reservations, stockpile slot reservations, freeSlotCount recompute. Returns violation count.
 
-## Game Modes
+## Games
 
-- **Sandbox** (`GAME_MODE_SANDBOX`): full dev UI, all tools available
-- **Survival** (`GAME_MODE_SURVIVAL`): progressive HUD, starvation death, intro/game-over cutscenes
+The games the player can start live in one table in `src/core/games.c` (`GameDef`: name,
+label, description, `start()`, whether the dev overlay opens). Today: **survival**, **dollhouse**,
+**sandbox**. Started from the play HUD, the dev UI "Games" list, console `game <name>`, or
+`--game <name>` (also `--headless --game <name> --ticks N`; `--game list` shows them).
+
+- A game's `start()` builds its world and sets **every** rule toggle it relies on
+  (`gameMode`, `hungerEnabled`, ...): it may not assume what the previous game left.
+- `gameMode` (`GAME_MODE_SANDBOX` / `GAME_MODE_SURVIVAL`) is the rules switch for death and
+  fog of war; dollhouse runs on `GAME_MODE_SANDBOX` rules.
+- **The dev UI (TAB) is an overlay over any game**: toggling it does not change the game
+  or its rules. Use it to inspect/cheat inside survival without leaving survival.
+- Scenarios (below) are dev/test setups; games are player-facing.
 
 ## Scenarios
 

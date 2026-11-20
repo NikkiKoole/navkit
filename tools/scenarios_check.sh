@@ -7,6 +7,9 @@
 # Always checked: nobody stuck > 2 s, nobody newly inside a wall, the scenario's own
 # check (ladders: never two climbers on one segment). Exit code 1 if any run fails.
 #
+# Games (src/core/games.c) run here too. Survival generates a random map each run,
+# so it has no arrivals minimum: it only guards against stuck movers / movers in walls.
+#
 # Known: mood allows 1 mover in a non-walkable cell - a mover stands on a ramp that
 # deep water floods (docs/bugs/mover-on-flooded-ramp.md).
 
@@ -44,6 +47,8 @@ done <<'EOF'
 750 | 0 | --set sharedGoalFields 0 --scenario hubs
 94  | 0 | --scenario train-double
 87  | 0 | --set trainSpeed 9 --scenario train-double
+28  | 0 | --game dollhouse
+0   | 0 | --game survival
 EOF
 
 echo

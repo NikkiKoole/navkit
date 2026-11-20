@@ -74,6 +74,7 @@
 #include "core/input.c"
 #include "core/saveload.c"
 #include "core/scenarios.c"
+#include "core/games.c"
 
 // Rendering
 #include "render/rendering.c"

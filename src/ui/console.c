@@ -19,6 +19,7 @@
 #include "../core/sim_manager.h"       // InitSimActivity
 #include "../world/designations.h"     // InitDesignations
 #include "../core/scenarios.h"          // scenario command
+#include "../core/games.h"              // game command
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>                // atoi, atof
@@ -90,6 +91,7 @@ static void Cmd_Season(int argc, const char** argv);
 static void Cmd_Terrain(int argc, const char** argv);
 static void Cmd_Grid(int argc, const char** argv);
 static void Cmd_Scenario(int argc, const char** argv);
+static void Cmd_Game(int argc, const char** argv);
 
 // ---------------------------------------------------------------------------
 // Variable Registry
@@ -128,6 +130,7 @@ void Console_Init(void) {
     Console_RegisterCmd("terrain", Cmd_Terrain, "Generate terrain: terrain <name> (use 'terrain list' to see options)");
     Console_RegisterCmd("grid", Cmd_Grid, "Resize grid: grid 32|64|128|256");
     Console_RegisterCmd("scenario", Cmd_Scenario, "Start a demo scenario: scenario <name> (use 'scenario list' to see options)");
+    Console_RegisterCmd("game", Cmd_Game, "Start a game: game <name> (use 'game list' to see options)");
 }
 
 void Console_RegisterCmd(const char* name, ConsoleCmdFn fn, const char* help) {
@@ -855,6 +858,22 @@ static void Cmd_Scenario(int argc, const char** argv) {
     Console_Printf(GREEN, "Started scenario: %s (%d movers)", argv[1], moverCount);
 }
 
+static void Cmd_Game(int argc, const char** argv) {
+    if (argc < 2 || strcmp(argv[1], "list") == 0) {
+        Console_Print("Games:", WHITE);
+        for (int i = 0; i < GameCount(); i++)
+            Console_Printf(GRAY, "  %-10s %s", GameAt(i)->name, GameAt(i)->description);
+        if (argc < 2) Console_Print("Usage: game <name>", YELLOW);
+        return;
+    }
+    if (!GameFind(argv[1])) {
+        Console_Printf(YELLOW, "Unknown game: %s (use 'game list')", argv[1]);
+        return;
+    }
+    StartGame(argv[1]);
+    Console_Printf(GREEN, "Started game: %s (%d movers)", argv[1], moverCount);
+}
+
 static void Cmd_Grid(int argc, const char** argv) {
     if (argc < 2) {
         Console_Printf(WHITE, "Current grid: %dx%d (depth %d)", gridWidth, gridHeight, gridDepth);
@@ -1113,6 +1132,12 @@ static void HandleTab(void) {
         acStringListCount = ScenarioCount();
         searchPrefix = con.input + 9;
         prefixStart = 9;
+    } else if (strncmp(con.input, "game ", 5) == 0) {
+        mode = AC_STRINGS;
+        acStringList = GameNames();
+        acStringListCount = GameCount();
+        searchPrefix = con.input + 5;
+        prefixStart = 5;
     }
 
     // First Tab press - find matches and save prefix

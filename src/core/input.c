@@ -2434,19 +2434,11 @@ void HandleInput(void) {
         if (IsKeyPressed(KEY_LEFT_BRACKET) && frontViewDepth > 1) frontViewDepth--;
     }
 
-    // Toggle dev/play UI
+    // Toggle the dev overlay. It sits on top of whatever game runs and does not
+    // change its rules (src/core/games.h); a new game is started from the games list.
     if (IsKeyPressed(KEY_TAB)) {
         devUI = !devUI;
-        if (!devUI) {
-            InputMode_ExitToNormal();  // Exit any active mode
-        } else {
-            // Returning to dev UI — switch to sandbox mode
-            gameMode = GAME_MODE_SANDBOX;
-            hungerEnabled = false;
-            energyEnabled = false;
-            bodyTempEnabled = false;
-            toolRequirementsEnabled = false;
-        }
+        if (!devUI) InputMode_ExitToNormal();  // Exit any active mode
     }
 
     // Pause
