@@ -899,6 +899,30 @@ static void ApplySetArgs(int argc, char** argv) {
 }
 
 // Headless mode: load a save (loadFile) or build a scenario (scenarioName), run N ticks, print stats
+// --profile: per-section totals over the whole headless run (the profiler itself
+// only keeps the last 120 frames). Called before PROFILE_FRAME_END each tick.
+static double WallMs(void) {   // GetTime() needs a window; headless has none
+    struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+}
+static double profTotal[PROFILER_MAX_SECTIONS], profMax[PROFILER_MAX_SECTIONS];
+static void HeadlessProfileAccumulate(void) {
+    for (int i = 0; i < profilerSectionCount; i++) {
+        ProfileSection* s = &profilerSections[i];
+        double t = s->accumulating ? s->accumTimeMs : s->lastTimeMs;
+        profTotal[i] += t;
+        if (t > profMax[i]) profMax[i] = t;
+    }
+}
+static void HeadlessProfilePrint(int ticks) {
+    printf("\n=== PROFILE (ms per tick, CPU time) ===\n%-20s %8s %8s\n", "section", "avg", "max");
+    for (int i = 0; i < profilerSectionCount; i++) {
+        if (profTotal[i] / ticks < 0.005 && profMax[i] < 0.5) continue;
+        printf("%*s%-*s %8.3f %8.2f\n", profilerSections[i].depth * 2, "", 20 - profilerSections[i].depth * 2,
+               profilerSections[i].name, profTotal[i] / ticks, profMax[i]);
+    }
+}
+
 static int RunHeadless(const char* loadFile, const char* scenarioName, int ticks, int argc, char** argv) {
     // Initialize minimal state (no window)
     use8Dir = true;
@@ -957,8 +981,13 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, int ticks
         BuildGraph();
     }
     ApplySetArgs(argc, argv);
+    bool doProfile = false;
+    for (int i = 1; i < argc; i++) if (strcmp(argv[i], "--profile") == 0) doProfile = true;
+    double setupMs = 0;
     if (scenarioName) {
+        double setupStart = WallMs();
         if (!RunScenario(scenarioName)) return 1;
+        setupMs = WallMs() - setupStart;
         printf("Scenario: %s (%d movers, %dx%dx%d)\n", scenarioName, moverCount, gridWidth, gridHeight, gridDepth);
         printf("Running %d ticks headless...\n", ticks);
     }
@@ -984,16 +1013,31 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, int ticks
     clock_t startClock = clock();
     for (int t = 0; t < ticks; t++) {
         double tickStart = GetTime();
+        PROFILE_BEGIN(TickWithDt);
         TickWithDt(TICK_DT);
+        PROFILE_END(TickWithDt);
+        PROFILE_BEGIN(Items);
         ItemsTick(TICK_DT);
+        PROFILE_END(Items);
+        PROFILE_BEGIN(Animals);
         AnimalsTick(TICK_DT);
+        PROFILE_END(Animals);
+        PROFILE_BEGIN(Trains);
         TrainsTick(TICK_DT);
+        PROFILE_END(Trains);
+        PROFILE_BEGIN(Designations);
         DesignationsTick(TICK_DT);
+        PROFILE_END(Designations);
+        PROFILE_BEGIN(Needs);
         NeedsTick();
         ProcessFreetimeNeeds();
         MoodTick(TICK_DT);
+        PROFILE_END(Needs);
+        PROFILE_BEGIN(Jobs);
         AssignJobs();
         JobsTick();
+        PROFILE_END(Jobs);
+        if (doProfile) HeadlessProfileAccumulate();
         PROFILE_FRAME_END();  // Store profiler data for this tick
         for (int i = 0; i < moverCount; i++) {
             Mover* mv = &movers[i];
@@ -1056,6 +1100,15 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, int ticks
                ? 100.0 * repathFallbackCount / (repathFallbackCount + repathHpaSuccessCount) 
                : 0.0);
     
+    if (doProfile) {
+        HeadlessProfilePrint(ticks);
+        if (setupMs > 0) printf("Scenario setup (world gen + graph): %.0f ms\n", setupMs);
+        double gs = WallMs();
+        BuildEntrances(); BuildGraph();
+        printf("Full graph rebuild: %.0f ms (%d entrances, %d edges)\n", WallMs() - gs,
+               entranceCount, graphEdgeCount);
+    }
+
     if (scenario && scenario->printStats) {
         printf("\n=== SCENARIO: %s ===\n", scenario->name);
         scenario->printStats();

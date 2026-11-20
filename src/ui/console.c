@@ -1245,6 +1245,7 @@ void Console_RegisterGameVars(void) {
     Console_RegisterVar("tunnelYield", &useTunnelYielding, CVAR_BOOL);
     Console_RegisterVar("singleFileLadders", &useSingleFileLadders, CVAR_BOOL);
     Console_RegisterVar("scenarioMovers", &scenarioMovers, CVAR_INT);
+    Console_RegisterVar("scenarioSize", &scenarioSize, CVAR_INT);
     Console_RegisterVar("sharedGoalFields", &useSharedGoalFields, CVAR_BOOL);
     Console_RegisterVar("trainSpeed", &trainSpeed, CVAR_FLOAT);
     Console_RegisterVar("useTrainTimeChoice", &useTrainTimeChoice, CVAR_BOOL);

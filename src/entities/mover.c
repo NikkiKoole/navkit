@@ -2078,10 +2078,14 @@ void TickWithDt(float dt) {
     PROFILE_END(HPA);
     
     // Weather state machine (drives rain, wetness, wind)
+    PROFILE_BEGIN(Weather);
     UpdateWeather();
+    PROFILE_END(Weather);
     
     // Snow accumulation and melting
+    PROFILE_BEGIN(Snow);
     UpdateSnow();
+    PROFILE_END(Snow);
     
     // Lightning strikes during thunderstorms
     UpdateLightning(gameDeltaTime);
@@ -2114,7 +2118,9 @@ void TickWithDt(float dt) {
     PROFILE_END(Temperature);
     
     // Ground wear (emergent paths)
+    PROFILE_BEGIN(GroundWear);
     UpdateGroundWear();
+    PROFILE_END(GroundWear);
 
     // Lighting (recompute if terrain changed)
     PROFILE_BEGIN(Lighting);
@@ -2122,7 +2128,9 @@ void TickWithDt(float dt) {
     PROFILE_END(Lighting);
 
     // Room detection (recompute if walls/furniture changed)
+    PROFILE_BEGIN(Rooms);
     UpdateRooms();
+    PROFILE_END(Rooms);
 
     // Tree growth
     PROFILE_BEGIN(Trees);
@@ -2130,10 +2138,14 @@ void TickWithDt(float dt) {
     PROFILE_END(Trees);
     
     // Plant growth (berry bushes, future crops)
+    PROFILE_BEGIN(Plants);
     PlantsTick(dt);
+    PROFILE_END(Plants);
 
     // Farm tick (weed accumulation)
+    PROFILE_BEGIN(Farm);
     FarmTick(dt);
+    PROFILE_END(Farm);
 
     PROFILE_BEGIN(Grid);
     BuildMoverSpatialGrid();

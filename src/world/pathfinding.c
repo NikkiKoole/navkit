@@ -227,7 +227,13 @@ static int WalkSharedGoalField(NavWorld* w, NavHFlow* h, Point start, Point goal
 int FindPath(PathAlgorithm algo, Point start, Point goal, Point* outPath, int maxLen) {
     double t0 = PathClockNow();
     int len = FindPathUntimed(algo, start, goal, outPath, maxLen);
-    findPathTotalMs += (PathClockNow() - t0) * 1000.0;
+    double ms = (PathClockNow() - t0) * 1000.0;
+    findPathTotalMs += ms;
+    // Slow request: say where, so an accidental repro can be replayed with
+    // --inspect save --path x,y,z x,y,z (see docs/todo/architecture/large-worlds.md)
+    if (ms > 200.0)
+        fprintf(stderr, "SLOW PATH %.0f ms algo=%d (%d,%d,%d) -> (%d,%d,%d) len=%d\n", ms, (int)algo,
+                start.x, start.y, start.z, goal.x, goal.y, goal.z, len);
     findPathCalls++;
     return len;
 }

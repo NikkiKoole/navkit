@@ -33,6 +33,8 @@ static const Scenario* currentScenario = NULL;
 // Mover count override for scenarios that support it (0 = the scenario's default).
 // Console/--set var scenarioMovers, e.g. --set scenarioMovers 96 --scenario ladder-choice
 int scenarioMovers = 0;
+// --set scenarioSize N: square map size for scenarios that have a size (world, hubs, ...)
+int scenarioSize = 0;
 
 // West part of the ground (z=1), 15 per row, rows 2 apart: crowd-size experiments
 static void SpawnGroundCrowd(int n) {
@@ -365,6 +367,20 @@ static bool HubGoalPicker(int moverIdx, Point* goal) {
     return false;
 }
 
+// World: a generated map with water, movers wandering to random goals. A load
+// test for map size: ./build/bin/path --headless --scenario world --set scenarioSize 512 --profile
+static void SetupWorld(void) {
+    endlessMoverMode = true;
+    int n = scenarioMovers > 0 ? scenarioMovers : 100, spawned = 0;
+    for (int tries = 0; spawned < n && tries < n * 200; tries++) {
+        int x = GetRandomValue(0, gridWidth - 1), y = GetRandomValue(0, gridHeight - 1);
+        for (int z = 1; z < gridDepth; z++) {
+            if (IsCellWalkableAt(z, y, x)) { SpawnMoverAt(x, y, z); spawned++; break; }
+        }
+    }
+    AddMessage(TextFormat("World: %d movers on %dx%d", spawned, gridWidth, gridHeight), GREEN);
+}
+
 static void SetupHubs(void) {
     // Hubs: walkable cells in the biggest reachability region, spread out (a
     // jittered grid over the map, each snapped to the nearest good cell)
@@ -488,6 +504,8 @@ static const Scenario scenarios[] = {
                    "TrainLong", SetupTrainLong, NULL, NULL, NULL, 0, 0},
     {"hubs",       "128x128 hills, 200 movers shuttling between 6 hubs: pathfinding load",
                    "Hills",     SetupHubs,     NULL, NULL, NULL, 128, 128},
+    {"world",      "Hills with soils and water, 100 wandering movers; scenarioSize sets the map (for --profile)",
+                   "HillsSoilsWater", SetupWorld, NULL, NULL, NULL, 256, 256},
     {"train-double", "Double track (one per direction), platforms on both sides, 3 stops, 32 movers",
                    NULL,        SetupTrainDouble, NULL, TrainDoublePrintStats, NULL, 240, 24},
 };
@@ -526,10 +544,14 @@ bool RunScenario(const char* name) {
         ScenarioPrintList();
         return false;
     }
-    if (s->gridW > 0 && s->gridH > 0 && (gridWidth != s->gridW || gridHeight != s->gridH))
-        InitGridWithSizeAndChunkSize(s->gridW, s->gridH, 16, 16);
-    flatWorldW = s->gridW > 0 ? s->gridW : 32;
-    flatWorldH = s->gridH > 0 ? s->gridH : 32;
+    int w = s->gridW, h = s->gridH;
+    if (w > 0 && h > 0 && scenarioSize > 0) {
+        w = h = scenarioSize < MAX_GRID_WIDTH ? scenarioSize : MAX_GRID_WIDTH;
+    }
+    if (w > 0 && h > 0 && (gridWidth != w || gridHeight != h))
+        InitGridWithSizeAndChunkSize(w, h, 16, 16);
+    flatWorldW = w > 0 ? w : 32;
+    flatWorldH = h > 0 ? h : 32;
     ScenarioResetWorld(s->terrain);
     s->setup();
     currentScenario = s;

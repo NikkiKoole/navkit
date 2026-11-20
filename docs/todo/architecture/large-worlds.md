@@ -90,7 +90,51 @@ or fewer bytes per cell. Not planned; listed so the ceiling is clear.
 **What doesn't change with map size:** mover count. 10,000 movers is a separate limit
 (avoidance, repaths, jobs), measured in the hubs and ladder scenarios, not here.
 
-## First step before building anything
+## Measured: simulation cost per map size (2026-11-20)
 
-Measure the simulations at 512, and on a test build with the cap raised to 1024. That tells
-us whether the simulations or the graph hurt first, and checks the estimates above.
+Tool: the `world` scenario (HillsSoilsWater terrain, 100 movers wandering to random goals)
+plus the headless `--profile` report (CPU ms per tick, averaged over the whole run):
+
+```bash
+./build/bin/path --headless --scenario world --set scenarioSize 512 --ticks 1200 --profile
+```
+
+| ms per tick (avg) | 128 | 256 | 512 |
+|---|---|---|---|
+| **whole tick** | **4.7** | **7.2** | **27.8** |
+| Trees (`TreesTick`) | 0.5 | 2.1 | **7.9** |
+| Grid (mover + item spatial grids) | 0.3 | 1.2 | **6.1** |
+| Water | 3.3 | 2.5 | 2.7 |
+| Temperature (+ water freezing) | 0.2 | 0.6 | 1.9 |
+| Snow | 0.1 | 0.2 | 0.8 |
+| Move / avoidance / LOS | 0.1 | 0.3 | 1.0 |
+| Repath | ~0 | ~0 | ~0 normally (see spike below) |
+
+At 512: scenario setup (world gen + graph) 2.4 s, full graph rebuild 2.07 s
+(73,280 entrances, 1.59M edges). Normal path requests: 240 per run, ~6.4 ms each.
+
+What it says:
+- **The tick is already 28 ms at 512 (over a 16.7 ms frame at 60 ticks/s), and it's not
+  pathfinding.** The top two are cheap wins that grow with area for no reason:
+  - `TreesTick` (sampled as the top function) sweeps the map; tree growth only needs a
+    list of growing trees/saplings, or a slow rotating sweep.
+  - `BuildItemSpatialGrid` (second in the sample, plus `bzero`): rebuilds/clears a whole-map
+    grid every tick with almost no items. Clear only touched cells, or rebuild on change.
+  Fixing those two should bring 512 to roughly 12-14 ms per tick (estimate).
+- Water stays ~2.5-3 ms at every size: it already works on active cells only.
+  Temperature/freezing and snow grow with area: candidates for active-chunk simulation.
+
+**Open: an intermittent 8.8 s path search at 512.** Seen in 2 of the first 3 runs at 512
+(Repath max 8245 ms CPU; one logged request: HPA* (292,448,7) -> (338,133,7), found a
+474-step path in 8776 ms). Not reproduced in the next 8 runs (random goals differ per run).
+Normal HPA* requests take ~6 ms, so something pathological happens on some requests.
+`FindPath` now logs every request over 200 ms to stderr as `SLOW PATH ...` (start, goal,
+algorithm, length). Next: seed the RNG so a run is reproducible, log also
+whether regions or shared-goal fields were (re)built during the call, and profile one.
+
+## Next steps
+
+1. Find the 8.8 s path spike (above).
+2. Cheap wins: tree tick and item spatial grid not sweeping the whole map.
+3. Then per-chunk edges + layers sized to the map (improvements 1 and 2), and re-measure
+   with a test build at 1024.

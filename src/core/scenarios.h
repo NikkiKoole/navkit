@@ -39,6 +39,7 @@ void ScenarioPrintList(void);                     // names + descriptions to std
 // before the first scenario ran.
 void ScenarioResetWorld(const char* terrain);
 
+extern int scenarioSize;     // square map size override for sized scenarios (0 = default)
 extern int scenarioMovers;   // mover count override for crowd scenarios (0 = default)
 
 #endif
