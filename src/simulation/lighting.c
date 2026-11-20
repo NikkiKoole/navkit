@@ -167,10 +167,11 @@ static void SpreadSkyLight(void) {
 static void ClearBlockLight(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                LIGHT(x, y, z).blockR = 0;
-                LIGHT(x, y, z).blockG = 0;
-                LIGHT(x, y, z).blockB = 0;
+            FOR_X_IN_ROW(x, i, y, z) {
+                // Only write cells that have block light: writing every cell would dirty
+                // the whole layer's memory even where it is already dark
+                LightCell* c = &LAYER_AT(lightGrid, i);
+                if (c->blockR | c->blockG | c->blockB) { c->blockR = 0; c->blockG = 0; c->blockB = 0; }
             }
         }
     }

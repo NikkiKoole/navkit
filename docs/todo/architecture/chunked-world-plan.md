@@ -301,8 +301,13 @@ a 1024 map still costs what it costs (~75 bytes per cell dense, ~1.2 GB).
   `MAX_GRID_WIDTH/HEIGHT` still size those scratch buffers and the index tables.
 - Cost vs step 1: ~3% per tick at 512 (3.22 -> 3.32 ms; still below the original 3.44),
   setup +7%: every access loads the layer pointer.
-- Verified: byte-identical saves vs step 1 for world 512/100, ladders, crafting, hubs, train,
+- Verified: byte-identical saves vs step 1 for world 512/100, ladders, crafting, hubs,
   survival (fixed headless seed and `--seed 7`), dollhouse, sandbox; v93 save loads identically.
+  **Correction (2026-11-21):** `train` was reported identical too, wrongly: it differs in 10,240
+  empty water cells' `stable` bit (step 1: 0, step 2: 1). The train map (80x20) is set up after
+  the 32x32 startup map without a `ClearWater`; step 1 left cells beyond the earlier map's
+  high-water mark at 0, the arena gives fresh layers their empty value. No behaviour change:
+  with no water the water sim never looks at them (`waterActiveCells == 0`).
 - 1024 world: 8.6 ms/tick, setup 5.0 s (graph 3.9 s), peak RSS 1.03 GB, footprint 1.81 GB.
 
 **First 2048x2048 run (2026-11-21)**, `-DMAX_GRID_WIDTH=2048 -DMAX_GRID_HEIGHT=2048` build,
@@ -322,9 +327,30 @@ in order of payoff: (1) clear zero layers by replacing their pages (fresh zero p
 footprint) instead of memset; (2) sparse layers (step 3), designations first (16 B/cell, and
 its non-zero empty value forces a full write); (3) graph build time and the first-tick spike.
 
-Note (pre-existing, found 2026-11-21): `test_workshop_deconstruction` segfaults (a workshop type
-without a construction recipe; `GetConstructionRecipe` returns NULL), and `make test` hides it:
-every suite runs with `-@`, so crashes and failures don't fail the target.
+**Zero-page clearing (2026-11-21).** The arena is an anonymous `mmap` (POSIX) with every layer
+page-aligned; `ClearGridLayer(..., 0)` replaces the layer's pages with fresh zero pages
+(`MAP_FIXED`) instead of writing zeros. Also stopped three loops writing every cell: `InitTrees`
+(now three zero-page clears), the snow-accumulator reset and `ClearBlockLight` (write only cells
+that hold a value). Note the layout: a 16x16 chunk column (all z) of a 4-byte layer is one 16 KB
+page, so one write per column (e.g. a surface sweep) dirties the whole layer.
+
+| peak footprint | before | after |
+|---|---|---|
+| 128 map, cap 512 / cap 1024 | ~50 MB | 35 / 49 MB |
+| 1024 map | 1.81 GB | 1.40 GB |
+| 2048 map | 6.8 GB | 5.9 GB |
+
+2048 breakdown (`footprint <pid>`, 45 s in): layer arena 3.5 GB dirty of 5.2 GB mapped,
+`MALLOC_LARGE` 1.06 GB (HPA* graph etc.), `MALLOC_SMALL` 0.63 GB. The arena is now dirtied by
+real data and by the non-zero empty-value fills when the map size changes: designations alone
+are 16 B x 69M cells = 1.1 GB written just to set `assignedMover = -1`, plus water (stable bit),
+source items (0xFF) and explored (1). That is step 3's job: sparse layers whose empty value is
+"no block". `GridLayersReport()` (printed by headless `--profile`) lists resident MB per layer,
+but `mincore` doesn't count pages macOS has compressed, so use footprint for totals.
+
+Note (found 2026-11-21, fixed the same day by the UI agent): `test_workshop_deconstruction`
+segfaulted (Stove/Counter had no construction recipe) and `make test` hid it; `make test` now
+fails on any crashed or failing suite.
 
 ## Step 3: sparse layers
 

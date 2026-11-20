@@ -193,15 +193,10 @@ static int treeSweepActive, treeSweepRegen, treeSweepStartActive, treeSweepStart
 
 void InitTrees(void) {
     treeBandCount = 0;   // new world: restart the sweep
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                GROWTH_TIMER(x, y, z) = 0.0f;
-                TARGET_HEIGHT(x, y, z) = 0;
-                TREE_HARVEST(x, y, z) = 0;
-            }
-        }
-    }
+    // Whole-layer zero clears (fresh zero pages; writing 0 per cell would dirty every page)
+    CLEAR_GRID_LAYER(growthTimer, 0);
+    CLEAR_GRID_LAYER(targetHeight, 0);
+    CLEAR_GRID_LAYER(treeHarvestState, 0);
 }
 
 // Check if a leaf cell is connected to a trunk of the same type within distance

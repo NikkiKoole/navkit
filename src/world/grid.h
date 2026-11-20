@@ -111,6 +111,8 @@ extern int cellIndexTabY[MAX_GRID_HEIGHT + 1];
 // InitGridWithDimensions calls it; anything else that sets gridWidth/gridHeight must too.
 void AllocGridLayers(void);
 size_t GridLayersBytes(void);   // world arena size (all layers)
+bool GridLayerZeroFast(void* layer, size_t bytes);   // zero via fresh pages (grid_layers.c)
+void GridLayersReport(void);   // per-layer resident MB (headless --profile)
 static inline int CellIndex(int x, int y, int z) {
     return cellIndexTabX[x] + cellIndexTabY[y] + CellIndexZ(z);
 }

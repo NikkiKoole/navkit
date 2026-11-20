@@ -537,8 +537,9 @@ void UpdateSnow(void) {
                     }
                 }
                 
-                // Reset accumulator if conditions don't match
-                if ((!isSnowing || !exposed || !isFreezing) && isFreezing) {
+                // Reset accumulator if conditions don't match (only write if set: a write
+                // per column would dirty the memory of every chunk)
+                if ((!isSnowing || !exposed || !isFreezing) && isFreezing && SNOW_ACCUM(x, y, z) != 0.0f) {
                     SNOW_ACCUM(x, y, z) = 0.0f;
                 }
                 if (SNOW(x, y, z) > 0) anySnow = true;

@@ -82,7 +82,10 @@ void ClearGridPlane(void* plane, size_t elemSize, int fillByte) {
 }
 
 void ClearGridLayer(void* layer, size_t elemSize, int fillByte) {
-    memset(layer, fillByte, gridLayerCells * elemSize);
+    size_t bytes = gridLayerCells * elemSize;
+    // Zero: give the layer fresh zero pages instead of writing (keeps untouched memory free).
+    if (fillByte == 0 && GridLayerZeroFast(layer, bytes)) return;
+    memset(layer, fillByte, bytes);
 }
 
 void FillGridLayer(void* layer, size_t elemSize, const void* pattern) {

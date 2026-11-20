@@ -1117,6 +1117,7 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     if (doProfile) {
         HeadlessProfilePrint(ticks);
         if (setupMs > 0) printf("Scenario setup (world gen + graph): %.0f ms\n", setupMs);
+        GridLayersReport();
         double gs = WallMs();
         BuildEntrances(); BuildGraph();
         printf("Full graph rebuild: %.0f ms (%d entrances, %d edges)\n", WallMs() - gs,

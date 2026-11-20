@@ -3,9 +3,14 @@
 //
 // All layers live in one "world arena": a single zeroed allocation sized for the current map
 // (gridLayerCells elements per layer, see CellIndex in grid.h). When the map size changes,
-// AllocGridLayers drops the whole arena and allocates a new one. Big calloc'd blocks are fresh
-// zero pages that only cost RAM once touched; after a size change, layers whose empty value
-// isn't zero are filled with it.
+// AllocGridLayers drops the whole arena and allocates a new one. Fresh zero pages only cost RAM
+// once touched; after a size change, layers whose empty value isn't zero are filled with it.
+//
+// On POSIX the arena is an anonymous mmap with every layer page-aligned, so clearing a layer to
+// zero (ClearGridLayer with 0, which every world reset does for most layers) replaces its pages
+// with fresh zero pages instead of writing zeros: the old pages go back to the OS and the layer
+// costs nothing until something is written. A 2048 map's layers are ~5 GB; memset-clearing them
+// all made the process footprint 6.8 GB. Windows keeps calloc + memset.
 //
 // The first arena is allocated before main() (GridLayersAtStartup) for the default map size and
 // left all zero, exactly like the static arrays it replaces: some code (tests, ClearMovers)
@@ -32,6 +37,10 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#ifndef _WIN32
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
 
 // Scratch layers that are private to their .c file (no header declares them).
 extern float* snowAccumGrid;
@@ -117,6 +126,47 @@ static int arenaGridW = -1, arenaGridH = -1;
 
 static size_t AlignUp(size_t n, size_t a) { return (n + a - 1) & ~(a - 1); }
 
+#ifndef _WIN32
+static size_t ArenaPageSize(void) {
+    static size_t page = 0;
+    if (!page) page = (size_t)getpagesize();
+    return page;
+}
+static void* ArenaMap(size_t bytes) {
+    void* p = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    return p == MAP_FAILED ? NULL : p;
+}
+static void ArenaUnmap(void* p, size_t bytes) { if (p) munmap(p, bytes); }
+
+// Zero [start, start + bytes) inside the arena: whole pages are replaced with fresh zero pages,
+// the partial pages at either end are memset. Returns false if remapping failed (caller memsets).
+static bool ArenaZero(unsigned char* start, size_t bytes) {
+    size_t page = ArenaPageSize();
+    unsigned char* first = (unsigned char*)AlignUp((size_t)start, page);
+    unsigned char* last = (unsigned char*)(((size_t)(start + bytes)) & ~(page - 1));
+    if (last <= first) return false;   // smaller than a page: just memset
+    void* r = mmap(first, (size_t)(last - first), PROT_READ | PROT_WRITE,
+                   MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0);
+    if (r == MAP_FAILED) return false;
+    memset(start, 0, (size_t)(first - start));
+    memset(last, 0, (size_t)(start + bytes - last));
+    return true;
+}
+#else
+static size_t ArenaPageSize(void) { return 64; }
+static void* ArenaMap(size_t bytes) { return calloc(1, bytes); }
+static void ArenaUnmap(void* p, size_t bytes) { (void)bytes; free(p); }
+static bool ArenaZero(unsigned char* start, size_t bytes) { (void)start; (void)bytes; return false; }
+#endif
+
+// Called by ClearGridLayer for fill byte 0 (grid.c): true if the layer was zeroed here.
+bool GridLayerZeroFast(void* layer, size_t bytes) {
+    unsigned char* p = (unsigned char*)layer;
+    unsigned char* a = (unsigned char*)worldArena;
+    if (!a || p < a || p + bytes > a + worldArenaBytes) return false;
+    return ArenaZero(p, bytes);
+}
+
 static void BuildCellIndexTables(void) {
     for (int x = 0; x <= MAX_GRID_WIDTH; x++)
         cellIndexTabX[x] = (x >> STORE_CHUNK_SHIFT) * STORE_CHUNK_STRIDE + (x & STORE_MASK);
@@ -133,15 +183,17 @@ void AllocGridLayers(void) {
     gridLayerCells = (size_t)storeChunksX * storeChunksY * STORE_CHUNK_STRIDE;
     BuildCellIndexTables();
 
+    // Every layer starts on a page boundary, so a whole layer can be remapped to zero pages.
+    size_t page = ArenaPageSize();
     size_t total = 0;
     for (int i = 0; i < GRID_LAYER_COUNT; i++) {
-        total = AlignUp(total, 64) + gridLayerCells * gridLayerDefs[i].elemSize;
+        total = AlignUp(total, page) + gridLayerCells * gridLayerDefs[i].elemSize;
     }
-    total = AlignUp(total, 64);
+    total = AlignUp(total, page);
 
     bool firstArena = (worldArena == NULL);
-    free(worldArena);
-    worldArena = calloc(1, total);
+    ArenaUnmap(worldArena, worldArenaBytes);
+    worldArena = ArenaMap(total);
     if (!worldArena) {
         fprintf(stderr, "AllocGridLayers: cannot map %zu MB for a %dx%d map\n",
                 total >> 20, gridWidth, gridHeight);
@@ -153,7 +205,7 @@ void AllocGridLayers(void) {
 
     unsigned char* p = (unsigned char*)worldArena;
     for (int i = 0; i < GRID_LAYER_COUNT; i++) {
-        p = (unsigned char*)AlignUp((size_t)p, 64);
+        p = (unsigned char*)AlignUp((size_t)p, page);
         *gridLayerDefs[i].ptr = p;
         p += gridLayerCells * gridLayerDefs[i].elemSize;
     }
@@ -169,5 +221,39 @@ void AllocGridLayers(void) {
 }
 
 size_t GridLayersBytes(void) { return worldArenaBytes; }
+
+// Resident memory per layer (pages actually backed by RAM), largest first. POSIX only.
+void GridLayersReport(void) {
+#ifndef _WIN32
+    size_t page = ArenaPageSize();
+    double residentMB[GRID_LAYER_COUNT], totalRes = 0;
+    int order[GRID_LAYER_COUNT];
+    for (int i = 0; i < GRID_LAYER_COUNT; i++) {
+        unsigned char* start = (unsigned char*)*gridLayerDefs[i].ptr;
+        size_t bytes = gridLayerCells * gridLayerDefs[i].elemSize;
+        size_t pages = (bytes + page - 1) / page;
+        char* vec = malloc(pages);
+        size_t res = 0;
+        if (vec && mincore(start, pages * page, vec) == 0) {
+            for (size_t k = 0; k < pages; k++) res += (vec[k] & 1);
+        }
+        free(vec);
+        residentMB[i] = (double)(res * page) / (1024.0 * 1024.0);
+        totalRes += residentMB[i];
+        order[i] = i;
+    }
+    for (int a = 0; a < GRID_LAYER_COUNT; a++)
+        for (int b = a + 1; b < GRID_LAYER_COUNT; b++)
+            if (residentMB[order[b]] > residentMB[order[a]]) { int t = order[a]; order[a] = order[b]; order[b] = t; }
+    printf("Grid layers: %.0f MB resident of %.0f MB arena (%zu cells/layer)\n",
+           totalRes, (double)worldArenaBytes / (1024.0 * 1024.0), gridLayerCells);
+    for (int k = 0; k < GRID_LAYER_COUNT; k++) {
+        int i = order[k];
+        if (residentMB[i] < 0.5) break;
+        double full = (double)(gridLayerCells * gridLayerDefs[i].elemSize) / (1024.0 * 1024.0);
+        printf("  %-22s %8.1f / %8.1f MB\n", gridLayerDefs[i].name, residentMB[i], full);
+    }
+#endif
+}
 
 __attribute__((constructor)) static void GridLayersAtStartup(void) { AllocGridLayers(); }
