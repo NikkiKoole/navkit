@@ -93,13 +93,15 @@ int main(int argc, char** argv) {
 
     double t0 = NowMs();
     BuildEntrances();
+    double entMs = NowMs() - t0;
     BuildGraph();
     double fullMs = NowMs() - t0;
     NavWorld* w = NavGame();
     int edges;
     NavEdgesFlat(w, &edges);
-    printf("%s seed %llu %dx%dx%d: %d entrances, %d edges, full build %.0f ms\n",
-           terrain, (unsigned long long)seed, gridWidth, gridHeight, gridDepth, w->entranceNum, edges, fullMs);
+    printf("%s seed %llu %dx%dx%d: %d entrances, %d edges, full build %.0f ms (entrances %.0f, graph %.0f)\n",
+           terrain, (unsigned long long)seed, gridWidth, gridHeight, gridDepth, w->entranceNum, edges, fullMs,
+           entMs, fullMs - entMs);
 
     SetRandomSeed(42);
     double sum = 0, worst = 0;

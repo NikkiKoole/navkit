@@ -1001,8 +1001,11 @@ static void nav_ChunkEdges(NavWorld* w, int chunk, int z, int minX, int minY, in
 
 void NavBuildGraph(NavWorld* w) {
     nav_ClearEdges(w);
-    w->chunkEntsOverflow = false;
     w->edgeOverflow = false;
+    // Entrances per chunk edge region (also used by the hierarchical fields). It lists
+    // exactly the entrances a chunk's search region holds, in index order; scanning
+    // every entrance per chunk instead made the full build ~O(chunks x entrances).
+    nav_BuildChunkEntranceIndex(w);
 
     double startTime = NavHostTime();
     int perLevel = w->chunksX * w->chunksY;
@@ -1021,27 +1024,13 @@ void NavBuildGraph(NavWorld* w) {
         if (maxX > w->width) maxX = w->width;
         if (maxY > w->height) maxY = w->height;
 
-        // Linear scan (not chunkEnts) so a full build allows up to 128 entrances per
-        // chunk: every entrance inside the search region (see nav_EdgeChunksOfCell)
-        int ents[NAV_CONNECT_MAX];
-        int numEnts = 0;
-        for (int i = 0; i < w->entranceNum; i++) {
-            const NavEntrance* e = &w->entranceList[i];
-            if (e->z != z || e->x < minX || e->x >= maxX || e->y < minY || e->y >= maxY) continue;
-            if (numEnts == NAV_CONNECT_MAX) { w->chunkEntsOverflow = true; break; }
-            ents[numEnts++] = i;
-        }
-        nav_ChunkEdges(w, chunk, z, minX, minY, maxX, maxY, ents, NULL, numEnts);
+        if (w->chunkEntCount[chunk] == 0) continue;
+        nav_ChunkEdges(w, chunk, z, minX, minY, maxX, maxY, w->chunkEnts[chunk], NULL, w->chunkEntCount[chunk]);
     }
 
     nav_AddVerticalLinkEdges(w, false);
     w->graphVersion++;
-    {   // index for the hierarchical fields (keeps the full build's own overflow flag)
-        bool overflow = w->chunkEntsOverflow;
-        nav_BuildChunkEntranceIndex(w);
-        w->chunkEntsVersion = w->chunkEntsOverflow ? w->graphVersion - 1 : w->graphVersion;
-        w->chunkEntsOverflow = overflow;
-    }
+    w->chunkEntsVersion = w->chunkEntsOverflow ? w->graphVersion - 1 : w->graphVersion;
 
     NAV_LOG_INFO("Built graph: %d edges (%d ladder links, %d ramp links) in %.2fms",
                  w->edgeNum, w->ladderNum, w->rampNum, (NavHostTime() - startTime) * 1000.0);

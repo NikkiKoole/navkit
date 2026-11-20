@@ -24,8 +24,10 @@ entrance index shift), rebuilding the entrance hash + chunk index (~1.8 ms), cop
 compacting all entrances (~1.9 ms). Stable entrance ids remove the remap and allow
 updating hash/index for touched chunks only.
 
-Also found: `NavBuildGraph` scans all entrances for every chunk (16K chunks x 53K
-entrances at 512): most of the ~1 s full build; the chunk entrance index would fix it.
+Full build: `NavBuildGraph` scanned all entrances for every chunk (16K chunks x 53K
+entrances at 512). It now builds the chunk entrance index first and reads from it:
+graph build 994 -> 677 ms (entrances: 10 ms). The rest is the local searches themselves
+(~41 us per chunk); threads would be the next step if load times matter.
 
 ## Problem
 
