@@ -129,6 +129,25 @@ something lives there. Estimate (`large-worlds.md`): ~15 bytes per cell dense, s
 2048x2048x16 at ~1-1.5 GB instead of 5 GB. Pairs with active-chunk simulation (sims
 iterate chunks that have something, not the whole map).
 
+## Allocation model (for steps 2-3)
+
+Group memory by lifetime instead of one allocation per layer. Three small pieces, no
+general-purpose allocator (~150 lines total):
+
+| lifetime | what | allocator |
+|---|---|---|
+| program | atlas, fonts, tables | static, as now |
+| world (new game / load / scenario reset) | per-cell layers, HPA* graph, spatial grids, later entity arrays | **world arena**: allocate at world creation, drop all at once on reset |
+| chunk (comes and goes on its own) | sparse layer blocks: water, fire, designations, farm, ... | **fixed-size block pool** with a free list (`NULL` block = empty) |
+| tick / temporary | `bfsQueue`, `visited` planes, sim generation arrays, search scratch | **scratch arena**, reset per tick or per call |
+
+- Reserve a large virtual range (e.g. 8 GB, `mmap`) and let the OS commit pages on first
+  touch: untouched memory costs nothing (the same effect cheap win 1 relies on), and
+  pointers never move.
+- Arenas don't make 2048 fit by themselves: the density work (narrower types, sparse layers)
+  decides that.
+- Only useful from step 2 on: before the accessor, every layer is still a fixed-size array.
+
 ## Steps toward an endless world (after 1-3)
 
 Each is its own project; order follows the infinite-world doc, adjusted for what exists.
