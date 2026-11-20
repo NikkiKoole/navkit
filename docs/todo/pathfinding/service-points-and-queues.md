@@ -1,6 +1,6 @@
 # Service points and queues
 
-> Status: partial (steps 1-2 done: ladders)
+> Status: partial (steps 1-2 done; step 3 line shape done)
 
 One general way for movers to wait their turn at things that serve one (or a few)
 at a time: ladder segments now; train doors, wells, workshops, doors, elevators
@@ -77,6 +77,13 @@ most movers standing on one cell (no piles).
 3. **Train stations on the same system:** the slot queue becomes follow-the-one-
    ahead; boarding uses the line order; a station's expected wait can feed route
    choice (and later replace the "goal 40+ cells away" rule in `ShouldUseTrain`).
+   *Partly done:* station lines are follow-the-one-ahead (the front glides to the
+   boarding spot, the rest keep a gap to the one ahead and push apart, never onto
+   the track; no teleport to a slot on arrival); boarding already used the line
+   order. Not done: the station's waiting list is still `TrainStation.waitingMovers`
+   (it is saved, unlike ladder lines), not a `ServicePoint`; worth moving when a
+   station's expected wait feeds route choice, so that work needs a save change
+   or a rebuild-from-movers on load.
 4. **Patience trait:** wait, give up and re-plan, or leave and come back.
 5. **More service points** as the game needs them (well, workshop, doors,
    elevators).

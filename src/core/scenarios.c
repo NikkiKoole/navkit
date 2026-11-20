@@ -312,15 +312,17 @@ static void SetupCrafting(void) {
 }
 
 static void SetupTrain(void) {
-    SpawnMoverRow(4, 3, 1, 4);
+    int n = scenarioMovers > 0 ? scenarioMovers : 4;
+    SpawnMoverRow(4, 3, 1, n);
     currentViewZ = 1;
-    AddMessage("Train scenario: rocks at station A, stockpile at B, 4 movers", GREEN);
+    AddMessage(TextFormat("Train scenario: rocks at station A, stockpile at B, %d movers", n), GREEN);
 }
 
 static void SetupTrainLong(void) {
-    SpawnMoverRow(12, 5, 1, 4);
+    int n = scenarioMovers > 0 ? scenarioMovers : 4;
+    SpawnMoverRow(12, 5, 1, n);
     currentViewZ = 1;
-    AddMessage("Train (long) scenario: 3 stations, 4-car train, 4 movers", GREEN);
+    AddMessage(TextFormat("Train (long) scenario: 3 stations, 4-car train, %d movers", n), GREEN);
 }
 
 // ---------------------------------------------------------------------------

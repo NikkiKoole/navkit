@@ -1588,17 +1588,53 @@ void UpdateMovers(void) {
             if (m->transportStation >= 0 && m->transportStation < stationCount) {
                 TrainStation* s = &stations[m->transportStation];
                 if (trainQueueEnabled) {
-                    // Queue position targeting: lerp to assigned slot
+                    // Line in boarding order: the front glides to the boarding spot
+                    // (slot 0); everyone else keeps a gap to the one directly ahead,
+                    // so the line takes its shape from where people came from (as
+                    // at ladders), never stepping onto the track
                     int queueIdx = -1;
                     for (int w = 0; w < s->waitingCount; w++) {
                         if (s->waitingMovers[w] == i) { queueIdx = w; break; }
                     }
-                    if (queueIdx >= 0) {
+                    if (queueIdx == 0) {
                         float targetX, targetY;
-                        StationGetQueuePosition(m->transportStation, queueIdx, &targetX, &targetY);
+                        StationGetQueuePosition(m->transportStation, 0, &targetX, &targetY);
                         float lerpRate = 3.0f;
                         m->x += (targetX - m->x) * lerpRate * dt;
                         m->y += (targetY - m->y) * lerpRate * dt;
+                    } else if (queueIdx > 0) {
+                        const Mover* ahead = &movers[s->waitingMovers[queueIdx - 1]];
+                        float ax = ahead->x - m->x, ay = ahead->y - m->y;
+                        float d = sqrtf(ax * ax + ay * ay);
+                        const float spacing = CELL_SIZE * 0.6f;
+                        float mvx = 0.0f, mvy = 0.0f;
+                        float walk = m->speed * dayLengthSpeedScale;
+                        if (d > spacing * 1.1f) {                   // catch up
+                            float spd = walk * fminf(1.0f, (d - spacing) / (CELL_SIZE * 0.5f));
+                            mvx = ax / d * spd;
+                            mvy = ay / d * spd;
+                        }
+                        // Keep apart from everyone waiting here (incl. the one ahead
+                        // when too close); waiting movers get no avoidance vectors
+                        for (int w = 0; w < s->waitingCount; w++) {
+                            int o = s->waitingMovers[w];
+                            if (o == i) continue;
+                            float ox = m->x - movers[o].x, oy = m->y - movers[o].y;
+                            float od = sqrtf(ox * ox + oy * oy);
+                            if (od >= spacing * 0.9f) continue;
+                            if (od < 0.01f) { ox = (float)((i % 3) - 1) + 0.5f; oy = (float)((i % 2) * 2 - 1); od = sqrtf(ox * ox + oy * oy); }
+                            float push = walk * 0.5f * (1.0f - od / (spacing * 0.9f));
+                            mvx += ox / od * push;
+                            mvy += oy / od * push;
+                        }
+                        float nx = m->x + mvx * dt, ny = m->y + mvy * dt;
+                        int mz = (int)m->z;
+                        #define STATION_LINE_OK(px, py) (IsCellWalkableAt(mz, (int)((py) / CELL_SIZE), (int)((px) / CELL_SIZE)) && \
+                            grid[mz][(int)((py) / CELL_SIZE)][(int)((px) / CELL_SIZE)] != CELL_TRACK)
+                        if (STATION_LINE_OK(nx, ny)) { m->x = nx; m->y = ny; }
+                        else if (STATION_LINE_OK(nx, m->y)) m->x = nx;
+                        else if (STATION_LINE_OK(m->x, ny)) m->y = ny;
+                        #undef STATION_LINE_OK
                     }
                 } else {
                     // Spread-out avoidance: gentle tether to platform center
@@ -1634,13 +1670,9 @@ void UpdateMovers(void) {
                     m->transportState = TRANSPORT_WAITING;
                     EventLog("Mover %d (%s) arrived at station %d, now WAITING", i, m->name, stIdx);
                     StationAddWaiter(stIdx, i);
-                    // Position mover at arrival point
-                    if (trainQueueEnabled) {
-                        float qx, qy;
-                        StationGetQueuePosition(stIdx, stations[stIdx].waitingCount - 1, &qx, &qy);
-                        m->x = qx;
-                        m->y = qy;
-                    } else {
+                    // Line mode: stay where it arrived and line up from there (no
+                    // teleport to a slot). Spread-out mode: start at the platform centre.
+                    if (!trainQueueEnabled) {
                         TrainStation* s = &stations[stIdx];
                         m->x = s->platX * CELL_SIZE + CELL_SIZE * 0.5f;
                         m->y = s->platY * CELL_SIZE + CELL_SIZE * 0.5f;

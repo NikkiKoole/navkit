@@ -1,5 +1,6 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
+#include <stdlib.h>
 #include "../src/world/grid.h"
 #include "../src/world/cell_defs.h"
 #include "../assets/atlas.h"
@@ -1050,6 +1051,66 @@ describe(fifo_shift_down) {
 }
 
 // ============================================================================
+// Station lines (follow the one ahead)
+// ============================================================================
+
+describe(station_lines) {
+    it("waiters line up behind each other, front at the boarding spot, never on the track") {
+        SetupClean();
+        for (int x = 2; x <= 24; x++) grid[1][5][x] = CELL_TRACK;
+        grid[1][6][10] = CELL_PLATFORM;
+        grid[1][6][11] = CELL_PLATFORM;
+        grid[1][6][12] = CELL_PLATFORM;
+        RebuildStations();
+        expect(stationCount == 1);
+        trainQueueEnabled = true;
+
+        const int n = 10;
+        moverCount = n;
+        for (int i = 0; i < n; i++) {
+            // arrive spread around the platform's land side, in this order
+            float x = (6 + (i * 3) % 11) * CELL_SIZE + 16, y = (7 + i % 3) * CELL_SIZE + 16;
+            InitMover(&movers[i], x, y, 1.0f, (Point){30, 30, 1}, MOVER_SPEED);
+            movers[i].transportState = TRANSPORT_WAITING;
+            movers[i].transportStation = 0;
+            movers[i].transportFinalGoal = (Point){30, 30, 1};
+            movers[i].pathLength = 0;
+            movers[i].pathIndex = -1;
+            StationAddWaiter(0, i);
+        }
+        bool onTrack = false;
+        for (int t = 0; t < 900; t++) {
+            Tick();
+            for (int i = 0; i < n; i++)
+                if (grid[1][(int)(movers[i].y / CELL_SIZE)][(int)(movers[i].x / CELL_SIZE)] == CELL_TRACK) onTrack = true;
+        }
+        expect(!onTrack);
+        expect(stations[0].waitingCount == n);
+
+        float sx, sy;
+        StationGetQueuePosition(0, 0, &sx, &sy);
+        const Mover* front = &movers[stations[0].waitingMovers[0]];
+        expect(fabsf(front->x - sx) < 4.0f && fabsf(front->y - sy) < 4.0f);
+
+        float minGap = 1e9f, maxToAhead = 0.0f;
+        for (int k = 1; k < n; k++) {
+            const Mover* a = &movers[stations[0].waitingMovers[k - 1]];
+            const Mover* b = &movers[stations[0].waitingMovers[k]];
+            float d = sqrtf((a->x - b->x) * (a->x - b->x) + (a->y - b->y) * (a->y - b->y));
+            if (d > maxToAhead) maxToAhead = d;
+        }
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++) {
+                float d = sqrtf((movers[i].x - movers[j].x) * (movers[i].x - movers[j].x) +
+                                (movers[i].y - movers[j].y) * (movers[i].y - movers[j].y));
+                if (d < minGap) minGap = d;
+            }
+        expect(maxToAhead < CELL_SIZE * 1.5f);   // a line: everyone close to the one ahead
+        expect(minGap > CELL_SIZE * 0.3f);       // nobody on top of anyone
+    }
+}
+
+// ============================================================================
 // Queue Positions
 // ============================================================================
 
@@ -1254,6 +1315,7 @@ int main(int argc, char* argv[]) {
     test(track_destroyed);
     test(multi_cell_platform);
     test(fifo_shift_down);
+    test(station_lines);
     test(queue_positions);
     test(track_connections);
 
