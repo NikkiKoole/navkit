@@ -9,7 +9,6 @@ typedef struct {
     InputAction action;
     const char* name;           // Uppercase name for display (e.g., "WALL")
     const char* barDisplayText; // Mixed case for bar button (e.g., "Wall", "cHannel", "dig Ramp")
-    const char* barText;        // Instructions shown in bar when action selected
     char barKey;                // Key to activate this action (0 if none)
     int barUnderlinePos;        // Position in barDisplayText to underline (-1 if none)
     InputMode requiredMode;     // Mode this action belongs to

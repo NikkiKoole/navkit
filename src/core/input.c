@@ -3026,84 +3026,33 @@ void HandleInput(void) {
     // ========================================================================
     // Build recipe cycling (R key when in build actions)
     // ========================================================================
-    if (inputAction == ACTION_WORK_CONSTRUCT) {
-        if (IsKeyPressed(KEY_R)) {
-            // Cycle wall construction recipes
+    {
+        // One row per build tool: R cycles that tool's recipe category
+        static const struct {
+            InputAction action;
+            BuildCategory category; // recipe category
+            int* selected;         // the tool's current recipe
+            const char* label;
+        } recipeCyclers[] = {
+            {ACTION_WORK_CONSTRUCT, BUILD_WALL,      &selectedWallRecipe,      "Wall"},
+            {ACTION_WORK_FLOOR,     BUILD_FLOOR,     &selectedFloorRecipe,     "Floor"},
+            {ACTION_WORK_LADDER,    BUILD_LADDER,    &selectedLadderRecipe,    "Ladder"},
+            {ACTION_WORK_FURNITURE, BUILD_FURNITURE, &selectedFurnitureRecipe, "Furniture"},
+            {ACTION_WORK_DOOR,      BUILD_DOOR,      &selectedDoorRecipe,      "Door"},
+        };
+        for (int r = 0; r < (int)(sizeof(recipeCyclers) / sizeof(recipeCyclers[0])); r++) {
+            if (inputAction != recipeCyclers[r].action || !IsKeyPressed(KEY_R)) continue;
             int indices[16];
-            int count = GetConstructionRecipeIndicesForCategory(BUILD_WALL, indices, 16);
+            int count = GetConstructionRecipeIndicesForCategory(recipeCyclers[r].category, indices, 16);
             if (count > 0) {
+                int* selected = recipeCyclers[r].selected;
                 int cur = -1;
                 for (int i = 0; i < count; i++) {
-                    if (indices[i] == selectedWallRecipe) { cur = i; break; }
+                    if (indices[i] == *selected) { cur = i; break; }
                 }
-                selectedWallRecipe = indices[(cur + 1) % count];
-                const ConstructionRecipe* recipe = GetConstructionRecipe(selectedWallRecipe);
-                AddMessage(TextFormat("Wall recipe: %s", recipe ? recipe->name : "?"), BLUE);
-            }
-            return;
-        }
-    }
-    if (inputAction == ACTION_WORK_FLOOR) {
-        if (IsKeyPressed(KEY_R)) {
-            int indices[16];
-            int count = GetConstructionRecipeIndicesForCategory(BUILD_FLOOR, indices, 16);
-            if (count > 0) {
-                int cur = -1;
-                for (int i = 0; i < count; i++) {
-                    if (indices[i] == selectedFloorRecipe) { cur = i; break; }
-                }
-                selectedFloorRecipe = indices[(cur + 1) % count];
-                const ConstructionRecipe* recipe = GetConstructionRecipe(selectedFloorRecipe);
-                AddMessage(TextFormat("Floor recipe: %s", recipe ? recipe->name : "?"), BLUE);
-            }
-            return;
-        }
-    }
-    if (inputAction == ACTION_WORK_LADDER) {
-        if (IsKeyPressed(KEY_R)) {
-            int indices[16];
-            int count = GetConstructionRecipeIndicesForCategory(BUILD_LADDER, indices, 16);
-            if (count > 1) {
-                int cur = -1;
-                for (int i = 0; i < count; i++) {
-                    if (indices[i] == selectedLadderRecipe) { cur = i; break; }
-                }
-                selectedLadderRecipe = indices[(cur + 1) % count];
-                const ConstructionRecipe* recipe = GetConstructionRecipe(selectedLadderRecipe);
-                AddMessage(TextFormat("Ladder recipe: %s", recipe ? recipe->name : "?"), BLUE);
-            }
-            return;
-        }
-    }
-    if (inputAction == ACTION_WORK_FURNITURE) {
-        if (IsKeyPressed(KEY_R)) {
-            int indices[16];
-            int count = GetConstructionRecipeIndicesForCategory(BUILD_FURNITURE, indices, 16);
-            if (count > 0) {
-                int cur = -1;
-                for (int i = 0; i < count; i++) {
-                    if (indices[i] == selectedFurnitureRecipe) { cur = i; break; }
-                }
-                selectedFurnitureRecipe = indices[(cur + 1) % count];
-                const ConstructionRecipe* recipe = GetConstructionRecipe(selectedFurnitureRecipe);
-                AddMessage(TextFormat("Furniture recipe: %s", recipe ? recipe->name : "?"), BLUE);
-            }
-            return;
-        }
-    }
-
-    if (inputAction == ACTION_WORK_DOOR) {
-        if (IsKeyPressed(KEY_R)) {
-            int indices[16];
-            int count = GetConstructionRecipeIndicesForCategory(BUILD_DOOR, indices, 16);
-            if (count > 0) {
-                int cur = -1;
-                for (int i = 0; i < count; i++) {
-                    if (indices[i] == selectedDoorRecipe) { cur = i; break; }
-                }
-                selectedDoorRecipe = indices[(cur + 1) % count];
-                const ConstructionRecipe* recipe = GetConstructionRecipe(selectedDoorRecipe);
-                AddMessage(TextFormat("Door recipe: %s", recipe ? recipe->name : "?"), BLUE);
+                *selected = indices[(cur + 1) % count];
+                const ConstructionRecipe* recipe = GetConstructionRecipe(*selected);
+                AddMessage(TextFormat("%s recipe: %s", recipeCyclers[r].label, recipe ? recipe->name : "?"), BLUE);
             }
             return;
         }

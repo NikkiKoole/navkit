@@ -177,7 +177,6 @@ int GetSelectedFurnitureRecipe(void);
 
 // Get display strings for input bar
 const char* InputMode_GetModeName(void);
-const char* InputMode_GetBarText(void);
 
 // Individual bar item for separate button rendering
 typedef struct {
