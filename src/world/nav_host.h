@@ -14,6 +14,7 @@
 // All static inline so the seam costs nothing in the hot search loops.
 // =============================================================================
 
+#include <time.h>
 #include "cell_defs.h"
 #include "../../vendor/raylib.h"
 
@@ -22,7 +23,12 @@
 #define NAV_LOG_INFO(...) TraceLog(LOG_INFO, __VA_ARGS__)
 #define NAV_LOG_WARN(...) TraceLog(LOG_WARNING, __VA_ARGS__)
 
-static inline double NavHostTime(void) { return GetTime(); }
+// Monotonic clock: raylib's GetTime() is 0 without a window (headless runs, benchmarks)
+static inline double NavHostTime(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec + t.tv_nsec * 1e-9;
+}
 
 static inline bool NavIsWalkable(void* host, int x, int y, int z) {
     (void)host;

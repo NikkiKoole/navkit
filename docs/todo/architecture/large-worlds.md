@@ -190,6 +190,35 @@ What grows with area now:
 - Memory: 1.13 GB resident at 1024; the normal build reserves ~570 MB for any map size
   (improvement 2: size layers to the map).
 
+## Measured: path searches per terrain (2026-11-20)
+
+`./build/bin/bench_nav_update <size> 10 <terrain> 16 1` (1024: same bench built with the
+1024 cap). HPA* searches between random walkable cells, grouped by straight-line trip
+length; time split into the abstract search (chunk graph) and refinement (cells).
+
+| 1024x1024x16 | entrances | update (1 wall) | short <64 | medium 64-256 | long >256 (worst) | long: steps |
+|---|---|---|---|---|---|---|
+| hillswater | 215K | 6.1 ms | 0.57 ms | 4.4 ms | **18.9 ms (53)** | 720 |
+| hills | 285K | 8.5 ms | 0.79 ms | 3.0 ms | **21.4 ms (57)** | 569 |
+| spiral3d | 96K | 8.4 ms | 2.2 ms | 2.3 ms | 2.5 ms (7) | 700 |
+| labyrinth3d | 87K | 2.4 ms | 3.4 ms | 4.1 ms | 4.9 ms (10) | 1863 |
+| council | 32K | 4.7 ms | 0.25 ms | 0.58 ms | 1.9 ms (4.5) | 580 |
+| city | 23K | 1.4 ms | 0.15 ms | 0.32 ms | 1.0 ms (2) | 794 |
+
+At 512 all non-hills terrains (city, castle, dungeon, caves, towers, perlin, council,
+spiral3d, labyrinth3d) stay under ~1 ms even for long trips; hills ~6.7 ms long.
+
+What it says:
+- **The abstract search is the cost** on long trips over hills (ramps everywhere: 4-9M edges
+  at 1024). Refinement is tiny everywhere (<= 0.6 ms). A third pathfinding level (regions)
+  is the fix for long hill trips; coarse mover paths would not help search time.
+- **Every search scans all entrances twice** to connect start and goal to the graph
+  (`nav_ConnectToChunk`): ~0.45 ms of the 0.57 ms for short trips on 1024 hillswater.
+  The chunk entrance index makes that local (cheap fix).
+- **The 1024-step mover path cap bites on maze terrains**: labyrinth3d paths between
+  cells < 64 apart average 1438 steps at 1024.
+- Full graph build at 1024: up to 4.2 s (spiral3d, hills).
+
 ## Next steps
 
 0. Water freezing and snow sweeps: **done (2026-11-20).** Freezing checks one band of rows

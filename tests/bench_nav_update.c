@@ -1,14 +1,16 @@
-// bench_nav_update.c — cost of incremental HPA* graph updates on a big map.
+// bench_nav_update.c — HPA* on a big map: graph updates and path searches.
 //
 // Run with: make bench_nav_update            (512x512x16 hills+water, 20 updates)
 //       or: ./build/bin/bench_nav_update [size] [updates] [terrain] [seed] [walls]
-//           terrain: hillswater (default), hills, spiral3d; seed default 16 (the
-//           densest graph seen at 512); walls per update default 3
+//           terrain: any generator name below (default hillswater); seed default 16
+//           (the densest hills+water graph seen at 512); walls per update default 3
 //
-// Builds the graph, then does `updates` rounds of 3 random wall placements on
-// walkable cells (like mining/building), timing each NavUpdateDirty. Then checks
-// the incrementally updated graph equals a fresh full build: same entrances, same
-// directed edges and costs. Exit code is non-zero if they differ.
+// Builds the graph, then does `updates` rounds of random wall placements on
+// walkable cells (like mining/building), timing each NavUpdateDirty. Then times
+// HPA* searches by trip length (short < 64 cells, medium 64-256, long > 256),
+// split into the abstract search (chunk graph) and the refinement (cells).
+// Finally checks the incrementally updated graph equals a fresh full build: same
+// entrances, same directed edges and costs. Exit code is non-zero if they differ.
 
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
@@ -28,10 +30,37 @@ static double NowMs(void) {
     return t.tv_sec * 1000.0 + t.tv_nsec / 1e6;
 }
 
+typedef struct { const char* name; void (*gen)(void); } Gen;
+static void GenSparse(void) { GenerateSparse(0.25f); }
+static const Gen kGens[] = {
+    {"sparse", GenSparse},           {"perlin", GeneratePerlin},         {"city", GenerateCity},
+    {"mixed", GenerateMixed},        {"concentric", GenerateConcentricMaze}, {"dungeon", GenerateDungeonRooms},
+    {"caves", GenerateCaves},        {"drunkard", GenerateDrunkard},     {"tunneler", GenerateTunneler},
+    {"mixmax", GenerateMixMax},      {"towers", GenerateTowers},         {"galleryflat", GenerateGalleryFlat},
+    {"castle", GenerateCastle},      {"labyrinth3d", GenerateLabyrinth3D}, {"spiral3d", GenerateSpiral3D},
+    {"council", GenerateCouncilEstate}, {"hills", GenerateHills},        {"hillssoils", GenerateHillsSoils},
+    {"hillswater", GenerateHillsSoilsWater},
+};
+
 static Point RandomWalkable(void) {
     for (int t = 0; t < 100000; t++) {
         Point p = {GetRandomValue(0, gridWidth - 1), GetRandomValue(0, gridHeight - 1), GetRandomValue(1, gridDepth - 1)};
         if (IsCellWalkableAt(p.z, p.y, p.x)) return p;
+    }
+    return (Point){-1, -1, 0};
+}
+
+// Walkable cell at Chebyshev distance [dMin, dMax) from p (any level), or x = -1
+static Point RandomWalkableNear(Point p, int dMin, int dMax) {
+    int span = gridWidth > gridHeight ? gridWidth : gridHeight;
+    if (dMax > span) dMax = span;
+    for (int t = 0; t < 20000; t++) {
+        int dx = GetRandomValue(-dMax + 1, dMax - 1), dy = GetRandomValue(-dMax + 1, dMax - 1);
+        int d = abs(dx) > abs(dy) ? abs(dx) : abs(dy);
+        if (d < dMin) continue;
+        Point q = {p.x + dx, p.y + dy, GetRandomValue(0, gridDepth - 1)};
+        if (q.x < 0 || q.y < 0 || q.x >= gridWidth || q.y >= gridHeight) continue;
+        if (IsCellWalkableAt(q.z, q.y, q.x)) return q;
     }
     return (Point){-1, -1, 0};
 }
@@ -87,9 +116,16 @@ int main(int argc, char** argv) {
     InitGridWithSizeAndChunkSize(size, size, 16, 16);
     gridDepth = 16;
     worldSeed = seed;
-    if (strcmp(terrain, "hills") == 0) GenerateHills();
-    else if (strcmp(terrain, "spiral3d") == 0) GenerateSpiral3D();
-    else GenerateHillsSoilsWater();
+    const Gen* gen = NULL;
+    for (size_t i = 0; i < sizeof(kGens) / sizeof(kGens[0]); i++)
+        if (strcmp(kGens[i].name, terrain) == 0) gen = &kGens[i];
+    if (!gen) {
+        printf("unknown terrain '%s'; one of:", terrain);
+        for (size_t i = 0; i < sizeof(kGens) / sizeof(kGens[0]); i++) printf(" %s", kGens[i].name);
+        printf("\n");
+        return 2;
+    }
+    gen->gen();
 
     double t0 = NowMs();
     BuildEntrances();
@@ -121,16 +157,29 @@ int main(int argc, char** argv) {
     }
     printf("incremental update (%d walls): avg %.2f ms, worst %.2f ms over %d updates\n", walls, sum / updates, worst, updates);
 
-    // HPA* queries on the updated graph
+    // HPA* searches by trip length (found paths only: unreachable pairs are answered
+    // by the region check without searching)
     static Point path[MAX_PATH];
-    double qsum = 0; int found = 0;
-    for (int q = 0; q < 50; q++) {
-        Point a = RandomWalkable(), b = RandomWalkable();
-        double t = NowMs();
-        found += FindPath(PATH_ALGO_HPA, a, b, path, MAX_PATH) > 0;
-        qsum += NowMs() - t;
+    const struct { const char* name; int dMin, dMax; } kTrips[] = {
+        {"short  (<64)", 8, 64}, {"medium (64-256)", 64, 256}, {"long   (>256)", 256, 100000},
+    };
+    for (int b = 0; b < 3; b++) {
+        if (kTrips[b].dMin >= size) continue;
+        double sum = 0, worst = 0, abs = 0, ref = 0; int n = 0, steps = 0;
+        for (int tries = 0; tries < 400 && n < 40; tries++) {
+            Point a = RandomWalkable(), g = RandomWalkableNear(a, kTrips[b].dMin, kTrips[b].dMax);
+            if (a.x < 0 || g.x < 0) continue;
+            double t = NowMs();
+            int len = NavFindPath(w, NAV_ALGO_HPA, (NavPoint){a.x, a.y, a.z}, (NavPoint){g.x, g.y, g.z}, (NavPoint*)path, MAX_PATH);
+            double ms = NowMs() - t;
+            if (len <= 0) continue;
+            n++; sum += ms; steps += len;
+            abs += w->hpaAbstractMs; ref += w->hpaRefineMs;
+            if (ms > worst) worst = ms;
+        }
+        if (n) printf("HPA* %s: avg %6.2f ms (abstract %.2f + refine %.2f), worst %6.2f ms, avg %d steps, %d paths\n",
+                      kTrips[b].name, sum / n, abs / n, ref / n, worst, steps / n, n);
     }
-    printf("HPA* query: avg %.2f ms (%d/50 found)\n", qsum / 50, found);
 
     // Incremental result must equal a fresh full build
     Snapshot inc = Snap(w);
