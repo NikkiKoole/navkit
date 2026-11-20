@@ -277,5 +277,5 @@ int main(int argc, char **argv) {
     test(balance_movement_scaling);
 
     dayLength = savedDayLength;
-    return 0;
+    return summary();
 }

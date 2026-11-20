@@ -167,13 +167,13 @@ $(BINDIR)/jukebox-test: $(jukebox-test_SRC) | $(BINDIR)
 test_pathing: $(TEST_UNITY_OBJ)
 	@echo "Running pathfinding tests..."
 	@$(CC) $(TCFLAGS) -Wno-overlength-strings -o $(BINDIR)/$@ $(test_pathing_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_pathing -q
+	-@./$(BINDIR)/test_pathing -q || echo test_pathing >> $(TEST_FAILURES)
 
 # Mover test
 test_mover: $(TEST_UNITY_OBJ)
 	@echo "Running mover tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_mover_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_mover -q
+	-@./$(BINDIR)/test_mover -q || echo test_mover >> $(TEST_FAILURES)
 
 # Steering test (doesn't use test_unity)
 # nav library on its own: stub host only, no raylib, no game code (guards the extraction)
@@ -183,290 +183,290 @@ test_layer_access:
 
 test_nav_standalone: $(BINDIR)
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ tests/test_nav_standalone.c
-	-@./$(BINDIR)/test_nav_standalone
+	-@./$(BINDIR)/test_nav_standalone || echo test_nav_standalone >> $(TEST_FAILURES)
 
 # Randomized adversarial checks of every nav algorithm vs ground truth (optimized: it's heavy)
 test_nav_fuzz: $(BINDIR)
 	@$(CC) $(subst -O0,-O2,$(TCFLAGS)) -o $(BINDIR)/$@ tests/test_nav_fuzz.c
-	-@./$(BINDIR)/test_nav_fuzz
+	-@./$(BINDIR)/test_nav_fuzz || echo test_nav_fuzz >> $(TEST_FAILURES)
 
 test_steering: $(BINDIR)
 	@echo "Running steering tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_steering_SRC) $(LDFLAGS)
-	-@./$(BINDIR)/test_steering -q
+	-@./$(BINDIR)/test_steering -q || echo test_steering >> $(TEST_FAILURES)
 
 # Jobs test
 test_jobs: $(TEST_UNITY_OBJ)
 	@echo "Running jobs tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_jobs_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_jobs -q
+	-@./$(BINDIR)/test_jobs -q || echo test_jobs >> $(TEST_FAILURES)
 
 # Water test
 test_water: $(TEST_UNITY_OBJ)
 	@echo "Running water tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_water_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_water -q
+	-@./$(BINDIR)/test_water -q || echo test_water >> $(TEST_FAILURES)
 
 # Ground wear test
 test_groundwear: $(TEST_UNITY_OBJ)
 	@echo "Running groundwear tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_groundwear_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_groundwear -q
+	-@./$(BINDIR)/test_groundwear -q || echo test_groundwear >> $(TEST_FAILURES)
 
 # Fire test
 test_fire: $(TEST_UNITY_OBJ)
 	@echo "Running fire tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_fire_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_fire -q
+	-@./$(BINDIR)/test_fire -q || echo test_fire >> $(TEST_FAILURES)
 
 # Temperature test
 test_temperature: $(TEST_UNITY_OBJ)
 	@echo "Running temperature tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_temperature_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_temperature -q
+	-@./$(BINDIR)/test_temperature -q || echo test_temperature >> $(TEST_FAILURES)
 
 # Steam test
 test_steam: $(TEST_UNITY_OBJ)
 	@echo "Running steam tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_steam_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_steam -q
+	-@./$(BINDIR)/test_steam -q || echo test_steam >> $(TEST_FAILURES)
 
 # Materials test
 test_materials: $(TEST_UNITY_OBJ)
 	@echo "Running materials tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_materials_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_materials -q
+	-@./$(BINDIR)/test_materials -q || echo test_materials >> $(TEST_FAILURES)
 
 # Time test
 test_time: $(TEST_UNITY_OBJ)
 	@echo "Running time tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_time_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_time -q
+	-@./$(BINDIR)/test_time -q || echo test_time >> $(TEST_FAILURES)
 
 # Time specification tests
 test_time_specs: $(TEST_UNITY_OBJ)
 	@echo "Running time specs tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_time_specs_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_time_specs -q
+	-@./$(BINDIR)/test_time_specs -q || echo test_time_specs >> $(TEST_FAILURES)
 
 # High game speed safety tests
 test_high_speed: $(TEST_UNITY_OBJ)
 	@echo "Running high speed tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_high_speed_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_high_speed -q
+	-@./$(BINDIR)/test_high_speed -q || echo test_high_speed >> $(TEST_FAILURES)
 
 # Trees test
 test_trees: $(TEST_UNITY_OBJ)
 	@echo "Running trees tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_trees_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_trees -q
+	-@./$(BINDIR)/test_trees -q || echo test_trees >> $(TEST_FAILURES)
 
 # Terrain test
 test_terrain: $(TEST_UNITY_OBJ)
 	@echo "Running terrain tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_terrain_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_terrain -q
+	-@./$(BINDIR)/test_terrain -q || echo test_terrain >> $(TEST_FAILURES)
 
 # Grid audit test (grid.md findings)
 test_grid_audit: $(TEST_UNITY_OBJ)
 	@echo "Running grid audit tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_grid_audit_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_grid_audit -q
+	-@./$(BINDIR)/test_grid_audit -q || echo test_grid_audit >> $(TEST_FAILURES)
 
 # Floor dirt test
 test_floordirt: $(TEST_UNITY_OBJ)
 	@echo "Running floordirt tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_floordirt_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_floordirt -q
+	-@./$(BINDIR)/test_floordirt -q || echo test_floordirt >> $(TEST_FAILURES)
 
 # Mud test
 test_mud: $(TEST_UNITY_OBJ)
 	@echo "Running mud tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_mud_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_mud -q
+	-@./$(BINDIR)/test_mud -q || echo test_mud >> $(TEST_FAILURES)
 
 # Seasons test
 test_seasons: $(TEST_UNITY_OBJ)
 	@echo "Running season tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_seasons_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_seasons -q
+	-@./$(BINDIR)/test_seasons -q || echo test_seasons >> $(TEST_FAILURES)
 
 # Weather test
 test_weather: $(TEST_UNITY_OBJ)
 	@echo "Running weather tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_weather_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_weather -q
+	-@./$(BINDIR)/test_weather -q || echo test_weather >> $(TEST_FAILURES)
 
 # Wind test
 test_wind: $(TEST_UNITY_OBJ)
 	@echo "Running wind tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_wind_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_wind -q
+	-@./$(BINDIR)/test_wind -q || echo test_wind >> $(TEST_FAILURES)
 
 # Snow test
 test_snow: $(TEST_UNITY_OBJ)
 	@echo "Running snow tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_snow_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_snow -q
+	-@./$(BINDIR)/test_snow -q || echo test_snow >> $(TEST_FAILURES)
 
 # Thunderstorm test
 test_thunderstorm: $(TEST_UNITY_OBJ)
 	@echo "Running thunderstorm tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_thunderstorm_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_thunderstorm -q
+	-@./$(BINDIR)/test_thunderstorm -q || echo test_thunderstorm >> $(TEST_FAILURES)
 
 # Lighting test
 test_lighting: $(TEST_UNITY_OBJ)
 	@echo "Running lighting tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_lighting_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_lighting -q
+	-@./$(BINDIR)/test_lighting -q || echo test_lighting >> $(TEST_FAILURES)
 
 test_workshop_linking: $(TEST_UNITY_OBJ)
 	@echo "Running workshop-stockpile linking tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_workshop_linking_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_workshop_linking -q
+	-@./$(BINDIR)/test_workshop_linking -q || echo test_workshop_linking >> $(TEST_FAILURES)
 
 # Hunger test
 test_hunger: $(TEST_UNITY_OBJ)
 	@echo "Running hunger tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_hunger_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_hunger -q
+	-@./$(BINDIR)/test_hunger -q || echo test_hunger >> $(TEST_FAILURES)
 
 test_stacking: $(TEST_UNITY_OBJ)
 	@echo "Running stacking tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_stacking_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_stacking -q
+	-@./$(BINDIR)/test_stacking -q || echo test_stacking >> $(TEST_FAILURES)
 
 test_containers: $(TEST_UNITY_OBJ)
 	@echo "Running container tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_containers_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_containers -q
+	-@./$(BINDIR)/test_containers -q || echo test_containers >> $(TEST_FAILURES)
 
 test_sleep: $(TEST_UNITY_OBJ)
 	@echo "Running sleep tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_sleep_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_sleep -q
+	-@./$(BINDIR)/test_sleep -q || echo test_sleep >> $(TEST_FAILURES)
 
 test_furniture: $(TEST_UNITY_OBJ)
 	@echo "Running furniture tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_furniture_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_furniture -q
+	-@./$(BINDIR)/test_furniture -q || echo test_furniture >> $(TEST_FAILURES)
 
 test_balance: $(TEST_UNITY_OBJ)
 	@echo "Running balance tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_balance_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_balance -q
+	-@./$(BINDIR)/test_balance -q || echo test_balance >> $(TEST_FAILURES)
 
 test_cross_z: $(TEST_UNITY_OBJ)
 	@echo "Running cross-z-level tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_cross_z_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_cross_z -q
+	-@./$(BINDIR)/test_cross_z -q || echo test_cross_z >> $(TEST_FAILURES)
 
 test_workshop_deconstruction: $(TEST_UNITY_OBJ)
 	@echo "Running workshop deconstruction tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_workshop_deconstruction_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_workshop_deconstruction -q
+	-@./$(BINDIR)/test_workshop_deconstruction -q || echo test_workshop_deconstruction >> $(TEST_FAILURES)
 
 test_tool_quality: $(TEST_UNITY_OBJ)
 	@echo "Running tool quality tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_tool_quality_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_tool_quality -q
+	-@./$(BINDIR)/test_tool_quality -q || echo test_tool_quality >> $(TEST_FAILURES)
 
 test_doors: $(TEST_UNITY_OBJ)
 	@echo "Running door & shelter tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_doors_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_doors -q
+	-@./$(BINDIR)/test_doors -q || echo test_doors >> $(TEST_FAILURES)
 
 test_butchering: $(TEST_UNITY_OBJ)
 	@echo "Running butchering tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_butchering_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_butchering -q
+	-@./$(BINDIR)/test_butchering -q || echo test_butchering >> $(TEST_FAILURES)
 
 test_hunting: $(TEST_UNITY_OBJ)
 	@echo "Running hunting tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_hunting_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_hunting -q
+	-@./$(BINDIR)/test_hunting -q || echo test_hunting >> $(TEST_FAILURES)
 
 test_spoilage: $(TEST_UNITY_OBJ)
 	@echo "Running spoilage tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_spoilage_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_spoilage -q
+	-@./$(BINDIR)/test_spoilage -q || echo test_spoilage >> $(TEST_FAILURES)
 
 test_fog: $(TEST_UNITY_OBJ)
 	@echo "Running fog of war tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_fog_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_fog -q
+	-@./$(BINDIR)/test_fog -q || echo test_fog >> $(TEST_FAILURES)
 
 test_farming: $(TEST_UNITY_OBJ)
 	@echo "Running farming tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_farming_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_farming -q
+	-@./$(BINDIR)/test_farming -q || echo test_farming >> $(TEST_FAILURES)
 
 test_clothing: $(TEST_UNITY_OBJ)
 	@echo "Running clothing tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_clothing_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_clothing -q
+	-@./$(BINDIR)/test_clothing -q || echo test_clothing >> $(TEST_FAILURES)
 
 test_thirst: $(TEST_UNITY_OBJ)
 	@echo "Running thirst tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_thirst_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_thirst -q
+	-@./$(BINDIR)/test_thirst -q || echo test_thirst >> $(TEST_FAILURES)
 
 test_mud_cob: $(TEST_UNITY_OBJ)
 	@echo "Running mud/cob tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_mud_cob_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_mud_cob -q
+	-@./$(BINDIR)/test_mud_cob -q || echo test_mud_cob >> $(TEST_FAILURES)
 
 test_reeds: $(TEST_UNITY_OBJ)
 	@echo "Running reeds tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_reeds_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_reeds -q
+	-@./$(BINDIR)/test_reeds -q || echo test_reeds >> $(TEST_FAILURES)
 
 test_loop_closers: $(TEST_UNITY_OBJ)
 	@echo "Running loop closers tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_loop_closers_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_loop_closers -q
+	-@./$(BINDIR)/test_loop_closers -q || echo test_loop_closers >> $(TEST_FAILURES)
 
 test_namegen: $(TEST_UNITY_OBJ)
 	@echo "Running namegen tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_namegen_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_namegen -q
+	-@./$(BINDIR)/test_namegen -q || echo test_namegen >> $(TEST_FAILURES)
 
 test_action_registry: $(TEST_UNITY_OBJ)
 	@echo "Running action registry tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_action_registry_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_action_registry -q
+	-@./$(BINDIR)/test_action_registry -q || echo test_action_registry >> $(TEST_FAILURES)
 
 test_biome_presets: $(TEST_UNITY_OBJ)
 	@echo "Running biome preset tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_biome_presets_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_biome_presets -q
+	-@./$(BINDIR)/test_biome_presets -q || echo test_biome_presets >> $(TEST_FAILURES)
 
 test_trains: $(TEST_UNITY_OBJ)
 	@echo "Running train station tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_trains_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_trains -q
+	-@./$(BINDIR)/test_trains -q || echo test_trains >> $(TEST_FAILURES)
 
 test_mood: $(TEST_UNITY_OBJ)
 	@echo "Running mood tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_mood_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_mood -q
+	-@./$(BINDIR)/test_mood -q || echo test_mood >> $(TEST_FAILURES)
 
 test_rooms: $(TEST_UNITY_OBJ)
 	@echo "Running room detection tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_rooms_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	-@./$(BINDIR)/test_rooms -q
+	-@./$(BINDIR)/test_rooms -q || echo test_rooms >> $(TEST_FAILURES)
 
 # Soundsystem tests - standalone audio library tests
 test_soundsystem: $(BINDIR)
 	@echo "Running soundsystem tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_soundsystem_SRC) -lm
-	-@./$(BINDIR)/test_soundsystem -q
+	-@./$(BINDIR)/test_soundsystem -q || echo test_soundsystem >> $(TEST_FAILURES)
 
 test_daw_file: $(BINDIR)
 	@echo "Running DAW file round-trip tests..."
 	@$(CC) $(TCFLAGS) -Wno-unused-function -Wno-unused-variable -o $(BINDIR)/$@ $(test_daw_file_SRC) -lm
-	-@./$(BINDIR)/test_daw_file
+	-@./$(BINDIR)/test_daw_file || echo test_daw_file >> $(TEST_FAILURES)
 
 # All soundsystem tests in one command
 test_sound: test_soundsystem test_daw_file
@@ -475,11 +475,19 @@ test_sound: test_soundsystem test_daw_file
 test_mechanisms: $(BINDIR)
 	@echo "Running mechanisms tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_mechanisms_SRC) -lm
-	-@./$(BINDIR)/test_mechanisms -q
+	-@./$(BINDIR)/test_mechanisms -q || echo test_mechanisms >> $(TEST_FAILURES)
 
-# Run all tests (mover uses 5 stress iterations by default)
-.IGNORE: test
-test: test_layer_access test_nav_standalone test_nav_fuzz test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_seasons test_weather test_wind test_snow test_thunderstorm test_lighting test_workshop_linking test_hunger test_stacking test_containers test_sleep test_furniture test_balance test_soundsystem test_daw_file test_cross_z test_workshop_deconstruction test_tool_quality test_doors test_butchering test_hunting test_spoilage test_fog test_farming test_clothing test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_action_registry test_biome_presets test_trains test_mood test_rooms
+# Run all tests (mover uses 5 stress iterations by default).
+# Every suite runs even if an earlier one fails (their recipes use -@); a suite that
+# crashes or fails an expect appends its name to $(TEST_FAILURES), and `make test`
+# lists those and exits 1 at the end. Run serially (no -j): the reset goes first.
+TEST_FAILURES := $(BINDIR)/test_failures.txt
+
+test_reset_failures:
+	@mkdir -p $(BINDIR) && rm -f $(TEST_FAILURES)
+
+test: test_reset_failures test_layer_access test_nav_standalone test_nav_fuzz test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_seasons test_weather test_wind test_snow test_thunderstorm test_lighting test_workshop_linking test_hunger test_stacking test_containers test_sleep test_furniture test_balance test_soundsystem test_daw_file test_cross_z test_workshop_deconstruction test_tool_quality test_doors test_butchering test_hunting test_spoilage test_fog test_farming test_clothing test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_action_registry test_biome_presets test_trains test_mood test_rooms
+	@if [ -s $(TEST_FAILURES) ]; then echo; echo "FAILED test suites (crash or failed expect):"; sed "s/^/  /" $(TEST_FAILURES); exit 1; fi; echo; echo "All test suites passed."
 
 # Full stress tests - mover tests use 20 iterations
 test-full: $(TEST_UNITY_OBJ)
@@ -746,4 +754,4 @@ cscope:
 nav: tags cscope
 	@echo "Updated tags + cscope.out"
 
-.PHONY: all clean clean-raylib clean-atlas nav test test_layer_access test_nav_standalone test_nav_fuzz test-tap test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_action_registry test_biome_presets test_trains test_mood test_rooms path steer crowd flow flow-big flow3d mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed chop-flip path8 path16 path1024 path-sound bench bench_jobs bench_items bench_pathfinding bench_astar_heap bench_nav_terrains bench_nav_update scenarios-check windows
+.PHONY: all clean clean-raylib clean-atlas nav test test_reset_failures test_layer_access test_nav_standalone test_nav_fuzz test-tap test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_action_registry test_biome_presets test_trains test_mood test_rooms path steer crowd flow flow-big flow3d mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed chop-flip path8 path16 path1024 path-sound bench bench_jobs bench_items bench_pathfinding bench_astar_heap bench_nav_terrains bench_nav_update scenarios-check windows

@@ -924,5 +924,5 @@ int main(int argc, char* argv[]) {
     test(furniture_rest_seeking);
     test(body_temperature);
 
-    return 0;
+    return summary();
 }

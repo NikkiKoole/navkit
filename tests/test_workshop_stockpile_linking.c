@@ -204,5 +204,5 @@ int main(int argc, char** argv) {
     test(basic_linking);
     test(unlinking);
     
-    return 0;
+    return summary();
 }
