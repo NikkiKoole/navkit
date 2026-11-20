@@ -264,6 +264,15 @@ static void LadderTickStats(void) {
     ladderTicks++;
 }
 
+// --check: single-file must hold (never two climbers on one segment)
+static bool LadderCheck(char* why, int whyLen) {
+    if (useSingleFileLadders && ladderSharedTicks > 0) {
+        snprintf(why, (size_t)whyLen, "two or more climbers on one ladder segment in %d ticks", ladderSharedTicks);
+        return false;
+    }
+    return true;
+}
+
 static void LadderPrintStats(void) {
     printf("Single-file ladders: %s, ladder queue cost: %s\n", useSingleFileLadders ? "on" : "off",
            useLadderQueueCost ? "on" : "off");
@@ -330,17 +339,17 @@ static void SetupTrainLong(void) {
 // ---------------------------------------------------------------------------
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
-                   NULL,        SetupLadders,  LadderTickStats, LadderPrintStats},
+                   NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck},
     {"ladder-choice", "Deck with two ladders 6 cells apart, 16 movers: compare ladderQueueCost on/off",
-                   NULL,        SetupLadderChoice, LadderTickStats, LadderPrintStats},
+                   NULL,        SetupLadderChoice, LadderTickStats, LadderPrintStats, LadderCheck},
     {"mood",       "Comfort camp vs rough camp, 10 movers, needs on, slow days",
-                   "MoodTest",  SetupMood,     NULL, NULL},
+                   "MoodTest",  SetupMood,     NULL, NULL, NULL},
     {"crafting",   "Mine walls -> stonecutter -> stockpiles -> wall blueprint, 4 movers",
-                   "CraftTest", SetupCrafting, NULL, NULL},
+                   "CraftTest", SetupCrafting, NULL, NULL, NULL},
     {"train",      "Track loop, two stations, rocks to haul by train, 4 movers",
-                   "TrainTest", SetupTrain,    NULL, NULL},
+                   "TrainTest", SetupTrain,    NULL, NULL, NULL},
     {"train-long", "Long platforms, three stations, 4-car train, 4 movers",
-                   "TrainLong", SetupTrainLong, NULL, NULL},
+                   "TrainLong", SetupTrainLong, NULL, NULL, NULL},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 

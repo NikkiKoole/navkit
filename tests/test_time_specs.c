@@ -461,9 +461,11 @@ describe(spec_ground_wear) {
         SetupTestGrid();
         ResetTestState(12345);
         
-        // Set up bare worn dirt
+        // Set up bare worn dirt that had grass before it was trampled (since the
+        // gradual-recovery change, dirt that never had grass stays bare by design)
         grid[0][4][8] = CELL_WALL; SetWallMaterial(8, 4, 0, MAT_DIRT); SetWallNatural(8, 4, 0);
         SET_CELL_SURFACE(8, 4, 0, SURFACE_BARE);
+        SET_CELL_FLAG(8, 4, 0, CELL_FLAG_HAD_VEGETATION);
         wearGrid[0][4][8] = 150;  // Above threshold (3D array now)
         
         wearTallToNormal = 20;

@@ -8,6 +8,7 @@
 // Mood feeds into work speed (0.7x miserable to 1.2x happy).
 
 #include "mood.h"
+#include "plants.h"
 #include "balance.h"
 #include "../entities/mover.h"
 #include "../entities/furniture.h"
@@ -376,6 +377,15 @@ int CountBeautySources(int cx, int cy, int cz, int radius) {
             }
 
         }
+    }
+    // Plants (entity-based, at walking level): one pass over the plant list. The
+    // old per-cell GetPlantAt scanned every plant for every cell (169x per check)
+    // and was removed for speed in f161cc3, which silently dropped plants.
+    for (int i = 0; i < plantCount; i++) {
+        const Plant* p = &plants[i];
+        if (!p->active || p->z != cz) continue;
+        if (abs(p->x - cx) > radius || abs(p->y - cy) > radius) continue;
+        count++;
     }
     return count;
 }

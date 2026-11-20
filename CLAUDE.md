@@ -9,6 +9,8 @@ make path              # build main binary (not just `make`)
 ./build/bin/path       # run
 make test              # run tests
 make test-tap          # run tests with machine-readable TAP output (no ANSI)
+make scenarios-check   # every scenario headless with --check (also proves the GAME builds:
+                       # make test doesn't compile main.c / scenarios.c) - run before committing
 make debug             # debug build with sanitizers
 ```
 

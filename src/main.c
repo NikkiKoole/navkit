@@ -1049,6 +1049,36 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, int ticks
         scenario->printStats();
     }
 
+    // --check: red flags -> FAIL and exit code 1 (make scenarios-check)
+    //   always: no mover stuck (> 2 s without progress), no more movers in
+    //   non-walkable cells than at the start (+ --check-max-nonwalkable N allowed)
+    //   --check-min-arrivals N: at least N arrivals
+    //   plus the scenario's own check (e.g. ladders: never two on a segment)
+    bool doCheck = false;
+    int minArrivals = 0, allowNonWalkable = 0;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--check") == 0) doCheck = true;
+        else if (strcmp(argv[i], "--check-min-arrivals") == 0 && i + 1 < argc) minArrivals = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--check-max-nonwalkable") == 0 && i + 1 < argc) allowNonWalkable = atoi(argv[++i]);
+    }
+    int checkFailures = 0;
+    if (doCheck) {
+        printf("\n=== CHECK ===\n");
+        if (stuckAfter > 0) { printf("FAIL: %d mover(s) stuck (no progress > 2 s)\n", stuckAfter); checkFailures++; }
+        if (moversInNonWalkable > stuckBefore + allowNonWalkable) {
+            printf("FAIL: %d mover(s) in non-walkable cells (started with %d, allowed +%d)\n",
+                   moversInNonWalkable, stuckBefore, allowNonWalkable);
+            checkFailures++;
+        }
+        if (arrivals < minArrivals) { printf("FAIL: %d arrivals, expected at least %d\n", arrivals, minArrivals); checkFailures++; }
+        char why[256] = {0};
+        if (scenario && scenario->check && !scenario->check(why, (int)sizeof(why))) {
+            printf("FAIL: %s\n", why);
+            checkFailures++;
+        }
+        printf("%s\n", checkFailures ? "CHECK FAILED" : "CHECK PASSED");
+    }
+
     // Simulation stats (last tick's update counts)
     extern int waterUpdateCount, fireUpdateCount, steamUpdateCount, smokeUpdateCount, tempUpdateCount;
     printf("\n=== SIMULATION STATS (last tick) ===\n");
@@ -1171,7 +1201,7 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, int ticks
         }
     }
     
-    return 0;
+    return checkFailures ? 1 : 0;
 }
 
 // ============================================================================

@@ -18,6 +18,7 @@ typedef struct {
     void (*setup)(void);       // adds cells, movers, settings on top of the reset world
     void (*tickStats)(void);   // optional: sampled after every headless tick
     void (*printStats)(void);  // optional: printed at the end of a headless run
+    bool (*check)(char* why, int whyLen);   // optional: headless --check, false = fail (fill why)
 } Scenario;
 
 int ScenarioCount(void);
