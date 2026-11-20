@@ -18,7 +18,7 @@
 #define NAV_COST_INF 999999
 #define NAV_ENTRANCE_HASH_SIZE 32768   // power of 2, > 2x NAV_MAX_ENTRANCES
 #define NAV_ABS_CAP (NAV_MAX_ENTRANCES + 2)
-#define NAV_CONNECT_MAX 128            // entrances considered per chunk in a query/full build
+#define NAV_CONNECT_MAX NAV_MAX_ENTRANCES_PER_CHUNK   // entrances considered per chunk region
 
 #define NAV_HOSTP (w->host)
 
@@ -46,7 +46,7 @@ static void nav_NavFreeInternals(NavWorld* w) {
     nav_RegFree(w);
     free(w->entranceList); free(w->edgeList); free(w->ladderList); free(w->rampList);
     free(w->chunkDirtyFlags);
-    free(w->adjList); free(w->adjListCount);
+    free(w->adjStart);
     free(w->absNodes); free(w->absPath); free(w->absHeap); free(w->absHeapPos);
     free(w->chunkNodes); free(w->chunkHeapPos); free(w->chunkHeap);
     free(w->entHash); free(w->oldToNew); free(w->oldEntrances);
@@ -76,8 +76,8 @@ static bool nav_NavAllocInternals(NavWorld* w, int width, int height, int depth,
     w->ladderList     = calloc(NAV_MAX_LADDERS, sizeof(NavLadderLink));
     w->rampList       = calloc(NAV_MAX_RAMP_LINKS, sizeof(NavRampLink));
     w->chunkDirtyFlags= calloc(chunks, sizeof(bool));
-    w->adjList        = calloc(NAV_MAX_ENTRANCES, sizeof(*w->adjList));
-    w->adjListCount   = calloc(NAV_MAX_ENTRANCES, sizeof(int));
+    w->edgeCap        = NAV_MAX_EDGES;
+    w->adjStart       = calloc(NAV_MAX_ENTRANCES + 1, sizeof(int));
     w->absNodes       = calloc(NAV_ABS_CAP, sizeof(NavAbstractNode));
     w->absPath        = calloc(NAV_ABS_CAP, sizeof(int));
     w->absHeap        = calloc(NAV_ABS_CAP, sizeof(int));
@@ -108,7 +108,7 @@ static bool nav_NavAllocInternals(NavWorld* w, int width, int height, int depth,
     w->hpaDirty = true;
 
     return w->entranceList && w->edgeList && w->ladderList && w->rampList && w->chunkDirtyFlags
-        && w->adjList && w->adjListCount && w->absNodes && w->absPath && w->absHeap && w->absHeapPos
+        && w->adjStart && w->absNodes && w->absPath && w->absHeap && w->absHeapPos
         && w->chunkNodes && w->chunkHeapPos && w->chunkHeap && w->entHash && w->oldToNew
         && w->oldEntrances && w->chunkEnts && w->chunkEntCount && w->affected && w->tempPath;
 }
@@ -151,8 +151,8 @@ size_t NavMemoryUsage(const NavWorld* w) {
     size_t cells = layer * w->depth;
     size_t chunks = (size_t)w->depth * w->chunksX * w->chunksY;
     return sizeof(NavWorld)
-        + NAV_MAX_ENTRANCES * (sizeof(NavEntrance) * 2 + sizeof(*w->adjList) + sizeof(int) * 2)
-        + NAV_MAX_EDGES * sizeof(NavGraphEdge)
+        + NAV_MAX_ENTRANCES * (sizeof(NavEntrance) * 2 + sizeof(int) * 3)
+        + (size_t)w->edgeCap * sizeof(NavGraphEdge)
         + NAV_MAX_LADDERS * sizeof(NavLadderLink)
         + NAV_MAX_RAMP_LINKS * sizeof(NavRampLink)
         + NAV_ABS_CAP * (sizeof(NavAbstractNode) + sizeof(int) * 3)
@@ -204,17 +204,22 @@ static int nav_ChunkHeuristic(const NavWorld* w, int x1, int y1, int x2, int y2)
     return w->eightDir ? nav_Heuristic8Dir(x1, y1, x2, y2) : nav_Heuristic2D(x1, y1, x2, y2) * NAV_MIN_CELL_COST;
 }
 
+// Admissible with ramps: a ramp step moves one cell across AND one level for
+// 1.4 x cell cost, i.e. at most 1 x MIN of horizontal progress plus 0.4 x MIN for
+// the level (a ladder charges a full MIN per level). Charging a full MIN per level
+// on top of the horizontal distance overestimated, and A* returned longer paths.
 static int nav_Heuristic3D(const NavWorld* w, int x0, int y0, int z0, int x1, int y1, int z1) {
     int dx = abs(x1 - x0);
     int dy = abs(y1 - y0);
     int dz = abs(z1 - z0);
+    int perLevel = (4 * NAV_MIN_CELL_COST) / 10;
     if (w->eightDir) {
         int maxXY = (dx > dy) ? dx : dy;
         int minXY = (dx < dy) ? dx : dy;
         return (maxXY - minXY) * NAV_MIN_CELL_COST + minXY * ((14 * NAV_MIN_CELL_COST) / 10)
-             + dz * NAV_MIN_CELL_COST;
+             + dz * perLevel;
     }
-    return (dx + dy + dz) * NAV_MIN_CELL_COST;
+    return (dx + dy) * NAV_MIN_CELL_COST + dz * perLevel;
 }
 
 // =============================================================================
@@ -232,33 +237,63 @@ static void nav_BuildEntranceHash(NavWorld* w) {
         const NavEntrance* e = &w->entranceList[i];
         int h = nav_HashPosition(e->x, e->y, e->z);
         while (w->entHash[h].index >= 0) h = (h + 1) & (NAV_ENTRANCE_HASH_SIZE - 1);
-        w->entHash[h] = (NavHashEntry){e->x, e->y, e->z, i, e->chunk1 == e->chunk2};
+        w->entHash[h] = (NavHashEntry){e->x, e->y, e->z, i, e->chunk1, e->chunk2, false};
     }
 }
 
-static int nav_HashLookupEntrance(const NavWorld* w, int x, int y, int z, bool isLadder) {
-    int h = nav_HashPosition(x, y, z);
-    int start = h;
+// New index of an old entrance: same cell AND same chunk pair (a chunk-corner cell
+// can hold two border entrances; a ladder's middle cell two point entrances). Each
+// new entrance is handed out once, in index order, so the k-th old duplicate maps
+// to the k-th new one (kept entrances keep their relative order).
+static int nav_HashTakeEntrance(NavWorld* w, const NavEntrance* o) {
+    int h = nav_HashPosition(o->x, o->y, o->z);
+    int start = h, best = -1, bestSlot = -1;
     while (w->entHash[h].index >= 0) {
         const NavHashEntry* e = &w->entHash[h];
-        if (e->x == x && e->y == y && e->z == z && e->isLadder == isLadder) return e->index;
+        if (!e->used && e->x == o->x && e->y == o->y && e->z == o->z && e->chunk1 == o->chunk1 && e->chunk2 == o->chunk2
+            && (best < 0 || e->index < best)) {
+            best = e->index;
+            bestSlot = h;
+        }
         h = (h + 1) & (NAV_ENTRANCE_HASH_SIZE - 1);
         if (h == start) break;
     }
-    return -1;
+    if (bestSlot >= 0) w->entHash[bestSlot].used = true;
+    return best;
 }
 
-// Chunk -> entrance index list
+// Chunks whose edge-search region contains cell (x,y,z). A chunk's edges are
+// searched over the chunk plus the first row/column of its right/lower
+// neighbours, so a cell in a chunk's first row/column also belongs to the
+// chunk(s) above/left of it. Border entrances sit exactly there (the lower/right
+// side of the border); ladder and ramp cells can too, and may be reachable only
+// from the neighbour's side. Returns the count (1..4).
+static int nav_EdgeChunksOfCell(const NavWorld* w, int x, int y, int z, int* out) {
+    int perLevel = w->chunksX * w->chunksY;
+    int cx = x / w->chunkW, cy = y / w->chunkH, n = 0;
+    bool left = (x % w->chunkW == 0) && cx > 0, up = (y % w->chunkH == 0) && cy > 0;
+    out[n++] = z * perLevel + cy * w->chunksX + cx;
+    if (left) out[n++] = z * perLevel + cy * w->chunksX + cx - 1;
+    if (up) out[n++] = z * perLevel + (cy - 1) * w->chunksX + cx;
+    if (left && up) out[n++] = z * perLevel + (cy - 1) * w->chunksX + cx - 1;
+    return n;
+}
+
+// Chunk -> entrance index list (every chunk whose edge region holds the entrance)
 static void nav_BuildChunkEntranceIndex(NavWorld* w) {
     int totalChunks = w->depth * w->chunksX * w->chunksY;
     memset(w->chunkEntCount, 0, (size_t)totalChunks * sizeof(int));
+    w->chunkEntsOverflow = false;
     for (int i = 0; i < w->entranceNum; i++) {
-        int c1 = w->entranceList[i].chunk1;
-        int c2 = w->entranceList[i].chunk2;
-        if (w->chunkEntCount[c1] < NAV_MAX_ENTRANCES_PER_CHUNK)
-            w->chunkEnts[c1][w->chunkEntCount[c1]++] = i;
-        if (c2 != c1 && w->chunkEntCount[c2] < NAV_MAX_ENTRANCES_PER_CHUNK)
-            w->chunkEnts[c2][w->chunkEntCount[c2]++] = i;
+        const NavEntrance* e = &w->entranceList[i];
+        int cs[4];
+        int n = nav_EdgeChunksOfCell(w, e->x, e->y, e->z, cs);
+        for (int k = 0; k < n; k++) {
+            if (w->chunkEntCount[cs[k]] < NAV_MAX_ENTRANCES_PER_CHUNK)
+                w->chunkEnts[cs[k]][w->chunkEntCount[cs[k]]++] = i;
+            else
+                w->chunkEntsOverflow = true;
+        }
     }
 }
 
@@ -397,8 +432,11 @@ static void nav_ChunkSearchInit(NavWorld* w, int minX, int minY, int maxX, int m
 }
 
 // Expand (bestX,bestY) inside bounds. mode: 0 = A* to (gx,gy), 1 = Dijkstra.
+// reverse: relax the cells that can step ONTO best (g = cost from that cell to the
+// search origin), for "cost from each of these cells to here" queries.
 static void nav_ChunkExpand(NavWorld* w, int bestX, int bestY, int sz, int gx, int gy,
-                        int minX, int minY, int maxX, int maxY, bool dijkstra, bool trackParent) {
+                        int minX, int minY, int maxX, int maxY, bool dijkstra, bool trackParent,
+                        bool reverse) {
     const int* dx = w->eightDir ? nav_kDx8 : nav_kDx4;
     const int* dy = w->eightDir ? nav_kDy8 : nav_kDy4;
     int numDirs = w->eightDir ? 8 : 4;
@@ -416,10 +454,12 @@ static void nav_ChunkExpand(NavWorld* w, int bestX, int bestY, int sz, int gx, i
         }
         // Same movement rules as full A* (was missing: HPA* edges/refinement could
         // enter ramps from the side, which A* and the flow fields forbid)
-        if (!NavCanEnterFrom(NAV_HOSTP, nx, ny, sz, bestX, bestY)) continue;
+        if (reverse ? !NavCanEnterFrom(NAV_HOSTP, bestX, bestY, sz, nx, ny)
+                    : !NavCanEnterFrom(NAV_HOSTP, nx, ny, sz, bestX, bestY)) continue;
 
         int baseCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
-        int ng = best->g + (baseCost * NavMoveCost(NAV_HOSTP, nx, ny, sz)) / 10;
+        int entered = reverse ? NavMoveCost(NAV_HOSTP, bestX, bestY, sz) : NavMoveCost(NAV_HOSTP, nx, ny, sz);
+        int ng = best->g + (baseCost * entered) / 10;
         if (ng < n->g) {
             bool wasOpen = n->open;
             n->g = ng;
@@ -447,14 +487,14 @@ int NavChunkCost(NavWorld* w, int sx, int sy, int sz, int gx, int gy,
         NavChunkNode* b = &w->chunkNodes[nav_CellIdx(w, bx, by)];
         b->open = false;
         b->closed = true;
-        nav_ChunkExpand(w, bx, by, sz, gx, gy, minX, minY, maxX, maxY, false, false);
+        nav_ChunkExpand(w, bx, by, sz, gx, gy, minX, minY, maxX, maxY, false, false, false);
     }
     return -1;
 }
 
-int NavChunkCostsMulti(NavWorld* w, int sx, int sy, int sz,
+static int nav_ChunkCostsMultiDir(NavWorld* w, int sx, int sy, int sz,
                        const int* targetX, const int* targetY, int* outCosts, int numTargets,
-                       int minX, int minY, int maxX, int maxY) {
+                       int minX, int minY, int maxX, int maxY, bool reverse, bool trackParent) {
     nav_ChunkSearchInit(w, minX, minY, maxX, maxY);
     for (int i = 0; i < numTargets; i++) outCosts[i] = -1;
 
@@ -477,9 +517,16 @@ int NavChunkCostsMulti(NavWorld* w, int sx, int sy, int sz,
         }
         b->open = false;
         b->closed = true;
-        nav_ChunkExpand(w, bx, by, sz, 0, 0, minX, minY, maxX, maxY, true, false);
+        nav_ChunkExpand(w, bx, by, sz, 0, 0, minX, minY, maxX, maxY, true, trackParent, reverse);
     }
     return found;
+}
+
+int NavChunkCostsMulti(NavWorld* w, int sx, int sy, int sz,
+                       const int* targetX, const int* targetY, int* outCosts, int numTargets,
+                       int minX, int minY, int maxX, int maxY) {
+    return nav_ChunkCostsMultiDir(w, sx, sy, sz, targetX, targetY, outCosts, numTargets,
+                                  minX, minY, maxX, maxY, false, false);
 }
 
 // A* within bounds on one level, writes goal-first path. Returns length (0 = none).
@@ -509,7 +556,7 @@ static int nav_LocalPathWithBounds(NavWorld* w, int sx, int sy, int sz, int gx, 
         NavChunkNode* b = &w->chunkNodes[nav_CellIdx(w, bx, by)];
         b->open = false;
         b->closed = true;
-        nav_ChunkExpand(w, bx, by, sz, gx, gy, minX, minY, maxX, maxY, false, true);
+        nav_ChunkExpand(w, bx, by, sz, gx, gy, minX, minY, maxX, maxY, false, true, false);
     }
     return 0;
 }
@@ -574,14 +621,14 @@ void NavMarkCellChanged(NavWorld* w, int x, int y, int z) {
     int cx = x / w->chunkW;
     int cy = y / w->chunkH;
     if (x < 0 || y < 0 || cx >= w->chunksX || cy >= w->chunksY || z < 0 || z >= w->depth) return;
+    // (the chunks above/left whose edge regions include this chunk's first
+    // row/column are covered by nav_ComputeAffectedChunks' neighbourhood)
     w->chunkDirtyFlags[nav_ChunkFlagIndex(w, cx, cy, z)] = true;
-
     int extraZ[4];
     int count = NavAffectedZ(NAV_HOSTP, z, extraZ);
-    for (int i = 0; i < count && i < 4; i++) {
+    for (int i = 0; i < count && i < 4; i++)
         if (extraZ[i] >= 0 && extraZ[i] < w->depth)
             w->chunkDirtyFlags[nav_ChunkFlagIndex(w, cx, cy, extraZ[i])] = true;
-    }
     w->dirty = true;
     w->hpaDirty = true;
     nav_RegMarkDirty(w, x, y, z);
@@ -620,6 +667,39 @@ static int nav_AddPointEntrance(NavWorld* w, int x, int y, int z) {
     return w->entranceNum++;
 }
 
+// A cell the host restricts entry to (e.g. a ramp: low or high side only)
+static bool nav_CellRestricted(NavWorld* w, int x, int y, int z) {
+    static const int ox[4] = {1, -1, 0, 0}, oy[4] = {0, 0, 1, -1};
+    for (int d = 0; d < 4; d++)
+        if (!NavCanEnterFrom(NAV_HOSTP, x, y, z, x + ox[d], y + oy[d])) return true;
+    return false;
+}
+
+// Entrances along one chunk border: runs of open cell pairs (b = the cell on the
+// second chunk's side, a = b + (ox,oy) on the first's), one entrance per run
+// segment. A run assumes its cells reach each other along the border, so a
+// restricted cell (ramp) can't be part of one: it gets its own entrance if the
+// border can be crossed there, else it breaks the run.
+static void nav_BuildBorderRuns(NavWorld* w, int bx0, int by0, int stepX, int stepY, int ox, int oy,
+                                int span, int z, int chunk1, int chunk2) {
+    int runStart = -1;
+    for (int i = 0; i <= span; i++) {
+        bool open = false, restricted = false;
+        if (i < span) {
+            int bx = bx0 + stepX * i, by = by0 + stepY * i, ax = bx + ox, ay = by + oy;
+            open = NavIsWalkable(NAV_HOSTP, ax, ay, z) && NavIsWalkable(NAV_HOSTP, bx, by, z)
+                && (NavCanEnterFrom(NAV_HOSTP, bx, by, z, ax, ay) || NavCanEnterFrom(NAV_HOSTP, ax, ay, z, bx, by));
+            restricted = open && (nav_CellRestricted(w, ax, ay, z) || nav_CellRestricted(w, bx, by, z));
+        }
+        if ((!open || restricted) && runStart >= 0) {
+            nav_AddEntrancesForRun(w, bx0 + stepX * runStart, by0 + stepY * runStart, z, i - runStart, stepX != 0, chunk1, chunk2);
+            runStart = -1;
+        }
+        if (restricted) nav_AddEntrancesForRun(w, bx0 + stepX * i, by0 + stepY * i, z, 1, stepX != 0, chunk1, chunk2);
+        else if (open && runStart < 0) runStart = i;
+    }
+}
+
 // Border entrances for one z-level; `onlyAffected` restricts to borders touching w->affected
 static void nav_BuildBorderEntrances(NavWorld* w, int z, bool onlyAffected) {
     int perLevel = w->chunksX * w->chunksY;
@@ -631,22 +711,10 @@ static void nav_BuildBorderEntrances(NavWorld* w, int z, bool onlyAffected) {
             if (onlyAffected && !aff[nav_ChunkFlagIndex(w, cx, cy, z)] && !aff[nav_ChunkFlagIndex(w, cx, cy + 1, z)]) continue;
             int borderY = (cy + 1) * w->chunkH;
             int startX = cx * w->chunkW;
-            int chunk1 = z * perLevel + cy * w->chunksX + cx;
-            int chunk2 = z * perLevel + (cy + 1) * w->chunksX + cx;
-            int runStart = -1;
             int span = w->chunkW;
             if (startX + span > w->width) span = w->width - startX;
-            for (int i = 0; i < span; i++) {
-                int x = startX + i;
-                bool open = NavIsWalkable(NAV_HOSTP, x, borderY - 1, z) && NavIsWalkable(NAV_HOSTP, x, borderY, z);
-                if (open && runStart < 0) runStart = i;
-                else if (!open && runStart >= 0) {
-                    nav_AddEntrancesForRun(w, startX + runStart, borderY, z, i - runStart, true, chunk1, chunk2);
-                    runStart = -1;
-                }
-            }
-            if (runStart >= 0)
-                nav_AddEntrancesForRun(w, startX + runStart, borderY, z, span - runStart, true, chunk1, chunk2);
+            nav_BuildBorderRuns(w, startX, borderY, 1, 0, 0, -1, span, z,
+                                z * perLevel + cy * w->chunksX + cx, z * perLevel + (cy + 1) * w->chunksX + cx);
         }
     }
     // Vertical borders (between columns of chunks)
@@ -655,22 +723,10 @@ static void nav_BuildBorderEntrances(NavWorld* w, int z, bool onlyAffected) {
             if (onlyAffected && !aff[nav_ChunkFlagIndex(w, cx, cy, z)] && !aff[nav_ChunkFlagIndex(w, cx + 1, cy, z)]) continue;
             int borderX = (cx + 1) * w->chunkW;
             int startY = cy * w->chunkH;
-            int chunk1 = z * perLevel + cy * w->chunksX + cx;
-            int chunk2 = z * perLevel + cy * w->chunksX + (cx + 1);
-            int runStart = -1;
             int span = w->chunkH;
             if (startY + span > w->height) span = w->height - startY;
-            for (int i = 0; i < span; i++) {
-                int y = startY + i;
-                bool open = NavIsWalkable(NAV_HOSTP, borderX - 1, y, z) && NavIsWalkable(NAV_HOSTP, borderX, y, z);
-                if (open && runStart < 0) runStart = i;
-                else if (!open && runStart >= 0) {
-                    nav_AddEntrancesForRun(w, borderX, startY + runStart, z, i - runStart, false, chunk1, chunk2);
-                    runStart = -1;
-                }
-            }
-            if (runStart >= 0)
-                nav_AddEntrancesForRun(w, borderX, startY + runStart, z, span - runStart, false, chunk1, chunk2);
+            nav_BuildBorderRuns(w, borderX, startY, 0, 1, -1, 0, span, z,
+                                z * perLevel + cy * w->chunksX + cx, z * perLevel + cy * w->chunksX + (cx + 1));
         }
     }
 }
@@ -736,48 +792,165 @@ void NavBuildEntrances(NavWorld* w) {
 // HPA*: graph edges
 // =============================================================================
 
-static bool nav_EdgeExists(const NavWorld* w, int e1, int e2) {
-    for (int k = 0; k < w->adjListCount[e1]; k++)
-        if (w->edgeList[w->adjList[e1][k]].to == e2) return true;
-    return false;
+// Edges are directed: ramps can be entered only from their low or high side, so a
+// route inside a chunk may exist one way only, and costs differ by direction (each
+// step pays for the cell it enters). Builds append freely; nav_FinalizeEdges then
+// keeps the cheapest of duplicates (an entrance pair connected in several chunk
+// regions) and indexes out-edges. No per-entrance cap: dropping edges silently
+// would make routes vanish.
+static void nav_AddEdge(NavWorld* w, int from, int to, int cost, int chunk) {
+    if (w->edgeNum == w->edgeCap) {
+        int cap = w->edgeCap * 2;
+        NavGraphEdge* ne = realloc(w->edgeList, (size_t)cap * sizeof(NavGraphEdge));
+        if (!ne) { w->edgeOverflow = true; return; }
+        w->edgeList = ne;
+        w->edgeCap = cap;
+    }
+    w->edgeList[w->edgeNum++] = (NavGraphEdge){from, to, cost, chunk};
 }
 
-static void nav_AddEdgePair(NavWorld* w, int e1, int e2, int cost, int chunk) {
-    if (w->edgeNum >= NAV_MAX_EDGES - 1) return;
-    int i1 = w->edgeNum, i2 = w->edgeNum + 1;
-    w->edgeList[w->edgeNum++] = (NavGraphEdge){e1, e2, cost, chunk};
-    w->edgeList[w->edgeNum++] = (NavGraphEdge){e2, e1, cost, chunk};
-    if (w->adjListCount[e1] < NAV_MAX_EDGES_PER_NODE) w->adjList[e1][w->adjListCount[e1]++] = i1;
-    if (w->adjListCount[e2] < NAV_MAX_EDGES_PER_NODE) w->adjList[e2][w->adjListCount[e2]++] = i2;
+static int nav_EdgeCmp(const void* pa, const void* pb) {
+    const NavGraphEdge* a = pa;
+    const NavGraphEdge* b = pb;
+    if (a->from != b->from) return a->from < b->from ? -1 : 1;
+    if (a->to != b->to) return a->to < b->to ? -1 : 1;
+    if (a->cost != b->cost) return a->cost < b->cost ? -1 : 1;
+    return (a->chunk > b->chunk) - (a->chunk < b->chunk);
 }
 
-static void nav_AddVerticalLinkEdges(NavWorld* w, bool skipExisting) {
+// sortedPrefix: leading edges already in order (kept by an incremental update);
+// only the rest is sorted, then merged in
+static void nav_FinalizeEdges(NavWorld* w, int sortedPrefix) {
+    int n = w->edgeNum;
+    qsort(w->edgeList + sortedPrefix, (size_t)(n - sortedPrefix), sizeof(NavGraphEdge), nav_EdgeCmp);
+    if (sortedPrefix > 0 && sortedPrefix < n) {
+        NavGraphEdge* tmp = malloc((size_t)n * sizeof(NavGraphEdge));
+        if (tmp) {
+            int i = 0, j = sortedPrefix, k = 0;
+            while (i < sortedPrefix && j < n)
+                tmp[k++] = nav_EdgeCmp(&w->edgeList[i], &w->edgeList[j]) <= 0 ? w->edgeList[i++] : w->edgeList[j++];
+            while (i < sortedPrefix) tmp[k++] = w->edgeList[i++];
+            while (j < n) tmp[k++] = w->edgeList[j++];
+            memcpy(w->edgeList, tmp, (size_t)n * sizeof(NavGraphEdge));
+            free(tmp);
+        } else {
+            qsort(w->edgeList, (size_t)n, sizeof(NavGraphEdge), nav_EdgeCmp);
+        }
+    }
+    int kept = 0;
+    for (int i = 0; i < w->edgeNum; i++) {
+        if (kept > 0 && w->edgeList[kept - 1].from == w->edgeList[i].from && w->edgeList[kept - 1].to == w->edgeList[i].to)
+            continue;   // sorted by cost: the first copy is the cheapest
+        w->edgeList[kept++] = w->edgeList[i];
+    }
+    w->edgeNum = kept;
+    for (int e = 0; e <= w->entranceNum; e++) w->adjStart[e] = 0;
+    for (int i = 0; i < w->edgeNum; i++) w->adjStart[w->edgeList[i].from + 1]++;
+    for (int e = 0; e < w->entranceNum; e++) w->adjStart[e + 1] += w->adjStart[e];
+}
+
+// Ladder and ramp links, both directions, each paying for the cell it enters
+// (same step rules as A*)
+static void nav_AddVerticalLinkEdges(NavWorld* w) {
     for (int i = 0; i < w->ladderNum; i++) {
         const NavLadderLink* l = &w->ladderList[i];
-        if (skipExisting && nav_EdgeExists(w, l->entranceLow, l->entranceHigh)) continue;
-        nav_AddEdgePair(w, l->entranceLow, l->entranceHigh, l->cost, -1);
+        nav_AddEdge(w, l->entranceLow, l->entranceHigh, NavMoveCost(NAV_HOSTP, l->x, l->y, l->zHigh), -1);
+        nav_AddEdge(w, l->entranceHigh, l->entranceLow, NavMoveCost(NAV_HOSTP, l->x, l->y, l->zLow), -1);
     }
     for (int i = 0; i < w->rampNum; i++) {
         const NavRampLink* r = &w->rampList[i];
-        if (skipExisting && nav_EdgeExists(w, r->entranceRamp, r->entranceExit)) continue;
-        nav_AddEdgePair(w, r->entranceRamp, r->entranceExit, r->cost, -1);
+        nav_AddEdge(w, r->entranceRamp, r->entranceExit,
+                    (14 * NavMoveCost(NAV_HOSTP, r->exitX, r->exitY, r->rampZ + 1)) / 10, -1);
+        nav_AddEdge(w, r->entranceExit, r->entranceRamp,
+                    (14 * NavMoveCost(NAV_HOSTP, r->rampX, r->rampY, r->rampZ)) / 10, -1);
     }
 }
 
 static void nav_WarnLimits(const NavWorld* w) {
     if (w->entranceNum >= NAV_MAX_ENTRANCES)
         NAV_LOG_WARN("HPA* LIMIT HIT: entrances=%d >= %d - pathfinding will fail!", w->entranceNum, NAV_MAX_ENTRANCES);
-    if (w->edgeNum >= NAV_MAX_EDGES - 1)
-        NAV_LOG_WARN("HPA* LIMIT HIT: edges=%d >= %d - pathfinding will fail!", w->edgeNum, NAV_MAX_EDGES);
+    if (w->edgeOverflow)
+        NAV_LOG_WARN("HPA* LIMIT HIT: out of memory for edges (%d) - pathfinding will fail!", w->edgeNum);
     if (w->ladderNum >= NAV_MAX_LADDERS)
         NAV_LOG_WARN("HPA* LIMIT HIT: ladders=%d >= %d - pathfinding will fail!", w->ladderNum, NAV_MAX_LADDERS);
+    if (w->chunkEntsOverflow)
+        NAV_LOG_WARN("HPA* LIMIT HIT: a chunk region has more than %d entrances - some edges are missing!", NAV_MAX_ENTRANCES_PER_CHUNK);
     if (w->rampNum >= NAV_MAX_RAMP_LINKS)
         NAV_LOG_WARN("HPA* LIMIT HIT: ramps=%d >= %d - pathfinding will fail!", w->rampNum, NAV_MAX_RAMP_LINKS);
 }
 
+// Fixed order of entrances by position/chunks (not by index, so incremental and
+// full builds make the same choices below)
+static bool nav_EntBefore(const NavWorld* w, int a, int b) {
+    const NavEntrance* A = &w->entranceList[a];
+    const NavEntrance* B = &w->entranceList[b];
+    if (A->y != B->y) return A->y < B->y;
+    if (A->x != B->x) return A->x < B->x;
+    if (A->chunk1 != B->chunk1) return A->chunk1 < B->chunk1;
+    if (A->chunk2 != B->chunk2) return A->chunk2 < B->chunk2;
+    return a < b;   // same cell, same chunks (equal costs either way)
+}
+
+// The search path to (tx,ty) can be walked backwards: every cell on it can be
+// entered from the next one (only ramps refuse). Then the reverse edge exists.
+static bool nav_PathReversible(NavWorld* w, int tx, int ty, int z) {
+    int cx = tx, cy = ty;
+    for (;;) {
+        const NavChunkNode* n = &w->chunkNodes[nav_CellIdx(w, cx, cy)];
+        if (n->parentX < 0) return true;
+        if (!NavCanEnterFrom(NAV_HOSTP, n->parentX, n->parentY, z, cx, cy)) return false;
+        cx = n->parentX; cy = n->parentY;
+    }
+}
+
+// Directed edges between the entrances of one chunk region. needed[i] marks
+// entrances whose pairs must be (re)computed (NULL = all). Pairs are visited
+// from the entrance that comes first in nav_EntBefore order: if its search path
+// to the other can be walked backwards, the reverse edge gets the mirrored cost
+// (HPA*'s usual approximation: exact costs differ slightly by direction);
+// otherwise (a ramp in the way, or no path) the other entrance searches too.
+static void nav_ChunkEdges(NavWorld* w, int chunk, int z, int minX, int minY, int maxX, int maxY,
+                           const int* ents, const bool* needed, int n) {
+    int order[NAV_CONNECT_MAX];
+    int m = 0;
+    for (int i = 0; i < n; i++) {
+        if (w->entranceList[ents[i]].z != z) continue;
+        int k = m++;
+        while (k > 0 && nav_EntBefore(w, ents[i], ents[order[k - 1]])) { order[k] = order[k - 1]; k--; }
+        order[k] = i;
+    }
+    bool mirrored[NAV_CONNECT_MAX][NAV_CONNECT_MAX];          // [earlier][later] in order (16 KB)
+    int tx[NAV_CONNECT_MAX], ty[NAV_CONNECT_MAX], tPos[NAV_CONNECT_MAX], costs[NAV_CONNECT_MAX];
+    for (int a = 0; a < m; a++)
+        for (int b = 0; b < m; b++) mirrored[a][b] = false;
+    for (int a = 0; a < m; a++) {
+        int s = ents[order[a]], nt = 0;
+        for (int b = 0; b < m; b++) {
+            if (b == a) continue;
+            if (needed && !needed[order[a]] && !needed[order[b]]) continue;
+            if (b < a && mirrored[b][a]) continue;     // already have s -> t from t's search
+            int t = ents[order[b]];
+            tx[nt] = w->entranceList[t].x; ty[nt] = w->entranceList[t].y; tPos[nt++] = b;
+        }
+        if (nt == 0) continue;
+        nav_ChunkCostsMultiDir(w, w->entranceList[s].x, w->entranceList[s].y, z, tx, ty, costs, nt,
+                               minX, minY, maxX, maxY, false, true);
+        for (int k = 0; k < nt; k++) {
+            if (costs[k] < 0) continue;
+            int b = tPos[k], t = ents[order[b]];
+            nav_AddEdge(w, s, t, costs[k], chunk);
+            if (b > a && nav_PathReversible(w, tx[k], ty[k], z)) {
+                nav_AddEdge(w, t, s, costs[k], chunk);
+                mirrored[a][b] = true;
+            }
+        }
+    }
+}
+
 void NavBuildGraph(NavWorld* w) {
     w->edgeNum = 0;
-    for (int i = 0; i < w->entranceNum; i++) w->adjListCount[i] = 0;
+    w->chunkEntsOverflow = false;
+    w->edgeOverflow = false;
 
     double startTime = NavHostTime();
     int perLevel = w->chunksX * w->chunksY;
@@ -796,26 +969,21 @@ void NavBuildGraph(NavWorld* w) {
         if (maxX > w->width) maxX = w->width;
         if (maxY > w->height) maxY = w->height;
 
-        // Linear scan (not chunkEnts) so a full build allows up to 128 entrances per chunk
+        // Linear scan (not chunkEnts) so a full build allows up to 128 entrances per
+        // chunk: every entrance inside the search region (see nav_EdgeChunksOfCell)
         int ents[NAV_CONNECT_MAX];
         int numEnts = 0;
-        for (int i = 0; i < w->entranceNum && numEnts < NAV_CONNECT_MAX; i++) {
+        for (int i = 0; i < w->entranceNum; i++) {
             const NavEntrance* e = &w->entranceList[i];
-            if (e->z == z && (e->chunk1 == chunk || e->chunk2 == chunk)) ents[numEnts++] = i;
+            if (e->z != z || e->x < minX || e->x >= maxX || e->y < minY || e->y >= maxY) continue;
+            if (numEnts == NAV_CONNECT_MAX) { w->chunkEntsOverflow = true; break; }
+            ents[numEnts++] = i;
         }
-        for (int i = 0; i < numEnts; i++) {
-            for (int j = i + 1; j < numEnts; j++) {
-                int e1 = ents[i], e2 = ents[j];
-                if (nav_EdgeExists(w, e1, e2)) continue;   // entrance shared by 2 chunks
-                int cost = NavChunkCost(w, w->entranceList[e1].x, w->entranceList[e1].y, z,
-                                        w->entranceList[e2].x, w->entranceList[e2].y,
-                                        minX, minY, maxX, maxY);
-                if (cost >= 0) nav_AddEdgePair(w, e1, e2, cost, chunk);
-            }
-        }
+        nav_ChunkEdges(w, chunk, z, minX, minY, maxX, maxY, ents, NULL, numEnts);
     }
 
-    nav_AddVerticalLinkEdges(w, false);
+    nav_AddVerticalLinkEdges(w);
+    nav_FinalizeEdges(w, 0);
     w->graphVersion++;
 
     NAV_LOG_INFO("Built graph: %d edges (%d ladder links, %d ramp links) in %.2fms",
@@ -842,6 +1010,9 @@ static void nav_ComputeAffectedChunks(NavWorld* w) {
                 if (cx < w->chunksX - 1)  aff[nav_ChunkFlagIndex(w, cx + 1, cy, z)] = true;
                 if (z > 0)                aff[nav_ChunkFlagIndex(w, cx, cy, z - 1)] = true;
                 if (z < w->depth - 1)     aff[nav_ChunkFlagIndex(w, cx, cy, z + 1)] = true;
+                // up-left: its edge region includes this chunk's corner cell
+                // (see nav_EdgeChunksOfCell; left and up are covered above)
+                if (cx > 0 && cy > 0)     aff[nav_ChunkFlagIndex(w, cx - 1, cy - 1, z)] = true;
             }
 }
 
@@ -855,31 +1026,59 @@ static bool nav_EntranceTouchesAffected(const NavWorld* w, int idx) {
     return nav_ChunkIdAffected(w, w->entranceList[idx].chunk1) || nav_ChunkIdAffected(w, w->entranceList[idx].chunk2);
 }
 
+// Point entrance for one end of a ladder/ramp link during an incremental update:
+// new if its chunk's entrances were rebuilt, else the kept one at that cell. A new
+// link ending in an unaffected chunk has none yet: create it, and mark the chunk
+// affected so its edges get computed.
+static int nav_LinkEnd(NavWorld* w, const bool* rebuilt, int flag, int x, int y, int z) {
+    if (!rebuilt || rebuilt[flag]) return nav_AddPointEntrance(w, x, y, z);
+    int c = nav_GetChunk(w, x, y, z);
+    NavEntrance key = {x, y, z, c, c};
+    int e = nav_HashTakeEntrance(w, &key);
+    if (e >= 0) return e;
+    w->affected[flag] = true;
+    return nav_AddPointEntrance(w, x, y, z);
+}
+
 static void nav_RebuildAffectedEntrances(NavWorld* w) {
     bool* aff = w->affected;
 
-    // A ladder/ramp touching any affected level gets both ends rebuilt together
-    for (int z = 0; z < w->depth - 1; z++)
-        for (int y = 0; y < w->height; y++)
-            for (int x = 0; x < w->width; x++) {
-                if (NavCanClimbUp(NAV_HOSTP, x, y, z)) {
-                    int a = nav_ChunkFlagIndex(w, x / w->chunkW, y / w->chunkH, z);
-                    int b = nav_ChunkFlagIndex(w, x / w->chunkW, y / w->chunkH, z + 1);
-                    if (aff[a] || aff[b]) aff[a] = aff[b] = true;
-                }
-                int ex, ey;
-                if (NavRampUp(NAV_HOSTP, x, y, z, &ex, &ey)) {
-                    int a = nav_ChunkFlagIndex(w, x / w->chunkW, y / w->chunkH, z);
-                    int b = nav_ChunkFlagIndex(w, ex / w->chunkW, ey / w->chunkH, z + 1);
-                    if (aff[a] || aff[b]) aff[a] = aff[b] = true;
-                }
-            }
+    // Ladder/ramp links keep the point entrance of an end whose chunk is not
+    // affected (found again by position below). A link that no longer exists
+    // would leave that end's entrance behind, so its other end is rebuilt too.
+    for (bool grew = true; grew;) {
+        grew = false;
+        for (int i = 0; i < w->ladderNum; i++) {
+            const NavLadderLink* l = &w->ladderList[i];
+            int a = nav_ChunkFlagIndex(w, l->x / w->chunkW, l->y / w->chunkH, l->zLow);
+            int b = nav_ChunkFlagIndex(w, l->x / w->chunkW, l->y / w->chunkH, l->zHigh);
+            if (aff[a] == aff[b] || NavCanClimbUp(NAV_HOSTP, l->x, l->y, l->zLow)) continue;
+            aff[a] = aff[b] = true; grew = true;
+        }
+        for (int i = 0; i < w->rampNum; i++) {
+            const NavRampLink* r = &w->rampList[i];
+            int a = nav_ChunkFlagIndex(w, r->rampX / w->chunkW, r->rampY / w->chunkH, r->rampZ);
+            int b = nav_ChunkFlagIndex(w, r->exitX / w->chunkW, r->exitY / w->chunkH, r->rampZ + 1);
+            int ex, ey;
+            if (aff[a] == aff[b]) continue;
+            if (NavRampUp(NAV_HOSTP, r->rampX, r->rampY, r->rampZ, &ex, &ey) && ex == r->exitX && ey == r->exitY) continue;
+            aff[a] = aff[b] = true; grew = true;
+        }
+    }
 
     // Keep entrances that don't touch affected chunks
     int kept = 0;
     for (int i = 0; i < w->entranceNum; i++)
         if (!nav_EntranceTouchesAffected(w, i)) w->entranceList[kept++] = w->entranceList[i];
     w->entranceNum = kept;
+
+    // Index the kept entrances (kept links find theirs by position + chunk)
+    nav_BuildEntranceHash(w);
+    // Chunks whose entrances were dropped (link ends there get new entrances).
+    // aff[] may still grow below, but only to recompute edges.
+    int totalChunks = w->depth * w->chunksX * w->chunksY;
+    bool* rebuilt = malloc((size_t)totalChunks * sizeof(bool));
+    if (rebuilt) memcpy(rebuilt, aff, (size_t)totalChunks * sizeof(bool));
 
     // New border entrances for affected chunks
     for (int z = 0; z < w->depth; z++) nav_BuildBorderEntrances(w, z, true);
@@ -892,21 +1091,9 @@ static void nav_RebuildAffectedEntrances(NavWorld* w) {
                 if (!NavCanClimbUp(NAV_HOSTP, x, y, z)) continue;
                 int a = nav_ChunkFlagIndex(w, x / w->chunkW, y / w->chunkH, z);
                 int b = nav_ChunkFlagIndex(w, x / w->chunkW, y / w->chunkH, z + 1);
-                int entLow = -1, entHigh = -1;
-                if (aff[a] || aff[b]) {
-                    if (w->ladderNum >= NAV_MAX_LADDERS || w->entranceNum + 2 > NAV_MAX_ENTRANCES) continue;
-                    entLow = nav_AddPointEntrance(w, x, y, z);
-                    entHigh = nav_AddPointEntrance(w, x, y, z + 1);
-                    aff[a] = aff[b] = true;
-                } else {
-                    for (int i = 0; i < w->entranceNum; i++) {
-                        const NavEntrance* e = &w->entranceList[i];
-                        if (e->x == x && e->y == y && e->chunk1 == e->chunk2) {
-                            if (e->z == z) entLow = i;
-                            else if (e->z == z + 1) entHigh = i;
-                        }
-                    }
-                }
+                if (w->ladderNum >= NAV_MAX_LADDERS) continue;
+                int entLow = nav_LinkEnd(w, rebuilt, a, x, y, z);
+                int entHigh = nav_LinkEnd(w, rebuilt, b, x, y, z + 1);
                 if (entLow >= 0 && entHigh >= 0 && w->ladderNum < NAV_MAX_LADDERS) {
                     w->ladderList[w->ladderNum++] = (NavLadderLink){
                         .x = x, .y = y, .zLow = z, .zHigh = z + 1,
@@ -925,20 +1112,9 @@ static void nav_RebuildAffectedEntrances(NavWorld* w) {
                 if (!NavRampUp(NAV_HOSTP, x, y, z, &ex, &ey)) continue;
                 int a = nav_ChunkFlagIndex(w, x / w->chunkW, y / w->chunkH, z);
                 int b = nav_ChunkFlagIndex(w, ex / w->chunkW, ey / w->chunkH, z + 1);
-                int entRamp = -1, entExit = -1;
-                if (aff[a] || aff[b]) {
-                    if (w->rampNum >= NAV_MAX_RAMP_LINKS || w->entranceNum + 2 > NAV_MAX_ENTRANCES) continue;
-                    entRamp = nav_AddPointEntrance(w, x, y, z);
-                    entExit = nav_AddPointEntrance(w, ex, ey, z + 1);
-                    aff[a] = aff[b] = true;
-                } else {
-                    for (int i = 0; i < w->entranceNum; i++) {
-                        const NavEntrance* e = &w->entranceList[i];
-                        if (e->chunk1 != e->chunk2) continue;
-                        if (e->x == x && e->y == y && e->z == z) entRamp = i;
-                        if (e->x == ex && e->y == ey && e->z == z + 1) entExit = i;
-                    }
-                }
+                if (w->rampNum >= NAV_MAX_RAMP_LINKS) continue;
+                int entRamp = nav_LinkEnd(w, rebuilt, a, x, y, z);
+                int entExit = nav_LinkEnd(w, rebuilt, b, ex, ey, z + 1);
                 if (entRamp >= 0 && entExit >= 0 && w->rampNum < NAV_MAX_RAMP_LINKS) {
                     w->rampList[w->rampNum++] = (NavRampLink){
                         .rampX = x, .rampY = y, .rampZ = z, .exitX = ex, .exitY = ey,
@@ -947,6 +1123,7 @@ static void nav_RebuildAffectedEntrances(NavWorld* w) {
                     };
                 }
             }
+    free(rebuilt);
 }
 
 static void nav_RebuildAffectedEdges(NavWorld* w) {
@@ -955,7 +1132,7 @@ static void nav_RebuildAffectedEdges(NavWorld* w) {
 
     for (int i = 0; i < w->oldEntranceNum; i++) {
         const NavEntrance* o = &w->oldEntrances[i];
-        w->oldToNew[i] = nav_HashLookupEntrance(w, o->x, o->y, o->z, o->chunk1 == o->chunk2);
+        w->oldToNew[i] = nav_HashTakeEntrance(w, o);
     }
 
     // 1. Keep edges whose (remapped) endpoints are both outside affected chunks
@@ -965,16 +1142,15 @@ static void nav_RebuildAffectedEdges(NavWorld* w) {
         int n2 = w->oldToNew[w->edgeList[i].to];
         if (n1 < 0 || n2 < 0) continue;
         if (nav_EntranceTouchesAffected(w, n1) || nav_EntranceTouchesAffected(w, n2)) continue;
+        // ladder/ramp link edges (chunk -1) are always re-added from the rescanned links
+        if (w->edgeList[i].chunk < 0 || nav_ChunkIdAffected(w, w->edgeList[i].chunk)) continue;
         w->edgeList[kept++] = (NavGraphEdge){n1, n2, w->edgeList[i].cost, w->edgeList[i].chunk};
     }
     w->edgeNum = kept;
-
-    // 2. Adjacency from kept edges
-    for (int i = 0; i < w->entranceNum; i++) w->adjListCount[i] = 0;
-    for (int i = 0; i < kept; i++) {
-        int e1 = w->edgeList[i].from;
-        if (w->adjListCount[e1] < NAV_MAX_EDGES_PER_NODE) w->adjList[e1][w->adjListCount[e1]++] = i;
-    }
+    w->edgeOverflow = false;
+    // Kept edges stay sorted: kept entrances keep their relative order, so the
+    // old -> new remapping is monotonic
+    int keptSorted = kept;
 
     // 3. One multi-target Dijkstra per affected entrance
     int perLevel = w->chunksX * w->chunksY;
@@ -986,7 +1162,8 @@ static void nav_RebuildAffectedEdges(NavWorld* w) {
                 if (numEnts == 0) continue;
 
                 bool entAffected[NAV_MAX_ENTRANCES_PER_CHUNK];
-                bool any = false;
+                bool chunkAffected = nav_ChunkIdAffected(w, chunk);   // all its edges were dropped
+                bool any = chunkAffected;
                 for (int i = 0; i < numEnts; i++) {
                     entAffected[i] = nav_EntranceTouchesAffected(w, w->chunkEnts[chunk][i]);
                     any |= entAffected[i];
@@ -1000,35 +1177,15 @@ static void nav_RebuildAffectedEdges(NavWorld* w) {
                 if (maxX > w->width) maxX = w->width;
                 if (maxY > w->height) maxY = w->height;
 
-                int tx[NAV_MAX_ENTRANCES_PER_CHUNK], ty[NAV_MAX_ENTRANCES_PER_CHUNK];
-                int tIdx[NAV_MAX_ENTRANCES_PER_CHUNK], costs[NAV_MAX_ENTRANCES_PER_CHUNK];
-
-                for (int i = 0; i < numEnts; i++) {
-                    if (!entAffected[i]) continue;
-                    int e1 = w->chunkEnts[chunk][i];
-                    if (w->entranceList[e1].z != z) continue;
-                    int nt = 0;
-                    for (int j = 0; j < numEnts; j++) {
-                        if (j == i) continue;
-                        int e2 = w->chunkEnts[chunk][j];
-                        if (w->entranceList[e2].z != z) continue;
-                        if (nav_EdgeExists(w, e1, e2)) continue;
-                        tx[nt] = w->entranceList[e2].x;
-                        ty[nt] = w->entranceList[e2].y;
-                        tIdx[nt] = j;
-                        nt++;
-                    }
-                    if (nt == 0) continue;
-                    NavChunkCostsMulti(w, w->entranceList[e1].x, w->entranceList[e1].y, z,
-                                       tx, ty, costs, nt, minX, minY, maxX, maxY);
-                    for (int t = 0; t < nt; t++) {
-                        if (costs[t] < 0) continue;
-                        nav_AddEdgePair(w, e1, w->chunkEnts[chunk][tIdx[t]], costs[t], chunk);
-                    }
-                }
+                // Pairs with an affected end (edges are directed, so unaffected
+                // entrances need their edges INTO affected ones too)
+                bool needed[NAV_MAX_ENTRANCES_PER_CHUNK];
+                for (int i = 0; i < numEnts; i++) needed[i] = chunkAffected || entAffected[i];
+                nav_ChunkEdges(w, chunk, z, minX, minY, maxX, maxY, w->chunkEnts[chunk], needed, numEnts);
             }
 
-    nav_AddVerticalLinkEdges(w, true);
+    nav_AddVerticalLinkEdges(w);
+    nav_FinalizeEdges(w, keptSorted);
     w->graphVersion++;
 }
 
@@ -1276,25 +1433,28 @@ int NavFindNearest(NavWorld* w, NavPoint start, NavTargetFn isTarget, void* user
 // =============================================================================
 
 // Collect entrances of `chunk` and their costs from (p) via one Dijkstra.
-static int nav_ConnectToChunk(NavWorld* w, NavPoint p, int chunk, int* outTargets, int* outCosts) {
+// toP: costs from each entrance TO p instead (for goals: routes can be one-way).
+static int nav_ConnectToChunk(NavWorld* w, NavPoint p, int chunk, int* outTargets, int* outCosts, bool toP) {
     int tx[NAV_CONNECT_MAX], ty[NAV_CONNECT_MAX], tIdx[NAV_CONNECT_MAX], costs[NAV_CONNECT_MAX];
-    int n = 0;
-    for (int i = 0; i < w->entranceNum && n < NAV_CONNECT_MAX; i++) {
-        if (w->entranceList[i].chunk1 == chunk || w->entranceList[i].chunk2 == chunk) {
-            tx[n] = w->entranceList[i].x;
-            ty[n] = w->entranceList[i].y;
-            tIdx[n] = i;
-            n++;
-        }
-    }
-    if (n == 0) return 0;
-
     int minX, minY, maxX, maxY;
     nav_GetChunkBounds(w, chunk, &minX, &minY, &maxX, &maxY);
     if (maxX < w->width) maxX++;
     if (maxY < w->height) maxY++;
-    NavChunkCostsMulti(w, p.x, p.y, p.z, tx, ty, costs, n,
-                       minX > 0 ? minX - 1 : 0, minY > 0 ? minY - 1 : 0, maxX, maxY);
+    if (minX > 0) minX--;
+    if (minY > 0) minY--;
+    // Every entrance of this level inside the search area (the chunk's own, and
+    // neighbours' ladder/ramp/border cells on the ring)
+    int n = 0;
+    for (int i = 0; i < w->entranceNum && n < NAV_CONNECT_MAX; i++) {
+        const NavEntrance* e = &w->entranceList[i];
+        if (e->z != p.z || e->x < minX || e->x >= maxX || e->y < minY || e->y >= maxY) continue;
+        tx[n] = e->x;
+        ty[n] = e->y;
+        tIdx[n] = i;
+        n++;
+    }
+    if (n == 0) return 0;
+    nav_ChunkCostsMultiDir(w, p.x, p.y, p.z, tx, ty, costs, n, minX, minY, maxX, maxY, toP, false);
 
     int count = 0;
     for (int i = 0; i < n; i++) {
@@ -1326,13 +1486,13 @@ int NavFindPathHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, in
     w->hpaAbstractMs = 0.0;
     w->hpaRefineMs = 0.0;
     if (!nav_InBounds(w, start) || !nav_InBounds(w, goal)) return 0;
-    if (w->entranceNum == 0) return 0;   // graph not built
     double startTime = NavHostTime();
 
     int startChunk = nav_GetChunk(w, start.x, start.y, start.z);
     int goalChunk = nav_GetChunk(w, goal.x, goal.y, goal.z);
 
-    // Same chunk: try a local search first
+    // Same chunk: try a local search first (also when there are no entrances at
+    // all, e.g. one chunk or chunks walled off from each other)
     if (startChunk == goalChunk) {
         int len = nav_LocalPath(w, start.x, start.y, start.z, goal.x, goal.y, goal.z, out, maxLen);
         if (len > 0) {
@@ -1341,6 +1501,7 @@ int NavFindPathHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, in
         }
         // fall through: may need to route through neighbouring chunks
     }
+    if (w->entranceNum == 0) return 0;   // no entrances (or graph not built)
 
     int startNode = w->entranceNum;
     int goalNode = w->entranceNum + 1;
@@ -1350,8 +1511,8 @@ int NavFindPathHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, in
 
     int startTargets[NAV_CONNECT_MAX], startCosts[NAV_CONNECT_MAX];
     int goalTargets[NAV_CONNECT_MAX], goalCosts[NAV_CONNECT_MAX];
-    int startEdges = nav_ConnectToChunk(w, start, startChunk, startTargets, startCosts);
-    int goalEdges = nav_ConnectToChunk(w, goal, goalChunk, goalTargets, goalCosts);
+    int startEdges = nav_ConnectToChunk(w, start, startChunk, startTargets, startCosts, false);
+    int goalEdges = nav_ConnectToChunk(w, goal, goalChunk, goalTargets, goalCosts, true);
     w->explored += 2;
 
     // A* over the abstract graph
@@ -1380,8 +1541,8 @@ int NavFindPathHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, in
                          nav_Heuristic2D(w->entranceList[nb].x, w->entranceList[nb].y, goal.x, goal.y));
             }
         } else if (best < w->entranceNum) {
-            for (int i = 0; i < w->adjListCount[best]; i++) {
-                const NavGraphEdge* e = &w->edgeList[w->adjList[best][i]];
+            for (int i = w->adjStart[best]; i < w->adjStart[best + 1]; i++) {
+                const NavGraphEdge* e = &w->edgeList[i];
                 nav_AbsRelax(w, best, e->to, e->cost,
                          nav_Heuristic2D(w->entranceList[e->to].x, w->entranceList[e->to].y, goal.x, goal.y));
             }
@@ -1946,16 +2107,17 @@ typedef struct NavChunkFlow {
     int* cost;                     // cost to goal via this chunk's exits
     int* next;                     // region index of next cell; -1 at seeds / unreachable
     int* seed;                     // entrance index at seed cells, -2 = goal, -1 = not a seed
-    bool provisional;              // some exits left out (their continuation was mid-build)
+    bool provisional;              // read a field that was mid-build or may still change
+    int* deps; int depNum, depCap; // chunks whose fields this one's seeds read
 } NavChunkFlow;
 
-// Sentinel while a chunk field is being built. Exit seed values come from the field
-// that continues the route, and chunk-level dependencies can be cyclic (different
-// routes cross the same chunks in different orders), so a field may ask for one
-// that is still being built. It then leaves that exit out (marked provisional) and
-// is rebuilt once the outermost build finishes.
+// Sentinel (identity only, never written) while a chunk field is being built. Exit
+// seed values come from the field that continues the route, and chunk-level
+// dependencies can be cyclic (different routes cross the same chunks in different
+// orders, neighbours seed each other's ring cells), so a field may ask for one that
+// is still being built. It then leaves that exit out (marked provisional); once the
+// outermost build finishes, a worklist rebuilds fields whose inputs changed.
 static NavChunkFlow nav_ChunkFlowBuilding;
-static int nav_HFlowBuildDepth;
 
 typedef struct { int* cost; int* item; int size, cap; } nav_LazyHeap;
 
@@ -1998,13 +2160,9 @@ static void nav_LHPop(nav_LazyHeap* q, int* cost, int* item) {
 
 static void nav_LHFree(nav_LazyHeap* q) { free(q->cost); free(q->item); q->cost = q->item = NULL; q->size = q->cap = 0; }
 
-static inline bool nav_EntInChunk(const NavWorld* w, int e, int chunk) {
-    return w->entranceList[e].chunk1 == chunk || w->entranceList[e].chunk2 == chunk;
-}
-
 static void nav_FreeChunkFlow(NavChunkFlow* cf) {
     if (!cf) return;
-    free(cf->cost); free(cf->next); free(cf->seed); free(cf);
+    free(cf->cost); free(cf->next); free(cf->seed); free(cf->deps); free(cf);
 }
 
 static void nav_HFlowClearChunks(NavHFlow* h) {
@@ -2046,17 +2204,31 @@ static void nav_HFlowRebuild(NavWorld* w, NavHFlow* h) {
     if (!nav_InBounds(w, g) || !NavIsWalkable(NAV_HOSTP, g.x, g.y, g.z)) return;
     h->goalChunk = nav_GetChunk(w, g.x, g.y, g.z);
 
-    // Goal -> entrances of its chunk (same symmetric-edge approximation as HPA*)
+    // Entrances of the goal's chunk -> goal
     nav_LazyHeap q = {0};
     if (w->entranceNum > 0) {
         int targets[NAV_CONNECT_MAX], costs[NAV_CONNECT_MAX];
-        int k = nav_ConnectToChunk(w, g, h->goalChunk, targets, costs);
+        int k = nav_ConnectToChunk(w, g, h->goalChunk, targets, costs, true);
         for (int i = 0; i < k; i++) {
             int e = targets[i];
             if (costs[i] < h->dist[e]) { h->dist[e] = costs[i]; h->nextEnt[e] = -1; h->viaChunk[e] = h->goalChunk; nav_LHPush(&q, costs[i], e); }
         }
     }
-    // Dijkstra over the entrance graph (edges are stored in both directions, same cost)
+    // Backward Dijkstra over the directed entrance graph: needs each entrance's
+    // INCOMING edges (adjacency stores outgoing), indexed here per rebuild
+    int ne = w->entranceNum;
+    int* inStart = calloc((size_t)ne + 1, sizeof(int));
+    int* inEdge = malloc((size_t)(w->edgeNum > 0 ? w->edgeNum : 1) * sizeof(int));
+    if (!inStart || !inEdge) { free(inStart); free(inEdge); nav_LHFree(&q); return; }
+    for (int i = 0; i < w->edgeNum; i++) inStart[w->edgeList[i].to + 1]++;
+    for (int e = 0; e < ne; e++) inStart[e + 1] += inStart[e];
+    {
+        int* fill = malloc((size_t)(ne > 0 ? ne : 1) * sizeof(int));
+        if (!fill) { free(inStart); free(inEdge); nav_LHFree(&q); return; }
+        memcpy(fill, inStart, (size_t)ne * sizeof(int));
+        for (int i = 0; i < w->edgeNum; i++) inEdge[fill[w->edgeList[i].to]++] = i;
+        free(fill);
+    }
     while (q.size > 0) {
         int d, e;
         nav_LHPop(&q, &d, &e);
@@ -2064,12 +2236,13 @@ static void nav_HFlowRebuild(NavWorld* w, NavHFlow* h) {
         // Relax predecessors f: walking f -> e costs the edge plus entering e's cell
         const NavEntrance* E = &w->entranceList[e];
         int enterE = nav_HFlowExtra(w, h, E->x, E->y, E->z);
-        for (int k = 0; k < w->adjListCount[e]; k++) {
-            const NavGraphEdge* ed = &w->edgeList[w->adjList[e][k]];
-            int f = ed->to, nd = d + ed->cost + enterE;
+        for (int k = inStart[e]; k < inStart[e + 1]; k++) {
+            const NavGraphEdge* ed = &w->edgeList[inEdge[k]];
+            int f = ed->from, nd = d + ed->cost + enterE;
             if (nd < h->dist[f]) { h->dist[f] = nd; h->nextEnt[f] = e; h->viaChunk[f] = ed->chunk; nav_LHPush(&q, nd, f); }
         }
     }
+    free(inStart); free(inEdge);
     nav_LHFree(&q);
     h->valid = true;
     h->abstractMs = (NavHostTime() - t0) * 1000.0;
@@ -2087,7 +2260,7 @@ NavHFlow* NavHFlowCreate(NavWorld* w, NavPoint goal) {
 void NavHFlowDestroy(NavHFlow* h) {
     if (!h) return;
     nav_HFlowClearChunks(h);
-    free(h->chunks); free(h->dist); free(h->nextEnt); free(h->viaChunk);
+    free(h->chunks); free(h->dist); free(h->nextEnt); free(h->viaChunk); free(h->fresh);
     free(h);
 }
 
@@ -2098,6 +2271,7 @@ static inline int nav_ChunkFlowIndex(const NavChunkFlow* cf, NavPoint p) {
 }
 
 static NavChunkFlow* nav_GetChunkFlow(NavWorld* w, NavHFlow* h, int chunk);
+static void nav_ChunkFlowAddDep(NavChunkFlow* cf, int chunk);
 static int nav_HFlowSeedValue(NavWorld* w, NavHFlow* h, int e, NavChunkFlow* building);
 
 static NavChunkFlow* nav_BuildChunkFlow(NavWorld* w, NavHFlow* h, int chunk) {
@@ -2123,8 +2297,10 @@ static NavChunkFlow* nav_BuildChunkFlow(NavWorld* w, NavHFlow* h, int chunk) {
 
     nav_LazyHeap q = {0};
     // Seeds: exits of this chunk (see rule above)
+    // (any entrance inside the region: neighbours' ladder/ramp/border cells on the
+    // ring can be where the route leaves, see nav_EdgeChunksOfCell)
     for (int e = 0; e < w->entranceNum; e++) {
-        if (!nav_EntInChunk(w, e, chunk) || h->dist[e] == NAV_FLOW_UNREACHABLE) continue;
+        if (h->dist[e] == NAV_FLOW_UNREACHABLE) continue;
         const NavEntrance* E = &w->entranceList[e];
         if (E->z != z) continue;
         // The route continues inside this chunk (the edge to the next entrance was
@@ -2179,41 +2355,139 @@ static NavChunkFlow* nav_BuildChunkFlow(NavWorld* w, NavHFlow* h, int chunk) {
     return cf;
 }
 
+static void nav_HFlowNoteFresh(NavHFlow* h, int chunk) {
+    if (h->freshNum == h->freshCap) {
+        int cap = h->freshCap ? h->freshCap * 2 : 64;
+        int* nf = realloc(h->fresh, (size_t)cap * sizeof(int));
+        if (!nf) return;
+        h->fresh = nf; h->freshCap = cap;
+    }
+    h->fresh[h->freshNum++] = chunk;
+}
+
+// Fields built during one outer request may have read fields that were mid-build
+// (left out) or provisional. Settle them: a worklist rebuilds a provisional field,
+// and if its values changed, the fields that read it. Values only ever drop (more
+// and lower seeds), so this terminates; only real changes propagate. Fields built
+// by earlier requests never read these, so they're unaffected.
+static void nav_HFlowSettle(NavWorld* w, NavHFlow* h) {
+    int n = h->chunkCount;
+    int* head = malloc((size_t)n * sizeof(int));       // dependents: linked lists
+    bool* inQ = calloc((size_t)n, sizeof(bool));
+    int edgeCap = 256, edgeNum = 0, qCap = 64, qHead = 0, qTail = 0;
+    int* edgeTo = malloc((size_t)edgeCap * sizeof(int));
+    int* edgeNext = malloc((size_t)edgeCap * sizeof(int));
+    int* queue = malloc((size_t)qCap * sizeof(int));
+    if (!head || !inQ || !edgeTo || !edgeNext || !queue) goto done;
+    for (int c = 0; c < n; c++) head[c] = -1;
+
+    // register fresh fields (the list grows while we rebuild: new lazy builds)
+    int seen = 0;
+    for (;;) {
+        for (; seen < h->freshNum; seen++) {
+            int c = h->fresh[seen];
+            NavChunkFlow* cf = h->chunks[c];
+            if (!cf || cf == &nav_ChunkFlowBuilding) continue;
+            for (int k = 0; k < cf->depNum; k++) {
+                if (edgeNum == edgeCap) {
+                    edgeCap *= 2;
+                    int* a = realloc(edgeTo, (size_t)edgeCap * sizeof(int));
+                    if (a) edgeTo = a;
+                    int* b = realloc(edgeNext, (size_t)edgeCap * sizeof(int));
+                    if (b) edgeNext = b;
+                    if (!a || !b) goto done;
+                }
+                int d = cf->deps[k];
+                edgeTo[edgeNum] = c; edgeNext[edgeNum] = head[d]; head[d] = edgeNum++;
+            }
+            if (cf->provisional && !inQ[c]) {
+                if (qTail - qHead == qCap) break;   // grown below
+                inQ[c] = true;
+                queue[qTail % qCap] = c; qTail++;
+            }
+        }
+        if (qHead == qTail && seen == h->freshNum) break;
+        if (qTail - qHead == qCap) {               // grow the ring buffer
+            int* nq = malloc((size_t)qCap * 2 * sizeof(int));
+            if (!nq) goto done;
+            for (int k = 0; k < qTail - qHead; k++) nq[k] = queue[(qHead + k) % qCap];
+            qTail -= qHead; qHead = 0;
+            free(queue); queue = nq; qCap *= 2;
+            continue;
+        }
+        if (qHead == qTail) continue;
+        int c = queue[qHead % qCap]; qHead++;
+        inQ[c] = false;
+        NavChunkFlow* old = h->chunks[c];
+        h->buildDepth++;
+        NavChunkFlow* nf = nav_BuildChunkFlow(w, h, c);   // old stays visible meanwhile
+        h->buildDepth--;
+        if (!nf) continue;
+        bool changed = memcmp(nf->cost, old->cost, (size_t)nf->w * nf->h * sizeof(int)) != 0;
+        // new dependencies (rebuilds can read chunks the first build couldn't)
+        for (int k = 0; k < nf->depNum; k++) {
+            bool known = false;
+            for (int m = 0; m < old->depNum && !known; m++) known = old->deps[m] == nf->deps[k];
+            if (known) continue;
+            if (edgeNum == edgeCap) {
+                edgeCap *= 2;
+                int* a = realloc(edgeTo, (size_t)edgeCap * sizeof(int));
+                if (a) edgeTo = a;
+                int* b = realloc(edgeNext, (size_t)edgeCap * sizeof(int));
+                if (b) edgeNext = b;
+                if (!a || !b) goto done;
+            }
+            int d = nf->deps[k];
+            edgeTo[edgeNum] = c; edgeNext[edgeNum] = head[d]; head[d] = edgeNum++;
+        }
+        h->chunks[c] = nf;
+        nav_FreeChunkFlow(old);
+        if (!changed) continue;
+        for (int e = head[c]; e >= 0; e = edgeNext[e]) {
+            int x = edgeTo[e];
+            if (inQ[x]) continue;
+            if (qTail - qHead == qCap) {
+                int* nq = malloc((size_t)qCap * 2 * sizeof(int));
+                if (!nq) goto done;
+                for (int k = 0; k < qTail - qHead; k++) nq[k] = queue[(qHead + k) % qCap];
+                qTail -= qHead; qHead = 0;
+                free(queue); queue = nq; qCap *= 2;
+            }
+            inQ[x] = true;
+            queue[qTail % qCap] = x; qTail++;
+        }
+    }
+done:
+    for (int k = 0; k < h->freshNum; k++) {
+        NavChunkFlow* cf = h->chunks[h->fresh[k]];
+        if (cf && cf != &nav_ChunkFlowBuilding) cf->provisional = false;
+    }
+    h->freshNum = 0;
+    free(head); free(inQ); free(edgeTo); free(edgeNext); free(queue);
+}
+
 static NavChunkFlow* nav_GetChunkFlow(NavWorld* w, NavHFlow* h, int chunk) {
     if (chunk < 0 || chunk >= h->chunkCount) return NULL;
     if (h->chunks[chunk] == &nav_ChunkFlowBuilding) return NULL;
     if (h->chunks[chunk]) return h->chunks[chunk];
-    nav_HFlowBuildDepth++;
+    h->buildDepth++;
     h->chunks[chunk] = &nav_ChunkFlowBuilding;
     h->chunks[chunk] = nav_BuildChunkFlow(w, h, chunk);
-    nav_HFlowBuildDepth--;
-    if (nav_HFlowBuildDepth == 0) {
-        // Provisional fields (they left out an exit whose field was mid-build, or read
-        // another provisional field) are rebuilt until their values stop changing.
-        // Values only ever drop (more and lower seeds), so this converges; usually in
-        // one or two passes, over the few chunks of a dependency cycle. Settled fields
-        // never read provisional ones, so they're unaffected.
-        for (int pass = 0; pass < 64; pass++) {
-            bool changed = false, any = false;
-            for (int c = 0; c < h->chunkCount; c++) {
-                NavChunkFlow* old = h->chunks[c];
-                if (!old || old == &nav_ChunkFlowBuilding || !old->provisional) continue;
-                any = true;
-                nav_HFlowBuildDepth++;
-                NavChunkFlow* nf = nav_BuildChunkFlow(w, h, c);   // old stays visible meanwhile
-                nav_HFlowBuildDepth--;
-                if (!nf) continue;
-                nf->provisional = true;
-                if (memcmp(nf->cost, old->cost, (size_t)nf->w * nf->h * sizeof(int)) != 0) changed = true;
-                h->chunks[c] = nf;
-                nav_FreeChunkFlow(old);
-            }
-            if (!any || !changed) break;
-        }
-        for (int c = 0; c < h->chunkCount; c++)
-            if (h->chunks[c] && h->chunks[c] != &nav_ChunkFlowBuilding) h->chunks[c]->provisional = false;
-    }
+    h->buildDepth--;
+    if (h->chunks[chunk]) nav_HFlowNoteFresh(h, chunk);
+    if (h->buildDepth == 0) nav_HFlowSettle(w, h);
     return h->chunks[chunk];
+}
+
+static void nav_ChunkFlowAddDep(NavChunkFlow* cf, int chunk) {
+    for (int k = 0; k < cf->depNum; k++) if (cf->deps[k] == chunk) return;
+    if (cf->depNum == cf->depCap) {
+        int cap = cf->depCap ? cf->depCap * 2 : 8;
+        int* nd = realloc(cf->deps, (size_t)cap * sizeof(int));
+        if (!nd) return;
+        cf->deps = nd; cf->depCap = cap;
+    }
+    cf->deps[cf->depNum++] = chunk;
 }
 
 // Cost to the goal from entrance e when it is an exit of the current chunk:
@@ -2241,6 +2515,7 @@ static int nav_HFlowSeedValue(NavWorld* w, NavHFlow* h, int e, NavChunkFlow* bui
         }
     }
     bool pending = target >= 0 && target < h->chunkCount && h->chunks[target] == &nav_ChunkFlowBuilding;
+    if (target >= 0 && target < h->chunkCount) nav_ChunkFlowAddDep(building, target);
     NavChunkFlow* cf = nav_GetChunkFlow(w, h, target);
     if (!cf) { if (pending) building->provisional = true; return NAV_FLOW_UNREACHABLE; }
     if (cf->provisional) building->provisional = true;   // read a value that may still drop

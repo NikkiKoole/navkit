@@ -47,11 +47,10 @@
 // Graph capacity limits (per world)
 #define NAV_MAX_ENTRANCE_WIDTH      6
 #define NAV_MAX_ENTRANCES           (4096 * 4)
-#define NAV_MAX_EDGES               (65536 * 4)
-#define NAV_MAX_EDGES_PER_NODE      64
+#define NAV_MAX_EDGES               (65536 * 4)   // initial edge capacity (grows as needed)
 #define NAV_MAX_LADDERS             1024
 #define NAV_MAX_RAMP_LINKS          8192
-#define NAV_MAX_ENTRANCES_PER_CHUNK 64
+#define NAV_MAX_ENTRANCES_PER_CHUNK 128   // per chunk edge region (full and incremental builds alike)
 
 typedef enum {
     NAV_ALGO_ASTAR = 0,
@@ -88,7 +87,7 @@ typedef struct {
 // Private scratch types (layout may change)
 typedef struct { int g, f; int parentX, parentY; bool open, closed; } NavChunkNode;
 typedef struct { int g, f; int parent; bool open, closed; } NavAbstractNode;
-typedef struct { int x, y, z; int index; bool isLadder; } NavHashEntry;
+typedef struct { int x, y, z; int index; int chunk1, chunk2; bool used; } NavHashEntry;
 
 typedef struct NavWorld {
     // ---- shape (read-only; change with NavResize) ----
@@ -102,7 +101,7 @@ typedef struct NavWorld {
 
     // ---- HPA* graph (read-only for users) ----
     NavEntrance*   entranceList;   int entranceNum;
-    NavGraphEdge*  edgeList;       int edgeNum;
+    NavGraphEdge*  edgeList;       int edgeNum;   // sorted by (from, to); see adjStart
     NavLadderLink* ladderList;     int ladderNum;
     NavRampLink*   rampList;       int rampNum;
     int            rampCellNum;    // ramp cells seen by the last NavBuildEntrances
@@ -119,8 +118,9 @@ typedef struct NavWorld {
     double hpaRefineMs;
 
     // ---- private scratch ----
-    int (*adjList)[NAV_MAX_EDGES_PER_NODE];
-    int* adjListCount;
+    int* adjStart;                 // [entrance + 1]: out-edges of e are edgeList[adjStart[e] .. adjStart[e+1])
+    int edgeCap;
+    bool edgeOverflow;             // couldn't grow edgeList (warned)
 
     NavAbstractNode* absNodes;
     int* absPath; int absPathLen;
@@ -134,6 +134,7 @@ typedef struct NavWorld {
     int* oldToNew;
     NavEntrance* oldEntrances; int oldEntranceNum;
     int (*chunkEnts)[NAV_MAX_ENTRANCES_PER_CHUNK];
+    bool chunkEntsOverflow;        // a chunk region had more entrances than fit (warned)
     int* chunkEntCount;
     bool* affected;                // [depth][chunksY][chunksX]
 
@@ -305,6 +306,10 @@ typedef struct NavHFlow {
     // changing the values.
     const int* extraCost;
     bool stale;                    // rebuild on next query (set by NavHFlowInvalidate)
+
+    // private: lazy-build bookkeeping (fields built during one outer request)
+    int buildDepth;
+    int* fresh; int freshNum, freshCap;
 } NavHFlow;
 
 NavHFlow* NavHFlowCreate(NavWorld* w, NavPoint goal);

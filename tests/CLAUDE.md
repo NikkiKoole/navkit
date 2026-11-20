@@ -10,6 +10,9 @@ make test_jobs         # single test
 make test-quick        # skip slow mover stress tests
 make bench             # benchmarks (jobs + items + pathfinding)
 make bench_astar_heap  # RunAStar vs reference heap A* (cost + timing regression guard)
+make test_nav_fuzz     # randomized nav library checks vs ground truth (60 worlds, in `make test`)
+./build/bin/test_nav_fuzz 2000 1000   # deep sweep (~4 min); rerun a failing seed: test_nav_fuzz 1 <seed> -v
+make bench_nav_terrains   # every nav algorithm on every terrain generator vs A*
 ```
 
 ## Test Unity Build

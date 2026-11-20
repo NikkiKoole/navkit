@@ -1118,12 +1118,15 @@ describe(mover_z_level_collision) {
         InitMoverWithPath(m, startX, startY, 1.0f, goal, 100.0f, testPath, 3);
         moverCount = 1;
         
-        // Run simulation
-        RunTicks(60);
-        
-        // Mover should NOT have passed the wall (x should be less than wall position)
-        float wallX = 2 * CELL_SIZE;
-        expect(m->x < wallX + CELL_SIZE);  // Shouldn't be past the wall
+        // Run simulation. The mover may legally repath around the wall (HPA* finds
+        // the detour), but must never stand inside the wall cell.
+        bool enteredWall = false;
+        for (int t = 0; t < 60; t++) {
+            Tick();
+            int cx = (int)(m->x / CELL_SIZE), cy = (int)(m->y / CELL_SIZE);
+            if (cx == 2 && cy == 1 && (int)m->z == 1) enteredWall = true;
+        }
+        expect(!enteredWall);
     }
 }
 

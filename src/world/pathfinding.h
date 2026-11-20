@@ -36,7 +36,6 @@ typedef enum {
 #define MAX_ENTRANCE_WIDTH  NAV_MAX_ENTRANCE_WIDTH
 #define MAX_ENTRANCES       NAV_MAX_ENTRANCES
 #define MAX_EDGES           NAV_MAX_EDGES
-#define MAX_EDGES_PER_NODE  NAV_MAX_EDGES_PER_NODE
 #define MAX_LADDERS         NAV_MAX_LADDERS
 #define MAX_RAMP_LINKS      NAV_MAX_RAMP_LINKS
 #define MAX_PATH 65536      // game path buffer size (debug path, temp buffers)
