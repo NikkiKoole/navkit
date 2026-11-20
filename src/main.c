@@ -16,6 +16,8 @@
 #include "sound/sound_phrase.h"
 #include "sound/sound_synth_bridge.h"
 #include "ui/cutscene.h"
+#include "ui/console.h"
+#include "core/scenarios.h"
 
 #ifdef USE_SOUNDSYSTEM
 #include "soundsystem/soundsystem.h"
@@ -84,6 +86,7 @@ const char* toolNames[] = {"Draw Wall", "Draw Floor", "Draw Ladder", "Erase", "S
 int currentTerrain = 0;
 // NOTE: When adding new terrains, also update the count in ui_panels.c CycleOption() for "Terrain"
 const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D", "Council", "Hills", "HillsSoils", "HillsSoilsWater", "CraftTest", "TrainTest", "TrainLong", "MoodTest"};
+const int terrainCount = (int)(sizeof(terrainNames) / sizeof(terrainNames[0]));
 
 MaterialType currentTreeType = MAT_OAK;
 
@@ -787,30 +790,6 @@ void SpawnMoverAt(int cx, int cy, int cz) {
     moverCount++;
 }
 
-// Demo: single-file ladders. Ground at z=1, a plank deck at z=2 over the east
-// half, ONE ladder between them, 16 movers wandering (endless mode, preferring
-// goals on the other level), so a queue forms at the ladder. Start with
-// --scenario ladders; toggle the rule with the "Single-file Ladders" switch or
-// the console var singleFileLadders.
-static void SetupLadderScenario(void) {
-    const int deckX = 18, ladderX = 18, ladderY = 16;
-    for (int y = 0; y < gridHeight; y++)
-        for (int x = deckX; x < gridWidth; x++) {
-            SET_FLOOR(x, y, 2);
-            SetFloorMaterial(x, y, 2, MAT_OAK);
-        }
-    grid[1][ladderY][ladderX] = CELL_LADDER_BOTH;
-    grid[2][ladderY][ladderX] = CELL_LADDER_BOTH;
-    BuildEntrances();
-    BuildGraph();
-    InvalidateLighting();
-    endlessMoverMode = true;
-    preferDifferentZ = true;
-    for (int i = 0; i < 16; i++) SpawnMoverAt(4 + (i % 8) * 2, 10 + (i / 8) * 10, 1);
-    currentViewZ = 1;
-    AddMessage("Ladder scenario: 16 movers, one ladder (single-file on)", GREEN);
-}
-
 void SpawnStockpileWithFilters(bool allowRed, bool allowGreen, bool allowBlue) {
     int attempts = 100;
     while (attempts-- > 0) {
@@ -906,7 +885,21 @@ void RebuildPostLoadState(void);
 // Headless Mode - Run simulation without GUI
 // ============================================================================
 
-static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
+// --set <var> <value> (repeatable): set a console variable (see Console_RegisterGameVars)
+// at startup, e.g. --set singleFileLadders 0. Applied after --load, before --scenario.
+static void ApplySetArgs(int argc, char** argv) {
+    for (int i = 1; i + 2 < argc; i++) {
+        if (strcmp(argv[i], "--set") != 0) continue;
+        if (Console_SetVar(argv[i + 1], argv[i + 2]))
+            printf("set %s = %s\n", argv[i + 1], argv[i + 2]);
+        else
+            printf("--set: unknown variable '%s' or bad value '%s'\n", argv[i + 1], argv[i + 2]);
+        i += 2;
+    }
+}
+
+// Headless mode: load a save (loadFile) or build a scenario (scenarioName), run N ticks, print stats
+static int RunHeadless(const char* loadFile, const char* scenarioName, int ticks, int argc, char** argv) {
     // Initialize minimal state (no window)
     use8Dir = true;
     InitGridWithSizeAndChunkSize(32, 32, 8, 8);
@@ -931,36 +924,46 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
     InitPlants();
     InitFarming();
 
-    // Handle .gz decompression
-    const char* actualFile = loadFile;
-    char tempFile[512] = {0};
-    size_t len = strlen(loadFile);
-    if (len > 3 && strcmp(loadFile + len - 3, ".gz") == 0) {
-        const char* base = strrchr(loadFile, '/');
-        base = base ? base + 1 : loadFile;
-        snprintf(tempFile, sizeof(tempFile), "/tmp/%.*s", (int)(strlen(base) - 3), base);
-        char cmd[1024];
-        snprintf(cmd, sizeof(cmd), "gunzip -c '%s' > '%s'", loadFile, tempFile);
-        if (system(cmd) == 0) {
-            actualFile = tempFile;
-            printf("(decompressed to %s)\n", tempFile);
-        } else {
-            printf("Failed to decompress: %s\n", loadFile);
+    Console_RegisterGameVars();   // so --set can reach console variables
+    if (loadFile) {
+        // Handle .gz decompression
+        const char* actualFile = loadFile;
+        char tempFile[512] = {0};
+        size_t len = strlen(loadFile);
+        if (len > 3 && strcmp(loadFile + len - 3, ".gz") == 0) {
+            const char* base = strrchr(loadFile, '/');
+            base = base ? base + 1 : loadFile;
+            snprintf(tempFile, sizeof(tempFile), "/tmp/%.*s", (int)(strlen(base) - 3), base);
+            char cmd[1024];
+            snprintf(cmd, sizeof(cmd), "gunzip -c '%s' > '%s'", loadFile, tempFile);
+            if (system(cmd) == 0) {
+                actualFile = tempFile;
+                printf("(decompressed to %s)\n", tempFile);
+            } else {
+                printf("Failed to decompress: %s\n", loadFile);
+                return 1;
+            }
+        }
+    
+        if (!LoadWorld(actualFile)) {
+            printf("Failed to load: %s\n", loadFile);
             return 1;
         }
+        printf("Loaded: %s\n", loadFile);
+        printf("Running %d ticks headless...\n", ticks);
+    
+        // Build pathfinding structures
+        BuildEntrances();
+        BuildGraph();
     }
-    
-    if (!LoadWorld(actualFile)) {
-        printf("Failed to load: %s\n", loadFile);
-        return 1;
+    ApplySetArgs(argc, argv);
+    if (scenarioName) {
+        if (!RunScenario(scenarioName)) return 1;
+        printf("Scenario: %s (%d movers, %dx%dx%d)\n", scenarioName, moverCount, gridWidth, gridHeight, gridDepth);
+        printf("Running %d ticks headless...\n", ticks);
     }
-    printf("Loaded: %s\n", loadFile);
-    printf("Running %d ticks headless...\n", ticks);
-    
-    // Build pathfinding structures
-    BuildEntrances();
-    BuildGraph();
-    
+    const Scenario* scenario = scenarioName ? ScenarioCurrent() : NULL;
+
     // Snapshot state before
     int stuckBefore = 0;
     for (int i = 0; i < moverCount; i++) {
@@ -972,6 +975,11 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
         }
     }
     
+    // Arrivals: a mover's goal changes while it stands on the old goal
+    static Point lastGoal[MAX_MOVERS];
+    for (int i = 0; i < moverCount; i++) lastGoal[i] = movers[i].goal;
+    int arrivals = 0;
+
     // Run simulation
     clock_t startClock = clock();
     for (int t = 0; t < ticks; t++) {
@@ -987,6 +995,15 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
         AssignJobs();
         JobsTick();
         PROFILE_FRAME_END();  // Store profiler data for this tick
+        for (int i = 0; i < moverCount; i++) {
+            Mover* mv = &movers[i];
+            Point g = lastGoal[i];
+            if (mv->goal.x == g.x && mv->goal.y == g.y && mv->goal.z == g.z) continue;
+            if (mv->active && (int)(mv->x / CELL_SIZE) == g.x && (int)(mv->y / CELL_SIZE) == g.y && (int)mv->z == g.z)
+                arrivals++;
+            lastGoal[i] = mv->goal;
+        }
+        if (scenario && scenario->tickStats) scenario->tickStats();
         double tickTime = (GetTime() - tickStart) * 1000.0;
         if (tickTime > 100.0) {
             TraceLog(LOG_WARNING, "SLOW TICK %d: %.1fms", t, tickTime);
@@ -997,8 +1014,10 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
     // Snapshot state after
     int stuckAfter = 0;
     int moversInNonWalkable = 0;
+    int activeMovers = 0;
     for (int i = 0; i < moverCount; i++) {
         if (movers[i].active) {
+            activeMovers++;
             int mx = (int)(movers[i].x / CELL_SIZE);
             int my = (int)(movers[i].y / CELL_SIZE);
             int mz = (int)movers[i].z;
@@ -1013,9 +1032,11 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
     
     printf("\n=== HEADLESS RESULTS ===\n");
     printf("Ticks: %d (%.2f ms, %.2f ms/tick)\n", ticks, elapsed * 1000.0, (elapsed * 1000.0) / ticks);
-    printf("Movers: %d\n", moverCount);
+    printf("Movers: %d (%d active)\n", moverCount, activeMovers);
     printf("Stuck in non-walkable: %d before -> %d after\n", stuckBefore, moversInNonWalkable);
-    printf("Stuck (no progress): %d\n", stuckAfter);
+    printf("Stuck (no progress > 2s): %d\n", stuckAfter);
+    printf("Arrivals (reached goal): %d (%.1f per mover per game-minute)\n", arrivals,
+           activeMovers > 0 && ticks > 0 ? arrivals / (double)activeMovers / (ticks * TICK_DT / 60.0) : 0.0);
     extern int repathFallbackCount, repathHpaSuccessCount;
     printf("Repath stats: HPA success=%d, A* fallback=%d (%.1f%% fallback)\n", 
            repathHpaSuccessCount, repathFallbackCount,
@@ -1023,6 +1044,11 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
                ? 100.0 * repathFallbackCount / (repathFallbackCount + repathHpaSuccessCount) 
                : 0.0);
     
+    if (scenario && scenario->printStats) {
+        printf("\n=== SCENARIO: %s ===\n", scenario->name);
+        scenario->printStats();
+    }
+
     // Simulation stats (last tick's update counts)
     extern int waterUpdateCount, fireUpdateCount, steamUpdateCount, smokeUpdateCount, tempUpdateCount;
     printf("\n=== SIMULATION STATS (last tick) ===\n");
@@ -1190,6 +1216,20 @@ int main(int argc, char** argv) {
         return InspectSaveFile(argc, argv);
     }
 
+    // --scenario <name> (src/core/scenarios.c); "--scenario list" prints them and exits
+    const char* scenarioName = NULL;
+    for (int i = 1; i + 1 < argc; i++)
+        if (strcmp(argv[i], "--scenario") == 0) scenarioName = argv[i + 1];
+    if (scenarioName && strcmp(scenarioName, "list") == 0) {
+        ScenarioPrintList();
+        return 0;
+    }
+    if (scenarioName && !ScenarioFind(scenarioName)) {
+        printf("Unknown scenario '%s'\n", scenarioName);
+        ScenarioPrintList();
+        return 1;
+    }
+
     // Check for --headless mode
     const char* headlessFile = NULL;
     int headlessTicks = 100;
@@ -1204,11 +1244,11 @@ int main(int argc, char** argv) {
                     headlessTicks = atoi(argv[j + 1]);
                 }
             }
-            if (!headlessFile) {
-                printf("Usage: %s --headless --load <savefile> [--ticks N] [--save <outfile>] [--mover N] [--cell X,Y,Z] ...\n", argv[0]);
+            if (!headlessFile && !scenarioName) {
+                printf("Usage: %s --headless (--load <savefile> | --scenario <name>) [--ticks N] [--set <var> <value>] [--save <outfile>] [--mover N] ...\n", argv[0]);
                 return 1;
             }
-            return RunHeadless(headlessFile, headlessTicks, argc, argv);
+            return RunHeadless(headlessFile, scenarioName, headlessTicks, argc, argv);
         }
     }
 
@@ -1321,12 +1361,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Built-in demo scenarios: --scenario ladders
-    for (int i = 1; i + 1 < argc; i++)
-        if (strcmp(argv[i], "--scenario") == 0) {
-            if (strcmp(argv[i + 1], "ladders") == 0) SetupLadderScenario();
-            else printf("Unknown scenario '%s' (known: ladders)\n", argv[i + 1]);
-        }
+    // Built-in demo scenarios (src/core/scenarios.c): --scenario <name>
+    ApplySetArgs(argc, argv);
+    if (scenarioName) RunScenario(scenarioName);
 
     float accumulator = 0.0f;
 

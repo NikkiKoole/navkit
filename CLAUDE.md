@@ -159,8 +159,32 @@ Ring buffer (4096 entries), game-time timestamped. Records job lifecycle, item d
 - **Sandbox** (`GAME_MODE_SANDBOX`): full dev UI, all tools available
 - **Survival** (`GAME_MODE_SURVIVAL`): progressive HUD, starvation death, intro/game-over cutscenes
 
+## Scenarios
+
+Built-in demo/test setups live in one table in `src/core/scenarios.c` (`ladders`, `mood`, `crafting`, `train`, `train-long`).
+
+```bash
+./build/bin/path --scenario list                          # names + descriptions
+./build/bin/path --scenario ladders                       # GUI, starts in the scenario
+./build/bin/path --headless --scenario ladders --ticks 3000   # no save needed; prints stats
+./build/bin/path --headless --scenario ladders --ticks 3000 --set singleFileLadders 0
+```
+
+In-game: dev UI (TAB) → terrain section → **Scenarios** buttons (hover for description), or console `scenario <name>` / `scenario list`.
+`--set <var> <value>` sets any console variable at startup (GUI or headless).
+
+**Adding one:** write `static void SetupFoo(void)` in `scenarios.c` and add a row
+`{"foo", "one-line description", "TerrainName" or NULL, SetupFoo, tickStats, printStats}`.
+`RunScenario()` first calls `ScenarioResetWorld(terrain)` (clears entities/sims, generates the
+named `terrainNames[]` entry or the flat 32x32 startup map, rebuilds spatial grids + HPA* graph,
+restores settings earlier scenarios changed), then your setup. Setup only adds cells/movers/settings:
+spawn movers with `SpawnMoverAt()` (names + traits included), call `BuildEntrances(); BuildGraph();`
+again if it edits cells, and set every toggle it depends on. `tickStats`/`printStats` are optional
+hooks for headless runs (ladders uses them for queue length).
+
 ## Headless Mode
 
 ```bash
 ./build/bin/path --headless --load save.bin.gz --ticks 100
+./build/bin/path --headless --scenario <name> --ticks 100   # see Scenarios
 ```

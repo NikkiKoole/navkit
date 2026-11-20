@@ -18,6 +18,7 @@
 #include "../core/input_mode.h"
 #include "../world/designations.h"
 #include "../ui/cutscene.h"
+#include "../core/scenarios.h"
 #include <time.h>
 
 // Forward declarations
@@ -173,7 +174,6 @@ void RepathAgents(void);
 void AddMoversDemo(int count);
 void SpawnMoversDemo(int count);
 void SpawnStockpileWithFilters(bool allowRed, bool allowGreen, bool allowBlue);
-void SpawnMoverAt(int cx, int cy, int cz);
 
 
 // Start a new game: randomize seed, generate 128x128 HillsSoilsWater, spawn 1 mover
@@ -851,45 +851,16 @@ void DrawUI(void) {
                 AddMessage(TextFormat("Generated terrain: %s", terrainNames[currentTerrain]), GREEN);
             }
             y += 22;
-            if (PushButton(ix, y, "Mood Scenario")) {
-                // One-click setup: terrain + movers + needs
-                currentTerrain = 23;
-                InitPlants();
-                ClearFarming();
-                GenerateCurrentTerrain();
-                InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
-                InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
-                InitDesignations();
-                RebuildSimActivityCounts();
-                InitFire();
-                InitSmoke();
-                InitSteam();
-                InitTemperature();
-                InitGroundWear();
-                InitFloorDirt();
-                InitSnow();
-                InvalidateLighting();
-                BuildEntrances();
-                BuildGraph();
-                // Enable needs + slower day cycle with proportional speed
-                hungerEnabled = true;
-                thirstEnabled = true;
-                energyEnabled = true;
-                dayLength = 333.0f;
-                balance.baseMoverSpeed = 1066.0f;
-                // Update existing movers to new speed
-                for (int mi2 = 0; mi2 < moverCount; mi2++) {
-                    movers[mi2].speed = balance.baseMoverSpeed;
-                }
-                // Spawn 10 movers spread across both camps
-                // Walking level = z=2 (ground is z=0+z=1)
-                for (int mi = 0; mi < 5; mi++) {
-                    SpawnMoverAt(4 + mi, 8, 2);   // comfort camp
-                    SpawnMoverAt(34 + mi, 8, 2);   // rough camp
-                }
-                AddMessage("Mood scenario: 10 movers, needs ON", GREEN);
+            // Scenarios (src/core/scenarios.c): one button each, description on hover
+            DrawTextShadow("Scenarios:", ix, y, 14, GRAY);
+            y += 18;
+            for (int si = 0; si < ScenarioCount(); si++) {
+                const Scenario* sc = ScenarioAt(si);
+                Rectangle r = {(float)ix, (float)y, (float)MeasureTextUI(TextFormat("[%s]", sc->name), UI_FONT_MEDIUM) + 10, (float)(UI_FONT_MEDIUM + 2)};
+                if (CheckCollisionPointRec(GetMousePosition(), r)) ui_set_tooltip(sc->description);
+                if (PushButton(ix, y, sc->name)) RunScenario(sc->name);
+                y += 22;
             }
-            y += 22;
             // Grid size buttons — inline row
             DrawTextShadow("Grid:", ix, y, 14, GRAY);
             {

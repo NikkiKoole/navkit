@@ -22,7 +22,6 @@ void HandleInput(void);
 // Forward declarations
 bool SaveWorld(const char* filename);
 bool LoadWorld(const char* filename);
-void SpawnMoverAt(int cx, int cy, int cz);
 
 // Pile mode configuration
 float soilPileRadius = 3.0f;  // How far soil can spread in pile mode

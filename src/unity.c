@@ -71,6 +71,7 @@
 #include "core/pie_menu.c"
 #include "core/input.c"
 #include "core/saveload.c"
+#include "core/scenarios.c"
 
 // Rendering
 #include "render/rendering.c"

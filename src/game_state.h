@@ -121,6 +121,7 @@ extern const char* toolNames[];
 // Terrain selection
 extern int currentTerrain;
 extern const char* terrainNames[];
+extern const int terrainCount;     // entries in terrainNames
 extern float rampNoiseScale;
 extern float rampDensity;
 extern int hillsWaterRiverCount;
@@ -261,6 +262,10 @@ int GetItemsAtCell(int cellX, int cellY, int cellZ, int* outItems, int maxItems)
 
 // Generate terrain based on currentTerrain setting
 void GenerateCurrentTerrain(void);
+
+// Spawn an idle mover on a walkable cell, with name, appearance and traits like
+// every in-game spawn (no-op if the cell isn't walkable or MAX_MOVERS is reached)
+void SpawnMoverAt(int cx, int cy, int cz);
 
 // Screen shake
 void TriggerScreenShake(float intensity, float duration);

@@ -33,5 +33,6 @@ void Console_RegisterCmd(const char* name, ConsoleCmdFn fn, const char* help);
 typedef enum { CVAR_BOOL, CVAR_INT, CVAR_FLOAT } CVarType;
 void Console_RegisterVar(const char* name, void* ptr, CVarType type);
 void Console_RegisterGameVars(void);  // Register common game variables
+bool Console_SetVar(const char* name, const char* value);  // false if unknown or bad bool
 
 #endif

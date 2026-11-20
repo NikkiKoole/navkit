@@ -18,6 +18,7 @@
 #include "../core/time.h"              // timeOfDay, dayNumber, dayLength
 #include "../core/sim_manager.h"       // InitSimActivity
 #include "../world/designations.h"     // InitDesignations
+#include "../core/scenarios.h"          // scenario command
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>                // atoi, atof
@@ -88,6 +89,7 @@ static void Cmd_Weather(int argc, const char** argv);
 static void Cmd_Season(int argc, const char** argv);
 static void Cmd_Terrain(int argc, const char** argv);
 static void Cmd_Grid(int argc, const char** argv);
+static void Cmd_Scenario(int argc, const char** argv);
 
 // ---------------------------------------------------------------------------
 // Variable Registry
@@ -125,6 +127,7 @@ void Console_Init(void) {
     Console_RegisterCmd("season", Cmd_Season, "Jump to season: season spring|summer|autumn|winter");
     Console_RegisterCmd("terrain", Cmd_Terrain, "Generate terrain: terrain <name> (use 'terrain list' to see options)");
     Console_RegisterCmd("grid", Cmd_Grid, "Resize grid: grid 32|64|128|256");
+    Console_RegisterCmd("scenario", Cmd_Scenario, "Start a demo scenario: scenario <name> (use 'scenario list' to see options)");
 }
 
 void Console_RegisterCmd(const char* name, ConsoleCmdFn fn, const char* help) {
@@ -481,63 +484,48 @@ static void Cmd_Get(int argc, const char** argv) {
     Console_Printf(YELLOW, "Unknown variable: %s", varName);
 }
 
+// Find a registered variable by name (case-insensitive), or NULL
+static CVar* FindCVar(const char* name) {
+    for (int i = 0; i < cvarCount; i++)
+        if (strcasecmp(name, cvars[i].name) == 0) return &cvars[i];
+    return NULL;
+}
+
+bool Console_SetVar(const char* name, const char* valueStr) {
+    CVar* v = FindCVar(name);
+    if (!v) return false;
+    switch (v->type) {
+        case CVAR_BOOL:
+            if (strcmp(valueStr, "true") == 0 || strcmp(valueStr, "1") == 0) *(bool*)v->ptr = true;
+            else if (strcmp(valueStr, "false") == 0 || strcmp(valueStr, "0") == 0) *(bool*)v->ptr = false;
+            else return false;
+            break;
+        case CVAR_INT:   *(int*)v->ptr = atoi(valueStr); break;
+        case CVAR_FLOAT: *(float*)v->ptr = (float)atof(valueStr); break;
+    }
+    return true;
+}
+
 static void Cmd_Set(int argc, const char** argv) {
     if (argc < 3) {
         Console_Print("Usage: set <varname> <value>", YELLOW);
         return;
     }
 
-    const char* varName = argv[1];
-    const char* valueStr = argv[2];
-
-    // Find variable (case-insensitive)
-    for (int i = 0; i < cvarCount; i++) {
-        const char* a = varName;
-        const char* b = cvars[i].name;
-        bool match = true;
-        while (*a && *b) {
-            if (tolower(*a) != tolower(*b)) {
-                match = false;
-                break;
-            }
-            a++; b++;
-        }
-        if (match && *a == '\0' && *b == '\0') {
-            // Found it - parse and set value
-            void* ptr = cvars[i].ptr;
-            switch (cvars[i].type) {
-                case CVAR_BOOL: {
-                    bool val;
-                    if (strcmp(valueStr, "true") == 0 || strcmp(valueStr, "1") == 0) {
-                        val = true;
-                    } else if (strcmp(valueStr, "false") == 0 || strcmp(valueStr, "0") == 0) {
-                        val = false;
-                    } else {
-                        Console_Printf(YELLOW, "Invalid bool value (use true/false or 1/0)");
-                        return;
-                    }
-                    *(bool*)ptr = val;
-                    Console_Printf(GREEN, "%s = %s", cvars[i].name, val ? "true" : "false");
-                    break;
-                }
-                case CVAR_INT: {
-                    int val = atoi(valueStr);
-                    *(int*)ptr = val;
-                    Console_Printf(GREEN, "%s = %d", cvars[i].name, val);
-                    break;
-                }
-                case CVAR_FLOAT: {
-                    float val = (float)atof(valueStr);
-                    *(float*)ptr = val;
-                    Console_Printf(GREEN, "%s = %.3f", cvars[i].name, val);
-                    break;
-                }
-            }
-            return;
-        }
+    CVar* v = FindCVar(argv[1]);
+    if (!v) {
+        Console_Printf(YELLOW, "Unknown variable: %s", argv[1]);
+        return;
     }
-
-    Console_Printf(YELLOW, "Unknown variable: %s", varName);
+    if (!Console_SetVar(argv[1], argv[2])) {
+        Console_Printf(YELLOW, "Invalid bool value (use true/false or 1/0)");
+        return;
+    }
+    switch (v->type) {
+        case CVAR_BOOL:  Console_Printf(GREEN, "%s = %s", v->name, *(bool*)v->ptr ? "true" : "false"); break;
+        case CVAR_INT:   Console_Printf(GREEN, "%s = %d", v->name, *(int*)v->ptr); break;
+        case CVAR_FLOAT: Console_Printf(GREEN, "%s = %.3f", v->name, *(float*)v->ptr); break;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -854,6 +842,22 @@ static void Cmd_Terrain(int argc, const char** argv) {
     Console_Printf(GREEN, "Generated terrain: %s", terrainNames[currentTerrain]);
 }
 
+static void Cmd_Scenario(int argc, const char** argv) {
+    if (argc < 2 || strcmp(argv[1], "list") == 0) {
+        Console_Print("Scenarios:", WHITE);
+        for (int i = 0; i < ScenarioCount(); i++)
+            Console_Printf(GRAY, "  %-11s %s", ScenarioAt(i)->name, ScenarioAt(i)->description);
+        if (argc < 2) Console_Print("Usage: scenario <name>", YELLOW);
+        return;
+    }
+    if (!ScenarioFind(argv[1])) {
+        Console_Printf(YELLOW, "Unknown scenario: %s (use 'scenario list')", argv[1]);
+        return;
+    }
+    RunScenario(argv[1]);
+    Console_Printf(GREEN, "Started scenario: %s (%d movers)", argv[1], moverCount);
+}
+
 static void Cmd_Grid(int argc, const char** argv) {
     if (argc < 2) {
         Console_Printf(WHITE, "Current grid: %dx%d (depth %d)", gridWidth, gridHeight, gridDepth);
@@ -1106,6 +1110,12 @@ static void HandleTab(void) {
         acStringListCount = 21;
         searchPrefix = con.input + 8;
         prefixStart = 8;
+    } else if (strncmp(con.input, "scenario ", 9) == 0) {
+        mode = AC_STRINGS;
+        acStringList = ScenarioNames();
+        acStringListCount = ScenarioCount();
+        searchPrefix = con.input + 9;
+        prefixStart = 9;
     }
 
     // First Tab press - find matches and save prefix
@@ -1237,6 +1247,7 @@ void Console_RegisterGameVars(void) {
     Console_RegisterVar("knotFix", &useKnotFix, CVAR_BOOL);
     Console_RegisterVar("tunnelYield", &useTunnelYielding, CVAR_BOOL);
     Console_RegisterVar("singleFileLadders", &useSingleFileLadders, CVAR_BOOL);
+    Console_RegisterVar("scenarioMovers", &scenarioMovers, CVAR_INT);
     Console_RegisterVar("ladderQueueCost", &useLadderQueueCost, CVAR_BOOL);
     Console_RegisterVar("wallRepulsion", &useWallRepulsion, CVAR_BOOL);
     Console_RegisterVar("wallSlide", &useWallSliding, CVAR_BOOL);
