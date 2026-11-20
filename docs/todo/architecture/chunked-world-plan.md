@@ -1,6 +1,7 @@
 # From fixed arrays to a chunked (and eventually endless) world
 
-> Status: plan / decision doc (2026-11-20). Not started. Ties together
+> Status: plan / decision doc (2026-11-20). Decided: big bounded maps (target 2048x2048),
+> endless world deferred. Cheap win 1 done; step 1 next. Ties together
 > `large-worlds.md` (what big maps cost, measured) and `../../vision/infinite-world-exploration.md`
 > (endless world research). Numbers are measured unless marked as estimates.
 
@@ -14,6 +15,35 @@ through one accessor, so where the data lives can change without touching the ca
 sites again. If an endless world is a real goal, do that rewrite once, designed for
 chunks. If it isn't (the roadmap puts it in Era 3+), take the two cheap memory wins
 and leave the rest.
+
+## Decision (2026-11-20)
+
+Target: **bounded maps up to 2048x2048 with lots of structures.** An endless world is maybe
+later, not now. So: steps 1-3, with chunk-major storage (layout B) from the start (we are not
+going row-major on the way: converting once means the edge-read bugs surface once, and
+step 3 comes almost free). Steps 4-9 stay parked.
+
+**2048 can't be a compile-time cap.** A `-DMAX_GRID_WIDTH=2048` build fails to link on arm64:
+the static data passes 4 GB and ADRP can't reach it (`ADRP out of range ... '_trackConnections'`).
+Step 2 (layers allocated at runtime) is required, not optional.
+
+**Dense is too big for the dev machine (8 GB RAM).** The 1024 build's static data is 1,658 MB:
+~87 bytes per cell for grid layers (16M cells), plus mover paths/routes/agents. At 2048
+(67M cells) that is ~5.8 GB of layers alone, before the HPA* graph. Sparse layers (step 3)
+or narrower types are needed, not just runtime sizing.
+
+Largest layers per cell (from the 1024 symbol table): `designations` 16 B (rare data, ideal
+for sparse), `farmGrid` 8 B (sparse), 4 B each for `temperatureGrid`, `wearGrid` (int),
+`targetHeight` (int), `growthTimer` (float, trees only), `snowAccumGrid` (float), `lightGrid`,
+`grid` (enum stored as int), `bfsQueue`; 2 B each for the sim visited/risen generation arrays,
+`waterGrid`, `roomGrid`, `fireGrid`; 1 B for the ~20 others. Narrowing `grid` (to uint8),
+`targetHeight`, `wearGrid` and making designations/farm/tree layers sparse removes ~35 of the 87 B.
+
+**1024 baseline after cheap win 1** (`path1024 --headless --scenario world --set scenarioSize 1024
+--ticks 1200 --profile`): 6.7 ms/tick average (Move 2.9, Water 2.1, Trees 0.9, Jobs 0.4);
+peak RSS 1.13 GB, peak footprint 1.70 GB; HPA* full graph build 3.0 s (298K entrances,
+6.6M edges), world gen + graph 4.0 s. Expect ~4x at 2048 for anything still sweeping the
+whole map, and for the graph build (~12 s).
 
 ## Where we are (2026-11-20)
 
@@ -114,8 +144,8 @@ Each is its own project; order follows the infinite-world doc, adjusted for what
 
 ## Cheap wins that don't need any of this
 
-- **Clear only what the map uses** at startup (instead of whole arrays): cuts a small
-  map in the 1024-cap build from ~850 MB to a few hundred. Estimate: about an hour.
+- ~~**Clear only what the map uses** at startup~~ **Done** (2026-11-20, `ClearGridLayer` in
+  `grid.c`): peak memory for a 128 map 282 -> 109 MB (cap 512), 825 -> 207 MB (cap 1024).
 - **Shrink mover path buffers** now that coarse paths exist: `MAX_MOVER_PATH` 1024 -> 256
   saves ~90 MB for every map (needs a save version bump and migration).
 
