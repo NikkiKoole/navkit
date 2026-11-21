@@ -658,10 +658,8 @@ embed: atlas embed_font
 path8 $(BINDIR)/path8: $(RAYLIB_LIB)
 	$(CC) $(CFLAGS) -DTILE_SIZE=8 -o $(BINDIR)/path8 $(path_SRC) $(LDFLAGS)
 
-# Test build with a 1024x1024 map cap (static per-cell layers ~4x bigger, ~1.6 GB reserved).
-# Measure: ./build/bin/path1024 --headless --scenario world --set scenarioSize 1024 --ticks 1200 --profile
-path1024 $(BINDIR)/path1024: $(RAYLIB_LIB)
-	$(CC) $(CFLAGS) -DMAX_GRID_WIDTH=1024 -DMAX_GRID_HEIGHT=1024 -o $(BINDIR)/path1024 $(path_SRC) $(LDFLAGS)
+# Big maps: (path1024 is gone: the normal build handles maps up to 2048x2048, see MAX_GRID_WIDTH in grid.h)
+# Measure: ./build/bin/path --headless --scenario world --set scenarioSize 2048 --ticks 1200 --profile
 
 # Build with 16x16 tiles
 path16 $(BINDIR)/path16: $(RAYLIB_LIB)
@@ -760,4 +758,4 @@ cscope:
 nav: tags cscope
 	@echo "Updated tags + cscope.out"
 
-.PHONY: all clean clean-raylib clean-atlas nav test test_reset_failures test_layer_access test_nav_standalone test_nav_fuzz test-tap test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_action_registry test_describe test_biome_presets test_trains test_mood test_rooms path steer crowd flow flow-big flow3d mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed chop-flip path8 path16 path1024 path-sound bench bench_jobs bench_items bench_pathfinding bench_astar_heap bench_nav_terrains bench_nav_update scenarios-check windows
+.PHONY: all clean clean-raylib clean-atlas nav test test_reset_failures test_layer_access test_nav_standalone test_nav_fuzz test-tap test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_action_registry test_describe test_biome_presets test_trains test_mood test_rooms path steer crowd flow flow-big flow3d mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed chop-flip path8 path16 path-sound bench bench_jobs bench_items bench_pathfinding bench_astar_heap bench_nav_terrains bench_nav_update scenarios-check windows

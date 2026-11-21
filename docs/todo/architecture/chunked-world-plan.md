@@ -420,6 +420,23 @@ mid-game survival save and a crafting save).
 Next candidates (2048): tree data (growth timer 4 B +
 height + harvest, written in every chunk with a tree), then the HPA* graph (~1.7 GB of malloc).
 
+### 2048 in the normal build (2026-11-21)
+
+`MAX_GRID_WIDTH/HEIGHT` default to 2048 (`path1024` target removed): the cap only sizes static
+scratch buffers that cost address space, not RAM. Measured, normal vs 2048 cap: 128 map 3.08 /
+3.06 ms per tick, 27 / 28 MB footprint; 512 map 3.25 / 3.25 ms, 269 / 266 MB.
+
+**GUI at 2048** (`./build/bin/path --scenario world --set scenarioSize 2048`): loads in ~70 s,
+renders normally, 20 FPS vs 24 FPS for a 512 world: drawing is culled to the view, so its cost
+depends on what is on screen, not on map size (`DrawCells` ~25 ms either way: a separate,
+general render-speed topic). Unverified: the 2048 view shows black patches that look like
+depressions deeper than the levels the renderer shades.
+
+**Saves at 2048 are the blocker.** A world save is **3.65 GB** (every cell of every layer,
+uncompressed; the game writes raw `.bin`, `.gz` is only unpacked on load), ~5 s to write;
+loading takes ~40 s (incl. the 15 s graph build). Next: a sparse save format (write only chunk
+blocks that hold data, compress), with a save version bump and migration.
+
 ## Allocation model (for steps 2-3)
 
 Group memory by lifetime instead of one allocation per layer. Three small pieces, no

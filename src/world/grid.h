@@ -8,13 +8,15 @@
 // Note: CellPlacementSpec uses MaterialType and SurfaceFinish from material.h
 // Users of PlaceCellFull() should include "material.h" for full type definitions
 
-// Maximum grid dimensions (for static array allocation). Overridable for test builds:
-// `make path1024` builds build/bin/path1024 with 1024 (docs/todo/architecture/large-worlds.md)
+// Largest map. Per-cell layers are sized to the actual map at runtime (grid_layers.c); this cap
+// only sizes a few static scratch buffers (BFS queues, visited planes, index tables), which cost
+// address space but no RAM until used: a 128 or 512 map runs the same with cap 512 or 2048
+// (measured 2026-11-21). Overridable with -DMAX_GRID_WIDTH=... for experiments.
 #ifndef MAX_GRID_WIDTH
-#define MAX_GRID_WIDTH  512
+#define MAX_GRID_WIDTH  2048
 #endif
 #ifndef MAX_GRID_HEIGHT
-#define MAX_GRID_HEIGHT 512
+#define MAX_GRID_HEIGHT 2048
 #endif
 #define MAX_GRID_DEPTH  16          // Z-levels
 #define DEFAULT_CHUNK_SIZE  16
