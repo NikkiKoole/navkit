@@ -699,3 +699,27 @@ a random goal anywhere on the map. Fixes:
 3000 movers on the 2048 world: 66 -> 28 ms per tick. What's left is the abstract graph itself:
 on ramp-heavy hills ~200-cell routes have 90-210 waypoints and explore 30K-150K nodes (almost
 every ramp is an entrance). That's the "coarser level" decision.
+
+### Slow path requests with 3000 movers at 2048 (2026-11-21)
+
+`SLOW PATH` lines now also print the route length, nodes explored and the abstract search time,
+so a slow request shows where its time went. Three kinds:
+- **A. Region join after any cell change (~250 ms, outside the search).** Relabelling the dirty
+  chunks was cheap, but the join walked every chunk-border cell of the map (~8M cells x 3 step
+  checks). Each chunk now keeps its east/south border steps, one cell pair per (component,
+  component) pair (`regBorder`), recomputed when it or its east/south/south-east neighbour is
+  relabelled. The join only unions those pairs plus the ladder/ramp links. Gone from the slow list.
+  The nav fuzz test now checks that regions after incremental edits split cells exactly like a
+  fresh build.
+- **B. Failed searches over the whole graph (~200-250 ms, 238K nodes).** Regions ignore deep water
+  (water never notifies the pathfinder), so a goal across a lake looks reachable but the graph
+  has no route. An exhaustive failed abstract search reaches exactly everything reachable from
+  its start; the library remembers that set (`absFailMark`, valid while `graphVersion` is
+  unchanged). A later search whose start entrances all lie in it and whose goal entrances don't
+  answers "no route" at once. Exact; nav fuzz deep sweep: 56,975 such answers, 0 misses.
+  (Making water notify the graph when a cell crosses the walking depth would fix the regions
+  themselves; not done: water moves through many code paths and flickers near the threshold.)
+- **C. Real long searches (~100-150K nodes, 165-190 waypoints for ~250-cell routes).** The
+  coarser-level question.
+Same conditions back to back (3000 movers, 3000 ticks): path time 21.5 -> 17.6 s, worst later
+tick 291 -> 195 ms, requests over 200 ms 8 -> 2, same arrivals.

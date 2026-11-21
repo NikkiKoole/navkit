@@ -436,7 +436,7 @@ static NavPoint walk[FZ_W * FZ_H * FZ_D];
 static int* extraBuf;
 
 static long statHierCells, statHierExtra, statHierOpt;
-static long statInnerRamps, statExcursions, statAStarPaths;
+static long statInnerRamps, statExcursions, statAStarPaths, statFailShortcuts;
 
 // A path that leaves a level and comes back to it without leaving the chunk: the
 // case a chunk-local 3D search must find by itself (today ramp entrances do it)
@@ -803,6 +803,29 @@ static void CheckIncrementalMatchesFull(NavWorld* w) {
             }
         free(ea); free(eb);
     }
+    // Regions after the incremental relabel split the cells exactly like a fresh build
+    // (same partition; ids may differ): each incremental id maps to one full id and back
+    {
+        int nw = NavRegionCount(w), nf = NavRegionCount(f);
+        if (nw != nf) FAIL("incremental: %d regions, full build has %d", nw, nf);
+        int ids = map.w * map.h * map.d + 1;   // region ids are union-find roots: < cell count
+        int* toF = malloc(sizeof(int) * (size_t)ids);
+        int* toW = malloc(sizeof(int) * (size_t)ids);
+        for (int i = 0; i < ids; i++) toF[i] = toW[i] = -1;
+        int bad = 0;
+        for (int z = 0; z < map.d && !bad; z++)
+            for (int y = 0; y < map.h && !bad; y++)
+                for (int x = 0; x < map.w && !bad; x++) {
+                    NavPoint p = {x, y, z};
+                    int a = NavRegionId(w, p), b = NavRegionId(f, p);
+                    if ((a < 0) != (b < 0)) { FAIL("incremental: region of (%d,%d,%d) is %d, full build %d", x, y, z, a, b); bad = 1; break; }
+                    if (a < 0) continue;
+                    if (toF[a] < 0) toF[a] = b;
+                    if (toW[b] < 0) toW[b] = a;
+                    if (toF[a] != b || toW[b] != a) { FAIL("incremental: regions at (%d,%d,%d) split differently from a full build", x, y, z); bad = 1; }
+                }
+        free(toF); free(toW);
+    }
     NavDestroy(f);
 }
 
@@ -968,6 +991,7 @@ int main(int argc, char** argv) {
             CheckWorld(w, hs, goals, 4, false);
         }
         for (int g = 0; g < 4; g++) NavHFlowDestroy(hs[g]);
+        statFailShortcuts += w->absFailShortcuts;
         NavDestroy(w);
         if (worldFailures) failedWorlds++;
         else if (verbose) printf("  ok [%s]\n", worldDesc);
@@ -976,6 +1000,7 @@ int main(int argc, char** argv) {
            failedWorlds, failures, statHierCells, statHierOpt ? 100.0 * statHierExtra / statHierOpt : 0.0);
     printf("  %ld ramps inside chunks; %ld of %ld A* paths leave a level and come back within one chunk\n",
            statInnerRamps, statExcursions, statAStarPaths);
+    printf("  %ld abstract searches answered \"no route\" from the previous failed search\n", statFailShortcuts);
     printf("\tFailed: %d\n", failures ? 1 : 0);
     return failures ? 1 : 0;
 }

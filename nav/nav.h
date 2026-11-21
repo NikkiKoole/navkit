@@ -144,6 +144,7 @@ typedef struct NavWorld {
 
     // ---- stats from the most recent query ----
     int    explored;
+    int    absFailShortcuts;       // abstract searches answered "no route" from the last failed one
     int    lastCost;               // g-cost at goal from last A* (-1 = unreachable)
     double lastMs;
     double hpaAbstractMs;
@@ -156,6 +157,9 @@ typedef struct NavWorld {
     bool edgeOverflow;             // couldn't grow an edge list (warned)
 
     NavAbstractNode* absNodes;  unsigned absCurGen;   // nodes of older searches read as fresh
+    // The last exhaustive (failed) abstract search: every entrance it reached has
+    // absFailMark == absFailId. Valid while the graph is unchanged (absFailVersion).
+    unsigned* absFailMark; unsigned absFailId, absFailVersion; bool absFailValid;
     int* absPath; int absPathLen;
     int* absHeap; int absHeapSize; int* absHeapPos;
 
@@ -190,6 +194,7 @@ typedef struct NavWorld {
     int* regRoot;                  // [global component] region id (flattened union-find)
     int regNodeCap, regCount;
     struct NavRegLinks* regLinks;  // [chunk] cross-level links (ladders/ramps) starting in it
+    struct NavRegLinks* regBorder; // [chunk] steps across its east/south borders, one cell pair per component pair
     bool* regChunkDirty;
     int regDirtyCount;
     bool regBuilt;

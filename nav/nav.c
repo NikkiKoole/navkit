@@ -56,7 +56,7 @@ static void nav_NavFreeInternals(NavWorld* w) {
     free(w->chunkDirtyFlags);
     free(w->absNodes); free(w->absPath); free(w->absHeap); free(w->absHeapPos);
     free(w->chunkNodes); free(w->chunkHeapPos); free(w->chunkHeap);
-    free(w->entScratch); free(w->entMoved); free(w->entStamp);
+    free(w->entScratch); free(w->entMoved); free(w->entStamp); free(w->absFailMark); w->absFailMark = NULL;
     if (w->chunkEnts) for (int c = 0; c < w->chunksX * w->chunksY; c++) free(w->chunkEnts[c]);
     free(w->chunkEnts); free(w->chunkEntCount); free(w->chunkEntCap); free(w->affected); free(w->rebuiltChunks);
     free(w->candBuf);
@@ -104,6 +104,8 @@ static bool nav_NavAllocInternals(NavWorld* w, int width, int height, int depth,
     w->entScratch     = calloc((size_t)w->entranceCap, sizeof(int));
     w->entMoved       = calloc((size_t)w->entranceCap, sizeof(int));
     w->entStamp       = calloc((size_t)w->entranceCap, sizeof(unsigned));
+    w->absFailMark    = calloc((size_t)w->entranceCap, sizeof(unsigned));
+    w->absFailId = 0; w->absFailValid = false;
     w->stampNow       = 0;
     w->chunkEnts      = calloc(columns, sizeof(*w->chunkEnts));
     w->chunkEntCount  = calloc(columns, sizeof(int));
@@ -132,7 +134,7 @@ static bool nav_NavAllocInternals(NavWorld* w, int width, int height, int depth,
     return w->entranceList && w->adj && w->ladderList && w->rampList && w->chunkDirtyFlags
         && w->absNodes && w->absPath && w->absHeap && w->absHeapPos
         && w->chunkNodes && w->chunkHeapPos && w->chunkHeap && w->entScratch && w->entMoved
-        && w->entStamp && w->chunkEnts && w->chunkEntCount && w->chunkEntCap && w->affected && w->rebuiltChunks && w->tempPath;
+        && w->entStamp && w->absFailMark && w->chunkEnts && w->chunkEntCount && w->chunkEntCap && w->affected && w->rebuiltChunks && w->tempPath;
 }
 
 NavWorld* NavCreate(int width, int height, int depth, int chunkW, int chunkH, void* host) {
@@ -873,6 +875,8 @@ static bool nav_EnsureEntranceCap(NavWorld* w, int need) {
     NAV_GROW(w->entMoved, cap);
     NAV_GROW(w->entStamp, cap);
     memset(w->entStamp + w->entranceCap, 0, (size_t)(cap - w->entranceCap) * sizeof(unsigned));
+    NAV_GROW(w->absFailMark, cap);
+    memset(w->absFailMark + w->entranceCap, 0, (size_t)(cap - w->entranceCap) * sizeof(unsigned));
     NAV_GROW(w->adj, cap);
     memset(w->adj + w->entranceCap, 0, (size_t)(cap - w->entranceCap) * sizeof(NavEdgeVec));
     NAV_GROW(w->absNodes, cap + 2);
@@ -2186,6 +2190,19 @@ static bool nav_HPAAbstract(NavWorld* w, NavPoint start, NavPoint goal) {
     int goalEdges = nav_ConnectToChunk(w, goal, goalChunk, goalTargets, goalCosts, true);
     w->explored += 2;
 
+    // The last failed search reached everything reachable from its start (it ran
+    // until the open list was empty, and that set is closed under out-edges). A start
+    // whose entrances all lie in that set reaches nothing else, so if none of the
+    // goal's entrances are in it there is no route: answer without searching. Exact
+    // (no false "no route"); forgotten when the graph changes.
+    bool failSetValid = w->absFailValid && w->absFailVersion == w->graphVersion;
+    if (failSetValid && startEdges > 0) {
+        bool inside = true;
+        for (int i = 0; i < startEdges && inside; i++) inside = w->absFailMark[startTargets[i]] == w->absFailId;
+        for (int i = 0; i < goalEdges && inside; i++) if (w->absFailMark[goalTargets[i]] == w->absFailId) inside = false;
+        if (inside) { w->absFailShortcuts++; w->hpaAbstractMs = 0.0; return false; }
+    }
+
     // A* over the abstract graph
     double absStart = NavHostTime();
     nav_AbsHeapInit(w, totalNodes);
@@ -2221,6 +2238,17 @@ static bool nav_HPAAbstract(NavWorld* w, NavPoint start, NavPoint goal) {
             for (int i = 0; i < goalEdges; i++)
                 if (goalTargets[i] == best) nav_AbsRelax(w, best, goalNode, goalCosts[i], 0, goal);
         }
+    }
+    if (w->absPathLen == 0 && startEdges > 0) {
+        // Exhaustive failure: remember what it reached (see above)
+        if (++w->absFailId == 0) {   // wrapped: clear old marks
+            memset(w->absFailMark, 0, (size_t)w->entranceCap * sizeof(unsigned));
+            w->absFailId = 1;
+        }
+        for (int i = 0; i < w->entranceNum; i++)
+            if (w->absNodes[i].gen == w->absCurGen && w->absNodes[i].closed) w->absFailMark[i] = w->absFailId;
+        w->absFailVersion = w->graphVersion;
+        w->absFailValid = true;
     }
     w->hpaAbstractMs = (NavHostTime() - absStart) * 1000.0;
     return w->absPathLen > 0;
@@ -2607,6 +2635,11 @@ static void nav_RegFree(NavWorld* w) {
         int chunks = w->depth * w->chunksX * w->chunksY;
         for (int c = 0; c < chunks; c++) { free(w->regLinks[c].a); free(w->regLinks[c].b); }
     }
+    if (w->regBorder) {
+        int chunks = w->depth * w->chunksX * w->chunksY;
+        for (int c = 0; c < chunks; c++) { free(w->regBorder[c].a); free(w->regBorder[c].b); }
+    }
+    free(w->regBorder); w->regBorder = NULL;
     free(w->regLinks); free(w->regLocal); free(w->regCompBase); free(w->regCompCount);
     free(w->regRoot); free(w->regChunkDirty);
     w->regLinks = NULL; w->regLocal = NULL; w->regCompBase = w->regCompCount = w->regRoot = NULL;
@@ -2688,6 +2721,59 @@ static void nav_RegLabelChunk(NavWorld* w, int chunk, int* queue) {
         }
 }
 
+// A step across a chunk border between cells (ax,ay) and (bx,by) on level z: keep
+// one cell pair per (component, component) pair, so the join stays small.
+static void nav_RegBorderStep(NavWorld* w, NavRegLinks* L, int ax, int ay, int bx, int by, int z) {
+    if (!nav_RegStep(w, ax, ay, bx, by, z)) return;
+    int a = nav_Cell3(w, ax, ay, z), b = nav_Cell3(w, bx, by, z);
+    int ca = nav_ChunkOfCell(w, ax, ay, z), cb = nav_ChunkOfCell(w, bx, by, z);
+    int la = w->regLocal[a], lb = w->regLocal[b];
+    for (int k = L->n - 1; k >= 0; k--) {
+        int sa = L->a[k], sb = L->b[k];
+        if (w->regLocal[sa] == la && w->regLocal[sb] == lb) {
+            int sl = w->width * w->height;
+            int sca = nav_ChunkOfCell(w, (sa % sl) % w->width, (sa % sl) / w->width, z);
+            int scb = nav_ChunkOfCell(w, (sb % sl) % w->width, (sb % sl) / w->width, z);
+            if (sca == ca && scb == cb) return;
+        }
+    }
+    nav_RegAddLink(L, a, b);
+}
+
+// The steps across chunk's east and south borders (diagonals included, so the
+// pairs can reach into the east, south and south-east chunks). Depends on the
+// labels of those chunks too: recomputed when any of them is relabelled.
+static void nav_RegBorderChunk(NavWorld* w, int chunk) {
+    int perLevel = w->chunksX * w->chunksY;
+    int z = chunk / perLevel, xy = chunk % perLevel;
+    int x0 = (xy % w->chunksX) * w->chunkW, y0 = (xy / w->chunksX) * w->chunkH;
+    int x1 = x0 + w->chunkW, y1 = y0 + w->chunkH;
+    if (x1 > w->width) x1 = w->width;
+    if (y1 > w->height) y1 = w->height;
+    NavRegLinks* L = &w->regBorder[chunk];
+    L->n = 0;
+    if (x1 < w->width) {
+        int bx = x1;
+        for (int y = y0; y < y1; y++) {
+            nav_RegBorderStep(w, L, bx - 1, y, bx, y, z);
+            if (y + 1 < w->height) {
+                nav_RegBorderStep(w, L, bx - 1, y, bx, y + 1, z);
+                nav_RegBorderStep(w, L, bx - 1, y + 1, bx, y, z);
+            }
+        }
+    }
+    if (y1 < w->height) {
+        int by = y1;
+        for (int x = x0; x < x1; x++) {
+            nav_RegBorderStep(w, L, x, by - 1, x, by, z);
+            if (x + 1 < w->width) {
+                nav_RegBorderStep(w, L, x, by - 1, x + 1, by, z);
+                nav_RegBorderStep(w, L, x + 1, by - 1, x, by, z);
+            }
+        }
+    }
+}
+
 static int nav_RegNode(const NavWorld* w, int cell) {
     int layer = w->width * w->height;
     int z = cell / layer, rem = cell % layer;
@@ -2719,32 +2805,9 @@ static void nav_RegJoin(NavWorld* w) {
     int* p = w->regRoot;
     for (int i = 0; i < nodes; i++) p[i] = i;
 
-    for (int z = 0; z < w->depth; z++) {
-        // Vertical chunk borders: (bx-1, y) | (bx, y) and the two diagonals across
-        for (int bx = w->chunkW; bx < w->width; bx += w->chunkW)
-            for (int y = 0; y < w->height; y++) {
-                if (nav_RegStep(w, bx - 1, y, bx, y, z))
-                    nav_UFUnion(p, nav_RegNode(w, nav_Cell3(w, bx - 1, y, z)), nav_RegNode(w, nav_Cell3(w, bx, y, z)));
-                if (y + 1 < w->height) {
-                    if (nav_RegStep(w, bx - 1, y, bx, y + 1, z))
-                        nav_UFUnion(p, nav_RegNode(w, nav_Cell3(w, bx - 1, y, z)), nav_RegNode(w, nav_Cell3(w, bx, y + 1, z)));
-                    if (nav_RegStep(w, bx - 1, y + 1, bx, y, z))
-                        nav_UFUnion(p, nav_RegNode(w, nav_Cell3(w, bx - 1, y + 1, z)), nav_RegNode(w, nav_Cell3(w, bx, y, z)));
-                }
-            }
-        // Horizontal chunk borders
-        for (int by = w->chunkH; by < w->height; by += w->chunkH)
-            for (int x = 0; x < w->width; x++) {
-                if (nav_RegStep(w, x, by - 1, x, by, z))
-                    nav_UFUnion(p, nav_RegNode(w, nav_Cell3(w, x, by - 1, z)), nav_RegNode(w, nav_Cell3(w, x, by, z)));
-                if (x + 1 < w->width) {
-                    if (nav_RegStep(w, x, by - 1, x + 1, by, z))
-                        nav_UFUnion(p, nav_RegNode(w, nav_Cell3(w, x, by - 1, z)), nav_RegNode(w, nav_Cell3(w, x + 1, by, z)));
-                    if (nav_RegStep(w, x + 1, by - 1, x, by, z))
-                        nav_UFUnion(p, nav_RegNode(w, nav_Cell3(w, x + 1, by - 1, z)), nav_RegNode(w, nav_Cell3(w, x, by, z)));
-                }
-            }
-    }
+    for (int c = 0; c < chunks; c++)
+        for (int k = 0; k < w->regBorder[c].n; k++)
+            nav_UFUnion(p, nav_RegNode(w, w->regBorder[c].a[k]), nav_RegNode(w, w->regBorder[c].b[k]));
     for (int c = 0; c < chunks; c++)
         for (int k = 0; k < w->regLinks[c].n; k++)
             nav_UFUnion(p, nav_RegNode(w, w->regLinks[c].a[k]), nav_RegNode(w, w->regLinks[c].b[k]));
@@ -2762,7 +2825,8 @@ static bool nav_RegEnsure(NavWorld* w) {
         w->regCompCount = calloc((size_t)chunks, sizeof(int));
         w->regChunkDirty = calloc((size_t)chunks, sizeof(bool));
         w->regLinks = calloc((size_t)chunks, sizeof(NavRegLinks));
-        if (!w->regLocal || !w->regCompBase || !w->regCompCount || !w->regChunkDirty || !w->regLinks) {
+        w->regBorder = calloc((size_t)chunks, sizeof(NavRegLinks));
+        if (!w->regLocal || !w->regCompBase || !w->regCompCount || !w->regChunkDirty || !w->regLinks || !w->regBorder) {
             nav_RegFree(w);
             return false;
         }
@@ -2774,8 +2838,23 @@ static bool nav_RegEnsure(NavWorld* w) {
         int* queue = malloc((size_t)w->chunkW * w->chunkH * sizeof(int));
         if (!queue) return false;
         for (int c = 0; c < chunks; c++)
-            if (w->regChunkDirty[c]) { nav_RegLabelChunk(w, c, queue); w->regChunkDirty[c] = false; }
+            if (w->regChunkDirty[c]) nav_RegLabelChunk(w, c, queue);
         free(queue);
+        // Borders touching a relabelled chunk: its own (east/south) and those of its
+        // west, north and north-west neighbours (their pairs reach into it)
+        int perLevel = w->chunksX * w->chunksY;
+        bool* redo = calloc((size_t)chunks, sizeof(bool));
+        if (!redo) return false;
+        for (int c = 0; c < chunks; c++) {
+            if (!w->regChunkDirty[c]) continue;
+            int xy = c % perLevel, cx = xy % w->chunksX, cy = xy / w->chunksX;
+            for (int dy = -1; dy <= 0; dy++)
+                for (int dx = -1; dx <= 0; dx++)
+                    if (cx + dx >= 0 && cy + dy >= 0) redo[c + dy * w->chunksX + dx] = true;
+            w->regChunkDirty[c] = false;
+        }
+        for (int c = 0; c < chunks; c++) if (redo[c]) nav_RegBorderChunk(w, c);
+        free(redo);
         w->regDirtyCount = 0;
         nav_RegJoin(w);
     }

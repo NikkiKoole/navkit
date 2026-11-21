@@ -338,8 +338,9 @@ int FindPathOrRoute(PathAlgorithm algo, Point start, Point goal, Point* outPath,
     // Slow request: say where, so an accidental repro can be replayed with
     // --inspect save --path x,y,z x,y,z (see docs/todo/architecture/large-worlds.md)
     if (ms > 200.0)
-        fprintf(stderr, "SLOW PATH %.0f ms algo=%d (%d,%d,%d) -> (%d,%d,%d) len=%d\n", ms, (int)algo,
-                start.x, start.y, start.z, goal.x, goal.y, goal.z, len);
+        fprintf(stderr, "SLOW PATH %.0f ms algo=%d (%d,%d,%d) -> (%d,%d,%d) len=%d route=%d explored=%d search=%.0f ms\n",
+                ms, (int)algo, start.x, start.y, start.z, goal.x, goal.y, goal.z, len,
+                routeLen ? *routeLen : -1, NavGame()->explored, NavGame()->lastMs);
     findPathCalls++;
     return len;
 }
