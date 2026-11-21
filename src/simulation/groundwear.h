@@ -28,6 +28,7 @@ extern int wearDirtToGrass;      // Threshold to turn dirt back to grass
 extern int wearTrampleAmount;    // Wear added per mover step
 extern int wearDecayRate;        // Wear removed per decay interval
 extern float wearRecoveryInterval; // Game-seconds between decay updates
+extern int wearSpreadMinCells;     // bigger maps spread each sweep over the interval
 extern int wearMax;              // Maximum wear value
 
 // Sapling regrowth on untrampled grass

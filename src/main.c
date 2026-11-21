@@ -857,22 +857,31 @@ static double WallMs(void) {   // GetTime() needs a window; headless has none
     struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
     return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
 }
-static double profTotal[PROFILER_MAX_SECTIONS], profMax[PROFILER_MAX_SECTIONS];
+// max: worst tick; later: worst tick after the first (which does one-off full computations);
+// slow: ticks after the first where the section took over 5 ms (a visible hitch at 60 fps)
+static double profTotal[PROFILER_MAX_SECTIONS], profMax[PROFILER_MAX_SECTIONS], profMaxLater[PROFILER_MAX_SECTIONS];
+static int profSlow[PROFILER_MAX_SECTIONS], profTicks;
 static void HeadlessProfileAccumulate(void) {
     for (int i = 0; i < profilerSectionCount; i++) {
         ProfileSection* s = &profilerSections[i];
         double t = s->accumulating ? s->accumTimeMs : s->lastTimeMs;
         profTotal[i] += t;
         if (t > profMax[i]) profMax[i] = t;
+        if (profTicks > 0) {
+            if (t > profMaxLater[i]) profMaxLater[i] = t;
+            if (t > 5.0) profSlow[i]++;
+        }
     }
+    profTicks++;
 }
 static void HeadlessProfilePrint(int ticks) {
-    printf("\n=== PROFILE (ms per tick, CPU time) ===\n%-20s %8s %8s\n", "section", "avg", "max");
+    printf("\n=== PROFILE (ms per tick, CPU time) ===\n%-20s %8s %8s %8s %6s\n", "section", "avg", "max", "later", "slow");
     for (int i = 0; i < profilerSectionCount; i++) {
         if (profTotal[i] / ticks < 0.005 && profMax[i] < 0.5) continue;
-        printf("%*s%-*s %8.3f %8.2f\n", profilerSections[i].depth * 2, "", 20 - profilerSections[i].depth * 2,
-               profilerSections[i].name, profTotal[i] / ticks, profMax[i]);
+        printf("%*s%-*s %8.3f %8.2f %8.2f %6d\n", profilerSections[i].depth * 2, "", 20 - profilerSections[i].depth * 2,
+               profilerSections[i].name, profTotal[i] / ticks, profMax[i], profMaxLater[i], profSlow[i]);
     }
+    printf("(later = worst tick after the first; slow = ticks after the first over 5 ms)\n");
 }
 
 static int RunHeadless(const char* loadFile, const char* scenarioName, const char* gameName, int ticks, int argc, char** argv) {

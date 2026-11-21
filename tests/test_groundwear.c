@@ -370,6 +370,54 @@ describe(wear_decay) {
         wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
     }
     
+    it("should spread a big map's sweep over the interval, each cell once per interval") {
+        InitTestGridFromAscii(
+            "dddd\n"
+            "dddd\n"
+            "dddd\n"
+            "dddd\n"
+            "dddd\n"
+            "dddd\n"
+            "dddd\n"
+            "dddd\n");
+        seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) {
+                GRID(x, y, 0) = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
+            }
+        InitGroundWear();
+        groundWearEnabled = true;
+        wearSpreadMinCells = 0;   // treat this map as big
+        wearDecayRate = 10;
+        wearRecoveryInterval = 1.0f;   // long enough that z=0's rows (the first of the sweep) span ticks
+        for (int y = 0; y < gridHeight; y++) WEAR(1, y, 0) = 100;
+        wearActiveCells = gridHeight;
+
+        int partialTicks = 0, ticks = 0;
+        bool onceEach = true;
+        for (; ticks < 20000; ticks++) {
+            UpdateGroundWear();
+            if (ticks == 5) SetWearRecoveryAccum(GetWearRecoveryAccum());   // as a load does
+            int lo = 1000, hi = 0;
+            for (int y = 0; y < gridHeight; y++) {
+                int w = WEAR(1, y, 0);
+                if (w < lo) lo = w;
+                if (w > hi) hi = w;
+            }
+            if (hi - lo > 10) onceEach = false;   // some row decayed twice while another didn't
+            if (lo != hi) partialTicks++;
+            if (hi <= 50) break;
+        }
+        expect(ticks < 20000);
+        expect(onceEach);
+        expect(partialTicks > 0);   // rows decayed on different ticks: the sweep was spread
+
+        wearSpreadMinCells = 1 << 20;
+        wearRecoveryInterval = 0.004f;
+        wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
+    }
+
     it("should clamp wear to 0 on decay") {
         InitTestGridFromAscii(
             "dddd\n");

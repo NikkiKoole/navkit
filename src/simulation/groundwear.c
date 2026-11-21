@@ -36,6 +36,9 @@ int wearMax = WEAR_MAX_DEFAULT;
 
 // Internal accumulator for game-time
 static float wearRecoveryAccum = 0.0f;
+// Rows (z * height + y) of the current interval's sweep already processed. Always
+// WearRowsDue(wearRecoveryAccum), so it isn't saved: the load recomputes it.
+static int wearSweepRow = 0;
 
 // Map wear value to the vegetation level it implies
 static VegetationType VegLevelForWear(int wear) {
@@ -141,6 +144,7 @@ void InitGroundWear(void) {
 void ClearGroundWear(void) {
     CLEAR_GRID_LAYER(wearGrid, 0);
     wearRecoveryAccum = 0.0f;
+    wearSweepRow = 0;
 }
 
 void TrampleGround(int x, int y, int z) {
@@ -197,6 +201,110 @@ void TrampleGround(int x, int y, int z) {
     UpdateSurfaceFromWear(x, y, targetZ, false);
 }
 
+// One row of the wear sweep: decay, reed and sapling regrowth, drying
+static void UpdateGroundWearRow(int y, int z, float vegRate) {
+    FOR_X_IN_ROW(x, ci, y, z) {
+        CellType cell = LAYER_AT(grid, ci);
+        
+        // Only process natural dirt tiles
+        if (!CellIsSolid(cell) || !LAYER_AT(wallNatural, ci)) continue;
+        bool isDirt = (GetWallMaterial(x, y, z) == MAT_DIRT);
+        
+        // Skip if on fire - don't regrow grass while burning
+        if (HasFire(x, y, z)) continue;
+        
+        if (isDirt) {
+            // Decay wear (modulated by seasonal vegetation growth)
+            int effectiveDecay = (int)(wearDecayRate * vegRate);
+            int oldWear = WEAR(x, y, z);
+            if (effectiveDecay > 0 && oldWear > effectiveDecay) {
+                WEAR(x, y, z) = oldWear - effectiveDecay;
+                // Recovery — vegetation grows one step per tick
+                UpdateSurfaceFromWear(x, y, z, true);
+            } else if (effectiveDecay > 0 && oldWear > 0) {
+                // Wear would decay to 0. If vegetation hasn't fully
+                // regrown, hold wear at 1 to keep recovery ticking.
+                VegetationType veg = GetVegetation(x, y, z);
+                WEAR(x, y, z) = 0;
+                UpdateSurfaceFromWear(x, y, z, true);
+                veg = GetVegetation(x, y, z);
+                if (veg > VEG_NONE && veg < VEG_GRASS_TALLER) {
+                    WEAR(x, y, z) = 1;  // keep ticking
+                } else {
+                    wearActiveCells--;
+                }
+            }
+        }
+
+        // Reed regrowth: bare soil adjacent to water regrows reeds
+        if (isDirt && GetVegetation(x, y, z) == VEG_NONE && WEAR(x, y, z) == 0) {
+            bool hasAdjacentWater = false;
+            if (z + 1 < gridDepth) {
+                if (x > 0 && GetWaterLevel(x - 1, y, z + 1) > 0) hasAdjacentWater = true;
+                if (x < gridWidth - 1 && GetWaterLevel(x + 1, y, z + 1) > 0) hasAdjacentWater = true;
+                if (y > 0 && GetWaterLevel(x, y - 1, z + 1) > 0) hasAdjacentWater = true;
+                if (y < gridHeight - 1 && GetWaterLevel(x, y + 1, z + 1) > 0) hasAdjacentWater = true;
+            }
+            if (hasAdjacentWater) {
+                SetVegetation(x, y, z, VEG_REEDS);
+            }
+        }
+
+        // Sapling regrowth: spawn sapling on tall grass with some chance
+        if (saplingRegrowthEnabled && WEAR(x, y, z) == 0) {
+            // For dirt, require fully recovered grass; for other soils, just require no wear
+            if (!isDirt || GetVegetation(x, y, z) >= VEG_GRASS_TALL) {
+                if (z + 1 < gridDepth && GRID(x, y, z + 1) == CELL_AIR) {
+                    if (QueryItemAtTile(x, y, z + 1) >= 0) continue;
+                    if ((rand() % 10000) < saplingRegrowthChance) {
+                        if (!HasNearbyTree(x, y, z, saplingMinTreeDistance)) {
+                            MaterialType soilMat = GetWallMaterial(x, y, z);
+                            MaterialType treeMat = PickTreeTypeForSoil(soilMat);
+                            PlaceSapling(x, y, z + 1, treeMat);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Wetness drying: decrease wetness on natural soil cells
+        // Only dry if no water is sitting on or above this cell
+        // Random chance per cell prevents all mud vanishing in the same tick
+        int wetness = GET_CELL_WETNESS(x, y, z);
+        if (wetness > 0 && IsSoilMaterial(GetWallMaterial(x, y, z))) {
+            bool waterPresent = (z + 1 < gridDepth && GetWaterLevel(x, y, z + 1) > 0)
+                             || GetWaterLevel(x, y, z) > 0;
+            if (!waterPresent) {
+                // 50% chance to dry — desynchronizes cells so mud fades gradually
+                if (rand() % 100 < 50) {
+                    SET_CELL_WETNESS(x, y, z, wetness - 1);
+                }
+
+                // Wind drying: exposed cells with wind have additional chance to dry
+                if (weatherState.windStrength > 0.5f && IsExposedToSky(x, y, z)) {
+                    int currentWetness = GET_CELL_WETNESS(x, y, z);
+                    if (currentWetness > 0 && (rand() % 100) < (int)(windDryingMultiplier * 10.0f)) {
+                        SET_CELL_WETNESS(x, y, z, currentWetness - 1);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Rows of the sweep due after `accum` game-seconds of the interval. Maps bigger than
+// wearSpreadMinCells spread the sweep evenly over the interval instead of doing it in
+// one tick (a whole 2048 map took ~360 ms); smaller maps sweep at the interval's end.
+// Every cell is processed once per interval either way.
+int wearSpreadMinCells = 1 << 20;   // ~5 ms of sweep
+static int WearRowsDue(float accum, float interval) {
+    int total = gridDepth * gridHeight;
+    if (accum >= interval) return 0;   // (an interval shorter than a tick: whole sweeps)
+    if ((long long)total * gridWidth <= wearSpreadMinCells) return 0;
+    int due = (int)((double)total * accum / interval);
+    return due < 0 ? 0 : due > total ? total : due;
+}
+
 void UpdateGroundWear(void) {
     if (!groundWearEnabled) return;
     
@@ -207,106 +315,23 @@ void UpdateGroundWear(void) {
     
     // Accumulate game time for interval-based decay
     wearRecoveryAccum += gameDeltaTime;
-    
-    // Only decay wear when interval elapses
     float wearIntervalGS = GameHoursToGameSeconds(wearRecoveryInterval);
-    if (wearRecoveryAccum < wearIntervalGS) return;
-    wearRecoveryAccum -= wearIntervalGS;
     
     // Cache seasonal growth rate (uses cosf — don't call per-cell)
     float vegRate = GetVegetationGrowthRate();
+    int total = gridDepth * gridHeight;
+    if (wearSweepRow > total) wearSweepRow = total;
 
-    // Process all cells at all z-levels
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            FOR_X_IN_ROW(x, ci, y, z) {
-                CellType cell = LAYER_AT(grid, ci);
-                
-                // Only process natural dirt tiles
-                if (!CellIsSolid(cell) || !LAYER_AT(wallNatural, ci)) continue;
-                bool isDirt = (GetWallMaterial(x, y, z) == MAT_DIRT);
-                
-                // Skip if on fire - don't regrow grass while burning
-                if (HasFire(x, y, z)) continue;
-                
-                if (isDirt) {
-                    // Decay wear (modulated by seasonal vegetation growth)
-                    int effectiveDecay = (int)(wearDecayRate * vegRate);
-                    int oldWear = WEAR(x, y, z);
-                    if (effectiveDecay > 0 && oldWear > effectiveDecay) {
-                        WEAR(x, y, z) = oldWear - effectiveDecay;
-                        // Recovery — vegetation grows one step per tick
-                        UpdateSurfaceFromWear(x, y, z, true);
-                    } else if (effectiveDecay > 0 && oldWear > 0) {
-                        // Wear would decay to 0. If vegetation hasn't fully
-                        // regrown, hold wear at 1 to keep recovery ticking.
-                        VegetationType veg = GetVegetation(x, y, z);
-                        WEAR(x, y, z) = 0;
-                        UpdateSurfaceFromWear(x, y, z, true);
-                        veg = GetVegetation(x, y, z);
-                        if (veg > VEG_NONE && veg < VEG_GRASS_TALLER) {
-                            WEAR(x, y, z) = 1;  // keep ticking
-                        } else {
-                            wearActiveCells--;
-                        }
-                    }
-                }
-
-                // Reed regrowth: bare soil adjacent to water regrows reeds
-                if (isDirt && GetVegetation(x, y, z) == VEG_NONE && WEAR(x, y, z) == 0) {
-                    bool hasAdjacentWater = false;
-                    if (z + 1 < gridDepth) {
-                        if (x > 0 && GetWaterLevel(x - 1, y, z + 1) > 0) hasAdjacentWater = true;
-                        if (x < gridWidth - 1 && GetWaterLevel(x + 1, y, z + 1) > 0) hasAdjacentWater = true;
-                        if (y > 0 && GetWaterLevel(x, y - 1, z + 1) > 0) hasAdjacentWater = true;
-                        if (y < gridHeight - 1 && GetWaterLevel(x, y + 1, z + 1) > 0) hasAdjacentWater = true;
-                    }
-                    if (hasAdjacentWater) {
-                        SetVegetation(x, y, z, VEG_REEDS);
-                    }
-                }
-
-                // Sapling regrowth: spawn sapling on tall grass with some chance
-                if (saplingRegrowthEnabled && WEAR(x, y, z) == 0) {
-                    // For dirt, require fully recovered grass; for other soils, just require no wear
-                    if (!isDirt || GetVegetation(x, y, z) >= VEG_GRASS_TALL) {
-                        if (z + 1 < gridDepth && GRID(x, y, z + 1) == CELL_AIR) {
-                            if (QueryItemAtTile(x, y, z + 1) >= 0) continue;
-                            if ((rand() % 10000) < saplingRegrowthChance) {
-                                if (!HasNearbyTree(x, y, z, saplingMinTreeDistance)) {
-                                    MaterialType soilMat = GetWallMaterial(x, y, z);
-                                    MaterialType treeMat = PickTreeTypeForSoil(soilMat);
-                                    PlaceSapling(x, y, z + 1, treeMat);
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                // Wetness drying: decrease wetness on natural soil cells
-                // Only dry if no water is sitting on or above this cell
-                // Random chance per cell prevents all mud vanishing in the same tick
-                int wetness = GET_CELL_WETNESS(x, y, z);
-                if (wetness > 0 && IsSoilMaterial(GetWallMaterial(x, y, z))) {
-                    bool waterPresent = (z + 1 < gridDepth && GetWaterLevel(x, y, z + 1) > 0)
-                                     || GetWaterLevel(x, y, z) > 0;
-                    if (!waterPresent) {
-                        // 50% chance to dry — desynchronizes cells so mud fades gradually
-                        if (rand() % 100 < 50) {
-                            SET_CELL_WETNESS(x, y, z, wetness - 1);
-                        }
-
-                        // Wind drying: exposed cells with wind have additional chance to dry
-                        if (weatherState.windStrength > 0.5f && IsExposedToSky(x, y, z)) {
-                            int currentWetness = GET_CELL_WETNESS(x, y, z);
-                            if (currentWetness > 0 && (rand() % 100) < (int)(windDryingMultiplier * 10.0f)) {
-                                SET_CELL_WETNESS(x, y, z, currentWetness - 1);
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    // The rows due so far; when the interval ends, finish the sweep and start the next
+    // (at most one full sweep per call, like the old all-at-once update)
+    for (;;) {
+        int due = wearRecoveryAccum >= wearIntervalGS ? total : WearRowsDue(wearRecoveryAccum, wearIntervalGS);
+        for (int r = wearSweepRow; r < due; r++) UpdateGroundWearRow(r % gridHeight, r / gridHeight, vegRate);
+        if (due > wearSweepRow) wearSweepRow = due;
+        if (wearRecoveryAccum < wearIntervalGS) break;
+        wearRecoveryAccum -= wearIntervalGS;
+        wearSweepRow = 0;
+        if (wearRecoveryAccum >= wearIntervalGS) break;
     }
 }
 
@@ -317,4 +342,7 @@ int GetGroundWear(int x, int y, int z) {
 }
 
 float GetWearRecoveryAccum(void) { return wearRecoveryAccum; }
-void SetWearRecoveryAccum(float v) { wearRecoveryAccum = v; }
+void SetWearRecoveryAccum(float v) {
+    wearRecoveryAccum = v;
+    wearSweepRow = WearRowsDue(v, GameHoursToGameSeconds(wearRecoveryInterval));
+}

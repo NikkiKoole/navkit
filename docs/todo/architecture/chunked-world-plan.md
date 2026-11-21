@@ -665,3 +665,15 @@ Incremental updates use it too when more than 2 chunk regions need new edges.
 - Checks: the fuzz builds odd seeds through a `parallelFor` that runs jobs backwards and compares
   every entrance's edge list with a serial build (mutation: skipping one job fails 48/60
   worlds); built with `-DFZ_THREADS -fsanitize=thread` it uses real threads, 200 worlds clean.
+
+### Hitches during play at 2048 (2026-11-21)
+
+`--profile` now also prints `later` (worst tick after the first) and `slow` (ticks after the
+first over 5 ms). Over 1200 ticks of the 2048 world, Rooms (458 ms) and Lighting (669 ms) only
+spike on the first tick (one-off full computations). Repeating hitches: GroundWear 361 ms (4x),
+Repath 246 ms (5x), Move 170 ms (10x), Snow 116 ms (1x).
+- GroundWear swept all 67M cells in one tick per wear interval (~5 ns per cell, spread over
+  several layers: no single hot spot). Maps over 1M cells now spread the sweep over the
+  interval (rows due = rows x elapsed / interval); every cell is still processed once per
+  interval. The position follows from the saved accumulator, so the save format is unchanged.
+  Smaller maps sweep at the interval's end as before. Worst tick 361 -> 5.2 ms.
