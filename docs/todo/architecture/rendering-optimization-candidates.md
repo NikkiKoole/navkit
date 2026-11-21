@@ -314,9 +314,28 @@ vertex, ~144 per quad: ~70 MB uploaded per frame at zoom 0.15).
   colour, heat shimmer and glow (world into a render texture + a final full-screen pass), light
   as a per-cell texture multiplied in the shader (also removes GetLightColor from the CPU).
   Keep effects on the 8x8 sprite pixel grid so they look like pixel art.
-- **Chunk cache**: draw a 16x16-cell chunk once at 8 px per cell (128x128, exact at any zoom
-  with point sampling), redraw when its cells change; light applied on top. Makes the terrain
-  ~constant cost at any zoom. Needs change tracking (digging, grass, snow, light).
+- **Chunk cache** (designed, parked 2026-11-21: user wants to wait; zoomed out runs ~40 fps on a
+  2048 map, zoomed in is fast). Draw a 16x16-cell chunk's terrain once at 8 px per cell
+  (128x128), reuse it every frame: zoom 0.15 terrain ~7.4 -> ~1 ms. Design:
+  - Only when zoomed out (cell <= ~8 px on screen, zoom <= ~0.25). Zoomed in stays direct
+    (<1 ms, pixel-identical); zoom-relative details (cutaway edge 20% of a cell, inset markers)
+    would otherwise look different.
+  - Cached: ground, walls, deeper levels, grass, ramps, floors, cutaway, mud, snow, farms.
+    Live on top: water, fire/smoke/steam, cloud shadows, items, movers, designations, UI.
+  - Key: chunk + viewZ (a level change redraws the visible chunks; spread over frames).
+  - Redraw: at once for edits the pathfinder hears about (MarkChunkDirty); slow changes (grass,
+    snow, mud: written directly by many systems) by refreshing visible chunks round-robin, each
+    every ~1-2 s.
+  - Light (GetLightColor: dominant of sky * skyLevel and torch light, per cell and level):
+    (a) bake it and redraw when the sky colour changed noticeably (today's look exactly), or
+    (b) cache unlit and multiply a per-cell light texture in the shader (smooth day/night, the
+    "light in the shader" step; one light per column, so slightly different where a column
+    mixes levels). Start with (a).
+  - Many chunk images per page texture so the world batch still draws them in one call; ~64 KB
+    per chunk, LRU of a few hundred to ~1500 chunks.
+  - Proof: zoomed in stays byte-identical; zoomed out is a downscaled image, so compare with a
+    small per-pixel tolerance plus side-by-side images.
+  - Size: ~400-600 lines in 3 commits (cache + threshold, redraw tracking, light refresh).
 - Less detail when zoomed far out (finishes, dirt, grass sprites): changes the look slightly.
 - Other entity passes without screen culling (stockpile tiles/items, workshops, furniture,
   blueprints, light sources): few entities on today's maps, cheap to add when that changes.
