@@ -52,7 +52,9 @@
 
 // Temperature cell data (parallel to grid)
 typedef struct {
-    int16_t current;            // Temperature in Celsius
+    int16_t offset;             // Temperature minus the level's ambient (GetAmbientTemperature(z)),
+                                // Celsius. 0 = at ambient: follows the day/season cycle for free.
+                                // Read the temperature with GetTemperature, not this field.
     uint8_t stable : 1;         // True = skip processing (no recent changes)
     uint8_t isHeatSource : 1;   // True = permanent heat source
     uint8_t isColdSource : 1;   // True = permanent cold source
@@ -68,6 +70,8 @@ extern bool temperatureEnabled;     // Master toggle for temperature simulation
 extern int tempUpdateCount;         // Cells updated last tick (for debug/profiling)
 
 // Tweakable parameters (temps in Celsius, time in game-seconds)
+void TempRebuildActiveChunks(void);
+extern bool tempSkipQuietChunks;      // UpdateTemperature skips chunks with no active cells (default)   // recount the per-chunk active cells (after load / drift)
 extern int ambientSurfaceTemp;      // Default surface temperature (default: 20) - use SetAmbientSurfaceTemp() to change
 extern int ambientDepthDecay;       // Temperature decrease per Z-level down (default: 0)
 extern float heatTransferInterval;  // Game-seconds between heat transfer steps

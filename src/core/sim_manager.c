@@ -52,7 +52,6 @@ void RebuildSimActivityCounts(void) {
     farmActiveCells = 0;
 
     for (int z = 0; z < gridDepth; z++) {
-        int ambient = GetAmbientTemperature(z);
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 // Water: level > 0 or has source/drain
@@ -79,7 +78,7 @@ void RebuildSimActivityCounts(void) {
                 }
                 // Temperature: unstable or differs from ambient
                 TempCell *tc = &TEMPERATURE(x, y, z);
-                if (!tc->stable || tc->current != ambient) {
+                if (!tc->stable || tc->offset != 0) {
                     tempUnstableCells++;
                 }
                 // Trees: saplings, young trees and still-growing trunks
@@ -106,6 +105,7 @@ void RebuildSimActivityCounts(void) {
             }
         }
     }
+    TempRebuildActiveChunks();
 }
 
 // Validate activity counters against actual grid state, auto-correct if drift detected
@@ -116,7 +116,6 @@ bool ValidateSimActivityCounts(void) {
     
     // Count actual active cells from grids (same logic as RebuildSimActivityCounts)
     for (int z = 0; z < gridDepth; z++) {
-        int ambient = GetAmbientTemperature(z);
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 const WaterCell *wc = &WATER(x, y, z);
@@ -127,7 +126,7 @@ bool ValidateSimActivityCounts(void) {
                 if (GetSmokeLevel(x, y, z) > 0) actualSmoke++;
                 if (IsHeatSource(x, y, z) || IsColdSource(x, y, z)) actualTempSource++;
                 TempCell *tc = &TEMPERATURE(x, y, z);
-                if (!tc->stable || tc->current != ambient) actualTempUnstable++;
+                if (!tc->stable || tc->offset != 0) actualTempUnstable++;
                 CellType cell = GRID(x, y, z);
                 if (IsGrowingTreeCell(x, y, z)) actualTree++;
                 if (IsRegrowingTreeCell(x, y, z)) actualTreeRegen++;
@@ -152,6 +151,7 @@ bool ValidateSimActivityCounts(void) {
     CHECK_COUNTER(fireActiveCells, actualFire);
     CHECK_COUNTER(smokeActiveCells, actualSmoke);
     CHECK_COUNTER(tempSourceCount, actualTempSource);
+    if (tempUnstableCells != actualTempUnstable) TempRebuildActiveChunks();
     CHECK_COUNTER(tempUnstableCells, actualTempUnstable);
     CHECK_COUNTER(treeActiveCells, actualTree);
     CHECK_COUNTER(treeRegenCells, actualTreeRegen);

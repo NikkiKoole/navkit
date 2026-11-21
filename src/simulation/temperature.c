@@ -46,13 +46,55 @@ static const int diag_dy[] = {-1, 1, -1, 1};
 // Initialization
 // ============================================================================
 
+// Cells needing work (unstable or away from ambient: the cells tempUnstableCells counts), per
+// 16x16 chunk column and per chunk row, so UpdateTemperature skips quiet parts of the map in
+// the same scan order. Without it one heat source made every update scan all cells (67M on a
+// 2048 map: ~15 ms per tick on average, 200 ms spikes).
+bool tempSkipQuietChunks = true;   // tests compare against a full scan
+static int* tempChunkActive;   // [cy * tempCX + cx]
+static int* tempRowActive;     // [cy]
+static int tempCX, tempCY;
+
+static void TempChunksEnsure(void) {
+    int cx = (gridWidth + STORE_CHUNK - 1) >> STORE_CHUNK_SHIFT;
+    int cy = (gridHeight + STORE_CHUNK - 1) >> STORE_CHUNK_SHIFT;
+    if (tempChunkActive && cx == tempCX && cy == tempCY) return;
+    free(tempChunkActive); free(tempRowActive);
+    tempCX = cx; tempCY = cy;
+    tempChunkActive = calloc((size_t)cx * cy, sizeof(int));
+    tempRowActive = calloc((size_t)cy, sizeof(int));
+    if (tempChunkActive && tempRowActive) TempRebuildActiveChunks();
+}
+
+static inline void TempActiveAdd(int x, int y, int d) {
+    TempChunksEnsure();
+    if (!tempChunkActive || !tempRowActive) return;
+    tempChunkActive[(y >> STORE_CHUNK_SHIFT) * tempCX + (x >> STORE_CHUNK_SHIFT)] += d;
+    tempRowActive[y >> STORE_CHUNK_SHIFT] += d;
+}
+
+void TempRebuildActiveChunks(void) {
+    TempChunksEnsure();
+    if (!tempChunkActive || !tempRowActive) return;
+    memset(tempChunkActive, 0, (size_t)tempCX * tempCY * sizeof(int));
+    memset(tempRowActive, 0, (size_t)tempCY * sizeof(int));
+    for (int z = 0; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) {
+                const TempCell* c = &TEMPERATURE(x, y, z);
+                if (!c->stable || c->offset != 0) {
+                    tempChunkActive[(y >> STORE_CHUNK_SHIFT) * tempCX + (x >> STORE_CHUNK_SHIFT)]++;
+                    tempRowActive[y >> STORE_CHUNK_SHIFT]++;
+                }
+            }
+}
+
 void InitTemperature(void) {
     // Initialize all cells to ambient temperature based on depth
     for (int z = 0; z < gridDepth; z++) {
-        int ambient = GetAmbientTemperature(z);
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                TEMPERATURE(x, y, z).current = (int16_t)ambient;
+                TEMPERATURE(x, y, z).offset = 0;
                 TEMPERATURE(x, y, z).stable = true;
                 TEMPERATURE(x, y, z).isHeatSource = false;
                 TEMPERATURE(x, y, z).isColdSource = false;
@@ -62,6 +104,7 @@ void InitTemperature(void) {
     tempUpdateCount = 0;
     tempSourceCount = 0;
     tempUnstableCells = 0;
+    TempRebuildActiveChunks();   // all at ambient and stable: zero
     heatTransferAccum = 0.0f;
     tempDecayAccum = 0.0f;
 }
@@ -94,24 +137,9 @@ int GetAmbientTemperature(int z) {
 }
 
 void SetAmbientSurfaceTemp(int temp) {
-    if (temp == ambientSurfaceTemp) return;
-    
+    // Cells store offsets from ambient, so an ambient change needs no per-cell work and the
+    // unstable count (offset != 0 or still changing) stays valid
     ambientSurfaceTemp = temp;
-    
-    // Recalculate tempUnstableCells since ambient changed
-    tempUnstableCells = 0;
-    for (int z = 0; z < gridDepth; z++) {
-        int ambient = GetAmbientTemperature(z);
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                TempCell *cell = &TEMPERATURE(x, y, z);
-                // A cell needs processing if unstable OR differs from ambient
-                if (!cell->stable || cell->current != ambient) {
-                    tempUnstableCells++;
-                }
-            }
-        }
-    }
 }
 
 // ============================================================================
@@ -143,11 +171,25 @@ static int GetHeatTransferRate(int tier) {
 // Temperature Queries
 // ============================================================================
 
+static void MarkCellUnstableAt(int x, int y, int z);
+void DestabilizeTemperature(int x, int y, int z);
+
 int GetTemperature(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return GetAmbientTemperature(z);
     }
-    return TEMPERATURE(x, y, z).current;
+    int t = GetAmbientTemperature(z) + TEMPERATURE(x, y, z).offset;
+    if (t < TEMP_MIN) t = TEMP_MIN;
+    if (t > TEMP_MAX) t = TEMP_MAX;
+    return t;
+}
+
+// Set a cell's offset, keeping tempUnstableCells right: the cell is marked unstable while it
+// still holds its old offset (counted then iff that offset was 0), then neighbours follow
+static void SetCellOffset(int x, int y, int z, int offset) {
+    MarkCellUnstableAt(x, y, z);
+    TEMPERATURE(x, y, z).offset = (int16_t)offset;
+    DestabilizeTemperature(x, y, z);
 }
 
 void SetTemperature(int x, int y, int z, int celsius) {
@@ -158,8 +200,7 @@ void SetTemperature(int x, int y, int z, int celsius) {
     if (celsius < TEMP_MIN) celsius = TEMP_MIN;
     if (celsius > TEMP_MAX) celsius = TEMP_MAX;
     
-    TEMPERATURE(x, y, z).current = (int16_t)celsius;
-    DestabilizeTemperature(x, y, z);
+    SetCellOffset(x, y, z, celsius - GetAmbientTemperature(z));
 }
 
 bool IsHeatSource(int x, int y, int z) {
@@ -223,11 +264,8 @@ void SetHeatSource(int x, int y, int z, bool isSource) {
         tempSourceCount--;
     }
     
-    if (isSource) {
-        cell->current = (int16_t)heatSourceTemp;
-    }
-    
-    DestabilizeTemperature(x, y, z);
+    if (isSource) SetCellOffset(x, y, z, heatSourceTemp - GetAmbientTemperature(z));
+    else DestabilizeTemperature(x, y, z);
 }
 
 void SetColdSource(int x, int y, int z, bool isSource) {
@@ -255,11 +293,8 @@ void SetColdSource(int x, int y, int z, bool isSource) {
         tempSourceCount--;
     }
     
-    if (isSource) {
-        cell->current = (int16_t)coldSourceTemp;
-    }
-    
-    DestabilizeTemperature(x, y, z);
+    if (isSource) SetCellOffset(x, y, z, coldSourceTemp - GetAmbientTemperature(z));
+    else DestabilizeTemperature(x, y, z);
 }
 
 void RemoveTemperatureSource(int x, int y, int z) {
@@ -279,17 +314,17 @@ void RemoveTemperatureSource(int x, int y, int z) {
 // ============================================================================
 
 // Helper to mark a single cell unstable and update counter
-static void MarkCellUnstable(int x, int y, int z) {
+static void MarkCellUnstableAt(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return;
     }
     TempCell *cell = &TEMPERATURE(x, y, z);
     if (cell->stable) {
         cell->stable = false;
-        int ambient = GetAmbientTemperature(z);
         // Only increment if it was stable AND at ambient (otherwise already counted)
-        if (cell->current == ambient) {
+        if (cell->offset == 0) {
             tempUnstableCells++;
+            TempActiveAdd(x, y, 1);
         }
     }
 }
@@ -300,25 +335,25 @@ void DestabilizeTemperature(int x, int y, int z) {
     }
     
     // Mark this cell unstable
-    MarkCellUnstable(x, y, z);
+    MarkCellUnstableAt(x, y, z);
     
     // Mark orthogonal neighbors unstable
     for (int i = 0; i < 4; i++) {
         int nx = x + dx[i];
         int ny = y + dy[i];
-        MarkCellUnstable(nx, ny, z);
+        MarkCellUnstableAt(nx, ny, z);
     }
     
     // Mark diagonal neighbors unstable
     for (int i = 0; i < 4; i++) {
         int nx = x + diag_dx[i];
         int ny = y + diag_dy[i];
-        MarkCellUnstable(nx, ny, z);
+        MarkCellUnstableAt(nx, ny, z);
     }
     
     // Also destabilize vertical neighbors
-    MarkCellUnstable(x, y, z - 1);
-    MarkCellUnstable(x, y, z + 1);
+    MarkCellUnstableAt(x, y, z - 1);
+    MarkCellUnstableAt(x, y, z + 1);
 }
 
 // ============================================================================
@@ -337,11 +372,8 @@ void ApplyFireHeat(int x, int y, int z, int fireLevel) {
     int fireTemp = TEMP_BOILING + (fireLevel * 20);
     if (fireTemp > TEMP_MAX) fireTemp = TEMP_MAX;
     
-    TempCell *cell = &TEMPERATURE(x, y, z);
-    if (fireTemp > cell->current) {
-        cell->current = (int16_t)fireTemp;
-        DestabilizeTemperature(x, y, z);
-    }
+    int ambient = GetAmbientTemperature(z);
+    if (fireTemp > ambient + TEMPERATURE(x, y, z).offset) SetCellOffset(x, y, z, fireTemp - ambient);
 }
 
 // ============================================================================
@@ -379,16 +411,27 @@ void UpdateTemperature(void) {
     // Reset count only when we're actually going to process
     tempUpdateCount = 0;
     
-    // Process all cells
+    // Ambient per level (cells store offsets from it; the physics below works on absolute
+    // temperatures, as before)
+    int amb[MAX_GRID_DEPTH];
+    for (int z = 0; z < gridDepth; z++) amb[z] = GetAmbientTemperature(z);
+
+    // Process all cells needing work, in the same order as a full scan: chunk rows and chunks
+    // with none are skipped (TempActiveAdd keeps the counts with tempUnstableCells)
+    TempChunksEnsure();
+    bool skip = tempSkipQuietChunks && tempChunkActive && tempRowActive;
     for (int z = 0; z < gridDepth; z++) {
-        int ambient = GetAmbientTemperature(z);
+        int ambient = amb[z];
         
         for (int y = 0; y < gridHeight; y++) {
+            if (skip && tempRowActive[y >> STORE_CHUNK_SHIFT] == 0) { y |= STORE_MASK; continue; }
+            const int* rowChunks = skip ? &tempChunkActive[(y >> STORE_CHUNK_SHIFT) * tempCX] : NULL;
             for (int x = 0; x < gridWidth; x++) {
+                if (rowChunks && rowChunks[x >> STORE_CHUNK_SHIFT] == 0) { x |= STORE_MASK; continue; }
                 TempCell *cell = &TEMPERATURE(x, y, z);
                 
                 // Skip stable cells (but not if temperature differs from ambient)
-                if (cell->stable && cell->current == ambient) {
+                if (cell->stable && cell->offset == 0) {
                     continue;
                 }
                 
@@ -400,17 +443,15 @@ void UpdateTemperature(void) {
                 
                 // Sources maintain their temperature and keep spreading
                 if (cell->isHeatSource) {
-                    cell->current = (int16_t)heatSourceTemp;
-                    DestabilizeTemperature(x, y, z);
+                    SetCellOffset(x, y, z, heatSourceTemp - ambient);
                     continue;
                 }
                 if (cell->isColdSource) {
-                    cell->current = (int16_t)coldSourceTemp;
-                    DestabilizeTemperature(x, y, z);
+                    SetCellOffset(x, y, z, coldSourceTemp - ambient);
                     continue;
                 }
                 
-                int currentTemp = cell->current;
+                int currentTemp = ambient + cell->offset;
                 int myInsulation = GetInsulationTier(x, y, z);
                 
                 // Phase 1: Heat transfer with neighbors (only when interval elapses)
@@ -427,7 +468,7 @@ void UpdateTemperature(void) {
                             continue;
                         }
                         
-                        int neighborTemp = TEMPERATURE(nx, ny, z).current;
+                        int neighborTemp = ambient + TEMPERATURE(nx, ny, z).offset;
                         int neighborInsulation = GetInsulationTier(nx, ny, z);
                         
                         // Use the higher insulation of the two cells
@@ -451,7 +492,7 @@ void UpdateTemperature(void) {
                             continue;
                         }
                         
-                        int neighborTemp = TEMPERATURE(nx, ny, z).current;
+                        int neighborTemp = ambient + TEMPERATURE(nx, ny, z).offset;
                         int neighborInsulation = GetInsulationTier(nx, ny, z);
                         
                         int effectiveInsulation = (myInsulation > neighborInsulation) ? myInsulation : neighborInsulation;
@@ -470,7 +511,7 @@ void UpdateTemperature(void) {
                         int nz = z + dz;
                         if (nz < 0 || nz >= gridDepth) continue;
                         
-                        int neighborTemp = TEMPERATURE(x, y, nz).current;
+                        int neighborTemp = amb[nz] + TEMPERATURE(x, y, nz).offset;
                         int neighborInsulation = GetInsulationTier(x, y, nz);
                         
                         int effectiveInsulation = (myInsulation > neighborInsulation) ? myInsulation : neighborInsulation;
@@ -515,16 +556,17 @@ void UpdateTemperature(void) {
                 if (currentTemp > TEMP_MAX) currentTemp = TEMP_MAX;
                 
                 // Check if temperature changed
-                if (currentTemp != cell->current) {
-                    cell->current = (int16_t)currentTemp;
-                    DestabilizeTemperature(x, y, z);
+                int newOffset = currentTemp - ambient;
+                if (newOffset != cell->offset) {
+                    SetCellOffset(x, y, z, newOffset);
                 } else {
                     // Cell didn't change - mark stable
                     if (!cell->stable) {
                         cell->stable = true;
                         // If now stable AND at ambient, decrement counter
-                        if (currentTemp == ambient) {
+                        if (newOffset == 0) {
                             tempUnstableCells--;
+                            TempActiveAdd(x, y, -1);
                         }
                     }
                 }

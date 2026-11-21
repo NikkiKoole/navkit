@@ -6,6 +6,8 @@
 #include "../src/simulation/temperature.h"
 #include "../src/simulation/fire.h"
 #include "../src/simulation/water.h"
+#include "../src/simulation/weather.h"
+#include "../src/core/sim_manager.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -844,6 +846,111 @@ describe(temperature_stability) {
     }
 }
 
+// Cells store offsets from ambient: an ambient change (day/season) moves cells at ambient
+// with it and leaves tempUnstableCells right. Before, every cell kept its old value and
+// counted as "not at ambient" while the counter said 0: the sim skipped everything until the
+// periodic check reset the counter to the whole map, then crawled through it 4096 cells a tick.
+describe(temperature_ambient_changes) {
+    it("should keep cells at ambient and the unstable count right when ambient changes") {
+        InitTestGridFromAscii(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n");
+        int oldSeasonal = seasonalAmplitude, oldDiurnal = diurnalAmplitude, oldSurface = ambientSurfaceTemp;
+        seasonalAmplitude = 0; diurnalAmplitude = 0;
+        InitTemperature();
+        RebuildSimActivityCounts();
+
+        SetAmbientSurfaceTemp(oldSurface + 7);
+        int ambient = GetAmbientTemperature(0);
+        int off = 0;
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++)
+                if (GetTemperature(x, y, 0) != ambient) off++;
+        expect(off == 0);
+        expect(tempUnstableCells == 0);
+        expect(ValidateSimActivityCounts());
+
+        SetAmbientSurfaceTemp(oldSurface);
+        seasonalAmplitude = oldSeasonal; diurnalAmplitude = oldDiurnal;
+    }
+
+    it("should keep the unstable count equal to a recount through sources, fire and ambient changes") {
+        InitTestGridFromAscii(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n");
+        int oldSeasonal = seasonalAmplitude, oldDiurnal = diurnalAmplitude, oldSurface = ambientSurfaceTemp;
+        seasonalAmplitude = 0; diurnalAmplitude = 0;
+        InitTemperature();
+        RebuildSimActivityCounts();
+
+        SetHeatSource(3, 2, 0, true);
+        RunTempTicks(40);
+        expect(ValidateSimActivityCounts());
+        SetAmbientSurfaceTemp(oldSurface - 5);   // mid-way: warm cells keep their offset
+        ApplyFireHeat(7, 1, 0, 3);
+        RunTempTicks(40);
+        expect(ValidateSimActivityCounts());
+        SetHeatSource(3, 2, 0, false);
+        // A stable cell away from ambient gets a new temperature (counted once, not twice)
+        RunTempTicks(2000);
+        expect(ValidateSimActivityCounts());
+        SetTemperature(9, 4, 0, GetAmbientTemperature(0) + 30);
+        expect(ValidateSimActivityCounts());
+        RunTempTicks(2000);
+        expect(ValidateSimActivityCounts());
+
+        SetAmbientSurfaceTemp(oldSurface);
+        seasonalAmplitude = oldSeasonal; diurnalAmplitude = oldDiurnal;
+    }
+
+    // UpdateTemperature skips chunks without active cells; it must give exactly the full scan's
+    // result (a wrong per-chunk count would leave cells unprocessed)
+    it("should give the same temperatures with quiet chunks skipped as with a full scan") {
+        static int results[2][48 * 40 * 3];
+        for (int pass = 0; pass < 2; pass++) {
+            InitGridWithSizeAndChunkSize(48, 40, 16, 16);
+            gridDepth = 3;
+            for (int z = 0; z < 3; z++)
+                for (int y = 0; y < 40; y++)
+                    for (int x = 0; x < 48; x++) GRID(x, y, z) = (z == 0) ? CELL_WALL : CELL_AIR;
+            for (int y = 5; y < 30; y++) GRID(20, y, 1) = CELL_WALL;   // a wall to spread around
+            int oldSeasonal = seasonalAmplitude, oldDiurnal = diurnalAmplitude, oldSurface = ambientSurfaceTemp;
+            seasonalAmplitude = 0; diurnalAmplitude = 0;
+            InitTemperature();
+            RebuildSimActivityCounts();
+            tempSkipQuietChunks = (pass == 0);
+            SetHeatSource(5, 5, 1, true);
+            SetColdSource(40, 33, 1, true);
+            RunTempTicks(300);
+            ApplyFireHeat(30, 10, 2, 4);
+            SetAmbientSurfaceTemp(oldSurface + 3);
+            RunTempTicks(300);
+            SetHeatSource(5, 5, 1, false);
+            RunTempTicks(600);
+            int i = 0;
+            for (int z = 0; z < 3; z++)
+                for (int y = 0; y < 40; y++)
+                    for (int x = 0; x < 48; x++) results[pass][i++] = GetTemperature(x, y, z);
+            tempSkipQuietChunks = true;
+            SetAmbientSurfaceTemp(oldSurface);
+            seasonalAmplitude = oldSeasonal; diurnalAmplitude = oldDiurnal;
+        }
+        int diff = 0, warm = 0;
+        for (int i = 0; i < 48 * 40 * 3; i++) {
+            if (results[0][i] != results[1][i]) diff++;
+            if (results[1][i] != results[1][0]) warm++;
+        }
+        if (test_verbose) printf("skip vs full scan: %d differing cells, %d cells not at the first cell's temp\n", diff, warm);
+        expect(warm > 0);   // the scenario really changed temperatures
+        expect(diff == 0);
+    }
+}
+
 // =============================================================================
 // Main
 // =============================================================================
@@ -854,6 +961,7 @@ int main(int argc, char* argv[]) {
     
     // Basic operations
     test(temperature_initialization);
+    test(temperature_ambient_changes);
     test(temperature_level_operations);
     
     // Heat spread and transfer

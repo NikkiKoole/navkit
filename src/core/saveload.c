@@ -1420,6 +1420,20 @@ bool LoadWorld(const char* filename) {
         RebuildStations();
     }
 
+    // v96: temperatures became offsets from the level's ambient (save_migrations.h). Weather
+    // and time are loaded by now, so GetAmbientTemperature is the loaded moment's.
+    if (version < V96_TEMP_OFFSETS) {
+        for (int z = 0; z < gridDepth; z++) {
+            int ambient = GetAmbientTemperature(z);
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++) {
+                    TempCell* tc = &TEMPERATURE(x, y, z);
+                    bool source = tc->isHeatSource || tc->isColdSource;
+                    tc->offset = (tc->stable && !source) ? 0 : (int16_t)(tc->offset - ambient);
+                }
+        }
+    }
+
     // Rebuild active cell counters from loaded simulation grids
     RebuildSimActivityCounts();
     

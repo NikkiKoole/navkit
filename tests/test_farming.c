@@ -337,7 +337,7 @@ describe(farming) {
         farmActiveCells = 1;
 
         // Set ideal temperature (15°C) and wetness (2=wet)
-        TEMPERATURE(5, 5, 1).current = 15;
+        TEMPERATURE(5, 5, 1).offset = (int16_t)(15 - GetAmbientTemperature(1));
         SET_CELL_WETNESS(5, 5, 1, 2);
 
         // Summer day
@@ -496,7 +496,7 @@ describe(farming) {
         job->step = STEP_WORKING;
         job->progress = 0.0f;
 
-        TEMPERATURE(5, 5, 1).current = 15;
+        TEMPERATURE(5, 5, 1).offset = (int16_t)(15 - GetAmbientTemperature(1));
 
         // Fast-forward the job to completion
         for (int i = 0; i < 1000; i++) {
@@ -547,7 +547,7 @@ describe(farming) {
         job->step = STEP_WORKING;
         job->progress = 0.0f;
 
-        TEMPERATURE(6, 6, 1).current = 15;
+        TEMPERATURE(6, 6, 1).offset = (int16_t)(15 - GetAmbientTemperature(1));
         for (int i = 0; i < 1000; i++) {
             JobRunResult r = RunJob_HarvestCrop(job, m, 0.016f);
             if (r == JOBRUN_DONE) break;
@@ -592,7 +592,7 @@ describe(farming) {
         job->step = STEP_WORKING;
         job->progress = 0.0f;
 
-        TEMPERATURE(7, 7, 1).current = 15;
+        TEMPERATURE(7, 7, 1).offset = (int16_t)(15 - GetAmbientTemperature(1));
         for (int i = 0; i < 1000; i++) {
             JobRunResult r = RunJob_HarvestCrop(job, m, 0.016f);
             if (r == JOBRUN_DONE) break;
@@ -627,7 +627,7 @@ describe(farming) {
         job->step = STEP_WORKING;
         job->progress = 0.0f;
 
-        TEMPERATURE(8, 8, 1).current = 15;
+        TEMPERATURE(8, 8, 1).offset = (int16_t)(15 - GetAmbientTemperature(1));
         for (int i = 0; i < 1000; i++) {
             JobRunResult r = RunJob_HarvestCrop(job, m, 0.016f);
             if (r == JOBRUN_DONE) break;
@@ -663,7 +663,7 @@ describe(farming) {
         job->step = STEP_WORKING;
         job->progress = 0.0f;
 
-        TEMPERATURE(9, 9, 1).current = 15;
+        TEMPERATURE(9, 9, 1).offset = (int16_t)(15 - GetAmbientTemperature(1));
         for (int i = 0; i < 1000; i++) {
             JobRunResult r = RunJob_HarvestCrop(job, m, 0.016f);
             if (r == JOBRUN_DONE) break;

@@ -292,7 +292,7 @@ static void TemperatureTick(float dt) {
         int tz = (int)items[i].z;
         float ambient = 20.0f;  // default room temp
         if (tx >= 0 && tx < gridWidth && ty >= 0 && ty < gridHeight && tz >= 0 && tz < gridDepth) {
-            ambient = (float)TEMPERATURE(tx, ty, tz).current;
+            ambient = (float)GetTemperature(tx, ty, tz);
         }
         items[i].temperature += (ambient - items[i].temperature) * FOOD_COOLING_RATE * dt;
         if (fabsf(items[i].temperature - ambient) < 0.5f) {

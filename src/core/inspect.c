@@ -43,6 +43,9 @@
 #define MARKER_SETTINGS 0x53455454  // "SETT"
 #define MARKER_END      0x454E4421  // "END!"
 
+// Save version of the file being inspected (v96+: temperatures are offsets from ambient)
+static uint32_t insp_saveVersion;
+
 static const char* InspectItemName(const Item* item, char* buffer, size_t bufferSize) {
     const char* base = (item->type < ITEM_TYPE_COUNT) ? ItemName(item->type) : "?";
     MaterialType mat = (MaterialType)item->material;
@@ -520,7 +523,7 @@ static void print_cell(int x, int y, int z) {
     }
     
     // Temperature (decode index to Celsius)
-    printf("Temperature: %d C", temp.current);
+    printf(insp_saveVersion >= V96_TEMP_OFFSETS ? "Temperature: %+d C from ambient" : "Temperature: %d C", temp.offset);
     if (temp.isHeatSource) printf(" [HEAT SOURCE]");
     if (temp.isColdSource) printf(" [COLD SOURCE]");
     printf("\n");
@@ -1060,6 +1063,8 @@ static void print_items(const char* filterType) {
 
 static void print_temp(int filterZ) {
     printf("\n=== TEMPERATURE ===\n");
+    if (insp_saveVersion >= V96_TEMP_OFFSETS)
+        printf("(v96+ saves: values are offsets from each level's ambient, 0 = at ambient)\n");
     printf("Grid: %dx%dx%d\n", insp_gridW, insp_gridH, insp_gridD);
     
     // Chunk size for grouping (matching SIM_CHUNK_SIZE)
@@ -1096,7 +1101,7 @@ static void print_temp(int filterZ) {
                 for (int y = startY; y < endY; y++) {
                     for (int x = startX; x < endX; x++) {
                         int idx = z * insp_gridH * insp_gridW + y * insp_gridW + x;
-                        int temp = insp_tempCells[idx].current;
+                        int temp = insp_tempCells[idx].offset;
                         sum += temp;
                         count++;
                         if (temp < cMin) cMin = temp;
@@ -1271,6 +1276,7 @@ int InspectSaveFile(int argc, char** argv) {
     uint32_t magic, version;
     fread(&magic, 4, 1, f);
     fread(&version, 4, 1, f);
+    insp_saveVersion = version;
     if (magic != INSPECT_SAVE_MAGIC) {
         printf("Invalid save file (bad magic)\n");
         fclose(f);
@@ -1816,7 +1822,7 @@ int InspectSaveFile(int argc, char** argv) {
             for (int y = 0; y < insp_gridH; y++) {
                 for (int x = 0; x < insp_gridW; x++) {
                     int idx = z * insp_gridH * insp_gridW + y * insp_gridW + x;
-                    int temp = insp_tempCells[idx].current;
+                    int temp = insp_tempCells[idx].offset;
                     if (temp == 0) tempAt0++;
                     else if (temp == 20) tempAt20++;
                     else tempOther++;
@@ -1841,10 +1847,16 @@ int InspectSaveFile(int argc, char** argv) {
                waterWithLevel, waterUnstable, waterSources, waterDrains);
         printf("  Frozen: %d, Pressured: %d\n", waterFrozen, waterPressured);
 
-        printf("\nTemperature: min=%d, max=%d\n", tempMin, tempMax);
-        printf("  At 0C: %d cells (%.1f%%)\n", tempAt0, 100.0f * tempAt0 / totalCells);
-        printf("  At 20C: %d cells (%.1f%%)\n", tempAt20, 100.0f * tempAt20 / totalCells);
-        printf("  Other: %d cells (%.1f%%)\n", tempOther, 100.0f * tempOther / totalCells);
+        if (insp_saveVersion >= V96_TEMP_OFFSETS) {   // stored as offsets from ambient
+            printf("\nTemperature (offset from ambient): min=%+d, max=%+d\n", tempMin, tempMax);
+            printf("  At ambient: %d cells (%.1f%%)\n", tempAt0, 100.0f * tempAt0 / totalCells);
+            printf("  Away from ambient: %d cells (%.1f%%)\n", tempAt20 + tempOther, 100.0f * (tempAt20 + tempOther) / totalCells);
+        } else {
+            printf("\nTemperature: min=%d, max=%d\n", tempMin, tempMax);
+            printf("  At 0C: %d cells (%.1f%%)\n", tempAt0, 100.0f * tempAt0 / totalCells);
+            printf("  At 20C: %d cells (%.1f%%)\n", tempAt20, 100.0f * tempAt20 / totalCells);
+            printf("  Other: %d cells (%.1f%%)\n", tempOther, 100.0f * tempOther / totalCells);
+        }
         
         printf("\nOptions: --mover N, --item N, --job N, --stockpile N, --workshop N, --blueprint N\n");
         printf("         --cell X,Y,Z, --path X1,Y1,Z1 X2,Y2,Z2 [--algo astar|hpa]\n");

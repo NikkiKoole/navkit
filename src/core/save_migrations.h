@@ -8,7 +8,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 95
+#define CURRENT_SAVE_VERSION 96
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -33,6 +33,11 @@
 #define V94_NARROW_GRID_LAYERS 94
 // v95: each per-cell layer in the grid section is run-length coded (save_rle.h).
 #define V95_RLE_GRID_LAYERS 95
+// v96: TempCell.offset (was .current) is the temperature minus the level's ambient, not the
+// absolute temperature: cells at ambient follow the day/season cycle without per-cell work.
+// Older saves: stable non-source cells were at ambient (offset 0); others keep their
+// temperature at the ambient of the moment they load.
+#define V96_TEMP_OFFSETS 96
 static inline void FreadLegacyIntsAsU8(uint8_t* dst, size_t n, FILE* f) {
     int32_t buf[256];
     while (n > 0) {
