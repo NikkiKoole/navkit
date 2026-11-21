@@ -500,6 +500,41 @@ Baseline, world scenario 1024, 300 ticks, `--profile`: 297,922 entrances (45,504
 calls 3,441 ms (25.9 ms each); 15.2 ms/tick; peak footprint 0.96 GB. 2048: see above (build
 16.6 s, first-tick spike ~16 s).
 
+**Step 2 done: HPA* chunks are 3D columns** (`nav/nav.c`). A chunk is chunkW x chunkH over all
+levels (chunk id = `cy * chunksX + cx`); every search inside a chunk (edges, start/goal
+connection, refinement, hierarchical chunk fields, rescue) is 3D with A*'s exact step rules
+(`nav_Steps`, `nav_LocalSearch`). Entrances: border cells, ramps whose exit is in the next chunk,
+and **ladders** (kept as graph links: their cost changes at query time with the queue,
+`NAV_CLIMB_EXTRA`, and the abstract search must see it; edge searches skip ladder steps, and edge
+costs leave climb extra out so the graph depends on terrain only). Every ladder/ramp is still
+listed in `ladderList`/`rampList` (counts keep their meaning); internal ramps have entrance -1.
+Edge searches build each chunk's walkable cells and steps once as a compact graph
+(`nav_BoxGraph`) and run all its entrances' Dijkstras on it: the 3D searches asking the host per
+cell had made the build 2x slower than before (7.8 s at 1024); with the box graph it is 1.15 s.
+The incremental update works per column (an edit rebuilds its column and neighbours, all levels).
+
+Results (same runs as the baseline):
+
+| | before | after |
+|---|---|---|
+| 1024 entrances / edges | 298K / 6.6M | 60K / 2.6M |
+| 1024 nav memory | 215 MB | 80 MB |
+| 1024 graph build / setup | 3.97 s / 5.07 s | 1.15 s / 2.15 s |
+| 1024 FindPath avg | 25.9 ms | 7.3 ms |
+| 1024 tick (300 ticks) | 15.2 ms | 7.0 ms |
+| 1024 peak footprint | 0.96 GB | 0.69 GB |
+| 2048 graph build / setup | 16.6 s / 21.4 s | 4.9 s / 9.4 s |
+| 2048 first-tick spike (Move) | ~16 s | ~4.2 s |
+| 2048 peak footprint | 3.57 GB | 2.97 GB |
+| 512 hills+water (`bench_nav_update`) full build | 878 ms | 254 ms |
+| incremental update (3 walls) | 18.6 ms | 11.8 ms |
+| HPA* short / medium / long | 0.80 / 3.78 / 6.83 ms | 0.43 / 1.26 / 2.36 ms |
+
+Path lengths are unchanged (avg steps 94/281/497 -> 94/282/499). Nav fuzz deep sweep (2000 worlds),
+make test and scenarios-check pass. What's left of the 2048 spike is mostly searches to
+unreachable goals (`SLOW PATH ... len=0`, 200-960 ms each: the abstract search exhausts the graph
+before giving up): next to look at, together with steps 4-5 of the order above only if needed.
+
 ## Allocation model (for steps 2-3)
 
 Group memory by lifetime instead of one allocation per layer. Three small pieces, no

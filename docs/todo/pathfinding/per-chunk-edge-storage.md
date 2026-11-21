@@ -2,6 +2,10 @@
 
 > Status: DONE (2026-11-20). Incremental updates no longer scale with the graph: 1 wall
 > at 512: 19.4 -> 5.1 ms (128: 4.0, 256: 4.7). See Progress.
+>
+> Since 2026-11-21 HPA* chunks are 3D columns (ramps inside a chunk are no graph nodes, the
+> chunk entrance index grows as needed): see `../architecture/chunked-world-plan.md`. The
+> numbers below are from the per-level chunks.
 
 ## Progress
 

@@ -61,7 +61,7 @@
 #define NAV_INITIAL_ENTRANCES       1024
 #define NAV_INITIAL_LADDERS         64
 #define NAV_INITIAL_RAMP_LINKS      256
-#define NAV_MAX_ENTRANCES_PER_CHUNK 128   // per chunk edge region (full and incremental builds alike)
+#define NAV_MAX_ENTRANCES_PER_CHUNK 1024  // entrances one search connects to (start/goal, chunk fields)
 
 typedef enum {
     NAV_ALGO_ASTAR = 0,
@@ -70,6 +70,11 @@ typedef enum {
 
 typedef struct NavPoint { int x, y, z; } NavPoint;
 
+// HPA* chunks are COLUMNS: chunkW x chunkH cells over all levels (chunk id =
+// cy * chunksX + cx). Searches inside a chunk are 3D, so ramps inside a chunk need no
+// graph nodes. Entrances: border cells, both ends of every ladder (a ladder's cost
+// changes at query time with its queue, NAV_CLIMB_EXTRA, and the abstract search must
+// see that), and both ends of ramps whose exit lies in the neighbouring chunk.
 typedef struct {
     int x, y, z;
     int chunk1, chunk2;   // equal for ladder/ramp entrances
@@ -84,6 +89,8 @@ typedef struct {
 // Out-edges of one entrance, sorted by `to` (one copy per target: the cheapest)
 typedef struct { NavGraphEdge* e; int num, cap; } NavEdgeVec;
 
+// Every ladder and ramp of the world is listed. Ladders always have entrances; a
+// ramp only when it crosses chunks (else entranceRamp/entranceExit are -1)
 typedef struct {
     int x, y;             // same on both levels
     int zLow, zHigh;
@@ -147,12 +154,20 @@ typedef struct NavWorld {
     // incremental update scratch, [entranceCap]: removed list, moved ids, claim stamps
     int* entScratch; int* entMoved; unsigned* entStamp; unsigned stampNow;
     int updNewNum;                 // entrances below this survived the update; the rest are new
-    int (*chunkEnts)[NAV_MAX_ENTRANCES_PER_CHUNK];   // kept up to date by incremental updates
-    bool chunkEntsOverflow;        // a chunk region had more entrances than fit (warned)
-    int* chunkEntCount;
+    int** chunkEnts;               // [chunk] entrances in its edge region (kept up to date by updates)
+    bool chunkEntsOverflow;        // out of memory growing a list (warned)
+    int* chunkEntCount; int* chunkEntCap;
     unsigned chunkEntsVersion;     // graphVersion the chunkEnts index is complete for (else stale)
-    bool* affected;                // [depth][chunksY][chunksX]
-    bool* rebuiltChunks;           // [chunks] incremental update: chunks whose entrances were rebuilt
+    bool* affected;                // [chunk] incremental update: edges recomputed
+    bool* rebuiltChunks;           // [chunk] incremental update: chunks whose entrances were rebuilt
+    int* candBuf; int candCap;     // entrances around a chunk (nav_EntrancesAround)
+
+    // local 3D searches in a box of chunks over all levels (box-local cell ids,
+    // generation stamps, grown on demand)
+    int* lsG; int* lsF; int* lsParent; int* lsHeapIdx; int* lsHeap; uint32_t* lsGen; uint8_t* lsState;
+    int* lsTgt; uint32_t* lsTgtGen; int* lsTgtNext; int lsTgtCap;
+    int lsCap, lsHeapCount; uint32_t lsCurGen;
+    int lsMinX, lsMinY, lsW, lsH;
 
     NavPoint* tempPath; int tempPathCap;
 
@@ -372,7 +387,7 @@ typedef bool (*NavTargetFn)(void* user, int x, int y, int z);
 int NavFindNearest(NavWorld* w, NavPoint start, NavTargetFn isTarget, void* user, int maxCost,
                    NavPoint* found, NavPoint* outPath, int maxLen, int* pathLen);
 
-// Bounded single-level searches (used internally; exposed for tests/tools).
+// Bounded single-level searches (exposed for tests/tools).
 // Bounds are [min, max). Return cost, or -1 if unreachable.
 int NavChunkCost(NavWorld* w, int sx, int sy, int sz, int gx, int gy,
                  int minX, int minY, int maxX, int maxY);

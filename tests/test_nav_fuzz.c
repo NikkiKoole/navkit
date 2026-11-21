@@ -495,7 +495,7 @@ static void DumpHCell(NavWorld* w, NavHFlow* h, NavPoint p) {
         printf("     field %d region [%d,%d)x[%d,%d) cost %d\n", ChunkIdOf(h, cf), cf->minX, cf->minX + cf->w, cf->minY, cf->minY + cf->h, cf->cost[i]);
         for (int e = 0; e < w->entranceNum; e++) {
             NavEntrance* E = &w->entranceList[e];
-            if (E->z != cf->z || E->x < cf->minX || E->x >= cf->minX + cf->w || E->y < cf->minY || E->y >= cf->minY + cf->h) continue;
+            if (E->x < cf->minX || E->x >= cf->minX + cf->w || E->y < cf->minY || E->y >= cf->minY + cf->h) continue;
             int j = nav_ChunkFlowIndex(cf, (NavPoint){E->x, E->y, E->z});
             printf("       ent %d (%d,%d) ch %d/%d dist %d next %d via %d | here cost %d seed %d\n", e, E->x, E->y, E->chunk1, E->chunk2,
                    h->dist[e], h->nextEnt[e], h->viaChunk[e], cf->cost[j], cf->seed[j]);
@@ -654,7 +654,7 @@ static void CheckWorld(NavWorld* w, NavHFlow** hs, NavPoint* goals, int goalCoun
             FAIL("regions: (%d,%d,%d) -> (%d,%d,%d) reachable but regions say no", a.x, a.y, a.z, b.x, b.y, b.z);
         int lh = NavFindPathHPA(w, a, b, pbuf, (int)(sizeof(pbuf) / sizeof(pbuf[0])));
         if ((la > 0) != (lh > 0) && getenv("FZ_HPA")) {
-            int st[128], sc[128], gt[128], gc[128];
+            static int st[NAV_CONNECT_MAX], sc[NAV_CONNECT_MAX], gt[NAV_CONNECT_MAX], gc[NAV_CONNECT_MAX];
             int ns = nav_ConnectToChunk(w, a, nav_GetChunk(w, a.x, a.y, a.z), st, sc, false);
             int ng = nav_ConnectToChunk(w, b, nav_GetChunk(w, b.x, b.y, b.z), gt, gc, true);
             printf("    start conns %d, goal conns %d\n", ns, ng);
