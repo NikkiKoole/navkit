@@ -24,8 +24,17 @@ typedef struct {
     bool hasItems, hasGrass, hasLeaves, hasRocks;
 } GameToolContext;
 
+// The play HUD's tabs (bottom left): what things are, not which mode makes them.
+typedef enum {
+    HUD_TAB_BUILD,      // "Huisje": everything constructed (stockpiles, workshops, beds)
+    HUD_TAB_NATURE,     // "Boompje": terrain, plants, gathering
+    HUD_TAB_CREATURES,  // "Beestje": movers and animals (the roster)
+    HUD_TAB_COUNT
+} HudTab;
+
 // A tool button in a game's play HUD (shown when the dev UI is off).
 typedef struct {
+    HudTab tab;                                // which tab it sits in
     const char* label;                         // button text, e.g. "Knap Stone"
     int action;                                // InputAction it selects
     int furnitureRecipe;                       // for ACTION_WORK_FURNITURE: recipe to select, else -1

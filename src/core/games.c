@@ -366,18 +366,18 @@ static bool HasGrass(const GameToolContext* c)  { return c->hasGrass; }
 
 // The early-game designations every game offers in its play HUD
 #define BASIC_TOOLS \
-    {"Harvest Berries",  ACTION_WORK_HARVEST_BERRY,     -1, NULL}, \
-    {"Gather Tree",      ACTION_WORK_GATHER_TREE,       -1, NULL}, \
-    {"Knap Stone",       ACTION_WORK_KNAP,              -1, HasRocks}, \
-    {"Place Stockpile",  ACTION_DRAW_STOCKPILE,         -1, HasItems}, \
-    {"Gather Zone",      ACTION_WORK_GATHER,            -1, HasItems}, \
-    {"Build Campfire",   ACTION_DRAW_WORKSHOP_CAMPFIRE, -1, HasItems}, \
-    {"Gather Grass",     ACTION_WORK_GATHER_GRASS,      -1, NULL}, \
-    {"Build Leaf Pile",  ACTION_WORK_FURNITURE, CONSTRUCTION_LEAF_PILE,  HasLeaves}, \
-    {"Build Grass Pile", ACTION_WORK_FURNITURE, CONSTRUCTION_GRASS_PILE, HasGrass}
+    {HUD_TAB_NATURE, "Harvest Berries",  ACTION_WORK_HARVEST_BERRY,     -1, NULL}, \
+    {HUD_TAB_NATURE, "Gather Tree",      ACTION_WORK_GATHER_TREE,       -1, NULL}, \
+    {HUD_TAB_NATURE, "Gather Grass",     ACTION_WORK_GATHER_GRASS,      -1, NULL}, \
+    {HUD_TAB_NATURE, "Knap Stone",       ACTION_WORK_KNAP,              -1, HasRocks}, \
+    {HUD_TAB_BUILD,  "Place Stockpile",  ACTION_DRAW_STOCKPILE,         -1, HasItems}, \
+    {HUD_TAB_BUILD,  "Gather Zone",      ACTION_WORK_GATHER,            -1, HasItems}, \
+    {HUD_TAB_BUILD,  "Build Campfire",   ACTION_DRAW_WORKSHOP_CAMPFIRE, -1, HasItems}, \
+    {HUD_TAB_BUILD,  "Build Leaf Pile",  ACTION_WORK_FURNITURE, CONSTRUCTION_LEAF_PILE,  HasLeaves}, \
+    {HUD_TAB_BUILD,  "Build Grass Pile", ACTION_WORK_FURNITURE, CONSTRUCTION_GRASS_PILE, HasGrass}
 
 static const GameTool survivalTools[] = {
-    {"Explore", ACTION_WORK_EXPLORE, -1, NULL},   // fog of war
+    {HUD_TAB_NATURE, "Explore", ACTION_WORK_EXPLORE, -1, NULL},   // fog of war
     BASIC_TOOLS,
 };
 static const GameTool dollhouseTools[] = { BASIC_TOOLS };

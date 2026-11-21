@@ -1,5 +1,6 @@
 // render/ui_panels.c - UI panel drawing functions
 #include "../game_state.h"
+#include "play_hud.h"
 #include "../world/cell_defs.h"
 #include "../world/material.h"
 #include "../world/biome.h"
@@ -207,7 +208,7 @@ static void DrawSettingsGroup(const char* group, float x, float* y) {
     }
 }
 
-// Minimal player HUD — speed controls, mover count, new game
+// Minimal player HUD — speed controls, new game; tools + roster in the tab bar (play_hud.c)
 static void DrawPlayerHUD(void) {
     ui_begin_frame();
 
@@ -225,70 +226,8 @@ static void DrawPlayerHUD(void) {
     clicked = false; bx += PushButtonInline(bx, y, "3x", &clicked); if (clicked) { gameSpeed = 3.0f; paused = false; }
     y += 22;
 
-    // Mover count + Find button
-    int active = CountActiveMovers();
-    if (active > 0) {
-        bx = 10;
-        bx += MeasureText(TextFormat("Movers: %d", active), 14) + 4;
-        DrawTextShadow(TextFormat("Movers: %d", active), 10, (int)y, 14, LIGHTGRAY);
-        clicked = false;
-        bx += 4;
-        PushButtonInline(bx, y, "Find", &clicked);
-        if (clicked && moverCount > 0) {
-            // Find first active mover and center camera on them
-            for (int i = 0; i < moverCount; i++) {
-                if (movers[i].active) {
-                    followMoverIdx = i;
-                    currentViewZ = (int)movers[i].z;
-                    offset.x = GetScreenWidth() / 2.0f - movers[i].x * zoom;
-                    offset.y = GetScreenHeight() / 2.0f - movers[i].y * zoom;
-                    break;
-                }
-            }
-        }
-        y += 18;
-
-        // Mover name buttons (click to follow)
-        for (int i = 0; i < moverCount && i < 20; i++) {
-            if (!movers[i].active) continue;
-            const char* mname = MoverDisplayName(i);
-            const char* label = movers[i].isDrafted
-                ? TextFormat("[D] %s", mname) : mname;
-            clicked = false;
-            PushButtonInline(10, y, label, &clicked);
-            if (clicked) {
-                followMoverIdx = i;
-                currentViewZ = (int)movers[i].z;
-                offset.x = GetScreenWidth() / 2.0f - movers[i].x * zoom;
-                offset.y = GetScreenHeight() / 2.0f - movers[i].y * zoom;
-            }
-            y += 16;
-        }
-        y += 2;
-    }
-
-    // Tool buttons: the active game's toolset (src/core/games.c). Tools with an
-    // unlock rule show once the world has what they need.
-    y += 4;
-    {
-        const GameDef* game = GameActive();
-        GameToolContext ctx = GameToolContextNow();
-        for (int t = 0; game && t < game->toolCount; t++) {
-            const GameTool* tool = &game->tools[t];
-            if (tool->available && !tool->available(&ctx)) continue;
-            bool active = (inputAction == (InputAction)tool->action) &&
-                          (tool->furnitureRecipe < 0 || GetSelectedFurnitureRecipe() == tool->furnitureRecipe);
-            if (PushButton(10, y, active ? TextFormat("* %s *", tool->label) : tool->label)) {
-                if (active) {
-                    InputMode_ExitToNormal();
-                } else {
-                    if (tool->furnitureRecipe >= 0) SetSelectedFurnitureRecipe(tool->furnitureRecipe);
-                    InputMode_SelectAction((InputAction)tool->action);
-                }
-            }
-            y += 22;
-        }
-    }
+    // Tools and the mover roster: tab bar bottom left (src/render/play_hud.c)
+    DrawPlayHudTabs();
     y += 4;
 
     // New game: one button per game (src/core/games.c)

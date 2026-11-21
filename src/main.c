@@ -23,6 +23,7 @@
 #include "core/sim_step.h"
 #include "core/selection.h"
 #include "render/inspector.h"
+#include "render/play_hud.h"
 
 #ifdef USE_SOUNDSYSTEM
 #include "soundsystem/soundsystem.h"
@@ -1483,6 +1484,9 @@ int main(int argc, char** argv) {
             // Inspector panel for the selection (src/render/inspector.c)
             Rectangle ip = InspectorPanelRect();
             if (ip.width > 0) ui_add_block_rect(ip);
+            // Play HUD tab bar (src/render/play_hud.c)
+            Rectangle hud = PlayHudRect();
+            if (hud.width > 0) ui_add_block_rect(hud);
         }
 
         // Developer console

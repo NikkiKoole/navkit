@@ -87,6 +87,7 @@
 #include "render/rendering.c"
 #include "render/tooltips.c"
 #include "render/inspector.c"
+#include "render/play_hud.c"
 #include "render/ui_panels.c"
 
 // UI systems
