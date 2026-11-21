@@ -37,7 +37,7 @@ LDFLAGS := -L$(RAYLIB_BUILDDIR) -lraylib -framework OpenGL -framework Cocoa -fra
            -framework CoreAudio -framework CoreVideo -framework CoreMIDI -lm -lpthread
 
 # Build individual raylib object files
-$(RAYLIB_BUILDDIR)/raylib_%.o: $(RAYLIB_DIR)/%.c | $(RAYLIB_BUILDDIR)
+$(RAYLIB_BUILDDIR)/raylib_%.o: $(RAYLIB_DIR)/%.c $(RAYLIB_DIR)/rlgl.h | $(RAYLIB_BUILDDIR)
 	@$(CC) $(RAYLIB_CFLAGS) -c -o $@ $<
 
 # rglfw includes Objective-C (.m) files on macOS
