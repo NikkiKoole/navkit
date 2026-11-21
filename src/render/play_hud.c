@@ -4,7 +4,7 @@
 //
 // Huisje (build) and Boompje (nature) show the active game's tools for that tab
 // (GameDef.tools in src/core/games.c, each tool names its HudTab). Beestje shows
-// the movers: click one to select it (inspector panel) and follow it.
+// the movers (click: select + follow) and animals (click: select + go there).
 //
 // Layout() runs twice per frame, like the inspector panel: from main.c before
 // input (draw == false) to know which screen area to keep clicks out of, and
@@ -16,6 +16,7 @@
 #include "../core/input_mode.h"
 #include "../entities/mover.h"
 #include "../entities/namegen.h"
+#include "../entities/animals.h"
 
 #define HUD_MARGIN   10
 #define HUD_BUTTON_H 28
@@ -24,6 +25,7 @@
 #define HUD_PAD      12
 #define HUD_RIGHT_KEEP 380   // keep the bottom right free for the inspector panel
 #define HUD_MAX_ROSTER 40
+#define HUD_MAX_ANIMALS 12   // wild herds can be big: show the first few
 
 static int openTab = -1;   // HudTab, or -1 when all tabs are closed
 
@@ -31,7 +33,7 @@ static const char* const tabNames[HUD_TAB_COUNT] = {"Huisje", "Boompje", "Beestj
 static const char* const tabTips[HUD_TAB_COUNT] = {
     "Build: stockpiles, zones, fires, beds",
     "Nature: gather, harvest, knap, explore",
-    "Your people: click one to select and follow",
+    "People and animals: click one to select it and go there",
 };
 
 static float ButtonWidth(const char* label) {
@@ -57,6 +59,14 @@ static bool HudButton(Rectangle r, const char* label, bool selected, const char*
     return false;
 }
 
+static void FocusAnimal(int idx) {
+    Select(SEL_ANIMAL, idx);
+    followMoverIdx = -1;
+    currentViewZ = (int)animals[idx].z;
+    offset.x = GetScreenWidth() / 2.0f - animals[idx].x * zoom;
+    offset.y = GetScreenHeight() / 2.0f - animals[idx].y * zoom;
+}
+
 static void FocusMover(int idx) {
     Select(SEL_MOVER, idx);
     followMoverIdx = idx;
@@ -73,6 +83,14 @@ typedef struct {
     float top;            // highest y used
     int rows;
 } RowLayout;
+
+static void NewRow(RowLayout* L) {
+    if (L->x == L->x0) return;
+    L->x = L->x0;
+    L->y -= HUD_BUTTON_H + HUD_GAP;
+    L->rows++;
+    if (L->y < L->top) L->top = L->y;
+}
 
 static Rectangle Place(RowLayout* L, float w) {
     if (L->x + w > L->xMax && L->x > L->x0) {   // wrap: new row above
@@ -135,6 +153,29 @@ static Rectangle Layout(bool draw) {
             Rectangle r = Place(&L, ButtonWidth(none));
             if (draw) DrawTextShadow(none, (int)(r.x + HUD_PAD), (int)(r.y + 6), HUD_FONT, GRAY);
             if (r.x + r.width > rightmost) rightmost = r.x + r.width;
+        }
+
+        // Animals on their own row(s) above the people
+        int animalTotal = 0;
+        for (int i = 0; i < animalCount; i++) if (animals[i].active) animalTotal++;
+        if (animalTotal > 0) {
+            NewRow(&L);
+            int shownAnimals = 0;
+            for (int i = 0; i < animalCount && shownAnimals < HUD_MAX_ANIMALS; i++) {
+                if (!animals[i].active) continue;
+                const char* label = TextFormat("%s %d", animals[i].type == ANIMAL_PREDATOR ? "Predator" : "Grazer", i);
+                Rectangle r = Place(&L, ButtonWidth(label));
+                bool selected = selection.kind == SEL_ANIMAL && selection.idx == i;
+                if (HudButton(r, label, selected, NULL, draw)) FocusAnimal(i);
+                if (r.x + r.width > rightmost) rightmost = r.x + r.width;
+                shownAnimals++;
+            }
+            if (animalTotal > shownAnimals) {
+                const char* more = TextFormat("+%d more", animalTotal - shownAnimals);
+                Rectangle r = Place(&L, ButtonWidth(more));
+                if (draw) DrawTextShadow(more, (int)(r.x + HUD_PAD), (int)(r.y + 6), HUD_FONT, GRAY);
+                if (r.x + r.width > rightmost) rightmost = r.x + r.width;
+            }
         }
     } else {
         const GameDef* game = GameActive();
