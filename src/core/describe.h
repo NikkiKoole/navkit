@@ -80,6 +80,21 @@ void DescribeAnimal(int idx, DescLines* out);
 // An unexplored cell (fog of war) is just "Unexplored".
 void DescribeCell(int x, int y, int z, DescLines* out);
 
+// Water on a cell: level, mover speed, source/drain, pressure, stable. No lines when
+// the cell has no water or is unexplored.
+void DescribeWater(int x, int y, int z, DescLines* out);
+
+// A construction blueprint: recipe, status, delivered materials, stage, who builds.
+void DescribeBlueprint(int idx, DescLines* out);
+
+// A designation on a cell: what, target cell, worker/progress or why it waits
+// (unreachable, missing tool). No lines when the cell has none.
+void DescribeDesignation(int x, int y, int z, DescLines* out);
+const char* DesignationDisplayName(int designationType);   // "Mining", "Chop Tree", ...
+
+// A train station: track cell, platform size, people waiting.
+void DescribeStation(int idx, DescLines* out);
+
 // One item as a line: "#12: Oak Planks x3 (Stockpile Fresh +10% hydration warm)".
 void DescribeItemLine(int idx, DescLines* out);
 // The items on one cell: a "Cell (x,y): N units" title, then one line per item.

@@ -19,6 +19,9 @@
 #include "../simulation/fire.h"
 #include "../simulation/steam.h"
 #include "../simulation/smoke.h"
+#include "../world/construction.h"
+#include "../entities/tool_quality.h"
+#include "../entities/trains.h"
 #include "../world/designations.h"
 #include "../world/material.h"
 #include "../simulation/balance.h"
@@ -487,6 +490,162 @@ void DescribeCell(int x, int y, int z, DescLines* out) {
     DescAdd(out, DESC_NORMAL, "Insulation: %s", tier == 2 ? "Stone (5%)" : tier == 1 ? "Wood (20%)" : "Air (100%)");
 
     DescribeCellFluids(x, y, z, out);
+}
+
+// ---------------------------------------------------------------------------
+// Water
+// ---------------------------------------------------------------------------
+
+void DescribeWater(int x, int y, int z, DescLines* out) {
+    out->count = 0;
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
+    if (!IsExplored(x, y, z)) return;
+    const WaterCell* w = &WATER(x, y, z);
+    if (w->level == 0 && !w->isSource && !w->isDrain) return;
+
+    DescAdd(out, DESC_WATER, "Water (%d,%d,z%d)", x, y, z);
+    DescAdd(out, DESC_NORMAL, "Level: %d/7", w->level);
+    DescAdd(out, DESC_NORMAL, "Speed: %.0f%%", GetWaterSpeedMultiplier(x, y, z) * 100);
+    if (w->isSource) DescAdd(out, DESC_ICE, "SOURCE");
+    if (w->isDrain) DescAdd(out, DESC_MUTED, "DRAIN");
+    if (w->hasPressure) {
+        DescAdd(out, DESC_MILD, "Pressure (src z=%d)", w->pressureSourceZ);
+        DescAdd(out, DESC_NORMAL, "Max rise: z=%d", w->pressureSourceZ - 1);
+    }
+    if (w->stable) DescAdd(out, DESC_MUTED, "[stable]");
+}
+
+// ---------------------------------------------------------------------------
+// Blueprint
+// ---------------------------------------------------------------------------
+
+void DescribeBlueprint(int idx, DescLines* out) {
+    out->count = 0;
+    if (idx < 0 || idx >= MAX_BLUEPRINTS || !blueprints[idx].active) return;
+    const Blueprint* bp = &blueprints[idx];
+    static const char* stateNames[] = {"Awaiting materials", "Ready to build", "Building", "Clearing"};
+    static const DescTone stateTones[] = {DESC_WARN, DESC_GOOD, DESC_INFO, DESC_WARN};
+
+    const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
+    DescAdd(out, DESC_TITLE, "%s (%d,%d,%d)", recipe ? recipe->name : "Construction", bp->x, bp->y, bp->z);
+    if (bp->state < 4) DescAdd(out, stateTones[bp->state], "Status: %s", stateNames[bp->state]);
+    else DescAdd(out, DESC_NORMAL, "Status: ?");
+
+    // Delivered materials for the current stage
+    if (recipe && bp->stage < recipe->stageCount) {
+        const ConstructionStage* stage = &recipe->stages[bp->stage];
+        for (int s = 0; s < stage->inputCount; s++) {
+            const ConstructionInput* input = &stage->inputs[s];
+            const char* name = input->anyBuildingMat ? "Building Mat" : ItemName(input->alternatives[0].itemType);
+            DescAdd(out, DESC_STEAM, "  %s: %d/%d", name, bp->stageDeliveries[s].deliveredCount, input->count);
+        }
+    }
+    if (recipe && recipe->stageCount > 1) {
+        DescAdd(out, DESC_NORMAL, "Stage: %d/%d", bp->stage + 1, recipe->stageCount);
+    }
+
+    // What it waits for
+    if (bp->state == BLUEPRINT_CLEARING) {
+        DescAdd(out, DESC_WARN, "Clearing items from site");
+    } else if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
+        DescAdd(out, DESC_MUTED, "Waiting for hauler");
+    } else if (bp->state == BLUEPRINT_READY_TO_BUILD) {
+        DescAdd(out, DESC_MUTED, "Waiting for builder");
+    } else if (bp->state == BLUEPRINT_BUILDING) {
+        if (bp->assignedBuilder >= 0) DescAdd(out, DESC_GOOD, "Builder: Mover #%d", bp->assignedBuilder);
+        DescAdd(out, DESC_NORMAL, "Progress: %d%%", (int)(bp->progress * 100));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Designation
+// ---------------------------------------------------------------------------
+
+static const struct { const char* name; const char* worker; } designationText[DESIGNATION_TYPE_COUNT] = {
+    [DESIGNATION_NONE]           = {"None",           "Worker"},
+    [DESIGNATION_MINE]           = {"Mining",         "Miner"},
+    [DESIGNATION_CHANNEL]        = {"Channeling",     "Digger"},
+    [DESIGNATION_DIG_RAMP]       = {"Dig Ramp",       "Digger"},
+    [DESIGNATION_REMOVE_FLOOR]   = {"Remove Floor",   "Worker"},
+    [DESIGNATION_REMOVE_RAMP]    = {"Remove Ramp",    "Worker"},
+    [DESIGNATION_CHOP]           = {"Chop Tree",      "Woodcutter"},
+    [DESIGNATION_CHOP_FELLED]    = {"Chop Felled",    "Woodcutter"},
+    [DESIGNATION_GATHER_SAPLING] = {"Gather Sapling", "Gatherer"},
+    [DESIGNATION_PLANT_SAPLING]  = {"Plant Sapling",  "Planter"},
+    [DESIGNATION_GATHER_GRASS]   = {"Gather Grass",   "Gatherer"},
+    [DESIGNATION_GATHER_REEDS]   = {"Gather Reeds",   "Gatherer"},
+    [DESIGNATION_GATHER_TREE]    = {"Gather Tree",    "Gatherer"},
+    [DESIGNATION_CLEAN]          = {"Clean",          "Cleaner"},
+    [DESIGNATION_HARVEST_BERRY]  = {"Harvest Berries","Gatherer"},
+    [DESIGNATION_KNAP]           = {"Knap Stone",     "Knapper"},
+    [DESIGNATION_DIG_ROOTS]      = {"Dig Roots",      "Digger"},
+    [DESIGNATION_EXPLORE]        = {"Explore",        "Explorer"},
+    [DESIGNATION_FARM]           = {"Farm",           "Farmer"},
+};
+
+const char* DesignationDisplayName(int type) {
+    if (type < 0 || type >= DESIGNATION_TYPE_COUNT || !designationText[type].name) return "Unknown";
+    return designationText[type].name;
+}
+
+// Hard tool requirement for the job a designation creates ("Needs cutting:2 tool")
+static void DescribeDesignationTool(const Designation* des, int x, int y, int z, DescLines* out) {
+    if (!toolRequirementsEnabled) return;
+    static const char* qualityNames[] = {
+        [QUALITY_CUTTING] = "cutting", [QUALITY_HAMMERING] = "hammering", [QUALITY_DIGGING] = "digging",
+        [QUALITY_SAWING] = "sawing", [QUALITY_FINE] = "fine",
+    };
+    int jobType = -1;
+    switch (des->type) {
+        case DESIGNATION_MINE:        jobType = JOBTYPE_MINE; break;
+        case DESIGNATION_CHANNEL:     jobType = JOBTYPE_CHANNEL; break;
+        case DESIGNATION_DIG_RAMP:    jobType = JOBTYPE_DIG_RAMP; break;
+        case DESIGNATION_CHOP:        jobType = JOBTYPE_CHOP; break;
+        case DESIGNATION_CHOP_FELLED: jobType = JOBTYPE_CHOP_FELLED; break;
+        default: return;
+    }
+    // Channel digs the level below
+    MaterialType mat = GetWallMaterial(x, y, (des->type == DESIGNATION_CHANNEL && z > 0) ? z - 1 : z);
+    JobToolReq req = GetJobToolRequirement(jobType, mat);
+    if (req.hasRequirement && !req.isSoft && req.minLevel > 0) {
+        DescAdd(out, DESC_NORMAL, "Needs %s:%d tool", qualityNames[req.qualityType], req.minLevel);
+    }
+}
+
+void DescribeDesignation(int x, int y, int z, DescLines* out) {
+    out->count = 0;
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
+    if (!IsExplored(x, y, z)) return;
+    const Designation* des = GetDesignation(x, y, z);
+    if (!des || des->type == DESIGNATION_NONE) return;
+    const char* worker = (des->type < DESIGNATION_TYPE_COUNT && designationText[des->type].worker)
+                         ? designationText[des->type].worker : "Worker";
+
+    DescAdd(out, DESC_TITLE, "%s (%d,%d,%d)", DesignationDisplayName(des->type), x, y, z);
+    DescAdd(out, DESC_NORMAL, "Target: %s", CellName(GRID(x, y, z)));
+    if (des->assignedMover >= 0) {
+        DescAdd(out, DESC_GOOD, "%s: Mover #%d", worker, des->assignedMover);
+        DescAdd(out, DESC_NORMAL, "Progress: %d%%", (int)(des->progress * 100));
+    } else if (des->unreachableCooldown > 0) {
+        DescAdd(out, DESC_BAD, "Unreachable (%.1fs)", des->unreachableCooldown);
+    } else {
+        DescAdd(out, DESC_MUTED, "Waiting for %s", worker);
+        DescribeDesignationTool(des, x, y, z, out);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Train station
+// ---------------------------------------------------------------------------
+
+void DescribeStation(int idx, DescLines* out) {
+    out->count = 0;
+    if (idx < 0 || idx >= stationCount || !stations[idx].active) return;
+    const TrainStation* st = &stations[idx];
+    DescAdd(out, DESC_INFO, "Station #%d", idx);
+    DescAdd(out, DESC_NORMAL, "Track: (%d, %d, %d)", st->trackX, st->trackY, st->z);
+    DescAdd(out, DESC_NORMAL, "Platform: %d cell%s", st->platformCellCount, st->platformCellCount != 1 ? "s" : "");
+    DescAdd(out, st->waitingCount > 0 ? DESC_MILD : DESC_NORMAL, "Waiting: %d", st->waitingCount);
 }
 
 // ---------------------------------------------------------------------------

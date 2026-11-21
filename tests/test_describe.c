@@ -10,6 +10,12 @@
 #include "../src/simulation/mood.h"
 #include "../src/simulation/temperature.h"
 #include "../src/entities/animals.h"
+#include "../src/entities/workshops.h"
+#include "../src/entities/tool_quality.h"
+#include "../src/world/designations.h"
+#include "../src/world/construction.h"
+#include "../src/world/material.h"
+#include "../src/simulation/water.h"
 #include "../src/core/describe.h"
 #include "test_helpers.h"
 #include <string.h>
@@ -213,6 +219,69 @@ describe(describe_items_and_animals) {
     }
 }
 
+describe(describe_world_things) {
+    it("names every designation kind") {
+        for (int t = DESIGNATION_NONE + 1; t < DESIGNATION_TYPE_COUNT; t++) {
+            if (strcmp(DesignationDisplayName(t), "Unknown") == 0) printf("  no name for designation %d\n", t);
+            expect(strcmp(DesignationDisplayName(t), "Unknown") != 0);
+        }
+    }
+
+    it("describes a mining designation waiting for a miner") {
+        SetupFlat();
+        gameMode = GAME_MODE_SANDBOX;
+        InitDesignations();
+        GRID(5, 5, 1) = CELL_WALL;
+        SetWallMaterial(5, 5, 1, MAT_GRANITE);
+        toolRequirementsEnabled = false;
+        expect(DesignateMine(5, 5, 1));
+        DescLines d;
+        DescribeDesignation(5, 5, 1, &d);
+        Dump(&d);
+        expect(d.count >= 3);
+        if (d.count > 0) expect(strncmp(d.lines[0].text, "Mining (5,5,1)", 14) == 0);
+        const DescLine* w = FindLine(&d, "Waiting for Miner");
+        expect(w != NULL);
+        if (w) expect(w->tone == DESC_MUTED);
+        DescribeDesignation(6, 6, 1, &d);   // no designation there
+        expect(d.count == 0);
+    }
+
+    it("describes water only where there is some") {
+        SetupFlat();
+        gameMode = GAME_MODE_SANDBOX;
+        InitWater();
+        DescLines d;
+        DescribeWater(3, 3, 1, &d);
+        expect(d.count == 0);
+        SetWaterLevel(3, 3, 1, 5);
+        DescribeWater(3, 3, 1, &d);
+        Dump(&d);
+        expect(FindLine(&d, "Level: 5/7") != NULL);
+    }
+
+    it("shows a new workshop blueprint as awaiting materials") {
+        SetupFlat();
+        InitDesignations();
+        int bp = CreateWorkshopBlueprint(2, 2, 1, GetConstructionRecipeForWorkshopType(WORKSHOP_CAMPFIRE));
+        expect(bp >= 0);
+        if (bp < 0) return;
+        DescLines d;
+        DescribeBlueprint(bp, &d);
+        Dump(&d);
+        const DescLine* s = FindLine(&d, "Status: Awaiting materials");
+        expect(s != NULL);
+        if (s) expect(s->tone == DESC_WARN);
+        expect(FindLine(&d, "Waiting for hauler") != NULL);
+    }
+
+    it("returns nothing for an unknown station") {
+        DescLines d;
+        DescribeStation(-1, &d);
+        expect(d.count == 0);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -220,5 +289,6 @@ int main(int argc, char* argv[]) {
     test(describe_mover);
     test(describe_cell);
     test(describe_items_and_animals);
+    test(describe_world_things);
     return summary();
 }

@@ -278,11 +278,35 @@ static Color DescToneColor(DescTone tone) {
     return WHITE;
 }
 
-// Tooltip box styles: background + border
-typedef struct { Color bg, border; } DescBoxStyle;
-static const DescBoxStyle DESC_BOX_DEFAULT = {{20, 20, 40, 220}, {100, 100, 150, 255}};
-static const DescBoxStyle DESC_BOX_ITEMS   = {{40, 30, 20, 220}, {150, 100, 50, 255}};
-static const DescBoxStyle DESC_BOX_CELL    = {{30, 30, 30, 230}, {80, 80, 80, 255}};
+// Tooltip box styles: background, border, and optionally the first line's color
+// (title.a == 0: the first line keeps its tone's color)
+typedef struct { Color bg, border, title; } DescBoxStyle;
+static const DescBoxStyle DESC_BOX_DEFAULT   = {{20, 20, 40, 220}, {100, 100, 150, 255}, {0}};
+static const DescBoxStyle DESC_BOX_ITEMS     = {{40, 30, 20, 220}, {150, 100, 50, 255}, {0}};
+static const DescBoxStyle DESC_BOX_CELL      = {{30, 30, 30, 230}, {80, 80, 80, 255}, {0}};
+static const DescBoxStyle DESC_BOX_WATER     = {{20, 40, 60, 220}, {50, 100, 200, 255}, {100, 180, 255, 255}};
+static const DescBoxStyle DESC_BOX_BLUEPRINT = {{30, 35, 50, 230}, {80, 100, 150, 255}, {0}};
+static const DescBoxStyle DESC_BOX_STATION   = {{20, 20, 30, 220}, {80, 200, 255, 255}, {80, 200, 255, 255}};
+
+// Designations: each kind has its own box; the title takes the border color
+static DescBoxStyle DesignationBoxStyle(int type) {
+    Color bg = {50, 40, 30, 230}, border = {150, 120, 80, 255};
+    switch (type) {
+        case DESIGNATION_MINE:           bg = (Color){40, 50, 60, 230}; border = (Color){100, 180, 220, 255}; break;
+        case DESIGNATION_CHANNEL:        bg = (Color){50, 35, 45, 230}; border = (Color){220, 130, 180, 255}; break;
+        case DESIGNATION_REMOVE_FLOOR:   bg = (Color){50, 45, 30, 230}; border = (Color){220, 190, 100, 255}; break;
+        case DESIGNATION_REMOVE_RAMP:    bg = (Color){35, 50, 50, 230}; border = (Color){100, 200, 200, 255}; break;
+        case DESIGNATION_CHOP:           bg = (Color){50, 35, 25, 230}; border = (Color){200, 120, 60, 255};  break;
+        case DESIGNATION_CHOP_FELLED:    bg = (Color){45, 40, 30, 230}; border = (Color){190, 140, 70, 255};  break;
+        case DESIGNATION_GATHER_SAPLING: bg = (Color){35, 50, 35, 230}; border = (Color){150, 255, 150, 255}; break;
+        case DESIGNATION_PLANT_SAPLING:  bg = (Color){25, 45, 30, 230}; border = (Color){50, 180, 80, 255};   break;
+        case DESIGNATION_GATHER_GRASS:   bg = (Color){45, 50, 25, 230}; border = (Color){200, 230, 100, 255}; break;
+        case DESIGNATION_DIG_ROOTS:      bg = (Color){50, 40, 20, 230}; border = (Color){160, 120, 60, 255};  break;
+        case DESIGNATION_GATHER_TREE:    bg = (Color){40, 35, 20, 230}; border = (Color){180, 140, 80, 255};  break;
+        default: break;
+    }
+    return (DescBoxStyle){bg, border, border};
+}
 
 static void DrawDescTooltipStyled(const DescLines* d, Vector2 mouse, DescBoxStyle style);
 
@@ -314,7 +338,8 @@ static void DrawDescTooltipStyled(const DescLines* d, Vector2 mouse, DescBoxStyl
 
     int y = ty + padding;
     for (int i = 0; i < d->count; i++) {
-        DrawTextShadow(d->lines[i].text, tx + padding, y, 14, DescToneColor(d->lines[i].tone));
+        Color col = (i == 0 && style.title.a > 0) ? style.title : DescToneColor(d->lines[i].tone);
+        DrawTextShadow(d->lines[i].text, tx + padding, y, 14, col);
         y += lineH;
     }
 }
@@ -347,65 +372,11 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     DrawDescTooltipStyled(&d, mouse, DESC_BOX_CELL);
 }
 
-// Draw water tooltip when hovering over water
+// Water tooltip (hovering water): DescribeWater
 static void DrawWaterTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
-    if (!IsExplored(cellX, cellY, cellZ)) return;
-    const WaterCell* cell = &WATER(cellX, cellY, cellZ);
-    if (cell->level == 0 && !cell->isSource && !cell->isDrain) return;
-
-    char lines[8][64];
-    int lineCount = 0;
-
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Water (%d,%d,z%d)", cellX, cellY, cellZ);
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Level: %d/7", cell->level);
-    
-    float speedMult = GetWaterSpeedMultiplier(cellX, cellY, cellZ);
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Speed: %.0f%%", speedMult * 100);
-    
-    if (cell->isSource) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "SOURCE");
-    }
-    if (cell->isDrain) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "DRAIN");
-    }
-    if (cell->hasPressure) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Pressure (src z=%d)", cell->pressureSourceZ);
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Max rise: z=%d", cell->pressureSourceZ - 1);
-    }
-    if (cell->stable) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "[stable]");
-    }
-
-    int maxW = 0;
-    for (int i = 0; i < lineCount; i++) {
-        int w = MeasureText(lines[i], 14);
-        if (w > maxW) maxW = w;
-    }
-
-    int padding = 6;
-    int lineH = 16;
-    int boxW = maxW + padding * 2;
-    int boxH = lineH * lineCount + padding * 2;
-
-    int tx = (int)mouse.x + 15;
-    int ty = (int)mouse.y + 15;
-    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
-    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
-
-    DrawRectangle(tx, ty, boxW, boxH, (Color){20, 40, 60, 220});
-    DrawRectangleLines(tx, ty, boxW, boxH, (Color){50, 100, 200, 255});
-
-    int y = ty + padding;
-    for (int i = 0; i < lineCount; i++) {
-        Color col = WHITE;
-        if (i == 0) col = (Color){100, 180, 255, 255};
-        else if (strstr(lines[i], "SOURCE")) col = (Color){150, 220, 255, 255};
-        else if (strstr(lines[i], "DRAIN")) col = (Color){80, 80, 120, 255};
-        else if (strstr(lines[i], "Pressure")) col = YELLOW;
-        else if (strstr(lines[i], "stable")) col = GRAY;
-        DrawTextShadow(lines[i], tx + padding, y, 14, col);
-        y += lineH;
-    }
+    DescLines d;
+    DescribeWater(cellX, cellY, cellZ, &d);
+    DrawDescTooltipStyled(&d, mouse, DESC_BOX_WATER);
 }
 
 // Draw workshop tooltip showing bills and status
@@ -816,314 +787,25 @@ static void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
     }
 }
 
-// Draw blueprint (construction) tooltip
+// Blueprint (construction) tooltip: DescribeBlueprint
 static void DrawBlueprintTooltip(int bpIdx, Vector2 mouse) {
-    if (bpIdx < 0 || bpIdx >= MAX_BLUEPRINTS) return;
-    Blueprint* bp = &blueprints[bpIdx];
-    if (!bp->active) return;
-
-    const char* stateNames[] = {"Awaiting materials", "Ready to build", "Building", "Clearing"};
-
-    char lines[16][64];
-    int lineCount = 0;
-
-    // Header
-    const ConstructionRecipe* headerRecipe = GetConstructionRecipe(bp->recipeIndex);
-    const char* name = headerRecipe ? headerRecipe->name : "Construction";
-    snprintf(lines[lineCount++], sizeof(lines[0]), "%s (%d,%d,%d)", name, bp->x, bp->y, bp->z);
-
-    // State
-    const char* stateName = (bp->state < 4) ? stateNames[bp->state] : "?";
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Status: %s", stateName);
-
-    // Per-slot material detail for current stage
-    if (headerRecipe && bp->stage < headerRecipe->stageCount) {
-        const ConstructionStage* stage = &headerRecipe->stages[bp->stage];
-        for (int s = 0; s < stage->inputCount && lineCount < 14; s++) {
-            const ConstructionInput* input = &stage->inputs[s];
-            StageDelivery* sd = &bp->stageDeliveries[s];
-            const char* itemName;
-            if (input->anyBuildingMat) {
-                itemName = "Building Mat";
-            } else if (input->altCount == 1) {
-                itemName = ItemName(input->alternatives[0].itemType);
-            } else {
-                // Multiple alternatives — show first with "/.."
-                itemName = ItemName(input->alternatives[0].itemType);
-            }
-            snprintf(lines[lineCount++], sizeof(lines[0]), "  %s: %d/%d",
-                     itemName, sd->deliveredCount, input->count);
-        }
-    }
-
-    // Show stage info for multi-stage recipes
-    if (headerRecipe && headerRecipe->stageCount > 1) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Stage: %d/%d", bp->stage + 1, headerRecipe->stageCount);
-    }
-
-    // What it's waiting for
-    if (bp->state == BLUEPRINT_CLEARING) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Clearing items from site");
-    } else if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Waiting for hauler");
-    } else if (bp->state == BLUEPRINT_READY_TO_BUILD) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Waiting for builder");
-    } else if (bp->state == BLUEPRINT_BUILDING) {
-        if (bp->assignedBuilder >= 0) {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Builder: Mover #%d", bp->assignedBuilder);
-        }
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Progress: %d%%", (int)(bp->progress * 100));
-    }
-
-    // Calculate box dimensions
-    int maxW = 0;
-    for (int i = 0; i < lineCount; i++) {
-        int w = MeasureText(lines[i], 14);
-        if (w > maxW) maxW = w;
-    }
-
-    int padding = 6;
-    int lineH = 16;
-    int boxW = maxW + padding * 2;
-    int boxH = lineH * lineCount + padding * 2;
-
-    // Position tooltip
-    int tx = (int)mouse.x + 15;
-    int ty = (int)mouse.y + 15;
-    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
-    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
-
-    // Draw background (blue tint for construction)
-    DrawRectangle(tx, ty, boxW, boxH, (Color){30, 35, 50, 230});
-    DrawRectangleLines(tx, ty, boxW, boxH, (Color){80, 100, 150, 255});
-
-    // Draw lines
-    int y = ty + padding;
-    for (int i = 0; i < lineCount; i++) {
-        Color col = WHITE;
-        if (i == 0) col = YELLOW;  // Header
-        else if (lines[i][0] == ' ' && lines[i][1] == ' ') col = (Color){180, 200, 255, 255};  // Material lines
-        else if (strstr(lines[i], "Requires:")) col = SKYBLUE;
-        else if (strstr(lines[i], "Awaiting")) col = ORANGE;
-        else if (strstr(lines[i], "Clearing")) col = ORANGE;
-        else if (strstr(lines[i], "Ready")) col = GREEN;
-        else if (strstr(lines[i], "Building")) col = SKYBLUE;
-        else if (strstr(lines[i], "Waiting")) col = GRAY;
-        else if (strstr(lines[i], "Builder:")) col = GREEN;
-        DrawTextShadow(lines[i], tx + padding, y, 14, col);
-        y += lineH;
-    }
+    DescLines d;
+    DescribeBlueprint(bpIdx, &d);
+    DrawDescTooltipStyled(&d, mouse, DESC_BOX_BLUEPRINT);
 }
 
-// Draw designation tooltip (generic for all designation types)
+// Designation tooltip (all designation kinds): DescribeDesignation, boxed in the kind's colors
 static void DrawDesignationTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
-    if (!IsExplored(cellX, cellY, cellZ)) return;
-    Designation* des = GetDesignation(cellX, cellY, cellZ);
-    if (!des || des->type == DESIGNATION_NONE) return;
-
-    // Get designation name and colors based on type
-    const char* desName = "Unknown";
-    Color bgColor = (Color){50, 40, 30, 230};
-    Color borderColor = (Color){150, 120, 80, 255};
-    const char* workerName = "Worker";
-    
-    switch (des->type) {
-        case DESIGNATION_MINE:
-            desName = "Mining";
-            bgColor = (Color){40, 50, 60, 230};
-            borderColor = (Color){100, 180, 220, 255};
-            workerName = "Miner";
-            break;
-        case DESIGNATION_CHANNEL:
-            desName = "Channeling";
-            bgColor = (Color){50, 35, 45, 230};
-            borderColor = (Color){220, 130, 180, 255};
-            workerName = "Digger";
-            break;
-        case DESIGNATION_REMOVE_FLOOR:
-            desName = "Remove Floor";
-            bgColor = (Color){50, 45, 30, 230};
-            borderColor = (Color){220, 190, 100, 255};
-            workerName = "Worker";
-            break;
-        case DESIGNATION_REMOVE_RAMP:
-            desName = "Remove Ramp";
-            bgColor = (Color){35, 50, 50, 230};
-            borderColor = (Color){100, 200, 200, 255};
-            workerName = "Worker";
-            break;
-        case DESIGNATION_CHOP:
-            desName = "Chop Tree";
-            bgColor = (Color){50, 35, 25, 230};
-            borderColor = (Color){200, 120, 60, 255};
-            workerName = "Woodcutter";
-            break;
-        case DESIGNATION_CHOP_FELLED:
-            desName = "Chop Felled";
-            bgColor = (Color){45, 40, 30, 230};
-            borderColor = (Color){190, 140, 70, 255};
-            workerName = "Woodcutter";
-            break;
-        case DESIGNATION_GATHER_SAPLING:
-            desName = "Gather Sapling";
-            bgColor = (Color){35, 50, 35, 230};
-            borderColor = (Color){150, 255, 150, 255};
-            workerName = "Gatherer";
-            break;
-        case DESIGNATION_PLANT_SAPLING:
-            desName = "Plant Sapling";
-            bgColor = (Color){25, 45, 30, 230};
-            borderColor = (Color){50, 180, 80, 255};
-            workerName = "Planter";
-            break;
-        case DESIGNATION_GATHER_GRASS:
-            desName = "Gather Grass";
-            bgColor = (Color){45, 50, 25, 230};
-            borderColor = (Color){200, 230, 100, 255};
-            workerName = "Gatherer";
-            break;
-        case DESIGNATION_DIG_ROOTS:
-            desName = "Dig Roots";
-            bgColor = (Color){50, 40, 20, 230};
-            borderColor = (Color){160, 120, 60, 255};
-            workerName = "Digger";
-            break;
-        case DESIGNATION_GATHER_TREE:
-            desName = "Gather Tree";
-            bgColor = (Color){40, 35, 20, 230};
-            borderColor = (Color){180, 140, 80, 255};
-            workerName = "Gatherer";
-            break;
-        default:
-            break;
-    }
-
-    char lines[7][80];
-    int lineCount = 0;
-
-    // Header
-    snprintf(lines[lineCount++], sizeof(lines[0]), "%s (%d,%d,%d)", desName, cellX, cellY, cellZ);
-
-    // Cell type at location
-    CellType ct = GRID(cellX, cellY, cellZ);
-    const char* cellName = CellName(ct);
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Target: %s", cellName);
-
-    // Assignment status
-    if (des->assignedMover >= 0) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "%s: Mover #%d", workerName, des->assignedMover);
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Progress: %d%%", (int)(des->progress * 100));
-    } else if (des->unreachableCooldown > 0) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Unreachable (%.1fs)", des->unreachableCooldown);
-    } else {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Waiting for %s", workerName);
-
-        // Show tool requirement hint for hard-gated jobs
-        if (toolRequirementsEnabled) {
-            static const char* qualityNames[] = {
-                [QUALITY_CUTTING]   = "cutting",
-                [QUALITY_HAMMERING] = "hammering",
-                [QUALITY_DIGGING]   = "digging",
-                [QUALITY_SAWING]    = "sawing",
-                [QUALITY_FINE]      = "fine",
-            };
-            // Map designation type to job type
-            int jobType = -1;
-            switch (des->type) {
-                case DESIGNATION_MINE:        jobType = JOBTYPE_MINE; break;
-                case DESIGNATION_CHANNEL:     jobType = JOBTYPE_CHANNEL; break;
-                case DESIGNATION_DIG_RAMP:    jobType = JOBTYPE_DIG_RAMP; break;
-                case DESIGNATION_CHOP:        jobType = JOBTYPE_CHOP; break;
-                case DESIGNATION_CHOP_FELLED: jobType = JOBTYPE_CHOP_FELLED; break;
-                default: break;
-            }
-            if (jobType >= 0) {
-                MaterialType mat = GetWallMaterial(cellX, cellY, cellZ);
-                // Channel checks z-1 material
-                if (des->type == DESIGNATION_CHANNEL && cellZ > 0)
-                    mat = GetWallMaterial(cellX, cellY, cellZ - 1);
-                JobToolReq req = GetJobToolRequirement(jobType, mat);
-                if (req.hasRequirement && !req.isSoft && req.minLevel > 0) {
-                    snprintf(lines[lineCount++], sizeof(lines[0]),
-                             "Needs %s:%d tool", qualityNames[req.qualityType], req.minLevel);
-                }
-            }
-        }
-    }
-
-    // Calculate box dimensions
-    int maxW = 0;
-    for (int i = 0; i < lineCount; i++) {
-        int w = MeasureText(lines[i], 14);
-        if (w > maxW) maxW = w;
-    }
-
-    int padding = 6;
-    int lineH = 16;
-    int boxW = maxW + padding * 2;
-    int boxH = lineH * lineCount + padding * 2;
-
-    // Position tooltip
-    int tx = (int)mouse.x + 15;
-    int ty = (int)mouse.y + 15;
-    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
-    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
-
-    // Draw background
-    DrawRectangle(tx, ty, boxW, boxH, bgColor);
-    DrawRectangleLines(tx, ty, boxW, boxH, borderColor);
-
-    // Draw lines
-    int y = ty + padding;
-    for (int i = 0; i < lineCount; i++) {
-        Color col = WHITE;
-        if (i == 0) col = borderColor;  // Header uses border color
-        else if (strstr(lines[i], workerName)) col = GREEN;
-        else if (strstr(lines[i], "Unreachable")) col = RED;
-        else if (strstr(lines[i], "Waiting")) col = GRAY;
-        DrawTextShadow(lines[i], tx + padding, y, 14, col);
-        y += lineH;
-    }
+    DescLines d;
+    DescribeDesignation(cellX, cellY, cellZ, &d);
+    if (d.count == 0) return;
+    const Designation* des = GetDesignation(cellX, cellY, cellZ);
+    DrawDescTooltipStyled(&d, mouse, DesignationBoxStyle(des ? des->type : DESIGNATION_NONE));
 }
 
-// Draw tooltip for train station at a track cell
+// Train station tooltip: DescribeStation
 static void DrawStationTooltip(int stationIdx, Vector2 mouse) {
-    if (stationIdx < 0 || stationIdx >= stationCount) return;
-    TrainStation* st = &stations[stationIdx];
-    if (!st->active) return;
-
-    char lines[8][128];
-    int lineCount = 0;
-
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Station #%d", stationIdx);
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Track: (%d, %d, %d)", st->trackX, st->trackY, st->z);
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Platform: %d cell%s", st->platformCellCount, st->platformCellCount != 1 ? "s" : "");
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Waiting: %d", st->waitingCount);
-
-    int maxW = 0;
-    for (int i = 0; i < lineCount; i++) {
-        int w = MeasureText(lines[i], 14);
-        if (w > maxW) maxW = w;
-    }
-
-    int padding = 6;
-    int lineH = 16;
-    int boxW = maxW + padding * 2;
-    int boxH = lineH * lineCount + padding * 2;
-
-    int tx = (int)mouse.x + 15;
-    int ty = (int)mouse.y + 15;
-    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
-    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
-
-    DrawRectangle(tx, ty, boxW, boxH, (Color){ 20, 20, 30, 220 });
-    DrawRectangleLines(tx, ty, boxW, boxH, (Color){ 80, 200, 255, 255 });
-
-    int y = ty + padding;
-    for (int i = 0; i < lineCount; i++) {
-        Color col = (i == 0) ? (Color){ 80, 200, 255, 255 } : WHITE;
-        if (i == 3 && st->waitingCount > 0) col = YELLOW;
-        DrawTextShadow(lines[i], tx + padding, y, 14, col);
-        y += lineH;
-    }
+    DescLines d;
+    DescribeStation(stationIdx, &d);
+    DrawDescTooltipStyled(&d, mouse, DESC_BOX_STATION);
 }
