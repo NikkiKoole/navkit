@@ -18,6 +18,7 @@
 #include "../src/simulation/water.h"
 #include "../src/core/describe.h"
 #include "../src/core/selection.h"
+#include "../src/entities/stockpiles.h"
 #include "test_helpers.h"
 #include <string.h>
 
@@ -313,6 +314,49 @@ describe(click_selection) {
         movers[m].active = false;
         expect(!SelectionValid());
         expect(selection.kind == SEL_NONE);
+    }
+
+    it("picks a workshop anywhere on its footprint") {
+        SetupFlat();
+        ClearWorkshops();
+        int ws = CreateWorkshop(5, 5, 1, WORKSHOP_STONECUTTER);
+        expect(ws >= 0);
+        if (ws < 0) return;
+        int w = workshops[ws].width, h = workshops[ws].height;
+        Selection s = PickSelectionAt((5 + w - 1) * CELL_SIZE + 2, (5 + h - 1) * CELL_SIZE + 2, 1);
+        expect(s.kind == SEL_WORKSHOP && s.idx == ws);
+        Select(s.kind, s.idx);
+        expect(SelectionValid());
+    }
+
+    it("edits bills through the shared workshop actions") {
+        SetupFlat();
+        ClearWorkshops();
+        int ws = CreateWorkshop(5, 5, 1, WORKSHOP_STONECUTTER);
+        expect(ws >= 0);
+        if (ws < 0) return;
+        WorkshopAddBill(ws, 0);
+        expect(workshops[ws].billCount == 1);
+        expect(workshops[ws].bills[0].mode == BILL_DO_FOREVER);
+        WorkshopCycleBillMode(ws, 0);                  // forever -> X times
+        expect(workshops[ws].bills[0].mode == BILL_DO_X_TIMES);
+        expect(workshops[ws].bills[0].targetCount == 5);
+        WorkshopAdjustBillTarget(ws, 0, -10);          // clamps at 1
+        expect(workshops[ws].bills[0].targetCount == 1);
+        WorkshopAdjustBillTarget(ws, 0, 2);
+        expect(workshops[ws].bills[0].targetCount == 3);
+        WorkshopToggleBillPause(ws, 0);
+        expect(workshops[ws].bills[0].suspended);
+        DescLines d = {0};
+        DescribeWorkshopBill(ws, 0, false, &d);
+        expect(d.count >= 1);
+        if (d.count >= 1) expect(strstr(d.lines[0].text, "[PAUSED]") != NULL && d.lines[0].tone == DESC_BAD);
+        WorkshopRemoveBill(ws, 0);
+        expect(workshops[ws].billCount == 0);
+        WorkshopToggleDeconstruct(ws);
+        expect(workshops[ws].markedForDeconstruct);
+        WorkshopToggleDeconstruct(ws);
+        expect(!workshops[ws].markedForDeconstruct);
     }
 
     it("drafts and undrafts a mover") {

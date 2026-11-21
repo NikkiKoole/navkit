@@ -29,6 +29,7 @@ bool SelectionValid(void) {
         case SEL_MOVER:     ok = selection.idx >= 0 && selection.idx < moverCount && movers[selection.idx].active; break;
         case SEL_ANIMAL:    ok = selection.idx >= 0 && selection.idx < animalCount && animals[selection.idx].active; break;
         case SEL_BLUEPRINT: ok = selection.idx >= 0 && selection.idx < MAX_BLUEPRINTS && blueprints[selection.idx].active; break;
+        case SEL_WORKSHOP:  ok = selection.idx >= 0 && selection.idx < MAX_WORKSHOPS && workshops[selection.idx].active; break;
     }
     if (!ok) ClearSelection();
     return ok;
@@ -84,6 +85,10 @@ Selection PickSelectionAt(float wx, float wy, int z) {
     int a = GetAnimalAtWorldPos(wx, wy, z);
     if (a >= 0) return (Selection){SEL_ANIMAL, a};
     int cx = (int)floorf(wx / CELL_SIZE), cy = (int)floorf(wy / CELL_SIZE);
+    if (cx >= 0 && cx < gridWidth && cy >= 0 && cy < gridHeight && z >= 0 && z < gridDepth) {
+        int ws = FindWorkshopAt(cx, cy, z);
+        if (ws >= 0) return (Selection){SEL_WORKSHOP, ws};
+    }
     for (int i = 0; i < MAX_BLUEPRINTS; i++) {
         if (!blueprints[i].active || blueprints[i].z != z) continue;
         int x0, y0, w, h;
@@ -106,6 +111,85 @@ void ToggleMoverFollow(int moverIdx) {
         followMoverIdx = moverIdx;
         currentViewZ = (int)movers[moverIdx].z;
         AddMessage(TextFormat("Follow: %s", MoverDisplayName(moverIdx)), GREEN);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Workshop actions
+// ---------------------------------------------------------------------------
+
+static Bill* WorkshopBill(int wsIdx, int billIdx) {
+    if (wsIdx < 0 || wsIdx >= MAX_WORKSHOPS || !workshops[wsIdx].active) return NULL;
+    if (billIdx < 0 || billIdx >= workshops[wsIdx].billCount) return NULL;
+    return &workshops[wsIdx].bills[billIdx];
+}
+
+void WorkshopAddBill(int wsIdx, int recipeIdx) {
+    if (wsIdx < 0 || wsIdx >= MAX_WORKSHOPS || !workshops[wsIdx].active) return;
+    Workshop* ws = &workshops[wsIdx];
+    int recipeCount;
+    const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+    if (recipeIdx < 0 || recipeIdx >= recipeCount) return;
+    if (ws->billCount >= MAX_BILLS_PER_WORKSHOP) {
+        AddMessage(TextFormat("Workshop has max bills (%d)", MAX_BILLS_PER_WORKSHOP), RED);
+        return;
+    }
+    AddBill(wsIdx, recipeIdx, BILL_DO_FOREVER, 0);
+    AddMessage(TextFormat("Added bill: %s (Do Forever)", recipes[recipeIdx].name), GREEN);
+}
+
+void WorkshopRemoveBill(int wsIdx, int billIdx) {
+    if (!WorkshopBill(wsIdx, billIdx)) return;
+    RemoveBill(wsIdx, billIdx);
+    AddMessage(TextFormat("Removed bill (now %d)", workshops[wsIdx].billCount), ORANGE);
+}
+
+void WorkshopCycleBillMode(int wsIdx, int billIdx) {
+    Bill* bill = WorkshopBill(wsIdx, billIdx);
+    if (!bill) return;
+    static const char* modeNames[] = {"Do X Times", "Do Until X", "Do Forever"};
+    bill->mode = (bill->mode + 1) % 3;
+    if ((bill->mode == BILL_DO_X_TIMES || bill->mode == BILL_DO_UNTIL_X) && bill->targetCount <= 0)
+        bill->targetCount = 5;
+    bill->completedCount = 0;
+    AddMessage(TextFormat("Bill mode: %s", modeNames[bill->mode]), WHITE);
+}
+
+void WorkshopAdjustBillTarget(int wsIdx, int billIdx, int delta) {
+    Bill* bill = WorkshopBill(wsIdx, billIdx);
+    if (!bill || (bill->mode != BILL_DO_X_TIMES && bill->mode != BILL_DO_UNTIL_X)) return;
+    bill->targetCount += delta;
+    if (bill->targetCount < 1) bill->targetCount = 1;
+    AddMessage(TextFormat("Target: %d", bill->targetCount), WHITE);
+}
+
+void WorkshopToggleBillPause(int wsIdx, int billIdx) {
+    Bill* bill = WorkshopBill(wsIdx, billIdx);
+    if (!bill) return;
+    bill->suspended = !bill->suspended;
+    bill->suspendedNoStorage = false;
+    AddMessage(TextFormat("Bill %s", bill->suspended ? "PAUSED" : "RESUMED"), bill->suspended ? RED : GREEN);
+}
+
+void WorkshopToggleDeconstruct(int wsIdx) {
+    if (wsIdx < 0 || wsIdx >= MAX_WORKSHOPS || !workshops[wsIdx].active) return;
+    Workshop* ws = &workshops[wsIdx];
+    if (ws->markedForDeconstruct) {
+        if (ws->assignedDeconstructor >= 0) {
+            Mover* dm = &movers[ws->assignedDeconstructor];
+            if (dm->active && dm->currentJobId >= 0) CancelJob(dm, ws->assignedDeconstructor);
+            ws->assignedDeconstructor = -1;
+        }
+        ws->markedForDeconstruct = false;
+        AddMessage("Deconstruction cancelled", YELLOW);
+    } else {
+        // Cancel the craft/deliver/ignite jobs running at this workshop
+        for (int ji = activeJobCount - 1; ji >= 0; ji--) {
+            Job* j = &jobs[activeJobList[ji]];
+            if (j->targetWorkshop == wsIdx && j->assignedMover >= 0) CancelJob(&movers[j->assignedMover], j->assignedMover);
+        }
+        ws->markedForDeconstruct = true;
+        AddMessage("Marked for deconstruction", ORANGE);
     }
 }
 

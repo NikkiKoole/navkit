@@ -3,6 +3,7 @@
 #include "action_registry.h"
 #include "../game_state.h"  // Includes raylib.h
 #include "../simulation/lighting.h"
+#include "../entities/workshops.h"
 #include <stdio.h>
 
 // State
@@ -61,6 +62,13 @@ void InputMode_ExitToNormal(void) {
     inputAction = ACTION_NONE;
     selectedMaterial = 1;
     linkingWorkshopIdx = -1;  // Reset linking state
+}
+
+void InputMode_StartLinking(int wsIdx) {
+    if (wsIdx < 0 || wsIdx >= MAX_WORKSHOPS || !workshops[wsIdx].active) return;
+    workSubMode = SUBMODE_LINKING_STOCKPILES;
+    linkingWorkshopIdx = wsIdx;
+    AddMessage("LINKING MODE: Click stockpile to link (ESC to cancel)", YELLOW);
 }
 
 void InputMode_SelectAction(InputAction action) {

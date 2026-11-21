@@ -35,6 +35,7 @@ typedef enum {
     DESC_ICE,           // frozen water
     DESC_STEAM,         // steam
     DESC_BURNT,         // burned cells
+    DESC_BILL,          // a workshop bill line
 } DescTone;
 
 typedef enum {
@@ -91,6 +92,15 @@ void DescribeBlueprint(int idx, DescLines* out);
 // (unreachable, missing tool). No lines when the cell has none.
 void DescribeDesignation(int x, int y, int z, DescLines* out);
 const char* DesignationDisplayName(int designationType);   // "Mining", "Chop Tree", ...
+
+// Workshop, in pieces so a panel can put buttons between them:
+// status (title, position, deconstruction, crafter, blocked/waiting and what is
+// missing, burning), one bill (line + "Needs:" when inputs are missing), the
+// linked input stockpiles, and a recipe as "Name (Rock -> Blocks)".
+void DescribeWorkshopStatus(int wsIdx, DescLines* out);
+void DescribeWorkshopBill(int wsIdx, int billIdx, bool marked, DescLines* out);   // appends
+void DescribeWorkshopLinks(int wsIdx, DescLines* out);                            // appends
+void WorkshopRecipeSummary(int wsIdx, int recipeIdx, char* buf, size_t size);
 
 // A train station: track cell, platform size, people waiting.
 void DescribeStation(int idx, DescLines* out);

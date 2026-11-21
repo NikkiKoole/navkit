@@ -14,6 +14,7 @@ typedef enum {
     SEL_MOVER,
     SEL_ANIMAL,
     SEL_BLUEPRINT,
+    SEL_WORKSHOP,
 } SelectionKind;
 
 typedef struct {
@@ -38,5 +39,14 @@ bool BlueprintFootprint(int idx, int* x0, int* y0, int* w, int* h);
 // Mover actions (shared by keys and the inspector buttons)
 void ToggleMoverFollow(int moverIdx);
 void ToggleMoverDraft(int moverIdx);
+
+// Workshop actions (shared by the hover keys and the inspector buttons)
+void WorkshopAddBill(int wsIdx, int recipeIdx);          // "Do forever"
+void WorkshopRemoveBill(int wsIdx, int billIdx);
+void WorkshopCycleBillMode(int wsIdx, int billIdx);      // X times -> until X -> forever
+void WorkshopAdjustBillTarget(int wsIdx, int billIdx, int delta);   // min 1; X-times / until-X only
+void WorkshopToggleBillPause(int wsIdx, int billIdx);
+void WorkshopToggleDeconstruct(int wsIdx);
+// Linking stockpiles to a workshop is an input mode: InputMode_StartLinking (input_mode.h)
 
 #endif

@@ -2,54 +2,165 @@
 //
 // The panel sits bottom-right above the tool bar and shows what the describe
 // layer says about the selection (src/core/describe.c), plus buttons for what
-// you can do with it. Selection itself: src/core/selection.c.
+// you can do with it. Selection and the actions themselves: src/core/selection.c.
+//
+// PanelContent() runs twice per frame: once to measure (draw == false, no
+// buttons) so the panel can be anchored to the bottom, once to draw.
 #include "inspector.h"
 #include "../game_state.h"
 #include "../core/selection.h"
 #include "../core/describe.h"
+#include "../core/input_mode.h"
 #include "../entities/mover.h"
 #include "../entities/animals.h"
+#include "../entities/workshops.h"
 #include "../world/designations.h"
 
 Color DescToneColor(DescTone tone);   // tooltips.c
 
-#define INSPECTOR_W        340
-#define INSPECTOR_PAD      8
-#define INSPECTOR_LINE_H   16
-#define INSPECTOR_TITLE_H  22
-#define INSPECTOR_BUTTONS_H 26
-#define INSPECTOR_MARGIN   10
-#define INSPECTOR_BAR_H    40   // keep clear of the bottom tool bar
+#define INSPECTOR_W          340
+#define INSPECTOR_W_WORKSHOP 400
+#define INSPECTOR_PAD        8
+#define INSPECTOR_LINE_H     16
+#define INSPECTOR_TITLE_H    22
+#define INSPECTOR_BUTTON_H   24
+#define INSPECTOR_MARGIN     10
+#define INSPECTOR_BAR_H      40   // keep clear of the bottom tool bar
 
-static void DescribeSelection(DescLines* d) {
-    d->count = 0;
-    if (!SelectionValid()) return;
-    switch (selection.kind) {
-        case SEL_MOVER:     DescribeMover(selection.idx, DESC_PLAYER, d); break;
-        case SEL_ANIMAL:    DescribeAnimal(selection.idx, d); break;
-        case SEL_BLUEPRINT: DescribeBlueprint(selection.idx, d); break;
-        case SEL_NONE:      break;
+static float PanelWidth(void) {
+    return selection.kind == SEL_WORKSHOP ? INSPECTOR_W_WORKSHOP : INSPECTOR_W;
+}
+
+// ---------------------------------------------------------------------------
+// Layout helpers: each draws only when `draw`, and always advances *y
+// ---------------------------------------------------------------------------
+
+static void Lines(const DescLines* d, int from, bool draw, float x, float* y) {
+    for (int i = from; i < d->count; i++) {
+        if (draw) DrawTextShadow(d->lines[i].text, (int)x, (int)*y, 14, DescToneColor(d->lines[i].tone));
+        *y += INSPECTOR_LINE_H;
     }
 }
 
-static bool SelectionHasButtons(void) {
-    return selection.kind == SEL_MOVER;
+static void Text(const char* text, Color color, bool draw, float x, float* y) {
+    if (draw) DrawTextShadow(text, (int)x, (int)*y, 14, color);
+    *y += INSPECTOR_LINE_H;
+}
+
+// One button at (*bx, y); returns true when clicked (never while measuring)
+static bool Button(const char* label, bool draw, float* bx, float y) {
+    if (!draw) return false;
+    bool clicked = false;
+    *bx += PushButtonInline(*bx, y, label, &clicked);
+    return clicked;
+}
+
+// ---------------------------------------------------------------------------
+// Content per selection kind
+// ---------------------------------------------------------------------------
+
+static void MoverButtons(bool draw, float x, float* y) {
+    int idx = selection.idx;
+    float bx = x;
+    if (Button(followMoverIdx == idx ? "Unfollow" : "Follow", draw, &bx, *y + 2)) ToggleMoverFollow(idx);
+    if (Button(movers[idx].isDrafted ? "Undraft" : "Draft", draw, &bx, *y + 2)) ToggleMoverDraft(idx);
+    *y += INSPECTOR_BUTTON_H;
+}
+
+static void WorkshopContent(bool draw, float x, float* y) {
+    int wsIdx = selection.idx;
+    const Workshop* ws = &workshops[wsIdx];
+
+    // Bills, each with its own row of buttons
+    if (ws->billCount > 0) {
+        Text("Bills:", WHITE, draw, x, y);
+        for (int b = 0; b < ws->billCount; b++) {
+            DescLines bill = {0};
+            DescribeWorkshopBill(wsIdx, b, false, &bill);
+            Lines(&bill, 0, draw, x, y);
+            const Bill* bl = &ws->bills[b];
+            bool counted = bl->mode == BILL_DO_X_TIMES || bl->mode == BILL_DO_UNTIL_X;
+            float bx = x + 16;
+            if (Button("Mode", draw, &bx, *y)) WorkshopCycleBillMode(wsIdx, b);
+            if (counted && Button("-", draw, &bx, *y)) WorkshopAdjustBillTarget(wsIdx, b, -1);
+            if (counted && Button("+", draw, &bx, *y)) WorkshopAdjustBillTarget(wsIdx, b, 1);
+            if (Button(bl->suspended ? "Resume" : "Pause", draw, &bx, *y)) WorkshopToggleBillPause(wsIdx, b);
+            if (Button("Remove", draw, &bx, *y)) { WorkshopRemoveBill(wsIdx, b); *y += INSPECTOR_BUTTON_H; return; }
+            *y += INSPECTOR_BUTTON_H;
+        }
+    } else {
+        Text("No bills: add one below", GRAY, draw, x, y);
+    }
+
+    // Add a bill: one button per recipe
+    int recipeCount;
+    GetRecipesForWorkshop(ws->type, &recipeCount);
+    if (recipeCount > 0 && ws->billCount < MAX_BILLS_PER_WORKSHOP) {
+        *y += 4;
+        Text("Add a bill:", WHITE, draw, x, y);
+        for (int r = 0; r < recipeCount; r++) {
+            char summary[DESC_LINE_LEN];
+            char label[DESC_LINE_LEN + 4];
+            WorkshopRecipeSummary(wsIdx, r, summary, sizeof(summary));
+            snprintf(label, sizeof(label), "+ %s", summary);
+            float bx = x;
+            if (Button(label, draw, &bx, *y)) WorkshopAddBill(wsIdx, r);
+            *y += INSPECTOR_BUTTON_H;
+        }
+    }
+
+    // Linked stockpiles, link and deconstruct
+    *y += 4;
+    DescLines links = {0};
+    DescribeWorkshopLinks(wsIdx, &links);
+    Lines(&links, 0, draw, x, y);
+    float bx = x;
+    if (Button("Link stockpile", draw, &bx, *y + 2)) InputMode_StartLinking(wsIdx);
+    if (Button(ws->markedForDeconstruct ? "Cancel deconstruct" : "Deconstruct", draw, &bx, *y + 2))
+        WorkshopToggleDeconstruct(wsIdx);
+    *y += INSPECTOR_BUTTON_H;
+}
+
+// Title + body for the selection; returns the content height (from `top`)
+static float PanelContent(bool draw, float x, float top, float right) {
+    if (!SelectionValid()) return 0;
+    DescLines d;
+    switch (selection.kind) {
+        case SEL_MOVER:     DescribeMover(selection.idx, DESC_PLAYER, &d); break;
+        case SEL_ANIMAL:    DescribeAnimal(selection.idx, &d); break;
+        case SEL_BLUEPRINT: DescribeBlueprint(selection.idx, &d); break;
+        case SEL_WORKSHOP:  DescribeWorkshopStatus(selection.idx, &d); break;
+        case SEL_NONE:      return 0;
+    }
+    if (d.count == 0) return 0;
+
+    float y = top;
+    if (draw) {
+        DrawTextShadow(d.lines[0].text, (int)x, (int)y, 16, DescToneColor(d.lines[0].tone));
+        bool clicked = false;
+        PushButtonInline(right - 24, y, "X", &clicked);
+        if (clicked) { ClearSelection(); return 0; }
+    }
+    y += INSPECTOR_TITLE_H;
+    Lines(&d, 1, draw, x, &y);
+
+    if (selection.kind == SEL_MOVER) MoverButtons(draw, x, &y);
+    else if (selection.kind == SEL_WORKSHOP) WorkshopContent(draw, x, &y);
+    return y - top;
 }
 
 // Panel rectangle for the current selection (zero size when nothing is selected).
 // main.c registers it as a UI block area before input, so clicks on the panel
 // never reach the world.
 Rectangle InspectorPanelRect(void) {
-    DescLines d;
-    DescribeSelection(&d);
-    if (d.count == 0) return (Rectangle){0, 0, 0, 0};
-    int bodyLines = d.count - 1;   // first line is the title
-    float h = INSPECTOR_PAD * 2 + INSPECTOR_TITLE_H + bodyLines * INSPECTOR_LINE_H
-              + (SelectionHasButtons() ? INSPECTOR_BUTTONS_H : 0);
-    float x = GetScreenWidth() - INSPECTOR_W - INSPECTOR_MARGIN;
+    float w = PanelWidth();
+    float h = PanelContent(false, 0, 0, w);
+    if (h <= 0) return (Rectangle){0, 0, 0, 0};
+    h += INSPECTOR_PAD * 2;
+    float x = GetScreenWidth() - w - INSPECTOR_MARGIN;
     float y = GetScreenHeight() - INSPECTOR_BAR_H - h - INSPECTOR_MARGIN;
     if (y < INSPECTOR_MARGIN) y = INSPECTOR_MARGIN;
-    return (Rectangle){x, y, INSPECTOR_W, h};
+    return (Rectangle){x, y, w, h};
 }
 
 // Yellow outline around the selected thing (top view, same level only)
@@ -76,6 +187,12 @@ void DrawSelectionHighlight(void) {
             wcells = (float)w; hcells = (float)h;
             break;
         }
+        case SEL_WORKSHOP: {
+            const Workshop* ws = &workshops[selection.idx];
+            wx = ws->x * CELL_SIZE; wy = ws->y * CELL_SIZE; wz = ws->z;
+            wcells = (float)ws->width; hcells = (float)ws->height;
+            break;
+        }
         default: return;
     }
     if (wz != currentViewZ) return;
@@ -85,38 +202,9 @@ void DrawSelectionHighlight(void) {
 
 // The fixed inspector panel for the selection
 void DrawInspectorPanel(void) {
-    DescLines d;
-    DescribeSelection(&d);
-    if (d.count == 0) return;
     Rectangle r = InspectorPanelRect();
-
+    if (r.width <= 0) return;
     DrawRectangleRec(r, (Color){20, 22, 32, 235});
     DrawRectangleLinesEx(r, 1, (Color){110, 110, 160, 255});
-
-    // Title (the description's first line) and close button
-    float x = r.x + INSPECTOR_PAD, y = r.y + INSPECTOR_PAD;
-    DrawTextShadow(d.lines[0].text, (int)x, (int)y, 16, DescToneColor(d.lines[0].tone));
-    {
-        bool clicked = false;
-        PushButtonInline(r.x + r.width - INSPECTOR_PAD - 24, y, "X", &clicked);
-        if (clicked) { ClearSelection(); return; }
-    }
-    y += INSPECTOR_TITLE_H;
-
-    for (int i = 1; i < d.count; i++) {
-        DrawTextShadow(d.lines[i].text, (int)x, (int)y, 14, DescToneColor(d.lines[i].tone));
-        y += INSPECTOR_LINE_H;
-    }
-
-    // Actions
-    if (selection.kind == SEL_MOVER) {
-        int idx = selection.idx;
-        float bx = x;
-        bool clicked = false;
-        bx += PushButtonInline(bx, y + 4, followMoverIdx == idx ? "Unfollow" : "Follow", &clicked);
-        if (clicked) ToggleMoverFollow(idx);
-        clicked = false;
-        PushButtonInline(bx, y + 4, movers[idx].isDrafted ? "Undraft" : "Draft", &clicked);
-        if (clicked) ToggleMoverDraft(idx);
-    }
+    PanelContent(true, r.x + INSPECTOR_PAD, r.y + INSPECTOR_PAD, r.x + r.width - INSPECTOR_PAD);
 }

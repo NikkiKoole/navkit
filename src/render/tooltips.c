@@ -253,6 +253,7 @@ static void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
 }
 
 // Description tones (src/core/describe.h) as tooltip colors
+Color DescToneColor(DescTone tone);   // also used by inspector.c
 Color DescToneColor(DescTone tone) {
     switch (tone) {
         case DESC_NORMAL:        return WHITE;
@@ -274,6 +275,7 @@ Color DescToneColor(DescTone tone) {
         case DESC_ICE:           return (Color){200, 220, 255, 255};
         case DESC_STEAM:         return (Color){200, 200, 255, 255};
         case DESC_BURNT:         return (Color){80, 60, 40, 255};
+        case DESC_BILL:          return (Color){200, 180, 140, 255};
     }
     return WHITE;
 }
@@ -379,412 +381,37 @@ static void DrawWaterTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     DrawDescTooltipStyled(&d, mouse, DESC_BOX_WATER);
 }
 
-// Draw workshop tooltip showing bills and status
+// Workshop tooltip (hover): status, bills, linked stockpiles, recipes with their
+// number keys, and the key help. Built from the describe pieces the inspector
+// panel also uses (src/core/describe.c).
+static const DescBoxStyle DESC_BOX_WORKSHOP = {{40, 35, 30, 230}, {120, 100, 80, 255}, {0}};
+
 static void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
-    if (wsIdx < 0 || wsIdx >= MAX_WORKSHOPS) return;
-    Workshop* ws = &workshops[wsIdx];
-    if (!ws->active) return;
+    if (wsIdx < 0 || wsIdx >= MAX_WORKSHOPS || !workshops[wsIdx].active) return;
+    const Workshop* ws = &workshops[wsIdx];
+    DescLines d;
+    DescribeWorkshopStatus(wsIdx, &d);
 
-    const char* billModeNames[] = {"Do X times", "Do until X", "Do forever"};
-
-    char lines[30][80];
-    Color lineColors[30];
-    int lineCount = 0;
-
-    // Header
-    const char* typeName = (ws->type < WORKSHOP_TYPE_COUNT) ? workshopDefs[ws->type].displayName : "Unknown";
-    snprintf(lines[lineCount], sizeof(lines[0]), "%s Workshop #%d", typeName, wsIdx);
-    lineColors[lineCount] = YELLOW;
-    lineCount++;
-
-    // Position info
-    snprintf(lines[lineCount], sizeof(lines[0]), "Position: (%d, %d, z%d)", ws->x, ws->y, ws->z);
-    lineColors[lineCount] = WHITE;
-    lineCount++;
-
-    // Deconstruction status
-    if (ws->markedForDeconstruct && lineCount < 28) {
-        if (ws->assignedDeconstructor >= 0) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "DECONSTRUCTING (Mover #%d)", ws->assignedDeconstructor);
-        } else {
-            snprintf(lines[lineCount], sizeof(lines[0]), "MARKED FOR DECONSTRUCTION");
-        }
-        lineColors[lineCount] = RED;
-        lineCount++;
-    }
-
-    // Crafter status
-    if (ws->assignedCrafter >= 0) {
-        snprintf(lines[lineCount], sizeof(lines[0]), "Crafter: Mover #%d", ws->assignedCrafter);
-        lineColors[lineCount] = GREEN;
-    } else {
-        snprintf(lines[lineCount], sizeof(lines[0]), "Crafter: None");
-        lineColors[lineCount] = GRAY;
-    }
-    lineCount++;
-
-    // Workshop status diagnostics (only show for problem states)
-    if (lineCount < 28 && ws->visualState != WORKSHOP_VISUAL_WORKING) {
-        const char* statusText = NULL;
-        Color statusColor = WHITE;
-        
-        switch (ws->visualState) {
-            case WORKSHOP_VISUAL_OUTPUT_FULL:
-                statusText = "Status: Output Blocked";
-                statusColor = (Color){255, 100, 100, 255};
-                break;
-            case WORKSHOP_VISUAL_INPUT_EMPTY:
-                statusText = "Status: Waiting for Input";
-                statusColor = (Color){255, 200, 50, 255};
-                break;
-            case WORKSHOP_VISUAL_NO_WORKER:
-                statusText = "Status: No Worker Assigned";
-                statusColor = (Color){150, 150, 150, 255};
-                break;
-            case WORKSHOP_VISUAL_WORKING:
-                // No status line when working - silence is golden
-                break;
-        }
-        
-        if (statusText) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "%s", statusText);
-            lineColors[lineCount] = statusColor;
-            lineCount++;
-        }
-        
-        // Show specific details for blocked/waiting states
-        if (ws->visualState == WORKSHOP_VISUAL_OUTPUT_FULL && lineCount < 28) {
-            // Check which items are blocking output
-            if (ws->billCount > 0) {
-                int recipeCount;
-                const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
-                Bill* bill = &ws->bills[0];  // Check first active bill
-                if (bill->recipeIdx >= 0 && bill->recipeIdx < recipeCount) {
-                    const Recipe* recipe = &recipes[bill->recipeIdx];
-                    
-                    if (recipe->outputType != ITEM_NONE) {
-                        snprintf(lines[lineCount], sizeof(lines[0]), 
-                            "  Output blocked: %s (x%d)",
-                            ItemName(recipe->outputType), recipe->outputCount);
-                        lineColors[lineCount] = (Color){255, 150, 100, 255};
-                        lineCount++;
-                        
-                        if (lineCount < 28) {
-                            snprintf(lines[lineCount], sizeof(lines[0]), 
-                                "  Hint: Build stockpile accepting %s", ItemName(recipe->outputType));
-                            lineColors[lineCount] = (Color){200, 200, 100, 255};
-                            lineCount++;
-                        }
-                    }
-                }
-            }
-        } else if (ws->visualState == WORKSHOP_VISUAL_INPUT_EMPTY && lineCount < 28) {
-            // Show specifically what materials are missing
-            if (ws->billCount > 0) {
-                int recipeCount;
-                const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
-                Bill* bill = &ws->bills[0];  // Check first active bill
-                if (bill->recipeIdx >= 0 && bill->recipeIdx < recipeCount) {
-                    const Recipe* recipe = &recipes[bill->recipeIdx];
-                    
-                    // Check input 1
-                    bool hasInput1 = false;
-                    const char* input1Name = (recipe->inputItemMatch == ITEM_MATCH_ANY_FUEL)
-                        ? "Any Fuel" : ItemName(recipe->inputType);
-                    
-                    for (int i = 0; i < itemHighWaterMark; i++) {
-                        Item* item = &items[i];
-                        if (!item->active || item->reservedBy != -1) continue;
-                        if ((int)item->z != ws->z) continue;
-                        if (RecipeInputMatches(recipe, item)) {
-                            hasInput1 = true;
-                            break;
-                        }
-                    }
-                    
-                    if (!hasInput1 && lineCount < 28) {
-                        snprintf(lines[lineCount], sizeof(lines[0]), 
-                            "  Waiting for: %s (x%d)", input1Name, recipe->inputCount);
-                        lineColors[lineCount] = (Color){255, 200, 100, 255};
-                        lineCount++;
-                    }
-                    
-                    // Check input 2 if needed
-                    if (recipe->inputType2 != ITEM_NONE) {
-                        bool hasInput2 = false;
-                        for (int i = 0; i < itemHighWaterMark; i++) {
-                            Item* item = &items[i];
-                            if (!item->active || item->reservedBy != -1) continue;
-                            if ((int)item->z != ws->z) continue;
-                            if (item->type == recipe->inputType2) {
-                                hasInput2 = true;
-                                break;
-                            }
-                        }
-                        
-                        if (!hasInput2 && lineCount < 28) {
-                            snprintf(lines[lineCount], sizeof(lines[0]), 
-                                "  Waiting for: %s (x%d)", 
-                                ItemName(recipe->inputType2), recipe->inputCount2);
-                            lineColors[lineCount] = (Color){255, 200, 100, 255};
-                            lineCount++;
-                        }
-                    }
-                    
-                    // Check input 3 if needed
-                    if (recipe->inputType3 != ITEM_NONE) {
-                        bool hasInput3 = false;
-                        for (int i = 0; i < itemHighWaterMark; i++) {
-                            Item* item = &items[i];
-                            if (!item->active || item->reservedBy != -1) continue;
-                            if ((int)item->z != ws->z) continue;
-                            if (item->type == recipe->inputType3) {
-                                hasInput3 = true;
-                                break;
-                            }
-                        }
-                        
-                        if (!hasInput3 && lineCount < 28) {
-                            snprintf(lines[lineCount], sizeof(lines[0]), 
-                                "  Waiting for: %s (x%d)", 
-                                ItemName(recipe->inputType3), recipe->inputCount3);
-                            lineColors[lineCount] = (Color){255, 200, 100, 255};
-                            lineCount++;
-                        }
-                    }
-
-                    // Check fuel if needed
-                    if (recipe->fuelRequired > 0) {
-                        bool hasFuel = WorkshopHasFuelForRecipe(ws, 100);
-                        if (!hasFuel && lineCount < 28) {
-                            snprintf(lines[lineCount], sizeof(lines[0]), 
-                                "  Waiting for: Fuel (any burnable item)");
-                            lineColors[lineCount] = (Color){255, 200, 100, 255};
-                            lineCount++;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Passive workshop status
-    if (workshopDefs[ws->type].passive) {
-        if (ws->passiveReady) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "Status: Burning (%.0f%%)", ws->passiveProgress * 100.0f);
-            lineColors[lineCount] = ORANGE;
-        } else {
-            snprintf(lines[lineCount], sizeof(lines[0]), "Status: Not ignited");
-            lineColors[lineCount] = GRAY;
-        }
-        lineCount++;
-    }
-
-    // Get recipes for this workshop type
-    int recipeCount;
-    const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
-
-    // Active bills
     if (ws->billCount > 0) {
-        snprintf(lines[lineCount], sizeof(lines[0]), "Bills:");
-        lineColors[lineCount] = WHITE;
-        lineCount++;
+        DescAdd(&d, DESC_NORMAL, "Bills:");
+        for (int b = 0; b < ws->billCount; b++)
+            DescribeWorkshopBill(wsIdx, b, b == workshopSelectedBillIdx, &d);
+    }
+    DescribeWorkshopLinks(wsIdx, &d);
+    DescAdd(&d, DESC_NORMAL, " ");
 
-        for (int b = 0; b < ws->billCount && lineCount < 24; b++) {
-            Bill* bill = &ws->bills[b];
-            const char* recipeName = "Unknown";
-            const Recipe* recipe = NULL;
-            if (bill->recipeIdx >= 0 && bill->recipeIdx < recipeCount) {
-                recipe = &recipes[bill->recipeIdx];
-                recipeName = recipe->name;
-            }
-            const char* modeName = (bill->mode < 3) ? billModeNames[bill->mode] : "?";
-            
-            char statusStr[32] = "";
-            if (bill->suspended && bill->suspendedNoStorage) {
-                snprintf(statusStr, sizeof(statusStr), " [NO STORAGE]");
-            } else if (bill->suspended) {
-                snprintf(statusStr, sizeof(statusStr), " [PAUSED]");
-            } else if (bill->mode == BILL_DO_X_TIMES) {
-                snprintf(statusStr, sizeof(statusStr), " (%d/%d)", bill->completedCount, bill->targetCount);
-            } else if (bill->mode == BILL_DO_UNTIL_X) {
-                int have = recipe ? CountItemsInStockpiles(recipe->outputType) : 0;
-                snprintf(statusStr, sizeof(statusStr), " (%d/%d)", have, bill->targetCount);
-            }
-
-            char selChar = (b == workshopSelectedBillIdx) ? '>' : ' ';
-            snprintf(lines[lineCount], sizeof(lines[0]), "%c%d. %s (%s)%s", 
-                selChar, b + 1, recipeName, modeName, statusStr);
-            if (bill->suspended && bill->suspendedNoStorage) {
-                lineColors[lineCount] = ORANGE;
-            } else if (bill->suspended) {
-                lineColors[lineCount] = RED;
-            } else {
-                lineColors[lineCount] = (Color){200, 180, 140, 255};
-            }
-            lineCount++;
-
-            // Show why bill can't run (missing input or fuel)
-            if (recipe && !bill->suspended && ws->assignedCrafter < 0 && lineCount < 24) {
-                bool hasInput = false;
-                for (int i = 0; i < itemHighWaterMark; i++) {
-                    Item* item = &items[i];
-                    if (!item->active) continue;
-                    if ((int)item->z != ws->z) continue;
-                    if (RecipeInputMatches(recipe, item)) { hasInput = true; break; }
-                }
-                bool hasInput2 = (recipe->inputType2 == ITEM_NONE);  // true if not needed
-                if (!hasInput2) {
-                    for (int i = 0; i < itemHighWaterMark; i++) {
-                        Item* item = &items[i];
-                        if (!item->active) continue;
-                        if ((int)item->z != ws->z) continue;
-                        if (item->type == recipe->inputType2) { hasInput2 = true; break; }
-                    }
-                }
-                bool hasInput3 = (recipe->inputType3 == ITEM_NONE);  // true if not needed
-                if (!hasInput3) {
-                    for (int i = 0; i < itemHighWaterMark; i++) {
-                        Item* item = &items[i];
-                        if (!item->active) continue;
-                        if ((int)item->z != ws->z) continue;
-                        if (item->type == recipe->inputType3) { hasInput3 = true; break; }
-                    }
-                }
-                bool needsFuel = recipe->fuelRequired > 0;
-                bool hasFuel = !needsFuel || WorkshopHasFuelForRecipe(ws, 100);
-
-                // Build "Needs:" string with missing items
-                if (!hasInput || !hasInput2 || !hasInput3 || !hasFuel) {
-                    char needsStr[128] = "    Needs:";
-                    bool hasPrev = false;
-                    if (!hasInput) {
-                        strcat(needsStr, " ");
-                        const char* inputName = (recipe->inputItemMatch == ITEM_MATCH_ANY_FUEL)
-                            ? "Any Fuel" : ItemName(recipe->inputType);
-                        strcat(needsStr, inputName);
-                        hasPrev = true;
-                    }
-                    if (!hasInput2) {
-                        strcat(needsStr, hasPrev ? " +" : " ");
-                        strcat(needsStr, ItemName(recipe->inputType2));
-                        hasPrev = true;
-                    }
-                    if (!hasInput3) {
-                        strcat(needsStr, hasPrev ? " +" : " ");
-                        strcat(needsStr, ItemName(recipe->inputType3));
-                        hasPrev = true;
-                    }
-                    if (!hasFuel) {
-                        strcat(needsStr, hasPrev ? " + fuel" : " fuel");
-                    }
-                    snprintf(lines[lineCount], sizeof(lines[0]), "%s", needsStr);
-                    lineColors[lineCount] = (Color){255, 120, 120, 255};
-                    lineCount++;
-                }
-            }
+    int recipeCount;
+    GetRecipesForWorkshop(ws->type, &recipeCount);
+    if (recipeCount > 0) {
+        DescAdd(&d, DESC_NORMAL, "Add recipe:");
+        for (int r = 0; r < recipeCount && r < 9; r++) {
+            char summary[DESC_LINE_LEN];
+            WorkshopRecipeSummary(wsIdx, r, summary, sizeof(summary));
+            DescAdd(&d, DESC_INFO, " %d: %s", r + 1, summary);
         }
     }
-
-    // Linked stockpiles section
-    if (lineCount < 26) {
-        snprintf(lines[lineCount], sizeof(lines[0]), "Linked Input Stockpiles:");
-        lineColors[lineCount] = WHITE;
-        lineCount++;
-        
-        if (ws->linkedInputCount == 0) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "  (none) - Press L to link");
-            lineColors[lineCount] = GRAY;
-            lineCount++;
-        } else {
-            for (int i = 0; i < ws->linkedInputCount && lineCount < 26; i++) {
-                int spIdx = ws->linkedInputStockpiles[i];
-                if (spIdx >= 0 && spIdx < stockpileCount && stockpiles[spIdx].active) {
-                    Stockpile* sp = &stockpiles[spIdx];
-                    snprintf(lines[lineCount], sizeof(lines[0]), 
-                             "  [%d] Stockpile #%d (Pri:%d)", 
-                             i + 1, spIdx, sp->priority);
-                    lineColors[lineCount] = GREEN;
-                } else {
-                    snprintf(lines[lineCount], sizeof(lines[0]), 
-                             "  [%d] <invalid #%d>", i + 1, spIdx);
-                    lineColors[lineCount] = RED;
-                }
-                lineCount++;
-            }
-        }
-        
-        lineCount++;  // Blank line before recipes
-    }
-
-    // Available recipes (add with number keys)
-    if (recipeCount > 0 && lineCount < 26) {
-        snprintf(lines[lineCount], sizeof(lines[0]), "Add recipe:");
-        lineColors[lineCount] = WHITE;
-        lineCount++;
-        for (int r = 0; r < recipeCount && r < 9 && lineCount < 28; r++) {
-            const char* inputName = (recipes[r].inputItemMatch == ITEM_MATCH_ANY_FUEL)
-                ? "Any Fuel" : ItemName(recipes[r].inputType);
-            char outputStr[64];
-            if (recipes[r].outputType == ITEM_NONE) {
-                snprintf(outputStr, sizeof(outputStr), "Products");
-            } else if (recipes[r].outputType2 != ITEM_NONE) {
-                snprintf(outputStr, sizeof(outputStr), "%s+%s",
-                    ItemName(recipes[r].outputType), ItemName(recipes[r].outputType2));
-            } else {
-                snprintf(outputStr, sizeof(outputStr), "%s", ItemName(recipes[r].outputType));
-            }
-            if (recipes[r].inputType3 != ITEM_NONE) {
-                snprintf(lines[lineCount], sizeof(lines[0]), " %d: %s (%s+%s+%s -> %s)",
-                    r + 1, recipes[r].name, inputName,
-                    ItemName(recipes[r].inputType2),
-                    ItemName(recipes[r].inputType3), outputStr);
-            } else if (recipes[r].inputType2 != ITEM_NONE) {
-                snprintf(lines[lineCount], sizeof(lines[0]), " %d: %s (%s+%s -> %s)",
-                    r + 1, recipes[r].name, inputName,
-                    ItemName(recipes[r].inputType2), outputStr);
-            } else {
-                snprintf(lines[lineCount], sizeof(lines[0]), " %d: %s (%s -> %s)",
-                    r + 1, recipes[r].name, inputName, outputStr);
-            }
-            lineColors[lineCount] = (Color){140, 180, 200, 255};
-            lineCount++;
-        }
-    }
-
-    // Help text
-    snprintf(lines[lineCount], sizeof(lines[0]), "L:link X:del P:pause M:mode +/-:count []:sel D:del ws");
-    lineColors[lineCount] = GRAY;
-    lineCount++;
-
-    // Calculate box dimensions
-    int maxW = 0;
-    for (int i = 0; i < lineCount; i++) {
-        int w = MeasureText(lines[i], 14);
-        if (w > maxW) maxW = w;
-    }
-
-    int padding = 6;
-    int lineH = 16;
-    int boxW = maxW + padding * 2;
-    int boxH = lineH * lineCount + padding * 2;
-
-    // Position tooltip
-    int tx = (int)mouse.x + 15;
-    int ty = (int)mouse.y + 15;
-    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
-    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
-
-    // Draw background
-    DrawRectangle(tx, ty, boxW, boxH, (Color){40, 35, 30, 230});
-    DrawRectangleLines(tx, ty, boxW, boxH, (Color){120, 100, 80, 255});
-
-    // Draw lines with stored colors
-    int y = ty + padding;
-    for (int i = 0; i < lineCount; i++) {
-        DrawTextShadow(lines[i], tx + padding, y, 14, lineColors[i]);
-        y += lineH;
-    }
+    DescAdd(&d, DESC_MUTED, "L:link X:del P:pause M:mode +/-:count []:sel D:del ws");
+    DrawDescTooltipStyled(&d, mouse, DESC_BOX_WORKSHOP);
 }
 
 // Blueprint (construction) tooltip: DescribeBlueprint

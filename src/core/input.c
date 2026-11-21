@@ -2452,15 +2452,11 @@ void HandleInput(void) {
         {
             int recipeCount;
             const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+            (void)recipes;
             for (int r = 0; r < recipeCount && r < 9; r++) {
                 if (IsKeyPressed(KEY_ONE + r)) {
-                    if (ws->billCount < MAX_BILLS_PER_WORKSHOP) {
-                        AddBill(hoveredWorkshop, r, BILL_DO_FOREVER, 0);
-                        workshopSelectedBillIdx = ws->billCount - 1;
-                        AddMessage(TextFormat("Added bill: %s (Do Forever)", recipes[r].name), GREEN);
-                    } else {
-                        AddMessage(TextFormat("Workshop has max bills (%d)", MAX_BILLS_PER_WORKSHOP), RED);
-                    }
+                    WorkshopAddBill(hoveredWorkshop, r);   // src/core/selection.c
+                    if (ws->billCount > 0) workshopSelectedBillIdx = ws->billCount - 1;
                     return;
                 }
             }
@@ -2477,97 +2473,49 @@ void HandleInput(void) {
         }
         
         // M = Cycle bill mode on selected bill
+        // The actions below are shared with the inspector panel (src/core/selection.c)
         if (IsKeyPressed(KEY_M) && ws->billCount > 0) {
-            Bill* bill = &ws->bills[workshopSelectedBillIdx];
-            const char* modeNames[] = {"Do X Times", "Do Until X", "Do Forever"};
-            bill->mode = (bill->mode + 1) % 3;
-            if (bill->mode == BILL_DO_X_TIMES || bill->mode == BILL_DO_UNTIL_X) {
-                if (bill->targetCount <= 0) bill->targetCount = 5;
-            }
-            bill->completedCount = 0;
-            AddMessage(TextFormat("Bill mode: %s", modeNames[bill->mode]), WHITE);
+            WorkshopCycleBillMode(hoveredWorkshop, workshopSelectedBillIdx);
             return;
         }
-        
-        // +/= and - = Adjust target count on selected bill
+
+        // +/= and - = Adjust target count on selected bill (shift = 5)
         if ((IsKeyPressed(KEY_EQUAL) || IsKeyPressed(KEY_KP_ADD)) && ws->billCount > 0) {
-            Bill* bill = &ws->bills[workshopSelectedBillIdx];
-            if (bill->mode == BILL_DO_X_TIMES || bill->mode == BILL_DO_UNTIL_X) {
-                int step = IsKeyDown(KEY_LEFT_SHIFT) ? 5 : 1;
-                bill->targetCount += step;
-                AddMessage(TextFormat("Target: %d", bill->targetCount), WHITE);
-            }
+            WorkshopAdjustBillTarget(hoveredWorkshop, workshopSelectedBillIdx, IsKeyDown(KEY_LEFT_SHIFT) ? 5 : 1);
             return;
         }
         if ((IsKeyPressed(KEY_MINUS) || IsKeyPressed(KEY_KP_SUBTRACT)) && ws->billCount > 0) {
-            Bill* bill = &ws->bills[workshopSelectedBillIdx];
-            if (bill->mode == BILL_DO_X_TIMES || bill->mode == BILL_DO_UNTIL_X) {
-                int step = IsKeyDown(KEY_LEFT_SHIFT) ? 5 : 1;
-                bill->targetCount -= step;
-                if (bill->targetCount < 1) bill->targetCount = 1;
-                AddMessage(TextFormat("Target: %d", bill->targetCount), WHITE);
-            }
+            WorkshopAdjustBillTarget(hoveredWorkshop, workshopSelectedBillIdx, IsKeyDown(KEY_LEFT_SHIFT) ? -5 : -1);
             return;
         }
-        
+
         // X = Remove selected bill
         if (IsKeyPressed(KEY_X)) {
             if (ws->billCount > 0) {
-                RemoveBill(hoveredWorkshop, workshopSelectedBillIdx);
+                WorkshopRemoveBill(hoveredWorkshop, workshopSelectedBillIdx);
                 if (workshopSelectedBillIdx >= ws->billCount && ws->billCount > 0)
                     workshopSelectedBillIdx = ws->billCount - 1;
-                AddMessage(TextFormat("Removed bill (now %d)", ws->billCount), ORANGE);
             } else {
                 AddMessage("No bills to remove", RED);
             }
             return;
         }
-        
+
         // P = Toggle pause on selected bill
         if (IsKeyPressed(KEY_P)) {
-            if (ws->billCount > 0) {
-                Bill* bill = &ws->bills[workshopSelectedBillIdx];
-                bill->suspended = !bill->suspended;
-                bill->suspendedNoStorage = false;
-                AddMessage(TextFormat("Bill %s", bill->suspended ? "PAUSED" : "RESUMED"), 
-                    bill->suspended ? RED : GREEN);
-            }
+            if (ws->billCount > 0) WorkshopToggleBillPause(hoveredWorkshop, workshopSelectedBillIdx);
             return;
         }
-        
+
         // L = Link stockpiles (enter linking mode)
         if (IsKeyPressed(KEY_L)) {
-            workSubMode = SUBMODE_LINKING_STOCKPILES;
-            linkingWorkshopIdx = hoveredWorkshop;
-            AddMessage("LINKING MODE: Click stockpile to link (ESC to cancel)", YELLOW);
+            InputMode_StartLinking(hoveredWorkshop);
             return;
         }
-        
+
         // D = Mark/unmark workshop for deconstruction
         if (IsKeyPressed(KEY_D)) {
-            Workshop* ws = &workshops[hoveredWorkshop];
-            if (ws->markedForDeconstruct) {
-                // Cancel deconstruction
-                if (ws->assignedDeconstructor >= 0) {
-                    Mover* dm = &movers[ws->assignedDeconstructor];
-                    if (dm->active && dm->currentJobId >= 0) {
-                        CancelJob(dm, ws->assignedDeconstructor);
-                    }
-                    ws->assignedDeconstructor = -1;
-                }
-                ws->markedForDeconstruct = false;
-                AddMessage("Deconstruction cancelled", YELLOW);
-            } else {
-                // Cancel all active craft/deliver/ignite jobs at this workshop
-                for (int ji = activeJobCount - 1; ji >= 0; ji--) {
-                    Job* j = &jobs[activeJobList[ji]];
-                    if (j->targetWorkshop == hoveredWorkshop && j->assignedMover >= 0) {
-                        CancelJob(&movers[j->assignedMover], j->assignedMover);
-                    }
-                }
-                ws->markedForDeconstruct = true;
-                AddMessage("Marked for deconstruction", ORANGE);
-            }
+            WorkshopToggleDeconstruct(hoveredWorkshop);
             hoveredWorkshop = -1;
             return;
         }

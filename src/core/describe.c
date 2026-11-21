@@ -22,6 +22,8 @@
 #include "../world/construction.h"
 #include "../entities/tool_quality.h"
 #include "../entities/trains.h"
+#include "../entities/workshops.h"
+#include "../entities/stockpiles.h"
 #include "../world/designations.h"
 #include "../world/material.h"
 #include "../simulation/balance.h"
@@ -632,6 +634,166 @@ void DescribeDesignation(int x, int y, int z, DescLines* out) {
         DescAdd(out, DESC_MUTED, "Waiting for %s", worker);
         DescribeDesignationTool(des, x, y, z, out);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Workshop
+// ---------------------------------------------------------------------------
+
+static const Workshop* ActiveWorkshop(int wsIdx) {
+    if (wsIdx < 0 || wsIdx >= MAX_WORKSHOPS || !workshops[wsIdx].active) return NULL;
+    return &workshops[wsIdx];
+}
+
+// Any unreserved item on the workshop's level that this input accepts
+static bool InputAvailable(const Workshop* ws, const Recipe* recipe, int which, bool needUnreserved) {
+    ItemType type = which == 1 ? recipe->inputType : which == 2 ? recipe->inputType2 : recipe->inputType3;
+    if (which > 1 && type == ITEM_NONE) return true;   // not needed
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        const Item* item = &items[i];
+        if (!item->active || (int)item->z != ws->z) continue;
+        if (needUnreserved && item->reservedBy != -1) continue;
+        if (which == 1 ? RecipeInputMatches(recipe, item) : item->type == type) return true;
+    }
+    return false;
+}
+
+static const Recipe* BillRecipe(const Workshop* ws, const Bill* bill) {
+    int recipeCount;
+    const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+    return (bill->recipeIdx >= 0 && bill->recipeIdx < recipeCount) ? &recipes[bill->recipeIdx] : NULL;
+}
+
+static const char* RecipeInputName(const Recipe* r, int which) {
+    if (which == 1) return r->inputItemMatch == ITEM_MATCH_ANY_FUEL ? "Any Fuel" : ItemName(r->inputType);
+    return ItemName(which == 2 ? r->inputType2 : r->inputType3);
+}
+
+void DescribeWorkshopStatus(int wsIdx, DescLines* out) {
+    out->count = 0;
+    const Workshop* ws = ActiveWorkshop(wsIdx);
+    if (!ws) return;
+    const char* typeName = (ws->type < WORKSHOP_TYPE_COUNT) ? workshopDefs[ws->type].displayName : "Unknown";
+    DescAdd(out, DESC_TITLE, "%s Workshop #%d", typeName, wsIdx);
+    DescAdd(out, DESC_NORMAL, "Position: (%d, %d, z%d)", ws->x, ws->y, ws->z);
+
+    if (ws->markedForDeconstruct) {
+        if (ws->assignedDeconstructor >= 0) DescAdd(out, DESC_BAD, "DECONSTRUCTING (Mover #%d)", ws->assignedDeconstructor);
+        else DescAdd(out, DESC_BAD, "MARKED FOR DECONSTRUCTION");
+    }
+    if (ws->assignedCrafter >= 0) DescAdd(out, DESC_GOOD, "Crafter: Mover #%d", ws->assignedCrafter);
+    else DescAdd(out, DESC_MUTED, "Crafter: None");
+
+    // Problem states (working is silent); details are about the first bill
+    const Recipe* first = ws->billCount > 0 ? BillRecipe(ws, &ws->bills[0]) : NULL;
+    switch (ws->visualState) {
+        case WORKSHOP_VISUAL_OUTPUT_FULL:
+            DescAdd(out, DESC_SOFT_BAD, "Status: Output Blocked");
+            if (first && first->outputType != ITEM_NONE) {
+                DescAdd(out, DESC_SOFT_WARN, "  Output blocked: %s (x%d)", ItemName(first->outputType), first->outputCount);
+                DescAdd(out, DESC_MILD, "  Hint: Build stockpile accepting %s", ItemName(first->outputType));
+            }
+            break;
+        case WORKSHOP_VISUAL_INPUT_EMPTY:
+            DescAdd(out, DESC_MILD, "Status: Waiting for Input");
+            if (first) {
+                if (!InputAvailable(ws, first, 1, true))
+                    DescAdd(out, DESC_SOFT_WARN, "  Waiting for: %s (x%d)", RecipeInputName(first, 1), first->inputCount);
+                if (!InputAvailable(ws, first, 2, true))
+                    DescAdd(out, DESC_SOFT_WARN, "  Waiting for: %s (x%d)", RecipeInputName(first, 2), first->inputCount2);
+                if (!InputAvailable(ws, first, 3, true))
+                    DescAdd(out, DESC_SOFT_WARN, "  Waiting for: %s (x%d)", RecipeInputName(first, 3), first->inputCount3);
+                if (first->fuelRequired > 0 && !WorkshopHasFuelForRecipe(&workshops[wsIdx], 100))
+                    DescAdd(out, DESC_SOFT_WARN, "  Waiting for: Fuel (any burnable item)");
+            }
+            break;
+        case WORKSHOP_VISUAL_NO_WORKER:
+            DescAdd(out, DESC_MUTED, "Status: No Worker Assigned");
+            break;
+        case WORKSHOP_VISUAL_WORKING:
+            break;
+    }
+
+    if (workshopDefs[ws->type].passive) {
+        if (ws->passiveReady) DescAdd(out, DESC_WARN, "Status: Burning (%.0f%%)", ws->passiveProgress * 100.0f);
+        else DescAdd(out, DESC_MUTED, "Status: Not ignited");
+    }
+}
+
+void DescribeWorkshopBill(int wsIdx, int billIdx, bool marked, DescLines* out) {
+    const Workshop* ws = ActiveWorkshop(wsIdx);
+    if (!ws || billIdx < 0 || billIdx >= ws->billCount) return;
+    static const char* modeNames[] = {"Do X times", "Do until X", "Do forever"};
+    const Bill* bill = &ws->bills[billIdx];
+    const Recipe* recipe = BillRecipe(ws, bill);
+
+    char status[32] = "";
+    if (bill->suspended && bill->suspendedNoStorage) snprintf(status, sizeof(status), " [NO STORAGE]");
+    else if (bill->suspended) snprintf(status, sizeof(status), " [PAUSED]");
+    else if (bill->mode == BILL_DO_X_TIMES) snprintf(status, sizeof(status), " (%d/%d)", bill->completedCount, bill->targetCount);
+    else if (bill->mode == BILL_DO_UNTIL_X)
+        snprintf(status, sizeof(status), " (%d/%d)", recipe ? CountItemsInStockpiles(recipe->outputType) : 0, bill->targetCount);
+
+    DescTone tone = bill->suspended ? (bill->suspendedNoStorage ? DESC_WARN : DESC_BAD) : DESC_BILL;
+    DescAdd(out, tone, "%c%d. %s (%s)%s", marked ? '>' : ' ', billIdx + 1, recipe ? recipe->name : "Unknown",
+            bill->mode < 3 ? modeNames[bill->mode] : "?", status);
+
+    // Why it can't run yet: missing inputs or fuel (only while nobody is crafting)
+    if (recipe && !bill->suspended && ws->assignedCrafter < 0) {
+        bool in1 = InputAvailable(ws, recipe, 1, false);
+        bool in2 = InputAvailable(ws, recipe, 2, false);
+        bool in3 = InputAvailable(ws, recipe, 3, false);
+        bool fuel = recipe->fuelRequired <= 0 || WorkshopHasFuelForRecipe(&workshops[wsIdx], 100);
+        if (!in1 || !in2 || !in3 || !fuel) {
+            char needs[128] = "    Needs:";
+            bool prev = false;
+            if (!in1) { strncat(needs, " ", sizeof(needs) - strlen(needs) - 1);
+                        strncat(needs, RecipeInputName(recipe, 1), sizeof(needs) - strlen(needs) - 1); prev = true; }
+            if (!in2) { strncat(needs, prev ? " +" : " ", sizeof(needs) - strlen(needs) - 1);
+                        strncat(needs, RecipeInputName(recipe, 2), sizeof(needs) - strlen(needs) - 1); prev = true; }
+            if (!in3) { strncat(needs, prev ? " +" : " ", sizeof(needs) - strlen(needs) - 1);
+                        strncat(needs, RecipeInputName(recipe, 3), sizeof(needs) - strlen(needs) - 1); prev = true; }
+            if (!fuel) strncat(needs, prev ? " + fuel" : " fuel", sizeof(needs) - strlen(needs) - 1);
+            DescAdd(out, DESC_SOFT_BAD, "%s", needs);
+        }
+    }
+}
+
+void DescribeWorkshopLinks(int wsIdx, DescLines* out) {
+    const Workshop* ws = ActiveWorkshop(wsIdx);
+    if (!ws) return;
+    DescAdd(out, DESC_NORMAL, "Linked Input Stockpiles:");
+    if (ws->linkedInputCount == 0) {
+        DescAdd(out, DESC_MUTED, "  (none)");
+        return;
+    }
+    for (int i = 0; i < ws->linkedInputCount; i++) {
+        int sp = ws->linkedInputStockpiles[i];
+        if (sp >= 0 && sp < stockpileCount && stockpiles[sp].active)
+            DescAdd(out, DESC_GOOD, "  [%d] Stockpile #%d (Pri:%d)", i + 1, sp, stockpiles[sp].priority);
+        else
+            DescAdd(out, DESC_BAD, "  [%d] <invalid #%d>", i + 1, sp);
+    }
+}
+
+void WorkshopRecipeSummary(int wsIdx, int recipeIdx, char* buf, size_t size) {
+    buf[0] = '\0';
+    const Workshop* ws = ActiveWorkshop(wsIdx);
+    if (!ws) return;
+    int recipeCount;
+    const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+    if (recipeIdx < 0 || recipeIdx >= recipeCount) return;
+    const Recipe* r = &recipes[recipeIdx];
+    char output[64];
+    if (r->outputType == ITEM_NONE) snprintf(output, sizeof(output), "Products");
+    else if (r->outputType2 != ITEM_NONE) snprintf(output, sizeof(output), "%s+%s", ItemName(r->outputType), ItemName(r->outputType2));
+    else snprintf(output, sizeof(output), "%s", ItemName(r->outputType));
+    if (r->inputType3 != ITEM_NONE)
+        snprintf(buf, size, "%s (%s+%s+%s -> %s)", r->name, RecipeInputName(r, 1), RecipeInputName(r, 2), RecipeInputName(r, 3), output);
+    else if (r->inputType2 != ITEM_NONE)
+        snprintf(buf, size, "%s (%s+%s -> %s)", r->name, RecipeInputName(r, 1), RecipeInputName(r, 2), output);
+    else
+        snprintf(buf, size, "%s (%s -> %s)", r->name, RecipeInputName(r, 1), output);
 }
 
 // ---------------------------------------------------------------------------

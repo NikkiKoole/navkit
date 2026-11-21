@@ -172,6 +172,9 @@ void InputMode_ExitToNormal(void);   // Go directly to normal (re-tap mode key)
 // Select an action the way its menu would: mode and submode come from the action registry.
 void InputMode_SelectAction(InputAction action);
 
+// Link stockpiles to workshop `wsIdx`: the next stockpile click links it (ESC/L ends).
+void InputMode_StartLinking(int wsIdx);
+
 void SetSelectedFurnitureRecipe(int recipeIndex);
 int GetSelectedFurnitureRecipe(void);
 

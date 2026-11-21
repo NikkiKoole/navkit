@@ -197,6 +197,14 @@ same lines (after the run; `--ticks 0` = as loaded from `--load`). Need labels (
 "Parched", ...) live there too (`HungerLabel` etc.). **New screens that show an entity should
 call its describe function** rather than formatting fields again. Done so far: movers, animals, items, cells, water, blueprints, designations, stations (stockpile and workshop tooltips are interactive editors; they move with the selection panel).
 
+## Selection and the inspector panel
+
+Left-click in normal mode selects a mover, animal, workshop or blueprint (`src/core/selection.c`);
+`src/render/inspector.c` outlines it and shows a fixed panel bottom-right: the describe lines
+plus buttons. Actions behind buttons live in `selection.c` (`ToggleMoverDraft`, `WorkshopAddBill`,
+...) and the old hover keys call the same functions, so keys and buttons can't drift apart.
+New per-entity actions go there too. Stockpiles are next.
+
 ## Scenarios
 
 Built-in demo/test setups live in one table in `src/core/scenarios.c` (`list` shows them all).
