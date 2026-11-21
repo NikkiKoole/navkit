@@ -928,10 +928,7 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
         }
         printf("Loaded: %s\n", loadFile);
         printf("Running %d ticks headless...\n", ticks);
-    
-        // Build pathfinding structures
-        BuildEntrances();
-        BuildGraph();
+        // (LoadWorld already rebuilt the pathfinding graph)
     }
     ApplySetArgs(argc, argv);
     bool doProfile = false;

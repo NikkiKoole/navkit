@@ -32,10 +32,17 @@ static inline void RleWriteVarint(FILE* f, uint64_t v) {
     fwrite(b, 1, (size_t)n, f);
 }
 
+// One byte at a time: skip stdio's per-call stream lock
+#ifdef _WIN32
+#define RLE_GETC(f) _getc_nolock(f)
+#else
+#define RLE_GETC(f) getc_unlocked(f)
+#endif
+
 static inline bool RleReadVarint(FILE* f, uint64_t* out) {
     uint64_t v = 0;
     for (int shift = 0; shift < 64; shift += 7) {
-        int c = fgetc(f);
+        int c = RLE_GETC(f);
         if (c == EOF) return false;
         v |= (uint64_t)(c & 0x7F) << shift;
         if (!(c & 0x80)) { *out = v; return true; }
@@ -105,6 +112,21 @@ static inline void RleWriterEnd(RleWriter* w) {
     RleFlushLiterals(w);
 }
 
+// dst = k copies of the es-byte element (runs: most of a big map's layers)
+static inline void RleFill(unsigned char* dst, const unsigned char* elem, size_t es, uint64_t k) {
+    if (k == 0) return;
+    bool same = true;                                  // all bytes equal (zero, ...): one memset
+    for (size_t i = 1; i < es; i++) if (elem[i] != elem[0]) { same = false; break; }
+    if (same) { memset(dst, elem[0], (size_t)(k * es)); return; }
+    memcpy(dst, elem, es);                             // else double the filled prefix
+    size_t done = es, total = (size_t)(k * es);
+    while (done < total) {
+        size_t c = done < total - done ? done : total - done;
+        memcpy(dst + done, dst, c);
+        done += c;
+    }
+}
+
 // ---- Reader ----
 typedef struct {
     FILE* f;
@@ -133,7 +155,7 @@ static inline void RleReaderPull(RleReader* r, void* dst, uint64_t n) {
         }
         uint64_t k = n < r->left ? n : r->left;
         if (r->isRun) {
-            for (uint64_t i = 0; i < k; i++) memcpy(d + i * r->es, r->run, r->es);
+            RleFill(d, r->run, r->es, k);
         } else if (fread(d, r->es, (size_t)k, r->f) != (size_t)k) {
             r->error = true; break;
         }

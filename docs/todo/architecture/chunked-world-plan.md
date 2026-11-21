@@ -632,3 +632,18 @@ the chunks dirty, or `InvalidateLighting()` (loads, settings, scenarios): full r
   time; checked exhaustively).
 - Band cap 64 -> 256: above 1024x1024x16 each cell is visited every 256 ticks (~4 s) with the time
   accumulated meanwhile (growth thresholds are game-hours). Maps up to 1024 are unaffected.
+
+### Loading a 2048 save (2026-11-21)
+
+Headless `--load` of a 2048 world save (53 MB): 19.7 s (42 s before the 3D graph). Phases of
+`LoadWorld`: reading the grid layers 6.3 s, activity counts/ramp check/entrances 1.2 s, graph +
+regions 5.7 s; and headless `main.c` rebuilt the graph a second time after `LoadWorld` (5 s).
+- Duplicate headless rebuild removed (the GUI paths only ever built once).
+- RLE runs are filled with one memset (or a doubling memcpy) instead of a memcpy per element;
+  rows are scattered into the chunk-major layer per 16-cell run (address once per run), and
+  all-zero runs are skipped; varint bytes are read with the unlocked getc (`_getc_nolock` on
+  Windows). Grid layers 6.3 -> 2.6 s.
+Load 19.7 -> 10.0 s. Loading the 2048 save and saving it again gives the same bytes as the old
+code; survival and crafting saves loaded and run 500 ticks match too. What's left: graph build
+4.8 s (threading the per-chunk edge searches would cut it most), grid layers 2.6 s, regions
+0.8 s, activity counts 0.55 s.

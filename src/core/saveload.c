@@ -56,6 +56,14 @@ static void LoadRowIn(FILE* f, size_t es, int y, int z) {
     if (y == gridHeight - 1 && z == gridDepth - 1 && !RleReaderEnd(&loadRle)) loadRleOk = false;
 }
 
+// n bytes of zeros? (8 at a time; n is at most 16 elements of up to 32 bytes)
+static inline bool RowRunIsZero(const unsigned char* p, size_t n) {
+    size_t i = 0;
+    for (; i + 8 <= n; i += 8) { uint64_t v; memcpy(&v, p + i, 8); if (v) return false; }
+    for (; i < n; i++) if (p[i]) return false;
+    return true;
+}
+
 static inline bool RowElemIsZero(const unsigned char* p, size_t es) {
     for (size_t i = 0; i < es; i++) if (p[i]) return false;
     return true;
@@ -73,10 +81,15 @@ static inline bool RowElemIsZero(const unsigned char* p, size_t es) {
     } while (0)
 // Into a layer cleared at its first row: write only non-zero elements, so loading leaves empty
 // memory untouched (a written zero would still cost a page).
+// Cells of a 16-cell storage run are contiguous: address computed once per run.
 #define ROW_FROM_BUF_NZ(MACRO, y, z) do { \
-        for (int x_ = 0; x_ < gridWidth; x_++) { \
-            const unsigned char* e_ = saveRowBuf + (size_t)x_ * ROW_ELEM_SIZE(MACRO); \
-            if (!RowElemIsZero(e_, ROW_ELEM_SIZE(MACRO))) memcpy(&MACRO(x_, (y), (z)), e_, ROW_ELEM_SIZE(MACRO)); \
+        for (int xs_ = 0; xs_ < gridWidth; xs_ += STORE_CHUNK) { \
+            int xe_ = xs_ + STORE_CHUNK < gridWidth ? xs_ + STORE_CHUNK : gridWidth; \
+            const unsigned char* e_ = saveRowBuf + (size_t)xs_ * ROW_ELEM_SIZE(MACRO); \
+            if (RowRunIsZero(e_, (size_t)(xe_ - xs_) * ROW_ELEM_SIZE(MACRO))) continue; \
+            unsigned char* d_ = (unsigned char*)&MACRO(xs_, (y), (z)); \
+            for (int k_ = 0; k_ < xe_ - xs_; k_++, d_ += ROW_ELEM_SIZE(MACRO), e_ += ROW_ELEM_SIZE(MACRO)) \
+                if (!RowElemIsZero(e_, ROW_ELEM_SIZE(MACRO))) memcpy(d_, e_, ROW_ELEM_SIZE(MACRO)); \
         } \
     } while (0)
 // &MACRO(0, 0, 0) is the layer's first element (CellIndex(0, 0, 0) == 0): clear the whole layer.
