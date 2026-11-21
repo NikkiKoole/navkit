@@ -23,6 +23,7 @@
 #include "core/sim_step.h"
 #include "core/selection.h"
 #include "render/inspector.h"
+void rlDrawRenderBatchActive(void);   // rlgl (part of raylib): flush pending draws
 #include "render/play_hud.h"
 
 #ifdef USE_SOUNDSYSTEM
@@ -1475,6 +1476,20 @@ int main(int argc, char** argv) {
     if (gameName) StartGame(gameName);
     ApplyExecArgs(argc, argv);
 
+    // --screenshot <file.png>: dev check for rendering changes. The sim stays paused
+    // (nothing moves), the camera is centred for the current zoom (--exec "set zoom 0.25",
+    // --exec "set viewZ 8"), and the world (without UI, which shows timings) of the third
+    // frame is saved, then the game quits. Two builds give the same file for the same view.
+    const char* screenshotPath = NULL;
+    for (int i = 1; i + 1 < argc; i++)
+        if (strcmp(argv[i], "--screenshot") == 0) screenshotPath = argv[i + 1];
+    int screenshotFrame = 0;
+    if (screenshotPath) {
+        paused = true;
+        offset.x = (GetScreenWidth() - gridWidth * CELL_SIZE * zoom) / 2.0f;
+        offset.y = (GetScreenHeight() - gridHeight * CELL_SIZE * zoom) / 2.0f;
+    }
+
     float accumulator = 0.0f;
 
     while (!WindowShouldClose() && !shouldQuit) {
@@ -1699,6 +1714,7 @@ int main(int argc, char** argv) {
 
         PROFILE_BEGIN(Render);
         BeginDrawing();
+        double worldDrawStart = GetTime();
         ClearBackground(BLACK);
 
         // Apply screen shake offset
@@ -1767,6 +1783,24 @@ int main(int argc, char** argv) {
         DrawMist();
         DrawFogOfWar();
         } // end !frontViewMode
+
+        if (screenshotPath) {
+            // Frame 3 is saved; frames 4-63 time the world drawing (CPU side, flushed)
+            rlDrawRenderBatchActive();   // flush pending sprites before reading/timing
+            static double worldMsSum = 0.0;
+            screenshotFrame++;
+            if (screenshotFrame == 3) {
+                Image shot = LoadImageFromScreen();
+                ExportImage(shot, screenshotPath);
+                UnloadImage(shot);
+            } else if (screenshotFrame > 3) {
+                worldMsSum += (GetTime() - worldDrawStart) * 1000.0;
+                if (screenshotFrame == 63) {
+                    printf("screenshot: world drawing %.2f ms per frame (avg of 60)\n", worldMsSum / 60.0);
+                    shouldQuit = true;
+                }
+            }
+        }
 
         // Draw workshop preview when in workshop placement mode
         // Workshop actions and WorkshopType enums are in the same order, so derive directly

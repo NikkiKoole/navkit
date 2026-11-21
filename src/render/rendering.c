@@ -329,19 +329,74 @@ static bool IsCellVisibleFromAbove(int x, int y, int cellZ, int viewZ) {
     return true;
 }
 
+// Per-column visibility for the deeper-level passes, built once per frame by DrawCellGrid.
+// A cell at level zd is visible from viewZ iff no solid cell or floor lies in zd+1..viewZ-1
+// (IsCellVisibleFromAbove), i.e. iff zd >= the highest such blocker. Each pass asks for
+// levels down to viewZ - MAX_VISIBLE_DEPTH only, so the scan stops there. Two answers per
+// column: blockers up to viewZ - 1 (passes that ask IsCellVisibleFromAbove(.., viewZ)) and up
+// to viewZ (those that ask (.., viewZ + 1)). -1 = none: every level is visible.
+static int8_t* visTopBelow;      // highest blocker in [viewZ - MAX_VISIBLE_DEPTH, viewZ - 1]
+static int8_t* visTopAt;         // same, including viewZ
+static int visCap, visMinX, visMinY, visW, visH, visZ = -1;
+
+static inline bool IsVisBlocker(int x, int y, int z) {
+    return CellIsSolid(GRID(x, y, z)) || HAS_FLOOR(x, y, z);
+}
+
+static void VisBuild(int minX, int minY, int maxX, int maxY, int z) {
+    int w = maxX - minX, h = maxY - minY;
+    if (w <= 0 || h <= 0) { visZ = -1; return; }
+    if (w * h > visCap) {
+        free(visTopBelow); free(visTopAt);
+        visCap = w * h;
+        visTopBelow = malloc((size_t)visCap);
+        visTopAt = malloc((size_t)visCap);
+        if (!visTopBelow || !visTopAt) { visCap = 0; visZ = -1; return; }
+    }
+    int lowest = z - MAX_VISIBLE_DEPTH;
+    if (lowest < 0) lowest = 0;
+    for (int y = minY; y < maxY; y++)
+        for (int x = minX; x < maxX; x++) {
+            int b = -1;
+            for (int zc = z - 1; zc >= lowest; zc--)
+                if (IsVisBlocker(x, y, zc)) { b = zc; break; }
+            int i = (y - minY) * w + (x - minX);
+            visTopBelow[i] = (int8_t)b;
+            visTopAt[i] = (int8_t)(IsVisBlocker(x, y, z) ? z : b);
+        }
+    visMinX = minX; visMinY = minY; visW = w; visH = h; visZ = z;
+}
+
+// Lowest level zd >= zStart whose cell at (x, y) is visible from viewZ (aboveView: from
+// viewZ + 1, i.e. viewZ itself may block). The cache must match the view (DrawCellGrid).
+static int VisLowest(int x, int y, int zStart, bool aboveView) {
+    int t;
+    if (visZ == currentViewZ && x >= visMinX && y >= visMinY && x < visMinX + visW && y < visMinY + visH) {
+        int i = (y - visMinY) * visW + (x - visMinX);
+        t = aboveView ? visTopAt[i] : visTopBelow[i];
+    } else {   // outside the cached view: compute directly
+        int v = aboveView ? currentViewZ : currentViewZ - 1, lowest = currentViewZ - MAX_VISIBLE_DEPTH;
+        t = -1;
+        for (int zc = v; zc >= lowest && zc >= 0; zc--)
+            if (IsVisBlocker(x, y, zc)) { t = zc; break; }
+    }
+    return t > zStart ? t : zStart;
+}
+
 // Draw deeper levels (z-9 through z-2) with earthy brown depth tint
 static void DrawDeeperLevelCells(float size, int z, int minX, int minY, int maxX, int maxY, Color skyColor) {
-    for (int zDepth = z - MAX_VISIBLE_DEPTH; zDepth <= z - 2; zDepth++) {
-        if (zDepth < 0) continue;
-
-        for (int y = minY; y < maxY; y++) {
-            for (int x = minX; x < maxX; x++) {
+    // Per column, only the levels that can be visible (VisLowest), bottom up: cells of
+    // different columns never overlap, so the image is the same as level by level
+    int zStart = z - MAX_VISIBLE_DEPTH < 0 ? 0 : z - MAX_VISIBLE_DEPTH;
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            for (int zDepth = VisLowest(x, y, zStart, false); zDepth <= z - 2; zDepth++) {
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
 
                 // Wall tops
                 CellType cellAtDepth = GRID(x, y, zDepth);
                 if (cellAtDepth != CELL_AIR) {
-                    if (IsCellVisibleFromAbove(x, y, zDepth + 1, z)) {
+                    {
                         int sprite = GetWallSpriteAt(x, y, zDepth, cellAtDepth);
                         Rectangle src = SpriteGetRect(sprite);
                         Color lightTint = GetLightColor(x, y, zDepth + 1, skyColor);
@@ -368,7 +423,7 @@ static void DrawDeeperLevelCells(float size, int z, int minX, int minY, int maxX
                 }
 
                 // Constructed floors (rendered after walls, visibility checked from above the floor)
-                if (HAS_FLOOR(x, y, zDepth) && IsCellVisibleFromAbove(x, y, zDepth + 1, z)) {
+                if (HAS_FLOOR(x, y, zDepth)) {
                     MaterialType mat = GetFloorMaterial(x, y, zDepth);
                     int floorSprite = GetFloorSpriteAt(x, y, zDepth);
                     Color lightTint = GetLightColor(x, y, zDepth, skyColor);
@@ -461,6 +516,7 @@ static void DrawCellGrid(void) {
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
+    VisBuild(minX, minY, maxX, maxY, z);   // for this frame's deeper-level passes
     DrawDeeperLevelCells(size, z, minX, minY, maxX, maxY, skyColor);
     DrawGroundLevel(size, z, minX, minY, maxX, maxY, skyColor);
 
@@ -498,6 +554,7 @@ static void DrawCellGrid(void) {
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
             if (z == 0) continue;  // No farming at z=0
+            if (!SparseLayerHasBlock(&farmLayer, x, y)) continue;   // no farm cells in this chunk
             const FarmCell* fc = &FARM(x, y, z);
             if (fc->tilled) {
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
@@ -676,12 +733,12 @@ void DrawRampOverlay(void) {
     int zStart = z - MAX_VISIBLE_DEPTH;
     if (zStart < 0) zStart = 0;
 
-    for (int zd = zStart; zd <= z; zd++) {
-        for (int y = minY; y < maxY; y++) {
-            for (int x = minX; x < maxX; x++) {
+    // Per column from the lowest visible level (z-1 and z are always visible)
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            for (int zd = VisLowest(x, y, zStart, false); zd <= z; zd++) {
                 CellType cell = GRID(x, y, zd);
                 if (!CellIsRamp(cell)) continue;
-                if (!IsCellVisibleFromAbove(x, y, zd + 1, z)) continue;
 
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 int sprite = GetWallSpriteAt(x, y, zd, cell);
@@ -721,14 +778,12 @@ static void DrawGrassOverlay(void) {
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     // Draw grass for deeper levels (z-9 through z-2) with earthy brown tint
-    for (int zDepth = z - MAX_VISIBLE_DEPTH; zDepth <= z - 2; zDepth++) {
-        if (zDepth < 0) continue;
-        
-        Color depthTint = GetDepthTint(zDepth, z);
-        for (int y = minY; y < maxY; y++) {
-            for (int x = minX; x < maxX; x++) {
+    int zStart = z - MAX_VISIBLE_DEPTH < 0 ? 0 : z - MAX_VISIBLE_DEPTH;
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            for (int zDepth = VisLowest(x, y, zStart, true); zDepth <= z - 2; zDepth++) {
+                Color depthTint = GetDepthTint(zDepth, z);
                 if (!IsWallNatural(x, y, zDepth) || GetWallMaterial(x, y, zDepth) != MAT_DIRT) continue;
-                if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z + 1)) continue;
                 
                 VegetationType veg = GetVegetation(x, y, zDepth);
                 int surface = GET_CELL_SURFACE(x, y, zDepth);
@@ -842,13 +897,12 @@ static void DrawMud(void) {
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     // Draw mud at deeper levels (z-9 through z-2) with depth darkening
-    for (int zDepth = z - MAX_VISIBLE_DEPTH; zDepth <= z - 2; zDepth++) {
-        if (zDepth < 0) continue;
-        Color depthTint = GetDepthTint(zDepth, z);
-        for (int y = minY; y < maxY; y++) {
-            for (int x = minX; x < maxX; x++) {
+    int zStart = z - MAX_VISIBLE_DEPTH < 0 ? 0 : z - MAX_VISIBLE_DEPTH;
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            for (int zDepth = VisLowest(x, y, zStart, true); zDepth <= z - 2; zDepth++) {
+                Color depthTint = GetDepthTint(zDepth, z);
                 if (!IsMuddy(x, y, zDepth)) continue;
-                if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z + 1)) continue;
 
                 int wetness = GET_CELL_WETNESS(x, y, zDepth);
                 unsigned char alpha = (wetness == 2) ? 80 : 120;
@@ -898,14 +952,13 @@ static void DrawSnow(void) {
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     // Draw snow at deeper levels (z-9 through z-2) with depth darkening
-    for (int zDepth = z - MAX_VISIBLE_DEPTH; zDepth <= z - 2; zDepth++) {
-        if (zDepth < 0) continue;
-        Color depthTint = GetDepthTint(zDepth, z);
-        for (int y = minY; y < maxY; y++) {
-            for (int x = minX; x < maxX; x++) {
+    int zStart = z - MAX_VISIBLE_DEPTH < 0 ? 0 : z - MAX_VISIBLE_DEPTH;
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            for (int zDepth = VisLowest(x, y, zStart, true); zDepth <= z - 2; zDepth++) {
+                Color depthTint = GetDepthTint(zDepth, z);
                 uint8_t snowLevel = GetSnowLevel(x, y, zDepth);
                 if (snowLevel == 0) continue;
-                if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z + 1)) continue;
 
                 unsigned char alpha = SnowAlpha(snowLevel);
                 Color snowColor = {255, 255, 255, alpha};
@@ -976,14 +1029,13 @@ static void DrawWater(void) {
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     // Draw water at deeper levels (z-9 through z-1) with depth darkening
-    for (int zDepth = z - MAX_VISIBLE_DEPTH; zDepth <= z - 1; zDepth++) {
-        if (zDepth < 0) continue;
-        
-        for (int y = minY; y < maxY; y++) {
-            for (int x = minX; x < maxX; x++) {
+    int zStart = z - MAX_VISIBLE_DEPTH < 0 ? 0 : z - MAX_VISIBLE_DEPTH;
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            if (!SparseLayerHasBlock(&waterLayer, x, y)) continue;   // no water in this chunk
+            for (int zDepth = VisLowest(x, y, zStart, true); zDepth <= z - 1; zDepth++) {
                 int level = GetWaterLevel(x, y, zDepth);
                 if (level <= 0) continue;
-                if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z + 1)) continue;
                 
                 int alpha = 80 + (level * 15);
                 if (alpha > 230) alpha = 230;
@@ -1009,6 +1061,7 @@ static void DrawWater(void) {
     // Draw water at current level (z) - brightest, no darkening
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
+            if (!SparseLayerHasBlock(&waterLayer, x, y)) continue;
             int level = GetWaterLevel(x, y, z);
             if (level <= 0) continue;
 
@@ -1045,13 +1098,10 @@ static void DrawFire(void) {
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     // Draw fire at deeper levels (z-9 through z-2)
-    for (int zDepth = z - MAX_VISIBLE_DEPTH; zDepth <= z - 2; zDepth++) {
-        if (zDepth < 0) continue;
-        
-        for (int y = minY; y < maxY; y++) {
-            for (int x = minX; x < maxX; x++) {
-                if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z)) continue;
-                
+    int zStart = z - MAX_VISIBLE_DEPTH < 0 ? 0 : z - MAX_VISIBLE_DEPTH;
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            for (int zDepth = VisLowest(x, y, zStart, false); zDepth <= z - 2; zDepth++) {
                 const FireCell* cell = &FIRE(x, y, zDepth);
                 int level = cell->level;
                 
@@ -1117,13 +1167,11 @@ static void DrawSmoke(void) {
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     // Draw smoke at deeper levels (z-9 through z-1) with depth darkening
-    for (int zDepth = z - MAX_VISIBLE_DEPTH; zDepth <= z - 1; zDepth++) {
-        if (zDepth < 0) continue;
-        
-        for (int y = minY; y < maxY; y++) {
-            for (int x = minX; x < maxX; x++) {
-                if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z)) continue;
-                
+    int zStart = z - MAX_VISIBLE_DEPTH < 0 ? 0 : z - MAX_VISIBLE_DEPTH;
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            if (!SparseLayerHasBlock(&smokeLayer, x, y)) continue;
+            for (int zDepth = VisLowest(x, y, zStart, false); zDepth <= z - 1; zDepth++) {
                 int level = GetSmokeLevel(x, y, zDepth);
                 if (level <= 0) continue;
 
@@ -1162,13 +1210,11 @@ static void DrawSteam(void) {
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     // Draw steam at deeper levels (z-9 through z-1) with depth darkening
-    for (int zDepth = z - MAX_VISIBLE_DEPTH; zDepth <= z - 1; zDepth++) {
-        if (zDepth < 0) continue;
-        
-        for (int y = minY; y < maxY; y++) {
-            for (int x = minX; x < maxX; x++) {
-                if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z)) continue;
-                
+    int zStart = z - MAX_VISIBLE_DEPTH < 0 ? 0 : z - MAX_VISIBLE_DEPTH;
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            if (!SparseLayerHasBlock(&steamLayer, x, y)) continue;
+            for (int zDepth = VisLowest(x, y, zStart, false); zDepth <= z - 1; zDepth++) {
                 int level = GetSteamLevel(x, y, zDepth);
                 if (level <= 0) continue;
 
@@ -2708,9 +2754,12 @@ static void DrawMiningDesignations(void) {
     int viewZ = currentViewZ;
     Rectangle spriteSrc = SpriteGetRect(SPRITE_stockpile);
 
-    // Draw designation overlays + progress bars
-    for (int y = 0; y < gridHeight; y++) {
-        for (int x = 0; x < gridWidth; x++) {
+    // Draw designation overlays + progress bars (visible cells, chunks that hold any)
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            if (!SparseLayerHasBlock(&designationLayer, x, y)) continue;
             Designation* d = GetDesignation(x, y, viewZ);
             if (!d) continue;
             if (d->type <= DESIGNATION_NONE || d->type >= DESIGNATION_TYPE_COUNT) continue;

@@ -240,3 +240,17 @@ hooks for headless runs (ladders uses them for queue length).
 ./build/bin/path --headless --load save.bin.gz --ticks 100
 ./build/bin/path --headless --scenario <name> --ticks 100   # see Scenarios
 ```
+
+## Checking rendering changes
+
+`--screenshot file.png` (GUI) keeps the sim paused, centres the camera for the current zoom,
+saves the world (no UI) of the third frame, prints the world drawing time averaged over the next
+60 frames and quits. Use a fixed `--seed` (the world scenario is random otherwise):
+
+```bash
+./build/bin/path --scenario world --seed 7 --set scenarioSize 2048 --exec "set viewZ 8" \
+    --exec "set zoom 0.25" --exec "set forceDaylight 1" --screenshot before.png
+```
+
+A drawing change that should not change the picture must give byte-identical pixels for a
+few views (zoomed in/out, day/night, high and low `viewZ`) against the previous build.
