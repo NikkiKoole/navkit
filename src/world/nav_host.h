@@ -91,10 +91,10 @@ int LadderQueueExtraCost(int x, int y, int z, int dz);
 #define NAV_CLIMB_EXTRA(host, x, y, z, dz) LadderQueueExtraCost((x), (y), (z), (dz))
 
 // Lighting caches walkability-adjacent data; the pathfinder shouldn't know that.
-void InvalidateLighting(void);
+void InvalidateLightingAt(int x, int y, int z);
 static inline void NavOnChunkDirty(void* host, int x, int y, int z) {
-    (void)host; (void)x; (void)y; (void)z;
-    InvalidateLighting();
+    (void)host;
+    InvalidateLightingAt(x, y, z);
 }
 
 // Not part of the library contract: used by the game-side random-cell helpers

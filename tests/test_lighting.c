@@ -6,6 +6,7 @@
 #include "../src/world/material.h"
 #include "../src/simulation/lighting.h"
 #include <string.h>
+#include <stdlib.h>
 
 static bool test_verbose = false;
 
@@ -157,7 +158,7 @@ describe(lighting_sources) {
 
         AddLightSource(3, 2, 1, 255, 180, 100, 10);
 
-        expect(lightingDirty == true);
+        expect(LightingUpdatePending());
     }
 
     it("should mark dirty when removing a source") {
@@ -169,7 +170,7 @@ describe(lighting_sources) {
 
         RemoveLightSource(3, 2, 1);
 
-        expect(lightingDirty == true);
+        expect(LightingUpdatePending());
     }
 }
 
@@ -1081,6 +1082,73 @@ describe(lighting_z1_visibility) {
 // Main
 // =============================================================================
 
+
+// =============================================================================
+// Local relight (InvalidateLightingAt) must give exactly what a full recompute gives
+// =============================================================================
+
+static unsigned lrRng = 12345;
+static int LrRand(int n) { lrRng = lrRng * 1103515245u + 12345u; return (int)((lrRng >> 8) % (unsigned)n); }
+
+static CellType LrRandomCell(void) {
+    int r = LrRand(100);
+    return r < 30 ? CELL_WALL : r < 35 ? CELL_WINDOW : CELL_AIR;
+}
+
+static LightCell* LrSnapshot(void) {
+    LightCell* s = malloc(sizeof(LightCell) * (size_t)gridWidth * gridHeight * gridDepth);
+    int i = 0;
+    for (int z = 0; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) s[i++] = LIGHT(x, y, z);
+    return s;
+}
+
+describe(lighting_local_relight) {
+    it("relighting only around changes equals a full recompute (walls, floors, torches)") {
+        InitGridWithDimensions(96, 96, 6, 16, 16);
+        InitLighting();
+        skyLightEnabled = true;
+        blockLightEnabled = true;
+        for (int z = 0; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++) {
+                    GRID(x, y, z) = LrRandomCell();
+                    if (LrRand(100) < 8) SET_FLOOR(x, y, z);
+                }
+        for (int i = 0; i < 10; i++)
+            AddLightSource(LrRand(gridWidth), LrRand(gridHeight), LrRand(gridDepth), 255, (uint8_t)LrRand(256), 80, (uint8_t)(1 + LrRand(15)));
+        RecomputeLighting();
+        int mismatches = 0, localRounds = 0;
+        for (int round = 0; round < 60; round++) {
+            int edits = 1 + LrRand(3);
+            for (int e = 0; e < edits; e++) {
+                int x = LrRand(gridWidth), y = LrRand(gridHeight), z = LrRand(gridDepth);
+                int kind = LrRand(10);
+                if (kind < 6) GRID(x, y, z) = LrRandomCell();
+                else if (kind < 8) { if (HAS_FLOOR(x, y, z)) CLEAR_FLOOR(x, y, z); else SET_FLOOR(x, y, z); }
+                else if (kind < 9) AddLightSource(x, y, z, 200, 200, (uint8_t)LrRand(256), (uint8_t)(1 + LrRand(15)));
+                else if (lightSourceCount > 0) {
+                    LightSource* s = &lightSources[LrRand(lightSourceCount)];
+                    if (s->active) RemoveLightSource(s->x, s->y, s->z);
+                }
+                InvalidateLightingAt(x, y, z);
+            }
+            if (!lightingDirty) localRounds++;
+            UpdateLighting();
+            LightCell* local = LrSnapshot();
+            InvalidateLighting();
+            UpdateLighting();
+            LightCell* full = LrSnapshot();
+            if (memcmp(local, full, sizeof(LightCell) * (size_t)gridWidth * gridHeight * gridDepth) != 0) mismatches++;
+            free(local); free(full);
+        }
+        if (test_verbose) printf("local relight: %d of 60 rounds local, %d mismatches\n", localRounds, mismatches);
+        expect(localRounds > 50);
+        expect(mismatches == 0);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1095,6 +1163,7 @@ int main(int argc, char* argv[]) {
     test(lighting_get_sky_light);
     test(lighting_edge_cases);
     test(lighting_z1_visibility);
+    test(lighting_local_relight);
 
     return summary();
 }

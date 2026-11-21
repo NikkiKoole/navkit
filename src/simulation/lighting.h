@@ -75,6 +75,10 @@ void InitLighting(void);
 
 // Mark lighting for recomputation (call when terrain changes or sources added/removed)
 void InvalidateLighting(void);
+// A cell changed (or a light source at it): relight only the area it can affect
+void InvalidateLightingAt(int x, int y, int z);
+// Anything to relight on the next UpdateLighting (full or local)?
+bool LightingUpdatePending(void);
 
 // Recompute all lighting (sky + block). Only runs if lightingDirty is true.
 void UpdateLighting(void);

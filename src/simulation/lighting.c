@@ -7,6 +7,7 @@
 #include "lighting.h"
 #include "../world/cell_defs.h"
 #include "../world/material.h"
+#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 
@@ -63,15 +64,57 @@ bool lightingDirty = true;
 typedef struct { int x, y, z; uint8_t level; } LightBfsNode;
 static LightBfsNode bfsQueue[LIGHT_BFS_MAX];
 
+static void ClearLightDirtyChunks(void);
+
 void InitLighting(void) {
     CLEAR_GRID_LAYER(lightGrid, 0);
     memset(lightSources, 0, sizeof(lightSources));
     lightSourceCount = 0;
     lightingDirty = true;
+    ClearLightDirtyChunks();
 }
 
 void InvalidateLighting(void) {
     lightingDirty = true;
+}
+
+// Local changes since the last update, per 16x16 chunk (all levels). A change can only
+// alter light within SKY_LIGHT_MAX cells (sky spread) or twice a source's radius (block
+// light paths), so UpdateLighting relights just the area around dirty chunks instead of
+// the whole map (~750 ms at 2048: digging, building and fires used to trigger that).
+#define LIGHT_CHUNK 16
+static uint8_t* lightDirtyChunks = NULL;
+static int lightDirtyCX = 0, lightDirtyCY = 0, lightDirtyCount = 0;
+static int lightDirtyMaxIntensity = 0;   // of sources added/changed/removed since the last update
+
+static void ClearLightDirtyChunks(void) {
+    if (lightDirtyChunks && lightDirtyCount) memset(lightDirtyChunks, 0, (size_t)lightDirtyCX * lightDirtyCY);
+    lightDirtyCount = 0;
+    lightDirtyMaxIntensity = 0;
+}
+
+void InvalidateLightingAt(int x, int y, int z) {
+    (void)z;
+    if (lightingDirty) return;                       // a full recompute is coming anyway
+    if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) return;
+    int cx = (gridWidth + LIGHT_CHUNK - 1) / LIGHT_CHUNK, cy = (gridHeight + LIGHT_CHUNK - 1) / LIGHT_CHUNK;
+    if (!lightDirtyChunks || cx != lightDirtyCX || cy != lightDirtyCY) {
+        free(lightDirtyChunks);
+        lightDirtyChunks = calloc((size_t)cx * cy, 1);
+        lightDirtyCX = cx; lightDirtyCY = cy; lightDirtyCount = 0;
+        if (!lightDirtyChunks) { lightingDirty = true; return; }
+    }
+    uint8_t* d = &lightDirtyChunks[(y / LIGHT_CHUNK) * cx + x / LIGHT_CHUNK];
+    if (!*d) { *d = 1; lightDirtyCount++; }
+}
+
+bool LightingUpdatePending(void) {
+    return lightingDirty || lightDirtyCount > 0;
+}
+
+static void InvalidateLightSourceAt(int x, int y, int z, int intensity) {
+    if (intensity > lightDirtyMaxIntensity) lightDirtyMaxIntensity = intensity;
+    InvalidateLightingAt(x, y, z);
 }
 
 // Windows are solid but transmit light
@@ -84,20 +127,21 @@ static inline bool CellBlocksLight(CellType c) {
 // --------------------------------------------------------------------------
 
 // For each (x,y), scan top-down. Full sky light until blocked by solid/floor.
-static void ComputeSkyColumns(void) {
-    for (int y = 0; y < gridHeight; y++) {
-        for (int x = 0; x < gridWidth; x++) {
-            uint8_t level = SKY_LIGHT_MAX;
-            for (int z = gridDepth - 1; z >= 0; z--) {
-                LIGHT(x, y, z).skyLevel = level;
+static inline void ComputeSkyColumn(int x, int y) {
+    uint8_t level = SKY_LIGHT_MAX;
+    for (int z = gridDepth - 1; z >= 0; z--) {
+        LIGHT(x, y, z).skyLevel = level;
 
-                // If this cell blocks light or has a floor, block sky light below
-                if (CellBlocksLight(GRID(x, y, z)) || HAS_FLOOR(x, y, z)) {
-                    level = 0;
-                }
-            }
+        // If this cell blocks light or has a floor, block sky light below
+        if (CellBlocksLight(GRID(x, y, z)) || HAS_FLOOR(x, y, z)) {
+            level = 0;
         }
     }
+}
+
+static void ComputeSkyColumns(void) {
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++) ComputeSkyColumn(x, y);
 }
 
 // --------------------------------------------------------------------------
@@ -180,6 +224,13 @@ static void ClearBlockLight(void) {
 // Per-source visited grid to prevent adding light to the same cell multiple times
 static bool blockVisited[MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
+// Writes of PropagateBlockLight are limited to this box (a local relight); the BFS
+// itself always runs in full so it reaches exactly the same cells as a full recompute
+static int blockClipX0 = 0, blockClipY0 = 0, blockClipX1 = 1 << 30, blockClipY1 = 1 << 30;
+static inline bool InBlockClip(int x, int y) {
+    return x >= blockClipX0 && y >= blockClipY0 && x < blockClipX1 && y < blockClipY1;
+}
+
 // Propagate a single block light source via BFS with Euclidean falloff
 static void PropagateBlockLight(LightSource* src) {
     int head = 0, tail = 0;
@@ -201,7 +252,7 @@ static void PropagateBlockLight(LightSource* src) {
     blockVisited[src->y][src->x] = true;
 
     // Set source cell to full brightness
-    {
+    if (InBlockClip(src->x, src->y)) {
         LightCell* lc = &LIGHT(src->x, src->y, nz);
         int r = lc->blockR + src->r;
         int g = lc->blockG + src->g;
@@ -242,13 +293,15 @@ static void PropagateBlockLight(LightSource* src) {
 
             // Additive blending — lights accumulate, creating color mixing
             // Red torch + blue crystal = purple where they overlap
-            LightCell* lc = &LIGHT(nx, ny, nz);
-            int r = lc->blockR + scaledR;
-            int g = lc->blockG + scaledG;
-            int b = lc->blockB + scaledB;
-            lc->blockR = (uint8_t)(r > 255 ? 255 : r);
-            lc->blockG = (uint8_t)(g > 255 ? 255 : g);
-            lc->blockB = (uint8_t)(b > 255 ? 255 : b);
+            if (InBlockClip(nx, ny)) {
+                LightCell* lc = &LIGHT(nx, ny, nz);
+                int r = lc->blockR + scaledR;
+                int g = lc->blockG + scaledG;
+                int b = lc->blockB + scaledB;
+                lc->blockR = (uint8_t)(r > 255 ? 255 : r);
+                lc->blockG = (uint8_t)(g > 255 ? 255 : g);
+                lc->blockB = (uint8_t)(b > 255 ? 255 : b);
+            }
 
             // Only propagate through non-solid cells (light hits walls but stops)
             if (!solid && tail < LIGHT_BFS_MAX) {
@@ -270,6 +323,74 @@ static void ComputeBlockLight(void) {
 // Full recompute
 // --------------------------------------------------------------------------
 
+// Relight the cells that a change inside [x0,x1) x [y0,y1) (all levels) can affect.
+// Sky: recompute the columns of the area E (the change + SKY_LIGHT_MAX), then spread
+// from them and from the 1-cell ring around E, whose values can't have changed (any
+// light path to a cell outside E that crosses the change is longer than SKY_LIGHT_MAX).
+// Block: clear the area (the change + twice the largest radius) and re-add every source
+// that reaches into it, writing only inside it.
+static void RelightArea(int x0, int y0, int x1, int y1) {
+    if (skyLightEnabled) {
+        int ex0 = x0 - SKY_LIGHT_MAX, ey0 = y0 - SKY_LIGHT_MAX, ex1 = x1 + SKY_LIGHT_MAX, ey1 = y1 + SKY_LIGHT_MAX;
+        if (ex0 < 0) ex0 = 0;
+        if (ey0 < 0) ey0 = 0;
+        if (ex1 > gridWidth) ex1 = gridWidth;
+        if (ey1 > gridHeight) ey1 = gridHeight;
+        for (int y = ey0; y < ey1; y++)
+            for (int x = ex0; x < ex1; x++) ComputeSkyColumn(x, y);
+        int head = 0, tail = 0;
+        for (int z = 0; z < gridDepth; z++)
+            for (int y = ey0 - 1; y <= ey1; y++)
+                for (int x = ex0 - 1; x <= ex1; x++) {
+                    if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) continue;
+                    uint8_t level = LIGHT(x, y, z).skyLevel;
+                    if (level <= 1 || CellBlocksLight(GRID(x, y, z))) continue;
+                    if (tail < LIGHT_BFS_MAX) bfsQueue[tail++] = (LightBfsNode){ x, y, z, level };
+                }
+        while (head < tail) {
+            LightBfsNode node = bfsQueue[head++];
+            uint8_t newLevel = node.level - 1;
+            if (newLevel == 0) continue;
+            static const int dx[] = {1, -1, 0, 0};
+            static const int dy[] = {0, 0, 1, -1};
+            for (int d = 0; d < 4; d++) {
+                int nx = node.x + dx[d], ny = node.y + dy[d];
+                if (nx < ex0 || nx >= ex1 || ny < ey0 || ny >= ey1) continue;
+                if (CellBlocksLight(GRID(nx, ny, node.z))) continue;
+                if (LIGHT(nx, ny, node.z).skyLevel < newLevel) {
+                    LIGHT(nx, ny, node.z).skyLevel = newLevel;
+                    if (tail < LIGHT_BFS_MAX) bfsQueue[tail++] = (LightBfsNode){ nx, ny, node.z, newLevel };
+                }
+            }
+        }
+    }
+    if (blockLightEnabled) {
+        int rb = lightDirtyMaxIntensity;
+        for (int i = 0; i < lightSourceCount; i++)
+            if (lightSources[i].active && lightSources[i].intensity > rb) rb = lightSources[i].intensity;
+        int m = 2 * rb + 2;
+        blockClipX0 = x0 - m; blockClipY0 = y0 - m; blockClipX1 = x1 + m; blockClipY1 = y1 + m;
+        if (blockClipX0 < 0) blockClipX0 = 0;
+        if (blockClipY0 < 0) blockClipY0 = 0;
+        if (blockClipX1 > gridWidth) blockClipX1 = gridWidth;
+        if (blockClipY1 > gridHeight) blockClipY1 = gridHeight;
+        for (int z = 0; z < gridDepth; z++)
+            for (int y = blockClipY0; y < blockClipY1; y++)
+                for (int x = blockClipX0; x < blockClipX1; x++) {
+                    LightCell* c = &LIGHT(x, y, z);
+                    if (c->blockR | c->blockG | c->blockB) { c->blockR = 0; c->blockG = 0; c->blockB = 0; }
+                }
+        for (int i = 0; i < lightSourceCount; i++) {
+            LightSource* s = &lightSources[i];
+            if (!s->active) continue;
+            int r = s->intensity + 1;
+            if (s->x + r < blockClipX0 || s->x - r >= blockClipX1 || s->y + r < blockClipY0 || s->y - r >= blockClipY1) continue;
+            PropagateBlockLight(s);
+        }
+        blockClipX0 = 0; blockClipY0 = 0; blockClipX1 = 1 << 30; blockClipY1 = 1 << 30;
+    }
+}
+
 void RecomputeLighting(void) {
     if (skyLightEnabled) {
         ComputeSkyColumns();
@@ -287,11 +408,27 @@ void RecomputeLighting(void) {
         ClearBlockLight();
     }
     lightingDirty = false;
+    ClearLightDirtyChunks();
 }
 
 void UpdateLighting(void) {
-    if (!lightingDirty) return;
-    RecomputeLighting();
+    if (lightingDirty) { RecomputeLighting(); return; }
+    if (lightDirtyCount == 0) return;
+    if (lightDirtyCX != (gridWidth + LIGHT_CHUNK - 1) / LIGHT_CHUNK || lightDirtyCY != (gridHeight + LIGHT_CHUNK - 1) / LIGHT_CHUNK) {
+        RecomputeLighting();                     // the grid changed size since the marks
+        return;
+    }
+    // Many scattered changes: one full pass is cheaper than many overlapping areas
+    if (lightDirtyCount * 8 > lightDirtyCX * lightDirtyCY) { RecomputeLighting(); return; }
+    for (int cy = 0; cy < lightDirtyCY; cy++)
+        for (int cx = 0; cx < lightDirtyCX; cx++) {
+            if (!lightDirtyChunks[cy * lightDirtyCX + cx]) continue;
+            int x0 = cx * LIGHT_CHUNK, y0 = cy * LIGHT_CHUNK;
+            int x1 = x0 + LIGHT_CHUNK < gridWidth ? x0 + LIGHT_CHUNK : gridWidth;
+            int y1 = y0 + LIGHT_CHUNK < gridHeight ? y0 + LIGHT_CHUNK : gridHeight;
+            RelightArea(x0, y0, x1, y1);
+        }
+    ClearLightDirtyChunks();
 }
 
 // --------------------------------------------------------------------------
@@ -304,11 +441,11 @@ int AddLightSource(int x, int y, int z, uint8_t r, uint8_t g, uint8_t b, uint8_t
         if (lightSources[i].active &&
             lightSources[i].x == x && lightSources[i].y == y && lightSources[i].z == z) {
             // Update existing
+            InvalidateLightSourceAt(x, y, z, lightSources[i].intensity > intensity ? lightSources[i].intensity : intensity);
             lightSources[i].r = r;
             lightSources[i].g = g;
             lightSources[i].b = b;
             lightSources[i].intensity = intensity;
-            lightingDirty = true;
             return i;
         }
     }
@@ -318,7 +455,7 @@ int AddLightSource(int x, int y, int z, uint8_t r, uint8_t g, uint8_t b, uint8_t
         if (!lightSources[i].active) {
             lightSources[i] = (LightSource){ x, y, z, r, g, b, intensity, true };
             if (i >= lightSourceCount) lightSourceCount = i + 1;
-            lightingDirty = true;
+            InvalidateLightSourceAt(x, y, z, intensity);
             return i;
         }
     }
@@ -330,7 +467,7 @@ void RemoveLightSource(int x, int y, int z) {
         if (lightSources[i].active &&
             lightSources[i].x == x && lightSources[i].y == y && lightSources[i].z == z) {
             lightSources[i].active = false;
-            lightingDirty = true;
+            InvalidateLightSourceAt(x, y, z, lightSources[i].intensity);
             // Shrink high water mark
             while (lightSourceCount > 0 && !lightSources[lightSourceCount - 1].active) {
                 lightSourceCount--;

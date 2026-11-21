@@ -601,3 +601,19 @@ Each is its own project; order follows the infinite-world doc, adjusted for what
 - `../../vision/infinite-world-exploration.md`: streaming, delta saves, entity abstraction research.
 - `../pathfinding/per-chunk-edge-storage.md`: the local graph updates.
 - `unified-roadmap.md`: puts the infinite world in Era 3+.
+
+### Steady-state tick at 2048 (2026-11-21)
+
+`--headless --scenario world --set scenarioSize 2048 --ticks 600 --profile`: 21.2 ms/tick average.
+Lighting 4.8, Trees 4.7, Move 5.9 (mostly the first-tick spike), Grid 1.8, GroundWear 1.3, Rooms 0.8
+(spikes: Lighting 750 ms, Rooms 487, GroundWear 405, Repath 363).
+
+**Lighting relights locally** (`simulation/lighting.c`). Every cell change reported to the
+pathfinder (`NavOnChunkDirty`) and every light source add/remove used to trigger a full relight
+of the map (~750 ms at 2048). Now they mark their 16x16 chunk (`InvalidateLightingAt`), and
+`UpdateLighting` relights only around dirty chunks: sky columns within SKY_LIGHT_MAX, spread from
+those plus the unchanged ring around them; block light cleared within twice the largest source
+radius and re-added by the sources reaching in (writes clipped, BFS unchanged). More than 1/8 of
+the chunks dirty, or `InvalidateLighting()` (loads, settings, scenarios): full recompute as before.
+`test_lighting` checks local == full after 60 rounds of random walls/floors/torches. Lighting 4.8 ->
+1.2 ms/tick, tick 21.2 -> 16.5 ms.
