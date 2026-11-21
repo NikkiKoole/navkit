@@ -101,7 +101,7 @@ int RefineLeg(Point from, Point to, Point* out, int maxLen);
 extern bool useCoarsePaths;
 // Shared-goal fields (see pathfinding.c): goals many movers request get a cached
 // hierarchical flow field; HPA* requests for them walk it instead of searching
-extern bool useSharedGoalFields;
+extern bool useSharedGoalFields;   // OFF by default (slower than HPA* now; pathfinding.c)
 extern int sharedGoalHits, sharedGoalBuilds, sharedGoalFallbacks, sharedGoalTooBig;
 extern double findPathTotalMs;     // wall-clock ms spent in FindPath (works headless)
 extern int findPathCalls;

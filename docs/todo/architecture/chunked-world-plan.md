@@ -733,3 +733,27 @@ straight-line heuristic pulls the search the wrong way and it floods. So the lev
 needed, is a heuristic that knows about detours (landmarks / ALT: exact distances to ~16 fixed
 entrances, ~16 MB at 2048) or a coarser level. Not needed for normal play (trips mostly under
 ~100 cells); revisit if real games show detour stalls.
+
+### Shared goal fields: off by default (2026-11-21)
+
+`useSharedGoalFields` (console `sharedGoalFields`) is now **false by default**. Measured with
+the hubs scenario (200 movers between 6 hubs, 3600 ticks), fields on -> off:
+
+| map | path time | worst later tick | arrivals |
+|---|---|---|---|
+| 128 | 808 -> 158 ms | 12.9 -> 2.2 ms | 1159 / 1158 |
+| 512 | 5530 -> 92 ms | 348 -> 6 ms | 397 / 414 |
+| 2048 | 1618 -> 556 ms | 293 -> 140 ms | 209 / 209 |
+
+Ladder scenarios: identical with and without (HPA* already includes the ladder queue cost).
+Why fields lose now: HPA* got cheap (0.1-1.6 ms per request after coarse routes, region checks,
+3D chunks); a field's first walk builds chunk fields in a cascade (480-1435 of 1024 on a 512
+map, 20-70 ms); the 2 s refresh drops them and repeats it; on 2048 the whole-graph part alone is
+70-100 ms and the walk always goes over the 1000-chunk limit, so the field is dropped (retried
+per busy goal every 60 s).
+
+Options considered: (A, done) default off, code and toggle kept, scenarios-check runs hubs with
+fields on so the path doesn't rot; (B) also remove the game-side plumbing (~150 lines in
+pathfinding.c), keep the library's NavHFlow (fuzz-tested); (C) repair the fields (cached incoming
+index, refresh only on change, build only along the walked path): large, risky, and little to
+gain while a search costs ~1 ms. Revisit only for thousands of movers to one point.

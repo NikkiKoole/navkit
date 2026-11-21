@@ -200,6 +200,17 @@ bool IsReachable(Point a, Point b) {
 // Shared-goal fields: many movers going to the same few places
 // =============================================================================
 //
+// *** OFF BY DEFAULT since 2026-11-21 (useSharedGoalFields = false) ***
+// Measured slower than plain HPA* at every map size once HPA* got cheap (coarse routes,
+// region checks, 3D chunks): 200 movers between 6 hubs, path time / worst tick, on -> off:
+// 128: 808 -> 158 ms / 12.9 -> 2.2 ms; 512: 5530 -> 92 ms / 348 -> 6 ms;
+// 2048: 1618 -> 556 ms / 293 -> 140 ms; same arrivals; ladder scenarios identical. Why: the
+// first walk builds chunk fields in a cascade (most of the map), the 2 s refresh drops them
+// all, and on big maps the field always goes over its build limit after ~70-100 ms of
+// whole-graph work. Kept (console `sharedGoalFields 1`, scenarios-check runs hubs with it
+// on) until we decide to remove it; options and numbers in
+// docs/todo/architecture/chunked-world-plan.md ("Shared goal fields: off by default").
+//
 // A goal requested SHARED_GOAL_PROMOTE times within SHARED_GOAL_WINDOW game-seconds
 // gets a cached hierarchical flow field (NavHFlow); later HPA* requests for it
 // walk the field instead of searching (paths within ~1% of optimal, see
@@ -213,7 +224,7 @@ bool IsReachable(Point a, Point b) {
 // large-worlds.md). Over the limit the request uses HPA*, the field is dropped and the
 // goal isn't promoted again for SHARED_GOAL_BLOCK game-seconds.
 
-bool useSharedGoalFields = true;
+bool useSharedGoalFields = false;   // OFF by default: see the note above
 int sharedGoalHits = 0, sharedGoalBuilds = 0, sharedGoalFallbacks = 0, sharedGoalTooBig = 0;
 double findPathTotalMs = 0.0;
 int findPathCalls = 0;
