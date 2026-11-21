@@ -733,6 +733,7 @@ RLAPI void rlSetTexture(unsigned int id);               // Set current texture f
 RLAPI void rlQuadFast(unsigned int textureId, float x0, float y0, float x1, float y1,
                       float u0, float v0, float u1, float v1,
                       unsigned char r, unsigned char g, unsigned char b, unsigned char a);
+RLAPI int rlNavKitPendingVertices(void);                 // NavKit patch: vertices waiting in the active batch
 
 //------------------------------------------------------------------------------------------------------------------------
 
@@ -1680,6 +1681,16 @@ void rlSetTexture(unsigned int id)
         }
 #endif
     }
+}
+
+// NavKit patch: vertices added to the active batch since its last draw (0 = nothing pending)
+int rlNavKitPendingVertices(void)
+{
+#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_ES2)
+    return RLGL.State.vertexCounter;
+#else
+    return 0;
+#endif
 }
 
 // NavKit patch: see the declaration. The vertices, texture coordinates, normal and color are

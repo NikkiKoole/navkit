@@ -296,12 +296,20 @@ What's left zoomed far out (~180K cells, ~500K quads): the per-cell work in Draw
 (sprite + tint per cell) and raylib's vertex format (pos + uv + normal + color = 36 bytes per
 vertex, ~144 per quad: ~70 MB uploaded per frame at zoom 0.15).
 
+4. **World batch** (`src/render/world_batch.c/.h`, done): inside `WorldBatchBegin/End` (main.c:
+   the DrawCells passes and DrawItems) FastSprite/FastRect push 36-byte instances (rect, uv rect,
+   color) drawn with one instanced call through our own shader, a copy of raylib's default one
+   (same arithmetic, same triangle order, MVP multiplied like rlgl). Rectangles sample a pure
+   white atlas texel, so everything is one texture. Begin draws raylib's pending batch first,
+   End draws ours: order unchanged; End warns if a raylib call slipped into the scope
+   (`rlNavKitPendingVertices`, NavKit patch). Zoom 0.15: 9.3 -> 7.4 ms, zoom 0.25: 3.95 -> 2.9;
+   7 views pixel-identical; a deliberately darkened shader changes 88% of pixels (the path is
+   really used).
+
 ### Next options (not started)
 
-- **Own batch with a compact format and our own shader** (instanced quads: x, y, w, h, uv rect,
-  color ~ 28 bytes vs 144): ~5x less upload, and the base for shader effects (per-sprite data
-  such as effect type / water depth / temperature, which raylib's batch can't carry). The basic
-  shader reproduces today's look exactly (prove with --screenshot).
+- **Shader data per sprite**: the world batch's instance can carry more (effect type, water
+  depth, temperature) for effects; the basic shader stays the reference look.
 - **Shader effects on top** (discussed, user interested, not decided): water ripples / depth
   colour, heat shimmer and glow (world into a render texture + a final full-screen pass), light
   as a per-cell texture multiplied in the shader (also removes GetLightColor from the CPU).

@@ -11,11 +11,13 @@
 #define FAST_DRAW_H
 
 #include "raylib.h"
+#include "world_batch.h"
 
 // vendor/raylib/rlgl.h (NavKit patch)
 void rlQuadFast(unsigned int textureId, float x0, float y0, float x1, float y1,
                 float u0, float v0, float u1, float v1,
                 unsigned char r, unsigned char g, unsigned char b, unsigned char a);
+void rlDrawRenderBatchActive(void);
 
 static inline void FastSprite(Texture2D tex, Rectangle src, Rectangle dest, Color tint) {
     if (tex.id == 0) return;   // DrawTexturePro draws nothing either
@@ -24,12 +26,30 @@ static inline void FastSprite(Texture2D tex, Rectangle src, Rectangle dest, Colo
         return;
     }
     float w = (float)tex.width, h = (float)tex.height;
+    if (worldBatchActive) {
+        if (tex.id == worldBatchTexId) {
+            WorldBatchPush(dest.x, dest.y, dest.x + dest.width, dest.y + dest.height,
+                           src.x / w, src.y / h, (src.x + src.width) / w, (src.y + src.height) / h, tint);
+            return;
+        }
+        WorldBatchFlush();   // another texture: keep the order, draw it through raylib now
+        rlQuadFast(tex.id, dest.x, dest.y, dest.x + dest.width, dest.y + dest.height,
+                   src.x / w, src.y / h, (src.x + src.width) / w, (src.y + src.height) / h,
+                   tint.r, tint.g, tint.b, tint.a);
+        rlDrawRenderBatchActive();
+        return;
+    }
     rlQuadFast(tex.id, dest.x, dest.y, dest.x + dest.width, dest.y + dest.height,
                src.x / w, src.y / h, (src.x + src.width) / w, (src.y + src.height) / h,
                tint.r, tint.g, tint.b, tint.a);
 }
 
 static inline void FastRect(Rectangle rec, Color c) {
+    if (worldBatchActive) {   // a white atlas texel: white * c, as raylib's white texture gives
+        WorldBatchPush(rec.x, rec.y, rec.x + rec.width, rec.y + rec.height,
+                       worldBatchWhiteU, worldBatchWhiteV, worldBatchWhiteU, worldBatchWhiteV, c);
+        return;
+    }
     Texture2D t = GetShapesTexture();
     Rectangle s = GetShapesTextureRectangle();
     rlQuadFast(t.id, rec.x, rec.y, rec.x + rec.width, rec.y + rec.height,

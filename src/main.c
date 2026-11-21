@@ -23,6 +23,7 @@
 #include "core/sim_step.h"
 #include "core/selection.h"
 #include "render/inspector.h"
+#include "render/world_batch.h"
 void rlDrawRenderBatchActive(void);   // rlgl (part of raylib): flush pending draws
 #include "render/play_hud.h"
 
@@ -1398,6 +1399,7 @@ int main(int argc, char** argv) {
     InitWindow(screenWidth, screenHeight, "HPA* Pathfinding");
     SetExitKey(0);  // Disable ESC closing the window - we use ESC for input navigation
     atlas = AtlasLoadEmbedded();
+    if (!WorldBatchInit(atlas)) TraceLog(LOG_WARNING, "World batch unavailable: terrain drawn through raylib's batch");
     SetTextureFilter(atlas, TEXTURE_FILTER_POINT);
     Font comicFont = LoadEmbeddedFont();
     Font timesRomanFont = LoadEmbeddedTimesRomanFont();
@@ -1730,6 +1732,7 @@ int main(int argc, char** argv) {
             DrawFrontView();
         } else {
         PROFILE_BEGIN(DrawCells);
+        WorldBatchBegin();   // these passes draw only through FastSprite/FastRect (world_batch.h)
         DrawCellGrid();
         DrawGrassOverlay();
         DrawPlantOverlay();
@@ -1743,6 +1746,7 @@ int main(int argc, char** argv) {
         DrawSmoke();
         DrawSteam();
         DrawTemperature();
+        WorldBatchEnd();
         DrawSimSources();
         PROFILE_END(DrawCells);
         if (inputAction == ACTION_WORK_GATHER) {
@@ -1771,7 +1775,9 @@ int main(int argc, char** argv) {
         DrawPath();
         DrawAgents();
         if (showItems) {
+            WorldBatchBegin();
             DrawItems();
+            WorldBatchEnd();
         }
         DrawLightSources();
         if (showMovers) {

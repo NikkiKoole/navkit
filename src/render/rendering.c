@@ -679,8 +679,8 @@ static void DrawCellGrid(void) {
                 float fillW = size - insetW - insetE + (wallEast ? overlap : 0);
                 float fillH = size - insetN - insetS + (wallSouth ? overlap : 0);
 
-                if (fillW > 0 && fillH > 0) {
-                    DrawRectangle((int)fillX, (int)fillY, (int)(fillW + 0.5f), (int)(fillH + 0.5f), cutawayColor);
+                if (fillW > 0 && fillH > 0) {   // = DrawRectangle(int x, y, w, h)
+                    FastRect((Rectangle){(float)(int)fillX, (float)(int)fillY, (float)(int)(fillW + 0.5f), (float)(int)(fillH + 0.5f)}, cutawayColor);
                 }
             }
         }

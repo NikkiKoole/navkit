@@ -84,6 +84,7 @@
 #include "core/sim_step.c"
 
 // Rendering
+#include "render/world_batch.c"
 #include "render/rendering.c"
 #include "render/tooltips.c"
 #include "render/inspector.c"
