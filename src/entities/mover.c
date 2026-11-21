@@ -385,6 +385,13 @@ static bool MoverHasPriority(int a, int b) {
     return a < b;
 }
 
+typedef struct { int* idx; int n, cap; } YieldCand;
+static void YieldCollect(int j, float distSq, void* user) {
+    (void)distSq;
+    YieldCand* c = user;
+    if (c->n < c->cap) c->idx[c->n++] = j;
+}
+
 static bool MoverShouldYield(int i) {
     Mover* m = &movers[i];
     int cx = (int)(m->x / CELL_SIZE), cy = (int)(m->y / CELL_SIZE), z = (int)m->z;
@@ -404,7 +411,20 @@ static bool MoverShouldYield(int i) {
     float myDx = moverPaths[i][m->pathIndex].x * CELL_SIZE + CELL_SIZE * 0.5f - m->x;
     float myDy = moverPaths[i][m->pathIndex].y * CELL_SIZE + CELL_SIZE * 0.5f - m->y;
 
-    for (int j = 0; j < moverCount; j++) {
+    // Candidates from the spatial grid (built this tick; the radius covers the box
+    // below plus a grid cell of slack for movers that moved since), else everyone
+    static int* cand = NULL;
+    static int candCap = 0;
+    int nc = 0;
+    if (moverGrid.cellCounts) {
+        if (candCap < moverCount) { free(cand); candCap = moverCount; cand = malloc((size_t)candCap * sizeof(int)); }
+        float r = (YIELD_LOOKAHEAD_CELLS + 4) * CELL_SIZE * 1.4143f + MOVER_GRID_CELL_SIZE;
+        YieldCand yc = {cand, 0, candCap};
+        QueryMoverNeighbors(m->x, m->y, r, i, YieldCollect, &yc);
+        nc = yc.n;
+    } else nc = -1;
+    for (int c = 0; nc < 0 ? c < moverCount : c < nc; c++) {
+        int j = nc < 0 ? c : cand[c];
         if (j == i) continue;
         const Mover* o = &movers[j];
         if (!o->active || o->pathIndex < 0 || (int)o->z != z) continue;

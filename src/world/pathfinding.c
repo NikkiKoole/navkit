@@ -227,7 +227,7 @@ int findPathCalls = 0;
 #define SHARED_GOAL_BLOCK   60.0
 
 typedef struct { Point goal; NavHFlow* h; double lastUse, builtAt; } SharedGoal;
-typedef struct { Point goal; int count; double firstAt, blockedUntil; } SeenGoal;
+typedef struct { Point goal; int count; double firstAt, blockedUntil; Point lastStart; } SeenGoal;
 static SharedGoal sharedGoals[SHARED_GOAL_SLOTS];
 static SeenGoal seenGoals[SHARED_GOAL_SEEN];
 static NavWorld* sharedGoalWorld = NULL;
@@ -243,14 +243,17 @@ void ClearSharedGoalFields(void) {
         if (sharedGoals[i].h) NavHFlowDestroy(sharedGoals[i].h);
         sharedGoals[i] = (SharedGoal){{-1, -1, -1}, NULL, 0, 0};
     }
-    for (int i = 0; i < SHARED_GOAL_SEEN; i++) seenGoals[i] = (SeenGoal){{-1, -1, -1}, 0, 0, 0};
+    for (int i = 0; i < SHARED_GOAL_SEEN; i++) seenGoals[i] = (SeenGoal){{-1, -1, -1}, 0, 0, 0, {-1, -1, -1}};
     sharedGoalWorld = NULL;
 }
 
 static bool SamePoint(Point a, Point b) { return a.x == b.x && a.y == b.y && a.z == b.z; }
 
 // Cached field for this goal: existing, or newly promoted after repeated requests
-static NavHFlow* SharedGoalField(NavWorld* w, Point goal, double now) {
+// from different starts (one mover repathing to its own goal doesn't count: a field
+// pays off when several movers share the goal, and rebuilding one on a big map costs
+// more than many searches)
+static NavHFlow* SharedGoalField(NavWorld* w, Point start, Point goal, double now) {
     if (sharedGoalWorld != w) { ClearSharedGoalFields(); sharedGoalWorld = w; }
     for (int i = 0; i < SHARED_GOAL_SLOTS; i++) {
         SharedGoal* g = &sharedGoals[i];
@@ -265,10 +268,12 @@ static NavHFlow* SharedGoalField(NavWorld* w, Point goal, double now) {
         if (SamePoint(seenGoals[i].goal, goal)) { slot = i; break; }
         if (seenGoals[i].firstAt < seenGoals[oldest].firstAt) oldest = i;
     }
-    if (slot < 0) { slot = oldest; seenGoals[slot] = (SeenGoal){goal, 0, now, 0}; }
+    if (slot < 0) { slot = oldest; seenGoals[slot] = (SeenGoal){goal, 0, now, 0, {-1, -1, -1}}; }
     SeenGoal* sgl = &seenGoals[slot];
     if (now < sgl->firstAt || now - sgl->firstAt > SHARED_GOAL_WINDOW) { sgl->count = 0; sgl->firstAt = now; }
     if (now < sgl->blockedUntil && sgl->blockedUntil - now <= SHARED_GOAL_BLOCK) return NULL;   // too big recently
+    if (SamePoint(sgl->lastStart, start)) return NULL;   // same requester again
+    sgl->lastStart = start;
     if (++sgl->count < SHARED_GOAL_PROMOTE) return NULL;
     // Promote: take a free slot or the least recently used
     int lru = 0;
@@ -362,7 +367,7 @@ static int FindPathImpl(PathAlgorithm algo, Point start, Point goal, Point* outP
     }
     if (useSharedGoalFields && algo == PATH_ALGO_HPA && !SamePoint(start, goal)) {
         double now = gameTime;
-        NavHFlow* h = SharedGoalField(w, goal, now);
+        NavHFlow* h = SharedGoalField(w, start, goal, now);
         if (h) {
             h->buildBudget = SHARED_GOAL_FIELD_LIMIT;
             int n = WalkSharedGoalField(w, h, start, goal, outPath, maxLen);
