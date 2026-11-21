@@ -1114,6 +1114,32 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
         HeadlessProfilePrint(ticks);
         if (setupMs > 0) printf("Scenario setup (world gen + graph): %.0f ms\n", setupMs);
         GridLayersReport();
+        {   // HPA* graph and nav scratch: allocated sizes (resident can be less)
+            NavWorld* nw = NavGame();
+            size_t cells = (size_t)nw->width * nw->height * nw->depth;
+            size_t layerCells = (size_t)nw->width * nw->height;
+            size_t chunks = (size_t)nw->depth * nw->chunksX * nw->chunksY;
+            size_t edgeCapBytes = 0;
+            for (int i = 0; i < nw->entranceNum; i++) edgeCapBytes += (size_t)nw->adj[i].cap * sizeof(NavGraphEdge);
+            double MB = 1024.0 * 1024.0;
+            printf("Nav memory (allocated): total %.0f MB\n", NavMemoryUsage(nw) / MB);
+            int sameChunk = 0;   // ladder/ramp entrances have chunk1 == chunk2
+            for (int i = 0; i < nw->entranceNum; i++) if (nw->entranceList[i].chunk1 == nw->entranceList[i].chunk2) sameChunk++;
+            printf("  entrances on a chunk border: %d, ladder/ramp entrances: %d (%d ramp links, %d ladder links)\n",
+                   nw->entranceNum - sameChunk, sameChunk, nw->rampNum, nw->ladderNum);
+            printf("  entrances %d (cap %d): %.0f MB   edges %d: %.0f MB (vector capacity %.0f MB)\n",
+                   nw->entranceNum, nw->entranceCap,
+                   nw->entranceCap * (sizeof(NavEntrance) + sizeof(int) * 2 + sizeof(unsigned) + sizeof(NavEdgeVec)) / MB,
+                   nw->edgeNum, nw->edgeNum * sizeof(NavGraphEdge) / MB, edgeCapBytes / MB);
+            printf("  flat edge cache: %.0f MB   abstract nodes: %.0f MB   chunk entrance index: %.0f MB\n",
+                   nw->flatCap * sizeof(NavGraphEdge) / MB,
+                   (nw->entranceCap + 2) * (sizeof(NavAbstractNode) + sizeof(int) * 3) / MB,
+                   chunks * sizeof(*nw->chunkEnts) / MB);
+            printf("  per-layer scratch: %.0f MB   per-cell A* scratch: %.0f MB   regions: %.0f MB\n",
+                   layerCells * (sizeof(NavChunkNode) + sizeof(int) * 2 + sizeof(NavPoint)) / MB,
+                   nw->aG ? cells * (sizeof(int) * 5 + 1 + sizeof(uint32_t)) / MB : 0.0,
+                   (nw->regLocal ? cells * sizeof(uint16_t) : 0) / MB + nw->regNodeCap * sizeof(int) / MB);
+        }
         double gs = WallMs();
         BuildEntrances(); BuildGraph();
         printf("Full graph rebuild: %.0f ms (%d entrances, %d edges)\n", WallMs() - gs,

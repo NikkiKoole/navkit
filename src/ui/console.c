@@ -1303,6 +1303,7 @@ void Console_RegisterGameVars(void) {
     // Pathfinding & Movement (from mover.c)
     Console_RegisterVar("scenarioMovers", &scenarioMovers, CVAR_INT);
     Console_RegisterVar("scenarioSize", &scenarioSize, CVAR_INT);
+    Console_RegisterVar("scenarioChunk", &scenarioChunk, CVAR_INT);
     Console_RegisterVar("sharedGoalFields", &useSharedGoalFields, CVAR_BOOL);
     Console_RegisterVar("coarsePaths", &useCoarsePaths, CVAR_BOOL);
     Console_RegisterVar("trainSpeed", &trainSpeed, CVAR_FLOAT);

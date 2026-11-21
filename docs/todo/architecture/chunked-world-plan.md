@@ -458,6 +458,27 @@ false difference), byte-identical for world 512/100, crafting, mood, train, ladd
 dollhouse, sandbox; `--inspect` output identical for v94 and v95 files; the v93 save migrates
 identically.
 
+### The HPA* graph at big sizes (measured 2026-11-21)
+
+`--headless --profile` now also prints a nav memory breakdown (entrances, edges, vector
+capacity, flat cache, chunk index, scratch, regions) and how many entrances sit on chunk borders
+vs at ladders/ramps. `--set scenarioChunk N` sets the HPA* chunk size of sized scenarios.
+
+world scenario, 1024: 297,922 entrances, 6.6M edges, nav 215 MB allocated (+45 MB unused edge
+vector capacity); 2048: 1.2M entrances, 27M edges (~4x). Graph build 4.0 s at 1024, 16.6 s at
+2048. First-tick spike at 2048 (~16 s in Move): 100 movers' abstract searches (`nav_AbsRelax`),
+~160 ms each, to random goals across the map.
+
+**85% of the entrances are ramps**: at 1024 only 45,504 entrances are on chunk borders; 252,418
+are ladder/ramp entrances (126,198 ramp links from the hills' natural slopes, 2 entrances each).
+The search inside a chunk is per z-level, so every ramp, even one entirely inside a chunk, must
+be a graph node to connect two levels, and gets edges to the other entrances of its chunk. That
+drives the edge count, the build time (all entrance pairs per chunk) and the abstract search
+(it crawls through a million ramp nodes).
+
+Chunk size 32 instead of 16 (1024): entrances 298K -> 274K only, edges 6.6M -> 10.1M, build 4.0
+-> 8.6 s, tick 9.0 -> 10.0 ms: worse. Bigger chunks are not the fix.
+
 ## Allocation model (for steps 2-3)
 
 Group memory by lifetime instead of one allocation per layer. Three small pieces, no

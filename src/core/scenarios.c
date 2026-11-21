@@ -35,6 +35,8 @@ static const Scenario* currentScenario = NULL;
 int scenarioMovers = 0;
 // --set scenarioSize N: square map size for scenarios that have a size (world, hubs, ...)
 int scenarioSize = 0;
+// --set scenarioChunk N: HPA* chunk size for sized scenarios (default 16)
+int scenarioChunk = 16;
 
 // West part of the ground (z=1), 15 per row, rows 2 apart: crowd-size experiments
 static void SpawnGroundCrowd(int n) {
@@ -129,8 +131,9 @@ void ScenarioResetWorld(const char* terrain) {
 }
 
 void ScenarioResetWorldSized(const char* terrain, int w, int h) {
-    if (w > 0 && h > 0 && (gridWidth != w || gridHeight != h))
-        InitGridWithSizeAndChunkSize(w, h, 16, 16);
+    int cs = scenarioChunk > 0 ? scenarioChunk : 16;
+    if (w > 0 && h > 0 && (gridWidth != w || gridHeight != h || chunkWidth != cs || chunkHeight != cs))
+        InitGridWithSizeAndChunkSize(w, h, cs, cs);
     flatWorldW = w > 0 ? w : 32;
     flatWorldH = h > 0 ? h : 32;
     ScenarioResetWorld(terrain);
