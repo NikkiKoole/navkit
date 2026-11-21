@@ -842,6 +842,52 @@ static void EditWorld(NavWorld* w) {
     else { NavUpdateDirty(w); CheckIncrementalMatchesFull(w); }
 }
 
+// Graph builds hand their per-chunk searches to NavWorld.parallelFor. This one runs
+// them backwards (the results must not depend on the order); built with -DFZ_THREADS it
+// uses real threads instead (run under -fsanitize=thread to check the searches only read).
+#ifdef FZ_THREADS
+#include <pthread.h>
+#include <stdatomic.h>
+typedef struct { void (*fn)(void*, int); void* ctx; int n; atomic_int next; } FzPar;
+static void* FzParWorker(void* p) {
+    FzPar* j = p;
+    for (int i; (i = atomic_fetch_add(&j->next, 1)) < j->n;) j->fn(j->ctx, i);
+    return NULL;
+}
+static void FzParallelFor(void* user, int n, void (*fn)(void* ctx, int i), void* ctx) {
+    (void)user;
+    FzPar j; j.fn = fn; j.ctx = ctx; j.n = n; atomic_init(&j.next, 0);
+    pthread_t th[3];
+    for (int k = 0; k < 3; k++) pthread_create(&th[k], NULL, FzParWorker, &j);
+    FzParWorker(&j);
+    for (int k = 0; k < 3; k++) pthread_join(th[k], NULL);
+}
+#else
+static void FzParallelFor(void* user, int n, void (*fn)(void* ctx, int i), void* ctx) {
+    (void)user;
+    for (int i = n - 1; i >= 0; i--) fn(ctx, i);
+}
+#endif
+
+// A graph built through parallelFor is exactly the one built without it
+static void CheckParallelBuildSame(NavWorld* w) {
+    NavWorld* f = NavCreate(map.w, map.h, map.d, chunkW, chunkH, &map);
+    f->eightDir = w->eightDir;
+    f->parallelFor = w->parallelFor ? NULL : FzParallelFor;
+    NavBuildEntrances(f);
+    NavBuildGraph(f);
+    if (f->entranceNum != w->entranceNum || f->edgeNum != w->edgeNum)
+        FAIL("parallel build: %d entrances %d edges vs %d / %d", w->entranceNum, w->edgeNum, f->entranceNum, f->edgeNum);
+    else
+        for (int e = 0; e < w->entranceNum; e++)
+            if (w->adj[e].num != f->adj[e].num ||
+                memcmp(w->adj[e].e, f->adj[e].e, (size_t)w->adj[e].num * sizeof(NavGraphEdge))) {
+                FAIL("parallel build: edges of entrance %d differ", e);
+                break;
+            }
+    NavDestroy(f);
+}
+
 int main(int argc, char** argv) {
     int worlds = 60;
     unsigned long long firstSeed = 1;
@@ -868,8 +914,11 @@ int main(int argc, char** argv) {
 
         NavWorld* w = NavCreate(map.w, map.h, map.d, chunkW, chunkH, &map);
         w->eightDir = eight;
+        if (seed & 1) w->parallelFor = FzParallelFor;   // (not Chance: keeps every seed's world)
         NavBuildEntrances(w);
         NavBuildGraph(w);
+        phase = "parallel";
+        CheckParallelBuildSame(w);
 
         // extra cost layout matches NavFlowField's [z][y][x] over the world size
         extraBuf = NULL;

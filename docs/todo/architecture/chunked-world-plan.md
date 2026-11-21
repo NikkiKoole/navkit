@@ -647,3 +647,21 @@ Load 19.7 -> 10.0 s. Loading the 2048 save and saving it again gives the same by
 code; survival and crafting saves loaded and run 500 ticks match too. What's left: graph build
 4.8 s (threading the per-chunk edge searches would cut it most), grid layers 2.6 s, regions
 0.8 s, activity counts 0.55 s.
+
+### Threaded graph build (2026-11-21)
+
+The per-chunk edge searches (box graph + Dijkstra per entrance) only read the world, so
+`NavWorld.parallelFor` (a host hook; the nav library itself has no threads) runs them in
+parallel. Each chunk writes its edges to its own buffer; the buffers are added to the graph in
+chunk order after each batch of 1024 chunks, so the graph is identical with any thread count.
+The game's hook uses pthreads, one thread per core (setting `navThreads`: 0 = per core, 1 = off).
+Incremental updates use it too when more than 2 chunk regions need new edges.
+- 1024 world: graph build 1155 -> 308 ms. 2048: 4.8 -> 1.3 s (8 cores); headless load of the
+  2048 save ~11 -> ~7 s (back to back on the same machine). Incremental update on
+  `bench_nav_update` (512, 3 walls): 11.8 -> 4.7 ms.
+- Peak RSS of the 2048 load varies 0.89-1.02 GB (0.78 GB serial); on the 1024 world the threaded
+  run was lower than serial, so this looks like per-thread allocator caching, not the buffers
+  (< 16 MB per batch).
+- Checks: the fuzz builds odd seeds through a `parallelFor` that runs jobs backwards and compares
+  every entrance's edge list with a serial build (mutation: skipping one job fails 48/60
+  worlds); built with `-DFZ_THREADS -fsanitize=thread` it uses real threads, 200 worlds clean.

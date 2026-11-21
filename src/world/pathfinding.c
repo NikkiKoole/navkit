@@ -13,12 +13,65 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
+#include <stdatomic.h>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 // =============================================================================
 // The game's world
 // =============================================================================
 
 static NavWorld* gameNav = NULL;
+
+// ---- Threads for HPA* graph builds (NavWorld.parallelFor) ----
+// The nav library hands over per-chunk edge searches that only read the grid; it adds
+// their results in a fixed order, so the graph is the same with any thread count.
+int navThreads = 0;   // 0 = one per core, 1 = no threads (setting "navThreads")
+
+#define NAV_MAX_THREADS 32
+typedef struct { void (*fn)(void*, int); void* ctx; int n; atomic_int next; } NavParJob;
+
+static void* NavParWorker(void* p) {
+    NavParJob* j = p;
+    for (;;) {
+        int i = atomic_fetch_add(&j->next, 1);
+        if (i >= j->n) return NULL;
+        j->fn(j->ctx, i);
+    }
+}
+
+static int NavThreadCount(void) {
+    if (navThreads > 0) return navThreads < NAV_MAX_THREADS ? navThreads : NAV_MAX_THREADS;
+    static int cores = 0;
+    if (cores == 0) {
+#ifdef _WIN32
+        const char* env = getenv("NUMBER_OF_PROCESSORS");   // (no windows.h: clashes with raylib)
+        cores = env ? atoi(env) : 1;
+#else
+        cores = (int)sysconf(_SC_NPROCESSORS_ONLN);
+#endif
+        if (cores < 1) cores = 1;
+        if (cores > NAV_MAX_THREADS) cores = NAV_MAX_THREADS;
+    }
+    return cores;
+}
+
+static void NavParallelFor(void* user, int n, void (*fn)(void* ctx, int i), void* ctx) {
+    (void)user;
+    NavParJob job;
+    job.fn = fn; job.ctx = ctx; job.n = n;
+    atomic_init(&job.next, 0);
+    int threads = NavThreadCount();
+    if (threads > n) threads = n;
+    pthread_t th[NAV_MAX_THREADS];
+    int started = 0;
+    for (int k = 1; k < threads; k++)
+        if (pthread_create(&th[started], NULL, NavParWorker, &job) == 0) started++;
+    NavParWorker(&job);   // this thread works too (and does everything if none started)
+    for (int k = 0; k < started; k++) pthread_join(th[k], NULL);
+}
 
 NavWorld* NavGame(void) {
     NavWorld* w = gameNav;
@@ -38,6 +91,7 @@ NavWorld* NavGame(void) {
     // 1.25 cross-map routes on a 2048 world searched 27% faster with the same costs
     // (docs/todo/architecture/chunked-world-plan.md)
     gameNav->absHeuristicPct = 125;
+    gameNav->parallelFor = NavParallelFor;
     return gameNav;
 }
 

@@ -111,6 +111,7 @@ int main(int argc, char** argv) {
     const char* terrain = argc > 3 ? argv[3] : "hillswater";
     uint64_t seed = argc > 4 ? (uint64_t)atoll(argv[4]) : 16;
     int walls = argc > 5 ? atoi(argv[5]) : 3;
+    if (argc > 6) navThreads = atoi(argv[6]);   // graph build threads (0 = one per core)
     SetTraceLogLevel(LOG_WARNING);
 
     InitGridWithSizeAndChunkSize(size, size, 16, 16);

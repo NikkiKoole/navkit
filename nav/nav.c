@@ -1274,8 +1274,23 @@ static bool nav_BoxReversible(const nav_BoxGraph* b, int t) {
 // other can be walked backwards, the reverse edge gets the mirrored cost (HPA*'s
 // usual approximation: exact costs differ slightly by direction); otherwise (a ramp
 // in the way, or no path) the other entrance searches too.
-static void nav_ChunkEdges(NavWorld* w, int chunk, int minX, int minY, int maxX, int maxY,
-                           const int* ents, const bool* needed, int n) {
+typedef struct { int from, to, cost; } nav_PendingEdge;
+typedef struct { nav_PendingEdge* e; int n, cap; bool failed; } nav_EdgeOut;
+
+static void nav_EdgeOutPush(nav_EdgeOut* o, int from, int to, int cost) {
+    if (o->failed) return;
+    if (o->n == o->cap) {
+        int cap = o->cap ? o->cap * 2 : 64;
+        nav_PendingEdge* ne = realloc(o->e, (size_t)cap * sizeof(nav_PendingEdge));
+        if (!ne) { o->failed = true; return; }
+        o->e = ne; o->cap = cap;
+    }
+    o->e[o->n++] = (nav_PendingEdge){from, to, cost};
+}
+
+// Only reads w: this runs on worker threads (see parallelFor).
+static void nav_ChunkEdges(NavWorld* w, int minX, int minY, int maxX, int maxY,
+                           const int* ents, const bool* needed, int n, nav_EdgeOut* out) {
     if (n < 2) return;
     nav_BoxGraph bg;
     int* order = malloc((size_t)n * 5 * sizeof(int));
@@ -1283,7 +1298,7 @@ static void nav_ChunkEdges(NavWorld* w, int chunk, int minX, int minY, int maxX,
     bool* mirrored = calloc((size_t)n * n, sizeof(bool));   // [earlier * n + later] in order
     bool ok = nav_BoxGraphBuild(w, &bg, minX, minY, maxX, maxY);
     if (!order || !costs || !mirrored || !ok) {
-        w->edgeOverflow = true;
+        out->failed = true;
         free(order); free(costs); free(mirrored); nav_BoxGraphFree(&bg);
         return;
     }
@@ -1315,9 +1330,9 @@ static void nav_ChunkEdges(NavWorld* w, int chunk, int minX, int minY, int maxX,
         for (int k = 0; k < nt; k++) {
             if (costs[k] < 0) continue;
             int b = tPos[k], t = ents[order[b]];
-            nav_AddEdge(w, s, t, costs[k], chunk);
+            nav_EdgeOutPush(out, s, t, costs[k]);
             if (b > a && nav_BoxReversible(&bg, tNode[k])) {
-                nav_AddEdge(w, t, s, costs[k], chunk);
+                nav_EdgeOutPush(out, t, s, costs[k]);
                 mirrored[a * n + b] = true;
             }
         }
@@ -1337,6 +1352,57 @@ static void nav_EdgeRegion(const NavWorld* w, int chunk, int* minX, int* minY, i
     if (*maxY > w->height) *maxY = w->height;
 }
 
+// Edges of a list of chunk regions. The searches run through w->parallelFor (they only
+// read the world); each chunk's edges go to its own buffer, added to the graph in list
+// order afterwards so the result never depends on threads. Chunks go in batches to cap
+// the buffered edges. incremental: only pairs with an end touching an affected chunk.
+static inline bool nav_EntranceTouchesAffected(const NavWorld* w, int idx);
+
+typedef struct {
+    NavWorld* w;          // only read by the jobs
+    const int* chunks;
+    nav_EdgeOut* out;
+    bool incremental;
+} nav_EdgeJobs;
+
+static void nav_EdgeJob(void* ctx, int i) {
+    nav_EdgeJobs* J = ctx;
+    NavWorld* w = J->w;
+    int chunk = J->chunks[i], n = w->chunkEntCount[chunk];
+    const int* ents = w->chunkEnts[chunk];
+    bool* needed = NULL;
+    if (J->incremental && !w->affected[chunk]) {   // affected chunk: all its edges were dropped
+        needed = malloc((size_t)n * sizeof(bool));
+        if (!needed) { J->out[i].failed = true; return; }
+        for (int k = 0; k < n; k++) needed[k] = nav_EntranceTouchesAffected(w, ents[k]);
+    }
+    int minX, minY, maxX, maxY;
+    nav_EdgeRegion(w, chunk, &minX, &minY, &maxX, &maxY);
+    nav_ChunkEdges(w, minX, minY, maxX, maxY, ents, needed, n, &J->out[i]);
+    free(needed);
+}
+
+#define NAV_EDGE_BATCH 1024
+static void nav_RunEdgeJobs(NavWorld* w, const int* chunks, int count, bool incremental) {
+    nav_EdgeOut* out = calloc(NAV_EDGE_BATCH, sizeof(nav_EdgeOut));
+    if (!out) { w->edgeOverflow = true; return; }
+    for (int base = 0; base < count; base += NAV_EDGE_BATCH) {
+        int n = count - base < NAV_EDGE_BATCH ? count - base : NAV_EDGE_BATCH;
+        nav_EdgeJobs J = {w, chunks + base, out, incremental};
+        // a thread hand-off costs more than a couple of chunk searches
+        if (w->parallelFor && n > 2) w->parallelFor(w->parallelUser, n, nav_EdgeJob, &J);
+        else for (int i = 0; i < n; i++) nav_EdgeJob(&J, i);
+        for (int i = 0; i < n; i++) {
+            nav_EdgeOut* o = &out[i];
+            if (o->failed) w->edgeOverflow = true;
+            for (int k = 0; k < o->n; k++) nav_AddEdge(w, o->e[k].from, o->e[k].to, o->e[k].cost, chunks[base + i]);
+            o->n = 0; o->failed = false;
+        }
+    }
+    for (int i = 0; i < NAV_EDGE_BATCH; i++) free(out[i].e);
+    free(out);
+}
+
 void NavBuildGraph(NavWorld* w) {
     nav_ClearEdges(w);
     w->edgeOverflow = false;
@@ -1348,11 +1414,14 @@ void NavBuildGraph(NavWorld* w) {
     double startTime = NavHostTime();
     int totalChunks = w->chunksX * w->chunksY;
 
-    for (int chunk = 0; chunk < totalChunks; chunk++) {
-        if (w->chunkEntCount[chunk] < 2) continue;
-        int minX, minY, maxX, maxY;
-        nav_EdgeRegion(w, chunk, &minX, &minY, &maxX, &maxY);
-        nav_ChunkEdges(w, chunk, minX, minY, maxX, maxY, w->chunkEnts[chunk], NULL, w->chunkEntCount[chunk]);
+    int* jobs = malloc((size_t)totalChunks * sizeof(int));
+    int numJobs = 0;
+    if (!jobs) w->edgeOverflow = true;
+    else {
+        for (int chunk = 0; chunk < totalChunks; chunk++)
+            if (w->chunkEntCount[chunk] >= 2) jobs[numJobs++] = chunk;
+        nav_RunEdgeJobs(w, jobs, numJobs, false);
+        free(jobs);
     }
 
     nav_AddVerticalLinkEdges(w, false);
@@ -1682,30 +1751,23 @@ static void nav_RebuildAffectedEdges(NavWorld* w) {
         for (int k = 0; k < w->chunkEntCount[c]; k++) nav_StripEdgesTagged(w, w->chunkEnts[c][k], c);
     }
 
-    // 3. One multi-target Dijkstra per affected entrance
-    bool* needed = NULL; int neededCap = 0;
-    for (int chunk = 0; chunk < totalChunks; chunk++) {
-        int numEnts = w->chunkEntCount[chunk];
-        if (numEnts < 2) continue;
-        if (numEnts > neededCap) {
-            bool* nn = realloc(needed, (size_t)numEnts * sizeof(bool));
-            if (!nn) { w->edgeOverflow = true; continue; }
-            needed = nn; neededCap = numEnts;
+    // 3. One multi-target Dijkstra per affected entrance: chunk regions holding pairs
+    // with an affected end (edges are directed, so unaffected entrances need their
+    // edges INTO affected ones too)
+    int* jobs = malloc((size_t)totalChunks * sizeof(int));
+    int numJobs = 0;
+    if (!jobs) w->edgeOverflow = true;
+    else {
+        for (int chunk = 0; chunk < totalChunks; chunk++) {
+            int numEnts = w->chunkEntCount[chunk];
+            if (numEnts < 2) continue;
+            bool any = nav_ChunkIdAffected(w, chunk);
+            for (int i = 0; i < numEnts && !any; i++) any = nav_EntranceTouchesAffected(w, w->chunkEnts[chunk][i]);
+            if (any) jobs[numJobs++] = chunk;
         }
-        bool chunkAffected = nav_ChunkIdAffected(w, chunk);   // all its edges were dropped
-        bool any = chunkAffected;
-        // Pairs with an affected end (edges are directed, so unaffected
-        // entrances need their edges INTO affected ones too)
-        for (int i = 0; i < numEnts; i++) {
-            needed[i] = chunkAffected || nav_EntranceTouchesAffected(w, w->chunkEnts[chunk][i]);
-            any |= needed[i];
-        }
-        if (!any) continue;
-        int minX, minY, maxX, maxY;
-        nav_EdgeRegion(w, chunk, &minX, &minY, &maxX, &maxY);
-        nav_ChunkEdges(w, chunk, minX, minY, maxX, maxY, w->chunkEnts[chunk], needed, numEnts);
+        nav_RunEdgeJobs(w, jobs, numJobs, true);
+        free(jobs);
     }
-    free(needed);
 
     nav_AddVerticalLinkEdges(w, true);
     w->graphVersion++;

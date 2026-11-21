@@ -481,6 +481,8 @@ static const Setting settings[] = {
       "Path search for the Find Path button and agents: 0 = A*, 1 = HPA*.", PathAlgoChanged),
     SET_CHOICE("pathDir", "Dir", "Pathfinding", currentDirection, directionNames, 2,
       "Movement directions: 0 = 4-dir, 1 = 8-dir.", PathDirChanged),
+    SET_INT("navThreads", "Graph Threads", "Pathfinding", navThreads, 1.0f, 0, 32,
+      "Threads for HPA* graph builds: 0 = one per core, 1 = no threads. Same graph either way.", NULL),
 
     // --- Movers ---
     SET_BOOL("stringPull", "String Pulling", "Entities/Movers", useStringPulling,

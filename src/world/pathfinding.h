@@ -42,6 +42,7 @@ typedef enum {
 
 // ---- the game's world ----
 NavWorld* NavGame(void);
+extern int navThreads;   // threads for HPA* graph builds (0 = one per core, 1 = none)
 
 // ---- legacy global names -> NavGame() fields ----
 #define entrances         (NavGame()->entranceList)

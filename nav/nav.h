@@ -123,6 +123,13 @@ typedef struct NavWorld {
                                    // NAV_MIN_CELL_COST per cell, so the exact estimate is weak and
                                    // the search visits most of the graph; >100 is faster, routes
                                    // may come out slightly costlier
+    // Optional: run fn(ctx, i) for every i in [0, n), in any order and possibly on several
+    // threads, and return when all are done. NULL = the library runs them itself, one by one.
+    // Graph builds use it for the per-chunk edge searches: those only read the world (the
+    // host queries must be safe to call from several threads at once); the results are
+    // added in chunk order afterwards, so the graph is the same either way.
+    void (*parallelFor)(void* user, int n, void (*fn)(void* ctx, int i), void* ctx);
+    void* parallelUser;
 
     // ---- HPA* graph (read-only for users) ----
     NavEntrance*   entranceList;   int entranceNum;
