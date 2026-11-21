@@ -253,4 +253,7 @@ saves the world (no UI) of the third frame, prints the world drawing time averag
 ```
 
 A drawing change that should not change the picture must give byte-identical pixels for a
-few views (zoomed in/out, day/night, high and low `viewZ`) against the previous build.
+few views (zoomed in/out, day/night, high and low `viewZ`) against the previous build. Look at
+the images too: a nearly black image hides differences (dark tints round many colours to the
+same value). Lighting is computed once before the first frame; `viewZ 15` looks down on every
+hill level, which exercises the deeper-level passes most.

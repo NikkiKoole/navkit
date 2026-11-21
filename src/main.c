@@ -1486,6 +1486,7 @@ int main(int argc, char** argv) {
     int screenshotFrame = 0;
     if (screenshotPath) {
         paused = true;
+        UpdateLighting();   // normally computed by the first sim tick, which never runs paused
         offset.x = (GetScreenWidth() - gridWidth * CELL_SIZE * zoom) / 2.0f;
         offset.y = (GetScreenHeight() - gridHeight * CELL_SIZE * zoom) / 2.0f;
     }
