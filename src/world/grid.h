@@ -286,6 +286,14 @@ static inline const void* SparseLayerRead(const SparseLayer* L, int x, int y, in
     return b ? b + (size_t)SparseCellOf(x, y, z) * L->elemSize : L->empty;
 }
 void* SparseLayerAllocBlock(SparseLayer* L, int chunk);
+// True if any chunk in the 16-row band holding row y has a block (else the whole band, all z,
+// is empty). Sweeps use it to skip empty bands: on a 2048 map a per-cell (or per-16-cell)
+// check of every row of every level is millions of checks per tick.
+static inline bool SparseLayerBandHasBlock(const SparseLayer* L, int y) {
+    void* const* row = L->blocks + (y >> STORE_CHUNK_SHIFT) * storeChunksX;
+    for (int cx = 0; cx < storeChunksX; cx++) if (row[cx]) return true;
+    return false;
+}
 // True if the chunk holding (x, y) has a block (else every cell of its column is empty).
 static inline bool SparseLayerHasBlock(const SparseLayer* L, int x, int y) {
     return L->blocks[SparseChunkOf(x, y)] != NULL;

@@ -539,16 +539,25 @@ void UpdateSmoke(void) {
     bool reverseX = (smokeTick & 1);
     bool reverseY = (smokeTick & 2);
 
-    // Process from bottom to top (simple iteration)
+    // Process from bottom to top (simple iteration). Chunks without a smoke block were never
+    // touched (every cell empty, ProcessSmokeCell would only mark it stable): skip whole bands
+    // of 16 rows and runs of 16 cells without one, in the same scan order. A band is checked
+    // when the scan enters it; blocks only appear where smoke is processed, which an empty
+    // band never is, so this visits exactly the cells the per-cell check did.
     for (int z = 0; z < gridDepth; z++) {
+        int band = -1;
+        bool bandHas = false;
         for (int yi = 0; yi < gridHeight; yi++) {
             int y = reverseY ? (gridHeight - 1 - yi) : yi;
+            if ((y >> STORE_CHUNK_SHIFT) != band) { band = y >> STORE_CHUNK_SHIFT; bandHas = SparseLayerBandHasBlock(&smokeLayer, y); }
+            if (!bandHas) { yi += reverseY ? (y & STORE_MASK) : (STORE_MASK - (y & STORE_MASK)); continue; }
             for (int xi = 0; xi < gridWidth; xi++) {
                 int x = reverseX ? (gridWidth - 1 - xi) : xi;
                 
-                // A chunk without a smoke block was never touched: every cell empty, nothing to do
-                // (ProcessSmokeCell would only mark it stable)
-                if (!SparseLayerHasBlock(&smokeLayer, x, y)) continue;
+                if (!SparseLayerHasBlock(&smokeLayer, x, y)) {
+                    xi += reverseX ? (x & STORE_MASK) : (STORE_MASK - (x & STORE_MASK));
+                    continue;
+                }
                 const SmokeCell* cell = &SMOKE(x, y, z);
 
                 // Skip stable empty cells

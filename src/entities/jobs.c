@@ -288,11 +288,14 @@ static void RebuildAdjacentDesignationCache(DesignationType type,
     *count = 0;
     if (activeDesignationCount == 0) return;
 
+    // Only chunks that hold designations (same order as a full scan; a full scan was ~67M
+    // cells per cache per rebuild on a 2048 map)
     for (int z = 0; z < gridDepth && *count < MAX_DESIGNATION_CACHE; z++) {
         for (int y = 0; y < gridHeight && *count < MAX_DESIGNATION_CACHE; y++) {
-            for (int x = 0; x < gridWidth && *count < MAX_DESIGNATION_CACHE; x++) {
-                Designation* d = GetDesignation(x, y, z);
-                if (!d || d->type != type) continue;
+            if ((y & STORE_MASK) == 0 && !SparseLayerBandHasBlock(&designationLayer, y)) { y |= STORE_MASK; continue; }
+            FOR_X_IN_SPARSE_ROW(designationLayer, Designation, x, d, y, z) {
+                if (*count >= MAX_DESIGNATION_CACHE) continue;
+                if (d->type != type) continue;
                 if (d->assignedMover != -1) continue;
                 if (d->unreachableCooldown > 0.0f) continue;
                 if (requireExplored && !IsExplored(x, y, z)) continue;
@@ -314,11 +317,14 @@ static void RebuildOnTileDesignationCache(DesignationType type,
     *count = 0;
     if (activeDesignationCount == 0) return;
 
+    // Only chunks that hold designations (same order as a full scan; a full scan was ~67M
+    // cells per cache per rebuild on a 2048 map)
     for (int z = 0; z < gridDepth && *count < MAX_DESIGNATION_CACHE; z++) {
         for (int y = 0; y < gridHeight && *count < MAX_DESIGNATION_CACHE; y++) {
-            for (int x = 0; x < gridWidth && *count < MAX_DESIGNATION_CACHE; x++) {
-                Designation* d = GetDesignation(x, y, z);
-                if (!d || d->type != type) continue;
+            if ((y & STORE_MASK) == 0 && !SparseLayerBandHasBlock(&designationLayer, y)) { y |= STORE_MASK; continue; }
+            FOR_X_IN_SPARSE_ROW(designationLayer, Designation, x, d, y, z) {
+                if (*count >= MAX_DESIGNATION_CACHE) continue;
+                if (d->type != type) continue;
                 if (d->assignedMover != -1) continue;
                 if (d->unreachableCooldown > 0.0f) continue;
                 if (requireExplored && !IsExplored(x, y, z)) continue;

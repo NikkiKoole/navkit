@@ -555,6 +555,8 @@ void UpdateFire(void) {
     // Process from bottom to top (simple iteration, keeps early exit optimization)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
+            // Bands of 16 rows without a fire block: skip (see UpdateSmoke)
+            if ((y & STORE_MASK) == 0 && !SparseLayerBandHasBlock(&fireLayer, y)) { y |= STORE_MASK; continue; }
             for (int x = 0; x < gridWidth; x++) {
                 // A chunk without a fire block was never touched: every cell empty, nothing to do
                 // (ProcessFireCell would only mark it stable)

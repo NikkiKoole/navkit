@@ -283,20 +283,20 @@ bool IsExposedToSky(int x, int y, int z) {
 // Rain Wetness
 // =============================================================================
 
-static void ApplyRainWetness(void) {
-    WeatherType w = weatherState.current;
-    if (w != WEATHER_RAIN && w != WEATHER_HEAVY_RAIN && w != WEATHER_THUNDERSTORM) return;
+// Surface sweeps (rain wetness, snow) visit every column: ~180 ms on a 2048 map. Maps with
+// more than weatherSpreadMinColumns columns spread a sweep evenly over its interval (rows due
+// = rows x elapsed / interval, every row still once per interval); smaller maps sweep at the
+// interval's end as before. The position follows from the interval's accumulator.
+int weatherSpreadMinColumns = 1 << 16;
+static int WeatherRowsDue(float accum, float interval) {
+    if (accum >= interval) return 0;
+    if ((long long)gridWidth * gridHeight <= weatherSpreadMinColumns) return 0;
+    int due = (int)((double)gridHeight * accum / interval);
+    return due < 0 ? 0 : due > gridHeight ? gridHeight : due;
+}
+static int rainSweepRow = 0;
 
-    float intervalGH = (w == WEATHER_HEAVY_RAIN || w == WEATHER_THUNDERSTORM)
-                     ? heavyRainWetnessInterval : rainWetnessInterval;
-    float intervalGS = GameHoursToGameSeconds(intervalGH);
-
-    rainWetnessAccum += gameDeltaTime;
-    if (rainWetnessAccum < intervalGS) return;
-    rainWetnessAccum -= intervalGS;
-
-    // Iterate surface cells: find topmost solid ground for each (x,y)
-    for (int y = 0; y < gridHeight; y++) {
+static void RainWetnessRow(int y) {
         for (int x = 0; x < gridWidth; x++) {
             // Find the ground z (topmost solid cell)
             for (int z = gridDepth - 1; z >= 0; z--) {
@@ -313,6 +313,28 @@ static void ApplyRainWetness(void) {
                 break;  // Only process topmost ground
             }
         }
+}
+
+static void ApplyRainWetness(void) {
+    WeatherType w = weatherState.current;
+    if (w != WEATHER_RAIN && w != WEATHER_HEAVY_RAIN && w != WEATHER_THUNDERSTORM) return;
+
+    float intervalGH = (w == WEATHER_HEAVY_RAIN || w == WEATHER_THUNDERSTORM)
+                     ? heavyRainWetnessInterval : rainWetnessInterval;
+    float intervalGS = GameHoursToGameSeconds(intervalGH);
+
+    rainWetnessAccum += gameDeltaTime;
+    if (rainSweepRow > gridHeight) rainSweepRow = gridHeight;
+    // The rows due so far; at the interval's end finish the sweep (every topmost soil cell
+    // exposed to the sky gets wetter once per interval) and start the next
+    for (;;) {
+        int due = rainWetnessAccum >= intervalGS ? gridHeight : WeatherRowsDue(rainWetnessAccum, intervalGS);
+        for (int y = rainSweepRow; y < due; y++) RainWetnessRow(y);
+        if (due > rainSweepRow) rainSweepRow = due;
+        if (rainWetnessAccum < intervalGS) break;
+        rainWetnessAccum -= intervalGS;
+        rainSweepRow = 0;
+        if (rainWetnessAccum >= intervalGS) break;
     }
 }
 
@@ -430,7 +452,10 @@ float GetWindChillTemp(float baseTemp, float windStrength, bool exposed) {
 
 float GetRainWetnessAccum(void) { return rainWetnessAccum; }
 float GetWeatherWindAccum(void) { return weatherWindAccum; }
-void SetRainWetnessAccum(float v) { rainWetnessAccum = v; }
+void SetRainWetnessAccum(float v) {
+    rainWetnessAccum = v;
+    rainSweepRow = WeatherRowsDue(v, GameHoursToGameSeconds(rainWetnessInterval));   // (saved: position follows)
+}
 void SetWeatherWindAccum(float v) { weatherWindAccum = v; }
 
 // =============================================================================
@@ -446,6 +471,7 @@ float snowAccumulationRate = 0.25f;   // 1/0.25 = 4 GH per level (was 0.1, 1/0.1
 float snowMeltingRate = 0.125f;       // 1/0.125 = 8 GH per level (was 0.05, 1/0.05 = 20 game-seconds)
 
 // Internal accumulator for snow changes
+#define SNOW_TICK_HOURS 0.25f
 static float snowAccum = 0.0f;
 
 // Per-cell accumulators for deterministic snow changes
@@ -484,24 +510,8 @@ void SetSnowLevel(int x, int y, int z, uint8_t level) {
     if (level > 0) snowMayExist = true;
 }
 
-void UpdateSnow(void) {
-    if (gameDeltaTime <= 0.0f) return;
-    
-    snowAccum += gameDeltaTime;
-    float snowTickGS = GameHoursToGameSeconds(0.04f);  // Update every 0.04 game-hours
-    if (snowAccum < snowTickGS) return;
-    float elapsedTime = snowAccum;
-    snowAccum = 0.0f;
-    
-    WeatherType w = weatherState.current;
-    bool isSnowing = (w == WEATHER_SNOW);
-    int ambientTemp = GetAmbientTemperature(0);  // Surface temperature
-    bool isFreezing = (ambientTemp <= 0);
-    if (!isSnowing && !snowMayExist && !snowAccumMayExist) return;   // nothing to grow, melt or reset
-    bool anySnow = false, anyAccum = false;
-    
-    // Iterate surface cells
-    for (int y = 0; y < gridHeight; y++) {
+// One row of the snow sweep: the topmost solid cell of each column grows, melts or resets
+static void SnowRow(int y, float elapsedTime, bool isSnowing, bool isFreezing, bool* anySnow, bool* anyAccum) {
         for (int x = 0; x < gridWidth; x++) {
             // Find topmost solid cell
             for (int z = gridDepth - 1; z >= 0; z--) {
@@ -542,16 +552,65 @@ void UpdateSnow(void) {
                 if ((!isSnowing || !exposed || !isFreezing) && isFreezing && SNOW_ACCUM(x, y, z) != 0.0f) {
                     SNOW_ACCUM(x, y, z) = 0.0f;
                 }
-                if (SNOW(x, y, z) > 0) anySnow = true;
-                if (SNOW_ACCUM(x, y, z) != 0.0f) anyAccum = true;
+                if (SNOW(x, y, z) > 0) *anySnow = true;
+                if (SNOW_ACCUM(x, y, z) != 0.0f) *anyAccum = true;
                 
                 break;  // Only process topmost solid cell
             }
         }
+}
+
+static int snowSweepRow = 0;
+static bool snowCycleAnySnow = false, snowCycleAnyAccum = false;
+
+void UpdateSnow(void) {
+    if (gameDeltaTime <= 0.0f) return;
+    
+    snowAccum += gameDeltaTime;
+    // Every 0.25 game-hours: a snow level takes 4 (grow) / 8 (melt) game-hours, so finer
+    // steps change nothing visible; at 0.04 the column sweep ran every 0.1 s (~28 ms per tick
+    // on a 2048 map all winter)
+    float snowTickGS = GameHoursToGameSeconds(SNOW_TICK_HOURS);
+    WeatherType w = weatherState.current;
+    bool isSnowing = (w == WEATHER_SNOW);
+    int ambientTemp = GetAmbientTemperature(0);  // Surface temperature
+    bool isFreezing = (ambientTemp <= 0);
+
+    if ((long long)gridWidth * gridHeight <= weatherSpreadMinColumns) {
+        // Small map: the whole sweep at the interval's end (time since the last sweep)
+        if (snowAccum < snowTickGS) return;
+        float elapsedTime = snowAccum;
+        snowAccum = 0.0f;
+        if (!isSnowing && !snowMayExist && !snowAccumMayExist) return;   // nothing to grow, melt or reset
+        bool anySnow = false, anyAccum = false;
+        for (int y = 0; y < gridHeight; y++) SnowRow(y, elapsedTime, isSnowing, isFreezing, &anySnow, &anyAccum);
+        // (only topmost cells are ever processed here, so snow elsewhere doesn't count)
+        snowMayExist = anySnow;
+        snowAccumMayExist = anyAccum;
+        return;
     }
-    // (only topmost cells are ever processed here, so snow elsewhere doesn't count)
-    snowMayExist = anySnow;
-    snowAccumMayExist = anyAccum;
+
+    // Big map: rows due so far (each row once per interval, an interval's time each)
+    if (!isSnowing && !snowMayExist && !snowAccumMayExist) {   // nothing to grow, melt or reset
+        if (snowAccum >= snowTickGS) snowAccum = 0.0f;
+        snowSweepRow = 0;
+        snowCycleAnySnow = snowCycleAnyAccum = false;
+        return;
+    }
+    if (snowSweepRow > gridHeight) snowSweepRow = gridHeight;
+    for (;;) {
+        int due = snowAccum >= snowTickGS ? gridHeight : WeatherRowsDue(snowAccum, snowTickGS);
+        for (int y = snowSweepRow; y < due; y++)
+            SnowRow(y, snowTickGS, isSnowing, isFreezing, &snowCycleAnySnow, &snowCycleAnyAccum);
+        if (due > snowSweepRow) snowSweepRow = due;
+        if (snowAccum < snowTickGS) break;
+        snowAccum -= snowTickGS;
+        snowSweepRow = 0;
+        snowMayExist = snowCycleAnySnow;
+        snowAccumMayExist = snowCycleAnyAccum;
+        snowCycleAnySnow = snowCycleAnyAccum = false;
+        if (snowAccum >= snowTickGS) { snowAccum = 0.0f; break; }   // (behind by a whole interval: drop it, as before)
+    }
 }
 
 float GetSnowSpeedMultiplier(int x, int y, int z) {

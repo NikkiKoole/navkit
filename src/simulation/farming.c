@@ -168,6 +168,7 @@ void FarmTick(float dt) {
 
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
+            if ((y & STORE_MASK) == 0 && !SparseLayerBandHasBlock(&farmLayer, y)) { y |= STORE_MASK; continue; }
             for (int x = 0; x < gridWidth; x++) {
                 // A chunk without a farm block has no tilled cells
                 if (!SparseLayerHasBlock(&farmLayer, x, y)) { x |= STORE_MASK; continue; }

@@ -98,8 +98,9 @@ describe(snow_accumulation) {
         // Before snow
         expect(GetSnowLevel(5, 5, 0) == 0);
         
-        // Run multiple ticks
-        for (int i = 0; i < 100; i++) {
+        // Run multiple ticks: 12 game-seconds = 4.8 game-hours (a level takes 4; snow is
+        // updated every SNOW_TICK_HOURS = 0.25 game-hours, so exactly 4 can land just short)
+        for (int i = 0; i < 120; i++) {
             gameDeltaTime = 0.1f; UpdateSnow();
         }
         

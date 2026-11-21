@@ -118,7 +118,7 @@ bool FindUnassignedMineDesignation(int* outX, int* outY, int* outZ) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                Designation* d = &DESIGNATION_MUT(x, y, z);
+                const Designation* d = &DESIGNATION(x, y, z);   // read: MUT would allocate blocks
                 if (d->type == DESIGNATION_MINE && d->assignedMover == -1) {
                     *outX = x;
                     *outY = y;
@@ -213,10 +213,12 @@ void DesignationsTick(float dt) {
     // Early exit if no designations
     if (activeDesignationCount == 0) return;
     
+    // Only chunks that hold designations (a block): DESIGNATION_MUT on every cell allocated a
+    // block for every chunk (1 GB and ~475 ms per tick on a 2048 map for one designation)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                Designation* d = &DESIGNATION_MUT(x, y, z);
+            if ((y & STORE_MASK) == 0 && !SparseLayerBandHasBlock(&designationLayer, y)) { y |= STORE_MASK; continue; }
+            FOR_X_IN_SPARSE_ROW(designationLayer, Designation, x, d, y, z) {
                 if (d->type == DESIGNATION_NONE) continue;
                 if (d->unreachableCooldown > 0.0f) {
                     d->unreachableCooldown = fmaxf(0.0f, d->unreachableCooldown - dt);
