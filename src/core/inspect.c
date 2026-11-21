@@ -659,6 +659,8 @@ static void print_path(int x1, int y1, int z1, int x2, int y2, int z2, int algo)
             printf("  [%d] (%d,%d,z%d) %s cost=%d\n", i, px, py, pz, ct, mc);
         }
         printf("Total move cost: %d\n", totalCost);
+        printf("Search: %.1f ms (abstract %.1f + refine %.1f), %d nodes explored\n",
+               lastPathTime, hpaAbstractTime, hpaRefinementTime, nodesExplored);
     } else {
         printf("Path: NOT FOUND\n");
     }
