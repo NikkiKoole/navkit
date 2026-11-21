@@ -118,6 +118,11 @@ typedef struct NavWorld {
 
     // ---- settings ----
     bool eightDir;                 // 8-directional movement (default true)
+    int absHeuristicPct;           // HPA* abstract search heuristic weight in percent (default
+                                   // 100 = exact). Long routes on natural terrain cost well above
+                                   // NAV_MIN_CELL_COST per cell, so the exact estimate is weak and
+                                   // the search visits most of the graph; >100 is faster, routes
+                                   // may come out slightly costlier
 
     // ---- HPA* graph (read-only for users) ----
     NavEntrance*   entranceList;   int entranceNum;

@@ -140,6 +140,7 @@ NavWorld* NavCreate(int width, int height, int depth, int chunkW, int chunkH, vo
     if (!w) return NULL;
     w->host = host;
     w->eightDir = true;
+    w->absHeuristicPct = 100;
     w->lastCost = -1;
     if (!nav_NavAllocInternals(w, width, height, depth, chunkW, chunkH)) {
         nav_NavFreeInternals(w);
@@ -159,10 +160,12 @@ bool NavResize(NavWorld* w, int width, int height, int depth, int chunkW, int ch
     nav_NavFreeInternals(w);
     void* host = w->host;
     bool eightDir = w->eightDir;
+    int absPct = w->absHeuristicPct;
     unsigned version = w->graphVersion;
     memset(w, 0, sizeof(*w));
     w->host = host;
     w->eightDir = eightDir;
+    w->absHeuristicPct = absPct;
     w->graphVersion = version + 1;   // cached hierarchical fields must notice
     w->lastCost = -1;
     return nav_NavAllocInternals(w, width, height, depth, chunkW, chunkH);
@@ -2078,6 +2081,10 @@ static void nav_AbsRelax(NavWorld* w, int from, int to, int stepCost, int h) {
 
 // A* over the abstract graph from start to goal: fills absPath (goal-first; node
 // entranceNum = start, entranceNum + 1 = goal). false = no route.
+static inline int nav_AbsH(const NavWorld* w, int x0, int y0, int z0, NavPoint goal) {
+    return nav_Heuristic3D(w, x0, y0, z0, goal.x, goal.y, goal.z) * w->absHeuristicPct / 100;
+}
+
 static bool nav_HPAAbstract(NavWorld* w, NavPoint start, NavPoint goal) {
     if (w->entranceNum == 0) return false;   // no entrances (or graph not built)
     int startChunk = nav_GetChunk(w, start.x, start.y, start.z);
@@ -2101,7 +2108,7 @@ static bool nav_HPAAbstract(NavWorld* w, NavPoint start, NavPoint goal) {
     w->absNodes[startNode].g = 0;
     // Same admissible estimate as A* (scaled by the cheapest cell cost). The old
     // unscaled |dx|+|dy| was ~10x too weak: near-Dijkstra over every entrance.
-    w->absNodes[startNode].f = nav_Heuristic3D(w, start.x, start.y, start.z, goal.x, goal.y, goal.z);
+    w->absNodes[startNode].f = nav_AbsH(w, start.x, start.y, start.z, goal);
     w->absNodes[startNode].open = true;
     nav_AbsHeapPush(w, startNode);
 
@@ -2120,16 +2127,14 @@ static bool nav_HPAAbstract(NavWorld* w, NavPoint start, NavPoint goal) {
             for (int i = 0; i < startEdges; i++) {
                 int nb = startTargets[i];
                 nav_AbsRelax(w, best, nb, startCosts[i],
-                         nav_Heuristic3D(w, w->entranceList[nb].x, w->entranceList[nb].y, w->entranceList[nb].z,
-                                         goal.x, goal.y, goal.z));
+                         nav_AbsH(w, w->entranceList[nb].x, w->entranceList[nb].y, w->entranceList[nb].z, goal));
             }
         } else if (best < w->entranceNum) {
             const NavEdgeVec* out = &w->adj[best];
             for (int i = 0; i < out->num; i++) {
                 const NavGraphEdge* e = &out->e[i];
                 nav_AbsRelax(w, best, e->to, e->cost + nav_LinkExtra(w, e),
-                         nav_Heuristic3D(w, w->entranceList[e->to].x, w->entranceList[e->to].y, w->entranceList[e->to].z,
-                                         goal.x, goal.y, goal.z));
+                         nav_AbsH(w, w->entranceList[e->to].x, w->entranceList[e->to].y, w->entranceList[e->to].z, goal));
             }
             for (int i = 0; i < goalEdges; i++)
                 if (goalTargets[i] == best) nav_AbsRelax(w, best, goalNode, goalCosts[i], 0);

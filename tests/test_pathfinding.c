@@ -2833,6 +2833,7 @@ describe(reachability_regions) {
         NavWorld* w = NavGame();
         // raylib's GetTime() is 0 without a window: use the system clock
         struct timespec ts0, ts1;
+        NavRegionsInvalidate(w);   // BuildGraph built them already: time a full build
         clock_gettime(CLOCK_MONOTONIC, &ts0);
         int regions = NavRegionCount(w);
         clock_gettime(CLOCK_MONOTONIC, &ts1);

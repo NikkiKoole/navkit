@@ -531,9 +531,22 @@ Results (same runs as the baseline):
 | HPA* short / medium / long | 0.80 / 3.78 / 6.83 ms | 0.43 / 1.26 / 2.36 ms |
 
 Path lengths are unchanged (avg steps 94/281/497 -> 94/282/499). Nav fuzz deep sweep (2000 worlds),
-make test and scenarios-check pass. What's left of the 2048 spike is mostly searches to
-unreachable goals (`SLOW PATH ... len=0`, 200-960 ms each: the abstract search exhausts the graph
-before giving up): next to look at, together with steps 4-5 of the order above only if needed.
+make test and scenarios-check pass.
+
+**The rest of the 2048 first-tick spike (measured, 2026-11-21).** The `SLOW PATH ... len=0` lines
+were not failed searches: with coarse paths the route comes back separately and `len` is always 0
+(unreachable goals are already answered by the region check). Two causes:
+1. The reachability regions were built lazily by the first path request: 949 ms at 2048. The game's
+   `BuildGraph()` now builds them with the graph (setup +0.9 s, first tick -0.9 s).
+2. Cross-map routes (~190 waypoints) searched 70-108 ms each, visiting ~78% of all entrances: the
+   heuristic assumes 8 per cell (constructed floor) while natural terrain costs >= 10, so A* is close
+   to Dijkstra. New `NavWorld.absHeuristicPct` (library default 100 = exact); the game sets 125.
+   92 cross-map routes at 2048: abstract search 3,101 -> 2,263 ms, nodes visited 60.9K -> 43.8K per
+   route, route costs identical. (150 would halve it but cost +2% overall, worst route +5.4%.)
+
+2048, 300 ticks: FindPath total 4.97 -> 3.35 s, Move 16.0 -> 10.9 ms/tick. The remaining slow
+requests (200-370 ms) are long cross-map routes and a shared-goal field over its build budget. A
+coarser abstraction level (step 5) is what would make cross-map routes cheap; not needed yet.
 
 ## Allocation model (for steps 2-3)
 

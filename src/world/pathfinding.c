@@ -34,6 +34,10 @@ NavWorld* NavGame(void) {
     if (!gameNav || !gameNav->entranceList) {
         TraceLog(LOG_FATAL, "NavGame: out of memory for %dx%dx%d world", gridWidth, gridHeight, gridDepth);
     }
+    // Natural terrain costs >= 10 per cell, the exact HPA* estimate assumes 8 (floors): with
+    // 1.25 cross-map routes on a 2048 world searched 27% faster with the same costs
+    // (docs/todo/architecture/chunked-world-plan.md)
+    gameNav->absHeuristicPct = 125;
     return gameNav;
 }
 
@@ -105,6 +109,9 @@ void BuildEntrances(void) {
 
 void BuildGraph(void) {
     NavBuildGraph(NavGame());
+    // Reachability regions are built lazily on the first query; on a 2048 map that is
+    // ~1 s, which landed in the first tick's path requests. Build them with the graph.
+    NavRegionCount(NavGame());
 }
 
 void UpdateDirtyChunks(void) {
