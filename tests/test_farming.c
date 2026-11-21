@@ -87,9 +87,9 @@ describe(farming) {
     it("weeds accumulate on tilled cells") {
         SetupFarmGrid();
 
-        FARM(5, 5, 1).tilled = 1;
-        FARM(5, 5, 1).fertility = 128;
-        FARM(5, 5, 1).weedLevel = 0;
+        FARM_MUT(5, 5, 1).tilled = 1;
+        FARM_MUT(5, 5, 1).fertility = 128;
+        FARM_MUT(5, 5, 1).weedLevel = 0;
         farmActiveCells = 1;
 
         dayNumber = 1;  // Spring (weed rate = 1.0)
@@ -104,9 +104,9 @@ describe(farming) {
     it("weeds do not accumulate in winter") {
         SetupFarmGrid();
 
-        FARM(5, 5, 1).tilled = 1;
-        FARM(5, 5, 1).fertility = 128;
-        FARM(5, 5, 1).weedLevel = 0;
+        FARM_MUT(5, 5, 1).tilled = 1;
+        FARM_MUT(5, 5, 1).fertility = 128;
+        FARM_MUT(5, 5, 1).weedLevel = 0;
         farmActiveCells = 1;
 
         dayNumber = daysPerSeason * 3 + 1;  // Winter (weed rate = 0.0)
@@ -124,9 +124,9 @@ describe(farming) {
     it("tending resets weed level to 0") {
         SetupFarmGrid();
 
-        FARM(5, 5, 1).tilled = 1;
-        FARM(5, 5, 1).fertility = 128;
-        FARM(5, 5, 1).weedLevel = 200;
+        FARM_MUT(5, 5, 1).tilled = 1;
+        FARM_MUT(5, 5, 1).fertility = 128;
+        FARM_MUT(5, 5, 1).weedLevel = 200;
         farmActiveCells = 1;
 
         FarmCell* fc = GetFarmCell(5, 5, 1);
@@ -141,8 +141,8 @@ describe(farming) {
     it("fertilizing boosts fertility capped at 255") {
         SetupFarmGrid();
 
-        FARM(5, 5, 1).tilled = 1;
-        FARM(5, 5, 1).fertility = 40;
+        FARM_MUT(5, 5, 1).tilled = 1;
+        FARM_MUT(5, 5, 1).fertility = 40;
         farmActiveCells = 1;
 
         FarmCell* fc = GetFarmCell(5, 5, 1);
@@ -209,7 +209,7 @@ describe(farming) {
         expect(farmActiveCells == 2);
 
         // Un-farm one cell
-        FARM(3, 3, 1).tilled = 0;
+        FARM_MUT(3, 3, 1).tilled = 0;
         farmActiveCells--;
         expect(farmActiveCells == 1);
     }
@@ -327,13 +327,13 @@ describe(farming) {
     it("crops advance through growth stages") {
         SetupFarmGrid();
 
-        FARM(5, 5, 1).tilled = 1;
-        FARM(5, 5, 1).fertility = 200;
-        FARM(5, 5, 1).weedLevel = 0;
-        FARM(5, 5, 1).cropType = CROP_WHEAT;
-        FARM(5, 5, 1).growthStage = CROP_STAGE_SPROUTED;
-        FARM(5, 5, 1).growthProgress = 0;
-        FARM(5, 5, 1).frostDamaged = 0;
+        FARM_MUT(5, 5, 1).tilled = 1;
+        FARM_MUT(5, 5, 1).fertility = 200;
+        FARM_MUT(5, 5, 1).weedLevel = 0;
+        FARM_MUT(5, 5, 1).cropType = CROP_WHEAT;
+        FARM_MUT(5, 5, 1).growthStage = CROP_STAGE_SPROUTED;
+        FARM_MUT(5, 5, 1).growthProgress = 0;
+        FARM_MUT(5, 5, 1).frostDamaged = 0;
         farmActiveCells = 1;
 
         // Set ideal temperature (15°C) and wetness (2=wet)
@@ -360,12 +360,12 @@ describe(farming) {
     it("season kill removes crop when season modifier is 0") {
         SetupFarmGrid();
 
-        FARM(5, 5, 1).tilled = 1;
-        FARM(5, 5, 1).fertility = 128;
-        FARM(5, 5, 1).weedLevel = 0;
-        FARM(5, 5, 1).cropType = CROP_LENTILS;
-        FARM(5, 5, 1).growthStage = CROP_STAGE_GROWING;
-        FARM(5, 5, 1).growthProgress = 100;
+        FARM_MUT(5, 5, 1).tilled = 1;
+        FARM_MUT(5, 5, 1).fertility = 128;
+        FARM_MUT(5, 5, 1).weedLevel = 0;
+        FARM_MUT(5, 5, 1).cropType = CROP_LENTILS;
+        FARM_MUT(5, 5, 1).growthStage = CROP_STAGE_GROWING;
+        FARM_MUT(5, 5, 1).growthProgress = 100;
         farmActiveCells = 1;
 
         // Autumn — lentils have 0.0 season modifier
@@ -386,9 +386,9 @@ describe(farming) {
     it("RunJob_PlantCrop plants seed and sets crop type") {
         SetupFarmGrid();
 
-        FARM(5, 5, 1).tilled = 1;
-        FARM(5, 5, 1).fertility = 128;
-        FARM(5, 5, 1).desiredCropType = CROP_WHEAT;
+        FARM_MUT(5, 5, 1).tilled = 1;
+        FARM_MUT(5, 5, 1).fertility = 128;
+        FARM_MUT(5, 5, 1).desiredCropType = CROP_WHEAT;
         farmActiveCells = 1;
 
         // Spawn a wheat seed on ground
@@ -472,11 +472,11 @@ describe(farming) {
         SetupFarmGrid();
 
         // Set up ripe wheat cell
-        FARM(5, 5, 1).tilled = 1;
-        FARM(5, 5, 1).fertility = 128;
-        FARM(5, 5, 1).cropType = CROP_WHEAT;
-        FARM(5, 5, 1).growthStage = CROP_STAGE_RIPE;
-        FARM(5, 5, 1).frostDamaged = 0;
+        FARM_MUT(5, 5, 1).tilled = 1;
+        FARM_MUT(5, 5, 1).fertility = 128;
+        FARM_MUT(5, 5, 1).cropType = CROP_WHEAT;
+        FARM_MUT(5, 5, 1).growthStage = CROP_STAGE_RIPE;
+        FARM_MUT(5, 5, 1).frostDamaged = 0;
         farmActiveCells = 1;
 
         // Create mover at tile (5,5,1)
@@ -524,11 +524,11 @@ describe(farming) {
     it("harvest halves yield when frost damaged") {
         SetupFarmGrid();
 
-        FARM(6, 6, 1).tilled = 1;
-        FARM(6, 6, 1).fertility = 128;
-        FARM(6, 6, 1).cropType = CROP_WHEAT;
-        FARM(6, 6, 1).growthStage = CROP_STAGE_RIPE;
-        FARM(6, 6, 1).frostDamaged = 1;  // Frost damage!
+        FARM_MUT(6, 6, 1).tilled = 1;
+        FARM_MUT(6, 6, 1).fertility = 128;
+        FARM_MUT(6, 6, 1).cropType = CROP_WHEAT;
+        FARM_MUT(6, 6, 1).growthStage = CROP_STAGE_RIPE;
+        FARM_MUT(6, 6, 1).frostDamaged = 1;  // Frost damage!
         farmActiveCells = 1;
 
         Mover* m = &movers[0];
@@ -570,11 +570,11 @@ describe(farming) {
         SetupFarmGrid();
 
         // Ripe wheat at known fertility
-        FARM(7, 7, 1).tilled = 1;
-        FARM(7, 7, 1).fertility = 128;
-        FARM(7, 7, 1).cropType = CROP_WHEAT;
-        FARM(7, 7, 1).growthStage = CROP_STAGE_RIPE;
-        FARM(7, 7, 1).frostDamaged = 0;
+        FARM_MUT(7, 7, 1).tilled = 1;
+        FARM_MUT(7, 7, 1).fertility = 128;
+        FARM_MUT(7, 7, 1).cropType = CROP_WHEAT;
+        FARM_MUT(7, 7, 1).growthStage = CROP_STAGE_RIPE;
+        FARM_MUT(7, 7, 1).frostDamaged = 0;
         farmActiveCells = 1;
 
         Mover* m = &movers[0];
@@ -605,11 +605,11 @@ describe(farming) {
     it("lentil harvest boosts fertility by LENTIL_FERTILITY_DELTA") {
         SetupFarmGrid();
 
-        FARM(8, 8, 1).tilled = 1;
-        FARM(8, 8, 1).fertility = 128;
-        FARM(8, 8, 1).cropType = CROP_LENTILS;
-        FARM(8, 8, 1).growthStage = CROP_STAGE_RIPE;
-        FARM(8, 8, 1).frostDamaged = 0;
+        FARM_MUT(8, 8, 1).tilled = 1;
+        FARM_MUT(8, 8, 1).fertility = 128;
+        FARM_MUT(8, 8, 1).cropType = CROP_LENTILS;
+        FARM_MUT(8, 8, 1).growthStage = CROP_STAGE_RIPE;
+        FARM_MUT(8, 8, 1).frostDamaged = 0;
         farmActiveCells = 1;
 
         Mover* m = &movers[0];
@@ -641,11 +641,11 @@ describe(farming) {
         SetupFarmGrid();
 
         // Low fertility wheat harvest → should clamp at 0
-        FARM(9, 9, 1).tilled = 1;
-        FARM(9, 9, 1).fertility = 10;  // 10 + (-20) = -10 → clamp 0
-        FARM(9, 9, 1).cropType = CROP_WHEAT;
-        FARM(9, 9, 1).growthStage = CROP_STAGE_RIPE;
-        FARM(9, 9, 1).frostDamaged = 0;
+        FARM_MUT(9, 9, 1).tilled = 1;
+        FARM_MUT(9, 9, 1).fertility = 10;  // 10 + (-20) = -10 → clamp 0
+        FARM_MUT(9, 9, 1).cropType = CROP_WHEAT;
+        FARM_MUT(9, 9, 1).growthStage = CROP_STAGE_RIPE;
+        FARM_MUT(9, 9, 1).frostDamaged = 0;
         farmActiveCells = 1;
 
         Mover* m = &movers[0];
@@ -801,9 +801,9 @@ describe(farming) {
 
         // Set up 3 tilled cells wanting wheat
         for (int x = 2; x < 5; x++) {
-            FARM(x, 5, 1).tilled = 1;
-            FARM(x, 5, 1).fertility = 128;
-            FARM(x, 5, 1).desiredCropType = CROP_WHEAT;
+            FARM_MUT(x, 5, 1).tilled = 1;
+            FARM_MUT(x, 5, 1).fertility = 128;
+            FARM_MUT(x, 5, 1).desiredCropType = CROP_WHEAT;
         }
         farmActiveCells = 3;
 
@@ -916,8 +916,8 @@ describe(farming) {
         SetupFarmGrid();
 
         // Set up dry tilled farm cell at (5,5,1)
-        FARM(5, 5, 1).tilled = 1;
-        FARM(5, 5, 1).fertility = 128;
+        FARM_MUT(5, 5, 1).tilled = 1;
+        FARM_MUT(5, 5, 1).fertility = 128;
         farmActiveCells = 1;
         SET_CELL_WETNESS(5, 5, 0, 0);  // Dry soil at z-1
 
@@ -967,8 +967,8 @@ describe(farming) {
         SetupFarmGrid();
         RebuildIdleMoverList();
 
-        FARM(5, 5, 1).tilled = 1;
-        FARM(5, 5, 1).fertility = 128;
+        FARM_MUT(5, 5, 1).tilled = 1;
+        FARM_MUT(5, 5, 1).fertility = 128;
         farmActiveCells = 1;
         SET_CELL_WETNESS(5, 5, 0, 0);  // Dry
 
@@ -1003,8 +1003,8 @@ describe(farming) {
         SetupFarmGrid();
         RebuildIdleMoverList();
 
-        FARM(5, 5, 1).tilled = 1;
-        FARM(5, 5, 1).fertility = 128;
+        FARM_MUT(5, 5, 1).tilled = 1;
+        FARM_MUT(5, 5, 1).fertility = 128;
         farmActiveCells = 1;
         SET_CELL_WETNESS(5, 5, 0, 2);  // Already wet
 
@@ -1031,8 +1031,8 @@ describe(farming) {
         SetupFarmGrid();
         RebuildIdleMoverList();
 
-        FARM(5, 5, 1).tilled = 1;
-        FARM(5, 5, 1).fertility = 128;
+        FARM_MUT(5, 5, 1).tilled = 1;
+        FARM_MUT(5, 5, 1).fertility = 128;
         farmActiveCells = 1;
         SET_CELL_WETNESS(5, 5, 0, 0);  // Dry
 
@@ -1085,8 +1085,8 @@ describe(farming) {
         SetupFarmGrid();
         RebuildIdleMoverList();
 
-        FARM(5, 5, 1).tilled = 1;
-        FARM(5, 5, 1).fertility = 128;
+        FARM_MUT(5, 5, 1).tilled = 1;
+        FARM_MUT(5, 5, 1).fertility = 128;
         farmActiveCells = 1;
         SET_CELL_WETNESS(5, 5, 0, 0);
 
@@ -1118,8 +1118,8 @@ describe(farming) {
         SetupFarmGrid();
         RebuildIdleMoverList();
 
-        FARM(5, 5, 1).tilled = 1;
-        FARM(5, 5, 1).fertility = 128;
+        FARM_MUT(5, 5, 1).tilled = 1;
+        FARM_MUT(5, 5, 1).fertility = 128;
         farmActiveCells = 1;
         SET_CELL_WETNESS(5, 5, 0, 0);
 
@@ -1162,10 +1162,10 @@ describe(farming) {
         SetupFarmGrid();
 
         // Two dry tilled cells far apart
-        FARM(3, 3, 1).tilled = 1;
-        FARM(3, 3, 1).fertility = 128;
-        FARM(12, 12, 1).tilled = 1;
-        FARM(12, 12, 1).fertility = 128;
+        FARM_MUT(3, 3, 1).tilled = 1;
+        FARM_MUT(3, 3, 1).fertility = 128;
+        FARM_MUT(12, 12, 1).tilled = 1;
+        FARM_MUT(12, 12, 1).fertility = 128;
         farmActiveCells = 2;
         SET_CELL_WETNESS(3, 3, 0, 0);
         SET_CELL_WETNESS(12, 12, 0, 0);
@@ -1213,8 +1213,8 @@ describe(farming) {
         SetupFarmGrid();
         RebuildIdleMoverList();
 
-        FARM(5, 5, 1).tilled = 1;
-        FARM(5, 5, 1).fertility = 128;
+        FARM_MUT(5, 5, 1).tilled = 1;
+        FARM_MUT(5, 5, 1).fertility = 128;
         farmActiveCells = 1;
         SET_CELL_WETNESS(5, 5, 0, 0);
 

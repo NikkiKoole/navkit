@@ -9,7 +9,6 @@
 #include <stdlib.h>
 
 // Smoke grid storage
-SmokeCell* smokeGrid = NULL;   // allocated in grid_layers.c
 
 // Global state
 bool smokeEnabled = true;
@@ -48,7 +47,7 @@ void InitSmoke(void) {
 
 // Clear all smoke
 void ClearSmoke(void) {
-    CLEAR_GRID_LAYER(smokeGrid, 0);
+    SparseLayerClear(&smokeLayer);
     smokeUpdateCount = 0;
     smokeRiseAccum = 0.0f;
     smokeDissipationAccum = 0.0f;
@@ -64,7 +63,8 @@ void ResetSmokeAccumulators(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                SMOKE(x, y, z).stable = false;
+                // Only chunks with a block: a chunk without one is all empty and never processed
+                if (SparseLayerHasBlock(&smokeLayer, x, y)) SMOKE_MUT(x, y, z).stable = false;
             }
         }
     }
@@ -87,18 +87,18 @@ static inline bool CanHoldSmoke(int x, int y, int z) {
 // Mark cell and neighbors as unstable
 void DestabilizeSmoke(int x, int y, int z) {
     if (InBounds(x, y, z)) {
-        SMOKE(x, y, z).stable = false;
+        SMOKE_MUT(x, y, z).stable = false;
     }
 
     // 4 horizontal neighbors
-    if (InBounds(x-1, y, z)) SMOKE(x-1, y, z).stable = false;
-    if (InBounds(x+1, y, z)) SMOKE(x+1, y, z).stable = false;
-    if (InBounds(x, y-1, z)) SMOKE(x, y-1, z).stable = false;
-    if (InBounds(x, y+1, z)) SMOKE(x, y+1, z).stable = false;
+    if (InBounds(x-1, y, z)) SMOKE_MUT(x-1, y, z).stable = false;
+    if (InBounds(x+1, y, z)) SMOKE_MUT(x+1, y, z).stable = false;
+    if (InBounds(x, y-1, z)) SMOKE_MUT(x, y-1, z).stable = false;
+    if (InBounds(x, y+1, z)) SMOKE_MUT(x, y+1, z).stable = false;
 
     // Above and below
-    if (InBounds(x, y, z-1)) SMOKE(x, y, z-1).stable = false;
-    if (InBounds(x, y, z+1)) SMOKE(x, y, z+1).stable = false;
+    if (InBounds(x, y, z-1)) SMOKE_MUT(x, y, z-1).stable = false;
+    if (InBounds(x, y, z+1)) SMOKE_MUT(x, y, z+1).stable = false;
 }
 
 // Set smoke level at a cell
@@ -108,7 +108,7 @@ void SetSmokeLevel(int x, int y, int z, int level) {
     if (level > SMOKE_MAX_LEVEL) level = SMOKE_MAX_LEVEL;
 
     int oldLevel = SMOKE(x, y, z).level;
-    SMOKE(x, y, z).level = (uint8_t)level;
+    SMOKE_MUT(x, y, z).level = (uint8_t)level;
 
     // Update presence tracking
     if (oldLevel == 0 && level > 0) {
@@ -161,7 +161,7 @@ void GenerateSmokeFromFire(int x, int y, int z, int fireLevel) {
     // Smoke rises - add more to cell above if possible
     if (CanHoldSmoke(x, y, z + 1)) {
         AddSmoke(x, y, z + 1, smokeAmount);
-        SMOKE(x, y, z + 1).pressureSourceZ = z;  // Track origin
+        SMOKE_MUT(x, y, z + 1).pressureSourceZ = z;  // Track origin
     }
 }
 
@@ -174,8 +174,8 @@ static int TryRise(int x, int y, int z) {
         return 0;  // Blocked above
     }
 
-    SmokeCell* src = &SMOKE(x, y, z);
-    SmokeCell* dst = &SMOKE(x, y, z+1);
+    SmokeCell* src = &SMOKE_MUT(x, y, z);
+    SmokeCell* dst = &SMOKE_MUT(x, y, z+1);
 
     if (src->level == 0) return 0;
 
@@ -234,7 +234,7 @@ static int TryRise(int x, int y, int z) {
 
 // Phase 2: SPREADING - Equalize smoke levels with horizontal neighbors
 static bool SmokeTrySpread(int x, int y, int z) {
-    SmokeCell* cell = &SMOKE(x, y, z);
+    SmokeCell* cell = &SMOKE_MUT(x, y, z);
     if (cell->level == 0) return false;
 
     // Orthogonal neighbors - randomize order
@@ -274,7 +274,7 @@ static bool SmokeTrySpread(int x, int y, int z) {
 
         if (!CanHoldSmoke(nx, ny, z)) continue;
 
-        SmokeCell* neighbor = &SMOKE(nx, ny, z);
+        SmokeCell* neighbor = &SMOKE_MUT(nx, ny, z);
         int diff = cell->level - neighbor->level;
 
         // Spread to lower neighbors
@@ -315,7 +315,7 @@ static bool SmokeTrySpread(int x, int y, int z) {
 
 // Phase 3: FILL DOWN - When trapped, smoke fills downward (inverse pressure)
 static bool TryFillDown(int x, int y, int z) {
-    SmokeCell* cell = &SMOKE(x, y, z);
+    SmokeCell* cell = &SMOKE_MUT(x, y, z);
 
     // Need full smoke with pressure to fill down
     if (cell->level < SMOKE_MAX_LEVEL) return false;
@@ -361,7 +361,7 @@ static bool TryFillDown(int x, int y, int z) {
     // BFS through full cells looking for non-full cell
     while (queueHead < queueTail) {
         SmokePos pos = smokePressureQueue[queueHead++];
-        SmokeCell* current = &SMOKE(pos.x, pos.y, pos.z);
+        SmokeCell* current = &SMOKE_MUT(pos.x, pos.y, pos.z);
 
         // Found a non-full cell - push smoke here
         if (current->level < SMOKE_MAX_LEVEL) {
@@ -419,7 +419,7 @@ static bool TryFillDown(int x, int y, int z) {
 // doRise: interval has elapsed for rising
 // doDissipate: interval has elapsed for dissipation
 static bool ProcessSmokeCell(int x, int y, int z, bool doRise, bool doDissipate) {
-    SmokeCell* cell = &SMOKE(x, y, z);
+    SmokeCell* cell = &SMOKE_MUT(x, y, z);
     bool moved = false;
 
     // No smoke to process
@@ -546,7 +546,10 @@ void UpdateSmoke(void) {
             for (int xi = 0; xi < gridWidth; xi++) {
                 int x = reverseX ? (gridWidth - 1 - xi) : xi;
                 
-                SmokeCell* cell = &SMOKE(x, y, z);
+                // A chunk without a smoke block was never touched: every cell empty, nothing to do
+                // (ProcessSmokeCell would only mark it stable)
+                if (!SparseLayerHasBlock(&smokeLayer, x, y)) continue;
+                const SmokeCell* cell = &SMOKE(x, y, z);
 
                 // Skip stable empty cells
                 if (cell->stable && cell->level == 0) {

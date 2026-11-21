@@ -21,8 +21,11 @@ typedef struct {
 } SmokeCell;
 
 // Smoke grid (same dimensions as main grid)
-extern SmokeCell* smokeGrid;
-#define SMOKE(x, y, z) (smokeGrid CELL_AT((x), (y), (z)))
+// Sparse (grid.h SparseLayer): memory only in chunks that hold smoke state. SMOKE(x, y, z) is
+// read-only (a cell in a chunk without a block reads as all zero); write with SMOKE_MUT.
+extern SparseLayer smokeLayer;
+#define SMOKE(x, y, z) (*(const SmokeCell*)SparseLayerRead(&smokeLayer, (x), (y), (z)))
+#define SMOKE_MUT(x, y, z) (*(SmokeCell*)SparseLayerWrite(&smokeLayer, (x), (y), (z)))
 
 // Global state
 extern bool smokeEnabled;           // Master toggle for smoke simulation

@@ -11,7 +11,6 @@
 #include <stdlib.h>
 
 // Steam grid storage
-SteamCell* steamGrid = NULL;   // allocated in grid_layers.c
 
 // Global state
 bool steamEnabled = true;
@@ -39,7 +38,7 @@ void InitSteam(void) {
 
 // Clear all steam
 void ClearSteam(void) {
-    CLEAR_GRID_LAYER(steamGrid, 0);
+    SparseLayerClear(&steamLayer);
     steamUpdateCount = 0;
     steamRiseAccum = 0.0f;
     steamActiveCells = 0;
@@ -53,7 +52,8 @@ void ResetSteamAccumulators(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                STEAM(x, y, z).stable = false;
+                // Only chunks with a block: a chunk without one is all empty and never processed
+                if (SparseLayerHasBlock(&steamLayer, x, y)) STEAM_MUT(x, y, z).stable = false;
             }
         }
     }
@@ -76,18 +76,18 @@ static inline bool CanHoldSteam(int x, int y, int z) {
 // Mark cell and neighbors as unstable
 void DestabilizeSteam(int x, int y, int z) {
     if (SteamInBounds(x, y, z)) {
-        STEAM(x, y, z).stable = false;
+        STEAM_MUT(x, y, z).stable = false;
     }
     
     // 4 horizontal neighbors
-    if (SteamInBounds(x-1, y, z)) STEAM(x-1, y, z).stable = false;
-    if (SteamInBounds(x+1, y, z)) STEAM(x+1, y, z).stable = false;
-    if (SteamInBounds(x, y-1, z)) STEAM(x, y-1, z).stable = false;
-    if (SteamInBounds(x, y+1, z)) STEAM(x, y+1, z).stable = false;
+    if (SteamInBounds(x-1, y, z)) STEAM_MUT(x-1, y, z).stable = false;
+    if (SteamInBounds(x+1, y, z)) STEAM_MUT(x+1, y, z).stable = false;
+    if (SteamInBounds(x, y-1, z)) STEAM_MUT(x, y-1, z).stable = false;
+    if (SteamInBounds(x, y+1, z)) STEAM_MUT(x, y+1, z).stable = false;
     
     // Above and below
-    if (SteamInBounds(x, y, z-1)) STEAM(x, y, z-1).stable = false;
-    if (SteamInBounds(x, y, z+1)) STEAM(x, y, z+1).stable = false;
+    if (SteamInBounds(x, y, z-1)) STEAM_MUT(x, y, z-1).stable = false;
+    if (SteamInBounds(x, y, z+1)) STEAM_MUT(x, y, z+1).stable = false;
 }
 
 // Set steam level at a cell
@@ -97,7 +97,7 @@ void SetSteamLevel(int x, int y, int z, int level) {
     if (level > STEAM_MAX_LEVEL) level = STEAM_MAX_LEVEL;
     
     int oldLevel = STEAM(x, y, z).level;
-    STEAM(x, y, z).level = (uint8_t)level;
+    STEAM_MUT(x, y, z).level = (uint8_t)level;
     
     // Update presence tracking
     if (oldLevel == 0 && level > 0) {
@@ -144,7 +144,7 @@ void GenerateSteamFromBoilingWater(int x, int y, int z, int amount) {
 
 // Phase 1: RISING - Steam moves up if there's space above
 static int SteamTryRise(int x, int y, int z) {
-    SteamCell* src = &STEAM(x, y, z);
+    SteamCell* src = &STEAM_MUT(x, y, z);
     
     // At top of world - steam escapes into the sky
     if (z >= gridDepth - 1) {
@@ -164,7 +164,7 @@ static int SteamTryRise(int x, int y, int z) {
     
     if (!CanHoldSteam(x, y, z + 1)) return 0;  // Blocked above
     
-    SteamCell* dst = &STEAM(x, y, z+1);
+    SteamCell* dst = &STEAM_MUT(x, y, z+1);
     
     if (src->level == 0) return 0;
     
@@ -224,7 +224,7 @@ static int SteamTryRise(int x, int y, int z) {
 // Phase 2: SPREADING - Equalize steam levels with horizontal neighbors
 // (same logic as smoke - stays cohesive)
 static bool SteamTrySpread(int x, int y, int z) {
-    SteamCell* cell = &STEAM(x, y, z);
+    SteamCell* cell = &STEAM_MUT(x, y, z);
     if (cell->level == 0) return false;
     
     // Orthogonal neighbors - randomize order
@@ -264,7 +264,7 @@ static bool SteamTrySpread(int x, int y, int z) {
         
         if (!CanHoldSteam(nx, ny, z)) continue;
         
-        SteamCell* neighbor = &STEAM(nx, ny, z);
+        SteamCell* neighbor = &STEAM_MUT(nx, ny, z);
         int diff = cell->level - neighbor->level;
         
         // Spread to lower neighbors
@@ -305,7 +305,7 @@ static bool SteamTrySpread(int x, int y, int z) {
 
 // Phase 3: CONDENSATION - Steam below threshold turns back to water
 static bool SteamTryCondense(int x, int y, int z) {
-    SteamCell* cell = &STEAM(x, y, z);
+    SteamCell* cell = &STEAM_MUT(x, y, z);
     if (cell->level == 0) return false;
     
     // Only condense sometimes (steam lingers)
@@ -350,7 +350,7 @@ static bool SteamTryCondense(int x, int y, int z) {
 // Process a single steam cell
 // doRise: interval has elapsed for rising
 static bool ProcessSteamCell(int x, int y, int z, bool doRise) {
-    SteamCell* cell = &STEAM(x, y, z);
+    SteamCell* cell = &STEAM_MUT(x, y, z);
     bool moved = false;
     
     // No steam to process
@@ -429,7 +429,10 @@ void UpdateSteam(void) {
             int y = reverseY ? (gridHeight - 1 - yi) : yi;
             for (int xi = 0; xi < gridWidth; xi++) {
                 int x = reverseX ? (gridWidth - 1 - xi) : xi;
-                SteamCell* cell = &STEAM(x, y, z);
+                // A chunk without a steam block was never touched: every cell empty, nothing to do
+                // (ProcessSteamCell would only mark it stable)
+                if (!SparseLayerHasBlock(&steamLayer, x, y)) continue;
+                const SteamCell* cell = &STEAM(x, y, z);
                 
                 // Skip stable empty cells
                 if (cell->stable && cell->level == 0) {

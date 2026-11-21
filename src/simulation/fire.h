@@ -21,8 +21,11 @@ typedef struct {
 } FireCell;
 
 // Fire grid (same dimensions as main grid)
-extern FireCell* fireGrid;
-#define FIRE(x, y, z) (fireGrid CELL_AT((x), (y), (z)))
+// Sparse (grid.h SparseLayer): memory only in chunks that hold fire state. FIRE(x, y, z) is
+// read-only (a cell in a chunk without a block reads as all zero); write with FIRE_MUT.
+extern SparseLayer fireLayer;
+#define FIRE(x, y, z) (*(const FireCell*)SparseLayerRead(&fireLayer, (x), (y), (z)))
+#define FIRE_MUT(x, y, z) (*(FireCell*)SparseLayerWrite(&fireLayer, (x), (y), (z)))
 
 // Global state
 extern bool fireEnabled;            // Master toggle for fire simulation

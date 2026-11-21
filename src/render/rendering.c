@@ -498,7 +498,7 @@ static void DrawCellGrid(void) {
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
             if (z == 0) continue;  // No farming at z=0
-            FarmCell* fc = &FARM(x, y, z);
+            const FarmCell* fc = &FARM(x, y, z);
             if (fc->tilled) {
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 // Tilled soil overlay — tinted by soil material
@@ -1052,7 +1052,7 @@ static void DrawFire(void) {
             for (int x = minX; x < maxX; x++) {
                 if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z)) continue;
                 
-                FireCell* cell = &FIRE(x, y, zDepth);
+                const FireCell* cell = &FIRE(x, y, zDepth);
                 int level = cell->level;
                 
                 if (level == 0 && HAS_CELL_FLAG(x, y, zDepth, CELL_FLAG_BURNED)) {
@@ -1083,7 +1083,7 @@ static void DrawFire(void) {
                 fireZ = z - 1;
             }
             
-            FireCell* cell = &FIRE(x, y, fireZ);
+            const FireCell* cell = &FIRE(x, y, fireZ);
             int level = cell->level;
             
             if (level == 0 && HAS_CELL_FLAG(x, y, fireZ, CELL_FLAG_BURNED)) {
@@ -3318,7 +3318,7 @@ static void DrawFrontView(void) {
             for (int z = minZ; z < maxZ; z++) {
                 float screenY = offset.y + (gridDepth - 1 - z) * size - layerOffsetY;
                 for (int x = minX; x < maxX; x++) {
-                    FireCell* fc = &FIRE(x, worldY, z);
+                    const FireCell* fc = &FIRE(x, worldY, z);
                     int level = fc->level;
 
                     if (level == 0 && HAS_CELL_FLAG(x, worldY, z, CELL_FLAG_BURNED)) {

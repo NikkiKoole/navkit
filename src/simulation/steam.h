@@ -19,8 +19,11 @@ typedef struct {
 } SteamCell;
 
 // Steam grid (same dimensions as main grid)
-extern SteamCell* steamGrid;
-#define STEAM(x, y, z) (steamGrid CELL_AT((x), (y), (z)))
+// Sparse (grid.h SparseLayer): memory only in chunks that hold steam state. STEAM(x, y, z) is
+// read-only (a cell in a chunk without a block reads as all zero); write with STEAM_MUT.
+extern SparseLayer steamLayer;
+#define STEAM(x, y, z) (*(const SteamCell*)SparseLayerRead(&steamLayer, (x), (y), (z)))
+#define STEAM_MUT(x, y, z) (*(SteamCell*)SparseLayerWrite(&steamLayer, (x), (y), (z)))
 
 // Global state
 extern bool steamEnabled;

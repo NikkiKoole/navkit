@@ -15,7 +15,6 @@
 #include <stdlib.h>
 
 // Fire grid storage
-FireCell* fireGrid = NULL;   // allocated in grid_layers.c
 
 // Global state
 bool fireEnabled = true;
@@ -41,13 +40,13 @@ void InitFire(void) {
 
 // Helper to check if a fire cell is "active" (needs processing)
 static inline bool FireCellIsActive(int x, int y, int z) {
-    FireCell *fc = &FIRE(x, y, z);
+    const FireCell *fc = &FIRE(x, y, z);
     return fc->level > 0 || fc->isSource;
 }
 
 // Clear all fire
 void ClearFire(void) {
-    CLEAR_GRID_LAYER(fireGrid, 0);
+    SparseLayerClear(&fireLayer);
     fireUpdateCount = 0;
     fireSpreadAccum = 0.0f;
     fireFuelAccum = 0.0f;
@@ -138,17 +137,17 @@ static inline bool CanBurn(int x, int y, int z) {
 // Mark cell and neighbors as unstable
 void DestabilizeFire(int x, int y, int z) {
     if (FireInBounds(x, y, z)) {
-        FIRE(x, y, z).stable = false;
+        FIRE_MUT(x, y, z).stable = false;
     }
     
     // 4 horizontal neighbors (orthogonal only)
-    if (FireInBounds(x-1, y, z)) FIRE(x-1, y, z).stable = false;
-    if (FireInBounds(x+1, y, z)) FIRE(x+1, y, z).stable = false;
-    if (FireInBounds(x, y-1, z)) FIRE(x, y-1, z).stable = false;
-    if (FireInBounds(x, y+1, z)) FIRE(x, y+1, z).stable = false;
+    if (FireInBounds(x-1, y, z)) FIRE_MUT(x-1, y, z).stable = false;
+    if (FireInBounds(x+1, y, z)) FIRE_MUT(x+1, y, z).stable = false;
+    if (FireInBounds(x, y-1, z)) FIRE_MUT(x, y-1, z).stable = false;
+    if (FireInBounds(x, y+1, z)) FIRE_MUT(x, y+1, z).stable = false;
     
     // Above (for smoke generation later)
-    if (FireInBounds(x, y, z+1)) FIRE(x, y, z+1).stable = false;
+    if (FireInBounds(x, y, z+1)) FIRE_MUT(x, y, z+1).stable = false;
 }
 
 // Set fire level at a cell
@@ -157,7 +156,7 @@ void SetFireLevel(int x, int y, int z, int level) {
     if (level < 0) level = 0;
     if (level > FIRE_MAX_LEVEL) level = FIRE_MAX_LEVEL;
     
-    FireCell* cell = &FIRE(x, y, z);
+    FireCell* cell = &FIRE_MUT(x, y, z);
     int oldLevel = cell->level;
     cell->level = (uint16_t)level;
     
@@ -197,7 +196,7 @@ void IgniteCell(int x, int y, int z) {
     if (!FireInBounds(x, y, z)) return;
     if (!CanBurn(x, y, z)) return;
     
-    FireCell* cell = &FIRE(x, y, z);
+    FireCell* cell = &FIRE_MUT(x, y, z);
     
     // Initialize fuel from cell type (including grass surface)
     cell->fuel = GetFuelAt(x, y, z);
@@ -208,7 +207,7 @@ void IgniteCell(int x, int y, int z) {
 void ExtinguishCell(int x, int y, int z) {
     if (!FireInBounds(x, y, z)) return;
     
-    FireCell* cell = &FIRE(x, y, z);
+    FireCell* cell = &FIRE_MUT(x, y, z);
     if (cell->level > 0) {
         SetFireLevel(x, y, z, 0);
     }
@@ -219,11 +218,11 @@ void SetFireSource(int x, int y, int z, bool isSource) {
     if (!FireInBounds(x, y, z)) return;
     
     bool wasActive = FireCellIsActive(x, y, z);
-    FIRE(x, y, z).isSource = isSource;
+    FIRE_MUT(x, y, z).isSource = isSource;
     
     if (isSource) {
-        FIRE(x, y, z).level = FIRE_MAX_LEVEL;
-        FIRE(x, y, z).fuel = 15;  // Max fuel for sources
+        FIRE_MUT(x, y, z).level = FIRE_MAX_LEVEL;
+        FIRE_MUT(x, y, z).fuel = 15;  // Max fuel for sources
         DestabilizeFire(x, y, z);
         // Fire sources also act as heat sources
         SetHeatSource(x, y, z, true);
@@ -277,7 +276,7 @@ static bool HasAdjacentWater(int x, int y, int z) {
 // Try to spread fire to neighbors
 // Called when spread interval is reached - fire level and water affect probability
 static bool FireTrySpread(int x, int y, int z) {
-    FireCell* cell = &FIRE(x, y, z);
+    FireCell* cell = &FIRE_MUT(x, y, z);
     if (cell->level < FIRE_MIN_SPREAD_LEVEL) return false;
     
     // Orthogonal neighbors + upward (fire rises)
@@ -322,7 +321,7 @@ static bool FireTrySpread(int x, int y, int z) {
         
         if (!CanBurn(nx, ny, nz)) continue;
         
-        FireCell* neighbor = &FIRE(nx, ny, nz);
+        FireCell* neighbor = &FIRE_MUT(nx, ny, nz);
         if (neighbor->level > 0) continue;  // Already burning
         
         // Base spread chance: higher fire level = more likely to spread
@@ -371,7 +370,7 @@ static bool FireTrySpread(int x, int y, int z) {
 
 // Process a single fire cell
 static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
-    FireCell* cell = &FIRE(x, y, z);
+    FireCell* cell = &FIRE_MUT(x, y, z);
     bool changed = false;
     
     // Handle sources - always burn at max, never consume fuel
@@ -509,7 +508,7 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
             int nx = x + dx[i];
             int ny = y + dy[i];
             if (FireInBounds(nx, ny, z)) {
-                FireCell* neighbor = &FIRE(nx, ny, z);
+                FireCell* neighbor = &FIRE_MUT(nx, ny, z);
                 if (neighbor->level > 0 || CanBurn(nx, ny, z)) {
                     hasActiveNeighbor = true;
                     break;
@@ -557,7 +556,10 @@ void UpdateFire(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                FireCell* cell = &FIRE(x, y, z);
+                // A chunk without a fire block was never touched: every cell empty, nothing to do
+                // (ProcessFireCell would only mark it stable)
+                if (!SparseLayerHasBlock(&fireLayer, x, y)) { x |= STORE_MASK; continue; }
+                const FireCell* cell = &FIRE(x, y, z);
                 
                 // Skip stable empty non-source cells
                 if (cell->stable && cell->level == 0 && !cell->isSource) {
@@ -586,7 +588,7 @@ void SyncFireLighting(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                FireCell* fc = &FIRE(x, y, z);
+                const FireCell* fc = &FIRE(x, y, z);
                 if (fc->level > 0) {
                     int lvl = fc->level;
                     uint8_t r = 255;

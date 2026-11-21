@@ -386,8 +386,27 @@ the v93 save). 512 tick time unchanged within noise.
 | 1024 map | 1.40 GB | 1.11 GB |
 | 2048 map | 5.9 GB | 4.65 GB (world scenario: 0 of 16,641 blocks allocated) |
 
-Next candidates (2048): the other non-zero empty fills (water stable bit 2 B, source items 0xFF
-2 x 1 B, explored 1 B: ~350 MB), sparse farm/fire/smoke/steam, tree data (growth timer 4 B +
+**Water, fire, smoke, steam, farm (done, 2026-11-21).** Same pattern: `LAYER(x, y, z)` read-only,
+`LAYER_MUT` writes (compiler-found), read-only users (tooltips, rendering, counters, jobs) use
+const pointers so looking never allocates. Sweeps skip chunks without a block: water with
+`FOR_X_IN_SPARSE_ROW` (same x order), fire/smoke/steam/farm with `SparseLayerHasBlock` per cell
+(smoke and steam alternate scan direction). Water's empty value is "dry and stable", so its
+whole-layer stable fill is gone. Fire/smoke/steam's empty value is all zero = *unstable*: the old
+sweeps processed every never-touched empty cell once any fire/smoke/steam existed anywhere, only
+to mark it stable, each using a slot of the per-tick update cap. Skipping chunks without a block
+drops that work, so fire/smoke/steam timing can differ from step 1 once they burn; the test
+suites (fire, steam, smoke via wind/snow) pass. Smoke/steam "destabilize all after load" loops
+only touch existing blocks.
+Saves byte-identical to step 1 for world 512/100, ladders, crafting, hubs, mood, survival,
+dollhouse, sandbox (train: the known empty-water stable bit). 512 tick 3.27 -> 3.21 ms.
+
+| peak footprint | before | after |
+|---|---|---|
+| 1024 map | 1.11 GB | 0.90 GB |
+| 2048 map | 4.65 GB | 3.83 GB (water 476 of 16,641 blocks = 3.7 MB; fire/smoke/steam/farm 0) |
+
+Next candidates (2048): the other non-zero empty fills (source items 0xFF 2 x 1 B, explored 1 B),
+tree data (growth timer 4 B +
 height + harvest, written in every chunk with a tree), then the HPA* graph (~1.7 GB of malloc).
 
 ## Allocation model (for steps 2-3)

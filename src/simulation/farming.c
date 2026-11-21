@@ -10,7 +10,6 @@
 #include <string.h>
 
 // Grid storage
-FarmCell* farmGrid = NULL;   // allocated in grid_layers.c
 int farmActiveCells = 0;
 
 // Tick accumulator
@@ -21,7 +20,7 @@ void InitFarming(void) {
 }
 
 void ClearFarming(void) {
-    CLEAR_GRID_LAYER(farmGrid, 0);
+    SparseLayerClear(&farmLayer);
     farmActiveCells = 0;
     farmTickAccumulator = 0;
 }
@@ -67,7 +66,7 @@ float GetSeasonalWeedRate(void) {
 FarmCell* GetFarmCell(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight
         || z < 0 || z >= gridDepth) return NULL;
-    return &FARM(x, y, z);
+    return &FARM_MUT(x, y, z);
 }
 
 // =============================================================================
@@ -170,8 +169,10 @@ void FarmTick(float dt) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                FarmCell* fc = &FARM(x, y, z);
-                if (!fc->tilled) continue;
+                // A chunk without a farm block has no tilled cells
+                if (!SparseLayerHasBlock(&farmLayer, x, y)) { x |= STORE_MASK; continue; }
+                if (!FARM(x, y, z).tilled) continue;
+                FarmCell* fc = &FARM_MUT(x, y, z);
 
                 // === Weed growth ===
                 if (seasonWeedRate > 0.0f) {

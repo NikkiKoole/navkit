@@ -37,8 +37,11 @@ typedef struct {
 } FarmCell;
 
 // Farm grid (parallel to main grid, zero-initialized = no farm data)
-extern FarmCell* farmGrid;
-#define FARM(x, y, z) (farmGrid CELL_AT((x), (y), (z)))
+// Sparse (grid.h SparseLayer): memory only in chunks that hold farm state. FARM(x, y, z) is
+// read-only (a cell in a chunk without a block reads as all zero); write with FARM_MUT.
+extern SparseLayer farmLayer;
+#define FARM(x, y, z) (*(const FarmCell*)SparseLayerRead(&farmLayer, (x), (y), (z)))
+#define FARM_MUT(x, y, z) (*(FarmCell*)SparseLayerWrite(&farmLayer, (x), (y), (z)))
 extern int farmActiveCells;  // count of tilled cells (for sim tick skipping)
 
 // Fertility constants

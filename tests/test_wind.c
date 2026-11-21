@@ -232,7 +232,7 @@ describe(wind_fire_spread) {
 
             // Ignite center at LOW level so spread is marginal
             SetFireLevel(cx, cy, 0, 2);  // Low fire level = low spread chance
-            FIRE(cx, cy, 0).fuel = 100;
+            FIRE_MUT(cx, cy, 0).fuel = 100;
 
             // Run fire spread for fewer ticks
             fireSpreadInterval = TICK_DT * 0.4f;  // Spread every tick
@@ -274,7 +274,7 @@ describe(wind_fire_spread) {
             }
 
             SetFireLevel(cx, cy, 0, 5);
-            FIRE(cx, cy, 0).fuel = 100;
+            FIRE_MUT(cx, cy, 0).fuel = 100;
 
             fireSpreadInterval = TICK_DT * 0.4f;
             for (int i = 0; i < 30; i++) {

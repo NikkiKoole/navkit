@@ -70,7 +70,17 @@ SparseLayer designationLayer = { NULL, 0, sizeof(Designation), &emptyDesignation
 static const WaterCell emptyWater = { .stable = 1 };   // dry and stable: UpdateWater skips it
 SparseLayer waterLayer = { NULL, 0, sizeof(WaterCell), &emptyWater, 0, "water" };
 
-static SparseLayer* const sparseLayers[] = { &designationLayer, &waterLayer };
+// Layers whose empty value is all zero share one zero block as their empty value.
+static const unsigned char zeroElem[64];
+_Static_assert(sizeof(FireCell) <= 64 && sizeof(SmokeCell) <= 64 && sizeof(SteamCell) <= 64 &&
+               sizeof(FarmCell) <= 64, "zeroElem too small");
+SparseLayer fireLayer  = { NULL, 0, sizeof(FireCell),  zeroElem, 0, "fire" };
+SparseLayer smokeLayer = { NULL, 0, sizeof(SmokeCell), zeroElem, 0, "smoke" };
+SparseLayer steamLayer = { NULL, 0, sizeof(SteamCell), zeroElem, 0, "steam" };
+SparseLayer farmLayer  = { NULL, 0, sizeof(FarmCell),  zeroElem, 0, "farm" };
+
+static SparseLayer* const sparseLayers[] = { &designationLayer, &waterLayer, &fireLayer, &smokeLayer,
+                                             &steamLayer, &farmLayer };
 #define SPARSE_LAYER_COUNT ((int)(sizeof(sparseLayers) / sizeof(sparseLayers[0])))
 
 void* SparseLayerAllocBlock(SparseLayer* L, int chunk) {
@@ -120,11 +130,8 @@ static const GridLayerDef gridLayerDefs[] = {
     LAYER_DEF(wallSourceItem, 0xFF),
     LAYER_DEF(floorSourceItem, 0xFF),
     LAYER_DEF(pressureVisitedGen, 0),
-    LAYER_DEF(fireGrid, 0),
-    LAYER_DEF(smokeGrid, 0),
     LAYER_DEF(smokePressureVisited, 0),
     LAYER_DEF(smokeHasRisen, 0),
-    LAYER_DEF(steamGrid, 0),
     LAYER_DEF(steamHasRisen, 0),
     LAYER_DEF(temperatureGrid, 0),
     LAYER_DEF(snowGrid, 0),
@@ -134,7 +141,6 @@ static const GridLayerDef gridLayerDefs[] = {
     LAYER_DEF(targetHeight, 0),
     LAYER_DEF(treeHarvestState, 0),
     LAYER_DEF(floorDirtGrid, 0),
-    LAYER_DEF(farmGrid, 0),
     LAYER_DEF(lightGrid, 0),
     LAYER_DEF(roomGrid, 0),
     LAYER_DEF(furnitureMoveCostGrid, 0),

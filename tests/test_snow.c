@@ -322,7 +322,7 @@ describe(snow_fire_interaction) {
         // Flammable cell with fire
         GRID(5, 5, 0) = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
         SetFireLevel(5, 5, 0, 5);
-        FIRE(5, 5, 0).fuel = 100;  // Give it fuel so it doesn't die on its own
+        FIRE_MUT(5, 5, 0).fuel = 100;  // Give it fuel so it doesn't die on its own
         
         // Add moderate snow
         SetSnowLevel(5, 5, 0, 2);
@@ -341,7 +341,7 @@ describe(snow_fire_interaction) {
         
         GRID(5, 5, 0) = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
         SetFireLevel(5, 5, 0, 5);
-        FIRE(5, 5, 0).fuel = 100;  // Give it fuel
+        FIRE_MUT(5, 5, 0).fuel = 100;  // Give it fuel
         SetSnowLevel(5, 5, 0, 1);  // Light snow (< 2, shouldn't extinguish)
         
         // Run fire update

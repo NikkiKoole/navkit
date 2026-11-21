@@ -666,24 +666,27 @@ bool LoadWorld(const char* filename) {
     }
     
     // Fire grid
+    SparseLayerClear(&fireLayer);   // sparse: load writes only non-empty cells
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            LOAD_ROW(f, FIRE, y, z);
+            LOAD_ROW_SPARSE(f, fireLayer, FIRE_MUT, y, z);
         }
     }
     SyncFireLighting();
     
     // Smoke grid
+    SparseLayerClear(&smokeLayer);   // sparse: load writes only non-empty cells
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            LOAD_ROW(f, SMOKE, y, z);
+            LOAD_ROW_SPARSE(f, smokeLayer, SMOKE_MUT, y, z);
         }
     }
     
     // Steam grid
+    SparseLayerClear(&steamLayer);   // sparse: load writes only non-empty cells
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            LOAD_ROW(f, STEAM, y, z);
+            LOAD_ROW_SPARSE(f, steamLayer, STEAM_MUT, y, z);
         }
     }
     
@@ -832,9 +835,10 @@ bool LoadWorld(const char* filename) {
     }
 
     // Farm grid
+    SparseLayerClear(&farmLayer);   // sparse: load writes only non-empty cells
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            LOAD_ROW(f, FARM, y, z);
+            LOAD_ROW_SPARSE(f, farmLayer, FARM_MUT, y, z);
         }
     }
     fread(&farmActiveCells, sizeof(farmActiveCells), 1, f);

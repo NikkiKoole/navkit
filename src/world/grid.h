@@ -279,6 +279,10 @@ static inline const void* SparseLayerRead(const SparseLayer* L, int x, int y, in
     return b ? b + (size_t)SparseCellOf(x, y, z) * L->elemSize : L->empty;
 }
 void* SparseLayerAllocBlock(SparseLayer* L, int chunk);
+// True if the chunk holding (x, y) has a block (else every cell of its column is empty).
+static inline bool SparseLayerHasBlock(const SparseLayer* L, int x, int y) {
+    return L->blocks[SparseChunkOf(x, y)] != NULL;
+}
 static inline void* SparseLayerWrite(SparseLayer* L, int x, int y, int z) {
     int c = SparseChunkOf(x, y);
     unsigned char* b = (unsigned char*)L->blocks[c];

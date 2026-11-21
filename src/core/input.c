@@ -1433,7 +1433,7 @@ static void ExecuteRemoveFire(int x1, int y1, int x2, int y2, int z, bool shift)
                 fireZ = z - 1;
             }
             
-            FireCell* cell = &FIRE(dx, dy, fireZ);
+            const FireCell* cell = &FIRE(dx, dy, fireZ);
             if (cell->isSource) { SetFireSource(dx, dy, fireZ, false); removedSources++; }
             if (!shift && cell->level > 0) { ExtinguishCell(dx, dy, fireZ); extinguished++; }
         }

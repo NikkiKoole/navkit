@@ -575,7 +575,7 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
 
     // Farm plot info
     {
-        FarmCell* fc = &FARM(cellX, cellY, cellZ);
+        const FarmCell* fc = &FARM(cellX, cellY, cellZ);
         if (fc->tilled) {
             MaterialType soilMat = GetWallMaterial(cellX, cellY, cellZ - 1);
             snprintf(lines[lineCount++], sizeof(lines[0]), "Farm Plot (%s)", MaterialName(soilMat));
@@ -656,7 +656,7 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     }
 
     // Fire info
-    FireCell* fire = &FIRE(cellX, cellY, cellZ);
+    const FireCell* fire = &FIRE(cellX, cellY, cellZ);
     if (fire->level > 0 || fire->isSource) {
         snprintf(lines[lineCount++], sizeof(lines[0]), "Fire: %d/7", fire->level);
         if (fire->isSource) {
@@ -668,13 +668,13 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     }
 
     // Steam info
-    SteamCell* steam = &STEAM(cellX, cellY, cellZ);
+    const SteamCell* steam = &STEAM(cellX, cellY, cellZ);
     if (steam->level > 0) {
         snprintf(lines[lineCount++], sizeof(lines[0]), "Steam: %d/7", steam->level);
     }
 
     // Smoke info
-    SmokeCell* smoke = &SMOKE(cellX, cellY, cellZ);
+    const SmokeCell* smoke = &SMOKE(cellX, cellY, cellZ);
     if (smoke->level > 0) {
         snprintf(lines[lineCount++], sizeof(lines[0]), "Smoke: %d/7", smoke->level);
     }

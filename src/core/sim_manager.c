@@ -65,7 +65,7 @@ void RebuildSimActivityCounts(void) {
                     steamActiveCells++;
                 }
                 // Fire: level > 0 or is source
-                FireCell *fc = &FIRE(x, y, z);
+                const FireCell *fc = &FIRE(x, y, z);
                 if (fc->level > 0 || fc->isSource) {
                     fireActiveCells++;
                 }
@@ -122,7 +122,7 @@ bool ValidateSimActivityCounts(void) {
                 const WaterCell *wc = &WATER(x, y, z);
                 if (wc->level > 0 || wc->isSource || wc->isDrain) actualWater++;
                 if (GetSteamLevel(x, y, z) > 0) actualSteam++;
-                FireCell *fc = &FIRE(x, y, z);
+                const FireCell *fc = &FIRE(x, y, z);
                 if (fc->level > 0 || fc->isSource) actualFire++;
                 if (GetSmokeLevel(x, y, z) > 0) actualSmoke++;
                 if (IsHeatSource(x, y, z) || IsColdSource(x, y, z)) actualTempSource++;
