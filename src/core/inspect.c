@@ -22,6 +22,7 @@
 #include "../entities/workshops.h"
 #include "../world/pathfinding.h"
 #include "save_migrations.h"
+#include "save_rle.h"
 #include "../world/cell_defs.h"
 #include "../world/material.h"
 #include "../world/biome.h"
@@ -67,7 +68,25 @@ static const char* finishNames[] = {"ROUGH", "SMOOTH", "POLISHED", "ENGRAVED"};
 // Loaded data (separate from game globals so we don't corrupt game state)
 static uint64_t insp_worldSeed = 0;
 static int insp_gridW, insp_gridH, insp_gridD, insp_chunkW, insp_chunkH;
-static uint8_t* insp_gridCells = NULL;  // CellType values
+static uint8_t* insp_gridCells = NULL;
+
+// One per-cell layer of the save's grid section: plain [z][y][x] elements, or (v95+) a
+// run-length coded stream of them (save_rle.h). Must stay in step with saveload.c.
+static void InspReadLayer(FILE* f, void* dst, size_t es, size_t totalCells, bool rle) {
+    if (!rle) { fread(dst, es, totalCells, f); return; }
+    RleReader r;
+    RleReaderBegin(&r, f, es);
+    RleReaderPull(&r, dst, totalCells);
+    if (!RleReaderEnd(&r)) printf("WARNING: malformed run-length layer (elem %zu bytes)\n", es);
+}
+static void InspSkipLayer(FILE* f, size_t es, size_t totalCells, bool rle) {
+    if (!rle) { fseek(f, (long)(totalCells * es), SEEK_CUR); return; }
+    RleReader r;
+    RleReaderBegin(&r, f, es);
+    RleReaderSkip(&r, totalCells);
+    if (!RleReaderEnd(&r)) printf("WARNING: malformed run-length layer (elem %zu bytes)\n", es);
+}
+  // CellType values
 static WaterCell* insp_waterCells = NULL;
 static FireCell* insp_fireCells = NULL;
 static SmokeCell* insp_smokeCells = NULL;
@@ -1320,61 +1339,62 @@ int InspectSaveFile(int argc, char** argv) {
     insp_tempCells = malloc(totalCells * sizeof(TempCell));
     insp_designations = malloc(totalCells * sizeof(Designation));
     
-    if (version >= V94_NARROW_GRID_LAYERS) fread(insp_gridCells, sizeof(uint8_t), totalCells, f);
+    bool rle = (version >= V95_RLE_GRID_LAYERS);   // v95+: each layer is run-length coded
+    if (version >= V94_NARROW_GRID_LAYERS) InspReadLayer(f, insp_gridCells, sizeof(uint8_t), totalCells, rle);
     else FreadLegacyIntsAsU8(insp_gridCells, totalCells, f);
-    fread(insp_waterCells, sizeof(WaterCell), totalCells, f);
-    fread(insp_fireCells, sizeof(FireCell), totalCells, f);
-    fread(insp_smokeCells, sizeof(SmokeCell), totalCells, f);
-    fread(insp_steamCells, sizeof(SteamCell), totalCells, f);
-    fread(insp_cellFlags, sizeof(uint8_t), totalCells, f);
-    fread(insp_wallMaterials, sizeof(uint8_t), totalCells, f);
-    fread(insp_floorMaterials, sizeof(uint8_t), totalCells, f);
-    fread(insp_wallNatural, sizeof(uint8_t), totalCells, f);
-    fread(insp_floorNatural, sizeof(uint8_t), totalCells, f);
+    InspReadLayer(f, insp_waterCells, sizeof(WaterCell), totalCells, rle);
+    InspReadLayer(f, insp_fireCells, sizeof(FireCell), totalCells, rle);
+    InspReadLayer(f, insp_smokeCells, sizeof(SmokeCell), totalCells, rle);
+    InspReadLayer(f, insp_steamCells, sizeof(SteamCell), totalCells, rle);
+    InspReadLayer(f, insp_cellFlags, sizeof(uint8_t), totalCells, rle);
+    InspReadLayer(f, insp_wallMaterials, sizeof(uint8_t), totalCells, rle);
+    InspReadLayer(f, insp_floorMaterials, sizeof(uint8_t), totalCells, rle);
+    InspReadLayer(f, insp_wallNatural, sizeof(uint8_t), totalCells, rle);
+    InspReadLayer(f, insp_floorNatural, sizeof(uint8_t), totalCells, rle);
 
-    fread(insp_wallFinish, sizeof(uint8_t), totalCells, f);
-    fread(insp_floorFinish, sizeof(uint8_t), totalCells, f);
+    InspReadLayer(f, insp_wallFinish, sizeof(uint8_t), totalCells, rle);
+    InspReadLayer(f, insp_floorFinish, sizeof(uint8_t), totalCells, rle);
 
     // Wall source item grid (skip - not inspected)
-    fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);
+    InspSkipLayer(f, sizeof(uint8_t), totalCells, rle);
 
     // Floor source item grid (skip - not inspected)
-    fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);
+    InspSkipLayer(f, sizeof(uint8_t), totalCells, rle);
 
     // Vegetation grid (skip - not inspected)
-    fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);
+    InspSkipLayer(f, sizeof(uint8_t), totalCells, rle);
 
     // Snow grid (skip - not inspected)
-    fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);
+    InspSkipLayer(f, sizeof(uint8_t), totalCells, rle);
 
-    fread(insp_tempCells, sizeof(TempCell), totalCells, f);
-    fread(insp_designations, sizeof(Designation), totalCells, f);
+    InspReadLayer(f, insp_tempCells, sizeof(TempCell), totalCells, rle);
+    InspReadLayer(f, insp_designations, sizeof(Designation), totalCells, rle);
     
     // Wear grid (skip - not inspected; uint16 since v94, int before)
-    fseek(f, totalCells * (version >= V94_NARROW_GRID_LAYERS ? sizeof(uint16_t) : sizeof(int)), SEEK_CUR);
+    InspSkipLayer(f, (version >= V94_NARROW_GRID_LAYERS ? sizeof(uint16_t) : sizeof(int)), totalCells, rle);
     
     // Tree growth timer grid (skip - not inspected; float)
-    fseek(f, totalCells * sizeof(float), SEEK_CUR);
+    InspSkipLayer(f, sizeof(float), totalCells, rle);
     
     // Tree target height grid (skip - not inspected; uint8 since v94, int before)
-    fseek(f, totalCells * (version >= V94_NARROW_GRID_LAYERS ? sizeof(uint8_t) : sizeof(int)), SEEK_CUR);
+    InspSkipLayer(f, (version >= V94_NARROW_GRID_LAYERS ? sizeof(uint8_t) : sizeof(int)), totalCells, rle);
     
     // Tree harvest state grid (skip - not inspected)
-    fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);  // treeHarvestState
+    InspSkipLayer(f, sizeof(uint8_t), totalCells, rle);  // treeHarvestState
 
     // Floor dirt grid (skip - not inspected)
-    fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);  // floorDirtGrid
+    InspSkipLayer(f, sizeof(uint8_t), totalCells, rle);  // floorDirtGrid
 
     // Explored grid (skip - not inspected)
-    fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);  // exploredGrid
+    InspSkipLayer(f, sizeof(uint8_t), totalCells, rle);  // exploredGrid
 
     // Farm grid (skip - not inspected)
-    fseek(f, totalCells * sizeof(FarmCell), SEEK_CUR);  // farmGrid (8 bytes per cell)
+    InspSkipLayer(f, sizeof(FarmCell), totalCells, rle);  // farmGrid (8 bytes per cell)
     fseek(f, sizeof(int), SEEK_CUR);  // farmActiveCells
 
     // Track connections grid (v89+, skip - not inspected)
     if (version >= 89) {
-        fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);  // trackConnections
+        InspSkipLayer(f, sizeof(uint8_t), totalCells, rle);  // trackConnections
     }
 
     // === ENTITIES SECTION ===

@@ -4,7 +4,12 @@ Save/load, input handling, time, inspector, simulation manager.
 
 ## Save System
 
-**Save version**: v55 (see `CURRENT_SAVE_VERSION` in `save_migrations.h`). Strict version matching during dev — old saves error out cleanly.
+**Save version**: see `CURRENT_SAVE_VERSION` in `save_migrations.h` (v95 as of 2026-11-21); saves from `MIN_SAVE_VERSION` up load through migrations.
+
+**Grid layers are run-length coded since v95** (`save_rle.h`): each layer is one stream in
+`[z][y][x]` order, written/read row by row through `SAVE_ROW`/`LOAD_ROW` (the stream starts at
+the layer's first row and ends after its last). Keep every layer loop a full `z` x `y` loop, and
+`inspect.c` must read the same streams (`InspReadLayer` / `InspSkipLayer`).
 
 ### Grid Write Order (saveload.c)
 

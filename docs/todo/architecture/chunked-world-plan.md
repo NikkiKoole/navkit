@@ -432,10 +432,31 @@ depends on what is on screen, not on map size (`DrawCells` ~25 ms either way: a 
 general render-speed topic). Unverified: the 2048 view shows black patches that look like
 depressions deeper than the levels the renderer shades.
 
-**Saves at 2048 are the blocker.** A world save is **3.65 GB** (every cell of every layer,
-uncompressed; the game writes raw `.bin`, `.gz` is only unpacked on load), ~5 s to write;
-loading takes ~40 s (incl. the 15 s graph build). Next: a sparse save format (write only chunk
-blocks that hold data, compress), with a save version bump and migration.
+**Saves at 2048 were the blocker**: a world save was 3.65 GB (every cell of every layer,
+uncompressed; the game writes raw `.bin`, `.gz` is only unpacked on load).
+
+**Run-length coded layers, save v95 (done, 2026-11-21)** (`src/core/save_rle.h`): each layer is
+still one `[z][y][x]` stream, coded as runs (`varint (n<<1)|1` + element) and literal stretches
+(`varint n<<1` + n elements; runs under 4 go into literals, so noisy data costs little). Rows go
+through the same `SAVE_ROW`/`LOAD_ROW` macros; a layer's stream starts at its first row and ends
+after its last. Loading clears each layer first and writes only non-zero cells. v94 and older
+load as plain rows; `inspect.c` reads both (`InspReadLayer`/`InspSkipLayer`).
+
+| save size | v94 | v95 |
+|---|---|---|
+| world 100 | 12.2 MB | 3.2 MB |
+| world 512 | 242 MB | 6.4 MB |
+| world 2048 | 3.65 GB | **50.5 MB** |
+| small scenarios / games | 2-17 MB | ~1.8-2.1 MB (the non-grid sections) |
+
+2048: save ~7.7 s (was ~5 s), and saving raises the footprint by ~850 MB because it reads every
+cell of the dense layers (reading untouched memory costs footprint on macOS); load ~42 s total.
+Verified by state comparison (the format changed, so files can't match): old build v94 run and
+new build v95 run of the same scenario, both loaded and re-saved by the new build (same
+conversion on both sides: a load clears item reservations, so converting only one side shows a
+false difference), byte-identical for world 512/100, crafting, mood, train, ladders, survival,
+dollhouse, sandbox; `--inspect` output identical for v94 and v95 files; the v93 save migrates
+identically.
 
 ## Allocation model (for steps 2-3)
 

@@ -8,7 +8,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 94
+#define CURRENT_SAVE_VERSION 95
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -31,6 +31,8 @@
 // Before v94 each was saved as 4-byte int per cell. These read n legacy ints into the
 // narrow array (values are in range: CellType < 256, tree heights < depth, wear <= wearMax).
 #define V94_NARROW_GRID_LAYERS 94
+// v95: each per-cell layer in the grid section is run-length coded (save_rle.h).
+#define V95_RLE_GRID_LAYERS 95
 static inline void FreadLegacyIntsAsU8(uint8_t* dst, size_t n, FILE* f) {
     int32_t buf[256];
     while (n > 0) {

@@ -24,6 +24,7 @@ void RebuildPostLoadState(void);
 #include "../entities/tool_quality.h"
 #include "../entities/namegen.h"
 #include "save_migrations.h"
+#include "save_rle.h"
 
 #define V21_MAT_COUNT 10  // MAT_COUNT before clay/gravel/sand/peat materials
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
@@ -31,10 +32,35 @@ void RebuildPostLoadState(void);
 // Section markers (readable in hex dump)
 #define MARKER_GRIDS    0x47524944  // "GRID"
 
-// Row I/O for per-cell layers. Rows are written in [z][y][x] order (the save format), but
-// go through the layer macro element by element, so the in-memory layout (CELL_AT) can
-// differ from the file layout. MACRO is a layer accessor like WATER or GRID.
+// Row I/O for per-cell layers. Each layer is one stream of rows in [z][y][x] order (the save
+// format), read and written through the layer macro element by element, so the in-memory
+// layout (CELL_AT) can differ from the file layout. MACRO is a layer accessor like WATER or GRID.
+// Since v95 each layer's stream is run-length coded (save_rle.h): the stream starts at the
+// layer's first row (y == 0, z == 0) and ends after its last row. Older saves are plain rows.
 static _Alignas(16) unsigned char saveRowBuf[MAX_GRID_WIDTH * 32];
+static RleWriter saveRle;
+static RleReader loadRle;
+static bool loadRleMode;           // set by LoadWorld from the file's version
+static bool loadRleOk = true;      // false if any layer stream was malformed
+
+static void SaveRowOut(FILE* f, size_t es, int y, int z) {
+    if (y == 0 && z == 0) RleWriterBegin(&saveRle, f, es);
+    RleWriterPush(&saveRle, saveRowBuf, gridWidth);
+    if (y == gridHeight - 1 && z == gridDepth - 1) RleWriterEnd(&saveRle);
+}
+
+static void LoadRowIn(FILE* f, size_t es, int y, int z) {
+    if (!loadRleMode) { fread(saveRowBuf, es, gridWidth, f); return; }
+    if (y == 0 && z == 0) RleReaderBegin(&loadRle, f, es);
+    RleReaderPull(&loadRle, saveRowBuf, (uint64_t)gridWidth);
+    if (y == gridHeight - 1 && z == gridDepth - 1 && !RleReaderEnd(&loadRle)) loadRleOk = false;
+}
+
+static inline bool RowElemIsZero(const unsigned char* p, size_t es) {
+    for (size_t i = 0; i < es; i++) if (p[i]) return false;
+    return true;
+}
+
 #define ROW_ELEM_SIZE(MACRO) sizeof(MACRO(0, 0, 0))
 #define ROW_TO_BUF(MACRO, y, z) do { \
         _Static_assert(sizeof(MACRO(0, 0, 0)) <= 32, "saveRowBuf element too small"); \
@@ -45,12 +71,26 @@ static _Alignas(16) unsigned char saveRowBuf[MAX_GRID_WIDTH * 32];
         for (int x_ = 0; x_ < gridWidth; x_++) \
             memcpy(&MACRO(x_, (y), (z)), saveRowBuf + (size_t)x_ * ROW_ELEM_SIZE(MACRO), ROW_ELEM_SIZE(MACRO)); \
     } while (0)
-#define SAVE_ROW(f, MACRO, y, z) do { ROW_TO_BUF(MACRO, y, z); fwrite(saveRowBuf, ROW_ELEM_SIZE(MACRO), gridWidth, (f)); } while (0)
+// Into a layer cleared at its first row: write only non-zero elements, so loading leaves empty
+// memory untouched (a written zero would still cost a page).
+#define ROW_FROM_BUF_NZ(MACRO, y, z) do { \
+        for (int x_ = 0; x_ < gridWidth; x_++) { \
+            const unsigned char* e_ = saveRowBuf + (size_t)x_ * ROW_ELEM_SIZE(MACRO); \
+            if (!RowElemIsZero(e_, ROW_ELEM_SIZE(MACRO))) memcpy(&MACRO(x_, (y), (z)), e_, ROW_ELEM_SIZE(MACRO)); \
+        } \
+    } while (0)
+// &MACRO(0, 0, 0) is the layer's first element (CellIndex(0, 0, 0) == 0): clear the whole layer.
+#define LOAD_CLEAR_AT_FIRST_ROW(MACRO, y, z) do { \
+        if ((y) == 0 && (z) == 0) ClearGridLayer(&MACRO(0, 0, 0), ROW_ELEM_SIZE(MACRO), 0); \
+    } while (0)
+#define SAVE_ROW(f, MACRO, y, z) do { ROW_TO_BUF(MACRO, y, z); SaveRowOut((f), ROW_ELEM_SIZE(MACRO), (y), (z)); } while (0)
+#define LOAD_ROW(f, MACRO, y, z) do { LOAD_CLEAR_AT_FIRST_ROW(MACRO, y, z); \
+        LoadRowIn((f), ROW_ELEM_SIZE(MACRO), (y), (z)); ROW_FROM_BUF_NZ(MACRO, y, z); } while (0)
 // Sparse layer (grid.h SparseLayer): write only cells that differ from the empty value, so
 // loading a mostly-empty layer doesn't allocate a block for every chunk.
 #define LOAD_ROW_SPARSE(f, LAYER, MUTMACRO, y, z) do { \
         size_t es_ = (LAYER).elemSize; \
-        fread(saveRowBuf, es_, gridWidth, (f)); \
+        LoadRowIn((f), es_, (y), (z)); \
         for (int x_ = 0; x_ < gridWidth; x_++) { \
             if (memcmp(saveRowBuf + (size_t)x_ * es_, (LAYER).empty, es_) != 0) \
                 memcpy(&MUTMACRO(x_, (y), (z)), saveRowBuf + (size_t)x_ * es_, es_); \
@@ -59,11 +99,11 @@ static _Alignas(16) unsigned char saveRowBuf[MAX_GRID_WIDTH * 32];
 // Byte layers stored with an XOR in memory (source items, explored): the file keeps the plain value.
 #define SAVE_ROW_XOR(f, MACRO, y, z, xorv) do { ROW_TO_BUF(MACRO, y, z); \
         for (int x_ = 0; x_ < gridWidth; x_++) saveRowBuf[x_] ^= (unsigned char)(xorv); \
-        fwrite(saveRowBuf, 1, gridWidth, (f)); } while (0)
-#define LOAD_ROW_XOR(f, MACRO, y, z, xorv) do { fread(saveRowBuf, 1, gridWidth, (f)); \
+        SaveRowOut((f), 1, (y), (z)); } while (0)
+#define LOAD_ROW_XOR(f, MACRO, y, z, xorv) do { LOAD_CLEAR_AT_FIRST_ROW(MACRO, y, z); \
+        LoadRowIn((f), 1, (y), (z)); \
         for (int x_ = 0; x_ < gridWidth; x_++) saveRowBuf[x_] ^= (unsigned char)(xorv); \
-        ROW_FROM_BUF(MACRO, y, z); } while (0)
-#define LOAD_ROW(f, MACRO, y, z) do { fread(saveRowBuf, ROW_ELEM_SIZE(MACRO), gridWidth, (f)); ROW_FROM_BUF(MACRO, y, z); } while (0)
+        ROW_FROM_BUF_NZ(MACRO, y, z); } while (0)
 #define MARKER_ENTITIES 0x454E5449  // "ENTI"
 #define MARKER_VIEW     0x56494557  // "VIEW"
 #define MARKER_SETTINGS 0x53455454  // "SETT"
@@ -655,6 +695,8 @@ bool LoadWorld(const char* filename) {
         fclose(f);
         return false;
     }
+    loadRleMode = (version >= V95_RLE_GRID_LAYERS);   // v95+: layers are run-length coded
+    loadRleOk = true;
     
     // Grid cells
     for (int z = 0; z < gridDepth; z++) {
@@ -859,6 +901,13 @@ bool LoadWorld(const char* filename) {
         }
     } else {
         CLEAR_GRID_LAYER(trackConnections, 0);
+    }
+
+    if (!loadRleOk) {
+        printf("ERROR: corrupt grid data (a layer's run-length stream ended early or late)\n");
+        AddMessage("Corrupt grid data in save", RED);
+        fclose(f);
+        return false;
     }
 
     // === ENTITIES SECTION ===
