@@ -11,7 +11,7 @@
 
 #define FZ_W 64
 #define FZ_H 64
-#define FZ_D 4
+#define FZ_D 6          // hills go up to 6 levels; the other generators stay at 4
 
 typedef struct {
     int w, h, d;

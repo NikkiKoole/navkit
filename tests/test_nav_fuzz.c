@@ -2,7 +2,8 @@
 //
 // Generates many small worlds built to hit the awkward cases (walls and gaps on
 // chunk borders, mazes, serpentines, ladders and one-way ramp entries on
-// borders and corners, chunk sizes that don't divide the map, mud, 4/8-dir) and
+// borders and corners, game-style hills with ramps inside chunks, chunk sizes that
+// don't divide the map, mud, 4/8-dir) and
 // checks every algorithm against ground truth:
 //
 //   A*        every step legal, cost adds up, equals the full flow field
@@ -254,7 +255,84 @@ static void BiasedCell(int* x, int* y) {
     if (*y >= map.h) *y = map.h - 1;
 }
 
-static const char* kGenNames[] = {"random", "borders", "maze", "serpentine", "rooms", "terraces"};
+// Game-style hills: a heightmap where each column has ONE walkable cell, on top of
+// its ground (everything below and above is solid), so the only ways between heights
+// are ramps on the slopes and ladders on cliffs. Ramps sit everywhere inside chunks,
+// and routes often have to climb and come back down within one chunk (around a pit,
+// over a ridge). Some columns get a cave cell under the surface, and some tunnels.
+// This is the terrain the 3D chunk search is about: today every one of those ramps
+// is a graph node.
+static int hillH[FZ_H][FZ_W];
+static void GenHills(void) {
+    for (int z = 0; z < map.d; z++)
+        for (int y = 0; y < map.h; y++)
+            for (int x = 0; x < map.w; x++) map.wall[z][y][x] = 1;
+    // smooth-ish heightmap: a few random blobs raise the ground, then terraced
+    int blobs = RndRange(2, 10);
+    static int acc[FZ_H][FZ_W];
+    memset(acc, 0, sizeof(acc));
+    for (int b = 0; b < blobs; b++) {
+        int cx = RndRange(0, map.w - 1), cy = RndRange(0, map.h - 1), r = RndRange(3, 18);
+        int up = Chance(75) ? 1 : -1;
+        for (int y = 0; y < map.h; y++)
+            for (int x = 0; x < map.w; x++) {
+                int d = abs(x - cx) + abs(y - cy);
+                if (d < r) acc[y][x] += up * (r - d);
+            }
+    }
+    int lo = 1 << 30, hi = -(1 << 30);
+    for (int y = 0; y < map.h; y++)
+        for (int x = 0; x < map.w; x++) { if (acc[y][x] < lo) lo = acc[y][x]; if (acc[y][x] > hi) hi = acc[y][x]; }
+    int span = hi - lo + 1;
+    for (int y = 0; y < map.h; y++)
+        for (int x = 0; x < map.w; x++) {
+            int h = (int)((long)(acc[y][x] - lo) * map.d / span);
+            if (Chance(4)) h += RndRange(-1, 1);          // noise: lone bumps and pits
+            if (h < 0) h = 0;
+            if (h >= map.d) h = map.d - 1;
+            hillH[y][x] = h;
+            map.wall[h][y][x] = 0;
+        }
+    // ramps on slopes: a column next to one exactly one level higher. Not every
+    // slope cell, so some steps are cliffs (some of those get a ladder instead)
+    static const int ox[5] = {0, 0, 1, 0, -1}, oy[5] = {0, -1, 0, 1, 0};
+    int rampPct = RndRange(30, 90);
+    for (int y = 0; y < map.h; y++)
+        for (int x = 0; x < map.w; x++) {
+            int h = hillH[y][x];
+            if (h + 1 >= map.d) continue;
+            int start = RndRange(1, 4);
+            for (int k = 0; k < 4; k++) {
+                int dir = 1 + (start - 1 + k) % 4;
+                int ex = x + ox[dir], ey = y + oy[dir];
+                if (ex < 0 || ey < 0 || ex >= map.w || ey >= map.h || hillH[ey][ex] != h + 1) continue;
+                if (Chance(rampPct)) { map.ramp[h][y][x] = (unsigned char)dir; break; }
+                if (Chance(6)) { FzPlaceLadder(x, y, h); break; }   // opens (x,y,h+1): a ledge onto the cliff
+            }
+        }
+    // ladder shafts down a cliff of several levels
+    int shafts = RndRange(0, 4);
+    for (int i = 0; i < shafts; i++) {
+        int x, y;
+        BiasedCell(&x, &y);
+        int top = hillH[y][x], len = RndRange(1, 3);
+        for (int z = top - 1; z >= 0 && z >= top - len; z--) FzPlaceLadder(x, y, z);
+    }
+    // caves: a walkable cell under the surface, often in runs (tunnels)
+    int caves = Chance(50) ? RndRange(1, 6) : 0;
+    for (int i = 0; i < caves; i++) {
+        int x, y;
+        BiasedCell(&x, &y);
+        int dx = Chance(50), dy = !dx, len = RndRange(1, 20);
+        for (int k = 0; k < len; k++, x += dx, y += dy) {
+            if (x >= map.w || y >= map.h) break;
+            int z = hillH[y][x] - RndRange(1, 2);
+            if (z >= 0) map.wall[z][y][x] = 0;
+        }
+    }
+}
+
+static const char* kGenNames[] = {"random", "borders", "maze", "serpentine", "rooms", "terraces", "hills"};
 
 static void GenerateWorld(int* outGen) {
     memset(&map, 0, sizeof(map));
@@ -265,14 +343,23 @@ static void GenerateWorld(int* outGen) {
     map.h = RndRange(chunkH + 2, FZ_H);
     if (Chance(30)) map.w -= map.w % chunkW;          // sometimes exact multiples
     if (map.w < 3) map.w = 3;
-    map.d = RndRange(1, FZ_D);
+    map.d = RndRange(1, 4);
     int gen = RndRange(0, 4);
     // terraces: several open-ish levels joined by many ramps and some ladders, so
     // routes keep choosing between ways up and down (3D heuristics, ramp edges)
     bool terraces = Chance(20);
-    if (terraces) { gen = 5; map.d = RndRange(2, FZ_D); }
+    if (terraces) { gen = 5; map.d = RndRange(2, 4); }
     *outGen = gen;
-    for (int z = 0; z < map.d; z++) {
+    bool hills = Chance(25);
+    if (hills) {
+        *outGen = 6;
+        map.d = RndRange(2, FZ_D);
+        if (Chance(60)) { chunkW = chunkH = Chance(50) ? 8 : 16; }   // chunks big enough to hold whole slopes
+        map.w = RndRange(chunkW + 2, FZ_W);
+        map.h = RndRange(chunkH + 2, FZ_H);
+        GenHills();
+    }
+    for (int z = 0; z < map.d && !hills; z++) {
         int g = Chance(75) ? gen : RndRange(0, 4);
         if (terraces) g = Chance(70) ? 0 : RndRange(0, 4);
         switch (g) {
@@ -295,7 +382,7 @@ static void GenerateWorld(int* outGen) {
         }
     }
     // vertical connections, often on borders/corners
-    if (map.d > 1) {
+    if (map.d > 1 && !hills) {
         int ladders = RndRange(0, 10), ramps = RndRange(0, 10);
         if (terraces) { ladders = RndRange(0, 6); ramps = RndRange(15, 60); }
         for (int i = 0; i < ladders; i++) { int x, y; BiasedCell(&x, &y); FzPlaceLadder(x, y, RndRange(0, map.d - 2)); }
@@ -349,6 +436,34 @@ static NavPoint walk[FZ_W * FZ_H * FZ_D];
 static int* extraBuf;
 
 static long statHierCells, statHierExtra, statHierOpt;
+static long statInnerRamps, statExcursions, statAStarPaths;
+
+// A path that leaves a level and comes back to it without leaving the chunk: the
+// case a chunk-local 3D search must find by itself (today ramp entrances do it)
+static bool HasChunkExcursion(const NavPoint* p, int len) {
+    int k = 0;
+    while (k < len) {
+        int cx = p[k].x / chunkW, cy = p[k].y / chunkH, z0 = p[k].z;
+        bool left = false;
+        int j = k + 1;
+        for (; j < len && p[j].x / chunkW == cx && p[j].y / chunkH == cy; j++) {
+            if (p[j].z != z0) left = true;
+            else if (left) return true;
+        }
+        k = j;
+    }
+    return false;
+}
+
+static void CountInnerRamps(void) {
+    for (int z = 0; z < map.d; z++)
+        for (int y = 0; y < map.h; y++)
+            for (int x = 0; x < map.w; x++) {
+                if (!map.ramp[z][y][x] || map.wall[z][y][x]) continue;
+                int lx = x % chunkW, ly = y % chunkH;
+                if (lx > 0 && ly > 0 && lx < chunkW - 1 && ly < chunkH - 1) statInnerRamps++;
+            }
+}
 
 // Debug: print the walk from p with the promise at each cell
 static void TraceHFlow(NavWorld* w, NavHFlow* h, const NavFlowField* truth, NavPoint p) {
@@ -524,6 +639,7 @@ static void CheckWorld(NavWorld* w, NavHFlow** hs, NavPoint* goals, int goalCoun
         if (a.x < 0 || b.x < 0 || (a.x == b.x && a.y == b.y && a.z == b.z)) continue;
         int la = NavFindPathAStar(w, a, b, pbuf, (int)(sizeof(pbuf) / sizeof(pbuf[0])));
         int opt = w->lastCost;
+        if (la > 0) { statAStarPaths++; statExcursions += HasChunkExcursion(pbuf, la); }
         // A* must be exactly optimal (an inadmissible heuristic shows up here)
         {
             NavFlowField* ff = NavFlowCreate(w);
@@ -748,6 +864,7 @@ int main(int argc, char** argv) {
                  map.w, map.h, map.d, chunkW, chunkH, eight ? "8dir" : "4dir", fz_climbExtraOn ? " climb-extra" : "");
         worldFailures = 0;
         if (CountWalkable() < 2) continue;
+        CountInnerRamps();
 
         NavWorld* w = NavCreate(map.w, map.h, map.d, chunkW, chunkH, &map);
         w->eightDir = eight;
@@ -808,6 +925,8 @@ int main(int argc, char** argv) {
     }
     printf("nav fuzz: %d worlds, %d failed, %d failures; hflow over %ld cells +%.2f%% vs optimal\n", worlds,
            failedWorlds, failures, statHierCells, statHierOpt ? 100.0 * statHierExtra / statHierOpt : 0.0);
+    printf("  %ld ramps inside chunks; %ld of %ld A* paths leave a level and come back within one chunk\n",
+           statInnerRamps, statExcursions, statAStarPaths);
     printf("\tFailed: %d\n", failures ? 1 : 0);
     return failures ? 1 : 0;
 }

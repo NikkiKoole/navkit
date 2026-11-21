@@ -479,6 +479,27 @@ drives the edge count, the build time (all entrance pairs per chunk) and the abs
 Chunk size 32 instead of 16 (1024): entrances 298K -> 274K only, edges 6.6M -> 10.1M, build 4.0
 -> 8.6 s, tick 9.0 -> 10.0 ms: worse. Bigger chunks are not the fix.
 
+### Plan: chunk-local 3D search (ramps and ladders inside a chunk stop being graph nodes)
+
+Order: (1) safety net, (2) the 3D search in sub-steps, each committed after `make test` +
+scenarios-check: a. per-chunk distances over all z of the chunk column, ramp/ladder entrances
+still there (paths and costs must not change); b. drop the entrances of ramps/ladders inside a
+chunk; c. incremental chunk updates and regions; d. path refinement. (3) Measure. (4) Threaded
+graph build only if the build is still too slow. (5) A coarser level only if long searches still
+spike.
+
+**Step 1 done: safety net.** The nav fuzz test has a `hills` generator (game-style heightmap:
+one walkable cell per column, ramps on slopes, ladders on cliffs, ladder shafts, caves; up to 6
+levels, chunks often 8 or 16 so whole slopes sit inside a chunk). Its summary line counts ramps
+inside chunks and A* paths that leave a level and come back within one chunk (the case the 3D
+search must handle by itself). Deep sweep `test_nav_fuzz 2000 1000` on today's code: 0 failures,
+43,541 inner ramps, 5,595 of 206,327 paths with such an excursion.
+
+Baseline, world scenario 1024, 300 ticks, `--profile`: 297,922 entrances (45,504 on borders),
+6.6M edges, nav 215 MB (+45 MB vector slack), graph build 3.97 s, setup 5.07 s; 133 FindPath
+calls 3,441 ms (25.9 ms each); 15.2 ms/tick; peak footprint 0.96 GB. 2048: see above (build
+16.6 s, first-tick spike ~16 s).
+
 ## Allocation model (for steps 2-3)
 
 Group memory by lifetime instead of one allocation per layer. Three small pieces, no
