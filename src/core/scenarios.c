@@ -359,8 +359,7 @@ static void SetupTrainLong(void) {
 
 // 128x128 hills (levels, ramps), movers shuttle between 6 hubs spread over the
 // map: the colony pattern (stockpiles, kitchen, beds) where many movers go to
-// the same few places. Default 200 movers (scenarioMovers overrides). Compare
-// useSharedGoalFields on/off for pathfinding cost.
+// the same few places. Default 200 movers (scenarioMovers overrides).
 #define HUB_COUNT 6
 static Point hubs[HUB_COUNT];
 static int hubCount;

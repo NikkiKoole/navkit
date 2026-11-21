@@ -734,9 +734,13 @@ needed, is a heuristic that knows about detours (landmarks / ALT: exact distance
 entrances, ~16 MB at 2048) or a coarser level. Not needed for normal play (trips mostly under
 ~100 cells); revisit if real games show detour stalls.
 
-### Shared goal fields: off by default (2026-11-21)
+### Shared goal fields: removed from the game (2026-11-21)
 
-`useSharedGoalFields` (console `sharedGoalFields`) is now **false by default**. Measured with
+**Removed** (option B below, same day as A): the game-side code (pathfinding.c shared-goal
+section, console `sharedGoalFields`, the stats line) is gone; paths are always HPA*/A*. The
+library keeps `NavHFlow` (nav/nav.c, checked by the nav fuzz test) in case many movers to one
+point ever need it. hubs 512 after removal: 414 arrivals, path time 97 ms (fields-off numbers).
+First it was switched off by default; the measurements: Measured with
 the hubs scenario (200 movers between 6 hubs, 3600 ticks), fields on -> off:
 
 | map | path time | worst later tick | arrivals |

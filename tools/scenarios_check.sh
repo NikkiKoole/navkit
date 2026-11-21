@@ -44,7 +44,6 @@ done <<'EOF'
 9   | 0 | --scenario train-long
 60  | 0 | --set scenarioMovers 16 --scenario train-long
 750 | 0 | --scenario hubs
-750 | 0 | --set sharedGoalFields 1 --scenario hubs
 94  | 0 | --scenario train-double
 87  | 0 | --set trainSpeed 9 --scenario train-double
 24  | 0 | --game dollhouse

@@ -99,13 +99,8 @@ int FindPathOrRoute(PathAlgorithm algo, Point start, Point goal, Point* outPath,
 // Cells of one route leg, start-first, without `from`; -1 = no way (NavRefineLeg)
 int RefineLeg(Point from, Point to, Point* out, int maxLen);
 extern bool useCoarsePaths;
-// Shared-goal fields (see pathfinding.c): goals many movers request get a cached
-// hierarchical flow field; HPA* requests for them walk it instead of searching
-extern bool useSharedGoalFields;   // OFF by default (slower than HPA* now; pathfinding.c)
-extern int sharedGoalHits, sharedGoalBuilds, sharedGoalFallbacks, sharedGoalTooBig;
 extern double findPathTotalMs;     // wall-clock ms spent in FindPath (works headless)
 extern int findPathCalls;
-void ClearSharedGoalFields(void);  // call when the world is replaced
 bool IsReachable(Point a, Point b);   // O(1) via reachability regions ("false" is always right)
 int AStarChunk(int sx, int sy, int sz, int gx, int gy, int minX, int minY, int maxX, int maxY);
 int AStarChunkMultiTarget(int sx, int sy, int sz, int* targetX, int* targetY, int* outCosts, int numTargets,

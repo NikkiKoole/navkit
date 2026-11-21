@@ -151,14 +151,12 @@ void SetChunkDirty(int cx, int cy, int z, bool dirty) {
     NavSetChunkDirty(NavGame(), cx, cy, z, dirty);
 }
 
-void ClearSharedGoalFields(void);
 void TreesNoteWorldChanged(void);
 
 void BuildEntrances(void) {
     NavWorld* w = NavGame();
     NavRegionsInvalidate(w);      // full rebuild = the world may have changed without notifications
     TreesNoteWorldChanged();      // ... so leaves anywhere may have lost their trunk
-    ClearSharedGoalFields();      // ... and the shared-goal fields belong to the old one
     NavBuildEntrances(w);
     rampCount = w->rampCellNum;   // game's ramp counter is re-synced on full rebuilds
 }
@@ -196,137 +194,17 @@ bool IsReachable(Point a, Point b) {
     return NavReachable(NavGame(), a, b);
 }
 
-// =============================================================================
-// Shared-goal fields: many movers going to the same few places
-// =============================================================================
-//
-// *** OFF BY DEFAULT since 2026-11-21 (useSharedGoalFields = false) ***
-// Measured slower than plain HPA* at every map size once HPA* got cheap (coarse routes,
-// region checks, 3D chunks): 200 movers between 6 hubs, path time / worst tick, on -> off:
-// 128: 808 -> 158 ms / 12.9 -> 2.2 ms; 512: 5530 -> 92 ms / 348 -> 6 ms;
-// 2048: 1618 -> 556 ms / 293 -> 140 ms; same arrivals; ladder scenarios identical. Why: the
-// first walk builds chunk fields in a cascade (most of the map), the 2 s refresh drops them
-// all, and on big maps the field always goes over its build limit after ~70-100 ms of
-// whole-graph work. Kept (console `sharedGoalFields 1`, scenarios-check runs hubs with it
-// on) until we decide to remove it; options and numbers in
-// docs/todo/architecture/chunked-world-plan.md ("Shared goal fields: off by default").
-//
-// A goal requested SHARED_GOAL_PROMOTE times within SHARED_GOAL_WINDOW game-seconds
-// gets a cached hierarchical flow field (NavHFlow); later HPA* requests for it
-// walk the field instead of searching (paths within ~1% of optimal, see
-// tests/test_nav_fuzz.c). Fields rebuild themselves when the graph changes and
-// are refreshed every SHARED_GOAL_REFRESH game-seconds (ladder queue costs change).
-// One-off goals keep using HPA* (a full field costs more than one search).
-// Times are game time, not wall clock, so runs are reproducible (the same requests
-// promote the same goals however busy the machine is).
-// One request (a walk) may build at most SHARED_GOAL_FIELD_LIMIT chunk fields: on big
-// maps building one can pull in nearly the whole map (docs/todo/architecture/
-// large-worlds.md). Over the limit the request uses HPA*, the field is dropped and the
-// goal isn't promoted again for SHARED_GOAL_BLOCK game-seconds.
-
-bool useSharedGoalFields = false;   // OFF by default: see the note above
-int sharedGoalHits = 0, sharedGoalBuilds = 0, sharedGoalFallbacks = 0, sharedGoalTooBig = 0;
+// Path request statistics (wall clock, works headless)
+// (Shared-goal flow fields used to live here: removed 2026-11-21, slower than HPA* at every
+// map size; numbers in docs/todo/architecture/chunked-world-plan.md, "Shared goal fields".
+// The library keeps NavHFlow, fuzz-tested, if many movers to one point ever need it.)
 double findPathTotalMs = 0.0;
 int findPathCalls = 0;
-
-#define SHARED_GOAL_SLOTS   32
-#define SHARED_GOAL_SEEN    128
-#define SHARED_GOAL_PROMOTE 3
-#define SHARED_GOAL_WINDOW  10.0
-#define SHARED_GOAL_REFRESH 2.0
-#define SHARED_GOAL_FIELD_LIMIT 1000   // ~12 ms of field building
-#define SHARED_GOAL_BLOCK   60.0
-
-typedef struct { Point goal; NavHFlow* h; double lastUse, builtAt; } SharedGoal;
-typedef struct { Point goal; int count; double firstAt, blockedUntil; Point lastStart; } SeenGoal;
-static SharedGoal sharedGoals[SHARED_GOAL_SLOTS];
-static SeenGoal seenGoals[SHARED_GOAL_SEEN];
-static NavWorld* sharedGoalWorld = NULL;
 
 static double PathClockNow(void) {   // works headless (raylib's GetTime needs a window)
     struct timespec t;
     clock_gettime(CLOCK_MONOTONIC, &t);
     return t.tv_sec + t.tv_nsec * 1e-9;
-}
-
-void ClearSharedGoalFields(void) {
-    for (int i = 0; i < SHARED_GOAL_SLOTS; i++) {
-        if (sharedGoals[i].h) NavHFlowDestroy(sharedGoals[i].h);
-        sharedGoals[i] = (SharedGoal){{-1, -1, -1}, NULL, 0, 0};
-    }
-    for (int i = 0; i < SHARED_GOAL_SEEN; i++) seenGoals[i] = (SeenGoal){{-1, -1, -1}, 0, 0, 0, {-1, -1, -1}};
-    sharedGoalWorld = NULL;
-}
-
-static bool SamePoint(Point a, Point b) { return a.x == b.x && a.y == b.y && a.z == b.z; }
-
-// Cached field for this goal: existing, or newly promoted after repeated requests
-// from different starts (one mover repathing to its own goal doesn't count: a field
-// pays off when several movers share the goal, and rebuilding one on a big map costs
-// more than many searches)
-static NavHFlow* SharedGoalField(NavWorld* w, Point start, Point goal, double now) {
-    if (sharedGoalWorld != w) { ClearSharedGoalFields(); sharedGoalWorld = w; }
-    for (int i = 0; i < SHARED_GOAL_SLOTS; i++) {
-        SharedGoal* g = &sharedGoals[i];
-        if (!g->h || !SamePoint(g->goal, goal)) continue;
-        if (now < g->builtAt || now - g->builtAt > SHARED_GOAL_REFRESH) { NavHFlowInvalidate(g->h); g->builtAt = now; }
-        g->lastUse = now;
-        return g->h;
-    }
-    // Count requests (small table, oldest entry recycled)
-    int slot = -1, oldest = 0;
-    for (int i = 0; i < SHARED_GOAL_SEEN; i++) {
-        if (SamePoint(seenGoals[i].goal, goal)) { slot = i; break; }
-        if (seenGoals[i].firstAt < seenGoals[oldest].firstAt) oldest = i;
-    }
-    if (slot < 0) { slot = oldest; seenGoals[slot] = (SeenGoal){goal, 0, now, 0, {-1, -1, -1}}; }
-    SeenGoal* sgl = &seenGoals[slot];
-    if (now < sgl->firstAt || now - sgl->firstAt > SHARED_GOAL_WINDOW) { sgl->count = 0; sgl->firstAt = now; }
-    if (now < sgl->blockedUntil && sgl->blockedUntil - now <= SHARED_GOAL_BLOCK) return NULL;   // too big recently
-    if (SamePoint(sgl->lastStart, start)) return NULL;   // same requester again
-    sgl->lastStart = start;
-    if (++sgl->count < SHARED_GOAL_PROMOTE) return NULL;
-    // Promote: take a free slot or the least recently used
-    int lru = 0;
-    for (int i = 0; i < SHARED_GOAL_SLOTS; i++) {
-        if (!sharedGoals[i].h) { lru = i; break; }
-        if (sharedGoals[i].lastUse < sharedGoals[lru].lastUse) lru = i;
-    }
-    if (sharedGoals[lru].h) NavHFlowDestroy(sharedGoals[lru].h);
-    sharedGoals[lru] = (SharedGoal){goal, NavHFlowCreate(w, goal), now, now};
-    sharedGoalBuilds++;
-    return sharedGoals[lru].h;
-}
-
-// The field for goal got too big to build (buildLimit): drop it, don't promote it
-// again for a while
-static void DropSharedGoalField(Point goal, double now) {
-    for (int i = 0; i < SHARED_GOAL_SLOTS; i++)
-        if (sharedGoals[i].h && SamePoint(sharedGoals[i].goal, goal)) {
-            NavHFlowDestroy(sharedGoals[i].h);
-            sharedGoals[i] = (SharedGoal){{-1, -1, -1}, NULL, 0, 0};
-        }
-    for (int i = 0; i < SHARED_GOAL_SEEN; i++)
-        if (SamePoint(seenGoals[i].goal, goal)) {
-            seenGoals[i].count = 0;
-            seenGoals[i].blockedUntil = now + SHARED_GOAL_BLOCK;
-        }
-    sharedGoalTooBig++;
-}
-
-// Walk the field from start to goal into outPath (goal-first, like the
-// pathfinders). 0 if the walk doesn't reach the goal.
-static int WalkSharedGoalField(NavWorld* w, NavHFlow* h, Point start, Point goal, Point* outPath, int maxLen) {
-    int n = 0;
-    Point cur = start, nxt;
-    outPath[n++] = cur;
-    while (!SamePoint(cur, goal)) {
-        if (n >= maxLen || !NavHFlowNext(w, h, cur, &nxt)) return 0;
-        cur = nxt;
-        outPath[n++] = cur;
-    }
-    for (int i = 0; i < n / 2; i++) { Point t = outPath[i]; outPath[i] = outPath[n - 1 - i]; outPath[n - 1 - i] = t; }
-    return n;
 }
 
 // Movers can take HPA* paths as a coarse route (waypoints) and refine it leg by leg
@@ -376,18 +254,6 @@ static int FindPathImpl(PathAlgorithm algo, Point start, Point goal, Point* outP
     if (rs >= 0 && rg >= 0 && rs != rg) {
         statsPathCount++;
         return 0;
-    }
-    if (useSharedGoalFields && algo == PATH_ALGO_HPA && !SamePoint(start, goal)) {
-        double now = gameTime;
-        NavHFlow* h = SharedGoalField(w, start, goal, now);
-        if (h) {
-            h->buildBudget = SHARED_GOAL_FIELD_LIMIT;
-            int n = WalkSharedGoalField(w, h, start, goal, outPath, maxLen);
-            h->buildBudget = -1;
-            if (n > 0) { sharedGoalHits++; statsPathCount++; return n; }
-            sharedGoalFallbacks++;
-            if (h->overLimit) DropSharedGoalField(goal, now);
-        }
     }
     if (outRoute && routeLen && useCoarsePaths && algo == PATH_ALGO_HPA) {
         *routeLen = NavFindRouteHPA(w, start, goal, outRoute, maxRoute);

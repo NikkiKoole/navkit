@@ -66,7 +66,7 @@ Movers, items, jobs, stockpiles, workshops, animals, trains, containers, stackin
   route of waypoints (`moverRoutes`, chunk-border/ladder/ramp entrances) and only the
   next legs are refined into `moverPaths` (a window, same goal-first format as a full
   path); movement refills the window when it runs out (`MoverContinueRoute`). Other
-  algorithms and shared-goal field paths stay full paths. Toggle: `useCoarsePaths`
+  algorithms stay full paths. Toggle: `useCoarsePaths`
   (console `coarsePaths`).
 - Code that writes `moverPaths` directly must set `moverRouteLen[i] = 0` (a refill also
   checks the window still came from the route, but don't rely on it).

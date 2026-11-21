@@ -1050,10 +1050,8 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     printf("Stuck (no progress > 2s): %d\n", stuckAfter);
     printf("Arrivals (reached goal): %d (%.1f per mover per game-minute)\n", arrivals,
            activeMovers > 0 && ticks > 0 ? arrivals / (double)activeMovers / (ticks * TICK_DT / 60.0) : 0.0);
-    printf("Pathfinding: %d FindPath calls, %.1f ms total (%.3f ms each); shared-goal fields %s: %d hits, %d built, %d fallbacks (%d too big)\n",
-           findPathCalls, findPathTotalMs, findPathCalls ? findPathTotalMs / findPathCalls : 0.0,
-           useSharedGoalFields ? "on" : "off", sharedGoalHits, sharedGoalBuilds, sharedGoalFallbacks,
-           sharedGoalTooBig);
+    printf("Pathfinding: %d FindPath calls, %.1f ms total (%.3f ms each)\n",
+           findPathCalls, findPathTotalMs, findPathCalls ? findPathTotalMs / findPathCalls : 0.0);
     if (trainChoicesConsidered > 0 || trainDecisions > 0)
         printf("Train choice: %d trips considered (%s), %d by train\n", trainChoicesConsidered,
                useTrainTimeChoice ? "by trip time" : "40-cell rule", trainDecisions);
