@@ -35,6 +35,7 @@ void TriggerScreenShake(float intensity, float duration) { (void)intensity; (voi
 float zoom = 1.0f;
 Vector2 offset = {0};
 int currentViewZ = 0;
+int followMoverIdx = -1;   // camera follow (selection.c's follow toggle)
 
 // Global variables needed by terrain generators
 #include <stdint.h>
@@ -126,3 +127,4 @@ bool bladderEnabled = false;
 #include "../src/core/saveload.c"
 #include "../src/world/grid_layers.c"
 #include "../src/core/describe.c"
+#include "../src/core/selection.c"

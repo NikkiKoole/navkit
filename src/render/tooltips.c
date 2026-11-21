@@ -253,7 +253,7 @@ static void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
 }
 
 // Description tones (src/core/describe.h) as tooltip colors
-static Color DescToneColor(DescTone tone) {
+Color DescToneColor(DescTone tone) {
     switch (tone) {
         case DESC_NORMAL:        return WHITE;
         case DESC_MUTED:         return GRAY;

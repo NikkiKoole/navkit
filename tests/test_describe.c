@@ -17,6 +17,7 @@
 #include "../src/world/material.h"
 #include "../src/simulation/water.h"
 #include "../src/core/describe.h"
+#include "../src/core/selection.h"
 #include "test_helpers.h"
 #include <string.h>
 
@@ -282,6 +283,49 @@ describe(describe_world_things) {
     }
 }
 
+// Selection (src/core/selection.c): what a click picks and keeps
+describe(click_selection) {
+    it("picks the mover under the click, else nothing") {
+        SetupFlat();
+        int m = SpawnTestMover();   // centered in cell (3,3), z1
+        Selection s = PickSelectionAt(3 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 1);
+        expect(s.kind == SEL_MOVER && s.idx == m);
+        s = PickSelectionAt(8 * CELL_SIZE, 8 * CELL_SIZE, 1);
+        expect(s.kind == SEL_NONE);
+        s = PickSelectionAt(3 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 2);   // other level
+        expect(s.kind == SEL_NONE);
+    }
+
+    it("picks a blueprint by its cell") {
+        SetupFlat();
+        InitDesignations();
+        int bp = CreateWorkshopBlueprint(6, 6, 1, GetConstructionRecipeForWorkshopType(WORKSHOP_CAMPFIRE));
+        expect(bp >= 0);
+        Selection s = PickSelectionAt(6 * CELL_SIZE + 2, 6 * CELL_SIZE + 2, 1);
+        expect(s.kind == SEL_BLUEPRINT && s.idx == bp);
+    }
+
+    it("clears itself when the selected mover is gone") {
+        SetupFlat();
+        int m = SpawnTestMover();
+        Select(SEL_MOVER, m);
+        expect(SelectionValid());
+        movers[m].active = false;
+        expect(!SelectionValid());
+        expect(selection.kind == SEL_NONE);
+    }
+
+    it("drafts and undrafts a mover") {
+        SetupFlat();
+        int m = SpawnTestMover();
+        expect(!movers[m].isDrafted);
+        ToggleMoverDraft(m);
+        expect(movers[m].isDrafted);
+        ToggleMoverDraft(m);
+        expect(!movers[m].isDrafted);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -290,5 +334,6 @@ int main(int argc, char* argv[]) {
     test(describe_cell);
     test(describe_items_and_animals);
     test(describe_world_things);
+    test(click_selection);
     return summary();
 }

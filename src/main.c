@@ -21,6 +21,8 @@
 #include "core/games.h"
 #include "core/describe.h"
 #include "core/sim_step.h"
+#include "core/selection.h"
+#include "render/inspector.h"
 
 #ifdef USE_SOUNDSYSTEM
 #include "soundsystem/soundsystem.h"
@@ -452,48 +454,6 @@ int GetStockpileAtGrid(int gx, int gy, int gz) {
         }
     }
     return -1;
-}
-
-int GetMoverAtWorldPos(float wx, float wy, int wz) {
-    float bestDist = 999999.0f;
-    int bestIdx = -1;
-    float radius = CELL_SIZE * 0.6f;
-
-    for (int i = 0; i < moverCount; i++) {
-        Mover* m = &movers[i];
-        if (!m->active) continue;
-        if ((int)m->z != wz) continue;
-
-        float dx = m->x - wx;
-        float dy = m->y - wy;
-        float dist = sqrtf(dx*dx + dy*dy);
-        if (dist < radius && dist < bestDist) {
-            bestDist = dist;
-            bestIdx = i;
-        }
-    }
-    return bestIdx;
-}
-
-int GetAnimalAtWorldPos(float wx, float wy, int wz) {
-    float bestDist = 999999.0f;
-    int bestIdx = -1;
-    float radius = CELL_SIZE * 0.6f;
-
-    for (int i = 0; i < animalCount; i++) {
-        Animal* a = &animals[i];
-        if (!a->active) continue;
-        if ((int)a->z != wz) continue;
-
-        float dx = a->x - wx;
-        float dy = a->y - wy;
-        float dist = sqrtf(dx*dx + dy*dy);
-        if (dist < radius && dist < bestDist) {
-            bestDist = dist;
-            bestIdx = i;
-        }
-    }
-    return bestIdx;
 }
 
 // Front-view mover finder: match by worldX and worldZ, filter by Y-slice range
@@ -1532,6 +1492,11 @@ int main(int argc, char** argv) {
             int barX = 150;
             ui_add_block_rect((Rectangle){barX, barY, GetScreenWidth() - barX, barH});
         }
+        {
+            // Inspector panel for the selection (src/render/inspector.c)
+            Rectangle ip = InspectorPanelRect();
+            if (ip.width > 0) ui_add_block_rect(ip);
+        }
 
         // Developer console
         if (IsKeyPressed(KEY_GRAVE)) Console_Toggle();
@@ -2256,9 +2221,13 @@ int main(int argc, char** argv) {
         DrawProfilerPanel(GetScreenWidth() - 50, 95);  // Below time widget
 #endif
 
+        DrawSelectionHighlight();   // src/render/inspector.c
+
         PROFILE_BEGIN(DrawUI);
         DrawUI();
         PROFILE_END(DrawUI);
+
+        DrawInspectorPanel();       // the selected thing (after DrawUI: ui frame has begun)
 
         // Input mode bar at bottom - individual buttons (after DrawUI so ui_begin_frame has run)
         if (devUI) {

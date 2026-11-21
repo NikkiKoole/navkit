@@ -15,6 +15,7 @@
 #include "input_mode.h"
 #include "action_registry.h"
 #include "pie_menu.h"
+#include "selection.h"
 
 // Forward declaration
 void HandleInput(void);
@@ -2617,15 +2618,11 @@ void HandleInput(void) {
     // Follow mover (F) - toggles follow for hovered mover (paused)
     // Only in normal mode to avoid consuming draw/work/sandbox action keys.
     if (inputMode == MODE_NORMAL && IsKeyPressed(KEY_F)) {
-        if (hoveredMover >= 0 && hoveredMover < moverCount) {
-            if (followMoverIdx == hoveredMover) {
-                followMoverIdx = -1;
-                AddMessage("Follow: off", GRAY);
-            } else {
-                followMoverIdx = hoveredMover;
-                currentViewZ = (int)movers[hoveredMover].z;
-                AddMessage(TextFormat("Follow: %s", MoverDisplayName(hoveredMover)), GREEN);
-            }
+        // Hovered mover, else the selected one (src/core/selection.c)
+        int target = (hoveredMover >= 0 && hoveredMover < moverCount) ? hoveredMover
+                   : (selection.kind == SEL_MOVER && SelectionValid()) ? selection.idx : -1;
+        if (target >= 0) {
+            ToggleMoverFollow(target);
         } else if (followMoverIdx >= 0) {
             followMoverIdx = -1;
             AddMessage("Follow: off", GRAY);
@@ -2765,6 +2762,10 @@ void HandleInput(void) {
             if (devUI) InputMode_Back();
             else InputMode_ExitToNormal();
             return;
+        } else if (selection.kind != SEL_NONE) {
+            // At root with something selected: deselect first
+            ClearSelection();
+            return;
         } else {
             // At root - show quit confirm
             showQuitConfirm = true;
@@ -2792,22 +2793,36 @@ void HandleInput(void) {
     if (inputMode == MODE_NORMAL) {
         // Draft toggle: D while hovering a mover drafts/undrafts (consumes D before draw mode)
         if (hoveredMover >= 0 && hoveredMover < moverCount && CheckKey(KEY_D)) {
-            Mover* dm = &movers[hoveredMover];
-            dm->isDrafted = !dm->isDrafted;
-            if (dm->isDrafted && dm->currentJobId >= 0) {
-                CancelJob(dm, hoveredMover);
-            }
-            AddMessage(TextFormat("%s: %s", MoverDisplayName(hoveredMover),
-                       dm->isDrafted ? "DRAFTED" : "Undrafted"),
-                       dm->isDrafted ? RED : GREEN);
+            ToggleMoverDraft(hoveredMover);
             return;
         }
         if (devUI && CheckKey(KEY_D)) { inputMode = MODE_DRAW; return; }
         if (devUI && CheckKey(KEY_W)) { inputMode = MODE_WORK; return; }
         if (devUI && CheckKey(KEY_S)) { inputMode = MODE_SANDBOX; return; }
-        
+
         // Skip grid interactions if UI wants mouse
         if (ui_wants_mouse()) return;
+
+        // Click to select (src/core/selection.c): a mover, animal or blueprint under
+        // the mouse is selected and the click goes no further (no quick-edit wall);
+        // a click on nothing selectable deselects. Top view only for now.
+        {
+            static bool selectClickHeld = false;
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !frontViewMode) {
+                Vector2 mw = ScreenToWorld(GetMousePosition());
+                Selection pick = PickSelectionAt(mw.x, mw.y, z);
+                if (pick.kind != SEL_NONE) {
+                    Select(pick.kind, pick.idx);
+                    selectClickHeld = true;
+                    return;
+                }
+                ClearSelection();
+            }
+            if (selectClickHeld) {
+                if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) return;
+                selectClickHeld = false;
+            }
+        }
         
         // Quick edit: left-click = wall, right-click = erase (when enabled, dev UI only)
         if (quickEditEnabled && devUI) {

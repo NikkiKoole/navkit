@@ -69,6 +69,7 @@
 #include "core/time.c"
 #include "core/inspect.c"
 #include "core/action_registry.c"
+#include "core/selection.c"
 #include "core/input_mode.c"
 #include "core/pie_menu.c"
 #include "core/input.c"
@@ -85,6 +86,7 @@
 // Rendering
 #include "render/rendering.c"
 #include "render/tooltips.c"
+#include "render/inspector.c"
 #include "render/ui_panels.c"
 
 // UI systems
