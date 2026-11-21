@@ -727,6 +727,12 @@ RLAPI void rlDrawRenderBatchActive(void);               // Update and draw inter
 RLAPI bool rlCheckRenderBatchLimit(int vCount);         // Check internal buffer overflow for a given number of vertex
 
 RLAPI void rlSetTexture(unsigned int id);               // Set current texture for render batch and check buffers limits
+// NavKit patch (see docs/todo/architecture/rendering-optimization-candidates.md, "Big maps, 2026-11-21"): one textured quad written straight
+// into the active batch; same result as DrawTexturePro (rotation 0, origin 0, positive sizes) or
+// DrawRectangleRec with the shapes texture, without the per-vertex rlTexCoord2f/rlVertex2f calls
+RLAPI void rlQuadFast(unsigned int textureId, float x0, float y0, float x1, float y1,
+                      float u0, float v0, float u1, float v1,
+                      unsigned char r, unsigned char g, unsigned char b, unsigned char a);
 
 //------------------------------------------------------------------------------------------------------------------------
 
@@ -1674,6 +1680,58 @@ void rlSetTexture(unsigned int id)
         }
 #endif
     }
+}
+
+// NavKit patch: see the declaration. The vertices, texture coordinates, normal and color are
+// the ones DrawTexturePro / DrawRectanglePro emit (same order: top-left, bottom-left,
+// bottom-right, top-right), so the batch content and the image are identical.
+void rlQuadFast(unsigned int textureId, float x0, float y0, float x1, float y1,
+                float u0, float v0, float u1, float v1,
+                unsigned char r, unsigned char g, unsigned char b, unsigned char a)
+{
+    rlSetTexture(textureId);
+    rlBegin(RL_QUADS);
+#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_ES2)
+    rlRenderBatch *batch = RLGL.currentBatch;
+    rlVertexBuffer *vb = &batch->vertexBuffer[batch->currentBuffer];
+    // Fast path unless a transform is active or the buffer is (nearly) full: then the
+    // per-vertex calls below handle it exactly as before
+    if (!RLGL.State.transformRequired && (RLGL.State.vertexCounter <= (vb->elementCount*4 - 4)))
+    {
+        int i = RLGL.State.vertexCounter;
+        float z = batch->currentDepth;
+        float *v = vb->vertices + 3*i;
+        float *t = vb->texcoords + 2*i;
+        float *n = vb->normals + 3*i;
+        unsigned char *c = vb->colors + 4*i;
+        v[0] = x0; v[1]  = y0; v[2]  = z; t[0] = u0; t[1] = v0;
+        v[3] = x0; v[4]  = y1; v[5]  = z; t[2] = u0; t[3] = v1;
+        v[6] = x1; v[7]  = y1; v[8]  = z; t[4] = u1; t[5] = v1;
+        v[9] = x1; v[10] = y0; v[11] = z; t[6] = u1; t[7] = v0;
+        for (int k = 0; k < 4; k++)
+        {
+            n[3*k] = 0.0f; n[3*k + 1] = 0.0f; n[3*k + 2] = 1.0f;
+            c[4*k] = r; c[4*k + 1] = g; c[4*k + 2] = b; c[4*k + 3] = a;
+        }
+        RLGL.State.vertexCounter += 4;
+        batch->draws[batch->drawCounter - 1].vertexCount += 4;
+        // Leave the current attributes as the per-vertex calls would
+        RLGL.State.texcoordx = u1; RLGL.State.texcoordy = v0;
+        RLGL.State.normalx = 0.0f; RLGL.State.normaly = 0.0f; RLGL.State.normalz = 1.0f;
+        RLGL.State.colorr = r; RLGL.State.colorg = g; RLGL.State.colorb = b; RLGL.State.colora = a;
+    }
+    else
+#endif
+    {
+        rlColor4ub(r, g, b, a);
+        rlNormal3f(0.0f, 0.0f, 1.0f);
+        rlTexCoord2f(u0, v0); rlVertex2f(x0, y0);
+        rlTexCoord2f(u0, v1); rlVertex2f(x0, y1);
+        rlTexCoord2f(u1, v1); rlVertex2f(x1, y1);
+        rlTexCoord2f(u1, v0); rlVertex2f(x1, y0);
+    }
+    rlEnd();
+    rlSetTexture(0);
 }
 
 // Select and active a texture slot

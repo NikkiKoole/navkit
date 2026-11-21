@@ -1,5 +1,6 @@
 // render/rendering.c - Core rendering functions
 #include "../game_state.h"
+#include "fast_draw.h"
 #include "../world/cell_defs.h"
 #include "../world/material.h"
 #include "../world/biome.h"
@@ -123,13 +124,13 @@ static Color FinishOverlayTint(SurfaceFinish finish, Color base) {
 static void DrawFinishOverlay(Rectangle dest, SurfaceFinish finish, Color tint) {
     int finishSprite = FinishSprite(finish);
     Rectangle finishSrc = SpriteGetRect(finishSprite);
-    DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, tint));
+    FastSprite(atlas, finishSrc, dest, FinishOverlayTint(finish, tint));
 }
 
 static void DrawSourceMarker(Rectangle dest, float size, Color color) {
     float inset = size * SOURCE_MARKER_INSET;
     Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
-    DrawRectangleRec(inner, color);
+    FastRect(inner, color);
 }
 
 static bool ItemUsesBorder(ItemType type) {
@@ -164,7 +165,7 @@ static Color ItemTypeTint(ItemType type) {
 
 static void DrawItemWithBorder(int sprite, Rectangle frameDest, Color tint, Color borderTint) {
     Rectangle borderSrc = SpriteGetRect(SPRITE_tile_border);
-    DrawTexturePro(atlas, borderSrc, frameDest, (Vector2){0,0}, 0, borderTint);
+    FastSprite(atlas, borderSrc, frameDest, borderTint);
 
     float inset = frameDest.width * (1.0f / (float)TILE_SIZE);
     Rectangle itemDest = {
@@ -174,7 +175,7 @@ static void DrawItemWithBorder(int sprite, Rectangle frameDest, Color tint, Colo
         frameDest.height - inset * 2.0f
     };
     Rectangle src = SpriteGetRect(sprite);
-    DrawTexturePro(atlas, src, itemDest, (Vector2){0,0}, 0, tint);
+    FastSprite(atlas, src, itemDest, tint);
 }
 
 static int ItemSpriteForTypeMaterial(ItemType type, uint8_t material) {
@@ -245,7 +246,7 @@ static void DrawInsetSprite(int sprite, Rectangle dest, float inset, Color tint)
     if (insetW <= 0 || insetH <= 0) return;
     Rectangle src = SpriteGetRect(sprite);
     Rectangle insetDest = { dest.x + inset, dest.y + inset, insetW, insetH };
-    DrawTexturePro(atlas, src, insetDest, (Vector2){0,0}, 0, tint);
+    FastSprite(atlas, src, insetDest, tint);
 }
 
 static int PlankSpriteForMaterial(MaterialType mat) {
@@ -414,7 +415,7 @@ static void DrawDeeperLevelCells(float size, int z, int minX, int minY, int maxX
                             }
                             tint.a = RAMP_OVERLAY_ALPHA;
                         }
-                        DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+                        FastSprite(atlas, src, dest, tint);
 
                         if (cellAtDepth == CELL_WALL) {
                             DrawFinishOverlay(dest, (SurfaceFinish)GetWallFinish(x, y, zDepth), tint);
@@ -455,7 +456,7 @@ static void DrawGroundLevel(float size, int z, int minX, int minY, int maxX, int
                     // Wall tops - lit by the air above (z), where torches sit
                     Color lightTint = GetLightColor(x, y, z, skyColor);
                     Color tint = MultiplyColor(FloorDarkenTint(WHITE), lightTint);
-                    DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+                    FastSprite(atlas, src, dest, tint);
 
                     // Apply finish overlay to z-1 floor (same as deeper levels)
                     if (cellBelow == CELL_WALL) {
@@ -476,7 +477,7 @@ static void DrawGroundLevel(float size, int z, int minX, int minY, int maxX, int
                         }
                         tint.a = RAMP_OVERLAY_ALPHA;
                     }
-                    DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+                    FastSprite(atlas, src, dest, tint);
                 }
 
                 // Constructed floors at z-1
@@ -501,7 +502,7 @@ static void DrawGroundLevel(float size, int z, int minX, int minY, int maxX, int
                     Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                     Rectangle src = SpriteGetRect(SPRITE_bedrock);
                     Color lightTint = GetLightColor(x, y, z, skyColor);
-                    DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, MultiplyColor(FloorDarkenTint(WHITE), lightTint));
+                    FastSprite(atlas, src, dest, MultiplyColor(FloorDarkenTint(WHITE), lightTint));
                 }
             }
         }
@@ -542,7 +543,7 @@ static void DrawCellGrid(void) {
                                 / (float)(DIRT_MAX - DIRT_VISIBLE_THRESHOLD);
                         unsigned char alpha = (unsigned char)(t * 128);  // Max 50% opacity
                         Color dirtTint = {80, 60, 40, alpha};
-                        DrawTexturePro(atlas, dirtSrc, dest, (Vector2){0,0}, 0, dirtTint);
+                        FastSprite(atlas, dirtSrc, dest, dirtTint);
                     }
                 }
 
@@ -563,7 +564,7 @@ static void DrawCellGrid(void) {
                 MaterialType soilMat = GetWallMaterial(x, y, z - 1);
                 Color tillTint = MaterialTint(soilMat);
                 tillTint.a = 180;
-                DrawTexturePro(atlas, tillSrc, dest, (Vector2){0,0}, 0, tillTint);
+                FastSprite(atlas, tillSrc, dest, tillTint);
 
                 // Weed overlay if weedy
                 if (fc->weedLevel > WEED_THRESHOLD) {
@@ -571,7 +572,7 @@ static void DrawCellGrid(void) {
                     float wt = (float)(fc->weedLevel - WEED_THRESHOLD) / (float)(255 - WEED_THRESHOLD);
                     unsigned char weedAlpha = (unsigned char)(60 + wt * 140);
                     Color weedTint = {60, 120, 40, weedAlpha};
-                    DrawTexturePro(atlas, weedSrc, dest, (Vector2){0,0}, 0, weedTint);
+                    FastSprite(atlas, weedSrc, dest, weedTint);
                 }
 
                 // Crop overlay by growth stage
@@ -600,7 +601,7 @@ static void DrawCellGrid(void) {
                         cropTint.a = 120;
                     }
                     Rectangle cropSrc = SpriteGetRect(cropSprite);
-                    DrawTexturePro(atlas, cropSrc, dest, (Vector2){0,0}, 0, cropTint);
+                    FastSprite(atlas, cropSrc, dest, cropTint);
                 }
             }
         }
@@ -631,7 +632,7 @@ static void DrawCellGrid(void) {
                 }
                 tint.a = RAMP_OVERLAY_ALPHA;
             }
-            DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+            FastSprite(atlas, src, dest, tint);
 
             if (cell == CELL_WALL) {
                 DrawFinishOverlay(dest, (SurfaceFinish)GetWallFinish(x, y, z), tint);
@@ -712,7 +713,7 @@ void DrawFogOfWar(void) {
                                 (x < gridWidth-1 && EXPLORED(x+1, y, z)) ||
                                 (y > 0 && EXPLORED(x, y-1, z)) ||
                                 (y < gridHeight-1 && EXPLORED(x, y+1, z));
-                DrawRectangleRec(dest, frontier ? (Color){0, 0, 0, 180} : BLACK);
+                FastRect(dest, frontier ? (Color){0, 0, 0, 180} : BLACK);
             }
         }
     }
@@ -763,7 +764,7 @@ void DrawRampOverlay(void) {
                     tint = MultiplyColor(tint, MaterialTint(rampMat));
                 }
                 tint.a = RAMP_OVERLAY_ALPHA;
-                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+                FastSprite(atlas, src, dest, tint);
             }
         }
     }
@@ -802,7 +803,7 @@ static void DrawGrassOverlay(void) {
                 Color tint = MultiplyColor(depthTint, GetLightColor(x, y, zDepth + 1, skyColor));
                 if (isReeds) tint = MultiplyColor(tint, (Color){120, 200, 180, 255});
                 else tint = MultiplyColor(tint, biomePresets[selectedBiome].grassTint);
-                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+                FastSprite(atlas, src, dest, tint);
             }
         }
     }
@@ -837,7 +838,7 @@ static void DrawGrassOverlay(void) {
                 Color lightTint = GetLightColor(x, y, z, skyColor);
                 if (isReeds2) lightTint = MultiplyColor(lightTint, (Color){120, 200, 180, 255});
                 else lightTint = MultiplyColor(lightTint, biomePresets[selectedBiome].grassTint);
-                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, lightTint);
+                FastSprite(atlas, src, dest, lightTint);
             }
         }
 }
@@ -911,7 +912,7 @@ static void DrawMud(void) {
                 mudColor = MultiplyColor(mudColor, tint);
 
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                DrawRectangleRec(dest, mudColor);
+                FastRect(dest, mudColor);
             }
         }
     }
@@ -933,7 +934,7 @@ static void DrawMud(void) {
             mudColor = MultiplyColor(mudColor, lightTint);
 
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-            DrawRectangleRec(dest, mudColor);
+            FastRect(dest, mudColor);
         }
     }
 }
@@ -966,7 +967,7 @@ static void DrawSnow(void) {
                 snowColor = MultiplyColor(snowColor, tint);
 
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                DrawRectangleRec(dest, snowColor);
+                FastRect(dest, snowColor);
             }
         }
     }
@@ -989,7 +990,7 @@ static void DrawSnow(void) {
             snowColor = MultiplyColor(snowColor, lightTint);
 
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-            DrawRectangleRec(dest, snowColor);
+            FastRect(dest, snowColor);
         }
     }
 }
@@ -1014,7 +1015,7 @@ static void DrawCloudShadows(void) {
             Color shadowColor = {0, 0, 0, alpha};
 
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-            DrawRectangleRec(dest, shadowColor);
+            FastRect(dest, shadowColor);
         }
     }
 }
@@ -1045,7 +1046,7 @@ static void DrawWater(void) {
                 waterColor = FloorDarkenTint(waterColor);
                 
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                DrawRectangleRec(dest, waterColor);
+                FastRect(dest, waterColor);
                 
                 if (WATER(x, y, zDepth).isSource) {
                     DrawSourceMarker(dest, size, (Color){75, 135, 191, 200});
@@ -1074,7 +1075,7 @@ static void DrawWater(void) {
             
             // Draw water overlay
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-            DrawRectangleRec(dest, waterColor);
+            FastRect(dest, waterColor);
             
             // Mark sources with a brighter center
             if (WATER(x, y, z).isSource) {
@@ -1107,7 +1108,7 @@ static void DrawFire(void) {
                 
                 if (level == 0 && HAS_CELL_FLAG(x, y, zDepth, CELL_FLAG_BURNED)) {
                     Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                    DrawRectangleRec(dest, (Color){30, 22, 15, 75});
+                    FastRect(dest, (Color){30, 22, 15, 75});
                     continue;
                 }
                 if (level <= 0) continue;
@@ -1116,7 +1117,7 @@ static void DrawFire(void) {
                 fireColor = FloorDarkenTint(fireColor);
                 
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                DrawRectangleRec(dest, fireColor);
+                FastRect(dest, fireColor);
                 
                 if (cell->isSource) {
                     DrawSourceMarker(dest, size, (Color){191, 165, 75, 200});
@@ -1139,7 +1140,7 @@ static void DrawFire(void) {
             if (level == 0 && HAS_CELL_FLAG(x, y, fireZ, CELL_FLAG_BURNED)) {
                 Color burnedColor = fireZ < z ? (Color){30, 22, 15, 75} : (Color){40, 30, 20, 100};
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                DrawRectangleRec(dest, burnedColor);
+                FastRect(dest, burnedColor);
                 continue;
             }
             if (level <= 0) continue;
@@ -1148,7 +1149,7 @@ static void DrawFire(void) {
             if (fireZ < z) fireColor = FloorDarkenTint(fireColor);
             
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-            DrawRectangleRec(dest, fireColor);
+            FastRect(dest, fireColor);
             
             if (cell->isSource) {
                 Color srcColor = fireZ < z ? (Color){191, 165, 75, 200} : (Color){255, 220, 100, 200};
@@ -1181,7 +1182,7 @@ static void DrawSmoke(void) {
                 Color smokeColor = FloorDarkenTint((Color){80, 80, 90, alpha});
                 
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                DrawRectangleRec(dest, smokeColor);
+                FastRect(dest, smokeColor);
             }
         }
     }
@@ -1196,7 +1197,7 @@ static void DrawSmoke(void) {
             if (alpha > 205) alpha = 205;
             
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-            DrawRectangleRec(dest, (Color){80, 80, 90, alpha});
+            FastRect(dest, (Color){80, 80, 90, alpha});
         }
     }
 }
@@ -1224,7 +1225,7 @@ static void DrawSteam(void) {
                 Color steamColor = FloorDarkenTint((Color){220, 220, 230, alpha});
                 
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                DrawRectangleRec(dest, steamColor);
+                FastRect(dest, steamColor);
             }
         }
     }
@@ -1239,7 +1240,7 @@ static void DrawSteam(void) {
             if (alpha > 180) alpha = 180;
             
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-            DrawRectangleRec(dest, (Color){220, 220, 230, alpha});
+            FastRect(dest, (Color){220, 220, 230, alpha});
         }
     }
 }
@@ -1291,7 +1292,7 @@ static void DrawTemperature(void) {
             Color tempColor = (Color){r, g, b, alpha};
             
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-            DrawRectangleRec(dest, tempColor);
+            FastRect(dest, tempColor);
             
             // Mark heat sources with a bright center
             if (IsHeatSource(x, y, z)) {
@@ -1358,7 +1359,7 @@ static void DrawFrozenWater(void) {
             // Draw frozen water as light whitish-blue (ice)
             Color iceColor = (Color){200, 230, 255, 180};
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-            DrawRectangleRec(dest, iceColor);
+            FastRect(dest, iceColor);
         }
     }
 }
@@ -1570,7 +1571,7 @@ static void DrawCarriedItem(const Mover* m, float sx, float sy, int viewZ, Color
         DrawItemWithBorder(sprite, itemDest, itemTint, borderTint);
     } else {
         Rectangle itemSrc = SpriteGetRect(sprite);
-        DrawTexturePro(atlas, itemSrc, itemDest, (Vector2){0, 0}, 0, itemTint);
+        FastSprite(atlas, itemSrc, itemDest, itemTint);
     }
 }
 
@@ -1707,7 +1708,7 @@ static void DrawMovers(void) {
             }
             float outlineSize = moverSize * 1.35f;
             Rectangle outlineDest = { sx - outlineSize/2, sy - outlineSize/2, outlineSize, outlineSize };
-            DrawTexturePro(atlas, src, outlineDest, (Vector2){0, 0}, 0, clothColor);
+            FastSprite(atlas, src, outlineDest, clothColor);
         }
 
         // Draft indicator: red border
@@ -1717,7 +1718,7 @@ static void DrawMovers(void) {
             DrawRectangleLinesEx(draftDest, 1.0f, (Color){255, 60, 60, 180});
         }
 
-        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, moverColor);
+        FastSprite(atlas, src, dest, moverColor);
 
         DrawCarriedItem(m, sx, sy, viewZ, skyColor);
     }
@@ -1818,7 +1819,7 @@ static void DrawAnimals(void) {
         // Draw body (small triangle)
         Rectangle bodySrc = SpriteGetRect(SPRITE_small_triangle);
         Rectangle bodyDest = { sx - animalSize/2, sy - animalSize/2, animalSize, animalSize };
-        DrawTexturePro(atlas, bodySrc, bodyDest, (Vector2){0, 0}, 0, animalColor);
+        FastSprite(atlas, bodySrc, bodyDest, animalColor);
 
         // Draw head with bobbing, low and overlapping body
         float bobFreq = 2.5f;
@@ -1830,7 +1831,7 @@ static void DrawAnimals(void) {
         int headSprite = (a->behavior == BEHAVIOR_PREDATOR) ? SPRITE_head : SPRITE_head_inverse;
         Rectangle headSrc = SpriteGetRect(headSprite);
         Rectangle headDest = { headX, headY, headSize, headSize };
-        DrawTexturePro(atlas, headSrc, headDest, (Vector2){0, 0}, 0, animalColor);
+        FastSprite(atlas, headSrc, headDest, animalColor);
 
         // Hunt designation overlay: red X mark
         if (a->markedForHunt) {
@@ -1990,7 +1991,7 @@ static void DrawTrains(void) {
             float moverSize = size * MOVER_SIZE;
             Rectangle moverSrc = SpriteGetRect(SPRITE_head);
             Rectangle moverDest = { rsx - moverSize/2, rsy - moverSize/2, moverSize, moverSize };
-            DrawTexturePro(atlas, moverSrc, moverDest, (Vector2){0, 0}, 0, riderColor);
+            FastSprite(atlas, moverSrc, moverDest, riderColor);
 
             // Draw carried item above rider
             DrawCarriedItem(&movers[mIdx], rsx, rsy, viewZ, skyColor);
@@ -2022,7 +2023,7 @@ static void DrawTrains(void) {
         float dotSize = size * 0.4f;
         Rectangle dotSrc = SpriteGetRect(SPRITE_middle_dot);
         Rectangle dotDest = { sx - dotSize/2, sy - dotSize/2, dotSize, dotSize };
-        DrawTexturePro(atlas, dotSrc, dotDest, (Vector2){0, 0}, 0, markerColor);
+        FastSprite(atlas, dotSrc, dotDest, markerColor);
     }
 }
 
@@ -2122,6 +2123,7 @@ static void DrawItems(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
     Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
+    float screenW = (float)GetScreenWidth(), screenH = (float)GetScreenHeight();
 
     for (int i = 0; i < itemHighWaterMark; i++) {
         Item* item = &items[i];
@@ -2131,6 +2133,13 @@ static void DrawItems(void) {
 
         int itemZ = (int)item->z;
         if (itemZ > viewZ || itemZ < viewZ - MAX_VISIBLE_DEPTH) continue;
+
+        // Off screen (one cell of margin covers the sprite and its border): nothing to draw.
+        // A big map holds tens of thousands of loose items, mostly outside the view.
+        {
+            float px = offset.x + item->x * zoom, py = offset.y + item->y * zoom;
+            if (px < -size || py < -size || px > screenW + size || py > screenH + size) continue;
+        }
 
         int cellX = (int)(item->x / CELL_SIZE);
         int cellY = (int)(item->y / CELL_SIZE);
@@ -2167,7 +2176,7 @@ static void DrawItems(void) {
         if (ItemUsesBorder(item->type)) {
             DrawItemWithBorder(sprite, dest, tint, borderTint);
         } else {
-            DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
+            FastSprite(atlas, src, dest, tint);
         }
     }
 }
@@ -2207,7 +2216,7 @@ static void DrawLightSources(void) {
             tint = FloorDarkenTint(tint);
         }
 
-        DrawTexturePro(atlas, spriteRect, dest, (Vector2){0, 0}, 0, tint);
+        FastSprite(atlas, spriteRect, dest, tint);
     }
 }
 
@@ -2275,7 +2284,7 @@ static void DrawStockpileTiles(void) {
                     tint = MultiplyColor(tint, GetDepthTint(sp->z, viewZ));
                     tint = FloorDarkenTint(tint);
                 }
-                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
+                FastSprite(atlas, src, dest, tint);
 
                 if (i == hoveredStockpile) {
                     float pulse = (sinf(GetTime() * 4.0f) + 1.0f) * 0.5f;
@@ -2351,7 +2360,7 @@ static void DrawStockpileItems(void) {
                         DrawItemWithBorder(sprite, destItem, tint, borderTint);
                     } else {
                         Rectangle srcItem = SpriteGetRect(sprite);
-                        DrawTexturePro(atlas, srcItem, destItem, (Vector2){0, 0}, 0, tint);
+                        FastSprite(atlas, srcItem, destItem, tint);
                     }
                 } else {
                     // Draw bare item stacks (existing logic)
@@ -2379,7 +2388,7 @@ static void DrawStockpileItems(void) {
                             DrawItemWithBorder(sprite, destItem, tint, borderTint);
                         } else {
                             Rectangle srcItem = SpriteGetRect(sprite);
-                            DrawTexturePro(atlas, srcItem, destItem, (Vector2){0, 0}, 0, tint);
+                            FastSprite(atlas, srcItem, destItem, tint);
                         }
                     }
                 }
@@ -2426,7 +2435,7 @@ static void DrawFurniture(void) {
 
         Rectangle src = SpriteGetRect(sprite);
         Rectangle dest = { sx, sy, size, size };
-        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
+        FastSprite(atlas, src, dest, tint);
     }
 }
 
@@ -2492,7 +2501,7 @@ static void DrawWorkshops(void) {
 
                 Rectangle src = SpriteGetRect(wsSprite);
                 Rectangle dest = { sx, sy, size, size };
-                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
+                FastSprite(atlas, src, dest, tint);
             }
         }
 
@@ -2660,7 +2669,7 @@ static void DrawWorkshopStatusOverlay(void) {
         
         Rectangle src = SpriteGetRect(spriteIdx);
         Rectangle dest = { sx, sy, iconSize, iconSize };
-        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
+        FastSprite(atlas, src, dest, tint);
     }
 }
 
@@ -2683,7 +2692,7 @@ static void DrawHaulDestinations(void) {
         
         Rectangle src = SpriteGetRect(SPRITE_stockpile);
         Rectangle dest = { sx, sy, size, size };
-        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){255, 200, 100, 180});
+        FastSprite(atlas, src, dest, (Color){255, 200, 100, 180});
     }
 }
 
@@ -2770,7 +2779,7 @@ static void DrawMiningDesignations(void) {
             float sx = offset.x + x * size;
             float sy = offset.y + y * size;
             Rectangle dest = { sx, sy, size, size };
-            DrawTexturePro(atlas, spriteSrc, dest, (Vector2){0, 0}, 0, overlay);
+            FastSprite(atlas, spriteSrc, dest, overlay);
 
             if (d->progress > 0.0f) {
                 float barWidth = size * 0.8f;
@@ -2797,7 +2806,7 @@ static void DrawMiningDesignations(void) {
         float sx = offset.x + job->targetMineX * size;
         float sy = offset.y + job->targetMineY * size;
         Rectangle dest = { sx, sy, size, size };
-        DrawTexturePro(atlas, spriteSrc, dest, (Vector2){0, 0}, 0, overlay);
+        FastSprite(atlas, spriteSrc, dest, overlay);
     }
     
     // Draw path of assigned mover when hovering over a designation
@@ -2839,7 +2848,7 @@ static void DrawBlueprints(void) {
 
         Rectangle src = SpriteGetRect(SPRITE_stockpile);
         Rectangle dest = { sx, sy, size, size };
-        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
+        FastSprite(atlas, src, dest, tint);
 
         if (bp->state == BLUEPRINT_BUILDING && bp->progress > 0.0f) {
             float barWidth = size * 0.8f;
@@ -2888,7 +2897,7 @@ static void DrawBlueprints(void) {
                             : (Color){tint.r, tint.g, tint.b, 80};
                         Rectangle gsrc = SpriteGetRect(SPRITE_stockpile);
                         Rectangle gdest = { tsx, tsy, size, size };
-                        DrawTexturePro(atlas, gsrc, gdest, (Vector2){0, 0}, 0, ghost);
+                        FastSprite(atlas, gsrc, gdest, ghost);
                     }
                 }
             }
@@ -2909,7 +2918,7 @@ static void DrawBlueprints(void) {
 
         Rectangle src = SpriteGetRect(SPRITE_stockpile);
         Rectangle dest = { sx, sy, size, size };
-        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){255, 200, 100, 180});
+        FastSprite(atlas, src, dest, (Color){255, 200, 100, 180});
     }
 }
 
@@ -3092,7 +3101,7 @@ static void DrawMist(void) {
             if (alpha > 200) alpha = 200;
 
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-            DrawRectangleRec(dest, (Color){200, 200, 210, (unsigned char)alpha});
+            FastRect(dest, (Color){200, 200, 210, (unsigned char)alpha});
         }
     }
 }
@@ -3183,7 +3192,7 @@ static void DrawFrontView(void) {
 
                         // Top surface: squished sprite (all layers)
                         Rectangle surfaceDest = {screenX, floorTop, size, floorThickness};
-                        DrawTexturePro(atlas, SpriteGetRect(floorSprite), surfaceDest, (Vector2){0,0}, 0, matTint);
+                        FastSprite(atlas, SpriteGetRect(floorSprite), surfaceDest, matTint);
                     }
                     // else: empty air, draw nothing
                 } else if (CellIsRamp(cell)) {
@@ -3195,7 +3204,7 @@ static void DrawFrontView(void) {
                     Color tint = baseTint;
                     MaterialType rampMat = GetWallMaterial(x, worldY, z);
                     if (rampMat != MAT_NONE) tint = MultiplyColor(tint, MaterialTint(rampMat));
-                    DrawTexturePro(atlas, SpriteGetRect(sprite), dest, (Vector2){0,0}, 0, tint);
+                    FastSprite(atlas, SpriteGetRect(sprite), dest, tint);
                 } else {
                     // Solid cell (wall, dirt, tree, etc)
                     int sprite = GetWallSpriteAt(x, worldY, z, cell);
@@ -3206,7 +3215,7 @@ static void DrawFrontView(void) {
                     if (cell == CELL_WINDOW) {
                         tint = MultiplyColor(tint, (Color){180, 220, 255, 200});
                     }
-                    DrawTexturePro(atlas, SpriteGetRect(sprite), dest, (Vector2){0,0}, 0, tint);
+                    FastSprite(atlas, SpriteGetRect(sprite), dest, tint);
                 }
             }
         }
@@ -3240,7 +3249,7 @@ static void DrawFrontView(void) {
                 Color grassTint = MultiplyColor(layerTint, grassLight);
                 if (isReeds) grassTint = MultiplyColor(grassTint, (Color){120, 200, 180, 255});
                 else grassTint = MultiplyColor(grassTint, biomePresets[selectedBiome].grassTint);
-                DrawTexturePro(atlas, SpriteGetRect(grassSprite), grassDest, (Vector2){0,0}, 0, grassTint);
+                FastSprite(atlas, SpriteGetRect(grassSprite), grassDest, grassTint);
             }
         }
 
@@ -3298,7 +3307,7 @@ static void DrawFrontView(void) {
                     if (gx < minX || gx >= maxX) continue;
                     float spScreenX = offset.x + gx * size;
                     Rectangle dest = {spScreenX, spScreenY, size, size};
-                    DrawTexturePro(atlas, SpriteGetRect(SPRITE_stockpile), dest, (Vector2){0,0}, 0, layerTint);
+                    FastSprite(atlas, SpriteGetRect(SPRITE_stockpile), dest, layerTint);
                 }
             }
         }
@@ -3335,7 +3344,7 @@ static void DrawFrontView(void) {
                             wsTint = MultiplyColor(layerTint, (Color){200, 180, 140, 255});
                             break;
                     }
-                    DrawTexturePro(atlas, SpriteGetRect(wsSprite), dest, (Vector2){0,0}, 0, wsTint);
+                    FastSprite(atlas, SpriteGetRect(wsSprite), dest, wsTint);
                 }
             }
         }
@@ -3359,7 +3368,7 @@ static void DrawFrontView(void) {
                 default:                   fSprite = SPRITE_generic;     break;
             }
             Rectangle dest = {fScreenX, fScreenY, size, size};
-            DrawTexturePro(atlas, SpriteGetRect(fSprite), dest, (Vector2){0,0}, 0, layerTint);
+            FastSprite(atlas, SpriteGetRect(fSprite), dest, layerTint);
         }
 
         // Draw fire for this layer
@@ -3374,7 +3383,7 @@ static void DrawFrontView(void) {
                         Rectangle dest = {offset.x + x * size, screenY, size, size};
                         Color burnTint = {30, 22, 15, 100};
                         burnTint.a = (unsigned char)(burnTint.a * brightness);
-                        DrawRectangleRec(dest, burnTint);
+                        FastRect(dest, burnTint);
                         continue;
                     }
                     if (level <= 0) continue;
@@ -3382,7 +3391,7 @@ static void DrawFrontView(void) {
                     Color fireColor = FireLevelColor(level);
                     fireColor.a = (unsigned char)(fireColor.a * brightness);
                     Rectangle dest = {offset.x + x * size, screenY, size, size};
-                    DrawRectangleRec(dest, fireColor);
+                    FastRect(dest, fireColor);
                 }
             }
         }
@@ -3399,7 +3408,7 @@ static void DrawFrontView(void) {
                     if (alpha > 205) alpha = 205;
                     alpha = (int)(alpha * brightness);
                     Rectangle dest = {offset.x + x * size, screenY, size, size};
-                    DrawRectangleRec(dest, (Color){80, 80, 90, (unsigned char)alpha});
+                    FastRect(dest, (Color){80, 80, 90, (unsigned char)alpha});
                 }
             }
         }
@@ -3416,7 +3425,7 @@ static void DrawFrontView(void) {
                     if (alpha > 180) alpha = 180;
                     alpha = (int)(alpha * brightness);
                     Rectangle dest = {offset.x + x * size, screenY, size, size};
-                    DrawRectangleRec(dest, (Color){220, 220, 230, (unsigned char)alpha});
+                    FastRect(dest, (Color){220, 220, 230, (unsigned char)alpha});
                 }
             }
         }
@@ -3431,7 +3440,7 @@ static void DrawFrontView(void) {
                 float waterHeight = size * ((float)water / 7.0f);
                 Rectangle waterDest = {screenX, screenY + (size - waterHeight), size, waterHeight};
                 unsigned char alpha = (unsigned char)(brightness * 180);
-                DrawRectangleRec(waterDest, (Color){30, 100, 200, alpha});
+                FastRect(waterDest, (Color){30, 100, 200, alpha});
             }
         }
 
@@ -3467,7 +3476,7 @@ static void DrawFrontView(void) {
                             Color borderTint = MultiplyColor(layerTint, ItemBorderTint(ctype));
                             DrawItemWithBorder(sprite, dest, tint, borderTint);
                         } else {
-                            DrawTexturePro(atlas, SpriteGetRect(sprite), dest, (Vector2){0,0}, 0, tint);
+                            FastSprite(atlas, SpriteGetRect(sprite), dest, tint);
                         }
                     } else {
                         if (sp->slotCounts[slotIdx] <= 0) continue;
@@ -3486,7 +3495,7 @@ static void DrawFrontView(void) {
                                 Color borderTint = MultiplyColor(layerTint, ItemBorderTint(type));
                                 DrawItemWithBorder(sprite, dest, tint, borderTint);
                             } else {
-                                DrawTexturePro(atlas, SpriteGetRect(sprite), dest, (Vector2){0,0}, 0, tint);
+                                FastSprite(atlas, SpriteGetRect(sprite), dest, tint);
                             }
                         }
                     }
@@ -3510,7 +3519,7 @@ static void DrawFrontView(void) {
 
             int sprite = ItemSpriteForTypeMaterial(it->type, it->material);
             Color tint = MultiplyColor((Color){b, b, b, 255}, MaterialTint(it->material));
-            DrawTexturePro(atlas, SpriteGetRect(sprite), itemDest, (Vector2){0,0}, 0, tint);
+            FastSprite(atlas, SpriteGetRect(sprite), itemDest, tint);
         }
 
         // Draw movers for this layer (after cells+items)
@@ -3543,7 +3552,7 @@ static void DrawFrontView(void) {
             Color lightTint = GetLightColor((int)(m->x / CELL_SIZE), moverCellY, (int)m->z, skyColor);
             moverColor = MultiplyColor(moverColor, lightTint);
 
-            DrawTexturePro(atlas, SpriteGetRect(SPRITE_head), moverDest, (Vector2){0,0}, 0, moverColor);
+            FastSprite(atlas, SpriteGetRect(SPRITE_head), moverDest, moverColor);
         }
     }
 

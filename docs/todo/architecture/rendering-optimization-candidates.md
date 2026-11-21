@@ -266,3 +266,49 @@ These existing optimizations are solid and should be preserved:
 | 4 | Merge overlay passes | Single cell iteration for ground overlays | Moderate | ~60-80k fewer iterations/frame |
 | 5 | Sprite lookup tables | Array replaces if/switch | Small | Cleaner + fewer branch misses |
 | 6 | Trig lookup for animations | Sin table, fast sqrt | Small | Minor, scales with mover count |
+
+---
+
+## Big maps, 2026-11-21 (measured, done)
+
+2048 world, world drawing per frame (`--screenshot`, see root CLAUDE.md; 7 views pixel-identical
+to the build before each step):
+
+| view | start | after all three steps |
+|---|---|---|
+| viewZ 15, zoom 1 | 7.4 ms | 0.67 ms |
+| viewZ 15, zoom 0.5 | 9.4 ms | 2.2 ms |
+| viewZ 8, zoom 0.25 | 10.5 ms | 4.1 ms |
+| viewZ 8, zoom 0.15 | 17.4 ms | 9.6 ms |
+
+1. **Per-column visibility** (`VisBuild` / `VisLowest` in rendering.c): the deeper-level passes
+   asked `IsCellVisibleFromAbove` per cell per level; DrawCellGrid now records each column's
+   highest blocker once per frame. Sparse layers (water, smoke, steam, farm, designations) skip
+   chunks without a block; mining designations drew the whole map. ~10%.
+2. **`FastSprite` / `FastRect`** (`src/render/fast_draw.h`) + `rlQuadFast`, a small patch in
+   `vendor/raylib/rlgl.h` (marked "NavKit patch"; re-apply when updating raylib): a quad goes
+   into raylib's own batch in one call instead of ~12 per-vertex calls. Same batch, so drawing
+   order with all other raylib calls is unchanged. 10-20%.
+3. **DrawItems culls off-screen items**: it drew every loose item of the map on the visible
+   levels (tens of thousands of stones/sticks/logs on a 2048 map). The biggest win, at every zoom.
+
+What's left zoomed far out (~180K cells, ~500K quads): the per-cell work in DrawCellGrid / grass
+(sprite + tint per cell) and raylib's vertex format (pos + uv + normal + color = 36 bytes per
+vertex, ~144 per quad: ~70 MB uploaded per frame at zoom 0.15).
+
+### Next options (not started)
+
+- **Own batch with a compact format and our own shader** (instanced quads: x, y, w, h, uv rect,
+  color ~ 28 bytes vs 144): ~5x less upload, and the base for shader effects (per-sprite data
+  such as effect type / water depth / temperature, which raylib's batch can't carry). The basic
+  shader reproduces today's look exactly (prove with --screenshot).
+- **Shader effects on top** (discussed, user interested, not decided): water ripples / depth
+  colour, heat shimmer and glow (world into a render texture + a final full-screen pass), light
+  as a per-cell texture multiplied in the shader (also removes GetLightColor from the CPU).
+  Keep effects on the 8x8 sprite pixel grid so they look like pixel art.
+- **Chunk cache**: draw a 16x16-cell chunk once at 8 px per cell (128x128, exact at any zoom
+  with point sampling), redraw when its cells change; light applied on top. Makes the terrain
+  ~constant cost at any zoom. Needs change tracking (digging, grass, snow, light).
+- Less detail when zoomed far out (finishes, dirt, grass sprites): changes the look slightly.
+- Other entity passes without screen culling (stockpile tiles/items, workshops, furniture,
+  blueprints, light sources): few entities on today's maps, cheap to add when that changes.

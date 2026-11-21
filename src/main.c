@@ -1483,7 +1483,10 @@ int main(int argc, char** argv) {
     const char* screenshotPath = NULL;
     for (int i = 1; i + 1 < argc; i++)
         if (strcmp(argv[i], "--screenshot") == 0) screenshotPath = argv[i + 1];
-    int screenshotFrame = 0;
+    int screenshotFrame = 0, screenshotTimed = 60;   // --screenshot-frames N: time N frames
+    for (int i = 1; i + 1 < argc; i++)
+        if (strcmp(argv[i], "--screenshot-frames") == 0) screenshotTimed = atoi(argv[i + 1]);
+    if (screenshotTimed < 1) screenshotTimed = 1;
     if (screenshotPath) {
         paused = true;
         UpdateLighting();   // normally computed by the first sim tick, which never runs paused
@@ -1796,8 +1799,8 @@ int main(int argc, char** argv) {
                 UnloadImage(shot);
             } else if (screenshotFrame > 3) {
                 worldMsSum += (GetTime() - worldDrawStart) * 1000.0;
-                if (screenshotFrame == 63) {
-                    printf("screenshot: world drawing %.2f ms per frame (avg of 60)\n", worldMsSum / 60.0);
+                if (screenshotFrame == 3 + screenshotTimed) {
+                    printf("screenshot: world drawing %.2f ms per frame (avg of %d)\n", worldMsSum / screenshotTimed, screenshotTimed);
                     shouldQuit = true;
                 }
             }
