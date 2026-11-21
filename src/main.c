@@ -443,19 +443,6 @@ static Vector2 ScreenToWorldFrontViewLayer(Vector2 screen, int layer, int depthL
     return (Vector2){worldX, worldZ};
 }
 
-int GetStockpileAtGrid(int gx, int gy, int gz) {
-    for (int i = 0; i < MAX_STOCKPILES; i++) {
-        Stockpile* sp = &stockpiles[i];
-        if (!sp->active) continue;
-        if (sp->z != gz) continue;
-        if (gx >= sp->x && gx < sp->x + sp->width &&
-            gy >= sp->y && gy < sp->y + sp->height) {
-            return i;
-        }
-    }
-    return -1;
-}
-
 // Front-view mover finder: match by worldX and worldZ, filter by Y-slice range
 // Front-view mover finder: uses screen-space hit testing so hover is stable
 // regardless of frontViewY changes. Each mover's screen position is computed

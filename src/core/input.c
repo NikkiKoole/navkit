@@ -2315,48 +2315,27 @@ void HandleInput(void) {
     // Stockpile hover controls (always active when hovering)
     // ========================================================================
     if (hoveredStockpile >= 0) {
-        Stockpile* sp = &stockpiles[hoveredStockpile];
-        if (IsKeyPressed(KEY_EQUAL) || IsKeyPressed(KEY_KP_ADD)) {
-            if (sp->priority < 9) { sp->priority++; AddMessage(TextFormat("Stockpile priority: %d", sp->priority), WHITE); }
-        }
-        if (IsKeyPressed(KEY_MINUS) || IsKeyPressed(KEY_KP_SUBTRACT)) {
-            if (sp->priority > 1) { sp->priority--; AddMessage(TextFormat("Stockpile priority: %d", sp->priority), WHITE); }
-        }
+        // Actions are shared with the inspector panel (src/core/selection.c)
+        bool shiftDown = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+        if (IsKeyPressed(KEY_EQUAL) || IsKeyPressed(KEY_KP_ADD)) StockpileAdjustPriority(hoveredStockpile, 1);
+        if (IsKeyPressed(KEY_MINUS) || IsKeyPressed(KEY_KP_SUBTRACT)) StockpileAdjustPriority(hoveredStockpile, -1);
         if (IsKeyPressed(KEY_RIGHT_BRACKET)) {
-            if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
-                // Shift+] = increase max containers
-                int newMax = sp->maxContainers + 1;
-                SetStockpileMaxContainers(hoveredStockpile, newMax);
-                AddMessage(TextFormat("Max containers: %d", sp->maxContainers), WHITE);
-            } else {
-                int newSize = sp->maxStackSize + 1;
-                if (newSize <= MAX_STACK_SIZE) { SetStockpileMaxStackSize(hoveredStockpile, newSize); AddMessage(TextFormat("Stack size: %d", sp->maxStackSize), WHITE); }
-            }
+            // ] = stack size up, Shift+] = more containers
+            if (shiftDown) StockpileAdjustContainers(hoveredStockpile, 1);
+            else StockpileAdjustStackSize(hoveredStockpile, 1);
             return;
         }
         if (IsKeyPressed(KEY_LEFT_BRACKET)) {
-            if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
-                // Shift+[ = decrease max containers
-                int newMax = sp->maxContainers - 1;
-                if (newMax >= 0) { SetStockpileMaxContainers(hoveredStockpile, newMax); AddMessage(TextFormat("Max containers: %d", sp->maxContainers), WHITE); }
-            } else {
-                int newSize = sp->maxStackSize - 1;
-                if (newSize >= 1) { SetStockpileMaxStackSize(hoveredStockpile, newSize); AddMessage(TextFormat("Stack size: %d", sp->maxStackSize), WHITE); }
-            }
+            if (shiftDown) StockpileAdjustContainers(hoveredStockpile, -1);
+            else StockpileAdjustStackSize(hoveredStockpile, -1);
             return;
         }
         // Filter toggles - only in normal mode (two-level keyboard navigation)
         if (inputMode == MODE_NORMAL) {
             // Material sub-filters (data-driven from STOCKPILE_MATERIAL_FILTERS table)
             for (int i = 0; i < STOCKPILE_MATERIAL_FILTER_COUNT; i++) {
-                const StockpileMaterialFilterDef* mf = &STOCKPILE_MATERIAL_FILTERS[i];
-                int rayKey = KEY_ZERO + (mf->key - '0');
-                if (IsKeyPressed(rayKey)) {
-                    bool newVal = !sp->allowedMaterials[mf->material];
-                    sp->allowedMaterials[mf->material] = newVal;
-                    if (newVal) sp->allowedTypes[mf->parentItem] = true;
-                    InvalidateStockpileSlotCacheAll();
-                    AddMessage(TextFormat("%s: %s", mf->displayName, newVal ? "ON" : "OFF"), mf->color);
+                if (IsKeyPressed(KEY_ZERO + (STOCKPILE_MATERIAL_FILTERS[i].key - '0'))) {
+                    StockpileToggleMaterial(hoveredStockpile, i);
                     return;
                 }
             }
@@ -2373,16 +2352,7 @@ void HandleInput(void) {
                 }
                 // X toggles all filters globally
                 if (IsKeyPressed(KEY_X)) {
-                    bool anyOn = false;
-                    for (int i = 0; i < ITEM_TYPE_COUNT; i++) {
-                        if (sp->allowedTypes[i]) { anyOn = true; break; }
-                    }
-                    bool newVal = !anyOn;
-                    for (int i = 0; i < ITEM_TYPE_COUNT; i++) {
-                        sp->allowedTypes[i] = newVal;
-                    }
-                    InvalidateStockpileSlotCacheAll();
-                    AddMessage(newVal ? "All filters ON" : "All filters OFF", WHITE);
+                    StockpileToggleAll(hoveredStockpile);
                     return;
                 }
             } else {
@@ -2393,21 +2363,7 @@ void HandleInput(void) {
                 }
                 // X toggles all items in this category
                 if (IsKeyPressed(KEY_X)) {
-                    int catTotal = 0, catEnabled = 0;
-                    for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
-                        if ((int)STOCKPILE_FILTERS[i].category == activeFilterCategory) {
-                            catTotal++;
-                            if (sp->allowedTypes[STOCKPILE_FILTERS[i].itemType]) catEnabled++;
-                        }
-                    }
-                    bool newVal = !(catEnabled == catTotal);
-                    for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
-                        if ((int)STOCKPILE_FILTERS[i].category == activeFilterCategory) {
-                            sp->allowedTypes[STOCKPILE_FILTERS[i].itemType] = newVal;
-                        }
-                    }
-                    InvalidateStockpileSlotCacheAll();
-                    AddMessage(TextFormat("%s: %s", FILTER_CATEGORY_NAMES[activeFilterCategory], newVal ? "all ON" : "all OFF"), WHITE);
+                    StockpileToggleCategory(hoveredStockpile, activeFilterCategory);
                     return;
                 }
                 // A/B/C/... toggle individual items in this category
@@ -2415,11 +2371,7 @@ void HandleInput(void) {
                 for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
                     if ((int)STOCKPILE_FILTERS[i].category != activeFilterCategory) continue;
                     if (IsKeyPressed(KEY_A + itemIdx)) {
-                        sp->allowedTypes[STOCKPILE_FILTERS[i].itemType] = !sp->allowedTypes[STOCKPILE_FILTERS[i].itemType];
-                        InvalidateStockpileSlotCacheAll();
-                        AddMessage(TextFormat("%s: %s", STOCKPILE_FILTERS[i].displayName,
-                                   sp->allowedTypes[STOCKPILE_FILTERS[i].itemType] ? "ON" : "OFF"),
-                                   STOCKPILE_FILTERS[i].color);
+                        StockpileToggleItem(hoveredStockpile, i);
                         return;
                     }
                     itemIdx++;

@@ -14,6 +14,7 @@
 #include "../entities/mover.h"
 #include "../entities/animals.h"
 #include "../entities/workshops.h"
+#include "../entities/stockpiles.h"
 #include "../world/designations.h"
 
 Color DescToneColor(DescTone tone);   // tooltips.c
@@ -121,6 +122,79 @@ static void WorkshopContent(bool draw, float x, float* y) {
     *y += INSPECTOR_BUTTON_H;
 }
 
+// Stockpile: priority / stack / containers steppers, filters as toggle buttons.
+// One filter category can be opened to toggle its items one by one.
+static int openFilterCategory = -1;
+static int openFilterStockpile = -1;
+
+static void Stepper(const char* label, int value, bool draw, float x, float y, float* bx,
+                    int spIdx, void (*adjust)(int, int)) {
+    if (draw) DrawTextShadow(TextFormat("%s %d", label, value), (int)*bx, (int)y + 3, 14, WHITE);
+    *bx += 92;
+    if (Button("-", draw, bx, y)) adjust(spIdx, -1);
+    if (Button("+", draw, bx, y)) adjust(spIdx, 1);
+    *bx += 10;
+    (void)x;
+}
+
+static void StockpileContent(bool draw, float x, float* y) {
+    int spIdx = selection.idx;
+    const Stockpile* sp = &stockpiles[spIdx];
+    if (openFilterStockpile != spIdx) { openFilterStockpile = spIdx; openFilterCategory = -1; }
+
+    float bx = x;
+    Stepper("Priority", sp->priority, draw, x, *y, &bx, spIdx, StockpileAdjustPriority);
+    Stepper("Stack", sp->maxStackSize, draw, x, *y, &bx, spIdx, StockpileAdjustStackSize);
+    *y += INSPECTOR_BUTTON_H;
+    bx = x;
+    Stepper("Containers", sp->maxContainers, draw, x, *y, &bx, spIdx, StockpileAdjustContainers);
+    *y += INSPECTOR_BUTTON_H + 4;
+
+    // Filters: one row per category (toggle all / open), the open one lists its items
+    bx = x;
+    if (draw) DrawTextShadow("Filters:", (int)x, (int)*y + 3, 14, WHITE);
+    bx += 60;
+    if (Button("All on/off", draw, &bx, *y)) StockpileToggleAll(spIdx);
+    *y += INSPECTOR_BUTTON_H;
+    for (int cat = 0; cat < FILTER_CAT_COUNT; cat++) {
+        int enabled, total;
+        StockpileCategoryCounts(spIdx, cat, &enabled, &total);
+        if (total == 0) continue;
+        bool open = openFilterCategory == cat;
+        bx = x;
+        if (Button(open ? "v" : ">", draw, &bx, *y)) openFilterCategory = open ? -1 : cat;
+        Color c = enabled == total ? GREEN : enabled > 0 ? YELLOW : DARKGRAY;
+        if (Button(TextFormat("%s %s %d/%d", enabled == total ? "[x]" : enabled > 0 ? "[-]" : "[ ]",
+                              FILTER_CATEGORY_NAMES[cat], enabled, total), draw, &bx, *y))
+            StockpileToggleCategory(spIdx, cat);
+        if (draw && enabled > 0) DrawRectangle((int)x - 4, (int)*y + 4, 2, 12, c);
+        *y += INSPECTOR_BUTTON_H;
+        if (!open) continue;
+        for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
+            if ((int)STOCKPILE_FILTERS[i].category != cat) continue;
+            bool on = sp->allowedTypes[STOCKPILE_FILTERS[i].itemType];
+            bx = x + 24;
+            if (Button(TextFormat("%s %s", on ? "[x]" : "[ ]", STOCKPILE_FILTERS[i].displayName), draw, &bx, *y))
+                StockpileToggleItem(spIdx, i);
+            *y += INSPECTOR_BUTTON_H;
+        }
+    }
+
+    // Wood types (material sub-filters)
+    if (STOCKPILE_MATERIAL_FILTER_COUNT > 0) {
+        *y += 4;
+        Text("Wood:", WHITE, draw, x, y);
+        bx = x;
+        for (int i = 0; i < STOCKPILE_MATERIAL_FILTER_COUNT; i++) {
+            const StockpileMaterialFilterDef* mf = &STOCKPILE_MATERIAL_FILTERS[i];
+            bool on = sp->allowedMaterials[mf->material];
+            if (Button(TextFormat("%s %s", on ? "[x]" : "[ ]", mf->displayName), draw, &bx, *y))
+                StockpileToggleMaterial(spIdx, i);
+        }
+        *y += INSPECTOR_BUTTON_H;
+    }
+}
+
 // Title + body for the selection; returns the content height (from `top`)
 static float PanelContent(bool draw, float x, float top, float right) {
     if (!SelectionValid()) return 0;
@@ -130,6 +204,7 @@ static float PanelContent(bool draw, float x, float top, float right) {
         case SEL_ANIMAL:    DescribeAnimal(selection.idx, &d); break;
         case SEL_BLUEPRINT: DescribeBlueprint(selection.idx, &d); break;
         case SEL_WORKSHOP:  DescribeWorkshopStatus(selection.idx, &d); break;
+        case SEL_STOCKPILE: DescribeStockpile(selection.idx, &d); break;
         case SEL_NONE:      return 0;
     }
     if (d.count == 0) return 0;
@@ -146,6 +221,7 @@ static float PanelContent(bool draw, float x, float top, float right) {
 
     if (selection.kind == SEL_MOVER) MoverButtons(draw, x, &y);
     else if (selection.kind == SEL_WORKSHOP) WorkshopContent(draw, x, &y);
+    else if (selection.kind == SEL_STOCKPILE) StockpileContent(draw, x, &y);
     return y - top;
 }
 
@@ -191,6 +267,12 @@ void DrawSelectionHighlight(void) {
             const Workshop* ws = &workshops[selection.idx];
             wx = ws->x * CELL_SIZE; wy = ws->y * CELL_SIZE; wz = ws->z;
             wcells = (float)ws->width; hcells = (float)ws->height;
+            break;
+        }
+        case SEL_STOCKPILE: {
+            const Stockpile* sp = &stockpiles[selection.idx];
+            wx = sp->x * CELL_SIZE; wy = sp->y * CELL_SIZE; wz = sp->z;
+            wcells = (float)sp->width; hcells = (float)sp->height;
             break;
         }
         default: return;

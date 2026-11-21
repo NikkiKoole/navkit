@@ -15,6 +15,7 @@ typedef enum {
     SEL_ANIMAL,
     SEL_BLUEPRINT,
     SEL_WORKSHOP,
+    SEL_STOCKPILE,
 } SelectionKind;
 
 typedef struct {
@@ -48,5 +49,16 @@ void WorkshopAdjustBillTarget(int wsIdx, int billIdx, int delta);   // min 1; X-
 void WorkshopToggleBillPause(int wsIdx, int billIdx);
 void WorkshopToggleDeconstruct(int wsIdx);
 // Linking stockpiles to a workshop is an input mode: InputMode_StartLinking (input_mode.h)
+
+// Stockpile actions (shared by the hover keys and the inspector buttons)
+void StockpileAdjustPriority(int spIdx, int delta);     // 1..9
+void StockpileAdjustStackSize(int spIdx, int delta);    // 1..MAX_STACK_SIZE
+void StockpileAdjustContainers(int spIdx, int delta);   // >= 0
+void StockpileToggleItem(int spIdx, int filterIdx);     // one STOCKPILE_FILTERS entry
+void StockpileToggleCategory(int spIdx, int category);  // all on unless all already on
+void StockpileToggleAll(int spIdx);                     // all off if any on, else all on
+void StockpileToggleMaterial(int spIdx, int materialFilterIdx);   // STOCKPILE_MATERIAL_FILTERS
+// Items enabled / total in a filter category
+void StockpileCategoryCounts(int spIdx, int category, int* enabled, int* total);
 
 #endif

@@ -797,6 +797,49 @@ void WorkshopRecipeSummary(int wsIdx, int recipeIdx, char* buf, size_t size) {
 }
 
 // ---------------------------------------------------------------------------
+// Stockpile
+// ---------------------------------------------------------------------------
+
+void DescFillMeter(char* out, size_t outSize, float ratio, int width) {
+    if (ratio < 0.0f) ratio = 0.0f;
+    if (ratio > 1.0f) ratio = 1.0f;
+    if (width > 28) width = 28;
+    int filled = (int)(ratio * width + 0.5f);
+    if (filled > width) filled = width;
+    char bar[32];
+    int idx = 0;
+    bar[idx++] = '[';
+    for (int i = 0; i < width; i++) bar[idx++] = (i < filled) ? '|' : ' ';
+    bar[idx++] = ']';
+    bar[idx] = '\0';
+    snprintf(out, outSize, "%s %d%%", bar, (int)(ratio * 100.0f + 0.5f));
+}
+
+void DescribeStockpile(int spIdx, DescLines* out) {
+    out->count = 0;
+    if (spIdx < 0 || spIdx >= MAX_STOCKPILES || !stockpiles[spIdx].active) return;
+    const Stockpile* sp = &stockpiles[spIdx];
+
+    int totalItems = 0, activeCells = 0;
+    for (int i = 0; i < sp->width * sp->height; i++) {
+        if (!sp->cells[i]) continue;
+        activeCells++;
+        totalItems += sp->slotCounts[i];
+    }
+
+    DescAdd(out, DESC_TITLE, "Stockpile #%d", spIdx);
+    DescAdd(out, DESC_NORMAL, "Priority: %d", sp->priority);
+    DescAdd(out, DESC_NORMAL, "Stack size: %d", sp->maxStackSize);
+    if (sp->maxContainers > 0)
+        DescAdd(out, DESC_NORMAL, "Containers: %d/%d", CountInstalledContainers(spIdx), sp->maxContainers);
+    DescAdd(out, IsStockpileOverfull(spIdx) ? DESC_BAD : DESC_NORMAL, "Storage: %d/%d (%d cells)",
+            totalItems, activeCells * sp->maxStackSize, activeCells);
+    char meter[48];
+    DescFillMeter(meter, sizeof(meter), GetStockpileFillRatio(spIdx), 10);
+    DescAdd(out, DESC_NORMAL, "Fill: %s", meter);
+}
+
+// ---------------------------------------------------------------------------
 // Train station
 // ---------------------------------------------------------------------------
 

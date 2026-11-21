@@ -8,6 +8,7 @@
 #include "../world/designations.h"
 #include "../world/construction.h"
 #include "../entities/workshops.h"
+#include "../entities/stockpiles.h"
 #include <math.h>
 
 Selection selection = {SEL_NONE, -1};
@@ -30,6 +31,7 @@ bool SelectionValid(void) {
         case SEL_ANIMAL:    ok = selection.idx >= 0 && selection.idx < animalCount && animals[selection.idx].active; break;
         case SEL_BLUEPRINT: ok = selection.idx >= 0 && selection.idx < MAX_BLUEPRINTS && blueprints[selection.idx].active; break;
         case SEL_WORKSHOP:  ok = selection.idx >= 0 && selection.idx < MAX_WORKSHOPS && workshops[selection.idx].active; break;
+        case SEL_STOCKPILE: ok = selection.idx >= 0 && selection.idx < MAX_STOCKPILES && stockpiles[selection.idx].active; break;
     }
     if (!ok) ClearSelection();
     return ok;
@@ -65,6 +67,16 @@ int GetAnimalAtWorldPos(float wx, float wy, int wz) {
     return bestIdx;
 }
 
+// Stockpile covering cell (gx, gy, gz), or -1
+int GetStockpileAtGrid(int gx, int gy, int gz) {
+    for (int i = 0; i < MAX_STOCKPILES; i++) {
+        const Stockpile* sp = &stockpiles[i];
+        if (!sp->active || sp->z != gz) continue;
+        if (gx >= sp->x && gx < sp->x + sp->width && gy >= sp->y && gy < sp->y + sp->height) return i;
+    }
+    return -1;
+}
+
 bool BlueprintFootprint(int idx, int* x0, int* y0, int* w, int* h) {
     if (idx < 0 || idx >= MAX_BLUEPRINTS || !blueprints[idx].active) return false;
     const Blueprint* bp = &blueprints[idx];
@@ -88,6 +100,8 @@ Selection PickSelectionAt(float wx, float wy, int z) {
     if (cx >= 0 && cx < gridWidth && cy >= 0 && cy < gridHeight && z >= 0 && z < gridDepth) {
         int ws = FindWorkshopAt(cx, cy, z);
         if (ws >= 0) return (Selection){SEL_WORKSHOP, ws};
+        int sp = GetStockpileAtGrid(cx, cy, z);
+        if (sp >= 0) return (Selection){SEL_STOCKPILE, sp};
     }
     for (int i = 0; i < MAX_BLUEPRINTS; i++) {
         if (!blueprints[i].active || blueprints[i].z != z) continue;
@@ -191,6 +205,97 @@ void WorkshopToggleDeconstruct(int wsIdx) {
         ws->markedForDeconstruct = true;
         AddMessage("Marked for deconstruction", ORANGE);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Stockpile actions
+// ---------------------------------------------------------------------------
+
+static Stockpile* ActiveStockpile(int spIdx) {
+    if (spIdx < 0 || spIdx >= MAX_STOCKPILES || !stockpiles[spIdx].active) return NULL;
+    return &stockpiles[spIdx];
+}
+
+void StockpileAdjustPriority(int spIdx, int delta) {
+    Stockpile* sp = ActiveStockpile(spIdx);
+    if (!sp) return;
+    int p = sp->priority + delta;
+    if (p < 1) p = 1;
+    if (p > 9) p = 9;
+    if (p == sp->priority) return;
+    sp->priority = p;
+    AddMessage(TextFormat("Stockpile priority: %d", sp->priority), WHITE);
+}
+
+void StockpileAdjustStackSize(int spIdx, int delta) {
+    Stockpile* sp = ActiveStockpile(spIdx);
+    if (!sp) return;
+    int n = sp->maxStackSize + delta;
+    if (n < 1 || n > MAX_STACK_SIZE) return;
+    SetStockpileMaxStackSize(spIdx, n);
+    AddMessage(TextFormat("Stack size: %d", sp->maxStackSize), WHITE);
+}
+
+void StockpileAdjustContainers(int spIdx, int delta) {
+    Stockpile* sp = ActiveStockpile(spIdx);
+    if (!sp) return;
+    int n = sp->maxContainers + delta;
+    if (n < 0) return;
+    SetStockpileMaxContainers(spIdx, n);
+    AddMessage(TextFormat("Max containers: %d", sp->maxContainers), WHITE);
+}
+
+void StockpileToggleItem(int spIdx, int filterIdx) {
+    Stockpile* sp = ActiveStockpile(spIdx);
+    if (!sp || filterIdx < 0 || filterIdx >= STOCKPILE_FILTER_COUNT) return;
+    const StockpileFilterDef* f = &STOCKPILE_FILTERS[filterIdx];
+    sp->allowedTypes[f->itemType] = !sp->allowedTypes[f->itemType];
+    InvalidateStockpileSlotCacheAll();
+    AddMessage(TextFormat("%s: %s", f->displayName, sp->allowedTypes[f->itemType] ? "ON" : "OFF"), f->color);
+}
+
+void StockpileCategoryCounts(int spIdx, int category, int* enabled, int* total) {
+    *enabled = *total = 0;
+    const Stockpile* sp = ActiveStockpile(spIdx);
+    if (!sp) return;
+    for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
+        if ((int)STOCKPILE_FILTERS[i].category != category) continue;
+        (*total)++;
+        if (sp->allowedTypes[STOCKPILE_FILTERS[i].itemType]) (*enabled)++;
+    }
+}
+
+void StockpileToggleCategory(int spIdx, int category) {
+    Stockpile* sp = ActiveStockpile(spIdx);
+    if (!sp || category < 0 || category >= FILTER_CAT_COUNT) return;
+    int enabled, total;
+    StockpileCategoryCounts(spIdx, category, &enabled, &total);
+    bool on = enabled != total;
+    for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++)
+        if ((int)STOCKPILE_FILTERS[i].category == category) sp->allowedTypes[STOCKPILE_FILTERS[i].itemType] = on;
+    InvalidateStockpileSlotCacheAll();
+    AddMessage(TextFormat("%s: %s", FILTER_CATEGORY_NAMES[category], on ? "all ON" : "all OFF"), WHITE);
+}
+
+void StockpileToggleAll(int spIdx) {
+    Stockpile* sp = ActiveStockpile(spIdx);
+    if (!sp) return;
+    bool anyOn = false;
+    for (int i = 0; i < ITEM_TYPE_COUNT; i++) if (sp->allowedTypes[i]) { anyOn = true; break; }
+    for (int i = 0; i < ITEM_TYPE_COUNT; i++) sp->allowedTypes[i] = !anyOn;
+    InvalidateStockpileSlotCacheAll();
+    AddMessage(!anyOn ? "All filters ON" : "All filters OFF", WHITE);
+}
+
+void StockpileToggleMaterial(int spIdx, int materialFilterIdx) {
+    Stockpile* sp = ActiveStockpile(spIdx);
+    if (!sp || materialFilterIdx < 0 || materialFilterIdx >= STOCKPILE_MATERIAL_FILTER_COUNT) return;
+    const StockpileMaterialFilterDef* mf = &STOCKPILE_MATERIAL_FILTERS[materialFilterIdx];
+    bool on = !sp->allowedMaterials[mf->material];
+    sp->allowedMaterials[mf->material] = on;
+    if (on) sp->allowedTypes[mf->parentItem] = true;   // a wood type implies its item
+    InvalidateStockpileSlotCacheAll();
+    AddMessage(TextFormat("%s: %s", mf->displayName, on ? "ON" : "OFF"), mf->color);
 }
 
 void ToggleMoverDraft(int moverIdx) {

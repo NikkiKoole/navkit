@@ -199,11 +199,11 @@ call its describe function** rather than formatting fields again. Done so far: m
 
 ## Selection and the inspector panel
 
-Left-click in normal mode selects a mover, animal, workshop or blueprint (`src/core/selection.c`);
+Left-click in normal mode selects a mover, animal, workshop, stockpile or blueprint (`src/core/selection.c`);
 `src/render/inspector.c` outlines it and shows a fixed panel bottom-right: the describe lines
 plus buttons. Actions behind buttons live in `selection.c` (`ToggleMoverDraft`, `WorkshopAddBill`,
 ...) and the old hover keys call the same functions, so keys and buttons can't drift apart.
-New per-entity actions go there too. Stockpiles are next.
+New per-entity actions go there too.
 
 ## Scenarios
 

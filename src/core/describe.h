@@ -102,6 +102,12 @@ void DescribeWorkshopBill(int wsIdx, int billIdx, bool marked, DescLines* out); 
 void DescribeWorkshopLinks(int wsIdx, DescLines* out);                            // appends
 void WorkshopRecipeSummary(int wsIdx, int recipeIdx, char* buf, size_t size);
 
+// Stockpile: title, priority, stack size, containers, storage (bad when overfull),
+// fill meter. Filters are shown by the screens that edit them.
+void DescribeStockpile(int spIdx, DescLines* out);
+// "[|||||     ] 50%": ratio 0..1 as a text meter `width` bars wide
+void DescFillMeter(char* out, size_t outSize, float ratio, int width);
+
 // A train station: track cell, platform size, people waiting.
 void DescribeStation(int idx, DescLines* out);
 

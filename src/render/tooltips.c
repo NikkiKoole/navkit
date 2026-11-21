@@ -18,42 +18,17 @@
 #include "../core/describe.h"
 
 
-static void BuildFillMeter(char* out, size_t outSize, float ratio, int width) {
-    if (ratio < 0.0f) ratio = 0.0f;
-    if (ratio > 1.0f) ratio = 1.0f;
-    int filled = (int)(ratio * width + 0.5f);
-    if (filled > width) filled = width;
+Color DescToneColor(DescTone tone);   // defined below; also used by inspector.c
 
-    char bar[32];
-    int idx = 0;
-    bar[idx++] = '[';
-    for (int i = 0; i < width; i++) {
-        bar[idx++] = (i < filled) ? '|' : ' ';
-    }
-    bar[idx++] = ']';
-    bar[idx] = '\0';
-
-    int percent = (int)(ratio * 100.0f + 0.5f);
-    snprintf(out, outSize, "%s %d%%", bar, percent);
-}
-
-// Draw stockpile tooltip at mouse position
+// Draw stockpile tooltip at mouse position: DescribeStockpile on top, then the
+// hovered cell, the filters (keyboard-editable) and key help
 static void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     if (spIdx < 0 || spIdx >= MAX_STOCKPILES) return;
     Stockpile* sp = &stockpiles[spIdx];
     if (!sp->active) return;
-
-    // Count items and capacity (only active cells)
-    int totalItems = 0;
     int totalSlots = sp->width * sp->height;
-    int activeCells = 0;
-    for (int i = 0; i < totalSlots; i++) {
-        if (sp->cells[i]) {
-            activeCells++;
-            totalItems += sp->slotCounts[i];
-        }
-    }
-    int maxCapacity = activeCells * sp->maxStackSize;
+    DescLines info;
+    DescribeStockpile(spIdx, &info);
 
     // Get hovered cell info within stockpile
     int cellX = (int)mouseGrid.x;
@@ -63,23 +38,6 @@ static void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     int slotIdx = localY * sp->width + localX;
     int cellCount = (slotIdx >= 0 && slotIdx < totalSlots) ? sp->slotCounts[slotIdx] : 0;
 
-    // Build tooltip text into local buffers (avoids TextFormat buffer clobbering)
-    char titleBuf[40], priorityBuf[32], stackBuf[32], storageBuf[48], fillBuf[48];
-    snprintf(titleBuf, sizeof(titleBuf), "Stockpile #%d", spIdx);
-    snprintf(priorityBuf, sizeof(priorityBuf), "Priority: %d", sp->priority);
-    snprintf(stackBuf, sizeof(stackBuf), "Stack size: %d", sp->maxStackSize);
-    // Container info
-    char containerBuf[48];
-    int installedContainers = CountInstalledContainers(spIdx);
-    if (sp->maxContainers > 0) {
-        snprintf(containerBuf, sizeof(containerBuf), "Containers: %d/%d", installedContainers, sp->maxContainers);
-    } else {
-        containerBuf[0] = '\0';
-    }
-    snprintf(storageBuf, sizeof(storageBuf), "Storage: %d/%d (%d cells)", totalItems, maxCapacity, activeCells);
-    char fillMeter[64];
-    BuildFillMeter(fillMeter, sizeof(fillMeter), GetStockpileFillRatio(spIdx), 10);
-    snprintf(fillBuf, sizeof(fillBuf), "Fill: %s", fillMeter);
     // Cell contents with item name — check if slot is a container
     char cellBuf[80];
     bool cellIsContainer = false;
@@ -133,11 +91,10 @@ static void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     }
 
     int maxContentW = 300;
-    bool showContainerLine = containerBuf[0] != '\0';
     int padding = 6;
     int lineH = 16;
-    // header(7) + container? + "Filters:" + filterLines + "Wood:" + matRow + help
-    int totalLines = 7 + (showContainerLine ? 1 : 0) + 1 + filterLines + 1 + 1 + 1;
+    // info + cell + "Filters:" + filterLines + "Wood:" + matRow + help
+    int totalLines = info.count + 1 + 1 + filterLines + 1 + 1 + 1;
     int boxW = maxContentW + padding * 2;
     int boxH = lineH * totalLines + padding * 2;
 
@@ -152,28 +109,12 @@ static void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     DrawRectangle(tx, ty, boxW, boxH, (Color){20, 20, 20, 220});
     DrawRectangleLines(tx, ty, boxW, boxH, (Color){80, 80, 80, 255});
 
-    // Draw header lines
+    // Description lines (src/core/describe.c)
     int y = ty + padding;
-    DrawTextShadow(titleBuf, tx + padding, y, 14, YELLOW);
-    y += lineH;
-
-    DrawTextShadow(priorityBuf, tx + padding, y, 14, WHITE);
-    y += lineH;
-
-    DrawTextShadow(stackBuf, tx + padding, y, 14, WHITE);
-    y += lineH;
-
-    if (showContainerLine) {
-        DrawTextShadow(containerBuf, tx + padding, y, 14, WHITE);
+    for (int i = 0; i < info.count; i++) {
+        DrawTextShadow(info.lines[i].text, tx + padding, y, 14, DescToneColor(info.lines[i].tone));
         y += lineH;
     }
-
-    bool overfull = IsStockpileOverfull(spIdx);
-    DrawTextShadow(storageBuf, tx + padding, y, 14, overfull ? RED : WHITE);
-    y += lineH;
-
-    DrawTextShadow(fillBuf, tx + padding, y, 14, WHITE);
-    y += lineH;
 
     bool cellFull = false;
     if (cellIsContainer) {
@@ -253,7 +194,6 @@ static void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
 }
 
 // Description tones (src/core/describe.h) as tooltip colors
-Color DescToneColor(DescTone tone);   // also used by inspector.c
 Color DescToneColor(DescTone tone) {
     switch (tone) {
         case DESC_NORMAL:        return WHITE;

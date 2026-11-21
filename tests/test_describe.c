@@ -359,6 +359,56 @@ describe(click_selection) {
         expect(!workshops[ws].markedForDeconstruct);
     }
 
+    it("picks a stockpile and edits it through the shared stockpile actions") {
+        SetupFlat();
+        ClearStockpiles();
+        int sp = CreateStockpile(2, 6, 1, 3, 2);
+        expect(sp >= 0);
+        if (sp < 0) return;
+        Selection s = PickSelectionAt(4 * CELL_SIZE + 2, 7 * CELL_SIZE + 2, 1);
+        expect(s.kind == SEL_STOCKPILE && s.idx == sp);
+
+        stockpiles[sp].priority = 5;
+        StockpileAdjustPriority(sp, 10);
+        expect(stockpiles[sp].priority == 9);
+        StockpileAdjustPriority(sp, -20);
+        expect(stockpiles[sp].priority == 1);
+
+        int before = stockpiles[sp].maxStackSize;
+        StockpileAdjustStackSize(sp, -1);
+        expect(stockpiles[sp].maxStackSize == before - 1);
+        StockpileAdjustStackSize(sp, 99);              // out of range: unchanged
+        expect(stockpiles[sp].maxStackSize == before - 1);
+
+        // Category: all on, then all off
+        int cat = STOCKPILE_FILTERS[0].category, on, total;
+        StockpileToggleAll(sp);                        // whatever it was: flip to one state
+        StockpileToggleAll(sp);
+        for (int i = 0; i < ITEM_TYPE_COUNT; i++) stockpiles[sp].allowedTypes[i] = false;
+        StockpileToggleCategory(sp, cat);
+        StockpileCategoryCounts(sp, cat, &on, &total);
+        expect(total > 0 && on == total);
+        StockpileToggleCategory(sp, cat);
+        StockpileCategoryCounts(sp, cat, &on, &total);
+        expect(on == 0);
+
+        // A wood type switches its item on too
+        if (STOCKPILE_MATERIAL_FILTER_COUNT > 0) {
+            const StockpileMaterialFilterDef* mf = &STOCKPILE_MATERIAL_FILTERS[0];
+            stockpiles[sp].allowedMaterials[mf->material] = false;
+            stockpiles[sp].allowedTypes[mf->parentItem] = false;
+            StockpileToggleMaterial(sp, 0);
+            expect(stockpiles[sp].allowedMaterials[mf->material]);
+            expect(stockpiles[sp].allowedTypes[mf->parentItem]);
+        }
+
+        DescLines d;
+        DescribeStockpile(sp, &d);
+        Dump(&d);
+        expect(FindLine(&d, "Priority: 1") != NULL);
+        expect(FindLine(&d, "Fill: [") != NULL);
+    }
+
     it("drafts and undrafts a mover") {
         SetupFlat();
         int m = SpawnTestMover();
