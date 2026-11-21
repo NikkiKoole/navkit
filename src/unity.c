@@ -80,6 +80,7 @@
 #include "core/games.c"
 #include "core/settings.c"
 #include "core/describe.c"
+#include "core/sim_step.c"
 
 // Rendering
 #include "render/rendering.c"

@@ -20,6 +20,7 @@
 #include "core/scenarios.h"
 #include "core/games.h"
 #include "core/describe.h"
+#include "core/sim_step.h"
 
 #ifdef USE_SOUNDSYSTEM
 #include "soundsystem/soundsystem.h"
@@ -1024,30 +1025,7 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     clock_t startClock = clock();
     for (int t = 0; t < ticks; t++) {
         double tickStart = GetTime();
-        PROFILE_BEGIN(TickWithDt);
-        TickWithDt(TICK_DT);
-        PROFILE_END(TickWithDt);
-        PROFILE_BEGIN(Items);
-        ItemsTick(TICK_DT);
-        PROFILE_END(Items);
-        PROFILE_BEGIN(Animals);
-        AnimalsTick(TICK_DT);
-        PROFILE_END(Animals);
-        PROFILE_BEGIN(Trains);
-        TrainsTick(TICK_DT);
-        PROFILE_END(Trains);
-        PROFILE_BEGIN(Designations);
-        DesignationsTick(TICK_DT);
-        PROFILE_END(Designations);
-        PROFILE_BEGIN(Needs);
-        PROFILE_BEGIN(NeedsTick); NeedsTick(); PROFILE_END(NeedsTick);
-        PROFILE_BEGIN(Freetime); ProcessFreetimeNeeds(); PROFILE_END(Freetime);
-        PROFILE_BEGIN(Mood); MoodTick(TICK_DT); PROFILE_END(Mood);
-        PROFILE_END(Needs);
-        PROFILE_BEGIN(Jobs);
-        AssignJobs();
-        JobsTick();
-        PROFILE_END(Jobs);
+        SimStep(TICK_DT);   // the same tick the windowed game runs (src/core/sim_step.c)
         if (doProfile) HeadlessProfileAccumulate();
         PROFILE_FRAME_END();  // Store profiler data for this tick
         for (int i = 0; i < moverCount; i++) {
@@ -1670,27 +1648,8 @@ int main(int argc, char** argv) {
             float tickDt = useFixedTimestep ? TICK_DT : frameTime;
             
             if (shouldTick) {
-                PROFILE_BEGIN(Tick);
-                TickWithDt(tickDt);
-                PROFILE_END(Tick);
-                PROFILE_BEGIN(ItemsTick);
-                ItemsTick(tickDt);
-                PROFILE_END(ItemsTick);
-                PROFILE_BEGIN(AnimalsTick);
-                AnimalsTick(tickDt);
-                PROFILE_END(AnimalsTick);
-                TrainsTick(tickDt);
-                DesignationsTick(tickDt);
-                NeedsTick();
-                ProcessFreetimeNeeds();
-                MoodTick(tickDt);
-                PROFILE_BEGIN(AssignJobs);
-                AssignJobs();
-                PROFILE_END(AssignJobs);
-                PROFILE_BEGIN(JobsTick);
-                JobsTick();
-                PROFILE_END(JobsTick);
-                
+                SimStep(tickDt);   // every system, in order (src/core/sim_step.c)
+
                 // Periodically validate simulation activity counters (every 60 seconds)
                 static float simValidationTimer = 0.0f;
                 simValidationTimer += tickDt;
@@ -1698,7 +1657,7 @@ int main(int argc, char** argv) {
                     ValidateSimActivityCounts();
                     simValidationTimer = 0.0f;
                 }
-                
+
                 if (useFixedTimestep) {
                     accumulator -= TICK_DT;
                     if (accumulator > TICK_DT) {
