@@ -195,7 +195,7 @@ bad / info / muted ...), no drawing: `DescribeMover(idx, DESC_PLAYER or DESC_DEB
 The hover tooltip maps tones to colors; `--headless ... --describe-mover N|all` prints the
 same lines (after the run; `--ticks 0` = as loaded from `--load`). Need labels ("Peckish",
 "Parched", ...) live there too (`HungerLabel` etc.). **New screens that show an entity should
-call its describe function** rather than formatting fields again. Done so far: movers, animals, items, cells, water, blueprints, designations, stations (stockpile and workshop tooltips are interactive editors; they move with the selection panel).
+call its describe function** rather than formatting fields again. Done: movers, animals, items, cells, water, blueprints, designations, stations, workshops, stockpiles.
 
 ## Selection and the inspector panel
 
@@ -204,6 +204,10 @@ Left-click in normal mode selects a mover, animal, workshop, stockpile or bluepr
 plus buttons. Actions behind buttons live in `selection.c` (`ToggleMoverDraft`, `WorkshopAddBill`,
 ...) and the old hover keys call the same functions, so keys and buttons can't drift apart.
 New per-entity actions go there too.
+
+With the dev UI off, the play HUD's tab bar (`src/render/play_hud.c`, bottom left) has
+Huisje (build) / Boompje (nature) / Beestje (movers + animals roster). A game's tools pick
+their tab with `GameTool.tab` in `games.c`. Plan and what's left: `docs/todo/ui/game-structure.md`.
 
 ## Scenarios
 

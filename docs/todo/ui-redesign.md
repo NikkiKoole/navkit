@@ -1,6 +1,6 @@
 # UI Redesign: Bottom Panel + Icon Toolbar
 
-> Status: idea
+> Status: partial (2026-11-21: selection model, inspector panels and the tab bar exist; see `ui/game-structure.md` step 6)
 
 > Replace the text-heavy bottom bar and dev sidebar with a RimWorld/Prison Architect style bottom panel. Context-sensitive: shows toolbar when building, info when selecting. "Huisje, boompje, beestje" tab structure.
 
@@ -342,10 +342,10 @@ Zooming creates the natural transition: zoomed out = colony management, zoomed i
 
 ## Incremental Build Order
 
-1. **Selection model** — click mover/workshop/cell to select, show info in fixed bottom panel. Keep existing toolbar alongside. Biggest UX win for least code.
-2. **Mover roster** — clickable mover portraits in Beestje tab or persistent top bar. Camera follow on select.
-3. **Icon toolbar** — replace text bar with Huisje/Boompje/Beestje tabs + icon submenus.
-4. **Workshop bill panel** — click-to-manage instead of hover+keyboard.
+1. ~~**Selection model**~~ — done: click a mover, animal, workshop, stockpile or blueprint; fixed panel bottom right (`src/core/selection.c`, `src/render/inspector.c`). Cell selection not yet.
+2. ~~**Mover roster**~~ — done as text buttons in the Beestje tab (movers + animals). Portraits and population-adaptive views not yet.
+3. **Icon toolbar** — tabs done in the play HUD (`src/render/play_hud.c`), still text; icons: `ui/icon-list.md`. The dev UI keeps the old text bar.
+4. ~~**Workshop bill panel**~~ — done (and a stockpile panel: steppers + filter toggles). Hover keys still work and call the same actions.
 5. **Remove old UI** — drop text bar.
 
 ---

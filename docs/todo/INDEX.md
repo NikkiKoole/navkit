@@ -62,6 +62,8 @@
 - `gameplay/flow-simulation.md` — Vector fields to bias water/smoke/fire spread deterministically
 - `architecture/large-worlds.md` — What bigger maps cost (memory, graph updates, sims), improvements in order, estimates for 1024 and 2048
 - `architecture/chunked-world-plan.md` — Decision doc: one accessor for all per-cell layers, then map-sized and sparse layers, then steps to an endless (streamed) world
+- `ui/game-structure.md` — One engine, several games: games table, settings table, actions, describe layer, SimStep, selection + panels + tab bar; what's left per step
+- `ui-redesign.md` — Bottom panel + Huisje/Boompje/Beestje tabs + selection model (selection, panels, tabs done; icons, roster views, removing the text bar left)
 - `architecture/unified-roadmap.md` — Master architecture plan tying 7 docs into Era 2 build order
 
 ## Research & Reference
@@ -70,7 +72,8 @@
 - `gameplay/workshops-master.md` — Living doc tracking workshop additions, source-sink-feedback principles
 - `gameplay/balance-and-rate-tuning.md` — Guide for tuning interconnected rate-based systems
 - ~~`gameplay/primitives-missing.md`~~ — moved to done/ (all primitive items implemented)
-- `ui/pie-menu.md` — Radial context menu research (Fitts's Law, mark-ahead)
+- `ui/pie-menu.md` — Radial context menu research (Fitts's Law, mark-ahead); parked
+- `ui/icon-list.md` — Icons to replace text buttons (themes + per-button list)
 - `architecture/performance-dod-audit.md` — DOD struct analysis (A* nodes, item scanning bottlenecks)
 - `architecture/performance-dod-audit-jobs.md` — Jobs.c deep-dive: O(workshops×bills×items) and fixes
 - `architecture/rendering-optimization-candidates.md` — Rendering pipeline analysis (no active bottleneck yet)
