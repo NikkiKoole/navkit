@@ -723,3 +723,13 @@ so a slow request shows where its time went. Three kinds:
   coarser-level question.
 Same conditions back to back (3000 movers, 3000 ticks): path time 21.5 -> 17.6 s, worst later
 tick 291 -> 195 ms, requests over 200 ms 8 -> 2, same arrivals.
+
+**C measured (same run, every request logged; 9,045 requests, 22 s).** Cost is not about
+distance: requests under 128 cells straight-line average ~1 ms or less (11% of the time). 97%
+of requests explore under 5K nodes. The 3% that explore over 20K nodes take 65% of the time,
+and they are not longer trips (~195 cells straight-line, like the rest). They are detours:
+107-152 waypoints vs ~25 for a normal route of that length, around lakes and cliffs, where the
+straight-line heuristic pulls the search the wrong way and it floods. So the lever, if ever
+needed, is a heuristic that knows about detours (landmarks / ALT: exact distances to ~16 fixed
+entrances, ~16 MB at 2048) or a coarser level. Not needed for normal play (trips mostly under
+~100 cells); revisit if real games show detour stalls.
