@@ -14,6 +14,7 @@
 #include "../src/entities/mover.h"
 #include "../src/entities/jobs.h"
 #include "../src/core/time.h"
+#include "../src/simulation/balance.h"
 #include <string.h>
 #include <math.h>
 
@@ -876,6 +877,51 @@ describe(stockpile_sapling_filter) {
 // End-to-End: Full Tree Lifecycle
 // =============================================================================
 
+// Leaf decay checks run only near trunk/branch changes (trees.c): leaves of a felled tree
+// must still decay long after the world was set up, and a standing tree keeps its leaves
+static int CountLeaves(void) {
+    int n = 0;
+    for (int z = 0; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) n += GRID(x, y, z) == CELL_TREE_LEAVES;
+    return n;
+}
+
+describe(tree_leaf_decay) {
+    it("leaves of a tree cut long after setup decay; a standing tree keeps them") {
+        SetupBasicGrid();
+        InitTrees();
+        ClearItems();
+        float originalGH = saplingGrowGH;
+        saplingGrowGH = 100000.0f;              // a sapling that never grows keeps the sim active
+        PlaceSapling(1, 1, 1, MAT_OAK);
+        TreeGrowFull(5, 4, 1, MAT_OAK);
+        int leaves = CountLeaves();
+        expect(leaves > 0);
+
+        // Well past the setup window: every leaf has been due for its check many times
+        int longTicks = (int)GameHoursToGameSeconds(3.0f) + 100;
+        for (int i = 0; i < longTicks; i++) TreesTick(1.0f);
+        expect(CountLeaves() == leaves);
+
+        // Cut the tree the way the game does (cell change + MarkChunkDirty)
+        for (int z = 0; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++) {
+                    CellType c = GRID(x, y, z);
+                    if (c == CELL_TREE_TRUNK || c == CELL_TREE_BRANCH || c == CELL_TREE_ROOT) {
+                        GRID(x, y, z) = CELL_AIR;
+                        MarkChunkDirty(x, y, z);
+                    }
+                }
+        int decayTicks = (int)GameHoursToGameSeconds(1.0f) + 100;
+        for (int i = 0; i < decayTicks; i++) TreesTick(1.0f);
+        expect(CountLeaves() == 0);
+
+        saplingGrowGH = originalGH;
+    }
+}
+
 describe(tree_banded_sweep) {
     // Big maps visit one band of rows per tick (TreesTick); each band gets the time
     // that built up since its last turn, so growth time adds up exactly as before
@@ -1048,6 +1094,7 @@ int main(int argc, char* argv[]) {
     test(stockpile_sapling_filter);
     test(tree_full_lifecycle);
     test(tree_banded_sweep);
+    test(tree_leaf_decay);
     test(tree_activity_counter);
     
     return summary();

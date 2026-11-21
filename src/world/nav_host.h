@@ -92,9 +92,11 @@ int LadderQueueExtraCost(int x, int y, int z, int dz);
 
 // Lighting caches walkability-adjacent data; the pathfinder shouldn't know that.
 void InvalidateLightingAt(int x, int y, int z);
+void TreesNoteCellChanged(int x, int y, int z);
 static inline void NavOnChunkDirty(void* host, int x, int y, int z) {
     (void)host;
     InvalidateLightingAt(x, y, z);
+    TreesNoteCellChanged(x, y, z);   // leaf decay checks near trunk/branch changes
 }
 
 // Not part of the library contract: used by the game-side random-cell helpers

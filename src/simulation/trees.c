@@ -1,6 +1,7 @@
 // trees.c - Tree growth cellular automaton
 // Saplings grow into trunks, trunks grow upward, branches/leaves spawn by type
 
+#include <string.h>
 #include "trees.h"
 #include "balance.h"
 #include "weather.h"
@@ -178,8 +179,10 @@ static void GetTreeHeightRange(MaterialType treeMat, int* outMin, int* outMax) {
 // band of rows (all z levels) and hands it the time that built up since its last turn
 // (growth thresholds are game-hours, far longer than a sweep). Maps up to
 // TREE_CELLS_PER_TICK cells are one band: every cell, every tick, as before.
+// The cap only binds above 1024x1024x16 (64 bands there): 2048x2048x16 uses 256, i.e.
+// each cell every 256 ticks (~4 s), which was 4.4 ms/tick at 64 on a forested map.
 #define TREE_CELLS_PER_TICK (256 * 1024)
-#define TREE_MAX_BANDS 64
+#define TREE_MAX_BANDS 256
 static float treeBandDt[TREE_MAX_BANDS], treeBandSeasonalDt[TREE_MAX_BANDS];
 static int treeBandCount = 0, treeBandNext = 0;
 // The sweep keeps treeActiveCells / treeRegenCells: it counts growing and regrowing
@@ -191,8 +194,71 @@ static int treeBandCount = 0, treeBandNext = 0;
 // ever too high, and the next sweep end corrects them.
 static int treeSweepActive, treeSweepRegen, treeSweepStartActive, treeSweepStartRegen;
 
+// Leaf decay checks (IsConnectedToTrunk) only where a trunk/branch nearby changed.
+// Every leaf used to check every LEAF_DECAY_GH (~55K checks per tick on a 2048 forest
+// map, nearly all "still connected"). A leaf can only lose its trunk when a trunk or
+// branch cell within 3 cells changes, and every such change goes through MarkChunkDirty
+// (they're solid: the pathfinder must know), which calls TreesNoteCellChanged. That
+// marks the 16x16 chunk and its 8 neighbours for one decay period plus two sweeps: a
+// leaf orphaned then reaches its next check within that window, exactly as before.
+// Elsewhere a leaf whose timer runs out just restarts it (what a passing check did).
+#define LEAF_CHUNK 16
+static float* leafCheckUntil = NULL;     // [chunk] tree clock until which leaves check
+static int leafCheckCX = 0, leafCheckCY = 0;
+static double treeClock = 0.0;           // game seconds seen by TreesTick
+static double leafCheckAllUntil = 0.0;   // every chunk checks until then (new/loaded world)
+static float treeLastTickDt = 1.0f / 60.0f;
+
+static int TreeBandsForMap(void) {
+    long cells = (long)gridWidth * gridHeight * gridDepth;
+    int bands = (int)((cells + TREE_CELLS_PER_TICK - 1) / TREE_CELLS_PER_TICK);
+    if (bands < 1) bands = 1;
+    if (bands > TREE_MAX_BANDS) bands = TREE_MAX_BANDS;
+    if (bands > gridHeight) bands = gridHeight;
+    return bands;
+}
+
+// One leaf decay period plus two full sweeps (a sweep takes `bands` ticks)
+static double LeafCheckWindow(void) {
+    return GameHoursToGameSeconds(LEAF_DECAY_GH) + 2.0 * TreeBandsForMap() * treeLastTickDt + 1.0;
+}
+
+static bool LeafCheckGrid(void) {
+    int cx = (gridWidth + LEAF_CHUNK - 1) / LEAF_CHUNK, cy = (gridHeight + LEAF_CHUNK - 1) / LEAF_CHUNK;
+    if (leafCheckUntil && cx == leafCheckCX && cy == leafCheckCY) return true;
+    free(leafCheckUntil);
+    leafCheckUntil = calloc((size_t)cx * cy, sizeof(float));
+    leafCheckCX = cx; leafCheckCY = cy;
+    leafCheckAllUntil = treeClock + LeafCheckWindow();   // new map size: check everything once
+    return leafCheckUntil != NULL;
+}
+
+void TreesNoteCellChanged(int x, int y, int z) {
+    (void)z;
+    if (!LeafCheckGrid() || x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) return;
+    float until = (float)(treeClock + LeafCheckWindow());
+    int cx = x / LEAF_CHUNK, cy = y / LEAF_CHUNK;
+    for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++) {
+            int nx = cx + dx, ny = cy + dy;
+            if (nx < 0 || ny < 0 || nx >= leafCheckCX || ny >= leafCheckCY) continue;
+            if (leafCheckUntil[ny * leafCheckCX + nx] < until) leafCheckUntil[ny * leafCheckCX + nx] = until;
+        }
+}
+
+// The world changed without cell notifications (generated, loaded): check every leaf
+void TreesNoteWorldChanged(void) {
+    leafCheckAllUntil = treeClock + LeafCheckWindow();
+}
+
+static inline bool LeafCheckActive(int x, int y) {
+    if (treeClock <= leafCheckAllUntil || !leafCheckUntil) return true;
+    return treeClock <= leafCheckUntil[(y / LEAF_CHUNK) * leafCheckCX + x / LEAF_CHUNK];
+}
+
 void InitTrees(void) {
     treeBandCount = 0;   // new world: restart the sweep
+    TreesNoteWorldChanged();
     // Whole-layer zero clears (fresh zero pages; writing 0 per cell would dirty every page)
     CLEAR_GRID_LAYER(growthTimer, 0);
     CLEAR_GRID_LAYER(targetHeight, 0);
@@ -561,6 +627,21 @@ static void GrowCell(int x, int y, int z) {
 }
 
 // Run one tick of tree growth simulation
+// Does a 16-cell run of the grid layer hold any tree cell (CELL_SAPLING..CELL_TREE_LEAVES)?
+// Tests 8 cells per 64-bit word ("has byte between m and n", valid for m <= 127, n <= 128).
+// Almost every run of a big map has none: the sweep skips them without looking at each cell.
+#define TREE_HAS_BYTE_BETWEEN(x, m, n) \
+    ((((~0ULL / 255 * (127 + (n))) - ((x) & ~0ULL / 255 * 127)) & ~(x) & \
+      (((x) & ~0ULL / 255 * 127) + ~0ULL / 255 * (127 - (m)))) & ~0ULL / 255 * 128)
+_Static_assert(CELL_TREE_LEAVES + 1 <= 128 && STORE_CHUNK == 16, "tree run test needs small cell ids and 16-cell runs");
+static inline bool TreeCellsInRun(const uint8_t* p) {
+    uint64_t a, b;
+    memcpy(&a, p, 8);
+    memcpy(&b, p + 8, 8);
+    return (TREE_HAS_BYTE_BETWEEN(a, CELL_SAPLING - 1, CELL_TREE_LEAVES + 1)
+          | TREE_HAS_BYTE_BETWEEN(b, CELL_SAPLING - 1, CELL_TREE_LEAVES + 1)) != 0;
+}
+
 void TreesTick(float tickDt) {
     bool hasGrowing = (treeActiveCells > 0);
     bool hasRegen = (treeRegenCells > 0);
@@ -568,14 +649,14 @@ void TreesTick(float tickDt) {
     // Early exit: nothing to grow and nothing to regenerate
     if (!hasGrowing && !hasRegen) { treeBandCount = 0; return; }
 
+    treeClock += tickDt;
+    treeLastTickDt = tickDt > 0.0f ? tickDt : treeLastTickDt;
+    LeafCheckGrid();
+
     // Seasonal modulation: trees grow in spurts (fast spring, dormant winter)
     float seasonMod = GetVegetationGrowthRate();
 
-    long cells = (long)gridWidth * gridHeight * gridDepth;
-    int bands = (int)((cells + TREE_CELLS_PER_TICK - 1) / TREE_CELLS_PER_TICK);
-    if (bands < 1) bands = 1;
-    if (bands > TREE_MAX_BANDS) bands = TREE_MAX_BANDS;
-    if (bands > gridHeight) bands = gridHeight;
+    int bands = TreeBandsForMap();
     if (bands != treeBandCount) {          // first tick, map size changed, or was idle
         treeBandCount = bands; treeBandNext = 0;
         for (int b = 0; b < TREE_MAX_BANDS; b++) treeBandDt[b] = treeBandSeasonalDt[b] = 0.0f;
@@ -600,7 +681,11 @@ void TreesTick(float tickDt) {
 
     for (int z = 0; z < gridDepth; z++) {
         for (int y = yStart; y < yEnd; y++) {
-            FOR_X_IN_ROW(x, ci, y, z) {
+          for (int xs = 0; xs < gridWidth; xs += STORE_CHUNK) {
+            int xe = xs + STORE_CHUNK < gridWidth ? xs + STORE_CHUNK : gridWidth;
+            int ci0 = CellIndex(xs, y, z);
+            if (xe - xs == STORE_CHUNK && !TreeCellsInRun(&LAYER_AT(grid, ci0))) continue;
+            for (int x = xs, ci = ci0; x < xe; x++, ci++) {
                 CellType cell = LAYER_AT(grid, ci);
                 // Only sapling/branch/trunk/leaves do anything below (growth here, counting at
                 // `counted:`); every other cell type falls through both. Skip them in one test.
@@ -664,7 +749,7 @@ void TreesTick(float tickDt) {
                     if (!hasGrowing) goto counted;
                     GROWTH_TIMER(x, y, z) += dt;  // Leaf decay not seasonal
                     if (GROWTH_TIMER(x, y, z) >= leafThreshold) {
-                        GrowCell(x, y, z);
+                        if (LeafCheckActive(x, y)) GrowCell(x, y, z);   // else: still connected
                         GROWTH_TIMER(x, y, z) = 0.0f;
                     }
                 }
@@ -676,6 +761,7 @@ void TreesTick(float tickDt) {
                     if (IsRegrowingTreeCell(x, y, z)) treeSweepRegen++;
                 }
             }
+          }
         }
     }
     if (band == bands - 1) {   // full sweep done: the counts, plus what was added meanwhile

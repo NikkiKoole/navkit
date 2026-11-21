@@ -32,6 +32,10 @@ extern uint8_t* treeHarvestState;
 
 // Initialize tree growth system
 void InitTrees(void);
+// Leaf decay checks run only near trunk/branch changes (see trees.c): a cell changed
+// (called for every MarkChunkDirty), or the world changed without notifications
+void TreesNoteCellChanged(int x, int y, int z);
+void TreesNoteWorldChanged(void);
 
 // Run one tick of tree growth (call from simulation tick)
 void TreesTick(float dt);

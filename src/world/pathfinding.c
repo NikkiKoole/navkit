@@ -98,10 +98,12 @@ void SetChunkDirty(int cx, int cy, int z, bool dirty) {
 }
 
 void ClearSharedGoalFields(void);
+void TreesNoteWorldChanged(void);
 
 void BuildEntrances(void) {
     NavWorld* w = NavGame();
     NavRegionsInvalidate(w);      // full rebuild = the world may have changed without notifications
+    TreesNoteWorldChanged();      // ... so leaves anywhere may have lost their trunk
     ClearSharedGoalFields();      // ... and the shared-goal fields belong to the old one
     NavBuildEntrances(w);
     rampCount = w->rampCellNum;   // game's ramp counter is re-synced on full rebuilds

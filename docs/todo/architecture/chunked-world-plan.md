@@ -617,3 +617,18 @@ radius and re-added by the sources reaching in (writes clipped, BFS unchanged). 
 the chunks dirty, or `InvalidateLighting()` (loads, settings, scenarios): full recompute as before.
 `test_lighting` checks local == full after 60 rounds of random walls/floors/torches. Lighting 4.8 ->
 1.2 ms/tick, tick 21.2 -> 16.5 ms.
+
+**Trees** (`simulation/trees.c`), 4.7 -> 1.2 ms/tick at 2048 (tick 16.5 -> 12.4 ms):
+- A sample showed ~55K leaf decay checks (`IsConnectedToTrunk`) per tick on the forested 2048 map,
+  all but 7 of 33M "still connected": every leaf checked every LEAF_DECAY_GH. A leaf can only lose
+  its trunk when a trunk/branch cell within 3 cells changes, and every such change goes through
+  `MarkChunkDirty` (solid cells: the pathfinder must know), whose host hook now calls
+  `TreesNoteCellChanged`: it marks the 16x16 chunk and its neighbours for one decay period plus two
+  sweeps. Leaves elsewhere just restart their timer (what a passing check did). Full rebuilds
+  (`BuildEntrances`: loads, new worlds) mark everything once. Saves after survival 8000 / world-256
+  8000 / crafting 6000 / dollhouse 6000 ticks are byte-identical to before. `test_trees` "leaves of
+  a tree cut long after setup decay" fails without the hook.
+- 16-cell runs without any tree cell are skipped with a 64-bit "byte in range" test (8 cells at a
+  time; checked exhaustively).
+- Band cap 64 -> 256: above 1024x1024x16 each cell is visited every 256 ticks (~4 s) with the time
+  accumulated meanwhile (growth thresholds are game-hours). Maps up to 1024 are unaffected.
