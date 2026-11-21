@@ -116,6 +116,10 @@ void SeedRandom(unsigned int seed);
 Point GetRandomWalkableCell(void);
 Point GetRandomWalkableCellDifferentZ(int excludeZ);
 Point GetRandomWalkableCellOnZ(int z);
+// Random goal for a mover at `from`: within `radius` cells in x/y (<= 0: anywhere),
+// on a connected level, and reachable from `from` (same region) when one is found.
+// differentZ: prefer another level than from.z.
+Point GetRandomGoalNear(Point from, int radius, bool differentZ);
 Point GetRandomReachableCell(int startX, int startY, int startZ);
 
 // ---- entrance / edge getters ----

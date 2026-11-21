@@ -294,9 +294,18 @@ static void nav_BuildChunkEntranceIndex(NavWorld* w) {
 // Abstract-graph binary heap (indexed, decrease-key)
 // =============================================================================
 
+// absHeapPos is only read for nodes in the heap (open), so it needs no reset
 static void nav_AbsHeapInit(NavWorld* w, int numNodes) {
+    (void)numNodes;
     w->absHeapSize = 0;
-    for (int i = 0; i < numNodes; i++) w->absHeapPos[i] = -1;
+}
+
+// Node i in the current search: nodes last touched by an older search read as fresh,
+// so a search costs what it visits, not a reset of every entrance
+static inline NavAbstractNode* nav_AbsNode(NavWorld* w, int i) {
+    NavAbstractNode* n = &w->absNodes[i];
+    if (n->gen != w->absCurGen) *n = (NavAbstractNode){NAV_COST_INF, NAV_COST_INF, -1, false, false, w->absCurGen};
+    return n;
 }
 
 static void nav_AbsHeapSwap(NavWorld* w, int i, int j) {
@@ -867,6 +876,7 @@ static bool nav_EnsureEntranceCap(NavWorld* w, int need) {
     NAV_GROW(w->adj, cap);
     memset(w->adj + w->entranceCap, 0, (size_t)(cap - w->entranceCap) * sizeof(NavEdgeVec));
     NAV_GROW(w->absNodes, cap + 2);
+    memset(w->absNodes + w->entranceCap + 2, 0, (size_t)(cap - w->entranceCap) * sizeof(NavAbstractNode));
     NAV_GROW(w->absPath, cap + 2);
     NAV_GROW(w->absHeap, cap + 2);
     NAV_GROW(w->absHeapPos, cap + 2);
@@ -2127,12 +2137,20 @@ static int nav_ConnectToChunk(NavWorld* w, NavPoint p, int chunk, int* outTarget
     return count;
 }
 
-static void nav_AbsRelax(NavWorld* w, int from, int to, int stepCost, int h) {
-    NavAbstractNode* n = &w->absNodes[to];
+static inline int nav_AbsH(const NavWorld* w, int x0, int y0, int z0, NavPoint goal);
+
+// The estimate is only computed when the node improves: most relaxations don't, and
+// it costs a random read of the entrance plus the 3D distance (h = -1: compute it)
+static void nav_AbsRelax(NavWorld* w, int from, int to, int stepCost, int h, NavPoint goal) {
+    NavAbstractNode* n = nav_AbsNode(w, to);
     if (n->closed) return;
     int ng = w->absNodes[from].g + stepCost;
     if (ng >= n->g) return;
     bool wasOpen = n->open;
+    if (h < 0) {
+        const NavEntrance* E = &w->entranceList[to];
+        h = nav_AbsH(w, E->x, E->y, E->z, goal);
+    }
     n->g = ng;
     n->f = ng + h;
     n->parent = from;
@@ -2155,8 +2173,12 @@ static bool nav_HPAAbstract(NavWorld* w, NavPoint start, NavPoint goal) {
     int startNode = w->entranceNum;
     int goalNode = w->entranceNum + 1;
     int totalNodes = w->entranceNum + 2;
-    for (int i = 0; i < totalNodes; i++)
-        w->absNodes[i] = (NavAbstractNode){NAV_COST_INF, NAV_COST_INF, -1, false, false};
+    if (++w->absCurGen == 0) {                       // wrapped: forget every stamp
+        for (int i = 0; i < w->entranceCap + 2; i++) w->absNodes[i].gen = 0;
+        w->absCurGen = 1;
+    }
+    nav_AbsNode(w, startNode);
+    nav_AbsNode(w, goalNode);
 
     int startTargets[NAV_CONNECT_MAX], startCosts[NAV_CONNECT_MAX];
     int goalTargets[NAV_CONNECT_MAX], goalCosts[NAV_CONNECT_MAX];
@@ -2188,18 +2210,16 @@ static bool nav_HPAAbstract(NavWorld* w, NavPoint start, NavPoint goal) {
         if (best == startNode) {
             for (int i = 0; i < startEdges; i++) {
                 int nb = startTargets[i];
-                nav_AbsRelax(w, best, nb, startCosts[i],
-                         nav_AbsH(w, w->entranceList[nb].x, w->entranceList[nb].y, w->entranceList[nb].z, goal));
+                nav_AbsRelax(w, best, nb, startCosts[i], -1, goal);
             }
         } else if (best < w->entranceNum) {
             const NavEdgeVec* out = &w->adj[best];
             for (int i = 0; i < out->num; i++) {
                 const NavGraphEdge* e = &out->e[i];
-                nav_AbsRelax(w, best, e->to, e->cost + nav_LinkExtra(w, e),
-                         nav_AbsH(w, w->entranceList[e->to].x, w->entranceList[e->to].y, w->entranceList[e->to].z, goal));
+                nav_AbsRelax(w, best, e->to, e->cost + nav_LinkExtra(w, e), -1, goal);
             }
             for (int i = 0; i < goalEdges; i++)
-                if (goalTargets[i] == best) nav_AbsRelax(w, best, goalNode, goalCosts[i], 0);
+                if (goalTargets[i] == best) nav_AbsRelax(w, best, goalNode, goalCosts[i], 0, goal);
         }
     }
     w->hpaAbstractMs = (NavHostTime() - absStart) * 1000.0;

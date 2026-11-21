@@ -39,5 +39,6 @@ void Console_RegisterVarEx(const char* name, void* ptr, CVarType type, float min
 void Console_RegisterGameVars(void);  // Register common game variables
 bool Console_SetVar(const char* name, const char* value);  // false if unknown or bad bool
 const char* Console_GetVarString(const char* name);        // current value as text, NULL if unknown
+void Console_Execute(const char* line);                     // run one command line (as typed)
 
 #endif

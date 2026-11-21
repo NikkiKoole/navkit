@@ -352,6 +352,7 @@ static int FindPathImpl(PathAlgorithm algo, Point start, Point goal, Point* outP
     if (routeLen) *routeLen = 0;
     if (start.x < 0 || goal.x < 0) return 0;
     NavWorld* w = NavGame();
+    w->explored = 0;   // what this request explored (callers budget by it)
     // Different reachability regions: no path exists, answer without searching
     // (a failed search is the most expensive kind)
     int rs = NavRegionId(w, start), rg = NavRegionId(w, goal);
@@ -407,14 +408,36 @@ void SeedRandom(unsigned int seed) {
     SetRandomSeed(seed);
 }
 
-// Is z reachable via ladders or ramps?
+// Is z reachable via ladders or ramps? Answered for every level in one pass over the
+// link lists and kept until the graph changes: random-cell pickers ask once per attempt,
+// and a 2048 map has ~500K ramp links (a level without ramps scanned them all).
 static bool ZLevelIsConnected(int z) {
+    static NavWorld* cachedWorld = NULL;
+    static unsigned cachedVersion = 0;
+    static int cachedDepth = 0, cachedLadders = -1, cachedRamps = -1;
+    static bool* connected = NULL;
     NavWorld* w = NavGame();
-    for (int i = 0; i < w->ladderNum; i++)
-        if (w->ladderList[i].zLow == z || w->ladderList[i].zHigh == z) return true;
-    for (int i = 0; i < w->rampNum; i++)
-        if (w->rampList[i].rampZ == z || w->rampList[i].rampZ + 1 == z) return true;
-    return false;
+    if (z < 0 || z >= w->depth) return false;
+    if (w != cachedWorld || w->graphVersion != cachedVersion || w->depth != cachedDepth
+        || w->ladderNum != cachedLadders || w->rampNum != cachedRamps || !connected) {
+        bool* c = realloc(connected, (size_t)w->depth * sizeof(bool));
+        if (!c) return true;
+        connected = c;
+        memset(connected, 0, (size_t)w->depth * sizeof(bool));
+        for (int i = 0; i < w->ladderNum; i++) {
+            const NavLadderLink* l = &w->ladderList[i];
+            if (l->zLow >= 0 && l->zLow < w->depth) connected[l->zLow] = true;
+            if (l->zHigh >= 0 && l->zHigh < w->depth) connected[l->zHigh] = true;
+        }
+        for (int i = 0; i < w->rampNum; i++) {
+            int rz = w->rampList[i].rampZ;
+            if (rz >= 0 && rz < w->depth) connected[rz] = true;
+            if (rz + 1 >= 0 && rz + 1 < w->depth) connected[rz + 1] = true;
+        }
+        cachedWorld = w; cachedVersion = w->graphVersion; cachedDepth = w->depth;
+        cachedLadders = w->ladderNum; cachedRamps = w->rampNum;
+    }
+    return connected[z];
 }
 
 Point GetRandomWalkableCell(void) {
@@ -442,6 +465,27 @@ Point GetRandomWalkableCellDifferentZ(int excludeZ) {
         if (p.z != excludeZ && NavIsValidDestination(p.x, p.y, p.z)) return p;
     }
     return GetRandomWalkableCell();
+}
+
+Point GetRandomGoalNear(Point from, int radius, bool differentZ) {
+    bool checkConnectivity = (ladderLinkCount > 0 || rampLinkCount > 0);
+    int x0 = 0, y0 = 0, x1 = gridWidth - 1, y1 = gridHeight - 1;
+    if (radius > 0) {
+        x0 = from.x - radius > 0 ? from.x - radius : 0;
+        y0 = from.y - radius > 0 ? from.y - radius : 0;
+        x1 = from.x + radius < gridWidth - 1 ? from.x + radius : gridWidth - 1;
+        y1 = from.y + radius < gridHeight - 1 ? from.y + radius : gridHeight - 1;
+    }
+    Point fallback = {-1, -1, 0};
+    for (int attempts = 0; attempts < 1000; attempts++) {
+        Point p = {GetRandomValue(x0, x1), GetRandomValue(y0, y1), GetRandomValue(0, gridDepth - 1)};
+        if (differentZ && p.z == from.z && attempts < 500) continue;
+        if (checkConnectivity && !ZLevelIsConnected(p.z)) continue;
+        if (!NavIsValidDestination(p.x, p.y, p.z)) continue;
+        if (from.x < 0 || IsReachable(from, p)) return p;   // (O(1): reachability regions)
+        if (fallback.x < 0) fallback = p;
+    }
+    return fallback.x >= 0 ? fallback : GetRandomWalkableCell();
 }
 
 // Same-z goals: no ladder check needed.

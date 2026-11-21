@@ -491,6 +491,8 @@ static const Setting settings[] = {
       "Movers pick a new random goal when they arrive."),
     SET_BOOL("preferDiffZ", "Prefer Diff Z", "Entities/Movers", preferDifferentZ,
       "Endless movers prefer goals on a different z-level."),
+    SET_INT("wanderRadius", "Wander Radius", "Entities/Movers", moverWanderRadius, 4.0f, 0, 4096,
+      "Spawned and endless movers pick goals within this many cells (0 = anywhere). Cross-map paths on big maps cost tens of ms each.", NULL),
     SET_BOOL("allowFall", "Allow Falling", "Entities/Movers", allowFallingFromAvoidance,
       "Avoidance may push movers into air (they fall)."),
 

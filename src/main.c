@@ -625,7 +625,12 @@ void RepathAgents(void) {
     TraceLog(LOG_INFO, "RepathAgents: %d agents in %.2fms (avg %.2fms per agent)", agentCount, totalTime, totalTime / agentCount);
 }
 
+// Abstract nodes one spawn call may explore planning paths inline (~200 ms on a 2048
+// map); movers past it are queued for the repath queue (REPATH_EXPLORE_BUDGET per frame)
+#define SPAWN_EXPLORE_BUDGET 300000
+
 void AddMoversDemo(int count) {
+    long long spawnExplored = 0;
     moverPathAlgorithm = (PathAlgorithm)pathAlgorithm;
 
     if (pathAlgorithm == 1 && graphEdgeCount == 0) {
@@ -637,28 +642,20 @@ void AddMoversDemo(int count) {
         Mover* m = &movers[moverCount];
 
         Point start = GetRandomWalkableCell();
-        Point goal = GetRandomWalkableCell();
+        Point goal = MoverWanderLocal() ? GetRandomGoalNear(start, moverWanderRadius, false) : GetRandomWalkableCell();
 
         float x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
         float y = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
         float z = (float)start.z;
         float speed = balance.baseMoverSpeed * (1.0f + balance.moverSpeedVariance * (GetRandomValue(-100, 100) / 100.0f));
 
-        startPos = start;
-        goalPos = goal;
-        switch (pathAlgorithm) {
-            case 0: RunAStar(); break;
-            case 1: RunHPAStar(); break;
-        }
-
-        if (pathLength > 0) {
-            InitMoverWithPath(m, x, y, z, goal, speed, path, pathLength);
-            if (useStringPulling && m->pathLength > 2) {
-                StringPullPath(moverPaths[moverCount], &m->pathLength);
-                m->pathIndex = m->pathLength - 1;
-            }
-        } else {
-            InitMover(m, x, y, z, goal, speed);
+        // The movers' own planner (region check, coarse routes) within a budget; the
+        // rest get their paths from the repath queue over the next frames
+        InitMover(m, x, y, z, goal, speed);
+        if (spawnExplored >= SPAWN_EXPLORE_BUDGET) m->needsRepath = true;
+        else {
+            if (MoverPlanPath(moverCount, start, goal) == 0) m->needsRepath = true;
+            spawnExplored += moverPlanExplored;
         }
 
         AssignMoverIdentity(moverCount);
@@ -671,8 +668,14 @@ void AddMoversDemo(int count) {
     pathLength = 0;
 }
 
+static double SpawnClockSec(void) {   // GetTime() needs a window; headless --exec has none
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec + t.tv_nsec * 1e-9;
+}
+
 void SpawnMoversDemo(int count) {
-    double startTime = GetTime();
+    double startTime = SpawnClockSec();
 
     moverPathAlgorithm = (PathAlgorithm)pathAlgorithm;
 
@@ -682,35 +685,25 @@ void SpawnMoversDemo(int count) {
     }
 
     ClearMovers();
+    long long spawnExplored = 0;
     for (int i = 0; i < count && i < MAX_MOVERS; i++) {
         Mover* m = &movers[moverCount];
 
         Point start = GetRandomWalkableCell();
-        Point goal = GetRandomWalkableCell();
+        Point goal = MoverWanderLocal() ? GetRandomGoalNear(start, moverWanderRadius, false) : GetRandomWalkableCell();
 
         float x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
         float y = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
         float z = (float)start.z;
         float speed = balance.baseMoverSpeed * (1.0f + balance.moverSpeedVariance * (GetRandomValue(-100, 100) / 100.0f));
 
-        startPos = start;
-        goalPos = goal;
-        switch (pathAlgorithm) {
-            case 0: RunAStar(); break;
-            case 1: RunHPAStar(); break;
-        }
-
-        if (pathLength > 0) {
-            InitMoverWithPath(m, x, y, z, goal, speed, path, pathLength);
-
-            if (useStringPulling && m->pathLength > 2) {
-                StringPullPath(moverPaths[moverCount], &m->pathLength);
-                m->pathIndex = m->pathLength - 1;
-            }
-
-        } else {
-            InitMover(m, x, y, z, goal, speed);
-            TraceLog(LOG_WARNING, "Mover %d spawned without path: (%d,%d,%d) to (%d,%d,%d)", moverCount, start.x, start.y, start.z, goal.x, goal.y, goal.z);
+        // The movers' own planner (region check, coarse routes) within a budget; the
+        // rest get their paths from the repath queue over the next frames
+        InitMover(m, x, y, z, goal, speed);
+        if (spawnExplored >= SPAWN_EXPLORE_BUDGET) m->needsRepath = true;
+        else {
+            if (MoverPlanPath(moverCount, start, goal) == 0) m->needsRepath = true;
+            spawnExplored += moverPlanExplored;
         }
 
         AssignMoverIdentity(moverCount);
@@ -722,7 +715,7 @@ void SpawnMoversDemo(int count) {
     goalPos = (Point){-1, -1, 0};
     pathLength = 0;
 
-    double elapsed = (GetTime() - startTime) * 1000.0;
+    double elapsed = (SpawnClockSec() - startTime) * 1000.0;
     TraceLog(LOG_INFO, "SpawnMovers: %d movers in %.2fms", moverCount, elapsed);
 }
 
@@ -850,6 +843,16 @@ static void ApplySetArgs(int argc, char** argv) {
     }
 }
 
+// --exec "<console command>" (repeatable): run after the scenario/game is set up,
+// e.g. --exec "spawnmovers 3000"
+static void ApplyExecArgs(int argc, char** argv) {
+    for (int i = 1; i + 1 < argc; i++) {
+        if (strcmp(argv[i], "--exec") != 0) continue;
+        Console_Execute(argv[i + 1]);
+        i++;
+    }
+}
+
 // Headless mode: load a save (loadFile) or build a scenario (scenarioName), run N ticks, print stats
 // --profile: per-section totals over the whole headless run (the profiler itself
 // only keeps the last 120 frames). Called before PROFILE_FRAME_END each tick.
@@ -910,6 +913,7 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     InitPlants();
     InitFarming();
 
+    Console_Init();               // commands for --exec (no window needed)
     Console_RegisterGameVars();   // so --set can reach console variables
     if (loadFile) {
         // Handle .gz decompression
@@ -957,6 +961,7 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
         printf("Game: %s (%d movers, %dx%dx%d)\n", gameName, moverCount, gridWidth, gridHeight, gridDepth);
         printf("Running %d ticks headless...\n", ticks);
     }
+    ApplyExecArgs(argc, argv);
     const Scenario* scenario = scenarioName ? ScenarioCurrent() : NULL;
 
     // Snapshot state before
@@ -1468,6 +1473,7 @@ int main(int argc, char** argv) {
     ApplySetArgs(argc, argv);
     if (scenarioName) RunScenario(scenarioName);
     if (gameName) StartGame(gameName);
+    ApplyExecArgs(argc, argv);
 
     float accumulator = 0.0f;
 

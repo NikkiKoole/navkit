@@ -68,6 +68,7 @@ bool useStringPulling = true;
 bool endlessMoverMode = true;
 bool useMoverAvoidance = true;
 bool preferDifferentZ = true;
+int moverWanderRadius = 256;   // wandering/spawned movers: goals within this many cells (0 = anywhere)
 bool allowFallingFromAvoidance = false;
 bool useKnotFix = true;
 bool useWallRepulsion = true;
@@ -929,12 +930,17 @@ static int FillRouteWindow(int i, Point from) {
     return n;
 }
 
+int moverPlanExplored = 0;     // nodes the last MoverPlanPath explored (search + first legs)
+int pathExploredThisTick = 0;  // nodes explored by mover path planning this tick (budget)
+
 int MoverPlanPath(int i, Point start, Point goal) {
     static Point cells[MAX_PATH];
     static Point route[MAX_MOVER_ROUTE];
     Mover* m = &movers[i];
     int routeLen = 0;
     int len = FindPathOrRoute(moverPathAlgorithm, start, goal, cells, MAX_PATH, route, MAX_MOVER_ROUTE, &routeLen);
+    moverPlanExplored = NavGame()->explored;   // (refining the first legs resets the counter)
+    pathExploredThisTick += moverPlanExplored;
     moverRouteLen[i] = moverRouteNext[i] = 0;
     if (routeLen >= 2) {
         memcpy(moverRoutes[i], route, (size_t)routeLen * sizeof(Point));
@@ -1322,6 +1328,10 @@ static void AssignNewMoverGoal(Mover* m) {
     bool hasZConnections = (ladderLinkCount > 0 || rampCount > 0);
     if (moverGoalPicker && moverGoalPicker((int)(m - movers), &newGoal)) {
         // scenario-chosen goal
+    } else if (MoverWanderLocal()) {
+        // big map: cross-map paths cost tens of ms each, wander nearby instead
+        newGoal = GetRandomGoalNear((Point){cx, cy, cz}, moverWanderRadius,
+                                    preferDifferentZ && gridDepth > 1 && hasZConnections);
     } else if (preferDifferentZ && gridDepth > 1 && hasZConnections) {
         newGoal = GetRandomWalkableCellDifferentZ(cz);
     } else {
@@ -1339,6 +1349,14 @@ static void AssignNewMoverGoal(Mover* m) {
 
     (void)algo;
     int moverIdx = (int)(m - movers);
+    if (pathExploredThisTick >= REPATH_EXPLORE_BUDGET) {
+        // this tick's path budget is spent: the repath queue plans it in a later tick
+        m->pathLength = 0;
+        m->pathIndex = -1;
+        moverRouteLen[moverIdx] = 0;
+        m->needsRepath = true;
+        return;
+    }
     MoverPlanPath(moverIdx, start, newGoal);
     m->needsRepath = false;
     if (m->pathLength > 0) MaybeTakeTrain(moverIdx);   // a far goal may be quicker by train
@@ -2071,6 +2089,7 @@ static void MaybeTakeTrain(int i) {
 
 void ProcessMoverRepaths(void) {
     int repathsThisFrame = 0;
+    pathExploredThisTick = 0;   // a new tick's budget (UpdateMovers spends the rest on new goals)
     if (moverCount <= 0) return;
     if (repathCursor >= moverCount) repathCursor = 0;
     int lastServed = -1;
@@ -2085,7 +2104,8 @@ void ProcessMoverRepaths(void) {
             m->repathCooldown--;
             continue;
         }
-        if (repathsThisFrame >= MAX_REPATHS_PER_FRAME) continue;   // served in a later frame
+        if (repathsThisFrame >= MAX_REPATHS_PER_FRAME || pathExploredThisTick >= REPATH_EXPLORE_BUDGET)
+            continue;   // served in a later frame (the first is always served)
         lastServed = i;
 
         int currentX = (int)(m->x / CELL_SIZE);
@@ -2127,16 +2147,20 @@ void ProcessMoverRepaths(void) {
         }
 
         if (m->pathLength == 0) {
-            // Repath failed - check if goal cell itself is now a wall
-            if (!IsCellWalkableAt(m->goal.z, m->goal.y, m->goal.x)) {
+            // Repath failed - check if goal cell itself is now a wall. A wanderer (no job)
+            // picks a new goal too: retrying one that shares a region but has no path
+            // (regions ignore deep water) searched the whole graph every cooldown.
+            bool wanderer = endlessMoverMode && m->currentJobId < 0 && len == 0;
+            if (!IsCellWalkableAt(m->goal.z, m->goal.y, m->goal.x) || wanderer) {
                 // Goal is unwalkable (wall placed on it)
                 // Only assign new random goal if mover has no job - otherwise let job system handle it
                 if (m->currentJobId < 0) {
                     Point oldGoal = m->goal;
                     AssignNewMoverGoal(m);
                     if (m->pathLength > 0) {
-                        AddMessage(TextFormat("Mover %d: goal (%d,%d) became wall, reassigned",
-                                              i, oldGoal.x, oldGoal.y), ORANGE);
+                        if (!IsCellWalkableAt(oldGoal.z, oldGoal.y, oldGoal.x))
+                            AddMessage(TextFormat("Mover %d: goal (%d,%d) became wall, reassigned",
+                                                  i, oldGoal.x, oldGoal.y), ORANGE);
                         m->needsRepath = false;
                         repathsThisFrame++;
                         continue;

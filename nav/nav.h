@@ -107,7 +107,7 @@ typedef struct {
 
 // Private scratch types (layout may change)
 typedef struct { int g, f; int parentX, parentY; bool open, closed; } NavChunkNode;
-typedef struct { int g, f; int parent; bool open, closed; } NavAbstractNode;
+typedef struct { int g, f; int parent; bool open, closed; unsigned gen; } NavAbstractNode;   // gen: search that set it
 
 typedef struct NavWorld {
     // ---- shape (read-only; change with NavResize) ----
@@ -155,7 +155,7 @@ typedef struct NavWorld {
     bool growFailed;               // out of memory growing a list (warned)
     bool edgeOverflow;             // couldn't grow an edge list (warned)
 
-    NavAbstractNode* absNodes;
+    NavAbstractNode* absNodes;  unsigned absCurGen;   // nodes of older searches read as fresh
     int* absPath; int absPathLen;
     int* absHeap; int absHeapSize; int* absHeapPos;
 

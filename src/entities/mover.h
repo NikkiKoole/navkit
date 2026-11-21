@@ -14,6 +14,12 @@
 #define MAX_MOVER_PATH 1024
 #define MOVER_SPEED 200.0f
 #define MAX_REPATHS_PER_FRAME 10
+// Abstract nodes the repaths of one frame may explore (~0.7 us each on a 2048 map, so
+// ~7 ms): a few cross-map searches would otherwise stall the frame. At least one repath
+// is always served. Nodes, not milliseconds, so runs stay reproducible.
+#define REPATH_EXPLORE_BUDGET 10000
+extern int moverPlanExplored;     // nodes the last MoverPlanPath explored
+extern int pathExploredThisTick;  // mover path planning this tick (repaths + new goals)
 #define REPATH_COOLDOWN_FRAMES 30
 
 // Spatial grid for neighbor queries (used by avoidance)
@@ -163,6 +169,11 @@ extern bool useStringPulling;
 extern bool endlessMoverMode;
 extern bool useMoverAvoidance;
 extern bool preferDifferentZ;  // When true, movers prefer goals on different z-levels
+extern int moverWanderRadius;  // wandering/spawned movers: goals within this many cells (0 = anywhere)
+// The wander radius applies (it doesn't cover the whole map)
+static inline bool MoverWanderLocal(void) {
+    return moverWanderRadius > 0 && (moverWanderRadius < gridWidth || moverWanderRadius < gridHeight);
+}
 extern bool allowFallingFromAvoidance;  // When true, avoidance can push movers into air (they will fall)
 extern PathAlgorithm moverPathAlgorithm;  // Algorithm used for mover pathfinding (default: HPA*)
 

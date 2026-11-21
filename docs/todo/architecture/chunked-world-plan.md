@@ -677,3 +677,25 @@ Repath 246 ms (5x), Move 170 ms (10x), Snow 116 ms (1x).
   interval (rows due = rows x elapsed / interval); every cell is still processed once per
   interval. The position follows from the saved accumulator, so the save format is unchanged.
   Smaller maps sweep at the interval's end as before. Worst tick 361 -> 5.2 ms.
+
+### Spawning many movers at 2048 (2026-11-21)
+
+`spawnmovers 3000` (console; headless `--exec "spawnmovers 3000"`) took ~35-100 s: every new
+mover got a full HPA* path (no region check, so unreachable goals searched the whole graph) to
+a random goal anywhere on the map. Fixes:
+- Spawns plan with `MoverPlanPath` (region check, coarse routes) within a budget of 300K
+  explored abstract nodes; later movers get paths from the repath queue. 3000 movers: 0.45 s.
+- `ZLevelIsConnected` scanned all ~500K ramp links per random-cell attempt (levels without
+  ramps scanned them all); now one pass per graph version.
+- `wanderRadius` setting (default 256): on maps bigger than that, spawned and endless movers
+  pick goals within it (reachable by region). 0 = anywhere.
+- Path planning has a per-tick budget of explored abstract nodes (`REPATH_EXPLORE_BUDGET`,
+  10K ~ 7 ms), shared by the repath queue and endless movers' new goals (the first repath of
+  a tick is always served). Nodes, not ms, so runs stay reproducible.
+- A wanderer whose repath fails picks a new goal: goals in the same region without a path
+  (regions ignore deep water) searched all 238K entrances every cooldown.
+- Abstract search: the heuristic is computed only when a node improves; node state uses a
+  generation stamp instead of a reset of every entrance (same results, small gain).
+3000 movers on the 2048 world: 66 -> 28 ms per tick. What's left is the abstract graph itself:
+on ramp-heavy hills ~200-cell routes have 90-210 waypoints and explore 30K-150K nodes (almost
+every ramp is an entrance). That's the "coarser level" decision.

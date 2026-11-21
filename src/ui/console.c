@@ -93,6 +93,9 @@ static void Cmd_Terrain(int argc, const char** argv);
 static void Cmd_Grid(int argc, const char** argv);
 static void Cmd_Scenario(int argc, const char** argv);
 static void Cmd_Game(int argc, const char** argv);
+static void Cmd_SpawnMovers(int argc, const char** argv);
+void SpawnMoversDemo(int count);   // main.c
+void AddMoversDemo(int count);     // main.c
 
 // ---------------------------------------------------------------------------
 // Variable Registry
@@ -135,6 +138,8 @@ void Console_Init(void) {
     Console_RegisterCmd("grid", Cmd_Grid, "Resize grid: grid 32|64|128|256");
     Console_RegisterCmd("scenario", Cmd_Scenario, "Start a demo scenario: scenario <name> (use 'scenario list' to see options)");
     Console_RegisterCmd("game", Cmd_Game, "Start a game: game <name> (use 'game list' to see options)");
+    Console_RegisterCmd("spawnmovers", Cmd_SpawnMovers,
+                        "Replace all movers with N wandering ones: spawnmovers <n> [add] (add: keep the current movers)");
 }
 
 void Console_RegisterCmd(const char* name, ConsoleCmdFn fn, const char* help) {
@@ -894,6 +899,16 @@ static void Cmd_Terrain(int argc, const char** argv) {
     BuildEntrances();
     BuildGraph();
     Console_Printf(GREEN, "Generated terrain: %s", terrainNames[currentTerrain]);
+}
+
+void Console_Execute(const char* line) { ExecuteCommand(line); }
+
+static void Cmd_SpawnMovers(int argc, const char** argv) {
+    if (argc < 2) { Console_Print("Usage: spawnmovers <n> [add]", YELLOW); return; }
+    int n = atoi(argv[1]);
+    if (n <= 0) { Console_Print("spawnmovers: count must be > 0", YELLOW); return; }
+    if (argc > 2 && strcmp(argv[2], "add") == 0) AddMoversDemo(n);
+    else SpawnMoversDemo(n);
 }
 
 static void Cmd_Scenario(int argc, const char** argv) {
