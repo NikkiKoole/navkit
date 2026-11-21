@@ -306,6 +306,13 @@ vertex, ~144 per quad: ~70 MB uploaded per frame at zoom 0.15).
    7 views pixel-identical; a deliberately darkened shader changes 88% of pixels (the path is
    really used).
 
+5. **Shader effects experiment** (2026-11-21, setting `shaderEffects`, off by default): world
+   batch sprites carry a kind byte (`WorldBatchSetKind`: DrawWater -> water, DrawFire -> fire);
+   the shader gets the camera (cells) and time. Water: drifting light bands + small glints;
+   fire: per-cell flicker; both on the 8x8 sprite pixel grid. Off: 7 views pixel-identical.
+   Not decided whether to keep; next ideas: heat shimmer (needs a render texture + a
+   temperature texture), light in the shader.
+
 ### Next options (not started)
 
 - **Shader data per sprite**: the world batch's instance can carry more (effect type, water

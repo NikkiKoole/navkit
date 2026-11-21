@@ -1022,6 +1022,7 @@ static void DrawCloudShadows(void) {
 
 static void DrawWater(void) {
     if (waterActiveCells == 0) return;
+    WorldBatchSetKind(WB_KIND_WATER);   // shader effects (setting shaderEffects); reset below
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
     Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
@@ -1088,10 +1089,12 @@ static void DrawWater(void) {
             }
         }
     }
+    WorldBatchSetKind(WB_KIND_PLAIN);
 }
 
 static void DrawFire(void) {
     if (fireActiveCells == 0) return;
+    WorldBatchSetKind(WB_KIND_FIRE);   // shader effects (setting shaderEffects); reset below
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
@@ -1157,6 +1160,7 @@ static void DrawFire(void) {
             }
         }
     }
+    WorldBatchSetKind(WB_KIND_PLAIN);
 }
 
 static void DrawSmoke(void) {

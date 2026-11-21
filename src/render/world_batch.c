@@ -10,9 +10,13 @@ unsigned int worldBatchTexId = 0;
 float worldBatchWhiteU = 0.0f, worldBatchWhiteV = 0.0f;
 WorldBatchSprite worldBatchBuf[WORLD_BATCH_CAP];
 int worldBatchCount = 0;
+unsigned char worldBatchKind = WB_KIND_PLAIN;
+extern bool shaderEffects;   // src/simulation/lighting.c (setting "shaderEffects")
+static float wbOffsetX, wbOffsetY, wbCellPixels = 32.0f, wbTime;
 
 static unsigned int wbShader, wbVao, wbCornerVbo, wbInstVbo;
 static int wbLocMvp = -1, wbLocColDiffuse = -1, wbLocTexture = -1;
+static int wbLocView = -1, wbLocTime = -1, wbLocEffects = -1;
 static bool wbReady = false, wbWarned = false;
 
 // raylib's default shader (rlgl.h, GL 3.3), except that the quad's corners come from the
@@ -24,25 +28,51 @@ static const char* wbVS =
     "in vec4 rect;\n"              // x0 y0 x1 y1
     "in vec4 uvRect;\n"            // u0 v0 u1 v1
     "in vec4 color;\n"
+    "in float kind;\n"             // WB_KIND_*
     "out vec2 fragTexCoord;\n"
     "out vec4 fragColor;\n"
+    "out vec2 cellPos;\n"          // world position in cells (for effects)
+    "flat out int fragKind;\n"
     "uniform mat4 mvp;\n"
+    "uniform vec3 view;\n"         // offset x, offset y, pixels per cell
     "void main() {\n"
     "    vec2 p = vec2(corner.x < 0.5 ? rect.x : rect.z, corner.y < 0.5 ? rect.y : rect.w);\n"
     "    fragTexCoord = vec2(corner.x < 0.5 ? uvRect.x : uvRect.z, corner.y < 0.5 ? uvRect.y : uvRect.w);\n"
     "    fragColor = color;\n"
+    "    cellPos = (p - view.xy) / view.z;\n"
+    "    fragKind = int(kind + 0.5);\n"
     "    gl_Position = mvp*vec4(p, -0.5, 1.0);\n"
     "}\n";
+// With effects off (or kind 0) the result is raylib's default shader's exactly. The effects
+// work on the 8x8 sprite pixel grid (positions snapped to 1/8 cell) so they stay pixel art.
 static const char* wbFS =
     "#version 330\n"
     "in vec2 fragTexCoord;\n"
     "in vec4 fragColor;\n"
+    "in vec2 cellPos;\n"
+    "flat in int fragKind;\n"
     "out vec4 finalColor;\n"
     "uniform sampler2D texture0;\n"
     "uniform vec4 colDiffuse;\n"
+    "uniform float time;\n"
+    "uniform int effects;\n"
+    "float hash(vec2 c) { return fract(sin(dot(c, vec2(127.1, 311.7))) * 43758.5453); }\n"
     "void main() {\n"
     "    vec4 texelColor = texture(texture0, fragTexCoord);\n"
     "    finalColor = texelColor*colDiffuse*fragColor;\n"
+    "    if (effects == 0 || fragKind == 0) return;\n"
+    "    vec2 px = floor(cellPos * 8.0) / 8.0;\n"          // sprite pixel grid
+    "    if (fragKind == 1) {\n"                          // water: drifting light bands + glints
+    "        float w = sin(px.x * 1.7 + time * 1.3) * sin(px.y * 1.3 - time * 0.9)\n"
+    "                + 0.6 * sin((px.x + px.y) * 0.9 + time * 2.1);\n"
+    "        finalColor.rgb *= 1.0 + 0.14 * w;\n"
+    "        float g = hash(floor(cellPos * 8.0) + floor(time * 3.0));\n"
+    "        if (w > 1.2 && g > 0.93) finalColor.rgb += vec3(0.25, 0.3, 0.35);\n"
+    "    } else if (fragKind == 2) {\n"                   // fire: each cell flickers on its own
+    "        float n = hash(floor(cellPos));\n"
+    "        float f = 0.8 + 0.2 * sin(time * 11.0 + n * 40.0) + 0.12 * sin(time * 23.0 + n * 9.0 + px.y * 6.0);\n"
+    "        finalColor.rgb = min(finalColor.rgb * f * 1.15, vec3(1.0));\n"
+    "    }\n"
     "}\n";
 
 // Same as rlgl's (static) rlMatrixMultiply, so the MVP matches raylib's to the bit
@@ -91,11 +121,15 @@ bool WorldBatchInit(Texture2D atlas) {
     wbLocMvp = rlGetLocationUniform(wbShader, "mvp");
     wbLocColDiffuse = rlGetLocationUniform(wbShader, "colDiffuse");
     wbLocTexture = rlGetLocationUniform(wbShader, "texture0");
+    wbLocView = rlGetLocationUniform(wbShader, "view");
+    wbLocTime = rlGetLocationUniform(wbShader, "time");
+    wbLocEffects = rlGetLocationUniform(wbShader, "effects");
     int locCorner = rlGetLocationAttrib(wbShader, "corner");
     int locRect = rlGetLocationAttrib(wbShader, "rect");
     int locUv = rlGetLocationAttrib(wbShader, "uvRect");
     int locColor = rlGetLocationAttrib(wbShader, "color");
-    if (locCorner < 0 || locRect < 0 || locUv < 0 || locColor < 0) return false;
+    int locKind = rlGetLocationAttrib(wbShader, "kind");
+    if (locCorner < 0 || locRect < 0 || locUv < 0 || locColor < 0 || locKind < 0) return false;
 
     wbVao = rlLoadVertexArray();
     rlEnableVertexArray(wbVao);
@@ -116,6 +150,9 @@ bool WorldBatchInit(Texture2D atlas) {
     rlSetVertexAttribute((unsigned)locColor, 4, RL_UNSIGNED_BYTE, true, stride, (int)offsetof(WorldBatchSprite, r));
     rlEnableVertexAttribute((unsigned)locColor);
     rlSetVertexAttributeDivisor((unsigned)locColor, 1);
+    rlSetVertexAttribute((unsigned)locKind, 1, RL_UNSIGNED_BYTE, false, stride, (int)offsetof(WorldBatchSprite, kind));
+    rlEnableVertexAttribute((unsigned)locKind);
+    rlSetVertexAttributeDivisor((unsigned)locKind, 1);
     rlDisableVertexArray();
 
     worldBatchTexId = atlas.id;
@@ -132,6 +169,11 @@ void WorldBatchFlush(void) {
     rlSetUniform(wbLocColDiffuse, white, RL_SHADER_UNIFORM_VEC4, 1);
     int slot = 0;
     rlSetUniform(wbLocTexture, &slot, RL_SHADER_UNIFORM_SAMPLER2D, 1);
+    float view[3] = {wbOffsetX, wbOffsetY, wbCellPixels > 0.0f ? wbCellPixels : 1.0f};
+    rlSetUniform(wbLocView, view, RL_SHADER_UNIFORM_VEC3, 1);
+    rlSetUniform(wbLocTime, &wbTime, RL_SHADER_UNIFORM_FLOAT, 1);
+    int fx = shaderEffects ? 1 : 0;
+    rlSetUniform(wbLocEffects, &fx, RL_SHADER_UNIFORM_INT, 1);
     rlActiveTextureSlot(0);
     rlEnableTexture(worldBatchTexId);
     rlEnableVertexArray(wbVao);
@@ -158,4 +200,8 @@ void WorldBatchEnd(void) {
     }
     WorldBatchFlush();
     worldBatchActive = false;
+}
+
+void WorldBatchSetView(float offsetX, float offsetY, float cellPixels, float time) {
+    wbOffsetX = offsetX; wbOffsetY = offsetY; wbCellPixels = cellPixels; wbTime = time;
 }

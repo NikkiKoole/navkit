@@ -252,6 +252,10 @@ saves the world (no UI) of the third frame, prints the world drawing time averag
     --exec "set zoom 0.25" --exec "set forceDaylight 1" --screenshot before.png
 ```
 
+`--look-at X,Y` centres the camera on a cell (also in the normal GUI), `--screenshot-frames N`
+times N frames. Shader effects (setting `shaderEffects`, off by default) are an experiment in
+`src/render/world_batch.c`: with them off the image must stay byte-identical.
+
 A drawing change that should not change the picture must give byte-identical pixels for a
 few views (zoomed in/out, day/night, high and low `viewZ`) against the previous build. Look at
 the images too: a nearly black image hides differences (dark tints round many colours to the

@@ -1483,15 +1483,27 @@ int main(int argc, char** argv) {
     const char* screenshotPath = NULL;
     for (int i = 1; i + 1 < argc; i++)
         if (strcmp(argv[i], "--screenshot") == 0) screenshotPath = argv[i + 1];
+    int lookAtX = -1, lookAtY = -1;
     int screenshotFrame = 0, screenshotTimed = 60;   // --screenshot-frames N: time N frames
     for (int i = 1; i + 1 < argc; i++)
         if (strcmp(argv[i], "--screenshot-frames") == 0) screenshotTimed = atoi(argv[i + 1]);
     if (screenshotTimed < 1) screenshotTimed = 1;
+    // --look-at X,Y: start with the camera centred on that cell (GUI and --screenshot)
+    for (int i = 1; i + 1 < argc; i++) {
+        int cx, cy;
+        if (strcmp(argv[i], "--look-at") == 0 && sscanf(argv[i + 1], "%d,%d", &cx, &cy) == 2) {
+            lookAtX = cx; lookAtY = cy;
+        }
+    }
     if (screenshotPath) {
         paused = true;
         UpdateLighting();   // normally computed by the first sim tick, which never runs paused
         offset.x = (GetScreenWidth() - gridWidth * CELL_SIZE * zoom) / 2.0f;
         offset.y = (GetScreenHeight() - gridHeight * CELL_SIZE * zoom) / 2.0f;
+    }
+    if (lookAtX >= 0) {
+        offset.x = GetScreenWidth() / 2.0f - (lookAtX + 0.5f) * CELL_SIZE * zoom;
+        offset.y = GetScreenHeight() / 2.0f - (lookAtY + 0.5f) * CELL_SIZE * zoom;
     }
 
     float accumulator = 0.0f;
@@ -1730,6 +1742,7 @@ int main(int argc, char** argv) {
             DrawFrontView();
         } else {
         PROFILE_BEGIN(DrawCells);
+        WorldBatchSetView(offset.x, offset.y, CELL_SIZE * zoom, (float)GetTime());
         WorldBatchBegin();   // these passes draw only through FastSprite/FastRect (world_batch.h)
         DrawCellGrid();
         DrawGrassOverlay();

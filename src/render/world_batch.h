@@ -17,7 +17,12 @@ typedef struct {
     float x0, y0, x1, y1;      // screen rectangle (as DrawTexturePro computes it)
     float u0, v0, u1, v1;      // atlas coordinates
     unsigned char r, g, b, a;
+    unsigned char kind, pad[3];   // WB_KIND_*: what the shader may do with this sprite
 } WorldBatchSprite;
+
+// Sprite kinds for shader effects (WorldBatchSetKind); 0 draws exactly as raylib would
+enum { WB_KIND_PLAIN = 0, WB_KIND_WATER = 1, WB_KIND_FIRE = 2 };
+extern unsigned char worldBatchKind;   // kind given to pushed sprites
 
 #define WORLD_BATCH_CAP 65536
 
@@ -31,6 +36,9 @@ bool WorldBatchInit(Texture2D atlas);  // false: no shader (falls back to raylib
 void WorldBatchBegin(void);
 void WorldBatchEnd(void);
 void WorldBatchFlush(void);            // draw what's queued (keeps the scope open)
+// Camera and clock for effects: screen = offset + cell * cellPixels; time in seconds
+void WorldBatchSetView(float offsetX, float offsetY, float cellPixels, float time);
+static inline void WorldBatchSetKind(unsigned char kind) { worldBatchKind = kind; }
 
 static inline void WorldBatchPush(float x0, float y0, float x1, float y1,
                                   float u0, float v0, float u1, float v1, Color c) {
@@ -39,6 +47,7 @@ static inline void WorldBatchPush(float x0, float y0, float x1, float y1,
     s->x0 = x0; s->y0 = y0; s->x1 = x1; s->y1 = y1;
     s->u0 = u0; s->v0 = v0; s->u1 = u1; s->v1 = v1;
     s->r = c.r; s->g = c.g; s->b = c.b; s->a = c.a;
+    s->kind = worldBatchKind;
 }
 
 #endif

@@ -549,6 +549,8 @@ static const Setting settings[] = {
     // --- Lighting ---
     SET_BOOL_HOOK("lighting", "Enabled", "Rendering & Debug/Lighting", lightingEnabled,
       "Master toggle for lighting. When off, all tiles render at full brightness (no light/dark cycle).", RelightAll),
+    SET_BOOL("shaderEffects", "Shader Effects", "Rendering & Debug/Lighting", shaderEffects,
+      "Experiment: water ripples and fire flicker drawn by the world batch's shader (render/world_batch.c). Off = the reference look."),
     SET_BOOL("forceDaylight", "Force Daylight", "Rendering & Debug/Lighting", forceDaylight,
       "Override sky color to full white. Useful for building at night without waiting for day."),
     SET_BOOL_HOOK("skyLight", "Sky Light", "Rendering & Debug/Lighting", skyLightEnabled,
