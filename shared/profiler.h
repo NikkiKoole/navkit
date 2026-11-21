@@ -11,9 +11,17 @@
 #define PROFILER_MAX_SECTIONS 64
 #define PROFILER_HISTORY_FRAMES 120
 
+// Wall-clock milliseconds. Not clock(): that is CPU time (on macOS summed over all
+// threads, and blind to time spent waiting, e.g. on the graphics driver).
+static inline double ProfileNowMs(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec * 1000.0 + t.tv_nsec / 1e6;
+}
+
 typedef struct {
     const char* name;
-    clock_t startTime;
+    double startTime;   // ms, wall clock (ProfileNowMs)
     double lastTimeMs;
     double accumTimeMs;  // Accumulated time for sections called multiple times per frame
     double history[PROFILER_HISTORY_FRAMES];
@@ -114,7 +122,7 @@ static int ProfileFindOrCreate(const char* name, int depth, int parent, bool acc
     if (profilerSectionCount < PROFILER_MAX_SECTIONS) {
         int idx = profilerSectionCount++;
         profilerSections[idx].name = name;
-        profilerSections[idx].startTime = 0;
+        profilerSections[idx].startTime = 0.0;
         profilerSections[idx].lastTimeMs = 0.0;
         profilerSections[idx].accumTimeMs = 0.0;
         profilerSections[idx].historyIndex = 0;
@@ -136,7 +144,7 @@ void ProfileBegin(const char* name) {
     int parent = (profilerCurrentDepth > 0) ? profilerParentStack[profilerCurrentDepth - 1] : -1;
     int idx = ProfileFindOrCreate(name, profilerCurrentDepth, parent, false);
     if (idx >= 0) {
-        profilerSections[idx].startTime = clock();
+        profilerSections[idx].startTime = ProfileNowMs();
         profilerSections[idx].active = true;
         profilerParentStack[profilerCurrentDepth] = idx;
         profilerCurrentDepth++;
@@ -146,8 +154,7 @@ void ProfileBegin(const char* name) {
 void ProfileEnd(const char* name) {
     int idx = ProfileFindOrCreate(name, 0, -1, false);  // depth/parent don't matter for lookup
     if (idx >= 0 && profilerSections[idx].active) {
-        clock_t end = clock();
-        double ms = (double)(end - profilerSections[idx].startTime) / CLOCKS_PER_SEC * 1000.0;
+        double ms = ProfileNowMs() - profilerSections[idx].startTime;
         profilerSections[idx].lastTimeMs = ms;
         profilerSections[idx].active = false;
         if (profilerCurrentDepth > 0) profilerCurrentDepth--;
@@ -158,7 +165,7 @@ void ProfileAccumBegin(const char* name) {
     int parent = (profilerCurrentDepth > 0) ? profilerParentStack[profilerCurrentDepth - 1] : -1;
     int idx = ProfileFindOrCreate(name, profilerCurrentDepth, parent, true);
     if (idx >= 0) {
-        profilerSections[idx].startTime = clock();
+        profilerSections[idx].startTime = ProfileNowMs();
         profilerSections[idx].active = true;
         // Don't push to parent stack - accum sections don't affect hierarchy during measurement
     }
@@ -167,8 +174,7 @@ void ProfileAccumBegin(const char* name) {
 void ProfileAccumEnd(const char* name) {
     int idx = ProfileFindOrCreate(name, 0, -1, true);  // depth/parent don't matter for lookup
     if (idx >= 0 && profilerSections[idx].active) {
-        clock_t end = clock();
-        double ms = (double)(end - profilerSections[idx].startTime) / CLOCKS_PER_SEC * 1000.0;
+        double ms = ProfileNowMs() - profilerSections[idx].startTime;
         profilerSections[idx].accumTimeMs += ms;  // Accumulate instead of replace
         profilerSections[idx].active = false;
     }

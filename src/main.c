@@ -875,7 +875,7 @@ static void HeadlessProfileAccumulate(void) {
     profTicks++;
 }
 static void HeadlessProfilePrint(int ticks) {
-    printf("\n=== PROFILE (ms per tick, CPU time) ===\n%-20s %8s %8s %8s %6s\n", "section", "avg", "max", "later", "slow");
+    printf("\n=== PROFILE (ms per tick, wall clock) ===\n%-20s %8s %8s %8s %6s\n", "section", "avg", "max", "later", "slow");
     for (int i = 0; i < profilerSectionCount; i++) {
         if (profTotal[i] / ticks < 0.005 && profMax[i] < 0.5) continue;
         printf("%*s%-*s %8.3f %8.2f %8.2f %6d\n", profilerSections[i].depth * 2, "", 20 - profilerSections[i].depth * 2,
