@@ -114,7 +114,8 @@ static void StartSurvival(void) {
         }
     }
 
-    // Center camera on the mover and follow it
+    // Center camera on the mover and follow it, zoomed out to see the surroundings
+    zoom = 0.5f;
     if (moverCount > 0) {
         Mover* m = &movers[0];
         currentViewZ = (int)m->z;
