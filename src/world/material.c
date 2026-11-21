@@ -97,8 +97,8 @@ void InitMaterials(void) {
     CLEAR_GRID_LAYER(floorNatural, 0);
     CLEAR_GRID_LAYER(wallFinish, FINISH_ROUGH);
     CLEAR_GRID_LAYER(floorFinish, FINISH_ROUGH);
-    CLEAR_GRID_LAYER(wallSourceItem, 0xFF);
-    CLEAR_GRID_LAYER(floorSourceItem, 0xFF);
+    CLEAR_GRID_LAYER(wallSourceItem, 0);    // 0 = none (stored XOR 0xFF, see material.h)
+    CLEAR_GRID_LAYER(floorSourceItem, 0);
     InitSpriteOverrides();
 }
 

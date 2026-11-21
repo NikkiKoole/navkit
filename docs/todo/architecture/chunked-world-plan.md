@@ -405,8 +405,19 @@ dollhouse, sandbox (train: the known empty-water stable bit). 512 tick 3.27 -> 3
 | 1024 map | 1.11 GB | 0.90 GB |
 | 2048 map | 4.65 GB | 3.83 GB (water 476 of 16,641 blocks = 3.7 MB; fire/smoke/steam/farm 0) |
 
-Next candidates (2048): the other non-zero empty fills (source items 0xFF 2 x 1 B, explored 1 B),
-tree data (growth timer 4 B +
+**Last non-zero empty fills (done, 2026-11-21).** Explored is stored inverted (`unexploredGrid`,
+zero = explored, the sandbox default; `EXPLORED(x, y, z)` is a value, write with `SET_EXPLORED`;
+survival start clears it to 1). Source items are stored XOR 0xFF behind `Get/SetWallSourceItem`
+(zero = none). Saves keep the plain values (`SAVE_ROW_XOR` / `LOAD_ROW_XOR`). Fresh layers now
+need no fill at all. Saves byte-identical to step 1 (all scenarios and games, incl. loading a
+mid-game survival save and a crafting save).
+
+| peak footprint | before | after |
+|---|---|---|
+| 1024 map | 0.90 GB | 0.87 GB |
+| 2048 map | 3.83 GB | 3.57 GB |
+
+Next candidates (2048): tree data (growth timer 4 B +
 height + harvest, written in every chunk with a tree), then the HPA* graph (~1.7 GB of malloc).
 
 ## Allocation model (for steps 2-3)

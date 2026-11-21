@@ -56,8 +56,8 @@ static void SetupClothingGrid(void) {
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
             GRID(x, y, 1) = CELL_AIR;
-            EXPLORED(x, y, 1) = 1;
-            EXPLORED(x, y, 0) = 1;
+            SET_EXPLORED(x, y, 1);
+            SET_EXPLORED(x, y, 0);
         }
     }
 }

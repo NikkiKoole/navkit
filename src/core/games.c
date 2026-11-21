@@ -77,7 +77,7 @@ static void StartSurvival(void) {
     SpawnMoversDemo(1);
 
     // Fog of war: start with everything unexplored, then reveal around spawn
-    CLEAR_GRID_LAYER(exploredGrid, 0);
+    CLEAR_GRID_LAYER(unexploredGrid, 1);   // all unexplored
     if (moverCount > 0) {
         Mover* m = &movers[0];
         int spawnX = (int)(m->x / CELL_SIZE);

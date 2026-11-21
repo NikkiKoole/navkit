@@ -109,11 +109,14 @@ extern uint8_t* floorSourceItem;
 #define GetFloorFinish(x,y,z)       (FLOOR_FINISH(x, y, z))
 #define SetFloorFinish(x,y,z,f)     (FLOOR_FINISH(x, y, z) = (uint8_t)(f))
 // Wall source item accessors
-#define GetWallSourceItem(x,y,z)    ((ItemType)(int8_t)WALL_SOURCE_ITEM(x, y, z))
-#define SetWallSourceItem(x,y,z,v)  (WALL_SOURCE_ITEM(x, y, z) = (uint8_t)(v))
+// Source items are stored XOR 0xFF so that zero (fresh memory) means "none" (-1 / 0xFF):
+// no whole-layer 0xFF fill on a new map. Saves keep the plain value (saveload.c converts).
+#define SOURCE_ITEM_XOR 0xFF
+#define GetWallSourceItem(x,y,z)    ((ItemType)(int8_t)(WALL_SOURCE_ITEM(x, y, z) ^ SOURCE_ITEM_XOR))
+#define SetWallSourceItem(x,y,z,v)  (WALL_SOURCE_ITEM(x, y, z) = (uint8_t)((uint8_t)(v) ^ SOURCE_ITEM_XOR))
 // Floor source item accessors
-#define GetFloorSourceItem(x,y,z)   ((ItemType)(int8_t)FLOOR_SOURCE_ITEM(x, y, z))
-#define SetFloorSourceItem(x,y,z,v) (FLOOR_SOURCE_ITEM(x, y, z) = (uint8_t)(v))
+#define GetFloorSourceItem(x,y,z)   ((ItemType)(int8_t)(FLOOR_SOURCE_ITEM(x, y, z) ^ SOURCE_ITEM_XOR))
+#define SetFloorSourceItem(x,y,z,v) (FLOOR_SOURCE_ITEM(x, y, z) = (uint8_t)((uint8_t)(v) ^ SOURCE_ITEM_XOR))
 
 // Material property accessors
 #define MaterialName(m)         (materialDefs[m].name)

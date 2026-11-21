@@ -56,6 +56,13 @@ static _Alignas(16) unsigned char saveRowBuf[MAX_GRID_WIDTH * 32];
                 memcpy(&MUTMACRO(x_, (y), (z)), saveRowBuf + (size_t)x_ * es_, es_); \
         } \
     } while (0)
+// Byte layers stored with an XOR in memory (source items, explored): the file keeps the plain value.
+#define SAVE_ROW_XOR(f, MACRO, y, z, xorv) do { ROW_TO_BUF(MACRO, y, z); \
+        for (int x_ = 0; x_ < gridWidth; x_++) saveRowBuf[x_] ^= (unsigned char)(xorv); \
+        fwrite(saveRowBuf, 1, gridWidth, (f)); } while (0)
+#define LOAD_ROW_XOR(f, MACRO, y, z, xorv) do { fread(saveRowBuf, 1, gridWidth, (f)); \
+        for (int x_ = 0; x_ < gridWidth; x_++) saveRowBuf[x_] ^= (unsigned char)(xorv); \
+        ROW_FROM_BUF(MACRO, y, z); } while (0)
 #define LOAD_ROW(f, MACRO, y, z) do { fread(saveRowBuf, ROW_ELEM_SIZE(MACRO), gridWidth, (f)); ROW_FROM_BUF(MACRO, y, z); } while (0)
 #define MARKER_ENTITIES 0x454E5449  // "ENTI"
 #define MARKER_VIEW     0x56494557  // "VIEW"
@@ -302,14 +309,14 @@ bool SaveWorld(const char* filename) {
     // Wall source item grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            SAVE_ROW(f, WALL_SOURCE_ITEM, y, z);
+            SAVE_ROW_XOR(f, WALL_SOURCE_ITEM, y, z, SOURCE_ITEM_XOR);
         }
     }
 
     // Floor source item grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            SAVE_ROW(f, FLOOR_SOURCE_ITEM, y, z);
+            SAVE_ROW_XOR(f, FLOOR_SOURCE_ITEM, y, z, SOURCE_ITEM_XOR);
         }
     }
 
@@ -379,7 +386,7 @@ bool SaveWorld(const char* filename) {
     // Explored grid (fog of war, v75+)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            SAVE_ROW(f, EXPLORED, y, z);
+            SAVE_ROW_XOR(f, UNEXPLORED, y, z, 1);   // file: 1 = explored
         }
     }
 
@@ -742,14 +749,14 @@ bool LoadWorld(const char* filename) {
     // Wall source item grid (V28)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            LOAD_ROW(f, WALL_SOURCE_ITEM, y, z);
+            LOAD_ROW_XOR(f, WALL_SOURCE_ITEM, y, z, SOURCE_ITEM_XOR);
         }
     }
 
     // Floor source item grid (V28)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            LOAD_ROW(f, FLOOR_SOURCE_ITEM, y, z);
+            LOAD_ROW_XOR(f, FLOOR_SOURCE_ITEM, y, z, SOURCE_ITEM_XOR);
         }
     }
 
@@ -830,7 +837,7 @@ bool LoadWorld(const char* filename) {
     // Explored grid (fog of war)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            LOAD_ROW(f, EXPLORED, y, z);
+            LOAD_ROW_XOR(f, UNEXPLORED, y, z, 1);
         }
     }
 

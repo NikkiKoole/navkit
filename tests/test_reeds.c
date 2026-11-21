@@ -166,7 +166,7 @@ describe(reeds_gather) {
         GRID(5, 5, 1) = CELL_AIR;
         SetVegetation(5, 5, 0, VEG_REEDS);
         // Mark as explored
-        EXPLORED(5, 5, 1) = 1;
+        SET_EXPLORED(5, 5, 1);
 
         bool result = DesignateGatherReeds(5, 5, 1);
         expect(result);
@@ -180,7 +180,7 @@ describe(reeds_gather) {
         SetWallMaterial(5, 5, 0, MAT_DIRT);
         GRID(5, 5, 1) = CELL_AIR;
         SetVegetation(5, 5, 0, VEG_GRASS_TALLER);
-        EXPLORED(5, 5, 1) = 1;
+        SET_EXPLORED(5, 5, 1);
 
         bool result = DesignateGatherReeds(5, 5, 1);
         expect(!result);
@@ -194,7 +194,7 @@ describe(reeds_gather) {
         SetWallMaterial(5, 5, 0, MAT_DIRT);
         GRID(5, 5, 1) = CELL_AIR;
         SetVegetation(5, 5, 0, VEG_REEDS);
-        EXPLORED(5, 5, 1) = 1;
+        SET_EXPLORED(5, 5, 1);
 
         DesignateGatherReeds(5, 5, 1);
         CompleteGatherReedsDesignation(5, 5, 1, 0);

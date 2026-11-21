@@ -13,7 +13,7 @@ uint8_t* grid = NULL;   // allocated in grid_layers.c
 uint8_t* cellFlags = NULL;   // allocated in grid_layers.c
 uint8_t* vegetationGrid = NULL;   // allocated in grid_layers.c
 uint8_t* trackConnections = NULL;   // allocated in grid_layers.c
-uint8_t* exploredGrid = NULL;   // allocated in grid_layers.c
+uint8_t* unexploredGrid = NULL;   // allocated in grid_layers.c
 
 
 // Runtime dimensions - default to max
@@ -121,7 +121,7 @@ void InitGridWithDimensions(int width, int height, int depth, int chunkW, int ch
     // Clear the grid (all z-levels), cell flags, vegetation, and materials
     CLEAR_GRID_LAYER(cellFlags, 0);
     CLEAR_GRID_LAYER(vegetationGrid, 0);
-    CLEAR_GRID_LAYER(exploredGrid, 1);  // Default: all explored (sandbox)
+    CLEAR_GRID_LAYER(unexploredGrid, 0);  // Default: all explored (sandbox)
     InitMaterials();
     
     for (int z = 0; z < gridDepth; z++) {
@@ -847,7 +847,7 @@ void RevealAroundPoint(int cx, int cy, int cz, int radius) {
 
             // Reveal at mover's z-level
             if (!EXPLORED(x, y, cz)) {
-                EXPLORED(x, y, cz) = 1;
+                SET_EXPLORED(x, y, cz);
                 MarkChunkDirty(x, y, cz);
                 CheckDiscoveriesAtCell(x, y, cz, &disc);
             }
@@ -855,7 +855,7 @@ void RevealAroundPoint(int cx, int cy, int cz, int radius) {
             // Reveal upward through air until solid or top
             for (int z = cz + 1; z < gridDepth; z++) {
                 if (!EXPLORED(x, y, z)) {
-                    EXPLORED(x, y, z) = 1;
+                    SET_EXPLORED(x, y, z);
                     MarkChunkDirty(x, y, z);
                     CheckDiscoveriesAtCell(x, y, z, &disc);
                 }
@@ -865,7 +865,7 @@ void RevealAroundPoint(int cx, int cy, int cz, int radius) {
             // Reveal downward through air until solid or bottom
             for (int z = cz - 1; z >= 0; z--) {
                 if (!EXPLORED(x, y, z)) {
-                    EXPLORED(x, y, z) = 1;
+                    SET_EXPLORED(x, y, z);
                     MarkChunkDirty(x, y, z);
                     CheckDiscoveriesAtCell(x, y, z, &disc);
                 }

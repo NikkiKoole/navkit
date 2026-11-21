@@ -198,8 +198,13 @@ extern uint8_t* trackConnections;
 #define TRACK_W 8
 
 // Exploration grid — fog of war (0=unexplored, 1=explored)
-extern uint8_t* exploredGrid;
-#define EXPLORED(x, y, z) (exploredGrid CELL_AT((x), (y), (z)))
+// Stored inverted so that zero (fresh memory) means "explored", the sandbox default: no
+// whole-layer fill on a new map. Survival clears it to 1 (all unexplored) at start.
+// EXPLORED(x, y, z) is a value (1 = explored), not assignable: use SET_EXPLORED.
+extern uint8_t* unexploredGrid;
+#define UNEXPLORED(x, y, z) (unexploredGrid CELL_AT((x), (y), (z)))
+#define EXPLORED(x, y, z) (!UNEXPLORED(x, y, z))
+#define SET_EXPLORED(x, y, z) (UNEXPLORED(x, y, z) = 0)
 
 #define DEFAULT_MOVER_VISION_RADIUS  10
 #define DEFAULT_SPAWN_VISION_RADIUS  12
@@ -214,12 +219,12 @@ extern GameMode gameMode;
 static inline bool IsExplored(int x, int y, int z) {
     if (gameMode == GAME_MODE_SANDBOX) return true;
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return true;
-    return EXPLORED(x, y, z) != 0;
+    return EXPLORED(x, y, z);
 }
 
 static inline void SetExplored(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
-    EXPLORED(x, y, z) = 1;
+    SET_EXPLORED(x, y, z);
 }
 
 // Reveal all cells within radius of a point, extending vertically through air

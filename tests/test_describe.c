@@ -161,7 +161,7 @@ describe(describe_cell) {
     it("says only Unexplored under fog of war") {
         SetupFlat();
         gameMode = GAME_MODE_SURVIVAL;
-        CLEAR_GRID_LAYER(exploredGrid, 0);
+        CLEAR_GRID_LAYER(unexploredGrid, 1);   // all unexplored
         DescLines d;
         DescribeCell(4, 4, 1, &d);
         expect(d.count == 1);
