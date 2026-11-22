@@ -847,10 +847,22 @@ static int metroLastLine[MAX_MOVERS];
 static double metroLastRideEnd[MAX_MOVERS];
 static bool metroWasRiding[MAX_MOVERS];
 static int metroTransfers, metroRides;
+// Journeys: rides joined by changes of line (within 60 s), counted by number of rides
+#define METRO_JOURNEY_MAX 8
+static int metroChain[MAX_MOVERS];
+static int metroJourneys[METRO_JOURNEY_MAX + 1];
 
 static void MetroResetStats(void) {
-    for (int i = 0; i < MAX_MOVERS; i++) { metroLastLine[i] = -1; metroLastRideEnd[i] = -1e9; metroWasRiding[i] = false; }
+    for (int i = 0; i < MAX_MOVERS; i++) {
+        metroLastLine[i] = -1; metroLastRideEnd[i] = -1e9; metroWasRiding[i] = false; metroChain[i] = 0;
+    }
     metroTransfers = metroRides = 0;
+    memset(metroJourneys, 0, sizeof(metroJourneys));
+}
+
+static void MetroEndJourney(int i) {
+    if (metroChain[i] > 0) metroJourneys[metroChain[i] < METRO_JOURNEY_MAX ? metroChain[i] : METRO_JOURNEY_MAX]++;
+    metroChain[i] = 0;
 }
 
 static void MetroTickStats(void) {
@@ -860,8 +872,13 @@ static void MetroTickStats(void) {
         if (riding && !metroWasRiding[i]) {
             int line = TrainLine(m->transportTrainIdx);
             metroRides++;
-            if (metroLastLine[i] >= 0 && line != metroLastLine[i] && gameTime - metroLastRideEnd[i] < 60.0)
+            if (metroLastLine[i] >= 0 && line != metroLastLine[i] && gameTime - metroLastRideEnd[i] < 60.0) {
                 metroTransfers++;
+                metroChain[i]++;
+            } else {
+                MetroEndJourney(i);
+                metroChain[i] = 1;
+            }
             metroLastLine[i] = line;
         } else if (!riding && metroWasRiding[i]) {
             metroLastRideEnd[i] = gameTime;
@@ -886,6 +903,15 @@ static void MetroPrintStats(void) {
     }
     printf("Train trips chosen: %d (faster than walking by estimate: %d)\n", trainDecisions, trainDecisionsFaster);
     printf("Rides: %d, transfers (another line within 60 s): %d\n", metroRides, metroTransfers);
+    int journeys[METRO_JOURNEY_MAX + 1];
+    memcpy(journeys, metroJourneys, sizeof(journeys));
+    for (int i = 0; i < moverCount; i++)   // journeys still going count too
+        if (metroChain[i] > 0) journeys[metroChain[i] < METRO_JOURNEY_MAX ? metroChain[i] : METRO_JOURNEY_MAX]++;
+    printf("Journeys by rides:");
+    for (int k = 1; k <= METRO_JOURNEY_MAX; k++) if (journeys[k]) printf("  %d%s: %d", k, k == METRO_JOURNEY_MAX ? "+" : "", journeys[k]);
+    printf("\nTrips planned by changes of line (each stop plans again):");
+    for (int k = 0; k <= TRAIN_PLAN_CHANGES_MAX; k++) if (trainPlanChanges[k]) printf("  %d%s: %d", k, k == TRAIN_PLAN_CHANGES_MAX ? "+" : "", trainPlanChanges[k]);
+    printf("\n");
 }
 
 static bool MetroCheck(char* why, int whyLen) {
@@ -1013,6 +1039,102 @@ static bool TransferCheck(char* why, int whyLen) {
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// transit-chain: six lines in a staircase, end to end needs five changes
+// ---------------------------------------------------------------------------
+
+// Six narrow loop lines (two trains each) going right and down in turn, each ending
+// next to the next one's start. Districts at every line's middle stop and at both
+// ends of the chain: neighbouring districts are one ride, the two ends five changes.
+// The trip choice searches the transit graph (any number of changes); the mover
+// rides to its first change and plans again there. Trains at 50 cells/s.
+#define CHAIN_LINES 6
+#define CHAIN_DISTRICTS (CHAIN_LINES + 2)
+static Point chainDistricts[CHAIN_DISTRICTS];
+
+static bool ChainGoalPicker(int moverIdx, Point* goal) {
+    const Mover* m = &movers[moverIdx];
+    int cx = (int)(m->x / CELL_SIZE), cy = (int)(m->y / CELL_SIZE);
+    for (int tries = 0; tries < 8; tries++) {
+        Point d = chainDistricts[GetRandomValue(0, CHAIN_DISTRICTS - 1)];
+        if (abs(d.x - cx) + abs(d.y - cy) < 60) continue;
+        *goal = (Point){d.x + GetRandomValue(-5, 5), d.y + GetRandomValue(-5, 5), 1};
+        return true;
+    }
+    return false;
+}
+
+static void SetupTransitChain(void) {
+    const int L = 200, gap = 3;
+    int xs = 20, yh = 20, xv = 0, ys = 0, nd = 0;
+    for (int i = 0; i < CHAIN_LINES; i++) {
+        if (i % 2 == 0) {   // east-west: rows yh, yh+gap from xs to xs+L
+            LayLoopLine(xs, xs + L, yh, gap, true);
+            LayLoopStop(xs + 6, yh, gap, true);
+            LayLoopStop(xs + L / 2, yh, gap, true);
+            LayLoopStop(xs + L - 6, yh, gap, true);
+            if (i == 0) chainDistricts[nd++] = (Point){xs + 6, yh + gap + 14, 1};
+            chainDistricts[nd++] = (Point){xs + L / 2, yh - 12 > 6 ? yh - 12 : yh + gap + 14, 1};
+            xv = xs + L + 4;
+            ys = yh + 8;
+        } else {            // north-south: columns xv, xv+gap from ys to ys+L
+            LayLoopLine(ys, ys + L, xv, gap, false);
+            LayLoopStop(ys + 6, xv, gap, false);
+            LayLoopStop(ys + L / 2, xv, gap, false);
+            LayLoopStop(ys + L - 6, xv, gap, false);
+            chainDistricts[nd++] = (Point){xv + gap + 14, ys + L / 2, 1};
+            yh = ys + L + 4;
+            xs = xv + 8;
+        }
+    }
+    // the far end: next to the last line's end stop
+    chainDistricts[nd++] = (CHAIN_LINES % 2 == 0) ? (Point){xv - 14, ys + L - 6, 1} : (Point){xs - 14, yh, 1};
+    RebuildStations();
+
+    // two trains per line, opposite sides of the loop, clockwise
+    xs = 20; yh = 20;
+    for (int i = 0; i < CHAIN_LINES; i++) {
+        if (i % 2 == 0) {
+            SpawnTrainHeading(xs + 10, yh, 1, 2, 1, 0);
+            SpawnTrainHeading(xs + L - 10, yh + gap, 1, 2, -1, 0);
+            xv = xs + L + 4; ys = yh + 8;
+        } else {
+            SpawnTrainHeading(xv + gap, ys + 10, 1, 2, 0, 1);
+            SpawnTrainHeading(xv, ys + L - 10, 1, 2, 0, -1);
+            yh = ys + L + 4; xs = xv + 8;
+        }
+    }
+    BuildEntrances();
+    BuildGraph();
+
+    if (trainSpeed == TRAIN_DEFAULT_SPEED) trainSpeed = 50.0f;   // unless --set trainSpeed chose one
+    MetroResetStats();
+    moverGoalPicker = ChainGoalPicker;
+    endlessMoverMode = true;
+    preferDifferentZ = false;
+    int n = scenarioMovers > 0 ? scenarioMovers : 48;
+    for (int i = 0; i < n; i++) {
+        Point d = chainDistricts[i % CHAIN_DISTRICTS];
+        SpawnMoverAt(d.x + GetRandomValue(-5, 5), d.y + GetRandomValue(-5, 5), 1);
+    }
+    currentViewZ = 1;
+    AddMessage(TextFormat("Transit chain: %d lines, %d stations, %d movers", TrackLineCount(), stationCount, n), GREEN);
+}
+
+static bool TransitChainCheck(char* why, int whyLen) {
+    if (TrackLineCount() != CHAIN_LINES) {
+        snprintf(why, (size_t)whyLen, "expected %d lines, found %d", CHAIN_LINES, TrackLineCount());
+        return false;
+    }
+    int many = 0;
+    for (int k = 3; k <= TRAIN_PLAN_CHANGES_MAX; k++) many += trainPlanChanges[k];
+    if (useTrainTransfers && many == 0) {
+        snprintf(why, (size_t)whyLen, "no trip planned with 3 or more changes of line");
+        return false;
+    }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -1044,6 +1166,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupMetro, MetroTickStats, MetroPrintStats, MetroCheck, 320, 240},
     {"transfer",   "A T of three loop lines: trips between the ends need a change of line, 40 movers (compare useTrainTransfers 0)",
                    NULL,        SetupTransfer, MetroTickStats, TransferPrintStats, TransferCheck, 512, 320},
+    {"transit-chain", "Six lines in a staircase: end to end is five changes of line, 48 movers",
+                   NULL,        SetupTransitChain, MetroTickStats, TransferPrintStats, TransitChainCheck, 700, 700},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 

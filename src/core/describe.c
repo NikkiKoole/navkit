@@ -330,6 +330,18 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
             job ? JobTypeName(job->type) : "IDLE", job ? job->step : 0);
     DescribeMoverGear(m, job, out);
 
+    // Train trip: the lines still ahead (planned when it last chose, i.e. at its last stop)
+    int routeLines[TRAIN_PLAN_CHANGES_MAX + 1];
+    int routeCount = TrainPlannedRoute(idx, routeLines, TRAIN_PLAN_CHANGES_MAX + 1);
+    if (routeCount > 0) {
+        char route[160] = "";
+        size_t len = 0;
+        for (int i = 0; i < routeCount && len < sizeof(route); i++)
+            len += (size_t)snprintf(route + len, sizeof(route) - len, "%s%s", i ? " > " : "", TrackLineName(routeLines[i]));
+        if (routeCount > 1) DescAdd(out, DESC_INFO, "By train: %s (%d change%s)", route, routeCount - 1, routeCount > 2 ? "s" : "");
+        else DescAdd(out, DESC_INFO, "By train: %s line", route);
+    }
+
     if (detail == DESC_DEBUG) DescribeMoverDebug(m, job, out);
 }
 

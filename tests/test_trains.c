@@ -1512,6 +1512,52 @@ describe(train_transfers) {
         trainSpeed = oldSpeed;
         useTrainTimeChoice = false;
     }
+
+    it("plans a trip over three lines in a row (two changes), first ride to the first change") {
+        SetupClean();
+        InitTestGrid(320, 40);
+        for (int y = 0; y < 40; y++)
+            for (int x = 0; x < 320; x++) {
+                GRID(x, y, 0) = CELL_WALL;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
+                GRID(x, y, 1) = CELL_AIR;
+            }
+        PlaceTrackLine(2, 100, 10, 1);     // A
+        PlaceTrackLine(106, 204, 10, 1);   // B
+        PlaceTrackLine(210, 310, 10, 1);   // C
+        PlacePlatform(10, 11, 1);  PlacePlatform(99, 11, 1);
+        PlacePlatform(107, 11, 1); PlacePlatform(203, 11, 1);
+        PlacePlatform(211, 11, 1); PlacePlatform(300, 11, 1);
+        RebuildStations();
+        expect(TrackLineCount() == 3);
+        int aWest = GetStationAt(10, 10, 1), aEast = GetStationAt(99, 10, 1);
+        SpawnTrainHeading(40, 10, 1, 1, -1, 0);
+        SpawnTrainHeading(150, 10, 1, 1, -1, 0);
+        SpawnTrainHeading(250, 10, 1, 1, -1, 0);
+        float oldSpeed = trainSpeed;
+        trainSpeed = 50.0f;
+        useTrainTimeChoice = true;
+        useTrainTransfers = true;
+        moverCount = 1;
+        InitMover(&movers[0], 10 * CELL_SIZE + 16, 14 * CELL_SIZE + 16, 1.0f, (Point){295, 14, 1}, MOVER_SPEED);
+        movers[0].pathLength = 0;
+        movers[0].pathIndex = -1;
+        int twoChanges = trainPlanChanges[2];
+        expect(ShouldUseTrain(0) == true);
+        int entry, exit;
+        TrainChosenStations(&entry, &exit);
+        expect(entry == aWest);
+        expect(exit == aEast);
+        expect(trainPlanChanges[2] == twoChanges + 1);
+        movers[0].transportState = TRANSPORT_WALKING_TO_STATION;   // the route shows while travelling
+        int lines[8];
+        expect(TrainPlannedRoute(0, lines, 8) == 3);
+        expect(lines[0] == TrackLineAt(50, 10, 1));
+        expect(lines[2] == TrackLineAt(250, 10, 1));
+        movers[0].transportState = TRANSPORT_NONE;
+        trainSpeed = oldSpeed;
+        useTrainTimeChoice = false;
+    }
 }
 
 int main(int argc, char* argv[]) {

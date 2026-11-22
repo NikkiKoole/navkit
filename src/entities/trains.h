@@ -125,6 +125,10 @@ bool TrainsIsPersonalTrip(int moverIdx);   // movers boarded here since stations
 extern bool useTrainTimeChoice;
 extern bool useTrainTransfers;    // trip choice may plan a change of line (two rides)
 extern int trainTransferPlans;     // trips chosen that plan a change of line (stats)
+#define TRAIN_PLAN_CHANGES_MAX 7
+extern int trainPlanChanges[TRAIN_PLAN_CHANGES_MAX + 1];   // trips chosen by number of changes (last: or more)
+// Lines (TrackLineAt ids) of the mover's planned train trip, in order; 0 if none
+int TrainPlannedRoute(int moverIdx, int* lines, int maxLines);
 extern int trainChoicesConsidered;
 extern int trainDecisions, trainDecisionsFaster;
 extern double trainDecisionTrainSec, trainDecisionWalkSec;   // gave up waiting: walk, no train for a while

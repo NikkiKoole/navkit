@@ -7,8 +7,10 @@
 #include "../core/event_log.h"
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
 
 Train trains[MAX_TRAINS];
+static int transitGen = 0;   // bumped when stations/lines change: the transit graph rebuilds on next use
 int trainCount = 0;
 
 TrainStation stations[MAX_STATIONS];
@@ -150,6 +152,8 @@ void ClearTrains(void) {
     trainDecisions = trainDecisionsFaster = 0;
     trainChoicesConsidered = 0;
     trainTransferPlans = 0;
+    memset(trainPlanChanges, 0, sizeof(trainPlanChanges));
+    transitGen++;
     trainDecisionTrainSec = trainDecisionWalkSec = 0.0;
     moverGaveUpInit = false;   // forget who gave up (cooldowns)
     for (int i = 0; i < MAX_TRAINS; i++) {
@@ -347,6 +351,7 @@ void RebuildStations(void) {
     }
 
     RebuildTrackLines();
+    transitGen++;   // the transit graph rebuilds on its next use
 
     // Eject waiters from stations that no longer exist
     for (int oi = 0; oi < oldCount; oi++) {
@@ -606,90 +611,288 @@ float WalkTripSeconds(int moverIdx) {
     return cells * MoverWalkSecondsPerCell(moverIdx);
 }
 
-// Seconds for the second ride of a transfer trip, from boarding at `entry` on: the
-// station's measured wait, doors, the ride (by any train of that line, in the
-// direction it runs), doors, walking from `exit` to `goal`. 1e9 = no train goes.
-static float SecondLegSeconds(int moverIdx, int entry, int exit, Point goal) {
+// ============================================================================
+// Transit graph: trip choice over any number of changes of line
+// ============================================================================
+//
+// Built from the track, the stations and the trains (lazily, when one of them
+// changed). Per line, one train's route is followed until it repeats: that cycle
+// (a loop once round, a shuttle out and back) gives the line's stops in the order
+// trains reach them. A node is "a train of line L at stop k of its cycle" (a
+// shuttle's middle stop is two nodes, one per direction). Edges: ride on to the
+// next stop of the cycle, or get off and walk at most TRAIN_TRANSFER_WALK cells to
+// a node of another line. A trip is a Dijkstra search from the stops near the mover
+// (walk + the real wait for the next train there) to the stops near its goal (walk
+// out). Later waits are estimates: the station's measured wait, else half the gap
+// between the line's trains. Trains follow track deterministically except at
+// junctions (10% random turns), so a line with junctions is only roughly right.
+
+#define TRANSIT_MAX_NODES 256
+#define TRANSIT_MAX_LINES 32
+#define TRANSIT_MAX_CHANGES 4096
+
+typedef struct { short x, y, px, py; } TransitCell;
+typedef struct {
+    int line;           // index into transitLines
+    int station;
+    int cycleIdx;       // where in the line's cycle the train is at this stop
+    int cellsToNext;    // to the next stop of the cycle
+    int next;           // that stop's node
+    int changeStart, changeCount;   // into transitChanges
+} TransitNode;
+typedef struct { int to; float walkCells; } TransitChange;
+typedef struct {
+    int trackLine, z;
+    TransitCell* cycle;
+    int cycleLen;
+    int trainCount;
+} TransitLine;
+
+static TransitNode transitNodes[TRANSIT_MAX_NODES];
+static int transitNodeCount = 0;
+static TransitLine transitLines[TRANSIT_MAX_LINES];
+static int transitLineCount = 0;
+static TransitChange transitChanges[TRANSIT_MAX_CHANGES];
+static int transitChangeCount = 0;
+static int transitBuiltGen = -1;
+static unsigned transitBuiltTrains = 0;
+
+bool useTrainTransfers = true;
+int trainTransferPlans = 0;
+int trainPlanChanges[TRAIN_PLAN_CHANGES_MAX + 1];
+
+static unsigned TransitTrainSignature(void) {
+    unsigned sig = 2166136261u;
+    for (int i = 0; i < MAX_TRAINS; i++) sig = (sig ^ (trains[i].active ? (unsigned)(i + 1) : 0u)) * 16777619u;
+    return sig;
+}
+
+static void TransitFree(void) {
+    for (int l = 0; l < transitLineCount; l++) free(transitLines[l].cycle);
+    transitLineCount = transitNodeCount = transitChangeCount = 0;
+}
+
+static void TransitBuild(void) {
+    TransitFree();
+    int limit = 4 * (gridWidth + gridHeight) * 8;
+    for (int L = 0; L < TrackLineCount() && transitLineCount < TRANSIT_MAX_LINES; L++) {
+        int t0 = -1, count = 0;
+        for (int t = 0; t < MAX_TRAINS; t++)
+            if (trains[t].active && TrainLine(t) == L) { if (t0 < 0) t0 = t; count++; }
+        if (t0 < 0) continue;   // no train: nobody can ride this line
+        const Train* t = &trains[t0];
+        int x = t->cellX, y = t->cellY, px = t->prevCellX, py = t->prevCellY, z = t->z;
+        int nx, ny;
+        if (px == x && py == y) {   // just spawned: take one step to get a direction
+            if (!FollowTrack(z, x, y, px, py, &nx, &ny)) continue;
+            px = x; py = y; x = nx; y = ny;
+        }
+        TransitCell* cyc = malloc(sizeof(TransitCell) * (size_t)limit);
+        if (!cyc) continue;
+        int len = 0, sx = x, sy = y, spx = px, spy = py;
+        bool closed = false;
+        while (len < limit) {
+            cyc[len++] = (TransitCell){ (short)x, (short)y, (short)px, (short)py };
+            if (!FollowTrack(z, x, y, px, py, &nx, &ny)) break;
+            px = x; py = y; x = nx; y = ny;
+            if (x == sx && y == sy && px == spx && py == spy) { closed = true; break; }
+        }
+        if (!closed) { free(cyc); continue; }
+        TransitLine* tl = &transitLines[transitLineCount];
+        *tl = (TransitLine){ L, z, cyc, len, count };
+        int first = transitNodeCount;
+        for (int i = 0; i < len && transitNodeCount < TRANSIT_MAX_NODES; i++) {
+            int st = GetStationAt(cyc[i].x, cyc[i].y, z);
+            int prevSt = GetStationAt(cyc[(i + len - 1) % len].x, cyc[(i + len - 1) % len].y, z);
+            if (st < 0 || st == prevSt) continue;
+            transitNodes[transitNodeCount++] = (TransitNode){ transitLineCount, st, i, 0, -1, 0, 0 };
+        }
+        int n = transitNodeCount - first;
+        if (n == 0) { free(cyc); transitNodeCount = first; continue; }
+        for (int k = 0; k < n; k++) {
+            TransitNode* nd = &transitNodes[first + k];
+            const TransitNode* nx2 = &transitNodes[first + (k + 1) % n];
+            nd->next = first + (k + 1) % n;
+            nd->cellsToNext = (nx2->cycleIdx - nd->cycleIdx + len) % len;
+            if (nd->cellsToNext == 0) nd->cellsToNext = len;
+        }
+        transitLineCount++;
+    }
+    // Changes: to another line's stop a short walk away
+    for (int a = 0; a < transitNodeCount; a++) {
+        TransitNode* na = &transitNodes[a];
+        na->changeStart = transitChangeCount;
+        const TrainStation* sa = &stations[na->station];
+        for (int b = 0; b < transitNodeCount && transitChangeCount < TRANSIT_MAX_CHANGES; b++) {
+            const TransitNode* nb = &transitNodes[b];
+            if (nb->line == na->line) continue;
+            const TrainStation* sb = &stations[nb->station];
+            if (sb->z != sa->z) continue;
+            int bx, by, ax, ay;
+            GetNearestPlatformCell(nb->station, sa->platX, sa->platY, &bx, &by);
+            GetNearestPlatformCell(na->station, bx, by, &ax, &ay);
+            float walk = CellsBetween(ax, ay, bx, by);
+            if (walk > TRAIN_TRANSFER_WALK) continue;
+            transitChanges[transitChangeCount++] = (TransitChange){ b, walk };
+        }
+        na->changeCount = transitChangeCount - na->changeStart;
+    }
+    transitBuiltGen = transitGen;
+    transitBuiltTrains = TransitTrainSignature();
+}
+
+static void TransitEnsure(void) {
+    if (transitBuiltGen != transitGen || transitBuiltTrains != TransitTrainSignature()) TransitBuild();
+}
+
+// Where in its line's cycle a train is (-1: not on the cycle)
+static int TransitTrainCycleIdx(const TransitLine* tl, const Train* t) {
+    for (int i = 0; i < tl->cycleLen; i++) {
+        const TransitCell* c = &tl->cycle[i];
+        if (c->x == t->cellX && c->y == t->cellY && c->px == t->prevCellX && c->py == t->prevCellY) return i;
+    }
+    return -1;
+}
+
+// Expected wait for a train at a stop further on in the trip
+static float TransitLaterWait(const TransitNode* n, float cellsPerSec) {
+    if (stationWaitSamples[n->station] >= 3) return stationAvgWait[n->station];
+    const TransitLine* tl = &transitLines[n->line];
+    return 0.5f * (tl->cycleLen / cellsPerSec) / (float)(tl->trainCount > 0 ? tl->trainCount : 1);
+}
+
+// Seconds from now until a train of the node's line reaches its stop, at or after
+// `notBefore` seconds, skipping `skip` trains (a long line at the platform fills them)
+static float TransitFirstArrival(const TransitNode* n, float notBefore, int skip, float cellsPerSec,
+                                 const int* trainIdx) {
+    const TransitLine* tl = &transitLines[n->line];
+    float lap = tl->cycleLen / cellsPerSec;
+    float arrivals[MAX_TRAINS * 4];
+    int count = 0;
+    for (int t = 0; t < MAX_TRAINS; t++) {
+        if (trainIdx[t] < 0 || TrainLine(t) != tl->trackLine) continue;
+        float delay = (trains[t].cartState == CART_DOORS_OPEN) ? trains[t].stateTimer : 0.0f;
+        float at = delay + ((n->cycleIdx - trainIdx[t] + tl->cycleLen) % tl->cycleLen) / cellsPerSec;
+        if (at < notBefore) at += ceilf((notBefore - at) / lap) * lap;
+        for (int k = 0; k < 4 && count < MAX_TRAINS * 4; k++) arrivals[count++] = at + k * lap;
+    }
+    if (count == 0) return 1e9f;
+    if (skip > count - 1) skip = count - 1;
+    for (int i = 0; i <= skip; i++)   // partial selection sort: the (skip+1)-th earliest
+        for (int j = i + 1; j < count; j++)
+            if (arrivals[j] < arrivals[i]) { float tmp = arrivals[i]; arrivals[i] = arrivals[j]; arrivals[j] = tmp; }
+    return arrivals[skip];
+}
+
+// Runtime only: the lines of each mover's planned trip (for the tooltip)
+typedef struct { signed char lines[TRAIN_PLAN_CHANGES_MAX + 1]; unsigned char count; } PlannedRoute;
+static PlannedRoute plannedRoute[MAX_MOVERS];
+
+int TrainPlannedRoute(int moverIdx, int* lines, int maxLines) {
+    if (moverIdx < 0 || moverIdx >= MAX_MOVERS || movers[moverIdx].transportState == TRANSPORT_NONE) return 0;
+    int n = plannedRoute[moverIdx].count < maxLines ? plannedRoute[moverIdx].count : maxLines;
+    for (int i = 0; i < n; i++) lines[i] = plannedRoute[moverIdx].lines[i];
+    return n;
+}
+
+// Best trip by train for the mover to its goal. Returns seconds (1e9 = none) and
+// the stop to board at and the stop to get off at for the first ride (the mover
+// plans again there), the number of changes and the lines in order.
+static float TransitPlan(int moverIdx, int* outEntry, int* outExit, int* outChanges,
+                         signed char* outLines, int* outLineCount) {
+    *outEntry = *outExit = -1;
+    *outChanges = 0;
+    *outLineCount = 0;
+    TransitEnsure();
+    if (transitNodeCount == 0) return 1e9f;
+    const Mover* m = &movers[moverIdx];
+    int mx = (int)(m->x / CELL_SIZE), my = (int)(m->y / CELL_SIZE), mz = (int)m->z;
     float pace = MoverWalkSecondsPerCell(moverIdx);
     float cellsPerSec = trainSpeed * (60.0f / dayLength);
     if (cellsPerSec <= 0.0f) return 1e9f;
-    int bestRide = -1, bestStops = 0;
-    for (int ti = 0; ti < MAX_TRAINS; ti++) {
-        const Train* t = &trains[ti];
-        if (!t->active || t->z != stations[entry].z) continue;
-        int toEntry, ride, stops;
-        if (!TrainRouteCells(t, entry, exit, 0, &toEntry, &ride, &stops)) continue;
-        if (bestRide < 0 || ride < bestRide) { bestRide = ride; bestStops = stops; }
+
+    int trainIdx[MAX_TRAINS];
+    for (int t = 0; t < MAX_TRAINS; t++) {
+        trainIdx[t] = -1;
+        if (!trains[t].active) continue;
+        int L = TrainLine(t);
+        for (int l = 0; l < transitLineCount; l++)
+            if (transitLines[l].trackLine == L) { trainIdx[t] = TransitTrainCycleIdx(&transitLines[l], &trains[t]); break; }
     }
-    if (bestRide < 0) return 1e9f;
-    float wait = stationWaitSamples[entry] > 0 ? stationAvgWait[entry] : TRAIN_WAIT_FALLBACK;
-    int ox, oy;
-    GetNearestPlatformCell(exit, goal.x, goal.y, &ox, &oy);
-    return wait + TRAIN_DOOR_TIME + bestRide / cellsPerSec + bestStops * 0.5f * TRAIN_DOOR_TIME
-         + TRAIN_DOOR_TIME + CellsBetween(ox, oy, goal.x, goal.y) * pace;
-}
 
-// Best trip among the stations within TRANSPORT_STATION_RADIUS of the mover and of
-// its goal, by trip time: one line (entry -> exit), or with useTrainTransfers two
-// lines (entry -> x, walk at most TRAIN_TRANSFER_WALK cells to y on another line,
-// y -> exit). For a transfer *outExit is x: the mover gets off there and plans
-// again, and that plan picks the second ride. Returns its seconds (1e9 = none).
-bool useTrainTransfers = true;
-int trainTransferPlans = 0;
-static bool lastBestIsTransfer = false;
+    static float dist[TRANSIT_MAX_NODES];
+    static int pred[TRANSIT_MAX_NODES];        // previous node, -1 = boarded here first
+    static bool predChange[TRANSIT_MAX_NODES]; // reached by changing line
+    static bool done[TRANSIT_MAX_NODES];
+    for (int i = 0; i < transitNodeCount; i++) { dist[i] = 1e9f; pred[i] = -1; predChange[i] = false; done[i] = false; }
 
-static float BestTrainTrip(int moverIdx, int* outEntry, int* outExit) {
-    const Mover* m = &movers[moverIdx];
-    int mx = (int)(m->x / CELL_SIZE), my = (int)(m->y / CELL_SIZE), mz = (int)m->z;
+    for (int i = 0; i < transitNodeCount; i++) {   // boarding near the mover
+        const TransitNode* n = &transitNodes[i];
+        const TrainStation* st = &stations[n->station];
+        if (st->z != mz) continue;
+        int px, py;
+        GetNearestPlatformCell(n->station, mx, my, &px, &py);
+        if (abs(px - mx) + abs(py - my) > TRANSPORT_STATION_RADIUS) continue;
+        float walkIn = CellsBetween(mx, my, px, py) * pace;
+        float arrive = TransitFirstArrival(n, walkIn, st->waitingCount / MAX_CART_CAPACITY, cellsPerSec, trainIdx);
+        if (arrive >= 1e8f) continue;
+        dist[i] = arrive + TRAIN_DOOR_TIME;
+    }
+
     float best = 1e9f;
-    *outEntry = *outExit = -1;
-    lastBestIsTransfer = false;
-    int nearMover[MAX_STATIONS], nearGoal[MAX_STATIONS], nm = 0, ng = 0;
-    for (int a = 0; a < stationCount; a++) {
-        if (!stations[a].active || stations[a].z != mz) continue;
-        int ax, ay, bx, by;
-        GetNearestPlatformCell(a, mx, my, &ax, &ay);
-        if (abs(ax - mx) + abs(ay - my) <= TRANSPORT_STATION_RADIUS) nearMover[nm++] = a;
-        GetNearestPlatformCell(a, m->goal.x, m->goal.y, &bx, &by);
-        if (abs(bx - m->goal.x) + abs(by - m->goal.y) <= TRANSPORT_STATION_RADIUS) nearGoal[ng++] = a;
-    }
-    for (int i = 0; i < nm; i++)
-        for (int j = 0; j < ng; j++) {
-            int a = nearMover[i], b = nearGoal[j];
-            if (a == b) continue;
-            float sec = TrainTripSeconds(moverIdx, a, b, m->goal);
-            if (sec < best) { best = sec; *outEntry = a; *outExit = b; }
-        }
-    if (!useTrainTransfers || TrackLineCount() < 2) return best;
-    for (int j = 0; j < ng; j++) {
-        int b = nearGoal[j], lineB = StationLine(b);
-        for (int y = 0; y < stationCount; y++) {
-            if (y == b || !stations[y].active || stations[y].z != mz || StationLine(y) != lineB) continue;
-            float leg2 = -1.0f;   // computed once a matching x is found
-            for (int x = 0; x < stationCount; x++) {
-                if (!stations[x].active || stations[x].z != mz) continue;
-                int lineX = StationLine(x);
-                if (lineX < 0 || lineX == lineB) continue;
-                int yx, yy;   // y's platform cell nearest to x's platform
-                GetNearestPlatformCell(y, stations[x].platX, stations[x].platY, &yx, &yy);
-                int xx, xy;
-                GetNearestPlatformCell(x, yx, yy, &xx, &xy);
-                if (CellsBetween(xx, xy, yx, yy) > TRAIN_TRANSFER_WALK) continue;
-                for (int i = 0; i < nm; i++) {
-                    int a = nearMover[i];
-                    if (a == x || StationLine(a) != lineX) continue;
-                    if (leg2 < 0.0f) leg2 = SecondLegSeconds(moverIdx, y, b, m->goal);
-                    if (leg2 >= best) break;
-                    float leg1 = TrainTripSeconds(moverIdx, a, x, (Point){yx, yy, mz});
-                    if (leg1 + leg2 < best) {
-                        best = leg1 + leg2;
-                        *outEntry = a; *outExit = x;
-                        lastBestIsTransfer = true;
-                    }
-                }
+    int bestEnd = -1;
+    for (;;) {
+        int u = -1;
+        for (int i = 0; i < transitNodeCount; i++)
+            if (!done[i] && dist[i] < 1e8f && (u < 0 || dist[i] < dist[u])) u = i;
+        if (u < 0 || dist[u] >= best) break;
+        done[u] = true;
+        const TransitNode* n = &transitNodes[u];
+        // get off here for the goal (after riding at least one stop)
+        if (pred[u] >= 0 && !predChange[u] && stations[n->station].z == m->goal.z) {
+            int ox, oy;
+            GetNearestPlatformCell(n->station, m->goal.x, m->goal.y, &ox, &oy);
+            if (abs(ox - m->goal.x) + abs(oy - m->goal.y) <= TRANSPORT_STATION_RADIUS) {
+                float total = dist[u] + 0.5f * TRAIN_DOOR_TIME + CellsBetween(ox, oy, m->goal.x, m->goal.y) * pace;
+                if (total < best) { best = total; bestEnd = u; }
             }
         }
+        // ride on (a stop on the way costs half a door stop: it may or may not stop)
+        int v = n->next;
+        float ride = dist[u] + n->cellsToNext / cellsPerSec + 0.5f * TRAIN_DOOR_TIME;
+        if (!done[v] && ride < dist[v]) { dist[v] = ride; pred[v] = u; predChange[v] = false; }
+        // change line (only where the mover got here by train)
+        if (!useTrainTransfers || pred[u] < 0 || predChange[u]) continue;
+        for (int c = 0; c < n->changeCount; c++) {
+            const TransitChange* ch = &transitChanges[n->changeStart + c];
+            int w = ch->to;
+            if (done[w]) continue;
+            float cost = dist[u] + 0.5f * TRAIN_DOOR_TIME + ch->walkCells * pace
+                       + TransitLaterWait(&transitNodes[w], cellsPerSec) + TRAIN_DOOR_TIME;
+            if (cost < dist[w]) { dist[w] = cost; pred[w] = u; predChange[w] = true; }
+        }
     }
+    if (bestEnd < 0) return 1e9f;
+
+    // Walk back: the boarding node, the first change, the lines in order
+    int path[TRANSIT_MAX_NODES], len = 0;
+    for (int u = bestEnd; u >= 0 && len < TRANSIT_MAX_NODES; u = pred[u]) path[len++] = u;
+    int board = path[len - 1];
+    int firstOff = bestEnd, changes = 0, lineCount = 0;
+    outLines[lineCount++] = (signed char)transitLines[transitNodes[board].line].trackLine;
+    for (int k = len - 2; k >= 0; k--) {
+        int u = path[k];
+        if (!predChange[u]) continue;
+        if (changes == 0) firstOff = path[k + 1];
+        changes++;
+        if (lineCount <= TRAIN_PLAN_CHANGES_MAX)
+            outLines[lineCount++] = (signed char)transitLines[transitNodes[u].line].trackLine;
+    }
+    *outEntry = transitNodes[board].station;
+    *outExit = transitNodes[firstOff].station;
+    *outChanges = changes;
+    *outLineCount = lineCount;
+    if (*outEntry == *outExit) return 1e9f;
     return best;
 }
 
@@ -707,7 +910,7 @@ int StationBoardings(int stationIdx) {
 }
 
 // Stats: a trip the decision sent by train (headless output)
-static float chosenTripSec = -1.0f;   // set by ShouldUseTrain for a transfer trip
+static float chosenTripSec = -1.0f;   // set by ShouldUseTrain (time-based choice)
 
 void TrainNoteDecision(int moverIdx, int entry, int exit) {
     float train = chosenTripSec >= 0.0f ? chosenTripSec
@@ -762,14 +965,20 @@ bool ShouldUseTrain(int moverIdx) {
     // Time-based: take the train when the best (entry, exit) pair, in the
     // direction the trains really run, beats walking the current path by 10%
     if (useTrainTimeChoice) {
-        int a, b;
-        float train = BestTrainTrip(moverIdx, &a, &b);
-        if (a < 0) return false;
+        int a, b, changes, lineCount;
+        signed char lines[TRAIN_PLAN_CHANGES_MAX + 1];
+        float train = TransitPlan(moverIdx, &a, &b, &changes, lines, &lineCount);
+        if (a < 0 || train >= 1e8f) return false;
         trainChoicesConsidered++;
         if (train >= 0.9f * WalkTripSeconds(moverIdx)) return false;
         chosenEntry = a;
         chosenExit = b;
-        if (lastBestIsTransfer) { chosenTripSec = train; trainTransferPlans++; }
+        chosenTripSec = train;
+        if (changes > 0) trainTransferPlans++;
+        trainPlanChanges[changes < TRAIN_PLAN_CHANGES_MAX ? changes : TRAIN_PLAN_CHANGES_MAX]++;
+        PlannedRoute* r = &plannedRoute[moverIdx];
+        r->count = (unsigned char)lineCount;
+        for (int i = 0; i < lineCount; i++) r->lines[i] = lines[i];
         return true;
     }
 

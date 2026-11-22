@@ -49,6 +49,7 @@ done <<'EOF'
 87  | 0 | --set trainSpeed 9 --scenario train-double
 116 | 0 | --scenario metro
 67  | 0 | --scenario transfer
+57  | 0 | --scenario transit-chain
 21  | 0 | --scenario worksplit
 36  | 0 | --set jobDistanceWeight 0.2 --scenario worksplit
 171 | 0 | --set jobDistanceWeight 0.2 --set scenarioMovers 40 --scenario worksplit
