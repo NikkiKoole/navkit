@@ -244,8 +244,9 @@ hooks for headless runs (ladders uses them for queue length).
 ## Checking rendering changes
 
 `--screenshot file.png` (GUI) keeps the sim paused, centres the camera for the current zoom,
-saves the world (no UI) of the third frame, prints the world drawing time averaged over the next
-60 frames and quits. Use a fixed `--seed` (the world scenario is random otherwise):
+saves the world (no UI) of the third frame, prints the world drawing time and the whole frame
+time (no fps cap) averaged over the next 60 frames, plus the time per render profiler section,
+and quits. Use a fixed `--seed` (the world scenario is random otherwise):
 
 ```bash
 ./build/bin/path --scenario world --seed 7 --set scenarioSize 2048 --exec "set viewZ 8" \

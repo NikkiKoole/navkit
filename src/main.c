@@ -1496,6 +1496,7 @@ int main(int argc, char** argv) {
         }
     }
     if (screenshotPath) {
+        SetTargetFPS(0);   // time real frames, not the 60 fps cap
         paused = true;
         UpdateLighting();   // normally computed by the first sim tick, which never runs paused
         offset.x = (GetScreenWidth() - gridWidth * CELL_SIZE * zoom) / 2.0f;
@@ -1808,7 +1809,7 @@ int main(int argc, char** argv) {
         if (screenshotPath) {
             // Frame 3 is saved; frames 4-63 time the world drawing (CPU side, flushed)
             rlDrawRenderBatchActive();   // flush pending sprites before reading/timing
-            static double worldMsSum = 0.0;
+            static double worldMsSum = 0.0, screenshotFrameMs = 0.0;
             static double screenshotSecMs[PROFILER_MAX_SECTIONS];
             screenshotFrame++;
             if (screenshotFrame == 3) {
@@ -1817,12 +1818,15 @@ int main(int argc, char** argv) {
                 UnloadImage(shot);
             } else if (screenshotFrame > 3) {
                 worldMsSum += (GetTime() - worldDrawStart) * 1000.0;
+                screenshotFrameMs += GetFrameTime() * 1000.0;
 #if PROFILER_ENABLED
                 for (int s = 0; s < profilerSectionCount && s < PROFILER_MAX_SECTIONS; s++)
                     screenshotSecMs[s] += profilerSections[s].lastTimeMs;   // Render/EndDraw: the previous frame's
 #endif
                 if (screenshotFrame == 3 + screenshotTimed) {
                     printf("screenshot: world drawing %.2f ms per frame (avg of %d)\n", worldMsSum / screenshotTimed, screenshotTimed);
+                    printf("whole frame %.2f ms (no fps cap, sim paused)\n", screenshotFrameMs / screenshotTimed);
+                    printf("zoom %.3f viewZ %d screen %dx%d\n", zoom, currentViewZ, GetScreenWidth(), GetScreenHeight());
 #if PROFILER_ENABLED
                     // Per-pass split of the render sections (sum of their last times per frame)
                     for (int s = 0; s < profilerSectionCount; s++) {

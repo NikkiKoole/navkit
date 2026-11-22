@@ -321,7 +321,11 @@ vertex, ~144 per quad: ~70 MB uploaded per frame at zoom 0.15).
   colour, heat shimmer and glow (world into a render texture + a final full-screen pass), light
   as a per-cell texture multiplied in the shader (also removes GetLightColor from the CPU).
   Keep effects on the 8x8 sprite pixel grid so they look like pixel art.
-- **Chunk cache** (designed, parked 2026-11-21: user wants to wait; zoomed out runs ~40 fps on a
+- **Chunk cache** (built and measured 2026-11-22, parked on branch `terrain-cache-experiment`:
+  zoom 0.1 24.6 -> 7.3 ms a frame, whole 1024 map 76 -> 12.3 ms; notes and what's left to
+  finish in that branch's `docs/todo/architecture/terrain-cache-experiment.md`. Parked for
+  the complexity: a cached view can be ~0.5 s behind the world. Original design note:)
+  (designed, parked 2026-11-21: user wants to wait; zoomed out runs ~40 fps on a
   2048 map, zoomed in is fast). Draw a 16x16-cell chunk's terrain once at 8 px per cell
   (128x128), reuse it every frame: zoom 0.15 terrain ~7.4 -> ~1 ms. Design:
   - Only when zoomed out (cell <= ~8 px on screen, zoom <= ~0.25). Zoomed in stays direct
