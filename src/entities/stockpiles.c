@@ -1439,3 +1439,40 @@ void SyncStockpileContainerSlotCount(int containerIdx) {
         }
     }
 }
+
+// ============================================================================
+// Transfer points: a stockpile hands loads to a carrier (belt, train) and takes
+// them back (docs/todo/pathfinding/transport-layer.md "Item Transport")
+// ============================================================================
+
+int StockpileTakeStack(int sp, int preferSlot, bool (*want)(int itemIdx, void* user), void* user) {
+    if (sp < 0 || sp >= MAX_STOCKPILES || !stockpiles[sp].active) return -1;
+    Stockpile* s = &stockpiles[sp];
+    int slots = s->width * s->height;
+    for (int k = -1; k < slots; k++) {
+        int idx = k < 0 ? preferSlot : k;
+        if (idx < 0 || idx >= slots || !s->cells[idx] || s->slotIsContainer[idx]) continue;
+        int si = s->slots[idx];
+        if (si < 0 || !items[si].active || items[si].state != ITEM_IN_STOCKPILE || items[si].reservedBy != -1) continue;
+        if (want && !want(si, user)) continue;
+        return TakeFromStockpileSlot(si, items[si].stackCount);
+    }
+    return -1;
+}
+
+bool StockpilePutLoad(int sp, int itemIdx) {
+    if (sp < 0 || sp >= MAX_STOCKPILES || !stockpiles[sp].active) return false;
+    Item* it = &items[itemIdx];
+    int sx, sy;
+    if (!FindFreeStockpileSlot(sp, it->type, it->material, &sx, &sy)) return false;
+    int z = stockpiles[sp].z;
+    float px = (sx + 0.5f) * CELL_SIZE, py = (sy + 0.5f) * CELL_SIZE;
+    it->state = ITEM_ON_GROUND;
+    it->x = px; it->y = py; it->z = (float)z;
+    if (it->contentCount > 0) MoveContainer(itemIdx, px, py, (float)z);
+    ItemType type = it->type;           // read before placing: it may merge into the
+    uint8_t mat = it->material;         // slot's stack and be deleted
+    PlaceItemInStockpile(sp, sx, sy, itemIdx);
+    InvalidateStockpileSlotCache(type, mat);
+    return true;
+}

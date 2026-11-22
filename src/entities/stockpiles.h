@@ -142,6 +142,16 @@ void SyncStockpileSlotCountForItem(int itemIdx);
 // taking all). Returns -1 on failure.
 int TakeFromStockpileSlot(int itemIdx, int count);
 
+// Transfer points (belts, train cargo): a stockpile hands a load to a carrier and takes
+// loads back. TakeStack: a whole stack from any slot (preferSlot first; installed
+// containers stay), unreserved and accepted by want (NULL = any); returns the item
+// index (no longer in the stockpile; the caller sets its new state) or -1.
+// PutLoad: the load into any slot that accepts it, at that slot (containers move with
+// their contents); false if none has room (the carrier waits). The item may merge into
+// the slot's stack and be deleted: don't use it afterwards.
+int  StockpileTakeStack(int sp, int preferSlot, bool (*want)(int itemIdx, void* user), void* user);
+bool StockpilePutLoad(int sp, int itemIdx);
+
 // Gather zones
 void ClearGatherZones(void);
 int CreateGatherZone(int x, int y, int z, int width, int height);

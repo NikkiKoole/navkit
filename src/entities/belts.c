@@ -175,19 +175,8 @@ static bool BeltTakeInput(int b) {
         return false;
     // The stockpile is the pick-up point: any slot of it, the one right behind first
     Stockpile* s = &stockpiles[sp];
-    int slots = s->width * s->height;
     int behind = (by - s->y) * s->width + (bx - s->x);
-    int slotItem = -1;
-    for (int k = -1; k < slots && slotItem < 0; k++) {
-        int idx = k < 0 ? behind : k;
-        if (idx < 0 || idx >= slots || !s->cells[idx]) continue;
-        if (s->slotIsContainer[idx]) continue;   // installed crates stay; the spike only takes stacks
-        int si = s->slots[idx];
-        if (si >= 0 && items[si].active && items[si].state == ITEM_IN_STOCKPILE && items[si].reservedBy == -1)
-            slotItem = si;
-    }
-    if (slotItem < 0) return false;
-    int taken = TakeFromStockpileSlot(slotItem, items[slotItem].stackCount);
+    int taken = StockpileTakeStack(sp, behind, NULL, NULL);
     if (taken < 0) return false;
     PutOnBelt(b, taken, 0.0f);
     beltItemsIn++;
@@ -209,17 +198,8 @@ static bool BeltDropOut(int b) {
     // it (a full or unwilling stockpile blocks the line)
     int sp;
     if (IsPositionInStockpile(cx, cy, z, &sp) && sp >= 0) {
-        int sx, sy;
-        if (!FindFreeStockpileSlot(sp, items[it].type, items[it].material, &sx, &sy)) return false;
-        float px = (sx + 0.5f) * CELL_SIZE, py = (sy + 0.5f) * CELL_SIZE;
-        items[it].state = ITEM_ON_GROUND;
-        items[it].x = px; items[it].y = py; items[it].z = (float)z;
-        if (items[it].contentCount > 0) MoveContainer(it, px, py, (float)z);
+        if (!StockpilePutLoad(sp, it)) return false;
         bl->item = -1;
-        ItemType type = items[it].type;
-        uint8_t mat = items[it].material;
-        PlaceItemInStockpile(sp, sx, sy, it);   // may merge into the slot's stack (and delete it)
-        InvalidateStockpileSlotCache(type, mat);
         beltItemsOut++;
         return true;
     }
