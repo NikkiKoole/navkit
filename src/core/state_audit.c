@@ -155,7 +155,16 @@ int AuditItemReservations(bool verbose) {
             isEquippedClothing = true;
         }
 
-        if (!foundJob && !isEquippedTool && !isEquippedClothing) {
+        // Or the item a mover is walking to / eating / drinking (needs.c reserves it)
+        bool isNeedTarget = false;
+        if (reservedBy >= 0 && reservedBy < MAX_MOVERS && movers[reservedBy].active &&
+            movers[reservedBy].needTarget == i) {
+            FreetimeState fs = movers[reservedBy].freetimeState;
+            isNeedTarget = (fs == FREETIME_SEEKING_FOOD || fs == FREETIME_EATING ||
+                            fs == FREETIME_SEEKING_DRINK || fs == FREETIME_DRINKING);
+        }
+
+        if (!foundJob && !isEquippedTool && !isEquippedClothing && !isNeedTarget) {
             violations++;
             if (verbose) {
                 AUDIT_LOG("Item %d (%s) at (%.0f,%.0f,z%.0f) reservedBy=%d but no active job references it and not equipped",

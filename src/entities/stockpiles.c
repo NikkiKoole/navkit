@@ -835,6 +835,17 @@ bool IsPositionInStockpile(float x, float y, int z, int* outStockpileIdx) {
 }
 
 // Place an item in a stockpile slot (called when mover drops item)
+// An item that was meant for a slot but did not (all) fit: a hauled stack that only partly
+// merged, a full slot, a slot that holds another type. Left CARRIED it would be lost (nobody
+// carries it, no hauler looks at it again), so it goes on the ground to be hauled again.
+static void DropUnplacedItem(int itemIdx, int z, const char* why) {
+    if (itemIdx < 0 || itemIdx >= MAX_ITEMS || !items[itemIdx].active) return;
+    if (items[itemIdx].state != ITEM_CARRIED) return;
+    EventLog("PlaceItem: item %d (%s x%d) did not fit (%s), dropped on the ground",
+             itemIdx, ItemName(items[itemIdx].type), items[itemIdx].stackCount, why);
+    SafeDropItem(itemIdx, items[itemIdx].x, items[itemIdx].y, z);
+}
+
 void PlaceItemInStockpile(int stockpileIdx, int slotX, int slotY, int itemIdx) {
     if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return;
     Stockpile* sp = &stockpiles[stockpileIdx];
@@ -849,6 +860,7 @@ void PlaceItemInStockpile(int stockpileIdx, int slotX, int slotY, int itemIdx) {
     // Validate cell is active before placing item
     if (!sp->cells[idx]) {
         EventLog("PlaceItem REJECTED: item %d -> stockpile %d slot (%d,%d) cell inactive", itemIdx, stockpileIdx, slotX, slotY);
+        DropUnplacedItem(itemIdx, sp->z, "cell inactive");
         return;
     }
     
@@ -883,10 +895,12 @@ void PlaceItemInStockpile(int stockpileIdx, int slotX, int slotY, int itemIdx) {
     
     // Validate slot types and materials match if slot already has items
     if (sp->slotTypes[idx] >= 0 && sp->slotTypes[idx] != items[itemIdx].type) {
+        DropUnplacedItem(itemIdx, sp->z, "slot holds another type");
         return;
     }
     MaterialType incomingMat = ResolveItemMaterial(items[itemIdx].type, items[itemIdx].material);
     if (sp->slotCounts[idx] > 0 && sp->slotMaterials[idx] != incomingMat) {
+        DropUnplacedItem(itemIdx, sp->z, "slot holds another material");
         return;
     }
     
@@ -895,6 +909,7 @@ void PlaceItemInStockpile(int stockpileIdx, int slotX, int slotY, int itemIdx) {
         && items[sp->slots[idx]].active) {
         MergeItemIntoStack(sp->slots[idx], itemIdx);
         sp->slotCounts[idx] = items[sp->slots[idx]].stackCount;
+        DropUnplacedItem(itemIdx, sp->z, "slot full");   // what didn't merge (incoming deleted if all did)
     } else {
         // First item in slot
         items[itemIdx].state = ITEM_IN_STOCKPILE;

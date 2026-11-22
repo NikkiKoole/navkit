@@ -250,6 +250,58 @@ describe(stockpile_stacking) {
         expect(items[b].active);  // b not deleted
     }
 
+    // Bug: a hauled (CARRIED) stack that did not fit stayed CARRIED with nobody carrying
+    // it: no hauler looks at it again and it is lost. What doesn't fit goes on the ground.
+    it("carried stack that only partly fits leaves the rest on the ground, not carried") {
+        Setup();
+        int sp = CreateStockpile(1, 1, 0, 1, 1);
+        int a = SpawnItem(1 * CELL_SIZE + 16, 1 * CELL_SIZE + 16, 0, ITEM_BREAD);
+        items[a].stackCount = 8;
+        PlaceItemInStockpile(sp, 1, 1, a);
+
+        int b = SpawnItem(1 * CELL_SIZE + 16, 1 * CELL_SIZE + 16, 0, ITEM_BREAD);
+        items[b].stackCount = 10;
+        items[b].state = ITEM_CARRIED;
+        PlaceItemInStockpile(sp, 1, 1, b);
+
+        expect(items[a].stackCount == ItemMaxStack(ITEM_BREAD));
+        expect(items[b].active);
+        expect(items[b].stackCount == 18 - ItemMaxStack(ITEM_BREAD));
+        expect(items[b].state == ITEM_ON_GROUND);
+        expect(items[b].reservedBy == -1);
+    }
+
+    it("carried stack placed on a full slot goes on the ground") {
+        Setup();
+        int sp = CreateStockpile(1, 1, 0, 1, 1);
+        int a = SpawnItem(1 * CELL_SIZE + 16, 1 * CELL_SIZE + 16, 0, ITEM_BREAD);
+        items[a].stackCount = ItemMaxStack(ITEM_BREAD);
+        PlaceItemInStockpile(sp, 1, 1, a);
+
+        int b = SpawnItem(1 * CELL_SIZE + 16, 1 * CELL_SIZE + 16, 0, ITEM_BREAD);
+        items[b].stackCount = 4;
+        items[b].state = ITEM_CARRIED;
+        PlaceItemInStockpile(sp, 1, 1, b);
+
+        expect(items[b].active);
+        expect(items[b].stackCount == 4);
+        expect(items[b].state == ITEM_ON_GROUND);
+    }
+
+    it("carried item of another type than the slot goes on the ground") {
+        Setup();
+        int sp = CreateStockpile(1, 1, 0, 1, 1);
+        int a = SpawnItem(1 * CELL_SIZE + 16, 1 * CELL_SIZE + 16, 0, ITEM_BREAD);
+        PlaceItemInStockpile(sp, 1, 1, a);
+
+        int b = SpawnItem(1 * CELL_SIZE + 16, 1 * CELL_SIZE + 16, 0, ITEM_RED);
+        items[b].state = ITEM_CARRIED;
+        PlaceItemInStockpile(sp, 1, 1, b);
+
+        expect(items[b].active);
+        expect(items[b].state == ITEM_ON_GROUND);
+    }
+
     it("should report overfull when slot exceeds max") {
         Setup();
         int sp = CreateStockpile(1, 1, 0, 1, 1);

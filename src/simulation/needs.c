@@ -673,9 +673,12 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                     AddMoodlet(m, MOODLET_HOT_MEAL);
                 }
 
-                // Consume one from stack, or delete if last
+                // Consume one from stack, or delete if last. The rest of the stack is
+                // free again: without the release every meal from a stack left it reserved
+                // and a busy colony starved next to a full stockpile.
                 if (items[ti].stackCount > 1) {
                     items[ti].stackCount--;
+                    ReleaseItemReservation(ti);
                 } else {
                     DeleteItem(ti);
                 }
@@ -900,6 +903,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 if (items[ti].temperature >= 40.0f) AddMoodlet(m, MOODLET_HOT_MEAL);
                 if (items[ti].stackCount > 1) {
                     items[ti].stackCount--;
+                    ReleaseItemReservation(ti);  // rest of the stack is free again (see eating)
                 } else {
                     DeleteItem(ti);
                 }

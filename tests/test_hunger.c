@@ -15,6 +15,7 @@
 #include "../src/core/time.h"
 #include "../src/world/designations.h"
 #include "test_helpers.h"
+#include "../src/core/state_audit.h"
 #include <string.h>
 #include <math.h>
 
@@ -716,6 +717,49 @@ describe(eating_consumption) {
         }
 
         expect(movers[mi].hunger <= 1.0f);
+    }
+
+    it("eating one from a stack frees the rest of the stack for others") {
+        // Bug: the eater kept its reservation on the remaining stack, so after a few meals
+        // every stack was reserved and the colony starved next to a full stockpile.
+        SetupClean();
+        int mi = SetupMover(5, 5);
+        int other = SetupMover(1, 1);
+
+        int spIdx = CreateStockpile(5, 5, 1, 2, 2);
+        int itemIdx = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f,
+                               5 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_BREAD);
+        items[itemIdx].stackCount = 3;
+        PlaceItemInStockpile(spIdx, 5, 5, itemIdx);
+        items[itemIdx].state = ITEM_IN_STOCKPILE;
+
+        movers[mi].hunger = 0.2f;
+        movers[mi].currentJobId = -1;
+        movers[mi].needSearchCooldown = 0.0f;
+        movers[other].hunger = 1.0f;
+        currentTick = 1;  // keep the once-a-second stray-reservation scan (mover 0, tick 0) from hiding a leak
+
+        ProcessFreetimeNeeds(); // → SEEKING
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_FOOD);
+        expect(AuditItemReservations(false) == 0);  // reserved for eating: not a leak
+        ProcessFreetimeNeeds(); // → EATING
+        expect(movers[mi].freetimeState == FREETIME_EATING);
+        for (int i = 0; i < 130; i++) ProcessFreetimeNeeds();
+        expect(AuditItemReservations(false) == 0);
+
+        expect(movers[mi].freetimeState == FREETIME_NONE);
+        expect(items[itemIdx].active);
+        expect(items[itemIdx].stackCount == 2);
+        expect(items[itemIdx].reservedBy == -1);
+
+        // The other mover gets hungry and finds the same stack
+        movers[other].hunger = 0.2f;
+        movers[other].currentJobId = -1;
+        movers[other].needSearchCooldown = 0.0f;
+        movers[mi].hunger = 1.0f;
+        ProcessFreetimeNeeds();
+        expect(movers[other].freetimeState == FREETIME_SEEKING_FOOD);
+        expect(movers[other].needTarget == itemIdx);
     }
 }
 

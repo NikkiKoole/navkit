@@ -316,6 +316,37 @@ describe(drink_from_stockpile) {
         // Water item should be consumed
         expect(!items[waterIdx].active);
     }
+
+    it("drinking one from a stack frees the rest of the stack") {
+        SetupClean();
+        int mi = SetupMover(5, 5);
+        movers[mi].thirst = 0.3f;
+
+        int waterIdx = SpawnItem(5 * CELL_SIZE + 4, 5 * CELL_SIZE + 4, 1.0f, ITEM_WATER);
+        expect(waterIdx >= 0);
+        items[waterIdx].state = ITEM_IN_STOCKPILE;
+        items[waterIdx].stackCount = 3;
+        currentTick = 1;  // keep the once-a-second stray-reservation scan (mover 0, tick 0) from hiding a leak
+
+        movers[mi].freetimeState = FREETIME_SEEKING_DRINK;
+        movers[mi].needTarget = waterIdx;
+        movers[mi].needProgress = 0.0f;
+        items[waterIdx].reservedBy = mi;
+
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_DRINKING);
+        float drinkTime = GameHoursToGameSeconds(balance.drinkingDurationGH);
+        int ticks = (int)(drinkTime / TICK_DT) + 10;
+        for (int i = 0; i < ticks; i++) {
+            gameDeltaTime = TICK_DT;
+            ProcessFreetimeNeeds();
+        }
+
+        expect(movers[mi].freetimeState == FREETIME_NONE);
+        expect(items[waterIdx].active);
+        expect(items[waterIdx].stackCount == 2);
+        expect(items[waterIdx].reservedBy == -1);
+    }
 }
 
 // =============================================================================
