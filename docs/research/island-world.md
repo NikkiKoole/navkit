@@ -79,9 +79,22 @@ items (rocks, sticks) for survival, a game entry in `games.c`.
   solid top of their spill level, so the walk level is one above water everywhere.
 - **Slope cap**: no land more than 0.9 level above a 4-neighbour before quantizing, so every step
   is one level and can take a ramp. Without it 15-40% of the land was cliff-locked.
-- **Reachable dry ground** (scenario `printStats`, seeds 1-6, 256): 91-97% (94-98% with
-  `rampDensity 1`); the rest is mostly offshore islets.
+- **Reachable dry ground** (scenario `printStats`, seeds 1-8, 256): 97-99%; the rest is mostly
+  offshore islets and small pockets. Two causes of cut-off terraces, both fixed: the shared
+  `ShouldPlaceRampAt` clusters ramps in noise blobs (a terrace edge inside one had no ramp at
+  all), so the island scatters `rampDensity` per cell; and trees on ramp ends. The cut-off ground
+  followed the forest, which grows on the windward side: with most seeds' wind from the north
+  it looked like "the top of the island is cut off". Ramps are now only placed where the top end
+  steps onto ground at the ramp's level, and no tree grows on or next to a ramp end.
 - **Water**: 1.7 ms/tick at 256 (like the `world` scenario). Dry ground shrinks ~7% in the first
   3000 ticks as rivers spread over their valley floors, then ~1% more by 12000.
 - The hills "fix tiny pockets" pass is skipped: it filled tree tops and islets with granite.
-- Rivers on smooth coastal slopes still run in fairly straight 8-direction lines.
+- **Drainage is randomised steepest descent** ("Rho8": a strictly lower neighbour picked at
+  random, weighted by drop per distance). Plain D8 (the neighbour the flood came from) made
+  streams on smooth slopes run in ruler-straight 45-degree lines.
+- **Map size**: distances and widths (river and valley width, beach/marsh/forest bands, noise
+  patch sizes, rain blur) are tuned on 256 and scale with the map (`cs` = map / 256), so 1024
+  is the same island, sharper. 1024 (seed 3): 2.7 s world gen + graph, 311 MB peak, 4.1 ms per
+  tick with 100 movers (water 2.4 ms), 98.5% of dry ground reachable.
+- Still open: a few big rivers cross the coastal plain in straight lines where the slope cap
+  turned steep ground into an even ramp; height stays 16 levels at any width (1024 is gentle).

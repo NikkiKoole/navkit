@@ -70,11 +70,13 @@ static const int isDX[8] = {1, -1, 0, 0, 1, 1, -1, -1};
 static const int isDY[8] = {0, 0, 1, -1, 1, -1, 1, -1};
 
 // Priority flood from every sea cell (h < 0), lowest first. filled = h raised to the spill
-// level (+ a hair per step so flats still drain), down = the neighbour a cell was reached
-// from (-1 for sea), order = land cells in visiting order (upstream comes later).
-// Returns the number of land cells in order.
+// level (+ a hair per step so flats still drain), order = land cells lowest first (popping
+// order, so anything a cell can drain into comes before it). Then each land cell's down is a
+// strictly lower neighbour picked at random, weighted by its drop per distance (randomised
+// steepest descent, "Rho8"). The neighbour a cell was reached from (plain D8) made streams on
+// smooth slopes run in ruler-straight 45-degree lines. Returns the number of land cells.
 static int IslandDrain(const float* h, float* filled, int* down, int* order, IsHeapNode* heap,
-                       unsigned char* seen) {
+                       unsigned char* seen, unsigned salt) {
     int W = gridWidth, H = gridHeight, n = W * H, hn = 0, on = 0;
     memset(seen, 0, (size_t)n);
     for (int i = 0; i < n; i++) {
@@ -84,6 +86,7 @@ static int IslandDrain(const float* h, float* filled, int* down, int* order, IsH
     }
     while (hn > 0) {
         IsHeapNode c = IsHeapPop(heap, &hn);
+        if (h[c.i] >= 0.0f) order[on++] = c.i;
         int cx = c.i % W, cy = c.i / W;
         for (int d = 0; d < 8; d++) {
             int nx = cx + isDX[d], ny = cy + isDY[d];
@@ -93,9 +96,31 @@ static int IslandDrain(const float* h, float* filled, int* down, int* order, IsH
             seen[ni] = 1;
             float lvl = filled[c.i] + 1e-4f;
             filled[ni] = h[ni] > lvl ? h[ni] : lvl;
-            down[ni] = c.i;
-            order[on++] = ni;
+            down[ni] = c.i;                         // fallback: always strictly lower
             IsHeapPush(heap, &hn, filled[ni], ni);
+        }
+    }
+    for (int k = 0; k < on; k++) {
+        int i = order[k], x = i % W, y = i / W;
+        float wsum = 0.0f, w[8];
+        for (int d = 0; d < 8; d++) {
+            int nx = x + isDX[d], ny = y + isDY[d];
+            w[d] = 0.0f;
+            if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+            float drop = filled[i] - filled[ny * W + nx];
+            if (drop <= 0.0f) continue;
+            w[d] = drop / (d < 4 ? 1.0f : 1.41421356f);
+            wsum += w[d];
+        }
+        if (wsum <= 0.0f) continue;
+        unsigned hsh = (unsigned)i * 2654435761u ^ salt;
+        hsh = (hsh ^ (hsh >> 15)) * 2246822519u;
+        hsh ^= hsh >> 13;
+        float pick = (float)(hsh & 0xFFFFFF) / 16777216.0f * wsum;
+        for (int d = 0; d < 8; d++) {
+            if (w[d] <= 0.0f) continue;
+            pick -= w[d];
+            if (pick < 0.0f || d == 7) { down[i] = (y + isDY[d]) * W + x + isDX[d]; break; }
         }
     }
     return on;
@@ -183,6 +208,10 @@ void GenerateIsland(void) {
     float R = 0.5f * (float)(W < H ? W : H);
     float maxLand = (float)(gridDepth - 2 - IS_SEA_Z);   // land levels above the sea
     if (maxLand < 3.0f) maxLand = 3.0f;
+    // Distances and widths are tuned on the 256 map; cs scales them so a bigger map gives the
+    // same island, only sharper (cs = 1 at 256: that map is unchanged by the scaling)
+    float cs = R / 128.0f;
+    if (cs < 0.5f) cs = 0.5f;
 
     // Per-island character from the seed
     float o1 = (float)GetRandomValue(0, 9999) * 0.37f, o2 = (float)GetRandomValue(0, 9999) * 0.37f;
@@ -215,6 +244,8 @@ void GenerateIsland(void) {
     // 1+2. Shape and relief
     // ------------------------------------------------------------------
     float sWarp = 2.5f / R, sHill = 7.0f / R, sRidge = 4.0f / R, sMask = 2.0f / R;
+    float sWanderMid = 0.17f / sqrtf(cs);
+    float sWander = 0.17f / cs;   // one variable, not x * 0.17f / cs: keeps the 256 map bit-identical (fused multiply-add)
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
             int i = y * W + x;
@@ -249,7 +280,11 @@ void GenerateIsland(void) {
             float lvl = 0.10f * inland + 0.22f * hills * inland + mountains * mmask * (0.25f + 0.75f * ridge);
             // fine wander (~6-cell features, under a level): on flat ground the flood would
             // otherwise visit in grid order and rivers run in ruler-straight 45-degree lines
-            float wander = 0.6f * (OctavePerlin(x * 0.17f + o4, y * 0.17f + o3, 2, 0.5f) - 0.5f) * inland;
+            float wander = 0.6f * (OctavePerlin(x * sWander + o4, y * sWander + o3, 2, 0.5f) - 0.5f) * inland;
+            if (cs > 1.0f)   // plus the cell-scale wiggle, or straight 45-degree runs come back inside each bend
+                wander += (1.0f - 1.0f / cs) * inland *
+                          (0.45f * (OctavePerlin(x * 0.17f + o3, y * 0.17f + o4, 2, 0.5f) - 0.5f) +
+                           0.45f * (OctavePerlin(x * sWanderMid + o1, y * sWanderMid + o2, 2, 0.5f) - 0.5f));
             h[i] = 0.3f * inland + lvl * maxLand + wander;
             if (h[i] < 0.02f) h[i] = 0.02f;
             if (h[i] > maxLand) h[i] = maxLand;
@@ -262,7 +297,7 @@ void GenerateIsland(void) {
     float riverMin = (float)n / 650.0f;             // cells drained before a stream is a river
     if (riverMin < 25.0f) riverMin = 25.0f;
 
-    int on = IslandDrain(h, filled, down, order, heap, seen);
+    int on = IslandDrain(h, filled, down, order, heap, seen, (unsigned)worldSeed * 747796405u);
     IslandFlow(down, order, on, acc);
     for (int i = 0; i < n; i++) near[i] = (h[i] >= 0.0f && acc[i] >= riverMin) ? i : -1;
     IslandNearest(near, dist);
@@ -271,18 +306,21 @@ void GenerateIsland(void) {
         float q = sqrtf(acc[near[i]] / riverMin);
         float depth = 0.9f * q;
         if (depth > 3.0f) depth = 3.0f;
-        float halfW = 3.0f + 2.5f * q;              // valley half-width in cells
+        float halfW = (3.0f + 2.5f * q) * cs;       // valley half-width in cells
         float t = dist[i] / halfW;
         if (t >= 1.0f) continue;
         float u = 1.0f - t * t;
         float nh = h[i] - depth * u * u;
         float floorLvl = filled[near[i]] - depth;   // never below the river's own carved bed
         if (nh < floorLvl) nh = floorLvl;
+        // a clamped floor is dead flat, and water crosses a flat in straight lines: roughen it
+        int x = i % W, y = i / W;
+        nh += 0.35f * u * (OctavePerlin(x * sWanderMid * 1.7f + o2, y * sWanderMid * 1.7f + o1, 2, 0.5f) - 0.5f);
         if (nh < 0.01f) nh = 0.01f;                 // carving never makes new sea
         h[i] = nh;
     }
     IslandCapSlope(h, heap, 0.9f);
-    on = IslandDrain(h, filled, down, order, heap, seen);
+    on = IslandDrain(h, filled, down, order, heap, seen, (unsigned)worldSeed * 747796405u);
     IslandFlow(down, order, on, acc);
 
     // ------------------------------------------------------------------
@@ -314,12 +352,13 @@ void GenerateIsland(void) {
     IslandNearest(near, dist);
     for (int i = 0; i < n; i++) {
         if (cover[i] == IS_SEA || cover[i] == IS_LAKE || near[i] < 0) continue;
-        float halfW = 0.25f * sqrtf(acc[near[i]] / riverMin);
+        float halfW = 0.25f * sqrtf(acc[near[i]] / riverMin) * cs;
         if (near[i] != i && dist[i] > halfW) continue;
         int bank = top[i];
         top[i] = bank - 1 < 0 ? 0 : bank - 1;
         waterTop[i] = bank;
         cover[i] = IS_RIVER;
+        if (acc[near[i]] > acc[i]) acc[i] = acc[near[i]];   // a widened cell is as big a river as its line
         riverCells++;
     }
 
@@ -346,7 +385,8 @@ void GenerateIsland(void) {
                 rain[i] = Clamp01(r);
             }
         }
-        for (int pass = 0; pass < 3; pass++) {               // the march leaves streaks
+        int blurPasses = (int)lroundf(3.0f * cs);
+        for (int pass = 0; pass < blurPasses; pass++) {      // the march leaves streaks
             for (int y = 0; y < H; y++)
                 for (int x = 0; x < W; x++) {
                     float s = 0; int c = 0;
@@ -391,12 +431,12 @@ void GenerateIsland(void) {
             float lvl = filled[i], r = rain[i];
             float tl = treeLine - (1.0f - r) * maxLand * 0.2f;
             int c;
-            if (lvl < 1.0f && dist[i] <= 3.0f) c = IS_BEACH;
-            else if (lvl < 2.0f && slope == 0 && tmp[i] <= 3.0f && r > 0.5f && order[i] >= 0 &&
+            if (lvl < 1.0f && dist[i] <= 3.0f * cs) c = IS_BEACH;
+            else if (lvl < 2.0f && slope == 0 && tmp[i] <= 3.0f * cs && r > 0.5f && order[i] >= 0 &&
                      (cover[order[i]] == IS_LAKE || acc[order[i]] >= 6.0f * riverMin)) c = IS_MARSH;   // lake shores, big rivers' flats
             else if (lvl > tl + maxLand * 0.12f && slope >= 1) c = IS_ROCK;   // steep ground above the moor
             else if (lvl > tl) c = IS_MOOR;
-            else if (r > 0.62f || (r > 0.45f && (slope >= 1 || tmp[i] < 5.0f))) c = IS_FOREST;
+            else if (r > 0.62f || (r > 0.45f && (slope >= 1 || tmp[i] < 5.0f * cs))) c = IS_FOREST;
             else if (r < 0.32f) c = IS_SCRUB;
             else c = IS_GRASS;
             cover[i] = (unsigned char)c;
@@ -408,7 +448,7 @@ void GenerateIsland(void) {
     // Build the cells
     // ------------------------------------------------------------------
     const int soilDepth = 3;
-    float soilScale = 0.06f;
+    float soilScale = 0.06f / cs;
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
             int i = y * W + x;
@@ -429,7 +469,7 @@ void GenerateIsland(void) {
                 case IS_MOOR:  surf = rain[i] > 0.6f ? MAT_PEAT : MAT_DIRT; break;
                 case IS_SCRUB: surf = sn > 0.55f ? MAT_GRAVEL : (sn < 0.3f ? MAT_SAND : MAT_DIRT); break;
                 case IS_FOREST:
-                case IS_GRASS: surf = (tmp[i] < 4.0f && sn > 0.5f) ? MAT_CLAY : MAT_DIRT; break;
+                case IS_GRASS: surf = (tmp[i] < 4.0f * cs && sn > 0.5f) ? MAT_CLAY : MAT_DIRT; break;
             }
             SetWallMaterial(x, y, t, surf);
             for (int z = t + 1; z <= waterTop[i]; z++) SetWaterLevel(x, y, z, WATER_MAX_LEVEL);
@@ -468,7 +508,9 @@ void GenerateIsland(void) {
     }
 
     // Ramps where the ground steps up one level (the higher cell's top becomes the ramp)
+    // seen[] marks ramp ends (where you step on and off) so trees keep clear of them
     int ramps = 0;
+    memset(seen, 0, (size_t)n);
     {
         static const int rdx[4] = {0, 1, 0, -1}, rdy[4] = {-1, 0, 1, 0};
         const CellType rtype[4] = {CELL_RAMP_N, CELL_RAMP_E, CELL_RAMP_S, CELL_RAMP_W};
@@ -482,10 +524,24 @@ void GenerateIsland(void) {
                     int ni = ny * W + nx;
                     if (waterTop[ni] >= 0 || top[ni] != top[i] + 1) continue;
                     int rz = top[ni];
-                    if (CellIsRamp(GRID(nx, ny, rz)) || !ShouldPlaceRampAt(nx, ny)) continue;
+                    if (CellIsRamp(GRID(nx, ny, rz))) continue;
+                    // the top end must step off onto ground at the ramp's level (not a drop or
+                    // another step up), or the ramp leads nowhere
+                    int bx = nx + rdx[d], by = ny + rdy[d];
+                    if (bx < 0 || by < 0 || bx >= W || by >= H) continue;
+                    int bi = by * W + bx;
+                    if (waterTop[bi] >= 0 || top[bi] != top[ni] || CellIsRamp(GRID(bx, by, top[bi]))) continue;
+                    // rampDensity per cell, scattered: the shared ShouldPlaceRampAt clusters
+                    // ramps in noise blobs, and a terrace whose whole edge fell in a ramp-free
+                    // blob was sealed off (seed 3: the north lobe, 15% of the island)
+                    unsigned rh = (unsigned)(ni * 2654435761u) ^ (unsigned)(d * 40503u) ^ (unsigned)worldSeed;
+                    rh = (rh ^ (rh >> 16)) * 2246822519u;
+                    rh ^= rh >> 13;
+                    if ((float)(rh & 0xFFFF) / 65536.0f >= rampDensity) continue;
                     MaterialType m = GetWallMaterial(nx, ny, rz);
                     GRID(nx, ny, rz) = rtype[d];
                     SetWallMaterial(nx, ny, rz, m);
+                    seen[i] = seen[bi] = 1;
                     ramps++;
                 }
             }
@@ -493,7 +549,7 @@ void GenerateIsland(void) {
 
     // Trees and berry bushes by cover
     int trees = 0, bushes = 0;
-    float treeScale = 0.05f;
+    float treeScale = 0.05f / cs;
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
             int i = y * W + x;
@@ -507,13 +563,22 @@ void GenerateIsland(void) {
             }
             int bz = top[i];
             if (!CanPlaceWorldGenTreeAt(x, y, bz)) continue;
+            // no tree on or next to a ramp end: in forest, trunks and branches blocked whole
+            // terraces off (the cut-off ground followed the forest, on the windward side)
+            bool nearRamp = false;
+            for (int dy = -1; dy <= 1 && !nearRamp; dy++)
+                for (int dx = -1; dx <= 1; dx++) {
+                    int xx = x + dx, yy = y + dy;
+                    if (xx >= 0 && yy >= 0 && xx < W && yy < H && seen[yy * W + xx]) { nearRamp = true; break; }
+                }
+            if (nearRamp) continue;
             float nz = OctavePerlin(x * treeScale + o1, y * treeScale + o3, 3, 0.5f);
             chance *= 0.4f + 1.2f * (1.0f - nz);     // clumps
             chance *= bp->treeDensity;
             float roll = GetRandomValue(0, 999) / 1000.0f;
             if (roll < chance) {
                 MaterialType tm = PickTreeTypeForBiome(bp, GetWallMaterial(x, y, bz), rain[i],
-                                                       cover[i] == IS_MARSH ? 0 : 1, tmp[i] < 4.0f, nz);
+                                                       cover[i] == IS_MARSH ? 0 : 1, tmp[i] < 4.0f * cs, nz);
                 PlaceWorldGenTree(x, y, bz, tm, true);
                 trees++;
             } else if ((cover[i] == IS_GRASS || cover[i] == IS_SCRUB) && roll > 0.996f - 0.006f * bp->bushDensity) {

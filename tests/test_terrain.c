@@ -501,6 +501,34 @@ describe(island_generator) {
         worldSeed = origSeed;
     }
 
+    it("should give every ramp two clear ends: ground at its level past the top, no tree on either end") {
+        uint64_t origSeed = worldSeed;
+        gridDepth = 16;
+        InitGridWithSizeAndChunkSize(128, 128, 16, 16);
+        int ramps = 0, nowhere = 0, treeBlocked = 0;
+        for (uint64_t seed = 1; seed <= 4; seed++) {
+            worldSeed = seed;
+            GenerateIsland();
+            for (int z = 1; z + 1 < gridDepth; z++)
+                for (int y = 1; y + 1 < gridHeight; y++)
+                    for (int x = 1; x + 1 < gridWidth; x++) {
+                        int d = (int)GRID(x, y, z) - CELL_RAMP_N;
+                        if (d < 0 || d > 3) continue;
+                        int dx = (d == 1) - (d == 3), dy = (d == 2) - (d == 0);   // toward the high side
+                        ramps++;
+                        if (IslandGroundTop(x + dx, y + dy) != z) nowhere++;    // the top end steps onto ground at z
+                        CellType lo = GRID(x - dx, y - dy, z), hi = GRID(x + dx, y + dy, z + 1);
+                        if ((lo >= CELL_SAPLING && lo <= CELL_TREE_LEAVES) || (hi >= CELL_SAPLING && hi <= CELL_TREE_LEAVES))
+                            treeBlocked++;
+                    }
+        }
+        if (test_verbose) printf("ramps %d, leading nowhere %d, tree on an end %d\n", ramps, nowhere, treeBlocked);
+        expect(ramps > 500);
+        expect(nowhere == 0);
+        expect(treeBlocked == 0);
+        worldSeed = origSeed;
+    }
+
     it("should leave no tree or bush floating") {
         uint64_t origSeed = worldSeed;
         gridDepth = 16;                              // before init: it sizes the levels
