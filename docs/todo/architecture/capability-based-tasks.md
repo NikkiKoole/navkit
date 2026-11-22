@@ -4,6 +4,17 @@
 
 Unified system for workshop crafting AND daily life activities. Extends [workshop-evolution-plan.md](../../todo/workshop-evolution-plan.md) with a concrete capability model that covers both job-driven production and need-driven survival.
 
+## Why stations (short)
+
+1. **Build freely, the game reads it**: place a stove, counter, sink in any shape; a recipe asks
+   "is there a work surface and heat nearby?" Freeform for the player, clear jobs for movers.
+2. **Physics, not rules**: heat 1 cooks, heat 3 smelts. "Why can't I?" = "not hot enough".
+3. **One recipe for all eras**: "cook" works at a campfire, a hearth, a 1999 stove.
+4. **Work and daily life in one system**: a heat source cooks and warms; sleeping 0-3 is
+   ground / leaf pile / bed (or cardboard / bench / shelter bed in the city).
+5. **Grows into bigger setups**: several stations in one room = several workers, lines with belts.
+6. **Partly built already**; old workshops stay as stations that come with everything in one place.
+
 ## Where we are (2026-11)
 
 **Built (dollhouse kitchen):** `capabilityGrid`, a 1-byte bitmask per cell with two flags

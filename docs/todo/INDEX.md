@@ -49,7 +49,7 @@
 ## Ideas & Vision
 
 - `endgame-village-vision.md` — 20th-century village destination picture: systems inventory, daily life, economy, social, housing
-- `../vision/city-1999.md` — Homeless in a 1999 city: ownership, inventory slot, trash/bins/deposit loop, coins, city stations, step order
+- `../vision/city-1999.md` — Homeless in a 1999 city: ownership, keys/locks, Cataclysm-style inventory (pockets, bags, cart), trash/bin/deposit loop, coins, city stations, missing systems, item cap analysis, two milestones
 - `sims-inspired-priorities.md` — What makes The Sims work; reorder next sessions for "Sims feel"
 - `naked-in-the-grass.md` — Gap analysis: 8/10 survival features complete, what's next
 - `naked-in-the-grass-details.md` — Deep dive on tool qualities and animals design
