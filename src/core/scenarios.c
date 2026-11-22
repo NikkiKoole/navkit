@@ -377,7 +377,8 @@ static int DayRhythmWallsLeft(void) {
 static void SetupDayRhythm(void) {
     hungerEnabled = true; energyEnabled = true;
     thirstEnabled = false; bladderEnabled = false; bodyTempEnabled = false;
-    dayLength = 120.0f;
+    dayLength = 360.0f;                 // the games' pace: 6-minute day, walking 3x
+    balance.baseMoverSpeed = 600.0f;    // (before the movers spawn: they take it from here)
     int maxWalls = scenarioMovers > 0 ? scenarioMovers : 1000000;
     int cx = gridWidth / 2;
     for (int i = 0; i < 8; i++) SpawnFurniture(cx - 8 + i * 2, 2, 1, FURNITURE_PLANK_BED, MAT_OAK);

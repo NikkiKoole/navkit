@@ -1005,11 +1005,11 @@ void DrawUI(void) {
             {
                 float bx = ix + 76;
                 bool clicked = false;
-                bx += PushButtonInline(bx, y, "Fast", &clicked); if (clicked) dayLength = 24.0f;
+                bx += PushButtonInline(bx, y, "Fast", &clicked); if (clicked) dayLength = 120.0f;
                 clicked = false;
-                bx += PushButtonInline(bx, y, "Normal", &clicked); if (clicked) dayLength = 120.0f;
+                bx += PushButtonInline(bx, y, "Normal", &clicked); if (clicked) dayLength = 360.0f;
                 clicked = false;
-                PushButtonInline(bx, y, "Slow", &clicked); if (clicked) dayLength = 720.0f;
+                PushButtonInline(bx, y, "Slow", &clicked); if (clicked) dayLength = 1080.0f;
             }
             y += 22;
 

@@ -125,8 +125,10 @@ static void StartSurvival(void) {
     }
 
     ResetTime();
-    dayLength = 120.0f;  // Slower day cycle for survival
-    balance.baseMoverSpeed = 400.0f;  // Faster movement for survival
+    // A 6-minute day, walking 3x the old 400 px/s: same speed on screen as a 2-minute day
+    // at 400, but per game hour movers cover 3x the ground (--day-budget: walking halves)
+    dayLength = 360.0f;
+    balance.baseMoverSpeed = 1200.0f;
     // Update already-spawned movers to new speed
     for (int i = 0; i < moverCount; i++) {
         if (movers[i].active) {
@@ -308,8 +310,8 @@ static void StartDollhouse(void) {
 
     // Settings
     ResetTime();
-    dayLength = 120.0f;
-    balance.baseMoverSpeed = 300.0f;
+    dayLength = 360.0f;               // 6-minute day, walking 3x: see survival
+    balance.baseMoverSpeed = 900.0f;
     for (int i = 0; i < moverCount; i++) {
         if (movers[i].active) {
             movers[i].speed = balance.baseMoverSpeed * (1.0f + balance.moverSpeedVariance * (GetRandomValue(-100, 100) / 100.0f));
