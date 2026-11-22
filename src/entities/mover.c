@@ -1156,6 +1156,29 @@ int CountActiveMovers(void) {
     return count;
 }
 
+// A mover dies: drop its job, tools and clothing, and give back whatever its need was
+// holding. needTarget means a different thing per freetime state (item, furniture,
+// workshop, encoded cell), so release by state; the furniture scan also catches a bed or
+// toilet still marked as this mover's after needTarget was cleared.
+static void KillMover(Mover* m, int i) {
+    if (m->currentJobId >= 0) CancelJob(m, i);
+    int t = m->needTarget;
+    switch (m->freetimeState) {
+        case FREETIME_SEEKING_FOOD: case FREETIME_EATING:
+        case FREETIME_SEEKING_DRINK: case FREETIME_DRINKING:
+            if (t >= 0 && t < MAX_ITEMS && items[t].active && items[t].reservedBy == i)
+                ReleaseItemReservation(t);
+            break;
+        default: break;   // furniture: below; workshop / water / bush cells hold nothing
+    }
+    ReleaseFurnitureForMover(i);
+    m->needTarget = -1;
+    DropEquippedTool(i);
+    DropEquippedClothing(i);
+    m->freetimeState = FREETIME_NONE;
+    m->active = false;
+}
+
 void NeedsTick(void) {
     float dt = gameDeltaTime;
     for (int i = 0; i < moverCount; i++) {
@@ -1174,15 +1197,7 @@ void NeedsTick(void) {
             if (m->hunger == 0.0f && gameMode == GAME_MODE_SURVIVAL) {
                 m->starvationTimer += dt;
                 if (m->starvationTimer >= GameHoursToGameSeconds(balance.starvationDeathGH)) {
-                    if (m->currentJobId >= 0) CancelJob(m, i);
-                    if (m->needTarget >= 0) {
-                        items[m->needTarget].reservedBy = -1;
-                        m->needTarget = -1;
-                    }
-                    DropEquippedTool(i);
-                    DropEquippedClothing(i);
-                    m->freetimeState = FREETIME_NONE;
-                    m->active = false;
+                    KillMover(m, i);
                     EventLog("%s (#%d) died of starvation (timer=%.1fs)", MoverDisplayName(i), i, m->starvationTimer);
                     TraceLog(LOG_WARNING, "%s (#%d) died of starvation", MoverDisplayName(i), i);
                     AddMessage("Your mover starved to death.", RED);
@@ -1205,15 +1220,7 @@ void NeedsTick(void) {
             if (m->thirst == 0.0f && gameMode == GAME_MODE_SURVIVAL) {
                 m->dehydrationTimer += dt;
                 if (m->dehydrationTimer >= GameHoursToGameSeconds(balance.dehydrationDeathGH)) {
-                    if (m->currentJobId >= 0) CancelJob(m, i);
-                    if (m->needTarget >= 0) {
-                        items[m->needTarget].reservedBy = -1;
-                        m->needTarget = -1;
-                    }
-                    DropEquippedTool(i);
-                    DropEquippedClothing(i);
-                    m->freetimeState = FREETIME_NONE;
-                    m->active = false;
+                    KillMover(m, i);
                     EventLog("%s (#%d) died of dehydration (timer=%.1fs)", MoverDisplayName(i), i, m->dehydrationTimer);
                     TraceLog(LOG_WARNING, "%s (#%d) died of dehydration", MoverDisplayName(i), i);
                     AddMessage("Your mover died of thirst.", RED);
@@ -1286,11 +1293,7 @@ void NeedsTick(void) {
             if (m->bodyTemp < balance.severeColdThreshold && gameMode == GAME_MODE_SURVIVAL) {
                 m->hypothermiaTimer += dt;
                 if (m->hypothermiaTimer >= GameHoursToGameSeconds(balance.hypothermiaDeathGH)) {
-                    if (m->currentJobId >= 0) CancelJob(m, i);
-                    DropEquippedTool(i);
-                    DropEquippedClothing(i);
-                    m->freetimeState = FREETIME_NONE;
-                    m->active = false;
+                    KillMover(m, i);
                     EventLog("%s (#%d) died of hypothermia (bodyTemp=%.1f)", MoverDisplayName(i), i, m->bodyTemp);
                     TraceLog(LOG_WARNING, "%s (#%d) died of hypothermia", MoverDisplayName(i), i);
                     AddMessage("Your mover froze to death.", RED);

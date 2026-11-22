@@ -898,6 +898,76 @@ describe(body_temperature) {
 }
 
 // =============================================================================
+// Story: A mover who dies gives back the bed and the food it was holding
+// =============================================================================
+
+describe(death_releases_reservations) {
+    it("a mover who starves in bed frees the bed and leaves other items alone") {
+        SetupClean();
+        gameMode = GAME_MODE_SURVIVAL;
+        int mi = SetupMover(5, 5);
+        int fi = SpawnFurniture(5, 5, 1, FURNITURE_PLANK_BED, 0);
+        furniture[fi].occupant = mi;
+        movers[mi].freetimeState = FREETIME_RESTING;
+        movers[mi].needTarget = fi;
+        // an item whose index equals the bed's, reserved by someone else
+        for (int k = 0; k <= fi; k++) SpawnItem(CELL_SIZE * 2.5f, CELL_SIZE * 2.5f, 1.0f, ITEM_BERRIES);
+        items[fi].reservedBy = 7;
+
+        movers[mi].hunger = 0.0f;
+        movers[mi].starvationTimer = GameHoursToGameSeconds(balance.starvationDeathGH);
+        NeedsTick();
+
+        expect(!movers[mi].active);
+        expect(furniture[fi].occupant == -1);
+        expect(items[fi].reservedBy == 7);
+        gameMode = GAME_MODE_SANDBOX;
+    }
+
+    it("a mover who freezes on the way to food frees the food") {
+        SetupClean();
+        gameMode = GAME_MODE_SURVIVAL;
+        int mi = SetupMover(5, 5);
+        int it = SpawnItem(CELL_SIZE * 2.5f, CELL_SIZE * 2.5f, 1.0f, ITEM_BERRIES);
+        items[it].reservedBy = mi;
+        movers[mi].freetimeState = FREETIME_SEEKING_FOOD;
+        movers[mi].needTarget = it;
+
+        for (int y = 0; y < 10; y++)
+            for (int x = 0; x < 10; x++)
+                SetTemperature(x, y, 1, -20);
+        movers[mi].bodyTemp = 20.0f;
+        movers[mi].hypothermiaTimer = GameHoursToGameSeconds(balance.hypothermiaDeathGH);
+        NeedsTick();
+
+        expect(!movers[mi].active);
+        expect(items[it].reservedBy == -1);
+        gameMode = GAME_MODE_SANDBOX;
+    }
+
+    it("a mover who freezes in bed frees the bed") {
+        SetupClean();
+        gameMode = GAME_MODE_SURVIVAL;
+        int mi = SetupMover(5, 5);
+        int fi = SpawnFurniture(5, 5, 1, FURNITURE_PLANK_BED, 0);
+        furniture[fi].occupant = mi;
+        movers[mi].freetimeState = FREETIME_RESTING;
+        movers[mi].needTarget = fi;
+
+        for (int y = 0; y < 10; y++)
+            for (int x = 0; x < 10; x++)
+                SetTemperature(x, y, 1, -20);
+        movers[mi].bodyTemp = 20.0f;
+        movers[mi].hypothermiaTimer = GameHoursToGameSeconds(balance.hypothermiaDeathGH);
+        NeedsTick();
+
+        expect(!movers[mi].active);
+        expect(furniture[fi].occupant == -1);
+        gameMode = GAME_MODE_SANDBOX;
+    }
+}
+
+// =============================================================================
 // Main
 // =============================================================================
 
@@ -923,6 +993,7 @@ int main(int argc, char* argv[]) {
     test(full_day_cycle);
     test(furniture_rest_seeking);
     test(body_temperature);
+    test(death_releases_reservations);
 
     return summary();
 }
