@@ -155,7 +155,8 @@ static const char* DescAnimalPop(void) {
     return TextFormat("Target: %d  Current: %d", animalTargetPopulation, CountActiveAnimals());
 }
 static const char* DescAnimalSpawn(void) {
-    return TextFormat("%.0fs between spawn attempts", animalSpawnInterval);
+    return TextFormat("A spawn attempt every %.0f game hours (%.1f per day).", animalSpawnIntervalGH,
+                      animalSpawnIntervalGH > 0 ? 24.0f / animalSpawnIntervalGH : 0.0f);
 }
 static const char* DescTorchIntensity(void) {
     return TextFormat("Propagation radius for new torches. At %d, light reaches %d tiles away.",
@@ -557,8 +558,8 @@ static const Setting settings[] = {
       "Animals respawn from map edges."),
     SET_INT("animalTargetPop", "Target Pop", "Entities/Animals", animalTargetPopulation, 1.0f, 1, 50,
       "Respawn keeps the animal count near this.", DescAnimalPop),
-    SET_FLOAT("animalSpawnInterval", "Spawn Interval", "Entities/Animals", animalSpawnInterval, 1.0f, 10.0f, 600.0f,
-      "Seconds between spawn attempts.", DescAnimalSpawn),
+    SET_FLOAT("animalSpawnInterval", "Spawn Interval (GH)", "Entities/Animals", animalSpawnIntervalGH, 1.0f, 1.0f, 240.0f,
+      "Game hours between spawn attempts.", DescAnimalSpawn),
 
     // --- Trains ---
     SET_BOOL("trainQueue", "Queue Line", "Entities/Trains", trainQueueEnabled,

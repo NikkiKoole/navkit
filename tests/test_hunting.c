@@ -15,6 +15,7 @@
 #include "../src/game_state.h"
 #include "test_helpers.h"
 #include <string.h>
+#include <math.h>
 
 static bool test_verbose = false;
 
@@ -372,6 +373,34 @@ describe(hunt_cancel) {
 // ===========================================================================
 // Full hunt E2E test
 // ===========================================================================
+// Animal timers count game hours: the same per game day at any dayLength
+describe(animal_timers) {
+    it("a grazer eats one tuft per ANIMAL_GRAZE_TIME_GH game hours, whatever the day length") {
+        float lengths[2] = {60.0f, 360.0f};
+        float savedDay = dayLength;
+        bool savedRespawn = animalRespawnEnabled;
+        for (int k = 0; k < 2; k++) {
+            dayLength = lengths[k];
+            InitTestGridFromAscii("..........\n..........\n..........\n..........\n..........\n");
+            ClearAnimals();
+            animalRespawnEnabled = false;
+            int idx = SetupAnimalAt(2.5f * CELL_SIZE, 2.5f * CELL_SIZE, 0, ANIMAL_GRAZER);
+            SetVegetation(2, 2, 0, VEG_GRASS_TALL);
+            animals[idx].state = ANIMAL_GRAZING;
+            int ticks = 0;
+            while (GetVegetation(2, 2, 0) == VEG_GRASS_TALL && ticks < 100000) {
+                AnimalsTick(TICK_DT);
+                ticks++;
+            }
+            float expected = GameHoursToGameSeconds(ANIMAL_GRAZE_TIME_GH) / TICK_DT;
+            if (test_verbose) printf("dayLength %.0f: tuft eaten after %d ticks, expected %.0f\n", dayLength, ticks, expected);
+            expect(fabsf(ticks - expected) <= 2.0f);
+        }
+        dayLength = savedDay;
+        animalRespawnEnabled = savedRespawn;
+    }
+}
+
 describe(hunt_e2e) {
     it("mover chases animal and produces carcass") {
         InitTestGridFromAscii(
@@ -452,6 +481,7 @@ int main(int argc, char* argv[]) {
     test(workgiver_hunt);
     test(hunt_cancel);
     test(hunt_e2e);
+    test(animal_timers);
 
     return summary();
 }

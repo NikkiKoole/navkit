@@ -5,8 +5,8 @@
 
 #define MAX_ANIMALS 256
 #define ANIMAL_SPEED 60.0f
-#define ANIMAL_GRAZE_TIME 2.0f      // Seconds to eat one vegetation level
-#define ANIMAL_IDLE_TIME 1.5f       // Seconds to idle before scanning
+#define ANIMAL_GRAZE_TIME_GH 0.5f   // Game hours to eat one vegetation level
+#define ANIMAL_IDLE_TIME_GH 0.25f   // Game hours to idle before scanning
 #define ANIMAL_SCAN_RADIUS 4        // Cells to scan for grass
 
 typedef enum {
@@ -51,7 +51,7 @@ extern Animal animals[MAX_ANIMALS];
 extern int animalCount;
 extern bool animalRespawnEnabled;
 extern int animalTargetPopulation;
-extern float animalSpawnInterval;
+extern float animalSpawnIntervalGH;   // game hours between respawn attempts (not saved)
 
 // Core functions
 void SpawnAnimal(AnimalType type, int z, AnimalBehavior behavior);

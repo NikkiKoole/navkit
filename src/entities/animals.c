@@ -1,4 +1,5 @@
 #include "animals.h"
+#include "../simulation/balance.h"
 #include "items.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -15,7 +16,7 @@ Animal animals[MAX_ANIMALS];
 int animalCount = 0;
 bool animalRespawnEnabled = true;
 int animalTargetPopulation = 8;
-float animalSpawnInterval = 180.0f;  // 3 game-minutes
+float animalSpawnIntervalGH = 24.0f;  // one respawn attempt per game day
 
 // Shared context steering instance (cleared per-animal per-tick)
 static ContextSteering steeringCtx;
@@ -199,7 +200,7 @@ static void BehaviorSimpleGrazer(Animal* a, float dt) {
     switch (a->state) {
     case ANIMAL_IDLE: {
         a->stateTimer += dt;
-        if (a->stateTimer >= ANIMAL_IDLE_TIME) {
+        if (a->stateTimer >= GameHoursToGameSeconds(ANIMAL_IDLE_TIME_GH)) {
             // Scan for grass
             int tx, ty;
             if (ScanForGrass(cx, cy, cz, ANIMAL_SCAN_RADIUS, &tx, &ty)) {
@@ -275,7 +276,7 @@ static void BehaviorSimpleGrazer(Animal* a, float dt) {
 
     case ANIMAL_GRAZING: {
         a->grazeTimer += dt;
-        if (a->grazeTimer >= ANIMAL_GRAZE_TIME) {
+        if (a->grazeTimer >= GameHoursToGameSeconds(ANIMAL_GRAZE_TIME_GH)) {
             a->grazeTimer = 0.0f;
             VegetationType veg = GetVegetation(cx, cy, cz);
             if (veg > VEG_NONE) {
@@ -583,7 +584,7 @@ static void BehaviorSteeringGrazer(Animal* a, float dt) {
             if (veg > VEG_NONE) {
                 a->grazeTimer += dt;
                 a->state = ANIMAL_GRAZING;
-                if (a->grazeTimer >= ANIMAL_GRAZE_TIME) {
+                if (a->grazeTimer >= GameHoursToGameSeconds(ANIMAL_GRAZE_TIME_GH)) {
                     a->grazeTimer = 0.0f;
                     SetVegetation(cx, cy, cz, veg - 1);
                 }
@@ -610,7 +611,7 @@ static void BehaviorSteeringGrazer(Animal* a, float dt) {
 #define PREDATOR_MAX_FORCE 250.0f
 #define PREDATOR_CATCH_DIST (CELL_SIZE * 0.5f)
 #define PREDATOR_DETECT_RADIUS (CELL_SIZE * 10)
-#define PREDATOR_REST_TIME 3.0f
+#define PREDATOR_REST_TIME_GH 1.0f   // game hours a predator rests after a kill
 
 static void BehaviorPredator(Animal* a, float dt) {
     if (!steeringCtxInitialized) {
@@ -633,7 +634,7 @@ static void BehaviorPredator(Animal* a, float dt) {
         // Decelerate while resting
         a->velX *= 0.9f;
         a->velY *= 0.9f;
-        if (a->stateTimer >= PREDATOR_REST_TIME) {
+        if (a->stateTimer >= GameHoursToGameSeconds(PREDATOR_REST_TIME_GH)) {
             a->state = ANIMAL_HUNTING;
             a->stateTimer = 0.0f;
         }
@@ -815,7 +816,7 @@ static void AnimalRespawnTick(float dt) {
     if (!animalRespawnEnabled) return;
 
     respawnTimer += dt;
-    if (respawnTimer < animalSpawnInterval) return;
+    if (respawnTimer < GameHoursToGameSeconds(animalSpawnIntervalGH)) return;
     respawnTimer = 0.0f;
 
     int active = CountActiveAnimals();

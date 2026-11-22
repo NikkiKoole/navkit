@@ -125,6 +125,9 @@ static inline bool RowElemIsZero(const unsigned char* p, size_t es) {
 // Settings save/load macro table
 // X-macro for all tweakable simulation settings
 // Adding a new setting: add one line here, it will be saved/loaded automatically
+// Animal respawn used to be saved in seconds; the slot stays so the save format is unchanged.
+static float savedUnusedAnimalSpawnSeconds = 180.0f;
+
 #define SETTINGS_TABLE(X) \
     /* Game time */ \
     X(double, gameTime) \
@@ -204,7 +207,7 @@ static inline bool RowElemIsZero(const unsigned char* p, size_t es) {
     /* Animals */ \
     X(bool, animalRespawnEnabled) \
     X(int, animalTargetPopulation) \
-    X(float, animalSpawnInterval) \
+    X(float, savedUnusedAnimalSpawnSeconds) /* was seconds; now animalSpawnIntervalGH, not saved */ \
     /* Trains */ \
     X(bool, trainQueueEnabled)
 

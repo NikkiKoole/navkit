@@ -365,7 +365,7 @@ void DescribeAnimal(int idx, DescLines* out) {
 
     if (a->state == ANIMAL_GRAZING) {
         DescAdd(out, DESC_GOOD, "Grazing: veg=%d, timer=%.1f/%.1f",
-                (int)GetVegetation(cellX, cellY, (int)a->z), a->grazeTimer, ANIMAL_GRAZE_TIME);
+                (int)GetVegetation(cellX, cellY, (int)a->z), a->grazeTimer, GameHoursToGameSeconds(ANIMAL_GRAZE_TIME_GH));
     } else if (a->state == ANIMAL_WALKING) {
         DescAdd(out, DESC_INFO, "Target: (%d,%d)", a->targetCellX, a->targetCellY);
     } else if (a->state == ANIMAL_HUNTING) {
