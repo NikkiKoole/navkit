@@ -347,7 +347,7 @@ static const Setting settings[] = {
       "Day/night temperature swing. Peak at 14:00, trough at 02:00. 0 = flat.", NULL),
 
     // --- Mover balance: movement ---
-    SET_FLOAT_HOOK("baseMoverSpeed", "Base Speed (px/s)", "Mover Balance", balance.baseMoverSpeed, 10.0f, 50.0f, 800.0f,
+    SET_FLOAT_HOOK("baseMoverSpeed", "Base Speed (px/s)", "Mover Balance", balance.baseMoverSpeed, 10.0f, 50.0f, 3000.0f,
       "Base mover speed in pixels/sec. Changing it rescales every mover's speed.", DescBaseSpeed, RescaleMoverSpeeds),
     SET_FLOAT("moverSpeedVariance", "Speed Variance", "Mover Balance", balance.moverSpeedVariance, 0.05f, 0.0f, 0.5f,
       "Random speed spread per new mover (+/- fraction).", DescSpeedVariance),
