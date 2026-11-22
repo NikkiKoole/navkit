@@ -1809,6 +1809,7 @@ int main(int argc, char** argv) {
             // Frame 3 is saved; frames 4-63 time the world drawing (CPU side, flushed)
             rlDrawRenderBatchActive();   // flush pending sprites before reading/timing
             static double worldMsSum = 0.0;
+            static double screenshotSecMs[PROFILER_MAX_SECTIONS];
             screenshotFrame++;
             if (screenshotFrame == 3) {
                 Image shot = LoadImageFromScreen();
@@ -1816,8 +1817,21 @@ int main(int argc, char** argv) {
                 UnloadImage(shot);
             } else if (screenshotFrame > 3) {
                 worldMsSum += (GetTime() - worldDrawStart) * 1000.0;
+#if PROFILER_ENABLED
+                for (int s = 0; s < profilerSectionCount && s < PROFILER_MAX_SECTIONS; s++)
+                    screenshotSecMs[s] += profilerSections[s].lastTimeMs;   // Render/EndDraw: the previous frame's
+#endif
                 if (screenshotFrame == 3 + screenshotTimed) {
                     printf("screenshot: world drawing %.2f ms per frame (avg of %d)\n", worldMsSum / screenshotTimed, screenshotTimed);
+#if PROFILER_ENABLED
+                    // Per-pass split of the render sections (sum of their last times per frame)
+                    for (int s = 0; s < profilerSectionCount; s++) {
+                        int a = s; while (a >= 0 && strcmp(profilerSections[a].name, "Render") != 0) a = profilerSections[a].parent;
+                        if (a < 0) continue;
+                        printf("  %*s%-20s %7.2f ms\n", profilerSections[s].depth * 2, "",
+                               profilerSections[s].name, screenshotSecMs[s] / screenshotTimed);
+                    }
+#endif
                     shouldQuit = true;
                 }
             }
