@@ -639,11 +639,12 @@ void AddMoversDemo(int count) {
         BuildEntrances();
         BuildGraph();
     }
+    Point mainArea = GetMainRegionAnchor();   // spawn where movers can get around
 
     for (int i = 0; i < count && moverCount < MAX_MOVERS; i++) {
         Mover* m = &movers[moverCount];
 
-        Point start = GetRandomWalkableCell();
+        Point start = GetRandomWalkableCellReachableFrom(mainArea);
         Point goal = MoverWanderLocal() ? GetRandomGoalNear(start, moverWanderRadius, false) : GetRandomWalkableCell();
 
         float x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -688,10 +689,11 @@ void SpawnMoversDemo(int count) {
 
     ClearMovers();
     long long spawnExplored = 0;
+    Point mainArea = GetMainRegionAnchor();   // spawn where movers can get around
     for (int i = 0; i < count && i < MAX_MOVERS; i++) {
         Mover* m = &movers[moverCount];
 
-        Point start = GetRandomWalkableCell();
+        Point start = GetRandomWalkableCellReachableFrom(mainArea);
         Point goal = MoverWanderLocal() ? GetRandomGoalNear(start, moverWanderRadius, false) : GetRandomWalkableCell();
 
         float x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;

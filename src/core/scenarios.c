@@ -382,10 +382,13 @@ static bool HubGoalPicker(int moverIdx, Point* goal) {
 static void SetupWorld(void) {
     endlessMoverMode = true;
     int n = scenarioMovers > 0 ? scenarioMovers : 100, spawned = 0;
+    Point mainArea = GetMainRegionAnchor();   // not on hilltops nobody can leave
     for (int tries = 0; spawned < n && tries < n * 200; tries++) {
         int x = GetRandomValue(0, gridWidth - 1), y = GetRandomValue(0, gridHeight - 1);
         for (int z = 1; z < gridDepth; z++) {
-            if (IsCellWalkableAt(z, y, x)) { SpawnMoverAt(x, y, z); spawned++; break; }
+            if (!IsCellWalkableAt(z, y, x)) continue;
+            if (mainArea.x < 0 || IsReachable(mainArea, (Point){x, y, z})) { SpawnMoverAt(x, y, z); spawned++; }
+            break;
         }
     }
     AddMessage(TextFormat("World: %d movers on %dx%d", spawned, gridWidth, gridHeight), GREEN);
@@ -395,7 +398,7 @@ static void SetupHubs(void) {
     // Hubs: walkable cells in the biggest reachability region, spread out (a
     // jittered grid over the map, each snapped to the nearest good cell)
     hubCount = 0;
-    Point anchor = GetRandomWalkableCell();
+    Point anchor = GetMainRegionAnchor();
     for (int k = 0; k < HUB_COUNT && anchor.x >= 0; k++) {
         int tx = (k % 3) * gridWidth / 3 + gridWidth / 6, ty = (k / 3) * gridHeight / 2 + gridHeight / 4;
         Point best = {-1, -1, -1};

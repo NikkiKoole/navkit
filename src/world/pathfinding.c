@@ -375,6 +375,39 @@ Point GetRandomGoalNear(Point from, int radius, bool differentZ) {
     return fallback.x >= 0 ? fallback : GetRandomWalkableCell();
 }
 
+// A cell in the biggest reachability region: the region most of 256 random walkable
+// cells fall in (a sample hits a region in proportion to its size). {-1,-1,0} if none.
+Point GetMainRegionAnchor(void) {
+    enum { SAMPLES = 256 };
+    int ids[SAMPLES], counts[SAMPLES];
+    Point at[SAMPLES];
+    int n = 0, best = -1;
+    for (int s = 0; s < SAMPLES; s++) {
+        Point p = GetRandomWalkableCell();
+        if (p.x < 0) continue;
+        int id = NavRegionId(NavGame(), p);
+        if (id < 0) continue;
+        int k = 0;
+        while (k < n && ids[k] != id) k++;
+        if (k == n) { ids[n] = id; counts[n] = 0; at[n] = p; n++; }
+        counts[k]++;
+        if (best < 0 || counts[k] > counts[best]) best = k;
+    }
+    return best >= 0 ? at[best] : (Point){-1, -1, 0};
+}
+
+// Random walkable cell connected to `anchor` (spawning: nobody starts on a patch they
+// can't leave). Any walkable cell if there's no anchor or nothing connected turns up.
+Point GetRandomWalkableCellReachableFrom(Point anchor) {
+    if (anchor.x < 0) return GetRandomWalkableCell();
+    for (int attempts = 0; attempts < 1000; attempts++) {
+        Point p = GetRandomWalkableCell();
+        if (p.x < 0) break;
+        if (IsReachable(anchor, p)) return p;
+    }
+    return GetRandomWalkableCell();
+}
+
 // Same-z goals: no ladder check needed.
 Point GetRandomWalkableCellOnZ(int z) {
     Point p;
